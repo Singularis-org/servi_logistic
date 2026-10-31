@@ -73,13 +73,24 @@ import type {
   HistorialContexto,
 } from "@/lib/interfaces/repositories/IOrdenHistorialRepository";
 import { appendCambioEstado } from "@/lib/repositories/registrar-cambio-estado";
-import { zonaUnicaDeDistrito } from "@/lib/repositories/_shared/zona-colapso";
 // SL-38 (R22): la marca de zona especial es de la EMPRESA y se lee por un unico punto.
 import {
   esZonaEspecialDeLaEmpresa,
   SELECT_MARCA_ZONA_ESPECIAL,
   type MarcaZonaEspecialProyectada,
+  type ClienteDeMarcas,
 } from "@/lib/repositories/_shared/zona-especial";
+import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograficoRepository";
+import {
+  ancestros,
+  esZonaEspecial,
+  estaActivo,
+  nodo as nodoDelCatalogo,
+  nodosDeProfundidad,
+  zonaQueCubre,
+  type CatalogoGeografico,
+  type NodoDelCatalogo,
+} from "@/lib/services/geografia-dominio";
 import { resolverSinpeBodega, type SinpeBodega } from "@/lib/utils/sinpe-bodega";
 
 /**
@@ -102,15 +113,9 @@ function sinpeDeLaOrden(
   });
   return { sinpeNumero: par.numero, sinpeNombre: par.nombre };
 }
-// FICHA 374: el predicado de la disponibilidad geografica vive en UN solo sitio; aqui solo se
-// PROYECTA (R31). Y `ESTADOS_TERMINALES` se importa de su fuente unica para el conteo de R61.
-import {
-  SELECT_CADENA_CANTON,
-  SELECT_CADENA_DISTRITO,
-  SELECT_FLAG_PROPIO,
-  disponibleDesdeCadena,
-  disponibleDesdeCadenaCanton,
-} from "@/lib/repositories/_shared/geografia-activa";
+// FICHA 374: el predicado de la disponibilidad geografica vive en UN solo sitio. Desde SLT-44 las
+// lecturas geograficas de este repositorio la toman del dominio (`estaActivo`, que delega en
+// `activoEnCascada`). Y `ESTADOS_TERMINALES` se importa de su fuente unica para el conteo de R61.
 import { ESTADOS_TERMINALES } from "@/lib/types/order-status-transiciones";
 import type { NivelGeografico } from "@/lib/types/geografia-nodo";
 // FICHA 362 — el punto UNICO de escritura del registro de acciones, y la fuente unica de la
@@ -850,7 +855,13 @@ type OrdenPrismaClient = Pick<
   | "$queryRaw" // feature 91: lo exige `JobRepository` (encolado outbox de geocodificacion)
   | "historialAccion" // ficha 362/R9: el registro de la accion, en la MISMA tx que la mutacion
   | "ordenTraspasoMensajero" // ficha 427/R25: el rastro del traspaso, en la MISMA tx que el movimiento
->;
+  // SLT-44 (design §5): la resolucion por nombres y el distrito de la correccion leen el catalogo.
+  | "nodoGeografico"
+  | "tipoNivelGeografico"
+  | "zonaDistrito"
+  | "organizacion"
+> &
+  ClienteDeMarcas;
 
 /**
  * FICHA 362 — lo que el `RETURNING` de los tres borrados por lote trae de vuelta: el id de la
@@ -1855,6 +1866,25 @@ async function anotarSenalesGestion<T extends { id: string }>(
   });
 }
 
+// --- SLT-44 (design §5): la resolucion por nombres y la correccion, sobre el catalogo ---
+
+/** La disponibilidad efectiva del nodo: el y todos sus ancestros activos (R5). */
+function disponibleEnCatalogo(cat: CatalogoGeografico, n: NodoDelCatalogo): boolean {
+  return estaActivo(cat, n.id) === true;
+}
+
+/** Los nodos de esa profundidad cuyo padre esta en `padreIds`, en el orden del catalogo. */
+function hijosDeProfundidad(
+  cat: CatalogoGeografico,
+  profundidad: number,
+  padreIds: readonly string[],
+): (NodoDelCatalogo & { padreId: string })[] {
+  const padres = new Set(padreIds);
+  return nodosDeProfundidad(cat, profundidad).filter(
+    (n): n is NodoDelCatalogo & { padreId: string } => n.padreId !== null && padres.has(n.padreId),
+  );
+}
+
 export class OrdenRepository implements IOrdenRepository {
   /**
    * Feature 91: `jobRepo` se inyecta para el encolado TRANSACTIONAL OUTBOX de la
@@ -1872,6 +1902,16 @@ export class OrdenRepository implements IOrdenRepository {
      */
     private readonly now: () => Date = () => new Date(),
   ) {}
+
+  // SLT-44 (design §4): uno por instancia, creado al primer uso. Las composiciones crean este
+  // repositorio en cada llamada: las tres lecturas de la resolucion por nombres comparten una sola
+  // carga del catalogo, y nunca entre peticiones (R11).
+  private catalogoRepo: CatalogoGeograficoRepository | null = null;
+
+  private catalogoGeografico(): CatalogoGeograficoRepository {
+    this.catalogoRepo ??= new CatalogoGeograficoRepository(this.prisma);
+    return this.catalogoRepo;
+  }
 
   // BORRADO 2026-08-07 (tanda 2 del chore de deuda de superficie): aqui vivia `create`, el
   // insert de UNA orden. Se quedo sin llamador al retirarse `OrdenService.crear`. Las ordenes
@@ -2631,74 +2671,52 @@ export class OrdenRepository implements IOrdenRepository {
    * acentos, y descartaría "Bogotá" cuando el archivo trae "Bogota".
    */
   async findAllProvincias(): Promise<ProvinciaRow[]> {
-    // FICHA 374 (R31): PROYECTA el flag, NO recorta. Un `where` aqui haria caer la fila en
+    // FICHA 374 (R31): PROYECTA el flag, NO recorta. Un filtro aqui haria caer la fila en
     // «provincia no encontrada», que MIENTE sobre una provincia que existe; el rechazo con
     // mensaje propio vive en `resolveGeo`.
-    const rows = await this.prisma.provincia.findMany({
-      select: { id: true, nombre: true, ...SELECT_FLAG_PROPIO },
-    });
-    // Una provincia no tiene ascendiente: su flag propio ES su disponibilidad efectiva.
-    return rows.map((r) => ({ id: r.id, nombre: r.nombre, disponible: r.activo }));
+    // SLT-44 (R18): del catalogo de la empresa; la provincia es la profundidad 1.
+    const { catalogo } = await this.catalogoGeografico().deLaEmpresa();
+    return nodosDeProfundidad(catalogo, 1).map((n) => ({
+      id: n.id,
+      nombre: n.nombre,
+      disponible: disponibleEnCatalogo(catalogo, n),
+    }));
   }
 
   /** R19: cantones de las provincias resueltas (todo el universo, el service filtra por jerarquia). */
   async findCantonesByProvinciaIds(provinciaIds: string[]): Promise<CantonRow[]> {
     if (provinciaIds.length === 0) return [];
-    const rows = await this.prisma.canton.findMany({
-      where: { provinciaId: { in: provinciaIds } },
-      // FICHA 374 (R31): se proyecta la cadena; el `WHERE` no gana ni una condicion.
-      select: { id: true, nombre: true, provinciaId: true, ...SELECT_CADENA_CANTON },
-    });
-    return rows.map((r) => ({
-      id: r.id,
-      nombre: r.nombre,
-      provinciaId: r.provinciaId,
-      disponible: disponibleDesdeCadenaCanton(r),
+    const { catalogo } = await this.catalogoGeografico().deLaEmpresa();
+    return hijosDeProfundidad(catalogo, 2, provinciaIds).map((n) => ({
+      id: n.id,
+      nombre: n.nombre,
+      provinciaId: n.padreId,
+      disponible: disponibleEnCatalogo(catalogo, n),
     }));
   }
 
   /** R19: distritos de los cantones resueltos. */
   async findDistritosByCantonIds(cantonIds: string[]): Promise<DistritoRow[]> {
     if (cantonIds.length === 0) return [];
-    const rows = await this.prisma.distrito.findMany({
-      where: { cantonId: { in: cantonIds } },
-      // La zona del distrito vive en la N:M `zona_distrito` (feature 24): es ahi donde
-      // la UI/ZonaForm asigna distritos a zonas, NO en la columna escalar distrito.zona_id
-      // (que quedo sin poblar). La carga masiva deriva orden.zona_id de esta relacion.
-      // Feature 98/R2: junto al `zonaId` de la N:M se proyecta `zona.esCentral` (flag que elige
-      // la columna del flete al tarifar la carga por API), sin una consulta extra.
-      select: {
-        id: true,
-        nombre: true,
-        cantonId: true,
-        // SL-38: la marca de la EMPRESA de la transaccion, por el punto unico.
-        ...SELECT_MARCA_ZONA_ESPECIAL,
-        // FICHA 374 (R31): la cadena se PROYECTA. El `WHERE` sigue siendo el de siempre.
-        ...SELECT_CADENA_DISTRITO,
-        zonas: { select: { zonaId: true, zona: { select: { esCentral: true } } } },
-      },
-    });
-    // Un distrito con EXACTAMENTE una zona resuelve orden.zona_id; con 0 zonas -> sin zona
-    // asignada (error de fila); con >1 -> ambiguo/no derivable -> null (mismo trato seguro:
-    // no se inventa una zona). El caso normal de negocio es 1 zona por distrito.
-    //
-    // Ficha 327/B2: el colapso ya NO se escribe aqui. Vive en `zonaUnicaDeDistrito`, y lo comparte
-    // con `findDistritoParaCorreccion`. La salida de esta lectura no cambia.
-    return rows.map((d) => {
-      const zona = zonaUnicaDeDistrito(d.zonas);
+    const { catalogo, asignaciones } = await this.catalogoGeografico().deLaEmpresa();
+    // SLT-44 (R18): la zona es la que cubre el distrito (`zonaQueCubre`, R6): el colapso 1/0/>1 de
+    // la ficha 327 sobre la asignacion mas especifica. Con 0 zonas -> sin zona asignada (error de
+    // fila); con >1 -> ambiguo -> null: no se inventa una zona.
+    return hijosDeProfundidad(catalogo, 3, cantonIds).map((n) => {
+      const zona = zonaQueCubre(catalogo, asignaciones, n.id);
       return {
-        id: d.id,
-        nombre: d.nombre,
-        cantonId: d.cantonId,
-        zonaId: zona?.zonaId ?? null,
+        id: n.id,
+        nombre: n.nombre,
+        cantonId: n.padreId,
+        zonaId: zona?.id ?? null,
         // Feature 98/R2: `esCentral` de la unica zona; `false` si el distrito no resuelve UNA
         // zona (0 o >1 -> `zonaId` null -> la fila no llega a tarifarse).
-        esCentral: zona?.zona.esCentral ?? false,
+        esCentral: zona?.esCentral ?? false,
         // A diferencia de `esCentral`, esta NO depende de que el distrito resuelva UNA zona: la
-        // marca es del distrito para la empresa, no de su zona (SL-38).
-        esZonaEspecial: esZonaEspecialDeLaEmpresa(d),
-        // FICHA 374: la disponibilidad EFECTIVA, ya compuesta con canton y provincia.
-        disponible: disponibleDesdeCadena(d),
+        // marca es del distrito (o de un ancestro) para la empresa, no de su zona (SL-38, R7).
+        esZonaEspecial: esZonaEspecial(catalogo, asignaciones, n.id),
+        // FICHA 374: la disponibilidad EFECTIVA, compuesta con todos sus ancestros (R5).
+        disponible: disponibleEnCatalogo(catalogo, n),
       };
     });
   }
@@ -2830,38 +2848,26 @@ export class OrdenRepository implements IOrdenRepository {
    * inventar la tarifa.
    */
   async findDistritoParaCorreccion(distritoId: string): Promise<DistritoResueltoRow | null> {
-    const row = await this.prisma.distrito.findFirst({
-      where: { id: distritoId },
-      select: {
-        id: true,
-        nombre: true,
-        cantonId: true,
-        // SL-38: la marca de la EMPRESA de la transaccion, por el punto unico.
-        ...SELECT_MARCA_ZONA_ESPECIAL,
-        // FICHA 374 (R31): se proyecta la cadena entera. `provinciaId` sigue viniendo por la misma
-        // relacion; el `activo` de canton y provincia viaja al lado, sin una segunda consulta.
-        ...SELECT_CADENA_DISTRITO,
-        // El `canton` de arriba se re-declara para sumarle `provinciaId`, que esta lectura ya
-        // traia. La cadena de flags entra por el fragmento compartido, NO escrita a mano: la
-        // guardia de R11 prohibe el literal `activo: true` fuera de `_shared/geografia-activa.ts`.
-        canton: { select: { provinciaId: true, ...SELECT_CADENA_CANTON } },
-        zonas: { select: { zonaId: true, zona: { select: { nombre: true, esCentral: true } } } },
-      },
-    });
-    if (row === null) return null;
-    const zona = zonaUnicaDeDistrito(row.zonas);
+    const { catalogo, asignaciones } = await this.catalogoGeografico().deLaEmpresa();
+    // SLT-44 (R19): «no existe» es un id fuera del catalogo del pais de la empresa (como hacia la
+    // RLS por pais) o un nodo que no es un distrito (profundidad 3), como un id de canton.
+    const distrito = nodoDelCatalogo(catalogo, distritoId);
+    if (distrito === null || distrito.profundidad !== 3) return null;
+    // Del padre a la raiz: canton y provincia. `ancestros` lanza si el catalogo esta roto.
+    const [canton, provincia] = ancestros(catalogo, distrito.id);
+    const zona = zonaQueCubre(catalogo, asignaciones, distrito.id);
     return {
-      id: row.id,
-      nombre: row.nombre,
-      cantonId: row.cantonId,
-      provinciaId: row.canton.provinciaId,
-      zonaId: zona?.zonaId ?? null,
-      zonaNombre: zona?.zona.nombre ?? null,
-      esCentral: zona?.zona.esCentral ?? false,
-      esZonaEspecial: esZonaEspecialDeLaEmpresa(row),
+      id: distrito.id,
+      nombre: distrito.nombre,
+      cantonId: canton.id,
+      provinciaId: provincia.id,
+      zonaId: zona?.id ?? null,
+      zonaNombre: zona?.nombre ?? null,
+      esCentral: zona?.esCentral ?? false,
+      esZonaEspecial: esZonaEspecial(catalogo, asignaciones, distrito.id),
       // FICHA 374 (R30): la disponibilidad EFECTIVA. El servicio la usa para rechazar la
       // correccion con un motivo PROPIO —«el distrito fue retirado»— distinto del de «no existe».
-      disponible: disponibleDesdeCadena(row),
+      disponible: disponibleEnCatalogo(catalogo, distrito),
     };
   }
 

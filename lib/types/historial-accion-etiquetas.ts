@@ -164,6 +164,13 @@ export interface FuentesEtiqueta {
    * `ETIQUETA_MAX_CHARS`. El nombre lo escribe el superadmin: es de plataforma, no dato de cliente.
    */
   plan: { nombre: string };
+  /**
+   * SLT-43 (design §2.5) — un nodo del modelo jerarquico se etiqueta como los de la 374: la cadena
+   * de nombres de la HOJA A LA RAIZ, porque el nodo puede estar a cualquier profundidad y su nombre
+   * a secas es ambiguo. Mismo genero de dato que `provincia`/`canton`/`distrito`: catalogo publico.
+   * Nadie escribe esta entidad hasta SLT-46.
+   */
+  nodo_geografico: { nombres: readonly string[] };
 }
 
 /**
@@ -250,6 +257,8 @@ const CONSTRUCTORES: {
     const nombre = (f?.nombre ?? "").trim();
     return nombre === "" ? limpiar(null) : limpiar(`Plan «${nombre}»`);
   },
+  // SLT-43 — el criterio de la 374 (`distrito`), para una cadena de largo variable.
+  nodo_geografico: (f) => unir(...(f?.nombres ?? [])),
 };
 
 /**

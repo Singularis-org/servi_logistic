@@ -23,18 +23,19 @@ import {
 } from "@/lib/types/geografia-nodo";
 import type { PlanDivision, RefNodo, ResumenCarga } from "@/lib/types/division-csv";
 import type { ReglaDeCodigoDePais } from "@/lib/utils/codigo-geografico";
+import { SELECT_FLAG_PROPIO } from "@/lib/repositories/_shared/geografia-activa";
+import type { ClienteDeMarcas } from "@/lib/repositories/_shared/zona-especial";
+import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograficoRepository";
 import {
-  SELECT_CADENA_CANTON,
-  SELECT_CADENA_DISTRITO,
-  SELECT_FLAG_PROPIO,
-  disponibleDesdeCadena,
-  disponibleDesdeCadenaCanton,
-} from "@/lib/repositories/_shared/geografia-activa";
-import { zonaUnicaDeDistrito } from "@/lib/repositories/_shared/zona-colapso";
-import {
-  esZonaEspecialDeLaEmpresa,
-  SELECT_MARCA_ZONA_ESPECIAL,
-} from "@/lib/repositories/_shared/zona-especial";
+  ancestros,
+  esZonaEspecial,
+  estaActivo,
+  nodosBajo,
+  nodosDeProfundidad,
+  zonaQueCubre,
+  type CatalogoGeografico,
+  type NodoDelCatalogo,
+} from "@/lib/services/geografia-dominio";
 import { resolverActorCongelado } from "@/lib/repositories/registrar-accion";
 import {
   appendAccionPlataforma,
@@ -46,10 +47,24 @@ import { etiquetaDeEntidad } from "@/lib/types/historial-accion-etiquetas";
 // la MISMA transaccion del cambio — igual que `VehiculoPrismaClient` en la ficha 362.
 // SL-20: el registro pasa de `historialAccion` a `historialPlataforma` (R33, R35; D15), y entra
 // `pais` por la regla de codigo y el nombre del pais.
+// SLT-44 (design §5): las lecturas de los filtros y de los arboles pasan al catalogo
+// (`CatalogoGeograficoRepository`), que gana los modelos del nodo, de las asignaciones y de la
+// empresa. Las marcas, por el tipo del punto unico.
 type GeoPrismaClient = Pick<
   PrismaClient,
-  "provincia" | "canton" | "distrito" | "pais" | "$transaction" | "historialPlataforma" | "usuario"
->;
+  | "provincia"
+  | "canton"
+  | "distrito"
+  | "pais"
+  | "$transaction"
+  | "historialPlataforma"
+  | "usuario"
+  | "nodoGeografico"
+  | "tipoNivelGeografico"
+  | "zonaDistrito"
+  | "organizacion"
+> &
+  ClienteDeMarcas;
 
 /** La regla de codigo, tal como se selecciona de la fila del pais. */
 const SELECT_REGLA = {
@@ -175,6 +190,27 @@ function nodoExistente(n: FilaDeNodo, padreId: string | null) {
   return { id: n.id, nombre: n.nombre, codigo: n.codigoDta, activo: n.activo, padreId };
 }
 
+// --- SLT-44: proyecciones del catalogo a los DTO de tres niveles (design §2.4, §5) ---
+
+/** Un nodo del catalogo como opcion de filtro, con su disponibilidad efectiva (R5, R14). */
+function opcion(cat: CatalogoGeografico, n: NodoDelCatalogo): OpcionGeografica {
+  return { id: n.id, nombre: n.nombre, disponible: estaActivo(cat, n.id) === true };
+}
+
+/** Lo mismo con su padre. Un nodo de profundidad > 1 siempre lo tiene (FK de SLT-43). */
+function opcionConPadre(cat: CatalogoGeografico, n: NodoDelCatalogo): OpcionGeograficaConPadre {
+  if (n.padreId === null) throw new Error(`el nodo ${n.id} de profundidad ${n.profundidad} no tiene padre`);
+  return { ...opcion(cat, n), padreId: n.padreId };
+}
+
+/**
+ * Los hijos de un nodo (o las raices, con `null`) en el orden del catalogo, solo de esa
+ * profundidad: un nodo de profundidad > 3 no se lista en los DTO de tres niveles (design §2.4).
+ */
+function hijosDe(cat: CatalogoGeografico, padreId: string | null, profundidad: number): NodoDelCatalogo[] {
+  return (cat.hijos.get(padreId) ?? []).filter((n) => n.profundidad === profundidad);
+}
+
 /** Las claves del plan traducidas a los ids que se generan al escribir. */
 class IdsDelPlan {
   private readonly ids = new Map<string, string>();
@@ -222,186 +258,115 @@ class IdsDelPlan {
 export class GeoRepository implements IGeoRepository {
   constructor(private readonly prisma: GeoPrismaClient) {}
 
+  // SLT-44 (design §4): uno por instancia, creado al primer uso. Las composiciones crean este
+  // repositorio en cada llamada, asi que el catalogo se lee como mucho una vez por peticion (R11).
+  private catalogoRepo: CatalogoGeograficoRepository | null = null;
+
+  private catalogo(): CatalogoGeograficoRepository {
+    this.catalogoRepo ??= new CatalogoGeograficoRepository(this.prisma);
+    return this.catalogoRepo;
+  }
+
   // --- Feature 144/B2 (R48/R49/R54): proyecciones planas del catalogo completo ---
   //
   // FICHA 374: las tres PROYECTAN la disponibilidad efectiva y NO recortan (R28/R31). En geografia
   // el desplegable es la UNICA via —nadie teclea un uuid—, asi que ocultar un nodo retirado
   // dejaria INFILTRABLES las ordenes historicas de ese nodo. Es al reves que en la ficha 351, y
   // por eso se razona en vez de copiarse.
+  //
+  // SLT-44 (R14): salen del catalogo del pais de la empresa, en su orden (nombre, id). Provincia,
+  // canton y distrito son las profundidades 1, 2 y 3 (design §2.4); `disponible` es el activo en
+  // cascada del dominio.
 
   async listProvinciasLite(): Promise<OpcionGeografica[]> {
-    const rows = await this.prisma.provincia.findMany({
-      select: { id: true, nombre: true, ...SELECT_FLAG_PROPIO },
-      orderBy: { nombre: "asc" }, // R49: orden determinista
-    });
-    // Una provincia no tiene ascendiente: su flag propio ES su disponibilidad efectiva.
-    return rows.map((r) => ({ id: r.id, nombre: r.nombre, disponible: r.activo }));
+    const { catalogo } = await this.catalogo().deLaEmpresa();
+    return nodosDeProfundidad(catalogo, 1).map((n) => opcion(catalogo, n));
   }
 
   async listCantonesLite(): Promise<OpcionGeograficaConPadre[]> {
-    const rows = await this.prisma.canton.findMany({
-      select: { id: true, nombre: true, provinciaId: true, ...SELECT_CADENA_CANTON },
-      orderBy: { nombre: "asc" },
-    });
     // `padreId` en vez de `provinciaId`: el consumidor generico no sabe de geografia,
     // solo de "padre" (R48).
-    return rows.map((r) => ({
-      id: r.id,
-      nombre: r.nombre,
-      padreId: r.provinciaId,
-      disponible: disponibleDesdeCadenaCanton(r),
-    }));
+    const { catalogo } = await this.catalogo().deLaEmpresa();
+    return nodosDeProfundidad(catalogo, 2).map((n) => opcionConPadre(catalogo, n));
   }
 
   async listDistritosLite(): Promise<OpcionGeograficaConPadre[]> {
-    // Sin `zonas`: la zona de la ORDEN esta congelada en `orden.zona_id` y no se
-    // deriva del distrito (decision (b) del spec). Traerla aqui seria peso muerto en
-    // el payload de las 494 filas.
-    const rows = await this.prisma.distrito.findMany({
-      select: { id: true, nombre: true, cantonId: true, ...SELECT_CADENA_DISTRITO },
-      orderBy: { nombre: "asc" },
-    });
-    return rows.map((r) => ({
-      id: r.id,
-      nombre: r.nombre,
-      padreId: r.cantonId,
-      disponible: disponibleDesdeCadena(r),
-    }));
+    // Sin zonas: la zona de la ORDEN esta congelada en `orden.zona_id` y no se deriva del
+    // distrito (decision (b) del spec de la feature 144).
+    const { catalogo } = await this.catalogo().deLaEmpresa();
+    return nodosDeProfundidad(catalogo, 3).map((n) => opcionConPadre(catalogo, n));
   }
 
   /**
-   * La cadena geografica de UNA zona (contrato en `IGeoRepository`). Una sola consulta:
-   * los distritos asociados a la zona por la N:M, con su canton y la provincia de ese
-   * canton; provincias y cantones se DERIVAN de esas filas en vez de pedirse aparte,
-   * porque «los cantones de la zona» son exactamente los de sus distritos y dos consultas
-   * mas podrian dar un conjunto distinto si la puente cambiara entre medias.
+   * La cadena geografica de UNA zona (contrato en `IGeoRepository`), desde el catalogo (SLT-44,
+   * R15): los nodos asignados a la zona por la empresa, todo lo que cuelga de ellos y los ancestros
+   * de unos y otros. Mientras las asignaciones sean solo a distritos, son los distritos de la zona,
+   * sus cantones y sus provincias, como hoy.
    *
-   * El orden por nombre lo fija la consulta para los distritos y la insercion en el `Map`
-   * para los otros dos niveles; los tres se reordenan al final para no depender de eso.
+   * Un distrito en dos zonas cuenta en las dos, sin colapso: son filtros, no tarifa. Una zona de
+   * otra empresa no tiene asignaciones en las de esta, y da las tres listas vacias.
+   *
+   * El orden final es el de siempre, `localeCompare` en español sin distinguir tildes.
    */
   async listGeografiaLitePorZona(zonaId: string): Promise<GeografiaFiltrosDTO> {
-    const rows = await this.prisma.distrito.findMany({
-      where: { zonas: { some: { zonaId } } },
-      select: {
-        id: true,
-        nombre: true,
-        cantonId: true,
-        ...SELECT_CADENA_DISTRITO,
-        canton: {
-          select: {
-            id: true,
-            nombre: true,
-            provinciaId: true,
-            ...SELECT_CADENA_CANTON,
-            provincia: { select: { id: true, nombre: true, ...SELECT_FLAG_PROPIO } },
-          },
-        },
-      },
-      orderBy: { nombre: "asc" },
-    });
+    const { catalogo, asignaciones } = await this.catalogo().deLaEmpresa();
 
-    const provincias = new Map<string, OpcionGeografica>();
-    const cantones = new Map<string, OpcionGeograficaConPadre>();
-    for (const row of rows) {
-      provincias.set(row.canton.provincia.id, {
-        id: row.canton.provincia.id,
-        nombre: row.canton.provincia.nombre,
-        disponible: row.canton.provincia.activo,
-      });
-      cantones.set(row.canton.id, {
-        id: row.canton.id,
-        nombre: row.canton.nombre,
-        padreId: row.canton.provinciaId,
-        disponible: disponibleDesdeCadenaCanton(row.canton),
-      });
+    const deLaZona = new Set<string>();
+    for (const [nodoId, zonas] of asignaciones.zonasPorNodo) {
+      if (!catalogo.porId.has(nodoId) || !zonas.some((z) => z.id === zonaId)) continue;
+      deLaZona.add(nodoId);
+      for (const n of nodosBajo(catalogo, nodoId)) deLaZona.add(n.id);
     }
+    const conAncestros = new Set(deLaZona);
+    for (const id of deLaZona) for (const a of ancestros(catalogo, id)) conAncestros.add(a.id);
 
     const porNombre = (a: OpcionCatalogo, b: OpcionCatalogo) =>
       a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" });
+    const de = (ids: ReadonlySet<string>, profundidad: number) =>
+      catalogo.nodos.filter((n) => n.profundidad === profundidad && ids.has(n.id));
 
     return {
-      provincias: [...provincias.values()].sort(porNombre),
-      cantones: [...cantones.values()].sort(porNombre),
-      distritos: rows
-        .map((r) => ({
-          id: r.id,
-          nombre: r.nombre,
-          padreId: r.cantonId,
-          disponible: disponibleDesdeCadena(r),
-        }))
-        .sort(porNombre),
+      provincias: de(conAncestros, 1).map((n) => opcion(catalogo, n)).sort(porNombre),
+      cantones: de(conAncestros, 2).map((n) => opcionConPadre(catalogo, n)).sort(porNombre),
+      distritos: de(deLaZona, 3).map((n) => opcionConPadre(catalogo, n)).sort(porNombre),
     };
   }
 
   // --- FICHA 374: la administracion del catalogo ---
 
   /**
-   * El arbol COMPLETO (R26). MUDADO desde `lib/actions/geografia.ts`, donde vivia contra Prisma
-   * directo porque «el catalogo es de solo lectura»; esa premisa muere con la primera escritura.
+   * El arbol COMPLETO de la empresa (R26 de la 374): la pantalla de tarifas.
    *
-   * La consulta es la misma salvo DOS cambios, los dos deliberados:
+   * Proyecta `activo` en los tres niveles (el flag PROPIO, no la efectiva): la pantalla de
+   * administracion necesita distinguir «inactivo» de «inactivo POR SU CANTON», y para eso el padre
+   * tiene que estar literalmente encima en el mismo arbol.
    *
-   *  1. proyecta `activo` en los tres niveles (el flag PROPIO, no la efectiva): la pantalla de
-   *     administracion necesita distinguir «inactivo» de «inactivo POR SU CANTON», y para eso el
-   *     padre tiene que estar literalmente encima en el mismo arbol;
-   *
-   *  2. ⚠️ las zonas del distrito YA NO son `take: 1`. Con `take: 1`, un distrito en DOS zonas
-   *     mostraba «(zona: X)» aunque la carga masiva lo rechaza por ambiguo —`zonaUnicaDeDistrito`
-   *     colapsa >1 a `null`—: esa etiqueta MENTIA, y la marca «sin zona» de la pantalla nueva
-   *     heredaria la mentira. Ahora se piden todas y se aplica el MISMO colapso 1/0/>1 que usan la
-   *     carga y la correccion. Medido en produccion el 2026-09-05: 0 distritos con mas de una
-   *     zona, asi que hoy no cambia lo que nadie ve — pero la señal nueva no se construye sobre
-   *     una rota.
+   * SLT-44 (R16): sale del catalogo. La zona del distrito es la que lo cubre (`zonaQueCubre`, R6):
+   * el colapso 1/0/>1 de la 374 sobre la asignacion mas especifica, `null` con 0 zonas Y TAMBIEN con
+   * mas de una. La marca, la de la empresa sobre el o sus ancestros (R7). Mientras las asignaciones
+   * sean solo a distritos, es el arbol de hoy.
    */
   async listArbol(): Promise<ProvinciaArbolDTO[]> {
-    const provincias = await this.prisma.provincia.findMany({
-      orderBy: { nombre: "asc" },
-      select: {
-        id: true,
-        nombre: true,
-        ...SELECT_FLAG_PROPIO,
-        cantones: {
-          orderBy: { nombre: "asc" },
-          select: {
-            id: true,
-            nombre: true,
-            ...SELECT_FLAG_PROPIO,
-            distritos: {
-              orderBy: { nombre: "asc" },
-              select: {
-                id: true,
-                nombre: true,
-                // SL-38: la marca de la EMPRESA de la transaccion, por el punto unico.
-                ...SELECT_MARCA_ZONA_ESPECIAL,
-                ...SELECT_FLAG_PROPIO,
-                zonas: { select: { zona: { select: { id: true, nombre: true } } } },
-              },
-            },
-          },
-        },
-      },
-    });
-
-    return provincias.map(
+    const { catalogo, asignaciones } = await this.catalogo().deLaEmpresa();
+    return hijosDe(catalogo, null, 1).map(
       (p): ProvinciaArbolDTO => ({
         id: p.id,
         nombre: p.nombre,
         activo: p.activo,
-        cantones: p.cantones.map(
+        cantones: hijosDe(catalogo, p.id, 2).map(
           (c): CantonArbolDTO => ({
             id: c.id,
             nombre: c.nombre,
             activo: c.activo,
-            distritos: c.distritos.map((d): DistritoArbolDTO => {
-              // El colapso 1/0/>1, compartido: `null` con 0 zonas Y TAMBIEN con mas de una.
-              const zona = zonaUnicaDeDistrito(d.zonas)?.zona ?? null;
+            distritos: hijosDe(catalogo, c.id, 3).map((d): DistritoArbolDTO => {
+              const zona = zonaQueCubre(catalogo, asignaciones, d.id);
               return {
                 id: d.id,
                 nombre: d.nombre,
                 zonaId: zona?.id ?? null,
                 zonaNombre: zona?.nombre ?? null,
                 // SL-38: especial PARA LA EMPRESA del maestro que abre Tarifas (R14).
-                zonaEspecial: esZonaEspecialDeLaEmpresa(d),
+                zonaEspecial: esZonaEspecial(catalogo, asignaciones, d.id),
                 activo: d.activo,
               };
             }),
@@ -413,27 +378,21 @@ export class GeoRepository implements IGeoRepository {
 
   /**
    * SL-20 — el arbol de UN pais para el superadmin. Mismo recorrido que `listArbol`, sin zonas ni
-   * marca de zona especial (son de cada empresa) y con el codigo. El `where` por pais es explicito:
-   * en plataforma no hay RLS que acote.
+   * marca de zona especial (son de cada empresa) y con el codigo.
+   *
+   * SLT-44 (R17): sale del catalogo de ese pais (`dePais`), con el `where` por pais explicito: en
+   * plataforma no hay RLS que acote. El codigo es el `codigo_oficial` del nodo, que la sincronia de
+   * SLT-43 copia de `codigo_dta`.
    */
   async listArbolDePais(paisId: string): Promise<ProvinciaPlataformaDTO[]> {
-    const nodo = { id: true, nombre: true, codigoDta: true, ...SELECT_FLAG_PROPIO } as const;
-    const provincias = await this.prisma.provincia.findMany({
-      where: { paisId },
-      orderBy: { nombre: "asc" },
-      select: {
-        ...nodo,
-        cantones: {
-          orderBy: { nombre: "asc" },
-          select: { ...nodo, distritos: { orderBy: { nombre: "asc" }, select: nodo } },
-        },
-      },
-    });
-    return provincias.map((p) => ({
-      ...nodoPlataforma(p),
-      cantones: p.cantones.map((c) => ({
-        ...nodoPlataforma(c),
-        distritos: c.distritos.map(nodoPlataforma),
+    const catalogo = await this.catalogo().dePais(paisId);
+    const plano = (n: NodoDelCatalogo) =>
+      nodoPlataforma({ id: n.id, nombre: n.nombre, codigoDta: n.codigoOficial, activo: n.activo });
+    return hijosDe(catalogo, null, 1).map((p) => ({
+      ...plano(p),
+      cantones: hijosDe(catalogo, p.id, 2).map((c) => ({
+        ...plano(c),
+        distritos: hijosDe(catalogo, c.id, 3).map(plano),
       })),
     }));
   }

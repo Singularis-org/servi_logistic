@@ -153,6 +153,46 @@ esta bien hecha, no solo si "funciona".
     con `comoPlataforma`. La UI pinta los nombres de nivel del país de la empresa con
     `useEtiquetasGeograficas`; ningún texto de nivel va escrito a mano
     (`etiquetas-geograficas-sin-literal.guardia`).
+  - **Geografía jerárquica (SLT-43, fase *expand*).** Dos tablas de plataforma nuevas conviven con
+    las viejas: `tipo_nivel_geografico` (un tipo `nivel_1..3` por país, copiado de `pais.nivel_N_*`) y
+    `nodo_geografico` (árbol solo con `padre_id` y `profundidad`, con los mismos ids que la provincia,
+    el cantón o el distrito de origen; los descendientes se leen con una CTE recursiva sobre
+    `padre_id` o con el catálogo del país en memoria; un nodo con hijos no cambia de profundidad, y así
+    no hay ciclos), con RLS de lectura por país y `REVOKE`
+    de escritura para `servi_app`. La fuente sigue siendo la geografía vieja: triggers `AFTER` en
+    `pais`, `provincia`, `canton` y `distrito` copian cada alta, cambio y borrado, y triggers `BEFORE`
+    rellenan `nodo_geografico_id` en `orden`, `zona_distrito` y `distrito_zona_especial`. Ningún
+    código de la app escribe las dos tablas (`nodo-geografico-sin-escritor.guardia`, R37). Las filas
+    anteriores y `cierre_detail.ubicacion_snapshot` las llena `pnpm geo:backfill`
+    (`scripts/geo-backfill-nodo.ts`: por lotes, reanudable, `--aplicar` y `--validar` exigen
+    `--base` y `--destino`, el project-ref de Supabase o el host); en producción lo corre una persona tras el ensayo sobre una copia, nunca un agente
+    (design §6 de SLT-43).
+  - **Lecturas sobre el árbol (SLT-44).** Las reglas del árbol viven en un dominio puro,
+    `lib/services/geografia-dominio.ts` (sin Prisma: ancestros, descendientes, activo en cascada,
+    zona heredada y marca especial sobre el catálogo en memoria). El catálogo del país y las
+    asignaciones de la empresa los carga `lib/repositories/CatalogoGeograficoRepository.ts`: en una
+    sola transacción, con la RLS de la empresa, y memorizado por petición y por empresa (sin TTL ni
+    invalidación): `GeoRepository`, `OrdenRepository` y `CoberturaRepository` crean el suyo, uno por
+    instancia, y las composiciones crean esas instancias en cada llamada. En plataforma
+    `deLaEmpresa()` lanza `EmpresaNoResuelta`; el superadmin usa `dePais(paisId)`.
+    - Leen del catálogo: `GeoRepository` (`listProvinciasLite`, `listCantonesLite`,
+      `listDistritosLite`, `listGeografiaLitePorZona`, `listArbol`, `listArbolDePais`),
+      `OrdenRepository` (`findAllProvincias`, `findCantonesByProvinciaIds`,
+      `findDistritosByCantonIds`, `findDistritoParaCorreccion`) y `CoberturaRepository.listDistritos`.
+      Interfaces y DTO no cambian.
+    - Siguen en las tablas viejas hasta SLT-65: el resto de lecturas de órdenes (marca de una orden
+      ya creada, cobro de devolución, conteos por FK), cierres, `ZonaRepository.update` y el SQL
+      crudo de los repositorios. Las escrituras siguen en las tablas viejas (SLT-46).
+    - El lugar de una orden, de una asignación de zona y de una marca se lee de las FK viejas
+      (`distrito_id`), nunca de `nodo_geografico_id` (R12): el resultado no depende de que haya
+      corrido el backfill.
+    - `pnpm geo:equivalencia-dinero` (`scripts/geo-equivalencia-dinero.ts`) compara, por empresa y con
+      una conexión de solo lectura, la lectura de antes (congelada en
+      `scripts/geo-equivalencia/lecturas-de-hoy.ts`) con la nueva: distritos (zona, central, marca,
+      disponibilidad), cobertura por zona y cotizaciones de las órdenes recientes (`--muestra`,
+      `--empresa`). Sale con 0 si todo coincide, 1 si algo difiere y 2 si una empresa falló al leer.
+      Lo corre una persona sobre una copia de producción con SLT-43 aplicada, antes del merge, y pega
+      la salida en el PR; ningún agente.
 - **Módulos por empresa (SL-23, 2026-10-26).** Cada empresa tiene un núcleo que nunca se apaga y 3
   módulos apagables (`lib/modulos/catalogo.ts`, enum `modulo_apagable`). Recolección, Bodegas
   satélite, API e integraciones y WhatsApp fueron apagables hasta el 2026-10-27, y Wallet hasta el

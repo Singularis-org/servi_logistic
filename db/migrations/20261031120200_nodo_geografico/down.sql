@@ -1,0 +1,16 @@
+-- SLT-43 — revierte 20261030120200_nodo_geografico (R34). Va DESPUÉS del down de
+-- 20261030120300_nodo_geografico_sincronia (sus triggers escriben aquí) y ANTES del de
+-- 20261030120100_tipo_nivel_geografico (la FK compuesta hacia los tipos impediría su DROP).
+--
+-- Los nodos son una copia de la geografía vieja, que no se toca: reaplicar la ida los vuelve a crear
+-- con los mismos ids. Los índices, las FK, los CHECK, la RLS y la política caen con la tabla; la función de
+-- normalización va al final porque la usa el trigger de invariantes.
+
+BEGIN;
+
+DROP TRIGGER "nodo_geografico_invariantes" ON "nodo_geografico";
+DROP FUNCTION nodo_geografico_invariantes();
+DROP TABLE "nodo_geografico";
+DROP FUNCTION geo_normalizar_nombre(text);
+
+COMMIT;

@@ -13,6 +13,11 @@ const SUPERADMIN: Actor = { usuarioId: "u-super", rol: ROLES_PLATAFORMA[0] };
 
 const ordenCount = vi.fn<(args: { where: Record<string, unknown> }) => Promise<number>>(async () => 7);
 const provinciaFindMany = vi.fn<(args: { where: Record<string, unknown> }) => Promise<never[]>>(async () => []);
+// SLT-44 (design §10, «cambian de entrada, no de salida»): el arbol del superadmin sale del catalogo
+// del pais (`nodo_geografico`), no de `provincia.findMany`. El aserto del `where` por pais mira ahora
+// esa consulta; la salida (un pais sin nodos -> arbol vacio) no cambia.
+const nodoGeograficoFindMany = vi.fn<(args: { where: Record<string, unknown> }) => Promise<never[]>>(async () => []);
+const tipoNivelFindMany = vi.fn<(args: { where: Record<string, unknown> }) => Promise<never[]>>(async () => []);
 const paisFindMany = vi.fn(async () => []);
 const paisFindUnique = vi.fn<(args: { where: { id: string } }) => Promise<{ nombre: string } | null>>(async () => null);
 const paisUpdateMany = vi.fn<(args: unknown) => Promise<{ count: number }>>(async () => ({ count: 1 }));
@@ -28,6 +33,8 @@ const cliente = {
   historialPlataforma: { createMany: historialCreateMany },
   usuario: { findUnique: usuarioFindUnique },
   organizacion: {},
+  nodoGeografico: { findMany: nodoGeograficoFindMany },
+  tipoNivelGeografico: { findMany: tipoNivelFindMany },
   $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(cliente)),
 };
 
@@ -54,7 +61,8 @@ describe("SL-20 — cada action del superadmin, sin servicio inyectado, llega al
   it("el árbol de un país lee las provincias de ESE país", async () => {
     const r = await acciones.arbolDePaisAction({ paisId: "XA" }, deps);
     expect(r).toEqual({ status: "ok", provincias: [] });
-    expect(provinciaFindMany.mock.calls[0][0].where).toEqual({ paisId: "XA" });
+    expect(nodoGeograficoFindMany.mock.calls[0][0].where).toEqual({ paisId: "XA" });
+    expect(tipoNivelFindMany.mock.calls[0][0].where).toEqual({ paisId: "XA" });
   });
 
   it("la lista de países llega a `pais.findMany`", async () => {
