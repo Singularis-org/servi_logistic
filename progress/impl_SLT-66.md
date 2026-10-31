@@ -147,3 +147,32 @@ Tests fuera de la tabla que rompe `costoPorOrden` obligatorio (aviso de T2, sin 
 | R6 | `plan-maestro-sin-tope.test.ts` (R6) |
 
 Typecheck: limpio en `lib/`, `app/`, `components/`, `tests/unit` y `tests/integration/db`. Quedan errores solo en tests de componentes y páginas (tanda D).
+
+### T4 — ajustes autorizados por el humano (2026-10-31, «Sí, autoriza»), commit 29edc98
+Filas añadidas a design §9.3 con fecha y la marca «autorizado por el humano». Líneas tocadas:
+- `consumo.test.ts:73-77`: sin `"maestro"`, y el título dice «cuatro roles».
+- `rastro.test.ts:31`: el diff de creación lleva `costoPorOrden` nulo.
+- `mi-plan-repository.test.ts:88`.
+- `planes.composition-root.test.ts`: cuatro entradas con `costoPorOrden: null`.
+
+| Archivo (contra `logistic_slt66`) | Pasados / fallados |
+|---|---|
+| consumo | 35 / 0 |
+| rastro | 9 / 0 |
+| planes.composition-root | 4 / 0 |
+| mi-plan-repository | 4 / 0 |
+| planes-asignacion-inicio-ciclo | 11 / 0 |
+| planes-asignacion | 11 / **1** |
+| planes-cambio-correos | 0 / **9** |
+| planes-cambio-programado | 2 / **8** |
+| planes-edicion-en-uso | 1 / **6** |
+| planes-historial | 5 / **2** |
+
+**Bloqueo vigente.** Cinco archivos de integración de SL-24 arman a mano entradas de `crear` o `editar` sin `costoPorOrden`. La causa es la misma en todos: `validation_error` en `costoPorOrden`, y lo demás sale en cascada. Dónde:
+- `planes-edicion-en-uso:38-47` (ayudante `editar`);
+- `planes-cambio-correos:124-135` (ayudante `editar`);
+- `planes-cambio-programado`: el ayudante `programar` (desde `:55`) y los literales de `~144-155` y `~181`;
+- `planes-asignacion:198-205`;
+- `planes-historial:87-94` y la edición que sigue; el caso R43 (`:329`) sale probablemente por lo mismo.
+
+Arreglo mecánico propuesto: `costoPorOrden: entrada.costoPorOrden` en los ayudantes y `costoPorOrden: null` en los literales. No entra en la autorización: pendiente del humano. T4 sigue sin marcar.

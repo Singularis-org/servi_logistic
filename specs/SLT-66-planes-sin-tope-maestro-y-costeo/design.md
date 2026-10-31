@@ -664,6 +664,12 @@ SL-24, SL-40 ni SLT-58 se toca (R27). Si al implementar aparece otro, se para y 
 | `tests/integration/empresas-page.test.tsx:211, :215` | enlace «Módulos de {empresa}» | R32: «Plan y módulos de {empresa}», mismo `href` |
 | `e2e/_superadmin-fixture.ts:301` | el ayudante abre «Módulos de {empresa}» | R32: el nombre del enlace. El ayudante lo usan los E2E de SL-23 |
 | `e2e/planes-superadmin.spec.ts:169` | el plan E2E se crea «Sin precio» y luego se asigna | R28: se crea «Con monto» y con costo por orden. El resto del recorrido no cambia |
+| `tests/unit/planes/consumo.test.ts:72-81` (`:75`) | «R2: una fila por tope…», lista esperada | R1: sin `"maestro"`. **Añadida el 2026-10-31, autorizado por el humano** |
+| `tests/unit/planes/rastro.test.ts:22-31` | «al crear salen todos los campos…» | R8: el diff de creación incluye `costoPorOrden` nulo. **Añadida el 2026-10-31, autorizado por el humano** |
+| `tests/integration/db/mi-plan-repository.test.ts:83-88` | `toEqual` de `vigente` | R8: `costoPorOrden: null`. **Añadida el 2026-10-31, autorizado por el humano** |
+| `tests/unit/actions/planes.composition-root.test.ts` | entradas de crear/editar | R8: `costoPorOrden: null` en la entrada (si no, `validation_error`). **Añadida el 2026-10-31, autorizado por el humano** |
+| `tests/integration/db/_fixtures/planes.ts:211` (`entradaDePlan`) | fixture compartido de SL-24 | R8: `costoPorOrden: null`. **Añadida el 2026-10-31, autorizado por el humano** |
+| Fixtures `costoPorOrden: null`: `mi-plan-service:34, :113`; `planes-service-lecturas:41, :52, :98`; `mi-plan-repository:30`; `planes-lecturas-plataforma:32`; `planes-schema:24, :37`; `planes-service:43, :53` | fixtures de entrada o `PlanDTO` | R8, por typecheck o por `validation_error`. **Añadida el 2026-10-31, autorizado por el humano** |
 
 **SL-40.** `cobro-plataforma-cargos.test.ts` y `migracion-sl40-ida-y-vuelta.test.ts` no cambian. Sus
 empresas no tienen plan, así que la regla es la de antes (R12, pasos 1, 3 y 4). El segundo usa una base
