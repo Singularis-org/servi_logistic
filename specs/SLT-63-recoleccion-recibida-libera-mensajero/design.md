@@ -157,11 +157,11 @@ sus predicados actuales dan el resultado pedido (R5, R6, R7).
    id de historial no autoriza a leer la orden), y la lista seguiría mostrando datos del cliente de
    una orden que ya reparte otro mensajero, cosa que hoy no pasa.
 
-## 5. Órdenes que ya están en este estado (depende de Q1)
+## 5. Órdenes que ya están en este estado (Q1 = a, entra)
 
 Solo si el humano elige Q1(a):
 
-- `db/migrations/20261030120000_liberar_recolecciones_recibidas/migration.sql`:
+- `db/migrations/20261031120000_liberar_recolecciones_recibidas/migration.sql`:
 
   ```sql
   UPDATE "orden" o

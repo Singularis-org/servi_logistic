@@ -14,7 +14,7 @@
 >   no está evidenciada y conserva su comportamiento.
 > - La bodega satélite: no tiene el defecto (ver `design.md §2.3`).
 > - Rediseñar Monitoreo, «Reasignables» o la rama de recolección del tablero.
-> - Corregir las órdenes que ya están en este estado: depende de Q1.
+> - ~~Corregir las órdenes que ya están en este estado~~: ENTRA (Q1 = a, D2).
 >
 > Escrito por `spec_author` el 2026-10-30. No venía sembrado: la única decisión humana previa está
 > en `progress/features/SLT-63.md > Decisiones` y se copia abajo tal cual.
@@ -24,6 +24,7 @@
 | # | Fecha | Quién | Decisión | Cubierta por |
 |---|---|---|---|---|
 | D1 | 2026-10-30 | Carlos | «Arreglemos todo eso». Arreglo mínimo de lo evidenciado: que la recolección recibida en central aparezca en «Reasignables» y no cuente en Monitoreo del mensajero. | R1, R5, R6 |
+| D2 | 2026-10-30, reconfirmada 2026-10-31 | Carlos | Q1 = (a): migración de datos con `down.sql` para las órdenes que ya están así. «No lo podemos dejar como deuda». Sale como hotfix a prod, rama `hotfix/SLT-63-…` desde `origin/prod`. | R11, R12 |
 
 ## Requisitos (EARS)
 
@@ -71,6 +72,15 @@ Vocabulario:
 - **R10.** El sistema NO DEBE crear, modificar ni anular gestiones, pagos al mensajero, movimientos
   de wallet ni cierres del día como consecuencia de liberar la orden en la recepción (157/R36).
 
+### Órdenes que ya están así (Q1 = a, D2)
+
+- **R11.** CUANDO se aplica la migración de datos de SLT-63, el sistema DEBE dejar sin asignación
+  (sin mensajero, sin `asignado_at` y sin `fecha_reparto`) a toda orden no borrada en
+  `en_bodega_central` cuya última fila de historial sea `recepcion_bodega_central` desde
+  `en_ruta_bodega_central`, y NO DEBE modificar ninguna otra orden ni escribir historial.
+- **R12.** CUANDO se revierte esa migración, el sistema DEBE reponer el mensajero desde el actor de
+  la última `recoleccion_tienda` de cada orden que siga en ese estado sin mensajero.
+
 ## Trazabilidad prevista (la completa el implementer en `progress/impl_SLT-63.md`)
 
 | R | Test |
@@ -85,13 +95,15 @@ Vocabulario:
 | R8 | integración → «R8: Recolectadas hoy sigue trayendo la recibida en central» (lectura real de `findMisAsignacionesByIds`) |
 | R9 | integración → «R9: no trae la recolectada por otro, ni la recolectada por mí y ya asignada a otro» |
 | R10 | integración → «R10: recibir no crea gestion_orden, wallet_movimiento ni cierre_dia» (conteos antes/después) |
+| R11 | `tests/integration/db/liberar-recolecciones-recibidas-migration.test.ts` → «R11: libera la recibida y no toca a sus hermanas» (fila posterior, devolución, borrada, sin recolección) |
+| R12 | mismo archivo → «R12: el down repone el mensajero desde la recoleccion_tienda» |
 
 Cada test de R1, R5, R6, R8 y R9 se da por bueno solo después de verlo en rojo con una mutación del
 SQL o del `data` donde vive el criterio (`tasks.md > T5`).
 
 ## Preguntas abiertas
 
-- **Q1 (para el humano, bloquea solo T6).** Las órdenes que ya están en `en_bodega_central` con el
+- **Q1 — CERRADA: (a), ver D2.** Las órdenes que ya están en `en_bodega_central` con el
   mensajero de la recolección (en producción, al menos las 5 de Jason Alfaro) no se arreglan solas:
   el cambio solo actúa en recepciones nuevas. Hoy siguen saliendo en el Monitoreo de Alfaro de los
   días en que se asignó la recolección y no aparecen en «Reasignables». Se pueden asignar desde

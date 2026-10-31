@@ -2,7 +2,7 @@
 
 > Orden: T1 → (T2 ∥ T3) → T4 → T5 → T6 (solo si Q1 = a) → T7. `[P]` marca lo que se puede hacer en
 > paralelo con su hermana. Cada task cierra con `pnpm run typecheck` y los tests que nombra en verde.
-> Q1 bloquea solo T6.
+> Q1 cerrada = (a): T6 entra.
 
 ## T1. Recepción que libera la asignación (R1, R2, R3, R4)
 - [ ] `lib/interfaces/repositories/IOrdenRepository.ts`: `recibirEnBodegaCentral` gana el parámetro
@@ -72,8 +72,8 @@ revierte. **No se ejecuta en paralelo con el gate** (memoria: gate y mutaciones 
   (`git diff` vacío fuera de lo de T1–T4).
 
 ## T6. Corrección de los datos existentes (solo si Q1 = a)
-Bloqueada hasta que el humano responda Q1.
-- [ ] `db/migrations/20261030120000_liberar_recolecciones_recibidas/migration.sql` y `down.sql`
+Desbloqueada: Q1 = (a) (D2, 2026-10-30 y reconfirmada por Carlos el 2026-10-31: «no lo podemos dejar como deuda»).
+- [ ] `db/migrations/20261031120000_liberar_recolecciones_recibidas/migration.sql` y `down.sql`
       según `design.md §5`. Antes hay que verificar los nombres de columnas y que el timestamp sea
       posterior a la última migración de `dev`.
 - [ ] `tests/integration/db/liberar-recolecciones-recibidas-migration.test.ts`: libera la recibida y
@@ -98,8 +98,8 @@ Bloqueada hasta que el humano responda Q1.
 - `tests/unit/repositories/orden-repository.recepcion-bodega-central.test.ts`
 - `tests/unit/services/recepcion-bodega-central-service.test.ts`
 - `tests/integration/db/recoleccion-recibida-libera-mensajero.int.test.ts`
-- `db/migrations/20261030120000_liberar_recolecciones_recibidas/migration.sql`
-- `db/migrations/20261030120000_liberar_recolecciones_recibidas/down.sql`
+- `db/migrations/20261031120000_liberar_recolecciones_recibidas/migration.sql`
+- `db/migrations/20261031120000_liberar_recolecciones_recibidas/down.sql`
 - `tests/integration/db/liberar-recolecciones-recibidas-migration.test.ts`
 - `progress/impl_SLT-63.md`
 - `progress/features/SLT-63.md`
