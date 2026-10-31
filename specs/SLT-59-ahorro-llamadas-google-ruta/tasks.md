@@ -299,7 +299,7 @@
 
 ## Fase 8 — Revisión 5: D27, registro de llamadas pagadas (depende de la Fase 7)
 
-- [ ] **T8.1** Pieza común `lib/clients/registro-llamada-google.ts` (design §13.0).
+- [x] **T8.1** Pieza común `lib/clients/registro-llamada-google.ts` (design §13.0).
   - Contiene las constantes `GOOGLE_API_LOG_PREFIJO = "[google-api]"` y `GOOGLE_API_LOG_EVENTO =
     "google_api_llamada"`, los tipos `ApiGoogle`, `MotivoLlamadaRuta`, `MotivoLlamadaGeocode` y
     `ContextoLlamadaGoogle`, y `registrarLlamadaGoogle`.
@@ -307,7 +307,7 @@
   *Hecho:* `tests/unit/clients/google-registro-llamada.test.ts` comprueba:
   - la línea empieza por el prefijo y lleva `evento`;
   - ningún campo contiene coordenadas, la dirección, el token ni la URL (R71).
-- [ ] **T8.2** Los tres clientes exigen `ContextoLlamadaGoogle` y emiten una línea por petición (R68-R72).
+- [x] **T8.2** Los tres clientes exigen `ContextoLlamadaGoogle` y emiten una línea por petición (R68-R72).
   Depende de T8.1. *Hecho:* en `google-registro-llamada.test.ts`, con `fetch` y logger simulados:
   - para `route_optimization`, `routes` y `geocoding`, la línea sale con el prefijo y el `evento` de la
     constante (el test importa la constante, no repite el literal);
@@ -316,7 +316,7 @@
   - el cálculo local y la recta de respaldo no dejan línea.
 
   `tests/unit/clients/google-*.test.ts` (existentes) se ajustan solo para pasar el contexto.
-- [ ] **T8.3** Motivos de rutas y de geocode (design §13.1, §13.2; R70, R73). Depende de T8.2.
+- [x] **T8.3** Motivos de rutas y de geocode (design §13.1, §13.2; R70, R73). Depende de T8.2.
   - Rutas:
     - payload `origen` en recogida, gestión y traspaso;
     - el servicio deriva el motivo;

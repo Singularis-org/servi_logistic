@@ -241,7 +241,9 @@ describeSiHayBase("401/T7 — R15: el job vuelve en condiciones de ejecutarse, y
     expect(r.despues.locked_at).toBeNull();
   });
 
-  it("⭑ `tipo`, `payload` y `dedupe_key` quedan IDÉNTICOS: la recuperación no cambia de identidad", async () => {
+  // [2026-10-31, SLT-59, D27, design §13.2] `payload` deja de ser idéntico en un solo campo:
+  // `motivo` pasa a `revivido_por_salud`. El `ordenId` y el resto no cambian.
+  it("⭑ `tipo`, `payload` y `dedupe_key` quedan IDÉNTICOS salvo `payload.motivo` = revivido_por_salud", async () => {
     const prefijo = `test-401-${randomUUID()}`;
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       const org = await empresaNueva(tx);
@@ -256,7 +258,10 @@ describeSiHayBase("401/T7 — R15: el job vuelve en condiciones de ejecutarse, y
 
     expect(r.despues.tipo).toBe(r.antes.tipo);
     expect(r.despues.dedupe_key).toBe(r.antes.dedupe_key);
-    expect(r.despues.payload).toEqual(r.antes.payload);
+    expect(r.despues.payload).toEqual({
+      ...(r.antes.payload as Record<string, unknown>),
+      motivo: "revivido_por_salud",
+    });
     expect(r.antes.dedupe_key, "la semilla no tenía dedupe_key: el testigo no vale").not.toBeNull();
   });
 });

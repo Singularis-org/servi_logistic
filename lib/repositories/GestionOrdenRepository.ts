@@ -868,6 +868,7 @@ export class GestionOrdenRepository implements IGestionOrdenRepository {
         await encolarOptimizacionDebounce(this.jobRepo, tx as unknown as JobTxClient, mensajeroId, {
           ahora: ahoraGestion,
           debounceS: loadRouteOptimizationConfig().RUTA_DEBOUNCE_S,
+          origen: "gestion", // SLT-59 (D28, §13.1)
         });
       }
       return { gestionId, ordenEventoId: evento.id };

@@ -7,6 +7,7 @@
 // escribe la URL en el log, ni la recibe de vuelta: clasifica el fallo con lo que observa el
 // `fetch` envuelto (estado HTTP), no con el texto de un error.
 import { GoogleGeocodeClient } from "@/lib/clients/google-geocode";
+import { FUERA_DE_COLA } from "@/lib/clients/registro-llamada-google";
 import type {
   CredencialPorServicio,
   IProbadorIntegracion,
@@ -48,7 +49,11 @@ export class GoogleMapsProbador implements IProbadorIntegracion<"google_maps"> {
 
     let salida: Awaited<ReturnType<GoogleGeocodeClient["geocodificar"]>>;
     try {
-      salida = await cliente.geocodificar(DIRECCION_PRUEBA_MAPS);
+      // SLT-59 (R73, §13.2): el boton de prueba no viene de la cola.
+      salida = await cliente.geocodificar(DIRECCION_PRUEBA_MAPS, {
+        motivo: "prueba_integracion",
+        ...FUERA_DE_COLA,
+      });
     } catch (error) {
       // El cliente lanza solo por respuesta con forma inesperada (`GeocodeRespuestaInvalidaError`).
       return this.fallo("respuesta_invalida", nombreDeError(error));

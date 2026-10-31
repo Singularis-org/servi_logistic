@@ -1003,3 +1003,306 @@ Base: HEAD del worktree con la Tanda 7a (servidor de T7.7 hecho). Sin dependenci
 - Se añadieron dos condiciones que pide el design y el encargo no listaba: hacen falta paradas con coordenadas (`hayParadasConCoordenadas`, §12.6 paso 1) y el caso del borde exacto del umbral, más dos casos de desenlace (`omitida` y `conflict`, sin refresh ni toast).
 
 **Veredicto:** T7.7 (UI) hecha; R62 y R65 con test, typecheck y lint en verde (0 errors).
+
+## Tanda 8 — backend_dev: T7.8, Fase 8 (T8.1-T8.5) (2026-10-31)
+
+Base: HEAD 04a7d92. Sin base de datos, sin dependencias, sin migración. Grafo no consultado:
+archivos ya conocidos de las tandas previas (Grep/Read).
+
+**Estado: PARADA en T7.8 por discrepancia código ↔ design §8.0 (decisión humana).** La Fase 8
+(T8.1-T8.5) NO se empezó, como pide el encargo: «si el código real no da esos números, no lo
+fuerces, anota la discrepancia fila a fila y para».
+
+### Archivos
+- `tests/unit/services/optimizacion-ruta-ahorro-jornada.test.ts`: reescrito contra design §8.0.
+  - El arnés usa el código real de la recogida: `encolarPrimeraRutaPorRecogida` + `primeraRutaPendiente`, el mismo que `recogerLote`.
+  - La gestión replica la condición real de `registrarGestionPendiente`: coordenadas o primera pendiente (R59).
+  - Los dobles ahora llevan:
+    - `contarAsignadasDelDia` real: 7 asignadas, las recogidas;
+    - solo las recogidas en reparto;
+    - `actualizadaAt` movido en cada escritura;
+    - `encolarOMoverPendiente` con la semántica de D29.
+  - Casos:
+    - jornada A fila a fila;
+    - filas 11-13 aparte;
+    - jornada B;
+    - las tres variantes.
+- Nada más. No se tocó código de producción ni `tasks.md`.
+
+### T7.8: lo MEDIDO frente a §8.0
+Todos los conteos de **opt / routes** coinciden con §8.0, sin excepción. Solo difiere la
+columna **jobs**, y siempre por la misma causa: **D29 (R76)**. La primera recogida parcial, con la
+primera ruta pendiente, ya crea el job del día a +10 min. §8.0 es de la revisión 4 (anterior a D29)
+y dice «la recogida se simula con el helper de R57/R58: encola solo en el último paquete», que ya no
+es el código.
+
+| Fila | §8.0 «Nuevo» | Medido | ¿Coincide? | Por qué |
+| --- | --- | --- | --- | --- |
+| 0 | 0 / 0 / 0 | 0 / 0 / **1** | no (jobs) | D29: la 1.ª recogida parcial (t=−10) crea el job del día a +10 min; las 3 siguientes lo mueven |
+| 1 | 0 / 0 / 0 | 0 / 0 / 0 | sí | R64 `recogida_insuficiente` 4 de 7 |
+| 1b | 1 / 1 / 1 | 1 / 1 / **0** | no (jobs) | el job ya existe: «recoger todas» lo MUEVE a +60 s (`origen = recogida`), no crea otro; corre a t=−4 y paga 1/1 |
+| 2-10 | según tabla | idénticos | sí | — |
+| **Total A** | **3 / 3 / 6** | **3 / 3 / 6** | sí | el job solo cambia de fila (0 en vez de 1b) |
+| 11 | 1 llamada | 1 llamada, job `failed`, intentos 1 | sí | R29 |
+| 12 | 0 / 0 / 0 | 0 / 0 / 0 (`enfriamiento`) | sí | R53 |
+| 13 | 1 / 1 / 0 | 1 / 1 / 0 | sí | R53 |
+| B1 | 0 / 0 / 0 | 0 / 0 / **1** | no (jobs) | D29: job del día a +10 min tras la última recogida (t=−5 → +5) |
+| B2 | 0 / 0 / 0 | 0 / 0 / 0 | sí | R63 400 m |
+| B3 | 1 / 1 / 0 | 1 / 1 / 0 | sí | R62 `salida` |
+| B4 | 0 / 0 / 0 | 0 / 0 / 0 | sí | R63/R66 |
+| **Total B** | **1 / 1 / 0** | **1 / 1 / 1** | no (jobs) | el job de D29 corre a t=+5 y 92/R20 lo descarta (`obsoleta`, 0 llamadas) |
+| Var. primera gestión | 1 / 1 / 1 | 1 / 1 / **2** | no (jobs) | job de D29 + job de la gestión (R59); paga el de la gestión y el de D29 sale `obsoleta` |
+| Var. botón 86 % | 1 / 1 / 0 | 1 / 1 / **1** | no (jobs) | job de D29, luego `obsoleta` (0 llamadas) |
+| Var. botón 71 % | `conflict` «5 de 7» | `omitida/recogida_insuficiente`, 5 de 7, 0 llamadas | sí | la acción lo traduce a `conflict` (ya probado en `sincronizar-ruta.test.ts`) |
+
+Lectura: **el dinero (llamadas facturadas) cuadra en todas las filas.** El job extra de D29 nunca
+paga en estos escenarios: lo absorbe 92/R20. La tabla solo está desfasada en la columna de jobs
+encolados, en sus filas de recogida.
+
+Si B3 ocurre más de 10 min después de la última recogida, el job de D29 paga la primera ruta
+(`primera_ruta_debounce_recogida`) y la salida ya no aplica (R63). Las llamadas siguen en 1 / 1.
+§8.0 no fija el tiempo de B3; el test usa t=−3, dentro de los 10 min.
+
+**Lo que hay que decidir (humano):**
+- (a) Enmendar la columna jobs de §8.0 por D29:
+  - A: fila 0 → `0/0/1` y fila 1b → `1/1/0`; el total `{3, 3, 6}` no cambia;
+  - B: B1 → `0/0/1` y total `{1, 1, 1}`;
+  - variantes: primera gestión → `1/1/2`, botón 86 % → `1/1/1`.
+- (b) O cambiar el código para que la recogida parcial no cree el job. Esto contradice R76, que pide crearlo.
+
+Recomendación técnica: (a). R76 obliga a crear el job en la recogida parcial, así que (b)
+reabriría D29.
+
+### Salida real (NODE_OPTIONS=--max-old-space-size=8192)
+```
+npx vitest run tests/unit/services/optimizacion-ruta-ahorro-jornada.test.ts
+  6 tests | 4 failed
+  ✓ filas 11-13 …   ✓ variante B 71 %
+  × jornada A (solo filas 0 y 1b, columna jobs)   × jornada B (B1 jobs, total 1/1/1)
+  × variante primera gestión (1/1/2)              × variante botón 86 % (1/1/1)
+pnpm run typecheck -> tsc --noEmit, exit 0
+npx eslint tests/unit/services/optimizacion-ruta-ahorro-jornada.test.ts -> sin salida (0 problemas)
+```
+El test queda **rojo a propósito**: afirma §8.0 tal cual está escrito. Cuando el humano decida,
+basta con cambiar `NUEVO_A`, `NUEVO_B` y los totales de las dos variantes (opción a), o el código (opción b).
+
+### Mapa R → test (esta tanda)
+- R37: `optimizacion-ruta-ahorro-jornada.test.ts`, los 6 casos. 4 en rojo, solo por la columna jobs (ver arriba).
+- R68-R77: sin cambios en esta tanda. Fase 8 no empezada.
+
+### Desviaciones
+- Las filas 12 y 13 necesitan un fallo previo con la ruta del día ya hecha y el conjunto sin
+  cambios. Un job fallido no sirve: o es la primera ruta, y entonces el botón vuelve a pagarla
+  (primera pendiente), o cambia el conjunto, y entonces el botón reoptimiza por fuera de orden o
+  paradas nuevas. El fallo se provoca con una sincronización a mano desviada que recibe 401 (fuera de las filas).
+  Después, el botón a 50 m de A da `enfriamiento` a los 2 min y paga a los 6 min.
+
+**Veredicto:** T7.8 bloqueada por decisión humana. El código cumple §8.0 en llamadas
+facturadas; la columna jobs de §8.0 no refleja D29. Fase 8 sin empezar.
+
+## Tanda 9 — backend_dev: Fase 8 (T8.1-T8.3, sin jornada) (2026-10-31)
+
+Base: HEAD 04a7d92, con el `optimizacion-ruta-ahorro-jornada.test.ts` de la Tanda 8 sin commitear.
+No lo he tocado. Sin base de datos, sin dependencias, sin migración y sin escrituras en la base para
+el registro (R74). No usé el grafo: los archivos ya eran conocidos (Grep/Read).
+
+### Archivos
+**Nuevos**
+- `lib/clients/registro-llamada-google.ts` (T8.1) es la única fuente. Contiene:
+  - `GOOGLE_API_LOG_PREFIJO` y `GOOGLE_API_LOG_EVENTO`;
+  - los tipos `ApiGoogle`, `MOTIVOS_LLAMADA_RUTA`/`MotivoLlamadaRuta` (§13.1) y
+    `MOTIVOS_LLAMADA_GEOCODE`/`MotivoLlamadaGeocode` (§13.2);
+  - `ContextoLlamadaGoogle<M>` y `FUERA_DE_COLA` (1/1);
+  - `registrarLlamadaGoogle`, que copia los campos uno a uno (R71) y emite
+    `[google-api] {"evento":…,"api","motivo","empresaId","mensajeroId","ordenId","paradas","intento","maxIntentos","resultado"}`;
+  - `resultadoDeFalloDeRed` (`timeout`/`red`) y `resultadoDeRespuesta` (`ok` o el estado HTTP);
+  - `empresaDelContextoActual` (lee `contextoActual()`).
+- `lib/logging/google-api-log.ts`: el canal real, `console.info`. Va fuera de `lib/clients/` por la
+  guardia `credenciales-sin-consola-cruda`. A diferencia de `optlog`, no depende de `RUTA_DEBUG_LOG`.
+- Tres tests nuevos: `tests/unit/clients/google-registro-llamada.test.ts` (22),
+  `tests/unit/services/optimizacion-ruta-motivo.test.ts` (22) y
+  `tests/unit/services/geocodificacion-motivo.test.ts` (14).
+
+**Código modificado**
+- T8.2, los clientes:
+  - `IRouteOptimizationClient.optimizar`, `IRoutesClient.trazar` e `IGeocodeClient.geocodificar` exigen
+    un 2.º parámetro `contexto` (R68). Sin él, no compila.
+  - `google-route-optimization.ts`, `google-routes.ts` y `google-geocode.ts` aceptan
+    `registro?` y `empresaId?` en el constructor. Emiten una línea justo después de la respuesta HTTP o
+    del fallo de `fetch`. No la emiten en el token ni en las guardas previas.
+  - `fallback-route-optimization.ts` pasa el contexto a los dos. `haversine` no registra.
+- T8.3, rutas:
+  - `OptimizacionRutaService`:
+    - función pura nueva `motivoLlamadaRuta(decisión, disparo, origen)`;
+    - `guardaSinRecalculo` devuelve ahora `{desenlace}` o `{reoptimizar: motivo}`;
+    - `contextoLlamada` da el mismo contexto al `optimizeTours` y al `computeRoutes` de un recálculo;
+    - la rama de una parada (92/R35) lleva su motivo;
+    - `trazarTramoVivo` registra `trayecto_vivo` 1/1.
+  - `EjecutarOptimizacionOpts.job?` lleva `{origen, intento, maxIntentos}`.
+  - `optimizacion-ruta-handler.ts`:
+    - pasa `payload.origen ?? null`, `job.intentos` (ya incrementado por el claim) y `job.maxIntentos`;
+    - fija `empresaId` por llamada: en optimizeTours, la empresa de `deLaEmpresa()`; en Routes, la que
+      resolvió el token de esa llamada, con un cliente por llamada.
+  - `encolarOptimizacionDebounce` exige `origen: "gestion" | "traspaso"`.
+    `GestionOrdenRepository` escribe `gestion` y el traspaso de `OrdenRepository` escribe `traspaso`.
+    Con `ON CONFLICT DO NOTHING` queda el origen del primer evento (D28).
+- T8.3, geocode:
+  - `encolarGeocodificacion` exige un 4.º parámetro, `motivo`, y lo guarda en el payload.
+    Los llamadores:
+    - `OrdenRepository.encolarSiCambiaDireccion` pasa `direccion_cambiada`;
+    - los dos lotes pasan `motivoGeocodeDeCarga(historial.origenTipo)`;
+    - `AsignabilidadCoordenadasService` pasa `asignacion_sin_coordenadas`.
+  - `GeocodificacionService` valida `payload.motivo` (enum, opcional). Pasa al cliente
+    `{motivo ?? "job_sin_motivo", ordenId, intento, maxIntentos}`.
+  - `GeocodeSaludRepository.revivirFallosConfig` añade
+    `"payload" = jsonb_set(j."payload", '{motivo}', to_jsonb($revivido_por_salud::text))` al mismo UPDATE.
+    Se actualizó el comentario de la interfaz.
+  - `google-maps-probador.ts` pasa `prueba_integracion` 1/1.
+
+**Tests ajustados**
+- Solo la firma: `google-routes`, `google-route-optimization`, `fallback-route-optimization`,
+  `google-geocode`, `geocodificacion-encolado`, `geocodificacion-service` (un `toHaveBeenCalledWith`)
+  y `optimizacion-ruta-encolado`. Este último trae además el caso nuevo de D28.
+- El payload con `origen`/`motivo`:
+  - `tests/integration/repositories/optimizacion-ruta-enqueue.test.ts`: la gestión afirma
+    `origen: "gestion"` y el traspaso, `origen: "traspaso"`;
+  - `orden-geocode-enqueue.test.ts`: `orden_creada` y `carga_masiva`;
+  - `asignabilidad-coordenadas.test.ts`;
+  - dos tests de BD que aquí no corren: `tests/integration/db/corregir-ubicacion-geocode.test.ts`
+    (`direccion_cambiada`) y `geocode-recuperacion.test.ts` (el payload ahora es idéntico salvo
+    `motivo = revivido_por_salud`).
+- `specs/.../tasks.md`: [x] en T8.1, T8.2 y T8.3. T7.8, T7.9, T8.4 y T8.5 quedan como estaban.
+
+### Qué ruta de `BulkOrdenService` es cuál (T8.3)
+- `cargarMasiva` (BulkOrdenService:319) registra `origenTipo: "carga_masiva"` y llama a
+  `createManyOrdenesConGuia` (:340) y a `createManyOrdenes` (:350). Motivo: `carga_masiva`.
+- `cargarViaApi` (:628/:679) registra `origenTipo: "carga_api"` y llama a `createManyOrdenesConGuia`
+  (:676). Es la API de la tienda, una orden suelta por petición. Motivo: `orden_creada`.
+- El repositorio lo deriva de `historial.origenTipo`: `carga_masiva` da `carga_masiva` y cualquier otro
+  da `orden_creada`. No cambió ninguna firma de `IOrdenRepository`.
+
+### Mapa R → test (esta tanda)
+- R68:
+  - `pnpm run typecheck`: los tres métodos exigen el contexto; los llamadores sin él no compilan;
+  - `google-registro-llamada.test.ts`.
+- R69 (prefijo, evento y campos; los tres clientes con la misma constante; línea también en un fallo):
+  `google-registro-llamada.test.ts`, en «T8.1» y «T8.2 — route_optimization / routes / geocoding / los tres
+  clientes».
+- R70:
+  - `optimizacion-ruta-motivo.test.ts`: «intento 1 de 3 recibe un 500 y el 2 de 3 paga», «fuera de la cola
+    … 1 de 1» y «el handler pasa el origen … y el intento»;
+  - `geocodificacion-motivo.test.ts`: «R70: un reintento tras un 500».
+- R71:
+  - `google-registro-llamada.test.ts`: `sinPii` en cada cliente y «un campo de más … NO llega»;
+  - el probador: «no contiene la clave».
+- R72:
+  - `google-registro-llamada.test.ts`: token OAuth, token que falla, Haversine y la guarda sin paradas;
+  - `optimizacion-ruta-motivo.test.ts`: la guarda que omite, la recta de respaldo y sin Routes;
+  - `geocodificacion-motivo.test.ts`: el acierto de caché.
+- R73:
+  - `optimizacion-ruta-motivo.test.ts`: un caso por motivo de §13.1, incluidos
+    `reintento_ruta_desactualizada` y `job_sin_origen`, más la tabla pura completa;
+  - `geocodificacion-motivo.test.ts`: un caso por motivo de §13.2, incluidos `job_sin_motivo`,
+    `revivido_por_salud` y `prueba_integracion`.
+- R74: ninguna escritura. `db/` sin cambios. El canal es `console.info` (`google-api-log.ts`).
+- R76 (motivo): `optimizacion-ruta-motivo.test.ts`, «T7.9 — primera_ruta_debounce_recogida».
+- D28: `optimizacion-ruta-encolado.test.ts`, «el job agrupado … conserva el origen del PRIMER evento».
+  También `optimizacion-ruta-enqueue.test.ts` (gestión y traspaso).
+- R75: **no** en esta tanda (T8.4, bloqueada con T7.8).
+
+### Salida real (NODE_OPTIONS=--max-old-space-size=8192; de uno o dos archivos)
+```
+vitest run google-registro-llamada.test.ts                  -> 1 file, 22 passed
+vitest run optimizacion-ruta-motivo.test.ts                 -> 1 file, 22 passed
+vitest run geocodificacion-motivo.test.ts                   -> 1 file, 14 passed
+google-routes + google-route-optimization                   -> 2 files, 55 passed
+fallback-route-optimization + google-geocode                -> 2 files, 31 passed
+geocodificacion-encolado + optimizacion-ruta-encolado       -> 2 files, 42 passed
+geocodificacion-service + asignabilidad-coordenadas         -> 2 files, 108 passed
+orden-geocode-enqueue + optimizacion-ruta-enqueue (integr.) -> 2 files, 40 passed
+optimizacion-ruta-service + -desvio                         -> 2 files, 82 passed
+-reduccion + -origen                                        -> 2 files, 60 passed
+-primera-del-dia + -tramo-vivo                              -> 2 files, 29 passed
+-trazado + -degradacion                                     -> 2 files, 25 passed
+-credencial-rechazada + -recuperacion                       -> 2 files, 13 passed
+-handler-payload + -token-por-empresa                       -> 2 files, 24 passed
+google-maps-probador + integraciones.composition-root       -> 2 files, 20 passed
+demo-qa-jobs + asignabilidad-coordenadas-autorizada         -> 2 files, 39 passed
+integraciones-consumidores-composition-root + geocode-salud -> 2 files, 54 passed
+geocodificacion-marcador-contrato + route-optimization-cfg  -> 2 files, 85 passed
+mis-asignaciones-action + sincronizar-ruta                  -> 2 files, 87 passed
+procesar-jobs-registro + geocode-recuperacion (BD)          -> 1 passed | 1 skipped (sin BD)
+
+pnpm run test:guardias -> 1 failed | 319 passed | 3 skipped (323); 4 failed | 4504 passed
+  los 4 rojos son de dependencias-declaradas-presentes.guardia.test.ts (baseline-rojos.json)
+pnpm run lint          -> ✖ 230 problems (0 errors, 230 warnings); en mis archivos, 0 problemas
+pnpm run typecheck     -> exit 2, UN solo error, en el archivo bloqueado (ver abajo)
+```
+
+### ⚠️ El typecheck rompe en el test bloqueado (no lo he arreglado, como pide el encargo)
+```
+tests/unit/services/optimizacion-ruta-ahorro-jornada.test.ts(579,61): error TS2345: Argument of type
+'{ ahora: Date; debounceS: number; }' is not assignable to parameter of type
+'{ ahora: Date; debounceS: number; origen: "gestion" | "traspaso"; }'.
+  Property 'origen' is missing in type '{ ahora: Date; debounceS: number; }' but required in type
+  '{ ahora: Date; debounceS: number; origen: "gestion" | "traspaso"; }'.
+```
+- Es el único error de todo el repo. No lo causa la firma de los clientes: esa no rompe el archivo,
+  porque sus dobles con un parámetro menos siguen siendo asignables. Lo causa `origen`, ahora
+  obligatorio en `encolarOptimizacionDebounce` (D28).
+- El arreglo es de una línea: añadir `origen: "gestion"` en la llamada de la línea 579, la gestión del
+  arnés. Lo hará quien retome T7.8/T8.4.
+- Lo dejé obligatorio a propósito: así el compilador impide que un llamador nuevo encole sin origen.
+
+### Desviaciones y decisiones
+- **`empresaId` no va en el contexto.** Siguiendo §13.0, el cliente lo resuelve por una opción
+  inyectable `empresaId?: () => string | null`. Por defecto usa `contextoActual()`, la empresa del
+  drenador (`conSuEmpresa`). En rutas, el composition root lo fija con la empresa que puso la
+  credencial.
+  Límite: el probador de Maps no tiene una empresa a mano. Registra la del contexto activo, o `null`
+  si la acción de prueba no corre dentro de `conEmpresa`. Eso no lo he verificado.
+- **`optimizacion-rutas-probador.ts` no deja línea.** Solo pide el token OAuth (`token.obtener()`): no hay
+  `optimizeTours` ni `computeRoutes` facturados, y R72 excluye el token. §13.1 lista
+  `prueba_integracion` para ese probador, pero hoy no hay ninguna llamada que registrar. Si se quiere
+  esa línea, el probador tendría que hacer una petición facturada real. Eso es decisión humana.
+- **`resultado` es el estado HTTP, no el `status` del cuerpo.** Un geocode 200 con `REQUEST_DENIED`
+  registra `ok`. Lo dice R69 («estado HTTP o red/timeout»).
+- **Combinaciones fuera de la tabla de §13.1** (hoy no las produce ningún flujo). Se mapean al motivo
+  más cercano, comentado en `motivoLlamadaRuta`:
+  - traspaso con la primera pendiente → `paradas_nuevas_traspaso`;
+  - recogida con paradas nuevas → el motivo de la recogida, porque el job corrió por esa espera (R76);
+  - un manual sobre `desactualizada` → `recuperacion_ruta_caida`.
+- **El payload de geocode cambia en `revivirFallosConfig`.** Contradice el R15 de la ficha 401 («no toca
+  payload») en un solo campo, como pide §13.2. El test de BD `geocode-recuperacion` está actualizado,
+  pero aquí no se pudo correr (sin BD).
+- Sin `.serena/` ni otros cambios fuera del alcance.
+
+**Veredicto:** T8.1-T8.3 hechas y en verde. Lint con 0 errores; guardias sin rojos nuevos. El typecheck
+tiene un único error, en el test bloqueado `optimizacion-ruta-ahorro-jornada.test.ts:579`
+(`origen` obligatorio), que no he arreglado por encargo. T8.4/T8.5 siguen pendientes de T7.8.
+
+## Estado del implementer — 2026-10-31 (bloqueado en una decisión humana)
+
+**Hecho y publicado:** Fase 6 (T6.1-T6.7), Fase 7 (T7.1-T7.7, T7.9) y Fase 8 (T8.1-T8.3).
+`pnpm run typecheck` da 0 errores, después de añadir `origen: "gestion"` en la línea 579 de la jornada.
+Lint da 0 errores. En `test:guardias` solo fallan los rojos de la baseline (`dependencias-declaradas-presentes`).
+
+**Bloqueado: T7.8 → T8.4 → T8.5.** D29 (R76) hace que la recogida parcial cree el job del día. Por
+eso la columna «jobs» de design §8.0 ya no cuadra (detalle en la «Tanda 8»): fila 0 +1, fila 1b −1,
+B1 +1, total B `{1,1,1}` y variantes de B +1. Las llamadas facturadas cuadran en todas las filas.
+`optimizacion-ruta-ahorro-jornada.test.ts` afirma §8.0 tal cual, así que 4 de sus 6 casos quedan
+**en rojo a propósito** hasta que el humano decida:
+- **(a), la que recomiendo:** enmendar la columna «jobs» de §8.0 por D29 con los valores medidos. Es
+  una consecuencia mecánica de R76 y no cambia ninguna llamada. El implementer intentó editar el design
+  aprobado y el permiso se lo denegó, así que la edición la hace spec_author o el humano.
+- **(b):** cambiar el código para que la recogida parcial no cree el job. Eso contradice R76 y
+  reabre D29.
+
+Tras la decisión, quedan: ajustar los valores esperados de la jornada (T7.8), capturar la secuencia de
+motivos §13.3 (T8.4) y el mapa final y el cierre (T8.5). T5.2 y T6.8 los cierra el CI del PR (D20).
+
+**Otras dos para el humano o el reviewer (Tanda 9):**
+- `optimizacion-rutas-probador.ts` solo pide el token OAuth y no hace ninguna llamada facturada, así
+  que no emite `prueba_integracion`.
+- Revivir un geocode reescribe `payload.motivo`, lo que choca con el «no toca payload» de la ficha 401.
+  Así lo pide §13.2.

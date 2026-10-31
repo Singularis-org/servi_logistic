@@ -45,8 +45,9 @@ import { loadRouteOptimizationConfig } from "@/lib/config/route-optimization";
 import { inicioDelDiaCREnUtc } from "@/lib/utils/fecha-cr";
 
 /**
- * SLT-59 (design §13.1, D28/D29) — que evento encolo el job. No es PII. Hoy solo lo escribe la
- * recogida de la primera ruta del dia (R58, R76); la Fase 8 lo lee para el motivo de la llamada.
+ * SLT-59 (design §13.1, D28/D29) — que evento encolo el job. No es PII. Lo escriben la recogida de
+ * la primera ruta del dia (R58, R76), la gestion y el traspaso; el servicio lo lee para el motivo de
+ * la llamada (`motivoLlamadaRuta`).
  */
 export const ORIGENES_JOB_RUTA = ["recogida", "recogida_parcial", "gestion", "traspaso"] as const;
 export type OrigenJobRuta = (typeof ORIGENES_JOB_RUTA)[number];
@@ -78,17 +79,20 @@ export function dedupeKeyDebounce(mensajeroId: string, runAfter: Date): string {
  *
  * El payload lleva SOLO el `mensajeroId` — ni coordenadas ni direcciones (regla de PII
  * heredada de la 91). El handler releera todo lo que necesite.
+ *
+ * SLT-59 (D28): y el `origen` del evento. Con `ON CONFLICT DO NOTHING`, si la ventana ya tiene job
+ * se conserva el del PRIMER evento que lo encolo.
  */
 export async function encolarOptimizacionDebounce(
   repo: IJobRepository,
   tx: JobTxClient | undefined,
   mensajeroId: string,
-  opts: { ahora: Date; debounceS: number },
+  opts: { ahora: Date; debounceS: number; origen: Extract<OrigenJobRuta, "gestion" | "traspaso"> },
 ): Promise<void> {
   const runAfter = new Date(opts.ahora.getTime() + opts.debounceS * 1000);
   await repo.enqueue(
     "optimizacion_ruta",
-    { mensajeroId },
+    { mensajeroId, origen: opts.origen },
     {
       runAfter,
       dedupeKey: dedupeKeyDebounce(mensajeroId, runAfter),

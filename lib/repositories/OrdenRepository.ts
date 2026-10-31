@@ -120,7 +120,10 @@ import { appendAccion, resolverActorCongelado } from "@/lib/repositories/registr
 import { etiquetaDeEntidad } from "@/lib/types/historial-accion-etiquetas";
 import type { IJobRepository, JobTxClient } from "@/lib/interfaces/repositories/IJobRepository";
 import { JobRepository } from "@/lib/repositories/JobRepository";
-import { encolarGeocodificacion } from "@/lib/services/jobs/geocodificacion-encolado";
+import {
+  encolarGeocodificacion,
+  motivoGeocodeDeCarga,
+} from "@/lib/services/jobs/geocodificacion-encolado";
 import {
   CorreccionDiaConflictoError,
   DeshacerAsignacionConflictoError,
@@ -2288,7 +2291,12 @@ export class OrdenRepository implements IOrdenRepository {
     direccionPrevia: string | null,
   ): Promise<void> {
     if (direccionNueva === undefined || direccionNueva === direccionPrevia) return;
-    await encolarGeocodificacion(this.jobRepo, tx, { id, direccion: direccionNueva });
+    await encolarGeocodificacion(
+      this.jobRepo,
+      tx,
+      { id, direccion: direccionNueva },
+      "direccion_cambiada", // SLT-59 (§13.2)
+    );
   }
 
   /**
@@ -3003,10 +3011,12 @@ export class OrdenRepository implements IOrdenRepository {
         // el proveedor es IDENTICO (no hay endpoint batch) y el reintento granular evita
         // que una direccion irresoluble haga reintentar 199 geocodificaciones ya pagadas.
         for (const nueva of nuevas) {
-          await encolarGeocodificacion(this.jobRepo, tx as unknown as JobTxClient, {
-            id: nueva.id,
-            direccion: nueva.direccion,
-          });
+          await encolarGeocodificacion(
+            this.jobRepo,
+            tx as unknown as JobTxClient,
+            { id: nueva.id, direccion: nueva.direccion },
+            motivoGeocodeDeCarga(historial.origenTipo), // SLT-59 (§13.2)
+          );
         }
         // Feature 294: lo que `skipDuplicates` descarto, con nombre y apellido. Se deriva de
         // `nuevas` (el diff before/after) y no de `result.count`, que solo dice CUANTAS.
@@ -3155,10 +3165,12 @@ export class OrdenRepository implements IOrdenRepository {
         // duplicadas saltadas por `skipDuplicates` no estan en `nuevas`), dentro de la MISMA
         // tx del chunk, y no-op si la direccion no es geocodificable.
         for (const nueva of nuevas) {
-          await encolarGeocodificacion(this.jobRepo, tx as unknown as JobTxClient, {
-            id: nueva.id,
-            direccion: nueva.direccion,
-          });
+          await encolarGeocodificacion(
+            this.jobRepo,
+            tx as unknown as JobTxClient,
+            { id: nueva.id, direccion: nueva.direccion },
+            motivoGeocodeDeCarga(historial.origenTipo), // SLT-59 (§13.2)
+          );
         }
         // Feature 294: las que `skipDuplicates` descarto. `resultado` lleva ya el
         // `numRemision` de cada creada, asi que el conjunto omitido sale del mismo diff.
@@ -5034,6 +5046,7 @@ export class OrdenRepository implements IOrdenRepository {
         await encolarOptimizacionDebounce(this.jobRepo, tx as unknown as JobTxClient, mensajeroId, {
           ahora,
           debounceS,
+          origen: "traspaso", // SLT-59 (D28, §13.1)
         });
       }
 

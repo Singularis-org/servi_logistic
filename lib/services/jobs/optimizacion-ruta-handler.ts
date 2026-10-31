@@ -30,7 +30,7 @@ import { optlog, opterror } from "@/lib/logging/optimizer-log";
 /**
  * R21/PII: el payload lleva el id del mensajero y, desde SLT-59 (D28/D29), opcionalmente el
  * `origen` del evento que lo encolo (no es PII). Un `origen` fuera de la lista es un error.
- * Sin `origen` es valido: los jobs de gestion y traspaso y los encolados antes del despliegue.
+ * Sin `origen` es valido: los encolados antes del despliegue, que registran `job_sin_origen`.
  */
 const payloadSchema = z.object({
   mensajeroId: z.string().min(1),
@@ -56,6 +56,13 @@ export function crearOptimizacionRutaHandler(service: OptimizacionRutaService): 
       await service.ejecutar(parsed.data.mensajeroId, {
         motivo: "debounce",
         jobCreatedAt: job.createdAt,
+        // SLT-59 (D27, D28; R70): el motivo sale del `origen` y cada intento registra el suyo.
+        // `job.intentos` ya viene incrementado por el claim: es el numero de ESTE intento.
+        job: {
+          origen: parsed.data.origen ?? null,
+          intento: job.intentos,
+          maxIntentos: job.maxIntentos,
+        },
       });
       optlog("job — completado", { jobId: job.id });
     } catch (error) {
@@ -124,25 +131,41 @@ export function buildOptimizacionRutaService(
   // `GoogleRouteOptimizationClient` pide el token lo primero, asi que armarlo aqui dentro no adelanta
   // ninguna llamada respecto a antes.
   const google: IRouteOptimizationClient = {
-    async optimizar(input) {
+    async optimizar(input, contexto) {
       const empresa = await rutas.deLaEmpresa();
       return new GoogleRouteOptimizationClient({
         projectId: empresa.projectId,
         timeoutMs: config.ROUTE_OPT_TIMEOUT_MS,
         getToken: empresa.getToken,
         fetchImpl: empresa.fetchOptimizacion,
-      }).optimizar(input);
+        // SLT-59 (R69): la empresa de la linea `[google-api]` es la que puso la credencial.
+        empresaId: () => empresa.organizacionId,
+      }).optimizar(input, contexto);
     },
   };
 
   // El trazado no necesita proyecto: un cliente basta, y su token se resuelve PEREZOSAMENTE en la
   // empresa en curso, en el mismo punto donde el cliente lo pedia antes (despues de sus guardas).
-  const routes: IRoutesClient = new GoogleRoutesClient({
-    getToken: async () => (await rutas.deLaEmpresa()).getToken(),
-    timeoutMs: config.ROUTE_OPT_TIMEOUT_MS,
-    routingPreference: config.ROUTES_ROUTING_PREFERENCE,
-    fetchImpl: deps.fetchImpl,
-  });
+  //
+  // SLT-59 (R69): un cliente por llamada para que la linea `[google-api]` lleve la empresa que
+  // resolvio el token de ESA llamada. Se fija al pedir el token, antes de la peticion HTTP; si el
+  // token falla no hay peticion ni linea (R72).
+  const routes: IRoutesClient = {
+    trazar(input, contexto) {
+      let empresaId: string | null = null;
+      return new GoogleRoutesClient({
+        getToken: async () => {
+          const empresa = await rutas.deLaEmpresa();
+          empresaId = empresa.organizacionId;
+          return empresa.getToken();
+        },
+        timeoutMs: config.ROUTE_OPT_TIMEOUT_MS,
+        routingPreference: config.ROUTES_ROUTING_PREFERENCE,
+        fetchImpl: deps.fetchImpl,
+        empresaId: () => empresaId,
+      }).trazar(input, contexto);
+    },
+  };
 
   // Fallback (design §9.A): sin credencial de la empresa, `google.optimizar` propaga
   // `RutaNoConfiguradoError` y el compuesto cae a un orden local aproximado (Haversine + vecino mas

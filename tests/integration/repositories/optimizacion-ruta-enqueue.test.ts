@@ -450,7 +450,8 @@ describe("SLT-59 R21 — una gestion sobre una orden CON coordenadas encola con 
     await repoGestion(prisma, cola).registrarGestionPendiente(GESTION_INPUT);
 
     expect(cola.ruta).toHaveLength(1);
-    expect(cola.ruta[0].payload).toEqual({ mensajeroId: MENSAJERO });
+    // SLT-59 (D28, T8.3): la gestion deja su `origen` en el payload.
+    expect(cola.ruta[0].payload).toEqual({ mensajeroId: MENSAJERO, origen: "gestion" });
     expect(cola.ruta[0].opts.runAfter?.getTime()).toBe(T0.getTime() + 60_000);
     expect(cola.ruta[0].opts.dedupeKey).toBe(
       dedupeKeyDebounce(MENSAJERO, new Date(T0.getTime() + 60_000)),
@@ -646,6 +647,8 @@ describe("SLT-59 R60 — el traspaso solo encola a quien ya tiene su primera rut
       expect(f.via).toBe("enqueue");
       expect(f.opts.runAfter?.getTime()).toBe(T0.getTime() + 60_000);
       expect(f.tx).toBe(tx);
+      // SLT-59 (D28, T8.3): el traspaso deja su `origen` en el payload.
+      expect(f.payload.origen).toBe("traspaso");
     }
   });
 

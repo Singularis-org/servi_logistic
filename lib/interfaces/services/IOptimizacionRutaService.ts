@@ -1,5 +1,6 @@
 // Feature 92 (design §5) — contrato del servicio de optimizacion de ruta.
 import type { SecuenciaFuente } from "@/lib/interfaces/external/IRouteOptimizationClient";
+import type { OrigenJobRuta } from "@/lib/services/jobs/optimizacion-ruta-encolado";
 
 /**
  * Motivo del disparo. Solo `manual` esta sujeto al intervalo minimo de R34.
@@ -21,6 +22,12 @@ export interface EjecutarOptimizacionOpts {
   jobCreatedAt?: Date;
   /** R22/R23: ubicacion del navegador. Se persiste como origen `gps` si viene. */
   ubicacion?: { lat: number; lng: number };
+  /**
+   * SLT-59 (D27, D28; R70, R73; design §13.1) — el job que dispara esta ejecucion: el `origen`
+   * de su payload (`null` si se encolo antes del despliegue) y su intento `n` de `max`. Ausente
+   * fuera de la cola: la llamada registra entonces `intento: 1, maxIntentos: 1`.
+   */
+  job?: { origen: OrigenJobRuta | null; intento: number; maxIntentos: number };
 }
 
 /**

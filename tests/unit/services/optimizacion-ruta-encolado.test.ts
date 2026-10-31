@@ -79,7 +79,7 @@ describe("R18 — la clave del debounce lleva ventana temporal", () => {
 describe("R17 — el debounce colapsa eventos de la misma ventana", () => {
   it("dos recogidas en el mismo instante -> UNA sola fila de job", async () => {
     const { repo, filas } = colaEnMemoria();
-    const opts = { ahora: T0, debounceS: 60 };
+    const opts = { ahora: T0, debounceS: 60, origen: "gestion" as const };
 
     await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, opts);
     await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, opts);
@@ -90,25 +90,45 @@ describe("R17 — el debounce colapsa eventos de la misma ventana", () => {
   it("la segunda recogida NO adelanta el runAfter de la primera", async () => {
     const { repo, filas } = colaEnMemoria();
 
-    await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, { ahora: T0, debounceS: 60 });
+    await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, { ahora: T0, debounceS: 60, origen: "gestion" });
     const runAfterPrimero = filas[0].opts.runAfter;
     // 20 s despues, dentro de la misma ventana de destino.
     await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, {
       ahora: new Date(T0.getTime() + 20_000),
       debounceS: 60,
+      origen: "gestion",
     });
 
     expect(filas).toHaveLength(1);
     expect(filas[0].opts.runAfter).toBe(runAfterPrimero);
   });
 
-  it("el runAfter es ahora + debounceS y el payload lleva SOLO el mensajeroId (PII)", async () => {
+  // SLT-59 (D28): y el `origen` del evento, que no es PII.
+  it("el runAfter es ahora + debounceS y el payload lleva SOLO el mensajeroId y el origen (PII)", async () => {
     const { repo, filas } = colaEnMemoria();
-    await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, { ahora: T0, debounceS: 60 });
+    await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, { ahora: T0, debounceS: 60, origen: "gestion" });
 
     expect(filas[0].tipo).toBe("optimizacion_ruta");
-    expect(filas[0].payload).toEqual({ mensajeroId: MENSAJERO });
+    expect(filas[0].payload).toEqual({ mensajeroId: MENSAJERO, origen: "gestion" });
     expect(filas[0].opts.runAfter?.getTime()).toBe(T0.getTime() + 60_000);
+  });
+});
+
+describe("SLT-59 D28 — el job agrupado por debounce conserva el origen del PRIMER evento", () => {
+  it("traspaso y luego gestion en la misma ventana -> una fila con origen traspaso", async () => {
+    const { repo, filas } = colaEnMemoria();
+    await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, {
+      ahora: T0,
+      debounceS: 60,
+      origen: "traspaso",
+    });
+    await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, {
+      ahora: new Date(T0.getTime() + 10_000),
+      debounceS: 60,
+      origen: "gestion",
+    });
+    expect(filas).toHaveLength(1);
+    expect(filas[0].payload).toEqual({ mensajeroId: MENSAJERO, origen: "traspaso" });
   });
 });
 
@@ -117,11 +137,12 @@ describe("R23 — una gestion con un job de debounce en vuelo no crea otro ni lo
     const { repo, filas } = colaEnMemoria();
 
     // Recogida y gestion pasan por el MISMO helper desde SLT-59: lo que las distingue es el instante.
-    await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, { ahora: T0, debounceS: 60 });
+    await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, { ahora: T0, debounceS: 60, origen: "gestion" });
     const runAfterRecogida = filas[0].opts.runAfter;
     await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, {
       ahora: new Date(T0.getTime() + 15_000),
       debounceS: 60,
+      origen: "gestion",
     });
 
     expect(filas).toHaveLength(1);
@@ -131,7 +152,7 @@ describe("R23 — una gestion con un job de debounce en vuelo no crea otro ni lo
 
   it("ya no existe el namespace `:inmediato:`: ninguna fila lo usa", async () => {
     const { repo, filas } = colaEnMemoria();
-    await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, { ahora: T0, debounceS: 60 });
+    await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, { ahora: T0, debounceS: 60, origen: "gestion" });
     expect(filas.every((f) => !String(f.opts.dedupeKey).includes(":inmediato:"))).toBe(true);
   });
 });
@@ -140,11 +161,12 @@ describe("R24 — la clave de la gestion nunca queda ocupada para siempre por un
   it("una gestion en la ventana SIGUIENTE inserta su propia fila aunque la anterior siga en la tabla", async () => {
     const { repo, filas } = colaEnMemoria();
 
-    await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, { ahora: T0, debounceS: 60 });
+    await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, { ahora: T0, debounceS: 60, origen: "gestion" });
     // La fila anterior sigue ahi (como una `done` que no se purga); 2 minutos despues es otra ventana.
     await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, {
       ahora: new Date(T0.getTime() + 120_000),
       debounceS: 60,
+      origen: "gestion",
     });
 
     expect(filas).toHaveLength(2);
@@ -162,14 +184,14 @@ describe("R32 — max_intentos de la reoptimizacion sale de RUTA_OPT_MAX_INTENTO
   it("sin override, el job se encola con 3 intentos (D9), no con los 5 de antes", async () => {
     delete process.env.RUTA_OPT_MAX_INTENTOS;
     const { repo, filas } = colaEnMemoria();
-    await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, { ahora: T0, debounceS: 60 });
+    await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, { ahora: T0, debounceS: 60, origen: "gestion" });
     expect(filas[0].opts.maxIntentos).toBe(3);
   });
 
   it("con RUTA_OPT_MAX_INTENTOS=2, el job se encola con 2", async () => {
     process.env.RUTA_OPT_MAX_INTENTOS = "2";
     const { repo, filas } = colaEnMemoria();
-    await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, { ahora: T0, debounceS: 60 });
+    await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, { ahora: T0, debounceS: 60, origen: "gestion" });
     expect(filas[0].opts.maxIntentos).toBe(2);
   });
 });

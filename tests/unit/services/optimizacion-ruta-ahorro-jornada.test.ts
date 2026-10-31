@@ -3,8 +3,13 @@ import type { JobTipo } from "@prisma/client";
 import { OptimizacionRutaService } from "@/lib/services/OptimizacionRutaService";
 import { JobQueueService } from "@/lib/services/JobQueueService";
 import { crearOptimizacionRutaHandler } from "@/lib/services/jobs/optimizacion-ruta-handler";
-import { encolarOptimizacionDebounce } from "@/lib/services/jobs/optimizacion-ruta-encolado";
+import {
+  encolarOptimizacionDebounce,
+  encolarPrimeraRutaPorRecogida,
+  primeraRutaPendiente,
+} from "@/lib/services/jobs/optimizacion-ruta-encolado";
 import { codificarPolilinea, distanciaHaversineKm } from "@/lib/geo/polilinea";
+import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 import type { RouteOptimizationConfig } from "@/lib/config/route-optimization";
 import type { JobsConfig } from "@/lib/config/jobs";
 import type {
@@ -18,8 +23,9 @@ import type {
   TrazarRutaOutcome,
 } from "@/lib/interfaces/external/IRoutesClient";
 import type {
+  EncolarOMoverOpts,
   EnqueueOpts,
-  IJobRepository,
+  IJobRepositoryMovible,
   JobDTO,
 } from "@/lib/interfaces/repositories/IJobRepository";
 import type {
@@ -35,30 +41,25 @@ import type {
   TrazadoPersistido,
 } from "@/lib/interfaces/repositories/IRutaOptimizadaRepository";
 import type { ParadaRutaRow } from "@/lib/interfaces/repositories/IOrdenRepository";
+import type { EjecutarOptimizacionResult } from "@/lib/interfaces/services/IOptimizacionRutaService";
 
-// SLT-59 (R37, design §8) — JORNADA DE REFERENCIA: cuantas llamadas facturadas paga un mensajero
+// SLT-59 (R37, design §8.0) — JORNADA DE REFERENCIA: cuantas llamadas facturadas paga un mensajero
 // en un dia tipico. Cuenta llamadas, no dinero (D10).
 //
 // Todo lo que decide si se paga es CODIGO REAL: `OptimizacionRutaService`, el handler del job, la
-// cola (`JobQueueService`, con su backoff y su dead-letter) y los helpers de encolado. Lo que se
-// dobla es solo lo que sale del proceso: la base (repos en memoria con la misma semantica que las
-// escrituras condicionadas de Prisma), los dos clientes de Google (espias) y el reloj.
+// cola (`JobQueueService`, con su backoff y su dead-letter) y los helpers de encolado de la
+// recogida y la gestion. Lo que se dobla es solo lo que sale del proceso: la base (repos en memoria
+// con la misma semantica que las escrituras condicionadas de Prisma), los dos clientes de Google
+// (espias) y el reloj.
 //
-// ═══ ESTADO DE ESTE ARCHIVO ═══
-// T0.1 lo dejo midiendo la columna «Hoy» CONTRA EL CODIGO ANTERIOR A SLT-59: el test de «Hoy» no
-// afirma los conteos (dejarian de valer en cuanto cambie el comportamiento); los REPORTA, y la
-// medicion quedo anotada en `progress/impl_SLT-59.md`. T5.1 anade la variante «Nuevo» con los
-// conteos de la tabla como aserciones exactas y BORRA la de «Hoy» —que usa
-// `encolarOptimizacionInmediata`, retirado en T3.2—.
-// ⏳ 2026-10-29 (SLT-59, T3.2): la variante «Hoy» se borro al retirar ese helper (adelantado a T3.2
-// en vez de T5.1). Su medicion sigue en `progress/impl_SLT-59.md`, Tanda 1. El arnes de la jornada
-// queda montado para la variante «Nuevo» de T5.1.
-// ⏳ 2026-10-30 (SLT-59, T5.1): la variante «Nuevo» afirma la tabla del design §8 fila a fila; la
-// gestion va por el camino nuevo (debounce condicionado a coordenadas + `reducirSinLlamadas`).
+// Historia: T0.1 midio «Hoy» contra el codigo anterior (bitacora, Tanda 1); T5.1 afirmo la tabla de
+// la revision 3 (design §8.1). T7.8 (2026-10-31) afirma las tablas vigentes de design §8.0: la
+// carga en bodega, la salida y la recuperacion a mano (D21-D25).
 
-const T0 = new Date("2026-10-29T13:00:00.000Z"); // en minuto exacto: las ventanas del debounce
+const T0 = new Date("2026-10-29T13:00:00.000Z"); // 07:00 en CR, en minuto exacto
 const MIN = 60_000;
 const M = "m-1";
+const en = (tMin: number) => new Date(T0.getTime() + tMin * MIN);
 
 const CONFIG: RouteOptimizationConfig = {
   ROUTE_OPT_TIMEOUT_MS: 20_000,
@@ -84,16 +85,18 @@ const JOBS_CONFIG: JobsConfig = {
 };
 
 // ── Geografia del escenario ───────────────────────────────────────────────────────────────
-// Seis paradas en fila hacia el este, ~1,1 km entre una y otra, y el punto de partida A al oeste
-// de s1. La septima orden no tiene coordenadas.
+// Seis paradas en fila hacia el este, ~1,1 km entre una y otra, y la bodega B (= A, donde empieza
+// la ruta tras la carga) al oeste de s1. La septima orden no tiene coordenadas.
 type Punto = { lat: number; lng: number };
 const METROS_POR_GRADO_LAT = (6371 * 1000 * Math.PI) / 180;
 const LAT = 9.93;
 const A: Punto = { lat: LAT, lng: -84.1 };
+const B = A;
 const PARADAS: Record<string, Punto> = Object.fromEntries(
   [1, 2, 3, 4, 5, 6].map((i) => [`s${i}`, { lat: LAT, lng: -84.1 + 0.01 * i }]),
 );
 const SIN_COORDENADAS = "x";
+const TODAS = ["s1", "s2", "s3", "s4", "s5", "s6", SIN_COORDENADAS];
 
 const alNorte = (p: Punto, metros: number): Punto => ({
   lat: p.lat + metros / METROS_POR_GRADO_LAT,
@@ -103,6 +106,8 @@ const alEste = (p: Punto, metros: number): Punto => ({
   lat: p.lat,
   lng: p.lng + metros / (METROS_POR_GRADO_LAT * Math.cos((p.lat * Math.PI) / 180)),
 });
+// La bodega queda al oeste de la fila de paradas: alejarse hacia el oeste nunca acerca a ninguna.
+const alOeste = (p: Punto, metros: number): Punto => alEste(p, -metros);
 
 // ── Dobles en memoria ─────────────────────────────────────────────────────────────────────
 
@@ -125,6 +130,7 @@ interface FilaRuta {
   secuenciaFuente: SecuenciaFuentePersistida | null;
   trazado: TrazadoPersistido | null;
   tramoVivoAt: Date | null;
+  actualizadaAt: Date;
   paradas: FilaParada[];
 }
 
@@ -132,9 +138,12 @@ interface FilaRuta {
  * `ruta_optimizada` + `ruta_optimizada_parada` de UN mensajero, con las mismas reglas que
  * `RutaOptimizadaRepository`: reemplazar limpia el trazado, `guardarTrazado` y
  * `reducirSecuencia` solo escriben si la huella encaja, y solo se lee como tramo el que existe.
+ * Cada escritura mueve `actualizadaAt` al reloj, como el `@updatedAt` de Prisma (R53, R54).
  */
 class RutasEnMemoria implements IRutaOptimizadaRepository {
   fila: FilaRuta | null = null;
+
+  constructor(private readonly reloj: () => Date) {}
 
   private cabecera(): FilaRuta {
     this.fila ??= {
@@ -150,9 +159,14 @@ class RutasEnMemoria implements IRutaOptimizadaRepository {
       secuenciaFuente: null,
       trazado: null,
       tramoVivoAt: null,
+      actualizadaAt: this.reloj(),
       paradas: [],
     };
     return this.fila;
+  }
+
+  private tocar(f: FilaRuta): void {
+    f.actualizadaAt = this.reloj();
   }
 
   async findByMensajero(mensajeroId: string): Promise<RutaOptimizadaDTO | null> {
@@ -172,8 +186,7 @@ class RutasEnMemoria implements IRutaOptimizadaRepository {
       secuenciaFuente: f.secuenciaFuente,
       trazado: f.trazado === null ? null : { ...f.trazado },
       tramoVivoAt: f.tramoVivoAt,
-      // SLT-59 (R54): la jornada no simula el reloj de `updated_at`; T7.8 decide si hace falta.
-      actualizadaAt: new Date(0),
+      actualizadaAt: f.actualizadaAt,
       secuenciaPorOrden: new Map(f.paradas.map((p) => [p.ordenId, p.secuencia])),
       tramoPorOrden: new Map(
         f.paradas
@@ -184,12 +197,14 @@ class RutasEnMemoria implements IRutaOptimizadaRepository {
   }
 
   async upsertOrigen(_m: string, u: OrigenUbicacion): Promise<void> {
-    Object.assign(this.cabecera(), {
+    const f = this.cabecera();
+    Object.assign(f, {
       origenLat: u.lat,
       origenLng: u.lng,
       origenAt: u.capturadaAt,
       origenFuente: u.fuente,
     });
+    this.tocar(f);
   }
 
   async reemplazarSecuencia(
@@ -197,7 +212,8 @@ class RutasEnMemoria implements IRutaOptimizadaRepository {
     secuencia: string[],
     meta: ReemplazarSecuenciaMeta,
   ): Promise<void> {
-    Object.assign(this.cabecera(), {
+    const f = this.cabecera();
+    Object.assign(f, {
       estado: "vigente",
       calculadaAt: meta.calculadaAt,
       origenLat: meta.origen?.lat ?? null,
@@ -209,6 +225,7 @@ class RutasEnMemoria implements IRutaOptimizadaRepository {
       trazado: null,
       paradas: secuencia.map((ordenId, i) => ({ ordenId, secuencia: i + 1, tramo: null })),
     });
+    this.tocar(f);
   }
 
   async guardarTrazado(
@@ -224,6 +241,7 @@ class RutasEnMemoria implements IRutaOptimizadaRepository {
       const parada = f.paradas.find((p) => p.secuencia === i + 1);
       if (parada !== undefined) parada.tramo = { ...tramo };
     });
+    this.tocar(f);
   }
 
   async reducirSecuencia(
@@ -240,11 +258,14 @@ class RutasEnMemoria implements IRutaOptimizadaRepository {
       secuencia: i + 1,
       tramo: p.tramo === null ? null : { ...p.tramo },
     }));
+    this.tocar(f);
     return true;
   }
 
   async marcarDesactualizada(_m: string, ultimoError: string): Promise<void> {
-    Object.assign(this.cabecera(), { estado: "desactualizada", ultimoError });
+    const f = this.cabecera();
+    Object.assign(f, { estado: "desactualizada", ultimoError });
+    this.tocar(f);
   }
 
   async marcarTramoVivo(_m: string, at: Date): Promise<void> {
@@ -253,37 +274,53 @@ class RutasEnMemoria implements IRutaOptimizadaRepository {
 }
 
 /**
- * Las ordenes del mensajero en reparto. Una gestionada sale del conjunto en el acto, como hace
- * `OrdenRepository.findParadasEnReparto` desde la ficha 454 con la gestion pendiente.
+ * Las ordenes asignadas del dia al mensajero. Solo las recogidas estan en reparto, y una gestionada
+ * sale del conjunto en el acto, como hace `OrdenRepository.findParadasEnReparto` desde la ficha 454
+ * con la gestion pendiente. `contarAsignadasDelDia` cuenta las 7 asignadas y las recogidas (R64).
  */
 class ParadasEnMemoria {
+  private readonly recogidas = new Set<string>();
   private readonly gestionadas = new Set<string>();
   private readonly filas: ParadaRutaRow[] = [
     ...Object.entries(PARADAS).map(([ordenId, p], i) => ({
       ordenId,
       latitud: p.lat,
       longitud: p.lng,
-      createdAt: new Date(T0.getTime() - (10 - i) * MIN),
+      createdAt: new Date(T0.getTime() - (20 - i) * MIN),
     })),
-    { ordenId: SIN_COORDENADAS, latitud: null, longitud: null, createdAt: T0 },
+    { ordenId: SIN_COORDENADAS, latitud: null, longitud: null, createdAt: en(-13) },
   ];
+
+  recoger(ids: string[]): void {
+    for (const id of ids) this.recogidas.add(id);
+  }
+
+  quedanPorRecoger(): boolean {
+    return this.filas.some((f) => !this.recogidas.has(f.ordenId));
+  }
+
+  tieneCoordenadas(ordenId: string): boolean {
+    return this.filas.some((f) => f.ordenId === ordenId && f.latitud !== null);
+  }
 
   gestionar(ordenId: string): void {
     this.gestionadas.add(ordenId);
   }
 
   async findParadasEnReparto(): Promise<ParadaRutaRow[]> {
-    return this.filas.filter((f) => !this.gestionadas.has(f.ordenId));
+    return this.filas.filter((f) => this.recogidas.has(f.ordenId) && !this.gestionadas.has(f.ordenId));
   }
 
-  // SLT-59 (R64): la jornada no pulsa el boton con la primera ruta pendiente; T7.8 decide si hace falta.
   async contarAsignadasDelDia(): Promise<{ asignadas: number; recogidas: number }> {
-    return { asignadas: 0, recogidas: 0 };
+    return { asignadas: this.filas.length, recogidas: this.recogidas.size };
   }
 }
 
-/** La cola en memoria: `ON CONFLICT (dedupe_key) DO NOTHING` y el reclamo por `run_after`. */
-class JobsEnMemoria implements IJobRepository {
+/**
+ * La cola en memoria: `ON CONFLICT (dedupe_key) DO NOTHING`, el `DO UPDATE … WHERE estado =
+ * 'pending'` de `encolarOMoverPendiente` (D29) y el reclamo por `run_after`.
+ */
+class JobsEnMemoria implements IJobRepositoryMovible {
   readonly filas: JobDTO[] = [];
 
   constructor(private readonly reloj: () => Date) {}
@@ -296,6 +333,22 @@ class JobsEnMemoria implements IJobRepository {
     if (opts.dedupeKey !== undefined && this.filas.some((j) => j.dedupeKey === opts.dedupeKey)) {
       return null;
     }
+    return this.crear(tipo, payload, opts);
+  }
+
+  async encolarOMoverPendiente(
+    tipo: JobTipo,
+    payload: Record<string, unknown>,
+    opts: EncolarOMoverOpts,
+  ): Promise<JobDTO | null> {
+    const previa = this.filas.find((j) => j.dedupeKey === opts.dedupeKey);
+    if (previa === undefined) return this.crear(tipo, payload, opts);
+    if (previa.estado !== "pending") return null;
+    Object.assign(previa, { runAfter: opts.runAfter, payload, updatedAt: this.reloj() });
+    return { ...previa };
+  }
+
+  private crear(tipo: JobTipo, payload: Record<string, unknown>, opts: EnqueueOpts): JobDTO {
     const ahora = this.reloj();
     const job: JobDTO = {
       id: `job-${this.filas.length + 1}`,
@@ -363,15 +416,19 @@ class JobsEnMemoria implements IJobRepository {
   }
 }
 
-/** Optimizador: siempre el orden s1…s6 de las paradas que le lleguen. */
-function optimizadorQueOrdena(): IRouteOptimizationClient {
-  return {
-    optimizar: async (input: OptimizarInput): Promise<OptimizarOutcome> => ({
-      status: "ok",
-      secuencia: input.paradas.map((p) => p.ordenId).sort(),
-      fuente: "proveedor",
-    }),
+/**
+ * Optimizador: el orden s1…s6 de las paradas que le lleguen. `rechazar` lo pasa a responder 401
+ * (la credencial rechazada de las filas 11-13).
+ */
+function optimizadorQueOrdena() {
+  const estado = { rechazar: false };
+  const cliente: IRouteOptimizationClient = {
+    optimizar: async (input: OptimizarInput): Promise<OptimizarOutcome> =>
+      estado.rechazar
+        ? { status: "config_invalida", detalle: "optimizar ruta: HTTP 401" }
+        : { status: "ok", secuencia: input.paradas.map((p) => p.ordenId).sort(), fuente: "proveedor" },
   };
+  return { cliente, estado };
 }
 
 /** Routes: tramos RECTOS entre los puntos pedidos; bastan para medir la desviacion. */
@@ -402,19 +459,14 @@ function routesRecto(): IRoutesClient {
 
 type Jornada = ReturnType<typeof montarJornada>;
 
-/**
- * Como registra el mensajero una gestion. Es lo unico que cambia entre «Hoy» y «Nuevo»: el
- * resto del escenario —eventos, reloj, cola, servicio— es el mismo para los dos.
- */
-type GestionVariante = (j: Jornada, ordenId: string, gps: Punto) => Promise<void>;
-
-function montarJornada(cliente: IRouteOptimizationClient = optimizadorQueOrdena()) {
-  let ahora = T0;
+function montarJornada() {
+  let ahora = en(-30);
   const reloj = () => ahora;
-  const rutas = new RutasEnMemoria();
+  const rutas = new RutasEnMemoria(reloj);
   const paradas = new ParadasEnMemoria();
   const jobs = new JobsEnMemoria(reloj);
-  const optimizar = vi.fn(cliente.optimizar);
+  const proveedor = optimizadorQueOrdena();
+  const optimizar = vi.fn(proveedor.cliente.optimizar);
   const routes = routesRecto();
   const trazar = vi.fn(routes.trazar);
   const service = new OptimizacionRutaService(
@@ -439,14 +491,12 @@ function montarJornada(cliente: IRouteOptimizationClient = optimizadorQueOrdena(
     rutas,
     paradas,
     jobs,
+    proveedor,
     optimizar,
     trazar,
     service,
     get ahora() {
       return ahora;
-    },
-    irA(t: Date) {
-      ahora = t;
     },
     /**
      * Corre la cola como el cron: cada job al vencer su `runAfter`, en orden, hasta `t`. Un
@@ -459,7 +509,7 @@ function montarJornada(cliente: IRouteOptimizationClient = optimizadorQueOrdena(
         if (siguiente.runAfter > ahora) ahora = siguiente.runAfter;
         await cola.drenar(JOBS_CONFIG.JOBS_BATCH_SIZE);
       }
-      ahora = t;
+      if (t > ahora) ahora = t;
     },
     conteo(): Conteo {
       return {
@@ -477,87 +527,84 @@ interface Conteo {
   jobs: number;
 }
 
-/** Recogida de las 7 (`recogerLote` + `registrarUbicacion`): origen GPS y un job con debounce. */
-async function recoger(j: Jornada, gps: Punto): Promise<void> {
-  await encolarOptimizacionDebounce(j.jobs, undefined, M, {
-    ahora: j.ahora,
-    debounceS: CONFIG.RUTA_DEBOUNCE_S,
-  });
+/**
+ * Una recogida como la hace la app: `GestionOrdenRepository.recogerLote` pasa las ordenes a reparto
+ * y, con la primera ruta del dia pendiente, deja o mueve el job del dia (R58, R76); despues
+ * `registrarUbicacion` guarda el GPS como origen (92/R23).
+ */
+async function recoger(j: Jornada, ids: string[], gps: Punto): Promise<void> {
+  j.paradas.recoger(ids);
+  const diaCR = fechaCalendarioCR(j.ahora);
+  if (primeraRutaPendiente(j.rutas.fila?.calculadaAt ?? null, diaCR)) {
+    await encolarPrimeraRutaPorRecogida(j.jobs, undefined, M, {
+      ahora: j.ahora,
+      diaCR,
+      quedanPorRecoger: j.paradas.quedanPorRecoger(),
+    });
+  }
   await j.rutas.upsertOrigen(M, { ...gps, capturadaAt: j.ahora, fuente: "gps" });
 }
 
+/** Recoge `ids` de una en una, una por minuto, empezando ahora. */
+async function recogerDeUnaEnUna(j: Jornada, ids: string[], gps: Punto): Promise<void> {
+  for (const [i, id] of ids.entries()) {
+    if (i > 0) await j.avanzarHasta(new Date(j.ahora.getTime() + MIN));
+    await recoger(j, [id], gps);
+  }
+}
+
 /** Boton «sincronizar» (`lib/actions/ruta-mensajero.ts`): ejecucion manual con la ubicacion. */
-async function sincronizar(j: Jornada, gps: Punto): Promise<void> {
-  await j.service.ejecutar(M, { motivo: "manual", ubicacion: gps });
+async function sincronizar(j: Jornada, gps: Punto): Promise<EjecutarOptimizacionResult> {
+  return j.service.ejecutar(M, { motivo: "manual", ubicacion: gps });
+}
+
+/** Disparo de salida (R62): la pantalla manda la posicion en vivo; el servidor decide (R63). */
+async function salir(j: Jornada, gps: Punto): Promise<EjecutarOptimizacionResult> {
+  return j.service.ejecutar(M, { motivo: "salida", ubicacion: gps });
+}
+
+/**
+ * La gestion como la hace la app: `registrarGestionPendiente` saca la orden del reparto y, en la
+ * misma transaccion, encola con debounce si la orden tiene coordenadas o la primera ruta del dia
+ * esta pendiente (R21/R22, R59); despues `MisAsignacionesService` guarda el GPS como origen
+ * (92/R23) y la Server Action llama a `reducirSinLlamadas` (R44).
+ */
+async function gestionar(j: Jornada, ordenId: string, gps: Punto): Promise<void> {
+  j.paradas.gestionar(ordenId);
+  const pendiente = primeraRutaPendiente(
+    j.rutas.fila?.calculadaAt ?? null,
+    fechaCalendarioCR(j.ahora),
+  );
+  if (j.paradas.tieneCoordenadas(ordenId) || pendiente) {
+    await encolarOptimizacionDebounce(j.jobs, undefined, M, {
+      ahora: j.ahora,
+      debounceS: CONFIG.RUTA_DEBOUNCE_S,
+      origen: "gestion",
+    });
+  }
+  await j.rutas.upsertOrigen(M, { ...gps, capturadaAt: j.ahora, fuente: "gps" });
+  await j.service.reducirSinLlamadas(M);
 }
 
 interface Evento {
-  n: number;
+  n: string;
   tMin: number;
   descripcion: string;
-  correr: (j: Jornada, gestionar: GestionVariante) => Promise<void>;
+  correr: (j: Jornada) => Promise<unknown>;
 }
 
-/** design §8, fila a fila. Los minutos son desde T0; la fila 4 son dos entregas a 20 s. */
-const JORNADA: Evento[] = [
-  { n: 1, tMin: 0, descripcion: "Recoge las 7 (GPS en A)", correr: (j) => recoger(j, A) },
-  {
-    n: 2,
-    tMin: 5,
-    descripcion: "Sincroniza a mano, GPS a 50 m de A",
-    correr: (j) => sincronizar(j, alNorte(A, 50)),
-  },
-  {
-    n: 3,
-    tMin: 10,
-    descripcion: "Gestiona la orden sin coordenadas, GPS a 300 m, sobre la ruta",
-    correr: (j, gestionar) => gestionar(j, SIN_COORDENADAS, alEste(A, 300)),
-  },
-  {
-    n: 4,
-    tMin: 20,
-    descripcion: "Entrega s1 y s2 con 20 s de diferencia (misma ventana)",
-    correr: async (j, gestionar) => {
-      await gestionar(j, "s1", PARADAS.s1);
-      await j.avanzarHasta(new Date(j.ahora.getTime() + 20_000));
-      await gestionar(j, "s2", PARADAS.s2);
-    },
-  },
-  { n: 5, tMin: 40, descripcion: "Entrega s3", correr: (j, g) => g(j, "s3", PARADAS.s3) },
-  {
-    n: 6,
-    tMin: 50,
-    descripcion: "Sincroniza a mano a 1,5 km de la ruta (quedan s4, s5, s6)",
-    correr: (j) => sincronizar(j, alNorte(PARADAS.s3, 1500)),
-  },
-  {
-    n: 7,
-    tMin: 60,
-    descripcion: "Entrega s5 antes que s4 (fuera de orden, 1 hueco)",
-    correr: (j, g) => g(j, "s5", PARADAS.s5),
-  },
-  { n: 8, tMin: 80, descripcion: "Entrega s4 (queda s6)", correr: (j, g) => g(j, "s4", PARADAS.s4) },
-  {
-    n: 9,
-    tMin: 85,
-    descripcion: "Sincroniza a mano a 200 m de la ruta, 1 parada",
-    correr: (j) => sincronizar(j, alNorte(PARADAS.s4, 200)),
-  },
-  { n: 10, tMin: 100, descripcion: "Entrega s6 (quedan 0)", correr: (j, g) => g(j, "s6", PARADAS.s6) },
-];
-
 /**
- * Corre la jornada y devuelve lo que costo CADA fila: su evento mas los jobs que encolo, que
+ * Corre los eventos y devuelve lo que costo CADA fila: su evento mas los jobs que encolo, que
  * corren antes del evento siguiente. La ultima fila deja vaciar la cola.
  */
-async function medirJornada(gestionar: GestionVariante): Promise<{
-  j: Jornada;
-  filas: (Conteo & { n: number })[];
-}> {
-  const j = montarJornada();
-  const filas: (Conteo & { n: number })[] = [];
+async function medir(
+  eventos: Evento[],
+  j: Jornada = montarJornada(),
+): Promise<{ j: Jornada; filas: (Conteo & { n: string })[]; desenlaces: unknown[] }> {
+  const filas: (Conteo & { n: string })[] = [];
+  const desenlaces: unknown[] = [];
   let inicio: Conteo | null = null;
-  const cerrarFila = (n: number) => {
+  const cerrarFila = (n: string) => {
     if (inicio === null) return;
     const fin = j.conteo();
     filas.push({
@@ -568,16 +615,16 @@ async function medirJornada(gestionar: GestionVariante): Promise<{
     });
   };
 
-  for (const [i, evento] of JORNADA.entries()) {
-    await j.avanzarHasta(new Date(T0.getTime() + evento.tMin * MIN));
-    if (i > 0) cerrarFila(JORNADA[i - 1].n);
+  for (const [i, evento] of eventos.entries()) {
+    await j.avanzarHasta(en(evento.tMin));
+    if (i > 0) cerrarFila(eventos[i - 1].n);
     inicio = j.conteo();
-    await evento.correr(j, gestionar);
+    desenlaces.push(await evento.correr(j));
   }
-  const ultima = JORNADA[JORNADA.length - 1];
-  await j.avanzarHasta(new Date(T0.getTime() + (ultima.tMin + 120) * MIN));
+  const ultima = eventos[eventos.length - 1];
+  await j.avanzarHasta(en(ultima.tMin + 120));
   cerrarFila(ultima.n);
-  return { j, filas };
+  return { j, filas, desenlaces };
 }
 
 function totales(filas: Conteo[]): Conteo {
@@ -587,79 +634,161 @@ function totales(filas: Conteo[]): Conteo {
   );
 }
 
-/**
- * Fila 11: un job cuyo `optimizeTours` responde 401 en cada intento. Cuenta las llamadas hasta
- * que la cola lo deja en dead-letter.
- */
-async function medirJobCon401(): Promise<{ llamadas: number; job: JobDTO }> {
-  const rechazo: IRouteOptimizationClient = {
-    optimizar: async () => ({ status: "config_invalida", detalle: "optimizar ruta: HTTP 401" }),
-  };
-  const j = montarJornada(rechazo);
-  await recoger(j, A);
-  await j.avanzarHasta(new Date(T0.getTime() + 24 * 60 * MIN));
-  return { llamadas: j.optimizar.mock.calls.length, job: j.jobs.filas[0] };
+function informe(titulo: string, eventos: Evento[], filas: (Conteo & { n: string })[]): string {
+  const total = totales(filas);
+  return [
+    `[SLT-59 T7.8] ${titulo} — MEDIDO (opt / routes / jobs):`,
+    ...filas.map((f) => {
+      const ev = eventos.find((e) => e.n === f.n);
+      return `  ${f.n}. t=${ev?.tMin} min — ${ev?.descripcion}: ${f.opt} / ${f.routes} / ${f.jobs}`;
+    }),
+    `  Total: ${total.opt} / ${total.routes} / ${total.jobs}`,
+  ].join("\n");
 }
 
-/**
- * La gestion como la hace hoy la app: `registrarGestionPendiente` saca la orden del reparto y, en
- * la misma transaccion, encola con debounce SOLO si la orden tiene coordenadas (R21/R22); despues
- * `MisAsignacionesService` guarda el GPS como origen (92/R23) y la Server Action llama a
- * `reducirSinLlamadas` (R27).
- */
-const gestionNuevo: GestionVariante = async (j, ordenId, gps) => {
-  j.paradas.gestionar(ordenId);
-  if (ordenId !== SIN_COORDENADAS) {
-    await encolarOptimizacionDebounce(j.jobs, undefined, M, {
-      ahora: j.ahora,
-      debounceS: CONFIG.RUTA_DEBOUNCE_S,
-    });
-  }
-  await j.rutas.upsertOrigen(M, { ...gps, capturadaAt: j.ahora, fuente: "gps" });
-  await j.service.reducirSinLlamadas(M);
-};
+// ── Jornada A (design §8.0) ───────────────────────────────────────────────────────────────
 
-/**
- * design §8, columna «Nuevo»: opt / routes / jobs por fila.
- *
- * [2026-10-30, SLT-59, D16] Ajuste minimo de T6.1 (la reescritura a §8.0 es T7.8): la fila 7
- * (fuera de orden, 1 hueco) ya no paga un tramo puente sino la re-sincronizacion completa de
- * R42: 1 `optimizeTours` + 1 `computeRoutes` (antes 0 / 1). Total 2 / 3 / 6 -> 3 / 3 / 6.
- */
-const NUEVO: (Conteo & { n: number })[] = [
-  { n: 1, opt: 1, routes: 1, jobs: 1 },
-  { n: 2, opt: 0, routes: 0, jobs: 0 },
-  { n: 3, opt: 0, routes: 0, jobs: 0 },
-  { n: 4, opt: 0, routes: 0, jobs: 1 },
-  { n: 5, opt: 0, routes: 0, jobs: 1 },
-  { n: 6, opt: 1, routes: 1, jobs: 0 },
-  { n: 7, opt: 1, routes: 1, jobs: 1 },
-  { n: 8, opt: 0, routes: 0, jobs: 1 },
-  { n: 9, opt: 0, routes: 0, jobs: 0 },
-  { n: 10, opt: 0, routes: 0, jobs: 1 },
+const JORNADA_A: Evento[] = [
+  {
+    n: "0",
+    tMin: -10,
+    descripcion: "Recoge s1, s2, s3 y x de una en una, 1 por minuto (GPS en B)",
+    correr: (j) => recogerDeUnaEnUna(j, ["s1", "s2", "s3", SIN_COORDENADAS], B),
+  },
+  {
+    n: "1",
+    tMin: -6,
+    descripcion: "Pulsa «Sincronizar» con 4 de 7 recogidas (57 %)",
+    correr: (j) => sincronizar(j, B),
+  },
+  {
+    n: "1b",
+    tMin: -5,
+    descripcion: "«Recoger todas» con las 3 restantes (s4, s5, s6)",
+    correr: (j) => recoger(j, ["s4", "s5", "s6"], B),
+  },
+  {
+    n: "2",
+    tMin: 5,
+    descripcion: "Sincroniza a mano, GPS a 50 m de A",
+    correr: (j) => sincronizar(j, alNorte(A, 50)),
+  },
+  {
+    n: "3",
+    tMin: 10,
+    descripcion: "Gestiona x (sin coordenadas), GPS a 300 m",
+    correr: (j) => gestionar(j, SIN_COORDENADAS, alEste(A, 300)),
+  },
+  {
+    n: "4",
+    tMin: 20,
+    descripcion: "Entrega s1 y s2 con 20 s de diferencia",
+    correr: async (j) => {
+      await gestionar(j, "s1", PARADAS.s1);
+      await j.avanzarHasta(new Date(j.ahora.getTime() + 20_000));
+      await gestionar(j, "s2", PARADAS.s2);
+    },
+  },
+  {
+    n: "5",
+    tMin: 40,
+    descripcion: "Entrega s3 a 1,5 km de la ruta",
+    correr: (j) => gestionar(j, "s3", alNorte(PARADAS.s3, 1500)),
+  },
+  {
+    n: "6",
+    tMin: 50,
+    descripcion: "Sincroniza a mano a 1,5 km de la ruta (quedan s4, s5, s6)",
+    correr: (j) => sincronizar(j, alNorte(PARADAS.s3, 1500)),
+  },
+  {
+    n: "7",
+    tMin: 60,
+    descripcion: "Entrega s5 antes que s4 (fuera de orden)",
+    correr: (j) => gestionar(j, "s5", PARADAS.s5),
+  },
+  { n: "8", tMin: 80, descripcion: "Entrega s4 (queda s6)", correr: (j) => gestionar(j, "s4", PARADAS.s4) },
+  {
+    n: "9",
+    tMin: 85,
+    descripcion: "Sincroniza a mano a 200 m de la ruta, 1 parada",
+    correr: (j) => sincronizar(j, alNorte(PARADAS.s4, 200)),
+  },
+  { n: "10", tMin: 100, descripcion: "Entrega s6 (quedan 0)", correr: (j) => gestionar(j, "s6", PARADAS.s6) },
 ];
 
-describe("SLT-59/R37 — jornada de referencia (design §8)", () => {
-  it("T5.1 — la columna «Nuevo» como aserciones exactas, fila a fila y en total (R37)", async () => {
-    const { j, filas } = await medirJornada(gestionNuevo);
-    const total = totales(filas);
-    const fila11 = await medirJobCon401();
-    console.info(
-      [
-        "[SLT-59 T5.1] jornada de referencia — columna «Nuevo» MEDIDA (opt / routes / jobs):",
-        ...filas.map((f) => {
-          const ev = JORNADA.find((e) => e.n === f.n);
-          return `  ${f.n}. t=${ev?.tMin} min — ${ev?.descripcion}: ${f.opt} / ${f.routes} / ${f.jobs}`;
-        }),
-        `  Total: ${total.opt} / ${total.routes} / ${total.jobs}`,
-        `  11. Un job recibe 401: ${fila11.llamadas} llamadas (job ${fila11.job.estado}, ` +
-          `intentos ${fila11.job.intentos}/${fila11.job.maxIntentos})`,
-      ].join("\n"),
-    );
+/** design §8.0, jornada A, columna «Nuevo». */
+const NUEVO_A: (Conteo & { n: string })[] = [
+  { n: "0", opt: 0, routes: 0, jobs: 0 },
+  { n: "1", opt: 0, routes: 0, jobs: 0 },
+  { n: "1b", opt: 1, routes: 1, jobs: 1 },
+  { n: "2", opt: 0, routes: 0, jobs: 0 },
+  { n: "3", opt: 0, routes: 0, jobs: 0 },
+  { n: "4", opt: 0, routes: 0, jobs: 1 },
+  { n: "5", opt: 0, routes: 0, jobs: 1 },
+  { n: "6", opt: 1, routes: 1, jobs: 0 },
+  { n: "7", opt: 1, routes: 1, jobs: 1 },
+  { n: "8", opt: 0, routes: 0, jobs: 1 },
+  { n: "9", opt: 0, routes: 0, jobs: 0 },
+  { n: "10", opt: 0, routes: 0, jobs: 1 },
+];
 
-    expect(filas).toEqual(NUEVO);
-    expect(total).toEqual({ opt: 3, routes: 3, jobs: 6 });
+// ── Jornada B (respaldo de D25) ───────────────────────────────────────────────────────────
+// 7 asignadas; s6 nunca se recoge. Las 6 recogidas van de t = -10 a t = -5.
 
+const RECOGIDAS_B = ["s1", "s2", "s3", "s4", "s5", SIN_COORDENADAS];
+
+const recogeB1: Evento = {
+  n: "B1",
+  tMin: -10,
+  descripcion: "Recoge 6 de 7 de una en una, 1 por minuto (GPS en B)",
+  correr: (j) => recogerDeUnaEnUna(j, RECOGIDAS_B, B),
+};
+
+const JORNADA_B: Evento[] = [
+  recogeB1,
+  {
+    n: "B2",
+    tMin: -4,
+    descripcion: "Pantalla abierta, la posicion en vivo llega a 400 m de B",
+    correr: (j) => salir(j, alOeste(B, 400)),
+  },
+  {
+    n: "B3",
+    tMin: -3,
+    descripcion: "La posicion en vivo pasa de 1000 m de B",
+    correr: (j) => salir(j, alOeste(B, 1100)),
+  },
+  {
+    n: "B4",
+    tMin: -2,
+    descripcion: "Otra lectura a 1,5 km, o se recarga la pagina",
+    correr: (j) => salir(j, alOeste(B, 1500)),
+  },
+];
+
+const NUEVO_B: (Conteo & { n: string })[] = [
+  { n: "B1", opt: 0, routes: 0, jobs: 0 },
+  { n: "B2", opt: 0, routes: 0, jobs: 0 },
+  { n: "B3", opt: 1, routes: 1, jobs: 0 },
+  { n: "B4", opt: 0, routes: 0, jobs: 0 },
+];
+
+describe("SLT-59/R37 — jornada de referencia (design §8.0)", () => {
+  it("jornada A: la columna «Nuevo» fila a fila y en total {3, 3, 6}", async () => {
+    const { j, filas, desenlaces } = await medir(JORNADA_A);
+    console.info(informe("jornada A", JORNADA_A, filas));
+
+    expect(filas).toEqual(NUEVO_A);
+    expect(totales(filas)).toEqual({ opt: 3, routes: 3, jobs: 6 });
+
+    // Fila 1 (R64): el boton con el 57 % no paga y dice cuantas lleva.
+    expect(desenlaces[1]).toEqual({
+      status: "omitida",
+      razon: "recogida_insuficiente",
+      recogidas: 4,
+      asignadas: 7,
+    });
     // El arnes recorrio la jornada entera: sin paradas, cola vacia, y la orden sin coordenadas
     // nunca llega al proveedor.
     expect(j.rutas.fila?.paradas).toEqual([]);
@@ -667,10 +796,94 @@ describe("SLT-59/R37 — jornada de referencia (design §8)", () => {
     for (const [input] of j.optimizar.mock.calls) {
       expect(input.paradas.map((p) => p.ordenId)).not.toContain(SIN_COORDENADAS);
     }
+  });
 
-    // Fila 11 (R29): el 401 deja el job en dead-letter tras UNA llamada, no tras 5.
-    expect(fila11.llamadas).toBe(1);
-    expect(fila11.job.estado).toBe("failed");
-    expect(fila11.job.intentos).toBe(1);
+  it("filas 11-13: el 401 cuesta 1 llamada; el boton respeta el enfriamiento y luego recupera", async () => {
+    // Fila 11 (R29): un job cuyo `optimizeTours` responde 401 queda en dead-letter tras UNA llamada.
+    const j11 = montarJornada();
+    j11.proveedor.estado.rechazar = true;
+    await j11.avanzarHasta(en(-10));
+    await recoger(j11, TODAS, B);
+    await j11.avanzarHasta(en(24 * 60));
+    expect(j11.optimizar).toHaveBeenCalledTimes(1);
+    expect(j11.jobs.filas).toHaveLength(1);
+    expect(j11.jobs.filas[0]).toMatchObject({ estado: "failed", intentos: 1 });
+
+    // Filas 12 y 13 (R53): con la ruta del dia hecha, una sincronizacion a mano falla con 401
+    // (fuera de las filas). Despues, el boton sin cambios ni desvio espera el enfriamiento.
+    const j = montarJornada();
+    await j.avanzarHasta(en(-10));
+    await recoger(j, TODAS, B);
+    await j.avanzarHasta(en(30));
+    j.proveedor.estado.rechazar = true;
+    await expect(sincronizar(j, alNorte(PARADAS.s3, 1500))).rejects.toThrow();
+    expect(j.rutas.fila?.estado).toBe("desactualizada");
+    j.proveedor.estado.rechazar = false;
+
+    const { filas, desenlaces } = await medir(
+      [
+        { n: "12", tMin: 32, descripcion: "Pulsa 2 min despues del fallo", correr: (jj) => sincronizar(jj, alNorte(A, 50)) },
+        { n: "13", tMin: 36, descripcion: "Pulsa a los 6 min", correr: (jj) => sincronizar(jj, alNorte(A, 50)) },
+      ],
+      j,
+    );
+    expect(filas).toEqual([
+      { n: "12", opt: 0, routes: 0, jobs: 0 },
+      { n: "13", opt: 1, routes: 1, jobs: 0 },
+    ]);
+    expect(desenlaces[0]).toMatchObject({ status: "omitida", razon: "enfriamiento" });
+    expect(desenlaces[1]).toMatchObject({ status: "ok" });
+  });
+
+  it("jornada B: la salida a mas de 1000 m paga la primera ruta y nada mas, {1, 1, 0}", async () => {
+    const { filas } = await medir(JORNADA_B);
+    console.info(informe("jornada B", JORNADA_B, filas));
+    expect(filas).toEqual(NUEVO_B);
+    expect(totales(filas)).toEqual({ opt: 1, routes: 1, jobs: 0 });
+  });
+
+  it("variante B: la primera gestion antes de alejarse -> 1 / 1 / 1 (R59)", async () => {
+    const eventos: Evento[] = [
+      recogeB1,
+      {
+        n: "B-gestion",
+        tMin: -4,
+        descripcion: "Gestiona s1 antes de alejarse",
+        correr: (j) => gestionar(j, "s1", alOeste(B, 100)),
+      },
+    ];
+    const { filas } = await medir(eventos);
+    console.info(informe("variante B, primera gestion", eventos, filas));
+    expect(totales(filas)).toEqual({ opt: 1, routes: 1, jobs: 1 });
+  });
+
+  it("variante B: el boton con 6 de 7 recogidas (86 %) -> 1 / 1 / 0 (R64)", async () => {
+    const eventos: Evento[] = [
+      recogeB1,
+      { n: "B-boton", tMin: -4, descripcion: "Pulsa con el 86 %", correr: (j) => sincronizar(j, B) },
+    ];
+    const { filas, desenlaces } = await medir(eventos);
+    console.info(informe("variante B, boton 86 %", eventos, filas));
+    expect(desenlaces[1]).toMatchObject({ status: "ok" });
+    expect(totales(filas)).toEqual({ opt: 1, routes: 1, jobs: 0 });
+  });
+
+  it("variante B: el boton con 5 de 7 recogidas (71 %) no paga y dice «5 de 7» (R64)", async () => {
+    const j = montarJornada();
+    await j.avanzarHasta(en(-10));
+    await recogerDeUnaEnUna(j, ["s1", "s2", "s3", "s4", "s5"], B);
+    const antes = j.conteo();
+    const desenlace = await sincronizar(j, B);
+    expect(desenlace).toEqual({
+      status: "omitida",
+      razon: "recogida_insuficiente",
+      recogidas: 5,
+      asignadas: 7,
+    });
+    const despues = j.conteo();
+    expect({ opt: despues.opt - antes.opt, routes: despues.routes - antes.routes }).toEqual({
+      opt: 0,
+      routes: 0,
+    });
   });
 });

@@ -87,6 +87,12 @@ import {
 import { optlog, opterror } from "@/lib/logging/optimizer-log";
 import type { IRoutesClient } from "@/lib/interfaces/external/IRoutesClient";
 import type { MotivoOptimizacion } from "@/lib/interfaces/services/IOptimizacionRutaService";
+import {
+  FUERA_DE_COLA,
+  type ContextoLlamadaRuta,
+  type MotivoLlamadaRuta,
+} from "@/lib/clients/registro-llamada-google";
+import type { OrigenJobRuta } from "@/lib/services/jobs/optimizacion-ruta-encolado";
 import { fechaCalendarioCR, inicioDelDiaCREnUtc, startOfDayCR } from "@/lib/utils/fecha-cr";
 
 /** Fuente de las paradas. `Pick` para que los dobles de test no implementen 40 metodos. */
@@ -397,6 +403,61 @@ export function decidirGuardaRuta(input: {
   return { tipo: "reducir", previa, restantes };
 }
 
+/** SLT-59 — por que `decidirGuardaRuta` mando recalcular. */
+export type MotivoReoptimizar = Extract<DecisionGuardaRuta, { tipo: "reoptimizar" }>["motivo"];
+
+/**
+ * SLT-59 (D27, D28, D29; R73, R76; design §13.1) — el motivo registrado de las llamadas de un
+ * recalculo. Puro: lo decide con la rama de `decidirGuardaRuta` (que ya aplica la precedencia de
+ * §12.1) y con quien disparo. El cliente no decide nada.
+ *
+ * Fuera de la tabla de §13.1 hay combinaciones que el flujo no produce hoy (un automatico no mide
+ * el desvio, R51; el boton no pasa por `desactualizada`, R53; el traspaso no encola con la primera
+ * pendiente, R60). Se les da el motivo mas cercano para que el `switch` sea total.
+ */
+export function motivoLlamadaRuta(
+  decision: MotivoReoptimizar,
+  disparo: MotivoOptimizacion,
+  origen: OrigenJobRuta | null,
+): MotivoLlamadaRuta {
+  if (disparo === "salida") return "primera_ruta_salida";
+  if (disparo === "manual") {
+    switch (decision) {
+      case "sin_ruta":
+      case "primera_del_dia":
+        return "primera_ruta_boton";
+      case "desviado":
+        return "sincronizacion_manual_desvio";
+      case "paradas_nuevas":
+      case "fuera_de_orden":
+        return "sincronizacion_manual_paradas";
+      case "desactualizada":
+      case "recuperacion":
+        return "recuperacion_ruta_caida";
+    }
+  }
+  // Un job. Fuera de orden y ruta caida no dependen de quien encolo.
+  if (decision === "fuera_de_orden") return "entrega_fuera_de_orden";
+  if (decision === "desactualizada" || decision === "recuperacion") {
+    return "reintento_ruta_desactualizada";
+  }
+  switch (origen) {
+    case null:
+      return "job_sin_origen";
+    // R76: el job de la recogida corre por la espera de 10 min o por la ultima recogida (R58).
+    case "recogida_parcial":
+      return "primera_ruta_debounce_recogida";
+    case "recogida":
+      return "primera_ruta_recogida_completa";
+    case "gestion":
+      return decision === "paradas_nuevas" || decision === "desviado"
+        ? "paradas_nuevas_gestion"
+        : "primera_ruta_primera_gestion";
+    case "traspaso":
+      return "paradas_nuevas_traspaso";
+  }
+}
+
 /**
  * SLT-59 (design §2.2) — como rehacer el trazado de una reduccion, y si cuesta una llamada.
  *   `concatenar`  R13: cada parada restante conserva el tramo que llega a ella. 0 llamadas.
@@ -595,8 +656,10 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
       // y el origen aunque no hubiera nada que hacer, que es justo lo que R6 prohibe. Con
       // cero paradas no hay conjunto que comparar: sigue limpiando como hoy.
       // [2026-10-30, SLT-59, D16] «R11» se lee R41/R42.
+      // Sin fila la guarda no corre y la decision seria `sin_ruta` (R7): es el motivo de partida.
+      let recalculo: MotivoReoptimizar = "sin_ruta";
       if (unica !== undefined) {
-        const desenlace = await this.guardaSinRecalculo(
+        const guarda = await this.guardaSinRecalculo(
           mensajeroId,
           rutaVista,
           [unica],
@@ -604,7 +667,8 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
           "sin_paradas",
           { disparo: disparoDe(opts.motivo), ahora },
         );
-        if (desenlace !== null) return desenlace;
+        if ("desenlace" in guarda) return guarda.desenlace;
+        recalculo = guarda.reoptimizar;
       }
 
       await this.persistirUbicacion(mensajeroId, ubicacionGps);
@@ -639,7 +703,13 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
         });
         return { status: "omitida", razon: "sin_paradas" };
       }
-      const trazado = await this.trazar([unica.ordenId], [unica], origen);
+      // SLT-59 (§13.1): la rama de una parada solo produce el `computeRoutes`, con su motivo.
+      const trazado = await this.trazar(
+        [unica.ordenId],
+        [unica],
+        origen,
+        this.contextoLlamada(mensajeroId, recalculo, opts),
+      );
       await this.persistirTrazado(mensajeroId, huellaSet, trazado);
       return {
         status: "omitida",
@@ -687,7 +757,7 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
     // por CONJUNTO de paradas + desvio de mas de `RUTA_REOPT_DISTANCIA_M` respecto a la ruta
     // (`decidirGuardaRuta`), y la reduccion de R11 va justo detras. La huella de arriba se sigue
     // calculando igual porque condiciona las escrituras (`guardarTrazado`, `reducirSecuencia`).
-    const desenlace = await this.guardaSinRecalculo(
+    const guarda = await this.guardaSinRecalculo(
       mensajeroId,
       rutaVista,
       paradas,
@@ -695,7 +765,9 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
       "sin_cambios",
       { disparo: disparoDe(opts.motivo), ahora },
     );
-    if (desenlace !== null) return desenlace;
+    if ("desenlace" in guarda) return guarda.desenlace;
+    // SLT-59 (D27, §13.1): el `optimizeTours` y el `computeRoutes` de este recalculo, mismo motivo.
+    const contexto = this.contextoLlamada(mensajeroId, guarda.reoptimizar, opts);
 
     // Ya esta decidido recalcular: la ubicacion recibida se guarda como origen ANTES de la
     // llamada, como hacia la 92/R23. Si el proveedor falla despues, el GPS queda guardado.
@@ -714,10 +786,13 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
     // y se lanza el fallo TIPADO —que la cola sigue viendo como excepcion (R26)—.
     let outcome: OptimizarOutcome;
     try {
-      outcome = await this.client.optimizar({
-        origen: { lat: origen.lat, lng: origen.lng },
-        paradas: paradas.map((p) => ({ ordenId: p.ordenId, lat: p.latitud, lng: p.longitud })),
-      });
+      outcome = await this.client.optimizar(
+        {
+          origen: { lat: origen.lat, lng: origen.lng },
+          paradas: paradas.map((p) => ({ ordenId: p.ordenId, lat: p.latitud, lng: p.longitud })),
+        },
+        contexto,
+      );
     } catch (error) {
       opterror("service — el proveedor LANZO; se conserva el orden previo (R27)", error);
       const motivo = motivoDeExcepcion(error);
@@ -740,7 +815,7 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
         paradas: outcome.secuencia.length,
         secuenciaFuente: outcome.fuente,
       });
-      const trazado = await this.trazar(outcome.secuencia, paradas, origen);
+      const trazado = await this.trazar(outcome.secuencia, paradas, origen, contexto);
       await this.persistirTrazado(mensajeroId, huellaSet, trazado);
       return {
         status: "ok",
@@ -870,7 +945,7 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
     origen: { lat: number; lng: number; fuente: OrigenFuente } | null,
     razonOmitir: "sin_cambios" | "sin_paradas",
     contexto: { disparo: DisparoRuta; ahora: Date },
-  ): Promise<EjecutarOptimizacionResult | null> {
+  ): Promise<{ desenlace: EjecutarOptimizacionResult } | { reoptimizar: MotivoReoptimizar }> {
     const decision = decidirGuardaRuta({
       ruta,
       paradas,
@@ -885,7 +960,9 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
       decision: decision.tipo,
       motivo: "motivo" in decision ? decision.motivo : null,
     });
-    if (ruta === null || decision.tipo === "reoptimizar") return null;
+    if (decision.tipo === "reoptimizar") return { reoptimizar: decision.motivo };
+    // `decidirGuardaRuta` devuelve `sin_ruta` con `ruta === null`: aqui la ruta existe.
+    if (ruta === null) return { reoptimizar: "sin_ruta" };
 
     if (decision.tipo === "omitir") {
       // Nada que RECALCULAR, pero el mapa sigue necesitando su linea. El trazado persistido
@@ -899,13 +976,35 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
         tramosEnCache: cacheado?.tramos.length ?? 0,
       });
       return {
-        status: "omitida",
-        razon: enfriamiento ? "enfriamiento" : razonOmitir,
-        ...(cacheado !== null ? { trazado: cacheado } : {}),
+        desenlace: {
+          status: "omitida",
+          razon: enfriamiento ? "enfriamiento" : razonOmitir,
+          ...(cacheado !== null ? { trazado: cacheado } : {}),
+        },
       };
     }
 
-    return this.aplicarReduccion(mensajeroId, ruta, decision, origen);
+    return { desenlace: await this.aplicarReduccion(mensajeroId, ruta, decision, origen) };
+  }
+
+  /**
+   * SLT-59 (D27; R70, R73) — el contexto de las llamadas facturadas de un recalculo: el motivo de
+   * §13.1 y el intento del job (1 de 1 fuera de la cola).
+   */
+  private contextoLlamada(
+    mensajeroId: string,
+    recalculo: MotivoReoptimizar,
+    opts: EjecutarOptimizacionOpts,
+  ): ContextoLlamadaRuta {
+    const intento =
+      opts.job !== undefined
+        ? { intento: opts.job.intento, maxIntentos: opts.job.maxIntentos }
+        : FUERA_DE_COLA;
+    return {
+      motivo: motivoLlamadaRuta(recalculo, opts.motivo, opts.job?.origen ?? null),
+      mensajeroId,
+      ...intento,
+    };
   }
 
   /**
@@ -1054,12 +1153,16 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
     optlog("service — tramo vivo: ninguna guarda corto, se LLAMA a Routes (esto se factura)");
     let outcome;
     try {
-      outcome = await this.routes.trazar({
-        origen: input.ubicacion,
-        paradasEnOrden: [
-          { ordenId: destino.ordenId, lat: destino.latitud, lng: destino.longitud },
-        ],
-      });
+      outcome = await this.routes.trazar(
+        {
+          origen: input.ubicacion,
+          paradasEnOrden: [
+            { ordenId: destino.ordenId, lat: destino.latitud, lng: destino.longitud },
+          ],
+        },
+        // SLT-59 (§13.1): el boton del trayecto no viene de la cola.
+        { motivo: "trayecto_vivo", mensajeroId, ...FUERA_DE_COLA },
+      );
     } catch (error) {
       // Se traga la excepcion como en `trazar`: esto es apoyo visual, no una operacion.
       opterror("service — tramo vivo: el proveedor lanzo", error);
@@ -1139,6 +1242,7 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
     secuencia: string[],
     paradas: { ordenId: string; latitud: number; longitud: number }[],
     origen: { lat: number; lng: number },
+    contexto: ContextoLlamadaRuta,
   ): Promise<TrazadoRuta | null> {
     // La secuencia son `ordenId`; dibujar necesita COORDENADAS. Este mapa es el puente, y
     // reordena `paradas` al orden que decidio la optimizacion.
@@ -1163,7 +1267,7 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
     if (this.routes !== null) {
       let outcome;
       try {
-        outcome = await this.routes.trazar({ origen, paradasEnOrden });
+        outcome = await this.routes.trazar({ origen, paradasEnOrden }, contexto);
       } catch (error) {
         // Ni siquiera una excepcion cancela el dibujo: se cae al trazado local.
         opterror("service — el trazado por calles lanzo; se usa el local", error);
