@@ -25,9 +25,11 @@ const instanteUtcSchema = z
 const conteo = z.int().min(0);
 const importe = z.string().nullable();
 
-/** La base usa la etiqueta de Postgres (`'Admin Tienda'`); la app, la clave de `RolValue`. */
+/**
+ * La base usa la etiqueta de Postgres (`'Admin Tienda'`); la app, la clave de `RolValue`. SLT-66 (R1):
+ * `maestro` ya no tiene tope; una fila suya, si la hubiera, se ignora como cualquier rol desconocido.
+ */
 const ROL_DE_LA_ETIQUETA: Readonly<Record<string, RolConTope>> = {
-  maestro: "maestro",
   admin: "admin",
   mensajero: "mensajero",
   "Admin Tienda": "adminTienda",
@@ -40,6 +42,9 @@ export const planDeLaEmpresaFilaSchema = z.object({
   precio_mensual: importe,
   precio_anual: importe,
   descuento_anual_pct: importe,
+  // SLT-66: opcional hasta que M3 (20261031120200, T9) haga que `plan_de_la_empresa` lo devuelva; ahí
+  // pasa a obligatorio. Ausente se lee como «el plan no lo fija».
+  costo_por_orden: importe.optional(),
   tope_ordenes_ciclo: conteo.nullable(),
   tope_api_keys: conteo.nullable(),
   topes_rol: z.array(z.object({ rol: z.string(), maximo: conteo })),
@@ -50,6 +55,7 @@ export const planDeLaEmpresaFilaSchema = z.object({
   uso: z.object({
     ordenes: conteo,
     api_keys: conteo,
+    // SLT-66: `plan_de_la_empresa` lo devuelve hasta M3 (T9 lo quita); ya no se usa (R1, R3).
     maestro: conteo,
     admin: conteo,
     mensajero: conteo,
@@ -85,14 +91,19 @@ function topesDe(f: FilaPlanDeLaEmpresa): TopesPlan {
 
 function aLeido(f: FilaPlanDeLaEmpresa): PlanDeLaEmpresaLeido {
   const porRol: Record<RolConTope, number> = {
-    maestro: f.uso.maestro,
     admin: f.uso.admin,
     mensajero: f.uso.mensajero,
     adminTienda: f.uso.admin_tienda,
     adminSatelite: f.uso.admin_satelite,
   };
   return {
-    vigente: { nombre: f.nombre, topes: topesDe(f), modulos: f.modulos, precio: precioDe(f) },
+    vigente: {
+      nombre: f.nombre,
+      topes: topesDe(f),
+      modulos: f.modulos,
+      precio: precioDe(f),
+      costoPorOrden: f.costo_por_orden ?? null,
+    },
     ancla: f.ciclo_ancla,
     cortoDesde: f.ciclo_corto_desde,
     uso: { ordenes: f.uso.ordenes, apiKeys: f.uso.api_keys, porRol },
