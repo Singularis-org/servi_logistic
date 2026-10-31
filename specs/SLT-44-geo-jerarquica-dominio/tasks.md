@@ -68,32 +68,32 @@
 
 ## T4 — Las lecturas (depende de T3.2 y T1.1)
 
-- [ ] **T4.1** `GeoRepository`: reescribir `listProvinciasLite`, `listCantonesLite`,
+- [x] **T4.1** `GeoRepository`: reescribir `listProvinciasLite`, `listCantonesLite`,
   `listDistritosLite`, `listGeografiaLitePorZona`, `listArbol` y `listArbolDePais` sobre el
   catálogo (design §5). No se tocan `findHermanos`, `findHermanosDeNodo`, `leerDivisionDePais` ni
   las escrituras (design §7). Ampliar `GeoPrismaClient`. *Hecho:* typecheck verde y las filas
   R14–R17 de `geo-lecturas-catalogo.test.ts` (T4.5) verdes.
-- [ ] **T4.2** `OrdenRepository`: reescribir **solo** `findAllProvincias`,
+- [x] **T4.2** `OrdenRepository`: reescribir **solo** `findAllProvincias`,
   `findCantonesByProvinciaIds`, `findDistritosByCantonIds` y `findDistritoParaCorreccion` (design §5).
   No se toca ninguna otra lectura de órdenes, que son de SLT-65 (design §7). *Hecho:* las filas
   R18–R19 de T4.5 verdes; `IOrdenRepository` sin cambios en el diff.
-- [ ] **T4.3** [P] `CoberturaRepository.listDistritos` sobre el catálogo (design §5).
+- [x] **T4.3** [P] `CoberturaRepository.listDistritos` sobre el catálogo (design §5).
   `listZonaIdsConTarifaGeneral` no cambia. *Hecho:* la fila R20 de T4.5 y
   `cobertura-repository.test.ts` verdes.
-- [ ] **T4.4** Dobles unitarios (design §10, «cambian de entrada, no de salida»):
+- [x] **T4.4** Dobles unitarios (design §10, «cambian de entrada, no de salida»):
   `tests/unit/repositories/catalogo-filtros-ordenes.test.ts`, `orden-repository.bulk.test.ts` y
   los tests de composición que el typecheck señale (`cobertura.composition-root`,
   `corregir-datos-cliente.composition-root`, `geografia.composition-root`,
   `geografia-plataforma.composition-root`). *Hecho:* verdes. En el diff no cambia ningún
   `expect(...)` de salida: solo los datos de los dobles, o el modelo simulado.
-- [ ] **T4.5** `tests/integration/db/geo-lecturas-catalogo.test.ts` (R14–R20): cada método nuevo
+- [x] **T4.5** `tests/integration/db/geo-lecturas-catalogo.test.ts` (R14–R20): cada método nuevo
   frente a su copia de `lecturas-de-hoy.ts` sobre el fixture de T1.2, con los empates comparados
   como conjunto. *Hecho:* verde.
-- [ ] **T4.6** [P] R12: `tests/unit/guards/geografia-lecturas-sin-nodo-fk.guardia.test.ts` con
+- [x] **T4.6** [P] R12: `tests/unit/guards/geografia-lecturas-sin-nodo-fk.guardia.test.ts` con
   contraprueba, y `tests/integration/db/geo-lecturas-sin-backfill.test.ts` en base propia
   (`_fixtures/base-propia-43.ts`), con `nodo_geografico_id` en NULL y los triggers de columna
   desactivados. *Hecho:* los dos verdes.
-- [ ] **T4.7** Correr sin tocarlas las suites de R18–R20, R24 y R26 que nombra design §10:
+- [x] **T4.7** Correr sin tocarlas las suites de R18–R20, R24 y R26 que nombra design §10:
   `vitest related` sobre los archivos de T4.1–T4.3 y `_shared/*`. *Hecho:* verdes sin cambiar
   aserciones. Si una cae, se arregla el código, no el test, y se avisa si no se puede.
 

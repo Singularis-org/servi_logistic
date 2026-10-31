@@ -29,11 +29,17 @@ import {
 /** La clave de la empresa que sale de la cookie: en una peticion es una sola. */
 const CLAVE_SESION = "sesion";
 
-type CatalogoPrismaClient = Pick<PrismaClient, "$transaction">;
-
 /** Lo que la transaccion de la carga usa del cliente. Las marcas, por su tipo del punto unico. */
 type TxDeCarga = Pick<PrismaClient, "zonaDistrito" | "organizacion" | "tipoNivelGeografico" | "nodoGeografico"> &
   ClienteDeMarcas;
+
+/**
+ * El cliente del repositorio: el de la app o el de una transaccion ya abierta. `$transaction` es
+ * opcional porque el cliente de una transaccion interactiva no lo tiene (`ITXClientDenyList`), y los
+ * repositorios que crean este (`GeoRepository`, `OrdenRepository`, `CoberturaRepository`) tambien se
+ * construyen sobre uno. Dentro de una transaccion ya abierta la foto es la de esa transaccion.
+ */
+export type CatalogoPrismaClient = TxDeCarga & Partial<Pick<PrismaClient, "$transaction">>;
 
 type TxDeCatalogo = Pick<PrismaClient, "tipoNivelGeografico" | "nodoGeografico">;
 
@@ -81,15 +87,20 @@ async function leerCatalogo(tx: TxDeCatalogo, paisId: string): Promise<CatalogoG
   return crearCatalogo(paisId, tipos, nodos);
 }
 
-async function leerDeLaEmpresa(tx: TxDeCarga): Promise<CatalogoYAsignaciones> {
+async function leerDeLaEmpresa(tx: TxDeCarga, organizacionId: string | null): Promise<CatalogoYAsignaciones> {
   // Primera a proposito: es un modelo de negocio, y sin empresa la extension la rechaza con
   // `EmpresaNoResuelta` antes de ejecutar nada (R10). El nodo es `distrito_id` (R12).
   const filasDeZona = await tx.zonaDistrito.findMany({
     select: { distritoId: true, zona: { select: { id: true, nombre: true, esCentral: true } } },
     orderBy: { id: "asc" },
   });
-  // La politica `organizacion_propia` solo deja ver la empresa del contexto.
-  const organizacion = await tx.organizacion.findFirst({ select: { paisId: true } });
+  // La politica `organizacion_propia` solo deja ver la empresa del contexto. Con `conEmpresa` se
+  // pide ademas por id: con un cliente sin RLS (el dueño de un test) `findFirst` sin `where`
+  // devolveria una empresa cualquiera, y con ella el pais de otra.
+  const organizacion = await tx.organizacion.findFirst({
+    where: organizacionId === null ? {} : { id: organizacionId },
+    select: { paisId: true },
+  });
   if (organizacion === null) throw new EmpresaNoResuelta("Organizacion", "findFirst");
   const catalogo = await leerCatalogo(tx, organizacion.paisId);
   const marcas = await leerNodosConMarcaDeLaEmpresa(tx);
@@ -110,12 +121,13 @@ export class CatalogoGeograficoRepository implements ICatalogoGeograficoReposito
     // En plataforma los modelos de negocio van sin filtro: sin este corte, `zona_distrito` traeria
     // las filas de todas las empresas (design §3, paso 1).
     if (ctx?.tipo === "plataforma") throw new EmpresaNoResuelta("CatalogoGeografico", "deLaEmpresa");
-    const clave = ctx?.tipo === "empresa" ? ctx.organizacionId : CLAVE_SESION;
+    const organizacionId = ctx?.tipo === "empresa" ? ctx.organizacionId : null;
+    const clave = organizacionId ?? CLAVE_SESION;
 
     const enCurso = this.cargas.get(clave);
     if (enCurso) return enCurso;
 
-    const carga = this.prisma.$transaction((tx) => leerDeLaEmpresa(tx), OPCIONES_TRANSACCION);
+    const carga = this.enUnaFoto((tx) => leerDeLaEmpresa(tx, organizacionId));
     this.cargas.set(clave, carga);
     // Una carga fallida no se queda en la memoria: el siguiente intento vuelve a leer. El rechazo
     // le llega igual al llamador por `carga`.
@@ -126,6 +138,12 @@ export class CatalogoGeograficoRepository implements ICatalogoGeograficoReposito
   }
 
   async dePais(paisId: string): Promise<CatalogoGeografico> {
-    return this.prisma.$transaction((tx) => leerCatalogo(tx, paisId), OPCIONES_TRANSACCION);
+    return this.enUnaFoto((tx) => leerCatalogo(tx, paisId));
+  }
+
+  /** Todas las lecturas en una transaccion propia; sobre una ya abierta, en esa. */
+  private enUnaFoto<T>(fn: (tx: TxDeCarga) => Promise<T>): Promise<T> {
+    if (typeof this.prisma.$transaction !== "function") return fn(this.prisma);
+    return this.prisma.$transaction((tx) => fn(tx), OPCIONES_TRANSACCION);
   }
 }
