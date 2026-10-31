@@ -44,6 +44,10 @@ export const MODULO_POR_RUTA: Readonly<Record<string, Destino>> = {
   "/configuracion/vehiculos": "nucleo",
   "/plataforma/empresas": "nucleo",
   "/plataforma/empresas/[organizacionId]": "nucleo",
+  // SLT-58: los planes son de plataforma (superadmin) y «Mi plan» lo ve cada empresa; sin puerta de módulo.
+  "/plataforma/planes": "nucleo",
+  "/plataforma/planes/[planId]": "nucleo",
+  "/mi-plan": "nucleo",
   // SL-20: la geografía se gestiona desde la plataforma (superadmin), ya no desde `/configuracion`.
   "/plataforma/geografia": "nucleo",
   // Recolección y Bodegas satélite (núcleo desde el 2026-10-27).
@@ -98,7 +102,7 @@ export const MODULO_POR_ACTION: Readonly<Record<string, Destino>> = {
   "finanzas-diario": "analitica",
   // monitoreo
   "tablero-dia": "monitoreo",
-  // Wallet (núcleo desde el 2026-10-28; 18)
+  // Wallet (núcleo desde el 2026-10-28; 19 con el incentivo de SLT-68)
   "abono-tienda": "nucleo",
   "aporte-capital": "nucleo",
   "como-quedo": "nucleo",
@@ -107,6 +111,7 @@ export const MODULO_POR_ACTION: Readonly<Record<string, Destino>> = {
   "estado-cuenta": "nucleo",
   "gasto-fijo-cobro": "nucleo",
   "gasto-fijo-plantilla": "nucleo",
+  "incentivo-mensajero": "nucleo",
   "libro-caja-autoria": "nucleo",
   "pago-por-cuenta-tienda": "nucleo",
   "rechazo-tienda-cobro": "nucleo",

@@ -509,7 +509,13 @@ describe("293/R28 · el lado ledger del mensajero EXCLUYE el premio y su compens
       .where as Record<string, unknown>;
     expect(Array.isArray(where.NOT)).toBe(false);
     expect(where.NOT).toEqual({
-      OR: [{ categoria: "premio_ranking" }, { categoria: "ajuste_pago", premioDia: { not: null } }],
+      OR: [
+        { categoria: "premio_ranking" },
+        { categoria: "ajuste_pago", premioDia: { not: null } },
+        // SLT-68 (R17): el incentivo y su anulacion tampoco estan en el snapshot del cierre.
+        { categoria: "incentivo" },
+        { categoria: "reverso_incentivo" },
+      ],
     });
   });
 });

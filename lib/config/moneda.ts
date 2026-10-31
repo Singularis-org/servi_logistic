@@ -432,3 +432,44 @@ export function formatMonto(monto: number | null, sinMonto: string = SIN_MONTO):
 export function montoExacto(monto: number): string {
   return formatMonto(monto, SIN_MONTO_RAYA);
 }
+
+/**
+ * SLT-67 — el valor INICIAL de un campo de monto editable, no un texto pintado.
+ *
+ * El servidor serializa con `Prisma.Decimal.toFixed(2)`, asi que un plan de 500
+ * llegaba al formulario como `"500.00"` y el usuario veia una cola de ceros que
+ * no habia escrito. Aplica la misma regla que el resto del modulo —la cola se
+ * muestra SOLO CUANDO EXISTE— pero sobre el dato crudo: `"500.00"` da `"500"`,
+ * `"500.5"` da `"500.50"` y `"500.50"` se queda igual.
+ *
+ * Por que NO pasa por `formatMontoString`, aunque la regla sea la misma:
+ *  - Es el valor de un `<input>`, y lo que el usuario deje ahi vuelve a la
+ *    action tal cual. El separador es el PUNTO del contrato (el que aceptan
+ *    `montoCobroSchema` y la columna), no `monedaConfig.separadorDecimal`; y no
+ *    lleva simbolo ni separador de miles, que el schema rechazaria.
+ *  - NO REDONDEA. Cuadrar a la escala 2 cambiaria el importe que se reenvia al
+ *    guardar sin que nadie lo haya tocado; aqui solo se recortan los ceros de la
+ *    derecha, dejando un minimo de dos digitos de cola cuando la hay
+ *    (`"12.345600"` da `"12.3456"`, `"500.5000"` da `"500.50"`). Si el dato trae
+ *    mas cola de la que admite el schema, que lo diga el schema, no este helper.
+ *
+ * El signo se cae solo cuando lo que queda es cero (`"-0.00"` da `"0"`), igual
+ * que en `componer`. Lo que no tiene forma de importe decimal se devuelve
+ * VERBATIM: el usuario puede estar a medio escribir (`"500."`) y reescribirle el
+ * campo seria pelearse con el teclado.
+ *
+ * Money-safe: solo operaciones de string, sin `Number(`/`parseFloat(`/`.toFixed(`.
+ *
+ * @param valor importe serializado (`"500.00"`) o lo que haya en el campo.
+ */
+export function montoParaCampo(valor: string): string {
+  const texto = valor.trim();
+  if (texto === "") return "";
+  if (!FORMA_DECIMAL.test(texto)) return valor;
+  const negativo = texto.startsWith("-");
+  const { enteros, decimales } = partirSinSigno(negativo ? texto.slice(1) : texto);
+  const significativos = (decimales ?? "").replace(/0+$/, "");
+  const signo = negativo && !(esCero(enteros) && significativos === "") ? "-" : "";
+  if (significativos === "") return `${signo}${enteros}`;
+  return `${signo}${enteros}.${significativos.padEnd(ESCALA, "0")}`;
+}

@@ -21,6 +21,8 @@ export const CHIP_LABEL: Record<ChipOTodo, string> = {
   cobros: "Cobros",
   correcciones: "Correcciones",
   premios: "Premios",
+  // SLT-68 (R18): el incentivo y su anulación, en su propio filtro.
+  incentivos: "Incentivos",
   declarado: "Declarado",
   recibido: "Recibido",
 };

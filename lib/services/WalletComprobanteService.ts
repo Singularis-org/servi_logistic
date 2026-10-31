@@ -51,6 +51,7 @@ const FUENTE_POR_CAMINO: Record<CaminoAnulacion, Fuente> = {
   abono_tienda: { tipo: "documento", documento: "abono_tienda" },
   rechazo_tienda_cobro: { tipo: "ninguna" },
   premio_del_ranking: { tipo: "ninguna" },
+  incentivo_mensajero: { tipo: "ninguna" }, // SLT-68: un incentivo no lleva comprobante
 };
 
 const CARPETA_POR_LIBRO: Record<"caja" | "tienda" | "pago", CarpetaLateral> = {

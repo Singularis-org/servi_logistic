@@ -30,6 +30,8 @@ import { escaparComodinesLike } from "@/lib/utils/escapar-like";
 //   cobro_tienda(_completado),                   la tienda del debito           wallet_tienda_movimiento
 //   cobro_manual_reclasificado
 //   abono_tienda                                 la tienda que pago             abono_tienda
+//   incentivo_mensajero (SLT-68)                 el mensajero del incentivo     pago_mensajero_movimiento
+//                                                                               (el devengo `incentivo`)
 //   gasto / manual                               el nombre libre anotado        wallet_anotacion
 //   aporte_capital                               «La empresa»: no es una cuenta ni un nombre (no se filtra)
 //
@@ -100,6 +102,13 @@ const DEBITO_DE_TIENDA: RamaDeCuenta = {
   union: Prisma.sql`d."id" = w."origen_id"`,
   columna: Prisma.sql`d."tienda_id"`,
 };
+// SLT-68 (design §5): `origen_id` es el id del devengo `incentivo` del libro del mensajero.
+const INCENTIVO: RamaDeCuenta = {
+  cuenta: "mensajero",
+  tablas: Prisma.sql`"pago_mensajero_movimiento" d`,
+  union: Prisma.sql`d."id" = w."origen_id" AND d."categoria" = 'incentivo'`,
+  columna: Prisma.sql`d."mensajero_id"`,
+};
 const ABONO: RamaDeCuenta = {
   cuenta: "tienda",
   tablas: Prisma.sql`"abono_tienda" d`,
@@ -126,6 +135,7 @@ const A_QUIEN_POR_ORIGEN: Record<WalletOrigenTipo, readonly RamaDeCuenta[] | "an
   cobro_tienda: [DEBITO_DE_TIENDA],
   cobro_tienda_completado: [DEBITO_DE_TIENDA],
   abono_tienda: [ABONO],
+  incentivo_mensajero: [INCENTIVO],
 };
 
 const ORIGENES = Object.keys(A_QUIEN_POR_ORIGEN) as WalletOrigenTipo[];

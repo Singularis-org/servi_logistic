@@ -56,6 +56,35 @@ export function mensajeTopesPasados(topes: readonly TopePasado[]): string {
 }
 
 /* -------------------------------------------------------------------------- */
+/* SLT-58 (design §6.5, §11.4) — primera asignación con fecha de inicio        */
+/* -------------------------------------------------------------------------- */
+// Textos aprobados (P13, P15). Los conteos llegan YA pintados (`formatearConteo` de
+// `lib/planes/consumo.ts`, «3.200»): este módulo no formatea números (importar `consumo.ts`, que ya lo importa a él, haría un ciclo).
+
+/** Aviso de R36/R37: `fecha` es el día en que empieza el siguiente ciclo (P10), `AAAA-MM-DD`. */
+export function ordenesYaPasadas(usados: string, maximo: string, fecha: string): string {
+  return `La empresa ya lleva ${usados} de ${maximo} órdenes en este ciclo: no podrá crear más hasta ${fecha}.`;
+}
+
+/** Aviso de R37/R42 para un rol con tope; `{rol}` es su etiqueta de `ROL_LABELS`. */
+export function rolYaPasado(usados: string, maximo: string, rol: RolConTope): string {
+  return `La empresa ya tiene ${usados} de ${maximo} ${ROL_LABELS[rol]}: no podrá activar ni crear más hasta bajar del tope.`;
+}
+
+/** Aviso de R37/R42 para las API keys. */
+export function apiKeysYaPasadas(usados: string, maximo: string): string {
+  return `La empresa ya tiene ${usados} de ${maximo} API keys activas: no podrá crear ni activar más hasta bajar del tope.`;
+}
+
+/** Error del campo `inicioCiclo` fuera del rango permitido (R30). `min`/`max` en `AAAA-MM-DD`. */
+export function rangoInicioCiclo(min: string, max: string): string {
+  return `Elige una fecha entre el ${min} y el ${max}.`;
+}
+
+/** Error del campo `inicioCiclo` cuando la empresa ya tiene plan (R31). */
+export const SOLO_PRIMERA_ASIGNACION = "La fecha de inicio solo se elige en la primera asignación.";
+
+/* -------------------------------------------------------------------------- */
 /* Correos del cambio de plan (T12; design §16.4; R41, R42, R45)               */
 /* -------------------------------------------------------------------------- */
 // Los usa `lib/services/email/plantillas/cambio-plan.ts`. Las fechas llegan YA pintadas: este módulo
@@ -110,6 +139,14 @@ export function mensajeCambioCancelado(planNombre: string, fecha: string): strin
   return `El cambio del plan ${planNombre} previsto para ${fecha} se canceló; tu plan sigue igual.`;
 }
 
+/**
+ * Decisiones cerradas («Texto del cambio programado») y design §6.5: el mismo texto para el cambio
+ * pendiente en todas las pantallas (la empresa, el detalle de la empresa y el detalle del plan).
+ */
+export function textoCambioProgramado(fecha: string): string {
+  return `Cambio programado desde ${fecha}`;
+}
+
 export const TITULO_LINEAS_DE_CAMBIO = "Esto es lo que cambia:";
 /** Un reemplazo por la versión vigente: hay correo (reemplaza al previsto), pero nada que listar. */
 export const SIN_LINEAS_DE_CAMBIO = "El plan queda igual que el actual.";
@@ -129,13 +166,14 @@ type TopesDelPlanParaCorreo = {
   apiKeys: number | null;
 };
 
-const SIN_LIMITE = "sin límite";
+export const SIN_LIMITE = "sin límite";
 
 function limite(n: number | null | undefined): string {
   return n === null || n === undefined ? SIN_LIMITE : String(n);
 }
 
-function textoDelPrecio(p: PrecioPlan): string {
+/** El precio como texto informativo, sin símbolo de moneda (D26). Lo pintan también las pantallas (SLT-58 R1, R13). */
+export function textoDelPrecio(p: PrecioPlan): string {
   if (p.tipo === "sin_precio") return "sin precio";
   if (p.tipo === "negociable") return "negociable";
   const mensual = `${p.mensual} al mes`;
