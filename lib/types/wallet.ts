@@ -89,6 +89,11 @@ export const WALLET_MOVIMIENTO_CATEGORIA_SEED = [
   // efectivo, como el sueldo: baja la cifra principal y la ganancia. Descuenta la deuda de SL-40
   // mientras no tenga contra-asiento.
   "egreso_pago_plataforma",
+  // SLT-73 (design §1.1/§1.2, D10): la DIFERENCIA DE LA SATELITE al conciliar una consolidacion, por
+  // esperado - recibido. Egreso si llego menos, ingreso si llego mas. Tesoreria (terceros), como el
+  // contra-entrega: es dinero que la satelite recaudo y no entrego, no ganancia ni gasto.
+  "egreso_diferencia_satelite",
+  "ingreso_diferencia_satelite",
 ] as const satisfies readonly PrismaWalletMovimientoCategoria[];
 
 export type WalletMovimientoCategoria = (typeof WALLET_MOVIMIENTO_CATEGORIA_SEED)[number];
@@ -138,6 +143,9 @@ export const WALLET_ORIGEN_TIPO_SEED = [
   // SLT-68 (design §2.1): el INCENTIVO MANUAL A UN MENSAJERO. Egreso de caja, su reverso y el
   // `reverso_incentivo` del libro del mensajero; `origen_id` = id del devengo `incentivo`.
   "incentivo_mensajero",
+  // SLT-73 (design §1.2): el EVENTO de conciliacion (marca o correccion) que movio la diferencia de la
+  // satelite; `origen_id` = id de la fila de `conciliacion_bodega_ajuste`.
+  "conciliacion_bodega_ajuste",
 ] as const satisfies readonly PrismaWalletOrigenTipo[];
 
 export type WalletOrigenTipo = (typeof WALLET_ORIGEN_TIPO_SEED)[number];

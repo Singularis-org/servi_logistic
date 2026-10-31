@@ -1,7 +1,7 @@
 // Clasificacion de los modelos de `db/schema.prisma` (SL-17, design §2): la UNICA lista que leen la
 // extension de aislamiento, las guardias y el generador de migraciones.
 //
-//   · negocio    (78): llevan `organizacion_id`; la extension filtra y la RLS manda.
+//   · negocio    (79): llevan `organizacion_id`; la extension filtra y la RLS manda.
 //   · plataforma (18): catalogos, geografia, autenticacion previa a la empresa, cache tecnica, el
 //                      valor global del cobro por orden (SL-40), la marca de entorno (SL-43), los
 //                      paises y el historial de plataforma (SL-20).
@@ -75,6 +75,8 @@ export const MODELOS_DE_NEGOCIO: readonly ModeloClasificado[] = [
   // Cierres
   { modelo: "CierreDia", tabla: "cierre_dia" },
   { modelo: "CierreBodega", tabla: "cierre_bodega" },
+  // SLT-73: un evento (marca o correccion) que movio la diferencia de la satelite al conciliar
+  { modelo: "ConciliacionBodegaAjuste", tabla: "conciliacion_bodega_ajuste" },
   { modelo: "CierreDetail", tabla: "cierre_detail" },
   { modelo: "CierreSinGestion", tabla: "cierre_sin_gestion" },
   { modelo: "CierreRechazoTienda", tabla: "cierre_rechazo_tienda" },

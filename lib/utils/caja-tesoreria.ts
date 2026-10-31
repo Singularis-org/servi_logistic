@@ -109,6 +109,11 @@ export const NATURALEZA_POR_CATEGORIA: Record<WalletMovimientoCategoria, Natural
   // ella usa, como un sueldo. Como `terceros` no bajaria la ganancia y bajaria «De las tiendas», que
   // no tienen nada que ver con la plataforma.
   egreso_pago_plataforma: "propio",
+  // SLT-73 (design §1.2): la diferencia de la satélite al conciliar es TESORERÍA, como
+  // `ingreso_cod_recaudado`: es dinero de terceros que la satélite recaudó y no entregó (o entregó de
+  // más), no ganancia ni gasto de la empresa. La deuda de la satélite sigue abierta (R5).
+  egreso_diferencia_satelite: "terceros",
+  ingreso_diferencia_satelite: "terceros",
 };
 
 /**
@@ -174,6 +179,10 @@ export const LIQUIDEZ_POR_CATEGORIA: Record<WalletMovimientoCategoria, LiquidezM
   egreso_reverso_abono_tienda: "efectivo",
   // SL-45 (R8): el pago sale de la caja de verdad, asi que sube «Salió» y baja la cifra principal.
   egreso_pago_plataforma: "efectivo",
+  // SLT-73 (Q1-A): la caja recibe completos los asientos del cierre satélite y esta fila descuenta lo
+  // que no llegó (o suma lo que llegó de más), así que su efecto neto en la caja es lo recibido.
+  egreso_diferencia_satelite: "efectivo",
+  ingreso_diferencia_satelite: "efectivo",
 };
 
 const CATEGORIAS_DE_IVA: ReadonlySet<string> = new Set(WALLET_IVA_SEED);
