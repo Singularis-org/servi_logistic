@@ -4378,14 +4378,21 @@ export class OrdenRepository implements IOrdenRepository {
    * impuesta en el propio `updateMany` (concurrencia-segura, R9): a lo sumo UNA de dos recepciones
    * concurrentes afecta 1 fila. Origen pre-leido bajo la misma guarda; append del historial
    * (`origenTipo` = el pasado en `historial`, `recepcion_bodega_central`) SOLO si transiciono (count 1),
-   * en la MISMA tx (choke point feature 49: historial + outbox de webhook). NO toca
-   * `mensajeroAsignadoId` ni `numGuia` (R18).
+   * en la MISMA tx (choke point feature 49: historial + outbox de webhook). Nunca toca `numGuia`.
+   *
+   * SLT-63 acota 138/R18: con `liberaAsignacion` (caso 138) el MISMO `updateMany` deja la orden sin
+   * mensajero, `asignadoAt` ni `fechaReparto`, porque a `en_ruta_bodega_central` se llega tambien
+   * por la recoleccion (157), que trae al recolector puesto; si no se libera aqui, la orden ya en la
+   * central sigue contando en su Monitoreo y no sale en «Reasignables». Va en la misma escritura
+   * para que una recepcion que no transiciona no libere y para no abrir carrera con una asignacion
+   * concurrente. La devolucion (139) conserva la asignacion (SLT-63/R3).
    */
   async recibirEnBodegaCentral(
     ordenId: string,
     origenValue: string,
     destinoEstatusId: string,
     historial: HistorialContexto,
+    opciones: { liberaAsignacion: boolean },
   ): Promise<boolean> {
     return this.prisma.$transaction(async (tx) => {
       // Origen pre-leido con la MISMA guarda (estado `origenValue` + no borrada). SIN zona/tienda:
@@ -4404,7 +4411,9 @@ export class OrdenRepository implements IOrdenRepository {
           deletedAt: null,
           estatus: { value: origenValue },
         },
-        data: { estatusId: destinoEstatusId },
+        data: opciones.liberaAsignacion
+          ? { estatusId: destinoEstatusId, mensajeroAsignadoId: null, asignadoAt: null, fechaReparto: null }
+          : { estatusId: destinoEstatusId },
       });
       // R3/R9: SOLO si transiciono (count 1); una orden que perdio la carrera no deja rastro.
       if (result.count === 1 && actual !== null) {
