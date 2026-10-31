@@ -25,11 +25,13 @@ import type { PaginaRepositorio, RangoPagina } from "@/lib/utils/rango-pagina";
 // declaracion de la regla que R21 existe para impedir.
 import { clavePar } from "@/lib/utils/cascada-tarifa";
 import { appendCambioEstado } from "@/lib/repositories/registrar-cambio-estado";
-// SL-38 (R20): la marca de zona especial es de la EMPRESA y se lee por un unico punto.
+// SLT-65 (design §4): los nombres y la marca que congela el cierre salen del catalogo geografico y
+// de las asignaciones de la EMPRESA (SL-38), cargados dentro de la transaccion del cierre.
 import {
-  esZonaEspecialDeLaEmpresa,
-  SELECT_MARCA_ZONA_ESPECIAL,
-} from "@/lib/repositories/_shared/zona-especial";
+  CatalogoGeograficoRepository,
+  type CatalogoPrismaClient,
+} from "@/lib/repositories/CatalogoGeograficoRepository";
+import { esZonaEspecial, nodo } from "@/lib/services/geografia-dominio";
 import {
   SELECT_REGISTRO_DE_CALLE,
   whereOrdenSinGestionPendiente,
@@ -305,16 +307,21 @@ export interface DescriptivosDeOrden {
   zonas: Map<string, { nombre: string; esCentral: boolean }>;
   tiendas: Map<string, { nombre: string }>;
   provincias: Map<string, { nombre: string }>;
-  cantones: Map<string, { nombre: string }>;
+  /**
+   * `zonaEspecial`: la marca de la EMPRESA de la transaccion (SL-38) en el nodo o un ancestro suyo
+   * (SLT-65). Es la marca de la orden sin distrito, cuyo lugar es el canton.
+   */
+  cantones: Map<string, { nombre: string; zonaEspecial: boolean }>;
   /** `zonaEspecial`: la marca de la EMPRESA de la transaccion (SL-38), ya resuelta a dos valores. */
   distritos: Map<string, { nombre: string; zonaEspecial: boolean }>;
 }
 
-/** Lo minimo que `leerDescriptivosDeOrdenes` necesita del cliente de la transaccion. */
-export type DescriptivosTxClient = Pick<
-  PrismaClient,
-  "zona" | "usuario" | "provincia" | "canton" | "distrito"
->;
+/**
+ * Lo minimo que `leerDescriptivosDeOrdenes` necesita del cliente de la transaccion. SLT-65: la
+ * geografia ya no se lee de las tablas viejas sino del catalogo (los modelos de su carga).
+ */
+export type DescriptivosTxClient = Pick<PrismaClient, "zona" | "usuario"> &
+  Omit<CatalogoPrismaClient, "$transaction">;
 
 export async function leerDescriptivosDeOrdenes(
   filas: readonly SnapshotRow[],
@@ -339,31 +346,37 @@ export async function leerDescriptivosDeOrdenes(
     where: { id: { in: tiendaIds } },
     select: { id: true, nombre: true },
   });
-  const provincias = await tx.provincia.findMany({
-    where: { id: { in: provinciaIds } },
-    select: { id: true, nombre: true },
+  // SLT-65 (design §4; R5, R7, R17): el catalogo del pais de la empresa y sus asignaciones. Sobre el
+  // cliente de la transaccion `enUnaFoto` no abre otra: lee en ESTA, en serie y con la empresa que
+  // ya fijo la extension, asi que ve lo que la propia transaccion escribio.
+  //
+  // Se le pasa el cliente SIN `$transaction`: el `tx` de una transaccion interactiva del cliente
+  // EXTENDIDO (`extension-empresa`) si lo expone, y con el `enUnaFoto` intentaria abrir otra sobre
+  // una ya cerrada («Transaction already closed», medido en `zona-especial-dos-empresas.test.ts`).
+  // Sin el, la carga lee en esta transaccion.
+  const enEstaTransaccion = new Proxy(tx, {
+    get: (objetivo, prop) => (prop === "$transaction" ? undefined : Reflect.get(objetivo, prop)),
   });
-  const cantones = await tx.canton.findMany({
-    where: { id: { in: cantonIds } },
-    select: { id: true, nombre: true },
-  });
-  const distritos = await tx.distrito.findMany({
-    where: { id: { in: distritoIds } },
-    // SL-38: la marca de la EMPRESA de la transaccion, por el punto unico (la RLS la acota).
-    select: { id: true, nombre: true, ...SELECT_MARCA_ZONA_ESPECIAL },
-  });
+  const { catalogo, asignaciones } = await new CatalogoGeograficoRepository(
+    enEstaTransaccion,
+  ).deLaEmpresa();
+
+  // Solo los ids de las filas, como cuando se leian por `in`: un id ausente del catalogo no entra en
+  // el mapa y `descriptivoDe` lanza, de modo que el cierre se revierte entero (R6).
+  const enCatalogo = (ids: string[]) =>
+    ids.flatMap((id) => {
+      const n = nodo(catalogo, id);
+      return n === null ? [] : [n];
+    });
+  const conMarca = (n: { id: string; nombre: string }) =>
+    [n.id, { nombre: n.nombre, zonaEspecial: esZonaEspecial(catalogo, asignaciones, n.id) }] as const;
 
   return {
     zonas: new Map(zonas.map((z) => [z.id, { nombre: z.nombre, esCentral: z.esCentral }])),
     tiendas: new Map(tiendas.map((t) => [t.id, { nombre: t.nombre }])),
-    provincias: new Map(provincias.map((p) => [p.id, { nombre: p.nombre }])),
-    cantones: new Map(cantones.map((c) => [c.id, { nombre: c.nombre }])),
-    distritos: new Map(
-      distritos.map((d) => [
-        d.id,
-        { nombre: d.nombre, zonaEspecial: esZonaEspecialDeLaEmpresa(d) },
-      ]),
-    ),
+    provincias: new Map(enCatalogo(provinciaIds).map((p) => [p.id, { nombre: p.nombre }])),
+    cantones: new Map(enCatalogo(cantonIds).map(conMarca)),
+    distritos: new Map(enCatalogo(distritoIds).map(conMarca)),
   };
 }
 
@@ -1338,11 +1351,12 @@ export class CierreDiaRepository implements ICierreDiaRepository {
               tiendaId: f.orden.tiendaId,
               esCentral: descriptivoDe(descriptivos.zonas, f.orden.zonaId, "zona").esCentral,
               // R20 (SL-38): congela la marca de la EMPRESA en este instante; desmarcar despues
-              // no mueve esta fila. Una orden sin distrito (el unico FK nullable de `orden`)
-              // congela `false`: sin distrito no hay marca que aplicar.
+              // no mueve esta fila. SLT-65 (R5): es la marca del LUGAR de la orden, su distrito o,
+              // sin distrito (el unico FK nullable de `orden`), su canton. Con marcas solo en
+              // distritos la del canton es `false`, lo mismo que se congelaba antes.
               esZonaEspecial:
                 f.orden.distritoId === null
-                  ? false
+                  ? descriptivoDe(descriptivos.cantones, f.orden.cantonId, "canton").zonaEspecial
                   : descriptivoDe(descriptivos.distritos, f.orden.distritoId, "distrito")
                       .zonaEspecial,
               ...tarifaColumnas(

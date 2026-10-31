@@ -76,13 +76,14 @@ import { appendCambioEstado } from "@/lib/repositories/registrar-cambio-estado";
 // SL-38 (R22): la marca de zona especial es de la EMPRESA. Desde SLT-65 se calcula sobre el catalogo
 // (`marcasDeOrdenes`); de aqui solo queda el tipo del cliente de las marcas.
 import type { ClienteDeMarcas } from "@/lib/repositories/_shared/zona-especial";
-import { lugarDeLaOrden } from "@/lib/repositories/_shared/lugar-orden";
+import { lugarDeLaOrden, whereLugarEn } from "@/lib/repositories/_shared/lugar-orden";
 import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograficoRepository";
 import {
   ancestros,
   esZonaEspecial,
   estaActivo,
   nodo as nodoDelCatalogo,
+  nodosBajo,
   nodosDeProfundidad,
   zonaQueCubre,
   type CatalogoGeografico,
@@ -858,6 +859,10 @@ type OrdenPrismaClient = Pick<
   | "organizacion"
 > &
   ClienteDeMarcas;
+
+// SLT-65 (design §5, paso 2; design §13): la unica correspondencia entre el nivel de tres valores
+// (SL-20) y la profundidad del catalogo. Se retira con SLT-47/SLT-48, cuando el nivel deje de viajar.
+const PROFUNDIDAD_DEL_NIVEL: Record<NivelGeografico, number> = { provincia: 1, canton: 2, distrito: 3 };
 
 /**
  * FICHA 362 — lo que el `RETURNING` de los tres borrados por lote trae de vuelta: el id de la
@@ -2918,16 +2923,24 @@ export class OrdenRepository implements IOrdenRepository {
    * estados terminales son dos definiciones de «entregado» que un dia divergen, y la que divergiera
    * contaria mal justo en la pantalla que decide retirar territorio.
    */
+  //
+  // SLT-65 (design §5; R9–R12): ya no se cuenta por la columna del nivel sino por el LUGAR de la
+  // orden (`whereLugarEn`) entre el nodo y los que cuelgan de el, que calcula el dominio sobre el
+  // catalogo. Con la cadena coherente es el mismo conjunto que antes (R11). Corre en
+  // `comoPlataforma`, sin empresa: por eso el catalogo es `dePais` del nodo y no `deLaEmpresa`, que
+  // lanzaria (R12).
   async contarSinEntregarPorNodoGeografico(nivel: NivelGeografico, id: string): Promise<number> {
-    const porNivel =
-      nivel === "provincia"
-        ? { provinciaId: id }
-        : nivel === "canton"
-          ? { cantonId: id }
-          : { distritoId: id };
+    const pedido = await this.prisma.nodoGeografico.findUnique({
+      where: { id },
+      select: { paisId: true, profundidad: true },
+    });
+    // R10: un id que no existe, o el de otro nivel, no casaba con la columna del nivel y daba 0.
+    if (pedido === null || pedido.profundidad !== PROFUNDIDAD_DEL_NIVEL[nivel]) return 0;
+    const catalogo = await this.catalogoGeografico().dePais(pedido.paisId);
+    const ids = [id, ...nodosBajo(catalogo, id).map((n) => n.id)];
     return this.prisma.orden.count({
       where: {
-        ...porNivel,
+        ...whereLugarEn(ids),
         deletedAt: null,
         estatus: { value: { notIn: [...ESTADOS_TERMINALES] } },
       },

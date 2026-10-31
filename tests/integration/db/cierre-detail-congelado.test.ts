@@ -11,6 +11,7 @@ import type { CrearMovimientoTiendaInput } from "@/lib/interfaces/repositories/I
 import type { Alcance } from "@/lib/interfaces/repositories/ICierresAdminRepository";
 import { WalletIndemnizacionFeedService } from "@/lib/services/WalletIndemnizacionFeedService";
 import { APLICACION_GESTIONES } from "@/tests/fixtures/anclaje-devolucion";
+import { delegadosDelCatalogo } from "@/tests/fixtures/doble-catalogo-geografico";
 
 // Feature 69/R17/R18 — EL CORAZON DE LA FEATURE. Los dos casos son money-critical.
 //
@@ -220,9 +221,15 @@ function makeDb() {
       nombre: zonas[id].nombre,
       esCentral: zonas[id].esCentral,
     })),
-    provincia: catalogoVivo(() => ({ nombre: "Cartago" })),
-    canton: catalogoVivo(() => ({ nombre: "Central" })),
-    distrito: catalogoVivo(() => ({ nombre: "Oriental", zonasEspeciales: [] })),
+    // SLT-65 (design §14.1): la geografia del snapshot sale del catalogo de la empresa. Mismos
+    // nombres para los FK de `joinOrden`, y sin marcas, como el `zonasEspeciales: []` de antes.
+    ...delegadosDelCatalogo({
+      nodos: [
+        { id: "p1", nombre: "Cartago" },
+        { id: "ct1", nombre: "Central" },
+        { id: "d1", nombre: "Oriental" },
+      ],
+    }),
     gestionOrden: {
       updateMany: vi.fn(async ({ where, data }: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
         let count = 0;

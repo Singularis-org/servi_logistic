@@ -309,9 +309,14 @@ async function porElCierre(filas: readonly FilaTarifa[]) {
     // FICHA 450: los catalogos del snapshot, leidos en serie dentro de esta misma tx.
     zona: catalogoDoble450(() => ({ nombre: "Limón", esCentral: false })),
     usuario: catalogoDoble450(() => ({ nombre: "Tienda X" })),
-    provincia: catalogoDoble450(() => ({ nombre: "Limón" })),
-    canton: catalogoDoble450(() => ({ nombre: "Central" })),
-    distrito: catalogoDoble450(() => ({ nombre: "Oriental", zonasEspeciales: [] })),
+    // SLT-65 (design §14.1): la geografia del snapshot sale del catalogo de la empresa, con los
+    // mismos nombres para los FK de `snapshotRow` (sin distrito) y sin marcas.
+    ...delegadosDelCatalogo({
+      nodos: [
+        { id: "p1", nombre: "Limón" },
+        { id: "c1", nombre: "Central" },
+      ],
+    }),
     ...prismaTarifas(filas),
   };
   const prisma = {

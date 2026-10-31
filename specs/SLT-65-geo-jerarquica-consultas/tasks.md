@@ -47,16 +47,16 @@
 
 ## T3 — Cierres y conteo [T1, T2.1]
 
-- [ ] **T3.1** [P] `CierreDiaRepository`: `leerDescriptivosDeOrdenes` sobre el catálogo en la
+- [x] **T3.1** [P] `CierreDiaRepository`: `leerDescriptivosDeOrdenes` sobre el catálogo en la
   transacción, `cantones[id].zonaEspecial` y la marca del lugar en `crearCierre` (design §4).
   `DescriptivosTxClient` con los modelos nuevos. **Hecho:** typecheck en verde, y
   `emisor-relaciones-anidadas.test.ts` pasa sin cambiar aserciones (R7).
-- [ ] **T3.2** [P] `tests/integration/db/geo-consultas-cierre.test.ts` (R5, R6, R17), sobre T3.1.
+- [x] **T3.2** [P] `tests/integration/db/geo-consultas-cierre.test.ts` (R5, R6, R17), sobre T3.1.
   **Hecho:** pasa, y `cierre-detail-congelado.test.ts` y las suites de R8 pasan sin cambiar
   aserciones.
-- [ ] **T3.3** [P] `contarSinEntregarPorNodoGeografico` con `dePais`, `nodosBajo` y `whereLugarEn`
+- [x] **T3.3** [P] `contarSinEntregarPorNodoGeografico` con `dePais`, `nodosBajo` y `whereLugarEn`
   (design §5). **Hecho:** typecheck en verde.
-- [ ] **T3.4** [P] `tests/integration/db/geo-consultas-conteo.test.ts` (R9–R12), sobre T3.3.
+- [x] **T3.4** [P] `tests/integration/db/geo-consultas-conteo.test.ts` (R9–R12), sobre T3.3.
   **Hecho:** pasa, y `geografia-ordenes-sin-entregar.test.ts`,
   `geografia-superadmin-sin-empresa.test.ts` y la guardia `geografia-terminales-una-sola-fuente`
   pasan sin cambios.
