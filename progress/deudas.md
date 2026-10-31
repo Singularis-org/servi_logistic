@@ -199,3 +199,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
   - que la FK del reparto apunte a un `usuario` clonado en el esquema desechable.
   Un reintento no vale (mismo criterio que D18). Para el hotfix SLT-68 el humano aceptó relanzar el gate a sabiendas (2026-10-30, «la 1, relanza el CI»).
 - **Dueño:** Carlos Restrepo (decidir si va ficha), o quien tome la siguiente ficha de la caja/reparto.
+
+### D34 — Carga de 500 órdenes con guía al borde del timeout de transacción
+- **Origen:** tanda B de SLT-66 (2026-10-31, `progress/impl_SLT-66.md` > Tanda B). Medido antes de M3: la carga de 500 órdenes con guía por `OrdenRepository` tarda 3–4,9 s, al borde del timeout de 5 s de las transacciones interactivas de Prisma; una serie lo superó. Previo a SLT-66 (M3 no lo cambia de forma medible).
+- **Qué falta:** trocear la carga o subir el timeout de esa transacción, con medición.
+- **Dueño:** Camilo (decidir si va a ficha).
