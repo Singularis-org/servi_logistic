@@ -90,6 +90,7 @@ ruta del día ya existe (R60).
 | D25 | (Afina D23) Disparo principal de la primera ruta: recoger el ÚLTIMO de los paquetes asignados del día (con debounce como la recogida, para que «recoger todas» sea un job). Respaldo si alguno nunca se recoge: con lo recogido, al alejarse más de 1 km del punto de recogida, con la primera gestión o con el botón. El botón, para la primera ruta, solo cuando ya recogió al menos `RUTA_PRIMERA_MIN_RECOGIDO_PCT` (80) % de las asignadas; por debajo, 0 llamadas y un mensaje claro. Siempre una sola vez; después rigen D16, D21 y D24. «Asignadas del día» con el mismo predicado de día que la recogida. Sin migración. | humano, 2026-10-30 | R58, R64, R65, R54 |
 | D27 | Registrar CADA llamada pagada a Google con su motivo. Cada llamada de cliente (`optimizeTours`, `computeRoutes`, geocode) recibe un `motivo` obligatorio (unión tipada, snake_case en español) que pasa quien llama. Emite UNA línea de log estructurada en el servidor por petición HTTP, incluido cada reintento, con: api, motivo, empresaId, mensajeroId/ordenId cuando los haya, número de paradas (envíos facturados en `optimizeTours`), intento n/máx y resultado (ok / código de error). Se reutiliza el patrón `optlog`/logger. Sin secretos, direcciones completas ni coordenadas. Solo logs del servidor (Vercel): ninguna tabla (R40). Un contador persistido queda como posible ficha futura. Tests: cada motivo llega a la línea; la jornada de R37 afirma la secuencia de motivos. **Adenda:** toda línea empieza por el prefijo fijo `[google-api]` y lleva `evento: "google_api_llamada"`; `api` distingue `route_optimization` / `routes` / `geocoding`; constante única, con un test de que los tres clientes la emiten. | humano, 2026-10-31 | R68-R75 |
 | D28 | (P13) Un job agrupado por debounce registra en el log el `origen`/motivo del PRIMER evento que lo encoló; el conteo de llamadas es exacto. | humano, 2026-10-31 | R68-R75 |
+| D29 | (Enmienda D25) Primera ruta del día durante la recogida: se dispara al recoger el ÚLTIMO paquete asignado (debounce de `RUTA_DEBOUNCE_S`, 60 s, como hoy, para que «recoger todas» sea un job) **o** tras `RUTA_PRIMERA_DEBOUNCE_MIN` (10) minutos sin una recogida nueva: debounce deslizante, cada recogida parcial empuja el `runAfter` del job a ahora + 10 min. Una sola vez al día. Los demás respaldos (salida a 1 km, primera gestión, botón ≥ 80 %) siguen. Motivo del caso de 10 min: `primera_ruta_debounce_recogida`. | humano, 2026-10-31 | R76, R77 (enmienda R57, R58) |
 | D26 | (P12) `ruta_optimizada.updated_at` vale como instante del fallo para el enfriamiento de D21: es una cota superior (solo puede alargar la espera). Sin migración; una columna `fallo_at` exacta iría en otra ficha. | humano, 2026-10-30 | R54 |
 
 ---
@@ -505,6 +506,22 @@ logs del servidor.
 **R75.** CUANDO se ejecute la jornada de referencia de design §8.0, la secuencia de motivos registrada
 DEBE ser exactamente la de design §13.3.
 
+## Enmienda D29 — debounce deslizante de la primera ruta durante la recogida (2026-10-31)
+
+> Enmienda R57 y R58: R58 (último paquete, `RUTA_DEBOUNCE_S`) sigue vigente; R57 deja de ser absoluto
+> por R76. Ver design §12.2, nota D29.
+
+**R76.** CUANDO una recogida deje al mensajero con órdenes del día aún en `por_recoger` y su primera
+ruta del día esté pendiente, el sistema DEBE dejar un único job de reoptimización pendiente para ese
+mensajero y ese día con `runAfter = ahora + RUTA_PRIMERA_DEBOUNCE_MIN` (10 min, configurable), y cada
+recogida posterior del mismo día DEBE mover ese `runAfter` en lugar de crear otro job. Una recogida que
+cumpla R58 DEBE mover el mismo job a `ahora + RUTA_DEBOUNCE_S`. El motivo registrado (R69) del job que
+corre por esta espera DEBE ser `primera_ruta_debounce_recogida`; el de R58, `primera_ruta_recogida_completa`.
+
+**R77.** El sistema NO DEBE crear ni mover el job de R76/R58 cuando el de ese mensajero y ese día ya no
+esté `pending` (en curso, hecho o muerto): la primera ruta por recogida corre como mucho una vez al día
+(R66).
+
 ---
 
 ## Límite declarado
@@ -553,6 +570,7 @@ columna con el origen del cálculo (alternativa A1 de `design.md`).
 | R73 | `tests/unit/services/optimizacion-ruta-motivo.test.ts` (rutas) + `tests/unit/services/geocodificacion-motivo.test.ts` (geocode) |
 | R74 | revisión del diff: `db/` sin cambios |
 | R75 | `tests/unit/services/optimizacion-ruta-ahorro-jornada.test.ts` |
+| R76, R77 | `tests/integration/repositories/optimizacion-ruta-enqueue.test.ts` (encolado y desplazamiento) + `tests/integration/repositories/job-repo-posponer.test.ts` (SQL del `ON CONFLICT … DO UPDATE … WHERE pending`) + `tests/unit/services/optimizacion-ruta-motivo.test.ts` (motivo) + `tests/unit/config/route-optimization-config.test.ts` (`RUTA_PRIMERA_DEBOUNCE_MIN`) |
 | R64 (mensaje) | `tests/unit/actions/sincronizar-ruta.test.ts` + `tests/components/SincronizarRutaButton.test.tsx` (existente: `conflict` → `toast.warning(motivo)`) |
 | R29, R30, R35 | `tests/unit/services/optimizacion-ruta-credencial-rechazada.test.ts` |
 | R29, R33, R34 | `tests/unit/services/job-queue-service-permanente.test.ts` |

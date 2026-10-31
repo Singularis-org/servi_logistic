@@ -80,8 +80,19 @@ export type EjecutarOptimizacionResult =
       /**
        * SLT-59 (design §2.2): `reducida` = una gestion solo QUITO paradas y se persistio la
        * secuencia previa sin ellas, sin `optimizeTours`. No hubo ordenacion, por eso `omitida`.
+       *
+       * SLT-59 (R49): `reduccion_descartada` = tocaba reducir pero la escritura condicionada no
+       * se aplico (la huella cambio o la ruta dejo de estar `vigente`, R48). Es un desenlace
+       * distinto de `reducida` para que nadie informe de una reduccion que no se escribio; no
+       * trae trazado y no lanza, porque otra ejecucion ya dejo la ruta en un estado mas nuevo.
        */
-      razon: "obsoleta" | "intervalo_minimo" | "sin_paradas" | "sin_cambios" | "reducida";
+      razon:
+        | "obsoleta"
+        | "intervalo_minimo"
+        | "sin_paradas"
+        | "sin_cambios"
+        | "reducida"
+        | "reduccion_descartada";
       /**
        * R35 con UNA parada: no hubo nada que ORDENAR —por eso `omitida`— pero si hay algo
        * que DIBUJAR, la linea del origen a esa unica parada. Las demas razones nunca lo

@@ -632,6 +632,33 @@ SELECT
   `por_recoger` comparten la ventana de debounce (92/R17).
 - Corre dentro de la transacción con la empresa fijada (RLS + extensión), igual que el `UPDATE`.
 
+> **[2026-10-31, SLT-59, D29] Debounce deslizante (R76, R77).** Con la misma consulta de arriba:
+> si `quedan_por_recoger` y la primera ruta está pendiente, la recogida deja o mueve un job con
+> `runAfter = ahora + RUTA_PRIMERA_DEBOUNCE_MIN` y `origen = recogida_parcial`; si no quedan, el mismo
+> job pasa a `ahora + RUTA_DEBOUNCE_S` con `origen = recogida` (R58).
+>
+> **La cola hoy no lo soporta.** `JobRepository.enqueue` hace `ON CONFLICT ("dedupe_key") DO NOTHING`,
+> y la clave de debounce (`dedupeKeyDebounce`) es por ventana de `runAfter`: una recogida posterior cae
+> en otra clave (job nuevo) o no hace nada (no mueve el `runAfter`).
+>
+> **La vía más barata y correcta, sin migración (R40):**
+> - Una clave por mensajero y día: `ruta-opt:primera-recogida:<mensajeroId>:<díaCR>`.
+> - Un método nuevo, `JobRepository.encolarOMoverPendiente(opts)`. Es el mismo `INSERT` con
+>   `ON CONFLICT ("dedupe_key") WHERE "dedupe_key" IS NOT NULL DO UPDATE SET "run_after" =
+>   EXCLUDED."run_after", "payload" = EXCLUDED."payload", "updated_at" = CURRENT_TIMESTAMP
+>   WHERE "jobs"."estado" = 'pending'`. Usa el índice único parcial que ya existe.
+> - El `WHERE … 'pending'` da R77 gratis: el índice único no está acotado por estado, así que una fila
+>   del día ya en curso, hecha o muerta bloquea crear otro job y no se modifica. Es la única vez al día
+>   (R66).
+> - El `payload.origen` lo fija la ÚLTIMA recogida (`recogida_parcial` → `recogida` si fue la última).
+>   Es una excepción acotada a D28: el job sigue siendo uno solo y el motivo dice por qué corrió.
+> - Config: `RUTA_PRIMERA_DEBOUNCE_MIN` (10, «D29, humano 2026-10-31; no calibrado»; entero ≥ 1, fuera
+>   de rango → default), con el mismo patrón de §5.
+> - El drenado no cambia: un job con `run_after` futuro no se reclama.
+>
+> Si la recogida llega mientras el job está `running`, no se crea otro. El job toma el conjunto que
+> lee al ejecutar, y lo que falte lo cubren los respaldos de D25.
+
 ### 12.3 Gestión (R59)
 
 En `registrarGestionPendiente`, el paso (7) encola si la orden tiene coordenadas **o** si la primera
@@ -824,6 +851,7 @@ El motivo no lo decide el cliente. Lo decide el servicio con lo que ya sabe, y q
 | Motivo | Cuándo (`decidirGuardaRuta` + disparo) |
 | --- | --- |
 | `primera_ruta_recogida_completa` | job, primera pendiente, `origen = recogida` (R58) |
+| `primera_ruta_debounce_recogida` | job, primera pendiente, `origen = recogida_parcial` (R76, D29: 10 min sin recoger) |
 | `primera_ruta_primera_gestion` | job, primera pendiente, `origen = gestion` (R59) |
 | `primera_ruta_salida` | `motivo: "salida"` (R62, R63) |
 | `primera_ruta_boton` | manual, primera pendiente (R64) |

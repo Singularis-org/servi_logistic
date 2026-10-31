@@ -191,6 +191,17 @@ function centroide(paradas: { latitud: number; longitud: number }[]): { lat: num
 type ParadaConCoordenadas = { ordenId: string; latitud: number; longitud: number };
 
 /**
+ * Las cuatro columnas de origen, que es todo lo que leen `resolverOrigen` y
+ * `origenSoloDeUltimaConocida`. SLT-59 (R46, design §2.4): existe para poder resolver el origen
+ * con la ubicacion recibida aunque no haya fila todavia, sin escribirla antes de saber si se
+ * va a recalcular.
+ */
+type OrigenGuardado = Pick<
+  RutaOptimizadaDTO,
+  "origenLat" | "origenLng" | "origenAt" | "origenFuente"
+>;
+
+/**
  * SLT-59 (R1-R20, design §2) — que hacer con un conjunto de paradas frente a la ruta guardada.
  * `reducir.restantes` es la secuencia previa filtrada al conjunto actual, en su orden.
  */
@@ -366,16 +377,32 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
 
     // R23: la ubicacion del navegador se persiste ANTES de cualquier guarda. Aunque la
     // optimizacion se omita, la posicion capturada sigue siendo util para la siguiente.
-    if (opts.ubicacion !== undefined) {
-      await this.rutas.upsertOrigen(mensajeroId, {
-        lat: opts.ubicacion.lat,
-        lng: opts.ubicacion.lng,
-        capturadaAt: ahora,
-        fuente: "gps",
-      });
-    }
+    //
+    // [2026-10-31, SLT-59, D17/m1, R46, design §2.4] Ya no se escribe aqui: escribirla antes de
+    // las guardas pisaba el origen guardado aunque luego se omitiera, se redujera o cortara el
+    // intervalo minimo. La ubicacion se usa EN MEMORIA (origen y desvio de esta ejecucion) y se
+    // persiste solo justo antes de recalcular (`persistirUbicacion`).
+    const ubicacionGps =
+      opts.ubicacion !== undefined
+        ? { lat: opts.ubicacion.lat, lng: opts.ubicacion.lng, capturadaAt: ahora, fuente: "gps" as const }
+        : null;
 
     const ruta = await this.rutas.findByMensajero(mensajeroId);
+    // Lo que se leeria si la ubicacion ya estuviera guardada. Sin fila (`ruta === null`) basta
+    // con las columnas de origen: es lo unico que leen `resolverOrigen` y su hermano, y la
+    // decision sera recalcular de todos modos (R7).
+    const origenGuardado: OrigenGuardado | null =
+      ubicacionGps !== null
+        ? {
+            origenLat: ubicacionGps.lat,
+            origenLng: ubicacionGps.lng,
+            origenAt: ahora,
+            origenFuente: "gps",
+          }
+        : ruta;
+    // Las guardas 92/R20 y 92/R34 siguen leyendo `calculadaAt` de `ruta`: la vista no lo cambia.
+    const rutaVista: RutaOptimizadaDTO | null =
+      ruta !== null && origenGuardado !== null ? { ...ruta, ...origenGuardado } : ruta;
 
     // ── R20: guarda de OBSOLESCENCIA ──────────────────────────────────────────────
     // El job de debounce en vuelo no se puede cancelar (`IJobRepository` no lo expone y
@@ -438,8 +465,8 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
       const unica = conCoordenadas[0];
       const origen =
         unica !== undefined
-          ? this.resolverOrigen(ruta, conCoordenadas, ahora)
-          : this.origenSoloDeUltimaConocida(ruta);
+          ? this.resolverOrigen(origenGuardado, conCoordenadas, ahora)
+          : this.origenSoloDeUltimaConocida(origenGuardado);
       const secuencia = unica !== undefined ? [unica.ordenId] : [];
       const huellaSet = this.huella(secuencia, origen);
 
@@ -451,7 +478,7 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
       if (unica !== undefined) {
         const desenlace = await this.guardaSinRecalculo(
           mensajeroId,
-          ruta,
+          rutaVista,
           [unica],
           origen,
           "sin_paradas",
@@ -459,6 +486,7 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
         if (desenlace !== null) return desenlace;
       }
 
+      await this.persistirUbicacion(mensajeroId, ubicacionGps);
       await this.rutas.reemplazarSecuencia(mensajeroId, secuencia, {
         calculadaAt: ahora,
         origen,
@@ -514,7 +542,10 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
     // Va DESPUES de resolver el origen (necesita uno ya resuelto) y DESPUES del recorte del
     // tope (el centroide debe calcularse sobre las paradas que DE VERDAD se envian), y ANTES
     // de la huella (R20): el origen que entra en la huella tiene que ser el que se envia.
-    const origen = this.origenCoherente(this.resolverOrigen(ruta, paradas, ahora), paradas);
+    const origen = this.origenCoherente(
+      this.resolverOrigen(origenGuardado, paradas, ahora),
+      paradas,
+    );
 
     // ── R36: huella del conjunto + origen ─────────────────────────────────────────
     // Si nada cambio desde la ultima optimizacion valida, el resultado seria identico:
@@ -537,12 +568,16 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
     // calculando igual porque condiciona las escrituras (`guardarTrazado`, `reducirSecuencia`).
     const desenlace = await this.guardaSinRecalculo(
       mensajeroId,
-      ruta,
+      rutaVista,
       paradas,
       origen,
       "sin_cambios",
     );
     if (desenlace !== null) return desenlace;
+
+    // Ya esta decidido recalcular: la ubicacion recibida se guarda como origen ANTES de la
+    // llamada, como hacia la 92/R23. Si el proveedor falla despues, el GPS queda guardado.
+    await this.persistirUbicacion(mensajeroId, ubicacionGps);
 
     // ── Llamada FACTURADA al proveedor ────────────────────────────────────────────
     optlog("service — ninguna guarda corto: se LLAMA al proveedor (esto se factura)", {
@@ -712,12 +747,21 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
       };
     }
 
-    const trazado = await this.aplicarReduccion(mensajeroId, ruta, decision, origen);
-    return {
-      status: "omitida",
-      razon: "reducida",
-      ...(trazado !== null ? { trazado } : {}),
-    };
+    return this.aplicarReduccion(mensajeroId, ruta, decision, origen);
+  }
+
+  /**
+   * SLT-59 (R46, design §2.4) — la escritura de la ubicacion recibida, en el sitio donde ya se
+   * sabe que se va a recalcular. Hace falta aunque `reemplazarSecuencia` lleve el origen: esa
+   * escritura no toca `origen_at`, y sin esta la siguiente ejecucion veria un `gps` recien
+   * capturado con el instante viejo y lo bajaria a `ultima_conocida`.
+   */
+  private async persistirUbicacion(
+    mensajeroId: string,
+    ubicacion: { lat: number; lng: number; capturadaAt: Date; fuente: "gps" } | null,
+  ): Promise<void> {
+    if (ubicacion === null) return;
+    await this.rutas.upsertOrigen(mensajeroId, ubicacion);
   }
 
   /**
@@ -730,13 +774,17 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
    * [2026-10-30, SLT-59, D16] Ya no hay tramo puente (R14, D14) ni parametro que permita
    * llamar: la reduccion es solo de un prefijo (R41) y se resuelve siempre con R13 o R15, sin
    * llamadas. R16 queda retirado: no hay llamada que pueda fallar.
+   *
+   * [2026-10-31, SLT-59, D19/m3, R49] Devuelve el desenlace, no solo el trazado: si la escritura
+   * condicionada no se aplica, el resultado es `reduccion_descartada` y no `reducida`, para que
+   * el job y la accion no informen de una reduccion que no existe.
    */
   private async aplicarReduccion(
     mensajeroId: string,
     ruta: RutaOptimizadaDTO,
     decision: { previa: string[]; restantes: string[] },
     origen: { lat: number; lng: number } | null,
-  ): Promise<TrazadoRuta | null> {
+  ): Promise<EjecutarOptimizacionResult> {
     const { previa, restantes } = decision;
     const plan = planificarReduccion(ruta, restantes);
     const tramos: TramoPersistido[] | null =
@@ -769,7 +817,12 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
       conTrazado: trazado !== null,
       aplicada,
     });
-    return aplicada ? trazado : null;
+    if (!aplicada) return { status: "omitida", razon: "reduccion_descartada" };
+    return {
+      status: "omitida",
+      razon: "reducida",
+      ...(trazado !== null ? { trazado } : {}),
+    };
   }
 
   /**
@@ -1018,7 +1071,7 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
    * calculo desde un punto aproximado.
    */
   private resolverOrigen(
-    ruta: RutaOptimizadaDTO | null,
+    ruta: OrigenGuardado | null,
     paradas: { latitud: number; longitud: number }[],
     ahora: Date,
   ): { lat: number; lng: number; fuente: OrigenFuente } {
@@ -1088,7 +1141,7 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
    * limpia igual: el mensajero entrego todo y no quedan paradas que ordenar.
    */
   private origenSoloDeUltimaConocida(
-    ruta: RutaOptimizadaDTO | null,
+    ruta: OrigenGuardado | null,
   ): { lat: number; lng: number; fuente: OrigenFuente } | null {
     if (ruta === null || ruta.origenLat === null || ruta.origenLng === null) return null;
     return { lat: ruta.origenLat, lng: ruta.origenLng, fuente: "ultima_conocida" };

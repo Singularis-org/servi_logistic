@@ -1,5 +1,6 @@
 # SLT-59 — Reducir llamadas pagadas a Google en la optimización de ruta · tasks
 
+> Revisión 5 (2026-10-31): Fase 8 para D27 (registro de llamadas pagadas).
 > Revisión 4 (2026-10-30): Fase 7 añadida para D21-D25; T6.7 y T6.8 ajustadas.
 > Revisión 3 (2026-10-30): Fase 6 añadida para D16-D19; T5.2 ajustada por D20. Las fases 0-5 son las
 > de la revisión 2, ya implementadas.
@@ -126,13 +127,13 @@
   `tests/integration/repositories/ruta-optimizada-repo.test.ts` afirma el `where` con huella y estado.
   Un caso nuevo, con la ruta `desactualizada` y la huella igual, comprueba que no escribe, devuelve
   `false` y no toca las paradas.
-- [ ] **T6.5** Razón `reduccion_descartada` (R49, design §2.2 nota y §6). Depende de T6.2. Se añade a
+- [x] **T6.5** Razón `reduccion_descartada` (R49, design §2.2 nota y §6). Depende de T6.2. Se añade a
   `EjecutarOptimizacionResult` y `aplicarReduccion` la devuelve cuando no se escribe. *Hecho:*
   - en `optimizacion-ruta-reduccion.test.ts`, con huella cambiada o sin huella previa → `omitida /
     reduccion_descartada`, sin `trazado`, sin lanzar (el caso R18 actual se ajusta a esto);
   - en `tests/unit/actions/sincronizar-ruta.test.ts`, `reduccion_descartada` → `{ status: "ok",
     omitida: true, secuenciaFuente: null }`, sin `trazado`.
-- [ ] **T6.6** Sincronización manual sin pisar el origen (R45, R46, design §2.4). Depende de T6.2. Se
+- [x] **T6.6** Sincronización manual sin pisar el origen (R45, R46, design §2.4). Depende de T6.2. Se
   quita `upsertOrigen` del principio de `ejecutar`, se construye la vista en memoria y se escribe
   solo antes de recalcular.
   *Hecho:* en `tests/unit/services/optimizacion-ruta-origen.test.ts`:
@@ -147,7 +148,7 @@
   En `tests/unit/actions/sincronizar-ruta.test.ts`, la forma de R45 con el trazado de caché y 0
   llamadas. Los demás tests que afirmen el orden de `upsertOrigen` en `ejecutar` se ajustan solo en
   ese orden, y se añaden a «Archivos esperados».
-- [ ] **T6.7** [P] PA-2 → R47 y la prueba contra Postgres real (R48, R50).
+- [x] **T6.7** [P] PA-2 → R47 y la prueba contra Postgres real (R48, R50).
   - En `optimizacion-ruta-desvio.test.ts`, el título «PA-2» pasa a «D18/R47» y la aserción no cambia.
   - Se crea `tests/integration/db/ruta-optimizada-reduccion-sql-real.test.ts`.
     - **Solo `DATABASE_URL` del entorno, nunca `.env`** (instrucción del humano, 2026-10-30).
@@ -278,6 +279,70 @@
   T7.1-T7.6. *Hecho:* jornada A `{3, 3, 6}` fila a fila (filas 12 y 13 aparte); jornada B `{1, 1, 0}`
   y sus tres variantes.
 
+- [ ] **T7.9** D29: debounce deslizante de la primera ruta durante la recogida (R76, R77, design §12.2
+  nota D29). Depende de T7.3. Se integra en T7.3: R58 pasa a usar la misma clave por día.
+  - Config `RUTA_PRIMERA_DEBOUNCE_MIN` (10, entero ≥ 1; fuera de rango → default).
+  - `JobRepository.encolarOMoverPendiente` (`ON CONFLICT … DO UPDATE … WHERE estado = 'pending'`).
+  - Clave `ruta-opt:primera-recogida:<mensajeroId>:<díaCR>`.
+  - `origen = recogida_parcial` → motivo `primera_ruta_debounce_recogida` (Fase 8).
+
+  *Hecho:*
+  - en `optimizacion-ruta-enqueue.test.ts`:
+    - recogida parcial con la primera pendiente → 1 job a ahora + 10 min;
+    - una segunda recogida parcial a los 4 min → mismo job, `runAfter` movido a ahora + 10 min;
+    - la última recogida → mismo job, a ahora + `RUTA_DEBOUNCE_S` y `origen = recogida`;
+    - con la primera ruta ya calculada hoy → 0 jobs;
+  - en `tests/integration/repositories/job-repo-posponer.test.ts` (nuevo): el SQL lleva `DO UPDATE` y
+    `WHERE … 'pending'`; con la fila `done`/`running` no crea ni mueve (R77);
+  - config: default, override, vacío e inválido;
+  - en `optimizacion-ruta-motivo.test.ts` (Fase 8): `recogida_parcial` → `primera_ruta_debounce_recogida`.
+
+## Fase 8 — Revisión 5: D27, registro de llamadas pagadas (depende de la Fase 7)
+
+- [ ] **T8.1** Pieza común `lib/clients/registro-llamada-google.ts` (design §13.0).
+  - Contiene las constantes `GOOGLE_API_LOG_PREFIJO = "[google-api]"` y `GOOGLE_API_LOG_EVENTO =
+    "google_api_llamada"`, los tipos `ApiGoogle`, `MotivoLlamadaRuta`, `MotivoLlamadaGeocode` y
+    `ContextoLlamadaGoogle`, y `registrarLlamadaGoogle`.
+
+  *Hecho:* `tests/unit/clients/google-registro-llamada.test.ts` comprueba:
+  - la línea empieza por el prefijo y lleva `evento`;
+  - ningún campo contiene coordenadas, la dirección, el token ni la URL (R71).
+- [ ] **T8.2** Los tres clientes exigen `ContextoLlamadaGoogle` y emiten una línea por petición (R68-R72).
+  Depende de T8.1. *Hecho:* en `google-registro-llamada.test.ts`, con `fetch` y logger simulados:
+  - para `route_optimization`, `routes` y `geocoding`, la línea sale con el prefijo y el `evento` de la
+    constante (el test importa la constante, no repite el literal);
+  - `api` correcto, `paradas` = envíos enviados (`route_optimization`), `ok` frente a `500`/`401`/`timeout`;
+  - el token OAuth no deja línea;
+  - el cálculo local y la recta de respaldo no dejan línea.
+
+  `tests/unit/clients/google-*.test.ts` (existentes) se ajustan solo para pasar el contexto.
+- [ ] **T8.3** Motivos de rutas y de geocode (design §13.1, §13.2; R70, R73). Depende de T8.2.
+  - Rutas:
+    - payload `origen` en recogida, gestión y traspaso;
+    - el servicio deriva el motivo;
+    - el handler pasa el `intento` y el `max_intentos` del job;
+    - `trazarTramoVivo` y el probador pasan el suyo.
+  - Geocode:
+    - `encolarGeocodificacion` exige `motivo`;
+    - cada llamador pasa el suyo; se fija con sus llamadores qué ruta de `BulkOrdenService` es
+      `orden_creada` y cuál `carga_masiva`, y se anota en la bitácora;
+    - `revivirFallosConfig` reescribe `payload.motivo`;
+    - el handler y el probador lo pasan.
+
+  *Hecho:*
+  - `tests/unit/services/optimizacion-ruta-motivo.test.ts`: un caso por cada motivo de §13.1,
+    incluidos `reintento_ruta_desactualizada` y `job_sin_origen`, y el intento 2 de 3 de un reintento
+    tras un 500;
+  - `tests/unit/services/geocodificacion-motivo.test.ts`: un caso por cada motivo de §13.2, incluido
+    `job_sin_motivo`;
+  - `optimizacion-ruta-enqueue.test.ts` afirma el `origen` del payload;
+  - el test de salud afirma `revivido_por_salud`.
+- [ ] **T8.4** Secuencia de la jornada (R75). Depende de T8.3 y T7.8. *Hecho:*
+  `optimizacion-ruta-ahorro-jornada.test.ts` captura las líneas `[google-api]` y afirma la secuencia
+  de design §13.3, en orden.
+- [ ] **T8.5** Cierre. Los mapas `R<n> -> test` cubren R68-R75; typecheck (R68), lint y
+  `test:guardias` en local. `db/` sin cambios (R74).
+
 ## Archivos esperados
 
 - `lib/geo/polilinea.ts`
@@ -316,6 +381,24 @@
 - `tests/unit/services/optimizacion-ruta-primera-del-dia.test.ts`
 - `tests/components/RepartoModule.test.tsx`
 - `app/(app)/mis-asignaciones/reparto/page.tsx`
+- `lib/clients/registro-llamada-google.ts`
+- `lib/clients/google-route-optimization.ts`
+- `lib/clients/google-routes.ts`
+- `lib/clients/google-geocode.ts`
+- `lib/clients/probadores/optimizacion-rutas-probador.ts`
+- `lib/clients/probadores/google-maps-probador.ts`
+- `lib/services/jobs/geocodificacion-encolado.ts`
+- `lib/services/jobs/geocodificacion-handler.ts`
+- `lib/services/GeocodificacionService.ts`
+- `lib/services/GeocodeSaludService.ts`
+- `lib/services/AsignabilidadCoordenadasService.ts`
+- `lib/services/BulkOrdenService.ts`
+- `tests/unit/clients/google-registro-llamada.test.ts`
+- `tests/unit/clients/google-route-optimization.test.ts`
+- `tests/unit/clients/google-routes.test.ts`
+- `tests/unit/clients/google-geocode.test.ts`
+- `tests/unit/services/optimizacion-ruta-motivo.test.ts`
+- `tests/unit/services/geocodificacion-motivo.test.ts`
 - `tests/unit/services/mis-asignaciones-orden-ruta.test.ts`
 - `specs/SLT-59-ahorro-llamadas-google-ruta/requirements.md`
 - `specs/SLT-59-ahorro-llamadas-google-ruta/design.md`

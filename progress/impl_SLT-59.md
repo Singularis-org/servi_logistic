@@ -742,3 +742,42 @@ grep -n "tramosPuente\|permitirLlamada" lib/   -> 0
 - Jornada (`optimizacion-ruta-ahorro-jornada.test.ts`): ajuste mínimo con nota D16. La fila 7 (fuera de
   orden, 1 hueco) pasa de 0/1 a 1/1, porque ahora R42 re-sincroniza en vez de pagar un tramo puente. El
   total pasa de `{2,3,6}` a `{3,3,6}`. Las tablas de §8.0 se reescriben en T7.8.
+
+## Tanda 6c — backend_dev: T6.5, T6.6, T6.7 (renombrado) (2026-10-31)
+
+### Archivos
+- `lib/interfaces/services/IOptimizacionRutaService.ts` — `EjecutarOptimizacionResult.razon` + `"reduccion_descartada"` (R49).
+- `lib/services/OptimizacionRutaService.ts`
+  - `aplicarReduccion` devuelve el desenlace: `omitida/reducida` (+ trazado) si `reducirSecuencia` escribe; `omitida/reduccion_descartada` sin trazado si devuelve `false` o no hay huella previa (R49). `guardaSinRecalculo` lo reenvía tal cual; `reducirSinLlamadas` lo ignora como antes.
+  - `ejecutar` ya no hace `upsertOrigen` al principio (R46, design §2.4). La ubicación recibida se guarda en memoria (`ubicacionGps`); `origenGuardado` (las 4 columnas de origen, tipo nuevo `OrigenGuardado`) y `rutaVista` alimentan `resolverOrigen`, `origenSoloDeUltimaConocida` y `guardaSinRecalculo`. `persistirUbicacion` (nuevo, privado) escribe justo antes de `reemplazarSecuencia` en la rama 92/R35 y justo antes de `client.optimizar` en el camino principal.
+  - `resolverOrigen` y `origenSoloDeUltimaConocida` reciben `OrigenGuardado | null` (supertipo de `RutaOptimizadaDTO`; `reducirSinLlamadas` no cambia).
+- `tests/unit/services/optimizacion-ruta-reduccion.test.ts` — los dos casos R18 pasan a R18/R49 (`reduccion_descartada`, sin trazado, 0 `optimizar`, 0 `trazar`); caso nuevo R49 en la rama de una parada.
+- `tests/unit/services/optimizacion-ruta-origen.test.ts` — «se persiste ANTES de optimizar» ajustado (antes de `optimizar`, después de `findByMensajero`, y el origen enviado es la ubicación recibida); describes nuevos R46: omitida R1, una parada R2, reducida R41, `reduccion_descartada` R49, intervalo mínimo 92/R34 → `upsertOrigen` no se llama; desviado según la ubicación RECIBIDA (origen guardado sobre la línea) → recalcula, `upsertOrigen` 1 vez antes de `optimizar`, más un control sin ubicación → omitida; sin ruta previa → `upsertOrigen` antes de `optimizar`; 92/R35 con 0 paradas → `upsertOrigen` antes de `reemplazarSecuencia`.
+- `tests/unit/actions/sincronizar-ruta.test.ts` — R49 (`reduccion_descartada` → `{ ok, omitida: true, secuenciaFuente: null }`, sin `trazado`); R45 con el servicio REAL detrás de la acción: ruta vigente, mismo conjunto, ubicación sobre la línea → `{ ok, omitida: true, secuenciaFuente: null, trazado: <caché con sus tramos> }`, 0 `optimizar`, 0 `trazar`, 0 `upsertOrigen`.
+- `tests/unit/services/optimizacion-ruta-desvio.test.ts` — título «PA-2» → «D18/R47»; aserción intacta (T6.7, primer punto).
+
+### Mapa R → test (esta tanda)
+| R | Test |
+| --- | --- |
+| R45 | `tests/unit/actions/sincronizar-ruta.test.ts` › «SLT-59 R45 — ruta vigente, mismo conjunto y sin desvio…» |
+| R46 | `tests/unit/services/optimizacion-ruta-origen.test.ts` › «SLT-59 R46 — manual con ubicacion que no recalcula…» y «SLT-59 R46 — el desvio se mide con la ubicacion RECIBIDA…» |
+| R47 | `tests/unit/services/optimizacion-ruta-desvio.test.ts` › «D18/R47: polilinea `routes` que decodifica a 0 puntos…» |
+| R49 | `tests/unit/services/optimizacion-ruta-reduccion.test.ts` › «R18/R49…» (x2) y «R49: la rama de UNA parada…»; `tests/unit/actions/sincronizar-ruta.test.ts` › «SLT-59 R49…»; `optimizacion-ruta-origen.test.ts` › «R49: reduccion no aplicada…» |
+
+### Verificación (NODE_OPTIONS=--max-old-space-size=8192, `pnpm exec vitest run` por grupos)
+```
+origen + reduccion + sincronizar-ruta           Test Files 3 passed (3)  Tests 89 passed (89)
+ahorro-jornada + tramo-vivo + desvio            Test Files 3 passed (3)  Tests 45 passed (45)
+optimizacion-ruta-service + trazado + degradacion  Test Files 3 passed (3)  Tests 65 passed (65)
+pnpm run typecheck  -> tsc --noEmit, exit 0
+pnpm run lint       -> 0 errors, 230 warnings (preexistentes; ninguno en los archivos tocados)
+```
+`test:guardias` no se corrió en esta tanda (el encargo limita a los archivos de test tocados); queda para T6.8.
+
+### Desviaciones
+- Sin ruta previa (`ruta === null`) design §2.4 dice «no hay vista». Se resuelve el origen con la ubicación recibida igualmente (`origenGuardado` solo con las 4 columnas), porque R46 pide usarla «como origen si la ejecución recalcula» y antes la relectura tras `upsertOrigen` la traía. Sin lecturas nuevas (R9). El test de origen lo fija (origen enviado = ubicación recibida).
+- Ningún otro test afirmaba el orden de `upsertOrigen` en `ejecutar`: «Archivos esperados» no cambia.
+- `sincronizarRuta` y `SincronizarRutaButton` sin cambios (design §6): `reduccion_descartada` cae en la rama `omitida: true` existente.
+- Durante la tanda aparecieron cambios ajenos sin commitear en `specs/SLT-59-…/{requirements,design,tasks}.md` (revisión 5, D27). No los toqué salvo marcar T6.5-T6.7 en `tasks.md`.
+
+Veredicto: T6.5, T6.6 y T6.7 (renombrado) hechas; typecheck y lint verdes, 199 tests de los archivos tocados y vecinos en verde.

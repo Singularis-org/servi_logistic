@@ -1,9 +1,19 @@
 import { describe, it, expect, vi } from "vitest";
 import { sincronizarRuta } from "@/lib/actions/ruta-mensajero";
 import {
+  OptimizacionRutaService,
   RutaCredencialRechazadaError,
   RutaIntentoFallidoError,
+  type ParadasRepo,
 } from "@/lib/services/OptimizacionRutaService";
+import type {
+  IRutaOptimizadaRepository,
+  RutaOptimizadaDTO,
+} from "@/lib/interfaces/repositories/IRutaOptimizadaRepository";
+import type { IRouteOptimizationClient } from "@/lib/interfaces/external/IRouteOptimizationClient";
+import type { IRoutesClient } from "@/lib/interfaces/external/IRoutesClient";
+import type { RouteOptimizationConfig } from "@/lib/config/route-optimization";
+import { codificarPolilinea } from "@/lib/geo/polilinea";
 import type {
   EjecutarOptimizacionOpts,
   EjecutarOptimizacionResult,
@@ -253,4 +263,124 @@ describe("SLT-59 R31 — 401/403 en la sincronizacion manual: el mismo resultado
       expect(JSON.stringify(r)).not.toMatch(/credencial|HTTP/);
     },
   );
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// SLT-59 (R45, R49) — la sincronizacion manual que no recalcula
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+describe("SLT-59 R49 — una reduccion que no se escribio llega como `omitida`", () => {
+  it("`reduccion_descartada` -> { ok, omitida: true, secuenciaFuente: null }, sin trazado", async () => {
+    const { service } = build({ status: "omitida", razon: "reduccion_descartada" });
+    const r = await sincronizarRuta({}, { service, getActor: actorDe(MENSAJERO) });
+    expect(r).toEqual({ status: "ok", omitida: true, secuenciaFuente: null });
+    expect(r).not.toHaveProperty("trazado");
+  });
+});
+
+describe("SLT-59 R45 — ruta vigente, mismo conjunto y sin desvio: la ruta actual con 0 llamadas", () => {
+  // Con el servicio REAL detras de la accion: es la unica forma de afirmar a la vez la forma
+  // de la respuesta y que no se llamo ni a `optimizeTours` ni a `computeRoutes`.
+  const T0 = new Date("2026-10-31T12:00:00.000Z");
+  const LNG = -84.09;
+  const P = {
+    o: { lat: 9.9, lng: LNG },
+    s1: { lat: 9.91, lng: LNG },
+    s2: { lat: 9.92, lng: LNG },
+  };
+  const CONFIG: RouteOptimizationConfig = {
+    ROUTE_OPT_TIMEOUT_MS: 20_000,
+    RUTA_DEBOUNCE_S: 60,
+    RUTA_ORIGEN_TTL_MIN: 120,
+    RUTA_SYNC_MIN_INTERVALO_S: 10,
+    RUTA_MAX_PARADAS: 100,
+    RUTA_ORIGEN_MAX_KM: 200,
+    ROUTES_ROUTING_PREFERENCE: "TRAFFIC_UNAWARE",
+    RUTA_REOPT_DISTANCIA_M: 1000,
+    RUTA_OPT_MAX_INTENTOS: 3,
+    RUTA_RECUPERACION_ENFRIAMIENTO_MIN: 5,
+    RUTA_PRIMERA_MIN_RECOGIDO_PCT: 80,
+  };
+  const tramoS1 = { encodedPolyline: codificarPolilinea([P.o, P.s1]), distanciaM: 1000, duracionS: 100 };
+  const tramoS2 = { encodedPolyline: codificarPolilinea([P.s1, P.s2]), distanciaM: 1100, duracionS: 110 };
+  const RUTA: RutaOptimizadaDTO = {
+    id: "r1",
+    mensajeroId: MENSAJERO.usuarioId,
+    estado: "vigente",
+    calculadaAt: new Date(T0.getTime() - 30 * 60_000),
+    origenLat: P.o.lat,
+    origenLng: LNG,
+    origenAt: new Date(T0.getTime() - 30 * 60_000),
+    origenFuente: "gps",
+    huellaSet: "huella-previa",
+    ultimoError: null,
+    secuenciaFuente: "proveedor",
+    trazado: {
+      encodedPolyline: codificarPolilinea([P.o, P.s1, P.s2]),
+      distanciaM: 2100,
+      duracionS: 210,
+      fuente: "routes",
+    },
+    tramoVivoAt: null,
+    secuenciaPorOrden: new Map([
+      ["s1", 1],
+      ["s2", 2],
+    ]),
+    tramoPorOrden: new Map([
+      ["s1", tramoS1],
+      ["s2", tramoS2],
+    ]),
+  };
+
+  it("devuelve `omitida` con el trazado guardado; 0 `optimizar`, 0 `trazar` y el origen sin tocar", async () => {
+    const rutas = {
+      findByMensajero: vi.fn(async () => RUTA),
+      upsertOrigen: vi.fn(async () => {}),
+      reemplazarSecuencia: vi.fn(async () => {}),
+      guardarTrazado: vi.fn(async () => {}),
+      reducirSecuencia: vi.fn(async () => true),
+      marcarDesactualizada: vi.fn(async () => {}),
+      marcarTramoVivo: vi.fn(async () => {}),
+    };
+    const paradasRepo: ParadasRepo = {
+      findParadasEnReparto: vi.fn(async () =>
+        (["s1", "s2"] as const).map((id) => ({
+          ordenId: id,
+          latitud: P[id].lat,
+          longitud: P[id].lng,
+          createdAt: T0,
+        })),
+      ),
+    };
+    const optimizar = vi.fn();
+    const trazar = vi.fn();
+    const service = new OptimizacionRutaService(
+      rutas as unknown as IRutaOptimizadaRepository,
+      paradasRepo,
+      { optimizar } as unknown as IRouteOptimizationClient,
+      CONFIG,
+      () => T0,
+      undefined,
+      { trazar } as unknown as IRoutesClient,
+    );
+
+    // Ubicacion recibida sobre la linea de la ruta, entre el origen y s1: no desviado.
+    const r = await sincronizarRuta(
+      { ubicacion: { lat: 9.905, lng: LNG } },
+      { service, getActor: actorDe(MENSAJERO) },
+    );
+
+    expect(r).toEqual({
+      status: "ok",
+      omitida: true,
+      secuenciaFuente: null,
+      trazado: { ...RUTA.trazado, tramos: [tramoS1, tramoS2] },
+    });
+    expect(optimizar).not.toHaveBeenCalled();
+    expect(trazar).not.toHaveBeenCalled();
+    // R46: no recalculo, asi que la ubicacion recibida no pisa el origen guardado.
+    expect(rutas.upsertOrigen).not.toHaveBeenCalled();
+    expect(rutas.reemplazarSecuencia).not.toHaveBeenCalled();
+    expect(rutas.reducirSecuencia).not.toHaveBeenCalled();
+  });
 });

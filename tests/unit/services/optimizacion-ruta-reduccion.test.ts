@@ -377,25 +377,43 @@ describe("SLT-59 T2.3 — reduccion dentro de `ejecutar`", () => {
     expect(Object.keys(reduccion()[2]).sort()).toEqual(["huellaSet", "paradas", "trazado"]);
   });
 
-  it("R18: con la huella cambiada la escritura no aplica -> no lanza y no devuelve trazado", async () => {
-    const { service, reduccion } = build({
+  // [2026-10-31, SLT-59, D19/m3] R49: una reduccion que no se escribio no se informa como
+  // `reducida`. Antes estos dos casos devolvian `reducida` sin trazado.
+  it("R18/R49: con la huella cambiada la escritura no aplica -> `reduccion_descartada`, sin trazado, sin lanzar", async () => {
+    const { service, reduccion, client, trazar } = build({
       ruta: rutaConTramos(IDS.slice(0, 3)),
       paradas: [parada("s2"), parada("s3")],
       reducirDevuelve: false,
     });
     const r = await service.ejecutar(MENSAJERO, JOB);
     expect(reduccion()[1]).toBe("huella-previa");
-    expect(r).toEqual({ status: "omitida", razon: "reducida" });
+    expect(r).toEqual({ status: "omitida", razon: "reduccion_descartada" });
+    expect(client.optimizar).not.toHaveBeenCalled();
+    expect(trazar).not.toHaveBeenCalled();
   });
 
-  it("R18: sin huella previa no hay con que condicionar la escritura -> no escribe y no lanza", async () => {
-    const { service, rutas } = build({
+  it("R18/R49: sin huella previa no hay con que condicionar la escritura -> no escribe, `reduccion_descartada`, sin lanzar", async () => {
+    const { service, rutas, client, trazar } = build({
       ruta: rutaConTramos(IDS.slice(0, 3), { huellaSet: null }),
       paradas: [parada("s2"), parada("s3")],
     });
     const r = await service.ejecutar(MENSAJERO, JOB);
     expect(rutas.reducirSecuencia).not.toHaveBeenCalled();
-    expect(r).toEqual({ status: "omitida", razon: "reducida" });
+    expect(r).toEqual({ status: "omitida", razon: "reduccion_descartada" });
+    expect(client.optimizar).not.toHaveBeenCalled();
+    expect(trazar).not.toHaveBeenCalled();
+  });
+
+  it("R49: la rama de UNA parada tambien informa `reduccion_descartada` si la escritura no aplica", async () => {
+    const { service, rutas } = build({
+      ruta: rutaConTramos(["s1", "s2"]),
+      paradas: [parada("s2")],
+      reducirDevuelve: false,
+    });
+    const r = await service.ejecutar(MENSAJERO, JOB);
+    expect(rutas.reducirSecuencia).toHaveBeenCalledTimes(1);
+    expect(r).toEqual({ status: "omitida", razon: "reduccion_descartada" });
+    expect(rutas.reemplazarSecuencia).not.toHaveBeenCalled();
   });
 
   it("R19: subconjunto con el mensajero desviado -> reoptimiza el conjunto completo, no reduce", async () => {

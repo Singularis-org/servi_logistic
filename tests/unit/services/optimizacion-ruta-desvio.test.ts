@@ -326,7 +326,8 @@ describe("SLT-59 T2.1 — decidirGuardaRuta (tabla de casos)", () => {
     // PA-2 (decision del leader 2026-10-30): una polilinea `routes` que decodifica a 0 puntos
     // sigue "existiendo" para R4; sin linea contra la que medir, la distancia es +Infinity y se
     // reoptimiza, que es el default seguro (no se cae a la recta).
-    it("PA-2: polilinea `routes` que decodifica a 0 puntos -> distancia +Infinity -> desviado -> reoptimizar", () => {
+    // [2026-10-31, SLT-59] El humano confirmo PA-2 como D18 (R47); solo cambia el titulo.
+    it("D18/R47: polilinea `routes` que decodifica a 0 puntos -> distancia +Infinity -> desviado -> reoptimizar", () => {
       expect(distanciaMinimaAPolilineaM({ lat: 9.92, lng: LNG }, [])).toBe(Number.POSITIVE_INFINITY);
       const vacia = ruta({
         trazado: { encodedPolyline: "", distanciaM: 0, duracionS: 0, fuente: "routes" },
