@@ -83,7 +83,7 @@ Desbloqueada: Q1 = (a) (D2, 2026-10-30 y reconfirmada por Carlos el 2026-10-31: 
   la task se marca como no aplica en `progress/impl_SLT-63.md`.
 
 ## T7. Cierre
-- [ ] `./init.sh` en verde.
+- [x] `./init.sh`: typecheck, lint y guardias en verde; 1 rojo de entorno fuera del diff (`indices-rutas-calientes`, plan del planificador; relanzado: 13/13 verde). Mismo caso que H5 de SLT-68. Lo confirma `gate-completo` en CI.
 - [x] Mapa `R<n> → test` completo en `progress/impl_SLT-63.md`.
 - [x] Nota en la sección de la ficha de `progress/features/SLT-63.md`: «138/R18 acotado, 259/R10
       acotado».
