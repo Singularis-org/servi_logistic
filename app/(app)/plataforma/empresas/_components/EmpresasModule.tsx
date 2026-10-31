@@ -126,9 +126,16 @@ const TEXTOS = {
   columnaAlta: "Alta",
   columnaMaestros: "Maestros",
   columnaBienvenida: "Bienvenida",
-  columnaModulos: "Módulos",
-  enlaceModulos: "Módulos",
-  enlaceModulosNombre: (empresa: string) => `Módulos de ${empresa}`,
+  // SLT-66 (R32): el detalle es también donde se asigna el plan.
+  columnaModulos: "Plan y módulos",
+  enlaceModulos: "Plan y módulos",
+  enlaceModulosNombre: (empresa: string) => `Plan y módulos de ${empresa}`,
+  columnaPlan: "Plan",
+  sinPlan: "Sin plan",
+  asignarPlan: "Asignar plan",
+  asignarPlanNombre: (empresa: string) => `Asignar plan a ${empresa}`,
+  cambiarPlan: "Cambiar plan",
+  cambiarPlanNombre: (empresa: string) => `Cambiar el plan de ${empresa}`,
   sinMaestros: "—",
   vacio: "Aún no hay empresas. Crea la primera con el formulario.",
 } as const;
@@ -401,7 +408,6 @@ export function EmpresasModule({
         empresas={empresas}
         reenviarBienvenida={reenviarBienvenida}
         bienvenidaPendiente={bienvenidaPendiente}
-        montoGlobal={cobroGlobal?.monto ?? null}
         fijarCobroEmpresa={fijarCobroEmpresa}
       />
     </div>
@@ -444,13 +450,11 @@ function ListadoEmpresas({
   empresas,
   reenviarBienvenida,
   bienvenidaPendiente,
-  montoGlobal,
   fijarCobroEmpresa,
 }: {
   empresas: EmpresaListada[];
   reenviarBienvenida: EmpresasModuleProps["reenviarBienvenida"];
   bienvenidaPendiente: string[] | null;
-  montoGlobal: string | null;
   fijarCobroEmpresa: FijarCobroEmpresa;
 }) {
   if (empresas.length === 0) {
@@ -466,6 +470,7 @@ function ListadoEmpresas({
       <TableHeader>
         <TableRow>
           <TableHead>{TEXTOS.columnaNombre}</TableHead>
+          <TableHead>{TEXTOS.columnaPlan}</TableHead>
           <TableHead>{TEXTOS.columnaModulos}</TableHead>
           <TableHead>{TEXTOS.columnaSlug}</TableHead>
           <TableHead>{TEXTOS.columnaPais}</TableHead>
@@ -481,11 +486,14 @@ function ListadoEmpresas({
           <TableRow key={empresa.id}>
             <TableCell className="font-medium">{empresa.nombre}</TableCell>
             <TableCell>
+              <CeldaPlan empresa={empresa} />
+            </TableCell>
+            <TableCell>
               {/* SL-23 (design §7; R8): el detalle de la empresa, donde se encienden sus módulos. */}
               <Link
                 href={`/plataforma/empresas/${empresa.id}`}
                 aria-label={TEXTOS.enlaceModulosNombre(empresa.nombre)}
-                className="rounded-sm text-sm text-primary-strong underline-offset-4 hover:underline focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none"
+                className={CLASE_ENLACE}
               >
                 {TEXTOS.enlaceModulos}
               </Link>
@@ -499,7 +507,7 @@ function ListadoEmpresas({
                 organizacionId={empresa.id}
                 nombreEmpresa={empresa.nombre}
                 cobroPorOrden={empresa.cobroPorOrden}
-                montoGlobal={montoGlobal}
+                cobroVigente={empresa.cobroVigente}
                 fijarCobroEmpresa={fijarCobroEmpresa}
               />
             </TableCell>
@@ -533,6 +541,36 @@ function ListadoEmpresas({
         ))}
       </TableBody>
     </Table>
+  );
+}
+
+const CLASE_ENLACE =
+  "rounded-sm text-sm text-primary-strong underline-offset-4 hover:underline focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none";
+
+/**
+ * SLT-66 (design §6.4; R32) — el plan de la empresa y el enlace a su bloque «Plan» del detalle. Es un
+ * enlace y no el modal de SLT-58 porque ese modal necesita datos que solo carga el detalle (planes
+ * asignables, rango del ciclo, vista previa); el ancla `#plan` deja al superadmin en el bloque.
+ */
+function CeldaPlan({ empresa }: { empresa: EmpresaListada }) {
+  const { plan } = empresa;
+  return (
+    <div className="flex flex-col gap-0.5">
+      {plan === null ? (
+        <span className="text-muted-foreground">{TEXTOS.sinPlan}</span>
+      ) : (
+        <span>{plan.nombre}</span>
+      )}
+      <Link
+        href={`/plataforma/empresas/${empresa.id}#plan`}
+        aria-label={
+          plan === null ? TEXTOS.asignarPlanNombre(empresa.nombre) : TEXTOS.cambiarPlanNombre(empresa.nombre)
+        }
+        className={CLASE_ENLACE}
+      >
+        {plan === null ? TEXTOS.asignarPlan : TEXTOS.cambiarPlan}
+      </Link>
+    </div>
   );
 }
 

@@ -57,7 +57,7 @@ async function escenario(tx: TxDeTest): Promise<Escenario> {
     custom: A,
     ordenes: 1000,
     apiKeys: 4,
-    porRol: { maestro: 2, adminTienda: 5 },
+    porRol: { admin: 2, adminTienda: 5 }, // SLT-66 R1: el maestro ya no admite tope
   });
   await tx.plan.update({
     where: { id: planA },
@@ -120,7 +120,7 @@ async function usoSegunLosTriggers(tx: TxDeTest, A: string) {
   const filas = await tx.$queryRawUnsafe<Record<string, unknown>[]>(
     `SELECT plan_uso_ordenes(o."id", plan_inicio_ciclo_en_curso(o."plan_ciclo_corto_desde_at", o."plan_ciclo_ancla_at", now() AT TIME ZONE 'UTC')) AS ordenes,
             plan_uso_api_keys(o."id") AS api_keys,
-            plan_uso_rol(o."id", 'maestro'::rol_value) AS maestro,
+            -- SLT-66 R5: plan_de_la_empresa ya no cuenta al maestro (no tiene tope).
             plan_uso_rol(o."id", 'admin'::rol_value) AS admin,
             plan_uso_rol(o."id", 'mensajero'::rol_value) AS mensajero,
             plan_uso_rol(o."id", 'Admin Tienda'::rol_value) AS admin_tienda,
@@ -174,8 +174,7 @@ describeSiHayBase("SLT-58 — plan_de_la_empresa: la empresa lee su plan y su co
     // Y no es una igualdad vacía: lo sembrado se cuenta (la borrada y el admin pendiente no).
     expect(plan.uso).toEqual({
       ordenes: 3,
-      api_keys: 0,
-      maestro: 1,
+      api_keys: 0, // SLT-66 R5: sin `maestro` (el maestro sembrado ya no se cuenta)
       admin: 0,
       mensajero: 0,
       admin_tienda: 1,
@@ -191,7 +190,7 @@ describeSiHayBase("SLT-58 — plan_de_la_empresa: la empresa lee su plan y su co
     expect(plan.tope_api_keys).toBe(4);
     expect(plan.topes_rol).toEqual(
       expect.arrayContaining([
-        { rol: "maestro", maximo: 2 },
+        { rol: "admin", maximo: 2 }, // SLT-66 R1
         { rol: "Admin Tienda", maximo: 5 },
       ]),
     );
@@ -226,6 +225,8 @@ describeSiHayBase("SLT-58 — plan_de_la_empresa: la empresa lee su plan y su co
         "ciclo_corto_desde", // SLT-58 §11.2 (R40)
         "uso",
         "cambio",
+        "costo_por_orden", // SLT-66 R18 (M3)
+        "costo_vigente", // SLT-66 R18 (M3)
       ].sort(),
     );
     expect(Object.keys(plan.cambio as object).sort()).toEqual(["version", "vigente_desde"]);

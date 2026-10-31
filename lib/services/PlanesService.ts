@@ -10,6 +10,7 @@ import type { IPlanesService } from "@/lib/interfaces/services/IPlanesService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { anclaDeLaFechaElegida, inicioDelDiaPlataforma, rangoDelInicioDelCiclo } from "@/lib/planes/ciclo";
 import { cambioPendienteDelPlan, planConConsumo } from "@/lib/planes/consumo";
+import { tieneCostoConcreto } from "@/lib/planes/costo-concreto";
 import { mensajeTopesPasados, rangoInicioCiclo, SOLO_PRIMERA_ASIGNACION } from "@/lib/planes/mensajes";
 import {
   archivarPlanSchema,
@@ -157,6 +158,8 @@ export class PlanesService implements IPlanesService {
     const reglas = await this.reglasDeAsignar(organizacionId, planId, inicioCiclo !== undefined);
     if ("estado" in reglas) return reglas;
     if (reglas.empresa.planId === planId) return ok(planId, false);
+    // SLT-66 R28: después de «mismo plan» (SL-24 R13 sigue primero), con fecha y sin ella.
+    if (await this.sinCostoConcreto(reglas.plan)) return { estado: "plan_sin_costo" };
 
     // Sin fecha, la llamada de SL-24 tal cual (tres argumentos).
     const r =
@@ -186,6 +189,8 @@ export class PlanesService implements IPlanesService {
     if (fuera !== null) return fuera;
     const reglas = await this.reglasDeAsignar(organizacionId, planId, true);
     if ("estado" in reglas) return reglas;
+    // SLT-66 R28: la vista previa no deja confirmar lo que `asignar` rechazaría.
+    if (await this.sinCostoConcreto(reglas.plan)) return { estado: "plan_sin_costo" };
 
     const leida = await this.repo.vistaPreviaAsignacion(organizacionId, planId, inicioElegido(inicioCiclo, ahora));
     if (leida === null) return { estado: "not_found" };
@@ -200,7 +205,7 @@ export class PlanesService implements IPlanesService {
     organizacionId: string,
     planId: string,
     conFecha: boolean,
-  ): Promise<{ empresa: EmpresaDePlanes } | RechazoDeAsignar> {
+  ): Promise<{ empresa: EmpresaDePlanes; plan: PlanDTO } | RechazoDeAsignar> {
     const [empresa, plan] = await Promise.all([this.repo.empresa(organizacionId), this.repo.plan(planId)]);
     if (empresa === null || plan === null) return { estado: "not_found" };
     if (plan.archivado) return { estado: "archivado" };
@@ -209,7 +214,18 @@ export class PlanesService implements IPlanesService {
     if (conFecha && empresa.planId !== null) {
       return { estado: "validation_error", fieldErrors: { inicioCiclo: [SOLO_PRIMERA_ASIGNACION] } };
     }
-    return { empresa };
+    return { empresa, plan };
+  }
+
+  /**
+   * SLT-66 (design §4.2.1; R28): el plan, o la versión de su cambio programado pendiente, no tiene costo
+   * concreto. Mirar el pendiente aquí evita tener que comprobar nada al aplicar el cambio. El pendiente
+   * solo se lee si el vigente ya es concreto.
+   */
+  private async sinCostoConcreto(plan: PlanDTO): Promise<boolean> {
+    if (!tieneCostoConcreto(plan)) return true;
+    const pendiente = (await this.repo.detalle(plan.id))?.pendiente ?? null;
+    return pendiente !== null && !tieneCostoConcreto(pendiente.version);
   }
 
   async cancelarCambio(actor: Actor | null, input: unknown): Promise<PlanResult> {
@@ -227,7 +243,9 @@ export class PlanesService implements IPlanesService {
     if (!parsed.success) return { estado: "validation_error", fieldErrors: erroresDeCampo(parsed.error) };
     const { organizacionId } = parsed.data;
     if ((await this.repo.empresa(organizacionId)) === null) return { estado: "not_found" };
-    return { estado: "ok", planes: await this.repo.asignables(organizacionId) };
+    // SLT-66 R29: solo los planes con costo concreto; la regla es de la asignación, no del dato (§4.2.1).
+    const planes = await this.repo.asignables(organizacionId);
+    return { estado: "ok", planes: planes.filter(tieneCostoConcreto) };
   }
 
   /** R7: la lectura de servidor que expondrá SL-25. Sin actor y fuera de toda action. */

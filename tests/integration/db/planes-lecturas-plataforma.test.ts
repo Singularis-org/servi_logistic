@@ -29,6 +29,7 @@ const VERSION: VersionPlan = {
   topes: { ordenesPorCiclo: 10, porRol: {}, apiKeys: null },
   modulos: [],
   precio: { tipo: "sin_precio" },
+  costoPorOrden: null, // SLT-66 R7: el plan lleva costo por orden; aquí, vacío.
 };
 
 /** Las 00:00 de la plataforma del 2027-01-10 (−06:00). */
@@ -190,7 +191,7 @@ describeSiHayBase("SLT-58 — lecturas del superadmin en PlanesRepository (R13, 
     expect(a.plan!.uso).toEqual({
       ordenes: 0,
       apiKeys: 0,
-      porRol: { maestro: 0, admin: 0, mensajero: 0, adminTienda: 0, adminSatelite: 0 },
+      porRol: { admin: 0, mensajero: 0, adminTienda: 0, adminSatelite: 0 }, // SLT-66 R5: sin uso de maestro
     });
     expect(a.plan!.ancla).toBeInstanceOf(Date);
     expect(a.plan!.cambio).toEqual({ vigenteDesde: RIGE, version: VERSION });

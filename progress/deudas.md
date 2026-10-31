@@ -204,3 +204,13 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** review de SLT-67 (2026-10-30, `progress/review_SLT-67.md`, menor 1). El campo compartido `components/shared/MontoInput.tsx` (con `montoParaCampo`) solo lo usa `PlanForm`; `docs/architecture.md` pide dos usos para vivir en `shared/`. Se dejó ahí por decisión del humano (reutilizable).
 - **Qué falta:** usarlo en los campos de monto candidatos (`MarcarRecibidoDialog`, `RegistrarPagoDialog`, `RegistrarMovimientoDialog`, `GastoFijoPlantillaDialog`, `AjustarPagoMensajeroDialog`, `TarifaCampos`, `CobroPorOrden`, `PremioInputRow`, `DesglosePagoField`). Lista en `progress/impl_SLT-67.md`.
 - **Dueño:** Camilo (decidir si va a ficha).
+
+### D34 — Carga de 500 órdenes con guía al borde del timeout de transacción
+- **Origen:** tanda B de SLT-66 (2026-10-31, `progress/impl_SLT-66.md` > Tanda B). Medido antes de M3: la carga de 500 órdenes con guía por `OrdenRepository` tarda 3–4,9 s, al borde del timeout de 5 s de las transacciones interactivas de Prisma; una serie lo superó. Previo a SLT-66 (M3 no lo cambia de forma medible).
+- **Qué falta:** trocear la carga o subir el timeout de esa transacción, con medición.
+- **Dueño:** Camilo (decidir si va a ficha).
+
+### D35 — Textos de costo del plan con «.00» y sufijo repetido
+- **Origen:** review de SLT-66 (2026-10-31, `progress/review_SLT-66.md`, m1). En el detalle y el catálogo del plan sale «Costo por orden: 100.00 por orden» (repite «por orden»), mientras «Mi plan» dice «Costo por orden: 100.00». Los montos de pantalla del plan muestran «.00» en enteros desde SL-24; SLT-67 solo lo quitó de los campos de entrada.
+- **Qué falta:** quitar el sufijo duplicado y decidir si los montos de pantalla siguen la regla de SLT-67 (entero sin decimales). Toca `PlanVistaCosteo`, `PlanEmpresa:517-523` y `PlanesModule`.
+- **Dueño:** Camilo (decidir si va a ficha).

@@ -48,6 +48,9 @@ export async function asignarPlanConTope(dueno: PrismaClient, organizacionId: st
     topes: { ordenesPorCiclo: n, porRol: {}, apiKeys: null },
     modulos: [...ORDEN_MODULOS],
     precio: { tipo: "sin_precio" },
+    // SLT-66 R8: `costoPorOrden` es obligatorio y `null` es vacío (como `entradaDePlan` de los tests de
+    // integración). Sigue sin precio: R28 vive en el servicio y aquí se asigna con el repositorio real.
+    costoPorOrden: null,
   });
   const planId = await repo.crear(entrada, actor);
   const asignado = await repo.asignar(organizacionId, planId, actor);

@@ -15,6 +15,7 @@ const BASE: PlanDTO = {
   modulos: ["ranking", "analitica"],
   precio: { tipo: "monto", mensual: "25000", anual: { tipo: "descuento", porcentaje: "10" } },
   archivado: false,
+  costoPorOrden: null, // SLT-66 R7: el plan lleva costo por orden; aquí, vacío.
 };
 
 describe("SL-24 — diferenciasDelPlan", () => {
@@ -27,6 +28,7 @@ describe("SL-24 — diferenciasDelPlan", () => {
         antes: null,
         despues: { tipo: "monto", mensual: "25000.00", anual: { tipo: "descuento", porcentaje: "10.00" } },
       },
+      costoPorOrden: { antes: null, despues: null }, // SLT-66 R8: al crear también sale el costo por orden.
       archivado: { antes: null, despues: false },
     });
   });

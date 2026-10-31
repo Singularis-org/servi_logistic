@@ -100,6 +100,8 @@ export default defineConfig({
         "integraciones-por-empresa",
         // SLT-58 R28: el superadmin crea y asigna un plan custom; «Mi plan» por empresa y por rol.
         "planes-superadmin",
+        // SLT-66 R26: costo por orden del plan; toca el global del cobro y lo devuelve al terminar.
+        "planes-costeo",
       ),
     },
     {

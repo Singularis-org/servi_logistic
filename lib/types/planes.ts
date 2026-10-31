@@ -11,8 +11,11 @@ import type { CambioPendienteVista, PlanConConsumo } from "@/lib/types/consumo-p
 // texto (`montoCobroSchema`, sin pasar por `Number`): la base los guarda en `DECIMAL(12,2)` y sus
 // `CHECK` son la segunda red (design §16.1: «una versión inválida se rechaza igual en dos sitios»).
 
-/** Los roles que admiten tope (R25). `apiKey` y `superadmin` quedan fuera: las keys tienen el suyo. */
-export const ROLES_CON_TOPE = ["maestro", "admin", "mensajero", "adminTienda", "adminSatelite"] as const;
+/**
+ * Los roles que admiten tope (R25). `apiKey` y `superadmin` quedan fuera: las keys tienen el suyo. SLT-66
+ * (R1): `maestro` tampoco; el `CHECK` de `plan_tope_rol` lo rechaza igual (20261031140000).
+ */
+export const ROLES_CON_TOPE = ["admin", "mensajero", "adminTienda", "adminSatelite"] as const;
 export type RolConTope = (typeof ROLES_CON_TOPE)[number];
 
 export type PrecioPlan =
@@ -93,6 +96,9 @@ export const crearPlanSchema = z
     topes: topesPlanSchema,
     modulos: modulosSchema,
     precio: precioPlanSchema,
+    // SLT-66 (R7, R8): obligatorio y `null` para vacío, para que un formulario que no lo mande dé
+    // validation_error en vez de borrarlo sin avisar.
+    costoPorOrden: montoCobroSchema.nullable(),
   })
   .strict()
   // R2: un custom nombra exactamente una empresa y un público ninguna. Que exista lo mira el servicio.
@@ -109,6 +115,7 @@ export const editarPlanSchema = z
     topes: topesPlanSchema,
     modulos: modulosSchema,
     precio: precioPlanSchema,
+    costoPorOrden: montoCobroSchema.nullable(),
     // null = de inmediato (R15); una fecha = programado (R37, T11).
     vigenteDesde: fechaSchema.nullable(),
   })
@@ -145,7 +152,7 @@ export type PrevisualizarAsignacionInput = z.infer<typeof previsualizarAsignacio
 export type AsignablesInput = z.infer<typeof asignablesSchema>;
 
 /** Lo que define una versión del plan: lo editable (§16.1: `version` es esto mismo). */
-export type VersionPlan = Pick<EditarPlanInput, "nombre" | "topes" | "modulos" | "precio">;
+export type VersionPlan = Pick<EditarPlanInput, "nombre" | "topes" | "modulos" | "precio" | "costoPorOrden">;
 
 export type PlanDTO = {
   id: string;
@@ -155,6 +162,8 @@ export type PlanDTO = {
   topes: TopesPlan;
   modulos: ModuloApagable[];
   precio: PrecioPlan;
+  /** SLT-66 (R7): importe con dos decimales; `null` = el plan no lo fija (se cobra el global, R12). */
+  costoPorOrden: string | null;
   archivado: boolean;
 };
 
@@ -183,7 +192,9 @@ export type PlanResult =
   | { estado: "archivado" }
   | { estado: "custom_de_otra_empresa" }
   | { estado: "tope_excedido"; excedidos: TopeExcedido[]; mensaje: string }
-  | { estado: "sin_cambio_programado" };
+  | { estado: "sin_cambio_programado" }
+  // SLT-66 R28: el plan (o su versión pendiente) no tiene costo base y costo por orden concretos.
+  | { estado: "plan_sin_costo" };
 
 /**
  * SL-24 (design §6.3, §6.5): el rechazo de un alta por el tope del plan, en el resultado de las
@@ -275,4 +286,6 @@ export type VistaPreviaAsignacionResult =
   | { estado: "validation_error"; fieldErrors: Record<string, string[]> }
   | { estado: "not_found" }
   | { estado: "archivado" }
-  | { estado: "custom_de_otra_empresa" };
+  | { estado: "custom_de_otra_empresa" }
+  // SLT-66 R28: la pantalla no deja confirmar lo que `asignar` rechazaría.
+  | { estado: "plan_sin_costo" };

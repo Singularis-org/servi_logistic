@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { FormField } from "@/components/shared/FormField";
 import { money } from "@/lib/config/moneda";
+import type { FuenteDelCosto } from "@/lib/types/consumo-plan";
 import {
   MENSAJE_MONTO_COBRO_INVALIDO,
   montoCobroSchema,
@@ -35,6 +36,7 @@ export const TEXTOS_COBRO = {
   guardar: "Guardar",
   guardado: "Cobro guardado.",
   propio: "propio",
+  delPlan: "del plan",
   global: "global",
   cambiar: "Cambiar",
   cancelar: "Cancelar",
@@ -178,22 +180,34 @@ export interface CeldaCobroEmpresaProps {
   organizacionId: string;
   /** Para los nombres accesibles: en una tabla hay un «Cambiar» por fila. */
   nombreEmpresa: string;
-  /** La excepción de la empresa, o `null` si usa el valor global. */
+  /** La excepción de la empresa, o `null` si no tiene. Solo la usa el editor. */
   cobroPorOrden: string | null;
-  /** El valor global; `null` si no está configurado o no se pudo leer. */
-  montoGlobal: string | null;
+  /** SLT-66 (R31): lo que se cobraría hoy por una orden nueva, y de dónde sale. */
+  cobroVigente: { monto: string; fuente: FuenteDelCosto };
   fijarCobroEmpresa: FijarCobroEmpresa;
 }
 
 /**
- * La tarifa vigente de una empresa y de dónde sale (R10), con su editor en la misma fila. La regla
- * de R3 solo ELIGE qué texto pintar entre importes ya derivados: no hay aritmética.
+ * SLT-66 (R31): la etiqueta de cada fuente. `Record` total: una fuente nueva no compila sin la suya.
+ * «Sin configurar» se rotula «global» porque es el global vacío, que cobra 0,00.
+ */
+const ORIGEN: Record<FuenteDelCosto, string> = {
+  empresa: TEXTOS_COBRO.propio,
+  plan: TEXTOS_COBRO.delPlan,
+  global: TEXTOS_COBRO.global,
+  sin_configurar: TEXTOS_COBRO.global,
+};
+
+/**
+ * La tarifa vigente de una empresa y de dónde sale (R10), con su editor en la misma fila. SLT-66
+ * (R31): el importe y la fuente llegan del servidor, que usa la misma función que el cargo; derivarlos
+ * aquí desde la excepción y el global se saltaría el costo del plan.
  */
 export function CeldaCobroEmpresa({
   organizacionId,
   nombreEmpresa,
   cobroPorOrden,
-  montoGlobal,
+  cobroVigente,
   fijarCobroEmpresa,
 }: CeldaCobroEmpresaProps) {
   const router = useRouter();
@@ -203,9 +217,6 @@ export function CeldaCobroEmpresa({
   const [fallo, setFallo] = useState<Fallo | null>(null);
   const [guardado, setGuardado] = useState(false);
   const [enviando, setEnviando] = useState(false);
-
-  const vigente = cobroPorOrden ?? montoGlobal ?? "0.00";
-  const origen = cobroPorOrden === null ? TEXTOS_COBRO.global : TEXTOS_COBRO.propio;
 
   function abrir() {
     setTexto(cobroPorOrden ?? "");
@@ -236,8 +247,8 @@ export function CeldaCobroEmpresa({
   return (
     <div className="flex flex-col gap-2">
       <div>
-        <span className="tabular-nums">{money(vigente)}</span>
-        <span className="block text-xs text-muted-foreground">{origen}</span>
+        <span className="tabular-nums">{money(cobroVigente.monto)}</span>
+        <span className="block text-xs text-muted-foreground">{ORIGEN[cobroVigente.fuente]}</span>
       </div>
 
       {guardado ? <Aviso texto={TEXTOS_COBRO.guardado} /> : null}

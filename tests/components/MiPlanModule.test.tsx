@@ -20,6 +20,7 @@ const VIGENTE: VersionPlan = {
   topes: { ordenesPorCiclo: 3000, porRol: { mensajero: 10, adminTienda: 5 }, apiKeys: 2 },
   modulos: ["analitica", "ranking"],
   precio: { tipo: "monto", mensual: "45000", anual: null },
+  costoPorOrden: null, // SLT-66 R8: campo nuevo del tipo.
 };
 
 // Mitad de ciclo: ancla el 15 de enero a las 06:00 UTC, «ahora» el 1 de marzo a las 06:00 UTC.
@@ -33,9 +34,11 @@ function leido(extra: Partial<PlanConUsoLeido> = {}): PlanConUsoLeido {
     uso: {
       ordenes: 1000,
       apiKeys: 2,
-      porRol: { maestro: 1, admin: 2, mensajero: 8, adminTienda: 4, adminSatelite: 0 },
+      // SLT-66 R5: el uso ya no cuenta maestros.
+      porRol: { admin: 2, mensajero: 8, adminTienda: 4, adminSatelite: 0 },
     },
     cambio: null,
+    costoVigente: { monto: "500.00", fuente: "global" }, // SLT-66 R18: campo nuevo de la lectura.
     ...extra,
   };
 }
@@ -51,8 +54,8 @@ describe("SLT-58 R1 — con plan, nombre, precio informativo y módulos", () => 
     render(<MiPlanModule plan={plan()} />);
 
     expect(screen.getByRole("heading", { name: "Plan Crecer" })).toBeInTheDocument();
-    expect(screen.getByText("45000 al mes")).toBeInTheDocument();
-    expect(screen.getByText(/Precio informativo/)).toBeInTheDocument();
+    // SLT-66 R9: «Precio informativo» pasa a «Costo base»; el importe sigue sin símbolo de moneda.
+    expect(screen.getByText("Costo base: 45000.00 al mes")).toBeInTheDocument();
 
     const modulos = screen.getByRole("list", { name: "Módulos incluidos" });
     expect(within(modulos).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
@@ -66,10 +69,10 @@ describe("SLT-58 R1 — con plan, nombre, precio informativo y módulos", () => 
 
     const consumo = screen.getByRole("list", { name: "Consumo" });
     const filas = within(consumo).getAllByRole("listitem");
-    // Órdenes, los cinco roles con tope y API keys (R2).
-    expect(filas).toHaveLength(7);
+    // Órdenes, los cuatro roles con tope y API keys (R2; SLT-66 R5: sin la fila del maestro).
+    expect(filas).toHaveLength(6);
     expect(within(consumo).getByText("1.000 de 3.000 órdenes del ciclo")).toBeInTheDocument();
-    expect(within(consumo).getAllByText(/sin límite/)).toHaveLength(3); // maestro, admin, adminSatelite
+    expect(within(consumo).getAllByText(/sin límite/)).toHaveLength(2); // admin, adminSatelite (SLT-66 R5)
 
     // 8 de 10 mensajeros → cerca; 2 de 2 API keys → lleno; 4 de 5 → cerca (80 %). La marca es texto.
     expect(within(consumo).getAllByText("Cerca del tope")).toHaveLength(2);
@@ -114,7 +117,7 @@ describe("SLT-58 R6 — sin plan", () => {
     // Es el título de un `EmptyState` (texto pleno + icono decorativo), no un párrafo gris suelto.
     expect(screen.getByText("Tu empresa no tiene plan asignado: sin límites")).toHaveClass("text-foreground");
     expect(container.querySelector("span[aria-hidden='true'] svg")).not.toBeNull();
-    expect(screen.queryByText(/Precio informativo/)).toBeNull();
+    expect(screen.queryByText(/Costo base/)).toBeNull(); // SLT-66 R9: el rótulo del precio es «Costo base»
     expect(screen.queryByRole("list")).toBeNull();
     expect(screen.queryByRole("meter")).toBeNull();
     expect(screen.queryByText(/Se reinicia/)).toBeNull();

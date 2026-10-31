@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { Prisma } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
@@ -21,10 +22,12 @@ const filaPlan = {
   organizacionExclusivaId: null,
   topeOrdenesCiclo: 100,
   topeApiKeys: null,
-  precioNegociable: true,
-  precioMensual: null,
+  // SLT-66 R28: solo se asigna un plan con costo concreto; la fila es de monto con costo por orden.
+  precioNegociable: false,
+  precioMensual: new Prisma.Decimal("1000.00"),
   precioAnual: null,
   descuentoAnualPct: null,
+  costoPorOrden: new Prisma.Decimal("100.00"),
   archivadoAt: null,
   topesPorRol: [{ rol: "adminTienda", maximo: 3 }],
   modulos: [{ modulo: "ranking" }],
@@ -69,7 +72,8 @@ describe("SL-24 — el composition root de planes pasa PlanesRepository", () => 
         organizacionId: null,
         topes: { ordenesPorCiclo: 100, porRol: { adminTienda: 3 }, apiKeys: null },
         modulos: ["ranking"],
-        precio: { tipo: "negociable" },
+        precio: { tipo: "monto", mensual: "1000.00", anual: null }, // SLT-66 R28
+        costoPorOrden: "100.00", // SLT-66 R28
         archivado: false,
       },
     ]);
@@ -92,6 +96,7 @@ describe("SL-24 — el composition root de planes pasa PlanesRepository", () => 
         topes: { ordenesPorCiclo: 100, porRol: { adminTienda: 3 }, apiKeys: null },
         modulos: ["ranking"],
         precio: { tipo: "negociable" },
+        costoPorOrden: null, // SLT-66 R8: costo por orden obligatorio; aquí, vacío.
       },
       { getActor: async () => SUPERADMIN },
     );
@@ -138,6 +143,7 @@ describe("SL-24 — el composition root de planes pasa PlanesRepository", () => 
         topes: { ordenesPorCiclo: 100, porRol: {}, apiKeys: null },
         modulos: [],
         precio: { tipo: "sin_precio" },
+        costoPorOrden: null, // SLT-66 R8: costo por orden obligatorio; aquí, vacío.
         vigenteDesde: "2020-01-01",
       },
       { getActor: async () => SUPERADMIN },
