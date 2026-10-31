@@ -17,6 +17,7 @@ import type { ApiOrdenDetalleDTO } from "@/lib/types/api-orden";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { ApiOrdenLecturaService } from "@/lib/services/ApiOrdenLecturaService";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
+import { delegadosDelCatalogo } from "@/tests/fixtures/doble-catalogo-geografico";
 // ⏳ 2026-09-10 (feature 415, T6): el resolutor REAL de la tarifa vigente.
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
 import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlProvider";
@@ -346,6 +347,8 @@ function depsRealesDetalle(fila: Record<string, unknown> | null) {
       count: vi.fn(async () => 0),
     },
     usuario: { findMany: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn() },
+    // SLT-65: la marca de zona especial sale del catalogo de la empresa (sin marcas por defecto).
+    ...delegadosDelCatalogo(),
   };
   const repo = new OrdenRepository(prisma as unknown as PrismaClient);
   const svc = new ApiOrdenLecturaService(repo, signedUrlsNoOp, fakeTarifas() as never);
@@ -630,6 +633,8 @@ function depsDetalleConTarifa(fila: Record<string, unknown> | null, tarifas: unk
     },
     usuario: { findMany: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn() },
     tarifa: { findMany: vi.fn(async () => tarifas) },
+    // SLT-65: la marca de zona especial sale del catalogo de la empresa (sin marcas por defecto).
+    ...delegadosDelCatalogo(),
   };
   const repo = new OrdenRepository(prisma as unknown as PrismaClient);
   const svc = new ApiOrdenLecturaService(

@@ -5,6 +5,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 
 import { quitarComentarios } from "@/tests/fixtures/sin-comentarios";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
+import { delegadosDelCatalogo } from "@/tests/fixtures/doble-catalogo-geografico";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
 import { ApiOrdenLecturaService } from "@/lib/services/ApiOrdenLecturaService";
 import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlProvider";
@@ -192,6 +193,8 @@ async function listadoYDetalle() {
       findFirst: vi.fn(async () => fila),
     },
     tarifa: { findMany: vi.fn(async () => [TARIFA]) },
+    // SLT-65: la marca de zona especial sale del catalogo de la empresa (sin marcas por defecto).
+    ...delegadosDelCatalogo(),
   };
   const svc = new ApiOrdenLecturaService(
     new OrdenRepository(prisma as unknown as PrismaClient),

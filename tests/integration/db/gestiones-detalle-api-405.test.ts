@@ -87,16 +87,15 @@ const CONSULTAS_DEL_DETALLE = [
   "order_status", //   2. `estatus` de la orden
   "usuario", //   3. `mensajeroAsignado` (feature 404)
   "zona", // ⭑ 4. 415: la zona DE LA ORDEN (id, nombre, esCentral)
-  "distrito", // ⭑ 5. 415: el distrito (desde SL-38 la marca es la relacion de 9b)
+  // ⭑ 5 y 9b. SLT-65 (design §3; decision humana 2026-10-31, «Sí, actualizar los literales»): salen
+  //   `distrito` y `distrito_zona_especial` como relaciones del detalle. El `select` trae ahora
+  //   `distritoId`/`cantonId` (columnas, sin consulta propia) y la marca sale del catalogo: ver
+  //   las seis consultas de la carga al final. NO MEDIDO: la base local no tiene ordenes (archivo
+  //   en `tests/baseline-rojos.json`); lista derivada del codigo.
   "cierre_detail", // ⭑ 6. 415: la fila congelada del cierre aprobado (take: 1)
   "gestion_orden", //   7. la relacion `gestiones` (superconjunto)
   "orden_historial_estado", //   8. 405: el historial de la ORDEN (R6)
   "orden_incidente", //   9. `incidentesAdmin` (feature 268)
-  // ⭑ 9b. SL-38 (2026-10-23): `distrito.zonasEspeciales` — la marca de zona especial de la EMPRESA,
-  //   que sustituye a la columna `distrito.zona_especial`. Es una relacion anidada mas, y Prisma la
-  //   resuelve con su propia consulta (UNA para la orden, take 1). MEDIDO con este mismo espia en
-  //   `sl38_base` (progress/impl_SL-38.md, T7): el detalle pasa de TRECE a CATORCE.
-  "distrito_zona_especial",
   "usuario", //  10. 405: `gestiones.mensajero` (R9)
   // ⭑ 11b. FICHA 454 (R32, 2026-09-23): `gestiones.eventos` — el evento de registro de CALLE de
   //   cada gestion (take 1), que deriva `pendienteConfirmacion`. UNA consulta para todas las
@@ -104,6 +103,14 @@ const CONSULTAS_DEL_DETALLE = [
   "orden_evento",
   "order_status", //  11. 405: `historialEstados.estatusDestino` (R6)
   "orden_incidente_evidencia", //  12. la portada del incidente del admin (268)
+  // ⭑ SLT-65: la carga del catalogo de la empresa (`marcasDeOrdenes` -> `deLaEmpresa`), UNA vez por
+  //   instancia del repositorio: en la PRIMERA lectura del detalle, no en las siguientes.
+  "zona_distrito",
+  "zona", //  la relacion `zona` de `zona_distrito`
+  "organizacion",
+  "tipo_nivel_geografico",
+  "nodo_geografico",
+  "distrito_zona_especial", //  las marcas de la empresa
 ];
 
 /** Sufijo unico por corrida: `num_remision` es UNICO entre las ordenes vivas de una tienda. */

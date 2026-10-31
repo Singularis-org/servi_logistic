@@ -11,6 +11,7 @@ import type { ApiOrdenListadoDTO } from "@/lib/types/api-orden";
 // el modo de fallo del «composition root que no inyecta».
 import { ApiOrdenLecturaService } from "@/lib/services/ApiOrdenLecturaService";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
+import { delegadosDelCatalogo } from "@/tests/fixtures/doble-catalogo-geografico";
 // ⏳ 2026-09-10 (feature 415, T6): el resolutor REAL de la tarifa vigente, para que los importes
 // que se afirman salgan de la cadena entera y no de un doble.
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
@@ -213,6 +214,8 @@ function prismaConOrdenes(filas: ReturnType<typeof filaOrden>[]) {
       findFirst: vi.fn(async () => null),
     },
     usuario: { findMany: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn() },
+    // SLT-65: la marca de zona especial sale del catalogo de la empresa (sin marcas por defecto).
+    ...delegadosDelCatalogo(),
   };
 }
 

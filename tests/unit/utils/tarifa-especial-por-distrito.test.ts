@@ -10,6 +10,7 @@ import {
 } from "@/lib/utils/ingreso-empresa";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
+import { delegadosDelCatalogo } from "@/tests/fixtures/doble-catalogo-geografico";
 import type { TarifaVigente } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
 import { clavePar } from "@/lib/utils/cascada-tarifa";
 import { idEstado, sembrarCatalogoEstados } from "@/tests/fixtures/catalogo-estados";
@@ -324,7 +325,8 @@ describe("el LISTADO cobra el pacto y senala el hueco", () => {
       zonaId: "z1",
       provinciaId: "p1",
       cantonId: "c1",
-      distritoId: "d1",
+      // SLT-65: el lugar de la orden, del que sale la marca. Sin distrito, la FK va en NULL.
+      distritoId: marcas === null ? null : "d1",
       producto: "Caja",
       peso: new Prisma.Decimal("1.500"),
       notas: null,
@@ -351,6 +353,8 @@ describe("el LISTADO cobra el pacto y senala el hueco", () => {
 
   async function listar(marcas: { id: string }[] | null, tarifaEspecial: Prisma.Decimal | null) {
     const prisma = {
+      // SLT-65: la marca de la empresa, del catalogo: el distrito «d1» la tiene si `marcas` trae fila.
+      ...delegadosDelCatalogo({ nodos: ["d1"], marcas: marcas !== null && marcas.length > 0 ? ["d1"] : [] }),
       // FICHA 454 (R29, 2026-09-24): las señales de la pagina (gestion pendiente, ayuda); vacias.
       $queryRaw: vi.fn(async () => []),
       orden: {

@@ -12,36 +12,36 @@
 
 ## T0 — Preparación
 
-- [ ] **T0.1** Comprobar los llamadores en plataforma (design §3, riesgo «Llamadores en
+- [x] **T0.1** Comprobar los llamadores en plataforma (design §3, riesgo «Llamadores en
   plataforma»). Hay que confirmar que ningún llamador de `listByOwner`,
   `findDetalleByOrdenIdForOwner`, `list`, `findListItemsByIds`, las lecturas de recepción satélite,
   `findBaseCobroDevolucion` ni `findParaCorreccion` corre en `comoPlataforma` ni sin contexto.
   **Hecho:** la lista de llamadores está en `progress/impl_SLT-65.md`. Si aparece uno en plataforma,
   se para y se pregunta.
-- [ ] **T0.2** Fixture `tests/integration/db/_fixtures/geo-65.ts` sobre `geo-44.ts` (design §14).
+- [x] **T0.2** Fixture `tests/integration/db/_fixtures/geo-65.ts` sobre `geo-44.ts` (design §14).
   **Hecho:** lo importa un test vacío que cuenta sus filas (antivacío) y pasa.
 
 ## T1 — La copia de hoy y la comparación compartida [T0]
 
-- [ ] **T1.1** Extraer `compararPorId`, `Cifras` y `Diferencia` (con `bloque: string`) a
+- [x] **T1.1** Extraer `compararPorId`, `Cifras` y `Diferencia` (con `bloque: string`) a
   `scripts/geo-equivalencia/comparacion.ts`, y hacer que `scripts/geo-equivalencia-dinero.ts` los
   importe. **Hecho:** `geo-equivalencia-dinero.test.ts` pasa sin cambiar aserciones.
-- [ ] **T1.2** `scripts/geo-equivalencia/consultas-de-hoy.ts`: copia **literal** desde `b2bade4` de
+- [x] **T1.2** `scripts/geo-equivalencia/consultas-de-hoy.ts`: copia **literal** desde `b2bade4` de
   todo lo de la tabla de design §8, **antes** de tocar ningún repositorio. **Hecho:** compila. El
   commit de la copia va solo y precede a los de T2–T4, y el reviewer lo compara con `b2bade4`.
 
 ## T2 — Órdenes [T1]
 
-- [ ] **T2.1** `lib/repositories/_shared/lugar-orden.ts` (`lugarDeLaOrden`, `whereLugarEn`) y
+- [x] **T2.1** `lib/repositories/_shared/lugar-orden.ts` (`lugarDeLaOrden`, `whereLugarEn`) y
   `tests/unit/repositories/lugar-orden.test.ts`. **Hecho:** el test pasa (R1, R9, R13).
-- [ ] **T2.2** `OrdenRepository`: helper `marcasDeOrdenes`. `apiOrdenSelect` y
+- [x] **T2.2** `OrdenRepository`: helper `marcasDeOrdenes`. `apiOrdenSelect` y
   `WITH_ESTATUS_Y_TIENDA` pierden la marca anidada. `toApiOrdenRow` y `toListItemDTO` reciben la
   marca. Se cambian `listByOwner`, `findDetalleByOrdenIdForOwner`, `list`, `findListItemsByIds` y
   las dos lecturas de recepción satélite (design §2.1, filas 1–2; §3). Los nombres y los filtros no
   se tocan (§2.2). **Hecho:** `pnpm run typecheck` en verde.
-- [ ] **T2.3** `findBaseCobroDevolucion` y `findParaCorreccion` (design §2.1, filas 3–4).
+- [x] **T2.3** `findBaseCobroDevolucion` y `findParaCorreccion` (design §2.1, filas 3–4).
   **Hecho:** typecheck en verde.
-- [ ] **T2.4** `tests/integration/db/geo-consultas-ordenes.test.ts` (R1–R4). Los dobles de las
+- [x] **T2.4** `tests/integration/db/geo-consultas-ordenes.test.ts` (R1–R4). Los dobles de las
   suites unitarias de design §14.1 cambian de entrada si hace falta. **Hecho:** pasa, y las suites
   existentes de la fila R1 de §14 pasan sin cambiar aserciones.
 

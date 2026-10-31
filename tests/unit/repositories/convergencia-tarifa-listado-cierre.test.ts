@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
+import { delegadosDelCatalogo } from "@/tests/fixtures/doble-catalogo-geografico";
 import { CierreDiaRepository } from "@/lib/repositories/CierreDiaRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
 import { idEstado, sembrarCatalogoEstados } from "@/tests/fixtures/catalogo-estados";
@@ -121,6 +122,8 @@ async function resolverPorListado(filas: readonly FilaTarifa[]): Promise<Resuelt
     tarifa: { findMany: tarifaFindMany },
     // FICHA 454 (R29, 2026-09-24): las señales de la pagina (gestion pendiente, ayuda); aqui vacias.
     $queryRaw: vi.fn(async () => []),
+    // SLT-65: la marca de zona especial sale del catalogo de la empresa (sin marcas por defecto).
+    ...delegadosDelCatalogo(),
   };
 
   const res = await new OrdenRepository(prisma as unknown as PrismaClient).list({

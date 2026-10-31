@@ -19,6 +19,7 @@ import { CotizacionOrdenService } from "@/lib/services/CotizacionOrdenService";
 import type { CotizacionFilaCotizada, CotizacionFilaError } from "@/lib/types/cotizacion";
 import type { CoberturaDistritoDTO } from "@/lib/types/cobertura";
 
+import { compararPorId, texto, type Cifras, type Diferencia } from "./geo-equivalencia/comparacion";
 import * as hoy from "./geo-equivalencia/lecturas-de-hoy";
 
 // SLT-44 (design §6.2; R21–R23) — `pnpm geo:equivalencia-dinero [--muestra 200] [--empresa <id>]`.
@@ -77,21 +78,11 @@ export function crearClienteDeSoloLectura(url: string | undefined): PrismaClient
 // El informe
 // ---------------------------------------------------------------------------------------------
 
+// SLT-65 (design §8): la comparacion por id vive en `comparacion.ts`; sus tipos se reexportan para
+// quien ya los importaba de aqui. `Diferencia.bloque` es un `string`: estos son los de este script.
+export type { Cifras, Diferencia };
+
 export type NombreDeBloque = "distritos" | "cobertura" | "cobertura-por-zona" | "cotizaciones";
-
-export interface Diferencia {
-  bloque: NombreDeBloque;
-  /** Id de nodo, zona u orden (o la posicion de una fila de cobertura, que no tiene id). */
-  id: string;
-  campo: string;
-  hoy: string;
-  nuevo: string;
-}
-
-export interface Cifras {
-  comparados: number;
-  distintos: number;
-}
 
 export interface InformeDeEmpresa {
   organizacionId: string;
@@ -110,49 +101,6 @@ export interface OpcionesDeComparacion {
    * inyectar una asignacion en un canton y ver que la comparacion la nombra (design §10, R21).
    */
   clienteNuevo?: PrismaClient;
-}
-
-function texto(v: unknown): string {
-  return v === undefined ? "(ausente)" : JSON.stringify(v);
-}
-
-/** Compara dos mapas por id, campo a campo. Los nombres no se imprimen: solo «distinto». */
-function compararPorId<T extends { id: string }>(
-  deHoy: readonly T[],
-  nuevos: readonly T[],
-  campos: readonly (keyof T & string)[],
-  camposSinValor: ReadonlySet<string>,
-  diferencias: Diferencia[],
-  bloque: NombreDeBloque,
-): Cifras {
-  const a = new Map(deHoy.map((f) => [f.id, f]));
-  const b = new Map(nuevos.map((f) => [f.id, f]));
-  const ids = [...new Set([...a.keys(), ...b.keys()])].sort();
-  let distintos = 0;
-  for (const id of ids) {
-    const x = a.get(id);
-    const y = b.get(id);
-    if (x === undefined || y === undefined) {
-      distintos++;
-      diferencias.push({ bloque, id, campo: "presente", hoy: String(x !== undefined), nuevo: String(y !== undefined) });
-      continue;
-    }
-    let distinto = false;
-    for (const campo of campos) {
-      if (JSON.stringify(x[campo]) === JSON.stringify(y[campo])) continue;
-      distinto = true;
-      const oculto = camposSinValor.has(campo);
-      diferencias.push({
-        bloque,
-        id,
-        campo,
-        hoy: oculto ? "(texto)" : texto(x[campo]),
-        nuevo: oculto ? "(texto)" : texto(y[campo]),
-      });
-    }
-    if (distinto) distintos++;
-  }
-  return { comparados: ids.length, distintos };
 }
 
 const SIN_VALOR_NOMBRE = new Set(["nombre"]);
