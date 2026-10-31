@@ -108,8 +108,8 @@
   - `FuenteDelCosto` y `CosteoDelCiclo`, y `PlanConConsumo.costeo`, en `lib/types/consumo-plan.ts`.
 
   *Hecho:*
-  - `tests/unit/planes/costeo.test.ts` (R19, R20, R10) en verde, también con base y costo por orden «por
-    definir»;
+  - `tests/unit/planes/costeo.test.ts` (R19, R20, R10) en verde, también con base «por definir» (sin
+    total) y con plan sin costo por orden (global sin nota, con total);
   - mutaciones 5 y 10 medidas;
   - Grep sin `Number(` ni `parseFloat` sobre importes en el archivo.
 - [ ] **T18 [P] — Solo se asignan planes con costo concreto** (design §4.2.1, §7). Depende de T2.

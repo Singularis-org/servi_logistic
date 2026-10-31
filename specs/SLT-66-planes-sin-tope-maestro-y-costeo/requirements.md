@@ -127,10 +127,13 @@
   - MIENTRAS el plan asignado tenga costo concreto (definición en «Asignar solo planes con costo
     concreto»), DEBEN mostrar `base + órdenes × costo = total`. Un costo base de `0.00` es un monto
     válido: se muestra «Costo base: 0.00 al mes» y suma 0.
-  - SI el plan asignado no tiene costo concreto, porque se editó después de asignarse (R30), ENTONCES NO
-    DEBEN mostrar un total. Muestran «Costo base: por definir» si falta la base, y «Costo por orden: por
-    definir» si falta el costo por orden. El detalle de empresa del superadmin DEBE mostrar además el aviso
-    «Plan sin costo concreto».
+  - El costo por orden que muestran es siempre el vigente de R12 (excepción > plan > global > 0), así que
+    nunca queda «por definir». SI el plan no tiene costo por orden y la empresa no tiene excepción,
+    ENTONCES muestran el valor global sin ninguna nota, y el total se calcula con él.
+  - SI el plan asignado no tiene costo base de forma «monto», porque se editó después de asignarse (R30),
+    ENTONCES muestran «Costo base: por definir» y NO DEBEN mostrar un total.
+  - En los dos casos anteriores el plan no tiene costo concreto. El detalle de empresa del superadmin
+    DEBE mostrar entonces el aviso «Plan sin costo concreto».
 - **R21** — El costo base y el total estimado son solo informativos. Mostrar «Mi plan» o el detalle NO DEBE
   escribir nada en `cobro_plataforma_movimiento` ni en `wallet_movimiento`. La deuda de la wallet solo
   sube por los cargos de R12.
@@ -253,4 +256,5 @@ Ninguna.
 | 2026-10-31 | R33 («Asignar a una empresa» desde el detalle del plan) | Entra; deja de ser opcional. |
 | 2026-10-31 | P6: ¿a quién desasigna la migración? | A todas las empresas que tienen plan. Quedan sin plan (sin límites) hasta que el superadmin les asigne uno con costo concreto. |
 | 2026-10-31 | P5: ¿se puede editar un plan asignado hasta dejarlo sin costo concreto? | Sí, con aviso. Se guarda; «Mi plan» muestra lo que falte como «por definir», sin total, y el superadmin ve el aviso «Plan sin costo concreto». Asignar sigue rechazando los planes sin costo concreto. |
+| 2026-10-31 | Plan asignado sin costo por orden y empresa sin excepción: ¿qué muestra «Mi plan»? | El valor global que se cobra, sin nota. El costo por orden nunca sale «por definir»; solo la base puede quedar así, y entonces no hay total. |
 | 2026-10-31 | ¿«Sin precio» equivale a base 0? | No. La base 0 se escribe como monto 0; «sin precio» no es concreto. |

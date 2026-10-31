@@ -394,13 +394,12 @@ export type PlanDTO = { /* … */ costoPorOrden: string | null };
 export type FuenteDelCosto = "empresa" | "plan" | "global" | "sin_configurar";
 export type CosteoDelCiclo = {
   base: { tipo: "monto"; mensual: string } | { tipo: "por_definir" }; // "0.00" es monto (R20)
-  // El vigente (R12, P1). null = «por definir»: el plan no tiene costo por orden ni hay excepción (R20, P5).
-  costoPorOrden: string | null;
-  fuente: FuenteDelCosto | null;
+  costoPorOrden: string;          // siempre el vigente (R12, P1): excepción > plan > global > 0
+  fuente: FuenteDelCosto;
   ordenes: number;                // órdenes del ciclo (= uso.ordenes)
-  subtotalOrdenes: string | null; // ordenes × costoPorOrden; null si el costo está por definir
-  total: string | null;           // base + subtotal; null si falta alguno de los dos (R19, R20)
-  sinCostoConcreto: boolean;      // dispara el aviso del superadmin (R20)
+  subtotalOrdenes: string;        // ordenes × costoPorOrden
+  total: string | null;           // base + subtotal; null solo si la base está por definir (R19, R20)
+  sinCostoConcreto: boolean;      // base no «monto» o plan sin costo por orden: aviso del superadmin (R20)
   anualNoAplicaAlCosto: boolean;  // R10: el plan tiene anual fijo o descuento
 };
 export type PlanConConsumo = { /* lo de SLT-58 */ costeo: CosteoDelCiclo };
@@ -469,15 +468,15 @@ la fuente y de la base:
 |---|---|
 | Base con monto (el caso normal: R28 lo garantiza en toda asignación nueva) | «Costo base: 50000.00 al mes» · «Costo por orden: 100.00» + nota de fuente (P1) · «Órdenes del ciclo: 3 × 100.00 = 300.00» · **«Total estimado del ciclo: 50300.00»** |
 | Base 0 | «Costo base: 0.00 al mes» · igual · **«Total estimado del ciclo: 300.00»** |
-| Plan asignado que se editó hasta quedar sin costo concreto (R20, R30) | Lo que falte se muestra como «Costo base: por definir» o «Costo por orden: por definir» (en ese caso tampoco hay línea de órdenes con subtotal), sin total. En el detalle del superadmin, además el aviso «Plan sin costo concreto» |
+| Plan asignado sin costo por orden y empresa sin excepción (R20) | Igual que «base con monto», con el global como costo por orden y **sin nota**; hay total. En el detalle del superadmin, además el aviso «Plan sin costo concreto» |
+| Plan asignado cuya base dejó de ser «monto» (R20, R30) | «Costo base: por definir» · costo por orden vigente · órdenes con subtotal · sin total. En el detalle del superadmin, además el aviso «Plan sin costo concreto» |
 | Anual fijo o descuento | Más «El pago anual no cambia el costo por orden.» |
 
 - **Nota de fuente** (P1, cerrada):
   - `empresa` → «precio acordado para tu empresa» (en el detalle del superadmin, «excepción de la
     empresa»);
   - `plan` → ninguna;
-  - `global` y `sin_configurar` → no se muestran como costo. Un plan sin costo por orden y sin excepción
-    se pinta «Costo por orden: por definir» (R20, P5).
+  - `global` y `sin_configurar` → el importe vigente, sin nota (decisión del 2026-10-31).
 - **Debajo**, en `text-xs text-muted-foreground`: «Estimado: el costo base no se cobra todavía; cada
   orden se cobra al crearla y se descuenta si se anula.» (R21).
 - **Los importes** se pintan como `textoDelPrecio` (texto de la base, sin símbolo ni `Number`). Su
@@ -686,7 +685,8 @@ conserva.
 7. `asignar` deja de comprobar `tieneCostoConcreto`, o solo lo comprueba sin fecha.
 8. `asignables` no filtra.
 9. `tieneCostoConcreto` trata `"0.00"` como vacío.
-10. `costeoDelCiclo` da un total con el costo por orden vacío (usa 0 o el global).
+10. `costeoDelCiclo` da un total con la base «por definir», o no lo da con plan sin costo por orden y
+    el global vigente.
 11. M4 deja sin desasignar a las empresas cuyo plan es de base «monto».
 
 ## 10. Choques con ramas en vuelo
@@ -753,7 +753,6 @@ Ninguna nueva (R27). Se usan Prisma (`Prisma.Decimal`), zod, `plpgsql` y los com
   les asigne un plan con costo concreto. T0 cuenta en QA, y en producción si hay acceso, cuántas son. El
   leader avisa al humano con ese número antes de aplicar M4 en una base compartida, para que tenga
   preparados los planes custom.
-- **«Costo por orden: por definir» y lo que se cobra** (P5). Si un plan asignado se queda sin costo por
-  orden y la empresa no tiene excepción, la orden se sigue cobrando con el global (R12, paso 3), aunque
-  «Mi plan» diga «por definir». Es lo que fijan las dos decisiones juntas. El aviso del superadmin existe
-  para que lo corrija.
+- **Riesgo resuelto: lo que se cobra contra lo que se muestra** (R12 con P5). Cuando un plan asignado se
+  queda sin costo por orden, «Mi plan» muestra el mismo global que cobra el trigger, así que pantalla y
+  wallet cuadran siempre. Lo garantiza la fuente única `cobro_plataforma_tarifa_de` (§3.2).
