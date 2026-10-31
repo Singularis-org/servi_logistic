@@ -8,6 +8,9 @@
 > - §9 suma A12-A15 y §10 suma 92/R16-R17.
 >
 > Donde la revisión 4 contradiga a las anteriores, manda la revisión 4.
+>
+> **Revisión 5 (2026-10-31)** con D27. Añade §13: registro de cada llamada pagada, prefijo
+> `[google-api]`, motivos y la secuencia de la jornada. Suma A16. Lo demás no cambia.
 
 > **Revisión 3 (2026-10-30)** con D16-D20. Cambia: §2 (la decisión distingue prefijo de fuera de
 > orden), §2.2 (sin tramo puente), §2.4 nueva (sincronización manual y origen), §1 y §6 (`estado` en
@@ -539,6 +542,10 @@ difiere, se corrige la tabla con la medición al lado. El test que queda en el r
   al día basta el efecto de una vez del §12.6.
 - **A14 — Columna `fallo_at` para el enfriamiento (D21).** Es exacta, pero R40 la prohíbe. Se usa
   `updated_at` como cota superior (R54, P12).
+- **A16 — Registrar las llamadas en una tabla.** Permitiría consultar el gasto por empresa, pero exige
+  una migración (R40). D27 elige los logs del servidor; el contador persistido queda para otra ficha.
+  El log en los servicios en vez de en los clientes también se descarta: se perdería el reintento real
+  de la petición, y un cliente nuevo que se saltara el servicio no dejaría rastro.
 - **A15 — Marcar «primera ruta hecha» en una columna o en `huella_set`.** `calculada_at` contra el
   inicio del día ya lo dice sin migración. Una reducción no la mueve (R17), así que no puede fingir
   una primera ruta.
@@ -762,6 +769,119 @@ primera pendiente.
 | `OrdenRepository` (traspaso) | encolado condicionado (§12.4) |
 
 Sin migración (R40). Sin dependencia nueva.
+
+## 13. Revisión 5 — registro de cada llamada pagada (D27; R68-R75)
+
+### 13.0 Pieza común
+
+Archivo nuevo `lib/clients/registro-llamada-google.ts`, la única fuente:
+
+```ts
+export const GOOGLE_API_LOG_PREFIJO = "[google-api]";
+export const GOOGLE_API_LOG_EVENTO = "google_api_llamada";
+export type ApiGoogle = "route_optimization" | "routes" | "geocoding";
+export interface ContextoLlamadaGoogle {
+  motivo: MotivoLlamadaRuta | MotivoLlamadaGeocode;
+  mensajeroId?: string;
+  ordenId?: string;
+  intento: number;
+  maxIntentos: number; // 1/1 fuera de la cola (R70)
+}
+export function registrarLlamadaGoogle(logger, linea: {
+  api: ApiGoogle;
+  contexto: ContextoLlamadaGoogle;
+  empresaId: string | null;
+  paradas: number | null;
+  resultado: "ok" | string;
+}): void
+// emite: `${GOOGLE_API_LOG_PREFIJO} ${JSON.stringify({ evento: GOOGLE_API_LOG_EVENTO, ... })}`
+```
+
+- **Una línea por petición HTTP facturada (R69).** La emite el cliente justo después de la respuesta o
+  del fallo, en `google-route-optimization.ts`, `google-routes.ts` y `google-geocode.ts`.
+- **Lo que no se registra (R72).** La petición del token OAuth no se registra, porque no se factura.
+  Tampoco `FallbackRouteOptimizationClient` ni `haversine-route-optimization.ts`: no llaman a Google.
+- **Reintentos (R70).** Los reintentos son de la cola, no del cliente: cada ejecución del job es una
+  petición con su `intento`. El handler pasa el `intento` y el `max_intentos` de la fila del job.
+  🧭 Hay que comprobar que `JobQueueService` ya entrega la fila al handler; si no, se añade al
+  contrato del handler.
+- **`empresaId`.** Sale del contexto de empresa activo, el mismo que SL-36 usa para elegir la
+  credencial (`lib/db/contexto-empresa`). En el probador, la empresa que prueba.
+- **PII (R71).** Solo ids, conteos, números de intento y el código de resultado. El `resultado` de un
+  fallo es el estado HTTP o `red`/`timeout`, nunca `detalle` ni el cuerpo de la respuesta.
+- **Logger.** Se reutiliza el `logger` inyectable que ya reciben los clientes y servicios (patrón
+  `RutaLogger`/`GeocodeLogger`). El canal es `info`, con el mismo `console` que acaba en los logs de
+  Vercel. No se escribe en base (R74).
+- **Futuro.** Un contador persistido de llamadas por empresa y motivo queda como posible ficha
+  aparte: necesita tabla y R40 lo prohíbe aquí.
+
+### 13.1 Motivos de rutas (`MotivoLlamadaRuta`)
+
+El motivo no lo decide el cliente. Lo decide el servicio con lo que ya sabe, y quien encola deja un
+`origen` en el payload del job, que no es PII: `{ mensajeroId, origen: "recogida" | "gestion" |
+"traspaso" }`. Con la ventana de debounce, el `origen` es el del primer evento (P13).
+
+| Motivo | Cuándo (`decidirGuardaRuta` + disparo) |
+| --- | --- |
+| `primera_ruta_recogida_completa` | job, primera pendiente, `origen = recogida` (R58) |
+| `primera_ruta_primera_gestion` | job, primera pendiente, `origen = gestion` (R59) |
+| `primera_ruta_salida` | `motivo: "salida"` (R62, R63) |
+| `primera_ruta_boton` | manual, primera pendiente (R64) |
+| `entrega_fuera_de_orden` | job, `fuera_de_orden` (R42) |
+| `paradas_nuevas_gestion` | job, `paradas_nuevas`, `origen = gestion` (añadido) |
+| `paradas_nuevas_traspaso` | job, `paradas_nuevas`, `origen = traspaso` (R60) |
+| `reintento_ruta_desactualizada` | job sobre una ruta `desactualizada` (R7, añadido) |
+| `sincronizacion_manual_desvio` | manual, desviado (R52, R47) |
+| `sincronizacion_manual_paradas` | manual, `paradas_nuevas` o `fuera_de_orden` |
+| `recuperacion_ruta_caida` | manual, `desactualizada` tras el enfriamiento (R53) |
+| `trayecto_vivo` | `trazarTramoVivo` (`computeRoutes`) |
+| `prueba_integracion` | `optimizacion-rutas-probador.ts` |
+| `job_sin_origen` | job encolado antes del despliegue, sin `origen` en el payload (añadido; solo en la transición) |
+
+- Un recálculo produce su `optimizeTours` y su `computeRoutes` con **el mismo motivo**. La rama de una
+  parada (92/R35) solo produce el `computeRoutes`.
+- Si varias condiciones se cumplen a la vez, se toma la primera de la tabla de decisión de §12.1
+  (primera pendiente > desactualizada > paradas nuevas > fuera de orden > desvío).
+
+### 13.2 Motivos de geocode (`MotivoLlamadaGeocode`)
+
+`encolarGeocodificacion` recibe `motivo` obligatorio y lo guarda en el payload: `{ ordenId, motivo
+}`. El payload es `jsonb` (🔎 `schema.prisma`, `jobs.payload`), así que no hace falta migración. El
+handler de geocodificación se lo pasa al cliente.
+
+| Motivo | Quién encola (🔎) |
+| --- | --- |
+| `orden_creada` | creación de una orden suelta (`BulkOrdenService` → `createManyOrdenes*`; el implementer separa qué llamada es suelta, por ejemplo API, y cuál es carga) |
+| `carga_masiva` | carga de archivo (`BulkOrdenService` → `createManyOrdenes*`) |
+| `direccion_cambiada` | `OrdenRepository.encolarSiCambiaDireccion` (`update`, `corregirDatosCliente`) |
+| `asignacion_sin_coordenadas` | `AsignabilidadCoordenadasService` (`:199`) |
+| `revivido_por_salud` | `GeocodeSaludService` → `revivirFallosConfig`, que reescribe `payload.motivo` en el mismo `UPDATE` (`jsonb_set`) |
+| `prueba_integracion` | `google-maps-probador.ts` (llamada directa, sin job) |
+| `job_sin_motivo` | job encolado antes del despliegue, sin `motivo` (añadido; transición) |
+
+🔎 `BulkOrdenService.ts:340/350/676` llama a `createManyOrdenesConGuia` y a `createManyOrdenes`. Qué
+llamada corresponde a «orden creada» y cuál a «carga masiva» se fija leyendo sus llamadores en T8.3.
+No lo invento aquí.
+
+### 13.3 Secuencia de motivos de la jornada (R75)
+
+Cada recálculo da dos líneas, primero `route_optimization` y luego `routes`, con el mismo motivo.
+
+- **Jornada A (§8.0):**
+  1. 1b → `primera_ruta_recogida_completa` ×2;
+  2. 6 → `sincronizacion_manual_desvio` ×2;
+  3. 7 → `entrega_fuera_de_orden` ×2.
+
+  Total: 6 líneas, que cuadra con el `{3, 3, 6}` de §8.0.
+- **Filas aparte:**
+  - fila 11 → 1 línea con el motivo del job y `resultado: "401"`;
+  - fila 12 → ninguna;
+  - fila 13 → `recuperacion_ruta_caida` ×2.
+- **Jornada B:** B3 → `primera_ruta_salida` ×2.
+- **Variantes de B:**
+  - primera gestión → `primera_ruta_primera_gestion` ×2;
+  - botón con el 86 % → `primera_ruta_boton` ×2;
+  - botón con el 71 % → ninguna.
 
 ## 11. Dependencias de terceros
 

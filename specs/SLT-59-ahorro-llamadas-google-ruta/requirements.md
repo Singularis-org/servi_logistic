@@ -17,6 +17,9 @@
 > sustituido se marca «retirado por D<n>» y lo nuevo va de R51 en adelante. Retira R19 (D24) y R26
 > (D23); acota R1, R7, R22, R37 y R47.
 >
+> **Revisión 5 (2026-10-31), con D27:** registro de cada llamada pagada a Google con su motivo. Añade
+> R68-R75 y la Fase 8. No retira nada.
+>
 > **Leyenda de procedencia** (regla 6 de `CLAUDE.md`):
 > - 🔎 **VERIFICADO** — leído en el árbol de `feature/SLT-59-ahorro-llamadas-google-ruta` (= `dev` en `cbd538b`).
 > - 🧭 **PROPUESTO** — criterio del spec_author pendiente de confirmar (solo en `## Preguntas abiertas`).
@@ -85,6 +88,8 @@ ruta del día ya existe (R60).
 | D23 | (Alcance nuevo) La recogida deja de disparar la optimización: el mensajero sigue en bodega cargando, y recoger 30 paquetes uno por minuto paga hoy 1+2+…+30 = 465 envíos facturados (Route Optimization factura POR ENVÍO). La ruta se optimiza UNA vez cuando el mensajero «sale»: primera gestión del día, posición a más de `RUTA_REOPT_DISTANCIA_M` (1 km) del punto de recogida, o el botón. Traspaso y nueva asignación tampoco la disparan mientras esa primera ruta no exista. Con lo que ya hay de GPS y estado; sin migración. | humano, 2026-10-30 | R57, R59, R60, R61, R62, R63, R65, R66 (retira R26; enmienda 92/R16-R17) |
 | D24 | (Enmienda D8) El desvío de más de 1 km NUNCA dispara solo una reoptimización. Los disparos automáticos (job de la gestión, del traspaso, de la recogida) con el conjunto sin cambios no reoptimizan por desvío: devuelven o conservan la ruta (0 llamadas). El desvío solo cuenta al pulsar «Sincronizar ruta». Excepción: la primera ruta del día (D23/D25) sí se dispara sola al alejarse 1 km del punto de recogida. D18 queda solo para el camino manual. | humano, 2026-10-30 | R51, R52, R47 (acotado) (retira R19) |
 | D25 | (Afina D23) Disparo principal de la primera ruta: recoger el ÚLTIMO de los paquetes asignados del día (con debounce como la recogida, para que «recoger todas» sea un job). Respaldo si alguno nunca se recoge: con lo recogido, al alejarse más de 1 km del punto de recogida, con la primera gestión o con el botón. El botón, para la primera ruta, solo cuando ya recogió al menos `RUTA_PRIMERA_MIN_RECOGIDO_PCT` (80) % de las asignadas; por debajo, 0 llamadas y un mensaje claro. Siempre una sola vez; después rigen D16, D21 y D24. «Asignadas del día» con el mismo predicado de día que la recogida. Sin migración. | humano, 2026-10-30 | R58, R64, R65, R54 |
+| D27 | Registrar CADA llamada pagada a Google con su motivo. Cada llamada de cliente (`optimizeTours`, `computeRoutes`, geocode) recibe un `motivo` obligatorio (unión tipada, snake_case en español) que pasa quien llama. Emite UNA línea de log estructurada en el servidor por petición HTTP, incluido cada reintento, con: api, motivo, empresaId, mensajeroId/ordenId cuando los haya, número de paradas (envíos facturados en `optimizeTours`), intento n/máx y resultado (ok / código de error). Se reutiliza el patrón `optlog`/logger. Sin secretos, direcciones completas ni coordenadas. Solo logs del servidor (Vercel): ninguna tabla (R40). Un contador persistido queda como posible ficha futura. Tests: cada motivo llega a la línea; la jornada de R37 afirma la secuencia de motivos. **Adenda:** toda línea empieza por el prefijo fijo `[google-api]` y lleva `evento: "google_api_llamada"`; `api` distingue `route_optimization` / `routes` / `geocoding`; constante única, con un test de que los tres clientes la emiten. | humano, 2026-10-31 | R68-R75 |
+| D28 | (P13) Un job agrupado por debounce registra en el log el `origen`/motivo del PRIMER evento que lo encoló; el conteo de llamadas es exacto. | humano, 2026-10-31 | R68-R75 |
 | D26 | (P12) `ruta_optimizada.updated_at` vale como instante del fallo para el enfriamiento de D21: es una cota superior (solo puede alargar la espera). Sin migración; una columna `fallo_at` exacta iría en otra ficha. | humano, 2026-10-30 | R54 |
 
 ---
@@ -458,6 +463,50 @@ de la gestión y del traspaso (R58-R60).
 
 ---
 
+## Revisión 5 — D27: cada llamada pagada, con su motivo (2026-10-31)
+
+**R68.** Cada método de cliente que hace una petición facturada a Google (`optimizeTours`,
+`computeRoutes`, geocode) DEBE exigir un parámetro `motivo` de un tipo unión cerrado; el sistema NO
+DEBE compilar una llamada sin él.
+
+**R69.** CUANDO un cliente haga una petición HTTP facturada, el sistema DEBE emitir exactamente una
+línea de log estructurada en el servidor. La línea DEBE empezar por el prefijo fijo `[google-api]`,
+común a las tres APIs, y llevar estos campos:
+- `evento: "google_api_llamada"`;
+- `api`: `route_optimization`, `routes` o `geocoding`;
+- `motivo`;
+- `empresaId`;
+- `mensajeroId` u `ordenId` cuando los haya (si no, `null`);
+- `paradas` (en `optimizeTours`, los envíos enviados; en `computeRoutes`, las paradas pedidas; en
+  geocode, `null`);
+- `intento` y `maxIntentos`;
+- `resultado`: `ok`, o el código del fallo (estado HTTP o `red`/`timeout`).
+
+Con un fallo, la línea DEBE emitirse también. El prefijo y el valor de `evento` DEBEN salir de una
+única constante compartida por los tres clientes (adenda de D27).
+
+**R70.** CUANDO un job reintente una llamada facturada, cada intento DEBE producir su propia línea de
+R69 con su número de intento. Una llamada que no viene de la cola DEBE registrar `intento: 1,
+maxIntentos: 1`.
+
+**R71.** La línea de R69 NO DEBE contener la credencial, el token, la URL, una dirección, ni
+coordenadas (92/R14, `docs/architecture.md`: nada de secretos ni PII en logs).
+
+**R72.** El sistema NO DEBE emitir la línea de R69 cuando no hay petición facturada: cálculo local,
+línea recta de respaldo, guarda que corta antes de llamar, o la petición del token OAuth.
+
+**R73.** Los motivos de rutas DEBEN ser exactamente los de design §13.1, y cada disparo de
+D16-D25 DEBE producir el suyo. Los motivos de geocode DEBEN ser exactamente los de design §13.2. El
+botón de prueba de integración usa `prueba_integracion` en las dos APIs.
+
+**R74.** El sistema NO DEBE persistir las líneas de R69 en base de datos (R40): su destino son los
+logs del servidor.
+
+**R75.** CUANDO se ejecute la jornada de referencia de design §8.0, la secuencia de motivos registrada
+DEBE ser exactamente la de design §13.3.
+
+---
+
 ## Límite declarado
 
 **Sin polilínea por calles, la línea de referencia empieza en la primera parada (R4).** Un mensajero
@@ -499,6 +548,11 @@ columna con el origen del cálculo (alternativa A1 de `design.md`).
 | R59, R63, R64, R66, R67 | `tests/unit/services/optimizacion-ruta-primera-del-dia.test.ts` |
 | R62, R65 | `tests/components/RepartoModule.test.tsx` |
 | R63 (borde) | `tests/unit/actions/sincronizar-ruta.test.ts` (acción de salida: rol, validación, traducción) |
+| R68 | `pnpm run typecheck` (el parámetro es obligatorio) + `tests/unit/clients/google-registro-llamada.test.ts` |
+| R69-R72 | `tests/unit/clients/google-registro-llamada.test.ts` (`fetch` y logger simulados) |
+| R73 | `tests/unit/services/optimizacion-ruta-motivo.test.ts` (rutas) + `tests/unit/services/geocodificacion-motivo.test.ts` (geocode) |
+| R74 | revisión del diff: `db/` sin cambios |
+| R75 | `tests/unit/services/optimizacion-ruta-ahorro-jornada.test.ts` |
 | R64 (mensaje) | `tests/unit/actions/sincronizar-ruta.test.ts` + `tests/components/SincronizarRutaButton.test.tsx` (existente: `conflict` → `toast.warning(motivo)`) |
 | R29, R30, R35 | `tests/unit/services/optimizacion-ruta-credencial-rechazada.test.ts` |
 | R29, R33, R34 | `tests/unit/services/job-queue-service-permanente.test.ts` |
@@ -518,6 +572,8 @@ implementer) se cerraron como D16 y D18 (humano, 2026-10-30).
 P10 y P11 se cerraron como D21 y D22 (humano, 2026-10-30).
 
 P12 se cerró como D26 (humano, 2026-10-30). Spec revisión 4 aprobado por el humano el 2026-10-30 («Aprobado»).
+
+P13 se cerró como D28 (humano, 2026-10-31). Revisión 5 (D27, Fase 8) aprobada por el humano el 2026-10-31 («Aprobado»).
 
 Historia — las dos preguntas de la revisión 3, ya cerradas, nacidas de leer D17 al pie de la letra. El spec seguía el
 default 🧭 PROPUESTO hasta que el humano diga otra cosa.
