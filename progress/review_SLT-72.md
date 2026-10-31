@@ -202,3 +202,56 @@
   `e2e/dos-empresas-humo.spec.ts` anotada en `impl_SLT-72.md`.
 - **Vuelta 2.** Con esa salida en verde, y sin cambios de código, el veredicto pasa a OK. m1 se
   recomienda pero no condiciona. m2 condiciona el despliegue.
+
+## Vuelta 2 (acotada a 9805285b..dbfea2fa)
+
+Commits revisados:
+- `75fc827a` — test R8;
+- `afb854c8` — evidencia E2E y gate;
+- `dbfea2fa` — puertas de despliegue.
+
+`git diff --name-only 9805285b..HEAD -- lib app db` sale vacío: en esta vuelta no cambió código de
+producción.
+
+### B1 — CERRADO
+- He leído los logs del scratchpad yo mismo (`e2e_SLT-72_c1..c3.log`).
+  - **c1:** `1 failed | 2 passed`, `E2E_EXIT=1`. El rojo es de entorno: «el log del servidor no
+    recibió ningún enlace … ¿falta `NEXT_PUBLIC_APP_URL` en el build?», en `dos-empresas-humo`. No
+    es de esta ficha.
+  - **c2 y c3:** `9 passed`, `E2E_EXIT=0` en las dos.
+    - `dos-empresas-humo.spec.ts`: sus 7 casos.
+    - `cierres-admin.spec.ts`: (a) aprobar con la guía confirmada y (b) rechazar con motivo.
+- El código de producción es el mismo que se revisó en la vuelta 1, así que la evidencia vale para HEAD.
+- La bitácora `impl_SLT-72.md` recoge la corrida («Vuelta 2»).
+
+### m1 — CERRADO
+- Hay caso nuevo en `cierre-sin-gestion-confirmacion-sql-real.test.ts`: «R8: las barridas de un
+  cierre fuera del alcance NO se leen…».
+  - Usa un alcance ajeno con la MISMA zona y otro `destinoTipo`.
+  - Tiene control positivo: con el alcance propio salen las dos barridas, así que el `[]` no es vacuo.
+- Lo comprobé contra `servi_slt72`:
+  - sin mutar: `7 passed`;
+  - con mi mutación M3 de la vuelta 1 (WHERE de `findBarridasDelCierre` reducido a
+    `{ cierreId }`): `1 failed | 6 passed`, y el que cae es justo el caso R8. Muerta.
+  - revertida con `cmp` → «RESTAURADO», y `git status -s` vacío.
+- Gate ronda 3 (`gate_SLT-72_r3.log`): `Test Files 264 passed`, guardias `317 passed`, `INIT_EXIT=0`.
+
+### m2, m5 y m6 — atendidos en `progress/features/SLT-72.md` (`dbfea2fa`)
+- **m5:** Carlos confirma el rótulo «Novedad interna».
+- **m2 / T0.1:** consulta de solo lectura en prod autorizada por Carlos: 0 cierres en
+  `solicitado`, `vencido` o `rechazado`, así que no hay cola atascada al desplegar.
+- **m2 / T6.4:** bodegas avisadas.
+- **m6:** la bitácora de cierre ya tiene sus entradas. El PR y las deudas los añade el leader al abrirlo.
+
+### Hallazgos de la vuelta 2
+- **m7 — menor (proceso).** En `specs/451-confirmacion-fisica-sin-gestionar/tasks.md`, T0.1 (L41) y
+  T6.4 (L228) siguen en `[ ]`, aunque `progress/features/SLT-72.md` las da por hechas. Hay que
+  marcarlas `[x]` antes del PR para cumplir `CHECKPOINTS.md > Especificacion`. No bloquea.
+- m3 y m4 de la vuelta 1 siguen como estaban: son menores y aceptados.
+
+### Veredicto vuelta 2
+
+**OK.** No queda ningún bloqueante: B1 tiene la evidencia E2E verde y m1 está cubierto con SQL real y
+su mutación muerta. Antes de abrir el PR a `prod` hay que hacer dos cosas:
+- marcar T0.1 y T6.4 (m7);
+- esperar a que `gate-completo` y el E2E del CI estén en verde.
