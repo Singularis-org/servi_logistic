@@ -7,7 +7,7 @@
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F1.2 hecho (2026-10-31): spec 62bcdfd aprobado; enmienda con las respuestas en curso. Siguiente: F2 (implementación por tandas).
+F2.1 hecho (2026-10-31): tandas A–E implementadas, T0–T22 marcadas. Siguiente: F2.2 (reviewer), F2.3 (sync), PR a dev.
 
 ## Evaluación
 - zone fullstack: migración (topes y costos del plan), cobro de SL-40 y pantallas de SLT-58.
@@ -29,6 +29,7 @@ Ninguna.
 - 2026-10-31 · B (T5–T9; T9 y T8 adelantadas, más «Desasignado» de T22 y tieneCostoConcreto de T18) · 27a7dd5…f201d04 · planes/cobro/SL-40 en verde contra logistic_slt66 (SL-40 sin tocar), mutaciones 1–3, 5, 6, 9, 10 detectadas; typecheck limpio salvo tests de tanda D; ningún 'use client' alcanza @prisma/client. Decisiones del humano: autorización general de tests por campos de SLT-66; el aviso «Plan sin costo concreto» mira el plan.
 - 2026-10-31 · C (T15, T18, T21; + texto plan_sin_costo de T19) · 89172f2…2d7d04c · 14 archivos 243/243 contra logistic_slt66 (SL-40 sin tocar), mutaciones 7a, 7b, 8, 11 detectadas; M4 aplicada solo en logistic_slt66; typecheck limpio en app/lib/components, rojo solo en tests de tanda D.
 - 2026-10-31 · D (T10–T13, T19, T20, T22) · 85122a1…23b1d43 · merge dev (migraciones de la ficha renombradas a 20261031130000–130300 por choque de timestamp con SLT-63; logistic_slt66 recreada); 18 archivos de pantallas en verde; typecheck del repo entero limpio; lint 0 errores.
+- 2026-10-31 · E (T14, T16, T17) · 735cf8a…0cad217 · E2E sobre logistic_slt66_e2e: planes-costeo 14/14 dos corridas seguidas; planes-superadmin 15, auth 22, dos-empresas-humo 18 (tras 018f2cc), integraciones-por-empresa 14, pago-plataforma-sl45 16, superadmin-arranque 3, superadmin-empresas 7, cobro-plataforma-sl40 12 (sin tocar); 0 skipped/flaky; typecheck limpio. init.sh local no se corre por memoria: CI confirma.
 
 ## Modelos (overrides)
 
