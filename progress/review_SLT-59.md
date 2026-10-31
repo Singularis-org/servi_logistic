@@ -157,3 +157,84 @@ Todo con `NODE_OPTIONS=--max-old-space-size=8192`, sin `DATABASE_URL` y sin toca
 **RECHAZADO.** 2 bloqueantes (B1: T5.2 sin cerrar; B2: falta la evidencia E2E del flujo crítico `mis-asignaciones`) y 6 menores.
 
 Los dos bloqueantes son de proceso o evidencia, no de código. La implementación cumple R1-R40, y las 12 mutaciones confirman que los tests muerden. Cerrados B1 y B2 sin más cambios de código, la vuelta 2 puede limitarse a comprobar esa evidencia.
+
+## Vuelta 2 (acotada a 147854d..87e699d)
+
+Alcance: Fases 6, 7 y 8, D29 (R76/R77) y D30 (enmienda de §8.0, columna jobs). También se comprueban m1, m2, m3 y m6 y la trazabilidad R1-R77. El grafo no se usó: los archivos tocados ya se leían directos con Grep/Read.
+
+### Checklist
+
+- [x] **Trazabilidad R1-R77.**
+  - Mapa final en `progress/impl_SLT-59.md` › «Tanda 10».
+  - Barrido mecánico: cada `R<n>` aparece al menos en un test de los archivos citados, salvo R74, que se cubre por revisión del diff.
+  - Retirados con su marca en `requirements.md`: R11, R14, R16, R19, R26 y R27.
+  - Por revisión del diff: R40 y R74. `git diff dev...HEAD -- db/` sale vacío y la línea se emite por `console.info` (`lib/logging/google-api-log.ts`), sin ninguna escritura.
+  - R39 lo cubre la guardia.
+- [x] **Tasks.** Todas en `[x]` salvo T5.2 y T6.8, que cierra el CI del PR por D20 (decisión humana). El *Hecho* de T7.8 ya dice `{1,1,1}` (commit 87e699d).
+- [x] **`## Lo que ya existe`** está en `design.md`. El diff no re-crea nada de esa lista. Hay un predicado duplicado dentro del propio diff (m8).
+- [x] **Typecheck.** `pnpm run typecheck` sale con exit 0 (corrido por mí).
+- [x] **Lint** de los archivos .ts/.tsx tocados desde 147854d: 0 errores y 4 warnings.
+- [x] **Guardias.** `pnpm run test:guardias` da 4 FAIL, todos en `dependencias-declaradas-presentes.guardia.test.ts` (guardia 420). Está en `tests/baseline-rojos.json`, así que no es un hallazgo. `sql-a-mano-por-empresa` está en verde.
+- [x] **Tests relacionados.** Los corrí por grupos con `NODE_OPTIONS=--max-old-space-size=8192`:
+  - jornada, desvío, reducción y primera-del-día: 101/101;
+  - motivo (ruta y geocode), `tests/unit/clients/` (25 archivos en total con los de abajo), recuperación, origen, encolado, handler-payload y config: 396/396;
+  - sincronizar-ruta, mis-asignaciones-action, mis-asignaciones-orden-ruta, optimizacion-ruta-enqueue, job-repo-posponer, ruta-optimizada-repo y orden-contar-asignadas-del-dia: 175 en verde y 4 skipped (sql-real);
+  - RepartoModule, MisAsignacionesPage, job-queue-permanente, credencial-rechazada, geocodificacion-encolado y orden-geocode-enqueue: 174 en verde y 15 skipped (geocode-recuperacion, que es de base de datos).
+- [~] **Postgres real** (`tests/integration/db/ruta-optimizada-reduccion-sql-real.test.ts`, R48/R50).
+  - Lo intenté contra `localhost:5432` con las credenciales del CI y la autenticación falló. No hay `DATABASE_URL` local conocida y no probé otra base.
+  - Leí el test: es real. Tiene anti-vacuidad en los cuatro casos y R50 usa dos empresas.
+  - Su evidencia queda en el CI (D20).
+- [x] **`db/`.** `git diff dev...HEAD -- db/` sale vacío. El diff de dos puntos solo refleja que `dev` avanzó (SLT-58/SLT-68). No es un hallazgo.
+- [x] **Dependencias.** `package.json` y el lock no cambian.
+- [x] **Ordenex, país y moneda.** No hay recursos de Ordenex. No hay literales de país ni moneda en el código nuevo: «Costa Rica» solo sale en comentarios, y el día CR usa los helpers que ya existían.
+- [x] **E2E y gate completo.** Fuera de esta vuelta por D20: los cierra el CI del PR.
+
+### Menores de la vuelta 1
+
+| Menor | Estado | Evidencia |
+| --- | --- | --- |
+| m1 | **Corregido** | `upsertOrigen` ya no va antes de la guarda. `persistirUbicacion` solo escribe cuando se va a recalcular (design §2.4 y D17). Ni el omitir ni el enfriamiento tocan el origen. Tests: `optimizacion-ruta-origen.test.ts` › R46. |
+| m2 | **Corregido (código), evidencia en CI** | `ruta-optimizada-reduccion-sql-real.test.ts`: R48 ×3 y R50 con dos empresas. Solo corre con un `DATABASE_URL` localhost. |
+| m3 | **Corregido** | `aplicarReduccion` devuelve `reduccion_descartada` si la escritura condicionada no se aplica (R49). Tests: reducción › «R18/R49…», «R49: rama de UNA parada» y sincronizar-ruta › R49. |
+| m6 | **Corregido** | `reducirSecuencia` lleva `where { mensajeroId, huellaSet, estado: "vigente" }`. Tests: repo › R48 y sql-real › «`desactualizada` con la huella IGUAL». |
+
+### Desviaciones declaradas: juicio
+
+| Desviación | Juicio |
+| --- | --- |
+| `IJobRepositoryMovible extends IJobRepository` | **Aceptada.** Segrega la interfaz: los dobles de otras fichas no cambian y solo la exige quien la usa. |
+| `umbralSalidaM` opcional en RepartoModule | **Aceptada.** Sin el prop no hay disparo, es decir, 0 llamadas: el lado seguro. La única pantalla real (`reparto/page.tsx`) lo pasa desde `RUTA_REOPT_DISTANCIA_M`. |
+| `primeraRutaPendiente` y `puntoDeRecogida` en OptimizacionRutaService, reusados por MisAsignacionesService | **Aceptada**, pero existe un gemelo (m8). |
+| Canal del log en `lib/logging/google-api-log.ts` | **Aceptada.** La guardia `credenciales-sin-consola-cruda` prohíbe `console` en `lib/clients/`, y el logger se inyecta. |
+| `encolarOptimizacionDebounce` exige `origen` | **Aceptada.** Lo exige D28 (motivo por llamada), y el typecheck obliga a todos los llamadores. |
+| Tests viejos reescritos por D24/R59 | **Aceptada.** Por archivo, las aserciones añadidas superan a las quitadas (p. ej. reducción −36/+42, enqueue −16/+67). Las quitadas son de requisitos retirados (R19, R26) o de comportamientos que R59 cambia. |
+| R50 con dos mensajeros | **Aceptada y necesaria.** Una ruta por mensajero, y cada mensajero es de una empresa. |
+| R46: sin ruta previa, la ubicación recibida es el origen | **Aceptada.** Sin ruta no hay origen guardado, y es el único punto real disponible. |
+
+### Puntos abiertos del implementer: juicio
+
+- **`optimizacion-rutas-probador.ts` no emite `prueba_integracion`.** Correcto. Solo pide el token OAuth y no hace ninguna petición facturada, así que R72 prohíbe la línea. El motivo sí lo usa `google-maps-probador.ts` (geocode).
+- **Revivir un geocode reescribe `payload.motivo`.** Correcto: lo manda §13.2 de forma explícita (`jsonb_set` en el mismo `UPDATE`), y el código lo comenta como excepción. Falta anotarlo en la tabla §10 (m9).
+
+### Hallazgos
+
+#### BLOQUEANTE
+
+Ninguno.
+
+#### Menores
+
+- **m7. Las lecturas SQL nuevas no filtran por `organizacion_id` y no tienen test con dos empresas.** Son tres:
+  - recogida: `EXISTS orden` y `calculada_at`, en `GestionOrdenRepository.ts:735-747`;
+  - gestionable: la subselect `calculada_at`, en `GestionOrdenRepository.ts:802-808`;
+  - traspaso: `SELECT ... FROM ruta_optimizada`, en `OrdenRepository.ts:5040-5042`.
+
+  Los dos archivos están en `EXCEPCIONES_SQL_A_MANO` (`porRls`) y no filtran en ninguna de sus queries. Además, la RLS de `ruta_optimizada` y `orden` (servi_app, NOBYPASSRLS) cubre estas lecturas, y la clave es el `mensajero_id` de la sesión. No hay fuga posible, pero el checkpoint «query nueva → test de dos empresas» solo se cumple para `reducirSecuencia`. No lo hago bloqueante porque el patrón está sancionado por la excepción del archivo, y la vuelta 1 aceptó el mismo patrón (`tiene_coordenadas`). Conviene que el humano lo confirme.
+- **m8. El predicado «primera ruta pendiente» existe dos veces.** Una está en `OptimizacionRutaService.ts:273` (`ahora: Date`). La otra, en `lib/services/jobs/optimizacion-ruta-encolado.ts:126` (`diaCR: string`), y la usan los repositorios. Hoy son equivalentes, pero pueden divergir. Lo limpio es que una delegue en la otra.
+- **m9. Ficha 401 (`revivido_por_salud`).** El design §10, «Requisitos de fichas anteriores que esta ficha cambia», no lista la excepción a «no toca `payload`» de la 401, que sí está en §13.2. Basta añadir esa fila.
+- **m10. La semántica real de R77 solo se prueba con un fake.** Esa semántica es `ON CONFLICT ... DO UPDATE ... WHERE estado='pending'` sobre el índice único parcial. `job-repo-posponer.test.ts` afirma el texto del SQL y simula el motor. Es deuda candidata para `tests/integration/db/`. No es un `WHERE` de dinero ni de empresa.
+- **m4 y m5** de la vuelta 1: m4 desaparece con D16. m5 (PA-1/PA-2) no es objeto de esta vuelta.
+
+### Veredicto
+
+**OK.** No hay bloqueantes. m1, m2, m3 y m6 están corregidos (m2 queda con su evidencia en el CI), y R1-R77 tienen trazabilidad. Typecheck en 0 errores, lint en 0 errores y guardias solo con la baseline. Quedan 4 menores (m7-m10). T5.2, T6.8, el gate completo, el E2E y el test sql-real se cierran en el CI del PR (D20).
