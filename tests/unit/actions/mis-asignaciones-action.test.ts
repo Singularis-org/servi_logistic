@@ -47,6 +47,8 @@ function buildService(overrides: Partial<IMisAsignacionesService> = {}): IMisAsi
       paradasSinOptimizar: 0,
       trazado: null,
       tramoSiguiente: null,
+      primeraRutaPendiente: false,
+      puntoRecogida: null,
     },
     })),
     recogerAsignaciones: vi.fn(async () => ({ status: "ok" as const, recogidas: ["o1"] })),
@@ -472,5 +474,103 @@ describe("ficha 440: INTERNAL es un desenlace, no una excepcion", () => {
     await expect(
       escogerParaGestion({ ordenId: "o1" }, { service, getActor: actorMensajero }),
     ).rejects.toThrow(/AppErrorCode inesperado FORBIDDEN/);
+  });
+});
+
+// --- SLT-59 (R44, R28): reduccion de la ruta en la propia peticion ---
+// [2026-10-30, SLT-59, D16] R27 retirado: sus titulos pasan a R44; las aserciones no cambian.
+
+describe("SLT-59 R44/R28 — gestionar reduce la ruta del actor tras un `ok`, best-effort", () => {
+  function fdEntregaValida(): FormData {
+    const fd = new FormData();
+    fd.set("ordenId", "o1");
+    fd.set("ubicacionLat", "9.9281");
+    fd.set("ubicacionLng", "-84.0907");
+    fd.set("resultado", "entregado");
+    fd.set("montoRecibido", "100");
+    fd.set("metodoPago", "efectivo");
+    fd.set("evidencia", imagenFile());
+    return fd;
+  }
+
+  it("R44: tras un `ok` llama a la reduccion UNA vez con el usuarioId del actor, despues de la gestion", async () => {
+    const orden: string[] = [];
+    const service = buildService({
+      gestionar: vi.fn(async () => {
+        orden.push("gestionar");
+        return { status: "ok" as const, ordenId: "o1", estado: "entregado" };
+      }),
+    });
+    const reducirRuta = vi.fn(async () => {
+      orden.push("reducir");
+    });
+
+    const r = await gestionar(fdEntregaValida(), { service, getActor: actorMensajero, reducirRuta });
+
+    expect(r.status).toBe("ok");
+    expect(reducirRuta).toHaveBeenCalledTimes(1);
+    expect(reducirRuta).toHaveBeenCalledWith(MENSAJERO.usuarioId);
+    // La ubicacion la guarda `service.gestionar` antes de devolver: reducir despues la ve.
+    expect(orden).toEqual(["gestionar", "reducir"]);
+  });
+
+  it.each([
+    ["conflict", { status: "conflict" as const, motivo: "ya no gestionable" }],
+    ["forbidden", { status: "forbidden" as const }],
+  ])("R44: tras `%s` NO llama a la reduccion", async (_nombre, resultado) => {
+    const service = buildService({ gestionar: vi.fn(async () => resultado) });
+    const reducirRuta = vi.fn(async () => {});
+
+    const r = await gestionar(fdEntregaValida(), { service, getActor: actorMensajero, reducirRuta });
+
+    expect(r.status).toBe(resultado.status);
+    expect(reducirRuta).not.toHaveBeenCalled();
+  });
+
+  it("R44: si el service LANZA, no llama a la reduccion", async () => {
+    const service = buildService({
+      gestionar: vi.fn(async () => {
+        throw new Error("boom");
+      }),
+    });
+    const reducirRuta = vi.fn(async () => {});
+
+    const r = await gestionar(fdEntregaValida(), { service, getActor: actorMensajero, reducirRuta });
+
+    expect(r.status).toBe("error");
+    expect(reducirRuta).not.toHaveBeenCalled();
+  });
+
+  it("R44: con validation_error no se toca ni el service ni la reduccion", async () => {
+    const service = buildService();
+    const reducirRuta = vi.fn(async () => {});
+    const fd = fdEntregaValida();
+    fd.set("montoRecibido", "-1");
+
+    const r = await gestionar(fd, { service, getActor: actorMensajero, reducirRuta });
+
+    expect(r.status).toBe("validation_error");
+    expect(reducirRuta).not.toHaveBeenCalled();
+  });
+
+  it("R28: si la reduccion lanza, la action devuelve EXACTAMENTE el mismo resultado", async () => {
+    const okDelService = { status: "ok" as const, ordenId: "o1", estado: "entregado", evidenciaUrls: ["u1"] };
+    const service = buildService({ gestionar: vi.fn(async () => okDelService) });
+
+    const sinFallo = await gestionar(fdEntregaValida(), {
+      service,
+      getActor: actorMensajero,
+      reducirRuta: vi.fn(async () => {}),
+    });
+    const conFallo = await gestionar(fdEntregaValida(), {
+      service,
+      getActor: actorMensajero,
+      reducirRuta: vi.fn(async () => {
+        throw new Error("findByMensajero: conexion perdida");
+      }),
+    });
+
+    expect(conFallo).toEqual(sinFallo);
+    expect(conFallo).toEqual(okDelService);
   });
 });

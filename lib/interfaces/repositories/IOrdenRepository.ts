@@ -1765,6 +1765,16 @@ export interface IOrdenRepository {
    * Ordenadas por `createdAt asc`, que es el criterio de recorte de R38.
    */
   findParadasEnReparto(mensajeroId: string): Promise<ParadaRutaRow[]>;
+  /**
+   * SLT-59 (glosario «Asignadas del dia», R64, R67) — las ordenes del mensajero, no borradas, en
+   * `por_recoger` dentro del dia en curso (`fecha_reparto` nula o `<= dia`, el predicado de la
+   * recogida) o ya en `en_reparto`; `recogidas` = las de ese conjunto en `en_reparto`. `dia` va en
+   * la convencion `@db.Date` (`startOfDayCR`). Una sola lectura.
+   */
+  contarAsignadasDelDia(
+    mensajeroId: string,
+    dia: Date,
+  ): Promise<{ asignadas: number; recogidas: number }>;
 
   /**
    * FICHA 454 (R54/R55): de `ids`, las ordenes `en_reparto` con una gestion PENDIENTE de confirmar

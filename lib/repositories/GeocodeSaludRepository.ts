@@ -10,6 +10,10 @@ import type {
 // para explicarlo—. Si alguien lo copiara, el dia que cambie las dos puntas se desincronizarian EN
 // SILENCIO y esta ficha entera dejaria de reconocer el caso sin un solo test rojo.
 import { MARCADOR_FALLO_CONFIG_GEOCODE } from "@/lib/geo/fallo-config-geocode";
+import type { MotivoLlamadaGeocode } from "@/lib/clients/registro-llamada-google";
+
+/** SLT-59 (design §13.2): el motivo que lleva un job revivido por la salud del geocode. */
+const MOTIVO_REVIVIDO: MotivoLlamadaGeocode = "revivido_por_salud";
 
 // Cliente Prisma minimo consumido (patron `JobRepository`): las dos sentencias son SQL crudo
 // parametrizado. Este repositorio NO tiene logica de negocio: el umbral, la ventana, el lote y el
@@ -119,6 +123,7 @@ export class GeocodeSaludRepository implements IGeocodeSaludRepository {
       )
       UPDATE "jobs" AS j
       SET "estado"     = 'pending',
+          "payload"    = jsonb_set(j."payload", '{motivo}', to_jsonb(${MOTIVO_REVIVIDO}::text)),
           "intentos"   = 0,
           "last_error" = NULL,
           "locked_at"  = NULL,
@@ -128,6 +133,8 @@ export class GeocodeSaludRepository implements IGeocodeSaludRepository {
       FROM candidatos c
       WHERE j."id" = c."id"
       RETURNING j."id"`;
+    // [2026-10-31, SLT-59, D27, design §13.2] `payload.motivo` pasa a `revivido_por_salud`: es la
+    // unica excepcion a «no toca `payload`» de arriba. El `ordenId` no cambia.
     return filas.length;
   }
 }
