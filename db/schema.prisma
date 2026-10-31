@@ -5567,6 +5567,8 @@ enum CobroPlataformaFuente {
   empresa
   global
   sin_configurar
+  /// SLT-66 (design §2.2, R12): el costo por orden del plan de la empresa
+  plan
 
   @@map("cobro_plataforma_fuente")
 }
@@ -5613,6 +5615,8 @@ enum PlanRastroAccion {
   cambio_reemplazado
   cambio_cancelado
   cambio_aplicado
+  /// SLT-66 (design §2.2, R34): la migración quitó el plan a una empresa (lo escribe 20261031120300)
+  desasignado
 
   @@map("plan_rastro_accion")
 }
