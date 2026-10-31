@@ -42,7 +42,7 @@ conciliación en `ConciliacionSatelitesService`, saldo en `SaldosSatelitesReposi
   cierres aprobados sin consolidar ni el SINPE.
 
 ## Preguntas abiertas
-Ver `specs/SLT-73-dinero-satelite-al-conciliar/requirements.md > Preguntas abiertas` (Q1, Q2 bloquean).
+Q1 y Q2 cerradas por Carlos el 2026-10-31 (D10 = opción A, D11 = bloquear revertir). Spec APROBADO por Carlos el 2026-10-31.
 
 ## Tandas
 

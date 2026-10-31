@@ -44,6 +44,8 @@ satélite al día, por dos causas: su pendiente es Σ(`total_efectivo` − `mont
 | D7 | La ganancia de la satélite es **el dato que ya existe**: `cierre_dia.total_ingreso_bodega_rechazos`. Ver la nota de abajo. | Carlos, 2026-10-31 | R4, R9 |
 | D8 | El **saldo de la tienda también espera** a la conciliación: «hasta que no se concilie el cierre no se puede mostrar dinero, porque es dinero que no se sabe si ya entró o no». Lo mismo vale para el resto de esa transacción, salvo lo que el código muestre que no es dinero. | Carlos, 2026-10-31 | R1, R2, R10, R16 |
 | D9 | Se reabre la decisión de la ficha 431 «consolidar/conciliar no mueve dinero» (su R14): conciliar **sí** escribe en los libros. | Carlos, 2026-10-31 | R10, R12 |
+| D10 | Q1 = A: al conciliar con menos de lo esperado, los asientos del cierre entran completos y la caja lleva UNA fila «diferencia de la satélite» por esperado − recibido, que queda como deuda abierta. | Carlos, 2026-10-31 | ver Q1 |
+| D11 | Q2: una conciliación que ya asentó dinero NO se puede revertir; el monto se arregla con «Corregir» (ajusta la fila de diferencia). | Carlos, 2026-10-31 | ver Q2 |
 
 **Nota sobre D7: el dato que ya existe.**
 - `db/schema.prisma:1598`: `CierreDia.totalIngresoBodegaRechazos`, «snapshot total del ingreso de
@@ -163,7 +165,7 @@ Las cinco son dinero y esperan. No son dinero, y siguen al aprobar:
 
 ## Preguntas abiertas
 
-- **Q1 [BLOQUEA] Cuando se recibe menos, ¿cómo se reparte lo recibido entre los movimientos?** D5
+- **Q1 — CERRADA (D10): opción A.** Cuando se recibe menos, ¿cómo se reparte lo recibido entre los movimientos?** D5
   dice «entra lo recibido», pero los movimientos son por concepto y por cierre del día, y la
   recepción es por consolidación. Opciones:
   - **(A, recomendada; es la que escriben R10/R11).** Los tres libros reciben completos los
@@ -175,7 +177,7 @@ Las cinco son dinero y esperan. No son dinero, y siguen al aprobar:
   - **(B) Prorrateo.** Cada concepto se escala por recibido/esperado. Rompe la identidad de la 173
     y el libro por tienda: ¿a qué tienda se le acredita menos?
   - **(C) Nada entra hasta recibirlo completo.** Contradice «entra lo recibido».
-- **Q2 [BLOQUEA] Revertir una conciliación que ya escribió asientos.** Los libros son append-only y
+- **Q2 — CERRADA (D11): bloquear revertir, usar Corregir.** Revertir una conciliación que ya escribió asientos.** Los libros son append-only y
   el único `(origen_tipo, origen_id, categoria)` impide re-escribir un asiento de `cierre_dia` ya
   usado. Opciones:
   - **(A, recomendada; es la que escribe R14).** La reversión se bloquea cuando ya hay asientos.
