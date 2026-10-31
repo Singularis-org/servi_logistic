@@ -213,7 +213,7 @@
   - los E2E de SL-23 que usan el ayudante de `_superadmin-fixture.ts` siguen en verde;
   - el global queda como estaba (`afterAll`);
   - capturas en la salida del test.
-- [ ] **T16 [P] — Ayuda.** `docs/ayuda/oficina/wallet-caja.md`: «un monto fijo por cada orden» pasa a
+- [x] **T16 [P] — Ayuda.** `docs/ayuda/oficina/wallet-caja.md`: «un monto fijo por cada orden» pasa a
   explicar que el monto sale de la excepción, del plan o del valor general. Se actualiza `actualizado:`.
 
   *Hecho:* la guardia de ayuda está en verde.
