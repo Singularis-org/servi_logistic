@@ -84,3 +84,66 @@ fallados, 264 saltados. Fallan:
 ### Veredicto
 T1 y T2 hechas: tests nuevos en verde, drift vacío y typecheck limpio en el código de producción. Quedan 31 errores de
 tipos en tests existentes, que son de T4.
+
+## Tanda A — T3 y T4 (backend_dev, 2026-10-31)
+
+### T3 — `tests/integration/db/plan-maestro-sin-tope.test.ts` (d0ef208): 7/7
+- R1: `INSERT` de un tope de `maestro` → `23514`, también al crear un plan con `porRol.maestro`.
+- R2: un `it.each` sobre los cuatro roles; con tope 1, el segundo alta da `TopeDelPlanAlcanzado`.
+- R3: empresa con todos los topes llenos.
+  - Crear, activar, aprobar un pendiente y pasar un admin a maestro: entran los cuatro.
+  - El uso no cambia, salvo admin −1 por el cambio de rol.
+  - Desviación: la aprobación de un maestro usa la misma sentencia `UPDATE` que `actualizarEstadoSiPendiente`, sin el filtro de rol, porque el repositorio solo aprueba mensajeros. Queda comentado en el test.
+- R6: el tope de órdenes y el de keys siguen rechazando.
+- Control de no vacuidad: los triggers están en `pg_trigger`.
+- **Mutación 4** (el CHECK vuelve a admitir `maestro`, medida en `logistic_slt66`):
+  - cae el caso R1: 1 fallado, 6 pasados;
+  - CHECK de M1 restaurado: 7/7.
+
+### T4 — tests existentes (b42329b), SIN CERRAR
+| Archivo | Pasados / fallados |
+|---|---|
+| planes-catalogo | 14 / 0 |
+| plan-topes-usuarios | 10 / 0 |
+| planes-schema | 28 / 0 |
+| consumo | 34 / **1** |
+| mi-plan-service | 13 / 0 |
+| planes-service-lecturas | 30 / 0 |
+| plantilla-cambio-plan | 14 / 0 |
+| mi-plan-repository | 3 / **1** |
+| plan-de-la-empresa | 7 / 0 (`:123` y `:178` no se tocan, dependen de M3) |
+| planes-lecturas-plataforma | 3 / 0 |
+| rastro | 8 / **1** |
+| planes-service | 80 / 0 |
+| planes-service-inicio-ciclo | 28 / 0 |
+
+Fixture tocado: `_fixtures/planes.ts:211`.
+
+`costoPorOrden: null` también se añadió en líneas que la tabla no cita una a una (fila genérica «Fixtures»):
+- mi-plan-service `:34`, `:113`;
+- planes-service-lecturas `:41`, `:52`, `:98`;
+- mi-plan-repository `:30`;
+- planes-lecturas-plataforma `:32`;
+- planes-schema `:24`, `:37`;
+- planes-service `:43`, `:53`.
+
+**Bloqueos (pendientes del humano, por R27 y T4).** Estos tres casos rojos exigen tocar líneas que §9.3 no cita:
+1. `tests/unit/planes/consumo.test.ts:72-81`: la lista esperada todavía incluye `"maestro"` (`:75`).
+2. `tests/unit/planes/rastro.test.ts:22-31`: el diff al crear trae `costoPorOrden: {antes: null, despues: null}`.
+3. `tests/integration/db/mi-plan-repository.test.ts:83-88`: el `toEqual` de `vigente` necesita `costoPorOrden: null`.
+
+Tests fuera de la tabla que rompe `costoPorOrden` obligatorio (aviso de T2, sin corroborar con base):
+- `tests/unit/actions/planes.composition-root.test.ts` (3 fallos);
+- `tests/components/PlanesModule.test.tsx` (T11);
+- los seis de integración que usan `entradaDePlan`: planes-asignacion, planes-asignacion-inicio-ciclo, planes-cambio-correos, planes-cambio-programado, planes-edicion-en-uso, planes-historial. Con el arreglo de `_fixtures/planes.ts:211` pueden pasar; no se han corrido.
+
+### Mapa R → test (añadido)
+| R | Test |
+|---|---|
+| R1 | + `plan-maestro-sin-tope.test.ts` (R1), `planes-catalogo.test.ts` («R25 — tope por rol») |
+| R2 | `plan-maestro-sin-tope.test.ts` (R2, `it.each`), `plan-topes-usuarios.test.ts:255` |
+| R3 | `plan-maestro-sin-tope.test.ts` (R3) |
+| R5 | `consumo.test.ts:69`, `mi-plan-service.test.ts`, `planes-service-lecturas.test.ts` (backend; las pantallas van en la tanda D) |
+| R6 | `plan-maestro-sin-tope.test.ts` (R6) |
+
+Typecheck: limpio en `lib/`, `app/`, `components/`, `tests/unit` y `tests/integration/db`. Quedan errores solo en tests de componentes y páginas (tanda D).

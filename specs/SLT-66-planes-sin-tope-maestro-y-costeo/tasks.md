@@ -12,7 +12,7 @@
 
 ## Tanda A — modelo y maestro sin tope (backend_dev)
 
-- [ ] **T0 — Comprobaciones previas.**
+- [x] **T0 — Comprobaciones previas.**
   1. Confirmar que `20261030120100_incentivo_mensajero_checks` sigue siendo la última migración de
      `dev`. Si no lo es, renombrar las tres de esta ficha antes de aplicarlas en una base compartida.
   2. Buscar con Grep en `dev` `CREATE OR REPLACE FUNCTION (cobro_plataforma_al_crear_orden|plan_de_la_empresa)`.
@@ -24,7 +24,7 @@
 
   *Hecho:* las cuatro respuestas quedan anotadas en `progress/impl_SLT-66.md`, y el número del punto 4 se
   le pasa al leader.
-- [ ] **T1 — M1 `20261031120000_plan_costeo_y_maestro_sin_tope`** (design §2.1, §2.4). Depende de T0.
+- [x] **T1 — M1 `20261031120000_plan_costeo_y_maestro_sin_tope`** (design §2.1, §2.4). Depende de T0.
   - `migration.sql` con la cabecera de borrado definitivo, y su `down.sql`.
   - `db/schema.prisma`: `Plan.costoPorOrden` y el comentario de `PlanTopeRol`.
 
@@ -33,7 +33,7 @@
   - Casos R4 de `tests/integration/db/migracion-slt66-ida-y-vuelta.test.ts` en verde: siembra previa,
     borrado de maestro, versión pendiente sin `maestro` y con `costoPorOrden: null`, rastro y
     asignación intactos.
-- [ ] **T2 — Tipos y escritura del plan** (design §4.1, §4.2, §4.4). Depende de T1.
+- [x] **T2 — Tipos y escritura del plan** (design §4.1, §4.2, §4.4). Depende de T1.
   - `ROLES_CON_TOPE` sin `maestro` y `costoPorOrden` en los esquemas, en `PlanDTO` y en `VersionPlan`.
   - `PlanesRepository`: `crear`, `aplicarVersion`, `aDTO`, `usoDe` sin `maestro` y `COLUMNA_DEL_ROL`.
   - `lib/planes/rastro.ts`: el campo `costoPorOrden`.
@@ -46,7 +46,7 @@
   - `tests/integration/db/planes-costeo-escritura.test.ts` (R11).
 
   El typecheck señala los fixtures que construyen `PlanDTO` a mano, que suman `costoPorOrden: null`.
-- [ ] **T3 — Maestro sin tope en la base** (design §8). Depende de T1.
+- [x] **T3 — Maestro sin tope en la base** (design §8). Depende de T1.
   - `tests/integration/db/plan-maestro-sin-tope.test.ts`, que cubre R1, R2, R3 y R6 con su control de no
     vacuidad.
   - Mutación 4 de design §9.4, medida.
