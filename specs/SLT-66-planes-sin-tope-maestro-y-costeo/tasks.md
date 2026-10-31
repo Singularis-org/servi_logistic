@@ -142,7 +142,7 @@
 
   *Hecho:* `./init.sh` en verde tras el merge, antes de tocar pantallas. Si #51 no entró, se anota y se
   sigue.
-- [ ] **T11 — `PlanForm`** (design §6.1). Depende de T2 y T10.
+- [x] **T11 — `PlanForm`** (design §6.1). Depende de T2 y T10.
   - Rótulos «Costo base» y «Costo base mensual».
   - Campo «Costo por orden» con su ayuda y `idDe("costoPorOrden")`.
   - La descripción del `Sheet`.
@@ -150,14 +150,14 @@
   *Hecho:*
   - `tests/components/PlanFormCosteo.test.tsx` (R5, R9, R23) en verde;
   - `tests/components/PlanForm.test.tsx:325` actualizado (§9.3).
-- [ ] **T12 [P] — Catálogo, detalle y modal** (design §6.2). Depende de T2.
+- [x] **T12 [P] — Catálogo, detalle y modal** (design §6.2). Depende de T2.
   - `lineasDeCosto` en `plan-vista.ts`.
   - `PlanesModule.tsx`, `PlanDetalle.tsx` y `PlanEmpresa.tsx`.
 
   *Hecho:*
   - `tests/components/PlanVistaCosteo.test.tsx` (R24, R10) en verde;
   - `PlanDetalle.test.tsx:140` y `PlanEmpresa.test.tsx:42, :364` actualizados (§9.3).
-- [ ] **T13 [P] — `ConsumoDelPlan`** (design §6.3). Depende de T9.
+- [x] **T13 [P] — `ConsumoDelPlan`** (design §6.3). Depende de T9.
   - El bloque «Costo del ciclo» con las tres situaciones de base.
   - La nota de fuente (P1).
   - La nota «Estimado: …».
@@ -166,7 +166,7 @@
   - `tests/components/ConsumoDelPlanCosteo.test.tsx` (R18–R21, R10, R5) en verde, con la nota «precio
     acordado para tu empresa» y la rama «por definir»;
   - `ConsumoDelPlan.test.tsx:26` y `MiPlanModule.test.tsx` actualizados (§9.3).
-- [ ] **T19 [P] — `PlanEmpresa`: el ancla, el rechazo y el aviso** (design §6.5). Depende de T18.
+- [x] **T19 [P] — `PlanEmpresa`: el ancla, el rechazo y el aviso** (design §6.5). Depende de T18.
   - `id="plan"` en la `section`.
   - El texto de rechazo `plan_sin_costo`.
   - El texto y el enlace cuando no hay planes asignables.
@@ -185,7 +185,7 @@
 
   *Hecho:* `tests/integration/db/empresas-plataforma-plan.test.ts` en verde, y
   `empresas-plataforma-cobro.test.ts` en verde sin tocarlo.
-- [ ] **T20 — «Empresas»: pantalla** (frontend_dev; design §6.4; R31, R32). Depende de T15, T19 y T10.
+- [x] **T20 — «Empresas»: pantalla** (frontend_dev; design §6.4; R31, R32). Depende de T15, T19 y T10.
   - En `EmpresasModule`: la celda de cobro con «propio», «del plan» o «global».
   - La columna «Plan» con «Asignar plan» o «Cambiar plan» hacia `#plan`.
   - El enlace «Plan y módulos».
@@ -194,7 +194,7 @@
 
   *Hecho:* `tests/components/EmpresasModulePlan.test.tsx` en verde, y los tres archivos existentes en
   verde con el diff limitado a §9.3.
-- [ ] **T22 [P] — «Asignar a una empresa» desde el detalle del plan** (design §6.6; R33, R34).
+- [x] **T22 [P] — «Asignar a una empresa» desde el detalle del plan** (design §6.6; R33, R34).
   Depende de T19 y T21.
   - `[planId]/page.tsx` (empresas candidatas) y `PlanDetalle.tsx`, con la traducción de `desasignado`.
   - `planPreseleccionado` en `PlanEmpresa` y la `page.tsx` del detalle de empresa (`searchParams.plan`).

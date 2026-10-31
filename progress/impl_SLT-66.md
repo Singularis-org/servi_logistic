@@ -483,3 +483,84 @@ Typecheck: `app/`, `lib/` y `components/` sin errores. Los 24 errores que quedan
 - vitest: PlanEmpresa 46/46, PlanEmpresaSinCosto 17/17, ConsumoDelPlan 7/7, ConsumoDelPlanCosteo 17/17, MiPlanModule 9/9.
 - typecheck (`tsc --noEmit`, repo entero): exit 0. eslint en los 2 archivos: sin problemas.
 - Veredicto: hecho, en verde.
+
+## Tanda D — pantallas: T11, T12, T13, T19, T20, T22 (frontend_dev ×2, 2026-10-31)
+
+### Commits
+- `ebddcd7` T11 `PlanForm`:
+  - rótulos «Costo base» y «Costo base mensual»;
+  - el campo «Costo por orden» usa `MontoInput`;
+  - descripción del Sheet.
+- `faf7a4f` T12: `lineasDeCosto` en `plan-vista.ts`, en el catálogo, el detalle y el modal de cambio.
+- `9fbc46c` T13 `ConsumoDelPlan`:
+  - «Costo del ciclo» con las tres situaciones de la base;
+  - la nota de fuente y «Estimado: …»;
+  - sin `@prisma/client`.
+- `1715f16` T19 `PlanEmpresa`:
+  - `id="plan"`;
+  - el texto y el enlace a «Planes» cuando no hay planes asignables (R29);
+  - el aviso de R20 (texto literal de §6.5).
+- `bea1c2e` T20 `EmpresasModule`:
+  - la celda de cobro dice «propio», «del plan» o «global», a partir de `cobroVigente`;
+  - columna «Plan» con «Asignar plan» / «Cambiar plan» → `#plan`;
+  - enlace «Plan y módulos»;
+  - `CobroPorOrden.tsx` recibe `cobroVigente` en lugar de `montoGlobal`.
+- `388ebb1` T22:
+  - «Asignar a una empresa» en `PlanDetalle`, con las candidatas de `listarEmpresasPlataforma` (sin cambios en lib/);
+  - la frase completa de `desasignado`;
+  - `planPreseleccionado` desde `searchParams.plan`.
+- `48780be`: fixtures de las dos páginas de integración.
+- `003d71b`: el detalle del superadmin dice «excepción de la empresa» (§6.3). El aviso «Plan sin costo concreto» sale una sola vez, y hay un test que lo comprueba.
+
+### Tests (vitest)
+| Archivo | Pasados / fallados |
+|---|---|
+| PlanForm | 25 / 0 |
+| PlanFormCosteo (nuevo) | 7 / 0 |
+| PlanVistaCosteo (nuevo) | 10 / 0 |
+| PlanDetalle | 18 / 0 |
+| PlanEmpresa | 46 / 0 |
+| PlanesModule | 8 / 0 |
+| PlanEmpresaSinCosto (nuevo) | 17 / 0 |
+| PlanDetalleAsignar (nuevo) | 8 / 0 |
+| PlanDetalleDesasignado (nuevo) | 1 / 0 |
+| plataforma-empresa-detalle-page | 21 / 0 |
+| plataforma-planes-page | 19 / 0 |
+| ConsumoDelPlanCosteo (nuevo) | 17 / 0 |
+| ConsumoDelPlan | 7 / 0 |
+| MiPlanModule | 9 / 0 |
+| EmpresasModulePlan (nuevo) | 10 / 0 |
+| EmpresasModuleCobro | 24 / 0 |
+| empresas-module | 42 / 0 |
+| empresas-page | 18 / 0 |
+
+### Verificación
+- **Typecheck:** TOTAL limpio (`tsc --noEmit`, exit 0).
+- **Lint:** `pnpm run lint` da 0 errores. Los 232 avisos son del repo, y eslint sobre los archivos que cambia la ficha respecto a `origin/dev` sale limpio.
+- **Tests existentes ajustados:** las filas añadidas a §9.3 (tanda D), por la autorización general y R27.
+
+### Mapa R → test (pantallas)
+| R | Tests |
+|---|---|
+| R5, R9, R23 | PlanFormCosteo |
+| R24, R10 | PlanVistaCosteo |
+| R18–R21, R10, R5 | ConsumoDelPlanCosteo |
+| R28, R29, R20, ancla, R33 (preselección) | PlanEmpresaSinCosto |
+| R33 (detalle) | PlanDetalleAsignar |
+| R34 | PlanDetalleDesasignado |
+| R31, R32 | EmpresasModulePlan |
+
+### Decisiones de frontend que hay que confirmar en la review
+1. «Monto mensual» pasa a «Costo base mensual», y la opción «Con monto» se queda como está, porque la comprueba un test de SLT-58.
+2. Texto del aviso de R20: el literal de §6.5, «Plan sin costo concreto: …». §9.1 lo llama «Plan sin costo base concreto».
+3. R29: el texto nuevo con enlace solo sale si el servidor no devuelve ningún plan asignable. Si hay planes pero ninguno se puede ofrecer, sigue el texto de SLT-58 (así queda intacto `PlanEmpresa.test.tsx:492`).
+4. El modal de cambio también lista el costo del plan nuevo cuando no cambia.
+5. La línea queda «Costo por orden: 100.00 por orden»: es el literal de §6.2/§4.4 y suena redundante.
+6. Casos sin texto en el spec dentro de «Asignar a una empresa». Se reutilizan textos existentes:
+   - sin empresas candidatas no se pinta nada;
+   - si falla la carga, sale «No se pudieron cargar las empresas.»;
+   - el placeholder es «Elige la empresa»;
+   - el botón queda deshabilitado hasta elegir una empresa.
+7. Rastro: «Desasignado» va en «Acción» y la frase completa en «Qué cambió».
+8. El filtro de `?plan=` contra los asignables, a nivel de página, no tiene test de integración. Sí lo cubre el test de componente.
+9. «Cobro por orden» se pinta con `money()`. El E2E de T14 tiene que afirmar con ese formato.
