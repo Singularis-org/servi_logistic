@@ -30,3 +30,8 @@ y `OrdenRepository`; esta, la aprobación del cierre. Sin cruce esperado de arch
 ## Modelos (overrides)
 
 ## Cierre
+
+### 2026-10-31 — spec existente
+- `spec_author` encontró `specs/451-confirmacion-fisica-sin-gestionar/` (aprobado 2026-09-21, R1–R40,
+  nunca implementado: 0/25 tasks, sin columna `cierre_sin_gestion.confirmada_fisica_at`).
+- Carlos: «Implementar la 451». SLT-72 implementa ese spec tal cual, con su migración.
