@@ -38,7 +38,7 @@ y `tests/integration/db/cierre-sin-gestion-confirmacion-sql-real.test.ts`. Todo 
 
 ## T0 · Medir antes de tocar
 
-- [ ] **T0.1 — Foto de la cola del despliegue.** Contra producción, **solo lectura**: cuántos cierres
+- [x] **T0.1 — Foto de la cola del despliegue.** Contra producción, **solo lectura**: cuántos cierres
       en estado `vencido` sin resolver hay hoy, cuántas filas de `cierre_sin_gestion` arrastran, y
       cuántas de ellas tienen `num_guia IS NULL`.
       **Hecho:** los tres números escritos en `progress/impl_451.md` con su fecha y la consulta
@@ -225,7 +225,7 @@ y `tests/integration/db/cierre-sin-gestion-confirmacion-sql-real.test.ts`. Todo 
       **ejecutaron**.
       *Depende de: T6.2.*
 
-- [ ] **T6.4 — Aviso operativo antes de desplegar.** Con los números de T0.1 delante, avisar a bodega
+- [x] **T6.4 — Aviso operativo antes de desplegar.** Con los números de T0.1 delante, avisar a bodega
       de que los cierres vencidos en cola pasarán a exigir escaneo.
       **Hecho:** el aviso dado y anotado, o la decisión del humano de drenar la cola primero.
       *Depende de: T0.1, T6.3.*
