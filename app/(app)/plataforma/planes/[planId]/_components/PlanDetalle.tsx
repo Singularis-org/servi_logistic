@@ -101,6 +101,7 @@ const ACCIONES: Record<PlanRastroAccion, string> = {
   cambio_reemplazado: "Cambio reemplazado",
   cambio_cancelado: "Cambio cancelado",
   cambio_aplicado: "Cambio aplicado",
+  desasignado: "Desasignado",
 };
 
 export interface PlanDetalleProps {
