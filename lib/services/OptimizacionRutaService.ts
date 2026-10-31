@@ -92,7 +92,10 @@ import {
   type ContextoLlamadaRuta,
   type MotivoLlamadaRuta,
 } from "@/lib/clients/registro-llamada-google";
-import type { OrigenJobRuta } from "@/lib/services/jobs/optimizacion-ruta-encolado";
+import {
+  primeraRutaPendiente as primeraRutaPendienteDelDia,
+  type OrigenJobRuta,
+} from "@/lib/services/jobs/optimizacion-ruta-encolado";
 import { fechaCalendarioCR, inicioDelDiaCREnUtc, startOfDayCR } from "@/lib/utils/fecha-cr";
 
 /** Fuente de las paradas. `Pick` para que los dobles de test no implementen 40 metodos. */
@@ -269,12 +272,16 @@ function inicioDelDiaEnCurso(ahora: Date): Date {
  * SLT-59 (glosario «Primera ruta pendiente», R59, R67) — la ruta no existe, o su `calculada_at`
  * es nula o anterior al inicio del dia en curso. Pura sobre `ruta`: cero lecturas. Una reduccion
  * no la cumple porque R17 no mueve `calculada_at`.
+ *
+ * Delega en el predicado de `optimizacion-ruta-encolado.ts`, el que usan los repositorios dentro de
+ * sus transacciones: con dos copias, el servicio y los writers podrian discrepar sobre si la
+ * primera ruta sigue pendiente (review m8).
  */
 export function primeraRutaPendiente(
   ruta: Pick<RutaOptimizadaDTO, "calculadaAt"> | null,
   ahora: Date,
 ): boolean {
-  return ruta === null || ruta.calculadaAt === null || ruta.calculadaAt < inicioDelDiaEnCurso(ahora);
+  return primeraRutaPendienteDelDia(ruta?.calculadaAt ?? null, fechaCalendarioCR(ahora));
 }
 
 /**

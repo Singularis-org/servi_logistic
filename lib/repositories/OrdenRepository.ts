@@ -5037,9 +5037,13 @@ export class OrdenRepository implements IOrdenRepository {
       const ahora = this.now();
       const debounceS = loadRouteOptimizationConfig().RUTA_DEBOUNCE_S;
       const diaCR = fechaCalendarioCR(ahora);
+      //    Review m7: la lectura filtra por la empresa de las ordenes del lote, ya bloqueadas en el
+      //    paso 1 (la RLS solo deja ver las de la sesion). Segunda barrera que no depende del
+      //    contexto: la ruta de otra empresa con el mismo `mensajero_id` no decide aqui.
       const rutas = await tx.$queryRaw<{ mensajero_id: string; calculada_at: Date | null }[]>`
         SELECT "mensajero_id", "calculada_at" FROM "ruta_optimizada"
-         WHERE "mensajero_id" IN (${Prisma.join([mensajeroOrigenId, mensajeroDestinoId])})`;
+         WHERE "mensajero_id" IN (${Prisma.join([mensajeroOrigenId, mensajeroDestinoId])})
+           AND "organizacion_id" = (SELECT "organizacion_id" FROM "orden" WHERE "id" = ${ids[0]})`;
       const calculadaPorMensajero = new Map(rutas.map((r) => [r.mensajero_id, r.calculada_at]));
       for (const mensajeroId of [mensajeroOrigenId, mensajeroDestinoId]) {
         if (primeraRutaPendiente(calculadaPorMensajero.get(mensajeroId) ?? null, diaCR)) continue;

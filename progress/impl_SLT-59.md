@@ -1513,3 +1513,33 @@ Retirados (6): R11, R14, R16, R19, R26 y R27. Cubiertos por revisión del diff: 
 **Veredicto:** T7.8, T8.4 y T8.5 hechas. La jornada da 7/7 en verde contra §8.0 (D30) y §13.3, sin
 discrepancia en los motivos. Typecheck 0 errores, lint 0 errores, guardias solo con los rojos de la
 baseline, y SLT-59 no cambia `db/`.
+
+## Tanda 11 — backend_dev + spec_author: menores m7-m10 de la vuelta 2 (2026-10-31, D31: antes del PR)
+
+- m9 (spec_author, solo docs): fila «Ficha 401, `revivirFallosConfig`» en design §10 (excepción `payload.motivo` → `revivido_por_salud`, §13.2); D31 en requirements.md.
+
+**Archivos**
+- `lib/repositories/GestionOrdenRepository.ts`: m7, recogida (`EXISTS orden` y `calculada_at`) filtra por `organizacion_id` = el de una orden que la misma tx acaba de recoger (CTE `empresa`); gestionable: `"r"."organizacion_id" = "o"."organizacion_id"`.
+- `lib/repositories/OrdenRepository.ts`: m7, traspaso: `"organizacion_id" = (SELECT ... FROM "orden" WHERE "id" = ids[0])`; la orden ya está bloqueada en el paso 1.
+- Sin cambios de firma: la empresa sale de filas que la propia transacción ya ganó bajo RLS.
+- `lib/db/excepciones-aislamiento.ts`: quitadas las dos filas `porRls` de esos repos. La guardia `sql-a-mano-por-empresa` lo exige: es por archivo, y ahora los dos mencionan `organizacion_id`.
+- `lib/services/OptimizacionRutaService.ts`: m8, `primeraRutaPendiente` delega en la de `jobs/optimizacion-ruta-encolado.ts`.
+- `tests/unit/services/optimizacion-ruta-primera-del-dia.test.ts`: m8, test de concordancia en los bordes del día de CR.
+- NUEVO `tests/integration/db/ruta-primera-pendiente-dos-empresas-sql-real.test.ts`: m7.
+- NUEVO `tests/integration/db/job-primera-recogida-sql-real.test.ts`: m10.
+
+**R → test**
+- R57/R58/R76 (lectura §12.2): «la recogida no cuenta la orden por recoger ni la ruta de OTRA empresa».
+- R59 (§12.3): «la gestion no toma el `calculada_at` de la ruta de OTRA empresa».
+- R60 (§12.4): «el traspaso no decide con la ruta de OTRA empresa».
+- R76/R77 (m10): «dos recogidas seguidas dejan UN job `pending`…» y «un job del dia ya `%s` no se toca ni se duplica» (processing/done/failed).
+- m8: «m8: el predicado del servicio y el de los writers dan lo mismo…».
+
+**Salida**
+- typecheck: exit 0. eslint de los archivos tocados: 0 problemas.
+- optimizacion-ruta*: 15 archivos, 287 passed. mis-asignaciones*: 11 archivos, 203 passed.
+- gestion-orden*, job-repo-posponer, optimizacion-ruta-enqueue, traspaso-mensajero-service, orden-historial-atomicidad y la guardia sql-a-mano: 8 archivos, 177 passed.
+- Integración db (los 2 nuevos, reducción, traspaso, recoger-lote): 5 archivos y 42 tests SKIPPED, porque aquí no hay `DATABASE_URL` local. Corren en el CI.
+- test:guardias: 4 FAIL, todos de la guardia 420 (baseline), y el resto en verde.
+
+**Veredicto:** m7, m8 y m10 hechos. Los tests sql-real nuevos no se han ejecutado en local, y su primera ejecución será en el CI.

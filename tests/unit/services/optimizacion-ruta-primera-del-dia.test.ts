@@ -16,6 +16,8 @@ import type { IRoutesClient } from "@/lib/interfaces/external/IRoutesClient";
 import type { ParadaRutaRow } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { RouteOptimizationConfig } from "@/lib/config/route-optimization";
 import { distanciaHaversineKm } from "@/lib/geo/polilinea";
+import { primeraRutaPendiente as primeraRutaPendienteDeLosWriters } from "@/lib/services/jobs/optimizacion-ruta-encolado";
+import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 
 // SLT-59 revision 4 (D23, D25; design §12.1, §12.5, §12.6) — la primera ruta del dia.
 //   R59  con la primera pendiente se recalcula siempre (ni omitir ni reducir).
@@ -178,6 +180,32 @@ describe("SLT-59 — glosario: primera ruta pendiente y punto de recogida (puras
     // 05:59 de CR del 29 es todavia el 28; 06:00 UTC es la medianoche de CR (timestamp, no `date`).
     expect(primeraRutaPendiente({ calculadaAt: new Date("2026-10-29T05:59:59.999Z") }, T0)).toBe(true);
     expect(primeraRutaPendiente({ calculadaAt: new Date("2026-10-29T06:00:00.000Z") }, T0)).toBe(false);
+  });
+
+  it("m8: el predicado del servicio y el de los writers dan lo mismo en los bordes del dia de CR", () => {
+    // Una sola regla (review m8): el servicio delega en el de `optimizacion-ruta-encolado.ts`.
+    // Si alguien vuelve a duplicarlo, los bordes son donde dos copias empiezan a discrepar.
+    const ahoras = [
+      new Date("2026-10-29T05:59:59.999Z"), // aun el 28 en CR
+      new Date("2026-10-29T06:00:00.000Z"), // medianoche de CR del 29
+      T0,
+      new Date("2026-10-30T05:59:59.999Z"), // ultimo instante del 29 en CR
+    ];
+    const calculadas: (Date | null)[] = [
+      null,
+      AYER,
+      new Date("2026-10-28T05:59:59.999Z"),
+      new Date("2026-10-29T05:59:59.999Z"),
+      new Date("2026-10-29T06:00:00.000Z"),
+      T0,
+    ];
+    for (const ahora of ahoras) {
+      for (const calculadaAt of calculadas) {
+        expect(primeraRutaPendiente({ calculadaAt }, ahora)).toBe(
+          primeraRutaPendienteDeLosWriters(calculadaAt, fechaCalendarioCR(ahora)),
+        );
+      }
+    }
   });
 
   it("punto de recogida: solo un `gps` capturado hoy", () => {

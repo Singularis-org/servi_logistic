@@ -731,20 +731,30 @@ export class GestionOrdenRepository implements IGestionOrdenRepository {
       //
       // UNA consulta, con el predicado de dia COPIADO del `UPDATE` de arriba (R67). Solo si alguna
       // orden gano la guarda: `rows.length === 0` significa que nada cambio.
+      //
+      // Review m7: las dos lecturas filtran por `organizacion_id`, y la empresa es la de una orden
+      // que esta misma transaccion acaba de recoger (la RLS solo deja recoger las de la sesion). Es
+      // una segunda barrera que no depende del contexto: una fila de otra empresa con este
+      // `mensajero_id` no cuenta como «quedan por recoger» ni presta su `calculada_at`.
       if (rows.length > 0) {
         const [estado] = await tx.$queryRaw<
           { quedan_por_recoger: boolean; calculada_at: Date | null }[]
         >`
+          WITH "empresa" AS (
+            SELECT "organizacion_id" FROM "orden" WHERE "id" = ${rows[0].id}
+          )
           SELECT
             EXISTS (
               SELECT 1 FROM "orden"
                WHERE "mensajero_asignado_id" = ${mensajeroId}
+                 AND "organizacion_id" = (SELECT "organizacion_id" FROM "empresa")
                  AND "estatus_id" = ${origenEstatusId}
                  AND "deleted_at" IS NULL
                  AND ("fecha_reparto" IS NULL OR "fecha_reparto" <= ${diaTexto}::date)
             ) AS "quedan_por_recoger",
             (SELECT "calculada_at" FROM "ruta_optimizada"
-              WHERE "mensajero_id" = ${mensajeroId}) AS "calculada_at"`;
+              WHERE "mensajero_id" = ${mensajeroId}
+                AND "organizacion_id" = (SELECT "organizacion_id" FROM "empresa")) AS "calculada_at"`;
         if (estado !== undefined && primeraRutaPendiente(estado.calculada_at ?? null, diaTexto)) {
           await encolarPrimeraRutaPorRecogida(
             this.jobRepo,
@@ -799,13 +809,16 @@ export class GestionOrdenRepository implements IGestionOrdenRepository {
       // decidir el paso (7) sin una consulta mas.
       // SLT-59 (R59, design §12.3): y en la MISMA sentencia, `calculada_at` de su ruta, para saber si
       // la primera ruta del dia sigue pendiente. Cero viajes nuevos (R67).
+      // Review m7: la ruta se busca en la empresa de la orden que se gestiona, no solo por
+      // `mensajero_id`: segunda barrera que no depende de que la RLS tenga el contexto puesto.
       const gestionable = await tx.$queryRaw<
         { id: string; tiene_coordenadas: boolean; calculada_at: Date | null }[]
       >`
         SELECT "o"."id",
                ("o"."latitud" IS NOT NULL AND "o"."longitud" IS NOT NULL) AS "tiene_coordenadas",
                (SELECT "r"."calculada_at" FROM "ruta_optimizada" "r"
-                 WHERE "r"."mensajero_id" = ${mensajeroId}) AS "calculada_at"
+                 WHERE "r"."mensajero_id" = ${mensajeroId}
+                   AND "r"."organizacion_id" = "o"."organizacion_id") AS "calculada_at"
           FROM "orden" "o"
           JOIN "order_status" "s" ON "s"."id" = "o"."estatus_id"
          WHERE "o"."id" = ${ordenId}

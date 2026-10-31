@@ -581,6 +581,7 @@ difiere, se corrige la tabla con la medición al lado. El test que queda en el r
 | 92/R16-R17 (la recogida encola una reoptimización con debounce) | Solo encola el último paquete del día con la primera ruta pendiente (R57, R58) | D23, D25 |
 | Traspaso de la 92/R32 de su ficha («la ruta de los dos») | Encola solo para el mensajero cuya primera ruta del día ya existe (R60) | D23 |
 | Revisión 2 de esta ficha: R19, R26 | Retirados; los sustituyen R51/R52 y R57/R58/R60 | D24, D23 |
+| Ficha 401, `revivirFallosConfig` («no toca `payload`») | Excepción: al revivir un geocode, el mismo `UPDATE` reescribe `payload.motivo` a `revivido_por_salud` (`jsonb_set`), como exige §13.2. El resto del `payload` no se toca | D27 (§13.2) |
 
 En el código se **anexan** notas fechadas junto a los comentarios que citan esos requisitos; no se
 reescriben.
