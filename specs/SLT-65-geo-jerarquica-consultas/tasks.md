@@ -116,7 +116,7 @@
 
 ## T8 — Cierre de la implementación [T5, T6, T7]
 
-- [ ] **T8.1** Mapa `R<n> → test` completo en `progress/impl_SLT-65.md`, con las tres
+- [x] **T8.1** Mapa `R<n> → test` completo en `progress/impl_SLT-65.md`, con las tres
   comprobaciones de diff anotadas:
   - `db/` vacío, o solo la migración de T9 (R26);
   - `lib/db/` vacío, salvo la excepción de T5.1 (R18);
