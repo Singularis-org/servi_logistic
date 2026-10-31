@@ -23,7 +23,7 @@ import { lineasDeTopes, TEXTOS_PLAN, textoDeVisibilidad } from "./plan-vista";
 const TEXTOS = {
   nuevo: "Nuevo plan",
   tituloNuevo: "Nuevo plan",
-  descripcionNuevo: "Los topes vacíos no tienen límite. El precio es informativo.",
+  descripcionNuevo: "Los topes vacíos no tienen límite. El costo base es informativo; el costo por orden se cobra en cada orden nueva.",
   mostrarArchivados: "Mostrar archivados",
   columnaNombre: "Nombre",
   columnaVisibilidad: "Visibilidad",

@@ -45,17 +45,20 @@ export const TEXTOS_PLAN_FORM = {
   rol: (rol: RolConTope) => TEXTOS_PLAN.rol(ROL_LABELS[rol]),
   apiKeys: "API keys activas",
   modulos: "Módulos incluidos",
-  precio: "Precio informativo",
+  // SLT-66 (R9): el precio informativo de SL-24 se llama «costo base».
+  precio: "Costo base",
   sinPrecio: "Sin precio",
   negociable: "Negociable",
   monto: "Con monto",
-  mensual: "Monto mensual",
+  mensual: "Costo base mensual",
   anual: "Pago anual",
   anualNinguno: "Sin precio anual",
   anualFijo: "Monto anual fijo",
   anualDescuento: "Descuento sobre el anual",
   montoAnual: "Monto anual",
   porcentaje: "Porcentaje de descuento",
+  costoPorOrden: "Costo por orden",
+  costoPorOrdenAyuda: "Vacío: se aplica el valor global de la plataforma.",
   aplicar: "Aplicar",
   inmediato: "De inmediato",
   programado: "A partir de",
@@ -112,6 +115,8 @@ type Formulario = {
   anual: AnualForma;
   montoAnual: string;
   porcentaje: string;
+  /** SLT-66 (R7, R23): vacío = sin costo por orden del plan (se aplica el global). */
+  costoPorOrden: string;
   aplicar: Accion;
   vigenteDesde: string;
 };
@@ -140,6 +145,7 @@ function inicial(plan: PlanDTO | null): Formulario {
     anual: anual === null ? "ninguno" : anual.tipo,
     montoAnual: anual?.tipo === "fijo" ? montoParaCampo(anual.monto) : "",
     porcentaje: anual?.tipo === "descuento" ? anual.porcentaje : "",
+    costoPorOrden: plan?.costoPorOrden == null ? "" : montoParaCampo(plan.costoPorOrden),
     aplicar: "inmediato",
     vigenteDesde: "",
   };
@@ -173,6 +179,7 @@ function versionDe(f: Formulario) {
     // En el orden de pantalla, sea cual sea el orden en que se marcaron.
     modulos: ORDEN_MODULOS.filter((m) => f.modulos.includes(m)),
     precio: precioDe(f),
+    costoPorOrden: f.costoPorOrden.trim() === "" ? null : f.costoPorOrden.trim(),
   };
 }
 
@@ -531,6 +538,16 @@ export function PlanForm(props: PlanFormProps) {
         ) : null}
       </fieldset>
 
+      {/* SLT-66 (R7, R23): fuera del grupo «Costo base», porque no depende de su forma. */}
+      <FormField
+        id={idDe("costoPorOrden")}
+        label={TEXTOS_PLAN_FORM.costoPorOrden}
+        hint={TEXTOS_PLAN_FORM.costoPorOrdenAyuda}
+        error={errorDe("costoPorOrden")}
+      >
+        <MontoInput value={form.costoPorOrden} onChange={(v) => cambiar("costoPorOrden", v)} />
+      </FormField>
+
       {props.modo === "editar" ? (
         <fieldset className="flex flex-col gap-4">
           <legend className="text-sm font-medium">{TEXTOS_PLAN_FORM.aplicar}</legend>
@@ -602,6 +619,7 @@ function camposEnOrden(modo: PlanFormProps["modo"], f: Formulario): string[] {
   if (f.precio === "monto") claves.push("precio.mensual", "precio.anual");
   if (f.precio === "monto" && f.anual === "fijo") claves.push("precio.anual.monto");
   if (f.precio === "monto" && f.anual === "descuento") claves.push("precio.anual.porcentaje");
+  claves.push("costoPorOrden");
   if (modo === "editar" && f.aplicar === "programado") claves.push("vigenteDesde");
   return claves;
 }
