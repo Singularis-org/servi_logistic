@@ -442,10 +442,19 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("381/B.7 (b) — el down recrea 50 tipos y 2
     expect([...entidadesAntes].sort()).toEqual(
       [...HISTORIAL_ACCION_ENTIDADES]
         // ficha 459: las dos entidades de sus documentos, apendidas despues; 457, SL-36 y SL-23, una cada una.
+        // SLT-43: `nodo_geografico`, de `20261031120000_geo_enums_nodo_geografico` (ningun tipo).
         .filter(
           (e) =>
             e !== ENTIDAD_NUEVA &&
-            !["pago_por_cuenta_tienda", "aporte_capital", "abono_tienda", "integracion", "organizacion_modulo", "plan"].includes(e),
+            ![
+              "pago_por_cuenta_tienda",
+              "aporte_capital",
+              "abono_tienda",
+              "integracion",
+              "organizacion_modulo",
+              "plan",
+              "nodo_geografico",
+            ].includes(e),
         )
         .sort(),
     );
