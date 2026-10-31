@@ -13,21 +13,21 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatearConteo } from "@/lib/planes/consumo";
-import { textoDelPrecio } from "@/lib/planes/mensajes";
 import type { CrearPlanInput, PlanDelCatalogo, PlanResult } from "@/lib/types/planes";
 
 import { PlanForm } from "./PlanForm";
-import { lineasDeTopes, TEXTOS_PLAN, textoDeVisibilidad } from "./plan-vista";
+import { lineasDeCosto, lineasDeTopes, TEXTOS_PLAN, textoDeVisibilidad } from "./plan-vista";
 
 /** Textos de la pantalla, en un solo sitio para cuando llegue la i18n. */
 const TEXTOS = {
   nuevo: "Nuevo plan",
   tituloNuevo: "Nuevo plan",
-  descripcionNuevo: "Los topes vacíos no tienen límite. El precio es informativo.",
+  descripcionNuevo: "Los topes vacíos no tienen límite. El costo base es informativo; el costo por orden se cobra en cada orden nueva.",
   mostrarArchivados: "Mostrar archivados",
   columnaNombre: "Nombre",
   columnaVisibilidad: "Visibilidad",
-  columnaPrecio: "Precio",
+  // SLT-66 (design §6.2, R24): costo base y costo por orden.
+  columnaCosto: "Costo",
   columnaTopes: "Topes",
   columnaEmpresas: "Empresas",
   columnaCambio: "Cambio programado",
@@ -62,7 +62,7 @@ export interface PlanesModuleProps {
 
 /**
  * SLT-58 (design §6.3; R13, R14) — el catálogo de planes del superadmin: una fila por plan con su
- * visibilidad, precio informativo (sin moneda), topes, cuántas empresas lo tienen y la fecha del cambio
+ * visibilidad, costo base y costo por orden (sin moneda; SLT-66), topes, cuántas empresas lo tienen y la fecha del cambio
  * programado. Los archivados se esconden por defecto y, al mostrarlos, llevan la marca «Archivado».
  * «Nuevo plan» abre el formulario en un panel lateral; tras crear, se relee la página.
  */
@@ -166,7 +166,7 @@ function Catalogo({ planes, hayArchivadosOcultos }: { planes: PlanDelCatalogo[];
         <TableRow>
           <TableHead>{TEXTOS.columnaNombre}</TableHead>
           <TableHead className={SOLO_DESDE_MD}>{TEXTOS.columnaVisibilidad}</TableHead>
-          <TableHead>{TEXTOS.columnaPrecio}</TableHead>
+          <TableHead>{TEXTOS.columnaCosto}</TableHead>
           <TableHead>{TEXTOS.columnaTopes}</TableHead>
           <TableHead className="text-right">{TEXTOS.columnaEmpresas}</TableHead>
           <TableHead className={SOLO_DESDE_MD}>{TEXTOS.columnaCambio}</TableHead>
@@ -188,7 +188,15 @@ function Catalogo({ planes, hayArchivadosOcultos }: { planes: PlanDelCatalogo[];
               </div>
             </TableCell>
             <TableCell className={SOLO_DESDE_MD}>{textoDeVisibilidad(plan.visibilidad, plan.empresaNombre)}</TableCell>
-            <TableCell>{textoDelPrecio(plan.precio)}</TableCell>
+            <TableCell>
+              <ul className="flex flex-col gap-0.5">
+                {lineasDeCosto(plan)
+                  .slice(0, 2)
+                  .map((linea) => (
+                    <li key={linea}>{linea}</li>
+                  ))}
+              </ul>
+            </TableCell>
             <TableCell>
               <ul className="flex flex-col gap-0.5">
                 {lineasDeTopes(plan.topes, true).map((linea) => (

@@ -59,6 +59,7 @@ const PLAN = {
   topes: { ordenesPorCiclo: 3000, porRol: {}, apiKeys: null },
   modulos: [],
   precio: { tipo: "negociable" as const },
+  costoPorOrden: null, // SLT-66 R8: campo nuevo del PlanDTO
   archivado: false,
 };
 

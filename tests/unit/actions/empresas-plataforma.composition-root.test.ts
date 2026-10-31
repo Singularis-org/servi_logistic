@@ -38,6 +38,8 @@ vi.mock("@/lib/db/prisma-client", () => ({
     organizacion: { findMany },
     cobroPlataformaMovimiento: { groupBy },
     walletMovimiento: { findMany: findManyLibro },
+    // SLT-66 R31, R32: el plan y el cobro vigente salen de una consulta más; aquí, la excepción y sin plan.
+    $queryRaw: async () => [{ id: "org-1", monto: "300.00", fuente: "empresa", plan_id: null, plan_nombre: null }],
   }),
   PRISMA_OMIT: {},
 }));
@@ -67,6 +69,8 @@ describe("SL-32 — listarEmpresasPlataforma cablea el repositorio real y esPlat
           cobroPorOrden: "300.00",
           deudaPlataforma: { deuda: "300.00", estado: "debe", importe: "300.00" },
           pagadoPlataforma: "200.00",
+          cobroVigente: { monto: "300.00", fuente: "empresa" }, // SLT-66 R31
+          plan: null, // SLT-66 R32
         },
       ],
     });

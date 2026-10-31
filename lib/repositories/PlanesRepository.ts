@@ -28,6 +28,7 @@ import { diferenciasDelPlan, hayCambios, type CambiosDelPlan } from "@/lib/plane
 import { apagarEnTx, encenderEnTx, entradaDelCambio } from "@/lib/repositories/_shared/modulos-en-tx";
 import { JobRepository } from "@/lib/repositories/JobRepository";
 import { ACTOR_SISTEMA, appendAccion, resolverActorCongelado } from "@/lib/repositories/registrar-accion";
+import type { FuenteDelCosto } from "@/lib/types/consumo-plan";
 import { etiquetaDeEntidad } from "@/lib/types/historial-accion-etiquetas";
 import {
   ROLES_CON_TOPE,
@@ -104,6 +105,7 @@ function aDTO(f: FilaPlan): PlanDTO {
     topes: { ordenesPorCiclo: f.topeOrdenesCiclo, porRol, apiKeys: f.topeApiKeys },
     modulos: f.modulos.map((m) => m.modulo),
     precio: precioDe(f),
+    costoPorOrden: f.costoPorOrden === null ? null : f.costoPorOrden.toFixed(2),
     archivado: f.archivadoAt !== null,
   };
 }
@@ -146,15 +148,14 @@ async function bloquearPlanParaEscribir(tx: Tx, planId: string): Promise<boolean
 interface FilaUso {
   ordenes: number;
   api_keys: number;
-  maestro: number;
   admin: number;
   mensajero: number;
   admin_tienda: number;
   admin_satelite: number;
 }
 
+// SLT-66 (R1, R3): el maestro no tiene tope, así que tampoco se cuenta.
 const COLUMNA_DEL_ROL: Record<RolConTope, keyof FilaUso> = {
-  maestro: "maestro",
   admin: "admin",
   mensajero: "mensajero",
   adminTienda: "admin_tienda",
@@ -203,7 +204,6 @@ async function usoDe(tx: Tx, organizacionId: string, candidato?: CicloCandidato)
   const [fila] = await tx.$queryRaw<FilaUso[]>`
     SELECT plan_uso_ordenes(o."id", ${inicio}) AS "ordenes",
            plan_uso_api_keys(o."id") AS "api_keys",
-           plan_uso_rol(o."id", 'maestro'::rol_value) AS "maestro",
            plan_uso_rol(o."id", 'admin'::rol_value) AS "admin",
            plan_uso_rol(o."id", 'mensajero'::rol_value) AS "mensajero",
            plan_uso_rol(o."id", 'Admin Tienda'::rol_value) AS "admin_tienda",
@@ -326,6 +326,7 @@ async function aplicarVersion(tx: Tx, antes: PlanDTO, version: VersionPlan, acto
       topeOrdenesCiclo: version.topes.ordenesPorCiclo,
       topeApiKeys: version.topes.apiKeys,
       ...columnasDelPrecio(version.precio),
+      costoPorOrden: version.costoPorOrden,
     },
   });
   await tx.planTopeRol.deleteMany({ where: { planId: antes.id } });
@@ -533,6 +534,7 @@ export class PlanesRepository implements IPlanesRepository {
             topeOrdenesCiclo: input.topes.ordenesPorCiclo,
             topeApiKeys: input.topes.apiKeys,
             ...columnasDelPrecio(input.precio),
+            costoPorOrden: input.costoPorOrden,
             topesPorRol: { create: filasDeTopes(input.topes) },
             modulos: { create: input.modulos.map((modulo) => ({ modulo })) },
           },
@@ -546,6 +548,7 @@ export class PlanesRepository implements IPlanesRepository {
           topes: input.topes,
           modulos: input.modulos,
           precio: input.precio,
+          costoPorOrden: input.costoPorOrden,
           archivado: false,
         };
         const actor = await resolverActorCongelado(tx, actorUsuarioId);
@@ -1043,11 +1046,23 @@ export class PlanesRepository implements IPlanesRepository {
         if (ancla === null) throw new Error(`planDeEmpresa: la empresa ${organizacionId} tiene plan y no ancla`);
         const dto = aDTO(plan);
         const uso = await usoDe(tx, organizacionId);
+        // SLT-66 (R18, §3.2): la misma función que el trigger del cargo, para que el detalle diga lo que
+        // cobrará la próxima orden. El enum va como texto: el driver no conoce el tipo de Postgres.
+        const [costoVigente] = await tx.$queryRaw<{ monto: string; fuente: FuenteDelCosto }[]>`
+          SELECT "monto"::text AS "monto", "fuente"::text AS "fuente"
+          FROM cobro_plataforma_tarifa_de(${organizacionId})`;
+        if (costoVigente === undefined) throw new Error(`planDeEmpresa: sin tarifa vigente para ${organizacionId}`);
         return {
           organizacionId,
           plan: {
             dto,
-            vigente: { nombre: dto.nombre, topes: dto.topes, modulos: dto.modulos, precio: dto.precio },
+            vigente: {
+              nombre: dto.nombre,
+              topes: dto.topes,
+              modulos: dto.modulos,
+              precio: dto.precio,
+              costoPorOrden: dto.costoPorOrden,
+            },
             ancla,
             cortoDesde: empresa.planCicloCortoDesdeAt,
             uso: {
@@ -1059,6 +1074,7 @@ export class PlanesRepository implements IPlanesRepository {
               >,
             },
             cambio: pendienteDe(plan.cambioProgramado),
+            costoVigente,
           },
           asignaciones: lista,
         };

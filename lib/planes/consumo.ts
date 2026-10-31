@@ -1,12 +1,14 @@
 import { ROL_LABELS } from "@/lib/auth/rol-label";
 import { nombreDelModulo, ORDEN_MODULOS } from "@/lib/modulos/catalogo";
 import { inicioDelSiguienteCiclo } from "@/lib/planes/ciclo";
+import { costeoDelCiclo } from "@/lib/planes/costeo";
 import { lineasDeCambioDelPlan, SIN_LIMITE, textoDelPrecio, type CambioDelPlanParaCorreo } from "@/lib/planes/mensajes";
 import { diferenciasDelPlan } from "@/lib/planes/rastro";
 import type {
   CambioPendienteVista,
   EstadoFila,
   FilaConsumo,
+  FuenteDelCosto,
   PlanConConsumo,
   ReinicioDelCiclo,
   UsoDelPlan,
@@ -76,6 +78,8 @@ export interface PlanConUsoLeido {
   cortoDesde?: Date | null;
   uso: UsoDelPlan;
   cambio: CambioDelPlanLeido | null;
+  /** SLT-66 (R18, §3.2): el de `cobro_plataforma_tarifa_de`, el mismo que usará el próximo cargo. */
+  costoVigente: { monto: string; fuente: FuenteDelCosto };
 }
 
 /**
@@ -110,6 +114,8 @@ export function planConConsumo(leido: PlanConUsoLeido, ahora: Date): PlanConCons
     filas: filasDeConsumo(vigente.topes, leido.uso),
     reinicio: reinicioDelCiclo(leido.ancla, ahora),
     cambioPendiente: leido.cambio === null ? null : cambioPendienteDelPlan(vigente, leido.cambio),
+    // SLT-66 (R18, R19): las órdenes del total son las mismas que cuenta la fila del tope.
+    costeo: costeoDelCiclo(vigente, leido.costoVigente, leido.uso.ordenes),
   };
 }
 

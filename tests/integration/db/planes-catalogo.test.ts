@@ -276,7 +276,8 @@ describeSiHayBase("SL-24 — catálogo de planes en la base (R1, R2, R3, R6, R7,
     });
   });
 
-  it("R25 — el tope por rol admite los cinco roles con tope y rechaza apiKey y superadmin (23514)", async () => {
+  // SLT-66 R1: el maestro deja de admitir tope; quedan cuatro roles con tope.
+  it("R25 — el tope por rol admite los cuatro roles con tope y rechaza maestro, apiKey y superadmin (23514)", async () => {
     const r = await revertida(async (tx) => {
       const plan = await crearPlan(tx);
       const tope = (rol: string, maximo = 1) =>
@@ -287,7 +288,8 @@ describeSiHayBase("SL-24 — catálogo de planes en la base (R1, R2, R3, R6, R7,
       }
       salida.maximoNegativo = await intentar(
         tx,
-        `UPDATE "plan_tope_rol" SET "maximo" = -1 WHERE "plan_id" = $1 AND "rol" = 'maestro'`,
+        // SLT-66 R1: ya no hay fila de maestro; el CHECK de `maximo` se prueba sobre la de admin.
+        `UPDATE "plan_tope_rol" SET "maximo" = -1 WHERE "plan_id" = $1 AND "rol" = 'admin'`,
         plan,
       );
       salida.duplicado = await tope("admin", 5);
@@ -299,7 +301,7 @@ describeSiHayBase("SL-24 — catálogo de planes en la base (R1, R2, R3, R6, R7,
       return salida;
     });
     expect(r).toEqual({
-      maestro: null,
+      maestro: "23514", // SLT-66 R1
       admin: null,
       mensajero: null,
       "Admin Tienda": null,
@@ -308,7 +310,7 @@ describeSiHayBase("SL-24 — catálogo de planes en la base (R1, R2, R3, R6, R7,
       superadmin: "23514",
       maximoNegativo: "23514",
       duplicado: "23505",
-      guardados: "admin,adminSatelite,adminTienda,maestro,mensajero",
+      guardados: "admin,adminSatelite,adminTienda,mensajero", // SLT-66 R1
     });
   });
 

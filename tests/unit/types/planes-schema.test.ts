@@ -21,6 +21,7 @@ function crear(extra: Record<string, unknown> = {}) {
     topes: TOPES,
     modulos: ["analitica", "ranking"],
     precio: { tipo: "sin_precio" },
+    costoPorOrden: null, // SLT-66 R8: la clave es obligatoria; vacío = null.
     ...extra,
   };
 }
@@ -33,6 +34,7 @@ function editar(extra: Record<string, unknown> = {}) {
     modulos: [],
     precio: { tipo: "negociable" },
     vigenteDesde: null,
+    costoPorOrden: null, // SLT-66 R8: la clave es obligatoria; vacío = null.
     ...extra,
   };
 }
@@ -129,7 +131,8 @@ describe("SL-24 — R25: los topes", () => {
     expect(
       topesPlanSchema.safeParse({
         ordenesPorCiclo: 0,
-        porRol: { maestro: 1, admin: 2, mensajero: 3, adminTienda: 4, adminSatelite: 5 },
+        // SLT-66 R1: el maestro ya no admite tope (su rechazo está en planes-schema-costeo).
+        porRol: { admin: 2, mensajero: 3, adminTienda: 4, adminSatelite: 5 },
         apiKeys: 0,
       }).success,
     ).toBe(true);
