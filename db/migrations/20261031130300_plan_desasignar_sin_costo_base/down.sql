@@ -7,7 +7,7 @@
 --
 -- Los módulos no se tocan: la subida tampoco los tocó.
 --
--- ORDEN: va antes del down de 20261031120200 y del de 20261031120100, que se niega a quitar el valor
+-- ORDEN: va antes del down de 20261031130200 y del de 20261031130100, que se niega a quitar el valor
 -- `desasignado` mientras queden filas que lo usen.
 
 BEGIN;

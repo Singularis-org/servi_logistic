@@ -37,10 +37,10 @@ import {
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
-const M_ANTERIOR = "20261030120100_incentivo_mensajero_checks";
-const M1 = "20261031120000_plan_costeo_y_maestro_sin_tope";
-const M2 = "20261031120100_cobro_plataforma_fuente_plan";
-const M3 = "20261031120200_plan_costeo_funciones";
+const M_ANTERIOR = "20261031120000_liberar_recolecciones_recibidas";
+const M1 = "20261031130000_plan_costeo_y_maestro_sin_tope";
+const M2 = "20261031130100_cobro_plataforma_fuente_plan";
+const M3 = "20261031130200_plan_costeo_funciones";
 
 const BASE = `slt66_iv_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const BASE_R25 = `slt66_iv25_${randomUUID().replace(/-/g, "").slice(0, 12)}`;

@@ -1,5 +1,5 @@
 -- SLT-66 (design §2.3 bis; R34, P4 y P6 cerradas) — desasigna el plan a TODA empresa que tenga uno.
--- `costo_por_orden` nace vacío en todos los planes (20261031120000), así que ninguna asignación previa
+-- `costo_por_orden` nace vacío en todos los planes (20261031130000), así que ninguna asignación previa
 -- tiene costo concreto (R28). Quedan sin plan (sin límites), sin ciclo y con sus módulos como estaban,
 -- hasta que el superadmin les asigne un plan con costo concreto.
 --
@@ -7,7 +7,7 @@
 -- sin plan y cuyo plan siga existiendo. A una que ya recibió otro plan no la toca, y su fila
 -- `desasignado` se borra igual: esa reposición se pierde.
 --
--- Va después de 20261031120100, que crea el valor `desasignado` de `plan_rastro_accion`.
+-- Va después de 20261031130100, que crea el valor `desasignado` de `plan_rastro_accion`.
 --
 -- · El ancla y el ciclo corto van a NULL: con ancla, la próxima asignación heredaría el ciclo viejo
 --   (`COALESCE` de `PlanesRepository.asignar`) y no se podría elegir fecha; el CHECK
