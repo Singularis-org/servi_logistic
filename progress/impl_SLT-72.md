@@ -189,3 +189,100 @@ R29–R36 son de la pantalla (T5, frontend).
 ### Veredicto
 
 Backend T1–T4 completo y verde: el servidor exige confirmar cada barrida para aprobar, la marca se escribe en la misma tx y con fallo cerrado, y la migración es aditiva y reversible. Falta T5 (pantalla), que es **obligatoria antes de desplegar**: sin ella, la pantalla actual no manda `origen`.
+
+## Frontend (T5)
+
+Hecho por `frontend_dev` el 2026-10-31 en el mismo worktree y rama. Tasks cerradas: T5.1–T5.5
+(marcadas `[x]` en `tasks.md`). No hay pantalla nueva, así que no pasa por `/design`: es una cuarta
+sección dentro de la ventana que ya existía.
+
+### Archivos
+
+- `app/(app)/cierres-admin/_components/cierre-confirmacion-fisica.tsx`:
+  - vista unificada `FilaAConfirmar` (`origen` + `clave` = `gestionId` | `ordenId`), con dos funciones:
+    - `filasAConfirmar(grupos, ordenesSinGestion)`: el conjunto esperado. Primero las retornables, en el orden de `RESULTADOS_QUE_VUELVEN`; después las barridas, filtradas por `vuelveABodegaElPaquete`;
+    - `filasDelCierre`: las cinco secciones más las barridas, para interpretar lecturas;
+  - funciones migradas a la vista: `clavePaquete` (`sin-guia:<origen>:<clave>`), `agruparPorPaquete`, `progresoDePaquetes`, `interpretarLectura` (ahora devuelve `claves`) y `agruparRetornables`;
+  - la regla «qué vuelve» pasa a `vuelveABodegaElPaquete`, el punto único de los dos orígenes;
+  - `entradasDeConfirmacion` y el tipo `EntradaConfirmacionFisica`: cada entrada lleva su `origen`;
+  - cuarta sección al final del mismo contenedor desplazable:
+    - la misma fila (`FilaConfirmacion`, compartida por los dos orígenes);
+    - chip `EstadoConInfo` del estado `novedad_interna`;
+  - aviso `textoSinGuia(n)` en la barra de estado:
+    - sin `role`, para que el `role="note"` del bloqueo siga siendo único;
+    - la advertencia por fila de la 238 se conserva.
+- `app/(app)/cierres-admin/_components/CierresAdminModule.tsx`:
+  - `pedirAprobacion` abre la ventana con `conjuntoEsperado.length > 0`;
+  - `listaConfirmacionFisica` usa `entradasDeConfirmacion`, así que manda `origen`;
+  - `repartirErroresDelServidor` reparte por las claves del conjunto esperado (`gestionIds ∪ ordenIds`);
+  - `confirmadas` y los errores se indexan por clave de fila.
+- `tests/components/CierresAdminConfirmacionFisica.test.tsx`:
+  - 19 casos nuevos, en el bloque «FICHA 451»;
+  - `conGrupos` gana un segundo parámetro opcional, `ordenesSinGestion` (por defecto `[]`);
+  - las 5 aserciones de payload de la 238 ganan `origen: "gestion"`. El literal ES el contrato, y el contrato cambió en T3.1: el borde rechaza entradas sin `origen`;
+  - el caso PREMISA no se tocó.
+
+### Desviaciones respecto al spec 451
+
+1. **El rótulo no es «Sin gestionar», es «Novedad interna».**
+   - El spec (2026-09-21) nombra así la sección y el badge.
+   - La 455 (2026-09-24) RETIRÓ ese nombre visible, y la guardia `tests/unit/guards/nombres-estado-retirados.guardia.test.ts` prohíbe la frase «sin gestionar» en cualquier caja.
+   - Se usa el nombre vigente del estado al que el corte pasa la orden: `nombreDeEstado("novedad_interna")`. Es el mismo que ya usa la sección de barridas del detalle («Pasaron a Novedad interna», `cierre-factura.tsx`).
+   - El chip va con `EstadoConInfo` (456), como el de las gestiones.
+   - R29 («nombrarla como sin gestionar») se cumple con el nombre vigente del mismo concepto; el comportamiento no cambia. **Si el humano quiere otro texto, que lo diga.**
+2. **`retornablesDelCierre` y `gestionesDelCierre` NO se borran.**
+   - T5.1 pide borrar la primera «si queda sin uso», y no queda sin uso: `filasAConfirmar` y `filasDelCierre` se apoyan en las dos.
+   - §7 del design las lista como «no se toca».
+   - No queda nada muerto.
+3. **Marca de la fila de barrida: `data-barrida=<ordenId>`.** `data-gestion` se conserva tal cual para las gestiones, porque lo leen los casos de la 238.
+4. **El aviso de sin-guía cuenta paquetes, no filas.** Una fila sin guía es siempre su propio bulto (`clavePaquete`), así que el número coincide; el texto dice «paquetes» como el contador.
+5. **Números de línea.** Los del design (`CierresAdminModule.tsx:836/862/670`) ya no coinciden; los nombres sí (`repartirErroresDelServidor`, `pedirAprobacion`, `ordenesSinGestion`).
+
+### Mapa R<n> → test (pantalla)
+
+Archivo: `tests/components/CierresAdminConfirmacionFisica.test.tsx` (`CMP`).
+
+| R | Caso |
+|---|---|
+| R19 (cliente) | CMP · «451/R19 (mitad cliente) … › el botón sigue bloqueado, forzarlo no llama al servidor, y no existe ninguna puerta de escape» |
+| R29 | CMP · «451/R29-R30 … › cada barrida muestra guía, remisión, destinatario, estado y se nombra con su rótulo» |
+| R30 | CMP · «451/R29-R30 … › va AL FINAL, dentro del MISMO contenedor desplazable y con la MISMA fila que las gestiones», «… › PAREJA de la ausencia: sin barridas no aparece la sección» |
+| R31 | CMP · «451/R31 … › un solo progreso y un solo bloqueo, que suman gestiones y barridas» |
+| R32 | CMP · «451/R32 … › por número tecleado», «… › por CÁMARA, con el QR de la etiqueta», «… › una segunda lectura de la misma barrida avisa y no cuenta de más» |
+| R33 | CMP · «451/R33 … › avisa que no es de este cierre y no marca nada» |
+| R34 | CMP · «451/R34 … › una barrida sin guía: aviso en la barra de estado, antes de la lista, y su fila lo repite», «… › cuenta los DOS orígenes, en plural», «… › PAREJA de la ausencia» |
+| R35 | CMP · «451/R35 … › la ventana sigue abierta y el error aparece en la fila de la barrida, no en otra», «… › con incidentes, un error de barrida reabre la ventana de confirmación» |
+| R36 | CMP · «451/R36 … › con barridas confirmadas a medias, cancelar no llama a `aprobarCierre`» |
+| R10/R17 (cliente, T5.4) | CMP · «451/T5.4 … › un cierre sin gestiones que vuelvan pero CON barridas NO se aprueba de un click», «… › al completar, manda la barrida como `{ origen: "barrida", ordenId, numGuia }`», «… › mixto: …», «… › con incidentes y SÓLO barridas: …» |
+
+### Mutaciones (rojo → verde), todas revertidas
+
+Las seis se revirtieron y `cmp` contra la copia previa dio «RESTAURADO» en todas. Todas se miden sobre `CMP` (53 casos).
+
+1. **Quitar la sección nueva** (`{false && barridas.length > 0 ? …}`): `9 failed | 44 passed`. Caen R29, R30, R32 ×2, R33, R34 ×2 y R35 ×2.
+2. **Quitar las barridas de `filasAConfirmar`** (`.filter(() => false)`): `18 failed | 35 passed`, incluido el de R19 «el botón sigue bloqueado…».
+3. **Que el botón no cuente las barridas** (`faltanPorConfirmar` solo con gestiones, en el módulo): `1 failed | 52 passed`, y el que cae es R19 «el botón sigue bloqueado…». Es el caso que vigila que el botón siga bloqueado con una barrida pendiente.
+4. **Quitar `origen` de la entrada de barrida**: `3 failed | 50 passed`, los tres casos de payload con barrida.
+5. **`pedirAprobacion` solo con gestiones** (`some(origen === "gestion")`): `7 failed | 46 passed`, incluido «un cierre sin gestiones que vuelvan pero CON barridas NO se aprueba de un click».
+6. **`repartirErroresDelServidor` solo con gestionIds**: `2 failed | 51 passed`, los dos de R35.
+
+### Salida real (resumida)
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck` → `TC_EXIT=0`, 0 `error TS`.
+- `pnpm run lint` → `LINT_EXIT=0`, «0 errors, 232 warnings», la misma cifra que en backend.
+  - El único aviso en un archivo tocado es `'money' is defined but never used` en `CierresAdminModule.tsx:73`.
+  - Es preexistente; no es de este diff.
+- `pnpm run test:guardias` → `Test Files 1 failed | 317 passed (318)`, `Tests 4 failed | 4437 passed | 1 skipped`.
+  - Los 4 rojos son los mismos de backend: `dependencias-declaradas-presentes.guardia.test.ts`, deuda en baseline y ajena a este diff.
+  - Siguen verdes las guardias que miran este componente: `nombres-estado-retirados`, `estado-con-info`, `confirmacion-incidentes-excluidos` (regla de origen) y `rutas-336-retiradas`.
+- `pnpm exec vitest run tests/components/CierresAdminConfirmacionFisica.test.tsx` → `Tests 53 passed (53)`: 34 previos y 19 nuevos. El caso PREMISA no se editó.
+- `pnpm exec vitest related --run` de los dos archivos de `_components/`, sin `tests/integration/**` ni `e2e/**` → `Test Files 18 passed (18)`, `Tests 372 passed (372)`.
+
+### Veredicto
+
+T5 completa y verde:
+- la pantalla pinta las barridas en la misma lista y en el mismo contador;
+- manda cada entrada con su `origen`;
+- un cierre que solo tiene barridas ya no se aprueba de un click.
+
+Quedan T0.1 y T6 (leader y humano), y validar el rótulo «Novedad interna» (desviación 1).

@@ -171,7 +171,7 @@ y `tests/integration/db/cierre-sin-gestion-confirmacion-sql-real.test.ts`. Todo 
 
 ## T5 · La pantalla (frontend) — empieza cuando el backend está verde
 
-- [ ] **T5.1 — Vista unificada.** En `cierre-confirmacion-fisica.tsx`: `FilaAConfirmar`,
+- [x] **T5.1 — Vista unificada.** En `cierre-confirmacion-fisica.tsx`: `FilaAConfirmar`,
       `filasAConfirmar(grupos, ordenesSinGestion)`, y migrar `clavePaquete`, `agruparPorPaquete`,
       `progresoDePaquetes` e `interpretarLectura` a ese tipo. **Borrar** `retornablesDelCierre` si
       queda sin uso; nada muerto.
@@ -179,25 +179,25 @@ y `tests/integration/db/cierre-sin-gestion-confirmacion-sql-real.test.ts`. Todo 
       lógica**.
       *Depende de: T1.1, T3.1.*
 
-- [ ] **T5.2 — La sección «Sin gestionar».** Cuarta sección **al final** de la misma lista, misma fila,
+- [x] **T5.2 — La sección «Sin gestionar».** Cuarta sección **al final** de la misma lista, misma fila,
       badge propio, dentro del mismo contenedor con desplazamiento acotado. La derivación del orden de
       las tres secciones desde `RESULTADOS_QUE_VUELVEN` **se conserva**; la nueva se concatena.
       **Hecho:** R29/R30 cubiertos.
       *Depende de: T5.1.*
 
-- [ ] **T5.3 — Aviso de «sin guía» en la barra de estado.** Cuántas filas del conjunto esperado no se
+- [x] **T5.3 — Aviso de «sin guía» en la barra de estado.** Cuántas filas del conjunto esperado no se
       pueden confirmar y que ese cierre no se va a poder aprobar. La advertencia por fila de la 238
       **se conserva**.
       **Hecho:** R34 cubierto; el `role="note"` del bloqueo (R27 de la 238) sigue siendo el único.
       *Depende de: T5.1.*
 
-- [ ] **T5.4 — Cablear el módulo.** En `CierresAdminModule.tsx`: `pedirAprobacion` abre la ventana con
+- [x] **T5.4 — Cablear el módulo.** En `CierresAdminModule.tsx`: `pedirAprobacion` abre la ventana con
       `filasAConfirmar.length > 0` (no `retornables.length > 0`); `confirmarAprobacion` envía las
       entradas con su `origen`; `repartirErroresDelServidor` reparte por `gestionIds ∪ ordenIds`.
       **Hecho:** un cierre **sólo** con barridas abre la ventana en vez de aprobarse de un click.
       *Depende de: T5.1, T3.1.*
 
-- [ ] **T5.5 — Tests de componente.** Extender `tests/components/CierresAdminConfirmacionFisica.test.tsx`.
+- [x] **T5.5 — Tests de componente.** Extender `tests/components/CierresAdminConfirmacionFisica.test.tsx`.
       **Hecho:** R29-R36 y la mitad cliente de R19 cubiertos; el caso **PREMISA** (el `@unique` de
       `numGuia`) sigue verde sin editarse.
       *Depende de: T5.2, T5.3, T5.4.*
