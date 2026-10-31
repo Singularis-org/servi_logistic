@@ -31,7 +31,7 @@ import { revertida } from "./_fixtures/pais-20";
  * con el script de datos en medio, contra Postgres.
  *
  * - R14: con dos distritos hermanos «San José»/«San Jose», o con dos provincias del mismo país que
- *   normalizan igual, `20261030120200` aborta con `SLT43`, las cifras, y no deja nada.
+ *   normalizan igual, `20261031120200` aborta con `SLT43`, las cifras, y no deja nada.
  * - R13: tras la ida, cada provincia, cantón y distrito tiene su nodo con el mismo id, país, padre,
  *   nombre, código y `activo`, la profundidad de su nivel y el tipo `nivel_N` de su país. La provincia
  *   «1» y el cantón «1» del país de prueba (mismo código, otro tipo) pasan.
@@ -51,14 +51,14 @@ import { revertida } from "./_fixtures/pais-20";
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
-/** La última de `dev` antes de SLT-43. */
-const PREVIA = "20261029120100_historial_accion_pago_mensajero_ajustado";
-const M_ENUMS = "20261030120000_geo_enums_nodo_geografico";
-const M_TIPOS = "20261030120100_tipo_nivel_geografico";
-const M_NODO = "20261030120200_nodo_geografico";
-const M_SINCRONIA = "20261030120300_nodo_geografico_sincronia";
-const M_COLUMNAS = "20261030120400_columnas_nodo_geografico";
-const M_INDICES = "20261030120500_indices_nodo_geografico";
+/** La última de `dev` antes de SLT-43 (hoy, la segunda de SLT-68). */
+const PREVIA = "20261030120100_incentivo_mensajero_checks";
+const M_ENUMS = "20261031120000_geo_enums_nodo_geografico";
+const M_TIPOS = "20261031120100_tipo_nivel_geografico";
+const M_NODO = "20261031120200_nodo_geografico";
+const M_SINCRONIA = "20261031120300_nodo_geografico_sincronia";
+const M_COLUMNAS = "20261031120400_columnas_nodo_geografico";
+const M_INDICES = "20261031120500_indices_nodo_geografico";
 const DE_SLT43 = [M_ENUMS, M_TIPOS, M_NODO, M_SINCRONIA, M_COLUMNAS, M_INDICES];
 
 const BASE = `slt43_iv_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
@@ -182,7 +182,7 @@ async function correrScript(a: Omit<Argumentos, "lote" | "pausaMs" | "destino">)
   return { codigo: r.codigoDeSalida, salida: r.lineas.join("\n") };
 }
 
-/** Intenta `20261030120200` y devuelve el error con el que aborta (o `null` si pasó). */
+/** Intenta `20261031120200` y devuelve el error con el que aborta (o `null` si pasó). */
 async function intentarNodo(): Promise<unknown> {
   return ejecutar(db, sqlDe(M_NODO, "migration.sql"), M_NODO).then(
     () => null,
@@ -221,7 +221,7 @@ describeSiHayBase("SLT-43 — geografía jerárquica de ida y vuelta, con el scr
     expect(datosAntes.orden.size, "sin órdenes no se prueba nada").toBeGreaterThanOrEqual(2);
     expect(datosAntes.historial_accion.size + datosAntes.historial_plataforma.size).toBeGreaterThanOrEqual(2);
 
-    // Las dos primeras: R14 se prueba contra `20261030120200`, que necesita los tipos.
+    // Las dos primeras: R14 se prueba contra `20261031120200`, que necesita los tipos.
     await ejecutar(db, sqlDe(M_ENUMS, "migration.sql"), M_ENUMS);
     await ejecutar(db, sqlDe(M_TIPOS, "migration.sql"), M_TIPOS);
   }, 600_000);

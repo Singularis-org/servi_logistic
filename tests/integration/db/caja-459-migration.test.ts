@@ -123,7 +123,7 @@ describeSiHayBase("459/B.5 — las migraciones de la 459 contra Postgres", () =>
       "integracion_token_regenerado",
       "integracion_desconectada",
     ]);
-    // SLT-56 (20261029120100) suma UN tipo al final; SLT-43 (20261030120000, posterior) suma UNA
+    // SLT-56 (20261029120100) suma UN tipo al final; SLT-43 (20261031120000, posterior) suma UNA
     // entidad (`nodo_geografico`) y NINGUN tipo: los tramos de tipos y de entidades se leen uno mas atras.
     expect(tipos.slice(-4, -2)).toEqual(["modulo_activado", "modulo_desactivado"]);
     expect(tipos.slice(-2, -1)).toEqual(["plan_asignado"]);
