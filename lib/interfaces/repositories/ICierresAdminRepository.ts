@@ -89,6 +89,23 @@ export interface GestionRetornableDelCierre {
   resultado: GestionResultado;
 }
 
+/**
+ * Ficha 451 / SLT-72 (T2.1, design §5.3, R5/R6/R15) — UNA orden que ESTE cierre barrio sin
+ * gestionar (`cierre_sin_gestion`), tal como la necesita la cobertura de la confirmacion fisica.
+ *
+ * La clave es `ordenId` y no el `id` de la fila: el grano de la tabla es `(cierreId, ordenId)`,
+ * asi que dentro de un cierre la orden ya identifica la fila, y es el dato que la pantalla ya
+ * recibe en `CierreOrdenSinGestion` (design §4).
+ *
+ * `numGuia` es la guia CONGELADA al barrer (`cierre_sin_gestion.num_guia`), no la viva de la
+ * orden (Q2 de la 451): es la misma que viaja a la pantalla, asi que pantalla y servidor exigen el
+ * mismo numero. NULLABLE como la columna: una barrida sin guia NO se omite (R15), se bloquea.
+ */
+export interface BarridaDelCierre {
+  ordenId: string;
+  numGuia: number | null;
+}
+
 // Feature 109 (T3.1, R16-R19): config OPCIONAL de la LIBERACION de ordenes `sin_gestionar` a
 // bodega. Presente SOLO al APROBAR (la resuelve el service via `findEstatusIdByValue`/
 // `findCentralZonaId`); ausente al rechazar (R27: un rechazo NO libera). Los estatus ids del
@@ -178,6 +195,24 @@ export interface IndemnizacionCapturada {
  */
 export interface ConfirmacionFisicaGestion {
   gestionId: string;
+}
+
+/**
+ * Ficha 451 / SLT-72 (T4.2, design §5.4, R20) — UNA orden barrida a marcar como confirmada
+ * fisicamente, ya con la COBERTURA EXACTA verificada por el servicio.
+ *
+ * Viaja en la MISMA lista `confirmacionFisica` que las gestiones, distinguida por la presencia de
+ * `ordenId` (`gestionId?: never` impide mezclar las dos claves en una entrada). Es una DESVIACION
+ * consciente del design §5.4, que pedia un campo hermano `confirmacionBarridas` obligatorio: ese
+ * campo obligaba a editar `cierres-admin-caja-cod.test.ts`, que R39 exige verde SIN modificarse.
+ * Lo que el design queria conservar se conserva: el campo sigue siendo obligatorio al aprobar y
+ * `never` al rechazar (R27), y el servicio no puede cablear un elemento del borde sin decidir su
+ * origen porque la union del borde no tiene `gestionId` en la rama `barrida`. El repositorio sigue
+ * escribiendo DOS `updateMany` (dos tablas), como pide el design §9-F.
+ */
+export interface ConfirmacionFisicaBarrida {
+  ordenId: string;
+  gestionId?: never;
 }
 
 /**
@@ -348,7 +383,9 @@ export type ResolverCierreInput =
        * tiene que romper el TYPECHECK, que es donde tiene que romper. Coste conocido y aceptado:
        * todos los dobles de `resolverCierre` tienen que pasarlo.
        */
-      confirmacionFisica: ReadonlyArray<ConfirmacionFisicaGestion>;
+      //
+      // Ficha 451 / SLT-72 (R20): la lista gana las BARRIDAS del cierre (`ConfirmacionFisicaBarrida`).
+      confirmacionFisica: ReadonlyArray<ConfirmacionFisicaGestion | ConfirmacionFisicaBarrida>;
     })
   | (ResolverCierreBase & {
       nuevoEstado: "rechazado";
@@ -509,6 +546,17 @@ export interface ICierresAdminRepository {
     cierreId: string,
     alcance: Alcance,
   ): Promise<GestionRetornableDelCierre[]>;
+  /**
+   * Ficha 451 / SLT-72 (T2.1, design §5.3, R5/R6/R7/R8/R9) — el SEGUNDO origen del conjunto
+   * esperado: TODAS las ordenes que ESE cierre barrio sin gestionar, leidas del REGISTRO persistido
+   * (`cierre_sin_gestion`), no del estado actual de la orden (R6): la aprobacion mueve esas ordenes
+   * y el conjunto tiene que seguir siendo el mismo.
+   *
+   * El ALCANCE va en el WHERE por la relacion al cierre (R8): fuera de alcance / inexistente ->
+   * `[]`, sin distinguir. Sin rama sobre `sinGestionRegistrado`: un cierre sin filas devuelve `[]`
+   * y eso ya es R7.
+   */
+  findBarridasDelCierre(cierreId: string, alcance: Alcance): Promise<BarridaDelCierre[]>;
   /**
    * Feature 230 — Tanda 2 (T2.1, R11/R13/R14/R15/R22/R24/R41): TODAS las gestiones de los
    * cierres del dia del alcance que casan los recortes del dialogo, a grano de GESTION.

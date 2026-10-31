@@ -226,8 +226,19 @@ function buildCaptores() {
 async function aprobarCon(
   sinGestion: ReturnType<typeof vinculo>[],
   enElUmbral: string[] = [],
+  // Ficha 451 / SLT-72 (T4.6): las barridas que bodega confirmo. Por defecto ninguna: los casos de
+  // la 264/276 siguen midiendo exactamente lo que median.
+  barridasConfirmadas: string[] = [],
 ) {
   const tx = buildTx(sinGestion, enElUmbral);
+  // El doble de la marca honra el WHERE contra las filas de `cierre_sin_gestion` del corpus.
+  tx.cierreSinGestion.updateMany.mockImplementation((async (args: {
+    where: { cierreId: string; ordenId: { in: string[] } };
+  }) => ({
+    count: sinGestion.filter(
+      (v) => v.cierreId === args.where.cierreId && args.where.ordenId.in.includes(v.ordenId),
+    ).length,
+  })) as never);
   const captores = buildCaptores();
   const prisma = {
     $transaction: vi.fn(async (cb: (t: typeof tx) => unknown) => cb(tx)),
@@ -263,7 +274,7 @@ async function aprobarCon(
       rechazadaEstatusId: idEstado("devolucion_a_origen_por_rechazo"),
       umbralIntentos: 3,
     },
-    confirmacionFisica: [],
+    confirmacionFisica: barridasConfirmadas.map((ordenId) => ({ ordenId })),
     // Feature 239: obligatorio en la rama `aprobado`. Esta suite no mide el anclaje —el bloque
     // corre en no-op con el corpus de aqui—, pero el tipo lo exige a proposito: un olvido de
     // cableado rompe el typecheck en vez de congelar devoluciones en produccion.
@@ -454,5 +465,45 @@ describe("276/R24 — la rama nueva es MONEY-NEUTRAL sobre el cierre que se apru
     expect(aBodega, "la liberacion a bodega no ocurrio").toBeDefined();
     // Las dos ramas conviven: la del umbral se lleva `o-barrida-1` y la vieja `o-barrida-2`.
     expect(aBodega?.where.id.in).toEqual(["o-barrida-2"]);
+  });
+});
+
+/* ------------------------------------------------------------------------------------------ */
+/* FICHA 451 / SLT-72 (T4.6, R26/R22/R38) — TODA ORDEN LIBERADA QUEDA CONFIRMADA               */
+/* ------------------------------------------------------------------------------------------ */
+
+describe("451/R26 — aprobar libera las barridas Y las deja marcadas en la MISMA transaccion", () => {
+  // El corpus de la liberacion son `ORDENES_BARRIDAS` (lo que `orden.findMany` devuelve); los
+  // vinculos de `cierre_sin_gestion` se crean para ESAS ordenes, como en la base real.
+  const VINCULOS = () => ORDENES_BARRIDAS.map((o, i) => vinculo(o.id, 500 + i));
+  const IDS = ORDENES_BARRIDAS.map((o) => o.id);
+
+  it("R26: el conjunto liberado es IGUAL al conjunto marcado — ninguna liberada sin marca", async () => {
+    const { tx, resultado } = await aprobarCon(VINCULOS(), [], IDS);
+
+    expect(resultado).toBe("updated");
+    const liberacion = tx.orden.updateMany.mock.calls
+      .map(([a]) => a as { where: { estatusId?: string; id: { in: string[] } } })
+      .find((a) => a.where.estatusId === idEstado("novedad_interna"));
+    expect(liberacion, "la liberacion no ocurrio").toBeDefined();
+    const marca = (tx.cierreSinGestion.updateMany.mock.calls as unknown as unknown[][])[0]?.[0] as {
+      where: { cierreId: string; ordenId: { in: string[] } };
+    };
+    expect(marca, "la marca no se escribio").toBeDefined();
+    expect(marca.where.cierreId).toBe(CIERRE_ID);
+    expect([...marca.where.ordenId.in].sort()).toEqual([...(liberacion?.where.id.in ?? [])].sort());
+  });
+
+  it("R22/R38: confirmar las barridas no cambia NI UN movimiento de dinero", async () => {
+    const conMarca = await aprobarCon(VINCULOS(), [], IDS);
+    const sinMarca = await aprobarCon(VINCULOS(), [], []);
+
+    expect(conMarca.caja).toEqual(sinMarca.caja);
+    expect(conMarca.tienda).toEqual(sinMarca.tienda);
+    expect(conMarca.mensajero).toEqual(sinMarca.mensajero);
+    // Contrapuntos: el cierre SI mueve dinero, y la marca SI se escribio en una corrida y no en la otra.
+    expect(conMarca.caja.flat().length).toBeGreaterThan(0);
+    expect(conMarca.tx.cierreSinGestion.updateMany).toHaveBeenCalledTimes(1);
+    expect(sinMarca.tx.cierreSinGestion.updateMany).not.toHaveBeenCalled();
   });
 });

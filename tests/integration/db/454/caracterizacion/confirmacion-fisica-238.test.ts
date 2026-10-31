@@ -49,7 +49,7 @@ describeSiHayBase("454/C23 — confirmacion fisica al aprobar (Postgres real)", 
       const aprobacion = await e.s.cierresAdmin.aprobarCierre(cierreId, e.actorAdminSatelite, indemn, exacta);
       return {
         g,
-        esperadas: exacta.map((c) => c.gestionId).sort(),
+        esperadas: exacta.map((c) => (c.origen === "gestion" ? c.gestionId : c.ordenId)).sort(),
         incompleta: incompleta.status,
         aprobacion: aprobacion.status,
         marcadas: (await marcadas(e, Object.values(g))).map((m) => m.id).sort(),

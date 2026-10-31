@@ -596,7 +596,7 @@ export async function sembrarEscenario459(
     cierreId,
     actorAdminSat,
     [{ gestionId: g5, monto: "6500.00" }],
-    [{ gestionId: g4, numGuia: o4.numGuia }],
+    [{ origen: "gestion" as const, gestionId: g4, numGuia: o4.numGuia }],
   );
   afirmarOk(pasos, "aprobarCierre", aprobacion);
 
