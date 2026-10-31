@@ -16,10 +16,168 @@
 > Sembrado por `/afinar-feature` el 2026-10-31. El bloque de Alcance y la tabla de «Decisiones cerradas» los fijó el humano ANTES del spec. `spec_author` los respeta, no los reabre y no los reescribe: su trabajo aquí es `## Requisitos (EARS)`.
 
 ## Requisitos (EARS)
-_Pendiente: los escribe spec_author (F1.2)._
+
+> Escritos por `spec_author` el 2026-10-31. Cambian reglas ya probadas de SL-24 (R25: el maestro
+> tenía tope), de SL-40 (R3: la tarifa vigente gana el escalón «plan») y de SLT-58 (R1, R2, R14: el
+> maestro y el «precio» en pantalla). Cada cambio está acotado aquí y los tests que obliga a tocar están
+> enumerados en `design.md > §10.2`. Todo lo demás de esas tres fichas sigue igual (R27).
+>
+> **Glosario.**
+> - *Costo base*: lo que SL-24 llamaba precio mensual (`precio_mensual`), con sus cinco formas (SL-24 R3).
+> - *Costo por orden del plan*: importe opcional del plan; vacío = el plan no lo fija.
+> - *Costo por orden vigente de una empresa*: el de SL-40 R3 con un escalón más (R12).
+> - *Órdenes del ciclo*: las creadas en el ciclo en curso de la empresa y no anuladas, la misma cuenta
+>   que el tope de órdenes (SL-24 R19, SLT-58 R34).
+
+### Maestro sin tope
+
+- **R1** — El sistema NO DEBE admitir un tope de usuarios para el rol `maestro` en ningún plan: la base DEBE
+  rechazar con `23514` toda fila de tope del rol `maestro`. SI el superadmin crea, edita o programa un plan
+  con un tope de `maestro`, ENTONCES el sistema DEBE responder `validation_error` sin escribir nada.
+- **R2** — Los roles `admin`, `mensajero`, `adminTienda` y `adminSatelite` DEBEN seguir admitiendo su tope
+  y haciéndolo cumplir como en SL-24 (R25–R27).
+- **R3** — CUANDO se crea, se activa, se aprueba la postulación o se cambia de rol a un usuario que queda con
+  rol `maestro` en una empresa con plan, el sistema DEBE aceptarlo aunque los demás roles estén en su tope.
+  Además NO DEBE cambiar el uso de ningún tope (órdenes, roles ni API keys).
+- **R4** — CUANDO se aplica la migración de esta ficha, el sistema DEBE:
+  - borrar los topes de `maestro` de todos los planes;
+  - quitar el tope de `maestro` de las versiones de los cambios programados pendientes.
+
+  NO DEBE tocar los demás topes, los módulos, el costo base, el rastro (`plan_rastro`) ni la asignación de
+  ninguna empresa.
+- **R5** — El sistema NO DEBE mostrar ningún campo, fila ni línea del rol `maestro` en estas pantallas:
+  - el formulario del plan;
+  - el catálogo y el detalle del plan;
+  - el modal de asignación;
+  - la sección de plan del detalle de empresa;
+  - «Mi plan».
+- **R6** — El tope de órdenes por ciclo y el tope de API keys DEBEN seguir funcionando como en SL-24
+  (R18–R24, R35, R36).
+
+### Costeo del plan
+
+- **R7** — Cada plan DEBE tener un costo por orden opcional, independiente de la forma del costo base. Un
+  plan sin precio, negociable o con monto puede llevarlo o dejarlo vacío.
+- **R8** — SI el costo por orden no es un importe `≥ 0` con hasta dos decimales, escrito como texto, ENTONCES:
+  - el sistema DEBE responder `validation_error` en el campo `costoPorOrden`, sin escribir;
+  - la base DEBE rechazarlo también (`23514`) si llega por SQL a mano.
+
+  Vacío es válido y se guarda como «sin costo por orden».
+- **R9** — El sistema DEBE presentar como «costo base» mensual el importe que SL-24 llamaba precio mensual.
+  Aplica al formulario, al catálogo, al detalle del plan, al modal de asignación, a las líneas de cambio
+  (pantallas y correo) y a «Mi plan». Las cinco formas de SL-24 R3 se conservan, también el anual fijo o
+  con descuento.
+- **R10** — DONDE el plan tenga precio anual fijo o descuento anual, el sistema DEBE indicar junto al costo
+  por orden que el anual no se aplica a él. El descuento NUNCA DEBE rebajar el costo por orden: ni en el
+  cargo (R14) ni en el total estimado (R19).
+- **R11** — CUANDO el superadmin crea un plan, lo edita de inmediato o programa un cambio, el sistema DEBE
+  guardar el costo por orden con la versión del plan. En concreto:
+  - un cambio programado lo aplica en su fecha, como el resto de la versión (SL-24 R37, R38);
+  - cada cambio real del costo por orden deja su antes y su después en `plan_rastro`, como texto con dos
+    decimales (SL-24 R29);
+  - el cambio aparece en las líneas de «qué cambia» del detalle, de «Mi plan» y del correo de SL-24 R41;
+  - una edición que no cambia nada no escribe.
+
+  Cualquier actor que no sea el superadmin DEBE recibir `forbidden` sin que se llame al repositorio
+  (SL-24 R5).
+
+### Cobro por orden (SL-40)
+
+- **R12** — CUANDO se crea una orden por cualquier vía, el sistema DEBE registrar su cargo con el costo por
+  orden vigente de la empresa en ese instante. El importe se elige por este orden de prioridad:
+  1. la excepción de la empresa (fuente `empresa`);
+  2. si no la hay, el costo por orden del plan asignado a la empresa (fuente `plan`);
+  3. si el plan no lo tiene o la empresa no tiene plan, el valor global (fuente `global`);
+  4. si no hay ninguno, `0.00` (fuente `sin_configurar`, SL-40 D11).
+- **R13** — MIENTRAS la empresa tenga asignado un plan archivado, su costo por orden DEBE seguir aplicando a
+  las órdenes nuevas. Es la misma regla que SL-24 R6 aplica a los topes.
+- **R14** — El importe de un cargo de fuente `plan` DEBE ser exactamente el costo por orden del plan, sin
+  impuestos ni descuento anual (SL-40 R19), sea cual sea la forma del costo base.
+- **R15** — CUANDO cambia el costo por orden que corresponde a una empresa, el sistema DEBE conservar el
+  importe de los cargos de las órdenes ya creadas y aplicar el costo nuevo a las órdenes que se creen
+  después. Pasa en estos casos:
+  - una edición inmediata del plan;
+  - un cambio programado que se aplica;
+  - un cambio del plan asignado a la empresa;
+  - un cambio del valor global o de la excepción.
+- **R16** — CUANDO se anula una orden con cargo de fuente `plan`, el sistema DEBE registrar el reverso por el
+  mismo importe y con la misma fuente. CUANDO se recupera, DEBE volver a cargarla por ese mismo importe,
+  aunque el costo del plan haya cambiado entretanto (SL-40 D6, D7, R15–R17).
+- **R17** — La deuda con la plataforma que la empresa ve en su wallet DEBE incluir los cargos y reversos de
+  fuente `plan`, igual que los de las demás fuentes (SL-40 R21). NO DEBE cambiar ninguna cifra de la caja
+  (SL-40 R22).
+
+### Total estimado del ciclo
+
+- **R18** — MIENTRAS la empresa tenga plan, «Mi plan» DEBE mostrar:
+  - el costo base;
+  - el costo por orden vigente de la empresa (R12);
+  - las órdenes del ciclo;
+  - el total estimado del ciclo.
+
+  El detalle de empresa del superadmin DEBE mostrar los mismos datos de esa empresa.
+- **R19** — El total estimado del ciclo DEBE ser `costo base mensual + órdenes del ciclo × costo por orden
+  vigente`. Se calcula en decimal exacto, con dos decimales y sin coma flotante, y nunca aplica el
+  descuento anual.
+- **R20** *(escrito sobre la propuesta de P2)* — Para «Mi plan» y el detalle de empresa:
+  - SI el plan no tiene precio, ENTONCES DEBEN contar el costo base como 0 y mostrar el total estimado.
+  - SI el costo base es negociable, ENTONCES NO DEBEN mostrar un total. En su lugar DEBEN mostrar el
+    subtotal de las órdenes (`órdenes del ciclo × costo por orden vigente`) y la nota de que el total
+    depende del costo base acordado.
+- **R21** — El costo base y el total estimado son solo informativos. Mostrar «Mi plan» o el detalle NO DEBE
+  escribir nada en `cobro_plataforma_movimiento` ni en `wallet_movimiento`. La deuda de la wallet solo
+  sube por los cargos de R12.
+- **R22** — La empresa DEBE leer su costeo solo por la lectura acotada a su contexto (`plan_de_la_empresa`).
+  Pedir el de otra empresa DEBE fallar con `42501`. El valor global, las tablas `plan*` y
+  `cobro_plataforma_tarifa` DEBEN seguir sin acceso para `servi_app` (`42501`).
+
+### Pantallas del superadmin
+
+- **R23** — El formulario del plan DEBE ofrecer el campo «Costo por orden». Vacío significa que aplica el
+  valor global. El campo:
+  - muestra junto a él el error de `validation_error`, como el resto de campos (SLT-58 R18);
+  - conserva lo escrito ante un error.
+- **R24** — El catálogo, el detalle del plan y el modal de asignación (primera asignación y cambio de plan)
+  DEBEN mostrar el costo base y el costo por orden del plan. Si el plan no tiene costo por orden, DEBEN
+  mostrar el texto de «se aplica el valor global».
+
+### Migración, no regresión y E2E
+
+- **R25** — Cada migración nueva DEBE traer su `down.sql`. Tras aplicar los `down.sql`, una orden nueva DEBE
+  cargarse con la regla de SL-40, sin el escalón del plan. La bajada que quitaría la fuente `plan` DEBE
+  negarse con un error claro si ya existen cargos o reversos de esa fuente.
+- **R26** — CUANDO corre el E2E de esta ficha, DEBE recorrer estos pasos y pasar en verde:
+  1. el superadmin pone por pantalla un costo por orden de 100 en el plan de una empresa;
+  2. la empresa crea una orden;
+  3. la wallet de la empresa muestra la deuda con ese cargo de 100;
+  4. «Mi plan» muestra el total estimado del ciclo con esa orden.
+- **R27** — Las suites de SL-24, SL-40 y SLT-58 DEBEN seguir en verde. Solo cambian los casos enumerados en
+  `design.md > §10.2`, y cada uno cambia solo por R1–R5 o por el texto «costo base» de R9. No entra ninguna
+  dependencia nueva.
 
 ## Preguntas abiertas
-Ninguna.
+
+> Las abre `spec_author` el 2026-10-31. Cada una lleva una propuesta, y el spec está escrito sobre ella. El
+> humano las cierra al aprobar el spec (`spec_ready`).
+
+- **P1 — ¿Qué costo por orden muestra «Mi plan» si la empresa tiene una excepción de SL-40?** La tabla
+  dice «base + órdenes × costo», pero no aclara si el costo es el del plan o el que de verdad se cobra.
+  **Propuesta:** el vigente de R12, el que se cobra. Si hay excepción, «Mi plan» muestra ese importe con
+  la nota «acordado para tu empresa». Si el plan no tiene costo por orden, muestra el global con la nota
+  «valor general de la plataforma». Así el total estimado cuadra con la deuda de la wallet. El costo del
+  plan solo aparece en las pantallas del superadmin.
+- **P2 — ¿Qué total estimado se muestra con un costo base negociable o sin precio?** **Propuesta:**
+  - *Sin precio*: el costo base cuenta como 0 y el total es `órdenes × costo`. La línea dice «Costo base:
+    sin costo base».
+  - *Negociable*: no hay total, porque no hay número que sumar. Se muestra «Costo base: negociable», la
+  línea de órdenes (`N órdenes × costo = subtotal`) y la nota «El total depende del costo base
+  acordado».
+- **P3 — ¿La columna «Cobro por orden» de «Empresas» (SL-40 R10) muestra el escalón del plan?** Hoy
+  muestra «propio» o «global», y deriva la tarifa como `excepción ?? global ?? 0`. Con plan, ese valor deja
+  de ser el que se cobra. El Alcance no nombra esta pantalla. **Propuesta:** que entre. La columna deriva
+  `excepción ?? plan ?? global ?? 0` y gana la etiqueta «del plan». La tarea T15 de `tasks.md` solo se hace
+  si se aprueba. Si no, va como deuda: el listado mostraría la tarifa global a una empresa a la que se le
+  cobra la del plan.
 
 ## Decisiones cerradas (no reabrir)
 | Fecha | Pregunta | Decisión |
