@@ -464,3 +464,14 @@ T18 queda sin marcar hasta resolver esto y el typecheck de `app/`.
 | planes-asignacion-inicio-ciclo | 11 / 0 |
 
 Typecheck: `app/`, `lib/` y `components/` sin errores. Los 24 errores que quedan están todos en `tests/components/*` y `tests/integration/*.tsx`, que son de la tanda D.
+
+## Tanda D — T10: merge de dev y renombre de migraciones (2026-10-31)
+- `85122a1`: merge de `origin/dev`, con 27 commits, entre ellos SLT-67 (`MontoInput` en `PlanForm`) y SLT-63. `PlanForm.tsx` se fusionó sin conflicto. En `progress/deudas.md` hubo un conflicto trivial y se conservaron D33 (de dev) y D34.
+- `3a12e90`: dev trajo `20261031120000_liberar_recolecciones_recibidas` (SLT-63), con el mismo timestamp que nuestra M1. Por T0.1, las cuatro de la ficha pasan a `20261031130000`–`20261031130300`, detrás de SLT-63.
+  - SLT-63 solo actualiza datos de `orden`: no choca con nuestras migraciones.
+  - Ninguna base compartida tenía aplicadas las nuestras.
+  - `migracion-slt66-ida-y-vuelta` usa ahora como `M_ANTERIOR` la de SLT-63.
+  - Spec y tasks actualizados con los nombres nuevos. El texto anterior de esta bitácora conserva los viejos.
+- `logistic_slt66` se recreó desde cero (`migrate deploy`, seed y generate). Drift vacío.
+- Tests en verde: 9 archivos, 81 casos. Son `migracion-slt66-ida-y-vuelta` y `-desasignar`, `liberar-recolecciones-recibidas-migration`, `cobro-plataforma-plan`/`-cargos`, `plan-maestro-sin-tope`, `plan-de-la-empresa-costeo`, `empresas-plataforma-plan` y la guardia `asignado-at-solo-lectura`.
+- Typecheck: los únicos errores están en `tests/components` y `tests/integration/*.tsx`.

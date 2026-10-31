@@ -24,7 +24,7 @@
 
   *Hecho:* las cuatro respuestas quedan anotadas en `progress/impl_SLT-66.md`, y el número del punto 4 se
   le pasa al leader.
-- [x] **T1 — M1 `20261031120000_plan_costeo_y_maestro_sin_tope`** (design §2.1, §2.4). Depende de T0.
+- [x] **T1 — M1 `20261031130000_plan_costeo_y_maestro_sin_tope`** (design §2.1, §2.4). Depende de T0.
   - `migration.sql` con la cabecera de borrado definitivo, y su `down.sql`.
   - `db/schema.prisma`: `Plan.costoPorOrden` y el comentario de `PlanTopeRol`.
 
@@ -68,13 +68,13 @@
 
 ## Tanda B — cobro con el costo del plan (backend_dev)
 
-- [x] **T5 — M2 `20261031120100_cobro_plataforma_fuente_plan`** (design §2.2). Depende de T1.
+- [x] **T5 — M2 `20261031130100_cobro_plataforma_fuente_plan`** (design §2.2). Depende de T1.
   - `ALTER TYPE … ADD VALUE 'plan'` y `plan_rastro_accion` `ADD VALUE 'desasignado'`.
   - Un `down.sql` que se niega a bajar si hay cargos o reversos de fuente `plan`.
   - El enum de Prisma, con `plan`.
 
   *Hecho:* aplica, y el drift sale vacío.
-- [x] **T6 — M3 `20261031120200_plan_costeo_funciones`** (design §2.3, §3). Depende de T5.
+- [x] **T6 — M3 `20261031130200_plan_costeo_funciones`** (design §2.3, §3). Depende de T5.
   - `cobro_plataforma_tarifa_de`.
   - El cuerpo nuevo de `cobro_plataforma_al_crear_orden`, copia literal salvo el bloque de la tarifa.
   - El cuerpo nuevo de `plan_de_la_empresa`, copia literal más sus tres cambios.
@@ -87,7 +87,7 @@
 
   Además, se miden las mutaciones 1–3 y la carga de 500 filas antes y después (design §13), con los
   números en `progress/impl_SLT-66.md`.
-- [x] **T21 — M4 `20261031120300_plan_desasignar_sin_costo_base`** (design §2.3 bis; R34). Depende de T5.
+- [x] **T21 — M4 `20261031130300_plan_desasignar_sin_costo_base`** (design §2.3 bis; R34). Depende de T5.
   Desasigna a **toda** empresa con plan (P6). Antes de aplicarla en una base compartida, el humano tiene
   que tener el número de T0.
   - `migration.sql` con la cabecera, y su `down.sql`, que repone desde `plan_rastro`.
@@ -137,7 +137,7 @@
 
 ## Tanda D — pantallas (frontend_dev)
 
-- [ ] **T10 — Merge de `dev`** si el PR #51 (SLT-67) ya entró (T0). Se resuelven los conflictos de
+- [x] **T10 — Merge de `dev`** si el PR #51 (SLT-67) ya entró (T0). Se resuelven los conflictos de
   `PlanForm.tsx` y `PlanForm.test.tsx` conservando `MontoInput`.
 
   *Hecho:* `./init.sh` en verde tras el merge, antes de tocar pantallas. Si #51 no entró, se anota y se
@@ -226,12 +226,12 @@
 
 ## Archivos esperados
 
-- `db/migrations/20261031120000_plan_costeo_y_maestro_sin_tope/migration.sql`
-- `db/migrations/20261031120000_plan_costeo_y_maestro_sin_tope/down.sql`
-- `db/migrations/20261031120100_cobro_plataforma_fuente_plan/migration.sql`
-- `db/migrations/20261031120100_cobro_plataforma_fuente_plan/down.sql`
-- `db/migrations/20261031120200_plan_costeo_funciones/migration.sql`
-- `db/migrations/20261031120200_plan_costeo_funciones/down.sql`
+- `db/migrations/20261031130000_plan_costeo_y_maestro_sin_tope/migration.sql`
+- `db/migrations/20261031130000_plan_costeo_y_maestro_sin_tope/down.sql`
+- `db/migrations/20261031130100_cobro_plataforma_fuente_plan/migration.sql`
+- `db/migrations/20261031130100_cobro_plataforma_fuente_plan/down.sql`
+- `db/migrations/20261031130200_plan_costeo_funciones/migration.sql`
+- `db/migrations/20261031130200_plan_costeo_funciones/down.sql`
 - `db/schema.prisma`
 - `lib/types/planes.ts`
 - `lib/types/consumo-plan.ts`
@@ -301,5 +301,5 @@
 - `tests/components/PlanDetalleAsignar.test.tsx`
 - `tests/components/PlanDetalleDesasignado.test.tsx`
 - `tests/integration/db/migracion-slt66-desasignar.test.ts`
-- `db/migrations/20261031120300_plan_desasignar_sin_costo_base/migration.sql`
-- `db/migrations/20261031120300_plan_desasignar_sin_costo_base/down.sql`
+- `db/migrations/20261031130300_plan_desasignar_sin_costo_base/migration.sql`
+- `db/migrations/20261031130300_plan_desasignar_sin_costo_base/down.sql`

@@ -88,7 +88,7 @@ Van después de la última migración de `dev` (`20261030120100_incentivo_mensaj
 mano, como las de SL-24 y SL-40 (`db:migrate:create` falla con P3006). T0 comprueba que siguen siendo las
 últimas antes de aplicarlas en una base compartida. Ninguna migración ya mergeada se edita.
 
-### 2.1 M1 — `20261031120000_plan_costeo_y_maestro_sin_tope`
+### 2.1 M1 — `20261031130000_plan_costeo_y_maestro_sin_tope`
 
 ```sql
 -- SLT-66. CABECERA: el DELETE de los topes de maestro es DEFINITIVO. down.sql repone el CHECK que los
@@ -130,7 +130,7 @@ La cabecera lo dice: los topes de maestro borrados no vuelven.
   siendo de plataforma, con RLS sin políticas y `REVOKE ALL … FROM servi_app` (SL-24 §2.5). La columna
   nueva hereda ese trato. No cambia `MODELOS_DE_PLATAFORMA`.
 
-### 2.2 M2 — `20261031120100_cobro_plataforma_fuente_plan`
+### 2.2 M2 — `20261031130100_cobro_plataforma_fuente_plan`
 
 ```sql
 ALTER TYPE "cobro_plataforma_fuente" ADD VALUE 'plan';
@@ -158,7 +158,7 @@ ALTER TYPE "plan_rastro_accion" ADD VALUE 'desasignado';   -- R34, lo usa M4
   movimientos son el libro de la deuda. Borrarlos baja la deuda y convertirlos a `global` falsea su
   origen.
 
-### 2.3 M3 — `20261031120200_plan_costeo_funciones`
+### 2.3 M3 — `20261031130200_plan_costeo_funciones`
 
 1. **`cobro_plataforma_tarifa_de(p_organizacion_id text) RETURNS TABLE ("monto" numeric(12,2), "fuente" cobro_plataforma_fuente)`**:
    - `plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp` y `REVOKE EXECUTE … FROM PUBLIC`;
@@ -206,7 +206,7 @@ ALTER TYPE "plan_rastro_accion" ADD VALUE 'desasignado';   -- R34, lo usa M4
 
 El reviewer compara los cuerpos línea a línea con los de origen (precedente SLT-58 §11.2).
 
-### 2.3 bis M4 — `20261031120300_plan_desasignar_sin_costo_base` (R34, P4 cerrada)
+### 2.3 bis M4 — `20261031130300_plan_desasignar_sin_costo_base` (R34, P4 cerrada)
 
 Va después de M1 y de M2, que crea el valor `desasignado`. Criterio (P6, cerrada): **toda** empresa
 con plan. `costo_por_orden` nace vacío en todos los planes, así que ninguna asignación previa tiene costo
