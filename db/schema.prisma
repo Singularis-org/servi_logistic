@@ -5637,7 +5637,10 @@ model Plan {
   precioMensual           Decimal?        @map("precio_mensual") @db.Decimal(12, 2)
   precioAnual             Decimal?        @map("precio_anual") @db.Decimal(12, 2)
   descuentoAnualPct       Decimal?        @map("descuento_anual_pct") @db.Decimal(5, 2)
-  archivadoAt             DateTime?       @map("archivado_at")
+  // SLT-66 (R7, R8): NULL = el plan no lo fija y se cobra el global (R12). El CHECK
+  // `plan_costo_por_orden_check` (`>= 0`) vive solo en el SQL de 20261031120000.
+  costoPorOrden           Decimal?        @map("costo_por_orden") @db.Decimal(12, 2)
+  archivadoAt           DateTime?       @map("archivado_at")
   createdAt               DateTime        @default(now()) @map("created_at")
   updatedAt               DateTime        @default(now()) @updatedAt @map("updated_at")
 
@@ -5650,9 +5653,9 @@ model Plan {
 }
 
 // SL-24 (design §2.2) — el tope de un rol en un plan. Sin fila = ese rol no tiene tope. De PLATAFORMA.
-// Viven solo en el SQL de 20261028130000: el CHECK de los roles con tope (`maestro`, `admin`,
-// `mensajero`, `Admin Tienda`, `adminSatelite`; ni `apiKey` ni `superadmin`, R25), `maximo >= 0`, la
-// RLS sin políticas y el `REVOKE ALL … FROM servi_app`.
+// Viven solo en el SQL: el CHECK de los roles con tope (`admin`, `mensajero`, `Admin Tienda`,
+// `adminSatelite`; ni `apiKey` ni `superadmin`, R25; SLT-66 R1 sacó a `maestro` en 20261031120000),
+// `maximo >= 0`, la RLS sin políticas y el `REVOKE ALL … FROM servi_app` (20261028130000).
 model PlanTopeRol {
   planId String   @map("plan_id")
   plan   Plan     @relation(fields: [planId], references: [id], onDelete: Cascade, onUpdate: Cascade)
