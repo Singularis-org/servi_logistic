@@ -87,7 +87,7 @@
 
   Además, se miden las mutaciones 1–3 y la carga de 500 filas antes y después (design §13), con los
   números en `progress/impl_SLT-66.md`.
-- [ ] **T21 — M4 `20261031120300_plan_desasignar_sin_costo_base`** (design §2.3 bis; R34). Depende de T5.
+- [x] **T21 — M4 `20261031120300_plan_desasignar_sin_costo_base`** (design §2.3 bis; R34). Depende de T5.
   Desasigna a **toda** empresa con plan (P6). Antes de aplicarla en una base compartida, el humano tiene
   que tener el número de T0.
   - `migration.sql` con la cabecera, y su `down.sql`, que repone desde `plan_rastro`.
@@ -178,7 +178,7 @@
 
 ## Tanda E — E2E, ayuda y cierre
 
-- [ ] **T15 — «Empresas»: lectura del cobro vigente y del plan** (backend_dev; design §6.4; R31, R32).
+- [x] **T15 — «Empresas»: lectura del cobro vigente y del plan** (backend_dev; design §6.4; R31, R32).
   Depende de T6.
   - En `EmpresasPlataformaRepository`: `plan` y `cobroVigente` con una sola consulta `LATERAL`.
   - En `EmpresaListada`: los dos campos nuevos.

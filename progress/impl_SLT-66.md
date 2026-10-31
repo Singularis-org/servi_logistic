@@ -375,3 +375,64 @@ Un script recorre los imports en runtime de los 362 archivos `'use client'`.
   - 6 fallos por dobles sin `costoVigente`;
   - 42 por dobles sin `costoPorOrden`;
   - el resto, por la UI de `PlanForm` sin el campo, que es T11.
+
+## Tanda C: T18, T15, T21 (backend_dev, 2026-10-31)
+
+### Commits
+- `89172f2` T18: el `PlanesService` aplica la regla de costo concreto.
+  - `sinCostoConcreto(plan)` mira el plan y, si este es concreto, también la versión pendiente.
+  - `asignar` hace la comprobación después de «mismo plan», con fecha y sin ella. `previsualizarAsignacion` la hace después de las reglas.
+  - `asignables` filtra; `editar` no cambia.
+  - `plan_sin_costo` entra en `PlanResult` y en `VistaPreviaAsignacionResult`.
+  - Dobles según §9.3: `planes-service:32-34` y `planes-service-inicio-ciclo:36-38`.
+- `f64b743` T15: `EmpresasPlataformaRepository.planYCobroVigente(ids)`, con una sola consulta `unnest(ids) LEFT JOIN organizacion/plan CROSS JOIN LATERAL cobro_plataforma_tarifa_de`. `EmpresaListada` lleva `cobroVigente` y `plan`.
+  - Desvío de §6.4: el plan sale de la consulta LATERAL y no del `select` de Prisma, y el origen es `unnest(ids)`. Así `empresas-plataforma.test.ts:206`, que usa un esquema desechable sin `plan`, sigue en verde sin tocarlo.
+- `52426bf` T21: M4 `20261031120300_plan_desasignar_sin_costo_base`, con cabecera. Su `down.sql` repone desde `plan_rastro` solo a quien sigue sin plan.
+  - Aplicada en `logistic_slt66`, donde no había empresas con plan: 0 filas `desasignado`.
+  - Drift vacío.
+
+### Tests (`logistic_slt66`)
+| Archivo | Pasados / fallados |
+|---|---|
+| unit planes-service | 80 / 0 |
+| unit planes-service-inicio-ciclo | 28 / 0 |
+| unit planes-service-asignar-costo (nuevo) | 31 / 0 |
+| unit empresas-plataforma-service | 12 / 0 |
+| unit empresas-plataforma.composition-root | 8 / 0 |
+| unit planes.composition-root | **3 / 1** |
+| empresas-plataforma-plan (nuevo) | 4 / 0 |
+| empresas-plataforma-cobro (sin tocar) | 6 / 0 |
+| empresas-plataforma | 5 / 0 |
+| migracion-slt66-desasignar (nuevo) | 7 / 0 |
+| cobro-plataforma-plan | 16 / 0 |
+| cobro-plataforma-cargos | 20 / 0 |
+| migracion-slt66-ida-y-vuelta | 11 / 0 |
+| planes-asignacion-inicio-ciclo | **0 / 11** |
+
+### Mutaciones
+- 7a (`asignar` no comprueba): caen 13.
+- 7b (solo comprueba sin fecha): caen 8.
+- 8 (`asignables` no filtra): caen 2.
+- 11 (M4 deja los planes de base «monto»): caen 3.
+
+### Ajustes por la autorización general (campos nuevos de `EmpresaListada`)
+- `tests/integration/db/empresas-plataforma.test.ts:141-143, :155, :178, :186`
+- `tests/unit/services/empresas-plataforma-service.test.ts:31-33, :47-49`
+- `tests/unit/actions/empresas-plataforma.composition-root.test.ts:41-42` (el doble suma `$queryRaw`) y `:72-73`
+
+### Typecheck
+- `app/` no compila por `plan_sin_costo` (T19, frontend):
+  - `PlanEmpresa.tsx:87`: la tabla de rechazos no tiene la variante.
+  - `PlanForm.tsx:90`: TS7053.
+- Tanda D: `tests/integration/empresas-page.test.tsx:65, :77`, filas sin `cobroVigente` ni `plan`.
+- El resto de los errores está en `tests/components` y en `tests/integration/plataforma-*`.
+
+### Bloqueos: tests rotos por la REGLA nueva, no por un campo; fuera de §9.3
+1. `tests/integration/db/planes-asignacion-inicio-ciclo.test.ts` (SLT-58): los 11 en rojo con `plan_sin_costo`.
+   - Crea planes sin precio y los asigna por `PlanesService`.
+   - Propuesta: en el ayudante `plan` (`:69-73`), `precio: {tipo:"monto", mensual:"1000.00", anual:null}` y `costoPorOrden: "100.00"`. Es el mismo trato que §9.3 da a `planes-service-inicio-ciclo:36`.
+2. `tests/unit/actions/planes.composition-root.test.ts:61-86` (SL-24): `listarPlanesAsignablesAction` ahora filtra `filaPlan`, que es negociable.
+   - Propuesta: `filaPlan` (`:24-28`) con monto 1000 y costo 100, y el `toEqual` de `:65-77` acorde.
+   - Lo que comprueba no cambia: el DTO sale del mapeo real.
+
+T18 queda sin marcar hasta resolver esto y el typecheck de `app/`.
