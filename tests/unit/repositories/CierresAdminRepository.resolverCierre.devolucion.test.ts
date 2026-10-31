@@ -104,6 +104,8 @@ function buildDevolucionPrisma(
       count: vi.fn(),
       // FICHA 362: `resolverCierre` lee el total y el mensajero para congelar la fila del registro.
       findUnique: vi.fn().mockResolvedValue({
+        // SLT-73 (T3): la aprobacion lee el destino; esta suite mide la de la CENTRAL, que asienta.
+        destinoTipo: "bodega_central",
         totalGeneral: new Prisma.Decimal("0.00"),
         solicitadoAt: new Date("2026-09-02T12:00:00Z"),
         mensajero: { nombre: "Mensa", primerApellido: "Uno" },
@@ -124,7 +126,9 @@ function buildDevolucionPrisma(
     ordenHistorialEstado: { createMany: vi.fn() },
   };
   prisma.cierreDia.findUnique.mockResolvedValue(
-    opts.mensajeroId === null ? null : { mensajeroId: opts.mensajeroId ?? "m1" },
+    opts.mensajeroId === null
+      ? null
+      : { destinoTipo: "bodega_central", mensajeroId: opts.mensajeroId ?? "m1" },
   );
   prisma.orden.findMany.mockResolvedValue(rechazadas);
   // 2026-08-19 (feature 239/T2.5): la escritura de `gestion_aprobada` —la unica sin `id` en el

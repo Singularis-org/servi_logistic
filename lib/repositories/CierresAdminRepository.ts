@@ -1913,7 +1913,21 @@ export class CierresAdminRepository implements ICierresAdminRepository {
         // SLT-73 (T2, design §2.1): los asientos de dinero del cierre (42, 43, 173, 44 y 158), en
         // el MISMO orden y con las MISMAS dependencias inyectadas, viven ahora en
         // `asentarCierreDia`: los comparte la marca de conciliacion de una consolidacion satelite.
-        await asentarCierreDia(tx, cierreId, this.asientos());
+        //
+        // SLT-73 (T3, R1/R3, D2/D8): SOLO un cierre de la CENTRAL asienta al aprobar. El dinero de
+        // un cierre de la satelite no se sabe si entro hasta que se concilia su consolidacion, y
+        // entra ahi (R10). El destino se lee DENTRO de esta tx, sobre la fila que el `updateMany`
+        // de arriba acaba de bloquear: es la misma foto que decide la transicion. La persistencia
+        // de la indemnizacion (arriba) no es dinero y sigue para los dos destinos (R2).
+        // `null` no puede ocurrir (el `updateMany` acaba de aplicar a esta fila); si ocurriera, no se
+        // asienta: el lado seguro del dinero es no escribirlo.
+        const destino = await tx.cierreDia.findUnique({
+          where: { id: cierreId },
+          select: { destinoTipo: true },
+        });
+        if (destino?.destinoTipo === "bodega_central") {
+          await asentarCierreDia(tx, cierreId, this.asientos());
+        }
 
         // Feature 109 (T3.1, R16-R19/R22/R27): LIBERA a bodega las ordenes `sin_gestionar` del
         // mensajero del cierre, EXCLUSIVAMENTE en esta rama `aprobado` (un RECHAZO no libera, R27) y

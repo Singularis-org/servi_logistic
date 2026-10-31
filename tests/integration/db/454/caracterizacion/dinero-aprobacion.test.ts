@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 
 import { HAY_BASE_DE_DATOS } from "../../_postgres-real";
+import { asentarCierreDia } from "@/lib/repositories/_shared/asientos-cierre-dia";
 import { conEscenario, prepararMundo, type Mundo } from "../_escenario";
 
 /**
@@ -88,10 +89,16 @@ describeSiHayBase("454/C11 — dinero de la aprobacion (Postgres real)", () => {
           `${libro}|${m.tipo}|${m.categoria}|${m.monto.toFixed(2)}`;
         return [...caja.map(fila("caja")), ...tienda.map(fila("tienda")), ...mensajero.map(fila("mensajero"))].sort();
       };
+      // SLT-73 (R1): el cierre es de la SATELITE (lo aprueba el adminSatelite), y aprobarlo ya no
+      // escribe dinero. Su dinero entra al CONCILIAR la consolidacion, que llama a `asentarCierreDia`
+      // (R10, T4). Aqui se llama directo al MISMO escritor para seguir fijando los cinco feeds al
+      // centimo; cuando exista la marca que asienta (T4), puede sustituirse por ella.
+      const alAprobar = await movimientos();
+      await asentarCierreDia(e.tx, cierreId);
       const trasAprobar = await movimientos();
       const reaprobacion = await e.aprobar(cierreId, e.actorAdminSatelite, indemnizaciones);
       const trasReaprobar = await movimientos();
-      return { totales, aprobacion: aprobacion.status, reaprobacion: reaprobacion.status, trasAprobar, trasReaprobar };
+      return { totales, aprobacion: aprobacion.status, reaprobacion: reaprobacion.status, alAprobar, trasAprobar, trasReaprobar };
     });
   }
 
@@ -117,6 +124,8 @@ describeSiHayBase("454/C11 — dinero de la aprobacion (Postgres real)", () => {
 
   it("los movimientos de los cinco feeds, con importes exactos", () => {
     expect(r.aprobacion).toBe("ok");
+    // SLT-73 (R1): aprobar un cierre de la satelite no asienta nada; lo de abajo es tras asentarlo.
+    expect(r.alAprobar).toEqual([]);
     expect(r.trasAprobar).toEqual([
       "caja|egreso|egreso_indemnizacion|3000.00",
       "caja|egreso|egreso_pago_mensajero|1500.00",
