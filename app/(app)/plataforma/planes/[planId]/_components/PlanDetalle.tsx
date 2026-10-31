@@ -10,10 +10,12 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { Modal } from "@/components/shared/Modal";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { nombreDelModulo } from "@/lib/modulos/catalogo";
+import { tieneCostoConcreto } from "@/lib/planes/costo-concreto";
 import {
   lineasDeCambioDelPlan,
   mensajeTopesPasados,
@@ -36,8 +38,9 @@ import type {
 } from "@/lib/types/planes";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 import { horaCostaRica } from "@/lib/utils/hora-cr";
+import { cn } from "@/lib/utils";
 
-import { mensajeDelRechazo, PlanForm, RECHAZO_GENERICO } from "../../_components/PlanForm";
+import { mensajeDelRechazo, PlanForm, RECHAZO_GENERICO, TEXTOS_PLAN_FORM } from "../../_components/PlanForm";
 import { lineasDeTopes, TEXTOS_PLAN, textoDeVisibilidad } from "../../_components/plan-vista";
 
 /** Textos de la pantalla, en un solo sitio para cuando llegue la i18n. */
@@ -92,6 +95,16 @@ const TEXTOS = {
   cancelaPrevisto: (fecha: string) => `Se cancela el previsto para ${fecha}`,
   nombreDelPlan: (nombre: string) => `Nombre del plan: ${nombre}`,
   modulosDelPlan: (modulos: string) => `Módulos: ${modulos}`,
+  // SLT-66 (design §6.6; R33).
+  empresaAsignar: "Empresa",
+  empresaPlaceholder: TEXTOS_PLAN_FORM.empresaPlaceholder,
+  asignarAEmpresa: "Asignar a una empresa",
+  sinCostoParaAsignar: "Para asignarlo, dale costo base mensual y costo por orden.",
+  /** El mismo texto que el formulario cuando no se pudieron leer las empresas. */
+  sinEmpresasCandidatas: TEXTOS_PLAN_FORM.sinEmpresas,
+  // SLT-66 (design §2.3 bis; R34): la fila `desasignado` que escribe la migración.
+  desasignadoDe: (empresa: string) =>
+    `Desasignado de ${empresa} por la migración: el plan no tenía costo base concreto`,
 } as const;
 
 /** La acción del rastro, traducida. `Record` total: una acción nueva no compila sin su texto. */
@@ -112,6 +125,12 @@ export interface PlanDetalleProps {
   editarPlan: (input: EditarPlanInput) => Promise<PlanResult>;
   archivarPlan: (input: ArchivarPlanInput) => Promise<PlanResult>;
   cancelarCambio: (input: CancelarCambioPlanInput) => Promise<PlanResult>;
+  /**
+   * SLT-66 (design §6.6; R33): las empresas a las que se puede ofrecer el plan, ya filtradas por la
+   * página (un público, las que no lo tienen; un custom, solo la suya si no lo tiene). `null` = no se
+   * pudieron leer.
+   */
+  empresasCandidatas?: { id: string; nombre: string }[] | null;
 }
 
 /** Lo último que pasó en la pantalla: un aviso de éxito (con los topes pasados, R15) o un rechazo (R18). */
@@ -126,7 +145,13 @@ type Desenlace =
  * plan archivado no ofrece editar, archivar ni cancelar. Tras un `ok` se relee la página; un rechazo
  * se explica y la pantalla no da el cambio por hecho (R18).
  */
-export function PlanDetalle({ detalle, editarPlan, archivarPlan, cancelarCambio }: PlanDetalleProps) {
+export function PlanDetalle({
+  detalle,
+  editarPlan,
+  archivarPlan,
+  cancelarCambio,
+  empresasCandidatas = [],
+}: PlanDetalleProps) {
   const router = useRouter();
   const { plan, pendiente } = detalle;
   const [editando, setEditando] = useState(false);
@@ -316,6 +341,11 @@ export function PlanDetalle({ detalle, editarPlan, archivarPlan, cancelarCambio 
             ))}
           </ul>
         )}
+        {plan.archivado ? null : tieneCostoConcreto(plan) ? (
+          <AsignarAEmpresa planId={plan.id} empresas={empresasCandidatas} />
+        ) : (
+          <p className="text-sm text-muted-foreground">{TEXTOS.sinCostoParaAsignar}</p>
+        )}
       </Seccion>
 
       <Seccion titulo={TEXTOS.rastro}>
@@ -366,6 +396,50 @@ export function PlanDetalle({ detalle, editarPlan, archivarPlan, cancelarCambio 
             />
           ) : null}
         </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * SLT-66 (design §6.6; R33) — elige la empresa y lleva al bloque «Plan» de su detalle con el plan ya
+ * elegido (`?plan=…#plan`). No asigna nada: confirmar es el flujo de SLT-58 (modal, fecha y avisos).
+ * Sin empresas candidatas no pinta nada; si no se pudieron leer, lo dice.
+ */
+function AsignarAEmpresa({ planId, empresas }: { planId: string; empresas: { id: string; nombre: string }[] | null }) {
+  const id = useId();
+  const [empresaId, setEmpresaId] = useState("");
+  if (empresas === null) {
+    return <p className="text-sm text-danger-strong">{TEXTOS.sinEmpresasCandidatas}</p>;
+  }
+  if (empresas.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+      <div className="flex flex-col gap-1.5 sm:w-80">
+        <label htmlFor={id} className="text-sm font-medium">
+          {TEXTOS.empresaAsignar}
+        </label>
+        <Select
+          id={id}
+          aria-label={TEXTOS.empresaAsignar}
+          value={empresaId}
+          onValueChange={setEmpresaId}
+          options={empresas.map((e) => ({ value: e.id, label: e.nombre }))}
+          placeholder={TEXTOS.empresaPlaceholder}
+        />
+      </div>
+      {empresaId === "" ? (
+        // Sin empresa elegida no hay adónde ir: el control se ve, pero deshabilitado.
+        <Button type="button" disabled>
+          {TEXTOS.asignarAEmpresa}
+        </Button>
+      ) : (
+        <Link
+          href={`/plataforma/empresas/${empresaId}?plan=${planId}#plan`}
+          className={cn(buttonVariants(), "w-fit")}
+        >
+          {TEXTOS.asignarAEmpresa}
+        </Link>
       )}
     </div>
   );
@@ -455,6 +529,12 @@ type Par = { antes: unknown; despues: unknown };
 function lineasDelRastro(fila: FilaRastro): string[] {
   const c = fila.cambios as Record<string, Par | undefined>;
   const lineas: string[] = [];
+  if (fila.accion === "desasignado") {
+    // SLT-66 (§2.3 bis): `cambios.empresa.antes` guarda la empresa que tenía el plan.
+    const antes = c.empresa?.antes as { nombre?: unknown } | null | undefined;
+    if (typeof antes?.nombre === "string") lineas.push(TEXTOS.desasignadoDe(antes.nombre));
+    return lineas;
+  }
   /** El campo de un alta (`antes: null`), o `null` si no vino o es una edición. */
   const deAlta = (p: Par | undefined): Par | null => (p !== undefined && p.antes === null ? p : null);
   /** El campo de una edición (con `antes`), o `null` si no vino o es un alta. */

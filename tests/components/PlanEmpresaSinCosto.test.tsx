@@ -66,8 +66,8 @@ function montar({
 }: {
   v?: PlanDeEmpresaVista;
   asignables?: PlanDTO[] | null;
-  asignar?: (i: never) => Promise<PlanResult>;
-  previsualizar?: (i: never) => Promise<VistaPreviaAsignacionResult>;
+  asignar?: (i: unknown) => Promise<PlanResult>;
+  previsualizar?: (i: unknown) => Promise<VistaPreviaAsignacionResult>;
   planPreseleccionado?: string;
 } = {}) {
   const props = {
@@ -183,5 +183,38 @@ describe("SLT-66 R20 — aviso del plan actual sin costo concreto", () => {
   it("R20: sin plan, sin aviso", () => {
     montar({ v: vista(null) });
     expect(screen.queryByText(AVISO_R20)).toBeNull();
+  });
+});
+
+describe("SLT-66 R33 — el plan preseleccionado desde el detalle del plan", () => {
+  const OTRO = planDTO({ id: "33333333-3333-4333-8333-333333333333", nombre: "Otro" });
+
+  it("R33: un planPreseleccionado válido arranca elegido; nada se asigna sin el clic y el modal", async () => {
+    const user = userEvent.setup();
+    const { asignar, previsualizar } = montar({ asignables: [CONCRETO, OTRO], planPreseleccionado: OTRO.id });
+
+    expect(screen.getByRole("combobox", { name: "Plan a asignar" })).toHaveTextContent("Otro (Público)");
+    const boton = screen.getByRole("button", { name: "Asignar plan" });
+    expect(boton).toBeEnabled();
+    expect(asignar).not.toHaveBeenCalled();
+    expect(previsualizar).not.toHaveBeenCalled();
+
+    await user.click(boton);
+    const modal = await screen.findByRole("dialog", { name: "¿Asignar este plan a la empresa?" });
+    expect(modal).toHaveTextContent("Asignar Otro a Envíos Norte");
+    expect(asignar).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["fuera de los asignables", "99999999-9999-4999-8999-999999999999"],
+    ["el plan que ya tiene la empresa", PLAN_ACTUAL],
+  ])("R33: uno %s se ignora", (_caso, id) => {
+    montar({
+      v: vista({ precio: { tipo: "monto", mensual: "1.00", anual: null }, costoPorOrden: "1.00" }),
+      asignables: [planDTO({ id: PLAN_ACTUAL, nombre: "Actual" }), CONCRETO],
+      planPreseleccionado: id,
+    });
+    expect(screen.getByRole("combobox", { name: "Plan a asignar" })).not.toHaveTextContent(/Actual|Concreto/);
+    expect(screen.getByRole("button", { name: "Cambiar plan" })).toBeDisabled();
   });
 });

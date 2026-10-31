@@ -138,6 +138,13 @@ export interface PlanEmpresaProps {
     planId: string;
     inicioCiclo: string;
   }) => Promise<VistaPreviaAsignacionResult>;
+  /**
+   * SLT-66 (design §6.6; R33): el plan con que arranca el selector, cuando se llega desde «Asignar a una
+   * empresa» del detalle del plan (`?plan=…`). La página ya lo valida contra los asignables; aquí se
+   * vuelve a mirar contra lo que el selector ofrece y, si no está, se ignora. No asigna nada: confirmar
+   * sigue siendo el clic y el modal.
+   */
+  planPreseleccionado?: string;
 }
 
 /**
@@ -157,6 +164,16 @@ function textoDelAviso(aviso: TopeExcedido, siguienteCiclo: string): string {
   if (aviso.tope === "ordenes") return ordenesYaPasadas(usados, maximo, siguienteCiclo);
   if (aviso.tope === "api_keys") return apiKeysYaPasadas(usados, maximo);
   return rolYaPasado(usados, maximo, aviso.tope);
+}
+
+/**
+ * R20: si el selector ofrece el plan a ESTA empresa (público o custom suyo, no archivado y distinto del
+ * que ya tiene). El servicio ya filtra; se vuelve a mirar para no ofrecer uno que la base rechazaría.
+ */
+function ofrecible(p: PlanDTO, organizacionId: string, planActualId: string | null): boolean {
+  return (
+    !p.archivado && (p.visibilidad === "publico" || p.organizacionId === organizacionId) && p.id !== planActualId
+  );
 }
 
 /** Un instante ISO como «AAAA-MM-DD HH:mm» en la hora de la plataforma. */
@@ -181,6 +198,7 @@ export function PlanEmpresa({
   asignarPlan,
   rangoInicioCiclo,
   previsualizarAsignacion,
+  planPreseleccionado,
 }: PlanEmpresaProps) {
   const tituloId = useId();
   const historialId = useId();
@@ -188,7 +206,13 @@ export function PlanEmpresa({
   const fechaId = useId();
   const router = useRouter();
   const toast = useToast();
-  const [planId, setPlanId] = useState("");
+  const planActualId = vista?.plan?.planId ?? null;
+  const [planId, setPlanId] = useState(() =>
+    planPreseleccionado !== undefined &&
+    (asignables ?? []).some((p) => p.id === planPreseleccionado && ofrecible(p, organizacionId, planActualId))
+      ? planPreseleccionado
+      : "",
+  );
   const [enVuelo, setEnVuelo] = useState(false);
   const [rechazo, setRechazo] = useState<string | null>(null);
   const [errorDeCampo, setErrorDeCampo] = useState<string[] | undefined>(undefined);
@@ -202,20 +226,13 @@ export function PlanEmpresa({
   // vuelva la anterior, la respuesta vieja se descarta y no pisa los avisos de la fecha nueva.
   const lecturaRef = useRef(0);
 
-  const planActualId = vista?.plan?.planId ?? null;
-
   // R20: solo los asignables a ESTA empresa (públicos y customs suyos, no archivados). El servicio ya
   // filtra; se vuelve a mirar aquí para que la pantalla nunca ofrezca uno que la base rechazaría. El
   // plan que ya tiene no se ofrece: «cambiar» a él no cambia nada.
   const opciones: SelectOption[] = useMemo(
     () =>
       (asignables ?? [])
-        .filter(
-          (p) =>
-            !p.archivado &&
-            (p.visibilidad === "publico" || p.organizacionId === organizacionId) &&
-            p.id !== planActualId,
-        )
+        .filter((p) => ofrecible(p, organizacionId, planActualId))
         .map((p) => ({
           value: p.id,
           label: `${p.nombre} (${p.visibilidad === "publico" ? TEXTOS.publico : TEXTOS.custom})`,
