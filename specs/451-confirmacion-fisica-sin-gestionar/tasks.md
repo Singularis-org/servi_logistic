@@ -206,12 +206,12 @@ y `tests/integration/db/cierre-sin-gestion-confirmacion-sql-real.test.ts`. Todo 
 
 ## T6 · Verificación y cierre
 
-- [ ] **T6.1 — Mapa `R<n> → test` completo.** Escribir en `progress/impl_451.md` el mapa de los 40
+- [x] **T6.1 — Mapa `R<n> → test` completo.** Escribir en `progress/impl_451.md` el mapa de los 40
       requisitos contra el archivo **y el nombre del caso**.
       **Hecho:** ningún `R<n>` sin test. El reviewer rechaza si falta uno.
       *Depende de: T1-T5.*
 
-- [ ] **T6.2 — Autocomprobación por mutación.** Sobre al menos cuatro puntos: quitar `cierreId` del
+- [x] **T6.2 — Autocomprobación por mutación.** Sobre al menos cuatro puntos: quitar `cierreId` del
       `WHERE` de la lectura (T2.2), quitar el `WHERE` guardado de la escritura (T4.3), quitar una
       barrida del conjunto esperado del servicio (T3.4) y quitar la sección nueva de la pantalla
       (T5.5). Los cuatro tienen que **ponerse rojos**.
@@ -219,7 +219,7 @@ y `tests/integration/db/cierre-sin-gestion-confirmacion-sql-real.test.ts`. Todo 
       `progress/impl_451.md`. Sin esta evidencia el mapa de T6.1 no vale.
       *Depende de: T6.1.*
 
-- [ ] **T6.3 — Gate COMPLETO.** `./init.sh` (no `--rapido`: se niega solo). Escribir `INIT_EXIT=$?`
+- [x] **T6.3 — Gate COMPLETO.** `./init.sh` (no `--rapido`: se niega solo). Escribir `INIT_EXIT=$?`
       **dentro** del log, en `progress/gate_451.log`, y **sin canalizar por `tail`**.
       **Hecho:** `INIT_EXIT=0`, y los `skipped` revisados: los dos tests de `integration/db` nuevos
       **ejecutaron**.

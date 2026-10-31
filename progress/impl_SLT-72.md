@@ -334,3 +334,32 @@ El primer `./init.sh` salió rojo con 4 archivos fuera del baseline. Solo se toc
 ### Veredicto
 
 Los 4 rojos explicados. Dos eran dobles o fixtures desfasados frente a R10/R15, y dos eran de base equivocada. Producción sin cambios.
+
+## Cierre del implementer (T6)
+
+### Gate local (T6.3)
+- Ronda 1 (`./init.sh` contra la base del `.env`, sin la migración nueva): `INIT_EXIT=1`, 4 archivos
+  rojos fuera del baseline. Causas y arreglos en «Rojos del gate (ronda 1)».
+- Ronda 2, sobre `b00e6835`: `NODE_OPTIONS=--max-old-space-size=8192` + wrapper que exporta
+  `DATABASE_URL` de `servi_slt72` (local, con las 269 migraciones). Resultado: `INIT_EXIT=0`.
+  - `test:rapido`: `Test Files 264 passed (264)`, `Tests 3831 passed (3831)`, 0 skipped. Los dos
+    `integration/db` nuevos EJECUTARON (sql-real 6, migration 11).
+  - Guardias: `Test Files 317 passed (317)`, `Tests 4426 passed | 1 skipped`. El skip es preexistente,
+    en `recursos-origen-fuera.guardia.test.ts`.
+  - El rojo conocido de entorno (`indices-rutas-calientes`) no salió.
+- Es el gate rápido, como pidió el leader; la suite completa corre en CI en el PR.
+- **Para CI y despliegue:** cualquier base que corra estos tests necesita la migración
+  `20261031130000_cierre_sin_gestion_confirmacion_fisica` aplicada.
+
+### Trazabilidad (T6.1) y mutaciones (T6.2)
+- Mapa R1–R40: secciones «Mapa R<n> → test» de Backend (R1–R28, R37–R40) y Frontend (R19 cliente,
+  R29–R36). Comprobado que aparecen los 40.
+- Mutaciones rojo→verde, todas revertidas: backend (5, incluidas las cuatro de T6.2), frontend (6) y
+  ronda 1 (3).
+
+### Pendiente fuera del implementer
+- **T0.1** (foto de la cola contra producción, solo lectura) y **T6.4** (aviso a bodega): no se
+  ejecutaron porque son de operación, del leader y del humano. Siguen sin marcar.
+- **Rótulo de la sección (desviación 1 de Frontend).** R29 dice «nombrarla como **sin gestionar**»,
+  pero la ficha 455 retiró ese nombre y la guardia `nombres-estado-retirados` lo prohíbe. Se usó
+  «Novedad interna». Pide confirmación humana del texto; no cambia ningún comportamiento.
