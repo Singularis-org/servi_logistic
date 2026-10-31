@@ -166,7 +166,33 @@ esta bien hecha, no solo si "funciona".
     anteriores y `cierre_detail.ubicacion_snapshot` las llena `pnpm geo:backfill`
     (`scripts/geo-backfill-nodo.ts`: por lotes, reanudable, `--aplicar` y `--validar` exigen
     `--base` y `--destino`, el project-ref de Supabase o el host); en producción lo corre una persona tras el ensayo sobre una copia, nunca un agente
-    (design §6 de SLT-43). La app todavía no lee nada del modelo nuevo: las lecturas llegan con SLT-44.
+    (design §6 de SLT-43).
+  - **Lecturas sobre el árbol (SLT-44).** Las reglas del árbol viven en un dominio puro,
+    `lib/services/geografia-dominio.ts` (sin Prisma: ancestros, descendientes, activo en cascada,
+    zona heredada y marca especial sobre el catálogo en memoria). El catálogo del país y las
+    asignaciones de la empresa los carga `lib/repositories/CatalogoGeograficoRepository.ts`: en una
+    sola transacción, con la RLS de la empresa, y memorizado por petición y por empresa (sin TTL ni
+    invalidación): `GeoRepository`, `OrdenRepository` y `CoberturaRepository` crean el suyo, uno por
+    instancia, y las composiciones crean esas instancias en cada llamada. En plataforma
+    `deLaEmpresa()` lanza `EmpresaNoResuelta`; el superadmin usa `dePais(paisId)`.
+    - Leen del catálogo: `GeoRepository` (`listProvinciasLite`, `listCantonesLite`,
+      `listDistritosLite`, `listGeografiaLitePorZona`, `listArbol`, `listArbolDePais`),
+      `OrdenRepository` (`findAllProvincias`, `findCantonesByProvinciaIds`,
+      `findDistritosByCantonIds`, `findDistritoParaCorreccion`) y `CoberturaRepository.listDistritos`.
+      Interfaces y DTO no cambian.
+    - Siguen en las tablas viejas hasta SLT-65: el resto de lecturas de órdenes (marca de una orden
+      ya creada, cobro de devolución, conteos por FK), cierres, `ZonaRepository.update` y el SQL
+      crudo de los repositorios. Las escrituras siguen en las tablas viejas (SLT-46).
+    - El lugar de una orden, de una asignación de zona y de una marca se lee de las FK viejas
+      (`distrito_id`), nunca de `nodo_geografico_id` (R12): el resultado no depende de que haya
+      corrido el backfill.
+    - `pnpm geo:equivalencia-dinero` (`scripts/geo-equivalencia-dinero.ts`) compara, por empresa y con
+      una conexión de solo lectura, la lectura de antes (congelada en
+      `scripts/geo-equivalencia/lecturas-de-hoy.ts`) con la nueva: distritos (zona, central, marca,
+      disponibilidad), cobertura por zona y cotizaciones de las órdenes recientes (`--muestra`,
+      `--empresa`). Sale con 0 si todo coincide, 1 si algo difiere y 2 si una empresa falló al leer.
+      Lo corre una persona sobre una copia de producción con SLT-43 aplicada, antes del merge, y pega
+      la salida en el PR; ningún agente.
 - **Módulos por empresa (SL-23, 2026-10-26).** Cada empresa tiene un núcleo que nunca se apaga y 3
   módulos apagables (`lib/modulos/catalogo.ts`, enum `modulo_apagable`). Recolección, Bodegas
   satélite, API e integraciones y WhatsApp fueron apagables hasta el 2026-10-27, y Wallet hasta el

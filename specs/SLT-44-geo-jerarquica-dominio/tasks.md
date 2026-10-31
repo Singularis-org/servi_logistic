@@ -116,7 +116,7 @@
 
 ## T6 — Documentación (depende de T4)
 
-- [ ] **T6.1** [P] `docs/architecture.md > Multi-empresa > País por empresa > Geografía jerárquica`.
+- [x] **T6.1** [P] `docs/architecture.md > Multi-empresa > País por empresa > Geografía jerárquica`.
   Hoy dice «La app todavía no lee nada del modelo nuevo: las lecturas llegan con SLT-44». Pasa a
   describir:
   - el dominio puro;

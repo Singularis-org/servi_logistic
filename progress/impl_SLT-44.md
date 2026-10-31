@@ -140,3 +140,12 @@ Desviaciones:
 - La salida no imprime nombres de geografía ni mensajes de error, solo ids y flags.
 - No hay prueba de extremo a extremo de `compararEmpresa` con el cliente de solo lectura sobre datos confirmados;
   la barrera de solo lectura se prueba aparte.
+
+## Tanda 5 — T6.1
+
+`docs/architecture.md > Multi-empresa > País por empresa > Geografía jerárquica`: fuera la frase «La app todavía
+no lee nada del modelo nuevo…»; nueva viñeta «Lecturas sobre el árbol (SLT-44)»: dominio puro, catálogo por
+petición y empresa, las 11 lecturas que pasan, lo que sigue en tablas viejas hasta SLT-65 (escrituras hasta
+SLT-46), R12 (el lugar se lee de `distrito_id`), y `pnpm geo:equivalencia-dinero` (0/1/2, lo corre una persona
+sobre una copia de producción con SLT-43, ningún agente).
+- `node scripts/check-perfil.mjs`: «6/6 docs revisados en los ultimos 60 dias», exit 0.
