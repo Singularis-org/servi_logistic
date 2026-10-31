@@ -18,8 +18,11 @@
   2. Buscar con Grep en `dev` `CREATE OR REPLACE FUNCTION (cobro_plataforma_al_crear_orden|plan_de_la_empresa)`.
      Las últimas versiones tienen que ser las de `20261024120000` y `20261029150000` (design §13).
   3. Ver si el PR #51 (SLT-67) ya entró en `dev`.
+  4. Contar en QA, y en producción si hay acceso de lectura, las empresas con un plan asignado sin costo
+     base de forma «monto». Esto da el dato para cerrar P4.
 
-  *Hecho:* las tres respuestas quedan anotadas en `progress/impl_SLT-66.md`.
+  *Hecho:* las cuatro respuestas quedan anotadas en `progress/impl_SLT-66.md`, y el número del punto 4 se
+  le pasa al leader.
 - [ ] **T1 — M1 `20261031120000_plan_costeo_y_maestro_sin_tope`** (design §2.1, §2.4). Depende de T0.
   - `migration.sql` con la cabecera de borrado definitivo, y su `down.sql`.
   - `db/schema.prisma`: `Plan.costoPorOrden` y el comentario de `PlanTopeRol`.
@@ -95,9 +98,20 @@
   - `FuenteDelCosto` y `CosteoDelCiclo`, y `PlanConConsumo.costeo`, en `lib/types/consumo-plan.ts`.
 
   *Hecho:*
-  - `tests/unit/planes/costeo.test.ts` (R19, R20, R10) en verde;
+  - `tests/unit/planes/costeo.test.ts` (R19, R20, R10) en verde, también con la rama `por_definir`;
   - mutación 5 medida;
   - Grep sin `Number(` ni `parseFloat` sobre importes en el archivo.
+- [ ] **T18 [P] — Solo se asignan planes con costo concreto** (design §4.2.1, §7). Depende de T2.
+  - `lib/planes/costo-concreto.ts` (`tieneCostoConcreto`).
+  - La variante `plan_sin_costo` en `PlanResult` y en `VistaPreviaAsignacionResult`.
+  - En `PlanesService`: la regla en `asignar` (después de «mismo plan») y en `previsualizarAsignacion`,
+    y el filtro en `asignables`.
+  - Los dobles de `planes-service.test.ts` y `planes-service-inicio-ciclo.test.ts` (design §9.3).
+
+  *Hecho:*
+  - `tests/unit/services/planes-service-asignar-costo.test.ts` (R28, R29, R30) en verde;
+  - los dos archivos existentes en verde, con el diff solo en el doble;
+  - mutaciones 7 y 8 medidas.
 - [ ] **T9 — Lecturas con costeo** (design §4.3). Depende de T6 y T8.
   - `MiPlanRepository`: zod sin `uso.maestro`, con `costo_por_orden` y `costo_vigente`.
   - `PlanesRepository.planDeEmpresa`: `cobro_plataforma_tarifa_de`.
@@ -137,33 +151,66 @@
   - La nota «Estimado: …».
 
   *Hecho:*
-  - `tests/components/ConsumoDelPlanCosteo.test.tsx` (R18–R21, R10, R5) en verde;
+  - `tests/components/ConsumoDelPlanCosteo.test.tsx` (R18–R21, R10, R5) en verde, con la nota «precio
+    acordado para tu empresa» y la rama «por definir»;
   - `ConsumoDelPlan.test.tsx:26` y `MiPlanModule.test.tsx` actualizados (§9.3).
+- [ ] **T19 [P] — `PlanEmpresa`: el ancla, el rechazo y el aviso** (design §6.5). Depende de T18.
+  - `id="plan"` en la `section`.
+  - El texto de rechazo `plan_sin_costo`.
+  - El texto y el enlace cuando no hay planes asignables.
+  - El aviso «Plan sin costo base concreto».
+  - Las tablas de rechazos de `PlanForm` y `PlanDetalle`, si su `switch` lo exige.
+
+  *Hecho:* los casos de R28, R29, R20 y el ancla de `tests/components/PlanEmpresaSinCosto.test.tsx` en
+  verde.
 
 ## Tanda E — E2E, ayuda y cierre
 
-- [ ] **T14 — E2E** (design §9.2). Depende de T11 y T13.
-  - `e2e/planes-costeo.spec.ts`.
-  - La aserción de `e2e/planes-superadmin.spec.ts:262-263` pasa a «no aparece Maestro» (R5).
+- [ ] **T15 — «Empresas»: lectura del cobro vigente y del plan** (backend_dev; design §6.4; R31, R32).
+  Depende de T6.
+  - En `EmpresasPlataformaRepository`: `plan` y `cobroVigente` con una sola consulta `LATERAL`.
+  - En `EmpresaListada`: los dos campos nuevos.
+
+  *Hecho:* `tests/integration/db/empresas-plataforma-plan.test.ts` en verde, y
+  `empresas-plataforma-cobro.test.ts` en verde sin tocarlo.
+- [ ] **T20 — «Empresas»: pantalla** (frontend_dev; design §6.4; R31, R32). Depende de T15, T19 y T10.
+  - En `EmpresasModule`: la celda de cobro con «propio», «del plan» o «global».
+  - La columna «Plan» con «Asignar plan» o «Cambiar plan» hacia `#plan`.
+  - El enlace «Plan y módulos».
+  - Las filas de §9.3 que esto obliga a cambiar: `EmpresasModuleCobro.test.tsx`,
+    `empresas-page.test.tsx` y `e2e/_superadmin-fixture.ts:301`.
+
+  *Hecho:* `tests/components/EmpresasModulePlan.test.tsx` en verde, y los tres archivos existentes en
+  verde con el diff limitado a §9.3.
+- [ ] **T22 [P] — Opcional (R33): «Asignar a una empresa» desde el detalle del plan** (design §6.6).
+  Depende de T19.
+  - `[planId]/page.tsx` (empresas candidatas) y `PlanDetalle.tsx`.
+  - `planPreseleccionado` en `PlanEmpresa` y la `page.tsx` del detalle de empresa (`searchParams.plan`).
+
+  *Hecho:* en verde `tests/components/PlanDetalleAsignar.test.tsx` y el caso R33 de
+  `PlanEmpresaSinCosto.test.tsx`. Si el humano la descarta, se marca «no aplica» y nada más depende de
+  ella.
+- [ ] **T14 — E2E** (design §9.2). Depende de T11, T13 y T20.
+  - `e2e/planes-costeo.spec.ts`, con la asignación desde el listado de «Empresas».
+  - En `e2e/planes-superadmin.spec.ts`:
+    - `:262-263` pasa a «no aparece Maestro» (R5);
+    - `:169` crea el plan «Con monto» y con costo por orden (R28).
 
   *Hecho:*
-  - `pnpm exec playwright test e2e/planes-costeo.spec.ts` en verde (R26);
+  - `pnpm exec playwright test e2e/planes-costeo.spec.ts` en verde (R26, R31, R32);
   - `planes-superadmin.spec.ts` en verde;
+  - los E2E de SL-23 que usan el ayudante de `_superadmin-fixture.ts` siguen en verde;
   - el global queda como estaba (`afterAll`);
   - capturas en la salida del test.
-- [ ] **T15 — Solo si P3 se aprueba: «Empresas» con el escalón del plan** (design §6.4). Depende de T6.
-  - `EmpresasPlataformaRepository`, `EmpresaListada` y `EmpresasModule`.
-
-  *Hecho:* `tests/integration/db/empresas-plataforma-cobro.test.ts` y
-  `tests/components/EmpresasModuleCobro.test.tsx`, ampliados con la fuente `plan`, en verde. Si P3 no
-  se aprueba, se marca «no aplica» y se anota la deuda en `progress/impl_SLT-66.md`.
 - [ ] **T16 [P] — Ayuda.** `docs/ayuda/oficina/wallet-caja.md`: «un monto fijo por cada orden» pasa a
   explicar que el monto sale de la excepción, del plan o del valor general. Se actualiza `actualizado:`.
 
   *Hecho:* la guardia de ayuda está en verde.
 - [ ] **T17 — Cierre.**
   - `./init.sh` en verde.
-  - El mapa `R<n> → test` (R1–R27) en `progress/impl_SLT-66.md`, con las seis mutaciones medidas.
+  - El mapa `R<n> → test` (R1–R33) en `progress/impl_SLT-66.md`, con las ocho mutaciones medidas. Si T22
+    se descartó, R33 sale como «no aplica».
+  - P4 anotada como cerrada o abierta, con lo que decidió el humano.
   - R27: la lista exacta de tests de SL-24, SL-40 y SLT-58 tocados coincide con design §9.3.
 
   *Hecho:* el reviewer puede leer el mapa sin abrir el código.
@@ -231,3 +278,15 @@
 - `tests/components/EmpresasModuleCobro.test.tsx`
 - `e2e/planes-costeo.spec.ts`
 - `e2e/planes-superadmin.spec.ts`
+- `e2e/_superadmin-fixture.ts`
+- `lib/planes/costo-concreto.ts`
+- `app/(app)/plataforma/planes/[planId]/page.tsx`
+- `app/(app)/plataforma/empresas/[organizacionId]/page.tsx`
+- `tests/unit/services/planes-service-asignar-costo.test.ts`
+- `tests/unit/services/planes-service.test.ts`
+- `tests/unit/services/planes-service-inicio-ciclo.test.ts`
+- `tests/integration/db/empresas-plataforma-plan.test.ts`
+- `tests/integration/empresas-page.test.tsx`
+- `tests/components/EmpresasModulePlan.test.tsx`
+- `tests/components/PlanEmpresaSinCosto.test.tsx`
+- `tests/components/PlanDetalleAsignar.test.tsx`

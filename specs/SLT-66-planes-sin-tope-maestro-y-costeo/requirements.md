@@ -116,14 +116,23 @@
   - el total estimado del ciclo.
 
   El detalle de empresa del superadmin DEBE mostrar los mismos datos de esa empresa.
+
+  El costo por orden que se muestra es el que de verdad se cobra (P1, cerrada). Si sale de la excepción de
+  la empresa, «Mi plan» lo acompaña con la nota «precio acordado para tu empresa». Así el total cuadra con
+  la deuda de la wallet.
 - **R19** — El total estimado del ciclo DEBE ser `costo base mensual + órdenes del ciclo × costo por orden
   vigente`. Se calcula en decimal exacto, con dos decimales y sin coma flotante, y nunca aplica el
   descuento anual.
-- **R20** *(escrito sobre la propuesta de P2)* — Para «Mi plan» y el detalle de empresa:
-  - SI el plan no tiene precio, ENTONCES DEBEN contar el costo base como 0 y mostrar el total estimado.
-  - SI el costo base es negociable, ENTONCES NO DEBEN mostrar un total. En su lugar DEBEN mostrar el
-    subtotal de las órdenes (`órdenes del ciclo × costo por orden vigente`) y la nota de que el total
-    depende del costo base acordado.
+- **R20** *(enmienda del 2026-10-31; escrito sobre la propuesta de P4, sin cerrar)* — Desde R28, toda
+  asignación nueva lleva un plan con costo base mensual y costo por orden concretos, así que «Mi plan»
+  muestra siempre `base + órdenes × costo = total`. Hay un caso que R28 no cubre: un plan sin costo base
+  concreto que ya estaba asignado antes de esta ficha, o que se editó después de asignarse (R30). SI se da
+  ese caso, ENTONCES «Mi plan» y el detalle de empresa NO DEBEN inventar un total. DEBEN mostrar:
+  - «Costo base: por definir»;
+  - el subtotal de las órdenes (`órdenes del ciclo × costo por orden vigente`);
+  - la nota de que el total queda pendiente hasta que se concrete el costo base.
+
+  El detalle de empresa del superadmin DEBE marcar además el aviso «Plan sin costo base concreto».
 - **R21** — El costo base y el total estimado son solo informativos. Mostrar «Mi plan» o el detalle NO DEBE
   escribir nada en `cobro_plataforma_movimiento` ni en `wallet_movimiento`. La deuda de la wallet solo
   sube por los cargos de R12.
@@ -139,7 +148,50 @@
   - conserva lo escrito ante un error.
 - **R24** — El catálogo, el detalle del plan y el modal de asignación (primera asignación y cambio de plan)
   DEBEN mostrar el costo base y el costo por orden del plan. Si el plan no tiene costo por orden, DEBEN
-  mostrar el texto de «se aplica el valor global».
+  mostrar el texto de «se aplica el valor global». El modal solo ofrece planes asignables (R29).
+
+### Asignar solo planes con costo concreto (enmienda del 2026-10-31, P2)
+
+> *Plan con costo concreto*: su costo base tiene la forma «monto» (mensual, con o sin anual) y tiene costo
+> por orden. Un plan «sin precio», «negociable» o sin costo por orden no lo tiene.
+
+- **R28** — SI el superadmin asigna a una empresa, o cambia por, un plan sin costo concreto, ENTONCES
+  `asignar` y la vista previa de la primera asignación DEBEN responder `plan_sin_costo` sin escribir nada.
+  El texto es «Ese plan no tiene costo base y costo por orden concretos: crea un custom con sus precios
+  para asignarlo.». Hay una excepción: SI la empresa ya tiene ese mismo plan, ENTONCES la respuesta sigue
+  siendo `ok` sin cambio (SL-24 R13).
+- **R29** — La lista de planes asignables de una empresa NO DEBE incluir planes sin costo concreto. La usan
+  el modal de asignación y la acción de R33.
+- **R30** — Hay cosas que R28 NO DEBE cambiar:
+  - editar, programar o archivar un plan, aunque lo deje sin costo concreto;
+  - las asignaciones que ya existen;
+  - el acceso de una empresa sin plan, que sigue entrando y operando como hoy (SL-24 R14).
+
+  La migración no toca ninguna asignación.
+
+### Empresas: cobro vigente y asignación descubrible (enmienda del 2026-10-31, P3 y pedido del humano)
+
+- **R31** — La columna «Cobro por orden» del listado de «Empresas» DEBE mostrar, por empresa, el importe que
+  se cobraría hoy por una orden nueva (R12) y su fuente:
+  - «propio» si sale de la excepción;
+  - «del plan» si sale del plan;
+  - «global» si sale del valor global o no hay ninguno.
+
+  Fijar y quitar la excepción no cambian (SL-40 R5, R11).
+- **R32** — El listado de «Empresas» DEBE tener una columna «Plan», con el nombre del plan asignado o «Sin
+  plan», y en cada fila la acción «Asignar plan» (sin plan) o «Cambiar plan» (con plan).
+  - CUANDO el superadmin pulsa esa acción, el sistema DEBE llevarlo al bloque «Plan» del detalle de la
+    empresa, donde vive el flujo de asignación de SLT-58 con su modal.
+  - El enlace «Módulos» de cada fila DEBE pasar a «Plan y módulos». Su nombre accesible es «Plan y módulos
+    de {empresa}».
+- **R33** *(propuesta del `spec_author`, que el humano pidió como opcional)* — MIENTRAS un plan no esté
+  archivado y tenga costo concreto, su detalle DEBE ofrecer «Asignar a una empresa». Al elegir la empresa,
+  el sistema DEBE llevar al bloque «Plan» del detalle de esa empresa con el plan ya elegido. Las empresas
+  que se ofrecen son:
+  - para un plan público, las que no lo tienen ya;
+  - para un custom, solo su empresa, si aún no lo tiene.
+
+  Confirmar sigue siendo el flujo de SLT-58: modal, fecha en la primera asignación y avisos.
 
 ### Migración, no regresión y E2E
 
@@ -148,36 +200,35 @@
   negarse con un error claro si ya existen cargos o reversos de esa fuente.
 - **R26** — CUANDO corre el E2E de esta ficha, DEBE recorrer estos pasos y pasar en verde:
   1. el superadmin pone por pantalla un costo por orden de 100 en el plan de una empresa;
-  2. la empresa crea una orden;
-  3. la wallet de la empresa muestra la deuda con ese cargo de 100;
-  4. «Mi plan» muestra el total estimado del ciclo con esa orden.
+  2. el superadmin asigna ese plan desde la acción «Asignar plan» del listado de «Empresas» (R32);
+  3. el listado muestra el plan, y en «Cobro por orden», 100 «del plan» (R31);
+  4. la empresa crea una orden;
+  5. la wallet de la empresa muestra la deuda con ese cargo de 100;
+  6. «Mi plan» muestra el total estimado del ciclo con esa orden.
 - **R27** — Las suites de SL-24, SL-40 y SLT-58 DEBEN seguir en verde. Solo cambian los casos enumerados en
-  `design.md > §10.2`, y cada uno cambia solo por R1–R5 o por el texto «costo base» de R9. No entra ninguna
-  dependencia nueva.
+  `design.md > §9.3`, y cada uno cambia solo por una de estas causas:
+  - R1–R5;
+  - el texto «costo base» de R9;
+  - R28 (los planes que se asignan por servicio o por pantalla pasan a tener costo concreto);
+  - R32 (el rótulo «Plan y módulos»).
+
+  No entra ninguna dependencia nueva.
 
 ## Preguntas abiertas
 
-> Las abre `spec_author` el 2026-10-31. Cada una lleva una propuesta, y el spec está escrito sobre ella. El
-> humano las cierra al aprobar el spec (`spec_ready`).
+- **P4 (abierta el 2026-10-31 por `spec_author`) — ¿Qué se hace con las empresas que ya tienen asignado un
+  plan negociable o sin precio, o con un plan que se edite después hasta quedar así?** El código no lo
+  resuelve: R28 solo frena las asignaciones nuevas, y la decisión del humano solo cubre esa regla.
+  Desde `spec_author` no se puede saber cuántas hay en QA o en producción; T0 las cuenta.
 
-- **P1 — ¿Qué costo por orden muestra «Mi plan» si la empresa tiene una excepción de SL-40?** La tabla
-  dice «base + órdenes × costo», pero no aclara si el costo es el del plan o el que de verdad se cobra.
-  **Propuesta:** el vigente de R12, el que se cobra. Si hay excepción, «Mi plan» muestra ese importe con
-  la nota «acordado para tu empresa». Si el plan no tiene costo por orden, muestra el global con la nota
-  «valor general de la plataforma». Así el total estimado cuadra con la deuda de la wallet. El costo del
-  plan solo aparece en las pantallas del superadmin.
-- **P2 — ¿Qué total estimado se muestra con un costo base negociable o sin precio?** **Propuesta:**
-  - *Sin precio*: el costo base cuenta como 0 y el total es `órdenes × costo`. La línea dice «Costo base:
-    sin costo base».
-  - *Negociable*: no hay total, porque no hay número que sumar. Se muestra «Costo base: negociable», la
-  línea de órdenes (`N órdenes × costo = subtotal`) y la nota «El total depende del costo base
-  acordado».
-- **P3 — ¿La columna «Cobro por orden» de «Empresas» (SL-40 R10) muestra el escalón del plan?** Hoy
-  muestra «propio» o «global», y deriva la tarifa como `excepción ?? global ?? 0`. Con plan, ese valor deja
-  de ser el que se cobra. El Alcance no nombra esta pantalla. **Propuesta:** que entre. La columna deriva
-  `excepción ?? plan ?? global ?? 0` y gana la etiqueta «del plan». La tarea T15 de `tasks.md` solo se hace
-  si se aprueba. Si no, va como deuda: el listado mostraría la tarifa global a una empresa a la que se le
-  cobra la del plan.
+  **Propuesta, sobre la que está escrito R20:**
+  - no migrar ni desasignar nada;
+  - «Mi plan» muestra «Costo base: por definir», el subtotal de las órdenes y la nota de total pendiente;
+  - el superadmin ve el aviso «Plan sin costo base concreto» en el detalle de la empresa, y lo resuelve
+    asignándole un custom con precios.
+
+  Si el humano prefiere frenar también la edición que deja sin costo concreto a un plan asignado, sería un
+  requisito nuevo sobre `editar`. No se ha escrito.
 
 ## Decisiones cerradas (no reabrir)
 | Fecha | Pregunta | Decisión |
@@ -193,3 +244,8 @@
 | 2026-10-31 | ¿Un plan negociable puede tener costo por orden? | Sí, es opcional. El costo base puede ser «negociable» y el costo por orden se fija igual. Si se deja vacío, aplica el global. |
 | 2026-10-31 | ¿E2E? | Sí, uno. El superadmin pone 100 por orden en el plan, la empresa crea una orden, la wallet muestra el cargo de 100 y «Mi plan» muestra el total estimado. |
 | 2026-10-31 | ¿Quién edita y dónde se autoriza? | Heredado de SL-24/SLT-58: el superadmin edita en /plataforma/planes y la autorización se valida en el servicio. |
+| 2026-10-31 | P1: ¿qué costo por orden muestra «Mi plan» si hay excepción? | El que de verdad se cobra (R12). La excepción va con la nota «precio acordado para tu empresa», y el total cuadra con la wallet. |
+| 2026-10-31 | P2: ¿total con base negociable o sin precio? | No se muestra un total parcial. Para operar, la empresa tiene un plan con la negociación ya cerrada: no se puede asignar un plan sin costo base y costo por orden concretos (un «negociable» del catálogo se concreta en un custom con precios). «Mi plan» siempre muestra base + órdenes × costo = total. Una empresa sin plan sigue entrando como hoy. |
+| 2026-10-31 | P3: ¿la columna «Cobro por orden» de «Empresas» muestra el escalón del plan? | Sí, entra: muestra el valor que se cobra y su fuente (excepción, plan o global). |
+| 2026-10-31 | Asignar un plan no se encuentra desde el listado | El listado de «Empresas» gana la columna «Plan» y la acción «Asignar plan» / «Cambiar plan», que lleva al flujo de SLT-58. El enlace «Módulos» cambia a un rótulo que cubre plan y módulos. Desde el detalle del plan, «Asignar a una empresa» queda como propuesta opcional del `spec_author`. Con test de componente y en el E2E. |
+| 2026-10-31 | Choque con SLT-56/SLT-64 en `db/schema.prisma` | Aceptado por el humano al aprobar el spec. |
