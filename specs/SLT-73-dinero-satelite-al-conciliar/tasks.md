@@ -55,7 +55,7 @@
   tienda afectada ya cobró. No va al repo ningún dato de prod. Depende de T8.
   *Hecho:* el resultado está anotado en `progress/features/SLT-73.md` y se ha decidido si se
   despliega.
-- [ ] **T11 — Enmienda D12: dueño «por cobrar a satélites» y sexta cifra de la caja (R24–R27,
+- [x] **T11 — Enmienda D12: dueño «por cobrar a satélites» y sexta cifra de la caja (R24–R27,
   R30).** `backend_dev`. Aprobada por Carlos 2026-10-31 (D12–D14). Sin migración: la naturaleza es
   solo de TypeScript (design §2.9).
   Toca:

@@ -445,3 +445,118 @@ Siembra por el camino real: `aprobar` (central), `aprobar` + `asentarCierreDia` 
 
 **Veredicto:** T8 hecho y probado contra Postgres (5/5, 12 mutaciones con 1 superviviente equivalente). Queda para
 confirmar la desviación de los devengos posteriores del mensajero.
+
+## Tanda 5 — backend_dev: T11 (R24–R27, R30), enmienda D12–D14 (2026-10-31)
+
+Commit de código y tests: `db271ed7` sobre `hotfix/SLT-73-dinero-satelite-al-conciliar`. Sin migración ni
+`db/schema.prisma` (la naturaleza es solo de TypeScript, design §2.9). Sin `prisma generate`.
+
+### Archivos
+
+**Código (lib)**
+- `lib/types/wallet.ts`: `NaturalezaMovimiento` + `"por_cobrar_satelite"`; `MODO_COMPOSICION_CAJA_SEED` +
+  `"tres_tramos"`; `CajaResumenDTO` + `porCobrarSatelites`, `signoPorCobrarSatelites`,
+  `porcentajePorCobrarSatelites`, `deEmpresaEnCaja` (todo STRING salvo el signo).
+- `lib/utils/caja-tesoreria.ts`: las dos diferencias → `por_cobrar_satelite` (liquidez sigue `efectivo`);
+  `acumular` con dos cubetas nuevas, las cuatro ramas por dueño explícitas y `naturalezaNoContemplada(never)`;
+  `derivarCaja` con la sexta `derivarBalance(acc.egresosPorCobrarSatelite, acc.ingresosPorCobrarSatelite)` y la
+  identidad R27 en el comentario; `derivarReparto` de tres tramos (la lógica de antes renombrada a
+  `derivarRepartoDosBolsillos`, intacta).
+
+**Stubs `// T12` (UI, solo para que compile; los cierra frontend_dev en T12)**
+- `app/(app)/wallet/_components/BarraComposicionCaja.tsx`: `SEGMENTOS_POR_MODO.tres_tramos` = los dos segmentos
+  de `dos_bolsillos` (tiendas con `porcentajeTiendas` + empresa resto). Falta el tramo `por_cobrar`.
+- `app/(app)/wallet/_components/CajaResumenCard.tsx`: `BOLSILLO_EMPRESA.tres_tramos = EMPRESA_NEUTRO` (es el
+  valor del design; queda marcado para que T12 lo confirme). Falta el bloque `data-bolsillo="satelites"`.
+- `app/(app)/wallet/_components/wallet-labels.ts`: `CAJA_COMPOSICION_MENSAJE.tres_tramos = null`;
+  `DUENO_LABEL.por_cobrar_satelite = "Satélite"` (el provisional del design). Faltan rótulo y pistas del bloque y
+  `composicionCajaNombreAccesible` con tres tramos.
+- `app/(app)/wallet/_components/WalletLedger.tsx`: `DUENO_PUNTO.por_cobrar_satelite = "bg-muted-foreground"`.
+- `tests/components/CajaComposicionBarra.test.tsx`: el caso R20 excluye `tres_tramos`; «los CUATRO modos»
+  espera `tres_tramos: 2` (el stub); R26 de los mensajes espera `tres_tramos: null`. Los tres, marcados `// T12`.
+
+**Tests**
+- Guardias: `caja-clasificacion-459` (caso «⭑ SLT-73 (D12, R24/R26)» + contraprueba «como TERCEROS → rojo»),
+  `caja-derivaciones` (5 → 6; caso del orden `(egresos, ingresos)`; las dos únicas `.neg(` contadas),
+  `metrics-caja-naturaleza` (fuera del literal de `terceros`), `caja-composicion-exhaustiva` (cuatro naturalezas).
+- `tests/unit/utils/caja-tesoreria.test.ts`: bloques «SLT-73 R24/R25/R27/R30» (26 casos nuevos) + el vacío con
+  los cuatro campos; la lista de `terceros` sin las diferencias.
+- Identidad R27 (− P) en los conjuntos al azar: `caja-derivacion-457` (con anti-vacuidad: >100 con diferencia,
+  >20 sin ella), `caja-derivacion-459`, `caja-derivacion-461`, `caja-iva-aparte-sl39`; y sobre el libro entero en
+  `ajuste-caja-anulacion-461`, `caja-invariante-tiendas`, `wallet-anulacion-458` (integración).
+- R26 sobre filas reales: `invarianteR8` en `tests/integration/db/_fixtures/slt73-cierre-aprobable.ts`, usada por
+  casos nuevos en `slt73-marcar-asienta` (faltante 200, sobrante 300, cuadrado) y `slt73-corregir-diferencia`
+  (marca 18.000 → corrige 18.800 → 18.400).
+- Literales del dueño: `libro-kardex-468`, `wallet-movimiento-repository`, `wallet-service` (DTO completo).
+- Fixtures de `CajaResumenDTO` que señaló el typecheck (19 archivos): los cuatro campos en cero/`cero` y
+  `deEmpresaEnCaja` = su `deEmpresa`.
+
+### Decisiones
+- **`deEmpresaEnCaja` fuera de `tres_tramos` = `deEmpresa`.** El design solo lo define en `tres_tramos`
+  (`max(E − P, 0)`); con P ≤ 0 el tramo de la empresa de la barra de antes es E, así que se manda E. No cambia
+  ningún importe; es un campo de presentación.
+- **`porcentajePorCobrarSatelites = "0.00"` con P ≤ 0** (design §2.9.6).
+- **`E − P` y `100 − tiendas` como suma del opuesto (`.add(x.neg())`).** La guardia `caja-derivaciones` prohíbe
+  `.sub(`/`.minus(` en el módulo; el design dice que esas dos diferencias no son restas con signo de un balance.
+  Para que no sea una evasión muda, la guardia cuenta ahora exactamente dos `.neg(` y nombra las dos expresiones.
+- **`S = t + p + e`** con `t = max(T, 0)`, `e = max(E − P, 0)`; tiendas = `round2(t/S·100)`, por cobrar =
+  `min(round2(p/S·100), 100 − tiendas)`. Con P > 0 aplica en cualquier signo de E y T (caso E = −40, T = −10,
+  P = 30 → 0 / 100).
+
+### Mapa R → test (esta tanda)
+| R | Test |
+|---|---|
+| R24 | guardia `caja-clasificacion-459` › «⭑ SLT-73 (D12, R24/R26)» + contraprueba «⭑ SLT-73 (D12): … como TERCEROS → rojo»; `caja-tesoreria.test` › «R24: solo las dos diferencias son `por_cobrar_satelite`, y en efectivo» |
+| R25 | `caja-tesoreria.test` › «SLT-73 R25» (15 → "15.00"; + ingreso 5 → "10.00"; solo ingreso 20 → "-20.00"; ganancia/IVA/capital/«De las tiendas»/«De la empresa» sin cambio); guardia `caja-derivaciones` › «⭑ SLT-73 (R25/R27)» |
+| R26 | guardia 459 (estática) + `slt73-marcar-asienta` › «R26 (T11): tras marcar con faltante, con sobrante o cuadrado…» + `slt73-corregir-diferencia` › «R26 (T11): tras marcar con faltante y tras cada correccion…» (`deTerceros` = Σ saldos = 16.384,00) |
+| R27 | guardia `caja-derivaciones` (6 llamadas); `caja-tesoreria.test` › «SLT-73 R27» (5 conjuntos con y sin diferencias + literal); `caja-derivacion-457` (500 subconjuntos, con y sin diferencias) |
+| R30 | `caja-tesoreria.test` › «SLT-73 R30»: E=100/T=50/P=150 (caja 0); E=300/T=100/P=100 → 25/25/200; tercios; redondeo 12,35 + 87,65 (el tope); E y T negativos; P = 0 y P < 0 en los cuatro modos; P = 0 por compensación idéntico campo a campo |
+
+### Mutaciones (harness con autocomprobación: control verde, releer el texto mutado, abortar sin resumen, revertir con `git checkout --` + `git diff --quiet`)
+`scratchpad/t11/mut.py`; corre 2 unit + 2 guardias + 2 integración (base `servi_slt73` vía envoltorio).
+CONTROL: 109 passed (109).
+
+| Mutación | Rojos |
+|---|---|
+| M1 las dos diferencias como `terceros` | 18 (incl. guardia 459 D12 y los dos R26 de integración) |
+| M2 como `propio` | 19 |
+| M3 solo el egreso como `terceros` | 16 |
+| M4 quitar la rama `por_cobrar_satelite` de `acumular` (cae en capital) | 16 |
+| M5 invertir el signo de la sexta cifra | 21 |
+| M6 quitar el `min(…, 100 − tiendas)` | 2 |
+| M7 `tres_tramos` con P ≤ 0 (`porCobrar.lt(0)`) | 5 |
+| M8 base `E + T + P` (empresa sin restar P) | 5 |
+| M9 sumar P a `deEmpresa` | 10 |
+| M10 empresa en caja sin tope en 0 | 2 |
+| M11 tiendas sin `max(T, 0)` | 1 |
+
+11 mutaciones, 0 supervivientes; las 11 aplicadas, releídas y revertidas (`revertido=True`).
+
+### Verificación (salida real)
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: exit 0, 0 `error TS`.
+- `pnpm run lint`: exit 0, 0 errores (232 warnings preexistentes). `eslint` de los 43 archivos tocados: 0 errores,
+  1 warning preexistente (`DineroIdentidadesEnPantalla.test.tsx:541`, directiva sin uso).
+- `pnpm run test:guardias`: 317/318 archivos, 4441 passed / 4 failed / 1 skipped. Único rojo:
+  `dependencias-declaradas-presentes` (baseline). **`caja-clasificacion-459` VERDE.**
+- Unit tocados (`caja-tesoreria`, `caja-derivacion-457/459/461`, `caja-iva-aparte-sl39`, `CajaComposicionBarra`,
+  `libro-kardex-468`, `wallet-movimiento-repository`, `wallet-service`): 9 archivos, 214 passed (214).
+- `vitest run slt73-marcar-asienta + slt73-corregir-diferencia` (base `servi_slt73`): 15 passed (15), 0 skipped.
+- `vitest related --run` de los 6 fuentes, vía envoltorio: 461 archivos verdes; los 132 rojos son todos de
+  integración por base local vacía o paralelismo («faltan la zona central, cedula u orden», «referencia a otra
+  empresa», `Cannot read properties of undefined (reading 'prisma')` tras timeout de `beforeAll`, `Test timed out`).
+  Ningún rojo unitario ni de componente. Los de dinero (`caja-invariante-tiendas`, `ajuste-caja-anulacion-461`,
+  `wallet-anulacion-458`, `caja-caracterizacion-459`, `como-quedo`, `marca-conciliacion`, `corregir-conciliacion`,
+  `cierre-bodega-conciliacion`, `libro-kardex-468` int), corridos en serie: mismos motivos de base vacía, todos en
+  el baseline o ya anotados en las tandas 2-4.
+- Incidente: la primera pasada de `vitest related` salió SIN el envoltorio y tomó la `DATABASE_URL` de `.env`
+  (comprobado sin imprimirla: host local, no prod). Esa base no tiene las tablas (P2021); no escribió nada. Se
+  repitió con el envoltorio.
+
+### Desviaciones
+- `CajaComposicionBarra.test.tsx` es de frontend (T12), pero tres de sus casos recorren el seed de modos y se
+  rompían con `tres_tramos`; se ajustaron al stub con `// T12` en vez de dejarlos rojos.
+- Además de las guardias pedidas, `caja-composicion-exhaustiva` (control de no-vacuidad de naturalezas) y siete
+  tests de identidad R7 fuera de la lista se actualizaron a R27 (− P): sin eso quedaban rojos por diseño.
+
+**Veredicto:** T11 hecho: 459 en verde, R24–R27 y R30 cubiertos, 11 mutaciones sin supervivientes; la UI de los
+tres tramos y del bloque queda para T12 con los stubs listados arriba.
