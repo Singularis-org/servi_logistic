@@ -240,6 +240,10 @@ const RESUMEN_OK = {
     // SL-39 (R20): el IVA de la caja, STRING del servidor, y su signo.
     iva: "0.00",
     signoIva: "cero" as const,
+    porCobrarSatelites: "0.00",
+    signoPorCobrarSatelites: "cero" as const,
+    porcentajePorCobrarSatelites: "0.00",
+    deEmpresaEnCaja: "1500.00",
   },
   // Feature 231 (design §2.4): la composición viaja HERMANA del resumen, no anidada dentro —
   // por eso el barrido de STRING sobre `props.resumen` sigue afirmando lo mismo que hoy.

@@ -139,6 +139,10 @@ const RESUMEN: CajaResumenDTO = {
   flujoDesde: "2026-08-25",
   iva: "416.00",
   signoIva: "positivo",
+  porCobrarSatelites: "0.00",
+  signoPorCobrarSatelites: "cero",
+  porcentajePorCobrarSatelites: "0.00",
+  deEmpresaEnCaja: "2116.00",
 };
 
 const COMPOSICION: ComposicionGananciaDTO = {

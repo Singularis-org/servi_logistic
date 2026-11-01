@@ -16,6 +16,7 @@ import {
   aprobar,
   consolidar,
   filasDeLibros,
+  invarianteR8,
   marcarRecibido,
   sembrarCierreAprobable,
 } from "./_fixtures/slt73-cierre-aprobable";
@@ -200,6 +201,35 @@ describeSiHayBase("SLT-73 T4 — corregir escribe la variacion de la diferencia"
     const porAjuste = new Map(r.a.movs.map((m) => [m.origenId, m]));
     expect(porAjuste.get(marca.id)?.fechaMovimiento.getTime()).toBe(r.instanteMarca?.getTime());
     expect(porAjuste.get(correccion.id)?.fechaMovimiento.getTime()).toBe(r.instanteCorreccion?.getTime());
+  });
+
+  it("R26 (T11): tras marcar con faltante y tras cada correccion, «De las tiendas» de la caja = Σ saldos de las tiendas", async () => {
+    // Flujo real (sin ganancia de la satelite): esperado = 20.000,00 − 1.500,00 = 18.500,00.
+    //   marca 18.000   -> egreso 500   -> por cobrar 500
+    //   corrige 18.800 -> ingreso 800  -> por cobrar −300 (la central le debe a la satelite)
+    //   corrige 18.400 -> egreso 400   -> por cobrar 100
+    // «De las tiendas» y el saldo de la tienda se quedan en 16.384,00 en los tres momentos (D10, D12).
+    const r = await enTransaccionRevertida(prisma, async (tx) => {
+      await serializarEscriturasReales(tx);
+      const k = await sembrarCierreAprobable(tx, "bodega_satelite");
+      if ((await aprobar(k)) !== "ok") throw new Error("no se aprobo el cierre satelite");
+      const id = await consolidar(tx, k.adminSatelite);
+      const repo = new CierresBodegaAdminRepository(clienteConSavepoint(tx));
+      const marca = await marcarRecibido(tx, id, "18000.00", k.maestroId);
+      const trasMarca = await invarianteR8(tx, k.cierreId, id);
+      const c1 = await repo.corregirConciliacion({ id, montoRecibido: "18800.00", nota: null, actorUsuarioId: k.maestroId });
+      const trasC1 = await invarianteR8(tx, k.cierreId, id);
+      const c2 = await repo.corregirConciliacion({ id, montoRecibido: "18400.00", nota: null, actorUsuarioId: k.maestroId });
+      const trasC2 = await invarianteR8(tx, k.cierreId, id);
+      return { estados: [marca, c1, c2], momentos: [trasMarca, trasC1, trasC2] };
+    });
+    expect(r.estados).toEqual(["updated", "updated", "updated"]);
+    expect(r.momentos.map((m) => m.porCobrarSatelites)).toEqual(["500.00", "-300.00", "100.00"]);
+    for (const m of r.momentos) {
+      expect(m.filasTienda).toBe(5);
+      expect(m.saldoTiendas).toBe("16384.00");
+      expect(m.deTerceros).toBe("16384.00");
+    }
   });
 
   it("R13: corregir NO vuelve a asentar los cierres del dia (los asiento la marca)", async () => {

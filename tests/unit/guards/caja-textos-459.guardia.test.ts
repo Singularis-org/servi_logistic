@@ -140,6 +140,10 @@ const BASE: CajaResumenDTO = {
   flujoDesde: "2026-08-25",
   iva: "0.00", // SL-39
   signoIva: "cero" as const,
+  porCobrarSatelites: "0.00",
+  signoPorCobrarSatelites: "cero",
+  porcentajePorCobrarSatelites: "0.00",
+  deEmpresaEnCaja: "-4405636.53",
 };
 
 /** Texto + todos los nombres accesibles de lo pintado, en minúsculas. */

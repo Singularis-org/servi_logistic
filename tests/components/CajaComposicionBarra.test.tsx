@@ -58,6 +58,10 @@ const RESUMEN: CajaResumenDTO = {
   flujoDesde: "2026-08-25",
   iva: "0.00", // SL-39
   signoIva: "cero" as const,
+  porCobrarSatelites: "0.00",
+  signoPorCobrarSatelites: "cero",
+  porcentajePorCobrarSatelites: "0.00",
+  deEmpresaEnCaja: "2000.00",
 };
 
 /**
@@ -284,7 +288,10 @@ describe("BarraComposicionCaja — cuando la barra no se puede partir (R16/R18/R
   });
 
   it("R20: fuera de `dos_bolsillos` no hay dos segmentos ni porcentaje", () => {
-    const otros = MODO_COMPOSICION_CAJA_SEED.filter((m) => m !== "dos_bolsillos");
+    // T12 — SLT-73: `tres_tramos` SÍ parte la barra (en tres); su caso lo escribe frontend_dev en T12.
+    const otros = MODO_COMPOSICION_CAJA_SEED.filter(
+      (m) => m !== "dos_bolsillos" && m !== "tres_tramos",
+    );
     // Control de no-vacuidad: si el SEED se quedara con un solo modo, el bucle no miraría nada.
     expect(otros).toHaveLength(3);
 
@@ -323,6 +330,8 @@ describe("BarraComposicionCaja — cuando la barra no se puede partir (R16/R18/R
       solo_tiendas: 1,
       solo_empresa: 1,
       sin_reparto: 0,
+      // T12 — provisional de SLT-73 (backend, T11): el stub pinta dos segmentos; T12 lo deja en tres.
+      tres_tramos: 2,
     });
   });
 });
@@ -433,6 +442,8 @@ describe("Ficha 459 — la barra reparte «De las tiendas» y «De la empresa» 
         "Las tiendas le deben a la empresa, así que todo lo que hay en la caja es de la empresa y además hay dinero por cobrarles.",
       sin_reparto:
         "No hay nada que repartir: ni la empresa ni las tiendas tienen dinero a favor en la caja.",
+      // T12 — provisional de SLT-73 (backend, T11): el mensaje de `tres_tramos` lo escribe frontend_dev.
+      tres_tramos: null,
     });
   });
 });

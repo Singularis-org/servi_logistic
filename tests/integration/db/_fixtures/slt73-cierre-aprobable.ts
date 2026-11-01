@@ -20,6 +20,8 @@ import { WalletFeedService } from "@/lib/services/WalletFeedService";
 import { WalletIndemnizacionFeedService } from "@/lib/services/WalletIndemnizacionFeedService";
 import { WalletMensajeroFeedService } from "@/lib/services/WalletMensajeroFeedService";
 import { WalletTiendaFeedService } from "@/lib/services/WalletTiendaFeedService";
+import type { AgregadoCajaRow } from "@/lib/types/wallet";
+import { derivarCaja } from "@/lib/utils/caja-tesoreria";
 import { sinRetenidas } from "@/tests/fixtures/retenidas-doble";
 
 import { clienteConSavepoint, type TxDeTest } from "../_postgres-real";
@@ -356,4 +358,45 @@ export async function marcarRecibido(
       ? new CierresBodegaAdminRepository(c)
       : new CierresBodegaAdminRepository(c, asientos);
   return repo.marcarConciliado({ id: cierreBodegaId, montoRecibido, nota: null, actorUsuarioId });
+}
+
+/**
+ * SLT-73 · T11 · R26 — la invariante R8 de la 459 («De las tiendas» de la caja = Σ saldos de las
+ * tiendas) medida sobre las FILAS REALES de UN flujo: las de la caja del cierre y las de la diferencia
+ * de su consolidacion, agregadas por (categoria, tipo) y pasadas por `derivarCaja`; y los creditos
+ * menos los debitos del libro de las tiendas de ese cierre. Se acota al flujo del test (no a la
+ * organizacion) para que lo sembrado por otros tests en la base no lo contamine.
+ */
+export async function invarianteR8(tx: TxDeTest, cierreId: string, cierreBodegaId: string) {
+  const agregado = await tx.$queryRawUnsafe<AgregadoCajaRow[]>(
+    `SELECT w.categoria::text AS categoria, w.tipo::text AS tipo, SUM(w.monto)::text AS total
+       FROM wallet_movimiento w
+      WHERE (w.origen_tipo = 'cierre_dia' AND w.origen_id = $1)
+         OR (w.origen_tipo = 'conciliacion_bodega_ajuste' AND w.origen_id IN (
+               SELECT a.id FROM conciliacion_bodega_ajuste a WHERE a.cierre_bodega_id = $2))
+      GROUP BY w.categoria, w.tipo`,
+    cierreId,
+    cierreBodegaId,
+  );
+  const tienda = await tx.$queryRawUnsafe<{ tipo: string; monto: string }[]>(
+    `SELECT tipo::text, monto::text FROM wallet_tienda_movimiento
+      WHERE origen_tipo = 'cierre_dia' AND origen_id = $1`,
+    cierreId,
+  );
+  const saldoTiendas = tienda.reduce(
+    (acc, f) =>
+      f.tipo === "credito"
+        ? acc.add(new Prisma.Decimal(f.monto))
+        : acc.add(new Prisma.Decimal(f.monto).neg()),
+    new Prisma.Decimal(0),
+  );
+  const r = derivarCaja(agregado);
+  return {
+    filasCaja: agregado.length,
+    filasTienda: tienda.length,
+    deTerceros: r.deTerceros,
+    saldoTiendas: saldoTiendas.toFixed(2),
+    porCobrarSatelites: r.porCobrarSatelites,
+    ganancia: r.ganancia,
+  };
 }

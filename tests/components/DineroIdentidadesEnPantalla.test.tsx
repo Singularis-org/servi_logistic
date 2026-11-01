@@ -311,6 +311,10 @@ const CAJA_CON_CENTIMOS: CajaResumenDTO = {
   flujoDesde: "2026-08-25",
   iva: "0.00", // SL-39
   signoIva: "cero" as const,
+  porCobrarSatelites: "0.00",
+  signoPorCobrarSatelites: "cero",
+  porcentajePorCobrarSatelites: "0.00",
+  deEmpresaEnCaja: "3416.25",
 };
 
 /** El rótulo de la cifra principal en el estado del conjunto (literal: design §3.3). */

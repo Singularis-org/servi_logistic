@@ -226,6 +226,26 @@ describe("459 — guardia de la clasificacion de la caja y del libro de las tien
     expect(problemasDeClasificacion(comoEfectivo).length).toBeGreaterThan(0);
   });
 
+  it("⭑ SLT-73 (D12, R24/R26): las dos diferencias de la satélite son `por_cobrar_satelite` y efectivo, y no mueven «De las tiendas»", () => {
+    const diferencias = ["egreso_diferencia_satelite", "ingreso_diferencia_satelite"] as const;
+    for (const c of diferencias) {
+      expect(NATURALEZA_POR_CATEGORIA[c]).toBe("por_cobrar_satelite");
+      expect(LIQUIDEZ_POR_CATEGORIA[c]).toBe("efectivo");
+      expect(efectoEnDeLasTiendas(REALES, c)).toBe(0);
+      // Ningun concepto del libro de la tienda tiene una diferencia de la satélite como pareja: con
+      // D10 las tiendas conservan su crédito completo.
+      expect(
+        WALLET_TIENDA_MOVIMIENTO_CATEGORIA_SEED.filter((t) => CONTRAPARTIDA_EN_CAJA[t] === c),
+      ).toEqual([]);
+    }
+    // R24: ningun otro concepto de la caja tiene ese dueño.
+    expect(
+      WALLET_MOVIMIENTO_CATEGORIA_SEED.filter(
+        (c) => NATURALEZA_POR_CATEGORIA[c] === "por_cobrar_satelite",
+      ).sort(),
+    ).toEqual([...diferencias].sort());
+  });
+
   it("las parejas de los seis cargos son las del feed del cierre (MAPEO_CONCEPTO_TIENDA)", () => {
     // La tabla de la invariante no puede decir otra cosa que el feed que ESCRIBE los debitos.
     for (const concepto of WALLET_INGRESO_CONCEPTO_SEED) {
@@ -334,6 +354,27 @@ describe("459 — guardia de la clasificacion de la caja y del libro de las tien
       expect(LIQUIDEZ_POR_CATEGORIA.egreso_reverso_abono_tienda).toBe("efectivo");
       expect(efectoEnDeLasTiendas(REALES, "ingreso_abono_tienda")).toBe(1);
       expect(efectoEnDeLasTiendas(REALES, "egreso_reverso_abono_tienda")).toBe(-1);
+    });
+
+    it("⭑ SLT-73 (D12): las diferencias de la satélite como TERCEROS → rojo (la mutación que la enmienda deshace)", () => {
+      // Como `terceros` y efectivo, el egreso BAJARIA «De las tiendas» y el ingreso la SUBIRIA sin
+      // ningun asiento espejo en el libro de las tiendas: R8 de la 459 se rompe al conciliar con
+      // diferencia. Era la clasificacion de T1, antes de D12.
+      const comoTerceros: Tablas = {
+        ...REALES,
+        naturaleza: {
+          ...NATURALEZA_POR_CATEGORIA,
+          egreso_diferencia_satelite: "terceros",
+          ingreso_diferencia_satelite: "terceros",
+        },
+      };
+      const p = problemasDeClasificacion(comoTerceros);
+      expect(p).toContain(
+        "egreso_diferencia_satelite mueve «De las tiendas» y es pareja de 0 conceptos",
+      );
+      expect(p).toContain(
+        "ingreso_diferencia_satelite mueve «De las tiendas» y es pareja de 0 conceptos",
+      );
     });
 
     it("un cargo clasificado como EFECTIVO → rojo (el doble conteo de F2)", () => {

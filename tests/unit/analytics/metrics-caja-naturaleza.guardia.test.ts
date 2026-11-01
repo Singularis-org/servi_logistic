@@ -97,15 +97,14 @@ describe("R51 · las tres metricas de ingreso de la empresa no ven el dinero de 
       .sort();
     // Ficha 459: + el pago por cuenta de una tienda y su anulacion (dinero de las tiendas).
     // Ficha 457 (DH1): + el pago de una tienda a la empresa y su anulacion (tambien dinero de las tiendas).
-    // SLT-73 (design §1.2): + la diferencia de la satelite al conciliar (tesoreria).
+    // SLT-73 (design §2.9, D12): la diferencia de la satelite al conciliar NO es de terceros: tiene su
+    // propio dueño, `por_cobrar_satelite`. Las metricas de ingreso siguen sin verla, porque no es `propio`.
     expect(terceros).toEqual([
-      "egreso_diferencia_satelite",
       "egreso_pago_por_cuenta_tienda",
       "egreso_pago_tienda",
       "egreso_reverso_abono_tienda",
       "ingreso_abono_tienda",
       "ingreso_cod_recaudado",
-      "ingreso_diferencia_satelite",
       "ingreso_reverso_pago_por_cuenta_tienda",
       "ingreso_reverso_pago_tienda",
     ]);

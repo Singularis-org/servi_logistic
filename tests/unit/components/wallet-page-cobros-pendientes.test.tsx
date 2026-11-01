@@ -140,6 +140,10 @@ const RESUMEN_OK = {
     flujoDesde: "2026-08-25",
     iva: "0.00", // SL-39
     signoIva: "cero" as const,
+    porCobrarSatelites: "0.00",
+    signoPorCobrarSatelites: "cero" as const,
+    porcentajePorCobrarSatelites: "0.00",
+    deEmpresaEnCaja: "0.00",
   },
   composicion: {
     ingresos: {

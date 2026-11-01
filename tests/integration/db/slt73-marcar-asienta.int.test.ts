@@ -19,6 +19,7 @@ import {
   aprobar,
   consolidar,
   filasDeLibros,
+  invarianteR8,
   marcarRecibido,
   sembrarCierreAprobable,
 } from "./_fixtures/slt73-cierre-aprobable";
@@ -247,6 +248,33 @@ describeSiHayBase("SLT-73 T4 — marcar recibida asienta los cierres satelite", 
     expect(r.caja).toEqual([
       { tipo: "ingreso", categoria: "ingreso_diferencia_satelite", monto: "300.00" },
     ]);
+  });
+
+  it("R26 (T11): tras marcar con faltante, con sobrante o cuadrado, «De las tiendas» de la caja = Σ saldos de las tiendas (16.384,00)", async () => {
+    // Las cifras van ESCRITAS: COD 20.000,00 − comision 700,00 − flete 2.500,00 − IVA 91,00 − IVA
+    // 325,00 = 16.384,00, en la caja y en el libro de la tienda. La diferencia de la satelite va a
+    // «Por cobrar a satélites» y NO toca ese bolsillo (D12). Como `terceros`, el faltante lo bajaria a
+    // 16.184,00 y el sobrante lo subiria a 16.684,00 sin asiento espejo en la tienda.
+    const casos: [string, string][] = [
+      ["18000.00", "200.00"],
+      ["18500.00", "-300.00"],
+      ["18200.00", "0.00"],
+    ];
+    for (const [recibido, porCobrar] of casos) {
+      const r = await enTransaccionRevertida(prisma, async (tx) => {
+        await serializarEscriturasReales(tx);
+        const { k, cierreBodegaId } = await prepararSatelite(tx);
+        const res = await marcarRecibido(tx, cierreBodegaId, recibido, k.maestroId);
+        return { res, inv: await invarianteR8(tx, k.cierreId, cierreBodegaId) };
+      });
+      expect(r.res, recibido).toBe("updated");
+      // Anti-vacuidad: hay filas reales en los dos libros.
+      expect(r.inv.filasCaja, recibido).toBeGreaterThanOrEqual(7);
+      expect(r.inv.filasTienda, recibido).toBe(5);
+      expect(r.inv.saldoTiendas, recibido).toBe("16384.00");
+      expect(r.inv.deTerceros, recibido).toBe("16384.00");
+      expect(r.inv.porCobrarSatelites, recibido).toBe(porCobrar);
+    }
   });
 
   it("R12: si un feed falla, la marca entera revierte (ni marca, ni libros, ni ajuste, ni historial); reintentar asienta una vez", async () => {

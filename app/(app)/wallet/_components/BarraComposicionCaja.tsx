@@ -75,6 +75,12 @@ const SEGMENTOS_POR_MODO: Record<ModoComposicionCaja, readonly Segmento[]> = {
   solo_tiendas: [{ clave: "tiendas", color: "bg-warning", medida: "todo" }],
   solo_empresa: [{ clave: "empresa", color: "bg-muted-foreground", medida: "todo" }],
   sin_reparto: [],
+  // T12 — provisional de SLT-73 (backend, T11) solo para que compile: el tercer tramo «por cobrar»
+  // (`porcentajePorCobrarSatelites`) lo pinta frontend_dev en T12. Mientras, como `dos_bolsillos`.
+  tres_tramos: [
+    { clave: "tiendas", color: "bg-warning", medida: "porcentaje" },
+    { clave: "empresa", color: "bg-muted-foreground", medida: "resto" },
+  ],
 };
 
 export interface BarraComposicionCajaProps {

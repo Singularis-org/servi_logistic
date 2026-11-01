@@ -143,6 +143,8 @@ const BOLSILLO_EMPRESA: Record<ModoComposicionCaja, SuperficieEmpresa> = {
   dos_bolsillos: EMPRESA_NEUTRO,
   solo_empresa: EMPRESA_NEUTRO,
   sin_reparto: EMPRESA_NEUTRO,
+  // T12 — SLT-73 (design §2.9.8): `tres_tramos` va con la superficie neutra. Lo revisa frontend_dev.
+  tres_tramos: EMPRESA_NEUTRO,
   solo_tiendas: {
     superficie: "peligro",
     clase: "border-danger/30 bg-danger-soft dark:bg-danger/15",

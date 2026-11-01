@@ -270,6 +270,9 @@ export const CAJA_COMPOSICION_MENSAJE: Record<ModoComposicionCaja, string | null
   // R18 de la 231: nada que repartir. Ni se enuncia porcentaje ni se pinta segmento alguno.
   sin_reparto:
     `No hay nada que repartir: ni ${EMPRESA.enFrase} ni las tiendas tienen dinero a favor en la caja.`,
+  // T12 — provisional de SLT-73 (backend, T11) solo para que compile: el mensaje de `tres_tramos` lo
+  // escribe frontend_dev en T12 (design §2.9.8).
+  tres_tramos: null,
 };
 
 /**
@@ -394,6 +397,8 @@ export const DUENO_LABEL: Record<NaturalezaMovimiento, string> = {
   terceros: "Tienda",
   // Ficha 459 (design §5) — el saldo inicial y los aportes de capital.
   capital: `${EMPRESA.alInicio} (capital)`,
+  // T12 — SLT-73 (design §2.9.8, R29): rótulo provisional del diseño; lo cierra frontend_dev en T12.
+  por_cobrar_satelite: "Satélite",
 };
 
 export { ORIGEN_LABEL } from "@/lib/constants/wallet-rotulos";

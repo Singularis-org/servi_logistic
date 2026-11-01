@@ -109,11 +109,13 @@ export const NATURALEZA_POR_CATEGORIA: Record<WalletMovimientoCategoria, Natural
   // ella usa, como un sueldo. Como `terceros` no bajaria la ganancia y bajaria «De las tiendas», que
   // no tienen nada que ver con la plataforma.
   egreso_pago_plataforma: "propio",
-  // SLT-73 (design §1.2): la diferencia de la satélite al conciliar es TESORERÍA, como
-  // `ingreso_cod_recaudado`: es dinero de terceros que la satélite recaudó y no entregó (o entregó de
-  // más), no ganancia ni gasto de la empresa. La deuda de la satélite sigue abierta (R5).
-  egreso_diferencia_satelite: "terceros",
-  ingreso_diferencia_satelite: "terceros",
+  // SLT-73 (design §2.9, D12, R24): la diferencia de la satélite al conciliar va a su PROPIO bolsillo,
+  // «Por cobrar a satélites». No es ganancia ni gasto de la empresa, y tampoco «De las tiendas»: con
+  // D10 las tiendas conservan su crédito completo, así que como `terceros` rompería R8 de la 459 (la
+  // guardia `caja-clasificacion-459` lo pone rojo). El egreso (entregó de menos) SUBE el bolsillo y el
+  // ingreso (entregó de más, o el pago posterior por «Corregir») lo BAJA (R25).
+  egreso_diferencia_satelite: "por_cobrar_satelite",
+  ingreso_diferencia_satelite: "por_cobrar_satelite",
 };
 
 /**
@@ -207,7 +209,7 @@ export function esCategoriaIva(categoria: WalletMovimientoCategoria): categoria 
  *  - `reversosDeCargos` (ficha 461, design §2.2): los egresos con liquidez «cargo» —la anulacion de
  *    un cobro—. NO suman a `salidas` (no sale dinero, R22): le devuelven saldo a la tienda, asi que
  *    entran en «De las tiendas» como un ingreso (R23). Tambien suman a `egresosPropios`.
- *  - propio / terceros / capital: por dueño y tipo.
+ *  - propio / terceros / capital / por cobrar a satélites (SLT-73, D12): por dueño y tipo.
  *  - `ingresosIva` / `egresosIva` (SL-39, design §2.2): lo propio que es IVA va AQUI en lugar de a
  *    `ingresosPropios` / `egresosPropios`. A «Entro», «Salio», los cargos y sus reversos sigue
  *    sumando igual, porque eso lo decide la liquidez, que no cambia.
@@ -225,7 +227,18 @@ type Acumulado = {
   egresosTerceros: Prisma.Decimal;
   ingresosCapital: Prisma.Decimal;
   egresosCapital: Prisma.Decimal;
+  ingresosPorCobrarSatelite: Prisma.Decimal;
+  egresosPorCobrarSatelite: Prisma.Decimal;
 };
+
+/**
+ * SLT-73 (design §2.9.3) — cierre exhaustivo de las ramas por dueño. Antes de D12 el último `else`
+ * caía en el capital: una naturaleza nueva habría ido a parar ahí en silencio. Ahora las cuatro
+ * ramas son explícitas y una quinta naturaleza no compila.
+ */
+function naturalezaNoContemplada(dueno: never): never {
+  throw new Error(`Naturaleza de la caja sin cubeta: ${String(dueno)}`);
+}
 
 function acumular(filas: readonly AgregadoCajaRow[]): Acumulado {
   const acc: Acumulado = {
@@ -241,6 +254,8 @@ function acumular(filas: readonly AgregadoCajaRow[]): Acumulado {
     egresosTerceros: new Prisma.Decimal(0),
     ingresosCapital: new Prisma.Decimal(0),
     egresosCapital: new Prisma.Decimal(0),
+    ingresosPorCobrarSatelite: new Prisma.Decimal(0),
+    egresosPorCobrarSatelite: new Prisma.Decimal(0),
   };
 
   for (const fila of filas) {
@@ -258,7 +273,10 @@ function acumular(filas: readonly AgregadoCajaRow[]): Acumulado {
       if (dueno === "propio" && esIva) acc.ingresosIva = acc.ingresosIva.add(monto);
       else if (dueno === "propio") acc.ingresosPropios = acc.ingresosPropios.add(monto);
       else if (dueno === "terceros") acc.ingresosTerceros = acc.ingresosTerceros.add(monto);
-      else acc.ingresosCapital = acc.ingresosCapital.add(monto);
+      else if (dueno === "capital") acc.ingresosCapital = acc.ingresosCapital.add(monto);
+      else if (dueno === "por_cobrar_satelite") {
+        acc.ingresosPorCobrarSatelite = acc.ingresosPorCobrarSatelite.add(monto);
+      } else naturalezaNoContemplada(dueno);
     } else {
       // Ficha 461 (R22): un egreso «cargo» es el reverso de un cargo: no es dinero que salga.
       if (esCargo) acc.reversosDeCargos = acc.reversosDeCargos.add(monto);
@@ -266,7 +284,10 @@ function acumular(filas: readonly AgregadoCajaRow[]): Acumulado {
       if (dueno === "propio" && esIva) acc.egresosIva = acc.egresosIva.add(monto);
       else if (dueno === "propio") acc.egresosPropios = acc.egresosPropios.add(monto);
       else if (dueno === "terceros") acc.egresosTerceros = acc.egresosTerceros.add(monto);
-      else acc.egresosCapital = acc.egresosCapital.add(monto);
+      else if (dueno === "capital") acc.egresosCapital = acc.egresosCapital.add(monto);
+      else if (dueno === "por_cobrar_satelite") {
+        acc.egresosPorCobrarSatelite = acc.egresosPorCobrarSatelite.add(monto);
+      } else naturalezaNoContemplada(dueno);
     }
   }
 
@@ -287,8 +308,8 @@ function derivarIva(acc: Acumulado): WalletBalanceDTO {
 //
 // Todo lo que sigue son SUMAS POR CUBETA y UNA DIVISION sobre importes que `derivarBalance`
 // ya derivo. Ninguna resta con signo nueva: la guardia `caja-derivaciones.guardia.test.ts`
-// exige que este modulo llame a `derivarBalance` exactamente CINCO veces (cuatro de la ficha 459 y la del IVA de SL-39) y que no
-// declare por su cuenta ni el signo ni la resta.
+// exige que este modulo llame a `derivarBalance` exactamente SEIS veces (cuatro de la ficha 459, la del IVA de SL-39 y la
+// de «Por cobrar a satélites» de SLT-73) y que no declare por su cuenta ni el signo ni la resta.
 // ═════════════════════════════════════════════════════════════════════════════════════════
 
 /** Las dos porciones extremas de la barra, como STRING con la misma escala que el resto. */
@@ -313,7 +334,7 @@ const NADA_DE_LAS_TIENDAS = "0.00";
  * leyendo el campo `signo` del balance — que es la otra forma de acabar con dos definiciones
  * de «cuando una cifra es negativa».
  */
-function derivarReparto(
+function derivarRepartoDosBolsillos(
   enCaja: Prisma.Decimal,
   // Ficha 459 (R11, P2): «De la empresa» (ganancia + capital), no solo la ganancia. Las cuatro
   // ramas no cambian; en la 4 sigue valiendo `enCaja = O + T > 0` (identidad R7).
@@ -334,6 +355,67 @@ function derivarReparto(
       deTerceros.div(enCaja).mul(100).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP),
     ),
     modoComposicion: "dos_bolsillos",
+  };
+}
+
+/** Redondeo de un porcentaje de la barra: `ROUND_HALF_UP` a 2, el mismo de la rama `dos_bolsillos`. */
+function porcentajeDe(parte: Prisma.Decimal, total: Prisma.Decimal): Prisma.Decimal {
+  return parte.div(total).mul(100).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+}
+
+const CIEN = new Prisma.Decimal(100);
+const CERO = new Prisma.Decimal(0);
+
+type Reparto = {
+  porcentajeTiendas: string;
+  modoComposicion: ModoComposicionCaja;
+  porcentajePorCobrarSatelites: string;
+  deEmpresaEnCaja: string;
+};
+
+/**
+ * SLT-73 (design §2.9.6, D13, R30) — el reparto con el bolsillo «Por cobrar a satélites» (P).
+ *
+ *  - **P ≤ 0** → la lógica de antes (`derivarRepartoDosBolsillos`), SIN cambios: con P = 0 la salida
+ *    es idéntica, campo a campo, a la de antes de la ficha. Sigue siendo segura: en `dos_bolsillos`
+ *    `enCaja = E + T + |P| > 0`. Con P < 0 lo entregado de más cae en el resto (la empresa); la pista
+ *    del bloque (R28) ya dice que la central le debe a la satélite.
+ *  - **P > 0** → `tres_tramos`. La barra representa `E + T` (lo que habría en la caja si la satélite
+ *    hubiera entregado todo): tiendas `t = max(T, 0)`, por cobrar `p = P`, empresa en caja
+ *    `e = max(E − P, 0)`. Con `S = t + p + e > 0` (porque `p > 0`): tiendas = t/S, por cobrar =
+ *    `min(p/S, 100 − tiendas)` y la empresa es el RESTO. Cada tramo queda en 0–100, la suma es 100
+ *    por construcción y solo se divide por `S > 0`.
+ *
+ * `E − P` no es una resta con signo de un balance (esas son de `derivarBalance`, guardia
+ * `caja-derivaciones`): es la diferencia entre dos importes YA derivados para dimensionar un tramo,
+ * acotada por debajo a 0. Se escribe como suma del opuesto y la guardia cuenta ese único `.neg(`.
+ */
+function derivarReparto(
+  enCaja: Prisma.Decimal,
+  deEmpresa: Prisma.Decimal,
+  deTerceros: Prisma.Decimal,
+  porCobrar: Prisma.Decimal,
+): Reparto {
+  if (!porCobrar.gt(0)) {
+    return {
+      ...derivarRepartoDosBolsillos(enCaja, deEmpresa, deTerceros),
+      porcentajePorCobrarSatelites: NADA_DE_LAS_TIENDAS,
+      deEmpresaEnCaja: montoEscala2(deEmpresa),
+    };
+  }
+  const tiendas = Prisma.Decimal.max(deTerceros, CERO);
+  const empresaEnCaja = Prisma.Decimal.max(deEmpresa.add(porCobrar.neg()), CERO);
+  const base = tiendas.add(porCobrar).add(empresaEnCaja);
+  const porcentajeTiendas = porcentajeDe(tiendas, base);
+  const porcentajePorCobrar = Prisma.Decimal.min(
+    porcentajeDe(porCobrar, base),
+    CIEN.add(porcentajeTiendas.neg()),
+  );
+  return {
+    porcentajeTiendas: montoEscala2(porcentajeTiendas),
+    modoComposicion: "tres_tramos",
+    porcentajePorCobrarSatelites: montoEscala2(porcentajePorCobrar),
+    deEmpresaEnCaja: montoEscala2(empresaEnCaja),
   };
 }
 
@@ -372,7 +454,8 @@ export function derivarCaja(
 ): CajaResumenDTO {
   const acc = acumular(filas);
 
-  // Ficha 459 (design §2.2) — CUATRO restas con signo, todas de `derivarBalance` (SL-39 anade la quinta, la del IVA, abajo):
+  // Ficha 459 (design §2.2) — CUATRO restas con signo, todas de `derivarBalance` (SL-39 anade la quinta, la del IVA, y
+  // SLT-73 la sexta, «Por cobrar a satélites», abajo):
   //  · la cifra principal: Entro (sin los cargos, que no son efectivo: F2) − Salio (sin los
   //    reversos de cargos, que tampoco lo son: ficha 461, R22);
   //  · la ganancia, IDENTICA a la de antes: los cargos siguen siendo ingresos propios (R4);
@@ -394,6 +477,12 @@ export function derivarCaja(
   // IVA) y el IVA tiene la suya. Identidad R4: G + I + T + C = Entro − Salio, porque G + I es
   // exactamente la ganancia de antes de la ficha.
   const iva = derivarIva(acc);
+  // SLT-73 (design §2.9.4, D12, R25): la sexta resta, con el orden INVERTIDO a propósito para que el
+  // importe salga positivo cuando la satélite debe (egreso «entregó de menos» sube; ingreso baja).
+  // Identidad R27: G + I + T + C − P = Entro − Salio, porque P = egPS − ingPS y las dos filas son
+  // efectivo (suman a Salio / Entro):
+  //   G + I + T + C − P = (ing no-PS − cargos + ingPS) − (eg no-PS − rev + egPS) = Entro − Salio.
+  const porCobrar = derivarBalance(acc.egresosPorCobrarSatelite, acc.ingresosPorCobrarSatelite);
 
   // «De la empresa» (R11, P2) = ganancia + IVA + capital. Una SUMA, no una resta. SL-39 (R5): con el
   // IVA dentro vale lo mismo que antes, y la barra no se mueve.
@@ -402,7 +491,12 @@ export function derivarCaja(
     .add(new Prisma.Decimal(capital.balance));
   const deTerceros = new Prisma.Decimal(terceros.balance);
 
-  const reparto = derivarReparto(new Prisma.Decimal(caja.balance), deEmpresa, deTerceros);
+  const reparto = derivarReparto(
+    new Prisma.Decimal(caja.balance),
+    deEmpresa,
+    deTerceros,
+    new Prisma.Decimal(porCobrar.balance),
+  );
 
   return {
     entradas: caja.ingresos,
@@ -426,6 +520,10 @@ export function derivarCaja(
     flujoDesde: opciones.primerDia ?? null,
     iva: iva.balance,
     signoIva: iva.signo,
+    porCobrarSatelites: porCobrar.balance,
+    signoPorCobrarSatelites: porCobrar.signo,
+    porcentajePorCobrarSatelites: reparto.porcentajePorCobrarSatelites,
+    deEmpresaEnCaja: reparto.deEmpresaEnCaja,
   };
 }
 
