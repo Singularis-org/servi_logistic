@@ -262,22 +262,26 @@ describeSiHayBase("SLT-75 — migraciones contra Postgres (R7, R9-R12)", () => {
       await subir(tx);
 
       const filasTrasUp = await filasDeZonas(tx, zonas);
+      // El respaldo se lee DONDE ESTE, no donde deberia estar: si naciera en `public`, las
+      // aserciones de R10 tienen que caer por eso, no por un «no existe la tabla» del `SELECT`.
+      const esquemasRespaldo = await esquemasDelRespaldo(tx);
+      const esq = esquemasRespaldo[0] ?? "respaldo";
+      const tabla = `${esq}.slt75_zona_distrito_duplicado`;
       const respaldoTrasUp = await tx.$queryRawUnsafe<Array<Fila & { respaldado_at: Date }>>(
-        `SELECT id, zona_id, distrito_id, organizacion_id, respaldado_at FROM ${RESPALDO} ORDER BY id`,
+        `SELECT id, zona_id, distrito_id, organizacion_id, respaldado_at FROM ${tabla} ORDER BY id`,
       );
       const respaldoTotalTrasUp = respaldoTrasUp.length;
-      const esquemasRespaldo = await esquemasDelRespaldo(tx);
       const [priv] = await tx.$queryRawUnsafe<
         Array<{ uso_esquema: boolean; sel: boolean; ins: boolean }>
       >(
-        `SELECT has_schema_privilege('servi_app', 'respaldo', 'USAGE') AS uso_esquema,
-                has_table_privilege('servi_app', '${RESPALDO}', 'SELECT') AS sel,
-                has_table_privilege('servi_app', '${RESPALDO}', 'INSERT') AS ins`,
+        `SELECT has_schema_privilege('servi_app', '${esq}', 'USAGE') AS uso_esquema,
+                has_table_privilege('servi_app', '${tabla}', 'SELECT') AS sel,
+                has_table_privilege('servi_app', '${tabla}', 'INSERT') AS ins`,
       );
-      const selectComoApp = await servi_appSobreRespaldo(tx, `SELECT count(*) FROM ${RESPALDO}`);
+      const selectComoApp = await servi_appSobreRespaldo(tx, `SELECT count(*) FROM ${tabla}`);
       const insertComoApp = await servi_appSobreRespaldo(
         tx,
-        `INSERT INTO ${RESPALDO} (id) VALUES ('${randomUUID()}')`,
+        `INSERT INTO ${tabla} (id) VALUES ('${randomUUID()}')`,
       );
       const ordenTrasUp = await leerOrden();
       const indiceTrasUp = await indiceDef(tx);
