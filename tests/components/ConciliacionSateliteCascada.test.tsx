@@ -190,10 +190,13 @@ describe("SLT-73 R9 — la cuenta de cada consolidación en la conciliación", (
   it("R8 — la falta es la del SERVIDOR: un canario que no cuadra se pinta tal cual", async () => {
     // Si la pantalla restara en el cliente, aquí saldría ₡7.090,25 y no el canario.
     montar([{ ...RECIBIDA_POR_MENOS, faltaPorRecibir: "1234.56" }]);
+    // Primero la COLUMNA de la fila, con la cuenta aún cerrada: si no, la línea de la cuenta
+    // (que vive dentro de la misma tabla) taparía una resta hecha en la celda.
+    const tabla = await screen.findByRole("table");
+    expect(await within(tabla).findByText("₡1.234,56")).toBeInTheDocument();
+    expect(within(tabla).queryByText("₡7.090,25")).toBeNull();
     const cuenta = await abrirCuenta("15 sept");
     expect(importeTras(cuenta, "Falta por recibir")).toBe("₡1.234,56");
-    const fila = within(screen.getByRole("table")).getAllByText("₡1.234,56");
-    expect(fila.length).toBeGreaterThan(0);
   });
 
   it("la fila dice lo esperado (Para la central), lo recibido y la falta, y NO el efectivo", async () => {
