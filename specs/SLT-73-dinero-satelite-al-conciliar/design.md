@@ -295,6 +295,89 @@ filas, no el import.
 10. **Fixtures**: todo test que construye un `CajaResumenDTO` literal gana los dos campos. El
     typecheck los censa.
 
+### 2.10 Enmienda 2, D15: premios e incentivos del mensajero se quedan como están (R16)
+
+**Lo que ya existe (Grep/Read).**
+- **Premio del ranking**, `lib/services/PremioRankingDevengoService.ts`:
+  - `registrarPremio` (159-253) lo dispara una persona desde el podio congelado (no un cron ni la
+    aprobación; docstring 36-42). Resuelve el cierre del día del mensajero y exige `aprobado`.
+  - En una tx escribe el devengo `premio_ranking` (origen `cierre_dia` = ese cierre,
+    `premio_dia` = fecha del podio). La guarda es el único parcial (mensajero, día), con
+    `skipDuplicates`.
+  - Después escribe el egreso de caja con `caja.emitirEgresoPremio` (origen = la fila del podio,
+    `ranking_snapshot_fila`) y la acción `premio_ranking_registrado` en el historial de la fila.
+  - `anularPremio` (263-) escribe `ajuste_pago` (origen `cierre_dia`, mismo `premio_dia`) y
+    `reversarEgresoPremio` en la caja.
+  - **No toca `cierre_dia`**: el premio no está en `total_pago_mensajero`, así que no entra en la
+    deuda de R4.
+- **Incentivo**, `lib/services/IncentivoMensajeroService.ts`:
+  - `registrar` (49-112) se imputa al cierre aprobado más reciente del mensajero
+    (`cierreMasReciente`), bajo el candado `bloquearBeneficiario`.
+  - Escribe primero el egreso de caja con `caja.emitirEgreso` (origen `incentivo_mensajero` = el id
+    del incentivo, idempotente por `claveIdempotencia`) y después el devengo `incentivo` con ese
+    mismo `id` y origen `cierre_dia`.
+  - `anular` escribe `reverso_incentivo` (origen `incentivo_mensajero`) y su reverso de caja.
+- La migración C (`20261031140200`, T8) **excluye** esas filas: `categoria NOT IN
+  ('premio_ranking','incentivo') AND premio_dia IS NULL` (`progress/impl_SLT-73.md`, tanda 4).
+  Nada las vuelve a escribir al conciliar.
+
+**Decisión (D15, Carlos 2026-10-31): no se hace nada con ellos.**
+- Ni tabla nueva, ni diferidos, ni migración D.
+- La migración C conserva su exclusión tal cual: R16 la pide de forma explícita, y su test y su
+  mutación (M7 de la tanda 4) la cubren.
+- Al conciliar no se escribe ningún premio ni incentivo. El registro, la anulación y la pantalla
+  del ranking no cambian.
+
+### 2.11 Enmienda 2, D16: estado de cuenta de la bodega y tarjeta de `/cierres-admin` (R31–R35)
+
+**Lo que ya existe.**
+- `EstadoCuentaRepository.paginaDeBodega` (`lib/repositories/EstadoCuentaRepository.ts:259-300`)
+  arma el libro de la bodega con una UNION sobre `cierre_bodega`: «declarado» =
+  `cb.total_efectivo` al `solicitado_at` y «recibido» = `monto_recibido` al `conciliado_at`. Las
+  rechazadas quedan fuera.
+- `totalesDeBodega` (359-376) y `periodoDeBodega` (396-426) repiten `totalEfectivo`.
+- `wallet-caracterizacion-458` › «TB.6 R20–R22: la bodega Z» (línea 313) exige que ese pendiente
+  sea `saldoSinConciliar`. Hoy está rojo de verdad: 7000.00 contra 5500.00
+  (`progress/impl_SLT-73.md`, tanda 3).
+- La tarjeta `app/(app)/cierres-admin/_components/cierre-factura.tsx`:
+  - `ColumnaConciliacion` (610-660) ya pinta `faltaPorRecibir` del servidor (R8, `paraLaCentral`),
+    pero su docstring dice «con el efectivo INTEGRO»;
+  - `tests/components/DineroIdentidadesEnPantalla.test.tsx:830` afirma «recibido + falta = efectivo
+    declarado», con un fixture anterior a la ficha;
+  - la línea «Para la central» ya existe en la tarjeta (`cascadaCentral.paraLaCentral`).
+- La nota «Desmarcar no mueve dinero. La marca es informativa…» vive en
+  `components/shared/conciliacion/conciliacion-labels.ts:93-96`.
+
+**Cambio mínimo.**
+1. **Una sola fuente de los aportes.** Se extrae de `SaldosSatelitesRepository` (§2.7) el predicado
+   de los cierres que cuentan en la deuda (aprobados, `bodega_satelite`, zona) y el aporte
+   `paraLaCentral` por cierre. Queda como fragmento SQL compartido
+   (`lib/repositories/_shared/aporte-satelite-sql.ts`) y lo usan los dos repositorios. Si cada uno
+   escribiera su `WHERE`, divergirían en silencio.
+2. **`paginaDeBodega` (R31, R32)**:
+   - la rama «declarado» pasa a valer Σ aportes de los `cierre_dia` de esa consolidación (join por
+     `cierre_bodega_id`), no `total_efectivo`;
+   - se añade una tercera rama `tipo = 'sin_consolidar'` (origen `cierre_dia`), una fila por cierre
+     que cuenta en la deuda y no está en una consolidación no rechazada (Q11), fechada en
+     `cierre_dia.resuelto_at` y con su aporte;
+   - el corrido suma declarado y sin consolidar y resta recibido.
+3. **`totalesDeBodega` / `periodoDeBodega` (R33)**: misma fórmula. `totalesDeBodega` devuelve
+   `{ declarado, recibido }`. El campo `efectivo` cambia de nombre: lo hacen visible el typecheck
+   y sus lectores en `EstadoCuentaService`. El chip y el rótulo de `sin_consolidar` entran en el
+   diccionario total de `lib/utils/estado-cuenta-chips.ts`; la guardia
+   `estado-cuenta-chips-total` lo exige. La columna de descarga reutiliza el rótulo.
+4. **TB.6**: el fixture `tests/integration/db/_fixtures/wallet-458.ts` siembra los `cierre_dia`
+   aprobados de cada consolidación de la bodega Z (con SINPE, para que efectivo ≠ neto) y uno sin
+   consolidar. Los literales de «la bodega Z» se reescriben **a mano** y una afirmación nueva
+   compara el pendiente final con `saldoSinConciliar` de `SaldosSatelitesRepository`. El fixture
+   solo se arregla porque D16 define ahora la cifra; antes habría tapado la divergencia.
+5. **Tarjeta de `/cierres-admin` (R34)**: el docstring de `ColumnaConciliacion` dice «el neto para
+   la central íntegro». El test de `DineroIdentidadesEnPantalla:830` pasa a «recibido + falta =
+   Para la central», leído del DOM, con un fixture que lleva SINPE (efectivo ≠ para la central),
+   así que la identidad vieja daría rojo.
+6. **Nota (R35)**: `DESMARCAR_NO_MUEVE_DINERO_*` se renombra a `CONCILIACION_ASIENTA_*` con el texto
+   provisional de Q10. Sus lectores se censan con grep.
+
 ## 3. Autorización, multi-empresa y país
 
 - El guard `esAccesoTotal` va primero, sin cambio (R23).
@@ -331,6 +414,12 @@ filas, no el import.
    defecto de Q6; Carlos eligió el tercer tramo.
 10. **(D13) Tres tramos sobre la base `E + T + P`.** Descartada: cuenta P dos veces, porque P es
     parte del derecho de la empresa que no está en la caja. La base correcta es `E + T = enCaja + P`.
+11. **(D15) Retirar los premios e incentivos y diferirlos hasta conciliar**, con una tabla de
+    diferidos y una migración D. Descartada por Carlos: no los escribe la aprobación, sino una
+    persona después, así que no hay que hacer nada con ellos.
+12. **(D16) Rehacer el libro de la bodega por `cierre_dia` en vez de por consolidación.**
+    Descartada por grande: cambia fechas, orígenes y la descarga de todas las filas. La tercera
+    rama `sin_consolidar` da la misma cifra con una sola rama nueva.
 
 ## 5. Dependencias de terceros
 
@@ -359,7 +448,7 @@ WHERE donde vive»). Cada test debe crear sus propios datos y fallar si no los e
 | R13 | `tests/integration/db/slt73-corregir-diferencia.int.test.ts`: corregir 485 → 500 → 490 deja 3 filas de ajuste cuyo neto = esperado − 490 | recalcular sin `yaAsentado`; actualizar la fila previa |
 | R14 | `tests/integration/db/marca-conciliacion.int.test.ts`: **se reemplaza** el caso «R14 de la 431: no escribe libros» por «revertir con asientos → `con_asientos`, nada cambia», más el unit de servicio y de acción | quitar el conteo previo |
 | R15 | slt73-corregir: cada ajuste tiene `creado_por`, `evento`, `monto_esperado` y `monto_recibido` | |
-| R16–R19 | `tests/integration/db/slt73-migracion-retira-asientos.int.test.ts`: siembra central, satélite sin consolidar, satélite consolidado sin conciliar y satélite conciliado. Aplica up y verifica; aplica down y compara el blob de filas con lo de antes. Caso `liquidacion_pago` → aborta | quitar `conciliado_at IS NULL`; quitar `destino_tipo`; borrar por `origen_id` en vez de por `id` del respaldo; quitar el `RAISE` |
+| R16–R19 | `tests/integration/db/slt73-migracion-retira-asientos.int.test.ts`: siembra central, satélite sin consolidar, satélite consolidado sin conciliar y satélite conciliado. Aplica up y verifica; aplica down y compara el blob de filas con lo de antes. Caso `liquidacion_pago` → aborta. **R16/D15:** un premio, su compensación (`premio_dia`) y un incentivo del cierre retirado siguen en el libro tras el up | quitar `conciliado_at IS NULL`; quitar `destino_tipo`; borrar por `origen_id` en vez de por `id` del respaldo; quitar el `RAISE`; quitar la exclusión `premio_ranking`/`incentivo`/`premio_dia` (M7) |
 | R20 | slt73-marcar-asienta: tras la migración, marcar re-escribe las filas | |
 | R21 | guardia `organizacion-en-modelos` + int de RLS de la tabla nueva | |
 | R22 | slt73-marcar-asienta: `fecha_movimiento` ≥ instante de la marca | pasar `fechaMovimiento` de la aprobación |
@@ -371,6 +460,11 @@ WHERE donde vive»). Cada test debe crear sus propios datos y fallar si no los e
 | R28 | `tests/components/CajaPorCobrarSatelitesSLT73.test.tsx` (nuevo): lee el bloque por su `aria-label`, el importe tal cual del DTO, la pista positiva y la negativa; el bloque no está dentro de `data-bolsillo="empresa"`; **con `porCobrarSatelites: "0.00"` el bloque está y muestra ₡0** (D14), en estado «flujo» y en «saldo» | pintarlo como región de la empresa; elegir la pista en el cliente comparando importes; ocultarlo con importe cero |
 | R29 | `tests/unit/components/wallet-ledger-dueno.test.tsx` y `tests/unit/components/wallet-labels.test.ts` (ampliados): fila de diferencia → dueño «Satélite» en la tabla y en la descarga | reutilizar el rótulo de `terceros` |
 | R30 | `tests/unit/utils/caja-tesoreria.test.ts` (unit de `derivarCaja`):<br>• E = 100, T = 50, P = 150 (`enCaja` = 0) → `tres_tramos`, sin excepción, cada porcentaje en 0–100 y tiendas + por cobrar ≤ 100;<br>• E = 300, T = 100, P = 100 → tiendas "25.00", por cobrar "25.00", `deEmpresaEnCaja` "200.00";<br>• tres tercios (E = 2, T = 1, P = 1) → la suma no pasa de 100 con el redondeo;<br>• P = 0 y P < 0 → la salida es igual, campo a campo, a la de hoy (los casos existentes de los cuatro modos, intactos).<br>Más `tests/components/CajaComposicionBarra.test.tsx` (ampliado): en `tres_tramos` hay 3 segmentos, los anchos son los STRING del DTO y el nombre accesible lleva los tres importes | quitar el `min(…, 100 − tiendas)`; base `E + T + P` en vez de `E − P`; dividir con `S` sin la guarda; tomar `tres_tramos` con P ≤ 0 |
+| R31 | `tests/integration/db/wallet-caracterizacion-458.test.ts` › «TB.6 R20–R22: la bodega Z» (reescrito a mano) + afirmación nueva: el pendiente final = `saldoSinConciliar` de la zona | volver a `total_efectivo`; omitir la rama `sin_consolidar` |
+| R32 | mismo test: filas `declarado` con el neto (fixture con SINPE) y una fila `sin_consolidar` fechada en `resuelto_at` | sumar `total_efectivo` en `declarado`; incluir cierres de una consolidación no rechazada en `sin_consolidar` (doble conteo) |
+| R33 | `tests/integration/db/estado-cuenta-saldo-corrido.test.ts` (ampliado): `totalesDeBodega` y `periodoDeBodega` = la página; guardia `estado-cuenta-chips-total` con `sin_consolidar` | dejar `totalEfectivo` en uno de los dos |
+| R34 | `tests/components/DineroIdentidadesEnPantalla.test.tsx:830` (reescrito): recibido + falta = «Para la central» leído del DOM, con SINPE en el fixture | volver a comparar con «Efectivo» |
+| R35 | los tests que hoy leen la nota (se censan con grep de `DESMARCAR_NO_MUEVE_DINERO` en `tests/`; si no hay ninguno, uno nuevo `tests/components/ConciliacionNotaSLT73.test.tsx`): el DOM no contiene «no mueve dinero» ni «informativa» y sí el texto nuevo | restaurar la constante vieja |
 
 Los tests existentes que afirman que aprobar un **satélite** escribe en la caja se ajustan; los de
 central no se tocan. El implementer los censa en T3.

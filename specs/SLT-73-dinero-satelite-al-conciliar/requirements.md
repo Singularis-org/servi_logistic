@@ -49,6 +49,8 @@ satélite al día, por dos causas: su pendiente es Σ(`total_efectivo` − `mont
 | D12 | La diferencia de la satélite (D10) NO es ganancia de la empresa ni dinero «De las tiendas»: va a un **bolsillo nuevo de la caja, «Por cobrar a satélites»**. Cuando la satélite paga la diferencia (ingreso), el bolsillo baja. Motivo: clasificada como `terceros` rompe la invariante R8 de la 459 («De las tiendas» = Σ saldos de las tiendas), porque con D10 las tiendas conservan su crédito completo. | Carlos, 2026-10-31 | R24–R30 (enmienda aprobada por Carlos 2026-10-31) |
 | D13 | Q6: la barra de composición gana un **tercer tramo, «Por cobrar a satélites»**. No se resta de la empresa. | Carlos, 2026-10-31 | R30 |
 | D14 | Q7: el bloque «Por cobrar a satélites» se muestra **siempre**, también con ₡0. | Carlos, 2026-10-31 | R28 |
+| D15 | Premios e incentivos no se tocan: los registra una persona después, no la aprobación. T8 los deja en su libro (`premio_ranking`, `incentivo`, filas con `premio_dia`). Carlos había pedido retirarlos y lo revocó al ver ese hallazgo: «entonces no hay que hacer nada con ellos». | Carlos, 2026-10-31 | R16 |
+| D16 | Dentro del hotfix se alinean con la deuda nueva (R4/R5) el estado de cuenta de la bodega (458, «Pendiente de llegar») y la tarjeta «Conciliación» de `/cierres-admin`, cuya nota «Desmarcar no mueve dinero» ya es falsa. | Carlos, 2026-10-31 | R31–R35 (enmienda 2) |
 
 **Nota sobre D7: el dato que ya existe.**
 - `db/schema.prisma:1598`: `CierreDia.totalIngresoBodegaRechazos`, «snapshot total del ingreso de
@@ -148,7 +150,10 @@ Las cinco son dinero y esperan. No son dinero, y siguen al aprobar:
 - **R16.** CUANDO se aplica la migración, el sistema DEBE retirar de los tres libros las filas con
   origen `cierre_dia` de los cierres que cumplan dos condiciones: destino `bodega_satelite` en
   `aprobado`, y sin consolidar o con su consolidación sin conciliar. Cada fila retirada se conserva
-  íntegra en un respaldo.
+  íntegra en un respaldo. Del libro del mensajero NO DEBE retirar los premios del ranking
+  (`premio_ranking`), los incentivos (`incentivo`) ni ninguna fila con `premio_dia` (la
+  compensación de un premio anulado): no los escribe la aprobación, así que se quedan en su libro
+  (D15).
 - **R17.** La migración NO DEBE tocar las filas de cierres con destino `bodega_central` ni las de
   cierres satélite cuya consolidación esté conciliada.
 - **R18.** SI alguno de los cierres de R16 tiene un pago al mensajero registrado contra él
@@ -204,6 +209,28 @@ Las cinco son dinero y esperan. No son dinero, y siguen al aprobar:
   DEBEN sumar 100 % y el cálculo NO DEBE dividir por cero. Con el bolsillo en cero o negativo, la
   barra DEBE comportarse exactamente como antes de esta ficha.
 
+### G. Estado de cuenta de la bodega y tarjeta de `/cierres-admin` (enmienda 2, D16)
+
+> **Enmienda 2 del 2026-10-31. Aprobada por Carlos 2026-10-31** (D16). D15 no añade requisitos:
+> los premios y los incentivos no se tocan (ver la tabla de decisiones y R16).
+
+- **R31.** El sistema DEBE calcular el pendiente del estado de cuenta de una bodega satélite
+  (`/wallet/satelites/[zonaId]`, ficha 458) con la fórmula de R5. Sin filtros, el saldo corrido
+  final y el «Pendiente de llegar» DEBEN ser iguales a la deuda de esa zona en `/wallet/satelites`.
+- **R32.** MIENTRAS se muestra el estado de cuenta de una bodega, el sistema DEBE mostrar como
+  «declarado» de cada consolidación su neto para la central: la suma de los aportes (R4) de sus
+  cierres, no el efectivo. Además DEBE mostrar una fila por cada `cierre_dia` aprobado de la zona
+  que cuenta en la deuda (R5) y no pertenece a una consolidación no rechazada, fechada en su
+  aprobación y con su aporte.
+- **R33.** El sistema DEBE dar las mismas cifras que R31/R32 en los totales del estado de cuenta,
+  en los totales del periodo y en su descarga.
+- **R34.** MIENTRAS se muestra la región «Conciliación» de un cierre de bodega en `/cierres-admin`,
+  lo recibido + lo que falta DEBE ser igual a la línea «Para la central» de la misma tarjeta, y
+  ningún texto de esa región DEBE decir que la falta se cuenta sobre el efectivo.
+- **R35.** El sistema NO DEBE mostrar en ninguna superficie de la conciliación que desmarcar no
+  mueve dinero ni que la marca es informativa. DEBE decir que marcar recibido asienta el dinero en
+  la caja y que, después, el monto se arregla con «Corregir» (R13, R14). *(Texto: Q10.)*
+
 ## Preguntas abiertas
 
 - **Q1 — CERRADA (D10): opción A.** Cuando se recibe menos, ¿cómo se reparte lo recibido entre los movimientos? D5
@@ -242,5 +269,11 @@ Las cinco son dinero y esperan. No son dinero, y siguen al aprobar:
 - **Q6 — CERRADA (D13): tercer tramo en la barra.** Restar lo por cobrar del tramo de la empresa
   queda descartado. Cómo se calcula: `design.md §2.9`.
 - **Q7 — CERRADA (D14): el bloque se muestra siempre**, también con ₡0.
+- **Q10 (enmienda 2) Texto de la nota de la conciliación (R35).** Propuesta provisional: «Marcar
+  recibido asienta el dinero en la caja. Después no se puede desmarcar: si el monto no es el
+  correcto, usa «Corregir»». Es texto de producto: lo fija Carlos.
+- **Q11 (enmienda 2, verificar en T13) Rechazar una consolidación.** No se determinó en el código si
+  rechazar una consolidación suelta sus cierres (`cierre_bodega_id`). R32 se escribe para que la fila
+  de cada cierre salga de la misma condición que usa R5, sea cual sea la respuesta.
 - **(No bloquea) Rótulos provisionales.** Carlos fijó «Por cobrar a satélites». Siguen siendo
   provisionales las pistas del bloque y el dueño de la fila en el libro («Satélite»).

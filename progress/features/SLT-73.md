@@ -51,6 +51,15 @@ Q1 y Q2 cerradas por Carlos el 2026-10-31 (D10 = opción A, D11 = bloquear rever
 - 2026-10-31 (Carlos), D12: la diferencia de la satélite NO resta de la ganancia ni de «De las tiendas»:
   va a un bolsillo nuevo de la caja «Por cobrar a satélites». Motivo: con `terceros` la guardia
   `caja-clasificacion-459` (R8: «De las tiendas» = Σ saldos de tiendas) queda roja. Enmienda al spec.
+- 2026-10-31 (Carlos): D12 aprobada; D13 tercer tramo en la barra; D14 bloque siempre visible.
+- 2026-10-31 (Carlos), D15: los premios/incentivos del mensajero colgados del cierre satélite
+  (`premio_ranking`, `incentivo`, `premio_dia`) también se retiran en T8 y deben volver al conciliar.
+  → REVOCADA el mismo día: al saber que los registra una persona después (no la aprobación), Carlos:
+  «entonces no hay que hacer nada con ellos». Se quedan como hoy; T8 no los retira.
+- 2026-10-31 (Carlos), D16: dentro del hotfix, alinear con la deuda nueva el estado de cuenta de la
+  bodega (458, «Pendiente de llegar») y la tarjeta «Conciliación» de /cierres-admin (nota
+  «Desmarcar no mueve dinero» ya falsa).
+- 2026-10-31 (Carlos): autoriza resetear la base LOCAL `servi_slt73` para repetir el gate.
 
 ## Tandas
 

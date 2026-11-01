@@ -96,9 +96,34 @@
   - `DineroIdentidadesEnPantalla.test.tsx` y `wallet-page.test.tsx` siguen verdes;
   - verificado en el navegador: tras conciliar con faltante, el bloque muestra el faltante y «De
     las tiendas» no se mueve.
+- [ ] **T13 [P] — Enmienda 2, D16: estado de cuenta de la bodega (R31–R33).** `backend_dev`.
+  Aprobada por Carlos 2026-10-31. Depende de T6. Lo primero es verificar si rechazar una
+  consolidación suelta sus cierres (Q11) y anotarlo en la bitácora.
+  D15 no tiene tarea: premios e incentivos no se tocan, y la exclusión de T8 ya está hecha y probada
+  (R16).
+  - `aporte-satelite-sql.ts`, compartido con `SaldosSatelitesRepository`.
+  - En `EstadoCuentaRepository`: `paginaDeBodega` (declarado neto y rama `sin_consolidar`),
+    `totalesDeBodega` (`efectivo` → `declarado`) y `periodoDeBodega`.
+  - `EstadoCuentaService`, el chip y el rótulo en `estado-cuenta-chips`, y la columna de descarga.
+  - El fixture `wallet-458` siembra `cierre_dia` con SINPE, y TB.6 «la bodega Z» se reescribe a
+    mano, con la afirmación de igualdad con `saldoSinConciliar`.
+
+  *Hecho:* `wallet-caracterizacion-458` (TB.6) y `estado-cuenta-saldo-corrido` verdes contra
+  Postgres. La guardia `estado-cuenta-chips-total` está verde y las mutaciones R31–R33 mueren.
+  Si TB.6 está en `tests/baseline-rojos.json` por entorno, se corre en una base con datos y se
+  anota la salida real.
+- [ ] **T14 [P] — Enmienda 2, D16: tarjeta de `/cierres-admin` y nota de la conciliación (R34,
+  R35).** `frontend_dev`. Depende de —.
+  - Docstring de `ColumnaConciliacion`.
+  - `DineroIdentidadesEnPantalla:830` contra «Para la central», con un fixture que lleve SINPE.
+  - En `conciliacion-labels.ts`, la constante renombrada con el texto provisional de Q10; los
+    lectores se censan con grep.
+
+  *Hecho:* los tests R34 y R35 están verdes, las mutaciones mueren y se verifica en el navegador
+  que la nota ya no dice «no mueve dinero».
 - [ ] **T10 — Gate y cierre.** Entrega `./init.sh` verde, el mapa R→test en
   `progress/impl_SLT-73.md` y los supervivientes de mutación a 0, con autocomprobación de que cada
-  mutación se ejecutó. Depende de T3–T8, T11 y T12.
+  mutación se ejecutó. Depende de T3–T8 y T11–T14.
 
 ## Archivos esperados
 
@@ -160,5 +185,15 @@
 - `tests/components/CajaPorCobrarSatelitesSLT73.test.tsx`
 - `tests/components/DineroIdentidadesEnPantalla.test.tsx`
 - `tests/integration/wallet-page.test.tsx`
+- `lib/repositories/_shared/aporte-satelite-sql.ts`
+- `lib/repositories/EstadoCuentaRepository.ts`
+- `lib/interfaces/repositories/IEstadoCuentaRepository.ts`
+- `lib/services/EstadoCuentaService.ts`
+- `lib/utils/estado-cuenta-chips.ts`
+- `app/(app)/cierres-admin/_components/cierre-factura.tsx`
+- `tests/integration/db/wallet-caracterizacion-458.test.ts`
+- `tests/integration/db/_fixtures/wallet-458.ts`
+- `tests/integration/db/estado-cuenta-saldo-corrido.test.ts`
+- `tests/components/ConciliacionNotaSLT73.test.tsx`
 - `progress/features/SLT-73.md`
 - `progress/impl_SLT-73.md`
