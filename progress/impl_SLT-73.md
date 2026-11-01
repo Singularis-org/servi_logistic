@@ -1027,3 +1027,112 @@ Supervivientes: **0**.
 **Veredicto:** T13 hecho y probado contra Postgres. El estado de cuenta de la bodega ya da la deuda de
 `/wallet/satelites`, con una sola fórmula compartida. Q11 = rechazar no suelta los cierres, y es compatible con
 R32. 0 supervivientes de 19 mutaciones. Queda para frontend_dev el rótulo de la fila «sin consolidar».
+
+## Tanda 10 — frontend_dev: T14 (R34, R35, enmienda 2, D16) (2026-10-31)
+
+Commit de código y tests: `e0391696`. No se tocó `lib/`. No hubo dev server ni `pnpm install`. MCP no usado (lo
+tocado vive en este worktree); Grep/Read.
+
+### Archivos
+
+- `app/(app)/cierres-admin/_components/cierre-factura.tsx`: docstrings de `ColumnaConciliacion` y de «Conciliado
+  por». Ahora dicen que la falta cuadra contra «Para la central». El código ya pintaba `faltaPorRecibir` del
+  servidor y no cambia.
+- `app/(app)/cierres-admin/_components/cierre-labels.ts`: docstrings de `RECIBIDO_LABEL` y `FALTA_POR_RECIBIR_LABEL`.
+- `components/shared/conciliacion/conciliacion-labels.ts`: `DESMARCAR_NO_MUEVE_DINERO_*` pasa a
+  `CONCILIACION_ASIENTA_TITULO` + `CONCILIACION_ASIENTA_NOTA`, con el texto de Q10 literal. Es una sola fuente para
+  todas las superficies.
+- Lectores censados con grep (las dos superficies de la nota), con sus comentarios al día:
+  - `ConciliacionSatelite.tsx`: el pie del desglose;
+  - `ConciliacionAcciones.tsx`: la confirmación de «Desmarcar», compartida con `/cierres-admin`.
+- `app/(app)/wallet/satelites/_components/EstadoCuentaSatelite.tsx`: `CONCEPTO_BODEGA` gana `sin_consolidar`. La
+  descarga toma de ahí el concepto (`lineaDeFila` → `filaBaseCuenta`).
+- `app/(app)/wallet/satelites/_components/satelites-labels.ts`: `ESTADO_CUENTA_BODEGA_PAGINA.sinConsolidar` (nuevo) y
+  `descripcion` reescrita.
+- `components/shared/estado-cuenta/estado-cuenta-labels.ts`: solo el comentario de `CHIP_LABEL.sin_consolidar`. El
+  texto se revisó y se mantiene «Sin consolidar».
+- Tests:
+  - `tests/components/DineroIdentidadesEnPantalla.test.tsx`: el bloque B4-bis, reescrito. `BODEGA_INCOMPLETA` lleva
+    SINPE, pago y ganancia, con `paraLaCentral` 511838.37 ≠ efectivo 500000.17. `BODEGA_CABECERA.faltaPorRecibir`
+    vale 111838.37 (= «Para la central»).
+  - `tests/components/EstadoCuentaSatelite.test.tsx`: 3 casos nuevos.
+  - `tests/integration/wallet-satelites.test.tsx`: los 2 casos que leían la nota vieja.
+  - Guardia nueva `tests/unit/guards/slt73-nota-conciliacion.guardia.test.ts`.
+
+### Mapa R → test
+
+| R | Test |
+|---|---|
+| R34 | `DineroIdentidadesEnPantalla`:<br>• «⭑ SLT-73 R34 — monto recibido + falta por recibir = «Para la central» de la MISMA tarjeta, leído del DOM»<br>• «… la falta NO se cuenta sobre el efectivo ni sobre el total general»<br>• «… ningún texto de la región «Conciliación» habla del efectivo»<br>• «SIN MARCAR … falta «Para la central» ÍNTEGRO» |
+| R35 | `wallet-satelites`:<br>• «SLT-73 R35 — la nota del pie dice que marcar asienta el dinero…» (literal Q10 a mano)<br>• el caso del diálogo de «Desmarcar» (Q10 sí; «no mueve dinero» e «informativa» no)<br>Guardia `slt73-nota-conciliacion`: el código sin comentarios de `app/` y `components/` no contiene «Desmarcar no mueve dinero» ni «La marca es informativa». Incluye contraprueba y el literal de Q10. |
+| R32/R33 (pantalla) | `EstadoCuentaSatelite` › «SLT-73 R32/R33 — la fila del cierre aprobado sin consolidar»: rótulo, importe `-₡1.250,50`, misma etiqueta en la descarga y descripción literal |
+
+### Mutaciones
+
+Harness `scratchpad/t14/mut.py`, autocomprobado:
+- el CONTROL tiene que salir verde (94/94, 0 skipped);
+- el ancla aparece una sola vez, el texto mutado está en el archivo y el diff no queda vacío;
+- revierte con `git checkout --` y comprueba con `git diff --quiet`;
+- aborta si un run sale sin resumen o con 0 tests.
+
+La 1.ª pasada **mintió**: dio 7/7 supervivientes con 0 tests. La regex leía «Failed Tests 1 ⎯⎯» en vez del
+resumen. Arreglé la regex, añadí la guardia de 0 ejecutados y lo repetí todo.
+
+| Mutación | Rojos |
+|---|---|
+| M1a sin marcar, la falta = efectivo (cuadrar contra el efectivo) | 1 |
+| M1b marcada, la falta = efectivo | 2 |
+| M1c la región dice «Falta por recibir del efectivo» | 1 |
+| M2a nota vieja en el pie de `ConciliacionSatelite` | 2 |
+| M2b título viejo en la confirmación de «Desmarcar» | 2 |
+| M2c la constante vuelve al texto viejo | 4 |
+| M3 quitar el rótulo de `sin_consolidar` | 2 |
+
+Supervivientes: **0 de 7**.
+
+### Salida real
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: `TC_EXIT=0`, 0 `error TS`.
+- `pnpm run lint`: `✖ 232 problems (0 errors, 232 warnings)`, `LINT_EXIT=0`, los mismos de antes. En los archivos
+  tocados solo queda el aviso viejo `541:1 Unused eslint-disable` de `DineroIdentidadesEnPantalla`.
+- Los 4 tests tocados: `Test Files 4 passed (4)`, `Tests 92 passed (92)`.
+- `vitest related --run` de los 12 archivos del commit: `Test Files 195 passed (195)`, `Tests 2845 passed (2845)`.
+- `pnpm run test:guardias`: `Test Files 1 failed | 318 passed (319)`, `Tests 4 failed | 4447 passed | 1 skipped`. El
+  rojo es `dependencias-declaradas-presentes`, en el baseline desde el 2026-10-21.
+
+### Textos provisionales (los fija Carlos)
+
+- Nota de la conciliación (Q10, literal y sin punto final, como en el requirements): «Marcar recibido asienta el
+  dinero en la caja. Después no se puede desmarcar: si el monto no es el correcto, usa «Corregir»».
+- `ESTADO_CUENTA_BODEGA_PAGINA.sinConsolidar`: «Cierre aprobado sin consolidar».
+- `ESTADO_CUENTA_BODEGA_PAGINA.descripcion`: «Lo que la bodega tiene que entregar a la central por cada
+  consolidación y por cada cierre aprobado sin consolidar, y lo que llegó, con lo que tiene por entregar tras cada
+  movimiento».
+- `CHIP_LABEL.sin_consolidar`: «Sin consolidar» (lo puso backend; revisado, se mantiene).
+
+### Qué mirar en el navegador (implementer)
+
+1. `/cierres-admin` › tarjeta de un cierre de bodega con SINPE › «Ver detalles». En la región «Conciliación»,
+   recibido + falta = la línea «Para la central», no «Efectivo». Sin marcar, la falta es «Para la central» entera.
+2. `/wallet/satelites/[zonaId]`: el pie del desglose dice la nota de Q10 y no «Desmarcar no mueve dinero».
+3. «Desmarcar», en las dos pantallas: el diálogo lleva la nota de Q10.
+4. Estado de cuenta de una bodega con un cierre aprobado sin consolidar:
+   - la fila dice «Cierre aprobado sin consolidar», con su importe en «Declarado» (negativo si toca);
+   - el chip «Sin consolidar» la filtra;
+   - en la descarga, la columna «Concepto» lleva el mismo rótulo.
+5. La descripción de esa página.
+
+### Desviaciones
+
+- La nota son dos constantes de una sola fuente: `CONCILIACION_ASIENTA_TITULO`, en negrita, y `_NOTA`. Así lo dice
+  el design §2.11.6, y se mantiene el formato título + nota de las dos superficies.
+- El rótulo de la fila `declarado` sigue siendo «Consolidación declarada», porque R32 conserva la palabra
+  «declarado» para el neto.
+- `tests/fixtures/marca-conciliacion.ts > marcaSinConciliar(totalEfectivo)` conserva el nombre de su parámetro. En
+  el doble de la tarjeta se le pasa «Para la central». Renombrarlo tocaría 18 archivos ajenos.
+- ABIERTO (producto): la confirmación de «Desmarcar» sigue existiendo para una marca sin asientos (R14) y ahora dice
+  «Después no se puede desmarcar». Con asientos, la acción ya se rechaza (aviso de T7). Si Carlos quiere otro texto
+  en ese diálogo, se decide en Q10.
+
+**Veredicto:** T14 hecho. La tarjeta cuadra contra «Para la central», la nota de Q10 está en las dos superficies y
+la fila «sin consolidar» tiene rótulo en pantalla y en la descarga. 0 supervivientes de 7 mutaciones.

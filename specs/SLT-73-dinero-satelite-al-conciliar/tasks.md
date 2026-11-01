@@ -112,7 +112,7 @@
   Postgres. La guardia `estado-cuenta-chips-total` está verde y las mutaciones R31–R33 mueren.
   Si TB.6 está en `tests/baseline-rojos.json` por entorno, se corre en una base con datos y se
   anota la salida real.
-- [ ] **T14 [P] — Enmienda 2, D16: tarjeta de `/cierres-admin` y nota de la conciliación (R34,
+- [x] **T14 [P] — Enmienda 2, D16: tarjeta de `/cierres-admin` y nota de la conciliación (R34,
   R35).** `frontend_dev`. Depende de —.
   - Docstring de `ColumnaConciliacion`.
   - `DineroIdentidadesEnPantalla:830` contra «Para la central», con un fixture que lleve SINPE.
