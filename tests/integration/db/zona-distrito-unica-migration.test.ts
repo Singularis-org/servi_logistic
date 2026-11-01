@@ -18,8 +18,9 @@ import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres
 // COMO SE MIDE. Todo dentro de UNA transaccion del dueno que SIEMPRE se revierte (`revertida`):
 //   1. se vuelve al estado ANTERIOR a la ficha con los dos `down.sql` REALES, en orden inverso (la
 //      base de test ya las tiene aplicadas, y con el indice puesto no se puede sembrar un duplicado);
-//   2. se siembra: un distrito en DOS zonas de la empresa A, el mismo distrito en una zona de la
-//      empresa B, otro distrito en una sola zona de A y una orden de A en el distrito duplicado;
+//   2. se siembra: un distrito en DOS zonas NO centrales de la empresa A (R9b), el mismo distrito en
+//      una zona de la empresa B, otro distrito en una sola zona de A y una orden de A en el distrito
+//      duplicado (las combinaciones con zona central, R9, van en su propio bloque al final);
 //   3. se aplican los dos `migration.sql` REALES y se toma la foto;
 //   4. se aplican los dos `down.sql` REALES en orden inverso y se toma otra foto.
 // El rollback deja la base como estaba (indice y respaldo incluidos), pase lo que pase.
@@ -31,7 +32,8 @@ import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres
 //
 // Datos SINTETICOS: zonas y empresas inventadas; los distritos son ids del catalogo, sin nombres.
 //
-// Mutaciones (progress/impl_SLT-75.md): GROUP BY sin empresa (R9), respaldo en `public` (R10),
+// Mutaciones (progress/impl_SLT-75.md): PARTITION sin empresa (R9), lado conservado invertido,
+// sin distinguir `es_central` y R9 tambien con 3 zonas (R9/R9b), respaldo en `public` (R10),
 // UPDATE de la orden (R11), down sin INSERT (R12), indice sin `organizacion_id` o sin indice (R7).
 
 const MIGRACIONES = path.join(process.cwd(), "db", "migrations");
@@ -364,7 +366,7 @@ describeSiHayBase("SLT-75 — migraciones contra Postgres (R7, R9-R12)", () => {
     expect(f.indiceAntesDeLaPrueba).not.toBeNull();
   });
 
-  it("R9 — tras la migracion el duplicado no tiene zona en A; la otra fila de A y la de B, intactas", () => {
+  it("R9b — dos zonas NO centrales: el duplicado no tiene zona en A; la otra fila de A y la de B, intactas", () => {
     expect(f.filasTrasUp.map((r) => r.id).sort()).toEqual([f.ids.soloA, f.ids.dupB].sort());
     const esperadas = f.filasAntes.filter((r) => r.id === f.ids.soloA || r.id === f.ids.dupB);
     expect(f.filasTrasUp).toEqual(esperadas);
@@ -526,5 +528,164 @@ describeSiHayBase("SLT-75 — sin duplicados (R13)", () => {
     expect(f.filasDespues).toEqual(f.filasAntes);
     expect(f.totalDespues).toBe(f.totalAntes);
     expect(f.respaldo).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// R9 / R9b con zona central (enmienda 2026-11-01). Empresa A con su zona central C y tres no
+// centrales N1, N2, N3; empresa B con su propia central y una no central.
+//   d1: C + N1        → R9: sale la de C, queda la de N1.
+//   d2: N1 + N2       → R9b: salen las dos.
+//   d3: C + N1 + N2   → R9b: salen las tres (aunque una sea central: R9 es SOLO con 2 zonas).
+//   d4: solo N3       → intacto.
+//   d1 en B: central de B + no central de B → R9 en B, independiente de A (las de A no cuentan).
+//   d2 en B: solo la no central de B → intacto (en A esta repetido, en B no).
+// ---------------------------------------------------------------------------------------------
+async function distritosDelCatalogo(tx: TxDeTest, n: number): Promise<string[]> {
+  const ds = await tx.distrito.findMany({ select: { id: true }, orderBy: { id: "asc" }, take: n });
+  if (ds.length < n) throw new Error("faltan distritos en el catalogo: aplica las migraciones");
+  return ds.map((d) => d.id);
+}
+
+async function crearZonaCentral(tx: TxDeTest, nombre: string): Promise<string> {
+  const z = await tx.zona.create({
+    data: {
+      nombre: `${nombre} ${randomUUID().slice(0, 8)}`,
+      esCentral: true,
+      sinpeNumero: "80000000",
+      sinpeNombre: "Titular de Prueba",
+    },
+    select: { id: true },
+  });
+  return z.id;
+}
+
+describeSiHayBase("SLT-75 — R9/R9b con zona central (enmienda 2026-11-01)", () => {
+  let base: PrismaClient;
+  let f: {
+    ids: Record<string, string>;
+    filasAntes: Fila[];
+    filasTrasUp: Fila[];
+    respaldo: Fila[];
+    errorDelIndice: string | null;
+    indiceTrasUp: string | null;
+    filasTrasDown: Fila[];
+  };
+
+  beforeAll(async () => {
+    base = crearPrismaDeTest();
+    f = await revertida(base, async (tx) => {
+      await bajar(tx);
+      const [d1, d2, d3, d4] = await distritosDelCatalogo(tx, 4);
+
+      const A = (await crearOrganizacion(tx, { nombre: "Empresa A SLT75 central" })).id;
+      await fijarEmpresa(tx, A);
+      const zC = await crearZonaCentral(tx, "Zona Central A");
+      const zN1 = await crearZona(tx, "Zona N1 A");
+      const zN2 = await crearZona(tx, "Zona N2 A");
+      const zN3 = await crearZona(tx, "Zona N3 A");
+      const ids: Record<string, string> = {
+        d1C: await vincular(tx, A, zC, d1),
+        d1N1: await vincular(tx, A, zN1, d1),
+        d2N1: await vincular(tx, A, zN1, d2),
+        d2N2: await vincular(tx, A, zN2, d2),
+        d3C: await vincular(tx, A, zC, d3),
+        d3N1: await vincular(tx, A, zN1, d3),
+        d3N2: await vincular(tx, A, zN2, d3),
+        d4N3: await vincular(tx, A, zN3, d4),
+      };
+
+      const B = (await crearOrganizacion(tx, { nombre: "Empresa B SLT75 central" })).id;
+      await fijarEmpresa(tx, B);
+      const zBC = await crearZonaCentral(tx, "Zona Central B");
+      const zBN = await crearZona(tx, "Zona N B");
+      ids.Bd1C = await vincular(tx, B, zBC, d1);
+      ids.Bd1N = await vincular(tx, B, zBN, d1);
+      ids.Bd2N = await vincular(tx, B, zBN, d2);
+
+      const zonas = [zC, zN1, zN2, zN3, zBC, zBN];
+      const filasAntes = await filasDeZonas(tx, zonas);
+
+      await aplicar(tx, leer(DIR_DATOS, "migration.sql"));
+      // El indice en SAVEPOINT: si la limpieza dejara un duplicado, cae su asercion (23505).
+      const fallo = await errorEnSavepoint(tx, () => aplicar(tx, leer(DIR_INDICE, "migration.sql")));
+      const errorDelIndice = fallo === null ? null : sqlstateDe(fallo);
+      const filasTrasUp = await filasDeZonas(tx, zonas);
+      const respaldo = await tx.$queryRawUnsafe<Fila[]>(
+        `SELECT id, zona_id, distrito_id, organizacion_id FROM ${RESPALDO} ORDER BY id`,
+      );
+      const indiceTrasUp = await indiceDef(tx);
+
+      await bajar(tx);
+      return {
+        ids,
+        filasAntes,
+        filasTrasUp,
+        respaldo,
+        errorDelIndice,
+        indiceTrasUp,
+        filasTrasDown: await filasDeZonas(tx, zonas),
+      };
+    });
+  }, 120_000);
+
+  afterAll(async () => {
+    await base?.$disconnect();
+  });
+
+  const borradas = (): string[] => [
+    f.ids.d1C,
+    f.ids.d2N1,
+    f.ids.d2N2,
+    f.ids.d3C,
+    f.ids.d3N1,
+    f.ids.d3N2,
+    f.ids.Bd1C,
+  ];
+  const idsTrasUp = (): string[] => f.filasTrasUp.map((r) => r.id);
+  const idsRespaldo = (): string[] => f.respaldo.map((r) => r.id);
+
+  it("la siembra existio: 11 filas", () => {
+    expect(f.filasAntes).toHaveLength(11);
+  });
+
+  it("R9 — central + no central: sale la fila de la central y queda la de la no central", () => {
+    expect(idsTrasUp()).not.toContain(f.ids.d1C);
+    expect(idsTrasUp()).toContain(f.ids.d1N1);
+    expect(idsRespaldo()).toContain(f.ids.d1C);
+    expect(idsRespaldo()).not.toContain(f.ids.d1N1);
+  });
+
+  it("R9b — dos zonas NO centrales: salen las dos y las dos estan en el respaldo", () => {
+    expect(idsTrasUp()).not.toContain(f.ids.d2N1);
+    expect(idsTrasUp()).not.toContain(f.ids.d2N2);
+    expect(idsRespaldo()).toEqual(expect.arrayContaining([f.ids.d2N1, f.ids.d2N2]));
+  });
+
+  it("R9b — tres zonas (una central): salen las tres y las tres estan en el respaldo", () => {
+    for (const id of [f.ids.d3C, f.ids.d3N1, f.ids.d3N2]) expect(idsTrasUp()).not.toContain(id);
+    expect(idsRespaldo()).toEqual(expect.arrayContaining([f.ids.d3C, f.ids.d3N1, f.ids.d3N2]));
+  });
+
+  it("R9/R9b — el mismo distrito en la empresa B se decide con las filas de B; el resto, intacto", () => {
+    const quedan = f.filasAntes.filter((r) => !borradas().includes(r.id));
+    expect(f.filasTrasUp).toEqual(quedan);
+    expect([...idsTrasUp()].sort()).toEqual([f.ids.d1N1, f.ids.d4N3, f.ids.Bd1N, f.ids.Bd2N].sort());
+  });
+
+  it("R10 — el respaldo tiene EXACTAMENTE las filas borradas, con sus cuatro columnas", () => {
+    const esperadas = f.filasAntes.filter((r) => borradas().includes(r.id));
+    expect(esperadas).toHaveLength(7);
+    // La base de test no tenia duplicados (el indice estaba puesto): el respaldo entero son estas.
+    expect(f.respaldo).toEqual(esperadas);
+  });
+
+  it("R7 — tras la limpieza el indice unico se crea sin error", () => {
+    expect(f.errorDelIndice).toBeNull();
+    expect(f.indiceTrasUp).toMatch(/^CREATE UNIQUE INDEX/);
+  });
+
+  it("R12 — los down.sql devuelven las 11 filas", () => {
+    expect(f.filasTrasDown).toEqual(f.filasAntes);
   });
 });
