@@ -63,6 +63,7 @@ const CONSOLIDACION: ConsolidacionSateliteDTO = {
   montoRecibido: "485000.00",
   faltaPorRecibir: "15000.00",
   conciliado: true,
+  desmarcable: false, // SLT-76: recibida por menos -> tiene ajuste de diferencia
   conciliadoAt: "2026-09-15T17:40:00.000Z",
   conciliadoPorNombre: "Ana Rojas",
   nota: "faltaron ₡15.000, entran el lunes",

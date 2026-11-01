@@ -524,6 +524,7 @@ function toResumen(row: CierreBodegaResumenRow): CierreBodegaResumen {
     // arriba. `faltaPorRecibir` llega ya restado del mapper del repositorio; recomputarlo aqui
     // seria la segunda formula que un dia dice otra cosa que la de `/wallet/satelites`.
     conciliado: row.conciliado,
+    desmarcable: row.desmarcable, // SLT-76 (R3/R4): derivado en el repositorio, tal cual
     montoRecibido: row.montoRecibido,
     faltaPorRecibir: row.faltaPorRecibir,
     conciliadoAt: row.conciliadoAt,

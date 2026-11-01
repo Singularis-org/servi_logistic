@@ -38,19 +38,19 @@ paralelo»).
   `factura-contraste`/`impresion-flujo` sin cambios.
 
 ## T3 · Revertir con ajustes y predicado compartido — R5 (`design.md §2.1, §3`)
-- [ ] `lib/repositories/_shared/conciliacion-con-dinero.ts > consolidacionesConDinero(cliente, ids)`:
+- [x] `lib/repositories/_shared/conciliacion-con-dinero.ts > consolidacionesConDinero(cliente, ids)`:
   Prisma, dos lecturas en lote, devuelve un `Set`.
-- [ ] `CierresBodegaAdminRepository.revertirConciliacion`: el conteo en línea (`:709-718`) pasa al
+- [x] `CierresBodegaAdminRepository.revertirConciliacion`: el conteo en línea (`:709-718`) pasa al
   predicado, dentro de la transacción y antes de escribir.
-- [ ] `tests/integration/db/slt76-revertir-con-ajuste.int.test.ts`.
-- [ ] Mutación: quitar los ajustes del predicado → rojo.
+- [x] `tests/integration/db/slt76-revertir-con-ajuste.int.test.ts`.
+- [x] Mutación: quitar los ajustes del predicado → rojo.
 - **Hecho:** el test en verde y la mutación en rojo. `slt73-revertir-con-asientos` sigue en verde.
 
 ## T2 · «Desmarcar» solo cuando se puede — R3, R4 (`design.md §2`) — depende de T3
-- [ ] `desmarcable` en `CierreBodegaResumenRow`, en la marca de `ICierreBodegaService` y en el tipo
+- [x] `desmarcable` en `CierreBodegaResumenRow`, en la marca de `ICierreBodegaService` y en el tipo
   del desglose (`lib/types/conciliacion-satelites.ts`). Se deriva en `CierreBodegaRepository` y en
   `SaldosSatelitesRepository` con UNA llamada al predicado por página.
-- [ ] `CierresBodegaAdminService` lo propaga.
+- [x] `CierresBodegaAdminService` lo propaga.
 - [ ] `ConciliacionAcciones`: `marca.desmarcable` es obligatorio. Con `false` no se pinta
   «Desmarcar».
 - [ ] `ConciliacionSatelite.tsx` y `CierresBodegaAdminModule.tsx` pasan el campo. Se ajustan los
@@ -64,19 +64,19 @@ paralelo»).
   pasar a «el botón no está», y se ajusta según lo medido.
 
 ## T4 · [P] Una sola fórmula del esperado — R6 (`design.md §4`)
-- [ ] `asentarDiferenciaSatelite` usa `esperadoDe(consolidacion)`.
-- [ ] `tests/unit/guards/conciliacion-esperado-unico.guardia.test.ts`, con contraprueba.
-- [ ] Confirmar o añadir en `slt73-marcar-asienta.int.test.ts` el caso literal 9.000 / 1.500 / 500,
+- [x] `asentarDiferenciaSatelite` usa `esperadoDe(consolidacion)`.
+- [x] `tests/unit/guards/conciliacion-esperado-unico.guardia.test.ts`, con contraprueba.
+- [x] Confirmar o añadir en `slt73-marcar-asienta.int.test.ts` el caso literal 9.000 / 1.500 / 500,
   recibido 6.900 → esperado `7000.00` y diferencia `100.00`.
-- [ ] Mutaciones: la llamada a mano vuelve → rojo la guardia; `esperadoDe` sin restar rechazos →
+- [x] Mutaciones: la llamada a mano vuelve → rojo la guardia; `esperadoDe` sin restar rechazos →
   rojo en la marca y en `saldo-satelites`.
 - **Hecho:** los tests en verde y las dos mutaciones en rojo.
 
 ## T5 · [P] Estado de cuenta de la bodega con dos empresas — R7 (`design.md §5`)
-- [ ] `tests/integration/db/slt76-estado-cuenta-bodega-dos-empresas.int.test.ts`: la siembra en A y
+- [x] `tests/integration/db/slt76-estado-cuenta-bodega-dos-empresas.int.test.ts`: la siembra en A y
   B, la lectura cruzada como `servi_app`, la lectura propia con cifras a mano y el CONTROL como
   dueño.
-- [ ] Mutación del reviewer: `DISABLE ROW LEVEL SECURITY` sobre `cierre_bodega` en la transacción →
+- [x] Mutación del reviewer: `DISABLE ROW LEVEL SECURITY` sobre `cierre_bodega` en la transacción →
   rojo.
 - **Hecho:** el test en verde, con el CONTROL que ve la fuga, y la mutación en rojo. No cambia código
   de la app.
