@@ -29,7 +29,8 @@ Arreglo mínimo, rama desde `prod`:
 | 2026-10-31 | Carlos | HOTFIX urgente: rama desde `prod`. | Proceso (no es comportamiento). La rama y el worktree ya existen. |
 | 2026-10-31 | Carlos | Un distrito que ya tiene otra zona queda BLOQUEADO: no se puede seleccionar en otra. | R15, R16, R17 |
 | 2026-10-31 | Carlos | Si se intenta guardar con un distrito que ya tiene otra zona, sale un aviso de error y no se guarda. | R1, R2, R3, R8, R21 |
-| 2026-10-31 | Carlos | El distrito de producción que está en dos zonas se quita de las DOS y queda sin zona. | R9, R10, R11 |
+| 2026-10-31 | Carlos | El distrito de producción que está en dos zonas se quita de las DOS y queda sin zona. | R9, R10, R11 (SUSTITUIDA el 2026-11-01) |
+| 2026-11-01 | Carlos | T0 midió 17 distritos repetidos (todos en la zona central y en UNA zona no central creada después). Se quedan en la zona NO central y salen de la central. | R9, R9b, R10, R11 |
 
 ## Requisitos (EARS)
 
@@ -71,9 +72,13 @@ Arreglo mínimo, rama desde `prod`:
 
 ### B. La migración del dato existente
 
-- **R9** — CUANDO se aplica la migración, todo distrito que esté en más de una zona de la misma
-  empresa DEBE quedar sin ninguna fila de `zona_distrito` en esa empresa. Las demás filas DEBEN
-  quedar intactas: las de otros distritos y las del mismo distrito en otras empresas.
+- **R9** — CUANDO se aplica la migración y un distrito está en exactamente DOS zonas de la misma
+  empresa, una con `es_central = true` y la otra con `es_central = false`, la migración DEBE borrar
+  solo su fila de la zona central y conservar la de la zona no central (D 2026-11-01).
+- **R9b** — CUANDO se aplica la migración y un distrito está en más de una zona de la misma empresa
+  en cualquier otra combinación (dos no centrales, tres o más zonas), DEBE quedar sin ninguna fila
+  de `zona_distrito` en esa empresa. En los dos casos, las demás filas DEBEN quedar intactas: las de
+  otros distritos y las del mismo distrito en otras empresas.
 - **R10** — La migración DEBE guardar, antes de borrar, una copia de cada fila borrada (`id`,
   `zona_id`, `distrito_id`, `organizacion_id`) en un respaldo que el rol de la aplicación
   (`servi_app`) no pueda leer ni escribir.

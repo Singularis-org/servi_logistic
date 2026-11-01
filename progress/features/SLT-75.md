@@ -55,3 +55,9 @@ recargar algunos salen desmarcados. Al volver a guardar se borran de verdad.
 ## Cierre
 
 - 2026-10-31 (Carlos): spec APROBADO, «Aprobado, implementa». Rastro en historial → ficha aparte (Q1).
+- 2026-11-01 T0 (prod, solo lectura): 17 distritos repetidos, TODOS en 2 zonas = la central + 1 no
+  central (creada después); 147 filas en `zona_distrito`. Se PARA según T0.
+- 2026-11-01 (Carlos): se quedan en la zona NO central y salen de la central. Regla genérica R9
+  (central + 1 no central → se borra la de la central); R9b para cualquier otra combinación (sin
+  zona). Órdenes: la migración no las toca (R11); tras el deploy, guardar la zona no central sin
+  cambios reconcilia las órdenes vivas elegibles (366/377).
