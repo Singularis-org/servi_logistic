@@ -27,7 +27,7 @@ listas.
 
 Dep.: —
 
-- [ ] Crear `db/migrations/20261101090000_zona_distrito_duplicados_sin_zona/` con `migration.sql`
+- [x] Crear `db/migrations/20261101090000_zona_distrito_duplicados_sin_zona/` con `migration.sql`
       y `down.sql`, tal como dice `design.md §3.1`:
   - esquema `respaldo` con `REVOKE ALL … FROM PUBLIC`;
   - tabla de respaldo con columnas con nombre;
@@ -43,12 +43,12 @@ Dep.: —
 
 Dep.: T1
 
-- [ ] `db/schema.prisma`: `@@unique([organizacionId, distritoId])` en `ZonaDistrito`, con un
+- [x] `db/schema.prisma`: `@@unique([organizacionId, distritoId])` en `ZonaDistrito`, con un
       comentario `SLT-75`.
-- [ ] Crear `db/migrations/20261101090100_zona_distrito_distrito_unico_por_empresa/`:
+- [x] Crear `db/migrations/20261101090100_zona_distrito_distrito_unico_por_empresa/`:
   - `migration.sql` con el `CREATE UNIQUE INDEX "zona_distrito_organizacion_id_distrito_id_key"`;
   - `down.sql` con el `DROP INDEX IF EXISTS`.
-- [ ] **NO** añadir entrada en `tests/unit/guards/_unicos-sin-empresa.ts`: el índice empieza por
+- [x] **NO** añadir entrada en `tests/unit/guards/_unicos-sin-empresa.ts`: el índice empieza por
       `organizacion_id`, y una entrada pondría la guardia en rojo (`design.md §2.1`).
 - **Hecho cuando:**
   - `pnpm exec prisma migrate dev --create-only` no genera ninguna diferencia (sin drift);
@@ -58,16 +58,16 @@ Dep.: T1
 
 Dep.: T2
 
-- [ ] `lib/interfaces/repositories/IZonaRepository.ts`:
+- [x] `lib/interfaces/repositories/IZonaRepository.ts`:
   - `DistritoEnOtraZona` y `CreateZonaResult`;
   - `UpdateZonaResult` gana `distrito_en_otra_zona`;
   - `create` devuelve `CreateZonaResult`.
-- [ ] `lib/repositories/ZonaRepository.ts`:
+- [x] `lib/repositories/ZonaRepository.ts`:
   - la lectura de conflictos con `tx`, antes de la primera escritura, en `create` y en `update`
     (`design.md §4.2`);
   - el detector `esViolacionDistritoUnico`;
   - la rama nueva en los dos `catch`, antes de `translateEsCentralConflict`.
-- [ ] Adaptar los dobles de `tests/unit/repositories/zona-repository.test.ts` y añadir sus casos de
+- [x] Adaptar los dobles de `tests/unit/repositories/zona-repository.test.ts` y añadir sus casos de
       R6 y R8.
 - **Hecho cuando:**
   - el typecheck está en verde;
@@ -78,10 +78,10 @@ Dep.: T2
 
 Dep.: T3
 
-- [ ] `lib/services/ZonaService.ts`: `crear` y `actualizar` traducen `distrito_en_otra_zona` a
+- [x] `lib/services/ZonaService.ts`: `crear` y `actualizar` traducen `distrito_en_otra_zona` a
       `fieldErrors.distritoIds`, con los mensajes de R3 (orden por nombre) y de R8. Los textos van
       como constantes.
-- [ ] `tests/unit/services/zona-service.test.ts`: casos de R2, R3 (literal esperado como contrato)
+- [x] `tests/unit/services/zona-service.test.ts`: casos de R2, R3 (literal esperado como contrato)
       y R8.
 - **Hecho cuando:** los tests están verdes, y se ponen rojos al cambiar el texto o el orden.
 
@@ -89,7 +89,7 @@ Dep.: T3
 
 Dep.: T4
 
-- [ ] Crear `tests/integration/db/zona-distrito-unica.test.ts`, contra Postgres real y en
+- [x] Crear `tests/integration/db/zona-distrito-unica.test.ts`, contra Postgres real y en
       contexto de empresa (`servi_app`), con dos empresas. Siembra distritos propios del test.
       Casos de `design.md §8`:
   - R1 y R2: «nada cambia», incluidas `orden.zona_id` y `historial_accion`;
@@ -98,7 +98,7 @@ Dep.: T4
   - R7: inserción directa que falla en la misma empresa y se acepta en otra;
   - R8: el detector reconoce el error real;
   - R14: el árbol de A no trae la zona de B.
-- [ ] Correr las mutaciones de la tabla y anotar cada una en `progress/impl_SLT-75.md`, con el
+- [x] Correr las mutaciones de la tabla y anotar cada una en `progress/impl_SLT-75.md`, con el
       comando y la salida de que se puso rojo. **Autocomprobación:** sin mutar, el archivo pasa con
       N tests ejecutados (N > 0), no «0 tests».
 - **Hecho cuando:** todo está verde y cada mutación quedó medida en rojo.
@@ -107,7 +107,7 @@ Dep.: T4
 
 Dep.: T2, [P] con T3-T5
 
-- [ ] Crear `tests/integration/db/zona-distrito-unica-migration.test.ts` (precedente de cómo leer y
+- [x] Crear `tests/integration/db/zona-distrito-unica-migration.test.ts` (precedente de cómo leer y
       aplicar el SQL: `tests/integration/db/geografia-dta-2026-migration.test.ts`). Dentro de una
       transacción que se revierte:
   1. quitar el índice;
@@ -124,12 +124,12 @@ Dep.: T2, [P] con T3-T5
 
 Dep.: —, [P]
 
-- [ ] `lib/types/geografia-nodo.ts`: `DistritoArbolDTO.zonas` obligatorio.
-- [ ] `lib/repositories/GeoRepository.ts`: `listArbol` proyecta `zonas` ordenadas por nombre. El
+- [x] `lib/types/geografia-nodo.ts`: `DistritoArbolDTO.zonas` obligatorio.
+- [x] `lib/repositories/GeoRepository.ts`: `listArbol` proyecta `zonas` ordenadas por nombre. El
       colapso de `zonaId` y `zonaNombre` no cambia.
-- [ ] Añadir `zonas` a los fixtures de `DistritoArbolDTO` que el typecheck señale (candidatos en
+- [x] Añadir `zonas` a los fixtures de `DistritoArbolDTO` que el typecheck señale (candidatos en
       «Archivos esperados»).
-- [ ] `tests/integration/db/geografia-catalogo-activo.test.ts`: los casos de 1 y 0 zonas afirman
+- [x] `tests/integration/db/geografia-catalogo-activo.test.ts`: los casos de 1 y 0 zonas afirman
       `zonas`.
 - **Hecho cuando:** el typecheck está en verde y los tests de R14 también.
 
@@ -137,18 +137,18 @@ Dep.: —, [P]
 
 Dep.: T7
 
-- [ ] `app/(app)/configuracion/tarifas/_components/GeografiaSelector.tsx`:
+- [x] `app/(app)/configuracion/tarifas/_components/GeografiaSelector.tsx`:
   - prop `zonaEnEdicionId`;
   - casilla deshabilitada con `(zona: X)`;
   - `provDistIds` y `cantDistIds` solo con seleccionables;
   - grupo sin seleccionables, deshabilitado (`design.md §6.1`).
-- [ ] `app/(app)/configuracion/tarifas/_components/CrearZonaForm.tsx`:
+- [x] `app/(app)/configuracion/tarifas/_components/CrearZonaForm.tsx`:
   - pasar `zonaEnEdicionId={zonaIdGuardada}`;
   - en `mensajeDeError`, añadir la rama `distritoIds` y cambiar el texto del `conflict`.
-- [ ] `app/(app)/configuracion/tarifas/_components/ZonasTarifasModule.tsx`: `abrirEditar` y
+- [x] `app/(app)/configuracion/tarifas/_components/ZonasTarifasModule.tsx`: `abrirEditar` y
       `abrirCrear` leen el árbol al abrir. Si falla, no abren y avisan. La preselección sale de
       `d.zonas`.
-- [ ] Crear los tests:
+- [x] Crear los tests:
   - `tests/unit/components/geografia-selector-zona-ocupada.test.tsx` (R15-R18);
   - `tests/components/ZonasTarifasEditarDistritos.test.tsx` (R19, R20);
   - `tests/components/ZonaDistritoEnOtraZona.test.tsx` (R21, R22).
@@ -162,15 +162,15 @@ Dep.: T7
 
 Dep.: T2
 
-- [ ] `tests/integration/db/zona-reconciliacion-ordenes.test.ts`: reescribir `:383` y `:590`.
+- [x] `tests/integration/db/zona-reconciliacion-ordenes.test.ts`: reescribir `:383` y `:590`.
       Confirmar que «un `lote_id` por guardado» (366 R11) sigue afirmado en algún test.
-- [ ] `tests/integration/db/geografia-catalogo-activo.test.ts`: quitar `distritoDosZonas` (`:144`)
+- [x] `tests/integration/db/geografia-catalogo-activo.test.ts`: quitar `distritoDosZonas` (`:144`)
       y el caso `:336`.
-- [ ] `tests/integration/db/corregir-datos-cliente.repo.test.ts`: quitar `dosZonas` (`:479`) y su
+- [x] `tests/integration/db/corregir-datos-cliente.repo.test.ts`: quitar `dosZonas` (`:479`) y su
       aserción (`:773`).
-- [ ] `tests/integration/db/cobertura-repository.test.ts`: quitar la fila `z2/dDos` (`:141`) y
+- [x] `tests/integration/db/cobertura-repository.test.ts`: quitar la fila `z2/dDos` (`:141`) y
       ajustar `:177-179` y `:193`.
-- [ ] Barrido: correr los demás tests de integración que siembran `zona_distrito`. Si alguno siembra
+- [x] Barrido: correr los demás tests de integración que siembran `zona_distrito`. Si alguno siembra
       un duplicado de la misma empresa o guarda una zona con distritos que ya están en otra zona,
       aplicar la regla de `design.md §8.1`. Los archivos son:
   - `aislamiento-ordenes`
@@ -196,7 +196,7 @@ Dep.: T2
 Dep.: T1-T9
 
 - [ ] Correr `./init.sh` en verde. Escribir `INIT_EXIT=$?` dentro del log.
-- [ ] Mapa `R1..R22 → test` en `progress/impl_SLT-75.md`.
+- [x] Mapa `R1..R22 → test` en `progress/impl_SLT-75.md`.
 - [ ] Dejar escrito en el PR a `prod` el efecto visible para Carlos: el distrito queda sin zona y
       hay que asignarlo desde la pantalla (`design.md §3.3`).
 - [ ] Dejar escrito para el dueño de SLT-43 la nota de convivencia en `dev` (`design.md §10`).
