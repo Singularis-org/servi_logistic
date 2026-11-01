@@ -442,7 +442,7 @@ describe("R22/R24 — la conciliación de una bodega (458-D: en su estado de cue
     expect(within(region).queryByRole("status")).toBeNull();
   });
 
-  it("SLT-73 R35 — la nota del pie dice que marcar asienta el dinero y que se corrige con «Corregir» (Q10, provisional)", async () => {
+  it("SLT-73 R35 — la nota del pie dice que marcar asienta el dinero y que se corrige con «Corregir» (Q10, definitiva)", async () => {
     const region = await montarConciliacion();
     const nota = within(region).getByRole("note");
     // Literal a mano (Q10), no la constante: comparar contra su propia fuente siempre es verde.

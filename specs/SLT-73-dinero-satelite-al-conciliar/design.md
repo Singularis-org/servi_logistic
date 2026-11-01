@@ -274,9 +274,10 @@ filas, no el import.
    `<section data-bolsillo="satelites" aria-label="Por cobrar a satélites">` con importe, insignia de
    signo y pista. Va fuera del bloque de la empresa: Carlos dijo que no es de la empresa. No se mete
    como región de `REGIONES_BOLSILLO_EMPRESA`. El rótulo es el de Carlos; la pista positiva y la
-   negativa son provisionales, por ejemplo «Lo que las satélites entregaron de menos al conciliar y
-   aún no han pagado» y «La central les debe a las satélites». La elige el signo del servidor, sin
-   aritmética en el navegador (R28). `DUENO_LABEL.por_cobrar_satelite = "Satélite"` (provisional) y
+   negativa son definitivas (Carlos, 2026-11-01): «Lo que las satélites entregaron de menos al
+   conciliar y aún no han pagado» y «La central les debe a las satélites». La elige el signo del
+   servidor, sin aritmética en el navegador (R28). `DUENO_LABEL.por_cobrar_satelite = "Satélite"`
+   (definitivo, Carlos 2026-11-01) y
    su punto en `DUENO_PUNTO` (R29).
    - **Barra** (`BarraComposicionCaja.tsx`): `SEGMENTOS_POR_MODO.tres_tramos` =
      - tiendas, con `porcentajeTiendas`;
@@ -286,7 +287,7 @@ filas, no el import.
 
      Los anchos son el STRING del DTO tal cual. Los `Record` totales por modo
      (`CAJA_COMPOSICION_MENSAJE`, `BOLSILLO_EMPRESA` de la tarjeta) ganan su entrada:
-     `tres_tramos` va con la superficie neutra y un mensaje provisional.
+     `tres_tramos` va con la superficie neutra y su mensaje (definitivo, Carlos 2026-11-01).
      `composicionCajaNombreAccesible` enuncia los tres tramos con su importe del servidor (T,
      `porCobrarSatelites`, `deEmpresaEnCaja`). La barra sigue saliendo solo en estado «saldo»
      (R22 de la 459).
@@ -376,7 +377,7 @@ filas, no el import.
    Para la central», leído del DOM, con un fixture que lleva SINPE (efectivo ≠ para la central),
    así que la identidad vieja daría rojo.
 6. **Nota (R35)**: `DESMARCAR_NO_MUEVE_DINERO_*` se renombra a `CONCILIACION_ASIENTA_*` con el texto
-   provisional de Q10. Sus lectores se censan con grep.
+   definitivo de Q10 (cerrada por Carlos el 2026-11-01). Sus lectores se censan con grep.
 
 ## 3. Autorización, multi-empresa y país
 

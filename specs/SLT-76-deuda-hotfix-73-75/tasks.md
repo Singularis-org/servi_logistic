@@ -26,13 +26,13 @@ paralelo»).
 - **Hecho:** los conteos y el OK de Carlos están escritos en el PR.
 
 ## T1 · [P] Fecha en el calendario del negocio — R1, R2 (`design.md §1`)
-- [ ] `cierre-factura.tsx > fecha()`: devuelve `"—"` si es `null` o no es un instante válido, y si no
+- [x] `cierre-factura.tsx > fecha()`: devuelve `"—"` si es `null` o no es un instante válido, y si no
   `fechaCalendarioCR(new Date(iso))`.
-- [ ] `CierreDiaModule.tsx:935` y `:1026`: lo mismo.
-- [ ] `tests/components/CierreFacturaFechaCR.test.tsx`, con el instante `2026-11-01T05:03:00.000Z`
+- [x] `CierreDiaModule.tsx:935` y `:1026`: lo mismo.
+- [x] `tests/components/CierreFacturaFechaCR.test.tsx`, con el instante `2026-11-01T05:03:00.000Z`
   → `2026-10-31`, escrito a mano, en las superficies de §1.
-- [ ] `tests/unit/guards/cierres-fecha-cr.guardia.test.ts`, con contraprueba y suelo de archivos.
-- [ ] Mutaciones: `fecha()` vuelve a `slice` → rojo el componente; recorte en `CierreDiaModule` →
+- [x] `tests/unit/guards/cierres-fecha-cr.guardia.test.ts`, con contraprueba y suelo de archivos.
+- [x] Mutaciones: `fecha()` vuelve a `slice` → rojo el componente; recorte en `CierreDiaModule` →
   rojo la guardia.
 - **Hecho:** los dos tests en verde, las dos mutaciones en rojo y la guardia
   `factura-contraste`/`impresion-flujo` sin cambios.
@@ -116,12 +116,12 @@ paralelo»).
   relanzar. En D32 queda anotado el número de corridas del shard en verde.
 
 ## T8 · [P] Textos definitivos — R16 (`design.md §8`)
-- [ ] Specs de SLT-73: Q10 cerrada, rótulos definitivos, y fuera la palabra «provisional» de las
+- [x] Specs de SLT-73: Q10 cerrada, rótulos definitivos, y fuera la palabra «provisional» de las
   líneas citadas.
-- [ ] Specs de SLT-75: Q1 → «SLT-76», Q3 → «cerrada en SLT-76».
-- [ ] Los cuatro tests: nombres y comentarios sin «provisional». Las aserciones literales no se
+- [x] Specs de SLT-75: Q1 → «SLT-76», Q3 → «cerrada en SLT-76».
+- [x] Los cuatro tests: nombres y comentarios sin «provisional». Las aserciones literales no se
   tocan.
-- [ ] Mutación: una letra de `CONCILIACION_ASIENTA_NOTA` → rojo.
+- [x] Mutación: una letra de `CONCILIACION_ASIENTA_NOTA` → rojo.
 - **Hecho:** grep de «provisional» en `specs/SLT-73-*` y en esos tests da 0 líneas que se refieran
   a SLT-73, los cuatro tests siguen verdes y la mutación sale roja.
 
