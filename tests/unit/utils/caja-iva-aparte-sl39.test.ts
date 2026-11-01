@@ -172,7 +172,13 @@ describe("SL-39 — R4 y R5 sobre cualquier conjunto (semilla fija)", () => {
         filas.push(fila(categoria, new Prisma.Decimal(centimos).div(100).toFixed(2)));
       }
       const r = derivarCaja(filas);
-      expect(suma(r.ganancia, r.iva, r.capital, r.deTerceros), `conjunto ${n}`).toBe(r.enCaja);
+      // SLT-73 (design §2.9.4, R27): − «Por cobrar a satélites» (el catalogo trae las dos diferencias).
+      expect(
+        new Prisma.Decimal(suma(r.ganancia, r.iva, r.capital, r.deTerceros))
+          .sub(r.porCobrarSatelites)
+          .toFixed(2),
+        `conjunto ${n}`,
+      ).toBe(r.enCaja);
       expect(suma(r.ganancia, r.iva, r.capital), `conjunto ${n}`).toBe(r.deEmpresa);
       // R8 sobre el mismo conjunto: la tarjeta de la composicion habla del mismo IVA y de los
       // mismos dos lados de la ganancia.

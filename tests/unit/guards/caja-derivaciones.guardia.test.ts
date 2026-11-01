@@ -119,7 +119,7 @@ describe("R9 — `derivarBalance` conserva firma y salida", () => {
 });
 
 describe("R9 — `derivarCaja` REUSA la resta con signo, no la duplica", () => {
-  it("R9: importa `derivarBalance` y lo llama una vez por cada cifra (cinco, SL-39)", () => {
+  it("R9: importa `derivarBalance` y lo llama una vez por cada cifra (seis, SLT-73)", () => {
     const fuente = codigoSinComentarios(FUENTE_CAJA);
     expect(fuente).toMatch(
       /import\s*\{\s*derivarBalance\s*\}\s*from\s*"@\/lib\/utils\/wallet-balance"/,
@@ -127,9 +127,28 @@ describe("R9 — `derivarCaja` REUSA la resta con signo, no la duplica", () => {
     const llamadas = [...fuente.matchAll(/derivarBalance\s*\(/g)].length;
     // Ficha 459 (design §2.2): de tres a CUATRO — cifra principal, ganancia, «De las tiendas» y
     // capital. SL-39 (design §2.2): CINCO — el IVA de la caja, que sale de la ganancia y tiene su
-    // propia resta con signo (ingresos de IVA − el reverso). La propiedad protegida es «no hay
-    // restas propias»; la cuenta es su sintoma.
-    expect(llamadas).toBe(5);
+    // propia resta con signo (ingresos de IVA − el reverso). SLT-73 (design §2.9.4, R27): SEIS —
+    // «Por cobrar a satélites». La propiedad protegida es «no hay restas propias»; la cuenta es su
+    // sintoma.
+    expect(llamadas).toBe(6);
+  });
+
+  it("⭑ SLT-73 (R25/R27): «Por cobrar a satélites» es `derivarBalance(egresos, ingresos)` de ese dueño", () => {
+    // El orden INVERTIDO es el contrato: el importe sale positivo cuando la satélite debe.
+    const fuente = codigoSinComentarios(FUENTE_CAJA);
+    expect(fuente).toMatch(
+      /derivarBalance\(\s*acc\.egresosPorCobrarSatelite\s*,\s*acc\.ingresosPorCobrarSatelite\s*\)/,
+    );
+  });
+
+  it("⭑ SLT-73 (design §2.9.6): la única negación es la del tramo de la empresa en `tres_tramos` (y el tope de 100 − tiendas)", () => {
+    // `E − P` y `100 − tiendas` dimensionan la barra a partir de importes YA derivados; no son restas
+    // con signo de un balance. Se escriben como suma del opuesto y aquí se cuentan: una tercera
+    // negación sería una resta nueva colándose por la puerta de atrás.
+    const fuente = codigoSinComentarios(FUENTE_CAJA);
+    expect([...fuente.matchAll(/\.neg\(/g)].length).toBe(2);
+    expect(fuente).toContain("deEmpresa.add(porCobrar.neg())");
+    expect(fuente).toContain("CIEN.add(porcentajeTiendas.neg())");
   });
 
   it("R9: no reimplementa el calculo del signo (ni un literal positivo/negativo/cero en el codigo)", () => {

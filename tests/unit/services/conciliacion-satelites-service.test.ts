@@ -53,6 +53,8 @@ function saldoDe(overrides: Partial<SaldoSateliteDTO> = {}): SaldoSateliteDTO {
     zonaId: ZONA,
     zonaNombre: "Cartago",
     saldoSinConciliar: "1015.00",
+    aporteSinConsolidar: "0.00",
+    cierresSinConsolidar: 0,
     totalEfectivo: "2300.00",
     totalConsolidado: "3000.00",
     totalRecibido: "1285.00",
@@ -266,6 +268,29 @@ describe("431/T8 — marcar y revertir: la UNICA llamada, y los tres desenlaces"
     expect(
       (await inexistente.service.revertirConciliacion({ cierreBodegaId: "cb1" }, MAESTRO)).status,
     ).toBe("no_encontrada");
+  });
+
+  it("⭑ SLT-73 R14: `con_asientos` del repositorio llega como `{ status: \"con_asientos\" }`", async () => {
+    const { service, escrituras } = newService(
+      fakeSaldos(),
+      fakeEscrituras({ revertirConciliacion: vi.fn(async () => "con_asientos" as const) }),
+    );
+    const r = await service.revertirConciliacion({ cierreBodegaId: "cb1" }, MAESTRO);
+    expect(r).toEqual({ status: "con_asientos" });
+    expect(escrituras.revertirConciliacion).toHaveBeenCalledTimes(1);
+  });
+
+  it("SLT-73 R23: sin acceso total, `forbidden` ANTES de mirar si hay asientos", async () => {
+    const { service, escrituras } = newService(
+      fakeSaldos(),
+      fakeEscrituras({ revertirConciliacion: vi.fn(async () => "con_asientos" as const) }),
+    );
+    const r = await service.revertirConciliacion(
+      { cierreBodegaId: "cb1" },
+      { usuarioId: "u-sat", rol: "adminSatelite" },
+    );
+    expect(r).toEqual({ status: "forbidden" });
+    expect(escrituras.revertirConciliacion).not.toHaveBeenCalled();
   });
 });
 

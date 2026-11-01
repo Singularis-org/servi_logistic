@@ -73,8 +73,9 @@ export interface CierreBodegaResumenRow {
   /** `null` = sin conciliar. NUNCA `"0.00"` por ausencia: cero recibido es otra cosa. */
   montoRecibido: string | null;
   /**
-   * R17/R18/R20 — `total_efectivo` − COALESCE(`monto_recibido`, 0), DERIVADO EN EL SERVIDOR con
+   * SLT-73 (R8) — `paraLaCentral` − COALESCE(`monto_recibido`, 0), DERIVADO EN EL SERVIDOR con
    * la MISMA funcion que usa `/wallet/satelites` (`lib/utils/conciliacion-satelite.saldoDe`).
+   * Hasta SLT-73 era sobre `total_efectivo`; D3 reabrio la Q2 de la 431.
    * La pantalla NO resta dinero. Puede ser NEGATIVO (llego de mas) y se emite con su signo.
    */
   faltaPorRecibir: string;

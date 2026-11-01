@@ -581,7 +581,7 @@ function TituloColumna({ children }: Readonly<{ children: ReactNode }>) {
 
 /** Rotulo de la columna de la marca en el desplegable. */
 const RESUMEN_CONCILIACION_TITULO = "Conciliación";
-/** Quien marco que el efectivo llego. */
+/** Quien marco que el dinero llego. */
 const CONCILIADO_POR_LABEL = "Conciliado por";
 /** Cuando se marco. */
 const CONCILIADO_EL_LABEL = "Conciliado el";
@@ -613,8 +613,14 @@ function ConciliacionBadge({
  *
  * ── LO QUE SE PINTA SIN MARCA, Y POR QUE NO ES UN CERO
  * Sin conciliar, «Monto recibido» NO existe como linea: un «₡0,00» ahi diria «alguien conto y no
- * habia nada», que es otra cosa. Lo que si se pinta es «Falta por recibir» con el efectivo
- * INTEGRO, porque eso si es cierto y es el numero que la bodega tiene que reconocer como suyo.
+ * habia nada», que es otra cosa. Lo que si se pinta es «Falta por recibir» con el neto para la
+ * central INTEGRO, porque eso si es cierto y es el numero que la bodega tiene que reconocer como
+ * suyo.
+ *
+ * ── SLT-73 (D3, R8, R34): CUADRA CONTRA «PARA LA CENTRAL», NO CONTRA EL EFECTIVO
+ * Lo esperado de una consolidacion es `paraLaCentral` (total general − pago al mensajero − gana la
+ * bodega), la MISMA cifra de la linea «Para la central» de esta tarjeta. Asi que recibido + falta
+ * = «Para la central». `faltaPorRecibir` llega ya restado del servidor; aqui no se resta nada.
  *
  * ── LA DIFERENCIA SE DESTACA (Q7)
  * Cuando queda algo por llegar, la linea va `destacado`: es el caso por el que existe toda esta

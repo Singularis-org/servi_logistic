@@ -101,6 +101,10 @@ const RESUMEN: CajaResumenDTO = {
   flujoDesde: "2026-08-25",
   iva: "569.75", // SL-39
   signoIva: "positivo",
+  porCobrarSatelites: "0.00",
+  signoPorCobrarSatelites: "cero",
+  porcentajePorCobrarSatelites: "0.00",
+  deEmpresaEnCaja: "3519.00",
 };
 
 /** Nombres accesibles de los controles que abren cada fila (R24). */

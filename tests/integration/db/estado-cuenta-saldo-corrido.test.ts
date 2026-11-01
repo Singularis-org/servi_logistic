@@ -3,6 +3,7 @@ import type { PrismaClient } from "@prisma/client";
 
 import { verEstadoCuentaAction } from "@/lib/actions/estado-cuenta";
 import type { EstadoCuentaDTO, VerEstadoCuentaResult } from "@/lib/types/estado-cuenta";
+import type { VerEstadoCuentaCompletoServiceResult } from "@/lib/interfaces/services/IEstadoCuentaService";
 
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
 import { cargarCatalogo459, enTransaccionRevertida459, montarServicios459 } from "./_fixtures/caja-459";
@@ -30,6 +31,11 @@ const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
 interface Medida {
   pagoSinSuAnulacion: EstadoCuentaDTO;
+  /** SLT-73 (R33): la bodega Z en el periodo del 12 sep, con el chip «sin consolidar» y su descarga. */
+  bodega12: EstadoCuentaDTO;
+  bodegaSinConsolidar: EstadoCuentaDTO;
+  bodegaEntera: EstadoCuentaDTO;
+  bodegaDescarga: VerEstadoCuentaCompletoServiceResult;
   entero: EstadoCuentaDTO;
   paginas: EstadoCuentaDTO[];
   respuestas: Record<string, VerEstadoCuentaResult>;
@@ -55,6 +61,7 @@ describeSiHayBase("458-B/TB.6 — el estado de cuenta contra Postgres (R16, R21�
         const esc = await sembrarEscenario458(tx, cat);
         const ec = montarEstadoCuenta(s);
         const tienda = { tipo: "tienda" as const, id: esc.tiendaC };
+        const bodega = { tipo: "bodega" as const, id: esc.zonaZ };
         const paginas: EstadoCuentaDTO[] = [];
         for (let page = 1; page <= 3; page += 1) {
           paginas.push(await leerEstadoCuenta(ec, esc.maestro, { cuenta: tienda, page, pageSize: 3 }));
@@ -69,6 +76,10 @@ describeSiHayBase("458-B/TB.6 — el estado de cuenta contra Postgres (R16, R21�
             hasta: "2026-09-12",
           }),
           entero: await leerEstadoCuenta(ec, esc.maestro, { cuenta: tienda }),
+          bodega12: await leerEstadoCuenta(ec, esc.maestro, { cuenta: bodega, desde: "2026-09-12", hasta: "2026-09-12" }),
+          bodegaSinConsolidar: await leerEstadoCuenta(ec, esc.maestro, { cuenta: bodega, chip: "sin_consolidar" }),
+          bodegaEntera: await leerEstadoCuenta(ec, esc.maestro, { cuenta: bodega }),
+          bodegaDescarga: await ec.leerCompleto({ cuenta: bodega, sortBy: "fecha", sortDir: "asc" }, esc.maestro),
           paginas,
           respuestas: {
             tiendaPideLaSuya: await accion({ cuenta: tienda }, tiendaActor),
@@ -96,6 +107,45 @@ describeSiHayBase("458-B/TB.6 — el estado de cuenta contra Postgres (R16, R21�
     expect(e.filas.map(lineaDe)).toEqual(["2026-09-12|3000.00|-|3200.00|pagos"]);
     expect([e.saldoInicial, e.abonos, e.cargos, e.saldoFinal]).toEqual(["6200.00", "0.00", "3000.00", "3200.00"]);
     expect(e.saldoFinal).toBe(e.filas[e.filas.length - 1].saldoCorrido);
+  });
+
+  // SLT-73 (R33) — la bodega Z (ver la siembra en `_fixtures/wallet-458.ts`). Saldo inicial al terminar
+  // el 11 CR: b1 4 500 + b2 6 000 = 10 500,00. El 12: b2 recibido 4 000 y el cierre de la rechazada 900.
+  // Final 10 500 + 900 − 4 000 = 7 400,00 = el corrido de la ultima fila. Con `total_efectivo` en los
+  // totales el inicial seria 9 500,00 y no cuadraria con el corrido.
+  it("SLT-73 R33: los totales del periodo de la bodega salen de la misma formula que la pagina", () => {
+    const e = m().bodega12;
+    expect(e.filas.map(lineaDe)).toEqual([
+      "2026-09-12|-|4000.00|6500.00|recibido",
+      "2026-09-12|900.00|-|7400.00|sin_consolidar",
+    ]);
+    expect([e.saldoInicial, e.abonos, e.cargos, e.saldoFinal, e.saldoActual]).toEqual([
+      "10500.00",
+      "4000.00",
+      "900.00",
+      "7400.00",
+      "9150.00",
+    ]);
+    expect(e.saldoFinal).toBe(e.filas[e.filas.length - 1].saldoCorrido);
+  });
+
+  it("SLT-73 R32/R33: el chip «sin consolidar» filtra solo esas filas, sin mover el corrido; la descarga = la pantalla", () => {
+    expect(m().bodegaSinConsolidar.filas.map(lineaDe)).toEqual([
+      "2026-09-12|900.00|-|7400.00|sin_consolidar",
+      "2026-09-15|1750.00|-|9150.00|sin_consolidar",
+    ]);
+    expect(m().bodegaSinConsolidar.filas.every((f) => f.consolidacionId === null)).toBe(true);
+    const d = m().bodegaDescarga;
+    if (d.status !== "ok") throw new Error(`descarga: ${d.status}`);
+    const entera = m().bodegaEntera;
+    expect(d.estado.filas.map(lineaDe)).toEqual(entera.filas.map(lineaDe));
+    expect(d.estado.filas).toHaveLength(5);
+    expect([d.estado.saldoInicial, d.estado.abonos, d.estado.cargos, d.estado.saldoFinal]).toEqual([
+      "0.00",
+      "4000.00",
+      "13150.00",
+      "9150.00",
+    ]);
   });
 
   it("R23: paginas de 3 = la lectura entera, sin repetir ni omitir, con el mismo corrido", () => {
