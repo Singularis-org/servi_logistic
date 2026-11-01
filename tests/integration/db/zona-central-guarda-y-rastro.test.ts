@@ -4,6 +4,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 
 import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
 import type {
+  CreateZonaResult,
   UpdateZonaData,
   UpdateZonaResult,
 } from "@/lib/interfaces/repositories/IZonaRepository";
@@ -49,6 +50,12 @@ import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima"
 // una historia distinta de la que dice medir.
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
+
+/** SLT-75: `create` devuelve un desenlace nombrado; aqui solo cabe `ok` y falla ruidosamente si no. */
+function zonaCreada(res: CreateZonaResult): Extract<CreateZonaResult, { estado: "ok" }>["zona"] {
+  if (res.estado !== "ok") throw new Error(`se esperaba \`ok\` al crear y llego \`${res.estado}\``);
+  return res.zona;
+}
 
 const SUFIJO = `376-${Date.now().toString(36)}`;
 let contador = 0;
@@ -656,7 +663,7 @@ describeSiHayBase("⭑ 376/T11 — la zona central: guarda, borrado y rastro (Po
     const medido = await conEscenario("A", async (e) => {
       const distrito = await e.crearDistrito([]);
       const nombre = `376 NUEVA ${unico()}`;
-      const dto = await e.repo.create(
+      const dto = zonaCreada(await e.repo.create(
         { sinpeNumero: "80000000", sinpeNombre: "Titular de Prueba",
           nombre,
           cobroVehiculo: false,
@@ -665,7 +672,7 @@ describeSiHayBase("⭑ 376/T11 — la zona central: guarda, borrado y rastro (Po
           tarifas: [],
         },
         USUARIO,
-      );
+      ));
 
       return {
         creada: dto,
@@ -701,7 +708,7 @@ describeSiHayBase("⭑ 376/T11 — la zona central: guarda, borrado y rastro (Po
   it("R18 en `create`: crear SIN la marca no escribe ninguna fila ni apaga la central", async () => {
     const medido = await conEscenario("A", async (e) => {
       const distrito = await e.crearDistrito([]);
-      const dto = await e.repo.create(
+      const dto = zonaCreada(await e.repo.create(
         { sinpeNumero: "80000000", sinpeNombre: "Titular de Prueba",
           nombre: `376 NUEVA SIN MARCA ${unico()}`,
           cobroVehiculo: false,
@@ -710,7 +717,7 @@ describeSiHayBase("⭑ 376/T11 — la zona central: guarda, borrado y rastro (Po
           tarifas: [],
         },
         USUARIO,
-      );
+      ));
       return {
         filas: await e.marcasDe([e.zonas.A.id, dto.id]),
         centrales: await e.centralesVivas(),

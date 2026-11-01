@@ -444,10 +444,6 @@ describeSiHayBase("⭑ 312/B3 — corregirDatosCliente contra Postgres real", ()
       data: { sinpeNumero: "80000000", sinpeNombre: "Titular de Prueba", nombre: `Z-327-destino-${sufijo}`, esCentral: false },
       select: { id: true, nombre: true },
     });
-    const zonaExtra = await tx.zona.create({
-      data: { sinpeNumero: "80000000", sinpeNombre: "Titular de Prueba", nombre: `Z-327-extra-${sufijo}`, esCentral: false },
-      select: { id: true },
-    });
     const crearDistrito = async (
       nombre: string,
       zonas: string[],
@@ -475,8 +471,8 @@ describeSiHayBase("⭑ 312/B3 — corregirDatosCliente contra Postgres real", ()
       unaZona: await crearDistrito("D-una-zona", [zonaDestino.id]),
       // CERO zonas -> no resuelve.
       sinZona: await crearDistrito("D-sin-zona", []),
-      // DOS zonas -> ambiguo, tampoco resuelve.
-      dosZonas: await crearDistrito("D-dos-zonas", [zonaDestino.id, zonaExtra.id]),
+      // SLT-75: ya no hay distrito de DOS zonas. El indice `(organizacion_id, distrito_id)` impide
+      // sembrarlo; «nunca `zonas[0]`» sigue en `corregir-datos-cliente-service.test.ts` (unit).
       // Especial, con UNA zona: la marca es del distrito para la empresa, no de su zona.
       especial: await crearDistrito("D-especial", [zonaDestino.id], true),
       // Colgado de la zona CENTRAL: comprueba que `esCentral` viaja de la ZONA, no del distrito.
@@ -763,14 +759,13 @@ describeSiHayBase("⭑ 312/B3 — corregirDatosCliente contra Postgres real", ()
   /* ---------------------------------------------------------------------- */
 
   it("⭑ 327 caso 7 (R7): el distrito resuelve UNA zona, o ninguna; nunca se inventa una", async () => {
-    // Las TRES respuestas del colapso, medidas contra filas reales de `zona_distrito`. Que
-    // `zonaUnicaDeDistrito` devolviera `zonas[0]` pondria rojo el caso de las dos zonas — y ese es
-    // el bug que factura por la zona equivocada sin romper nada.
+    // Las respuestas del colapso que la base todavia puede dar (una y cero zonas), medidas contra
+    // filas reales de `zona_distrito`. La de DOS zonas ya no se puede sembrar desde SLT-75 (indice
+    // `(organizacion_id, distrito_id)`); «nunca `zonas[0]`» queda en el unit del servicio.
     const r = await conOrdenUbicada({}, async (ctx) => ({
       geo: ctx.geo,
       una: await ctx.repo.findDistritoParaCorreccion(ctx.geo.unaZona),
       sin: await ctx.repo.findDistritoParaCorreccion(ctx.geo.sinZona),
-      dos: await ctx.repo.findDistritoParaCorreccion(ctx.geo.dosZonas),
       especial: await ctx.repo.findDistritoParaCorreccion(ctx.geo.especial),
       central: await ctx.repo.findDistritoParaCorreccion(ctx.geo.enZonaCentral),
       inexistente: await ctx.repo.findDistritoParaCorreccion(
@@ -796,10 +791,6 @@ describeSiHayBase("⭑ 312/B3 — corregirDatosCliente contra Postgres real", ()
     expect(r.sin?.zonaId).toBeNull();
     expect(r.sin?.zonaNombre).toBeNull();
     expect(r.sin?.esCentral).toBe(false);
-
-    // DOS zonas -> `null` TAMBIEN. No se elige la primera.
-    expect(r.dos?.zonaId).toBeNull();
-    expect(r.dos?.esCentral).toBe(false);
 
     // La marca especial es del DISTRITO y viaja aunque la zona sea la misma.
     expect(r.especial?.esZonaEspecial).toBe(true);

@@ -93,6 +93,7 @@ function arbol(): ProvinciaArbolDTO[] {
               nombre: "Carmen",
               zonaId: null,
               zonaNombre: null,
+              zonas: [],
               zonaEspecial: false,
               activo: true,
             },
@@ -361,9 +362,11 @@ describe("R23 — el rechazo del servidor se pinta JUNTO a la casilla", () => {
     // lo es —su motivo también se reenvía, por el mismo argumento de R23—. El campo del fixture
     // pasa a ser `distritoIds`, que sigue siendo uno que el toast no reenvía; lo que el caso mide
     // —que el genérico NO desaparece para el resto de campos— es exactamente lo mismo.
+    // SLT-75 (R21): `distritoIds` tampoco lo es ya (el distrito que está en otra zona tiene motivo
+    // propio en el toast). Pasa a `tarifas`, que sigue sin reenviarse.
     actualizarZonaMock.mockResolvedValue({
       status: "validation_error",
-      fieldErrors: { distritoIds: ["uno o mas distritoIds no existen"] },
+      fieldErrors: { tarifas: ["uno o mas montos no son validos"] },
     });
     const user = userEvent.setup();
     renderForm({

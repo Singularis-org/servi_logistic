@@ -516,6 +516,7 @@ export function CrearZonaForm({
       <GeografiaSelector
         provincias={provincias}
         initialSelected={initial?.distritoIds}
+        zonaEnEdicionId={zonaIdGuardada}
         onSelectedChange={setDistritoIds}
         onEspecialesChange={setEspeciales}
       />
@@ -714,6 +715,13 @@ function mensajeGuardado(
   return `${base}. ${retenidas}`;
 }
 
+/** El primer mensaje y, si hay más, « y <N> más.». `undefined` si no hay ninguno. */
+function primeroYCuantosMas(mensajes: string[] | undefined): string | undefined {
+  if (!mensajes || mensajes.length === 0) return undefined;
+  if (mensajes.length === 1) return mensajes[0];
+  return `${mensajes[0]} y ${mensajes.length - 1} más.`;
+}
+
 /** Mensaje legible para los estados de error de crear/actualizar zona. */
 function mensajeDeError(err: ZonaActionError): string {
   switch (err.status) {
@@ -735,13 +743,20 @@ function mensajeDeError(err: ZonaActionError): string {
       //
       // `nombre` va antes que `esCentral` porque el servidor nunca los devuelve juntos: el corte
       // del nombre vive en `prepararDatos` y la marca de zona central se decide después.
+      //
+      // SLT-75 (R21): el rechazo por un distrito que ya está en otra zona trae un mensaje por
+      // distrito. El selector los pinta todos (FieldError); el toast dice el primero y cuántos
+      // más quedan, para no convertirse en una lista que tapa la pantalla.
       return (
         err.fieldErrors.nombre?.[0] ??
         err.fieldErrors.esCentral?.[0] ??
+        primeroYCuantosMas(err.fieldErrors.distritoIds) ??
         "Revisa los campos: el formulario está incompleto."
       );
     case "conflict":
-      return "Ya existe una zona con ese nombre o un distrito ya está asignado.";
+      // SLT-75 (R22): un distrito en otra zona ya no llega como `conflict` sino como
+      // `validation_error` con el detalle; nombrarlo aquí mandaría a buscar un distrito que no es.
+      return "Ya existe una zona con ese nombre.";
     case "unauthenticated":
       return "Tu sesión expiró.";
     case "forbidden":
