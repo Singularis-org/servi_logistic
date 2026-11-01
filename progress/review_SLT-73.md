@@ -181,3 +181,64 @@ Todo lo demás pasó:
 - 7 de 8 mutaciones mueren.
 
 Para la vuelta 2 basta revisar el diff del test, más M2 re-ejecutada.
+
+## Vuelta 2 (acotada a 3c369f68..993c97e8)
+
+Revisado el 2026-11-01. Base `servi_slt73d`, recién creada y sin sembrar. Antes de cada corrida se regeneró
+Prisma en este worktree, y el cliente traía `conciliacionBodegaAjuste` (739) antes y después de cada una. El
+árbol quedó limpio, sin restos de la spec temporal de navegador.
+
+### Diff revisado
+- `tests/integration/db/slt73-migracion-retira-asientos.int.test.ts`: caso nuevo «R16/D15: la compensacion de un
+  premio anulado…».
+  - Siembra la compensación por el escritor real (`PagoMensajeroMovimientoRepository.crearMovimientos`):
+    `ajuste_pago`, `premio_dia`, origen `cierre_dia` del cierre satélite sin consolidar.
+  - Comprueba que se sembró y lanza un error si no: no queda un verde vacío.
+  - Afirma tres cosas: que sigue en el libro tras el up, que no está en el respaldo (que no está vacío) y que tras
+    el down hay exactamente una fila.
+- `tests/integration/db/slt73-revertir-con-asientos.int.test.ts` (nuevo): el caso R14, con datos propios.
+  - Comprueba que la marca asentó: 7 filas de caja, 5 de tienda, 2 del mensajero y 1 ajuste.
+  - Después de revertir, exige `con_asientos` y que no cambie nada: ni la consolidación, ni el historial, ni las
+    filas del cierre, ni los totales globales de los tres libros y de los ajustes.
+- `tests/integration/db/marca-conciliacion.int.test.ts`: se quita el caso R14, que ya no está duplicado, y su
+  import. El comentario apunta al archivo nuevo.
+
+### Ejecutado por el reviewer
+| Qué | Resultado |
+|---|---|
+| M2: `AND m.premio_dia IS NULL` → `AND TRUE`, confirmada con grep y revertida con `git checkout` | **MUERE**: «R16/D15: la compensacion…» da `expected +0 to be 1`, 1 rojo de 6 |
+| M4: conteo de `revertirConciliacion` con `origenTipo: "gestion_orden"` | **MUERE**: `expected 'updated' to be 'con_asientos'` en `slt73-revertir-con-asientos` |
+| Los 9 `slt73-*` sin mutar, en `servi_slt73d` | 9/9 archivos verdes |
+| `marca-conciliacion` en `servi_slt73d` | 8 rojos por «la tabla `usuario` esta vacia… corre db:seed». Es el motivo del baseline y confirma que hacía bien sacar de ahí el caso R14 (m2) |
+| Typecheck | `TC_EXIT=0` |
+| Lint de los 3 tests tocados | 0 errores |
+
+Nota: en la vuelta 1, M4 usaba `origenTipo: "cierre_bodega"`. Vitest no comprueba tipos, así que aquella
+corrida sí se ejecutó y murió. La variante `gestion_orden` es la que compila.
+
+### Trazabilidad
+- R16: el mapa del `impl_SLT-73.md` añade la cláusula `premio_dia` (D15).
+- R14: pasa de `marca-conciliacion` a `slt73-revertir-con-asientos`. Siguen los unit de repositorio, servicio y
+  acción, y el E2E.
+- El resto de R1–R35 no cambia: el diff solo añade un caso y mueve otro. Ningún R se quedó sin test.
+
+### Hallazgos de la vuelta 1
+- **B1: CERRADO.** M2 muere.
+- **m1: CERRADO.**
+  - `progress/impl_SLT-73.md`, tanda 12, registra una verificación en navegador local: 5 passed.
+  - Miré las capturas de `scratchpad/navegador73/`. La barra pinta 3 tramos (`01c`). La región «Conciliación»
+    muestra recibido ₡5.000 y falta ₡2.000, que suman «Para la central» 7.000 (`03b`).
+  - Hay capturas también del bloque en ₡0, de la nota de Q10 y de la vista móvil.
+  - Lo de tras el deploy sigue siendo recomendable: el NOTICE de la migración C y las cifras de prod listadas en
+    m1.
+- **m2: CERRADO.**
+- **Abiertos, no bloquean:** m3 (test de dos empresas del SQL a mano de la bodega), m4 (revertir no mira los
+  ajustes), m5 (`esperado` calculado dos veces), m6 (`geografia-por-pais` fuera del baseline: mirarlo en el CI
+  antes de decidir T10) y m7 (textos provisionales).
+
+### Regresiones
+Ninguna. El diff toca solo tests y el `impl`. No cambia código de la app ni migraciones.
+
+### Veredicto vuelta 2
+**OK.** No queda ningún bloqueante. T10 sigue sin marcar: su gate depende del rojo ajeno `geografia-por-pais`
+(m6), y lo decide el leader.
