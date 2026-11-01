@@ -44,7 +44,7 @@
   *Hecho:* `ConciliacionSateliteCascada.test.tsx` y `SaldosSatelitesTable.test.tsx` están verdes, y
   `DineroIdentidadesEnPantalla.test.tsx` sigue verde. Se verifica en el navegador con una satélite
   todo SINPE sin consolidar: no sale al día.
-- [ ] **T8 — Migración C de datos (R16–R20).** Entrega
+- [x] **T8 — Migración C de datos (R16–R20).** Entrega
   `20261031140200_slt73_retirar_asientos_satelite`: up con guarda `liquidacion_pago`, esquema
   `respaldo` y `DELETE` por id del respaldo; down con `jsonb_populate_record` y
   `ON CONFLICT DO NOTHING`. Depende de T1.
