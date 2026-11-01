@@ -359,3 +359,89 @@ descarga). No lo toqué, ni el fixture `wallet-458`: arreglar el fixture taparí
 
 **Veredicto:** T6 hecho y probado contra Postgres; de 19 mutaciones sobrevive 1, equivalente (M3a). Queda abierto el
 bloqueo del estado de cuenta de la bodega (458), con `wallet-caracterizacion-458` en rojo, y la UI (T7).
+
+## Tanda 4 — backend_dev: T8 (R16-R20) (2026-10-31)
+
+### Archivos
+- `db/migrations/20261031140200_slt73_retirar_asientos_satelite/migration.sql` (nuevo). Timestamp mayor que la última
+  de la rama (`20261031140100_slt73_ajuste_conciliacion`); no hay ninguna posterior.
+- `db/migrations/20261031140200_slt73_retirar_asientos_satelite/down.sql` (nuevo).
+- `tests/integration/db/slt73-migracion-retira-asientos.int.test.ts` (nuevo, 5 tests).
+
+### Decisiones
+- **Un solo bloque `DO` en cada archivo.** Todo o nada sin depender de cómo envuelva Prisma el script, y el test puede
+  ejecutar el SQL real del archivo con `$executeRawUnsafe` (una sentencia) dentro de su tx revertida.
+- **PK del respaldo:** Postgres no admite expresiones en `PRIMARY KEY`. Va una columna generada
+  `id text GENERATED ALWAYS AS (fila->>'id') STORED` y `PRIMARY KEY (tabla, id)`.
+- **Esquema `respaldo`:** `REVOKE ALL ... FROM PUBLIC` en esquema y tabla; `servi_app` sin `USAGE` (lo comprueba el
+  test con `has_schema_privilege`). El `ALTER DEFAULT PRIVILEGES` de 20261022130000 es solo `IN SCHEMA public`.
+- **Sin triggers que desactivar.** Los libros no tienen trigger de `DELETE` (solo `sme_*` en INSERT/UPDATE,
+  `*_sin_cambio_de_empresa` en UPDATE y el tope de pago a plataforma en INSERT de `egreso_pago_plataforma`). El
+  append-only se aplica con `REVOKE UPDATE, DELETE ... FROM servi_app`, y la migración corre como propietario. RLS es
+  `ENABLE` sin `FORCE`, así que el propietario ve todas las filas. Mismo mecanismo que la 461: `DELETE` directo.
+- **Columnas de origen:** las tres tablas usan `origen_tipo` / `origen_id` (leído en `db/schema.prisma`).
+- **`IF NOT EXISTS` + `ON CONFLICT DO NOTHING` en el respaldo**, para que up → down → up funcione y el test corra
+  sobre una base que ya tiene la migración aplicada.
+- **Down:** `jsonb_populate_record(NULL::<tabla>, fila)` por tabla, `ON CONFLICT DO NOTHING` (sin target: lo
+  recogen `wallet_movimiento_origen_categoria_uq`, `wallet_tienda_movimiento_origen_uq` y
+  `pago_mensajero_movimiento_origen_uq`). Después `DROP SCHEMA IF EXISTS respaldo CASCADE`. Si la tabla del respaldo
+  no existe, solo se quita el esquema.
+
+### DESVIACIÓN DEL SPEC (para que el leader la confirme): los devengos posteriores del mensajero se quedan
+R16 dice «las filas con origen `cierre_dia`». En `pago_mensajero_movimiento` también cuelgan de `cierre_dia` filas
+que **no** escribe la aprobación y que la conciliación **no** vuelve a escribir: el premio del ranking
+(`PremioRankingDevengoService`: `premio_ranking` y su reverso `ajuste_pago` con `premio_dia`) y el `incentivo`
+(`IncentivoMensajeroService`). Si se retiraran, desaparecerían del libro del mensajero y R20 no las devolvería. La
+migración no retira esas filas: `categoria NOT IN ('premio_ranking','incentivo') AND premio_dia IS NULL`. Es el mismo
+criterio que ya usa `PagoMensajeroMovimientoRepository.sumarPremiosVivosPorCierre`. En caja y tienda no hay otro
+escritor con origen `cierre_dia` que no sean los feeds de la aprobación (grep en `lib/`). Si el humano quiere la
+lectura literal, el cambio es borrar dos líneas del primer `INSERT` del mensajero y la mutación M7.
+
+### Mapa R → test (`slt73-migracion-retira-asientos.int.test.ts`)
+| R | Test |
+|---|---|
+| (control) | «CONTROL: antes del up, cada cierre del escenario tiene sus asientos» |
+| R16 | «R16/R17: el up retira y respalda integras…»: el satélite sin consolidar y el consolidado sin conciliar quedan sin filas (salvo los posteriores) y el respaldo es igual, columna a columna, al `to_jsonb` de antes |
+| R17 | mismo test: central, satélite conciliado y satélite `solicitado` (centinela de estado) con el blob intacto y sin respaldo |
+| R18 | «R18: con un pago al mensajero contra un cierre de S, el up aborta con el conteo y nada cambia» |
+| R19 | «R19: el down devuelve exactamente las filas retiradas y quita el respaldo; up → down → up deja el mismo blob» |
+| R20 | «R20: tras el up, conciliar la consolidacion re-escribe…; el down no los duplica» (`CierresBodegaAdminRepository.marcarConciliado` real) |
+
+Siembra por el camino real: `aprobar` (central), `aprobar` + `asentarCierreDia` (satélite de antes del hotfix),
+`consolidar`, `marcarRecibido`. Todo en `enTransaccionRevertida`.
+
+### Mutaciones (harness autocomprobado `scratchpad/t8/mut.py`: control verde, la mutación se relee y git la ve, aborta sin resumen, revierte con `git checkout --` y `git diff --quiet`)
+| Mutación | Rojos |
+|---|---|
+| M1 quitar `conciliado_at IS NULL` | 3 (R16/R17, R18, R20) |
+| M2 quitar `destino_tipo` | 1 (R16/R17) |
+| M3 `DELETE` por `origen_id` en los tres libros | 3 (R16/R17, R19, R20) |
+| M3m ídem solo en el mensajero | 3 |
+| M3w ídem solo en la caja | **0, equivalente**: en caja el conjunto por origen y el respaldado son el mismo (no hay escritor con origen `cierre_dia` fuera de la aprobación); lo mismo en tienda |
+| M4 quitar el `RAISE` | 1 (R18) |
+| M5 quitar `estado = 'aprobado'` | 1 (R16/R17, centinela `solicitado`) |
+| M6 down sin `ON CONFLICT DO NOTHING` | 1 (R20) |
+| M7 retirar también los devengos posteriores | 1 (R16/R17) |
+| M8 down sin `DROP SCHEMA` | 1 (R19) |
+| M9 down no restaura la tienda | 2 (R19, R20) |
+| M10 respaldo de caja sin `monto` | 3 (R16/R17, R19, R20) |
+
+12 mutaciones, 1 superviviente equivalente (M3w).
+
+### Verificación (salida real)
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: exit 0, 0 `error TS`.
+- `pnpm exec eslint tests/integration/db/slt73-migracion-retira-asientos.int.test.ts`: exit 0.
+- `vitest run tests/integration/db/slt73-migracion-retira-asientos.int.test.ts` (base `servi_slt73`): **5 passed (5)**,
+  antes y después del deploy de la migración.
+- `pnpm run test:guardias`: 316/318 archivos, 4436 passed / 5 failed. Los mismos rojos de antes:
+  `caja-clasificacion-459` (T11) y `dependencias-declaradas-presentes` (baseline).
+- Base local: `prisma migrate deploy` → aplica `20261031140200_slt73_retirar_asientos_satelite` (272 migraciones);
+  `pnpm run db:rollback` → «Rollback completado», `respaldo` ya no existe, 271; `prisma migrate deploy` → la aplica
+  otra vez, 272, `respaldo` existe y `has_schema_privilege('servi_app','respaldo','USAGE') = false`.
+  `prisma migrate status`: «Database schema is up to date!».
+- `prisma migrate diff --from-config-datasource --to-schema db/schema.prisma --script`: `-- This is an empty migration.`
+  (sin drift por `respaldo`).
+- La base local está vacía (0 `cierre_dia`): el deploy no ejercita datos; eso lo cubre el test con el SQL real.
+
+**Veredicto:** T8 hecho y probado contra Postgres (5/5, 12 mutaciones con 1 superviviente equivalente). Queda para
+confirmar la desviación de los devengos posteriores del mensajero.
