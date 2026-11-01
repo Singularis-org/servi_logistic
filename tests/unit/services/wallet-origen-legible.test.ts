@@ -86,6 +86,8 @@ const CASOS_CAJA: Record<WalletOrigenTipo, { fila: FilaConOrigenTecnico; texto: 
   },
   // SLT-68: se nombra por su rotulo; el motivo lo trae la descripcion de la fila.
   incentivo_mensajero: { fila: fila("incentivo_mensajero"), texto: "Incentivo a un mensajero" },
+  // SLT-73: la diferencia de la satelite se nombra por su rotulo; no hay entidad que leer.
+  conciliacion_bodega_ajuste: { fila: fila("conciliacion_bodega_ajuste"), texto: "Diferencia de la satélite" },
 };
 
 describe("458-A R5/R6 — el origen de cada movimiento dice su entidad concreta", () => {

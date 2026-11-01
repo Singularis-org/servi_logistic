@@ -18,7 +18,9 @@ import type { WalletTiendaMovimientoCategoria } from "@/lib/types/wallet-tienda"
 export const CHIPS_TIENDA = ["cierres", "pagos", "cobros", "correcciones"] as const;
 // SLT-68 (D6): «Incentivos» es chip propio; meterlos en «Premios» los mezclaria con el podio.
 export const CHIPS_MENSAJERO = ["cierres", "pagos", "premios", "incentivos", "correcciones"] as const;
-export const CHIPS_BODEGA = ["declarado", "recibido"] as const;
+// SLT-73 (enmienda 2, R32): «sin_consolidar» = un cierre aprobado que cuenta en la deuda y no esta en
+// una consolidacion no rechazada.
+export const CHIPS_BODEGA = ["declarado", "recibido", "sin_consolidar"] as const;
 
 export type ChipTienda = (typeof CHIPS_TIENDA)[number];
 export type ChipMensajero = (typeof CHIPS_MENSAJERO)[number];
@@ -75,6 +77,17 @@ export const CHIP_POR_CATEGORIA_MENSAJERO: Record<
   reverso_incentivo: () => "incentivos",
   ajuste_devengo: (origen, esPremio) => (esPremio ? "premios" : origen === "pago_mensajero" ? "pagos" : "correcciones"),
   ajuste_pago: (origen, esPremio) => (esPremio ? "premios" : origen === "pago_mensajero" ? "pagos" : "correcciones"),
+};
+
+/**
+ * Libro de la BODEGA (SLT-73, R32): cada chip es UNA categoria con UN origen. `declarado` y `recibido`
+ * nacen de la consolidacion (`cierre_bodega`); `sin_consolidar`, del cierre del dia. `Record` TOTAL sobre
+ * los chips: un chip nuevo sin origen no compila (y su filtro no casaria ninguna fila).
+ */
+export const ORIGEN_POR_CHIP_BODEGA: Record<ChipBodega, "cierre_bodega" | "cierre_dia"> = {
+  declarado: "cierre_bodega",
+  recibido: "cierre_bodega",
+  sin_consolidar: "cierre_dia",
 };
 
 export function chipDeTienda(categoria: WalletTiendaMovimientoCategoria, origen: WalletOrigenTipo): ChipTienda {

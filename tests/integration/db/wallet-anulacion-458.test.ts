@@ -336,7 +336,10 @@ describeSiHayBase("⭑ 458-B/TB.9 — la anulacion uniforme por las actions (Pos
     const r = m().trasRechazo.resumen;
     const mas = (a: string, b: string) => menos(a, menos("0.00", b));
     // SL-39 (R4): el IVA, aparte de la ganancia, es el cuarto sumando.
-    expect(menos(r.enCaja, mas(mas(mas(r.ganancia, r.iva), r.deTerceros), r.capital))).toBe("0.00");
+    // SLT-73 (R27): menos «Por cobrar a satélites» (el libro entero puede traer diferencias de la satélite).
+    expect(
+      menos(r.enCaja, menos(mas(mas(mas(r.ganancia, r.iva), r.deTerceros), r.capital), r.porCobrarSatelites)),
+    ).toBe("0.00");
     // R8 por diferencia: lo que subio «De las tiendas» es lo que subieron los saldos de A y B.
     const deltaTerceros = d(m().antes, m().trasRechazo, (l) => l.resumen.deTerceros);
     const deltaSaldos = mas(menos(m().saldoATras, m().saldoAAntes), menos(m().saldoBTras, m().saldoBAntes));

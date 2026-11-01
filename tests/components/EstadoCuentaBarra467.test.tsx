@@ -257,7 +257,8 @@ describe("467 R21 — las opciones del Tipo de movimiento: los chips de ese tipo
     ["tienda", 0, ["Cierres", "Pagos", "Cobros", "Correcciones"]],
     // SLT-68 (R18): el incentivo y su anulación, en su propio filtro.
     ["mensajero", 1, ["Cierres", "Pagos", "Premios", "Incentivos", "Correcciones"]],
-    ["bodega", 2, ["Declarado", "Recibido"]],
+    // SLT-73 (enmienda 2, R32): los cierres aprobados fuera de una consolidación no rechazada.
+    ["bodega", 2, ["Declarado", "Recibido", "Sin consolidar"]],
   ] as const)("%s", async (_t, i, esperadas) => {
     SUPERFICIES[i].montar();
     expect(await opcionesDelControl(userEvent.setup(), barra(), "Tipo de movimiento")).toEqual([...esperadas]);

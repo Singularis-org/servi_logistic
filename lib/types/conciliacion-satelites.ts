@@ -43,9 +43,23 @@ import { montoPositivoSchema } from "@/lib/types/wallet";
 export interface SaldoSateliteDTO {
   zonaId: string;
   zonaNombre: string;
-  /** R17/R18 — Σ(`total_efectivo` − COALESCE(`monto_recibido`, 0)) sobre las no rechazadas. */
+  /**
+   * SLT-73 (R5) — LA DEUDA de la satelite: Σ `paraLaCentral` de sus `cierre_dia` aprobados con
+   * destino satelite (consolidados o no) − Σ `monto_recibido` de sus consolidaciones no rechazadas.
+   * Puede ser negativa (la central le debe). Hasta SLT-73 era Σ(`total_efectivo` − recibido).
+   */
   saldoSinConciliar: string;
-  /** Σ `total_efectivo`: la base del saldo, para que la resta sea auditable desde la pantalla. */
+  /**
+   * SLT-73 (R6) — la parte de la deuda que sale de cierres aprobados SIN consolidar: Σ
+   * `paraLaCentral` de los `cierre_dia` con `cierre_bodega_id IS NULL`. Con su signo.
+   */
+  aporteSinConsolidar: string;
+  /**
+   * SLT-73 (R6) — cuantos `cierre_dia` aprobados sin consolidar tiene la zona. Mayor que cero con
+   * `aporteSinConsolidar` distinto de cero = la bodega NO esta al dia, aunque la deuda total sea 0.
+   */
+  cierresSinConsolidar: number;
+  /** Σ `total_efectivo` de las consolidaciones no rechazadas: CONTEXTO, ya no la base del saldo. */
   totalEfectivo: string;
   /** Σ `total_general`: CONTEXTO (lo que la bodega recaudo), NO lo pendiente. Ver la cabecera. */
   totalConsolidado: string;
@@ -84,7 +98,10 @@ export interface UltimaRecibidaDTO {
   fecha: string;
   /** `monto_recibido` de ESA consolidacion: lo que se conto al recibir el bulto. */
   monto: string;
-  /** `total_efectivo` de ESA consolidacion: lo que la bodega habia declarado. */
+  /**
+   * Lo ESPERADO de ESA consolidacion: `paraLaCentral` de su snapshot (SLT-73, R8). Hasta SLT-73
+   * era su `total_efectivo`; el nombre del campo se conserva.
+   */
   declarado: string;
   /**
    * R17/R18/R20 — `declarado` − `monto` de ESA fila, derivado en el servidor con la MISMA
@@ -108,13 +125,13 @@ export interface UltimaRecibidaDTO {
 export interface ResumenSatelitesDTO {
   /**
    * Tarjeta 1 — «Pendiente de conciliar»: Σ de `saldoSinConciliar` de TODAS las bodegas satelite.
-   * Es la misma formula de R17/R18 aplicada al conjunto, asi que la suma de la columna
+   * Es la misma formula (SLT-73 R5/R7: la deuda) aplicada al conjunto, asi que la suma de la columna
    * «Pendiente» de la tabla ES esta cifra. Puede ser NEGATIVA si llego mas de lo declarado.
    */
   pendienteTotal: string;
   /** Cuantas consolidaciones siguen SIN marcar (`conciliado_at IS NULL`). */
   consolidacionesSinConciliar: number;
-  /** En cuantas bodegas distintas hay saldo pendiente (distinto de cero). */
+  /** En cuantas bodegas distintas la deuda (SLT-73 R5) es distinta de cero. */
   bodegasConPendiente: number;
   /**
    * Tarjeta 2 — «Recibido este mes»: Σ `monto_recibido` de lo marcado DENTRO del mes en curso
@@ -156,14 +173,20 @@ export interface ConsolidacionSateliteDTO {
     transferencia: string;
     general: string;
   };
+  /** SLT-73 (R9) — `total_pago_mensajero`: lo que la satelite paga a sus mensajeros. */
+  pagoMensajero: string;
+  /** SLT-73 (R9) — `total_ingreso_bodega_rechazos`: lo que gana la satelite por rechazos (D7). */
+  gananciaSatelite: string;
+  /** SLT-73 (R8/R9) — `general − pagoMensajero − gananciaSatelite`: el neto que debe. */
+  paraLaCentral: string;
   /** `null` = sin conciliar. NUNCA `"0.00"` por ausencia: cero recibido es otra cosa. */
   montoRecibido: string | null;
   /**
-   * R17/R20 — `total_efectivo` − COALESCE(`monto_recibido`, 0), DERIVADO EN EL SERVIDOR.
+   * SLT-73 (R8) — `paraLaCentral` − COALESCE(`monto_recibido`, 0), DERIVADO EN EL SERVIDOR con la
+   * misma `saldoDe` que `/cierres-admin`. Hasta SLT-73 era sobre `total_efectivo` (D3 lo reabrio).
    *
-   * ⚠️ SOBRE EL EFECTIVO Y NO SOBRE `general`: es el sumando exacto del saldo de su bodega, asi que
-   * la suma de esta columna ES `saldoSinConciliar`. Con `general` aqui y efectivo alla, las dos
-   * cifras de la misma pantalla no cuadrarian y nadie sabria cual creer.
+   * No suma `saldoSinConciliar`: la deuda de la bodega incluye ademas los cierres sin consolidar
+   * (`aporteSinConsolidar`).
    *
    * Puede ser NEGATIVO (llego de mas). No se recorta a cero: mismo criterio con el que la ficha 393
    * decidio ensenar «Para la central» en negativo en vez de maquillarlo.
@@ -269,3 +292,11 @@ export const revertirConciliacionSchema = z
   .strict();
 
 export type RevertirConciliacionInputBorde = z.infer<typeof revertirConciliacionSchema>;
+
+/**
+ * SLT-73 (R14, D11) — el texto del desenlace `con_asientos` de «Revertir»: la marca ya asento el
+ * dinero de la consolidacion en los libros y la reversion se rechaza sin tocar nada. Vive aqui, en el
+ * modulo puro, para que la accion lo devuelva y la pantalla lo pinte desde el MISMO sitio.
+ */
+export const MENSAJE_REVERTIR_CON_ASIENTOS =
+  "Ya entró a la caja: corrige el monto en vez de revertir";

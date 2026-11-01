@@ -13,6 +13,7 @@ import {
 import {
   chipDeMensajero,
   chipDeTienda,
+  ORIGEN_POR_CHIP_BODEGA,
   type ChipBodega,
   type ChipMensajero,
   type ChipTienda,
@@ -51,7 +52,7 @@ export function paresDeChipMensajero(chip: ChipMensajero): ParDeChip[] {
 }
 
 export function paresDeChipBodega(chip: ChipBodega): ParDeChip[] {
-  return [{ categoria: chip, origen: "cierre_bodega" }];
+  return [{ categoria: chip, origen: ORIGEN_POR_CHIP_BODEGA[chip] }];
 }
 
 /**

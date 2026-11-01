@@ -31,6 +31,8 @@ const SALDO: SaldoSateliteDTO = {
   zonaId: "11111111-1111-4111-8111-111111111111",
   zonaNombre: "FGAM Puntarenas",
   saldoSinConciliar: "115000.00",
+  aporteSinConsolidar: "0.00",
+  cierresSinConsolidar: 0,
   totalEfectivo: "1090000.00",
   totalConsolidado: "1250000.50",
   totalRecibido: "975000.00",
@@ -55,6 +57,9 @@ const CONSOLIDACION: ConsolidacionSateliteDTO = {
     transferencia: "0.00",
     general: "620000.25",
   },
+  pagoMensajero: "0.00",
+  gananciaSatelite: "0.00",
+  paraLaCentral: "620000.25",
   montoRecibido: "485000.00",
   faltaPorRecibir: "15000.00",
   conciliado: true,
@@ -76,6 +81,8 @@ describe("orden de las columnas de descarga de los saldos de bodegas satélite",
       "masAntigua",
       "ultimaRecibidaEl",
       "ultimaRecibidaMonto",
+      "sinConsolidar",
+      "cierresSinConsolidar",
     ]);
     expect(COLUMNAS_DESCARGA_SALDOS_SATELITES.map((c) => c.encabezado)).toEqual([
       "Bodega",
@@ -87,7 +94,19 @@ describe("orden de las columnas de descarga de los saldos de bodegas satélite",
       "Más antigua sin conciliar",
       "Última recibida",
       "Monto de la última recibida",
+      "Sin consolidar",
+      "Cierres sin consolidar",
     ]);
+  });
+
+  it("SLT-73 R6 — lo sin consolidar sale con su signo y su número de cierres", () => {
+    const fila = filaDescargaSaldoSatelite({
+      ...SALDO,
+      aporteSinConsolidar: "-1200.75",
+      cierresSinConsolidar: 3,
+    });
+    expect(fila.sinConsolidar).toBe("-1200.75");
+    expect(fila.cierresSinConsolidar).toBe(3);
   });
 
   it("⭑ la ÚLTIMA recibida es UNA fila, y no el acumulado de la bodega", () => {
@@ -155,7 +174,7 @@ describe("orden de las columnas de descarga del desglose de una bodega satélite
   it("declara sus columnas en el orden de la pantalla (R29)", () => {
     expect(COLUMNAS_DESCARGA_CONSOLIDACIONES_SATELITE.map((c) => c.clave)).toEqual([
       "consolidada",
-      "declarado",
+      "paraLaCentral",
       "recibido",
       "faltaPorRecibir",
       "estado",
@@ -165,10 +184,13 @@ describe("orden de las columnas de descarga del desglose de una bodega satélite
       "simpe",
       "transferencia",
       "cierres",
+      "efectivo",
+      "pagoMensajero",
+      "gananciaSatelite",
     ]);
     expect(COLUMNAS_DESCARGA_CONSOLIDACIONES_SATELITE.map((c) => c.encabezado)).toEqual([
       "Consolidada",
-      "Declarado",
+      "Para la central",
       "Recibido",
       "Falta por recibir",
       "Estado",
@@ -178,18 +200,27 @@ describe("orden de las columnas de descarga del desglose de una bodega satélite
       "SINPE",
       "Transferencia",
       "Cierres del día consolidados",
+      "Efectivo",
+      "Pago mensajero",
+      "Gana la bodega satélite",
     ]);
   });
 
-  it("⭑ «Declarado» es el EFECTIVO y no el general (decisión Q2, medida)", () => {
-    // El SINPE —26,3 % del consolidado en producción— entra directo a una cuenta y NO viaja en
-    // el bulto. Si «Declarado» fuera el general, la columna de al lado («Recibido») se leería
-    // como un faltante que nadie va a entregar en mano jamás. El general va más a la derecha,
-    // como contexto, y el doble tiene los dos valores distintos a propósito.
-    const fila = filaDescargaConsolidacionSatelite(CONSOLIDACION);
-    expect(fila.declarado).toBe("500000.00");
+  it("⭑ SLT-73 (D3/R8) — lo esperado es «Para la central», no el efectivo", () => {
+    // D3 reabrió la Q2 de la 431: el SINPE también es deuda. La columna esperada es
+    // `paraLaCentral` (todos los métodos menos lo de la satélite), y el efectivo baja al final
+    // como contexto. Los cuatro valores del doble son distintos a propósito.
+    const fila = filaDescargaConsolidacionSatelite({
+      ...CONSOLIDACION,
+      pagoMensajero: "20000.00",
+      gananciaSatelite: "1500.10",
+      paraLaCentral: "598500.15",
+    });
+    expect(fila.paraLaCentral).toBe("598500.15");
+    expect(fila.efectivo).toBe("500000.00");
     expect(fila.totalGeneral).toBe("620000.25");
-    expect(fila.declarado).not.toBe(fila.totalGeneral);
+    expect(fila.pagoMensajero).toBe("20000.00");
+    expect(fila.gananciaSatelite).toBe("1500.10");
   });
 
   it("el ESTADO sale como su etiqueta legible, nunca como el valor del enum (R28)", () => {

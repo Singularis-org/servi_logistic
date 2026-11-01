@@ -19,6 +19,7 @@ vi.mock("next/navigation", () => ({
 
 import { WalletLedger } from "@/app/(app)/wallet/_components/WalletLedger";
 import { DUENO_LABEL } from "@/app/(app)/wallet/_components/wallet-labels";
+import { filaBaseCaja } from "@/app/(app)/wallet/_components/wallet-ledger-descarga-columnas";
 
 /**
  * Feature 231 (T5.4) — la columna «Dueño» del libro de la caja.
@@ -211,5 +212,43 @@ describe("WalletLedger — el dueño no se deriva en el cliente (R36)", () => {
       "app/(app)/wallet/_components/wallet-ledger-descarga-columnas.ts",
     );
     expect(descarga).toContain("movimiento.dueno");
+  });
+});
+
+// SLT-73 (D12, design §2.9.8, R29) — la fila de diferencia de la satélite, en la tabla y en la descarga.
+describe("SLT-73 R29 — la diferencia de la satélite tiene dueño «Satélite»", () => {
+  const DIFERENCIA: WalletMovimientoDTO = {
+    id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
+    tipo: "egreso",
+    categoria: "egreso_diferencia_satelite",
+    monto: "420.00",
+    origenTipo: "cierre_dia",
+    origenId: "cierre-2",
+    descripcion: "Diferencia al conciliar",
+    registradoPor: null,
+    fechaMovimiento: "2026-07-13T10:00:00.000Z",
+    dueno: "por_cobrar_satelite",
+    documento: null,
+  };
+
+  it("en la tabla: «Satélite», con un punto distinto del de la tienda y del de la empresa", () => {
+    renderLedger(<WalletLedger movimientos={[INGRESO_PROPIO, INGRESO_DE_TERCEROS, DIFERENCIA]} />);
+
+    const { columna, filas } = tablaDelLibro();
+    const textos = filas.map((f) => duenoDe(f, columna).textContent);
+    expect(textos).toEqual(["La empresa", "Tienda", "Satélite"]);
+
+    const puntos = filas.map(
+      (f) => duenoDe(f, columna).querySelector<HTMLElement>("[aria-hidden='true']")?.className ?? "",
+    );
+    expect(puntos[2]).toContain("bg-danger");
+    expect(puntos[2]).not.toBe(puntos[0]);
+    expect(puntos[2]).not.toBe(puntos[1]);
+  });
+
+  it("en la descarga: la columna de dueño dice «Satélite»", () => {
+    expect(filaBaseCaja(DIFERENCIA).esDineroDe).toBe("Satélite");
+    // Control: la misma fila con dueño de tienda dice otra cosa.
+    expect(filaBaseCaja({ ...DIFERENCIA, dueno: "terceros" }).esDineroDe).toBe("Tienda");
   });
 });

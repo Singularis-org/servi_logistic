@@ -10,7 +10,10 @@ import {
   marcarConsolidacionRecibidaAction,
   revertirConciliacionAction,
 } from "@/lib/actions/conciliacion-satelites";
-import type { MarcaConciliacionActionResult } from "@/lib/actions/conciliacion-satelites";
+import type {
+  MarcaConciliacionActionResult,
+  RevertirConciliacionActionResult,
+} from "@/lib/actions/conciliacion-satelites";
 import { money } from "@/lib/config/moneda";
 import {
   estadoConciliacionDe,
@@ -20,8 +23,8 @@ import {
 import {
   CONCILIACION_ACCION,
   CONCILIACION_RESPUESTA,
-  DESMARCAR_NO_MUEVE_DINERO_NOTA,
-  DESMARCAR_NO_MUEVE_DINERO_TITULO,
+  CONCILIACION_ASIENTA_NOTA,
+  CONCILIACION_ASIENTA_TITULO,
 } from "./conciliacion-labels";
 import { MarcarRecibidoDialog, type MarcarRecibidoCampos } from "./MarcarRecibidoDialog";
 
@@ -44,11 +47,13 @@ import { MarcarRecibidoDialog, type MarcarRecibidoCampos } from "./MarcarRecibid
 // el rótulo del botón y el del estado no pueden contradecirse.
 //
 // ── POR QUÉ «DESMARCAR» PIDE CONFIRMACIÓN Y «MARCAR» NO
-// No por peligro —ninguna de las dos mueve un colón (R14)— sino por ASIMETRÍA DE INFORMACIÓN:
+// (Con SLT-73 marcar SÍ asienta el dinero, y una marca con asientos ya no se desmarca: R14.)
+// No sólo por peligro sino por ASIMETRÍA DE INFORMACIÓN:
 // marcar abre un diálogo donde se ve el declarado y se teclea el monto, así que ya hay un paso
 // donde mirar. Desmarcar es un clic que, sin nada delante, borra el rastro de quién dijo que el
 // dinero llegó y de cuánto. La confirmación lleva escrito el importe que se va a borrar y la nota
-// de que la marca es informativa: las dos mitades de lo que hay que saber antes de pulsar.
+// de la conciliación (SLT-73, R35: marcar asienta el dinero; con asientos no se desmarca, se usa
+// «Corregir»): las dos mitades de lo que hay que saber antes de pulsar.
 //
 // ── QUIÉN DECIDE EL PERMISO: EL SERVIDOR
 // `puedeConciliar` baja por props desde un Server Component que lo resolvió con `esAccesoTotal`,
@@ -62,7 +67,11 @@ export interface ConciliacionAccionesProps {
   bodega: string;
   /** Día de la consolidación YA formateado por quien lo monta. */
   fecha: string;
-  /** `total_efectivo`, STRING del servidor: lo que la bodega declaró que iba en el bulto. */
+  /**
+   * Lo ESPERADO de la consolidación, STRING del servidor: `paraLaCentral` desde SLT-73 (D3/R8), ya
+   * no el `total_efectivo`. Precarga el monto del diálogo, así que una marca «de un clic» no deja
+   * una diferencia que nadie quiso registrar.
+   */
   declarado: string;
   /** La marca de hoy, tal como llega del servidor. Aquí no se deriva nada de dinero. */
   marca: { conciliado: boolean; faltaPorRecibir: string; montoRecibido: string | null };
@@ -95,6 +104,9 @@ export function ConciliacionAcciones({
   const toast = useToast();
   const [marcando, setMarcando] = useState(false);
   const [desmarcando, setDesmarcando] = useState(false);
+  // SLT-73 (R14): el aviso de «ya entró a la caja». Vive DENTRO del diálogo y no en un toast: no
+  // cambió nada, y quien lo lee tiene que saber que la salida es corregir el monto.
+  const [conAsientos, setConAsientos] = useState<string | null>(null);
 
   if (!puedeConciliar) return null;
 
@@ -130,11 +142,16 @@ export function ConciliacionAcciones({
 
   /** R12 — deshacer. No lleva monto: el que había se BORRA (y sobrevive en el historial). */
   async function confirmarDesmarcar() {
-    let resultado: MarcaConciliacionActionResult;
+    let resultado: RevertirConciliacionActionResult;
     try {
       resultado = await revertirConciliacionAction({ cierreBodegaId });
     } catch {
       toast.error(CONCILIACION_RESPUESTA.fallo);
+      return;
+    }
+    if (resultado.status === "con_asientos") {
+      // R14: rechazada sin tocar nada, así que tampoco hay nada que refrescar.
+      setConAsientos(resultado.mensaje);
       return;
     }
     if (resultado.status === "ok") {
@@ -211,16 +228,29 @@ export function ConciliacionAcciones({
 
       <Modal
         open={desmarcando}
-        onOpenChange={setDesmarcando}
+        onOpenChange={(abierto) => {
+          setDesmarcando(abierto);
+          if (!abierto) setConAsientos(null);
+        }}
         title={CONCILIACION_ACCION.desmarcar}
         description={`Consolidación de ${bodega} del ${fecha}.`}
         confirmLabel={CONCILIACION_ACCION.desmarcar}
         cancelLabel={CONCILIACION_ACCION.cancelar}
         onConfirm={confirmarDesmarcar}
         closeOnConfirm={false}
+        confirmDisabled={conAsientos !== null}
         size="md"
       >
         <div className="flex flex-col gap-3 text-sm">
+          {conAsientos === null ? null : (
+            <p
+              role="alert"
+              className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-warning-strong"
+            >
+              <strong className="font-semibold">{CONCILIACION_RESPUESTA.conAsientosTitulo}</strong>{" "}
+              {conAsientos}
+            </p>
+          )}
           {/* El importe que se va a borrar, dicho antes de borrarlo. Es el dato que falta para
               decidir, y tras la reversión sólo sobrevive en el registro de acciones. */}
           {marca.montoRecibido === null ? null : (
@@ -234,9 +264,9 @@ export function ConciliacionAcciones({
           )}
           <p className="text-muted-foreground">
             <strong className="font-semibold text-foreground">
-              {DESMARCAR_NO_MUEVE_DINERO_TITULO}
+              {CONCILIACION_ASIENTA_TITULO}
             </strong>{" "}
-            {DESMARCAR_NO_MUEVE_DINERO_NOTA}
+            {CONCILIACION_ASIENTA_NOTA}
           </p>
         </div>
       </Modal>

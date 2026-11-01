@@ -7,7 +7,8 @@ import type {
   SaldoSateliteDTO,
   UltimaRecibidaDTO,
 } from "@/lib/types/conciliacion-satelites";
-import { saldoDe } from "@/lib/utils/conciliacion-satelite";
+import { esperadoDe, saldoDe } from "@/lib/utils/conciliacion-satelite";
+import { APORTE_SATELITE_WHERE } from "@/lib/repositories/_shared/aporte-satelite-sql";
 import { diasNaturalesCRDesde, inicioDelMesCREnUtc } from "@/lib/utils/fecha-cr";
 import { CUENTA_USUARIO_SELECT, etiquetaDeCuenta } from "@/lib/utils/etiqueta-cuenta";
 import type { PaginaRepositorio, RangoPagina } from "@/lib/utils/rango-pagina";
@@ -20,10 +21,11 @@ import type { PaginaRepositorio, RangoPagina } from "@/lib/utils/rango-pagina";
  * fila de una bodega y la fila de una consolidacion. Con dos copias, la suma de la columna de
  * detalle dejaria de cuadrar con el total de la tabla de arriba el dia que una de las dos cambie.
  *
- * ⚠️ SOBRE `total_efectivo` Y NO SOBRE `total_general`: decision del humano sobre Q2 (2026-09-16),
- * medida contra produccion. El SINPE —26,3 % del consolidado— entra directo a una cuenta y NO viaja
- * en el bulto; con `total_general` la pantalla ensenaria ₡1,1 M de deuda que nadie va a entregar en
- * mano. El general viaja igual en el DTO, como contexto.
+ * ⚠️ SLT-73 (D3/D4, R4-R8) REABRIO LA Q2 DE LA 431. La deuda ya no es Σ(`total_efectivo` − recibido)
+ * de las consolidaciones: es Σ `paraLaCentral` de los `cierre_dia` APROBADOS con destino satelite de
+ * la zona —consolidados o no— menos Σ `monto_recibido` de sus consolidaciones no rechazadas. Asi
+ * cuenta todos los metodos de pago (el SINPE tambien es deuda) y los cierres aun sin consolidar, que
+ * antes dejaban a la satelite «al dia» con dinero pendiente.
  */
 
 /** El estado retirado de la pantalla (D2). En produccion hay CERO; queda declarado como limite. */
@@ -31,6 +33,40 @@ const ESTADO_RECHAZADO = "rechazado";
 
 /** Solo las bodegas SATELITE: la central no se consolida a si misma. */
 const ZONA_SATELITE_WHERE = { esCentral: false } as const;
+
+/**
+ * SLT-73 (R5) — los `cierre_dia` que forman la deuda de una satelite: aprobados y con destino
+ * satelite, SEA CUAL SEA su consolidacion. Un cierre de la central no le debe nada a nadie.
+ * Enmienda 2 (R31): vive en `_shared/aporte-satelite-sql.ts`, compartido con el estado de cuenta.
+ */
+const APORTE_WHERE = APORTE_SATELITE_WHERE;
+
+/** Los tres snapshots de `paraLaCentral` (R4), sumados por zona. */
+const APORTE_SUM = {
+  totalGeneral: true,
+  totalPagoMensajero: true,
+  totalIngresoBodegaRechazos: true,
+} as const;
+
+interface SumaAporte {
+  totalGeneral: Prisma.Decimal | null;
+  totalPagoMensajero: Prisma.Decimal | null;
+  totalIngresoBodegaRechazos: Prisma.Decimal | null;
+}
+
+/**
+ * El aporte (R4) de un grupo de cierres. `_sum` de un conjunto vacio es `null`, que vale CERO.
+ * Sumar los snapshots y aplicar `paraLaCentral` una vez es igual a sumar los aportes uno a uno: la
+ * cascada es lineal. Conserva el signo: un aporte negativo NO se recorta a cero.
+ */
+function aporteDe(s: SumaAporte | undefined): Prisma.Decimal {
+  const cero = new Prisma.Decimal(0);
+  return esperadoDe({
+    totalGeneral: s?.totalGeneral ?? cero,
+    totalPagoMensajero: s?.totalPagoMensajero ?? cero,
+    totalIngresoBodegaRechazos: s?.totalIngresoBodegaRechazos ?? cero,
+  });
+}
 
 /**
  * El alcance del DINERO: todas las consolidaciones de la zona que no esten rechazadas — incluidas
@@ -45,6 +81,8 @@ const CONSOLIDACION_SELECT = {
   totalSimpe: true,
   totalTransferencia: true,
   totalGeneral: true,
+  totalPagoMensajero: true,
+  totalIngresoBodegaRechazos: true,
   montoRecibido: true,
   conciliadoAt: true,
   conciliadoNota: true,
@@ -63,6 +101,8 @@ type ConsolidacionRow = Prisma.CierreBodegaGetPayload<{ select: typeof CONSOLIDA
 // distintas. Sigue siendo `Prisma.Decimal` -> `toFixed(2)` en el emisor; aqui no cambia nada mas.
 
 function toConsolidacionDTO(r: ConsolidacionRow): ConsolidacionSateliteDTO {
+  // SLT-73 (R8/R9): lo esperado es la cascada B de la 393, no el efectivo.
+  const esperado = esperadoDe(r);
   return {
     cierreBodegaId: r.id,
     solicitadoAt: r.solicitadoAt.toISOString(),
@@ -72,9 +112,12 @@ function toConsolidacionDTO(r: ConsolidacionRow): ConsolidacionSateliteDTO {
       transferencia: r.totalTransferencia.toFixed(2),
       general: r.totalGeneral.toFixed(2),
     },
+    pagoMensajero: r.totalPagoMensajero.toFixed(2),
+    gananciaSatelite: r.totalIngresoBodegaRechazos.toFixed(2),
+    paraLaCentral: esperado.toFixed(2),
     montoRecibido: r.montoRecibido === null ? null : r.montoRecibido.toFixed(2),
     // R20: la resta se hace AQUI, con Decimal. La pantalla no resta dinero.
-    faltaPorRecibir: saldoDe(r.totalEfectivo, r.montoRecibido).toFixed(2),
+    faltaPorRecibir: saldoDe(esperado, r.montoRecibido).toFixed(2),
     conciliado: r.conciliadoAt !== null,
     conciliadoAt: r.conciliadoAt === null ? null : r.conciliadoAt.toISOString(),
     conciliadoPorNombre:
@@ -84,7 +127,7 @@ function toConsolidacionDTO(r: ConsolidacionRow): ConsolidacionSateliteDTO {
   };
 }
 
-type ClienteSaldosSatelites = Pick<PrismaClient, "cierreBodega" | "zona">;
+type ClienteSaldosSatelites = Pick<PrismaClient, "cierreBodega" | "cierreDia" | "zona">;
 
 export class SaldosSatelitesRepository implements ISaldosSatelitesRepository {
   constructor(private readonly prisma: ClienteSaldosSatelites) {}
@@ -123,6 +166,13 @@ export class SaldosSatelitesRepository implements ISaldosSatelitesRepository {
    *  (b) LA COLA — solo lo que sigue SIN marcar, que es lo que se cuenta (R21) y de lo que se mide
    *      la antiguedad.
    *
+   *  (d) SLT-73: LOS APORTES — Σ de los snapshots de los `cierre_dia` aprobados con destino
+   *      satelite de la zona, consolidados o no (R5). Es el minuendo de la deuda.
+   *  (e) SLT-73: LO SIN CONSOLIDAR — lo mismo con `cierre_bodega_id IS NULL`, y cuantos son (R6).
+   *
+   * deuda = paraLaCentral(Σd) − Σ `monto_recibido` de (a). El recibido de (a) ya excluye las
+   * rechazadas: lo que se conto en un bulto rechazado no baja la deuda.
+   *
    * Un `groupBy` de Prisma no hace agregados condicionales, y meterlo en un `$queryRaw` con
    * `FILTER (WHERE …)` cambiaria dos consultas legibles por una cadena de SQL a mano en un camino
    * de dinero.
@@ -136,7 +186,7 @@ export class SaldosSatelitesRepository implements ISaldosSatelitesRepository {
     const zonaIds = zonas.map((z) => z.id);
     const ahora = new Date();
 
-    const [dinero, cola, ultimas] = await Promise.all([
+    const [dinero, cola, ultimas, aportes, sinConsolidar] = await Promise.all([
       this.prisma.cierreBodega.groupBy({
         by: ["zonaId"],
         where: { zonaId: { in: zonaIds }, ...NO_RECHAZADAS },
@@ -156,10 +206,25 @@ export class SaldosSatelitesRepository implements ISaldosSatelitesRepository {
         where: { zonaId: { in: zonaIds }, conciliadoAt: { not: null }, ...NO_RECHAZADAS },
         _max: { conciliadoAt: true },
       }),
+      // (d) LOS APORTES.
+      this.prisma.cierreDia.groupBy({
+        by: ["destinoZonaId"],
+        where: { ...APORTE_WHERE, destinoZonaId: { in: zonaIds } },
+        _sum: APORTE_SUM,
+      }),
+      // (e) LO SIN CONSOLIDAR.
+      this.prisma.cierreDia.groupBy({
+        by: ["destinoZonaId"],
+        where: { ...APORTE_WHERE, destinoZonaId: { in: zonaIds }, cierreBodegaId: null },
+        _sum: APORTE_SUM,
+        _count: { _all: true },
+      }),
     ]);
 
     const dineroPorZona = new Map(dinero.map((d) => [d.zonaId, d]));
     const colaPorZona = new Map(cola.map((c) => [c.zonaId, c]));
+    const aportePorZona = new Map(aportes.map((a) => [a.destinoZonaId, a._sum]));
+    const sinConsolidarPorZona = new Map(sinConsolidar.map((e) => [e.destinoZonaId, e]));
     const ultimaPorZona = await this.leerUltimasRecibidas(ultimas);
 
     return zonas.map((zona) => {
@@ -172,11 +237,16 @@ export class SaldosSatelitesRepository implements ISaldosSatelitesRepository {
       // `_sum.montoRecibido` ignora los NULL, que es justo lo que la formula quiere.
       const recibido = d?._sum.montoRecibido ?? new Prisma.Decimal(0);
       const masAntigua = c?._min.solicitadoAt ?? null;
+      const e = sinConsolidarPorZona.get(zona.id);
 
       return {
         zonaId: zona.id,
         zonaNombre: etiquetaDeCuenta(zona),
-        saldoSinConciliar: saldoDe(efectivo, recibido).toFixed(2),
+        // SLT-73 (R5): la deuda. La misma `saldoDe` que el desglose, con el aporte como esperado.
+        saldoSinConciliar: saldoDe(aporteDe(aportePorZona.get(zona.id)), recibido).toFixed(2),
+        // SLT-73 (R6): la parte de la deuda que ni siquiera esta consolidada, y cuantos cierres.
+        aporteSinConsolidar: aporteDe(e?._sum).toFixed(2),
+        cierresSinConsolidar: e?._count._all ?? 0,
         totalEfectivo: efectivo.toFixed(2),
         totalConsolidado: general.toFixed(2),
         totalRecibido: recibido.toFixed(2),
@@ -220,7 +290,14 @@ export class SaldosSatelitesRepository implements ISaldosSatelitesRepository {
     const filas = await this.prisma.cierreBodega.findMany({
       where: { OR: pares },
       orderBy: [{ conciliadoAt: "desc" }, { id: "asc" }], // el desempate, ver arriba
-      select: { zonaId: true, conciliadoAt: true, montoRecibido: true, totalEfectivo: true },
+      select: {
+        zonaId: true,
+        conciliadoAt: true,
+        montoRecibido: true,
+        totalGeneral: true,
+        totalPagoMensajero: true,
+        totalIngresoBodegaRechazos: true,
+      },
     });
 
     const porZona = new Map<string, UltimaRecibidaDTO>();
@@ -234,10 +311,11 @@ export class SaldosSatelitesRepository implements ISaldosSatelitesRepository {
         // `cierre_bodega_conciliacion_coherente`. El `?? 0` es la lectura defensiva del tipo
         // nulable, no una suposicion sobre el dato.
         monto: (f.montoRecibido ?? new Prisma.Decimal(0)).toFixed(2),
-        declarado: f.totalEfectivo.toFixed(2),
-        // R20: la resta de ESA fila, hecha AQUI con la MISMA formula que el saldo de la bodega.
+        // SLT-73 (R8): lo esperado de ESA fila, la cascada B; ya no su efectivo.
+        declarado: esperadoDe(f).toFixed(2),
+        // R20: la resta de ESA fila, hecha AQUI con la MISMA formula que el desglose.
         // La pantalla pregunta si falta algo; no lo calcula.
-        faltaPorRecibir: saldoDe(f.totalEfectivo, f.montoRecibido).toFixed(2),
+        faltaPorRecibir: saldoDe(esperadoDe(f), f.montoRecibido).toFixed(2),
       });
     }
     return porZona;
@@ -301,39 +379,55 @@ export class SaldosSatelitesRepository implements ISaldosSatelitesRepository {
    * indice `cierre_bodega_zona_estado_idx` lo sirve. Si un dia fueran cientos de miles, la
    * respuesta seria un agregado en la base — no repartir la formula en cuatro consultas.
    *
+   * ── SLT-73 (R7): EL PENDIENTE ES Σ DE LAS DEUDAS POR ZONA, la misma de la tabla: aportes de los
+   * `cierre_dia` (consolidados o no) menos lo recibido. Por eso hay una segunda lectura, el
+   * `groupBy` de los aportes. «Bodegas con pendiente» cuenta las zonas con deuda distinta de cero.
+   *
    * ── Y LA FORMULA SIGUE SIENDO UNA (`saldoDe`)
    * Las tres cifras salen de la MISMA resta que la tabla y que el desglose. Escribir aqui una
    * suma propia habria hecho que la cabecera y la columna de abajo pudieran decir cosas distintas
    * sobre el mismo dinero, que es el defecto que la ficha 359 censo en 13 pantallas.
    */
   async findResumen(ahora: Date = new Date()): Promise<ResumenSatelitesDTO> {
-    const filas = await this.prisma.cierreBodega.findMany({
-      where: { ...NO_RECHAZADAS, zona: ZONA_SATELITE_WHERE },
-      select: {
-        zonaId: true,
-        totalEfectivo: true,
-        montoRecibido: true,
-        conciliadoAt: true,
-      },
-    });
+    const [filas, aportes] = await Promise.all([
+      this.prisma.cierreBodega.findMany({
+        where: { ...NO_RECHAZADAS, zona: ZONA_SATELITE_WHERE },
+        select: {
+          zonaId: true,
+          totalGeneral: true,
+          totalPagoMensajero: true,
+          totalIngresoBodegaRechazos: true,
+          montoRecibido: true,
+          conciliadoAt: true,
+        },
+      }),
+      this.prisma.cierreDia.groupBy({
+        by: ["destinoZonaId"],
+        where: { ...APORTE_WHERE, destinoZona: ZONA_SATELITE_WHERE },
+        _sum: APORTE_SUM,
+      }),
+    ]);
 
     // El corte del mes, en el calendario de COSTA RICA y resuelto en el SERVIDOR: con el mes del
     // navegador, quien mirara la pantalla desde otro huso veria otra cifra de la misma caja.
     const inicioDelMes = inicioDelMesCREnUtc(ahora);
 
-    let pendiente = new Prisma.Decimal(0);
     let recibidoMes = new Prisma.Decimal(0);
     let diferencia = new Prisma.Decimal(0);
     let sinConciliar = 0;
     let recibidasMes = 0;
     let conDiferencia = 0;
-    /** El saldo acumulado POR ZONA: una bodega cuenta como «con pendiente» una sola vez. */
-    const saldoPorZona = new Map<string, Prisma.Decimal>();
+    /** Lo recibido POR ZONA, el sustraendo de la deuda (R5). */
+    const recibidoPorZona = new Map<string, Prisma.Decimal>();
 
     for (const f of filas) {
-      const falta = saldoDe(f.totalEfectivo, f.montoRecibido);
-      pendiente = pendiente.plus(falta);
-      saldoPorZona.set(f.zonaId, (saldoPorZona.get(f.zonaId) ?? new Prisma.Decimal(0)).plus(falta));
+      const falta = saldoDe(esperadoDe(f), f.montoRecibido);
+      recibidoPorZona.set(
+        f.zonaId,
+        (recibidoPorZona.get(f.zonaId) ?? new Prisma.Decimal(0)).plus(
+          f.montoRecibido ?? new Prisma.Decimal(0),
+        ),
+      );
 
       if (f.conciliadoAt === null) {
         sinConciliar += 1;
@@ -352,9 +446,18 @@ export class SaldosSatelitesRepository implements ISaldosSatelitesRepository {
       }
     }
 
+    // La deuda de cada zona con aportes o con recibido: la MISMA resta que la fila de la tabla.
+    const aportePorZona = new Map(aportes.map((a) => [a.destinoZonaId, a._sum]));
+    const zonas = new Set([...aportePorZona.keys(), ...recibidoPorZona.keys()]);
+    let pendiente = new Prisma.Decimal(0);
     let bodegasConPendiente = 0;
-    for (const saldo of saldoPorZona.values()) {
-      if (!saldo.isZero()) bodegasConPendiente += 1;
+    for (const zonaId of zonas) {
+      const deuda = saldoDe(
+        aporteDe(aportePorZona.get(zonaId)),
+        recibidoPorZona.get(zonaId) ?? new Prisma.Decimal(0),
+      );
+      pendiente = pendiente.plus(deuda);
+      if (!deuda.isZero()) bodegasConPendiente += 1;
     }
 
     return {

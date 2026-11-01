@@ -107,6 +107,7 @@ export function toBodegaResumenRow(r: BodegaResumenRow): CierreBodegaResumenRow 
   const totales = totalesToString(r);
   const pagoMensajero = r.totalPagoMensajero.toFixed(2);
   const ganaBodega = r.totalIngresoBodegaRechazos.toFixed(2);
+  const esperado = paraLaCentral(totales.general, pagoMensajero, ganaBodega);
   return {
     cierreBodegaId: r.id,
     zonaId: r.zonaId,
@@ -122,7 +123,7 @@ export function toBodegaResumenRow(r: BodegaResumenRow): CierreBodegaResumenRow 
     resueltoAt: r.resueltoAt ? r.resueltoAt.toISOString() : null,
     motivoRechazo: r.motivoRechazo,
     // Feature 393 (R9/R38): lo que esta bodega le entrega a la central. Puede ser NEGATIVO.
-    paraLaCentral: paraLaCentral(totales.general, pagoMensajero, ganaBodega),
+    paraLaCentral: esperado,
     // Feature 393 (R37): contra el EFECTIVO, no contra el general.
     efectivoCubreDescuentos: efectivoCubreDescuentos(totales.efectivo, pagoMensajero, ganaBodega),
     // ⭑ FICHA 431 (R26/R28) — la marca, derivada AQUI por el mismo motivo que los dos de
@@ -131,9 +132,9 @@ export function toBodegaResumenRow(r: BodegaResumenRow): CierreBodegaResumenRow 
     // discrepar sobre si el dinero llego.
     conciliado: r.conciliadoAt !== null,
     montoRecibido: r.montoRecibido === null ? null : r.montoRecibido.toFixed(2),
-    // R17/R18/R20: la MISMA `saldoDe` que usa `/wallet/satelites`, sobre el EFECTIVO. La resta
-    // se hace aqui con `Prisma.Decimal`; la pantalla no resta dinero.
-    faltaPorRecibir: saldoDe(r.totalEfectivo, r.montoRecibido).toFixed(2),
+    // SLT-73 (R8): la MISMA `saldoDe` que usa `/wallet/satelites`, sobre `paraLaCentral` (D3
+    // reabrio la Q2 de la 431: ya no sobre el efectivo). La pantalla no resta dinero.
+    faltaPorRecibir: saldoDe(new Prisma.Decimal(esperado), r.montoRecibido).toFixed(2),
     conciliadoAt: r.conciliadoAt ? r.conciliadoAt.toISOString() : null,
     conciliadoPorNombre:
       r.conciliadoPorUsuario === null ? null : nombreCompletoUsuario(r.conciliadoPorUsuario),

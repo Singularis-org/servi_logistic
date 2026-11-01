@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 
 import { C, R } from "../../../../fixtures/codigos-455";
 import { HAY_BASE_DE_DATOS } from "../../_postgres-real";
+import { asentarCierreDia } from "@/lib/repositories/_shared/asientos-cierre-dia";
 import { conEscenario, prepararMundo, type Mundo } from "../../454/_escenario";
 
 /**
@@ -94,6 +95,13 @@ describeSiHayBase("455/C08 — dinero de la aprobacion con los cinco resultados 
             `${libro}|${m.tipo}|${m.categoria}|${m.monto.toFixed(2)}`;
         return [...caja.map(fila("caja")), ...tienda.map(fila("tienda")), ...mensajero.map(fila("mensajero"))].sort();
       };
+      // SLT-73 (R1): el cierre es de la SATELITE (lo aprueba el adminSatelite), y aprobarlo ya no
+      // escribe dinero. Su dinero entra al CONCILIAR la consolidacion, que llama a `asentarCierreDia`
+      // (R10, T4). Aqui se llama directo al MISMO escritor para seguir fijando los cinco feeds al
+      // centimo. Se queda la llamada directa y no la marca (T4): esta suite no corre en la base local
+      // (falta `orden` sembrada, baseline) y la marca anade fecha y diferencia propias (bitacora SLT-73).
+      const alAprobar = await movimientos();
+      await asentarCierreDia(e.tx, cierreId);
       const trasAprobar = await movimientos();
       const reaprobacion = await e.aprobar(cierreId, e.actorAdminSatelite, indemnizaciones);
       const trasReaprobar = await movimientos();
@@ -101,7 +109,7 @@ describeSiHayBase("455/C08 — dinero de la aprobacion con los cinco resultados 
       for (const [n, o] of Object.entries({ ent, rec1, rec2, dev, rep, inc })) {
         finales[n] = await e.estadoDe(o.ordenId);
       }
-      return { totales, aprobacion: aprobacion.status, reaprobacion: reaprobacion.status, trasAprobar, trasReaprobar, finales };
+      return { totales, aprobacion: aprobacion.status, reaprobacion: reaprobacion.status, alAprobar, trasAprobar, trasReaprobar, finales };
     });
   }
 
@@ -120,6 +128,8 @@ describeSiHayBase("455/C08 — dinero de la aprobacion con los cinco resultados 
 
   it("los movimientos de los feeds de la aprobacion, con importes exactos", () => {
     expect(r.aprobacion).toBe("ok");
+    // SLT-73 (R1): aprobar un cierre de la satelite no asienta nada; lo de abajo es tras asentarlo.
+    expect(r.alAprobar).toEqual([]);
     expect(r.trasAprobar).toEqual(MOVIMIENTOS_ESPERADOS);
   });
 
