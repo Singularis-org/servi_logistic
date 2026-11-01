@@ -257,3 +257,94 @@ No es un hallazgo de esta ficha. Antes del merge manda el check `gate-completo` 
 ### Veredicto de la vuelta 2
 
 **OK.** B1, B2, m1 y m2 están cerrados. No veo regresiones en el rango revisado.
+
+## Vuelta 3 (acotada a 8e9e7bfd..834471e8)
+
+Commits revisados:
+- `4ded2b02`: enmienda de R9 y R9b en `requirements.md`, por la decisión de Carlos del
+  2026-11-01.
+- `434e3e85`: SQL y tests.
+- `834471e8`: bitácora.
+
+Base `servi_slt75b`. `migrate status`: «up to date». Antes de cada corrida se hizo
+`prisma generate` desde este worktree.
+
+### Checklist
+
+- [x] **SQL de `20261101090000…/migration.sql`.**
+  - La ventana va por `(organizacion_id, distrito_id)`.
+  - `n` cuenta las filas del grupo y `centrales` las de una zona central, con
+    `count(*) FILTER … OVER w`.
+  - Se respalda toda fila con `n > 1`, salvo la no central cuando `n = 2 AND centrales = 1`. Es
+    exactamente R9: se conserva la no central, y solo con 2 zonas y 1 central. Cualquier otra
+    combinación cae en R9b y salen todas sus filas.
+  - El `DELETE` sigue borrando por `id` lo respaldado, así que respaldo y borrado coinciden (R10).
+  - `zona.es_central` es `NOT NULL` (`schema.prisma:567`), así que el `NOT g.es_central` no se
+    vuelve NULL.
+  - El `JOIN zona` solo lee.
+- [x] **No toca `orden` (R11).** El SQL ejecutable no la menciona. Siguen en verde el test
+  estático «R11 — la migracion de datos no menciona `orden`» y el de `orden.zona_id` /
+  `updated_at` del bloque principal.
+- [x] **Bloque «R9/R9b con zona central».** Siembra 11 filas en dos empresas:
+  - d1 en C+N1 → R9;
+  - d2 en N1+N2 → R9b;
+  - d3 en C+N1+N2 → R9b, aunque una sea central;
+  - d4 solo en N3 → intacto;
+  - en B, d1 en central+no central y d2 solo en una no central.
+
+  Afirma:
+  - lo que queda y lo que sale, y que el respaldo trae exactamente las 7 filas borradas;
+  - que el índice se crea sin 23505;
+  - que el down devuelve las 11.
+
+  Tiene anti-vacuidad (11 filas sembradas). Los datos son sintéticos: no hay nombres de prod.
+- [x] **Tests en HEAD:** `zona-distrito-unica-migration` y `respaldo-convivencia-slt73-slt75` dan
+  2 archivos y 28/28.
+- [x] **requirements.md.** La decisión del 2026-10-31 queda marcada como SUSTITUIDA y la nueva
+  queda registrada con su fecha. R9 y R9b están en EARS.
+
+### Mutaciones repetidas por el reviewer (vuelta 3)
+
+Mismo harness que en las vueltas anteriores: grep = 1, vitest imprime la línea `Tests`,
+`git checkout --`, grep = 0 y diff vacío.
+
+| Id | Mutación | Rojo |
+|---|---|---|
+| W1 | invertir el lado conservado (`AND g.es_central`) | 3 fallan: R9 central+no central, R9/R9b en B y R10 |
+| W2 | R9 también con 3 o más zonas (`g.n >= 2`) | 4 fallan: R9b tres zonas, R9/R9b en B, R10 y R7 (el índice no se crea) |
+
+### Gate v5: los 3 rojos
+
+`gate_SLT-75_v5.log` termina en `INIT_EXIT=1`. Ninguno de los tres archivos rojos está en el
+diff ni en `tests/baseline-rojos.json`.
+
+- **`geografia-por-pais`** (23001 en vez de 23503). Ya visto en la vuelta 2: ajeno, ver m6.
+- **`salida-a-reparto-sql-real`.** Aislado sobre HEAD da 6/6 en verde. En el gate el error es
+  «geografía de otro país: orden.provincia_id no es del país CR de la empresa»: depende de lo que
+  otros archivos dejan en la base compartida. Ajeno; confirmado.
+- **`indices-rutas-calientes`.** Aislado sobre HEAD sale ROJO de forma reproducible: el plan de
+  `AnaliticaOperativaRollupRepository.agregarCubos` no usa `analytics_daily_organizacion_id_fecha_idx`.
+  No es tanto «inestable» como dependiente de las estadísticas de la base local. Aun así es ajeno:
+  - ese repositorio no lee `zona_distrito` (grep = 0);
+  - el diff no toca `analytics_daily`;
+  - el archivo no salió rojo en el gate v4, y entre v4 y v5 solo cambió el SQL de limpieza de
+    `zona_distrito`.
+
+  Ver m7.
+
+### Hallazgos de la vuelta 3
+
+- **m7 — menor.** `indices-rutas-calientes` sale rojo en local por el plan del optimizador
+  (estadísticas de la base local) y no está en el baseline. Es ajeno a la ficha. Igual que m6, que
+  lo vigile el CI (`gate-completo`) o que vaya a una ficha aparte.
+- **m8 — menor, nota para el PR.** Con R9, los 17 distritos pasan a resolver la zona no central. Sus
+  órdenes ya creadas conservan la `zona_id` que tenían (R11, decisión de Carlos). La primera vez
+  que se guarde la zona no central, la reconciliación de la 366 podrá moverlas, salvo las retenidas
+  en estante por la 377. Conviene decírselo a Carlos en el PR: sustituye la nota anterior de que
+  «el distrito queda sin zona».
+- m3, m6: siguen abiertos (son del leader o ajenos).
+
+### Veredicto de la vuelta 3
+
+**OK.** El SQL cumple R9, R9b, R10, R11 y R13. Las dos mutaciones pedidas salen en rojo, y los
+rojos del gate v5 son ajenos al diff.
