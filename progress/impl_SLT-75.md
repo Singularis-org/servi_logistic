@@ -192,3 +192,38 @@ Spec Playwright de un solo uso (borrado, no versionado), 00:07:07-00:07:17, `nex
   está en la zona Zona Sur Demo 5488.», con el mismo texto bajo el selector (R1/R2, R3, R21).
 
 Para esa corrida se regeneró el cliente (00:02:42-00:02:48) y se rehízo el build (00:04:49-00:06:28).
+
+## Vuelta 2 (review RECHAZADO: B1, m1, m2) — commit d92eca24
+
+- **B1.** `20261101090000…/down.sql`: el `DROP SCHEMA IF EXISTS respaldo` va en un bloque `DO` sin
+  CASCADE que atrapa `dependent_objects_still_exist` (2BP01). Si queda un objeto de otra ficha
+  (`respaldo.slt73_asientos`), el esquema se queda. El test de migración siembra una tabla ajena en
+  `respaldo` y comprueba que sobrevive con su fila; otro caso comprueba que con `respaldo` vacío el
+  esquema sí desaparece. Mutación: volver al `DROP SCHEMA IF EXISTS respaldo;` → «expected '2BP01' to
+  be null» (y los `beforeAll` de la migración caen con 2BP01). Extra: `CASCADE` → «R12/B1 — con un
+  objeto ajeno en respaldo…» rojo.
+- **m1.** `20261031140200_slt73_retirar_asientos_satelite/down.sql`: `DROP SCHEMA respaldo CASCADE`
+  → `DROP TABLE IF EXISTS respaldo.slt73_asientos` + el esquema solo si queda vacío. Prisma no
+  checksumea `down.sql`: `migrate status` «Database schema is up to date!» y `migrate diff
+  --exit-code` «No difference detected.». Convivencia en
+  `tests/integration/db/respaldo-convivencia-slt73-slt75.test.ts` (4 tests): cada down deja el
+  respaldo del otro con su fila; los dos juntos quitan el esquema. Mutación: el down de SLT-73 de
+  vuelta a `CASCADE` → «m1 — el down de SLT-73 quita SU tabla y deja intacto el respaldo de
+  SLT-75» rojo. Se ajustó R19 de `slt73-migracion-retira-asientos.int.test.ts` (ahora exige que
+  desaparezca la tabla, no el esquema).
+- Nuevo `sentenciasSql` en `tests/integration/db/_fixtures/sql-ejecutable.ts` (corta por `;`
+  respetando `$tag$…$tag$`).
+- **m2.** Comentario de `zona-reconciliacion-ordenes.test.ts:597` corregido (mide R3 y R11).
+- Tests tocados contra `servi_slt75b` (con SLT-73): 4 archivos, 54/54.
+
+### Gate v4 sobre HEAD (`servi_slt75b`, `prisma generate` 00:56:03; el cliente no cambió durante el gate)
+
+`<scratchpad>/gate_SLT-75_v4.log`: validador de features en verde (SLT-75 ya importada), typecheck y
+lint en verde; `test:rapido`: `Test Files 1 failed | 1320 passed (1321)`, `Tests 2 failed | 18077
+passed | 26 skipped` → `INIT_EXIT=1`.
+
+Único rojo nuevo: `tests/integration/db/geografia-por-pais.test.ts`, 2 tests, «expected '23001' to
+be '23503'» (FK RESTRICT de cantón/distrito). **Ajeno, probado:** en un checkout limpio de
+`origin/prod` (e4d53c38, worktree temporal ya borrado), contra la misma base, el mismo archivo da
+`Tests 2 failed | 9 passed (11)` con el mismo error. Ninguna migración del repo emite `23001`: lo
+emite el Postgres local (18.2). Ni el archivo ni esas FK están en el diff de la rama.
