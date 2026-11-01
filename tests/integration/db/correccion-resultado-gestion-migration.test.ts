@@ -463,6 +463,9 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("398/T1.5 (b) — el down recrea las listas 
       // `20261026120100_historial_accion_modulos`.
       "modulo_activado",
       "modulo_desactivado",
+      // SLT-76 (2026-11-02): el rastro de los distritos de una zona. Su migracion:
+      // `20261102090000_slt76_historial_zona_distrito`.
+      "zona_distrito_cambiado",
     ];
     expect([...origenAntes].sort()).toEqual(
       ORDEN_HISTORIAL_ORIGEN_TIPO_SEED.filter(

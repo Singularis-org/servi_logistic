@@ -50,7 +50,7 @@ import { esFechaCalendarioValida } from "@/lib/utils/fecha-cr";
 // saldo con el que la central lo persigue. El motivo de cada uno esta escrito a su lado.
 
 /**
- * Los 72 tipos de accion. El ORDEN de esta tupla es el del Anexo A (dinero, desaparicion,
+ * Los 73 tipos de accion. El ORDEN de esta tupla es el del Anexo A (dinero, desaparicion,
  * permisos) mas las integraciones de SL-36 y los modulos de SL-23, y es el que consume el selector de filtros: no se
  * reordena por gusto.
  */
@@ -252,6 +252,10 @@ export const HISTORIAL_ACCION_TIPOS = [
   // sobrevive cuanto se habia dado por recibido. La NOTA no entra (R5 de la 362: texto libre).
   "cierre_bodega_conciliado", // CierresBodegaAdminRepository.marcarConciliado
   "cierre_bodega_conciliacion_revertida", // CierresBodegaAdminRepository.revertirConciliacion
+  // ⭑ SLT-76 (R8-R11) — un maestro cambio los DISTRITOS de una zona al editarla. Una fila por
+  // distrito añadido o quitado, todas con el lote del guardado. DINERO: el distrito decide la zona
+  // de cada orden, y la zona su flete y el pago al mensajero. Solo al editar (Q1-e).
+  "zona_distrito_cambiado", // zonas.actualizarZona -> ZonaRepository.update (SOLO update)
 
   // --- A.2 · hace desaparecer algo (10) ---
   // ⭑ FICHA 371 — la fecha de una reprogramacion ya registrada, corregida por un coordinador.
@@ -499,6 +503,8 @@ export const CATEGORIA_POR_ACCION: Record<HistorialAccionTipo, CategoriaAccion> 
   // una categoria, y ninguna de las otras dos describe esto.
   cierre_bodega_conciliado: "mueve_dinero",
   cierre_bodega_conciliacion_revertida: "mueve_dinero",
+  // SLT-76 (Q1-d): el distrito decide la zona de la orden, y la zona su flete y su pago.
+  zona_distrito_cambiado: "mueve_dinero",
   gestion_fecha_reprogramacion_corregida: "hace_desaparecer",
   orden_eliminada: "hace_desaparecer",
   orden_recuperada: "hace_desaparecer",
@@ -582,6 +588,7 @@ export const ACCION_LABELS: Record<HistorialAccionTipo, string> = {
   cierre_dia_gestion_corregida: "Corrigió el resultado de una gestión",
   cierre_bodega_conciliado: "Marcó recibida una consolidación de bodega",
   cierre_bodega_conciliacion_revertida: "Revirtió la conciliación de una consolidación de bodega",
+  zona_distrito_cambiado: "Cambió los distritos de una zona",
   gestion_fecha_reprogramacion_corregida: "Corrigió la fecha de una reprogramación",
   orden_eliminada: "Eliminó una orden",
   orden_recuperada: "Recuperó una orden",

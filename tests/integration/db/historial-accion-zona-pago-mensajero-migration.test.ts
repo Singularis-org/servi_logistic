@@ -421,6 +421,9 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("380/T3 (b) — el down recrea la lista PREV
       // `20261026120100_historial_accion_modulos`.
       "modulo_activado",
       "modulo_desactivado",
+      // SLT-76 (2026-11-02): el rastro de los distritos de una zona. Su migracion:
+      // `20261102090000_slt76_historial_zona_distrito`.
+      "zona_distrito_cambiado",
     ];
     const catalogoPrevio = HISTORIAL_ACCION_TIPOS.filter(
       (t) => t !== VALOR_NUEVO && !POSTERIORES.includes(t),

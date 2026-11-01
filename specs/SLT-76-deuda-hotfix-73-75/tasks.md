@@ -82,20 +82,20 @@ paralelo»).
   de la app.
 
 ## T6 · Rastro de distritos — R8-R11 (`design.md §6`) — BLOQUEADA por Q1
-- [ ] Carlos confirma Q1 (a)-(f) o las cambia. Si cambia alguna, `spec_author` reescribe R8-R11 y
+- [x] Carlos confirma Q1 (a)-(f) o las cambia. Si cambia alguna, `spec_author` reescribe R8-R11 y
   §6 antes de seguir.
-- [ ] Migración `20261102090000_slt76_historial_zona_distrito` (`migration.sql` con el `ADD VALUE`
+- [x] Migración `20261102090000_slt76_historial_zona_distrito` (`migration.sql` con el `ADD VALUE`
   solo; `down.sql` con el patrón de SL-23) y el valor en `schema.prisma`.
-- [ ] `lib/types/historial-accion.ts`: los tres mapas.
-- [ ] `ZonaRepository.update`: diff, lectura de nombres, `appendAccion(tx, …)` con un lote, recorte
+- [x] `lib/types/historial-accion.ts`: los tres mapas.
+- [x] `ZonaRepository.update`: diff, lectura de nombres, `appendAccion(tx, …)` con un lote, recorte
   a 60.
-- [ ] `tests/integration/db/zona-distrito-rastro.test.ts` y
+- [x] `tests/integration/db/zona-distrito-rastro.test.ts` y
   `tests/integration/db/historial-accion-zona-distrito-migration.test.ts`.
-- [ ] Conteos de `catalogo-y-choke-point`, el punto de escritura en
+- [x] Conteos de `catalogo-y-choke-point`, el punto de escritura en
   `historial-accion-escrituras-cubiertas` y los tests de migración del historial que fallen
   (medidos corriéndolos, sin suponer cuáles).
-- [ ] R11: la fila en `historial-acciones-descarga-columnas.test.ts`.
-- [ ] Mutaciones de §6.5 → rojo.
+- [x] R11: la fila en `historial-acciones-descarga-columnas.test.ts`.
+- [x] Mutaciones de §6.5 → rojo.
 - **Hecho:** la migración sube y baja en una base limpia; los tests en verde; las mutaciones en
   rojo; `zona-reconciliacion-ordenes`, `zona-distrito-unica` y `zona-pago-mensajero-rastro` en
   verde.
@@ -126,17 +126,17 @@ paralelo»).
   a SLT-73, los cuatro tests siguen verdes y la mutación sale roja.
 
 ## T9 · Retirar los respaldos — R17-R20 (`design.md §9`) — depende de T0
-- [ ] Migración `20261102090100_slt76_retirar_respaldos`: `migration.sql` en un bloque `DO`;
+- [x] Migración `20261102090100_slt76_retirar_respaldos`: `migration.sql` en un bloque `DO`;
   `down.sql` documentado que no recrea nada.
-- [ ] `down.sql` de SLT-73 (`20261031140200`): `RAISE EXCEPTION` al principio si falta el respaldo.
-- [ ] `down.sql` de datos de SLT-75 (`20261101090000`): `DO` con `IF to_regclass(...) IS NOT NULL`
+- [x] `down.sql` de SLT-73 (`20261031140200`): `RAISE EXCEPTION` al principio si falta el respaldo.
+- [x] `down.sql` de datos de SLT-75 (`20261101090000`): `DO` con `IF to_regclass(...) IS NOT NULL`
   y `NOTICE` si falta.
-- [ ] Borrar `respaldo-convivencia-slt73-slt75.test.ts` y crear
+- [x] Borrar `respaldo-convivencia-slt73-slt75.test.ts` y crear
   `slt76-retirar-respaldos-migration.test.ts`.
-- [ ] Ajustar `slt73-migracion-retira-asientos.int.test.ts` (comentario y lo que se mida roto) y
+- [x] Ajustar `slt73-migracion-retira-asientos.int.test.ts` (comentario y lo que se mida roto) y
   `zona-distrito-unica-migration.test.ts`.
-- [ ] Mutaciones de §9.3 → rojo.
-- [ ] `prisma migrate status` sin drift tras aplicar en la base local.
+- [x] Mutaciones de §9.3 → rojo.
+- [x] `prisma migrate status` sin drift tras aplicar en la base local.
 - **Hecho:** la migración aplica en la base local y el esquema `respaldo` desaparece; los tres
   archivos en verde; las tres mutaciones en rojo; `migrate status` limpio.
 

@@ -1,0 +1,11 @@
+-- SLT-76 (design §6.2, R8-R11) — el rastro de los distritos de una zona en el historial de acciones.
+--
+-- Un tipo nuevo, `zona_distrito_cambiado`: una fila por distrito añadido o quitado al EDITAR una
+-- zona, todas las del guardado con el mismo lote (Q1 de SLT-76, aprobada con los valores por
+-- defecto). La entidad es `zona`, que ya existe en `historial_accion_entidad`: no se toca.
+--
+-- VA SOLA: Postgres prohíbe USAR un valor de enum en la misma transacción que lo añade (55P04).
+-- Nada aquí escribe filas; el primer uso ocurre en runtime. Mismo patrón que
+-- `20261026120100_historial_accion_modulos` (SL-23). ADITIVA: sin tablas, columnas, índices ni
+-- datos, y sin backfill: el rastro empieza el día del despliegue.
+ALTER TYPE "historial_accion_tipo" ADD VALUE IF NOT EXISTS 'zona_distrito_cambiado';

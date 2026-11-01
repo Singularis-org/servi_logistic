@@ -17,16 +17,18 @@ import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres
 //
 // COMO SE MIDE. Todo dentro de UNA transaccion del dueno que SIEMPRE se revierte (`revertida`):
 //   1. se vuelve al estado ANTERIOR a la ficha con los dos `down.sql` REALES, en orden inverso (la
-//      base de test ya las tiene aplicadas, y con el indice puesto no se puede sembrar un duplicado);
+//      base de test ya las tiene aplicadas, y con el indice puesto no se puede sembrar un duplicado).
+//      Desde SLT-76 (`20261102090100_slt76_retirar_respaldos`) la base ya no tiene el respaldo, asi
+//      que el down de datos toma el camino «no hace nada» (avisa con un NOTICE, design §9.2 de SLT-76);
 //   2. se siembra: un distrito en DOS zonas NO centrales de la empresa A (R9b), el mismo distrito en
 //      una zona de la empresa B, otro distrito en una sola zona de A y una orden de A en el distrito
 //      duplicado (las combinaciones con zona central, R9, van en su propio bloque al final);
 //   3. se aplican los dos `migration.sql` REALES y se toma la foto;
 //   4. se aplican los dos `down.sql` REALES en orden inverso y se toma otra foto.
-// El rollback deja la base como estaba (indice y respaldo incluidos), pase lo que pase.
+// El rollback deja la base como estaba (indice incluido), pase lo que pase.
 //
-// ESQUEMA COMPARTIDO (review B1). `respaldo` no es de esta ficha: SLT-73 guarda ahi
-// `respaldo.slt73_asientos`. El down borra SU tabla y el esquema SOLO si queda vacio. Se mide en los
+// ESQUEMA COMPARTIDO (review B1). `respaldo` no es de esta ficha: SLT-73 guardaba ahi
+// `respaldo.slt73_asientos` (SLT-76 retiro los dos respaldos). El down borra SU tabla y el esquema SOLO si queda vacio. Se mide en los
 // dos sentidos: con una tabla AJENA sembrada en `respaldo` (queda intacta, con su fila, y el esquema
 // tambien), y con el esquema vaciado a proposito en la transaccion revertida (el down lo quita).
 //
