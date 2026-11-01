@@ -179,3 +179,81 @@ Cuando se corrija B1, hay que volver a correr `./init.sh` sobre HEAD.
 
 El resto (servidor, índice, migración de subida, árbol, selector, formulario y T9) está bien y las
 mutaciones lo confirman.
+
+## Vuelta 2 (acotada a ec895883..1b6f0572)
+
+Commits revisados: `1db8da6f` (docs B2), `d92eca24` (B1, m1, m2) y `1b6f0572` (bitácora). Base
+`servi_slt75b` con SLT-73 y SLT-75 aplicadas. Antes de cada corrida se hizo `prisma generate`
+desde este worktree.
+
+### Checklist
+
+- [x] **B1, cerrado.** En `20261101090000…/down.sql`, el `DROP SCHEMA IF EXISTS respaldo` va dentro
+  de un `DO $slt75$` sin CASCADE que atrapa solo `dependent_objects_still_exist` (2BP01). Con
+  `respaldo.slt73_asientos` presente, el down quita su tabla y deja el esquema.
+  - El test de migración siembra una tabla ajena en `respaldo` y comprueba que sobrevive con su
+    fila.
+  - Otro caso vacía `respaldo` dentro de una transacción revertida y comprueba que entonces el
+    esquema sí desaparece.
+  - `sentenciasSql` corta por `;` respetando los cuerpos `$tag$`. Revisado: no confunde `$1` con
+    una etiqueta.
+- [x] **m1, cerrado.** En `20261031140200_slt73…/down.sql`, `DROP SCHEMA … CASCADE` pasa a
+  `DROP TABLE IF EXISTS respaldo.slt73_asientos` y un sub-bloque que borra el esquema solo si
+  queda vacío.
+  - El nuevo `respaldo-convivencia-slt73-slt75.test.ts` mide los dos sentidos y los dos downs
+    juntos, con precondición explícita de que existen los dos respaldos.
+  - R19 de `slt73-migracion-retira-asientos` ahora mide la tabla y no el esquema. El ajuste es
+    correcto: el esquema ya es compartido.
+- [x] **Tocar el `down.sql` de SLT-73, ya aplicado en prod, no causa drift.**
+  - El diff contra `origin/prod` en esa carpeta solo toca `down.sql`, y Prisma solo calcula el
+    checksum de `migration.sql`.
+  - `prisma migrate status` dice «Database schema is up to date!».
+  - `prisma migrate diff --from-config-datasource --to-schema db/schema.prisma --exit-code` da
+    `DIFF_EXIT=0` («No difference detected.»).
+- [x] **B2, cerrado.** En las líneas añadidas por todo el diff `origin/prod...HEAD` no queda ningún
+  nombre de distrito ni de zona de prod (grep del distrito, del distrito sin zona, de los
+  cantones y de las zonas).
+  - Lo único que aparece es `Cartago/Cartago` en `zona-distrito-unica.test.ts:95-98`. Es el
+    catálogo público que siembra la migración de geografía y se usa para colgar distritos
+    sintéticos: no es un dato de prod.
+  - `progress/features/SLT-75.md`, `tasks.md` y `requirements.md` quedan limpios.
+- [x] **m2, cerrado.** El comentario de `zona-reconciliacion-ordenes.test.ts:597` dice ahora lo que
+  mide.
+- [x] **Tests afectados en HEAD:** `zona-distrito-unica-migration`,
+  `respaldo-convivencia-slt73-slt75`, `slt73-migracion-retira-asientos`,
+  `zona-reconciliacion-ordenes` y `zona-distrito-unica` dan 5 archivos y 63/63, sin skips.
+
+### Mutaciones repetidas por el reviewer (vuelta 2)
+
+Mismo harness que en la vuelta 1: grep = 1, vitest imprime la línea `Tests`, `git checkout --`,
+grep = 0 y diff vacío.
+
+| Id | Mutación | Rojo |
+|---|---|---|
+| V1 | down SLT-75: el `DO` vuelve a ser un `DROP SCHEMA IF EXISTS respaldo;` a secas | «B1 — el down de SLT-75…» y «los dos down…»; los `beforeAll` de migración caen con 2BP01 |
+| V2 | down SLT-75: `DROP SCHEMA … CASCADE` dentro del `DO` | «B1 — el down de SLT-75…» y «R12/B1 — con un objeto ajeno…» |
+| V3 | down SLT-73: `DROP SCHEMA … CASCADE` | «m1 — el down de SLT-73 deja intacto el respaldo de SLT-75» |
+| V4 | down SLT-73: el handler atrapa otra excepción (`division_by_zero`) | «m1…» y R19, R16/D15 y R20 de `slt73-migracion-retira-asientos` |
+
+### Gate v4
+
+`gate_SLT-75_v4.log` termina en `INIT_EXIT=1`. El único rojo es
+`tests/integration/db/geografia-por-pais.test.ts` (2 tests, «expected '23001' to be '23503'»).
+
+- Ni ese archivo ni sus FK están en el diff.
+- Según la bitácora, falla igual sobre `origin/prod` contra el Postgres local 18.2, y en el CI
+  de #64 pasó.
+
+No es un hallazgo de esta ficha. Antes del merge manda el check `gate-completo` del CI.
+
+### Hallazgos de la vuelta 2
+
+- **m6 — menor.** `geografia-por-pais` no está en `tests/baseline-rojos.json` y sale rojo en
+  local con PG 18 (23001 en vez de 23503). Es ajeno a la ficha. Conviene una ficha aparte o una
+  entrada en el baseline para que el gate local deje de salir rojo por esto.
+- **m3, sigue abierto.** Las casillas del leader y del deploy en `tasks.md` (T0, T10 y T11) quedan
+  sin marcar hasta que se hagan.
+
+### Veredicto de la vuelta 2
+
+**OK.** B1, B2, m1 y m2 están cerrados. No veo regresiones en el rango revisado.
