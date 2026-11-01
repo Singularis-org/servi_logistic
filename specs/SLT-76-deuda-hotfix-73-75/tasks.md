@@ -51,14 +51,14 @@ paralelo»).
   del desglose (`lib/types/conciliacion-satelites.ts`). Se deriva en `CierreBodegaRepository` y en
   `SaldosSatelitesRepository` con UNA llamada al predicado por página.
 - [x] `CierresBodegaAdminService` lo propaga.
-- [ ] `ConciliacionAcciones`: `marca.desmarcable` es obligatorio. Con `false` no se pinta
+- [x] `ConciliacionAcciones`: `marca.desmarcable` es obligatorio. Con `false` no se pinta
   «Desmarcar».
-- [ ] `ConciliacionSatelite.tsx` y `CierresBodegaAdminModule.tsx` pasan el campo. Se ajustan los
+- [x] `ConciliacionSatelite.tsx` y `CierresBodegaAdminModule.tsx` pasan el campo. Se ajustan los
   dobles (`tests/fixtures/marca-conciliacion.ts` y los que falle el typecheck).
-- [ ] `tests/components/ConciliacionAccionesConAsientos.test.tsx`: casos de R3.
-- [ ] `tests/integration/db/slt76-desmarcable.int.test.ts`: los tres escenarios × las dos
+- [x] `tests/components/ConciliacionAccionesConAsientos.test.tsx`: casos de R3.
+- [x] `tests/integration/db/slt76-desmarcable.int.test.ts`: los tres escenarios × las dos
   superficies, y la equivalencia con `revertirConciliacion` (R4).
-- [ ] Mutaciones: el componente ignora el campo → rojo; el predicado devuelve vacío → rojo.
+- [x] Mutaciones: el componente ignora el campo → rojo; el predicado devuelve vacío → rojo.
 - **Hecho:** typecheck verde, los dos tests verdes, las mutaciones rojas. Los E2E
   `cierre-bodega-satelite` y `wallet` en verde: su paso 3 de «Desmarcar» probablemente tenga que
   pasar a «el botón no está», y se ajusta según lo medido.

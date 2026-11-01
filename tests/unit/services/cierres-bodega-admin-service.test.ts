@@ -82,6 +82,8 @@ function marcaDesdeOverrides(overrides: Partial<CierreBodegaResumenRow>) {
   if (overrides.conciliadoPorNombre !== undefined)
     salida.conciliadoPorNombre = overrides.conciliadoPorNombre;
   if (overrides.conciliadoNota !== undefined) salida.conciliadoNota = overrides.conciliadoNota;
+  // SLT-76 (R3): el dato lo decide el servidor; un caso que lo fije no puede perderlo aquí.
+  if (overrides.desmarcable !== undefined) salida.desmarcable = overrides.desmarcable;
   return salida;
 }
 

@@ -73,8 +73,18 @@ export interface ConciliacionAccionesProps {
    * una diferencia que nadie quiso registrar.
    */
   declarado: string;
-  /** La marca de hoy, tal como llega del servidor. Aquí no se deriva nada de dinero. */
-  marca: { conciliado: boolean; faltaPorRecibir: string; montoRecibido: string | null };
+  /**
+   * La marca de hoy, tal como llega del servidor. Aquí no se deriva nada de dinero.
+   * SLT-76 (R3/R4): `desmarcable` lo decide el servidor con el mismo predicado con el que
+   * `revertirConciliacion` responde `con_asientos`. OBLIGATORIO y sin default: quien monte esto
+   * sin el dato no compila. Con `false` no se ofrece «Desmarcar».
+   */
+  marca: {
+    conciliado: boolean;
+    faltaPorRecibir: string;
+    montoRecibido: string | null;
+    desmarcable: boolean;
+  };
   /** Nota ya guardada, si la hay: el diálogo de corregir parte de ella. */
   nota?: string | null;
   /** Ver la cabecera. Default `false`: falla cerrado. */
@@ -201,7 +211,9 @@ export function ConciliacionAcciones({
         </Button>
       ) : null}
 
-      {estado !== "pendiente" ? (
+      {/* SLT-76 (R3): sólo si el servidor dice que la reversión no chocaría con dinero asentado.
+          El aviso `con_asientos` del diálogo queda para la carrera entre pintar y pulsar. */}
+      {estado !== "pendiente" && marca.desmarcable ? (
         <Button
           type="button"
           size={TAMANO}

@@ -13,9 +13,13 @@
 // una aserción contra su propia fuente, y estaría siempre verde. Aquí la resta se escribe como
 // dato de entrada del test, que es lo que un doble tiene que ser.
 
-/** Los seis campos de la marca, tal como viajan en la cabecera. */
+/**
+ * Los campos de la marca, tal como viajan en la cabecera. SLT-76 (R3/R4) añade `desmarcable`: lo
+ * decide el servidor (conciliada y sin dinero asentado ni ajuste), así que aquí es dato de entrada.
+ */
 export interface MarcaConciliacionDoble {
   conciliado: boolean;
+  desmarcable: boolean;
   montoRecibido: string | null;
   faltaPorRecibir: string;
   conciliadoAt: string | null;
@@ -31,6 +35,8 @@ export interface MarcaConciliacionDoble {
 export function marcaSinConciliar(totalEfectivo: string): MarcaConciliacionDoble {
   return {
     conciliado: false,
+    // Una SIN conciliar nunca es desmarcable: no hay marca que deshacer.
+    desmarcable: false,
     montoRecibido: null,
     faltaPorRecibir: totalEfectivo,
     conciliadoAt: null,
@@ -62,14 +68,24 @@ export function marcaPorEstado(estado: string, totalEfectivo: string): MarcaConc
  * que los tests de esta ficha afirman: pasarla como parámetro obliga a escribirla a mano y así un
  * caso de «recibido incompleto» no puede colarse con la diferencia calculada por el propio
  * fixture. Con `faltaPorRecibir` distinto de cero, la presentación dice «Recibido incompleto».
+ *
+ * SLT-76: `desmarcable` es `false` por defecto porque desde SLT-73 marcar ASIENTA el dinero, y una
+ * marca con asientos no se desmarca. Quien quiera el caso sin asientos lo pide con
+ * `{ desmarcable: true }`.
  */
 export function marcaRecibida(
   montoRecibido: string,
   faltaPorRecibir: string,
-  extra: Partial<Pick<MarcaConciliacionDoble, "conciliadoAt" | "conciliadoPorNombre" | "conciliadoNota">> = {},
+  extra: Partial<
+    Pick<
+      MarcaConciliacionDoble,
+      "conciliadoAt" | "conciliadoPorNombre" | "conciliadoNota" | "desmarcable"
+    >
+  > = {},
 ): MarcaConciliacionDoble {
   return {
     conciliado: true,
+    desmarcable: extra.desmarcable ?? false,
     montoRecibido,
     faltaPorRecibir,
     conciliadoAt: extra.conciliadoAt ?? "2026-09-15T17:40:00.000Z",
