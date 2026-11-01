@@ -38,7 +38,7 @@
   ir en paralelo a T3–T5.
   *Hecho:* `slt73-deuda-satelite.int.test.ts` y el `saldo-satelites.int.test.ts` actualizado están
   verdes contra Postgres real, y las mutaciones de `WHERE` mueren.
-- [ ] **T7 — UI de `/wallet/satelites` y `/cierres-admin` (R6, R9, R14).** `frontend_dev`. Toca
+- [x] **T7 — UI de `/wallet/satelites` y `/cierres-admin` (R6, R9, R14).** `frontend_dev`. Toca
   `ConciliacionSatelite.tsx`, `SaldosSatelitesTable.tsx`, las columnas de descarga y el aviso
   `con_asientos`. Depende de T5 y T6.
   *Hecho:* `ConciliacionSateliteCascada.test.tsx` y `SaldosSatelitesTable.test.tsx` están verdes, y

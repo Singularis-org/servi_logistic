@@ -560,3 +560,109 @@ CONTROL: 109 passed (109).
 
 **Veredicto:** T11 hecho: 459 en verde, R24–R27 y R30 cubiertos, 11 mutaciones sin supervivientes; la UI de los
 tres tramos y del bloque queda para T12 con los stubs listados arriba.
+
+## Tanda 6 — frontend_dev: T7 (R6, R9, R14 en pantalla) (2026-10-31)
+
+Commits: `5fc943db` (código y tests) y `test(SLT-73): T7, el canario…` (mata M2b). MCP no usado (worktree sin
+indexar); Grep/Read. Sin dev server (lo levanta el implementer al final).
+
+### Archivos
+
+- `app/(app)/wallet/satelites/_components/ConciliacionSatelite.tsx`: columna «Para la central» (`paraLaCentral`) en
+  lugar de «Declarado» (efectivo); columna «Falta por recibir»; cuenta desplegable por fila (`renderExpanded` de
+  `DataTable` + `CascadaDinero` de la 393): Efectivo, SINPE, Transferencia, Total general, Pago al mensajero, Gana la
+  bodega satélite, Para la central, Monto recibido (solo si hay marca), Falta por recibir. Aviso de diferencia y
+  precarga del diálogo (`declarado`) con `paraLaCentral`.
+- `SaldosSatelitesTable.tsx`: columna «Sin consolidar» (monto + «N cierres»); con `aporteSinConsolidar` ≠ 0 la
+  antigüedad dice «sin consolidar» (warning) y no «al día», la fila entra en «Con pendiente» aunque el saldo sea ≤ 0,
+  y no se marca «Recibido incompleto».
+- `saldos-satelites-descarga-columnas.ts`: `sinConsolidar`, `cierresSinConsolidar` al final.
+- `consolidaciones-satelite-descarga-columnas.ts`: `declarado` (efectivo) → `paraLaCentral` en el mismo sitio;
+  `efectivo`, `pagoMensajero`, `gananciaSatelite` al final.
+- `satelites-labels.ts`: `SALDOS_SATELITES_COLUMNAS.sinConsolidar`, `SIN_CONSOLIDAR`, `CASCADA_CONSOLIDACION_NOMBRE`.
+- `components/shared/conciliacion/ConciliacionAcciones.tsx` + `conciliacion-labels.ts`: `con_asientos` pinta
+  `role="alert"` dentro del diálogo («No se puede desmarcar.» + `mensaje` de la acción), deshabilita «Desmarcar», no
+  refresca; docstring de `declarado` = lo esperado.
+- `app/(app)/cierres-admin/_components/CierresBodegaAdminModule.tsx`: precarga `declarado={detalle.cierre.paraLaCentral}`.
+- Tests nuevos: `tests/components/ConciliacionSateliteCascada.test.tsx`, `SaldosSatelitesTable.test.tsx`,
+  `ConciliacionAccionesConAsientos.test.tsx`. Ajustados: `tests/unit/descarga/saldos-satelites-descarga-columnas.test.ts`,
+  `tests/integration/wallet-satelites.test.tsx` (fixtures con `paraLaCentral` coherente),
+  `tests/components/descarga/WalletListados464.test.tsx` (cabecera), fixtures de `EstadoCuentaSatelite.test.tsx` y
+  `wallet-sin-uuid.guardia.test.tsx` (campos del DTO que faltaban).
+
+### Mapa R → test (esta tanda)
+
+| R | Test |
+|---|---|
+| R6 | `SaldosSatelitesTable.test.tsx` › «la satélite todo SINPE sin consolidar NO sale «al día»…», «…«1 cierre» en singular», «con saldo negativo pero aporte sin consolidar ≠ 0…», «la que está al día de verdad…»; `saldos-satelites-descarga-columnas` › orden y «SLT-73 R6 — lo sin consolidar sale con su signo…» |
+| R8 (pantalla) | `ConciliacionSateliteCascada.test.tsx` › «R8 — la falta es la del SERVIDOR…» (canario en la celda y en la cuenta), «el diálogo de marcar precarga lo ESPERADO…» |
+| R9 | `ConciliacionSateliteCascada.test.tsx` › «pinta recaudado por método…», «las tres identidades cierran con lo que se LEE», «la fila dice lo esperado…», «sin marcar no hay línea de recibido…» |
+| R14 (pantalla) | `ConciliacionAccionesConAsientos.test.tsx` › «pinta el mensaje de la acción en el diálogo…» y «una reversión normal sigue cerrando…» |
+
+### Mutaciones
+
+Harness `scratchpad/t7mut/mut.py`: CONTROL 27/27 verde, 0 skipped; en cada una, diff no vacío, grep del texto mutado,
+y después `git checkout --` + `git diff --quiet`.
+
+| Mutación | Resultado |
+|---|---|
+| M1 quitar la línea SINPE de la cuenta | muerta (3 rojos) |
+| M2 restar en cliente la falta de la cuenta | muerta |
+| M2b restar en cliente la falta de la columna | sobrevivió en la 1.ª pasada (la cuenta, dentro de la misma tabla, tapaba la celda); test corregido → muerta |
+| M3 quitar la columna «Sin consolidar» | muerta |
+| M3b antigüedad vuelve a «al día» | muerta |
+| M3c «Con pendiente» sin lo sin consolidar | muerta |
+| M3d descarga sin la celda sin consolidar | muerta |
+| M4 quitar la rama `con_asientos` | muerta |
+| M5 precarga vuelve al efectivo | muerta |
+
+Supervivientes: **0 de 9**.
+
+### Salida real
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck` → `EXIT=0`, 0 `error TS`.
+- `pnpm run lint` → `✖ 232 problems (0 errors, 232 warnings)`, ninguno en archivos tocados; `eslint` de los 3 tests
+  nuevos → `No issues found`.
+- 1.ª pasada (3 tests nuevos + descarga + `wallet-satelites` + `DineroIdentidadesEnPantalla`): `Tests 6 failed | 97
+  passed` (faltaba `ToastProvider` en mi test; fixtures de `wallet-satelites` sin `paraLaCentral` coherente). Tras
+  arreglar: `SaldosSatelitesTable` + `wallet-satelites` → `Tests 43 passed`.
+- `vitest related --run` de los 13 archivos del diff → `Test Files 3 failed | 22 passed`, `Tests 5 failed | 378 passed`:
+  `EstadoCuentaSatelite` y `wallet-sin-uuid` (fixture sin `paraLaCentral`), `WalletListados464` (cabecera). Tras
+  arreglar → `Test Files 3 passed`, `Tests 27 passed`.
+- Guardias y descargas (`tests/unit/guards tests/unit/descarga tests/components/descarga` + cierres de bodega, roundtrip,
+  columnas, acciones) → `Test Files 1 failed | 299 passed`, `Tests 4 failed | 3849 passed | 1 skipped`; el rojo es
+  `dependencias-declaradas-presentes` (baseline, ver tandas 2-3).
+
+### Qué mirar en el navegador (implementer, un solo servidor)
+
+1. `/wallet/satelites` con una satélite todo SINPE sin consolidar: sale en «Con pendiente», columna «Sin consolidar»
+   con monto y «N cierres», antigüedad «sin consolidar» (amarillo), NO «al día», sin badge «Recibido incompleto».
+2. `/wallet/satelites/[zonaId]`: columnas «Para la central / Recibido / Falta por recibir»; el chevron de cada fila abre
+   la cuenta (método → total → pago → gana → para la central → recibido → falta) y cuadra. En móvil la tabla desborda
+   con scroll horizontal: mirar que la cuenta desplegada se lea.
+3. «Marcar recibido» precarga `paraLaCentral` (no el efectivo); con `paraLaCentral` ≤ 0 el campo nace inválido y hay
+   que teclear.
+4. «Desmarcar» sobre una conciliada con asientos: aviso amarillo dentro del diálogo, botón deshabilitado, nada cambia.
+5. `/cierres-admin` › detalle de cierre de bodega › «Marcar recibido»: precarga `paraLaCentral`.
+
+### Desviaciones y abiertos
+
+- Rótulos: se reutilizan las constantes de la 393 tal cual —«Pago al mensajero» y «Gana la bodega satélite»— y no
+  los literales «Pago a mensajeros» / «Gana la satélite» del design §2.8, para que `/cierres-admin` y `/wallet/satelites`
+  digan lo mismo de la misma cifra.
+- La cuenta es **desplegable** por fila (patrón `renderExpanded` de `DataTable`), no siempre abierta; la fila sí enseña
+  siempre lo esperado, lo recibido y la falta. Si el reviewer lee R9 como «siempre visible», es sacar la cascada del
+  desplegable.
+- Fuera de la lista del encargo, por D3/R8 (sin ellos la pantalla y el archivo no cuadran, o la marca «de un clic»
+  escribe una diferencia que nadie quiso): `consolidaciones-satelite-descarga-columnas.ts` (columna «Declarado» →
+  «Para la central»), la precarga en `CierresBodegaAdminModule.tsx` y fixtures de 3 tests ajenos.
+- ABIERTO (texto, decide el humano): la nota «Desmarcar no mueve dinero. La marca es informativa…» (`conciliacion-labels`,
+  D6 de la 431) ya no es cierta con SLT-73 (marcar asienta en los libros). No la toqué: es texto de producto.
+- ABIERTO: la tarjeta de `/cierres-admin` (`cierre-factura`, región «Conciliación») y su identidad en
+  `DineroIdentidadesEnPantalla` siguen comparando recibido + falta contra el **Efectivo**; con D3 la falta sale de
+  `paraLaCentral`. El test sigue verde porque su fixture es anterior; no lo toqué (fuera de T7).
+- Sigue abierto el BLOQUEO de la tanda 3 (estado de cuenta de la bodega con `total_efectivo`): el «Pendiente de llegar»
+  de la cabecera de la conciliación viene de ahí.
+
+**Veredicto:** T7 hecho: R6, R9 y R14 en pantalla con tests que leen el DOM, 0 supervivientes de 9 mutaciones;
+quedan abiertos la nota «Desmarcar no mueve dinero» y la identidad de la tarjeta de `/cierres-admin`.
