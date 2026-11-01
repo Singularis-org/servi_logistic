@@ -49,6 +49,11 @@ Cada bloque es un arreglo mínimo y no rediseña nada:
 
 ### Bloque 2 — «Desmarcar» solo cuando se puede
 
+- **R21** — (Enmienda 2026-11-01, Carlos: «no dejemos deuda») Las columnas de fecha de las descargas
+  de cierres (`cierre-dia-descarga-columnas.ts`, `cierres-admin-descarga-columnas.ts`,
+  `cierres-bodega-descarga-columnas.ts`, `cierres-gestiones-fundida-descarga-columnas.ts`) DEBEN dar el
+  día calendario de Costa Rica con la misma utilidad de R1, nunca el día UTC. La guardia de R2 deja
+  de tener excepciones (`DESCARGAS_PENDIENTES` vacía).
 - **R3** — MIENTRAS una consolidación conciliada tiene dinero asentado por su conciliación (asientos
   de caja de sus cierres del día, o al menos un ajuste de diferencia), el sistema NO DEBE ofrecer la
   acción «Desmarcar» para ella, ni en `/wallet/satelites` ni en `/cierres-admin`. Se sigue
