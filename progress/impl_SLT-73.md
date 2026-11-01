@@ -773,3 +773,60 @@ esa repetición.
 
 **Veredicto:** T12 hecho: R28, R29 y R30 en pantalla con tests que leen el DOM, 0 supervivientes de 6 mutaciones.
 Faltan la verificación en el navegador (implementer) y la confirmación de los textos provisionales.
+
+## Tanda 8 — E2E local: tres rojos (2026-10-31)
+
+Corrida de partida: `e2e_SLT-73.log` (scratchpad), `3 failed · 16 did not run · 8 passed`. Base local `servi_slt73`
+por el envoltorio, un solo servidor `next dev` en el 3073.
+
+### Causa raíz de cada rojo
+
+1. **`cierre-bodega-satelite.spec.ts:91` (paso 2) — spec desfasado por SLT-73, no defecto.** T7 cambió a propósito la
+   precarga de «Monto recibido» a `paraLaCentral` (D3/D4, R8). Medido en la base de la corrida: `total_general`
+   9000.00, `total_pago_mensajero` 1500.00, `total_ingreso_bodega_rechazos` 500.00 → 9.000 − 1.500 − 500 = **7.000**,
+   justo lo que llegó. El paso 3 (desmarcar → pendientes) también quedaba viejo: desde R10 la marca asienta el cierre
+   del día de la satélite, y desmarcar con asientos se rechaza con `con_asientos` (R14).
+   Cambio (solo el spec):
+   - paso 2: espera 7.000 en la precarga, en el aviso y en `monto_recibido`. Afirma además que antes de marcar no hay
+     ninguna fila de caja con origen `cierre_dia` (R1) y que después sí la hay (R10);
+   - paso 3: «Desmarcar» muestra el aviso «No se puede desmarcar. Ya entró a la caja…» dentro del diálogo y el botón
+     queda deshabilitado. La consolidación sigue `aprobado` con 7000, `conciliado_at` intacto, la caja sin cambios, y
+     sigue en «Resueltos».
+2. **`wallet.spec.ts:65` — carrera de hidratación con `next dev`, no regresión.** Las cifras pasan. El clic en «Ver las
+   órdenes que componen «Flete cobrado a la tienda»» caía en el HTML del servidor antes de que React montara: en el
+   snapshot el botón nunca pasa a `[expanded]`. Con trazas de depuración (temporales, revertidas), las 4 lecturas
+   (POST de server action) del montaje llegan DESPUÉS del clic y `aria-expanded` sigue en `false`. Esperando a la
+   hidratación, el panel se abre y los dos destinatarios salen (`1 passed`). Ni el código implicado ni el spec cambian
+   en SLT-73: `git diff origin/prod...HEAD` vacío para `components/shared/DataTable.tsx`,
+   `wallet/_components/DetalleMovimientoCierre.tsx`, `e2e/wallet.spec.ts` y `e2e/_escenarios/caja.ts`. En
+   `WalletLedger.tsx` el único cambio es el color del dueño `por_cobrar_satelite`. Los cuatro archivos SQL/utils de la
+   sospecha solo añaden ramas para orígenes y categorías nuevos.
+   Cambio (solo el spec): `desplegar()`, el patrón `abrirCon` + `toPass` que ya usan `incentivo-mensajero-slt68` y
+   `pago-plataforma-sl45`, pero pulsando solo si sigue cerrado (un desplegable no es idempotente).
+3. **`superadmin-empresas.spec.ts:214` — entorno, no SMTP ni SLT-73.** El log del servidor dice
+   `[bienvenida] no se envio: falta NEXT_PUBLIC_APP_URL` (camino `no_enviada` del `catch`, no `sin_correo`).
+   Comprobado con booleanos: `.env` tiene `SMTP_USER` y `SMTP_PASSWORD` con valor (y `playwright.config.ts` ya los
+   vacía para el servidor); `NEXT_PUBLIC_APP_URL` y `NEXT_PUBLIC_SITE_URL` ausentes. CI la declara en `gate.yml`, y la
+   cabecera del spec ya lo advierte (SL-41). SLT-73 no toca nada de correo ni de empresas (`--stat`). No es neutralizar
+   una variable sino declararla: se corrió con `NEXT_PUBLIC_APP_URL=http://localhost:3073` en el entorno del comando,
+   sin editar `.env`.
+
+### Archivos modificados
+
+- `e2e/cierre-bodega-satelite.spec.ts`: cabecera con la cuenta a mano, y pasos 2 y 3 según R8, R10 y R14.
+- `e2e/wallet.spec.ts`: `desplegar()` contra la carrera de hidratación.
+- Código de la app: ninguno.
+
+### Salida real
+
+- Corrida final (scratchpad `e2e_SLT-73_v2.log`): `cierres-admin`, `dos-empresas-humo` (con `plataforma-vacia`
+  delante), `wallet`, `cierre-bodega-satelite` y `recepcion-satelite`, un solo servidor `next dev` en el 3073. Comando:
+  `NEXT_PUBLIC_APP_URL=http://localhost:3073 E2E_PUERTO=3073 E2E_SERVIDOR=dev conbase73.sh pnpm exec playwright test …`.
+  Resultado: **`27 passed (3.5m)` · `E2E_EXIT=0`**. Ninguno `failed` ni `did not run`.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: exit 0, sin errores.
+- `pnpm exec eslint e2e/wallet.spec.ts e2e/cierre-bodega-satelite.spec.ts`: sin problemas.
+- Servidor del 3073 cerrado al terminar (puerto libre).
+
+**Veredicto:** los tres rojos explicados. Uno era spec desfasado por SLT-73 (actualizado a R8/R10/R14), otro una
+carrera de hidratación de `next dev` presente también en prod (spec endurecido) y el tercero el entorno
+(`NEXT_PUBLIC_APP_URL`). E2E final en 27/27 verde, sin cambios en la app.
