@@ -1261,7 +1261,7 @@ libre).
 | 4 | Empresa sin diferencias (`crearEscenarioCaja`): bloque «Por cobrar a satélites · En cero · ₡0» con la pista positiva | OK |
 | móvil | `/wallet` a 390px: el bloque se ve entero (310×134), sin desborde horizontal (`scrollWidth` = `clientWidth` = 390), debajo del de la empresa | OK |
 
-**Capturas** (`C:/Users/ArqDev/AppData/Local/Temp/claude/R--job-singularis-projects-servi-logistic/210b8bd4-84dc-4aa0-a674-0c03d0a09afc/scratchpad/navegador73/`):
+**Capturas** (scratchpad local `navegador73/`):
 `00-marcar-recibido-5000.png`, `01-wallet-satelite-faltante.png`, `01b-bloque-satelites.png`, `01c-barra-3-tramos.png`,
 `02-fila-libro-satelite.png`, `03-cierres-admin-conciliacion.png`, `03b-region-conciliacion.png`,
 `03c-dialogo-desmarcar-nota-q10.png`, `04-wallet-cero.png`, `04b-bloque-cero.png`, `05-wallet-movil-390.png`,

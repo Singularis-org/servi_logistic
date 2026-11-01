@@ -34,7 +34,7 @@ conciliación en `ConciliacionSatelitesService`, saldo en `SaldosSatelitesReposi
   transacción salvo lo que no es dinero (libro del mensajero incluido).
 
 ## Evidencia (prod, solo lectura, 2026-10-31; sin datos personales)
-- 1 cierre del día satélite aprobado (zona satélite GAM-Alajuela), ₡76.890 todo SINPE, ₡0 efectivo.
+- 1 cierre del día satélite aprobado, ₡76.890 todo SINPE, ₡0 efectivo.
   0 cierres de bodega, 0 conciliaciones. La wallet ya tiene 6 movimientos de ese cierre
   (COD 76.890, flete 7.800, IVA flete 1.014, comisión COD 2.691,15, IVA comisión 349,85,
   egreso pago mensajero 6.000). `/wallet/satelites` la muestra al día.
