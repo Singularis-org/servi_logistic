@@ -17,11 +17,11 @@ recargar algunos salen desmarcados. Al volver a guardar se borran de verdad.
 
 ## Evidencia (prod, solo lectura, 2026-10-31; sin datos personales)
 - `zona_distrito`: 128 filas, 127 distritos, 1 empresa. 1 distrito en dos zonas de la misma empresa
-  («Aguacaliente o San Francisco», cantón Cartago: zonas GAM y GAM (Alajuéla)-(Cartago)). 1 orden
-  de ese distrito, con zona GAM.
+  (zonas A y B). 1 orden
+  de ese distrito, con zona A.
 - No hay rastro en `historial_accion` de altas/bajas de distritos en una zona: no se puede saber si
   se perdieron otros antes.
-- Un distrito (Sánchez, Curridabat) sin zona con 1 orden: preguntado a Carlos si debe tener zona.
+- Un distrito sin zona con 1 orden: preguntado a Carlos si debe tener zona.
 
 ## Causa (auditoría de solo lectura, código = prod)
 - Nada impide un distrito en dos zonas: `zona_distrito` solo tiene `@@unique([zonaId, distritoId])`;
@@ -43,10 +43,10 @@ recargar algunos salen desmarcados. Al volver a guardar se borran de verdad.
 - 2026-10-31 (Carlos): un distrito que ya tiene otra zona queda BLOQUEADO para seleccionarse en otra.
 - 2026-10-31 (Carlos): al intentar guardar con un distrito que ya tiene otra zona, aviso de error
   (no se guarda).
-- 2026-10-31 (Carlos): Aguacaliente o San Francisco se QUITA de las dos zonas (queda sin zona).
+- 2026-10-31 (Carlos): el distrito duplicado se QUITA de las dos zonas (queda sin zona).
 
 ## Preguntas abiertas
-- ¿Sánchez (Curridabat) debe estar en alguna zona? (no bloquea)
+- ¿El distrito sin zona con 1 orden debe estar en alguna zona? (no bloquea)
 
 ## Tandas
 

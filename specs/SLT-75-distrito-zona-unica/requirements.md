@@ -5,7 +5,7 @@
 En /configuracion/tarifas, un distrito puede quedar en dos zonas de la misma empresa. Cuando eso
 pasa, el árbol lo colapsa a «sin zona» y al editar la zona sale desmarcado en las dos. El
 siguiente guardado lo borra de verdad, y la reconciliación de la 366 puede mover órdenes sin
-avisar. En producción hay un caso (2026-10-31): un distrito del cantón Cartago está en dos zonas,
+avisar. En producción hay un caso (2026-10-31): un distrito está en dos zonas,
 con 1 orden.
 
 Arreglo mínimo, rama desde `prod`:
@@ -20,7 +20,7 @@ Arreglo mínimo, rama desde `prod`:
 - El rastro en `historial_accion` de distritos añadidos o quitados. Va a Q1 como ficha aparte.
 - Rediseñar la N:M o el colapso 1/0/>1 de `_shared/zona-colapso.ts`.
 - El mensaje del `conflict` del nombre de zona (ver `design.md` §9).
-- El distrito de Curridabat sin zona (Q2).
+- El distrito sin zona (Q2).
 
 ## Decisiones cerradas (no reabrir)
 
@@ -151,7 +151,7 @@ Recomendación: una ficha aparte, hacia `dev`, con `/afinar-feature` para esas t
 hotfix no la necesita para cerrar el defecto: con R1-R8 un distrito ya no puede perderse en
 silencio.
 
-**Q2 · ¿El distrito de Curridabat que no tiene zona (con 1 orden) debe estar en alguna? [NO BLOQUEA;
+**Q2 · ¿El distrito que no tiene zona (con 1 orden) debe estar en alguna? [NO BLOQUEA;
 viene de `progress/features/SLT-75.md`]**
 
 Es dato de configuración. Lo resuelve el maestro desde la pantalla, no esta ficha.

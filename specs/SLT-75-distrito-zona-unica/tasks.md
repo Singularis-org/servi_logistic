@@ -18,9 +18,9 @@ listas.
       ```
       Contar también las filas totales de `zona_distrito` y las órdenes vivas de cada distrito
       duplicado.
-- **Hecho cuando:** hay un número anotado en `progress/features/SLT-75.md`.
-  - Si sale **exactamente 1 fila** (el distrito del cantón Cartago, zonas «GAM» y «GAM
-    (Alajuéla)-(Cartago)»), se sigue.
+- **Hecho cuando:** hay un número (solo el conteo, sin nombres de prod) anotado en `progress/features/SLT-75.md`.
+  - Si sale **exactamente 1 fila** (el distrito duplicado medido el 2026-10-31),
+    se sigue.
   - **Si sale otro número, se PARA y decide Carlos:** su decisión cubre ese caso y no otros.
 
 ## T1 · Migración de datos (R9, R10, R11, R13)
