@@ -148,3 +148,10 @@ superadmin, y quedó en verde.
 - **R21 (enmienda de Carlos, 2026-11-01):** CERRADO en esta ficha (ver sección R21). La guardia de R2 queda sin excepciones.
 - **Incidente de base (A), REVISADO:** en la base local del `.env` del worktree (local; no es una slt76) dan 0 las empresas `es_demo`, los slugs `demo-qa%`, los nombres `SL43`, la marca `entorno_marca.entorno`, los centinelas `jobs`/`geocode_cache` de SL-43 y los locks advisory. El `afterAll` de `demo-qa` limpió y no hubo que borrar nada. Script de solo conteos: `restosdemo.cjs`. Antes: corrió una vez `vitest related` sin el envoltorio, así que los tests de integración usaron la base local del `.env` del worktree (local, de nombre `servi*`; ni producción ni Supabase). Lo cortó a los ~3 min, con 14 archivos terminados. Entre ellos estaba `demo-qa.test.ts` (11/12 rojos), que commitea datos y los borra en su `afterAll`. Conviene revisar si dejó restos en esa base.
 - El typecheck necesita `NODE_OPTIONS=--max-old-space-size=10240`: con menos, `tsc` se queda sin memoria.
+
+## Gate v2 (tras R21)
+
+`NODE_OPTIONS=--max-old-space-size=8192 ./init.sh` sobre `servi_slt76_mig` (276 migraciones, sin superadmin), log `gate_SLT-76_v2.log` en el scratchpad:
+- `Test Files 488 passed (488)` · `Tests 6968 passed | 26 skipped`;
+- guardias: `Test Files 320 passed (320)` · `Tests 4443 passed | 1 skipped`;
+- **`INIT_EXIT=0`**.
