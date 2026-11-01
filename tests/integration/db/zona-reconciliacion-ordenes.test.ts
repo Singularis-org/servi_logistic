@@ -380,27 +380,33 @@ describeSiHayBase("⭑ 366/T5 — la reconciliacion de la zona de las ordenes, c
     expect(medido.historial).toEqual([]);
   });
 
-  it("R3: un distrito que queda en DOS zonas a la vez es ambiguo -> no mueve ninguna orden", async () => {
+  // SLT-75 (design §8.1): antes, este caso sembraba el distrito en A y en B y medía que el
+  // distrito «ambiguo» no moviera ordenes. Con el indice `(organizacion_id, distrito_id)` ese dato
+  // ya no se puede sembrar, y guardar A con un distrito de B se RECHAZA antes de escribir. Lo que
+  // protegia (un distrito con dos zonas no mueve ordenes) se cumple ahora porque el estado es
+  // irrepresentable; la rama «>1» del colapso sigue probada en unit (`zona-repository.test.ts`).
+  it("R3/SLT-75: guardar A con un distrito que ya esta en B se rechaza y no mueve ninguna orden", async () => {
     const medido = await conEscenario(async (e) => {
-      // El esquema lo permite: `@@unique([zonaId, distritoId])`, no por `distritoId` solo.
-      const ambiguo = await e.crearDistrito([e.zonas.A.id, e.zonas.B.id]);
-      const orden = await e.crearOrden({ distritoId: ambiguo, zonaId: e.zonas.C.id });
+      const deB = await e.crearDistrito([e.zonas.B.id]);
+      const orden = await e.crearOrden({ distritoId: deB, zonaId: e.zonas.C.id });
 
       const res = await e.repo.update(
         e.zonas.A.id,
-        datosDeZona(e.zonas.A.nombre, [ambiguo]),
+        datosDeZona(e.zonas.A.nombre, [deB]),
         USUARIO,
       );
       return {
-        reconciliadas: reconciliadasDe(res),
+        estado: res.estado,
+        traeConteo: "ordenesReconciliadas" in res,
         zonaFinal: await e.zonaDe(orden),
         zonaC: e.zonas.C.id,
         historial: await e.historialDe([orden]),
       };
     });
 
+    expect(medido.estado).toBe("distrito_en_otra_zona");
+    expect(medido.traeConteo).toBe(false);
     expect(medido.zonaFinal).toBe(medido.zonaC);
-    expect(medido.reconciliadas).toBe(0);
     expect(medido.historial).toEqual([]);
   });
 
@@ -588,35 +594,46 @@ describeSiHayBase("⭑ 366/T5 — la reconciliacion de la zona de las ordenes, c
   });
 
   it("⭑ R5/R11: un distrito RECIEN QUITADO de esta zona se re-evalua en ESTE mismo guardado", async () => {
-    // `quitado` estaba en A y en B; este guardado lo saca de A, asi que pasa a resolver B —y sus
-    // ordenes se van a B sin necesidad de guardar B—. Es lo que distingue LA UNION de «solo la
-    // lista final». De paso: las dos zonas resueltas de este guardado comparten `lote_id` (R11).
+    // SLT-75 (design §8.1): antes `quitado` estaba en A y en B, y este guardado lo hacia resolver
+    // B. Con el indice por empresa un distrito ya no puede estar en dos zonas: ahora `quitado`
+    // esta SOLO en A y este guardado lo saca. Se sigue leyendo la UNION antes ∪ despues: `quitado`
+    // queda sin zona y su orden conserva A (cero zonas no mueve nada, R3).
+    // R11 (un `lote_id` por guardado): ya no hay «dos zonas resueltas» en un guardado, pero si dos
+    // ordenes de DOS distritos distintos reconciliadas en el mismo acto: comparten lote. Ningun
+    // otro caso de este archivo lo afirma con mas de una fila.
     const medido = await conEscenario(async (e) => {
-      const quitado = await e.crearDistrito([e.zonas.A.id, e.zonas.B.id]);
+      const quitado = await e.crearDistrito([e.zonas.A.id]);
       const queSigue = await e.crearDistrito([e.zonas.A.id]);
+      const queSigueOtro = await e.crearDistrito([e.zonas.A.id]);
       const ordenQuitado = await e.crearOrden({ distritoId: quitado, zonaId: e.zonas.A.id });
       const ordenQueSigue = await e.crearOrden({ distritoId: queSigue, zonaId: e.zonas.C.id });
+      const ordenQueSigueOtro = await e.crearOrden({ distritoId: queSigueOtro, zonaId: e.zonas.B.id });
 
       const res = await e.repo.update(
         e.zonas.A.id,
-        datosDeZona(e.zonas.A.nombre, [queSigue]), // sin `quitado`
+        datosDeZona(e.zonas.A.nombre, [queSigue, queSigueOtro]), // sin `quitado`
         USUARIO,
       );
       return {
         reconciliadas: reconciliadasDe(res),
         zonaDelQuitado: await e.zonaDe(ordenQuitado),
         zonaDelQueSigue: await e.zonaDe(ordenQueSigue),
+        zonaDelQueSigueOtro: await e.zonaDe(ordenQueSigueOtro),
+        zonasDelQuitado: await e.tx.zonaDistrito.count({ where: { distritoId: quitado } }),
         zonaA: e.zonas.A.id,
-        zonaB: e.zonas.B.id,
-        historial: await e.historialDe([ordenQuitado, ordenQueSigue]),
+        historial: await e.historialDe([ordenQuitado, ordenQueSigue, ordenQueSigueOtro]),
+        ordenQuitado,
       };
     });
 
-    expect(medido.zonaDelQuitado).toBe(medido.zonaB);
+    expect(medido.zonasDelQuitado).toBe(0);
+    expect(medido.zonaDelQuitado).toBe(medido.zonaA);
     expect(medido.zonaDelQueSigue).toBe(medido.zonaA);
+    expect(medido.zonaDelQueSigueOtro).toBe(medido.zonaA);
     expect(medido.reconciliadas).toBe(2);
-    // R11: DOS zonas resueltas distintas, UN solo lote.
+    // R11: dos ordenes movidas en UN guardado, UN solo lote; la del quitado no deja fila.
     expect(medido.historial).toHaveLength(2);
+    expect(medido.historial.map((f) => f.entidadId)).not.toContain(medido.ordenQuitado);
     expect(new Set(medido.historial.map((f) => f.loteId)).size).toBe(1);
   });
 
@@ -779,11 +796,15 @@ describeSiHayBase("⭑ 366/T5 — la reconciliacion de la zona de las ordenes, c
     // El escenario REAL del defecto: el paquete esta en la bodega A, y el distrito pasa a ser de
     // B porque este guardado lo saca de A. Sin el corte, la orden se iba a B y quedaba sin bodega
     // que pudiera asignarla y sin transicion de salida.
+    // SLT-75 (design §8.1, regla del barrido): antes el distrito estaba en A Y en B y el guardado lo
+    // sacaba de A para que resolviera B. Con el indice por empresa ya no puede estar en dos zonas.
+    // El mismo corte se mide al reves: el distrito esta SOLO en A, la orden lleva la zona B, y
+    // guardar A (con su misma lista) lo resuelve hacia A.
     const medido = await conEscenario(async (e) => {
-      const distrito = await e.crearDistrito([e.zonas.A.id, e.zonas.B.id]);
+      const distrito = await e.crearDistrito([e.zonas.A.id]);
       const enEstante = await e.crearOrden({
         distritoId: distrito,
-        zonaId: e.zonas.A.id,
+        zonaId: e.zonas.B.id,
         estatusValue: "en_bodega_satelite",
       });
       // ANTI-VACUIDAD: la hermana del MISMO distrito, en un estado que no es de estante, SI se
@@ -791,11 +812,15 @@ describeSiHayBase("⭑ 366/T5 — la reconciliacion de la zona de las ordenes, c
       // equivocada.
       const enBodegaCentral = await e.crearOrden({
         distritoId: distrito,
-        zonaId: e.zonas.A.id,
+        zonaId: e.zonas.B.id,
         estatusValue: "en_bodega_central",
       });
 
-      const res = await e.repo.update(e.zonas.A.id, datosDeZona(e.zonas.A.nombre, []), USUARIO);
+      const res = await e.repo.update(
+        e.zonas.A.id,
+        datosDeZona(e.zonas.A.nombre, [distrito]),
+        USUARIO,
+      );
 
       return {
         reconciliadas: reconciliadasDe(res),
@@ -810,8 +835,8 @@ describeSiHayBase("⭑ 366/T5 — la reconciliacion de la zona de las ordenes, c
       };
     });
 
-    expect(medido.zonaEnEstante).toBe(medido.zonaA); // R2: se queda con la bodega que la tiene
-    expect(medido.zonaCentral).toBe(medido.zonaB); // anti-vacuidad
+    expect(medido.zonaEnEstante).toBe(medido.zonaB); // R2: se queda con la bodega que la tiene
+    expect(medido.zonaCentral).toBe(medido.zonaA); // anti-vacuidad
     expect(medido.reconciliadas).toBe(1);
     expect(medido.retenidas).toBe(1);
     // R6: ni un campo tocado, ni una fila de historial por la retenida.
@@ -824,26 +849,34 @@ describeSiHayBase("⭑ 366/T5 — la reconciliacion de la zona de las ordenes, c
     // El caso que DEFIENDE a la 366: el paquete lo tiene la central, que aun decide adonde lo
     // manda, y `recibirEnSatelite` acota su guarda por `zonaId` — sin reconciliar, la bodega
     // correcta no puede recibirlo (41 de 42 ordenes represadas el 2026-09-03).
+    // SLT-75 (design §8.1, regla del barrido): antes el distrito estaba en A Y en B y el guardado lo
+    // sacaba de A para que resolviera B. Con el indice por empresa ya no puede estar en dos zonas.
+    // El mismo corte se mide al reves: el distrito esta SOLO en A, la orden lleva la zona B, y
+    // guardar A (con su misma lista) lo resuelve hacia A.
     const medido = await conEscenario(async (e) => {
-      const distrito = await e.crearDistrito([e.zonas.A.id, e.zonas.B.id]);
+      const distrito = await e.crearDistrito([e.zonas.A.id]);
       const enTransito = await e.crearOrden({
         distritoId: distrito,
-        zonaId: e.zonas.A.id,
+        zonaId: e.zonas.B.id,
         estatusValue: "en_ruta_bodega_satelite",
       });
 
-      const res = await e.repo.update(e.zonas.A.id, datosDeZona(e.zonas.A.nombre, []), USUARIO);
+      const res = await e.repo.update(
+        e.zonas.A.id,
+        datosDeZona(e.zonas.A.nombre, [distrito]),
+        USUARIO,
+      );
 
       return {
         reconciliadas: reconciliadasDe(res),
         retenidas: retenidasDe(res),
         zonaFinal: await e.zonaDe(enTransito),
-        zonaB: e.zonas.B.id,
+        zonaA: e.zonas.A.id,
         historial: await e.historialDe([enTransito]),
       };
     });
 
-    expect(medido.zonaFinal).toBe(medido.zonaB);
+    expect(medido.zonaFinal).toBe(medido.zonaA);
     expect(medido.reconciliadas).toBe(1);
     expect(medido.retenidas).toBe(0); // en transito NO es «en el estante»
     expect(medido.historial).toHaveLength(1);
@@ -1136,16 +1169,27 @@ describeSiHayBase("⭑ 366/T5 — la reconciliacion de la zona de las ordenes, c
     // rechaza con `zona_ajena` cuando `orden.zonaId !== zonaDelActor`, asi que lo que decide ese
     // rechazo es EXACTAMENTE el `zonaId` que aqui se afirma. Montar el servicio entero (mensajero
     // de la zona, lote, carrera) mediria su orquestacion, no este corte.
+    // SLT-75 (design §8.1, regla del barrido): antes el distrito estaba en A Y en B y el guardado lo
+    // sacaba de A para que resolviera B. Con el indice por empresa ya no puede estar en dos zonas.
+    // El mismo corte se mide al reves: el distrito esta SOLO en A, la orden lleva la zona B, y
+    // guardar A (con su misma lista) lo resuelve hacia A.
+    // Aqui la bodega que TIENE el paquete es B, y la otra es A.
     const medido = await conEscenario(async (e) => {
-      const distrito = await e.crearDistrito([e.zonas.A.id, e.zonas.B.id]);
+      const distrito = await e.crearDistrito([e.zonas.A.id]);
       const enEstante = await e.crearOrden({
         distritoId: distrito,
-        zonaId: e.zonas.A.id,
+        zonaId: e.zonas.B.id,
         estatusValue: "en_bodega_satelite",
       });
 
-      // El distrito sale de A: pasa a resolver B. Sin el corte de la 377, la orden se iria a B.
-      await e.repo.update(e.zonas.A.id, datosDeZona(e.zonas.A.nombre, []), USUARIO);
+      // El distrito resuelve A. Sin el corte de la 377, la orden se iria a A.
+      const res = await e.repo.update(
+        e.zonas.A.id,
+        datosDeZona(e.zonas.A.nombre, [distrito]),
+        USUARIO,
+      );
+      // Anti-vacuidad: el guardado fue `ok` y RETUVO esta orden; no paso por no hacer nada.
+      const retenidas = retenidasDe(res);
 
       const ordenRepo = new OrdenRepository(clienteConTransaccionAnidada(e.tx));
       const filtro = { estatusValues: [...ESTADOS_BODEGA_SATELITE] };
@@ -1160,19 +1204,21 @@ describeSiHayBase("⭑ 366/T5 — la reconciliacion de la zona de las ordenes, c
 
       return {
         enEstante,
+        retenidas,
         zonaDeLaOrden: await e.zonaDe(enEstante),
-        zonaA: e.zonas.A.id,
+        zonaB: e.zonas.B.id,
         idsEnA: enA.items.map((o) => o.id),
         idsEnB: enB.items.map((o) => o.id),
       };
     });
 
-    // La bodega que la recibio la sigue viendo...
-    expect(medido.idsEnA).toContain(medido.enEstante);
-    // ...y la que NO tiene el paquete no la ve aparecer (el otro lado del defecto).
-    expect(medido.idsEnB).not.toContain(medido.enEstante);
+    expect(medido.retenidas).toBe(1);
+    // La bodega que la recibio (B) la sigue viendo...
+    expect(medido.idsEnB).toContain(medido.enEstante);
+    // ...y la que NO tiene el paquete (A) no la ve aparecer (el otro lado del defecto).
+    expect(medido.idsEnA).not.toContain(medido.enEstante);
     // Y `orden.zonaId` sigue siendo el de la bodega que la tiene, que es lo que compara
     // `AsignacionSateliteService` antes de decir `zona_ajena`.
-    expect(medido.zonaDeLaOrden).toBe(medido.zonaA);
+    expect(medido.zonaDeLaOrden).toBe(medido.zonaB);
   });
 });
