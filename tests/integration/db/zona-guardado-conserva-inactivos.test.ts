@@ -155,6 +155,7 @@ describeSiHayBase("⭑ 374/R48 — guardar una zona conserva sus distritos RETIR
                 nombre: d.nombre,
                 zonaId: zona.id,
                 zonaNombre: nombreZona,
+                zonas: [{ id: zona.id, nombre: nombreZona }],
                 zonaEspecial: false,
                 activo: d.activo,
               })),
