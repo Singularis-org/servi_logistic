@@ -596,8 +596,10 @@ describeSiHayBase("⭑ 366/T5 — la reconciliacion de la zona de las ordenes, c
   it("⭑ R5/R11: un distrito RECIEN QUITADO de esta zona se re-evalua en ESTE mismo guardado", async () => {
     // SLT-75 (design §8.1): antes `quitado` estaba en A y en B, y este guardado lo hacia resolver
     // B. Con el indice por empresa un distrito ya no puede estar en dos zonas: ahora `quitado`
-    // esta SOLO en A y este guardado lo saca. Se sigue leyendo la UNION antes ∪ despues: `quitado`
-    // queda sin zona y su orden conserva A (cero zonas no mueve nada, R3).
+    // esta SOLO en A y este guardado lo saca: `quitado` queda sin zona y su orden conserva A (cero
+    // zonas no mueve nada, R3). Este caso YA NO distingue la UNION antes ∪ despues de «solo la lista
+    // final»: con o sin union, la orden de `quitado` se queda igual. Con el indice no hay estado
+    // alcanzable donde la union cambie el resultado; el caso mide R3 y R11, no la union.
     // R11 (un `lote_id` por guardado): ya no hay «dos zonas resueltas» en un guardado, pero si dos
     // ordenes de DOS distritos distintos reconciliadas en el mismo acto: comparten lote. Ningun
     // otro caso de este archivo lo afirma con mas de una fila.

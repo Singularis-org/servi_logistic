@@ -7,7 +7,7 @@ import type { PrismaClient } from "@prisma/client";
 import { crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones";
 import { crearFksDeOrden } from "./_fixtures/orden-minima";
 import { comoDueno, errorEnSavepoint, intentar, revertida, sqlstateDe } from "./_fixtures/pais-20";
-import { soloEjecutable } from "./_fixtures/sql-ejecutable";
+import { sentenciasSql, soloEjecutable } from "./_fixtures/sql-ejecutable";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
 
 // SLT-75 (T6, design §3, R9-R13) — las dos migraciones de la ficha, contra Postgres real.
@@ -24,6 +24,11 @@ import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres
 //   4. se aplican los dos `down.sql` REALES en orden inverso y se toma otra foto.
 // El rollback deja la base como estaba (indice y respaldo incluidos), pase lo que pase.
 //
+// ESQUEMA COMPARTIDO (review B1). `respaldo` no es de esta ficha: SLT-73 guarda ahi
+// `respaldo.slt73_asientos`. El down borra SU tabla y el esquema SOLO si queda vacio. Se mide en los
+// dos sentidos: con una tabla AJENA sembrada en `respaldo` (queda intacta, con su fila, y el esquema
+// tambien), y con el esquema vaciado a proposito en la transaccion revertida (el down lo quita).
+//
 // Datos SINTETICOS: zonas y empresas inventadas; los distritos son ids del catalogo, sin nombres.
 //
 // Mutaciones (progress/impl_SLT-75.md): GROUP BY sin empresa (R9), respaldo en `public` (R10),
@@ -34,20 +39,16 @@ const DIR_DATOS = "20261101090000_zona_distrito_duplicados_sin_zona";
 const DIR_INDICE = "20261101090100_zona_distrito_distrito_unico_por_empresa";
 const INDICE = "zona_distrito_organizacion_id_distrito_id_key";
 const RESPALDO = "respaldo.slt75_zona_distrito_duplicado";
+/** Tabla AJENA sembrada en `respaldo` por el test: hace de respaldo de otra ficha. */
+const AJENA = "respaldo.slt75_test_tabla_ajena";
 
 function leer(dir: string, archivo: "migration.sql" | "down.sql"): string {
   return fs.readFileSync(path.join(MIGRACIONES, dir, archivo), "utf8");
 }
 
-function sentencias(sql: string): string[] {
-  return soloEjecutable(sql)
-    .split(";")
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
 async function aplicar(tx: TxDeTest, sql: string): Promise<void> {
-  for (const stmt of sentencias(sql)) await tx.$executeRawUnsafe(stmt);
+  // `sentenciasSql` respeta el bloque `DO $slt75$ … $slt75$` del down: viaja entero.
+  for (const stmt of sentenciasSql(sql)) await tx.$executeRawUnsafe(stmt);
 }
 
 async function subir(tx: TxDeTest): Promise<void> {
@@ -97,6 +98,16 @@ async function existeEsquemaRespaldo(tx: TxDeTest): Promise<boolean> {
     `SELECT count(*)::int AS n FROM pg_namespace WHERE nspname = 'respaldo'`,
   );
   return f.n > 0;
+}
+
+/** Filas de la tabla ajena; `null` si ya no existe. */
+async function filasAjenas(tx: TxDeTest): Promise<number | null> {
+  const [{ existe }] = await tx.$queryRawUnsafe<Array<{ existe: boolean }>>(
+    `SELECT to_regclass('${AJENA}') IS NOT NULL AS existe`,
+  );
+  if (!existe) return null;
+  const [f] = await tx.$queryRawUnsafe<Array<{ n: number }>>(`SELECT count(*)::int AS n FROM ${AJENA}`);
+  return f.n;
 }
 
 async function totalZonaDistrito(tx: TxDeTest): Promise<number> {
@@ -204,6 +215,7 @@ interface Foto {
   indiceTrasDown: string | null;
   esquemasRespaldoTrasDown: string[];
   esquemaRespaldoTrasDown: boolean;
+  filasAjenasTrasDown: number | null;
 }
 
 describeSiHayBase("SLT-75 — migraciones contra Postgres (R7, R9-R12)", () => {
@@ -309,6 +321,10 @@ describeSiHayBase("SLT-75 — migraciones contra Postgres (R7, R9-R12)", () => {
       // Se deshacen las dos filas de la comprobacion de R7 para que la foto del down sea limpia.
       await tx.$executeRawUnsafe(`DELETE FROM zona_distrito WHERE distrito_id = $1`, dOtro);
 
+      // B1: un objeto AJENO en `respaldo` (otra ficha). El down no puede llevarselo ni fallar por el.
+      await tx.$executeRawUnsafe(`CREATE TABLE ${AJENA} (marca text NOT NULL)`);
+      await tx.$executeRawUnsafe(`INSERT INTO ${AJENA} (marca) VALUES ('de otra ficha')`);
+
       // En SAVEPOINT: si el down fallara, R12 cae por su asercion y no por un beforeAll roto.
       const fallo = await errorEnSavepoint(tx, () => bajar(tx));
       const errorDelDown = fallo === null ? null : sqlstateDe(fallo);
@@ -334,6 +350,7 @@ describeSiHayBase("SLT-75 — migraciones contra Postgres (R7, R9-R12)", () => {
         indiceTrasDown: await indiceDef(tx),
         esquemasRespaldoTrasDown: await esquemasDelRespaldo(tx),
         esquemaRespaldoTrasDown: await existeEsquemaRespaldo(tx),
+        filasAjenasTrasDown: await filasAjenas(tx),
       };
     });
   }, 120_000);
@@ -393,12 +410,44 @@ describeSiHayBase("SLT-75 — migraciones contra Postgres (R7, R9-R12)", () => {
     expect(f.mismaFilaEnB).toBeNull();
   });
 
-  it("R12 — los dos down.sql (en orden inverso) restauran las filas y quitan indice y respaldo", () => {
+  it("R12 — los dos down.sql (en orden inverso) restauran las filas y quitan indice y SU tabla de respaldo", () => {
     expect(f.errorDelDown).toBeNull();
     expect(f.filasTrasDown).toEqual(f.filasAntes);
     expect(f.indiceTrasDown).toBeNull();
     expect(f.esquemasRespaldoTrasDown).toEqual([]);
-    expect(f.esquemaRespaldoTrasDown).toBe(false);
+  });
+
+  it("R12/B1 — con un objeto ajeno en `respaldo`, el down lo deja intacto (con su fila) y el esquema sigue", () => {
+    expect(f.errorDelDown).toBeNull();
+    expect(f.filasAjenasTrasDown).toBe(1);
+    expect(f.esquemaRespaldoTrasDown).toBe(true);
+  });
+});
+
+describeSiHayBase("SLT-75 — down con el esquema `respaldo` vacio (R12, B1)", () => {
+  let base: PrismaClient;
+  let f: { esquemaTrasUp: boolean; esquemaTrasDown: boolean };
+
+  beforeAll(async () => {
+    base = crearPrismaDeTest();
+    f = await revertida(base, async (tx) => {
+      await bajar(tx);
+      // Se vacia `respaldo` (la base de test trae el de SLT-73): la transaccion se revierte.
+      await tx.$executeRawUnsafe(`DROP SCHEMA IF EXISTS respaldo CASCADE`);
+      await subir(tx);
+      const esquemaTrasUp = await existeEsquemaRespaldo(tx);
+      await bajar(tx);
+      return { esquemaTrasUp, esquemaTrasDown: await existeEsquemaRespaldo(tx) };
+    });
+  }, 120_000);
+
+  afterAll(async () => {
+    await base?.$disconnect();
+  });
+
+  it("si solo quedaba el respaldo de esta ficha, el down quita tambien el esquema", () => {
+    expect(f.esquemaTrasUp).toBe(true);
+    expect(f.esquemaTrasDown).toBe(false);
   });
 });
 
