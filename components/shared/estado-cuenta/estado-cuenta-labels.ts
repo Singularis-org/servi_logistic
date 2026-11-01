@@ -25,6 +25,8 @@ export const CHIP_LABEL: Record<ChipOTodo, string> = {
   incentivos: "Incentivos",
   declarado: "Declarado",
   recibido: "Recibido",
+  // SLT-73 (R32) — arreglo minimo de tipo de backend_dev (el `Record` es total); texto provisional, T14.
+  sin_consolidar: "Sin consolidar",
 };
 
 /**

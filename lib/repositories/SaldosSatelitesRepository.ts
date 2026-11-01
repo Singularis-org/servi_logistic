@@ -8,6 +8,7 @@ import type {
   UltimaRecibidaDTO,
 } from "@/lib/types/conciliacion-satelites";
 import { esperadoDe, saldoDe } from "@/lib/utils/conciliacion-satelite";
+import { APORTE_SATELITE_WHERE } from "@/lib/repositories/_shared/aporte-satelite-sql";
 import { diasNaturalesCRDesde, inicioDelMesCREnUtc } from "@/lib/utils/fecha-cr";
 import { CUENTA_USUARIO_SELECT, etiquetaDeCuenta } from "@/lib/utils/etiqueta-cuenta";
 import type { PaginaRepositorio, RangoPagina } from "@/lib/utils/rango-pagina";
@@ -36,8 +37,9 @@ const ZONA_SATELITE_WHERE = { esCentral: false } as const;
 /**
  * SLT-73 (R5) — los `cierre_dia` que forman la deuda de una satelite: aprobados y con destino
  * satelite, SEA CUAL SEA su consolidacion. Un cierre de la central no le debe nada a nadie.
+ * Enmienda 2 (R31): vive en `_shared/aporte-satelite-sql.ts`, compartido con el estado de cuenta.
  */
-const APORTE_WHERE = { estado: "aprobado", destinoTipo: "bodega_satelite" } as const;
+const APORTE_WHERE = APORTE_SATELITE_WHERE;
 
 /** Los tres snapshots de `paraLaCentral` (R4), sumados por zona. */
 const APORTE_SUM = {
