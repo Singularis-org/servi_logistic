@@ -248,7 +248,11 @@ describeSiHayBase("SL-23 R31 — el núcleo de cierres en una empresa sin ningú
     expect(bloqueo).toMatchObject({ status: "ok", bloqueo: { bloqueado: false } });
   });
 
-  it("«Cierres del día»: aprobar escribe sus movimientos de caja, con todos los módulos apagados", async () => {
+  // SLT-73 (R1, D2): el cierre de este escenario es de la SATÉLITE (lo aprueba el adminSatelite), y
+  // aprobarlo ya NO escribe en la caja: su dinero entra al conciliar la consolidación (R10). Lo que
+  // este caso sigue midiendo es que el núcleo APRUEBA con todos los módulos apagados; que una
+  // aprobación de la central asienta lo mide `slt73-aprobar-central-igual.int.test.ts`.
+  it("«Cierres del día»: aprobar funciona con todos los módulos apagados (satélite: sin movimientos de caja, SLT-73)", async () => {
     // Ficha 451 / SLT-72 (R10, sin puerta de escape): el corte barrió `ordenEnReparto` a este
     // cierre, así que aprobar EXIGE su confirmación física. La guía es la copia congelada de
     // `cierre_sin_gestion`, la misma que la pantalla muestra y manda.
@@ -273,9 +277,10 @@ describeSiHayBase("SL-23 R31 — el núcleo de cierres en una empresa sin ningú
       where: { organizacionId: s!.organizacionId, origenId: vencidoId },
       select: { tipo: true, categoria: true, monto: true },
     });
-    expect(caja.map((m) => `${m.tipo}|${m.categoria}|${m.monto.toFixed(2)}`)).toContain(
-      "ingreso|ingreso_cod_recaudado|1000.00",
-    );
+    expect(
+      (await base.cierreDia.findUniqueOrThrow({ where: { id: vencidoId }, select: { estado: true, destinoTipo: true } })),
+    ).toEqual({ estado: "aprobado", destinoTipo: "bodega_satelite" });
+    expect(caja).toEqual([]);
   });
 
   it("«Cierres del día»: registrarPagoMensajeroAction registra el pago al mensajero", async () => {

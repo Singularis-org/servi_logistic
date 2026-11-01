@@ -624,13 +624,13 @@ export function motivoGestionLegible(
 
 /** `solicitado` en una superficie de cierre de bodega. */
 export const PENDIENTE_CONCILIAR_LABEL = "Pendiente de conciliar";
-/** `aprobado` con el efectivo llegado entero. */
+/** `aprobado` con lo esperado («Para la central», SLT-73) llegado entero. */
 export const RECIBIDO_LABEL = "Recibido";
 /** `aprobado` pero con diferencia: llegó menos de lo declarado. */
 export const RECIBIDO_INCOMPLETO_LABEL = "Recibido incompleto";
 /** Cuánto contó de verdad quien recibió el bulto. */
 export const MONTO_RECIBIDO_LABEL = "Monto recibido";
-/** `total_efectivo` − lo recibido. Puede ser negativo (llegó de más). */
+/** «Para la central» − lo recibido (SLT-73, D3/R8; antes `total_efectivo`). Puede ser negativo (llegó de más). */
 export const FALTA_POR_RECIBIR_LABEL = "Falta por recibir";
 /** El conjunto de lo que todavía no se ha marcado. */
 export const SIN_CONCILIAR_LABEL = "Sin conciliar";

@@ -217,9 +217,10 @@ describe("R24 — los chips por tipo de cuenta (D10)", () => {
     expect(await chips()).toEqual(["Cierres", "Pagos", "Premios", "Incentivos", "Correcciones"]);
   });
 
-  it("bodega: Declarado · Recibido", async () => {
+  // SLT-73 (enmienda 2, R32): «Sin consolidar», los cierres aprobados fuera de una consolidación no rechazada.
+  it("bodega: Declarado · Recibido · Sin consolidar", async () => {
     envolver(<EstadoCuenta descargaDeLaSuperficie={{ ambitoColumnas: "prueba-estado-cuenta" }} inicial={estado({ tipo: "bodega", nombre: "Bodega", filas: [] })} rotulos={ROTULOS_BODEGA} />);
-    expect(await chips()).toEqual(["Declarado", "Recibido"]);
+    expect(await chips()).toEqual(["Declarado", "Recibido", "Sin consolidar"]);
   });
 
   it("elegir un chip lo pide al servidor desde la página 1; quitar la casilla («Todo») no manda chip", async () => {

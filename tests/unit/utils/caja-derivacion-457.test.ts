@@ -165,29 +165,43 @@ describe("457/T2.2 — R7 por construccion: identidad sobre 500 subconjuntos con
     fila("egreso_reverso_iva_flete_devolucion", "130.00"),
     // SL-45: el pago de la empresa a la plataforma.
     fila("egreso_pago_plataforma", "750.00"),
+    // SLT-73: la diferencia de la satelite al conciliar, en los dos sentidos.
+    fila("egreso_diferencia_satelite", "485.00"),
+    fila("ingreso_diferencia_satelite", "15.00"),
   ];
 
-  it("el POOL cubre las 28 categorias del catalogo (anti-vacuidad)", () => {
+  it("el POOL cubre las 30 categorias del catalogo (anti-vacuidad)", () => {
     const cubiertas = new Set(POOL.map((f) => f.categoria));
     for (const c of WALLET_MOVIMIENTO_CATEGORIA_SEED) expect(cubiertas.has(c), c).toBe(true);
   });
 
-  it("cifra principal = ganancia + «De las tiendas» + capital en los 500 subconjuntos", () => {
+  it("cifra principal = ganancia + IVA + «De las tiendas» + capital − por cobrar a satélites en los 500 subconjuntos (SLT-73 R27)", () => {
     let semilla = 457;
     const siguiente = () => {
       semilla = (semilla * 48271) % 2147483647;
       return semilla;
     };
     let conAbono = 0;
+    let conDiferencia = 0;
+    let sinDiferencia = 0;
     for (let i = 0; i < 500; i++) {
       const mascara = siguiente();
       const sub = POOL.filter((_, j) => ((mascara >> (j % 31)) & 1) === 1 || siguiente() % 3 === 0);
       if (sub.some((f) => f.categoria === "ingreso_abono_tienda")) conAbono += 1;
       const r = derivarCaja(sub);
-      expect(suma(r.ganancia, r.iva, r.deTerceros, r.capital), `subconjunto ${i}`).toBe(r.enCaja);
+      if (sub.some((f) => f.categoria.endsWith("_diferencia_satelite"))) conDiferencia += 1;
+      else sinDiferencia += 1;
+      // SLT-73 (design §2.9.4, R27): − «Por cobrar a satélites».
+      expect(
+        resta(suma(r.ganancia, r.iva, r.deTerceros, r.capital), r.porCobrarSatelites),
+        `subconjunto ${i}`,
+      ).toBe(r.enCaja);
       expect(resta(r.entradas, r.salidas), `entradas − salidas ${i}`).toBe(r.enCaja);
     }
     // Anti-vacuidad: el pago de una tienda estuvo dentro en una parte sustancial de los subconjuntos.
     expect(conAbono).toBeGreaterThan(200);
+    // SLT-73 (R27): la identidad se ejerce sobre conjuntos CON y SIN diferencia de la satélite.
+    expect(conDiferencia).toBeGreaterThan(100);
+    expect(sinDiferencia).toBeGreaterThan(20);
   });
 });

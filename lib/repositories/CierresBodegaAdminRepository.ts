@@ -10,7 +10,14 @@ import type {
   ResolverCierreBodegaInput,
   ResolverCierreBodegaResult,
   RevertirConciliacionInput,
+  RevertirConciliacionResult,
 } from "@/lib/interfaces/repositories/ICierresBodegaAdminRepository";
+import {
+  ASIENTOS_POR_DEFECTO,
+  asentarCierreDia,
+  type AsientosCierreDiaDeps,
+} from "@/lib/repositories/_shared/asientos-cierre-dia";
+import { paraLaCentral } from "@/lib/utils/ingreso-empresa";
 import type { CierreBodegaResumenRow } from "@/lib/interfaces/repositories/ICierreBodegaRepository";
 import type { CierreGestionPendienteRow } from "@/lib/interfaces/repositories/ICierreDiaRepository";
 import {
@@ -55,6 +62,82 @@ const ESTADO_SOLICITADO = "solicitado";
 // FICHA 431: el otro lado de la marca. `aprobado` se LEE «Recibido» (D2/D3: el enum `cierre_estado`
 // NO se toca, lo comparten `cierre_dia` y `cierre_bodega`).
 const ESTADO_APROBADO = "aprobado";
+
+/** SLT-73 — la transaccion de la marca: el cliente interactivo de `$transaction`. */
+type TxMarca = Prisma.TransactionClient;
+
+/**
+ * SLT-73 (R11/R13/R15, design §2.3-§2.4) — LA DIFERENCIA DE LA SATELITE de un evento (marca o
+ * correccion), dentro de la transaccion del llamador y DESPUES de su `updateMany` guardado.
+ *
+ *   esperado   = `paraLaCentral` del snapshot de la consolidacion (R8): lo recaudado por TODOS los
+ *                metodos menos el pago a sus mensajeros y lo que gana la satelite por rechazos (D3/D4).
+ *   objetivo   = esperado - recibido: lo que la satelite sigue debiendo tras este evento.
+ *   yaAsentado = suma de `diferencia` de los ajustes PREVIOS de esta consolidacion: lo que la caja
+ *                ya descuenta por eventos anteriores.
+ *   delta      = objetivo - yaAsentado: lo que ESTE evento tiene que mover.
+ *
+ * Si `delta` es cero no se escribe nada (R13: la diferencia no vario). Si no, UNA fila de ajuste
+ * (append-only: ninguna anterior se toca) y UN movimiento de caja con origen esa fila: egreso si la
+ * satelite entrego menos (delta > 0), ingreso si entrego mas (delta < 0), siempre por |delta|.
+ * La naturaleza de caja de las dos categorias vive en `lib/utils/caja-tesoreria.ts`; aqui no se lee.
+ */
+async function asentarDiferenciaSatelite(
+  tx: TxMarca,
+  asientos: AsientosCierreDiaDeps,
+  args: {
+    cierreBodegaId: string;
+    evento: "marca" | "correccion";
+    recibido: Prisma.Decimal;
+    creadoPor: string;
+    instante: Date;
+  },
+): Promise<void> {
+  const consolidacion = await tx.cierreBodega.findUniqueOrThrow({
+    where: { id: args.cierreBodegaId },
+    select: { totalGeneral: true, totalPagoMensajero: true, totalIngresoBodegaRechazos: true },
+  });
+  const esperado = new Prisma.Decimal(
+    paraLaCentral(
+      consolidacion.totalGeneral.toFixed(2),
+      consolidacion.totalPagoMensajero.toFixed(2),
+      consolidacion.totalIngresoBodegaRechazos.toFixed(2),
+    ),
+  );
+  const previos = await tx.conciliacionBodegaAjuste.aggregate({
+    where: { cierreBodegaId: args.cierreBodegaId },
+    _sum: { diferencia: true },
+  });
+  const yaAsentado = previos._sum.diferencia ?? new Prisma.Decimal(0);
+  const delta = esperado.minus(args.recibido).minus(yaAsentado);
+  if (delta.isZero()) return;
+
+  const ajuste = await tx.conciliacionBodegaAjuste.create({
+    data: {
+      cierreBodegaId: args.cierreBodegaId,
+      evento: args.evento,
+      montoEsperado: esperado,
+      montoRecibido: args.recibido,
+      diferencia: delta,
+      creadoPor: args.creadoPor,
+      createdAt: args.instante,
+    },
+    select: { id: true },
+  });
+  const entregoMenos = delta.isPositive();
+  await asientos.walletMovimientoRepo.crearMovimientos(tx, [
+    {
+      tipo: entregoMenos ? "egreso" : "ingreso",
+      categoria: entregoMenos ? "egreso_diferencia_satelite" : "ingreso_diferencia_satelite",
+      monto: delta.abs().toFixed(2),
+      origenTipo: "conciliacion_bodega_ajuste",
+      origenId: ajuste.id,
+      descripcion: null,
+      registradoPor: args.creadoPor,
+      fechaMovimiento: args.instante,
+    },
+  ]);
+}
 
 // Feature 69/T23: el detalle sale del SNAPSHOT -> el cliente necesita `cierreDetail`.
 type CierresBodegaAdminPrismaClient = Pick<
@@ -210,7 +293,16 @@ function colaBodegaWhere(filtros?: FiltrosCierresBodega): Prisma.CierreBodegaWhe
  * gestiones sin cierre); sale del SNAPSHOT `cierre_detail` con las mismas piezas que T18.
  */
 export class CierresBodegaAdminRepository implements ICierresBodegaAdminRepository {
-  constructor(private readonly prisma: CierresBodegaAdminPrismaClient) {}
+  /**
+   * SLT-73 (design §2.6): `asientos` son los feeds y libros con los que la marca asienta los cierres
+   * del dia. Por defecto, los REALES: las dos construcciones de produccion
+   * (`lib/actions/conciliacion-satelites.ts` y `lib/actions/cierre-bodega.ts`) no inyectan nada y
+   * escriben de verdad. Solo los tests pasan un doble.
+   */
+  constructor(
+    private readonly prisma: CierresBodegaAdminPrismaClient,
+    private readonly asientos: AsientosCierreDiaDeps = ASIENTOS_POR_DEFECTO,
+  ) {}
 
   /** R15: todos los cierres de bodega, mas reciente primero, totales -> STRING. */
   async findCierresBodega(): Promise<CierreBodegaResumenRow[]> {
@@ -518,8 +610,10 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
    * silencio. Las columnas NUEVAS son las que llevan el SIGNIFICADO y el monto; estas son el
    * espejo heredado del acto.
    *
-   * NO ESCRIBE EN NINGUN LIBRO DE DINERO (R14). La unica tabla que toca ademas de `cierre_bodega`
-   * es `historial_accion`, que no es un libro: es el rastro.
+   * SLT-73 (D9 reabre el R14 de la 431): SI ESCRIBE EN LOS LIBROS, en esta misma transaccion. Por
+   * cada cierre del dia satelite aprobado que la consolidacion incluye, los asientos que la
+   * aprobacion de un cierre de la central habria escrito (R10), y la diferencia de la satelite si lo
+   * recibido no cuadra (R11). Si cualquier escritura falla, la marca entera revierte (R12).
    */
   async marcarConciliado(input: MarcarConciliadoInput): Promise<MarcaConciliacionResult> {
     const { id, montoRecibido, nota, actorUsuarioId } = input;
@@ -544,6 +638,26 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
         },
       });
       if (res.count !== 1) return null;
+
+      // SLT-73 (R10/R12/R20/R22): los asientos de cada cierre del dia de ESTA consolidacion, en
+      // orden de solicitud. `asentarCierreDia` es idempotente por el unico de cada libro, asi que un
+      // cierre ya asentado no se duplica, y uno cuyos asientos retiro la migracion C se re-escribe.
+      // Solo los `aprobado` con destino satelite: es lo que la aprobacion dejo sin asentar (R1).
+      const cierresDia = await tx.cierreDia.findMany({
+        where: { cierreBodegaId: id, estado: "aprobado", destinoTipo: "bodega_satelite" },
+        select: { id: true },
+        orderBy: { solicitadoAt: "asc" },
+      });
+      for (const c of cierresDia) {
+        await asentarCierreDia(tx, c.id, this.asientos, ahora);
+      }
+      await asentarDiferenciaSatelite(tx, this.asientos, {
+        cierreBodegaId: id,
+        evento: "marca",
+        recibido: monto,
+        creadoPor: actorUsuarioId,
+        instante: ahora,
+      });
 
       const cierre = await tx.cierreBodega.findUnique({
         where: { id },
@@ -587,11 +701,28 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
    *
    * ⚠️ CONSECUENCIA DECLARADA: al vaciar `resuelto_at`, la analitica financiera deja de contar este
    * cierre en su periodo. Es lo correcto —no se recibio— y esta escrito para que no sorprenda.
+   *
+   * SLT-73 (R14, D11): si la marca YA ASENTO los cierres de la consolidacion en la caja, NO se
+   * revierte: devuelve `con_asientos` sin tocar nada. Los libros son append-only y el unico no
+   * dejaria re-escribir esos asientos; el monto se arregla con «Corregir».
    */
-  async revertirConciliacion(input: RevertirConciliacionInput): Promise<MarcaConciliacionResult> {
+  async revertirConciliacion(input: RevertirConciliacionInput): Promise<RevertirConciliacionResult> {
     const { id, actorUsuarioId } = input;
 
     const resultado = await this.prisma.$transaction(async (tx) => {
+      // SLT-73 (R14): el conteo va ANTES de cualquier escritura. Filas de caja con origen
+      // `cierre_dia` de los cierres que esta consolidacion incluye.
+      const cierresDia = await tx.cierreDia.findMany({
+        where: { cierreBodegaId: id },
+        select: { id: true },
+      });
+      if (cierresDia.length > 0) {
+        const asentados = await tx.walletMovimiento.count({
+          where: { origenTipo: "cierre_dia", origenId: { in: cierresDia.map((c) => c.id) } },
+        });
+        if (asentados > 0) return "con_asientos" as const;
+      }
+
       // El monto ANTES del borrado: es lo que la fila del historial tiene que documentar.
       const previo = await tx.cierreBodega.findUnique({
         where: { id },
@@ -635,7 +766,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
       ]);
       return "updated" as const;
     });
-    if (resultado === "updated") return "updated";
+    if (resultado === "updated" || resultado === "con_asientos") return resultado;
 
     const existe = await this.prisma.cierreBodega.count({ where: { id } });
     return existe > 0 ? "conflict" : "fuera_de_alcance"; // R12 vs no existe
@@ -657,7 +788,10 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
    * historial llevaria un `valor_anterior` falso.
    *
    * D3: reescribe `conciliado_at`/`resuelto_at` igual que el rodeo Desmarcar + Marcar que sustituye.
-   * NO ESCRIBE EN NINGUN LIBRO DE DINERO (R12).
+   *
+   * SLT-73 (R13): si el faltante cambia, escribe UN movimiento de diferencia nuevo por la variacion
+   * (una fila de ajuste `correccion` mas), sin tocar los anteriores. NO vuelve a asentar los cierres
+   * del dia: ya los asento la marca.
    */
   async corregirConciliacion(input: CorregirConciliacionInput): Promise<MarcaConciliacionResult> {
     const { id, montoRecibido, nota, actorUsuarioId } = input;
@@ -695,6 +829,15 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
         },
       });
       if (res.count !== 1) return null;
+
+      // SLT-73 (R13/R15/R22): la variacion del faltante, si la hay, como un ajuste `correccion`.
+      await asentarDiferenciaSatelite(tx, this.asientos, {
+        cierreBodegaId: id,
+        evento: "correccion",
+        recibido: monto,
+        creadoPor: actorUsuarioId,
+        instante: ahora,
+      });
 
       const actor = await resolverActorCongelado(tx, actorUsuarioId);
       await appendAccion(tx, [

@@ -225,6 +225,8 @@ describe("DOWN — deja la base como estaba (R40)", () => {
       "abono_tienda",
       // SLT-68: el incentivo manual a un mensajero
       "incentivo_mensajero",
+      // SLT-73: el evento de conciliacion que movio la diferencia de la satelite
+      "conciliacion_bodega_ajuste",
     ];
     expect(valores).toEqual(
       WALLET_ORIGEN_TIPO_SEED.filter(

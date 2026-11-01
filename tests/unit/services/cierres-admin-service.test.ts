@@ -1363,6 +1363,8 @@ describe("CierresAdminService.aprobarCierre — alimenta el ledger por tienda (f
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         count: vi.fn().mockResolvedValue(1),
         findUnique: vi.fn(async () => ({
+          // SLT-73 (T3): la aprobacion lee el destino; esta suite mide la de la CENTRAL, que asienta.
+          destinoTipo: "bodega_central",
           mensajeroId: cierre.mensajeroId,
           totalPagoMensajero: new Prisma.Decimal(cierre.totalPagoMensajero),
           totalEfectivo: new Prisma.Decimal(cierre.totalEfectivo),
@@ -1563,6 +1565,8 @@ describe("CierresAdminService.aprobarCierre — alimenta el pago al mensajero (f
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         count: vi.fn().mockResolvedValue(1),
         findUnique: vi.fn(async () => ({
+          // SLT-73 (T3): la aprobacion lee el destino; esta suite mide la de la CENTRAL, que asienta.
+          destinoTipo: "bodega_central",
           mensajeroId: cierre.mensajeroId,
           totalPagoMensajero: new Prisma.Decimal(cierre.totalPagoMensajero),
           totalEfectivo: new Prisma.Decimal(cierre.totalEfectivo),

@@ -58,6 +58,10 @@ const RESUMEN: CajaResumenDTO = {
   flujoDesde: "2026-08-25",
   iva: "0.00", // SL-39
   signoIva: "cero" as const,
+  porCobrarSatelites: "0.00",
+  signoPorCobrarSatelites: "cero",
+  porcentajePorCobrarSatelites: "0.00",
+  deEmpresaEnCaja: "2000.00",
 };
 
 /**
@@ -284,7 +288,10 @@ describe("BarraComposicionCaja — cuando la barra no se puede partir (R16/R18/R
   });
 
   it("R20: fuera de `dos_bolsillos` no hay dos segmentos ni porcentaje", () => {
-    const otros = MODO_COMPOSICION_CAJA_SEED.filter((m) => m !== "dos_bolsillos");
+    // SLT-73 (R30): `tres_tramos` SÍ parte la barra, en tres; su caso está en el bloque de SLT-73.
+    const otros = MODO_COMPOSICION_CAJA_SEED.filter(
+      (m) => m !== "dos_bolsillos" && m !== "tres_tramos",
+    );
     // Control de no-vacuidad: si el SEED se quedara con un solo modo, el bucle no miraría nada.
     expect(otros).toHaveLength(3);
 
@@ -323,6 +330,8 @@ describe("BarraComposicionCaja — cuando la barra no se puede partir (R16/R18/R
       solo_tiendas: 1,
       solo_empresa: 1,
       sin_reparto: 0,
+      // SLT-73 (D13, R30): tiendas, por cobrar a satélites y la empresa.
+      tres_tramos: 3,
     });
   });
 });
@@ -433,6 +442,65 @@ describe("Ficha 459 — la barra reparte «De las tiendas» y «De la empresa» 
         "Las tiendas le deben a la empresa, así que todo lo que hay en la caja es de la empresa y además hay dinero por cobrarles.",
       sin_reparto:
         "No hay nada que repartir: ni la empresa ni las tiendas tienen dinero a favor en la caja.",
+      // SLT-73 (D13): texto provisional del diseño, a mano.
+      tres_tramos:
+        "Una parte de la barra no está en la caja: es lo que las satélites entregaron de menos al conciliar y todavía no han pagado. No es dinero de la empresa ni de las tiendas.",
     });
+  });
+});
+
+// ─── SLT-73 (D13, design §2.9.8, R30) — el TERCER tramo, «Por cobrar a satélites» ───
+describe("SLT-73 — la barra con tres tramos (R30)", () => {
+  // E = 300, T = 100, P = 100 (el caso del design §6): tiendas 25 %, por cobrar 25 %, la empresa el
+  // resto, y en la caja de la empresa quedan 200. Los porcentajes vienen DISTINTOS a propósito.
+  const TRES: Partial<CajaResumenDTO> = {
+    modoComposicion: "tres_tramos",
+    deTerceros: "100.00",
+    deEmpresa: "300.00",
+    porCobrarSatelites: "100.00",
+    signoPorCobrarSatelites: "positivo",
+    porcentajeTiendas: "25.00",
+    porcentajePorCobrarSatelites: "31.45",
+    deEmpresaEnCaja: "200.00",
+  };
+
+  it("R30: tres segmentos, en orden, y los anchos son los STRING del DTO", () => {
+    const { container } = pintarBarra(TRES);
+    const pintados = segmentos(container);
+    expect(pintados.map((s) => s.dataset.segmento)).toEqual(["tiendas", "por_cobrar", "empresa"]);
+    const [tiendas, porCobrar, empresa] = pintados;
+    expect(tiendas.style.width).toBe("25%");
+    expect(porCobrar.style.width).toBe("31.45%");
+    // La empresa ocupa el resto: los tres suman la barra entera sin abrir un hilo blanco.
+    expect(empresa.style.width).toBe("");
+    expect(empresa.className).toContain("flex-1");
+    // Color por token, distinto de los otros dos.
+    expect(porCobrar.className).toContain("bg-danger");
+    expect(porCobrar.className).not.toContain("bg-warning");
+    expect(porCobrar.className).not.toContain("bg-muted-foreground");
+  });
+
+  it("R30: el nombre accesible enuncia los tres tramos con los importes del servidor", () => {
+    pintarBarra(TRES);
+    expect(screen.getByRole("img").getAttribute("aria-label")).toBe(
+      "Reparto del dinero en caja. De las tiendas: ₡100. Por cobrar a satélites: ₡100. De la empresa: ₡200 (lo que está en la caja).",
+    );
+  });
+
+  it("R30: con el bolsillo en cero el modo es `dos_bolsillos` y la barra es la de antes", () => {
+    const { container } = pintarBarra({ porCobrarSatelites: "0.00", porcentajePorCobrarSatelites: "0.00" });
+    expect(segmentos(container).map((s) => s.dataset.segmento)).toEqual(["tiendas", "empresa"]);
+    expect(container.querySelector("[data-segmento='por_cobrar']")).toBeNull();
+  });
+
+  it("R30: en la tarjeta, el mensaje de `tres_tramos` va dentro del bloque de la empresa, neutro", () => {
+    const { container } = pintarTarjeta(TRES);
+    const empresa = bolsillo(container, "empresa");
+    expect(empresa.dataset.superficie).toBe("neutra");
+    const nota = within(empresa).getByRole("note");
+    expect(nota.textContent).toBe(
+      "Una parte de la barra no está en la caja: es lo que las satélites entregaron de menos al conciliar y todavía no han pagado. No es dinero de la empresa ni de las tiendas.",
+    );
+    expect(nota.className).toContain("text-muted-foreground");
   });
 });

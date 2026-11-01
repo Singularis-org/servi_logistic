@@ -122,6 +122,7 @@ model Usuario {
   cierresBodegaSolicitados            CierreBodega[]                     @relation("CierreBodegaSolicitadoPor") // feature 40: cierres de bodega solicitados por este adminSatelite
   cierresBodegaResueltos              CierreBodega[]                     @relation("CierreBodegaResueltoPor") // feature 40: cierres de bodega que este maestro aprobo/rechazo
   cierresBodegaConciliados            CierreBodega[]                     @relation("CierreBodegaConciliadoPor") // ficha 431: consolidaciones que marco como recibidas
+  conciliacionBodegaAjustes           ConciliacionBodegaAjuste[]         @relation("ConciliacionBodegaAjusteCreadoPor") // SLT-73: eventos de diferencia que este usuario origino al marcar o corregir
   walletMovimientosRegistrados        WalletMovimiento[]                 @relation("WalletMovimientoRegistrador") // feature 42/R2/R15: movimientos manuales que este usuario (maestro) registro
   walletTiendaMovimientos             WalletTiendaMovimiento[]           @relation("WalletTiendaMovimientoTienda") // feature 43/R1/R2: movimientos del ledger de ESTA tienda (rol adminTienda)
   walletTiendaMovimientosRegistrados  WalletTiendaMovimiento[]           @relation("WalletTiendaMovimientoRegistrador") // feature 43/R2: movimientos manuales del ledger de tienda que este usuario registro
@@ -1683,6 +1684,7 @@ model CierreBodega {
   resueltoPorUsuario   Usuario?    @relation("CierreBodegaResueltoPor", fields: [resueltoPor], references: [id])
   conciliadoPorUsuario Usuario?    @relation("CierreBodegaConciliadoPor", fields: [conciliadoPor], references: [id], onDelete: Restrict) // ficha 431: quien afirmo que el dinero llego no se borra dejando la afirmacion huerfana
   cierresDia           CierreDia[] // los cierre_dia incluidos (cierre_bodega_id)
+  ajustesConciliacion  ConciliacionBodegaAjuste[] // SLT-73: eventos que movieron la diferencia de la satelite
 
   organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
@@ -1703,6 +1705,34 @@ model CierreBodega {
   @@index([conciliadoAt]) // la cola de lo que sigue sin conciliar (R21)
   @@index([organizacionId])
   @@map("cierre_bodega")
+}
+
+// SLT-73 (design §1.2) — UNA fila por EVENTO que movio la diferencia de la satelite al conciliar una
+// consolidacion: la marca (`evento = marca`) o una correccion del monto recibido (`correccion`).
+// APPEND-ONLY: sin updatedAt ni deletedAt; una correccion es una fila nueva con su delta. Es el
+// `origen_id` del movimiento de caja `egreso_diferencia_satelite`/`ingreso_diferencia_satelite`.
+// Viven solo en el SQL de `20261031140100_slt73_ajuste_conciliacion`, porque Prisma no los expresa:
+//   · el CHECK de `evento` (marca | correccion) y el de `diferencia <> 0`;
+//   · la politica `conciliacion_bodega_ajuste_por_empresa` y los triggers de misma empresa.
+model ConciliacionBodegaAjuste {
+  id             String   @id @default(uuid())
+  cierreBodegaId String   @map("cierre_bodega_id")
+  evento         String // CHECK IN ('marca','correccion') en la migracion
+  montoEsperado  Decimal  @map("monto_esperado") @db.Decimal(12, 2) // `paraLaCentral` de la consolidacion, con signo
+  montoRecibido  Decimal  @map("monto_recibido") @db.Decimal(12, 2)
+  diferencia     Decimal  @db.Decimal(12, 2) // lo que asienta ESTE evento (delta), con signo; CHECK <> 0
+  creadoPor      String   @map("creado_por")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  cierreBodega CierreBodega @relation(fields: [cierreBodegaId], references: [id], onDelete: Restrict)
+  creador      Usuario      @relation("ConciliacionBodegaAjusteCreadoPor", fields: [creadoPor], references: [id], onDelete: Restrict)
+
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
+  @@index([cierreBodegaId])
+  @@index([organizacionId])
+  @@map("conciliacion_bodega_ajuste")
 }
 
 // Tarifa: tarifas de flete/comision, tabla multi-fila con `nombre` para
@@ -1916,6 +1946,12 @@ enum WalletMovimientoCategoria {
   // `egreso_gasto` (reservada) o `egreso_gasto_variable` mezclarían pagos con gastos.
   // Migración `20261024130000_pago_plataforma_categoria`.
   egreso_pago_plataforma
+  // SLT-73 (design §1.1/§1.2, D10): la DIFERENCIA DE LA SATELITE al conciliar una consolidacion. UNA
+  // fila por evento (marca o correccion) por esperado - recibido: egreso si llego menos, ingreso si
+  // llego mas. Tesoreria (dinero de terceros que no llego), como `ingreso_cod_recaudado`. Origen
+  // `conciliacion_bodega_ajuste`. Migracion `20261031140000_slt73_diferencia_satelite_enums`.
+  egreso_diferencia_satelite
+  ingreso_diferencia_satelite
 
   @@map("wallet_movimiento_categoria")
 }
@@ -1959,6 +1995,10 @@ enum WalletOrigenTipo {
   // `incentivo`. El CHECK de origen y el unico parcial viven solo en la migracion
   // `20261030120100_incentivo_mensajero_checks`.
   incentivo_mensajero
+  // SLT-73 (design §1.2): el EVENTO de conciliacion que movio la diferencia de la satelite (marca o
+  // correccion). `origen_id` = id de la fila de `conciliacion_bodega_ajuste`; hace falta porque el
+  // unico de la caja `(origen_tipo, origen_id, categoria)` no admite dos diferencias con el mismo origen.
+  conciliacion_bodega_ajuste
 
   @@map("wallet_origen_tipo")
 }
@@ -5443,6 +5483,7 @@ model Organizacion {
   rankingSnapshotDias RankingSnapshotDia[]
   rankingSnapshotFilas RankingSnapshotFila[]
   cobrosPlataforma CobroPlataformaMovimiento[] // SL-40
+  conciliacionBodegaAjustes ConciliacionBodegaAjuste[] // SLT-73
   integraciones Integracion[] // SL-36
   integracionPruebasMinuto IntegracionPruebaMinuto[] // SL-36
   jobs Job[] // SL-17 M4 (D16): `jobs` es diferida, no de negocio

@@ -103,7 +103,7 @@ describe("469 — EstadoCuentaService", () => {
       nombreDeCuenta: async () => "Bodega Norte",
       enLecturaConsistente: async <T>(fn: (r: IEstadoCuentaRepository) => Promise<T>) => fn(repo as unknown as IEstadoCuentaRepository),
       paginaDeBodega,
-      totalesDeBodega: async () => ({ efectivo: "0.00", recibido: "0.00" }),
+      totalesDeBodega: async () => ({ declarado: "0.00", recibido: "0.00" }),
       periodoDeBodega: async () => [],
     };
     const svc = new EstadoCuentaService(

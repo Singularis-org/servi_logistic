@@ -136,6 +136,9 @@ const A_QUIEN_POR_ORIGEN: Record<WalletOrigenTipo, readonly RamaDeCuenta[] | "an
   cobro_tienda_completado: [DEBITO_DE_TIENDA],
   abono_tienda: [ABONO],
   incentivo_mensajero: [INCENTIVO],
+  // SLT-73: la diferencia de la satélite no es de ninguna tienda ni de ningún mensajero (es de la
+  // bodega satélite, que no es una cuenta de «A quién»). Sin ramas: el filtro por cuenta no la trae.
+  conciliacion_bodega_ajuste: [],
 };
 
 const ORIGENES = Object.keys(A_QUIEN_POR_ORIGEN) as WalletOrigenTipo[];

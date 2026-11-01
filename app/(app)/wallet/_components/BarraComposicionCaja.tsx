@@ -12,6 +12,10 @@ import { composicionCajaNombreAccesible } from "./wallet-labels";
 // identidad `enCaja = deTerceros + deEmpresa` (ficha 459: «De la empresa» = ganancia + capital) la
 // deriva el servidor y esta comprobada en `lib/utils/caja-tesoreria.ts`.
 //
+// SLT-73 (D13, R30): la excepcion es `tres_tramos`, cuando una satelite entrego de menos y aun lo
+// debe. Entonces la barra mide lo que habria en la caja si hubiera entregado todo, y lo que debe es
+// un tercer tramo propio, no un trozo de la empresa. Los dos porcentajes llegan del servidor.
+//
 // Ficha 459 (R22): la tarjeta SOLO la monta en estado «saldo». Sin un saldo inicial vigente la
 // app no sabe cuanto dinero hay, y repartir «el dinero en caja» seria repartir una cifra que no es.
 //
@@ -36,17 +40,22 @@ const PISTA = "flex h-2 w-full overflow-hidden rounded-full bg-muted";
 /**
  * Un segmento pintado: de quien es, con que color y como se mide.
  *
- *  - `porcentaje` → el ancho es el STRING del DTO (solo el de las tiendas, R11).
+ *  - `porcentaje` → el ancho es el STRING del DTO que nombra `porcentaje` (R11; SLT-73 R30).
  *  - `resto`      → lo que quede (`flex-1`), sin numero propio.
  *  - `todo`       → la barra entera, cuando no hay reparto que hacer.
  */
 type Medida = "porcentaje" | "resto" | "todo";
 
+/** Los porcentajes que manda el servidor, ya redondeados (STRING): uno por tramo medido. */
+type CampoPorcentaje = "porcentajeTiendas" | "porcentajePorCobrarSatelites";
+
 interface Segmento {
-  clave: "tiendas" | "empresa";
+  clave: "tiendas" | "por_cobrar" | "empresa";
   /** Color por TOKEN (R39). Ni un hex, ni una utilidad de paleta ad-hoc. */
   color: string;
   medida: Medida;
+  /** Solo con `medida: "porcentaje"`: de que campo del DTO sale el ancho. */
+  porcentaje?: CampoPorcentaje;
 }
 
 const ANCHO: Record<Medida, string> = {
@@ -69,12 +78,25 @@ const ANCHO: Record<Medida, string> = {
  */
 const SEGMENTOS_POR_MODO: Record<ModoComposicionCaja, readonly Segmento[]> = {
   dos_bolsillos: [
-    { clave: "tiendas", color: "bg-warning", medida: "porcentaje" },
+    { clave: "tiendas", color: "bg-warning", medida: "porcentaje", porcentaje: "porcentajeTiendas" },
     { clave: "empresa", color: "bg-muted-foreground", medida: "resto" },
   ],
   solo_tiendas: [{ clave: "tiendas", color: "bg-warning", medida: "todo" }],
   solo_empresa: [{ clave: "empresa", color: "bg-muted-foreground", medida: "todo" }],
   sin_reparto: [],
+  // SLT-73 (D13, R30): lo que una satelite debe es un TERCER tramo, entre las tiendas y la empresa.
+  // Va en `danger` porque es dinero que falta en la caja; el mismo token del punto de su fila en el
+  // libro. La empresa sigue siendo el resto, asi que los tres suman la barra entera sin hilo blanco.
+  tres_tramos: [
+    { clave: "tiendas", color: "bg-warning", medida: "porcentaje", porcentaje: "porcentajeTiendas" },
+    {
+      clave: "por_cobrar",
+      color: "bg-danger",
+      medida: "porcentaje",
+      porcentaje: "porcentajePorCobrarSatelites",
+    },
+    { clave: "empresa", color: "bg-muted-foreground", medida: "resto" },
+  ],
 };
 
 export interface BarraComposicionCajaProps {
@@ -104,9 +126,9 @@ export function BarraComposicionCaja({ resumen, className }: BarraComposicionCaj
           // El ancho es un DATO de la respuesta, no una clase: Tailwind lee el fuente y no
           // puede generar `w-[83.33%]` en tiempo de ejecucion. El STRING entra tal cual.
           style={
-            segmento.medida === "porcentaje"
-              ? { width: `${resumen.porcentajeTiendas}%` }
-              : undefined
+            segmento.porcentaje === undefined
+              ? undefined
+              : { width: `${resumen[segmento.porcentaje]}%` }
           }
         />
       ))}

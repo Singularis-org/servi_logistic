@@ -235,6 +235,10 @@ const RESUMEN = {
   flujoDesde: "2026-08-25",
   iva: "0.00", // SL-39
   signoIva: "cero" as const,
+  porCobrarSatelites: "0.00",
+  signoPorCobrarSatelites: "cero" as const,
+  porcentajePorCobrarSatelites: "0.00",
+  deEmpresaEnCaja: "-17000.00",
 };
 /** El resumen del conjunto FILTRADO («Entra»): otras cifras, para que ninguna aserción acierte por casualidad. */
 const RESUMEN_ENTRA = { ...RESUMEN, salidas: "0.00", ganancia: "5000.00", signoGanancia: "positivo" as const, periodoFiltrado: true };

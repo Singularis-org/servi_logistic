@@ -311,6 +311,10 @@ const CAJA_CON_CENTIMOS: CajaResumenDTO = {
   flujoDesde: "2026-08-25",
   iva: "0.00", // SL-39
   signoIva: "cero" as const,
+  porCobrarSatelites: "0.00",
+  signoPorCobrarSatelites: "cero",
+  porcentajePorCobrarSatelites: "0.00",
+  deEmpresaEnCaja: "3416.25",
 };
 
 /** El rótulo de la cifra principal en el estado del conjunto (literal: design §3.3). */
@@ -715,8 +719,9 @@ const BODEGA_CABECERA: CierreBodegaResumen = {
   // 126089.17 − 14000.55 − 250.25, derivado por el servidor.
   paraLaCentral: "111838.37",
   efectivoCubreDescuentos: true,
-  // FICHA 431: la marca de conciliacion, CUADRADA con el efectivo de este doble.
-  ...marcaSinConciliar("100000.17"),
+  // SLT-73 (D3/R8, R34): sin marcar, lo que falta por llegar es «Para la central» ÍNTEGRO, no el
+  // efectivo. Este doble lleva SINPE, así que las dos cifras difieren y el caso mide algo.
+  ...marcaSinConciliar("111838.37"),
 };
 
 /** El importe pintado que sigue a un rótulo dentro de una región. */
@@ -773,23 +778,24 @@ describe("ficha 393 · B4 — la TARJETA del cierre de bodega: la cascada a la c
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// ⭑ FICHA 431 · B4-bis — LA MARCA DE CONCILIACIÓN: recibido + falta = declarado
+// ⭑ FICHA 431 · B4-bis + SLT-73 (R34) — LA MARCA DE CONCILIACIÓN: recibido + falta = para la central
 // ═══════════════════════════════════════════════════════════════════════════
 //
-// La identidad que esta ficha añade al censo (T22), y se comprueba SOBRE LAS CADENAS QUE SE
-// PINTAN, no contra el `Decimal` de origen. Es la diferencia entre medir la pantalla y medir el
-// servidor: comparar el importe contra la variable de la que salió estaría siempre verde, y es
-// exactamente el defecto que la ficha 359 encontró repetido en trece pantallas.
+// La identidad se comprueba SOBRE LAS CADENAS QUE SE PINTAN, no contra el `Decimal` de origen:
+// comparar el importe contra la variable de la que salió estaría siempre verde (ficha 359).
 //
-// POR QUÉ ESTE PAR Y NO OTRO: `faltaPorRecibir` llega DERIVADO del servidor y la pantalla sólo
-// lo pinta. Si alguien «optimizara» restándolo en el cliente —o si el servidor lo derivara sobre
-// `total_general` en vez de sobre el efectivo (Q2)— la cuenta dejaría de cerrar CON LO QUE SE
-// LEE, que es donde el usuario la va a comprobar.
-//
-// El doble lleva CÉNTIMOS en los tres importes a propósito: un juego de cifras redondas cierra
-// igual con una resta hecha en `number`, y entonces el caso no mediría nada.
+// SLT-73 (D3, R8, R34): lo esperado de una consolidación ya no es el efectivo sino «Para la
+// central» (total general − pago al mensajero − gana la bodega). El doble de antes cuadraba
+// contra el efectivo POR CASUALIDAD; este lleva SINPE, pago y ganancia, así que efectivo ≠ para la
+// central y la identidad vieja daría rojo. Las cifras se escriben A MANO: calcularlas con el
+// fixture sería una aserción contra su propia fuente.
 
-/** Una consolidación RECIBIDA POR MENOS: ₡485.000,00 de ₡500.000,17 declarados. */
+/**
+ * Una consolidación RECIBIDA POR MENOS.
+ *   para la central = 526089.17 − 14000.55 − 250.25 = 511838.37
+ *   falta           = 511838.37 − 485000.00         =  26838.37
+ * Contra el efectivo la falta sería 15000.17; contra el total general, 41089.17.
+ */
 const BODEGA_INCOMPLETA: CierreBodegaResumen = {
   ...BODEGA_CABECERA,
   cierreBodegaId: "b2b2b2b2-2222-4222-8222-b2b2b2b2b2b2",
@@ -800,14 +806,14 @@ const BODEGA_INCOMPLETA: CierreBodegaResumen = {
     transferencia: "0.00",
     general: "526089.17",
   },
+  totalPagoMensajero: "14000.55",
+  totalIngresoBodegaRechazos: "250.25",
+  paraLaCentral: "511838.37",
   resueltoAt: "2026-09-15T17:40:00.000Z",
-  // 500000.17 − 485000.00 = 15000.17, derivado por el SERVIDOR. Se escribe a mano aquí porque
-  // es justo la cifra que este bloque afirma: calcularla con el fixture sería una aserción
-  // contra su propia fuente.
-  ...marcaRecibida("485000.00", "15000.17"),
+  ...marcaRecibida("485000.00", "26838.37"),
 };
 
-describe("⭑ ficha 431 · B4-bis — la marca de conciliación en la tarjeta del cierre de bodega", () => {
+describe("⭑ ficha 431 · B4-bis + SLT-73 R34 — la marca de conciliación en la tarjeta del cierre de bodega", () => {
   async function abrirTarjeta(cierre: CierreBodegaResumen) {
     render(
       <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
@@ -820,52 +826,65 @@ describe("⭑ ficha 431 · B4-bis — la marca de conciliación en la tarjeta de
         name: "Ver detalles del cierre de bodega de Limón",
       }),
     );
-    return screen.getByRole("region", { name: "Conciliación" });
+    return {
+      conciliacion: screen.getByRole("region", { name: "Conciliación" }),
+      cascada: screen.getByRole("region", { name: CASCADA_CENTRAL_TITULO }),
+      comprobante: screen.getByRole("region", { name: /Comprobante del cierre de bodega/ }),
+    };
   }
 
-  it("monto recibido + falta por recibir = efectivo declarado, leído del DOM (R17/R18/R20)", async () => {
-    const conciliacion = await abrirTarjeta(BODEGA_INCOMPLETA);
-    const efectivo = importeTrasEn(
-      screen.getByRole("region", { name: /Comprobante del cierre de bodega/ }),
-      "Efectivo",
-    );
+  it("⭑ SLT-73 R34 — monto recibido + falta por recibir = «Para la central» de la MISMA tarjeta, leído del DOM", async () => {
+    const { conciliacion, cascada } = await abrirTarjeta(BODEGA_INCOMPLETA);
+    const paraLaCentral = importeTrasEn(cascada, PARA_LA_CENTRAL_LABEL);
+    // Literal a mano: la línea de la cascada es la que se escribió en el doble.
+    expect(paraLaCentral).toBe(money("511838.37"));
 
     laCuentaCierra(
       [
         importeTrasEn(conciliacion, MONTO_RECIBIDO_LABEL),
         importeTrasEn(conciliacion, FALTA_POR_RECIBIR_LABEL),
       ],
-      efectivo,
-      "tarjeta de bodega: la marca de conciliación",
+      paraLaCentral,
+      "tarjeta de bodega: recibido + falta = para la central",
     );
   });
 
-  it("la cifra que se lee es la del SERVIDOR, sin redondear al colón", async () => {
-    const conciliacion = await abrirTarjeta(BODEGA_INCOMPLETA);
+  it("⭑ SLT-73 R34 — la falta NO se cuenta sobre el efectivo ni sobre el total general", async () => {
+    const { conciliacion, comprobante } = await abrirTarjeta(BODEGA_INCOMPLETA);
     const falta = importeTrasEn(conciliacion, FALTA_POR_RECIBIR_LABEL);
-    expect(centimosPintados(falta)).toBe(centimosDelServidor("15000.17"));
-    // El síntoma que la 230 dejó suelto: los 17 céntimos desaparecidos.
-    expect(falta).not.toBe(money("15000"));
-  });
-
-  it("⭑ la falta se deriva del EFECTIVO y NO del total general (decisión Q2, medida)", async () => {
-    // El doble tiene ₡26.089,00 de SINPE, que NO viaja en el bulto. Si `faltaPorRecibir` saliera
-    // del general, lo que la tarjeta enseñaría como pendiente de llegar serían ₡41.089,17 —una
-    // deuda fantasma que nadie va a entregar en mano jamás—. La cuenta de arriba cierra contra
-    // el EFECTIVO justamente porque no lo hace.
-    const conciliacion = await abrirTarjeta(BODEGA_INCOMPLETA);
-    const falta = importeTrasEn(conciliacion, FALTA_POR_RECIBIR_LABEL);
+    const recibido = importeTrasEn(conciliacion, MONTO_RECIBIDO_LABEL);
+    const efectivo = importeTrasEn(comprobante, "Efectivo");
+    expect(efectivo).toBe(money("500000.17"));
+    // recibido + falta ≠ efectivo: la identidad vieja ya no cierra con este doble.
+    expect(centimosPintados(recibido) + centimosPintados(falta)).not.toBe(centimosPintados(efectivo));
+    expect(centimosPintados(falta)).not.toBe(centimosDelServidor("15000.17"));
     expect(centimosPintados(falta)).not.toBe(centimosDelServidor("41089.17"));
   });
 
-  it("SIN MARCAR no hay línea de «monto recibido», y falta el efectivo ÍNTEGRO", async () => {
-    // Un «₡0» ahí diría «alguien contó y no había nada», que es otra cosa. Y lo que falta por
-    // llegar es todo el efectivo, que es el número que la bodega tiene que reconocer como suyo.
-    const conciliacion = await abrirTarjeta(BODEGA_CABECERA);
+  it("⭑ SLT-73 R34 — ningún texto de la región «Conciliación» habla del efectivo", async () => {
+    for (const cierre of [BODEGA_INCOMPLETA, BODEGA_CABECERA]) {
+      const { conciliacion } = await abrirTarjeta(cierre);
+      expect(conciliacion.textContent ?? "").not.toMatch(/efectivo/i);
+      cleanup();
+    }
+  });
+
+  it("la cifra que se lee es la del SERVIDOR, sin redondear al colón", async () => {
+    const { conciliacion } = await abrirTarjeta(BODEGA_INCOMPLETA);
+    const falta = importeTrasEn(conciliacion, FALTA_POR_RECIBIR_LABEL);
+    expect(centimosPintados(falta)).toBe(centimosDelServidor("26838.37"));
+    // El síntoma que la 230 dejó suelto: los 37 céntimos desaparecidos.
+    expect(falta).not.toBe(money("26838"));
+  });
+
+  it("SIN MARCAR no hay línea de «monto recibido», y falta «Para la central» ÍNTEGRO (SLT-73 R34)", async () => {
+    // Un «₡0» ahí diría «alguien contó y no había nada», que es otra cosa. Lo que falta por
+    // llegar es todo lo que la bodega le entrega a la central, no el efectivo (100000.17).
+    const { conciliacion, cascada } = await abrirTarjeta(BODEGA_CABECERA);
     expect(conciliacion.textContent ?? "").not.toContain(MONTO_RECIBIDO_LABEL);
-    expect(centimosPintados(importeTrasEn(conciliacion, FALTA_POR_RECIBIR_LABEL))).toBe(
-      centimosDelServidor("100000.17"),
-    );
+    const falta = importeTrasEn(conciliacion, FALTA_POR_RECIBIR_LABEL);
+    expect(centimosPintados(falta)).toBe(centimosDelServidor("111838.37"));
+    expect(falta).toBe(importeTrasEn(cascada, PARA_LA_CENTRAL_LABEL));
   });
 });
 

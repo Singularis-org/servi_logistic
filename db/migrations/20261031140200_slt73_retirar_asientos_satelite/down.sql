@@ -1,0 +1,38 @@
+-- DOWN (SLT-73, migracion C) — devolver a los libros las filas retiradas (R19).
+--
+-- Cada fila vuelve TAL CUAL desde su respaldo (`jsonb_populate_record` con el tipo de fila de su
+-- tabla): mismo id, monto, categoria y fechas. `ON CONFLICT DO NOTHING`: si un cierre ya se concilio
+-- despues del up, la conciliacion re-escribio sus asientos (R20) y los unicos por origen
+-- (`*_origen_uq`, `wallet_movimiento_origen_categoria_uq`) descartan la fila respaldada en vez de
+-- duplicar el dinero. Despues se quita el respaldo.
+--
+-- Un solo bloque `DO`: todo o nada. Si el respaldo no existe (el up nunca llego a crearlo), solo se
+-- asegura que el esquema no quede.
+DO $slt73$
+BEGIN
+  IF to_regclass('respaldo.slt73_asientos') IS NOT NULL THEN
+    INSERT INTO wallet_movimiento
+    SELECT f.*
+    FROM respaldo.slt73_asientos r,
+         jsonb_populate_record(NULL::wallet_movimiento, r.fila) f
+    WHERE r.tabla = 'wallet_movimiento'
+    ON CONFLICT DO NOTHING;
+
+    INSERT INTO wallet_tienda_movimiento
+    SELECT f.*
+    FROM respaldo.slt73_asientos r,
+         jsonb_populate_record(NULL::wallet_tienda_movimiento, r.fila) f
+    WHERE r.tabla = 'wallet_tienda_movimiento'
+    ON CONFLICT DO NOTHING;
+
+    INSERT INTO pago_mensajero_movimiento
+    SELECT f.*
+    FROM respaldo.slt73_asientos r,
+         jsonb_populate_record(NULL::pago_mensajero_movimiento, r.fila) f
+    WHERE r.tabla = 'pago_mensajero_movimiento'
+    ON CONFLICT DO NOTHING;
+  END IF;
+
+  DROP SCHEMA IF EXISTS respaldo CASCADE;
+END
+$slt73$;

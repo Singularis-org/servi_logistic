@@ -6,6 +6,7 @@ import type { ICorteDiarioRepository } from "@/lib/interfaces/repositories/ICort
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { CierreDiaRepository } from "@/lib/repositories/CierreDiaRepository";
 import { CierresAdminRepository } from "@/lib/repositories/CierresAdminRepository";
+import { asentarCierreDia } from "@/lib/repositories/_shared/asientos-cierre-dia";
 import { CorteDiarioRepository } from "@/lib/repositories/CorteDiarioRepository";
 import { GestionOrdenRepository } from "@/lib/repositories/GestionOrdenRepository";
 import { LiquidacionPagoRepository } from "@/lib/repositories/LiquidacionPagoRepository";
@@ -522,8 +523,16 @@ describeSiHayBase("425/B7 — aprobar un cierre con rechazos de tienda, contra P
       const aprobacion = await ctx.admin.aprobarCierre(cierreId, p.actorAdmin, [], [
         { origen: "gestion", gestionId: gestionCalle, numGuia: rechazadaCalle.numGuia },
       ]);
+      // SLT-73 (R1): el cierre es de la SATELITE y aprobarlo ya no asienta dinero; entra al conciliar
+      // su consolidacion, con `asentarCierreDia` (R10, T4). R8 de este archivo compara los apuntes del
+      // cierre con y sin rechazos de tienda: se asientan aqui con el MISMO escritor para seguir
+      // midiendolo (y para que su contrapunto «no vacio» siga teniendo con que comparar). Se queda la
+      // llamada directa y no la marca (T4): esta suite no corre en la base local (baseline).
+      const apuntesAlAprobar = await apuntesDe(tx, [cierreId]);
+      if (aprobacion.status === "ok") await asentarCierreDia(tx, cierreId);
 
       return {
+        apuntesAlAprobar,
         adminId: p.adminId,
         gestionCalle,
         retornables: retornables.map((r) => r.gestionId),
@@ -849,7 +858,10 @@ describeSiHayBase("425/B7 — aprobar un cierre con rechazos de tienda, contra P
   });
 
   it("R8: los apuntes de la aprobacion son EL MISMO conjunto con y sin los rechazos de tienda, y no vacio", () => {
-    // Contrapunto primero: la aprobacion SI movio dinero, asi que la igualdad no es verde por vacio.
+    // SLT-73 (R1): al aprobar (satelite) no hay apuntes; los de abajo son tras asentar el cierre.
+    expect(sinRechazos.apuntesAlAprobar).toEqual([]);
+    expect(conRechazos.apuntesAlAprobar).toEqual([]);
+    // Contrapunto primero: el cierre SI mueve dinero, asi que la igualdad no es verde por vacio.
     expect(sinRechazos.apuntesDelCierre.length).toBeGreaterThan(0);
     expect(conRechazos.apuntesDelCierre).toEqual(sinRechazos.apuntesDelCierre);
     // Ni un apunte con origen en las gestiones de los rechazos de tienda.

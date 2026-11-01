@@ -33,7 +33,8 @@ import { busquedaPorGuiaDe } from "./busqueda-469";
 //   · el pago de un gasto de la tienda C lo escribe el SERVICIO REAL (`PagoPorCuentaTiendaService`):
 //     es el control positivo de la fase 0 (quitar `emitirEgresoDePagoPorCuenta` → R8 en rojo);
 //   · la bodega Z tiene tres consolidaciones: una sin marcar, una recibida de menos y una
-//     RECHAZADA (que no cuenta en el pendiente).
+//     RECHAZADA (que no cuenta en el pendiente), cada una con su `cierre_dia`, y un cierre sin
+//     consolidar (SLT-73, enmienda 2: el pendiente es la deuda de R5, ver la siembra).
 //
 // Instantes (UTC) y su dia en Costa Rica (UTC−6):
 //   T1 = 2026-09-10T16:00Z → 10 sep 10:00 CR
@@ -276,26 +277,71 @@ export async function sembrarEscenario458(tx: TxDeTest, cat: Catalogo459): Promi
     });
   }
 
-  // ── Bodega Z: tres consolidaciones ────────────────────────────────────────────────────────
-  //   b1  solicitada, sin marcar          efectivo 5 000,00                → pendiente 5 000,00
-  //   b2  aprobada, recibida de MENOS     efectivo 4 500,00, recibido 4 000 → pendiente   500,00
-  //   b3  RECHAZADA                       efectivo 9 999,00                → no cuenta
-  await tx.cierreBodega.create({
+  // ── Bodega Z: tres consolidaciones y sus cierres del dia ──────────────────────────────────
+  //   SLT-73 (enmienda 2, D16): el estado de cuenta de la bodega se arma con los APORTES de los
+  //   `cierre_dia` (R4: general − pago al mensajero − ganancia de la satelite), no con el efectivo.
+  //   Por eso cada consolidacion lleva sus cierres, con efectivo ≠ neto a proposito:
+  //
+  //   b1  solicitada, sin marcar       efectivo 5 000; su cierre: general 5 000, pago 300,
+  //                                    ganancia 200                         → declarado 4 500,00
+  //   b2  aprobada, recibida de MENOS  efectivo 4 500 + SINPE 1 500; su cierre: general 6 000
+  //                                    → declarado 6 000,00; recibido 4 000,00
+  //   b3  RECHAZADA                    efectivo 900; su consolidacion no cuenta, pero su cierre
+  //                                    (900, aprobado) SI: rechazar no suelta los cierres (Q11) y R5
+  //                                    lo cuenta → fila «sin consolidar» al aprobarse (T3+1h, 12 sep)
+  //   s1  un cierre SIN consolidar     todo SINPE: general 2 000, pago 250  → 1 750,00 (T4+1h, 15 sep)
+  //
+  //   Deuda R5 = 4 500 + 6 000 + 900 + 1 750 − 4 000 = 9 150,00.
+  //   Los cierres son de OTRO mensajero de la zona (no de M): el libro de M no cambia.
+  const mensajeroZ = await crearUsuario("MensajeroZ", cat.rolId.mensajero, zona.id);
+  const cierreZ = (d: {
+    general: string;
+    efectivo: string;
+    pago?: string;
+    gana?: string;
+    aprobadoAt: Date;
+    cierreBodegaId: string | null;
+  }) =>
+    tx.cierreDia.create({
+      data: {
+        mensajeroId: mensajeroZ,
+        estado: "aprobado",
+        destinoTipo: "bodega_satelite",
+        destinoZonaId: zona.id,
+        totalEfectivo: d.efectivo,
+        totalSimpe: new Prisma.Decimal(d.general).minus(d.efectivo).toFixed(2),
+        totalGeneral: d.general,
+        totalPagoMensajero: d.pago ?? "0.00",
+        totalIngresoBodegaRechazos: d.gana ?? "0.00",
+        solicitadoAt: mas(d.aprobadoAt, -60),
+        resueltoAt: d.aprobadoAt,
+        resueltoPor: maestroId,
+        cierreBodegaId: d.cierreBodegaId,
+      },
+      select: { id: true },
+    });
+
+  const b1 = await tx.cierreBodega.create({
     data: {
       zonaId: zona.id,
       solicitadoPor: adminSat,
       estado: "solicitado",
       totalEfectivo: "5000.00",
       totalGeneral: "5000.00",
+      totalPagoMensajero: "300.00",
+      totalIngresoBodegaRechazos: "200.00",
       solicitadoAt: T1,
     },
+    select: { id: true },
   });
-  await tx.cierreBodega.create({
+  await cierreZ({ general: "5000.00", efectivo: "5000.00", pago: "300.00", gana: "200.00", aprobadoAt: mas(T1, -3600), cierreBodegaId: b1.id });
+  const b2 = await tx.cierreBodega.create({
     data: {
       zonaId: zona.id,
       solicitadoPor: adminSat,
       estado: "aprobado",
       totalEfectivo: "4500.00",
+      totalSimpe: "1500.00",
       totalGeneral: "6000.00",
       solicitadoAt: T2,
       resueltoPor: maestroId,
@@ -304,20 +350,25 @@ export async function sembrarEscenario458(tx: TxDeTest, cat: Catalogo459): Promi
       conciliadoPor: maestroId,
       montoRecibido: "4000.00",
     },
+    select: { id: true },
   });
-  await tx.cierreBodega.create({
+  await cierreZ({ general: "6000.00", efectivo: "4500.00", aprobadoAt: mas(T2, -3600), cierreBodegaId: b2.id });
+  const b3 = await tx.cierreBodega.create({
     data: {
       zonaId: zona.id,
       solicitadoPor: adminSat,
       estado: "rechazado",
-      totalEfectivo: "9999.00",
-      totalGeneral: "9999.00",
+      totalEfectivo: "900.00",
+      totalGeneral: "900.00",
       solicitadoAt: T4,
       resueltoPor: maestroId,
       resueltoAt: T4,
       motivoRechazo: "Rechazada 458",
     },
+    select: { id: true },
   });
+  await cierreZ({ general: "900.00", efectivo: "900.00", aprobadoAt: mas(T3, 3600), cierreBodegaId: b3.id });
+  await cierreZ({ general: "2000.00", efectivo: "0.00", pago: "250.00", aprobadoAt: mas(T4, 3600), cierreBodegaId: null });
 
   return {
     maestro,

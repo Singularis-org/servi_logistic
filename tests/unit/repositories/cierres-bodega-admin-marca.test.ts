@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from "vitest";
 import { Prisma, type PrismaClient } from "@prisma/client";
 
 import { CierresBodegaAdminRepository } from "@/lib/repositories/CierresBodegaAdminRepository";
+import type { AsientosCierreDiaDeps } from "@/lib/repositories/_shared/asientos-cierre-dia";
+import type { CrearMovimientoInput } from "@/lib/interfaces/repositories/IWalletMovimientoRepository";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // ⭑ FICHA 431 / T7 — `marcarConciliado` y `revertirConciliacion`: LA FORMA DE LA ESCRITURA.
@@ -59,6 +61,12 @@ interface OpcionesDoble {
   existe?: number;
   /** La fila que se relee (o se preleer, al revertir). */
   fila?: Record<string, unknown> | null;
+  /** SLT-73: los cierres del dia de la consolidacion que devuelve `cierreDia.findMany`. */
+  cierresDia?: { id: string }[];
+  /** SLT-73: filas de caja con origen `cierre_dia` que cuenta `revertirConciliacion`. */
+  asentados?: number;
+  /** SLT-73: Σ `diferencia` de los ajustes previos (null = no hay). */
+  yaAsentado?: string | null;
 }
 
 function buildPrisma(opciones: OpcionesDoble = {}) {
@@ -81,8 +89,32 @@ function buildPrisma(opciones: OpcionesDoble = {}) {
     rol: { value: "maestro" },
   }));
 
+  // SLT-73: el snapshot de la consolidacion del que sale el esperado (`paraLaCentral`):
+  // 600,00 − 40,00 − 10,00 = 550,00.
+  const findUniqueOrThrow = vi.fn(async () => ({
+    totalGeneral: new Prisma.Decimal("600.00"),
+    totalPagoMensajero: new Prisma.Decimal("40.00"),
+    totalIngresoBodegaRechazos: new Prisma.Decimal("10.00"),
+  }));
+  const cierreDiaFindMany = vi.fn<(args: unknown) => Promise<{ id: string }[]>>(async () => opciones.cierresDia ?? []);
+  const walletCount = vi.fn<(args: unknown) => Promise<number>>(async () => opciones.asentados ?? 0);
+  const ajusteAggregate = vi.fn(async () => ({
+    _sum: {
+      diferencia:
+        opciones.yaAsentado === undefined || opciones.yaAsentado === null
+          ? null
+          : new Prisma.Decimal(opciones.yaAsentado),
+    },
+  }));
+  const ajusteCreate = vi.fn<(args: { data: Record<string, unknown> }) => Promise<{ id: string }>>(
+    async () => ({ id: "aj-1" }),
+  );
+
   const tx = {
-    cierreBodega: { updateMany, findUnique, count },
+    cierreBodega: { updateMany, findUnique, findUniqueOrThrow, count },
+    cierreDia: { findMany: cierreDiaFindMany },
+    walletMovimiento: { count: walletCount },
+    conciliacionBodegaAjuste: { aggregate: ajusteAggregate, create: ajusteCreate },
     historialAccion: { createMany },
     usuario: { findUnique: usuarioFindUnique },
   };
@@ -90,11 +122,44 @@ function buildPrisma(opciones: OpcionesDoble = {}) {
     ...tx,
     $transaction: vi.fn(async (cb: (t: typeof tx) => unknown) => cb(tx)),
   };
-  return { prisma, updateMany, findUnique, count, createMany };
+  return {
+    prisma,
+    tx,
+    updateMany,
+    findUnique,
+    count,
+    createMany,
+    cierreDiaFindMany,
+    walletCount,
+    ajusteCreate,
+  };
 }
 
-function repoCon(prisma: unknown) {
-  return new CierresBodegaAdminRepository(prisma as unknown as PrismaClient);
+/**
+ * SLT-73: los asientos de mentira. Los feeds devuelven listas vacias (el contenido de los asientos
+ * se mide en integracion, `slt73-marcar-asienta.int.test.ts`); aqui se cuenta QUE se pidieron y la
+ * fila de diferencia que llega al repo de la caja.
+ */
+function asientosDoble() {
+  const caja = vi.fn<(tx: unknown, movs: CrearMovimientoInput[]) => Promise<number>>(async () => 0);
+  const ingreso = vi.fn<(cierreId: string, tx?: unknown) => Promise<never[]>>(async () => []);
+  const deps = {
+    walletMovimientoRepo: { crearMovimientos: caja },
+    walletFeedService: { construirMovimientosDeIngreso: ingreso },
+    walletTiendaMovimientoRepo: { crearMovimientos: vi.fn(async () => 0) },
+    walletTiendaFeedService: { construirMovimientosPorTienda: vi.fn(async () => []) },
+    pagoMensajeroMovimientoRepo: { crearMovimientos: vi.fn(async () => 0) },
+    walletMensajeroFeedService: {
+      construirMovimientosDePago: vi.fn(async () => ({ libro: [], egresoCaja: [] })),
+    },
+    walletIndemnizacionFeedService: { construirEgresoIndemnizacion: vi.fn(async () => []) },
+    cajaCodFeed: { construirIngresoCod: vi.fn(async () => []) },
+  } as unknown as AsientosCierreDiaDeps;
+  return { deps, caja, ingreso };
+}
+
+function repoCon(prisma: unknown, asientos: AsientosCierreDiaDeps = asientosDoble().deps) {
+  return new CierresBodegaAdminRepository(prisma as unknown as PrismaClient, asientos);
 }
 
 describe("431/T7 — CierresBodegaAdminRepository.marcarConciliado", () => {
@@ -250,22 +315,125 @@ describe("431/T7 — CierresBodegaAdminRepository.revertirConciliacion", () => {
     expect(r).toBe("fuera_de_alcance");
   });
 
-  it("⭑ R14: ninguno de los dos metodos toca un libro de dinero", async () => {
-    // El doble NO tiene `walletMovimiento`, `walletTiendaMovimiento` ni `pagoMensajeroMovimiento`:
-    // si alguno de los dos metodos intentara escribir en ellos, el caso revienta con
-    // «cannot read properties of undefined». Es un control estructural, no una promesa.
-    const { prisma } = buildPrisma();
-    await expect(
-      repoCon(prisma).marcarConciliado({
-        id: "cb1",
-        montoRecibido: "1.00",
-        nota: null,
-        actorUsuarioId: "u-maestro",
-      }),
-    ).resolves.toBe("updated");
-    await expect(
-      repoCon(prisma).revertirConciliacion({ id: "cb1", actorUsuarioId: "u-maestro" }),
-    ).resolves.toBe("updated");
+  it("⭑ SLT-73 R14: con asientos de sus cierres en la caja -> `con_asientos`, sin update ni historial", async () => {
+    const { prisma, updateMany, createMany, walletCount } = buildPrisma({
+      cierresDia: [{ id: "cd1" }, { id: "cd2" }],
+      asentados: 7,
+    });
+    const r = await repoCon(prisma).revertirConciliacion({ id: "cb1", actorUsuarioId: "u-maestro" });
+
+    expect(r).toBe("con_asientos");
+    expect(walletCount.mock.calls[0][0]).toEqual({
+      where: { origenTipo: "cierre_dia", origenId: { in: ["cd1", "cd2"] } },
+    });
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(createMany).not.toHaveBeenCalled();
+  });
+
+  it("SLT-73 R14: con cierres pero SIN asientos en la caja, revierte como siempre", async () => {
+    const { prisma, updateMany } = buildPrisma({ cierresDia: [{ id: "cd1" }], asentados: 0 });
+    const r = await repoCon(prisma).revertirConciliacion({ id: "cb1", actorUsuarioId: "u-maestro" });
+    expect(r).toBe("updated");
+    expect(updateMany).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("SLT-73 — marcarConciliado asienta y escribe la diferencia", () => {
+  it("R10: busca los cierres aprobados satelite DE ESTA consolidacion, por fecha de solicitud", async () => {
+    const { prisma, cierreDiaFindMany } = buildPrisma();
+    await repoCon(prisma).marcarConciliado({
+      id: "cb1",
+      montoRecibido: "550.00",
+      nota: null,
+      actorUsuarioId: "u-maestro",
+    });
+    expect(cierreDiaFindMany.mock.calls[0][0]).toEqual({
+      where: { cierreBodegaId: "cb1", estado: "aprobado", destinoTipo: "bodega_satelite" },
+      select: { id: true },
+      orderBy: { solicitadoAt: "asc" },
+    });
+  });
+
+  it("R10: asienta cada cierre con los asientos inyectados, en el orden devuelto", async () => {
+    const { prisma } = buildPrisma({ cierresDia: [{ id: "cd-a" }, { id: "cd-b" }] });
+    const a = asientosDoble();
+    await repoCon(prisma, a.deps).marcarConciliado({
+      id: "cb1",
+      montoRecibido: "550.00",
+      nota: null,
+      actorUsuarioId: "u-maestro",
+    });
+    expect(a.ingreso.mock.calls.map((c) => c[0])).toEqual(["cd-a", "cd-b"]);
+  });
+
+  it("R12: los asientos y la diferencia se escriben con el `tx` de la marca, no con el cliente del constructor", async () => {
+    // En integracion `this.prisma` y `tx` son la misma conexion (savepoint), asi que esto solo se ve
+    // aqui: el doble distingue el objeto `tx` del `prisma` que recibe el constructor.
+    const { prisma, tx } = buildPrisma({ cierresDia: [{ id: "cd-a" }] });
+    const a = asientosDoble();
+    await repoCon(prisma, a.deps).marcarConciliado({
+      id: "cb1",
+      montoRecibido: "485.00",
+      nota: null,
+      actorUsuarioId: "u-maestro",
+    });
+    expect(a.ingreso.mock.calls[0][1]).toBe(tx);
+    expect(a.caja.mock.calls.length).toBeGreaterThan(0);
+    for (const llamada of a.caja.mock.calls) expect(llamada[0]).toBe(tx);
+  });
+
+  it("R11/R22: recibido 485 con esperado 550 -> UN egreso de 65,00 fechado en la marca", async () => {
+    const { prisma, updateMany, ajusteCreate } = buildPrisma();
+    const a = asientosDoble();
+    await repoCon(prisma, a.deps).marcarConciliado({
+      id: "cb1",
+      montoRecibido: "485.00",
+      nota: null,
+      actorUsuarioId: "u-maestro",
+    });
+    const conciliadoAt = updateMany.mock.calls[0][0].data.conciliadoAt;
+    const ajuste = ajusteCreate.mock.calls[0][0].data;
+    expect(ajuste.evento).toBe("marca");
+    expect((ajuste.diferencia as Prisma.Decimal).toFixed(2)).toBe("65.00");
+    expect((ajuste.montoEsperado as Prisma.Decimal).toFixed(2)).toBe("550.00");
+    expect(a.caja).toHaveBeenCalledTimes(1);
+    expect(a.caja.mock.calls[0][1]).toEqual([
+      {
+        tipo: "egreso",
+        categoria: "egreso_diferencia_satelite",
+        monto: "65.00",
+        origenTipo: "conciliacion_bodega_ajuste",
+        origenId: "aj-1",
+        descripcion: null,
+        registradoPor: "u-maestro",
+        fechaMovimiento: conciliadoAt,
+      },
+    ]);
+  });
+
+  it("R11: recibido igual al esperado -> ni ajuste ni movimiento", async () => {
+    const { prisma, ajusteCreate } = buildPrisma();
+    const a = asientosDoble();
+    await repoCon(prisma, a.deps).marcarConciliado({
+      id: "cb1",
+      montoRecibido: "550.00",
+      nota: null,
+      actorUsuarioId: "u-maestro",
+    });
+    expect(ajusteCreate).not.toHaveBeenCalled();
+    expect(a.caja).not.toHaveBeenCalled();
+  });
+
+  it("R11: `conflict` no asienta nada", async () => {
+    const { prisma, cierreDiaFindMany, ajusteCreate } = buildPrisma({ count: 0, existe: 1 });
+    await repoCon(prisma).marcarConciliado({
+      id: "cb1",
+      montoRecibido: "1.00",
+      nota: null,
+      actorUsuarioId: "u-maestro",
+    });
+    expect(cierreDiaFindMany).not.toHaveBeenCalled();
+    expect(ajusteCreate).not.toHaveBeenCalled();
   });
 });
 
@@ -356,8 +524,17 @@ describe("473/T1 — CierresBodegaAdminRepository.corregirConciliacion", () => {
     expect(createMany).not.toHaveBeenCalled();
   });
 
-  it("R12: no toca ningun libro de dinero (el doble no los tiene)", async () => {
-    const { prisma } = buildPrisma();
-    await expect(repoCon(prisma).corregirConciliacion(INPUT)).resolves.toBe("updated");
+  it("SLT-73 R13: corregir NO vuelve a asentar los cierres; escribe solo la variacion (ingreso 115,00)", async () => {
+    // esperado 550; recibido nuevo 600 -> objetivo = 550 − 600 = −50. Ya asentado +65 (la marca de
+    // 485). delta = −50 − 65 = −115 -> UN ingreso de 115,00.
+    const { prisma, cierreDiaFindMany, ajusteCreate } = buildPrisma({ yaAsentado: "65.00" });
+    const a = asientosDoble();
+    await expect(repoCon(prisma, a.deps).corregirConciliacion(INPUT)).resolves.toBe("updated");
+    expect(cierreDiaFindMany).not.toHaveBeenCalled();
+    expect(a.ingreso).not.toHaveBeenCalled();
+    expect(ajusteCreate.mock.calls[0][0].data.evento).toBe("correccion");
+    expect(a.caja.mock.calls[0][1]).toMatchObject([
+      { tipo: "ingreso", categoria: "ingreso_diferencia_satelite", monto: "115.00" },
+    ]);
   });
 });
