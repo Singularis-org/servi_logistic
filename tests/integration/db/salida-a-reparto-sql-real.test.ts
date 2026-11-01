@@ -20,6 +20,8 @@ import {
   listarOrdenesBodegaPaginadoSchema,
 } from "@/lib/types/recepcion-satelite";
 
+import { crearPaisDePrueba } from "@/tests/fabricas/paises";
+
 import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
@@ -118,11 +120,33 @@ function conHistoriaSatelite(e: Escenario): string[] {
   return [e.satSalioSinGestion, e.satSalioYReprogramada];
 }
 
+/** La empresa que `enTransaccionRevertida` fijo en esta transaccion (`app.organizacion_id`). */
+async function empresaDeLaTransaccion(tx: Tx): Promise<string> {
+  const [fila] = await tx.$queryRawUnsafe<{ id: string | null }[]>(
+    `SELECT NULLIF(current_setting('app.organizacion_id', true), '') AS id`,
+  );
+  if (!fila?.id) throw new Error("la transaccion no tiene `app.organizacion_id` fijado");
+  return fila.id;
+}
+
 async function sembrar(tx: Tx): Promise<Escenario> {
   await serializarEscriturasReales(tx);
   const sufijo = `f370-${randomUUID().slice(0, 8)}`;
 
-  const canton = await tx.canton.findFirst({ select: { id: true, provinciaId: true } });
+  // SLT-76 R15: el canton es del PAIS DE LA EMPRESA del test, con un orden total. Sin el filtro, la
+  // base compartida podia devolver un canton de otro pais sembrado por otro archivo y la orden
+  // moria con SL021. El pais sale de la empresa, no de un literal; basta `canton.pais_id` porque
+  // el trigger de SL-20 lo alinea con el de su provincia.
+  const empresa = await tx.organizacion.findUnique({
+    where: { id: await empresaDeLaTransaccion(tx) },
+    select: { paisId: true },
+  });
+  if (!empresa) throw new Error("la transaccion no tiene una empresa fijada que exista");
+  const canton = await tx.canton.findFirst({
+    where: { paisId: empresa.paisId },
+    orderBy: { id: "asc" },
+    select: { id: true, provinciaId: true },
+  });
   const [tipoIdentificacion, rolTienda, rolSatelite, rolMensajero, rolMaestro] =
     await Promise.all([
       tx.tipoIdentificacion.findFirst({ select: { id: true } }),
@@ -662,5 +686,49 @@ describeSiHayBase("FICHA 370 · «ya salio a reparto» decide sobre filas reales
     // SQL (ver `criterioSalidaAReparto` en el repositorio); esta es la garantia EJECUTABLE de
     // que no han divergido.
     expect(porSqlCrudo).toEqual(porPrisma);
+  });
+  it("SLT-76 R15: un canton de OTRO pais que ordena primero no se cuela en la siembra", async () => {
+    const r = await enTransaccionRevertida(prisma, async (tx) => {
+      // El lock va PRIMERO (protocolo de la 227): esta siembra escribe antes de llamar a `sembrar`.
+      await serializarEscriturasReales(tx);
+      // Una geografia de un pais de prueba con ids que ordenan ANTES que cualquier uuid de la base.
+      await crearPaisDePrueba(tx, "XR");
+      const provinciaAjena = await tx.provincia.create({
+        data: { id: "00000000-0000-0000-0000-000000000000", nombre: "Provincia ajena SLT-76", paisId: "XR" },
+        select: { id: true },
+      });
+      const cantonAjeno = await tx.canton.create({
+        data: { id: "00000000-0000-0000-0000-000000000000", nombre: "Canton ajeno SLT-76", provinciaId: provinciaAjena.id },
+        select: { id: true, paisId: true },
+      });
+      // Precondicion que hace decisivo el caso: SIN filtro de pais, ESTE seria el primer canton.
+      const primeroSinFiltro = await tx.canton.findFirst({ orderBy: { id: "asc" }, select: { id: true } });
+
+      const escenario = await sembrar(tx);
+      const empresa = await tx.organizacion.findUnique({
+        where: { id: await empresaDeLaTransaccion(tx) },
+        select: { paisId: true },
+      });
+      const geografias = await tx.orden.findMany({
+        where: { id: { in: centrales(escenario) } },
+        select: { canton: { select: { id: true, paisId: true } } },
+      });
+      return {
+        cantonAjeno,
+        primeroSinFiltro: primeroSinFiltro?.id,
+        paisEmpresa: empresa?.paisId,
+        ordenes: geografias.length,
+        paisesDeLasOrdenes: [...new Set(geografias.map((o) => o.canton.paisId))],
+        usaElAjeno: geografias.some((o) => o.canton.id === cantonAjeno.id),
+      };
+    });
+
+    expect(r.cantonAjeno.paisId).toBe("XR");
+    expect(r.primeroSinFiltro).toBe(r.cantonAjeno.id);
+    // Las cinco ordenes centrales entraron, todas con geografia del pais de la empresa.
+    expect(r.ordenes).toBe(5);
+    expect(r.paisesDeLasOrdenes).toEqual([r.paisEmpresa]);
+    expect(r.paisEmpresa).not.toBe("XR");
+    expect(r.usaElAjeno).toBe(false);
   });
 });

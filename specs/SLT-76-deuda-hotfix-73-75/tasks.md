@@ -101,16 +101,16 @@ paralelo»).
   verde.
 
 ## T7 · [P] Tests deterministas — R12-R15 (`design.md §7`)
-- [ ] **T7.1 D32.** En `medir`: `serializarEscriturasReales(tx)` y después `LOCK TABLE public.usuario
+- [x] **T7.1 D32.** En `medir`: `serializarEscriturasReales(tx)` y después `LOCK TABLE public.usuario
   IN ACCESS EXCLUSIVE MODE`, antes de `CREATE SCHEMA`. Se registra `pg_locks` en `Medicion` con su
   `it`. Mutaciones: sin `LOCK` → rojo; sin `serializar` → rojo.
-- [ ] **T7.2 geografía.** Correr el archivo en PG18 local y anotar qué casos dan `23001`. Helper
+- [x] **T7.2 geografía.** Correr el archivo en PG18 local y anotar qué casos dan `23001`. Helper
   `rechazoPorRestrict` solo en esos casos; los demás siguen exigiendo `23503`. Aserción de estado
   en el caso de `:146`. Mutación: FK a `ON UPDATE CASCADE` en la transacción → rojo.
-- [ ] **T7.3 índices.** Corpus decisivo para el rollup y `SET LOCAL default_statistics_target =
+- [x] **T7.3 índices.** Corpus decisivo para el rollup y `SET LOCAL default_statistics_target =
   10000` antes de `ANALYZE`. Cinco corridas verdes en la base local acumulada y una en base limpia.
   Mutación: `DROP INDEX` del compuesto en la transacción → rojo.
-- [ ] **T7.4 salida a reparto.** Cantón del país de la empresa con `orderBy: { id: "asc" }`, y el
+- [x] **T7.4 salida a reparto.** Cantón del país de la empresa con `orderBy: { id: "asc" }`, y el
   caso nuevo con un cantón de otro país que ordena primero. Mutación: sin `where` → rojo.
 - **Hecho:** los cuatro archivos en verde en local (PG18). En CI (PG17), `gate-completo` sin
   relanzar. En D32 queda anotado el número de corridas del shard en verde.
