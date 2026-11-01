@@ -269,11 +269,12 @@ Las cinco son dinero y esperan. No son dinero, y siguen al aprobar:
 - **Q6 — CERRADA (D13): tercer tramo en la barra.** Restar lo por cobrar del tramo de la empresa
   queda descartado. Cómo se calcula: `design.md §2.9`.
 - **Q7 — CERRADA (D14): el bloque se muestra siempre**, también con ₡0.
-- **Q10 (enmienda 2) Texto de la nota de la conciliación (R35).** Propuesta provisional: «Marcar
-  recibido asienta el dinero en la caja. Después no se puede desmarcar: si el monto no es el
-  correcto, usa «Corregir»». Es texto de producto: lo fija Carlos.
+- **Q10 — CERRADA (Carlos, 2026-11-01): definitiva. Texto de la nota de la conciliación (R35):**
+  «Marcar recibido asienta el dinero en la caja. Después no se puede desmarcar: si el monto no es
+  el correcto, usa «Corregir»». Es texto de producto y lo fijó Carlos (SLT-76, R16).
 - **Q11 (enmienda 2, verificar en T13) Rechazar una consolidación.** No se determinó en el código si
   rechazar una consolidación suelta sus cierres (`cierre_bodega_id`). R32 se escribe para que la fila
   de cada cierre salga de la misma condición que usa R5, sea cual sea la respuesta.
-- **(No bloquea) Rótulos provisionales.** Carlos fijó «Por cobrar a satélites». Siguen siendo
-  provisionales las pistas del bloque y el dueño de la fila en el libro («Satélite»).
+- **CERRADA (Carlos, 2026-11-01): rótulos definitivos.** Carlos fijó «Por cobrar a satélites», y
+  el 2026-11-01 dejó como definitivos las pistas del bloque y el dueño de la fila en el libro
+  («Satélite») (SLT-76, R16).

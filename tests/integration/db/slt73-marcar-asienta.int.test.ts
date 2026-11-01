@@ -23,6 +23,7 @@ import {
   marcarRecibido,
   sembrarCierreAprobable,
 } from "./_fixtures/slt73-cierre-aprobable";
+import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 
 // SLT-73 · T4 · R10/R11/R12/R20/R22 — MARCAR RECIBIDA UNA CONSOLIDACION ASIENTA EL DINERO DE SUS
 // CIERRES SATELITE, Y LA DIFERENCIA SI LO RECIBIDO NO CUADRA.
@@ -413,5 +414,46 @@ describeSiHayBase("SLT-73 T4 — marcar recibida asienta los cierres satelite", 
       expect(f.fecha.getTime()).toBe(r.conciliadoAt?.getTime());
       expect(f.fecha.getTime()).toBeGreaterThan(r.aprobadoAt?.getTime() ?? Number.POSITIVE_INFINITY);
     }
+  });
+
+  // SLT-76 · T4 · R6 — EL VALOR DE LA FICHA, ESCRITO A MANO. Snapshot de la consolidacion
+  // `total_general` 9.000, `total_pago_mensajero` 1.500 y `total_ingreso_bodega_rechazos` 500; recibido
+  // 6.900. El esperado es 9.000 − 1.500 − 500 = 7.000 y la diferencia 7.000 − 6.900 = 100. Literales y
+  // no `esperadoDe(...)`: comparar contra la propia fuente siempre sale verde. Si la marca dejara de
+  // restar los rechazos (o el pago), el esperado seria 7.500 (o 8.500) y este caso cae.
+  it("R6 (SLT-76): snapshot 9.000 / 1.500 / 500 y recibido 6.900 -> esperado 7.000,00 y diferencia 100,00", async () => {
+    const r = await enTransaccionRevertida(prisma, async (tx) => {
+      await serializarEscriturasReales(tx);
+      const fks = await crearFksDeOrden(tx);
+      const adminSat = await crearUsuarioDePrueba(tx, "adminSatelite");
+      const maestro = await crearUsuarioDePrueba(tx, "maestro");
+      const { id } = await tx.cierreBodega.create({
+        data: {
+          zonaId: fks.zonaId,
+          solicitadoPor: adminSat.id,
+          estado: "solicitado",
+          totalEfectivo: new Prisma.Decimal("9000.00"),
+          totalGeneral: new Prisma.Decimal("9000.00"),
+          totalPagoMensajero: new Prisma.Decimal("1500.00"),
+          totalIngresoBodegaRechazos: new Prisma.Decimal("500.00"),
+        },
+        select: { id: true },
+      });
+      const res = await marcarRecibido(tx, id, "6900.00", maestro.id);
+      return { res, maestroId: maestro.id, dif: await diferencias(tx, id) };
+    });
+    expect(r.res).toBe("updated");
+    expect(r.dif.ajustes).toEqual([
+      {
+        evento: "marca",
+        esperado: "7000.00",
+        recibido: "6900.00",
+        diferencia: "100.00",
+        creadoPor: r.maestroId,
+      },
+    ]);
+    expect(r.dif.caja).toEqual([
+      { tipo: "egreso", categoria: "egreso_diferencia_satelite", monto: "100.00" },
+    ]);
   });
 });

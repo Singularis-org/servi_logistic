@@ -17,12 +17,13 @@ import {
   asentarCierreDia,
   type AsientosCierreDiaDeps,
 } from "@/lib/repositories/_shared/asientos-cierre-dia";
-import { paraLaCentral } from "@/lib/utils/ingreso-empresa";
+import { esperadoDe } from "@/lib/utils/conciliacion-satelite";
+import { consolidacionesConDinero } from "@/lib/repositories/_shared/conciliacion-con-dinero";
 import type { CierreBodegaResumenRow } from "@/lib/interfaces/repositories/ICierreBodegaRepository";
 import type { CierreGestionPendienteRow } from "@/lib/interfaces/repositories/ICierreDiaRepository";
 import {
   BODEGA_RESUMEN_SELECT,
-  toBodegaResumenRow,
+  aResumenRows,
 } from "@/lib/repositories/CierreBodegaRepository";
 // Feature 69/T23 (R15): se reusan las MISMAS piezas que compone T18 en `CierresAdminRepository`
 // (proyeccion + mapper), no una copia: las dos pantallas de admin muestran el detalle del mismo
@@ -70,7 +71,7 @@ type TxMarca = Prisma.TransactionClient;
  * SLT-73 (R11/R13/R15, design §2.3-§2.4) — LA DIFERENCIA DE LA SATELITE de un evento (marca o
  * correccion), dentro de la transaccion del llamador y DESPUES de su `updateMany` guardado.
  *
- *   esperado   = `paraLaCentral` del snapshot de la consolidacion (R8): lo recaudado por TODOS los
+ *   esperado   = `esperadoDe` del snapshot de la consolidacion (R8): lo recaudado por TODOS los
  *                metodos menos el pago a sus mensajeros y lo que gana la satelite por rechazos (D3/D4).
  *   objetivo   = esperado - recibido: lo que la satelite sigue debiendo tras este evento.
  *   yaAsentado = suma de `diferencia` de los ajustes PREVIOS de esta consolidacion: lo que la caja
@@ -97,13 +98,8 @@ async function asentarDiferenciaSatelite(
     where: { id: args.cierreBodegaId },
     select: { totalGeneral: true, totalPagoMensajero: true, totalIngresoBodegaRechazos: true },
   });
-  const esperado = new Prisma.Decimal(
-    paraLaCentral(
-      consolidacion.totalGeneral.toFixed(2),
-      consolidacion.totalPagoMensajero.toFixed(2),
-      consolidacion.totalIngresoBodegaRechazos.toFixed(2),
-    ),
-  );
+  // SLT-76 (R6): la MISMA formula que el «Falta por recibir» de las dos pantallas, sin copia.
+  const esperado = esperadoDe(consolidacion);
   const previos = await tx.conciliacionBodegaAjuste.aggregate({
     where: { cierreBodegaId: args.cierreBodegaId },
     _sum: { diferencia: true },
@@ -151,6 +147,9 @@ type CierresBodegaAdminPrismaClient = Pick<
   | "historialAccion"
   | "usuario"
   | "zona"
+  // SLT-76 (R3/R4): los dos libros de `consolidacionesConDinero` (`desmarcable`).
+  | "walletMovimiento"
+  | "conciliacionBodegaAjuste"
 >;
 
 // Proyeccion de la cabecera de un cierre_dia incluido en el detalle (mensajero +
@@ -304,7 +303,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
       orderBy: ORDEN_CIERRES_BODEGA_ADMIN,
       select: BODEGA_RESUMEN_SELECT,
     });
-    return rows.map(toBodegaResumenRow);
+    return aResumenRows(this.prisma, rows);
   }
 
   /**
@@ -331,7 +330,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
       orderBy: ORDEN_CIERRES_BODEGA_ADMIN,
       select: BODEGA_RESUMEN_SELECT,
     });
-    return rows.map(toBodegaResumenRow);
+    return aResumenRows(this.prisma, rows);
   }
 
   /**
@@ -355,7 +354,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
       orderBy: ORDEN_CIERRES_BODEGA_ADMIN,
       select: BODEGA_RESUMEN_SELECT,
     });
-    return rows.map(toBodegaResumenRow);
+    return aResumenRows(this.prisma, rows);
   }
 
   /**
@@ -383,7 +382,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
       }),
       this.prisma.cierreBodega.count({ where }), // R41: el total del CONJUNTO
     ]);
-    return { items: rows.map(toBodegaResumenRow), total };
+    return { items: await aResumenRows(this.prisma, rows), total };
   }
 
   /**
@@ -411,7 +410,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
       }),
       this.prisma.cierreBodega.count({ where }), // R41: el total del CONJUNTO
     ]);
-    return { items: rows.map(toBodegaResumenRow), total };
+    return { items: await aResumenRows(this.prisma, rows), total };
   }
 
   /** R11 (+69/R15): cierre de bodega + cada cierre_dia con sus gestiones desde el SNAPSHOT. */
@@ -469,7 +468,10 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
       }),
     );
 
-    return { cierre: toBodegaResumenRow(cierre), cierresDia };
+    // SLT-76 (R3/R4): la cabecera con `desmarcable`, por el mismo camino que las listas.
+    const [resumen] = await aResumenRows(this.prisma, [cierre]);
+    if (resumen === undefined) return null; // inalcanzable: una fila entra, una fila sale
+    return { cierre: resumen, cierresDia };
   }
 
   /**
@@ -704,18 +706,10 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
     const { id, actorUsuarioId } = input;
 
     const resultado = await this.prisma.$transaction(async (tx) => {
-      // SLT-73 (R14): el conteo va ANTES de cualquier escritura. Filas de caja con origen
-      // `cierre_dia` de los cierres que esta consolidacion incluye.
-      const cierresDia = await tx.cierreDia.findMany({
-        where: { cierreBodegaId: id },
-        select: { id: true },
-      });
-      if (cierresDia.length > 0) {
-        const asentados = await tx.walletMovimiento.count({
-          where: { origenTipo: "cierre_dia", origenId: { in: cierresDia.map((c) => c.id) } },
-        });
-        if (asentados > 0) return "con_asientos" as const;
-      }
+      // SLT-73 (R14) + SLT-76 (R5): el conteo va ANTES de cualquier escritura y dentro de la
+      // transaccion. Asientos `cierre_dia` de sus cierres O ajustes de diferencia: el MISMO
+      // predicado que decide si la pantalla ofrece «Desmarcar» (R4).
+      if ((await consolidacionesConDinero(tx, [id])).has(id)) return "con_asientos" as const;
 
       // El monto ANTES del borrado: es lo que la fila del historial tiene que documentar.
       const previo = await tx.cierreBodega.findUnique({

@@ -428,6 +428,9 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("381/B.7 (b) — el down recrea 50 tipos y 2
       // `20261026120100_historial_accion_modulos`.
       "modulo_activado",
       "modulo_desactivado",
+      // SLT-76 (2026-11-02): el rastro de los distritos de una zona. Su migracion:
+      // `20261102090000_slt76_historial_zona_distrito`.
+      "zona_distrito_cambiado",
     ];
     expect([...tiposAntes].sort()).toEqual(
       [...HISTORIAL_ACCION_TIPOS]

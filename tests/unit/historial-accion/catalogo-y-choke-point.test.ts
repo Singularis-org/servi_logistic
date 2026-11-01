@@ -98,8 +98,9 @@ describe("362/T0.1 (R14/R17) — el catalogo es cerrado y sus mapas son exhausti
     // y la cuarta categoria, `cambia_integraciones`.
     // 72 desde SL-23: `modulo_activado` y `modulo_desactivado`, la entidad `organizacion_modulo`
     // (26) y la quinta categoria, `cambia_modulos`.
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(72);
-    expect(new Set(HISTORIAL_ACCION_TIPOS).size).toBe(72);
+    // 73 desde SLT-76: `zona_distrito_cambiado` (el rastro de los distritos de una zona).
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(73);
+    expect(new Set(HISTORIAL_ACCION_TIPOS).size).toBe(73);
     expect(HISTORIAL_ACCION_ENTIDADES).toHaveLength(26); // 26 desde SL-23 (`organizacion_modulo`)
     expect(new Set(HISTORIAL_ACCION_ENTIDADES).size).toBe(26);
     expect(CATEGORIAS_ACCION).toHaveLength(5);
@@ -324,6 +325,25 @@ describe("362/T0.1 (R14/R17) — el catalogo es cerrado y sus mapas son exhausti
     expect(HISTORIAL_ACCION_ENTIDADES).toHaveLength(26); // 26 desde SL-23 (`organizacion_modulo`)
   });
 
+  it("⭑ SLT-76 (R11): `zona_distrito_cambiado` es DINERO, con su etiqueta, y el filtro lo admite", () => {
+    expect(HISTORIAL_ACCION_TIPOS).toContain("zona_distrito_cambiado");
+    expect(CATEGORIA_POR_ACCION.zona_distrito_cambiado).toBe("mueve_dinero");
+    // Literal a proposito: el texto es el contrato de la pantalla (Q1-f de SLT-76).
+    expect(ACCION_LABELS.zona_distrito_cambiado).toBe("Cambió los distritos de una zona");
+    expect(accionesDeCategoria("mueve_dinero")).toContain("zona_distrito_cambiado");
+    expect(
+      filtroHistorialAccionSchema.safeParse({ accion: ["zona_distrito_cambiado"] }).success,
+    ).toBe(true);
+    for (const hermana of [
+      "zona_central_cambiada",
+      "zona_pago_mensajero_cambiado",
+      "zona_sinpe_cambiado",
+      "zona_borrada",
+    ] as const) {
+      expect(ACCION_LABELS.zona_distrito_cambiado).not.toBe(ACCION_LABELS[hermana]);
+    }
+  });
+
   it("⭑ FICHA 429 (R22): `zona_sinpe_cambiado` es DINERO, y no se reutilizo ninguna accion de zona", () => {
     // POR QUE DINERO, y es la lectura MAS directa de la categoria que hay en todo el catalogo:
     // estos dos campos deciden A QUE CUENTA VA A PARAR EL DINERO DEL CLIENTE. Mas directo todavia
@@ -455,7 +475,9 @@ describe("362/T0.1 (R14/R17) — el catalogo es cerrado y sus mapas son exhausti
     // ganancia. 39 con `wallet_movimiento_manual_anulado` (auditoria D3): el contra-asiento de una
     // correccion de caja deshace su efecto en la ganancia.
     // 43 desde la ficha 458-B: anular un cobro por devolución a origen y anular un egreso de caja mueven dinero.
-    expect(accionesDeCategoria("mueve_dinero")).toHaveLength(43);
+    // 44 desde SLT-76: `zona_distrito_cambiado` — el distrito decide la zona de la orden, y la
+    // zona su flete y su pago al mensajero.
+    expect(accionesDeCategoria("mueve_dinero")).toHaveLength(44);
     expect(accionesDeCategoria("hace_desaparecer")).toHaveLength(10);
     expect(accionesDeCategoria("cambia_permisos")).toHaveLength(12);
     // 5 desde SL-36: la categoria nueva, solo con los cinco `integracion_*`.

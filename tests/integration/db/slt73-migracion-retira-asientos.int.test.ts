@@ -206,7 +206,8 @@ async function respaldo(tx: TxDeTest, ids: string[]): Promise<Fila[] | null> {
 /**
  * La tabla del respaldo de ESTA ficha. El esquema `respaldo` es compartido (SLT-75 guarda ahi su
  * propio respaldo): el down quita la tabla y el esquema solo si queda vacio, asi que se mide la
- * tabla. La convivencia de los dos respaldos: `respaldo-convivencia-slt73-slt75.test.ts`.
+ * tabla. SLT-76 retira los dos respaldos (`20261102090100_slt76_retirar_respaldos`); el down sin
+ * respaldo y la convivencia con un objeto ajeno: `slt76-retirar-respaldos-migration.test.ts`.
  */
 async function tablaRespaldo(tx: TxDeTest): Promise<boolean> {
   const [{ existe }] = await tx.$queryRawUnsafe<{ existe: boolean }[]>(

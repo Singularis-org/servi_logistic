@@ -9,6 +9,8 @@ import type {
 } from "@/lib/types/conciliacion-satelites";
 import { esperadoDe, saldoDe } from "@/lib/utils/conciliacion-satelite";
 import { APORTE_SATELITE_WHERE } from "@/lib/repositories/_shared/aporte-satelite-sql";
+// SLT-76 (R3/R4): el MISMO predicado con el que `revertirConciliacion` rechaza (`con_asientos`).
+import { consolidacionesConDinero } from "@/lib/repositories/_shared/conciliacion-con-dinero";
 import { diasNaturalesCRDesde, inicioDelMesCREnUtc } from "@/lib/utils/fecha-cr";
 import { CUENTA_USUARIO_SELECT, etiquetaDeCuenta } from "@/lib/utils/etiqueta-cuenta";
 import type { PaginaRepositorio, RangoPagina } from "@/lib/utils/rango-pagina";
@@ -100,7 +102,10 @@ type ConsolidacionRow = Prisma.CierreBodegaGetPayload<{ select: typeof CONSOLIDA
 // dejado a la satelite y a la central capaces de leer la misma consolidacion con dos cifras
 // distintas. Sigue siendo `Prisma.Decimal` -> `toFixed(2)` en el emisor; aqui no cambia nada mas.
 
-function toConsolidacionDTO(r: ConsolidacionRow): ConsolidacionSateliteDTO {
+function toConsolidacionDTO(
+  r: ConsolidacionRow,
+  conDinero: ReadonlySet<string>,
+): ConsolidacionSateliteDTO {
   // SLT-73 (R8/R9): lo esperado es la cascada B de la 393, no el efectivo.
   const esperado = esperadoDe(r);
   return {
@@ -119,6 +124,8 @@ function toConsolidacionDTO(r: ConsolidacionRow): ConsolidacionSateliteDTO {
     // R20: la resta se hace AQUI, con Decimal. La pantalla no resta dinero.
     faltaPorRecibir: saldoDe(esperado, r.montoRecibido).toFixed(2),
     conciliado: r.conciliadoAt !== null,
+    // SLT-76 (R3/R4): «Desmarcar» se ofrece SOLO si revertir no devolveria `con_asientos`.
+    desmarcable: r.conciliadoAt !== null && !conDinero.has(r.id),
     conciliadoAt: r.conciliadoAt === null ? null : r.conciliadoAt.toISOString(),
     conciliadoPorNombre:
       r.conciliadoPorUsuario === null ? null : etiquetaDeCuenta(r.conciliadoPorUsuario),
@@ -127,7 +134,11 @@ function toConsolidacionDTO(r: ConsolidacionRow): ConsolidacionSateliteDTO {
   };
 }
 
-type ClienteSaldosSatelites = Pick<PrismaClient, "cierreBodega" | "cierreDia" | "zona">;
+// SLT-76 (R3/R4): + los dos libros que lee `consolidacionesConDinero` para derivar `desmarcable`.
+type ClienteSaldosSatelites = Pick<
+  PrismaClient,
+  "cierreBodega" | "cierreDia" | "zona" | "walletMovimiento" | "conciliacionBodegaAjuste"
+>;
 
 export class SaldosSatelitesRepository implements ISaldosSatelitesRepository {
   constructor(private readonly prisma: ClienteSaldosSatelites) {}
@@ -321,6 +332,18 @@ export class SaldosSatelitesRepository implements ISaldosSatelitesRepository {
     return porZona;
   }
 
+  /**
+   * SLT-76 (R3/R4) — el desglose con `desmarcable`: UNA llamada al predicado con las ids de las
+   * conciliadas de la pagina (o del conjunto), nunca una por fila.
+   */
+  private async aConsolidacionDTOs(
+    rows: readonly ConsolidacionRow[],
+  ): Promise<ConsolidacionSateliteDTO[]> {
+    const conciliadas = rows.filter((r) => r.conciliadoAt !== null).map((r) => r.id);
+    const conDinero = await consolidacionesConDinero(this.prisma, conciliadas);
+    return rows.map((r) => toConsolidacionDTO(r, conDinero));
+  }
+
   async findConsolidacionesPaginado(
     zonaId: string,
     rango: RangoPagina,
@@ -340,7 +363,7 @@ export class SaldosSatelitesRepository implements ISaldosSatelitesRepository {
       }),
       this.prisma.cierreBodega.count({ where }),
     ]);
-    return { items: rows.map(toConsolidacionDTO), total };
+    return { items: await this.aConsolidacionDTOs(rows), total };
   }
 
   async findConsolidacionesCompleto(
@@ -352,7 +375,7 @@ export class SaldosSatelitesRepository implements ISaldosSatelitesRepository {
       orderBy: { solicitadoAt: "desc" }, // el MISMO orden que la pagina (R29)
       select: CONSOLIDACION_SELECT,
     });
-    return rows.map(toConsolidacionDTO);
+    return this.aConsolidacionDTOs(rows);
   }
 
   /** UN solo `where` para las cuatro lecturas del desglose, por el motivo de arriba. */

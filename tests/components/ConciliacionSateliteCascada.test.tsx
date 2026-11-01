@@ -88,6 +88,8 @@ const RECIBIDA_POR_MENOS: ConsolidacionSateliteDTO = {
   montoRecibido: "60000.00",
   faltaPorRecibir: "7090.25",
   conciliado: true,
+  // SLT-76 (R3): desde SLT-73 marcar asienta el dinero, así que no se ofrece «Desmarcar».
+  desmarcable: false,
   conciliadoAt: "2026-09-15T17:40:00.000Z",
   conciliadoPorNombre: "Ana Rojas",
   nota: null,
