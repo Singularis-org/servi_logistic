@@ -199,6 +199,7 @@ interface Foto {
   segundaFilaEnA: string | null;
   mismaFilaEnB: string | null;
   // tras los dos down.sql
+  errorDelDown: string | null;
   filasTrasDown: Fila[];
   indiceTrasDown: string | null;
   esquemasRespaldoTrasDown: string[];
@@ -308,7 +309,9 @@ describeSiHayBase("SLT-75 — migraciones contra Postgres (R7, R9-R12)", () => {
       // Se deshacen las dos filas de la comprobacion de R7 para que la foto del down sea limpia.
       await tx.$executeRawUnsafe(`DELETE FROM zona_distrito WHERE distrito_id = $1`, dOtro);
 
-      await bajar(tx);
+      // En SAVEPOINT: si el down fallara, R12 cae por su asercion y no por un beforeAll roto.
+      const fallo = await errorEnSavepoint(tx, () => bajar(tx));
+      const errorDelDown = fallo === null ? null : sqlstateDe(fallo);
 
       return {
         indiceAntesDeLaPrueba,
@@ -326,6 +329,7 @@ describeSiHayBase("SLT-75 — migraciones contra Postgres (R7, R9-R12)", () => {
         indiceTrasUp,
         segundaFilaEnA,
         mismaFilaEnB,
+        errorDelDown,
         filasTrasDown: await filasDeZonas(tx, zonas),
         indiceTrasDown: await indiceDef(tx),
         esquemasRespaldoTrasDown: await esquemasDelRespaldo(tx),
@@ -390,6 +394,7 @@ describeSiHayBase("SLT-75 — migraciones contra Postgres (R7, R9-R12)", () => {
   });
 
   it("R12 — los dos down.sql (en orden inverso) restauran las filas y quitan indice y respaldo", () => {
+    expect(f.errorDelDown).toBeNull();
     expect(f.filasTrasDown).toEqual(f.filasAntes);
     expect(f.indiceTrasDown).toBeNull();
     expect(f.esquemasRespaldoTrasDown).toEqual([]);
