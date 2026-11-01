@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { RolValue } from "@prisma/client";
 import { ZonaService } from "@/lib/services/ZonaService";
 import type {
+  CreateZonaResult,
   IZonaRepository,
   UpdateZonaResult,
 } from "@/lib/interfaces/repositories/IZonaRepository";
@@ -32,9 +33,14 @@ function resultadoUpdate(
   return { estado: "ok", zona, ordenesReconciliadas, ordenesRetenidasEnBodegaSatelite };
 }
 
+/** SLT-75: `create` devuelve un desenlace nombrado, como `update`. */
+function resultadoCreate(zona: ZonaDTO = dto()): CreateZonaResult {
+  return { estado: "ok", zona };
+}
+
 function buildRepo(overrides: Partial<IZonaRepository> = {}): IZonaRepository {
   return {
-    create: vi.fn().mockResolvedValue(dto()),
+    create: vi.fn().mockResolvedValue(resultadoCreate(dto())),
     findById: vi.fn().mockResolvedValue(dto()),
     list: vi.fn().mockResolvedValue({ items: [dto()], total: 1 }),
     listLite: vi.fn().mockResolvedValue([]), // feature 144; no ejercitado aqui
@@ -386,7 +392,7 @@ describe("esCentral — invariante 'una central' (feature 55/R3/R4/R6)", () => {
     // ya existe otra central; el repo reasigna en su transaccion y devuelve la nueva central
     repo = buildRepo({
       findCentralZonaId: vi.fn().mockResolvedValue("z-old"),
-      create: vi.fn().mockResolvedValue(dto({ id: "z-new", esCentral: true })),
+      create: vi.fn().mockResolvedValue(resultadoCreate(dto({ id: "z-new", esCentral: true }))),
     });
     service = new ZonaService(repo);
 
@@ -418,12 +424,102 @@ describe("esCentral — invariante 'una central' (feature 55/R3/R4/R6)", () => {
   });
 
   it("crear con esCentral=false persiste false (R4)", async () => {
-    repo = buildRepo({ create: vi.fn().mockResolvedValue(dto({ esCentral: false })) });
+    repo = buildRepo({ create: vi.fn().mockResolvedValue(resultadoCreate(dto({ esCentral: false }))) });
     service = new ZonaService(repo);
     const r = await service.crear(crearInput({ esCentral: false }), MAESTRO);
     expect(r.status).toBe("ok");
     if (r.status === "ok") expect(r.zona.esCentral).toBe(false);
     const arg = (repo.create as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(arg.esCentral).toBe(false);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// ⭑ SLT-75 (T4) — `distrito_en_otra_zona` sale por la rama `validation_error`, en `distritoIds`.
+// ⚠️ Los textos esperados van ESCRITOS A MANO: son el contrato de R3 y R8. Generarlos con la misma
+// funcion del servicio dejaria la asercion verde aunque el texto cambiara.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+describe("SLT-75 — ZonaService: un distrito en otra zona es un error de validacion", () => {
+  const CONFLICTOS_DESORDENADOS = [
+    { distritoNombre: "Ñandú Sintético", zonaNombre: "Zona Norte" },
+    { distritoNombre: "Árbol Sintético", zonaNombre: "Zona Sur" },
+    { distritoNombre: "Nogal Sintético", zonaNombre: "Zona Este" },
+  ];
+
+  it("⭑ R2: `update` con `distrito_en_otra_zona` → validation_error en `distritoIds`", async () => {
+    repo = buildRepo({
+      update: vi.fn().mockResolvedValue({
+        estado: "distrito_en_otra_zona",
+        conflictos: [{ distritoNombre: "Árbol Sintético", zonaNombre: "Zona Sur" }],
+      }),
+    });
+    service = new ZonaService(repo);
+
+    const r = await service.actualizar("z1", crearInput(), MAESTRO);
+
+    expect(r).toEqual({
+      status: "validation_error",
+      fieldErrors: { distritoIds: ["Árbol Sintético ya está en la zona Zona Sur."] },
+    });
+  });
+
+  it("R1: `create` con `distrito_en_otra_zona` → validation_error en `distritoIds`", async () => {
+    repo = buildRepo({
+      create: vi.fn().mockResolvedValue({
+        estado: "distrito_en_otra_zona",
+        conflictos: [{ distritoNombre: "Árbol Sintético", zonaNombre: "Zona Sur" }],
+      }),
+    });
+    service = new ZonaService(repo);
+
+    const r = await service.crear(crearInput(), MAESTRO);
+
+    expect(r).toEqual({
+      status: "validation_error",
+      fieldErrors: { distritoIds: ["Árbol Sintético ya está en la zona Zona Sur."] },
+    });
+  });
+
+  it("⭑ R3: un mensaje por conflicto, con la forma exacta y ordenados por distrito", async () => {
+    repo = buildRepo({
+      update: vi
+        .fn()
+        .mockResolvedValue({ estado: "distrito_en_otra_zona", conflictos: CONFLICTOS_DESORDENADOS }),
+    });
+    service = new ZonaService(repo);
+
+    const r = await service.actualizar("z1", crearInput(), MAESTRO);
+
+    // Orden del español: «Á» va con la «A», y la «Ñ» va DESPUES de la «N».
+    expect(r).toEqual({
+      status: "validation_error",
+      fieldErrors: {
+        distritoIds: [
+          "Árbol Sintético ya está en la zona Zona Sur.",
+          "Nogal Sintético ya está en la zona Zona Este.",
+          "Ñandú Sintético ya está en la zona Zona Norte.",
+        ],
+      },
+    });
+  });
+
+  it("⭑ R8: `conflictos: null` (lo paro el indice) → el mensaje de recargar, en `distritoIds`", async () => {
+    repo = buildRepo({
+      update: vi.fn().mockResolvedValue({ estado: "distrito_en_otra_zona", conflictos: null }),
+      create: vi.fn().mockResolvedValue({ estado: "distrito_en_otra_zona", conflictos: null }),
+    });
+    service = new ZonaService(repo);
+    const esperado = {
+      status: "validation_error",
+      fieldErrors: {
+        distritoIds: [
+          "Alguno de los elegidos acaba de asignarse a otra zona. Recarga la página y vuelve a intentarlo.",
+        ],
+      },
+    };
+
+    expect(await service.actualizar("z1", crearInput(), MAESTRO)).toEqual(esperado);
+    expect(await service.crear(crearInput(), MAESTRO)).toEqual(esperado);
   });
 });
