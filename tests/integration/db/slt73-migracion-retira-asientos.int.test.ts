@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Prisma, type PrismaClient } from "@prisma/client";
 
 import { asentarCierreDia } from "@/lib/repositories/_shared/asientos-cierre-dia";
+import { PagoMensajeroMovimientoRepository } from "@/lib/repositories/PagoMensajeroMovimientoRepository";
 
 import {
   HAY_BASE_DE_DATOS,
@@ -340,6 +341,64 @@ describeSiHayBase("SLT-73 T8 — migracion C: retirar los asientos de los cierre
     expect(r.error).toContain("slt73: 1 cierres satelite sin conciliar tienen un pago al mensajero");
     expect(r.despues).toEqual(r.antes);
     expect(r.respaldoDespues).toEqual(r.respaldoAntes);
+  });
+
+  it("R16/D15: la compensacion de un premio anulado (`ajuste_pago` con `premio_dia`) se queda en el libro, fuera del respaldo, y el down no la duplica", async () => {
+    const r = await enTransaccionRevertida(prisma, async (tx) => {
+      const e = await sembrarEscenario(tx);
+      const cierre = e.sinConsolidar.cierreId;
+      // La compensacion por el camino real: el MISMO escritor y la MISMA forma que usa
+      // `PremioRankingDevengoService.anularPremio` (tipo `pago`, mismo importe, mismo cierre, `premio_dia`
+      // del premio sembrado en el escenario).
+      const repo = new PagoMensajeroMovimientoRepository(tx as never);
+      const escritas = await repo.crearMovimientos(tx as never, [
+        {
+          mensajeroId: await mensajeroDe(tx, cierre),
+          tipo: "pago",
+          categoria: "ajuste_pago",
+          monto: "800.00",
+          origenTipo: "cierre_dia",
+          origenId: cierre,
+          premioDia: new Date("2026-10-30T00:00:00.000Z"),
+          descripcion: "anulacion del premio (test SLT-73)",
+        },
+      ]);
+      const compensaciones = await tx.pagoMensajeroMovimiento.findMany({
+        where: { origenTipo: "cierre_dia", origenId: cierre, categoria: "ajuste_pago", premioDia: { not: null } },
+        select: { id: true },
+      });
+      if (escritas !== 1 || compensaciones.length !== 1) {
+        throw new Error(`no se sembro la compensacion del premio (escritas=${escritas}, filas=${compensaciones.length})`);
+      }
+      const id = compensaciones[0].id;
+      const contar = async () =>
+        (
+          await tx.$queryRawUnsafe<{ n: number }[]>(
+            `SELECT count(*)::int AS n FROM pago_mensajero_movimiento WHERE id = $1`,
+            id,
+          )
+        )[0].n;
+      const antes = await contar();
+      await up(tx);
+      const trasUp = await contar();
+      const [{ enRespaldo }] = await tx.$queryRawUnsafe<{ enRespaldo: number }[]>(
+        `SELECT count(*)::int AS "enRespaldo" FROM respaldo.slt73_asientos WHERE fila ->> 'id' = $1`,
+        id,
+      );
+      const respaldadas = await respaldo(tx, [cierre]);
+      await down(tx);
+      const trasDown = await contar();
+      return { antes, trasUp, enRespaldo, respaldadas, trasDown };
+    });
+    expect(r.antes).toBe(1);
+    // (a) tras el up sigue en el libro…
+    expect(r.trasUp).toBe(1);
+    // (b) …no esta en el respaldo (que si tiene las filas del cierre, para que el (b) no sea vacuo)…
+    expect(r.enRespaldo).toBe(0);
+    expect(r.respaldadas).toHaveLength(CAJA.length + TIENDA.length + MENSAJERO.length);
+    expect(r.respaldadas?.some((f) => f.fila.premio_dia != null)).toBe(false);
+    // (c) …y tras el down hay exactamente UNA fila con su id.
+    expect(r.trasDown).toBe(1);
   });
 
   it("R20: tras el up, conciliar la consolidacion re-escribe los asientos del cierre retirado; el down no los duplica", async () => {

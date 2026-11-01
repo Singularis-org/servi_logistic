@@ -9,13 +9,6 @@ import {
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
-import {
-  aprobar,
-  consolidar,
-  filasDeLibros,
-  marcarRecibido,
-  sembrarCierreAprobable,
-} from "./_fixtures/slt73-cierre-aprobable";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // ⭑ FICHA 431 / T7 (R8/R9/R11/R12/R13/R14) — MARCAR Y REVERTIR, CONTRA POSTGRES.
@@ -26,8 +19,9 @@ import {
 //   · que las guardas por estado del `WHERE` seleccionan de verdad (`count !== 1` -> `conflict`);
 //   · que la fila de `historial_accion` QUEDA ESCRITA, con su `monto`, en el mismo acto (R13);
 //   · que al revertir, el monto del historial es EL QUE SE BORRA — el unico sitio donde sobrevive;
-//   · SLT-73 (R14, D11): que revertir una marca que ya asento dinero responde `con_asientos` sin
-//     tocar nada (reemplaza al «no escribe en ningun libro» de la 431, reabierto por D9).
+//   · SLT-73 (R14, D11): revertir una marca que ya asento dinero responde `con_asientos` sin tocar
+//     nada. Ese caso vive en `slt73-revertir-con-asientos.int.test.ts`, con datos propios: este
+//     archivo esta en el baseline y en el CI su rojo no contaria (review SLT-73, m2).
 //
 // ⚠️ LO QUE ESTE ARCHIVO **NO** PUEDE CAZAR, Y ESTA MEDIDO EN ESTE REPO: si alguien cambiara
 // `appendAccion(tx, …)` por `appendAccion(this.prisma, …)`, ESTOS CASOS SEGUIRIAN VERDES — aqui
@@ -339,40 +333,6 @@ describeSiHayBase("431/T7 — la marca de conciliacion (Postgres real)", () => {
     expect(r.res).toBe("conflict");
     expect(r.fila?.estado).toBe("solicitado");
     expect(r.filas).toBe(0);
-  });
-
-  it("⭑ SLT-73 R14: revertir una marca que YA asento el dinero -> `con_asientos`, y nada cambia", async () => {
-    // D11 (Q2): los libros son append-only; el monto se arregla con «Corregir». Flujo real: un cierre
-    // satelite aprobado, consolidado y marcado (la marca asienta sus filas, R10).
-    const r = await enTransaccionRevertida(prisma, async (tx) => {
-      await serializarEscriturasReales(tx);
-      const k = await sembrarCierreAprobable(tx, "bodega_satelite");
-      if ((await aprobar(k)) !== "ok") throw new Error("no se aprobo el cierre satelite");
-      const id = await consolidar(tx, k.adminSatelite);
-      const marca = await marcarRecibido(tx, id, "18000.00", k.maestroId);
-
-      const foto = async () => ({
-        consolidacion: await tx.cierreBodega.findUniqueOrThrow({
-          where: { id },
-          select: { estado: true, conciliadoAt: true, conciliadoPor: true, montoRecibido: true },
-        }),
-        libros: await filasDeLibros(tx, k.cierreId),
-        ajustes: await tx.conciliacionBodegaAjuste.count({ where: { cierreBodegaId: id } }),
-        historial: await tx.historialAccion.count({ where: { entidadId: id } }),
-      });
-      const antes = await foto();
-      const repo = new CierresBodegaAdminRepository(tx as unknown as PrismaClient);
-      const res = await repo.revertirConciliacion({ id, actorUsuarioId: k.maestroId });
-      return { marca, res, antes, despues: await foto() };
-    });
-
-    expect(r.marca).toBe("updated");
-    // Control: la marca SI asento (7 filas de caja del cierre) y quedo una diferencia (18.500 − 18.000).
-    expect(r.antes.libros.caja).toHaveLength(7);
-    expect(r.antes.ajustes).toBe(1);
-    expect(r.antes.consolidacion.estado).toBe("aprobado");
-    expect(r.res).toBe("con_asientos");
-    expect(r.despues).toEqual(r.antes);
   });
 
   it("marcar -> revertir -> marcar otra vez: la marca es REVERSIBLE de verdad (D6)", async () => {

@@ -1156,3 +1156,82 @@ la fila «sin consolidar» tiene rótulo en pantalla y en la descarga. 0 supervi
   de la tanda 4.
 - **T10 sin marcar**: el gate no da INIT_EXIT=0. El único rojo es previo y también falla en `origin/prod`;
   si se marca o no lo decide el leader.
+
+## Tanda 11 — review B1 y m2 — backend_dev (2026-10-31)
+
+Base: solo `servi_slt73d` (local, limpia). Antes y después de cada run, `npx prisma generate` en el worktree
+y conteo de `conciliacionBodegaAjuste` en el cliente compartido. Dos runs dieron `cliente_despues=0` (SLT-75
+regeneró el cliente a mitad): se descartaron y se repitieron. Ninguna migración ni código de `lib/` editado.
+
+### Cambios
+- `tests/integration/db/slt73-migracion-retira-asientos.int.test.ts` — **B1**: caso nuevo «R16/D15: la
+  compensacion de un premio anulado…». Sobre el escenario de siempre siembra en el satélite SIN consolidar la
+  compensación `ajuste_pago` (tipo `pago`, 800.00, origen `cierre_dia`, `premio_dia` del premio sembrado) con
+  el mismo escritor que usa `PremioRankingDevengoService.anularPremio`
+  (`PagoMensajeroMovimientoRepository.crearMovimientos`). Lanza si no queda exactamente 1 fila. Afirma:
+  (a) tras el up sigue en el libro (1 fila con su id); (b) no está en `respaldo.slt73_asientos` y el respaldo
+  del cierre tiene sus 14 filas, ninguna con `premio_dia`; (c) tras el down, exactamente 1 fila con su id.
+- `tests/integration/db/slt73-revertir-con-asientos.int.test.ts` (nuevo) — **m2**: el caso R14 contra
+  Postgres, con todos sus datos por los fixtures de `slt73-cierre-aprobable` (sin usuarios sembrados; si algo
+  no se siembra, lanza). Afirma `con_asientos`, la marca intacta (estado, las 4 columnas de conciliación y el
+  historial), las filas del cierre en los tres libros, los totales de los tres libros y de
+  `conciliacion_bodega_ajuste`, y la diferencia de la consolidación (1).
+- `tests/integration/db/marca-conciliacion.int.test.ts` — quitado el caso R14 duplicado y su import; la
+  cabecera apunta al archivo nuevo.
+
+### Mapa R→test (añadidos)
+- R16 (cláusula `premio_dia`, D15) → `slt73-migracion-retira-asientos` › «R16/D15: la compensacion…».
+- R14 → `slt73-revertir-con-asientos` › «R14: revertir una marca que YA asento…» (antes en
+  `marca-conciliacion.int.test.ts`, que está en el baseline).
+
+### Salida real
+- Typecheck: `TC_EXIT=0`, 0 `error TS` (cliente_antes=739, cliente_despues=739).
+- Lint de los 3 archivos: `LINT_EXIT=0`, sin avisos.
+- Vitest, sin mutar, `servi_slt73d`:
+  ```
+  cliente_antes=739
+   Test Files  2 passed (2)
+        Tests  7 passed (7)
+  VITEST_EXIT=0
+  cliente_despues=739
+  ```
+  (`slt73-migracion-retira-asientos` 6/6 y `slt73-revertir-con-asientos` 1/1.) `marca-conciliacion` en esta
+  base limpia: 8 rojos «la tabla `usuario` esta vacia», que es justo el motivo de su entrada en el baseline;
+  el caso R14 ya no depende de él.
+
+### M2 (harness `bd73_mut.sh` = copia de `rv73_mut.sh` con `conbase73d.sh`)
+Mutación: `AND m.premio_dia IS NULL` → `AND TRUE /* M2 */` en
+`db/migrations/20261031140200_slt73_retirar_asientos_satelite/migration.sql`.
+```
+cliente_antes=739
+mutacion_aplicada=1
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+     × R16/D15: la compensacion de un premio anulado (`ajuste_pago` con `premio_dia`) se queda en el libro, fuera del respaldo, y el down no la duplica
+AssertionError: expected +0 to be 1 // Object.is equality
+      Tests  1 failed | 5 passed (6)
+VITEST_EXIT=1
+cliente_despues=739
+revertido_status=[]
+```
+**MUERE.** (Antes de esta tanda sobrevivía 5/5.)
+
+### M4 (`revertirConciliacion`, conteo previo)
+1. La del review, literal: `origenTipo: "cierre_dia"` → `"cierre_bodega"`. `mutacion_aplicada=1`,
+   `VITEST_EXIT=1`, cliente 739/739, `revertido_status=[]`. Pero muere por validación de Prisma
+   («Invalid value for argument `origenTipo`. Expected WalletOrigenTipo»), no por aserción.
+2. Variante válida, la que cuenta: `"cierre_dia"` → `"gestion_orden"` (valor real del enum; el conteo da 0 y
+   la reversión sigue):
+```
+cliente_antes=739
+mutacion_aplicada=1
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+     × R14: revertir una marca que YA asento el dinero -> `con_asientos`; la marca y los tres libros quedan intactos
+AssertionError: expected 'updated' to be 'con_asientos' // Object.is equality
+      Tests  1 failed (1)
+VITEST_EXIT=1
+cliente_despues=739
+revertido_status=[]
+```
+**MUERE por aserción**, en un archivo `slt73-*` que el CI sí cuenta.
+
+Veredicto: B1 cerrado (M2 muere) y m2 cerrado (R14 en un `slt73-*` con datos propios; M4 muere por aserción).
