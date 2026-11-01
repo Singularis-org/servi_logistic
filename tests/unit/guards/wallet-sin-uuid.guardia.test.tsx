@@ -248,6 +248,9 @@ beforeEach(() => {
         cierreBodegaId: u(20),
         solicitadoAt: "2026-09-12T20:00:00.000Z",
         totales: { efectivo: "8500.00", simpe: "0.00", transferencia: "0.00", general: "8500.00" },
+        pagoMensajero: "0.00",
+        gananciaSatelite: "0.00",
+        paraLaCentral: "8500.00", // SLT-73: campos del DTO que la conciliación pinta
         montoRecibido: null,
         faltaPorRecibir: "8500.00",
         conciliado: false,

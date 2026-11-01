@@ -109,6 +109,8 @@ const LISTADOS = [
       "Más antigua sin conciliar",
       "Última recibida",
       "Monto de la última recibida",
+      "Sin consolidar", // SLT-73 (R6)
+      "Cierres sin consolidar",
     ],
   },
 ] as const;

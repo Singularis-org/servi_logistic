@@ -105,6 +105,8 @@ export const SALDOS_SATELITES_COLUMNAS = {
   pendiente: "Pendiente",
   masAntigua: "Más antigua sin conciliar",
   ultimaRecibida: "Última recibida",
+  /** SLT-73 (R6): la parte de la deuda que sigue en cierres del día aún sin consolidar. */
+  sinConsolidar: "Sin consolidar",
   /** FICHA 458-D (R17): la columna del enlace al estado de cuenta. */
   estadoCuenta: "Estado de cuenta",
 } as const;
@@ -131,6 +133,19 @@ export function antiguedadLabel(dias: number | null): string {
   if (dias === 1) return "ayer";
   return `hace ${dias} días`;
 }
+
+/**
+ * SLT-73 (R6) — lo que la bodega debe por cierres del día que todavía no consolidó.
+ *
+ * Una bodega que cobra todo por SINPE y no consolida nunca tenía cola de consolidaciones, así que
+ * la antigüedad decía «al día» mientras debía el día entero. Mientras haya aporte sin consolidar,
+ * la antigüedad dice esto en su lugar.
+ */
+export const SIN_CONSOLIDAR = {
+  antiguedad: "sin consolidar",
+  /** «3 cierres»: el importe solo no se puede perseguir. */
+  cierres: (n: number) => `${n} ${plural(n, "cierre", "cierres")}`,
+} as const;
 
 /**
  * ⭑ LA ÚLTIMA QUE LLEGÓ: «16 sep · ₡ 485.000», y «de ₡ 500.000» sólo si llegó incompleta.
@@ -192,6 +207,12 @@ export const DESGLOSE_SATELITE_COLUMNAS = {
   recibido: "Recibido",
   estado: "Estado",
   conciliadoPor: "Conciliado por",
+} as const;
+
+/** SLT-73 (R9) — nombre accesible del desplegable de cada consolidación y de su cascada. */
+export const CASCADA_CONSOLIDACION_NOMBRE = {
+  expandir: (fecha: string) => `Ver la cuenta de la consolidación del ${fecha}`,
+  region: (titulo: string, fecha: string) => `${titulo} · consolidación del ${fecha}`,
 } as const;
 
 /** Nombres accesibles de la conciliación de UNA bodega, con su nombre dentro. FICHA 458-D (R31): la

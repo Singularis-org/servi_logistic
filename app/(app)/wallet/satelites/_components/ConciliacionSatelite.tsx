@@ -16,7 +16,17 @@ import {
 import {
   listarConsolidacionesSateliteAction,
 } from "@/lib/actions/conciliacion-satelites";
+import { CascadaDinero, type LineaCascada } from "@/app/(app)/cierres-admin/_components/CascadaDinero";
+import { PAGO_MENSAJERO_LABEL, TOTAL_GENERAL_LABEL } from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
+import {
+  CASCADA_CENTRAL_TITULO,
+  GANA_BODEGA_SATELITE_LABEL,
+  GANA_BODEGA_SATELITE_NOTA,
+  PARA_LA_CENTRAL_LABEL,
+  PARA_LA_CENTRAL_NOTA,
+} from "@/app/(app)/cierres-admin/_components/cierre-labels";
 import { cierreBodegaConfig } from "@/lib/config/cierre-bodega";
+import { METODO_LABEL } from "@/lib/constants/metodo-pago-label";
 import type { ConsolidacionSateliteDTO } from "@/lib/types/conciliacion-satelites";
 
 import {
@@ -24,6 +34,7 @@ import {
   filaDescargaConsolidacionSatelite,
 } from "./consolidaciones-satelite-descarga-columnas";
 import {
+  CASCADA_CONSOLIDACION_NOMBRE,
   DESGLOSE_SATELITE,
   DESGLOSE_SATELITE_COLUMNAS,
   DESGLOSE_SATELITE_ERROR,
@@ -32,6 +43,8 @@ import {
   DESGLOSE_SATELITE_VACIO,
   ESTADO_CONCILIACION_LABEL,
   ESTADO_CONCILIACION_VARIANT,
+  FALTA_POR_RECIBIR_LABEL,
+  MONTO_RECIBIDO_LABEL,
   SIN_DATO,
   diaCR,
   estadoConciliacionDe,
@@ -57,6 +70,8 @@ import { descargarDatos } from "@/components/shared/descarga-datos";
 // calcula aquí: la identidad `declarado − recibido = falta` es exactamente la clase de resta que
 // la ficha 359 encontró rota en 13 pantallas, y por eso este par entra en
 // `tests/components/DineroIdentidadesEnPantalla.test.tsx`.
+// SLT-73 (D3/R8): lo esperado deja de ser el efectivo y pasa a ser `paraLaCentral`; la cuenta
+// completa de cada fila la lee `tests/components/ConciliacionSateliteCascada.test.tsx`.
 //
 // ── EL AVISO DE LA CABECERA NO ES DECORACIÓN
 // Es la mitad que faltaba del control de seguimiento (Q7). Cuando la central marca por menos de lo
@@ -129,6 +144,48 @@ function conciliadoPorTexto(c: ConsolidacionSateliteDTO): string {
   return `${c.conciliadoPorNombre} · ${diaCR(c.conciliadoAt)}`;
 }
 
+/**
+ * SLT-73 (R9) — LA CUENTA DE UNA CONSOLIDACIÓN, de lo recaudado a lo que falta.
+ *
+ * Mismas líneas y mismos rótulos que la cascada «Lo que va a la central» de la 393 en
+ * `/cierres-admin`, más lo recaudado por método arriba y lo recibido abajo: la satélite tiene que
+ * poder leer qué parte es suya (pago a mensajeros y su ganancia) y por qué debe lo que debe. Todos
+ * los importes llegan derivados del servidor; aquí sólo se eligen orden, signo y rótulo.
+ * Sin marca no hay línea de recibido: «nadie lo contó» no es «llegaron cero».
+ */
+function lineasCuentaConsolidacion(c: ConsolidacionSateliteDTO): LineaCascada[] {
+  const lineas: LineaCascada[] = [
+    { label: METODO_LABEL.efectivo, monto: c.totales.efectivo, signo: "neutro" },
+    { label: METODO_LABEL.SINPE, monto: c.totales.simpe, signo: "suma" },
+    { label: METODO_LABEL.transferencia, monto: c.totales.transferencia, signo: "suma" },
+    { label: TOTAL_GENERAL_LABEL, monto: c.totales.general, signo: "neutro", destacado: true },
+    { label: PAGO_MENSAJERO_LABEL, monto: c.pagoMensajero, signo: "resta" },
+    {
+      label: GANA_BODEGA_SATELITE_LABEL,
+      monto: c.gananciaSatelite,
+      signo: "resta",
+      notas: [GANA_BODEGA_SATELITE_NOTA],
+    },
+    {
+      label: PARA_LA_CENTRAL_LABEL,
+      monto: c.paraLaCentral,
+      signo: "neutro",
+      destacado: true,
+      notas: [PARA_LA_CENTRAL_NOTA],
+    },
+  ];
+  if (c.montoRecibido !== null) {
+    lineas.push({ label: MONTO_RECIBIDO_LABEL, monto: c.montoRecibido, signo: "resta" });
+  }
+  lineas.push({
+    label: FALTA_POR_RECIBIR_LABEL,
+    monto: c.faltaPorRecibir,
+    signo: "neutro",
+    destacado: true,
+  });
+  return lineas;
+}
+
 export interface ConciliacionSateliteProps {
   /** La bodega. El nombre baja por props (lo trae el estado de cuenta); el id solo viaja. */
   bodega: { zonaId: string; zonaNombre: string };
@@ -192,11 +249,11 @@ export function ConciliacionSatelite({
       render: (c) => diaCR(c.solicitadoAt),
     },
     {
-      id: "declarado",
-      // «Declarado» es el EFECTIVO: lo que viaja en el bulto (decisión Q2). El general vive en la
-      // línea de composición de abajo, como contexto.
-      value: DESGLOSE_SATELITE_COLUMNAS.declarado,
-      render: (c) => <span className="tabular-nums">{money(c.totales.efectivo)}</span>,
+      id: "paraLaCentral",
+      // SLT-73 (D3/R8): lo esperado es «Para la central» —todos los métodos menos lo que es de la
+      // satélite—, ya no el efectivo. El desglose vive en la cuenta desplegable de la fila.
+      value: PARA_LA_CENTRAL_LABEL,
+      render: (c) => <span className="tabular-nums">{money(c.paraLaCentral)}</span>,
     },
     {
       id: "recibido",
@@ -214,6 +271,12 @@ export function ConciliacionSatelite({
             {money(c.montoRecibido)}
           </span>
         ),
+    },
+    {
+      id: "faltaPorRecibir",
+      value: FALTA_POR_RECIBIR_LABEL,
+      // R8: la cifra del servidor, tal cual. Aquí no se resta.
+      render: (c) => <span className="tabular-nums">{money(c.faltaPorRecibir)}</span>,
     },
     {
       id: "estado",
@@ -247,7 +310,7 @@ export function ConciliacionSatelite({
           cierreBodegaId={c.cierreBodegaId}
           bodega={zonaNombre}
           fecha={diaCR(c.solicitadoAt)}
-          declarado={c.totales.efectivo}
+          declarado={c.paraLaCentral}
           marca={c}
           nota={c.nota}
           puedeConciliar={puedeConciliar}
@@ -290,7 +353,7 @@ export function ConciliacionSatelite({
             <span className="text-[13px] leading-relaxed">
               {incompletas.length === 1
                 ? DESGLOSE_SATELITE.diferenciaDetalle(
-                    money(incompletas[0].totales.efectivo),
+                    money(incompletas[0].paraLaCentral),
                     money(incompletas[0].montoRecibido),
                     money(incompletas[0].faltaPorRecibir),
                   )
@@ -320,6 +383,18 @@ export function ConciliacionSatelite({
           data={items}
           rowKey="cierreBodegaId"
           ariaLabel={DESGLOSE_SATELITE_NOMBRE.tabla(zonaNombre)}
+          // SLT-73 (R9): la cuenta entera de cada consolidación, desplegable por fila.
+          renderExpanded={(c) => (
+            <CascadaDinero
+              titulo={CASCADA_CENTRAL_TITULO}
+              ariaLabel={CASCADA_CONSOLIDACION_NOMBRE.region(
+                CASCADA_CENTRAL_TITULO,
+                diaCR(c.solicitadoAt),
+              )}
+              lineas={lineasCuentaConsolidacion(c)}
+            />
+          )}
+          expandAriaLabel={(c) => CASCADA_CONSOLIDACION_NOMBRE.expandir(diaCR(c.solicitadoAt))}
           isLoading={isLoading}
           /* El fallo se cuenta DENTRO de esta fila; la tabla de saldos sigue en pie. */
           error={error ? DESGLOSE_SATELITE_ERROR : null}

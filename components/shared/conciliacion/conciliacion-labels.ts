@@ -72,6 +72,12 @@ export const CONCILIACION_RESPUESTA = {
   forbidden: "No tenés permiso para conciliar consolidaciones de bodega.",
   unauthenticated: "Tu sesión expiró. Iniciá sesión de nuevo.",
   fallo: "No se pudo completar la operación. Intentá de nuevo.",
+  /**
+   * SLT-73 (R14) — el título del aviso cuando la marca ya asentó el dinero en los libros y la
+   * reversión se rechaza. El detalle es el `mensaje` que devuelve la acción
+   * (`MENSAJE_REVERTIR_CON_ASIENTOS`): un solo texto para el servidor y la pantalla.
+   */
+  conAsientosTitulo: "No se puede desmarcar.",
 } as const;
 
 /** Tope de la nota, el MISMO que el `.max(500)` del schema del borde. */

@@ -83,6 +83,9 @@ const CONSOLIDACION = {
   cierreBodegaId: UUID_MOV(7),
   solicitadoAt: "2026-09-16T14:00:00.000Z",
   totales: { efectivo: "115000.00", simpe: "0.00", transferencia: "0.00", general: "115000.00" },
+  pagoMensajero: "0.00",
+  gananciaSatelite: "0.00",
+  paraLaCentral: "115000.00", // SLT-73: campos del DTO que la conciliación pinta
   montoRecibido: null,
   faltaPorRecibir: "115000.00",
   conciliado: false,

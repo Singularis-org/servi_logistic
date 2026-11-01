@@ -168,6 +168,7 @@ const INCOMPLETA = consolidacion({
   cierreBodegaId: "cb-2",
   solicitadoAt: "2026-09-15T14:00:00.000Z",
   totales: { efectivo: "500000.00", simpe: "0.00", transferencia: "0.00", general: "500000.00" },
+  paraLaCentral: "500000.00", // SLT-73: lo esperado; sin descuentos coincide con el general
   montoRecibido: "485000.00",
   faltaPorRecibir: "15000.00",
   conciliado: true,
@@ -180,6 +181,7 @@ const COMPLETA = consolidacion({
   cierreBodegaId: "cb-3",
   solicitadoAt: "2026-09-13T14:00:00.000Z",
   totales: { efectivo: "284900.00", simpe: "0.00", transferencia: "0.00", general: "284900.00" },
+  paraLaCentral: "284900.00",
   montoRecibido: "284900.00",
   faltaPorRecibir: "0.00",
   conciliado: true,
@@ -375,7 +377,7 @@ describe("R22/R24 — la conciliación de una bodega (458-D: en su estado de cue
 
     // El «Pendiente de llegar» de la cabecera es el saldo que el SERVIDOR cuadró.
     expect(within(region).getByText("₡115.000")).toBeInTheDocument();
-    // Declarado es el EFECTIVO (Q2), recibido es lo que se contó.
+    // Lo esperado es «Para la central» (SLT-73, D3), recibido es lo que se contó.
     expect(within(region).getByText("₡500.000")).toBeInTheDocument();
     expect(within(region).getByText("₡485.000")).toBeInTheDocument();
     expect(within(region).getAllByText("Ana Rojas · 15 sept").length).toBeGreaterThan(0);
@@ -476,7 +478,7 @@ describe("R25 — marcar recibido, corregir y desmarcar", () => {
       }),
     );
     const dialogo = await screen.findByRole("dialog");
-    // El campo nace con el EFECTIVO declarado: la conciliación normal es un clic.
+    // El campo nace con lo ESPERADO («Para la central», SLT-73): la conciliación normal es un clic.
     expect(within(dialogo).getByLabelText(/Monto recibido/)).toHaveValue("100000.00");
     // Lo declarado, a la vista, para comparar mentalmente.
     expect(within(dialogo).getByText("₡100.000")).toBeInTheDocument();
