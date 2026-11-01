@@ -18,6 +18,7 @@
  */
 import type { CierreAdminResumen } from "@/lib/interfaces/services/ICierresAdminService";
 import type { DescargaColumna, DescargaFila } from "@/lib/types/descarga";
+import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 import { fechaDiaISO } from "@/lib/utils/fecha-dia-iso";
 
 import {
@@ -26,6 +27,17 @@ import {
   INGRESO_BODEGA_RECHAZOS_COL,
   PAGO_MENSAJERO_COL,
 } from "./cierre-labels";
+
+/**
+ * SLT-76 (R21) — el DÍA de Costa Rica de un instante ISO, con la misma `fechaCalendarioCR` que la
+ * pantalla (R1). Recortar el ISO daba el día UTC: un cierre de después de las 18:00 de Costa Rica
+ * salía fechado al día siguiente. Lo que no es un instante (la sonda de la guardia de datos
+ * sensibles) pasa TAL CUAL por `fechaDiaISO`, que conserva su rastro.
+ */
+function diaCR(iso: string): string {
+  const instante = new Date(iso);
+  return Number.isNaN(instante.getTime()) ? fechaDiaISO(iso) : fechaCalendarioCR(instante);
+}
 
 /**
  * Destino legible: tipo + zona, EXACTAMENTE como lo compone la columna de pantalla — porque es
@@ -68,7 +80,7 @@ export function filaDescargaCierrePendiente(cierre: CierreAdminResumen): Descarg
   return {
     estado: ESTADO_LABEL[cierre.estado] ?? cierre.estado,
     mensajero: cierre.mensajeroNombre,
-    fecha: fechaDiaISO(cierre.solicitadoAt),
+    fecha: diaCR(cierre.solicitadoAt),
     destino: destino(cierre),
     general: cierre.totales.general, // STRING tal cual (money-safe)
     pagoMensajero: cierre.totalPagoMensajero,
@@ -101,7 +113,7 @@ export function filaDescargaCierreHistorico(cierre: CierreAdminResumen): Descarg
   return {
     estado: ESTADO_LABEL[cierre.estado] ?? cierre.estado,
     mensajero: cierre.mensajeroNombre,
-    fechaResuelta: cierre.resueltoAt === null ? null : fechaDiaISO(cierre.resueltoAt),
+    fechaResuelta: cierre.resueltoAt === null ? null : diaCR(cierre.resueltoAt),
     destino: destino(cierre),
     general: cierre.totales.general, // STRING tal cual (money-safe)
     pagoMensajero: cierre.totalPagoMensajero,

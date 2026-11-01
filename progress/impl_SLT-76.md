@@ -37,6 +37,7 @@ Evidencia completa por subagente (logs y detalle), en el scratchpad de la sesió
 |---|---|
 | R1 | `tests/components/CierreFacturaFechaCR.test.tsx`: `2026-11-01T05:03:00.000Z` → `2026-10-31` escrito a mano en la cabecera compacta, Solicitado/Resuelto, «Conciliado el» de bodega, comprobante propio y `CierreFacturaDetalle`; «—» con `null` e instante inválido |
 | R2 | `tests/unit/guards/cierres-fecha-cr.guardia.test.ts` (contraprueba y suelo de archivos) |
+| R21 | `tests/unit/descarga/{cierre-dia,cierres-admin,cierres-bodega,cierres-gestiones-fundida}-descarga-columnas.test.ts` › describe «R21» (`2026-11-01T05:03:00.000Z` → `2026-10-31` a mano en las 7 columnas; `resueltoAt` null sigue null); `cierres-fecha-cr.guardia.test.ts` con `DESCARGAS_PENDIENTES` vacía |
 | R3 | `tests/components/ConciliacionAccionesConAsientos.test.tsx` › «SLT-76 R3» (4 casos); `tests/integration/db/slt76-desmarcable.int.test.ts` (el dato en las 5 lecturas de las dos superficies); E2E `cierre-bodega-satelite` paso 3 |
 | R4 | `tests/integration/db/slt76-desmarcable.int.test.ts`: `revertirConciliacion` da `con_asientos`/`con_asientos`/`updated` y coincide con `desmarcable` en las superficies |
 | R5 | `tests/integration/db/slt76-revertir-con-ajuste.int.test.ts` (y en unit `cierres-bodega-admin-marca.test.ts` › «SLT-76 R5») |
@@ -98,6 +99,18 @@ Evidencia completa por subagente (logs y detalle), en el scratchpad de la sesió
 - D: T1 y guardias `4 passed (4)` · `116 passed (116)`; T8 `4 passed (4)` · `99 passed (99)`; grep de «provisional» en `specs/SLT-73-*` y los cuatro tests = 0.
 - E: `vitest related` sin integración db `Test Files 31 passed (31)` · `Tests 463 passed (463)`; typecheck 0 errores; lint EXIT=0.
 
+## R21 · Descargas de cierres en día de Costa Rica (enmienda)
+
+frontend_dev (F), evidencia `impl_slt76_F.md`. Las 7 líneas `fechaDiaISO(<x>At)` de `cierre-dia-`, `cierres-admin-`,
+`cierres-bodega-` y `cierres-gestiones-fundida-descarga-columnas.ts` pasan por un `diaCR(iso)` privado en cada archivo:
+`fechaCalendarioCR(new Date(iso))` si el instante es válido; si no, el texto pasa tal cual por `fechaDiaISO`.
+- **Desviación:** el fallback existe porque `columnas-sensibles.guardia` sondea cada columna con un objeto que no es fecha, y con la llamada directa la celda saldría «NaN-NaN-NaN». La función está repetida en los 4 archivos (4 líneas) porque un archivo de columnas no puede exportarla (esa guardia prueba toda función exportada). El sitio para centralizarla sería `lib/utils/fecha-dia-iso.ts`.
+- `DESCARGAS_PENDIENTES = []`; la comparación exacta sigue viva y se comprueba que los 4 archivos están entre los revisados.
+- Ningún test fijaba el día UTC (los datos usan horas como 10:00Z).
+- Mutaciones (volver a `fechaDiaISO` en cada una de las 7 líneas): en todas, grep = 1 → `2 failed` (el `it` R21 del archivo y la guardia) → revertida, grep = 0 → verde (28/28, 6/6, 6/6, 20/20, 20/20, 20/20, 39/39).
+- typecheck 0, lint 0; `vitest related` (con envoltorio, `servi_slt76_mig`): 44 archivos, 773 tests en verde.
+- Sin efecto en E2E: `cierres-admin.spec.ts` no descarga ni mira fechas.
+
 ## E2E
 
 Build de producción (`next build`, BUILD_EXIT=0) y un solo servidor (puerto 3076) sobre `servi_slt76`:
@@ -132,6 +145,6 @@ superadmin, y quedó en verde.
 
 ## Hallazgos para el leader
 
-- **Fuera de alcance (T1):** la guardia de R2 encuentra 7 líneas `fechaDiaISO(<x>At)` en las columnas de descarga de cierres (`cierre-dia-`, `cierres-admin-`, `cierres-bodega-` y `cierres-gestiones-fundida-descarga-columnas.ts`), con el mismo error de día UTC. Quedan anotadas en `DESCARGAS_PENDIENTES` de la guardia: una línea nueva la pone roja, y arreglar una obliga a quitarla de la lista. Falta decidir si van en esta ficha o en otra (¿SLT-42?).
-- **Incidente de base (A):** corrió una vez `vitest related` sin el envoltorio, así que los tests de integración usaron la base local del `.env` del worktree (local, de nombre `servi*`; ni producción ni Supabase). Lo cortó a los ~3 min, con 14 archivos terminados. Entre ellos estaba `demo-qa.test.ts` (11/12 rojos), que commitea datos y los borra en su `afterAll`. Conviene revisar si dejó restos en esa base.
+- **R21 (enmienda de Carlos, 2026-11-01):** CERRADO en esta ficha (ver sección R21). La guardia de R2 queda sin excepciones.
+- **Incidente de base (A), REVISADO:** en la base local del `.env` del worktree (local; no es una slt76) dan 0 las empresas `es_demo`, los slugs `demo-qa%`, los nombres `SL43`, la marca `entorno_marca.entorno`, los centinelas `jobs`/`geocode_cache` de SL-43 y los locks advisory. El `afterAll` de `demo-qa` limpió y no hubo que borrar nada. Script de solo conteos: `restosdemo.cjs`. Antes: corrió una vez `vitest related` sin el envoltorio, así que los tests de integración usaron la base local del `.env` del worktree (local, de nombre `servi*`; ni producción ni Supabase). Lo cortó a los ~3 min, con 14 archivos terminados. Entre ellos estaba `demo-qa.test.ts` (11/12 rojos), que commitea datos y los borra en su `afterAll`. Conviene revisar si dejó restos en esa base.
 - El typecheck necesita `NODE_OPTIONS=--max-old-space-size=10240`: con menos, `tsc` se queda sin memoria.

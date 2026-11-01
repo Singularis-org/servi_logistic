@@ -119,6 +119,7 @@ import { CAUSA_INCIDENTE_LABEL } from "@/app/(app)/mis-asignaciones/_components/
 import type { CierreResultado } from "@/lib/interfaces/services/ICierreDiaService";
 import type { CierreGestionDescargaDTO } from "@/lib/interfaces/services/ICierresAdminService";
 import type { DescargaCelda, DescargaColumna, DescargaFila } from "@/lib/types/descarga";
+import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 import { fechaDiaISO } from "@/lib/utils/fecha-dia-iso";
 
 import {
@@ -142,6 +143,17 @@ import {
   motivoGestionLegible,
 } from "./cierre-labels";
 import { CLAVE_MEDIO_PAGO, MEDIOS_PAGO, montoPorMetodo } from "./desglose-pago";
+
+/**
+ * SLT-76 (R21) — el DÍA de Costa Rica de un instante ISO, con la misma `fechaCalendarioCR` que la
+ * pantalla (R1). Recortar el ISO daba el día UTC: un cierre de después de las 18:00 de Costa Rica
+ * salía fechado al día siguiente. Lo que no es un instante (la sonda de la guardia de datos
+ * sensibles) pasa TAL CUAL por `fechaDiaISO`, que conserva su rastro.
+ */
+function diaCR(iso: string): string {
+  const instante = new Date(iso);
+  return Number.isNaN(instante.getTime()) ? fechaDiaISO(iso) : fechaCalendarioCR(instante);
+}
 
 /**
  * UNA COLUMNA POR MEDIO DE PAGO (2026-08-19), en el orden de `MEDIOS_PAGO` —el de declaración
@@ -419,12 +431,12 @@ function ubicacion(gestion: CierreGestionDescargaDTO): string | null {
 function celdasComunes(gestion: CierreGestionDescargaDTO): DescargaFila {
   return {
     mensajero: gestion.mensajeroNombre,
-    fechaCierre: fechaDiaISO(gestion.cierreSolicitadoAt),
+    fechaCierre: diaCR(gestion.cierreSolicitadoAt),
     // Las dos fechas nuevas llegan YA como día calendario `YYYY-MM-DD` del servidor, así que
-    // aquí NO se les aplica `fechaDiaISO` ni ningún recorte: no hay nada que recortar, y pasar
+    // aquí NO se les aplica `diaCR` ni ningún recorte: no hay nada que recortar, y pasar
     // un día por un extractor de días sugeriría que puede ser un instante, que es justo la
     // confusión que hizo falta evitar. `fechaCierre` sí lo necesita: ése viaja como ISO
-    // completo desde antes de esta ficha y se emite como día, igual que en la pantalla.
+    // completo y se emite como día de Costa Rica, igual que en la pantalla (SLT-76, R21).
     fechaGestion: gestion.fechaGestion,
     // `null` es una celda vacía legítima (ver cabecera): la orden perdió su día de reparto.
     diaReparto: gestion.diaReparto,

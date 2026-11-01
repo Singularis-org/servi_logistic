@@ -16,10 +16,9 @@ import { quitarComentarios } from "@/tests/fixtures/sin-comentarios";
 // pasado por `app/(app)/cierres-admin/**` y `app/(app)/cierre-dia/**`. Con contraprueba y suelo de
 // archivos revisados.
 //
-// ⚠️ DEUDA CONOCIDA, FUERA DE SLT-76: las columnas de las DESCARGAS de cierres usan
-// `fechaDiaISO(<x>At)`, que es el mismo recorte. El spec de SLT-76 no las incluye (§1 lista las
-// superficies de pantalla), así que se congelan aquí EXACTAS: una línea nueva pone la guardia en
-// rojo, y arreglar una obliga a quitarla de la lista.
+// Las columnas de las DESCARGAS de cierres usaban `fechaDiaISO(<x>At)`, el mismo recorte; la
+// enmienda R21 las pasó al día de Costa Rica y `DESCARGAS_PENDIENTES` quedó VACÍA. Se conserva la
+// comparación EXACTA contra ella: cualquier línea que vuelva a recortar pone la guardia en rojo.
 
 const RAIZ = path.resolve(__dirname, "../../..");
 const CARPETAS = ["app/(app)/cierres-admin", "app/(app)/cierre-dia"];
@@ -30,16 +29,8 @@ const PROHIBIDAS: readonly RegExp[] = [
   /fechaDiaISO\(\s*[\w.?]*\b(?:fecha\w*|\w+At)\s*\)/,
 ];
 
-/** Los recortes que ya existían en las descargas (deuda anotada, fuera del spec). */
-const DESCARGAS_PENDIENTES: readonly string[] = [
-  "app/(app)/cierre-dia/_components/cierre-dia-descarga-columnas.ts: fecha: fechaDiaISO(cierre.solicitadoAt),",
-  "app/(app)/cierres-admin/_components/cierres-admin-descarga-columnas.ts: fecha: fechaDiaISO(cierre.solicitadoAt),",
-  "app/(app)/cierres-admin/_components/cierres-admin-descarga-columnas.ts: fechaResuelta: cierre.resueltoAt === null ? null : fechaDiaISO(cierre.resueltoAt),",
-  "app/(app)/cierres-admin/_components/cierres-bodega-descarga-columnas.ts: fecha: fechaDiaISO(cierre.solicitadoAt),",
-  "app/(app)/cierres-admin/_components/cierres-bodega-descarga-columnas.ts: fechaResuelta: cierre.resueltoAt === null ? null : fechaDiaISO(cierre.resueltoAt),",
-  "app/(app)/cierres-admin/_components/cierres-bodega-descarga-columnas.ts: fechaSolicitud: fechaDiaISO(cierre.solicitadoAt),",
-  "app/(app)/cierres-admin/_components/cierres-gestiones-fundida-descarga-columnas.ts: fechaCierre: fechaDiaISO(gestion.cierreSolicitadoAt),",
-];
+/** Recortes tolerados en las descargas: NINGUNO desde la enmienda R21 de SLT-76. */
+const DESCARGAS_PENDIENTES: readonly string[] = [];
 
 function archivosDe(dir: string): string[] {
   const salida: string[] = [];
@@ -99,6 +90,15 @@ describe("GUARDIA SLT-76/R2 — los cierres no recortan fechas en UTC", () => {
     // Las dos superficies que arregló SLT-76 están entre los revisados.
     expect(revisados).toContain("app/(app)/cierres-admin/_components/cierre-factura.tsx");
     expect(revisados).toContain("app/(app)/cierre-dia/_components/CierreDiaModule.tsx");
+    // Las descargas de cierres (R21) también están entre los revisados.
+    expect(revisados).toEqual(
+      expect.arrayContaining([
+        "app/(app)/cierre-dia/_components/cierre-dia-descarga-columnas.ts",
+        "app/(app)/cierres-admin/_components/cierres-admin-descarga-columnas.ts",
+        "app/(app)/cierres-admin/_components/cierres-bodega-descarga-columnas.ts",
+        "app/(app)/cierres-admin/_components/cierres-gestiones-fundida-descarga-columnas.ts",
+      ]),
+    );
     expect(hallazgos.sort()).toEqual([...DESCARGAS_PENDIENTES].sort());
   });
 });

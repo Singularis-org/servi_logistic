@@ -22,6 +22,7 @@ import type {
   CierrePasadoDTO,
 } from "@/lib/interfaces/services/ICierreDiaService";
 import type { DescargaColumna, DescargaFila } from "@/lib/types/descarga";
+import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 import { fechaDiaISO } from "@/lib/utils/fecha-dia-iso";
 import { CAUSA_INCIDENTE_LABEL } from "@/app/(app)/mis-asignaciones/_components/causa-incidente-options";
 import {
@@ -33,6 +34,17 @@ import {
   motivoGestionLegible,
 } from "@/app/(app)/cierres-admin/_components/cierre-labels";
 import { desgloseDescarga } from "@/app/(app)/cierres-admin/_components/desglose-pago";
+
+/**
+ * SLT-76 (R21) — el DÍA de Costa Rica de un instante ISO, con la misma `fechaCalendarioCR` que la
+ * pantalla (R1). Recortar el ISO daba el día UTC: un cierre de después de las 18:00 de Costa Rica
+ * salía fechado al día siguiente. Lo que no es un instante (la sonda de la guardia de datos
+ * sensibles) pasa TAL CUAL por `fechaDiaISO`, que conserva su rastro.
+ */
+function diaCR(iso: string): string {
+  const instante = new Date(iso);
+  return Number.isNaN(instante.getTime()) ? fechaDiaISO(iso) : fechaCalendarioCR(instante);
+}
 
 /**
  * Encabezado del pago al mensajero EN SU PANTALLA. Aquí se llama "Ganancia" (y no "Pago
@@ -253,6 +265,6 @@ export function filaDescargaDiaCierrePasado(cierre: CierrePasadoDTO): DescargaFi
     transferencia: cierre.totales.transferencia,
     general: cierre.totales.general,
     ganancia: cierre.totalPagoMensajero,
-    fecha: fechaDiaISO(cierre.solicitadoAt),
+    fecha: diaCR(cierre.solicitadoAt),
   };
 }
