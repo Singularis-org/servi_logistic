@@ -28,7 +28,15 @@ function distrito(
   nombre: string,
   activo: boolean,
 ): ProvinciaArbolDTO["cantones"][number]["distritos"][number] {
-  return { id, nombre, zonaId: "z-sur", zonaNombre: "Zona Sur", zonaEspecial: false, activo };
+  return {
+    id,
+    nombre,
+    zonaId: "z-sur",
+    zonaNombre: "Zona Sur",
+    zonas: [{ id: "z-sur", nombre: "Zona Sur" }],
+    zonaEspecial: false,
+    activo,
+  };
 }
 
 //  Puntarenas (activa)
@@ -58,6 +66,13 @@ const ARBOL: ProvinciaArbolDTO[] = [
 
 /** Los tres distritos de la zona que se está editando, incluidos los DOS retirados. */
 const INICIALES = ["d-cab", "d-vol", "d-cortes"];
+
+/**
+ * SLT-75: la zona que se edita. Sin ella, los tres distritos (que son de «Zona Sur») saldrían
+ * bloqueados por pertenecer a otra zona, y este archivo mide que la casilla de un retirado SIGUE
+ * operable dentro de su propia zona.
+ */
+const ZONA_EDITADA = "z-sur";
 
 beforeEach(() => {
   vi.spyOn(console, "log").mockImplementation(() => {});
@@ -89,6 +104,7 @@ async function montarYDesplegar(onSelectedChange?: (ids: string[]) => void) {
     <GeografiaSelector
       provincias={ARBOL}
       initialSelected={INICIALES}
+      zonaEnEdicionId={ZONA_EDITADA}
       onSelectedChange={onSelectedChange}
     />,
   );
@@ -144,6 +160,7 @@ describe("374/R47 — el selector de Tarifas SIGUE ofreciendo los nodos retirado
       <GeografiaSelector
         provincias={ARBOL}
         initialSelected={INICIALES}
+        zonaEnEdicionId={ZONA_EDITADA}
         onSelectedChange={onSelectedChange}
       />,
     );

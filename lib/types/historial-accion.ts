@@ -50,7 +50,7 @@ import { esFechaCalendarioValida } from "@/lib/utils/fecha-cr";
 // saldo con el que la central lo persigue. El motivo de cada uno esta escrito a su lado.
 
 /**
- * Los 74 tipos de accion. El ORDEN de esta tupla es el del Anexo A (dinero, desaparicion,
+ * Los 75 tipos de accion. El ORDEN de esta tupla es el del Anexo A (dinero, desaparicion,
  * permisos) mas las integraciones de SL-36, los modulos de SL-23 y el plan de SL-24, y es el que consume el selector de filtros: no se
  * reordena por gusto.
  */
@@ -259,6 +259,10 @@ export const HISTORIAL_ACCION_TIPOS = [
   // lo escribe otro metodo. `monto` = el pago nuevo; `valor_anterior`/`valor_nuevo` van NULL y el
   // MOTIVO NO ENTRA (R5 de la 362): el antes/despues y el motivo viven en `gestion_pago_mensajero_ajuste`.
   "cierre_dia_pago_mensajero_ajustado", // CierresAdminRepository.ajustarPagoMensajeroEnCierre
+  // ⭑ SLT-76 (R8-R11) — un maestro cambio los DISTRITOS de una zona al editarla. Una fila por
+  // distrito añadido o quitado, todas con el lote del guardado. DINERO: el distrito decide la zona
+  // de cada orden, y la zona su flete y el pago al mensajero. Solo al editar (Q1-e).
+  "zona_distrito_cambiado", // zonas.actualizarZona -> ZonaRepository.update (SOLO update)
 
   // --- A.2 · hace desaparecer algo (10) ---
   // ⭑ FICHA 371 — la fecha de una reprogramacion ya registrada, corregida por un coordinador.
@@ -520,6 +524,8 @@ export const CATEGORIA_POR_ACCION: Record<HistorialAccionTipo, CategoriaAccion> 
   cierre_bodega_conciliacion_revertida: "mueve_dinero",
   // SLT-56: el ajuste cambia lo que el mensajero cobra por una gestion y el total de pago del cierre.
   cierre_dia_pago_mensajero_ajustado: "mueve_dinero",
+  // SLT-76 (Q1-d): el distrito decide la zona de la orden, y la zona su flete y su pago.
+  zona_distrito_cambiado: "mueve_dinero",
   gestion_fecha_reprogramacion_corregida: "hace_desaparecer",
   orden_eliminada: "hace_desaparecer",
   orden_recuperada: "hace_desaparecer",
@@ -605,6 +611,7 @@ export const ACCION_LABELS: Record<HistorialAccionTipo, string> = {
   cierre_bodega_conciliado: "Marcó recibida una consolidación de bodega",
   cierre_bodega_conciliacion_revertida: "Revirtió la conciliación de una consolidación de bodega",
   cierre_dia_pago_mensajero_ajustado: "Ajustó el pago al mensajero de una gestión",
+  zona_distrito_cambiado: "Cambió los distritos de una zona",
   gestion_fecha_reprogramacion_corregida: "Corrigió la fecha de una reprogramación",
   orden_eliminada: "Eliminó una orden",
   orden_recuperada: "Recuperó una orden",

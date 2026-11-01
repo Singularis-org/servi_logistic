@@ -203,9 +203,15 @@ async function respaldo(tx: TxDeTest, ids: string[]): Promise<Fila[] | null> {
   );
 }
 
-async function esquemaRespaldo(tx: TxDeTest): Promise<boolean> {
+/**
+ * La tabla del respaldo de ESTA ficha. El esquema `respaldo` es compartido (SLT-75 guarda ahi su
+ * propio respaldo): el down quita la tabla y el esquema solo si queda vacio, asi que se mide la
+ * tabla. SLT-76 retira los dos respaldos (`20261102090100_slt76_retirar_respaldos`); el down sin
+ * respaldo y la convivencia con un objeto ajeno: `slt76-retirar-respaldos-migration.test.ts`.
+ */
+async function tablaRespaldo(tx: TxDeTest): Promise<boolean> {
   const [{ existe }] = await tx.$queryRawUnsafe<{ existe: boolean }[]>(
-    `SELECT to_regnamespace('respaldo') IS NOT NULL AS existe`,
+    `SELECT to_regclass('respaldo.slt73_asientos') IS NOT NULL AS existe`,
   );
   return existe;
 }
@@ -294,14 +300,14 @@ describeSiHayBase("SLT-73 T8 — migracion C: retirar los asientos de los cierre
       const trasUp = await blob(tx, e.ids);
       await down(tx);
       const trasDown = await blob(tx, e.ids);
-      const esquemaTrasDown = await esquemaRespaldo(tx);
+      const tablaTrasDown = await tablaRespaldo(tx);
       await up(tx);
       const trasSegundoUp = await blob(tx, e.ids);
-      return { antes, trasUp, trasDown, esquemaTrasDown, trasSegundoUp };
+      return { antes, trasUp, trasDown, tablaTrasDown, trasSegundoUp };
     });
     expect(r.trasUp.length).toBeLessThan(r.antes.length);
     expect(r.trasDown).toEqual(r.antes);
-    expect(r.esquemaTrasDown).toBe(false);
+    expect(r.tablaTrasDown).toBe(false);
     expect(r.trasSegundoUp).toEqual(r.trasUp);
   });
 

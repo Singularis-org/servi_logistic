@@ -32,9 +32,12 @@ function consolidableDbRow(overrides: Record<string, unknown> = {}) {
 
 function buildPrisma(overrides: Record<string, unknown> = {}) {
   return {
-    cierreDia: { findMany: vi.fn(), count: vi.fn() },
+    cierreDia: { findMany: vi.fn().mockResolvedValue([]), count: vi.fn() },
     cierreBodega: { count: vi.fn(), create: vi.fn(), findMany: vi.fn() },
     $transaction: vi.fn(),
+    // SLT-76 (R3/R4): los dos libros de `consolidacionesConDinero`, vacios (sin dinero asentado).
+    walletMovimiento: { findMany: vi.fn().mockResolvedValue([]) },
+    conciliacionBodegaAjuste: { findMany: vi.fn().mockResolvedValue([]) },
     ...overrides,
   };
 }
@@ -298,6 +301,8 @@ describe("CierreBodegaRepository.findCierresBodegaByZona (F1.4-h)", () => {
       // ESCRITOS A MANO: comparar `faltaPorRecibir` contra la resta que lo produce seria una
       // asercion contra su propia fuente.
       conciliado: true,
+      // SLT-76 (R3/R4): conciliada y sin asientos ni ajustes en los libros del doble -> se ofrece.
+      desmarcable: true,
       montoRecibido: "10.00",
       faltaPorRecibir: "-8.50",
       conciliadoAt: "2026-07-12T12:00:00.000Z",
@@ -355,13 +360,15 @@ describe("feature 393 — el mapper deriva «Para la central» para TODAS las le
 
   function prismaSatelite(filas: unknown[]) {
     return {
-      cierreDia: { findMany: vi.fn(), count: vi.fn() },
+      cierreDia: { findMany: vi.fn().mockResolvedValue([]), count: vi.fn() },
       cierreBodega: {
         count: vi.fn().mockResolvedValue(filas.length),
         create: vi.fn(),
         findMany: vi.fn().mockResolvedValue(filas),
       },
       $transaction: vi.fn(),
+      walletMovimiento: { findMany: vi.fn().mockResolvedValue([]) },
+      conciliacionBodegaAjuste: { findMany: vi.fn().mockResolvedValue([]) },
     };
   }
 
@@ -379,6 +386,8 @@ describe("feature 393 — el mapper deriva «Para la central» para TODAS las le
       $transaction: vi.fn(),
       historialAccion: { createMany: vi.fn() },
       usuario: { findUnique: vi.fn() },
+      walletMovimiento: { findMany: vi.fn().mockResolvedValue([]) },
+      conciliacionBodegaAjuste: { findMany: vi.fn().mockResolvedValue([]) },
     };
   }
 

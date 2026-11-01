@@ -442,7 +442,7 @@ describe("Ficha 459 — la barra reparte «De las tiendas» y «De la empresa» 
         "Las tiendas le deben a la empresa, así que todo lo que hay en la caja es de la empresa y además hay dinero por cobrarles.",
       sin_reparto:
         "No hay nada que repartir: ni la empresa ni las tiendas tienen dinero a favor en la caja.",
-      // SLT-73 (D13): texto provisional del diseño, a mano.
+      // SLT-73 (D13): texto definitivo (Carlos, 2026-11-01, SLT-76), a mano.
       tres_tramos:
         "Una parte de la barra no está en la caja: es lo que las satélites entregaron de menos al conciliar y todavía no han pagado. No es dinero de la empresa ni de las tiendas.",
     });

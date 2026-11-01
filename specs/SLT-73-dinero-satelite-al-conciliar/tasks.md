@@ -78,7 +78,7 @@
   `design.md > Trazabilidad` están verdes y sus mutaciones mueren, con autocomprobación.
 - [x] **T12 — Enmienda D12: bloque, tercer tramo de la barra y dueño en la pantalla de caja (R28,
   R29, R30 en pantalla).** `frontend_dev`. Aprobada por Carlos 2026-10-31 (D13: tercer tramo; D14:
-  el bloque siempre, también con ₡0). Las pistas y «Satélite» siguen provisionales.
+  el bloque siempre, también con ₡0). Las pistas y «Satélite» quedaron definitivas (Carlos, 2026-11-01).
   Toca:
   - `CajaResumenCard.tsx`: tercer bloque hermano `data-bolsillo="satelites"`, fuera del de la
     empresa, que se pinta siempre. También `BOLSILLO_EMPRESA.tres_tramos`;
@@ -116,7 +116,7 @@
   R35).** `frontend_dev`. Depende de —.
   - Docstring de `ColumnaConciliacion`.
   - `DineroIdentidadesEnPantalla:830` contra «Para la central», con un fixture que lleve SINPE.
-  - En `conciliacion-labels.ts`, la constante renombrada con el texto provisional de Q10; los
+  - En `conciliacion-labels.ts`, la constante renombrada con el texto definitivo de Q10; los
     lectores se censan con grep.
 
   *Hecho:* los tests R34 y R35 están verdes, las mutaciones mueren y se verifica en el navegador

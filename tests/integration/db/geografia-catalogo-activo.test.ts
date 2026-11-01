@@ -57,12 +57,9 @@ interface Sembrado {
   distritoHeredado: string;
   /** Activo, con CERO zonas. */
   distritoSinZona: string;
-  /** Activo, con DOS zonas: ambiguo, NO tiene zona utilizable. */
-  distritoDosZonas: string;
   /** Canton activo bajo la provincia INACTIVA. */
   cantonBajoProvinciaOff: string;
   zonaA: string;
-  zonaB: string;
   zonaANombre: string;
 }
 
@@ -87,9 +84,6 @@ describeSiHayBase("374 — el catalogo geografico proyecta la disponibilidad (Po
       const zonaANombre = `Zona A ${SUFIJO}`;
       const zonaA = (await tx.zona.create({ data: { sinpeNumero: "80000000", sinpeNombre: "Titular de Prueba", nombre: zonaANombre }, select: { id: true } }))
         .id;
-      const zonaB = (
-        await tx.zona.create({ data: { sinpeNumero: "80000000", sinpeNombre: "Titular de Prueba", nombre: `Zona B ${SUFIJO}` }, select: { id: true } })
-      ).id;
 
       const provinciaOk = (
         await tx.provincia.create({ data: { nombre: `Prov OK ${SUFIJO}` }, select: { id: true } })
@@ -141,10 +135,9 @@ describeSiHayBase("374 — el catalogo geografico proyecta la disponibilidad (Po
       const distritoOff = await crearDistrito("Dist OFF", cantonOk, false, [zonaA]);
       const distritoHeredado = await crearDistrito("Dist heredado", cantonOff, true, [zonaA]);
       const distritoSinZona = await crearDistrito("Dist sin zona", cantonOk, true, []);
-      const distritoDosZonas = await crearDistrito("Dist dos zonas", cantonOk, true, [
-        zonaA,
-        zonaB,
-      ]);
+      // SLT-75: ya no hay «distrito en DOS zonas» en el corpus. El indice unico
+      // `(organizacion_id, distrito_id)` de `zona_distrito` lo hace irrepresentable dentro de una
+      // empresa; la rama «>1» del colapso sigue probada en unit (design §8.1).
 
       return fn({
         s: {
@@ -157,9 +150,7 @@ describeSiHayBase("374 — el catalogo geografico proyecta la disponibilidad (Po
           distritoOff,
           distritoHeredado,
           distritoSinZona,
-          distritoDosZonas,
           zonaA,
-          zonaB,
           zonaANombre,
         },
         geo: new GeoRepository(tx as unknown as PrismaClient),
@@ -173,7 +164,7 @@ describeSiHayBase("374 — el catalogo geografico proyecta la disponibilidad (Po
   // Anti-vacuidad: el corpus llego a la base
   // ===============================================================================================
 
-  it("el corpus se sembro: 2 provincias, 3 cantones y 5 distritos de prueba", async () => {
+  it("el corpus se sembro: 2 provincias, 3 cantones y 4 distritos de prueba", async () => {
     await conCorpus(async ({ s, tx }) => {
       const [fila] = await tx.$queryRawUnsafe<Array<{ p: number; c: number; d: number }>>(
         `SELECT (SELECT COUNT(*)::int FROM "provincia" WHERE "nombre" LIKE $1) AS p,
@@ -181,7 +172,7 @@ describeSiHayBase("374 — el catalogo geografico proyecta la disponibilidad (Po
                 (SELECT COUNT(*)::int FROM "distrito"  WHERE "nombre" LIKE $1) AS d`,
         `%${SUFIJO}`,
       );
-      expect(fila).toEqual({ p: 2, c: 3, d: 5 });
+      expect(fila).toEqual({ p: 2, c: 3, d: 4 });
       expect(s.distritoOk).not.toBe(s.distritoOff);
     });
   });
@@ -217,7 +208,7 @@ describeSiHayBase("374 — el catalogo geografico proyecta la disponibilidad (Po
       });
     });
 
-    it("`listDistritosLite` trae los cinco, con la disponibilidad EFECTIVA de cada uno", async () => {
+    it("`listDistritosLite` trae los cuatro, con la disponibilidad EFECTIVA de cada uno", async () => {
       await conCorpus(async ({ s, geo }) => {
         const porId = new Map((await geo.listDistritosLite()).map((f) => [f.id, f]));
         expect(porId.get(s.distritoOk)?.disponible).toBe(true);
@@ -226,7 +217,6 @@ describeSiHayBase("374 — el catalogo geografico proyecta la disponibilidad (Po
         expect(porId.get(s.distritoHeredado), "el distrito heredado no salio").toBeDefined();
         expect(porId.get(s.distritoHeredado)?.disponible).toBe(false);
         expect(porId.get(s.distritoSinZona)?.disponible).toBe(true);
-        expect(porId.get(s.distritoDosZonas)?.disponible).toBe(true);
       });
     });
 
@@ -317,6 +307,8 @@ describeSiHayBase("374 — el catalogo geografico proyecta la disponibilidad (Po
           ?.distritos.find((x) => x.id === s.distritoOk);
         expect(d?.zonaId).toBe(s.zonaA);
         expect(d?.zonaNombre).toBe(s.zonaANombre);
+        // SLT-75 R14: la lista completa trae esa misma zona, con id y nombre.
+        expect(d?.zonas).toEqual([{ id: s.zonaA, nombre: s.zonaANombre }]);
       });
     });
 
@@ -330,26 +322,8 @@ describeSiHayBase("374 — el catalogo geografico proyecta la disponibilidad (Po
         expect(d, "el distrito sin zona no esta en el arbol").toBeDefined();
         expect(d?.zonaId).toBeNull();
         expect(d?.zonaNombre).toBeNull();
-      });
-    });
-
-    it("⭑ con DOS zonas, `null` TAMBIEN: no devuelve la primera", async () => {
-      // Es la mentira que la ficha corrige. Con `take: 1`, este distrito mostraba «(zona: X)»
-      // aunque la carga masiva lo rechaza por ambiguo. La marca «sin zona» de la pantalla nueva
-      // heredaria esa mentira.
-      await conCorpus(async ({ s, geo, tx }) => {
-        // Anti-vacuidad: el distrito tiene DE VERDAD dos filas en la puente.
-        const filas = await tx.zonaDistrito.count({ where: { distritoId: s.distritoDosZonas } });
-        expect(filas).toBe(2);
-
-        const arbol = await geo.listArbol();
-        const d = arbol
-          .find((p) => p.id === s.provinciaOk)
-          ?.cantones.find((c) => c.id === s.cantonOk)
-          ?.distritos.find((x) => x.id === s.distritoDosZonas);
-        expect(d, "el distrito de dos zonas no esta en el arbol").toBeDefined();
-        expect(d?.zonaId).toBeNull();
-        expect(d?.zonaNombre).toBeNull();
+        // SLT-75 R14: sin zonas, la lista viene vacia (no `undefined`).
+        expect(d?.zonas).toEqual([]);
       });
     });
   });
@@ -374,7 +348,7 @@ describeSiHayBase("374 — el catalogo geografico proyecta la disponibilidad (Po
         const crudo = await tx.distrito.count({ where: { cantonId: s.cantonOk } });
         const filas = await ordenes.findDistritosByCantonIds([s.cantonOk]);
         expect(filas).toHaveLength(crudo);
-        expect(crudo).toBe(4); // OK, OFF, sin zona, dos zonas
+        expect(crudo).toBe(3); // OK, OFF, sin zona (SLT-75: ya no hay «dos zonas»)
       });
     });
 

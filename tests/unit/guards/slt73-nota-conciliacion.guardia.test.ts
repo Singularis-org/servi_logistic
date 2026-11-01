@@ -60,7 +60,7 @@ describe("SLT-73 R35 — la nota vieja de la conciliación no vuelve", () => {
     expect(TEXTOS_VIEJOS.some((re) => re.test(quitarComentarios(enComentario)))).toBe(false);
   });
 
-  it("la nota nueva es el texto provisional de Q10, literal y a mano", () => {
+  it("la nota nueva es el texto definitivo de Q10, literal y a mano", () => {
     expect(`${CONCILIACION_ASIENTA_TITULO} ${CONCILIACION_ASIENTA_NOTA}`).toBe(
       "Marcar recibido asienta el dinero en la caja. Después no se puede desmarcar: si el monto no es el correcto, usa «Corregir»",
     );

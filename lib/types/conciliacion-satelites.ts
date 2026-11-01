@@ -194,6 +194,13 @@ export interface ConsolidacionSateliteDTO {
   faltaPorRecibir: string;
   /** Derivado de `conciliadoAt !== null`. */
   conciliado: boolean;
+  /**
+   * SLT-76 (R3/R4) — ¿se ofrece «Desmarcar»? `conciliado && !consolidacionesConDinero.has(id)`,
+   * DERIVADO EN EL SERVIDOR con el MISMO predicado con el que `revertirConciliacion` responde
+   * `con_asientos` (asientos `cierre_dia` de sus cierres o un ajuste de diferencia). REQUERIDO: una
+   * superficie que no lo lea no compila. `false` en toda consolidacion sin conciliar.
+   */
+  desmarcable: boolean;
   conciliadoAt: string | null;
   conciliadoPorNombre: string | null;
   /** Texto libre corto. No baja a las descargas ni entra al historial (R5 de la 362). */

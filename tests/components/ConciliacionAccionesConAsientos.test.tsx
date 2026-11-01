@@ -21,7 +21,22 @@ import { ConciliacionAcciones } from "@/components/shared/conciliacion/Conciliac
 
 const onCambio = vi.fn();
 
-function montar() {
+type Marca = {
+  conciliado: boolean;
+  faltaPorRecibir: string;
+  montoRecibido: string | null;
+  desmarcable: boolean;
+};
+
+/** Recibida entera y SIN dinero asentado: la que el servidor da por desmarcable. */
+const RECIBIDA_DESMARCABLE: Marca = {
+  conciliado: true,
+  faltaPorRecibir: "0.00",
+  montoRecibido: "67090.25",
+  desmarcable: true,
+};
+
+function montar(marca: Marca = RECIBIDA_DESMARCABLE) {
   render(
     <ToastProvider>
       <ConciliacionAcciones
@@ -29,7 +44,7 @@ function montar() {
         bodega="FGAM Limón"
         fecha="15 sept"
         declarado="67090.25"
-        marca={{ conciliado: true, faltaPorRecibir: "0.00", montoRecibido: "67090.25" }}
+        marca={marca}
         puedeConciliar
         onCambio={onCambio}
       />
@@ -78,5 +93,38 @@ describe("SLT-73 R14 — revertir con asientos se rechaza con aviso propio", () 
       await screen.findByText("Marca deshecha. La consolidación vuelve a estar pendiente de conciliar."),
     ).toBeInTheDocument();
     expect(onCambio).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── SLT-76 (R3/R4) — «Desmarcar» sólo cuando el servidor dice que se puede ──────────────────────
+// `desmarcable` lo deriva el servidor con el mismo predicado con el que `revertirConciliacion`
+// responde `con_asientos`. Aquí se mide que el componente lo RESPETA: con `false` no se ofrece.
+describe("SLT-76 R3 — «Desmarcar» sólo si la marca es desmarcable", () => {
+  const DESMARCAR = /^Desmarcar la consolidación/;
+  const CORREGIR = /^Corregir el monto recibido/;
+
+  it("recibida con dinero asentado (desmarcable: false): no hay «Desmarcar»", () => {
+    montar({ conciliado: true, faltaPorRecibir: "0.00", montoRecibido: "67090.25", desmarcable: false });
+    // Recibida entera: tampoco «Marcar recibido» ni «Corregir». Que la ausencia no sea un montaje
+    // vacío lo prueba el caso siguiente (misma marca con `true`) y la mutación «el componente ignora el campo» de T2.
+    expect(screen.queryByRole("button", { name: /Desmarcar/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Marcar recibido|Corregir/ })).toBeNull();
+  });
+
+  it("recibida sin dinero asentado (desmarcable: true): sí hay «Desmarcar»", () => {
+    montar({ conciliado: true, faltaPorRecibir: "0.00", montoRecibido: "67090.25", desmarcable: true });
+    expect(screen.getByRole("button", { name: DESMARCAR })).toBeInTheDocument();
+  });
+
+  it("recibido incompleto con dinero asentado: «Corregir» sí, «Desmarcar» no", () => {
+    montar({ conciliado: true, faltaPorRecibir: "7090.25", montoRecibido: "60000.00", desmarcable: false });
+    expect(screen.getByRole("button", { name: CORREGIR })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Desmarcar/ })).toBeNull();
+  });
+
+  it("recibido incompleto sin dinero asentado: «Corregir» y «Desmarcar»", () => {
+    montar({ conciliado: true, faltaPorRecibir: "7090.25", montoRecibido: "60000.00", desmarcable: true });
+    expect(screen.getByRole("button", { name: CORREGIR })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: DESMARCAR })).toBeInTheDocument();
   });
 });

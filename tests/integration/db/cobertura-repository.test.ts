@@ -129,7 +129,7 @@ describeSiHayBase("465 — CoberturaRepository contra Postgres real", () => {
     // SL-38 (R15): la marca es de la EMPRESA. `enTransaccionRevertida` ya fijo una, y el `DEFAULT`
     // de `organizacion_id` la toma de ahi. «Cero Zonas» se queda sin marca: «No», nunca «Sin definir».
     await tx.distritoZonaEspecial.create({ data: { distritoId: dUna } });
-    const dDos = await distrito("Dos Zonas", cantonVivo.id);
+    const dOtraZonaUno = await distrito("Otra Zona Uno", cantonVivo.id);
     const dCentral = await distrito("En La Central", cantonVivo.id);
     const dRetirado = await distrito("Retirado Propio", cantonVivo.id, { activo: false });
     const dBajoCanton = await distrito("Bajo Cantón Retirado", cantonRetirado.id);
@@ -137,8 +137,7 @@ describeSiHayBase("465 — CoberturaRepository contra Postgres real", () => {
     await tx.zonaDistrito.createMany({
       data: [
         { zonaId: z1, distritoId: dUna },
-        { zonaId: z1, distritoId: dDos },
-        { zonaId: z2, distritoId: dDos },
+        { zonaId: z1, distritoId: dOtraZonaUno },
         { zonaId: central.id, distritoId: dCentral },
         { zonaId: z3, distritoId: dRetirado },
         { zonaId: z1, distritoId: dBajoCanton },
@@ -175,7 +174,7 @@ describeSiHayBase("465 — CoberturaRepository contra Postgres real", () => {
     );
     // Anti-vacuidad: los SEIS distritos sembrados, incluidos los dos no disponibles.
     expect([...mias.keys()].sort()).toEqual(
-      ["Bajo Cantón Retirado", "Cero Zonas", "Dos Zonas", "En La Central", "Retirado Propio", "Una Zona"].sort(),
+      ["Bajo Cantón Retirado", "Cero Zonas", "En La Central", "Otra Zona Uno", "Retirado Propio", "Una Zona"].sort(),
     );
 
     const nombresZona = (r: DistritoCoberturaRow | undefined) => (r?.zonas ?? []).map((z) => z.id).sort();
@@ -189,8 +188,9 @@ describeSiHayBase("465 — CoberturaRepository contra Postgres real", () => {
       zonas: [{ id: semilla.z1, nombre: `${SUFIJO}-Z1`, esCentral: false }],
     });
 
-    // Dos zonas: llegan LAS DOS (no colapsadas a null como en `listArbol`).
-    expect(nombresZona(mias.get("Dos Zonas"))).toEqual([semilla.z1, semilla.z2].sort());
+    // SLT-75: con el indice `(organizacion_id, distrito_id)` un distrito ya no puede estar en dos
+    // zonas de la empresa; «Otra Zona Uno» llega con la suya como array sin colapsar.
+    expect(nombresZona(mias.get("Otra Zona Uno"))).toEqual([semilla.z1]);
 
     expect(mias.get("En La Central")!.zonas).toEqual([
       { id: semilla.centralId, nombre: semilla.centralNombre, esCentral: true },
