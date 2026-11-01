@@ -53,3 +53,5 @@ recargar algunos salen desmarcados. Al volver a guardar se borran de verdad.
 ## Modelos (overrides)
 
 ## Cierre
+
+- 2026-10-31 (Carlos): spec APROBADO, «Aprobado, implementa». Rastro en historial → ficha aparte (Q1).
