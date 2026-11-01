@@ -41,7 +41,8 @@ vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabric
 //   R   consolidacion RECHAZADA: no sale. Su cierre r1 (400, aprobado el 4 oct) SI cuenta: rechazar no
 //       suelta los cierres (Q11) y R5 lo sigue contando → fila «sin consolidar» de 400,00
 //   s1  un cierre SIN consolidar sin recaudo, con pago al mensajero (5 oct) → −200,00, con su signo
-//   NO cuentan: un cierre `solicitado` (5 000), uno `rechazado` (6 000), uno con destino
+//   NO cuentan: un cierre `rechazado` colgado de A (9 000, defensivo), uno `solicitado` (5 000), uno
+//   `rechazado` (6 000), uno con destino
 //   `bodega_central` hacia la zona Z (7 000) y uno de OTRA bodega satelite W (999).
 //
 //   Corrido: 1 150 → 1 750 → 1 250 → 1 650 → 1 450.
@@ -162,6 +163,9 @@ describeSiHayBase("SLT-73 T13 — el estado de cuenta de la bodega es la deuda (
     ).id;
     await cierre({ general: "1000.00", efectivo: "400.00", pago: "100.00", gana: "50.00", aprobadoAt: antes(D1), cierreBodegaId: consolidacionA });
     await cierre({ general: "300.00", aprobadoAt: antes(D1), cierreBodegaId: consolidacionA });
+    // Defensivo: el dominio no consolida un cierre que no este aprobado, pero si uno apareciera colgado de
+    // A, la deuda (R5) no lo cuenta y el declarado tampoco debe (el mismo predicado; mutacion N18).
+    await cierre({ general: "9000.00", estado: "rechazado", aprobadoAt: antes(D1), cierreBodegaId: consolidacionA });
 
     const consolidacionB = (
       await tx.cierreBodega.create({
