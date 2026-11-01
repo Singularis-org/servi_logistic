@@ -55,3 +55,6 @@ hotfix SLT-73 y SLT-75 antes de volver a EP-8.
 ## Modelos (overrides)
 
 ## Cierre
+- 2026-11-01 (Carlos): spec APROBADO («Aprobado, implementa»). Q1 = valores por defecto del spec
+  (una fila por distrito al editar, «distrito (cantón)», `zona_distrito_cambiado`). Q2 = bloque 1
+  con `fechaCalendarioCR`; SLT-42 lo generaliza después.
