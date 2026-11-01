@@ -4582,6 +4582,11 @@ enum HistorialAccionTipo {
   /// SLT-56: alguien ajusto el pago al mensajero de una gestion al revisar su cierre abierto.
   /// `monto` = el pago nuevo; el antes/despues y el motivo viven en `gestion_pago_mensajero_ajuste`.
   cierre_dia_pago_mensajero_ajustado
+  /// SLT-76 (R8-R11): un maestro cambio los DISTRITOS de una zona al editarla. Una fila por distrito
+  /// añadido o quitado, todas con el lote del guardado. Entra en «mueve dinero»: el distrito decide
+  /// la zona de cada orden, y la zona su flete y el pago al mensajero. `valor_anterior`/`valor_nuevo`
+  /// llevan «distrito (canton)» recortado a 60; solo al editar, ni al crear ni al borrar la zona.
+  zona_distrito_cambiado
 
   // --- hace desaparecer algo (10) ---
   /// FICHA 371: corregir la fecha de una reprogramacion ya registrada. ENTRA POR «hace desaparecer

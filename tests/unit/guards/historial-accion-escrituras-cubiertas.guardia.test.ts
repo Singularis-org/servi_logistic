@@ -313,6 +313,24 @@ const CENSO: EntradaCenso[] = [
     mutacion: /tx\.tarifaZonaMensajero\.deleteMany\(/,
   },
   {
+    // ⭑ SLT-76 (R8-R10) — LOS DISTRITOS DE UNA ZONA. Comparte metodo con el resto del guardado
+    // (`update`) y por eso su `appendAccion` va dentro de la MISMA `$transaction` que el
+    // `deleteMany` + `createMany` de `zona_distrito`. La mutacion que se exige es ese `deleteMany`,
+    // que es lo que la fila documenta.
+    //
+    // ⚠️ LIMITE CONOCIDO de esta guardia (fichas 376 y 380): mide POR METODO, y `update` ya tiene
+    // otros tres `appendAccion`. Borrar el de los distritos la deja verde; lo cubre
+    // `tests/integration/db/zona-distrito-rastro.test.ts`, contra Postgres real. Lo que SI vigila
+    // aqui es que ninguna de las cuatro llamadas escriba por otro cliente que no sea la `tx`.
+    //
+    // ⚠️ NO HAY ENTRADA PARA `create` NI PARA `hardDelete` (Q1-e de SLT-76): solo al editar.
+    tipos: ["zona_distrito_cambiado"],
+    archivo: "lib/repositories/ZonaRepository.ts",
+    metodo: "update",
+    forma: "abre_tx",
+    mutacion: /tx\.zonaDistrito\.deleteMany\(/,
+  },
+  {
     // ⭑ FICHA 429 — EL SINPE DE UNA BODEGA. Metodo PROPIO y no una escritura mas dentro de
     // `update`, y eso es deliberado: esta guardia mide POR METODO, no por escritura (medido dos
     // veces en este repo, fichas 376 y 380). Si el guardado del SINPE viviera dentro de `update`
@@ -1100,7 +1118,8 @@ describe("362/R16 — cada tipo del catalogo tiene al menos un punto de escritur
     // 73 desde SL-24 (`plan_asignado`, de `PlanesRepository.asignar`).
     // 74 desde SLT-56 (`cierre_dia_pago_mensajero_ajustado`, de
     // `CierresAdminRepository.ajustarPagoMensajeroEnCierre`).
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(74);
+    // 75 desde SLT-76 (`zona_distrito_cambiado`, en `ZonaRepository.update`).
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(75);
   });
 });
 

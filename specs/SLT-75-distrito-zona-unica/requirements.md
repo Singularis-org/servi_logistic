@@ -131,7 +131,7 @@ El mapa completo, con el archivo de cada test, está en `design.md > §8`.
 ## Preguntas abiertas
 
 **Q1 · El rastro de distritos añadidos/quitados en `historial_accion` va como ficha aparte. [NO
-BLOQUEA el hotfix; lo decide Carlos]**
+BLOQUEA el hotfix; la resuelve SLT-76]**
 
 Se pidió registrar en `historial_accion` los distritos que entran y salen en cada guardado de zona,
 salvo que costara más que «una migración de enum y unas líneas». Cuesta bastante más (medido en
@@ -161,7 +161,8 @@ viene de `progress/features/SLT-75.md`]**
 
 Es dato de configuración. Lo resuelve el maestro desde la pantalla, no esta ficha.
 
-**Q3 · ¿Cuánto tiempo se conserva el respaldo de R10? [NO BLOQUEA]**
+**Q3 · ¿Cuánto tiempo se conserva el respaldo de R10? [CERRADA en SLT-76: respaldos retirados en
+SLT-76]**
 
 El spec lo deja en el esquema `respaldo` sin fecha de retirada (`design.md` §3). Quitarlo es una
 migración de una línea en una ficha futura, cuando Carlos lo decida.

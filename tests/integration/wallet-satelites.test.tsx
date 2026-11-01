@@ -155,6 +155,8 @@ function consolidacion(over: Partial<ConsolidacionSateliteDTO> = {}): Consolidac
     montoRecibido: null,
     faltaPorRecibir: "100000.00",
     conciliado: false,
+    // SLT-76 (R3): una SIN conciliar nunca es desmarcable.
+    desmarcable: false,
     conciliadoAt: null,
     conciliadoPorNombre: null,
     nota: null,
@@ -174,6 +176,9 @@ const INCOMPLETA = consolidacion({
   conciliado: true,
   conciliadoAt: "2026-09-15T17:40:00.000Z",
   conciliadoPorNombre: "Ana Rojas",
+  // SLT-76 (R3): conciliada SIN dinero asentado ni ajuste, así que el servidor la da por
+  // desmarcable; los casos de «Desmarcar» de abajo miden ese diálogo.
+  desmarcable: true,
 });
 
 /** La que llegó ENTERA. */
@@ -187,6 +192,9 @@ const COMPLETA = consolidacion({
   conciliado: true,
   conciliadoAt: "2026-09-13T16:02:00.000Z",
   conciliadoPorNombre: "Ana Rojas",
+  // SLT-76 (R3): conciliada SIN dinero asentado ni ajuste, así que el servidor la da por
+  // desmarcable; los casos de «Desmarcar» de abajo miden ese diálogo.
+  desmarcable: true,
 });
 
 // --- Montaje -------------------------------------------------------------
@@ -442,7 +450,7 @@ describe("R22/R24 — la conciliación de una bodega (458-D: en su estado de cue
     expect(within(region).queryByRole("status")).toBeNull();
   });
 
-  it("SLT-73 R35 — la nota del pie dice que marcar asienta el dinero y que se corrige con «Corregir» (Q10, provisional)", async () => {
+  it("SLT-73 R35 — la nota del pie dice que marcar asienta el dinero y que se corrige con «Corregir» (Q10, definitiva)", async () => {
     const region = await montarConciliacion();
     const nota = within(region).getByRole("note");
     // Literal a mano (Q10), no la constante: comparar contra su propia fuente siempre es verde.

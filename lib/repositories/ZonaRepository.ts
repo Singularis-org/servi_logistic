@@ -12,7 +12,11 @@ import { zonaUnicaDeDistrito } from "@/lib/repositories/_shared/zona-colapso";
 import { ESTADOS_PAQUETE_EN_ESTANTE } from "@/lib/utils/estados-bodega-satelite";
 import { normalizeName } from "@/lib/utils/normalize";
 import { appendAccion, resolverActorCongelado } from "@/lib/repositories/registrar-accion";
-import { etiquetaDeEntidad } from "@/lib/types/historial-accion-etiquetas";
+import {
+  ETIQUETA_DESCONOCIDA,
+  etiquetaDeEntidad,
+  valorDeCatalogo,
+} from "@/lib/types/historial-accion-etiquetas";
 import type { ImpactoZonaCentralDTO, TarifaZonaMensajeroDTO, ZonaDTO } from "@/lib/types/zona";
 import type {
   CreateZonaData,
@@ -100,6 +104,63 @@ function filasDeCambioDeMarca(
     ...(centralPrevia === null ? [] : [entrada(centralPrevia, true)]),
     entrada(zonaQueLaGana, false),
   ];
+}
+
+/** SLT-76 (R8): los distritos que un guardado añade y los que quita, sin repetidos. */
+interface CambioDeDistritos {
+  anadidos: string[];
+  quitados: string[];
+}
+
+/** SLT-76 (R8/R10): `nuevos − previos` y `previos − nuevos`. Los dos vacios = la lista no cambio. */
+function diferenciaDeDistritos(previos: readonly string[], nuevos: readonly string[]): CambioDeDistritos {
+  const antes = new Set(previos);
+  const despues = new Set(nuevos);
+  return {
+    anadidos: [...despues].filter((d) => !antes.has(d)),
+    quitados: [...antes].filter((d) => !despues.has(d)),
+  };
+}
+
+/** Un distrito con su canton, tal como lo lee `update` para el texto de la fila. */
+interface DistritoConCanton {
+  id: string;
+  nombre: string;
+  canton: { nombre: string };
+}
+
+/**
+ * ⭑ SLT-76 (R8/R9) — LAS FILAS DEL CAMBIO DE DISTRITOS, UNA POR DISTRITO.
+ *
+ * La zona es la de DESPUES del guardado. El distrito viaja como «distrito (canton)» —el canton
+ * desambigua dos distritos con el mismo nombre— recortado a 60 en origen por `valorDeCatalogo`,
+ * porque Postgres no trunca `VARCHAR(60)`: aborta. Añadido → solo `valorNuevo`; quitado → solo
+ * `valorAnterior`. Ordenadas por ese texto para que el lote se lea igual siempre.
+ */
+function filasDeCambioDeDistritos(
+  zona: ZonaConNombre,
+  cambio: CambioDeDistritos,
+  distritos: readonly DistritoConCanton[],
+  actor: { actorUsuarioId: string | null; actorNombre: string | null; actorRol: RolValue | null },
+) {
+  const porId = new Map(distritos.map((d) => [d.id, d]));
+  const texto = (distritoId: string) => {
+    const d = porId.get(distritoId);
+    return d ? valorDeCatalogo(`${d.nombre} (${d.canton.nombre})`) : ETIQUETA_DESCONOCIDA;
+  };
+  const entradas = [
+    ...cambio.anadidos.map((d) => ({ texto: texto(d), anterior: null, nuevo: texto(d) })),
+    ...cambio.quitados.map((d) => ({ texto: texto(d), anterior: texto(d), nuevo: null })),
+  ].sort((a, b) => a.texto.localeCompare(b.texto, "es"));
+  return entradas.map((e) => ({
+    accion: "zona_distrito_cambiado" as const,
+    entidadTipo: "zona" as const,
+    entidadId: zona.id,
+    entidadEtiqueta: etiquetaDeEntidad("zona", { nombre: zona.nombre }),
+    valorAnterior: e.anterior,
+    valorNuevo: e.nuevo,
+    ...actor,
+  }));
 }
 
 type TarifaRow = {
@@ -716,6 +777,33 @@ export class ZonaRepository implements IZonaRepository {
                 ...actorDelPago,
               },
             ],
+            randomUUID(),
+          );
+        }
+
+        // ⭑ SLT-76 (R8-R10) — EL RASTRO DE LOS DISTRITOS: una fila por distrito añadido o quitado,
+        // con un lote PROPIO por guardado (el cuarto de este metodo; agrupa filas homogeneas). Si
+        // la lista no cambio, no se escribe nada (R10). Un guardado rechazado ya salio arriba,
+        // antes de la primera escritura. Con `tx` y nunca con `this.prisma`, que escribiria fuera
+        // de la transaccion (ficha 373).
+        const cambioDeDistritos = diferenciaDeDistritos(
+          distritosPrevios.map((d) => d.distritoId),
+          data.distritoIds,
+        );
+        if (cambioDeDistritos.anadidos.length > 0 || cambioDeDistritos.quitados.length > 0) {
+          const nombres = await tx.distrito.findMany({
+            where: { id: { in: [...cambioDeDistritos.anadidos, ...cambioDeDistritos.quitados] } },
+            select: { id: true, nombre: true, canton: { select: { nombre: true } } },
+          });
+          const actorDeDistritos = await resolverActorCongelado(tx, actorUsuarioId);
+          await appendAccion(
+            tx,
+            filasDeCambioDeDistritos(
+              { id, nombre: zona.nombre },
+              cambioDeDistritos,
+              nombres,
+              actorDeDistritos,
+            ),
             randomUUID(),
           );
         }

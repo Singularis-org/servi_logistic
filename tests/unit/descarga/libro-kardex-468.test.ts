@@ -273,7 +273,7 @@ describe("468 R17/R18/R20/R21 — Concepto, Detalle, A quién, Es dinero de", ()
   it("R20/R21: «A quién» y «Registró» sin autoría dicen «—» (nunca un id); «Es dinero de» usa las palabras de la tabla", () => {
     const f = filaBaseCaja(mov(1, { dueno: "terceros" }), undefined, null);
     expect(f.esDineroDe).toBe(DUENO_LABEL.terceros);
-    // SLT-73 (design §2.9.8, R29): + el dueño de la diferencia de la satélite (rótulo provisional, T12).
+    // SLT-73 (design §2.9.8, R29): + el dueño de la diferencia de la satélite (rótulo definitivo, T12; Carlos 2026-11-01).
     expect(DUENO_LABEL).toEqual({
       propio: "La empresa",
       terceros: "Tienda",

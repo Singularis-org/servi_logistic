@@ -410,3 +410,37 @@ describe("feature 393 — «Para la central» en el archivo de los cierres de bo
     }
   });
 });
+
+// SLT-76 (R21) — el día de las descargas de cierres es el de COSTA RICA, no el UTC. El instante
+// es las 23:03 del 31 de octubre en Costa Rica (05:03 del 1 de noviembre en UTC): recortar el ISO
+// daba «2026-11-01». El esperado se escribe A MANO.
+describe("SLT-76 (R21) — las fechas de la descarga de cierres de bodega son de Costa Rica", () => {
+  const CIERRE: CierreBodegaResumen = {
+    cierreBodegaId: "cb-7621",
+    zonaId: "z-1",
+    zonaNombre: "Zona Prueba",
+    solicitadoPorId: "u-sat",
+    solicitadoPorNombre: "Usuario Prueba",
+    estado: "aprobado",
+    totales: { efectivo: "10.00", simpe: "0.00", transferencia: "0.00", general: "10.00" },
+    totalPagoMensajero: "1.00",
+    totalIngresoBodegaRechazos: "0.00",
+    cantidadCierres: 1,
+    solicitadoAt: "2026-11-01T05:03:00.000Z",
+    resueltoAt: "2026-11-01T05:03:00.000Z",
+    motivoRechazo: null,
+    paraLaCentral: "9.00",
+    efectivoCubreDescuentos: true,
+    ...marcaSinConciliar("10.00"),
+  };
+
+  it("«Fecha» de la cola, «Fecha resuelta» del histórico y «Fecha de solicitud» dan el día de Costa Rica", () => {
+    expect(filaDescargaBodegaPendiente(CIERRE).fecha).toBe("2026-10-31");
+    expect(filaDescargaBodegaResuelto(CIERRE).fechaResuelta).toBe("2026-10-31");
+    expect(filaDescargaBodegaSolicitado(CIERRE).fechaSolicitud).toBe("2026-10-31");
+  });
+
+  it("un cierre sin resolver sigue bajando «Fecha resuelta» vacía (null)", () => {
+    expect(filaDescargaBodegaResuelto({ ...CIERRE, resueltoAt: null }).fechaResuelta).toBeNull();
+  });
+});

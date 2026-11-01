@@ -26,6 +26,9 @@ function buildTx() {
     // no lo miden no tengan que fijarlo.
     orden: { findMany: vi.fn().mockResolvedValue([]), updateMany: vi.fn(), count: vi.fn().mockResolvedValue(0) },
     tarifaZonaMensajero: { createMany: vi.fn(), deleteMany: vi.fn(), findMany: vi.fn() },
+    // SLT-76: los nombres de los distritos añadidos o quitados, para su rastro. Su SQL se prueba
+    // contra Postgres en `tests/integration/db/zona-distrito-rastro.test.ts`.
+    distrito: { findMany: vi.fn().mockResolvedValue([]) },
     // FICHA 362: el borrado registra su accion DENTRO de esta misma transaccion.
     historialAccion: { createMany: vi.fn() },
     usuario: {
@@ -885,6 +888,16 @@ function filasDeHistorial(tx: ReturnType<typeof buildTx>, n = 0): Record<string,
 
 const DATOS_BASE = { nombre: "B", cobroVehiculo: false, distritoIds: ["d1"], tarifas: [] };
 
+/**
+ * SLT-76: la zona YA tenia `d1` antes del guardado, asi que `DATOS_BASE` no cambia sus distritos y
+ * no deja fila de `zona_distrito_cambiado`. Lo usan los casos que afirman «sin rastro» de la marca.
+ */
+function distritosSinCambio(tx: ReturnType<typeof buildTx>, zonaId: string): void {
+  tx.zonaDistrito.findMany.mockReset().mockImplementation(async (args: unknown) =>
+    esLecturaDeConflictos(args) ? [] : [{ distritoId: "d1", zonaId }],
+  );
+}
+
 describe("376/T6 — la guarda de `update` (R5) y el desenlace nombrado", () => {
   it("⭑ R5: `esCentral: false` sobre la zona QUE ES la central -> `sin_zona_central`, sin escribir NADA", async () => {
     const tx = buildTx();
@@ -907,6 +920,7 @@ describe("376/T6 — la guarda de `update` (R5) y el desenlace nombrado", () => 
     // La guarda es «no quedarse sin», no «la marca no se apaga nunca». Sin este caso, quitar el
     // `&& exists.esCentral` de la condicion pasaria desapercibido.
     const tx = buildTx();
+    distritosSinCambio(tx, "zB");
     tx.zona.findUnique.mockResolvedValue({ id: "zB", esCentral: false });
     tx.zona.update.mockResolvedValue({
       id: "zB",
@@ -936,6 +950,7 @@ describe("376/T6 — la guarda de `update` (R5) y el desenlace nombrado", () => 
     tx.tarifaZonaMensajero.findMany.mockResolvedValue([]);
     const prisma = buildPrisma(tx);
 
+    distritosSinCambio(tx, "zA");
     const res = await repoOf(prisma).update("zA", DATOS_BASE, "u-maestro");
 
     expect(res.estado).toBe("ok");
@@ -961,11 +976,32 @@ describe("376/T6 — la guarda de `update` (R5) y el desenlace nombrado", () => 
     tx.tarifaZonaMensajero.findMany.mockResolvedValue([]);
     const prisma = buildPrisma(tx);
 
+    distritosSinCambio(tx, "zA");
     await repoOf(prisma).update("zA", { ...DATOS_BASE, esCentral: true }, "u-maestro");
 
     expect(tx.historialAccion.createMany).not.toHaveBeenCalled();
     // Y tampoco se molesta en preguntar por la central previa: no la hay que apagar.
     expect(tx.zona.findFirst).not.toHaveBeenCalled();
+  });
+});
+
+describe("SLT-76 — `update` sin cambio de distritos no toca su rastro (R10)", () => {
+  it("con la misma lista, no lee los nombres de los distritos ni escribe ninguna fila", async () => {
+    // El `appendAccion` con lista vacia ya es un no-op; lo que este caso fija es que la condicion
+    // «sin cambios» existe: sin ella, cada guardado pagaria una lectura de distritos de mas.
+    const tx = buildTx();
+    distritosSinCambio(tx, "zB");
+    tx.zona.findUnique.mockResolvedValue({ id: "zB", esCentral: false });
+    tx.zona.update.mockResolvedValue({ id: "zB", nombre: "B", cobroVehiculo: false, esCentral: false });
+    tx.tarifaZonaMensajero.findMany.mockResolvedValue([]);
+
+    const res = await repoOf(buildPrisma(tx)).update("zB", DATOS_BASE, "u-maestro");
+
+    expect(res.estado).toBe("ok");
+    // Premisa: el guardado si corrio el reemplazo de la N:M.
+    expect(tx.zonaDistrito.deleteMany).toHaveBeenCalled();
+    expect(tx.distrito.findMany).not.toHaveBeenCalled();
+    expect(tx.historialAccion.createMany).not.toHaveBeenCalled();
   });
 });
 

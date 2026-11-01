@@ -305,9 +305,16 @@ function folio(cierreId: string): string {
   return cierreId.slice(-8).toUpperCase();
 }
 
-/** Fecha ISO → `YYYY-MM-DD` (lo mismo que muestran las tablas). `null` → "—". */
+/**
+ * Instante ISO → `YYYY-MM-DD` en el CALENDARIO DE COSTA RICA. `null` o un instante inválido → "—".
+ * SLT-76 (R1): antes recortaba el texto, que es el día UTC, y todo cierre solicitado, resuelto o
+ * conciliado después de las 18:00 salía fechado al día siguiente. Mismo criterio que `rechazadoAt`.
+ */
 function fecha(iso: string | null): string {
-  return iso ? iso.slice(0, 10) : "—";
+  if (!iso) return "—";
+  const instante = new Date(iso);
+  if (Number.isNaN(instante.getTime())) return "—";
+  return fechaCalendarioCR(instante);
 }
 
 /* ------------------------------------------------------------------ *

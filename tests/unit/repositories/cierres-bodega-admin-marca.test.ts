@@ -65,6 +65,8 @@ interface OpcionesDoble {
   cierresDia?: { id: string }[];
   /** SLT-73: filas de caja con origen `cierre_dia` que cuenta `revertirConciliacion`. */
   asentados?: number;
+  /** SLT-76 (R5): cuantos ajustes de diferencia tiene la consolidacion (0 = ninguno). */
+  ajustes?: number;
   /** SLT-73: Σ `diferencia` de los ajustes previos (null = no hay). */
   yaAsentado?: string | null;
 }
@@ -96,8 +98,17 @@ function buildPrisma(opciones: OpcionesDoble = {}) {
     totalPagoMensajero: new Prisma.Decimal("40.00"),
     totalIngresoBodegaRechazos: new Prisma.Decimal("10.00"),
   }));
-  const cierreDiaFindMany = vi.fn<(args: unknown) => Promise<{ id: string }[]>>(async () => opciones.cierresDia ?? []);
-  const walletCount = vi.fn<(args: unknown) => Promise<number>>(async () => opciones.asentados ?? 0);
+  // SLT-76: la fila trae tambien `cierreBodegaId`, que es lo que lee `consolidacionesConDinero`.
+  const cierreDiaFindMany = vi.fn<(args: unknown) => Promise<{ id: string; cierreBodegaId: string }[]>>(
+    async () => (opciones.cierresDia ?? []).map((c) => ({ ...c, cierreBodegaId: "cb1" })),
+  );
+  // SLT-76: el predicado compartido lee los asientos con `findMany` (distinct por origen), no `count`.
+  const walletFindMany = vi.fn<(args: unknown) => Promise<{ origenId: string }[]>>(async () =>
+    (opciones.asentados ?? 0) > 0 ? (opciones.cierresDia ?? []).map((c) => ({ origenId: c.id })) : [],
+  );
+  const ajusteFindMany = vi.fn<(args: unknown) => Promise<{ cierreBodegaId: string }[]>>(async () =>
+    (opciones.ajustes ?? 0) > 0 ? [{ cierreBodegaId: "cb1" }] : [],
+  );
   const ajusteAggregate = vi.fn(async () => ({
     _sum: {
       diferencia:
@@ -113,8 +124,8 @@ function buildPrisma(opciones: OpcionesDoble = {}) {
   const tx = {
     cierreBodega: { updateMany, findUnique, findUniqueOrThrow, count },
     cierreDia: { findMany: cierreDiaFindMany },
-    walletMovimiento: { count: walletCount },
-    conciliacionBodegaAjuste: { aggregate: ajusteAggregate, create: ajusteCreate },
+    walletMovimiento: { findMany: walletFindMany },
+    conciliacionBodegaAjuste: { aggregate: ajusteAggregate, create: ajusteCreate, findMany: ajusteFindMany },
     historialAccion: { createMany },
     usuario: { findUnique: usuarioFindUnique },
   };
@@ -130,7 +141,8 @@ function buildPrisma(opciones: OpcionesDoble = {}) {
     count,
     createMany,
     cierreDiaFindMany,
-    walletCount,
+    walletFindMany,
+    ajusteFindMany,
     ajusteCreate,
   };
 }
@@ -316,15 +328,31 @@ describe("431/T7 — CierresBodegaAdminRepository.revertirConciliacion", () => {
   });
 
   it("⭑ SLT-73 R14: con asientos de sus cierres en la caja -> `con_asientos`, sin update ni historial", async () => {
-    const { prisma, updateMany, createMany, walletCount } = buildPrisma({
+    const { prisma, updateMany, createMany, walletFindMany } = buildPrisma({
       cierresDia: [{ id: "cd1" }, { id: "cd2" }],
       asentados: 7,
     });
     const r = await repoCon(prisma).revertirConciliacion({ id: "cb1", actorUsuarioId: "u-maestro" });
 
     expect(r).toBe("con_asientos");
-    expect(walletCount.mock.calls[0][0]).toEqual({
+    expect(walletFindMany.mock.calls[0][0]).toEqual({
       where: { origenTipo: "cierre_dia", origenId: { in: ["cd1", "cd2"] } },
+      distinct: ["origenId"],
+      select: { origenId: true },
+    });
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(createMany).not.toHaveBeenCalled();
+  });
+
+  it("SLT-76 R5: SIN asientos de sus cierres pero CON un ajuste de diferencia -> `con_asientos`, sin update ni historial", async () => {
+    const { prisma, updateMany, createMany, ajusteFindMany } = buildPrisma({ cierresDia: [], ajustes: 1 });
+    const r = await repoCon(prisma).revertirConciliacion({ id: "cb1", actorUsuarioId: "u-maestro" });
+
+    expect(r).toBe("con_asientos");
+    expect(ajusteFindMany.mock.calls[0][0]).toEqual({
+      where: { cierreBodegaId: { in: ["cb1"] } },
+      distinct: ["cierreBodegaId"],
+      select: { cierreBodegaId: true },
     });
     expect(updateMany).not.toHaveBeenCalled();
     expect(createMany).not.toHaveBeenCalled();

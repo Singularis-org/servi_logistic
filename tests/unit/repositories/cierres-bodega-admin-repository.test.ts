@@ -189,6 +189,7 @@ describe("CierresBodegaAdminRepository.findCierresBodega (R15)", () => {
       // fila es `solicitado` —sin conciliar—, asi que falta por llegar «Para la central» ENTERO
       // (1.50, SLT-73 R8) y NO el efectivo (10.00) ni cero.
       conciliado: false,
+      desmarcable: false, // SLT-76 (R3/R4): sin conciliar no hay nada que desmarcar
       montoRecibido: null,
       faltaPorRecibir: "1.50",
       conciliadoAt: null,
