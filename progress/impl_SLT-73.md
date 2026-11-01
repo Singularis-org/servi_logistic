@@ -1235,3 +1235,47 @@ revertido_status=[]
 **MUERE por aserción**, en un archivo `slt73-*` que el CI sí cuenta.
 
 Veredicto: B1 cerrado (M2 muere) y m2 cerrado (R14 en un `slt73-*` con datos propios; M4 muere por aserción).
+
+## Tanda 12 — verificación en navegador (m1) — frontend_dev (2026-11-01)
+
+Sin cambios de código ni de tests commiteados. Spec DESECHABLE `e2e/_tmp-slt73-navegador.spec.ts` + config temporal
+`playwright.tmp-slt73.config.ts` (el spec no casa con ningún proyecto de `playwright.config.ts`; la config importa la
+base y declara un único proyecto que solo lo incluye). Ambos borrados al terminar. `npx prisma generate` antes de
+arrancar; `conciliacionBodegaAjuste` en el cliente: 739 antes y después. MCP no usado (Grep/Read).
+
+**Escenario:** `crearEscenarioReparto` (tarifa del mensajero 1.500 / 500), mensajero de la satélite con una entrega de
+9.000 en efectivo y un rechazo, cierre del día aprobado; saldo inicial 10.000 sembrado (como SL-40) para que la caja
+esté en «saldo» y pinte barra. El adminSatelite solicita el cierre de bodega por la UI y el maestro lo marca recibido
+por **5.000** de «Para la central» 7.000 (precarga 7.000 comprobada) → faltante 2.000. Caso ₡0: `crearEscenarioCaja`.
+
+**Comando:** `NEXT_PUBLIC_APP_URL=http://localhost:3073 E2E_PUERTO=3073 E2E_SERVIDOR=dev conbase73c.sh pnpm exec
+playwright test --config playwright.tmp-slt73.config.ts e2e/_tmp-slt73-navegador.spec.ts --reporter=line` (base
+`servi_slt73c`, un solo `next dev` en el 3073). Salida: **`5 passed (39.8s)` · `EXIT=0`**. Servidor cerrado (puerto
+libre).
+
+| # | Comprobado (aserciones + lectura del DOM) | Resultado |
+|---|---|---|
+| 1 | `/wallet`: `section[data-bolsillo="satelites"]` «Por cobrar a satélites · Positivo · ₡2.000 · Lo que las satélites entregaron de menos…». Barra `data-modo="tres_tramos"`, 3 segmentos `tiendas:30%`, `por_cobrar:11.43%`, `empresa:flex`; nombre accesible «De las tiendas: ₡5.250. Por cobrar a satélites: ₡2.000. De la empresa: ₡10.250 (lo que está en la caja)» | OK |
+| 2 | Libro: una sola fila con `data-dueno="por_cobrar_satelite"`: «Diferencia de la satélite (entregó menos) · Sale ₡2.000 · Satélite» (punto rojo) | OK |
+| 3 | `/cierres-admin` › Bodega › Resueltos › «Ver detalles»: región «Conciliación» Monto recibido ₡5.000 + Falta por recibir ₡2.000 = «Para la central» ₡7.000 (badge «Recibido incompleto»). Diálogo «Desmarcar»: «Marcar recibido asienta el dinero en la caja. Después no se puede desmarcar: si el monto no es el correcto, usa «Corregir»», sin «no mueve dinero» | OK |
+| 4 | Empresa sin diferencias (`crearEscenarioCaja`): bloque «Por cobrar a satélites · En cero · ₡0» con la pista positiva | OK |
+| móvil | `/wallet` a 390px: el bloque se ve entero (310×134), sin desborde horizontal (`scrollWidth` = `clientWidth` = 390), debajo del de la empresa | OK |
+
+**Capturas** (`C:/Users/ArqDev/AppData/Local/Temp/claude/R--job-singularis-projects-servi-logistic/210b8bd4-84dc-4aa0-a674-0c03d0a09afc/scratchpad/navegador73/`):
+`00-marcar-recibido-5000.png`, `01-wallet-satelite-faltante.png`, `01b-bloque-satelites.png`, `01c-barra-3-tramos.png`,
+`02-fila-libro-satelite.png`, `03-cierres-admin-conciliacion.png`, `03b-region-conciliacion.png`,
+`03c-dialogo-desmarcar-nota-q10.png`, `04-wallet-cero.png`, `04b-bloque-cero.png`, `05-wallet-movil-390.png`,
+`05b-wallet-movil-390-bloque.png`; log `run.log`.
+
+**Observaciones (no arregladas, fuera del alcance o ya abiertas):**
+- La corrida cruzó la medianoche UTC (05:03 UTC = 23:03 en CR). La tarjeta del cierre de bodega dice `2026-11-01` y
+  «Conciliado el 2026-11-01», mientras el diálogo y el libro dicen `2026-10-31`: `fecha()` de `cierre-factura.tsx` hace
+  `iso.slice(0, 10)` (fecha UTC). Preexistente: el archivo no cambia esa función en SLT-73.
+- El indicador de Next dev muestra «1 Issue» en `/wallet` (captura móvil). No se abrió; es del modo dev.
+- En la captura de página completa del libro, «A quién» y «Registró» salen «Cargando…» (lectura diferida, captura
+  tomada antes de que llegara); no afecta a lo verificado.
+- La barra representa E+T (17.500), no «Dinero en caja» (15.500 = E+T−P), como dice D13.
+- Abierto ya anotado en la tanda 10: el diálogo «Desmarcar» de una marca con asientos ofrece el botón y dice «Después
+  no se puede desmarcar»; al confirmarlo sale el aviso `con_asientos` (paso 3 del E2E).
+
+**Veredicto:** m1 verificado en navegador: los 4 puntos y el móvil cuadran con R28–R30, R34 y R35; sin defectos de SLT-73.
