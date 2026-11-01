@@ -114,6 +114,81 @@ El cliente compartido estaba generado (23:01) desde un schema que no era ni el d
 SLT-73, y daba 12 errores de typecheck en archivos de Wallet ajenos. Se guardó una copia en
 `<scratchpad>/prisma-client-bak` y se corrió `prisma generate` desde esta rama a las 23:37:14.
 
+La otra sesión volvió a regenerar el cliente desde otro schema (23:51:35, 23:54:52, 23:56:50,
+23:57:19). La de las 23:51 rompió un archivo de `test:rapido` («Cannot find module
+'.prisma/client/default'») y la de las 23:54 rompió el primer `next build` (enum
+`egreso_diferencia_satelite`, de SLT-73). Antes de cada build se generó otra vez desde esta rama
+(23:52:44, 23:55:41, 23:58:19). Copias del cliente ajeno en `<scratchpad>/prisma-client-bak{,2,3}`.
+
 ## Gate
 
-(se completa abajo)
+`NODE_OPTIONS=--max-old-space-size=8192 ./init.sh` (con `conbase75.sh`, base `servi_slt75`), log
+`<scratchpad>/gate_SLT-75.log`:
+
+```
+✗ feature_list.json invalido:
+specs/SLT-75-distrito-zona-unica/ no tiene ficha en R:\...\servi_logistic\feature_list.json: falta SLT-75.
+INIT_EXIT=1
+```
+
+El validador lee el `feature_list.json` del worktree principal, que no tiene la ficha SLT-75: falta
+el import F0, que es del leader. Como `fail` corta el script, se corrieron a mano los pasos
+siguientes del modo rápido (`<scratchpad>/gate75_manual.sh`, log `gate_SLT-75_manual.log`):
+
+| Paso | Resultado |
+|---|---|
+| `scripts/gate-proyecto.sh` | `GP_EXIT=0` |
+| `pnpm run typecheck` | `TC_EXIT=0` |
+| `pnpm run lint` | `LINT_EXIT=0` (0 errores, 232 avisos que ya estaban) |
+| `pnpm run test:rapido` | `Test Files 1 failed \| 408 passed (409)`, `Tests 5856 passed \| 26 skipped`; rojo nuevo: `tests/unit/components/recuperar-orden.ui.test.tsx` |
+| `down.sql` de todas las migraciones | ninguna falta |
+
+El único rojo, `recuperar-orden.ui.test.tsx`, es «Cannot find module '.prisma/client/default'»: la
+otra sesión regeneró el cliente a las 23:51:35, dentro de la corrida (23:42-23:51). Solo, con el
+cliente ya regenerado: `Test Files 1 passed (1)`, `Tests 16 passed (16)`. El archivo no está en el
+diff de esta rama.
+
+**Pendiente del leader:** importar SLT-75 a `feature_list.json` y volver a correr `./init.sh`.
+
+## E2E (local, `next build` + `next start`, puerto 3075, base `servi_slt75`)
+
+`E2E_PUERTO=3075 NEXT_PUBLIC_APP_URL=http://localhost:3075 pnpm exec playwright test
+e2e/zona-especial-dos-empresas.spec.ts e2e/dos-empresas-humo.spec.ts` (más su dependencia
+`plataforma-vacia`). Log en `<scratchpad>/e2e_SLT-75.log`:
+
+```
+Running 21 tests using 1 worker
+  21 passed (1.3m)
+E2E_EXIT=0
+```
+
+El cliente Prisma no cambió durante el build ni durante el E2E (23:58:19 antes y después). Una
+corrida anterior falló en `superadmin-empresas` › «2. crea A y B…» porque faltaba
+`NEXT_PUBLIC_APP_URL` («[bienvenida] no se envio: falta NEXT_PUBLIC_APP_URL»). El CI la fija en
+`gate.yml:372`. No hay specs E2E de `configuracion/tarifas` aparte de `zona-especial-dos-empresas`.
+
+## Notas para el PR (las escribe el leader)
+
+- **Efecto visible para Carlos (design §3.3).** Tras el deploy, el distrito que estaba en dos zonas
+  queda sin zona. Una orden nueva con ese distrito se rechaza con «no tiene zona asignada» hasta que
+  el maestro lo asigne a una zona desde /configuracion/tarifas, cosa que ahora sí puede hacer.
+- **Para el dueño de SLT-43 (design §10).** Al llevar este hotfix a `dev`: el respaldo y el
+  `down.sql` usan columnas con nombre, así que conviven con `zona_distrito.nodo_geografico_id`, y el
+  `INSERT` del `down.sql` dispara su trigger. Si para entonces existe la guardia de migraciones
+  destructivas, `20261101090000` necesita su excepción declarada.
+- **Para el reviewer.** Los tres casos 377 de `zona-reconciliacion-ordenes` reescritos (fuera de la
+  lista de §8.1). Y el texto del toast de R21 queda «…Zona Norte. y 1 más.» (con punto delante de
+  « y»), literal del spec.
+
+## Evidencia visual (T8, local, datos sintéticos en `servi_slt75`)
+
+Spec Playwright de un solo uso (borrado, no versionado), 00:07:07-00:07:17, `next start` en 3075:
+
+- `<scratchpad>/evidencia75/selector-bloqueado.png`: «Editar zona» de «Zona Norte Demo 5488». Un
+  distrito de «Zona Sur Demo 5488» sale con la casilla deshabilitada y «(zona: Zona Sur Demo 5488)»;
+  el spec afirma `disabled` y el nombre accesible con «(zona: …)» (R15, R18).
+- `<scratchpad>/evidencia75/toast-distrito-en-otra-zona.png`: se marca un distrito libre, el spec lo
+  mete en la otra zona por base antes de guardar y al guardar sale el toast de error «<distrito> ya
+  está en la zona Zona Sur Demo 5488.», con el mismo texto bajo el selector (R1/R2, R3, R21).
+
+Para esa corrida se regeneró el cliente (00:02:42-00:02:48) y se rehízo el build (00:04:49-00:06:28).
