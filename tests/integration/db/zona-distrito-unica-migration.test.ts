@@ -350,7 +350,13 @@ describeSiHayBase("SLT-75 — migraciones contra Postgres (R7, R9-R12)", () => {
     expect(borradas).toHaveLength(2);
     // La base de test no tenia duplicados (el indice estaba puesto): el respaldo entero son estas.
     expect(f.respaldoTotalTrasUp).toBe(2);
-    expect(f.respaldoTrasUp.map(({ respaldado_at: _r, ...fila }) => fila)).toEqual(borradas);
+    const sinFecha = f.respaldoTrasUp.map((r) => ({
+      id: r.id,
+      zona_id: r.zona_id,
+      distrito_id: r.distrito_id,
+      organizacion_id: r.organizacion_id,
+    }));
+    expect(sinFecha).toEqual(borradas);
     for (const r of f.respaldoTrasUp) expect(r.respaldado_at).toBeInstanceOf(Date);
   });
 
