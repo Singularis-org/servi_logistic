@@ -227,3 +227,34 @@ be '23503'» (FK RESTRICT de cantón/distrito). **Ajeno, probado:** en un checko
 `origin/prod` (e4d53c38, worktree temporal ya borrado), contra la misma base, el mismo archivo da
 `Tests 2 failed | 9 passed (11)` con el mismo error. Ninguna migración del repo emite `23001`: lo
 emite el Postgres local (18.2). Ni el archivo ni esas FK están en el diff de la rama.
+
+## Vuelta 3 (enmienda R9/R9b, T0 midió 17 repetidos) — commit 434e3e85
+
+- `20261101090000…/migration.sql`: el respaldo (y por tanto el `DELETE … USING`) toma, por empresa y
+  distrito con más de una fila, todas las filas salvo la NO central cuando el distrito está en
+  exactamente 2 zonas y solo una es central (ventana `count(*) OVER w` y
+  `count(*) FILTER (WHERE z.es_central) OVER w`). R9: sale solo la fila de la central. R9b: 2 no
+  centrales o 3+ zonas → todas fuera. Sin la palabra `orden` (R11). `down.sql` sin cambios.
+- `zona-distrito-unica-migration.test.ts`, bloque «R9/R9b con zona central» (sintético): central +
+  no central (queda la no central); 2 no centrales (las dos fuera); 3 zonas con central (las tres
+  fuera); distrito de una sola zona intacto; empresa B con su propio R9 y un distrito intacto;
+  respaldo = exactamente las 7 filas borradas; el índice se crea sin error; el down devuelve las 11.
+  El caso original pasa a llamarse R9b. Con la convivencia: 2 archivos, 28 passed, 0 skipped.
+- Mutaciones (línea 48 del SQL, todas rojas y revertidas, `<scratchpad>/mut75r9.sh`): invertir el
+  lado conservado → «R9 — central + no central…»; sin distinguir `es_central` → R9 y «R7 — el índice
+  se crea sin error»; sin contar centrales → «R9b — dos zonas NO centrales…»; R9 también con 3 zonas →
+  «R9b — tres zonas (una central)…».
+- `servi_slt75b`: bajada, ida, down, ida → «All migrations have been successfully applied»;
+  `migrate diff --exit-code` «No difference detected.»; `migrate status` «Database schema is up to date!».
+
+### Gate v5 sobre 434e3e85 (`servi_slt75b`, `prisma generate` 10:20:07)
+
+`<scratchpad>/gate_SLT-75_v5.log`: typecheck y lint en verde; `test:rapido` `Test Files 3 failed |
+1318 passed (1321)`, `Tests 5 failed | 18082 passed | 26 skipped` → `INIT_EXIT=1`. Los tres rojos
+son ajenos:
+
+| Archivo | Prueba |
+|---|---|
+| `geografia-por-pais` (2) | el mismo de v4: falla igual en `origin/prod` limpio (`23001` del Postgres 18 local) |
+| `salida-a-reparto-sql-real` (2, «geografía de otro país: orden.provincia_id…») | solo, en HEAD: verde. Depende de la geografía que dejan otros archivos en la misma base |
+| `indices-rutas-calientes` (1, el plan de `agregarCubos` elige `analytics_daily_tienda_fecha_idx`) | inestable por el optimizador: en HEAD, 3 corridas solas → rojo, verde, verde; en `origin/prod` limpio, verde. `analytics_daily` no está en el diff |
