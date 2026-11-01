@@ -16,12 +16,14 @@ contra la misma base no se corren a la vez si uno hace DDL (memoria «Gate y mut
 paralelo»).
 
 ## T0 · Verificación en prod antes de borrar respaldos (leader, SOLO LECTURA) — R17
-- [ ] Con conexión de solo lectura, anotar en el PR:
+- [x] Con conexión de solo lectura, anotar en el PR (2026-11-01: 17 + 17 filas; `respaldo` sin
+  otros objetos; 0 movimientos de caja de cierres satélite sin conciliar; 0 distritos repetidos):
   - el número de filas de `respaldo.slt73_asientos` y de `respaldo.slt75_zona_distrito_duplicado`;
   - la lista de objetos del esquema `respaldo`.
 
   Sin nombres ni datos de producción.
-- [ ] Hacer con Carlos la verificación «SLT-73 y SLT-75 quedaron bien» que él pidió. El criterio lo
+- [x] Hacer con Carlos la verificación «SLT-73 y SLT-75 quedaron bien» que él pidió (verificado en
+  prod tras cada deploy; Carlos autoriza borrar: «si dale», 2026-11-01). El criterio lo
   fija él (`design.md §9.4`).
 - **Hecho:** los conteos y el OK de Carlos están escritos en el PR.
 
@@ -81,7 +83,7 @@ paralelo»).
 - **Hecho:** el test en verde, con el CONTROL que ve la fuga, y la mutación en rojo. No cambia código
   de la app.
 
-## T6 · Rastro de distritos — R8-R11 (`design.md §6`) — BLOQUEADA por Q1
+## T6 · Rastro de distritos — R8-R11 (`design.md §6`) — Q1 cerrada por Carlos (2026-11-01)
 - [x] Carlos confirma Q1 (a)-(f) o las cambia. Si cambia alguna, `spec_author` reescribe R8-R11 y
   §6 antes de seguir.
 - [x] Migración `20261102090000_slt76_historial_zona_distrito` (`migration.sql` con el `ADD VALUE`
@@ -140,9 +142,15 @@ paralelo»).
 - **Hecho:** la migración aplica en la base local y el esquema `respaldo` desaparece; los tres
   archivos en verde; las tres mutaciones en rojo; `migrate status` limpio.
 
+## T11 · Fecha CR en las descargas de cierres — R21 (`design.md §1.R21`)
+- [x] Las 7 columnas de fecha de las 4 descargas usan el día de Costa Rica.
+- [x] Función compartida en `lib/utils/fecha-dia-iso.ts` (m2 del review), sin copias por archivo.
+- [x] Casos R21 con `2026-11-01T05:03:00.000Z` → `2026-10-31` en cada test de columnas; mutaciones en rojo.
+- [x] `DESCARGAS_PENDIENTES` vacía.
+
 ## T10 · Gate y cierre
-- [ ] `progress/impl_SLT-76.md` con el mapa `R<n> -> test` (R1-R20) y la tabla de mutaciones.
-- [ ] `./init.sh` en verde, con `INIT_EXIT=$?` escrito dentro del log.
+- [x] `progress/impl_SLT-76.md` con el mapa `R<n> -> test` (R1-R21) y la tabla de mutaciones.
+- [x] `./init.sh` en verde, con `INIT_EXIT=$?` escrito dentro del log.
 - [ ] PR a `prod`: `gate-completo` y E2E en verde sin relanzar (`cierre-bodega-satelite`, `wallet`,
   `cierres-admin` y `dos-empresas-humo`).
 - [ ] D32 anotada como resuelta en `progress/deudas.md` de `dev` al sincronizar.

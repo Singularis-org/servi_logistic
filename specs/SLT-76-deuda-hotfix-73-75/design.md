@@ -66,6 +66,13 @@ normalizados y no son este defecto.
 
 ---
 
+### §1.R21 Descargas de cierres (enmienda 2026-11-01)
+Las 4 descargas de cierres (`cierre-dia`, `cierres-admin`, `cierres-bodega`, `cierres-gestiones-fundida`)
+usan una función compartida de `lib/utils/fecha-dia-iso.ts` (hermana de `fechaDiaMovimientoCR`, que no
+sirve tal cual porque trata la medianoche UTC como fecha sin hora): instante válido →
+`fechaCalendarioCR`; texto que no es instante → se devuelve tal cual (la guardia `columnas-sensibles`
+sondea cada columna con valores que no son fecha). `DESCARGAS_PENDIENTES` de la guardia de R2 queda vacía.
+
 ## §2 Bloque 2 — «Desmarcar» solo cuando se puede (R3, R4)
 
 **Causa.** `ConciliacionAcciones` muestra «Desmarcar» para todo estado distinto de `pendiente`
