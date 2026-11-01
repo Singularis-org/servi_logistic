@@ -14,6 +14,7 @@ import {
   composicionCajaNombreAccesible,
   CATEGORIA_TODAS_OPTION,
   DOCUMENTO_CAJA_NOMBRE,
+  DUENO_LABEL,
   MOTIVO_NO_ANULABLE_LABEL,
   ORIGEN_LABEL,
   TIPO_EGRESO_MANUAL_LABEL,
@@ -485,5 +486,15 @@ describe("SL-45 R1–R3 — el rótulo, la pista y el importe de la deuda, por e
 
   it("R1/R4: el botón de la región se llama «Registrar pago a la plataforma»", () => {
     expect(CAJA_RESUMEN_LABEL.registrarPagoPlataforma).toBe("Registrar pago a la plataforma");
+  });
+});
+
+// SLT-73 (D12, design §2.9.8, R29) — la diferencia de la satélite tiene dueño propio.
+describe("SLT-73 R29 — el dueño de la diferencia de la satélite", () => {
+  it("se llama «Satélite», no «Tienda» ni la empresa", () => {
+    expect(DUENO_LABEL.por_cobrar_satelite).toBe("Satélite");
+    expect(DUENO_LABEL.por_cobrar_satelite).not.toBe(DUENO_LABEL.terceros);
+    expect(DUENO_LABEL.por_cobrar_satelite).not.toBe(DUENO_LABEL.propio);
+    expect(DUENO_LABEL.por_cobrar_satelite).not.toBe(DUENO_LABEL.capital);
   });
 });

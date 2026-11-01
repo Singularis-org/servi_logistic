@@ -246,6 +246,10 @@ export const CAJA_COMPOSICION_LABEL = {
   barra: "Reparto del dinero en caja",
   tiendas: "De las tiendas",
   empresa: `De ${EMPRESA.enFrase}`,
+  // SLT-73 (D13, R30): el tercer tramo de la barra, con el rótulo del bloque.
+  porCobrarSatelites: "Por cobrar a satélites",
+  // SLT-73 (R30): en `tres_tramos` la porción de la empresa es solo la que está en la caja.
+  empresaEnCajaDetalle: "lo que está en la caja",
 } as const;
 
 /**
@@ -270,9 +274,11 @@ export const CAJA_COMPOSICION_MENSAJE: Record<ModoComposicionCaja, string | null
   // R18 de la 231: nada que repartir. Ni se enuncia porcentaje ni se pinta segmento alguno.
   sin_reparto:
     `No hay nada que repartir: ni ${EMPRESA.enFrase} ni las tiendas tienen dinero a favor en la caja.`,
-  // T12 — provisional de SLT-73 (backend, T11) solo para que compile: el mensaje de `tres_tramos` lo
-  // escribe frontend_dev en T12 (design §2.9.8).
-  tres_tramos: null,
+  // SLT-73 (D13, design §2.9.8): la barra se mide sobre lo que habría en la caja si las satélites
+  // hubieran entregado todo, así que hay que decir por qué un tramo no está en la caja. Texto
+  // PROVISIONAL del diseño, pendiente de que Carlos lo confirme (tasks T12).
+  tres_tramos:
+    `Una parte de la barra no está en la caja: es lo que las satélites entregaron de menos al conciliar y todavía no han pagado. No es dinero de ${EMPRESA.enFrase} ni de las tiendas.`,
 };
 
 /**
@@ -285,12 +291,46 @@ export const CAJA_COMPOSICION_MENSAJE: Record<ModoComposicionCaja, string | null
  * enunciar, y un nombre accesible que dependiera del modo diria cosas distintas segun el dia.
  */
 export function composicionCajaNombreAccesible(resumen: CajaResumenDTO): string {
+  // SLT-73 (R30, design §2.9.8): en `tres_tramos` la barra tiene TRES porciones y el nombre las
+  // enuncia en el orden en que se pintan. La de la empresa es `deEmpresaEnCaja`, no `deEmpresa`:
+  // la parte que la satélite debe ya tiene su propio tramo, y el navegador no resta nada.
+  if (resumen.modoComposicion === "tres_tramos") {
+    return (
+      `${CAJA_COMPOSICION_LABEL.barra}. ` +
+      `${CAJA_COMPOSICION_LABEL.tiendas}: ${money(resumen.deTerceros)}. ` +
+      `${CAJA_COMPOSICION_LABEL.porCobrarSatelites}: ${money(resumen.porCobrarSatelites)}. ` +
+      `${CAJA_COMPOSICION_LABEL.empresa}: ${money(resumen.deEmpresaEnCaja)} (${CAJA_COMPOSICION_LABEL.empresaEnCajaDetalle}).`
+    );
+  }
   return (
     `${CAJA_COMPOSICION_LABEL.barra}. ` +
     `${CAJA_COMPOSICION_LABEL.tiendas}: ${money(resumen.deTerceros)}. ` +
     `${CAJA_COMPOSICION_LABEL.empresa}: ${money(resumen.deEmpresa)} (ganancia, ${CAJA_RESUMEN_LABEL.iva} y aportes).`
   );
 }
+
+// ── SLT-73 (D12/D14, design §2.9.8, R28) — el bolsillo «Por cobrar a satélites» ──
+//
+// Un bloque PROPIO de la tarjeta, hermano de los de las tiendas y la empresa: no es dinero de la
+// empresa (D12), así que no es una región de `REGIONES_BOLSILLO_EMPRESA`. Se pinta siempre, también
+// con importe cero (D14).
+
+/** Rótulo del bloque (el de Carlos) y sus pistas. Las dos pistas son PROVISIONALES (tasks T12). */
+export const CAJA_POR_COBRAR_SATELITES_LABEL = {
+  rotulo: "Por cobrar a satélites",
+  pistaPositiva: "Lo que las satélites entregaron de menos al conciliar y aún no han pagado.",
+  pistaNegativa: "La central les debe a las satélites.",
+} as const;
+
+/**
+ * R28 — la pista según el SIGNO que deriva el servidor: aquí no se compara ningún importe. En cero
+ * se explica qué es el bloque, igual que en positivo. `Record` total: un signo nuevo no compila.
+ */
+export const CAJA_POR_COBRAR_SATELITES_PISTA: Record<WalletBalanceSigno, string> = {
+  positivo: CAJA_POR_COBRAR_SATELITES_LABEL.pistaPositiva,
+  cero: CAJA_POR_COBRAR_SATELITES_LABEL.pistaPositiva,
+  negativo: CAJA_POR_COBRAR_SATELITES_LABEL.pistaNegativa,
+};
 
 // ── SL-39 (design §7.1/§8, R9) — las regiones SECUNDARIAS del bolsillo de la empresa ──
 //
@@ -397,7 +437,8 @@ export const DUENO_LABEL: Record<NaturalezaMovimiento, string> = {
   terceros: "Tienda",
   // Ficha 459 (design §5) — el saldo inicial y los aportes de capital.
   capital: `${EMPRESA.alInicio} (capital)`,
-  // T12 — SLT-73 (design §2.9.8, R29): rótulo provisional del diseño; lo cierra frontend_dev en T12.
+  // SLT-73 (D12, design §2.9.8, R29): la diferencia de la satélite NO es de la tienda ni de la
+  // empresa. Rótulo PROVISIONAL del diseño, pendiente de que Carlos lo confirme (tasks T12).
   por_cobrar_satelite: "Satélite",
 };
 
