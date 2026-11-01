@@ -208,6 +208,18 @@ describe("431/T8 — el borde transporta lo que el servicio decide, sin reinterp
     ).toEqual({ status: "no_encontrada" });
   });
 
+  it("⭑ SLT-73 R14: `con_asientos` llega con el mensaje «Ya entró a la caja…»", async () => {
+    const service = fakeService({
+      revertirConciliacion: vi.fn(async () => ({ status: "con_asientos" as const })),
+    });
+    expect(
+      await revertirConciliacionAction({ cierreBodegaId: CB }, { service, ...conActor(MAESTRO) }),
+    ).toEqual({
+      status: "con_asientos",
+      mensaje: "Ya entró a la caja: corrige el monto en vez de revertir",
+    });
+  });
+
   it("el listado aplica los valores por defecto de paginacion del dominio", async () => {
     const service = fakeService();
     await listarSaldosSatelitesAction({}, { service, ...conActor(MAESTRO) });

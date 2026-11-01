@@ -157,8 +157,11 @@ export interface IEstadoCuentaRepository {
    */
   desgloseDeTienda(tiendaId: string): Promise<DesgloseTiendaAgregadoRow[]>;
   totalesDeMensajero(mensajeroId: string, antesDe?: Date): Promise<{ devengado: string; pagado: string }>;
-  /** Bodega: el efectivo declarado y lo recibido, sin las consolidaciones rechazadas. */
-  totalesDeBodega(zonaId: string, antesDe?: Date): Promise<{ efectivo: string; recibido: string }>;
+  /**
+   * Bodega: lo que sube el pendiente (`declarado` = el neto de las consolidaciones no rechazadas + los
+   * cierres sin consolidar; SLT-73 R31-R33) y lo recibido. La resta es la deuda de `/wallet/satelites`.
+   */
+  totalesDeBodega(zonaId: string, antesDe?: Date): Promise<{ declarado: string; recibido: string }>;
 
   /** Los movimientos del periodo `[desdeUtc, hastaUtc)` (para los totales netos, D3). */
   periodoDeTienda(tiendaId: string, desdeUtc?: Date, hastaUtc?: Date): Promise<MovimientoDelPeriodoRow[]>;

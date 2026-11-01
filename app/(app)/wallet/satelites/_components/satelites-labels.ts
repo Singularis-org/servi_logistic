@@ -105,6 +105,8 @@ export const SALDOS_SATELITES_COLUMNAS = {
   pendiente: "Pendiente",
   masAntigua: "Más antigua sin conciliar",
   ultimaRecibida: "Última recibida",
+  /** SLT-73 (R6): la parte de la deuda que sigue en cierres del día aún sin consolidar. */
+  sinConsolidar: "Sin consolidar",
   /** FICHA 458-D (R17): la columna del enlace al estado de cuenta. */
   estadoCuenta: "Estado de cuenta",
 } as const;
@@ -131,6 +133,19 @@ export function antiguedadLabel(dias: number | null): string {
   if (dias === 1) return "ayer";
   return `hace ${dias} días`;
 }
+
+/**
+ * SLT-73 (R6) — lo que la bodega debe por cierres del día que todavía no consolidó.
+ *
+ * Una bodega que cobra todo por SINPE y no consolida nunca tenía cola de consolidaciones, así que
+ * la antigüedad decía «al día» mientras debía el día entero. Mientras haya aporte sin consolidar,
+ * la antigüedad dice esto en su lugar.
+ */
+export const SIN_CONSOLIDAR = {
+  antiguedad: "sin consolidar",
+  /** «3 cierres»: el importe solo no se puede perseguir. */
+  cierres: (n: number) => `${n} ${plural(n, "cierre", "cierres")}`,
+} as const;
 
 /**
  * ⭑ LA ÚLTIMA QUE LLEGÓ: «16 sep · ₡ 485.000», y «de ₡ 500.000» sólo si llegó incompleta.
@@ -194,6 +209,12 @@ export const DESGLOSE_SATELITE_COLUMNAS = {
   conciliadoPor: "Conciliado por",
 } as const;
 
+/** SLT-73 (R9) — nombre accesible del desplegable de cada consolidación y de su cascada. */
+export const CASCADA_CONSOLIDACION_NOMBRE = {
+  expandir: (fecha: string) => `Ver la cuenta de la consolidación del ${fecha}`,
+  region: (titulo: string, fecha: string) => `${titulo} · consolidación del ${fecha}`,
+} as const;
+
 /** Nombres accesibles de la conciliación de UNA bodega, con su nombre dentro. FICHA 458-D (R31): la
  *  sección vive en el estado de cuenta de la bodega; deja de llamarse «Desglose». */
 export const DESGLOSE_SATELITE_NOMBRE = {
@@ -221,12 +242,20 @@ function plural(n: number, singular: string, plural_: string): string {
   return n === 1 ? singular : plural_;
 }
 
-/** FICHA 458-D (T D.4, R17, R31) — la página del estado de cuenta de UNA bodega satélite. */
+/**
+ * FICHA 458-D (T D.4, R17, R31) — la página del estado de cuenta de UNA bodega satélite.
+ *
+ * SLT-73 (R31–R33, enmienda 2): lo «declarado» ya no es el efectivo sino lo que la bodega le
+ * entrega a la central («Para la central»), y hay una fila por cada cierre aprobado que todavía no
+ * está en una consolidación (`chip = "sin_consolidar"`, origen `cierre_dia`). TEXTOS PROVISIONALES
+ * (`descripcion` y `sinConsolidar`, T14): los fija Carlos.
+ */
 export const ESTADO_CUENTA_BODEGA_PAGINA = {
   titulo: (bodega: string) => `Estado de cuenta de ${bodega}`,
   descripcion:
-    "Lo que la bodega declaró al consolidar y lo que llegó a la central, con lo que tiene por entregar tras cada movimiento",
+    "Lo que la bodega tiene que entregar a la central por cada consolidación y por cada cierre aprobado sin consolidar, y lo que llegó, con lo que tiene por entregar tras cada movimiento",
   volver: "Volver a las bodegas satélite",
   declarado: "Consolidación declarada",
   recibido: "Recibido en la central",
+  sinConsolidar: "Cierre aprobado sin consolidar",
 } as const;

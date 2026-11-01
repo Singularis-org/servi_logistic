@@ -96,6 +96,9 @@ export const FUENTE_CAJA: Record<WalletMovimientoCategoria, FuenteDeAporte> = {
   egreso_reverso_iva_flete_devolucion: { tipo: "sin_reparto", motivo: "no_nace_de_un_cierre" },
   // SL-45 (design §2): el pago a la plataforma lo registra una persona; no sale de ninguna orden.
   egreso_pago_plataforma: { tipo: "sin_reparto", motivo: "no_nace_de_un_cierre" },
+  // SLT-73: la diferencia de la satélite nace de la conciliación de una consolidación, no de un cierre.
+  egreso_diferencia_satelite: { tipo: "sin_reparto", motivo: "no_nace_de_un_cierre" },
+  ingreso_diferencia_satelite: { tipo: "sin_reparto", motivo: "no_nace_de_un_cierre" },
 };
 
 /**

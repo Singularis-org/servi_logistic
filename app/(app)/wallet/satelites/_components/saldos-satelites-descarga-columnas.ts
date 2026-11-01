@@ -34,6 +34,9 @@ export const COLUMNAS_DESCARGA_SALDOS_SATELITES: DescargaColumna[] = [
   { clave: "masAntigua", encabezado: "Más antigua sin conciliar" },
   { clave: "ultimaRecibidaEl", encabezado: "Última recibida" },
   { clave: "ultimaRecibidaMonto", encabezado: "Monto de la última recibida" },
+  // SLT-73 (R6): al final, sin mover ninguna, para no romper la hoja de quien ya la usa.
+  { clave: "sinConsolidar", encabezado: "Sin consolidar" },
+  { clave: "cierresSinConsolidar", encabezado: "Cierres sin consolidar" },
 ];
 
 /**
@@ -62,5 +65,7 @@ export function filaDescargaSaldoSatelite(saldo: SaldoSateliteDTO): DescargaFila
     // es lo que hace que nadie se fíe de ninguna.
     ultimaRecibidaEl: saldo.ultimaRecibida === null ? "" : fechaDiaMovimientoCR(saldo.ultimaRecibida.fecha),
     ultimaRecibidaMonto: saldo.ultimaRecibida === null ? "" : saldo.ultimaRecibida.monto,
+    sinConsolidar: saldo.aporteSinConsolidar, // STRING tal cual, con su signo
+    cierresSinConsolidar: saldo.cierresSinConsolidar,
   };
 }

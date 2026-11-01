@@ -273,7 +273,13 @@ describe("468 R17/R18/R20/R21 — Concepto, Detalle, A quién, Es dinero de", ()
   it("R20/R21: «A quién» y «Registró» sin autoría dicen «—» (nunca un id); «Es dinero de» usa las palabras de la tabla", () => {
     const f = filaBaseCaja(mov(1, { dueno: "terceros" }), undefined, null);
     expect(f.esDineroDe).toBe(DUENO_LABEL.terceros);
-    expect(DUENO_LABEL).toEqual({ propio: "La empresa", terceros: "Tienda", capital: "La empresa (capital)" });
+    // SLT-73 (design §2.9.8, R29): + el dueño de la diferencia de la satélite (rótulo provisional, T12).
+    expect(DUENO_LABEL).toEqual({
+      propio: "La empresa",
+      terceros: "Tienda",
+      capital: "La empresa (capital)",
+      por_cobrar_satelite: "Satélite",
+    });
     expect(f.aQuien).toBe(f.registro);
     expect(String(f.aQuien)).not.toMatch(UUID);
     // La fila base no lleva dinero: lo coloca `filasKardex` desde el kardex del servidor (R54).

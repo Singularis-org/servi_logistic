@@ -97,6 +97,8 @@ describe("R51 · las tres metricas de ingreso de la empresa no ven el dinero de 
       .sort();
     // Ficha 459: + el pago por cuenta de una tienda y su anulacion (dinero de las tiendas).
     // Ficha 457 (DH1): + el pago de una tienda a la empresa y su anulacion (tambien dinero de las tiendas).
+    // SLT-73 (design §2.9, D12): la diferencia de la satelite al conciliar NO es de terceros: tiene su
+    // propio dueño, `por_cobrar_satelite`. Las metricas de ingreso siguen sin verla, porque no es `propio`.
     expect(terceros).toEqual([
       "egreso_pago_por_cuenta_tienda",
       "egreso_pago_tienda",
@@ -453,7 +455,7 @@ describe("las listas de las dos metricas nuevas se comprueban contra el Record",
     const declaradas = [...(getMetrica("dinero_en_caja")?.definicion.categorias ?? [])].sort();
     expect(declaradas).toEqual(Object.keys(NATURALEZA_POR_CATEGORIA).sort());
     expect(declaradas).toEqual([...WALLET_MOVIMIENTO_CATEGORIA_SEED].sort());
-    expect(declaradas).toHaveLength(28); // ficha 459: 17 + 4; ficha 461 (R29): + 2; ficha 457 (R52): + 2; ficha 458-B: + 2; SL-45: + 1
+    expect(declaradas).toHaveLength(30); // ficha 459: 17 + 4; ficha 461 (R29): + 2; ficha 457 (R52): + 2; ficha 458-B: + 2; SL-45: + 1; SLT-73: + 2
     expect(declaradas).toContain("egreso_pago_plataforma"); // SL-45
     expect(declaradas).toContain("egreso_reverso_flete_devolucion"); // ficha 458-B
     expect(declaradas).toContain("egreso_reverso_iva_flete_devolucion"); // ficha 458-B
@@ -504,8 +506,10 @@ describe("las listas de las dos metricas nuevas se comprueban contra el Record",
     // Ficha 459: + los dos de terceros del pago por cuenta y los dos de CAPITAL, que tampoco son
     // ganancia. Ficha 457 (R52, D11): + el pago de una tienda a la empresa y su anulacion, que son de
     // TERCEROS (DH1) y por eso `ganancia_empresa` no los ve: 9 categorias. SL-39 (R11): + las cuatro
-    // de IVA, que estan en la caja pero no son ganancia: 13.
+    // de IVA, que estan en la caja pero no son ganancia: 13. SLT-73: + la diferencia de la satelite
+    // (tesoreria, design §1.2): 15.
     expect(enCaja.filter((c) => !ganancia.has(c)).sort()).toEqual([
+      "egreso_diferencia_satelite",
       "egreso_pago_por_cuenta_tienda",
       "egreso_pago_tienda",
       "egreso_reverso_abono_tienda",
@@ -514,6 +518,7 @@ describe("las listas de las dos metricas nuevas se comprueban contra el Record",
       "ingreso_abono_tienda",
       "ingreso_aporte_capital",
       "ingreso_cod_recaudado",
+      "ingreso_diferencia_satelite",
       "ingreso_iva_comision_cod",
       "ingreso_iva_flete",
       "ingreso_iva_flete_devolucion",

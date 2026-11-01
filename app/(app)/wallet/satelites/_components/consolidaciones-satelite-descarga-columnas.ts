@@ -1,6 +1,13 @@
 import type { DescargaColumna, DescargaFila } from "@/lib/types/descarga";
 import type { ConsolidacionSateliteDTO } from "@/lib/types/conciliacion-satelites";
 
+import {
+  GANA_BODEGA_SATELITE_LABEL,
+  PAGO_MENSAJERO_COL,
+  PARA_LA_CENTRAL_LABEL,
+} from "@/app/(app)/cierres-admin/_components/cierre-labels";
+import { METODO_LABEL } from "@/lib/constants/metodo-pago-label";
+
 import { ESTADO_CONCILIACION_LABEL, estadoConciliacionDe } from "./satelites-labels";
 import { fechaDiaMovimientoCR } from "@/lib/utils/fecha-dia-iso";
 
@@ -27,7 +34,8 @@ import { fechaDiaMovimientoCR } from "@/lib/utils/fecha-dia-iso";
  */
 export const COLUMNAS_DESCARGA_CONSOLIDACIONES_SATELITE: DescargaColumna[] = [
   { clave: "consolidada", encabezado: "Consolidada" },
-  { clave: "declarado", encabezado: "Declarado" },
+  // SLT-73 (D3/R8): lo esperado es «Para la central», en el sitio que ocupaba el efectivo.
+  { clave: "paraLaCentral", encabezado: PARA_LA_CENTRAL_LABEL },
   { clave: "recibido", encabezado: "Recibido" },
   { clave: "faltaPorRecibir", encabezado: "Falta por recibir" },
   { clave: "estado", encabezado: "Estado" },
@@ -37,14 +45,17 @@ export const COLUMNAS_DESCARGA_CONSOLIDACIONES_SATELITE: DescargaColumna[] = [
   { clave: "simpe", encabezado: "SINPE" },
   { clave: "transferencia", encabezado: "Transferencia" },
   { clave: "cierres", encabezado: "Cierres del día consolidados" },
+  // SLT-73 (R9): el resto de la cuenta, al final y sin mover ninguna.
+  { clave: "efectivo", encabezado: METODO_LABEL.efectivo },
+  { clave: "pagoMensajero", encabezado: PAGO_MENSAJERO_COL },
+  { clave: "gananciaSatelite", encabezado: GANA_BODEGA_SATELITE_LABEL },
 ];
 
 export function filaDescargaConsolidacionSatelite(c: ConsolidacionSateliteDTO): DescargaFila {
   return {
     consolidada: fechaDiaMovimientoCR(c.solicitadoAt),
-    // «Declarado» es el EFECTIVO: es lo que viaja en el bulto y contra lo que se cuenta al
-    // recibir. El general va más a la derecha, como contexto (decisión Q2).
-    declarado: c.totales.efectivo,
+    // SLT-73 (D3/R8): `Para la central − Recibido = Falta por recibir`, las tres del servidor.
+    paraLaCentral: c.paraLaCentral,
     // Sin marcar la celda va VACÍA, no en cero: «nadie lo ha mirado» no es «llegaron ₡0».
     recibido: c.montoRecibido ?? "",
     faltaPorRecibir: c.faltaPorRecibir,
@@ -55,5 +66,8 @@ export function filaDescargaConsolidacionSatelite(c: ConsolidacionSateliteDTO): 
     simpe: c.totales.simpe,
     transferencia: c.totales.transferencia,
     cierres: c.cantidadCierres,
+    efectivo: c.totales.efectivo,
+    pagoMensajero: c.pagoMensajero,
+    gananciaSatelite: c.gananciaSatelite,
   };
 }

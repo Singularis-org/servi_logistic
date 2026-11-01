@@ -110,6 +110,8 @@ function buildPrisma(opciones: { ledgerPrevio?: FilaLedger[]; updateCierreCount?
       count: vi.fn(async () => 1),
       // FICHA 362: `resolverCierre` lee ademas el total y el mensajero para congelar la fila.
       findUnique: vi.fn(async () => ({
+        // SLT-73 (T3): la aprobacion lee el destino; esta suite mide la de la CENTRAL, que asienta.
+        destinoTipo: "bodega_central",
         mensajeroId: "m1",
         totalGeneral: new Prisma.Decimal("0.00"),
         solicitadoAt: new Date("2026-09-02T12:00:00Z"),

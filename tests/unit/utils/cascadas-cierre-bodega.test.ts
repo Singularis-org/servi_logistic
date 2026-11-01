@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { Prisma } from "@prisma/client";
+import { esperadoDe, saldoDe } from "@/lib/utils/conciliacion-satelite";
 import type { IngresoEmpresaDTO } from "@/lib/interfaces/services/ICierreDiaService";
 import type { TarifaVigente } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
 import {
@@ -225,5 +227,46 @@ describe("feature 393 — cascada B: lo que la satelite le entrega a la central"
     // El caso clasico de la coma flotante: 0.1 + 0.2 no es 0.30000000000000004 aqui.
     expect(cobradoSobreRecaudado("0.10", "0.20")).toBe("0.30");
     expect(netoEmpresa("0.10", "0.20", "0.30")).toBe("-0.40");
+  });
+});
+
+describe("SLT-73 R4 — el aporte de un cierre del dia satelite a la deuda", () => {
+  const d = (v: string) => new Prisma.Decimal(v);
+
+  it("aporte = total_general − total_pago_mensajero − total_ingreso_bodega_rechazos (todos los metodos)", () => {
+    // El caso de produccion del 2026-10-31, en forma: todo SINPE, general 76890.00, pago 6000.00.
+    // Con la formula de la 431 (efectivo) el aporte seria 0.00; con SLT-73 es 70890.00.
+    const aporte = esperadoDe({
+      totalGeneral: d("76890.00"),
+      totalPagoMensajero: d("6000.00"),
+      totalIngresoBodegaRechazos: d("0.00"),
+    });
+    expect(aporte.toFixed(2)).toBe("70890.00");
+    // La ganancia de la satelite por rechazos TAMBIEN se descuenta (D4/D7).
+    expect(
+      esperadoDe({
+        totalGeneral: d("126089.17"),
+        totalPagoMensajero: d("14000.55"),
+        totalIngresoBodegaRechazos: d("1250.45"),
+      }).toFixed(2),
+    ).toBe("110838.17");
+  });
+
+  it("conserva el signo: un aporte negativo NO se recorta a cero", () => {
+    const aporte = esperadoDe({
+      totalGeneral: d("0.00"),
+      totalPagoMensajero: d("3400.15"),
+      totalIngresoBodegaRechazos: d("0.10"),
+    });
+    expect(aporte.toFixed(2)).toBe("-3400.25");
+    // Y la resta de lo recibido lo arrastra con su signo.
+    expect(saldoDe(aporte, null).toFixed(2)).toBe("-3400.25");
+    expect(saldoDe(aporte, d("100.00")).toFixed(2)).toBe("-3500.25");
+  });
+
+  it("saldoDe: sin marcar aporta el esperado entero; marcado resta lo recibido", () => {
+    expect(saldoDe(d("500.00"), null).toFixed(2)).toBe("500.00");
+    expect(saldoDe(d("500.00"), d("485.00")).toFixed(2)).toBe("15.00");
+    expect(saldoDe(d("500.00"), d("520.00")).toFixed(2)).toBe("-20.00");
   });
 });

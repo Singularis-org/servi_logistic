@@ -292,13 +292,14 @@ describe("CierreBodegaRepository.findCierresBodegaByZona (F1.4-h)", () => {
       // el efectivo (10.00) NO cubre los dos descuentos (14.00), asi que el aviso se enciende.
       paraLaCentral: "1.50",
       efectivoCubreDescuentos: false,
-      // ⭑ FICHA 431 (R26/R28): el MISMO mapper deriva tambien la marca. La fila cruda esta
-      // marcada por 10.00 sobre un efectivo de 10.00, asi que NO falta nada: "0.00". Los
-      // valores van ESCRITOS A MANO y no derivados de la fila: comparar `faltaPorRecibir`
-      // contra la resta que lo produce seria una asercion contra su propia fuente.
+      // ⭑ FICHA 431 (R26/R28): el MISMO mapper deriva tambien la marca. SLT-73 (R8): lo que
+      // falta se mide contra «Para la central» (1.50), no contra el efectivo (10.00): marcada
+      // por 10.00, llego 8.50 DE MAS → "-8.50" (con el efectivo seria "0.00"). Los valores van
+      // ESCRITOS A MANO: comparar `faltaPorRecibir` contra la resta que lo produce seria una
+      // asercion contra su propia fuente.
       conciliado: true,
       montoRecibido: "10.00",
-      faltaPorRecibir: "0.00",
+      faltaPorRecibir: "-8.50",
       conciliadoAt: "2026-07-12T12:00:00.000Z",
       conciliadoPorNombre: "Ana Rojas",
       conciliadoNota: null,
@@ -473,6 +474,46 @@ describe("feature 393 — el mapper deriva «Para la central» para TODAS las le
     expect(deLaSatelite.paraLaCentral).toBe("90837.72"); // positivo
     expect(deLaSatelite.efectivoCubreDescuentos).toBe(false); // 1000.00 < 15251.45
     expect(delMaestro.efectivoCubreDescuentos).toBe(false); // R38: y el maestro ve lo mismo
+  });
+
+  it("⭑ SLT-73 R8: las OCHO lecturas derivan `faltaPorRecibir` = paraLaCentral − recibido, no el efectivo", async () => {
+    const rango = { skip: 0, take: 10 };
+    // Casi todo en SINPE: efectivo 1000.00, general 106089.17, «Para la central» 90837.72.
+    // Marcada por 90000.00 → faltan 837.72. Con el efectivo serian -89000.00; con el general,
+    // 16089.17. Las tres cifras son distintas.
+    const cruda = filaCruda({
+      totalEfectivo: new Prisma.Decimal("1000.00"),
+      totalSimpe: new Prisma.Decimal("104000.55"),
+      totalTransferencia: new Prisma.Decimal("1088.62"),
+      montoRecibido: new Prisma.Decimal("90000.00"),
+      conciliadoAt: new Date("2026-09-02T10:00:00.000Z"),
+      conciliadoPorUsuario: { nombre: "Ana", primerApellido: "Rojas", segundoApellido: null },
+    });
+    const satelite = new CierreBodegaRepository(prismaSatelite([cruda]) as unknown as PrismaClient);
+    const maestro = new CierresBodegaAdminRepository(prismaMaestro([cruda]) as unknown as PrismaClient);
+
+    const porLectura: Record<string, { faltaPorRecibir: string } | undefined> = {
+      "satelite · findCierresBodegaByZona": (await satelite.findCierresBodegaByZona("z-cartago"))[0],
+      "satelite · findCierresBodegaByZonaPaginado": (
+        await satelite.findCierresBodegaByZonaPaginado("z-cartago", rango)
+      ).items[0],
+      "maestro · findCierresBodega": (await maestro.findCierresBodega())[0],
+      "maestro · findHistoricoCompleto": (await maestro.findHistoricoCompleto())[0],
+      "maestro · findColaCompleta": (await maestro.findColaCompleta())[0],
+      "maestro · findHistoricoPaginado": (await maestro.findHistoricoPaginado(rango)).items[0],
+      "maestro · findColaPaginada": (await maestro.findColaPaginada(rango)).items[0],
+      "maestro · findCierreBodegaConDetalle": (await maestro.findCierreBodegaConDetalle("cb1"))?.cierre,
+    };
+    expect(Object.keys(porLectura)).toHaveLength(8);
+    for (const [lectura, fila] of Object.entries(porLectura)) {
+      expect(fila, `${lectura} no devolvio la fila`).toBeDefined();
+      expect(fila!.faltaPorRecibir, lectura).toBe("837.72");
+    }
+
+    // Sin marcar: falta «Para la central» entero (90837.72), no el efectivo (1000.00).
+    const sinMarcar = filaCruda({ totalEfectivo: new Prisma.Decimal("1000.00") });
+    const repo = new CierreBodegaRepository(prismaSatelite([sinMarcar]) as unknown as PrismaClient);
+    expect((await repo.findCierresBodegaByZona("z-cartago"))[0].faltaPorRecibir).toBe("90837.72");
   });
 
   it("los dos campos son STRING/boolean money-safe, nunca un number", async () => {

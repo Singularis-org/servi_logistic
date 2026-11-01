@@ -89,6 +89,11 @@ export const WALLET_MOVIMIENTO_CATEGORIA_SEED = [
   // efectivo, como el sueldo: baja la cifra principal y la ganancia. Descuenta la deuda de SL-40
   // mientras no tenga contra-asiento.
   "egreso_pago_plataforma",
+  // SLT-73 (design §1.1/§1.2, D10): la DIFERENCIA DE LA SATELITE al conciliar una consolidacion, por
+  // esperado - recibido. Egreso si llego menos, ingreso si llego mas. Tesoreria (terceros), como el
+  // contra-entrega: es dinero que la satelite recaudo y no entrego, no ganancia ni gasto.
+  "egreso_diferencia_satelite",
+  "ingreso_diferencia_satelite",
 ] as const satisfies readonly PrismaWalletMovimientoCategoria[];
 
 export type WalletMovimientoCategoria = (typeof WALLET_MOVIMIENTO_CATEGORIA_SEED)[number];
@@ -138,6 +143,9 @@ export const WALLET_ORIGEN_TIPO_SEED = [
   // SLT-68 (design §2.1): el INCENTIVO MANUAL A UN MENSAJERO. Egreso de caja, su reverso y el
   // `reverso_incentivo` del libro del mensajero; `origen_id` = id del devengo `incentivo`.
   "incentivo_mensajero",
+  // SLT-73 (design §1.2): el EVENTO de conciliacion (marca o correccion) que movio la diferencia de la
+  // satelite; `origen_id` = id de la fila de `conciliacion_bodega_ajuste`.
+  "conciliacion_bodega_ajuste",
 ] as const satisfies readonly PrismaWalletOrigenTipo[];
 
 export type WalletOrigenTipo = (typeof WALLET_ORIGEN_TIPO_SEED)[number];
@@ -339,7 +347,12 @@ export type ComposicionFilaId = (typeof COMPOSICION_FILA_SEED)[number];
 // Ficha 459 (design §2.2, P1): tercer dueño, `capital` — el saldo inicial y los aportes de capital.
 // Es dinero de la empresa que NO es ganancia: suma a la cifra principal y a «De la empresa», nunca a la
 // ganancia ni a «De las tiendas».
-export type NaturalezaMovimiento = "propio" | "terceros" | "capital";
+//
+// SLT-73 (design §2.9, D12, R24): cuarto dueño, `por_cobrar_satelite` — la diferencia de la satélite al
+// conciliar (entregó de menos o de más). No es ganancia, ni IVA, ni capital, ni «De las tiendas»: con
+// D10 las tiendas conservan su crédito completo, así que como `terceros` rompería R8 de la 459. Solo de
+// TypeScript, como los otros tres: la naturaleza es de la categoría, no hay columna ni enum en la base.
+export type NaturalezaMovimiento = "propio" | "terceros" | "capital" | "por_cobrar_satelite";
 
 // ── Contratos I/O (frontera Server Action -> cliente). Montos SIEMPRE STRING (R4/R25) ──
 
@@ -503,12 +516,30 @@ export type CajaResumenDTO = {
   /** R2 — IVA de la caja: ingresos de IVA menos su reverso, con signo. */
   iva: string;
   signoIva: WalletBalanceSigno;
+  // ── SLT-73 (design §2.9, D12/D13) — el bolsillo «Por cobrar a satélites» ──
+  // `deEmpresa` NO cambia de valor. Identidad R27: enCaja = ganancia + IVA + capital + deTerceros −
+  // porCobrarSatelites.
+  /** R25 — egresos − ingresos de diferencia de la satélite: positivo cuando la satélite debe. */
+  porCobrarSatelites: string;
+  signoPorCobrarSatelites: WalletBalanceSigno;
+  /**
+   * R30 — porción «por cobrar» de la barra, "0.00"–"100.00". Solo es una proporción cuando
+   * `modoComposicion` vale `tres_tramos`; en cualquier otro modo vale "0.00".
+   */
+  porcentajePorCobrarSatelites: string;
+  /**
+   * R30 — lo de la empresa que SÍ está en la caja: `max(deEmpresa − porCobrarSatelites, 0)` en
+   * `tres_tramos` (para el nombre accesible de la barra, sin aritmética en el navegador). Fuera de
+   * ese modo es igual a `deEmpresa`.
+   */
+  deEmpresaEnCaja: string;
 };
 
 /** Ficha 459 (R14) — el estado de la caja lo decide el servidor. */
 export type EstadoCaja = "flujo" | "saldo";
 
-// Feature 231 (design §3.1) — los CUATRO estados posibles del reparto de la caja. Seed
+// Feature 231 (design §3.1) — los estados posibles del reparto de la caja (cuatro; SLT-73 añade
+// `tres_tramos`). Seed
 // primero para que la pantalla pueda montar un `Record` TOTAL sobre ellos (design §4.2): un
 // modo nuevo rompe el build en vez de caer en un `default` silencioso.
 export const MODO_COMPOSICION_CAJA_SEED = [
@@ -516,6 +547,7 @@ export const MODO_COMPOSICION_CAJA_SEED = [
   "solo_tiendas", // R15: la empresa esta en perdida y el dinero de las tiendas cubre el saldo
   "solo_empresa", // R17: el espejo — `deTerceros` negativo (D4, firmada)
   "sin_reparto", // R18: no hay nada que repartir
+  "tres_tramos", // SLT-73 (D13, R30): «Por cobrar a satélites» > 0 — tiendas, por cobrar y la empresa como resto
 ] as const;
 
 export type ModoComposicionCaja = (typeof MODO_COMPOSICION_CAJA_SEED)[number];

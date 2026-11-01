@@ -80,20 +80,25 @@ describeSiHayBase("459/B.5 — las migraciones de la 459 contra Postgres", () =>
     // Ficha 458-B (2026-09-26): dos valores mas en la caja y dos en la tienda (`20260928120000`).
     // SL-45 (2026-10-24): un valor mas en la caja (`20261024130000`), al final; los tramos de antes se
     // leen uno mas atras.
-    expect(caja.slice(-11, -7)).toEqual(VALORES_CAJA_459);
-    expect(caja.slice(-7, -5)).toEqual(["ingreso_cobro_tienda", "egreso_reverso_cobro_tienda"]);
-    expect(caja.slice(-5, -3)).toEqual(["ingreso_abono_tienda", "egreso_reverso_abono_tienda"]);
-    expect(caja.slice(-3, -1)).toEqual(["egreso_reverso_flete_devolucion", "egreso_reverso_iva_flete_devolucion"]);
-    expect(caja.slice(-1)).toEqual(["egreso_pago_plataforma"]);
+    // SLT-73 (2026-10-31): dos valores mas en la caja (`20261031140000`), al final; los tramos de antes
+    // se leen dos mas atras.
+    expect(caja.slice(-13, -9)).toEqual(VALORES_CAJA_459);
+    expect(caja.slice(-9, -7)).toEqual(["ingreso_cobro_tienda", "egreso_reverso_cobro_tienda"]);
+    expect(caja.slice(-7, -5)).toEqual(["ingreso_abono_tienda", "egreso_reverso_abono_tienda"]);
+    expect(caja.slice(-5, -3)).toEqual(["egreso_reverso_flete_devolucion", "egreso_reverso_iva_flete_devolucion"]);
+    expect(caja.slice(-3, -2)).toEqual(["egreso_pago_plataforma"]);
+    expect(caja.slice(-2)).toEqual(["egreso_diferencia_satelite", "ingreso_diferencia_satelite"]);
     expect(tienda.slice(-7, -5)).toEqual(["pago_por_cuenta", "pago_por_cuenta_anulado"]);
     expect(tienda.slice(-5, -4)).toEqual(["cobro_tienda_anulado"]);
     expect(tienda.slice(-4, -2)).toEqual(["abono_tienda", "abono_tienda_anulado"]);
     expect(tienda.slice(-2)).toEqual(["flete_devolucion_anulado", "iva_flete_devolucion_anulado"]);
-    // SLT-68 anadio `incentivo_mensajero` al final de los origenes: los previos se leen un tramo atras.
-    expect(origen.slice(-7, -4)).toEqual(["pago_por_cuenta_tienda", "aporte_capital", "cobro_manual_reclasificado"]);
-    expect(origen.slice(-4, -2)).toEqual(["cobro_tienda", "cobro_tienda_completado"]);
-    expect(origen.slice(-2, -1)).toEqual(["abono_tienda"]);
-    expect(origen.slice(-1)).toEqual(["incentivo_mensajero"]);
+    // SLT-68 anadio `incentivo_mensajero` al final de los origenes y SLT-73 `conciliacion_bodega_ajuste`:
+    // los previos se leen dos tramos atras.
+    expect(origen.slice(-8, -5)).toEqual(["pago_por_cuenta_tienda", "aporte_capital", "cobro_manual_reclasificado"]);
+    expect(origen.slice(-5, -3)).toEqual(["cobro_tienda", "cobro_tienda_completado"]);
+    expect(origen.slice(-3, -2)).toEqual(["abono_tienda"]);
+    expect(origen.slice(-2, -1)).toEqual(["incentivo_mensajero"]);
+    expect(origen.slice(-1)).toEqual(["conciliacion_bodega_ajuste"]);
 
     const tipos = await etiquetasDeEnum(prisma, "historial_accion_tipo");
     const entidades = await etiquetasDeEnum(prisma, "historial_accion_entidad");
