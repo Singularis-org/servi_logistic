@@ -830,3 +830,49 @@ por el envoltorio, un solo servidor `next dev` en el 3073.
 **Veredicto:** los tres rojos explicados. Uno era spec desfasado por SLT-73 (actualizado a R8/R10/R14), otro una
 carrera de hidratación de `next dev` presente también en prod (spec endurecido) y el tercero el entorno
 (`NEXT_PUBLIC_APP_URL`). E2E final en 27/27 verde, sin cambios en la app.
+
+## Cierre T10 — implementer (2026-10-31)
+
+### Gate local (`NODE_OPTIONS=--max-old-space-size=8192 ./init.sh`, base `servi_slt73` vía envoltorio)
+
+- **Corrida 1, sobre `be31c35a`** (todo el código de producción; antes del E2E): typecheck y lint OK, guardias OK
+  (`caja-clasificacion-459` verde tras T11). `test:rapido`: 1238/1240 archivos verdes, 3 tests rojos en 2
+  archivos fuera del baseline, **INIT_EXIT=1**:
+  - `tests/integration/db/geografia-por-pais.test.ts` (R11 de SL-20): la base local devuelve 23001 donde el
+    test espera 23503 en dos casos. Es la definición de FK de la base local; el diff de SLT-73 no toca
+    geografía ni sus migraciones.
+  - `tests/integration/db/indices-rutas-calientes.test.ts` (plan de `AnaliticaOperativaRollupRepository`):
+    sigue rojo con `lib/analytics/metrics.ts` devuelto a su versión de `origin/prod` (comprobado y
+    revertido con `git checkout`): elección del planificador de la base local.
+  - La tanda 1 ya los había anotado como rojos de entorno. 246 rojos heredados del baseline.
+- **Corrida 2, sobre `6c88ab4a`** (solo añade dos specs E2E y la bitácora, que vitest no ejecuta):
+  17 archivos rojos nuevos. **No vale como veredicto**: la corrida E2E de por medio dejó un superadmin y
+  empresas en `servi_slt73` («la base ya tiene un superadmin que no es de este test», «referencia a otra
+  empresa»). `prisma migrate reset` está bloqueado para agentes sin el consentimiento del usuario: no se
+  saltó ni se borró a mano. Antes de un tercer gate hace falta resetear la base con el OK humano.
+
+### E2E local (un único servidor `next dev`, puerto 3073)
+
+`cierres-admin`, `dos-empresas-humo`, `wallet`, `cierre-bodega-satelite`, `recepcion-satelite` (+ el
+proyecto `plataforma-vacia` del que dependen): **27 passed (3.5m), E2E_EXIT=0** (tanda 8; hace falta
+`NEXT_PUBLIC_APP_URL` en el entorno del comando, que CI ya declara).
+
+### Mapa R → test
+
+Está por tandas en este archivo: R1–R3 y R21 (tanda 1), R10–R15, R20, R22 y R23 (tanda 2), R4–R8 (tanda 3),
+R16–R20 (tanda 4), R24–R27 y R30 (tanda 5), R6, R9 y R14 en pantalla (tanda 6), R28–R30 en pantalla (tanda 7).
+
+### Abierto para el leader / humano
+
+1. **Estado de cuenta de la bodega (458)**: `EstadoCuentaRepository.paginaDeBodega/totalesDeBodega` sigue
+   sobre `total_efectivo`; su «Pendiente de llegar» ya no cuadra con la deuda de SLT-73
+   (`wallet-caracterizacion-458` TB.6, que está en el baseline por entorno). El spec no lo cubre (tanda 3).
+2. **T8 retiene premios e incentivos del mensajero** (`premio_ranking`, `incentivo` y `premio_dia`) que
+   cuelgan del cierre, porque conciliar no los vuelve a escribir. Es una lectura no literal de R16 (tanda 4).
+3. **Textos de producto**: la nota «Desmarcar no mueve dinero…» ya no es cierta (tanda 6); los textos
+   provisionales de T12 y el color `danger` (tanda 7); los rótulos de la 393 reutilizados en lugar de los
+   del design §2.8 (tanda 6).
+4. La tarjeta de `/cierres-admin` (región «Conciliación») sigue cuadrando contra el efectivo (tanda 6).
+5. Falta verificar en el navegador lo que listan las tandas 6 y 7 (los E2E cubren marcar/desmarcar).
+
+**T10 sin marcar**: el gate no está en verde (2 rojos de entorno en una base limpia).
