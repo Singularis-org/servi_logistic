@@ -100,11 +100,25 @@ Evidencia completa por subagente (logs y detalle), en el scratchpad de la sesió
 
 ## E2E
 
-PENDIENTE
+Build de producción (`next build`, BUILD_EXIT=0) y un solo servidor (puerto 3076) sobre `servi_slt76`:
+`playwright test e2e/cierres-admin.spec.ts e2e/cierre-bodega-satelite.spec.ts e2e/wallet.spec.ts e2e/dos-empresas-humo.spec.ts e2e/zona-especial-dos-empresas.spec.ts`
+→ `30 passed (1.8m)`, `E2E_EXIT=0`. Entran también las dependencias `superadmin-arranque` y `superadmin-empresas`.
+El paso 3 de `cierre-bodega-satelite` («Desmarcar» ya no está tras marcar con dinero asentado) pasa
+tal como lo dejó frontend_dev. Ni `wallet` ni `cierres-admin` necesitaron cambios. Log: `e2e_SLT-76_r1.log` en el scratchpad.
 
 ## Gate
 
-PENDIENTE
+`NODE_OPTIONS=--max-old-space-size=8192 ./init.sh` (modo rápido), log `gate_SLT-76.log` en el scratchpad:
+- typecheck ✓ y lint ✓ (solo avisos ya existentes);
+- `Test Files 482 passed (482)` · `Tests 6863 passed | 26 skipped`;
+- guardias: `Test Files 320 passed (320)` · `Tests 4443 passed | 1 skipped`;
+- **`INIT_EXIT=0`**.
+
+La primera corrida, sobre `servi_slt76`, dio `INIT_EXIT=1` (log `gate_SLT-76_r1_base76-con-superadmin-e2e.log`).
+Fallaron dos archivos, `carga-division` y `geografia-superadmin-sin-empresa`, con «la base ya tiene un superadmin
+que no es de este test (SL-32 R27)». Es el superadmin que crea el E2E `superadmin-arranque` en esa base.
+No es del cambio: el gate se repitió sobre `servi_slt76_mig`, que está en la misma migración (276) y no tiene
+superadmin, y quedó en verde.
 
 ## Desviaciones
 
