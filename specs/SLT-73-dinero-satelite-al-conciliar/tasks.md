@@ -76,7 +76,7 @@
   Depende de T1. Puede ir en paralelo a T4–T6, pero **R26 se cierra después de T4**.
   *Hecho:* `pnpm run test:guardias` sin `caja-clasificacion-459` en rojo. Los casos R24–R27 y R30 de
   `design.md > Trazabilidad` están verdes y sus mutaciones mueren, con autocomprobación.
-- [ ] **T12 — Enmienda D12: bloque, tercer tramo de la barra y dueño en la pantalla de caja (R28,
+- [x] **T12 — Enmienda D12: bloque, tercer tramo de la barra y dueño en la pantalla de caja (R28,
   R29, R30 en pantalla).** `frontend_dev`. Aprobada por Carlos 2026-10-31 (D13: tercer tramo; D14:
   el bloque siempre, también con ₡0). Las pistas y «Satélite» siguen provisionales.
   Toca:

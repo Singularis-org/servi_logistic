@@ -666,3 +666,110 @@ Supervivientes: **0 de 9**.
 
 **Veredicto:** T7 hecho: R6, R9 y R14 en pantalla con tests que leen el DOM, 0 supervivientes de 9 mutaciones;
 quedan abiertos la nota «Desmarcar no mueve dinero» y la identidad de la tarjeta de `/cierres-admin`.
+
+## Tanda 7 — frontend_dev: T12 (R28, R29, R30 en pantalla), enmienda D12–D14 (2026-10-31)
+
+Commit de código y tests: `0455f4c4` sobre `hotfix/SLT-73-dinero-satelite-al-conciliar`. Sin tocar `lib/`, sin dev
+server, sin `pnpm install`. Los stubs `// T12` de la tanda 5 quedan todos sustituidos.
+
+### Archivos
+
+**Código (UI)**
+- `app/(app)/wallet/_components/CajaResumenCard.tsx`: tercer bloque hermano
+  `<section data-bolsillo="satelites" aria-label="Por cobrar a satélites">`, fuera del de la empresa. Se pinta
+  siempre, también con ₡0 y en «flujo» (D14). Lleva punto `bg-danger`, rótulo, insignia de signo (`SIGNO_BADGE`),
+  el importe `porCobrarSatelites` tal cual y la pista que elige `signoPorCobrarSatelites`.
+  `BOLSILLO_EMPRESA.tres_tramos = EMPRESA_NEUTRO` (confirmado). La rejilla pasa a `md:grid-cols-2 xl:grid-cols-3`.
+- `app/(app)/wallet/_components/BarraComposicionCaja.tsx`: `SEGMENTOS_POR_MODO.tres_tramos` = tiendas
+  (`porcentajeTiendas`), `por_cobrar` (`porcentajePorCobrarSatelites`, `bg-danger`) y la empresa como resto
+  (`flex-1`). Cada segmento medido nombra su campo del DTO (`porcentaje?: CampoPorcentaje`); el ancho es el STRING tal
+  cual.
+- `app/(app)/wallet/_components/wallet-labels.ts`:
+  - `CAJA_COMPOSICION_LABEL.porCobrarSatelites` y `empresaEnCajaDetalle`;
+  - `CAJA_POR_COBRAR_SATELITES_LABEL` (rótulo y pistas) y `CAJA_POR_COBRAR_SATELITES_PISTA`
+    (`Record<WalletBalanceSigno>`; en cero, la positiva);
+  - `CAJA_COMPOSICION_MENSAJE.tres_tramos` (texto provisional);
+  - `composicionCajaNombreAccesible` enuncia los tres tramos en `tres_tramos` (T, `porCobrarSatelites`,
+    `deEmpresaEnCaja`);
+  - `DUENO_LABEL.por_cobrar_satelite = "Satélite"` (provisional).
+- `app/(app)/wallet/_components/WalletLedger.tsx`: `DUENO_PUNTO.por_cobrar_satelite = "bg-danger"`, el mismo token
+  que el tramo de la barra.
+
+**Tests**
+- `tests/components/CajaPorCobrarSatelitesSLT73.test.tsx`: nuevo, 6 casos.
+- `tests/components/CajaComposicionBarra.test.tsx`:
+  - corregidos los tres casos que fijaban el stub: R20 dice por qué excluye `tres_tramos`, «los CUATRO modos» espera
+    `tres_tramos: 3` y R26 lleva el mensaje literal;
+  - bloque nuevo «SLT-73 — la barra con tres tramos (R30)», 4 casos.
+- `tests/unit/components/wallet-ledger-dueno.test.tsx`: bloque «SLT-73 R29», 2 casos (tabla y descarga).
+- `tests/unit/components/wallet-labels.test.ts`: bloque «SLT-73 R29», 1 caso.
+- `tests/components/CajaResumenCard.test.tsx`: el caso R64 «once dígitos» afirma que ningún importe de la tarjeta se
+  lee «₡0». Con D14 el bloque nuevo pinta ₡0, así que su fixture gana `porCobrarSatelites: "3.00"`, igual que ya hacía
+  con el capital y el IVA. Es consecuencia de D14, no un rojo tapado.
+
+### Mapa R → test
+
+| R | Test |
+|---|------|
+| R28 | `CajaPorCobrarSatelitesSLT73.test.tsx`: rótulo, importe del DTO, insignia y pista positiva; negativo → «La central les debe a las satélites.»; contraprueba signo ≠ importe; fuera de `empresa` y de `tiendas`, como hermano; ₡0 en «saldo»; ₡0 en «flujo» |
+| R29 | `wallet-ledger-dueno.test.tsx` «SLT-73 R29»: en la tabla, «Satélite» con punto distinto; en la descarga, `filaBaseCaja(...).esDineroDe === "Satélite"`. Además `wallet-labels.test.ts` «SLT-73 R29» |
+| R30 (pantalla) | `CajaComposicionBarra.test.tsx` «SLT-73 — la barra con tres tramos»: 3 segmentos en orden, anchos STRING `25%`/`31.45%` y la empresa `flex-1`; nombre accesible literal con los tres importes; con P = 0, los dos tramos de antes; el mensaje va en el bloque de la empresa, neutro. Más «los CUATRO modos» (`tres_tramos: 3`) |
+
+### Mutaciones (autocomprobadas)
+
+- El script `mutar.py`, en el scratchpad de la sesión, aplica la mutación y comprueba que el texto mutado está (o que
+  el tramo ya no está). Si no, sale con error.
+- Tras cada mutación: `git checkout -- "app/(app)/wallet/_components/"` y `git diff --quiet`.
+- Control previo: `CajaPorCobrarSatelitesSLT73` + `CajaComposicionBarra` verdes, 26/26.
+
+| M | Mutación | Resultado | Lo mata |
+|---|----------|-----------|---------|
+| M1 | ocultar el bloque con signo cero | muerta (2 rojos) | R28 (D14) ₡0 en «saldo» y en «flujo» |
+| M2 | meter el bloque dentro del de la empresa | muerta (5 rojos) | R28 «fuera… como hermano», más R16/R18 (el `note` de la empresa deja de ser único) |
+| M3 | quitar el tramo `por_cobrar` | muerta (2 rojos) | R30 «tres segmentos», «los CUATRO modos» |
+| M4 | `deEmpresa` en vez de `deEmpresaEnCaja` en el nombre accesible | muerta (1 rojo) | R30 «nombre accesible… tres tramos» |
+| M5 | ignorar el signo (siempre la pista positiva) | muerta (2 rojos) | R28 negativo; contraprueba del signo |
+| M5b | elegir la pista mirando el importe (`startsWith("-")`) | muerta (1 rojo) | R28 contraprueba del signo |
+
+**Supervivientes: 0 de 6.**
+
+Incidencia: en la primera pasada, M3 abortó porque la autocomprobación era demasiado amplia (el tipo `clave` también
+contiene `"por_cobrar"`). El archivo quedó mutado durante la M4 de esa pasada. Descarté esos dos resultados y repetí M3
+y M4 por separado, con `git diff --stat` antes de correr y diff limpio al revertir. Las cifras de la tabla son las de
+esa repetición.
+
+### Salida real
+
+- Tests de la tanda (`CajaPorCobrarSatelitesSLT73`, `CajaComposicionBarra`, `wallet-ledger-dueno`, `wallet-labels`,
+  `DineroIdentidadesEnPantalla`, `wallet-page`): `Test Files  6 passed (6)` · `Tests  115 passed (115)`.
+- `CajaResumenCard.test.tsx` tras el ajuste: `Tests  33 passed (33)`.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: exit 0.
+- `pnpm run lint`: exit 0, `0 errors, 232 warnings`, ninguno en los archivos de la tanda.
+- `vitest related --run` de los cuatro archivos de UI: `Test Files 1 failed | 106 passed (107)` · `Tests 1 failed |
+  1741 passed | 17 skipped`. El rojo era `CajaResumenCard` R64 (ver arriba), ya verde tras el ajuste.
+- `pnpm run test:guardias`: `Test Files 1 failed | 317 passed (318)` · `Tests 4 failed | 4441 passed | 1 skipped`. Los 4
+  rojos son de `dependencias-declaradas-presentes` (baseline, igual que en las tandas 2–6).
+
+### Qué mirar en el navegador (para el implementer)
+
+- `/wallet` en estado «saldo» sin diferencias: tres bloques. El tercero, «Por cobrar a satélites», con ₡0, «En cero» y
+  la pista positiva. La barra, con dos tramos, como antes.
+- Tras conciliar una satélite con faltante:
+  - el bloque muestra el faltante con «Positivo»;
+  - la barra tiene tres tramos (amarillo tiendas, rojo por cobrar, gris empresa) sin hilo blanco al final;
+  - «De las tiendas» no se mueve;
+  - el mensaje de `tres_tramos` sale en el bloque de la empresa.
+- En «flujo» (sin saldo inicial) no hay barra, pero el bloque sigue.
+- En el libro, la fila de la diferencia lleva dueño «Satélite» y punto rojo; la descarga dice «Satélite».
+- Maquetación: en `md` el tercer bloque cae a la segunda fila y en `xl` van los tres en fila. Revisar en móvil.
+
+### Desviaciones y abiertos
+
+- El design no da texto para el mensaje de `tres_tramos` (solo dice «un mensaje provisional»). Lo escribí yo y queda
+  PROVISIONAL, como las dos pistas y «Satélite», hasta que Carlos lo confirme.
+- El tramo y el punto van en `danger` (dinero que falta en la caja). Es el único token semántico libre, porque `info` ya
+  es el del capital. Decisión técnica, revisable.
+- En cero, la pista es la positiva, que explica qué es el bloque. El design solo fija la positiva y la negativa.
+
+**Veredicto:** T12 hecho: R28, R29 y R30 en pantalla con tests que leen el DOM, 0 supervivientes de 6 mutaciones.
+Faltan la verificación en el navegador (implementer) y la confirmación de los textos provisionales.
