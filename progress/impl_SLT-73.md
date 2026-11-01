@@ -1136,3 +1136,23 @@ Supervivientes: **0 de 7**.
 
 **Veredicto:** T14 hecho. La tarjeta cuadra contra «Para la central», la nota de Q10 está en las dos superficies y
 la fila «sin consolidar» tiene rótulo en pantalla y en la descarga. 0 supervivientes de 7 mutaciones.
+
+## Cierre T10, segunda vuelta (tras la enmienda 2: T13 y T14) — implementer (2026-10-31)
+
+- **Base limpia nueva `servi_slt73c`**: se creó con `CREATE DATABASE`, `migrate deploy` (272) y `db:seed`, sin reset.
+  La vieja `servi_slt73` la contaminó el E2E y no se usa más. `migrate reset` no se ejecutó.
+- **Gate v3, sobre `75855e4d`, base `servi_slt73c`**: typecheck y lint OK. `test:rapido`: 1276/1277 archivos y
+  17242 tests verdes; 2 tests rojos en 1 archivo fuera del baseline: `geografia-por-pais` (R11 de SL-20).
+  **INIT_EXIT=1**.
+- **Rojos ajenos, comprobados sobre `origin/prod`** (worktree temporal `--detach origin/prod`, base limpia
+  `servi_slt73p` con las mismas migraciones; worktree retirado después):
+  - `geografia-por-pais`: 2 rojos idénticos con el código de `origin/prod` y con el de HEAD. No es de SLT-73.
+  - `indices-rutas-calientes`: verde con los dos códigos en base limpia. Su rojo anterior era el
+    planificador de la base acumulada `servi_slt73`, y ya no aparece en el gate v3.
+- **E2E v3** (base `servi_slt73c`, un servidor `next dev` en el 3073, `NEXT_PUBLIC_APP_URL` en el entorno):
+  cierres-admin, dos-empresas-humo, wallet, cierre-bodega-satelite y recepcion-satelite, más el proyecto
+  plataforma-vacia: **27 passed (3.7m), E2E_EXIT=0**.
+- Mapa R→test por tandas: R31–R33 en la tanda 9 y R34–R35 en la tanda 10. D15 está cubierta por la mutación M7
+  de la tanda 4.
+- **T10 sin marcar**: el gate no da INIT_EXIT=0. El único rojo es previo y también falla en `origin/prod`;
+  si se marca o no lo decide el leader.
