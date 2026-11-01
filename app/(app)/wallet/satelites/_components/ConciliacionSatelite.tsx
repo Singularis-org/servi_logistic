@@ -10,8 +10,8 @@ import { SegmentedToggle } from "@/components/shared/SegmentedToggle";
 import { filasDesdeResultado } from "@/components/shared/descarga-resultado";
 import { ConciliacionAcciones } from "@/components/shared/conciliacion/ConciliacionAcciones";
 import {
-  DESMARCAR_NO_MUEVE_DINERO_NOTA,
-  DESMARCAR_NO_MUEVE_DINERO_TITULO,
+  CONCILIACION_ASIENTA_NOTA,
+  CONCILIACION_ASIENTA_TITULO,
 } from "@/components/shared/conciliacion/conciliacion-labels";
 import {
   listarConsolidacionesSateliteAction,
@@ -428,12 +428,12 @@ export function ConciliacionSatelite({
         ariaLabel={DESGLOSE_SATELITE_NOMBRE.paginacion(zonaNombre)}
       />
 
-      {/* D6 — la nota que impide que «Desmarcar» se lea como devolver plata. Al pie y visible. */}
+      {/* SLT-73 (R35) — marcar recibido asienta el dinero; después se corrige, no se desmarca. Al pie y visible. */}
       <p role="note" className="text-xs leading-relaxed text-muted-foreground">
         <strong className="font-semibold text-foreground">
-          {DESMARCAR_NO_MUEVE_DINERO_TITULO}
+          {CONCILIACION_ASIENTA_TITULO}
         </strong>{" "}
-        {DESMARCAR_NO_MUEVE_DINERO_NOTA}
+        {CONCILIACION_ASIENTA_NOTA}
       </p>
     </section>
   );

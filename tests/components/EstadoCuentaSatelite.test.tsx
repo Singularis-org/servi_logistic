@@ -49,7 +49,10 @@ vi.mock("next/navigation", () => ({
 }));
 
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
-import { EstadoCuentaSatelite } from "@/app/(app)/wallet/satelites/_components/EstadoCuentaSatelite";
+import { EstadoCuentaSatelite, ROTULOS_BODEGA } from "@/app/(app)/wallet/satelites/_components/EstadoCuentaSatelite";
+import { ESTADO_CUENTA_BODEGA_PAGINA } from "@/app/(app)/wallet/satelites/_components/satelites-labels";
+import { lineaDeFila } from "@/components/shared/estado-cuenta/estado-cuenta-lineas";
+import { filaBaseCuenta } from "@/components/shared/estado-cuenta/estado-cuenta-descarga-columnas";
 import EstadoCuentaSatelitePage from "@/app/(app)/wallet/satelites/[zonaId]/page";
 
 const actorMock = vi.mocked(resolveActorFromSession);
@@ -126,6 +129,62 @@ describe("el extracto de la bodega: Declarado / Recibido / Por entregar", () => 
     expect(within(tabla).queryByRole("button", { name: /^Ver / })).toBeNull();
     expect(screen.getByText("FGAM Puntarenas tiene ₡115.000 por entregar")).toBeTruthy();
     expect(container.textContent ?? "").not.toMatch(FORMA_UUID);
+  });
+});
+
+// SLT-73 (R32/R33, pintado en T14) — la fila de un cierre aprobado SIN CONSOLIDAR: chip propio, origen
+// `cierre_dia`, sin consolidación, y su aporte en `cargo`, que puede ser NEGATIVO (jornada prepagada).
+const FILA_SIN_CONSOLIDAR = fila({
+  ref: null,
+  consolidacionId: null,
+  fecha: "2026-09-18",
+  categoria: "sin_consolidar",
+  origenTipo: "cierre_dia",
+  chip: "sin_consolidar",
+  cargo: "-1250.50",
+  abono: null,
+  saldoCorrido: "113749.50",
+  registro: { nombre: null, automatico: null },
+  naceDeUnCierre: false,
+});
+const INICIAL_SIN_CONSOLIDAR = estado({
+  ...INICIAL,
+  saldoActual: "113749.50",
+  saldoFinal: "113749.50",
+  cargos: "113749.50",
+  filas: [FILA_SIN_CONSOLIDAR, ...INICIAL.filas],
+  total: 2,
+});
+
+describe("SLT-73 R32/R33 — la fila del cierre aprobado sin consolidar", () => {
+  it("se rotula «Cierre aprobado sin consolidar» (no «Consolidación declarada») y pinta su importe negativo", () => {
+    verEstadoCuentaMock.mockResolvedValue({ status: "ok", estado: INICIAL_SIN_CONSOLIDAR });
+    render(
+      <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+        <ToastProvider>
+          <EstadoCuentaSatelite inicial={INICIAL_SIN_CONSOLIDAR} puedeConciliar />
+        </ToastProvider>
+      </SWRConfig>,
+    );
+    const tabla = screen.getByRole("table", { name: "Estado de cuenta de FGAM Puntarenas" });
+    const filas = within(tabla).getAllByRole("row");
+    // «Más recientes»: la fila del 18 va primero, la consolidación del 16 después.
+    expect(filas[1].textContent).toContain("Cierre aprobado sin consolidar");
+    expect(filas[1].textContent).not.toContain("Consolidación declarada");
+    expect(filas[1].textContent).toContain("-₡1.250,50");
+    expect(filas[2].textContent).toContain("Consolidación declarada");
+  });
+
+  it("la descarga lleva el mismo concepto (la fila rotulada por la superficie)", () => {
+    const linea = lineaDeFila(FILA_SIN_CONSOLIDAR, ROTULOS_BODEGA);
+    expect(filaBaseCuenta(linea).concepto).toBe("Cierre aprobado sin consolidar");
+    expect(linea.cargo).toBe("-1250.50");
+  });
+
+  it("la descripción de la página ya no habla de lo declarado como efectivo de la consolidación", () => {
+    expect(ESTADO_CUENTA_BODEGA_PAGINA.descripcion).toBe(
+      "Lo que la bodega tiene que entregar a la central por cada consolidación y por cada cierre aprobado sin consolidar, y lo que llegó, con lo que tiene por entregar tras cada movimiento",
+    );
   });
 });
 

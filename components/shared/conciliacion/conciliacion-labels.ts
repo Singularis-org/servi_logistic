@@ -84,13 +84,20 @@ export const CONCILIACION_RESPUESTA = {
 export const CONCILIACION_NOTA_MAX = 500;
 
 /**
- * ⚠️ LA NOTA QUE IMPIDE QUE «DESMARCAR» SE LEA COMO UN MOVIMIENTO DE DINERO.
+ * ⚠️ SLT-73 (R35, D16) — LA NOTA DE LA CONCILIACIÓN: MARCAR RECIBIDO ASIENTA EL DINERO.
  *
- * Va al pie del desglose, no escondida en un tooltip. Sin ella, «Desmarcar» junto a un importe
- * se lee como devolver plata, y quien lo piense no lo va a pulsar nunca — dejando una marca
- * equivocada viva para siempre, que es justo lo que D6 quiso evitar al hacerla reversible.
+ * Sustituye a la de la 431 («Desmarcar no mueve dinero. La marca es informativa…»), que con
+ * SLT-73 es falsa: marcar recibido escribe los movimientos en la caja y en los libros (R10–R12),
+ * y una marca con asientos ya no se puede deshacer (R14); el monto se arregla con «Corregir»
+ * (R13). Va al pie del desglose de `/wallet/satelites` y en la confirmación de «Desmarcar», no
+ * escondida en un tooltip.
+ *
+ * UNA sola fuente para todas las superficies: las dos mitades se pintan seguidas, título en
+ * negrita y nota, y juntas dicen el texto de Q10.
+ *
+ * TEXTO PROVISIONAL (Q10 de `specs/SLT-73-dinero-satelite-al-conciliar/requirements.md`, copiado
+ * literal): es texto de producto y lo fija Carlos.
  */
-export const DESMARCAR_NO_MUEVE_DINERO_TITULO = "Desmarcar no mueve dinero.";
-export const DESMARCAR_NO_MUEVE_DINERO_NOTA =
-  "La marca es informativa: dice si el efectivo llegó, no lo contabiliza. Por eso se puede " +
-  "deshacer si alguien marcó por error — y queda registrado quién marcó y quién deshizo.";
+export const CONCILIACION_ASIENTA_TITULO = "Marcar recibido asienta el dinero en la caja.";
+export const CONCILIACION_ASIENTA_NOTA =
+  "Después no se puede desmarcar: si el monto no es el correcto, usa «Corregir»";

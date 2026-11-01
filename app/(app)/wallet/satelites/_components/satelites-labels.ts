@@ -242,12 +242,20 @@ function plural(n: number, singular: string, plural_: string): string {
   return n === 1 ? singular : plural_;
 }
 
-/** FICHA 458-D (T D.4, R17, R31) — la página del estado de cuenta de UNA bodega satélite. */
+/**
+ * FICHA 458-D (T D.4, R17, R31) — la página del estado de cuenta de UNA bodega satélite.
+ *
+ * SLT-73 (R31–R33, enmienda 2): lo «declarado» ya no es el efectivo sino lo que la bodega le
+ * entrega a la central («Para la central»), y hay una fila por cada cierre aprobado que todavía no
+ * está en una consolidación (`chip = "sin_consolidar"`, origen `cierre_dia`). TEXTOS PROVISIONALES
+ * (`descripcion` y `sinConsolidar`, T14): los fija Carlos.
+ */
 export const ESTADO_CUENTA_BODEGA_PAGINA = {
   titulo: (bodega: string) => `Estado de cuenta de ${bodega}`,
   descripcion:
-    "Lo que la bodega declaró al consolidar y lo que llegó a la central, con lo que tiene por entregar tras cada movimiento",
+    "Lo que la bodega tiene que entregar a la central por cada consolidación y por cada cierre aprobado sin consolidar, y lo que llegó, con lo que tiene por entregar tras cada movimiento",
   volver: "Volver a las bodegas satélite",
   declarado: "Consolidación declarada",
   recibido: "Recibido en la central",
+  sinConsolidar: "Cierre aprobado sin consolidar",
 } as const;

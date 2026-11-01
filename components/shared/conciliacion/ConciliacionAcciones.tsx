@@ -23,8 +23,8 @@ import {
 import {
   CONCILIACION_ACCION,
   CONCILIACION_RESPUESTA,
-  DESMARCAR_NO_MUEVE_DINERO_NOTA,
-  DESMARCAR_NO_MUEVE_DINERO_TITULO,
+  CONCILIACION_ASIENTA_NOTA,
+  CONCILIACION_ASIENTA_TITULO,
 } from "./conciliacion-labels";
 import { MarcarRecibidoDialog, type MarcarRecibidoCampos } from "./MarcarRecibidoDialog";
 
@@ -47,11 +47,13 @@ import { MarcarRecibidoDialog, type MarcarRecibidoCampos } from "./MarcarRecibid
 // el rótulo del botón y el del estado no pueden contradecirse.
 //
 // ── POR QUÉ «DESMARCAR» PIDE CONFIRMACIÓN Y «MARCAR» NO
-// No por peligro —ninguna de las dos mueve un colón (R14)— sino por ASIMETRÍA DE INFORMACIÓN:
+// (Con SLT-73 marcar SÍ asienta el dinero, y una marca con asientos ya no se desmarca: R14.)
+// No sólo por peligro sino por ASIMETRÍA DE INFORMACIÓN:
 // marcar abre un diálogo donde se ve el declarado y se teclea el monto, así que ya hay un paso
 // donde mirar. Desmarcar es un clic que, sin nada delante, borra el rastro de quién dijo que el
 // dinero llegó y de cuánto. La confirmación lleva escrito el importe que se va a borrar y la nota
-// de que la marca es informativa: las dos mitades de lo que hay que saber antes de pulsar.
+// de la conciliación (SLT-73, R35: marcar asienta el dinero; con asientos no se desmarca, se usa
+// «Corregir»): las dos mitades de lo que hay que saber antes de pulsar.
 //
 // ── QUIÉN DECIDE EL PERMISO: EL SERVIDOR
 // `puedeConciliar` baja por props desde un Server Component que lo resolvió con `esAccesoTotal`,
@@ -262,9 +264,9 @@ export function ConciliacionAcciones({
           )}
           <p className="text-muted-foreground">
             <strong className="font-semibold text-foreground">
-              {DESMARCAR_NO_MUEVE_DINERO_TITULO}
+              {CONCILIACION_ASIENTA_TITULO}
             </strong>{" "}
-            {DESMARCAR_NO_MUEVE_DINERO_NOTA}
+            {CONCILIACION_ASIENTA_NOTA}
           </p>
         </div>
       </Modal>

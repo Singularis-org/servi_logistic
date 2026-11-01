@@ -442,14 +442,15 @@ describe("R22/R24 — la conciliación de una bodega (458-D: en su estado de cue
     expect(within(region).queryByRole("status")).toBeNull();
   });
 
-  it("D6 — la nota de «Desmarcar no mueve dinero» va al pie y visible", async () => {
+  it("SLT-73 R35 — la nota del pie dice que marcar asienta el dinero y que se corrige con «Corregir» (Q10, provisional)", async () => {
     const region = await montarConciliacion();
     const nota = within(region).getByRole("note");
-    expect(nota).toHaveTextContent("Desmarcar no mueve dinero.");
-    expect(nota).toHaveTextContent(
-      /La marca es informativa: dice si el efectivo llegó, no lo contabiliza/,
+    // Literal a mano (Q10), no la constante: comparar contra su propia fuente siempre es verde.
+    expect(nota.textContent).toBe(
+      "Marcar recibido asienta el dinero en la caja. Después no se puede desmarcar: si el monto no es el correcto, usa «Corregir»",
     );
-    expect(nota).toHaveTextContent(/queda registrado quién marcó y quién deshizo/);
+    expect(nota).not.toHaveTextContent(/no mueve dinero/i);
+    expect(nota).not.toHaveTextContent(/informativa/i);
   });
 
   it("listar las bodegas no lee ninguna conciliación; la de UNA bodega lee UNA vez, y sólo la suya", async () => {
@@ -537,7 +538,12 @@ describe("R25 — marcar recibido, corregir y desmarcar", () => {
     // falta para decidir, y por eso se dice aquí.
     expect(dialogo).toHaveTextContent(/Ahora mismo consta recibida por/);
     expect(within(dialogo).getByText("₡485.000")).toBeInTheDocument();
-    expect(dialogo).toHaveTextContent("Desmarcar no mueve dinero.");
+    // SLT-73 R35: la confirmación tampoco dice que desmarcar no mueve dinero.
+    expect(dialogo).toHaveTextContent(
+      "Marcar recibido asienta el dinero en la caja. Después no se puede desmarcar: si el monto no es el correcto, usa «Corregir»",
+    );
+    expect(dialogo).not.toHaveTextContent(/no mueve dinero/i);
+    expect(dialogo).not.toHaveTextContent(/informativa/i);
   });
 
   it("R27 — sin permiso NO se monta ningún botón de conciliar", async () => {
