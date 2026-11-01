@@ -63,6 +63,7 @@ function arbol(): ProvinciaArbolDTO[] {
               nombre: "Carmen",
               zonaId: "z1",
               zonaNombre: "Norte",
+              zonas: [{ id: "z1", nombre: "Norte" }],
               // Ya especial para la empresa: el formulario no debe ofrecer ni tocar la marca.
               zonaEspecial: true,
               activo: true,
@@ -72,6 +73,7 @@ function arbol(): ProvinciaArbolDTO[] {
               nombre: "Test",
               zonaId: null,
               zonaNombre: null,
+              zonas: [],
               zonaEspecial: false,
               activo: true,
             },

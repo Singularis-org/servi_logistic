@@ -750,6 +750,7 @@ model ZonaDistrito {
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
 
   @@unique([zonaId, distritoId])
+  @@unique([organizacionId, distritoId]) // SLT-75 R7: un distrito, a lo sumo una zona por empresa (zona_distrito_organizacion_id_distrito_id_key)
   @@index([zonaId])
   @@index([distritoId])
   @@index([organizacionId])

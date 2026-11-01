@@ -3,6 +3,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
 import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
+import type { CreateZonaResult } from "@/lib/interfaces/repositories/IZonaRepository";
 import {
   HAY_BASE_DE_DATOS,
   clienteConSavepoint,
@@ -27,6 +28,12 @@ import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
+/** SLT-75: `create` devuelve un desenlace nombrado; aqui solo cabe `ok` y falla ruidosamente si no. */
+function zonaCreada(res: CreateZonaResult): Extract<CreateZonaResult, { estado: "ok" }>["zona"] {
+  if (res.estado !== "ok") throw new Error(`se esperaba \`ok\` al crear y llego \`${res.estado}\``);
+  return res.zona;
+}
+
 const NUM = "80000000";
 const NOMBRE = "Titular de Prueba";
 const unico = () => randomUUID().slice(0, 8);
@@ -49,7 +56,7 @@ describeSiHayBase("⭑ 429 — la marca de revision del SINPE (Postgres real)", 
       const USUARIO = (await crearUsuarioDePrueba(tx, "admin")).id;
       const repo = new ZonaRepository(clienteConSavepoint(tx));
 
-      const dto = await repo.create(
+      const dto = zonaCreada(await repo.create(
         {
           nombre: `429 Nueva ${unico()}`,
           cobroVehiculo: false,
@@ -60,7 +67,7 @@ describeSiHayBase("⭑ 429 — la marca de revision del SINPE (Postgres real)", 
           sinpeNombre: NOMBRE,
         },
         USUARIO,
-      );
+      ));
 
       const fila = await tx.zona.findUniqueOrThrow({
         where: { id: dto.id },

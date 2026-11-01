@@ -6,8 +6,10 @@
 -- (`*_origen_uq`, `wallet_movimiento_origen_categoria_uq`) descartan la fila respaldada en vez de
 -- duplicar el dinero. Despues se quita el respaldo.
 --
--- Un solo bloque `DO`: todo o nada. Si el respaldo no existe (el up nunca llego a crearlo), solo se
--- asegura que el esquema no quede.
+-- Un solo bloque `DO`: todo o nada. Se quita SOLO la tabla de esta ficha (`respaldo.slt73_asientos`);
+-- el esquema `respaldo` es compartido (SLT-75 guarda ahi `respaldo.slt75_zona_distrito_duplicado`) y se
+-- borra solo si queda vacio: sin CASCADE, Postgres rechaza el DROP con `2BP01` si queda otro objeto, y
+-- el sub-bloque atrapa ESE error y deja lo ajeno intacto.
 DO $slt73$
 BEGIN
   IF to_regclass('respaldo.slt73_asientos') IS NOT NULL THEN
@@ -33,6 +35,11 @@ BEGIN
     ON CONFLICT DO NOTHING;
   END IF;
 
-  DROP SCHEMA IF EXISTS respaldo CASCADE;
+  DROP TABLE IF EXISTS respaldo.slt73_asientos;
+  BEGIN
+    DROP SCHEMA IF EXISTS respaldo;
+  EXCEPTION WHEN dependent_objects_still_exist THEN
+    RAISE NOTICE 'slt73: el esquema respaldo conserva objetos de otra ficha; se deja';
+  END;
 END
 $slt73$;
