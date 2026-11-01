@@ -876,3 +876,154 @@ R16–R20 (tanda 4), R24–R27 y R30 (tanda 5), R6, R9 y R14 en pantalla (tanda 
 5. Falta verificar en el navegador lo que listan las tandas 6 y 7 (los E2E cubren marcar/desmarcar).
 
 **T10 sin marcar**: el gate no está en verde (2 rojos de entorno en una base limpia).
+
+## Tanda 9 — backend_dev: T13 (R31–R33, enmienda 2, D16) (2026-10-31)
+
+Commits: `77172d54` (código y tests) y `473a5760` (caso defensivo que mata N18). Base local NUEVA
+`servi_slt73c` por `conbase73c.sh`. MCP no usado (lo tocado vive en este worktree); Grep/Read. Esto cierra el
+punto 1 de «Abierto para el leader / humano» del cierre T10.
+
+### Q11 — ¿rechazar una consolidación suelta sus cierres? **No.**
+
+- `lib/repositories/CierresBodegaAdminRepository.ts:537-553` (`resolverCierreBodega`, el camino de
+  `CierresBodegaAdminService.rechazarCierreBodega`, `lib/services/CierresBodegaAdminService.ts:473-497`) hace un
+  único `tx.cierreBodega.updateMany({ where: { id, estado: "solicitado" }, data: { estado, resueltoPor,
+  resueltoAt, motivoRechazo } })`. No toca `cierre_dia`, y ningún trigger lo hace: en `db/migrations`, los únicos
+  triggers sobre `cierre_bodega_id` son los `verificar_misma_empresa`. `onDelete: SetNull`
+  (`db/schema.prisma:1622`) solo actúa si se BORRA la consolidación, y nadie la borra.
+- Consecuencia: los cierres de una rechazada siguen apuntando a ella y no se pueden volver a consolidar
+  (`CierreBodegaRepository.ts:206` y `:407` exigen `cierre_bodega_id IS NULL`).
+- **No contradice R32**: R5 (`SaldosSatelitesRepository`, agregación (d)) cuenta esos cierres, y R32 pide una fila
+  por cada cierre que cuenta en R5 y no está en una consolidación NO rechazada. Salen como «sin consolidar»
+  (`slt73-estado-cuenta-bodega` › «R32: las filas sin consolidar son el cierre de la RECHAZADA…»; TB.6: los
+  900,00 del cierre de b3). Mutación N6b (tratar «sin consolidar» como `cierre_bodega_id IS NULL`) → 10 rojos.
+- Matiz para el leader: `aporteSinConsolidar`/`cierresSinConsolidar` de `/wallet/satelites` (R6, agregación (e))
+  usan `cierre_bodega_id IS NULL`, así que NO incluyen los cierres de una rechazada, mientras que el estado de
+  cuenta los rotula «sin consolidar». La deuda (R5) y el pendiente (R31) coinciden igual. En prod hay 0 rechazadas
+  (431) y «Rechazar» está retirado de la pantalla (`lib/actions/cierre-bodega.ts:408`). No lo toqué.
+
+### Archivos
+
+- `lib/repositories/_shared/aporte-satelite-sql.ts` (nuevo): `APORTE_SATELITE_WHERE` (Prisma),
+  `cuentaEnLaDeudaSql(zonaId)` (el mismo predicado en SQL, construido con los mismos valores) y
+  `APORTE_SATELITE_SQL` (`general − pago − ganancia`, la resta de `paraLaCentral`/`esperadoDe`).
+- `lib/repositories/SaldosSatelitesRepository.ts`: `APORTE_WHERE = APORTE_SATELITE_WHERE` (sin cambio de cifra).
+- `lib/repositories/EstadoCuentaRepository.ts`: `movimientosDeBodegaSql(zonaId)`, UNA unión que leen
+  `paginaDeBodega`, `totalesDeBodega` y `periodoDeBodega`:
+  - `declarado` = Σ de los aportes de los cierres de la consolidación, no `total_efectivo`;
+  - `recibido`, sin cambio;
+  - rama nueva `sin_consolidar` (origen `cierre_dia`, fecha `COALESCE(resuelto_at, solicitado_at)`, registrado
+    por `resuelto_por`).
+
+  El corrido suma todo lo que no es `recibido`. `totalesDeBodega` devuelve `{ declarado, recibido }` (antes
+  `efectivo`).
+- `lib/interfaces/repositories/IEstadoCuentaRepository.ts`: tipo y docstring de `totalesDeBodega`.
+- `lib/services/EstadoCuentaService.ts > leerBodega`:
+  - `pendiente` se calcula con `declarado`;
+  - `cargo` va en toda fila que no sea `recibido`;
+  - `consolidacionId` solo si el origen es `cierre_bodega`.
+- `lib/utils/estado-cuenta-chips.ts`: `CHIPS_BODEGA` gana `sin_consolidar`, y se añade `ORIGEN_POR_CHIP_BODEGA`
+  (`Record<ChipBodega, …>` total). Lo usa `lib/utils/estado-cuenta.ts > paresDeChipBodega`.
+- `components/shared/estado-cuenta/estado-cuenta-labels.ts`: **arreglo mínimo de tipo**. `CHIP_LABEL` es un
+  `Record` total y gana `sin_consolidar: "Sin consolidar"` (texto provisional).
+- Tests:
+  - nuevo `tests/integration/db/slt73-estado-cuenta-bodega.int.test.ts`: crea todos sus datos y corre en una
+    base vacía;
+  - `_fixtures/wallet-458.ts`: cada consolidación de Z lleva su `cierre_dia` (con SINPE y descuentos), más el
+    cierre de la rechazada y uno sin consolidar. Son de un mensajero propio de la zona, para no tocar el libro
+    de M;
+  - `wallet-caracterizacion-458`: R84 y TB.6 de la bodega, con literales a mano;
+  - `estado-cuenta-saldo-corrido`: dos casos más de R33;
+  - `estado-cuenta-busqueda-orden-463`: sus dos consolidaciones empatadas ganan su cierre (sin él valdrían 0,00
+    y serían filas idénticas); conteos 8 y 6;
+  - guardia `estado-cuenta-chips-total`: añade el libro de la bodega, con contraprueba;
+  - literales de los chips en `tests/components/EstadoCuenta.test.tsx` y `EstadoCuentaBarra467.test.tsx`;
+  - doble de `busqueda-por-guia-469-servicios`: `declarado`.
+- Sin migración y sin tocar `schema.prisma`.
+
+### Mapa R → test (esta tanda)
+
+| R | Test |
+|---|---|
+| R31 | `slt73-estado-cuenta-bodega` › «⭑ R31: sin filtros, el corrido final y el pendiente = la deuda…» (1450.00 las dos, a mano); `wallet-caracterizacion-458` › «TB.6 … SLT-73 R31–R32» y «R84: pendiente de la bodega Z» (9150.00 las dos) |
+| R32 | `slt73-estado-cuenta-bodega` › «⭑ R32: declarado = el neto…» (filas y `consolidacionId`) y «R32: las filas sin consolidar son el cierre de la RECHAZADA…»; TB.6 (declarado neto con SINPE; filas `sin_consolidar` fechadas en su aprobación); `estado-cuenta-saldo-corrido` › «SLT-73 R32/R33: el chip sin consolidar…» |
+| R33 | `slt73-estado-cuenta-bodega` › «⭑ R33: los totales del repositorio y del periodo…» y «R33: la descarga…»; `estado-cuenta-saldo-corrido` › «SLT-73 R33: los totales del periodo de la bodega…» y la descarga; guardia `estado-cuenta-chips-total` › «SLT-73 — libro de la BODEGA» |
+
+### Mutaciones (harness `scratchpad/t13/mut.py`, autocomprobado)
+
+Sale del de T6:
+- CONTROL previo verde (61/61, 0 skipped);
+- aplica la mutación, relee el archivo y exige el texto mutado;
+- corre `slt73-estado-cuenta-bodega`, `wallet-caracterizacion-458`, `estado-cuenta-saldo-corrido`, `-463`,
+  `slt73-deuda-satelite`, `saldo-satelites` y la guardia de chips;
+- aborta si un run no trae resumen;
+- revierte con `git checkout --` y comprueba `git diff --quiet`.
+
+19/19 aplicadas y revertidas.
+
+| Mutación | Rojos |
+|---|---|
+| N1 declarado vuelve a `total_efectivo` | 7 |
+| N2 quitar la rama `sin_consolidar` | 11 |
+| N3 SQL sin `estado aprobado` | 5 |
+| N4 SQL sin `destino_tipo` | 5 |
+| N5 SQL sin la zona | 5 |
+| N6a `sin_consolidar` con los cierres de consolidaciones no rechazadas (doble conteo) | 10 |
+| N6b `sin_consolidar` solo con `cierre_bodega_id` nulo (pierde la rechazada, Q11) | 10 |
+| N7 aporte SQL sin restar el pago al mensajero | 7 |
+| N8 aporte SQL sin restar la ganancia | 7 |
+| N9 totales: `declarado` solo de las consolidaciones | 35 (R22 lanza y la lectura entera cae) |
+| N10 periodo sin `sin_consolidar` | 35 (ídem) |
+| N11 corrido: solo `declarado` suma | 6 |
+| N12 fecha de `sin_consolidar` = `solicitado_at` | 2 |
+| N13 servicio: cargo solo si `declarado` | 5 |
+| N14 servicio: `consolidacionId` siempre `origenId` | 2 |
+| N15 servicio: pendiente sin lo declarado | 35 |
+| N16 chip `sin_consolidar` con origen `cierre_bodega` | 1 |
+| N17 fórmula duplicada: Saldos con su propio predicado (sin estado) | 3 |
+| N18 declarado sin el predicado de la deuda | 0 en la 1.ª pasada; caso defensivo añadido (`473a5760`) → **4** |
+
+Supervivientes: **0**.
+
+### Lo que frontend_dev debe pintar (T14 no lo lista: va en T14 o en una tarea nueva)
+
+- Una fila nueva en el estado de cuenta de la bodega: `chip = "sin_consolidar"`, `categoria = "sin_consolidar"`,
+  `origenTipo = "cierre_dia"`, `consolidacionId = null`, importe en `cargo` (puede ser negativo).
+  `app/(app)/wallet/satelites/_components/EstadoCuentaSatelite.tsx > CONCEPTO_BODEGA` no la conoce y le pone el
+  rótulo de reserva «Consolidación declarada». Hace falta su concepto (p. ej. en
+  `satelites-labels.ts > ESTADO_CUENTA_BODEGA_PAGINA`); la descarga toma el concepto de ahí.
+- El chip «Sin consolidar» (`CHIP_LABEL`) lleva un texto provisional puesto por backend.
+- «Declarado» ya no es el efectivo: es el neto para la central. Hay que revisar la descripción de la página
+  (`ESTADO_CUENTA_BODEGA_PAGINA.descripcion`, «Lo que la bodega declaró al consolidar…») y la cabecera de
+  `EstadoCuentaSatelite.tsx`.
+- Nada de esto rompe el typecheck.
+
+### Verificación (salida real)
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: exit 0.
+- `pnpm run lint`: exit 0; 0 errores y 232 avisos, los mismos que antes y ninguno en los archivos de esta tanda.
+- La base `servi_slt73c` está vacía (0 empresas y 0 usuarios). Las suites de la foto 458 exigen una zona central
+  y una orden (`cargarCatalogo459`: es el rojo de entorno del baseline). Para correrlas sembré a mano esos
+  requisitos en una empresa marcada (`scratchpad/t13/prereq.cjs up`: empresa, zona central, una tienda y una
+  orden) y al terminar los borré (`down`: vuelve a 0 empresas, 0 usuarios, 0 cierres).
+  - Con los requisitos sembrados:
+    - `wallet-caracterizacion-458` + `estado-cuenta-saldo-corrido`: **19/19**;
+    - `estado-cuenta-busqueda-orden-463`: **11/11**;
+    - `kardex-cuentas-468`, `mi-wallet-resumen-458d` y `estado-cuenta-pago-tienda-172r53`: verdes;
+    - `estado-cuenta-cierre-pagos-172r52` y `estado-cuenta-servidor-458d`: rojos de entorno del baseline. Siembran
+      un cierre hacia `cat.centralZonaId`, que es de otra empresa: «referencia a otra empresa:
+      cierre_dia.destino_zona_id -> zona». No es de esta tanda.
+  - Con la base otra vez vacía: `slt73-estado-cuenta-bodega` + `slt73-deuda-satelite` + `saldo-satelites`
+    **25/25**.
+  - Unitarios y de componentes: `EstadoCuenta`, `EstadoCuentaBarra467`, `EstadoCuentaSatelite`,
+    `busqueda-por-guia-469-servicios`, la guardia de chips y el test nuevo: **75/75**.
+- `vitest related --run` de los 8 archivos de `lib/` y `components/` tocados (con los requisitos sembrados): 254
+  archivos, 237 verdes, 17 rojos y 130 tests rojos. Los 17 están en `tests/baseline-rojos.json`, todos por
+  entorno: «no tiene ni una tarifa», «`usuario` tiene menos de 2 filas», «referencia a otra empresa», y un
+  composition root real sin datos en `ajuste-caja-anulacion-461`.
+- `pnpm run test:guardias`: 318 archivos, 1 rojo (`dependencias-declaradas-presentes`, en el baseline desde el
+  2026-10-21). 4443 verdes, 1 skipped.
+
+**Veredicto:** T13 hecho y probado contra Postgres. El estado de cuenta de la bodega ya da la deuda de
+`/wallet/satelites`, con una sola fórmula compartida. Q11 = rechazar no suelta los cierres, y es compatible con
+R32. 0 supervivientes de 19 mutaciones. Queda para frontend_dev el rótulo de la fila «sin consolidar».

@@ -96,7 +96,7 @@
   - `DineroIdentidadesEnPantalla.test.tsx` y `wallet-page.test.tsx` siguen verdes;
   - verificado en el navegador: tras conciliar con faltante, el bloque muestra el faltante y «De
     las tiendas» no se mueve.
-- [ ] **T13 [P] — Enmienda 2, D16: estado de cuenta de la bodega (R31–R33).** `backend_dev`.
+- [x] **T13 [P] — Enmienda 2, D16: estado de cuenta de la bodega (R31–R33).** `backend_dev`.
   Aprobada por Carlos 2026-10-31. Depende de T6. Lo primero es verificar si rechazar una
   consolidación suelta sus cierres (Q11) y anotarlo en la bitácora.
   D15 no tiene tarea: premios e incentivos no se tocan, y la exclusión de T8 ya está hecha y probada
