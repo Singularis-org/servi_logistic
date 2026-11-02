@@ -2,12 +2,12 @@
 
 | key | nombre | zone | complexity | rama | assignee | estado |
 |---|---|---|---|---|---|---|
-| SLT-62 | porcentaje-efectividad-base-chica | frontend | low | feature/SLT-62-porcentaje-efectividad-base-chica | Carlos Restrepo | pending |
+| SLT-62 | porcentaje-efectividad-base-chica | frontend | low | feature/SLT-62-porcentaje-efectividad-base-chica | Carlos Restrepo | in_progress |
 
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F1.4: spec APROBADO 2026-10-30 (comentario en la tarjeta). En espera: Carlos pide terminar EP-8 primero.
+F2.1 (2026-11-02): en implementación, adelantada en paralelo a SLT-52. Rama al día con origin/dev.
 
 ## Evaluación
 zone frontend / complexity low. Nace de las dudas del cliente del 2026-10-30 sobre Analítica y Monitoreo.
@@ -17,6 +17,7 @@ Cupo: fichas propias en vuelo SLT-62/63/64; sin cruce declarado con fichas de ot
 ## Decisiones
 - 2026-10-30 (Carlos): spec aprobado con las decisiones por defecto. P1 = mantener «Ninguna ha terminado todavía» con 0 desenlaces.
 - 2026-10-30 (Carlos): el porcentaje se muestra SIEMPRE y LIMPIO, sin aviso de base pequeña; se quita el texto «hacen falta 20». Aplica sobre cargadas y sobre las que tienen desenlace.
+- 2026-11-02 (Carlos): «Sí, en paralelo» — se adelanta antes de terminar EP-8. Sin choque de archivos (archivos-en-vuelo exit 0).
 
 ## Preguntas abiertas
 Ninguna.
