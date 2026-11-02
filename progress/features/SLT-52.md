@@ -7,8 +7,8 @@
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F2.0 (2026-11-02): spec aprobado, in_progress. Siguiente: implementer por tandas T0-T7.
-`spec_author` escribe los EARS, `design.md` y `tasks.md`. Rama puesta al día con origin/dev (2979b7b6).
+F2.1 (2026-11-02): T0 y T1 hechas, gate verde. Siguiente: T2. Detalle en `progress/impl_SLT-52.md`.
+Ojo: `prisma generate` ya conoce las tablas de T1; una base sin sus migraciones falla en `cierreDetail.create`.
 
 ## Evaluación
 backend / high: modelo nuevo + resolver único que reemplaza cuatro cálculos de dinero, con
@@ -32,6 +32,9 @@ snapshot ampliado en `cierre_detail` y `gestion_orden`. Plan de la épica:
 Ninguna.
 
 ## Tandas
+- 2026-11-02 · T0 (literales del modelo viejo, 49 casos) · 45e1ee02 · —
+- 2026-11-02 · T1 (esquema: 4 migraciones, 5 tablas, RLS) · 2025516d + 67ca1858 (censos) · gate ROJO
+  (2 censos) → arreglado → gate VERDE. Task nueva T6.5: `ZonaRepository.update` no debe vaciar grupos.
 
 ## Modelos (overrides)
 
