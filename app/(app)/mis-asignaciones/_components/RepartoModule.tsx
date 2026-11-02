@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -29,6 +29,8 @@ import type { BloqueoDetalle } from "@/lib/utils/bloqueo-cierre";
 // frase que pinta la card, la que devuelve el servidor y la que lee la tienda.
 import { avisoReservaParaOtroDia } from "@/lib/utils/dia-reparto-textos";
 import { normalizeName } from "@/lib/utils/normalize";
+import { calcularRutaAlSalir } from "@/lib/actions/ruta-mensajero";
+import { distanciaHaversineKm } from "@/lib/geo/polilinea";
 
 import { coincideBusqueda } from "./mis-asignaciones-buscador";
 import { FiltroCantonDistrito } from "./FiltroCantonDistrito";
@@ -123,6 +125,15 @@ export interface RepartoModuleProps {
    * controles de escoger y gestionar. Defensa SUAVE; el backend (R25) es la defensa real.
    */
   bloqueo: BloqueoDetalle;
+  /**
+   * SLT-59 (R62, design §12.6) — metros desde el punto de recogida a partir de los cuales el
+   * mensajero «ya salió» y se calcula su primera ruta del día. Lo baja el Server Component desde
+   * `RUTA_REOPT_DISTANCIA_M`, para que no exista un segundo literal en el cliente.
+   *
+   * Opcional a propósito: sin él no hay disparo de salida (0 llamadas facturadas), que es el
+   * desenlace seguro; quedan la gestión y el botón. La única pantalla real lo pasa siempre.
+   */
+  umbralSalidaM?: number;
 }
 
 // Feature 114: textos del buscador (separados para i18n futura, lenguaje claro). La
@@ -169,6 +180,7 @@ export function RepartoModule({
   ordenEnGestionId,
   ruta,
   bloqueo,
+  umbralSalidaM,
 }: RepartoModuleProps) {
   const router = useRouter();
   const toast = useToast();
@@ -366,6 +378,53 @@ export function RepartoModule({
   // La del seguimiento MANDA sobre la del último botón: es más reciente por definición. Se
   // cae a la del botón mientras el GPS no haya dado su primer fix bueno.
   const origenMapa = ubicacionVivo ?? ubicacionActual;
+
+  // SLT-59 (R62, design §12.6) — DISPARO DE SALIDA. La posición en vivo solo existe en el
+  // navegador: el servidor no se entera de que el mensajero dejó la bodega hasta su primera
+  // gestión. Aquí, sin coste, se detecta que se alejó del punto de recogida y se pide la primera
+  // ruta del día UNA vez por montaje (el ref), aunque el GPS siga dando lecturas: cada llamada
+  // es una optimización facturada, y la decisión final la vuelve a comprobar el servidor (R63).
+  // Lo que no sea un cálculo hecho se calla: nada que el mensajero tenga que resolver (sin toast).
+  const salidaDisparada = useRef(false);
+  const primeraRutaPendiente = ruta.primeraRutaPendiente;
+  const recogidaLat = ruta.puntoRecogida?.lat ?? null;
+  const recogidaLng = ruta.puntoRecogida?.lng ?? null;
+  // Sobre `porGestionar` SIN filtrar: el buscador no puede decidir si hay algo que optimizar.
+  const hayParadasConCoordenadas = porGestionar.some(
+    (o) => o.latitud !== null && o.longitud !== null,
+  );
+  useEffect(() => {
+    if (salidaDisparada.current || ubicacionVivo === null) return;
+    if (umbralSalidaM === undefined || !primeraRutaPendiente || !hayParadasConCoordenadas) return;
+    if (recogidaLat === null || recogidaLng === null) return;
+    const metros =
+      distanciaHaversineKm(ubicacionVivo, { lat: recogidaLat, lng: recogidaLng }) * 1000;
+    if (metros <= umbralSalidaM) return;
+    salidaDisparada.current = true;
+    calcularRutaAlSalir({ ubicacion: { lat: ubicacionVivo.lat, lng: ubicacionVivo.lng } })
+      .then((result) => {
+        if (result.status !== "ok" || result.omitida) return;
+        // Como el botón: el trazado se eleva antes del refresh, que no toca el estado de cliente.
+        if (result.trazado) {
+          setTrazadoRuta({
+            encodedPolyline: result.trazado.encodedPolyline,
+            fuente: result.trazado.fuente,
+          });
+        }
+        router.refresh();
+      })
+      .catch(() => {
+        // Un fallo aquí no le pide nada al mensajero: le quedan la gestión y el botón.
+      });
+  }, [
+    ubicacionVivo,
+    umbralSalidaM,
+    primeraRutaPendiente,
+    hayParadasConCoordenadas,
+    recogidaLat,
+    recogidaLng,
+    router,
+  ]);
 
   // Trayecto en vivo pedido a mano. Cuando existe MANDA sobre el tramo persistido: el
   // mensajero acaba de pedir explícitamente «desde donde estoy», y seguir resaltando el

@@ -225,6 +225,10 @@ const RESUMEN = {
   flujoDesde: "2026-08-25",
   iva: "0.00", // SL-39
   signoIva: "cero" as const,
+  porCobrarSatelites: "0.00",
+  signoPorCobrarSatelites: "cero" as const,
+  porcentajePorCobrarSatelites: "0.00",
+  deEmpresaEnCaja: "1.00",
 };
 // Feature 231 (T6.3): el módulo monta ahora la tarjeta de la ganancia, que recibe la
 // composición hermana del resumen. Este archivo mide la DESCARGA y el FILTRO, no esa tarjeta;

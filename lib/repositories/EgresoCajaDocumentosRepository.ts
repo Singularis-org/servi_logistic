@@ -118,3 +118,25 @@ export class PremioCajaDocumentosRepository {
     return lista.map((id) => ({ id, anulado: anulados.has(id), tieneComprobante: false }));
   }
 }
+
+/**
+ * SLT-68 (design §5, R16) — el estado de los INCENTIVOS a un mensajero cuyo egreso de caja
+ * (`egreso_pago_mensajero`, origen `incentivo_mensajero`) esta en la pagina. id = el devengo `incentivo`
+ * del libro del mensajero. «Anulado» = existe su reverso de caja (`ingreso_ajuste` con la MISMA clave de
+ * origen), que `IncentivoMensajeroService.anular` escribe en la misma transaccion que el
+ * `reverso_incentivo`. Un incentivo no lleva comprobante. UNA consulta, ninguna si la lista viene vacia.
+ */
+export class IncentivoCajaDocumentosRepository {
+  constructor(private readonly prisma: Pick<PrismaClient, "walletMovimiento">) {}
+
+  async estadoDeDocumentos(ids: readonly string[]): Promise<EstadoDocumentoCaja[]> {
+    if (ids.length === 0) return [];
+    const lista = [...ids];
+    const reversos = await this.prisma.walletMovimiento.findMany({
+      where: { categoria: "ingreso_ajuste", origenTipo: "incentivo_mensajero", origenId: { in: lista } },
+      select: { origenId: true },
+    });
+    const anulados = new Set(reversos.map((r) => r.origenId));
+    return lista.map((id) => ({ id, anulado: anulados.has(id), tieneComprobante: false }));
+  }
+}

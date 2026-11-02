@@ -43,6 +43,20 @@ function dato(resumen: Locator, rotulo: string): Locator {
   return resumen.getByText(rotulo, { exact: true }).locator("xpath=..");
 }
 
+/**
+ * Despliega una fila del libro aunque la página aún no esté hidratada. Con `next dev` el libro llega
+ * pintado del servidor antes de que React monte los manejadores: el primer clic puede caer en el HTML
+ * sin manejador y perderse (medido en SLT-73: `aria-expanded` seguía en `false`, y las lecturas del
+ * montaje llegaban DESPUÉS del clic). Mismo patrón que `abrirCon` de `incentivo-mensajero-slt68`, pero
+ * un desplegable NO es idempotente: solo se pulsa si sigue cerrado, para no volver a plegarlo.
+ */
+async function desplegar(control: Locator): Promise<void> {
+  await expect(async () => {
+    if ((await control.getAttribute("aria-expanded")) !== "true") await control.click({ timeout: 2_000 });
+    await expect(control).toHaveAttribute("aria-expanded", "true", { timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
+}
+
 async function abrirWallet(page: Page) {
   const res = await page.goto("/wallet");
   expect(res?.status()).toBe(200);
@@ -81,7 +95,7 @@ test.describe.serial("Wallet — caja del maestro, filtro, registro manual y blo
     await expect(pago).toContainText(c.mensajero.nombre);
 
     // El desglose de la fila del flete: las dos órdenes del cierre.
-    await page.getByRole("button", { name: /^Ver las órdenes que componen «Flete cobrado a la tienda»/ }).click();
+    await desplegar(page.getByRole("button", { name: /^Ver las órdenes que componen «Flete cobrado a la tienda»/ }));
     await expect(page.getByText(c.conCod.destinatario)).toBeVisible();
     await expect(page.getByText(c.sinCod.destinatario)).toBeVisible();
   });

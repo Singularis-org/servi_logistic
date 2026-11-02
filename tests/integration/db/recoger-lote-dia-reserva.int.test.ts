@@ -56,6 +56,8 @@ const SEMILLAS: { clave: string; fechaReparto: Date | null }[] = [
 function colaFake() {
   return {
     enqueue: vi.fn(async () => null),
+    // SLT-59 (R76): la recogida con la primera ruta pendiente deja/mueve el job del dia por aqui.
+    encolarOMoverPendiente: vi.fn(async () => null),
     claimBatch: vi.fn(async () => []),
     complete: vi.fn(async () => {}),
     fail: vi.fn(async () => {}),

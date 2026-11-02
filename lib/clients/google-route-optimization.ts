@@ -26,6 +26,14 @@ import type {
   OptimizarOutcome,
 } from "@/lib/interfaces/external/IRouteOptimizationClient";
 import { optlog, opterror, describirToken, cronometro } from "@/lib/logging/optimizer-log";
+import {
+  registrarLlamadaGoogle,
+  resolverRegistro,
+  resultadoDeFalloDeRed,
+  resultadoDeRespuesta,
+  type ContextoLlamadaRuta,
+  type OpcionesRegistroLlamada,
+} from "@/lib/clients/registro-llamada-google";
 
 const ENDPOINT_BASE = "https://routeoptimization.googleapis.com/v1/projects";
 
@@ -175,7 +183,7 @@ export function motivoSinSolucion(datos: {
   return `${OPERACION}: paradas saltadas por el proveedor (${partes.join("; ")})`;
 }
 
-export interface GoogleRouteOptimizationClientOpts {
+interface GoogleRouteOptimizationClientOptsBase {
   /** Proyecto GCP con el SKU habilitado. Forma parte de la URL, nunca de un mensaje. */
   projectId: string;
   /** Proveedor del `access_token` OAuth2 (`lib/auth/google-sa-token.ts`). */
@@ -186,20 +194,37 @@ export interface GoogleRouteOptimizationClientOpts {
   fetchImpl?: typeof fetch;
 }
 
+/** SLT-59 (R69): el canal y la empresa de la línea `[google-api]`, inyectables en tests. */
+export type GoogleRouteOptimizationClientOpts = GoogleRouteOptimizationClientOptsBase &
+  OpcionesRegistroLlamada;
+
 export class GoogleRouteOptimizationClient implements IRouteOptimizationClient {
   private readonly projectId: string;
   private readonly getToken: () => Promise<string>;
   private readonly timeoutMs: number;
   private readonly fetchImpl: typeof fetch;
+  private readonly registro: ReturnType<typeof resolverRegistro>;
 
   constructor(opts: GoogleRouteOptimizationClientOpts) {
     this.projectId = opts.projectId;
     this.getToken = opts.getToken;
     this.timeoutMs = opts.timeoutMs ?? 20_000;
     this.fetchImpl = opts.fetchImpl ?? fetch;
+    this.registro = resolverRegistro(opts);
   }
 
-  async optimizar(input: OptimizarInput): Promise<OptimizarOutcome> {
+  /** SLT-59 (R69): una línea por petición `optimizeTours`; `paradas` = envíos enviados. */
+  private registrar(contexto: ContextoLlamadaRuta, envios: number, resultado: string): void {
+    registrarLlamadaGoogle(this.registro.registro, {
+      api: "route_optimization",
+      contexto,
+      empresaId: this.registro.empresaId(),
+      paradas: envios,
+      resultado,
+    });
+  }
+
+  async optimizar(input: OptimizarInput, contexto: ContextoLlamadaRuta): Promise<OptimizarOutcome> {
     // El array de entrada ES la tabla de traduccion indice -> ordenId. El `ordenId` NO se
     // envia al proveedor: no hace falta y reduce lo que sale del sistema.
     const { origen, paradas } = input;
@@ -268,12 +293,14 @@ export class GoogleRouteOptimizationClient implements IRouteOptimizationClient {
       });
     } catch (error) {
       opterror("client/google — fallo de red o timeout", error, { ms: medir() });
+      this.registrar(contexto, body.model.shipments.length, resultadoDeFalloDeRed(error));
       // R15: red o timeout -> transitorio. El detalle NO incluye la URL (lleva el
       // projectId) ni el cuerpo (lleva las coordenadas de entrega).
       return { status: "transitorio", detalle: `${OPERACION}: fallo de red o timeout` };
     }
 
     optlog("client/google — respuesta HTTP", { status: respuesta.status, ms: medir() });
+    this.registrar(contexto, body.model.shipments.length, resultadoDeRespuesta(respuesta.status));
 
     // R15: credencial, scope o facturacion rotos. Reintentar no lo arregla solo, pero se
     // propaga como error para que la cola lo haga VISIBLE en el dead-letter.

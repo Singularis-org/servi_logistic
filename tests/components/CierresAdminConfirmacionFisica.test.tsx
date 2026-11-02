@@ -15,6 +15,7 @@ import type { CierreAdminResumen } from "@/lib/interfaces/services/ICierresAdmin
 import type {
   CierreDetalleGestion,
   CierreGrupos,
+  CierreOrdenSinGestion,
   CierreResultado,
   CierreTotales,
   TotalesIngresoEmpresa,
@@ -224,10 +225,16 @@ const INC_1 = makeGestion({
   causaIncidente: "robado",
 });
 
-/** Programa el detalle que devolverá `verCierreDetalle` con los grupos indicados. */
-function conGrupos(grupos: Partial<CierreGrupos>) {
+/**
+ * Programa el detalle que devolverá `verCierreDetalle` con los grupos indicados y, desde la 451,
+ * las órdenes que el corte barrió en ese cierre (por defecto ninguna, como antes).
+ */
+function conGrupos(
+  grupos: Partial<CierreGrupos>,
+  ordenesSinGestion: CierreOrdenSinGestion[] = [],
+) {
   verDetalleMock.mockResolvedValue({
-    ordenesSinGestion: [],
+    ordenesSinGestion,
     sinGestionRegistrado: true,
     rechazosDeTienda: [],
     status: "ok",
@@ -659,7 +666,7 @@ describe("T4.4/R28 — se confirma por cámara o por número tecleado", () => {
     await vi.waitFor(() =>
       expect(aprobarMock).toHaveBeenCalledWith({
         cierreId: "c1",
-        confirmacionFisica: [{ gestionId: "g-dev-1", numGuia: 7001 }],
+        confirmacionFisica: [{ origen: "gestion", gestionId: "g-dev-1", numGuia: 7001 }],
       }),
     );
   });
@@ -677,7 +684,7 @@ describe("T4.4/R28 — se confirma por cámara o por número tecleado", () => {
     await vi.waitFor(() =>
       expect(aprobarMock).toHaveBeenCalledWith({
         cierreId: "c1",
-        confirmacionFisica: [{ gestionId: "g-dev-1", numGuia: 7001 }],
+        confirmacionFisica: [{ origen: "gestion", gestionId: "g-dev-1", numGuia: 7001 }],
       }),
     );
   });
@@ -889,7 +896,7 @@ describe("T4.6/R37 — con incidentes y retornables, la confirmación va ANTES q
       expect(aprobarMock).toHaveBeenCalledWith({
         cierreId: "c1",
         indemnizaciones: [{ gestionId: "g-inc-1", monto: "12500.00" }],
-        confirmacionFisica: [{ gestionId: "g-dev-1", numGuia: 7001 }],
+        confirmacionFisica: [{ origen: "gestion", gestionId: "g-dev-1", numGuia: 7001 }],
       }),
     );
   });
@@ -1040,9 +1047,9 @@ describe("guía repetida — una lectura confirma TODAS las filas de ese paquete
       expect(aprobarMock).toHaveBeenCalledWith({
         cierreId: "c1",
         confirmacionFisica: [
-          { gestionId: "g-dup-a", numGuia: 7010 },
-          { gestionId: "g-dup-b", numGuia: 7010 },
-          { gestionId: "g-rec-1", numGuia: 7002 },
+          { origen: "gestion", gestionId: "g-dup-a", numGuia: 7010 },
+          { origen: "gestion", gestionId: "g-dup-b", numGuia: 7010 },
+          { origen: "gestion", gestionId: "g-rec-1", numGuia: 7002 },
         ],
       }),
     );
@@ -1104,7 +1111,7 @@ describe("guía repetida — una lectura confirma TODAS las filas de ese paquete
     await vi.waitFor(() =>
       expect(aprobarMock).toHaveBeenCalledWith({
         cierreId: "c1",
-        confirmacionFisica: [{ gestionId: "g-dev-dup", numGuia: 7020 }],
+        confirmacionFisica: [{ origen: "gestion", gestionId: "g-dev-dup", numGuia: 7020 }],
       }),
     );
   });
@@ -1173,6 +1180,434 @@ describe("el contador dice PAQUETES y cuenta paquetes, no filas", () => {
     expect(
       within(dialog).getByRole("button", { name: "Confirmar y aprobar" }),
     ).toBeDisabled();
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// FICHA 451 / SLT-72 (T5.5 — R29-R36 y la mitad cliente de R19) — las órdenes BARRIDAS
+// ---------------------------------------------------------------------------------------------
+//
+// El corte del día barre las órdenes que un cierre vencido dejó en reparto sin gestionar
+// (`cierre_sin_gestion`). Su paquete también está en la mano del mensajero y vuelve, así que desde
+// la 451 el servidor exige confirmarlas igual que las gestiones que vuelven. Esta parte protege la
+// mitad de pantalla: que se vean en la MISMA lista (cuarta sección, al final), que cuenten en el
+// MISMO contador, que una lectura las confirme, que el envío lleve su `origen` y que un cierre con
+// SÓLO barridas no se apruebe de un click.
+//
+// El rótulo es el nombre VIGENTE del estado al que el corte las pasa («Novedad interna»): el spec
+// (2026-09-21) decía «Sin gestionar», nombre que la 455 retiró el 2026-09-24. Escrito a mano.
+
+const ROTULO_BARRIDA = "Novedad interna";
+
+function makeBarrida(
+  over: Partial<CierreOrdenSinGestion> & { ordenId: string },
+): CierreOrdenSinGestion {
+  return {
+    numGuia: 8001,
+    numRemision: "REM-BAR",
+    destinatario: "Bruno Barrido",
+    producto: "Caja",
+    tiendaNombre: "Tienda Oeste",
+    zonaNombre: "GAM",
+    estatusOrigen: "en_reparto",
+    ...over,
+  };
+}
+
+const BAR_1 = makeBarrida({
+  ordenId: "o-bar-1",
+  numGuia: 8001,
+  numRemision: "REM-BAR-1",
+  destinatario: "Bea Barrantes",
+  tiendaNombre: "Tienda Oeste",
+});
+const BAR_2 = makeBarrida({
+  ordenId: "o-bar-2",
+  numGuia: 8002,
+  numRemision: "REM-BAR-2",
+  destinatario: "Blas Bonilla",
+  tiendaNombre: "Tienda Centro",
+});
+
+/** La fila de una orden barrida (su clave es el `ordenId`, no un id de gestión). */
+function filaBarrida(dialog: HTMLElement, ordenId: string): HTMLElement {
+  const li = dialog.querySelector<HTMLElement>(`[data-barrida="${ordenId}"]`);
+  expect(li, `no se pintó la fila de la barrida ${ordenId}`).not.toBeNull();
+  return li as HTMLElement;
+}
+
+describe("451/R29-R30 — las barridas, en la MISMA lista, como cuarta sección y con su rótulo", () => {
+  it("cada barrida muestra guía, remisión, destinatario, estado y se nombra con su rótulo", async () => {
+    const user = userEvent.setup();
+    conGrupos({ novedad: [DEV_1] }, [BAR_1, BAR_2]);
+    const dialog = await abrirVentana(user);
+
+    for (const b of [BAR_1, BAR_2]) {
+      const texto = filaBarrida(dialog, b.ordenId).textContent ?? "";
+      expect(texto).toContain(`Nº Guía ${b.numGuia}`);
+      expect(texto).toContain(b.numRemision);
+      expect(texto).toContain(b.destinatario);
+      expect(texto).toContain(b.tiendaNombre);
+      expect(texto).toContain("Pendiente");
+      // R29: NOMBRADA como lo que es, en el hueco donde la gestión lleva su resultado.
+      expect(texto).toContain(ROTULO_BARRIDA);
+    }
+    // La sección, rotulada con su cifra como las otras tres.
+    const seccion = within(dialog).getByRole("region", { name: ROTULO_BARRIDA });
+    expect(within(seccion).getByText("Novedad interna (2)")).toBeInTheDocument();
+    expect(within(seccion).getAllByRole("listitem")).toHaveLength(2);
+  });
+
+  it("va AL FINAL, dentro del MISMO contenedor desplazable y con la MISMA fila que las gestiones", async () => {
+    const user = userEvent.setup();
+    conGrupos(
+      { novedad: [DEV_1], devolucion_a_origen_por_rechazo: [REC_1], reprogramado: [REP_1] },
+      [BAR_1],
+    );
+    const dialog = await abrirVentana(user);
+
+    const deGestion = dialog.querySelector<HTMLElement>(`[data-gestion="${REC_1.gestionId}"]`);
+    const barrida = filaBarrida(dialog, BAR_1.ordenId);
+    expect(deGestion).not.toBeNull();
+    // Al final: la fila de la barrida va DESPUÉS de todas las de gestión.
+    for (const g of [DEV_1, REC_1, REP_1]) {
+      const li = dialog.querySelector(`[data-gestion="${g.gestionId}"]`) as HTMLElement;
+      expect(li.compareDocumentPosition(barrida) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+    // En la MISMA lista: comparten el contenedor con desplazamiento acotado (no una caja aparte,
+    // que la leería como opcional — design §6.2).
+    const contenedor = (el: HTMLElement) => el.closest(".overflow-y-auto");
+    expect(contenedor(barrida)).not.toBeNull();
+    expect(contenedor(barrida)).toBe(contenedor(deGestion as HTMLElement));
+    // Mismo peso visual (R30): la misma caja de fila.
+    expect(barrida.className).toBe((deGestion as HTMLElement).className);
+  });
+
+  it("PAREJA de la ausencia: sin barridas no aparece la sección", async () => {
+    const user = userEvent.setup();
+    conGrupos({ novedad: [DEV_1] });
+    const dialog = await abrirVentana(user);
+
+    expect(within(dialog).queryByRole("region", { name: ROTULO_BARRIDA })).toBeNull();
+    expect(dialog.querySelector("[data-barrida]")).toBeNull();
+    // La ventana sí está: la ausencia es de la sección.
+    expect(fila(dialog, DEV_1.gestionId)).toContain("Nº Guía 7001");
+  });
+});
+
+describe("451/R31 — las barridas cuentan en el MISMO contador y en el MISMO «faltan»", () => {
+  it("un solo progreso y un solo bloqueo, que suman gestiones y barridas", async () => {
+    const user = userEvent.setup();
+    conGrupos({ novedad: [DEV_1] }, [BAR_1, BAR_2]);
+    const dialog = await abrirVentana(user);
+
+    expect(within(dialog).getAllByRole("status")).toHaveLength(1);
+    expect(within(dialog).getAllByRole("note")).toHaveLength(1);
+    expect(progreso(dialog)).toBe("Paquetes confirmados: 0 de 3.");
+    expect(within(dialog).getByRole("note")).toHaveTextContent(
+      "Faltan 3 paquetes por confirmar. Si alguno no llegó, rechazá el cierre indicando cuáles faltan.",
+    );
+
+    // Terminar las gestiones NO dice «están todos» con barridas pendientes detrás.
+    await teclear(user, dialog, "7001");
+    expect(progreso(dialog)).toBe("Paquetes confirmados: 1 de 3.");
+    expect(within(dialog).getByRole("note")).toHaveTextContent(
+      "Faltan 2 paquetes por confirmar.",
+    );
+    expect(dialog.textContent).not.toContain("Están todos.");
+  });
+});
+
+describe("451/R32 — leer la guía de una barrida pendiente la confirma", () => {
+  it("por número tecleado", async () => {
+    const user = userEvent.setup();
+    conGrupos({ novedad: [DEV_1] }, [BAR_1, BAR_2]);
+    const dialog = await abrirVentana(user);
+
+    await teclear(user, dialog, "8001");
+
+    expect(filaBarrida(dialog, BAR_1.ordenId).textContent).toContain("Confirmada");
+    expect(filaBarrida(dialog, BAR_2.ordenId).textContent).toContain("Pendiente");
+    expect(fila(dialog, DEV_1.gestionId)).toContain("Pendiente");
+    expect(progreso(dialog)).toBe("Paquetes confirmados: 1 de 3.");
+    expect(within(dialog).queryByRole("alert")).toBeNull();
+  });
+
+  it("por CÁMARA, con el QR de la etiqueta", async () => {
+    const user = userEvent.setup();
+    conGrupos({}, [BAR_1]);
+    const dialog = await abrirVentana(user);
+
+    await escanear(user, dialog, qrDeGuia(8001));
+
+    expect(filaBarrida(dialog, BAR_1.ordenId).textContent).toContain("Confirmada");
+    expect(progreso(dialog)).toBe("Paquetes confirmados: 1 de 1.");
+  });
+
+  it("una segunda lectura de la misma barrida avisa y no cuenta de más (R32 de la 238 vale igual)", async () => {
+    const user = userEvent.setup();
+    conGrupos({}, [BAR_1, BAR_2]);
+    const dialog = await abrirVentana(user);
+
+    await teclear(user, dialog, "8001");
+    await teclear(user, dialog, "8001");
+
+    expect(within(dialog).getByRole("alert")).toHaveTextContent(
+      "Esa guía ya está confirmada. No se cuenta dos veces.",
+    );
+    expect(progreso(dialog)).toBe("Paquetes confirmados: 1 de 2.");
+  });
+});
+
+describe("451/R33 — una guía que no es de ninguna gestión NI de ninguna barrida del cierre", () => {
+  it("avisa que no es de este cierre y no marca nada", async () => {
+    const user = userEvent.setup();
+    conGrupos({ novedad: [DEV_1] }, [BAR_1]);
+    const dialog = await abrirVentana(user);
+
+    await teclear(user, dialog, "9999");
+
+    expect(within(dialog).getByRole("alert")).toHaveTextContent(
+      "Esa guía no pertenece a este cierre.",
+    );
+    expect(progreso(dialog)).toBe("Paquetes confirmados: 0 de 2.");
+    expect(fila(dialog, DEV_1.gestionId)).toContain("Pendiente");
+    expect(filaBarrida(dialog, BAR_1.ordenId).textContent).toContain("Pendiente");
+    expect(aprobarMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("451/T5.4 — el envío lleva cada entrada con su `origen`, y un cierre SÓLO con barridas abre la ventana", () => {
+  it("un cierre sin gestiones que vuelvan pero CON barridas NO se aprueba de un click", async () => {
+    // Antes de la 451 la ventana se abría con `retornables.length > 0`: este cierre se aprobaba
+    // directo contra un servidor que ahora lo rechaza — un bloqueo mudo.
+    const user = userEvent.setup();
+    conGrupos({ entregado: [ENT_1] }, [BAR_1]);
+    await pulsarAprobar(user);
+
+    expect(await screen.findByRole("dialog", { name: VENTANA })).toBeInTheDocument();
+    expect(aprobarMock).not.toHaveBeenCalled();
+  });
+
+  it("al completar, manda la barrida como `{ origen: \"barrida\", ordenId, numGuia }`", async () => {
+    const user = userEvent.setup();
+    conGrupos({ entregado: [ENT_1] }, [BAR_1]);
+    const dialog = await abrirVentana(user);
+
+    await teclear(user, dialog, "8001");
+    await user.click(within(dialog).getByRole("button", { name: "Confirmar y aprobar" }));
+
+    await vi.waitFor(() =>
+      expect(aprobarMock).toHaveBeenCalledWith({
+        cierreId: "c1",
+        confirmacionFisica: [{ origen: "barrida", ordenId: "o-bar-1", numGuia: 8001 }],
+      }),
+    );
+  });
+
+  it("mixto: gestiones primero y barridas después, cada una con SU origen y SU clave", async () => {
+    const user = userEvent.setup();
+    conGrupos({ novedad: [DEV_1] }, [BAR_1, BAR_2]);
+    const dialog = await abrirVentana(user);
+
+    await teclear(user, dialog, "8002");
+    await teclear(user, dialog, "7001");
+    await teclear(user, dialog, "8001");
+    await user.click(within(dialog).getByRole("button", { name: "Confirmar y aprobar" }));
+
+    await vi.waitFor(() =>
+      expect(aprobarMock).toHaveBeenCalledWith({
+        cierreId: "c1",
+        confirmacionFisica: [
+          { origen: "gestion", gestionId: "g-dev-1", numGuia: 7001 },
+          { origen: "barrida", ordenId: "o-bar-1", numGuia: 8001 },
+          { origen: "barrida", ordenId: "o-bar-2", numGuia: 8002 },
+        ],
+      }),
+    );
+  });
+
+  it("con incidentes y SÓLO barridas: primero la ventana, después los montos, y viajan las dos listas", async () => {
+    const user = userEvent.setup();
+    conGrupos({ incidente: [INC_1] }, [BAR_1]);
+    const dialog = await abrirVentana(user);
+    expect(screen.queryByRole("dialog", { name: SUB_MODAL_MONTOS })).toBeNull();
+
+    await teclear(user, dialog, "8001");
+    await user.click(within(dialog).getByRole("button", { name: "Continuar" }));
+    const montos = await screen.findByRole("dialog", { name: SUB_MODAL_MONTOS });
+    await user.type(
+      document.getElementById("indemnizacion-g-inc-1") as HTMLInputElement,
+      "500.00",
+    );
+    await user.click(within(montos).getByRole("button", { name: "Aprobar e indemnizar" }));
+
+    await vi.waitFor(() =>
+      expect(aprobarMock).toHaveBeenCalledWith({
+        cierreId: "c1",
+        indemnizaciones: [{ gestionId: "g-inc-1", monto: "500.00" }],
+        confirmacionFisica: [{ origen: "barrida", ordenId: "o-bar-1", numGuia: 8001 }],
+      }),
+    );
+  });
+});
+
+describe("451/R19 (mitad cliente) — con una barrida pendiente no hay forma de aprobar", () => {
+  it("el botón sigue bloqueado, forzarlo no llama al servidor, y no existe ninguna puerta de escape", async () => {
+    const user = userEvent.setup();
+    conGrupos({ novedad: [DEV_1] }, [BAR_1]);
+    const dialog = await abrirVentana(user);
+
+    // Todas las gestiones confirmadas; la barrida, no.
+    await teclear(user, dialog, "7001");
+    const boton = within(dialog).getByRole("button", { name: "Confirmar y aprobar" });
+    expect(boton).toBeDisabled();
+    expect(within(dialog).getByRole("note")).toHaveTextContent(
+      "Falta 1 paquete por confirmar. Si no llegó, rechazá el cierre indicando cuál falta.",
+    );
+    await user.click(boton);
+    expect(aprobarMock).not.toHaveBeenCalled();
+
+    // Sin «marcar como faltante», sin «aprobar de todas formas», sin «omitir» (D2, 2026-10-31).
+    const nombres = within(dialog)
+      .getAllByRole("button")
+      .map((b) => b.textContent ?? "");
+    for (const nombre of nombres) {
+      expect(nombre).not.toMatch(/faltante|todas formas|omitir|parcial/i);
+    }
+
+    // PAREJA: confirmada la barrida, el MISMO botón se habilita. La ausencia de arriba es del
+    // candado, no de un botón que nunca se habilita.
+    await teclear(user, dialog, "8001");
+    expect(within(dialog).getByRole("button", { name: "Confirmar y aprobar" })).toBeEnabled();
+  });
+});
+
+describe("451/R34 — si alguna fila no tiene guía, se dice ANTES de la lista, con cuántas son", () => {
+  it("una barrida sin guía: aviso en la barra de estado, antes de la lista, y su fila lo repite", async () => {
+    const user = userEvent.setup();
+    const BAR_SIN_GUIA = makeBarrida({
+      ordenId: "o-bar-sin",
+      numGuia: null,
+      numRemision: "REM-BAR-SIN",
+      destinatario: "Berta Sin Guía",
+    });
+    conGrupos({ novedad: [DEV_1] }, [BAR_SIN_GUIA]);
+    const dialog = await abrirVentana(user);
+
+    const aviso = within(dialog).getByText(
+      "1 paquete de esta lista no tiene número de guía: no se puede confirmar, así que este cierre no se va a poder aprobar.",
+    );
+    // ANTES de la lista: en el DOM precede a la primera fila.
+    const primeraFila = dialog.querySelector("[data-gestion], [data-barrida]") as HTMLElement;
+    expect(aviso.compareDocumentPosition(primeraFila) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // En la barra de estado, junto al progreso.
+    expect(aviso.parentElement).toBe(within(dialog).getByRole("status").parentElement);
+    // La advertencia por fila de la 238 se conserva, ahora también en la barrida.
+    expect(filaBarrida(dialog, "o-bar-sin").textContent).toContain(
+      "Sin número de guía: no se puede confirmar. Avisá a un administrador.",
+    );
+    // Y el bloqueo sigue diciéndose con UN solo `note` (R27 de la 238).
+    expect(within(dialog).getAllByRole("note")).toHaveLength(1);
+  });
+
+  it("cuenta los DOS orígenes, en plural", async () => {
+    const user = userEvent.setup();
+    const GES_SIN_GUIA = makeGestion({
+      gestionId: "g-dev-sin",
+      resultado: "novedad",
+      numGuia: null,
+      numRemision: "REM-DEV-SIN",
+    });
+    const BAR_SIN_GUIA = makeBarrida({ ordenId: "o-bar-sin", numGuia: null });
+    conGrupos({ novedad: [DEV_1, GES_SIN_GUIA] }, [BAR_1, BAR_SIN_GUIA]);
+    const dialog = await abrirVentana(user);
+
+    expect(
+      within(dialog).getByText(
+        "2 paquetes de esta lista no tienen número de guía: no se pueden confirmar, así que este cierre no se va a poder aprobar.",
+      ),
+    ).toBeInTheDocument();
+    expect(progreso(dialog)).toBe("Paquetes confirmados: 0 de 4.");
+  });
+
+  it("PAREJA de la ausencia: con todas las guías, el aviso no se pinta", async () => {
+    const user = userEvent.setup();
+    conGrupos({ novedad: [DEV_1] }, [BAR_1]);
+    const dialog = await abrirVentana(user);
+
+    expect(dialog.textContent).not.toContain("no tiene número de guía");
+    expect(dialog.textContent).not.toContain("no tienen número de guía");
+    expect(filaBarrida(dialog, BAR_1.ordenId).textContent).toContain("Nº Guía 8001");
+  });
+});
+
+describe("451/R35 — un error del servidor sobre una barrida se pinta en ESA fila", () => {
+  it("la ventana sigue abierta y el error aparece en la fila de la barrida, no en otra", async () => {
+    const user = userEvent.setup();
+    conGrupos({ novedad: [DEV_1] }, [BAR_1, BAR_2]);
+    aprobarMock.mockResolvedValue({
+      status: "validation_error",
+      fieldErrors: { "o-bar-2": ["La guía leída no es la de este paquete."] },
+    });
+    const dialog = await abrirVentana(user);
+    await teclear(user, dialog, "7001");
+    await teclear(user, dialog, "8001");
+    await teclear(user, dialog, "8002");
+    await user.click(within(dialog).getByRole("button", { name: "Confirmar y aprobar" }));
+
+    await vi.waitFor(() => expect(aprobarMock).toHaveBeenCalledTimes(1));
+    const abierta = await screen.findByRole("dialog", { name: VENTANA });
+    await vi.waitFor(() =>
+      expect(document.getElementById("confirmacion-o-bar-2-error")).not.toBeNull(),
+    );
+    expect(filaBarrida(abierta, "o-bar-2").textContent).toContain(
+      "La guía leída no es la de este paquete.",
+    );
+    expect(filaBarrida(abierta, "o-bar-1").textContent).not.toContain("La guía leída");
+    expect(fila(abierta, DEV_1.gestionId)).not.toContain("La guía leída");
+    expect(successMock).not.toHaveBeenCalled();
+  });
+
+  it("con incidentes, un error de barrida reabre la ventana de confirmación (no el sub-modal de montos)", async () => {
+    const user = userEvent.setup();
+    conGrupos({ incidente: [INC_1] }, [BAR_1]);
+    aprobarMock.mockResolvedValue({
+      status: "validation_error",
+      fieldErrors: { "o-bar-1": ["Falta confirmar la recepción de este paquete."] },
+    });
+    const dialog = await abrirVentana(user);
+    await teclear(user, dialog, "8001");
+    await user.click(within(dialog).getByRole("button", { name: "Continuar" }));
+    const montos = await screen.findByRole("dialog", { name: SUB_MODAL_MONTOS });
+    await user.type(
+      document.getElementById("indemnizacion-g-inc-1") as HTMLInputElement,
+      "10.00",
+    );
+    await user.click(within(montos).getByRole("button", { name: "Aprobar e indemnizar" }));
+
+    const ventana = await screen.findByRole("dialog", { name: VENTANA });
+    await vi.waitFor(() =>
+      expect(filaBarrida(ventana, "o-bar-1").textContent).toContain(
+        "Falta confirmar la recepción de este paquete.",
+      ),
+    );
+  });
+});
+
+describe("451/R36 — cerrar la ventana sin completarla no envía nada", () => {
+  it("con barridas confirmadas a medias, cancelar no llama a `aprobarCierre`", async () => {
+    const user = userEvent.setup();
+    conGrupos({}, [BAR_1, BAR_2]);
+    const dialog = await abrirVentana(user);
+    await teclear(user, dialog, "8001");
+
+    await user.click(within(dialog).getByRole("button", { name: "Cancelar" }));
+    await vi.waitFor(() => expect(screen.queryByRole("dialog", { name: VENTANA })).toBeNull());
+
+    expect(aprobarMock).not.toHaveBeenCalled();
+    // El detalle sigue abierto: el cierre no se tocó.
+    expect(screen.getByRole("dialog", { name: "Detalle del cierre" })).toBeInTheDocument();
   });
 });
 

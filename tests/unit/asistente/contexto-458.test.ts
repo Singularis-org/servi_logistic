@@ -131,9 +131,11 @@ describe("458-C (bloque C) — la oficina puede preguntar cómo registrar, ver y
   it.each(OFICINA)("%s: el diálogo único, sus diez conceptos y lo que pide cada uno", (rol) => {
     const caja = cuerpoEnContexto(rol, "oficina/wallet-caja");
     // SL-45 (T9, R6) — REESCRITO: once conceptos; «Pago a la plataforma» cierra «Sale dinero de la empresa».
-    expect(caja).toContain("**Registrar un movimiento** abre un diálogo con **once conceptos en tres grupos**");
+    // SLT-68 (R19) — REESCRITO otra vez: DOCE, con «La empresa le da un incentivo a un mensajero»
+    // justo después del pago a un mensajero.
+    expect(caja).toContain("**Registrar un movimiento** abre un diálogo con **doce conceptos en tres grupos**");
     expect(caja).toContain(
-      "**Sale dinero de la empresa** | Gasto de la empresa · Sueldo · La empresa paga un gasto de una tienda · Corrección de caja (resta) · La empresa le paga a una tienda · La empresa le paga a un mensajero · Pago a la plataforma |",
+      "**Sale dinero de la empresa** | Gasto de la empresa · Sueldo · La empresa paga un gasto de una tienda · Corrección de caja (resta) · La empresa le paga a una tienda · La empresa le paga a un mensajero · La empresa le da un incentivo a un mensajero · Pago a la plataforma |",
     );
     expect(caja).toContain("**a quién se le pagó** —la persona o el proveedor, con su nombre libre—. **Es obligatorio.**");
     expect(caja).toContain("la cuenta, que se elige **buscando por su nombre**");
@@ -159,6 +161,7 @@ describe("458-C (bloque C) — la oficina puede preguntar cómo registrar, ver y
     expect(caja).not.toMatch(/Reversar|Reversado/);
     expect(caja).not.toContain("**ocho conceptos en tres grupos**");
     expect(caja).not.toContain("**diez conceptos en tres grupos**");
+    expect(caja).not.toContain("**once conceptos en tres grupos**");
   });
 
   it("la caja y su diálogo NO llegan a la tienda, al mensajero ni a la bodega", () => {

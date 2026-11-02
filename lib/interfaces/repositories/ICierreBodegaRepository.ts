@@ -70,11 +70,19 @@ export interface CierreBodegaResumenRow {
    * central NO PUEDEN discrepar: salen del mismo sitio.
    */
   conciliado: boolean;
+  /**
+   * SLT-76 (R3/R4) — ¿se ofrece «Desmarcar»? `conciliado && !consolidacionesConDinero.has(id)`,
+   * DERIVADO EN EL SERVIDOR con el MISMO predicado con el que `revertirConciliacion` responde
+   * `con_asientos` (asientos `cierre_dia` de sus cierres o un ajuste de diferencia). REQUERIDO: una
+   * superficie que no lo lea no compila. `false` en toda consolidacion sin conciliar.
+   */
+  desmarcable: boolean;
   /** `null` = sin conciliar. NUNCA `"0.00"` por ausencia: cero recibido es otra cosa. */
   montoRecibido: string | null;
   /**
-   * R17/R18/R20 — `total_efectivo` − COALESCE(`monto_recibido`, 0), DERIVADO EN EL SERVIDOR con
+   * SLT-73 (R8) — `paraLaCentral` − COALESCE(`monto_recibido`, 0), DERIVADO EN EL SERVIDOR con
    * la MISMA funcion que usa `/wallet/satelites` (`lib/utils/conciliacion-satelite.saldoDe`).
+   * Hasta SLT-73 era sobre `total_efectivo`; D3 reabrio la Q2 de la 431.
    * La pantalla NO resta dinero. Puede ser NEGATIVO (llego de mas) y se emite con su signo.
    */
   faltaPorRecibir: string;

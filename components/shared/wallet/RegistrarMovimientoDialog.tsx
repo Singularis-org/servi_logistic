@@ -17,6 +17,7 @@ import { montoValido } from "@/components/shared/monto-cliente";
 import { useToast } from "@/hooks/useToast";
 import { registrarAbonoTiendaAction } from "@/lib/actions/abono-tienda";
 import { registrarAporteCapitalAction } from "@/lib/actions/aporte-capital";
+import { registrarIncentivoMensajeroAction } from "@/lib/actions/incentivo-mensajero";
 import { registrarPagoTiendaAction, registrarRepartoMensajeroAction } from "@/lib/actions/liquidacion";
 import { registrarPagoPorCuentaTiendaAction } from "@/lib/actions/pago-por-cuenta-tienda";
 import { listarAdminTiendas, listarUsuariosPorRol } from "@/lib/actions/usuarios-por-rol";
@@ -193,6 +194,8 @@ export function RegistrarMovimientoDialog({
   const esAbono = clase_ === "abono_tienda";
   const esPagoTienda = clase_ === "pago_tienda";
   const esPagoMensajero = clase_ === "pago_mensajero";
+  /** SLT-68 — el incentivo: mensajero, monto, motivo y fecha; sin método ni comprobante. */
+  const esIncentivo = clase_ === "incentivo_mensajero";
   /** Los cuatro conceptos que piden el método de pago. */
   const pideMetodo = esPagoPorCuenta || esAbono || esPagoTienda || esPagoMensajero;
   /** R43 — la referencia obligatoria solo donde hoy lo es (método distinto de efectivo). */
@@ -372,8 +375,17 @@ export function RegistrarMovimientoDialog({
         fd.set("nota", descripcion.trim());
         fd.set("fechaPago", fecha);
         break;
+      case "incentivo_mensajero": {
+        // SLT-68 (design §6.1): mensajeroId, monto, motivo, fecha? y la clave. El `.strict()` del borde
+        // no admite comprobante: el campo no se ofrece en este concepto.
+        fd.set(CLAVE_DE_LA_CUENTA.mensajero, cuentaId ?? "");
+        fd.set("motivo", descripcion.trim());
+        const elegida = fechaSiCambio();
+        if (elegida !== undefined) fd.set("fecha", elegida);
+        break;
+      }
     }
-    if (comprobante !== null) fd.set("comprobante", comprobante);
+    if (comprobante !== null && !esIncentivo) fd.set("comprobante", comprobante);
     return fd;
   }
 
@@ -479,6 +491,29 @@ export function RegistrarMovimientoDialog({
         }
         return comun(res);
       }
+      case "incentivo_mensajero": {
+        const res = await registrarIncentivoMensajeroAction(fd);
+        if (res.status === "ok") {
+          return {
+            status: "ok",
+            mensajeExito: RESPUESTA_TEXTO.incentivoMensajero(
+              nombre,
+              res.incentivo.monto,
+              res.cuentaPorPagar,
+            ),
+          };
+        }
+        if (res.status === "ya_registrado") {
+          return { status: "ok", mensajeExito: RESPUESTA_TEXTO.incentivoYaRegistrado };
+        }
+        if (res.status === "sin_cierre_aprobado") {
+          return {
+            status: "validation_error",
+            fieldErrors: { [CLAVE_DE_LA_CUENTA.mensajero]: [RESPUESTA_TEXTO.sinCierreAprobado] },
+          };
+        }
+        return comun(res);
+      }
     }
   }
 
@@ -549,7 +584,9 @@ export function RegistrarMovimientoDialog({
   const textosCuenta = cuenta === "mensajero" ? CUENTA_TEXTO.mensajero : CUENTA_TEXTO.tienda;
   const etiquetaCuenta =
     cuenta === "mensajero"
-      ? CUENTA_TEXTO.mensajero.etiqueta
+      ? esIncentivo
+        ? CUENTA_TEXTO.mensajero.etiquetaIncentivo
+        : CUENTA_TEXTO.mensajero.etiqueta
       : clase_ === "cobro_tienda" || clase_ === "pago_por_cuenta_tienda" || clase_ === "abono_tienda" || clase_ === "pago_tienda"
         ? CUENTA_TEXTO.tienda.etiqueta[clase_]
         : "";
@@ -558,7 +595,8 @@ export function RegistrarMovimientoDialog({
     clase_ === "pago_por_cuenta_tienda" ||
     clase_ === "abono_tienda" ||
     clase_ === "pago_tienda" ||
-    clase_ === "pago_mensajero"
+    clase_ === "pago_mensajero" ||
+    clase_ === "incentivo_mensajero"
       ? PISTA_CUENTA[clase_]
       : undefined;
 
@@ -856,14 +894,17 @@ export function RegistrarMovimientoDialog({
               </FormField>
             ) : null}
 
-            {/* R74 — el comprobante, opcional en TODO concepto (H1). */}
-            <ComprobanteCampo
-              id="movimiento-comprobante"
-              archivo={comprobante}
-              onCambiar={setComprobante}
-              error={errores.comprobante}
-              onError={(mensaje) => setErrores((p) => ({ ...p, comprobante: mensaje }))}
-            />
+            {/* R74 — el comprobante, opcional en todo concepto (H1) salvo el incentivo (SLT-68, R19: su
+                borde no lo admite). */}
+            {esIncentivo ? null : (
+              <ComprobanteCampo
+                id="movimiento-comprobante"
+                archivo={comprobante}
+                onCambiar={setComprobante}
+                error={errores.comprobante}
+                onError={(mensaje) => setErrores((p) => ({ ...p, comprobante: mensaje }))}
+              />
+            )}
 
             {/* R44–R47 — «Así queda», calculado por el servidor. */}
             <AsiQueda

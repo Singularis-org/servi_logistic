@@ -486,10 +486,17 @@ export async function crearEscenario(
     return s.corteDe(mensajeros).ejecutarCorte(now);
   }
 
-  /** La confirmacion fisica EXACTA que el servicio exige (238): todas las retornables del cierre. */
+  /**
+   * La confirmacion fisica EXACTA que el servicio exige: todas las retornables del cierre (238) y,
+   * desde la 451 / SLT-72, tambien todas las ordenes que ese cierre barrio sin gestionar.
+   */
   async function confirmacionDe(cierreId: string, alcance: Parameters<CierresAdminRepository["findGestionesRetornablesDelCierre"]>[1]) {
     const retornables = await s.adminRepo.findGestionesRetornablesDelCierre(cierreId, alcance);
-    return retornables.map((r) => ({ gestionId: r.gestionId, numGuia: r.numGuia as number }));
+    const barridas = await s.adminRepo.findBarridasDelCierre(cierreId, alcance);
+    return [
+      ...retornables.map((r) => ({ origen: "gestion" as const, gestionId: r.gestionId, numGuia: r.numGuia as number })),
+      ...barridas.map((b) => ({ origen: "barrida" as const, ordenId: b.ordenId, numGuia: b.numGuia as number })),
+    ];
   }
 
   /** Aprueba por el SERVICIO real, confirmando exactamente lo que vuelve. */

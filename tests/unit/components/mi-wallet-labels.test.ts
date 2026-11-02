@@ -241,6 +241,10 @@ const NO_ESCRIBEN_EN_LA_TIENDA: readonly WalletOrigenTipo[] = [
   "cobro_manual_reclasificado",
   // Las líneas de caja completadas por la migración de datos solo escriben en la caja.
   "cobro_tienda_completado",
+  // SLT-68: el incentivo escribe en la caja y en el libro del mensajero, nunca en el de la tienda.
+  "incentivo_mensajero",
+  // SLT-73: la diferencia de la satelite solo escribe en la caja.
+  "conciliacion_bodega_ajuste",
 ];
 
 describe("ORIGEN_TIENDA_LABEL cubre cada origen que escribe en el libro de la tienda (459 R44 / 461 §7.3)", () => {
@@ -277,6 +281,8 @@ describe("ORIGEN_TIENDA_LABEL cubre cada origen que escribe en el libro de la ti
       aporte_capital: "Aporte de dinero a la caja",
       cobro_manual_reclasificado: "Cobro reclasificado como pago de un gasto de la tienda",
       cobro_tienda_completado: "Cobro de la empresa a una tienda (línea de caja completada al corregir)",
+      incentivo_mensajero: "Incentivo a un mensajero", // SLT-68
+      conciliacion_bodega_ajuste: "Diferencia de la satélite", // SLT-73
     });
   });
 

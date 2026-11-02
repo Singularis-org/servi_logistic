@@ -71,7 +71,8 @@ import { horaCostaRica } from "@/lib/utils/hora-cr";
 type DocumentoDeFila =
   | { tipo: TipoDeDocumentoDeLibro; id: string }
   | { tipo: "rechazo_tienda_cobro"; gestionId: string }
-  | { tipo: "premio"; dia: Date };
+  | { tipo: "premio"; dia: Date }
+  | { tipo: "incentivo"; id: string };
 
 /** R71 — el documento de una fila ORIGINAL del libro de la tienda (los contra-asientos llevan `null`). */
 function documentoDeTienda(f: FilaDeLibroRow): DocumentoDeFila | null {
@@ -97,6 +98,8 @@ function documentoDeMensajero(f: FilaDeLibroRow): DocumentoDeFila | null {
   }
   // El premio (293) se reconoce por `premio_dia`, que solo llevan el premio (devengo) y su reverso (pago).
   if (f.premioDia !== null && f.tipo === "devengo") return { tipo: "premio", dia: f.premioDia };
+  // SLT-68 (R16): el incentivo es su propio documento (la fila); su `reverso_incentivo` lo nombra por `origen_id`.
+  if (c === "incentivo") return { tipo: "incentivo", id: f.id };
   return null;
 }
 
@@ -411,8 +414,10 @@ export class EstadoCuentaService implements IEstadoCuentaService {
     // En la bodega el «abono» es lo RECIBIDO (baja lo que tiene por entregar); no hay pares anulados.
     const totales = totalesNetos(periodo, () => null, (m) => m.tipo === "recibido");
     const cero = new Prisma.Decimal(0);
-    const pendiente = (t: { efectivo: string; recibido: string }) =>
-      saldoDe(new Prisma.Decimal(t.efectivo), new Prisma.Decimal(t.recibido)).toFixed(2);
+    // SLT-73 (R31/R33): `declarado` ya es el neto de las consolidaciones + los cierres sin consolidar;
+    // la resta es la deuda de `/wallet/satelites`.
+    const pendiente = (t: { declarado: string; recibido: string }) =>
+      saldoDe(new Prisma.Decimal(t.declarado), new Prisma.Decimal(t.recibido)).toFixed(2);
     return {
       libro: null,
       crudas: pagina.filas,
@@ -423,7 +428,8 @@ export class EstadoCuentaService implements IEstadoCuentaService {
       total: pagina.total,
       filas: pagina.filas.map((f) => ({
         ref: null,
-        consolidacionId: f.origenId,
+        // SLT-73 (R32): una fila `sin_consolidar` nace de un `cierre_dia`, no de una consolidacion.
+        consolidacionId: f.origenTipo === "cierre_bodega" ? f.origenId : null,
         fecha: fechaDiaMovimientoCR(f.fechaMovimiento.toISOString()),
         categoria: f.categoria,
         origenTipo: f.origenTipo,
@@ -431,7 +437,8 @@ export class EstadoCuentaService implements IEstadoCuentaService {
         pago: null,
         descripcion: f.descripcion,
         registro: { nombre: f.registradoPorNombre, automatico: null },
-        cargo: f.tipo === "declarado" ? f.monto : null,
+        // Sube lo que tiene por entregar: lo declarado y lo aun sin consolidar (R32).
+        cargo: f.tipo !== "recibido" ? f.monto : null,
         abono: f.tipo === "recibido" ? f.monto : null,
         saldoCorrido: f.saldoCorrido,
         chip: f.tipo as ChipBodega,
@@ -513,6 +520,19 @@ export class EstadoCuentaService implements IEstadoCuentaService {
         });
       }
     }
+    // SLT-68 (R16): el incentivo, como el premio, se da por anulado por su contraasiento en el libro.
+    const incentivos = documentos.flatMap((d) => (d !== null && d.tipo === "incentivo" ? [d.id] : []));
+    if (mensajeroId !== null && incentivos.length > 0) {
+      const reversos = new Map((await repo.reversosDeIncentivo(mensajeroId, incentivos)).map((r) => [r.documentoId, r]));
+      for (const id of incentivos) {
+        const r = reversos.get(id);
+        estados.set(`incentivo:${id}`, {
+          anulacion: r === undefined ? null : aAnulacion(r),
+          tieneComprobante: false,
+          pago: null,
+        });
+      }
+    }
     return estados;
   }
 
@@ -528,7 +548,11 @@ export class EstadoCuentaService implements IEstadoCuentaService {
       aprobadores: Map<string, string | null>;
     },
   ): FilaEstadoCuentaDTO {
-    const naceDeUnCierre = f.origenTipo === "cierre_dia" && !(c.libro === "mensajero" && f.premioDia !== null);
+    // El premio (293) y el incentivo (SLT-68) cuelgan de un cierre para ser pagables, pero no los produjo
+    // la aprobacion: se anulan por su propio camino.
+    const naceDeUnCierre =
+      f.origenTipo === "cierre_dia" &&
+      !(c.libro === "mensajero" && (f.premioDia !== null || f.categoria === "incentivo"));
     const estado = c.documento === null ? undefined : c.estados.get(claveDeDocumento(c.documento));
     const anulacion = estado?.anulacion ?? null;
     return {

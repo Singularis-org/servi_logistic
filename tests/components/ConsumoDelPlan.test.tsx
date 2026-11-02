@@ -23,10 +23,22 @@ const PLAN: PlanConConsumo = {
     fila("ordenes", "órdenes del ciclo", 100, 3000, "normal"),
     fila("mensajero", "mensajeros", 8, 10, "cerca"),
     fila("api_keys", "API keys", 2, 2, "lleno"),
-    fila("maestro", "maestros", 1, null, "sin_limite"),
+    // SLT-66 R5: el maestro ya no tiene fila; la fila sin límite de prueba pasa a ser la de admin.
+    fila("admin", "administradores", 1, null, "sin_limite"),
   ],
   reinicio: { dias: 12, fecha: "2026-03-15" },
   cambioPendiente: null,
+  // SLT-66 R18: campo nuevo del tipo; estos casos no lo comprueban.
+  costeo: {
+    base: { tipo: "monto", mensual: "45000.00" },
+    costoPorOrden: "100.00",
+    fuente: "plan",
+    ordenes: 100,
+    subtotalOrdenes: "10000.00",
+    total: "55000.00",
+    sinCostoConcreto: false,
+    anualNoAplicaAlCosto: false,
+  },
 };
 
 function relleno(nombre: string): HTMLElement {

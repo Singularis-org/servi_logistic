@@ -310,6 +310,8 @@ function colaFake() {
   const enqueue = vi.fn(async () => null);
   return {
     enqueue,
+    // SLT-59 (R76): la recogida con la primera ruta pendiente deja/mueve el job del dia por aqui.
+    encolarOMoverPendiente: vi.fn(async () => null),
     claimBatch: vi.fn(async () => []),
     complete: vi.fn(async () => {}),
     fail: vi.fn(async () => {}),

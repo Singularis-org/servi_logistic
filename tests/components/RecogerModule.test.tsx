@@ -4,7 +4,10 @@ import { render, screen, within, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { RecogerModule } from "@/app/(app)/mis-asignaciones/_components/RecogerModule";
-import { recogerAsignaciones } from "@/lib/actions/mis-asignaciones";
+import {
+  listarMisAsignaciones,
+  recogerAsignaciones,
+} from "@/lib/actions/mis-asignaciones";
 import type { MiAsignacionDTO } from "@/lib/interfaces/services/IMisAsignacionesService";
 import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
 import {
@@ -29,6 +32,8 @@ import {
 // los envíos sin DB ni sesión.
 vi.mock("@/lib/actions/mis-asignaciones", () => ({
   recogerAsignaciones: vi.fn(),
+  // SLT-69: ante una guía que no está en la lista cargada, el hook relee la lista vigente.
+  listarMisAsignaciones: vi.fn(),
   escogerParaGestion: vi.fn(),
   gestionar: vi.fn(),
   liberarGestion: vi.fn(),
@@ -65,6 +70,7 @@ vi.mock("html5-qrcode", () => ({
 }));
 
 const recogerMock = vi.mocked(recogerAsignaciones);
+const listarMock = vi.mocked(listarMisAsignaciones);
 
 function makeAsignacion(
   over: Partial<MiAsignacionDTO> & { id: string },
@@ -168,6 +174,15 @@ async function irAOtroDia(user: ReturnType<typeof userEvent.setup>) {
 beforeEach(() => {
   vi.clearAllMocks();
   recogerMock.mockResolvedValue({ status: "ok", recogidas: ["r1"] });
+  // SLT-69: por defecto, el servidor tampoco tiene ninguna guía nueva (la relectura no cambia el
+  // desenlace de los casos de siempre).
+  listarMock.mockResolvedValue({
+    status: "ok",
+    porRecoger: [],
+    porGestionar: [],
+    conAyuda: [],
+    ordenEnGestionId: null,
+  } as unknown as Awaited<ReturnType<typeof listarMisAsignaciones>>);
 });
 
 afterEach(() => {

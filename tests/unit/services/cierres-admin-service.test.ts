@@ -116,6 +116,8 @@ function fakeRepo(overrides: Partial<Repo> = {}): Repo {
     // Feature 238 (T1.3): el conjunto esperado de la confirmacion fisica. Doble VACIO por
     // defecto: sin nada que devolver, la guardia de la 238 deja el camino de esta suite intacto.
     findGestionesRetornablesDelCierre: vi.fn(async () => []),
+    // Ficha 451 / SLT-72 (T2.1): las barridas del cierre. Doble VACIO: sin barridas, el camino de esta suite queda intacto.
+    findBarridasDelCierre: vi.fn(async () => []),
     // Feature 230 (T2.1): el doble implementa la interfaz ENTERA. Estos casos no ejercitan la
     // descarga detallada; devolver el conjunto vacio deja el camino de la 38 intacto.
     findGestionesPorAlcanceCompleto: vi.fn(async () => []),
@@ -1361,6 +1363,8 @@ describe("CierresAdminService.aprobarCierre — alimenta el ledger por tienda (f
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         count: vi.fn().mockResolvedValue(1),
         findUnique: vi.fn(async () => ({
+          // SLT-73 (T3): la aprobacion lee el destino; esta suite mide la de la CENTRAL, que asienta.
+          destinoTipo: "bodega_central",
           mensajeroId: cierre.mensajeroId,
           totalPagoMensajero: new Prisma.Decimal(cierre.totalPagoMensajero),
           totalEfectivo: new Prisma.Decimal(cierre.totalEfectivo),
@@ -1379,6 +1383,9 @@ describe("CierresAdminService.aprobarCierre — alimenta el ledger por tienda (f
           rol: { value: "admin" },
         })),
       },
+      // Ficha 451 / SLT-72: el servicio lee las barridas del cierre para la cobertura. Cierre
+      // NORMAL: ninguna, asi que el camino de esta suite no cambia.
+      cierreSinGestion: { findMany: vi.fn(async () => []) },
       // Feature 109/R20: cierre NORMAL (sin ordenes `sin_gestionar`) -> la liberacion afecta 0 filas.
       orden: {
         findMany: vi.fn().mockResolvedValue([]),
@@ -1558,6 +1565,8 @@ describe("CierresAdminService.aprobarCierre — alimenta el pago al mensajero (f
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         count: vi.fn().mockResolvedValue(1),
         findUnique: vi.fn(async () => ({
+          // SLT-73 (T3): la aprobacion lee el destino; esta suite mide la de la CENTRAL, que asienta.
+          destinoTipo: "bodega_central",
           mensajeroId: cierre.mensajeroId,
           totalPagoMensajero: new Prisma.Decimal(cierre.totalPagoMensajero),
           totalEfectivo: new Prisma.Decimal(cierre.totalEfectivo),
@@ -1577,6 +1586,8 @@ describe("CierresAdminService.aprobarCierre — alimenta el pago al mensajero (f
         })),
       },
       gestionOrden: { findMany: vi.fn().mockResolvedValue([]) }, // el pago no depende de gestiones (snapshot)
+      // Ficha 451 / SLT-72: la cobertura lee las barridas del cierre. Cierre NORMAL: ninguna.
+      cierreSinGestion: { findMany: vi.fn(async () => []) },
       // Feature 109/R20: cierre NORMAL -> la liberacion de `sin_gestionar` no encuentra ordenes.
       orden: {
         findMany: vi.fn().mockResolvedValue([]),

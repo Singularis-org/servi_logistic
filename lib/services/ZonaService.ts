@@ -1,4 +1,5 @@
 import type {
+  DistritoEnOtraZona,
   IZonaRepository,
   TarifaZonaMensajeroData,
   UpdateZonaData,
@@ -31,6 +32,33 @@ import { rechazoDeNombreDeEtiqueta } from "@/lib/utils/nombre-imprimible-etiquet
 // «zona de bodega principal».
 const MSG_SIN_ZONA_CENTRAL =
   "Tiene que haber una zona de bodega principal. Para quitarle la marca a ésta, márcala en otra zona.";
+
+/**
+ * ⭑ SLT-75 (R8) — LA CARRERA QUE PASO LA LECTURA Y LA PARO EL INDICE UNICO. No se sabe que
+ * distrito fue, asi que el mensaje no nombra ninguno; dice que hacer: recargar y reintentar.
+ */
+export const MSG_DISTRITO_RECIEN_ASIGNADO =
+  "Alguno de los elegidos acaba de asignarse a otra zona. Recarga la página y vuelve a intentarlo.";
+
+/**
+ * SLT-75 (R3) — un mensaje por distrito en conflicto, ordenados por nombre de distrito. Nombra el
+ * distrito y la zona por su nombre (salen de la base): sin la palabra del nivel geografico, que
+ * depende del pais.
+ */
+function mensajeDistritoEnOtraZona(c: DistritoEnOtraZona): string {
+  return `${c.distritoNombre} ya está en la zona ${c.zonaNombre}.`;
+}
+
+/** SLT-75 (R1-R3, R8): el rechazo del repositorio, colgado del campo `distritoIds`. */
+function erroresDistritoEnOtraZona(
+  conflictos: DistritoEnOtraZona[] | null,
+): Record<string, string[]> {
+  if (conflictos === null) return { distritoIds: [MSG_DISTRITO_RECIEN_ASIGNADO] };
+  const ordenados = [...conflictos].sort((a, b) =>
+    a.distritoNombre.localeCompare(b.distritoNombre, "es"),
+  );
+  return { distritoIds: ordenados.map(mensajeDistritoEnOtraZona) };
+}
 
 // Feature 24: el CRUD de zonas es EXCLUSIVO del rol maestro.
 function esMaestro(actor: Actor): boolean {
@@ -136,7 +164,7 @@ export class ZonaService implements IZonaService {
     // FICHA 429 (R11/R12): los dos campos del SINPE viajan al repositorio en el MISMO acto de
     // creacion. El zod del borde ya los normalizo y valido (`sinpeNumeroSchema`), asi que aqui no
     // se vuelve a decidir nada sobre el formato: se decide una vez, en el borde y en el `CHECK`.
-    const zona = await this.repo.create(
+    const res = await this.repo.create(
       {
         ...prep.data,
         // SLT-51 (R5): al crear los dos son siempre valores (el zod les puso `false` y `[]`).
@@ -148,7 +176,14 @@ export class ZonaService implements IZonaService {
       },
       actor.usuarioId,
     );
-    return { status: "ok", zona };
+    // SLT-75 (R1/R3/R8): el distrito que ya esta en otra zona sale por la rama de validacion.
+    if (res.estado === "distrito_en_otra_zona") {
+      return {
+        status: "validation_error",
+        fieldErrors: erroresDistritoEnOtraZona(res.conflictos),
+      };
+    }
+    return { status: "ok", zona: res.zona };
   }
 
   async obtener(id: string, actor: Actor): Promise<ObtenerZonaServiceResult> {
@@ -194,6 +229,13 @@ export class ZonaService implements IZonaService {
     // el motivo colgado del CAMPO de la marca para que la pantalla lo pinte junto a la casilla.
     if (res.estado === "sin_zona_central") {
       return { status: "validation_error", fieldErrors: { esCentral: [MSG_SIN_ZONA_CENTRAL] } };
+    }
+    // SLT-75 (R2/R3/R8): mismo camino que `sin_zona_central`, colgado de `distritoIds`.
+    if (res.estado === "distrito_en_otra_zona") {
+      return {
+        status: "validation_error",
+        fieldErrors: erroresDistritoEnOtraZona(res.conflictos),
+      };
     }
     // 366/R12 + 377/R7/R8: LOS DOS conteos se reenvian TAL CUAL. El service no los interpreta, no
     // los suma y no los redondea: quien guardo la zona tiene que ver cuantas ordenes se movieron

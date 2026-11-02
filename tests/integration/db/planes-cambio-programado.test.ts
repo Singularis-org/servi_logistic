@@ -18,7 +18,7 @@ import { crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones
 
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
 import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
-import { capturar, entradaDePlan, planesEnTx, revertida, sqlstateDe } from "./_fixtures/planes";
+import { capturar, COSTO_CONCRETO, entradaAsignable, planesEnTx, revertida, sqlstateDe } from "./_fixtures/planes";
 
 // SL-24 · T11 (design §16.2, §16.3; R17, R37, R38, R39, R40, R16 en lo programado) — el cambio
 // programado contra Postgres, con `PlanesService`, `PlanesRepository` y los handlers REALES de la cola.
@@ -42,7 +42,7 @@ let base: PrismaClient;
 
 async function preparar(tx: TxDeTest, plan: Partial<CrearPlanInput>, empresas = 1) {
   const servicio = new PlanesService(planesEnTx(tx), () => AHORA);
-  const entrada = entradaDePlan(plan);
+  const entrada = entradaAsignable(plan);
   const creado = await servicio.crear(SUPERADMIN, entrada);
   if (creado.estado !== "ok") throw new Error(`no se creó el plan: ${JSON.stringify(creado)}`);
   const orgs: string[] = [];
@@ -61,6 +61,7 @@ async function preparar(tx: TxDeTest, plan: Partial<CrearPlanInput>, empresas = 
       topes: entrada.topes,
       modulos: entrada.modulos,
       precio: entrada.precio,
+      costoPorOrden: entrada.costoPorOrden, // SLT-66 R8: campo obligatorio nuevo; no cambia lo que se comprueba.
       vigenteDesde,
       ...cambio,
     });
@@ -142,6 +143,7 @@ describeSiHayBase("SL-24 — el cambio programado de un plan (R37–R40)", () =>
         topes: { ordenesPorCiclo: 100, porRol: { adminTienda: 3 }, apiKeys: null },
         modulos: ["analitica"],
         precio: { tipo: "monto", mensual: "25000", anual: null },
+        costoPorOrden: "100.00", // SLT-66 R28: costo concreto para poder asignarlo; no cambia lo que se comprueba.
       });
       const [org] = p.orgs;
       await fijarEmpresa(tx, org);
@@ -152,6 +154,7 @@ describeSiHayBase("SL-24 — el cambio programado de un plan (R37–R40)", () =>
         topes: { ordenesPorCiclo: 10, porRol: { adminTienda: 1 }, apiKeys: null },
         modulos: ["ranking"],
         precio: { tipo: "negociable" },
+        costoPorOrden: null, // SLT-66 R8: campo obligatorio nuevo; no cambia lo que se comprueba.
       });
       const pendiente = await tx.planCambioProgramado.findUniqueOrThrow({ where: { planId: p.planId } });
       const trabajos = await trabajosDeAplicar(tx, p.planId);
@@ -179,6 +182,7 @@ describeSiHayBase("SL-24 — el cambio programado de un plan (R37–R40)", () =>
       topes: { ordenesPorCiclo: 10, porRol: { adminTienda: 1 }, apiKeys: null },
       modulos: ["ranking"],
       precio: { tipo: "negociable" },
+      costoPorOrden: null, // SLT-66 R8: campo obligatorio nuevo; no cambia lo que se comprueba.
     });
     expect(r.trabajos).toHaveLength(1);
     expect(r.trabajos[0]).toMatchObject({
@@ -244,7 +248,7 @@ describeSiHayBase("SL-24 — el cambio programado de un plan (R37–R40)", () =>
         {
           topes: { ordenesPorCiclo: 100, porRol: { adminTienda: 5 }, apiKeys: null },
           modulos: ["ranking"],
-          precio: { tipo: "sin_precio" },
+          precio: COSTO_CONCRETO.precio, // SLT-66 R28: era «sin precio»; sin costo concreto no se asigna.
         },
         2,
       );

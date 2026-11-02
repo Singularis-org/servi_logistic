@@ -48,6 +48,12 @@ export interface RutaOptimizadaDTO {
    * posicion actual no se puede cachear, asi que cada peticion es una llamada facturada.
    */
   tramoVivoAt: Date | null;
+  /**
+   * SLT-59 (R54, design §12.1) — `updated_at` de la fila. Es la cota del enfriamiento de R53:
+   * no hay columna con el instante del fallo, y cualquier escritura posterior la mueve, asi que
+   * solo puede hacer esperar MAS, nunca menos (P12).
+   */
+  actualizadaAt: Date;
   /** Posicion por `ordenId`. Una orden en reparto AUSENTE de este mapa esta sin optimizar. */
   secuenciaPorOrden: Map<string, number>;
   /**
@@ -100,6 +106,16 @@ export interface ReemplazarSecuenciaMeta {
    * pueda omitirlo y dejar que la columna signifique lo que ya significaba.
    */
   secuenciaFuente: SecuenciaFuentePersistida | null;
+}
+
+/** SLT-59 (R11-R16) — la secuencia previa sin las paradas que ya no estan, lista para persistir. */
+export interface ReduccionSecuencia {
+  /** Huella de las paradas restantes (misma funcion que la optimizacion, para `guardarTrazado`). */
+  huellaSet: string;
+  /** Paradas restantes EN ORDEN DE VISITA, cada una con el tramo que llega a ella o `null`. */
+  paradas: { ordenId: string; tramo: TramoPersistido | null }[];
+  /** Trazado de la cabecera rehecho con los tramos; `null` lo limpia (R15, R16). */
+  trazado: TrazadoPersistido | null;
 }
 
 /** Ubicacion capturada por el navegador del mensajero (R23). */
@@ -157,6 +173,26 @@ export interface IRutaOptimizadaRepository {
     trazado: TrazadoPersistido,
     tramos?: TramoPersistido[],
   ): Promise<void>;
+
+  /**
+   * SLT-59 (R11-R18): persiste una REDUCCION de la secuencia. Condicionada a `huellaPrevia` (R18):
+   * si la cabecera ya no la tiene, no escribe nada y no lanza. NO toca `calculada_at` (R17), ni el
+   * origen, ni `secuencia_fuente` (R12), ni `ultimo_error`.
+   * En UNA transaccion: actualiza la huella y el trazado de la cabecera (o los limpia si `trazado`
+   * es null), borra las paradas y las reinserta con `secuencia` 1..n y su tramo (o null).
+   *
+   * `calculada_at` se deja quieta porque 92/R20 descarta los jobs creados antes de ella: si la
+   * reduccion la moviera, un job de recogida en vuelo se daria por cubierto sin que nadie hubiera
+   * optimizado las paradas nuevas.
+   *
+   * R48: exige tambien `estado = 'vigente'` al escribir. Devuelve `true` si la reduccion se aplico
+   * y `false` si la huella ya no encajaba o la ruta ya no estaba `vigente` (no se escribio nada).
+   */
+  reducirSecuencia(
+    mensajeroId: string,
+    huellaPrevia: string,
+    reduccion: ReduccionSecuencia,
+  ): Promise<boolean>;
 
   /**
    * R27: marca la ruta como `desactualizada` y anota el motivo AGREGADO (sin PII ni

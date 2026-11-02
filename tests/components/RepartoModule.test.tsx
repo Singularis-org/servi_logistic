@@ -6,6 +6,7 @@ import {
   within,
   cleanup,
   fireEvent,
+  act,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
@@ -21,6 +22,7 @@ import type {
   RutaResumenDTO,
 } from "@/lib/interfaces/services/IMisAsignacionesService";
 import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
+import { distanciaHaversineKm } from "@/lib/geo/polilinea";
 import {
   bloqueoConVencido,
   bloqueoDe,
@@ -78,8 +80,11 @@ vi.mock("@/app/(app)/mis-asignaciones/_components/RutaMapa", () => ({
   },
 }));
 
+const { calcularRutaAlSalirMock } = vi.hoisted(() => ({ calcularRutaAlSalirMock: vi.fn() }));
 vi.mock("@/lib/actions/ruta-mensajero", () => ({
   sincronizarRuta: vi.fn().mockResolvedValue({ status: "ok", omitida: false }),
+  // SLT-59 (R62): el disparo de salida del efecto de una vez.
+  calcularRutaAlSalir: calcularRutaAlSalirMock,
 }));
 
 // Feature 115: la card monta `MarcarLuegoToggle`, que importa esta Server Action
@@ -208,6 +213,8 @@ const RUTA_VIGENTE: RutaResumenDTO = {
   paradasSinOptimizar: 0,
   trazado: null,
   tramoSiguiente: null,
+  primeraRutaPendiente: false,
+  puntoRecogida: null,
 };
 
 function renderModule(props?: Partial<Parameters<typeof RepartoModule>[0]>) {
@@ -3108,5 +3115,195 @@ describe("RepartoModule — guardar la gestión cuando la base tropieza (ficha 4
     expect(boton).toBeInTheDocument();
     expect((boton as HTMLButtonElement).disabled).toBe(false);
     expect(refreshMock.mock.calls.length).toBe(refrescosAntes);
+  });
+});
+
+// ---------------- SLT-59 (R62, R65, design §12.6, T7.7): disparo de salida ----------------
+//
+// El navegador ya tiene la posición en vivo; el servidor no. Cuando el mensajero se aleja más del
+// umbral del punto de recogida con la primera ruta del día pendiente, la pantalla pide esa ruta
+// UNA vez por montaje. Cada llamada es una optimización facturada: que no se repita es la mitad
+// de lo que se prueba aquí.
+describe("RepartoModule — disparo de salida de la primera ruta (SLT-59, R62/R65)", () => {
+  const PUNTO = { lat: 9.93, lng: -84.08 };
+  const UMBRAL_M = 1000;
+  // Metros por grado de latitud con el radio de `distanciaHaversineKm` (6371 km): a lo largo de un
+  // meridiano la distancia de Haversine es exactamente esta.
+  const M_POR_GRADO = (6371 * 1000 * Math.PI) / 180;
+  const alNorte = (metros: number) => ({ lat: PUNTO.lat + metros / M_POR_GRADO, lng: PUNTO.lng });
+
+  type Lectura = {
+    coords: { latitude: number; longitude: number; accuracy: number };
+    timestamp: number;
+  };
+  let escucha: ((pos: Lectura) => void) | null = null;
+  let reloj = 0;
+  const permissionsOriginal = Object.getOwnPropertyDescriptor(navigator, "permissions");
+
+  const RUTA_PRIMERA_PENDIENTE: RutaResumenDTO = {
+    ...RUTA_VIGENTE,
+    origenFuente: "gps",
+    paradasSinOptimizar: 2,
+    primeraRutaPendiente: true,
+    puntoRecogida: PUNTO,
+  };
+  const PARADAS = [
+    makeAsignacion({ id: "s1", numRemision: "REM-S1", numGuia: 2001 }),
+    makeAsignacion({
+      id: "s2",
+      numRemision: "REM-S2",
+      numGuia: 2002,
+      latitud: 9.95,
+      longitud: -84.1,
+    }),
+  ];
+
+  /** Una lectura buena del GPS (precisión fina y separada del intervalo mínimo del hook). */
+  async function leerPosicion(p: { lat: number; lng: number }) {
+    reloj += 10_000;
+    await act(async () => {
+      escucha?.({ coords: { latitude: p.lat, longitude: p.lng, accuracy: 10 }, timestamp: reloj });
+    });
+  }
+
+  /** Monta el módulo y espera a que el seguimiento en vivo se suscriba (permiso concedido). */
+  async function montar(props?: Partial<Parameters<typeof RepartoModule>[0]>) {
+    render(
+      <RepartoModule
+        porGestionar={props?.porGestionar ?? PARADAS}
+        conAyuda={[]}
+        porRecoger={[]}
+        ordenEnGestionId={null}
+        ruta={props?.ruta ?? RUTA_PRIMERA_PENDIENTE}
+        bloqueo={SIN_BLOQUEO}
+        umbralSalidaM={props && "umbralSalidaM" in props ? props.umbralSalidaM : UMBRAL_M}
+      />,
+    );
+    await vi.waitFor(() => expect(escucha).not.toBeNull());
+  }
+
+  beforeEach(() => {
+    escucha = null;
+    reloj = 0;
+    calcularRutaAlSalirMock.mockResolvedValue({ status: "ok", omitida: false, secuenciaFuente: "proveedor" });
+    Object.defineProperty(navigator, "geolocation", {
+      value: {
+        getCurrentPosition: getCurrentPositionMock,
+        watchPosition: vi.fn((ok: (pos: Lectura) => void) => {
+          escucha = ok;
+          return 1;
+        }),
+        clearWatch: vi.fn(),
+      },
+      configurable: true,
+    });
+    Object.defineProperty(navigator, "permissions", {
+      value: {
+        query: vi.fn().mockResolvedValue({
+          state: "granted",
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+        }),
+      },
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    if (permissionsOriginal) {
+      Object.defineProperty(navigator, "permissions", permissionsOriginal);
+    } else {
+      Reflect.deleteProperty(navigator, "permissions");
+    }
+  });
+
+  it("R62: a 900 m del punto de recogida no llama", async () => {
+    await montar();
+    await leerPosicion(alNorte(900));
+    expect(calcularRutaAlSalirMock).not.toHaveBeenCalled();
+  });
+
+  it("R62: a exactamente el umbral no llama (hace falta superarlo)", async () => {
+    const pos = alNorte(1000);
+    // El umbral se fija a la distancia que mide la propia fórmula, para que el borde no dependa
+    // del redondeo de la conversión a grados.
+    const justo = distanciaHaversineKm(pos, PUNTO) * 1000;
+    await montar({ umbralSalidaM: justo });
+    await leerPosicion(pos);
+    expect(calcularRutaAlSalirMock).not.toHaveBeenCalled();
+  });
+
+  it("R62: a 1100 m llama una vez con esa posición y refresca la pantalla", async () => {
+    await montar();
+    const pos = alNorte(1100);
+    await leerPosicion(pos);
+    expect(calcularRutaAlSalirMock).toHaveBeenCalledTimes(1);
+    expect(calcularRutaAlSalirMock).toHaveBeenCalledWith({ ubicacion: pos });
+    await vi.waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
+    expect(errorMock).not.toHaveBeenCalled();
+  });
+
+  it("R62/R66: más lecturas lejos del punto no vuelven a llamar en el mismo montaje", async () => {
+    await montar();
+    await leerPosicion(alNorte(900));
+    await leerPosicion(alNorte(1100));
+    await leerPosicion(alNorte(1500));
+    await leerPosicion(alNorte(3000));
+    expect(calcularRutaAlSalirMock).toHaveBeenCalledTimes(1);
+    expect(calcularRutaAlSalirMock).toHaveBeenCalledWith({ ubicacion: alNorte(1100) });
+  });
+
+  it("R62: sin la primera ruta pendiente nunca llama", async () => {
+    await montar({ ruta: { ...RUTA_PRIMERA_PENDIENTE, primeraRutaPendiente: false } });
+    await leerPosicion(alNorte(1100));
+    await leerPosicion(alNorte(5000));
+    expect(calcularRutaAlSalirMock).not.toHaveBeenCalled();
+  });
+
+  it("R62: sin punto de recogida nunca llama", async () => {
+    await montar({ ruta: { ...RUTA_PRIMERA_PENDIENTE, puntoRecogida: null } });
+    await leerPosicion(alNorte(1100));
+    await leerPosicion(alNorte(5000));
+    expect(calcularRutaAlSalirMock).not.toHaveBeenCalled();
+  });
+
+  it("R62: sin ninguna parada con coordenadas nunca llama", async () => {
+    await montar({
+      porGestionar: [makeAsignacion({ id: "s3", latitud: null, longitud: null })],
+    });
+    await leerPosicion(alNorte(1100));
+    expect(calcularRutaAlSalirMock).not.toHaveBeenCalled();
+  });
+
+  it("R62: si el servidor la omite, no refresca ni avisa", async () => {
+    calcularRutaAlSalirMock.mockResolvedValue({ status: "ok", omitida: true, secuenciaFuente: null });
+    await montar();
+    await leerPosicion(alNorte(1100));
+    await vi.waitFor(() => expect(calcularRutaAlSalirMock).toHaveBeenCalledTimes(1));
+    await act(async () => {});
+    expect(refreshMock).not.toHaveBeenCalled();
+    expect(errorMock).not.toHaveBeenCalled();
+    expect(successMock).not.toHaveBeenCalled();
+  });
+
+  it("R62: un conflicto del servidor no refresca ni muestra toast", async () => {
+    calcularRutaAlSalirMock.mockResolvedValue({ status: "conflict", motivo: "x" });
+    await montar();
+    await leerPosicion(alNorte(1100));
+    await vi.waitFor(() => expect(calcularRutaAlSalirMock).toHaveBeenCalledTimes(1));
+    await act(async () => {});
+    expect(refreshMock).not.toHaveBeenCalled();
+    expect(errorMock).not.toHaveBeenCalled();
+  });
+
+  it("R65: con la primera ruta pendiente se ve lo de sin ruta: aviso, «Pendiente de optimizar» y marcadores sin número", async () => {
+    await montar();
+    expect(screen.getByText("El orden mostrado no está actualizado")).toBeInTheDocument();
+    expect(screen.getAllByText("Pendiente de optimizar").length).toBeGreaterThan(0);
+    const props = rutaMapaMock.mock.calls.at(-1)?.[0] as {
+      paradas: { id: string; secuencia: number | null }[];
+    };
+    expect(props.paradas.map((p) => p.id)).toEqual(["s1", "s2"]);
+    expect(props.paradas.every((p) => p.secuencia === null)).toBe(true);
   });
 });

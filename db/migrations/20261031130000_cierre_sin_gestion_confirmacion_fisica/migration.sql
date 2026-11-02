@@ -1,0 +1,26 @@
+-- Ficha 451 / SLT-72 (T4.1, design §3, R20/R23/R24/R40) — la MARCA de confirmacion fisica de las
+-- ordenes BARRIDAS sin gestionar.
+--
+-- QUE ES. El instante en que BODEGA declaro tener DELANTE el paquete de una orden que el corte
+-- diario barrio a `sin_gestionar` en ESE cierre, al aprobarlo. Se escribe UNICAMENTE dentro de la
+-- transaccion de aprobacion (`CierresAdminRepository.resolverCierre`), pegada a la marca de la 238
+-- sobre `gestion_orden`.
+--
+-- MISMO NOMBRE que `gestion_orden.confirmada_fisica_at` (238) a proposito: es el MISMO hecho sobre
+-- el otro origen, y reusar el nombre hace que la guardia `confirmacion-sin-lectores` la cubra sin
+-- tocar su registro.
+--
+-- NO CONTRADICE la inmutabilidad de `cierre_sin_gestion` (264): lo inmutable son los DESCRIPTIVOS
+-- CONGELADOS —la foto de la orden al barrerla—, y esos no se tocan (R22). Esto es un hecho NUEVO
+-- sobre la fila, escrito UNA vez.
+--
+-- NULLABLE Y SIN DEFAULT: `NULL` significa «cierre aprobado ANTES de esta ficha» o «todavia sin
+-- confirmar», y poder distinguirlos del confirmado es justo R23. No hay backfill: inventar una
+-- confirmacion que nunca ocurrio seria mentir donde esta ficha viene a dejar de mentir.
+--
+-- SIN CHECK (la obligatoriedad vive en el servicio), SIN INDICE (ninguna consulta filtra por ella)
+-- y R24 — NO ES UN RELOJ: nada deriva plazos, vencimientos, importes ni prelacion de esta columna.
+--
+-- ADITIVA: no renombra, no reordena, no borra, no toca filas, indices ni RLS (la tabla ya tiene la
+-- suya). Patron exacto de `20260819170000_gestion_orden_confirmacion_fisica`.
+ALTER TABLE "cierre_sin_gestion" ADD COLUMN "confirmada_fisica_at" TIMESTAMP(3);

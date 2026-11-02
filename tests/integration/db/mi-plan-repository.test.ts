@@ -27,6 +27,7 @@ const PENDIENTE: VersionPlan = {
   topes: { ordenesPorCiclo: 50, porRol: { adminTienda: 7 }, apiKeys: null },
   modulos: ["monitoreo", "analitica"],
   precio: { tipo: "negociable" },
+  costoPorOrden: null, // SLT-66 R7: el plan lleva costo por orden; aquí, vacío.
 };
 
 let base: PrismaClient;
@@ -35,7 +36,7 @@ let base: PrismaClient;
 async function escenario(tx: TxDeTest, version: unknown = PENDIENTE): Promise<{ A: string; B: string }> {
   const { id: A } = await crearOrganizacion(tx);
   const { id: B } = await crearOrganizacion(tx);
-  const plan = await crearPlan(tx, { custom: A, ordenes: 1000, apiKeys: 4, porRol: { maestro: 2, adminTienda: 5 } });
+  const plan = await crearPlan(tx, { custom: A, ordenes: 1000, apiKeys: 4, porRol: { admin: 2, adminTienda: 5 } }); // SLT-66 R1: sin tope de maestro
   await tx.plan.update({
     where: { id: plan },
     data: { precioMensual: "49.90", precioAnual: "499.00", modulos: { create: [{ modulo: "analitica" }] } },
@@ -81,15 +82,16 @@ describeSiHayBase("SLT-58 — MiPlanRepository: el plan de la empresa del contex
     const leido = r as NonNullable<typeof r>;
     expect(leido.vigente).toEqual({
       nombre: expect.stringMatching(/^sl24 /),
-      topes: { ordenesPorCiclo: 1000, porRol: { maestro: 2, adminTienda: 5 }, apiKeys: 4 },
+      topes: { ordenesPorCiclo: 1000, porRol: { admin: 2, adminTienda: 5 }, apiKeys: 4 }, // SLT-66 R1
       modulos: ["analitica"],
       precio: { tipo: "monto", mensual: "49.90", anual: { tipo: "fijo", monto: "499.00" } },
+      costoPorOrden: null, // SLT-66 R8: el plan lleva costo por orden; aquí, vacío.
     });
     expect(leido.ancla.toISOString()).toBe(ANCLA);
     expect(leido.uso).toEqual({
       ordenes: 0,
       apiKeys: 0,
-      porRol: { maestro: 1, admin: 0, mensajero: 0, adminTienda: 1, adminSatelite: 0 },
+      porRol: { admin: 0, mensajero: 0, adminTienda: 1, adminSatelite: 0 }, // SLT-66 R5: sin uso de maestro
     });
     expect(leido.cambio).toEqual({ vigenteDesde: new Date(VIGENTE_DESDE), version: PENDIENTE });
   });

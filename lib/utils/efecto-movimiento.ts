@@ -18,8 +18,11 @@ import { derivarSaldoTienda } from "@/lib/utils/saldo-tienda";
 export interface EfectoDeConcepto {
   cuenta: "tienda" | "mensajero" | null;
   caja: readonly { tipo: WalletMovimientoTipo; categoria: WalletMovimientoCategoria }[];
-  /** El asiento en el libro de la cuenta: credito/debito de la tienda o pago al mensajero. */
-  enCuenta: "credito" | "debito" | "pago" | null;
+  /**
+   * El asiento en el libro de la cuenta: credito/debito de la tienda, o pago/devengo del mensajero.
+   * SLT-68: `devengo` sube la cuenta por pagar (`devengado + M`); `pago` la baja (`pagado + M`).
+   */
+  enCuenta: "credito" | "debito" | "pago" | "devengo" | null;
 }
 
 /**
@@ -38,6 +41,12 @@ export const EFECTO_POR_TIPO: Record<ConceptoRegistro, EfectoDeConcepto> = {
   pago_a_tienda: { cuenta: "tienda", caja: [{ tipo: "egreso", categoria: "egreso_pago_tienda" }], enCuenta: "debito" },
   // [P2] de la 173: el pago a un mensajero NO toca la caja (la salida ya estaba en el cierre).
   pago_a_mensajero: { cuenta: "mensajero", caja: [], enCuenta: "pago" },
+  // SLT-68 (design §6.4, R19): devengo en el libro del mensajero + egreso propio en la caja.
+  incentivo_a_mensajero: {
+    cuenta: "mensajero",
+    caja: [{ tipo: "egreso", categoria: "egreso_pago_mensajero" }],
+    enCuenta: "devengo",
+  },
   // SL-45 (design §7.1): solo la caja; la deuda con la plataforma no es una cuenta de «Así queda».
   pago_plataforma: { cuenta: null, caja: [{ tipo: "egreso", categoria: "egreso_pago_plataforma" }], enCuenta: null },
   aporte: { cuenta: null, caja: [{ tipo: "ingreso", categoria: "ingreso_aporte_capital" }], enCuenta: null },
@@ -112,7 +121,10 @@ export function efectoDeMovimiento(
     } else {
       const { devengado, pagado } = actual.cuenta;
       const antesCuenta = derivarCuentaPorPagar(devengado, pagado);
-      const despuesCuenta = derivarCuentaPorPagar(devengado, new Prisma.Decimal(pagado).add(importe));
+      const despuesCuenta =
+        efecto.enCuenta === "devengo"
+          ? derivarCuentaPorPagar(new Prisma.Decimal(devengado).add(importe), pagado)
+          : derivarCuentaPorPagar(devengado, new Prisma.Decimal(pagado).add(importe));
       cuenta = { tipo: "mensajero", ...linea(antesCuenta.cuentaPorPagar, despuesCuenta.cuentaPorPagar) };
     }
   }

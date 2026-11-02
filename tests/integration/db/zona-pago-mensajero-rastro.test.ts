@@ -5,6 +5,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
 import type { HistorialAccionTipo } from "@/lib/types/historial-accion";
 import type {
+  CreateZonaResult,
   TarifaZonaMensajeroData,
   UpdateZonaData,
   UpdateZonaResult,
@@ -52,6 +53,12 @@ import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima"
 // cambio, en cual, quien y cuando — y nunca de cuanto a cuanto.
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
+
+/** SLT-75: `create` devuelve un desenlace nombrado; aqui solo cabe `ok` y falla ruidosamente si no. */
+function zonaCreada(res: CreateZonaResult): Extract<CreateZonaResult, { estado: "ok" }>["zona"] {
+  if (res.estado !== "ok") throw new Error(`se esperaba \`ok\` al crear y llego \`${res.estado}\``);
+  return res.zona;
+}
 
 const ACCION = "zona_pago_mensajero_cambiado";
 const SUFIJO = `380-${Date.now().toString(36)}`;
@@ -729,7 +736,7 @@ describeSiHayBase("⭑ 380/T8 — el pago al mensajero deja rastro al guardar (P
     // igual que hay `vehiculo_borrado` y no `vehiculo_creado`.
     const medido = await conEscenario(async (e) => {
       const d = await e.crearDistrito([]);
-      const zona = await e.repo.create(
+      const zona = zonaCreada(await e.repo.create(
         { sinpeNumero: "80000000", sinpeNombre: "Titular de Prueba",
           nombre: `380 nueva ${unico()}`,
           cobroVehiculo: false,
@@ -738,7 +745,7 @@ describeSiHayBase("⭑ 380/T8 — el pago al mensajero deja rastro al guardar (P
           tarifas: [pago(1500, 700)],
         },
         USUARIO,
-      );
+      ));
       return { zonaId: zona.id, pagos: await e.pagosDe(zona.id), filas: await e.filasDePago([zona.id]) };
     });
 
@@ -755,7 +762,7 @@ describeSiHayBase("⭑ 380/T8 — el pago al mensajero deja rastro al guardar (P
     // el pago» sobre una zona que ya no existe seria ruido apuntando a un id muerto.
     const medido = await conEscenario(async (e) => {
       const d = await e.crearDistrito([]);
-      const zona = await e.repo.create(
+      const zona = zonaCreada(await e.repo.create(
         { sinpeNumero: "80000000", sinpeNombre: "Titular de Prueba",
           nombre: `380 a borrar ${unico()}`,
           cobroVehiculo: false,
@@ -764,7 +771,7 @@ describeSiHayBase("⭑ 380/T8 — el pago al mensajero deja rastro al guardar (P
           tarifas: [pago(1500, 700)],
         },
         USUARIO,
-      );
+      ));
       const pagosAntes = await e.pagosDe(zona.id);
       const desenlace = await e.repo.hardDelete(zona.id, USUARIO);
       return {

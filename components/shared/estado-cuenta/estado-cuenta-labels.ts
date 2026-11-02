@@ -21,8 +21,13 @@ export const CHIP_LABEL: Record<ChipOTodo, string> = {
   cobros: "Cobros",
   correcciones: "Correcciones",
   premios: "Premios",
+  // SLT-68 (R18): el incentivo y su anulación, en su propio filtro.
+  incentivos: "Incentivos",
   declarado: "Declarado",
   recibido: "Recibido",
+  // SLT-73 (R32) — los cierres aprobados de la bodega que aún no están en una consolidación. Texto
+  // PROVISIONAL (revisado en T14, se mantiene): lo fija Carlos.
+  sin_consolidar: "Sin consolidar",
 };
 
 /**

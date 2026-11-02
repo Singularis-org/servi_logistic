@@ -8,6 +8,10 @@ import {
 } from "@/lib/clients/google-route-optimization";
 import type { OptimizarInput } from "@/lib/interfaces/external/IRouteOptimizationClient";
 
+// SLT-59 (R68): el contexto de la llamada es obligatorio; aqui solo se pasa (su registro se
+// prueba en `google-registro-llamada.test.ts`).
+const CTX = { motivo: "prueba_integracion", intento: 1, maxIntentos: 1 } as const;
+
 // Feature 92 (R13/R14/R15) — el cliente se ejercita SIN red y SIN credencial: `fetch` es
 // inyectable. Coordenadas reales de San Jose para que un fallo de mapeo se lea de un
 // vistazo.
@@ -43,7 +47,7 @@ describe("R13 — request y respuesta valida", () => {
     const fetchImpl = vi.fn(async () =>
       respuesta(200, { routes: [{ visits: [{ shipmentIndex: 2 }, { shipmentIndex: 0 }, { shipmentIndex: 1 }] }] }),
     );
-    await client(fetchImpl).optimizar(INPUT);
+    await client(fetchImpl).optimizar(INPUT, CTX);
 
     const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe(
@@ -71,7 +75,7 @@ describe("R13 — request y respuesta valida", () => {
     const fetchImpl = vi.fn(async () =>
       respuesta(200, { routes: [{ visits: [{ shipmentIndex: 2 }, { shipmentIndex: 0 }, { shipmentIndex: 1 }] }] }),
     );
-    const r = await client(fetchImpl).optimizar(INPUT);
+    const r = await client(fetchImpl).optimizar(INPUT, CTX);
     // Feature 265: el desenlace `ok` declara quien ordeno. Aqui, el proveedor.
     expect(r).toEqual({
       status: "ok",
@@ -87,7 +91,7 @@ describe("R13 — request y respuesta valida", () => {
     const fetchImpl = vi.fn(async () =>
       respuesta(200, { routes: [{ visits: [{}, { shipmentIndex: 1 }, { shipmentIndex: 2 }] }] }),
     );
-    const r = await client(fetchImpl).optimizar(INPUT);
+    const r = await client(fetchImpl).optimizar(INPUT, CTX);
     expect(r).toEqual({
       status: "ok",
       secuencia: ["orden-A", "orden-B", "orden-C"],
@@ -105,12 +109,12 @@ describe("R13 — una forma inesperada NUNCA produce una secuencia parcial o vac
         throw new Error("Unexpected token <");
       },
     }));
-    await expect(client(fetchImpl).optimizar(INPUT)).rejects.toThrow(RutaRespuestaInvalidaError);
+    await expect(client(fetchImpl).optimizar(INPUT, CTX)).rejects.toThrow(RutaRespuestaInvalidaError);
   });
 
   it("routes con forma invalida -> RutaRespuestaInvalidaError citando el campo", async () => {
     const fetchImpl = vi.fn(async () => respuesta(200, { routes: "no-es-un-array" }));
-    const error = await client(fetchImpl).optimizar(INPUT).catch((e: Error) => e);
+    const error = await client(fetchImpl).optimizar(INPUT, CTX).catch((e: Error) => e);
     expect(error).toBeInstanceOf(RutaRespuestaInvalidaError);
     expect((error as Error).message).toContain("routes");
   });
@@ -118,7 +122,7 @@ describe("R13 — una forma inesperada NUNCA produce una secuencia parcial o vac
   it("sin routes -> lanza en vez de devolver una secuencia vacia", async () => {
     // Devolver `[]` aqui BORRARIA el ultimo orden bueno persistido: peor que no optimizar.
     const fetchImpl = vi.fn(async () => respuesta(200, {}));
-    await expect(client(fetchImpl).optimizar(INPUT)).rejects.toThrow(/sin routes/);
+    await expect(client(fetchImpl).optimizar(INPUT, CTX)).rejects.toThrow(/sin routes/);
   });
 
   // ⚠️ ESTE TEST CAMBIO DE SENTIDO EN LA FEATURE 265, y no se borro: se reescribio.
@@ -135,7 +139,7 @@ describe("R13 — una forma inesperada NUNCA produce una secuencia parcial o vac
     const fetchImpl = vi.fn(async () =>
       respuesta(200, { routes: [{ visits: [{ shipmentIndex: 0 }, { shipmentIndex: 1 }] }] }),
     );
-    const r = await client(fetchImpl).optimizar(INPUT);
+    const r = await client(fetchImpl).optimizar(INPUT, CTX);
     expect(r).toMatchObject({ status: "sin_solucion", servidas: 2, enviadas: 3 });
     // Y NO devuelve una secuencia: no hay ningun campo del que alguien pueda sacar 2 de 3.
     expect(r).not.toHaveProperty("secuencia");
@@ -145,7 +149,7 @@ describe("R13 — una forma inesperada NUNCA produce una secuencia parcial o vac
     const fetchImpl = vi.fn(async () =>
       respuesta(200, { routes: [{ visits: [{ shipmentIndex: 99 }] }] }),
     );
-    await expect(client(fetchImpl).optimizar(INPUT)).rejects.toThrow(/fuera de rango/);
+    await expect(client(fetchImpl).optimizar(INPUT, CTX)).rejects.toThrow(/fuera de rango/);
   });
 
   it("shipmentIndex repetido -> lanza (el contrato asumido no seria el real)", async () => {
@@ -154,7 +158,7 @@ describe("R13 — una forma inesperada NUNCA produce una secuencia parcial o vac
         routes: [{ visits: [{ shipmentIndex: 0 }, { shipmentIndex: 0 }, { shipmentIndex: 1 }] }],
       }),
     );
-    await expect(client(fetchImpl).optimizar(INPUT)).rejects.toThrow(/repetido/);
+    await expect(client(fetchImpl).optimizar(INPUT, CTX)).rejects.toThrow(/repetido/);
   });
 });
 
@@ -163,25 +167,25 @@ describe("R15 — traduccion de desenlaces", () => {
     const fetchImpl = vi.fn(async () => {
       throw new Error("AbortError");
     });
-    const r = await client(fetchImpl).optimizar(INPUT);
+    const r = await client(fetchImpl).optimizar(INPUT, CTX);
     expect(r.status).toBe("transitorio");
   });
 
   it.each([500, 503])("HTTP %i -> transitorio", async (status) => {
     const fetchImpl = vi.fn(async () => respuesta(status, {}));
-    const r = await client(fetchImpl).optimizar(INPUT);
+    const r = await client(fetchImpl).optimizar(INPUT, CTX);
     expect(r.status).toBe("transitorio");
   });
 
   it("HTTP 429 (cuota) -> transitorio", async () => {
     const fetchImpl = vi.fn(async () => respuesta(429, {}));
-    const r = await client(fetchImpl).optimizar(INPUT);
+    const r = await client(fetchImpl).optimizar(INPUT, CTX);
     expect(r.status).toBe("transitorio");
   });
 
   it.each([401, 403])("HTTP %i -> config_invalida", async (status) => {
     const fetchImpl = vi.fn(async () => respuesta(status, {}));
-    const r = await client(fetchImpl).optimizar(INPUT);
+    const r = await client(fetchImpl).optimizar(INPUT, CTX);
     expect(r.status).toBe("config_invalida");
   });
 
@@ -189,7 +193,7 @@ describe("R15 — traduccion de desenlaces", () => {
     // Un 400 es un fallo NUESTRO (modelo mal formado). Tratarlo como transitorio lo
     // condenaria a reintentarse 5 veces y morir en el dead-letter sin diagnostico.
     const fetchImpl = vi.fn(async () => respuesta(400, {}));
-    await expect(client(fetchImpl).optimizar(INPUT)).rejects.toThrow(RutaPeticionRechazadaError);
+    await expect(client(fetchImpl).optimizar(INPUT, CTX)).rejects.toThrow(RutaPeticionRechazadaError);
   });
 
   it("el error del proveedor de token se propaga TAL CUAL, sin llamar a la API", async () => {
@@ -198,7 +202,7 @@ describe("R15 — traduccion de desenlaces", () => {
     await expect(
       client(fetchImpl, async () => {
         throw boom;
-      }).optimizar(INPUT),
+      }).optimizar(INPUT, CTX),
     ).rejects.toBe(boom);
     expect(fetchImpl).not.toHaveBeenCalled();
   });
@@ -215,14 +219,14 @@ describe("R14 — ningun mensaje de error cita token, URL, coordenadas ni ordenI
 
   it("los detalles de los desenlaces transitorio/config_invalida estan saneados", async () => {
     for (const status of [429, 500, 401, 403]) {
-      const r = await client(vi.fn(async () => respuesta(status, {}))).optimizar(INPUT);
+      const r = await client(vi.fn(async () => respuesta(status, {}))).optimizar(INPUT, CTX);
       if (r.status !== "ok") assertLimpio(r.detalle);
     }
     const red = await client(
       vi.fn(async () => {
         throw new Error(`ECONNREFUSED routeoptimization.googleapis.com ${TOKEN}`);
       }),
-    ).optimizar(INPUT);
+    ).optimizar(INPUT, CTX);
     if (red.status !== "ok") assertLimpio(red.detalle);
   });
 
@@ -234,7 +238,7 @@ describe("R14 — ningun mensaje de error cita token, URL, coordenadas ni ordenI
       vi.fn(async () => respuesta(200, { routes: [{ visits: [{ shipmentIndex: 99 }] }] })),
     ];
     for (const fetchImpl of casos) {
-      const error = await client(fetchImpl).optimizar(INPUT).catch((e: Error) => e);
+      const error = await client(fetchImpl).optimizar(INPUT, CTX).catch((e: Error) => e);
       assertLimpio((error as Error).message);
     }
   });
@@ -271,7 +275,7 @@ describe("265/R1, R4, R5 — la respuesta del incidente produce `sin_solucion`, 
   it("lee los tres campos y devuelve el desenlace con sus conteos", async () => {
     const fetchImpl = vi.fn(async () => respuesta(200, RESPUESTA_DEL_INCIDENTE));
 
-    const r = await client(fetchImpl).optimizar(INPUT_6);
+    const r = await client(fetchImpl).optimizar(INPUT_6, CTX);
 
     expect(r.status).toBe("sin_solucion");
     if (r.status !== "sin_solucion") return;
@@ -293,7 +297,7 @@ describe("265/R1, R4, R5 — la respuesta del incidente produce `sin_solucion`, 
       }),
     );
 
-    const r = await client(fetchImpl).optimizar(INPUT_6);
+    const r = await client(fetchImpl).optimizar(INPUT_6, CTX);
 
     expect(r).toMatchObject({ status: "sin_solucion", servidas: 4, enviadas: 6 });
   });
@@ -308,7 +312,7 @@ describe("265/R1, R4, R5 — la respuesta del incidente produce `sin_solucion`, 
       }),
     );
 
-    const r = await client(fetchImpl).optimizar(INPUT_6);
+    const r = await client(fetchImpl).optimizar(INPUT_6, CTX);
 
     expect(r).toMatchObject({ status: "sin_solucion", servidas: 0, enviadas: 6 });
   });
@@ -318,7 +322,7 @@ describe("265/R1, R4, R5 — la respuesta del incidente produce `sin_solucion`, 
     const fetchImpl = vi.fn(async () =>
       respuesta(200, { routes: [{ visits: [{ shipmentIndex: 0 }] }], skippedShipments: [] }),
     );
-    const r = await client(fetchImpl).optimizar(INPUT_6);
+    const r = await client(fetchImpl).optimizar(INPUT_6, CTX);
     expect(r).toMatchObject({ status: "sin_solucion", servidas: 1, enviadas: 6 });
   });
 });
@@ -333,7 +337,7 @@ describe("265/R2 — la AUSENCIA de los tres campos nuevos no rompe nada", () =>
       }),
     );
 
-    const r = await client(fetchImpl).optimizar(INPUT_6);
+    const r = await client(fetchImpl).optimizar(INPUT_6, CTX);
 
     expect(r.status).toBe("ok");
     if (r.status !== "ok") return;
@@ -354,7 +358,7 @@ describe("265/R2 — la AUSENCIA de los tres campos nuevos no rompe nada", () =>
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     process.env.RUTA_DEBUG_LOG = "1";
     try {
-      await client(vi.fn(async () => respuesta(200, RESPUESTA_DEL_INCIDENTE))).optimizar(INPUT_6);
+      await client(vi.fn(async () => respuesta(200, RESPUESTA_DEL_INCIDENTE))).optimizar(INPUT_6, CTX);
 
       const linea = log.mock.calls.find(
         (c) => typeof c[0] === "string" && (c[0] as string).includes("informa saltos"),
@@ -397,7 +401,7 @@ describe("265/R2 — la AUSENCIA de los tres campos nuevos no rompe nada", () =>
         }),
       );
 
-      const r = await client(fetchImpl).optimizar(INPUT_6);
+      const r = await client(fetchImpl).optimizar(INPUT_6, CTX);
 
       // Mitad 1: la respuesta SE USA. Los avisos no la descalifican.
       expect(r).toMatchObject({ status: "ok", fuente: "proveedor" });
@@ -429,7 +433,7 @@ describe("265/R7, R49 — codigos de motivo: si los hay se citan; si no, el moti
   it("R49: SIN ningun codigo, el motivo nombra causa y conteos, sin huecos ni `undefined`", async () => {
     // Es el caso que HOY se espera: nadie ha visto la forma real de `skippedShipments`.
     const r = await client(vi.fn(async () => respuesta(200, RESPUESTA_DEL_INCIDENTE))).optimizar(
-      INPUT_6,
+      INPUT_6, CTX,
     );
 
     expect(r.status).toBe("sin_solucion");
@@ -450,7 +454,7 @@ describe("265/R7, R49 — codigos de motivo: si los hay se citan; si no, el moti
       }),
     );
 
-    const r = await client(fetchImpl).optimizar(INPUT_6);
+    const r = await client(fetchImpl).optimizar(INPUT_6, CTX);
 
     expect(r.status).toBe("sin_solucion");
     if (r.status !== "sin_solucion") return;
@@ -512,7 +516,7 @@ describe("265/R6, R32 — el motivo de `sin_solucion` no filtra NADA", () => {
       }),
     );
 
-    const r = await client(fetchImpl).optimizar(INPUT_6);
+    const r = await client(fetchImpl).optimizar(INPUT_6, CTX);
 
     expect(r.status).toBe("sin_solucion");
     if (r.status !== "sin_solucion") return;
@@ -536,7 +540,7 @@ describe("265/R6, R32 — el motivo de `sin_solucion` no filtra NADA", () => {
 
   it("R31: tampoco en este camino viaja el `ordenId` al proveedor", async () => {
     const fetchImpl = vi.fn(async () => respuesta(200, RESPUESTA_DEL_INCIDENTE));
-    await client(fetchImpl).optimizar(INPUT_6);
+    await client(fetchImpl).optimizar(INPUT_6, CTX);
     const [, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
     expect(init.body as string).not.toContain("orden-0");
   });

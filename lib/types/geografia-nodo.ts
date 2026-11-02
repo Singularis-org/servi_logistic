@@ -176,6 +176,13 @@ export interface DistritoArbolDTO {
   zonaId: string | null;
   zonaNombre: string | null;
   /**
+   * SLT-75 R14: TODAS las zonas de la empresa a las que pertenece el distrito, sin colapsar y
+   * ordenadas por nombre. Obligatorio a proposito: un fixture viejo no compila en vez de pasar con
+   * `undefined`. Con el indice unico por empresa trae como mucho una; el selector la usa para
+   * bloquear el distrito y la edicion para preseleccionar, sin depender del colapso de `zonaId`.
+   */
+  zonas: { id: string; nombre: string }[];
+  /**
    * Marca de zona especial de la EMPRESA de la transaccion (SL-38, `distrito_zona_especial`): el
    * distrito es especial para esta empresa si tiene su marca. Se resuelve en el repositorio con
    * `esZonaEspecialDeLaEmpresa` (`_shared/zona-especial.ts`).

@@ -76,6 +76,7 @@ const ARBOL: ProvinciaArbolDTO[] = [
             nombre: "Distrito Uno",
             zonaId: null,
             zonaNombre: null,
+            zonas: [],
             zonaEspecial: false,
             activo: true,
           },
