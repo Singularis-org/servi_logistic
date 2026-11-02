@@ -15,7 +15,7 @@
 > Valor propio del mensajero → SLT-55 (este modelo deja previsto el nivel y su precedencia).
 > Quitar columnas viejas y el respaldo al modelo viejo → SLT-57. Ajuste del pago en el cierre →
 > SLT-56 (ya en dev). Tope de intentos de entrega por empresa (hoy `REINTENTOS_MIN_INTENTOS`,
-> global) → SLT-77.
+> global) → SLT-77. Incentivo manual a la satélite en la wallet → SLT-78.
 >
 > Sembrado por `/afinar-feature` el 2026-11-02. El bloque de Alcance y la tabla de «Decisiones
 > cerradas» los fijó el humano ANTES del spec. `spec_author` los respeta, no los reabre y no los
@@ -27,14 +27,7 @@ _Pendiente: los escribe spec_author (F1.2)._
 
 ## Preguntas abiertas
 
-- **P1 — Satélite «súper configurable».** Carlos (2026-11-02): «el pago a la satélite también debe
-  ser súper configurable, la empresa es quien debe decidir por qué concepto pagarle». Ya está
-  cerrado que se paga por resultado, combinable, en monto o %. Falta concretar si la satélite
-  diferencia por vehículo (hoy sí, vía `tarifa_zona_mensajero`) y si hay conceptos que no dependen
-  del resultado de una gestión (p. ej. por orden recibida en bodega, o un fijo por período).
-- **P2 — Pago por gestión o por orden.** Si una orden se reprograma dos veces y luego se entrega,
-  ¿el mensajero (y la satélite) cobran el «reprogramado» dos veces más la entrega, o solo el
-  resultado final? (El tope de intentos que limita esas gestiones es SLT-77.)
+Ninguna.
 
 ## Decisiones cerradas (no reabrir)
 
@@ -45,7 +38,10 @@ _Pendiente: los escribe spec_author (F1.2)._
 | 2026-11-02 | Base de un concepto en % | La fija la app por concepto: cobro a tienda → valor del pedido (recaudo); pago a mensajero o satélite → flete de la orden sin IVA. |
 | 2026-11-02 | Cobro a la tienda | Flete por resultado de la gestión (hoy «flete» y «flete devuelto» son dos casos) + fulfillment + comisión COD. |
 | 2026-11-02 | Pago al mensajero | Por cualquier resultado que la empresa configure (entregado, reprogramado, novedad, devolución por rechazo, incidente). |
-| 2026-11-02 | Pago a la satélite | Mismo esquema que el mensajero; varios conceptos a la vez (p. ej. 2.000 por entrega + 1.500 por rechazo). Ver P1. |
+| 2026-11-02 | Pago a la satélite | Mismo esquema que el mensajero; varios conceptos a la vez (p. ej. 2.000 por entrega + 1.500 por rechazo). Carlos: «súper configurable, la empresa decide por qué concepto pagarle». |
+| 2026-11-02 | ¿La satélite cobra distinto por vehículo? (P1) | Lo decide cada empresa, como en el mensajero: por defecto un valor para todos los vehículos; la empresa puede activar valores por vehículo. |
+| 2026-11-02 | ¿Pagos a la satélite que no dependan de un resultado? (P1) | No en esta ficha: todo pago sale de un resultado de gestión. Los incentivos aparte son un movimiento manual de wallet → SLT-78 (espejo de SLT-68). |
+| 2026-11-02 | ¿Pago por gestión o por orden? (P2) | Por gestión. Cada gestión está atada a su mensajero y se paga en SU cierre con lo que la empresa tenga configurado entonces; el siguiente intento cae en otro cierre, quizá con otro mensajero, y se paga aparte. Igual para la satélite. |
 | 2026-11-02 | Tienda frente a grupo | Gana la tienda. Puede pactar por zona y por grupo; si no pactó el grupo, se usa su precio de zona. |
 | 2026-11-02 | Alcance de los grupos | Afectan al cobro a la tienda, al pago al mensajero y al pago a la satélite. |
 | 2026-11-02 | Grupo para pagar al mensajero | Se busca el distrito de la orden en los grupos de la zona DEL MENSAJERO; si no está, se usa el valor base de esa zona. |

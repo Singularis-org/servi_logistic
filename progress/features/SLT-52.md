@@ -17,11 +17,11 @@ snapshot ampliado en `cierre_detail` y `gestion_orden`. Plan de la épica:
 
 ## Decisiones
 - 2026-11-02 · Alcance y decisiones cerradas → `specs/SLT-52-tarifas-flexibles-modelo/requirements.md`.
-  Board actualizado: descripciones de SLT-52, SLT-54 y SLT-55; creada SLT-77 (tope de intentos).
+  Board actualizado: descripciones de SLT-52, SLT-54 y SLT-55; creadas SLT-77 (tope de intentos)
+  y SLT-78 (incentivo a la satélite). P1 y P2 cerradas el mismo día.
 
 ## Preguntas abiertas
-P1 (satélite: vehículo y conceptos no ligados a un resultado) y P2 (pago por gestión o por orden):
-las cierra Carlos; detalle en el requirements.md.
+Ninguna.
 
 ## Tandas
 
