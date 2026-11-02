@@ -6,7 +6,8 @@
 > **Alcance.** Modelo de datos nuevo de tarifas y un único resolver. La app trae la lista fija de
 > conceptos por actor: a la TIENDA se le cobra flete por cada resultado de la gestión, fulfillment
 > y comisión COD; al MENSAJERO y a la SATÉLITE se les paga por cada resultado que la empresa
-> configure. Cada concepto lleva monto o % (lo elige la empresa) y su IVA. Los valores viven por
+> configure. Cada concepto lleva monto o % (lo elige la empresa); los cobros a la tienda llevan
+> además su IVA, los pagos al mensajero y a la satélite no llevan IVA. Los valores viven por
 > niveles: valor base de la zona, grupos de distritos con valor propio (la zona especial es un grupo
 > más) y precio propio de la tienda. Desaparece la variante GAM del cálculo. Incluye los services de
 > escritura que usará la pantalla de SLT-54.
@@ -207,33 +208,17 @@ tiene al menos un valor guardado en el modelo nuevo.
 
 ## Preguntas abiertas
 
-Abiertas por `spec_author` el 2026-11-02 al diseñar. Cada una dice qué propone el spec; el
-humano la cierra al aprobarlo y la respuesta pasa a la tabla de decisiones.
-
-- **P1. Base del % del pago cuando la gestión no es una entrega** (R28). Si al mensajero se le paga
-  un 10 % «del flete» por un rechazo, ¿la base es el flete que se le cobra a la tienda por ESE
-  rechazo, o el flete por entregado de la orden? Con la primera, si la empresa no le cobra nada a
-  la tienda por un reprogramado, el % de un reprogramado da 0. *Propuesta del spec:* el flete de
-  esa misma gestión (su resultado).
-- **P2. Grupo frente a vehículo en el pago** (R19, R20). Zona base: moto 1.500 y carro 2.000;
-  grupo «lejano»: 2.500 sin vehículo. Un mensajero en carro entrega en «lejano»: ¿2.500 (gana el
-  grupo) o 2.000 (gana el vehículo)? *Propuesta del spec:* gana el grupo (grupo por vehículo >
-  grupo > zona por vehículo > zona).
-- **P3. Fulfillment en la liquidación** (R31). Hoy el fulfillment se congela y se muestra, y se
-  cobra en el costo de la API, pero no entra en el cierre ni en las wallets. «Se le cobra a la
-  tienda» ¿significa que ahora entra en la liquidación? Si entra: ¿por orden o por gestión, y con
-  qué resultado? *Propuesta del spec:* esta ficha mantiene la frontera de hoy; meterlo es otra
-  ficha.
-- **P4. IVA del pago al mensajero y a la satélite** (R34). Cada concepto lleva su IVA, también los
-  de pago. ¿Ese IVA se le paga al mensajero o a la satélite encima del pago (entra en su devengo),
-  o es solo informativo? *Propuesta del spec:* se calcula y se congela aparte, sin entrar en el
-  devengo ni en la wallet hasta decidirlo.
+Ninguna. P1-P4, abiertas por `spec_author` al diseñar, las cerró Carlos el 2026-11-02 (ver tabla).
 
 ## Decisiones cerradas (no reabrir)
 
 | Fecha | Pregunta | Decisión |
 |---|---|---|
 | 2026-11-02 | Base del «% del flete» | El flete de la orden cobrado a la tienda, sin IVA. |
+| 2026-11-02 | Base del % del pago cuando la gestión no es entrega (P1) | El flete que se cobra a la tienda por ESA gestión según su resultado, con los valores vigentes en el cierre donde cae, y congelado ahí. Carlos: «no es que días después modifiquemos dineros… la gestión debe ser coherente siempre con el estado de la gestión». Si a la tienda no se le cobra nada por ese resultado, el % da 0. |
+| 2026-11-02 | Grupo frente a vehículo en el pago (P2) | Gana el grupo: grupo por vehículo > grupo > zona por vehículo > zona. |
+| 2026-11-02 | ¿Fulfillment en el cierre y las wallets? (P3) | No en esta ficha: se mantiene la frontera de hoy. |
+| 2026-11-02 | IVA del pago al mensajero y a la satélite (P4) | No llevan IVA. Solo los cobros a la tienda llevan IVA. |
 | 2026-11-02 | ¿Monto o %, quién decide? | La empresa, concepto por concepto. |
 | 2026-11-02 | Base de un concepto en % | La fija la app por concepto: cobro a tienda → valor del pedido (recaudo); pago a mensajero o satélite → flete de la orden sin IVA. |
 | 2026-11-02 | Cobro a la tienda | Flete por resultado de la gestión (hoy «flete» y «flete devuelto» son dos casos) + fulfillment + comisión COD. |
