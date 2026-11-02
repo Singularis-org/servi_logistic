@@ -1,6 +1,6 @@
 # SLT-52 — tarifas-flexibles-modelo · tasks.md
 
-> Requisitos R1-R44 (`requirements.md`), diseño en `design.md`. Cada tanda cierra con
+> Requisitos R1-R45 (`requirements.md`), diseño en `design.md`. Cada tanda cierra con
 > `./init.sh` en verde y un commit por task lógica. `[P]` = puede ir en paralelo con la task
 > anterior de la misma tanda. El mapa `R<n> -> test` va en `progress/impl_SLT-52.md`.
 >
@@ -12,8 +12,8 @@
 > - No leer ni imprimir valores de `.env`; si hace falta, solo booleanos («¿hay `DATABASE_URL`?»).
 > - Un test de integración no puede pasar sin datos: nada de `if (!x) return;`; cada caso afirma
 >   antes lo que sembró.
-> - Si P1-P4 se responden distinto de la propuesta antes de implementar, se cambia el R y su test
->   primero (design §4, §5 dicen dónde).
+> - P1-P4 están cerradas (tabla de decisiones). En especial P4: los pagos al mensajero y a la
+>   satélite no llevan IVA; ningún tipo, columna ni test de pago puede tener uno.
 
 ## T0 — Contrato del modelo viejo, antes de tocar nada
 
@@ -33,7 +33,8 @@
   `cierre_detail.tarifa_modelo DEFAULT 'viejo'`, CHECKs, únicos (NULLS NOT DISTINCT a mano), índices,
   FKs compuestas, RLS + políticas `<t>_por_empresa`, GRANT y `REVOKE UPDATE, DELETE` de
   `cierre_detail_concepto` + `down.sql`. Modelos en `db/schema.prisma` con sus `map`.
-  Cubre: R4, R7, R8, R10, R11, R12, R15, R43, R44.
+  `tarifa_valor.iva_pct` nullable con CHECK `tarifa_valor_iva_solo_tienda`; `gestion_pago_congelado`
+  sin columna de IVA. Cubre: R4, R7, R8, R10, R11, R12, R15, R34, R43, R44, R45.
 - [ ] **T1.3** Migración `…_tarifas_flexibles_misma_empresa` con
   `pnpm exec tsx scripts/generar-misma-empresa.ts --faltantes` + `down.sql`. Cubre: R15.
 - [ ] **T1.4** Migración `…_historial_tarifas_flexibles` (solo `ADD VALUE`) + `down.sql`; tipos,
@@ -42,6 +43,8 @@
   `tests/unit/guards/_unicos-sin-empresa.ts`. Hecho: `pnpm run test:guardias` verde.
 - [ ] **T1.6** `tests/integration/db/tarifas-flexibles-migration.test.ts` (Postgres real):
   - cada CHECK rechaza su caso y acepta el contrario (R4, R7);
+  - un cobro a la tienda sin IVA → rechazo; un pago al mensajero o a la satélite con `iva_pct = 0`
+    o `13` → rechazo; el mismo pago con `iva_pct NULL` → aceptado (R4, R45);
   - el único NULLS NOT DISTINCT rechaza dos filas del mismo nivel con NULLs (R8);
   - un distrito en dos grupos de la zona → rechazo; un distrito fuera de la zona → rechazo (R11);
   - borrar el distrito de `zona_distrito` lo saca del grupo; borrar el grupo borra sus valores (R12);
@@ -65,10 +68,13 @@
   vehículo; fila de otra zona/grupo/tienda/vehículo → `null`; elección por concepto independiente) y
   forma de `whereValores`. Cubre: R16, R17, R18, R19, R20, R21, R22.
 - [ ] **T2.3** [P] `lib/tarifas/calculo.ts` + `tests/unit/tarifas/calculo.test.ts`: monto, % con
-  base, IVA sobre el importe redondeado, HALF_UP con los casos de la 204 (589.30, 657.25), cero
-  escrito → `"0.00"` y no ausencia. Cubre: R23, R26.
-- [ ] **T2.4** `lib/types/tarifa-flexible.ts`: `ValorResuelto`, `TarifaTienda`, `TarifaPago`,
-  esquemas zod de escritura. Hecho: typecheck.
+  base, `ivaDe` (solo `ValorCobro`) sobre el importe redondeado, HALF_UP con los casos de la 204
+  (589.30, 657.25), cero escrito → `"0.00"` y no ausencia. Cubre: R23, R26.
+- [ ] **T2.4** `lib/types/tarifa-flexible.ts`: `ValorPago` (sin IVA), `ValorCobro` (con `ivaPct`),
+  `TarifaTienda`, `TarifaPago`, esquemas zod de escritura discriminados por actor (`ivaPct`
+  obligatorio en cobros, prohibido en pagos). Test `tests/unit/tarifas/esquemas-escritura.test.ts`:
+  un pago con `ivaPct` (también `"0"`) no pasa; un cobro sin `ivaPct` no pasa. Cubre: R3, R4, R45.
+  Hecho: typecheck, y pasar un `ValorPago` a `ivaDe` no compila (`@ts-expect-error` en el test).
 
 ## T3 — Resolver único y convivencia (depende de T1, T2)
 
@@ -108,8 +114,9 @@
   Cubre: R27, R29, R30, R31, R35. Hecho: T0.1 sigue verde con los casos envueltos en `viejo`.
 - [ ] **T4.2** [P] `pago-mensajero.ts`, `ingreso-bodega.ts`, `cierre-totales.ts` con `TarifaPago`.
   Test `tests/unit/utils/pago-modelo-nuevo.test.ts`: cada resultado paga su concepto al mensajero y a
-  la satélite, la satélite con varios conceptos a la vez, % sobre `baseFlete`, sin valor → `"0.00"`,
-  el IVA no entra en el importe. Cubre: R28, R32, R34.
+  la satélite, la satélite con varios conceptos a la vez, % sobre `baseFlete` = flete sin IVA de ESA
+  gestión (reprogramado sin flete a la tienda → pago en % = `"0.00"`), sin valor → `"0.00"`, y el
+  pago es exactamente el importe (literal), sin IVA. Cubre: R28, R32, R34.
 - [ ] **T4.3** Superficies: `OrdenRepository` (listado), `BulkOrdenService` (carga por key y
   masiva), `CotizacionOrdenService`, `ApiOrdenLecturaService`, `api-orden-costo.ts`,
   `RechazoTiendaService`, `CorregirDatosClienteService` pasan `distritoId` y el 409 usa
@@ -134,7 +141,8 @@
   lo congelado. Cubre: R41, R42.
 - [ ] **T5.4** `tests/integration/db/tarifas-flexibles-snapshot.test.ts` (Postgres real): una
   empresa en el nuevo solicita un cierre con dos gestiones de distritos en grupos distintos y una sin
-  tarifa → filas congeladas correctas, pago distinto por grupo, sin tarifa = 0 y el cierre se crea;
+  tarifa → filas congeladas correctas (`gestion_pago_congelado.base` = flete sin IVA de esa gestión,
+  `importe` = `pago_mensajero`, sin IVA), pago distinto por grupo, sin tarifa = 0 y el cierre se crea;
   después se cambian y borran valores y grupos y el detalle, la aprobación y las wallets dan lo
   mismo; un cierre `viejo` lee igual que antes; corte diario y re-solicitud congelan igual.
   Cubre: R24, R33, R40, R41, R42.
@@ -151,8 +159,9 @@
   `tests/unit/services/grupo-distritos-service.test.ts`: matriz de roles (maestro escribe, admin lee,
   el resto `forbidden`, sin escribir), rangos, nivel incompatible, tienda con rol no tarifable,
   grupo de otra zona, upsert reemplaza, quitar, distrito repetido o ajeno con el distrito nombrado,
-  historial con antes/después en la misma transacción.
-  Cubre: R3, R4, R5, R6, R7, R8, R9, R10, R11, R13, R14.
+  pago con IVA (también `"0"`) → `validation_error` en `ivaPct` sin escribir, cobro sin IVA →
+  `validation_error`, historial con antes/después en la misma transacción.
+  Cubre: R3, R4, R5, R6, R7, R8, R9, R10, R11, R13, R14, R45.
 - [ ] **T6.3** `lib/tarifas/servicios.ts` (fábrica) + `tests/unit/tarifas/servicios-composicion.test.ts`:
   cada dependencia que la fábrica pasa es una instancia real (no `undefined`, no un doble) y el
   service la usa (una llamada llega al repositorio). Cubre: R13 (la puerta llega a las actions de
@@ -172,7 +181,7 @@
 - [ ] **T7.3** E2E existentes en verde con empresas en el modelo viejo: `e2e/cierre-*`,
   `e2e/cierres-admin*`, `e2e/cierre-bodega-satelite*`, `e2e/wallet-*`, `e2e/mi-wallet*`,
   `e2e/dos-empresas-humo.spec.ts`. Cubre: R36. Hecho: salida pegada en `progress/impl_SLT-52.md`.
-- [ ] **T7.4** Mapa completo `R1..R44 -> test` en `progress/impl_SLT-52.md`; `./init.sh` verde con
+- [ ] **T7.4** Mapa completo `R1..R45 -> test` en `progress/impl_SLT-52.md`; `./init.sh` verde con
   `INIT_EXIT=$?` escrito dentro del log.
 
 ## Archivos esperados
@@ -242,6 +251,7 @@ Tests:
 - `tests/unit/tarifas/catalogo.test.ts`
 - `tests/unit/tarifas/precedencia.test.ts`
 - `tests/unit/tarifas/calculo.test.ts`
+- `tests/unit/tarifas/esquemas-escritura.test.ts`
 - `tests/unit/tarifas/servicios-composicion.test.ts`
 - `tests/unit/utils/ingreso-empresa-modelo-nuevo.test.ts`
 - `tests/unit/utils/pago-modelo-nuevo.test.ts`

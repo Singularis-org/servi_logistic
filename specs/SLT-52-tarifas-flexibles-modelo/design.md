@@ -1,6 +1,6 @@
 # SLT-52 — tarifas-flexibles-modelo · design.md
 
-> Requisitos: `requirements.md` (R1-R44, P1-P4 abiertas). Zona backend. Sin pantalla (SLT-54),
+> Requisitos: `requirements.md` (R1-R45; P1-P4 cerradas por Carlos el 2026-11-02). Zona backend. Sin pantalla (SLT-54),
 > sin migración de datos (SLT-53), sin retirar el modelo viejo (SLT-57).
 > El MCP `codebase-memory` no respondió (2026-11-02): todo lo de abajo sale de Grep/Read.
 
@@ -29,7 +29,7 @@ No apareció ninguna ficha ni spec que ya resuelva conceptos configurables o gru
 ```
 lib/tarifas/catalogo.ts      ← lista fija de conceptos (R1, R2). Puro.
 lib/tarifas/precedencia.ts   ← WHERE plano + elección por nivel (R16-R22). Puro.
-lib/tarifas/calculo.ts       ← importe e IVA de un valor resuelto (R26-R28). Puro, Decimal.
+lib/tarifas/calculo.ts       ← importe de un valor resuelto, e IVA solo en cobros (R26-R28). Puro, Decimal.
 lib/repositories/_shared/resolver-tarifas.ts
                              ← EL resolver único: decide modelo (R36/R37), trae candidatas con
                                un número fijo de consultas (R39) y elige con precedencia.ts.
@@ -102,7 +102,7 @@ base y con `GestionResultado` (R1, R2).
 | `concepto` | `tarifa_concepto` NOT NULL | |
 | `modo` | `tarifa_modo` NOT NULL | R3 |
 | `valor` | numeric(12,2) NOT NULL | monto o porcentaje según `modo` |
-| `iva_pct` | numeric(5,2) NOT NULL | 0..100 |
+| `iva_pct` | numeric(5,2) NULL | 0..100. NOT NULL en los cobros a la tienda y NULL en los pagos (R4, R45; decisión P4) |
 | `zona_id` | uuid NULL, FK `zona` CASCADE | NULL solo en «tienda en todas sus zonas» y «valor propio del mensajero» |
 | `grupo_id` | uuid NULL | FK `(grupo_id, zona_id)` → `grupo_distritos(id, zona_id)` CASCADE |
 | `tienda_id` | uuid NULL, FK `usuario` CASCADE | |
@@ -111,10 +111,13 @@ base y con `GestionResultado` (R1, R2).
 | `actualizado_por` | uuid NULL, FK `usuario` SET NULL | |
 | `created_at`, `updated_at` | timestamp | |
 
-CHECKs (R4, R7):
+CHECKs (R4, R7, R45):
 - `tarifa_valor_no_negativo`: `valor >= 0`.
 - `tarifa_valor_porcentaje_tope`: `modo <> 'porcentaje' OR valor <= 100`.
-- `tarifa_valor_iva_rango`: `iva_pct BETWEEN 0 AND 100`.
+- `tarifa_valor_iva_solo_tienda`: `(concepto::text LIKE 'tienda\_%' AND iva_pct IS NOT NULL AND
+  iva_pct BETWEEN 0 AND 100) OR (concepto::text NOT LIKE 'tienda\_%' AND iva_pct IS NULL)`.
+  Un pago con IVA (también con `0`) no se puede guardar: se **impide**, no se ignora, para que
+  nadie lea un IVA de pago que la app nunca aplicaría.
 - `tarifa_valor_grupo_con_zona`: `grupo_id IS NULL OR zona_id IS NOT NULL` (con `MATCH SIMPLE`, una
   FK compuesta con `zona_id` NULL no se comprobaría).
 - `tarifa_valor_niveles_tienda`: concepto `tienda_%` ⇒ `mensajero_id IS NULL AND vehiculo_id IS NULL
@@ -150,7 +153,7 @@ orden (R40):
 | `organizacion_id` | uuid NOT NULL |
 | `cierre_detail_id` | uuid NOT NULL, FK `cierre_detail` RESTRICT |
 | `concepto` | `tarifa_concepto` NOT NULL, CHECK `concepto::text LIKE 'tienda\_%'` |
-| `modo`, `valor`, `iva_pct`, `nivel` | copia del valor resuelto |
+| `modo`, `valor`, `iva_pct` (NOT NULL), `nivel` | copia del valor resuelto |
 | `tarifa_valor_id` | uuid NULL, FK `tarifa_valor` ON DELETE SET NULL (precedente 337: traza deseable, nunca un bloqueo para borrar) |
 | `created_at` | timestamp |
 
@@ -166,15 +169,17 @@ UNIQUE `(cierre_detail_id, concepto)` (anclado, a la lista). Un concepto sin tar
 | `organizacion_id` | uuid NOT NULL |
 | `gestion_orden_id` | uuid NOT NULL, FK `gestion_orden` RESTRICT |
 | `actor` | `tarifa_actor` NOT NULL, CHECK `actor <> 'tienda'` |
-| `concepto`, `modo`, `valor`, `iva_pct`, `nivel`, `tarifa_valor_id` (SET NULL) | copia del valor resuelto |
+| `concepto`, `modo`, `valor`, `nivel`, `tarifa_valor_id` (SET NULL) | copia del valor resuelto |
 | `base` | numeric(12,2) NULL (solo en porcentaje) |
-| `importe`, `iva` | numeric(12,2) NOT NULL |
+| `importe` | numeric(12,2) NOT NULL |
 | `created_at` | timestamp |
+
+Sin ninguna columna de IVA (R34, decisión P4): el pago no lleva IVA y la tabla no puede
+representarlo. CHECK `concepto::text NOT LIKE 'tienda\_%'`.
 
 UNIQUE `(gestion_orden_id, actor)` (anclado). Solo lo escribe el modelo nuevo; el viejo sigue
 escribiendo únicamente `gestion_orden.pago_mensajero` e `ingreso_bodega_rechazo` (R36).
-`importe` es lo mismo que se escribe en `pago_mensajero` / `ingreso_bodega_rechazo`; `iva` vive
-solo aquí (R34, P4). **No** se revoca UPDATE/DELETE: la corrección de un resultado (398) y la
+`importe` es exactamente lo que se escribe en `pago_mensajero` / `ingreso_bodega_rechazo`. **No** se revoca UPDATE/DELETE: la corrección de un resultado (398) y la
 re-solicitud de un rechazado (477) re-congelan el pago de UNA gestión dentro de su transacción,
 igual que hoy reescriben `pago_mensajero`. El ajuste manual de SLT-56 no toca esta tabla.
 
@@ -195,7 +200,8 @@ cierre) sin cambiar un centavo. El renombre va a SLT-57.
 
 ### 2.7 Qué depende del país
 
-- **Impuestos:** el % de IVA es un valor por concepto que pone la empresa (R3); la tasa por país
+- **Impuestos:** el % de IVA es un valor por concepto de cobro a la tienda que pone la empresa
+  (R3); los pagos no llevan IVA (R34, R45); la tasa por país
   sigue en SL-21 y aquí no se lee. Ningún literal de IVA en el código.
 - **Moneda:** los importes no llevan moneda; se pintan con la de la empresa, como hoy.
 - **Geografía:** los grupos cuelgan de `zona_distrito`, que ya impone el país de la empresa.
@@ -243,8 +249,7 @@ whereValores({ zonas, tiendas, mensajeros, conceptos }): { concepto: { in }, OR:
   hace lo mismo con los de vehículo (R22). Una fila de OTRO grupo, otra zona, otra tienda u otro
   vehículo devuelve `null`: es lo que la contraprueba en Postgres mata (§9).
 - Sin `orderBy` ni desempate por fecha: el único NULLS NOT DISTINCT garantiza una fila por rango.
-- **P2**: el orden 2-5 del pago es la propuesta. Si el humano responde «gana el vehículo», cambian
-  dos números en `rangoPago` y la tabla de casos de su test; nada más.
+- El orden 2-5 del pago (gana el grupo sobre el vehículo) es la decisión P2.
 
 ## 5. El resolver único (`lib/repositories/_shared/resolver-tarifas.ts`)
 
@@ -276,20 +281,25 @@ resolverPagosCon(db, ctxs: ContextoPagoGestion[]): Promise<Map<gestionId, Tarifa
 Tipos de salida (en `lib/types/tarifa-flexible.ts`):
 
 ```ts
-interface ValorResuelto { concepto; modo: "monto" | "porcentaje"; valor: string; ivaPct: string; nivel; tarifaValorId: string }
-type ValoresTienda = Partial<Record<ConceptoTienda, ValorResuelto>>    // ausente = sin tarifa (R23)
+interface ValorPago  { concepto; modo: "monto" | "porcentaje"; valor: string; nivel; tarifaValorId: string }   // sin IVA (P4)
+interface ValorCobro extends ValorPago { ivaPct: string }                                                      // solo la tienda
+type ValoresTienda = Partial<Record<ConceptoTienda, ValorCobro>>      // ausente = sin tarifa (R23)
 type TarifaTienda =
   | { modelo: "viejo"; tarifa: TarifaVigenteResuelta }                  // lo de hoy, intacto
   | { modelo: "nuevo"; valores: ValoresTienda }
 type TarifaPago =
   | { modelo: "viejo"; tarifa: PagoTarifa }
-  | { modelo: "nuevo"; mensajero: ValorResuelto | null; satelite: ValorResuelto | null; baseFlete: string }
+  | { modelo: "nuevo"; mensajero: ValorPago | null; satelite: ValorPago | null; baseFlete: string }
 ```
 
-`baseFlete` (R28) = flete sin IVA que `derivarIngresoOrden` daría a la tienda para esa gestión; lo
-calcula `fleteSinIvaDeGestion` (pura, en `ingreso-empresa.ts`), así que la base del pago y el cobro
-a la tienda no pueden divergir. **P1**: hoy usa el resultado de la gestión; si el humano responde
-«flete por entregado», cambia el argumento `resultado` por `"entregado"` en una línea.
+Los dos tipos separados hacen que un IVA de pago no se pueda ni escribir en el código: el
+compilador lo impide igual que la base (R45).
+
+`baseFlete` (R28, decisión P1) = flete sin IVA que `derivarIngresoOrden` le cobra a la tienda por
+ESA gestión según su resultado; lo calcula `fleteSinIvaDeGestion` (pura, en `ingreso-empresa.ts`),
+así que la base del pago y el cobro a la tienda no pueden divergir. Si ese resultado no tiene flete
+para la tienda, `baseFlete = "0.00"` y el % da 0. Se resuelve al congelar el cierre de la gestión y
+queda en `gestion_pago_congelado.base`.
 
 **Fachadas** (mismo constructor; las 11 raíces de composición no cambian):
 - `TarifaVigenteRepository.resolveTarifas(pares, tx?)` → `Map<clave, TarifaTienda | null>`;
@@ -307,8 +317,10 @@ En el nuevo, cada concepto ausente es «sin tarifa». El 409 de la API se decide
 
 ## 6. Cálculo: mismas funciones públicas
 
-`lib/tarifas/calculo.ts`: `importeDe(valor: ValorResuelto, base: Decimal) → { importe, iva }` con
-`round2` HALF_UP (R26). Es la única aritmética del modelo nuevo.
+`lib/tarifas/calculo.ts`: `importeDe(valor: ValorPago, base: Decimal) → Decimal` e
+`ivaDe(valor: ValorCobro, importe: Decimal) → Decimal`, con `round2` HALF_UP (R26). `ivaDe` solo
+acepta un `ValorCobro`: los pagos no tienen IVA que calcular (R34). Es la única aritmética del
+modelo nuevo.
 
 | Función pública | Cambio de firma | Rama `viejo` | Rama `nuevo` |
 |---|---|---|---|
@@ -359,7 +371,9 @@ las crea SLT-54. Tarifas es núcleo: no hay puerta de módulo.
 **`TarifaValorService`** (`ITarifaValorRepository`, `IHistorialAccionRepository`):
 - `fijarValor(input, actor)` → `ok { id } | validation_error | forbidden | not_found`. `input` =
   `{ concepto, modo, valor, ivaPct, zonaId, grupoId, tiendaId, vehiculoId }` como texto decimal,
-  validado con zod (`lib/types/tarifa-flexible.ts`). Comprueba: rangos (R4), nivel compatible con
+  validado con zod (`lib/types/tarifa-flexible.ts`; unión discriminada por actor: `ivaPct`
+  obligatorio en los conceptos `tienda_*` y prohibido —ni siquiera `0`— en los de pago, R4/R45).
+  Comprueba: rangos (R4), nivel compatible con
   el actor del concepto (R7), que el grupo sea de esa zona, que la tienda tenga rol `adminTienda` o
   `apiKey` (regla de `TarifaService`), que zona, grupo, tienda y vehículo existan en la empresa.
   `mensajeroId` no se acepta aquí (SLT-55). Upsert por la clave natural (R8) y fila de historial
@@ -386,8 +400,9 @@ cada dependencia que pasa es la instancia real y no `undefined` (§9).
 ## 9. Verificación
 
 - **Puro (unit):** catálogo vs enum y vs `GestionResultado` (R1, R2); tabla de casos de
-  `rangoCobro`/`rangoPago` con todas las combinaciones (R16-R22); `importeDe` con los casos de
-  redondeo medidos en la 204 (R26); las funciones públicas en rama nueva (R27-R32, R35).
+  `rangoCobro`/`rangoPago` con todas las combinaciones (R16-R22); `importeDe`/`ivaDe` con los casos
+  de redondeo medidos en la 204 (R26); las funciones públicas en rama nueva (R27-R32, R34, R35),
+  incluido que un pago congelado es exactamente su importe, sin IVA.
 - **Respaldo idéntico (R36):** antes de tocar nada (T0) se fija una tabla de casos con **importes
   literales** de las funciones públicas en el modelo viejo. Tras el cambio, los mismos casos
   envueltos en `{ modelo: "viejo" }` dan el mismo texto. Los literales son el contrato: no se

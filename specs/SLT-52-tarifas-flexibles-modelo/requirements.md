@@ -26,7 +26,7 @@
 
 **Glosario.** *Concepto*: una línea de la lista fija de la app (p. ej. «flete por entregado a la
 tienda», «pago al mensajero por rechazo»). *Valor*: lo que la empresa fija para un concepto en un
-nivel: modo (monto o %), valor y % de IVA. *Grupo*: conjunto de distritos de UNA zona con valores
+nivel: modo (monto o %), valor y, solo en los cobros a la tienda, % de IVA. *Grupo*: conjunto de distritos de UNA zona con valores
 propios. *Sin tarifa*: ningún nivel tiene valor para ese concepto. *Modelo viejo*: `tarifas` +
 `tarifa_zona_mensajero` + `distrito_zona_especial`, como hoy. *Empresa en el modelo nuevo*: la que
 tiene al menos un valor guardado en el modelo nuevo.
@@ -45,10 +45,14 @@ tiene al menos un valor guardado en el modelo nuevo.
 ### Valores y niveles (escritura)
 
 - **R3.** CUANDO el maestro fija el valor de un concepto, el sistema DEBE guardar el modo que la
-  empresa eligió para ese concepto (monto o porcentaje), el valor y su porcentaje de IVA.
-- **R4.** SI un valor es negativo, o es un porcentaje mayor que 100, o su IVA está fuera de 0 a 100,
-  ENTONCES el sistema DEBE rechazarlo con error de validación sin escribir nada, y la base DEBE
-  rechazarlo también cuando llega por debajo de la aplicación.
+  empresa eligió para ese concepto (monto o porcentaje), el valor y, solo si es un concepto de
+  cobro a la tienda, su porcentaje de IVA.
+- **R4.** SI un valor es negativo, o es un porcentaje mayor que 100, o es un cobro a la tienda sin
+  IVA o con IVA fuera de 0 a 100, ENTONCES el sistema DEBE rechazarlo con error de validación sin
+  escribir nada, y la base DEBE rechazarlo también cuando llega por debajo de la aplicación.
+- **R45.** SI un valor de pago al mensajero o a la satélite trae IVA (aunque sea 0), ENTONCES el
+  sistema DEBE rechazarlo con error de validación sin escribir nada, y la base DEBE rechazar
+  cualquier fila de un concepto de pago con IVA.
 - **R5.** El sistema DEBE aceptar valores de cobro a la tienda en estos niveles: zona (valor base),
   grupo de la zona, tienda en una zona, tienda en un grupo y tienda en todas sus zonas.
 - **R6.** El sistema DEBE aceptar valores de pago al mensajero y a la satélite en estos niveles: zona
@@ -93,7 +97,7 @@ tiene al menos un valor guardado en el modelo nuevo.
 - **R19.** El sistema DEBE resolver el pago al mensajero de cada gestión con la zona DEL MENSAJERO
   que hoy usa cada camino del cierre y con el distrito de la orden, con esta precedencia: valor
   propio del mensajero > grupo para su vehículo > grupo para todos > zona para su vehículo > zona
-  para todos (el orden entre grupo y vehículo depende de P2).
+  para todos.
 - **R20.** El sistema DEBE resolver el pago a la satélite de cada gestión con la misma zona, el
   mismo distrito y la misma precedencia que el mensajero, sin el nivel del valor propio del
   mensajero.
@@ -116,13 +120,15 @@ tiene al menos un valor guardado en el modelo nuevo.
 
 - **R26.** El sistema DEBE calcular el importe de un concepto en monto como el valor, y en
   porcentaje como la base por el valor dividido entre 100, redondeado a 2 decimales hacia arriba
-  en el medio; y su IVA como el importe ya redondeado por el % de IVA, redondeado igual. Toda la
+  en el medio; y, solo en los cobros a la tienda, su IVA como el importe ya redondeado por el % de
+  IVA, redondeado igual. Toda la
   aritmética DEBE ser decimal exacta y la salida texto con 2 decimales.
 - **R27.** El sistema DEBE usar como base de un concepto de cobro a la tienda en porcentaje el valor
   del pedido de la orden (lo que se cobra contra entrega; sin valor, 0).
 - **R28.** El sistema DEBE usar como base de un pago al mensajero o a la satélite en porcentaje el
-  flete de la orden cobrado a la tienda, sin IVA (qué flete, cuando la gestión no es una entrega,
-  depende de P1).
+  flete sin IVA que se le cobra a la tienda por ESA gestión según su resultado, con los valores
+  congelados en el cierre de esa gestión; SI a la tienda no se le cobra nada por ese resultado,
+  ENTONCES el pago en porcentaje DEBE dar 0.
 - **R29.** CUANDO una gestión tiene resultado X, el sistema DEBE cobrar a la tienda el flete por X y
   su IVA; el flete por entregado DEBE contar como flete descontable de lo recaudado y el de
   cualquier otro resultado como flete no descontable (el que hoy se llama «flete devuelto»).
@@ -130,15 +136,15 @@ tiene al menos un valor guardado en el modelo nuevo.
   órdenes que cobran comisión.
 - **R31.** El sistema DEBE resolver el fulfillment con la misma precedencia que el resto del cobro a
   la tienda y usarlo donde hoy se usa (costo y cotización de la API, congelado en el cierre), sin
-  sumarlo a la liquidación del cierre ni a las wallets (depende de P3).
+  sumarlo a la liquidación del cierre ni a las wallets.
 - **R32.** CUANDO una gestión tiene resultado X, el sistema DEBE pagar al mensajero el concepto «pago
-  por X» y a la satélite su concepto «pago por X», cada uno con su IVA aparte; una satélite DEBE
-  poder tener a la vez valores para varios resultados.
+  por X» y a la satélite su concepto «pago por X»; una satélite DEBE poder tener a la vez valores
+  para varios resultados.
 - **R33.** El sistema DEBE pagar cada gestión en el cierre al que pertenece, con los valores
   vigentes al congelar ese cierre, aunque la misma orden tenga otros intentos en otros cierres.
-- **R34.** El sistema DEBE dejar el pago al mensajero y el pago a la satélite de cada gestión sin
-  IVA en sus columnas de siempre, y DEBE guardar su IVA aparte, sin sumarlo al devengo del
-  mensajero ni al ingreso de la satélite (depende de P4).
+- **R34.** El sistema DEBE pagar al mensajero y a la satélite exactamente el importe del concepto,
+  sin IVA: NO DEBE calcular, congelar ni sumar IVA alguno al pago, al devengo del mensajero ni al
+  ingreso de la satélite.
 - **R35.** MIENTRAS la empresa está en el modelo nuevo, el sistema NO DEBE usar la marca de zona
   de bodega principal (antes GAM) ni la marca de zona especial para elegir ningún valor.
 
@@ -163,7 +169,8 @@ tiene al menos un valor guardado en el modelo nuevo.
 - **R40.** CUANDO se congela un cierre, el sistema DEBE guardar, en la misma transacción que crea
   el detalle, por cada orden los conceptos de cobro a la tienda resueltos (concepto, modo, valor,
   IVA, nivel y valor de origen) y por cada gestión el concepto de pago al mensajero y a la satélite
-  resuelto (lo mismo, más la base y el importe), junto con el modelo que se usó.
+  resuelto (concepto, modo, valor, nivel, valor de origen, base e importe, sin IVA), junto con el
+  modelo que se usó.
 - **R41.** SI un valor o un grupo cambia, o se borra, después de congelar un cierre, ENTONCES el
   sistema NO DEBE cambiar ningún importe de ese cierre en su detalle, su aprobación ni las wallets.
 - **R42.** SI el cierre se congeló antes de esta ficha o con el modelo viejo, ENTONCES el sistema
@@ -181,6 +188,10 @@ tiene al menos un valor guardado en el modelo nuevo.
 | Decisión | R |
 |---|---|
 | Base del «% del flete» | R28 |
+| Base del % del pago cuando la gestión no es entrega (P1) | R28, R33, R40 |
+| Grupo frente a vehículo en el pago (P2) | R19, R20 |
+| ¿Fulfillment en el cierre y las wallets? (P3) | R31 |
+| IVA del pago al mensajero y a la satélite (P4) | R3, R4, R26, R34, R45 |
 | ¿Monto o %, quién decide? | R3 |
 | Base de un concepto en % | R27, R28 |
 | Cobro a la tienda | R1, R29, R30, R31 |
@@ -203,7 +214,7 @@ tiene al menos un valor guardado en el modelo nuevo.
 | Zona que cobra y zona que paga | R16, R19 |
 | Quién escribe | R13 |
 | GAM | R35 |
-| Dinero e IVA | R26, R34 |
+| Dinero e IVA | R26, R29, R30 |
 | E2E | R36 (E2E de cierre, wallet y satélite en verde), R16-R22 (contraprueba en Postgres) |
 
 ## Preguntas abiertas
