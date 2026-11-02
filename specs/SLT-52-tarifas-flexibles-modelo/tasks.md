@@ -170,6 +170,15 @@
   empresas): fijar, reemplazar y quitar valores; crear grupo, mover distritos, borrar grupo; la
   empresa A no alcanza nada de B; la fila de historial existe y el rollback de un fallo no deja
   historial. Cubre: R8, R9, R12, R14, R15.
+- [ ] **T6.5** `ZonaRepository.update` (`lib/repositories/ZonaRepository.ts:~568`) hace
+  `zonaDistrito.deleteMany({ zonaId })` + `createMany` en cada guardado; con el CASCADE de R12 eso
+  vaciaría los grupos de distritos al guardar una zona aunque no cambie ningún distrito. Arreglo:
+  borrar solo los distritos que salen y crear solo los que entran. Test de integración en Postgres
+  real `tests/integration/db/zona-update-conserva-grupos.test.ts`: guardar la zona sin cambios
+  conserva el grupo y sus distritos; quitar un distrito lo saca de su grupo (y solo a él).
+  **Contraprueba:** volver a `deleteMany` + `createMany` → rojo pegado en
+  `progress/impl_SLT-52.md`. Cubre: R12. Decisión del leader 2026-11-02: va en SLT-52 porque esta
+  ficha introduce el CASCADE.
 
 ## T7 — Cierre de la feature (depende de todo)
 
@@ -219,6 +228,8 @@ Código:
 - `lib/repositories/CierreAporteRepository.ts`
 - `lib/repositories/DineroProductosRepository.ts`
 - `lib/repositories/OrdenRepository.ts`
+- `lib/repositories/ZonaRepository.ts`
+- `scripts/verificar-rls-despliegue.ts`
 - `lib/interfaces/repositories/ITarifaVigenteRepository.ts`
 - `lib/interfaces/repositories/ITarifaZonaMensajeroRepository.ts`
 - `lib/interfaces/repositories/ITarifaValorRepository.ts`
@@ -278,6 +289,9 @@ Tests:
 - `tests/integration/db/historial-accion-zona-pago-mensajero-migration.test.ts`
 - `tests/integration/db/historial-accion-zona-sinpe-migration.test.ts`
 - `tests/integration/db/tarifas-flexibles-migration.test.ts`
+- `tests/integration/db/zona-update-conserva-grupos.test.ts`
+- `tests/unit/scripts/verificar-rls-despliegue.test.ts`
+- `tests/unit/historial-accion/lectura-borde-y-servicio.test.ts`
 - `tests/integration/db/tarifas-flexibles-resolver.test.ts`
 - `tests/integration/db/tarifas-flexibles-respaldo.test.ts`
 - `tests/integration/db/tarifas-flexibles-snapshot.test.ts`

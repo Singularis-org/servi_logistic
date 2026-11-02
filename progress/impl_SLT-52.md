@@ -289,7 +289,7 @@ Tests:
 - `eslint` sobre los 22 `.ts` tocados: **exit 0**, sin avisos.
 - Tests del historial tocados + `api-key-eliminabilidad` + `zona-central-guarda-y-rastro` (11 archivos): **10 passed | 1 failed; 175 passed | 6 failed**. Los 6 rojos son casos PREEXISTENTES de `api-key-eliminabilidad` (R8, R9, R10, «cada cuenta», «otra tienda»): `referencia a otra empresa: tarifas.zona_id -> zona` / `orden.tienda_id` — siembran con la zona de `fksDeOrden()` (otra empresa) en una transaccion con empresa nueva (SL017). El caso NUEVO de SLT-52 y «cuenta LIMPIA» pasan.
 - Rojos preexistentes vistos de paso y NO tocados: `historial-accion-migration` (politicas/FK de SL-17), `orden-traspaso-migration`, `wallet-458-migration`, `abono-tienda-457-migration` (colas de `wallet_categoria`, no del historial), `wallet-461-migration (a)` (corte `slice(-6,-4)` obsoleto desde SL-36), `455/snapshot-lectura` (base sin zona central).
-- `vitest related`: ver abajo.
+- `vitest related --run` sobre los 5 `lib/` tocados: NO concluyo — `timeout 1700` lo corto (EXIT=124) sin resumen: `historial-accion.ts` y `modelos-de-negocio.ts` arrastran casi toda la suite. No se reintento; los archivos que dependen de verdad de lo tocado se corrieron arriba uno a uno.
 
 ### Contrapruebas (mutacion en `20261103120100_tarifas_flexibles_tablas/migration.sql`, sin commitear; el test construye su base desde el archivo; restaurado con `cp` + `cmp` tras cada una)
 
@@ -342,6 +342,15 @@ Tras restaurar: 20 passed (20).
 - `pnpm run test:guardias`: 1 failed | 322 passed | 3 skipped files; 4 failed, todos en `dependencias-declaradas-presentes.guardia` (listado en `tests/baseline-rojos.json`).
 - typecheck (8 GB): exit 0. eslint sobre todos los `.ts` tocados o nuevos: exit 0.
 - Cambios fuera de las rutas previstas de T1, revisados y conservados (todos los fuerza T1): `fk-de-negocio.ts` (regla de FK compuesta cubierta; sin ella el generador de T1.3 lanza), `ApiKeyRepository.ts` (la guardia de FKs a `usuario` exige clasificar `tarifa_valor.tienda_id`, que es CASCADE), `historial-accion-etiquetas.ts` (mapa exhaustivo, no compila sin los 5 tipos), fixture de api-key, colas de enum en 8 tests de migracion del historial y catalogo, y los conteos de las guardias rls/historial. Añadidos a «Archivos esperados» de `tasks.md`.
+
+### Censos desfasados por T1 (rojos del gate del leader sobre 2025516d)
+
+- `scripts/verificar-rls-despliegue.ts`: `TRIGGERS_MISMA_EMPRESA` 156 → 166 (los 10 `sme_*` de 20261103120200). Base local contada en `pg_trigger`/`pg_policies`: sme_*=166, sin_cambio=85, `*_por_empresa`=86.
+- `tests/unit/scripts/verificar-rls-despliegue.test.ts`: `MODELOS_DE_NEGOCIO` 80 → 85 (literal), `contratoEsperado()` {81,156,80} → {86,166,85}, y los 156 de DOS_MODELOS/SL-19 → 166. 4 passed.
+- `tests/unit/historial-accion/lectura-borde-y-servicio.test.ts`: `10 + 12`/22 → `11 + 12`/23 por `grupo_distritos_borrado` (hace_desaparecer, design §3). 39 passed.
+- Re-ejecutado por el implementer junto con `catalogo-y-choke-point` y la guardia `rls-por-empresa`: 4 files, 116 passed.
+- Títulos de `it` con números viejos ANTERIORES a T1, no tocados: `catalogo-y-choke-point.test.ts:74` y `:451`, `historial-accion-escrituras-cubiertas.guardia.test.ts:1134` y `:1216`.
+- Riesgo de `ZonaRepository.update` convertido en la task T6.5 (decisión del leader 2026-11-02).
 
 ### Riesgo para el leader (fuera de T1, no tocado)
 
