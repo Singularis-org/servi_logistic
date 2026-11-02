@@ -30,7 +30,7 @@ describe("469 — WalletService (caja)", () => {
   const vacio = { estadoDeDocumentos: async () => [] };
   const SIN_DOCUMENTOS = {
     pagosPorCuenta: vacio, aportes: vacio, cobros: vacio, ajustes: vacio, abonos: vacio, egresos: vacio,
-    indemnizaciones: vacio, rechazos: vacio, pagosATienda: vacio, premios: vacio,
+    indemnizaciones: vacio, rechazos: vacio, pagosATienda: vacio, premios: vacio, incentivos: vacio,
   };
   function montar(busqueda: ReturnType<typeof busquedaQueDa>) {
     const listar = vi.fn<(f: ListarMovimientosFiltros) => Promise<{ movimientos: never[]; total: number }>>(async () => ({ movimientos: [], total: 0 }));
@@ -103,7 +103,7 @@ describe("469 — EstadoCuentaService", () => {
       nombreDeCuenta: async () => "Bodega Norte",
       enLecturaConsistente: async <T>(fn: (r: IEstadoCuentaRepository) => Promise<T>) => fn(repo as unknown as IEstadoCuentaRepository),
       paginaDeBodega,
-      totalesDeBodega: async () => ({ efectivo: "0.00", recibido: "0.00" }),
+      totalesDeBodega: async () => ({ declarado: "0.00", recibido: "0.00" }),
       periodoDeBodega: async () => [],
     };
     const svc = new EstadoCuentaService(

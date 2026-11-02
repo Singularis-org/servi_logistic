@@ -51,6 +51,8 @@ describe("293/T2.2 — `sumarPremiosVivosPorCierre` (R24)", () => {
           // `premioDia: { not: null }` es lo que separa la compensacion de un premio de un
           // `ajuste_pago` cualquiera: son la misma categoria.
           { categoria: "ajuste_pago", premioDia: { not: null } },
+          // SLT-68 (design §4): el incentivo vivo tambien es pagable de su cierre.
+          { categoria: "incentivo" },
         ],
       },
       _sum: { monto: true },

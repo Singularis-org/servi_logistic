@@ -149,6 +149,10 @@ const RESUMEN: CajaResumenDTO = {
   flujoDesde: "2026-08-25",
   iva: "416.00",
   signoIva: "positivo",
+  porCobrarSatelites: "0.00",
+  signoPorCobrarSatelites: "cero",
+  porcentajePorCobrarSatelites: "0.00",
+  deEmpresaEnCaja: "2116.00",
 };
 
 /** La caja del periodo: otra ganancia, para que se vea que la tarjeta SÍ se releyó. */

@@ -204,7 +204,8 @@ describeSiHayBase("⭑ 327/B6 — el guard de re-geocodificacion, contra Postgre
     const job = r.filas[0];
     // R23 — el payload es EXACTAMENTE el id. Ni la direccion, ni el destinatario, ni el telefono:
     // un job es una fila que lee cualquiera con acceso a la cola.
-    expect(job.payload).toEqual({ ordenId: r.ordenId });
+    // SLT-59 (§13.2): y el `motivo` de la llamada, que no es PII.
+    expect(job.payload).toEqual({ ordenId: r.ordenId, motivo: "direccion_cambiada" });
     // La clave lleva el HASH de la direccion NUEVA: sin el, una orden ya geocodificada chocaria
     // con su fila `done` (que no se purga) y el encolado se descartaria EN SILENCIO.
     expect(job.dedupeKey).toBe(

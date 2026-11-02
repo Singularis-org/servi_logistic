@@ -305,9 +305,16 @@ function folio(cierreId: string): string {
   return cierreId.slice(-8).toUpperCase();
 }
 
-/** Fecha ISO → `YYYY-MM-DD` (lo mismo que muestran las tablas). `null` → "—". */
+/**
+ * Instante ISO → `YYYY-MM-DD` en el CALENDARIO DE COSTA RICA. `null` o un instante inválido → "—".
+ * SLT-76 (R1): antes recortaba el texto, que es el día UTC, y todo cierre solicitado, resuelto o
+ * conciliado después de las 18:00 salía fechado al día siguiente. Mismo criterio que `rechazadoAt`.
+ */
 function fecha(iso: string | null): string {
-  return iso ? iso.slice(0, 10) : "—";
+  if (!iso) return "—";
+  const instante = new Date(iso);
+  if (Number.isNaN(instante.getTime())) return "—";
+  return fechaCalendarioCR(instante);
 }
 
 /* ------------------------------------------------------------------ *
@@ -583,7 +590,7 @@ function TituloColumna({ children }: Readonly<{ children: ReactNode }>) {
 
 /** Rotulo de la columna de la marca en el desplegable. */
 const RESUMEN_CONCILIACION_TITULO = "Conciliación";
-/** Quien marco que el efectivo llego. */
+/** Quien marco que el dinero llego. */
 const CONCILIADO_POR_LABEL = "Conciliado por";
 /** Cuando se marco. */
 const CONCILIADO_EL_LABEL = "Conciliado el";
@@ -615,8 +622,14 @@ function ConciliacionBadge({
  *
  * ── LO QUE SE PINTA SIN MARCA, Y POR QUE NO ES UN CERO
  * Sin conciliar, «Monto recibido» NO existe como linea: un «₡0,00» ahi diria «alguien conto y no
- * habia nada», que es otra cosa. Lo que si se pinta es «Falta por recibir» con el efectivo
- * INTEGRO, porque eso si es cierto y es el numero que la bodega tiene que reconocer como suyo.
+ * habia nada», que es otra cosa. Lo que si se pinta es «Falta por recibir» con el neto para la
+ * central INTEGRO, porque eso si es cierto y es el numero que la bodega tiene que reconocer como
+ * suyo.
+ *
+ * ── SLT-73 (D3, R8, R34): CUADRA CONTRA «PARA LA CENTRAL», NO CONTRA EL EFECTIVO
+ * Lo esperado de una consolidacion es `paraLaCentral` (total general − pago al mensajero − gana la
+ * bodega), la MISMA cifra de la linea «Para la central» de esta tarjeta. Asi que recibido + falta
+ * = «Para la central». `faltaPorRecibir` llega ya restado del servidor; aqui no se resta nada.
  *
  * ── LA DIFERENCIA SE DESTACA (Q7)
  * Cuando queda algo por llegar, la linea va `destacado`: es el caso por el que existe toda esta

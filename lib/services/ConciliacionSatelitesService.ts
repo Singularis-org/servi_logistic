@@ -11,6 +11,7 @@ import type {
   ListarSaldosSatelitesServiceResult,
   MarcaConciliacionServiceResult,
   ResumenSatelitesServiceResult,
+  RevertirConciliacionServiceResult,
 } from "@/lib/interfaces/services/IConciliacionSatelitesService";
 import type {
   ListarConsolidacionesSateliteCompletoInput,
@@ -140,11 +141,14 @@ export class ConciliacionSatelitesService implements IConciliacionSatelitesServi
     return { status: "no_encontrada" };
   }
 
-  /** R12/R13 — REVERTIR. El monto que se borra queda documentado en el historial. */
+  /**
+   * R12/R13 — REVERTIR. El monto que se borra queda documentado en el historial.
+   * SLT-73 (R14): si la marca ya asento el dinero, `con_asientos` y nada cambia.
+   */
   async revertirConciliacion(
     input: RevertirConciliacionInputBorde,
     actor: Actor,
-  ): Promise<MarcaConciliacionServiceResult> {
+  ): Promise<RevertirConciliacionServiceResult> {
     if (!esAccesoTotal(actor.rol)) return { status: "forbidden" }; // R27
 
     const res = await this.escrituras.revertirConciliacion({
@@ -153,6 +157,7 @@ export class ConciliacionSatelitesService implements IConciliacionSatelitesServi
     });
     if (res === "updated") return { status: "ok", cierreBodegaId: input.cierreBodegaId };
     if (res === "conflict") return { status: "conflict" }; // ya estaba pendiente de conciliar
+    if (res === "con_asientos") return { status: "con_asientos" }; // SLT-73 R14: usar «Corregir»
     return { status: "no_encontrada" };
   }
 

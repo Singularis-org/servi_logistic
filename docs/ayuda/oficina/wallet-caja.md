@@ -3,7 +3,7 @@ titulo: Wallet · Caja
 modulo: wallet
 pantalla: /wallet
 roles: [maestro, admin]
-actualizado: 2026-10-24
+actualizado: 2026-10-31
 fuentes:
   - app/(app)/wallet/_components/WalletModule.tsx
   - app/(app)/wallet/_components/CajaResumenCard.tsx
@@ -48,6 +48,8 @@ fuentes:
   - lib/utils/caja-tesoreria.ts
   - lib/utils/comprobante.ts
   - lib/types/wallet.ts
+  - lib/actions/incentivo-mensajero.ts
+  - lib/services/IncentivoMensajeroService.ts
 ---
 
 # Wallet · Caja
@@ -170,8 +172,10 @@ y la cuenta lo muestra en su propia línea, **IVA facturado**.
 
 ## Lo que la empresa debe a la plataforma
 
-La plataforma cobra a la empresa un monto fijo por cada orden. En el lado de la empresa del resumen,
-debajo de **Saldo inicial y aportes**, hay una región propia que dice cuánto se debe y qué hacer. Cambia
+La plataforma cobra a la empresa un monto por cada orden. Ese monto sale, por este orden: de la
+excepción que tenga la empresa; si no la tiene, del costo por orden de su plan; si no tiene plan o su plan no lo
+tiene, del valor general de la plataforma. Si no hay ninguno, la orden no cobra nada. En el lado de la empresa
+del resumen, debajo de **Saldo inicial y aportes**, hay una región propia que dice cuánto se debe y qué hacer. Cambia
 según cómo esté la empresa con la plataforma:
 
 | Cómo está | Qué dice la región | Botón |
@@ -232,14 +236,14 @@ cierre se apruebe.
 
 ## Lo que sí se registra a mano
 
-**Registrar un movimiento** abre un diálogo con **once conceptos en tres grupos**, a la izquierda; a la
+**Registrar un movimiento** abre un diálogo con **doce conceptos en tres grupos**, a la izquierda; a la
 derecha, los campos del concepto que elegiste. Al elegir uno, el diálogo dice con una frase qué le pasa
 al dinero de la empresa, al saldo de la cuenta (si la toca) y a la ganancia, y con qué nombre va a salir en
 cada libro.
 
 | Grupo | Conceptos |
 | --- | --- |
-| **Sale dinero de la empresa** | Gasto de la empresa · Sueldo · La empresa paga un gasto de una tienda · Corrección de caja (resta) · La empresa le paga a una tienda · La empresa le paga a un mensajero · Pago a la plataforma |
+| **Sale dinero de la empresa** | Gasto de la empresa · Sueldo · La empresa paga un gasto de una tienda · Corrección de caja (resta) · La empresa le paga a una tienda · La empresa le paga a un mensajero · La empresa le da un incentivo a un mensajero · Pago a la plataforma |
 | **Llega dinero a la caja** | Aporte de dinero a la caja · Una tienda le paga a la empresa · Corrección de caja (suma) |
 | **Se descuenta del saldo de una tienda** | La empresa le cobra a una tienda |
 
@@ -247,7 +251,7 @@ Los gastos fijos no están en la lista: se cobran solos desde sus plantillas, y 
 enlace a ellas.
 
 **Lo que se pide.** En **todos** los conceptos, **el monto**, **la fecha** y **el motivo**, y un
-**comprobante opcional**. Además, cada concepto pide lo suyo:
+**comprobante opcional** (el incentivo a un mensajero no lo pide). Además, cada concepto pide lo suyo:
 
 - **Sueldo** y **Gasto de la empresa**: **a quién se le pagó** —la persona o el proveedor, con su nombre
   libre—. **Es obligatorio.** La referencia es opcional.
@@ -263,7 +267,10 @@ enlace a ellas.
 **La empresa le paga a una tienda** le entrega a la tienda lo que tiene a su favor: sale dinero de la caja
 y baja **lo que la empresa les debe a las tiendas**; la ganancia no cambia. Solo se admite **hasta lo que
 la empresa le debe** a esa tienda. **La empresa le paga a un mensajero** reparte el importe entre sus cierres
-pendientes y baja lo que la empresa le debe; la caja no cambia con él.
+pendientes y baja lo que la empresa le debe; la caja no cambia con él. **La empresa le da un incentivo a un
+mensajero** le reconoce un importe extra con su motivo: sube lo que la empresa le debe, baja la ganancia y
+sale en su libro como «Incentivo», sumado a su último cierre aprobado (sin ninguno, no se puede registrar).
+Se paga después con «La empresa le paga a un mensajero» y, si hubo un error, se anula desde «Ver» con un motivo.
 
 ### «Así queda»: el antes y el después, antes de registrar
 

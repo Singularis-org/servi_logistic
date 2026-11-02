@@ -30,6 +30,7 @@ const DETALLE: DetallePlan = {
     topes: { ordenesPorCiclo: 3000, porRol: { mensajero: 5 }, apiKeys: null },
     modulos: ["analitica", "ranking"],
     precio: { tipo: "monto", mensual: "10.00", anual: null },
+    costoPorOrden: null, // SLT-66 R8: campo nuevo del PlanDTO
     archivado: false,
   },
   empresaNombre: null,
@@ -137,7 +138,8 @@ describe("SLT-58 R16 — lo que muestra el detalle", () => {
         "Cambio programado",
         "Órdenes por ciclo: 3000 → 5000Rige desde 2030-01-15",
       ],
-      ["2026-10-01 09:00", "Sofía Admin", "Creado", "Nombre del plan: BásicoPrecio: 10.00 al mes"],
+      // SLT-66 R9: la línea de alta «Precio:» pasa a «Costo base:».
+      ["2026-10-01 09:00", "Sofía Admin", "Creado", "Nombre del plan: BásicoCosto base: 10.00 al mes"],
     ]);
   });
 

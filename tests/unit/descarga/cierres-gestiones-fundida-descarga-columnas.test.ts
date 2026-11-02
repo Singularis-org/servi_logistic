@@ -903,3 +903,15 @@ describe("FICHA 408 — el motivo del cron en la hoja fundida", () => {
     expect(fila.origenRechazo).toBe("Manual");
   });
 });
+
+// SLT-76 (R21) — el día de las descargas de cierres es el de COSTA RICA, no el UTC. El instante
+// es las 23:03 del 31 de octubre en Costa Rica (05:03 del 1 de noviembre en UTC): recortar el ISO
+// daba «2026-11-01». El esperado se escribe A MANO.
+describe("SLT-76 (R21) — la fecha del cierre en la hoja fundida es de Costa Rica", () => {
+  it("«Fecha del cierre» da el día de Costa Rica", () => {
+    const fila = filaDescargaGestionFundida(
+      gestion({ resultado: "entregado", cierreSolicitadoAt: "2026-11-01T05:03:00.000Z" }),
+    );
+    expect(fila.fechaCierre).toBe("2026-10-31");
+  });
+});

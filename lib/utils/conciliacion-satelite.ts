@@ -1,5 +1,7 @@
 import { Prisma } from "@prisma/client";
 
+import { paraLaCentral } from "@/lib/utils/ingreso-empresa";
+
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // ⭑ FICHA 431 — LA FORMULA DEL SALDO SIN CONCILIAR, ESCRITA UNA SOLA VEZ.
 // ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -19,26 +21,49 @@ import { Prisma } from "@prisma/client";
 // rojo. Es exactamente el defecto que la ficha 359 encontro repetido en 13 pantallas.
 
 /**
- * R17/R18 — lo que falta por llegar de este EFECTIVO.
+ * R17/R18 de la 431, R8 de SLT-73 — lo que falta por llegar de lo ESPERADO.
  *
- * ⚠️ SOBRE `total_efectivo` Y NUNCA SOBRE `total_general`: decision del humano sobre Q2
- * (2026-09-16), medida contra produccion. El SINPE —26,3 % del consolidado— entra directo a una
- * cuenta y NO viaja en el bulto; con el general, la pantalla ensenaria ₡1,1 M de deuda que nadie
- * va a entregar en mano jamas.
+ * ⚠️ SLT-73 (D3) REABRIO LA Q2 DE LA 431. Hasta SLT-73 el minuendo era `total_efectivo`, porque el
+ * SINPE «no viaja en el bulto». El humano decidio el 2026-10-31 que la deuda de la satelite cuenta
+ * TODOS los metodos de pago (el SINPE es solo el medio por el que ella cobra) menos lo que le
+ * pertenece: el pago a sus mensajeros y su ganancia por rechazos (D4/D7). El esperado es, por tanto,
+ * `paraLaCentral(total_general, total_pago_mensajero, total_ingreso_bodega_rechazos)`, y quien
+ * llama lo calcula con esa funcion; aqui solo se resta lo recibido.
  *
- * Los tres casos salen de UNA expresion, sin un `if` que los separe:
- *  · `recibido === null` (sin marcar) -> aporta el efectivo integro;
- *  · recibido IGUAL al efectivo       -> aporta `0.00`;
- *  · recibido MENOR                   -> aporta la diferencia (R18: los ₡485.000 de ₡500.000);
- *  · recibido MAYOR                   -> aporta un NEGATIVO, que se devuelve tal cual sin
- *    recortar a cero (llego de mas) — mismo criterio con el que la ficha 393 decidio ensenar
- *    «Para la central» en negativo en vez de maquillarlo.
+ * Los casos salen de UNA expresion, sin un `if` que los separe:
+ *  · `recibido === null` (sin marcar) -> aporta el esperado integro;
+ *  · recibido IGUAL al esperado       -> aporta `0.00`;
+ *  · recibido MENOR                   -> aporta la diferencia;
+ *  · recibido MAYOR, o esperado negativo -> aporta un NEGATIVO, que se devuelve tal cual sin
+ *    recortar a cero — mismo criterio con el que la ficha 393 decidio ensenar «Para la central»
+ *    en negativo en vez de maquillarlo.
  *
  * Money-safe: `Prisma.Decimal` de punta a punta. Quien lo emite hace el `.toFixed(2)`.
  */
 export function saldoDe(
-  efectivo: Prisma.Decimal,
+  esperado: Prisma.Decimal,
   recibido: Prisma.Decimal | null,
 ): Prisma.Decimal {
-  return efectivo.minus(recibido ?? new Prisma.Decimal(0));
+  return esperado.minus(recibido ?? new Prisma.Decimal(0));
+}
+
+/** Los tres snapshots que deciden lo esperado; los tienen `cierre_dia` y `cierre_bodega`. */
+export interface SnapshotEsperado {
+  totalGeneral: Prisma.Decimal;
+  totalPagoMensajero: Prisma.Decimal;
+  totalIngresoBodegaRechazos: Prisma.Decimal;
+}
+
+/**
+ * SLT-73 (R4/R8) — lo que la satelite le debe entregar a la central por este snapshot: la
+ * cascada B de la 393 (`paraLaCentral`), sin reescribirla. Con su signo, nunca recortado a cero.
+ */
+export function esperadoDe(s: SnapshotEsperado): Prisma.Decimal {
+  return new Prisma.Decimal(
+    paraLaCentral(
+      s.totalGeneral.toFixed(2),
+      s.totalPagoMensajero.toFixed(2),
+      s.totalIngresoBodegaRechazos.toFixed(2),
+    ),
+  );
 }

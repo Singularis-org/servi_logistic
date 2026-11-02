@@ -3,16 +3,26 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { comoPlataforma } from "@/lib/db/contexto-empresa";
 import type { SumaCobroPlataformaPorTipo } from "@/lib/interfaces/repositories/ICobroPlataformaMovimientoRepository";
 import type { IEmpresasPlataformaRepository } from "@/lib/interfaces/repositories/IEmpresasPlataformaRepository";
+import type { FuenteDelCosto } from "@/lib/types/consumo-plan";
 import type { EmpresaListada, EstadoIntegracionDeEmpresa } from "@/lib/types/empresas-plataforma";
 import { SERVICIOS_INTEGRACION } from "@/lib/types/integraciones";
 import { derivarDeudaPlataforma } from "@/lib/utils/deuda-plataforma";
 
 /** Lo que lee el listado: las empresas, sus cargos de la plataforma y sus pagos (SL-45). */
-/** SL-36 (R37): y el estado de sus integraciones. */
+/** SL-36 (R37): y el estado de sus integraciones. SLT-66 (R31, R32): y su plan y cobro vigente (`$queryRaw`). */
 export type EmpresasPlataformaPrismaClient = Pick<
   PrismaClient,
-  "organizacion" | "cobroPlataformaMovimiento" | "walletMovimiento" | "integracion"
+  "organizacion" | "cobroPlataformaMovimiento" | "walletMovimiento" | "integracion" | "$queryRaw"
 >;
+
+/** SLT-66 (R31, R32): una fila de `planYCobroVigente`. */
+type PlanYCobroLeido = {
+  id: string;
+  monto: string;
+  fuente: FuenteDelCosto;
+  plan_id: string | null;
+  plan_nombre: string | null;
+};
 
 /**
  * SL-32 (R29) — el listado de la pantalla «Empresas» del superadmin.
@@ -24,6 +34,8 @@ export type EmpresasPlataformaPrismaClient = Pick<
  * SL-45 (design §9, R28): cada empresa trae ademas su deuda con la plataforma (la regla de R13, la
  * misma que ve la empresa en su wallet) y lo que ha pagado (Σ pagos vigentes). Son tres consultas
  * agrupadas por `organizacion_id` para todas las empresas a la vez, no tres por empresa.
+ *
+ * SLT-66 (design §6.4; R31, R32): y su plan y su cobro vigente, en una consulta más para todas.
  */
 export class EmpresasPlataformaRepository implements IEmpresasPlataformaRepository {
   constructor(private readonly prisma: EmpresasPlataformaPrismaClient) {}
@@ -50,7 +62,9 @@ export class EmpresasPlataformaRepository implements IEmpresasPlataformaReposito
         },
       });
       if (filas.length === 0) return [];
-      const { cargosDe, pagadoDe } = await this.cuentasConLaPlataforma(filas.map((f) => f.id));
+      const ids = filas.map((f) => f.id);
+      const { cargosDe, pagadoDe } = await this.cuentasConLaPlataforma(ids);
+      const planYCobroDe = await this.planYCobroVigente(ids);
       return filas.map((f) => ({
         id: f.id,
         nombre: f.nombre,
@@ -58,6 +72,7 @@ export class EmpresasPlataformaRepository implements IEmpresasPlataformaReposito
         creadaEn: f.createdAt,
         maestros: f.usuarios,
         cobroPorOrden: f.cobroPlataformaPorOrden === null ? null : f.cobroPlataformaPorOrden.toFixed(2),
+        ...planYCobroDe(f.id),
         deudaPlataforma: derivarDeudaPlataforma(cargosDe(f.id), pagadoDe(f.id)),
         pagadoPlataforma: pagadoDe(f.id),
         pais: f.pais,
@@ -93,6 +108,34 @@ export class EmpresasPlataformaRepository implements IEmpresasPlataformaReposito
         })),
       );
     });
+  }
+
+  /**
+   * SLT-66 (design §6.4, §3.2; R31, R32) — por empresa, su plan y lo que se cobraría hoy por una orden
+   * nueva. Una sola consulta para todas, con la MISMA `cobro_plataforma_tarifa_de` que usa el trigger del
+   * cargo: si el listado tuviera su propia regla, podría decir un importe y cobrarse otro.
+   *
+   * Parte de la lista de ids (`unnest`) y no de `organizacion`: cada id pedido tiene su fila aunque la
+   * empresa ya no esté (p. ej. borrada entre las dos lecturas); la función le da entonces la regla de
+   * una empresa sin excepción ni plan. Los enums van como texto: el driver no conoce el tipo de Postgres.
+   */
+  private async planYCobroVigente(organizacionIds: string[]) {
+    const filas = await this.prisma.$queryRaw<PlanYCobroLeido[]>`
+      SELECT i."id", t."monto"::text AS "monto", t."fuente"::text AS "fuente",
+             p."id" AS "plan_id", p."nombre" AS "plan_nombre"
+        FROM unnest(${organizacionIds}::text[]) AS i("id")
+        LEFT JOIN "organizacion" o ON o."id" = i."id"
+        LEFT JOIN "plan" p ON p."id" = o."plan_id"
+        CROSS JOIN LATERAL cobro_plataforma_tarifa_de(i."id") t`;
+    const porEmpresa = new Map(filas.map((f) => [f.id, f]));
+    return (id: string): Pick<EmpresaListada, "cobroVigente" | "plan"> => {
+      const f = porEmpresa.get(id);
+      if (f === undefined) throw new Error(`EmpresasPlataformaRepository.listar: sin cobro vigente para ${id}`);
+      return {
+        cobroVigente: { monto: f.monto, fuente: f.fuente },
+        plan: f.plan_id === null || f.plan_nombre === null ? null : { id: f.plan_id, nombre: f.plan_nombre },
+      };
+    };
   }
 
   /**

@@ -74,12 +74,16 @@ function ramaDelCheck(sql: string, tipo: PagoMensajeroMovimientoTipo): string[] 
   return [...(match as RegExpMatchArray)[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
 }
 
+/** SLT-68: las categorias del incentivo, posteriores a esta migracion. */
+const CATEGORIAS_DE_SLT68: readonly string[] = ["incentivo", "reverso_incentivo"];
+
 // ── El vocabulario tipado ───────────────────────────────────────────────────────────────────
 
 describe("T1.5 — los dos SEED tipados ganan su valor y conservan los previos", () => {
   it("`premio_ranking` entra en el catalogo del libro del mensajero, sin perder los 5 previos", () => {
     expect(PAGO_MENSAJERO_MOVIMIENTO_CATEGORIA_SEED).toContain("premio_ranking");
-    expect(PAGO_MENSAJERO_MOVIMIENTO_CATEGORIA_SEED).toHaveLength(6);
+    // 6 al cerrar la 293; SLT-68 anadio DESPUES `incentivo` y `reverso_incentivo`.
+    expect(PAGO_MENSAJERO_MOVIMIENTO_CATEGORIA_SEED.filter((v) => !CATEGORIAS_DE_SLT68.includes(v))).toHaveLength(6);
     for (const previa of [
       "pago_devengado",
       "pago_efectivo",
@@ -103,6 +107,7 @@ describe("T1.5 — los dos SEED tipados ganan su valor y conservan los previos",
       "cobro_tienda",
       "cobro_tienda_completado",
       "abono_tienda",
+      "incentivo_mensajero", // SLT-68: el incentivo manual a un mensajero
     ];
     expect(WALLET_ORIGEN_TIPO_SEED.filter((v) => !AGREGADOS_DESPUES.includes(v))).toHaveLength(8);
     for (const previo of [
@@ -180,7 +185,10 @@ describe("UP — los siete pasos de design §10, en su orden", () => {
   it("las 6 categorias del catalogo estan en UNA sola rama: ninguna suelta, ninguna repetida", () => {
     const todas = [...ramaDelCheck(upSql, "devengo"), ...ramaDelCheck(upSql, "pago")];
     expect(new Set(todas).size).toBe(todas.length);
-    expect([...todas].sort()).toEqual([...PAGO_MENSAJERO_MOVIMIENTO_CATEGORIA_SEED].sort());
+    // Foto de la 293: las categorias que SLT-68 anadio despues viven en el CHECK de su migracion.
+    expect([...todas].sort()).toEqual(
+      PAGO_MENSAJERO_MOVIMIENTO_CATEGORIA_SEED.filter((v) => !CATEGORIAS_DE_SLT68.includes(v)).sort(),
+    );
   });
 
   it("el CHECK de `premio_dia` ata la columna a las DOS categorias del premio", () => {

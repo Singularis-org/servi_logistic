@@ -59,6 +59,8 @@ const SATELITES: SaldoSateliteDTO[] = [
     zonaId: "z1",
     zonaNombre: "Bodega Norte",
     saldoSinConciliar: "100.00",
+    aporteSinConsolidar: "0.00",
+    cierresSinConsolidar: 0,
     totalEfectivo: "100.00",
     totalConsolidado: "150.00",
     totalRecibido: "0.00",
@@ -107,6 +109,8 @@ const LISTADOS = [
       "Más antigua sin conciliar",
       "Última recibida",
       "Monto de la última recibida",
+      "Sin consolidar", // SLT-73 (R6)
+      "Cierres sin consolidar",
     ],
   },
 ] as const;

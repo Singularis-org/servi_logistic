@@ -198,6 +198,8 @@ function makeDb() {
         const c = cierres.find((x) => x.id === where.id);
         if (c === undefined) return null;
         return {
+          // SLT-73 (T3): la aprobacion lee el destino de la fila; aqui es el que congelo `crearCierre`.
+          destinoTipo: c.destinoTipo,
           totalGeneral: c.totalGeneral ?? new Prisma.Decimal("0.00"),
           solicitadoAt: c.solicitadoAt ?? new Date("2026-09-02T12:00:00Z"),
           mensajero: { nombre: "Mensa", primerApellido: "Uno" },
@@ -425,7 +427,7 @@ function aprobar(db: Db, cierreId: string) {
       // 293/T2.2-T3.3: los dos metodos NUEVOS del contrato (lectura). No-op aqui: este
       // doble no ejercita el premio.
       sumarPremiosVivosPorCierre: vi.fn(async () => ({})),
-      listarPremiosPorDias: vi.fn(async () => []),
+      listarPremiosPorDias: vi.fn(async () => []), obtenerIncentivo: vi.fn(async () => null),
     },
     { construirMovimientosDePago: vi.fn(async () => ({ libro: [], egresoCaja: [] })) },
     // Feature 158: feed del egreso de indemnizacion (real: sin incidentes devuelve []).

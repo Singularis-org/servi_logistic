@@ -122,6 +122,9 @@ const DUENO_PUNTO: Record<NaturalezaMovimiento, string> = {
   terceros: "bg-warning",
   // Ficha 459 (design §5): capital de la empresa (saldo inicial y aportes), token semantico existente.
   capital: "bg-info",
+  // SLT-73 (D12, R29): la diferencia de una satelite, en `danger`, el mismo token de su tramo en la
+  // barra. No puede compartir color con la empresa ni con las tiendas: no es de ninguna de las dos.
+  por_cobrar_satelite: "bg-danger",
 };
 
 function DuenoCelda({ dueno }: { dueno: NaturalezaMovimiento }) {

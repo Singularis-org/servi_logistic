@@ -254,6 +254,11 @@ describe("WalletService.verResumenCaja (R8/R64/R65)", () => {
       // SL-39 (R2): el agregado no trae IVA, asi que el IVA de la caja esta en cero.
       iva: "0.00",
       signoIva: "cero",
+      // SLT-73 (R25/R30): sin diferencias de la satélite el bolsillo está en cero.
+      porCobrarSatelites: "0.00",
+      signoPorCobrarSatelites: "cero",
+      porcentajePorCobrarSatelites: "0.00",
+      deEmpresaEnCaja: "700.00",
     });
     // Lo que la feature existe para conseguir: los ₡5000 de contra-entrega estan en la caja y
     // NO estan en la ganancia. Si `verResumenCaja` ignorara la naturaleza, serian iguales.
@@ -826,7 +831,7 @@ const SIN_DOCUMENTOS_459 = {
   aportes: { estadoDeDocumentos: async () => [] },
   cobros: { estadoDeDocumentos: async () => [] }, ajustes: { estadoDeDocumentos: async () => [] }, // ficha 461
   abonos: { estadoDeDocumentos: async () => [] }, // ficha 457: lo exige `LectoresDocumentosCaja`; esta suite no lee pagos de una tienda a la empresa
-  egresos: { estadoDeDocumentos: async () => [] }, indemnizaciones: { estadoDeDocumentos: async () => [] }, rechazos: { estadoDeDocumentos: async () => [] }, pagosATienda: { estadoDeDocumentos: async () => [] }, premios: { estadoDeDocumentos: async () => [] }, // ficha 458-B: lo exige `LectoresDocumentosCaja`
+  egresos: { estadoDeDocumentos: async () => [] }, indemnizaciones: { estadoDeDocumentos: async () => [] }, rechazos: { estadoDeDocumentos: async () => [] }, pagosATienda: { estadoDeDocumentos: async () => [] }, premios: { estadoDeDocumentos: async () => [] }, incentivos: { estadoDeDocumentos: async () => [] }, // ficha 458-B: lo exige `LectoresDocumentosCaja`
 };
 
 // ─── FICHA 459 (T B.16, design §7.3) — el DOCUMENTO de cada fila, resuelto en lote ───
@@ -902,6 +907,7 @@ describe("WalletService.listarMovimientos — el documento de las filas original
       // Ficha 458-C (revision B3): el pago a una tienda y el premio; esta pagina no trae ninguno.
       pagosATienda: { estadoDeDocumentos: vi.fn(async () => []) },
       premios: { estadoDeDocumentos: vi.fn(async () => []) },
+      incentivos: { estadoDeDocumentos: vi.fn(async () => []) }, // SLT-68
     };
   }
 

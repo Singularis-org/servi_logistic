@@ -199,6 +199,7 @@ function walletDe(tx: TxDeTest) {
     // Ficha 458-C (revision B3): lo exige `LectoresDocumentosCaja`.
     pagosATienda: new PagoTiendaCajaDocumentosRepository(tx as never),
     premios: new PremioCajaDocumentosRepository(tx as never),
+    incentivos: { estadoDeDocumentos: async () => [] }, // SLT-68: lo exige `LectoresDocumentosCaja`
   });
 }
 

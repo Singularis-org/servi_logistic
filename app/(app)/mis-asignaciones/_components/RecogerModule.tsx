@@ -23,6 +23,7 @@ import {
   PESTANA_PARA_RECOGER_HOY,
 } from "@/lib/utils/dia-reparto-textos";
 import { CarruselCards } from "@/components/shared/CarruselCards";
+import { useRefrescarAlVolver } from "@/hooks/useRefrescarAlVolver";
 
 import { filtrarAsignaciones } from "./mis-asignaciones-buscador";
 import {
@@ -125,6 +126,13 @@ export function RecogerModule({
   bloqueo,
 }: Readonly<RecogerModuleProps>) {
   const router = useRouter();
+
+  // SLT-69 (hotfix 2026-10-30, R6-R8): la lista `porRecoger` es la de cuando se abrió la pantalla,
+  // y el mensajero la deja abierta horas. Al volver a ella (visibilidad o foco) se relee del
+  // servidor, con un intervalo mínimo para no martillarlo. Se monta SIEMPRE, también bloqueado o
+  // con la lista vacía: así una lista vacía trae la tarjeta de recogida en cuanto hay órdenes
+  // nuevas, y un bloqueo resuelto se refleja (la página relee las dos cosas).
+  useRefrescarAlVolver(() => router.refresh());
 
   // FEATURE 271 (T9.1): el veredicto sale del detalle, no se re-deriva aquí.
   const bloqueado = bloqueo.bloqueado;

@@ -39,6 +39,7 @@ function aCuenta(c: CuentaNombrada | undefined): AQuienDTO {
  *   pago_tienda / pago_mensajero          el beneficiario del pago (172)
  *   gestion_orden                         la tienda del cobro por rechazo
  *   ranking_snapshot_fila                 el mensajero del podio
+ *   incentivo_mensajero (SLT-68)          el mensajero del incentivo
  *   orden_incidente                       la tienda de la orden
  *   pago_por_cuenta_tienda                la tienda y el beneficiario del documento
  *   cobro_tienda(_completado), cobro_manual_reclasificado   la tienda del cobro (el debito)
@@ -68,6 +69,7 @@ export class LibroCajaAutoriaService implements ILibroCajaAutoriaService {
     const pagos = await this.repo.pagos(deTipos("pago_tienda", "pago_mensajero"));
     const rechazos = await this.repo.rechazos(ids("gestion_orden"));
     const podios = await this.repo.podios(ids("ranking_snapshot_fila"));
+    const incentivos = await this.repo.incentivos(ids("incentivo_mensajero"));
     const incidentes = await this.repo.incidentes(ids("orden_incidente"));
     const pagosPorCuenta = await this.repo.pagosPorCuenta(ids("pago_por_cuenta_tienda"));
     const debitos = await this.repo.debitosDeTienda(deTipos("cobro_tienda", "cobro_tienda_completado", "cobro_manual_reclasificado"));
@@ -90,6 +92,8 @@ export class LibroCajaAutoriaService implements ILibroCajaAutoriaService {
           return aCuenta(o === null ? undefined : rechazos.get(o)?.tienda);
         case "ranking_snapshot_fila":
           return aCuenta(o === null ? undefined : podios.get(o));
+        case "incentivo_mensajero":
+          return aCuenta(o === null ? undefined : incentivos.get(o));
         case "orden_incidente":
           return aCuenta(o === null ? undefined : incidentes.get(o)?.tienda);
         case "pago_por_cuenta_tienda": {
@@ -155,6 +159,7 @@ export class LibroCajaAutoriaService implements ILibroCajaAutoriaService {
       cobros: origenesDe("cobro_tienda"),
       rechazos: origenesDe("rechazo_tienda_cobro"),
       premios: origenesDe("premio_del_ranking"),
+      incentivos: origenesDe("incentivo_mensajero"),
       movimientos: movs
         .filter((m) => ["egreso_caja", "ajuste_caja", "indemnizacion"].includes(documentoDe.get(m.id) ?? ""))
         .map((m) => m.id),
@@ -210,6 +215,9 @@ export class LibroCajaAutoriaService implements ILibroCajaAutoriaService {
           break;
         case "premio_del_ranking":
           a = o === null ? undefined : anulaciones.premios.get(o);
+          break;
+        case "incentivo_mensajero":
+          a = o === null ? undefined : anulaciones.incentivos.get(o);
           break;
       }
       return a === undefined

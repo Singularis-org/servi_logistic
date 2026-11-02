@@ -7,6 +7,7 @@ import {
   COLUMNAS_DESCARGA_DIA_DEVUELTAS,
   COLUMNAS_DESCARGA_DIA_RECHAZADAS,
   COLUMNAS_DESCARGA_DIA_INCIDENTES,
+  filaDescargaDiaCierrePasado,
   filaDescargaDiaEntregada,
   // FICHA 408 — las dos proyecciones que pueden traer el motivo del cron de plazos vencidos.
   filaDescargaDiaRechazada,
@@ -14,7 +15,10 @@ import {
   // FICHA 486 (R18) — la otra proyección con columna «Tiene evidencia».
   filaDescargaDiaIncidente,
 } from "@/app/(app)/cierre-dia/_components/cierre-dia-descarga-columnas";
-import type { CierreDetalleGestion } from "@/lib/interfaces/services/ICierreDiaService";
+import type {
+  CierreDetalleGestion,
+  CierrePasadoDTO,
+} from "@/lib/interfaces/services/ICierreDiaService";
 
 // Feature 189 — ORDEN y CENSO de las columnas de los archivos descargables del «Cierre del
 // día» del MENSAJERO (feature 170, T E.4 / R5).
@@ -519,4 +523,23 @@ describe("FICHA 486 — «Tiene evidencia» del archivo del cierre del día con 
       expect(fila.tieneEvidencia).toBe("No");
     });
   }
+});
+
+// SLT-76 (R21) — el día de las descargas de cierres es el de COSTA RICA, no el UTC. El instante
+// es las 23:03 del 31 de octubre en Costa Rica (05:03 del 1 de noviembre en UTC): recortar el ISO
+// daba «2026-11-01». El esperado se escribe A MANO.
+describe("SLT-76 (R21) — la fecha del histórico de cierres del mensajero es de Costa Rica", () => {
+  it("«Fecha» de un cierre pasado da el día de Costa Rica", () => {
+    const cierre: CierrePasadoDTO = {
+      cierreId: "c7621002",
+      estado: "aprobado",
+      destinoTipo: "bodega_central",
+      destinoZonaId: "z1",
+      totales: { efectivo: "10.00", simpe: "0.00", transferencia: "0.00", general: "10.00" },
+      totalPagoMensajero: "1.00",
+      totalIngresoBodegaRechazos: "0.00",
+      solicitadoAt: "2026-11-01T05:03:00.000Z",
+    };
+    expect(filaDescargaDiaCierrePasado(cierre).fecha).toBe("2026-10-31");
+  });
 });

@@ -33,8 +33,8 @@ export function ZonasModule({
 }) {
   const toast = useToast();
   const [zonas, setZonas] = useState<ZonaDTO[]>(initialZonas);
-  // El árbol también es estado: tras crear/editar/eliminar cambia la marca
-  // `zonaId` de los distritos, y la edición la deriva de ahí.
+  // El árbol también es estado: es lo que recibe el formulario. Se reemplaza
+  // con el que se lee al abrir crear/editar (SLT-75 R20, ver `leerArbol`).
   const [provincias, setProvincias] =
     useState<ProvinciaArbolDTO[]>(initialProvincias);
   const [view, setView] = useState<"list" | "form">("list");
@@ -53,7 +53,28 @@ export function ZonasModule({
     if (arbolRes.status === "ok") setProvincias(arbolRes.provincias);
   }
 
-  function abrirCrear() {
+  /**
+   * SLT-75 (R20): el árbol se lee al ABRIR el formulario, no se toma del estado. El del estado lo
+   * refresca `onSaved` sin esperar, así que justo después de guardar otra zona puede seguir diciendo
+   * que un distrito está libre: el selector lo ofrecería y la edición lo preseleccionaría mal (R19).
+   * `null` si la lectura falla; quien llama no abre el formulario.
+   */
+  async function leerArbol(): Promise<ProvinciaArbolDTO[] | null> {
+    try {
+      const res = await listarArbolGeografico();
+      return res.status === "ok" ? res.provincias : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function abrirCrear() {
+    const arbol = await leerArbol();
+    if (!arbol) {
+      toast.error("No se pudo cargar el catálogo geográfico.");
+      return;
+    }
+    setProvincias(arbol);
     setFormMode("crear");
     setFormInitial(undefined);
     setFormKey((k) => k + 1);
@@ -61,19 +82,22 @@ export function ZonasModule({
   }
 
   async function abrirEditar(zona: ZonaDTO) {
-    // Zona completa + distritos derivados del árbol geográfico.
-    const res = await obtenerZona(zona.id);
-    if (res.status !== "ok") {
+    // Zona completa + distritos derivados del árbol geográfico, que se lee al abrir (SLT-75 R20).
+    const [res, arbol] = await Promise.all([obtenerZona(zona.id), leerArbol()]);
+    if (res.status !== "ok" || !arbol) {
       toast.error("No se pudo cargar la zona.");
       return;
     }
     const full = res.zona;
+    // SLT-75 (R19): de `zonas` y no de `zonaId`. `zonaId` se colapsa a null cuando el distrito está
+    // en dos zonas, y entonces salía desmarcado en las dos y el siguiente guardado lo borraba.
     const distritoIds: string[] = [];
-    for (const p of provincias)
+    for (const p of arbol)
       for (const c of p.cantones)
         for (const d of c.distritos)
-          if (d.zonaId === full.id) distritoIds.push(d.id);
+          if (d.zonas.some((z) => z.id === full.id)) distritoIds.push(d.id);
 
+    setProvincias(arbol);
     setFormMode("editar");
     setFormInitial({
       zonaId: full.id,

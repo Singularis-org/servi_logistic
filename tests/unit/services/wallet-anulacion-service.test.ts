@@ -380,3 +380,69 @@ describe("458-B — anularMovimientoAction: el borde y la respuesta normalizada"
     expect(accion).not.toHaveBeenCalled();
   });
 });
+
+// ── SLT-68 (design §6.3, R16) — el incentivo manual a un mensajero ──────────────────────────────
+
+describe("SLT-68 R16 — WalletAnulacionService.enrutar: el incentivo a SU camino; sus reversos no se anulan", () => {
+  const m = (over: Partial<FilaDeMensajeroParaAnular>): FilaDeMensajeroParaAnular => ({
+    ...fila({ id: "inc-1", tipo: "devengo", categoria: "incentivo", origenTipo: "cierre_dia", origenId: "cierre-1" }),
+    mensajeroId: "men",
+    premioDia: null,
+    ...over,
+  });
+
+  it("libro del mensajero: el devengo `incentivo` (que cuelga de un cierre) va a `incentivo_mensajero` con SU id, no a «nace de un cierre»", async () => {
+    const r = router({ mensajero: m({}) });
+    expect(await r.servicio.enrutar({ libro: "mensajero", movimientoId: "inc-1" }, MAESTRO)).toEqual({
+      status: "ruta",
+      camino: "incentivo_mensajero",
+      id: "inc-1",
+    });
+    expect(await r.servicio.enrutar({ libro: "mensajero", movimientoId: "inc-1" }, ADMIN)).toEqual({
+      status: "ruta",
+      camino: "incentivo_mensajero",
+      id: "inc-1",
+    });
+  });
+
+  it("libro del mensajero: el `reverso_incentivo` es un contra-asiento", async () => {
+    const r = router({
+      mensajero: m({ id: "rev-1", tipo: "pago", categoria: "reverso_incentivo", origenTipo: "incentivo_mensajero", origenId: "inc-1" }),
+    });
+    expect(await r.servicio.enrutar({ libro: "mensajero", movimientoId: "rev-1" }, MAESTRO)).toEqual({
+      status: "no_anulable",
+      motivo: "contra_asiento",
+    });
+  });
+
+  it("caja: el egreso del incentivo va a `incentivo_mensajero` con el id del incentivo; su `ingreso_ajuste` es contra-asiento", async () => {
+    const egreso = router({ caja: fila({ id: "w-1", categoria: "egreso_pago_mensajero", origenTipo: "incentivo_mensajero", origenId: "inc-1" }) });
+    expect(await egreso.servicio.enrutar(CAJA("w-1"), MAESTRO)).toEqual({ status: "ruta", camino: "incentivo_mensajero", id: "inc-1" });
+    const reverso = router({
+      caja: fila({ id: "w-2", tipo: "ingreso", categoria: "ingreso_ajuste", origenTipo: "incentivo_mensajero", origenId: "inc-1" }),
+    });
+    expect(await reverso.servicio.enrutar(CAJA("w-2"), MAESTRO)).toEqual({ status: "no_anulable", motivo: "contra_asiento" });
+  });
+
+  it("sin acceso total responde `forbidden` antes de leer la fila del incentivo", async () => {
+    for (const actor of SIN_ACCESO_TOTAL) {
+      const r = router({ mensajero: m({}) });
+      expect(await r.servicio.enrutar({ libro: "mensajero", movimientoId: "inc-1" }, actor), actor.rol).toEqual({ status: "forbidden" });
+      expect(r.repo.filaDeMensajero).not.toHaveBeenCalled();
+    }
+  });
+
+  it("anularMovimientoAction llama a la action del incentivo con el id del incentivo, el motivo y el MISMO actor", async () => {
+    const accion = vi.fn(async () => ({ status: "ok" }));
+    const enrutador: IWalletAnulacionService = {
+      enrutar: vi.fn(async () => ({ status: "ruta" as const, camino: "incentivo_mensajero" as const, id: "inc-1" })),
+      clasificar: vi.fn(),
+    } as unknown as IWalletAnulacionService;
+    const r = await anularMovimientoAction(
+      { destino: { libro: "mensajero", movimientoId: "11111111-1111-4111-8111-111111111111" }, motivo: "  error de monto  " },
+      { router: enrutador, getActor: async () => MAESTRO, caminos: { incentivo_mensajero: accion } },
+    );
+    expect(r).toEqual({ status: "ok", camino: "incentivo_mensajero" });
+    expect(accion).toHaveBeenCalledWith("inc-1", "error de monto", MAESTRO);
+  });
+});

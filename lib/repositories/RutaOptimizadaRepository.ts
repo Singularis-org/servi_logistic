@@ -5,6 +5,7 @@ import type {
   IRutaOptimizadaRepository,
   OrigenFuente,
   OrigenUbicacion,
+  ReduccionSecuencia,
   ReemplazarSecuenciaMeta,
   RutaOptimizadaDTO,
   SecuenciaFuentePersistida,
@@ -22,6 +23,14 @@ type RutaPrismaClient = Pick<
 /** Convierte un `Decimal` de Prisma a `number`, tolerando el null de la columna. */
 function toNumber(value: Prisma.Decimal | null): number | null {
   return value !== null ? value.toNumber() : null;
+}
+
+/**
+ * Las columnas de distancia y duracion son INTEGER y un tramo puede traer decimales (mismo
+ * criterio que `guardarTrazado`): se redondea en la frontera con la DB.
+ */
+function redondearONull(valor: number | null): number | null {
+  return valor !== null ? Math.round(valor) : null;
 }
 
 /** Las cuatro columnas del trazado, tal y como salen de la fila. */
@@ -96,6 +105,7 @@ export class RutaOptimizadaRepository implements IRutaOptimizadaRepository {
       secuenciaFuente: toSecuenciaFuente(row.secuenciaFuente),
       trazado: toTrazado(row),
       tramoVivoAt: row.tramoVivoAt,
+      actualizadaAt: row.updatedAt,
       secuenciaPorOrden: new Map(row.paradas.map((p) => [p.ordenId, p.secuencia])),
       // Solo las paradas que YA tienen tramo entran al mapa: una entrada con la polilinea
       // vacia obligaria a cada consumidor a distinguir «no hay tramo» de «hay uno invisible».
@@ -240,6 +250,68 @@ export class RutaOptimizadaRepository implements IRutaOptimizadaRepository {
           },
         });
       }
+    });
+  }
+
+  /**
+   * SLT-59 (R11-R18): reduccion CONDICIONADA a la huella, en una transaccion. El `updateMany`
+   * con la huella previa en el `where` es la barrera: si otro disparo reescribio la ruta entre
+   * la lectura y esta escritura, no encaja ninguna fila y no se toca nada mas — ni la cabecera
+   * ni las paradas, que ya describen otra secuencia.
+   *
+   * R48: el `where` exige ademas `estado = 'vigente'`. `marcarDesactualizada` no cambia la
+   * huella, asi que sin el estado una reduccion leida como `vigente` se aplicaria sobre una ruta
+   * recien marcada `desactualizada`. `false` cubre las dos causas: no se escribio nada.
+   *
+   * Solo se escriben la huella y el trazado: `calculada_at`, el origen, `secuencia_fuente`,
+   * `ultimo_error` y el estado describen el ultimo CALCULO, y una reduccion no lo es (R12, R17).
+   */
+  async reducirSecuencia(
+    mensajeroId: string,
+    huellaPrevia: string,
+    reduccion: ReduccionSecuencia,
+  ): Promise<boolean> {
+    const { trazado } = reduccion;
+    return this.prisma.$transaction(async (tx) => {
+      const actualizadas = await tx.rutaOptimizada.updateMany({
+        where: { mensajeroId, huellaSet: huellaPrevia, estado: "vigente" },
+        data: {
+          huellaSet: reduccion.huellaSet,
+          // Las cuatro columnas siempre juntas: un trazado a medias no lo puede pintar nadie.
+          trazadoPolilinea: trazado?.encodedPolyline ?? null,
+          trazadoDistanciaM: redondearONull(trazado?.distanciaM ?? null),
+          trazadoDuracionS: redondearONull(trazado?.duracionS ?? null),
+          trazadoFuente: trazado?.fuente ?? null,
+        },
+      });
+      if (actualizadas.count === 0) return false;
+
+      const ruta = await tx.rutaOptimizada.findUnique({
+        where: { mensajeroId },
+        select: { id: true },
+      });
+      // Imposible tras un `updateMany` con exito en la misma transaccion; si pasara, lanzar
+      // revierte la cabecera en vez de dejarla con una huella que no describe sus paradas.
+      if (ruta === null) {
+        throw new Error("reducir secuencia: la cabecera desaparecio dentro de la transaccion");
+      }
+
+      // Borrar y reinsertar, no renumerar con UPDATE: bajar posiciones una a una choca a mitad
+      // de camino con el indice unico `(ruta_id, secuencia)`. Mismo motivo que `reemplazarSecuencia`.
+      await tx.rutaOptimizadaParada.deleteMany({ where: { rutaId: ruta.id } });
+      if (reduccion.paradas.length > 0) {
+        await tx.rutaOptimizadaParada.createMany({
+          data: reduccion.paradas.map(({ ordenId, tramo }, idx) => ({
+            rutaId: ruta.id,
+            ordenId,
+            secuencia: idx + 1, // 1-based, sin huecos: la reduccion conserva el orden relativo
+            tramoPolilinea: tramo?.encodedPolyline ?? null,
+            tramoDistanciaM: redondearONull(tramo?.distanciaM ?? null),
+            tramoDuracionS: redondearONull(tramo?.duracionS ?? null),
+          })),
+        });
+      }
+      return true;
     });
   }
 

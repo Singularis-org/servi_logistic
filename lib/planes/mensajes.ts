@@ -158,6 +158,7 @@ export interface CambioDelPlanParaCorreo {
   topes?: { antes: TopesDelPlanParaCorreo; despues: TopesDelPlanParaCorreo };
   modulos?: { antes: readonly ModuloApagable[]; despues: readonly ModuloApagable[] };
   precio?: { antes: PrecioPlan; despues: PrecioPlan };
+  costoPorOrden?: { antes: string | null; despues: string | null };
 }
 
 type TopesDelPlanParaCorreo = {
@@ -181,6 +182,11 @@ export function textoDelPrecio(p: PrecioPlan): string {
   return p.anual.tipo === "fijo"
     ? `${mensual}, ${p.anual.monto} al año`
     : `${mensual}, con ${p.anual.porcentaje} % de descuento en el pago anual`;
+}
+
+/** SLT-66 (design §4.4): el costo por orden del plan, sin símbolo de moneda; vacío = el global (R12). */
+export function textoDelCostoPorOrden(c: string | null): string {
+  return c === null ? "se aplica el valor global" : `${c} por orden`;
 }
 
 /**
@@ -210,6 +216,11 @@ export function lineasDeCambioDelPlan(c: CambioDelPlanParaCorreo): string[] {
     for (const m of despues) if (!antes.includes(m)) lineas.push(`Se incluye el módulo ${nombreDelModulo(m)}.`);
     for (const m of antes) if (!despues.includes(m)) lineas.push(`Deja de incluirse el módulo ${nombreDelModulo(m)}.`);
   }
-  if (c.precio) lineas.push(`Precio: ${textoDelPrecio(c.precio.antes)} → ${textoDelPrecio(c.precio.despues)}`);
+  // SLT-66 (R9): el precio mensual de SL-24 se llama ahora «costo base».
+  if (c.precio) lineas.push(`Costo base: ${textoDelPrecio(c.precio.antes)} → ${textoDelPrecio(c.precio.despues)}`);
+  if (c.costoPorOrden) {
+    const { antes, despues } = c.costoPorOrden;
+    lineas.push(`Costo por orden: ${textoDelCostoPorOrden(antes)} → ${textoDelCostoPorOrden(despues)}`);
+  }
   return lineas;
 }

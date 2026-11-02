@@ -12,6 +12,7 @@ import { filasDesdeResultado } from "@/components/shared/descarga-resultado";
 import {
   listarSaldosSatelitesAction,
 } from "@/lib/actions/conciliacion-satelites";
+import { esMontoCero } from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
 import { cierreBodegaConfig } from "@/lib/config/cierre-bodega";
 import type { ResumenSatelitesDTO, SaldoSateliteDTO } from "@/lib/types/conciliacion-satelites";
 
@@ -33,6 +34,7 @@ import {
   SALDO_NO_ES_CAJA_NOTA_B,
   SALDO_NO_ES_CAJA_NOTA_DESTACADO,
   SALDO_NO_ES_CAJA_TITULO,
+  SIN_CONSOLIDAR,
   SIN_DATO,
   ULTIMA_RECIBIDA,
   antiguedadLabel,
@@ -96,6 +98,17 @@ function tienePendiente(saldo: SaldoSateliteDTO): boolean {
   return hayFaltantePorRecibir(saldo.saldoSinConciliar);
 }
 
+/** SLT-73 (R6): ¿queda aporte en cierres del día sin consolidar? Distinto de cero, con su signo.
+ *  Pregunta TEXTUAL sobre el STRING del servidor, como `tienePendiente`. */
+function tieneSinConsolidar(saldo: SaldoSateliteDTO): boolean {
+  return !esMontoCero(saldo.aporteSinConsolidar);
+}
+
+/** R6: una bodega con aporte sin consolidar nunca está «al día», aunque su saldo sea cero o negativo. */
+function debeAlgo(saldo: SaldoSateliteDTO): boolean {
+  return tienePendiente(saldo) || tieneSinConsolidar(saldo);
+}
+
 /** Una de las tres tarjetas de cabecera. Rótulo, cifra grande y la línea que la descompone. */
 function TarjetaResumen({
   rotulo,
@@ -153,7 +166,7 @@ export function SaldosSatelitesTable({ initialData, resumen }: Readonly<SaldosSa
   const cargando = data === undefined;
 
   const todas = data?.items ?? [];
-  const conPendiente = todas.filter(tienePendiente);
+  const conPendiente = todas.filter(debeAlgo);
   const filas = filtro === "con_pendiente" ? conPendiente : todas;
 
   const COLUMNS: Column<SaldoSateliteDTO>[] = [
@@ -166,7 +179,8 @@ export function SaldosSatelitesTable({ initialData, resumen }: Readonly<SaldosSa
           {/* La marca de «llegó incompleta» a nivel de bodega: hay saldo pendiente y NINGUNA
               consolidación sin marcar, así que lo que queda es pura diferencia de una ya
               conciliada. Es el caso que hay que poder distinguir de un bulto que no ha salido. */}
-          {tienePendiente(s) && s.consolidacionesSinConciliar === 0 ? (
+          {/* SLT-73 (R6): con aporte sin consolidar, el pendiente NO es pura diferencia. */}
+          {tienePendiente(s) && s.consolidacionesSinConciliar === 0 && !tieneSinConsolidar(s) ? (
             <Badge variant="warning">{RECIBIDO_INCOMPLETO_LABEL}</Badge>
           ) : null}
         </span>
@@ -185,6 +199,23 @@ export function SaldosSatelitesTable({ initialData, resumen }: Readonly<SaldosSa
         ),
     },
     {
+      id: "sinConsolidar",
+      value: SALDOS_SATELITES_COLUMNAS.sinConsolidar,
+      // SLT-73 (R6): cuánto de la deuda sigue en cierres sin consolidar y cuántos son. El importe
+      // es el STRING del servidor, con su signo.
+      render: (s) =>
+        tieneSinConsolidar(s) ? (
+          <span className="flex flex-col">
+            <span className="font-medium tabular-nums">{money(s.aporteSinConsolidar)}</span>
+            <span className="text-xs text-muted-foreground">
+              {SIN_CONSOLIDAR.cierres(s.cierresSinConsolidar)}
+            </span>
+          </span>
+        ) : (
+          <span className="text-muted-foreground">{SIN_DATO}</span>
+        ),
+    },
+    {
       id: "masAntigua",
       value: SALDOS_SATELITES_COLUMNAS.masAntigua,
       /**
@@ -196,11 +227,15 @@ export function SaldosSatelitesTable({ initialData, resumen }: Readonly<SaldosSa
        * de atrás. Los días los derivó el SERVIDOR con el calendario de Costa Rica: aquí no se
        * restan fechas.
        */
-      render: (s) => (
-        <Badge variant={s.consolidacionesSinConciliar > 0 ? "warning" : "success"}>
-          {antiguedadLabel(s.diasDeLaMasAntigua)}
-        </Badge>
-      ),
+      // SLT-73 (R6): sin cola de consolidaciones pero con aporte sin consolidar, NO dice «al día».
+      render: (s) =>
+        s.consolidacionesSinConciliar === 0 && tieneSinConsolidar(s) ? (
+          <Badge variant="warning">{SIN_CONSOLIDAR.antiguedad}</Badge>
+        ) : (
+          <Badge variant={s.consolidacionesSinConciliar > 0 ? "warning" : "success"}>
+            {antiguedadLabel(s.diasDeLaMasAntigua)}
+          </Badge>
+        ),
     },
     {
       id: "ultimaRecibida",
