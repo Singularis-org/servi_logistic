@@ -112,6 +112,9 @@ const SELECT_DETALLE_106 = {
   },
   // --- 415 (2026-09-10): la zona de la ORDEN y las entradas del costo ---------------------------
   zonaId: true,
+  // SLT-52 (R16/R18): el distrito completa el par con el que se resuelve la tarifa (decide el grupo
+  // de distritos en el modelo nuevo). Entra en el costeo y NO se publica, como `zonaId`.
+  distritoId: true,
   cobraComision: true,
   // `esCentral` se lee pero NO se publica: elige la columna de flete (GAM vs estandar).
   zona: { select: { id: true, nombre: true, esCentral: true } },

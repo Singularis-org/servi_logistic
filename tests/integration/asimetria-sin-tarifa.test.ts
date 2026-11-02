@@ -5,6 +5,7 @@ import { CierreDiaRepository } from "@/lib/repositories/CierreDiaRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
 import { BulkOrdenService } from "@/lib/services/BulkOrdenService";
 import { CotizacionOrdenService } from "@/lib/services/CotizacionOrdenService";
+import { sinValoresDelModeloNuevo } from "../fixtures/tarifa-tienda";
 // ⏳ 2026-09-10 (feature 415, T8): la QUINTA superficie ante el mismo hueco.
 import { ApiOrdenLecturaService } from "@/lib/services/ApiOrdenLecturaService";
 import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlProvider";
@@ -132,7 +133,8 @@ const TABLA_CON_TARIFA: FilaTarifa[] = [
  * doble le haya escondido las candidatas ajenas.
  */
 function prismaTarifas(filas: readonly FilaTarifa[]) {
-  return { tarifa: { findMany: vi.fn(async () => [...filas]) } };
+  // SLT-52: empresa sin valores del modelo nuevo -> el resolver unico usa la cascada vieja (R36).
+  return { tarifa: { findMany: vi.fn(async () => [...filas]) }, ...sinValoresDelModeloNuevo() };
 }
 
 function resolverReal(filas: readonly FilaTarifa[]): TarifaVigenteRepository {

@@ -119,6 +119,8 @@ function newService(repo: ICierreDiaRepository) {
   } as unknown as IOrdenRepository;
   const tarifaZonaRepo: ITarifaZonaMensajeroRepository = {
     resolvePagoTarifa: vi.fn(async () => TARIFA),
+    // SLT-52: el pago por gestion (`resolvePagos`) entra en el service en T5.1; hoy no se llama.
+    resolvePagos: vi.fn(async () => new Map()),
   };
   const signedUrls: ISignedUrlProvider = {
     createSignedUrl: vi.fn(async (p: string) => `https://signed/${p}`),

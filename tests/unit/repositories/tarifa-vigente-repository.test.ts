@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
 import type { TarifaTxClient } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
+import type { TarifaTienda } from "@/lib/types/tarifa-flexible";
 import { clavePar } from "@/lib/utils/cascada-tarifa";
 
 // Feature 274 (T3.3, R1-R8) — tests de la CLASE REAL del resolver contra un doble de
@@ -64,8 +65,23 @@ function tarifaRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
+// SLT-52: el resolver unico pregunta primero si la empresa tiene valores del modelo nuevo
+// (`tarifaValor.findFirst`). Este doble es una empresa SIN valores: todo este archivo prueba la
+// rama vieja, que es la cascada de la 274 sin cambios (R36). La rama nueva se prueba contra
+// Postgres en tests/integration/db/tarifas-flexibles-{resolver,respaldo}.test.ts.
 function buildPrisma() {
-  return { tarifa: { findMany: vi.fn() } };
+  return {
+    tarifa: { findMany: vi.fn() },
+    tarifaValor: { findFirst: vi.fn().mockResolvedValue(null), findMany: vi.fn() },
+    grupoDistritosDistrito: { findMany: vi.fn() },
+  };
+}
+
+/** SLT-52: el resolver devuelve `TarifaTienda`; en la rama vieja, la tarifa de hoy va dentro. */
+function vieja(t: TarifaTienda | null | undefined) {
+  if (t === null || t === undefined) return t;
+  if (t.modelo !== "viejo") throw new Error("se esperaba el modelo viejo");
+  return t.tarifa;
 }
 
 function buildRepo(prisma: ReturnType<typeof buildPrisma>) {
@@ -86,9 +102,9 @@ describe("TarifaVigenteRepository.resolveTarifas — la query (R7)", () => {
     prisma.tarifa.findMany.mockResolvedValue([]);
 
     await buildRepo(prisma).resolveTarifas([
-      { tiendaId: "t1", zonaId: "z1" },
-      { tiendaId: "t2", zonaId: "z2" },
-      { tiendaId: "t1", zonaId: "z1" }, // duplicado: no anade ni query ni valor al `in`
+      { tiendaId: "t1", zonaId: "z1", distritoId: null },
+      { tiendaId: "t2", zonaId: "z2", distritoId: null },
+      { tiendaId: "t1", zonaId: "z1", distritoId: null }, // duplicado: no anade ni query ni valor al `in`
     ]);
 
     expect(prisma.tarifa.findMany).toHaveBeenCalledTimes(1); // sin N+1
@@ -107,7 +123,7 @@ describe("TarifaVigenteRepository.resolveTarifas — la query (R7)", () => {
     const prisma = buildPrisma();
     prisma.tarifa.findMany.mockResolvedValue([]);
 
-    await buildRepo(prisma).resolveTarifas([{ tiendaId: "t1", zonaId: "z1" }]);
+    await buildRepo(prisma).resolveTarifas([{ tiendaId: "t1", zonaId: "z1", distritoId: null }]);
 
     const where = argsDe(prisma).where as { OR: Array<Record<string, unknown>> };
     expect(where.OR).toHaveLength(3);
@@ -122,7 +138,7 @@ describe("TarifaVigenteRepository.resolveTarifas — la query (R7)", () => {
     const prisma = buildPrisma();
     prisma.tarifa.findMany.mockResolvedValue([]);
 
-    await buildRepo(prisma).resolveTarifas([{ tiendaId: "t1", zonaId: "z1" }]);
+    await buildRepo(prisma).resolveTarifas([{ tiendaId: "t1", zonaId: "z1", distritoId: null }]);
 
     expect(argsDe(prisma).select).toEqual({
       id: true,
@@ -148,7 +164,7 @@ describe("TarifaVigenteRepository.resolveTarifas — la query (R7)", () => {
     const prisma = buildPrisma();
     prisma.tarifa.findMany.mockResolvedValue([]);
 
-    await buildRepo(prisma).resolveTarifas([{ tiendaId: "t1", zonaId: "z1" }]);
+    await buildRepo(prisma).resolveTarifas([{ tiendaId: "t1", zonaId: "z1", distritoId: null }]);
 
     // Ausencia de la CLAVE, no solo de un valor: `orderBy: undefined` explicito tambien
     // contaria como una regla de desempate a medio escribir.
@@ -160,7 +176,7 @@ describe("TarifaVigenteRepository.resolveTarifas — la query (R7)", () => {
     const prisma = buildPrisma();
     prisma.tarifa.findMany.mockResolvedValue([]);
 
-    await buildRepo(prisma).resolveTarifas([{ tiendaId: "t1", zonaId: null }]);
+    await buildRepo(prisma).resolveTarifas([{ tiendaId: "t1", zonaId: null, distritoId: null }]);
 
     expect(argsDe(prisma).where).toEqual({ OR: [{ tiendaId: { in: ["t1"] }, zonaId: null }] });
   });
@@ -172,6 +188,8 @@ describe("TarifaVigenteRepository.resolveTarifas — la query (R7)", () => {
 
     expect(out.size).toBe(0);
     expect(prisma.tarifa.findMany).not.toHaveBeenCalled();
+    // SLT-52: ni siquiera el interruptor de modelo: nadie pidio nada.
+    expect(prisma.tarifaValor.findFirst).not.toHaveBeenCalled();
   });
 
   it("usa el cliente de `tx` cuando se le pasa (segundo argumento, opcional)", async () => {
@@ -181,17 +199,20 @@ describe("TarifaVigenteRepository.resolveTarifas — la query (R7)", () => {
 
     // El cierre de dia resuelve DENTRO de su `$transaction`; el listado y la carga no tienen.
     await buildRepo(prisma).resolveTarifas(
-      [{ tiendaId: "t1", zonaId: "z1" }],
+      [{ tiendaId: "t1", zonaId: "z1", distritoId: null }],
       tx as unknown as TarifaTxClient,
     );
 
     expect(tx.tarifa.findMany).toHaveBeenCalledTimes(1);
     expect(prisma.tarifa.findMany).not.toHaveBeenCalled();
+    // SLT-52: el interruptor de modelo tambien corre en la transaccion (lee lo que ella ve).
+    expect(tx.tarifaValor.findFirst).toHaveBeenCalledTimes(1);
+    expect(prisma.tarifaValor.findFirst).not.toHaveBeenCalled();
   });
 });
 
 describe("TarifaVigenteRepository.resolveTarifas — la cascada, POR EL REPO (R1-R5)", () => {
-  const par = { tiendaId: "t1", zonaId: "z1" };
+  const par = { tiendaId: "t1", zonaId: "z1", distritoId: null };
 
   it("R1/R3: con nivel 1 y nivel 2 presentes gana el NIVEL 1 (tienda+zona)", async () => {
     const prisma = buildPrisma();
@@ -202,7 +223,7 @@ describe("TarifaVigenteRepository.resolveTarifas — la cascada, POR EL REPO (R1
 
     const out = await buildRepo(prisma).resolveTarifas([par]);
 
-    expect(out.get(clavePar(par))?.tarifaId).toBe("especifica");
+    expect(vieja(out.get(clavePar(par)))?.tarifaId).toBe("especifica");
   });
 
   it("R1: sin fila de nivel 1, gana el NIVEL 2 (tienda con zona NULL)", async () => {
@@ -214,7 +235,7 @@ describe("TarifaVigenteRepository.resolveTarifas — la cascada, POR EL REPO (R1
 
     const out = await buildRepo(prisma).resolveTarifas([par]);
 
-    expect(out.get(clavePar(par))?.tarifaId).toBe("generica");
+    expect(vieja(out.get(clavePar(par)))?.tarifaId).toBe("generica");
   });
 
   it("R4: tienda sin fila propia -> gana el NIVEL 3 (zona con tienda NULL)", async () => {
@@ -226,7 +247,7 @@ describe("TarifaVigenteRepository.resolveTarifas — la cascada, POR EL REPO (R1
 
     const out = await buildRepo(prisma).resolveTarifas([par]);
 
-    expect(out.get(clavePar(par))?.tarifaId).toBe("de-zona");
+    expect(vieja(out.get(clavePar(par)))?.tarifaId).toBe("de-zona");
   });
 
   it("R2: la fila global (NULL, NULL) NO es un cuarto nivel -> `null`", async () => {
@@ -255,8 +276,8 @@ describe("TarifaVigenteRepository.resolveTarifas — la cascada, POR EL REPO (R1
     const a = await buildRepo(directo).resolveTarifas([par]);
     const b = await buildRepo(inverso).resolveTarifas([par]);
 
-    expect(a.get(clavePar(par))?.tarifaId).toBe("especifica");
-    expect(b.get(clavePar(par))?.tarifaId).toBe("especifica");
+    expect(vieja(a.get(clavePar(par)))?.tarifaId).toBe("especifica");
+    expect(vieja(b.get(clavePar(par)))?.tarifaId).toBe("especifica");
   });
 
   it("R6: par con `zonaId: null` solo alcanza el nivel 2 (una fila de zona no le sirve)", async () => {
@@ -267,10 +288,10 @@ describe("TarifaVigenteRepository.resolveTarifas — la cascada, POR EL REPO (R1
       tarifaRow({ id: "generica", tiendaId: "t1", zonaId: null }),
     ]);
 
-    const sinZona = { tiendaId: "t1", zonaId: null };
+    const sinZona = { tiendaId: "t1", zonaId: null, distritoId: null };
     const out = await buildRepo(prisma).resolveTarifas([sinZona]);
 
-    expect(out.get(clavePar(sinZona))?.tarifaId).toBe("generica");
+    expect(vieja(out.get(clavePar(sinZona)))?.tarifaId).toBe("generica");
   });
 });
 
@@ -281,12 +302,12 @@ describe("TarifaVigenteRepository.resolveTarifas — el Map (R7) y la proyeccion
       tarifaRow({ id: "tarA", tiendaId: "t1", zonaId: "z1" }),
     ]);
 
-    const conTarifa = { tiendaId: "t1", zonaId: "z1" };
-    const sinTarifa = { tiendaId: "t2", zonaId: "z2" };
+    const conTarifa = { tiendaId: "t1", zonaId: "z1", distritoId: null };
+    const sinTarifa = { tiendaId: "t2", zonaId: "z2", distritoId: null };
     const out = await buildRepo(prisma).resolveTarifas([conTarifa, sinTarifa]);
 
     expect(out.size).toBe(2);
-    expect(out.get(clavePar(conTarifa))?.tarifaId).toBe("tarA");
+    expect(vieja(out.get(clavePar(conTarifa)))?.tarifaId).toBe("tarA");
     // Gap EXPLICITO, no ausencia: el llamador distingue "no resuelve" de "no lo pedi".
     expect(out.has(clavePar(sinTarifa))).toBe(true);
     expect(out.get(clavePar(sinTarifa))).toBeNull();
@@ -299,13 +320,13 @@ describe("TarifaVigenteRepository.resolveTarifas — el Map (R7) y la proyeccion
       tarifaRow({ id: "z2", tiendaId: "t1", zonaId: "z2", valorFlete: dec("2000") }),
     ]);
 
-    const parA = { tiendaId: "t1", zonaId: "z1" };
-    const parB = { tiendaId: "t1", zonaId: "z2" };
+    const parA = { tiendaId: "t1", zonaId: "z1", distritoId: null };
+    const parB = { tiendaId: "t1", zonaId: "z2", distritoId: null };
     const out = await buildRepo(prisma).resolveTarifas([parA, parB]);
 
     expect(prisma.tarifa.findMany).toHaveBeenCalledTimes(1);
-    expect(out.get(clavePar(parA))?.valorFlete).toBe("1000.00");
-    expect(out.get(clavePar(parB))?.valorFlete).toBe("2000.00");
+    expect(vieja(out.get(clavePar(parA)))?.valorFlete).toBe("1000.00");
+    expect(vieja(out.get(clavePar(parB)))?.valorFlete).toBe("2000.00");
   });
 
   it("congela `tarifaId` y `fulfillment` (auditoria del snapshot) + los 7 STRING escala 2", async () => {
@@ -314,9 +335,9 @@ describe("TarifaVigenteRepository.resolveTarifas — el Map (R7) y la proyeccion
       tarifaRow({ id: "tar1", tiendaId: "t1", zonaId: "z1" }),
     ]);
 
-    const out = await buildRepo(prisma).resolveTarifas([{ tiendaId: "t1", zonaId: "z1" }]);
+    const out = await buildRepo(prisma).resolveTarifas([{ tiendaId: "t1", zonaId: "z1", distritoId: null }]);
 
-    expect(out.get(clavePar({ tiendaId: "t1", zonaId: "z1" }))).toEqual({
+    expect(vieja(out.get(clavePar({ tiendaId: "t1", zonaId: "z1", distritoId: null })))).toEqual({
       tarifaId: "tar1",
       fulfillment: "300.00",
       valorFlete: "1000.00",
@@ -340,12 +361,18 @@ describe("TarifaVigenteRepository.resolveTarifa (singular)", () => {
       tarifaRow({ id: "tar1", tiendaId: "t1", zonaId: "z1" }),
     ]);
 
-    const t = await buildRepo(prisma).resolveTarifa("t1", "z1");
+    const t = await buildRepo(prisma).resolveTarifa("t1", "z1", null);
 
     expect(prisma.tarifa.findMany).toHaveBeenCalledTimes(1);
-    // Los 7 campos de la formula, ni uno mas: el singular NO expone `tarifaId` ni
-    // `fulfillment`, que son del camino del snapshot.
+    // SLT-52 (design §5): el singular es «igual con un par» que el lote y devuelve la misma
+    // `TarifaTienda`. CADUCIDAD: hasta T3 este test fijaba que el singular NO exponia `tarifaId`
+    // ni `fulfillment`; con la forma unica los trae (su unico llamador, la correccion de datos,
+    // solo lee la formula). La rama vieja sigue siendo la proyeccion de hoy, campo a campo.
     expect(t).toEqual({
+      modelo: "viejo",
+      tarifa: {
+      tarifaId: "tar1",
+      fulfillment: "300.00",
       valorFlete: "1000.00",
       valorFleteGam: "1500.00",
       valorFleteDevuelto: "400.00",
@@ -355,6 +382,7 @@ describe("TarifaVigenteRepository.resolveTarifa (singular)", () => {
       ivaComisionCod: "13.00",
       tarifaEspecial: null,
       tarifaEspecialDevuelta: null,
+      },
     });
   });
 
@@ -362,7 +390,7 @@ describe("TarifaVigenteRepository.resolveTarifa (singular)", () => {
     const prisma = buildPrisma();
     prisma.tarifa.findMany.mockResolvedValue([]);
 
-    await buildRepo(prisma).resolveTarifa("t1", "z1");
+    await buildRepo(prisma).resolveTarifa("t1", "z1", null);
 
     expect(argsDe(prisma).where).toEqual({
       OR: [
@@ -381,9 +409,9 @@ describe("TarifaVigenteRepository.resolveTarifa (singular)", () => {
       tarifaRow({ id: "especifica", tiendaId: "t1", zonaId: "z1", valorFlete: dec("999") }),
     ]);
 
-    const t = await buildRepo(prisma).resolveTarifa("t1", "z1");
+    const t = await buildRepo(prisma).resolveTarifa("t1", "z1", null);
 
-    expect(t?.valorFlete).toBe("999.00");
+    expect(vieja(t)?.valorFlete).toBe("999.00");
   });
 
   it("R6: sin zona resuelve el nivel 2, y el `where` tiene una sola rama", async () => {
@@ -393,10 +421,10 @@ describe("TarifaVigenteRepository.resolveTarifa (singular)", () => {
       tarifaRow({ id: "de-zona", tiendaId: "t1", zonaId: "z1", valorFlete: dec("999") }),
     ]);
 
-    const t = await buildRepo(prisma).resolveTarifa("t1", null);
+    const t = await buildRepo(prisma).resolveTarifa("t1", null, null);
 
     expect(argsDe(prisma).where).toEqual({ OR: [{ tiendaId: { in: ["t1"] }, zonaId: null }] });
-    expect(t?.valorFlete).toBe("111.00");
+    expect(vieja(t)?.valorFlete).toBe("111.00");
   });
 
   it("R2: ningun nivel resuelve -> `null` (gap de datos, no lanza)", async () => {
@@ -405,6 +433,6 @@ describe("TarifaVigenteRepository.resolveTarifa (singular)", () => {
       tarifaRow({ id: "global", tiendaId: null, zonaId: null }),
     ]);
 
-    await expect(buildRepo(prisma).resolveTarifa("t1", "z1")).resolves.toBeNull();
+    await expect(buildRepo(prisma).resolveTarifa("t1", "z1", null)).resolves.toBeNull();
   });
 });

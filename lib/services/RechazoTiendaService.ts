@@ -14,7 +14,8 @@ import type {
   RechazarNovedadResult,
 } from "@/lib/interfaces/services/IRechazoTiendaService";
 import { derivarIngresoOrden } from "@/lib/utils/ingreso-empresa";
-import { clavePar } from "@/lib/utils/cascada-tarifa";
+import { clavePar, type ParTarifa } from "@/lib/utils/cascada-tarifa";
+import { soloModeloViejo } from "@/lib/tarifas/solo-modelo-viejo";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 
 // Estado de ORIGEN elegible (la DEVOLUCION ANCLADA de la 239: confirmada en bodega, visible para la
@@ -245,9 +246,11 @@ export class RechazoTiendaService implements IRechazoTiendaService {
 
     // La cascada (tienda, zona) de la feature 274, en su forma de LOTE con un solo par: es la que
     // devuelve `tarifaId`. `null` = ningun nivel tiene fila (R2 de la 274).
-    const par = { tiendaId: base.tiendaId, zonaId: base.zonaId };
+    // SLT-52 (R16/R18): con el distrito de la orden, que decide su grupo en el modelo nuevo.
+    const par: ParTarifa = { tiendaId: base.tiendaId, zonaId: base.zonaId, distritoId: base.distritoId };
     const tarifas = await this.tarifaRepo.resolveTarifas([par]);
-    const tarifa = tarifas.get(clavePar(par)) ?? null;
+    // SLT-52: puente hasta T4.3, que ensena el modelo nuevo al cobro por rechazo.
+    const tarifa = soloModeloViejo(tarifas.get(clavePar(par)) ?? null, "RechazoTiendaService: cobro a la tienda");
 
     const derivado = derivarIngresoOrden(
       {

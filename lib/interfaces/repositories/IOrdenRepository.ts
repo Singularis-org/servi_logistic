@@ -185,6 +185,8 @@ export interface OrdenBaseCobroDevolucionRow {
   tiendaId: string;
   /** La otra mitad de la cascada de tarifa (feature 274): el par es (tienda, zona). */
   zonaId: string;
+  /** SLT-52 (R16/R18): el distrito de la orden completa el par; `null` = sin distrito. */
+  distritoId: string | null;
   /** De la ZONA: elige la columna GAM del flete de devolucion. */
   esCentral: boolean;
   /** Del DISTRITO: elige el pacto especial. Ya normalizada (la columna de origen es tri-valuada). */
@@ -1106,6 +1108,11 @@ export interface ApiOrdenRow {
 export interface ApiOrdenCosteoRow {
   /** `orden.zona_id`: la mitad del par (tienda, zona) con el que se resuelve la tarifa vigente. */
   zonaId: string;
+  /**
+   * SLT-52 (R16/R18): `orden.distrito_id`, la otra mitad del par con el que se resuelve la tarifa
+   * (decide el grupo de distritos en el modelo nuevo). `null` = la orden no tiene distrito.
+   */
+  distritoId: string | null;
   /** `zona.es_central` VIVO (R20): elige la columna de flete GAM vs estandar. */
   esCentral: boolean;
   /**

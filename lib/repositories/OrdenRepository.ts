@@ -333,6 +333,9 @@ function apiOrdenSelect(ownerId: string) {
     // R19/R24: la mitad del par (tienda, zona) con el que el service resuelve la tarifa vigente de
     // toda la pagina en UNA sola consulta. No se publica.
     zonaId: true,
+    // SLT-52 (R16/R18): el distrito completa el par con el que se resuelve la tarifa (decide el
+    // grupo de distritos en el modelo nuevo). No se publica.
+    distritoId: true,
     // R20: entrada VIVA de la formula. No se publica.
     cobraComision: true,
     /**
@@ -593,6 +596,8 @@ type ApiOrdenSelectRow = {
   // ⏳ 2026-09-10 (feature 415): la zona de la ORDEN. `orden.zona_id` es NOT NULL, asi que la
   // relacion NUNCA viene `null`. `esCentral` entra en el costeo y NO se publica.
   zonaId: string;
+  // SLT-52: el unico FK nullable de `orden`; `null` = sin distrito (salta los grupos, R18).
+  distritoId: string | null;
   cobraComision: boolean;
   zona: { id: string; nombre: string; esCentral: boolean };
   // El unico FK nullable de `orden`. La marca es de la empresa (SL-38): `[]` = no especial.
@@ -670,6 +675,7 @@ function toApiOrdenRow(r: ApiOrdenSelectRow): ApiOrdenRow {
     // ⛔ NO PUBLICABLE: las entradas del calculo. El service las consume y no cruzan al DTO.
     costeo: {
       zonaId: r.zonaId,
+      distritoId: r.distritoId,
       esCentral: r.zona.esCentral,
       // R21 / SL-38: la marca de la EMPRESA de la orden. Una orden SIN distrito entra como
       // `false`: sin distrito no hay marca que aplicar.
@@ -1226,7 +1232,11 @@ function tarifaDe(
   tarifas: ReadonlyMap<string, TarifaListRow | null>,
   row: OrdenListRow,
 ): TarifaListRow | null {
-  return tarifas.get(clavePar({ tiendaId: row.tiendaId, zonaId: row.zonaId })) ?? null;
+  return (
+    tarifas.get(
+      clavePar({ tiendaId: row.tiendaId, zonaId: row.zonaId, distritoId: row.distritoId }),
+    ) ?? null
+  );
 }
 
 // Arma el bloque `relaciones` con los datos de las relaciones directas (FK) de la
@@ -2109,7 +2119,8 @@ export class OrdenRepository implements IOrdenRepository {
     const vistos = new Set<string>();
     for (const row of rows) {
       // En `orden`, `tienda_id` y `zona_id` son NOT NULL: el par siempre alcanza los 3 niveles.
-      const par: ParTarifa = { tiendaId: row.tiendaId, zonaId: row.zonaId };
+      // SLT-52: con el distrito de la orden, el mismo par que resuelve el cierre (R16/R38).
+      const par: ParTarifa = { tiendaId: row.tiendaId, zonaId: row.zonaId, distritoId: row.distritoId };
       const clave = clavePar(par);
       if (vistos.has(clave)) continue;
       vistos.add(clave);
@@ -2754,6 +2765,7 @@ export class OrdenRepository implements IOrdenRepository {
         id: true,
         tiendaId: true,
         zonaId: true,
+        distritoId: true,
         montoCobrar: true,
         cobraComision: true,
         zona: { select: { esCentral: true } },
@@ -2765,6 +2777,7 @@ export class OrdenRepository implements IOrdenRepository {
       ordenId: row.id,
       tiendaId: row.tiendaId,
       zonaId: row.zonaId,
+      distritoId: row.distritoId,
       esCentral: row.zona.esCentral,
       // La marca es del distrito PARA LA EMPRESA de la orden (SL-38), no de la zona. Una orden
       // sin distrito -- el unico FK nullable de `orden`-- entra como `false`: sin distrito no hay

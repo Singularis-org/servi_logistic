@@ -23,7 +23,8 @@ import type { PaginaRepositorio, RangoPagina } from "@/lib/utils/rango-pagina";
 // Feature 274 (design §4.2, R21/R22): la clave del Map del resolver batch la define el modulo
 // puro de la cascada, no este repositorio. Indexar aqui con una clave propia seria la segunda
 // declaracion de la regla que R21 existe para impedir.
-import { clavePar } from "@/lib/utils/cascada-tarifa";
+import { clavePar, type ParTarifa } from "@/lib/utils/cascada-tarifa";
+import { soloModeloViejo } from "@/lib/tarifas/solo-modelo-viejo";
 import { appendCambioEstado } from "@/lib/repositories/registrar-cambio-estado";
 // SL-38 (R20): la marca de zona especial es de la EMPRESA y se lee por un unico punto.
 import {
@@ -1318,9 +1319,11 @@ export class CierreDiaRepository implements ICierreDiaRepository {
           // `null` para un par sin tarifa = gap R9/R23: las 9 columnas quedan NULL y el cierre
           // se crea igual (decision (c) + R39: el gap NO bloquea, y el 409 de las APIs por key
           // NO llega hasta aqui).
-          const pares = filas.map((f) => ({
+          // SLT-52 (R16/R18): el distrito de la ORDEN viaja en el par; decide su grupo de distritos.
+          const pares = filas.map((f): ParTarifa => ({
             tiendaId: f.orden.tiendaId,
             zonaId: f.orden.zonaId,
+            distritoId: f.orden.distritoId,
           }));
           const tarifas = await this.tarifaRepo.resolveTarifas(pares, tx);
           // FICHA 450 (T2.7): los descriptivos que antes traia la relacion anidada, leidos en
@@ -1346,9 +1349,16 @@ export class CierreDiaRepository implements ICierreDiaRepository {
                   : descriptivoDe(descriptivos.distritos, f.orden.distritoId, "distrito")
                       .zonaEspecial,
               ...tarifaColumnas(
-                tarifas.get(
-                  clavePar({ tiendaId: f.orden.tiendaId, zonaId: f.orden.zonaId }),
-                ) ?? null,
+                soloModeloViejo(
+                  tarifas.get(
+                    clavePar({
+                      tiendaId: f.orden.tiendaId,
+                      zonaId: f.orden.zonaId,
+                      distritoId: f.orden.distritoId,
+                    }),
+                  ) ?? null,
+                  "cierre de dia (snapshot)",
+                ),
               ),
               // descriptivos (R7).
               numGuia: f.orden.numGuia,

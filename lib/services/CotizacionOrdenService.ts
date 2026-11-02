@@ -25,6 +25,7 @@ import type {
   ITarifaVigenteRepository,
   TarifaVigenteResuelta,
 } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
+import type { TarifaTienda } from "@/lib/types/tarifa-flexible";
 import type {
   CotizacionGeoRepository,
   CotizacionOrdenResult,
@@ -41,6 +42,7 @@ import {
 } from "@/lib/services/geo-resolucion";
 import { MSG_FILA_SIN_TARIFA } from "@/lib/services/mensajes-tarifa";
 import { clavePar, type ParTarifa } from "@/lib/utils/cascada-tarifa";
+import { soloModeloViejo } from "@/lib/tarifas/solo-modelo-viejo";
 import {
   filaCotizacionSchema,
   type CostosDevuelto,
@@ -105,11 +107,19 @@ type FilaPendiente = Extract<FilaPreparada, { estado: "pendiente" }>;
  * la consulta es una sola y un lote de 200 filas de la misma zona no tiene por que pedir 200
  * veces el mismo par (R32/R7).
  */
+/**
+ * SLT-52 (R16/R18): el par de una fila, con el distrito que resolvio su geografia. Un solo sitio
+ * para construirlo y para buscarlo: si divergieran, la fila quedaria sin tarifa.
+ */
+function parDe(tiendaId: string, geo: ResolvedGeo): ParTarifa {
+  return { tiendaId, zonaId: geo.zonaId, distritoId: geo.distritoId };
+}
+
 function paresDistintos(tiendaId: string, pendientes: readonly FilaPendiente[]): ParTarifa[] {
   const vistos = new Set<string>();
   const pares: ParTarifa[] = [];
   for (const pendiente of pendientes) {
-    const par: ParTarifa = { tiendaId, zonaId: pendiente.geo.zonaId };
+    const par = parDe(tiendaId, pendiente.geo);
     const clave = clavePar(par);
     if (vistos.has(clave)) continue;
     vistos.add(clave);
@@ -212,10 +222,11 @@ export class CotizacionOrdenService implements ICotizacionOrdenService {
     const pares = paresDistintos(tiendaId, pendientes);
     const tarifas =
       pares.length === 0
-        ? new Map<string, TarifaCotizada | null>()
+        ? new Map<string, TarifaTienda | null>()
         : await this.tarifaRepo.resolveTarifas(pares);
+    // SLT-52: puente hasta T4.3, que ensena el modelo nuevo a la cotizacion.
     const tarifaDe = (geo: ResolvedGeo): TarifaCotizada | null =>
-      tarifas.get(clavePar({ tiendaId, zonaId: geo.zonaId })) ?? null;
+      soloModeloViejo(tarifas.get(clavePar(parDe(tiendaId, geo))) ?? null, "cotizacion por API key");
 
     // R35 (design §3.6): el `409` sobrevive SOLO cuando alguna fila llego a resolver y NINGUNA
     // resolvio. Se comprueba ANTES de calcular un solo importe, para que esa respuesta siga sin

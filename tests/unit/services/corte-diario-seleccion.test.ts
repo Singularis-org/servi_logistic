@@ -140,6 +140,8 @@ function build(filas: FilaOrden[]) {
   } as unknown as IOrdenRepository;
   const tarifaZonaRepo: ITarifaZonaMensajeroRepository = {
     resolvePagoTarifa: vi.fn(async () => ({ cobroEntregado: "5.00", cobroRechazado: "3.00" })),
+    // SLT-52: el pago por gestion (`resolvePagos`) entra en el service en T5.1; hoy no se llama.
+    resolvePagos: vi.fn(async () => new Map()),
   };
   const service = new CorteDiarioService(
     corteRepo,

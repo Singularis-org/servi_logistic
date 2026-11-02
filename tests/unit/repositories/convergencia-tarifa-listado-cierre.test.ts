@@ -4,6 +4,7 @@ import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { CierreDiaRepository } from "@/lib/repositories/CierreDiaRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
 import { idEstado, sembrarCatalogoEstados } from "@/tests/fixtures/catalogo-estados";
+import { sinValoresDelModeloNuevo } from "../../fixtures/tarifa-tienda";
 
 /**
  * FEATURE 274 (T8.4) — TEST DE CONVERGENCIA (R8/R21). El que justifica la feature entera.
@@ -219,6 +220,8 @@ async function resolverPorCierre(filas: readonly FilaTarifa[]): Promise<Resuelto
     },
     cierreDetail: { createMany: vi.fn(async () => ({ count: 1 })) },
     tarifa: { findMany: tarifaFindMany },
+    // SLT-52: empresa sin valores del modelo nuevo -> el resolver unico usa la cascada vieja (R36).
+    ...sinValoresDelModeloNuevo(),
     // FICHA 450: los catalogos del snapshot, leidos en serie dentro de esta misma tx.
     zona: catalogoDoble450(() => ({ nombre: "Limón", esCentral: false })),
     usuario: catalogoDoble450(() => ({ nombre: "Tienda X" })),
@@ -231,6 +234,12 @@ async function resolverPorCierre(filas: readonly FilaTarifa[]): Promise<Resuelto
     tarifa: {
       findMany: vi.fn(async () => {
         throw new Error("el cierre resolvio la tarifa FUERA de su transaccion");
+      }),
+    },
+    // SLT-52: tambien el interruptor de modelo tiene que leerse DENTRO de la transaccion.
+    tarifaValor: {
+      findFirst: vi.fn(async () => {
+        throw new Error("el cierre decidio el modelo de tarifas FUERA de su transaccion");
       }),
     },
   };

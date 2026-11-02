@@ -7,6 +7,9 @@ import type {
 } from "@/lib/interfaces/services/ICierreDiaService";
 import type { WalletIngresoConcepto } from "@/lib/types/wallet";
 import type { OrigenFlete } from "@/lib/types/tarifa";
+import type { ValoresTienda } from "@/lib/types/tarifa-flexible";
+import { importeDe } from "@/lib/tarifas/calculo";
+import { conceptoPorResultado } from "@/lib/tarifas/catalogo";
 // Ficha 396 — `partesPorTienda` particiona el recaudo con LA MISMA funcion que produce el total
 // general del cierre, no con una suma escrita aqui (R13/R15). Import de VALOR, y verificado que
 // no crea ciclo: `cierre-totales.ts` importa `pago-mensajero`, `ingreso-bodega` y tipos, y
@@ -826,4 +829,24 @@ export function desgloseCargaApi(
     costoEnvio: round2(envio.plus(fulfillment)).toFixed(2),
     fulfillment: round2(fulfillment).toFixed(2),
   };
+}
+
+/**
+ * SLT-52 (design §5, R28, decision P1) — el flete SIN IVA que se le cobra a la tienda por UNA
+ * gestion segun su resultado, en el modelo nuevo. Es la base del % del pago al mensajero y a la
+ * satelite: se calcula con la misma regla que el cobro a la tienda (`importeDe` sobre el valor del
+ * pedido, R27) para que la base del pago y el flete cobrado no puedan divergir.
+ *
+ * Concepto ausente = la tienda no paga nada por ese resultado → base `0.00` y el % da 0 (R28).
+ * Nace en T3.2 con lo minimo que necesita el resolver; la rama nueva de `derivarIngresoOrden`
+ * (T4.1) debe calcular su flete con esta misma funcion.
+ */
+export function fleteSinIvaDeGestion(
+  resultado: GestionResultado,
+  valores: ValoresTienda,
+  montoCobrar: string | null,
+): Prisma.Decimal {
+  const valor = valores[conceptoPorResultado("tienda", resultado)];
+  if (valor === undefined) return new Prisma.Decimal("0");
+  return importeDe(valor, new Prisma.Decimal(montoCobrar ?? "0"));
 }

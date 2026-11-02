@@ -464,25 +464,201 @@ Buscados con Grep: listas de carpetas de `lib/`, `readdirSync` sobre `lib`/`lib/
 
 Ninguna nueva.
 
+## T3
+
+MCP `codebase-memory` no respondio (timeout de conexion): todo con Grep/Read. Sin dependencias nuevas. Ninguna raiz de composicion en el diff (`git status` no toca `app/`, `lib/actions/` ni `scripts/`): los dos constructores siguen recibiendo `prisma`.
+
+### Archivos
+
+Produccion:
+- NUEVO `lib/repositories/_shared/resolver-tarifas.ts` (T3.2) — `usaModeloNuevo`, `resolverCobrosCon`, `resolverPagosCon`; helpers exportados para el test de Postgres: `gruposDeDistritos` (WHERE de grupos) y `valoresCandidatos` (WHERE de valores, con `whereValores`). La proyeccion vieja de `tarifas` (`toTarifaVigenteResuelta`) y `resolvePagoTarifaCon` (398) se movieron aqui SIN cambiar su regla.
+- NUEVO `lib/tarifas/solo-modelo-viejo.ts` — puente de transicion `soloModeloViejo(t, superficie)` / `ModeloNuevoSinSoporte` (ver Desvios).
+- `lib/utils/cascada-tarifa.ts` (T3.1) — `ParTarifa.distritoId: string | null` obligatorio; `clavePar` = `tienda|zona|distrito`.
+- `lib/repositories/TarifaVigenteRepository.ts` (T3.3) — fachada: `resolveTarifa(tiendaId, zonaId, distritoId)` y `resolveTarifas(pares, tx?)` devuelven `TarifaTienda | null`. Mismo constructor.
+- `lib/repositories/TarifaZonaMensajeroRepository.ts` (T3.3) — fachada; `resolvePagos(ctxs, tx?)` nuevo; `resolvePagoTarifa` intacto; reexporta `resolvePagoTarifaCon` para no tocar `CierresAdminRepository` antes de T5.1. Mismo constructor.
+- `lib/interfaces/repositories/ITarifaVigenteRepository.ts` — `TarifaTxClient` ampliado a `tarifa | tarifaValor | grupoDistritosDistrito`; firmas nuevas.
+- `lib/interfaces/repositories/ITarifaZonaMensajeroRepository.ts` — `PagoTarifaTxClient` y `resolvePagos`.
+- `lib/types/tarifa-flexible.ts` — `ContextoPagoGestion` (design §5) vive aqui y no en el repositorio, para que la interfaz no dependa de `lib/repositories`.
+- `lib/utils/ingreso-empresa.ts` — `fleteSinIvaDeGestion(resultado, valores, montoCobrar)` (minimo de T4.1 que pide T3.2; ver Desvios).
+- `lib/interfaces/repositories/IOrdenRepository.ts`, `lib/repositories/OrdenRepository.ts` — `distritoId` en `ApiOrdenCosteoRow` (select de la API por key) y en `OrdenBaseCobroDevolucionRow` (`findBaseCobroDevolucion`); pares del listado con `row.distritoId`.
+- Llamadores (abajo): `CierreDiaRepository`, `ApiOrdenLecturaService`, `BulkOrdenService`, `CotizacionOrdenService`, `RechazoTiendaService`, `CorregirDatosClienteService`.
+
+Tests:
+- NUEVOS `tests/integration/db/tarifas-flexibles-resolver.test.ts` (T3.4), `tests/integration/db/tarifas-flexibles-respaldo.test.ts` (T3.5), `tests/unit/guards/tarifas-distrito-pasado.guardia.test.ts` (exigencia del leader), `tests/fixtures/tarifa-tienda.ts` (`tarifaVieja`, `tarifaViejaDeFormula`, `mapaViejo`, `sinValoresDelModeloNuevo`).
+- Ajustados (dobles a `TarifaTienda` viejo, pares con distrito, doble de Prisma con «empresa sin valores nuevos», `resolvePagos` en los dobles del pago; NINGUN importe cambiado): `tarifa-vigente-repository`, `cascada-tarifa` (+2 casos de la clave), `cierre-dia-repository`, `cotizacion-orden-service`, `rechazo-tienda-service`, `api-orden-lectura-service`, 5 × `corregir-*` (+1 caso del distrito por ubicacion en `corregir-ubicacion-importes`), 5 × `bulk-orden-service.*`, `api-key-carga-tope-plan`, 7 × `cierre-dia-*`/`corte-diario-*` (solo `resolvePagos: vi.fn`), `tarifa-especial-por-distrito`, `convergencia-tarifa-listado-cierre` (el interruptor tambien tiene que leerse DENTRO de la tx: el `prisma` de fuera lanza), `costo-orden-forma-unica.guardia`, `corregir-datos-cliente.composition-root`, `ordenes-api-key-composicion-415`, `asimetria-sin-tarifa`, `ordenes-api-key-{listado,orden-consulta,tienda-destino}.route`, `carga-api-key-sin-tarifa`, `cotizacion-api-key`, `cierre-detail-congelado`, fixture `api-orden-costeo-415`.
+
+### Llamadores ajustados (ruta:linea, distrito de verdad)
+
+- `lib/repositories/CierreDiaRepository.ts:1323-1327` y `:1352-1361` — `f.orden.distritoId` (ya estaba en `SNAPSHOT_SELECT`).
+- `lib/repositories/OrdenRepository.ts:2123` (pares del listado) y `:1237` (busqueda) — `row.distritoId`.
+- `lib/repositories/OrdenRepository.ts:338`, `:678` — `distritoId` anadido al select y al `costeo` de la API por key; `lib/services/ApiOrdenLecturaService.ts:49` (`parDe`) usado en `:65`, `:203`, `:269`.
+- `lib/repositories/OrdenRepository.ts:2768`, `:2780` — `distritoId` en `findBaseCobroDevolucion`; `lib/services/RechazoTiendaService.ts:250`.
+- `lib/services/BulkOrdenService.ts:568-575` — `orden.distritoId ?? null` (el campo es opcional en `CreateOrdenData`: «la fila no lo trae» = sin distrito; no es un null de relleno).
+- `lib/services/CotizacionOrdenService.ts:114` (`parDe`, `geo.distritoId`) usado en `:122`, `:229`.
+- `lib/services/CorregirDatosClienteService.ts:531` (actual: `orden.distritoId`), `:538` (propuesta: `distrito.id`), `:576`.
+
+Ninguno pasa `null` literal (lo vigila la guardia). Quedan para T4.3 / T5.1 (no se tocaron; NO construyen pares ni contextos con distrito todavia):
+- T4.3 — `lib/repositories/OrdenRepository.ts:2111-2131` (`resolverTarifasDePagina`): el LISTADO sigue con su propia consulta a `tarifas` (`whereCascada` + `elegirPorCascada`), no con el resolver unico. Ya lleva el distrito en el par, pero una empresa en el modelo nuevo veria en el listado la tarifa vieja. Debe pasar al resolver en T4.3 (R38).
+- T4.3 — los 6 `soloModeloViejo(...)`: `CierreDiaRepository.ts:1352`, `ApiOrdenLecturaService.ts:164`, `BulkOrdenService.ts:586`, `CotizacionOrdenService.ts:229`, `RechazoTiendaService.ts:253`, `CorregirDatosClienteService.ts:575` (el de `CierreDiaRepository` es de T5.2).
+- T5.1 — pago por gestion: `lib/services/CierreDiaService.ts:279`, `:621`, `:697`; `lib/services/CorteDiarioService.ts:199`; `lib/repositories/CierresAdminRepository.ts:1727` siguen con `resolvePagoTarifa(zona, vehiculo)` / `resolvePagoTarifaCon`, sin distrito ni `ContextoPagoGestion`. `CierreGestionPendienteRow` necesita `distritoId`, `tiendaId`, `zonaOrdenId`, `montoCobrar`, `cobraComision` (T5.1).
+
+### Salida real
+
+Base local: `DATABASE_URL` comprobada solo como booleano (presente, `localhost`); los de Postgres con `node --env-file=../../.env node_modules/vitest/vitest.mjs run …`.
+
+- `tests/integration/db/tarifas-flexibles-resolver.test.ts`: **29 passed (29)**. Sin base (`env -u DATABASE_URL`), junto con el de respaldo: **2 skipped files, 38 skipped** (con nombre, `describe.skip`).
+- `tests/integration/db/tarifas-flexibles-respaldo.test.ts`: **9 passed (9)**.
+- `tests/unit/guards/tarifas-distrito-pasado.guardia.test.ts`: **3 passed (3)**.
+- Existentes pedidos: `cascada-tarifa` 28 passed (28), `tarifa-vigente-repository` 21 passed (21), `tarifa-zona-mensajero-repository` 4 passed (4), `convergencia-tarifa-listado-cierre` 6 passed (6), `respaldo-identico` (T0.1, literales sin tocar) 49 passed (49), `tarifas-flexibles-migration` 20 passed (20).
+- Los 103 archivos que no van a Postgres y tocan resolvers, pares o superficies (los ajustados mas sus vecinos): **Test Files 103 passed (103); Tests 2086 passed (2086)**.
+- Los 31 de `tests/integration/db/` que tocan resolvers o cierres, con base: **13 passed | 18 failed files**; los 18 rojos estan TODOS en `tests/baseline-rojos.json` (zona central y `ayuda_tienda` sin sembrar, `orden.create` de app vacia…); ninguno nombra codigo de esta tanda. `cierre-detail-congelado` (fuera del baseline) cayo por su doble de Prisma sin `tarifaValor` y se arreglo: 7 passed.
+- `vitest related --run` sobre todos los archivos tocados de `lib/` y `tests/` (con `--env-file`): **REL_EXIT=1; Test Files 164 failed | 707 passed (871); Tests 393 failed | 10246 passed | 719 skipped**. De los 164 archivos rojos, 163 estan en `tests/baseline-rojos.json`; el unico fuera, `tests/unit/repositories/orden-repository.no-regresion-106.test.ts`, era un censo (abajo) y se ajusto → 7 passed. Ningun mensaje de error del log nombra `resolver-tarifas`, `soloModeloViejo`, `tarifaValor` ni `clavePar`.
+- `pnpm run test:guardias`: primera pasada **2 failed | 322 passed | 3 skipped files; 5 failed tests**: 4 de `dependencias-declaradas-presentes` (baseline) y 1 de `rechazo-nombre-466` («cobro por rechazo» en la etiqueta de `soloModeloViejo` de `RechazoTiendaService.ts:253`, frase retirada por la 466): renombrada a «RechazoTiendaService: cobro a la tienda» → `rechazo-nombre-466` 13 passed. Segunda pasada completa: **Test Files 1 failed | 323 passed | 3 skipped (327); Tests 4 failed | 4532 passed | 24 skipped**, los 4 de `dependencias-declaradas-presentes` (baseline).
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: **exit 0**, 0 errores.
+- `pnpm exec eslint` sobre los 59 `.ts` tocados o nuevos: **exit 0; 0 errors, 14 warnings**, todos preexistentes (`IOrdenRepository.ts:11` import sin uso; parametros `_ordenId/_data/_estadosBloqueados` de los dobles de `corregir-*` y `_input` de `corte-diario-seleccion`). Los 4 avisos que metio esta tanda (`_distritoId`/`_d` en dobles) se quitaron.
+
+### Contrapruebas (a mano, una a una; `cp` a respaldo, correr, restaurar con `cp` + `cmp`, `git diff --quiet` en el archivo versionado)
+
+(a) `lib/tarifas/precedencia.ts`, `rangoCobro`: `tienda_general` → 2 y `tienda_zona` → 3:
+```
+× R16: quitando los niveles anteriores, gana tienda_zona 80ms
+× R16: quitando los niveles anteriores, gana tienda_general 114ms
+× R17: la tienda sin pacto en su grupo pero con pacto en la zona usa su zona antes que el grupo 91ms
+× R18: una orden SIN distrito salta los niveles de grupo (gana tienda_zona; sin tienda, la zona) 78ms
+-   "valor": "1002.00",
++   "valor": "1003.00",
+Tests  4 failed | 25 passed (29)
+```
+(a2) misma idea en el pago, `rangoPago`: `grupo` → 4 y `zona_vehiculo` → 3 (decision P2):
+```
+× R19: quitando los niveles anteriores, gana grupo 57ms
+× R19: quitando los niveles anteriores, gana zona_vehiculo 63ms
+× R22: un mensajero sin vehiculo salta los niveles por vehiculo (gana el grupo para todos) 73ms
+× R21: el distrito de la orden que no esta en ningun grupo de la zona del mensajero usa la zona 65ms
+Tests  4 failed | 25 passed (29)
+```
+(b) quitar `zonaId` del WHERE de valores (`whereValores`, rama 1 `{ zonaId: { in } }` → `{}`). Medido: Prisma trata el `{}` dentro del `OR` como «no casa nada», asi que dejan de llegar todos los valores de zona y grupo:
+```
+× R16: quitando los niveles anteriores, gana tienda_grupo 477ms
+× R16: quitando los niveles anteriores, gana tienda_zona 80ms
+… (21 casos, entre ellos)
+× R19: quitando los niveles anteriores, gana zona 48ms
+× R28: la base del % es el flete sin IVA que se cobra a la tienda por ESA gestion 59ms
+× el WHERE de valores no trae nada de una zona, tienda o mensajero que nadie pidio 52ms
+Tests  21 failed | 8 passed (29)
+```
+(b2) la variante que ENSANCHA el WHERE (`{ zonaId: { not: null } }`: trae las zonas que nadie pidio). La eleccion en memoria la tapa (vuelve a exigir la zona), asi que solo la caza el caso que prueba el WHERE donde vive:
+```
+× el WHERE de valores no trae nada de una zona, tienda o mensajero que nadie pidio 63ms
+AssertionError: cOtraZona: expected true to be false // Object.is equality
+Tests  1 failed | 28 passed (29)
+```
+(c) quitar el filtro de grupo por zona (`gruposDeDistritos`):
+- (c1) literal, solo el `zonaId` del WHERE de `grupo_distritos_distrito`: **sobrevive** (`Tests 29 passed (29)`). Es equivalente: la busqueda en memoria solo acepta una fila cuyo `(zona, distrito)` sea un par PEDIDO, y un distrito esta en una sola zona por empresa (unico SLT-75), asi que la fila de otra zona nunca casa. Se deja documentado, no se cuenta como contraprueba.
+- (c2) el filtro por zona entero (WHERE sin zona Y la busqueda casando solo por distrito):
+```
+× R15: con la empresa A, ni pidiendo las zonas y tiendas de B se ve un valor de B 52ms
+× R21: el grupo de un distrito se busca DENTRO de la zona pedida 56ms
++   "9effc4b4-…|08a4d08c-…": "cda53756-…",
++   "cb86690b-…|5656527b-…": "88fea994-…",
+Tests  2 failed | 27 passed (29)
+```
+De punta a punta (eleccion) (c2) tambien es equivalente: `rangoCobro`/`rangoPago` exigen `fila.zonaId === ctx.zonaId` antes de mirar el grupo, y un grupo siempre lleva su zona. Por eso el WHERE de grupos se prueba directamente.
+
+Guardia `tarifas-distrito-pasado` — `null` literal metido en un llamador real:
+- `lib/services/ApiOrdenLecturaService.ts:50` `distritoId: fila.costeo.distritoId` → `distritoId: null`:
+```
+× ningun llamador de app/ o lib/ pasa `null` literal ni olvida el distrito 7ms
++   "lib/services/ApiOrdenLecturaService.ts:50 — par con `distritoId: null` literal",
+Tests  1 failed | 2 passed (3)
+```
+- `lib/services/CorregirDatosClienteService.ts:576` `resolveTarifa(…, distritoId)` → `resolveTarifa(…, null)`:
+```
+× ningun llamador de app/ o lib/ pasa `null` literal ni olvida el distrito 12ms
++   "lib/services/CorregirDatosClienteService.ts:576 — resolveTarifa(...) con `null` literal como distrito",
+Tests  1 failed | 2 passed (3)
+```
+Restaurados los dos (`cmp` igual) → 3 passed.
+
+### Censos
+
+Buscados con Grep: guardias que cuenten metodos de interfaces, archivos de `lib/repositories/_shared`, llamadores de los resolvers, raices de composicion o consultas. `pnpm run test:guardias` no dio rojos nuevos (abajo). Literales ajustados por contrato cambiado (no por la longitud de su fuente):
+- `tests/unit/services/api-orden-lectura-service.test.ts` — `CLAVE_GAM` `store-1|<zona>` → `store-1|<zona>|`: es el formato de `clavePar`, que SLT-52 amplia con el distrito.
+- `tests/unit/repositories/tarifa-vigente-repository.test.ts` — el singular devolvia `TarifaVigente` (sin `tarifaId`/`fulfillment`); ahora `TarifaTienda` igual que el lote (design §5). Caducidad escrita en el test.
+- `toHaveBeenCalledWith` de pares en cotizacion (2 archivos), carga, rechazo, cierre-dia-repository y api-orden-lectura: el par lleva el distrito de la fila (`d1`, `d2`, `d6`, `dist-1` o `null`).
+- `tests/unit/repositories/orden-repository.no-regresion-106.test.ts` — `SELECT_DETALLE_106` (proyeccion congelada del detalle de la API por key) gana `distritoId: true`: el `costeo` lo necesita para el par de la tarifa (R16/R18) y no se publica, igual que `zonaId`. Lo encontro `vitest related`.
+- Nueva guardia con su censo literal: 8 archivos construyen pares y hay 1 llamada a `resolveTarifa`.
+- `ESCRITOR_PENDIENTE_EN_CURSO` (guardia del historial) no cambia: T3 no escribe historial.
+
+### Desvios del design
+
+1. `fleteSinIvaDeGestion` es de T4.1 en el design; T3.2 la necesita para `baseFlete`. Se creo en `lib/utils/ingreso-empresa.ts` con lo minimo: `(resultado, valores: ValoresTienda, montoCobrar) → Decimal` = `importeDe(tienda_flete_<resultado>, pedido)` o `0`. **T4.1 debe hacer que la rama nueva de `derivarIngresoOrden` calcule su flete con ella** (si no, la base del pago y el cobro podrian divergir).
+2. `soloModeloViejo` (puente de transicion): T3.3 cambia el tipo de vuelta del resolver a `TarifaTienda`, pero las funciones que calculan aprenden el modelo nuevo en T4.1/T4.3/T5. Hasta entonces cada superficie desenvuelve la rama vieja (codigo de hoy, R36) y, si la empresa estuviera en el nuevo, LANZA `ModeloNuevoSinSoporte` en vez de convertirlo en «sin tarifa» en silencio. Nadie escribe `tarifa_valor` hasta T6/SLT-54. Debe quedar sin llamadores y borrarse antes de T7.4.
+3. `ContextoPagoGestion` vive en `lib/types/tarifa-flexible.ts` (el design lo describe junto al resolver) para que `ITarifaZonaMensajeroRepository` no importe de `lib/repositories`.
+4. `resolvePagoTarifaCon` se movio al resolver unico (sin cambiar su cuerpo) y `TarifaZonaMensajeroRepository` lo reexporta: asi el resolver no importa la fachada (sin ciclo) y `CierresAdminRepository` sigue igual hasta T5.1.
+5. Pago en el modelo viejo, R39: el resolver delega en `resolvePagoTarifaCon` una vez por par `(zona, vehiculo)` DISTINTO (en serie, puede correr en una tx). En un cierre ese par es uno (el del mensajero); reescribirlo como un `findMany` en lote seria una segunda implementacion de la regla de la 39/398.
+6. Un par sin zona (`zonaId: null`, carga con zona desconocida) en el modelo nuevo solo alcanza «tienda en todas sus zonas»: se pasa `zonaId: ""` a la MISMA `rangoCobro` (ningun uuid casa con `""`), sin una segunda regla. Misma semantica que R6 de la 274.
+7. El test de R39 cuenta el SQL que de verdad sale (`crearPrismaDeTestConEspia`): 3 consultas en el nuevo (interruptor, grupos, valores) y 2 en el viejo, iguales para 1 y para 50.
+
+### Riesgo para el leader
+
+`usaModeloNuevo` es un `findFirst` sin `where` sobre `tarifa_valor`: la empresa la ponen la extension y la RLS. Un cliente SIN extension y como dueno (algunos tests de integracion: `tx as unknown as PrismaClient` sobre el cliente base) veria valores de CUALQUIER empresa y pasaria al modelo nuevo. Los tests de esta tanda siembran `tarifa_valor` solo dentro de transacciones revertidas (no se conto la tabla de la base local: no se uso ningun cliente fuera de vitest). T5.4/T6.4 deben sembrar igual (rollback) o filtrar su empresa; si alguno commitea valores, los tests de cierre con cliente base podrian volverse intermitentes.
+
+### Preguntas de negocio abiertas
+
+Ninguna nueva.
+
+### Veredicto T3
+
+Resolver unico con interruptor por empresa, fachadas con el mismo constructor y distrito de verdad en todos los pares; verde en Postgres con 3 contrapruebas rojas (mas la de la guardia), typecheck 0 y guardias solo con el baseline. Sin commitear: queda para el leader.
+
+### Lote con varias zonas (contraprueba del implementer)
+
+Hueco: borrar `lib/tarifas/precedencia.ts:93` (`if (fila.zonaId !== ctx.zonaId) return null;`, tienda en zona) dejaba verde el archivo de integracion: con un solo par el WHERE `zonaId IN [Z]` ya excluye Z2. En un lote con dos zonas el WHERE trae filas de AMBAS y solo la eleccion lo impide.
+
+Nuevo `describe` en `tests/integration/db/tarifas-flexibles-resolver.test.ts`, «SLT-52 resolver · un lote con varias zonas (R16, R19)», sobre la siembra existente (`afirmarSiembra` primero, sin filas nuevas: `VALORES_DE_A` sigue en 29):
+
+- «R16: la MISMA tienda en Z y en Z2 en un lote: cada par toma el tienda_zona de SU zona»: `resolverCobrosCon(tx, [(T,Z,d3), (T,Z2,null)])` → Z = `1002.00` (`c2`), Z2 = `9002.00` (`cTiendaOtraZona`), los dos `tienda_zona`, `toEqual` literal con `tarifaValorId`.
+- «R19/R20: el MISMO mensajero en Z y en Z2 en un lote: cada gestion toma la zona de SU contexto»: sin `p1`, `resolverPagosCon` con M en Z (d3, sin vehiculo) y en Z2 (sin distrito ni vehiculo) → `505.00` (`p5`) y `9103.00` (`pOtraZona`), nivel `zona`; satelite `605.00` en Z y `null` en Z2.
+
+Los dos valores compiten en el mismo rango, asi que sin el filtro de zona uno de los dos pares sale mal sea cual sea el orden de las filas.
+
+Mutaciones (copia en scratchpad, restaurada con `cp` + `cmp` OK; `git diff --quiet -- lib/tarifas/precedencia.ts` → 0):
+
+1. Borrar linea 93 (`rangoCobro`) → `Tests 1 failed | 30 passed (31)`; cae «R16: la MISMA tienda en Z y en Z2...»:
+   ```
+   -   "tarifaValorId": "551a66ce-…",
+   -   "valor": "9002.00",
+   +   "tarifaValorId": "f1aa0c4c-…",
+   +   "valor": "1002.00",
+   ```
+2. Borrar linea 120 (`rangoPago`, `if (fila.zonaId !== ctx.zonaId) return null;`) → `Tests 1 failed | 30 passed (31)`; cae «R19/R20: el MISMO mensajero en Z y en Z2...»:
+   ```
+   -   "valor": "9103.00",
+   +   "valor": "505.00",
+   ```
+
+Verde final tras restaurar: `Test Files 1 passed (1)`, `Tests 31 passed (31)`. `npx eslint tests/integration/db/tarifas-flexibles-resolver.test.ts` → `No issues found`.
+
 ## Mapa R<n> -> test
 
 | R | Test |
 |---|---|
-| R36 | `tests/unit/tarifas/respaldo-identico.test.ts` (49 casos, modelo viejo; E2E en T7.3) |
+| R36 | `tests/unit/tarifas/respaldo-identico.test.ts` (49 casos, modelo viejo; E2E en T7.3) T3: `tarifas-flexibles-respaldo.test.ts` › «cobro: la tarifa de la tienda en su zona, con los importes de hoy y su `tarifaId`», «cobro: otra tienda en la zona cae al nivel 3…», «cobro: un par sin ninguna fila sigue siendo `null`…», «pago: con vehiculo la tarifa exacta, sin vehiculo la de la zona…» (literales, Postgres). Los dobles de los tests existentes se envolvieron en `{ modelo: "viejo" }` sin tocar un importe. |
 | R1 | `catalogo.test.ts` › «tiene los mismos conceptos que el enum de la base…», «son 17…», «los conceptos de cobro a la tienda son los siete esperados…», «fulfillment y comision COD son de la tienda y no dependen de ningun resultado», «ningun concepto de pago… existe sin un resultado de gestion». En la base: enum de T1. |
 | R2 | `catalogo.test.ts` › «resultado %s tiene exactamente un concepto para %s» (5 resultados × 3 actores, lista viva de `GestionResultado`; contraprueba con «extraviado» → 3 rojos) y «`conceptoPorResultado` lanza ante un resultado sin catalogar…». |
 | R3 | `esquemas-escritura.test.ts` › «un cobro con IVA pasa y conserva lo que llego como texto», «un pago sin IVA pasa…». El guardado con modo es T6.2. |
-| R16 | `precedencia.test.ts` › `rangoCobro` casos 1-5 y «elegirCobros · quitando los niveles anteriores, gana %s» (5), «R16: la eleccion es independiente por concepto…». Postgres en T3.4. |
-| R17 | `precedencia.test.ts` › «R17: la tienda sin pacto en el grupo pero con pacto en la zona usa su zona antes que el grupo». |
-| R18 | `precedencia.test.ts` › `rangoCobro` «orden sin grupo: …» (4) y «R18: orden sin distrito (sin grupo) salta la tienda en el grupo y el grupo». |
-| R19 | `precedencia.test.ts` › `rangoPago` «mensajero: valor propio… → 1» … «zona para todos → 5», «elegirPagos · quitando los niveles anteriores, gana %s» (5), «P2: el grupo para todos gana a la zona para su vehiculo». |
-| R20 | `precedencia.test.ts` › «satelite: …» (6, incluido «sin el nivel del mensajero») y «R20/R32: la satelite elige con su propio concepto y varios resultados a la vez». |
-| R21 | `precedencia.test.ts` › «mensajero: sin grupo: …» (3). |
-| R22 | `precedencia.test.ts` › «mensajero: sin vehiculo: …» (3) y «R22: sin vehiculo gana el grupo para todos aunque haya grupo+vehiculo». |
-| R23 | `precedencia.test.ts` › «R23: un concepto sin fila en ningun nivel es `null`…» (cobro y pago); `calculo.test.ts` › «R23 · un cero escrito vale 0…» (3 casos: `"0.00"`, instancia de Decimal). La distincion «0 vs sin fila» en Postgres es T3.4. |
+| R16 | `precedencia.test.ts` › `rangoCobro` casos 1-5 y «elegirCobros · quitando los niveles anteriores, gana %s» (5), «R16: la eleccion es independiente por concepto…». Postgres en T3.4. T3: `tarifas-flexibles-resolver.test.ts` › «R16: quitando los niveles anteriores, gana %s» (5, Postgres), «R16: el distrito de OTRO grupo de la zona cobra lo de ese grupo…», «R16: la eleccion es por concepto…», «la fachada `TarifaVigenteRepository` devuelve lo mismo…». |
+| R17 | `precedencia.test.ts` › «R17: la tienda sin pacto en el grupo pero con pacto en la zona usa su zona antes que el grupo». T3: `tarifas-flexibles-resolver.test.ts` › «R17: la tienda sin pacto en su grupo pero con pacto en la zona usa su zona antes que el grupo». |
+| R18 | `precedencia.test.ts` › `rangoCobro` «orden sin grupo: …» (4) y «R18: orden sin distrito (sin grupo) salta la tienda en el grupo y el grupo». T3: `tarifas-flexibles-resolver.test.ts` › «R18: una orden SIN distrito salta los niveles de grupo…», «R18: un distrito de la zona que no esta en ningun grupo salta los grupos»; `cascada-tarifa.test.ts` › «SLT-52 R18: la clave distingue el distrito…»; guardia `tarifas-distrito-pasado.guardia.test.ts`; `corregir-ubicacion-importes.test.ts` › «la actual con el distrito de la orden y la propuesta con el distrito elegido». |
+| R19 | `precedencia.test.ts` › `rangoPago` «mensajero: valor propio… → 1» … «zona para todos → 5», «elegirPagos · quitando los niveles anteriores, gana %s» (5), «P2: el grupo para todos gana a la zona para su vehiculo». T3: `tarifas-flexibles-resolver.test.ts` › «R19: quitando los niveles anteriores, gana %s» (5, Postgres), «la fachada `resolvePagos`…». |
+| R20 | `precedencia.test.ts` › «satelite: …» (6, incluido «sin el nivel del mensajero») y «R20/R32: la satelite elige con su propio concepto y varios resultados a la vez». T3: `tarifas-flexibles-resolver.test.ts` › «R20: la satelite usa la misma zona, distrito y precedencia sin el nivel del mensajero». |
+| R21 | `precedencia.test.ts` › «mensajero: sin grupo: …» (3). T3: `tarifas-flexibles-resolver.test.ts` › «R21: el distrito de la orden que no esta en ningun grupo de la zona del mensajero usa la zona», «R21: el grupo de un distrito se busca DENTRO de la zona pedida». |
+| R22 | `precedencia.test.ts` › «mensajero: sin vehiculo: …» (3) y «R22: sin vehiculo gana el grupo para todos aunque haya grupo+vehiculo». T3: `tarifas-flexibles-resolver.test.ts` › «R22: un mensajero sin vehiculo salta los niveles por vehiculo…». |
+| R23 | `precedencia.test.ts` › «R23: un concepto sin fila en ningun nivel es `null`…» (cobro y pago); `calculo.test.ts` › «R23 · un cero escrito vale 0…» (3 casos: `"0.00"`, instancia de Decimal). La distincion «0 vs sin fila» en Postgres es T3.4. T3: `tarifas-flexibles-resolver.test.ts` › «R23: sin ningun nivel, el flete por entregado queda «sin tarifa»…», «R23: un 0 escrito vale "0.00"…», «R23: sin ningun nivel, el pago al mensajero es `null`…»; `tarifas-flexibles-respaldo.test.ts` › «un par de B en una zona sin valores tampoco cae al viejo…». |
 | R26 | `calculo.test.ts` › «204: 14900.00 al 3.50% → … 589.30», «204: 16618.40 al 3.50% → … 657.25», «HALF_UP en el medio exacto…», «el IVA va sobre el importe REDONDEADO…», «porcentaje redondea antes de devolver…». |
 | R27 | `catalogo.test.ts` › «todo cobro a la tienda va sobre el valor del pedido (R27)»; `calculo.test.ts` › «R27: porcentaje sobre un pedido sin valor (base 0) → 0.00». La base real del pedido es T4.1. |
-| R28 | Parcial: `catalogo.test.ts` › «todo pago… va sobre el flete (R28)»; `calculo.test.ts` › «R28: pago en porcentaje sobre un flete 0.00… → 0.00». `baseFlete` = flete sin IVA de la gestion es T3.2/T4.2. |
+| R28 | Parcial: `catalogo.test.ts` › «todo pago… va sobre el flete (R28)»; `calculo.test.ts` › «R28: pago en porcentaje sobre un flete 0.00… → 0.00». `baseFlete` = flete sin IVA de la gestion es T3.2/T4.2. T3: `tarifas-flexibles-resolver.test.ts` › «R28: la base del % es el flete sin IVA que se cobra a la tienda por ESA gestion» (entregado 1001.00; rechazo 2.50 % de 10000.00 = 250.00; reprogramado con 0 escrito y novedad sin flete → "0.00"); `tarifas-flexibles-respaldo.test.ts` › «pago: `modelo: "nuevo"`…» (baseFlete 1500.00). El importe del pago en % es T4.2. |
 | R4 | `tarifas-flexibles-migration.test.ts` › «R4: valor negativo…», «R4: un porcentaje sobre 100…», «R4: un cobro a la tienda sin IVA…» (base). Borde zod: `esquemas-escritura.test.ts` › «un cobro SIN IVA no pasa…», «un cobro con IVA %j no pasa» (6), «un valor %j no pasa» (5), «un porcentaje mayor que 100 no pasa; un monto de 150 si». El lado service es T6.2. |
 | R7 | `tarifas-flexibles-migration.test.ts` › «R7: cada nivel incompatible con su actor…», «R7/R11: un valor con un grupo de OTRA zona…» (base). Service en T6.2. |
 | R8 | `tarifas-flexibles-migration.test.ts` › «R8: dos valores del MISMO nivel (con NULLs)…» (unico; el upsert/reemplazo es T6). |
@@ -490,12 +666,14 @@ Ninguna nueva.
 | R11 | `tarifas-flexibles-migration.test.ts` › «R11: un distrito en DOS grupos…» y «R7/R11: …grupo de OTRA zona…» (base). Service en T6.2. |
 | R12 | `tarifas-flexibles-migration.test.ts` › «R12: sacar un distrito de la zona lo saca del grupo; borrar el grupo…». Ver riesgo de `ZonaRepository.update`. |
 | R14 | Parcial en T1: tipos y entidades en la base (`20261103120300`, ida y vuelta en «R44: el down de las cuatro…») y en `lib/types/historial-accion.ts` (`catalogo-y-choke-point.test.ts`, 80 tipos / 29 entidades). La escritura con antes/despues en la transaccion es T6.2/T6.4. |
-| R15 | `tarifas-flexibles-migration.test.ts` › «R15: con `servi_app` y la empresa A no se ve…» (RLS de las 5 tablas) y «R15: ni siquiera como dueño… (SL017)» (triggers de misma empresa). Repositorios en T3.4/T6.4. |
+| R15 | `tarifas-flexibles-migration.test.ts` › «R15: con `servi_app` y la empresa A no se ve…» (RLS de las 5 tablas) y «R15: ni siquiera como dueño… (SL017)» (triggers de misma empresa). Repositorios en T3.4/T6.4. T3: `tarifas-flexibles-resolver.test.ts` › «R15: con la empresa A, ni pidiendo las zonas y tiendas de B se ve un valor de B» (RLS con `servi_app`, valores y grupos); `tarifas-flexibles-respaldo.test.ts` › «R15: que B tenga un valor nuevo no pasa a A al modelo nuevo». |
 | R34 | Parcial en T1: `tarifas-flexibles-migration.test.ts` › «R34/R45: `gestion_pago_congelado` no tiene columna de IVA…» y el estatico «R34/R45: … no declara ninguna columna de IVA». El calculo sin IVA es T4.2. |
 | R42 | `tarifas-flexibles-migration.test.ts` › «R44/R42: el up no mueve ninguna fila… todo cierre_detail queda en `viejo`». La lectura igual que hoy es T5.3/T5.4. |
 | R43 | `tarifas-flexibles-migration.test.ts` › «R43: con `servi_app`, UPDATE y DELETE de `cierre_detail_concepto` dan 42501…». |
 | R44 | `tarifas-flexibles-migration.test.ts` › «R44/R42: el up no mueve ninguna fila…», «R44: ninguna escribe filas en las tablas del modelo viejo…» (estatico) y «R44: el down de las cuatro deja catalogos y conteos como antes…». |
 | R45 | `tarifas-flexibles-migration.test.ts` › «R45 (P4): un pago al mensajero o a la satelite con IVA 0 o 13 se rechaza; con IVA NULL se acepta» (base). Borde zod: `esquemas-escritura.test.ts` › «%s con ivaPct %j → rechazo en `ivaPct`» (4, incluidos `"0"` y `"0.00"`), «un pago con `ivaPct: null` tampoco pasa»; tipos: «pasar un ValorPago a ivaDe no compila; un ValorCobro si» (`@ts-expect-error`, typecheck). El service es T6.2. |
+| R37 | `tarifas-flexibles-respaldo.test.ts` › «cobro: `modelo: "nuevo"`, solo el concepto puesto, y ni una consulta a `tarifas`» (SQL espiado), «pago: `modelo: "nuevo"` sin pago… y sin leer `tarifa_zona_mensajero`», «un par de B en una zona sin valores tampoco cae al viejo…». |
+| R39 | `tarifas-flexibles-resolver.test.ts` › «cobro: un lote de 1 y uno de 50 ordenes cuestan las mismas consultas (3)», «pago: un lote de 1 y uno de 50 gestiones cuestan las mismas consultas (3)»; `tarifas-flexibles-respaldo.test.ts` › «R39: en el viejo, un lote de 1 y uno de 50 cuestan las mismas consultas…» (2). |
 
 ### T2 — verificación del implementer antes del commit
 
@@ -508,3 +686,15 @@ Ninguna nueva.
   Tests  6 failed | 9 passed (15)
   ```
   Restaurado (`cmp` igual) → 15 passed.
+
+### T3 — verificación del implementer antes del commit
+
+- 12 archivos (resolver, respaldo, guardia de distrito, `tests/unit/tarifas/`, cascada-tarifa, tarifa-vigente-repository, convergencia, no-regresion-106): 282 passed (282), antes del caso multizona; resolver tras el caso multizona: 31 passed (31).
+- Contraprueba propia: borrar `lib/tarifas/precedencia.ts:93` (tienda en otra zona). Antes del caso nuevo, el archivo de integración seguía verde (29/29; solo el unit «la tienda en OTRA zona → null» caía). Tras el caso multizona:
+  ```
+  × R16: la MISMA tienda en Z y en Z2 en un lote: cada par toma el tienda_zona de SU zona
+  Tests  1 failed | 30 passed (31)
+  ```
+  Restaurado (`cmp` + `git diff --quiet`) → 31 passed.
+- `pnpm run test:guardias`: 4 failed, solo `dependencias-declaradas-presentes` (baseline). typecheck exit 0.
+- `tasks.md > Archivos esperados`: añadidos 40 archivos que T3 tocó y no estaban listados (IOrdenRepository, solo-modelo-viejo, la guardia nueva y los tests de dobles ajustados).

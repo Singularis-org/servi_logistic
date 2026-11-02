@@ -7,6 +7,7 @@ import type {
 } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
 import { idEstado, sembrarCatalogoEstados } from "@/tests/fixtures/catalogo-estados";
 import { clavePar, elegirPorCascada, type ParTarifa } from "@/lib/utils/cascada-tarifa";
+import { mapaViejo, tarifaVieja } from "../../fixtures/tarifa-tienda";
 import { ORIGENES_GESTION_FUERA_DEL_CIERRE } from "@/lib/types/orden-historial";
 
 // 💰 FICHA 337 (2026-08-31) — LA CUARTA CONDICION DEL PREDICADO DE PERTENENCIA AL CIERRE.
@@ -124,11 +125,14 @@ type FilaTarifaDoble = TarifaVigenteResuelta & { tiendaId: string | null; zonaId
 
 function buildTarifaRepo(filas: readonly FilaTarifaDoble[] = []): ITarifaVigenteRepository {
   return {
-    resolveTarifa: vi.fn(async (tiendaId: string, zonaId: string | null) => {
-      const par = { tiendaId, zonaId };
-      return elegirPorCascada(filas, [par]).get(clavePar(par)) ?? null;
+    // SLT-52: empresa en el modelo viejo; la fila elegida va envuelta en `TarifaTienda`.
+    resolveTarifa: vi.fn(async (tiendaId: string, zonaId: string | null, distritoId: string | null) => {
+      const par = { tiendaId, zonaId, distritoId };
+      return tarifaVieja(elegirPorCascada(filas, [par]).get(clavePar(par)) ?? null);
     }),
-    resolveTarifas: vi.fn(async (pares: readonly ParTarifa[]) => elegirPorCascada(filas, pares)),
+    resolveTarifas: vi.fn(async (pares: readonly ParTarifa[]) =>
+      mapaViejo(elegirPorCascada(filas, pares)),
+    ),
   } as unknown as ITarifaVigenteRepository;
 }
 
@@ -1873,7 +1877,8 @@ describe("Feature 69 — crearCierre puebla cierre_detail (R3-R9/R11)", () => {
     // y lo primero son los PARES (tienda, zona), no una lista de tiendas.
     const [pares, txArg] = (tarifaRepo.resolveTarifas as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(txArg).toBe(tx);
-    expect(pares).toEqual([{ tiendaId: "t1", zonaId: "z1" }]);
+    // SLT-52 (R16/R18): el par lleva el distrito de la orden (`d1` en `snapshotRow`).
+    expect(pares).toEqual([{ tiendaId: "t1", zonaId: "z1", distritoId: "d1" }]);
 
     const data = ((tx.cierreDetail.createMany as ReturnType<typeof vi.fn>).mock.calls[0][0] as unknown as { data: Record<string, unknown>[] })
       .data;
@@ -2129,10 +2134,10 @@ describe("Feature 69 — crearCierre puebla cierre_detail (R3-R9/R11)", () => {
     expect(tarifaRepo.resolveTarifa).not.toHaveBeenCalled();
     const [pares] = (tarifaRepo.resolveTarifas as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(pares).toEqual([
-      { tiendaId: "t1", zonaId: "z1" },
-      { tiendaId: "t1", zonaId: "z1" },
-      { tiendaId: "t1", zonaId: "z2" },
-      { tiendaId: "t2", zonaId: "z1" },
+      { tiendaId: "t1", zonaId: "z1", distritoId: "d1" },
+      { tiendaId: "t1", zonaId: "z1", distritoId: "d1" },
+      { tiendaId: "t1", zonaId: "z2", distritoId: "d1" },
+      { tiendaId: "t2", zonaId: "z1", distritoId: "d1" },
     ]);
   });
 

@@ -21,6 +21,8 @@ import type {
   TarifaVigenteResuelta,
 } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
 import { clavePar, type ParTarifa } from "@/lib/utils/cascada-tarifa";
+import type { TarifaTienda } from "@/lib/types/tarifa-flexible";
+import { tarifaVieja } from "../fixtures/tarifa-tienda";
 import { MSG_CARGA_SIN_TARIFA, MSG_FILA_SIN_TARIFA } from "@/lib/services/mensajes-tarifa";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { ApiKeyAuthResult } from "@/lib/interfaces/services/IApiKeyAuthService";
@@ -48,13 +50,17 @@ const TARIFA_Z1: TarifaVigenteResuelta = {
 /** Doble del resolver de la cascada: mapa `zonaId -> tarifa`; lo que no este, no resuelve (R2). */
 function tarifaRepo(porZona: Record<string, TarifaVigenteResuelta>): ITarifaVigenteRepository {
   return {
+    // SLT-52: empresa en el modelo viejo; la tarifa va envuelta en `TarifaTienda`.
     resolveTarifa: vi.fn(async (_t: string, zonaId: string | null) =>
-      zonaId === null ? null : porZona[zonaId] ?? null,
+      tarifaVieja(zonaId === null ? null : porZona[zonaId] ?? null),
     ),
     resolveTarifas: vi.fn(
       async (pares: readonly ParTarifa[]) =>
-        new Map<string, TarifaVigenteResuelta | null>(
-          pares.map((p) => [clavePar(p), p.zonaId === null ? null : porZona[p.zonaId] ?? null]),
+        new Map<string, TarifaTienda | null>(
+          pares.map((p) => [
+            clavePar(p),
+            tarifaVieja(p.zonaId === null ? null : porZona[p.zonaId] ?? null),
+          ]),
         ),
     ),
   };

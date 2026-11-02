@@ -8,6 +8,7 @@ import type {
   OrdenParaCorreccionRow,
 } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { TarifaVigente } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
+import { tarifaViejaDeFormula } from "../../fixtures/tarifa-tienda";
 import { ESTADOS_SIN_CORRECCION } from "@/lib/types/correccion-datos-cliente";
 import { ESTATUS_POR_GRUPO } from "@/lib/types/novedad-grupo";
 
@@ -122,7 +123,7 @@ function escenario(
     ) => opciones.escritura ?? "ok",
   );
   const resolveTarifa = vi.fn(async () =>
-    opciones.tarifaFila === undefined ? tarifa() : opciones.tarifaFila,
+    tarifaViejaDeFormula(opciones.tarifaFila === undefined ? tarifa() : opciones.tarifaFila),
   );
   const service = new CorregirDatosClienteService(
     { findParaCorreccion, findDistritoParaCorreccion, corregirDatosCliente },

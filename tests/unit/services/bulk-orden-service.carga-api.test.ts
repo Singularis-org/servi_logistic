@@ -11,6 +11,8 @@ import type {
   TarifaVigenteResuelta,
 } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
 import { clavePar, type ParTarifa } from "@/lib/utils/cascada-tarifa";
+import type { TarifaTienda } from "@/lib/types/tarifa-flexible";
+import { tarifaVieja } from "../../fixtures/tarifa-tienda";
 import {
   MSG_CARGA_SIN_TARIFA,
   MSG_FILA_SIN_TARIFA,
@@ -70,13 +72,17 @@ function buildTarifaRepoPorZona(
   porZona: Record<string, TarifaVigenteResuelta>,
 ): ITarifaVigenteRepository {
   return {
+    // SLT-52: empresa en el modelo viejo; la tarifa va envuelta en `TarifaTienda`.
     resolveTarifa: vi.fn(async (_tiendaId: string, zonaId: string | null) =>
-      zonaId === null ? null : porZona[zonaId] ?? null,
+      tarifaVieja(zonaId === null ? null : porZona[zonaId] ?? null),
     ),
     resolveTarifas: vi.fn(
       async (pares: readonly ParTarifa[]) =>
-        new Map<string, TarifaVigenteResuelta | null>(
-          pares.map((p) => [clavePar(p), p.zonaId === null ? null : porZona[p.zonaId] ?? null]),
+        new Map<string, TarifaTienda | null>(
+          pares.map((p) => [
+            clavePar(p),
+            tarifaVieja(p.zonaId === null ? null : porZona[p.zonaId] ?? null),
+          ]),
         ),
     ),
   };
@@ -599,7 +605,7 @@ describe("cargarViaApi — costoEnvio flete + IVA (feature 98)", () => {
     // distrito de cada fila.
     // Y se piden los pares DISTINTOS: tres filas de la misma zona son UN par.
     expect(tarifaRepo.resolveTarifas).toHaveBeenCalledWith([
-      { tiendaId: "key-user-1", zonaId: "z1" },
+      { tiendaId: "key-user-1", zonaId: "z1", distritoId: "d1" },
     ]);
   });
 
@@ -878,8 +884,8 @@ describe("cargarViaApi — cascada por par (tienda, zona) (274/R25/R26)", () => 
 
     expect(tarifaRepo.resolveTarifas).toHaveBeenCalledTimes(1);
     expect(tarifaRepo.resolveTarifas).toHaveBeenCalledWith([
-      { tiendaId: "key-user-1", zonaId: "z1" },
-      { tiendaId: "key-user-1", zonaId: "z2" },
+      { tiendaId: "key-user-1", zonaId: "z1", distritoId: "d1" },
+      { tiendaId: "key-user-1", zonaId: "z2", distritoId: "d2" },
     ]);
   });
 });

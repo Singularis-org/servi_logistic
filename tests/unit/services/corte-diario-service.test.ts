@@ -105,6 +105,8 @@ function build(opts: {
   } as unknown as Pick<IOrdenRepository, "findUsuarioVehiculoId" | "findEstatusIdByValue">;
   const tarifaZonaRepo: ITarifaZonaMensajeroRepository = {
     resolvePagoTarifa: vi.fn(async () => TARIFA),
+    // SLT-52: el pago por gestion (`resolvePagos`) entra en el service en T5.1; hoy no se llama.
+    resolvePagos: vi.fn(async () => new Map()),
   };
   const logger = { warn: vi.fn() };
   const service = new CorteDiarioService(

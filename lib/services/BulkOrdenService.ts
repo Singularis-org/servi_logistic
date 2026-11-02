@@ -42,6 +42,7 @@ import type {
   TarifaVigenteResuelta,
 } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
 import { clavePar, type ParTarifa } from "@/lib/utils/cascada-tarifa";
+import { soloModeloViejo } from "@/lib/tarifas/solo-modelo-viejo";
 import type { MontoAjustado } from "@/lib/utils/monto-cobrar";
 import { MSG_CARGA_SIN_TARIFA, MSG_FILA_SIN_TARIFA } from "@/lib/services/mensajes-tarifa";
 import { ConflictError } from "@/lib/errors/app-error";
@@ -567,6 +568,9 @@ export class BulkOrdenService implements IBulkOrdenService {
       const parDe = (orden: CreateOrdenData): ParTarifa => ({
         tiendaId,
         zonaId: zonaPorRemision.get(orden.numRemision) ?? null,
+        // SLT-52 (R16/R18): el distrito que la fila resolvio en su geografia; `undefined` = la
+        // fila no lo trae, que para la tarifa es «sin distrito».
+        distritoId: orden.distritoId ?? null,
       });
       // Pares DISTINTOS (design §4.3): dos filas de la misma zona son un solo par a resolver.
       const paresPorClave = new Map<string, ParTarifa>();
@@ -578,7 +582,11 @@ export class BulkOrdenService implements IBulkOrdenService {
 
       const sinTarifa: CreateOrdenData[] = [];
       for (const orden of toCreate) {
-        const tarifa = resueltas.get(clavePar(parDe(orden))) ?? null;
+        // SLT-52: puente hasta T4.3, que ensena el modelo nuevo a la carga.
+        const tarifa = soloModeloViejo(
+          resueltas.get(clavePar(parDe(orden))) ?? null,
+          "carga de ordenes (API por key y masiva)",
+        );
         if (tarifa === null) {
           sinTarifa.push(orden);
           continue;

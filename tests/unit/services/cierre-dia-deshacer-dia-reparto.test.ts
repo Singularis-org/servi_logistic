@@ -92,6 +92,8 @@ function montar(repo: Repo = fakeRepo()) {
   };
   const tarifaZonaRepo: ITarifaZonaMensajeroRepository = {
     resolvePagoTarifa: vi.fn(async () => null),
+    // SLT-52: el pago por gestion (`resolvePagos`) entra en el service en T5.1; hoy no se llama.
+    resolvePagos: vi.fn(async () => new Map()),
   };
   const service = new CierreDiaService(repo, zonaRepo, ordenRepo, signedUrls, tarifaZonaRepo);
   return { service, repo };

@@ -58,7 +58,12 @@ function fakeRepo(overrides: Record<string, unknown> = {}) {
  * es el caso de `costoEstimado: null` (R22). Los casos que quieren importes pasan su mapa.
  */
 function fakeTarifas(entradas: Array<[string, unknown]> = []) {
-  return { resolveTarifas: vi.fn().mockResolvedValue(new Map(entradas)) };
+  // SLT-52: el resolver devuelve `TarifaTienda`; estas empresas estan en el modelo viejo.
+  const envueltas = entradas.map(([clave, t]): [string, unknown] => [
+    clave,
+    t === null ? null : { modelo: "viejo", tarifa: t },
+  ]);
+  return { resolveTarifas: vi.fn().mockResolvedValue(new Map(envueltas)) };
 }
 
 function fakeSignedUrls(map: Record<string, string> = {}): ISignedUrlProvider {
@@ -209,8 +214,11 @@ describe("ApiOrdenLecturaService.listar — `mensajero` en el DTO (feature 404)"
 // esta siempre verde, y en esta ficha es la trampa numero uno.
 // -----------------------------------------------------------------------------------------------
 
-/** Clave del Map de tarifas, con el formato real de `clavePar` (`tiendaId|zonaId`). */
-const CLAVE_GAM = `store-1|${ZONA_FIXTURE.id}`;
+/**
+ * Clave del Map de tarifas, con el formato real de `clavePar`. SLT-52 le añadio el distrito
+ * (`tiendaId|zonaId|distritoId`, vacio = sin distrito): la fila del fixture no tiene distrito.
+ */
+const CLAVE_GAM = `store-1|${ZONA_FIXTURE.id}|`;
 
 /**
  * La aritmetica, hecha aparte y a mano, con la tarifa de `TARIFA_FIXTURE`:
@@ -395,8 +403,8 @@ describe("ApiOrdenLecturaService.listar — zona y costo (feature 415)", () => {
     expect(tarifas.resolveTarifas).toHaveBeenCalledTimes(1);
     // 415/R32: el par lleva el `usuarioId` DEL ACTOR, nunca un `tiendaId` del input.
     expect(tarifas.resolveTarifas).toHaveBeenCalledWith([
-      { tiendaId: "store-1", zonaId: ZONA_FIXTURE.id },
-      { tiendaId: "store-1", zonaId: OTRA_ZONA.id },
+      { tiendaId: "store-1", zonaId: ZONA_FIXTURE.id, distritoId: null },
+      { tiendaId: "store-1", zonaId: OTRA_ZONA.id, distritoId: null },
     ]);
   });
 

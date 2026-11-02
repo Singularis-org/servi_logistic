@@ -190,6 +190,8 @@ function newService(opts: {
   const tarifa = opts.tarifa === undefined ? TARIFA_DEFECTO : opts.tarifa;
   const tarifaZonaRepo: ITarifaZonaMensajeroRepository = {
     resolvePagoTarifa: vi.fn(async () => tarifa),
+    // SLT-52: el pago por gestion (`resolvePagos`) entra en el service en T5.1; hoy no se llama.
+    resolvePagos: vi.fn(async () => new Map()),
   };
   const signedUrls = opts.signedUrls ?? fakeSignedUrls();
   const service = new CierreDiaService(

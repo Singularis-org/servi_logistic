@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { RolValue } from "@prisma/client";
+import type { TarifaTienda } from "@/lib/types/tarifa-flexible";
 
 import { BulkOrdenService } from "@/lib/services/BulkOrdenService";
 import { CotizacionOrdenService } from "@/lib/services/CotizacionOrdenService";
@@ -15,6 +16,7 @@ import type { RawRow } from "@/lib/parsers/spreadsheet";
 import { MSG_FILA_SIN_TARIFA } from "@/lib/services/mensajes-tarifa";
 import type { CostosCotizacion, CotizacionResumen } from "@/lib/types/cotizacion";
 import { clavePar, type ParTarifa } from "@/lib/utils/cascada-tarifa";
+import { tarifaVieja } from "../../fixtures/tarifa-tienda";
 import { derivarIngresoOrden } from "@/lib/utils/ingreso-empresa";
 import { codigoSinComentarios } from "../../fixtures/sin-comentarios";
 
@@ -176,10 +178,13 @@ function buildTarifaRepo(
   };
 
   return {
-    resolveTarifa: vi.fn(async (_tiendaId: string, zonaId: string | null) => paraZona(zonaId)),
+    // SLT-52: empresa en el modelo viejo; la tarifa de hoy va envuelta (`TarifaTienda`).
+    resolveTarifa: vi.fn(async (_tiendaId: string, zonaId: string | null) =>
+      tarifaVieja(paraZona(zonaId)),
+    ),
     resolveTarifas: vi.fn(async (pares: readonly ParTarifa[]) => {
-      const mapa = new Map<string, TarifaVigenteResuelta | null>();
-      for (const par of pares) mapa.set(clavePar(par), paraZona(par.zonaId));
+      const mapa = new Map<string, TarifaTienda | null>();
+      for (const par of pares) mapa.set(clavePar(par), tarifaVieja(paraZona(par.zonaId)));
       return mapa;
     }),
   };
@@ -270,8 +275,8 @@ describe("CotizacionOrdenService — autorizacion y tarifa (T5)", () => {
     expect(tarifaRepo.resolveTarifas).toHaveBeenCalledTimes(1);
     // Tres filas, DOS zonas distintas: se piden los pares DISTINTOS, no uno por fila.
     expect(tarifaRepo.resolveTarifas).toHaveBeenCalledWith([
-      { tiendaId: APIKEY.usuarioId, zonaId: "z1" },
-      { tiendaId: APIKEY.usuarioId, zonaId: "z2" },
+      { tiendaId: APIKEY.usuarioId, zonaId: "z1", distritoId: "d1" },
+      { tiendaId: APIKEY.usuarioId, zonaId: "z2", distritoId: "d2" },
     ]);
     // El resolver SINGULAR es para un par suelto: un lote nunca lo usa (seria el N+1).
     expect(tarifaRepo.resolveTarifa).not.toHaveBeenCalled();
@@ -293,7 +298,7 @@ describe("CotizacionOrdenService — autorizacion y tarifa (T5)", () => {
     expect(repo.findDistritosByCantonIds).toHaveBeenCalled();
     // Y la tarifa se pide DESPUES, ya con la zona en la mano.
     expect(tarifaRepo.resolveTarifas).toHaveBeenCalledWith([
-      { tiendaId: APIKEY.usuarioId, zonaId: "z1" },
+      { tiendaId: APIKEY.usuarioId, zonaId: "z1", distritoId: "d1" },
     ]);
   });
 
@@ -811,8 +816,8 @@ describe("CotizacionOrdenService — tarifa por zona (feature 274, R32-R38)", ()
     // R32/R7: UNA sola consulta por peticion, con los dos pares distintos.
     expect(tarifaRepo.resolveTarifas).toHaveBeenCalledTimes(1);
     expect(tarifaRepo.resolveTarifas).toHaveBeenCalledWith([
-      { tiendaId: APIKEY.usuarioId, zonaId: "z1" },
-      { tiendaId: APIKEY.usuarioId, zonaId: "z3" },
+      { tiendaId: APIKEY.usuarioId, zonaId: "z1", distritoId: "d1" },
+      { tiendaId: APIKEY.usuarioId, zonaId: "z3", distritoId: "d6" },
     ]);
   });
 
@@ -916,8 +921,10 @@ describe("CotizacionOrdenService — tarifa por zona (feature 274, R32-R38)", ()
             throw new Error(`la cotizacion invoco un resolver prohibido: ${prop}`);
           }
           return async (pares: readonly ParTarifa[]) => {
-            const mapa = new Map<string, TarifaVigenteResuelta | null>();
-            for (const par of pares) mapa.set(clavePar(par), resuelta(TARIFA, par.zonaId ?? ""));
+            const mapa = new Map<string, TarifaTienda | null>();
+            for (const par of pares) {
+              mapa.set(clavePar(par), tarifaVieja(resuelta(TARIFA, par.zonaId ?? "")));
+            }
             return mapa;
           };
         },

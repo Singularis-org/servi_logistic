@@ -26,6 +26,7 @@ import type {
   TarifaVigenteResuelta,
 } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
 import { clavePar, type ParTarifa } from "@/lib/utils/cascada-tarifa";
+import { soloModeloViejo } from "@/lib/tarifas/solo-modelo-viejo";
 import { costoEstimadoDe, costoRealDe } from "@/lib/utils/api-orden-costo";
 
 // Subconjunto del repo que este service consume (DI ligera para tests, sin construir toda la
@@ -42,6 +43,14 @@ type LecturaRepo = Pick<
 type LecturaTarifaRepo = Pick<ITarifaVigenteRepository, "resolveTarifas">;
 
 /**
+ * SLT-52 (R16/R18): el par de una fila, con el distrito de la orden. Un solo sitio para construirlo
+ * y para buscarlo en el Map: si el par pedido y el buscado divergieran, la fila quedaria sin tarifa.
+ */
+function parDe(tiendaId: string, fila: ApiOrdenRow): ParTarifa {
+  return { tiendaId, zonaId: fila.costeo.zonaId, distritoId: fila.costeo.distritoId };
+}
+
+/**
  * ⏳ 2026-09-10 (feature 415, R24) — los pares (tienda, zona) DISTINTOS de la pagina, en orden de
  * primera aparicion. Copiado del patron que ya existe (`CotizacionOrdenService.paresDistintos`):
  * la consulta de tarifas es UNA sola y una pagina de 100 ordenes de la misma zona no tiene por que
@@ -53,7 +62,7 @@ function paresDistintos(tiendaId: string, filas: readonly ApiOrdenRow[]): ParTar
   const vistos = new Set<string>();
   const pares: ParTarifa[] = [];
   for (const fila of filas) {
-    const par: ParTarifa = { tiendaId, zonaId: fila.costeo.zonaId };
+    const par = parDe(tiendaId, fila);
     const clave = clavePar(par);
     if (vistos.has(clave)) continue;
     vistos.add(clave);
@@ -149,7 +158,11 @@ export class ApiOrdenLecturaService implements IApiOrdenLecturaService {
   ): Promise<Map<string, TarifaVigenteResuelta | null>> {
     const pares = paresDistintos(ownerId, filas);
     if (pares.length === 0) return new Map();
-    return this.tarifaRepo.resolveTarifas(pares);
+    const resueltas = await this.tarifaRepo.resolveTarifas(pares);
+    // SLT-52: puente hasta T4.3, que ensena el modelo nuevo a `costoEstimadoDe`.
+    const viejas = new Map<string, TarifaVigenteResuelta | null>();
+    for (const [clave, t] of resueltas) viejas.set(clave, soloModeloViejo(t, "API por key: lectura"));
+    return viejas;
   }
 
   async listar(actor: Actor, params: ApiOrdenListarParams): Promise<ApiOrdenListadoDTO> {
@@ -187,7 +200,7 @@ export class ApiOrdenLecturaService implements IApiOrdenLecturaService {
       items: items.map((row) =>
         toListItemDTO(
           row,
-          tarifas.get(clavePar({ tiendaId: actor.usuarioId, zonaId: row.costeo.zonaId })) ?? null,
+          tarifas.get(clavePar(parDe(actor.usuarioId, row))) ?? null,
         ),
       ),
       pagination: { limit, offset, total },
@@ -253,7 +266,7 @@ export class ApiOrdenLecturaService implements IApiOrdenLecturaService {
     // este MISMO spread, sin declarar nada propio. Una sola fila -> un solo par -> UNA llamada.
     const tarifas = await this.tarifasDe(actor.usuarioId, [row]);
     const tarifa =
-      tarifas.get(clavePar({ tiendaId: actor.usuarioId, zonaId: row.costeo.zonaId })) ?? null;
+      tarifas.get(clavePar(parDe(actor.usuarioId, row))) ?? null;
 
     return { ...toListItemDTO(row, tarifa), evidencias, gestiones };
   }

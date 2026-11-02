@@ -18,6 +18,8 @@ import type {
   TarifaVigenteResuelta,
 } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
 import { clavePar, type ParTarifa } from "@/lib/utils/cascada-tarifa";
+import type { TarifaTienda } from "@/lib/types/tarifa-flexible";
+import { tarifaVieja } from "../fixtures/tarifa-tienda";
 import type { ICotizacionOrdenService } from "@/lib/interfaces/services/ICotizacionOrdenService";
 import { cargaMasivaConfig } from "@/lib/config/carga-masiva";
 import { monedaConfig } from "@/lib/config/moneda";
@@ -230,10 +232,13 @@ function buildTarifaRepo(
   };
 
   return {
-    resolveTarifa: vi.fn(async (_tiendaId: string, zonaId: string | null) => paraZona(zonaId)),
+    // SLT-52: empresa en el modelo viejo; la tarifa va envuelta en `TarifaTienda`.
+    resolveTarifa: vi.fn(async (_tiendaId: string, zonaId: string | null) =>
+      tarifaVieja(paraZona(zonaId)),
+    ),
     resolveTarifas: vi.fn(async (pares: readonly ParTarifa[]) => {
-      const mapa = new Map<string, TarifaVigenteResuelta | null>();
-      for (const par of pares) mapa.set(clavePar(par), paraZona(par.zonaId));
+      const mapa = new Map<string, TarifaTienda | null>();
+      for (const par of pares) mapa.set(clavePar(par), tarifaVieja(paraZona(par.zonaId)));
       return mapa;
     }),
   };
@@ -398,7 +403,7 @@ describe("cotizacion por API key — autenticacion (R1/R2/R3/R4)", () => {
     // La tarifa se resuelve SIEMPRE contra el actor de la key, nunca contra el cuerpo. Desde la
     // 274 lo que viaja es el PAR (tienda, zona), y la mitad `tienda` sigue saliendo del actor.
     expect(tarifaRepo.resolveTarifas).toHaveBeenCalledWith([
-      { tiendaId: KEY_ACTOR.usuarioId, zonaId: "z1" },
+      { tiendaId: KEY_ACTOR.usuarioId, zonaId: "z1", distritoId: "d1" },
     ]);
     const paresPedidos = vi.mocked(tarifaRepo.resolveTarifas).mock.calls.flatMap(([pares]) => [
       ...pares,

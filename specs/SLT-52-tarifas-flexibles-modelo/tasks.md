@@ -78,15 +78,15 @@
 
 ## T3 — Resolver único y convivencia (depende de T1, T2)
 
-- [ ] **T3.1** `ParTarifa` gana `distritoId: string | null` obligatorio y `clavePar` lo incluye
+- [x] **T3.1** `ParTarifa` gana `distritoId: string | null` obligatorio y `clavePar` lo incluye
   (`lib/utils/cascada-tarifa.ts`); arreglar llamadores hasta compilar. Cubre: R18.
-- [ ] **T3.2** `lib/repositories/_shared/resolver-tarifas.ts`: `usaModeloNuevo`,
+- [x] **T3.2** `lib/repositories/_shared/resolver-tarifas.ts`: `usaModeloNuevo`,
   `resolverCobrosCon`, `resolverPagosCon` (con `baseFlete` vía `fleteSinIvaDeGestion`). Cubre: R16-R23,
   R28, R36, R37, R39.
-- [ ] **T3.3** Fachadas: `TarifaVigenteRepository.resolveTarifas/resolveTarifa` devuelven
+- [x] **T3.3** Fachadas: `TarifaVigenteRepository.resolveTarifas/resolveTarifa` devuelven
   `TarifaTienda`; `TarifaZonaMensajeroRepository.resolvePagos` nuevo. Interfaces actualizadas.
   Mismo constructor. Hecho: ninguna raíz de composición cambia en el diff.
-- [ ] **T3.4** `tests/integration/db/tarifas-flexibles-resolver.test.ts` (Postgres real, dos
+- [x] **T3.4** `tests/integration/db/tarifas-flexibles-resolver.test.ts` (Postgres real, dos
   empresas): siembra los 5 niveles de cobro y los 5 de pago con importes distintos y señuelos en otra
   zona, otro grupo, otra tienda, otro vehículo y otra empresa; borra nivel a nivel y afirma que gana
   el siguiente; cero escrito vs sin fila; orden sin distrito. Cada caso afirma primero lo sembrado.
@@ -96,7 +96,7 @@
   `precedencia.ts`, (b) quitar `zonaId` del WHERE, (c) quitar el filtro de grupo por zona; correr el
   archivo, pegar la salida ROJA en `progress/impl_SLT-52.md` y revertir. Hecho: tres rojos pegados
   con el nombre del caso que cayó.
-- [ ] **T3.5** [P] `tests/integration/db/tarifas-flexibles-respaldo.test.ts`: empresa A sin valores
+- [x] **T3.5** [P] `tests/integration/db/tarifas-flexibles-respaldo.test.ts`: empresa A sin valores
   nuevos → el resolver devuelve `modelo: "viejo"` y los mismos datos que hoy; empresa B con un solo
   valor nuevo → `modelo: "nuevo"`, sin leer `tarifas` (sus filas viejas no aparecen) y conceptos no
   puestos = sin tarifa. Cubre: R36, R37.
@@ -228,6 +228,8 @@ Código:
 - `lib/repositories/CierreAporteRepository.ts`
 - `lib/repositories/DineroProductosRepository.ts`
 - `lib/repositories/OrdenRepository.ts`
+- `lib/interfaces/repositories/IOrdenRepository.ts`
+- `lib/tarifas/solo-modelo-viejo.ts`
 - `lib/repositories/ZonaRepository.ts`
 - `scripts/verificar-rls-despliegue.ts`
 - `lib/interfaces/repositories/ITarifaVigenteRepository.ts`
@@ -297,6 +299,44 @@ Tests:
 - `tests/integration/db/tarifas-flexibles-snapshot.test.ts`
 - `tests/integration/db/tarifas-flexibles-escritura.test.ts`
 - `tests/integration/carga-api-key-sin-tarifa.test.ts`
+- `tests/fixtures/api-orden-costeo-415.ts`
+- `tests/fixtures/tarifa-tienda.ts`
+- `tests/integration/api/ordenes-api-key-listado.route.test.ts`
+- `tests/integration/api/ordenes-api-key-orden-consulta.route.test.ts`
+- `tests/integration/api/ordenes-api-key-tienda-destino.route.test.ts`
+- `tests/integration/asimetria-sin-tarifa.test.ts`
+- `tests/integration/cotizacion-api-key.test.ts`
+- `tests/integration/db/cierre-detail-congelado.test.ts`
+- `tests/unit/actions/corregir-datos-cliente.composition-root.test.ts`
+- `tests/unit/api/api-key-carga-tope-plan.test.ts`
+- `tests/unit/api/ordenes-api-key-composicion-415.test.ts`
+- `tests/unit/guards/costo-orden-forma-unica.guardia.test.ts`
+- `tests/unit/guards/tarifas-distrito-pasado.guardia.test.ts`
+- `tests/unit/repositories/cierre-dia-repository.test.ts`
+- `tests/unit/repositories/orden-repository.no-regresion-106.test.ts`
+- `tests/unit/repositories/tarifa-vigente-repository.test.ts`
+- `tests/unit/services/api-orden-lectura-service.test.ts`
+- `tests/unit/services/bulk-orden-service.carga-api.test.ts`
+- `tests/unit/services/bulk-orden-service.carga-lote.test.ts`
+- `tests/unit/services/bulk-orden-service.filas-omitidas.test.ts`
+- `tests/unit/services/bulk-orden-service.texto-etiqueta.test.ts`
+- `tests/unit/services/bulk-orden-service.tope-plan.test.ts`
+- `tests/unit/services/cierre-dia-aviso-bloqueo.test.ts`
+- `tests/unit/services/cierre-dia-deshacer-dia-reparto.test.ts`
+- `tests/unit/services/cierre-dia-service-totales-mixtos.test.ts`
+- `tests/unit/services/cierre-dia-service.test.ts`
+- `tests/unit/services/corregir-datos-cliente-bodega-satelite.test.ts`
+- `tests/unit/services/corregir-datos-cliente-geo-retirada.test.ts`
+- `tests/unit/services/corregir-datos-cliente-service.test.ts`
+- `tests/unit/services/corregir-datos-cliente-texto-etiqueta.test.ts`
+- `tests/unit/services/corregir-ubicacion-importes.test.ts`
+- `tests/unit/services/corte-diario-aviso-vencido.test.ts`
+- `tests/unit/services/corte-diario-seleccion.test.ts`
+- `tests/unit/services/corte-diario-service.test.ts`
+- `tests/unit/services/cotizacion-orden-service.test.ts`
+- `tests/unit/services/rechazo-tienda-service.test.ts`
+- `tests/unit/utils/cascada-tarifa.test.ts`
+- `tests/unit/utils/tarifa-especial-por-distrito.test.ts`
 
 Progreso:
 - `progress/impl_SLT-52.md`

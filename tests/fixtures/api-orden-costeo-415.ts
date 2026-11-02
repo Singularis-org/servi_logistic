@@ -47,6 +47,8 @@ export const TARIFA_FIXTURE: TarifaVigenteResuelta = {
 export function costeoFixture(overrides: Partial<ApiOrdenCosteoRow> = {}): ApiOrdenCosteoRow {
   return {
     zonaId: ZONA_FIXTURE.id,
+    // SLT-52: el distrito de la orden completa el par de la tarifa; el fixture no tiene grupo.
+    distritoId: null,
     esCentral: true,
     esZonaEspecial: false,
     montoCobrar: null,

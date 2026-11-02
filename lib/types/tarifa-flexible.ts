@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { TarifaNivel } from "@prisma/client";
+import type { GestionResultado, TarifaNivel } from "@prisma/client";
 
 import {
   CONCEPTOS_PAGO,
@@ -64,6 +64,27 @@ export type TarifaPago =
       /** Flete sin IVA cobrado a la tienda por ESA gestion: base del % del pago (R28, P1). */
       baseFlete: string;
     };
+
+/**
+ * Lo que una gestion aporta para resolver su pago (design §5). `zonaId` es la zona DEL MENSAJERO
+ * que hoy usa cada camino del cierre (R19): la del mensajero al solicitar y en el corte, la destino
+ * en la re-solicitud 477. `distritoId` es el de la ORDEN, que se busca en los grupos de esa zona
+ * (R21). `zonaOrdenId`, `tiendaId` y `montoCobrar` son los de la ORDEN: con ellos se resuelve el
+ * flete a la tienda que es la base del % del pago (R28).
+ */
+export interface ContextoPagoGestion {
+  gestionId: string;
+  resultado: GestionResultado;
+  mensajeroId: string;
+  zonaId: string;
+  vehiculoId: string | null;
+  distritoId: string | null;
+  tiendaId: string;
+  zonaOrdenId: string;
+  /** `orden.monto_cobrar` como texto escala 2; `null` = sin valor (base 0, R27). */
+  montoCobrar: string | null;
+  cobraComision: boolean;
+}
 
 // ---------------------------------------------------------------------------------------------
 // Escritura (la usara `TarifaValorService` en T6.2 y la pantalla de SLT-54).

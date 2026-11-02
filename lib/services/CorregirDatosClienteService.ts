@@ -24,6 +24,7 @@ import {
 } from "@/lib/types/correccion-datos-cliente";
 import { paqueteEnEstanteSatelite } from "@/lib/utils/estados-bodega-satelite";
 import { costosListadoOrden } from "@/lib/utils/ingreso-empresa";
+import { soloModeloViejo } from "@/lib/tarifas/solo-modelo-viejo";
 import {
   mensajeCorreccionCaracterNoImprimible,
   mensajeCorreccionSugerencia,
@@ -527,14 +528,14 @@ export class CorregirDatosClienteService implements ICorregirDatosClienteService
     // ejercita tambien con un cliente TRANSACCIONAL en los tests contra Postgres, donde dos
     // consultas concurrentes sobre la misma conexion no estan definidas. El aviso es un camino
     // raro (solo al cambiar de distrito): dos viajes en serie no son un coste que valga el riesgo.
-    const actual = await this.ubicacionConCostos(orden, {
+    const actual = await this.ubicacionConCostos(orden, orden.distritoId, {
       zonaId: orden.zonaId,
       zonaNombre: orden.zonaNombre,
       distritoNombre: orden.distritoNombre,
       esCentral: orden.esCentral,
       esZonaEspecial: orden.esZonaEspecial,
     });
-    const propuesta = await this.ubicacionConCostos(orden, {
+    const propuesta = await this.ubicacionConCostos(orden, distrito.id, {
       zonaId,
       zonaNombre: distrito.zonaNombre ?? "",
       distritoNombre: distrito.nombre,
@@ -562,12 +563,19 @@ export class CorregirDatosClienteService implements ICorregirDatosClienteService
    */
   private async ubicacionConCostos(
     orden: Pick<OrdenParaCorreccionRow, "tiendaId" | "montoCobrar" | "cobraComision">,
+    // SLT-52 (R16/R18): el distrito de ESA ubicacion (la actual o la propuesta), que decide su
+    // grupo en el modelo nuevo. No va dentro de `ubicacion` porque esa forma es la del DTO.
+    distritoId: string | null,
     ubicacion: Omit<
       UbicacionConCostos,
       "tarifa" | "fleteConIva" | "comisionConIva" | "fleteOrigen"
     >,
   ): Promise<UbicacionConCostos> {
-    const tarifa = await this.tarifas.resolveTarifa(orden.tiendaId, ubicacion.zonaId);
+    // SLT-52: puente hasta T4.3, que ensena el modelo nuevo a la correccion.
+    const tarifa = soloModeloViejo(
+      await this.tarifas.resolveTarifa(orden.tiendaId, ubicacion.zonaId, distritoId),
+      "correccion de datos del cliente",
+    );
     const costos = costosListadoOrden(tarifa, {
       esCentral: ubicacion.esCentral,
       esZonaEspecial: ubicacion.esZonaEspecial,

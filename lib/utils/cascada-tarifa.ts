@@ -24,11 +24,21 @@
 export interface ParTarifa {
   tiendaId: string;
   zonaId: string | null;
+  /**
+   * SLT-52 (R18) — el distrito de la ORDEN, que decide el grupo de distritos en el modelo nuevo.
+   * OBLIGATORIO aunque admita `null` («la orden no tiene distrito»): un llamador que lo olvide no
+   * compila, en vez de saltarse los grupos en silencio. La cascada vieja no lo mira.
+   */
+  distritoId: string | null;
 }
 
-/** Clave estable de un par, para indexar el Map del batch. `|` no aparece en un uuid. */
+/**
+ * Clave estable de un par, para indexar el Map del batch. `|` no aparece en un uuid.
+ * SLT-52: lleva el distrito porque en el modelo nuevo dos ordenes de la misma tienda y zona en
+ * distritos de grupos distintos resuelven valores distintos; sin el, la segunda pisaria a la primera.
+ */
 export function clavePar(par: ParTarifa): string {
-  return `${par.tiendaId}|${par.zonaId ?? ""}`;
+  return `${par.tiendaId}|${par.zonaId ?? ""}|${par.distritoId ?? ""}`;
 }
 
 /** Fila candidata, en lo minimo que la regla necesita ver. */
