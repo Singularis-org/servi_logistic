@@ -1,30 +1,29 @@
 import { describe, it, expect } from "vitest";
 
-import {
-  evaluarMadurezDeCohorte,
-  MINIMO_BASE_PORCENTAJE,
-} from "@/lib/analytics/madurez-cohorte";
-import { efectividadCohorteConfig } from "@/lib/config/efectividad-cohorte";
+import { evaluarMadurezDeCohorte } from "@/lib/analytics/madurez-cohorte";
 
-// FICHA 441 — LOS DOS ESTADOS EN QUE UN PORCENTAJE NO SE PUEDE ESCRIBIR, y la madurez que va al
-// lado del número cuando sí se puede.
+// FICHA 441 — EL ESTADO EN QUE UN PORCENTAJE NO SE PUEDE ESCRIBIR, y la madurez que va al lado
+// del número cuando sí se puede.
+//
+// SLT-62 (2026-10-30, decisión del humano): el suelo de 20 órdenes se QUITÓ. El porcentaje se
+// escribe con cualquier tamaño de base siempre que haya al menos un desenlace. El único estado sin
+// cifra que queda es CERO CERRADAS. Los `describe` «SLT-62 · R<n>» numeran según
+// `specs/SLT-62-porcentaje-efectividad-base-chica/requirements.md`; los demás conservan la
+// numeración de la ficha 441.
 //
 // Las MUTACIONES que este archivo tiene que poner en rojo, y cada una tiene su caso nombrado:
 //
 //   M1 · quitar el guardia de CERO CERRADAS (devolver `entregadas / cargadas` siempre)
 //        → «cero cerradas: no hay porcentaje, ni siquiera sobre las cargadas»
-//   M2 · quitar el guardia de BASE CHICA (soltar la cifra con 3 cerradas)
-//        → «base por debajo del suelo: no se escribe»
-//   M3 · aplicar el suelo sobre las CARGADAS en vez de sobre la base de cada cifra
-//        → «cada cifra se mide contra SU denominador»
-//   M4 · escribir 20 a mano en vez de derivarlo de la tolerancia
-//        → «el suelo se DERIVA de la tolerancia»
-//   M5 · devolver `0` en vez de `null` cuando no hay dato
+//   M2 · reponer un suelo de base en `porcentaje` (sobre las dos cifras o sólo sobre una)
+//        → «SLT-62 · R1», «SLT-62 · R2» y el barrido «SLT-62 · R3»
+//   M3 · devolver `0` en vez de `null` cuando no hay dato
 //        → los casos comprueban `valor === null` y además el MOTIVO
 //
-// Todos los números de los casos reales son MEDIDOS en producción el 2026-09-17, no inventados:
-// zona Puntarenas 0 de 27 cerradas, zona El Coco 3 de 64, zona GAM 389 de 637, y el período del
-// diseño 424 entregadas de 790 cargadas con 265 vivas.
+// Todos los números de los casos reales son MEDIDOS, no inventados: zona Puntarenas 0 de 27
+// cerradas, zona El Coco 3 de 64, zona GAM 389 de 637 y el período del diseño 424 entregadas de
+// 790 cargadas con 265 vivas (producción, 2026-09-17); el recorte del mensajero Jason Barrios, 11
+// entregadas de 12 (`progress/verificacion-analitica-monitoreo-2026-10-29.md`, § 3).
 
 /** Atajo: el reparto tal como lo produce `calcularEfectividad`. */
 function reparto(total: number, entregadas: number, enProceso: number) {
@@ -73,12 +72,10 @@ describe("R2 · CERO CERRADAS: no hay porcentaje, ni siquiera sobre las cargadas
     const m = evaluarMadurezDeCohorte(reparto(27, 0, 27));
 
     expect(m.cerradas).toBe(0);
-    // ⚠ EL ORDEN DE ESTAS ASERCIONES NO ES LIBRE, y se corrigió después de ejecutar la mutación.
-    // La de `sobreCargadas` va PRIMERA porque es la única que muere de verdad: con el guardia
-    // quitado, `sobreCerradas` sigue saliendo `null` de rebote —su base es 0 y el suelo la tapa
-    // igual, sólo que con el motivo equivocado—, así que empezar por ella haría fallar el test
-    // por un matiz de etiqueta y escondería que la pantalla acaba de pintar «0,0 % de
-    // efectividad» sobre 27 órdenes que nadie ha fallado.
+    // ⚠ La de `sobreCargadas` va PRIMERA porque es la que dice el daño en pantalla: con el guardia
+    // quitado, la tarjeta pintaría «0,0 % de efectividad» sobre 27 órdenes que nadie ha fallado.
+    // Desde SLT-62 ya no hay suelo que tape `sobreCerradas` «de rebote»: sin el guardia saldría
+    // `0 / 0 = NaN`, y lo caza la tercera aserción.
     expect(m.sobreCargadas.valor, "0/27 se pintó como 0 %").toBeNull();
     expect(m.sobreCargadas.motivo).toBe("sin_cerradas");
     expect(m.sobreCerradas.valor).toBeNull();
@@ -104,32 +101,63 @@ describe("R2 · CERO CERRADAS: no hay porcentaje, ni siquiera sobre las cargadas
   });
 });
 
-describe("R3 · BASE DEMASIADO CHICA: la cifra que salta sola no se escribe", () => {
-  // ⭑ MUTACIÓN M2. El caso que nombró el humano: «con 3 órdenes cada una vale 33 puntos». Es la
-  // zona El Coco, medida: 3 cerradas de 64 cargadas.
-  it("con 3 cerradas de 64, la cifra sobre cerradas se calla", () => {
+describe("SLT-62 · R1 · base chica: el % sobre cargadas se escribe", () => {
+  // El caso real que abrió la ficha: el recorte de Jason Barrios, 12 cargadas y 11 en Entregado.
+  // «Detalle gestión» daba 91,7 % en la misma pantalla y la tarjeta héroe se callaba.
+  it("con 11 de 12 (1 viva) da 11/12 sin motivo de ausencia", () => {
+    const m = evaluarMadurezDeCohorte(reparto(12, 11, 1));
+
+    expect(m.sobreCargadas.valor).toBeCloseTo(11 / 12, 10);
+    expect(m.sobreCargadas.base).toBe(12);
+    expect(m.sobreCargadas.motivo).toBeNull();
+    // 91,7 %: la cifra que el cliente vio en «Detalle gestión».
+    expect(Number(((m.sobreCargadas.valor ?? 0) * 100).toFixed(1))).toBe(91.7);
+  });
+
+  // El borde de abajo: UNA orden, entregada. Con el suelo de antes era el caso más tapado.
+  it("con 1 de 1 da el 100 %", () => {
+    const m = evaluarMadurezDeCohorte(reparto(1, 1, 0));
+
+    expect(m.sobreCargadas).toEqual({ valor: 1, base: 1, motivo: null });
+    expect(m.sobreCerradas).toEqual({ valor: 1, base: 1, motivo: null });
+  });
+
+  // El borde de arriba del suelo viejo: 19 cargadas. Con `base < 20` era la última tapada.
+  it.each([
+    [19, 0, 0],
+    [19, 7, 3],
+    [19, 19, 0],
+  ])("con %i cargadas y %i entregadas (%i vivas) se escribe", (total, entregadas, vivas) => {
+    const m = evaluarMadurezDeCohorte(reparto(total, entregadas, vivas));
+
+    expect(m.sobreCargadas.valor).toBeCloseTo(entregadas / total, 10);
+    expect(m.sobreCargadas.motivo).toBeNull();
+  });
+});
+
+describe("SLT-62 · R2 · base chica: el % sobre las que tienen desenlace se escribe", () => {
+  // Zona El Coco, medida: 64 cargadas, 3 con desenlace, 2 entregadas. Con el suelo de 20 esta
+  // cifra salía `null`.
+  it("con 2 entregadas de 3 con desenlace (64 cargadas) da 2/3", () => {
     const m = evaluarMadurezDeCohorte(reparto(64, 2, 61));
 
     expect(m.cerradas).toBe(3);
-    expect(m.sobreCerradas.valor, "se pintó un 67 % sobre 3 órdenes").toBeNull();
-    expect(m.sobreCerradas.motivo).toBe("base_insuficiente");
+    expect(m.sobreCerradas.valor).toBeCloseTo(2 / 3, 10);
     expect(m.sobreCerradas.base).toBe(3);
+    expect(m.sobreCerradas.motivo).toBeNull();
+    // Y la de arriba sigue saliendo: 2/64.
+    expect(m.sobreCargadas.valor).toBeCloseTo(2 / 64, 10);
   });
 
-  // ⭑ MUTACIÓN M3. Las dos cifras comparten numerador y NO comparten denominador, así que el
-  // suelo se mide contra el suyo. Si alguien aplicara el suelo sobre las cargadas, este caso
-  // publicaría un 67 % sobre 3 órdenes porque las cargadas (64) sí pasan el suelo.
-  it("cada cifra se mide contra SU denominador, no contra las cargadas", () => {
-    const m = evaluarMadurezDeCohorte(reparto(64, 2, 61));
+  // La cohorte entera cerrada y chica (el recorte de un mensajero, medido el 2026-09-17).
+  it("con 6 entregadas de 8, todas con desenlace, da 6/8 en las dos cifras", () => {
+    const m = evaluarMadurezDeCohorte(reparto(8, 6, 0));
 
-    expect(m.sobreCargadas.valor, "64 cargadas pasan el suelo").not.toBeNull();
-    expect(m.sobreCargadas.motivo).toBeNull();
-    expect(m.sobreCerradas.valor, "3 cerradas no pasan el suelo").toBeNull();
+    expect(m.sobreCerradas).toEqual({ valor: 0.75, base: 8, motivo: null });
+    expect(m.sobreCargadas).toEqual({ valor: 0.75, base: 8, motivo: null });
   });
 
-  // La zona GAM, medida: 389 cerradas de 637 cargadas (248 vivas). Las dos bases sobran del
-  // suelo, así que se escriben las dos cifras. El numerador aquí da igual y por eso no se afirma
-  // nada sobre él: lo que este caso mide son las BASES.
+  // La zona GAM, medida: las dos bases son grandes y siguen escribiéndose (no regresión).
   it("con 389 cerradas de 637 cargadas se escriben las dos", () => {
     const m = evaluarMadurezDeCohorte(reparto(637, 300, 248));
 
@@ -137,41 +165,53 @@ describe("R3 · BASE DEMASIADO CHICA: la cifra que salta sola no se escribe", ()
     expect(m.sobreCargadas.motivo).toBeNull();
     expect(m.sobreCerradas.motivo).toBeNull();
   });
-
-  // El borde exacto, en las dos direcciones. Un `<=` en vez de `<` mueve el suelo una orden y
-  // este par de casos es lo único que lo dice.
-  it("justo en el suelo se escribe; una orden por debajo, no", () => {
-    const enElSuelo = evaluarMadurezDeCohorte(
-      reparto(MINIMO_BASE_PORCENTAJE, 1, 0),
-    );
-    const unaMenos = evaluarMadurezDeCohorte(
-      reparto(MINIMO_BASE_PORCENTAJE - 1, 1, 0),
-    );
-
-    expect(enElSuelo.sobreCerradas.valor).toBeCloseTo(1 / MINIMO_BASE_PORCENTAJE, 10);
-    expect(enElSuelo.sobreCerradas.motivo).toBeNull();
-    expect(unaMenos.sobreCerradas.valor).toBeNull();
-    expect(unaMenos.sobreCerradas.motivo).toBe("base_insuficiente");
-  });
 });
 
-describe("R4 · el suelo se DERIVA de la tolerancia, no se escribe", () => {
-  // ⭑ MUTACIÓN M4. Lo que se comprueba es la DERIVACIÓN, no el número: así, ajustar la
-  // tolerancia en `lib/config/efectividad-cohorte.ts` no obliga a reescribir ningún caso, y
-  // escribir el suelo a mano deja de cuadrar en cuanto alguien mueva la tolerancia.
-  it("en el suelo, una orden mueve la cifra EXACTAMENTE la tolerancia; una menos, más", () => {
-    const tolerancia = efectividadCohorteConfig.MAXIMO_SALTO_POR_ORDEN;
+describe("SLT-62 · R3 · sin cifra ÚNICAMENTE con cero desenlaces, y sólo por «sin cerradas»", () => {
+  /** Todos los repartos válidos con `cargadas ∈ [0, 25]`: vivas ≤ cargadas, entregadas ≤ cerradas. */
+  function* repartosValidos() {
+    for (let cargadas = 0; cargadas <= 25; cargadas++) {
+      for (let vivas = 0; vivas <= cargadas; vivas++) {
+        for (let entregadas = 0; entregadas <= cargadas - vivas; entregadas++) {
+          yield { cargadas, entregadas, vivas };
+        }
+      }
+    }
+  }
 
-    expect(1 / MINIMO_BASE_PORCENTAJE).toBeLessThanOrEqual(tolerancia);
-    expect(1 / (MINIMO_BASE_PORCENTAJE - 1)).toBeGreaterThan(tolerancia);
+  // ANTI-VACÍO: si el generador no produjera nada, el barrido estaría verde sin mirar un caso.
+  // Σ_{c=0..25} (c+1)(c+2)/2 = 3276.
+  it("el barrido recorre los 3276 repartos válidos", () => {
+    expect([...repartosValidos()].length).toBe(3276);
   });
 
-  it("la tolerancia es una fracción utilizable, no un porcentaje ni un cero", () => {
-    const tolerancia = efectividadCohorteConfig.MAXIMO_SALTO_POR_ORDEN;
+  it("valor === null ⇔ cerradas === 0, y el único motivo posible es «sin_cerradas»", () => {
+    const fallos: string[] = [];
+    for (const { cargadas, entregadas, vivas } of repartosValidos()) {
+      const m = evaluarMadurezDeCohorte(reparto(cargadas, entregadas, vivas));
+      const cerradas = cargadas - vivas;
+      const caso = `${cargadas}/${entregadas}/${vivas}`;
 
-    expect(tolerancia).toBeGreaterThan(0);
-    expect(tolerancia).toBeLessThan(1);
-    expect(Number.isInteger(MINIMO_BASE_PORCENTAJE)).toBe(true);
+      for (const [nombre, cifra, base] of [
+        ["sobreCargadas", m.sobreCargadas, cargadas],
+        ["sobreCerradas", m.sobreCerradas, cerradas],
+      ] as const) {
+        if ((cifra.valor === null) !== (cerradas === 0)) {
+          fallos.push(`${caso} ${nombre}: valor=${cifra.valor} con ${cerradas} cerradas`);
+        }
+        if (cifra.motivo !== null && cifra.motivo !== "sin_cerradas") {
+          fallos.push(`${caso} ${nombre}: motivo «${String(cifra.motivo)}»`);
+        }
+        if ((cifra.motivo === null) !== (cifra.valor !== null)) {
+          fallos.push(`${caso} ${nombre}: valor y motivo a la vez, o ninguno`);
+        }
+        if (cifra.valor !== null && Math.abs(cifra.valor - entregadas / base) > 1e-12) {
+          fallos.push(`${caso} ${nombre}: ${cifra.valor} ≠ ${entregadas}/${base}`);
+        }
+      }
+    }
+
+    expect(fallos.slice(0, 10), `${fallos.length} fallos`).toEqual([]);
   });
 });
 

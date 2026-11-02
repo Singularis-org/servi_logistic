@@ -121,7 +121,7 @@ export function EfectividadHeroe({
 /** El cuerpo con datos. Aparte para que el componente de arriba se lea de un vistazo. */
 function Contenido({ madurez }: { readonly madurez: MadurezDeCohorte }) {
   const titular = titularDelHeroe(madurez);
-  const sobreCerradas = fraseSobreCerradas(madurez.sobreCerradas, madurez.cargadas);
+  const sobreCerradas = fraseSobreCerradas(madurez.sobreCerradas);
   const cantidades: Record<(typeof TRAMOS)[number]["id"], number> = {
     entregadas: madurez.entregadas,
     otroDesenlace: madurez.otroDesenlace,

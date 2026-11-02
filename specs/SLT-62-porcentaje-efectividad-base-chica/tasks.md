@@ -6,7 +6,7 @@ el rojo primero.
 
 ## Tanda única
 
-- [ ] **T1 · Tests de la regla en rojo** (R1, R2, R3)
+- [x] **T1 · Tests de la regla en rojo** (R1, R2, R3)
   - En `tests/unit/analytics/madurez-cohorte.test.ts`, borrar los `describe` «R3 · BASE DEMASIADO
     CHICA» y «R4 · el suelo se DERIVA», más los imports de `MINIMO_BASE_PORCENTAJE` y
     `efectividadCohorteConfig`.
@@ -15,7 +15,7 @@ el rojo primero.
   - **Hecho:** `pnpm exec vitest related --run lib/analytics/madurez-cohorte.ts` sale ROJO en R1,
     R2 y R3, y en nada más.
 
-- [ ] **T2 · Quitar el suelo de la regla** (R1, R2, R3). Depende de T1.
+- [x] **T2 · Quitar el suelo de la regla** (R1, R2, R3). Depende de T1.
   - `lib/analytics/madurez-cohorte.ts`:
     - quitar `MINIMO_BASE_PORCENTAJE`, el import de config y la línea del suelo en `porcentaje`;
     - dejar `MotivoSinPorcentaje = "sin_cerradas"`;
@@ -24,7 +24,7 @@ el rojo primero.
   - **Hecho:** T1 en verde, y `rg "MINIMO_BASE_PORCENTAJE|efectividad-cohorte|base_insuficiente"`
     no devuelve nada fuera de `specs/` (los textos se limpian en T3).
 
-- [ ] **T3 · Textos sin aviso, con sus tests primero** (R4, R5, R6). Depende de T2.
+- [x] **T3 · Textos sin aviso, con sus tests primero** (R4, R5, R6). Depende de T2.
   - Primero los tests, y verlos en rojo:
     - crear `tests/unit/components/madurez-textos.test.ts` con el barrido de R6;
     - en `tests/components/EfectividadHeroe.test.tsx`, sustituir el bloque «Zona El Coco» por los
@@ -40,12 +40,12 @@ el rojo primero.
   - **Hecho:** los tres archivos de test en verde, y
     `rg "hacen falta|baile solo|muy pocas para un porcentaje" app/ lib/` vacío.
 
-- [ ] **T4 [P] · Guardia de frontera.** Depende de T2.
+- [x] **T4 [P] · Guardia de frontera.** Depende de T2.
   - En `tests/unit/analytics/tablero-operativo-frontera.guardia.test.ts`, la entrada 441 pierde
     `MINIMO_BASE_PORCENTAJE` y su `motivo` deja de citar el suelo y el config.
   - **Hecho:** `pnpm run test:guardias` en verde.
 
-- [ ] **T5 [P] · Mutaciones.** Depende de T3.
+- [x] **T5 [P] · Mutaciones.** Depende de T3.
   - Ejecutar las cuatro de `design.md > Tests` (reponer el suelo, reponerlo solo en cerradas,
     reponer la frase, quitar `sin_cerradas`). Anotar en `progress/impl_SLT-62.md` qué test cae con
     cada una, con el nombre del test.

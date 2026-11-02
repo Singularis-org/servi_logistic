@@ -314,14 +314,14 @@ describe("La base de los porcentajes — de dónde sale", () => {
     expect(
       screen.getByText("Efectividad de la gestión (Entregado y Devolución a origen por rechazo de 1 orden)"),
     ).toBeInTheDocument();
-    // ⚠ Y CON UNA SOLA ORDEN NO HAY PORCENTAJE (ficha 441): una orden vale 100 puntos. El héroe
-    // enseña las órdenes —«1 entregada de 1 orden»— y la tarjeta de gestión comparte el veto
-    // porque comparte denominador. Sin esto, la fila diría «100 % de efectividad» sobre una
-    // única entrega.
-    // «100 %» es la cifra que NO puede aparecer. (Se busca esa y no un «%» cualquiera: la
-    // propia frase que explica el veto nombra la tolerancia, que se escribe en por ciento.)
-    expect(screen.queryByText(/100\s?%/)).toBeNull();
-    expect(screen.getByText("Entregado: 1 de 1 orden")).toBeInTheDocument();
+    // ⏳ SLT-62 (2026-10-30, decisión del humano): CON UNA SOLA ORDEN SÍ HAY PORCENTAJE. Hasta
+    // entonces el suelo de 20 de la ficha 441 lo callaba y el héroe escribía «Entregado: 1 de 1
+    // orden». Ahora la cifra va limpia: «100 %» en el héroe y en la tarjeta de gestión, que
+    // comparte el veto del héroe porque comparte denominador (`KpisEfectividad.tsx`). Por eso son
+    // DOS cifras sueltas de «100 %» (la línea «100 % de las … con desenlace» no casa con `^…$`).
+    expect(screen.getAllByText(/^100\s*%$/)).toHaveLength(2);
+    expect(screen.getByText("Entregado: 1")).toBeInTheDocument();
+    expect(screen.queryByText("Entregado: 1 de 1 orden")).toBeNull();
   });
 });
 

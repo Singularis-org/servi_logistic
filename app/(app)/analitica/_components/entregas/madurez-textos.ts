@@ -2,25 +2,22 @@
 //
 // Modulo PURO: recibe la madurez ya evaluada (`lib/analytics/madurez-cohorte.ts`) y devuelve
 // cadenas. Sin React, sin SWR y sin reloj, que es lo que permite comprobar aqui —sin renderizar
-// nada— la mitad del encargo que de verdad puede equivocarse: los DOS estados en que un
-// porcentaje no se puede afirmar.
+// nada— la parte del encargo que de verdad puede equivocarse: el estado en que un porcentaje no
+// se puede afirmar.
 //
 // ─── LA REGLA, EN UNA LINEA ─────────────────────────────────────────────────────────────
 //
 // **Si no hay porcentaje, hay una frase.** Nunca un guion, nunca un «0 %», nunca un hueco.
 //
-// Los dos estados y por que cada uno dice lo que dice:
+// Hay un solo estado sin porcentaje: **CERO CERRADAS** (`sin_cerradas`). Medido en produccion: la
+// zona Puntarenas tiene 0 de 27. Un «0,0 %» ahi le dice al encargado que lo hace todo mal, cuando
+// lo que pasa es que no se ha movido nada. Se escribe «0 de 27» —las ordenes, que es el dato que SI
+// existe— y se dice que la cifra aparecera en cuanto cierre la primera.
 //
-//  1. **CERO CERRADAS** (`sin_cerradas`). Medido en produccion: la zona Puntarenas tiene 0 de 27.
-//     Un «0,0 %» ahi le dice al encargado que lo hace todo mal, cuando lo que pasa es que no se
-//     ha movido nada. Se escribe «0 de 27» —las ordenes, que es el dato que SI existe— y se dice
-//     que la cifra aparecera en cuanto cierre la primera.
-//  2. **BASE DEMASIADO CHICA** (`base_insuficiente`). Con menos de veinte, cada orden vale mas de
-//     cinco puntos y el numero salta solo. Se escriben las dos cantidades —entregadas y base— y
-//     se dice cuanto movería una sola orden. **El umbral y la tolerancia se IMPORTAN**
-//     (`MINIMO_BASE_PORCENTAJE`, `efectividadCohorteConfig`): escribir «20» o «5 %» a mano aqui
-//     dejaria dos numeros que se separan el dia que alguien ajuste la tolerancia, y el texto
-//     mentiria sin que nada se pusiera rojo.
+// HISTORIA: la ficha 441 tenia un segundo estado, BASE DEMASIADO CHICA, que callaba la cifra con
+// menos de 20 ordenes y escribia un aviso en su lugar. SLT-62 lo quito por decision del humano
+// (2026-10-30): con al menos un desenlace, el porcentaje se escribe limpio, sin aviso de base
+// pequena. Lo vigila `tests/unit/components/madurez-textos.test.ts`.
 //
 // ─── POR QUE EL HEROE NO DICE «CERRADAS» ────────────────────────────────────────────────
 //
@@ -31,12 +28,7 @@
 // `tests/components/FilaKpisVocabulario.test.tsx`.
 
 import { formatearValor } from "@/components/private/analytics/formato";
-import {
-  MINIMO_BASE_PORCENTAJE,
-  type MadurezDeCohorte,
-  type PorcentajeDeEntrega,
-} from "@/lib/analytics/madurez-cohorte";
-import { efectividadCohorteConfig } from "@/lib/config/efectividad-cohorte";
+import type { MadurezDeCohorte, PorcentajeDeEntrega } from "@/lib/analytics/madurez-cohorte";
 import { NOMBRE_ESTADO } from "@/lib/types/order-status";
 
 import {
@@ -78,10 +70,6 @@ export const TEXTO_HEROE = {
   },
 } as const;
 
-/** «5 %» y «20», escritos desde su unica fuente. Ver la cabecera. */
-const TOLERANCIA = formatearValor(efectividadCohorteConfig.MAXIMO_SALTO_POR_ORDEN, "porcentaje");
-const SUELO = formatearValor(MINIMO_BASE_PORCENTAJE, "conteo");
-
 /**
  * «Entregado: 424». La cifra pasa por el formateador de la analitica.
  *
@@ -119,23 +107,13 @@ export function titularDelHeroe(madurez: MadurezDeCohorte): TitularDelHeroe {
     };
   }
 
-  if (sobreCargadas.motivo === "sin_cerradas") {
-    return {
-      porcentaje: null,
-      titular: "Ninguna ha terminado todavía",
-      detalle:
-        `${cerradas} de ${contarOrdenes(cargadas, ORDENES)} tienen desenlace. ` +
-        "El porcentaje aparece en cuanto se cierre la primera.",
-    };
-  }
-
-  // `base_insuficiente`: se ensenan las ordenes, que es el dato que si existe.
+  // `sin_cerradas`, el unico motivo que queda desde SLT-62.
   return {
     porcentaje: null,
-    titular: `${contarEntregadas(entregadas)} de ${contarOrdenes(cargadas, ORDENES)}`,
+    titular: "Ninguna ha terminado todavía",
     detalle:
-      `Son muy pocas para un porcentaje: con menos de ${SUELO}, ` +
-      `una sola orden movería la cifra más de ${TOLERANCIA}.`,
+      `${cerradas} de ${contarOrdenes(cargadas, ORDENES)} tienen desenlace. ` +
+      "El porcentaje aparece en cuanto se cierre la primera.",
   };
 }
 
@@ -145,37 +123,15 @@ export function titularDelHeroe(madurez: MadurezDeCohorte): TitularDelHeroe {
  *
  * `null` significa NO PINTAR LA LINEA, y pasa en un solo caso: con cero desenlaces, donde el
  * titular de arriba ya dice «0 de 27» y repetirlo con otras palabras es ruido, no informacion.
- * En el otro estado —base chica— SI se escribe, porque ahi el titular habla de las cargadas y
- * esta linea habla de otra base distinta.
+ * Con cualquier otro reparto se escribe, sea cual sea el tamano de la base (SLT-62, que quito
+ * tambien el parametro `cargadas`: solo servia para redactar el aviso de base chica).
  */
-export function fraseSobreCerradas(
-  sobreCerradas: PorcentajeDeEntrega,
-  cargadas: number,
-): string | null {
-  if (sobreCerradas.valor !== null) {
-    return (
-      `${formatearValor(sobreCerradas.valor, "porcentaje")} de las ` +
-      `${contarOrdenes(sobreCerradas.base, ORDENES_CON_DESENLACE)} terminaron en ` +
-      NOMBRE_ESTADO.entregado
-    );
-  }
-
-  if (sobreCerradas.motivo === "sin_cerradas") return null;
-
-  // ⚠ CON LA COHORTE YA CERRADA NO SE ESCRIBE «de N», y no es cosmetica: medido en la app el
-  // 2026-09-17 con el recorte de un mensajero, la frase salia «Sólo 8 de 8 órdenes tienen
-  // desenlace», que se lee como un descuido — «8 de 8» es todas. Lo que falta ahi no es que
-  // hayan cerrado pocas de las cargadas: es que la cohorte entera es chica.
-  if (sobreCerradas.base === cargadas) {
-    return (
-      `Las ${contarOrdenes(cargadas, ORDENES)} tienen desenlace, pero hacen falta ${SUELO} ` +
-      "para que este porcentaje no baile solo."
-    );
-  }
-
+export function fraseSobreCerradas(sobreCerradas: PorcentajeDeEntrega): string | null {
+  if (sobreCerradas.valor === null) return null;
   return (
-    `Sólo ${sobreCerradas.base} de ${contarOrdenes(cargadas, ORDENES)} tienen desenlace: ` +
-    `hacen falta ${SUELO} para que este porcentaje no baile solo.`
+    `${formatearValor(sobreCerradas.valor, "porcentaje")} de las ` +
+    `${contarOrdenes(sobreCerradas.base, ORDENES_CON_DESENLACE)} terminaron en ` +
+    NOMBRE_ESTADO.entregado
   );
 }
 
