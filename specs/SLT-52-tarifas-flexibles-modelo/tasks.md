@@ -17,12 +17,12 @@
 
 ## T0 — Contrato del modelo viejo, antes de tocar nada
 
-- [ ] **T0.1** Crear `tests/unit/tarifas/respaldo-identico.test.ts`: tabla de casos con **importes
+- [x] **T0.1** Crear `tests/unit/tarifas/respaldo-identico.test.ts`: tabla de casos con **importes
   literales** (no calculados con la función) de `derivarIngresoOrden` (los 5 resultados, con y sin
   comisión, GAM sí/no, especial con y sin pacto, sin tarifa), `costosListadoOrden`,
   `desgloseCargaApi`, `pagoPorResultado` e `ingresoBodegaPorResultado` con las firmas de HOY.
   Cubre: R36. Hecho: verde sobre el código actual; commit propio antes de T2.
-- [ ] **T0.2** [P] Listar en `progress/impl_SLT-52.md` los llamadores de cada función pública y de
+- [x] **T0.2** [P] Listar en `progress/impl_SLT-52.md` los llamadores de cada función pública y de
   los dos resolvers (Grep), y los E2E que se correrán en T7. Hecho: lista con ruta:línea.
 
 ## T1 — Esquema (depende de T0)
