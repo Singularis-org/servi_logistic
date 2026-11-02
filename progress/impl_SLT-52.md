@@ -356,13 +356,134 @@ Tras restaurar: 20 passed (20).
 
 `ZonaRepository.update` (`lib/repositories/ZonaRepository.ts:568`) hace `zonaDistrito.deleteMany({ zonaId })` + `createMany` en CADA guardado de la zona. Con la FK compuesta CASCADE de R12, **guardar una zona vaciara todos sus grupos de distritos** aunque no cambie ningun distrito. El esquema es el del design; lo que hay que cambiar es el repositorio (borrar solo los que salen, crear solo los que entran) antes de que existan grupos (T6 o SLT-54).
 
+## T2
+
+MCP `codebase-memory` no respondio (timeout de conexion): todo con Grep/Read. Sin dependencias nuevas.
+
+### Archivos (todos nuevos)
+
+- `lib/tarifas/catalogo.ts` (T2.1) — `CATALOGO_CONCEPTOS` (`satisfies Record<TarifaConcepto, …>`: actor, resultado, base), tipos `ConceptoTienda`/`ConceptoPago`/`ActorPago`, `CONCEPTOS`, `CONCEPTOS_TIENDA`, `CONCEPTOS_PAGO`, `esConceptoTienda`/`esConceptoPago`, `actorDe`, `conceptoPorResultado` (lanza si un resultado no esta catalogado). Solo imports de tipo.
+- `lib/tarifas/precedencia.ts` (T2.2) — `rangoCobro`, `rangoPago`, `elegirCobros`, `elegirPagos`, `whereValores`, tipos `FilaValor`, `ContextoCobro`, `ContextoPago`, `ValorElegido`, `Eleccion`, `WhereValores`. Solo imports de tipo.
+- `lib/tarifas/calculo.ts` (T2.3) — `importeDe(valor: ValorPago | ValorCobro, base: Decimal): Decimal`, `ivaDe(valor: ValorCobro, importe: Decimal): Decimal`, HALF_UP a 2.
+- `lib/types/tarifa-flexible.ts` (T2.4) — `ValorPago`, `ValorCobro`, `ValoresTienda`, `TarifaTienda`, `TarifaPago`, `ModoTarifa`; `escrituraCobroSchema`, `escrituraPagoSchema`, `escrituraValorSchema` (zod 4 `discriminatedUnion("concepto")`), `EscrituraValorInput`.
+- Tests: `tests/unit/tarifas/{catalogo,precedencia,calculo,esquemas-escritura}.test.ts`.
+
+### Salida real
+
+- `node node_modules/vitest/vitest.mjs run tests/unit/tarifas/`: **Test Files 5 passed (5); Tests 179 passed (179)**. Por archivo: catalogo 26 passed, precedencia 62 passed, calculo 15 passed, esquemas-escritura 27 passed, respaldo-identico 49 passed (sin cambios).
+- `pnpm exec vitest related --run` (4 `lib/` nuevos + 4 tests): **REL_EXIT=0; Test Files 4 passed (4); Tests 130 passed (130)**.
+- `pnpm run test:guardias`: **Test Files 1 failed | 322 passed | 3 skipped (326); Tests 4 failed | 4529 passed | 24 skipped (4557)**. Los 4 rojos son `dependencias-declaradas-presentes.guardia` (R2, R6, R2/R6, R4), baseline.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: **exit 0** (incluye el `@ts-expect-error` de `ivaDe(valorPago)`: si sobrara, tsc daria TS2578).
+- `pnpm exec eslint lib/tarifas lib/types/tarifa-flexible.ts tests/unit/tarifas`: **exit 0**, sin avisos.
+
+### Contrapruebas (mutacion a mano, `cp` a respaldo, ejecutar, restaurar con `cp` + `cmp`, verde confirmado)
+
+(1) T2.1 — `RESULTADOS` del test con un valor ficticio (`[...Object.values(GestionResultado), "extraviado"]`):
+```
+     × resultado extraviado tiene exactamente un concepto para tienda 4ms
+     × resultado extraviado tiene exactamente un concepto para mensajero 1ms
+     × resultado extraviado tiene exactamente un concepto para satelite 0ms
+AssertionError: expected [] to have a length of 1 but got +0
+      Tests  3 failed | 26 passed (29)
+```
+Restaurado: 26 passed (26).
+
+(2a) `precedencia.ts`, cobro: `tienda_general` devuelve 2 y `tienda_zona` 3:
+```
+     × tienda en la zona → 2 9ms
+     × tienda en todas sus zonas → 3 1ms
+     × orden sin grupo: tienda en la zona sigue → 2 0ms
+     × quitando los niveles anteriores, gana tienda_zona 3ms
+     × quitando los niveles anteriores, gana tienda_general 2ms
+     × R17: la tienda sin pacto en el grupo pero con pacto en la zona usa su zona antes que el grupo 1ms
+     × R16: la eleccion es independiente por concepto (la tienda pacta solo el flete por entregado) 1ms
+     × varios contextos en una sola llamada eligen cada uno lo suyo 1ms
+      Tests  8 failed | 54 passed (62)
+```
+(2b) `precedencia.ts`, pago: `grupo` devuelve 4 y `zona_vehiculo` 3 (decision P2). En la primera pasada el caso «P2» sobrevivio porque solo miraba la etiqueta del nivel (el rango 3 sigue llamandose «grupo»); se reforzo para mirar la FILA ganadora y se repitio:
+```
+     × P2: el grupo para todos gana a la zona para su vehiculo 1ms
+ FAIL  tests/unit/tarifas/precedencia.test.ts > elegirPagos · … > P2: el grupo para todos gana a la zona para su vehiculo
+      Tests  10 failed | 52 passed (62)
+```
+Restaurado: 62 passed (62).
+
+(3) `calculo.ts`:
+- (3a) `ROUND_HALF_UP` → `ROUND_HALF_EVEN`:
+```
+     × HALF_UP en el medio exacto: 100.10 * 5% = 5.005 → 5.01 (HALF_EVEN daria 5.00) 5ms
+     × un monto con mas de 2 decimales (no deberia llegar: numeric(12,2)) se redondea HALF_UP 1ms
+     × el IVA va sobre el importe REDONDEADO aunque llegue sin redondear: 5.005 → 5.01 → 50% = 2.505 → 2.51 1ms
+     × encadenado: 100.10 al 5% → 5.01; IVA 50% → 2.51 0ms
+      Tests  4 failed | 11 passed (15)
+```
+- (3b) `ROUND_HALF_DOWN` (ademas cae el caso 204 de 589.30):
+```
+     × 204: 14900.00 al 3.50% → 521.50; IVA 13% = 67.795 → HALF_UP 67.80; total 589.30 1ms
+      Tests  5 failed | 10 passed (15)
+```
+- (3c) IVA sobre el importe sin redondear (`round2(importe.mul(…))`):
+```
+     × el IVA va sobre el importe REDONDEADO aunque llegue sin redondear: 5.005 → 5.01 → 50% = 2.505 → 2.51 5ms
+      Tests  1 failed | 14 passed (15)
+```
+- (3d) `importeDe` sin `round2` (encontrado al revisar: `toFixed(2)` redondea al pintar y lo tapaba; se añadio la asercion con `toString()`):
+```
+     × porcentaje redondea antes de devolver: 16618.40 * 3.50% = 581.644 → 581.64 4ms
+      Tests  1 failed | 14 passed (15)
+```
+Restaurado: 15 passed (15).
+
+(4) `tarifa-flexible.ts`: borrada la linea `ivaPct: z.never(…).optional()` del esquema de pago:
+```
+     × mensajero_entregado con ivaPct "13.00" → rechazo en `ivaPct` 4ms
+     × mensajero_rechazo con ivaPct "0" → rechazo en `ivaPct` 1ms
+     × satelite_entregado con ivaPct "0.00" → rechazo en `ivaPct` 0ms
+     × satelite_incidente con ivaPct "13" → rechazo en `ivaPct` 0ms
+     × un pago con `ivaPct: null` tampoco pasa (no hay IVA que anular) 0ms
+      Tests  5 failed | 22 passed (27)
+```
+Restaurado: 27 passed (27).
+
+No ejecutada: quitar el `@ts-expect-error` / dar `ivaPct` a `ValorPago` y correr typecheck. Lo cubre el propio tsc (TS2578 si la directiva sobra), pero no se mutó a mano.
+
+### Censos
+
+Buscados con Grep: listas de carpetas de `lib/`, `readdirSync` sobre `lib`/`lib/types`, guardias que nombren `lib/tarifas` o `tarifa-flexible`. Ninguno cuenta lo que T2 añade; `pnpm run test:guardias` sin rojos nuevos. **Ningun censo ajustado.** Un comentario de `tarifa-flexible.ts` que citaba `parseFloat` se reescribio para no darle falso positivo a ninguna guardia de dinero.
+
+### Decisiones
+
+1. **`elegir` partido en `elegirCobros` / `elegirPagos`** (design §4 da una sola `elegir(filas, contextos, conceptos)`): los contextos de cobro y de pago son tipos distintos; las dos comparten un `elegir` privado. En `elegirPagos` el actor de cada concepto sale del catalogo, asi que mensajero y satelite se eligen en la misma llamada. Devuelven `{ fila, nivel }` (`ValorElegido`); la conversion a `ValorCobro`/`ValorPago` es del resolver (T3.2).
+2. **`ValorCobro` no `extends ValorPago`** (design §5 lo escribe asi): los dos extienden una base comun y estrechan `concepto` (`ConceptoTienda` vs `ConceptoPago`). Con `extends`, `ValorPago.concepto` tendria que admitir conceptos de tienda. `importeDe` acepta `ValorPago | ValorCobro`; `ivaDe` solo `ValorCobro`.
+3. **`ivaDe` redondea `importe` antes de aplicar el IVA** aunque `importeDe` ya lo devuelve redondeado: R26 dice «sobre el importe ya redondeado» y asi no depende de quien llame.
+4. **Escritura**: decimales validados con regex sobre texto (sin pasar a numero); `ivaPct` del pago es `z.never().optional()` (ausente o `undefined` pasan; `"0"` y `null` no), con el error en la ruta `ivaPct`. La compatibilidad nivel↔actor (R7), existencia de zona/grupo/tienda y el rol de la tienda quedan en el service (T6.2), como dice design §8; el esquema solo valida forma, rangos e IVA.
+5. **Ids** con `z.string().min(1)` como `lib/types/tarifa.ts`, no `z.uuid()`.
+6. `rangoCobro`/`rangoPago` devuelven `null` para filas que los CHECK ya prohiben (cobro con vehiculo/mensajero, pago con tienda): una fila mal formada nunca gana.
+
+### Preguntas de negocio abiertas
+
+Ninguna nueva.
+
 ## Mapa R<n> -> test
 
 | R | Test |
 |---|---|
 | R36 | `tests/unit/tarifas/respaldo-identico.test.ts` (49 casos, modelo viejo; E2E en T7.3) |
-| R1 | Parcial en T1: el enum `tarifa_concepto` (17 valores, 5 resultados × 3 actores + fulfillment + comision) existe en la base y en Prisma; lo usan todos los casos de `tarifas-flexibles-migration.test.ts`. La comparacion catalogo↔enum↔`GestionResultado` es T2.1. |
-| R4 | `tarifas-flexibles-migration.test.ts` › «R4: valor negativo…», «R4: un porcentaje sobre 100…», «R4: un cobro a la tienda sin IVA…» (base). El lado service es T6.2. |
+| R1 | `catalogo.test.ts` › «tiene los mismos conceptos que el enum de la base…», «son 17…», «los conceptos de cobro a la tienda son los siete esperados…», «fulfillment y comision COD son de la tienda y no dependen de ningun resultado», «ningun concepto de pago… existe sin un resultado de gestion». En la base: enum de T1. |
+| R2 | `catalogo.test.ts` › «resultado %s tiene exactamente un concepto para %s» (5 resultados × 3 actores, lista viva de `GestionResultado`; contraprueba con «extraviado» → 3 rojos) y «`conceptoPorResultado` lanza ante un resultado sin catalogar…». |
+| R3 | `esquemas-escritura.test.ts` › «un cobro con IVA pasa y conserva lo que llego como texto», «un pago sin IVA pasa…». El guardado con modo es T6.2. |
+| R16 | `precedencia.test.ts` › `rangoCobro` casos 1-5 y «elegirCobros · quitando los niveles anteriores, gana %s» (5), «R16: la eleccion es independiente por concepto…». Postgres en T3.4. |
+| R17 | `precedencia.test.ts` › «R17: la tienda sin pacto en el grupo pero con pacto en la zona usa su zona antes que el grupo». |
+| R18 | `precedencia.test.ts` › `rangoCobro` «orden sin grupo: …» (4) y «R18: orden sin distrito (sin grupo) salta la tienda en el grupo y el grupo». |
+| R19 | `precedencia.test.ts` › `rangoPago` «mensajero: valor propio… → 1» … «zona para todos → 5», «elegirPagos · quitando los niveles anteriores, gana %s» (5), «P2: el grupo para todos gana a la zona para su vehiculo». |
+| R20 | `precedencia.test.ts` › «satelite: …» (6, incluido «sin el nivel del mensajero») y «R20/R32: la satelite elige con su propio concepto y varios resultados a la vez». |
+| R21 | `precedencia.test.ts` › «mensajero: sin grupo: …» (3). |
+| R22 | `precedencia.test.ts` › «mensajero: sin vehiculo: …» (3) y «R22: sin vehiculo gana el grupo para todos aunque haya grupo+vehiculo». |
+| R23 | `precedencia.test.ts` › «R23: un concepto sin fila en ningun nivel es `null`…» (cobro y pago); `calculo.test.ts` › «R23 · un cero escrito vale 0…» (3 casos: `"0.00"`, instancia de Decimal). La distincion «0 vs sin fila» en Postgres es T3.4. |
+| R26 | `calculo.test.ts` › «204: 14900.00 al 3.50% → … 589.30», «204: 16618.40 al 3.50% → … 657.25», «HALF_UP en el medio exacto…», «el IVA va sobre el importe REDONDEADO…», «porcentaje redondea antes de devolver…». |
+| R27 | `catalogo.test.ts` › «todo cobro a la tienda va sobre el valor del pedido (R27)»; `calculo.test.ts` › «R27: porcentaje sobre un pedido sin valor (base 0) → 0.00». La base real del pedido es T4.1. |
+| R28 | Parcial: `catalogo.test.ts` › «todo pago… va sobre el flete (R28)»; `calculo.test.ts` › «R28: pago en porcentaje sobre un flete 0.00… → 0.00». `baseFlete` = flete sin IVA de la gestion es T3.2/T4.2. |
+| R4 | `tarifas-flexibles-migration.test.ts` › «R4: valor negativo…», «R4: un porcentaje sobre 100…», «R4: un cobro a la tienda sin IVA…» (base). Borde zod: `esquemas-escritura.test.ts` › «un cobro SIN IVA no pasa…», «un cobro con IVA %j no pasa» (6), «un valor %j no pasa» (5), «un porcentaje mayor que 100 no pasa; un monto de 150 si». El lado service es T6.2. |
 | R7 | `tarifas-flexibles-migration.test.ts` › «R7: cada nivel incompatible con su actor…», «R7/R11: un valor con un grupo de OTRA zona…» (base). Service en T6.2. |
 | R8 | `tarifas-flexibles-migration.test.ts` › «R8: dos valores del MISMO nivel (con NULLs)…» (unico; el upsert/reemplazo es T6). |
 | R10 | `tarifas-flexibles-migration.test.ts` › «R10: el nombre es unico dentro de la zona…» (base). Service en T6.2. |
@@ -374,4 +495,16 @@ Tras restaurar: 20 passed (20).
 | R42 | `tarifas-flexibles-migration.test.ts` › «R44/R42: el up no mueve ninguna fila… todo cierre_detail queda en `viejo`». La lectura igual que hoy es T5.3/T5.4. |
 | R43 | `tarifas-flexibles-migration.test.ts` › «R43: con `servi_app`, UPDATE y DELETE de `cierre_detail_concepto` dan 42501…». |
 | R44 | `tarifas-flexibles-migration.test.ts` › «R44/R42: el up no mueve ninguna fila…», «R44: ninguna escribe filas en las tablas del modelo viejo…» (estatico) y «R44: el down de las cuatro deja catalogos y conteos como antes…». |
-| R45 | `tarifas-flexibles-migration.test.ts` › «R45 (P4): un pago al mensajero o a la satelite con IVA 0 o 13 se rechaza; con IVA NULL se acepta» (base). El lado zod/service es T2.4/T6.2. |
+| R45 | `tarifas-flexibles-migration.test.ts` › «R45 (P4): un pago al mensajero o a la satelite con IVA 0 o 13 se rechaza; con IVA NULL se acepta» (base). Borde zod: `esquemas-escritura.test.ts` › «%s con ivaPct %j → rechazo en `ivaPct`» (4, incluidos `"0"` y `"0.00"`), «un pago con `ivaPct: null` tampoco pasa»; tipos: «pasar un ValorPago a ivaDe no compila; un ValorCobro si» (`@ts-expect-error`, typecheck). El service es T6.2. |
+
+### T2 — verificación del implementer antes del commit
+
+- `tests/unit/tarifas/` (5 archivos): 179 passed (179). typecheck exit 0; eslint de `lib/tarifas`, `lib/types/tarifa-flexible.ts` y `tests/unit/tarifas`: exit 0.
+- Contraprueba propia: `ROUND_HALF_UP` → `ROUND_DOWN` en `lib/tarifas/calculo.ts:16`:
+  ```
+  × HALF_UP en el medio exacto: 100.10 * 5% = 5.005 → 5.01 (HALF_EVEN daria 5.00)
+  × 204: 14900.00 al 3.50% → 521.50; IVA 13% = 67.795 → HALF_UP 67.80; total 589.30
+  × el IVA va sobre el importe REDONDEADO aunque llegue sin redondear: 5.005 → 5.01 → 50% = 2.505 → 2.51
+  Tests  6 failed | 9 passed (15)
+  ```
+  Restaurado (`cmp` igual) → 15 passed.

@@ -57,20 +57,20 @@
 
 ## T2 — Núcleo puro (depende de T1.1 para los tipos del enum)
 
-- [ ] **T2.1** `lib/tarifas/catalogo.ts` + `tests/unit/tarifas/catalogo.test.ts`: el catálogo
+- [x] **T2.1** `lib/tarifas/catalogo.ts` + `tests/unit/tarifas/catalogo.test.ts`: el catálogo
   coincide con el enum `tarifa_concepto` y tiene, por cada valor de `GestionResultado`, flete a la
   tienda, pago al mensajero y pago a la satélite; fulfillment y comisión sin resultado; base
   `pedido` para la tienda y `flete` para los pagos. Cubre: R1, R2, R27, R28.
   Hecho: añadir un valor ficticio a la lista de resultados en el test lo pone rojo.
-- [ ] **T2.2** [P] `lib/tarifas/precedencia.ts` + `tests/unit/tarifas/precedencia.test.ts`: tabla de
+- [x] **T2.2** [P] `lib/tarifas/precedencia.ts` + `tests/unit/tarifas/precedencia.test.ts`: tabla de
   casos de `rangoCobro`/`rangoPago` (cada nivel gana al siguiente; tienda sin grupo usa su zona;
   orden sin distrito o distrito sin grupo salta los grupos; mensajero sin vehículo salta los de
   vehículo; fila de otra zona/grupo/tienda/vehículo → `null`; elección por concepto independiente) y
   forma de `whereValores`. Cubre: R16, R17, R18, R19, R20, R21, R22.
-- [ ] **T2.3** [P] `lib/tarifas/calculo.ts` + `tests/unit/tarifas/calculo.test.ts`: monto, % con
+- [x] **T2.3** [P] `lib/tarifas/calculo.ts` + `tests/unit/tarifas/calculo.test.ts`: monto, % con
   base, `ivaDe` (solo `ValorCobro`) sobre el importe redondeado, HALF_UP con los casos de la 204
   (589.30, 657.25), cero escrito → `"0.00"` y no ausencia. Cubre: R23, R26.
-- [ ] **T2.4** `lib/types/tarifa-flexible.ts`: `ValorPago` (sin IVA), `ValorCobro` (con `ivaPct`),
+- [x] **T2.4** `lib/types/tarifa-flexible.ts`: `ValorPago` (sin IVA), `ValorCobro` (con `ivaPct`),
   `TarifaTienda`, `TarifaPago`, esquemas zod de escritura discriminados por actor (`ivaPct`
   obligatorio en cobros, prohibido en pagos). Test `tests/unit/tarifas/esquemas-escritura.test.ts`:
   un pago con `ivaPct` (también `"0"`) no pasa; un cobro sin `ivaPct` no pasa. Cubre: R3, R4, R45.
