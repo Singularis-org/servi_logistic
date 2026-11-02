@@ -244,8 +244,125 @@ Y el resolver del mensajero hoy es `resolvePagoTarifa(zonaId, vehiculoId)` + la 
 
 Total: 8 archivos distintos.
 
+## T1
+
+MCP `codebase-memory` no respondio (timeout de conexion): todo con Grep/Read.
+
+### Archivos tocados
+
+Migraciones nuevas (timestamps los de `tasks.md`, sin cambios en «Archivos esperados»):
+- `db/migrations/20261103120000_tarifas_flexibles_enums/{migration,down}.sql` — 5 enums (T1.1).
+- `db/migrations/20261103120100_tarifas_flexibles_tablas/{migration,down}.sql` — 5 tablas, `cierre_detail.tarifa_modelo DEFAULT 'viejo'`, CHECKs, unicos (NULLS NOT DISTINCT a mano), indices, FKs simples y compuestas, RLS + `<t>_por_empresa`, GRANT y `REVOKE UPDATE, DELETE` de `cierre_detail_concepto` (T1.2). El down se para con RAISE si hay algun `cierre_detail` en `nuevo`.
+- `db/migrations/20261103120200_tarifas_flexibles_misma_empresa/{migration,down}.sql` — GENERADA con `tsx scripts/generar-misma-empresa.ts --faltantes`: 10 triggers de FK + 5 `sin_cambio_de_empresa` (T1.3).
+- `db/migrations/20261103120300_historial_tarifas_flexibles/{migration,down}.sql` — 5 tipos + 2 entidades, solo `ADD VALUE`; down con la funcion dinamica de SLT-76 renombrada `_slt52` (T1.4).
+
+Codigo:
+- `db/schema.prisma` — 5 enums, 5 modelos con sus `map`, inversas en Zona/ZonaDistrito/Usuario/Vehiculo/CierreDetail/GestionOrden/Organizacion, `CierreDetail.tarifaModelo`, 5+2 valores en `HistorialAccionTipo`/`HistorialAccionEntidad`.
+- `lib/db/modelos-de-negocio.ts` — los 5 modelos como negocio (T1.5).
+- `lib/db/fk-de-negocio.ts` — regla de la FK compuesta CUBIERTA por columna compartida (ver Decisiones).
+- `lib/types/historial-accion.ts` — 5 tipos (4 `mueve_dinero`, 1 `hace_desaparecer`), 2 entidades, etiquetas (T1.4).
+- `lib/types/historial-accion-etiquetas.ts` — fuentes/constructores de etiqueta de `tarifa_valor` y `grupo_distritos` (el mapa es exhaustivo: sin esto no compila).
+- `lib/repositories/ApiKeyRepository.ts` — el `EXISTS` de `tarifas` tambien mira `tarifa_valor` (ver Decisiones).
+
+Tests:
+- NUEVO `tests/integration/db/tarifas-flexibles-migration.test.ts` (T1.6), base propia `slt52_tf_<rand>`.
+- `tests/unit/guards/_unicos-sin-empresa.ts` — 3 anclados: `cierre_detail_concepto_cierre_detail_id_concepto_key`, `gestion_pago_congelado_gestion_orden_id_actor_key`, `grupo_distritos_id_zona_id_key`.
+- `tests/unit/guards/rls-por-empresa.guardia.test.ts` — 80 → 85 tablas.
+- `tests/unit/guards/historial-accion-escrituras-cubiertas.guardia.test.ts` — 75 → 80 tipos y lista nueva `ESCRITOR_PENDIENTE_EN_CURSO` (ver Decisiones).
+- `tests/fixtures/api-key-dependencias-usuario.ts` — clasifica `TarifaValor.tienda` (bloquea), `.mensajero` y `.actualizadoPorUsuario` (no_alcanzable).
+- `tests/unit/db/fk-de-negocio.test.ts` — 3 casos de la regla nueva (acepta; lanza si falta la FK simple en origen o en destino).
+- `tests/integration/db/api-key-eliminabilidad.test.ts` — caso nuevo «precio propio en `tarifa_valor` → `tarifas: true`».
+- Colas de enum del historial actualizadas (+5 tipos / +2 entidades): `caja-459-migration`, `correccion-resultado-gestion-migration`, `historial-accion-{cobro-tienda,conciliacion-bodega,orden-zona-reconciliada,pago-mensajero-ajustado,zona-pago-mensajero,zona-sinpe}-migration`, `tests/unit/historial-accion/catalogo-y-choke-point.test.ts`.
+
+### Base local
+
+- `DATABASE_URL` comprobada solo como booleano: presente y `localhost` (sin `DIRECT_URL`). Los comandos se corrieron con `node --env-file=../../.env` (el worktree no tiene `.env`).
+- `prisma generate` corrido (node_modules compartido: el cliente ya conoce `tarifa_modelo` y las 5 tablas; otro worktree contra una base SIN estas migraciones vera `column (not available) does not exist` en `cierreDetail.create`).
+- `prisma migrate deploy` aplico las 4. Luego se bajaron 0300/0200/0100 con sus `down.sql` (+ borrado de sus filas en `_prisma_migrations`), se corrigio el nombre de un indice de >63 caracteres (drift) y se volvieron a aplicar. Estado final: `migrate diff --from-config-datasource --to-schema` → «This is an empty migration» (sin drift).
+
+### Salida real
+
+- `tests/integration/db/tarifas-flexibles-migration.test.ts`: **20 passed (20)**, Duration 4.30s. Sin base (`env -u DATABASE_URL`): **3 passed | 17 skipped** (los 17 con nombre, `describe.skipIf`).
+- `pnpm run test:guardias` (`vitest run guard`): **1 failed | 325 passed (326) files; 4 failed | 4552 passed | 1 skipped**. Los 4 rojos son `dependencias-declaradas-presentes.guardia` (el `init.sh` de HEAD no invoca `scripts/verificar-dependencias.mjs`: `git show HEAD:init.sh | grep -c verificar-dependencias` = 0). Preexistente, ajeno a T1.
+- `tests/unit/tarifas/respaldo-identico.test.ts`: **49 passed (49)**. Con `tests/unit/db/fk-de-negocio.test.ts`: 61 passed (61).
+- `NODE_OPTIONS=--max-old-space-size=8192 tsc --noEmit`: **exit 0**.
+- `eslint` sobre los 22 `.ts` tocados: **exit 0**, sin avisos.
+- Tests del historial tocados + `api-key-eliminabilidad` + `zona-central-guarda-y-rastro` (11 archivos): **10 passed | 1 failed; 175 passed | 6 failed**. Los 6 rojos son casos PREEXISTENTES de `api-key-eliminabilidad` (R8, R9, R10, «cada cuenta», «otra tienda»): `referencia a otra empresa: tarifas.zona_id -> zona` / `orden.tienda_id` — siembran con la zona de `fksDeOrden()` (otra empresa) en una transaccion con empresa nueva (SL017). El caso NUEVO de SLT-52 y «cuenta LIMPIA» pasan.
+- Rojos preexistentes vistos de paso y NO tocados: `historial-accion-migration` (politicas/FK de SL-17), `orden-traspaso-migration`, `wallet-458-migration`, `abono-tienda-457-migration` (colas de `wallet_categoria`, no del historial), `wallet-461-migration (a)` (corte `slice(-6,-4)` obsoleto desde SL-36), `455/snapshot-lectura` (base sin zona central).
+- `vitest related`: ver abajo.
+
+### Contrapruebas (mutacion en `20261103120100_tarifas_flexibles_tablas/migration.sql`, sin commitear; el test construye su base desde el archivo; restaurado con `cp` + `cmp` tras cada una)
+
+(a) Quitar el CHECK `tarifa_valor_iva_solo_tienda`:
+```
+ × R4: un cobro a la tienda sin IVA, o con IVA fuera de 0..100, se rechaza; 0 y 13 se aceptan 12ms
+ × R45 (P4): un pago al mensajero o a la satelite con IVA 0 o 13 se rechaza; con IVA NULL se acepta 10ms
+ Tests  2 failed | 18 passed (20)
+```
+(b) Quitar `NULLS NOT DISTINCT` de `tarifa_valor_nivel_key`:
+```
+ × R8: dos valores del MISMO nivel (con NULLs) se rechazan; niveles distintos del mismo concepto conviven 11ms
+AssertionError: se esperaba rechazo por tarifa_valor_nivel_key: expected { ok: true } to deeply equal { ok: false, code: '23505', constraint: 'tarifa_valor_nivel_key' }
+ Tests  1 failed | 19 passed (20)
+```
+(c) Quitar el `REVOKE UPDATE, DELETE` (y dar UPDATE/DELETE en el GRANT):
+```
+ × R43: con `servi_app`, UPDATE y DELETE de `cierre_detail_concepto` dan 42501; el INSERT y el re-congelado del pago, no 15ms
+AssertionError: expected { ok: true } to match object { ok: false, code: '42501' }
+ Tests  1 failed | 19 passed (20)
+```
+(d) Politica `tarifa_valor_por_empresa` abierta (`USING (true) WITH CHECK (true)`):
+```
+ × R15: con `servi_app` y la empresa A no se ve, ni se escribe, ni se borra nada de B en las cinco tablas 18ms
+AssertionError: tarifa_valor: expected { propias: 1, deB: 1 } to deeply equal { propias: 1, deB: +0 }
+ Tests  1 failed | 19 passed (20)
+```
+Tras restaurar: 20 passed (20).
+
+### Decisiones tecnicas
+
+1. **FK compuestas vs guardia R39.** `fkDeNegocio` lanzaba ante cualquier FK compuesta entre modelos de negocio (y el generador de T1.3 con ella). Se añadio una regla estrecha: la compuesta queda cubierta si comparte una columna que es FK simple de negocio al MISMO modelo en origen y destino (aqui `zona_id` → `Zona`). Por eso `GrupoDistritosDistrito` lleva ademas una FK simple `zona_id → zona` CASCADE. La guardia sigue roja para la compuesta sin esa columna (su caso existente no cambio) y hay 3 tests unitarios nuevos.
+2. **`ESCRITOR_PENDIENTE_EN_CURSO`** en la guardia del historial: T1.4 mete los 5 tipos y sus productores llegan en T6.2. La lista solo puede bajar: si el censo declara el productor, la entrada pone la guardia en rojo hasta quitarla. Debe quedar vacia de SLT-52 antes de T7.4.
+3. **`ApiKeyRepository`**: la guardia 373 exige clasificar toda FK a `usuario`. `TarifaValor.tienda` es CASCADE como `Tarifa.tienda`, y la decision humana de 2026-09-04 dice que una tarifa no desaparece al «eliminar una API key»; se extendio el `EXISTS` de `tarifas` a `tarifa_valor` (una linea) con su caso de integracion.
+4. `gestion_pago_congelado` lleva, ademas de los dos CHECK del design, `concepto_del_actor` y `base_solo_porcentaje` (el design dice «base solo en porcentaje»). Ninguna columna de IVA.
+5. Nombre de indice `grupo_distritos_distrito_organizacion_id_zona_id_distrito_i_key`: el de Prisma truncado a 63; con el truncado de Postgres habia drift.
+
+### Verificacion del implementer (re-ejecutado antes del commit de T1)
+
+- `migrate status` contra la base local (localhost, comprobado como booleano): 293 migraciones, «Database schema is up to date!».
+- 15 archivos (el nuevo + los 13 tests modificados + respaldo-identico): **14 passed | 1 failed files; 344 passed | 6 failed**. Los 6 rojos son de `api-key-eliminabilidad` (R8 x2, R9, R10, «cada cuenta», «otra tienda»), archivo listado en `tests/baseline-rojos.json` (SL-11, app vacia, desde 2026-10-22). El caso nuevo de SLT-52 pasa.
+- `tarifas-flexibles-migration.test.ts` solo: **20 passed (20)**; sin `DATABASE_URL`: **3 passed | 17 skipped**.
+- Contraprueba propia: CHECK `tarifa_valor_iva_solo_tienda` cambiado a `TRUE OR TRUE` →
+  ```
+  × R4: un cobro a la tienda sin IVA, o con IVA fuera de 0..100, se rechaza; 0 y 13 se aceptan 34ms
+  × R45 (P4): un pago al mensajero o a la satelite con IVA 0 o 13 se rechaza; con IVA NULL se acepta 20ms
+  Tests  2 failed | 18 passed (20)
+  ```
+  Restaurado (`cmp` igual, `git diff` limpio en el archivo) → 20 passed.
+- `pnpm run test:guardias`: 1 failed | 322 passed | 3 skipped files; 4 failed, todos en `dependencias-declaradas-presentes.guardia` (listado en `tests/baseline-rojos.json`).
+- typecheck (8 GB): exit 0. eslint sobre todos los `.ts` tocados o nuevos: exit 0.
+- Cambios fuera de las rutas previstas de T1, revisados y conservados (todos los fuerza T1): `fk-de-negocio.ts` (regla de FK compuesta cubierta; sin ella el generador de T1.3 lanza), `ApiKeyRepository.ts` (la guardia de FKs a `usuario` exige clasificar `tarifa_valor.tienda_id`, que es CASCADE), `historial-accion-etiquetas.ts` (mapa exhaustivo, no compila sin los 5 tipos), fixture de api-key, colas de enum en 8 tests de migracion del historial y catalogo, y los conteos de las guardias rls/historial. Añadidos a «Archivos esperados» de `tasks.md`.
+
+### Riesgo para el leader (fuera de T1, no tocado)
+
+`ZonaRepository.update` (`lib/repositories/ZonaRepository.ts:568`) hace `zonaDistrito.deleteMany({ zonaId })` + `createMany` en CADA guardado de la zona. Con la FK compuesta CASCADE de R12, **guardar una zona vaciara todos sus grupos de distritos** aunque no cambie ningun distrito. El esquema es el del design; lo que hay que cambiar es el repositorio (borrar solo los que salen, crear solo los que entran) antes de que existan grupos (T6 o SLT-54).
+
 ## Mapa R<n> -> test
 
 | R | Test |
 |---|---|
 | R36 | `tests/unit/tarifas/respaldo-identico.test.ts` (49 casos, modelo viejo; E2E en T7.3) |
+| R1 | Parcial en T1: el enum `tarifa_concepto` (17 valores, 5 resultados × 3 actores + fulfillment + comision) existe en la base y en Prisma; lo usan todos los casos de `tarifas-flexibles-migration.test.ts`. La comparacion catalogo↔enum↔`GestionResultado` es T2.1. |
+| R4 | `tarifas-flexibles-migration.test.ts` › «R4: valor negativo…», «R4: un porcentaje sobre 100…», «R4: un cobro a la tienda sin IVA…» (base). El lado service es T6.2. |
+| R7 | `tarifas-flexibles-migration.test.ts` › «R7: cada nivel incompatible con su actor…», «R7/R11: un valor con un grupo de OTRA zona…» (base). Service en T6.2. |
+| R8 | `tarifas-flexibles-migration.test.ts` › «R8: dos valores del MISMO nivel (con NULLs)…» (unico; el upsert/reemplazo es T6). |
+| R10 | `tarifas-flexibles-migration.test.ts` › «R10: el nombre es unico dentro de la zona…» (base). Service en T6.2. |
+| R11 | `tarifas-flexibles-migration.test.ts` › «R11: un distrito en DOS grupos…» y «R7/R11: …grupo de OTRA zona…» (base). Service en T6.2. |
+| R12 | `tarifas-flexibles-migration.test.ts` › «R12: sacar un distrito de la zona lo saca del grupo; borrar el grupo…». Ver riesgo de `ZonaRepository.update`. |
+| R14 | Parcial en T1: tipos y entidades en la base (`20261103120300`, ida y vuelta en «R44: el down de las cuatro…») y en `lib/types/historial-accion.ts` (`catalogo-y-choke-point.test.ts`, 80 tipos / 29 entidades). La escritura con antes/despues en la transaccion es T6.2/T6.4. |
+| R15 | `tarifas-flexibles-migration.test.ts` › «R15: con `servi_app` y la empresa A no se ve…» (RLS de las 5 tablas) y «R15: ni siquiera como dueño… (SL017)» (triggers de misma empresa). Repositorios en T3.4/T6.4. |
+| R34 | Parcial en T1: `tarifas-flexibles-migration.test.ts` › «R34/R45: `gestion_pago_congelado` no tiene columna de IVA…» y el estatico «R34/R45: … no declara ninguna columna de IVA». El calculo sin IVA es T4.2. |
+| R42 | `tarifas-flexibles-migration.test.ts` › «R44/R42: el up no mueve ninguna fila… todo cierre_detail queda en `viejo`». La lectura igual que hoy es T5.3/T5.4. |
+| R43 | `tarifas-flexibles-migration.test.ts` › «R43: con `servi_app`, UPDATE y DELETE de `cierre_detail_concepto` dan 42501…». |
+| R44 | `tarifas-flexibles-migration.test.ts` › «R44/R42: el up no mueve ninguna fila…», «R44: ninguna escribe filas en las tablas del modelo viejo…» (estatico) y «R44: el down de las cuatro deja catalogos y conteos como antes…». |
+| R45 | `tarifas-flexibles-migration.test.ts` › «R45 (P4): un pago al mensajero o a la satelite con IVA 0 o 13 se rechaza; con IVA NULL se acepta» (base). El lado zod/service es T2.4/T6.2. |

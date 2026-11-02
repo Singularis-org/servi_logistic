@@ -700,6 +700,34 @@ const SIN_ESCRITOR_DESDE: TiposSinEscritor[] = [
   },
 ];
 
+/**
+ * SLT-52 (tasks T1.4 -> T6.2) — tipos que YA estan en el enum y AUN no tienen escritor porque la
+ * feature que los añade los escribe en una tanda posterior de la misma rama. Distinto de
+ * `SIN_ESCRITOR_DESDE` (retirados para siempre): estos estan en camino. La entrada nombra la ficha y
+ * la task que los escribe; el test de arriba la pone en rojo en cuanto el censo los declara, asi que
+ * no puede quedarse olvidada con el productor ya hecho. Antes de mergear la ficha tiene que estar
+ * vacia de sus tipos (SLT-52 T7.4).
+ */
+interface TiposConEscritorPendiente {
+  tipos: string[];
+  ficha: string;
+  tarea: string;
+}
+
+const ESCRITOR_PENDIENTE_EN_CURSO: TiposConEscritorPendiente[] = [
+  {
+    tipos: [
+      "tarifa_valor_fijado",
+      "tarifa_valor_quitado",
+      "grupo_distritos_creado",
+      "grupo_distritos_cambiado",
+      "grupo_distritos_borrado",
+    ],
+    ficha: "SLT-52",
+    tarea: "T6.2 (TarifaValorService / GrupoDistritosService)",
+  },
+];
+
 /** Los archivos `.ts` de `lib/`, relativos a la raiz. */
 function archivosDeLib(dir = "lib"): string[] {
   return readdirSync(path.join(RAIZ, dir), { withFileTypes: true }).flatMap((e) => {
@@ -1076,10 +1104,11 @@ describe("362/R16 — cada tipo del catalogo tiene al menos un punto de escritur
   it("TODO valor del enum tiene productor declarado (o esta SIN ESCRITOR con su ficha), y ninguno sobra", () => {
     const producidos = new Set(CENSO.flatMap((e) => e.tipos));
     const sinEscritor = new Set(SIN_ESCRITOR_DESDE.flatMap((e) => e.tipos));
+    const pendientes = new Set(ESCRITOR_PENDIENTE_EN_CURSO.flatMap((e) => e.tipos));
     const delCatalogo = new Set<string>(HISTORIAL_ACCION_TIPOS);
 
     const sinProductor = [...delCatalogo]
-      .filter((t) => !producidos.has(t) && !sinEscritor.has(t))
+      .filter((t) => !producidos.has(t) && !sinEscritor.has(t) && !pendientes.has(t))
       .sort();
     expect(
       sinProductor,
@@ -1092,6 +1121,14 @@ describe("362/R16 — cada tipo del catalogo tiene al menos un punto de escritur
 
     const enLosDos = [...sinEscritor].filter((t) => producidos.has(t)).sort();
     expect(enLosDos, "un tipo no puede tener productor y estar a la vez «sin escritor»").toEqual([]);
+
+    // La lista de pendientes solo puede bajar: en cuanto el censo declara el productor, la entrada
+    // sobra y esto se pone en rojo hasta quitarla.
+    const pendienteYaProducido = [...pendientes].filter((t) => producidos.has(t) || !delCatalogo.has(t)).sort();
+    expect(
+      pendienteYaProducido,
+      "un tipo «pendiente de escritor» ya tiene productor (o ya no existe): quitalo de ESCRITOR_PENDIENTE_EN_CURSO",
+    ).toEqual([]);
   });
 
   it("los 55 tipos del Anexo A (+ Q1, Q2, la 366, la 371, la 373, la 374, la 375, la 376, la 380, la 381, la 398, la 429 y la 431) siguen siendo 55", () => {
@@ -1119,7 +1156,9 @@ describe("362/R16 — cada tipo del catalogo tiene al menos un punto de escritur
     // 74 desde SLT-56 (`cierre_dia_pago_mensajero_ajustado`, de
     // `CierresAdminRepository.ajustarPagoMensajeroEnCierre`).
     // 75 desde SLT-76 (`zona_distrito_cambiado`, en `ZonaRepository.update`).
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(75);
+    // 80 desde SLT-52 (`tarifa_valor_fijado`/`_quitado` y `grupo_distritos_creado`/`_cambiado`/
+    // `_borrado`; su productor llega en T6.2 y hasta entonces estan en `ESCRITOR_PENDIENTE_EN_CURSO`).
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(80);
   });
 });
 

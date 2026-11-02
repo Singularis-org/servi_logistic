@@ -27,21 +27,21 @@
 
 ## T1 — Esquema (depende de T0)
 
-- [ ] **T1.1** Migración `…_tarifas_flexibles_enums` (5 enums) + `down.sql`. Cubre: R1, R44.
-- [ ] **T1.2** Migración `…_tarifas_flexibles_tablas`: `grupo_distritos`, `grupo_distritos_distrito`,
+- [x] **T1.1** Migración `…_tarifas_flexibles_enums` (5 enums) + `down.sql`. Cubre: R1, R44.
+- [x] **T1.2** Migración `…_tarifas_flexibles_tablas`: `grupo_distritos`, `grupo_distritos_distrito`,
   `tarifa_valor`, `cierre_detail_concepto`, `gestion_pago_congelado`, columna
   `cierre_detail.tarifa_modelo DEFAULT 'viejo'`, CHECKs, únicos (NULLS NOT DISTINCT a mano), índices,
   FKs compuestas, RLS + políticas `<t>_por_empresa`, GRANT y `REVOKE UPDATE, DELETE` de
   `cierre_detail_concepto` + `down.sql`. Modelos en `db/schema.prisma` con sus `map`.
   `tarifa_valor.iva_pct` nullable con CHECK `tarifa_valor_iva_solo_tienda`; `gestion_pago_congelado`
   sin columna de IVA. Cubre: R4, R7, R8, R10, R11, R12, R15, R34, R43, R44, R45.
-- [ ] **T1.3** Migración `…_tarifas_flexibles_misma_empresa` con
+- [x] **T1.3** Migración `…_tarifas_flexibles_misma_empresa` con
   `pnpm exec tsx scripts/generar-misma-empresa.ts --faltantes` + `down.sql`. Cubre: R15.
-- [ ] **T1.4** Migración `…_historial_tarifas_flexibles` (solo `ADD VALUE`) + `down.sql`; tipos,
+- [x] **T1.4** Migración `…_historial_tarifas_flexibles` (solo `ADD VALUE`) + `down.sql`; tipos,
   categorías y etiquetas en `lib/types/historial-accion.ts`. Cubre: R14.
-- [ ] **T1.5** Clasificar los 5 modelos en `lib/db/modelos-de-negocio.ts`; los únicos anclados en
+- [x] **T1.5** Clasificar los 5 modelos en `lib/db/modelos-de-negocio.ts`; los únicos anclados en
   `tests/unit/guards/_unicos-sin-empresa.ts`. Hecho: `pnpm run test:guardias` verde.
-- [ ] **T1.6** `tests/integration/db/tarifas-flexibles-migration.test.ts` (Postgres real):
+- [x] **T1.6** `tests/integration/db/tarifas-flexibles-migration.test.ts` (Postgres real):
   - cada CHECK rechaza su caso y acepta el contrario (R4, R7);
   - un cobro a la tienda sin IVA → rechazo; un pago al mensajero o a la satélite con `iva_pct = 0`
     o `13` → rechazo; el mismo pago con `iva_pct NULL` → aceptado (R4, R45);
@@ -205,7 +205,10 @@ Código:
 - `lib/types/tarifa-flexible.ts`
 - `lib/types/tarifa.ts`
 - `lib/types/historial-accion.ts`
+- `lib/types/historial-accion-etiquetas.ts`
 - `lib/db/modelos-de-negocio.ts`
+- `lib/db/fk-de-negocio.ts`
+- `lib/repositories/ApiKeyRepository.ts`
 - `lib/repositories/_shared/resolver-tarifas.ts`
 - `lib/repositories/TarifaVigenteRepository.ts`
 - `lib/repositories/TarifaZonaMensajeroRepository.ts`
@@ -260,6 +263,20 @@ Tests:
 - `tests/unit/repositories/convergencia-tarifa-listado-cierre.test.ts`
 - `tests/unit/guards/tarifas-resolver-inyectado.guardia.test.ts`
 - `tests/unit/guards/_unicos-sin-empresa.ts`
+- `tests/unit/guards/rls-por-empresa.guardia.test.ts`
+- `tests/unit/guards/historial-accion-escrituras-cubiertas.guardia.test.ts`
+- `tests/unit/historial-accion/catalogo-y-choke-point.test.ts`
+- `tests/unit/db/fk-de-negocio.test.ts`
+- `tests/fixtures/api-key-dependencias-usuario.ts`
+- `tests/integration/db/api-key-eliminabilidad.test.ts`
+- `tests/integration/db/caja-459-migration.test.ts`
+- `tests/integration/db/correccion-resultado-gestion-migration.test.ts`
+- `tests/integration/db/historial-accion-cobro-tienda-migration.test.ts`
+- `tests/integration/db/historial-accion-conciliacion-bodega-migration.test.ts`
+- `tests/integration/db/historial-accion-orden-zona-reconciliada-migration.test.ts`
+- `tests/integration/db/historial-accion-pago-mensajero-ajustado-migration.test.ts`
+- `tests/integration/db/historial-accion-zona-pago-mensajero-migration.test.ts`
+- `tests/integration/db/historial-accion-zona-sinpe-migration.test.ts`
 - `tests/integration/db/tarifas-flexibles-migration.test.ts`
 - `tests/integration/db/tarifas-flexibles-resolver.test.ts`
 - `tests/integration/db/tarifas-flexibles-respaldo.test.ts`
