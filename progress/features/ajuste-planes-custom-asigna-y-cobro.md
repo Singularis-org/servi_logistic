@@ -48,7 +48,23 @@ plan». Causa: crear (SL-24 R1) solo guarda el plan con `plan.organizacion_id`; 
 - No commitear `pnpm-lock.yaml` salvo que el cambio lo requiera (no debería).
 
 ## Estado
-- [ ] implementación (implementer → backend_dev + frontend_dev)
-- [ ] tests actualizados y nuevos (D1–D9)
-- [ ] gate local (typecheck + guardias como mínimo; ver memoria: el completo corre en CI)
+- [x] implementación (implementer → backend_dev + frontend_dev) — commits c37694d (backend), 702a97a (frontend)
+- [x] tests actualizados y nuevos (D1–D9) — mapa en `progress/impl_ajuste-planes-custom.md`
+- [~] gate local — subagentes: typecheck 0, lint 0 errores, related verdes (backend 2046, frontend 336),
+  guardias rojas solo en `dependencias-declaradas-presentes` (está en `tests/baseline-rojos.json`).
+  Mi re-verificación final NO es válida: `node_modules` es junction compartida y el cliente Prisma
+  estaba regenerado por otra sesión con otro schema (27 errores de tipos ajenos: wallet, historial,
+  `planTipoCobro`). El job de related + guardias lo paró el sistema por falta de memoria. Hay que
+  repetirlo con un cliente Prisma propio de la rama, o dejarlo para el CI.
+  Los tests de `tests/integration/db/` (migración, atomicidad D2, tipo_cobro) solo corren en CI.
 - [ ] PR a `dev`
+
+## Abierto (para el humano)
+1. Asignar el MISMO plan con otro tipo de cobro: hoy `asignar` responde `cambio: false` y no guarda
+   el tipo nuevo; la UI no ofrece el plan actual en el selector. ¿Se permite cambiar solo el tipo?
+2. `inicioCiclo` al crear un custom para una empresa que YA tiene plan: hoy se rechaza (la UI no lo envía).
+3. Los avisos de topes ya pasados (`avisos`) al crear un custom con fecha no se muestran; en el modal
+   de primera asignación sí. ¿Se pintan también?
+4. Vista previa de topes (R37) no está en el form del custom.
+5. La tabla del historial de asignaciones no muestra el tipo de cobro (D9 no lo pide).
+6. Textos nuevos de UI para revisar (lista en la bitácora, `## Frontend > ABIERTO` punto 5).
