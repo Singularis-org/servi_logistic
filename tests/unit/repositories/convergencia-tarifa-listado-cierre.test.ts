@@ -551,6 +551,8 @@ describe("SLT-52 T4.4 — modelo nuevo: listado, cierre y costo API eligen el mi
       comision: "500.00",
       ivaComision: "65.00",
       fulfillment: "100.00",
+      // SLT-52 R46: tff-general 100.00 al 13 % = 13.00, por la misma tarifa que el resto.
+      ivaFulfillment: "13.00",
     });
   });
 });

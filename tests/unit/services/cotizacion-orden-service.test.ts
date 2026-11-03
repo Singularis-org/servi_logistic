@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { RolValue } from "@prisma/client";
-import type { TarifaTienda } from "@/lib/types/tarifa-flexible";
+import type { TarifaTienda, ValorCobro } from "@/lib/types/tarifa-flexible";
 
 import { BulkOrdenService } from "@/lib/services/BulkOrdenService";
 import { CotizacionOrdenService } from "@/lib/services/CotizacionOrdenService";
@@ -482,6 +482,7 @@ describe("CotizacionOrdenService — los dos escenarios (T7)", () => {
         ivaComision: "117.85",
         // Esta tienda no hace fulfillment: cero EXPLICITO, y el total no se mueve.
         fulfillment: "0.00",
+        ivaFulfillment: "0.00", // SLT-52 R47: el viejo no calcula IVA de fulfillment
         total: "22050.65",
       },
       devuelto: {
@@ -489,6 +490,7 @@ describe("CotizacionOrdenService — los dos escenarios (T7)", () => {
         iva: "181.54",
         comision: "0.00",
         fulfillment: "0.00",
+        ivaFulfillment: "0.00",
         total: "-1578.00",
       },
     });
@@ -554,19 +556,19 @@ describe("CotizacionOrdenService — los dos escenarios (T7)", () => {
     expect(esCentrales).toEqual([false, false, true, true]);
   });
 
-  it("el escenario entregado emite exactamente flete, iva, comision, ivaComision, fulfillment y total (R26)", async () => {
+  it("el escenario entregado emite exactamente flete, iva, comision, ivaComision, fulfillment, ivaFulfillment y total (R26 + SLT-52 R46)", async () => {
     const resumen = await cotizar([fila()]);
 
     expect(Object.keys(costosDe(resumen).entregado).sort()).toEqual(
-      ["comision", "flete", "fulfillment", "iva", "ivaComision", "total"].sort(),
+      ["comision", "flete", "fulfillment", "iva", "ivaComision", "ivaFulfillment", "total"].sort(),
     );
   });
 
-  it("el escenario devuelto emite exactamente flete, iva, comision, fulfillment y total, sin ivaComision (R27)", async () => {
+  it("el escenario devuelto emite exactamente flete, iva, comision, fulfillment, ivaFulfillment y total, sin ivaComision (R27 + SLT-52 R46)", async () => {
     const resumen = await cotizar([fila()]);
 
     expect(Object.keys(costosDe(resumen).devuelto).sort()).toEqual(
-      ["comision", "flete", "fulfillment", "iva", "total"].sort(),
+      ["comision", "flete", "fulfillment", "iva", "ivaFulfillment", "total"].sort(),
     );
     expect("ivaComision" in costosDe(resumen).devuelto).toBe(false);
   });
@@ -980,6 +982,8 @@ describe("CotizacionOrdenService — fulfillment (2026-08-25)", () => {
         comision: "906.50",
         ivaComision: "117.85",
         fulfillment: "1000.00",
+        // SLT-52 R47: modelo viejo, sin IVA de fulfillment; el total no cambia con la ficha.
+        ivaFulfillment: "0.00",
         // 22.050,65 sin fulfillment: lo que RECIBE la tienda baja exactamente el monto.
         total: "21050.65",
       },
@@ -989,6 +993,7 @@ describe("CotizacionOrdenService — fulfillment (2026-08-25)", () => {
         comision: "0.00",
         // El servicio de bodega YA se presto: una devolucion no lo devuelve gratis.
         fulfillment: "1000.00",
+        ivaFulfillment: "0.00",
         // -1.578,00 sin fulfillment: la DEUDA crece por el mismo monto.
         total: "-2578.00",
       },
@@ -1082,5 +1087,85 @@ describe("CotizacionOrdenService — el monto sobre el que se cotiza", () => {
     const resumen = await cotizar([fila({ distrito: "Inexistente" })]);
 
     expect("montoCobrar" in resumen.errores[0]).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SLT-52 R46 (design §12.1) — en el modelo NUEVO el fulfillment se cobra con su IVA, y los dos
+// escenarios lo restan del total. Esperados a mano, pedido 25900, IVA 13 % en todo:
+//   flete entregado 2500.00 -> IVA 325.00; comision 3.50 % = 906.50 -> IVA 117.845 -> 117.85
+//   flete rechazo   1396.46 -> IVA 181.5398 -> 181.54
+//   fulfillment monto 500.00 -> IVA 65.00
+//     entregado total = 25900 - (2500 + 325 + 906.50 + 117.85 + 500 + 65) = 21485.65
+//     devuelto  total = -(1396.46 + 181.54 + 500 + 65)                    = -2143.00
+//   fulfillment 2.50 % de 25900 = 647.50 -> IVA 84.175 -> HALF_UP 84.18
+//     entregado total = 25900 - (2500 + 325 + 906.50 + 117.85 + 647.50 + 84.18) = 21318.97
+//     devuelto  total = -(1396.46 + 181.54 + 647.50 + 84.18)                     = -2309.68
+// ---------------------------------------------------------------------------
+describe("SLT-52 R46 — el total resta fulfillment e IVA en los dos escenarios", () => {
+  function cobroNuevo(
+    concepto: ValorCobro["concepto"],
+    modo: ValorCobro["modo"],
+    valor: string,
+  ): ValorCobro {
+    return { concepto, modo, valor, ivaPct: "13.00", nivel: "zona", tarifaValorId: `tv-${concepto}` };
+  }
+
+  function repoNuevo(fulfillment: ValorCobro): ITarifaVigenteRepository {
+    const tarifa: TarifaTienda = {
+      modelo: "nuevo",
+      valores: {
+        tienda_flete_entregado: cobroNuevo("tienda_flete_entregado", "monto", "2500.00"),
+        tienda_flete_rechazo: cobroNuevo("tienda_flete_rechazo", "monto", "1396.46"),
+        tienda_comision_cod: cobroNuevo("tienda_comision_cod", "porcentaje", "3.50"),
+        tienda_fulfillment: fulfillment,
+      },
+    };
+    return {
+      resolveTarifa: vi.fn(async () => tarifa),
+      resolveTarifas: vi.fn(async (pares: readonly ParTarifa[]) => {
+        const mapa = new Map<string, TarifaTienda | null>();
+        for (const par of pares) mapa.set(clavePar(par), tarifa);
+        return mapa;
+      }),
+    };
+  }
+
+  async function cotizarNuevo(fulfillment: ValorCobro): Promise<CostosCotizacion> {
+    const result = await buildService(buildGeoRepo(), repoNuevo(fulfillment)).cotizar([fila()], APIKEY);
+    if (result.status !== "ok") throw new Error(`se esperaba ok, llego ${result.status}`);
+    return costosDe(result.resumen);
+  }
+
+  it("fulfillment en monto 500.00: IVA 65.00 restado en entregado y sumado a la deuda", async () => {
+    expect(await cotizarNuevo(cobroNuevo("tienda_fulfillment", "monto", "500.00"))).toEqual({
+      entregado: {
+        flete: "2500.00",
+        iva: "325.00",
+        comision: "906.50",
+        ivaComision: "117.85",
+        fulfillment: "500.00",
+        ivaFulfillment: "65.00",
+        total: "21485.65",
+      },
+      devuelto: {
+        flete: "1396.46",
+        iva: "181.54",
+        comision: "0.00",
+        fulfillment: "500.00",
+        ivaFulfillment: "65.00",
+        total: "-2143.00",
+      },
+    });
+  });
+
+  it("fulfillment en % del pedido: 647.50 con IVA 84.18 (HALF_UP) en los dos escenarios", async () => {
+    const costos = await cotizarNuevo(cobroNuevo("tienda_fulfillment", "porcentaje", "2.50"));
+    expect(costos.entregado.fulfillment).toBe("647.50");
+    expect(costos.entregado.ivaFulfillment).toBe("84.18");
+    expect(costos.entregado.total).toBe("21318.97");
+    expect(costos.devuelto.fulfillment).toBe("647.50");
+    expect(costos.devuelto.ivaFulfillment).toBe("84.18");
+    expect(costos.devuelto.total).toBe("-2309.68");
   });
 });

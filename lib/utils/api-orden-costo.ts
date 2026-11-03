@@ -3,6 +3,7 @@ import type { ApiOrdenCostoDTO } from "@/lib/types/api-orden";
 import {
   derivarIngresoOrden,
   fleteEntregadoSinTarifa,
+  ivaFulfillmentDeTarifa,
   type TarifaDeCobro,
 } from "@/lib/utils/ingreso-empresa";
 import { serializarMontoCotizacion } from "@/lib/utils/monto-cotizacion";
@@ -85,6 +86,10 @@ function conceptos(
     // para el real— y aqui solo se re-serializa para que pase por el MISMO validador que los
     // otros cuatro.
     fulfillment: serializarMontoCotizacion(new Prisma.Decimal(fulfillment)),
+    // SLT-52 (R46, P5 = a): el IVA del fulfillment sale de la MISMA tarifa que los otros conceptos
+    // y por la misma funcion que la carga y la cotizacion. En el viejo es siempre "0.00" (R47): el
+    // estimado y el real de una tarifa vieja no cambian.
+    ivaFulfillment: serializar(ivaFulfillmentDeTarifa(tarifa, entradas.montoCobrar)),
   };
 }
 

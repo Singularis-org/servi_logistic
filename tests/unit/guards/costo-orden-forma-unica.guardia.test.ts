@@ -118,7 +118,8 @@ const CLAVES_DEL_ITEM = [
 ];
 
 const CLAVES_DE_ZONA = ["id", "nombre"];
-const CLAVES_DE_COSTO = ["comision", "flete", "fulfillment", "iva", "ivaComision"];
+// SLT-52 R46 (P5 = a): + `ivaFulfillment`, el IVA del fulfillment ("0.00" en el modelo viejo, R47).
+const CLAVES_DE_COSTO = ["comision", "flete", "fulfillment", "iva", "ivaComision", "ivaFulfillment"];
 
 const TARIFA = {
   id: "tarifa-1",
@@ -275,6 +276,7 @@ describe("415/T9 (3) — COMPORTAMIENTO: listado y detalle dan el MISMO fragment
       comision: "906.50",
       ivaComision: "117.85",
       fulfillment: "696.00",
+      ivaFulfillment: "0.00", // SLT-52 R47
     });
     expect(item.costoReal).toEqual({
       flete: "2500.00",
@@ -282,6 +284,7 @@ describe("415/T9 (3) — COMPORTAMIENTO: listado y detalle dan el MISMO fragment
       comision: "906.50",
       ivaComision: "117.85",
       fulfillment: "692.00",
+      ivaFulfillment: "0.00", // SLT-52 R47
     });
   });
 });

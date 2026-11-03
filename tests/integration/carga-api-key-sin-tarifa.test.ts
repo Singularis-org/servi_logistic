@@ -201,9 +201,12 @@ describe("carga por API key: lote MIXTO -> 200 con la fila sin tarifa en error (
     expect(body.ordenes[0]).toMatchObject({ numRemision: "REM-OK", costoEnvio: "3.92" });
     // El barrido conserva su intencion —ningun precio fabricado por falta de tarifa— pero
     // EXCLUYE el desglose `fulfillment` (2026-08-25): ahi el cero afirma que esta tienda no
-    // hace fulfillment, que es lo contrario de un dato que falta.
+    // hace fulfillment, que es lo contrario de un dato que falta. SLT-52: tambien su IVA
+    // (`ivaFulfillment`), que es el mismo cero afirmado.
     const sinDesglose = (body.ordenes as Array<Record<string, unknown>>).map((o) =>
-      Object.fromEntries(Object.entries(o).filter(([clave]) => clave !== "fulfillment")),
+      Object.fromEntries(
+        Object.entries(o).filter(([clave]) => clave !== "fulfillment" && clave !== "ivaFulfillment"),
+      ),
     );
     expect(JSON.stringify(sinDesglose)).not.toContain("0.00");
   });
@@ -237,7 +240,7 @@ describe("carga por API key: nadie llega a resolver -> 200, no 409 (274/R30)", (
 // `null`: lo que falta es el concepto `tienda_flete_entregado`. Una tienda que solo tiene comision
 // (o fulfillment) puesta tampoco se puede cargar, igual que en el viejo sin fila.
 function cobroNuevo(
-  concepto: "tienda_flete_entregado" | "tienda_comision_cod",
+  concepto: "tienda_flete_entregado" | "tienda_comision_cod" | "tienda_fulfillment",
   valor: string,
 ): NonNullable<Extract<TarifaTienda, { modelo: "nuevo" }>["valores"][typeof concepto]> {
   return { concepto, modo: "monto", valor, ivaPct: "12.00", nivel: "zona", tarifaValorId: `tv-${concepto}` };
@@ -294,5 +297,33 @@ describe("SLT-52 R25: modelo nuevo — sin flete por entregado es «sin tarifa»
       costoEnvio: "3.92",
       fulfillment: "0.00",
     });
+  });
+});
+
+// SLT-52 R51 (design §12.3) — «sin tarifa» = sin flete por entregado, aunque la empresa tenga
+// comision COD Y fulfillment puestos. El fulfillment es ademas lo que decide donde nace la orden:
+// si contara como tarifa, la fila se crearia en `en_preparacion` cobrando solo bodega.
+describe("SLT-52 R51 — carga: solo comisión y fulfillment", () => {
+  it("SLT-52 R51 — solo fulfillment (sin flete por entregado) → 409 y nada persistido", async () => {
+    const repo = ordenRepo();
+    const SIN_FLETE = {
+      tienda_comision_cod: cobroNuevo("tienda_comision_cod", "50.00"),
+      tienda_fulfillment: cobroNuevo("tienda_fulfillment", "2.00"),
+    };
+    const tarifas = tarifaRepoNuevo({ z1: SIN_FLETE, z2: SIN_FLETE });
+    const res = await handleCargaApi(
+      req([fila("REM-1", "Barrio Uno"), fila("REM-2", "Cumbaya")]),
+      deps(repo, tarifas),
+    );
+
+    // Lo sembrado llego: el resolver se consulto y devolvio el modelo nuevo con los dos conceptos.
+    expect(tarifas.resolveTarifas).toHaveBeenCalledTimes(1);
+    const mapa = await (tarifas.resolveTarifas as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect([...mapa.values()][0]).toMatchObject({ modelo: "nuevo", valores: SIN_FLETE });
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ code: "CONFLICT", message: MSG_CARGA_SIN_TARIFA });
+    expect(repo.createManyOrdenesConGuia).not.toHaveBeenCalled();
+    expect(repo.createManyOrdenes).not.toHaveBeenCalled();
   });
 });

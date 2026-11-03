@@ -9,6 +9,7 @@ import type {
 } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { TarifaVigente } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
 import { tarifaViejaDeFormula } from "../../fixtures/tarifa-tienda";
+import type { TarifaTienda, ValorCobro } from "@/lib/types/tarifa-flexible";
 import { ESTADOS_SIN_CORRECCION } from "@/lib/types/correccion-datos-cliente";
 import { ESTATUS_POR_GRUPO } from "@/lib/types/novedad-grupo";
 
@@ -689,6 +690,38 @@ describe("327/C2 — R13/R14: los dos huecos de configuracion que el aviso SEÑA
     // El importe SIGUE siendo "0.00" por debajo: por eso la pantalla ramifica por el
     // discriminante y NO por el numero. Si mirase el numero, un flete real de cero se leeria como
     // «falta configurar», y al reves.
+    expect(r.aviso.propuesta.fleteConIva).toBe("0.00");
+  });
+
+  it("SLT-52 R51 — sin_tarifa aunque haya comisión y fulfillment", async () => {
+    // Empresa en el modelo NUEVO con comision COD y fulfillment puestos y SIN flete por entregado:
+    // «sin tarifa» es que falte ese flete, y ni la comision ni el fulfillment lo cambian.
+    const cobro = (concepto: ValorCobro["concepto"], modo: ValorCobro["modo"], valor: string): ValorCobro => ({
+      concepto,
+      modo,
+      valor,
+      ivaPct: "13.00",
+      nivel: "zona",
+      tarifaValorId: `tv-${concepto}`,
+    });
+    const soloComisionYFulfillment: TarifaTienda = {
+      modelo: "nuevo",
+      valores: {
+        tienda_comision_cod: cobro("tienda_comision_cod", "porcentaje", "3.50"),
+        tienda_fulfillment: cobro("tienda_fulfillment", "monto", "500.00"),
+      },
+    };
+    const { service, resolveTarifa } = escenario();
+    resolveTarifa.mockResolvedValue(soloComisionYFulfillment);
+
+    const r = await service.corregir({ ordenId: ORDEN_ID, ...MUDANZA }, MAESTRO);
+
+    expect(resolveTarifa).toHaveBeenCalled();
+    expect(r.status).toBe("confirmacion_requerida");
+    if (r.status !== "confirmacion_requerida") throw new Error(`se esperaba confirmacion_requerida, llego ${r.status}`);
+    expect(r.aviso.propuesta.tarifa).toBe("sin_tarifa");
+    expect(r.aviso.actual.tarifa).toBe("sin_tarifa");
+    // Sin flete por entregado el flete con IVA es cero; el discriminante es lo que manda.
     expect(r.aviso.propuesta.fleteConIva).toBe("0.00");
   });
 

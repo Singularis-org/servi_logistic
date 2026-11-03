@@ -559,6 +559,7 @@ describe("415/R22 — la QUINTA superficie: la LECTURA por API key devuelve `nul
       comision: "1250.00",
       ivaComision: "162.50",
       fulfillment: "1.00",
+      ivaFulfillment: "0.00", // SLT-52 R47: el viejo no calcula IVA de fulfillment
     });
   });
 });

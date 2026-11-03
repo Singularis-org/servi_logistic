@@ -11,7 +11,7 @@ import type {
   TarifaVigenteResuelta,
 } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
 import { clavePar, type ParTarifa } from "@/lib/utils/cascada-tarifa";
-import type { TarifaTienda } from "@/lib/types/tarifa-flexible";
+import type { TarifaTienda, ValorCobro } from "@/lib/types/tarifa-flexible";
 import { tarifaVieja } from "../../fixtures/tarifa-tienda";
 import {
   MSG_CARGA_SIN_TARIFA,
@@ -422,8 +422,8 @@ describe("cargarViaApi — resultado con num_guia (R10)", () => {
       // fulfillment (2026-08-25) por creada. No-central con TARIFA por defecto -> 3.50 + 12%
       // = "3.92", y sin monto de bodega el desglose es el cero explicito.
       expect(r.summary.ordenes).toEqual([
-        { id: "ord-REM-1", numRemision: "REM-1", numGuia: 1000, estado: "por_recolectar_en_tienda", estadoNombre: "Por recolectar en tienda", costoEnvio: "3.92", fulfillment: "0.00" },
-        { id: "ord-REM-2", numRemision: "REM-2", numGuia: 1001, estado: "por_recolectar_en_tienda", estadoNombre: "Por recolectar en tienda", costoEnvio: "3.92", fulfillment: "0.00" },
+        { id: "ord-REM-1", numRemision: "REM-1", numGuia: 1000, estado: "por_recolectar_en_tienda", estadoNombre: "Por recolectar en tienda", costoEnvio: "3.92", fulfillment: "0.00", ivaFulfillment: "0.00" },
+        { id: "ord-REM-2", numRemision: "REM-2", numGuia: 1001, estado: "por_recolectar_en_tienda", estadoNombre: "Por recolectar en tienda", costoEnvio: "3.92", fulfillment: "0.00", ivaFulfillment: "0.00" },
       ]);
     }
   });
@@ -700,6 +700,9 @@ describe("cargarViaApi — no-regresión del contrato 88 (feature 98/R10)", () =
         estado: "por_recolectar_en_tienda", estadoNombre: "Por recolectar en tienda",
         costoEnvio: "3.92",
         fulfillment: "0.00",
+        // SLT-52 (R46, P5 = a): tercera extension declarada, el IVA del fulfillment. En el viejo
+        // es siempre "0.00" (R47).
+        ivaFulfillment: "0.00",
       });
     }
   });
@@ -1014,7 +1017,10 @@ describe("cargarViaApi — lote MIXTO: unas resuelven y otras no (274/R27/R28/R3
     // parecen y significan cosas opuestas, asi que el guardian tiene que distinguirlos en vez
     // de dejar de mirar.
     const sinDesglose = r.summary.ordenes.map((o) =>
-      Object.fromEntries(Object.entries(o).filter(([clave]) => clave !== "fulfillment")),
+      Object.fromEntries(
+        // SLT-52: el IVA del fulfillment es el mismo cero afirmado que su desglose.
+        Object.entries(o).filter(([clave]) => clave !== "fulfillment" && clave !== "ivaFulfillment"),
+      ),
     );
     expect(JSON.stringify({ ...r.summary, ordenes: sinDesglose })).not.toContain("0.00");
   });
@@ -1104,5 +1110,50 @@ describe("cargarViaApi — nadie llega a resolver: 200, no 409 (274/R30)", () =>
     // R30: el repo de tarifas no se consulta cuando no hay ninguna fila candidata.
     expect(tarifaRepo.resolveTarifas).not.toHaveBeenCalled();
     expect(repo.createManyOrdenesConGuia).not.toHaveBeenCalled();
+  });
+});
+
+// SLT-52 R46 (design §12.1, P5 = a) — la carga en el modelo NUEVO cobra el fulfillment con su IVA y
+// lo publica en `ivaFulfillment`. A mano, IVA 12 %: flete 3.50 -> 3.92; fulfillment 2.00 -> IVA
+// 0.24; costoEnvio = 3.92 + 2.00 + 0.24 = 6.16.
+describe("SLT-52 R46 — la carga publica el IVA del fulfillment y lo suma a costoEnvio", () => {
+  const cobro = (concepto: ValorCobro["concepto"], valor: string): ValorCobro => ({
+    concepto,
+    modo: "monto",
+    valor,
+    ivaPct: "12.00",
+    nivel: "zona",
+    tarifaValorId: `tv-${concepto}`,
+  });
+
+  it("nuevo con fulfillment 2.00 al 12 %: ivaFulfillment 0.24 y costoEnvio 6.16", async () => {
+    const tarifa: TarifaTienda = {
+      modelo: "nuevo",
+      valores: {
+        tienda_flete_entregado: cobro("tienda_flete_entregado", "3.50"),
+        tienda_fulfillment: cobro("tienda_fulfillment", "2.00"),
+      },
+    };
+    const tarifaRepo: ITarifaVigenteRepository = {
+      resolveTarifa: vi.fn(async () => tarifa),
+      resolveTarifas: vi.fn(
+        async (pares: readonly ParTarifa[]) =>
+          new Map<string, TarifaTienda | null>(pares.map((p) => [clavePar(p), tarifa])),
+      ),
+    };
+
+    const r = await buildService(buildRepo(), tarifaRepo).cargarViaApi(
+      [row({ num_remision: "REM-1" })],
+      APIKEY,
+    );
+
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") throw new Error(`se esperaba ok, llego ${r.status}`);
+    expect(r.summary.ordenes[0]).toMatchObject({
+      numRemision: "REM-1",
+      costoEnvio: "6.16",
+      fulfillment: "2.00",
+      ivaFulfillment: "0.24",
+    });
   });
 });

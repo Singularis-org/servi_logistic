@@ -282,10 +282,11 @@ export class RechazoTiendaService implements IRechazoTiendaService {
       montoIva: iva === undefined ? "0.00" : iva.toFixed(2),
       // Auditoria: QUE FILA de `tarifas` produjo los dos importes. `null` no puede darse en esta
       // rama (sin tarifa no hay flete), pero se escribe total en vez de con un `!`.
-      // SLT-52: en el modelo nuevo no hay fila de `tarifas` que citar y esta columna apunta a esa
-      // tabla; la traza del `tarifa_valor` usado no tiene columna aqui (pendiente anotado en la
-      // bitacora de T4), asi que queda `null`, como un cobro sin tarifa vieja.
+      // SLT-52 (R48/R49): cada modelo cita su propia fuente y deja la otra en `null`. En el nuevo
+      // no hay fila de `tarifas` que citar; lo que produjo el flete es el valor
+      // `tienda_flete_rechazo`, y esa es la traza. La base rechaza las dos a la vez (CHECK).
       tarifaId: tarifa?.modelo === "viejo" ? tarifa.tarifa.tarifaId : null,
+      tarifaValorId: tarifa?.modelo === "nuevo" ? (tarifa.valores.tienda_flete_rechazo?.tarifaValorId ?? null) : null,
       // Dia CALENDARIO de Costa Rica. NO `toISOString().slice(0,10)`: despues de las 18:00 CR eso
       // devuelve el dia SIGUIENTE (el off-by-one que cerro la feature 166).
       generadoEl: fechaCalendarioCR(this.now()),

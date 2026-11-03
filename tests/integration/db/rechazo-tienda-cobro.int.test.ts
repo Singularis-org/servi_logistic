@@ -115,6 +115,7 @@ describeSiHayBase("💰 337 — el cobro por devolución a origen desde novedade
       montoFlete: overrides.montoFlete ?? "500.00",
       montoIva: overrides.montoIva ?? "65.00",
       tarifaId: null,
+      tarifaValorId: null, // SLT-52: cobro del modelo viejo, sin traza al nuevo
       generadoEl: "2026-08-31",
     };
   }

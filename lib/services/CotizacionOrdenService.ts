@@ -52,6 +52,7 @@ import {
 import {
   derivarIngresoOrden,
   fleteEntregadoSinTarifa,
+  ivaFulfillmentDeTarifa,
   montoFulfillmentDeTarifa,
 } from "@/lib/utils/ingreso-empresa";
 import { serializarMontoCotizacion } from "@/lib/utils/monto-cotizacion";
@@ -145,6 +146,7 @@ interface MontosEntregado {
   comision: Prisma.Decimal;
   ivaComision: Prisma.Decimal;
   fulfillment: Prisma.Decimal;
+  ivaFulfillment: Prisma.Decimal; // SLT-52 (R46)
   total: Prisma.Decimal;
 }
 
@@ -154,6 +156,7 @@ interface MontosDevuelto {
   iva: Prisma.Decimal;
   comision: Prisma.Decimal;
   fulfillment: Prisma.Decimal;
+  ivaFulfillment: Prisma.Decimal; // SLT-52 (R46)
   total: Prisma.Decimal;
 }
 
@@ -170,6 +173,7 @@ function serializarEntregado(montos: MontosEntregado): CostosEntregado {
     // El monto fijo de bodega. Cero explicito cuando la tienda no hace fulfillment: el
     // integrador lee un cero, no un campo que a veces esta y a veces no.
     fulfillment: serializarMontoCotizacion(montos.fulfillment),
+    ivaFulfillment: serializarMontoCotizacion(montos.ivaFulfillment),
     total: serializarMontoCotizacion(montos.total),
   };
 }
@@ -183,6 +187,7 @@ function serializarDevuelto(montos: MontosDevuelto): CostosDevuelto {
     comision: serializarMontoCotizacion(montos.comision),
     // El fulfillment SI se cobra en la devolucion: el servicio de bodega ya se presto.
     fulfillment: serializarMontoCotizacion(montos.fulfillment),
+    ivaFulfillment: serializarMontoCotizacion(montos.ivaFulfillment),
     total: serializarMontoCotizacion(montos.total),
   };
 }
@@ -439,6 +444,9 @@ function calcularEscenarios(
   // la tienda no hace fulfillment, que es el mismo total que se publicaba antes de hoy.
   // SLT-52 (R31): en el nuevo un fulfillment en % va sobre el pedido, por eso viaja `montoCobrar`.
   const fulfillment = montoFulfillmentDeTarifa(tarifa, montoCobrar);
+  // SLT-52 (R46): el fulfillment se cobra con su IVA, igual en los dos escenarios; 0 en el viejo
+  // (R47), y por eso los totales del viejo no cambian ni un centimo.
+  const ivaFulfillment = ivaFulfillmentDeTarifa(tarifa, montoCobrar);
 
   return {
     entregado: {
@@ -447,14 +455,17 @@ function calcularEscenarios(
       comision,
       ivaComision,
       fulfillment,
-      // R30/D1: lo que RECIBE la tienda = monto a cobrar menos los CINCO conceptos
-      // facturados. R32: sin monto a cobrar la base es cero y el total sale NEGATIVO.
+      ivaFulfillment,
+      // R30/D1: lo que RECIBE la tienda = monto a cobrar menos los conceptos facturados
+      // (SLT-52 R46: tambien el IVA del fulfillment). R32: sin monto a cobrar la base es cero y
+      // el total sale NEGATIVO.
       total: new Prisma.Decimal(montoCobrar ?? 0)
         .minus(flete)
         .minus(iva)
         .minus(comision)
         .minus(ivaComision)
-        .minus(fulfillment),
+        .minus(fulfillment)
+        .minus(ivaFulfillment),
     },
     devuelto: {
       flete: fleteDevolucion,
@@ -463,9 +474,10 @@ function calcularEscenarios(
       // para una devolucion (no hubo recaudo), y esa ausencia se publica como cero explicito.
       comision: escenarioDevolucion.ingreso_comision_cod ?? cero(),
       fulfillment,
-      // R31/D1: la DEUDA de la tienda = el negativo de (flete + IVA + fulfillment) de la
+      ivaFulfillment,
+      // R31/D1: la DEUDA de la tienda = el negativo de (flete + IVA + fulfillment + su IVA) de la
       // devolucion. El fulfillment suma a la deuda porque el servicio ya se presto.
-      total: fleteDevolucion.plus(ivaDevolucion).plus(fulfillment).negated(),
+      total: fleteDevolucion.plus(ivaDevolucion).plus(fulfillment).plus(ivaFulfillment).negated(),
     },
   };
 }

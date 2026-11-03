@@ -918,8 +918,8 @@ export interface TarifaConFulfillment {
  * El monto de fulfillment de la tarifa; CERO si no hay tarifa (mismo gap seguro que R9).
  *
  * SLT-52 (R31): en el nuevo es el importe de `tienda_fulfillment` (concepto ausente = 0), y como su
- * base en % es el pedido (R27) la firma con `ConModelo` exige `montoCobrar`. Sin IVA, como hoy: el
- * design §6 lo define como «el importe»; si el fulfillment debe llevar su IVA es pregunta abierta.
+ * base en % es el pedido (R27) la firma con `ConModelo` exige `montoCobrar`. Es el importe SIN IVA:
+ * su IVA (R46) lo da `ivaFulfillmentDeTarifa`, aparte, para que el desglose publique los dos.
  */
 export function montoFulfillmentDeTarifa(tarifa: TarifaConFulfillment | null): Prisma.Decimal;
 export function montoFulfillmentDeTarifa(
@@ -937,6 +937,28 @@ export function montoFulfillmentDeTarifa(
   return valor === undefined
     ? new Prisma.Decimal(0)
     : importeDe(valor, new Prisma.Decimal(montoCobrar ?? "0"));
+}
+
+/**
+ * SLT-52 (R46, R47, design §12.1) — el IVA del fulfillment que se cobra a la tienda.
+ *
+ * Nuevo: el fulfillment es un cobro a la tienda como cualquier otro (R26), asi que su IVA es el
+ * `ivaDe` del importe ya redondeado; concepto ausente = 0. Viejo: SIEMPRE 0, porque `tarifas` no
+ * tiene un % de IVA para el fulfillment y R47 exige que el costo no cambie ni un centimo.
+ *
+ * Acepta cualquier tarifa vieja (no lee ningun campo suyo): asi el congelado del cierre, que hoy
+ * es una `TarifaVigente` sin fulfillment, tambien puede preguntarlo.
+ */
+export function ivaFulfillmentDeTarifa<T extends object>(
+  entrada: TarifaDeCobro<T> | null,
+  montoCobrar: string | null,
+): Prisma.Decimal {
+  if (entrada === null) return new Prisma.Decimal(0);
+  const t = conModelo(entrada);
+  if (t.modelo === "viejo") return new Prisma.Decimal(0);
+  const valor = t.valores.tienda_fulfillment;
+  if (valor === undefined) return new Prisma.Decimal(0);
+  return ivaDe(valor, importeDe(valor, new Prisma.Decimal(montoCobrar ?? "0")));
 }
 
 /**
@@ -965,8 +987,11 @@ export function tieneFulfillment(tarifa: TarifaDeCobro<TarifaConFulfillment> | n
  * Sin fulfillment el desglose vale `"0.00"` y `costoEnvio` da EXACTAMENTE lo que daba antes.
  */
 export interface DesgloseCargaApi {
-  costoEnvio: string; // flete + IVA del flete + fulfillment
+  costoEnvio: string; // flete + IVA del flete + fulfillment + IVA del fulfillment (SLT-52 R46)
   fulfillment: string; // el sumando de arriba, aparte; "0.00" si la tienda no hace fulfillment
+  // SLT-52: el IVA del fulfillment NO viaja en este objeto. Su forma la fija T0.1
+  // (`respaldo-identico.test.ts`, `toStrictEqual` sobre el viejo) y no se toca; el campo publico
+  // `ivaFulfillment` lo pone la carga con `ivaFulfillmentDeTarifa`, la misma funcion que suma aqui.
 }
 
 export function desgloseCargaApi(
@@ -990,8 +1015,9 @@ export function desgloseCargaApi(
     costoEnvioDeTarifa(tarifa, esCentral, esZonaEspecial, montoCobrar),
   );
   const fulfillment = montoFulfillmentDeTarifa(tarifa, montoCobrar);
+  const ivaFulfillment = ivaFulfillmentDeTarifa(tarifa, montoCobrar);
   return {
-    costoEnvio: round2(envio.plus(fulfillment)).toFixed(2),
+    costoEnvio: round2(envio.plus(fulfillment).plus(ivaFulfillment)).toFixed(2),
     fulfillment: round2(fulfillment).toFixed(2),
   };
 }

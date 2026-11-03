@@ -129,7 +129,7 @@
 
 ## T4.5-T4.8 — Decisiones de Carlos tras T4 (2026-11-02 21:00; depende de T4, antes de T5)
 
-- [ ] **T4.5** Fulfillment con IVA (design §12.1): `ivaFulfillmentDeTarifa` en `ingreso-empresa.ts`;
+- [x] **T4.5** Fulfillment con IVA (design §12.1): `ivaFulfillmentDeTarifa` en `ingreso-empresa.ts`;
   `desgloseCargaApi` suma `fulfillment + ivaFulfillment` a `costoEnvio`; `calcularEscenarios` resta
   los dos del `total` en entregado y devuelto. `montoFulfillmentDeTarifa` no cambia.
   Tests en `tests/unit/utils/ingreso-empresa-modelo-nuevo.test.ts`, bloque «SLT-52 R46 —
@@ -142,7 +142,7 @@
   el mismo bloque R46 (`ivaFulfillmentDeTarifa` del viejo con fulfillment 1000 → `"0.00"`).
   Cubre: R46, R47. **Contraprueba:** hacer que `ivaFulfillmentDeTarifa` devuelva 0 en el nuevo →
   rojo pegado en `progress/impl_SLT-52.md`.
-- [ ] **T4.6** [P] Traza del valor en el cobro por rechazo (design §12.2):
+- [x] **T4.6** [P] Traza del valor en el cobro por rechazo (design §12.2):
   - Migración NUEVA `…_rechazo_tienda_cobro_tarifa_valor` (columna, FK SET NULL, índice, CHECK
     `rechazo_tienda_cobro_una_tarifa`) + `down.sql`; migración NUEVA
     `…_rechazo_tienda_cobro_tarifa_valor_misma_empresa` con
@@ -162,7 +162,7 @@
     guarda tarifaId y tarifaValorId null».
   Cubre: R48, R49, R50. **Contraprueba:** escribir `tarifaValorId: null` siempre en
   `congelarCobro` → rojo pegado.
-- [ ] **T4.7** [P] «Sin tarifa» = sin flete por entregado (design §12.3), solo tests: empresa en el
+- [x] **T4.7** [P] «Sin tarifa» = sin flete por entregado (design §12.3), solo tests: empresa en el
   nuevo con `tienda_comision_cod` y `tienda_fulfillment` puestos y sin `tienda_flete_entregado`:
   - carga: `tests/integration/carga-api-key-sin-tarifa.test.ts` › «SLT-52 R51 — solo fulfillment
     (sin flete por entregado) → 409 y nada persistido»;
@@ -173,7 +173,7 @@
   - corrección: `tests/unit/services/corregir-datos-cliente-service.test.ts` › «SLT-52 R51 —
     sin_tarifa aunque haya comisión y fulfillment».
   Cubre: R51, R25. Hecho: los cuatro verdes; si alguno sale rojo, es un bug de T4 y se arregla aquí.
-- [ ] **T4.8** P5 = (a), campo `ivaFulfillment`. Publicar el IVA del fulfillment según lo que eligió Carlos
+- [x] **T4.8** P5 = (a), campo `ivaFulfillment`. Publicar el IVA del fulfillment según lo que eligió Carlos
   (propuesta (a): campo `ivaFulfillment` en cotización, carga y `costoEstimado`; `"0.00"` en el
   viejo), con `docs/api/api-key-openapi.yaml` y `docs/api/CHANGELOG.md`. Tests:
   `tests/integration/cotizacion-api-key.test.ts` y

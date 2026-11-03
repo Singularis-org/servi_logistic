@@ -616,6 +616,7 @@ const COSTO_VIGENTE_415 = {
   comision: "906.50",
   ivaComision: "117.85",
   fulfillment: "696.00",
+  ivaFulfillment: "0.00", // SLT-52 R47: el viejo no calcula IVA de fulfillment
 };
 const COSTO_CONGELADO_415 = { ...COSTO_VIGENTE_415, fulfillment: "692.00" };
 

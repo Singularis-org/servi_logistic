@@ -9,6 +9,7 @@ import { ApiOrdenLecturaService } from "@/lib/services/ApiOrdenLecturaService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { ApiOrdenRow } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlProvider";
+import type { TarifaTienda, ValorCobro, ValoresTienda } from "@/lib/types/tarifa-flexible";
 // ⏳ 2026-09-10 (feature 415): los dos campos nuevos de la fila del repo.
 import {
   congeladoFixture,
@@ -227,6 +228,7 @@ const CLAVE_GAM = `store-1|${ZONA_FIXTURE.id}|`;
  *   comision     = 25900.00 x 3.50 %                  =  906.50
  *   ivaComision  = 906.50 x 13 % = 117.845 -> HALF_UP =  117.85
  *   fulfillment  = tarifa.fulfillment                 =  696.00
+ *   ivaFulfillment = 0.00 (SLT-52 R47: el modelo viejo no calcula IVA de fulfillment)
  */
 const COSTO_ESPERADO_VIGENTE = {
   flete: "2500.00",
@@ -234,6 +236,7 @@ const COSTO_ESPERADO_VIGENTE = {
   comision: "906.50",
   ivaComision: "117.85",
   fulfillment: "696.00",
+  ivaFulfillment: "0.00",
 };
 
 /** Las entradas VIVAS que producen ese costo. Mismos numeros, escritos una sola vez. */
@@ -274,7 +277,8 @@ describe("ApiOrdenLecturaService.listar — zona y costo (feature 415)", () => {
 
     const res = await svc.listar(ACTOR, { limit: 50, offset: 0 });
 
-    // Igualdad ESTRUCTURAL contra los literales de arriba: cinco claves, ni una mas.
+    // Igualdad ESTRUCTURAL contra los literales de arriba: seis claves (SLT-52 sumo
+    // `ivaFulfillment`), ni una mas.
     expect(res.items[0].costoEstimado).toEqual(COSTO_ESPERADO_VIGENTE);
     expect(Object.keys(res.items[0].costoEstimado!).sort()).toEqual([
       "comision",
@@ -282,6 +286,7 @@ describe("ApiOrdenLecturaService.listar — zona y costo (feature 415)", () => {
       "fulfillment",
       "iva",
       "ivaComision",
+      "ivaFulfillment",
     ]);
   });
 
@@ -339,6 +344,7 @@ describe("ApiOrdenLecturaService.listar — zona y costo (feature 415)", () => {
       comision: "0.00",
       ivaComision: "0.00",
       fulfillment: "0.00",
+      ivaFulfillment: "0.00",
     });
   });
 
@@ -462,5 +468,100 @@ describe("ApiOrdenLecturaService.listar — zona y costo (feature 415)", () => {
     for (const fuga of ["costeo", "tarifaId", "tarifa-1", "cierreId", "zonaId", "esZonaEspecial"]) {
       expect(texto).not.toContain(fuga);
     }
+  });
+});
+
+// -----------------------------------------------------------------------------------------------
+// SLT-52 R46 / R51 — el modelo NUEVO en la lectura por API key. Importes a mano, IVA 13 %:
+//   flete entregado monto 2500.00 -> IVA 325.00
+//   comision COD 3.50 % de 25900.00 = 906.50 -> IVA 117.845 -> 117.85
+//   fulfillment monto 696.00 -> IVA 90.48
+// -----------------------------------------------------------------------------------------------
+function cobroNuevo(concepto: ValorCobro["concepto"], modo: ValorCobro["modo"], valor: string): ValorCobro {
+  return { concepto, modo, valor, ivaPct: "13.00", nivel: "zona", tarifaValorId: `tv-${concepto}` };
+}
+
+/** El resolver devuelve la tarifa del modelo NUEVO tal cual (sin envolverla en el viejo). */
+function tarifasNuevo(valores: ValoresTienda) {
+  const tarifa: TarifaTienda = { modelo: "nuevo", valores };
+  return { resolveTarifas: vi.fn().mockResolvedValue(new Map([[CLAVE_GAM, tarifa]])) };
+}
+
+function repoConEntradasVivas() {
+  return fakeRepo({
+    listByOwner: vi
+      .fn()
+      .mockResolvedValue({ items: [row({ costeo: costeoFixture(ENTRADAS_VIVAS) })], total: 1 }),
+  });
+}
+
+describe("SLT-52 R46 — el IVA del fulfillment viaja en la respuesta", () => {
+  it("nuevo: `costoEstimado.ivaFulfillment` = 90.48 (696.00 al 13 %)", async () => {
+    const svc = new ApiOrdenLecturaService(
+      repoConEntradasVivas() as never,
+      fakeSignedUrls(),
+      tarifasNuevo({
+        tienda_flete_entregado: cobroNuevo("tienda_flete_entregado", "monto", "2500.00"),
+        tienda_comision_cod: cobroNuevo("tienda_comision_cod", "porcentaje", "3.50"),
+        tienda_fulfillment: cobroNuevo("tienda_fulfillment", "monto", "696.00"),
+      }) as never,
+    );
+
+    const res = await svc.listar(ACTOR, { limit: 50, offset: 0 });
+
+    expect(res.items[0].costoEstimado).toEqual({
+      flete: "2500.00",
+      iva: "325.00",
+      comision: "906.50",
+      ivaComision: "117.85",
+      fulfillment: "696.00",
+      ivaFulfillment: "90.48",
+    });
+  });
+
+  it('viejo: la clave viaja en el estimado y en el real con "0.00" (R47)', async () => {
+    const repo = fakeRepo({
+      listByOwner: vi.fn().mockResolvedValue({
+        items: [
+          row({
+            costeo: costeoFixture({
+              ...ENTRADAS_VIVAS,
+              congelado: congeladoFixture({ tarifa: TARIFA_FIXTURE, fulfillment: "692.00", ...ENTRADAS_VIVAS }),
+            }),
+          }),
+        ],
+        total: 1,
+      }),
+    });
+    const svc = new ApiOrdenLecturaService(
+      repo as never,
+      fakeSignedUrls(),
+      fakeTarifas([[CLAVE_GAM, TARIFA_FIXTURE]]) as never,
+    );
+
+    const res = await svc.listar(ACTOR, { limit: 50, offset: 0 });
+
+    expect(res.items[0].costoEstimado!.ivaFulfillment).toBe("0.00");
+    expect(res.items[0].costoReal!.ivaFulfillment).toBe("0.00");
+    expect(JSON.stringify(res.items[0].costoReal)).toContain('"ivaFulfillment":"0.00"');
+  });
+});
+
+describe("SLT-52 R51 — costoEstimado null aunque haya fulfillment", () => {
+  it("nuevo con comision COD y fulfillment pero SIN flete por entregado -> `costoEstimado: null`", async () => {
+    const svc = new ApiOrdenLecturaService(
+      repoConEntradasVivas() as never,
+      fakeSignedUrls(),
+      tarifasNuevo({
+        tienda_comision_cod: cobroNuevo("tienda_comision_cod", "porcentaje", "3.50"),
+        tienda_fulfillment: cobroNuevo("tienda_fulfillment", "monto", "696.00"),
+      }) as never,
+    );
+
+    const res = await svc.listar(ACTOR, { limit: 50, offset: 0 });
+
+    // «Sin tarifa» es que falte el flete por entregado: ni la comision ni el fulfillment cuentan.
+    expect(res.items[0].costoEstimado).toBeNull();
+    expect(JSON.stringify(res.items[0])).toContain('"costoEstimado":null');
   });
 });

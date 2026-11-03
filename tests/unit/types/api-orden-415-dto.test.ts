@@ -26,6 +26,8 @@ const COSTO: ApiOrdenCostoDTO = {
   comision: "906.50",
   ivaComision: "117.85",
   fulfillment: "696.00",
+  // SLT-52 (R46, P5 = a): sexto concepto, el IVA del fulfillment. Sigue sin haber ningun total.
+  ivaFulfillment: "90.48",
 };
 
 /** Los diez campos que el item ya publicaba antes de esta ficha, intactos. */
@@ -69,14 +71,15 @@ describe("415/R1 — `ApiZonaDTO` tiene exactamente `id` y `nombre`", () => {
   });
 });
 
-describe("415/R10+R11 — `ApiOrdenCostoDTO` tiene cinco claves y NINGUN total", () => {
-  it("R10: las claves son EXACTAMENTE las cinco, y todas son cadenas", () => {
+describe("415/R10+R11 — `ApiOrdenCostoDTO` tiene seis conceptos y NINGUN total", () => {
+  it("R10 + SLT-52 R46: las claves son EXACTAMENTE las seis, y todas son cadenas", () => {
     expect(Object.keys(COSTO).sort()).toEqual([
       "comision",
       "flete",
       "fulfillment",
       "iva",
       "ivaComision",
+      "ivaFulfillment",
     ]);
     for (const valor of Object.values(COSTO)) expect(typeof valor).toBe("string");
   });

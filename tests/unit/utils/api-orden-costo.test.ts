@@ -63,6 +63,7 @@ describe("api-orden-costo — los cinco conceptos (feature 415, T2)", () => {
       comision: "906.50",
       ivaComision: "117.85",
       fulfillment: "696.00",
+      ivaFulfillment: "0.00", // SLT-52 R47: el viejo no calcula IVA de fulfillment
     });
   });
 
@@ -141,6 +142,7 @@ describe("api-orden-costo — los cinco conceptos (feature 415, T2)", () => {
       comision: "0.00",
       ivaComision: "0.00",
       fulfillment: "0.00",
+      ivaFulfillment: "0.00",
     });
     // `costoRealDe` NUNCA devuelve `null`: la ausencia de FILA la decide el llamador.
     expect(real).not.toBeNull();
@@ -168,7 +170,8 @@ describe("api-orden-costo — los cinco conceptos (feature 415, T2)", () => {
     expect(costo.flete).toBe("2500.00");
   });
 
-  it("R10/R11: el objeto tiene las CINCO claves y NINGUNA que sume los cinco", () => {
+  // SLT-52 R46 (P5 = a): sexta clave `ivaFulfillment`; sigue sin haber ninguna que sume.
+  it("R10/R11: el objeto tiene las SEIS claves y NINGUNA que sume los conceptos", () => {
     const costo = costoEstimadoDe(TARIFA, FULFILLMENT, ENTRADAS)!;
 
     expect(Object.keys(costo).sort()).toEqual([
@@ -177,6 +180,7 @@ describe("api-orden-costo — los cinco conceptos (feature 415, T2)", () => {
       "fulfillment",
       "iva",
       "ivaComision",
+      "ivaFulfillment",
     ]);
     // La suma A MANO de los cinco: 2500.00 + 325.00 + 906.50 + 117.85 + 696.00 = 4545.35.
     // Ese numero NO puede aparecer en ningun valor, con ningun nombre. R11 lo escribe como
@@ -221,6 +225,7 @@ describe("api-orden-costo — los cinco conceptos (feature 415, T2)", () => {
       comision: "0.00",
       ivaComision: "0.00",
       fulfillment: "696.00",
+      ivaFulfillment: "0.00", // SLT-52 R47: el viejo no calcula IVA de fulfillment
     });
   });
 

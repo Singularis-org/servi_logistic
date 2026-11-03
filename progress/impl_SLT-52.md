@@ -858,3 +858,64 @@ T4.1-T4.4 completas: cobro y pago del modelo nuevo por las mismas funciones publ
   Restaurado (`cmp` igual).
 - `vitest related` NO terminó (máquina cargada por otro gate); queda para el `./init.sh` del leader.
 - `tasks.md > Archivos esperados`: añadido `tests/unit/repositories/orden-repository.test.ts`.
+
+## T4.5-T4.8 (2026-11-03) — decisiones de Carlos tras T4 (R46-R51, design §12; P5 = (a))
+
+Dos backend_dev en paralelo sobre el worktree, archivos disjuntos: (A) T4.6; (B) T4.5, T4.7 y T4.8.
+
+### Archivos
+- T4.6 (nuevos): `db/migrations/20261103140000_rechazo_tienda_cobro_tarifa_valor/{migration,down}.sql`
+  (columna, CHECK `rechazo_tienda_cobro_una_tarifa`, índice, FK SET NULL);
+  `db/migrations/20261103140100_rechazo_tienda_cobro_tarifa_valor_misma_empresa/{migration,down}.sql`
+  (`generar-misma-empresa.ts --faltantes --escribir`, un trigger);
+  `tests/integration/db/rechazo-tienda-cobro-tarifa-valor-migration.test.ts` (base propia `slt52_rtc_<rand>`,
+  cada caso en transacción revertida, `down` incluido).
+- T4.6 (modificados): `db/schema.prisma`, `IRechazoTiendaCobroRepository.ts`, `RechazoTiendaCobroRepository.ts`,
+  `RechazoTiendaService.ts`, `tests/unit/services/rechazo-tienda-service.test.ts`; `tarifaValorId: null` en
+  fixtures que no compilaban: `_fixtures/caja-459.ts`, `busqueda-por-guia-469`, `rechazo-tienda-cobro.int`,
+  `wallet-anulacion-concurrencia` (los tres tests están en `tests/baseline-rojos.json`: rojos SL017 ajenos).
+- T4.5/T4.8: `lib/utils/ingreso-empresa.ts` (`ivaFulfillmentDeTarifa`), `CotizacionOrdenService.ts`,
+  `lib/types/cotizacion.ts`, `BulkOrdenService.ts`, `IBulkOrdenService.ts`, `lib/utils/api-orden-costo.ts`,
+  `lib/types/api-orden.ts`; docs: `lib/api/openapi-spec.ts` (fuente servida), `docs/api/api-key-openapi.yaml`,
+  `docs/api/CHANGELOG.md` (aditivo), `docs/api/guia-integracion/guia-integracion.html`. Postman no lista los campos.
+- Tests de forma ajustados a seis claves (`ivaFulfillment`): `tests/unit/api/openapi-{177,415,466}`,
+  `ordenes-api-key-composicion-415`, guardias `docs-marca-heredada` y `costo-orden-forma-unica`,
+  `api-orden-costo`, `asimetria-sin-tarifa`, rutas de listado/consulta/carga, `carga-api-etiquetas`,
+  `api-orden-415-dto`, `convergencia-tarifa-listado-cierre` (nuevo: `ivaFulfillment` 13.00).
+
+### Migraciones
+`prisma migrate deploy` contra la base local («All migrations have been successfully applied»);
+`migrate diff --from-config-datasource --to-schema` → «No difference detected». `DATABASE_URL` comprobada
+solo como booleano (localhost).
+
+### R → test
+| R | test |
+|---|---|
+| R46 | `ingreso-empresa-modelo-nuevo.test.ts` › «SLT-52 R46 — fulfillment con IVA» (500→65.00; 2.50 % → 48.43 HALF_UP; ausente/0 % → 0.00; `agregarIngresosPorConcepto` no lo emite); `cotizacion-orden-service.test.ts` › «SLT-52 R46 — el total resta fulfillment e IVA en los dos escenarios»; `api-orden-lectura-service.test.ts` y `cotizacion-api-key.test.ts` › «SLT-52 R46 — el IVA del fulfillment viaja en la respuesta»; `bulk-orden-service.carga-api.test.ts` › «SLT-52 R46 — la carga publica el IVA del fulfillment…» |
+| R47 | bloque R46 › «SLT-52 R47 — el viejo no calcula IVA de fulfillment»; `respaldo-identico.test.ts` sin tocar y verde |
+| R48 | `rechazo-tienda-service.test.ts` › «SLT-52 R48 — el cobro en el nuevo guarda el tarifaValorId…»; integración › «R48: `crearPendiente` escribe `tarifa_valor_id` en la fila real» |
+| R49 | `rechazo-tienda-service.test.ts` › «SLT-52 R49 — en el viejo guarda tarifaId y tarifaValorId null»; integración › «R49: … lo rechaza el CHECK» |
+| R50 | integración › «R50/R44: el up no mueve ningun cobro…» y «R50: borrar el valor citado deja el cobro, su referencia en NULL y los importes intactos»; además trigger misma empresa (SL017) y `down` |
+| R51 (+R25) | `carga-api-key-sin-tarifa.test.ts`, `cotizacion-api-key.test.ts`, `api-orden-lectura-service.test.ts`, `corregir-datos-cliente-service.test.ts` › los cuatro «SLT-52 R51 — …» de tasks.md. Verdes al primer intento: no había bug de T4. |
+
+### Salida real (de los subagentes, solo sus archivos)
+- rechazo-tienda-service 33/33; integración nueva 8/8.
+- modelo-nuevo + respaldo 82/82; cotizacion-orden-service 52/52; api-orden-lectura 21/21; corregir-datos 60/60;
+  bulk carga-api 47/47; cotizacion-api-key 28/28; carga-sin-tarifa 7/7.
+- typecheck 0 errores (necesita `NODE_OPTIONS=--max-old-space-size=8192`); lint 0 errores, 232 avisos.
+
+### Contrapruebas (restauradas, comprobadas con cmp/sha1)
+- `tarifaValorId: null` fijo en `congelarCobro` → 1 failed | 32 passed: `expected null to be 'tv-rechazo'`.
+- Quitar `tarifaValorId` del insert del repositorio → integración 1 failed | 7 passed:
+  `-"tarifa_valor_id": "8da899fe-…" +"tarifa_valor_id": null`. Compila igual (campo opcional en Prisma): solo
+  la integración lo ve.
+- `ivaFulfillmentDeTarifa` devuelve 0 en el nuevo → 8 rojos, p. ej. `Expected: "65.00" Received: "0.00"`.
+- Quitar `ivaFulfillment` de `api-orden-costo` → 5 rojos («nuevo: costoEstimado.ivaFulfillment = 90.48»); del
+  serializador de cotización → rojo «SLT-52 R46 — el IVA del fulfillment viaja en la respuesta».
+- Contar el fulfillment como tarifa → 4 rojos, uno por test de R51 (`Expected: "sin_tarifa" Received: "resuelta"`).
+
+### Desvíos del spec
+- `DesgloseCargaApi` NO gana la clave `ivaFulfillment`: `respaldo-identico.test.ts` (T0.1, intocable) lo compara
+  con `toStrictEqual` en el viejo. La carga calcula el campo aparte con `ivaFulfillmentDeTarifa`; `costoEnvio` sí
+  lo suma.
+- `costoReal.ivaFulfillment` sale `"0.00"` siempre hasta T5.3 (hoy el congelado es solo del modelo viejo).

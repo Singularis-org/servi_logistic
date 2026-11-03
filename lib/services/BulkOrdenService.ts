@@ -59,6 +59,7 @@ import {
 import { parseCantonDistrito } from "@/lib/utils/canton-distrito";
 import {
   desgloseCargaApi,
+  ivaFulfillmentDeTarifa,
   fleteEntregadoSinTarifa,
   tieneFulfillment,
 } from "@/lib/utils/ingreso-empresa";
@@ -769,6 +770,11 @@ export class BulkOrdenService implements IBulkOrdenService {
         // es una guarda de tipos, no un camino vivo.
         costoEnvio: desglose.costoEnvio,
         fulfillment: desglose.fulfillment,
+        // SLT-52 (R46, P5 = a): el IVA del fulfillment que `costoEnvio` ya suma, aparte.
+        ivaFulfillment: ivaFulfillmentDeTarifa(
+          tarifaPorRemision.get(creada.numRemision) ?? null,
+          montoCobrarPorRemision.get(creada.numRemision) ?? null,
+        ).toFixed(2),
       });
     }
 

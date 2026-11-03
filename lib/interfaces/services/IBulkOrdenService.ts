@@ -77,6 +77,9 @@ export interface CargaViaApiOrden {
   // Nunca `null`: mismo criterio que su hermano de arriba, el gap de tarifa se representa con
   // cero y no con ausencia.
   fulfillment: string;
+  // SLT-52 (R46, P5 = a): el IVA del fulfillment, tambien sumado en `costoEnvio`. "0.00" en el
+  // modelo viejo (R47: `tarifas` no tiene % de IVA de fulfillment) y cuando no hay fulfillment.
+  ivaFulfillment: string;
 }
 
 export interface CargaViaApiSummary {

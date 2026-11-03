@@ -396,6 +396,7 @@ const COSTO_415 = {
   comision: "906.50",
   ivaComision: "117.85",
   fulfillment: "696.00",
+  ivaFulfillment: "0.00", // SLT-52 R47: el viejo no calcula IVA de fulfillment
 };
 
 /** La orden con COD y comision, para que los cinco conceptos sean distintos de cero. */

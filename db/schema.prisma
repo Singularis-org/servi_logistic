@@ -2010,6 +2010,7 @@ model TarifaValor {
 
   cierreDetailConceptos  CierreDetailConcepto[]
   gestionPagosCongelados GestionPagoCongelado[]
+  rechazoTiendaCobros    RechazoTiendaCobro[]
 
   organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
@@ -3131,6 +3132,10 @@ model RechazoTiendaCobro {
   montoFlete  Decimal                  @map("monto_flete") @db.Decimal(12, 2) // ingreso_flete_devolucion; CHECK > 0
   montoIva    Decimal                  @map("monto_iva") @db.Decimal(12, 2) // ingreso_iva_flete_devolucion; CHECK >= 0 (el cero es un valor real)
   tarifaId    String?                  @map("tarifa_id") // QUE FILA de `tarifas` produjo los importes (auditoria); SET NULL
+  // SLT-52 R48-R50: QUE `tarifa_valor` (concepto `tienda_flete_rechazo`) produjo los importes en
+  // el modelo nuevo. Traza, nunca bloqueo: SET NULL. CHECK `rechazo_tienda_cobro_una_tarifa`: a lo
+  // sumo una de las dos referencias (R49).
+  tarifaValorId String?                @map("tarifa_valor_id")
   estado      RechazoTiendaCobroEstado @default(pendiente)
   generadoEl  DateTime                 @map("generado_el") @db.Date // dia CALENDARIO CR del rechazo
   decididoPor String?                  @map("decidido_por") // FK usuario: quien aprobo o rechazo
@@ -3143,6 +3148,7 @@ model RechazoTiendaCobro {
   tienda    Usuario                      @relation("RechazoTiendaCobroTienda", fields: [tiendaId], references: [id], onDelete: Restrict)
   decisor   Usuario?                     @relation("RechazoTiendaCobroDecisor", fields: [decididoPor], references: [id], onDelete: Restrict)
   tarifa    Tarifa?                      @relation(fields: [tarifaId], references: [id], onDelete: SetNull)
+  tarifaValor TarifaValor?               @relation(fields: [tarifaValorId], references: [id], onDelete: SetNull)
   // Ficha 458-B (D7, R63/R73): la anulacion del cobro. 0 o 1; su existencia ES «anulado». `estado`
   // sigue `aprobado` y esta fila no se actualiza (A14 descartada).
   anulacion RechazoTiendaCobroAnulacion?
@@ -3158,6 +3164,7 @@ model RechazoTiendaCobro {
   @@index([estado, generadoEl]) // la COLA de pendientes, del mas antiguo al mas reciente
   @@index([tiendaId]) // "que le he cobrado a esta tienda" + el RESTRICT al borrar usuarios
   @@index([decididoPor]) // el RESTRICT se ejerce al borrar usuarios (patron gasto_fijo_cobro)
+  @@index([tarifaValorId]) // el SET NULL se ejerce al borrar un valor (SLT-52 R50)
   @@index([organizacionId])
   @@map("rechazo_tienda_cobro")
 }

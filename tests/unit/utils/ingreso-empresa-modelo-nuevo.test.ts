@@ -10,6 +10,7 @@ import {
   desgloseCargaApi,
   fleteEntregadoSinTarifa,
   ganaLaTienda,
+  ivaFulfillmentDeTarifa,
   montoFulfillmentDeTarifa,
   pagoTiendaEmpresa,
   partesPorTienda,
@@ -212,9 +213,11 @@ describe("SLT-52 R35 — esCentral y esZonaEspecial no cambian nada en el nuevo"
 });
 
 describe("SLT-52 R31 — fulfillment: en el costo de la API, fuera de la liquidacion", () => {
-  it("desgloseCargaApi: flete + IVA + fulfillment (3108.12 + 450.25 = 3558.37)", () => {
+  // SLT-52 R46 (2026-11-02): el fulfillment lleva su IVA. 450.25 al 13 % = 58.5325 -> 58.53, y
+  // `costoEnvio` = 3108.12 + 450.25 + 58.53 = 3616.90. Antes de R46 este caso daba 3558.37.
+  it("desgloseCargaApi: flete + IVA + fulfillment + su IVA (3108.12 + 450.25 + 58.53 = 3616.90)", () => {
     expect(desgloseCargaApi(NUEVO, false, false, "14900.00")).toStrictEqual({
-      costoEnvio: "3558.37",
+      costoEnvio: "3616.90",
       fulfillment: "450.25",
     });
   });
@@ -260,6 +263,97 @@ describe("SLT-52 R31 — fulfillment: en el costo de la API, fuera de la liquida
       { categoria: "ingreso_iva_flete_devolucion", monto: "104.00" },
       { categoria: "ingreso_iva_comision_cod", monto: "67.80" },
     ]);
+  });
+});
+
+/**
+ * SLT-52 R46/R47 (design §12.1) — el fulfillment es un cobro a la tienda con su IVA. Esperados a
+ * mano (flete entregado + IVA = 3108.12 en todos los casos del nuevo):
+ *   monto 500.00 al 13 %            -> IVA 65.00   -> costoEnvio 3108.12 + 500.00 + 65.00 = 3673.12
+ *   2.50 % de 14900.00 = 372.50     -> IVA 48.425  -> HALF_UP 48.43 (HALF_EVEN daria 48.42)
+ *                                   -> costoEnvio 3108.12 + 372.50 + 48.43 = 3529.05
+ */
+describe("SLT-52 R46 — fulfillment con IVA", () => {
+  const conFulfillment = (valor: ValorCobro): TarifaTienda => ({
+    modelo: "nuevo",
+    valores: { ...VALORES, tienda_fulfillment: valor },
+  });
+
+  it("monto 500.00 al 13 %: IVA 65.00 y costoEnvio con los dos (3673.12)", () => {
+    const t = conFulfillment(cobro("tienda_fulfillment", "monto", "500.00"));
+    expect(ivaFulfillmentDeTarifa(t, "14900.00").toFixed(2)).toBe("65.00");
+    expect(desgloseCargaApi(t, false, false, "14900.00")).toStrictEqual({
+      costoEnvio: "3673.12",
+      fulfillment: "500.00",
+    });
+  });
+
+  it("fulfillment en % sobre el pedido: 2.50 % de 14900.00 = 372.50, IVA 48.425 -> 48.43 (HALF_UP)", () => {
+    const t = conFulfillment(cobro("tienda_fulfillment", "porcentaje", "2.50"));
+    expect(ivaFulfillmentDeTarifa(t, "14900.00").toFixed(2)).toBe("48.43");
+    expect(desgloseCargaApi(t, false, false, "14900.00")).toStrictEqual({
+      costoEnvio: "3529.05",
+      fulfillment: "372.50",
+    });
+    // Sin valor del pedido la base es 0: ni importe ni IVA.
+    expect(ivaFulfillmentDeTarifa(t, null).toFixed(2)).toBe("0.00");
+  });
+
+  it("concepto ausente -> IVA 0.00; IVA 0 % -> 0.00", () => {
+    const sin: ValoresTienda = { ...VALORES };
+    delete sin.tienda_fulfillment;
+    expect(ivaFulfillmentDeTarifa({ modelo: "nuevo", valores: sin }, "14900.00").toFixed(2)).toBe("0.00");
+    const sinIva = conFulfillment(cobro("tienda_fulfillment", "monto", "500.00", "0.00"));
+    expect(ivaFulfillmentDeTarifa(sinIva, "14900.00").toFixed(2)).toBe("0.00");
+    expect(desgloseCargaApi(sinIva, false, false, "14900.00").costoEnvio).toBe("3608.12");
+    expect(ivaFulfillmentDeTarifa(null, "14900.00").toFixed(2)).toBe("0.00");
+  });
+
+  it("agregarIngresosPorConcepto sigue sin emitir el fulfillment ni su IVA (R31)", () => {
+    const t = conFulfillment(cobro("tienda_fulfillment", "monto", "500.00"));
+    const gestiones = [
+      { input: { ...ORDEN, resultado: "entregado" as const }, tarifa: t },
+      { input: { ...ORDEN, resultado: "devolucion_a_origen_por_rechazo" as const }, tarifa: t },
+    ];
+    // Ni 500.00 ni 65.00 aparecen, ni sumados a otra categoria: solo flete, rechazo, comision y IVAs.
+    expect(agregarIngresosPorConcepto(gestiones)).toStrictEqual([
+      { categoria: "ingreso_flete", monto: "2750.55" },
+      { categoria: "ingreso_flete_devolucion", monto: "1650.35" },
+      { categoria: "ingreso_comision_cod", monto: "521.50" },
+      { categoria: "ingreso_iva_flete", monto: "357.57" },
+      { categoria: "ingreso_iva_flete_devolucion", monto: "214.55" },
+      { categoria: "ingreso_iva_comision_cod", monto: "67.80" },
+    ]);
+  });
+
+  /**
+   * R47: `tarifas` no tiene % de IVA de fulfillment. Tarifa vieja: flete 2500.00 al 13 % = 2825.00
+   * y fulfillment 1000.00 -> costoEnvio 3825.00, exactamente lo de antes de esta ficha.
+   */
+  it("SLT-52 R47 — el viejo no calcula IVA de fulfillment", () => {
+    const viejo = {
+      modelo: "viejo" as const,
+      tarifa: {
+        valorFlete: "2500.00",
+        valorFleteGam: "2500.00",
+        valorFleteDevuelto: "1000.00",
+        valorFleteDevueltoGam: "1000.00",
+        comisionCod: "3.50",
+        ivaFlete: "13.00",
+        ivaComisionCod: "13.00",
+        tarifaEspecial: null,
+        tarifaEspecialDevuelta: null,
+        tarifaId: "t-viejo",
+        fulfillment: "1000.00",
+      },
+    };
+    expect(ivaFulfillmentDeTarifa(viejo, "14900.00").toFixed(2)).toBe("0.00");
+    // La tarifa suelta (sin sobre) tambien es el viejo.
+    expect(ivaFulfillmentDeTarifa(viejo.tarifa, "14900.00").toFixed(2)).toBe("0.00");
+    expect(desgloseCargaApi(viejo, false, false, "14900.00")).toStrictEqual({
+      costoEnvio: "3825.00",
+      fulfillment: "1000.00",
+    });
   });
 });
 

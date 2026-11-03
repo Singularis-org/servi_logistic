@@ -459,6 +459,7 @@ describe("💰 337 — el rechazo da de alta un COBRO PENDIENTE contra la tienda
       montoFlete: "500.00", // STRING escala 2, nunca number
       montoIva: "65.00",
       tarifaId: "tar-1", // auditoria: de que fila salio
+      tarifaValorId: null, // SLT-52 R49: modelo viejo, sin traza al nuevo
       generadoEl: DIA_CR, // dia CALENDARIO de Costa Rica, del reloj inyectado
     });
   });
@@ -619,5 +620,68 @@ describe("💰 337 — el rechazo da de alta un COBRO PENDIENTE contra la tienda
     expect(tarifaRepo.resolveTarifas).toHaveBeenCalledWith([
       { tiendaId: "store-1", zonaId: "z1", distritoId: "dist-1" },
     ]);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* SLT-52 T4.6 — la traza del valor que produjo el cobro (design §12.2)        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Un `TarifaTienda` del modelo NUEVO con el flete por rechazo y, a proposito, OTRO concepto con su
+ * propio `tarifaValorId`: si el service citara el valor equivocado (p. ej. el del flete entregado),
+ * el id no coincide y el caso cae.
+ */
+function tarifaNueva(): TarifaTienda {
+  return {
+    modelo: "nuevo",
+    valores: {
+      tienda_flete_entregado: {
+        concepto: "tienda_flete_entregado",
+        modo: "monto",
+        valor: "1000.00",
+        nivel: "zona",
+        tarifaValorId: "tv-entregado",
+        ivaPct: "13.00",
+      },
+      tienda_flete_rechazo: {
+        concepto: "tienda_flete_rechazo",
+        modo: "monto",
+        valor: "500.00",
+        nivel: "zona",
+        tarifaValorId: "tv-rechazo",
+        ivaPct: "13.00",
+      },
+    },
+  };
+}
+
+describe("SLT-52 T4.6 — el cobro por rechazo guarda que tarifa lo produjo (R48/R49)", () => {
+  it("SLT-52 R48 — el cobro en el nuevo guarda el tarifaValorId de tienda_flete_rechazo y tarifaId null", async () => {
+    const { service, cobroRepo } = build(
+      {},
+      {},
+      { resolveTarifas: vi.fn(async () => new Map<string, TarifaTienda | null>([[clavePar(PAR), tarifaNueva()]])) },
+    );
+
+    await expect(service.rechazar("o1", MOTIVO, TIENDA)).resolves.toEqual({ status: "ok" });
+
+    // Precondicion: el cobro nacio (500,00 + 13 %), asi que la traza se esta mirando en un cobro real.
+    const cobro = cobroCreado(cobroRepo);
+    expect(cobro.montoFlete).toBe("500.00");
+    expect(cobro.montoIva).toBe("65.00");
+    expect(cobro.tarifaValorId).toBe("tv-rechazo");
+    expect(cobro.tarifaId).toBeNull();
+  });
+
+  it("SLT-52 R49 — en el viejo guarda tarifaId y tarifaValorId null", async () => {
+    const { service, cobroRepo } = build();
+
+    await service.rechazar("o1", MOTIVO, TIENDA);
+
+    const cobro = cobroCreado(cobroRepo);
+    expect(cobro.montoFlete).toBe("500.00");
+    expect(cobro.tarifaId).toBe("tar-1");
+    expect(cobro.tarifaValorId).toBeNull();
   });
 });
