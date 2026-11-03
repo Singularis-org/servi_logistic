@@ -64,14 +64,16 @@ function buildPrisma(tx: ReturnType<typeof buildTx>, overrides: Record<string, u
 }
 
 /**
- * SLT-75: `zonaDistrito.findMany` lo usan DOS lecturas distintas de `update`: la de conflictos
- * (R6, la unica que pide `select.zona`) y las de la reconciliacion de la 366. Este helper responde
- * `[]` (sin conflictos) a la primera y sirve `respuestas` EN ORDEN a las demas, para que los casos
- * de la 366 no dependan de la posicion de la lectura nueva.
+ * SLT-75: `zonaDistrito.findMany` lo usan VARIAS lecturas distintas de `update`: la de conflictos
+ * (R6, `leerDistritosEnOtraZona`, la unica que pide `select.distrito`) y las de la reconciliacion
+ * de la 366 — incluida la carga del catalogo de SLT-65 (`CatalogoGeograficoRepository.deLaEmpresa`),
+ * que tambien pide `select.zona`, por eso NO sirve para distinguir. Este helper responde `[]`
+ * (sin conflictos) a la primera y sirve `respuestas` EN ORDEN a las demas, para que los casos de
+ * la 366 no dependan de la posicion de la lectura nueva.
  */
 function esLecturaDeConflictos(args: unknown): boolean {
-  const a = args as { select?: { zona?: unknown } } | undefined;
-  return a?.select?.zona !== undefined;
+  const a = args as { select?: { distrito?: unknown } } | undefined;
+  return a?.select?.distrito !== undefined;
 }
 
 function nmEnOrden(tx: ReturnType<typeof buildTx>, respuestas: unknown[][]): void {
