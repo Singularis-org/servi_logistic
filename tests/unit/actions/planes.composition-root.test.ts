@@ -134,6 +134,40 @@ describe("SL-24 — el composition root de planes pasa PlanesRepository", () => 
     expect(transaction).not.toHaveBeenCalled();
   });
 
+  it("Ajuste planes-custom D10, D13: las dos actions nuevas existen y un maestro recibe forbidden sin tocar el cliente", async () => {
+    const deps = { getActor: async () => MAESTRO };
+    const resultados = await Promise.all([
+      acciones.cambiarTipoCobroAction({ organizacionId: EMPRESA, tipoCobro: "anual" }, deps),
+      acciones.previsualizarCustomAction({ organizacionId: EMPRESA, inicioCiclo: "2026-10-30", topes: {} }, deps),
+    ]);
+    expect(resultados).toEqual([{ estado: "forbidden" }, { estado: "forbidden" }]);
+    expect(organizacionFindUnique).not.toHaveBeenCalled();
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it("Ajuste planes-custom D10: cambiarTipoCobroAction, sin deps.service, lee la empresa por el repositorio real (sin plan → sin_plan)", async () => {
+    const r = await acciones.cambiarTipoCobroAction({ organizacionId: EMPRESA, tipoCobro: "anual" }, { getActor: async () => SUPERADMIN });
+    expect(r).toEqual({ estado: "sin_plan" });
+    expect(organizacionFindUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { id: EMPRESA } }));
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it("Ajuste planes-custom D13: previsualizarCustomAction, sin deps.service, lee la empresa por el repositorio real (con plan → R31)", async () => {
+    organizacionFindUnique.mockResolvedValueOnce({ id: EMPRESA, nombre: "Mensajería Uno", planId: PLAN } as never);
+    const { inicioDelCicloPorDefecto } = await import("@/lib/planes/ciclo");
+    const r = await acciones.previsualizarCustomAction(
+      {
+        organizacionId: EMPRESA,
+        inicioCiclo: inicioDelCicloPorDefecto(new Date()),
+        topes: { ordenesPorCiclo: 10, porRol: {}, apiKeys: null },
+      },
+      { getActor: async () => SUPERADMIN },
+    );
+    expect(r).toEqual({ estado: "validation_error", fieldErrors: { inicioCiclo: [expect.any(String)] } });
+    expect(organizacionFindUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { id: EMPRESA } }));
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
   it("editarPlanAction acepta vigenteDesde: una fecha pasada llega al servicio y es validation_error", async () => {
     const r = await acciones.editarPlanAction(
       {

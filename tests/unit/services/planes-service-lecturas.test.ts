@@ -108,8 +108,23 @@ function planDeEmpresaLeida(): PlanDeEmpresaLeida {
       tipoCobro: "anual",
     },
     asignaciones: [
-      { creadoAt: new Date("2026-10-02T09:00:00.000Z"), actorNombre: "Ana Pérez", planNombre: "Plan «Básico»" },
-      { creadoAt: new Date("2026-09-15T12:00:00.000Z"), actorNombre: null, planNombre: "Plan «Inicial»" },
+      // Ajuste planes-custom (D14): un cambio de solo el tipo (D10), una asignación con fecha y una fila
+      // anterior al ajuste (sin tipo).
+      {
+        creadoAt: new Date("2026-10-20T09:00:00.000Z"),
+        actorNombre: "Ana Pérez",
+        planNombre: "Plan «Básico»",
+        valorAnterior: "mensual",
+        valorNuevo: "anual",
+      },
+      {
+        creadoAt: new Date("2026-10-02T09:00:00.000Z"),
+        actorNombre: "Ana Pérez",
+        planNombre: "Plan «Básico»",
+        valorAnterior: null,
+        valorNuevo: "2026-10-02 · mensual",
+      },
+      { creadoAt: new Date("2026-09-15T12:00:00.000Z"), actorNombre: null, planNombre: "Plan «Inicial»", valorAnterior: null, valorNuevo: null },
     ],
   };
 }
@@ -134,6 +149,8 @@ function doble() {
     destinatariosDelAviso: vi.fn<IPlanesRepository["destinatariosDelAviso"]>(async () => null),
     asignables: vi.fn<IPlanesRepository["asignables"]>(async () => []),
     publicos: vi.fn<IPlanesRepository["publicos"]>(async () => []),
+    vistaPreviaConTopes: vi.fn<IPlanesRepository["vistaPreviaConTopes"]>(async () => null),
+    cambiarTipoCobro: vi.fn<IPlanesRepository["cambiarTipoCobro"]>(async () => ({ estado: "not_found" })),
     vistaPreviaAsignacion: vi.fn<IPlanesRepository["vistaPreviaAsignacion"]>(async () => null),
   } satisfies IPlanesRepository;
 }
@@ -274,10 +291,25 @@ describe("SLT-58 — plan de una empresa (R19)", () => {
 
   it("R21: las asignaciones llegan en el orden del repositorio, con el instante en ISO y el actor no resuelto como ''", async () => {
     const r = await servicio.planDeEmpresa(SUPERADMIN, { organizacionId: EMPRESA });
-    expect(r.estado === "ok" && r.vista.asignaciones).toEqual([
+    expect(r.estado === "ok" && r.vista.asignaciones.map(({ creadoAt, actorNombre, planNombre }) => ({ creadoAt, actorNombre, planNombre }))).toEqual([
+      { creadoAt: "2026-10-20T09:00:00.000Z", actorNombre: "Ana Pérez", planNombre: "Plan «Básico»" },
       { creadoAt: "2026-10-02T09:00:00.000Z", actorNombre: "Ana Pérez", planNombre: "Plan «Básico»" },
       { creadoAt: "2026-09-15T12:00:00.000Z", actorNombre: "", planNombre: "Plan «Inicial»" },
     ]);
     expect(repo.planDeEmpresa).toHaveBeenCalledWith(EMPRESA);
+  });
+
+  it("Ajuste planes-custom D14: cada fila trae su tipo de cobro; el cambio de solo el tipo (D10) es una fila propia", async () => {
+    const r = await servicio.planDeEmpresa(SUPERADMIN, { organizacionId: EMPRESA });
+    expect(r.estado === "ok" && r.vista.asignaciones.map(({ tipo, tipoCobro, tipoCobroAnterior }) => ({ tipo, tipoCobro, tipoCobroAnterior }))).toEqual([
+      { tipo: "cambio_tipo_cobro", tipoCobro: "anual", tipoCobroAnterior: "mensual" },
+      { tipo: "asignacion", tipoCobro: "mensual", tipoCobroAnterior: null },
+      // Anterior al ajuste: no guardaba el tipo.
+      { tipo: "asignacion", tipoCobro: null, tipoCobroAnterior: null },
+    ]);
+    // Los valores crudos del historial no salen de la lectura.
+    expect(r.estado === "ok" && Object.keys(r.vista.asignaciones[0]).sort()).toEqual(
+      ["actorNombre", "creadoAt", "planNombre", "tipo", "tipoCobro", "tipoCobroAnterior"],
+    );
   });
 });

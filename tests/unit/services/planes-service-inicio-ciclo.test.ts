@@ -56,6 +56,8 @@ function doble() {
     archivar: vi.fn<IPlanesRepository["archivar"]>(async () => ({ estado: "not_found" })),
     asignar: vi.fn<IPlanesRepository["asignar"]>(async () => ({ estado: "ok", cambio: true, avisos: [] })),
     crearYAsignar: vi.fn<IPlanesRepository["crearYAsignar"]>(async () => ({ estado: "ok", planId: PLAN, avisos: [] })),
+    vistaPreviaConTopes: vi.fn<IPlanesRepository["vistaPreviaConTopes"]>(async () => null),
+    cambiarTipoCobro: vi.fn<IPlanesRepository["cambiarTipoCobro"]>(async () => ({ estado: "not_found" })),
     vistaPreviaAsignacion: vi.fn<IPlanesRepository["vistaPreviaAsignacion"]>(async () => ({
       avisos: [],
       siguienteCiclo: new Date("2026-11-29T18:00:00.000Z"),

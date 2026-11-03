@@ -368,8 +368,10 @@ export const HISTORIAL_ACCION_TIPOS = [
   // --- A.6 · cambia el plan de una empresa (1) ---
   // SL-24 (design §9): el superadmin asigna o cambia el plan de una empresa. Categoria propia: no
   // mueve dinero (el precio es informativo, R4), no borra nada y no cambia quien puede hacer que,
-  // sino CUANTO puede hacer la empresa. `entidad_id` es el plan nuevo; `valor_anterior` y
-  // `valor_nuevo` van a NULL porque el nombre de un plan es texto libre. Crear, editar y archivar un
+  // sino CUANTO puede hacer la empresa. `entidad_id` es el plan nuevo; el nombre del plan (texto
+  // libre) no va en `valor_*`. Ajuste planes-custom: `valor_nuevo` lleva el tipo de cobro (D6), con la
+  // fecha de inicio del ciclo delante si la hubo (SLT-58 R39); `valor_anterior` va a NULL salvo en un
+  // cambio de solo el tipo de cobro (D10), donde lleva el tipo de antes. Crear, editar y archivar un
   // plan no estan aqui: son de plataforma y van a `plan_rastro`.
   "plan_asignado",
 ] as const satisfies readonly PrismaHistorialAccionTipo[];

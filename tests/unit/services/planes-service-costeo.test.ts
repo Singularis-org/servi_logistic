@@ -77,6 +77,8 @@ function doble() {
     catalogo: vi.fn<IPlanesRepository["catalogo"]>(),
     detalle: vi.fn<IPlanesRepository["detalle"]>(),
     planDeEmpresa: vi.fn<IPlanesRepository["planDeEmpresa"]>(),
+    vistaPreviaConTopes: vi.fn<IPlanesRepository["vistaPreviaConTopes"]>(async () => null),
+    cambiarTipoCobro: vi.fn<IPlanesRepository["cambiarTipoCobro"]>(async () => ({ estado: "not_found" })),
     vistaPreviaAsignacion: vi.fn<IPlanesRepository["vistaPreviaAsignacion"]>(),
   };
 }

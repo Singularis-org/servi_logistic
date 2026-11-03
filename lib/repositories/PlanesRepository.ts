@@ -16,6 +16,7 @@ import type {
   ResultadoAplicar,
   ResultadoArchivar,
   ResultadoAsignar,
+  ResultadoCambiarTipoCobro,
   ResultadoCancelarCambio,
   ResultadoCrearYAsignar,
   ResultadoEdicion,
@@ -54,6 +55,7 @@ import {
 // Cerrojos (§4.4), siempre en este orden para no interbloquear con las altas de los triggers, que piden
 // empresa → plan:
 //   · asignar: `organizacion` FOR UPDATE → plan FOR SHARE → contar → escribir;
+//   · cambiar solo el tipo de cobro (ajuste planes-custom D10): `organizacion` FOR UPDATE → plan FOR SHARE → escribir;
 //   · editar, archivar, programar, cancelar y aplicar un cambio programado: plan FOR UPDATE (nunca
 //     piden la empresa después).
 // El FOR UPDATE espera a las altas en vuelo (que tienen las filas en FOR SHARE) y cuenta con ellas ya
@@ -533,6 +535,26 @@ async function crearEnTx(tx: Tx, input: CrearPlanInput, actorUsuarioId: string):
   return id;
 }
 
+/**
+ * SLT-58 (§11.4; R37) y ajuste planes-custom (D13): los topes que la empresa pasaría con esa fecha y el
+ * siguiente inicio de ciclo, contra unos topes dados. Lectura, sin cerrojos ni escrituras. `null` si la
+ * empresa no existe.
+ */
+async function vistaPreviaEnTx(
+  tx: Tx,
+  organizacionId: string,
+  topes: TopesPlan,
+  inicio: InicioDelCicloElegido,
+): Promise<VistaPreviaLeida | null> {
+  const empresa = await tx.organizacion.findUnique({ where: { id: organizacionId }, select: { id: true, nombre: true } });
+  if (empresa === null) return null;
+  const avisos = await excedidosDe(tx, [empresa], topes, cicloCandidato(inicio));
+  // El «ahora» de la base, en la escala del ancla (P10: el aviso nombra el día del cambio de ciclo).
+  const [{ ahora }] = await tx.$queryRaw<{ ahora: Date }[]>`SELECT (now() AT TIME ZONE 'UTC') AS "ahora"`;
+  const ancla = inicio.ancla === "ahora" ? ahora : inicio.ancla;
+  return { avisos, siguienteCiclo: inicioDelSiguienteCiclo(ancla, ahora) };
+}
+
 /** Ajuste planes-custom (D2): revierte la transacción de `crearYAsignar` llevando el rechazo afuera. */
 class AsignacionRechazada extends Error {
   constructor(readonly resultado: Exclude<ResultadoAsignar, { estado: "ok" }>) {
@@ -752,17 +774,60 @@ export class PlanesRepository implements IPlanesRepository {
     // ciclo candidato) que `asignar`, así que avisa lo mismo; la autoridad sigue siendo el trigger.
     return comoPlataforma("SL-24", "vista previa de la primera asignación de un plan (superadmin, SLT-58)", () =>
       this.prisma.$transaction(async (tx): Promise<VistaPreviaLeida | null> => {
-        const empresa = await tx.organizacion.findUnique({
-          where: { id: organizacionId },
-          select: { id: true, nombre: true },
-        });
         const plan = await leerPlan(tx, planId);
-        if (empresa === null || plan === null) return null;
-        const avisos = await excedidosDe(tx, [empresa], plan.topes, cicloCandidato(inicio));
-        // El «ahora» de la base, en la escala del ancla (P10: el aviso nombra el día del cambio de ciclo).
-        const [{ ahora }] = await tx.$queryRaw<{ ahora: Date }[]>`SELECT (now() AT TIME ZONE 'UTC') AS "ahora"`;
-        const ancla = inicio.ancla === "ahora" ? ahora : inicio.ancla;
-        return { avisos, siguienteCiclo: inicioDelSiguienteCiclo(ancla, ahora) };
+        if (plan === null) return null;
+        return vistaPreviaEnTx(tx, organizacionId, plan.topes, inicio);
+      }),
+    );
+  }
+
+  vistaPreviaConTopes(
+    organizacionId: string,
+    topes: TopesPlan,
+    inicio: InicioDelCicloElegido,
+  ): Promise<VistaPreviaLeida | null> {
+    // Ajuste planes-custom (D13): la misma lectura que `vistaPreviaAsignacion`, con los topes del form del
+    // custom en vez de los de un plan guardado. Lo que avisa es lo que avisará `crearYAsignar` con esa fecha.
+    return comoPlataforma("SL-24", "vista previa de un plan custom antes de crearlo (superadmin, ajuste planes-custom)", () =>
+      this.prisma.$transaction((tx) => vistaPreviaEnTx(tx, organizacionId, topes, inicio)),
+    );
+  }
+
+  async cambiarTipoCobro(organizacionId: string, tipoCobro: TipoCobro, actorUsuarioId: string): Promise<ResultadoCambiarTipoCobro> {
+    // Ajuste planes-custom (D10): solo el tipo de cobro del plan que la empresa ya tiene. Mismo orden de
+    // cerrojos que `asignar` (empresa FOR UPDATE → plan FOR SHARE): otra asignación en vuelo espera o gana.
+    return comoPlataforma("SL-24", "cambiar el tipo de cobro del plan de una empresa (superadmin)", () =>
+      this.prisma.$transaction(async (tx): Promise<ResultadoCambiarTipoCobro> => {
+        const [empresa] = await tx.$queryRaw<{ plan_id: string | null; plan_tipo_cobro: string }[]>`
+          SELECT "plan_id", "plan_tipo_cobro" FROM "organizacion" WHERE "id" = ${organizacionId} FOR UPDATE`;
+        if (empresa === undefined) return { estado: "not_found" };
+        if (empresa.plan_id === null) return { estado: "sin_plan" };
+        // D10: el mismo tipo no cambia nada ni deja rastro.
+        if (empresa.plan_tipo_cobro === tipoCobro) return { estado: "ok", cambio: false };
+        const [plan] = await tx.$queryRaw<{ nombre: string }[]>`
+          SELECT "nombre" FROM "plan" WHERE "id" = ${empresa.plan_id} FOR SHARE`;
+        // La FK de `organizacion.plan_id` impide que el plan no exista.
+        if (plan === undefined) throw new Error(`cambiarTipoCobro: el plan de ${organizacionId} no existe`);
+
+        // Ni `plan_id`, ni el ancla, ni el ciclo corto, ni los módulos: el siguiente cobro se recalcula al
+        // leer (`cobroDelPlan`) con el ancla de siempre.
+        await tx.$executeRaw`UPDATE "organizacion" SET "plan_tipo_cobro" = ${tipoCobro} WHERE "id" = ${organizacionId}`;
+        const actor = await resolverActorCongelado(tx, actorUsuarioId);
+        // D14: una fila propia del historial de asignaciones. `valor_anterior` con el tipo de antes es lo
+        // que la distingue de una asignación, que lo deja en NULL (`tipoCobroDelHistorial`).
+        await appendAccion(tx, [
+          {
+            accion: "plan_asignado",
+            entidadTipo: "plan",
+            entidadId: empresa.plan_id,
+            entidadEtiqueta: etiquetaDeEntidad("plan", { nombre: plan.nombre }),
+            valorAnterior: tipoCobroSchema.parse(empresa.plan_tipo_cobro),
+            valorNuevo: tipoCobro,
+            organizacionId,
+            ...actor,
+          },
+        ]);
+        return { estado: "ok", cambio: true };
       }),
     );
   }
@@ -1087,12 +1152,15 @@ export class PlanesRepository implements IPlanesRepository {
           where: { organizacionId, accion: "plan_asignado" },
           orderBy: [{ createdAt: "desc" }, { id: "desc" }],
           take: LIMITE_ASIGNACIONES,
-          select: { createdAt: true, actorNombre: true, entidadEtiqueta: true },
+          select: { createdAt: true, actorNombre: true, entidadEtiqueta: true, valorAnterior: true, valorNuevo: true },
         });
         const lista = asignaciones.map((a) => ({
           creadoAt: a.createdAt,
           actorNombre: a.actorNombre,
           planNombre: a.entidadEtiqueta,
+          // D14: el tipo de cobro de cada fila y si fue un cambio de solo el tipo (D10).
+          valorAnterior: a.valorAnterior,
+          valorNuevo: a.valorNuevo,
         }));
         const { plan } = empresa;
         if (plan === null) return { organizacionId, plan: null, asignaciones: lista };

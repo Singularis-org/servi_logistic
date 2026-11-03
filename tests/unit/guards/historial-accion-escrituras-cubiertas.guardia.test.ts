@@ -658,6 +658,16 @@ const CENSO: EntradaCenso[] = [
     forma: "recibe_tx",
     mutacion: /tx\.\$executeRaw`UPDATE "organizacion" SET "plan_id"/,
   },
+  // Ajuste planes-custom (D10): cambiar solo el tipo de cobro del plan actual deja su propia fila
+  // `plan_asignado` (con `valor_anterior` = el tipo de antes) en la misma transacción que el UPDATE. Lo
+  // prueba `tests/integration/db/planes-cambiar-tipo-cobro.test.ts`.
+  {
+    tipos: ["plan_asignado"],
+    archivo: "lib/repositories/PlanesRepository.ts",
+    metodo: "cambiarTipoCobro",
+    forma: "abre_tx",
+    mutacion: /tx\.\$executeRaw`UPDATE "organizacion" SET "plan_tipo_cobro"/,
+  },
 ];
 
 /**

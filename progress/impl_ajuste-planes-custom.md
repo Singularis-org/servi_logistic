@@ -158,3 +158,167 @@ Tests ajustados (typecheck/negociable/tipoCobro/cobro/mañana): `tests/component
 
 ### Veredicto
 UI de D1–D6 y D9 hecha y probada: typecheck 0, lint 0 errores, 336 tests relacionados en verde; guardia 420 roja y ajena; 5 abiertos para el humano.
+
+## Backend — tanda 2 (D10–D14)
+
+backend_dev (2026-11-03). Grafo MCP no consultado (bastó Grep/Read sobre `lib/` y los tests de planes).
+Sin `prisma generate` (el cliente es compartido con otra rama), sin dependencias nuevas, sin tocar la UI.
+
+### Decisión de diseño: SIN migración
+D10 y D14 no necesitan columna ni valor de enum nuevos. El cambio de solo el tipo deja una fila
+`plan_asignado` propia con `valor_anterior` = el tipo de antes y `valor_nuevo` = el tipo nuevo. Una
+asignación (SL-24, SLT-58, D2) deja siempre `valor_anterior` en NULL. Eso las distingue sin ambigüedad:
+ninguna fila `plan_asignado` existente tiene `valor_anterior`, y no hay CHECK sobre `valor_*`.
+Descarté un valor nuevo de `historial_accion_tipo` por tres motivos:
+1. su `down.sql` exige recrear el enum;
+2. varios tests de migración de `tests/integration/db/` fijan la lista exacta del enum
+   (`caja-459-migration`, `historial-accion-*-migration`: `tipos.slice(-2, -1)`…) y solo corren en CI;
+3. el cliente Prisma no se puede regenerar aquí.
+
+Si el humano prefiere una acción propia («Cambió el tipo de cobro»), es el ABIERTO 1.
+
+### Archivos
+Nuevos:
+- `tests/unit/services/planes-service-tipo-cobro.test.ts` (D10 y D13 en el servicio, y los esquemas zod).
+- `tests/integration/db/planes-cambiar-tipo-cobro.test.ts` (D10, D12, D13 y D14 contra Postgres; corre en CI).
+
+Modificados:
+- `lib/types/planes.ts`:
+  - nuevos `cambiarTipoCobroSchema`, `previsualizarCustomSchema`, `CambiarTipoCobroInput`,
+    `PrevisualizarCustomInput`, `TipoDeAsignacion`, `CambiarTipoCobroResult` y `VistaPreviaCustomResult`;
+  - `AsignacionDePlan` gana `tipo`, `tipoCobro` y `tipoCobroAnterior`.
+- `lib/planes/cobro.ts`: `tipoCobroDelHistorial(valorAnterior, valorNuevo)` (puro).
+- `lib/interfaces/repositories/IPlanesRepository.ts`:
+  - nuevo `ResultadoCambiarTipoCobro`;
+  - `AsignacionLeida` gana `valorAnterior` y `valorNuevo`;
+  - métodos nuevos `vistaPreviaConTopes` y `cambiarTipoCobro`.
+- `lib/repositories/PlanesRepository.ts`:
+  - `cambiarTipoCobro`: empresa FOR UPDATE → plan FOR SHARE → UPDATE de `plan_tipo_cobro` y `appendAccion`
+    en la misma transacción;
+  - `vistaPreviaConTopes`;
+  - `vistaPreviaAsignacion` reescrita sobre el helper común `vistaPreviaEnTx` (misma lectura);
+  - `planDeEmpresa` lee los `valor_*` del historial.
+- `lib/services/PlanesService.ts`:
+  - nuevos `cambiarTipoCobro` y `previsualizarCustom`;
+  - `planDeEmpresa` mapea D14;
+  - `fueraDeRango` queda tipado como `validation_error`.
+- `lib/interfaces/services/IPlanesService.ts` y `lib/actions/planes.ts` (2 actions nuevas).
+- `lib/types/historial-accion.ts`: solo el comentario de `plan_asignado` (qué lleva cada `valor_*`).
+- Tests:
+  - `tests/unit/guards/historial-accion-escrituras-cubiertas.guardia.test.ts`: el censo suma un segundo
+    productor de `plan_asignado`, `PlanesRepository#cambiarTipoCobro` (`abre_tx`, mutación
+    `UPDATE "organizacion" SET "plan_tipo_cobro"`);
+  - `tests/unit/actions/planes.composition-root.test.ts`, `tests/unit/planes/cobro.test.ts` y
+    `tests/unit/services/planes-service-lecturas.test.ts`;
+  - los dobles de `IPlanesRepository` en
+    `tests/unit/services/planes-service{,-asignar-costo,-costeo,-crear-custom,-inicio-ciclo,-lecturas}.test.ts`.
+
+### D12 (verificado: no hacía falta código)
+El camino ya devolvía los avisos:
+1. `crear`, con un custom e `inicioCiclo`, llama a `crearYAsignar`;
+2. `crearYAsignar` llama a `asignarEnTx` con `inicio`;
+3. `asignarEnTx` devuelve en `avisos` los topes ya pasados, sin rechazar, igual que la primera asignación;
+4. el servicio los pasa al `ok`.
+
+Faltaba un test de integración con `avisos` no vacíos: lo añadí.
+
+### Mapa D<n> → test
+| D | Unit | Integración db (CI) |
+|---|------|---------------------|
+| D10 | `planes-service-tipo-cobro.test.ts` > «D10 — …»: ok con el actor, mismo tipo con `cambio: false`, `sin_plan` sin escribir, `sin_plan` por carrera, `not_found`, validation_error y forbidden ×7 sin llamar al repo. También «los esquemas del borde». `planes.composition-root.test.ts` > «D10, D13: las dos actions nuevas…» y «D10: cambiarTipoCobroAction…». Guardia `historial-accion-escrituras-cubiertas`. | `planes-cambiar-tipo-cobro.test.ts` > «D10 — …»: guarda el tipo con su fila `plan_asignado` mensual→anual; plan, ancla, ciclo corto y módulos quedan iguales; el mismo tipo no escribe; `sin_plan` por el servicio y por el repo; `not_found`; con el historial roto no se guarda nada. |
+| D12 | `planes-service-crear-custom.test.ts` > «los avisos de la primera asignación con fecha…» (ya existía). | `planes-cambiar-tipo-cobro.test.ts` > «D13: la vista previa … avisa lo que D12 devuelve al crear…»: `avisos: [adminTienda 3/2]` y la empresa queda asignada. |
+| D13 | `planes-service-tipo-cobro.test.ts` > «D13 — …»: ok con los topes y el ancla, «hoy» = el instante, R31, R30, not_found, topes inválidos y forbidden. También los esquemas. `planes.composition-root.test.ts` > «D13: previsualizarCustomAction…». | `planes-cambiar-tipo-cobro.test.ts` > «D12, D13 — …»: avisa lo mismo que luego devuelve crear; no escribe; con topes holgados da `[]`; con plan da R31; con una empresa inexistente, `null`. |
+| D14 | `cobro.test.ts` > «D10, D14 — el tipo de cobro de cada fila…»; `planes-service-lecturas.test.ts` > «D14: cada fila trae su tipo de cobro…» y R21. | `planes-cambiar-tipo-cobro.test.ts` > «D14 — …»: la fila `cambio_tipo_cobro` (mensual → anual) queda sobre la `asignacion` mensual, y el `cobro.tipo` del detalle es anual. |
+
+### Salida real (2026-11-03)
+- `pnpm exec eslint <14 archivos tocados>`: sin salida (0 problemas).
+- `pnpm exec vitest related --run <8 archivos de lib/ + 2 tests nuevos> --exclude tests/components/** --exclude tests/integration/*-page.test.tsx`,
+  con `NODE_OPTIONS=--max-old-space-size=8192`:
+  `Test Files 140 passed | 43 skipped (183)`, `Tests 2412 passed | 456 skipped (2868)`.
+  Los skipped son `tests/integration/db/` (no hay base local). Ningún rojo, tampoco por el cliente Prisma ajeno.
+- `pnpm exec vitest run tests/unit/services/ tests/unit/actions/planes.composition-root.test.ts`
+  (después del último cambio): `Test Files 367 passed`, `Tests 7205 passed`.
+- `pnpm run typecheck`: 32 errores, NINGUNO de esta tanda.
+  - Cliente Prisma ajeno (no se puede regenerar):
+    - `planTipoCobro` en `PlanesRepository.ts` (×3) y en
+      `tests/integration/db/planes-{crear-custom-asigna,cambiar-tipo-cobro}.test.ts`;
+    - wallet e historial: el enum de `historial-accion.ts(708)`, `HistorialAccionRepository`, `LibroCaja…`,
+      `PagoMensajero…` y `AnaliticaFinanciera…`;
+    - `abono-tienda-457` e `incentivo-mensajero-slt68`.
+  - De UI, para frontend_dev en la tanda siguiente: `tests/components/PlanEmpresa.test.tsx(62,63)`. Sus
+    fixtures de `AsignacionDePlan` no traen los 3 campos nuevos de D14.
+  - Arreglado en esta tanda: un error propio de `PlanesService` (`fueraDeRango`). Después del arreglo,
+    `tsc` no da errores en los archivos de planes salvo los del cliente ajeno.
+- Guardias: solo corrí `historial-accion-escrituras-cubiertas` (84 passed). No corrí `test:guardias`
+  completo ni `./init.sh`, por la presión de memoria que indicaba el encargo.
+
+### Contrato para frontend
+
+**Actions nuevas** (`lib/actions/planes.ts`). Son solo para el superadmin: otro rol, o sin sesión, recibe
+`{ estado: "forbidden" }` sin que se toque la base.
+
+1. `cambiarTipoCobroAction(input: unknown, deps?) → Promise<CambiarTipoCobroResult>` (D10)
+   - Input (`cambiarTipoCobroSchema`, `.strict()`): `{ organizacionId: uuid, tipoCobro: "mensual" | "anual" }`.
+   - Resultados:
+     - `{ estado: "ok", cambio: true }`: guardado. El historial tiene una fila nueva `cambio_tipo_cobro`.
+     - `{ estado: "ok", cambio: false }`: ya tenía ese tipo. No se escribió nada ni hay fila.
+     - `{ estado: "sin_plan" }`: la empresa no tiene plan (también por carrera, bajo el cerrojo).
+     - `{ estado: "not_found" }`: la empresa no existe.
+     - `{ estado: "validation_error", fieldErrors }`: claves `organizacionId`, `tipoCobro`, o `_` si sobra una clave.
+     - `{ estado: "forbidden" }`.
+   - No cambia el plan, el ancla, el ciclo corto ni los módulos.
+   - El siguiente cobro y el monto del período salen recalculados en la próxima lectura (`vista.plan.cobro`
+     del detalle, «Mi plan»): basta con refrescar.
+2. `previsualizarCustomAction(input: unknown, deps?) → Promise<VistaPreviaCustomResult>` (D13)
+   - Input (`previsualizarCustomSchema`, `.strict()`): `{ organizacionId: uuid, inicioCiclo: "AAAA-MM-DD", topes: TopesPlan }`.
+     `topes` tiene la misma forma que en `crearPlanAction`:
+     `{ ordenesPorCiclo: number|null, porRol: Partial<Record<RolConTope, number>>, apiKeys: number|null }`.
+   - Resultados:
+     - `{ estado: "ok", avisos: TopeExcedido[], siguienteCiclo: "AAAA-MM-DD" }`. Son los mismos que da la
+       vista previa del modal (R37) y que el `avisos` del `ok` de `crearPlanAction` con esa fecha (D12).
+     - `{ estado: "validation_error", fieldErrors }`, con estas claves:
+       - `inicioCiclo`: la fecha está fuera de hoy ±1 mes (R30), o la empresa YA tiene plan (R31);
+       - `topes.*`;
+       - `organizacionId`.
+     - `{ estado: "not_found" }`: la empresa no existe.
+     - `{ estado: "forbidden" }`.
+   - Aquí no hay `plan_sin_costo`: el costo lo valida `crearPlanAction`.
+
+**D12**: el contrato no cambia. `crearPlanAction` con un custom, empresa sin plan e `inicioCiclo` devuelve
+`{ estado: "ok", planId, cambio: true, avisos: TopeExcedido[], vigenteDesde: null }`. `avisos` son los
+topes ya pasados, que no rechazan. Se pintan como en el modal de primera asignación: `mensajeTopesPasados`
+solo lo usa `tope_excedido`, y el modal ya tiene su texto de avisos.
+
+**Tipos** (`lib/types/planes.ts`):
+- `type TipoDeAsignacion = "asignacion" | "cambio_tipo_cobro"`.
+- `AsignacionDePlan` (cada fila de `vista.asignaciones` del detalle de empresa) =
+  `{ creadoAt; actorNombre; planNombre; tipo: TipoDeAsignacion; tipoCobro: TipoCobro | null; tipoCobroAnterior: TipoCobro | null }`.
+  - `tipo: "asignacion"`: asignar o cambiar de plan.
+    - `tipoCobro` = el tipo elegido, o `null` en las filas anteriores al ajuste, que no lo guardaban
+      (mostrar «—» o nada).
+    - `tipoCobroAnterior: null`.
+  - `tipo: "cambio_tipo_cobro"`: la fila propia de D10.
+    - `tipoCobro` = el tipo nuevo; `tipoCobroAnterior` = el de antes.
+    - `planNombre` = el plan que la empresa ya tenía.
+  - Ojo con el typecheck: `tests/components/PlanEmpresa.test.tsx` (líneas 62–63) construye `AsignacionDePlan` sin estos campos.
+- `type CambiarTipoCobroResult` y `type VistaPreviaCustomResult` (formas arriba); `cambiarTipoCobroSchema`,
+  `previsualizarCustomSchema` y sus `*Input`.
+- Helper puro: `lib/planes/cobro.ts > tipoCobroDelHistorial(valorAnterior, valorNuevo)`. Lo usa el
+  servicio; la UI no lo necesita.
+
+**Historial general de la empresa** (`historial_accion`, la pantalla de historial de acciones): la fila de
+D10 es `plan_asignado` («Asignó un plan a una empresa»), con `valor_anterior` = el tipo anterior y
+`valor_nuevo` = el tipo nuevo. No tiene etiqueta propia (ver ABIERTO 1).
+
+### ABIERTO (no cubierto por D10–D15; no improvisado)
+1. **Etiqueta del cambio de solo el tipo en el historial general de acciones.** Hoy sale como `plan_asignado`
+   («Asignó un plan a una empresa»), con el tipo de antes y el de después. Una acción propia exige un valor
+   nuevo de enum (migración con recreación del enum en `down.sql`) y tocar los tests de migración que fijan
+   el enum. Decide el humano si vale la pena.
+2. Las filas del historial de asignaciones anteriores al ajuste salen con `tipoCobro: null`, porque no hay
+   dato. No se infiere «mensual» aunque fuera el DEFAULT de la migración: no consta qué se eligió.
+3. La guardia 420 (`dependencias-declaradas-presentes`) sigue roja y ajena (baseline); no la corrí.
+4. `tests/integration/db/`, también los tests nuevos, solo corre en CI.
+
+### Veredicto
+El backend de D10, D12, D13 y D14 está hecho y sin migración. Lint da 0 problemas y 2412 tests relacionados pasan. El typecheck no da errores propios: solo los del cliente Prisma ajeno y 2 fixtures de UI que ajustará frontend. Falta que CI corra la integración db.

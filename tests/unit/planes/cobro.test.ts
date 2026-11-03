@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import { inicioDelCicloPorDefecto, rangoDelInicioDelCiclo } from "@/lib/planes/ciclo";
-import { cobroDelPlan, montoDelPeriodo, siguienteCobro, valorDelHistorialDeAsignacion } from "@/lib/planes/cobro";
+import {
+  cobroDelPlan,
+  montoDelPeriodo,
+  siguienteCobro,
+  tipoCobroDelHistorial,
+  valorDelHistorialDeAsignacion,
+} from "@/lib/planes/cobro";
 import type { PrecioPlan } from "@/lib/types/planes";
 
 // Ajuste planes-custom (D5, D6, D7, D8; 2026-10-31) — lo que paga la empresa por período y cuándo toca
@@ -139,5 +145,34 @@ describe("D5 — inicio del ciclo por defecto: mañana en la hora de la platafor
     expect(manana).toBe("2026-11-01");
     const { min, max } = rangoDelInicioDelCiclo(ahora);
     expect(manana >= min && manana <= max).toBe(true);
+  });
+});
+
+describe("D10, D14 — el tipo de cobro de cada fila del historial de asignaciones", () => {
+  it("una asignación (valor_anterior NULL) trae el tipo, con o sin fecha delante", () => {
+    expect(tipoCobroDelHistorial(null, "anual")).toEqual({ tipo: "asignacion", tipoCobro: "anual", tipoCobroAnterior: null });
+    expect(tipoCobroDelHistorial(null, valorDelHistorialDeAsignacion("2026-11-01", "mensual"))).toEqual({
+      tipo: "asignacion",
+      tipoCobro: "mensual",
+      tipoCobroAnterior: null,
+    });
+  });
+
+  it("un cambio de solo el tipo (D10) se distingue por valor_anterior y trae los dos tipos", () => {
+    expect(tipoCobroDelHistorial("mensual", "anual")).toEqual({
+      tipo: "cambio_tipo_cobro",
+      tipoCobro: "anual",
+      tipoCobroAnterior: "mensual",
+    });
+  });
+
+  it("las filas anteriores al ajuste no tienen tipo: NULL o solo la fecha de SLT-58", () => {
+    expect(tipoCobroDelHistorial(null, null)).toEqual({ tipo: "asignacion", tipoCobro: null, tipoCobroAnterior: null });
+    expect(tipoCobroDelHistorial(null, "2026-10-01")).toEqual({ tipo: "asignacion", tipoCobro: null, tipoCobroAnterior: null });
+  });
+
+  it("un texto fuera del vocabulario no se inventa como tipo", () => {
+    expect(tipoCobroDelHistorial(null, "trimestral")).toEqual({ tipo: "asignacion", tipoCobro: null, tipoCobroAnterior: null });
+    expect(tipoCobroDelHistorial("otro", "anual")).toEqual({ tipo: "asignacion", tipoCobro: "anual", tipoCobroAnterior: null });
   });
 });

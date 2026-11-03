@@ -164,6 +164,18 @@ export const previsualizarAsignacionSchema = z
   .object({ organizacionId: z.uuid(), planId: z.uuid(), inicioCiclo: fechaSchema })
   .strict();
 export const asignablesSchema = z.object({ organizacionId: z.uuid() }).strict();
+/**
+ * Ajuste planes-custom (D10): cambiar SOLO el tipo de cobro del plan que la empresa ya tiene. Sin plan
+ * ni fecha: el ancla y los módulos no se tocan.
+ */
+export const cambiarTipoCobroSchema = z.object({ organizacionId: z.uuid(), tipoCobro: tipoCobroSchema }).strict();
+/**
+ * Ajuste planes-custom (D13): la vista previa de SLT-58 R37 en el form del custom, antes de que el plan
+ * exista. Los topes son los que se están escribiendo en el form (la misma forma que `crearPlanSchema`).
+ */
+export const previsualizarCustomSchema = z
+  .object({ organizacionId: z.uuid(), inicioCiclo: fechaSchema, topes: topesPlanSchema })
+  .strict();
 
 export type CrearPlanInput = z.infer<typeof crearPlanSchema>;
 export type EditarPlanInput = z.infer<typeof editarPlanSchema>;
@@ -172,6 +184,8 @@ export type CancelarCambioPlanInput = z.infer<typeof cancelarCambioPlanSchema>;
 export type AsignarPlanInput = z.infer<typeof asignarPlanSchema>;
 export type PrevisualizarAsignacionInput = z.infer<typeof previsualizarAsignacionSchema>;
 export type AsignablesInput = z.infer<typeof asignablesSchema>;
+export type CambiarTipoCobroInput = z.infer<typeof cambiarTipoCobroSchema>;
+export type PrevisualizarCustomInput = z.infer<typeof previsualizarCustomSchema>;
 
 /** Lo que define una versión del plan: lo editable (§16.1: `version` es esto mismo). */
 export type VersionPlan = Pick<EditarPlanInput, "nombre" | "topes" | "modulos" | "precio" | "costoPorOrden">;
@@ -265,13 +279,47 @@ export type DetallePlan = {
   rastro: FilaRastro[];
 };
 
+/**
+ * Ajuste planes-custom (D14): qué fue cada fila del historial de asignaciones. `asignacion` = asignar o
+ * cambiar el plan (SL-24, SLT-58, D2); `cambio_tipo_cobro` = solo el tipo de cobro del mismo plan (D10).
+ */
+export type TipoDeAsignacion = "asignacion" | "cambio_tipo_cobro";
+
 /** R21: una fila `plan_asignado` del historial de la empresa. */
 export type AsignacionDePlan = {
   creadoAt: string;
   actorNombre: string;
   /** La `entidad_etiqueta` congelada al asignar (`Plan «<nombre>»`). */
   planNombre: string;
+  /** D14: asignación del plan o cambio de solo el tipo de cobro (D10). */
+  tipo: TipoDeAsignacion;
+  /** D14: el tipo de cobro que dejó la fila; `null` en las filas anteriores al ajuste (no lo guardaban). */
+  tipoCobro: TipoCobro | null;
+  /** D10: el tipo que había antes de un `cambio_tipo_cobro`; `null` en una `asignacion`. */
+  tipoCobroAnterior: TipoCobro | null;
 };
+
+/**
+ * Ajuste planes-custom (D10): cambiar solo el tipo de cobro. `cambio: false` = ya tenía ese tipo; no se
+ * escribió nada. `sin_plan`: la empresa no tiene plan (el tipo se elige al asignarle uno).
+ */
+export type CambiarTipoCobroResult =
+  | { estado: "ok"; cambio: boolean }
+  | { estado: "forbidden" }
+  | { estado: "validation_error"; fieldErrors: Record<string, string[]> }
+  | { estado: "not_found" }
+  | { estado: "sin_plan" };
+
+/**
+ * Ajuste planes-custom (D13): la vista previa de SLT-58 R37 para el form del custom, con los topes del
+ * form. Mismos `avisos` y `siguienteCiclo` que `VistaPreviaAsignacionResult`. `validation_error` en
+ * `inicioCiclo` si la fecha está fuera de rango (R30) o la empresa ya tiene plan (R31).
+ */
+export type VistaPreviaCustomResult =
+  | { estado: "ok"; avisos: TopeExcedido[]; siguienteCiclo: string }
+  | { estado: "forbidden" }
+  | { estado: "validation_error"; fieldErrors: Record<string, string[]> }
+  | { estado: "not_found" };
 
 export type PlanDeEmpresaVista = {
   organizacionId: string;
