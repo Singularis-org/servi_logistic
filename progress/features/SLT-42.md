@@ -9,7 +9,18 @@
 ## Estado
 F1.0 cerrado (2026-11-03): tarjeta asignada, rama publicada (fb250fc2), worktree creado.
 `/afinar-feature` cerrado (2026-11-03): `requirements.md` sembrado. Zona pasa a `backend`; la
-pantalla del superadmin y los formularios salen a SLT-81. Siguiente: spec_author (F1.2).
+pantalla del superadmin y los formularios salen a SLT-81.
+F1.4 aprobado por escrito (2026-11-03, «aprobado»), con `libphonenumber-js` (fila en
+`docs/dependencias.md`). Comentado en la tarjeta. **La tarjeta sigue en `spec_ready`**: no pasa a
+`in_progress` (F2.0) hasta que se cumplan las dos condiciones de abajo.
+
+Bloqueos de F2.0:
+1. Cupo backend lleno: SLT-43, SLT-44, SLT-65 en curso (3/3).
+2. `archivos-en-vuelo.mjs --candidata SLT-42` (2026-11-03) CHOCA con fichas de Carlos Restrepo:
+   SLT-52 (schema, servicios de cierres, CorteDiarioService, OrdenRepository, openapi…), SLT-56
+   (CierresAdmin*) y SLT-64 (CierreDia*, `app/api/cron/procesar-jobs/route.ts`). SLT-56 ya figura
+   `done` en el board. Esperar a que terminen o que el humano acepte el choque (`--acepto`).
+   Con SLT-43 (propia) solo AVISO.
 
 ## Evaluación
 - zone `backend` (era `fullstack`; la UI salió a SLT-81 el 2026-11-03): catálogo por país, migración, validación en servidor, hora.
