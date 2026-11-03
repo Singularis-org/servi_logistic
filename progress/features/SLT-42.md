@@ -15,7 +15,9 @@ pantalla del superadmin y los formularios salen a SLT-81. Siguiente: spec_author
 - zone `backend` (era `fullstack`; la UI salió a SLT-81 el 2026-11-03): catálogo por país, migración, validación en servidor, hora.
 - complexity `high`: toca unos 80 archivos (teléfono ~12, documento ~43, zona horaria ~47 con tests),
   incluye jobs/cron y cortes de día; posible dependencia nueva (libphonenumber).
-- Cupo fullstack: 0 en vuelo antes de tomarla (en vuelo: SL-33 frontend, SLT-43/44/65 backend).
+- Cupo: al tomarla era fullstack (0 de 3). Al pasar a `backend` choca: SLT-43, SLT-44 y SLT-65 ya
+  ocupan los 3 cupos backend. Puede seguir en spec (pending/spec_ready no cuentan), pero NO pasa a
+  `in_progress` (F2.0) hasta que una de esas tres pase a `done`.
 - Cruce de archivos: sin `tasks.md` aún; repetir `archivos-en-vuelo.mjs --candidata SLT-42` en F2.0.
 - `depends_on`: SL-20, `done`.
 
