@@ -86,7 +86,6 @@ function rutaDeAyer(over: Partial<RutaOptimizadaDTO> = {}): RutaOptimizadaDTO {
     ultimoError: null,
     secuenciaFuente: "proveedor",
     trazado: null,
-    tramoVivoAt: null,
     actualizadaAt: HOY,
     secuenciaPorOrden: new Map([
       ["s1", 1],
@@ -161,7 +160,6 @@ function build(opts: {
     marcarDesactualizada: vi.fn(async () => {
       if (ruta !== null) ruta = { ...ruta, estado: "desactualizada" };
     }),
-    marcarTramoVivo: vi.fn(async () => {}),
   };
   const paradasRepo = {
     findParadasEnReparto: vi.fn(async () => opts.paradas ?? paradas("s1", "s2", "s3")),
@@ -288,21 +286,13 @@ describe("T8.3 — un caso por cada motivo de §13.1 (R73), con sus dos líneas"
     expect(resumen(h.leidas())).toEqual(recalculo("recuperacion_ruta_caida"));
   });
 
-  it("trayecto_vivo: solo computeRoutes, intento 1 de 1", async () => {
-    const h = build({ ruta: rutaDeHoy(["s1", "s2", "s3"]) });
-    await h.service.trazarTramoVivo(MENSAJERO, { ubicacion: P.s1, ordenId: "s2" });
-    expect(h.leidas()).toEqual([
-      expect.objectContaining({ api: "routes", motivo: "trayecto_vivo", intento: 1, maxIntentos: 1, paradas: 1 }),
-    ]);
-  });
-
   it("job_sin_origen: un job encolado antes del despliegue, sin `origen`", async () => {
     const h = build({ ruta: rutaDeAyer() });
     await h.service.ejecutar(MENSAJERO, job(null));
     expect(resumen(h.leidas())).toEqual(recalculo("job_sin_origen"));
   });
 
-  it("la tabla pura cubre cada motivo de rutas salvo los de cliente (trayecto y prueba)", () => {
+  it("la tabla pura cubre cada motivo de rutas salvo el de prueba de integracion", () => {
     const decisiones = [
       "sin_ruta",
       "primera_del_dia",
@@ -317,7 +307,7 @@ describe("T8.3 — un caso por cada motivo de §13.1 (R73), con sus dos líneas"
     const vistos = new Set<string>();
     for (const d of decisiones)
       for (const disp of disparos) for (const o of origenes) vistos.add(motivoLlamadaRuta(d, disp, o));
-    const esperados = MOTIVOS_LLAMADA_RUTA.filter((m) => m !== "trayecto_vivo" && m !== "prueba_integracion");
+    const esperados = MOTIVOS_LLAMADA_RUTA.filter((m) => m !== "prueba_integracion");
     expect([...vistos].sort()).toEqual([...esperados].sort());
   });
 });

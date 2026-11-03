@@ -51,7 +51,6 @@ function montar(routes: IRoutesClient | null, secuencia = ["o-2", "o-1"]) {
     upsertOrigen: async () => {},
     reemplazarSecuencia,
     guardarTrazado,
-    marcarTramoVivo: vi.fn(async () => {}),
     reducirSecuencia: vi.fn(async () => true),
     marcarDesactualizada: async () => {},
   };
