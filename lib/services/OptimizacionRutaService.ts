@@ -35,7 +35,9 @@
 // puente (R14 retirado): una reduccion nunca llama a nadie.
 //
 // [2026-10-31, SLT-59, D21-D25] Detras de R34 van dos guardas nuevas, antes de leer paradas:
-// la de la salida (R63) y la del boton con la primera ruta pendiente (R64). La decision de
+// la de la salida (R63) y la del boton con la primera ruta pendiente (R64).
+// [2026-11-03, SLT-79] La de la salida se retiro; en su sitio, la que impide que un disparo
+// automatico calcule la primera ruta del dia. La del boton admite tambien la espera de 5 min. La decision de
 // `decidirGuardaRuta` gana la primera ruta del dia (R59), el desvio solo a mano (R51, R52) y el
 // enfriamiento de la recuperacion manual (R53).
 //
@@ -92,12 +94,11 @@ import {
   type MotivoLlamadaRuta,
 } from "@/lib/clients/registro-llamada-google";
 import {
-  dedupeKeyPrimeraRecogida,
   primeraRutaPendiente as primeraRutaPendienteDelDia,
   type OrigenJobRuta,
 } from "@/lib/services/jobs/optimizacion-ruta-encolado";
-import type { ILectorJobPendiente } from "@/lib/interfaces/repositories/IJobRepository";
 import { fechaCalendarioCR, inicioDelDiaCREnUtc, startOfDayCR } from "@/lib/utils/fecha-cr";
+import { minimoRecogida } from "@/lib/utils/aviso-recogida-insuficiente";
 
 /** Fuente de las paradas. `Pick` para que los dobles de test no implementen 40 metodos. */
 export interface ParadasRepo {
@@ -111,6 +112,12 @@ export interface ParadasRepo {
     mensajeroId: string,
     dia: Date,
   ): Promise<{ asignadas: number; recogidas: number }>;
+  /**
+   * SLT-79 — instante de la ULTIMA recogida del mensajero desde `desde` (inicio del dia de Costa
+   * Rica, columna `timestamp`), o `null` si no recogio nada. Solo la lee el boton con la primera
+   * ruta pendiente, algo recogido y por debajo del minimo.
+   */
+  ultimaRecogidaDelDia(mensajeroId: string, desde: Date): Promise<Date | null>;
 }
 
 /** Logger inyectable, patron `GeocodeLogger` de la 91. NUNCA recibe PII ni secretos. */
@@ -250,14 +257,14 @@ export type DecisionGuardaRuta =
 
 /**
  * SLT-59 (design §12.1) — quien dispara la ejecucion. Solo el boton (`manual`) mide el desvio
- * (R51, R52); `salida` no lo mide y tiene su propia guarda en `ejecutar` (R63).
+ * (R51, R52).
+ *
+ * SLT-79: `salida` (el disparo de 1 km, R62/R63) se retiro. La primera ruta solo la pide el boton.
  */
-export type DisparoRuta = "manual" | "automatico" | "salida";
+export type DisparoRuta = "manual" | "automatico";
 
 export function disparoDe(motivo: MotivoOptimizacion): DisparoRuta {
-  if (motivo === "manual") return "manual";
-  if (motivo === "salida") return "salida";
-  return "automatico";
+  return motivo === "manual" ? "manual" : "automatico";
 }
 
 /**
@@ -285,20 +292,8 @@ export function primeraRutaPendiente(
   return primeraRutaPendienteDelDia(ruta?.calculadaAt ?? null, fechaCalendarioCR(ahora));
 }
 
-/**
- * SLT-59 (glosario «Punto de recogida», R62, R63) — el origen guardado cuando es `gps` y se
- * capturo dentro del dia en curso: lo escribio la ultima recogida con GPS (92/R23). Un origen
- * `ultima_conocida`, `centroide` o de ayer no dice donde recogio hoy.
- */
-export function puntoDeRecogida(
-  ruta: Pick<RutaOptimizadaDTO, "origenLat" | "origenLng" | "origenAt" | "origenFuente"> | null,
-  ahora: Date,
-): { lat: number; lng: number } | null {
-  if (ruta === null || ruta.origenFuente !== "gps") return null;
-  if (ruta.origenLat === null || ruta.origenLng === null || ruta.origenAt === null) return null;
-  if (ruta.origenAt < inicioDelDiaEnCurso(ahora)) return null;
-  return { lat: ruta.origenLat, lng: ruta.origenLng };
-}
+// SLT-79: aqui vivia `puntoDeRecogida` (SLT-59 R62/R63), el punto contra el que la pantalla y el
+// servidor median la salida de 1 km. Se retiro con ese disparo.
 
 /**
  * SLT-59 (R3, R5, design §2.1) — la posicion del mensajero es el origen final SOLO si sale de
@@ -428,7 +423,10 @@ export function motivoLlamadaRuta(
   disparo: MotivoOptimizacion,
   origen: OrigenJobRuta | null,
 ): MotivoLlamadaRuta {
-  if (disparo === "salida") return "primera_ruta_salida";
+  // SLT-79: la primera ruta del dia solo la pide el boton, asi que `sin_ruta` y `primera_del_dia`
+  // solo llegan aqui en manual (`primera_ruta_boton`). Los motivos de los disparos retirados
+  // (`primera_ruta_salida`, `primera_ruta_recogida_completa`, `primera_ruta_debounce_recogida`,
+  // `primera_ruta_primera_gestion`) ya no se producen.
   if (disparo === "manual") {
     switch (decision) {
       case "sin_ruta":
@@ -452,16 +450,8 @@ export function motivoLlamadaRuta(
   switch (origen) {
     case null:
       return "job_sin_origen";
-    // R76: el job de la recogida corre por la espera de RUTA_PRIMERA_DEBOUNCE_MIN
-    // (5 min desde SLT-74) o por la ultima recogida (R58).
-    case "recogida_parcial":
-      return "primera_ruta_debounce_recogida";
-    case "recogida":
-      return "primera_ruta_recogida_completa";
     case "gestion":
-      return decision === "paradas_nuevas" || decision === "desviado"
-        ? "paradas_nuevas_gestion"
-        : "primera_ruta_primera_gestion";
+      return "paradas_nuevas_gestion";
     case "traspaso":
       return "paradas_nuevas_traspaso";
   }
@@ -526,30 +516,7 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
      * tumbar una optimizacion que ya salio bien (ver `trazar`).
      */
     private readonly routes: IRoutesClient | null = null,
-    /**
-     * SLT-74: de aqui sale cuanto falta para el job pendiente de la primera ruta, solo para el
-     * aviso de `recogida_insuficiente`. OPCIONAL: `null` = el aviso solo pide recoger.
-     */
-    private readonly jobsPendientes: ILectorJobPendiente | null = null,
   ) {}
-
-  /**
-   * SLT-74: ms hasta el `run_after` del job pendiente de la primera ruta de HOY (puede ser <= 0),
-   * o `undefined` si no hay. Es solo para el texto del aviso: si la lectura falla, el aviso sale
-   * sin el tiempo en vez de tumbar la respuesta del boton.
-   */
-  private async esperaPrimeraRuta(mensajeroId: string, ahora: Date): Promise<number | undefined> {
-    if (this.jobsPendientes === null) return undefined;
-    try {
-      const job = await this.jobsPendientes.findPendienteByDedupeKey(
-        dedupeKeyPrimeraRecogida(mensajeroId, fechaCalendarioCR(ahora)),
-      );
-      return job === null ? undefined : job.runAfter.getTime() - ahora.getTime();
-    } catch (error) {
-      opterror("service — SLT-74: no se pudo leer el job pendiente de la primera ruta", error);
-      return undefined;
-    }
-  }
 
   async ejecutar(
     mensajeroId: string,
@@ -624,35 +591,49 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
       }
     }
 
-    // ── SLT-59 R63: disparo de salida ─────────────────────────────────────────────
-    // Antes de leer paradas: si no aplica, 0 lecturas mas, 0 llamadas y nada escrito.
-    if (opts.motivo === "salida" && !this.salidaAplica(ruta, opts.ubicacion, ahora)) {
-      optlog("service — guarda R63: la salida no aplica, 0 llamadas facturadas");
-      return { status: "omitida", razon: "salida_no_aplica" };
+    // ── SLT-79: la primera ruta del dia solo la calcula el boton ───────────────────
+    // [2026-11-03, SLT-79, decision humana «todo manual»] Aqui iba la guarda de la salida de 1 km
+    // (SLT-59 R63), retirada con ese disparo. Ningun disparo automatico calcula ya la primera ruta:
+    // ni la recogida ni la primera gestion encolan, y el traspaso nunca encolaba con ella pendiente.
+    // Aun asi un job puede llegar aqui con ella pendiente (uno encolado antes del despliegue, o uno
+    // de ayer que corre pasada la medianoche); se completa sin leer paradas ni llamar a nadie.
+    if (opts.motivo !== "manual" && primeraRutaPendiente(ruta, ahora)) {
+      optlog("service — SLT-79: primera ruta pendiente en automatico, 0 llamadas facturadas");
+      return { status: "omitida", razon: "primera_ruta_pendiente" };
     }
 
-    // ── SLT-59 R64: boton con la primera ruta pendiente ───────────────────────────
+    // ── SLT-59 R64 -> SLT-79: boton con la primera ruta pendiente ─────────────────
     // Despues de 92/R20 y 92/R34 (no aplican: `calculada_at` es de ayer o nula) y antes de leer
     // paradas. La lectura de conteo solo ocurre aqui, con la primera pendiente (R67).
+    // SLT-79: el boton calcula la primera ruta si se cumple CUALQUIERA de las dos:
+    //   a) recogidas >= minimoRecogida(asignadas, RUTA_PRIMERA_MIN_RECOGIDO_PCT) (con 0 asignadas
+    //      el minimo es 0 y no corta, como antes);
+    //   b) recogidas >= 1 y pasaron RUTA_PRIMERA_DEBOUNCE_MIN minutos desde la ULTIMA recogida del
+    //      dia. Sin recogida en el historial de hoy no hay carga en curso que esperar: se cumple.
+    // Era el job de debounce de la recogida (SLT-59 R76); ahora es una condicion, sin cola.
     if (opts.motivo === "manual" && primeraRutaPendiente(ruta, ahora)) {
       const { asignadas, recogidas } = await this.paradasRepo.contarAsignadasDelDia(
         mensajeroId,
         startOfDayCR(ahora),
       );
-      // Entera y sin redondeos; con `asignadas = 0` no hay nada que esperar y no corta.
-      if (recogidas * 100 < asignadas * this.config.RUTA_PRIMERA_MIN_RECOGIDO_PCT) {
-        optlog("service — guarda R64: recogida insuficiente, 0 llamadas facturadas", {
-          recogidas,
-          asignadas,
-        });
-        const esperaMs = await this.esperaPrimeraRuta(mensajeroId, ahora);
-        return {
-          status: "omitida",
-          razon: "recogida_insuficiente",
-          recogidas,
-          asignadas,
-          ...(esperaMs !== undefined ? { esperaMs } : {}),
-        };
+      const minimo = minimoRecogida(asignadas, this.config.RUTA_PRIMERA_MIN_RECOGIDO_PCT);
+      if (recogidas < minimo) {
+        const esperaMs =
+          recogidas >= 1 ? await this.esperaDesdeUltimaRecogida(mensajeroId, ahora) : undefined;
+        if (esperaMs === undefined || esperaMs > 0) {
+          optlog("service — guarda R64 (SLT-79): recogida insuficiente, 0 llamadas facturadas", {
+            recogidas,
+            asignadas,
+            esperaMs,
+          });
+          return {
+            status: "omitida",
+            razon: "recogida_insuficiente",
+            recogidas,
+            asignadas,
+            ...(esperaMs !== undefined ? { esperaMs } : {}),
+          };
+        }
       }
     }
 
@@ -948,27 +929,18 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
   }
 
   /**
-   * SLT-59 (R63, R66, design §12.6) — el servidor no se fia del cliente: vuelve a comprobar con
-   * la posicion recibida que la primera ruta sigue pendiente, que hay punto de recogida (en la
-   * ruta LEIDA, antes de la vista de §2.4, que lo pisaria con la propia posicion) y que el
-   * mensajero ya se alejo mas de `RUTA_REOPT_DISTANCIA_M`. Con la ruta `desactualizada`, ademas,
-   * el enfriamiento de R53: es lo que acota a una llamada cada 5 min si el proveedor falla.
+   * SLT-79 — ms que faltan para cumplir `RUTA_PRIMERA_DEBOUNCE_MIN` desde la ultima recogida del
+   * dia de Costa Rica. `<= 0` = ya paso (el minuto justo cuenta como cumplido). Sin recogida en el
+   * historial de hoy devuelve `0`: no hay carga en curso que esperar.
    */
-  private salidaAplica(
-    ruta: RutaOptimizadaDTO | null,
-    ubicacion: { lat: number; lng: number } | undefined,
-    ahora: Date,
-  ): boolean {
-    if (ubicacion === undefined || !primeraRutaPendiente(ruta, ahora)) return false;
-    const punto = puntoDeRecogida(ruta, ahora);
-    if (ruta === null || punto === null) return false;
-    // R3/R62: estricto; a `RUTA_REOPT_DISTANCIA_M` justos todavia no salio.
-    if (distanciaHaversineKm(ubicacion, punto) * 1000 <= this.config.RUTA_REOPT_DISTANCIA_M) {
-      return false;
-    }
-    if (ruta.estado === "vigente") return true;
-    const transcurridoMs = ahora.getTime() - ruta.actualizadaAt.getTime();
-    return transcurridoMs >= this.config.RUTA_RECUPERACION_ENFRIAMIENTO_MIN * 60_000;
+  private async esperaDesdeUltimaRecogida(mensajeroId: string, ahora: Date): Promise<number> {
+    const ultima = await this.paradasRepo.ultimaRecogidaDelDia(
+      mensajeroId,
+      inicioDelDiaEnCurso(ahora),
+    );
+    if (ultima === null) return 0;
+    const esperaTotalMs = this.config.RUTA_PRIMERA_DEBOUNCE_MIN * 60_000;
+    return esperaTotalMs - (ahora.getTime() - ultima.getTime());
   }
 
   /**

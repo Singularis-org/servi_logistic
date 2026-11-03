@@ -91,6 +91,7 @@ function build(ruta: RutaOptimizadaDTO, paradas: ParadaRutaRow[]) {
   const paradasRepo = {
     findParadasEnReparto: vi.fn(async () => paradas),
     contarAsignadasDelDia: vi.fn(async () => ({ asignadas: 0, recogidas: 0 })),
+    ultimaRecogidaDelDia: vi.fn(async () => null),
   };
   const client = {
     optimizar: vi.fn(async (input: { paradas: { ordenId: string }[] }) => ({

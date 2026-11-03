@@ -125,8 +125,6 @@ const RUTA_VIGENTE: RutaResumenDTO = {
   paradasSinOptimizar: 0,
   trazado: null,
   tramoSiguiente: null,
-  primeraRutaPendiente: false,
-  puntoRecogida: null,
 };
 
 /** La orden que la tienda va a resolver. */

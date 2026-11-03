@@ -95,7 +95,7 @@ function build(http: number) {
     marcarDesactualizada: vi.fn<(m: string, e: string) => Promise<void>>(async () => {}),
   };
   const paradasRepo: ParadasRepo = {
-    contarAsignadasDelDia: async () => ({ asignadas: 0, recogidas: 0 }), findParadasEnReparto: vi.fn(async () => [parada("o1", 1), parada("o2", 2), parada("o3", 3)]),
+    contarAsignadasDelDia: async () => ({ asignadas: 0, recogidas: 0 }), ultimaRecogidaDelDia: async () => null, findParadasEnReparto: vi.fn(async () => [parada("o1", 1), parada("o2", 2), parada("o3", 3)]),
   };
   const fetchImpl = vi.fn(async () => new Response("{}", { status: http }));
   const client: IRouteOptimizationClient = new GoogleRouteOptimizationClient({

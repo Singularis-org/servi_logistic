@@ -75,13 +75,5 @@ export type SincronizarRutaResult =
   | { status: "unauthenticated" }
   | { status: "validation_error"; fieldErrors: Record<string, string[]> };
 
-/**
- * SLT-59 (R62, R63, design §12.6) — entrada del disparo de salida. La ubicacion es OBLIGATORIA:
- * es justo lo que el servidor compara con el punto de recogida. Sin ella no hay salida que
- * detectar, y la pantalla no llama.
- */
-export const calcularRutaAlSalirSchema = z.object({
-  ubicacion: ubicacionSchema,
-});
-
-export type CalcularRutaAlSalirActionInput = z.infer<typeof calcularRutaAlSalirSchema>;
+// SLT-79: aqui vivia `calcularRutaAlSalirSchema` (SLT-59 R62/R63), la entrada del disparo de
+// salida. Se retiro con `calcularRutaAlSalir`.

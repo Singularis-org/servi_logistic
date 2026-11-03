@@ -175,14 +175,8 @@ describe("SLT-59 T2.1 — decidirGuardaRuta (tabla de casos)", () => {
       disparo: "automatico" as const,
       esperado: { tipo: "reducir", previa: ["s1", "s2", "s3"], restantes: ["s2", "s3"] },
     },
-    {
-      caso: "R51: salida, mismo conjunto y desviado -> no mide el desvio, omitir",
-      ruta: ruta(),
-      paradas: todas,
-      posicion: lejos,
-      disparo: "salida" as const,
-      esperado: { tipo: "omitir" },
-    },
+    // SLT-79: aqui iba «R51: salida, mismo conjunto y desviado -> omitir». El disparo de salida se
+    // retiro; el caso automatico de arriba cubre «no mide el desvio».
     {
       caso: "R20: una parada que no esta en la secuencia -> reoptimizar",
       ruta: ruta({ secuenciaPorOrden: new Map([["s1", 1], ["s2", 2]]) }),
@@ -272,7 +266,9 @@ describe("SLT-59 T2.1 — decidirGuardaRuta (tabla de casos)", () => {
 
   it("R59: primera ruta pendiente (calculada ayer) con el mismo conjunto y sin desvio -> reoptimizar", () => {
     const deAyer = ruta({ calculadaAt: new Date(T0.getTime() - 24 * 3600_000) });
-    for (const disparo of ["manual", "automatico", "salida"] as const) {
+    // SLT-79: sin `salida`. La decision sigue siendo recalcular; que un job no llegue a pedirla lo
+    // corta antes `ejecutar` (optimizacion-ruta-primera-del-dia.test.ts).
+    for (const disparo of ["manual", "automatico"] as const) {
       expect(
         decidir({ ruta: deAyer, paradas: todas, posicion: sobreLaRuta, umbralM: UMBRAL_M, disparo }),
       ).toEqual({ tipo: "reoptimizar", motivo: "primera_del_dia" });
@@ -500,7 +496,7 @@ function build(opts: { ruta: RutaOptimizadaDTO | null; paradas: ParadaRutaRow[] 
     reducirSecuencia: vi.fn(async () => true),
     marcarDesactualizada: vi.fn(async () => {}),
   };
-  const paradasRepo = { contarAsignadasDelDia: async () => ({ asignadas: 0, recogidas: 0 }), findParadasEnReparto: vi.fn(async () => opts.paradas) };
+  const paradasRepo = { contarAsignadasDelDia: async () => ({ asignadas: 0, recogidas: 0 }), ultimaRecogidaDelDia: async () => null, findParadasEnReparto: vi.fn(async () => opts.paradas) };
   const client = {
     optimizar: vi.fn(async (input: { paradas: { ordenId: string }[] }) => ({
       status: "ok" as const,

@@ -11,7 +11,6 @@ import type {
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { IOrdenMensajeroMetaRepository } from "@/lib/interfaces/repositories/IOrdenMensajeroMetaRepository";
 import type { IRutaOptimizadaRepository } from "@/lib/interfaces/repositories/IRutaOptimizadaRepository";
-import { primeraRutaPendiente, puntoDeRecogida } from "@/lib/services/OptimizacionRutaService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IOrdenHistorialService } from "@/lib/interfaces/services/IOrdenHistorialService";
 import type {
@@ -463,10 +462,8 @@ export class MisAsignacionesService implements IMisAsignacionesService {
           porGestionar.length > 0
             ? (ruta?.tramoPorOrden.get(porGestionar[0].id) ?? null)
             : null,
-        // SLT-59 (R62, R67): las mismas reglas que aplica el servidor al disparo de salida, sobre
-        // la `ruta` ya leida. Cero lecturas nuevas.
-        primeraRutaPendiente: primeraRutaPendiente(ruta, now),
-        puntoRecogida: puntoDeRecogida(ruta, now),
+        // SLT-79: aqui iban `primeraRutaPendiente` y `puntoRecogida` (SLT-59 R62/R67), retirados
+        // con el disparo de salida.
       },
     }; // R10
   }

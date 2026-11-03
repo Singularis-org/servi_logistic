@@ -4,10 +4,8 @@ import type { JobEstado, JobTipo } from "@prisma/client";
 import {
   empresaDelJob,
   type ClaimOpts,
-  type EncolarOMoverOpts,
   type EnqueueOpts,
-  type IJobRepositoryMovible,
-  type ILectorJobPendiente,
+  type IJobRepository,
   type JobConEmpresa,
   type JobDTO,
   type JobTxClient,
@@ -66,7 +64,7 @@ function toDTO(row: JobRow): JobConEmpresa {
  * decision terminal (dead-letter) y la recurrencia viven en `JobQueueService`. El claim es
  * una unica sentencia atomica con `FOR UPDATE SKIP LOCKED` (§3.1). Devuelve DTOs planos.
  */
-export class JobRepository implements IJobRepositoryMovible, ILectorJobPendiente {
+export class JobRepository implements IJobRepository {
   constructor(private readonly prisma: JobPrismaClient) {}
 
   async enqueue(
@@ -107,39 +105,8 @@ export class JobRepository implements IJobRepositoryMovible, ILectorJobPendiente
     return rows.length > 0 ? toDTO(rows[0]) : null;
   }
 
-  async encolarOMoverPendiente(
-    tipo: JobTipo,
-    payload: Record<string, unknown>,
-    opts: EncolarOMoverOpts,
-    tx?: JobTxClient,
-  ): Promise<JobDTO | null> {
-    const client: JobTxClient = tx ?? (this.prisma as unknown as JobTxClient);
-    const id = randomUUID();
-    const maxIntentos = opts.maxIntentos ?? loadJobsConfig().JOBS_MAX_ATTEMPTS;
-    const payloadJson = JSON.stringify(payload ?? {});
-
-    // SLT-59 (R76, R77): el mismo INSERT de `enqueue`, sobre el MISMO indice unico parcial, pero el
-    // conflicto ACTUALIZA en vez de ignorar. El `WHERE "jobs"."estado" = 'pending'` es R77: el indice
-    // no esta acotado por estado, asi que una fila ya reclamada, hecha o muerta bloquea crear otra y
-    // tampoco se toca. Sin fila en `RETURNING` -> `null`. `max_intentos` y `organizacion_id` se quedan
-    // los de la fila original.
-    const rows = await client.$queryRaw<JobRow[]>`
-      INSERT INTO "jobs" (
-        "id", "tipo", "payload", "estado", "intentos", "max_intentos",
-        "run_after", "dedupe_key", "last_error", "created_at", "updated_at"
-      )
-      VALUES (
-        ${id}, ${tipo}::"job_tipo", ${payloadJson}::jsonb, 'pending', 0, ${maxIntentos},
-        ${opts.runAfter}, ${opts.dedupeKey}, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-      )
-      ON CONFLICT ("dedupe_key") WHERE "dedupe_key" IS NOT NULL DO UPDATE
-        SET "run_after" = EXCLUDED."run_after",
-            "payload" = EXCLUDED."payload",
-            "updated_at" = CURRENT_TIMESTAMP
-        WHERE "jobs"."estado" = 'pending'
-      RETURNING *`;
-    return rows.length > 0 ? toDTO(rows[0]) : null;
-  }
+  // SLT-79: aqui vivia `encolarOMoverPendiente` (SLT-59 R76/R77), el encolado con debounce
+  // deslizante del job de la primera ruta del dia. Se quedo sin llamador al retirarse ese job.
 
   async claimBatch(limit: number, opts: ClaimOpts): Promise<JobDTO[]> {
     const { now, visibilityCutoff } = opts;
@@ -228,20 +195,8 @@ export class JobRepository implements IJobRepositoryMovible, ILectorJobPendiente
     return rows.map(toDTO);
   }
 
-  /**
-   * SLT-74 — el job `pending` de la clave, o `null`. Igualdad sobre el indice unico parcial (como
-   * `findByDedupeKeys`). El filtro por `organizacion_id` repite el predicado de la RLS
-   * `jobs_por_empresa`: sin empresa fijada no devuelve nada, ni siquiera corriendo como dueno.
-   */
-  async findPendienteByDedupeKey(dedupeKey: string): Promise<JobDTO | null> {
-    const rows = await this.prisma.$queryRaw<JobRow[]>`
-      SELECT * FROM "jobs"
-      WHERE "dedupe_key" = ${dedupeKey}
-        AND "estado" = 'pending'
-        AND "organizacion_id" = NULLIF(current_setting('app.organizacion_id', true), '')
-      LIMIT 1`;
-    return rows.length > 0 ? toDTO(rows[0]) : null;
-  }
+  // SLT-79: aqui vivia `findPendienteByDedupeKey` (SLT-74), la lectura del job pendiente de la
+  // primera ruta para el aviso del boton. El aviso ya mide desde la ultima recogida del dia.
 
   async complete(id: string): Promise<void> {
     // R14: exito -> `done`. `updated_at` a mano (el raw no dispara el @updatedAt de Prisma).

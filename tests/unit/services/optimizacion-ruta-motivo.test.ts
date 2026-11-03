@@ -26,6 +26,10 @@ import type { OrigenJobRuta } from "@/lib/services/jobs/optimizacion-ruta-encola
 // SLT-59 (D27, D28, D29; R70, R73, R76; design §13.1) — el motivo de cada llamada de rutas lo
 // decide el servicio con la rama de la guarda y quien disparo. Se usan los clientes REALES de
 // Google con `fetch` simulado: lo que se afirma son las líneas `[google-api]` que salen de verdad.
+//
+// SLT-79 (2026-11-03): la primera ruta del día solo la pide el botón (`primera_ruta_boton`). Los
+// motivos de los disparos retirados (recogida completa, debounce de recogida, primera gestión y
+// salida) salen de la lista, y un job con la primera pendiente no deja ninguna línea.
 
 const MENSAJERO = "m-1";
 // 16:00 de CR del 29. «Ayer» es cualquier instante anterior a 2026-10-29T06:00:00Z.
@@ -60,9 +64,6 @@ const CONFIG: RouteOptimizationConfig = {
 
 function alOeste(base: { lat: number; lng: number }, metros: number) {
   return { lat: base.lat, lng: base.lng - metros / (M_POR_GRADO * Math.cos((base.lat * Math.PI) / 180)) };
-}
-function alSur(base: { lat: number; lng: number }, metros: number) {
-  return { lat: base.lat - metros / M_POR_GRADO, lng: base.lng };
 }
 
 type Id = keyof typeof P;
@@ -164,6 +165,7 @@ function build(opts: {
   const paradasRepo = {
     findParadasEnReparto: vi.fn(async () => opts.paradas ?? paradas("s1", "s2", "s3")),
     contarAsignadasDelDia: vi.fn(async () => opts.conteo ?? { asignadas: 3, recogidas: 3 }),
+    ultimaRecogidaDelDia: vi.fn(async () => null),
   };
   const lineas: string[] = [];
   const registro = { info: (l: string) => lineas.push(l) };
@@ -205,32 +207,28 @@ const job = (origen: OrigenJobRuta | null, intento = 1): EjecutarOptimizacionOpt
 });
 
 describe("T8.3 — un caso por cada motivo de §13.1 (R73), con sus dos líneas", () => {
-  it("primera_ruta_recogida_completa: job de la ultima recogida (R58)", async () => {
-    const h = build({ ruta: rutaDeAyer() });
-    await h.service.ejecutar(MENSAJERO, job("recogida"));
-    expect(resumen(h.leidas())).toEqual(recalculo("primera_ruta_recogida_completa"));
-  });
-
-  it("T7.9 — primera_ruta_debounce_recogida: el job de la espera de RUTA_PRIMERA_DEBOUNCE_MIN (origen recogida_parcial, R76)", async () => {
-    const h = build({ ruta: rutaDeAyer() });
-    await h.service.ejecutar(MENSAJERO, job("recogida_parcial"));
-    expect(resumen(h.leidas())).toEqual(recalculo("primera_ruta_debounce_recogida"));
-  });
-
-  it("primera_ruta_primera_gestion: job de gestion con la primera pendiente (R59)", async () => {
-    const h = build({ ruta: rutaDeAyer() });
-    await h.service.ejecutar(MENSAJERO, job("gestion"));
-    expect(resumen(h.leidas())).toEqual(recalculo("primera_ruta_primera_gestion"));
-  });
-
-  it("primera_ruta_salida: disparo de salida (R62, R63)", async () => {
-    const h = build({ ruta: rutaDeAyer() });
-    await h.service.ejecutar(MENSAJERO, { motivo: "salida", ubicacion: alSur(RECOGIDA, 1500) });
-    expect(resumen(h.leidas())).toEqual(recalculo("primera_ruta_salida"));
-  });
+  it.each([
+    ["sin origen", null],
+    ["gestion", "gestion"],
+    ["traspaso", "traspaso"],
+  ] as const)(
+    "SLT-79: un job (%s) con la primera ruta pendiente no deja línea (no se llama a Google)",
+    async (_c, origen) => {
+      const h = build({ ruta: rutaDeAyer() });
+      const r = await h.service.ejecutar(MENSAJERO, job(origen));
+      expect(r).toEqual({ status: "omitida", razon: "primera_ruta_pendiente" });
+      expect(h.lineas).toHaveLength(0);
+    },
+  );
 
   it("primera_ruta_boton: manual con la primera pendiente y el % recogido (R64)", async () => {
     const h = build({ ruta: rutaDeAyer(), conteo: { asignadas: 3, recogidas: 3 } });
+    await h.service.ejecutar(MENSAJERO, { motivo: "manual" });
+    expect(resumen(h.leidas())).toEqual(recalculo("primera_ruta_boton"));
+  });
+
+  it("SLT-79 primera_ruta_boton: manual con la primera pendiente por la espera de 5 min (bajo el minimo)", async () => {
+    const h = build({ ruta: rutaDeAyer(), conteo: { asignadas: 10, recogidas: 1 } });
     await h.service.ejecutar(MENSAJERO, { motivo: "manual" });
     expect(resumen(h.leidas())).toEqual(recalculo("primera_ruta_boton"));
   });
@@ -287,7 +285,7 @@ describe("T8.3 — un caso por cada motivo de §13.1 (R73), con sus dos líneas"
   });
 
   it("job_sin_origen: un job encolado antes del despliegue, sin `origen`", async () => {
-    const h = build({ ruta: rutaDeAyer() });
+    const h = build({ ruta: rutaDeHoy(["s1", "s2"]) });
     await h.service.ejecutar(MENSAJERO, job(null));
     expect(resumen(h.leidas())).toEqual(recalculo("job_sin_origen"));
   });
@@ -302,25 +300,38 @@ describe("T8.3 — un caso por cada motivo de §13.1 (R73), con sus dos líneas"
       "fuera_de_orden",
       "desviado",
     ] as const;
-    const disparos = ["debounce", "manual", "salida"] as const;
-    const origenes = [null, "recogida", "recogida_parcial", "gestion", "traspaso"] as const;
+    const disparos = ["debounce", "manual"] as const;
+    const origenes = [null, "gestion", "traspaso"] as const;
     const vistos = new Set<string>();
     for (const d of decisiones)
       for (const disp of disparos) for (const o of origenes) vistos.add(motivoLlamadaRuta(d, disp, o));
     const esperados = MOTIVOS_LLAMADA_RUTA.filter((m) => m !== "prueba_integracion");
     expect([...vistos].sort()).toEqual([...esperados].sort());
   });
+
+  it("SLT-79: los motivos de los disparos retirados ya no estan en la lista", () => {
+    for (const retirado of [
+      "primera_ruta_recogida_completa",
+      "primera_ruta_debounce_recogida",
+      "primera_ruta_primera_gestion",
+      "primera_ruta_salida",
+    ]) {
+      expect(MOTIVOS_LLAMADA_RUTA as readonly string[]).not.toContain(retirado);
+    }
+  });
 });
 
 describe("T8.3 — reintentos de la cola (R70)", () => {
   it("intento 1 de 3 recibe un 500 y el 2 de 3 paga: cada intento deja su línea con su número", async () => {
-    const h = build({ ruta: rutaDeAyer(), fetchImpl: fetchGoogle({ optStatus: [500] }) });
-    await expect(h.service.ejecutar(MENSAJERO, job("recogida", 1))).rejects.toThrow();
-    await h.service.ejecutar(MENSAJERO, job("recogida", 2));
+    // SLT-79: con una parada nueva (la primera ruta ya calculada hoy). El intento 1 deja la ruta
+    // `desactualizada`, asi que el 2 la recalcula como reintento de la ruta caida.
+    const h = build({ ruta: rutaDeHoy(["s1", "s2"]), fetchImpl: fetchGoogle({ optStatus: [500] }) });
+    await expect(h.service.ejecutar(MENSAJERO, job("gestion", 1))).rejects.toThrow();
+    await h.service.ejecutar(MENSAJERO, job("gestion", 2));
     expect(h.leidas().map((l) => [l.api, l.intento, l.maxIntentos, l.resultado, l.motivo])).toEqual([
-      ["route_optimization", 1, 3, "500", "primera_ruta_recogida_completa"],
-      ["route_optimization", 2, 3, "ok", "primera_ruta_recogida_completa"],
-      ["routes", 2, 3, "ok", "primera_ruta_recogida_completa"],
+      ["route_optimization", 1, 3, "500", "paradas_nuevas_gestion"],
+      ["route_optimization", 2, 3, "ok", "reintento_ruta_desactualizada"],
+      ["routes", 2, 3, "ok", "reintento_ruta_desactualizada"],
     ]);
   });
 
@@ -349,18 +360,23 @@ describe("T8.3 — reintentos de la cola (R70)", () => {
     } as JobDTO;
     await handler(fila);
     await handler({ ...fila, payload: { mensajeroId: MENSAJERO }, intentos: 1 });
+    await handler({ ...fila, payload: { mensajeroId: MENSAJERO, origen: "gestion" }, intentos: 1 });
     expect(ejecutar.mock.calls.map((c) => (c as unknown[])[1])).toEqual([
-      { motivo: "debounce", jobCreatedAt: T0, job: { origen: "recogida_parcial", intento: 2, maxIntentos: 3 } },
+      // SLT-79: un origen retirado (job encolado antes del despliegue) se lee como `null`, sin
+      // tratar el payload como invalido (no reintenta ni va a dead-letter).
+      { motivo: "debounce", jobCreatedAt: T0, job: { origen: null, intento: 2, maxIntentos: 3 } },
       { motivo: "debounce", jobCreatedAt: T0, job: { origen: null, intento: 1, maxIntentos: 3 } },
+      { motivo: "debounce", jobCreatedAt: T0, job: { origen: "gestion", intento: 1, maxIntentos: 3 } },
     ]);
   });
 });
 
 describe("T8.3 — R72 y la rama de una parada", () => {
   it("una sola parada (92/R35) produce solo el computeRoutes, con el motivo del recalculo", async () => {
+    // SLT-79: sin ruta, solo el boton la calcula.
     const h = build({ ruta: null, paradas: paradas("s1") });
-    await h.service.ejecutar(MENSAJERO, job("gestion"));
-    expect(resumen(h.leidas())).toEqual(["routes:primera_ruta_primera_gestion"]);
+    await h.service.ejecutar(MENSAJERO, { motivo: "manual" });
+    expect(resumen(h.leidas())).toEqual(["routes:primera_ruta_boton"]);
   });
 
   it("una guarda que omite (sin cambios) no deja ninguna línea", async () => {
@@ -371,15 +387,15 @@ describe("T8.3 — R72 y la rama de una parada", () => {
   });
 
   it("la recta de respaldo tras un fallo de Routes no deja línea propia", async () => {
-    const h = build({ ruta: rutaDeAyer(), fetchImpl: fetchGoogle({ routesStatus: 500 }) });
-    const r = await h.service.ejecutar(MENSAJERO, job("recogida"));
+    const h = build({ ruta: rutaDeHoy(["s1", "s2"]), fetchImpl: fetchGoogle({ routesStatus: 500 }) });
+    const r = await h.service.ejecutar(MENSAJERO, job("gestion"));
     expect(r.status === "ok" && r.trazado?.fuente).toBe("local");
     expect(h.leidas().map((l) => `${l.api}:${l.resultado}`)).toEqual(["route_optimization:ok", "routes:500"]);
   });
 
   it("sin cliente de Routes, solo la línea de optimizeTours", async () => {
-    const h = build({ ruta: rutaDeAyer(), sinRoutes: true });
-    await h.service.ejecutar(MENSAJERO, job("recogida"));
-    expect(resumen(h.leidas())).toEqual(["route_optimization:primera_ruta_recogida_completa"]);
+    const h = build({ ruta: rutaDeHoy(["s1", "s2"]), sinRoutes: true });
+    await h.service.ejecutar(MENSAJERO, job("gestion"));
+    expect(resumen(h.leidas())).toEqual(["route_optimization:paradas_nuevas_gestion"]);
   });
 });

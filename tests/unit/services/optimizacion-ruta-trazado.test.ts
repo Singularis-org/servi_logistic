@@ -55,7 +55,7 @@ function montar(routes: IRoutesClient | null, secuencia = ["o-2", "o-1"]) {
     marcarDesactualizada: async () => {},
   };
   const paradasRepo = {
-    contarAsignadasDelDia: async () => ({ asignadas: 0, recogidas: 0 }), findParadasEnReparto: async () => [parada("o-1", 9.94, -84.08), parada("o-2", 9.95, -84.07)],
+    contarAsignadasDelDia: async () => ({ asignadas: 0, recogidas: 0 }), ultimaRecogidaDelDia: async () => null, findParadasEnReparto: async () => [parada("o-1", 9.94, -84.08), parada("o-2", 9.95, -84.07)],
   };
   // Feature 265: `fuente` es REQUERIDA en el desenlace `ok`. Aqui el doble hace de proveedor.
   const client = {
