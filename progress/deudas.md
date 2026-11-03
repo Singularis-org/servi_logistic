@@ -204,3 +204,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** review de SLT-67 (2026-10-30, `progress/review_SLT-67.md`, menor 1). El campo compartido `components/shared/MontoInput.tsx` (con `montoParaCampo`) solo lo usa `PlanForm`; `docs/architecture.md` pide dos usos para vivir en `shared/`. Se dejó ahí por decisión del humano (reutilizable).
 - **Qué falta:** usarlo en los campos de monto candidatos (`MarcarRecibidoDialog`, `RegistrarPagoDialog`, `RegistrarMovimientoDialog`, `GastoFijoPlantillaDialog`, `AjustarPagoMensajeroDialog`, `TarifaCampos`, `CobroPorOrden`, `PremioInputRow`, `DesglosePagoField`). Lista en `progress/impl_SLT-67.md`.
 - **Dueño:** Camilo (decidir si va a ficha).
+
+### D34 — `enUnaFoto` reutiliza la constante de opciones de `$transaction`
+- **Origen:** SLT-65 (2026-10-31, review F2.2 de 2026-11-03, menor 4). `CatalogoGeograficoRepository.enUnaFoto` (SLT-44) pasa la constante `OPCIONES_TRANSACCION` a `$transaction`. Prisma 7 escribe `newTxId` en ese objeto, y tras abrir un `tx` anidado la siguiente carga falla con «Transaction already closed». SLT-65 lo rodea con `lib/repositories/_shared/sin-transaccion-anidada.ts`.
+- **Qué falta:** el arreglo de raíz en SLT-44, una línea: `{ ...OPCIONES_TRANSACCION }`. Después, valorar si se retira el rodeo de SLT-65.
+- **Dueño:** Camilo (SLT-44, PR #55).
