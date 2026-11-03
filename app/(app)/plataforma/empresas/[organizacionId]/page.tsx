@@ -14,7 +14,7 @@ import { esPlataforma } from "@/lib/auth/plataforma";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { NUCLEO } from "@/lib/modulos/catalogo";
-import { rangoDelInicioDelCiclo } from "@/lib/planes/ciclo";
+import { inicioDelCicloPorDefecto, rangoDelInicioDelCiclo } from "@/lib/planes/ciclo";
 import type { PlanDeEmpresaVista, PlanDTO } from "@/lib/types/planes";
 
 import { ModulosEmpresa } from "./_components/ModulosEmpresa";
@@ -111,6 +111,7 @@ export default async function EmpresaDetallePage({
     typeof planPedido === "string" && asignables?.some((p) => p.id === planPedido) ? planPedido : undefined;
 
   const { empresa } = r;
+  const ahora = new Date();
   return (
     <AppPage title={empresa.nombre}>
       <div className="flex flex-col gap-6">
@@ -129,7 +130,9 @@ export default async function EmpresaDetallePage({
           planActual={planActual}
           asignarPlan={asignarPlanAction}
           // SLT-58 §11.5: el rango sale del reloj del servidor, el mismo que valida el servicio (R30).
-          rangoInicioCiclo={rangoDelInicioDelCiclo(new Date())}
+          rangoInicioCiclo={rangoDelInicioDelCiclo(ahora)}
+          // Ajuste planes-custom (D5): la primera asignación propone MAÑANA, del mismo reloj.
+          inicioCicloPorDefecto={inicioDelCicloPorDefecto(ahora)}
           previsualizarAsignacion={previsualizarAsignacionPlanAction}
           planPreseleccionado={planPreseleccionado}
         />

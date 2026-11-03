@@ -110,3 +110,51 @@ composition-root y la guardia de historial). Esta sesión: `tests/integration/db
 
 ### Veredicto
 Backend completo para D1, D2, D4–D9: typecheck sin errores fuera de UI, lint sin errores, 2046 tests relacionados en verde; integración db pendiente de CI; quedan 2 decisiones abiertas y un rojo de guardia ajeno.
+
+## Frontend
+
+frontend_dev (2026-11-03). Grafo MCP no consultado: bastó Grep/Read sobre la UI existente. Sin pantallas
+nuevas, sin dependencias nuevas, sin tocar `lib/`, `db/` ni tests de backend.
+
+### Archivos
+Nuevos:
+- `components/shared/TipoCobroCampo.tsx` (D6: `RadioGroup` Mensual/Anual dentro de `FormField`; lo comparten el modal de asignación y el form del custom).
+- `components/shared/tipo-cobro.ts` (textos del tipo de cobro, sin `"use client"` para poder usarlos en `ConsumoDelPlan`).
+- `tests/components/PlanFormCustomAsigna.test.tsx`.
+
+Modificados (UI):
+- `app/(app)/plataforma/planes/_components/PlanForm.tsx`: D1 fuera «Negociable»; custom → `tipoCobro` (default mensual) y, si la empresa elegida NO tiene plan, «Inicio del ciclo de órdenes» con `min`/`max` y default mañana; payload según contrato; D3 `rechazoConCampo` (`plan_sin_costo` → `precio` o `costoPorOrden`; `not_found` → `organizacionId`; resto al aviso general) sin llamar a `onGuardado`.
+- `app/(app)/plataforma/planes/_components/PlanesModule.tsx` y `app/(app)/plataforma/planes/page.tsx`: empresas con `tienePlan` (`e.plan !== null`), `inicioCicloPorDefecto(ahora)` y `rangoDelInicioDelCiclo(ahora)` del reloj del servidor.
+- `app/(app)/plataforma/empresas/[organizacionId]/_components/PlanEmpresa.tsx` y su `page.tsx`: prop `inicioCicloPorDefecto` (D5, la primera asignación propone mañana); selector de tipo de cobro en el modal de primera asignación y en el de cambio, se reinicia a «Mensual» en cada apertura; `tipoCobro` viaja siempre; un `validation_error` en `tipoCobro` en la primera asignación va junto al campo con el modal abierto.
+- `components/shared/ConsumoDelPlan.tsx`: bloque «Cobro del plan» (tipo, monto del período «al mes/al año» o «por definir», siguiente cobro). Lo montan «Mi plan» y el detalle del superadmin. Costeo del ciclo sin cambios.
+- `app/(app)/plataforma/empresas/_components/EmpresasModule.tsx`: la celda «Plan» pinta `«nombre» · Mensual|Anual`.
+
+Tests ajustados (typecheck/negociable/tipoCobro/cobro/mañana): `tests/components/{ConsumoDelPlan,ConsumoDelPlanCosteo,EmpresasModulePlan,MiPlanModule,PlanDetalleAsignar,PlanEmpresa,PlanEmpresaSinCosto,PlanForm,PlanFormCosteo,PlanVistaCosteo,PlanesModule}.test.tsx`, `tests/integration/{plataforma-empresa-detalle-page,plataforma-planes-page}.test.tsx`. Los casos «negociable» se quitaron o pasan a «sin precio»; los que esperaban «hoy» por defecto esperan mañana (D5).
+
+### Mapa D<n> → test (UI)
+| D | Test |
+|---|------|
+| D1 | `PlanFormCustomAsigna.test.tsx` > «D1 — el costo base ya no ofrece «Negociable»»; `PlanForm.test.tsx` (opciones del costo base); `PlanFormCosteo.test.tsx` > R9 (2 radios) |
+| D2 | `PlanFormCustomAsigna.test.tsx` > «D2, D6: el tipo elegido viaja a la action junto a la empresa y el inicio del ciclo»; `PlanForm.test.tsx` > R14 (custom lleva `tipoCobro` + `inicioCiclo`) |
+| D3 | `PlanFormCustomAsigna.test.tsx` > «D3 — un rechazo de la asignación no cierra el formulario» (`plan_sin_costo` → «Costo base» / «Costo por orden», `not_found` → «Empresa», `tope_excedido` al aviso, `validation_error` de `inicioCiclo`; siempre sin `onGuardado` y con lo escrito) |
+| D4 | `PlanFormCustomAsigna.test.tsx` > «D4, D5 — «Inicio del ciclo» en el custom» (sin plan sí, con plan no y sin `inicioCiclo` en el payload, público/sin empresa no); `plataforma-planes-page.test.tsx` > «D4, D5: …solo si la empresa no tiene plan» |
+| D5 | `PlanFormCustomAsigna.test.tsx` (default MAÑANA ≠ hoy); `PlanEmpresa.test.tsx` > «R29, D5: el campo trae «mañana» por defecto…»; `plataforma-empresa-detalle-page.test.tsx` > «§11.5 (R29, R37), D5» y `plataforma-planes-page.test.tsx` (reloj falso 2026-10-29 → 2026-10-30) |
+| D6 | `PlanEmpresa.test.tsx` > «Ajuste planes-custom D6 — el tipo de cobro se elige en el modal de asignación» (primera y cambio, default, reinicio, error junto al campo); `PlanFormCustomAsigna.test.tsx` > «D6 — el tipo de cobro en el custom» |
+| D9 | `MiPlanModule.test.tsx` > «Ajuste planes-custom D9 — «Mi plan» muestra…» (mensual, anual ×12, por definir); `plataforma-empresa-detalle-page.test.tsx` > R19 (lista «Cobro del plan» en el detalle); `EmpresasModulePlan.test.tsx` > «Ajuste planes-custom D9 — la lista muestra solo el tipo…» |
+| D7, D8 | Cálculo del backend (`cobro.test.ts`); la UI solo pinta lo que llega: lo cubren los tests D9 de «Mi plan» (45000.00 al mes / 540000.00 al año; 2026-03-15 / 2027-01-15). |
+
+### Salida real (2026-11-03)
+- `pnpm run typecheck`: 0 errores (`tsc --noEmit` sin salida).
+- `pnpm run lint`: `✖ 232 problems (0 errors, 232 warnings)` (los mismos 232 de antes); `eslint` sobre los archivos tocados: sin salida.
+- `pnpm exec vitest related --run <9 archivos de UI tocados> tests/components/PlanFormCustomAsigna.test.tsx`: `Test Files 20 passed (20)`, `Tests 336 passed (336)`.
+- `pnpm run test:guardias`: `Tests 4 failed | 4512 passed | 24 skipped`; los 4 rojos son los mismos de `dependencias-declaradas-presentes.guardia.test.ts` (guardia 420), ajenos (sin cambio).
+
+### ABIERTO (frontend; no cubierto por D1–D9, no improvisado)
+1. Los dos ABIERTO de backend siguen sin decidir; la UI no los fuerza: el selector del modal no ofrece el plan actual (no se puede «cambiar solo el tipo») y el form del custom no muestra «Inicio del ciclo» si la empresa ya tiene plan.
+2. **Avisos del `ok` al crear un custom con fecha** (`avisos`: topes ya pasados en primera asignación): `PlanesModule` solo dice «Plan «X» creado.» y no los muestra. El modal de primera asignación sí los muestra (R37/R42). ¿Se pintan también al crear?
+3. **Vista previa de topes (R37) en el form del custom**: el modal de primera asignación lee la vista previa de la fecha; el form del custom no (no hay plan creado aún contra el que leerla). Decidir si hace falta.
+4. **Historial de asignaciones** del detalle: la tabla sigue mostrando fecha/quién/plan; no pinta el tipo de cobro (D9 no lo pide).
+5. **Textos nuevos** para revisión humana: «Tipo de cobro», «Mensual»/«Anual», «Cobro del plan», «Monto del período: X al mes|al año|por definir», «Siguiente cobro: AAAA-MM-DD», «Esa empresa ya no existe.», «Para asignarlo a la empresa, el plan necesita costo base con monto y costo por orden.», ayuda «El ciclo de órdenes de la empresa empieza ese día, hora de la plataforma.». Montos sin moneda, como el costeo (D26 de SL-24).
+
+### Veredicto
+UI de D1–D6 y D9 hecha y probada: typecheck 0, lint 0 errores, 336 tests relacionados en verde; guardia 420 roja y ajena; 5 abiertos para el humano.

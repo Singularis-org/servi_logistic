@@ -13,9 +13,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatearConteo } from "@/lib/planes/consumo";
+import type { RangoDelInicioDelCiclo } from "@/lib/planes/ciclo";
 import type { CrearPlanInput, PlanDelCatalogo, PlanResult } from "@/lib/types/planes";
 
-import { PlanForm } from "./PlanForm";
+import { PlanForm, type EmpresaParaCustom } from "./PlanForm";
 import { lineasDeCosto, lineasDeTopes, TEXTOS_PLAN, textoDeVisibilidad } from "./plan-vista";
 
 /** Textos de la pantalla, en un solo sitio para cuando llegue la i18n. */
@@ -54,8 +55,12 @@ export interface PlanesModuleProps {
   errorDeCarga?: boolean;
   /** El catálogo entero, también los archivados, en el orden del servidor. */
   planes: PlanDelCatalogo[];
-  /** Las empresas para un plan custom (`listarEmpresasPlataforma`). */
-  empresas: { id: string; nombre: string }[] | null;
+  /** Las empresas para un plan custom (`listarEmpresasPlataforma`), con si ya tienen plan (D4). */
+  empresas: EmpresaParaCustom[] | null;
+  /** Ajuste planes-custom (D5): «Inicio del ciclo» por defecto del custom, del reloj del servidor. */
+  inicioCicloPorDefecto: string;
+  /** SLT-58 (R30): el `min`/`max` de «Inicio del ciclo», del reloj del servidor. */
+  rangoInicioCiclo: RangoDelInicioDelCiclo;
   /** `crearPlanAction`, inyectada desde la página para poder probarla. */
   crearPlan: (input: CrearPlanInput) => Promise<PlanResult>;
 }
@@ -66,7 +71,14 @@ export interface PlanesModuleProps {
  * programado. Los archivados se esconden por defecto y, al mostrarlos, llevan la marca «Archivado».
  * «Nuevo plan» abre el formulario en un panel lateral; tras crear, se relee la página.
  */
-export function PlanesModule({ errorDeCarga = false, planes, empresas, crearPlan }: PlanesModuleProps) {
+export function PlanesModule({
+  errorDeCarga = false,
+  planes,
+  empresas,
+  inicioCicloPorDefecto,
+  rangoInicioCiclo,
+  crearPlan,
+}: PlanesModuleProps) {
   const router = useRouter();
   const idArchivados = useId();
   const [mostrarArchivados, setMostrarArchivados] = useState(false);
@@ -137,6 +149,8 @@ export function PlanesModule({ errorDeCarga = false, planes, empresas, crearPlan
             <PlanForm
               modo="crear"
               empresas={empresas}
+              inicioCicloPorDefecto={inicioCicloPorDefecto}
+              rangoInicioCiclo={rangoInicioCiclo}
               enviar={crearPlan}
               onGuardado={(_r, nombre) => alCrear(nombre)}
             />

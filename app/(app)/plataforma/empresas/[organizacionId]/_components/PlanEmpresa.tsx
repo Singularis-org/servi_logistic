@@ -9,6 +9,7 @@ import { ConsumoDelPlan } from "@/components/shared/ConsumoDelPlan";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { FormField } from "@/components/shared/FormField";
 import { Modal } from "@/components/shared/Modal";
+import { TipoCobroCampo } from "@/components/shared/TipoCobroCampo";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,7 @@ import type {
   PlanDeEmpresaVista,
   PlanDTO,
   PlanResult,
+  TipoCobro,
   TopeExcedido,
   VistaPreviaAsignacionResult,
 } from "@/lib/types/planes";
@@ -126,14 +128,24 @@ export interface PlanEmpresaProps {
   planActual?: PlanDTO | null;
   /**
    * `asignarPlanAction`, inyectada desde la página para poder probarla. `inicioCiclo` solo viaja en la
-   * primera asignación (R29); «Cambiar plan» nunca lo manda (R31).
+   * primera asignación (R29); «Cambiar plan» nunca lo manda (R31). `tipoCobro` viaja siempre (D6).
    */
-  asignarPlan: (input: { organizacionId: string; planId: string; inicioCiclo?: string }) => Promise<PlanResult>;
+  asignarPlan: (input: {
+    organizacionId: string;
+    planId: string;
+    inicioCiclo?: string;
+    tipoCobro: TipoCobro;
+  }) => Promise<PlanResult>;
   /**
    * SLT-58 §11.5 (R30): el rango de la fecha de inicio del ciclo, calculado en el servidor para no
    * depender del reloj del navegador. `hoy` es el valor por defecto del campo.
    */
   rangoInicioCiclo: RangoDelInicioDelCiclo;
+  /**
+   * Ajuste planes-custom (D5): el valor por defecto de «Inicio del ciclo» en la primera asignación,
+   * MAÑANA en la hora de la plataforma (`inicioDelCicloPorDefecto`, del reloj del servidor).
+   */
+  inicioCicloPorDefecto: string;
   /** `previsualizarAsignacionPlanAction` (R37), inyectada desde la página para poder probarla. */
   previsualizarAsignacion: (input: {
     organizacionId: string;
@@ -199,6 +211,7 @@ export function PlanEmpresa({
   planActual,
   asignarPlan,
   rangoInicioCiclo,
+  inicioCicloPorDefecto,
   previsualizarAsignacion,
   planPreseleccionado,
 }: PlanEmpresaProps) {
@@ -206,6 +219,7 @@ export function PlanEmpresa({
   const historialId = useId();
   const campoId = useId();
   const fechaId = useId();
+  const tipoCobroId = useId();
   const router = useRouter();
   const toast = useToast();
   const planActualId = vista?.plan?.planId ?? null;
@@ -219,7 +233,10 @@ export function PlanEmpresa({
   const [rechazo, setRechazo] = useState<string | null>(null);
   const [errorDeCampo, setErrorDeCampo] = useState<string[] | undefined>(undefined);
   const [confirmando, setConfirmando] = useState(false);
-  const [inicioCiclo, setInicioCiclo] = useState(rangoInicioCiclo.hoy);
+  const [inicioCiclo, setInicioCiclo] = useState(inicioCicloPorDefecto);
+  /** D6: el tipo de cobro de esta asignación; cada apertura del modal empieza en «mensual». */
+  const [tipoCobro, setTipoCobro] = useState<TipoCobro>("mensual");
+  const [errorDeTipoCobro, setErrorDeTipoCobro] = useState<string[] | undefined>(undefined);
   const [vistaPrevia, setVistaPrevia] = useState<VistaPrevia>({ fase: "cargando" });
   const [errorDeFecha, setErrorDeFecha] = useState<string[] | undefined>(undefined);
   /** Los avisos del `ok` de la primera asignación (§11.5), bajo la sección y con el texto del modal. */
@@ -272,10 +289,12 @@ export function PlanEmpresa({
     if (planId === "" || enVuelo) return;
     setRechazo(null);
     setAvisosAsignados([]);
+    setTipoCobro("mensual");
+    setErrorDeTipoCobro(undefined);
     if (vista?.plan === null) {
-      // R29: cada apertura empieza en «hoy»; R37: y lee la vista previa de esa fecha.
-      setInicioCiclo(rangoInicioCiclo.hoy);
-      void leerVistaPrevia(rangoInicioCiclo.hoy);
+      // D5: cada apertura empieza en «mañana» (antes, R29: «hoy»); R37: y lee la vista previa de esa fecha.
+      setInicioCiclo(inicioCicloPorDefecto);
+      void leerVistaPrevia(inicioCicloPorDefecto);
     }
     setConfirmando(true);
   }
@@ -327,7 +346,9 @@ export function PlanEmpresa({
     setErrorDeCampo(undefined);
     let seguirAbierto = false;
     try {
-      const r = await asignarPlan(primera ? { organizacionId, planId, inicioCiclo } : { organizacionId, planId });
+      const r = await asignarPlan(
+        primera ? { organizacionId, planId, inicioCiclo, tipoCobro } : { organizacionId, planId, tipoCobro },
+      );
       if (r.estado === "ok") {
         setPlanId("");
         if (primera && vistaPrevia.fase === "ok") {
@@ -340,12 +361,18 @@ export function PlanEmpresa({
         seguirAbierto = true;
         setVistaPrevia({ fase: "invalida" });
         setErrorDeFecha(r.fieldErrors.inicioCiclo);
+      } else if (primera && r.estado === "validation_error" && r.fieldErrors.tipoCobro) {
+        // D6: el error del tipo de cobro junto a su campo, con el modal abierto.
+        seguirAbierto = true;
+        setErrorDeTipoCobro(r.fieldErrors.tipoCobro);
       } else if (r.estado === "tope_excedido") {
         // R20: qué tope se pasa, con el uso y el tope; el texto ya viene redactado del servicio.
         setRechazo(r.mensaje);
       } else if (r.estado === "validation_error") {
         // R18: el error de validación junto a su campo (el único que la pantalla deja elegir).
-        setErrorDeCampo(r.fieldErrors.planId ?? r.fieldErrors.organizacionId ?? [TEXTOS.validacion]);
+        setErrorDeCampo(
+          r.fieldErrors.planId ?? r.fieldErrors.organizacionId ?? r.fieldErrors.tipoCobro ?? [TEXTOS.validacion],
+        );
       } else {
         setRechazo(RECHAZOS[r.estado]);
       }
@@ -513,6 +540,16 @@ export function PlanEmpresa({
                 <li key={linea}>{linea}</li>
               ))}
             </ul>
+            {/* D6: el tipo de cobro se elige también en un cambio de plan. */}
+            <div className="mt-3">
+              <TipoCobroCampo
+                id={tipoCobroId}
+                value={tipoCobro}
+                onValueChange={setTipoCobro}
+                error={errorDeTipoCobro}
+                disabled={enVuelo}
+              />
+            </div>
           </Modal>
         )
       ) : null}
@@ -552,6 +589,17 @@ export function PlanEmpresa({
               )}
             </FormField>
             {inicioCiclo !== "" && <p>{TEXTOS.cicloEmpiezaEl(inicioCiclo)}</p>}
+            {/* D6: el tipo de cobro de la primera asignación. */}
+            <TipoCobroCampo
+              id={tipoCobroId}
+              value={tipoCobro}
+              onValueChange={(t) => {
+                setTipoCobro(t);
+                setErrorDeTipoCobro(undefined);
+              }}
+              error={errorDeTipoCobro}
+              disabled={enVuelo}
+            />
             {vistaPrevia.fase === "fallo" ? (
               <AvisoDeError>
                 {vistaPrevia.motivo === null

@@ -39,6 +39,8 @@ const PLAN: PlanConConsumo = {
     sinCostoConcreto: false,
     anualNoAplicaAlCosto: false,
   },
+  // Ajuste planes-custom (D9): campo nuevo del tipo; estos casos no lo comprueban.
+  cobro: { tipo: "mensual", montoPeriodo: "45000.00", siguienteCobro: "2026-03-15" },
 };
 
 function relleno(nombre: string): HTMLElement {

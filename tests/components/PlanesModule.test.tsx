@@ -39,7 +39,7 @@ const CUSTOM: PlanDelCatalogo = {
   organizacionId: "6f1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f60",
   topes: { ordenesPorCiclo: null, porRol: {}, apiKeys: null },
   modulos: [],
-  precio: { tipo: "negociable" },
+  precio: { tipo: "sin_precio" }, // Ajuste planes-custom (D1): sin «negociable».
   costoPorOrden: null, // SLT-66 R8: campo nuevo del PlanDTO
   archivado: false,
   empresaNombre: "Envíos Norte",
@@ -63,7 +63,9 @@ function montar(crearPlan = vi.fn().mockResolvedValue(OK)) {
   render(
     <PlanesModule
       planes={[PUBLICO, CUSTOM, ARCHIVADO]}
-      empresas={[{ id: CUSTOM.organizacionId!, nombre: "Envíos Norte" }]}
+      empresas={[{ id: CUSTOM.organizacionId!, nombre: "Envíos Norte", tienePlan: true }]}
+      inicioCicloPorDefecto="2026-10-30"
+      rangoInicioCiclo={{ hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" }}
       crearPlan={crearPlan}
     />,
   );
@@ -92,7 +94,7 @@ describe("SLT-58 R13 — el catálogo de planes", () => {
     expect(celdas(filaDe("Norte a medida"))).toEqual([
       "Norte a medida",
       "Custom de Envíos Norte",
-      "Costo base: negociableCosto por orden: se aplica el valor global", // SLT-66 R9, R24
+      "Costo base: sin precioCosto por orden: se aplica el valor global", // SLT-66 R9, R24
       "Órdenes por ciclo: sin límiteUsuarios: sin límite por rolAPI keys activas: sin límite",
       "1",
       "Ninguno",
@@ -167,7 +169,16 @@ describe("SLT-58 — revisión de diseño del catálogo", () => {
 
   it("si el catálogo no se pudo leer: solo el aviso de error con «Reintentar», sin tabla ni estado vacío", async () => {
     const user = userEvent.setup();
-    render(<PlanesModule errorDeCarga planes={[]} empresas={[]} crearPlan={vi.fn()} />);
+    render(
+      <PlanesModule
+        errorDeCarga
+        planes={[]}
+        empresas={[]}
+        inicioCicloPorDefecto="2026-10-30"
+        rangoInicioCiclo={{ hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" }}
+        crearPlan={vi.fn()}
+      />,
+    );
 
     expect(screen.getByRole("alert")).toHaveTextContent("No se pudo cargar el catálogo de planes.");
     expect(screen.queryByRole("table")).toBeNull();

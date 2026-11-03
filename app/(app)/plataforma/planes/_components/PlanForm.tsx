@@ -6,6 +6,7 @@ import type { ModuloApagable } from "@prisma/client";
 import { FormField } from "@/components/shared/FormField";
 import { FieldError } from "@/components/shared/FieldError";
 import { MontoInput } from "@/components/shared/MontoInput";
+import { TipoCobroCampo } from "@/components/shared/TipoCobroCampo";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -14,6 +15,7 @@ import { RadioGroup } from "@/components/ui/radio-group";
 import { Select, type SelectOption } from "@/components/ui/select";
 import { ROL_LABELS } from "@/lib/auth/rol-label";
 import { montoParaCampo } from "@/lib/config/moneda";
+import type { RangoDelInicioDelCiclo } from "@/lib/planes/ciclo";
 import { nombreDelModulo, ORDEN_MODULOS } from "@/lib/modulos/catalogo";
 import {
   crearPlanSchema,
@@ -25,6 +27,7 @@ import {
   type PlanResult,
   type PrecioPlan,
   type RolConTope,
+  type TipoCobro,
 } from "@/lib/types/planes";
 
 import { TEXTOS_PLAN } from "./plan-vista";
@@ -48,7 +51,6 @@ export const TEXTOS_PLAN_FORM = {
   // SLT-66 (R9): el precio informativo de SL-24 se llama «costo base».
   precio: "Costo base",
   sinPrecio: "Sin precio",
-  negociable: "Negociable",
   monto: "Con monto",
   mensual: "Costo base mensual",
   anual: "Pago anual",
@@ -67,6 +69,9 @@ export const TEXTOS_PLAN_FORM = {
   guardar: "Guardar",
   programar: "Programar cambio",
   crear: "Crear plan",
+  /** Ajuste planes-custom (D4): solo si la empresa elegida todavía no tiene plan. */
+  inicioCiclo: "Inicio del ciclo de órdenes",
+  inicioCicloAyuda: "El ciclo de órdenes de la empresa empieza ese día, hora de la plataforma.",
   revisa: "Revisa los campos marcados.",
 } as const;
 
@@ -78,6 +83,10 @@ const RECHAZOS = {
   custom_de_otra_empresa: "Ese plan es de otra empresa.",
   sin_cambio_programado: "El plan ya no tiene un cambio pendiente.",
   plan_sin_costo: "Ese plan no tiene costo base y costo por orden concretos: crea un custom con sus precios para asignarlo.",
+  /** Ajuste planes-custom (D3): al crear un custom, el rechazo `plan_sin_costo` va junto a su campo. */
+  custom_sin_costo: "Para asignarlo a la empresa, el plan necesita costo base con monto y costo por orden.",
+  /** Ajuste planes-custom (D3): al crear un custom, el `not_found` es la empresa elegida. */
+  empresa_no_existe: "Esa empresa ya no existe.",
   generico: "No se pudo guardar. Inténtalo de nuevo.",
 } as const;
 
@@ -119,6 +128,10 @@ type Formulario = {
   costoPorOrden: string;
   aplicar: Accion;
   vigenteDesde: string;
+  /** Ajuste planes-custom (D6): solo viaja en un custom (se asigna a su empresa al crearlo). */
+  tipoCobro: TipoCobro;
+  /** Ajuste planes-custom (D4, D5): solo viaja si la empresa elegida no tiene plan. */
+  inicioCiclo: string;
 };
 
 /** Errores por ruta de zod (`topes.porRol.mensajero`, `precio.mensual`…), como los manda la action. */
@@ -126,7 +139,7 @@ type Errores = Record<string, string[]>;
 
 const texto = (n: number | null | undefined) => (n === null || n === undefined ? "" : String(n));
 
-function inicial(plan: PlanDTO | null): Formulario {
+function inicial(plan: PlanDTO | null, inicioCiclo: string): Formulario {
   const precio = plan?.precio ?? { tipo: "sin_precio" };
   const anual = precio.tipo === "monto" ? precio.anual : null;
   return {
@@ -148,6 +161,8 @@ function inicial(plan: PlanDTO | null): Formulario {
     costoPorOrden: plan?.costoPorOrden == null ? "" : montoParaCampo(plan.costoPorOrden),
     aplicar: "inmediato",
     vigenteDesde: "",
+    tipoCobro: "mensual",
+    inicioCiclo,
   };
 }
 
@@ -193,6 +208,9 @@ function erroresDeZod(issues: readonly { path: readonly PropertyKey[]; message: 
   return errores;
 }
 
+/** Una empresa del selector del plan custom (ajuste planes-custom, D4). */
+export type EmpresaParaCustom = { id: string; nombre: string; tienePlan: boolean };
+
 type PropsComunes = {
   /** Tras un `ok`: quien monta el formulario cierra el panel, relee y avisa. `nombre`, el guardado. */
   onGuardado: (resultado: Extract<PlanResult, { estado: "ok" }>, nombre: string) => void;
@@ -202,8 +220,18 @@ export type PlanFormProps = PropsComunes &
   (
     | {
         modo: "crear";
-        /** Las empresas para un plan custom (`listarEmpresasPlataforma`); `null` si no se pudieron leer. */
-        empresas: { id: string; nombre: string }[] | null;
+        /**
+         * Las empresas para un plan custom (`listarEmpresasPlataforma`); `null` si no se pudieron leer.
+         * `tienePlan` decide si se pide el inicio del ciclo (ajuste planes-custom, D4).
+         */
+        empresas: EmpresaParaCustom[] | null;
+        /**
+         * Ajuste planes-custom (D5): la fecha que propone «Inicio del ciclo» (mañana en la hora de la
+         * plataforma), calculada en el servidor con `inicioDelCicloPorDefecto`.
+         */
+        inicioCicloPorDefecto: string;
+        /** SLT-58 (R30): el `min`/`max` de «Inicio del ciclo», del reloj del servidor. */
+        rangoInicioCiclo: RangoDelInicioDelCiclo;
         /** `crearPlanAction`, inyectada desde la página. */
         enviar: (input: CrearPlanInput) => Promise<PlanResult>;
       }
@@ -224,7 +252,9 @@ export type PlanFormProps = PropsComunes &
  */
 export function PlanForm(props: PlanFormProps) {
   const base = useId();
-  const [form, setForm] = useState<Formulario>(() => inicial(props.modo === "editar" ? props.plan : null));
+  const [form, setForm] = useState<Formulario>(() =>
+    inicial(props.modo === "editar" ? props.plan : null, props.modo === "crear" ? props.inicioCicloPorDefecto : ""),
+  );
   const [errores, setErrores] = useState<Errores>({});
   const [rechazo, setRechazo] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
@@ -239,6 +269,15 @@ export function PlanForm(props: PlanFormProps) {
 
   const idDe = (clave: string) => `${base}-${clave.replaceAll(".", "-")}`;
   const errorDe = (clave: string) => errores[clave];
+  /**
+   * Ajuste planes-custom (D4): «Inicio del ciclo» solo para un custom cuya empresa elegida NO tiene
+   * plan. Si ya lo tiene, el campo no aparece y la asignación conserva el ancla, como un cambio de plan.
+   */
+  const empresaElegida =
+    props.modo === "crear" && form.visibilidad === "custom"
+      ? (props.empresas ?? []).find((e) => e.id === form.organizacionId)
+      : undefined;
+  const pideInicioCiclo = empresaElegida !== undefined && !empresaElegida.tienePlan;
 
   useEffect(() => {
     const foco = focoPendiente.current;
@@ -261,7 +300,7 @@ export function PlanForm(props: PlanFormProps) {
   function mostrarErrores(nuevos: Errores, nuevoRechazo: string | null = null) {
     setErrores(nuevos);
     setRechazo(nuevoRechazo);
-    const primera = camposEnOrden(props.modo, form).find((clave) => (nuevos[clave]?.length ?? 0) > 0);
+    const primera = camposEnOrden(props.modo, form, pideInicioCiclo).find((clave) => (nuevos[clave]?.length ?? 0) > 0);
     focoPendiente.current = { clave: primera ?? null };
   }
 
@@ -284,10 +323,14 @@ export function PlanForm(props: PlanFormProps) {
     const version = versionDe(form);
     if (props.modo === "crear") {
       const { enviar } = props;
+      const custom = form.visibilidad === "custom";
       const v = crearPlanSchema.safeParse({
         ...version,
         visibilidad: form.visibilidad,
-        organizacionId: form.visibilidad === "custom" ? form.organizacionId : null,
+        organizacionId: custom ? form.organizacionId : null,
+        // D2, D4, D6: un custom se asigna al crearlo; la fecha, solo si la empresa aún no tiene plan.
+        ...(custom ? { tipoCobro: form.tipoCobro } : {}),
+        ...(custom && pideInicioCiclo ? { inicioCiclo: form.inicioCiclo } : {}),
       });
       return v.success ? { llamar: () => enviar(v.data) } : { errores: erroresDeZod(v.error.issues) };
     }
@@ -332,12 +375,15 @@ export function PlanForm(props: PlanFormProps) {
     } else if (r.estado === "validation_error") {
       mostrarErrores(r.fieldErrors);
     } else {
-      mostrarErrores({}, mensajeDelRechazo(r));
+      // D3: el rechazo junto a su campo cuando lo tiene; el formulario sigue abierto con lo escrito.
+      const deCampo = props.modo === "crear" ? rechazoConCampo(r, form) : null;
+      if (deCampo !== null) mostrarErrores(deCampo);
+      else mostrarErrores({}, mensajeDelRechazo(r));
     }
   }
 
   // Los errores que no tienen un campo VISIBLE donde ir (`_`, `planId`…) se pintan arriba del botón.
-  const conCampo = new Set(camposEnOrden(props.modo, form));
+  const conCampo = new Set(camposEnOrden(props.modo, form, pideInicioCiclo));
   const sueltos = Object.entries(errores)
     .filter(([clave]) => !conCampo.has(clave))
     .flatMap(([, mensajes]) => mensajes);
@@ -481,10 +527,9 @@ export function PlanForm(props: PlanFormProps) {
             aria-invalid={Boolean(errorDe("precio"))}
             aria-describedby={errorDe("precio") ? `${idDe("precio")}-error` : undefined}
             value={form.precio}
-            onValueChange={(v) => cambiar("precio", v === "monto" || v === "negociable" ? v : "sin_precio")}
+            onValueChange={(v) => cambiar("precio", v === "monto" ? "monto" : "sin_precio")}
             options={[
               { value: "sin_precio", label: TEXTOS_PLAN_FORM.sinPrecio },
-              { value: "negociable", label: TEXTOS_PLAN_FORM.negociable },
               { value: "monto", label: TEXTOS_PLAN_FORM.monto },
             ]}
           />
@@ -548,6 +593,34 @@ export function PlanForm(props: PlanFormProps) {
         <MontoInput value={form.costoPorOrden} onChange={(v) => cambiar("costoPorOrden", v)} />
       </FormField>
 
+      {/* Ajuste planes-custom (D2, D4–D6): el custom se asigna a su empresa al crearlo. */}
+      {props.modo === "crear" && form.visibilidad === "custom" ? (
+        <div className="flex flex-col gap-4">
+          <TipoCobroCampo
+            id={idDe("tipoCobro")}
+            value={form.tipoCobro}
+            onValueChange={(t) => cambiar("tipoCobro", t)}
+            error={errorDe("tipoCobro")}
+          />
+          {pideInicioCiclo ? (
+            <FormField
+              id={idDe("inicioCiclo")}
+              label={TEXTOS_PLAN_FORM.inicioCiclo}
+              hint={TEXTOS_PLAN_FORM.inicioCicloAyuda}
+              error={errorDe("inicioCiclo")}
+            >
+              <Input
+                type="date"
+                value={form.inicioCiclo}
+                min={props.rangoInicioCiclo.min}
+                max={props.rangoInicioCiclo.max}
+                onChange={(ev) => cambiar("inicioCiclo", ev.target.value)}
+              />
+            </FormField>
+          ) : null}
+        </div>
+      ) : null}
+
       {props.modo === "editar" ? (
         <fieldset className="flex flex-col gap-4">
           <legend className="text-sm font-medium">{TEXTOS_PLAN_FORM.aplicar}</legend>
@@ -605,7 +678,7 @@ export function PlanForm(props: PlanFormProps) {
  * va al primero con error). El resto va al aviso general, para que ningún rechazo se quede sin pintar
  * por caer en un campo oculto.
  */
-function camposEnOrden(modo: PlanFormProps["modo"], f: Formulario): string[] {
+function camposEnOrden(modo: PlanFormProps["modo"], f: Formulario, pideInicioCiclo: boolean): string[] {
   const claves = ["nombre"];
   if (modo === "crear") claves.push("visibilidad");
   if (modo === "crear" && f.visibilidad === "custom") claves.push("organizacionId");
@@ -620,8 +693,25 @@ function camposEnOrden(modo: PlanFormProps["modo"], f: Formulario): string[] {
   if (f.precio === "monto" && f.anual === "fijo") claves.push("precio.anual.monto");
   if (f.precio === "monto" && f.anual === "descuento") claves.push("precio.anual.porcentaje");
   claves.push("costoPorOrden");
+  if (modo === "crear" && f.visibilidad === "custom") claves.push("tipoCobro");
+  if (modo === "crear" && pideInicioCiclo) claves.push("inicioCiclo");
   if (modo === "editar" && f.aplicar === "programado") claves.push("vigenteDesde");
   return claves;
+}
+
+/**
+ * Ajuste planes-custom (D3) — al crear un custom, los rechazos de la asignación que tienen un campo
+ * natural se pintan junto a él: `plan_sin_costo` en el costo que falta, `not_found` en la empresa. Sin
+ * campo (`tope_excedido`, `forbidden`…), `null`: van al aviso general.
+ */
+function rechazoConCampo(r: PlanResult, f: Formulario): Errores | null {
+  if (f.visibilidad !== "custom") return null;
+  if (r.estado === "not_found") return { organizacionId: [RECHAZOS.empresa_no_existe] };
+  if (r.estado === "plan_sin_costo") {
+    const clave = f.precio !== "monto" ? "precio" : f.costoPorOrden.trim() === "" ? "costoPorOrden" : null;
+    return clave === null ? null : { [clave]: [RECHAZOS.custom_sin_costo] };
+  }
+  return null;
 }
 
 /**
