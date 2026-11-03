@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import type { CierreGestionPendienteRow } from "@/lib/interfaces/repositories/ICierreDiaRepository";
 import type { PagoTarifa } from "@/lib/interfaces/repositories/ITarifaZonaMensajeroRepository";
 import type { CierreTotales } from "@/lib/interfaces/services/ICierreDiaService";
+import type { TarifaPago } from "@/lib/types/tarifa-flexible";
 import { pagoPorResultado } from "@/lib/utils/pago-mensajero";
 import { ingresoBodegaPorResultado } from "@/lib/utils/ingreso-bodega";
 
@@ -12,17 +13,31 @@ import { ingresoBodegaPorResultado } from "@/lib/utils/ingreso-bodega";
 // `vencido` es indistinguible de un `solicitado` en cuanto a totales; solo cambia el
 // estado y el actor (el job vs el mensajero). NUNCA number/parseFloat sobre montos.
 
+/**
+ * SLT-52 (design §6) — la tarifa de pago de un cierre. Desde el modelo nuevo el pago se resuelve
+ * POR GESTION (el distrito de cada orden elige su grupo), asi que llega un `Map<gestionId, …>`; una
+ * gestion que no esta en el mapa no tiene tarifa (`"0.00"`, como hoy). La `PagoTarifa` unica del
+ * viejo se sigue aceptando mientras `CierreDiaService` y `CorteDiarioService` no pasen a
+ * `resolvePagos` (T5.1).
+ */
+export type TarifasDePago = PagoTarifa | null | ReadonlyMap<string, TarifaPago | null>;
+
+function tarifaDeLaGestion(tarifas: TarifasDePago, gestionId: string): PagoTarifa | TarifaPago | null {
+  if (tarifas instanceof Map) return tarifas.get(gestionId) ?? null;
+  return tarifas as PagoTarifa | null;
+}
+
 // Feature 39/R10-R13: pago al mensajero por gestión (DERIVADO/snapshot según uso) +
 // total, con la tarifa ya resuelta. Solo `entregada` paga `cobroEntregado`; el resto
 // 0.00 (F1.4). Suma money-safe con Prisma.Decimal (R9). Separado del dinero recibido (R21).
 export function derivarPagos(
   gestiones: CierreGestionPendienteRow[],
-  tarifa: PagoTarifa | null,
+  tarifa: TarifasDePago,
 ): { pagoByGestionId: Record<string, string>; total: string } {
   const pagoByGestionId: Record<string, string> = {};
   let total = new Prisma.Decimal(0);
   for (const g of gestiones) {
-    const pago = pagoPorResultado(g.resultado, tarifa);
+    const pago = pagoPorResultado(g.resultado, tarifaDeLaGestion(tarifa, g.gestionId));
     pagoByGestionId[g.gestionId] = pago;
     total = total.plus(pago);
   }
@@ -36,12 +51,12 @@ export function derivarPagos(
 // del dinero recibido (R20).
 export function derivarIngresoBodega(
   gestiones: CierreGestionPendienteRow[],
-  tarifa: PagoTarifa | null,
+  tarifa: TarifasDePago,
 ): { ingresoByGestionId: Record<string, string>; total: string } {
   const ingresoByGestionId: Record<string, string> = {};
   let total = new Prisma.Decimal(0);
   for (const g of gestiones) {
-    const ingreso = ingresoBodegaPorResultado(g.resultado, tarifa);
+    const ingreso = ingresoBodegaPorResultado(g.resultado, tarifaDeLaGestion(tarifa, g.gestionId));
     ingresoByGestionId[g.gestionId] = ingreso;
     total = total.plus(ingreso);
   }

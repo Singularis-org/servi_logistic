@@ -311,8 +311,14 @@ async function cobrosViejos(
     where: whereCascada(pares),
     select: TARIFA_SELECT,
   });
+  return envolverViejas(elegirPorCascada(filas, pares));
+}
+
+function envolverViejas(
+  elegidas: ReadonlyMap<string, TarifaFila | null>,
+): Map<string, TarifaTienda | null> {
   const out = new Map<string, TarifaTienda | null>();
-  for (const [clave, fila] of elegirPorCascada(filas, pares)) {
+  for (const [clave, fila] of elegidas) {
     out.set(clave, fila === null ? null : { modelo: "viejo", tarifa: toTarifaVigenteResuelta(fila) });
   }
   return out;
@@ -337,7 +343,39 @@ export async function resolverCobrosCon(
   // Nadie pidio nada: ni siquiera el interruptor (y un `{ OR: [] }` traeria la tabla entera).
   if (pares.length === 0) return new Map();
   if (!(await usaModeloNuevo(db))) return cobrosViejos(db, pares);
+  return cobrosNuevos(db, pares);
+}
 
+/**
+ * SLT-52 T4.3 (R38) — el cobro de `resolverCobrosCon` y, SOLO en el modelo viejo, la fila de
+ * `tarifas` que lo produjo, con las columnas extra que pida el llamador. Existe para el listado de
+ * `/ordenes`, que ademas de cobrar MUESTRA la fila (`TarifaDTO`: `isDefault`, fechas…): asi el
+ * importe sale del resolver unico y la fila mostrada es la MISMA que eligio, en la misma consulta,
+ * sin una segunda lectura de `tarifas` que pudiera elegir otra.
+ *
+ * En el nuevo `filasViejas` va vacio: la empresa ya no tiene fila vieja que ensenar y no se lee
+ * `tarifas` (R37).
+ */
+export async function resolverCobrosYFilasViejasCon<F extends TarifaFila>(
+  db: ClienteCobros,
+  pares: readonly ParTarifa[],
+  selectExtra: Readonly<Record<string, true>>,
+): Promise<{ cobros: Map<string, TarifaTienda | null>; filasViejas: Map<string, F | null> }> {
+  if (pares.length === 0) return { cobros: new Map(), filasViejas: new Map() };
+  if (await usaModeloNuevo(db)) return { cobros: await cobrosNuevos(db, pares), filasViejas: new Map() };
+  // La proyeccion del cobro (`TARIFA_SELECT`) va SIEMPRE: las columnas extra solo suman.
+  const filas = (await db.tarifa.findMany({
+    where: whereCascada(pares),
+    select: { ...selectExtra, ...TARIFA_SELECT },
+  })) as unknown as F[];
+  const elegidas = elegirPorCascada(filas, pares);
+  return { cobros: envolverViejas(elegidas), filasViejas: elegidas };
+}
+
+async function cobrosNuevos(
+  db: ClienteCobros,
+  pares: readonly ParTarifa[],
+): Promise<Map<string, TarifaTienda | null>> {
   const grupos = await gruposDeDistritos(
     db,
     pares.flatMap((p) => (p.zonaId === null ? [] : [{ zonaId: p.zonaId, distritoId: p.distritoId }])),

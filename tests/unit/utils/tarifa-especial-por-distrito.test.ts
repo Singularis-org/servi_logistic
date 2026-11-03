@@ -362,6 +362,8 @@ describe("el LISTADO cobra el pacto y senala el hueco", () => {
     const prisma = {
       // FICHA 454 (R29, 2026-09-24): las señales de la pagina (gestion pendiente, ayuda); vacias.
       $queryRaw: vi.fn(async () => []),
+      // SLT-52 (T4.3): el importe del listado pasa por el resolver unico; empresa sin valores nuevos.
+      tarifaValor: { findFirst: vi.fn(async () => null) },
       orden: {
         findMany: vi.fn(async () => [ordenListRow(marcas)]),
         count: vi.fn(async () => 1),

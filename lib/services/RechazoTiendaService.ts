@@ -15,7 +15,7 @@ import type {
 } from "@/lib/interfaces/services/IRechazoTiendaService";
 import { derivarIngresoOrden } from "@/lib/utils/ingreso-empresa";
 import { clavePar, type ParTarifa } from "@/lib/utils/cascada-tarifa";
-import { soloModeloViejo } from "@/lib/tarifas/solo-modelo-viejo";
+
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 
 // Estado de ORIGEN elegible (la DEVOLUCION ANCLADA de la 239: confirmada en bodega, visible para la
@@ -249,8 +249,10 @@ export class RechazoTiendaService implements IRechazoTiendaService {
     // SLT-52 (R16/R18): con el distrito de la orden, que decide su grupo en el modelo nuevo.
     const par: ParTarifa = { tiendaId: base.tiendaId, zonaId: base.zonaId, distritoId: base.distritoId };
     const tarifas = await this.tarifaRepo.resolveTarifas([par]);
-    // SLT-52: puente hasta T4.3, que ensena el modelo nuevo al cobro por rechazo.
-    const tarifa = soloModeloViejo(tarifas.get(clavePar(par)) ?? null, "RechazoTiendaService: cobro a la tienda");
+    // SLT-52 (R29, R38): el `TarifaTienda` del resolver unico entra tal cual. En el modelo nuevo
+    // el flete del rechazo es el concepto `tienda_flete_rechazo` y cae en la misma categoria
+    // (`ingreso_flete_devolucion`), asi que lo de abajo no cambia; sin ese concepto no hay cobro.
+    const tarifa = tarifas.get(clavePar(par)) ?? null;
 
     const derivado = derivarIngresoOrden(
       {
@@ -280,7 +282,10 @@ export class RechazoTiendaService implements IRechazoTiendaService {
       montoIva: iva === undefined ? "0.00" : iva.toFixed(2),
       // Auditoria: QUE FILA de `tarifas` produjo los dos importes. `null` no puede darse en esta
       // rama (sin tarifa no hay flete), pero se escribe total en vez de con un `!`.
-      tarifaId: tarifa === null ? null : tarifa.tarifaId,
+      // SLT-52: en el modelo nuevo no hay fila de `tarifas` que citar y esta columna apunta a esa
+      // tabla; la traza del `tarifa_valor` usado no tiene columna aqui (pendiente anotado en la
+      // bitacora de T4), asi que queda `null`, como un cobro sin tarifa vieja.
+      tarifaId: tarifa?.modelo === "viejo" ? tarifa.tarifa.tarifaId : null,
       // Dia CALENDARIO de Costa Rica. NO `toISOString().slice(0,10)`: despues de las 18:00 CR eso
       // devuelve el dia SIGUIENTE (el off-by-one que cerro la feature 166).
       generadoEl: fechaCalendarioCR(this.now()),

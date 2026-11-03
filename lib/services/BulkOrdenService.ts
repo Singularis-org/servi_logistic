@@ -39,10 +39,10 @@ import type {
 } from "@/lib/interfaces/services/IBulkOrdenService";
 import type {
   ITarifaVigenteRepository,
-  TarifaVigenteResuelta,
 } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
 import { clavePar, type ParTarifa } from "@/lib/utils/cascada-tarifa";
-import { soloModeloViejo } from "@/lib/tarifas/solo-modelo-viejo";
+import { Prisma } from "@prisma/client";
+import type { TarifaTienda } from "@/lib/types/tarifa-flexible";
 import type { MontoAjustado } from "@/lib/utils/monto-cobrar";
 import { MSG_CARGA_SIN_TARIFA, MSG_FILA_SIN_TARIFA } from "@/lib/services/mensajes-tarifa";
 import { ConflictError } from "@/lib/errors/app-error";
@@ -57,7 +57,11 @@ import {
   type GeoResult,
 } from "@/lib/services/geo-resolucion";
 import { parseCantonDistrito } from "@/lib/utils/canton-distrito";
-import { desgloseCargaApi, tieneFulfillment } from "@/lib/utils/ingreso-empresa";
+import {
+  desgloseCargaApi,
+  fleteEntregadoSinTarifa,
+  tieneFulfillment,
+} from "@/lib/utils/ingreso-empresa";
 import { nombreDeEstado } from "@/lib/types/order-status";
 import {
   SIN_CUPO,
@@ -560,7 +564,10 @@ export class BulkOrdenService implements IBulkOrdenService {
     // insertarse (R28) y un lote donde NINGUNA fila resuelve no deja ni una orden ni una fila
     // de `carga` (R29). Ademas cada orden se tarifa con SU par (tienda, zona), no con una
     // unica tarifa de lote (R25), en UNA sola consulta (R26).
-    const tarifaPorRemision = new Map<string, TarifaVigenteResuelta>();
+    const tarifaPorRemision = new Map<string, TarifaTienda>();
+    // SLT-52 (R27): el pedido de cada orden, como texto, para un flete o fulfillment en % del
+    // modelo nuevo. `montoCobrar` ya llega redondeado al colon por `normalizarMontoCobrar`.
+    const montoCobrarPorRemision = new Map<string, string | null>();
     const conTarifa: CreateOrdenData[] = [];
     if (toCreate.length > 0) {
       // El par de una fila: la tienda de la key (todo el lote es suyo, D4) y la zona de SU
@@ -582,16 +589,18 @@ export class BulkOrdenService implements IBulkOrdenService {
 
       const sinTarifa: CreateOrdenData[] = [];
       for (const orden of toCreate) {
-        // SLT-52: puente hasta T4.3, que ensena el modelo nuevo a la carga.
-        const tarifa = soloModeloViejo(
-          resueltas.get(clavePar(parDe(orden))) ?? null,
-          "carga de ordenes (API por key y masiva)",
-        );
-        if (tarifa === null) {
+        // SLT-52 (R25): «sin tarifa» = sin flete por entregado. En el viejo es `null`; en el nuevo
+        // el resolver nunca da `null` y lo que falta es ese concepto.
+        const tarifa = resueltas.get(clavePar(parDe(orden))) ?? null;
+        if (tarifa === null || fleteEntregadoSinTarifa(tarifa)) {
           sinTarifa.push(orden);
           continue;
         }
         tarifaPorRemision.set(orden.numRemision, tarifa);
+        montoCobrarPorRemision.set(
+          orden.numRemision,
+          orden.montoCobrar == null ? null : new Prisma.Decimal(orden.montoCobrar).toFixed(2),
+        );
         // FULFILLMENT: aqui, y solo aqui, se decide donde nace ESTA orden. El monto de la
         // tarifa que acaba de resolver es el predicado, y el `estatusId` que se persiste sale
         // del mismo sitio: nunca se escribe un estado que no case con lo que se cobro.
@@ -743,6 +752,7 @@ export class BulkOrdenService implements IBulkOrdenService {
         tarifaPorRemision.get(creada.numRemision) ?? null,
         esCentralPorRemision.get(creada.numRemision) ?? false,
         esZonaEspecialPorRemision.get(creada.numRemision) ?? false,
+        montoCobrarPorRemision.get(creada.numRemision) ?? null,
       );
       ordenes.push({
         id: creada.ordenId,

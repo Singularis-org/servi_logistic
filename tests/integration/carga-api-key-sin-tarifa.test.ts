@@ -232,3 +232,67 @@ describe("carga por API key: nadie llega a resolver -> 200, no 409 (274/R30)", (
     expect(repo.createManyOrdenesConGuia).not.toHaveBeenCalled();
   });
 });
+
+// SLT-52 T4.3 (R25) — el MISMO 409 con una empresa en el modelo NUEVO. Ahi el resolver nunca da
+// `null`: lo que falta es el concepto `tienda_flete_entregado`. Una tienda que solo tiene comision
+// (o fulfillment) puesta tampoco se puede cargar, igual que en el viejo sin fila.
+function cobroNuevo(
+  concepto: "tienda_flete_entregado" | "tienda_comision_cod",
+  valor: string,
+): NonNullable<Extract<TarifaTienda, { modelo: "nuevo" }>["valores"][typeof concepto]> {
+  return { concepto, modo: "monto", valor, ivaPct: "12.00", nivel: "zona", tarifaValorId: `tv-${concepto}` };
+}
+
+function tarifaRepoNuevo(
+  porZona: Record<string, Extract<TarifaTienda, { modelo: "nuevo" }>["valores"]>,
+): ITarifaVigenteRepository {
+  const de = (zonaId: string | null): TarifaTienda => ({
+    modelo: "nuevo",
+    valores: zonaId === null ? {} : porZona[zonaId] ?? {},
+  });
+  return {
+    resolveTarifa: vi.fn(async (_t: string, zonaId: string | null) => de(zonaId)),
+    resolveTarifas: vi.fn(
+      async (pares: readonly ParTarifa[]) =>
+        new Map<string, TarifaTienda | null>(pares.map((p) => [clavePar(p), de(p.zonaId)])),
+    ),
+  };
+}
+
+describe("SLT-52 R25: modelo nuevo — sin flete por entregado es «sin tarifa»", () => {
+  const SOLO_COMISION = { tienda_comision_cod: cobroNuevo("tienda_comision_cod", "50.00") };
+  const CON_FLETE = { tienda_flete_entregado: cobroNuevo("tienda_flete_entregado", "3.50") };
+
+  it("ninguna fila tiene flete por entregado (aunque haya comision) -> 409 y nada persistido", async () => {
+    const repo = ordenRepo();
+    const tarifas = tarifaRepoNuevo({ z1: SOLO_COMISION, z2: {} });
+    const res = await handleCargaApi(
+      req([fila("REM-1", "Barrio Uno"), fila("REM-2", "Cumbaya")]),
+      deps(repo, tarifas),
+    );
+    // Lo sembrado: el doble SI devuelve el modelo nuevo para los dos pares (no `null`).
+    expect(tarifas.resolveTarifas).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ code: "CONFLICT", message: MSG_CARGA_SIN_TARIFA });
+    expect(repo.createManyOrdenesConGuia).not.toHaveBeenCalled();
+  });
+
+  it("lote mixto: la fila con flete se crea (3.50 + 12 % = 3.92) y la otra va a `error`", async () => {
+    const repo = ordenRepo();
+    const res = await handleCargaApi(
+      req([fila("REM-OK", "Barrio Uno"), fila("REM-SIN", "Cumbaya")]),
+      deps(repo, tarifaRepoNuevo({ z1: CON_FLETE, z2: SOLO_COMISION })),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({ total: 2, creadas: 1, conError: 1 });
+    const sin = body.errores.find((f: { numRemision: string }) => f.numRemision === "REM-SIN");
+    expect(sin).toMatchObject({ resultado: "error", errores: { tarifa: [MSG_FILA_SIN_TARIFA] } });
+    expect(body.ordenes).toHaveLength(1);
+    expect(body.ordenes[0]).toMatchObject({
+      numRemision: "REM-OK",
+      costoEnvio: "3.92",
+      fulfillment: "0.00",
+    });
+  });
+});

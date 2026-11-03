@@ -521,9 +521,10 @@ describe("CotizacionOrdenService — los dos escenarios (T7)", () => {
       cobraComision: true,
     });
     // `toMatchObject`: desde la 274 lo que llega es la tarifa RESUELTA (los 7 campos de la
-    // formula mas `tarifaId` y `fulfillment`, que la formula no lee).
-    expect(primera[1]).toMatchObject(TARIFA);
-    expect(segunda[1]).toMatchObject(TARIFA);
+    // formula mas `tarifaId` y `fulfillment`, que la formula no lee). Desde SLT-52 T4.3 llega el
+    // `TarifaTienda` del resolver tal cual, envuelto en el modelo viejo.
+    expect(primera[1]).toMatchObject({ modelo: "viejo", tarifa: TARIFA });
+    expect(segunda[1]).toMatchObject({ modelo: "viejo", tarifa: TARIFA });
   });
 
   it("estructural: el service no multiplica ni divide importes (R24)", () => {

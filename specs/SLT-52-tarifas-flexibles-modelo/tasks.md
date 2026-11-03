@@ -103,7 +103,7 @@
 
 ## T4 — Funciones públicas y superficies sin cierre (depende de T3)
 
-- [ ] **T4.1** `ingreso-empresa.ts`: `derivarIngresoOrden`, `costosListadoOrden`,
+- [x] **T4.1** `ingreso-empresa.ts`: `derivarIngresoOrden`, `costosListadoOrden`,
   `costoEnvioDeTarifa`, `desgloseCargaApi`, `montoFulfillmentDeTarifa`, `tieneFulfillment`,
   `agregarIngresosPorConcepto` aceptan `TarifaTienda | null`; rama vieja intacta; rama nueva según
   design §6; `fleteSinIvaDeGestion` y `fleteEntregadoSinTarifa` nuevas.
@@ -112,17 +112,17 @@
   `agregarIngresosPorConcepto`, `esCentral`/`esZonaEspecial` no cambian nada en el nuevo, y las
   cuatro identidades de `partesPorTienda` siguen dando con fletes de reprogramado.
   Cubre: R27, R29, R30, R31, R35. Hecho: T0.1 sigue verde con los casos envueltos en `viejo`.
-- [ ] **T4.2** [P] `pago-mensajero.ts`, `ingreso-bodega.ts`, `cierre-totales.ts` con `TarifaPago`.
+- [x] **T4.2** [P] `pago-mensajero.ts`, `ingreso-bodega.ts`, `cierre-totales.ts` con `TarifaPago`.
   Test `tests/unit/utils/pago-modelo-nuevo.test.ts`: cada resultado paga su concepto al mensajero y a
   la satélite, la satélite con varios conceptos a la vez, % sobre `baseFlete` = flete sin IVA de ESA
   gestión (reprogramado sin flete a la tienda → pago en % = `"0.00"`), sin valor → `"0.00"`, y el
   pago es exactamente el importe (literal), sin IVA. Cubre: R28, R32, R34.
-- [ ] **T4.3** Superficies: `OrdenRepository` (listado), `BulkOrdenService` (carga por key y
+- [x] **T4.3** Superficies: `OrdenRepository` (listado), `BulkOrdenService` (carga por key y
   masiva), `CotizacionOrdenService`, `ApiOrdenLecturaService`, `api-orden-costo.ts`,
   `RechazoTiendaService`, `CorregirDatosClienteService` pasan `distritoId` y el 409 usa
   `fleteEntregadoSinTarifa`. Tests de cada superficie existentes en verde + caso nuevo de 409 en el
   modelo nuevo en `tests/integration/carga-api-key-sin-tarifa.test.ts`. Cubre: R25, R38.
-- [ ] **T4.4** Ampliar `tests/unit/repositories/convergencia-tarifa-listado-cierre.test.ts` con el
+- [x] **T4.4** Ampliar `tests/unit/repositories/convergencia-tarifa-listado-cierre.test.ts` con el
   escenario del modelo nuevo: el doble devuelve `tarifa_valor` entero; listado, cierre y costo de la
   API eligen el mismo `tarifaValorId` por concepto y el mismo importe. Cubre: R38.
   Hecho: cambiar un rango en `precedencia.ts` solo para uno de los caminos (vía doble) lo pone rojo.
@@ -274,6 +274,7 @@ Tests:
 - `tests/unit/services/tarifa-valor-service.test.ts`
 - `tests/unit/services/grupo-distritos-service.test.ts`
 - `tests/unit/repositories/convergencia-tarifa-listado-cierre.test.ts`
+- `tests/unit/repositories/orden-repository.test.ts`
 - `tests/unit/guards/tarifas-resolver-inyectado.guardia.test.ts`
 - `tests/unit/guards/_unicos-sin-empresa.ts`
 - `tests/unit/guards/rls-por-empresa.guardia.test.ts`

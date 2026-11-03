@@ -38,6 +38,14 @@ import type { PagoTarifa } from "@/lib/interfaces/repositories/ITarifaZonaMensaj
  *     COD 14900.00 -> comision 521.50 -> IVA 67.795  -> 67.80  (comision + IVA = 589.30)
  *     COD 16618.40 -> comision 581.644 -> 581.64 -> IVA 75.6132 -> 75.61 (= 657.25)
  */
+/**
+ * T4.1/T4.2: las funciones aceptan ademas la tarifa envuelta en `{ modelo: "viejo" }` (lo que da el
+ * resolver unico). Cada caso se comprueba de las DOS formas contra el MISMO literal.
+ */
+function viejo<T>(t: T | null): { modelo: "viejo"; tarifa: T } | null {
+  return t === null ? null : { modelo: "viejo", tarifa: t };
+}
+
 const TARIFA: TarifaVigente = {
   valorFlete: "2750.55",
   valorFleteGam: "2300.15",
@@ -223,6 +231,7 @@ describe("R36 — derivarIngresoOrden (modelo viejo, importes literales)", () =>
 
   it.each(casos)("$caso", ({ input, tarifa, esperado }) => {
     expect(comoTexto(derivarIngresoOrden(input, tarifa))).toStrictEqual(esperado);
+    expect(comoTexto(derivarIngresoOrden(input, viejo(tarifa)))).toStrictEqual(esperado);
   });
 });
 
@@ -277,6 +286,7 @@ describe("R36 — costosListadoOrden (modelo viejo, importes literales)", () => 
 
   it.each(casos)("$caso", ({ tarifa, o, esperado }) => {
     expect(costosListadoOrden(tarifa, o)).toStrictEqual(esperado);
+    expect(costosListadoOrden(viejo(tarifa), o)).toStrictEqual(esperado);
   });
 });
 
@@ -338,10 +348,14 @@ describe("R36 — costoEnvioDeTarifa y desgloseCargaApi (modelo viejo, importes 
 
   it.each(casos)("costoEnvioDeTarifa: $caso", ({ tarifa, esCentral, esZonaEspecial, envio }) => {
     expect(costoEnvioDeTarifa(tarifa, esCentral, esZonaEspecial)).toBe(envio);
+    expect(costoEnvioDeTarifa(viejo(tarifa), esCentral, esZonaEspecial, "14900.00")).toBe(envio);
   });
 
   it.each(casos)("desgloseCargaApi: $caso", ({ tarifa, esCentral, esZonaEspecial, esperado }) => {
     expect(desgloseCargaApi(tarifa, esCentral, esZonaEspecial)).toStrictEqual(esperado);
+    expect(desgloseCargaApi(viejo(tarifa), esCentral, esZonaEspecial, "14900.00")).toStrictEqual(
+      esperado,
+    );
   });
 });
 
@@ -362,6 +376,7 @@ describe("R36 — pagoPorResultado (mensajero, modelo viejo, importes literales)
 
   it.each(casos)("%s", (_caso, resultado, tarifa, esperado) => {
     expect(pagoPorResultado(resultado, tarifa)).toBe(esperado);
+    expect(pagoPorResultado(resultado, viejo(tarifa))).toBe(esperado);
   });
 });
 
@@ -379,5 +394,6 @@ describe("R36 — ingresoBodegaPorResultado (satelite, modelo viejo, importes li
 
   it.each(casos)("%s", (_caso, resultado, tarifa, esperado) => {
     expect(ingresoBodegaPorResultado(resultado, tarifa)).toBe(esperado);
+    expect(ingresoBodegaPorResultado(resultado, viejo(tarifa))).toBe(esperado);
   });
 });

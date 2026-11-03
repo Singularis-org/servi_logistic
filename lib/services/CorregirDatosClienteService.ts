@@ -23,8 +23,7 @@ import {
   type CampoCorregible,
 } from "@/lib/types/correccion-datos-cliente";
 import { paqueteEnEstanteSatelite } from "@/lib/utils/estados-bodega-satelite";
-import { costosListadoOrden } from "@/lib/utils/ingreso-empresa";
-import { soloModeloViejo } from "@/lib/tarifas/solo-modelo-viejo";
+import { costosListadoOrden, fleteEntregadoSinTarifa } from "@/lib/utils/ingreso-empresa";
 import {
   mensajeCorreccionCaracterNoImprimible,
   mensajeCorreccionSugerencia,
@@ -571,17 +570,19 @@ export class CorregirDatosClienteService implements ICorregirDatosClienteService
       "tarifa" | "fleteConIva" | "comisionConIva" | "fleteOrigen"
     >,
   ): Promise<UbicacionConCostos> {
-    // SLT-52: puente hasta T4.3, que ensena el modelo nuevo a la correccion.
-    const tarifa = soloModeloViejo(
-      await this.tarifas.resolveTarifa(orden.tiendaId, ubicacion.zonaId, distritoId),
-      "correccion de datos del cliente",
-    );
+    const tarifa = await this.tarifas.resolveTarifa(orden.tiendaId, ubicacion.zonaId, distritoId);
     const costos = costosListadoOrden(tarifa, {
       esCentral: ubicacion.esCentral,
       esZonaEspecial: ubicacion.esZonaEspecial,
       montoCobrar: orden.montoCobrar,
       cobraComision: orden.cobraComision,
     });
-    return { ...ubicacion, tarifa: tarifa === null ? "sin_tarifa" : "resuelta", ...costos };
+    // SLT-52 (R25, R38): «sin tarifa» con la MISMA regla que el 409 de la API. En el viejo es `null`;
+    // en el nuevo, que falte el flete por entregado (el resolver nunca da `null` ahi).
+    return {
+      ...ubicacion,
+      tarifa: fleteEntregadoSinTarifa(tarifa) ? "sin_tarifa" : "resuelta",
+      ...costos,
+    };
   }
 }

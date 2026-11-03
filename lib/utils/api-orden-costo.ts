@@ -1,7 +1,10 @@
 import { Prisma } from "@prisma/client";
-import type { TarifaVigente } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
 import type { ApiOrdenCostoDTO } from "@/lib/types/api-orden";
-import { derivarIngresoOrden } from "@/lib/utils/ingreso-empresa";
+import {
+  derivarIngresoOrden,
+  fleteEntregadoSinTarifa,
+  type TarifaDeCobro,
+} from "@/lib/utils/ingreso-empresa";
 import { serializarMontoCotizacion } from "@/lib/utils/monto-cotizacion";
 
 /**
@@ -63,7 +66,7 @@ function serializar(monto: Prisma.Decimal | undefined): string {
  * contiene el objeto, no dentro de el.
  */
 function conceptos(
-  tarifa: TarifaVigente | null,
+  tarifa: TarifaDeCobro | null,
   fulfillment: string,
   entradas: EntradasCostoOrden,
 ): ApiOrdenCostoDTO {
@@ -102,11 +105,14 @@ function conceptos(
  * listarla. La respuesta es el hueco DECLARADO, sin mentir sobre el precio.
  */
 export function costoEstimadoDe(
-  tarifa: TarifaVigente | null,
+  tarifa: TarifaDeCobro | null,
   fulfillment: string,
   entradas: EntradasCostoOrden,
 ): ApiOrdenCostoDTO | null {
   if (tarifa === null) return null;
+  // SLT-52 (R25): en el modelo nuevo el resolver nunca da `null`; el hueco es que falte el flete por
+  // entregado, y se declara igual que en el viejo, por la misma regla que el 409 de la carga.
+  if ("modelo" in tarifa && fleteEntregadoSinTarifa(tarifa)) return null;
   return conceptos(tarifa, fulfillment, entradas);
 }
 
@@ -132,7 +138,7 @@ export function costoEstimadoDe(
  * decide aqui: es `costoReal: null` y lo resuelve el llamador, que es quien sabe si hubo fila.
  */
 export function costoRealDe(
-  tarifa: TarifaVigente | null,
+  tarifa: TarifaDeCobro | null,
   fulfillment: string,
   entradas: EntradasCostoOrden,
 ): ApiOrdenCostoDTO {

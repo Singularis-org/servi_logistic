@@ -23,7 +23,6 @@ import type {
 } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type {
   ITarifaVigenteRepository,
-  TarifaVigenteResuelta,
 } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
 import type { TarifaTienda } from "@/lib/types/tarifa-flexible";
 import type {
@@ -42,7 +41,7 @@ import {
 } from "@/lib/services/geo-resolucion";
 import { MSG_FILA_SIN_TARIFA } from "@/lib/services/mensajes-tarifa";
 import { clavePar, type ParTarifa } from "@/lib/utils/cascada-tarifa";
-import { soloModeloViejo } from "@/lib/tarifas/solo-modelo-viejo";
+
 import {
   filaCotizacionSchema,
   type CostosDevuelto,
@@ -50,7 +49,11 @@ import {
   type CotizacionFilaCotizada,
   type CotizacionFilaError,
 } from "@/lib/types/cotizacion";
-import { derivarIngresoOrden, montoFulfillmentDeTarifa } from "@/lib/utils/ingreso-empresa";
+import {
+  derivarIngresoOrden,
+  fleteEntregadoSinTarifa,
+  montoFulfillmentDeTarifa,
+} from "@/lib/utils/ingreso-empresa";
 import { serializarMontoCotizacion } from "@/lib/utils/monto-cotizacion";
 
 /**
@@ -78,7 +81,8 @@ type CotizacionTarifaRepository = Pick<ITarifaVigenteRepository, "resolveTarifas
  * ver `lib/utils/ingreso-empresa.ts`): se suma APARTE, como sexto concepto del precio que se
  * publica, y es tambien el predicado de "esta tienda hace fulfillment".
  */
-type TarifaCotizada = TarifaVigenteResuelta;
+// SLT-52: la tarifa del resolver unico (viejo o nuevo); las funciones de calculo aceptan las dos.
+type TarifaCotizada = TarifaTienda;
 
 /**
  * Feature 274 (design §4.4) — el resultado de la PRIMERA pasada sobre una fila. La cotizacion
@@ -224,9 +228,13 @@ export class CotizacionOrdenService implements ICotizacionOrdenService {
       pares.length === 0
         ? new Map<string, TarifaTienda | null>()
         : await this.tarifaRepo.resolveTarifas(pares);
-    // SLT-52: puente hasta T4.3, que ensena el modelo nuevo a la cotizacion.
-    const tarifaDe = (geo: ResolvedGeo): TarifaCotizada | null =>
-      soloModeloViejo(tarifas.get(clavePar(parDe(tiendaId, geo))) ?? null, "cotizacion por API key");
+    // SLT-52 (R25): una fila «sin tarifa» es la que no tiene flete por entregado. En el viejo es
+    // `null`; en el nuevo el resolver nunca da `null` y lo que falta es ese concepto —una tienda
+    // con comision pero sin flete tampoco se puede cotizar—. Es la misma regla que la carga.
+    const tarifaDe = (geo: ResolvedGeo): TarifaCotizada | null => {
+      const t = tarifas.get(clavePar(parDe(tiendaId, geo))) ?? null;
+      return fleteEntregadoSinTarifa(t) ? null : t;
+    };
 
     // R35 (design §3.6): el `409` sobrevive SOLO cuando alguna fila llego a resolver y NINGUNA
     // resolvio. Se comprueba ANTES de calcular un solo importe, para que esa respuesta siga sin
@@ -429,7 +437,8 @@ function calcularEscenarios(
   // FULFILLMENT (2026-08-25): NO sale de `derivarIngresoOrden` —sigue fuera de la formula de
   // liquidacion— sino de la tarifa directamente, y entra igual en los DOS escenarios. Cero si
   // la tienda no hace fulfillment, que es el mismo total que se publicaba antes de hoy.
-  const fulfillment = montoFulfillmentDeTarifa(tarifa);
+  // SLT-52 (R31): en el nuevo un fulfillment en % va sobre el pedido, por eso viaja `montoCobrar`.
+  const fulfillment = montoFulfillmentDeTarifa(tarifa, montoCobrar);
 
   return {
     entregado: {
