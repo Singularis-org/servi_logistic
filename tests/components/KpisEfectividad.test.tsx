@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, within } from "@testing-library/react";
 import { SWRConfig } from "swr";
 
 import { calcularEfectividad } from "@/app/(app)/analitica/_components/entregas/efectividad";
@@ -314,14 +314,51 @@ describe("La base de los porcentajes — de dónde sale", () => {
     expect(
       screen.getByText("Efectividad de la gestión (Entregado y Devolución a origen por rechazo de 1 orden)"),
     ).toBeInTheDocument();
-    // ⚠ Y CON UNA SOLA ORDEN NO HAY PORCENTAJE (ficha 441): una orden vale 100 puntos. El héroe
-    // enseña las órdenes —«1 entregada de 1 orden»— y la tarjeta de gestión comparte el veto
-    // porque comparte denominador. Sin esto, la fila diría «100 % de efectividad» sobre una
-    // única entrega.
-    // «100 %» es la cifra que NO puede aparecer. (Se busca esa y no un «%» cualquiera: la
-    // propia frase que explica el veto nombra la tolerancia, que se escribe en por ciento.)
-    expect(screen.queryByText(/100\s?%/)).toBeNull();
-    expect(screen.getByText("Entregado: 1 de 1 orden")).toBeInTheDocument();
+    // ⏳ SLT-62 (2026-10-30, decisión del humano): CON UNA SOLA ORDEN SÍ HAY PORCENTAJE. Hasta
+    // entonces el suelo de 20 de la ficha 441 lo callaba y el héroe escribía «Entregado: 1 de 1
+    // orden». Ahora la cifra va limpia: «100 %» en el héroe y en la tarjeta de gestión, que
+    // comparte el veto del héroe porque comparte denominador (`KpisEfectividad.tsx`). Por eso son
+    // DOS cifras sueltas de «100 %» (la línea «100 % de las … con desenlace» no casa con `^…$`).
+    expect(screen.getAllByText(/^100\s*%$/)).toHaveLength(2);
+    expect(screen.getByText("Entregado: 1")).toBeInTheDocument();
+    expect(screen.queryByText("Entregado: 1 de 1 orden")).toBeNull();
+    // SLT-62, tanda 2 (decisión del humano, 2026-11-02): las frases del héroe concuerdan también
+    // en ARTÍCULO y VERBO. Antes: «de las 1 orden que entraron» y «100% de las 1 orden con
+    // desenlace terminaron en Entregado».
+    expect(screen.getByText("de la 1 orden que entró")).toBeInTheDocument();
+    expect(
+      screen.getByText("100% de la 1 orden con desenlace terminó en Entregado"),
+    ).toBeInTheDocument();
+  });
+
+  // SLT-62, tanda 2 (decisión del humano, 2026-11-02): la tarjeta «Efectividad de la gestión»
+  // ENSEÑA SU % con una base chica, igual que el héroe. Su base es la MISMA que la del héroe —el
+  // total de cargadas (`calcularEfectividad`)— y su numerador suma los rechazos. Cohorte de 12:
+  // 8 Entregado + 3 rechazos + 1 viva → héroe 8/12 = 66,7%, gestión 11/12 = 91,7%. Las cifras
+  // difieren a propósito: así el 91,7% sólo puede venir de la tarjeta de gestión, y además se
+  // busca DENTRO de ella (la tarjeta que lleva su rótulo), no contando ocurrencias en la pantalla.
+  it("la tarjeta de gestión muestra su % con una base chica (12 órdenes)", async () => {
+    consultarMock.mockResolvedValue({
+      status: "ok",
+      datos: datos([
+        { status: "entregado", conteo: 8 },
+        { status: "devolucion_a_origen_por_rechazo", conteo: 3 },
+        { status: "en_reparto", conteo: 1 },
+      ]),
+    });
+    renderKpis();
+
+    const rotulo = await screen.findByText(
+      "Efectividad de la gestión (Entregado y Devolución a origen por rechazo de 12 órdenes)",
+    );
+    const tarjeta = rotulo.closest<HTMLElement>('[data-slot="card"]');
+    expect(tarjeta).not.toBeNull();
+    expect(within(tarjeta!).getByText("91,7%")).toBeInTheDocument();
+    // Y no es el héroe: su región accesible lleva la cifra de entrega, no la de gestión.
+    const heroe = screen.getByRole("group", { name: "Efectividad de entrega" });
+    expect(within(heroe).getByText("66,7%")).toBeInTheDocument();
+    expect(within(heroe).queryByText("91,7%")).toBeNull();
+    expect(screen.getAllByText("91,7%")).toHaveLength(1);
   });
 });
 
