@@ -7,7 +7,7 @@
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F2.1 (2026-11-02): T0-T3 hechas, gate verde. Siguiente: T4. Detalle en `progress/impl_SLT-52.md`.
+F2.1 (2026-11-02): T0-T4 hechas, gate verde. Siguiente: aplicar las 3 decisiones de las 21:00 (abajo) y luego T5. Detalle en `progress/impl_SLT-52.md`.
 Ojo: `prisma generate` ya conoce las tablas de T1; una base sin sus migraciones falla en `cierreDetail.create`.
 
 ## Evaluación
@@ -28,6 +28,11 @@ snapshot ampliado en `cierre_detail` y `gestion_orden`. Plan de la épica:
 - 2026-11-02 · Mismo dueño, SLT-64 (AVISO, no choca): comparte CierreDiaRepository/Service.
   Orden: SLT-52 primero; SLT-64 integra dev al retomarse.
 
+- 2026-11-02 21:00 (Carlos), tras T4: (1) el fulfillment del modelo nuevo LLEVA IVA, como todo cobro a la tienda;
+  (2) SÍ guardar qué tarifa_valor se usó en el cobro por rechazo (columna + migración de esquema; hoy
+  tarifaId queda null); (3) confirmado: «sin tarifa» = sin flete por entregado, aunque haya comisión o
+  fulfillment. (1) y (2) cambian el design: pasarlos por spec (R nuevos) antes de T5.
+
 ## Preguntas abiertas
 Ninguna.
 
@@ -39,6 +44,9 @@ Ninguna.
   con 2 rojos por timeout de 20 s en guardias que barren el árbol (`tarifa-status-retirado`,
   `catalogo-postgres-acota-esquema`); solas pasan 15/15 en 2 s → verde. Siguiente: T3.
 - 2026-11-02 · T3 (resolver único + convivencia con el modelo viejo) · cca3b0fb · gate VERDE. Mutación sin efecto: quitar solo zonaId del WHERE de grupos (equivalente: distrito en una zona por empresa). Pendiente T4/T5: listado OrdenRepository:2111 y 6 llamadores de soloModeloViejo. Riesgo: tests que hagan commit en tarifa_valor contaminan empresas de prueba → sembrar con rollback (T5.4/T6.4).
+- 2026-11-02 · T4 (funciones públicas y superficies: listado, API, cotización, rechazo) · b7e22911 · gate ROJO
+  por feature_list local (SLT-62 seguía in_progress) → corregido → VERDE. Queda soloModeloViejo solo en
+  CierreDiaRepository:1352 (T5.2). Firmas dobles a estrechar en T5.
 
 ## Modelos (overrides)
 
