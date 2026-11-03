@@ -319,10 +319,16 @@ describeSiBaseLocal("SLT-59 m7 — primera ruta pendiente: lecturas por empresa 
           latitud: 9.93,
           longitud: -84.08,
         });
-        if (conRutaPropia) await sembrarRutaCalculadaHoy(tx, a, mA);
-        await conTriggersApagados(tx, async () => {
-          await sembrarRutaCalculadaHoy(tx, b, mA);
-        });
+        // `ruta_optimizada.mensajero_id` es UNIQUE (una cabecera por mensajero, en todas las
+        // empresas): la ruta de A y la de B para `mA` no caben juntas. Cada corrida siembra UNA:
+        // sin ruta propia, la de B (el caso que el filtro defiende); con ruta propia, la de A.
+        if (conRutaPropia) {
+          await sembrarRutaCalculadaHoy(tx, a, mA);
+        } else {
+          await conTriggersApagados(tx, async () => {
+            await sembrarRutaCalculadaHoy(tx, b, mA);
+          });
+        }
         const deB = await filasDeBParaElMensajero(tx, b, mA);
 
         const cliente = await comoDuenoEn(tx, a);
@@ -347,8 +353,10 @@ describeSiBaseLocal("SLT-59 m7 — primera ruta pendiente: lecturas por empresa 
     expect(sinPropia.registrada).not.toBeNull();
     expect(sinPropia.llamadas).toHaveLength(0);
 
-    // Control positivo: con su propia ruta de hoy, la misma gestion SI encola.
+    // Control positivo: con su propia ruta de hoy (y sin la de B), la misma gestion SI encola. Prueba
+    // que la lectura de A funciona: el «no encola» de arriba sale del filtro, no de una lectura rota.
     const conPropia = await correr(true);
+    expect(conPropia.deB.rutas).toBe(0);
     expect(conPropia.llamadas).toHaveLength(1);
     const [tipo, payload] = conPropia.llamadas[0] as unknown as [string, unknown];
     expect(tipo).toBe("optimizacion_ruta");

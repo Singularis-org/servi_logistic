@@ -141,3 +141,24 @@ Verificación (NODE_OPTIONS=--max-old-space-size=8192):
 - vitest de RepartoAyuda, RepartoAyudaResueltaPorLaTienda y RepartoModule477Correccion: 3 archivos, 29 passed.
 
 Veredicto frontend: disparo de salida retirado de la UI; typecheck en 0 y los tests de componentes tocados en verde.
+
+## Tanda: dos rojos nuevos del gate-completo (PR #70), 2026-11-03
+
+- `tests/integration/db/ruta-primera-pendiente-dos-empresas-sql-real.test.ts` (R59 -> SLT-79): `ruta_optimizada.mensajero_id`
+  es `@unique` (`db/schema.prisma`), así que la ruta de A y la de B para el mismo mensajero no caben juntas. Cada corrida siembra
+  una sola: sin ruta propia, la de B apuntando a `mA` (anti-vacuidad `deB.rutas = 1`, no encola); con ruta propia, solo la de A
+  (control positivo: `deB.rutas = 0` y encola 1). El aislamiento entre empresas lo sigue probando la corrida sin ruta propia.
+- `tests/integration/db/demo-qa.test.ts` (R20–R24): la demo ya no deja `optimizacion_ruta` (ni cerrados). Se añade
+  `count(jobs tipo optimizacion_ruta) = 0` por empresa, y la línea «jobs cerrados sin ejecutar» se valida en su formato
+  (`ninguno` o `tipo n, ...`) y sin `optimizacion_ruta`. R22 de SL-43 sigue: cola sin pendientes y la salida cuenta por tipo.
+  Nota SL-43: `specs/SL-43-datos-demo-qa/design.md:412` aún dice que `optimizacion_ruta` se encola «al recoger y al gestionar»;
+  tras SLT-79 ya no en la demo (sin ruta calculada no se encola). El tipo sigue en `TIPOS_DE_JOB_ESPERADOS`, sin cambio.
+
+Verificación (NODE_OPTIONS=--max-old-space-size=8192, DATABASE_URL local `localhost:5432`):
+- vitest `ruta-primera-pendiente-dos-empresas-sql-real.test.ts`: 3 passed (no skip).
+- vitest `demo-qa.test.ts`: NO verificable en local. La base local tiene deriva de migraciones (trae las de otra rama,
+  `20261031120000_geo_enums_nodo_geografico`…, y le faltan las de esta); la demo cae en P2021 en
+  `ConciliacionSatelitesService.marcarRecibida` antes de llegar al caso. Queda para el CI.
+- `tsc --noEmit`: 0 errores. eslint en los 2 archivos: 0 errores, 1 warning anterior (`HOY` sin uso).
+
+Veredicto: los dos tests se ajustan al retiro de los jobs de primera ruta sin baseline; el de dos empresas en verde local, demo-qa a confirmar en CI.
