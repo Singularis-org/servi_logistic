@@ -758,7 +758,7 @@ Veredicto: T5.1, T5.2 y T5.3 hechas y en verde. Hay dos excepciones de plataform
 | R4 | `geo-consultas-ordenes` («en plataforma…», «sin contexto, con la extensión real…») |
 | R5 | `geo-consultas-cierre` (R5 ×2) |
 | R6 | `geo-consultas-cierre` (R6) |
-| R7 | `geo-consultas-cierre` (R7, una consulta en vuelo); `emisor-relaciones-anidadas` ABIERTO (ver T3) |
+| R7 | `geo-consultas-cierre` (R7, una consulta en vuelo); `emisor-relaciones-anidadas` (literales enmendados 2026-11-03: 0 `provincia`, 2 `zona`; en la baseline, no corre en local) |
 | R8 | `git diff origin/dev...HEAD -- lib/repositories/CierresAdminRepository.ts` vacío; `cierres-admin-service`, `cierre-iva-aparte-sl39`; `cierre-detail-congelado` |
 | R9 | `geo-consultas-conteo` («R9, R11»); `lugar-orden.test.ts` |
 | R10 | `geo-consultas-conteo` («R10») |
@@ -767,7 +767,7 @@ Veredicto: T5.1, T5.2 y T5.3 hechas y en verde. Hay dos excepciones de plataform
 | R13 | `geo-consultas-zona` («R13, R15», «R13: una asignación en un cantón»); `lugar-orden.test.ts` |
 | R14 | `geo-consultas-zona` («R14»); `zona-reconciliacion-ordenes`, `zona-central-guarda-y-rastro`, `zona-pago-mensajero-rastro` |
 | R15 | `geo-consultas-zona` («R13, R15»: plan nuevo = `planDeHoy`) |
-| R16 | `zonas-action` y `zona-repository.test.ts` (2 `expect` ABIERTOS); guardia `zona-reconciliacion-no-retarifa` (ABIERTA) |
+| R16 | `zonas-action`; `zona-repository.test.ts` («⭑ R5: … UNION…» y «⭑ R2/R9…», enmendados 2026-11-03); guardia `zona-reconciliacion-no-retarifa` (mira `planificarReconciliacion`, enmendada 2026-11-03) |
 | R17 | `geo-consultas-zona` («R17»), `geo-consultas-cierre` («R17»), `zona-especial-dos-empresas` («SLT-65 R17: … cliente extendido») |
 | R18 | `geo-nodo-rls`, `geografia-dos-paises`, `geo-consultas-ordenes` (R4); en `lib/db/` solo la excepción de T5.1 |
 | R19 | guardia `geografia-lecturas-sin-nodo-fk` (ampliada) y `geo-lecturas-sin-backfill` (lecturas 1–7) |
@@ -778,7 +778,7 @@ Veredicto: T5.1, T5.2 y T5.3 hechas y en verde. Hay dos excepciones de plataform
 | R24 | `geo-equivalencia-consultas` y `geo-explain-consultas` (INSERT → 25006, sin SQL ni datos personales) |
 | R25 | `geo-explain-consultas` (cinco lecturas, mediana, +19 %/+21 %, Seq Scan) |
 | R26 | sin migración: `git diff --name-only 69a385e~1 HEAD -- db/` vacío (T9 no aplica sin T8.3) |
-| R27 | suites existentes de órdenes, cierres, zonas y geografía en verde sin cambiar aserciones (salvo los literales autorizados y los ABIERTOS); E2E en CI |
+| R27 | suites existentes de órdenes, cierres, zonas y geografía en verde sin cambiar aserciones (salvo los literales autorizados, incluidos los enmendados el 2026-11-03); E2E en CI |
 | R28 | ver la comprobación de diff de abajo |
 
 ### Comprobaciones de diff
@@ -786,7 +786,7 @@ Veredicto: T5.1, T5.2 y T5.3 hechas y en verde. Hay dos excepciones de plataform
 - **`lib/db/` (R18):** `git diff --name-only 69a385e~1 HEAD -- lib/db/` → solo `lib/db/excepciones-aislamiento.ts` (las dos entradas de T5.1). **Aviso al reviewer:** la lista de plataforma gana `scripts/geo-explain-consultas.ts` y `scripts/geo-equivalencia-consultas.ts`.
 - **§2.2 (R28):** archivos de código que toca SLT-65: `lib/repositories/{OrdenRepository,CierreDiaRepository,ZonaRepository}.ts`, `lib/repositories/_shared/{lugar-orden,sin-transaccion-anidada}.ts`, `lib/db/excepciones-aislamiento.ts`, `scripts/geo-*` y `package.json`. No cambian ni `CierresAdminRepository`, ni las actions, ni los servicios de escritura de geografía, zonas o marcas, ni `components/`/`app/`. En `OrdenRepository` no cambia ninguna línea de `where` con `provinciaId|cantonId|distritoId` (grep del diff vacío). Los filtros de `list`, `condicionesSatelite`, `WITH_ETIQUETA` y los nombres de `toBodegaSateliteRow` siguen sin tocar (ver T2).
 
-### T7.3 — `pnpm run test:guardias` (sin marcar)
+### T7.3 — `pnpm run test:guardias` (corrida del 2026-10-31; la de cierre está en la sección del 2026-11-03)
 `Test Files 2 failed | 326 passed (328)`, `Tests 5 failed | 4585 passed | 1 skipped (4591)`.
 - `dependencias-declaradas-presentes` (4): está en `tests/baseline-rojos.json`.
 - `zona-reconciliacion-no-retarifa` (1): ABIERTA. Su antivacío busca `orden.findMany(` en `update`, y la lectura está ahora en `planificarReconciliacion`.
@@ -798,3 +798,27 @@ Corta en el paso 3: `✗ feature_list.json invalido: zona backend: SLT-43, SLT-4
 - `pnpm run lint`: `232 problems (0 errors, 232 warnings)`, los que ya había.
 - guardias: arriba.
 No se corre `vitest related`, porque arrastra unos 650 archivos (la suite entera). Las tandas acotadas de cada bloque están en sus secciones.
+
+## Cierre de los tres ABIERTOS (implementer, 2026-11-03)
+
+Decisión humana: `progress/features/SLT-65.md > Decisiones`, 2026-11-03. Sin cambios de código de producción.
+
+### Commits (sin push)
+`20a3731` test: zonas, los tres `expect` · `a3e8700` test: literales de emisor y 405 · (este) docs: T4.2, T7.3 y bitácora.
+
+### Qué cambió
+- `tests/unit/repositories/zona-repository.test.ts`
+  - «⭑ R5: … la UNION…»: la 2.ª `zonaDistrito.findMany` es la carga del catálogo. La unión se lee ahora en la llamada que la lleva: los `orden.count` del plan (uno por zona resuelta, R8), en la rama `distritoId.in` de `whereLugarEn`. La entrada pasa a dar zona a los tres nodos (`dViejo` → `zB`; `dQueSigue`, `dNuevo` → `zA`). Mismas dos aserciones: conjunto `{dViejo, dQueSigue, dNuevo}` y longitud 3 (sin repetidos).
+  - `BASE_D1_ZA`: `distritoId: {in: ["d1"]}` pasa a la forma literal de `whereLugarEn` (`OR` de distrito y de cantón sin distrito). El resto del `where` no cambia.
+- `tests/unit/guards/zona-reconciliacion-no-retarifa.guardia.test.ts`: el antivacío exige `appendAccion` y `planificarReconciliacion(` en `update`. Además exige `orden.findMany(` y `orden.count(` en el cuerpo de `planificarReconciliacion` (el recortador LANZA si no la encuentra). Gana fuerza: el plan no puede escribir en ningún modelo (`escriturasDelPlan`, con su contraprueba) ni nombrar una tabla de dinero. El detector de `update` (`fallosDeLaReconciliacion`) no cambia.
+- `tests/integration/db/emisor-relaciones-anidadas.test.ts`: `provincia` → 0 y `zona` → 2, con un comentario que explica la carga del catálogo.
+- `tests/integration/db/gestiones-detalle-api-405.test.ts`: una lectura de calentamiento antes de medir. `CONSULTAS_DEL_DETALLE` queda en las 12 de la lectura en caliente, sin las seis de la carga. Pasa `toHaveLength(14)` → `12`. Con y sin gestiones se miden ya en caliente, sobre la misma base.
+
+### Corridas (`NODE_OPTIONS=--max-old-space-size=8192`, Postgres local con `node --env-file=../../.env`)
+- `pnpm run typecheck`: exit 0.
+- `pnpm run lint`: `232 problems (0 errors, 232 warnings)`, los mismos de antes.
+- Unit zonas (`zona-repository`, guardia `zona-reconciliacion-no-retarifa`): `Test Files 2 passed (2)`, `Tests 58 passed (58)`.
+- T4.2: `geo-consultas-zona`, `zona-reconciliacion-ordenes`, `zona-central-guarda-y-rastro`, `zona-pago-mensajero-rastro`, `zonas-action` y `zona-repository`: `Test Files 6 passed (6)`, `Tests 149 passed (149)`. **T4.2 marcada.**
+- T7.3: `pnpm run test:guardias` da `Test Files 1 failed | 324 passed | 3 skipped (328)` y `Tests 4 failed | 4564 passed | 24 skipped (4592)`. El único archivo en rojo es `dependencias-declaradas-presentes` (4), que está en `tests/baseline-rojos.json`. Corridas aparte con `--reporter=verbose`, `zona-especial-punto-unico`, `geografia-sin-cte-recursiva`, `consultas-concurrentes-en-transaccion` y `zona-reconciliacion-no-retarifa` dan `4 passed`, `44 passed`, sin skips. **T7.3 marcada.**
+- `emisor-relaciones-anidadas` y `gestiones-detalle-api-405`: los dos en rojo en local por el estado de la base, no por los literales. El 405 corta en el `beforeAll` («falta el estado `devolucion_por_confirmar`… corre `pnpm run db:seed`»). El emisor da `expected [] to have a length of 1` en el antivacío y `referencia a otra empresa: orden.tienda_id -> usuario`. Los dos están en `tests/baseline-rojos.json`. **Los literales nuevos NO están medidos**: se comprueban cuando corran con datos (SL-31 / CI con semilla).
+- `./init.sh` (T8.2, sin marcar) corta en el paso 3: `zona backend: SLT-43, SLT-44, SLT-59, SLT-65 (4 in_progress, max 3)`. Es la excepción de cupo que aceptó el humano y no cuenta como rojo.

@@ -67,7 +67,7 @@
   transacción, `zonaQueCubre` y `whereLugarEn` dentro de `whereBaseElegible`. `update` aplica el
   plan (design §6). `ZonaPrismaClient` gana los modelos del catálogo. **Hecho:** typecheck en
   verde.
-- [ ] **T4.2** `tests/integration/db/geo-consultas-zona.test.ts` (R13–R15, R17). **Hecho:** pasa.
+- [x] **T4.2** `tests/integration/db/geo-consultas-zona.test.ts` (R13–R15, R17). **Hecho:** pasa.
   `zona-reconciliacion-ordenes.test.ts`, `zona-central-guarda-y-rastro.test.ts`,
   `zona-pago-mensajero-rastro.test.ts`, `zonas-action.test.ts` y `zona-repository.test.ts` (este,
   con dobles de entrada si hace falta) pasan sin cambiar aserciones (R16).
@@ -110,7 +110,7 @@
   (todo `OrdenRepository.ts`, `CierreDiaRepository.ts`, `ZonaRepository.ts` y
   `_shared/lugar-orden.ts`) y `tests/integration/db/geo-lecturas-sin-backfill.test.ts` (lecturas
   1–7) (R19). **Hecho:** las dos pasan, con la contraprueba de la guardia.
-- [ ] **T7.3** `pnpm run test:guardias` completo. **Hecho:** en verde, incluidas
+- [x] **T7.3** `pnpm run test:guardias` completo. **Hecho:** en verde, incluidas
   `zona-especial-punto-unico`, `geografia-sin-cte-recursiva` (R20) y
   `consultas-concurrentes-en-transaccion`.
 
