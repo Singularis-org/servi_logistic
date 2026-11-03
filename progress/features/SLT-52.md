@@ -7,7 +7,7 @@
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F2.1 (2026-11-02): T0, T1 y T2 hechas (12/34 tasks), gate verde. Siguiente: T3. Detalle en `progress/impl_SLT-52.md`.
+F2.1 (2026-11-02): T0-T3 hechas, gate verde. Siguiente: T4. Detalle en `progress/impl_SLT-52.md`.
 Ojo: `prisma generate` ya conoce las tablas de T1; una base sin sus migraciones falla en `cierreDetail.create`.
 
 ## Evaluación
@@ -38,6 +38,7 @@ Ninguna.
 - 2026-11-02 · T2 (núcleo puro: catálogo, precedencia, cálculo, esquemas; 179 tests) · 70ac57dd · gate
   con 2 rojos por timeout de 20 s en guardias que barren el árbol (`tarifa-status-retirado`,
   `catalogo-postgres-acota-esquema`); solas pasan 15/15 en 2 s → verde. Siguiente: T3.
+- 2026-11-02 · T3 (resolver único + convivencia con el modelo viejo) · cca3b0fb · gate VERDE. Mutación sin efecto: quitar solo zonaId del WHERE de grupos (equivalente: distrito en una zona por empresa). Pendiente T4/T5: listado OrdenRepository:2111 y 6 llamadores de soloModeloViejo. Riesgo: tests que hagan commit en tarifa_valor contaminan empresas de prueba → sembrar con rollback (T5.4/T6.4).
 
 ## Modelos (overrides)
 
