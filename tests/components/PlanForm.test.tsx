@@ -28,6 +28,7 @@ const PLAN: PlanDTO = {
   topes: { ordenesPorCiclo: 3000, porRol: { mensajero: 5 }, apiKeys: null },
   modulos: ["analitica"],
   precio: { tipo: "monto", mensual: "10.00", anual: null },
+  costoPorOrden: null, // SLT-66 R8: campo nuevo del PlanDTO
   archivado: false,
 };
 
@@ -66,7 +67,8 @@ describe("SLT-58 R14 — crear un plan", () => {
     await user.type(screen.getByLabelText("Usuarios activos con el rol Mensajero"), "5");
     await user.click(screen.getByRole("checkbox", { name: "Monitoreo" }));
     await user.click(screen.getByRole("radio", { name: "Con monto" }));
-    await user.type(screen.getByLabelText("Monto mensual"), "25.50");
+    // SLT-66 R9: el rótulo «Monto mensual» pasa a «Costo base mensual».
+    await user.type(screen.getByLabelText("Costo base mensual"), "25.50");
     await user.click(screen.getByRole("radio", { name: "Descuento sobre el anual" }));
     await user.type(screen.getByLabelText("Porcentaje de descuento"), "10");
     await user.click(screen.getByRole("button", { name: "Crear plan" }));
@@ -79,6 +81,7 @@ describe("SLT-58 R14 — crear un plan", () => {
       topes: { ordenesPorCiclo: 3000, porRol: { mensajero: 5 }, apiKeys: null },
       modulos: ["monitoreo"],
       precio: { tipo: "monto", mensual: "25.50", anual: { tipo: "descuento", porcentaje: "10" } },
+      costoPorOrden: null, // SLT-66 R8: campo nuevo; vacío = null
     });
     expect(onGuardado).toHaveBeenCalledWith(OK, "Plan Norte");
   });
@@ -98,6 +101,7 @@ describe("SLT-58 R14 — crear un plan", () => {
       topes: { ordenesPorCiclo: null, porRol: {}, apiKeys: null },
       modulos: [],
       precio: { tipo: "sin_precio" },
+      costoPorOrden: null, // SLT-66 R8: campo nuevo; vacío = null
     });
   });
 
@@ -135,7 +139,8 @@ describe("SLT-58 R15 — editar: de inmediato o a partir de una fecha", () => {
     expect(screen.getByRole("textbox", { name: "Nombre" })).toHaveValue("Básico");
     expect(screen.getByLabelText("Órdenes por ciclo")).toHaveValue("3000");
     // SLT-67: el servidor serializa «10.00»; el campo lo muestra sin «.00».
-    expect(screen.getByLabelText("Monto mensual")).toHaveValue("10");
+    // SLT-66 R9: el rótulo «Monto mensual» pasa a «Costo base mensual».
+    expect(screen.getByLabelText("Costo base mensual")).toHaveValue("10");
     expect(screen.getByRole("checkbox", { name: "Analítica" })).toHaveAttribute("aria-checked", "true");
   });
 
@@ -159,6 +164,7 @@ describe("SLT-58 R15 — editar: de inmediato o a partir de una fecha", () => {
       topes: { ordenesPorCiclo: 5000, porRol: { mensajero: 5 }, apiKeys: null },
       modulos: ["analitica"],
       precio: { tipo: "monto", mensual: "10", anual: null },
+      costoPorOrden: null, // SLT-66 R8: campo nuevo; vacío = null
       vigenteDesde: null,
     });
   });
@@ -172,7 +178,8 @@ describe("SLT-58 R15 — editar: de inmediato o a partir de una fecha", () => {
     };
     render(<PlanForm modo="editar" plan={plan} enviar={enviar} onGuardado={vi.fn()} />);
 
-    expect(screen.getByLabelText("Monto mensual")).toHaveValue("500");
+    // SLT-66 R9: el rótulo «Monto mensual» pasa a «Costo base mensual».
+    expect(screen.getByLabelText("Costo base mensual")).toHaveValue("500");
     expect(screen.getByLabelText("Monto anual")).toHaveValue("5000");
     await user.click(screen.getByRole("button", { name: "Guardar" }));
 
@@ -343,7 +350,8 @@ describe("SLT-58 — revisión de diseño del formulario", () => {
     const user = userEvent.setup();
     montarCrear();
 
-    const precio = screen.getByRole("radiogroup", { name: "Precio informativo" });
+    // SLT-66 R9: el grupo «Precio informativo» pasa a «Costo base».
+    const precio = screen.getByRole("radiogroup", { name: "Costo base" });
     expect(within(precio).getAllByRole("radio").map((r) => r.closest("label")?.textContent)).toEqual([
       "Sin precio",
       "Negociable",

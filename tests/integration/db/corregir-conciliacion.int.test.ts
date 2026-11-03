@@ -12,7 +12,8 @@ import {
 } from "./_postgres-real";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
-// ⭑ FICHA 473 / T2 (R1-R4, R6, R7, R12, R13) — CORREGIR LA RECEPCION, CONTRA POSTGRES.
+// ⭑ FICHA 473 / T2 (R1-R4, R6, R7, R13) — CORREGIR LA RECEPCION, CONTRA POSTGRES. (Su R12 lo
+// reabre SLT-73 R13: corregir escribe la variacion de la diferencia en la caja.)
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 //
 // POR QUE ESTE ARCHIVO EXISTE ADEMAS DEL UNITARIO: el defecto de la ficha vivia en el `WHERE`
@@ -301,35 +302,47 @@ describeSiHayBase("473/T2 — corregir la recepcion de una satelite (Postgres re
     expect(r.filas).toBe(0);
   });
 
-  it("⭑ R12: corregir no escribe en wallet_movimiento, wallet_tienda_movimiento ni pago_mensajero_movimiento", async () => {
+  // SLT-73 (R13) reabre el R12 de la 473: corregir escribe UN movimiento de diferencia en la caja
+  // por la variacion del faltante, y nada en el libro por tienda ni en el del mensajero.
+  it("⭑ SLT-73 R13: corregir escribe en la caja UNA diferencia por la variacion, sin tocar la de la marca", async () => {
     const r = await enTransaccionRevertida(prisma, async (tx) => {
-      // REPEATABLE READ (antes de cualquier otra sentencia): los conteos son de TABLA ENTERA y otro
-      // archivo de test puede commitear un movimiento en paralelo. Medido en el gate de esta ficha:
-      // el caso hermano de `marca-conciliacion.int.test.ts` (READ COMMITTED) vio `tienda` 27→28 sin
-      // que la marca escribiera nada. Con una foto fija, solo cuenta lo que escribe ESTA transaccion.
-      await tx.$executeRawUnsafe("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
       await serializarEscriturasReales(tx);
       const [marcador, corrector] = await dosUsuarios(tx);
       const { id, repo } = await sembrarIncompleta(tx, "r12", marcador);
-
-      const contar = async () => ({
-        caja: await tx.walletMovimiento.count(),
-        tienda: await tx.walletTiendaMovimiento.count(),
-        mensajero: await tx.pagoMensajeroMovimiento.count(),
-      });
-      const antes = await contar();
       const res = await repo.corregirConciliacion({
         id,
         montoRecibido: DECLARADO,
         nota: null,
         actorUsuarioId: corrector,
       });
-      const despues = await contar();
-      return { res, antes, despues };
+      const ajustes = await tx.conciliacionBodegaAjuste.findMany({
+        where: { cierreBodegaId: id },
+        orderBy: { createdAt: "asc" },
+        select: { id: true, evento: true },
+      });
+      const movs = await tx.walletMovimiento.findMany({
+        where: { origenTipo: "conciliacion_bodega_ajuste", origenId: { in: ajustes.map((a) => a.id) } },
+        select: { origenId: true, tipo: true, categoria: true, monto: true },
+      });
+      const porAjuste = new Map(movs.map((m) => [m.origenId, m]));
+      return {
+        res,
+        filas: ajustes.map((a) => {
+          const m = porAjuste.get(a.id);
+          return [a.evento, m?.tipo, m?.categoria, m?.monto.toFixed(2)];
+        }),
+        movs: movs.length,
+      };
     });
 
     expect(r.res).toBe("updated");
-    expect(r.despues).toEqual(r.antes);
+    // La marca de 177.800 sobre un esperado de 200.800 dejo +23.000; corregir a 200.800 lo anula
+    // con UN movimiento nuevo, y el de la marca sigue ahi.
+    expect(r.movs).toBe(2);
+    expect(r.filas).toEqual([
+      ["marca", "egreso", "egreso_diferencia_satelite", "23000.00"],
+      ["correccion", "ingreso", "ingreso_diferencia_satelite", "23000.00"],
+    ]);
   });
 
   it("⭑ R13: corregida a lo declarado: SaldosSatelitesRepository devuelve faltaPorRecibir 0.00 y conciliado", async () => {

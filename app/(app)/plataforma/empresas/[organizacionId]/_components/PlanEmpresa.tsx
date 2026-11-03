@@ -1,7 +1,9 @@
 "use client";
 
 import { useId, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { TriangleAlert } from "lucide-react";
 
 import { ConsumoDelPlan } from "@/components/shared/ConsumoDelPlan";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -37,7 +39,7 @@ import type {
 } from "@/lib/types/planes";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 import { horaCostaRica } from "@/lib/utils/hora-cr";
-import { lineasDeTopes } from "@/app/(app)/plataforma/planes/_components/plan-vista";
+import { lineasDeCosto, lineasDeTopes } from "@/app/(app)/plataforma/planes/_components/plan-vista";
 
 /** Textos de la sección, en un solo sitio para cuando llegue la i18n (design §6.5). */
 const TEXTOS = {
@@ -49,6 +51,21 @@ const TEXTOS = {
   elegirPlan: "Plan a asignar",
   placeholder: "Elige un plan",
   sinAsignables: "No hay otros planes que asignar a esta empresa.",
+  /**
+   * SLT-66 (design §6.5, R29): el servicio ya no trae ningún plan con costo concreto. Va en piezas para
+   * enlazar «Planes»: «No hay planes con costo concreto para esta empresa. Crea un custom con sus precios
+   * en «Planes».».
+   */
+  sinPlanesConCosto: {
+    antes: "No hay planes con costo concreto para esta empresa. Crea un custom con sus precios en «",
+    enlace: "Planes",
+    despues: "».",
+  },
+  /** SLT-66 (design §6.5, R20): el plan actual no tiene costo base «monto» o le falta el costo por orden. */
+  planSinCosto:
+    "Plan sin costo concreto: complétalo en «Planes» o asígnale otro con costo base y costo por orden.",
+  /** SLT-66 (design §6.3, P1): la nota del costo por orden cuando sale de la excepción de la empresa. */
+  excepcion: "excepción de la empresa",
   asignablesNoCargaron: "No se pudieron cargar los planes que se pueden asignar.",
   asignar: "Asignar plan",
   cambiar: "Cambiar plan",
@@ -90,6 +107,7 @@ const RECHAZOS: Record<Exclude<PlanResult["estado"], "ok" | "tope_excedido" | "v
   archivado: "El plan está archivado.",
   custom_de_otra_empresa: "Ese plan es de otra empresa.",
   sin_cambio_programado: "El plan ya no tiene un cambio pendiente.",
+  plan_sin_costo: "Ese plan no tiene costo base y costo por orden concretos: crea un custom con sus precios para asignarlo.",
 };
 
 export interface PlanEmpresaProps {
@@ -122,6 +140,13 @@ export interface PlanEmpresaProps {
     planId: string;
     inicioCiclo: string;
   }) => Promise<VistaPreviaAsignacionResult>;
+  /**
+   * SLT-66 (design §6.6; R33): el plan con que arranca el selector, cuando se llega desde «Asignar a una
+   * empresa» del detalle del plan (`?plan=…`). La página ya lo valida contra los asignables; aquí se
+   * vuelve a mirar contra lo que el selector ofrece y, si no está, se ignora. No asigna nada: confirmar
+   * sigue siendo el clic y el modal.
+   */
+  planPreseleccionado?: string;
 }
 
 /**
@@ -141,6 +166,16 @@ function textoDelAviso(aviso: TopeExcedido, siguienteCiclo: string): string {
   if (aviso.tope === "ordenes") return ordenesYaPasadas(usados, maximo, siguienteCiclo);
   if (aviso.tope === "api_keys") return apiKeysYaPasadas(usados, maximo);
   return rolYaPasado(usados, maximo, aviso.tope);
+}
+
+/**
+ * R20: si el selector ofrece el plan a ESTA empresa (público o custom suyo, no archivado y distinto del
+ * que ya tiene). El servicio ya filtra; se vuelve a mirar para no ofrecer uno que la base rechazaría.
+ */
+function ofrecible(p: PlanDTO, organizacionId: string, planActualId: string | null): boolean {
+  return (
+    !p.archivado && (p.visibilidad === "publico" || p.organizacionId === organizacionId) && p.id !== planActualId
+  );
 }
 
 /** Un instante ISO como «AAAA-MM-DD HH:mm» en la hora de la plataforma. */
@@ -165,6 +200,7 @@ export function PlanEmpresa({
   asignarPlan,
   rangoInicioCiclo,
   previsualizarAsignacion,
+  planPreseleccionado,
 }: PlanEmpresaProps) {
   const tituloId = useId();
   const historialId = useId();
@@ -172,7 +208,13 @@ export function PlanEmpresa({
   const fechaId = useId();
   const router = useRouter();
   const toast = useToast();
-  const [planId, setPlanId] = useState("");
+  const planActualId = vista?.plan?.planId ?? null;
+  const [planId, setPlanId] = useState(() =>
+    planPreseleccionado !== undefined &&
+    (asignables ?? []).some((p) => p.id === planPreseleccionado && ofrecible(p, organizacionId, planActualId))
+      ? planPreseleccionado
+      : "",
+  );
   const [enVuelo, setEnVuelo] = useState(false);
   const [rechazo, setRechazo] = useState<string | null>(null);
   const [errorDeCampo, setErrorDeCampo] = useState<string[] | undefined>(undefined);
@@ -186,20 +228,13 @@ export function PlanEmpresa({
   // vuelva la anterior, la respuesta vieja se descarta y no pisa los avisos de la fecha nueva.
   const lecturaRef = useRef(0);
 
-  const planActualId = vista?.plan?.planId ?? null;
-
   // R20: solo los asignables a ESTA empresa (públicos y customs suyos, no archivados). El servicio ya
   // filtra; se vuelve a mirar aquí para que la pantalla nunca ofrezca uno que la base rechazaría. El
   // plan que ya tiene no se ofrece: «cambiar» a él no cambia nada.
   const opciones: SelectOption[] = useMemo(
     () =>
       (asignables ?? [])
-        .filter(
-          (p) =>
-            !p.archivado &&
-            (p.visibilidad === "publico" || p.organizacionId === organizacionId) &&
-            p.id !== planActualId,
-        )
+        .filter((p) => ofrecible(p, organizacionId, planActualId))
         .map((p) => ({
           value: p.id,
           label: `${p.nombre} (${p.visibilidad === "publico" ? TEXTOS.publico : TEXTOS.custom})`,
@@ -225,7 +260,8 @@ export function PlanEmpresa({
   const lineasDePrimera = useMemo(() => {
     if (elegido === null) return null;
     const modulos = elegido.modulos.length === 0 ? TEXTOS.sinModulos : elegido.modulos.map(nombreDelModulo).join(", ");
-    return [...lineasDeTopes(elegido.topes), TEXTOS.modulosIncluidos(modulos)];
+    // SLT-66 (design §6.2, R24): también el costo base y el costo por orden del plan.
+    return [...lineasDeTopes(elegido.topes), ...lineasDeCosto(elegido), TEXTOS.modulosIncluidos(modulos)];
   }, [elegido]);
 
   /**
@@ -325,7 +361,8 @@ export function PlanEmpresa({
   }
 
   return (
-    <section aria-labelledby={tituloId} className="flex flex-col gap-4">
+    // SLT-66 (design §6.4, R32): `id="plan"` es el ancla del listado de «Empresas» («Asignar plan»).
+    <section id="plan" aria-labelledby={tituloId} className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2">
         <h2 id={tituloId} className="text-base font-semibold">
           {TEXTOS.titulo}
@@ -337,11 +374,34 @@ export function PlanEmpresa({
         <AvisoDeError>{TEXTOS.noSeCargo}</AvisoDeError>
       ) : (
         <>
-          <ConsumoDelPlan plan={vista.plan} textoSinPlan={TEXTOS.sinPlan} nivelDeTitulo={3} />
+          <ConsumoDelPlan
+            plan={vista.plan}
+            textoSinPlan={TEXTOS.sinPlan}
+            nivelDeTitulo={3}
+            textoExcepcion={TEXTOS.excepcion}
+          />
           {vista.plan?.archivado && <p className="text-sm text-muted-foreground">{TEXTOS.planArchivado}</p>}
+          {vista.plan?.costeo.sinCostoConcreto && (
+            // Un estado fijo del plan, no un aviso que llega: `note` y no el `alert` de la primitiva.
+            <Alert role="note" className="border-warning/40 text-warning-strong">
+              <TriangleAlert aria-hidden="true" />
+              <AlertDescription className="text-warning-strong">{TEXTOS.planSinCosto}</AlertDescription>
+            </Alert>
+          )}
 
           {asignables === null ? (
             <AvisoDeError>{TEXTOS.asignablesNoCargaron}</AvisoDeError>
+          ) : asignables.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              {TEXTOS.sinPlanesConCosto.antes}
+              <Link
+                href="/plataforma/planes"
+                className="rounded-sm text-primary-strong underline underline-offset-4 focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none"
+              >
+                {TEXTOS.sinPlanesConCosto.enlace}
+              </Link>
+              {TEXTOS.sinPlanesConCosto.despues}
+            </p>
           ) : opciones.length === 0 ? (
             <p className="text-sm text-muted-foreground">{TEXTOS.sinAsignables}</p>
           ) : (
@@ -447,6 +507,12 @@ export function PlanEmpresa({
                 </ul>
               </div>
             )}
+            {/* SLT-66 (R24): el costo del plan nuevo se ve aunque no cambie respecto del actual. */}
+            <ul className="mt-2 flex flex-col gap-1 text-sm">
+              {lineasDeCosto(elegido).map((linea) => (
+                <li key={linea}>{linea}</li>
+              ))}
+            </ul>
           </Modal>
         )
       ) : null}

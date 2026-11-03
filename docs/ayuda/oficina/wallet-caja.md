@@ -3,7 +3,7 @@ titulo: Wallet · Caja
 modulo: wallet
 pantalla: /wallet
 roles: [maestro, admin]
-actualizado: 2026-10-30
+actualizado: 2026-10-31
 fuentes:
   - app/(app)/wallet/_components/WalletModule.tsx
   - app/(app)/wallet/_components/CajaResumenCard.tsx
@@ -172,8 +172,10 @@ y la cuenta lo muestra en su propia línea, **IVA facturado**.
 
 ## Lo que la empresa debe a la plataforma
 
-La plataforma cobra a la empresa un monto fijo por cada orden. En el lado de la empresa del resumen,
-debajo de **Saldo inicial y aportes**, hay una región propia que dice cuánto se debe y qué hacer. Cambia
+La plataforma cobra a la empresa un monto por cada orden. Ese monto sale, por este orden: de la
+excepción que tenga la empresa; si no la tiene, del costo por orden de su plan; si no tiene plan o su plan no lo
+tiene, del valor general de la plataforma. Si no hay ninguno, la orden no cobra nada. En el lado de la empresa
+del resumen, debajo de **Saldo inicial y aportes**, hay una región propia que dice cuánto se debe y qué hacer. Cambia
 según cómo esté la empresa con la plataforma:
 
 | Cómo está | Qué dice la región | Botón |

@@ -38,7 +38,7 @@ y `tests/integration/db/cierre-sin-gestion-confirmacion-sql-real.test.ts`. Todo 
 
 ## T0 · Medir antes de tocar
 
-- [ ] **T0.1 — Foto de la cola del despliegue.** Contra producción, **solo lectura**: cuántos cierres
+- [x] **T0.1 — Foto de la cola del despliegue.** Contra producción, **solo lectura**: cuántos cierres
       en estado `vencido` sin resolver hay hoy, cuántas filas de `cierre_sin_gestion` arrastran, y
       cuántas de ellas tienen `num_guia IS NULL`.
       **Hecho:** los tres números escritos en `progress/impl_451.md` con su fecha y la consulta
@@ -50,7 +50,7 @@ y `tests/integration/db/cierre-sin-gestion-confirmacion-sql-real.test.ts`. Todo 
 
 ## T1 · El punto único (backend) — la pieza estructural
 
-- [ ] **T1.1 — Extender `lib/types/gestion-retorno.ts`.** Añadir `OrigenDelPaquete`,
+- [x] **T1.1 — Extender `lib/types/gestion-retorno.ts`.** Añadir `OrigenDelPaquete`,
       `RETORNO_POR_ORIGEN` (con `as const satisfies Record<OrigenDelPaquete, "siempre" | "nunca" | "segun_resultado">`),
       `PaqueteDelCierre` y `vuelveABodegaElPaquete`, con sus comentarios de por qué. **No tocar** ni
       una línea de `RETORNA_A_BODEGA`, `RESULTADOS_QUE_VUELVEN` ni `vuelveABodega`. El módulo sigue
@@ -58,13 +58,13 @@ y `tests/integration/db/cierre-sin-gestion-confirmacion-sql-real.test.ts`. Todo 
       **Hecho:** `pnpm run typecheck` verde; `git diff` sobre las líneas 33-61 del archivo, **vacío**.
       *Depende de: nada.*
 
-- [ ] **T1.2 [P] — Tests del punto único.** Extender `tests/unit/types/gestion-retorno.test.ts`:
+- [x] **T1.2 [P] — Tests del punto único.** Extender `tests/unit/types/gestion-retorno.test.ts`:
       `RETORNO_POR_ORIGEN` nombra los dos orígenes; `vuelveABodegaElPaquete({origen:"barrida"})` es
       `true`; para `gestion` devuelve lo mismo que `vuelveABodega` en los **cinco** resultados.
       **Hecho:** R1/R2/R3 cubiertos; los casos previos siguen verdes sin editarse.
       *Depende de: T1.1.*
 
-- [ ] **T1.3 [P] — Extender la guardia del punto único.** Dos casos en
+- [x] **T1.3 [P] — Extender la guardia del punto único.** Dos casos en
       `tests/unit/guards/confirmacion-incidentes-excluidos.guardia.test.ts` + su autocomprobación.
       **Hecho:** R4 cubierto, y el bloque de autocomprobación demuestra que el detector nuevo **se
       sabe romper** (se pone rojo ante una regla de origen plantada y no ladra ante el punto único).
@@ -74,7 +74,7 @@ y `tests/integration/db/cierre-sin-gestion-confirmacion-sql-real.test.ts`. Todo 
 
 ## T2 · Lectura del conjunto esperado (backend)
 
-- [ ] **T2.1 — `findBarridasDelCierre` en el repositorio.** Declararla en
+- [x] **T2.1 — `findBarridasDelCierre` en el repositorio.** Declararla en
       `lib/interfaces/repositories/ICierresAdminRepository.ts` (con su `BarridaDelCierre`) e
       implementarla en `CierresAdminRepository.ts`, molde literal de
       `findGestionesRetornablesDelCierre`: `where: { cierreId, cierre: alcanceWhere(alcance) }`,
@@ -83,7 +83,7 @@ y `tests/integration/db/cierre-sin-gestion-confirmacion-sql-real.test.ts`. Todo 
       actualizados (el typecheck los obliga).
       *Depende de: nada. Paralelizable con T1.*
 
-- [ ] **T2.2 — Tests de la lectura.** Extender
+- [x] **T2.2 — Tests de la lectura.** Extender
       `tests/unit/repositories/cierres-admin-confirmacion-fisica.test.ts`: el `WHERE` lleva `cierreId`
       **y** el alcance por la relación; fuera de alcance → `[]`; no devuelve barridas de otro cierre.
       **Hecho:** R5/R6/R8/R9 cubiertos. **Mata el test con una mutación antes de creerlo**: quitar
@@ -94,18 +94,18 @@ y `tests/integration/db/cierre-sin-gestion-confirmacion-sql-real.test.ts`. Todo 
 
 ## T3 · Contrato de entrada y guardia de cobertura (backend)
 
-- [ ] **T3.1 — Borde zod.** `confirmacionFisicaSchema` pasa a `z.discriminatedUnion("origen", [...])`
+- [x] **T3.1 — Borde zod.** `confirmacionFisicaSchema` pasa a `z.discriminatedUnion("origen", [...])`
       en `lib/types/cierres-admin.ts`, conservando el `.default([])` de `aprobarCierreSchema`.
       Propagar el tipo a `ConfirmacionFisicaInput` (`ICierresAdminService.ts`) y a la Server Action
       (`lib/actions/cierres-admin.ts:353`, passthrough).
       **Hecho:** typecheck verde; la action no gana lógica.
       *Depende de: T1.1.*
 
-- [ ] **T3.2 — Tests del borde.** Extender `tests/unit/types/cierres-admin-confirmacion-schema.test.ts`.
+- [x] **T3.2 — Tests del borde.** Extender `tests/unit/types/cierres-admin-confirmacion-schema.test.ts`.
       **Hecho:** R17 (forma) cubierto; `origen` ausente y campos cruzados **rechazados**.
       *Depende de: T3.1.*
 
-- [ ] **T3.3 — Extender `validarConfirmacionFisica`.** En `CierresAdminService.ts`: leer las dos
+- [x] **T3.3 — Extender `validarConfirmacionFisica`.** En `CierresAdminService.ts`: leer las dos
       fuentes, montar **un** mapa por clave (`gestionId` | `ordenId`), reusar el bucle y los seis
       mensajes existentes, ampliar el atajo de R18 y mantener **perezosa** la lectura de barridas.
       La guardia sigue devolviendo **antes** de tocar el repo (R16).
@@ -113,7 +113,7 @@ y `tests/integration/db/cierre-sin-gestion-confirmacion-sql-real.test.ts`. Todo 
       antes (se verifica **contando llamadas** al doble, no leyendo el código).
       *Depende de: T1.1, T2.1, T3.1.*
 
-- [ ] **T3.4 — Tests de la guardia de cobertura.** Extender
+- [x] **T3.4 — Tests de la guardia de cobertura.** Extender
       `tests/unit/services/cierres-admin-confirmacion-fisica.test.ts`: los ocho casos para barridas,
       los mixtos y R19. En todos, `repo.resolverCierre` **no llamado**.
       **Hecho:** R7, R10-R19 y R37 cubiertos.
@@ -123,7 +123,7 @@ y `tests/integration/db/cierre-sin-gestion-confirmacion-sql-real.test.ts`. Todo 
 
 ## T4 · La marca: migración y escritura (backend)
 
-- [ ] **T4.1 — Columna + migración.** `confirmadaFisicaAt DateTime? @map("confirmada_fisica_at")` en
+- [x] **T4.1 — Columna + migración.** `confirmadaFisicaAt DateTime? @map("confirmada_fisica_at")` en
       `model CierreSinGestion` (`db/schema.prisma`) con su comentario de por qué no contradice la
       inmutabilidad; `pnpm run db:migrate:create` → `db/migrations/<ts>_cierre_sin_gestion_confirmacion_fisica/migration.sql`;
       **`down.sql` escrito a mano** (`DROP COLUMN IF EXISTS`) con su pérdida de dato declarada.
@@ -132,7 +132,7 @@ y `tests/integration/db/cierre-sin-gestion-confirmacion-sql-real.test.ts`. Todo 
       *Depende de: nada. Paralelizable con T1-T3, pero **no** con el gate de otra feature sobre la
       misma base local.*
 
-- [ ] **T4.2 — Escritura dentro de la transacción.** `ResolverCierreInput` (rama `aprobado`) gana
+- [x] **T4.2 — Escritura dentro de la transacción.** `ResolverCierreInput` (rama `aprobado`) gana
       `confirmacionBarridas` **obligatorio** y `?: never` en la rama `rechazado`. El `updateMany` sobre
       `tx.cierreSinGestion` va **pegado** al de la 238, mismo bloque, con su `WHERE` guardado por
       `cierreId`, `data` de **una sola clave** y fallo cerrado (`count !== ordenIds.length` → lanza).
@@ -142,19 +142,19 @@ y `tests/integration/db/cierre-sin-gestion-confirmacion-sql-real.test.ts`. Todo 
       actualizar.
       *Depende de: T3.3, T4.1.*
 
-- [ ] **T4.3 — Tests de la escritura.** Extender
+- [x] **T4.3 — Tests de la escritura.** Extender
       `tests/unit/repositories/cierres-admin-confirmacion-fisica.test.ts`.
       **Hecho:** R20, R21, R22, R25, R27 y R28 cubiertos.
       *Depende de: T4.2.*
 
-- [ ] **T4.4 [P] — Test de migración contra Postgres.** `[N]`
+- [x] **T4.4 [P] — Test de migración contra Postgres.** `[N]`
       `tests/integration/db/cierre-sin-gestion-confirmacion-migration.test.ts`, con el molde de
       `confirmacion-fisica-migration.test.ts`: la columna existe, nullable, sin default; el `down.sql`
       existe, la suelta y es idempotente.
       **Hecho:** R23 y R40 cubiertos, y el test **ejecutó** (no `skipped` por falta de `DATABASE_URL`).
       *Depende de: T4.1.*
 
-- [ ] **T4.5 [P] — Test end-to-end de datos contra Postgres.** `[N]`
+- [x] **T4.5 [P] — Test end-to-end de datos contra Postgres.** `[N]`
       `tests/integration/db/cierre-sin-gestion-confirmacion-sql-real.test.ts`: (a) aprobar con la lista
       incompleta deja el cierre `solicitado`, las órdenes **sin liberar** y cero marcas; (b) aprobar
       completo marca **todas** las barridas que la liberación movió, a bodega y a `rechazada`.
@@ -162,7 +162,7 @@ y `tests/integration/db/cierre-sin-gestion-confirmacion-sql-real.test.ts`. Todo 
       test tiene que fallar si no hay datos, no reportar verde por vacío.
       *Depende de: T4.2.*
 
-- [ ] **T4.6 [P] — R26 en el servicio.** Extender
+- [x] **T4.6 [P] — R26 en el servicio.** Extender
       `tests/unit/services/cierres-admin-service.aprobar.sin-gestion.test.ts`.
       **Hecho:** aprobar pasa al repo la lista de barridas y ninguna queda sin marca.
       *Depende de: T4.2.*
@@ -171,7 +171,7 @@ y `tests/integration/db/cierre-sin-gestion-confirmacion-sql-real.test.ts`. Todo 
 
 ## T5 · La pantalla (frontend) — empieza cuando el backend está verde
 
-- [ ] **T5.1 — Vista unificada.** En `cierre-confirmacion-fisica.tsx`: `FilaAConfirmar`,
+- [x] **T5.1 — Vista unificada.** En `cierre-confirmacion-fisica.tsx`: `FilaAConfirmar`,
       `filasAConfirmar(grupos, ordenesSinGestion)`, y migrar `clavePaquete`, `agruparPorPaquete`,
       `progresoDePaquetes` e `interpretarLectura` a ese tipo. **Borrar** `retornablesDelCierre` si
       queda sin uso; nada muerto.
@@ -179,25 +179,25 @@ y `tests/integration/db/cierre-sin-gestion-confirmacion-sql-real.test.ts`. Todo 
       lógica**.
       *Depende de: T1.1, T3.1.*
 
-- [ ] **T5.2 — La sección «Sin gestionar».** Cuarta sección **al final** de la misma lista, misma fila,
+- [x] **T5.2 — La sección «Sin gestionar».** Cuarta sección **al final** de la misma lista, misma fila,
       badge propio, dentro del mismo contenedor con desplazamiento acotado. La derivación del orden de
       las tres secciones desde `RESULTADOS_QUE_VUELVEN` **se conserva**; la nueva se concatena.
       **Hecho:** R29/R30 cubiertos.
       *Depende de: T5.1.*
 
-- [ ] **T5.3 — Aviso de «sin guía» en la barra de estado.** Cuántas filas del conjunto esperado no se
+- [x] **T5.3 — Aviso de «sin guía» en la barra de estado.** Cuántas filas del conjunto esperado no se
       pueden confirmar y que ese cierre no se va a poder aprobar. La advertencia por fila de la 238
       **se conserva**.
       **Hecho:** R34 cubierto; el `role="note"` del bloqueo (R27 de la 238) sigue siendo el único.
       *Depende de: T5.1.*
 
-- [ ] **T5.4 — Cablear el módulo.** En `CierresAdminModule.tsx`: `pedirAprobacion` abre la ventana con
+- [x] **T5.4 — Cablear el módulo.** En `CierresAdminModule.tsx`: `pedirAprobacion` abre la ventana con
       `filasAConfirmar.length > 0` (no `retornables.length > 0`); `confirmarAprobacion` envía las
       entradas con su `origen`; `repartirErroresDelServidor` reparte por `gestionIds ∪ ordenIds`.
       **Hecho:** un cierre **sólo** con barridas abre la ventana en vez de aprobarse de un click.
       *Depende de: T5.1, T3.1.*
 
-- [ ] **T5.5 — Tests de componente.** Extender `tests/components/CierresAdminConfirmacionFisica.test.tsx`.
+- [x] **T5.5 — Tests de componente.** Extender `tests/components/CierresAdminConfirmacionFisica.test.tsx`.
       **Hecho:** R29-R36 y la mitad cliente de R19 cubiertos; el caso **PREMISA** (el `@unique` de
       `numGuia`) sigue verde sin editarse.
       *Depende de: T5.2, T5.3, T5.4.*
@@ -206,12 +206,12 @@ y `tests/integration/db/cierre-sin-gestion-confirmacion-sql-real.test.ts`. Todo 
 
 ## T6 · Verificación y cierre
 
-- [ ] **T6.1 — Mapa `R<n> → test` completo.** Escribir en `progress/impl_451.md` el mapa de los 40
+- [x] **T6.1 — Mapa `R<n> → test` completo.** Escribir en `progress/impl_451.md` el mapa de los 40
       requisitos contra el archivo **y el nombre del caso**.
       **Hecho:** ningún `R<n>` sin test. El reviewer rechaza si falta uno.
       *Depende de: T1-T5.*
 
-- [ ] **T6.2 — Autocomprobación por mutación.** Sobre al menos cuatro puntos: quitar `cierreId` del
+- [x] **T6.2 — Autocomprobación por mutación.** Sobre al menos cuatro puntos: quitar `cierreId` del
       `WHERE` de la lectura (T2.2), quitar el `WHERE` guardado de la escritura (T4.3), quitar una
       barrida del conjunto esperado del servicio (T3.4) y quitar la sección nueva de la pantalla
       (T5.5). Los cuatro tienen que **ponerse rojos**.
@@ -219,13 +219,13 @@ y `tests/integration/db/cierre-sin-gestion-confirmacion-sql-real.test.ts`. Todo 
       `progress/impl_451.md`. Sin esta evidencia el mapa de T6.1 no vale.
       *Depende de: T6.1.*
 
-- [ ] **T6.3 — Gate COMPLETO.** `./init.sh` (no `--rapido`: se niega solo). Escribir `INIT_EXIT=$?`
+- [x] **T6.3 — Gate COMPLETO.** `./init.sh` (no `--rapido`: se niega solo). Escribir `INIT_EXIT=$?`
       **dentro** del log, en `progress/gate_451.log`, y **sin canalizar por `tail`**.
       **Hecho:** `INIT_EXIT=0`, y los `skipped` revisados: los dos tests de `integration/db` nuevos
       **ejecutaron**.
       *Depende de: T6.2.*
 
-- [ ] **T6.4 — Aviso operativo antes de desplegar.** Con los números de T0.1 delante, avisar a bodega
+- [x] **T6.4 — Aviso operativo antes de desplegar.** Con los números de T0.1 delante, avisar a bodega
       de que los cierres vencidos en cola pasarán a exigir escaneo.
       **Hecho:** el aviso dado y anotado, o la decisión del humano de drenar la cola primero.
       *Depende de: T0.1, T6.3.*

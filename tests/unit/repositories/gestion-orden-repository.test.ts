@@ -310,6 +310,7 @@ function colaFake() {
   const enqueue = vi.fn(async () => null);
   return {
     enqueue,
+    // SLT-79: ya no existe `encolarOMoverPendiente` (el job de la primera ruta por recogida).
     claimBatch: vi.fn(async () => []),
     complete: vi.fn(async () => {}),
     fail: vi.fn(async () => {}),
@@ -414,6 +415,26 @@ describe("GestionOrdenRepository.recogerLote (R15 · feature 49/#8)", () => {
     expect(await repo.recogerLote([], "m1", "a", "b", DIA_CR)).toBe(0);
     expect($transaction).not.toHaveBeenCalled();
   });
+
+  // SLT-79 (decision humana «todo manual»): recoger ya no encola la primera ruta del dia (SLT-59
+  // R57/R58/R76/R77). Ni una recogida parcial ni la que recoge el ultimo paquete.
+  it.each([
+    ["una recogida parcial", [{ id: "o1" }]],
+    ["la recogida de todo lo asignado", [{ id: "o1" }, { id: "o2" }]],
+  ])("SLT-79: %s no encola ningun job ni lee la ruta", async (_c, filas) => {
+    const { repo, cola, $queryRaw } = buildRecogerRepo(filas);
+    await repo.recogerLote(
+      filas.map((f) => f.id),
+      "m1",
+      idEstado("mensajero_recogiendo_en_bodega"),
+      idEstado("en_reparto"),
+      DIA_CR,
+    );
+    expect(cola.enqueue).not.toHaveBeenCalled();
+    // Antes (SLT-59) una segunda sentencia leia `calculada_at` para decidir el job del dia.
+    const textos = $queryRaw.mock.calls.map((c) => ((c as unknown[])[0] as string[]).join(" "));
+    expect(textos.some((t) => t.includes("ruta_optimizada"))).toBe(false);
+  });
 });
 
 describe("GestionOrdenRepository.setOrdenEnGestion (R19-R21)", () => {
@@ -491,8 +512,18 @@ describe("GestionOrdenRepository.liberarOrdenEnGestion (R35)", () => {
 // FAMILIA DE APLICACION que viaja en el evento `gestion_registrada` (R2/R8). La barrera de
 // concurrencia (candado + re-lectura) se mide contra Postgres en
 // `tests/integration/db/454/registro-gestion-*-sql-real.test.ts`.
+/** SLT-79: 16:00 de CR del 20 de julio (el dia de CR empieza a las 06:00Z). */
+const AHORA_GESTION = new Date("2026-07-20T22:00:00.000Z");
+
 describe("GestionOrdenRepository.registrarGestionPendiente (ficha 454; antes crearGestionYTransicionar)", () => {
-  function buildTxRepo(opts: { gestionable?: boolean; eventoCreate?: ReturnType<typeof vi.fn> } = {}) {
+  function buildTxRepo(
+    opts: {
+      gestionable?: boolean;
+      eventoCreate?: ReturnType<typeof vi.fn>;
+      /** SLT-79: la fila de la re-lectura de «gestionable» (coordenadas y `calculada_at`). */
+      fila?: { id: string; tiene_coordenadas: boolean; calculada_at: Date | null };
+    } = {},
+  ) {
     const gestionCreate = vi.fn(async () => ({ id: "g1" }));
     const ordenUpdate = vi.fn(async () => ({}));
     const usuarioUpdate = vi.fn(async () => ({}));
@@ -512,6 +543,7 @@ describe("GestionOrdenRepository.registrarGestionPendiente (ficha 454; antes cre
       const texto = Array.isArray(q) ? q.join(" ") : ((q as { strings?: readonly string[] }).strings ?? []).join(" ");
       if (texto.includes("webhook_suscripcion")) return [];
       if (opts.gestionable === false && texto.includes("order_status")) return [];
+      if (opts.fila !== undefined && texto.includes("order_status")) return [opts.fila];
       return [{ id: "o1" }];
     });
     const tx = {
@@ -532,7 +564,7 @@ describe("GestionOrdenRepository.registrarGestionPendiente (ficha 454; antes cre
       }
     });
     const cola = colaFake();
-    const repo = new GestionOrdenRepository({ $transaction } as never, cola as never);
+    const repo = new GestionOrdenRepository({ $transaction } as never, cola as never, () => AHORA_GESTION);
     return {
       repo,
       gestionCreate,
@@ -546,6 +578,41 @@ describe("GestionOrdenRepository.registrarGestionPendiente (ficha 454; antes cre
       tx,
     };
   }
+
+  // SLT-79 (decision humana «todo manual»): la primera gestion del dia ya NO dispara la primera ruta
+  // (SLT-59 R59). Con la primera ruta pendiente no se encola nada; con ella ya calculada hoy, solo
+  // si la orden era parada (tiene coordenadas), como antes de SLT-59.
+  describe("SLT-79 — el encolado de la gestion", () => {
+    const AYER = new Date("2026-07-19T20:00:00.000Z");
+    const HOY = new Date("2026-07-20T15:00:00.000Z");
+    const gestionar = (repo: GestionOrdenRepository) =>
+      repo.registrarGestionPendiente({
+        ordenId: "o1",
+        mensajeroId: "m1",
+        gestion: { resultado: "entregado", montoRecibido: 1, metodoPago: "efectivo" },
+      });
+
+    it.each([
+      ["con coordenadas, sin ruta (`calculada_at` nula)", true, null],
+      ["con coordenadas, ruta de ayer", true, AYER],
+      ["SIN coordenadas, primera ruta pendiente (antes R59 encolaba)", false, null],
+      ["SIN coordenadas, ruta de hoy (nunca fue parada)", false, HOY],
+    ])("%s -> no encola", async (_c, tiene_coordenadas, calculada_at) => {
+      const { repo, cola } = buildTxRepo({ fila: { id: "o1", tiene_coordenadas, calculada_at } });
+      expect(await gestionar(repo)).not.toBeNull();
+      expect(cola.enqueue).not.toHaveBeenCalled();
+    });
+
+    it("con coordenadas y la primera ruta ya calculada hoy -> un job de debounce con origen `gestion`", async () => {
+      const { repo, cola, tx } = buildTxRepo({ fila: { id: "o1", tiene_coordenadas: true, calculada_at: HOY } });
+      await gestionar(repo);
+      expect(cola.enqueue).toHaveBeenCalledTimes(1);
+      const [tipo, payload, , txArg] = cola.enqueue.mock.calls[0] as unknown as [string, unknown, unknown, unknown];
+      expect(tipo).toBe("optimizacion_ruta");
+      expect(payload).toEqual({ mensajeroId: "m1", origen: "gestion" });
+      expect(txArg).toBe(tx); // outbox: dentro de la transaccion del writer
+    });
+  });
 
   it("R1/R2/R5: INSERT gestion + evento + limpiar puntero, SIN tocar el estado de la orden", async () => {
     const { repo, gestionCreate, ordenUpdate, usuarioUpdate, historialCreateMany, eventoCreate } =

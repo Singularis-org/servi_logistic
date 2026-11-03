@@ -6,7 +6,9 @@ import { describe, expect, it } from "vitest";
 import {
   RESULTADOS_QUE_VUELVEN,
   RETORNA_A_BODEGA,
+  RETORNO_POR_ORIGEN,
   vuelveABodega,
+  vuelveABodegaElPaquete,
 } from "@/lib/types/gestion-retorno";
 
 // Feature 238 (T1.1, R1/R2/R3/R5) — el PUNTO UNICO de «que paquete vuelve a bodega».
@@ -85,5 +87,42 @@ describe("RESULTADOS_QUE_VUELVEN — la lista DERIVADA (238/R2)", () => {
       .filter((l) => !l.trim().startsWith("*") && !l.trim().startsWith("//") && !l.trim().startsWith("/*"))
       .join("\n");
     expect(sinComentarios).not.toMatch(/\[[^\]]*"novedad"[^\]]*"devolucion_a_origen_por_rechazo"[^\]]*\]/);
+  });
+});
+
+// Ficha 451 / SLT-72 (T1.2, R1/R2/R3) — el SEGUNDO eje: el origen del paquete.
+describe("RETORNO_POR_ORIGEN — el eje de los origenes (451/R1/R3)", () => {
+  it("R1/R3: nombra EXACTAMENTE los dos origenes, `gestion` y `barrida`", () => {
+    // Literal a mano: si alguien anade un tercer origen, este test se pone rojo junto al
+    // typecheck, y el que lo anade tiene que leer por que existe la red.
+    expect(Object.keys(RETORNO_POR_ORIGEN).sort()).toEqual(["barrida", "gestion"]);
+  });
+
+  it("R1: la barrida vuelve SIEMPRE (decision firmada 2026-09-21, reiterada 2026-10-31)", () => {
+    expect(RETORNO_POR_ORIGEN.barrida).toBe("siempre");
+    expect(vuelveABodegaElPaquete({ origen: "barrida" })).toBe(true);
+  });
+
+  it("R4: la gestion DELEGA en `RETORNA_A_BODEGA` — no hay segunda regla por resultado", () => {
+    expect(RETORNO_POR_ORIGEN.gestion).toBe("segun_resultado");
+  });
+
+  // Los cinco resultados escritos a mano (`RESULTADOS`, arriba) y el valor esperado tambien a mano:
+  // compararlo contra `vuelveABodega` solo probaria que la funcion delega, no QUE devuelve.
+  it.each([
+    ["entregado", false],
+    ["reprogramado", true],
+    ["novedad", true],
+    ["devolucion_a_origen_por_rechazo", true],
+    ["incidente", false],
+  ] as const)("R1/R2: una gestion `%s` -> vuelve = %s (igual que el eje de resultados)", (resultado, vuelve) => {
+    expect(vuelveABodegaElPaquete({ origen: "gestion", resultado })).toBe(vuelve);
+    expect(vuelveABodegaElPaquete({ origen: "gestion", resultado })).toBe(vuelveABodega(resultado));
+  });
+
+  it("R3: el eje nuevo conserva su red de compilacion (`satisfies Record<OrigenDelPaquete,`)", () => {
+    expect(FUENTE).toMatch(/RETORNO_POR_ORIGEN = \{[\s\S]*?\} as const satisfies Record<OrigenDelPaquete,/);
+    // Y el eje de resultados sigue con la suya, intacta (R2).
+    expect(FUENTE).toMatch(/\} as const satisfies Record<GestionResultado, boolean>;/);
   });
 });

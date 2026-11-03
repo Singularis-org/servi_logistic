@@ -94,7 +94,26 @@ describe("RecepcionBodegaCentralService.recibirEnBodegaCentral", () => {
       "en_ruta_bodega_central",
       "os-en-bodega-central",
       { actorUsuarioId: "u-maestro", origenTipo: "recepcion_bodega_central" },
+      { liberaAsignacion: true },
     );
+  });
+
+  it("SLT-63/R1: la recepcion de una orden en ruta a la central pide liberar la asignacion", async () => {
+    const repo = fakeRepo();
+    await newService(repo).recibirEnBodegaCentral(NUM_GUIA, MAESTRO);
+
+    expect(vi.mocked(repo.recibirEnBodegaCentral).mock.calls[0][4]).toEqual({ liberaAsignacion: true });
+  });
+
+  it("SLT-63/R3: la recepcion de una devolucion pide conservar la asignacion", async () => {
+    const repo = fakeRepo({
+      findByNumGuiaForTransicion: vi.fn(async () =>
+        transicionRow({ estatusValue: "devolviendo_a_bodega_central" }),
+      ),
+    });
+    await newService(repo).recibirEnBodegaCentral(NUM_GUIA, MAESTRO);
+
+    expect(vi.mocked(repo.recibirEnBodegaCentral).mock.calls[0][4]).toEqual({ liberaAsignacion: false });
   });
 
   // --- Caso 139 (STATE-AWARE): devolviendo_a_bodega_central -> por_devolver_a_tienda ---
@@ -114,6 +133,7 @@ describe("RecepcionBodegaCentralService.recibirEnBodegaCentral", () => {
       "devolviendo_a_bodega_central",
       "os-por-devolver-a-tienda",
       { actorUsuarioId: "u-maestro", origenTipo: "recepcion_bodega_central" },
+      { liberaAsignacion: false },
     );
   });
 

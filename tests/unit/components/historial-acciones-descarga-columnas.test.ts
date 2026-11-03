@@ -9,7 +9,8 @@ import {
   filaDescargaHistorialAccion,
 } from "@/app/(app)/historico/acciones/_components/historial-acciones-descarga-columnas";
 import { mensajeLimiteHistorial } from "@/app/(app)/historico/acciones/_components/historial-acciones-descarga";
-import type { HistorialAccionDTO } from "@/lib/types/historial-accion";
+import { accionesDeCategoria, type HistorialAccionDTO } from "@/lib/types/historial-accion";
+import { aDTO } from "@/lib/services/HistorialAccionService";
 
 // FICHA 362 / T6.2 (design §4.6, R30/R38) — las columnas del ARCHIVO y su adaptador.
 
@@ -158,5 +159,63 @@ describe("el mensaje del tope", () => {
     // en `tests/components/HistorialAccionesModule.test.tsx`.
     expect(mensajeLimiteHistorial(5000)).not.toContain("undefined");
     expect(mensajeLimiteHistorial(5000)).not.toContain("NaN");
+  });
+});
+
+describe("SLT-76 (R11) — la fila del rastro de distritos, en pantalla y en descarga", () => {
+  // La fila tal como la escribe `ZonaRepository.update` para un distrito QUITADO y uno AÑADIDO,
+  // pasada por el mismo `aDTO` que usa el listado. Los textos esperados van escritos a mano.
+  const cruda = (valorAnterior: string | null, valorNuevo: string | null) =>
+    aDTO({
+      id: "5b1f7c2e-1a2b-4c3d-8e9f-0a1b2c3d4e5f",
+      createdAt: new Date("2026-11-02T15:00:00.000Z"),
+      accion: "zona_distrito_cambiado",
+      entidadTipo: "zona",
+      entidadEtiqueta: "Zona Norte",
+      actorUsuarioId: null,
+      actorNombre: "Ana Mora",
+      actorRol: "maestro",
+      monto: null,
+      valorAnterior,
+      valorNuevo,
+      loteId: "6c2a8d3f-2b3c-4d4e-9f0a-1b2c3d4e5f60",
+    });
+
+  // Las diez columnas de esta tabla pintan con una funcion; una que no lo hiciera revienta aqui.
+  const pantalla = (fila: HistorialAccionDTO) =>
+    Object.fromEntries(
+      columnasHistorialAcciones.map((c) => {
+        if (typeof c.render !== "function") throw new Error(`la columna ${c.id} no pinta con una funcion`);
+        return [c.id, c.render(fila)];
+      }),
+    );
+
+  it("quitado: etiqueta, categoria y el distrito en «Valor anterior», igual en las dos", () => {
+    const fila = cruda("D1 (C1)", null);
+    const descarga = filaDescargaHistorialAccion(fila);
+    const vista = pantalla(fila);
+
+    expect(descarga.accion).toBe("Cambió los distritos de una zona");
+    expect(descarga.categoria).toBe("Mueve dinero");
+    expect(descarga.entidad).toBe("Zona Norte");
+    expect(descarga.anterior).toBe("D1 (C1)");
+    expect(descarga.nuevo).toBeNull();
+
+    expect(vista.accion).toBe("Cambió los distritos de una zona");
+    expect(vista.categoria).toBe("Mueve dinero");
+    expect(vista.anterior).toBe("D1 (C1)");
+    expect(vista.nuevo).toBe("—");
+  });
+
+  it("añadido: el distrito en «Valor nuevo», igual en las dos", () => {
+    const fila = cruda(null, "D3 (C3)");
+    expect(filaDescargaHistorialAccion(fila).nuevo).toBe("D3 (C3)");
+    expect(filaDescargaHistorialAccion(fila).anterior).toBeNull();
+    expect(pantalla(fila).nuevo).toBe("D3 (C3)");
+    expect(pantalla(fila).anterior).toBe("—");
+  });
+
+  it("el filtro por categoria «Mueve dinero» la encuentra", () => {
+    expect(accionesDeCategoria("mueve_dinero")).toContain("zona_distrito_cambiado");
   });
 });

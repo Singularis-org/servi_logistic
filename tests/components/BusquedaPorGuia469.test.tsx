@@ -406,6 +406,7 @@ describe("469 T12/T13 — la caja (`/wallet`)", () => {
     porcentajeTiendas: "0.00", modoComposicion: "dos_bolsillos" as const, capital: "0.00", signoCapital: "cero" as const,
     deEmpresa: "0.00", signoDeTerceros: "cero" as const, deTercerosAbsoluto: "0.00", estado: "flujo" as const, flujoDesde: "2026-08-25",
     iva: "0.00", signoIva: "cero" as const, // SL-39
+    porCobrarSatelites: "0.00", signoPorCobrarSatelites: "cero" as const, porcentajePorCobrarSatelites: "0.00", deEmpresaEnCaja: "0.00", // SLT-73
   };
   const COMPOSICION = {
     ingresos: {

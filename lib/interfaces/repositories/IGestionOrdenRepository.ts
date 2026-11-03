@@ -365,6 +365,10 @@ export interface IGestionOrdenRepository {
    * guardias en el WHERE (propiedad + no borradas). La consume «Recolectadas hoy», que sale del
    * historial —solo tiene ids— y desde que pinta la card compartida necesita el resto de los
    * datos de la orden. Vacio si `ids` esta vacio.
+   *
+   * SLT-63: la guarda de propiedad es «asignada a mi» O «sin mensajero y con una
+   * `recoleccion_tienda` mia en el historial»: la recepcion en la central libera la asignacion y
+   * la orden recibida tiene que seguir en la lista hasta que la central se la asigne a otro.
    */
   findMisAsignacionesByIds(mensajeroId: string, ids: string[]): Promise<MiAsignacionRow[]>;
 

@@ -23,6 +23,11 @@ import { saldoDe } from "@/lib/utils/conciliacion-satelite";
 // Feature 393 (design §2.3): las dos derivaciones de la cascada «lo que va a la central».
 // La resta vive en la funcion pura; el repositorio solo la llama.
 import { efectivoCubreDescuentos, paraLaCentral } from "@/lib/utils/ingreso-empresa";
+// SLT-76 (R3/R4): el MISMO predicado con el que `revertirConciliacion` rechaza (`con_asientos`).
+import {
+  consolidacionesConDinero,
+  type ClienteConciliacionConDinero,
+} from "@/lib/repositories/_shared/conciliacion-con-dinero";
 
 // Estados/destino relevantes (fuente de verdad en lib/types/cierre.ts). El cierre de
 // bodega se crea SIEMPRE en `solicitado`; consolida SOLO cierre_dia `aprobado`.
@@ -30,7 +35,11 @@ const ESTADO_SOLICITADO = "solicitado";
 const ESTADO_APROBADO = "aprobado";
 const DESTINO_SATELITE = "bodega_satelite";
 
-type CierreBodegaPrismaClient = Pick<PrismaClient, "cierreDia" | "cierreBodega" | "$transaction">;
+// SLT-76 (R3/R4): + los dos libros que lee `consolidacionesConDinero` para derivar `desmarcable`.
+type CierreBodegaPrismaClient = Pick<
+  PrismaClient,
+  "cierreDia" | "cierreBodega" | "$transaction" | "walletMovimiento" | "conciliacionBodegaAjuste"
+>;
 
 // Money-safe: Decimal -> string escala 2 (nunca number/parseFloat).
 function totalesToString(r: {
@@ -103,10 +112,17 @@ type BodegaResumenRow = Prisma.CierreBodegaGetPayload<{ select: typeof BODEGA_RE
 //
 // La RESTA no se escribe aqui: la hacen las funciones puras de `lib/utils/ingreso-empresa.ts`.
 // El `.toFixed(2)` de los snapshots es la frontera del dinero (Decimal -> STRING), no logica.
-export function toBodegaResumenRow(r: BodegaResumenRow): CierreBodegaResumenRow {
+//
+// SLT-76 (R3/R4): `conDinero` es OBLIGATORIO —sin el no se puede decir si se ofrece «Desmarcar»—
+// y sale de UNA llamada a `consolidacionesConDinero` por lectura (`aResumenRows`).
+export function toBodegaResumenRow(
+  r: BodegaResumenRow,
+  conDinero: ReadonlySet<string>,
+): CierreBodegaResumenRow {
   const totales = totalesToString(r);
   const pagoMensajero = r.totalPagoMensajero.toFixed(2);
   const ganaBodega = r.totalIngresoBodegaRechazos.toFixed(2);
+  const esperado = paraLaCentral(totales.general, pagoMensajero, ganaBodega);
   return {
     cierreBodegaId: r.id,
     zonaId: r.zonaId,
@@ -122,7 +138,7 @@ export function toBodegaResumenRow(r: BodegaResumenRow): CierreBodegaResumenRow 
     resueltoAt: r.resueltoAt ? r.resueltoAt.toISOString() : null,
     motivoRechazo: r.motivoRechazo,
     // Feature 393 (R9/R38): lo que esta bodega le entrega a la central. Puede ser NEGATIVO.
-    paraLaCentral: paraLaCentral(totales.general, pagoMensajero, ganaBodega),
+    paraLaCentral: esperado,
     // Feature 393 (R37): contra el EFECTIVO, no contra el general.
     efectivoCubreDescuentos: efectivoCubreDescuentos(totales.efectivo, pagoMensajero, ganaBodega),
     // ⭑ FICHA 431 (R26/R28) — la marca, derivada AQUI por el mismo motivo que los dos de
@@ -130,15 +146,31 @@ export function toBodegaResumenRow(r: BodegaResumenRow): CierreBodegaResumenRow 
     // que ve la bodega satelite y la que ve la central salen del mismo sitio y no pueden
     // discrepar sobre si el dinero llego.
     conciliado: r.conciliadoAt !== null,
+    // SLT-76 (R3/R4): «Desmarcar» se ofrece SOLO si revertir no devolveria `con_asientos`.
+    desmarcable: r.conciliadoAt !== null && !conDinero.has(r.id),
     montoRecibido: r.montoRecibido === null ? null : r.montoRecibido.toFixed(2),
-    // R17/R18/R20: la MISMA `saldoDe` que usa `/wallet/satelites`, sobre el EFECTIVO. La resta
-    // se hace aqui con `Prisma.Decimal`; la pantalla no resta dinero.
-    faltaPorRecibir: saldoDe(r.totalEfectivo, r.montoRecibido).toFixed(2),
+    // SLT-73 (R8): la MISMA `saldoDe` que usa `/wallet/satelites`, sobre `paraLaCentral` (D3
+    // reabrio la Q2 de la 431: ya no sobre el efectivo). La pantalla no resta dinero.
+    faltaPorRecibir: saldoDe(new Prisma.Decimal(esperado), r.montoRecibido).toFixed(2),
     conciliadoAt: r.conciliadoAt ? r.conciliadoAt.toISOString() : null,
     conciliadoPorNombre:
       r.conciliadoPorUsuario === null ? null : nombreCompletoUsuario(r.conciliadoPorUsuario),
     conciliadoNota: r.conciliadoNota,
   };
+}
+
+/**
+ * SLT-76 (R3/R4) — las filas de una lectura con `desmarcable` derivado: UNA llamada al predicado
+ * con las ids de las conciliadas de la lectura (pagina, conjunto o detalle), nunca una por fila.
+ * La comparten las lecturas de este repositorio y las de `CierresBodegaAdminRepository`.
+ */
+export async function aResumenRows(
+  cliente: ClienteConciliacionConDinero,
+  rows: readonly BodegaResumenRow[],
+): Promise<CierreBodegaResumenRow[]> {
+  const conciliadas = rows.filter((r) => r.conciliadoAt !== null).map((r) => r.id);
+  const conDinero = await consolidacionesConDinero(cliente, conciliadas);
+  return rows.map((r) => toBodegaResumenRow(r, conDinero));
 }
 
 /**
@@ -438,7 +470,7 @@ export class CierreBodegaRepository implements ICierreBodegaRepository {
       orderBy: ORDEN_CIERRES_BODEGA,
       select: BODEGA_RESUMEN_SELECT,
     });
-    return rows.map(toBodegaResumenRow);
+    return aResumenRows(this.prisma, rows);
   }
 
   /**
@@ -467,6 +499,6 @@ export class CierreBodegaRepository implements ICierreBodegaRepository {
       }),
       this.prisma.cierreBodega.count({ where }), // R41: el total del CONJUNTO
     ]);
-    return { items: rows.map(toBodegaResumenRow), total };
+    return { items: await aResumenRows(this.prisma, rows), total };
   }
 }

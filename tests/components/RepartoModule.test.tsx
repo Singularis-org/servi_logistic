@@ -3110,3 +3110,37 @@ describe("RepartoModule — guardar la gestión cuando la base tropieza (ficha 4
     expect(refreshMock.mock.calls.length).toBe(refrescosAntes);
   });
 });
+
+// ---------------- SLT-59 (R65): sin la primera ruta del día ----------------
+//
+// SLT-79 (2026-11-03): el disparo de salida de 1 km (R62) se retiró; la primera ruta del día solo
+// se calcula al pulsar «Sincronizar ruta». Lo que sigue en pie es cómo se ve la pantalla mientras
+// esa ruta no existe: igual que sin ruta.
+describe("RepartoModule — sin la primera ruta del día (SLT-59, R65)", () => {
+  const RUTA_SIN_PRIMERA: RutaResumenDTO = {
+    ...RUTA_VIGENTE,
+    origenFuente: "gps",
+    paradasSinOptimizar: 2,
+  };
+  const PARADAS = [
+    makeAsignacion({ id: "s1", numRemision: "REM-S1", numGuia: 2001 }),
+    makeAsignacion({
+      id: "s2",
+      numRemision: "REM-S2",
+      numGuia: 2002,
+      latitud: 9.95,
+      longitud: -84.1,
+    }),
+  ];
+
+  it("R65: sin la primera ruta se ve lo de sin ruta: aviso, «Pendiente de optimizar» y marcadores sin número", () => {
+    renderModule({ porGestionar: PARADAS, ruta: RUTA_SIN_PRIMERA });
+    expect(screen.getByText("El orden mostrado no está actualizado")).toBeInTheDocument();
+    expect(screen.getAllByText("Pendiente de optimizar").length).toBeGreaterThan(0);
+    const props = rutaMapaMock.mock.calls.at(-1)?.[0] as {
+      paradas: { id: string; secuencia: number | null }[];
+    };
+    expect(props.paradas.map((p) => p.id)).toEqual(["s1", "s2"]);
+    expect(props.paradas.every((p) => p.secuencia === null)).toBe(true);
+  });
+});

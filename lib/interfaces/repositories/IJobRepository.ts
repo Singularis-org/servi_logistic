@@ -130,6 +130,10 @@ export interface IJobRepository {
   findByDedupeKeys(keys: string[]): Promise<JobDTO[]>;
 }
 
+// SLT-79: aqui vivian `IJobRepositoryMovible` (SLT-59 R76/R77, encolado con debounce deslizante)
+// e `ILectorJobPendiente` (SLT-74). Los dos servian solo al job de la primera ruta del dia, que ya
+// no existe: la primera ruta la calcula solo el boton «Sincronizar ruta».
+
 /**
  * Cliente transaccional aceptado por `enqueue(..., tx)`: el `tx` que Prisma pasa al
  * callback de `$transaction`. Se tipa por lo que el repo usa (`$executeRaw`/`$queryRaw`),

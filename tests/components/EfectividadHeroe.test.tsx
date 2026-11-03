@@ -12,14 +12,23 @@
 //        borde de marca)            → «la cifra viste el rango de héroe…» y «…lleva el borde de marca»
 //   M2 · el estado `sin_cerradas` vuelve a pintar «0 %»
 //                                    → «con 0 de 27 cerradas no hay porcentaje: hay una frase»
-//   M3 · la base chica suelta su cifra
-//                                    → «con 3 de 64 con desenlace, la cifra de abajo se calla»
+//   M3 · vuelve el suelo de base (SLT-62 lo quitó): una base chica se calla su cifra
+//                                    → «Jason Barrios: 11 de 12 pinta 91,7 %» y «la línea de
+//                                      abajo se pinta con 3 y con 8 de 8 con desenlace»
 //   M4 · el `null` se degrada a guion en vez de a frase
-//                                    → los dos casos de arriba comprueban que NO hay `SIN_MONTO`
+//                                    → el caso de Puntarenas comprueba que NO hay `SIN_MONTO`
+//   M5 · vuelve cualquier aviso de base pequeña («hacen falta…», «Son muy pocas…»)
+//                                    → el bloque SLT-62 afirma que no aparece ninguno
 //
-// Las poblaciones son las MEDIDAS en producción el 2026-09-17, no inventadas: el período del
-// diseño (790 / 424 / 265), la zona Puntarenas (27 cargadas, 0 con desenlace) y la zona El Coco
-// (64 cargadas, 3 con desenlace).
+// Las poblaciones son las MEDIDAS, no inventadas: el período del diseño (790 / 424 / 265), la
+// zona Puntarenas (27 cargadas, 0 con desenlace) y la zona El Coco (64 cargadas, 3 con desenlace),
+// en producción el 2026-09-17; y el recorte de Jason Barrios (12 cargadas, 11 en Entregado),
+// `progress/verificacion-analitica-monitoreo-2026-10-29.md` § 3.
+//
+// ⚠ LAS CIFRAS DEL BLOQUE SLT-62 SON LITERALES, y es a propósito: «91,7 %» es lo que el cliente
+// vio en «Detalle gestión» y es el contrato. Compararlas contra `formatearValor` las dejaría verdes
+// aunque el formateador cambiara. Se toleran espacios entre la cifra y el «%» porque `Intl` los
+// pone o no según el locale (hoy `es-CR` da «91,7%», sin espacio).
 
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
@@ -156,51 +165,57 @@ describe("Zona Puntarenas: 27 cargadas y ninguna con desenlace (medido)", () => 
 });
 
 /* -------------------------------------------------------------------------- */
-/* M3 — base demasiado chica                                                   */
+/* SLT-62 — base chica: la cifra se escribe, sin aviso                         */
 /* -------------------------------------------------------------------------- */
 
-describe("Zona El Coco: 64 cargadas y sólo 3 con desenlace (medido)", () => {
-  // El % sobre cargadas SÍ se escribe (64 ≥ 20). El de abajo no: con 3, cada orden vale 33
-  // puntos y la cifra saltaría sola.
-  it("con 3 de 64 con desenlace, la cifra de abajo se calla y dice por qué", () => {
-    render(<EfectividadHeroe madurez={madurez(64, 2, 61)} />);
+/** Ningún aviso de base pequeña, con ninguna redacción de las que hubo (SLT-62, R6). */
+const AVISO_BASE_CHICA = /hacen falta|baile solo|muy pocas|mover[íi]a/i;
 
-    expect(screen.getByText(norm(formatearValor(2 / 64, "porcentaje")))).toBeInTheDocument();
-    expect(screen.getByText(/Sólo 3 de 64 órdenes tienen desenlace/)).toBeInTheDocument();
-    // 2/3 = 66,7 % — la cifra que NO puede aparecer.
-    expect(screen.queryByText(norm(formatearValor(2 / 3, "porcentaje")))).toBeNull();
+describe("SLT-62 · base chica: el porcentaje se escribe limpio", () => {
+  // R4. El caso real que abrió la ficha: 12 cargadas, 11 en Entregado, 1 viva. La tarjeta se
+  // callaba el porcentaje y «Detalle gestión», en la misma pantalla, daba 91,7 %.
+  it("Jason Barrios: 11 de 12 pinta 91,7 %", () => {
+    render(<EfectividadHeroe madurez={madurez(12, 11, 1)} />);
+
+    expect(screen.getByText(/^91,7\s*%$/)).toBeInTheDocument();
+    expect(screen.getByText("Entregado: 11")).toBeInTheDocument();
+    expect(screen.getByText("de las 12 órdenes que entraron")).toBeInTheDocument();
+    // El titular sustituto de antes («Entregado: 11 de 12 órdenes») no vuelve.
+    expect(screen.queryByText(/Entregado: \d+ de \d+ órdenes/)).toBeNull();
+    // R6.
+    expect(screen.queryByText(AVISO_BASE_CHICA)).toBeNull();
+    expect(screen.queryByText(SIN_MONTO)).toBeNull();
   });
 
-  // El suelo y la tolerancia se escriben DERIVADOS de `lib/config/efectividad-cohorte.ts`: si
-  // alguien ajusta la tolerancia, el texto la sigue sin que nadie lo reescriba.
-  it("la frase dice cuántas harían falta, y sale del umbral configurado", () => {
+  // R5. Dos bases chicas de la línea de abajo, medidas el 2026-09-17: la zona El Coco (3 con
+  // desenlace de 64) y el recorte de un mensajero con la cohorte entera cerrada (8 de 8).
+  it("la línea de abajo se pinta con 3 y con 8 de 8 con desenlace", () => {
     render(<EfectividadHeroe madurez={madurez(64, 2, 61)} />);
 
-    expect(screen.getByText(/hacen falta 20 para que este porcentaje no baile solo/)).toBeInTheDocument();
-  });
+    expect(
+      screen.getByText(/^66,7\s*% de las 3 órdenes con desenlace terminaron en Entregado$/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(AVISO_BASE_CHICA)).toBeNull();
+    cleanup();
 
-  // ⚠ MEDIDO EN LA APP el 2026-09-17, con el recorte de un mensajero: la frase salía «Sólo 8 de
-  // 8 órdenes tienen desenlace», que se lee como un descuido — «8 de 8» es todas. Cuando la
-  // cohorte entera cerró, lo que falta no es que hayan cerrado pocas: es que son pocas.
-  it("con la cohorte entera cerrada no escribe «8 de 8»", () => {
     render(<EfectividadHeroe madurez={madurez(8, 6, 0)} />);
 
-    expect(screen.queryByText(/Sólo 8 de 8/)).toBeNull();
     expect(
-      screen.getByText(/Las 8 órdenes tienen desenlace, pero hacen falta 20/),
+      screen.getByText(/^75\s*% de las 8 órdenes con desenlace terminaron en Entregado$/),
     ).toBeInTheDocument();
+    // Y arriba también: 6 de 8 cargadas.
+    expect(screen.getByText(/^75\s*%$/)).toBeInTheDocument();
+    expect(screen.queryByText(AVISO_BASE_CHICA)).toBeNull();
   });
 
-  it("con las CARGADAS por debajo del suelo tampoco se escribe la de arriba: se enseñan las órdenes", () => {
-    // 12 cargadas, 4 entregadas, 2 vivas → 10 con desenlace. Ninguna de las dos bases llega a 20.
-    render(<EfectividadHeroe madurez={madurez(12, 4, 2)} />);
+  // R6. Ni el aviso viejo de «hacen falta 20» ni el de «Son muy pocas» con la base más chica
+  // posible: una orden, entregada.
+  it("con una sola orden tampoco hay aviso de base pequeña", () => {
+    render(<EfectividadHeroe madurez={madurez(1, 1, 0)} />);
 
-    // NINGUNA de las dos cifras: ni 4/12 arriba ni 4/10 abajo.
-    expect(screen.queryByText(norm(formatearValor(4 / 12, "porcentaje")))).toBeNull();
-    expect(screen.queryByText(norm(formatearValor(4 / 10, "porcentaje")))).toBeNull();
-    expect(screen.getByText("Entregado: 4 de 12 órdenes")).toBeInTheDocument();
-    expect(screen.getByText(/Son muy pocas para un porcentaje/)).toBeInTheDocument();
-    expect(screen.queryByText(SIN_MONTO)).toBeNull();
+    expect(screen.getByText(/^100\s*%$/)).toBeInTheDocument();
+    expect(screen.queryByText(AVISO_BASE_CHICA)).toBeNull();
+    expect(screen.queryByText(/Entregado: \d+ de \d+ órdenes/)).toBeNull();
   });
 });
 

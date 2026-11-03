@@ -16,6 +16,7 @@ import type { ZonaDTO } from "@/lib/types/zona";
  * a propósito para que la búsqueda solo pueda encontrarla en los rótulos.
  */
 const impactoZonaCentralMock = vi.fn();
+const listarArbolMock = vi.fn();
 vi.mock("@/lib/actions/zonas", () => ({
   listarZonas: vi.fn(),
   obtenerZona: vi.fn(),
@@ -25,7 +26,7 @@ vi.mock("@/lib/actions/zonas", () => ({
   impactoZonaCentral: (...a: unknown[]) => impactoZonaCentralMock(...a),
 }));
 vi.mock("@/lib/actions/geografia", () => ({
-  listarArbolGeografico: vi.fn(),
+  listarArbolGeografico: (...a: unknown[]) => listarArbolMock(...a),
 }));
 vi.mock("@/hooks/useToast", () => ({
   useToast: () => ({
@@ -64,6 +65,17 @@ function arbol(): ProvinciaArbolDTO[] {
               nombre: "Distrito Uno",
               zonaId: "z1",
               zonaNombre: "Norte",
+              zonas: [{ id: "z1", nombre: "Norte" }],
+              zonaEspecial: false,
+              activo: true,
+            },
+            {
+              // SLT-75 (R15): libre. «Distrito Uno» es de «Norte» y al crear sale bloqueado.
+              id: "d2",
+              nombre: "Distrito Dos",
+              zonaId: null,
+              zonaNombre: null,
+              zonas: [],
               zonaEspecial: false,
               activo: true,
             },
@@ -90,6 +102,8 @@ function fila(nombre: string): HTMLElement {
 beforeEach(() => {
   vi.clearAllMocks();
   impactoZonaCentralMock.mockResolvedValue({ status: "ok", impacto: [] });
+  // SLT-75 (R20): Crear/Editar leen el árbol al abrir; sin él, el formulario no se abre.
+  listarArbolMock.mockResolvedValue({ status: "ok", provincias: arbol() });
 });
 
 afterEach(cleanup);
@@ -150,9 +164,9 @@ describe("SLT-51/R10 — ningún texto visible de «Zonas» dice «central»", (
     await user.type(screen.getByRole("textbox", { name: "Nombre de la zona" }), "Oeste");
     await user.type(screen.getByRole("textbox", { name: "Número SINPE" }), "80000000");
     await user.type(screen.getByRole("textbox", { name: "A nombre de" }), "Titular de Prueba");
-    await user.type(screen.getByLabelText("Buscar en el catálogo geográfico"), "Uno");
+    await user.type(screen.getByLabelText("Buscar en el catálogo geográfico"), "Dos");
     await user.click(
-      await screen.findByRole("checkbox", { name: /^Seleccionar distrito Distrito Uno\b/ }),
+      await screen.findByRole("checkbox", { name: /^Seleccionar distrito Distrito Dos\b/ }),
     );
     await user.click(screen.getByRole("checkbox", { name: "Zona de bodega principal" }));
     await user.click(screen.getByRole("button", { name: "Guardar" }));

@@ -3,7 +3,13 @@ import fs from "fs";
 import path from "path";
 import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
-import { HAY_BASE_DE_DATOS, crearPrismaDeTest, enTransaccionRevertida } from "./_postgres-real";
+import {
+  CLAVE_LOCK_ESCRITURA_REAL,
+  HAY_BASE_DE_DATOS,
+  crearPrismaDeTest,
+  enTransaccionRevertida,
+  serializarEscriturasReales,
+} from "./_postgres-real";
 import { quitarComentarios } from "../../fixtures/sin-comentarios";
 
 // Feature 205 (T1.4) — cobertura de la migracion `*_liquidacion_reparto`. Cubre R29 (la barrera
@@ -63,9 +69,9 @@ import { quitarComentarios } from "../../fixtures/sin-comentarios";
 // el test se pondria rojo por «no fallo lo que tenia que fallar». Lo unico que lo salta es la
 // ausencia de `DATABASE_URL`, y entonces vitest lo marca SKIPPED (nunca passed).
 //
-// AL LEER UNA CORRIDA EN ROJO: si el `beforeAll` del bloque B revienta, vitest lista sus 8 tests
-// como SKIPPED y el fichero como FAILED. Ese «8 skipped» es el SINTOMA del fallo del hook, no una
-// guarda de entorno: con la base alcanzable y el hook sano, este fichero corre sus 24 tests y
+// AL LEER UNA CORRIDA EN ROJO: si el `beforeAll` del bloque B revienta, vitest lista sus 10 tests
+// como SKIPPED y el fichero como FAILED. Ese «10 skipped» es el SINTOMA del fallo del hook, no una
+// guarda de entorno: con la base alcanzable y el hook sano, este fichero corre sus 25 tests y
 // salta CERO.
 
 const ROOT = path.join(__dirname, "..", "..", "..");
@@ -358,6 +364,8 @@ interface Medicion {
   columnasDelPagoAntes: string[];
   columnasDelPagoTrasElDown: string[];
   tablasTrasElDown: string[];
+  /** SLT-76 R12: los locks que la transaccion tiene CONCEDIDOS justo antes del primer DDL. */
+  locksAntesDelDdl: { lockDelAviso: boolean; usuarioAccessExclusive: boolean };
 }
 
 describeSiHayBase("205 / bloque B — las restricciones RECHAZAN de verdad (Postgres real)", () => {
@@ -379,6 +387,16 @@ describeSiHayBase("205 / bloque B — las restricciones RECHAZAN de verdad (Post
    * ni el usuario, ni las filas sobreviven al test.
    */
   async function medir(tx: Tx): Promise<Medicion> {
+    // SLT-76 R12 (D32). Los DOS locks van ANTES del primer DDL y en el orden del protocolo del
+    // repo: primero el aviso de la 227 (serializa con todo test que lo siga), despues `usuario`
+    // en el modo mas fuerte que el DDL va a pedir. Sin ellos, el `DROP TABLE` del down subia a
+    // `AccessExclusiveLock` sobre `usuario` a mitad de transaccion mientras otro test del shard
+    // la escribia, y CI moria con 40P01. Tomado de entrada, ese escritor espera en vez de cerrar
+    // un ciclo. Coste: mientras dura `medir`, el shard espera para leer `usuario` (segundos).
+    await serializarEscriturasReales(tx);
+    await tx.$executeRawUnsafe(`LOCK TABLE public."usuario" IN ACCESS EXCLUSIVE MODE`);
+    const locksAntesDelDdl = await locksConcedidos(tx);
+
     const esquema = `t205_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
     await tx.$executeRawUnsafe(`CREATE SCHEMA "${esquema}"`);
 
@@ -539,7 +557,35 @@ describeSiHayBase("205 / bloque B — las restricciones RECHAZAN de verdad (Post
       columnasDelPagoAntes,
       columnasDelPagoTrasElDown,
       tablasTrasElDown,
+      locksAntesDelDdl,
     };
+  }
+
+  /**
+   * SLT-76 R12: que locks tiene CONCEDIDOS esta misma sesion (`pg_backend_pid()`). El aviso de
+   * una sola clave `bigint` aparece en `pg_locks` partido en dos mitades de 32 bits
+   * (`classid` = alta, `objid` = baja) con `objsubid = 1`.
+   */
+  async function locksConcedidos(
+    tx: Tx,
+  ): Promise<{ lockDelAviso: boolean; usuarioAccessExclusive: boolean }> {
+    const filas = await tx.$queryRawUnsafe<{ aviso: boolean; usuario: boolean }[]>(
+      `SELECT
+         EXISTS (
+           SELECT 1 FROM pg_locks
+            WHERE pid = pg_backend_pid() AND granted AND locktype = 'advisory'
+              AND objsubid = 1
+              AND ((classid::bigint << 32) | objid::bigint) = $1::bigint
+         ) AS aviso,
+         EXISTS (
+           SELECT 1 FROM pg_locks
+            WHERE pid = pg_backend_pid() AND granted AND locktype = 'relation'
+              AND relation = 'public.usuario'::regclass
+              AND mode = 'AccessExclusiveLock'
+         ) AS usuario`,
+      CLAVE_LOCK_ESCRITURA_REAL,
+    );
+    return { lockDelAviso: filas[0].aviso, usuarioAccessExclusive: filas[0].usuario };
   }
 
   /**
@@ -705,6 +751,13 @@ describeSiHayBase("205 / bloque B — las restricciones RECHAZAN de verdad (Post
     );
     return { id };
   }
+
+  it("SLT-76 R12: antes del primer DDL tiene el aviso de la 227 Y `usuario` en ACCESS EXCLUSIVE", () => {
+    // Los dos, concedidos en la misma sesion, medidos en `pg_locks` justo antes de `CREATE
+    // SCHEMA`. Sin el aviso, este archivo no se serializa con el resto del protocolo; sin el
+    // `LOCK TABLE`, el down sube de nivel a mitad de transaccion y vuelve el 40P01 de D32.
+    expect(medicion.locksAntesDelDdl).toEqual({ lockDelAviso: true, usuarioAccessExclusive: true });
+  });
 
   it("la LINEA BASE es el estado ANTERIOR a la migracion, este o no aplicada en `public`", () => {
     // La asercion que hace que este bloque NO dependa del estado de la base, y que tiene

@@ -56,3 +56,25 @@ export function fechaDiaMovimientoCR(valor: string): string {
     instante.getUTCMilliseconds() === 0;
   return esMedianocheUtc ? fechaDiaISO(texto) : fechaCalendarioCR(instante);
 }
+
+/**
+ * SLT-76 (R21) — el DIA de Costa Rica de un INSTANTE (`solicitadoAt`, `resueltoAt`,
+ * `cierreSolicitadoAt`), para las descargas de cierres. Vivia copiado como `diaCR` privado en
+ * cuatro modulos de columnas; aqui queda uno solo.
+ *
+ * Hermana de `fechaDiaMovimientoCR`, pero NO la misma: alli la medianoche UTC exacta es una
+ * fecha `@db.Date` y se respeta su dia; aqui todo valor es un instante `*At`, y un cierre
+ * solicitado a las `00:00:00.000Z` son las 18:00 del dia ANTERIOR en Costa Rica. Por eso no hay
+ * excepcion de medianoche:
+ *
+ * - **Lo que no es un instante** (texto vacio o la SONDA de la guardia de datos sensibles): cae a
+ *   `fechaDiaISO`, que lo devuelve TAL CUAL y conserva su rastro. Por eso `String(valor)` y una
+ *   expresion regular, sin llamar metodos sobre el valor recibido.
+ * - **Cualquier instante valido**, medianoche UTC incluida: `fechaCalendarioCR`.
+ */
+export function fechaDiaInstanteCR(valor: string): string {
+  const texto = String(valor);
+  const instante = new Date(texto);
+  if (!DIA_ISO.test(texto) || Number.isNaN(instante.getTime())) return fechaDiaISO(texto);
+  return fechaCalendarioCR(instante);
+}

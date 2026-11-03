@@ -25,7 +25,8 @@ const ROL_APP = "servi_app";
 // no lo mueve: las dos FK de `distrito_zona_especial` apuntan a plataforma y a `organizacion`.
 // SL-40 (20261023130100) suma una: la de `cobro_plataforma_movimiento` a `orden`.
 // SLT-56 (20261029120000) suma tres: las de `gestion_pago_mensajero_ajuste` a gestion, cierre y actor.
-const TRIGGERS_MISMA_EMPRESA = 154;
+// SLT-73 (20261031140100) suma dos: las de `conciliacion_bodega_ajuste` a `cierre_bodega` y a `usuario`.
+const TRIGGERS_MISMA_EMPRESA = 156;
 
 /** Lo que el punto 6 espera encontrar en el catalogo de la base. */
 export interface ContratoRls {

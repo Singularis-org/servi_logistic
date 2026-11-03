@@ -1765,6 +1765,25 @@ export interface IOrdenRepository {
    * Ordenadas por `createdAt asc`, que es el criterio de recorte de R38.
    */
   findParadasEnReparto(mensajeroId: string): Promise<ParadaRutaRow[]>;
+  /**
+   * SLT-59 (glosario «Asignadas del dia», R64, R67) — las ordenes del mensajero, no borradas, en
+   * `por_recoger` dentro del dia en curso (`fecha_reparto` nula o `<= dia`, el predicado de la
+   * recogida) o ya en `en_reparto`; `recogidas` = las de ese conjunto en `en_reparto`. `dia` va en
+   * la convencion `@db.Date` (`startOfDayCR`). Una sola lectura.
+   */
+  contarAsignadasDelDia(
+    mensajeroId: string,
+    dia: Date,
+  ): Promise<{ asignadas: number; recogidas: number }>;
+  /**
+   * SLT-79 — instante de la ULTIMA recogida del mensajero desde `desde` (inicio del dia de Costa
+   * Rica en UTC, `inicioDelDiaCREnUtc`: se compara con `created_at`, que es `timestamp`). «Recogida»
+   * = fila de `orden_historial_estado` con `origen_tipo = 'recoleccion'` (arista #11
+   * `por_recoger -> en_reparto`, la que escribe `recogerLote`) y el mensajero como actor, sobre una
+   * orden que sigue asignada a el y no borrada: las mismas que cuenta `contarAsignadasDelDia` como
+   * recogidas. Acotada a la empresa del mensajero. `null` si no hay ninguna.
+   */
+  ultimaRecogidaDelDia(mensajeroId: string, desde: Date): Promise<Date | null>;
 
   /**
    * FICHA 454 (R54/R55): de `ids`, las ordenes `en_reparto` con una gestion PENDIENTE de confirmar
@@ -2069,14 +2088,18 @@ export interface IOrdenRepository {
    * (`estatus.value = origenValue`, pasado por el service) + no borrada (`deletedAt IS NULL`); origen
    * pre-leido bajo la misma guarda y append del historial (`origenTipo` = el pasado en `historial`,
    * `recepcion_bodega_central` en ambos casos) en la MISMA tx, SOLO si transiciono. Devuelve `true`
-   * si afecto 1 fila (recibida), `false` si 0 (ya no estaba en el origen -> race). NO toca
-   * `mensajeroAsignadoId` ni `numGuia` (R18).
+   * si afecto 1 fila (recibida), `false` si 0 (ya no estaba en el origen -> race). Nunca toca
+   * `numGuia`. SLT-63 acota 138/R18: con `opciones.liberaAsignacion` el mismo UPDATE limpia
+   * `mensajeroAsignadoId`, `asignadoAt` y `fechaReparto` (la recoleccion llega con el recolector
+   * puesto); la devolucion (139) pasa `false` y conserva la asignacion. Obligatorio, sin valor por
+   * defecto: quien llama tiene que decidirlo.
    */
   recibirEnBodegaCentral(
     ordenId: string,
     origenValue: string,
     destinoEstatusId: string,
     historial: HistorialContexto,
+    opciones: { liberaAsignacion: boolean },
   ): Promise<boolean>;
 
   // --- Feature 157: recoleccion en tienda por el mensajero (R3-R5, R26-R38) ---

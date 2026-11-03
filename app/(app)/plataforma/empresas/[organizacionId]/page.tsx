@@ -88,8 +88,11 @@ async function leerPlanActual(
  */
 export default async function EmpresaDetallePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ organizacionId: string }>;
+  /** SLT-66 (design §6.6; R33): `?plan=…` llega desde «Asignar a una empresa» del detalle del plan. */
+  searchParams?: Promise<{ plan?: string | string[] }>;
 }) {
   const actor = await resolveActorFromSession();
   if (!actor || !esPlataforma(actor.rol)) notFound();
@@ -102,6 +105,10 @@ export default async function EmpresaDetallePage({
   ]);
   if (r.estado !== "ok") notFound();
   const planActual = await leerPlanActual(actor, plan, asignables);
+  // R33: solo un plan de la lista de asignables; cualquier otro valor se ignora.
+  const planPedido = (await searchParams)?.plan;
+  const planPreseleccionado =
+    typeof planPedido === "string" && asignables?.some((p) => p.id === planPedido) ? planPedido : undefined;
 
   const { empresa } = r;
   return (
@@ -124,6 +131,7 @@ export default async function EmpresaDetallePage({
           // SLT-58 §11.5: el rango sale del reloj del servidor, el mismo que valida el servicio (R30).
           rangoInicioCiclo={rangoDelInicioDelCiclo(new Date())}
           previsualizarAsignacion={previsualizarAsignacionPlanAction}
+          planPreseleccionado={planPreseleccionado}
         />
 
         <section aria-labelledby="nucleo-titulo" className="flex flex-col gap-3">

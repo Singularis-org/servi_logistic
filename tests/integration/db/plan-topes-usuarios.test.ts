@@ -252,11 +252,13 @@ describeSiHayBase("SL-24 — tope de usuarios activos por rol en la base (R14, R
     const r = await revertida(base, async (tx) => {
       const c = await caso(tx);
       const maestro = id(await c.crear("maestro"));
-      const roles: RolValue[] = ["maestro", "admin", "mensajero", "adminTienda", "adminSatelite"];
+      // SLT-66 R1, R3: el maestro ya no lleva tope (su alta al tope es aceptación en `plan-maestro-sin-tope`).
+      const roles: RolValue[] = ["admin", "mensajero", "adminTienda", "adminSatelite"];
       const antes = await Promise.all(roles.map((rol) => c.activos(rol)));
       // Cada rol con tope justo en su uso: cualquier alta de un rol con tope se rechazaría.
       await conPlan(c, Object.fromEntries(roles.map((rol, i) => [rol, antes[i]])));
-      expect(await rechazo(() => c.crear("maestro").then((x) => ("error" in x ? Promise.reject(x.error) : x)))).toBeInstanceOf(
+      // SLT-66 R2: el rechazo de control se prueba con admin.
+      expect(await rechazo(() => c.crear("admin").then((x) => ("error" in x ? Promise.reject(x.error) : x)))).toBeInstanceOf(
         TopeDelPlanAlcanzado,
       );
       const sufijo = randomUUID().replace(/-/g, "").slice(0, 12);

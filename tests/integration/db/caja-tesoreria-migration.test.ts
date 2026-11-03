@@ -107,6 +107,10 @@ const TIPO_LEGITIMO_POR_CATEGORIA: Record<WalletMovimientoCategoria, WalletMovim
   // SL-45: el pago de la empresa a la plataforma sale de la caja. El CHECK que lo admite es el de la
   // migracion `20261024130100`; lo prueba `migracion-sl45-ida-y-vuelta.test.ts`.
   egreso_pago_plataforma: "egreso",
+  // SLT-73: la diferencia de la satelite al conciliar. El CHECK que las admite es el de la migracion
+  // `20261031140100_slt73_ajuste_conciliacion`.
+  egreso_diferencia_satelite: "egreso",
+  ingreso_diferencia_satelite: "ingreso",
 };
 
 const COMBINACIONES_LEGITIMAS = (
@@ -140,6 +144,9 @@ const AGREGADAS_459: readonly string[] = [
   // SL-45 (2026-10-24): el pago de la empresa a la plataforma, tambien POSTERIOR a la foto de la 173.
   // Mismo criterio.
   "egreso_pago_plataforma",
+  // SLT-73 (2026-10-31): la diferencia de la satelite, tambien POSTERIOR a la foto de la 173.
+  "egreso_diferencia_satelite",
+  "ingreso_diferencia_satelite",
 ];
 const COMBINACIONES_DE_LA_173 = COMBINACIONES_LEGITIMAS.filter((c) => !AGREGADAS_459.includes(c.categoria));
 const SEED_DE_LA_173 = WALLET_MOVIMIENTO_CATEGORIA_SEED.filter((c) => !AGREGADAS_459.includes(c));
@@ -576,9 +583,9 @@ describeSiHayBase("T A.2 — el CHECK categoria↔tipo, contra Postgres (R45/R46
       });
     });
 
-    // 17 de la 173 + 4 de la 459 + 2 de la 461 + 2 de la 457 + 2 de la 458-B + 1 de SL-45: el CHECK de HOY
-    // (migracion 20261024130100), menos el pago a la plataforma, que va aparte (arriba).
-    expect(resultado).toHaveLength(27);
+    // 17 de la 173 + 4 de la 459 + 2 de la 461 + 2 de la 457 + 2 de la 458-B + 1 de SL-45 + 2 de SLT-73:
+    // el CHECK de HOY (migracion 20261031140100), menos el pago a la plataforma, que va aparte (arriba).
+    expect(resultado).toHaveLength(29);
     expect(
       resultado.map((f) => `${f.tipo}/${f.categoria}`).sort(),
     ).toEqual(LEGITIMAS_SIN_TOPE.map((c) => `${c.tipo}/${c.categoria}`).sort());
@@ -608,9 +615,9 @@ describeSiHayBase("T A.2 — el CHECK categoria↔tipo, contra Postgres (R45/R46
       ),
     ];
     expect(nombradasEnElCheck.sort()).toEqual([...etiquetasDelEnum].sort());
-    // 17 de la 173 + 4 de la 459 + 2 de la 461 + 2 de la 457 + 2 de la 458-B + 1 de SL-45: el CHECK de HOY
-    // (migracion 20261024130100).
-    expect(nombradasEnElCheck).toHaveLength(28);
+    // 17 de la 173 + 4 de la 459 + 2 de la 461 + 2 de la 457 + 2 de la 458-B + 1 de SL-45 + 2 de SLT-73:
+    // el CHECK de HOY (migracion 20261031140100).
+    expect(nombradasEnElCheck).toHaveLength(30);
     // Enumera, no niega: en la definicion que devuelve el motor no hay negacion alguna.
     expect(check.def).not.toMatch(/<>|NOT IN|!=/i);
   });
