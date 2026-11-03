@@ -143,6 +143,12 @@ const SELECT_DETALLE_106 = {
       tarifaEspecial: true,
       tarifaEspecialDevuelta: true,
       tarifaFulfillment: true,
+      // SLT-52 (design §7, R41/R46): el modelo congelado y los conceptos de la fila. Ninguna de
+      // estas se publica: las aisla `orden-repository.api-lectura.test.ts` › «SLT-52/R18».
+      tarifaModelo: true,
+      conceptos: {
+        select: { concepto: true, modo: true, valor: true, ivaPct: true, nivel: true, tarifaValorId: true },
+      },
     },
   },
   gestiones: {

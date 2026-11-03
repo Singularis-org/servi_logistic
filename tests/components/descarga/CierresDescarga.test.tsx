@@ -341,6 +341,8 @@ function ingreso(): IngresoEmpresaDTO {
     fleteDevolucionConIva: null,
     comisionConIva: "56.50",
     total: "169.50",
+    fulfillment: "0.00", // SLT-52 (R46): el fulfillment congelado y su IVA, fuera del total
+    ivaFulfillment: "0.00",
     tarifa: null,
   };
 }

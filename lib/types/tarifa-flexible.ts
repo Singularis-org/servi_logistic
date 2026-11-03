@@ -33,7 +33,12 @@ interface ValorResueltoBase {
   valor: string;
   /** Nivel del que salio: se congela para poder explicar despues el importe. */
   nivel: TarifaNivel;
-  tarifaValorId: string;
+  /**
+   * El `tarifa_valor` que lo produjo. El resolver siempre lo da; `null` solo al leer lo CONGELADO
+   * (`cierre_detail_concepto`, `gestion_pago_congelado`) cuando ese valor se borro despues: la FK es
+   * SET NULL (traza deseable, nunca un bloqueo para borrar) y el importe congelado no depende de el.
+   */
+  tarifaValorId: string | null;
 }
 
 /** Pago al mensajero o a la satelite. SIN IVA por diseño (P4): no hay campo donde ponerlo. */

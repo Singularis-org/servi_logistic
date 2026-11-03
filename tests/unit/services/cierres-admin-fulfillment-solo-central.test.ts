@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import { CierresAdminService } from "@/lib/services/CierresAdminService";
 import { sinRetenidas } from "@/tests/fixtures/retenidas-doble";
@@ -61,17 +61,36 @@ const INGRESO: IngresoEmpresaDTO = {
   fleteDevolucionConIva: null,
   comisionConIva: null,
   total: "2825.00",
+  // SLT-52 (R46, R47): el fulfillment congelado de la fila y su IVA (viejo: la columna e IVA 0).
+  fulfillment: "1500.00",
+  ivaFulfillment: "0.00",
   tarifa: TARIFA,
 };
 
+/**
+ * SLT-52 (R46) — la misma fila congelada con el modelo NUEVO: sin fila de `tarifas` (`tarifa: null`)
+ * y el fulfillment del concepto congelado, 450.00 al 13 % -> IVA 58.50 (a mano).
+ */
+const INGRESO_NUEVO: IngresoEmpresaDTO = {
+  ...INGRESO,
+  fulfillment: "450.00",
+  ivaFulfillment: "58.50",
+  tarifa: null,
+};
+
+/** Que fila entrega el doble del repositorio; la cambia solo el bloque del modelo nuevo. */
+let filaDelRepo: IngresoEmpresaDTO = INGRESO;
+
 /** Lo que el repositorio entrega: SIEMPRE con fulfillment. Copia fresca por llamada. */
 function ingreso(): IngresoEmpresaDTO {
-  return { ...INGRESO, tarifa: { ...TARIFA } };
+  return { ...filaDelRepo, tarifa: filaDelRepo.tarifa === null ? null : { ...filaDelRepo.tarifa } };
 }
 
 /** Lo que la satelite tiene que recibir: lo mismo, con el fulfillment anulado y nada mas. */
 const INGRESO_SATELITE: IngresoEmpresaDTO = {
   ...INGRESO,
+  fulfillment: null,
+  ivaFulfillment: null,
   tarifa: { ...TARIFA, fulfillment: null },
 };
 
@@ -239,5 +258,28 @@ describe("ficha 481 — el fulfillment de la fila solo llega a la central", () =
       expect(ingresoRecibido?.tarifa?.fulfillment).toBe("1500.00");
       expect(ingresoRecibido).toEqual(INGRESO);
     });
+  });
+});
+
+describe("SLT-52 R46 — el fulfillment del modelo nuevo y su IVA tambien son solo de la central", () => {
+  beforeEach(() => {
+    filaDelRepo = INGRESO_NUEVO;
+  });
+  afterEach(() => {
+    filaDelRepo = INGRESO;
+  });
+
+  it("adminSatelite: fulfillment e IVA anulados (null, nunca \"0.00\") en el detalle y en el Excel", async () => {
+    const esperado = { ...INGRESO_NUEVO, fulfillment: null, ivaFulfillment: null };
+    expect(await ingresoDelDetalle(SATELITE)).toEqual(esperado);
+    expect(await ingresoDeLaDescarga(SATELITE)).toEqual(esperado);
+  });
+
+  it.each([
+    ["maestro", MAESTRO],
+    ["admin", ADMIN],
+  ])("%s: recibe 450.00 y su IVA 58.50 tal cual", async (_n, actor) => {
+    expect(await ingresoDelDetalle(actor)).toEqual(INGRESO_NUEVO);
+    expect(await ingresoDeLaDescarga(actor)).toEqual(INGRESO_NUEVO);
   });
 });

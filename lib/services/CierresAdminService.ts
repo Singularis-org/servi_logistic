@@ -120,10 +120,17 @@ function ocultarFulfillmentSiNoCentral<T extends { ingresoEmpresa?: IngresoEmpre
 ): T {
   if (esAccesoTotal(actor.rol)) return fila;
   const ingreso = fila.ingresoEmpresa;
-  if (ingreso === undefined || ingreso === null || ingreso.tarifa === null) return fila;
+  if (ingreso === undefined || ingreso === null) return fila;
+  // SLT-52 (R46): el fulfillment de la fila y su IVA son el mismo dato de la central; se anulan
+  // con el de la tarifa. En el modelo nuevo `tarifa` es `null` y estos dos son los unicos.
   return {
     ...fila,
-    ingresoEmpresa: { ...ingreso, tarifa: { ...ingreso.tarifa, fulfillment: null } },
+    ingresoEmpresa: {
+      ...ingreso,
+      fulfillment: null,
+      ivaFulfillment: null,
+      tarifa: ingreso.tarifa === null ? null : { ...ingreso.tarifa, fulfillment: null },
+    },
   };
 }
 

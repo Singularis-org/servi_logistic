@@ -196,7 +196,13 @@ import { costosListadoOrden } from "@/lib/utils/ingreso-empresa";
 // ⏳ 2026-09-10 (feature 415, T3): la reconstruccion de la tarifa CONGELADA se importa de su fuente
 // UNICA y no se reescribe aqui. `TarifaCongeladaRow` es justo el subconjunto de columnas que
 // `tarifaDe` necesita, asi que el `select` de `cierreDetalles` y este tipo no pueden divergir.
-import { tarifaDe as tarifaCongeladaDe, type TarifaCongeladaRow } from "@/lib/utils/cierre-detalle";
+import {
+  CONCEPTO_CONGELADO_SELECT,
+  tarifaDe as tarifaCongeladaDe,
+  type ConceptoCongeladoRow,
+  type TarifaCongeladaRow,
+} from "@/lib/utils/cierre-detalle";
+import { fulfillmentCongeladoDe } from "@/lib/utils/fulfillment-congelado";
 import { ORIGEN_TIPO_RECHAZO_SLA } from "@/lib/utils/rechazo-sla-flag";
 // Feature 236 (T2.1, R3/R5): la DECLARACION UNICA de los grupos de `/novedades`. El predicado de
 // cada superficie sale de aqui y de ningun otro sitio; ver `novedadWhere`.
@@ -418,6 +424,10 @@ function apiOrdenSelect(ownerId: string) {
         tarifaEspecial: true,
         tarifaEspecialDevuelta: true,
         tarifaFulfillment: true,
+        // SLT-52 (R41, R42, R46): el modelo con que se congelo y, en el nuevo, el cobro por
+        // concepto (incluido el fulfillment con su % de IVA). Lo que `tarifaDe` lee.
+        tarifaModelo: true,
+        conceptos: { select: CONCEPTO_CONGELADO_SELECT },
       },
     },
   } satisfies Prisma.OrdenSelect;
@@ -611,6 +621,7 @@ type ApiOrdenSelectRow = {
       esCentral: boolean;
       esZonaEspecial: boolean;
       tarifaFulfillment: Prisma.Decimal | null;
+      conceptos: ConceptoCongeladoRow[];
     }
   >;
 };
@@ -704,16 +715,19 @@ function toApiOrdenRow(r: ApiOrdenSelectRow): ApiOrdenRow {
 function congeladoDe(filas: ApiOrdenSelectRow["cierreDetalles"]): ApiOrdenCongeladoRow | null {
   const d = filas[0];
   if (d === undefined) return null;
+  const tarifa = tarifaCongeladaDe(d, d.conceptos);
+  // R17: cadena de escala 2 tambien aqui, por el mismo motivo.
+  const montoCobrar = d.montoCobrar !== null ? d.montoCobrar.toFixed(2) : null;
   return {
-    tarifa: tarifaCongeladaDe(d),
+    tarifa,
     // R29: `tarifa_fulfillment` NULL -> `"0.00"`. Por construccion solo puede ser NULL cuando
     // `tarifa_id` tambien lo es (`CierreDiaRepository.tarifaColumnas` escribe las columnas de
     // tarifa todas o ninguna), asi que el cero afirmado de R28 sale completo.
-    fulfillment: d.tarifaFulfillment !== null ? d.tarifaFulfillment.toFixed(2) : "0.00",
+    // SLT-52 (R46): en el nuevo la columna va NULL y el monto sale del concepto congelado.
+    fulfillment: fulfillmentCongeladoDe(tarifa, d.tarifaFulfillment, montoCobrar).fulfillment,
     esCentral: d.esCentral,
     esZonaEspecial: d.esZonaEspecial,
-    // R17: cadena de escala 2 tambien aqui, por el mismo motivo.
-    montoCobrar: d.montoCobrar !== null ? d.montoCobrar.toFixed(2) : null,
+    montoCobrar,
     cobraComision: d.cobraComision,
   };
 }

@@ -26,9 +26,10 @@ import type { GrupoNovedad } from "@/lib/types/novedad-grupo";
 // ⏳ 2026-09-09 (feature 404, design §D5): la forma del mensajero publico se declara UNA vez, en el
 // archivo de DTOs del canal, y las tres superficies la importan de ahi.
 import type { ApiMensajeroDTO, ApiZonaDTO } from "@/lib/types/api-orden";
-// Feature 415 (T3): la tarifa reconstruida desde la fila congelada viaja con el MISMO tipo que la
-// vigente, que es lo que permite que las dos alimenten la MISMA funcion de derivacion (R16).
-import type { TarifaVigente } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
+// Feature 415 (T3): la tarifa reconstruida desde la fila congelada viaja en el MISMO sobre que la
+// vigente (SLT-52: `ConModelo`), que es lo que permite que las dos alimenten la MISMA funcion de
+// derivacion (R16).
+import type { TarifaCongelada } from "@/lib/utils/cierre-detalle";
 // ⏳ 2026-09-10 (feature 405, R8/R21): las DOS causas TIPIFICADAS, importadas de sus fuentes
 // unicas. NO se reescriben aqui como union de strings: `causa-devolucion.ts` y
 // `causa-incidente.ts` tienen su doble candado contra el enum de Prisma, y una copia literal se
@@ -1152,8 +1153,9 @@ export interface ApiOrdenCongeladoRow {
    * La tarifa congelada reconstruida con `tarifaDe` (`lib/utils/cierre-detalle.ts`), la UNICA
    * funcion que lo hace en el repo. `null` cuando `cierre_detail.tarifa_id IS NULL`: la tienda no
    * tenia tarifa vigente al SOLICITAR el cierre, y ese cierre liquido cero (R28).
+   * SLT-52 (R41, R42): el sobre de los dos modelos; en el nuevo, los conceptos congelados.
    */
-  tarifa: TarifaVigente | null;
+  tarifa: TarifaCongelada | null;
   /**
    * `cierre_detail.tarifa_fulfillment` como CADENA de escala 2; `"0.00"` cuando la columna es
    * NULL (R29). No hay historico posible de ese monto: por eso se congela.

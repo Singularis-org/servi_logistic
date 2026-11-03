@@ -4,12 +4,12 @@ import {
   detalleDe,
   leerDetallePorOrden,
   tarifaDe,
+  type TarifaCongelada,
 } from "@/lib/utils/cierre-detalle";
 import {
   agregarIngresosPorConcepto,
   type OrdenIngresoInput,
 } from "@/lib/utils/ingreso-empresa";
-import type { TarifaVigente } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
 
 /**
  * Feature 42 (design §2.2) — construye los movimientos de INGRESO de un cierre aprobado.
@@ -71,7 +71,7 @@ export class WalletFeedService implements IWalletFeedService {
       select: { ordenId: true, resultado: true },
     });
 
-    const entradas: Array<{ input: OrdenIngresoInput; tarifa: TarifaVigente | null }> = [];
+    const entradas: Array<{ input: OrdenIngresoInput; tarifa: TarifaCongelada | null }> = [];
     for (const g of gestiones) {
       // R14: sin fallback a datos vivos. El backfill (R26/R27) garantiza que la fila existe;
       // si falta, la aprobacion ABORTA en vez de descuadrar en silencio.
@@ -87,7 +87,8 @@ export class WalletFeedService implements IWalletFeedService {
           cobraComision: d.cobraComision,
         },
         // R9 preservado: `tarifa_id` NULL -> null -> conceptos 0.00, sin bloquear.
-        tarifa: tarifaDe(d),
+        // SLT-52 (R41/R42): en el nuevo, los conceptos congelados del detalle; nunca `tarifa_valor`.
+        tarifa: tarifaDe(d, d.conceptos),
       });
     }
 

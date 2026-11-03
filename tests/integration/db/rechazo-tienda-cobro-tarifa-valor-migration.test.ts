@@ -421,6 +421,6 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("SLT-52 T4.6 — la traza del valor en el co
 
     // El ROLLBACK devolvio la columna: el down no se escapo de la transaccion.
     expect(Number(await uno(`SELECT count(*)::int FROM information_schema.columns
-      WHERE table_name = 'rechazo_tienda_cobro' AND column_name = 'tarifa_valor_id'`))).toBe(1);
+      WHERE table_schema = 'public' AND table_name = 'rechazo_tienda_cobro' AND column_name = 'tarifa_valor_id'`))).toBe(1);
   });
 });

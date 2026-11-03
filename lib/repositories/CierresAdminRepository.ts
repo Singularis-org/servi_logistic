@@ -69,7 +69,12 @@ import { RESULTADOS_QUE_VUELVEN } from "@/lib/types/gestion-retorno";
 /** Valores de rol que este catálogo consulta. Salen del seed, no se inventan aquí. */
 const ROL_ADMIN_SATELITE = "adminSatelite";
 const ROL_MENSAJERO = "mensajero";
-import { CierreDetalleFaltanteError, tarifaDe } from "@/lib/utils/cierre-detalle";
+import {
+  CONCEPTO_CONGELADO_SELECT,
+  CierreDetalleFaltanteError,
+  tarifaDe,
+} from "@/lib/utils/cierre-detalle";
+import { fulfillmentCongeladoDe } from "@/lib/utils/fulfillment-congelado";
 import { derivarIngresoOrden, resolverFlete } from "@/lib/utils/ingreso-empresa";
 import { esRechazoSla, ORIGEN_TIPO_RECHAZO_SLA } from "@/lib/utils/rechazo-sla-flag";
 import type { OrdenHistorialOrigenTipo } from "@/lib/types/orden-historial";
@@ -256,6 +261,9 @@ export const DETALLE_ADMIN_SELECT = {
   tarifaIvaComisionCod: true,
   tarifaEspecial: true,
   tarifaEspecialDevuelta: true,
+  // SLT-52 (R41, R42, R46): el modelo con que se congelo y, en el nuevo, el cobro por concepto.
+  tarifaModelo: true,
+  conceptos: { select: CONCEPTO_CONGELADO_SELECT },
 } as const;
 
 // Feature 69/T18 — lo que aporta la GESTION (que NO se congela: es suyo, no de la orden).
@@ -371,8 +379,11 @@ function toAjustesPago(rows: GestionAdminRow["ajustesPagoMensajero"]): AjustePag
  * `tarifaVigente` ya normalizo esos campos a STRING escala 2.
  */
 function toTarifaSnapshot(d: DetalleAdminRow): TarifaSnapshotDTO | null {
-  const t = tarifaDe(d);
-  if (d.tarifaId === null || t === null) return null;
+  // SLT-52: este DTO es la fila de `tarifas` congelada; en el nuevo no hay tal fila (`null`) y el
+  // cobro se explica por el desglose del ingreso (y su fulfillment, R46).
+  const congelada = tarifaDe(d, d.conceptos);
+  if (d.tarifaId === null || congelada === null || congelada.modelo !== "viejo") return null;
+  const t = congelada.tarifa;
   return {
     tarifaId: d.tarifaId,
     valorFlete: t.valorFlete,
@@ -406,7 +417,7 @@ function toIngresoEmpresa(
   g: Pick<GestionAdminRow, "resultado">,
   d: DetalleAdminRow,
 ): IngresoEmpresaDTO {
-  const tarifa = tarifaDe(d);
+  const tarifa = tarifaDe(d, d.conceptos);
   const montoCobrar = decimalToString(d.montoCobrar);
   const derivado = derivarIngresoOrden(
     {
@@ -421,10 +432,18 @@ function toIngresoEmpresa(
   // Los dos origenes salen del MISMO `resolverFlete` que acaba de decidir los montos, no de
   // una segunda lectura de las columnas: si divergieran, la pantalla explicaria un importe
   // que no es el que se derivo. Sin tarifa congelada (gap R9) no hubo eleccion que hacer.
+  // En el nuevo no hay pacto especial que elegir (R35): el origen es `normal`, como en el listado.
   const origen =
-    tarifa === null
+    tarifa === null || tarifa.modelo === "nuevo"
       ? null
-      : resolverFlete(tarifa, { esCentral: d.esCentral, esZonaEspecial: d.esZonaEspecial });
+      : resolverFlete(tarifa.tarifa, { esCentral: d.esCentral, esZonaEspecial: d.esZonaEspecial });
+  // SLT-52 (R46, P5 = a): fulfillment e IVA del fulfillment de lo congelado, con la misma forma que
+  // la API por key. FUERA del `total`: no son conceptos de la liquidacion (R31).
+  const { fulfillment, ivaFulfillment } = fulfillmentCongeladoDe(
+    tarifa,
+    d.tarifaFulfillment,
+    montoCobrar,
+  );
   let total = new Prisma.Decimal(0);
   for (const monto of Object.values(derivado)) {
     if (monto !== undefined) total = total.plus(monto);
@@ -460,6 +479,8 @@ function toIngresoEmpresa(
     ),
     comisionConIva: conIva(derivado.ingreso_comision_cod, derivado.ingreso_iva_comision_cod),
     total: total.toFixed(2),
+    fulfillment,
+    ivaFulfillment,
     tarifa: toTarifaSnapshot(d),
   };
 }

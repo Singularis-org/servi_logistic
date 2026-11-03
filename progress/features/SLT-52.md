@@ -7,7 +7,7 @@
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F2.1 (2026-11-03): T0-T4 hechas; spec enmendado y aprobado. T4.5-T4.8 hechas. Siguiente: T5 → T6 → T7 → reviewer. Detalle en `progress/impl_SLT-52.md`.
+F2.1 (2026-11-03): T0-T4 hechas; spec enmendado y aprobado. T4.5-T4.8 y T5.1-T5.4 hechas. Siguiente: T5.5 (398, base del % del congelado) → T6 → T7 → reviewer. Detalle en `progress/impl_SLT-52.md`.
 Ojo: `prisma generate` ya conoce las tablas de T1; una base sin sus migraciones falla en `cierreDetail.create`.
 
 ## Evaluación
@@ -34,6 +34,7 @@ snapshot ampliado en `cierre_detail` y `gestion_orden`. Plan de la épica:
   fulfillment. (1) y (2) cambian el design: pasarlos por spec (R nuevos) antes de T5.
 - 2026-11-03 · Spec enmendado (R46-R51, T4.5-T4.8, 3d0f7d6b). Carlos: «te apruebo la spec»; P5 = (a),
   campo `ivaFulfillment` en la API.
+- 2026-11-03 · Base del % del pago por gestión (Carlos): «siempre lo que se le cobra a la tienda por esa gestión». 477 sigue con valores vivos; 398 debe usar el congelado del cierre → T5.5 (R nuevo, lo añade el leader).
 
 ## Preguntas abiertas
 Ninguna.
@@ -50,6 +51,7 @@ Ninguna.
   por feature_list local (SLT-62 seguía in_progress) → corregido → VERDE. Queda soloModeloViejo solo en
   CierreDiaRepository:1352 (T5.2). Firmas dobles a estrechar en T5.
 - 2026-11-03 · T4.5-T4.8 (IVA del fulfillment, `rechazo_tienda_cobro.tarifa_valor_id` + 2 migraciones, R51, `ivaFulfillment` en la API) · f6efb67e · gate VERDE. 5 mutaciones en rojo. `costoReal.ivaFulfillment` = "0.00" hasta T5.3.
+- 2026-11-03 · T5 (pago por gestión con el resolver, congelado en crearCierre, lectura congelada, ivaFulfillment del snapshot; integración 6/6) · ceb2455a + este commit · gate VERDE. 11 mutaciones en rojo.
 
 ## Modelos (overrides)
 

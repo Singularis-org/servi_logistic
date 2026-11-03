@@ -348,8 +348,8 @@ describe("SLT-52 R46 — fulfillment con IVA", () => {
       },
     };
     expect(ivaFulfillmentDeTarifa(viejo, "14900.00").toFixed(2)).toBe("0.00");
-    // La tarifa suelta (sin sobre) tambien es el viejo.
-    expect(ivaFulfillmentDeTarifa(viejo.tarifa, "14900.00").toFixed(2)).toBe("0.00");
+    // SLT-52 (T5.3): la forma suelta de `ivaFulfillmentDeTarifa` se retiro (el congelado ya llega
+    // envuelto); la vieja se pregunta siempre en su sobre, que es la linea de arriba.
     expect(desgloseCargaApi(viejo, false, false, "14900.00")).toStrictEqual({
       costoEnvio: "3825.00",
       fulfillment: "1000.00",
@@ -421,6 +421,8 @@ describe("SLT-52 R29 — las cuatro identidades de partesPorTienda con fletes de
       fleteDevolucionConIva: par(d.ingreso_flete_devolucion, d.ingreso_iva_flete_devolucion),
       comisionConIva: par(d.ingreso_comision_cod, d.ingreso_iva_comision_cod),
       total: total.toFixed(2),
+      fulfillment: "0.00", // SLT-52 (R46): el fulfillment congelado y su IVA, fuera del total
+      ivaFulfillment: "0.00",
       tarifa: null,
     };
   }

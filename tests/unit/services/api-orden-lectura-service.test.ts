@@ -359,7 +359,7 @@ describe("ApiOrdenLecturaService.listar — zona y costo (feature 415)", () => {
             costeo: costeoFixture({
               ...ENTRADAS_VIVAS,
               congelado: congeladoFixture({
-                tarifa: TARIFA_FIXTURE,
+                tarifa: { modelo: "viejo", tarifa: TARIFA_FIXTURE }, // SLT-52: el sobre de `tarifaDe`
                 fulfillment: "692.00",
                 ...ENTRADAS_VIVAS,
               }),
@@ -446,7 +446,7 @@ describe("ApiOrdenLecturaService.listar — zona y costo (feature 415)", () => {
           row({
             costeo: costeoFixture({
               ...ENTRADAS_VIVAS,
-              congelado: congeladoFixture({ tarifa: TARIFA_FIXTURE, fulfillment: "692.00" }),
+              congelado: congeladoFixture({ tarifa: { modelo: "viejo", tarifa: TARIFA_FIXTURE }, fulfillment: "692.00" }),
             }),
           }),
         ],
@@ -526,7 +526,7 @@ describe("SLT-52 R46 — el IVA del fulfillment viaja en la respuesta", () => {
           row({
             costeo: costeoFixture({
               ...ENTRADAS_VIVAS,
-              congelado: congeladoFixture({ tarifa: TARIFA_FIXTURE, fulfillment: "692.00", ...ENTRADAS_VIVAS }),
+              congelado: congeladoFixture({ tarifa: { modelo: "viejo", tarifa: TARIFA_FIXTURE }, fulfillment: "692.00", ...ENTRADAS_VIVAS }),
             }),
           }),
         ],

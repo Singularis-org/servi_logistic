@@ -22,6 +22,9 @@ import type { TarifaVigente } from "@/lib/interfaces/repositories/ITarifaVigente
  *   flete estandar 3000.00 · flete GAM 2500.00 · devolucion 1500.00 / GAM 1200.00
  *   comision COD 3.50 % · IVA flete 13 % · IVA comision 13 % · sin pacto especial
  */
+/** SLT-52 (T5.3): los dos envoltorios reciben la tarifa en su sobre; los importes no cambian. */
+const viejo = (tarifa: TarifaVigente) => ({ modelo: "viejo" as const, tarifa });
+
 const TARIFA: TarifaVigente = {
   valorFlete: "3000.00",
   valorFleteGam: "2500.00",
@@ -55,7 +58,7 @@ describe("api-orden-costo — los cinco conceptos (feature 415, T2)", () => {
     //   comision    = 25900.00 x 3.50 / 100 = 906.50      =  906.50
     //   ivaComision = 906.50 x 13 / 100 = 117.845 -> H.UP =  117.85
     //   fulfillment = el monto que entra por parametro    =  696.00
-    const costo = costoEstimadoDe(TARIFA, FULFILLMENT, ENTRADAS);
+    const costo = costoEstimadoDe(viejo(TARIFA), FULFILLMENT, ENTRADAS);
 
     expect(costo).toEqual({
       flete: "2500.00",
@@ -68,7 +71,7 @@ describe("api-orden-costo — los cinco conceptos (feature 415, T2)", () => {
   });
 
   it("R15: el escenario es ENTREGADA — sale el flete de ENTREGA, nunca el de devolucion", () => {
-    const costo = costoEstimadoDe(TARIFA, FULFILLMENT, ENTRADAS)!;
+    const costo = costoEstimadoDe(viejo(TARIFA), FULFILLMENT, ENTRADAS)!;
 
     // El flete de entrega GAM es 2500.00 y el de DEVOLUCION GAM es 1200.00. Si la derivacion
     // pidiera `rechazada` en vez de `entregada`, saldria 1200.00 (y sin comision).
@@ -82,8 +85,8 @@ describe("api-orden-costo — los cinco conceptos (feature 415, T2)", () => {
   it("R20: `esCentral` elige la columna — true da la GAM, false la estandar, y difieren", () => {
     //   esCentral: true  -> flete 2500.00 ; iva 2500.00 x 13 % = 325.00
     //   esCentral: false -> flete 3000.00 ; iva 3000.00 x 13 % = 390.00
-    const central = costoEstimadoDe(TARIFA, FULFILLMENT, { ...ENTRADAS, esCentral: true })!;
-    const estandar = costoEstimadoDe(TARIFA, FULFILLMENT, { ...ENTRADAS, esCentral: false })!;
+    const central = costoEstimadoDe(viejo(TARIFA), FULFILLMENT, { ...ENTRADAS, esCentral: true })!;
+    const estandar = costoEstimadoDe(viejo(TARIFA), FULFILLMENT, { ...ENTRADAS, esCentral: false })!;
 
     expect(central.flete).toBe("2500.00");
     expect(central.iva).toBe("325.00");
@@ -97,7 +100,7 @@ describe("api-orden-costo — los cinco conceptos (feature 415, T2)", () => {
     //   tarifaEspecial 1800.00 pactado ; iva = 1800.00 x 13 % = 234.00
     //   El pacto IGNORA `esCentral` a proposito: es UN precio para ese distrito.
     const conPacto: TarifaVigente = { ...TARIFA, tarifaEspecial: "1800.00" };
-    const costo = costoEstimadoDe(conPacto, FULFILLMENT, {
+    const costo = costoEstimadoDe(viejo(conPacto), FULFILLMENT, {
       ...ENTRADAS,
       esZonaEspecial: true,
     })!;
@@ -106,12 +109,12 @@ describe("api-orden-costo — los cinco conceptos (feature 415, T2)", () => {
     expect(costo.iva).toBe("234.00");
 
     // Sin pacto registrado, la zona especial cae a la columna normal: 2500.00, no 1800.00.
-    const sinPacto = costoEstimadoDe(TARIFA, FULFILLMENT, { ...ENTRADAS, esZonaEspecial: true })!;
+    const sinPacto = costoEstimadoDe(viejo(TARIFA), FULFILLMENT, { ...ENTRADAS, esZonaEspecial: true })!;
     expect(sinPacto.flete).toBe("2500.00");
   });
 
   it('R13: `cobraComision: false` deja comision e ivaComision en "0.00", NO ausentes', () => {
-    const costo = costoEstimadoDe(TARIFA, FULFILLMENT, { ...ENTRADAS, cobraComision: false })!;
+    const costo = costoEstimadoDe(viejo(TARIFA), FULFILLMENT, { ...ENTRADAS, cobraComision: false })!;
 
     expect(costo.comision).toBe("0.00");
     expect(costo.ivaComision).toBe("0.00");
@@ -151,14 +154,14 @@ describe("api-orden-costo — los cinco conceptos (feature 415, T2)", () => {
   it("R25: con la MISMA tarifa y las MISMAS entradas, estimado y real dan lo mismo", () => {
     // Lo que los separa es de donde sale la tarifa, no la formula. Si un dia divergieran, la
     // misma plata se leeria distinta segun el campo.
-    const estimado = costoEstimadoDe(TARIFA, FULFILLMENT, ENTRADAS);
-    const real = costoRealDe(TARIFA, FULFILLMENT, ENTRADAS);
+    const estimado = costoEstimadoDe(viejo(TARIFA), FULFILLMENT, ENTRADAS);
+    const real = costoRealDe(viejo(TARIFA), FULFILLMENT, ENTRADAS);
 
     expect(real).toEqual(estimado);
   });
 
   it("R12: todo importe casa el dialecto money-safe, sin simbolo y sin separador de miles", () => {
-    const costo = costoEstimadoDe(TARIFA, FULFILLMENT, ENTRADAS)!;
+    const costo = costoEstimadoDe(viejo(TARIFA), FULFILLMENT, ENTRADAS)!;
 
     for (const [clave, valor] of Object.entries(costo)) {
       expect(valor, `${clave} = ${valor}`).toMatch(MONEY_SAFE);
@@ -172,7 +175,7 @@ describe("api-orden-costo — los cinco conceptos (feature 415, T2)", () => {
 
   // SLT-52 R46 (P5 = a): sexta clave `ivaFulfillment`; sigue sin haber ninguna que sume.
   it("R10/R11: el objeto tiene las SEIS claves y NINGUNA que sume los conceptos", () => {
-    const costo = costoEstimadoDe(TARIFA, FULFILLMENT, ENTRADAS)!;
+    const costo = costoEstimadoDe(viejo(TARIFA), FULFILLMENT, ENTRADAS)!;
 
     expect(Object.keys(costo).sort()).toEqual([
       "comision",
@@ -200,7 +203,7 @@ describe("api-orden-costo — los cinco conceptos (feature 415, T2)", () => {
     //     comision + IVA = 581.64 + 75.61 = 657.25
     //   LO QUE HACIA EL NAVEGADOR (sin el redondeo intermedio, sobre float):
     //     581.644 x 1.13 = 657.25772 -> toFixed(2) -> 657.26   <- UN CENTIMO DE MAS
-    const costo = costoEstimadoDe(TARIFA, "0.00", {
+    const costo = costoEstimadoDe(viejo(TARIFA), "0.00", {
       ...ENTRADAS,
       montoCobrar: "16618.40",
     })!;
@@ -217,7 +220,7 @@ describe("api-orden-costo — los cinco conceptos (feature 415, T2)", () => {
   it("R17: `montoCobrar: null` entra como cero y no revienta", () => {
     // Sin COD no hay base de comision: 0.00 x 3.50 % = 0.00, y su IVA tambien 0.00. El flete no
     // depende del COD, asi que sigue siendo 2500.00.
-    const costo = costoEstimadoDe(TARIFA, FULFILLMENT, { ...ENTRADAS, montoCobrar: null })!;
+    const costo = costoEstimadoDe(viejo(TARIFA), FULFILLMENT, { ...ENTRADAS, montoCobrar: null })!;
 
     expect(costo).toEqual({
       flete: "2500.00",
@@ -232,8 +235,8 @@ describe("api-orden-costo — los cinco conceptos (feature 415, T2)", () => {
   it("R29: el `fulfillment` es el monto que entra, no uno derivado de la tarifa", () => {
     // El caso MEDIDO: la misma tarifa con el fulfillment congelado viejo (692,00) y el vigente
     // (696,00). Los dos a mano, y los otros cuatro conceptos IDENTICOS entre si.
-    const congelado = costoRealDe(TARIFA, "692.00", ENTRADAS);
-    const vigente = costoEstimadoDe(TARIFA, "696.00", ENTRADAS)!;
+    const congelado = costoRealDe(viejo(TARIFA), "692.00", ENTRADAS);
+    const vigente = costoEstimadoDe(viejo(TARIFA), "696.00", ENTRADAS)!;
 
     expect(congelado.fulfillment).toBe("692.00");
     expect(vigente.fulfillment).toBe("696.00");

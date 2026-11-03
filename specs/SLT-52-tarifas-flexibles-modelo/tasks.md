@@ -189,11 +189,11 @@
   `CierreGestionPendienteRow` gana lo que pide `ContextoPagoGestion`. Cubre: R19, R20, R24, R33.
 - [x] **T5.2** `CierreDiaRepository.crearCierre`: `tarifa_modelo`, `cierre_detail_concepto` y
   `gestion_pago_congelado` en la misma transacción. Cubre: R40.
-- [ ] **T5.3** Lectura: `tarifaDe(d, conceptos)` devuelve `TarifaTienda | null`; sus cinco
+- [x] **T5.3** Lectura: `tarifaDe(d, conceptos)` devuelve `TarifaTienda | null`; sus cinco
   llamadores (`CierresAdminRepository`, `CierreAporteRepository`, `WalletFeedService`,
   `WalletTiendaFeedService`, `DineroProductosRepository` con `json_agg` filtrado por empresa) leen
   lo congelado. Cubre: R41, R42.
-- [ ] **T5.4** `tests/integration/db/tarifas-flexibles-snapshot.test.ts` (Postgres real): una
+- [x] **T5.4** `tests/integration/db/tarifas-flexibles-snapshot.test.ts` (Postgres real): una
   empresa en el nuevo solicita un cierre con dos gestiones de distritos en grupos distintos y una sin
   tarifa → filas congeladas correctas (`gestion_pago_congelado.base` = flete sin IVA de esa gestión,
   `importe` = `pago_mensajero`, sin IVA), pago distinto por grupo, sin tarifa = 0 y el cierre se crea;
@@ -318,6 +318,8 @@ Código:
 - `lib/utils/api-orden-costo.ts`
 - `lib/utils/aporte-por-orden.ts`
 - `lib/utils/dinero-por-producto.ts`
+- `lib/utils/fulfillment-congelado.ts` (T5.3, R46: fulfillment e IVA de lo congelado)
+- `lib/services/CierresAdminService.ts` (T5.3: ficha 481 anula tambien los dos campos nuevos)
 - `docs/architecture.md`
 - `lib/repositories/RechazoTiendaCobroRepository.ts`
 - `lib/interfaces/repositories/IRechazoTiendaCobroRepository.ts`
@@ -401,6 +403,36 @@ Tests:
 - `tests/unit/utils/cascada-tarifa.test.ts`
 - `tests/unit/utils/tarifa-especial-por-distrito.test.ts`
 - `tests/integration/db/rechazo-tienda-cobro-tarifa-valor-migration.test.ts`
+- `tests/unit/utils/cierre-detalle.test.ts`
+- `tests/unit/analytics/fulfillment-fuera-de-la-formula.guardia.test.ts`
+- `tests/unit/analytics/_dinero-falso.ts`
+- `tests/unit/analytics/conteo-productos-dinero.test.ts`
+- `tests/unit/analytics/dinero-productos-sql.test.ts`
+- `tests/unit/repositories/cierre-aporte-repository.test.ts`
+- `tests/unit/services/cierres-admin-fulfillment-solo-central.test.ts`
+- `tests/unit/services/cierres-admin-service.test.ts`
+- `tests/unit/services/cierres-bodega-admin-service.test.ts`
+- `tests/unit/services/cierre-desglose-tres-superficies.test.ts`
+- `tests/unit/services/busqueda-por-guia-469-servicios.test.ts`
+- `tests/unit/services/detalle-en-lote-464.test.ts`
+- `tests/unit/services/wallet-detalle-movimiento.test.ts`
+- `tests/unit/services/wallet-tienda-detalle-movimiento.test.ts`
+- `tests/unit/utils/api-orden-costo.test.ts`
+- `tests/unit/utils/aporte-por-orden.test.ts`
+- `tests/unit/utils/cascadas-cierre-bodega.test.ts`
+- `tests/unit/utils/dinero-por-producto.test.ts`
+- `tests/unit/utils/ingreso-ordenex.test.ts`
+- `tests/unit/utils/partes-por-tienda.test.ts`
+- `tests/unit/descarga/cierres-gestiones-fundida-descarga-columnas.test.ts`
+- `tests/unit/descarga/cierres-gestiones-paridad.test.ts`
+- `tests/fixtures/gestion-detalle-478.ts`
+- `tests/components/CierreCobrosDeLaGestion.test.tsx`
+- `tests/components/CierreDetalleIncidente.test.tsx`
+- `tests/components/CierreTarifaAplicada.test.tsx`
+- `tests/components/CierreTarifaEspecial.test.tsx`
+- `tests/components/CierresAdminModule.test.tsx`
+- `tests/components/descarga/CierresDescarga.test.tsx`
+- `tests/components/descarga/CierresDescargaColumnas.test.tsx`
 
 Progreso:
 - `progress/impl_SLT-52.md`

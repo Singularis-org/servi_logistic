@@ -651,8 +651,8 @@ Verde final tras restaurar: `Test Files 1 passed (1)`, `Tests 31 passed (31)`. `
 | R16 | `precedencia.test.ts` › `rangoCobro` casos 1-5 y «elegirCobros · quitando los niveles anteriores, gana %s» (5), «R16: la eleccion es independiente por concepto…». Postgres en T3.4. T3: `tarifas-flexibles-resolver.test.ts` › «R16: quitando los niveles anteriores, gana %s» (5, Postgres), «R16: el distrito de OTRO grupo de la zona cobra lo de ese grupo…», «R16: la eleccion es por concepto…», «la fachada `TarifaVigenteRepository` devuelve lo mismo…». |
 | R17 | `precedencia.test.ts` › «R17: la tienda sin pacto en el grupo pero con pacto en la zona usa su zona antes que el grupo». T3: `tarifas-flexibles-resolver.test.ts` › «R17: la tienda sin pacto en su grupo pero con pacto en la zona usa su zona antes que el grupo». |
 | R18 | `precedencia.test.ts` › `rangoCobro` «orden sin grupo: …» (4) y «R18: orden sin distrito (sin grupo) salta la tienda en el grupo y el grupo». T3: `tarifas-flexibles-resolver.test.ts` › «R18: una orden SIN distrito salta los niveles de grupo…», «R18: un distrito de la zona que no esta en ningun grupo salta los grupos»; `cascada-tarifa.test.ts` › «SLT-52 R18: la clave distingue el distrito…»; guardia `tarifas-distrito-pasado.guardia.test.ts`; `corregir-ubicacion-importes.test.ts` › «la actual con el distrito de la orden y la propuesta con el distrito elegido». |
-| R19 | `precedencia.test.ts` › `rangoPago` «mensajero: valor propio… → 1» … «zona para todos → 5», «elegirPagos · quitando los niveles anteriores, gana %s» (5), «P2: el grupo para todos gana a la zona para su vehiculo». T3: `tarifas-flexibles-resolver.test.ts` › «R19: quitando los niveles anteriores, gana %s» (5, Postgres), «la fachada `resolvePagos`…». |
-| R20 | `precedencia.test.ts` › «satelite: …» (6, incluido «sin el nivel del mensajero») y «R20/R32: la satelite elige con su propio concepto y varios resultados a la vez». T3: `tarifas-flexibles-resolver.test.ts` › «R20: la satelite usa la misma zona, distrito y precedencia sin el nivel del mensajero». |
+| R19 | `precedencia.test.ts` › `rangoPago` «mensajero: valor propio… → 1» … «zona para todos → 5», «elegirPagos · quitando los niveles anteriores, gana %s» (5), «P2: el grupo para todos gana a la zona para su vehiculo». T3: `tarifas-flexibles-resolver.test.ts` › «R19: quitando los niveles anteriores, gana %s» (5, Postgres), «la fachada `resolvePagos`…». T5.1: `cierre-pago-por-gestion.test.ts` › «SLT-52 R19 — …» (4) y `cierre-pago-congelado.test.ts` (477, 398). T5.4: `tarifas-flexibles-snapshot.test.ts` (Postgres) › «R40/R24/R33/R19/R20 — la solicitud congela cobro y pago por gestion; pago distinto por grupo; sin tarifa = 0» (G1 800.00 / G2 10 % = 200.00, con la zona del mensajero y el distrito de cada orden). |
+| R20 | `precedencia.test.ts` › «satelite: …» (6, incluido «sin el nivel del mensajero») y «R20/R32: la satelite elige con su propio concepto y varios resultados a la vez». T3: `tarifas-flexibles-resolver.test.ts` › «R20: la satelite usa la misma zona, distrito y precedencia sin el nivel del mensajero». T5.1: `cierre-pago-por-gestion.test.ts` › «SLT-52 R19/R20/R33 — cada gestion paga lo de SU grupo…». T5.4: `tarifas-flexibles-snapshot.test.ts` (Postgres) › «R40/R24/R33/R19/R20 — …» (satelite 50.00 solo en G2). |
 | R21 | `precedencia.test.ts` › «mensajero: sin grupo: …» (3). T3: `tarifas-flexibles-resolver.test.ts` › «R21: el distrito de la orden que no esta en ningun grupo de la zona del mensajero usa la zona», «R21: el grupo de un distrito se busca DENTRO de la zona pedida». |
 | R22 | `precedencia.test.ts` › «mensajero: sin vehiculo: …» (3) y «R22: sin vehiculo gana el grupo para todos aunque haya grupo+vehiculo». T3: `tarifas-flexibles-resolver.test.ts` › «R22: un mensajero sin vehiculo salta los niveles por vehiculo…». |
 | R23 | `precedencia.test.ts` › «R23: un concepto sin fila en ningun nivel es `null`…» (cobro y pago); `calculo.test.ts` › «R23 · un cero escrito vale 0…» (3 casos: `"0.00"`, instancia de Decimal). La distincion «0 vs sin fila» en Postgres es T3.4. T3: `tarifas-flexibles-resolver.test.ts` › «R23: sin ningun nivel, el flete por entregado queda «sin tarifa»…», «R23: un 0 escrito vale "0.00"…», «R23: sin ningun nivel, el pago al mensajero es `null`…»; `tarifas-flexibles-respaldo.test.ts` › «un par de B en una zona sin valores tampoco cae al viejo…». |
@@ -668,7 +668,7 @@ Verde final tras restaurar: `Test Files 1 passed (1)`, `Tests 31 passed (31)`. `
 | R14 | Parcial en T1: tipos y entidades en la base (`20261103120300`, ida y vuelta en «R44: el down de las cuatro…») y en `lib/types/historial-accion.ts` (`catalogo-y-choke-point.test.ts`, 80 tipos / 29 entidades). La escritura con antes/despues en la transaccion es T6.2/T6.4. |
 | R15 | `tarifas-flexibles-migration.test.ts` › «R15: con `servi_app` y la empresa A no se ve…» (RLS de las 5 tablas) y «R15: ni siquiera como dueño… (SL017)» (triggers de misma empresa). Repositorios en T3.4/T6.4. T3: `tarifas-flexibles-resolver.test.ts` › «R15: con la empresa A, ni pidiendo las zonas y tiendas de B se ve un valor de B» (RLS con `servi_app`, valores y grupos); `tarifas-flexibles-respaldo.test.ts` › «R15: que B tenga un valor nuevo no pasa a A al modelo nuevo». |
 | R34 | Parcial en T1: `tarifas-flexibles-migration.test.ts` › «R34/R45: `gestion_pago_congelado` no tiene columna de IVA…» y el estatico «R34/R45: … no declara ninguna columna de IVA». El calculo sin IVA es T4.2. T4: `pago-modelo-nuevo.test.ts` › «SLT-52 R34 — el pago es exactamente el importe, sin IVA» (2: 1250.50 y no 1413.07; `derivarPagos` 1650.50). Contraprueba (2a). |
-| R42 | `tarifas-flexibles-migration.test.ts` › «R44/R42: el up no mueve ninguna fila… todo cierre_detail queda en `viejo`». La lectura igual que hoy es T5.3/T5.4. |
+| R42 | `tarifas-flexibles-migration.test.ts` › «R44/R42: el up no mueve ninguna fila… todo cierre_detail queda en `viejo`». La lectura igual que hoy es T5.3/T5.4. T5.3: `cierre-detalle.test.ts` › «R11: los 7 campos…» (viejo en su sobre, literales intactos), «SLT-52 R42 — un detalle viejo ignora cualquier fila de concepto». T5.4: `tarifas-flexibles-snapshot.test.ts` (Postgres) › «R42/R47 — un cierre del modelo VIEJO se congela y se lee exactamente como antes» (2260.00, fulfillment 300.00 de la columna, IVA 0.00, `costoReal` igual). |
 | R43 | `tarifas-flexibles-migration.test.ts` › «R43: con `servi_app`, UPDATE y DELETE de `cierre_detail_concepto` dan 42501…». |
 | R44 | `tarifas-flexibles-migration.test.ts` › «R44/R42: el up no mueve ninguna fila…», «R44: ninguna escribe filas en las tablas del modelo viejo…» (estatico) y «R44: el down de las cuatro deja catalogos y conteos como antes…». |
 | R45 | `tarifas-flexibles-migration.test.ts` › «R45 (P4): un pago al mensajero o a la satelite con IVA 0 o 13 se rechaza; con IVA NULL se acepta» (base). Borde zod: `esquemas-escritura.test.ts` › «%s con ivaPct %j → rechazo en `ivaPct`» (4, incluidos `"0"` y `"0.00"`), «un pago con `ivaPct: null` tampoco pasa»; tipos: «pasar un ValorPago a ivaDe no compila; un ValorCobro si» (`@ts-expect-error`, typecheck). El service es T6.2. |
@@ -681,6 +681,11 @@ Verde final tras restaurar: `Test Files 1 passed (1)`, `Tests 31 passed (31)`. `
 | R32 | T4: `pago-modelo-nuevo.test.ts` › «SLT-52 R32 — cada resultado paga su concepto…» (5 + «un valor de OTRO resultado no se paga», «sin valor resuelto -> 0.00», «la satelite con varios conceptos a la vez…»). |
 | R35 | T4: `ingreso-empresa-modelo-nuevo.test.ts` › «SLT-52 R35 — esCentral y esZonaEspecial no cambian nada en el nuevo» (4 combinaciones: cobro, rechazo, listado y costo API). Contraprueba (1b). |
 | R38 | T4: `convergencia-tarifa-listado-cierre.test.ts` › «SLT-52 T4.4 — modelo nuevo: listado, cierre y costo API eligen el mismo valor (R38)» (4: siembra, CIERRE `tf-tienda-grupo`/`tc-zona`/`tff-general`, LISTADO 1695.00 / 565.00, COSTO API 1500.00/195.00/500.00/65.00/100.00); los 6 casos 274 del mismo archivo siguen verdes con el listado por el resolver unico. Contrapruebas (3) y (4). |
+| R24 | T5.1: `cierre-pago-por-gestion.test.ts` › «SLT-52 R24 — un concepto sin tarifa cuenta 0 y el cierre se crea igual», «… zona sin tarifa en el viejo…». T5.4: `tarifas-flexibles-snapshot.test.ts` (Postgres) › «R40/R24/R33/R19/R20 — …» (d3 sin valor: sin filas, pago 0.00, cierre creado), «R24/R33/R40 — la re-solicitud de un rechazado (477) congela la rehecha igual que la solicitud», «R24/R33/R40 — el corte diario congela igual…». T5.3: `cierre-detalle.test.ts` › «SLT-52 R24 — sin filas no es `null`…». |
+| R33 | T5.1: `cierre-pago-por-gestion.test.ts` › «SLT-52 R33/R40 — el `vencido` paga cada gestion lo suyo…». T5.4: `tarifas-flexibles-snapshot.test.ts` (Postgres) › los casos de solicitud, 477 (la rehecha se paga en su cierre: total 1000.00 sin la anulada) y corte. |
+| R40 | T5.2: `cierre-pago-congelado.test.ts` (7 casos «SLT-52 R40…»). T5.4: `tarifas-flexibles-snapshot.test.ts` (Postgres) › «R40/R24/R33/R19/R20 — …» (filas literales de `cierre_detail_concepto` y `gestion_pago_congelado`; `importe` = `pago_mensajero`/`ingreso_bodega_rechazo`), 477 y corte. |
+| R41 | T5.3: `cierre-detalle.test.ts` › «tarifaDe — modelo nuevo (SLT-52 R41/R42)» (5). T5.4: `tarifas-flexibles-snapshot.test.ts` (Postgres) › «R41/R46 — cambiar y BORRAR valores y grupos despues no mueve el detalle, la aprobacion, las wallets, el aporte ni Analitica», «R41 — Analitica exige la empresa en el `json_agg`…». Contrapruebas M1, M3, M4 de T5.3-T5.4. |
+| R46 | T4.5/T4.8: ver la seccion T4.5-T4.8. T5.3 (cierre y lecturas): `tarifas-flexibles-snapshot.test.ts` (Postgres) › «R41/R46 — …» (detalle 450.00 + IVA 58.50 fuera del total; Analitica 450.00; `costoReal` 450.00 / 58.50); `cierres-admin-fulfillment-solo-central.test.ts` › «SLT-52 R46 — el fulfillment del modelo nuevo y su IVA tambien son solo de la central» (2). Contraprueba M2. |
 
 ### T2 — verificación del implementer antes del commit
 
@@ -1041,7 +1046,11 @@ El congelado contra Postgres real (WHERE, RLS, `createManyAndReturn`, CHECK de `
 4. En el viejo, `cierre_detail` NO escribe `tarifa_modelo` (DEFAULT `viejo`): mantiene literal la lista de columnas (69/R24).
 5. La base del % en 477/398 sale del cobro VIVO de la orden en ese instante (el resolver), no del
    `cierre_detail_concepto` congelado del cierre; igual que hoy la 398 usa la tarifa de pago de HOY (puerta H2 de la 398).
-   **Abierto**: si el humano quiere que la base salga del cobro congelado del cierre.
+   **Cerrada (2026-11-03, Carlos)**: «la base del % es siempre lo que se le cobra a la tienda por esa gestión».
+   477: la re-solicitud rehace el cierre con valores vivos (tienda y mensajero) → se queda como está.
+   398: la tienda conserva el cobro congelado en `cierre_detail`, así que el mensajero debe usar como base el
+   congelado del cierre (`cierre_detail_concepto`, `tienda_flete_rechazo`). **Pendiente para T5.5** (con su R, que
+   añade el leader al spec); no se cambia en esta tanda.
 6. **`TarifaDePago` (`pago-mensajero.ts`) sigue doble** (`PagoTarifa | TarifaPago`): `respaldo-identico.test.ts` (T0.1,
    intocable) llama a `pagoPorResultado`/`ingresoBodegaPorResultado` con la `PagoTarifa` suelta (lineas 378 y 396).
    Ningun llamador de produccion la pasa ya suelta. `TarifasDePago` (`cierre-totales.ts`) SI se estrecho al Map.
@@ -1063,3 +1072,128 @@ El congelado contra Postgres real (WHERE, RLS, `createManyAndReturn`, CHECK de `
 Hechas: pago por gestion con el resolver unico en los cinco caminos y congelado del modelo nuevo en la misma tx; ultimo
 `soloModeloViejo` retirado y modulo borrado; typecheck 0, lint 0 errores, 802/802 vecinos, 7 contrapruebas rojas; sin
 migracion; sin commitear.
+
+## T5.3-T5.4 (2026-11-03)
+
+backend_dev, solo T5.3, T5.4 y los tres cierres pendientes. MCP `codebase-memory-mcp` no conecto (timeout): Grep/Read.
+Sin migracion, sin dependencias, sin `prisma generate`. `.env`: solo booleanos (existe, `DATABASE_URL` presente).
+
+### Archivos
+- `lib/utils/cierre-detalle.ts` — `tarifaDe(d, conceptos)` -> `TarifaCongelada | null` (viejo: lo de siempre en
+  `{ modelo: "viejo", tarifa }`; nuevo: `valores` desde `cierre_detail_concepto`, nunca `null`); `CONCEPTO_CONGELADO_SELECT`,
+  `ConceptoCongeladoRow`, `TarifaCongelada`; `DETALLE_SELECT` y `TarifaCongeladaRow` ganan `tarifaModelo` (+ `conceptos`).
+- NUEVO `lib/utils/fulfillment-congelado.ts` — `fulfillmentCongeladoDe(tarifa, columna, montoCobrar)`: viejo = columna e IVA
+  0.00 (R47); nuevo = `montoFulfillmentDeTarifa` + `ivaFulfillmentDeTarifa` sobre el concepto congelado (R46).
+- Los cinco llamadores + la API: `WalletFeedService`, `WalletTiendaFeedService`, `CierreAporteRepository` (+ su WHERE,
+  abajo), `CierresAdminRepository` (`DETALLE_ADMIN_SELECT` + `toTarifaSnapshot` + `toIngresoEmpresa`),
+  `DineroProductosRepository` (`tarifa_modelo` + `json_agg` de `cierre_detail_concepto` con
+  `dc.organizacion_id = d.organizacion_id`), `OrdenRepository` (`costoReal`: select + `congeladoDe`).
+- Tipos: `lib/types/tarifa-flexible.ts` (`tarifaValorId: string | null`), `lib/utils/aporte-por-orden.ts`
+  (`OrdenCongelada.tarifa: TarifaCongelada | null`), `lib/interfaces/repositories/IOrdenRepository.ts`
+  (`ApiOrdenCongeladoRow.tarifa`), `lib/interfaces/services/ICierreDiaService.ts` (`IngresoEmpresaDTO.fulfillment` e
+  `ivaFulfillment`), `lib/utils/api-orden-costo.ts` (solo el sobre), `lib/utils/ingreso-empresa.ts` (firmas, abajo).
+- `lib/services/CierresAdminService.ts` — ficha 481: `fulfillment`/`ivaFulfillment` nuevos tambien `null` para un actor sin
+  acceso total (tambien con `tarifa: null`, que es el caso del nuevo).
+- `lib/db/excepciones-aislamiento.ts` — `DineroProductosRepository` sale de `EXCEPCIONES_SQL_A_MANO`: con el filtro del
+  `json_agg` la guardia `sql-a-mano-por-empresa` › «la lista solo baja» lo exige (rojo hasta quitarlo).
+- `tests/integration/db/rechazo-tienda-cobro-tarifa-valor-migration.test.ts:423` — `table_schema = 'public'` (guardia de T4.6).
+- NUEVO `tests/integration/db/tarifas-flexibles-snapshot.test.ts` (6 casos, Postgres real, tx revertida).
+- Tests ajustados (forma, ningun importe): `cierre-detalle.test.ts` (+5 casos del nuevo), guardia 449
+  `fulfillment-fuera-de-la-formula` (mira la `TarifaVigente` DENTRO del sobre; las 9 claves literales intactas),
+  `cierre-aporte-repository.test.ts` (WHERE), `dinero-productos-sql.test.ts` (+2 columnas en la fila cruda),
+  `cierres-admin-fulfillment-solo-central.test.ts` (+2 casos R46), `api-orden-costo`, `api-orden-lectura-service`,
+  `aporte-por-orden`, `dinero-por-producto`, `_dinero-falso`, `conteo-productos-dinero`, `busqueda-por-guia-469`,
+  `detalle-en-lote-464`, `wallet(-tienda)-detalle-movimiento`, `ingreso-ordenex` (fulfillment en el sobre),
+  `ingreso-empresa-modelo-nuevo` (fuera la linea de la forma suelta de `ivaFulfillmentDeTarifa`) y 17 literales de
+  `IngresoEmpresaDTO` (+`fulfillment`/`ivaFulfillment: "0.00"`). `tasks.md`: T5.3/T5.4 [x] y archivos esperados.
+
+### Decisiones
+1. **`tarifaDe` devuelve `TarifaCongelada` (= `ConModelo<TarifaVigente>`), no `TarifaTienda`.** La rama vieja de
+   `TarifaTienda` exige `TarifaVigenteResuelta` (`tarifaId` + `fulfillment`), y la guardia 449 prohibe que `tarifaDe`
+   devuelva el fulfillment. El tipo se escribe en `cierre-detalle.ts` y no se importa de `ingreso-empresa.ts`:
+   `cierre-detalle` esta en el arbol del panel del navegador y el import arrastraba `Prisma` como valor
+   (`pagos-captura.guardia` R19 se puso rojo; corregido).
+2. **`tarifaValorId: string | null`** en `ValorResueltoBase`: el resolver siempre lo da; `null` solo al leer lo congelado
+   tras borrar el valor (FK SET NULL). Todos sus consumidores lo escriben en columnas nullables.
+3. **Aporte por orden (bug encontrado):** `CierreAporteRepository.buildWhere` traducia «hay tarifa» a
+   `tarifa_id IS NOT NULL`; en el nuevo `tarifa_id` va NULL y un cierre nuevo no listaba ninguna orden de flete/comision.
+   Ahora `OR [tarifa_id NOT NULL, tarifa_modelo = 'nuevo']` (= `tarifaDe` no es `null`; `satisfaceCriterio` sin cambio).
+4. **Detalle del cierre de administracion (P5 = a):** `IngresoEmpresaDTO` gana `fulfillment` e `ivaFulfillment` (texto escala
+   2, misma forma y misma funcion que `costoReal`), fuera de `total`. En el nuevo `tarifa` (fila de `tarifas`) es `null`, por
+   eso van en el ingreso y no en `TarifaSnapshotDTO`. Analitica (`fulfillment` de `FilaDineroCruda`) y `costoReal` leen el
+   fulfillment del nuevo del concepto congelado por la misma funcion. Contrato publico sin cambio de forma
+   (`ivaFulfillment` ya existia en `OrdenCosto` desde T4.8): ni OpenAPI ni CHANGELOG.
+
+### Firmas dobles: estado final
+- **Estrechadas al sobre** (`ConModelo`): `montoFulfillmentDeTarifa` (sin sobrecarga suelta), `ivaFulfillmentDeTarifa`,
+  `tieneFulfillment`, `costoEstimadoDe`/`costoRealDe` (`api-orden-costo.ts`). Ningun test intocable las usaba sueltas.
+- **Siguen dobles, solo para el respaldo T0.1:** `TarifaDeCobro<T> = T | ConModelo<T>` (`derivarIngresoOrden`,
+  `costosListadoOrden`, `agregarIngresosPorConcepto`) y las sobrecargas sueltas de `costoEnvioDeTarifa`/`desgloseCargaApi`.
+  MEDIDO: con la union estrechada y las dos sobrecargas quitadas, `typecheck` da 102 errores en 10 archivos, TODOS en
+  `tests/` (69 `ingreso-ordenex`, 14 `tarifa-especial-por-distrito`, **4 `respaldo-identico` (T0.1, intocable)**, …) y
+  CERO en `lib/`/`app/`: ningun llamador de produccion usa ya la forma suelta. Restaurado con `cp` + `cmp`. Anotado en el
+  comentario de `ConModelo` («SOLO PARA EL RESPALDO T0.1»). `TarifaDePago` sigue como la dejo T5.1 (desvio 6).
+
+### Salida real
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: **TC_EXIT=0**, 0 errores.
+- `pnpm exec eslint` sobre los 50 archivos tocados: **0 errores**, 19 avisos preexistentes (`_f`, `_id`, `_args`… sin usar en
+  lineas no tocadas; `OrdenHistorialOrigenTipo` sin usar en `IOrdenRepository.ts:11`, linea no tocada).
+- Postgres real, `tarifas-flexibles-snapshot.test.ts`: **Tests 6 passed (6)**.
+- Postgres real, vecinos (13 archivos: snapshot, `rechazo-tienda-cobro-tarifa-valor-migration` (8/8 con el arreglo),
+  `tarifas-flexibles-resolver`, `-respaldo`, `cierre-detail-congelado`, `ajuste-pago-mensajero-cierre`,
+  `resolver-novedad-reprograma-dinero`, `aislamiento-cierres`, `aislamiento-wallet`, `zona-especial-dos-empresas`,
+  `asimetria-sin-tarifa`, `costo-y-zona-api-415`, `dinero-productos.int`): **Test Files 2 failed | 11 passed (13)**; los 2
+  rojos son `costo-y-zona-api-415` y `dinero-productos.int`, ambos en `tests/baseline-rojos.json` y rojos AL SEMBRAR
+  («referencia a otra empresa», SL017), no en lo que miden.
+- Unit y vecinos (216 archivos: todo test que importa los modulos tocados + los tocados + `aporte-por-orden-equivalencia`):
+  **Test Files 1 failed | 215 passed (216); Tests 3823 passed | 22 skipped** — el unico rojo es `dinero-productos.int`
+  (baseline, SL017).
+- `pnpm run test:guardias`: **Test Files 2 failed | 322 passed | 3 skipped (327)**: `dependencias-declaradas-presentes`
+  (4, baseline) y `sql-a-mano-por-empresa` › «la lista solo baja» (mio: arreglado quitando la excepcion; re-corrida
+  `sql-a-mano-por-empresa` + `organizacion-en-modelos` + `plataforma-solo-en-lista` + `storage-solo-por-adaptador`: 48/48).
+
+### Contrapruebas (`scratchpad/mut.py`; las cuatro restauradas con `cp` del respaldo y `cmp` igual)
+- **M1 (la de tasks.md): `tarifaDe` lee el valor VIVO** (por la traza `tarifa_valor_id`, `tarifaValor.valor/ivaPct` en vez de
+  la fila congelada) -> `× R41/R46 — cambiar y BORRAR valores y grupos…` (1 failed | 5 passed):
+  ```
+  "tienda_flete_entregado": {
+  -   "ivaPct": "13.00",
+  +   "ivaPct": "0.00",
+  ```
+- **M2: congelar sin `tienda_fulfillment`** (`conceptosCongeladosDe` lo filtra) -> 3 failed | 3 passed (solicitud, R41/R46 y
+  corte): `- "fulfillment": "450.00"  + "fulfillment": "0.00"`, `- "ivaFulfillment": "58.50"  + "ivaFulfillment": "0.00"`.
+- **M3: sin `AND dc."organizacion_id" = d."organizacion_id"` en el `json_agg`** -> `× R41 — Analitica exige la empresa en el
+  json_agg…`: `AssertionError: expected '999.00' to be '0.00'`.
+- **M4: el WHERE del aporte vuelve a `tarifaId: { not: null }`** -> `× R41/R46 …`: `expected [] to deeply equal [ …(3) ]`.
+
+### Desvios / abiertos
+1. `tarifaDe` da `TarifaCongelada`, no `TarifaTienda` (decision 1).
+2. «La aprobacion» se mide con los dos feeds que la aprobacion escribe (`WalletFeedService`, `WalletTiendaFeedService`) y no
+   con `resolverCierre` entero contra Postgres (sus siembras de wallet/caja chocan con SL017 en los tests de baseline).
+3. El corte se ejerce con `CorteDiarioService` real y su repositorio de seleccion como doble (la seleccion no es de esta
+   ficha); la re-solicitud 477 pasa por `CierreDiaService.solicitarCierre` real (rama `resolicitado`). La anulacion de la
+   gestion se escribe a mano (no por `anularGestionDeCierreRechazado`).
+4. **Abierto (UI):** la pantalla del detalle de cierre no pinta aun `ingresoEmpresa.fulfillment`/`ivaFulfillment`, y en el
+   nuevo `tarifa` es `null` (la tarjeta «tarifa aplicada» queda vacia): es de frontend_dev / SLT-54.
+5. **Abierto:** en el aporte por orden, una orden del nuevo sin el concepto de ese movimiento aparece con aporte 0.00 (igual
+   que hoy una tarifa vieja con ese valor en 0): «hay tarifa» se lee como `tarifaDe` != `null`, no por concepto.
+
+### Veredicto T5.3-T5.4
+Hechas: las seis lecturas del congelado (cinco + `costoReal`) leen `cierre_detail_concepto`, el IVA del fulfillment sale del
+congelado (detalle, Analitica y API), integracion de 6 casos en Postgres real con 4 contrapruebas rojas, bug del aporte en el
+nuevo arreglado, firmas estrechadas salvo lo que exige T0.1 (medido); typecheck 0, lint 0 errores; sin commitear.
+
+### Rojos del gate del implementer
+- 3 rojos de forma legitima (a), ningun bug: `costoReal` pide ahora `tarifaModelo` + `conceptos` (design §7, R41/R46) y
+  `congelado.tarifa` sale en el sobre `{ modelo: "viejo", tarifa }`.
+- Literales actualizados A MANO (son el contrato de lo que se pide a Prisma): R18 de `orden-repository.api-lectura` (15 -> 17
+  claves + el sub-`select` de `conceptos` con sus 6 campos) y `SELECT_DETALLE_106` de `no-regresion-106`. R25+R29: el doble
+  devuelve `tarifaModelo: "viejo", conceptos: []` y se espera el sobre; importes intactos. Nuevo caso «SLT-52/R18»: ninguna
+  clave nueva sale en el item ni en `costeo.congelado`.
+- Mutacion: quitar `conceptos` del `select` de `OrdenRepository` -> 2 rojos (R18 y 106); restaurado con `cp` + `cmp`.
+
+### T5 — verificación del implementer antes del commit
+- `tarifas-flexibles-snapshot.test.ts` re-corrido por el implementer contra la base local: 6/6. Las 4 contrapruebas (M1-M4) comprobadas en sus logs y los 4 archivos restaurados (`cmp` igual).
+- Gate 1.º: INIT_EXIT=1 por 3 rojos de forma (proyección de `costoReal`, arriba) → arreglados con literales a mano.
+- `sql-a-mano-por-empresa`: sobraba `DineroProductosRepository` en `EXCEPCIONES_SQL_A_MANO` (ya filtra por empresa) → quitada.
+- Gate 2.º (`./init.sh`): **INIT_EXIT=0**; test:rapido 1060 passed | 206 skipped; guardias 323 passed | 3 skipped.

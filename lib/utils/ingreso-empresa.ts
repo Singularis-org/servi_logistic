@@ -101,13 +101,15 @@ function aplicarPorcentaje(base: Prisma.Decimal, porcentaje: Prisma.Decimal): Pr
  * SLT-52 (design §6) — lo que aceptan las funciones de cobro mientras conviven los dos modelos.
  *
  * `ConModelo<T>` es la union del resolver unico (`TarifaTienda`) con el modelo viejo reducido a lo
- * que cada funcion lee (`T`): un `TarifaTienda` entra tal cual, y los lectores del congelado del
- * cierre (`tarifaDe`, que hoy da `TarifaVigente` sin `tarifaId`) podran envolverse igual.
+ * que cada funcion lee (`T`): un `TarifaTienda` entra tal cual, y el congelado del cierre
+ * (`tarifaDe` -> `TarifaCongelada`) tambien.
  *
- * Por que ademas se acepta `T` SIN envolver (desvio de T4.1, anotado en la bitacora): el cierre,
- * las wallets y el aporte por orden pasan hoy una `TarifaVigente` suelta y migran a `TarifaTienda`
- * en T5.3. Exigir el sobre ya obligaria a reescribir esos llamadores antes de su tanda. Una tarifa
- * suelta es SIEMPRE el modelo viejo (no lleva `modelo`), asi que no hay ambiguedad posible.
+ * `T` SIN envolver: SOLO PARA EL RESPALDO T0.1. Desde T5.3 ningun llamador de produccion pasa una
+ * tarifa suelta (medido estrechando esta union: los unicos errores de tipos caen en `tests/`). Se
+ * conserva porque `tests/unit/tarifas/respaldo-identico.test.ts` —intocable: es el contrato del
+ * modelo viejo— llama a `derivarIngresoOrden`, `costosListadoOrden`, `costoEnvioDeTarifa` y
+ * `desgloseCargaApi` con la tarifa suelta. Una tarifa suelta es SIEMPRE el modelo viejo (no lleva
+ * `modelo`), asi que no hay ambiguedad posible.
  */
 export type ConModelo<T> =
   | { modelo: "viejo"; tarifa: T }
@@ -920,18 +922,15 @@ export interface TarifaConFulfillment {
  * SLT-52 (R31): en el nuevo es el importe de `tienda_fulfillment` (concepto ausente = 0), y como su
  * base en % es el pedido (R27) la firma con `ConModelo` exige `montoCobrar`. Es el importe SIN IVA:
  * su IVA (R46) lo da `ivaFulfillmentDeTarifa`, aparte, para que el desglose publique los dos.
+ *
+ * SLT-52 (T5.3): solo el sobre. La forma suelta de T4 se retiro: ningun llamador la usaba y el
+ * respaldo T0.1 no la ejercita.
  */
-export function montoFulfillmentDeTarifa(tarifa: TarifaConFulfillment | null): Prisma.Decimal;
 export function montoFulfillmentDeTarifa(
-  tarifa: TarifaDeCobro<TarifaConFulfillment> | null,
+  t: ConModelo<TarifaConFulfillment> | null,
   montoCobrar: string | null,
-): Prisma.Decimal;
-export function montoFulfillmentDeTarifa(
-  entrada: TarifaDeCobro<TarifaConFulfillment> | null,
-  montoCobrar: string | null = null,
 ): Prisma.Decimal {
-  if (entrada === null) return new Prisma.Decimal(0);
-  const t = conModelo(entrada);
+  if (t === null) return new Prisma.Decimal(0);
   if (t.modelo === "viejo") return new Prisma.Decimal(t.tarifa.fulfillment);
   const valor = t.valores.tienda_fulfillment;
   return valor === undefined
@@ -946,15 +945,15 @@ export function montoFulfillmentDeTarifa(
  * `ivaDe` del importe ya redondeado; concepto ausente = 0. Viejo: SIEMPRE 0, porque `tarifas` no
  * tiene un % de IVA para el fulfillment y R47 exige que el costo no cambie ni un centimo.
  *
- * Acepta cualquier tarifa vieja (no lee ningun campo suyo): asi el congelado del cierre, que hoy
- * es una `TarifaVigente` sin fulfillment, tambien puede preguntarlo.
+ * Acepta el sobre con cualquier tarifa vieja (no lee ningun campo suyo): asi el congelado del
+ * cierre (`TarifaCongelada`, cuya `TarifaVigente` no trae fulfillment) tambien puede preguntarlo.
+ * SLT-52 (T5.3): solo el sobre; la forma suelta se retiro (el congelado ya llega envuelto).
  */
-export function ivaFulfillmentDeTarifa<T extends object>(
-  entrada: TarifaDeCobro<T> | null,
+export function ivaFulfillmentDeTarifa(
+  t: ConModelo<unknown> | null,
   montoCobrar: string | null,
 ): Prisma.Decimal {
-  if (entrada === null) return new Prisma.Decimal(0);
-  const t = conModelo(entrada);
+  if (t === null) return new Prisma.Decimal(0);
   if (t.modelo === "viejo") return new Prisma.Decimal(0);
   const valor = t.valores.tienda_fulfillment;
   if (valor === undefined) return new Prisma.Decimal(0);
@@ -968,9 +967,8 @@ export function ivaFulfillmentDeTarifa<T extends object>(
  * del pedido: decide DONDE nace la orden, no cuanto cuesta, y una orden prepagada (pedido 0) de una
  * tienda con fulfillment en % sigue saliendo de nuestra bodega.
  */
-export function tieneFulfillment(tarifa: TarifaDeCobro<TarifaConFulfillment> | null): boolean {
-  if (tarifa === null) return false;
-  const t = conModelo(tarifa);
+export function tieneFulfillment(t: ConModelo<TarifaConFulfillment> | null): boolean {
+  if (t === null) return false;
   if (t.modelo === "viejo") return new Prisma.Decimal(t.tarifa.fulfillment).gt(0);
   const valor = t.valores.tienda_fulfillment;
   return valor !== undefined && new Prisma.Decimal(valor.valor).gt(0);
@@ -1014,8 +1012,10 @@ export function desgloseCargaApi(
   const envio = new Prisma.Decimal(
     costoEnvioDeTarifa(tarifa, esCentral, esZonaEspecial, montoCobrar),
   );
-  const fulfillment = montoFulfillmentDeTarifa(tarifa, montoCobrar);
-  const ivaFulfillment = ivaFulfillmentDeTarifa(tarifa, montoCobrar);
+  // La forma suelta solo llega desde el respaldo T0.1; se envuelve aqui y no en las dos funciones.
+  const t = tarifa === null ? null : conModelo(tarifa);
+  const fulfillment = montoFulfillmentDeTarifa(t, montoCobrar);
+  const ivaFulfillment = ivaFulfillmentDeTarifa(t, montoCobrar);
   return {
     costoEnvio: round2(envio.plus(fulfillment).plus(ivaFulfillment)).toFixed(2),
     fulfillment: round2(fulfillment).toFixed(2),
