@@ -202,6 +202,37 @@
   Cubre: R24, R33, R40, R41, R42.
   **Contraprueba:** hacer que `tarifaDe` lea el valor vivo en vez del congelado → rojo pegado en
   `progress/impl_SLT-52.md`.
+- [ ] **T5.5** Base del % del pago desde el cobro congelado (design §13; depende de T5.1-T5.4).
+  `baseDelCobroCongelado` en `lib/utils/cierre-totales.ts`; la usan la 398
+  (`CierresAdminRepository.corregirResultadoGestionEnCierre`), la 477
+  (`CierreDiaRepository.resolicitarCierreRechazado`) y `crearCierre`, que calcula en su tx la base,
+  el pago, el ingreso de bodega y sus totales desde el cobro que congela (design §13.2 paso 4).
+  Cubre: R52, R53, R54, R55 (y fija R28 en esos caminos).
+  Test de integración en Postgres real `tests/integration/db/tarifas-flexibles-base-congelada.test.ts`,
+  empresa en el nuevo con «pago al mensajero por rechazo» y «pago a la satélite por rechazo» en %:
+  - R52: cierre solicitado con la orden entregada y `tienda_flete_rechazo` = A; después se cambia a
+    B y se cambia el `monto_cobrar` de la orden; se corrige a rechazada → `gestion_pago_congelado.base`
+    = A (con el pedido congelado si el concepto es %), `pago_mensajero` e `ingreso_bodega_rechazo`
+    = % de A, e igual al `ingreso_flete_devolucion` que la aprobación le cobra a la tienda. Variante:
+    sin `tienda_flete_rechazo` al congelar y creado después → base `0.00` y pago 0.
+  - R53: cierre rechazado, orden rehecha con otro resultado tras cambiar el valor de la tienda →
+    la base de la rehecha sale del congelado.
+  - R54: cierre congelado en el viejo (sin `tarifa_valor`); luego la empresa escribe sus valores
+    nuevos; corregir a rechazada → base = flete devuelto del viejo congelado.
+  - R55: se resuelve el pago de las gestiones (base con `tienda_flete_entregado` = A), después se
+    cambia ese valor a B y se llama a `crearCierre` con el pago resuelto antes → el cierre se crea,
+    `cierre_detail_concepto` congela B y `gestion_pago_congelado.base`, `pago_mensajero`,
+    `ingreso_bodega_rechazo` y los dos totales de pago del cierre salen de B (no de A). Lo mismo por
+    el corte diario.
+  Unit de `baseDelCobroCongelado` en `tests/unit/utils/cierre-totales-base-congelada.test.ts`
+  (entregado, rechazo, concepto ausente, %, viejo, viejo sin tarifa).
+  **Contrapruebas por mutación** (cada una rojo pegado en `progress/impl_SLT-52.md`, restaurar
+  después): (1) en la 398, volver al `baseFlete` del resolver → rojo R52; (2) en la 477, lo mismo →
+  rojo R53; (3) en `baseDelCobroCongelado`, `monto_cobrar` vivo en vez del congelado → rojo R52;
+  (4) en `crearCierre`, usar el `baseFlete` que trae el servicio (resuelto con el valor vivo antes
+  de la tx) en vez del rebasado → rojo R55 al cambiar el valor entre la resolución y el congelado;
+  (5) devolver 0 en la rama vieja → rojo R54.
+  Hecho: los cuatro bloques verdes, las cinco mutaciones en rojo y `./init.sh` verde.
 
 ## T6 — Services de escritura (depende de T1; puede ir en paralelo con T3-T5) [P]
 
@@ -244,7 +275,7 @@
 - [ ] **T7.3** E2E existentes en verde con empresas en el modelo viejo: `e2e/cierre-*`,
   `e2e/cierres-admin*`, `e2e/cierre-bodega-satelite*`, `e2e/wallet-*`, `e2e/mi-wallet*`,
   `e2e/dos-empresas-humo.spec.ts`. Cubre: R36. Hecho: salida pegada en `progress/impl_SLT-52.md`.
-- [ ] **T7.4** Mapa completo `R1..R51 -> test` en `progress/impl_SLT-52.md`; `./init.sh` verde con
+- [ ] **T7.4** Mapa completo `R1..R55 -> test` (R52-R55 → T5.5) en `progress/impl_SLT-52.md`; `./init.sh` verde con
   `INIT_EXIT=$?` escrito dentro del log.
 
 ## Archivos esperados
@@ -363,6 +394,8 @@ Tests:
 - `tests/integration/db/tarifas-flexibles-respaldo.test.ts`
 - `tests/integration/db/tarifas-flexibles-snapshot.test.ts`
 - `tests/integration/db/tarifas-flexibles-escritura.test.ts`
+- `tests/integration/db/tarifas-flexibles-base-congelada.test.ts` (T5.5, R52-R55)
+- `tests/unit/utils/cierre-totales-base-congelada.test.ts` (T5.5)
 - `tests/integration/carga-api-key-sin-tarifa.test.ts`
 - `tests/fixtures/api-orden-costeo-415.ts`
 - `tests/fixtures/tarifa-tienda.ts`

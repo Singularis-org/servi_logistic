@@ -212,6 +212,29 @@ enmienda ningún R en sitio: se añaden R46-R51.
   cotización por API key responden 409 (o la fila va a `error` en un lote mixto), la lectura por
   API key da el costo estimado `null` y la corrección de datos del cliente responde «sin tarifa».
 
+### Base del % del pago = cobro congelado a la tienda (añadidos 2026-11-03)
+
+R28 ya pedía la base «con los valores congelados en el cierre de esa gestión», pero tres caminos
+la toman de los valores vigentes mientras la tienda se cobra con lo congelado (design §13). No se
+enmienda R28: se añaden R52-R55, que fijan cada camino.
+
+- **R52.** CUANDO se corrige el resultado de una gestión dentro de un cierre abierto, el sistema
+  DEBE usar como base del pago en porcentaje al mensajero y a la satélite el flete sin IVA que ese
+  cierre le cobra a la tienda por esa gestión con el resultado corregido, calculado solo con el
+  cobro y el valor del pedido congelados en ese cierre para esa orden; un valor cambiado, creado o
+  borrado después de congelar el cierre NO DEBE cambiar esa base.
+- **R53.** CUANDO la re-solicitud de un cierre rechazado vincula una gestión rehecha de una orden que
+  el cierre conserva, el sistema DEBE usar como base del pago en porcentaje de esa gestión el flete
+  sin IVA que el cierre le cobra a la tienda por su resultado, calculado solo con el cobro y el
+  valor del pedido congelados en ese cierre para esa orden.
+- **R54.** SI el cobro a la tienda de esa orden se congeló con el modelo viejo y el pago de la
+  gestión sale del modelo nuevo, ENTONCES el sistema DEBE usar como base el flete sin IVA que el
+  cobro viejo congelado le cobra a la tienda por ese resultado; SI ese cobro no cobra nada (sin
+  tarifa congelada o flete en 0), ENTONCES el pago en porcentaje DEBE dar 0.
+- **R55.** CUANDO se crea un cierre (solicitud del mensajero o corte diario), el sistema DEBE
+  calcular la base de cada pago en porcentaje a partir de los mismos valores de cobro que ese cierre
+  congela para la tienda, en la misma transacción.
+
 ### Cobertura de las decisiones cerradas
 
 | Decisión | R |
@@ -248,6 +271,8 @@ enmienda ningún R en sitio: se añaden R46-R51.
 | Fulfillment con IVA (2026-11-02 21:00) | R46, R47, R40 (el % de IVA del fulfillment ya se congela en el cierre) |
 | Traza del valor usado en el cobro por rechazo (2026-11-02 21:00) | R48, R49, R50 |
 | «Sin tarifa» = sin flete por entregado (2026-11-02 21:00) | R51, R25 |
+| Base del % del pago = lo cobrado a la tienda por esa gestión (2026-11-03) | R28, R52, R53, R54, R55 |
+| R55 por construcción, sin abortar (2026-11-03) | R55 |
 
 ## Preguntas abiertas
 
@@ -301,3 +326,5 @@ P1-P4, abiertas por `spec_author` al diseñar, las cerró Carlos el 2026-11-02 (
 | 2026-11-02 21:00 | ¿El fulfillment del modelo nuevo lleva IVA? | Sí, como todo cobro a la tienda (Carlos, tras T4). Los pagos al mensajero y a la satélite siguen sin IVA (P4). |
 | 2026-11-02 21:00 | ¿Se guarda qué `tarifa_valor` produjo el cobro por rechazo? | Sí: columna nueva + migración de esquema (Carlos, tras T4). |
 | 2026-11-02 21:00 | ¿«Sin tarifa» si solo hay comisión o fulfillment? | Confirmado: «sin tarifa» = sin flete por entregado, aunque haya comisión o fulfillment (Carlos, tras T4). |
+| 2026-11-03 | ¿De dónde sale la base del % del pago cuando el cobro a la tienda está congelado (398, 477, creación del cierre)? | Carlos: «la base del % del pago es siempre lo que se le cobra a la tienda por esa gestión». Si la tienda se cobra con lo congelado en el cierre, la base sale de ese mismo congelado, nunca del valor vivo. |
+| 2026-11-03 | Aprobación de R52-R55 | Carlos aprobó R52-R55; R55 por construcción, sin abortar: la base se calcula en la tx de creación desde el cobro que ese cierre congela. |

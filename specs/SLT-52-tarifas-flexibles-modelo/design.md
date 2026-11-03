@@ -532,3 +532,78 @@ concepto (flete por rechazo + su IVA), y una tabla para una fila es más esquema
 
 Ya implementado en T4 (`fleteEntregadoSinTarifa`; desvío 6 de la bitácora). No cambia el diseño:
 solo faltan los tests que lo fijan con comisión o fulfillment puestos en cada superficie (T4.7).
+
+## 13. Base del % del pago desde el cobro congelado (R52-R55; decisión de Carlos 2026-11-03)
+
+Regla: la base del % del pago (mensajero y satélite) es el flete sin IVA que ESE cierre le cobra a
+la tienda por ESA gestión. La tienda se cobra al aprobar con `derivarIngresoOrden(resultado de la
+gestión, tarifaDe(cierre_detail + conceptos))` y el `monto_cobrar` / `es_central` /
+`es_zona_especial` congelados (feeds 42/43, `cierre-detalle.ts`). La base sale de esa misma cuenta:
+`ingreso_flete` si el resultado es `entregado`, `ingreso_flete_devolucion` si no, `0.00` si no
+aporta. En el modelo nuevo es exactamente `fleteSinIvaDeGestion` sobre los valores congelados.
+
+### 13.1 Hallazgos en el código (HEAD 02899491)
+
+- **`tienda_flete_rechazo` sí se congela aunque la orden se cierre como entregada.**
+  `conceptosCongeladosDe` (`CierreDiaRepository.ts:611`) escribe una fila por CADA concepto de cobro
+  a la tienda que el resolver resolvió para la orden, sin mirar el resultado. Solo falta si ningún
+  nivel lo tenía al congelar (R23); entonces la tienda paga 0 por el rechazo
+  (`derivarIngresoModeloNuevo`: concepto ausente no aporta) y la base es 0 (R28). No hace falta
+  regla nueva ni pregunta abierta. `rechazo_tienda_cobro` no interviene: es el cobro de la ficha
+  337 (rechazo de la devolución por la tienda), que no pasa por el cierre del mensajero.
+- **398** (`CierresAdminRepository.corregirResultadoGestionEnCierre`, ~l.1770): la base sale de
+  `resolverPagosCon(tx, …)`, con los valores VIVOS y `orden.monto_cobrar` VIVO, mientras la tienda
+  se cobra con lo congelado (no toca `cierre_detail`). Viola R28. → R52.
+- **477** (`CierreDiaRepository.resolicitarCierreRechazado`, ~l.1931): la premisa de que «el cierre
+  se rehace con valores vivos para la tienda» NO se cumple. El paso 5 (D6 de la 477) solo borra el
+  `cierre_detail` de las órdenes sin rehacer; la orden rehecha CONSERVA su cobro congelado, y el pago
+  se resuelve con valores vivos. Es la misma divergencia que la 398. → R53.
+- **Modelos cruzados** (398 o 477): si el cierre se congeló en el viejo y la empresa escribió su
+  primer valor después, el resolver de pago devuelve el nuevo y el cobro congelado es el viejo. La
+  regla de Carlos lo resuelve sin inventar: la base es el flete devuelto que el viejo congelado le
+  cobra a la tienda (`derivarIngresoOrden` ya lo calcula). → R54. Consecuencia: en ese caso el pago
+  usa un concepto nuevo sobre una base del viejo; R37 sigue rigiendo los cierres que se congelan
+  después.
+- **Creación del cierre** (solicitud `CierreDiaService.ts:705` y corte diario
+  `CorteDiarioService.ts:207`): el pago y su base se resuelven FUERA de la tx de `crearCierre`; el
+  cobro se resuelve y congela DENTRO. Solo divergen si un valor o el `monto_cobrar` cambia entre
+  las dos lecturas (milisegundos). → R55: la base se calcula dentro de la tx desde el cobro que se
+  congela, así que no pueden divergir por construcción (Carlos, 2026-11-03: sin abortar).
+- **Sin cambio:** el ajuste del pago (SLT-56, `ajuste-pago-mensajero.ts`) mueve un importe manual y
+  no calcula base; la aprobación y las wallets leen `pago_mensajero` / `gestion_pago_congelado` ya
+  escritos; la vista en vivo del cierre (`CierreDiaService.ts:284`) no congela nada.
+
+### 13.2 Cambio
+
+1. **Función pura** `baseDelCobroCongelado(resultado, detalle)` en `lib/utils/cierre-totales.ts` (ya
+   importa `Prisma`; `cierre-detalle.ts` no puede, entra en el árbol del navegador): `tarifaDe` +
+   `derivarIngresoOrden` con los datos congelados del detalle, y devuelve el flete sin IVA (texto,
+   2 decimales). Una sola fuente para R52-R55.
+2. **398**: dentro de la tx, leer el `cierre_detail` de `(cierreId, ordenId)` con `DETALLE_SELECT`
+   (falta = `CierreDetalleFaltanteError`, sin fallback; 69/R14). Si la tarifa de pago es del nuevo,
+   sustituir su `baseFlete` por `baseDelCobroCongelado(RESULTADO_RECHAZADA, detalle)` ANTES de
+   `pagoPorResultado`, `ingresoBodegaPorResultado` y `pagosDelCierre`. El viejo no tiene base y no
+   cambia.
+3. **477**: igual, por cada gestión vinculada, con el detalle de su orden leído en una consulta
+   (`cierreId` + `ordenId IN`) y su propio resultado, antes de `derivarPagos`,
+   `derivarIngresoBodega` y `pagosDelCierre`.
+4. **`crearCierre`** (R55, por construcción): el servicio sigue pasando la tarifa de PAGO de cada
+   gestión (concepto, modo y valor del mensajero y la satélite), pero su `baseFlete` deja de usarse.
+   Dentro de la tx, tras resolver y escribir el cobro congelado, para cada gestión del nuevo se fija
+   `baseFlete = baseDelCobroCongelado(resultado, detalle de su orden)` con esos mismos valores en
+   memoria, y con esa tarifa rebasada se calculan ahí `pago_mensajero`, `ingreso_bodega_rechazo`,
+   las filas de `gestion_pago_congelado` (`pagosDelCierre`) y los totales
+   `total_pago_mensajero` / `total_ingreso_bodega_rechazos` (sumando los snapshots de la tx, como
+   `recalcularTotalesDelCierre`). Los totales de pago que calculaba el servicio dejan de escribirse
+   en el cierre del modelo nuevo; en el viejo no cambia nada (no hay base, R36).
+
+Sin migración ni columna nueva: `gestion_pago_congelado.base` ya existe y ya se escribe.
+
+### 13.3 Alternativa descartada
+
+**Comprobar la base dentro de la tx y abortar el cierre si no casa** (primera versión de R55).
+Descartada por Carlos el 2026-11-03: un cierre que falla por una carrera de milisegundos obliga a
+reintentar (el corte diario lo haría al día siguiente) cuando la base puede calcularse en la misma
+tx desde el cobro que se congela, y entonces la divergencia es imposible y no hay nada que abortar.
+Descartada también: **guardar el flete de la tienda por gestión en `gestion_orden`** para leerlo como base:
+duplica lo que `cierre_detail_concepto` ya congela y abre una segunda fuente que puede divergir.
