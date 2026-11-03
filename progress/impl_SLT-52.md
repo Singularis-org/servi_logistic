@@ -1292,3 +1292,32 @@ en verde, las 5 contrapruebas en rojo y restauradas (`cmp`); typecheck 0, lint 0
 ### Gate del implementer (T5.5)
 
 `./init.sh` rapido sobre el arbol de T5.5: `INIT_EXIT=0` (4521 passed, 24 skipped; 246 rojos heredados del baseline fuera de la seleccion). El worktree no tiene `.env`: la integracion contra Postgres la corrio backend_dev aparte (6/6).
+
+## Arreglo del rojo de la FICHA 450 (`aprobacion-consultas-en-serie.test.ts`) — decision del leader, opcion (a)
+
+**Causa.** No hay paralelismo. T5.3 (02899491) anadio `conceptos: { select }` a `DETALLE_SELECT`; Prisma 7.8 (estrategia de
+carga `query`) la emite como una SEGUNDA consulta sobre `"public"."cierre_detail_concepto"`, EN SERIE y por la misma conexion
+(sonda: max en vuelo 1, 0 solapes, 0 avisos). Fallaba solo el recuento `cuantasConteniendo("cierre_detail")`, que casaba por
+subcadena con las dos tablas (2 en vez de 1; 4 en vez de 2).
+
+**Arreglo (solo test, sin tocar codigo de produccion).** Recuento por identificador EXACTO con las comillas de Prisma
+(`TABLA_DETALLE = '"cierre_detail"'`), mas una asercion explicita de `"cierre_detail_concepto"` (1 por feed, 2 con los dos) y la
+igualdad de conexion de los conceptos con las gestiones. Las aserciones de R1 (`maximoEnVuelo`, `maximoEnVueloDeLaConexionDe`,
+`solapes`, `conexionesUsadas`) no cambian; `maximoEnVueloDeLaConexionDe("cierre_detail")` sigue con subcadena A PROPOSITO.
+
+**Salida.** 450: 9/9. Integracion SLT-52 (`tarifas-flexibles-*` x5, `rechazo-tienda-cobro-tarifa-valor-migration`) + 450:
+7 archivos, 89/89.
+
+**Contraprueba** (`lib/utils/cierre-detalle.ts`, restaurado con `cmp`):
+- Conceptos en `Promise.all` con la consulta padre (sacando `conceptos` del select, `findMany` aparte por `cierreDetailId`):
+  la 450 de integracion queda VERDE 9/9 — Prisma 7.8 serializa la tx interactiva (es lo que ya documenta la cabecera del
+  archivo: «ESTE `1` YA ERA `1` ANTES DEL ARREGLO»). La MISMA mutacion la cazan en rojo la guardia
+  `consultas-concurrentes-en-transaccion.guardia.test.ts` («cero violaciones en `lib/`») y el bloque 450/R3 de
+  `wallet-feed-service.test.ts` / `wallet-tienda-feed-service.test.ts` («no hay ningun solape…»).
+- Variante con el filtro relacional `cierreDetail: { cierreId }`: la 450 de integracion ROJA por recuento (2/1, 4/2), porque esa
+  consulta tambien nombra `"cierre_detail"`.
+
+**Gate** (`./init.sh` rapido, con `.env`): `INIT_EXIT=1`, 11 failed | 17322 passed | 26 skipped. Rojos: `caja-backfill`,
+`notificacion-evento-bloqueo-cierre-migration`, `notificacion-evento-gasto-fijo-migration`,
+`notificacion-evento-webhook-suscripcion-migration` (estado de la base local, tambien en dev) y `carga-division` (2: cuenta
+`historial_accion` global y otra prueba escribe a la vez; sola pasa 16/16). Ninguno de SLT-52; la 450 verde dentro del gate.
