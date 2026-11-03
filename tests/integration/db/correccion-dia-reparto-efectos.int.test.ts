@@ -470,7 +470,6 @@ describeSiHayBase("262/B13 — las ausencias y las consecuencias, contra Postgre
 
   const CALCULADA_AT = new Date("2026-08-20T13:00:00.000Z");
   const ORIGEN_AT = new Date("2026-08-20T12:58:00.000Z");
-  const TRAMO_VIVO_AT = new Date("2026-08-20T13:05:00.000Z");
 
   async function conOrdenEnRuta<T>(
     fechaReparto: Date,
@@ -537,7 +536,6 @@ describeSiHayBase("262/B13 — las ausencias y las consecuencias, contra Postgre
           trazadoDistanciaM: 4_210,
           trazadoDuracionS: 640,
           trazadoFuente: "routes",
-          tramoVivoAt: TRAMO_VIVO_AT,
         },
         select: { id: true },
       });

@@ -62,7 +62,6 @@ function ruta(over: Partial<RutaOptimizadaDTO> = {}): RutaOptimizadaDTO {
     // pasan por `over`. `null` = no consta, que es el estado de toda ruta anterior a la 265.
     secuenciaFuente: null,
     trazado: null,
-    tramoVivoAt: null,
     actualizadaAt: new Date(T0.getTime() - 60 * 60_000), // SLT-59 (R54): enfriamiento ya pasado
     tramoPorOrden: new Map(),
     secuenciaPorOrden: new Map(),
@@ -84,7 +83,6 @@ function build(opts: {
     upsertOrigen: vi.fn<(m: string, u: unknown) => Promise<void>>(async () => {}),
     reemplazarSecuencia: vi.fn<(m: string, s: string[], meta: unknown) => Promise<void>>(async () => {}),
     guardarTrazado: vi.fn<(m: string, h: string, t: unknown) => Promise<void>>(async () => {}),
-    marcarTramoVivo: vi.fn<(m: string, a: Date) => Promise<void>>(async () => {}),
     reducirSecuencia: vi.fn(async () => true),
     marcarDesactualizada: vi.fn<(m: string, e: string) => Promise<void>>(async () => {}),
   };
@@ -543,7 +541,6 @@ describe("R12 — credencial ausente corta ANTES de cualquier red", () => {
       upsertOrigen: vi.fn(async () => {}),
       reemplazarSecuencia: vi.fn(async () => {}),
       guardarTrazado: vi.fn(async () => {}),
-      marcarTramoVivo: vi.fn(async () => {}),
       reducirSecuencia: vi.fn(async () => true),
       marcarDesactualizada: vi.fn(async () => {}),
     };

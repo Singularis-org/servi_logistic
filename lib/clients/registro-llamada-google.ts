@@ -38,7 +38,6 @@ export const MOTIVOS_LLAMADA_RUTA = [
   "sincronizacion_manual_desvio",
   "sincronizacion_manual_paradas",
   "recuperacion_ruta_caida",
-  "trayecto_vivo",
   "prueba_integracion",
   "job_sin_origen",
 ] as const;

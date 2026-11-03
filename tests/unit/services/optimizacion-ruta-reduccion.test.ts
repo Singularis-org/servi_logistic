@@ -95,7 +95,6 @@ function rutaConTramos(ids: string[], over: Partial<RutaOptimizadaDTO> = {}): Ru
       duracionS: 9_999,
       fuente: "routes",
     },
-    tramoVivoAt: null,
     actualizadaAt: new Date(T0.getTime() - 60 * 60_000), // SLT-59 (R54): enfriamiento ya pasado
     secuenciaPorOrden: new Map(ids.map((id, i) => [id, i + 1])),
     tramoPorOrden: new Map(ids.map((id, i) => [id, tramo(anteriores[i], id)])),
@@ -138,7 +137,6 @@ function build(opts: {
       async () => opts.reducirDevuelve ?? true,
     ),
     marcarDesactualizada: vi.fn(async () => {}),
-    marcarTramoVivo: vi.fn(async () => {}),
   };
   const paradasRepo = { contarAsignadasDelDia: async () => ({ asignadas: 0, recogidas: 0 }), ultimaRecogidaDelDia: async () => null, findParadasEnReparto: vi.fn(async () => opts.paradas) };
   const client = {

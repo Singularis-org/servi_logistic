@@ -86,7 +86,6 @@ function rutaDeAyer(over: Partial<RutaOptimizadaDTO> = {}): RutaOptimizadaDTO {
     ultimoError: null,
     secuenciaFuente: "proveedor",
     trazado: null,
-    tramoVivoAt: null,
     actualizadaAt: new Date(T0.getTime() - 30 * MIN),
     secuenciaPorOrden: new Map([
       ["s1", 1],
@@ -132,7 +131,6 @@ function build(opts: {
     guardarTrazado: vi.fn(async () => {}),
     reducirSecuencia: vi.fn(async () => true),
     marcarDesactualizada: vi.fn(async () => {}),
-    marcarTramoVivo: vi.fn(async () => {}),
   };
   const paradasRepo = {
     findParadasEnReparto: vi.fn(async () => opts.paradas ?? TODAS()),
@@ -171,8 +169,7 @@ function build(opts: {
     rutas.reemplazarSecuencia.mock.calls.length +
     rutas.guardarTrazado.mock.calls.length +
     rutas.reducirSecuencia.mock.calls.length +
-    rutas.marcarDesactualizada.mock.calls.length +
-    rutas.marcarTramoVivo.mock.calls.length;
+    rutas.marcarDesactualizada.mock.calls.length;
   const llamadas = () => client.optimizar.mock.calls.length + routes.trazar.mock.calls.length;
   return { service, rutas, paradasRepo, client, routes, escrituras, llamadas };
 }
@@ -437,7 +434,6 @@ describe("SLT-79 — el boton con la primera pendiente: minimo O 5 min desde la 
       guardarTrazado: vi.fn(),
       reducirSecuencia: vi.fn(),
       marcarDesactualizada: vi.fn(),
-      marcarTramoVivo: vi.fn(),
     };
     const paradasRepo: ParadasRepo = {
       findParadasEnReparto: vi.fn(async () => TODAS()),

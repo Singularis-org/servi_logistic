@@ -311,7 +311,6 @@ function armarReposDeRutas() {
       ultimoError: null,
       secuenciaFuente: null,
       trazado: null,
-      tramoVivoAt: null,
       actualizadaAt: new Date(AHORA.getTime() - 60 * 60_000),
       secuenciaPorOrden: new Map<string, number>(),
       tramoPorOrden: new Map(),
@@ -319,7 +318,6 @@ function armarReposDeRutas() {
     upsertOrigen: vi.fn(async () => {}),
     reemplazarSecuencia: vi.fn(async () => {}),
     guardarTrazado: vi.fn(async () => {}),
-    marcarTramoVivo: vi.fn(async () => {}),
     reducirSecuencia: vi.fn(async () => true),
     marcarDesactualizada: vi.fn(async () => {}),
   };

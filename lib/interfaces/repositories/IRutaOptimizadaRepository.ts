@@ -43,12 +43,6 @@ export interface RutaOptimizadaDTO {
    */
   trazado: TrazadoPersistido | null;
   /**
-   * Instante del ultimo trayecto EN VIVO servido. `null` = nunca. Es el unico estado que
-   * acota ese gasto: a diferencia del trazado de la ruta, un trayecto que arranca en la
-   * posicion actual no se puede cachear, asi que cada peticion es una llamada facturada.
-   */
-  tramoVivoAt: Date | null;
-  /**
    * SLT-59 (R54, design §12.1) — `updated_at` de la fila. Es la cota del enfriamiento de R53:
    * no hay columna con el instante del fallo, y cualquier escritura posterior la mueve, asi que
    * solo puede hacer esperar MAS, nunca menos (P12).
@@ -201,11 +195,4 @@ export interface IRutaOptimizadaRepository {
    * no existia (un fallo en la primera optimizacion tambien debe quedar registrado).
    */
   marcarDesactualizada(mensajeroId: string, ultimoError: string): Promise<void>;
-
-  /**
-   * Sella el instante del ultimo trayecto en vivo. Se llama DESPUES de que la llamada al
-   * proveedor haya salido bien: sellar antes cobraria el intervalo por un intento fallido y
-   * dejaria al mensajero esperando sin haber recibido nada.
-   */
-  marcarTramoVivo(mensajeroId: string, at: Date): Promise<void>;
 }

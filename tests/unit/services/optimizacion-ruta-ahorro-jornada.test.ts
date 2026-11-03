@@ -139,7 +139,6 @@ interface FilaRuta {
   ultimoError: string | null;
   secuenciaFuente: SecuenciaFuentePersistida | null;
   trazado: TrazadoPersistido | null;
-  tramoVivoAt: Date | null;
   actualizadaAt: Date;
   paradas: FilaParada[];
 }
@@ -168,7 +167,6 @@ class RutasEnMemoria implements IRutaOptimizadaRepository {
       ultimoError: null,
       secuenciaFuente: null,
       trazado: null,
-      tramoVivoAt: null,
       actualizadaAt: this.reloj(),
       paradas: [],
     };
@@ -195,7 +193,6 @@ class RutasEnMemoria implements IRutaOptimizadaRepository {
       ultimoError: f.ultimoError,
       secuenciaFuente: f.secuenciaFuente,
       trazado: f.trazado === null ? null : { ...f.trazado },
-      tramoVivoAt: f.tramoVivoAt,
       actualizadaAt: f.actualizadaAt,
       secuenciaPorOrden: new Map(f.paradas.map((p) => [p.ordenId, p.secuencia])),
       tramoPorOrden: new Map(
@@ -276,10 +273,6 @@ class RutasEnMemoria implements IRutaOptimizadaRepository {
     const f = this.cabecera();
     Object.assign(f, { estado: "desactualizada", ultimoError });
     this.tocar(f);
-  }
-
-  async marcarTramoVivo(_m: string, at: Date): Promise<void> {
-    if (this.fila !== null) this.fila.tramoVivoAt = at;
   }
 }
 

@@ -517,13 +517,6 @@ const LISTA_BLANCA_TO_FIXED: readonly { ruta: string; porque: string }[] = [
     ruta: "components/shared/BulkUpload.tsx",
     porque: "tamaño de archivo en MB, no un importe",
   },
-  {
-    // No se reescribio el fuente para sacarlo de aqui: `Math.round(m / 100) / 10`
-    // se come el cero final y «1.0 km» pasaria a «1 km». Lo que ve el mensajero no
-    // se cambia para acomodar una guardia.
-    ruta: "app/(app)/mis-asignaciones/_components/TrayectoVivoButton.tsx",
-    porque: "distancia en km hasta la siguiente parada, no un importe",
-  },
 ];
 
 const SERIALIZA_CRUDO = /\.toFixed\s*\(/;

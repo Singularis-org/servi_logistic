@@ -71,7 +71,6 @@ function ruta(over: Partial<RutaOptimizadaDTO> = {}): RutaOptimizadaDTO {
     // Feature 265 (R35): esta suite mira el REORDENADO de la lectura, no la procedencia.
     secuenciaFuente: null,
     trazado: null,
-    tramoVivoAt: null,
     actualizadaAt: new Date("2026-07-20T11:00:00.000Z"),
     tramoPorOrden: new Map(),
     secuenciaPorOrden: new Map(),

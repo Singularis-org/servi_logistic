@@ -76,7 +76,6 @@ function rutaPrevia(): RutaOptimizadaDTO {
     ultimoError: null,
     secuenciaFuente: "proveedor",
     trazado: null,
-    tramoVivoAt: null,
     actualizadaAt: new Date(T0.getTime() - 60 * 60_000), // SLT-59 (R54): enfriamiento ya pasado
     tramoPorOrden: new Map(),
     secuenciaPorOrden: new Map([
@@ -92,7 +91,6 @@ function build(http: number) {
     upsertOrigen: vi.fn(async () => {}),
     reemplazarSecuencia: vi.fn(async () => {}),
     guardarTrazado: vi.fn(async () => {}),
-    marcarTramoVivo: vi.fn(async () => {}),
     reducirSecuencia: vi.fn(async () => true),
     marcarDesactualizada: vi.fn<(m: string, e: string) => Promise<void>>(async () => {}),
   };
