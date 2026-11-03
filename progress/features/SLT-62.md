@@ -18,6 +18,8 @@ Cupo: fichas propias en vuelo SLT-62/63/64; sin cruce declarado con fichas de ot
 - 2026-10-30 (Carlos): spec aprobado con las decisiones por defecto. P1 = mantener «Ninguna ha terminado todavía» con 0 desenlaces.
 - 2026-10-30 (Carlos): el porcentaje se muestra SIEMPRE y LIMPIO, sin aviso de base pequeña; se quita el texto «hacen falta 20». Aplica sobre cargadas y sobre las que tienen desenlace.
 - 2026-11-02 (Carlos): «Sí, en paralelo» — se adelanta antes de terminar EP-8. Sin choque de archivos (archivos-en-vuelo exit 0).
+- 2026-11-02 (Carlos): tarjeta «Efectividad de la gestión» (`KpisEfectividad.tsx`): «SÍ, que muestre su % con pocas órdenes, igual que el resto». Se fija con test literal + contraprueba.
+- 2026-11-02 (Carlos): singular con 1 orden: «SÍ, corregir en esta ficha» — p. ej. «de la 1 orden que entró», «100% de la 1 orden con desenlace»; concordancia en número en todas las frases que interpolan el conteo.
 
 ## Preguntas abiertas
 Ninguna.

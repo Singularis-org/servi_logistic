@@ -77,6 +77,16 @@ export const TEXTO_HEROE = {
  * lado. Antes era «424 entregadas» / «1 entregada» (y el reemplazo mecanico de la Fase 1 dejo el
  * singular en «1 entregado»): el nombre no se pluraliza ni se pasa a minusculas.
  */
+/**
+ * SLT-62, tanda 2 (decision del humano, 2026-11-02) — CONCORDANCIA EN NUMERO. `contarOrdenes` ya
+ * pone el sustantivo en singular con 1; el ARTICULO y el VERBO que lo rodean tambien tienen que
+ * concordar: «de la 1 orden que entró», no «de las 1 orden que entraron». Antes del suelo de 20
+ * ese caso era inalcanzable; desde SLT-62 se pinta.
+ */
+function segunNumero(n: number, singular: string, plural: string): string {
+  return n === 1 ? singular : plural;
+}
+
 function contarEntregadas(n: number): string {
   return `${NOMBRE_ESTADO.entregado}: ${formatearValor(n, "conteo")}`;
 }
@@ -103,7 +113,9 @@ export function titularDelHeroe(madurez: MadurezDeCohorte): TitularDelHeroe {
     return {
       porcentaje: sobreCargadas.valor,
       titular: contarEntregadas(entregadas),
-      detalle: `de las ${contarOrdenes(cargadas, ORDENES)} que entraron`,
+      detalle:
+        `${segunNumero(cargadas, "de la", "de las")} ${contarOrdenes(cargadas, ORDENES)} ` +
+        `que ${segunNumero(cargadas, "entró", "entraron")}`,
     };
   }
 
@@ -129,8 +141,10 @@ export function titularDelHeroe(madurez: MadurezDeCohorte): TitularDelHeroe {
 export function fraseSobreCerradas(sobreCerradas: PorcentajeDeEntrega): string | null {
   if (sobreCerradas.valor === null) return null;
   return (
-    `${formatearValor(sobreCerradas.valor, "porcentaje")} de las ` +
-    `${contarOrdenes(sobreCerradas.base, ORDENES_CON_DESENLACE)} terminaron en ` +
+    `${formatearValor(sobreCerradas.valor, "porcentaje")} ` +
+    `${segunNumero(sobreCerradas.base, "de la", "de las")} ` +
+    `${contarOrdenes(sobreCerradas.base, ORDENES_CON_DESENLACE)} ` +
+    `${segunNumero(sobreCerradas.base, "terminó", "terminaron")} en ` +
     NOMBRE_ESTADO.entregado
   );
 }
@@ -146,8 +160,10 @@ export function fraseSobreCerradas(sobreCerradas: PorcentajeDeEntrega): string |
 export function avisoPeriodoEnCurso(madurez: MadurezDeCohorte): string | null {
   if (!madurez.enCurso) return null;
   return (
-    `Este período todavía se está cerrando. ${madurez.vivas} de sus ` +
-    `${contarOrdenes(madurez.cargadas, ORDENES)} siguen vivas, así que la efectividad va a subir.`
+    `Este período todavía se está cerrando. ${madurez.vivas} ` +
+    `${segunNumero(madurez.cargadas, "de su", "de sus")} ` +
+    `${contarOrdenes(madurez.cargadas, ORDENES)} ` +
+    `${segunNumero(madurez.vivas, "sigue viva", "siguen vivas")}, así que la efectividad va a subir.`
   );
 }
 

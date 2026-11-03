@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 
 import {
+  avisoPeriodoEnCurso,
   fraseSobreCerradas,
   titularDelHeroe,
 } from "@/app/(app)/analitica/_components/entregas/madurez-textos";
@@ -53,5 +54,55 @@ describe("SLT-62 · R6 · ningún aviso de base pequeña en la tarjeta héroe", 
     }
 
     expect(fallos.slice(0, 10), `${fallos.length} fallos`).toEqual([]);
+  });
+});
+
+// SLT-62, tanda 2 (decisión del humano, 2026-11-02) — CONCORDANCIA EN NÚMERO. Al quitar el suelo
+// de 20, el héroe pasó a escribir sus frases con 1 orden, y salían «de las 1 orden que entraron» y
+// «100% de las 1 orden con desenlace terminaron en Entregado»: el sustantivo ya concordaba
+// (`contarOrdenes`), pero el artículo y el verbo eran plurales fijos. Cada frase se fija con n = 1 y
+// con n > 1; los literales están escritos a mano y no salen del módulo que se prueba.
+describe("SLT-62 · tanda 2 · las frases del héroe concuerdan con una sola orden", () => {
+  it("el detalle del titular: «de la 1 orden que entró»", () => {
+    const una = titularDelHeroe(evaluarMadurezDeCohorte({ total: 1, entregadas: 1, enProceso: 0 }));
+    expect(una.detalle).toBe("de la 1 orden que entró");
+  });
+
+  it("el detalle del titular, en plural: «de las 12 órdenes que entraron»", () => {
+    const doce = titularDelHeroe(evaluarMadurezDeCohorte({ total: 12, entregadas: 8, enProceso: 1 }));
+    expect(doce.detalle).toBe("de las 12 órdenes que entraron");
+  });
+
+  it("la línea sobre las que tienen desenlace: «… de la 1 orden con desenlace terminó en Entregado»", () => {
+    expect(fraseSobreCerradas({ valor: 1, base: 1, motivo: null })).toBe(
+      "100% de la 1 orden con desenlace terminó en Entregado",
+    );
+  });
+
+  it("la línea sobre las que tienen desenlace, en plural", () => {
+    expect(fraseSobreCerradas({ valor: 8 / 11, base: 11, motivo: null })).toBe(
+      "72,7% de las 11 órdenes con desenlace terminaron en Entregado",
+    );
+  });
+
+  it("el aviso de período abierto con UNA viva de UNA cargada: «1 de su 1 orden sigue viva»", () => {
+    const madurez = evaluarMadurezDeCohorte({ total: 1, entregadas: 0, enProceso: 1 });
+    expect(avisoPeriodoEnCurso(madurez)).toBe(
+      "Este período todavía se está cerrando. 1 de su 1 orden sigue viva, así que la efectividad va a subir.",
+    );
+  });
+
+  it("el aviso de período abierto con UNA viva de varias: «1 de sus 12 órdenes sigue viva»", () => {
+    const madurez = evaluarMadurezDeCohorte({ total: 12, entregadas: 8, enProceso: 1 });
+    expect(avisoPeriodoEnCurso(madurez)).toBe(
+      "Este período todavía se está cerrando. 1 de sus 12 órdenes sigue viva, así que la efectividad va a subir.",
+    );
+  });
+
+  it("el aviso de período abierto en plural: «3 de sus 12 órdenes siguen vivas»", () => {
+    const madurez = evaluarMadurezDeCohorte({ total: 12, entregadas: 8, enProceso: 3 });
+    expect(avisoPeriodoEnCurso(madurez)).toBe(
+      "Este período todavía se está cerrando. 3 de sus 12 órdenes siguen vivas, así que la efectividad va a subir.",
+    );
   });
 });

@@ -64,3 +64,59 @@ Los tests los afirman como literales con `\s*` antes del `%`.
   (`.next` compartido con el worktree de SLT-52).
 
 Veredicto: T1-T5 hechas, verdes salvo una guardia de dependencias ajena; quedan dos puntos abiertos.
+
+## Tanda 2 (decisiones de Carlos, 2026-11-02)
+
+### Archivos
+- App: `app/(app)/analitica/_components/entregas/madurez-textos.ts` (helper local `segunNumero`; reutiliza
+  `contarOrdenes` de `base-del-kpi.ts`, el helper de plural que ya existía), `app/(app)/analitica/_components/entregas/ProductosTabla.tsx`
+  (`textoUniverso` pasa por `contarOrdenes(…, ORDENES)`). `KpisEfectividad.tsx` NO se toca (D1 ya se cumplía).
+- Tests: `tests/components/KpisEfectividad.test.tsx`, `tests/unit/components/madurez-textos.test.ts`,
+  `tests/components/ProductosTabla.test.tsx`.
+
+### Textos cambiados (antes → después)
+| Dónde | n = 1 antes | n = 1 después | n > 1 (sin cambio) |
+|---|---|---|---|
+| `titularDelHeroe` detalle | «de las 1 orden que entraron» | «de la 1 orden que entró» | «de las 12 órdenes que entraron» |
+| `fraseSobreCerradas` | «100% de las 1 orden con desenlace terminaron en Entregado» | «100% de la 1 orden con desenlace terminó en Entregado» | «72,7% de las 11 órdenes con desenlace terminaron en Entregado» |
+| `avisoPeriodoEnCurso` (cargadas=1, vivas=1) | «1 de sus 1 orden siguen vivas» | «1 de su 1 orden sigue viva» | — |
+| `avisoPeriodoEnCurso` (vivas=1, cargadas=12) | «1 de sus 12 órdenes siguen vivas» | «1 de sus 12 órdenes sigue viva» | «3 de sus 12 órdenes siguen vivas» |
+| `ProductosTabla.textoUniverso` | «1 órdenes en el rango · …» | «1 orden en el rango · …» | «12 órdenes en el rango · …» |
+
+Revisadas y SIN cambio: `TEXTO_HEROE.baseCargadas` y `rotuloEfectividadGestion` / `CicloVidaKpi` /
+`CohorteCargaTabla` (ya concordaban vía `contarOrdenes`); detalle `sin_cerradas` «0 de 1 orden tienen
+desenlace» (el sujeto es `cerradas`, que en esa rama vale siempre 0 → plural correcto, n = 1 inalcanzable);
+«supera las ${limite} órdenes» (`DineroProductoDetalle`, `ProductosTabla`: tope fijo, nunca 1);
+`eje-de-dias.ts` (cuenta días, no órdenes); `textoAcompanadas` (etiqueta fija «Con otro producto: n de m», sin sustantivo).
+
+### Rojo previo (tests escritos antes del cambio)
+3 archivos: 6 failed | 55 passed. Caen: madurez-textos «de la 1 orden que entró», «… terminó en Entregado»,
+«1 de su 1 orden sigue viva», «1 de sus 12 órdenes sigue viva»; KpisEfectividad «concuerda en singular con
+una sola orden»; ProductosTabla «con una orden: «1 orden en el rango»». El test nuevo de D1 («la tarjeta de
+gestión muestra su % con una base chica (12 órdenes)») pasó en verde desde el principio: D1 ya lo cumplía la
+tanda 1 y el test sólo lo fija. Formato confirmado ejecutando: `91,7%`, `66,7%`, `72,7%`, `100%` (sin espacio).
+
+### Contrapruebas (revertidas; `git diff` del archivo vacío después)
+| Mutación | Failed | Tests que caen |
+|---|---|---|
+| D1: veto de la tarjeta de gestión `&& total >= 20` en `KpisEfectividad.tsx` | 2 (de 21) | «la tarjeta de gestión muestra su % con una base chica (12 órdenes)», «concuerda en singular con una sola orden» |
+| D2: `madurez-textos.ts` y `ProductosTabla.tsx` de vuelta a HEAD (plural fijo) | 6 (de 61) | los 6 del rojo previo |
+
+### Literales de otros tests
+Grep de «que entraron», «terminaron en», «siguen vivas», «órdenes en el rango» en `tests/` y `e2e/`: todos los
+literales existentes son de n > 1 (790, 525, 12, 3, 8, 265/790, 768) y no cambian. Ninguno ajustado.
+
+### Mapa decisión → test
+| Decisión | Test |
+|---|---|
+| D1 (% de gestión con base chica) | `KpisEfectividad.test.tsx` › «la tarjeta de gestión muestra su % con una base chica (12 órdenes)» (8+3 de 12 → 91,7% DENTRO de la tarjeta con su rótulo; el héroe, `role=group` «Efectividad de entrega», dice 66,7% y no 91,7%) |
+| D2 (concordancia) | `madurez-textos.test.ts` › «SLT-62 · tanda 2 · las frases del héroe concuerdan…» (7 casos, n = 1 y n > 1); `KpisEfectividad.test.tsx` › «concuerda en singular con una sola orden» (render); `ProductosTabla.test.tsx` › «SLT-62 · tanda 2 · el universo concuerda…» (2 casos) |
+
+### Verificación final
+- Por archivo: KpisEfectividad 21 passed / 0 failed; ProductosTabla 31 / 0; madurez-textos 9 / 0.
+- `../../node_modules/.bin/vitest related --run <5 tocados>`: 14 files passed; 232 passed | 17 skipped, 0 failed.
+- `NODE_OPTIONS=--max-old-space-size=8192 tsc --noEmit`: exit 0, 0 errores.
+- `eslint` de los 5 tocados: exit 0, 0 problemas.
+- No corridos (prohibidos en el encargo): `./init.sh`, suite completa, `prisma generate`, dev server.
+
+Veredicto tanda 2: D1 fijado con test acotado a la tarjeta; D2 arreglado en 4 frases, verde, con las dos contrapruebas en rojo.
