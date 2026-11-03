@@ -1,9 +1,9 @@
 # SLT-42 — Teléfono, documento y hora por país · tasks
 
-> Antes de T1: F1.4 cerrado. Eso incluye P1, P3, P4, P5, P6, P7 y P8 de `requirements.md`, la
-> aprobación de `libphonenumber-js` con sus cuatro checks **verificados** (`design.md` §7) y las
-> comprobaciones previas en solo lectura de `design.md` §2.5 hechas por una persona.
-> Si P4 sale «no», se salta T1.3 y R13 se reescribe antes de empezar.
+> P1–P8 quedaron cerradas en F1.4 el 2026-11-03 (`requirements.md > Decisiones cerradas`). Los
+> cuatro checks de `libphonenumber-js` están verificados (`design.md` §7). Antes de T1 falta solo que
+> una persona haga las comprobaciones previas en solo lectura de `design.md` §2.5: si aparece una
+> empresa fuera de CR, se para y decide el humano (P7).
 > `[P]` = paralelizable con las otras `[P]` de su bloque. «Hecho» siempre incluye `./init.sh` en
 > verde (o, si muere por memoria, typecheck + guardias, y el resto en CI).
 
@@ -16,6 +16,12 @@
 
 ## Bloque 1 — Base de datos (depende de F1.4)
 
+- [ ] **T1.0** Comprobaciones previas en producción, en solo lectura, hechas por una persona y no por
+  un agente (`design.md` §2.5; P7). La primera es `SELECT count(*) FROM organizacion WHERE pais_id
+  <> 'CR'` → 0. El resultado de las tres se anota en `progress/features/SLT-42.md`.
+  *Hecho:* las tres dan lo esperado. Si aparece una empresa fuera de CR, se para y decide el humano:
+  T1.1–T1.3 no se aplican fuera de la base de test hasta entonces.
+
 - [ ] **T1.1** Migración `20261103120000_slt42_pais_telefono_y_zona` + `down.sql` + `model Pais` en
   `db/schema.prisma` (`design.md` §2.1).
   *Hecho:* sube, baja y vuelve a subir en la base de test; CR queda con 506 / 8 / `America/Costa_Rica`.
@@ -25,7 +31,8 @@
   de antes.
 - [ ] **T1.3** Migración `20261103120200_slt42_usuario_documento_unico_por_tipo` + `down.sql` (§2.3).
   *Hecho:* el `down` aborta con repetidos de `(organizacion_id, cedula)`; la guardia
-  `unicos-por-empresa` en verde.
+  `unicos-por-empresa` en verde. Si para entonces existe la guardia de migraciones destructivas, el
+  `DROP INDEX` figura en su lista de excepciones con la ficha SLT-42 (excepción P4, `design.md` §2.3).
 - [ ] **T1.4** Test `tests/integration/db/migracion-slt42-ida-y-vuelta.test.ts` (R1, R3, R7, R8):
   foto de `usuario`, `organizacion`, `pais` y las tres filas viejas de `tipo_identificacion`, antes
   y después de subir. Las columnas viejas, idénticas.
@@ -132,8 +139,8 @@ Orden sugerido. Cada task deja su grupo en verde con sus tests de hoy, inyectand
   *Hecho:* verde; un literal nuevo de prueba en `lib/` la pone en rojo (comprobado y revertido).
 - [ ] **T7.2** `docs/architecture.md > País por empresa (SL-20)`: un párrafo sobre los datos de
   teléfono, documento y zona, `IReglasPaisEmpresa`, `calendario-zona.ts` y la guardia.
-  `.env.example` sin `RASTREO_PUBLICO_ZONA_HORARIA`. Deuda de P6 en `progress/deudas.md` si el
-  humano la confirma.
+  `.env.example` sin `RASTREO_PUBLICO_ZONA_HORARIA`. La deuda de P6 la anota el leader en
+  `progress/deudas.md`; esta task no la escribe.
   *Hecho:* el gate de perfil en verde.
 - [ ] **T7.3** Mapa `R<n> -> test` en `progress/impl_SLT-42.md` (las 31 R). `./init.sh` en verde.
   *Hecho:* ninguna R sin test.

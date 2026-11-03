@@ -215,3 +215,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** review de SLT-66 (2026-10-31, `progress/review_SLT-66.md`, m1). En el detalle y el catálogo del plan sale «Costo por orden: 100.00 por orden» (repite «por orden»), mientras «Mi plan» dice «Costo por orden: 100.00». Los montos de pantalla del plan muestran «.00» en enteros desde SL-24; SLT-67 solo lo quitó de los campos de entrada.
 - **Qué falta:** quitar el sufijo duplicado y decidir si los montos de pantalla siguen la regla de SLT-67 (entero sin decimales). Toca `PlanVistaCosteo`, `PlanEmpresa:517-523` y `PlanesModule`.
 - **Dueño:** Camilo (decidir si va a ficha).
+
+### D36 — Crons de Vercel a hora fija en UTC, calculada para Costa Rica
+- **Origen:** F1.4 de SLT-42 (2026-11-03, P6 en `specs/SLT-42-telefono-documento-hora-por-pais/requirements.md`). Los crons de `vercel.json` (corte diario, snapshot de ranking, etc.) corren a una hora UTC pensada para la medianoche de CR. SLT-42 hace que cada corrida calcule la fecha de cada empresa con la zona de su país, pero no mueve la hora del cron.
+- **Qué falta:** cuando entre el primer país con otra zona horaria, que esos crons corran por zona (p. ej. cada hora, procesando solo las empresas cuya medianoche local acaba de pasar). Con solo CR no hay efecto.
+- **Dueño:** Camilo (decidir si va a ficha cuando entre otro país).

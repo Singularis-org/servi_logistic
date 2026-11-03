@@ -156,8 +156,13 @@ CREATE UNIQUE INDEX "usuario_cedula_key" ON "usuario" ("organizacion_id","tipo_i
 - **down:** antes de volver a `(organizacion_id, cedula)`, cuenta los repetidos de `(organizacion_id,
   cedula)`. Si hay alguno, `RAISE EXCEPTION` que nombra el índice y no cambia nada (patrón de SL-18).
 - Empieza por `organizacion_id`: la guardia `unicos-por-empresa` lo acepta sin tocar su lista.
-- Si el humano dice «no» en P4, esta migración no se escribe y R13 se reescribe como «único por
-  empresa» (comportamiento de hoy).
+- **Excepción declarada a la regla de la épica GEO (P4, cerrada el 2026-11-03).** El
+  `DROP INDEX "usuario_cedula_key"` de `20261103120200_slt42_usuario_documento_unico_por_tipo` es la
+  única sentencia destructiva de la ficha. El humano la aceptó porque solo afecta a un índice, no
+  toca datos y el `down.sql` lo restaura. Hoy no existe la guardia de migraciones destructivas: la
+  regla de la épica dice que se definirá con `/afinar-regla`, y en `tests/` no hay ninguna. Cuando
+  exista, su lista de excepciones debe nombrar esta migración, esta sentencia y la ficha `SLT-42`.
+  Si la guardia entra antes de que se mergee esta ficha, el implementer añade esa entrada en T1.3.
 
 ### 2.4 Migraciones
 
@@ -167,7 +172,7 @@ CREATE UNIQUE INDEX "usuario_cedula_key" ON "usuario" ("organizacion_id","tipo_i
 | `20261103120100_slt42_tipo_documento_por_pais` | §2.2 (columnas, filas de CR, índices, política) | `DROP POLICY "tipo_identificacion_del_pais"`, índices y `CHECK`. Borra las filas `dimex` y `nite` **solo si ningún usuario las usa**: si alguno las usa, `RAISE EXCEPTION` y no cambia nada (son personas). Al final, `DROP COLUMN` de las ocho columnas nuevas. Las tres filas de antes vuelven a su forma porque sus columnas viejas nunca cambiaron. |
 | `20261103120200_slt42_usuario_documento_unico_por_tipo` | §2.3 | Comprueba los repetidos y vuelve al índice de SL-18 (§2.3). |
 
-Las tres van en una transacción cada una. Ninguna hace `UPDATE` de una columna que existía antes, y
+Las tres van en una transacción cada una. Ninguna hace `UPDATE` de una columna que existía antes (P1), y
 ninguna toma bloqueos largos sobre `usuario`: el `CREATE UNIQUE INDEX` sobre `usuario` es de una
 tabla de cientos de filas. Si en la comprobación previa (§2.5) `usuario` pasa de 100 000 filas, se
 cambia a `CONCURRENTLY` fuera de transacción.
@@ -177,7 +182,8 @@ cambia a `CONCURRENTLY` fuera de transacción.
 Las tres deben dar lo esperado. Si alguna no lo da, se para y decide el humano (patrón SLT-43):
 
 1. `SELECT count(*) FROM organizacion WHERE pais_id <> 'CR'` → 0. Si no es 0, esas empresas
-   quedarían en un país sin zona y sus crons fallarían (R28). Es la condición de P7.
+   quedarían en un país sin zona y sus crons fallarían (R28). Es la condición de P7 (cerrada el
+   2026-11-03): si aparece alguna, no se migra y decide el humano.
 2. `SELECT value, count(*) FROM tipo_identificacion GROUP BY 1` → exactamente `cedula`, `ruc` y
    `pasaporte`.
 3. `SELECT count(*) FROM usuario` → para el punto del índice concurrente (§2.4).
@@ -309,6 +315,11 @@ export interface IReglasPaisEmpresa {
 | Usuario de plataforma | `ArranqueSuperadminRepository`/su servicio, `UsuarioService` sin empresa | Sin cambios: `numericIdentifierSchema` (R17). |
 | Usuarios sintéticos de API key | `ApiKeyRepository`, `lib/utils/api-key-identity.ts` | Sin cambios: su documento es sintético y no es de una persona. |
 
+**Fuera de libphonenumber (P8, cerrada el 2026-11-03).** El teléfono del destinatario de una orden
+(alta, carga masiva, API, corrección de datos), el de la tienda y el de la postulación de vehículo o
+bodega no se validan con la librería. Siguen aceptándose como hoy y solo se normalizan con el
+prefijo del país para WhatsApp (R18).
+
 Los schemas zod de borde (`lib/types/usuario.ts`, `postulacion-mensajero.ts`, `organizacion.ts`)
 pasan a validar solo la forma (texto no vacío, tope de largo). La regla del país vive en el servicio
 porque depende de la empresa, que el schema no conoce. Contrato de respuesta sin cambios: `{ status:
@@ -399,7 +410,8 @@ empresa. `conSuEmpresa` los corre una vez por empresa con `paraCadaEmpresa`.
 `liberar-reprogramadas` y `procesar-devueltas-sla` siguen con el horario de `vercel.json`. Dentro de
 `paraCadaEmpresa`, cada servicio calcula la fecha con la zona de **su** empresa (R24). Una empresa
 cuyo país no tiene zona falla sola y las demás corren (R28; `paraCadaEmpresa` ya aísla los fallos).
-El horario con varias zonas es P6: queda como deuda.
+El horario con varias zonas es P6 (cerrada el 2026-11-03): los crons siguen a hora fija UTC y es
+deuda para cuando entre el primer país con otra zona. La anota el leader en `progress/deudas.md`.
 
 ## 7. Dependencia nueva: `libphonenumber-js`
 

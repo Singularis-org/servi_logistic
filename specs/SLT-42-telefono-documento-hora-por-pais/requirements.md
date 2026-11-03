@@ -33,7 +33,8 @@ de analítica).
 - **R3** — CUANDO se aplique la migración de esta ficha, el sistema DEBE dejar a Costa Rica con
   prefijo `506`, 8 dígitos nacionales, zona `America/Costa_Rica` y exactamente cinco tipos de
   documento activos: cédula física (9 dígitos), cédula jurídica (10 dígitos), DIMEX (11 o 12
-  dígitos), NITE (10 dígitos) y pasaporte (regla en `## Preguntas abiertas`, P5).
+  dígitos), NITE (10 dígitos) y pasaporte (alfanumérico, letras y dígitos sin espacios, de 6 a 20
+  caracteres).
 - **R4** — MIENTRAS el contexto sea de una empresa, el sistema DEBE permitirle leer solo los datos y
   los tipos de documento del país de su empresa, y DEBE rechazar con permiso denegado (`42501`)
   cualquier escritura suya sobre esos datos, también por SQL a mano. El usuario de plataforma DEBE
@@ -52,7 +53,8 @@ de analítica).
 - **R8** — La migración NO DEBE cambiar ni borrar el valor de ninguna columna existente de ninguna
   fila de `usuario`, `organizacion`, `pais`, `tipo_identificacion`, `orden` ni `tienda`, y su
   `down.sql` DEBE devolver el esquema al estado anterior sin perder filas que existían antes de
-  aplicarla.
+  aplicarla. La única pieza existente que se borra es el índice `usuario_cedula_key`, que se recrea
+  con el mismo nombre (R13) y que el `down.sql` restaura.
 - **R9** — SI se edita un usuario existente sin cambiar su teléfono, ni su documento, ni su tipo de
   documento, ENTONCES el sistema NO DEBE revalidar esos campos con las reglas del país.
 
@@ -77,7 +79,9 @@ de analítica).
 
 - **R14** — CUANDO se cree un usuario de una empresa (mismos puntos que R10) o se cambie su teléfono,
   el servidor DEBE validar el teléfono con libphonenumber para la región del país de la empresa y,
-  si no es válido, rechazar con `validation_error` en el campo del teléfono, sin escribir nada.
+  si no es válido, rechazar con `validation_error` en el campo del teléfono, sin escribir nada. El
+  teléfono del destinatario de una orden, el de una tienda y el de una postulación de vehículo o
+  bodega NO DEBEN validarse con libphonenumber: siguen aceptándose como hoy.
 - **R15** — CUANDO un teléfono pase la validación de R14, el sistema DEBE guardarlo como número
   nacional en dígitos, sin prefijo internacional ni separadores.
 - **R16** — SI libphonenumber no tiene reglas para la región del país de la empresa, ENTONCES el
@@ -145,59 +149,18 @@ de analítica).
 | 2026-11-03 · ¿Se parte la ficha? | R29 (la UI queda en la lista de excepciones, a SLT-81) |
 | 2026-10-26 · ¿Quién ve y edita el catálogo? | R4, R5 |
 | 2026-10-26 · ¿E2E? | R31 |
+| 2026-11-03 · P1 ¿Se normalizan los teléfonos y documentos guardados? | R7, R8, R9 |
+| 2026-11-03 · P2 ¿Jobs diarios con varios países? | R25, R26 |
+| 2026-11-03 · P3 ¿Largos de documento de CR? | R3, R10, R12 |
+| 2026-11-03 · P4 ¿Se acepta el `DROP INDEX` del único del documento? | R8, R13 |
+| 2026-11-03 · P5 ¿Regla del pasaporte? | R3, R10 |
+| 2026-11-03 · P6 ¿Horario de los crons de Vercel con varias zonas? | R24 (el horario no cambia; deuda) |
+| 2026-11-03 · P7 ¿País incompleto entre SLT-42 y SLT-81? | R6, R28 |
+| 2026-11-03 · P8 ¿Qué teléfonos se validan con libphonenumber? | R14 |
 
 ## Preguntas abiertas
 
-- **P1.** Teléfonos ya guardados: ¿se normalizan en la migración o solo se valida lo nuevo? spec_author lo
-  propone; lo cierra el humano en F1.4. Tener en cuenta la regla de la épica GEO (SLT-43…SLT-47:
-  migraciones solo aditivas, sin `UPDATE` de columnas existentes, «no quiero correr riesgos de dañar
-  o borrar datos de prod», 2026-10-28): aplica también al remapeo de `usuario.tipo_identificacion_id`
-  de «cedula»/«ruc» a los tipos nuevos.
-  - **Propuesta de spec_author (cierra el humano en F1.4):** no se toca ningún teléfono ni documento
-    guardado. Solo se valida lo nuevo y lo que se cambia (R9, R14). El remapeo de tipos se hace sin
-    tocar `usuario`: las filas «cedula», «ruc» y «pasaporte» de `tipo_identificacion` *pasan a ser*
-    cédula física, cédula jurídica y pasaporte de CR rellenando solo columnas nuevas (R7, R8;
-    `design.md` §2.2). Cero `UPDATE` de columnas existentes.
-- **P2.** Jobs diarios (liberar reprogramadas, rollup de analítica, snapshot de ranking): con varios
-  países, ¿una corrida por zona horaria o una sola? Con solo CR no cambia el resultado. Se resuelve
-  en `design.md`.
-  - **Resuelta en `design.md` §6:** una sola serie por tipo de job; cada corrida es la de la zona que
-    llega primero a la hora objetivo y procesa solo las empresas de esa zona (R25, R26). El snapshot
-    de ranking es un cron de Vercel, no un job: ver P6.
-- **P3.** Largos de documento de la tabla de decisiones (9, 10, 11-12, 10): se dieron de memoria.
-  spec_author los cruza con el código actual (`lib/types/auth.ts` y validadores de cédula); si
-  difieren, sale como pregunta en F1.4.
-  - **Cruce hecho (2026-11-03):** el código no tiene ninguna regla por tipo. `numericIdentifierSchema`
-    (`lib/types/auth.ts`) aplica a todos los tipos, pasaporte incluido, la misma regla: solo dígitos,
-    de 7 a 15 (`AUTH_ID_MIN_LENGTH`/`AUTH_ID_MAX_LENGTH`, `lib/config/auth.ts`). No hay nada que
-    contradiga 9 / 10 / 11-12 / 10, pero tampoco nada que lo confirme. **Pregunta para F1.4:**
-    ¿confirmas esos largos? Consecuencia que hay que aceptar: los usuarios guardados con «cedula» de
-    7, 8 o 10 a 15 dígitos quedan como cédula física sin cumplir los 9; R9 evita que eso los bloquee
-    al editarlos, pero R12 sí los frena si alguien les cambia el tipo.
-- **P4.** (nueva) Unicidad por empresa y tipo (R13): hoy el único es `usuario_cedula_key` sobre
-  `(organizacion_id, cedula)`. Pasar a `(organizacion_id, tipo_identificacion_id, cedula)` obliga a
-  **borrar ese índice** y crear el nuevo con el mismo nombre. No borra ni cambia datos (el índice
-  nuevo es más permisivo, así que todo lo guardado lo cumple), pero es un `DROP INDEX`, que la regla
-  de la épica GEO prohíbe a SLT-43…47. ¿Lo aceptas para esta ficha? Si no, R13 queda como hoy (único
-  por empresa, sin tipo) y la decisión se difiere a la ficha de contracción.
-- **P5.** (nueva) Regla del pasaporte («sin formato fijo»). Hace falta alguna para validar (R10).
-  **Propuesta:** alfanumérico (letras A–Z y dígitos, sin espacios ni guiones, mayúsculas), de 6 a 20
-  caracteres. Todo pasaporte guardado hoy (solo dígitos, 7 a 15) la cumple.
-- **P6.** (nueva) Crons de Vercel con más de una zona horaria. `vercel.json` los dispara a hora fija
-  UTC pensada para CR (`corte-diario` 06:00Z = 00:00 CR, `snapshot-ranking`, `avisos-diarios`,
-  `aviso-reparto-manana`, `generar-gastos-fijos`). Esta ficha hace que cada empresa calcule su fecha
-  con su zona (R24), pero no mueve los horarios: con solo CR no cambia nada. **Propuesta:** dejarlo
-  anotado como deuda para la ficha que dé de alta el primer país con otra zona (cron horario y filtro
-  «a esta empresa le toca a esta hora local»). ¿De acuerdo?
-- **P7.** (nueva) Entre SLT-42 y SLT-81, un país creado con la pantalla de SL-20 nace sin prefijo,
-  zona ni tipos de documento, y R6 impide dar de alta empresas en él hasta que SLT-81 permita
-  completarlo. ¿Aceptado? La migración comprueba antes, en solo lectura, que no hay empresas en
-  países distintos de CR (`design.md` §2.5); si las hay, para y decides tú.
-- **P8.** (nueva) ¿Qué teléfonos se validan con libphonenumber? **Propuesta:** solo los de personas
-  de la empresa con cuenta: usuario (alta y edición), maestro del alta de empresa y postulación de
-  mensajero (R14). El teléfono del destinatario de una orden, el de la tienda y el de la postulación
-  de vehículo o bodega siguen como hoy (solo se normalizan con el prefijo del país, R18): endurecerlos
-  rechazaría órdenes por API y cargas masivas que hoy entran.
+Ninguna.
 
 ## Decisiones cerradas (no reabrir)
 
@@ -212,3 +175,11 @@ de analítica).
 | 2026-11-03 | ¿Se parte la ficha? | Sí: backend aquí; pantalla del superadmin y formularios existentes en SLT-81, que espera a SLT-42 y SLT-46 (misma pantalla de países). |
 | 2026-10-26 | ¿Quién ve y edita el catálogo? | Plataforma: solo el superadmin escribe; la empresa solo lee. Hereda SL-17/SL-20. |
 | 2026-10-26 | ¿E2E? | No: unit + integración con dos empresas en dos países de prueba. Hereda SL-20. |
+| 2026-11-03 | P1 · ¿Se normalizan los teléfonos y documentos ya guardados? | No. No se toca ningún teléfono ni documento guardado; solo se valida lo nuevo y lo que cambia. El remapeo de tipos rellena solo columnas nuevas de `tipo_identificacion`: ningún `UPDATE` sobre `usuario` (F1.4). |
+| 2026-11-03 | P2 · ¿Jobs diarios con varios países? | Una serie por tipo de job; cada corrida es la de la zona que llega primero a la hora objetivo y procesa solo las empresas de esa zona (`design.md` §6; F1.4). |
+| 2026-11-03 | P3 · ¿Largos de documento de CR? | Confirmados: cédula física 9, cédula jurídica 10, DIMEX 11-12, NITE 10. Se acepta que los «cedula» guardados que no tienen 9 dígitos quedan como cédula física sin cumplir la regla (F1.4). |
+| 2026-11-03 | P4 · ¿Se acepta borrar `usuario_cedula_key`? | Sí: se borra y se recrea con el mismo nombre sobre `(organizacion_id, tipo_identificacion_id, cedula)`. Es una excepción declarada a la regla de la épica GEO: solo es un índice, no toca datos y el `down.sql` lo restaura. El design la nombra para la guardia de migraciones destructivas (F1.4). |
+| 2026-11-03 | P5 · ¿Regla del pasaporte? | Alfanumérico, sin espacios, de 6 a 20 caracteres (F1.4). |
+| 2026-11-03 | P6 · ¿Horario de los crons de Vercel con varias zonas? | Siguen a hora fija UTC. Es deuda que se resuelve cuando entre el primer país con otra zona; la anota el leader en `progress/deudas.md` (F1.4). |
+| 2026-11-03 | P7 · ¿País incompleto entre SLT-42 y SLT-81? | Aceptado: no admite altas de empresa nuevas. Antes de migrar, una comprobación de solo lectura en producción confirma que no hay empresas fuera de CR; si aparece una, se para y decide el humano (F1.4). |
+| 2026-11-03 | P8 · ¿Qué teléfonos se validan con libphonenumber? | Solo los de personas usuarias: usuarios, maestro del alta de empresa y postulación de mensajero. El teléfono del destinatario de una orden no se valida (F1.4). |
