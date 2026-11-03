@@ -15,7 +15,7 @@ F1.4 aprobado por escrito (2026-11-03, «aprobado»), con `libphonenumber-js` (f
 `in_progress` (F2.0) hasta que se cumplan las dos condiciones de abajo.
 
 Bloqueos de F2.0:
-1. Cupo backend lleno: SLT-43, SLT-44, SLT-65 en curso (3/3).
+1. Cupo backend: subido de 3 a 4 en `arnes.config.json` por decisión del humano (2026-11-03): SLT-43, SLT-44 y SLT-65 están en pausa para pruebas futuras. Resuelto.
 2. `archivos-en-vuelo.mjs --candidata SLT-42` (2026-11-03) CHOCA con fichas de Carlos Restrepo:
    SLT-52 (schema, servicios de cierres, CorteDiarioService, OrdenRepository, openapi…), SLT-56
    (CierresAdmin*) y SLT-64 (CierreDia*, `app/api/cron/procesar-jobs/route.ts`). SLT-56 ya figura
