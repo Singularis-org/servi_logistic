@@ -716,3 +716,65 @@ ZodError en `e2e/_planes-fixture.ts:44`: `crearPlanSchema.parse` de un custom si
 
 ### Veredicto
 Fixture al día con D2 y D6 (crear y asignar en una transacción, `tipoCobro: "mensual"`), typecheck y lint en verde, sin otros usos viejos.
+
+## E2E adaptados a D2 (CI PR #72)
+
+Rojos de la corrida 41696260394 (`e2e (aislamiento)`): `planes-superadmin.spec.ts:196` (esperaba
+`planId` null tras crear el custom) y `planes-costeo.spec.ts:234` (esperaba «Sin plan» en la fila de A
+tras crearlo). Los 6 que no corrieron dependían de ellos (modo `serial`).
+
+### Archivos modificados
+- `e2e/planes-superadmin.spec.ts`
+- `e2e/planes-costeo.spec.ts`
+- `e2e/_planes-fixture.ts` — nuevo `crearPlanPublicoConCosto` (público «Con monto», costo por orden
+  concreto, sin topes, todos los módulos; `PlanesRepository.crear` real, sin asignar).
+
+### Criterio
+El modal de primera asignación y «Asignar plan» del listado ya no los recorre un custom con empresa
+(D2: queda asignado al crearlo), pero siguen existiendo para planes públicos. Por eso cada spec gana una
+empresa sin plan (creada en su `beforeAll` con `crearEmpresaE2E`, sufijo aleatorio, nada compartido con
+otros specs) y un plan público con costo concreto (R28). El custom sigue creándose por pantalla y ahora
+se comprueba que quedó asignado, con su tipo de cobro, el inicio del ciclo y la espera a la vista previa.
+En el form y en el modal se comprueba que el inicio abre en MAÑANA (D5) y se pone HOY: así el ancla queda
+en el instante de la asignación, sin ciclo corto, y las aserciones de consumo («0 de 50», la orden del
+ciclo del costeo, «Total estimado del ciclo: 50100.00») siguen valiendo igual que antes.
+
+### `planes-superadmin.spec.ts`
+| Test | Antes | Ahora | Por qué no se pierde cobertura |
+|---|---|---|---|
+| crea el custom por pantalla | form de custom con topes, módulos y costo; `planId` de A null | lo mismo + «Tipo de cobro» (Mensual por defecto, se elige Anual), «Inicio del ciclo de órdenes» con mañana por defecto puesto en hoy, «Crear plan» habilitado tras la vista previa sin fallo; en base `planId` = el custom, `planTipoCobro` = `anual`, ancla fijada, sin ciclo corto | la creación por pantalla y la fila del catálogo siguen igual; la aserción «crear no asigna» se invierte (D2) y gana tipo, fecha y ancla |
+| (nuevo) detalle de A | — (lo cubría el test del modal tras asignar) | bloque «Plan» de A: título del plan, consumo `0 de 50 órdenes del ciclo` y `1 de 3 Mensajero`, «Tipo de cobro: Anual» (D9), historial con el plan y «Anual» (D14) | el consumo del bloque, que antes se miraba tras el modal, se mira ahora en A tras crear (incluido el mensajero de A) |
+| (nuevo) crea un público por pantalla | — | form con «Público»: no pide empresa, tipo de cobro ni inicio del ciclo; se crea con costo concreto; nadie lo tiene asignado | cobertura nueva: rama pública del form tras D2 |
+| asigna desde el detalle con el modal de primera asignación | sobre A con el custom | sobre C (empresa nueva sin plan) con el público: «Sin plan: sin límites», opción `<público> (Público)`, modal con el texto y la lista, «Volver» no asigna, inicio en MAÑANA (D5) y la frase lo repite, se pone hoy y la frase lo sigue (R38), tipo «Mensual» por defecto (D6), confirmar tras la vista previa sin avisos; bloque con consumo `0 de 50` / `0 de 3 Mensajero`, «Tipo de cobro: Mensual» e historial; en base `planId` = público, `mensual`, ancla, sin ciclo corto; A sigue con su custom | todos los pasos del modal se conservan; solo cambia la empresa y el plan, y el default de la fecha pasa de hoy a mañana (D5) |
+| maestro de A en «Mi plan» | plan asignado por el modal | plan asignado al crear | igual |
+| maestro de B sin plan | — | — | sin cambios: B sigue sin plan |
+| mensajero de A, 404 | — | — | sin cambios |
+
+### `planes-costeo.spec.ts`
+| Test | Antes | Ahora | Por qué no se pierde cobertura |
+|---|---|---|---|
+| crea el custom de A «Con monto», costo por orden 100 | solo crearlo | antes de crear, la fila de A dice «Sin plan» y «₡500» (global); form con «Mensual» y el inicio (mañana → hoy), «Crear plan» tras la vista previa; en base `planId` = el custom y `mensual` | la comprobación «Sin plan» + global de A se hace antes de crear, donde sigue siendo cierta |
+| (dividido) fila de A tras crear | parte del test de asignar | `<plan> · Mensual` (D9), «Cambiar plan», «₡100» y «del plan» (R31), captura `slt66-empresas.png` | la aserción R31 con «₡100 del plan» de A se mantiene exacta |
+| «Asignar plan» del listado | sobre A con el custom | sobre B (empresa nueva sin plan) con el público del fixture (costo por orden 250): fila «Sin plan» + «₡500», enlace «Asignar plan a {B}» → `#plan`, opción `(Público)`, modal con inicio en mañana puesto en hoy y tipo «Anual», confirmar; en base `planId` = público y `anual`; de vuelta, la fila de B dice `<público> · Anual`, «Cambiar plan», «₡250» y «del plan»; A sigue con su custom | R32 (enlace del listado al bloque y modal) se recorre entero, y R31 se comprueba otra vez con otro costo |
+| wallet ₡0 → ₡100, «Mi plan», movimientos | dependían del plan asignado a A con ancla hoy | igual: el custom se asigna al crear con ancla hoy | sin cambios en el cuerpo |
+
+### Otras aserciones en `e2e/`
+`grep -rn "Sin plan\|planId" e2e` fuera de estos dos specs: solo `dos-empresas-humo.spec.ts:487`
+(«B no debe tener plan», B nunca recibe plan; A lo recibe por `asignarPlanConTope`, ya al día) y el
+fixture. Nada más que poner al día.
+
+### Aislamiento
+Cada spec crea sus empresas y planes con sufijo aleatorio y no lee los de otros; el público nuevo
+aparece en «Plan a asignar» de cualquier empresa, pero ningún spec del grupo `aislamiento` comprueba
+que esa lista esté vacía ni elige por otro nombre que el suyo.
+
+### Verificación (salida real)
+- `pnpm exec eslint e2e/planes-costeo.spec.ts e2e/planes-superadmin.spec.ts e2e/_planes-fixture.ts`:
+  `ESLint: No issues found`, exit 0.
+- `pnpm exec tsc --noEmit -p .` filtrado a `^e2e/`: sin líneas. El total de `error TS` del proyecto es `0` (el exit 1 de la orden es el
+  `grep -c` sin coincidencias).
+- Playwright no se corrió (no hay base local); lo confirma el job `e2e (aislamiento)` de CI.
+
+### Veredicto
+Los dos specs de planes adaptados a D2 sin perder pasos (custom asignado al crear; modal y «Asignar plan» del listado
+sobre un público con costo y una empresa sin plan); lint y typecheck en verde, Playwright pendiente del CI.

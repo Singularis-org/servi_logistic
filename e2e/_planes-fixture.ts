@@ -65,6 +65,30 @@ export async function asignarPlanConTope(dueno: PrismaClient, organizacionId: st
 }
 
 /**
+ * Ajuste planes-custom (D2) — un plan PÚBLICO con costo concreto (SLT-66 R28: costo base mensual y costo
+ * por orden), sin topes y con todos los módulos, creado con `PlanesRepository.crear` real como el
+ * superadmin. No se asigna a nadie: es el plan que pasa por «Asignar plan» y el modal de primera
+ * asignación, que un custom con empresa ya no recorre (se asigna al crearlo). Devuelve el id.
+ */
+export async function crearPlanPublicoConCosto(
+  dueno: PrismaClient,
+  nombre: string,
+  costoPorOrden: string,
+): Promise<string> {
+  const actor = await idDelSuperadmin(dueno);
+  const entrada = crearPlanSchema.parse({
+    nombre,
+    visibilidad: "publico",
+    organizacionId: null,
+    topes: { ordenesPorCiclo: null, porRol: {}, apiKeys: null },
+    modulos: [...ORDEN_MODULOS],
+    precio: { tipo: "monto", mensual: "1000.00", anual: null },
+    costoPorOrden,
+  });
+  return new PlanesRepository(dueno).crear(entrada, actor);
+}
+
+/**
  * Las órdenes vivas de la empresa en el ciclo de su plan, contadas por detrás. La frontera es el ancla
  * que fijó la asignación: el ciclo recién empieza, así que el inicio es el ancla misma.
  */
