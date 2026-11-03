@@ -23,7 +23,7 @@ import type {
   CierreBodegaResumenLite,
 } from "@/lib/interfaces/services/ICierreBodegaService";
 import type { DescargaColumna, DescargaFila } from "@/lib/types/descarga";
-import { fechaDiaISO } from "@/lib/utils/fecha-dia-iso";
+import { fechaDiaInstanteCR } from "@/lib/utils/fecha-dia-iso";
 
 import {
   // ⭑ FICHA 431 (T17, R28): `ESTADO_LABEL` YA NO SE IMPORTA AQUI. En un archivo de cierre de
@@ -141,7 +141,7 @@ export function filaDescargaBodegaPendiente(cierre: CierreBodegaResumen): Descar
   return {
     zona: cierre.zonaNombre,
     solicito: cierre.solicitadoPorNombre,
-    fecha: fechaDiaISO(cierre.solicitadoAt),
+    fecha: fechaDiaInstanteCR(cierre.solicitadoAt),
     cierresDelDia: cierre.cantidadCierres,
     general: cierre.totales.general, // STRING tal cual (money-safe)
     pagoMensajero: cierre.totalPagoMensajero,
@@ -174,7 +174,7 @@ export function filaDescargaBodegaResuelto(cierre: CierreBodegaResumen): Descarg
     estado: estadoDeConciliacion(cierre), // ⭑ ficha 431/R28: el vocabulario de la conciliación
     zona: cierre.zonaNombre,
     solicito: cierre.solicitadoPorNombre,
-    fechaResuelta: cierre.resueltoAt === null ? null : fechaDiaISO(cierre.resueltoAt),
+    fechaResuelta: cierre.resueltoAt === null ? null : fechaDiaInstanteCR(cierre.resueltoAt),
     general: cierre.totales.general,
     pagoMensajero: cierre.totalPagoMensajero,
     ingresoBodega: cierre.totalIngresoBodegaRechazos,
@@ -236,7 +236,7 @@ export const COLUMNAS_DESCARGA_BODEGA_SOLICITADOS: DescargaColumna[] = [
 export function filaDescargaBodegaSolicitado(cierre: CierreBodegaResumen): DescargaFila {
   return {
     estado: estadoDeConciliacion(cierre), // ⭑ ficha 431/R28
-    fechaSolicitud: fechaDiaISO(cierre.solicitadoAt),
+    fechaSolicitud: fechaDiaInstanteCR(cierre.solicitadoAt),
     cierresDelDia: cierre.cantidadCierres,
     general: cierre.totales.general,
     pagoMensajero: cierre.totalPagoMensajero,

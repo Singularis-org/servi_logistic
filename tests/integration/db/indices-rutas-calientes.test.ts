@@ -30,7 +30,7 @@ import {
 // de la app (la extension pone `organizacion_id = $n`) y se le hace `EXPLAIN` tal cual. Si el test
 // escribiera el SQL a mano, probaria que un SQL inventado usa el indice, no el de produccion.
 //
-// COMO. Dos empresas, A y B, con el mismo volumen, sembradas en una transaccion que siempre se
+// COMO. Dos empresas, A y B, con el mismo volumen (salvo el rollup: SLT-76 R14), sembradas en una transaccion que siempre se
 // revierte. Las filas son sinteticas: `session_replication_role = replica` apaga las FK y los
 // triggers, que no cambian el plan y obligarian a sembrar catalogos enteros (patron de
 // `dos-empresas-entradas.test.ts`). Despues `ANALYZE`, y el `EXPLAIN` corre como `servi_app` con la
@@ -50,6 +50,13 @@ const EMPRESA_DE_CAPTURA = "sl18-t53-captura";
 const EJECUCIONES = 2000;
 const TARIFAS = 1000;
 const CUBOS_POR_DIA = 10;
+/**
+ * SLT-76 R14: cubos por dia de la empresa B DENTRO del rango consultado (junio de 2000). Con 10× los
+ * de A, el unico del grano (fecha primero) lee 11× lo que lee el compuesto, y el de solo
+ * `organizacion_id` lee las 366 jornadas de A (12×). Con el mismo volumen en las dos (2×), la
+ * estadistica de una base acumulada daba vuelta el plan (m7 de SLT-75).
+ */
+const CUBOS_POR_DIA_B_EN_RANGO = 100;
 const USUARIOS = 500;
 /** Ordenes, gestiones y filas del historial por empresa (una gestion por orden). */
 const ORDENES = 4000;
@@ -170,7 +177,8 @@ const RUTAS: readonly Ruta[] = [
 ];
 
 /**
- * Siembra A y B con el mismo volumen en cada tabla medida. Corre como dueno, en modo replica.
+ * Siembra A y B con el mismo volumen en cada tabla medida, salvo `analytics_daily` en el rango del
+ * rollup (ver `CUBOS_POR_DIA_B_EN_RANGO`). Corre como dueno, en modo replica.
  *
  * Las filas de A y de B se INTERCALAN en el tiempo y en disco (`ORDER BY g, e.org`), como en
  * produccion, donde las dos empresas escriben el mismo dia. Sembrar primero toda A y luego toda B
@@ -197,11 +205,24 @@ async function sembrarDosEmpresas(tx: TxDeTest, a: string, b: string): Promise<v
     TARIFAS,
   );
   // El unico del grano no lleva la empresa: la zona la distingue.
-  await sembrar(
+  // SLT-76 R14 (corpus decisivo): A siembra `CUBOS_POR_DIA` las 366 jornadas; B, lo mismo fuera
+  // del rango consultado y `CUBOS_POR_DIA_B_EN_RANGO` dentro. Las dos empresas son nuevas y el rango
+  // es del año 2000, asi que los tres indices candidatos solo ven filas de este corpus.
+  await tx.$executeRawUnsafe(
     `INSERT INTO analytics_daily (id, fecha, zona_id, tienda_id, estatus_id, updated_at, organizacion_id)
      SELECT gen_random_uuid()::text, date '2000-01-01' + d, 'z-' || e.org || '-' || k, 't', 'e', now(), e.org
-     FROM generate_series(0, 365) d, generate_series(1, $2::int) k, unnest($1::text[]) e(org) ORDER BY d, e.org, k`,
+     FROM generate_series(0, 365) d, generate_series(1, $3::int) k, unnest($1::text[]) e(org)
+     WHERE k <= CASE
+         WHEN e.org = $4 AND date '2000-01-01' + d BETWEEN $5::date AND $6::date THEN $3::int
+         ELSE $2::int
+       END
+     ORDER BY d, e.org, k`,
+    empresas,
     CUBOS_POR_DIA,
+    CUBOS_POR_DIA_B_EN_RANGO,
+    b,
+    DESDE_ROLLUP,
+    HASTA_ROLLUP,
   );
   // R25: las dos empresas comparten los emails (R1 lo permite): el login encuentra dos cuentas.
   await sembrar(
@@ -247,6 +268,9 @@ async function sembrarDosEmpresas(tx: TxDeTest, a: string, b: string): Promise<v
      FROM generate_series(1, $2::int) g, unnest($1::text[]) e(org) ORDER BY g, e.org`,
     ORDENES,
   );
+  // SLT-76 R14: con el objetivo de estadistica al maximo, la muestra de una tabla grande (base
+  // acumulada) no deja fuera las filas del corpus. `SET LOCAL`: se revierte con lo demas.
+  await tx.$executeRawUnsafe(`SET LOCAL default_statistics_target = 10000`);
   for (const tabla of [
     "whatsapp_envio_ejecucion",
     "tarifas",

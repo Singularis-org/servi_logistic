@@ -12,7 +12,7 @@ Grep/Read sobre el diff).
 ### Archivos
 
 Nuevos:
-- `db/migrations/20261031150000_plan_sin_negociable_y_tipo_cobro/{migration,down}.sql`
+- `db/migrations/20261102120000_plan_sin_negociable_y_tipo_cobro/{migration,down}.sql`
 - `lib/planes/centimos.ts` (céntimos `bigint`, extraído de `costeo.ts` para compartirlo con `cobro.ts`)
 - `lib/planes/cobro.ts` (D6–D9: `montoDelPeriodo`, `siguienteCobro`, `cobroDelPlan`, `valorDelHistorialDeAsignacion`)
 - `tests/unit/planes/cobro.test.ts`, `tests/unit/services/planes-service-crear-custom.test.ts`
@@ -26,7 +26,7 @@ Tests modificados: los 25 de `git diff --stat tests/` (integración db de planes
 composition-root y la guardia de historial). Esta sesión: `tests/integration/db/planes-crear-custom-asigna.test.ts`
 (+ D8: crear+asignar no mueve `wallet_movimiento` ni `cobro_plataforma_movimiento`).
 
-### Migración `20261031150000_plan_sin_negociable_y_tipo_cobro`
+### Migración `20261102120000_plan_sin_negociable_y_tipo_cobro`
 - Sube: versiones pendientes `{"precio":{"tipo":"negociable"}}` → `sin_precio`; DROP CHECK
   `plan_precio_forma`, DROP COLUMN `plan.precio_negociable` (se borra, no se deja sin uso: solo la nombraba
   `plan_de_la_empresa`, que se recrea; justificado en la cabecera); CHECK nuevo de cuatro formas;
@@ -631,3 +631,60 @@ D16 está hecho: el cambio de solo el tipo escribe `plan_tipo_cobro_cambiado` (m
 
 ### Veredicto
 Producción ya ordena de forma total y estable (`createdAt desc, id desc`) y no puede crear dos filas de asignación de una empresa en una misma transacción. El empate solo existía en los tests (D14 y también D10), que ahora no dependen del orden. El `orderBy` queda fijado por un unit.
+
+## Sincronización con dev (F2.3)
+
+`git merge origin/dev` (trae SLT-76: `zona_distrito_cambiado` en `historial_accion_tipo`, migración
+`20261102090000_slt76_historial_zona_distrito`). La nuestra (`20261103120000_..._plan_tipo_cobro_cambiado`)
+se aplica después: orden real del enum `... cierre_dia_pago_mensajero_ajustado, zona_distrito_cambiado,
+plan_tipo_cobro_cambiado`. Commit del merge: lo hace el leader.
+
+### Conflictos y resolución (todos uniones de ambos lados)
+- `lib/types/historial-accion.ts`: comentario de la tupla (se queda el nuestro, «y su tipo de cobro, D16»)
+  y «Los 75» → «Los 76 tipos». Tupla, `CATEGORIA_POR_ACCION`, `ACCION_LABELS` y `db/schema.prisma` ya
+  traían los dos valores por auto-merge.
+- `tests/unit/guards/historial-accion-escrituras-cubiertas.guardia.test.ts` y
+  `tests/unit/historial-accion/catalogo-y-choke-point.test.ts`: «75 desde SLT-76» + «76 desde D16»;
+  `toHaveLength(76)` y `Set.size` 76. Las dos escrituras (`ZonaRepository.update`,
+  `PlanesRepository.cambiarTipoCobro`) siguen cada una con su entrada en la guardia.
+- `tests/integration/db/{correccion-resultado-gestion,historial-accion-cobro-tienda,
+  historial-accion-conciliacion-bodega,historial-accion-orden-zona-reconciliada,
+  historial-accion-zona-pago-mensajero,historial-accion-zona-sinpe}-migration.test.ts`: `POSTERIORES`
+  con los dos (primero el de SLT-76, después el nuestro).
+- `tests/integration/db/historial-accion-pago-mensajero-ajustado-migration.test.ts`: `POSTERIORES` con los dos.
+- `tests/integration/db/caja-459-migration.test.ts`: cola real `slice(-2)` =
+  `["zona_distrito_cambiado", "plan_tipo_cobro_cambiado"]`; todos los `slice` anteriores corridos uno
+  (`-21,-17` … `-3,-2`); comentario con los DOS tipos detrás del de SLT-56.
+- `migracion-d16-...-ida-y-vuelta`: `tipos.slice(-1)` = nuestro valor, sigue siendo cierto (va el último).
+  Su down recrea el enum de forma dinámica (lee `pg_enum`), no lista valores: no se toca.
+
+### Renombre de la migración (como SLT-66, `8fcc438`)
+`git mv db/migrations/20261031150000_plan_sin_negociable_y_tipo_cobro`
+→ `db/migrations/20261102120000_plan_sin_negociable_y_tipo_cobro` (detrás de `20261102090100_slt76_retirar_respaldos`,
+la última de dev; delante de `20261103120000`, la de D16). Las migraciones de SLT-76 no tocan planes.
+Referencias actualizadas (`20261031150000` → `20261102120000`): `db/schema.prisma` (2 comentarios),
+`lib/planes/mensajes.ts`, `lib/repositories/{EmpresasPlataformaRepository,MiPlanRepository,PlanesRepository}.ts`,
+`lib/types/planes.ts`, `tests/integration/db/{migracion-d16-tipo-cobro-cambiado-ida-y-vuelta,
+migracion-planes-custom-ida-y-vuelta,plan-de-la-empresa,planes-catalogo}.test.ts` y las menciones
+de este archivo (más arriba). `migracion-planes-custom-ida-y-vuelta`: `M_ANTERIOR` pasa a
+`20261102090100_slt76_retirar_respaldos` (la última de dev, igual que hizo SLT-66). Ninguna referencia
+queda en `specs/` ni `docs/`.
+
+### Choques con D1–D17
+Ninguno: dev no trae cambios en planes (tipos, repos, servicios, UI, `plan_de_la_empresa`, historial de asignaciones).
+
+### Verificación (salida real)
+- `pnpm run lint`: `✖ 232 problems (0 errors, 232 warnings)`, exit 0.
+- `vitest run` guardia de escrituras + catálogo: `Test Files 2 passed (2) · Tests 138 passed (138)`.
+- `vitest related --run` (archivos resueltos/renombrados + los que llevaban la referencia vieja):
+  `Test Files 2 failed | 305 passed | 48 skipped (355) · Tests 2 failed | 4622 passed | 502 skipped`.
+  Los 2 rojos (`DetalleMovimientoCierre` timeout de 20 s y `EstadoCuenta463`) corrían a la vez que las
+  guardias; en aislado: `Test Files 2 passed (2) · Tests 52 passed (52)`. Los de integración se saltan
+  sin base local (48 skipped): las migraciones se prueban en CI.
+- `pnpm run test:guardias`: `Test Files 3 failed | 320 passed | 3 skipped · Tests 5 failed | 4526 passed`.
+  `dependencias-declaradas-presentes` (4) es el rojo del baseline; `filtros-url-r25` y
+  `dominio-ordenex-fuera` (1 cada uno) pasan en aislado: `Tests 12 passed (12)` (carga concurrente).
+
+### Veredicto
+Conflictos resueltos como unión (enum con 76 tipos, el nuestro el último), migración renombrada a
+`20261102120000` sin referencias viejas, sin choques con D1–D17.

@@ -69,7 +69,6 @@ function ruta(over: Partial<RutaOptimizadaDTO> = {}): RutaOptimizadaDTO {
     ultimoError: null,
     secuenciaFuente: "proveedor",
     trazado: null,
-    tramoVivoAt: null,
     actualizadaAt: new Date(T0.getTime() - 60 * 60_000), // SLT-59 (R54): enfriamiento ya pasado
     secuenciaPorOrden: new Map([
       ["s1", 1],
@@ -500,7 +499,6 @@ function build(opts: { ruta: RutaOptimizadaDTO | null; paradas: ParadaRutaRow[] 
     guardarTrazado: vi.fn(async () => {}),
     reducirSecuencia: vi.fn(async () => true),
     marcarDesactualizada: vi.fn(async () => {}),
-    marcarTramoVivo: vi.fn(async () => {}),
   };
   const paradasRepo = { contarAsignadasDelDia: async () => ({ asignadas: 0, recogidas: 0 }), findParadasEnReparto: vi.fn(async () => opts.paradas) };
   const client = {
@@ -534,8 +532,7 @@ function build(opts: { ruta: RutaOptimizadaDTO | null; paradas: ParadaRutaRow[] 
     rutas.reemplazarSecuencia.mock.calls.length +
     rutas.guardarTrazado.mock.calls.length +
     rutas.reducirSecuencia.mock.calls.length +
-    rutas.marcarDesactualizada.mock.calls.length +
-    rutas.marcarTramoVivo.mock.calls.length;
+    rutas.marcarDesactualizada.mock.calls.length;
   return { service, rutas, paradasRepo, client, routes, escrituras };
 }
 

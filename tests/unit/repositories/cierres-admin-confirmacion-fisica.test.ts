@@ -231,6 +231,8 @@ function buildBase(filas: GestionFila[], estadosOrden: Record<string, string> = 
       // FICHA 362: `resolverCierre` lee ademas el total y el mensajero para congelar la etiqueta
       // y el importe de la fila del registro.
       findUnique: vi.fn().mockResolvedValue({
+        // SLT-73 (T3): la aprobacion lee el destino; esta suite mide la de la CENTRAL, que asienta.
+        destinoTipo: "bodega_central",
         mensajeroId: "m1",
         totalGeneral: new Prisma.Decimal("0.00"),
         solicitadoAt: new Date("2026-09-02T12:00:00Z"),

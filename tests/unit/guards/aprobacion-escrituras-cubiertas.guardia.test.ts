@@ -38,6 +38,11 @@ import { quitarComentarios } from "@/tests/fixtures/sin-comentarios";
 const REPO_ROOT = path.join(__dirname, "..", "..", "..");
 const REPO_FILE = path.join(REPO_ROOT, "lib", "repositories", "CierresAdminRepository.ts");
 const repoSrc = fs.readFileSync(REPO_FILE, "utf8");
+// SLT-73 (T2, design §2.1): las escrituras por repositorio inyectado de la aprobacion (42, 43, 173,
+// 44 y 158) se MOVIERON tal cual a `asentarCierreDia`, que la aprobacion llama con sus propias
+// dependencias. Se censan alli, y aqui se exige que la aprobacion siga llamandolo.
+const ASIENTOS_FILE = path.join(REPO_ROOT, "lib", "repositories", "_shared", "asientos-cierre-dia.ts");
+const asientosSrc = fs.readFileSync(ASIENTOS_FILE, "utf8");
 
 /**
  * Las suites que EJECUTAN la transaccion de aprobacion. Si una suite nueva la ejecuta, entra
@@ -226,18 +231,21 @@ const ESCRITURAS_SQL_DE_LA_APROBACION = [
   },
 ] as const;
 
-/** Escrituras de la transaccion que salen por un REPOSITORIO inyectado, no por `tx.` directo. */
+/**
+ * Escrituras de la transaccion que salen por un REPOSITORIO inyectado, no por `tx.` directo. Desde
+ * SLT-73 viven en `asentarCierreDia` (`deps.` = las dependencias que la aprobacion le pasa).
+ */
 const ESCRITURAS_POR_REPO_INYECTADO = [
   {
-    escritura: "this.walletMovimientoRepo.crearMovimientos",
+    escritura: "deps.walletMovimientoRepo.crearMovimientos",
     cubiertaPor: ["tests/integration/db/wallet-idempotencia.test.ts"],
   },
   {
-    escritura: "this.walletTiendaMovimientoRepo.crearMovimientos",
+    escritura: "deps.walletTiendaMovimientoRepo.crearMovimientos",
     cubiertaPor: ["tests/unit/repositories/cierres-admin-repository.test.ts"],
   },
   {
-    escritura: "this.pagoMensajeroMovimientoRepo.crearMovimientos",
+    escritura: "deps.pagoMensajeroMovimientoRepo.crearMovimientos",
     cubiertaPor: ["tests/unit/repositories/cierres-admin-repository.test.ts"],
   },
 ] as const;
@@ -320,9 +328,15 @@ describe("239/R33 — el inventario de escrituras de la aprobacion esta CERRADO"
   });
 
   it("las escrituras por repositorio inyectado siguen invocandose en la transaccion", () => {
+    // SLT-73: la aprobacion las delega en `asentarCierreDia`, con sus dependencias y su `tx`.
+    expect(repoSrc, "la aprobacion ya no llama a asentarCierreDia").toContain(
+      "await asentarCierreDia(tx, cierreId, this.asientos())",
+    );
     for (const e of ESCRITURAS_POR_REPO_INYECTADO) {
-      expect(repoSrc, `${e.escritura} ya no aparece en el repositorio`).toContain(e.escritura);
+      expect(asientosSrc, `${e.escritura} ya no aparece en asentarCierreDia`).toContain(e.escritura);
     }
+    // Ni una escritura sobre `tx.` directo en el modulo compartido: todo sale por los repositorios.
+    expect(censarEscriturasTx(asientosSrc)).toEqual([]);
   });
 
   it("la escritura de `gestion_aprobada` ya no existe (feature 239/T2.3)", () => {

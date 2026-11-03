@@ -322,7 +322,6 @@ describe("SLT-59 R45 — ruta vigente, mismo conjunto y sin desvio: la ruta actu
       duracionS: 210,
       fuente: "routes",
     },
-    tramoVivoAt: null,
     actualizadaAt: new Date(T0.getTime() - 60 * 60_000), // SLT-59 (R54): enfriamiento ya pasado
     secuenciaPorOrden: new Map([
       ["s1", 1],
@@ -342,7 +341,6 @@ describe("SLT-59 R45 — ruta vigente, mismo conjunto y sin desvio: la ruta actu
       guardarTrazado: vi.fn(async () => {}),
       reducirSecuencia: vi.fn(async () => true),
       marcarDesactualizada: vi.fn(async () => {}),
-      marcarTramoVivo: vi.fn(async () => {}),
     };
     const paradasRepo: ParadasRepo = {
       contarAsignadasDelDia: async () => ({ asignadas: 0, recogidas: 0 }), findParadasEnReparto: vi.fn(async () =>

@@ -254,6 +254,11 @@ describe("WalletService.verResumenCaja (R8/R64/R65)", () => {
       // SL-39 (R2): el agregado no trae IVA, asi que el IVA de la caja esta en cero.
       iva: "0.00",
       signoIva: "cero",
+      // SLT-73 (R25/R30): sin diferencias de la satélite el bolsillo está en cero.
+      porCobrarSatelites: "0.00",
+      signoPorCobrarSatelites: "cero",
+      porcentajePorCobrarSatelites: "0.00",
+      deEmpresaEnCaja: "700.00",
     });
     // Lo que la feature existe para conseguir: los ₡5000 de contra-entrega estan en la caja y
     // NO estan en la ganancia. Si `verResumenCaja` ignorara la naturaleza, serian iguales.

@@ -114,6 +114,8 @@ function buildTx(
     cierreDia: {
       updateMany: vi.fn(async () => ({ count: 1 })),
       findUnique: vi.fn(async () => ({
+        // SLT-73 (T3): la aprobacion lee el destino; esta suite mide la de la CENTRAL, que asienta.
+        destinoTipo: "bodega_central",
         mensajeroId: MENSAJERO_ID,
         totalPagoMensajero: new Prisma.Decimal("1500.00"),
         totalEfectivo: new Prisma.Decimal("10000.00"),

@@ -12,6 +12,7 @@ import {
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // ⭑ FICHA 431 / T9 (R17/R18/R19/R20/R21/R22) — EL SALDO SIN CONCILIAR, CONTRA POSTGRES.
@@ -30,11 +31,13 @@ import {
 //      `conciliado_at IS NULL`;
 //   4. RECHAZADA                 -> NO aporta nada (queda fuera del conjunto).
 //
-// ⚠️ Y EL SALDO MIDE **EFECTIVO**, NO `total_general`. Decision del humano sobre Q2 (2026-09-16),
-// medida contra produccion: de ₡4.196.897 consolidados, ₡1.105.790 (26,3 %) son SINPE, que llega
-// directo a una cuenta y NO VIAJA EN EL BULTO. Con `total_general`, la pantalla ensenaria ₡1,1 M de
-// deuda fantasma. Este archivo siembra a proposito consolidaciones con SINPE distinto de cero, de
-// forma que cambiar `totalEfectivo` por `totalGeneral` en el repositorio PONGA ESTO ROJO.
+// ⚠️ SLT-73 (D3/R5/R8) REABRIO LA Q2 DE LA 431: el saldo ya NO mide el efectivo. Es la deuda:
+// Σ `paraLaCentral` de los `cierre_dia` aprobados con destino satelite − Σ recibido. Por eso cada
+// consolidacion sembrada aqui lleva UN `cierre_dia` aprobado con su MISMO snapshot (pago y ganancia
+// en cero, asi el esperado es el general). Las consolidaciones siguen sembrando SINPE distinto de
+// cero, de forma que volver a `totalEfectivo` en el repositorio PONGA ESTO ROJO. Los casos propios
+// de SLT-73 (sin consolidar, rechazada con cierres, aporte negativo, otra empresa) viven en
+// `slt73-deuda-satelite.int.test.ts`.
 //
 // ⚠️ NADA DE `if (!fks) return;`: siembra sus propias filas y falla ruidosamente si no puede.
 //
@@ -112,15 +115,9 @@ describeSiHayBase("431/T9 — el saldo sin conciliar, con filas reales", () => {
     return fila.id;
   }
 
+  /** Crea su propio usuario: la base de los tests puede no tener ninguno (SLT-73). */
   async function algunUsuarioId(tx: TxDeTest): Promise<string> {
-    const fila = await tx.usuario.findFirst({ select: { id: true } });
-    if (!fila) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `usuario` esta vacia: sin FK no se puede sembrar un " +
-          "cierre_bodega. Corre `pnpm run db:seed` antes de esta suite.",
-      );
-    }
-    return fila.id;
+    return (await crearUsuarioDePrueba(tx, "adminSatelite")).id;
   }
 
   interface Semilla {
@@ -169,6 +166,23 @@ describeSiHayBase("431/T9 — el saldo sin conciliar, con filas reales", () => {
       },
       select: { id: true },
     });
+    // SLT-73: el cierre del dia que la consolidacion agrupa, con su MISMO snapshot. Una rechazada no
+    // lleva cierre: su recibido es siempre nulo (CHECK `cierre_bodega_conciliacion_coherente`) y lo
+    // que se mide de ella aqui es que no sale en pantalla.
+    if (estado !== "rechazado") {
+      await tx.cierreDia.create({
+        data: {
+          mensajeroId: usuarioId,
+          estado: "aprobado",
+          destinoTipo: "bodega_satelite",
+          destinoZonaId: zonaId,
+          totalEfectivo: new Prisma.Decimal(s.efectivo),
+          totalSimpe: new Prisma.Decimal(s.simpe),
+          totalGeneral: new Prisma.Decimal(s.efectivo).plus(new Prisma.Decimal(s.simpe)),
+          cierreBodegaId: fila.id,
+        },
+      });
+    }
     return fila.id;
   }
 
@@ -178,20 +192,20 @@ describeSiHayBase("431/T9 — el saldo sin conciliar, con filas reales", () => {
       const usuarioId = await algunUsuarioId(tx);
       const zonaId = await sembrarZona(tx, "cuatro");
 
-      // 1. sin marcar          -> aporta 1000.00 (su efectivo integro)
+      // 1. sin marcar          -> aporta 1400.00 (su general integro: SLT-73 cuenta el SINPE)
       await sembrarConsolidacion(tx, zonaId, usuarioId, {
         efectivo: "1000.00",
         simpe: "400.00",
         diasAtras: 5,
       });
-      // 2. marcada COMPLETA    -> aporta 0.00
+      // 2. marcada por el efectivo -> aporta 200.00 (el SINPE que no llego)
       await sembrarConsolidacion(tx, zonaId, usuarioId, {
         efectivo: "800.00",
         simpe: "200.00",
         estado: "aprobado",
         recibido: "800.00",
       });
-      // 3. marcada POR MENOS   -> aporta 15.00 (R18: 500 declarados, 485 recibidos)
+      // 3. marcada POR MENOS   -> aporta 115.00 (600 esperados, 485 recibidos)
       await sembrarConsolidacion(tx, zonaId, usuarioId, {
         efectivo: "500.00",
         simpe: "100.00",
@@ -214,10 +228,11 @@ describeSiHayBase("431/T9 — el saldo sin conciliar, con filas reales", () => {
     // cualquier aserción que no lo mire.
     expect(r, "la bodega sembrada no aparece en el listado de saldos").not.toBeNull();
 
-    // ⭑ EL NUMERO. 1000 + 0 + 15 = 1015.00. Si la formula usara `total_general`, seria
-    // 1400 + 200 + 115 = 1715.00; si excluyera lo ya conciliado, seria 1000.00; y si no filtrara
-    // las rechazadas, seria 11014.00. Los tres errores dan numeros DISTINTOS de este.
-    expect(r!.saldoSinConciliar).toBe("1015.00");
+    // ⭑ EL NUMERO (SLT-73). 1400 + 200 + 115 = 1715.00. Con la formula de la 431 (efectivo) seria
+    // 1000 + 0 + 15 = 1015.00; si omitiera lo recibido, 3000.00. Numeros DISTINTOS de este.
+    expect(r!.saldoSinConciliar).toBe("1715.00");
+    expect(r!.aporteSinConsolidar).toBe("0.00");
+    expect(r!.cierresSinConsolidar).toBe(0);
 
     // El contexto que viaja al lado, para que la resta sea auditable desde la pantalla.
     expect(r!.totalEfectivo).toBe("2300.00"); // 1000 + 800 + 500 (la rechazada, fuera)
@@ -230,10 +245,9 @@ describeSiHayBase("431/T9 — el saldo sin conciliar, con filas reales", () => {
     expect(r!.fechaDeLaMasAntigua).not.toBeNull();
   });
 
-  it("⭑ R17/Q2: el SINPE NO cuenta — dos bodegas con el mismo general y distinto efectivo", async () => {
-    // El caso que hace visible la decision del humano sobre Q2. Las dos bodegas consolidaron
-    // ₡1.000 y ninguna esta conciliada; la unica diferencia es COMO se recaudo. La que lo recaudo
-    // todo en SINPE no debe NADA: ese dinero ya esta en una cuenta.
+  it("⭑ SLT-73 D3/R5: el SINPE SI cuenta — dos bodegas con el mismo general y distinto efectivo", async () => {
+    // D3 (2026-10-31) reabrio la Q2 de la 431: el SINPE de la satelite es el medio por el que ella
+    // cobra, y sigue siendo deuda con la central. Las dos bodegas deben lo mismo.
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
       const usuarioId = await algunUsuarioId(tx);
@@ -259,9 +273,9 @@ describeSiHayBase("431/T9 — el saldo sin conciliar, con filas reales", () => {
     // Mismo consolidado…
     expect(r.efectivo!.totalConsolidado).toBe("1000.00");
     expect(r.sinpe!.totalConsolidado).toBe("1000.00");
-    // …y saldos OPUESTOS. Con `total_general` los dos serian "1000.00" y este caso moriria.
+    // …y la MISMA deuda. Con el efectivo, la de SINPE saldria «al dia» ("0.00").
     expect(r.efectivo!.saldoSinConciliar).toBe("1000.00");
-    expect(r.sinpe!.saldoSinConciliar).toBe("0.00");
+    expect(r.sinpe!.saldoSinConciliar).toBe("1000.00");
   });
 
   it("R18: recibido de MAS -> el saldo queda NEGATIVO y no se recorta a cero", async () => {
@@ -376,9 +390,10 @@ describeSiHayBase("431/T9 — el saldo sin conciliar, con filas reales", () => {
       general: "623.45",
     });
     expect(conciliada!.montoRecibido).toBe("485.00");
-    // ⭑ SOBRE EL EFECTIVO: 500 − 485 = 15. Con `general` serian 138.45 y la suma de esta columna
-    // dejaria de cuadrar con el saldo de la bodega.
-    expect(conciliada!.faltaPorRecibir).toBe("15.00");
+    // ⭑ SLT-73 (R8): sobre «Para la central» (aqui el general, sin pago ni ganancia):
+    // 623.45 − 485 = 138.45. Con el efectivo serian 15.00.
+    expect(conciliada!.paraLaCentral).toBe("623.45");
+    expect(conciliada!.faltaPorRecibir).toBe("138.45");
 
     expect(pendiente, "falta la consolidacion pendiente").toBeDefined();
     expect(pendiente!.montoRecibido).toBeNull(); // `null`, no "0.00"
@@ -389,7 +404,7 @@ describeSiHayBase("431/T9 — el saldo sin conciliar, con filas reales", () => {
     const suma = r
       .reduce((acc, c) => acc.plus(new Prisma.Decimal(c.faltaPorRecibir)), new Prisma.Decimal(0))
       .toFixed(2);
-    expect(suma).toBe("215.00");
+    expect(suma).toBe("338.45");
   });
 
   it("R24: `soloSinConciliar` recorta a la cola, y sin el vienen las dos poblaciones", async () => {
@@ -521,8 +536,8 @@ describeSiHayBase("431/T9 — el saldo sin conciliar, con filas reales", () => {
     });
 
     expect(r.fila, "falta la bodega sembrada").not.toBeNull();
-    // La FILA de la tabla dice 1015.00 (1000 + 15). Con `total_general` diria 1415.00.
-    expect(r.fila!.saldoSinConciliar).toBe("1015.00");
+    // La FILA de la tabla dice 1415.00 (1400 + 15). Con el efectivo diria 1015.00.
+    expect(r.fila!.saldoSinConciliar).toBe("1415.00");
 
     // ⚠️ LA BASE ES COMPARTIDA: puede haber otras zonas satelite sembradas por otra suite, asi
     // que el resumen NO se compara contra un literal —seria un test que depende de lo que otro

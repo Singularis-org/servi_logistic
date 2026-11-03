@@ -147,12 +147,16 @@ describeSiHayBase("SLT-56 — tabla de ajustes y tipo de historial, de ida y vue
   it("R18 — el enum de la base es exactamente el catalogo de la app, con el tipo nuevo al final", async () => {
     const enLaBase = await etiquetas("historial_accion_tipo");
     expect(enLaBase.slice(-1)).toEqual([TIPO_NUEVO]);
-    // Menos los tipos de migraciones POSTERIORES, que esta base propia no aplica.
+    // La base se para en las migraciones de SLT-56: los tipos que entran DESPUES no estan.
     const POSTERIORES: readonly string[] = [
+      // SLT-76 (2026-11-02): `zona_distrito_cambiado`, de `20261102090000_slt76_historial_zona_distrito`.
+      "zona_distrito_cambiado",
       // Ajuste planes-custom D16: `20261103120000_historial_accion_plan_tipo_cobro_cambiado`.
       "plan_tipo_cobro_cambiado",
     ];
-    expect([...enLaBase].sort()).toEqual(HISTORIAL_ACCION_TIPOS.filter((t) => !POSTERIORES.includes(t)).sort());
+    expect([...enLaBase].sort()).toEqual(
+      HISTORIAL_ACCION_TIPOS.filter((t) => !POSTERIORES.includes(t)).sort(),
+    );
   });
 
   it("R17 — la tabla nace con sus columnas, RLS, su politica, triggers de misma empresa y sin UPDATE/DELETE para la app", async () => {

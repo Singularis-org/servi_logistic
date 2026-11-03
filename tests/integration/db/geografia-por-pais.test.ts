@@ -52,6 +52,18 @@ async function geografiaCR(tx: TxDeTest): Promise<GeografiaDePrueba> {
   return { provinciaId: canton.provinciaId, cantonId: canton.id, distritoId: canton.distritos[0].id };
 }
 
+/**
+ * SLT-76 R13. El rechazo de una FK `ON UPDATE RESTRICT` cuando el nodo TIENE HIJOS que la usan.
+ * Postgres 17 (el de CI) lo reporta como `23503` (`foreign_key_violation`); Postgres 18 comprueba
+ * antes la acción RESTRICT del lado referenciado y lo reporta como `23001` (`restrict_violation`).
+ * Los dos dicen lo mismo: la base rechazó el cambio porque hay hijos que lo impiden. Se usa SOLO
+ * en los casos medidos en PG18 que dan `23001` (bitácora de SLT-76 T7.2); el resto sigue exigiendo
+ * `23503` exacto. Devuelve el código tal cual si no es ninguno de los dos, para que el diff lo muestre.
+ */
+function rechazoPorRestrict(code: string | null): string | null {
+  return code === "23001" || code === "23503" ? "rechazo-por-restrict" : code;
+}
+
 const INSERTAR_ORDEN = `INSERT INTO orden (id, num_remision, estatus_id, destinatario, telefono_dest, tienda_id, zona_id,
     provincia_id, canton_id, distrito_id, producto, created_at, updated_at)
   VALUES ($1, $2, $3, 'Destinatario SL20', '88880000', $4, $5, $6, $7, $8, 'caja', now(), now())`;
@@ -122,10 +134,12 @@ describeSiHayBase("SL-20 — geografía por país", () => {
       const xa = await paisXA(tx);
       const cr = await geografiaCR(tx);
       return {
-        cantonAOtroPais: await intentar(tx, `UPDATE canton SET pais_id = 'CR' WHERE id = $1`, xa.cantonId),
+        // El cantón de XA tiene un distrito que lo referencia con la FK compuesta RESTRICT: PG18
+        // lo reporta como 23001 (medido en SLT-76 T7.2).
+        cantonAOtroPais: rechazoPorRestrict(await intentar(tx, `UPDATE canton SET pais_id = 'CR' WHERE id = $1`, xa.cantonId)),
         distritoAOtroPais: await intentar(tx, `UPDATE distrito SET pais_id = 'XA' WHERE id = $1`, cr.distritoId),
         // ON UPDATE RESTRICT: mover la provincia de país no arrastra a sus cantones.
-        provinciaConHijos: await intentar(tx, `UPDATE provincia SET pais_id = 'CR' WHERE id = $1`, xa.provinciaId),
+        provinciaConHijos: rechazoPorRestrict(await intentar(tx, `UPDATE provincia SET pais_id = 'CR' WHERE id = $1`, xa.provinciaId)),
         padreInexistente: await intentar(tx, `INSERT INTO canton (id, nombre, provincia_id) VALUES ($1, 'x', 'no-existe')`, randomUUID()),
         tras: [
           await paisDe(tx, "provincia", xa.provinciaId),
@@ -135,21 +149,28 @@ describeSiHayBase("SL-20 — geografía por país", () => {
       };
     });
     expect(r).toEqual({
-      cantonAOtroPais: "23503",
+      cantonAOtroPais: "rechazo-por-restrict",
       distritoAOtroPais: "23503",
-      provinciaConHijos: "23503",
+      provinciaConHijos: "rechazo-por-restrict",
       padreInexistente: "23503",
       tras: ["XA", "XA", "CR"],
     });
   });
 
-  it("R11: mover un cantón a una provincia de otro país con distritos lo rechaza la base", async () => {
+  it("R11: mover un cantón a una provincia de otro país con distritos lo rechaza la base y el cantón no se mueve", async () => {
     const r = await revertida(base, async (tx) => {
       const xa = await paisXA(tx);
       const cr = await geografiaCR(tx);
-      return intentar(tx, `UPDATE canton SET provincia_id = $1 WHERE id = $2`, cr.provinciaId, xa.cantonId);
+      const fallo = await intentar(tx, `UPDATE canton SET provincia_id = $1 WHERE id = $2`, cr.provinciaId, xa.cantonId);
+      const [tras] = await tx.$queryRawUnsafe<{ provincia_id: string; pais_id: string }[]>(
+        `SELECT provincia_id, pais_id FROM canton WHERE id = $1`,
+        xa.cantonId,
+      );
+      return { fallo: rechazoPorRestrict(fallo), tras, provinciaXA: xa.provinciaId };
     });
-    expect(r).toBe("23503");
+    // SLT-76 R13: además del código, que NADA cambió. Medido en PG18: 23001.
+    expect(r.fallo).toBe("rechazo-por-restrict");
+    expect(r.tras).toEqual({ provincia_id: r.provinciaXA, pais_id: "XA" });
   });
 
   it("R15/R16: nombre de provincia y códigos únicos dentro del país; otro país puede repetirlos", async () => {

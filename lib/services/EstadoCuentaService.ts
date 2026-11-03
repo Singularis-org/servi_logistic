@@ -414,8 +414,10 @@ export class EstadoCuentaService implements IEstadoCuentaService {
     // En la bodega el «abono» es lo RECIBIDO (baja lo que tiene por entregar); no hay pares anulados.
     const totales = totalesNetos(periodo, () => null, (m) => m.tipo === "recibido");
     const cero = new Prisma.Decimal(0);
-    const pendiente = (t: { efectivo: string; recibido: string }) =>
-      saldoDe(new Prisma.Decimal(t.efectivo), new Prisma.Decimal(t.recibido)).toFixed(2);
+    // SLT-73 (R31/R33): `declarado` ya es el neto de las consolidaciones + los cierres sin consolidar;
+    // la resta es la deuda de `/wallet/satelites`.
+    const pendiente = (t: { declarado: string; recibido: string }) =>
+      saldoDe(new Prisma.Decimal(t.declarado), new Prisma.Decimal(t.recibido)).toFixed(2);
     return {
       libro: null,
       crudas: pagina.filas,
@@ -426,7 +428,8 @@ export class EstadoCuentaService implements IEstadoCuentaService {
       total: pagina.total,
       filas: pagina.filas.map((f) => ({
         ref: null,
-        consolidacionId: f.origenId,
+        // SLT-73 (R32): una fila `sin_consolidar` nace de un `cierre_dia`, no de una consolidacion.
+        consolidacionId: f.origenTipo === "cierre_bodega" ? f.origenId : null,
         fecha: fechaDiaMovimientoCR(f.fechaMovimiento.toISOString()),
         categoria: f.categoria,
         origenTipo: f.origenTipo,
@@ -434,7 +437,8 @@ export class EstadoCuentaService implements IEstadoCuentaService {
         pago: null,
         descripcion: f.descripcion,
         registro: { nombre: f.registradoPorNombre, automatico: null },
-        cargo: f.tipo === "declarado" ? f.monto : null,
+        // Sube lo que tiene por entregar: lo declarado y lo aun sin consolidar (R32).
+        cargo: f.tipo !== "recibido" ? f.monto : null,
         abono: f.tipo === "recibido" ? f.monto : null,
         saldoCorrido: f.saldoCorrido,
         chip: f.tipo as ChipBodega,

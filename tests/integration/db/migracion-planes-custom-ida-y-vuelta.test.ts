@@ -34,8 +34,8 @@ import {
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
-const M_ANTERIOR = "20261031140300_plan_desasignar_sin_costo_base";
-const M = "20261031150000_plan_sin_negociable_y_tipo_cobro";
+const M_ANTERIOR = "20261102090100_slt76_retirar_respaldos"; // la última de dev (F2.3, sync con SLT-76)
+const M = "20261102120000_plan_sin_negociable_y_tipo_cobro";
 
 const BASE = `pcust_iv_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 

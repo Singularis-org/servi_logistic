@@ -1218,7 +1218,7 @@ export class PlanesRepository implements IPlanesRepository {
             },
             cambio: pendienteDe(plan.cambioProgramado),
             costoVigente,
-            // El CHECK de 20261031150000 deja solo `mensual` | `anual`.
+            // El CHECK de 20261102120000 deja solo `mensual` | `anual`.
             tipoCobro: tipoCobroSchema.parse(empresa.planTipoCobro),
           },
           asignaciones: lista,

@@ -34,7 +34,7 @@ import {
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
-const M_ANTERIOR = "20261031150000_plan_sin_negociable_y_tipo_cobro";
+const M_ANTERIOR = "20261102120000_plan_sin_negociable_y_tipo_cobro";
 const M = "20261103120000_historial_accion_plan_tipo_cobro_cambiado";
 const TIPO_NUEVO = "plan_tipo_cobro_cambiado";
 

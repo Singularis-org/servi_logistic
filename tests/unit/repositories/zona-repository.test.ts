@@ -1,7 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
-import type { UpdateZonaResult } from "@/lib/interfaces/repositories/IZonaRepository";
+import type {
+  CreateZonaResult,
+  UpdateZonaResult,
+} from "@/lib/interfaces/repositories/IZonaRepository";
 
 // tx mock que reciben las operaciones dentro de $transaction.
 function buildTx() {
@@ -23,6 +26,9 @@ function buildTx() {
     // no lo miden no tengan que fijarlo.
     orden: { findMany: vi.fn().mockResolvedValue([]), updateMany: vi.fn(), count: vi.fn().mockResolvedValue(0) },
     tarifaZonaMensajero: { createMany: vi.fn(), deleteMany: vi.fn(), findMany: vi.fn() },
+    // SLT-76: los nombres de los distritos añadidos o quitados, para su rastro. Su SQL se prueba
+    // contra Postgres en `tests/integration/db/zona-distrito-rastro.test.ts`.
+    distrito: { findMany: vi.fn().mockResolvedValue([]) },
     // FICHA 362: el borrado registra su accion DENTRO de esta misma transaccion.
     historialAccion: { createMany: vi.fn() },
     usuario: {
@@ -44,6 +50,31 @@ function buildPrisma(tx: ReturnType<typeof buildTx>, overrides: Record<string, u
   };
 }
 
+/**
+ * SLT-75: `zonaDistrito.findMany` lo usan DOS lecturas distintas de `update`: la de conflictos
+ * (R6, la unica que pide `select.zona`) y las de la reconciliacion de la 366. Este helper responde
+ * `[]` (sin conflictos) a la primera y sirve `respuestas` EN ORDEN a las demas, para que los casos
+ * de la 366 no dependan de la posicion de la lectura nueva.
+ */
+function esLecturaDeConflictos(args: unknown): boolean {
+  const a = args as { select?: { zona?: unknown } } | undefined;
+  return a?.select?.zona !== undefined;
+}
+
+function nmEnOrden(tx: ReturnType<typeof buildTx>, respuestas: unknown[][]): void {
+  const cola = [...respuestas];
+  tx.zonaDistrito.findMany.mockReset().mockImplementation(async (args: unknown) =>
+    esLecturaDeConflictos(args) ? [] : (cola.shift() ?? []),
+  );
+}
+
+/** Las llamadas a `zonaDistrito.findMany` que NO son la lectura de conflictos de SLT-75. */
+function llamadasNMDeReconciliacion(tx: ReturnType<typeof buildTx>): unknown[] {
+  return tx.zonaDistrito.findMany.mock.calls
+    .map((c: unknown[]) => c[0])
+    .filter((a: unknown) => !esLecturaDeConflictos(a));
+}
+
 function repoOf(prisma: unknown) {
   return new ZonaRepository(prisma as unknown as PrismaClient);
 }
@@ -58,6 +89,12 @@ function soloOk(res: UpdateZonaResult): Extract<UpdateZonaResult, { estado: "ok"
   return res;
 }
 
+/** SLT-75: `create` devuelve un desenlace nombrado. Estrecha a `ok` y falla ruidosamente si no. */
+function zonaCreada(res: CreateZonaResult): Extract<CreateZonaResult, { estado: "ok" }>["zona"] {
+  if (res.estado !== "ok") throw new Error(`se esperaba \`ok\` y llego \`${res.estado}\``);
+  return res.zona;
+}
+
 describe("ZonaRepository.create", () => {
   it("crea zona + N:M + tarifas en transaccion y devuelve el DTO", async () => {
     const tx = buildTx();
@@ -65,13 +102,13 @@ describe("ZonaRepository.create", () => {
     tx.tarifaZonaMensajero.findMany.mockResolvedValue([]);
     const prisma = buildPrisma(tx);
 
-    const dto = await repoOf(prisma).create({ sinpeNumero: "80000000", sinpeNombre: "Titular de Prueba",
+    const dto = zonaCreada(await repoOf(prisma).create({ sinpeNumero: "80000000", sinpeNombre: "Titular de Prueba",
       nombre: "GAM",
       cobroVehiculo: false,
       esCentral: false,
       distritoIds: ["d1", "d2"],
       tarifas: [],
-    }, null);
+    }, null));
 
     // ⭑ FICHA 429 (R11/R12): el par del SINPE viaja en el MISMO acto de creacion, y la bodega
     // nace REVISADA —lo acaba de teclear una persona—. `sinpeRevisadoAt` se comprueba por su TIPO
@@ -109,13 +146,13 @@ describe("ZonaRepository.create", () => {
     ]);
     const prisma = buildPrisma(tx);
 
-    const dto = await repoOf(prisma).create({ sinpeNumero: "80000000", sinpeNombre: "Titular de Prueba",
+    const dto = zonaCreada(await repoOf(prisma).create({ sinpeNumero: "80000000", sinpeNombre: "Titular de Prueba",
       nombre: "GAM",
       cobroVehiculo: true,
       esCentral: false,
       distritoIds: ["d1"],
       tarifas: [{ cobroEntregado: 10, cobroRechazado: 5, vehiculoId: "v1" }],
-    }, null);
+    }, null));
 
     const arg = tx.tarifaZonaMensajero.createMany.mock.calls[0][0];
     expect(arg.data[0].cobroEntregado).toBeInstanceOf(Prisma.Decimal);
@@ -133,13 +170,13 @@ describe("ZonaRepository — invariante 'una central' (feature 55/R5/R6)", () =>
     tx.tarifaZonaMensajero.findMany.mockResolvedValue([]);
     const prisma = buildPrisma(tx);
 
-    const dto = await repoOf(prisma).create({ sinpeNumero: "80000000", sinpeNombre: "Titular de Prueba",
+    const dto = zonaCreada(await repoOf(prisma).create({ sinpeNumero: "80000000", sinpeNombre: "Titular de Prueba",
       nombre: "NUEVA",
       cobroVehiculo: false,
       esCentral: true,
       distritoIds: ["d1"],
       tarifas: [],
-    }, null);
+    }, null));
 
     // sin id propio aun: desmarca TODAS las centrales previas
     expect(tx.zona.updateMany).toHaveBeenCalledWith({
@@ -498,9 +535,7 @@ function txConNM(
   finales: { distritoId: string; zonaId: string }[],
 ): ReturnType<typeof buildTx> {
   const tx = buildTx();
-  tx.zonaDistrito.findMany
-    .mockResolvedValueOnce(previos.map((distritoId) => ({ distritoId })))
-    .mockResolvedValueOnce(finales);
+  nmEnOrden(tx, [previos.map((distritoId) => ({ distritoId })), finales]);
   tx.zona.findUnique.mockResolvedValue({ id: "zA", esCentral: false });
   tx.zona.update.mockResolvedValue({
     id: "zA",
@@ -641,7 +676,7 @@ describe("366/T4 — ZonaRepository.update reconcilia la zona de las ordenes", (
       null,
     );
 
-    const segunda = tx.zonaDistrito.findMany.mock.calls[1][0] as {
+    const segunda = llamadasNMDeReconciliacion(tx)[1] as {
       where: { distritoId: { in: string[] } };
     };
     expect(new Set(segunda.where.distritoId.in)).toEqual(
@@ -676,7 +711,8 @@ describe("366/T4 — ZonaRepository.update reconcilia la zona de las ordenes", (
 
     await repoOf(prisma).create({ sinpeNumero: "80000000", sinpeNombre: "Titular de Prueba", ...DATOS_ZONA_A, nombre: "NUEVA" }, null);
 
-    expect(tx.zonaDistrito.findMany).not.toHaveBeenCalled();
+    // SLT-75: la UNICA lectura de la N:M en `create` es la de conflictos (R6).
+    expect(llamadasNMDeReconciliacion(tx)).toEqual([]);
     expect(tx.orden.findMany).not.toHaveBeenCalled();
     expect(tx.orden.updateMany).not.toHaveBeenCalled();
     expect(tx.historialAccion.createMany).not.toHaveBeenCalled();
@@ -852,6 +888,16 @@ function filasDeHistorial(tx: ReturnType<typeof buildTx>, n = 0): Record<string,
 
 const DATOS_BASE = { nombre: "B", cobroVehiculo: false, distritoIds: ["d1"], tarifas: [] };
 
+/**
+ * SLT-76: la zona YA tenia `d1` antes del guardado, asi que `DATOS_BASE` no cambia sus distritos y
+ * no deja fila de `zona_distrito_cambiado`. Lo usan los casos que afirman «sin rastro» de la marca.
+ */
+function distritosSinCambio(tx: ReturnType<typeof buildTx>, zonaId: string): void {
+  tx.zonaDistrito.findMany.mockReset().mockImplementation(async (args: unknown) =>
+    esLecturaDeConflictos(args) ? [] : [{ distritoId: "d1", zonaId }],
+  );
+}
+
 describe("376/T6 — la guarda de `update` (R5) y el desenlace nombrado", () => {
   it("⭑ R5: `esCentral: false` sobre la zona QUE ES la central -> `sin_zona_central`, sin escribir NADA", async () => {
     const tx = buildTx();
@@ -874,6 +920,7 @@ describe("376/T6 — la guarda de `update` (R5) y el desenlace nombrado", () => 
     // La guarda es «no quedarse sin», no «la marca no se apaga nunca». Sin este caso, quitar el
     // `&& exists.esCentral` de la condicion pasaria desapercibido.
     const tx = buildTx();
+    distritosSinCambio(tx, "zB");
     tx.zona.findUnique.mockResolvedValue({ id: "zB", esCentral: false });
     tx.zona.update.mockResolvedValue({
       id: "zB",
@@ -903,6 +950,7 @@ describe("376/T6 — la guarda de `update` (R5) y el desenlace nombrado", () => 
     tx.tarifaZonaMensajero.findMany.mockResolvedValue([]);
     const prisma = buildPrisma(tx);
 
+    distritosSinCambio(tx, "zA");
     const res = await repoOf(prisma).update("zA", DATOS_BASE, "u-maestro");
 
     expect(res.estado).toBe("ok");
@@ -928,11 +976,32 @@ describe("376/T6 — la guarda de `update` (R5) y el desenlace nombrado", () => 
     tx.tarifaZonaMensajero.findMany.mockResolvedValue([]);
     const prisma = buildPrisma(tx);
 
+    distritosSinCambio(tx, "zA");
     await repoOf(prisma).update("zA", { ...DATOS_BASE, esCentral: true }, "u-maestro");
 
     expect(tx.historialAccion.createMany).not.toHaveBeenCalled();
     // Y tampoco se molesta en preguntar por la central previa: no la hay que apagar.
     expect(tx.zona.findFirst).not.toHaveBeenCalled();
+  });
+});
+
+describe("SLT-76 — `update` sin cambio de distritos no toca su rastro (R10)", () => {
+  it("con la misma lista, no lee los nombres de los distritos ni escribe ninguna fila", async () => {
+    // El `appendAccion` con lista vacia ya es un no-op; lo que este caso fija es que la condicion
+    // «sin cambios» existe: sin ella, cada guardado pagaria una lectura de distritos de mas.
+    const tx = buildTx();
+    distritosSinCambio(tx, "zB");
+    tx.zona.findUnique.mockResolvedValue({ id: "zB", esCentral: false });
+    tx.zona.update.mockResolvedValue({ id: "zB", nombre: "B", cobroVehiculo: false, esCentral: false });
+    tx.tarifaZonaMensajero.findMany.mockResolvedValue([]);
+
+    const res = await repoOf(buildPrisma(tx)).update("zB", DATOS_BASE, "u-maestro");
+
+    expect(res.estado).toBe("ok");
+    // Premisa: el guardado si corrio el reemplazo de la N:M.
+    expect(tx.zonaDistrito.deleteMany).toHaveBeenCalled();
+    expect(tx.distrito.findMany).not.toHaveBeenCalled();
+    expect(tx.historialAccion.createMany).not.toHaveBeenCalled();
   });
 });
 
@@ -1027,10 +1096,7 @@ describe("376/T6 — el rastro de `update` (R12/R13/R15)", () => {
     // Dos hechos de naturaleza distinta en el MISMO guardado. Compartir lote haria que filtrar por
     // lote devolviera una mezcla que nadie pidio.
     const tx = txDeTraslado();
-    tx.zonaDistrito.findMany
-      .mockReset()
-      .mockResolvedValueOnce([{ distritoId: "d1" }])
-      .mockResolvedValueOnce([{ distritoId: "d1", zonaId: "zB" }]);
+    nmEnOrden(tx, [[{ distritoId: "d1" }], [{ distritoId: "d1", zonaId: "zB" }]]);
     tx.orden.findMany.mockResolvedValue([{ id: "o1", numGuia: 7, numRemision: "R-7" }]);
 
     await repoOf(buildPrisma(tx)).update("zB", { ...DATOS_BASE, esCentral: true }, "u-maestro");
@@ -1163,5 +1229,204 @@ describe("376/Q4 — `contarOrdenesVivasPorZona`", () => {
     const prisma = buildPrisma(buildTx(), { orden: { groupBy } });
     expect(await repoOf(prisma).contarOrdenesVivasPorZona([])).toEqual([]);
     expect(groupBy).not.toHaveBeenCalled();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// ⭑ SLT-75 (T3) — UN DISTRITO, A LO SUMO UNA ZONA: la lectura de conflictos y la red del indice.
+// El filtro por empresa (R5) y el «nada escrito» contra la base (R1/R2) se miden contra Postgres
+// real en `tests/integration/db/zona-distrito-unica.test.ts`. Aqui: el ORDEN y la `tx` (R6), el
+// `zonaId: { not }` de R4 y la traduccion del error del indice (R8).
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+const CONFLICTO_FILA = { distrito: { nombre: "Distrito Sintetico" }, zona: { nombre: "Zona Vecina" } };
+
+/** Primera escritura que hizo la `tx`, por orden de invocacion (Infinity si no hubo ninguna). */
+function primeraEscritura(tx: ReturnType<typeof buildTx>): number {
+  const escrituras = [
+    tx.zona.create,
+    tx.zona.update,
+    tx.zona.updateMany,
+    tx.zonaDistrito.createMany,
+    tx.zonaDistrito.deleteMany,
+    tx.tarifaZonaMensajero.createMany,
+    tx.tarifaZonaMensajero.deleteMany,
+    tx.orden.updateMany,
+    tx.historialAccion.createMany,
+  ];
+  return Math.min(...escrituras.flatMap((m) => m.mock.invocationCallOrder), Infinity);
+}
+
+function noEscribio(tx: ReturnType<typeof buildTx>): void {
+  expect(primeraEscritura(tx)).toBe(Infinity);
+}
+
+/** El indice de la lectura de conflictos entre las llamadas a `zonaDistrito.findMany`, o -1. */
+function indiceLecturaConflictos(tx: ReturnType<typeof buildTx>): number {
+  return tx.zonaDistrito.findMany.mock.calls.findIndex((c: unknown[]) =>
+    esLecturaDeConflictos(c[0]),
+  );
+}
+
+/** El error que levanta el indice unico bajo el driver adapter (forma P2002 con `driverAdapterError`). */
+function p2002DistritoUnico() {
+  return new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+    code: "P2002",
+    clientVersion: "7.8.0",
+    meta: {
+      modelName: "ZonaDistrito",
+      driverAdapterError: {
+        name: "DriverAdapterError",
+        cause: {
+          originalCode: "23505",
+          originalMessage:
+            "llave duplicada viola restriccion de unicidad «zona_distrito_organizacion_id_distrito_id_key»",
+          kind: "UniqueConstraintViolation",
+        },
+      },
+    },
+  });
+}
+
+const DATOS_CREAR = {
+  sinpeNumero: "80000000",
+  sinpeNombre: "Titular de Prueba",
+  nombre: "NUEVA",
+  cobroVehiculo: false,
+  esCentral: true,
+  distritoIds: ["d1", "d2"],
+  tarifas: [],
+};
+
+describe("SLT-75 — ZonaRepository: un distrito en otra zona no se guarda", () => {
+  it("⭑ R6 (create): la lectura de conflictos usa la `tx` y ocurre ANTES de la primera escritura", async () => {
+    const tx = buildTx();
+    tx.zona.create.mockResolvedValue({ id: "zN", nombre: "NUEVA", cobroVehiculo: false, esCentral: true });
+    tx.tarifaZonaMensajero.findMany.mockResolvedValue([]);
+    const prisma = buildPrisma(tx);
+
+    await repoOf(prisma).create(DATOS_CREAR, null);
+
+    const lectura = indiceLecturaConflictos(tx);
+    expect(lectura, "no hubo lectura de conflictos en la tx").toBeGreaterThanOrEqual(0);
+    const orden = tx.zonaDistrito.findMany.mock.invocationCallOrder[lectura];
+    expect(orden).toBeLessThan(primeraEscritura(tx));
+    // Y antes tambien de leer la central previa.
+    expect(orden).toBeLessThan(tx.zona.findFirst.mock.invocationCallOrder[0]);
+    // Sin `zonaId: { not }` al crear: la zona aun no existe.
+    const args = tx.zonaDistrito.findMany.mock.calls[lectura][0] as {
+      where: Record<string, unknown>;
+    };
+    expect(args.where).toEqual({ distritoId: { in: ["d1", "d2"] } });
+  });
+
+  it("R1/R6 (create): con conflictos devuelve `distrito_en_otra_zona` con los nombres y no escribe nada", async () => {
+    const tx = buildTx();
+    tx.zonaDistrito.findMany.mockImplementation(async (args: unknown) =>
+      esLecturaDeConflictos(args) ? [CONFLICTO_FILA] : [],
+    );
+    const prisma = buildPrisma(tx);
+
+    const res = await repoOf(prisma).create(DATOS_CREAR, "u-maestro");
+
+    expect(res).toEqual({
+      estado: "distrito_en_otra_zona",
+      conflictos: [{ distritoNombre: "Distrito Sintetico", zonaNombre: "Zona Vecina" }],
+    });
+    noEscribio(tx);
+  });
+
+  it("⭑ R6 (update): la lectura usa la `tx`, va tras `findUnique` y ANTES de la primera escritura", async () => {
+    const tx = txConNM(["d1"], [{ distritoId: "d1", zonaId: "zA" }]);
+    const prisma = buildPrisma(tx);
+
+    await repoOf(prisma).update("zA", { ...DATOS_ZONA_A, esCentral: true }, "u-maestro");
+
+    const lectura = indiceLecturaConflictos(tx);
+    expect(lectura, "no hubo lectura de conflictos en la tx").toBeGreaterThanOrEqual(0);
+    const orden = tx.zonaDistrito.findMany.mock.invocationCallOrder[lectura];
+    expect(orden).toBeGreaterThan(tx.zona.findUnique.mock.invocationCallOrder[0]);
+    expect(orden).toBeLessThan(primeraEscritura(tx));
+  });
+
+  it("⭑ R4 (update): la lectura excluye la PROPIA zona con `zonaId: { not: id }`", async () => {
+    const tx = txConNM(["d1"], [{ distritoId: "d1", zonaId: "zA" }]);
+    const prisma = buildPrisma(tx);
+
+    await repoOf(prisma).update("zA", DATOS_ZONA_A, null);
+
+    const lectura = indiceLecturaConflictos(tx);
+    expect(lectura).toBeGreaterThanOrEqual(0);
+    expect(tx.zonaDistrito.findMany.mock.calls[lectura][0]).toMatchObject({
+      where: { distritoId: { in: ["d1"] }, zonaId: { not: "zA" } },
+    });
+  });
+
+  it("R2/R6 (update): con conflictos devuelve `distrito_en_otra_zona` y no escribe nada", async () => {
+    const tx = buildTx();
+    tx.zona.findUnique.mockResolvedValue({ id: "zA", esCentral: false });
+    tx.zonaDistrito.findMany.mockImplementation(async (args: unknown) =>
+      esLecturaDeConflictos(args) ? [CONFLICTO_FILA] : [],
+    );
+    const prisma = buildPrisma(tx);
+
+    const res = await repoOf(prisma).update("zA", { ...DATOS_ZONA_A, esCentral: true }, "u-maestro");
+
+    expect(res).toEqual({
+      estado: "distrito_en_otra_zona",
+      conflictos: [{ distritoNombre: "Distrito Sintetico", zonaNombre: "Zona Vecina" }],
+    });
+    noEscribio(tx);
+  });
+
+  it("sin distritos pedidos no hay nada que leer: no se consulta la N:M por conflictos", async () => {
+    const tx = buildTx();
+    tx.zona.create.mockResolvedValue({ id: "zN", nombre: "NUEVA", cobroVehiculo: false, esCentral: false });
+    tx.tarifaZonaMensajero.findMany.mockResolvedValue([]);
+    const prisma = buildPrisma(tx);
+
+    const res = await repoOf(prisma).create({ ...DATOS_CREAR, esCentral: false, distritoIds: [] }, null);
+
+    expect(res.estado).toBe("ok");
+    expect(tx.zonaDistrito.findMany).not.toHaveBeenCalled();
+  });
+
+  it("⭑ R8 (create): la tx lanza el error del indice unico → `{ distrito_en_otra_zona, conflictos: null }`", async () => {
+    const tx = buildTx();
+    tx.zona.create.mockResolvedValue({ id: "zN", nombre: "NUEVA", cobroVehiculo: false, esCentral: true });
+    tx.zonaDistrito.createMany.mockRejectedValue(p2002DistritoUnico());
+    const prisma = buildPrisma(tx);
+
+    expect(await repoOf(prisma).create(DATOS_CREAR, null)).toEqual({
+      estado: "distrito_en_otra_zona",
+      conflictos: null,
+    });
+  });
+
+  it("⭑ R8 (update): la tx lanza el error del indice unico → `{ distrito_en_otra_zona, conflictos: null }`", async () => {
+    const tx = txConNM(["d1"], []);
+    tx.zonaDistrito.createMany.mockRejectedValue(p2002DistritoUnico());
+    const prisma = buildPrisma(tx);
+
+    expect(await repoOf(prisma).update("zA", DATOS_ZONA_A, null)).toEqual({
+      estado: "distrito_en_otra_zona",
+      conflictos: null,
+    });
+  });
+
+  it("R8: un unico de OTRA restriccion no se confunde con el del distrito: re-lanza tal cual", async () => {
+    const tx = buildTx();
+    const original = new Prisma.PrismaClientKnownRequestError("unique", {
+      code: "P2002",
+      clientVersion: "x",
+      meta: { target: ["zona_id", "distrito_id"] },
+    });
+    tx.zona.create.mockResolvedValue({ id: "zN", nombre: "NUEVA", cobroVehiculo: false, esCentral: false });
+    tx.zonaDistrito.createMany.mockRejectedValue(original);
+    const prisma = buildPrisma(tx);
+
+    await expect(repoOf(prisma).create({ ...DATOS_CREAR, esCentral: false }, null)).rejects.toBe(
+      original,
+    );
   });
 });

@@ -98,6 +98,8 @@ const LECTURA_POR_ORIGEN: Record<WalletOrigenTipo, keyof Entidades | null> = {
   abono_tienda: "abonos",
   // SLT-68: el incentivo se nombra por su rotulo; el motivo ya va en la descripcion de la fila.
   incentivo_mensajero: null,
+  // SLT-73: la diferencia de la satélite se nombra por su rótulo; el detalle va en la descripción.
+  conciliacion_bodega_ajuste: null,
 };
 
 function unir(...partes: (string | null | undefined)[]): string {
@@ -246,6 +248,7 @@ export function componerOrigen(
     case "manual":
     case "aporte_capital":
     case "incentivo_mensajero":
+    case "conciliacion_bodega_ajuste":
       return solo(null);
   }
 }

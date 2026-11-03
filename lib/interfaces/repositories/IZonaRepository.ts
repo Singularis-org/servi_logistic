@@ -128,7 +128,26 @@ export type UpdateZonaResult =
     }
   | { estado: "not_found" }
   /** 376/R5: se pidio EXPLICITAMENTE quitar la marca a la zona que hoy es la central. */
-  | { estado: "sin_zona_central" };
+  | { estado: "sin_zona_central" }
+  /** SLT-75 R2/R8: algun distrito pedido ya esta en OTRA zona de la empresa. No se escribio nada. */
+  | { estado: "distrito_en_otra_zona"; conflictos: DistritoEnOtraZona[] | null };
+
+/**
+ * SLT-75 (R1-R3) — un distrito pedido que ya pertenece a OTRA zona de la empresa. Los nombres salen
+ * de la base para que el servicio arme el mensaje sin la palabra del nivel geografico.
+ */
+export interface DistritoEnOtraZona {
+  distritoNombre: string;
+  zonaNombre: string;
+}
+
+/**
+ * SLT-75 — el desenlace de `create`. `conflictos: null` = lo rechazo el indice unico
+ * `zona_distrito_organizacion_id_distrito_id_key` (R8, una carrera) y no se sabe que distrito.
+ */
+export type CreateZonaResult =
+  | { estado: "ok"; zona: ZonaDTO }
+  | { estado: "distrito_en_otra_zona"; conflictos: DistritoEnOtraZona[] | null };
 
 export interface IZonaRepository {
   /**
@@ -138,8 +157,11 @@ export interface IZonaRepository {
    * marca le quita la marca a la central anterior exactamente igual que actualizar, y ese
    * traslado deja rastro. Mismo patron que `hardDelete` (362) y `update` (366); `null` = el
    * sistema.
+   *
+   * SLT-75 (R1/R6): si algun distrito ya esta en otra zona de la empresa, devuelve
+   * `distrito_en_otra_zona` sin escribir nada.
    */
-  create(data: CreateZonaData, actorUsuarioId: string | null): Promise<ZonaDTO>;
+  create(data: CreateZonaData, actorUsuarioId: string | null): Promise<CreateZonaResult>;
   /** null si no existe. Carga tarifas solo si includeTarifas. */
   findById(id: string, includeTarifas: boolean): Promise<ZonaDTO | null>;
   /** Listado paginado (orden por nombre asc). include tarifas opcional. */

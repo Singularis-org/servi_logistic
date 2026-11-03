@@ -743,6 +743,9 @@ const CATALOGO = [
         // SL-45 (design §2): el pago a la plataforma. La caja entera, ahora 28. SI mueve la cifra:
         // es efectivo que sale.
         "egreso_pago_plataforma",
+        // SLT-73 (design §1.2): la diferencia de la satelite al conciliar. La caja entera, ahora 30.
+        "egreso_diferencia_satelite",
+        "ingreso_diferencia_satelite",
       ],
     },
   },

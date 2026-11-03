@@ -47,7 +47,6 @@ import { PosOrderCardMosaico } from "./pos-card/PosOrderCardMosaico";
 import { RutaMapa } from "./RutaMapa";
 import { useSeguimientoUbicacion } from "./useSeguimientoUbicacion";
 import { SincronizarRutaButton } from "./SincronizarRutaButton";
-import { TrayectoVivoButton } from "./TrayectoVivoButton";
 import { CarruselCards } from "@/components/shared/CarruselCards";
 
 import { VistaCardsToggle, type VistaCards } from "./VistaCardsToggle";
@@ -328,7 +327,7 @@ export function RepartoModule({
   // Eran dos `useMemo` sobre `orden.ayuda`: uno partía `porGestionarVisual` en dos listas y otro
   // calculaba las «candidatas» del panel. Funcionaban para lo que se veía y para nada más: la
   // orden con ayuda seguía dentro de `porGestionar`, así que seguía siendo parada del mapa,
-  // contacto del chat, candidata de `TrayectoVivoButton` y —sobre todo— GESTIONABLE. El corte era
+  // contacto del chat y —sobre todo— GESTIONABLE. El corte era
   // maquetación sobre un dato que no se había movido.
   //
   // Ahora el servidor manda TRES listas y este módulo pinta lo que llega. `visualSinAyuda` es
@@ -426,15 +425,10 @@ export function RepartoModule({
     router,
   ]);
 
-  // Trayecto en vivo pedido a mano. Cuando existe MANDA sobre el tramo persistido: el
-  // mensajero acaba de pedir explícitamente «desde donde estoy», y seguir resaltando el
-  // tramo que arranca en el origen de la optimización sería ignorar lo que pidió.
-  const [trayectoVivo, setTrayectoVivo] = useState<string | null>(null);
-
   // Feature 235 (R35): la orden cuyo HILO está abierto, o `null`. Carga bajo demanda, mismo
   // montaje que `HiloNotasNovedadModal` hace del lado tienda: el hilo no viaja en el listado.
   const [hiloOrden, setHiloOrden] = useState<MiAsignacionDTO | null>(null);
-  const tramoResaltado = trayectoVivo ?? ruta.tramoSiguiente?.encodedPolyline ?? null;
+  const tramoResaltado = ruta.tramoSiguiente?.encodedPolyline ?? null;
 
   // Orden que el mensajero eligió explícitamente para el panel de detalle. Es
   // solo una PREFERENCIA: la orden mostrada se DERIVA (ver `detalleOrden`) para
@@ -780,15 +774,6 @@ export function RepartoModule({
                 <SincronizarRutaButton
                   onUbicacion={setUbicacionActual}
                   onTrazado={setTrazadoRuta}
-                />
-                {/* Trayecto EN VIVO: cada pulsación es una llamada facturada (no se puede
-                    cachear algo que arranca donde el mensajero está AHORA), por eso es un
-                    botón aparte y explícito. La siguiente parada es la primera de la lista,
-                    que ya viene ordenada por secuencia desde el servidor. */}
-                <TrayectoVivoButton
-                  ubicacion={origenMapa}
-                  ordenId={porGestionar[0]?.id ?? null}
-                  onTrayecto={setTrayectoVivo}
                 />
               </div>
             </div>

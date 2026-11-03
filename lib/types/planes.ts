@@ -20,7 +20,7 @@ export const ROLES_CON_TOPE = ["admin", "mensajero", "adminTienda", "adminSateli
 export type RolConTope = (typeof ROLES_CON_TOPE)[number];
 
 // Ajuste planes-custom (D1, 2026-10-31): sin la forma «negociable». Un custom con costo negociado usa
-// «monto»; la migración 20261031150000 pasó los negociables a «sin precio».
+// «monto»; la migración 20261102120000 pasó los negociables a «sin precio».
 export type PrecioPlan =
   | { tipo: "sin_precio" }
   | {
