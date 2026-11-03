@@ -822,3 +822,80 @@ Decisión humana: `progress/features/SLT-65.md > Decisiones`, 2026-11-03. Sin ca
 - T7.3: `pnpm run test:guardias` da `Test Files 1 failed | 324 passed | 3 skipped (328)` y `Tests 4 failed | 4564 passed | 24 skipped (4592)`. El único archivo en rojo es `dependencias-declaradas-presentes` (4), que está en `tests/baseline-rojos.json`. Corridas aparte con `--reporter=verbose`, `zona-especial-punto-unico`, `geografia-sin-cte-recursiva`, `consultas-concurrentes-en-transaccion` y `zona-reconciliacion-no-retarifa` dan `4 passed`, `44 passed`, sin skips. **T7.3 marcada.**
 - `emisor-relaciones-anidadas` y `gestiones-detalle-api-405`: los dos en rojo en local por el estado de la base, no por los literales. El 405 corta en el `beforeAll` («falta el estado `devolucion_por_confirmar`… corre `pnpm run db:seed`»). El emisor da `expected [] to have a length of 1` en el antivacío y `referencia a otra empresa: orden.tienda_id -> usuario`. Los dos están en `tests/baseline-rojos.json`. **Los literales nuevos NO están medidos**: se comprueban cuando corran con datos (SL-31 / CI con semilla).
 - `./init.sh` (T8.2, sin marcar) corta en el paso 3: `zona backend: SLT-43, SLT-44, SLT-59, SLT-65 (4 in_progress, max 3)`. Es la excepción de cupo que aceptó el humano y no cuenta como rojo.
+
+## T8.3 — Medición con volumen en la base LOCAL (implementer, 2026-11-03)
+
+Decisión humana (Cristian, 2026-11-03): «Medir con volumen» antes de aceptar la regresión vista con
+15 órdenes. Autorizó la base local (`localhost:5432/logistic`). **No es la copia de producción**:
+T8.3 sigue pidiendo esa corrida y queda **sin marcar**.
+
+### Datos sintéticos (sembrados y borrados)
+
+- Empresa `perf-slt65-org` (slug `perf-slt65`), país CR. 6 zonas (1 central), 204 `zona_distrito`
+  (la zona 1 con 60 distritos), 8 tiendas y 12 mensajeros.
+- 10 000 órdenes: las 7 provincias, 20 estatus (45 % `entregado`), 90 días de `created_at`, 3 %
+  borradas, 10 % sin distrito. `nodo_geografico_id` lo puso el trigger: 0 filas con
+  `nodo_geografico_id IS DISTINCT FROM COALESCE(distrito_id, canton_id)`.
+- 5 `cierre_dia` en los últimos 30 días y 700 `gestion_orden` (el cierre mayor, 300 filas).
+- SQL de siembra y limpieza fuera del repo (scratchpad). `ANALYZE` antes de medir.
+- **Limpieza:** borradas todas (incluidas las 10 318 filas de `cobro_plataforma_movimiento` que creó
+  el trigger). Conteo de las 107 tablas de `public` igual al de antes de sembrar: 0 diferencias.
+
+### `geo:explain-consultas --empresa perf-slt65-org`, 3 corridas (cada una ya es mediana de 5)
+
+| Lectura | Antes (ms) | Después (ms) | % (mediana de las 3) | % por corrida | Seq Scan `orden` antes/después | Bloquea 20 % | Veredicto |
+|---|---|---|---|---|---|---|---|
+| `listado-ordenes` | 8.139 | 14.027 | +70.5 % | +70.1 / +70.5 / +72.3 | 0 / 0 | sí | **regresión** |
+| `listado-api` | 9.674 | 45.535 | +32.7 % | −7.9 / +499.3 / +32.7 | 0 / 0 | sí | **regresión** (ruidosa) |
+| `cierre-descriptivos` | 0.668 | 21.073 | +3132.5 % | +4471.6 / +2706.0 / +3132.5 | 0 / 0 | sí | **regresión** |
+| `reconciliacion` | 38.336 | 30.187 | −21.3 % | −58.3 / −21.3 / +17.4 | 0 / 0 | no | sin regresión |
+| `conteo-sin-entregar` | 38.767 | 55.455 | +94.7 % | −22.3 / +94.7 / +329.4 | 0 / 0 | no | sin regresión (no bloquea) |
+
+Salida de las 3 corridas: `salida=1` (2, 3 y 3 lecturas con regresión). Ningún Seq Scan sobre
+`orden` en ningún lado. La máquina (Windows, Postgres 16.1) es ruidosa entre corridas; el
+`listado-ordenes` es estable.
+
+### `geo:equivalencia-consultas` (con los datos sintéticos): salida 0
+
+`total: empresas=2 con-diferencias=0 conteos-con-diferencias=0 cadena-incoherente=0 paises=1 fallidas=0 salida=0`.
+En `perf-slt65-org`: cobro-devolución 200/0, corrección 200/0, listados 200/0, reconciliación 6/0,
+conteo por empresa 287/0; plataforma CR 297/0. Los bloques `cierres` comparan 0 (la siembra no creó
+`cierre_detail`).
+
+### Diagnóstico (`EXPLAIN (ANALYZE, BUFFERS)` por consulta)
+
+- Las consultas sobre `orden` no empeoran: usan índice (`orden_organizacion_id_created_at_vivas_idx`
+  en el `count`, `orden_pkey` en la de señales). Los dos `count` del listado (2.4–4.9 ms) están en
+  los dos lados.
+- La diferencia es un **costo fijo de la carga del catálogo**, que no crece con las órdenes:
+  - `nodo_geografico` del país (585 filas) `ORDER BY nombre, id` (`ORDEN_NODOS`): 2–3.4 ms, casi
+    todo en el nodo `Sort`.
+  - `zona_distrito` de la empresa (204 filas) `ORDER BY id`: 0.9–1.7 ms, también en el `Sort`.
+  - El resto (tipos, organización, marcas, `zona` por id) suma < 0.3 ms.
+- La causa del `Sort` caro es la **collation de la base local**, `Spanish_Colombia.1252` (libc de
+  Windows). Medido con 7 corridas (mediana), en una transacción revertida:
+
+  | Consulta | Hoy | `COLLATE "C"` | Sin `ORDER BY` | Índice ordenado (forzado) |
+  |---|---|---|---|---|
+  | nodos `ORDER BY nombre, id` | 3.435 ms | 0.964 ms | 0.222 ms | 0.406 ms (`(pais_id, nombre, id)`) |
+  | `zona_distrito` `ORDER BY id` | 1.625 ms | 0.282 ms | 0.080 ms | 0.137 ms (`(organizacion_id, id)`) |
+
+  Con el índice creado y `ANALYZE`, el planner **no lo elige**: sigue con Seq Scan + Sort porque las
+  tablas son chicas. Solo se usa con `enable_seqscan`/`enable_sort` apagados.
+- En el cierre el «antes» son 6 consultas por id (0.6 ms), así que cualquier carga del catálogo
+  pasa del 20 %. En el listado, ~5 ms fijos sobre ~8 ms.
+- T9.1 (nombres del catálogo ya cargado) quitaría las tres consultas `provincia`/`canton`/`distrito`
+  de «después», que suman ~0.3 ms: no basta.
+
+### Propuesta (sin cambios de código ni migraciones; decide el humano)
+
+1. **Medir sobre la copia de producción** (lo que T8.3 pide). El costo está en el `Sort` con la
+   collation libc de Windows. La collation de producción no está en `docs/`: es un dato
+   **ABIERTO**. Si allí es `C`/`C.UTF-8` o ICU, el sort baja a ~1 ms y la regresión del listado
+   puede quedar cerca del umbral.
+2. Si se repite: **quitar el `ORDER BY` de la carga y ordenar en memoria** (o no ordenar, si nadie
+   depende del orden de los nodos). Ahorra ~4.5 ms por lectura. Cambia el design §3 («por nombre,
+   con la collation de la base»), así que necesita decisión.
+3. **Cachear el catálogo por país** dentro de la petición o del proceso. Elimina la carga en lecturas
+   repetidas, pero choca con m5/R21 (sin instancias de módulo) y necesita design.
+4. **No recomiendo el índice de T9.2** solo: el planner no lo usa en tablas de este tamaño.
