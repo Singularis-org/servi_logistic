@@ -936,3 +936,29 @@ Decisión humana (Cristian, 2026-11-03): «Diagnosticar y enmendar».
   `✓ cupo por zona respetado (mis in_progress=4)`, `✓ typecheck paso` y el lint (solo warnings), y
   no había ninguna línea `FAIL`. No hay línea final. **T8.2 sigue sin marcar**, pendiente de volver
   a correr `./init.sh` con memoria libre.
+
+## F2.3 — Sincronización con `dev` (implementer, 2026-11-03)
+
+**Merge:** `git merge origin/dev`, 248 commits, merge commit `0c86d71b`. Arreglos posteriores en `7b29903b`.
+
+**Conflictos resueltos (los 6, uniendo ambos lados):**
+- `lib/db/modelos-de-negocio.ts`: solo la cabecera. Queda en 80 de negocio (dev suma `ConciliacionBodegaAjuste`, de SLT-73) y 25 de plataforma (SLT-43).
+- `lib/repositories/ZonaRepository.ts`: solo los imports. Entran `esViolacionDeUnico` (SLT-75) y `sinTransaccionAnidada`, `nodosBajo` y `zonaQueCubre` (SLT-65), y sale `zonaUnicaDeDistrito`, que ya no se usa. El cuerpo se mezcló solo: la lectura de conflictos de SLT-75 queda antes de la primera escritura, y después vienen la reconciliación por `planificarReconciliacion` y el rastro `zona_distrito_cambiado`.
+- `tests/unit/historial-accion/catalogo-y-choke-point.test.ts`: 75 tipos (SLT-76) y 28 entidades (SLT-43).
+- `tests/integration/db/caja-459-migration.test.ts`: los tramos de los enums con `zona_distrito_cambiado` como último tipo y `nodo_geografico` como última entidad.
+- `tests/unit/repositories/zona-repository.test.ts`: `nmEnOrden` (SLT-75) con las filas del catálogo (`filaDeZona`, SLT-65).
+- `progress/deudas.md`: se quedan la D34 y la D35 de dev. La D34 de SLT-65 (`enUnaFoto`) pasa a ser la D36.
+
+**Roto por el merge y arreglado (backend_dev, `7b29903b`):**
+- `GeoRepository.listArbol`: el auto-merge dejó `d.zonas` (SLT-75 R14) sobre el nodo del catálogo. Ahora esas zonas salen de `asignaciones.zonasPorNodo`, sin colapsar y ordenadas.
+- `scripts/geo-equivalencia/lecturas-de-hoy.ts`: la lectura de hoy calcula `zonas` desde la relación, igual que en dev.
+- `tests/unit/repositories/geo-repository-arbol-zonas.test.ts`: el doble pasa a la forma del catálogo. Las aserciones no cambian.
+- `zona-repository.test.ts`: `esLecturaDeConflictos` confundía la carga del catálogo con la lectura de conflictos, porque las dos piden `select.zona`, y eso daba 8 rojos. Ahora reconoce la de conflictos por `select.distrito`.
+
+**Migraciones:** las 21 nuevas de dev (de `20261031120000_liberar_recolecciones_recibidas` a `20261102090100_slt76_retirar_respaldos`) ya estaban aplicadas en la base local, que es compartida. `prisma migrate status` da «295 migrations found… up to date». Las 6 de SLT-43 (`20261031120000`–`120500`) son anteriores a las de dev que tocan `zona_distrito` (`20261101090000`/`090100`) y a la de `zona_distrito_cambiado` (`20261102090000`), así que en una base vacía el orden es válido. En una base que ya tenga las de dev, `migrate deploy` las aplica como pendientes aunque lleven fecha anterior.
+
+**Verificación** (con el `.env` de la raíz y `NODE_OPTIONS=--max-old-space-size=8192`):
+- `pnpm typecheck`: exit 0. `./init.sh` llegó a «✓ typecheck paso» y «✓ lint paso» (0 errores, 234 warnings), con el cupo «mis in_progress=4» en verde. En `test:rapido` (97 archivos del diff contra `origin/dev`) se cortó por timeout a los 590 s (exit 124), sin terminar.
+- `pnpm run test:guardias`: 331 archivos, 330 en verde. Hay 4 rojos, todos en `dependencias-declaradas-presentes.guardia.test.ts`, que está en `baseline-rojos.json`.
+- Unit: `zona-repository` 61/61 en verde. `catalogo-y-choke-point` y `caja-459-migration` en verde. `geo-repository-arbol-zonas`, `catalogo-filtros-ordenes`, `geografia-service` y `geografia-action`: 103/103.
+- Integración: `zona-distrito-unica` y `geo-lecturas-catalogo` dan 10 rojos y 7 verdes. No están en la baseline. Son dos choques entre SLT-44 y SLT-75 que quedan ABIERTOS en `progress/features/SLT-65.md > Decisiones`: el fixture `geo-44` con un distrito en dos zonas, y `EmpresaNoResuelta` en el R14 de SLT-75.
