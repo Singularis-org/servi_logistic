@@ -74,6 +74,41 @@ function cuerpoDeUpdate(): string {
   return cuerpo;
 }
 
+/**
+ * SLT-65 (design §6.1; decision humana 2026-11-03): la LECTURA de las ordenes elegibles salio de
+ * `update` a `planificarReconciliacion`, que `update` llama y cuyo plan aplica. El cuerpo REAL de esa
+ * funcion; LANZA si no esta, igual que `cuerpoDeUpdate`.
+ */
+function cuerpoDePlanificarReconciliacion(): string {
+  const codigo = codigoSinComentarios(ARCHIVO);
+  const encontrado = /(?:^|\n)\s*export\s+async\s+function\s+planificarReconciliacion\s*\(/.exec(codigo);
+  if (encontrado === null) {
+    throw new Error(
+      `no se encontro \`async function planificarReconciliacion(\` en ${ARCHIVO}: o se renombro o ` +
+        "se borro, y esta guardia estaria midiendo la nada",
+    );
+  }
+  // La firma tiene un tipo de retorno (`Promise<…>`) entre `)` y `{`: se salta hasta el `{` del cuerpo.
+  const cierreFirma = codigo.indexOf("): Promise<", encontrado.index + encontrado[0].length);
+  if (cierreFirma === -1) throw new Error("la firma de `planificarReconciliacion` cambio: revisa el recortador");
+  const finRetorno = codigo.indexOf(">", cierreFirma);
+  const cuerpo = bloqueBalanceado(codigo, finRetorno);
+  if (cuerpo === null) {
+    throw new Error("el cuerpo de `planificarReconciliacion` no cierra: el recortador esta roto");
+  }
+  return cuerpo;
+}
+
+/** El plan SOLO LEE: ninguna escritura sobre ningun modelo. Vacio = cumple. */
+export function escriturasDelPlan(cuerpo: string): string[] {
+  const fallos: string[] = [];
+  for (const op of MUTACIONES) {
+    const m = new RegExp(`\\b(\\w+)\\s*\\.\\s*${op}\\s*\\(`, "g");
+    for (const hallado of cuerpo.matchAll(m)) fallos.push(`escribe en \`${hallado[1]}.${op}()\``);
+  }
+  return fallos;
+}
+
 /** EL DETECTOR, en una funcion, para poder ejercerlo sobre cuerpos mutados. Vacio = cumple. */
 export function fallosDeLaReconciliacion(cuerpo: string): string[] {
   const fallos: string[] = [];
@@ -146,15 +181,40 @@ describe("366/T8 — el detector se prueba a si mismo", () => {
   it("CONTRAPRUEBA: pedir el metodo cuando no existe LANZA en vez de medir vacio", () => {
     // El recorte real se ejerce abajo; aqui se comprueba que el recortador no calla.
     expect(cuerpoDeUpdate().length).toBeGreaterThan(400);
+    expect(cuerpoDePlanificarReconciliacion().length).toBeGreaterThan(400);
+  });
+
+  it("CONTRAPRUEBA (SLT-65): un plan que solo lee NO produce fallos; uno que escribe, si", () => {
+    const PLAN_SANO = `{
+      retenidas += await tx.orden.count({ where: base });
+      const elegibles = await tx.orden.findMany({ where: base });
+      if (elegibles.length > 0) porZona.set(zona, elegibles);
+    }`;
+    expect(escriturasDelPlan(PLAN_SANO)).toEqual([]);
+    const mutado = PLAN_SANO.replace(
+      "if (elegibles.length > 0)",
+      "await tx.orden.updateMany({ where: base, data: { zonaId: zona } }); if (elegibles.length > 0)",
+    );
+    expect(escriturasDelPlan(mutado)).toEqual(["escribe en `orden.updateMany()`"]);
   });
 });
 
 describe("⭑ 366/R8/R9 — `ZonaRepository.update` no re-tarifa nada hacia atras", () => {
   it("no escribe en ninguna tabla de dinero y su UPDATE de la orden toca SOLO `zonaId`", () => {
     const cuerpo = cuerpoDeUpdate();
-    // Anti-vacuidad: el recorte trae la reconciliacion entera, no un `{}`.
+    // Anti-vacuidad: el recorte trae la reconciliacion entera, no un `{}`. SLT-65 (design §6.1): la
+    // lectura de las elegibles vive en `planificarReconciliacion`; `update` la llama y aplica el plan.
     expect(cuerpo).toContain("appendAccion");
-    expect(cuerpo).toContain("orden.findMany(");
+    expect(cuerpo).toContain("planificarReconciliacion(");
+    const plan = cuerpoDePlanificarReconciliacion();
+    expect(plan).toContain("orden.findMany(");
+    expect(plan).toContain("orden.count(");
+
+    expect(
+      escriturasDelPlan(plan),
+      "el plan solo LEE: las escrituras de la reconciliacion son las de `update`, y nada mas",
+    ).toEqual([]);
+    for (const tabla of TABLAS_PROHIBIDAS) expect(plan).not.toMatch(new RegExp(`\\b${tabla}\\b`));
 
     expect(
       fallosDeLaReconciliacion(cuerpo),

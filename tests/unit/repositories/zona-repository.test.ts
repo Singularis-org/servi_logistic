@@ -645,7 +645,20 @@ describe("366/T4 — ZonaRepository.update reconcilia la zona de las ordenes", (
     // `dViejo` se QUITA en este guardado y `dNuevo` entra. Los DOS tienen que re-evaluarse: si el
     // flujo mirara solo la lista final, las ordenes de `dViejo` se quedarian apuntando a esta zona
     // para siempre.
-    const tx = txConNM(["dViejo", "dQueSigue"], []);
+    //
+    // SLT-65 (design §6.1; decision humana 2026-11-03): la segunda `zonaDistrito.findMany` es ahora
+    // la carga del catalogo (`deLaEmpresa`, sin `where`), asi que la union ya no viaja en ella. La
+    // llamada que la lleva es la lectura de ordenes del plan: un `orden.count` por zona resuelta
+    // (R8: sale SIEMPRE), con los lugares en `whereLugarEn`. Para que salgan, cada nodo afectado
+    // resuelve una zona en la N:M final (`dViejo` paso a `zB`; los otros dos son de `zA`).
+    const tx = txConNM(
+      ["dViejo", "dQueSigue"],
+      [
+        { distritoId: "dViejo", zonaId: "zB" },
+        { distritoId: "dQueSigue", zonaId: "zA" },
+        { distritoId: "dNuevo", zonaId: "zA" },
+      ],
+    );
     const prisma = buildPrisma(tx);
 
     await repoOf(prisma).update(
@@ -654,14 +667,14 @@ describe("366/T4 — ZonaRepository.update reconcilia la zona de las ordenes", (
       null,
     );
 
-    const segunda = tx.zonaDistrito.findMany.mock.calls[1][0] as {
-      where: { distritoId: { in: string[] } };
-    };
-    expect(new Set(segunda.where.distritoId.in)).toEqual(
-      new Set(["dViejo", "dQueSigue", "dNuevo"]),
+    const lugaresLeidos = tx.orden.count.mock.calls.flatMap(
+      (c) =>
+        (c[0] as { where: { OR: [{ distritoId: { in: string[] } }, unknown] } }).where.OR[0]
+          .distritoId.in,
     );
+    expect(new Set(lugaresLeidos)).toEqual(new Set(["dViejo", "dQueSigue", "dNuevo"]));
     // Y sin repetidos: `dQueSigue` esta en las dos listas y entra UNA vez.
-    expect(segunda.where.distritoId.in).toHaveLength(3);
+    expect(lugaresLeidos).toHaveLength(3);
   });
 
   it("R7/R14: sin ordenes elegibles no se escribe historial y el conteo es 0", async () => {
@@ -721,8 +734,10 @@ describe("366/T4 — ZonaRepository.update reconcilia la zona de las ordenes", (
 
 describe("377/T4 — el corte por estado y el conteo de retenidas", () => {
   /** El `where` base de elegibilidad (366), tal cual, sin nada de estado. */
+  // SLT-65 (design §6.1, decision humana 2026-11-03): la orden entra por su LUGAR (`whereLugarEn`),
+  // escrito LITERAL aqui por el mismo motivo que el resto: el distrito, o el canton sin distrito.
   const BASE_D1_ZA = {
-    distritoId: { in: ["d1"] },
+    OR: [{ distritoId: { in: ["d1"] } }, { distritoId: null, cantonId: { in: ["d1"] } }],
     zonaId: { not: "zA" },
     deletedAt: null,
     cierreDetalles: { none: {} },
