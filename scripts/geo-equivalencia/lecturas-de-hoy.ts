@@ -413,6 +413,11 @@ export async function listArbol(cliente: ClienteProvincia): Promise<ProvinciaArb
               nombre: d.nombre,
               zonaId: zona?.id ?? null,
               zonaNombre: zona?.nombre ?? null,
+              // SLT-75 R14: la lista completa, sin colapsar. La RLS de `zona_distrito` deja
+              // fuera las zonas de otra empresa.
+              zonas: d.zonas
+                .map((z) => ({ id: z.zona.id, nombre: z.zona.nombre }))
+                .sort((a, b) => a.nombre.localeCompare(b.nombre, "es")),
               // SL-38: especial PARA LA EMPRESA del maestro que abre Tarifas (R14).
               zonaEspecial: esZonaEspecialDeLaEmpresa(d),
               activo: d.activo,
