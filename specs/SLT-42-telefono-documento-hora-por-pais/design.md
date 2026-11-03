@@ -412,16 +412,14 @@ lleva al cliente.
   mano para CR ya es frágil y para cada país nuevo es imposible.
 - **Variante:** `libphonenumber-js/max` (metadatos completos). En el servidor el tamaño no importa,
   y `min` solo valida el largo.
-- **Los cuatro checks** (`docs/architecture.md > Dependencias de terceros`). **No se pudieron
-  verificar en esta sesión**: el agente no tiene red. Los valores son de memoria y, por la regla,
-  cuentan como desconocidos hasta que alguien los compruebe antes de aprobar en F1.4 con `pnpm view
-  libphonenumber-js deprecated time.modified license` y la página de npm (descargas):
+- **Los cuatro checks** (`docs/architecture.md > Dependencias de terceros`). Los verificó el leader
+  el 2026-11-03. Pasan los cuatro:
 
-  | Check | Valor esperado (sin verificar) |
+  | Check | Verificado (2026-11-03) |
   |---|---|
-  | 1. No `deprecated` | No marcada. |
-  | 2. Release en los últimos 12 meses | Versiones 1.12.x frecuentes. |
-  | 3. ≥ 10 000 descargas semanales | Del orden de millones. |
+  | 1. No `deprecated` | No marcada (metadatos `latest` del registro). |
+  | 2. Release en los últimos 12 meses | Última versión 1.13.15; `time.modified` del registro: 2026-10-08. |
+  | 3. ≥ 10 000 descargas semanales | 39 658 588 (2026-10-27..2026-11-02, api.npmjs.org). |
   | 4. Licencia | MIT. |
 
 - Al aprobarse: fila en `docs/dependencias.md` (la guardia `guard-dependencias-aprobadas` lo exige) y
