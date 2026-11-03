@@ -109,11 +109,17 @@ import { rutasEvidenciaGestion } from "@/lib/utils/evidencias-gestion";
 // FICHA 398: `computeTotales` recalcula los CUATRO totales del recaudo (la MISMA funcion que los
 // congelo al solicitar) y `sumarSnapshotsCongelados` rehace los DOS por gestion SUMANDO lo ya
 // escrito — nunca re-derivando con la tarifa viva, que moveria dinero de las otras gestiones.
-import { computeTotales, sumarSnapshotsCongelados } from "@/lib/utils/cierre-totales";
-// FICHA 398: el resolver de la tarifa del pago al mensajero, como FUNCION sobre el delegado, para
-// resolverla DENTRO de la transaccion de la correccion sin instanciar su repositorio ni ensanchar
-// el `Pick` de este. Es el cuerpo del resolver de la 39, no una copia.
-import { resolvePagoTarifaCon } from "@/lib/repositories/TarifaZonaMensajeroRepository";
+import {
+  computeTotales,
+  pagosDelCierre,
+  sumarSnapshotsCongelados,
+} from "@/lib/utils/cierre-totales";
+// FICHA 398 -> SLT-52 (T5.1): el resolver del pago, como FUNCION sobre el cliente de la
+// transaccion, para resolverlo DENTRO de la correccion sin instanciar su repositorio ni ensanchar
+// el `Pick` de este. Desde SLT-52 es el resolver UNICO (`resolverPagosCon`): decide el modelo de
+// la empresa y, en el viejo, corre el mismo cuerpo de la 39 (`resolvePagoTarifaCon`).
+import { resolverPagosCon } from "@/lib/repositories/_shared/resolver-tarifas";
+import { filaPagoCongelado } from "@/lib/repositories/_shared/pago-congelado";
 // FICHA 398: los dos derivadores PUROS del importe por gestion (39 y 56). Se llaman aunque el
 // resultado sea conocido ("0.00" para el pago de un rechazo) para que la regla siga viviendo en un
 // solo sitio.
@@ -1684,7 +1690,19 @@ export class CierresAdminRepository implements ICierresAdminRepository {
         },
         select: {
           cierreId: true,
-          orden: { select: { id: true, numGuia: true, numRemision: true } },
+          // SLT-52 (T5.1): + lo que la orden aporta al `ContextoPagoGestion` (design §5).
+          orden: {
+            select: {
+              id: true,
+              numGuia: true,
+              numRemision: true,
+              distritoId: true,
+              tiendaId: true,
+              zonaId: true,
+              montoCobrar: true,
+              cobraComision: true,
+            },
+          },
           // FICHA 454 (T1.14): el evento de registro decide la RAMA de la correccion.
           ...SELECT_REGISTRO_DE_CALLE,
           mensajeroId: true,
@@ -1724,12 +1742,27 @@ export class CierresAdminRepository implements ICierresAdminRepository {
       // en los 149 rechazos con destino `bodega_central` y vale 1.000 (6 veces) o 1.700 (1) en
       // los de `bodega_satelite`. La divergencia es conocida y ACEPTADA; la alternativa —dejarlo
       // en 0.00— subestimaria el ingreso de la bodega en un importe real.
-      const tarifa = await resolvePagoTarifaCon(
-        tx.tarifaZonaMensajero,
-        previa.cierre.destinoZonaId,
-        previa.cierre.mensajero.vehiculoId,
-      );
-      const pagoMensajero = pagoPorResultado(RESULTADO_RECHAZADA, tarifa); // "0.00"
+      //
+      // SLT-52 (T5.1, R19/R20/R33): con el resolver UNICO y por GESTION —la misma zona y el mismo
+      // vehiculo de siempre, mas el distrito de la orden—. En el modelo nuevo el mensajero tambien
+      // puede cobrar por un rechazo (R32), asi que el "0.00" de arriba es solo del viejo.
+      const tarifas = await resolverPagosCon(tx, [
+        {
+          gestionId,
+          resultado: RESULTADO_RECHAZADA,
+          mensajeroId: previa.mensajeroId,
+          zonaId: previa.cierre.destinoZonaId,
+          vehiculoId: previa.cierre.mensajero.vehiculoId,
+          distritoId: previa.orden.distritoId,
+          tiendaId: previa.orden.tiendaId,
+          zonaOrdenId: previa.orden.zonaId,
+          montoCobrar:
+            previa.orden.montoCobrar === null ? null : previa.orden.montoCobrar.toFixed(2),
+          cobraComision: previa.orden.cobraComision,
+        },
+      ]);
+      const tarifa = tarifas.get(gestionId) ?? null;
+      const pagoMensajero = pagoPorResultado(RESULTADO_RECHAZADA, tarifa); // "0.00" en el viejo
       const ingresoBodegaRechazo = ingresoBodegaPorResultado(RESULTADO_RECHAZADA, tarifa);
 
       // (1) EL SELLO — LA UNICA GUARDIA QUE DECIDE. Aqui viven las CUATRO condiciones, y ninguna
@@ -1763,6 +1796,21 @@ export class CierresAdminRepository implements ICierresAdminRepository {
         // eso con informacion fresca, y aqui cualquiera de los dos es lo mismo.
         const existe = await tx.gestionOrden.count({ where: { id: gestionId } });
         return { status: existe > 0 ? ("conflict" as const) : ("fuera_de_alcance" as const) };
+      }
+
+      // SLT-52 (T5.2, R40; design §7) — RE-CONGELA el pago de ESTA gestion, y solo de esta: se
+      // borra lo que tuviera (congelado con el resultado viejo) y, en el modelo nuevo, se escribe
+      // el del resultado corregido con el mismo importe que acaba de ir a `pago_mensajero` /
+      // `ingreso_bodega_rechazo`. Va DESPUES del sello: si el sello no casa, no se toca nada.
+      await tx.gestionPagoCongelado.deleteMany({ where: { gestionOrdenId: gestionId } });
+      const { congelados } = pagosDelCierre(
+        [{ gestionId, resultado: RESULTADO_RECHAZADA }],
+        tarifas,
+      );
+      if (congelados.length > 0) {
+        await tx.gestionPagoCongelado.createMany({
+          data: congelados.map(filaPagoCongelado),
+        });
       }
 
       // (2) EL DESGLOSE DEL COBRO QUE NO HUBO. Sin este `deleteMany`, `computeTotales` seguiria

@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
+import { conResolvePagosViejo } from "@/tests/fixtures/tarifa-tienda";
 import { CierreDiaService } from "@/lib/services/CierreDiaService";
 import type {
-  CierreGestionPendienteRow,
+  GestionPendienteDeCierreRow,
   GestionDeshacerRow,
   ICierreDiaRepository,
 } from "@/lib/interfaces/repositories/ICierreDiaRepository";
@@ -37,11 +38,16 @@ const OTRO_ROL: Actor = { usuarioId: "u1", rol: "adminSatelite" };
 const ZONA_MENSAJERO = "z-cartago";
 const ZONA_CENTRAL = "z-central";
 
-function pendiente(overrides: Partial<CierreGestionPendienteRow> = {}): CierreGestionPendienteRow {
+function pendiente(overrides: Partial<GestionPendienteDeCierreRow> = {}): GestionPendienteDeCierreRow {
   // Feature 212/T9: el desglose OBLIGATORIO se deriva del par escalar (una linea, como el
   // backfill) salvo que el caso pase el suyo — asi las aserciones previas no cambian.
   const { pagos, ...resto } = overrides;
-  const fila: Omit<CierreGestionPendienteRow, "pagos"> = {
+  const fila: Omit<GestionPendienteDeCierreRow, "pagos"> = {
+    // SLT-52 (T5.1): lo que la orden aporta al contexto del pago (la fila EN VIVO lo lleva).
+    distritoId: "d-oriental",
+    zonaOrdenId: "z-orden",
+    montoCobrar: null,
+    cobraComision: false,
     gestionId: "g1",
     ordenId: "o1",
     fechaGestion: "2026-07-11",
@@ -83,7 +89,7 @@ const TARIFA_DEFECTO: PagoTarifa = { cobroEntregado: "5.00", cobroRechazado: "3.
 
 function fakeRepo(overrides: Partial<Repo> = {}): Repo {
   return {
-    findGestionesPendientes: vi.fn(async () => [] as CierreGestionPendienteRow[]),
+    findGestionesPendientes: vi.fn(async () => [] as GestionPendienteDeCierreRow[]),
     contarOrdenesPendientesGestion: vi.fn(async () => 0),
     // FEATURE 271 (R18): por defecto NO hay nada re-solicitable -> `solicitarCierre` toma el flujo
     // de creación (37). La elección es por EDAD y no por estado, así que es UN método, no cuatro.
@@ -188,11 +194,11 @@ function newService(opts: {
     "findUsuarioZonaId" | "findUsuarioVehiculoId" | "findEstatusIdByValue" | "findBloqueoDetalle"
   >;
   const tarifa = opts.tarifa === undefined ? TARIFA_DEFECTO : opts.tarifa;
-  const tarifaZonaRepo: ITarifaZonaMensajeroRepository = {
+  // SLT-52 (T5.1): el service resuelve el pago POR GESTION con `resolvePagos`; el doble lo responde
+  // como el resolver real en el modelo viejo, delegando en `resolvePagoTarifa` (39/R4).
+  const tarifaZonaRepo: ITarifaZonaMensajeroRepository = conResolvePagosViejo({
     resolvePagoTarifa: vi.fn(async () => tarifa),
-    // SLT-52: el pago por gestion (`resolvePagos`) entra en el service en T5.1; hoy no se llama.
-    resolvePagos: vi.fn(async () => new Map()),
-  };
+  });
   const signedUrls = opts.signedUrls ?? fakeSignedUrls();
   const service = new CierreDiaService(
     repo,
@@ -1625,10 +1631,13 @@ describe("Feature 109 · solicitarCierre — re-solicitar un `rechazado` (R28)",
     const r = await service.solicitarCierre(MENSAJERO);
 
     expect(r).toMatchObject({ status: "ok", via: "resolicitado" });
+    // SLT-52 (T5.1): ya no viaja una tarifa resuelta; la zona de este camino (la destino del
+    // cierre) y el vehiculo, y el repositorio resuelve el pago POR GESTION en su transaccion.
     expect(repo.resolicitarCierreRechazado).toHaveBeenCalledWith({
       cierreId: "c-rech",
       mensajeroId: MENSAJERO.usuarioId,
-      tarifa: TARIFA_DEFECTO,
+      zonaId: ZONA_MENSAJERO,
+      vehiculoId: null,
     });
     expect(repo.transicionarASolicitado).not.toHaveBeenCalled();
     // R28: NO pasa por el flujo de creación (no crea un cierre nuevo).

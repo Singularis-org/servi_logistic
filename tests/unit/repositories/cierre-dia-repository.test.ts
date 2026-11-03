@@ -63,6 +63,11 @@ function detalleRow(overrides: Record<string, unknown> = {}) {
       provincia: { nombre: "Cartago" },
       canton: { nombre: "Central" },
       distrito: { nombre: "Oriental" },
+      // SLT-52 (T5.1): lo que la orden aporta al contexto del pago (`WITH_DETALLE_PENDIENTE`).
+      distritoId: "d1",
+      zonaId: "z1",
+      montoCobrar: new Prisma.Decimal("12.50"),
+      cobraComision: false,
     },
     ...overrides,
   };

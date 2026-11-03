@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
+import { conResolvePagosViejo } from "@/tests/fixtures/tarifa-tienda";
 import { CierreDiaService } from "@/lib/services/CierreDiaService";
 import type {
-  CierreGestionPendienteRow,
+  GestionPendienteDeCierreRow,
   CrearCierreInput,
   ICierreDiaRepository,
 } from "@/lib/interfaces/repositories/ICierreDiaRepository";
@@ -39,10 +40,15 @@ const MENSAJERO: Actor = { usuarioId: "m1", rol: "mensajero" };
 const TARIFA: PagoTarifa = { cobroEntregado: "6000.00", cobroRechazado: "0.00" };
 
 /** La entrega MIXTA del design §4: ₡8.000 = 5.000 efectivo + 3.000 transferencia. */
-function entregaMixta(): CierreGestionPendienteRow {
+function entregaMixta(): GestionPendienteDeCierreRow {
   return conPagos(
     {
       gestionId: "g-mixta",
+      // SLT-52 (T5.1): lo que la orden aporta al contexto del pago (la fila EN VIVO lo lleva).
+      distritoId: "d-oriental",
+      zonaOrdenId: "z-orden",
+      montoCobrar: null,
+      cobraComision: false,
       ordenId: "o-1",
       fechaGestion: "2026-07-11",
       numGuia: 1,
@@ -78,7 +84,7 @@ function entregaMixta(): CierreGestionPendienteRow {
   );
 }
 
-function fakeRepo(gestiones: CierreGestionPendienteRow[]) {
+function fakeRepo(gestiones: GestionPendienteDeCierreRow[]) {
   // El tipo va en el genérico y no en un parámetro sin usar: `mock.calls[0][0]` sigue siendo
   // un `CrearCierreInput` tipado (que es lo que miden las aserciones de abajo) sin dejar un
   // argumento muerto que ESLint marque.
@@ -117,11 +123,11 @@ function newService(repo: ICierreDiaRepository) {
     findOrdenesEnCorreccion: vi.fn(async () => new Set<string>()), // ficha 477
     findBloqueoDetalle: vi.fn(async () => SIN_BLOQUEO),
   } as unknown as IOrdenRepository;
-  const tarifaZonaRepo: ITarifaZonaMensajeroRepository = {
+  // SLT-52 (T5.1): el service resuelve el pago POR GESTION con `resolvePagos`; el doble lo responde
+  // como el resolver real en el modelo viejo, delegando en `resolvePagoTarifa` (39/R4).
+  const tarifaZonaRepo: ITarifaZonaMensajeroRepository = conResolvePagosViejo({
     resolvePagoTarifa: vi.fn(async () => TARIFA),
-    // SLT-52: el pago por gestion (`resolvePagos`) entra en el service en T5.1; hoy no se llama.
-    resolvePagos: vi.fn(async () => new Map()),
-  };
+  });
   const signedUrls: ISignedUrlProvider = {
     createSignedUrl: vi.fn(async (p: string) => `https://signed/${p}`),
     createSignedUrls: vi.fn(async () => ({})),

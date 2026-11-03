@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { conResolvePagosViejo } from "@/tests/fixtures/tarifa-tienda";
 import { CorteDiarioService } from "@/lib/services/CorteDiarioService";
 import type {
   ICorteDiarioRepository,
@@ -103,11 +104,11 @@ function build(opts: {
     // Feature 109/T1.3: resuelve en_reparto/sin_gestionar para la transicion del corte.
     findEstatusIdByValue,
   } as unknown as Pick<IOrdenRepository, "findUsuarioVehiculoId" | "findEstatusIdByValue">;
-  const tarifaZonaRepo: ITarifaZonaMensajeroRepository = {
+  // SLT-52 (T5.1): el service resuelve el pago POR GESTION con `resolvePagos`; el doble lo responde
+  // como el resolver real en el modelo viejo, delegando en `resolvePagoTarifa` (39/R4).
+  const tarifaZonaRepo: ITarifaZonaMensajeroRepository = conResolvePagosViejo({
     resolvePagoTarifa: vi.fn(async () => TARIFA),
-    // SLT-52: el pago por gestion (`resolvePagos`) entra en el service en T5.1; hoy no se llama.
-    resolvePagos: vi.fn(async () => new Map()),
-  };
+  });
   const logger = { warn: vi.fn() };
   const service = new CorteDiarioService(
     corteRepo,

@@ -919,3 +919,147 @@ solo como booleano (localhost).
   con `toStrictEqual` en el viejo. La carga calcula el campo aparte con `ivaFulfillmentDeTarifa`; `costoEnvio` sí
   lo suma.
 - `costoReal.ivaFulfillment` sale `"0.00"` siempre hasta T5.3 (hoy el congelado es solo del modelo viejo).
+
+## T5.1-T5.2 (2026-11-03)
+
+backend_dev, solo T5.1 y T5.2. MCP `codebase-memory-mcp` no conecto (timeout): exploracion con Grep/Read.
+
+### Archivos
+- `lib/types/tarifa-flexible.ts` — `PagoCongelado` (gestion, actor, `ValorPago`, base, importe; sin IVA) y
+  `PagosDelCierre` (`modelo` + `congelados`).
+- `lib/interfaces/repositories/ICierreDiaRepository.ts` — `GestionPendienteDeCierreRow` (subtipo con `distritoId`,
+  `zonaOrdenId`, `montoCobrar`, `cobraComision`; `tiendaId` ya estaba), devuelto por `findGestionesPendientes`;
+  `CrearCierreInput.pagos?: PagosDelCierre`; `ResolicitarCierreRechazadoInput` = `{ cierreId, mensajeroId, zonaId,
+  vehiculoId }` (antes llevaba `tarifa: PagoTarifa | null`).
+- `lib/utils/cierre-totales.ts` — `TarifasDePago` ESTRECHADO a `ReadonlyMap<gestionId, TarifaPago | null>`;
+  `derivarPagos`/`derivarIngresoBodega` aceptan `Pick<…, "gestionId" | "resultado">`; nuevas puras
+  `contextosPagoDe(gestiones, pagador)` y `pagosDelCierre(gestiones, tarifas)`.
+- `lib/services/CierreDiaService.ts` — vista en vivo (`resolvePagosMensajero`), solicitud (`resolvePagos` + `pagos`
+  a `crearCierre`) y re-solicitud 477 (pasa zona destino + vehiculo; ya no resuelve). `tarifaFaltante` por gestion.
+- `lib/services/CorteDiarioService.ts` — `resolvePagos` con `m.zonaId` + `pagos` a `crearCierre`.
+- `lib/repositories/CierreDiaRepository.ts` — `WITH_DETALLE_PENDIENTE` + `toPendienteDeCierreRow`
+  (`WITH_DETALLE` intacto: lo comparten los detalles de admin); `crearCierre` congela el nuevo (abajo);
+  `resolicitarCierreRechazado` resuelve dentro de la tx con `resolverPagosCon(tx, …)` y re-congela;
+  `ModelosDeTarifaMezclados` + `asegurarMismoModelo`. Retirado el ultimo `soloModeloViejo`.
+- `lib/repositories/CierresAdminRepository.ts` — `corregirResultadoGestionEnCierre`: `resolverPagosCon(tx, [ctx])`
+  (zona congelada del cierre + vehiculo + distrito de la orden) y re-congela (`deleteMany` + `createMany` tras el sello).
+- NUEVO `lib/repositories/_shared/pago-congelado.ts` — `filaPagoCongelado` (un solo mapeo para los tres sitios).
+- BORRADO `lib/tarifas/solo-modelo-viejo.ts` (sin llamadores). Borrado STAGED (`git rm --cached` + rm): la guardia
+  `catalogo-postgres-acota-esquema` lista con `git ls-files` y fallaba con ENOENT con el borrado sin stagear.
+  Solo lo citaba `specs/.../tasks.md` (lista de archivos; no se toca).
+- Tests nuevos: `tests/unit/services/cierre-pago-por-gestion.test.ts` (10), `tests/unit/repositories/cierre-pago-congelado.test.ts` (11).
+- Fixtures: `tests/fixtures/tarifa-tienda.ts` (+`pagoViejoPorGestion`, +`conResolvePagosViejo`: doble de
+  `resolvePagos` que hace lo del resolver real en el viejo delegando en el `resolvePagoTarifa` del propio doble, una vez
+  por par zona+vehiculo distinto); `tests/fixtures/cierre-pagos.ts` (`conPagos` generico).
+- Tests ajustados SIN tocar importes: dobles de `resolvePagos` (7 suites `cierre-dia-*`/`corte-diario-*`,
+  pasados-completo/paginado, 477, notificacion-wiring, cierre-dia-action) -> `conResolvePagosViejo`; filas en vivo con
+  los 4 campos de contexto (`cierre-dia-service`, `totales-mixtos`, `cierre-dia-action`, fixtures de Prisma de
+  `cierre-dia-repository` y `cierre-pagos-lectura`); `derivarPagos/IngresoBodega(…, TARIFA)` ->
+  `pagoViejoPorGestion(…, TARIFA)` (cierre-totales, snapshots-congelados, gestion-desde-ayuda-cierre,
+  devolucion-sla-dinero, resolver-novedad-reprograma-dinero); doble de la 398 (`tarifaValor.findFirst -> null`,
+  `gestionPagoCongelado`, campos de la orden); guardia `aprobacion-escrituras-cubiertas` (+2 escrituras de la 398).
+- Contratos que cambiaron (forma del input de la re-solicitud, ningun importe): `cierre-dia-service.test.ts` › «R28 +
+  271/R18 + 477/D5…» y `cierre-dia-477-resolicitud.test.ts` › «R17…» afirman ahora `{ zonaId: <destino>, vehiculoId }` y
+  que el servicio NO llama a `resolvePagoTarifa`; integraciones `477-resolicitud-rechazado-sql-real` (R22) y
+  `ajuste-pago-mensajero-cierre` (R15: la tarifa distinta se escribe en la base en vez de pasarse por input).
+
+### Migracion
+Ninguna. El esquema ya lo permite (design §12.1): `cierre_detail_concepto.iva_pct` es NOT NULL y
+`tarifa_valor_iva_solo_tienda` exige IVA en `tienda_fulfillment`, asi que el % de IVA del fulfillment queda congelado
+en su fila de concepto como cualquier cobro a la tienda.
+
+### Como congela `crearCierre` (T5.2)
+1. Cobro: `resolveTarifas(pares, tx)` como antes; el modelo sale del resolver (todas nulas = viejo).
+2. Viejo: `cierreDetail.createMany` EXACTAMENTE como antes (sin escribir `tarifa_modelo`: DEFAULT `viejo`; la lista de
+   columnas es contrato de 69/R24 y su test «R24: el shape del snapshot no cambia» sigue verde sin tocarlo).
+3. Nuevo: `cierreDetail.createManyAndReturn` (`tarifaModelo: "nuevo"`, columnas `tarifa_*` NULL) y
+   `cierreDetailConcepto.createMany`, una fila por concepto resuelto (concepto, modo, valor, iva_pct, nivel,
+   tarifa_valor_id); concepto ausente = sin fila.
+4. Pago: `asegurarMismoModelo(modeloCobro, pagos)` (R37: lanza si el nuevo llega sin `pagos` o si cobro y pago salen
+   de modelos distintos) y `gestionPagoCongelado.createMany` solo para las gestiones que ESTA tx vinculo (relectura
+   `{ cierreId, id in … }`, una consulta y solo si hay filas). `importe` = lo escrito en `pago_mensajero` /
+   `ingreso_bodega_rechazo` (misma `importePagoNuevo`); `base` solo en porcentaje.
+Re-solicitud (477) y correccion (398) borran el congelado de sus gestiones y, en el nuevo, lo reescriben.
+
+### R -> test
+| R | test |
+|---|---|
+| R19 | `cierre-pago-por-gestion.test.ts` › «SLT-52 R19 — pide el pago con la zona y el vehiculo del MENSAJERO y el distrito de CADA orden», «… la vista EN VIVO …», «… contextos con la zona del corte …», «`contextosPagoDe` …»; `cierre-pago-congelado.test.ts` › «SLT-52 R19/R33 — resuelve con la zona DESTINO …» (477) y «… resuelve el rechazo con la zona del cierre …» (398) |
+| R20 | `cierre-pago-por-gestion.test.ts` › «SLT-52 R19/R20/R33 — cada gestion paga lo de SU grupo: 1500 y 1700 al mensajero, 200 y 450.50 a la satelite» |
+| R24 | `cierre-pago-por-gestion.test.ts` › «SLT-52 R24 — un concepto sin tarifa cuenta 0 y el cierre se crea igual», «SLT-52 R24 — zona sin tarifa en el viejo …»; `cierre-pago-congelado.test.ts` › «SLT-52 R23 — un cobro sin conceptos …» |
+| R33 | `cierre-pago-por-gestion.test.ts` › «SLT-52 R33/R40 — el `vencido` paga cada gestion lo suyo …»; 477 y 398 en `cierre-pago-congelado.test.ts` (cada gestion con su contexto, dentro de su tx) |
+| R40 | `cierre-pago-congelado.test.ts` › «SLT-52 R40/R42 — el detalle se marca `nuevo` …», «SLT-52 R40/R46 — un concepto de cobro por fila …», «SLT-52 R40/R34 — el pago congelado de cada gestion VINCULADA aqui …», «SLT-52 R40 — re-congela …» (477), «SLT-52 R40 — borra el congelado de ESA gestion …» (398); `cierre-pago-por-gestion.test.ts` › «SLT-52 R40 — entrega a `crearCierre` el pago congelado …», «SLT-52 R40 — el modelo viejo no congela filas …» |
+| R37 (refuerzo) | «SLT-52 R37 — en el modelo nuevo, sin el pago congelado, LANZA», «SLT-52 R37 — cobro nuevo y pago viejo …: LANZA» |
+| R42 (refuerzo) | «SLT-52 R42 — en el modelo viejo el detalle se escribe como antes …» |
+
+El congelado contra Postgres real (WHERE, RLS, `createManyAndReturn`, CHECK de `base`) es T5.4.
+
+### Salida real
+`.env` comprobado solo como booleanos: existe `../../.env`, `DATABASE_URL` presente y localhost.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: **TC_EXIT=0**, 0 errores.
+- `pnpm exec eslint` sobre los 35 archivos tocados: **LINT_EXIT=0**, 0 errores, 2 avisos preexistentes
+  (`_mensajeroId` en pasados-paginado:73, `_input` en corte-diario-seleccion:129; lineas no tocadas).
+- Unit y vecinos (37 archivos: los 2 nuevos, `cierre-dia*`, `corte-diario*`, `cierre-dia-repository`,
+  `cierre-pagos-lectura`, `gestion-desde-ayuda-cierre`, `cierres-admin-corregir-resultado(-where)`,
+  `cierres-admin-repository`, `cierre-totales*`, `pago-modelo-nuevo`, `ingreso-bodega`,
+  `convergencia-tarifa-listado-cierre`, **`respaldo-identico` (T0.1, sin tocar)**, `devolucion-sla-dinero`,
+  `cierre-detail-inmutable`, `cierre-dia-action`, notificacion-wiring y 6 guardias):
+  **Test Files 37 passed (37); Tests 802 passed (802)**.
+- Postgres real (`node --env-file=../../.env node_modules/vitest/vitest.mjs run …`): `ajuste-pago-mensajero-cierre`,
+  `cierre-detail-congelado`, `resolver-novedad-reprograma-dinero`, `tarifas-flexibles-resolver`,
+  `tarifas-flexibles-respaldo` y `asimetria-sin-tarifa` verdes; `477-resolicitud-rechazado-sql-real`,
+  `correccion-resultado-gestion.int`, `cierre-segundo-vincula-solo-lo-suyo` y `emisor-relaciones-anidadas` rojos con
+  «referencia a otra empresa» (SL017) al SEMBRAR, los cuatro en `tests/baseline-rojos.json`.
+  Total: Test Files 4 failed | 6 passed (10); Tests 20 failed | 82 passed (102).
+  Consecuencia: la re-solicitud y la correccion no tienen hoy prueba contra Postgres que llegue a ejecutarse (T5.4).
+- `pnpm run test:guardias`: tras los arreglos, rojos = `dependencias-declaradas-presentes` (4, baseline) y
+  `catalogo-postgres-acota-esquema` › «NINGUNA consulta…» (1), **preexistente de T4.6 y no de esta tanda**:
+  `tests/integration/db/rechazo-tienda-cobro-tarifa-valor-migration.test.ts:423` consulta `information_schema.columns`
+  sin `table_schema = 'public'` (commit f6efb67e). Antes de stagear el borrado lo tapaba el ENOENT. No lo toco (fuera
+  de alcance): es un arreglo de una linea para quien cierre T4.6.
+
+### Contrapruebas (`scratchpad/mut.sh`; las siete restauradas con `cp` del respaldo y `cmp` igual)
+- M1 `crearCierre` no congela los conceptos -> `× SLT-52 R40/R46 — un concepto de cobro por fila …` (1 failed | 10 passed).
+- M2 `CorteDiarioService` vuelve a `resolvePagoTarifa(m.zonaId, vehiculoId)` para todo el lote ->
+  `× SLT-52 R19 — contextos con la zona del corte …`, `× SLT-52 R33/R40 — el vencido paga …` (2 failed | 8 passed).
+- M3 congela tambien gestiones que NO vinculo esta tx -> `× SLT-52 R40/R34 — el pago congelado de cada gestion VINCULADA aqui …`.
+- M4 re-solicitud con `distritoId: null` -> `× SLT-52 R19/R33 — resuelve con la zona DESTINO …`.
+- M5 `contextosPagoDe` sin distrito -> 7 failed | 3 passed (R19/R20/R33/R40 del servicio y del corte).
+- M6 la 398 no borra el congelado viejo -> `× SLT-52 R40 — borra el congelado de ESA gestion …`.
+- M7 sin `asegurarMismoModelo` -> `× SLT-52 R37 — … sin el pago congelado, LANZA`, `× … cobro nuevo y pago viejo …`.
+
+### Desvios del design
+1. **`CierreGestionPendienteRow` no gana los campos: los gana un subtipo** (`GestionPendienteDeCierreRow`, solo lo
+   devuelve `findGestionesPendientes`). La fila base la producen tambien los detalles de admin desde el snapshot, donde
+   no se resuelve nada. En el subtipo son requeridos.
+2. **La re-solicitud 477 resuelve el pago en el REPOSITORIO**, dentro de su tx con `resolverPagosCon(tx, …)`, y no en el
+   servicio antes de la tx como dice §7: las rehechas que se vinculan solo se conocen dentro de la tx. Es el patron de la
+   398. El input cambia de `tarifa` a `zonaId + vehiculoId`.
+3. **`CrearCierreInput.pagos` es opcional** (hay 126 llamadas de test a `crearCierre`). Lo compensa que `crearCierre`
+   LANZA `ModelosDeTarifaMezclados` si el cobro es nuevo y falta, o si cobro y pago salen de modelos distintos (R37).
+   Los dos llamadores de produccion lo pasan siempre.
+4. En el viejo, `cierre_detail` NO escribe `tarifa_modelo` (DEFAULT `viejo`): mantiene literal la lista de columnas (69/R24).
+5. La base del % en 477/398 sale del cobro VIVO de la orden en ese instante (el resolver), no del
+   `cierre_detail_concepto` congelado del cierre; igual que hoy la 398 usa la tarifa de pago de HOY (puerta H2 de la 398).
+   **Abierto**: si el humano quiere que la base salga del cobro congelado del cierre.
+6. **`TarifaDePago` (`pago-mensajero.ts`) sigue doble** (`PagoTarifa | TarifaPago`): `respaldo-identico.test.ts` (T0.1,
+   intocable) llama a `pagoPorResultado`/`ingresoBodegaPorResultado` con la `PagoTarifa` suelta (lineas 378 y 396).
+   Ningun llamador de produccion la pasa ya suelta. `TarifasDePago` (`cierre-totales.ts`) SI se estrecho al Map.
+
+### Para T5.3
+- **IVA del fulfillment congelado (R46)**: un `cierre_detail` con `tarifa_modelo = 'nuevo'` tiene sus filas en
+  `cierre_detail_concepto`; la de `tienda_fulfillment` trae `modo`, `valor` e `iva_pct`. `tarifaDe(d, conceptos)` tiene
+  que armar `{ modelo: "nuevo", valores }` (concepto -> `ValorCobro` con `ivaPct = iva_pct.toFixed(2)`) y entonces
+  `ivaFulfillmentDeTarifa(tarifa, d.montoCobrar)` da el IVA sin leer nada vivo. Concepto ausente = sin fila = 0.
+- **Ojo**: `cierre_detail_concepto.tarifa_valor_id` admite NULL (SET NULL al borrar el valor) y
+  `ValorCobro.tarifaValorId` es `string`: T5.3 decide el tipo de la lectura (no lo invento aqui).
+- **Firmas del cobro que quedan dobles**: `TarifaDeCobro<T> = T | ConModelo<T>` en `lib/utils/ingreso-empresa.ts` y las
+  sobrecargas de `costoEnvioDeTarifa` / `desgloseCargaApi` / `montoFulfillmentDeTarifa`: sus llamadores del cierre
+  siguen pasando la `TarifaVigente` suelta que da `tarifaDe`. No se tocaron. Ademas `TarifaDePago` (desvio 6).
+- `gestion_pago_congelado` no lo lee nadie todavia: los lectores siguen con `pago_mensajero` /
+  `ingreso_bodega_rechazo`, que llevan el mismo importe.
+
+### Veredicto T5.1-T5.2
+Hechas: pago por gestion con el resolver unico en los cinco caminos y congelado del modelo nuevo en la misma tx; ultimo
+`soloModeloViejo` retirado y modulo borrado; typecheck 0, lint 0 errores, 802/802 vecinos, 7 contrapruebas rojas; sin
+migracion; sin commitear.

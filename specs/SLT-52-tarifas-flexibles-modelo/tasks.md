@@ -183,11 +183,11 @@
 
 ## T5 — Cierre: pago por gestión y congelado (depende de T4)
 
-- [ ] **T5.1** `CierreDiaService` (solicitud y vista en vivo), `CorteDiarioService`,
+- [x] **T5.1** `CierreDiaService` (solicitud y vista en vivo), `CorteDiarioService`,
   `resolicitarCierreRechazado` (477) y `corregirResultadoGestionEnCierre` (398) resuelven el pago por
   gestión con `resolvePagos` / `resolverPagosCon`, cada uno con la zona que usa hoy.
   `CierreGestionPendienteRow` gana lo que pide `ContextoPagoGestion`. Cubre: R19, R20, R24, R33.
-- [ ] **T5.2** `CierreDiaRepository.crearCierre`: `tarifa_modelo`, `cierre_detail_concepto` y
+- [x] **T5.2** `CierreDiaRepository.crearCierre`: `tarifa_modelo`, `cierre_detail_concepto` y
   `gestion_pago_congelado` en la misma transacción. Cubre: R40.
 - [ ] **T5.3** Lectura: `tarifaDe(d, conceptos)` devuelve `TarifaTienda | null`; sus cinco
   llamadores (`CierresAdminRepository`, `CierreAporteRepository`, `WalletFeedService`,

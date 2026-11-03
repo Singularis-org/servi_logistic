@@ -1,4 +1,4 @@
-import { Prisma, type GestionResultado, type PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import type {
   AnularGestionDeCierreRechazadoInput,
   AnularGestionInput,
@@ -8,6 +8,7 @@ import type {
   CorreccionCierreRow,
   CrearCierreInput,
   GestionDeshacerRow,
+  GestionPendienteDeCierreRow,
   ICierreDiaRepository,
   ResolicitarCierreRechazadoInput,
 } from "@/lib/interfaces/repositories/ICierreDiaRepository";
@@ -24,7 +25,14 @@ import type { PaginaRepositorio, RangoPagina } from "@/lib/utils/rango-pagina";
 // puro de la cascada, no este repositorio. Indexar aqui con una clave propia seria la segunda
 // declaracion de la regla que R21 existe para impedir.
 import { clavePar, type ParTarifa } from "@/lib/utils/cascada-tarifa";
-import { soloModeloViejo } from "@/lib/tarifas/solo-modelo-viejo";
+// SLT-52 (T5.1/T5.2): el resolver unico del pago, sobre el cliente de la transaccion (re-solicitud
+// 477), y los tipos del congelado del modelo nuevo.
+import { resolverPagosCon } from "@/lib/repositories/_shared/resolver-tarifas";
+import { filaPagoCongelado } from "@/lib/repositories/_shared/pago-congelado";
+import type {
+  PagosDelCierre,
+  TarifaTienda,
+} from "@/lib/types/tarifa-flexible";
 import { appendCambioEstado } from "@/lib/repositories/registrar-cambio-estado";
 // SL-38 (R20): la marca de zona especial es de la EMPRESA y se lee por un unico punto.
 import {
@@ -59,9 +67,13 @@ import { toLineasPago } from "@/lib/utils/lineas-pago";
 // totales por SUMA DE SNAPSHOTS (el mismo de la 398) y el congelado del pago/ingreso por resultado
 // (el mismo de la 39/56) para las gestiones que la re-solicitud vincula.
 import { ordenesEnCorreccion } from "@/lib/repositories/correccion-cierre";
-import { computeTotales, sumarSnapshotsCongelados } from "@/lib/utils/cierre-totales";
-import { pagoPorResultado } from "@/lib/utils/pago-mensajero";
-import { ingresoBodegaPorResultado } from "@/lib/utils/ingreso-bodega";
+import {
+  computeTotales,
+  derivarIngresoBodega,
+  derivarPagos,
+  pagosDelCierre,
+  sumarSnapshotsCongelados,
+} from "@/lib/utils/cierre-totales";
 // Feature 246 (T3.4, R8): las vias que reasignan SIN ofrecer la eleccion de dia estampan el dia de
 // Costa Rica EN CURSO, en la convencion `@db.Date` de `fecha_reparto`.
 //
@@ -553,6 +565,96 @@ export function toPendienteRow(
 }
 
 /**
+ * SLT-52 (T5.1, design §5, R19-R21, R28) — la proyeccion de la vista EN VIVO y de la solicitud /
+ * corte: `WITH_DETALLE` mas lo que la ORDEN aporta al `ContextoPagoGestion` (distrito, zona, pedido
+ * y comision; la tienda ya viajaba). Se lee VIVO a proposito: el cierre todavia no existe y es lo
+ * que se va a congelar. `WITH_DETALLE` no cambia: lo comparten los detalles de admin, que leen el
+ * pago ya congelado.
+ */
+export const WITH_DETALLE_PENDIENTE = {
+  select: {
+    ...WITH_DETALLE.select,
+    orden: {
+      select: {
+        ...WITH_DETALLE.select.orden.select,
+        distritoId: true,
+        zonaId: true,
+        montoCobrar: true,
+        cobraComision: true,
+      },
+    },
+  },
+} as const;
+
+type DetallePendienteRow = Prisma.GestionOrdenGetPayload<typeof WITH_DETALLE_PENDIENTE>;
+
+function toPendienteDeCierreRow(
+  row: DetallePendienteRow,
+  desdeAyudaTienda: boolean,
+): GestionPendienteDeCierreRow {
+  return {
+    ...toPendienteRow(row, desdeAyudaTienda),
+    distritoId: row.orden.distritoId,
+    zonaOrdenId: row.orden.zonaId,
+    montoCobrar: decimalToString(row.orden.montoCobrar),
+    cobraComision: row.orden.cobraComision,
+  };
+}
+
+/**
+ * SLT-52 (T5.2, R40) — una fila de `cierre_detail_concepto` por cada concepto de cobro a la tienda
+ * RESUELTO de la orden (los ausentes son «sin tarifa» y no tienen fila, R23). Copia el valor tal
+ * cual lo eligio el resolver: modo, valor, % de IVA, nivel y el `tarifa_valor` de origen. El IVA
+ * del fulfillment (R46) sale de aqui: `tienda_fulfillment` se congela con su `iva_pct` como
+ * cualquier otro cobro, y T5.3 lo lee con `ivaFulfillmentDeTarifa` sobre lo congelado.
+ */
+function conceptosCongeladosDe(
+  cierreDetailId: string,
+  tarifa: TarifaTienda | null,
+): Prisma.CierreDetailConceptoCreateManyInput[] {
+  if (tarifa === null || tarifa.modelo !== "nuevo") return [];
+  return Object.values(tarifa.valores)
+    .filter((v) => v !== undefined)
+    .map((v) => ({
+      cierreDetailId,
+      concepto: v.concepto,
+      modo: v.modo,
+      valor: new Prisma.Decimal(v.valor),
+      ivaPct: new Prisma.Decimal(v.ivaPct),
+      nivel: v.nivel,
+      tarifaValorId: v.tarifaValorId,
+    }));
+}
+
+/**
+ * SLT-52 (R37) — un cierre no mezcla modelos: el cobro (resuelto DENTRO de la tx) y el pago (que el
+ * servicio resolvio justo antes) tienen que ser del mismo. Solo pueden divergir si la empresa
+ * escribe o borra su primer/ultimo `tarifa_valor` entre las dos lecturas; entonces se aborta la tx
+ * entera (nada escrito) en vez de cobrar con una regla y pagar con otra.
+ */
+export class ModelosDeTarifaMezclados extends Error {
+  constructor(detalle: string) {
+    super(`cierre: el cobro y el pago no salen del mismo modelo de tarifas (${detalle})`);
+    this.name = "ModelosDeTarifaMezclados";
+  }
+}
+
+function asegurarMismoModelo(
+  modeloCobro: "viejo" | "nuevo" | null,
+  pagos: PagosDelCierre | undefined,
+): void {
+  if (pagos === undefined) {
+    if (modeloCobro === "nuevo") {
+      throw new ModelosDeTarifaMezclados("modelo nuevo sin el pago congelado por gestion");
+    }
+    return;
+  }
+  if (modeloCobro !== null && pagos.modelo !== null && modeloCobro !== pagos.modelo) {
+    throw new ModelosDeTarifaMezclados(`cobro ${modeloCobro}, pago ${pagos.modelo}`);
+  }
+}
+
+/**
  * Proyeccion de la CABECERA de un cierre del mensajero (histórico R18 y detalle de "ver").
  * Una sola definicion para las dos lecturas: los totales que se listan y los que se abren
  * salen de las mismas columnas.
@@ -751,6 +853,29 @@ function toCierrePasadoDTO(r: CierrePasadoSelectRow): CierrePasadoDTO {
 }
 
 /**
+ * FICHA 477 + SLT-52 (T5.1) — lo que la re-solicitud lee de cada gestion que vincula: su resultado
+ * y, de su orden, lo que el resolver del pago necesita (`ContextoPagoGestion`, design §5).
+ */
+const GESTION_VINCULADA_SELECT = {
+  id: true,
+  ordenId: true,
+  resultado: true,
+  orden: {
+    select: {
+      distritoId: true,
+      tiendaId: true,
+      zonaId: true,
+      montoCobrar: true,
+      cobraComision: true,
+    },
+  },
+} as const;
+
+type GestionVinculadaEnResolicitud = Prisma.GestionOrdenGetPayload<{
+  select: typeof GESTION_VINCULADA_SELECT;
+}>;
+
+/**
  * Feature 37 — repositorio del cierre del dia. SOLO queries Prisma (sin logica de
  * negocio: los estados "pendientes" los decide el service y se pasan por parametro;
  * los totales snapshot llegan ya calculados como STRING). `crearCierre` es
@@ -821,14 +946,15 @@ export class CierreDiaRepository implements ICierreDiaRepository {
    * `crearCierre` que es quien escribe. Las tres primeras usan el indice parcial
    * `gestion_orden_mensajero_pendiente_idx`.
    */
-  async findGestionesPendientes(mensajeroId: string): Promise<CierreGestionPendienteRow[]> {
+  async findGestionesPendientes(mensajeroId: string): Promise<GestionPendienteDeCierreRow[]> {
     const rows = await this.prisma.gestionOrden.findMany({
       where: gestionesDelCierreWhere(mensajeroId),
       orderBy: { createdAt: "desc" },
-      ...WITH_DETALLE,
+      // SLT-52 (T5.1): + el contexto de pago de la orden (distrito, zona, pedido, comision).
+      ...WITH_DETALLE_PENDIENTE,
     });
     const deLaTienda = await this.marcarDesdeAyudaTienda(rows);
-    return rows.map((r) => toPendienteRow(r, deLaTienda.has(r.id)));
+    return rows.map((r) => toPendienteDeCierreRow(r, deLaTienda.has(r.id)));
   }
 
   /**
@@ -975,6 +1101,7 @@ export class CierreDiaRepository implements ICierreDiaRepository {
       totalPagoMensajero,
       ingresoByGestionId,
       totalIngresoBodegaRechazos,
+      pagos,
     } = input;
     try {
       return await this.prisma.$transaction(async (tx) => {
@@ -1310,6 +1437,8 @@ export class CierreDiaRepository implements ICierreDiaRepository {
         for (const g of gestiones) if (!porOrden.has(g.ordenId)) porOrden.set(g.ordenId, g);
         const filas = [...porOrden.values()];
 
+        // SLT-52 (R37): el modelo del cobro de ESTE cierre; `null` si no hay ordenes que congelar.
+        let modeloCobro: "viejo" | "nuevo" | null = null;
         if (filas.length > 0) {
           // Feature 69/R8 + feature 274/R22 — la tarifa vigente de cada PAR (tienda, zona)
           // distinto, EN LA MISMA tx y en UNA query (sin N+1, R7). Hasta la 273 esto se
@@ -1326,11 +1455,24 @@ export class CierreDiaRepository implements ICierreDiaRepository {
             distritoId: f.orden.distritoId,
           }));
           const tarifas = await this.tarifaRepo.resolveTarifas(pares, tx);
+          const tarifaDe = (f: SnapshotRow): TarifaTienda | null =>
+            tarifas.get(
+              clavePar({
+                tiendaId: f.orden.tiendaId,
+                zonaId: f.orden.zonaId,
+                distritoId: f.orden.distritoId,
+              }),
+            ) ?? null;
+          // El resolver decide el modelo UNA vez por llamada (R37): todas las no nulas son del mismo.
+          // Todas nulas = viejo sin tarifa (el nuevo nunca devuelve `null`).
+          const modelo = filas.map(tarifaDe).find((t) => t !== null)?.modelo ?? "viejo";
+          modeloCobro = modelo;
           // FICHA 450 (T2.7): los descriptivos que antes traia la relacion anidada, leidos en
           // SERIE sobre la conexion de esta transaccion. Mismas tablas, mismos ids, mismos valores.
           const descriptivos = await leerDescriptivosDeOrdenes(filas, tx);
-          await tx.cierreDetail.createMany({
-            data: filas.map((f) => ({
+          const detalles = filas.map((f) => {
+            const tarifa = tarifaDe(f);
+            return {
               cierreId: cierre.id,
               ordenId: f.ordenId,
               // money-critical (R6). `montoCobrar` ya es Decimal|null en origen: se copia
@@ -1348,18 +1490,12 @@ export class CierreDiaRepository implements ICierreDiaRepository {
                   ? false
                   : descriptivoDe(descriptivos.distritos, f.orden.distritoId, "distrito")
                       .zonaEspecial,
-              ...tarifaColumnas(
-                soloModeloViejo(
-                  tarifas.get(
-                    clavePar({
-                      tiendaId: f.orden.tiendaId,
-                      zonaId: f.orden.zonaId,
-                      distritoId: f.orden.distritoId,
-                    }),
-                  ) ?? null,
-                  "cierre de dia (snapshot)",
-                ),
-              ),
+              // SLT-52 (R40, R42): con que modelo se congela. En el viejo la fila se escribe EXACTAMENTE
+              // como antes de la ficha (sin la columna: su DEFAULT es `viejo`, y la lista de columnas
+              // escritas es contrato de la 69/R24); en el nuevo se marca, las columnas `tarifa_*` van
+              // NULL y el cobro se congela en `cierre_detail_concepto`.
+              ...(modelo === "nuevo" ? { tarifaModelo: modelo } : {}),
+              ...tarifaColumnas(tarifa?.modelo === "viejo" ? tarifa.tarifa : null),
               // descriptivos (R7).
               numGuia: f.orden.numGuia,
               numRemision: f.orden.numRemision,
@@ -1378,8 +1514,46 @@ export class CierreDiaRepository implements ICierreDiaRepository {
                 f.orden.distritoId === null
                   ? null
                   : descriptivoDe(descriptivos.distritos, f.orden.distritoId, "distrito").nombre,
-            })),
+            };
           });
+          if (modelo === "viejo") {
+            await tx.cierreDetail.createMany({ data: detalles });
+          } else {
+            // SLT-52 (T5.2, R40): el cobro congelado cuelga del id de cada `cierre_detail`, asi que
+            // aqui se crean devolviendo `(id, ordenId)`. Misma tx: todo o nada.
+            const creados = await tx.cierreDetail.createManyAndReturn({
+              data: detalles,
+              select: { id: true, ordenId: true },
+            });
+            const idPorOrden = new Map(creados.map((d) => [d.ordenId, d.id]));
+            const conceptos = filas.flatMap((f) => {
+              const id = idPorOrden.get(f.ordenId);
+              if (id === undefined) {
+                throw new Error(`snapshot del cierre: no se creo el detalle de la orden ${f.ordenId}`);
+              }
+              return conceptosCongeladosDe(id, tarifaDe(f));
+            });
+            if (conceptos.length > 0) await tx.cierreDetailConcepto.createMany({ data: conceptos });
+          }
+        }
+
+        // SLT-52 (T5.2, R40, R37) — el pago congelado de cada gestion, en esta MISMA tx. Solo las
+        // que esta tx VINCULO (como el `updateMany` del pago, guardado por `cierreId`): una gestion
+        // que el servicio leyo y otro cierre se llevo entre medias no se congela aqui.
+        asegurarMismoModelo(modeloCobro, pagos);
+        if (pagos !== undefined && pagos.congelados.length > 0) {
+          const vinculadasAqui = await tx.gestionOrden.findMany({
+            where: {
+              cierreId: cierre.id,
+              id: { in: [...new Set(pagos.congelados.map((p) => p.gestionId))] },
+            },
+            select: { id: true },
+          });
+          const ids = new Set(vinculadasAqui.map((g) => g.id));
+          const filasPago = pagos.congelados.filter((p) => ids.has(p.gestionId));
+          if (filasPago.length > 0) {
+            await tx.gestionPagoCongelado.createMany({ data: filasPago.map(filaPagoCongelado) });
+          }
         }
         return cierre.id;
       });
@@ -1713,7 +1887,7 @@ export class CierreDiaRepository implements ICierreDiaRepository {
    * ninguna fila y el 6 escribe la suma de los snapshots, que es el total que ya estaba congelado.
    */
   async resolicitarCierreRechazado(input: ResolicitarCierreRechazadoInput): Promise<boolean> {
-    const { cierreId, mensajeroId, tarifa } = input;
+    const { cierreId, mensajeroId, zonaId, vehiculoId } = input;
     try {
       return await this.prisma.$transaction(async (tx) => {
         // (1)
@@ -1729,7 +1903,7 @@ export class CierreDiaRepository implements ICierreDiaRepository {
         if (movido.count !== 1) throw new CierreYaNoRechazado();
 
         // (3)
-        let vinculadas: { id: string; ordenId: string; resultado: GestionResultado }[] = [];
+        let vinculadas: GestionVinculadaEnResolicitud[] = [];
         if (enCorreccion.length > 0) {
           const candidatas = await tx.gestionOrden.findMany({
             where: { AND: [gestionesDelCierreWhere(mensajeroId), { ordenId: { in: enCorreccion } }] },
@@ -1743,17 +1917,39 @@ export class CierreDiaRepository implements ICierreDiaRepository {
             });
             vinculadas = await tx.gestionOrden.findMany({
               where: { id: { in: ids }, cierreId },
-              select: { id: true, ordenId: true, resultado: true },
+              select: GESTION_VINCULADA_SELECT,
             });
           }
         }
 
-        // (4) Agrupado por valor (a lo sumo dos por concepto), como en `crearCierre`.
+        // (4) Agrupado por valor, como en `crearCierre`. SLT-52 (T5.1, R19/R20/R33): el pago de
+        // CADA rehecha, resuelto aqui dentro con el resolver unico —zona DESTINO del cierre (R17 de
+        // la 477), vehiculo del mensajero y el distrito de SU orden—, porque solo aqui se sabe que
+        // gestiones se vincularon. Y (T5.2, R40) se re-congela: se borra lo que tuvieran y, en el
+        // modelo nuevo, se escribe su fila de `gestion_pago_congelado`.
+        const filasVinculadas = vinculadas.map((g) => ({ gestionId: g.id, resultado: g.resultado }));
+        const tarifas = await resolverPagosCon(
+          tx,
+          vinculadas.map((g) => ({
+            gestionId: g.id,
+            resultado: g.resultado,
+            mensajeroId,
+            zonaId,
+            vehiculoId,
+            distritoId: g.orden.distritoId,
+            tiendaId: g.orden.tiendaId,
+            zonaOrdenId: g.orden.zonaId,
+            montoCobrar: g.orden.montoCobrar === null ? null : g.orden.montoCobrar.toFixed(2),
+            cobraComision: g.orden.cobraComision,
+          })),
+        );
+        const { pagoByGestionId } = derivarPagos(filasVinculadas, tarifas);
+        const { ingresoByGestionId } = derivarIngresoBodega(filasVinculadas, tarifas);
         const porPago = new Map<string, string[]>();
         const porIngreso = new Map<string, string[]>();
         for (const g of vinculadas) {
-          const pago = pagoPorResultado(g.resultado, tarifa);
-          const ingreso = ingresoBodegaPorResultado(g.resultado, tarifa);
+          const pago = pagoByGestionId[g.id];
+          const ingreso = ingresoByGestionId[g.id];
           porPago.set(pago, [...(porPago.get(pago) ?? []), g.id]);
           porIngreso.set(ingreso, [...(porIngreso.get(ingreso) ?? []), g.id]);
         }
@@ -1768,6 +1964,15 @@ export class CierreDiaRepository implements ICierreDiaRepository {
             where: { id: { in: ids }, cierreId },
             data: { ingresoBodegaRechazo: new Prisma.Decimal(ingreso) },
           });
+        }
+        if (vinculadas.length > 0) {
+          await tx.gestionPagoCongelado.deleteMany({
+            where: { gestionOrdenId: { in: vinculadas.map((g) => g.id) } },
+          });
+          const { congelados } = pagosDelCierre(filasVinculadas, tarifas);
+          if (congelados.length > 0) {
+            await tx.gestionPagoCongelado.createMany({ data: congelados.map(filaPagoCongelado) });
+          }
         }
 
         // (5)

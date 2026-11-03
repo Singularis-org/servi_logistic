@@ -86,6 +86,33 @@ export interface ContextoPagoGestion {
   cobraComision: boolean;
 }
 
+/**
+ * SLT-52 (R40, R34; design §2.5 y §7) — el pago de UNA gestion a UN actor, tal como se congela en
+ * `gestion_pago_congelado`. Solo existe en el modelo nuevo: el viejo sigue escribiendo unicamente
+ * `pago_mensajero` / `ingreso_bodega_rechazo` (R36).
+ *
+ * `importe` es EXACTAMENTE lo que se escribe en esas dos columnas: sale de la misma funcion
+ * (`importePagoNuevo`), asi que el congelado y el pago no pueden divergir. `base` solo con modo
+ * porcentaje (CHECK `gestion_pago_congelado_base_solo_porcentaje`). Sin IVA (P4): no hay campo.
+ */
+export interface PagoCongelado {
+  gestionId: string;
+  actor: "mensajero" | "satelite";
+  valor: ValorPago;
+  base: string | null;
+  importe: string;
+}
+
+/**
+ * SLT-52 (R37, R40) — lo que el servicio entrega a `crearCierre` del pago que resolvio. `modelo` es
+ * el del resolver (`null` si no habia gestiones que resolver): el repositorio lo compara con el del
+ * cobro que resuelve dentro de la transaccion y se niega a mezclar los dos (R37).
+ */
+export interface PagosDelCierre {
+  modelo: "viejo" | "nuevo" | null;
+  congelados: readonly PagoCongelado[];
+}
+
 // ---------------------------------------------------------------------------------------------
 // Escritura (la usara `TarifaValorService` en T6.2 y la pantalla de SLT-54).
 //
