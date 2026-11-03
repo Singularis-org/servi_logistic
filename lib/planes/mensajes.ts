@@ -175,8 +175,9 @@ function limite(n: number | null | undefined): string {
 
 /** El precio como texto informativo, sin símbolo de moneda (D26). Lo pintan también las pantallas (SLT-58 R1, R13). */
 export function textoDelPrecio(p: PrecioPlan): string {
-  if (p.tipo === "sin_precio") return "sin precio";
-  if (p.tipo === "negociable") return "negociable";
+  // D1 (ajuste planes-custom): «negociable» ya no existe, pero `plan_rastro` y los correos encolados
+  // antes de 20261031150000 pueden traerlo; se pinta como lo que es ahora, «sin precio».
+  if (p.tipo !== "monto") return "sin precio";
   const mensual = `${p.mensual} al mes`;
   if (p.anual === null) return mensual;
   return p.anual.tipo === "fijo"

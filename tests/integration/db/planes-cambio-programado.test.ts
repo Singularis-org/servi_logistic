@@ -48,7 +48,7 @@ async function preparar(tx: TxDeTest, plan: Partial<CrearPlanInput>, empresas = 
   const orgs: string[] = [];
   for (let i = 0; i < empresas; i++) {
     const { id } = await crearOrganizacion(tx, { nombre: `SL24 programado ${i} ${randomUUID().slice(0, 6)}` });
-    const r = await servicio.asignar(SUPERADMIN, { organizacionId: id, planId: creado.planId });
+    const r = await servicio.asignar(SUPERADMIN, { organizacionId: id, planId: creado.planId, tipoCobro: "mensual" });
     if (r.estado !== "ok") throw new Error(`no se asignó: ${JSON.stringify(r)}`);
     orgs.push(id);
   }
@@ -75,7 +75,6 @@ async function fotoDelPlan(tx: TxDeTest, planId: string) {
     select: {
       nombre: true,
       topeOrdenesCiclo: true,
-      precioNegociable: true,
       precioMensual: true,
       topesPorRol: { select: { rol: true, maximo: true }, orderBy: { rol: "asc" } },
       modulos: { select: { modulo: true }, orderBy: { modulo: "asc" } },
@@ -84,7 +83,6 @@ async function fotoDelPlan(tx: TxDeTest, planId: string) {
   return {
     nombre: p.nombre,
     ordenes: p.topeOrdenesCiclo,
-    negociable: p.precioNegociable,
     mensual: p.precioMensual?.toFixed(2) ?? null,
     porRol: p.topesPorRol.map((t) => [t.rol, t.maximo]),
     modulos: p.modulos.map((m) => m.modulo),
@@ -153,7 +151,7 @@ describeSiHayBase("SL-24 — el cambio programado de un plan (R37–R40)", () =>
         nombre: "Nuevo nombre",
         topes: { ordenesPorCiclo: 10, porRol: { adminTienda: 1 }, apiKeys: null },
         modulos: ["ranking"],
-        precio: { tipo: "negociable" },
+        precio: { tipo: "sin_precio" }, // D1 (ajuste planes-custom): sin «negociable».
         costoPorOrden: null, // SLT-66 R8: campo obligatorio nuevo; no cambia lo que se comprueba.
       });
       const pendiente = await tx.planCambioProgramado.findUniqueOrThrow({ where: { planId: p.planId } });
@@ -181,7 +179,7 @@ describeSiHayBase("SL-24 — el cambio programado de un plan (R37–R40)", () =>
       nombre: "Nuevo nombre",
       topes: { ordenesPorCiclo: 10, porRol: { adminTienda: 1 }, apiKeys: null },
       modulos: ["ranking"],
-      precio: { tipo: "negociable" },
+      precio: { tipo: "sin_precio" },
       costoPorOrden: null, // SLT-66 R8: campo obligatorio nuevo; no cambia lo que se comprueba.
     });
     expect(r.trabajos).toHaveLength(1);
@@ -310,7 +308,6 @@ describeSiHayBase("SL-24 — el cambio programado de un plan (R37–R40)", () =>
     expect(r.aplicado).toEqual({
       nombre: "Pro 2027",
       ordenes: 50,
-      negociable: false,
       mensual: "30000.00",
       porRol: [["adminTienda", 1]],
       modulos: ["monitoreo"],

@@ -5,6 +5,7 @@ import type { SumaCobroPlataformaPorTipo } from "@/lib/interfaces/repositories/I
 import type { IEmpresasPlataformaRepository } from "@/lib/interfaces/repositories/IEmpresasPlataformaRepository";
 import type { FuenteDelCosto } from "@/lib/types/consumo-plan";
 import type { EmpresaListada, EstadoIntegracionDeEmpresa } from "@/lib/types/empresas-plataforma";
+import type { TipoCobro } from "@/lib/types/planes";
 import { SERVICIOS_INTEGRACION } from "@/lib/types/integraciones";
 import { derivarDeudaPlataforma } from "@/lib/utils/deuda-plataforma";
 
@@ -22,6 +23,8 @@ type PlanYCobroLeido = {
   fuente: FuenteDelCosto;
   plan_id: string | null;
   plan_nombre: string | null;
+  /** Ajuste planes-custom (D9): `organizacion.plan_tipo_cobro`; `null` solo si la empresa ya no está. */
+  plan_tipo_cobro: TipoCobro | null;
 };
 
 /**
@@ -122,7 +125,7 @@ export class EmpresasPlataformaRepository implements IEmpresasPlataformaReposito
   private async planYCobroVigente(organizacionIds: string[]) {
     const filas = await this.prisma.$queryRaw<PlanYCobroLeido[]>`
       SELECT i."id", t."monto"::text AS "monto", t."fuente"::text AS "fuente",
-             p."id" AS "plan_id", p."nombre" AS "plan_nombre"
+             p."id" AS "plan_id", p."nombre" AS "plan_nombre", o."plan_tipo_cobro" AS "plan_tipo_cobro"
         FROM unnest(${organizacionIds}::text[]) AS i("id")
         LEFT JOIN "organizacion" o ON o."id" = i."id"
         LEFT JOIN "plan" p ON p."id" = o."plan_id"
@@ -133,7 +136,11 @@ export class EmpresasPlataformaRepository implements IEmpresasPlataformaReposito
       if (f === undefined) throw new Error(`EmpresasPlataformaRepository.listar: sin cobro vigente para ${id}`);
       return {
         cobroVigente: { monto: f.monto, fuente: f.fuente },
-        plan: f.plan_id === null || f.plan_nombre === null ? null : { id: f.plan_id, nombre: f.plan_nombre },
+        plan:
+          f.plan_id === null || f.plan_nombre === null
+            ? null
+            : // El CHECK de 20261031150000 deja solo `mensual` | `anual`; con plan la empresa existe.
+              { id: f.plan_id, nombre: f.plan_nombre, tipoCobro: f.plan_tipo_cobro ?? "mensual" },
       };
     };
   }

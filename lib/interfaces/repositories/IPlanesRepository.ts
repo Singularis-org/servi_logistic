@@ -3,7 +3,7 @@ import type { PlanRastroAccion } from "@prisma/client";
 import type { CambioDelPlanLeido, PlanConUsoLeido } from "@/lib/planes/consumo";
 import type { TipoCorreoCambioPlan, TopePasado } from "@/lib/planes/mensajes";
 import type { CambiosDelPlan } from "@/lib/planes/rastro";
-import type { CrearPlanInput, PlanDTO, TopeExcedido, VersionPlan } from "@/lib/types/planes";
+import type { CrearPlanInput, PlanDTO, TipoCobro, TopeExcedido, VersionPlan } from "@/lib/types/planes";
 
 // SL-24 (design §5, §16.5) — el catálogo de planes y su asignación, vistos y escritos por el
 // superadmin, que no tiene empresa: la empresa SÍ es un argumento. Las escrituras vuelven a comprobar
@@ -45,6 +45,24 @@ export type ResultadoAsignar =
   | { estado: "tope_excedido"; excedidos: TopeExcedido[] }
   /** R31 (carrera): con fecha, la empresa ya tenía plan bajo el cerrojo. Nada se escribió. */
   | { estado: "validation_error"; fieldErrors: Record<string, string[]> };
+
+/**
+ * Ajuste planes-custom (D2, D4, D6) — la asignación que acompaña a un custom al crearlo: el inicio del
+ * ciclo (solo si la empresa no tiene plan, como en `asignar`) y el tipo de cobro.
+ */
+export interface AsignacionAlCrear {
+  inicio?: InicioDelCicloElegido;
+  tipoCobro: TipoCobro;
+}
+
+/**
+ * Ajuste planes-custom (D2): crear y asignar un custom en una transacción. Si la asignación se rechaza,
+ * vuelve su rechazo y NO queda nada escrito (ni el plan ni su rastro). `avisos`: los de la primera
+ * asignación con fecha (R36, R42); `[]` en lo demás.
+ */
+export type ResultadoCrearYAsignar =
+  | { estado: "ok"; planId: string; avisos: TopeExcedido[] }
+  | Exclude<ResultadoAsignar, { estado: "ok" }>;
 
 /** SLT-58 (R37): lo que la asignación con esa fecha avisaría, sin escribir nada. */
 export interface VistaPreviaLeida {
@@ -184,7 +202,18 @@ export interface IPlanesRepository {
     planId: string,
     actorUsuarioId: string,
     inicio?: InicioDelCicloElegido,
+    /** Ajuste planes-custom (D6): se guarda junto al `plan_id`. Sin él, `mensual`. */
+    tipoCobro?: TipoCobro,
   ): Promise<ResultadoAsignar>;
+  /**
+   * Ajuste planes-custom (D2): crea el custom (como `crear`) y se lo asigna a su empresa (como
+   * `asignar`, con el mismo cerrojo, las mismas reglas y el mismo historial) en UNA transacción.
+   */
+  crearYAsignar(
+    input: CrearPlanInput & { organizacionId: string },
+    actorUsuarioId: string,
+    asignacion: AsignacionAlCrear,
+  ): Promise<ResultadoCrearYAsignar>;
   /**
    * SLT-58 (§11.4; R37): los topes del plan que la empresa pasaría con esa fecha, con el mismo uso que
    * `asignar`, y el siguiente inicio de ciclo. Solo lee. `null` si la empresa o el plan no existen.

@@ -5,6 +5,7 @@ import type {
   EmpresaDePlanes,
   InicioDelCicloElegido,
   IPlanesRepository,
+  ResultadoAsignar,
 } from "@/lib/interfaces/repositories/IPlanesRepository";
 import type { IPlanesService } from "@/lib/interfaces/services/IPlanesService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
@@ -81,6 +82,14 @@ function inicioElegido(fecha: string, ahora: Date): InicioDelCicloElegido {
   return { fecha, ancla: anclaDeLaFechaElegida(fecha, ahora) };
 }
 
+/** Un rechazo del repositorio al asignar, como `PlanResult`: el de topes lleva su texto ya redactado. */
+function rechazoDeAsignar(r: Exclude<ResultadoAsignar, { estado: "ok" }>): PlanResult {
+  if (r.estado === "tope_excedido") {
+    return { estado: "tope_excedido", excedidos: r.excedidos, mensaje: mensajeTopesPasados(r.excedidos) };
+  }
+  return r;
+}
+
 export class PlanesService implements IPlanesService {
   constructor(
     private readonly repo: IPlanesRepository,
@@ -92,10 +101,32 @@ export class PlanesService implements IPlanesService {
     if (!esSuperadmin(actor)) return FORBIDDEN;
     const parsed = crearPlanSchema.safeParse(input);
     if (!parsed.success) return { estado: "validation_error", fieldErrors: erroresDeCampo(parsed.error) };
-    // R2: un custom nombra una empresa que EXISTE.
-    const { organizacionId } = parsed.data;
-    if (organizacionId !== null && (await this.repo.empresa(organizacionId)) === null) return { estado: "not_found" };
-    return ok(await this.repo.crear(parsed.data, actor.usuarioId), true);
+    const { organizacionId, tipoCobro, inicioCiclo, ...plan } = parsed.data;
+    if (organizacionId === null) return ok(await this.repo.crear(parsed.data, actor.usuarioId), true);
+
+    // Ajuste planes-custom (D2): un custom se asigna a su empresa al crearlo, en UNA operación. Las
+    // mismas reglas que `asignar`, en su orden: el rango de la fecha (SLT-58 R30), la empresa existe
+    // (R2), la fecha solo en la primera asignación (R31) y el costo concreto (SLT-66 R28). «Mismo
+    // plan», «archivado» y «custom de otra empresa» no pueden darse con un plan que aún no existe.
+    const ahora = this.ahora();
+    if (inicioCiclo !== undefined) {
+      const fuera = fueraDeRango(inicioCiclo, ahora);
+      if (fuera !== null) return fuera;
+    }
+    const empresa = await this.repo.empresa(organizacionId);
+    if (empresa === null) return { estado: "not_found" };
+    if (inicioCiclo !== undefined && empresa.planId !== null) {
+      return { estado: "validation_error", fieldErrors: { inicioCiclo: [SOLO_PRIMERA_ASIGNACION] } };
+    }
+    if (!tieneCostoConcreto(plan)) return { estado: "plan_sin_costo" };
+
+    const r = await this.repo.crearYAsignar({ ...parsed.data, organizacionId }, actor.usuarioId, {
+      // El refine de `crearPlanSchema` exige el tipo en un custom.
+      tipoCobro: tipoCobro ?? "mensual",
+      ...(inicioCiclo === undefined ? {} : { inicio: inicioElegido(inicioCiclo, ahora) }),
+    });
+    if (r.estado === "ok") return ok(r.planId, true, { avisos: r.avisos });
+    return rechazoDeAsignar(r);
   }
 
   async editar(actor: Actor | null, input: unknown): Promise<PlanResult> {
@@ -148,7 +179,7 @@ export class PlanesService implements IPlanesService {
     if (!esSuperadmin(actor)) return FORBIDDEN;
     const parsed = asignarPlanSchema.safeParse(input);
     if (!parsed.success) return { estado: "validation_error", fieldErrors: erroresDeCampo(parsed.error) };
-    const { organizacionId, planId, inicioCiclo } = parsed.data;
+    const { organizacionId, planId, inicioCiclo, tipoCobro } = parsed.data;
     const ahora = this.ahora();
     // SLT-58 R30: el rango, antes de leer nada.
     if (inicioCiclo !== undefined) {
@@ -161,17 +192,12 @@ export class PlanesService implements IPlanesService {
     // SLT-66 R28: después de «mismo plan» (SL-24 R13 sigue primero), con fecha y sin ella.
     if (await this.sinCostoConcreto(reglas.plan)) return { estado: "plan_sin_costo" };
 
-    // Sin fecha, la llamada de SL-24 tal cual (tres argumentos).
-    const r =
-      inicioCiclo === undefined
-        ? await this.repo.asignar(organizacionId, planId, actor.usuarioId)
-        : await this.repo.asignar(organizacionId, planId, actor.usuarioId, inicioElegido(inicioCiclo, ahora));
+    // D6 (ajuste planes-custom): el tipo de cobro viaja siempre; sin fecha, `inicio` va `undefined`.
+    const inicio = inicioCiclo === undefined ? undefined : inicioElegido(inicioCiclo, ahora);
+    const r = await this.repo.asignar(organizacionId, planId, actor.usuarioId, inicio, tipoCobro);
     // R36, R42: en la primera asignación con fecha, los topes ya pasados viajan en `avisos`.
     if (r.estado === "ok") return ok(planId, r.cambio, { avisos: r.avisos });
-    if (r.estado === "tope_excedido") {
-      return { estado: "tope_excedido", excedidos: r.excedidos, mensaje: mensajeTopesPasados(r.excedidos) };
-    }
-    return r;
+    return rechazoDeAsignar(r);
   }
 
   /**

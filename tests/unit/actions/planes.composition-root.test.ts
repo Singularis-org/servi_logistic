@@ -23,7 +23,6 @@ const filaPlan = {
   topeOrdenesCiclo: 100,
   topeApiKeys: null,
   // SLT-66 R28: solo se asigna un plan con costo concreto; la fila es de monto con costo por orden.
-  precioNegociable: false,
   precioMensual: new Prisma.Decimal("1000.00"),
   precioAnual: null,
   descuentoAnualPct: null,
@@ -95,7 +94,7 @@ describe("SL-24 — el composition root de planes pasa PlanesRepository", () => 
         organizacionId: null,
         topes: { ordenesPorCiclo: 100, porRol: { adminTienda: 3 }, apiKeys: null },
         modulos: ["ranking"],
-        precio: { tipo: "negociable" },
+        precio: { tipo: "sin_precio" },
         costoPorOrden: null, // SLT-66 R8: costo por orden obligatorio; aquí, vacío.
       },
       { getActor: async () => SUPERADMIN },
@@ -106,7 +105,7 @@ describe("SL-24 — el composition root de planes pasa PlanesRepository", () => 
       expect.objectContaining({
         data: expect.objectContaining({
           nombre: "Básico",
-          precioNegociable: true,
+          precioMensual: null, // D1 (ajuste planes-custom): «sin precio», sin columna «negociable».
           topesPorRol: { create: [{ rol: "adminTienda", maximo: 3 }] },
           modulos: { create: [{ modulo: "ranking" }] },
         }),

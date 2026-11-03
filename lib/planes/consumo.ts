@@ -1,6 +1,7 @@
 import { ROL_LABELS } from "@/lib/auth/rol-label";
 import { nombreDelModulo, ORDEN_MODULOS } from "@/lib/modulos/catalogo";
 import { inicioDelSiguienteCiclo } from "@/lib/planes/ciclo";
+import { cobroDelPlan } from "@/lib/planes/cobro";
 import { costeoDelCiclo } from "@/lib/planes/costeo";
 import { lineasDeCambioDelPlan, SIN_LIMITE, textoDelPrecio, type CambioDelPlanParaCorreo } from "@/lib/planes/mensajes";
 import { diferenciasDelPlan } from "@/lib/planes/rastro";
@@ -13,7 +14,7 @@ import type {
   ReinicioDelCiclo,
   UsoDelPlan,
 } from "@/lib/types/consumo-plan";
-import { ROLES_CON_TOPE, type PlanDTO, type TopesPlan, type VersionPlan } from "@/lib/types/planes";
+import { ROLES_CON_TOPE, type PlanDTO, type TipoCobro, type TopesPlan, type VersionPlan } from "@/lib/types/planes";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 
 // SLT-58 (design §6.1) — el consumo del plan tal como se pinta, sin React ni base: lo comparten «Mi
@@ -80,6 +81,8 @@ export interface PlanConUsoLeido {
   cambio: CambioDelPlanLeido | null;
   /** SLT-66 (R18, §3.2): el de `cobro_plataforma_tarifa_de`, el mismo que usará el próximo cargo. */
   costoVigente: { monto: string; fuente: FuenteDelCosto };
+  /** Ajuste planes-custom (D6): `organizacion.plan_tipo_cobro`. */
+  tipoCobro: TipoCobro;
 }
 
 /**
@@ -116,6 +119,8 @@ export function planConConsumo(leido: PlanConUsoLeido, ahora: Date): PlanConCons
     cambioPendiente: leido.cambio === null ? null : cambioPendienteDelPlan(vigente, leido.cambio),
     // SLT-66 (R18, R19): las órdenes del total son las mismas que cuenta la fila del tope.
     costeo: costeoDelCiclo(vigente, leido.costoVigente, leido.uso.ordenes),
+    // D7–D9: con el precio vigente; el siguiente cobro cuenta desde el ancla del ciclo.
+    cobro: cobroDelPlan(vigente.precio, leido.tipoCobro, leido.ancla, ahora),
   };
 }
 

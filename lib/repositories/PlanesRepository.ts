@@ -12,16 +12,19 @@ import type {
   IPlanesRepository,
   PlanDeEmpresaLeida,
   PlanDelCatalogoLeido,
+  AsignacionAlCrear,
   ResultadoAplicar,
   ResultadoArchivar,
   ResultadoAsignar,
   ResultadoCancelarCambio,
+  ResultadoCrearYAsignar,
   ResultadoEdicion,
   ResultadoProgramar,
   ResultadoRecordatorio,
   VistaPreviaLeida,
 } from "@/lib/interfaces/repositories/IPlanesRepository";
 import { inicioDelSiguienteCiclo } from "@/lib/planes/ciclo";
+import { valorDelHistorialDeAsignacion } from "@/lib/planes/cobro";
 import type { CambioDelPlanLeido } from "@/lib/planes/consumo";
 import { SOLO_PRIMERA_ASIGNACION } from "@/lib/planes/mensajes";
 import { diferenciasDelPlan, hayCambios, type CambiosDelPlan } from "@/lib/planes/rastro";
@@ -36,8 +39,10 @@ import {
   type PlanDTO,
   type PrecioPlan,
   type RolConTope,
+  type TipoCobro,
   type TopeExcedido,
   type TopesPlan,
+  tipoCobroSchema,
   type VersionPlan,
   versionPlanSchema,
 } from "@/lib/types/planes";
@@ -82,7 +87,6 @@ const ROLES: ReadonlySet<string> = new Set(ROLES_CON_TOPE);
 /* -------------------------------------------------------------------------- */
 
 function precioDe(f: FilaPlan): PrecioPlan {
-  if (f.precioNegociable) return { tipo: "negociable" };
   if (f.precioMensual === null) return { tipo: "sin_precio" };
   // `toFixed(2)` de `Prisma.Decimal`: exacto, sin pasar por `Number`.
   const anual =
@@ -110,13 +114,10 @@ function aDTO(f: FilaPlan): PlanDTO {
   };
 }
 
-/** Las columnas del precio: las cinco formas de `plan_precio_forma` (R3). Los importes, como texto. */
+/** Las columnas del precio: las formas de `plan_precio_forma` (R3; D1: sin «negociable»). Los importes, como texto. */
 function columnasDelPrecio(p: PrecioPlan) {
-  if (p.tipo !== "monto") {
-    return { precioNegociable: p.tipo === "negociable", precioMensual: null, precioAnual: null, descuentoAnualPct: null };
-  }
+  if (p.tipo !== "monto") return { precioMensual: null, precioAnual: null, descuentoAnualPct: null };
   return {
-    precioNegociable: false,
     precioMensual: p.mensual,
     precioAnual: p.anual?.tipo === "fijo" ? p.anual.monto : null,
     descuentoAnualPct: p.anual?.tipo === "descuento" ? p.anual.porcentaje : null,
@@ -500,6 +501,45 @@ function pendienteDe(c: { vigenteDesde: Date; version: Prisma.JsonValue } | null
   return c === null ? null : { vigenteDesde: c.vigenteDesde, version: versionPlanSchema.parse(c.version) };
 }
 
+/** Crea el plan, sus topes y sus módulos, con su fila `creado` de `plan_rastro` (R1, R29), dentro de `tx`. */
+async function crearEnTx(tx: Tx, input: CrearPlanInput, actorUsuarioId: string): Promise<string> {
+  const { id } = await tx.plan.create({
+    data: {
+      nombre: input.nombre,
+      visibilidad: input.visibilidad,
+      organizacionExclusivaId: input.organizacionId,
+      topeOrdenesCiclo: input.topes.ordenesPorCiclo,
+      topeApiKeys: input.topes.apiKeys,
+      ...columnasDelPrecio(input.precio),
+      costoPorOrden: input.costoPorOrden,
+      topesPorRol: { create: filasDeTopes(input.topes) },
+      modulos: { create: input.modulos.map((modulo) => ({ modulo })) },
+    },
+    select: { id: true },
+  });
+  const creado: PlanDTO = {
+    id,
+    nombre: input.nombre,
+    visibilidad: input.visibilidad,
+    organizacionId: input.organizacionId,
+    topes: input.topes,
+    modulos: input.modulos,
+    precio: input.precio,
+    costoPorOrden: input.costoPorOrden,
+    archivado: false,
+  };
+  const actor = await resolverActorCongelado(tx, actorUsuarioId);
+  await escribirRastro(tx, creado, "creado", diferenciasDelPlan(null, creado), actorUsuarioId, actor);
+  return id;
+}
+
+/** Ajuste planes-custom (D2): revierte la transacción de `crearYAsignar` llevando el rechazo afuera. */
+class AsignacionRechazada extends Error {
+  constructor(readonly resultado: Exclude<ResultadoAsignar, { estado: "ok" }>) {
+    super(`crearYAsignar: la asignación se rechazó (${resultado.estado}); no se crea el plan`);
+  }
+}
+
 /* -------------------------------------------------------------------------- */
 /* El repositorio                                                              */
 /* -------------------------------------------------------------------------- */
@@ -525,36 +565,7 @@ export class PlanesRepository implements IPlanesRepository {
 
   crear(input: CrearPlanInput, actorUsuarioId: string): Promise<string> {
     return comoPlataforma("SL-24", "crear un plan del catálogo (superadmin)", () =>
-      this.prisma.$transaction(async (tx) => {
-        const { id } = await tx.plan.create({
-          data: {
-            nombre: input.nombre,
-            visibilidad: input.visibilidad,
-            organizacionExclusivaId: input.organizacionId,
-            topeOrdenesCiclo: input.topes.ordenesPorCiclo,
-            topeApiKeys: input.topes.apiKeys,
-            ...columnasDelPrecio(input.precio),
-            costoPorOrden: input.costoPorOrden,
-            topesPorRol: { create: filasDeTopes(input.topes) },
-            modulos: { create: input.modulos.map((modulo) => ({ modulo })) },
-          },
-          select: { id: true },
-        });
-        const creado: PlanDTO = {
-          id,
-          nombre: input.nombre,
-          visibilidad: input.visibilidad,
-          organizacionId: input.organizacionId,
-          topes: input.topes,
-          modulos: input.modulos,
-          precio: input.precio,
-          costoPorOrden: input.costoPorOrden,
-          archivado: false,
-        };
-        const actor = await resolverActorCongelado(tx, actorUsuarioId);
-        await escribirRastro(tx, creado, "creado", diferenciasDelPlan(null, creado), actorUsuarioId, actor);
-        return id;
-      }),
+      this.prisma.$transaction((tx) => crearEnTx(tx, input, actorUsuarioId)),
     );
   }
 
@@ -620,72 +631,116 @@ export class PlanesRepository implements IPlanesRepository {
     planId: string,
     actorUsuarioId: string,
     inicio?: InicioDelCicloElegido,
+    tipoCobro: TipoCobro = "mensual",
   ): Promise<ResultadoAsignar> {
     return comoPlataforma("SL-24", "asignar un plan a una empresa (superadmin)", () =>
-      this.prisma.$transaction(async (tx): Promise<ResultadoAsignar> => {
-        const [empresa] = await tx.$queryRaw<{ id: string; nombre: string; plan_id: string | null }[]>`
-          SELECT "id", "nombre", "plan_id" FROM "organizacion" WHERE "id" = ${organizacionId} FOR UPDATE`;
-        const bloqueado = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "plan" WHERE "id" = ${planId} FOR SHARE`;
-        if (empresa === undefined || bloqueado.length === 0) return { estado: "not_found" };
-        const plan = (await leerPlan(tx, planId)) as PlanDTO;
-        if (plan.archivado) return { estado: "archivado" };
-        if (plan.visibilidad === "custom" && plan.organizacionId !== organizacionId) {
-          return { estado: "custom_de_otra_empresa" };
-        }
-        // SLT-58 R31 (carrera): la fecha solo vale en la primera asignación. El servicio ya lo miró,
-        // pero otra petición pudo asignar un plan entre su lectura y este cerrojo.
-        if (inicio !== undefined && empresa.plan_id !== null) {
-          return { estado: "validation_error", fieldErrors: { inicioCiclo: [SOLO_PRIMERA_ASIGNACION] } };
-        }
-        // R13: el mismo plan no cambia nada ni registra nada.
-        if (empresa.plan_id === planId) return { estado: "ok", cambio: false };
-
-        // R12: bajar a un plan que la empresa ya pasa se rechaza sin escribir nada. SLT-58 (R36, R42;
-        // P7 y P14 cerradas): en la primera asignación CON fecha, el uso se cuenta con el ciclo que
-        // resulta de la fecha y ningún tope pasado rechaza: se asigna y se avisa. Los triggers ya
-        // bloquean desde aquí las altas que pasen el tope (SL-24 R16).
-        const excedidos = await excedidosDe(
-          tx,
-          [empresa],
-          plan.topes,
-          inicio === undefined ? undefined : cicloCandidato(inicio),
-        );
-        if (inicio === undefined && excedidos.length > 0) return { estado: "tope_excedido", excedidos };
-
-        // P2a: el ancla del primer plan se conserva; sin plan, nace ahora, en la escala de
-        // `orden.created_at` y de los triggers (`now()` de la base, no el reloj de Node), en UTC
-        // explícito: `now()::timestamp` sería la hora local de la sesión (decisión 2026-10-28).
-        if (inicio === undefined) {
-          await tx.$executeRaw`UPDATE "organizacion" SET "plan_id" = ${planId}, "plan_ciclo_ancla_at" = COALESCE("plan_ciclo_ancla_at", now() AT TIME ZONE 'UTC') WHERE "id" = ${organizacionId}`;
-        } else {
-          // SLT-58 (R32, R34): el ancla elegida («hoy» = ahora, P9) y, si es futura, el ciclo corto
-          // desde ahora, en una sola sentencia y con el mismo `now()` (el CHECK pide corto < ancla).
-          const ahora = Prisma.sql`(now() AT TIME ZONE 'UTC')`;
-          const elegida = inicio.ancla === "ahora" ? ahora : Prisma.sql`${comoTimestamp(inicio.ancla)}::timestamp`;
-          const ancla = Prisma.sql`COALESCE("plan_ciclo_ancla_at", ${elegida})`;
-          await tx.$executeRaw`UPDATE "organizacion" SET "plan_id" = ${planId}, "plan_ciclo_ancla_at" = ${ancla}, "plan_ciclo_corto_desde_at" = CASE WHEN ${ancla} > ${ahora} THEN ${ahora} END WHERE "id" = ${organizacionId}`;
-        }
-        const modulos = await sincronizarModulos(tx, organizacionId, plan.modulos);
-        const actor = await resolverActorCongelado(tx, actorUsuarioId);
-        // Una sola llamada: el `plan_asignado` y las filas de módulos comparten `lote_id` (§9).
-        await appendAccion(tx, [
-          {
-            accion: "plan_asignado",
-            entidadTipo: "plan",
-            entidadId: planId,
-            entidadEtiqueta: etiquetaDeEntidad("plan", { nombre: plan.nombre }),
-            valorAnterior: null,
-            // SLT-58 R39 (P12): la fecha elegida, `AAAA-MM-DD`; sin fecha, como SL-24.
-            valorNuevo: inicio?.fecha ?? null,
-            organizacionId,
-            ...actor,
-          },
-          ...modulos.map((e): EntradaAccion => ({ ...e, ...actor })),
-        ]);
-        // Sin fecha, la forma de SL-24 sin `avisos` (sus tests comparan el resultado entero).
-        return inicio === undefined ? { estado: "ok", cambio: true } : { estado: "ok", cambio: true, avisos: excedidos };
-      }),
+      this.prisma.$transaction((tx) => this.asignarEnTx(tx, organizacionId, planId, actorUsuarioId, inicio, tipoCobro)),
     );
+  }
+
+  crearYAsignar(
+    input: CrearPlanInput & { organizacionId: string },
+    actorUsuarioId: string,
+    asignacion: AsignacionAlCrear,
+  ): Promise<ResultadoCrearYAsignar> {
+    // Ajuste planes-custom (D2): crear el custom y asignarlo es UNA transacción. Cualquier rechazo de la
+    // asignación (topes, R31 bajo cerrojo…) la revierte entera: ni plan, ni rastro, ni historial.
+    return comoPlataforma("SL-24", "crear un plan custom y asignarlo a su empresa (superadmin)", async () => {
+      try {
+        return await this.prisma.$transaction(async (tx): Promise<ResultadoCrearYAsignar> => {
+          // La empresa primero (§4.4): el mismo orden que `asignar`, que la vuelve a pedir (ya es nuestra).
+          const empresa = await tx.$queryRaw<{ id: string }[]>`
+            SELECT "id" FROM "organizacion" WHERE "id" = ${input.organizacionId} FOR UPDATE`;
+          if (empresa.length === 0) return { estado: "not_found" };
+          const planId = await crearEnTx(tx, input, actorUsuarioId);
+          const r = await this.asignarEnTx(tx, input.organizacionId, planId, actorUsuarioId, asignacion.inicio, asignacion.tipoCobro);
+          if (r.estado !== "ok") throw new AsignacionRechazada(r);
+          return { estado: "ok", planId, avisos: r.avisos ?? [] };
+        });
+      } catch (e) {
+        if (e instanceof AsignacionRechazada) return e.resultado;
+        throw e;
+      }
+    });
+  }
+
+  /**
+   * Asigna o cambia el plan de una empresa (§5.2; R9–R13) dentro de `tx`. La comparten `asignar` y
+   * `crearYAsignar` (ajuste planes-custom D2): un rechazo devuelve su resultado sin haber escrito nada, y
+   * quien abrió la transacción decide si la confirma o la revierte. D6: el tipo de cobro se guarda junto al
+   * `plan_id` y queda en el `valor_nuevo` de la fila `plan_asignado`. Recibe la `tx` como primer parámetro:
+   * el `appendAccion` no puede caer fuera de la transacción de quien la abrió.
+   */
+  private async asignarEnTx(
+    tx: Tx,
+    organizacionId: string,
+    planId: string,
+    actorUsuarioId: string,
+    inicio: InicioDelCicloElegido | undefined,
+    tipoCobro: TipoCobro,
+  ): Promise<ResultadoAsignar> {
+    const [empresa] = await tx.$queryRaw<{ id: string; nombre: string; plan_id: string | null }[]>`
+      SELECT "id", "nombre", "plan_id" FROM "organizacion" WHERE "id" = ${organizacionId} FOR UPDATE`;
+    const bloqueado = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "plan" WHERE "id" = ${planId} FOR SHARE`;
+    if (empresa === undefined || bloqueado.length === 0) return { estado: "not_found" };
+    const plan = (await leerPlan(tx, planId)) as PlanDTO;
+    if (plan.archivado) return { estado: "archivado" };
+    if (plan.visibilidad === "custom" && plan.organizacionId !== organizacionId) {
+      return { estado: "custom_de_otra_empresa" };
+    }
+    // SLT-58 R31 (carrera): la fecha solo vale en la primera asignación. El servicio ya lo miró,
+    // pero otra petición pudo asignar un plan entre su lectura y este cerrojo.
+    if (inicio !== undefined && empresa.plan_id !== null) {
+      return { estado: "validation_error", fieldErrors: { inicioCiclo: [SOLO_PRIMERA_ASIGNACION] } };
+    }
+    // R13: el mismo plan no cambia nada ni registra nada.
+    if (empresa.plan_id === planId) return { estado: "ok", cambio: false };
+
+    // R12: bajar a un plan que la empresa ya pasa se rechaza sin escribir nada. SLT-58 (R36, R42;
+    // P7 y P14 cerradas): en la primera asignación CON fecha, el uso se cuenta con el ciclo que
+    // resulta de la fecha y ningún tope pasado rechaza: se asigna y se avisa. Los triggers ya
+    // bloquean desde aquí las altas que pasen el tope (SL-24 R16).
+    const excedidos = await excedidosDe(
+      tx,
+      [empresa],
+      plan.topes,
+      inicio === undefined ? undefined : cicloCandidato(inicio),
+    );
+    if (inicio === undefined && excedidos.length > 0) return { estado: "tope_excedido", excedidos };
+
+    // P2a: el ancla del primer plan se conserva; sin plan, nace ahora, en la escala de
+    // `orden.created_at` y de los triggers (`now()` de la base, no el reloj de Node), en UTC
+    // explícito: `now()::timestamp` sería la hora local de la sesión (decisión 2026-10-28).
+    if (inicio === undefined) {
+      await tx.$executeRaw`UPDATE "organizacion" SET "plan_id" = ${planId}, "plan_tipo_cobro" = ${tipoCobro}, "plan_ciclo_ancla_at" = COALESCE("plan_ciclo_ancla_at", now() AT TIME ZONE 'UTC') WHERE "id" = ${organizacionId}`;
+    } else {
+      // SLT-58 (R32, R34): el ancla elegida («hoy» = ahora, P9) y, si es futura, el ciclo corto
+      // desde ahora, en una sola sentencia y con el mismo `now()` (el CHECK pide corto < ancla).
+      const ahora = Prisma.sql`(now() AT TIME ZONE 'UTC')`;
+      const elegida = inicio.ancla === "ahora" ? ahora : Prisma.sql`${comoTimestamp(inicio.ancla)}::timestamp`;
+      const ancla = Prisma.sql`COALESCE("plan_ciclo_ancla_at", ${elegida})`;
+      await tx.$executeRaw`UPDATE "organizacion" SET "plan_id" = ${planId}, "plan_tipo_cobro" = ${tipoCobro}, "plan_ciclo_ancla_at" = ${ancla}, "plan_ciclo_corto_desde_at" = CASE WHEN ${ancla} > ${ahora} THEN ${ahora} END WHERE "id" = ${organizacionId}`;
+    }
+    const modulos = await sincronizarModulos(tx, organizacionId, plan.modulos);
+    const actor = await resolverActorCongelado(tx, actorUsuarioId);
+    // Una sola llamada: el `plan_asignado` y las filas de módulos comparten `lote_id` (§9).
+    await appendAccion(tx, [
+      {
+        accion: "plan_asignado",
+        entidadTipo: "plan",
+        entidadId: planId,
+        entidadEtiqueta: etiquetaDeEntidad("plan", { nombre: plan.nombre }),
+        valorAnterior: null,
+        // D6 (ajuste planes-custom): el tipo de cobro, precedido de la fecha elegida si la hubo
+        // (SLT-58 R39, P12): `anual` o `2026-11-01 · anual`.
+        valorNuevo: valorDelHistorialDeAsignacion(inicio?.fecha ?? null, tipoCobro),
+        organizacionId,
+        ...actor,
+      },
+      ...modulos.map((e): EntradaAccion => ({ ...e, ...actor })),
+    ]);
+    // Sin fecha, la forma de SL-24 sin `avisos` (sus tests comparan el resultado entero).
+    return inicio === undefined ? { estado: "ok", cambio: true } : { estado: "ok", cambio: true, avisos: excedidos };
   }
 
   vistaPreviaAsignacion(
@@ -1020,6 +1075,7 @@ export class PlanesRepository implements IPlanesRepository {
           select: {
             planCicloAnclaAt: true,
             planCicloCortoDesdeAt: true,
+            planTipoCobro: true,
             plan: {
               include: { ...INCLUIR, cambioProgramado: { select: { vigenteDesde: true, version: true } } },
             },
@@ -1075,6 +1131,8 @@ export class PlanesRepository implements IPlanesRepository {
             },
             cambio: pendienteDe(plan.cambioProgramado),
             costoVigente,
+            // El CHECK de 20261031150000 deja solo `mensual` | `anual`.
+            tipoCobro: tipoCobroSchema.parse(empresa.planTipoCobro),
           },
           asignaciones: lista,
         };

@@ -31,7 +31,9 @@ async function conServicio<T>(deps: PlanesDeps, fn: (s: IPlanesService, actor: A
 }
 
 /**
- * Crea un plan público o custom (R1–R3).
+ * Crea un plan público o custom (R1–R3). Ajuste planes-custom (D2, D4, D6): un custom se asigna a su
+ * empresa en la misma operación, con `tipoCobro` obligatorio e `inicioCiclo` opcional (solo si la empresa
+ * no tiene plan). Si la asignación se rechaza, no se crea nada y vuelve el rechazo de `asignarPlanAction`.
  */
 export async function crearPlanAction(input: unknown, deps: PlanesDeps = {}): Promise<PlanResult> {
   return conServicio(deps, (s, actor) => s.crear(actor, input));
@@ -53,7 +55,8 @@ export async function archivarPlanAction(input: unknown, deps: PlanesDeps = {}):
 
 /**
  * Asigna o cambia el plan de una empresa (R9–R13). SLT-58: `inicioCiclo` (`AAAA-MM-DD`) opcional, solo
- * en la primera asignación (R29–R31); los topes ya pasados vuelven en `avisos` (R36, R42).
+ * en la primera asignación (R29–R31); los topes ya pasados vuelven en `avisos` (R36, R42). Ajuste
+ * planes-custom (D6): `tipoCobro` (`mensual` | `anual`) obligatorio.
  */
 export async function asignarPlanAction(input: unknown, deps: PlanesDeps = {}): Promise<PlanResult> {
   return conServicio(deps, (s, actor) => s.asignar(actor, input));

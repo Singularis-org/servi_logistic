@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import type { IMiPlanRepository, PlanDeLaEmpresaLeido } from "@/lib/interfaces/repositories/IMiPlanRepository";
 import { ORDEN_MODULOS } from "@/lib/modulos/catalogo";
-import { type PrecioPlan, type RolConTope, type TopesPlan, versionPlanSchema } from "@/lib/types/planes";
+import { type PrecioPlan, type RolConTope, type TopesPlan, tipoCobroSchema, versionPlanSchema } from "@/lib/types/planes";
 
 // SLT-58 (design §2, §3.1) — «Mi plan» lee por `plan_de_la_empresa`, la segunda y última función que
 // `servi_app` puede ejecutar: las tablas `plan*` siguen cerradas a la app (R9).
@@ -38,7 +38,6 @@ const ROL_DE_LA_ETIQUETA: Readonly<Record<string, RolConTope>> = {
 
 export const planDeLaEmpresaFilaSchema = z.object({
   nombre: z.string(),
-  precio_negociable: z.boolean(),
   precio_mensual: importe,
   precio_anual: importe,
   descuento_anual_pct: importe,
@@ -48,6 +47,8 @@ export const planDeLaEmpresaFilaSchema = z.object({
     monto: z.string(),
     fuente: z.enum(["empresa", "plan", "global", "sin_configurar"]),
   }),
+  // Ajuste planes-custom (D6): `organizacion.plan_tipo_cobro` (20261031150000).
+  tipo_cobro: tipoCobroSchema,
   tope_ordenes_ciclo: conteo.nullable(),
   tope_api_keys: conteo.nullable(),
   topes_rol: z.array(z.object({ rol: z.string(), maximo: conteo })),
@@ -68,9 +69,8 @@ export const planDeLaEmpresaFilaSchema = z.object({
 
 type FilaPlanDeLaEmpresa = z.infer<typeof planDeLaEmpresaFilaSchema>;
 
-/** Las mismas cinco formas que `precioDe` de `PlanesRepository` (CHECK `plan_precio_forma`). */
+/** Las mismas formas que `precioDe` de `PlanesRepository` (CHECK `plan_precio_forma`; D1: sin «negociable»). */
 function precioDe(f: FilaPlanDeLaEmpresa): PrecioPlan {
-  if (f.precio_negociable) return { tipo: "negociable" };
   if (f.precio_mensual === null) return { tipo: "sin_precio" };
   const anual =
     f.precio_anual !== null
@@ -110,6 +110,7 @@ function aLeido(f: FilaPlanDeLaEmpresa): PlanDeLaEmpresaLeido {
     uso: { ordenes: f.uso.ordenes, apiKeys: f.uso.api_keys, porRol },
     cambio: f.cambio === null ? null : { vigenteDesde: f.cambio.vigente_desde, version: f.cambio.version },
     costoVigente: f.costo_vigente,
+    tipoCobro: f.tipo_cobro,
   };
 }
 

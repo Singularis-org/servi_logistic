@@ -11,7 +11,6 @@ const TOPES = { ordenesPorCiclo: 100, porRol: { admin: 2 }, apiKeys: 2 };
 
 const BASES = [
   { tipo: "sin_precio" },
-  { tipo: "negociable" },
   { tipo: "monto", mensual: "50000.00", anual: { tipo: "descuento", porcentaje: "10" } },
 ] as const;
 
@@ -34,7 +33,7 @@ function editar(extra: Record<string, unknown> = {}) {
     nombre: "Básico",
     topes: TOPES,
     modulos: [],
-    precio: { tipo: "negociable" },
+    precio: { tipo: "sin_precio" },
     costoPorOrden: null,
     vigenteDesde: null,
     ...extra,

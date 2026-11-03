@@ -104,6 +104,8 @@ function planDeEmpresaLeida(): PlanDeEmpresaLeida {
       cambio: { vigenteDesde: RIGE, version: PENDIENTE },
       // SLT-66 R18: la lectura trae el costo vigente (el plan no fija costo por orden: el global).
       costoVigente: { monto: "500.00", fuente: "global" },
+      // Ajuste planes-custom (D6): la empresa paga en anual.
+      tipoCobro: "anual",
     },
     asignaciones: [
       { creadoAt: new Date("2026-10-02T09:00:00.000Z"), actorNombre: "Ana Pérez", planNombre: "Plan «Básico»" },
@@ -123,6 +125,7 @@ function doble() {
     editar: vi.fn<IPlanesRepository["editar"]>(async () => ({ estado: "not_found" })),
     archivar: vi.fn<IPlanesRepository["archivar"]>(async () => ({ estado: "not_found" })),
     asignar: vi.fn<IPlanesRepository["asignar"]>(async () => ({ estado: "not_found" })),
+    crearYAsignar: vi.fn<IPlanesRepository["crearYAsignar"]>(async () => ({ estado: "not_found" })),
     cancelarCambio: vi.fn<IPlanesRepository["cancelarCambio"]>(async () => ({ estado: "not_found" })),
     programarCambio: vi.fn<IPlanesRepository["programarCambio"]>(async () => ({ estado: "not_found" })),
     aplicarCambioProgramado: vi.fn<IPlanesRepository["aplicarCambioProgramado"]>(async () => ({ estado: "sin_pendiente" })),
@@ -254,6 +257,13 @@ describe("SLT-58 — plan de una empresa (R19)", () => {
     // Del 2026-10-28 12:00 al 2026-11-15 12:00 UTC: 18 días; la fecha, en la hora de la plataforma.
     expect(p.reinicio).toEqual({ dias: 18, fecha: "2026-11-15" });
     expect(p.cambioPendiente).toEqual({ vigenteDesde: "2026-11-15", lineas: ["Órdenes por ciclo: 100 → 200"] });
+  });
+
+  it("D9 (ajuste planes-custom): el detalle trae el tipo de cobro, el monto del período y el siguiente cobro", async () => {
+    const r = await servicio.planDeEmpresa(SUPERADMIN, { organizacionId: EMPRESA });
+    if (r.estado !== "ok" || r.vista.plan === null) throw new Error("se esperaba un plan");
+    // Anual sin anual en el plan: 25000.00 × 12. Ancla el 2026-09-15: el aniversario anual es el 2027-09-15.
+    expect(r.vista.plan.cobro).toEqual({ tipo: "anual", montoPeriodo: "300000.00", siguienteCobro: "2027-09-15" });
   });
 
   it("R19: sin plan, plan es null (la pantalla dice «Sin plan: sin límites»)", async () => {

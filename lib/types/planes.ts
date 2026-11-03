@@ -18,9 +18,10 @@ import type { CambioPendienteVista, PlanConConsumo } from "@/lib/types/consumo-p
 export const ROLES_CON_TOPE = ["admin", "mensajero", "adminTienda", "adminSatelite"] as const;
 export type RolConTope = (typeof ROLES_CON_TOPE)[number];
 
+// Ajuste planes-custom (D1, 2026-10-31): sin la forma «negociable». Un custom con costo negociado usa
+// «monto»; la migración 20261031150000 pasó los negociables a «sin precio».
 export type PrecioPlan =
   | { tipo: "sin_precio" }
-  | { tipo: "negociable" }
   | {
       tipo: "monto";
       mensual: string;
@@ -49,8 +50,8 @@ const porcentajeSchema = z
     return centesimas > 0 && centesimas <= 10_000;
   });
 
-// Cada forma es `.strict()`: una clave de otra forma es una combinación prohibida (R3): «negociable»
-// con un monto, un anual fijo con porcentaje, o un anual sin mensual.
+// Cada forma es `.strict()`: una clave de otra forma es una combinación prohibida (R3): «sin precio»
+// con un monto, un anual fijo con porcentaje, o un anual sin mensual. D1: «negociable» ya no existe.
 const anualSchema = z.union([
   z.null(),
   z.object({ tipo: z.literal("fijo"), monto: montoCobroSchema }).strict(),
@@ -59,7 +60,6 @@ const anualSchema = z.union([
 
 export const precioPlanSchema = z.discriminatedUnion("tipo", [
   z.object({ tipo: z.literal("sin_precio") }).strict(),
-  z.object({ tipo: z.literal("negociable") }).strict(),
   z.object({ tipo: z.literal("monto"), mensual: montoCobroSchema, anual: anualSchema }).strict(),
 ]);
 
@@ -88,6 +88,14 @@ const fechaSchema = z
     return f.getUTCFullYear() === a && f.getUTCMonth() === m - 1 && f.getUTCDate() === d;
   });
 
+/**
+ * Ajuste planes-custom (D6, 2026-10-31): cómo paga la empresa el plan que se le asigna. Se elige en
+ * cada asignación y se guarda en `organizacion.plan_tipo_cobro`.
+ */
+export const TIPOS_COBRO = ["mensual", "anual"] as const;
+export type TipoCobro = (typeof TIPOS_COBRO)[number];
+export const tipoCobroSchema = z.enum(TIPOS_COBRO);
+
 export const crearPlanSchema = z
   .object({
     nombre: nombreSchema,
@@ -99,12 +107,25 @@ export const crearPlanSchema = z
     // SLT-66 (R7, R8): obligatorio y `null` para vacío, para que un formulario que no lo mande dé
     // validation_error en vez de borrarlo sin avisar.
     costoPorOrden: montoCobroSchema.nullable(),
+    // Ajuste planes-custom (D2, D4, D6): un custom se asigna a su empresa al crearlo. `tipoCobro` es
+    // obligatorio en un custom y no va en un público; `inicioCiclo` solo en un custom, y solo si la
+    // empresa no tiene plan (eso y el rango los mira el servicio, como en `asignarPlanSchema`).
+    tipoCobro: tipoCobroSchema.optional(),
+    inicioCiclo: fechaSchema.optional(),
   })
   .strict()
   // R2: un custom nombra exactamente una empresa y un público ninguna. Que exista lo mira el servicio.
   .refine((p) => (p.visibilidad === "custom") === (p.organizacionId !== null), {
     path: ["organizacionId"],
     error: "Un plan custom nombra una empresa y uno público ninguna.",
+  })
+  .refine((p) => (p.organizacionId !== null) === (p.tipoCobro !== undefined), {
+    path: ["tipoCobro"],
+    error: "Elige el tipo de cobro de la empresa; un plan público no lo lleva.",
+  })
+  .refine((p) => p.organizacionId !== null || p.inicioCiclo === undefined, {
+    path: ["inicioCiclo"],
+    error: "Un plan público no se asigna al crearlo: no lleva inicio del ciclo.",
   });
 
 // `.strict()`: traer `visibilidad` u `organizacionId` en una edición es validation_error (R2).
@@ -134,8 +155,9 @@ export const cancelarCambioPlanSchema = planIdSchema;
 // SLT-58 (design §11.4; R29): `inicioCiclo` es la fecha de inicio del ciclo de órdenes que elige el
 // superadmin en la primera asignación. Ausente = SL-24 tal cual (el ancla es el instante de asignar).
 // El rango (R30) y «solo en la primera asignación» (R31) los mira el servicio, que tiene el reloj.
+// Ajuste planes-custom (D6): `tipoCobro` obligatorio, en la primera asignación y en un cambio.
 export const asignarPlanSchema = z
-  .object({ organizacionId: z.uuid(), planId: z.uuid(), inicioCiclo: fechaSchema.optional() })
+  .object({ organizacionId: z.uuid(), planId: z.uuid(), inicioCiclo: fechaSchema.optional(), tipoCobro: tipoCobroSchema })
   .strict();
 /** SLT-58 (R37): la vista previa del modal de primera asignación; la fecha es obligatoria. */
 export const previsualizarAsignacionSchema = z

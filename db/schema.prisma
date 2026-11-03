@@ -5472,6 +5472,12 @@ model Organizacion {
   // Lo lee `plan_inicio_ciclo_en_curso`; solo lo escribe el superadmin, como el ancla.
   planCicloCortoDesdeAt DateTime? @map("plan_ciclo_corto_desde_at") @db.Timestamp(3)
 
+  // Ajuste planes-custom (D6, 2026-10-31): cómo paga la empresa su plan, `mensual` o `anual`. Se elige
+  // en cada asignación y lo escribe solo el superadmin, junto al `plan_id`. El
+  // `CHECK ("plan_tipo_cobro" IN ('mensual', 'anual'))` vive solo en el SQL de 20261031150000. Sin plan
+  // conserva el último valor y no se lee. La empresa lo ve por `plan_de_la_empresa`.
+  planTipoCobro String @default("mensual") @map("plan_tipo_cobro")
+
   // SL-20 (design §2.2): el país de la empresa, fijado en el alta. No cambia nunca: lo impide el
   // trigger `organizacion_pais_inmutable` (SQLSTATE SL020, R7). El `DEFAULT 'CR'` es solo para los
   // tests y el SQL a mano (R10); el alta de la app lo exige por zod (R6).
@@ -5637,8 +5643,8 @@ enum PlanRastroAccion {
 // `organizacion_exclusiva_id`, que no aísla nada: dice de quién es el plan). Los topes `NULL` son «sin
 // tope». No se borra: se archiva (R6). Viven solo en el SQL de 20261028130000, porque Prisma no los
 // expresa:
-//   · los CHECK `plan_nombre_check`, `plan_custom_con_empresa`, `plan_precio_forma` (las cinco formas
-//     del precio, R3) y los de rango de topes, montos y porcentaje;
+//   · los CHECK `plan_nombre_check`, `plan_custom_con_empresa`, `plan_precio_forma` (las formas del
+//     precio, R3; sin «negociable» desde 20261031150000) y los de rango de topes, montos y porcentaje;
 //   · la RLS sin políticas y el `REVOKE ALL … FROM servi_app` (R8).
 // CASCADE con la empresa del custom: un custom no tiene sentido sin ella (design §2.1).
 model Plan {
@@ -5649,7 +5655,6 @@ model Plan {
   organizacionExclusiva   Organizacion?   @relation("PlanExclusivo", fields: [organizacionExclusivaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   topeOrdenesCiclo        Int?            @map("tope_ordenes_ciclo")
   topeApiKeys             Int?            @map("tope_api_keys")
-  precioNegociable        Boolean         @default(false) @map("precio_negociable")
   precioMensual           Decimal?        @map("precio_mensual") @db.Decimal(12, 2)
   precioAnual             Decimal?        @map("precio_anual") @db.Decimal(12, 2)
   descuentoAnualPct       Decimal?        @map("descuento_anual_pct") @db.Decimal(5, 2)

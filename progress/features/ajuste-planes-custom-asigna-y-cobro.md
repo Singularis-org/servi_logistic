@@ -1,0 +1,54 @@
+# Ajuste de planes: custom se asigna al crear, tipo de cobro, sin «negociable»
+
+**Fecha:** 2026-10-31 · **Rama:** `ajuste/planes-custom-asigna-y-cobro` (worktree `.worktrees/ajuste-planes-custom`)
+**Modo:** ajuste SIN SDD, por decisión expresa del humano (como el ajuste de núcleo de SL-23).
+Toca comportamiento de SL-24, SLT-58 y SLT-66. No hay spec nuevo: este archivo es el encargo.
+
+## Problema reportado
+Al crear un plan custom y elegir una empresa, la lista de empresas sigue diciendo «Sin plan · Asignar
+plan». Causa: crear (SL-24 R1) solo guarda el plan con `plan.organizacion_id`; nunca toca
+`organizacion.plan_id`. La asignación es otro paso (`PlanesRepository.asignar`).
+
+## Decisiones del humano (cerradas 2026-10-31)
+- **D1 — Quitar «negociable».** `PrecioPlan` queda en `sin_precio` | `monto`. Se quita del
+  formulario, del schema zod, de mensajes, repositorios y tests. Migración NUEVA (no editar las
+  mergeadas): convierte los planes `precio_negociable = true` a «sin precio», borra la columna
+  `precio_negociable` (o la deja sin uso si borrarla rompe algo; justificar) y ajusta el CHECK
+  `plan_precio_forma`, con su `down.sql`. Un custom con costo negociado usa la forma «monto».
+- **D2 — Un custom con empresa se asigna al crearlo.** Crear el plan y asignarlo es UNA sola
+  operación atómica. Si la asignación no se puede hacer (sin costo concreto, R28 `plan_sin_costo`;
+  `tope_excedido`; cualquier otro rechazo de `asignar`), NO se crea nada.
+- **D3 — El formulario no se cierra ante ese rechazo.** El motivo se muestra en el formulario, junto
+  al campo cuando aplique, y conserva lo escrito para corregirlo (patrón SLT-58 R18).
+- **D4 — Inicio del ciclo en el form del custom.** Si la empresa NO tiene plan, el formulario
+  muestra «Inicio del ciclo» (el mismo `inicioCiclo` de SLT-58). Si ya tiene plan, el campo no
+  aparece y se conserva el ancla, como en un cambio de plan.
+- **D5 — Por defecto, la fecha de inicio es MAÑANA** (hora de la plataforma). Vale para el form del
+  custom y para el modal de primera asignación existente.
+- **D6 — Tipo de cobro al asignar: `mensual` | `anual`.** Se elige en cada asignación (modal de
+  asignación, primera y cambio, y form del custom con empresa). Se guarda en la empresa, junto al
+  `plan_id`, con migración nueva; default `mensual` para filas existentes. Se registra en el
+  historial y rastro de la asignación, como el resto de la asignación.
+- **D7 — «Anual» se puede elegir siempre.** Monto del período anual: el anual fijo; si es descuento,
+  mensual × 12 × (1 − %); si el plan no tiene anual, mensual × 12. Decimal exacto, dos decimales,
+  sin coma flotante (patrón SLT-66 R19).
+- **D8 — Siguiente cobro.** Mensual: ancla + n meses (el siguiente aniversario mensual ≥ hoy).
+  Anual: ancla + n años. Solo informativo: NO escribe en `wallet_movimiento` ni en
+  `cobro_plataforma_movimiento` (SL-24 D4, SLT-66 R21).
+- **D9 — Dónde se muestra.** «Mi plan» y el detalle de empresa del superadmin muestran el tipo de
+  cobro, el monto del período (D7) y la fecha del siguiente cobro. La lista de empresas muestra
+  solo el tipo junto al plan. El costo por orden y el total estimado del ciclo de SLT-66 no cambian.
+
+## Restricciones
+- `servi_app` sigue sin acceso a `plan*`; la empresa lee por `plan_de_la_empresa` (SLT-66 R22). Si
+  hay que exponer el tipo de cobro, va por esa lectura acotada.
+- Solo superadmin escribe (`forbidden` sin llamar al repo, SL-24 R5).
+- Las migraciones van con timestamp posterior a la última de `dev`.
+- Ninguna dependencia nueva.
+- No commitear `pnpm-lock.yaml` salvo que el cambio lo requiera (no debería).
+
+## Estado
+- [ ] implementación (implementer → backend_dev + frontend_dev)
+- [ ] tests actualizados y nuevos (D1–D9)
+- [ ] gate local (typecheck + guardias como mínimo; ver memoria: el completo corre en CI)
+- [ ] PR a `dev`

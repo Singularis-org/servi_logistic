@@ -48,7 +48,7 @@ const VERSION = {
   nombre: "Básico",
   topes: { ordenesPorCiclo: 100, porRol: { admin: 2 }, apiKeys: null },
   modulos: [],
-  precio: { tipo: "negociable" },
+  precio: { tipo: "sin_precio" }, // D1 (ajuste planes-custom): «negociable» ya no existe.
   costoPorOrden: "150.50",
 };
 
@@ -60,6 +60,7 @@ function doble() {
     editar: vi.fn<IPlanesRepository["editar"]>(async () => ({ estado: "ok", cambio: true, avisos: [] })),
     archivar: vi.fn<IPlanesRepository["archivar"]>(),
     asignar: vi.fn<IPlanesRepository["asignar"]>(),
+    crearYAsignar: vi.fn<IPlanesRepository["crearYAsignar"]>(),
     cancelarCambio: vi.fn<IPlanesRepository["cancelarCambio"]>(),
     programarCambio: vi.fn<IPlanesRepository["programarCambio"]>(async () => ({
       estado: "ok",
