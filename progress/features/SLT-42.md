@@ -2,16 +2,17 @@
 
 | key | nombre | zone | complexity | rama | assignee | estado |
 |---|---|---|---|---|---|---|
-| SLT-42 | telefono-documento-hora-por-pais | fullstack | high | feature/SLT-42-telefono-documento-hora-por-pais | Camilo (6ace53aa94bfd46ee6a600a5) | pending |
+| SLT-42 | telefono-documento-hora-por-pais | backend | high | feature/SLT-42-telefono-documento-hora-por-pais | Camilo (6ace53aa94bfd46ee6a600a5) | pending |
 
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
 F1.0 cerrado (2026-11-03): tarjeta asignada, rama publicada (fb250fc2), worktree creado.
-Siguiente: `/afinar-feature SLT-42` y después spec (F1.2). Sin spec todavía.
+`/afinar-feature` cerrado (2026-11-03): `requirements.md` sembrado. Zona pasa a `backend`; la
+pantalla del superadmin y los formularios salen a SLT-81. Siguiente: spec_author (F1.2).
 
 ## Evaluación
-- zone `fullstack`: catálogo por país en DB (migración, seed) + validación y formato en UI.
+- zone `backend` (era `fullstack`; la UI salió a SLT-81 el 2026-11-03): catálogo por país, migración, validación en servidor, hora.
 - complexity `high`: toca unos 80 archivos (teléfono ~12, documento ~43, zona horaria ~47 con tests),
   incluye jobs/cron y cortes de día; posible dependencia nueva (libphonenumber).
 - Cupo fullstack: 0 en vuelo antes de tomarla (en vuelo: SL-33 frontend, SLT-43/44/65 backend).
@@ -25,8 +26,12 @@ Siguiente: `/afinar-feature SLT-42` y después spec (F1.2). Sin spec todavía.
   documento y zona horaria salen de **catálogos por país**; se siembra solo CR y se agregan filas
   cuando entre un país nuevo.
 
+- 2026-11-03 (/afinar-feature): ver tabla de decisiones en `specs/SLT-42-*/requirements.md`.
+  libphonenumber entra ahora; documento único por empresa y tipo; 5 tipos de CR; ficha partida
+  en SLT-81 (frontend, bloqueada por SLT-42 y SLT-46).
+
 ## Preguntas abiertas
-- Con solo CR, ¿entra libphonenumber ahora o se pospone? (humano, en /afinar-feature)
+Las del `requirements.md` (normalizar teléfonos guardados, jobs por zona horaria, largos de documento).
 
 ## Tandas
 
