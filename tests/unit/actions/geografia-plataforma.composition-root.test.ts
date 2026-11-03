@@ -16,7 +16,15 @@ const provinciaFindMany = vi.fn<(args: { where: Record<string, unknown> }) => Pr
 // SLT-44 (design §10, «cambian de entrada, no de salida»): el arbol del superadmin sale del catalogo
 // del pais (`nodo_geografico`), no de `provincia.findMany`. El aserto del `where` por pais mira ahora
 // esa consulta; la salida (un pais sin nodos -> arbol vacio) no cambia.
-const nodoGeograficoFindMany = vi.fn<(args: { where: Record<string, unknown> }) => Promise<never[]>>(async () => []);
+const nodoGeograficoFindMany = vi.fn<(args: { where: Record<string, unknown> }) => Promise<unknown[]>>(async () => []);
+// SLT-65 (design §5, R9–R12): el conteo ya no cuenta por la columna del nivel. Lee el nodo pedido
+// (`findUnique`, para su pais y su profundidad), carga el catalogo de ESE pais (`dePais`, los dos
+// `findMany` de arriba) y cuenta `lugar ∈ {nodo} ∪ nodosBajo`. El mock de SL-20 solo tenia
+// `orden.count`: el conteo lanzaba `TypeError: findUnique is not a function` y la action devolvia
+// `error`. Por defecto el nodo no existe (-> 0 sin consultar); el caso R31 lo prepara.
+const nodoGeograficoFindUnique = vi.fn<
+  (args: { where: { id: string } }) => Promise<{ paisId: string; profundidad: number } | null>
+>(async () => null);
 const tipoNivelFindMany = vi.fn<(args: { where: Record<string, unknown> }) => Promise<never[]>>(async () => []);
 const paisFindMany = vi.fn(async () => []);
 const paisFindUnique = vi.fn<(args: { where: { id: string } }) => Promise<{ nombre: string } | null>>(async () => null);
@@ -33,7 +41,7 @@ const cliente = {
   historialPlataforma: { createMany: historialCreateMany },
   usuario: { findUnique: usuarioFindUnique },
   organizacion: {},
-  nodoGeografico: { findMany: nodoGeograficoFindMany },
+  nodoGeografico: { findMany: nodoGeograficoFindMany, findUnique: nodoGeograficoFindUnique },
   tipoNivelGeografico: { findMany: tipoNivelFindMany },
   $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(cliente)),
 };
@@ -52,10 +60,26 @@ beforeEach(() => {
 
 describe("SL-20 — cada action del superadmin, sin servicio inyectado, llega al cliente real", () => {
   it("R31: el conteo usa el repositorio de órdenes (el SEGUNDO argumento del root)", async () => {
+    // El canton c-1 (profundidad 2) de CR, con un distrito d-1 debajo.
+    nodoGeograficoFindUnique.mockResolvedValueOnce({ paisId: "CR", profundidad: 2 });
+    const nodo = { tipoId: "t", nombreNormalizado: "", codigoOficial: null };
+    nodoGeograficoFindMany.mockResolvedValueOnce([
+      { ...nodo, id: "p-1", padreId: null, profundidad: 1, nombre: "P" },
+      { ...nodo, id: "c-1", padreId: "p-1", profundidad: 2, nombre: "C" },
+      { ...nodo, id: "d-1", padreId: "c-1", profundidad: 3, nombre: "D" },
+    ]);
+
     const r = await acciones.contarOrdenesSinEntregarAction({ nivel: "canton", id: "c-1" }, deps);
     expect(r).toEqual({ status: "ok", ordenes: 7 });
+    expect(nodoGeograficoFindUnique.mock.calls[0][0].where).toEqual({ id: "c-1" });
+    expect(nodoGeograficoFindMany.mock.calls[0][0].where).toEqual({ paisId: "CR" });
     expect(ordenCount).toHaveBeenCalledTimes(1);
-    expect(ordenCount.mock.calls[0][0].where).toMatchObject({ cantonId: "c-1", deletedAt: null });
+    // SLT-65 (design §5, `whereLugarEn`): el `cantonId` del canton pedido sigue en el `where`, ahora
+    // como lugar ∈ {c-1} ∪ nodosBajo(c-1), con el distrito incluido.
+    expect(ordenCount.mock.calls[0][0].where).toMatchObject({
+      OR: [{ distritoId: { in: ["c-1", "d-1"] } }, { distritoId: null, cantonId: { in: ["c-1", "d-1"] } }],
+      deletedAt: null,
+    });
   });
 
   it("el árbol de un país lee las provincias de ESE país", async () => {
