@@ -7,7 +7,7 @@
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F2.1 (2026-11-03): T0-T4 hechas; spec enmendado y aprobado. Siguiente: T4.5-T4.8, luego T5. Detalle en `progress/impl_SLT-52.md`.
+F2.1 (2026-11-03): T0-T4 hechas; spec enmendado y aprobado. T4.5-T4.8 hechas. Siguiente: T5 → T6 → T7 → reviewer. Detalle en `progress/impl_SLT-52.md`.
 Ojo: `prisma generate` ya conoce las tablas de T1; una base sin sus migraciones falla en `cierreDetail.create`.
 
 ## Evaluación
@@ -49,6 +49,7 @@ Ninguna.
 - 2026-11-02 · T4 (funciones públicas y superficies: listado, API, cotización, rechazo) · b7e22911 · gate ROJO
   por feature_list local (SLT-62 seguía in_progress) → corregido → VERDE. Queda soloModeloViejo solo en
   CierreDiaRepository:1352 (T5.2). Firmas dobles a estrechar en T5.
+- 2026-11-03 · T4.5-T4.8 (IVA del fulfillment, `rechazo_tienda_cobro.tarifa_valor_id` + 2 migraciones, R51, `ivaFulfillment` en la API) · f6efb67e · gate VERDE. 5 mutaciones en rojo. `costoReal.ivaFulfillment` = "0.00" hasta T5.3.
 
 ## Modelos (overrides)
 
