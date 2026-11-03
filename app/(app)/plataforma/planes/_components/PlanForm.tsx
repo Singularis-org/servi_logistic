@@ -80,6 +80,8 @@ export const TEXTOS_PLAN_FORM = {
   revisa: "Revisa los campos marcados.",
   /** Ajuste planes-custom (D13): el mismo texto que el modal de primera asignación (SLT-58 P11). */
   vistaPreviaNoCargo: "No se pudo comprobar el consumo de la empresa",
+  /** Ajuste planes-custom (D17): el mismo texto que el modal de primera asignación (SLT-58 P11). */
+  reintentar: "Reintentar",
 } as const;
 
 /**
@@ -388,6 +390,17 @@ export function PlanForm(props: PlanFormProps) {
   }, [clavePrevia, leerVistaPrevia]);
 
   const vistaPreviaVigente = vistaPrevia !== null && vistaPrevia.clave === clavePrevia ? vistaPrevia : null;
+  /**
+   * D17 (como el modal, SLT-58 P11): sin la vista previa de esta entrada no se crea. Mientras se lee o si
+   * falló, «Crear plan» queda deshabilitado; si falló, el aviso ofrece «Reintentar».
+   */
+  const creacionBloqueada = vistaPreviaVigente?.fase === "cargando" || vistaPreviaVigente?.fase === "fallo";
+
+  /** D17: relee la vista previa de la entrada vigente (botón «Reintentar»). */
+  function reintentarVistaPrevia() {
+    if (entradaPrevia === null || clavePrevia === null) return;
+    void leerVistaPrevia(entradaPrevia, clavePrevia);
+  }
 
   /**
    * D12: el día del siguiente ciclo para los avisos del `ok` de un custom con fecha. Se reutiliza la
@@ -470,7 +483,7 @@ export function PlanForm(props: PlanFormProps) {
 
   async function guardar(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (enVuelo.current) return;
+    if (enVuelo.current || creacionBloqueada) return;
     setErrores({});
     setRechazo(null);
 
@@ -486,6 +499,13 @@ export function PlanForm(props: PlanFormProps) {
     let siguienteCiclo: string | null = null;
     try {
       siguienteCiclo = await siguienteCicloParaGuardar();
+      // D17: si la vista previa que se leyó al guardar (en la pausa) no cargó, no se crea: el aviso con
+      // «Reintentar» ya está en pantalla.
+      if (entradaPrevia !== null && siguienteCiclo === null) {
+        enVuelo.current = false;
+        setEnviando(false);
+        return;
+      }
       r = await p.llamar();
     } catch (error) {
       // Un fallo de red o del servidor no da el cambio por hecho (R18): se avisa y el formulario sigue.
@@ -745,7 +765,8 @@ export function PlanForm(props: PlanFormProps) {
               />
             </FormField>
           ) : null}
-          {/* D13: la vista previa de SLT-58 R37 con los topes del formulario; no impide guardar. */}
+          {/* D13: la vista previa de SLT-58 R37 con los topes del formulario. D17: si no carga, bloquea
+              «Crear plan» y ofrece «Reintentar», como el modal de primera asignación (P11). */}
           {pideInicioCiclo ? (
             <div aria-live="polite" aria-busy={vistaPreviaVigente?.fase === "cargando"}>
               {vistaPreviaVigente?.fase === "ok" && vistaPreviaVigente.avisos.length > 0 ? (
@@ -759,6 +780,9 @@ export function PlanForm(props: PlanFormProps) {
                     {(vistaPreviaVigente.motivo ?? []).map((m) => (
                       <p key={m}>{m}</p>
                     ))}
+                    <Button type="button" variant="outline" size="sm" className="mt-2" onClick={reintentarVistaPrevia}>
+                      {TEXTOS_PLAN_FORM.reintentar}
+                    </Button>
                   </AlertDescription>
                 </Alert>
               ) : null}
@@ -811,7 +835,7 @@ export function PlanForm(props: PlanFormProps) {
       {/* Pie fijo al fondo del panel: en móvil no hay que bajar todo el formulario para enviar. El margen
           negativo cubre el `px-4 pb-4` del contenedor del `Sheet` para que el fondo tape lo que pasa debajo. */}
       <div className="sticky bottom-0 -mx-4 -mb-4 border-t border-border bg-popover px-4 py-4">
-        <Button type="submit" loading={enviando}>
+        <Button type="submit" loading={enviando} disabled={creacionBloqueada}>
           {textoEnviar}
         </Button>
       </div>
