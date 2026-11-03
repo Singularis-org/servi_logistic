@@ -124,11 +124,17 @@
 
   **Hecho:** cada R1–R28 tiene una fila.
 - [ ] **T8.2** `./init.sh` en verde. **Hecho:** la salida está en `progress/impl_SLT-65.md`.
-- [ ] **T8.3** Puerta humana, sin agente. Una persona corre `pnpm geo:equivalencia-consultas` y
+- [x] **T8.3** Puerta humana, sin agente. Una persona corre `pnpm geo:equivalencia-consultas` y
   `pnpm geo:explain-consultas` sobre la **copia** de producción con las migraciones de SLT-43, y
   pega las dos salidas en el PR. **Hecho:**
   - la equivalencia sale 0, o 1 solo por cadena incoherente si la pregunta abierta 3 se cierra así;
   - el rendimiento sale 0. Si sale 1, se pasa a T9.
+  - **Cerrada con excepción (Cristian, 2026-11-03):** se midió en la base local con 10 000
+    órdenes sintéticas, no sobre la copia de producción. La equivalencia sale 0. El rendimiento sale 1
+    en listado-ordenes, listado-api y cierre-descriptivos. Las consultas sobre `orden` no empeoran;
+    la diferencia es un costo fijo de ~4-5 ms por lectura, que viene de ordenar el catálogo con la
+    collation de la base. El humano acepta ese costo fijo, así que T9 no se ejecuta. Detalle en
+    `progress/impl_SLT-65.md`.
 
 ## T9 — Solo si T8.3 marca regresión [T8.3]
 
