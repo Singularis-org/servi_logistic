@@ -7,7 +7,7 @@
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F2.1 (2026-11-03): T0-T4 hechas; spec enmendado y aprobado. T4.5-T4.8 y T5.1-T5.4 hechas. Siguiente: T5.5 (398, base del % del congelado) → T6 → T7 → reviewer. Detalle en `progress/impl_SLT-52.md`.
+F2.1 (2026-11-03): T0-T5 hechas (incl. T4.5-T4.8 y T5.5). Siguiente: T6 → T7 → reviewer. Detalle en `progress/impl_SLT-52.md`.
 Ojo: `prisma generate` ya conoce las tablas de T1; una base sin sus migraciones falla en `cierreDetail.create`.
 
 ## Evaluación
