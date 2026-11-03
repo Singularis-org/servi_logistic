@@ -117,3 +117,27 @@ Decisiones tomadas ante ambigüedad:
   `tests/baseline-rojos.json` y no toca este cambio.
 
 Veredicto: backend listo; falta frontend_dev (RepartoModule y tests de componentes) y confirmar el SQL real en CI.
+
+## Frontend (frontend_dev)
+
+Archivos modificados:
+- `app/(app)/mis-asignaciones/_components/RepartoModule.tsx`: fuera el import de `calcularRutaAlSalir` y
+  `distanciaHaversineKm`, el efecto `salidaDisparada` y la prop `umbralSalidaM`. `useEffect`/`useRef` ya no se usan.
+- `app/(app)/mis-asignaciones/reparto/page.tsx`: ya no pasa `umbralSalidaM` y no importa `loadRouteOptimizationConfig`.
+- `tests/components/RepartoModule.test.tsx`: fuera el mock de `calcularRutaAlSalir` y los 9 casos R62/R66 del
+  disparo de salida. El caso R65 (la pantalla sin primera ruta se ve como sin ruta) se queda, montado con `renderModule`.
+- `tests/components/{ChatContactoAntesDeRecoger,GestionarOrdenPanelHilo,MarcarLuegoToggle,MisAsignacionesPage,
+  RepartoAyuda,RepartoAyudaResueltaPorLaTienda,RepartoModule477Correccion}.test.tsx`: fixtures sin
+  `primeraRutaPendiente`/`puntoRecogida`.
+
+Mapa: R65 → `RepartoModule.test.tsx > "RepartoModule — sin la primera ruta del día (SLT-59, R65)"`. Ninguna otra conducta de UI cambió;
+el toast de SincronizarRutaButton mantiene sus 10 s.
+
+Verificación (NODE_OPTIONS=--max-old-space-size=8192):
+- `pnpm run typecheck`: 0 errores.
+- `eslint` en los 10 archivos tocados: 0 errores, 1 warning anterior a este cambio (`ordenCardsEnReparto` sin uso en RepartoModule.test.tsx).
+- vitest `RepartoModule.test.tsx`: 1 archivo, 108 passed.
+- vitest de ChatContacto, GestionarOrdenPanelHilo, MarcarLuegoToggle y MisAsignacionesPage: 4 archivos, 44 passed.
+- vitest de RepartoAyuda, RepartoAyudaResueltaPorLaTienda y RepartoModule477Correccion: 3 archivos, 29 passed.
+
+Veredicto frontend: disparo de salida retirado de la UI; typecheck en 0 y los tests de componentes tocados en verde.
