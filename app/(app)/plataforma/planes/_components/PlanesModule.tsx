@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 
+import { AvisosDeTopes, textosDeLosAvisosDeTopes } from "@/components/shared/AvisosDeTopes";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +15,13 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatearConteo } from "@/lib/planes/consumo";
 import type { RangoDelInicioDelCiclo } from "@/lib/planes/ciclo";
-import type { CrearPlanInput, PlanDelCatalogo, PlanResult } from "@/lib/types/planes";
+import type {
+  CrearPlanInput,
+  PlanDelCatalogo,
+  PlanResult,
+  PrevisualizarCustomInput,
+  VistaPreviaCustomResult,
+} from "@/lib/types/planes";
 
 import { PlanForm, type EmpresaParaCustom } from "./PlanForm";
 import { lineasDeCosto, lineasDeTopes, TEXTOS_PLAN, textoDeVisibilidad } from "./plan-vista";
@@ -63,6 +70,8 @@ export interface PlanesModuleProps {
   rangoInicioCiclo: RangoDelInicioDelCiclo;
   /** `crearPlanAction`, inyectada desde la página para poder probarla. */
   crearPlan: (input: CrearPlanInput) => Promise<PlanResult>;
+  /** Ajuste planes-custom (D13): `previsualizarCustomAction`, inyectada desde la página. */
+  previsualizarCustom: (input: PrevisualizarCustomInput) => Promise<VistaPreviaCustomResult>;
 }
 
 /**
@@ -78,18 +87,22 @@ export function PlanesModule({
   inicioCicloPorDefecto,
   rangoInicioCiclo,
   crearPlan,
+  previsualizarCustom,
 }: PlanesModuleProps) {
   const router = useRouter();
   const idArchivados = useId();
   const [mostrarArchivados, setMostrarArchivados] = useState(false);
   const [abierto, setAbierto] = useState(false);
   const [creado, setCreado] = useState<string | null>(null);
+  /** Ajuste planes-custom (D12): los topes ya pasados del `ok` de un custom con fecha, con el texto del modal. */
+  const [avisosCreado, setAvisosCreado] = useState<string[]>([]);
 
   const visibles = mostrarArchivados ? planes : planes.filter((p) => !p.archivado);
 
-  function alCrear(nombre: string) {
+  function alCrear(r: Extract<PlanResult, { estado: "ok" }>, nombre: string, siguienteCiclo: string | null) {
     setAbierto(false);
     setCreado(nombre);
+    setAvisosCreado(textosDeLosAvisosDeTopes(r.avisos, siguienteCiclo));
     router.refresh();
   }
 
@@ -123,6 +136,7 @@ export function PlanesModule({
           type="button"
           onClick={() => {
             setCreado(null);
+            setAvisosCreado([]);
             setAbierto(true);
           }}
         >
@@ -136,6 +150,7 @@ export function PlanesModule({
           <AlertDescription>{TEXTOS.creado(creado)}</AlertDescription>
         </Alert>
       ) : null}
+      {creado !== null && avisosCreado.length > 0 ? <AvisosDeTopes avisos={avisosCreado} /> : null}
 
       <Catalogo planes={visibles} hayArchivadosOcultos={!mostrarArchivados && planes.length > 0} />
 
@@ -152,7 +167,8 @@ export function PlanesModule({
               inicioCicloPorDefecto={inicioCicloPorDefecto}
               rangoInicioCiclo={rangoInicioCiclo}
               enviar={crearPlan}
-              onGuardado={(_r, nombre) => alCrear(nombre)}
+              previsualizar={previsualizarCustom}
+              onGuardado={alCrear}
             />
           </div>
         </SheetContent>

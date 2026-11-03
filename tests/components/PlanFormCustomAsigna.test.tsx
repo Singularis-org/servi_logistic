@@ -10,7 +10,7 @@ import { render, screen, cleanup, within, waitFor } from "@testing-library/react
 import userEvent from "@testing-library/user-event";
 
 import { PlanForm, type EmpresaParaCustom } from "@/app/(app)/plataforma/planes/_components/PlanForm";
-import type { CrearPlanInput, PlanResult } from "@/lib/types/planes";
+import type { CrearPlanInput, PlanResult, PrevisualizarCustomInput, VistaPreviaCustomResult } from "@/lib/types/planes";
 
 const SIN_PLAN = "6f1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f60";
 const CON_PLAN = "7a1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f61";
@@ -33,7 +33,14 @@ type Enviar = (input: CrearPlanInput) => Promise<PlanResult>;
 
 afterEach(() => cleanup());
 
-function montar(enviar: Enviar = vi.fn<Enviar>().mockResolvedValue(OK)) {
+/** D13: la vista previa del custom; por defecto, sin topes pasados. */
+const VISTA_PREVIA_OK: VistaPreviaCustomResult = { estado: "ok", avisos: [], siguienteCiclo: "2026-11-30" };
+type Previsualizar = (input: PrevisualizarCustomInput) => Promise<VistaPreviaCustomResult>;
+
+function montar(
+  enviar: Enviar = vi.fn<Enviar>().mockResolvedValue(OK),
+  previsualizar: Previsualizar = vi.fn<Previsualizar>().mockResolvedValue(VISTA_PREVIA_OK),
+) {
   const onGuardado = vi.fn();
   render(
     <PlanForm
@@ -42,10 +49,11 @@ function montar(enviar: Enviar = vi.fn<Enviar>().mockResolvedValue(OK)) {
       inicioCicloPorDefecto={MANANA}
       rangoInicioCiclo={RANGO}
       enviar={enviar}
+      previsualizar={previsualizar}
       onGuardado={onGuardado}
     />,
   );
-  return { enviar: vi.mocked(enviar), onGuardado };
+  return { enviar: vi.mocked(enviar), onGuardado, previsualizar: vi.mocked(previsualizar) };
 }
 
 type Usuario = ReturnType<typeof userEvent.setup>;
@@ -161,7 +169,7 @@ describe("D6 — el tipo de cobro en el custom", () => {
       precio: { tipo: "monto", mensual: "50000", anual: null },
       costoPorOrden: "100",
     });
-    expect(onGuardado).toHaveBeenCalledWith(OK, "Norte a medida");
+    expect(onGuardado).toHaveBeenCalledWith(OK, "Norte a medida", "2026-11-30");
   });
 
   it("D6: un plan público no manda tipo de cobro ni inicio del ciclo", async () => {

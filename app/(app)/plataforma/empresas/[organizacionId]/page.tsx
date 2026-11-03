@@ -7,6 +7,7 @@ import { verDetalleDePlan, verPlanDeEmpresa } from "@/lib/actions/_shared/planes
 import { fijarModuloEmpresaAction } from "@/lib/actions/modulos-empresa";
 import {
   asignarPlanAction,
+  cambiarTipoCobroAction,
   listarPlanesAsignablesAction,
   previsualizarAsignacionPlanAction,
 } from "@/lib/actions/planes";
@@ -135,6 +136,7 @@ export default async function EmpresaDetallePage({
           inicioCicloPorDefecto={inicioDelCicloPorDefecto(ahora)}
           previsualizarAsignacion={previsualizarAsignacionPlanAction}
           planPreseleccionado={planPreseleccionado}
+          cambiarTipoCobro={cambiarTipoCobroAction}
         />
 
         <section aria-labelledby="nucleo-titulo" className="flex flex-col gap-3">

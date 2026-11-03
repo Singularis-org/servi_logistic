@@ -67,6 +67,7 @@ function montar(crearPlan = vi.fn().mockResolvedValue(OK)) {
       inicioCicloPorDefecto="2026-10-30"
       rangoInicioCiclo={{ hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" }}
       crearPlan={crearPlan}
+      previsualizarCustom={vi.fn().mockResolvedValue({ estado: "ok", avisos: [], siguienteCiclo: "2026-11-30" })}
     />,
   );
   return { crearPlan };
@@ -177,6 +178,7 @@ describe("SLT-58 — revisión de diseño del catálogo", () => {
         inicioCicloPorDefecto="2026-10-30"
         rangoInicioCiclo={{ hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" }}
         crearPlan={vi.fn()}
+        previsualizarCustom={vi.fn().mockResolvedValue({ estado: "ok", avisos: [], siguienteCiclo: "2026-11-30" })}
       />,
     );
 

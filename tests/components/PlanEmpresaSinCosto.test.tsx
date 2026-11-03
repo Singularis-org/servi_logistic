@@ -89,6 +89,7 @@ function montar({
     rangoInicioCiclo: { hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" },
     inicioCicloPorDefecto: "2026-10-30", // Ajuste planes-custom (D5): mañana.
     previsualizarAsignacion: previsualizar,
+    cambiarTipoCobro: vi.fn(),
     ...(planPreseleccionado === undefined ? {} : { planPreseleccionado }),
   };
   render(

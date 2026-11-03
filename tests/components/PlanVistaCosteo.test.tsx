@@ -92,6 +92,7 @@ describe("SLT-66 R24 — catálogo", () => {
         inicioCicloPorDefecto="2026-10-30"
         rangoInicioCiclo={{ hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" }}
         crearPlan={vi.fn()}
+        previsualizarCustom={vi.fn().mockResolvedValue({ estado: "ok", avisos: [], siguienteCiclo: "2026-11-30" })}
       />,
     );
 
@@ -177,6 +178,7 @@ describe("SLT-66 R24 — modal de asignación", () => {
           rangoInicioCiclo={{ hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" }}
           inicioCicloPorDefecto="2026-10-30"
           previsualizarAsignacion={vi.fn().mockResolvedValue(VISTA_PREVIA_OK)}
+          cambiarTipoCobro={vi.fn()}
         />
       </ToastProvider>,
     );

@@ -59,8 +59,23 @@ const LEIDO: PlanConUsoLeido = {
 const AHORA = new Date("2026-03-01T06:00:00.000Z");
 
 const ASIGNACIONES: AsignacionDePlan[] = [
-  { creadoAt: "2026-03-01T18:30:00.000Z", actorNombre: "Sara Admin", planNombre: "Plan «Plan Crecer»" },
-  { creadoAt: "2026-01-15T06:00:00.000Z", actorNombre: "Pedro Plataforma", planNombre: "Plan «Básico»" },
+  // Ajuste planes-custom (D14): cada fila trae su tipo; estas son asignaciones (sin tipo anterior).
+  {
+    creadoAt: "2026-03-01T18:30:00.000Z",
+    actorNombre: "Sara Admin",
+    planNombre: "Plan «Plan Crecer»",
+    tipo: "asignacion",
+    tipoCobro: "mensual",
+    tipoCobroAnterior: null,
+  },
+  {
+    creadoAt: "2026-01-15T06:00:00.000Z",
+    actorNombre: "Pedro Plataforma",
+    planNombre: "Plan «Básico»",
+    tipo: "asignacion",
+    tipoCobro: null,
+    tipoCobroAnterior: null,
+  },
 ];
 
 function vista(extra: Partial<PlanDeEmpresaVista> = {}): PlanDeEmpresaVista {
@@ -140,6 +155,7 @@ function montar({
         rangoInicioCiclo={RANGO}
         inicioCicloPorDefecto={MANANA}
         previsualizarAsignacion={previsualizar}
+        cambiarTipoCobro={vi.fn()}
       />
     </ToastProvider>,
   );
@@ -340,8 +356,9 @@ describe("SLT-58 R21 — el historial de asignaciones", () => {
     const tabla = screen.getByRole("table", { name: "Historial de asignaciones" });
     const filas = within(tabla).getAllByRole("row").slice(1);
     expect(filas.map((f) => within(f).getAllByRole("cell").map((c) => c.textContent))).toEqual([
-      ["2026-03-01 12:30", "Sara Admin", "Plan «Plan Crecer»"],
-      ["2026-01-15 00:00", "Pedro Plataforma", "Plan «Básico»"],
+      // D14: la columna «Tipo de cobro»; la fila anterior al ajuste no lo guardaba («—»).
+      ["2026-03-01 12:30", "Sara Admin", "Plan «Plan Crecer»", "Mensual"],
+      ["2026-01-15 00:00", "Pedro Plataforma", "Plan «Básico»", "—"],
     ]);
   });
 

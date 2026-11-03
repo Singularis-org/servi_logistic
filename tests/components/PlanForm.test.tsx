@@ -46,6 +46,7 @@ function montarCrear(enviar = vi.fn().mockResolvedValue(OK), onGuardado = vi.fn(
       inicioCicloPorDefecto={MANANA}
       rangoInicioCiclo={RANGO}
       enviar={enviar}
+      previsualizar={vi.fn().mockResolvedValue({ estado: "ok", avisos: [], siguienteCiclo: "2026-11-30" })}
       onGuardado={onGuardado}
     />,
   );
@@ -99,7 +100,8 @@ describe("SLT-58 R14 — crear un plan", () => {
       tipoCobro: "mensual",
       inicioCiclo: MANANA,
     });
-    expect(onGuardado).toHaveBeenCalledWith(OK, "Plan Norte");
+    // D12: la empresa no tiene plan; `onGuardado` recibe el siguiente ciclo de la vista previa (D13).
+    expect(onGuardado).toHaveBeenCalledWith(OK, "Plan Norte", "2026-11-30");
   });
 
   it("R14: un plan público sin topes ni precio sale con organizacionId null y todo sin límite", async () => {
@@ -343,6 +345,7 @@ describe("SLT-58 — revisión de diseño del formulario", () => {
         inicioCicloPorDefecto={MANANA}
         rangoInicioCiclo={RANGO}
         enviar={vi.fn()}
+        previsualizar={vi.fn().mockResolvedValue({ estado: "ok", avisos: [], siguienteCiclo: "2026-11-30" })}
         onGuardado={vi.fn()}
       />,
     );

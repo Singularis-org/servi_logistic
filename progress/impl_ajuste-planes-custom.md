@@ -322,3 +322,104 @@ D10 es `plan_asignado` («Asignó un plan a una empresa»), con `valor_anterior`
 
 ### Veredicto
 El backend de D10, D12, D13 y D14 está hecho y sin migración. Lint da 0 problemas y 2412 tests relacionados pasan. El typecheck no da errores propios: solo los del cliente Prisma ajeno y 2 fixtures de UI que ajustará frontend. Falta que CI corra la integración db.
+
+## Frontend — tanda 2 (D10–D14)
+
+frontend_dev (2026-11-03). Grafo MCP no consultado (bastó Grep/Read sobre la UI de planes). Sin
+dependencias nuevas, sin `prisma generate`, sin tocar `lib/`, `db/` ni tests de backend.
+
+### Archivos
+Nuevos:
+- `components/shared/AvisosDeTopes.tsx`: `AvisosDeTopes` y `textoDelAvisoDeTope` / `textosDeLosAvisosDeTopes`, movidos
+  tal cual desde `PlanEmpresa` (R37/R42) para que el form del custom use la misma presentación (D12, D13).
+- `tests/components/PlanEmpresaTipoCobro.test.tsx` (D10, D14) y `tests/components/PlanFormVistaPreviaCustom.test.tsx` (D12, D13).
+
+Modificados (UI):
+- `app/(app)/plataforma/empresas/[organizacionId]/_components/PlanEmpresa.tsx`:
+  - D10: botón «Cambiar tipo de cobro» (solo si la empresa tiene plan). Abre un modal con `TipoCobroCampo`, que arranca
+    en `vista.plan.cobro.tipo`. Prop nueva: `cambiarTipoCobro`. Qué pasa con cada resultado:
+    - `ok`, `cambio: true`: toast y `router.refresh()`; el tipo, el monto y el siguiente cobro se releen;
+    - `ok`, `cambio: false`: toast informativo, sin releer;
+    - `validation_error` de `tipoCobro`: el error va junto al campo y el modal sigue abierto;
+    - lo demás (`sin_plan`, `not_found`, `forbidden`, otro `validation_error`, una excepción): al aviso de error de la sección.
+  - D14: columna «Tipo de cobro» en el historial.
+    - Una fila `asignacion` muestra «Mensual» o «Anual» («—» si el tipo es `null`).
+    - Una fila `cambio_tipo_cobro` es una fila propia: «Cambió de Mensual a Anual».
+  - Los avisos de topes ahora se importan de `components/shared/AvisosDeTopes.tsx`: mismo texto, nada cambia en pantalla.
+- `app/(app)/plataforma/empresas/[organizacionId]/page.tsx`: inyecta `cambiarTipoCobroAction`.
+- `app/(app)/plataforma/planes/_components/PlanForm.tsx`:
+  - D13: prop `previsualizar` (modo crear).
+    - Cuándo lee: con empresa sin plan, fecha y topes válidos (`previsualizarCustomSchema`), tras 300 ms sin cambios
+      (`ESPERA_VISTA_PREVIA_MS`).
+    - Las respuestas de otra entrada se descartan.
+    - Pinta los topes ya pasados con `AvisosDeTopes`.
+    - Si falla, muestra «No se pudo comprobar el consumo de la empresa» y el motivo de `inicioCiclo`, si lo hay.
+    - No bloquea el guardado.
+  - D12: al guardar un custom con fecha, toma el `siguienteCiclo` de la vista previa de esa misma entrada.
+    - Si la lectura estaba en vuelo o en la pausa, la espera o la hace antes de crear: después de crear, la empresa ya
+      tiene plan y la vista previa la rechazaría (R31).
+    - Lo pasa como 3.er argumento de `onGuardado`.
+- `app/(app)/plataforma/planes/_components/PlanesModule.tsx`: prop `previsualizarCustom`. D12: tras el `ok`, pinta
+  `r.avisos` con `AvisosDeTopes` debajo de «Plan «X» creado.».
+- `app/(app)/plataforma/planes/page.tsx`: inyecta `previsualizarCustomAction`.
+
+Tests ajustados:
+- `tests/components/PlanEmpresa.test.tsx`: los 2 fixtures de `AsignacionDePlan` (tipo/tipoCobro/tipoCobroAnterior), la fila
+  esperada de R21 con la columna nueva y `cambiarTipoCobro` en el montaje.
+- `tests/components/{PlanEmpresaSinCosto,PlanVistaCosteo,PlanesModule,PlanForm,PlanFormCosteo,PlanFormCustomAsigna}.test.tsx`:
+  las props nuevas (`cambiarTipoCobro`, `previsualizarCustom`, `previsualizar`) y el 3.er argumento de `onGuardado`.
+- `tests/integration/plataforma-{planes,empresa-detalle}-page.test.tsx`: el mock de `@/lib/actions/planes` exporta las 2 actions nuevas.
+
+### Mapa D<n> → test (UI)
+| D | Test |
+|---|------|
+| D10 | `PlanEmpresaTipoCobro.test.tsx` > «D10 — …»: solo con plan; arranca en el tipo actual y no llama a la action al abrir; confirmar manda `{organizacionId, tipoCobro}`, avisa y relee; `cambio: false` lo dice y no relee; `sin_plan`, `not_found`, `forbidden` y `validation_error` sin campo; `validation_error` de `tipoCobro` junto al campo con el modal abierto; excepción; «Volver» |
+| D12 | `PlanFormVistaPreviaCustom.test.tsx` > «D12 — …» (tras crear salen los avisos con el día del siguiente ciclo; sin avisos solo «Plan creado») y «D12, D13: si se guarda con la lectura en vuelo…»; también `PlanForm.test.tsx` > R14 y `PlanFormCustomAsigna.test.tsx` > «D2, D6…» (3.er argumento de `onGuardado`) |
+| D13 | `PlanFormVistaPreviaCustom.test.tsx` > «D13 — …»: la entrada lleva empresa, fecha y topes del form; relee al escribir un tope o cambiar la fecha; avisos con el texto del modal; sin avisos, nada; con plan o público no lee; el rechazo de la fecha se ve sin bloquear; excepción |
+| D14 | `PlanEmpresaTipoCobro.test.tsx` > «D14 — …» (cabecera y filas: «Cambió de Mensual a Anual», «Mensual», «—»); `PlanEmpresa.test.tsx` > R21 |
+
+### Salida real (2026-11-03)
+- `pnpm run lint`: `✖ 232 problems (0 errors, 232 warnings)` (los mismos 232 de antes). `eslint` sobre los 17 archivos tocados: sin salida.
+- `pnpm exec vitest related --run <6 archivos de UI + 11 tests>` (`NODE_OPTIONS=--max-old-space-size=8192`):
+  `Test Files 1 failed | 13 passed (14)`, `Tests 1 failed | 217 passed (218)`.
+  - El rojo era mío: `PlanForm.test.tsx` > R14 esperaba `onGuardado(OK, "Plan Norte", null)`. Como la empresa no tiene
+    plan, llega el `siguienteCiclo` de la vista previa.
+  - Corregí la expectativa y lo volví a correr: `pnpm exec vitest run tests/components/PlanForm.test.tsx` → `Tests 25 passed (25)`.
+  - Ningún rojo por el cliente Prisma ajeno.
+- Tests nuevos aislados: `Test Files 2 passed (2)`, `Tests 22 passed (22)`.
+- `pnpm exec tsc --noEmit`: 29 errores, 0 en `app/`, `components/`, `tests/components/` y `tests/integration/*-page*`.
+  - Todos son del cliente Prisma ajeno:
+    - `lib/repositories/{HistorialAccion,LibroCajaAutoria,PagoMensajeroMovimiento,Planes,WalletMovimiento,WalletTiendaMovimiento}Repository.ts`;
+    - `lib/services/AnaliticaFinancieraService.ts`;
+    - `lib/types/{historial-accion,wallet}.ts`;
+    - `tests/integration/db/*`.
+  - Los 2 errores de `PlanEmpresa.test.tsx` ya no salen.
+- No corrí `test:guardias` ni `./init.sh`, por la presión de memoria; el encargo no los pedía.
+
+### Textos nuevos (D15: mínimos, en la línea de los aprobados)
+- Botón y confirmar: «Cambiar tipo de cobro». Título del modal: «¿Cambiar el tipo de cobro?».
+- Descripción: «La empresa sigue con «{plan}»: no cambian sus topes, sus módulos ni su ciclo de órdenes.»
+- Resultado: «Tipo de cobro cambiado.» / «La empresa ya tenía ese tipo de cobro.»
+- Rechazos nuevos:
+  - «La empresa ya no tiene plan: el tipo de cobro se elige al asignarle uno.»
+  - «Revisa el tipo de cobro elegido.»
+  - «No se pudo cambiar el tipo de cobro. Inténtalo de nuevo.»
+- Rechazos reutilizados: «Esa empresa ya no existe.» y «No tienes permiso para esto.».
+- Historial:
+  - cabecera «Tipo de cobro» (la de `TEXTOS_TIPO_COBRO`);
+  - «Cambió de {antes} a {después}», o «Cambió a {después}» si falta el anterior;
+  - «—» en las filas sin tipo.
+- Vista previa del custom: reutiliza «No se pudo comprobar el consumo de la empresa» del modal.
+- Respaldo del aviso de órdenes cuando no se sabe la fecha: «…no podrá crear más hasta el inicio del siguiente ciclo.»
+
+### ABIERTO (frontend; no improvisado)
+1. Aviso de órdenes de D12 sin `siguienteCiclo`. Solo pasa si la vista previa falla también al guardar y aun así se crea
+   el plan. No calculo la fecha en el cliente, porque depende del reloj del servidor; el aviso dice «hasta el inicio del
+   siguiente ciclo». Falta que el humano confirme ese texto.
+2. D13 no bloquea «Crear plan» aunque falle la vista previa; el modal sí bloquea (P11). D13 pide mostrarla, no exigirla.
+   Si el humano quiere el mismo bloqueo que en P11, el cambio es pequeño.
+3. Siguen abiertos los ABIERTO 1–2 de backend tanda 2: la etiqueta en el historial general, y las filas viejas con
+   `tipoCobro: null`, que salen como «—».
+
+### Veredicto
+La UI de D10, D12, D13 y D14 está hecha y probada. Lint da 0 errores y tsc no da ninguno en la UI ni en los tests de componente. Los tests relacionados pasan, tras corregir una expectativa mía. Quedan 3 abiertos.

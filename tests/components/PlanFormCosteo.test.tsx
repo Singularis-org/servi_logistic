@@ -33,6 +33,7 @@ function montarCrear(enviar = vi.fn().mockResolvedValue(OK)) {
       inicioCicloPorDefecto="2026-10-30"
       rangoInicioCiclo={{ hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" }}
       enviar={enviar}
+      previsualizar={vi.fn().mockResolvedValue({ estado: "ok", avisos: [], siguienteCiclo: "2026-11-30" })}
       onGuardado={vi.fn()}
     />,
   );

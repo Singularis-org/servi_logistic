@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { AppPage } from "@/components/shared/AppPage";
 import { listarEmpresasPlataforma } from "@/lib/actions/_shared/empresas-plataforma";
 import { verCatalogoDePlanes } from "@/lib/actions/_shared/planes-plataforma";
-import { crearPlanAction } from "@/lib/actions/planes";
+import { crearPlanAction, previsualizarCustomAction } from "@/lib/actions/planes";
 import { esPlataforma } from "@/lib/auth/plataforma";
 import { inicioDelCicloPorDefecto, rangoDelInicioDelCiclo } from "@/lib/planes/ciclo";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
@@ -45,6 +45,7 @@ export default async function PlanesPage() {
         inicioCicloPorDefecto={inicioDelCicloPorDefecto(ahora)}
         rangoInicioCiclo={rangoDelInicioDelCiclo(ahora)}
         crearPlan={crearPlanAction}
+        previsualizarCustom={previsualizarCustomAction}
       />
     </AppPage>
   );

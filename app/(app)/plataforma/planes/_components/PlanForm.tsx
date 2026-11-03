@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { ModuloApagable } from "@prisma/client";
 
+import { AvisosDeTopes, textosDeLosAvisosDeTopes } from "@/components/shared/AvisosDeTopes";
 import { FormField } from "@/components/shared/FormField";
 import { FieldError } from "@/components/shared/FieldError";
 import { MontoInput } from "@/components/shared/MontoInput";
@@ -20,14 +21,18 @@ import { nombreDelModulo, ORDEN_MODULOS } from "@/lib/modulos/catalogo";
 import {
   crearPlanSchema,
   editarPlanSchema,
+  previsualizarCustomSchema,
   ROLES_CON_TOPE,
   type CrearPlanInput,
   type EditarPlanInput,
   type PlanDTO,
   type PlanResult,
   type PrecioPlan,
+  type PrevisualizarCustomInput,
   type RolConTope,
   type TipoCobro,
+  type TopeExcedido,
+  type VistaPreviaCustomResult,
 } from "@/lib/types/planes";
 
 import { TEXTOS_PLAN } from "./plan-vista";
@@ -73,7 +78,24 @@ export const TEXTOS_PLAN_FORM = {
   inicioCiclo: "Inicio del ciclo de órdenes",
   inicioCicloAyuda: "El ciclo de órdenes de la empresa empieza ese día, hora de la plataforma.",
   revisa: "Revisa los campos marcados.",
+  /** Ajuste planes-custom (D13): el mismo texto que el modal de primera asignación (SLT-58 P11). */
+  vistaPreviaNoCargo: "No se pudo comprobar el consumo de la empresa",
 } as const;
+
+/**
+ * Ajuste planes-custom (D13): cuánto se espera tras la última tecla antes de leer la vista previa, para
+ * no llamar al servidor con cada dígito de un tope.
+ */
+export const ESPERA_VISTA_PREVIA_MS = 300;
+
+/**
+ * Ajuste planes-custom (D13): la vista previa de uso contra topes (SLT-58 R37) del custom, atada a la
+ * entrada que la produjo (`clave`): si el formulario cambió, la lectura vieja no se pinta.
+ */
+type VistaPreviaCustom =
+  | { clave: string; fase: "cargando" }
+  | { clave: string; fase: "ok"; avisos: TopeExcedido[]; siguienteCiclo: string }
+  | { clave: string; fase: "fallo"; motivo: string[] | null };
 
 /** Rechazos de las actions de planes (design §6.5). `validation_error` va junto a su campo. */
 const RECHAZOS = {
@@ -212,8 +234,12 @@ function erroresDeZod(issues: readonly { path: readonly PropertyKey[]; message: 
 export type EmpresaParaCustom = { id: string; nombre: string; tienePlan: boolean };
 
 type PropsComunes = {
-  /** Tras un `ok`: quien monta el formulario cierra el panel, relee y avisa. `nombre`, el guardado. */
-  onGuardado: (resultado: Extract<PlanResult, { estado: "ok" }>, nombre: string) => void;
+  /**
+   * Tras un `ok`: quien monta el formulario cierra el panel, relee y avisa. `nombre`, el guardado.
+   * `siguienteCiclo` (ajuste planes-custom, D12): al crear un custom con fecha, el día del siguiente
+   * ciclo que dio la vista previa, para redactar los `avisos` como el modal; `null` si no se leyó.
+   */
+  onGuardado: (resultado: Extract<PlanResult, { estado: "ok" }>, nombre: string, siguienteCiclo: string | null) => void;
 };
 
 export type PlanFormProps = PropsComunes &
@@ -234,6 +260,11 @@ export type PlanFormProps = PropsComunes &
         rangoInicioCiclo: RangoDelInicioDelCiclo;
         /** `crearPlanAction`, inyectada desde la página. */
         enviar: (input: CrearPlanInput) => Promise<PlanResult>;
+        /**
+         * Ajuste planes-custom (D13): `previsualizarCustomAction`, inyectada desde la página. Se llama
+         * con la empresa sin plan, la fecha y los topes que se están escribiendo.
+         */
+        previsualizar: (input: PrevisualizarCustomInput) => Promise<VistaPreviaCustomResult>;
       }
     | {
         modo: "editar";
@@ -278,6 +309,100 @@ export function PlanForm(props: PlanFormProps) {
       ? (props.empresas ?? []).find((e) => e.id === form.organizacionId)
       : undefined;
   const pideInicioCiclo = empresaElegida !== undefined && !empresaElegida.tienePlan;
+
+  /**
+   * Ajuste planes-custom (D13): la entrada de la vista previa, solo con empresa sin plan, fecha y topes
+   * válidos (el mismo esquema que la action). Con algo inválido no se lee: el error sale al guardar.
+   */
+  const entradaPrevia = (() => {
+    if (props.modo !== "crear" || !pideInicioCiclo || form.inicioCiclo === "") return null;
+    const v = previsualizarCustomSchema.safeParse({
+      organizacionId: form.organizacionId,
+      inicioCiclo: form.inicioCiclo,
+      topes: versionDe(form).topes,
+    });
+    return v.success ? v.data : null;
+  })();
+  const clavePrevia = entradaPrevia === null ? null : JSON.stringify(entradaPrevia);
+  const previsualizar = props.modo === "crear" ? props.previsualizar : null;
+  const [vistaPrevia, setVistaPrevia] = useState<VistaPreviaCustom | null>(null);
+  /** La entrada vigente: una respuesta de otra entrada ya no se pinta. */
+  const claveVigente = useRef<string | null>(null);
+  const lecturaEnVuelo = useRef<{ clave: string; promesa: Promise<string | null> } | null>(null);
+  const esperaPrevia = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /**
+   * D13: lee la vista previa de esa entrada y la pinta si sigue vigente. Devuelve el día del siguiente
+   * ciclo (o `null` si no se pudo leer) para redactar los avisos del `ok` al crear (D12).
+   */
+  const leerVistaPrevia = useCallback(
+    (entrada: PrevisualizarCustomInput, clave: string): Promise<string | null> => {
+      if (previsualizar === null) return Promise.resolve(null);
+      if (lecturaEnVuelo.current?.clave === clave) return lecturaEnVuelo.current.promesa;
+      setVistaPrevia({ clave, fase: "cargando" });
+      const promesa = (async () => {
+        try {
+          const r = await previsualizar(entrada);
+          if (claveVigente.current === clave) {
+            setVistaPrevia(
+              r.estado === "ok"
+                ? { clave, fase: "ok", avisos: r.avisos, siguienteCiclo: r.siguienteCiclo }
+                : {
+                    clave,
+                    fase: "fallo",
+                    motivo: r.estado === "validation_error" ? (r.fieldErrors.inicioCiclo ?? null) : null,
+                  },
+            );
+          }
+          return r.estado === "ok" ? r.siguienteCiclo : null;
+        } catch (error) {
+          console.error("[PlanForm] previsualizar lanzó", error);
+          if (claveVigente.current === clave) setVistaPrevia({ clave, fase: "fallo", motivo: null });
+          return null;
+        }
+      })();
+      const lectura = { clave, promesa };
+      lecturaEnVuelo.current = lectura;
+      void promesa.finally(() => {
+        if (lecturaEnVuelo.current === lectura) lecturaEnVuelo.current = null;
+      });
+      return promesa;
+    },
+    [previsualizar],
+  );
+
+  // D13: cada cambio de empresa, fecha o topes relee la vista previa, tras una pausa corta al escribir.
+  useEffect(() => {
+    claveVigente.current = clavePrevia;
+    if (clavePrevia === null) return;
+    const entrada = JSON.parse(clavePrevia) as PrevisualizarCustomInput;
+    const espera = setTimeout(() => {
+      esperaPrevia.current = null;
+      void leerVistaPrevia(entrada, clavePrevia);
+    }, ESPERA_VISTA_PREVIA_MS);
+    esperaPrevia.current = espera;
+    return () => {
+      clearTimeout(espera);
+      if (esperaPrevia.current === espera) esperaPrevia.current = null;
+    };
+  }, [clavePrevia, leerVistaPrevia]);
+
+  const vistaPreviaVigente = vistaPrevia !== null && vistaPrevia.clave === clavePrevia ? vistaPrevia : null;
+
+  /**
+   * D12: el día del siguiente ciclo para los avisos del `ok` de un custom con fecha. Se reutiliza la
+   * vista previa ya leída de esta entrada; si no la hay (se guardó durante la pausa), se lee ahora:
+   * después de crear, la empresa ya tiene plan y la vista previa la rechazaría (R31).
+   */
+  async function siguienteCicloParaGuardar(): Promise<string | null> {
+    if (entradaPrevia === null || clavePrevia === null) return null;
+    if (vistaPreviaVigente?.fase === "ok") return vistaPreviaVigente.siguienteCiclo;
+    if (esperaPrevia.current !== null) {
+      clearTimeout(esperaPrevia.current);
+      esperaPrevia.current = null;
+    }
+    return leerVistaPrevia(entradaPrevia, clavePrevia);
+  }
 
   useEffect(() => {
     const foco = focoPendiente.current;
@@ -358,7 +483,9 @@ export function PlanForm(props: PlanFormProps) {
     enVuelo.current = true;
     setEnviando(true);
     let r: PlanResult | null;
+    let siguienteCiclo: string | null = null;
     try {
+      siguienteCiclo = await siguienteCicloParaGuardar();
       r = await p.llamar();
     } catch (error) {
       // Un fallo de red o del servidor no da el cambio por hecho (R18): se avisa y el formulario sigue.
@@ -371,7 +498,7 @@ export function PlanForm(props: PlanFormProps) {
     if (r === null) {
       mostrarErrores({}, RECHAZOS.generico);
     } else if (r.estado === "ok") {
-      props.onGuardado(r, form.nombre.trim());
+      props.onGuardado(r, form.nombre.trim(), siguienteCiclo);
     } else if (r.estado === "validation_error") {
       mostrarErrores(r.fieldErrors);
     } else {
@@ -617,6 +744,25 @@ export function PlanForm(props: PlanFormProps) {
                 onChange={(ev) => cambiar("inicioCiclo", ev.target.value)}
               />
             </FormField>
+          ) : null}
+          {/* D13: la vista previa de SLT-58 R37 con los topes del formulario; no impide guardar. */}
+          {pideInicioCiclo ? (
+            <div aria-live="polite" aria-busy={vistaPreviaVigente?.fase === "cargando"}>
+              {vistaPreviaVigente?.fase === "ok" && vistaPreviaVigente.avisos.length > 0 ? (
+                <AvisosDeTopes
+                  avisos={textosDeLosAvisosDeTopes(vistaPreviaVigente.avisos, vistaPreviaVigente.siguienteCiclo)}
+                />
+              ) : vistaPreviaVigente?.fase === "fallo" ? (
+                <Alert variant="destructive">
+                  <AlertDescription>
+                    <p>{TEXTOS_PLAN_FORM.vistaPreviaNoCargo}</p>
+                    {(vistaPreviaVigente.motivo ?? []).map((m) => (
+                      <p key={m}>{m}</p>
+                    ))}
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+            </div>
           ) : null}
         </div>
       ) : null}

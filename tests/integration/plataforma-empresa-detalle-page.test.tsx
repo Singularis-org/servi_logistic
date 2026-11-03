@@ -47,6 +47,7 @@ vi.mock("@/lib/actions/_shared/planes-plataforma", () => ({
 vi.mock("@/lib/actions/planes", () => ({
   listarPlanesAsignablesAction: (...a: unknown[]) => asignablesMock(...a),
   asignarPlanAction: (...a: unknown[]) => asignarMock(...a),
+  cambiarTipoCobroAction: vi.fn(),
   previsualizarAsignacionPlanAction: (...a: unknown[]) => previsualizarMock(...a),
 }));
 
