@@ -120,3 +120,25 @@ literales existentes son de n > 1 (790, 525, 12, 3, 8, 265/790, 768) y no cambia
 - No corridos (prohibidos en el encargo): `./init.sh`, suite completa, `prisma generate`, dev server.
 
 Veredicto tanda 2: D1 fijado con test acotado a la tarjeta; D2 arreglado en 4 frases, verde, con las dos contrapruebas en rojo.
+
+## Captura T6
+
+Evidencia visual de que el % se pinta limpio con base chica (sin «hacen falta 20») y del singular con 1 orden. Sin cambios de código ni de tests.
+
+| PNG | Recorte | Órdenes | Desenlaces |
+|---|---|---|---|
+| `progress/capturas/SLT-62/heroe-5-ordenes.png` | empresa local nueva, `/analitica` con el filtro inicial (vacío: `FILTRO_ENTREGAS_INICIAL = {}`, sin rango de fechas) | 5 | 3 entregadas, 1 devolución a origen por rechazo, 1 sin desenlace (`en_preparacion`) |
+| `progress/capturas/SLT-62/heroe-1-orden.png` | otra empresa local nueva, mismo filtro | 1 | 1 entregada |
+
+Texto exacto de la tarjeta (`role=group` «Efectividad de entrega», `innerText` leído del DOM):
+
+- 5 órdenes: `EFECTIVIDAD DE ENTREGA | de 5 órdenes cargadas | 60% | Entregado: 3 | de las 5 órdenes que entraron | Entregado 3 | Otro desenlace 1 | Todavía en proceso 1 | 75% de las 4 órdenes con desenlace terminaron en Entregado`
+- 1 orden: `EFECTIVIDAD DE ENTREGA | de 1 orden cargada | 100% | Entregado: 1 | de la 1 orden que entró | Entregado 1 | Otro desenlace 0 | Todavía en proceso 0 | 100% de la 1 orden con desenlace terminó en Entregado`
+
+Ninguna de las dos contiene «hacen falta» ni aviso de base pequeña.
+
+Cómo se obtuvo (2026-11-02, HEAD 684c18ad):
+- La base local (localhost, comprobado como booleano) no tenía órdenes con desenlace (13 órdenes en 2 empresas, todas sin cerrar) ni credenciales conocidas: el héroe habría caído en `sin_cerradas`.
+- Datos sembrados SOLO en la base local por los servicios reales, con los escenarios del E2E (`e2e/_escenarios/reparto.ts` y `cierres.ts`): `crearEscenarioReparto` → `crearMensajero` → `crearOrden` → `llevarA(en_reparto)` → `gestionar` → `solicitarCierre` + `aprobarCierre`. Login del maestro por `/login` real (`paginaDe`). Sin migraciones ni escrituras a mano.
+- Un solo `next dev -p 3062` en este worktree, con el doble de Storage (`e2e/_storage-falso`, 54329); los dos se mataron al terminar. El spec y el config de Playwright vivieron en el scratchpad, fuera del repo.
+- El escenario se corrió dos veces (la primera solo falló al escribir el JSON con el texto): quedan 4 empresas `e2e-slt62-*` en la base local.
