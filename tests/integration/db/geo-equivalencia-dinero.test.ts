@@ -229,8 +229,8 @@ describeSiHayBase("SLT-44 T5.3 — geo:equivalencia-dinero (Postgres real)", () 
         bloque: "cobertura-por-zona",
         id: empresa.zonas.norteId,
         campo: "distritos con cobertura",
-        hoy: "0",
-        nuevo: "1",
+        hoy: "1",
+        nuevo: "2",
       });
       // Cotizaciones: la orden del distrito sin zona hoy da error y con la asignacion se cotiza.
       expect(informe.cotizaciones.distintos).toBe(1);

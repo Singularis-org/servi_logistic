@@ -191,6 +191,11 @@ export function zonasCandidatas(
  * La zona que cubre el nodo: el colapso 1/0/>1 de la ficha 374 sobre la asignacion mas especifica.
  * Con dos zonas en el nodo mas cercano da `null` y NO sube a buscar una zona unica en el abuelo:
  * eso seria elegir tarifa por descarte (R6).
+ *
+ * Desde SLT-75 (indice unico `zona_distrito_organizacion_id_distrito_id_key`) la base no guarda dos
+ * zonas de la misma empresa en un distrito, asi que con datos reales la rama >1 no se alcanza. Se
+ * conserva como defensa: el tipo admite varias zonas por nodo y es la misma regla que
+ * `_shared/zona-colapso.ts` (R27).
  */
 export function zonaQueCubre(
   cat: CatalogoGeografico,

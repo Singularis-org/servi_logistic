@@ -185,8 +185,8 @@ describeSiHayBase("SLT-44 T4.5 — las lecturas del catalogo dan lo mismo que la
       const de = (empresaId: string, zonaId: string) =>
         r.salida.find((s) => s.empresa.empresaId === empresaId && s.zonaId === zonaId)!.nuevo;
       const { cr, xa } = r.e;
-      // Anti-vacuidad: la zona norte de CR tiene el distrito de dos zonas y el retirado, su canton y
-      // su provincia.
+      // Anti-vacuidad: la zona norte de CR tiene el distrito «Dos zonas» (solo en norte desde SLT-75) y
+      // el retirado, su canton y su provincia.
       expect(de(cr.empresaId, cr.zonas.norteId).distritos.map((d) => d.id).sort()).toEqual(
         [cr.geo.distritoDosZonasId, cr.geo.distritoRetiradoId].sort(),
       );
@@ -226,7 +226,11 @@ describeSiHayBase("SLT-44 T4.5 — las lecturas del catalogo dan lo mismo que la
         const distrito = (id: string) => [...canton.distritos, ...retirado.distritos].find((d) => d.id === id);
         expect(retirado.activo).toBe(false);
         expect(distrito(empresa.geo.distritoCentralId)).toMatchObject({ zonaId: empresa.zonas.centralId, zonaEspecial: true });
-        expect(distrito(empresa.geo.distritoDosZonasId)).toMatchObject({ zonaId: null, zonaNombre: null });
+        expect(distrito(empresa.geo.distritoDosZonasId)).toMatchObject({
+          zonaId: empresa.zonas.norteId,
+          zonaNombre: expect.stringContaining("Zona norte SLT44"),
+          zonas: [{ id: empresa.zonas.norteId, nombre: expect.stringContaining("Zona norte SLT44") }],
+        });
         expect(distrito(empresa.geo.distritoSinZonaId)).toMatchObject({ zonaId: null, zonaEspecial: false });
         expect(distrito(empresa.geo.distritoRetiradoId)).toMatchObject({ zonaId: empresa.zonas.norteId, activo: false });
         expect(distrito(empresa.geo.distritoBajoCantonRetiradoId)).toMatchObject({
@@ -302,7 +306,7 @@ describeSiHayBase("SLT-44 T4.5 — las lecturas del catalogo dan lo mismo que la
           esZonaEspecial: true,
           disponible: true,
         });
-        expect(d(empresa.geo.distritoDosZonasId)).toMatchObject({ zonaId: null, esCentral: false });
+        expect(d(empresa.geo.distritoDosZonasId)).toMatchObject({ zonaId: empresa.zonas.norteId, esCentral: false });
         expect(d(empresa.geo.distritoBajoCantonRetiradoId)).toMatchObject({
           zonaId: empresa.zonas.surId,
           esZonaEspecial: true,
@@ -334,7 +338,7 @@ describeSiHayBase("SLT-44 T4.5 — las lecturas del catalogo dan lo mismo que la
   });
 
   describe("R19 — el distrito propuesto en la correccion de datos", () => {
-    it("distritos, retirado, dos zonas, id de canton o provincia, id de otro pais e id inexistente", async () => {
+    it("distritos, retirado, distrito de una sola zona, id de canton o provincia, id de otro pais e id inexistente", async () => {
       const r = await conEscenario(async (tx, e) => {
         const salida = [];
         for (const [empresa, otra] of [
@@ -377,7 +381,11 @@ describeSiHayBase("SLT-44 T4.5 — las lecturas del catalogo dan lo mismo que la
           disponible: true,
         });
         expect(de(empresa, empresa.geo.distritoRetiradoId)).toMatchObject({ disponible: false, zonaId: empresa.zonas.norteId });
-        expect(de(empresa, empresa.geo.distritoDosZonasId)).toMatchObject({ zonaId: null, zonaNombre: null, esCentral: false });
+        expect(de(empresa, empresa.geo.distritoDosZonasId)).toMatchObject({
+          zonaId: empresa.zonas.norteId,
+          zonaNombre: expect.stringContaining("Zona norte SLT44"),
+          esCentral: false,
+        });
         expect(de(empresa, empresa.geo.distritoBajoCantonRetiradoId)).toMatchObject({
           cantonId: empresa.geo.cantonRetiradoId,
           disponible: false,
@@ -413,7 +421,7 @@ describeSiHayBase("SLT-44 T4.5 — las lecturas del catalogo dan lo mismo que la
         // Cada empresa ve solo su pais, y en el hay un solo escenario de `geo-44.ts`.
         const fila = (nombre: string) => nuevo.find((f) => f.distrito.nombre.startsWith(`${nombre} SLT44`));
         expect(fila("Central")).toMatchObject({ distrito: { zonaEspecial: true }, zonas: [{ id: empresa.zonas.centralId, esCentral: true }] });
-        expect(fila("Dos zonas")?.zonas.map((z) => z.id).sort()).toEqual([empresa.zonas.norteId, empresa.zonas.surId].sort());
+        expect(fila("Dos zonas")?.zonas.map((z) => z.id)).toEqual([empresa.zonas.norteId]);
         expect(fila("Bajo retirado")).toMatchObject({ disponible: false, canton: { activo: false }, distrito: { zonaEspecial: true } });
         expect(fila("Sin zona")).toMatchObject({ zonas: [], disponible: true });
       }

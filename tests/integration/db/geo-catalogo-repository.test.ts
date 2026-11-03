@@ -100,7 +100,6 @@ function asignacionesSembradas(e: EmpresaGeo44, extra?: { zonas: [string, string
   const zonas: [string, string][] = [
     [e.geo.distritoCentralId, e.zonas.centralId],
     [e.geo.distritoDosZonasId, e.zonas.norteId],
-    [e.geo.distritoDosZonasId, e.zonas.surId],
     [e.geo.distritoRetiradoId, e.zonas.norteId],
     [e.geo.distritoBajoCantonRetiradoId, e.zonas.surId],
     ...(extra?.zonas ?? []),

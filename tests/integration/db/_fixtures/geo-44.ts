@@ -18,7 +18,8 @@ import { comoDueno } from "./pais-20";
 //              └─ Canton retirado ── distrito «bajo retirado» → zona sur   + marca (activo; su canton no)
 //
 // El distrito «dos zonas» conserva el nombre pero ya no esta en dos zonas: desde SLT-75 (indice unico
-// `zona_distrito(organizacion_id, distrito_id)`, migracion 20261101090100) un distrito esta en a lo
+// `zona_distrito_organizacion_id_distrito_id_key` sobre `zona_distrito(organizacion_id, distrito_id)`,
+// migracion `20261101090100`) un distrito esta en a lo
 // sumo una zona por empresa, y sembrarlo en norte y sur hace caer el escenario entero.
 //
 // mas una tienda con tarifa general (y una tarifa general de la zona norte) y dos ordenes, una con

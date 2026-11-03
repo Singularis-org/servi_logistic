@@ -237,3 +237,33 @@ Decisión humana (Cristian, 2026-11-03): el fixture `geo-44` se arregla en esta 
 Hay que decidir una de dos opciones:
 - Cambiar esos `expect` porque el caso >1 ya no existe.
 - Sembrar el caso >1 de otra forma, por ejemplo soltando el índice dentro de la transacción del test.
+
+**Cerrado por T8** (enmienda aprobada por Cristian, «Aprobado», 2026-11-03): se cambian los `expect`.
+
+## T8 — Enmienda del 2026-11-03: un distrito, una zona
+
+Spec commiteado en `1aa7b336`. backend_dev aplicó T8.1–T8.5:
+- T8.1 `tests/integration/db/_fixtures/geo-44.ts`: ya tenía 4 filas en `zonaDistrito.createMany` («Dos zonas» solo en norte). Se añade a la cabecera el nombre del índice `zona_distrito_organizacion_id_distrito_id_key` junto a la migración `20261101090100`. `distritoDosZonasId` no se renombra.
+- T8.2 `geo-lecturas-catalogo.test.ts`: los 4 `expect` de R16, R18, R19 y R20 con los valores de design §13.3, el título del `it` de R19 y el comentario de R15. La aserción de R15 y las comparaciones «nuevo = copia de hoy» no cambian.
+- T8.3 `geo-equivalencia-dinero.test.ts`: `cobertura-por-zona` de norte, `hoy` "0"→"1" y `nuevo` "1"→"2".
+- T8.4 `geo-catalogo-repository.test.ts`: solo se borra `[e.geo.distritoDosZonasId, e.zonas.surId],`.
+- T8.5 `lib/services/geografia-dominio.ts`: solo el JSDoc de `zonaQueCubre` (R27). Ninguna línea ejecutable.
+
+`git diff --stat`: 5 archivos, +24/−11.
+
+**Verificación** (`DATABASE_URL` → `logistic_slt44`, `NODE_OPTIONS=--max-old-space-size=8192`, `vitest run --maxWorkers=2`):
+- `geo-lecturas-catalogo` 8/8, `geo-equivalencia-dinero` 8/8, `geo-catalogo-repository` 8/8, `geo-lecturas-sin-backfill` 1/1 (las 25 de F2.3 en verde).
+- `geografia-dominio` 23/23 (incluido «dos zonas en el nodo más cercano… da `null`»), `geografia-dominio-puro.guardia` 8/8.
+- Los 4 unit de F2.3 (`geo-repository-arbol-zonas`, `zona-repository`, `geografia-action`, `geografia-service`): en verde.
+- Corrida conjunta de los 9 archivos (4 integración, `geografia-dominio` y los 4 unit): `Test Files 9 passed (9)`, `Tests 197 passed (197)`.
+- `pnpm run typecheck`: exit 0.
+
+El ABIERTO de F2.3 queda cerrado.
+
+### Mapa R<n> → test (cambios de la enmienda)
+
+| R | Test |
+|---|---|
+| R16, R18, R19, R20 | `tests/integration/db/geo-lecturas-catalogo.test.ts`. Su texto vigente es el de la enmienda: un distrito, una zona |
+| R21 | `tests/integration/db/geo-equivalencia-dinero.test.ts`. Su texto vigente es el de la enmienda |
+| R27 | `tests/unit/services/geografia-dominio.test.ts` (el colapso >1 se conserva como defensa) |

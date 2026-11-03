@@ -149,12 +149,12 @@
 > distrito en dos zonas. Valores nuevos medidos en F2.3 (`progress/impl_SLT-44.md > F2.3`). Ningún
 > otro `expect` cambia. T7.1 se vuelve a correr después de T8.
 
-- [ ] **T8.1** Fixture `tests/integration/db/_fixtures/geo-44.ts` (R16, R18–R21). Ya aplicado en
+- [x] **T8.1** Fixture `tests/integration/db/_fixtures/geo-44.ts` (R16, R18–R21). Ya aplicado en
   F2.3; se verifica y se commitea. En `zonaDistrito.createMany` hay 4 filas: «Dos zonas» solo en
   norte y ninguna fila suya en sur. El comentario de cabecera cita el índice y la migración
   `20261101090100`. `distritoDosZonasId` no se renombra (design §13.1). *Hecho:* la siembra no cae
   por el índice, y `geo-lecturas-sin-backfill` sigue verde.
-- [ ] **T8.2** [P] `tests/integration/db/geo-lecturas-catalogo.test.ts` (R16, R18, R19 y R20). Cambian
+- [x] **T8.2** [P] `tests/integration/db/geo-lecturas-catalogo.test.ts` (R16, R18, R19 y R20). Cambian
   cuatro `expect`, con los valores de design §13.3:
   - :229 (R16) → `toMatchObject({ zonaId: empresa.zonas.norteId, zonaNombre: expect.stringContaining("Zona norte SLT44"), zonas: [{ id: empresa.zonas.norteId, nombre: expect.stringContaining("Zona norte SLT44") }] })`;
   - :305 (R18) → `toMatchObject({ zonaId: empresa.zonas.norteId, esCentral: false })`;
@@ -164,21 +164,21 @@
   También se reescriben el título del `it` de R19 (:337) y el comentario de :188 para que no
   digan «dos zonas» como caso. *Hecho:* 8/8 en verde. :190 (R15) y todas las comparaciones
   «nuevo = copia de hoy» quedan sin tocar en el diff.
-- [ ] **T8.3** [P] `tests/integration/db/geo-equivalencia-dinero.test.ts:228-234` (R21): en el
+- [x] **T8.3** [P] `tests/integration/db/geo-equivalencia-dinero.test.ts:228-234` (R21): en el
   `toContainEqual` de `bloque: "cobertura-por-zona"`, `id: empresa.zonas.norteId`, `hoy: "0"` pasa a
   `"1"` y `nuevo: "1"` pasa a `"2"`. No cambia ningún otro `expect` del archivo
   (`distritos.distintos` 1, `cobertura.distintos` 1 y `cotizaciones.distintos` 1). *Hecho:* 8/8 en
   verde, y `geo-lecturas-catalogo.test.ts:190` sigue en verde con el mismo fixture.
-- [ ] **T8.4** [P] `tests/integration/db/geo-catalogo-repository.test.ts` (R9): en
+- [x] **T8.4** [P] `tests/integration/db/geo-catalogo-repository.test.ts` (R9): en
   `asignacionesSembradas`, se borra la línea 103, `[e.geo.distritoDosZonasId, e.zonas.surId],`. El
   valor que esperan los `toEqual` de :143 y :150 pasa a 4 asignaciones de zona en CR y 5 en `XA`
   (antes 5 y 6). *Hecho:* 8/8 en verde. En el diff, esa es la única línea que cambia del archivo.
-- [ ] **T8.5** [P] Código, solo un comentario: en `lib/services/geografia-dominio.ts`, el JSDoc de
+- [x] **T8.5** [P] Código, solo un comentario: en `lib/services/geografia-dominio.ts`, el JSDoc de
   `zonaQueCubre` añade que, desde SLT-75, la base no guarda dos zonas de la misma empresa en un
   distrito, y que la rama >1 se conserva como defensa (R27, design §13.2). Ninguna línea ejecutable
   cambia. *Hecho:* `geografia-dominio.test.ts` (incluido «dos zonas en el nodo más cercano… da
   `null`») y `geografia-dominio-puro.guardia.test.ts` en verde sin tocarlos.
-- [ ] **T8.6** Mapa y cierre: en `progress/impl_SLT-44.md` va una sección «T8», con:
+- [x] **T8.6** Mapa y cierre: en `progress/impl_SLT-44.md` va una sección «T8», con:
   - la salida de los tres archivos de integración y de `geografia-dominio.test.ts`;
   - la fila R27 del mapa `R<n> → test` (`geografia-dominio.test.ts`);
   - una nota en las filas R16 y R18–R21 de que su texto vigente es el de la enmienda.
