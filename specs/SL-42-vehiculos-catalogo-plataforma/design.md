@@ -16,7 +16,7 @@ indexado este worktree: la búsqueda de código se hizo con Grep/Read.
 | `lib/actions/vehiculos.ts`, `lib/services/VehiculoService.ts`, `lib/repositories/VehiculoRepository.ts`, `lib/types/vehiculos.ts`, `lib/interfaces/{services/IVehiculoService,repositories/IVehiculoRepository}.ts` | CRUD del `maestro`. El `catch {}` de crear/actualizar devuelve `conflict` ante cualquier fallo, y el de borrar `in_use`: es el «ya existe» falso. | Se reutilizan servicio y repositorio; las escrituras cambian de dueño y de manejo de errores. |
 | `app/(app)/configuracion/vehiculos/` | La pantalla del `maestro`. | Se borra (R16); su módulo es la base de la del superadmin. |
 | `lib/actions/geografia-plataforma.ts`, `app/(app)/plataforma/geografia/page.tsx`, `lib/auth/exigir-superadmin.ts`, `lib/repositories/_shared/prisma-unique.ts` (`esViolacionDeUnico`) | El borde de plataforma: `puerta` → zod → servicio, `registrarFallo` con log sin datos. | Se copia la forma. |
-| `plan_rastro` (SL-24, `20261028130000_plan`) | Rastro de plataforma de un catálogo sin país, sin FK, `REVOKE ALL FROM servi_app`. | Molde de `vehiculo_rastro` (si P2). |
+| `plan_rastro` (SL-24, `20261028130000_plan`) | Rastro de plataforma de un catálogo sin país, sin FK, `REVOKE ALL FROM servi_app`. | Molde de `vehiculo_rastro` (P2). |
 | `historial_plataforma` (SL-20) | Rastro de plataforma de la geografía, con `pais_id NOT NULL`. | No sirve para vehículos (alternativa A2). |
 | `docs/ayuda/oficina/configuracion-vehiculos.md` | Ayuda de la pantalla del `maestro`. | Se retira, como la de geografía en SL-20 T5.6 (R19). |
 | `e2e/dos-empresas-humo.spec.ts` | Comprueba que el `maestro` no escribe desde `/configuracion/vehiculos`. | Pasa a comprobar el 404 (R16). |
@@ -29,7 +29,7 @@ Tres movimientos:
    plataforma y errores honestos. `VehiculoService` gana `GESTION_ROLES = ROLES_PLATAFORMA` y la
    operación `cambiarActivacion`.
 2. **Pantalla.** `/plataforma/vehiculos` con su ítem de menú; `/configuracion/vehiculos` se borra.
-3. **Estado activo.** Columna `vehiculos.activo` y, si P3 se confirma, su efecto en las lecturas de
+3. **Estado activo.** Columna `vehiculos.activo` y su efecto (P3) en las lecturas de
    empresa.
 
 ## 2. Modelo de datos
@@ -50,7 +50,7 @@ ALTER TABLE "vehiculos" ADD COLUMN "activo" BOOLEAN NOT NULL DEFAULT true;
 
 Prisma: `activo Boolean @default(true)` en `model Vehiculo`.
 
-### 2.2 `vehiculo_rastro` — migración `20261103120100_vehiculo_rastro` *(solo si P2 = sí)*
+### 2.2 `vehiculo_rastro` — migración `20261103120100_vehiculo_rastro` (P2)
 
 Calcada de `plan_rastro`:
 
@@ -80,7 +80,7 @@ REVOKE ALL ON "vehiculo_rastro" FROM servi_app;           -- R22: los default pr
 - Un único escritor, `appendRastroVehiculo(tx, entrada)` en `lib/repositories/registrar-rastro-vehiculo.ts`,
   que recibe `tx` (no puede abrir su propia transacción), como `appendAccionPlataforma`.
 
-### 2.3 Lo que se retira (si P1 = retirar)
+### 2.3 Lo que se retira (P1)
 
 `VehiculoRepository.delete` y `contarUsos`, `VehiculoService.borrar`, `borrarVehiculo`. El valor
 `vehiculo_borrado` del enum de `historial_accion` **se queda**: hay filas históricas que lo usan. Se
@@ -106,7 +106,7 @@ quita de la lista de escritores vivos de `lib/types/historial-accion.ts` y de la
 
 El superadmin no tiene empresa, así que la extensión (`lib/db/extension-empresa.ts`, fila «ninguno»)
 corre los modelos de plataforma tal cual, como dueño: puede escribir `vehiculos` y `vehiculo_rastro`
-sin la envoltura `servi_app`. Si P1 retira el borrado, ninguna operación toca una tabla de negocio, y
+sin la envoltura `servi_app`. Con el borrado retirado (P1), ninguna operación toca una tabla de negocio, y
 el borde **no** llama a `comoPlataforma` ni entra en `EXCEPCIONES_DE_PLATAFORMA` (alternativa A3).
 R7 se prueba en integración contra la base real con un superadmin sin empresa.
 
@@ -137,7 +137,7 @@ cambiarActivacion(input, actor): ok{vehiculo} | forbidden | not_found      // R6
 - `crear`, `renombrar` y `cambiarActivacion` son de `GESTION_ROLES`; `listar` sigue con `READ_ROLES`.
 - Pedir el estado que ya tiene, o el mismo nombre, devuelve `ok` sin llamar al repositorio que escribe
   (R5, R6, R21).
-- Con P2, el repositorio escribe el cambio y su rastro en una `$transaction`; si el `update` no alcanza
+- El repositorio escribe el cambio y su rastro en una `$transaction`; si el `update` no alcanza
   fila, no hay rastro y el servicio responde `not_found`.
 
 ### 4.3 Server Actions (`lib/actions/vehiculos-plataforma.ts`, nuevo)
@@ -161,7 +161,7 @@ Se queda solo `listarVehiculos` (la usa `UsuarioForm`). `crearVehiculo`, `actual
 `borrarVehiculo` salen del archivo: el `maestro` ya no tiene por dónde escribir, y R14 se prueba
 contra las actions de plataforma con un actor `maestro`.
 
-### 4.5 P3 en las lecturas de empresa (si se confirma)
+### 4.5 Vehículo inactivo en las lecturas de empresa (P3)
 
 - `listarVehiculos` devuelve `activo`. `UsuarioForm` ofrece los activos más el que ya tiene el
   usuario que se edita.
@@ -203,10 +203,10 @@ Ninguna librería nueva.
   `NOT NULL` con FK a `pais`, y sus índices y su lectura van por país. Hacerla nulable rompe esa
   invariante para dar sitio a una entidad que no es de ningún país. `plan_rastro` ya fijó el
   precedente de un rastro propio para un catálogo de plataforma sin país.
-- **A3. Envolver el borde en `comoPlataforma`, como `geografia-plataforma.ts`.** Descartada si P1
-  retira el borrado: allí hace falta porque el conteo lee `orden`, que es de negocio. Aquí ninguna
-  operación toca negocio, y añadir una excepción a `EXCEPCIONES_DE_PLATAFORMA` (lista que solo debe
-  bajar) sin necesidad la haría crecer. Si P1 conserva el borrado, esta alternativa vuelve.
+- **A3. Envolver el borde en `comoPlataforma`, como `geografia-plataforma.ts`.** Descartada: allí
+  hace falta porque el conteo lee `orden`, que es de negocio. Aquí, con el borrado retirado (P1),
+  ninguna operación toca negocio, y añadir sin necesidad una excepción a `EXCEPCIONES_DE_PLATAFORMA`
+  haría crecer una lista que solo debe bajar.
 - **A4. Mantener las writes en `lib/actions/vehiculos.ts` cambiando su rol.** Descartada: mezcla en
   un archivo una lectura de empresa y escrituras de plataforma, y el reparto por módulo
   (`MODULO_POR_ACTION`) y las guardias de plataforma trabajan por archivo.
@@ -218,5 +218,3 @@ Ninguna librería nueva.
   `vehiculo_borrado`. Se ajustan en la misma tanda que el cambio que las mueve.
 - **E2E de humo.** `dos-empresas-humo.spec.ts` deja de poder crear desde la pantalla del `maestro`;
   pasa a afirmar el 404 y que el catálogo no cambia.
-- **P3 sin respuesta.** Sin P3, la columna `activo` existe pero las empresas siguen ofreciendo los
-  inactivos: desactivar no tendría efecto visible fuera de la pantalla del superadmin.

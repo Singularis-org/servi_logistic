@@ -1,14 +1,13 @@
 # SL-42 — Vehículos: catálogo de la plataforma · tasks.md
 
-> Las tasks marcadas **(P1)**, **(P2)** o **(P3)** dependen de esa pregunta abierta de
-> `requirements.md`. Con la respuesta «no», la task se salta o se recorta como dice su texto.
+> P1, P2 y P3 están cerradas (`requirements.md > Decisiones cerradas`, 2026-11-03). La etiqueta
+> **(P<n>)** de una task solo indica de qué decisión viene.
 > `[P]` = puede ir en paralelo con las otras `[P]` de su tanda.
 
 ## T0 — Antes de empezar
 
-- [ ] T0.1 Leer las respuestas de P1, P2 y P3 en `requirements.md` y anotarlas en
-  `progress/features/SL-42.md`. Correr `node scripts/archivos-en-vuelo.mjs` con la sección de abajo.
-  **Hecho:** las tres respuestas escritas; sin choque de archivos con otra persona, o choque aceptado.
+- [ ] T0.1 Correr `node scripts/archivos-en-vuelo.mjs` con la sección de abajo.
+  **Hecho:** sin choque de archivos con otra persona, o choque aceptado.
 
 ## T1 — Datos (backend_dev)
 
@@ -21,7 +20,7 @@
   `model VehiculoRastro` y su enum, clasificación en `lib/db/modelos-de-negocio.ts`, y el escritor
   único `lib/repositories/registrar-rastro-vehiculo.ts` (design §2.2). Dep.: T1.1.
   **Hecho:** `organizacion-en-modelos.guardia` verde; `tests/integration/db/vehiculos-plataforma.test.ts`
-  cubre R22 (con `servi_app`, leer y escribir `vehiculo_rastro` da `42501`). Sin P2: se salta.
+  cubre R22 (con `servi_app`, leer y escribir `vehiculo_rastro` da `42501`).
 
 ## T2 — Dominio y borde (backend_dev)
 
@@ -29,7 +28,7 @@
   `cambiarActivacionVehiculoSchema` (design §4.1). Dep.: T1.1.
   **Hecho:** `tests/unit/types/vehiculos.test.ts` cubre R9 (vacío, <2, >40, campo desconocido).
 - [ ] T2.2 `IVehiculoRepository` + `VehiculoRepository`: `findMany({ soloActivos? })`, `rename`,
-  `setActivo`, y con P2 el rastro en la misma `$transaction`. **(P1)** quitar `delete` y `contarUsos`.
+  `setActivo`, con el rastro en la misma `$transaction`. **(P1)** quitar `delete` y `contarUsos`.
   Dep.: T2.1, T1.2.
   **Hecho:** `tests/integration/db/vehiculos-plataforma.test.ts` cubre R6 (desactivar no toca
   `usuario.vehiculo_id` ni `tarifa_zona_mensajero`), R7 (superadmin sin empresa contra la base real)
@@ -67,7 +66,7 @@
 - [ ] T3.2 [P] **(P3)** `UsuarioForm` ofrece los activos más el actual; `app/postulacion/page.tsx`
   solo los activos. Dep.: T2.4.
   **Hecho:** `tests/unit/components/usuario-form.test.tsx` y `tests/integration/postulacion-page.test.tsx`
-  cubren R17 y R18. Sin P3: solo se comprueba R17 (el `maestro` sigue viendo el catálogo).
+  cubren R17 y R18.
 
 ## T4 — Interfaz (frontend_dev)
 
@@ -95,7 +94,7 @@
 - [ ] T5.2 `progress/deudas.md`: D12 cerrada en su parte de vehículos; mapa `R<n> -> test` en
   `progress/impl_SL-42.md`; `docs/architecture.md > Multi-empresa` menciona que la edición de
   `vehiculos` es del superadmin. Dep.: T1–T5.1.
-  **Hecho:** `./init.sh` verde en el worktree; los 23 requisitos (menos los retirados por P1–P3)
+  **Hecho:** `./init.sh` verde en el worktree; los 23 requisitos
   tienen test.
 
 ## Archivos esperados
