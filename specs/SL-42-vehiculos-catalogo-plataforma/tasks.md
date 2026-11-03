@@ -6,17 +6,17 @@
 
 ## T0 — Antes de empezar
 
-- [ ] T0.1 Correr `node scripts/archivos-en-vuelo.mjs` con la sección de abajo.
+- [x] T0.1 Correr `node scripts/archivos-en-vuelo.mjs` con la sección de abajo.
   **Hecho:** sin choque de archivos con otra persona, o choque aceptado.
 
 ## T1 — Datos (backend_dev)
 
-- [ ] T1.1 Migración `20261103120000_vehiculo_activo` (`migration.sql` + `down.sql`) y
+- [x] T1.1 Migración `20261103120000_vehiculo_activo` (`migration.sql` + `down.sql`) y
   `activo Boolean @default(true)` en `model Vehiculo` (design §2.1). Dep.: T0.
   **Hecho:** `tests/integration/db/vehiculos-migration.test.ts` cubre R23: tras aplicar, las filas
   existentes quedan activas; el `down.sql` quita la columna; `servi_app` sigue sin poder escribir
   `vehiculos`.
-- [ ] T1.2 **(P2)** Migración `20261103120100_vehiculo_rastro` (`migration.sql` + `down.sql`),
+- [x] T1.2 **(P2)** Migración `20261103120100_vehiculo_rastro` (`migration.sql` + `down.sql`),
   `model VehiculoRastro` y su enum, clasificación en `lib/db/modelos-de-negocio.ts`, y el escritor
   único `lib/repositories/registrar-rastro-vehiculo.ts` (design §2.2). Dep.: T1.1.
   **Hecho:** `organizacion-en-modelos.guardia` verde; `tests/integration/db/vehiculos-plataforma.test.ts`
