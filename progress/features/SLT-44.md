@@ -28,3 +28,11 @@ R25 literal no sale vacío hasta que el PR #44 (SLT-43) entre en `dev`. Siguient
   y SLT-48 dependen también de SLT-65.
 - 2026-11-03 · F2.3 · Merge de `origin/dev` (`62f3dd5e`), con los conflictos triviales resueltos como en SLT-65. El fixture `geo-44` ya no pone «Dos zonas» en dos zonas, por el índice único de SLT-75.
   ABIERTO: 6 tests de R9, R16, R18, R19, R20 y R21 comprueban el colapso >1, que los datos ya no pueden producir. Falta decidir si se cambian sus `expect` o si el caso >1 se siembra de otra forma. Detalle en `progress/impl_SLT-44.md > F2.3`.
+- 2026-11-03 · Cristian: «Enmendar spec y tests». El spec_author escribe la enmienda en `specs/SLT-44-geo-jerarquica-dominio/`
+  (`requirements.md > ### Enmienda del 2026-11-03`, `design.md` §13, tasks T8.1–T8.6, sin marcar):
+  - R16 y R18–R21 se reescriben con la invariante «un distrito, una zona», el índice por empresa
+    `zona_distrito_organizacion_id_distrito_id_key` de SLT-75. R9, R8, R15 y R26 no cambian.
+  - R27 (nuevo): el colapso 1/0/>1 se conserva en el dominio como defensa. La razón: el dominio es
+    puro, comparte la regla con `_shared/zona-colapso.ts`, que SLT-75 conserva, y no cuesta nada.
+  - Pendiente de la aprobación humana de la enmienda antes de T8.
+- 2026-11-03 · Cristian aprueba la enmienda por escrito: «Aprobado» (2026-11-03). Se ejecutan T8.1–T8.6.

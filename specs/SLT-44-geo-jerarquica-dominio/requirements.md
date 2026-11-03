@@ -59,7 +59,8 @@
   - con más de una, ninguna (ambigua), sin seguir subiendo a los ancestros;
   - si ningún nodo de la cadena tiene asignación, ninguna.
 
-  Es el colapso 1/0/>1 de la ficha 374, aplicado a la asignación más específica.
+  Es el colapso 1/0/>1 de la ficha 374, aplicado a la asignación más específica. (Enmienda
+  2026-11-03: R6 no cambia y el colapso se conserva; ver R27.)
 - **R7** (ubicuo) Un nodo DEBE ser de zona especial para la empresa si él o alguno de sus ancestros
   tiene la marca de esa empresa.
 - **R8** (de estado) MIENTRAS todas las asignaciones de zona y las marcas de la empresa son a
@@ -99,7 +100,8 @@
   devolver lo mismo que hoy.
 - **R16** (ubicuo) El árbol de la empresa (pantalla de tarifas) DEBE salir del catálogo. Para cada
   distrito DEBE llevar su flag propio, la zona que lo cubre según R6 y su marca según R7. MIENTRAS
-  las asignaciones sean solo a distritos, DEBE ser idéntico al de hoy.
+  las asignaciones sean solo a distritos, DEBE ser idéntico al de hoy. (Enmienda 2026-11-03: el
+  texto vigente está en `### Enmienda del 2026-11-03`.)
 - **R17** (ubicuo) El árbol de un país para el superadmin DEBE salir del catálogo de ese país, con
   el id, el nombre, el código oficial y el flag propio de cada nodo, idéntico al de hoy.
 
@@ -108,13 +110,16 @@
 - **R18** (ubicuo) La resolución por nombres de la carga masiva por sesión, la carga por API key y
   la cotización por API key DEBE salir del catálogo de la empresa. Para cada distrito DEBE usar la
   zona de R6 con su `esCentral`, la marca de R7 y la disponibilidad de R5. Sus contratos no cambian:
-  mismas filas, mismos campos y los mismos mensajes de error por fila.
+  mismas filas, mismos campos y los mismos mensajes de error por fila. (Enmienda 2026-11-03: el
+  texto vigente está en `### Enmienda del 2026-11-03`.)
 - **R19** (ubicuo) La lectura del distrito propuesto en la corrección de datos del cliente DEBE
   salir del catálogo, con la zona de R6, la marca de R7 y la disponibilidad de R5. DEBE responder
-  «no existe» para un id que no sea un distrito del país de la empresa, como hoy.
+  «no existe» para un id que no sea un distrito del país de la empresa, como hoy. (Enmienda
+  2026-11-03: el texto vigente está en `### Enmienda del 2026-11-03`.)
 - **R20** (ubicuo) El Excel de cobertura DEBE clasificar cada distrito con las zonas candidatas de
   R6, la marca de R7 y la disponibilidad de R5. MIENTRAS las asignaciones sean solo a distritos,
-  DEBE dar el mismo resultado que hoy, fila a fila.
+  DEBE dar el mismo resultado que hoy, fila a fila. (Enmienda 2026-11-03: el texto vigente está en
+  `### Enmienda del 2026-11-03`.)
 
 ### Equivalencia de dinero
 
@@ -123,6 +128,8 @@
   - en cada distrito de su país: la zona resuelta, su `esCentral`, la marca y la disponibilidad;
   - en cada zona: el conjunto de distritos que resuelve;
   - en cada fila de cotización de una muestra: la cobertura, la zona, los importes y los errores.
+
+  (Enmienda 2026-11-03: el texto vigente está en `### Enmienda del 2026-11-03`.)
 - **R22** (por evento) CUANDO una persona ejecuta el script de equivalencia de dinero sobre una
   base, el script DEBE comparar, para cada empresa, la lectura de hoy con la nueva en lo mismo que
   R21. La muestra de cotizaciones DEBE armarse con la ubicación, la tienda y el monto de órdenes
@@ -147,6 +154,91 @@
   - las lecturas de órdenes, cierres, tránsito, analítica y zonas que no cubren R14 a R20 siguen
     leyendo la geografía vieja sin cambios (SLT-65).
 
+### Enmienda del 2026-11-03 — un distrito, una zona (SLT-75)
+
+> Revisión por F2.3 sobre el spec aprobado. Decisión humana de Cristian del 2026-11-03, «Enmendar
+> spec y tests» (fila del 2026-11-03 en `## Decisiones cerradas`). Diseño en `design.md > §13`;
+> tasks T8.1–T8.6.
+>
+> **Qué pasó.** SLT-75, ya en `dev` y mergeado en esta rama (`62f3dd5e`), añade la migración
+> `20261101090100_zona_distrito_distrito_unico_por_empresa`:
+> `CREATE UNIQUE INDEX "zona_distrito_organizacion_id_distrito_id_key" ON "zona_distrito"("organizacion_id", "distrito_id")`.
+> Es **por empresa** (SLT-75 R7): el mismo distrito puede seguir en zonas de empresas distintas,
+> pero no en dos zonas de la misma. Como el nodo de una asignación se lee de `distrito_id` (R12),
+> desde SLT-75 ningún nodo puede tener dos zonas de la misma empresa en la base. El fixture ya no
+> puede sembrar «un distrito en dos zonas», y seis tests de esta feature comprobaban ese caso.
+>
+> **Vocabulario nuevo.** **«La invariante de SLT-75»**: cada distrito está en a lo sumo una zona de
+> cada empresa. **«Asignación propia»**: la fila de `zona_distrito` del propio distrito.
+>
+> **Qué cambia y qué no:**
+> - **R16, R18, R19, R20 y R21**: los sustituyen los textos de abajo. Dejan de pedir el caso «más de
+>   una zona» con datos de la base y piden el caso que la base sí produce: un distrito con
+>   asignación propia sale con esa zona.
+> - **R6 no cambia: el colapso se conserva como defensa** (R27, nuevo). Razones:
+>   1. El dominio es puro y recibe las asignaciones como argumento (R1). Su tipo
+>      (`zonasPorNodo`: nodo → lista de zonas) admite más de una, y su contrato no puede depender de
+>      un índice que vive en otra capa.
+>   2. SLT-75 dejó fuera de su alcance «rediseñar la N:M o el colapso 1/0/>1 de
+>      `_shared/zona-colapso.ts`», y su R14 conserva el colapso en `zonaId`/`zonaNombre`. El dominio
+>      delega en esa misma función (`zonaUnicaDeDistrito`). Retirarlo solo aquí haría dos reglas
+>      distintas para lo mismo mientras conviven con las lecturas viejas de SLT-65 y con la copia
+>      congelada de `lecturas-de-hoy.ts`, que también colapsan.
+>   3. Cuesta cero: la rama >1 ya la cubre `geografia-dominio.test.ts` sin base.
+>
+>   Retirar el colapso le toca a la ficha que retire `_shared/zona-colapso.ts` (SLT-48 u otra), no
+>   a esta.
+> - **R9 no cambia.** Su test (`geo-catalogo-repository.test.ts`) arma el valor esperado con un
+>   helper que copiaba a mano el fixture viejo. Se corrige el helper (T8.4): cambia el valor que
+>   espera el `toEqual`, no lo que se exige.
+> - **R26 no cambia.** Los seis tests son de esta feature (T4.5, T3.2, T5.3), no «tests de
+>   integración existentes»: cambiarlos no es una excepción a R26.
+> - **R8 y R15 no cambian.** Sus tests ya pasan con la invariante.
+
+- **R16** (de estado, sustituye al R16 de arriba) El árbol de la empresa (pantalla de tarifas)
+  DEBE salir del catálogo. Para cada distrito DEBE llevar su flag propio, la zona que lo cubre según
+  R6 y su marca según R7. MIENTRAS las asignaciones sean solo a distritos y se cumpla la invariante
+  de SLT-75:
+  - el árbol DEBE ser idéntico al de hoy;
+  - un distrito con asignación propia DEBE llevar el id y el nombre de esa zona en `zonaId` y
+    `zonaNombre`, y esa sola zona en su lista de zonas (SLT-75 R14);
+  - un distrito sin asignación propia ni heredada DEBE llevar `zonaId` y `zonaNombre` nulos y la
+    lista de zonas vacía.
+- **R18** (de estado, sustituye al R18 de arriba) La resolución por nombres de la carga masiva por
+  sesión, la carga por API key y la cotización por API key DEBE salir del catálogo de la empresa.
+  Para cada distrito DEBE usar la zona de R6 con su `esCentral`, la marca de R7 y la disponibilidad
+  de R5. Sus contratos no cambian: mismas filas, mismos campos y los mismos mensajes de error por
+  fila. MIENTRAS se cumpla la invariante de SLT-75, un distrito con asignación propia en una zona no
+  central DEBE resolver esa zona, con `esCentral` falso.
+- **R19** (de estado, sustituye al R19 de arriba) La lectura del distrito propuesto en la corrección
+  de datos del cliente DEBE salir del catálogo, con la zona de R6, la marca de R7 y la
+  disponibilidad de R5. DEBE responder «no existe» para un id que no sea un distrito del país de la
+  empresa, como hoy. MIENTRAS se cumpla la invariante de SLT-75, un distrito con asignación propia
+  DEBE devolver el id, el nombre y el `esCentral` de esa zona.
+- **R20** (de estado, sustituye al R20 de arriba) El Excel de cobertura DEBE clasificar cada
+  distrito con las zonas candidatas de R6, la marca de R7 y la disponibilidad de R5. MIENTRAS las
+  asignaciones sean solo a distritos y se cumpla la invariante de SLT-75:
+  - DEBE dar el mismo resultado que hoy, fila a fila;
+  - la lista de zonas de cada fila DEBE tener cero o un elemento, y un distrito con asignación
+    propia DEBE traer exactamente esa zona.
+- **R21** (de estado, sustituye al R21 de arriba) MIENTRAS las asignaciones de zona y las marcas
+  son solo a distritos y se cumple la invariante de SLT-75, para cada empresa de los datos de prueba
+  DEBEN coincidir, antes y después de esta feature:
+  - en cada distrito de su país: la zona resuelta, su `esCentral`, la marca y la disponibilidad;
+  - en cada zona: el conjunto de distritos que resuelve;
+  - en cada fila de cotización de una muestra: la cobertura, la zona, los importes y los errores.
+
+  CUANDO al lado «nuevo» se le añade una asignación de zona en un cantón, la comparación DEBE:
+  - en el bloque de distritos, señalar como distintos solo los distritos de ese cantón sin
+    asignación propia;
+  - en el bloque de cobertura por zona, dar para esa zona un «nuevo» igual al «hoy» más el número
+    de esos distritos que están disponibles. El «hoy» cuenta ya los distritos disponibles con
+    asignación propia en esa zona.
+- **R27** (ubicuo, nuevo) El dominio DEBE aplicar el colapso de R6 a las asignaciones que recibe,
+  también cuando un nodo trae más de una zona, aunque desde SLT-75 la base no pueda guardar dos
+  zonas de la misma empresa en el mismo distrito. La rama «más de una» DEBE quedar cubierta por un
+  test que pase las asignaciones como argumento, sin base.
+
 **Qué requisito cubre cada decisión cerrada:**
 
 | Decisión | Requisitos |
@@ -159,6 +251,7 @@
 | Módulo nuevo y puro | R1, R24 |
 | E2E | R26 |
 | Precedentes | R5 y R6 (374), R9 (SL-17), R25 (SLT-43) |
+| Un distrito, una zona (2026-11-03) | R16, R18, R19, R20, R21 (texto de la enmienda), R27 |
 
 ## Preguntas abiertas
 
@@ -179,3 +272,4 @@ Ninguna.
 | 2026-10-30 | ¿Dónde vive la caché del catálogo y cuándo se invalida? | Por petición y por empresa, dentro del repositorio, sin TTL ni invalidación (`design.md` §4, R11). Aprobado con el spec (Camilo). |
 | 2026-10-30 | ¿SLT-46 depende también de SLT-65? | Sí: no se asigna zona ni marca a un cantón o provincia hasta que todas las lecturas hereden. Dependencia añadida en Trello (Camilo). |
 | 2026-10-30 | ¿Dónde se miden los totales de cierres de la equivalencia? | En el script de SLT-65, que reescribe las lecturas de cierres. Anotado en su tarjeta (Camilo). |
+| 2026-11-03 | El índice único de SLT-75 impide sembrar un distrito en dos zonas: ¿se cambian los `expect` o se siembra el caso >1 de otra forma? | Enmendar spec y tests: los requisitos y tests de integración describen el caso «un distrito, una zona» (Cristian). Que el colapso se conserve en el dominio como defensa (R27) lo propone el spec y se aprueba con la enmienda. |
