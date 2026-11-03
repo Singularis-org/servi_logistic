@@ -364,9 +364,9 @@ segundo `update` que deja la zona como estaba. El `finally` borra el `zona_distr
 | R6 | `geo-consultas-cierre` «R6»: el catálogo inyectado no trae el cantón retirado ni su distrito. El cierre lanza «falta la fila de…» y no queda cierre nuevo, gestión vinculada ni fila de detalle |
 | R7 | `geo-consultas-cierre` «R7 — … 1 consulta en vuelo» (sonda `_consultas-en-vuelo`, código real): máximo 1 en vuelo, sin solapes, 1 conexión, y ninguna lectura de `provincia` ni de `distrito`. `emisor-relaciones-anidadas.test.ts` sigue en la baseline, ver BLOQUEO |
 | R8 | `git diff --name-only origin/dev...HEAD -- lib/repositories/CierresAdminRepository.ts` sale vacío, y tampoco hay cambios en el árbol de trabajo. `cierres-admin-service` y `cierre-iva-aparte-sl39` pasan; `cierre-desglose-por-tienda-sql-real` y `detalle-movimiento-cierre-postgres` fallan, en la baseline, por la semilla («referencia a otra empresa: cierre_dia.destino_zona_id») |
-| R9, R11 | `geo-consultas-conteo` «R9, R11»: para los 8 nodos de cada empresa (CR y XA), el nuevo es igual a `hoy.contarSinEntregarDeHoy`. Antivacío: provincia 10, suma de cantones 10, suma de distritos 7. Contraprueba «R11 (contraprueba)»: con la orden incoherente solo difieren el cantón activo (−1) y el retirado (+1); con ella borrada, 0 diferencias |
+| R9, R11 | `geo-consultas-conteo` «R9, R11»: para los 8 nodos de cada empresa (CR y XA), el nuevo es igual a `hoy.contarSinEntregarDeHoy`. Antivacío: provincia 10, suma de cantones 10, suma de distritos 7. Contraprueba «R11 (contraprueba)»: con la orden incoherente solo difieren el cantón activo (−1) y el retirado (+1); con ella borrada, 0 diferencias. Además (T8.2), por el composition root real: `geografia-plataforma.composition-root` «R31: el conteo usa el repositorio de órdenes…» cuenta `whereLugarEn([c-1, d-1])`, el cantón y su distrito |
 | R10 | `geo-consultas-conteo` «R10»: un id inexistente, un cantón pedido como distrito, un distrito como cantón, un cantón como provincia y una provincia como cantón dan 0, tanto en el nuevo como en el de hoy |
-| R12 | `geo-consultas-conteo` «R12», en `comoPlataforma`: el distrito central de XA cuenta 4 y, con la orden de una segunda empresa de XA, 5 (la provincia, 11), igual que hoy |
+| R12 | `geo-consultas-conteo` «R12», en `comoPlataforma`: el distrito central de XA cuenta 4 y, con la orden de una segunda empresa de XA, 5 (la provincia, 11), igual que hoy. Además (T8.2): el mismo caso del composition root carga el catálogo con `paisId` del nodo pedido (`findUnique` por id → `nodoGeografico.findMany` con `{ paisId: "CR" }`) |
 | R17 | `geo-consultas-cierre` «R17»: en el cierre de XA, `nodoGeografico.findMany` se pide con `paisId` = XA y todos sus nodos son de XA; las zonas de `zonaDistrito` son solo de la empresa XA; una marca escrita en la misma transacción, sin confirmar, se congela `true` |
 
 ### Tests existentes que cambian de ENTRADA (ningún `expect` cambia)
@@ -899,3 +899,40 @@ conteo por empresa 287/0; plataforma CR 297/0. Los bloques `cierres` comparan 0 
 3. **Cachear el catálogo por país** dentro de la petición o del proceso. Elimina la carga en lecturas
    repetidas, pero choca con m5/R21 (sin instancias de módulo) y necesita design.
 4. **No recomiendo el índice de T9.2** solo: el planner no lo usa en tablas de este tamaño.
+
+## T8.2 — rojo de `test:rapido` en el composition root del conteo (implementer, 2026-11-03)
+
+Decisión humana (Cristian, 2026-11-03): «Diagnosticar y enmendar».
+
+- **Rojo:** `tests/unit/actions/geografia-plataforma.composition-root.test.ts:56`, «R31: el conteo
+  usa el repositorio de órdenes (el SEGUNDO argumento del root)». Esperaba
+  `{ status: "ok", ordenes: 7 }` y recibía `{ status: "error" }`. Este archivo no está en
+  `tests/baseline-rojos.json`.
+- **Error real** (sacado con una sonda temporal sobre `OrdenRepository`, ya borrada):
+  `TypeError: this.prisma.nodoGeografico.findUnique is not a function`. La action lo registra como
+  `fallo conteo de ordenes nivel=canton causa=TypeError` y devuelve `error`.
+- **Causa: el mock estaba viejo, no hay bug en el código.** `contarSinEntregarPorNodoGeografico`
+  hace lo que pide el design §5 (R9–R12): lee el nodo pedido por id (`findUnique`), carga
+  `dePais(paisId)` y cuenta `whereLugarEn([id, ...nodosBajo])`. El cliente falso de SL-20 solo
+  tenía `orden.count`, con el `where` por columna de nivel (`cantonId`) que había antes de SLT-65.
+- **Enmienda (solo en el test):**
+  - se agrega `nodoGeografico.findUnique`, que por defecto devuelve `null`;
+  - el caso R31 prepara el cantón `c-1` de CR (profundidad 2), con su distrito `d-1`;
+  - el `where` pasa a la forma de `whereLugarEn(["c-1", "d-1"])`, junto con `deletedAt: null`.
+
+  No se quitó ningún aserto: siguen `{ status: "ok", ordenes: 7 }` y `toHaveBeenCalledTimes(1)`
+  sobre `orden.count`, así que el conteo sigue pasando por el repositorio de órdenes del root. Se
+  suman dos asertos: `findUnique` con `{ id: "c-1" }` y `nodoGeografico.findMany` con
+  `{ paisId: "CR" }`. El mapa R → test (T3) añade este caso a las filas R9/R11 y R12.
+
+### Corridas (`NODE_OPTIONS=--max-old-space-size=8192`)
+
+- `vitest run tests/unit/actions/geografia-plataforma.composition-root.test.ts` → `Tests  6 passed (6)`.
+- Relacionados (`geografia-action`, `geografia-plataforma-action`, `geografia-service` y el
+  composition root) → `Test Files  4 passed (4)`, `Tests  159 passed (159)`.
+- `eslint` del archivo → sin problemas. `tsc --noEmit` → sin errores.
+- `./init.sh` completo: Claude Code **lo cortó por falta de memoria del sistema** a mitad de
+  `test:rapido`, con el log en 9579 líneas. Antes del corte pasaron
+  `✓ cupo por zona respetado (mis in_progress=4)`, `✓ typecheck paso` y el lint (solo warnings), y
+  no había ninguna línea `FAIL`. No hay línea final. **T8.2 sigue sin marcar**, pendiente de volver
+  a correr `./init.sh` con memoria libre.
