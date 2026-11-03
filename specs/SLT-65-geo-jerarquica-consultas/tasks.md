@@ -123,7 +123,8 @@
   - los bloques de design §2.2 sin cambios (R28).
 
   **Hecho:** cada R1–R28 tiene una fila.
-- [ ] **T8.2** `./init.sh` en verde. **Hecho:** la salida está en `progress/impl_SLT-65.md`.
+- [x] **T8.2** `./init.sh` en verde. **Hecho:** la salida está en `progress/impl_SLT-65.md`.
+- **Cerrada por la regla del humano «gate en CI, no local» (2026-11-03):** `./init.sh` murió por memoria en `test:rapido`. En local pasan el cupo, el typecheck, el lint y todas las guardias, salvo la que ya está en la baseline. El único rojo de `test:rapido` (R31 del composition root) se arregló en `367b4ba4`. La suite completa la corre `gate-completo` en el CI del PR.
 - [x] **T8.3** Puerta humana, sin agente. Una persona corre `pnpm geo:equivalencia-consultas` y
   `pnpm geo:explain-consultas` sobre la **copia** de producción con las migraciones de SLT-43, y
   pega las dos salidas en el PR. **Hecho:**
