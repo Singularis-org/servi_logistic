@@ -1,7 +1,7 @@
 # SLT-52 — tarifas-flexibles-modelo · design.md
 
 > Requisitos: `requirements.md` (R1-R51; P1-P4 cerradas por Carlos el 2026-11-02; R46-R51 y §12 por
-> sus decisiones de las 21:00, tras T4; P5 abierta). Zona backend. Sin pantalla (SLT-54),
+> sus decisiones de las 21:00, tras T4; P5 cerrada el 2026-11-03: opción (a)). Zona backend. Sin pantalla (SLT-54),
 > sin migración de datos (SLT-53), sin retirar el modelo viejo (SLT-57).
 > El MCP `codebase-memory` no respondió (2026-11-02): todo lo de abajo sale de Grep/Read.
 
@@ -484,7 +484,7 @@ se congela (R40). Lo que falta es usarlo:
 - `calcularEscenarios` (`CotizacionOrdenService`): los dos escenarios restan también
   `ivaFulfillment` del `total`.
 - Publicación del campo (cotización, carga, `costoEstimado` de la lectura, detalle del cierre de
-  administración): pendiente de **P5**. Propuesta (a): campo aditivo `ivaFulfillment`, con su
+  administración): **P5 = (a)** (Carlos, 2026-11-03): campo aditivo `ivaFulfillment`, con su
   entrada en `docs/api/api-key-openapi.yaml` y `docs/api/CHANGELOG.md`.
 - `agregarIngresosPorConcepto` y `derivarIngresoOrden` no cambian: el fulfillment sigue fuera de
   la liquidación (R31, P3).

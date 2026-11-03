@@ -253,7 +253,7 @@ enmienda ningún R en sitio: se añaden R46-R51.
 
 P1-P4, abiertas por `spec_author` al diseñar, las cerró Carlos el 2026-11-02 (ver tabla).
 
-- **P5 (2026-11-03, abierta).** ¿Cómo se PUBLICA el IVA del fulfillment en la API por key? Hoy el
+- **P5 (2026-11-03, cerrada: opción (a), ver tabla).** ¿Cómo se PUBLICA el IVA del fulfillment en la API por key? Hoy el
   contrato (`docs/api/api-key-openapi.yaml`) tiene un solo campo `fulfillment` («monto fijo…,
   crudo») en la cotización, en la carga (`costoEnvio` + `fulfillment`) y en `costoEstimado` /
   `costoReal` de la lectura («exactamente cinco cadenas»). Opciones: (a) campo NUEVO `ivaFulfillment`
@@ -273,6 +273,7 @@ P1-P4, abiertas por `spec_author` al diseñar, las cerró Carlos el 2026-11-02 (
 | 2026-11-02 | Grupo frente a vehículo en el pago (P2) | Gana el grupo: grupo por vehículo > grupo > zona por vehículo > zona. |
 | 2026-11-02 | ¿Fulfillment en el cierre y las wallets? (P3) | No en esta ficha: se mantiene la frontera de hoy. |
 | 2026-11-02 | IVA del pago al mensajero y a la satélite (P4) | No llevan IVA. Solo los cobros a la tienda llevan IVA. |
+| 2026-11-03 | Cómo se publica el IVA del fulfillment en la API por key (P5) | Opción (a): campo nuevo `ivaFulfillment` junto a `fulfillment` (`"0.00"` en el modelo viejo), anotado en `docs/api/CHANGELOG.md`. Carlos aprobó el spec con (a). |
 | 2026-11-02 | ¿Monto o %, quién decide? | La empresa, concepto por concepto. |
 | 2026-11-02 | Base de un concepto en % | La fija la app por concepto: cobro a tienda → valor del pedido (recaudo); pago a mensajero o satélite → flete de la orden sin IVA. |
 | 2026-11-02 | Cobro a la tienda | Flete por resultado de la gestión (hoy «flete» y «flete devuelto» son dos casos) + fulfillment + comisión COD. |

@@ -173,7 +173,7 @@
   - corrección: `tests/unit/services/corregir-datos-cliente-service.test.ts` › «SLT-52 R51 —
     sin_tarifa aunque haya comisión y fulfillment».
   Cubre: R51, R25. Hecho: los cuatro verdes; si alguno sale rojo, es un bug de T4 y se arregla aquí.
-- [ ] **T4.8** **Bloqueada por P5.** Publicar el IVA del fulfillment según lo que elija Carlos
+- [ ] **T4.8** P5 = (a), campo `ivaFulfillment`. Publicar el IVA del fulfillment según lo que eligió Carlos
   (propuesta (a): campo `ivaFulfillment` en cotización, carga y `costoEstimado`; `"0.00"` en el
   viejo), con `docs/api/api-key-openapi.yaml` y `docs/api/CHANGELOG.md`. Tests:
   `tests/integration/cotizacion-api-key.test.ts` y

@@ -7,7 +7,7 @@
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F2.1 (2026-11-02): T0-T4 hechas, gate verde. Siguiente: aplicar las 3 decisiones de las 21:00 (abajo) y luego T5. Detalle en `progress/impl_SLT-52.md`.
+F2.1 (2026-11-03): T0-T4 hechas; spec enmendado y aprobado. Siguiente: T4.5-T4.8, luego T5. Detalle en `progress/impl_SLT-52.md`.
 Ojo: `prisma generate` ya conoce las tablas de T1; una base sin sus migraciones falla en `cierreDetail.create`.
 
 ## Evaluación
@@ -32,6 +32,8 @@ snapshot ampliado en `cierre_detail` y `gestion_orden`. Plan de la épica:
   (2) SÍ guardar qué tarifa_valor se usó en el cobro por rechazo (columna + migración de esquema; hoy
   tarifaId queda null); (3) confirmado: «sin tarifa» = sin flete por entregado, aunque haya comisión o
   fulfillment. (1) y (2) cambian el design: pasarlos por spec (R nuevos) antes de T5.
+- 2026-11-03 · Spec enmendado (R46-R51, T4.5-T4.8, 3d0f7d6b). Carlos: «te apruebo la spec»; P5 = (a),
+  campo `ivaFulfillment` en la API.
 
 ## Preguntas abiertas
 Ninguna.
