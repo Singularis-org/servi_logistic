@@ -106,8 +106,10 @@ describe("D14, D16 — planDeEmpresa lee las dos acciones del historial de asign
 
     const r = await new PlanesRepository(prisma).planDeEmpresa(ORG);
 
-    const arg = (findMany.mock.calls[0] as unknown as [{ where: unknown; select: Record<string, boolean> }])[0];
+    const arg = (findMany.mock.calls[0] as unknown as [{ where: unknown; orderBy: unknown; select: Record<string, boolean> }])[0];
     expect(arg.where).toEqual({ organizacionId: ORG, accion: { in: ["plan_asignado", "plan_tipo_cobro_cambiado"] } });
+    // Orden total y estable: `created_at` es TIMESTAMP(3) y puede empatar; `id` (único) desempata siempre igual.
+    expect(arg.orderBy).toEqual([{ createdAt: "desc" }, { id: "desc" }]);
     expect(arg.select.accion).toBe(true);
     expect(r).toEqual({
       organizacionId: ORG,

@@ -592,3 +592,42 @@ Lo que cambia en pantalla:
 
 ### Veredicto
 D16 está hecho: el cambio de solo el tipo escribe `plan_tipo_cobro_cambiado` (migración con un down que convierte las filas a `plan_asignado`) y D14 sigue distinguiendo la fila. Lint da 0 errores. Pasan 2422 tests relacionados y las guardias, salvo la 420 del baseline. Los errores de tsc son todos del cliente Prisma sin generar. Falta que CI corra la integración db.
+
+## Backend — desempate del historial (D14)
+
+### Decisión: producción ya tiene orden total; el empate solo existe en el test → aserciones sin orden
+- Lectura real (`PlanesRepository.planDeEmpresa`, sobre `historial_accion`):
+  `where: { organizacionId, accion: { in: [...ACCIONES_DE_ASIGNACION] } }`,
+  `orderBy: [{ createdAt: "desc" }, { id: "desc" }]`. Con `id` único es un orden **total y determinista**
+  (el índice `historial_accion_organizacion_id_created_at_id_idx` lo respalda). No cambio producción.
+- Límite conocido (no se arregla aquí): `id` es `@default(uuid())` (v4 aleatorio) y no hay columna de
+  secuencia ni monotónica en `historial_accion` (`lote_id` también es uuid). Ante un empate de `created_at`
+  el desempate es estable pero NO sigue el orden de inserción. Nada mejor disponible sin migración.
+- ¿Pueden empatar en producción? Los únicos escritores de `ACCIONES_DE_ASIGNACION` son
+  `asignarEnTx` (`plan_asignado`, usado por `asignar` y `crearYAsignar`: una fila por llamada) y
+  `cambiarTipoCobro` (`plan_tipo_cobro_cambiado`, una fila). Ninguna transacción de producción escribe
+  dos filas de asignación de la misma empresa; crear un custom con empresa + asignar deja UNA. El cron de
+  cambios programados no escribe estas acciones. Un empate entre transacciones distintas exige dos
+  escrituras sobre la misma empresa en el mismo milisegundo (`created_at` es `TIMESTAMP(3)`,
+  `CURRENT_TIMESTAMP` = inicio de la transacción) y quedan serializadas por el `FOR UPDATE` de la
+  empresa: posible solo en teoría; aun así el orden sigue siendo determinista. Abierto (no inventado):
+  si se quisiera orden de inserción exacto haría falta una columna monotónica (migración), fuera de alcance.
+- En el test todo nace en la transacción de `revertida` (los SAVEPOINT comparten `now()`), así que el
+  orden lo decide el uuid aleatorio. Encontré el mismo defecto en el primer test de D10
+  (`[...antes, nueva]` sobre `createdAt asc, id asc`), también intermitente: lo corregí igual.
+
+### Archivos
+- `tests/integration/db/planes-cambiar-tipo-cobro.test.ts`: D14 ordena por `tipo` antes de comparar;
+  D10 (primer `it`) compara el multiconjunto de filas (JSON ordenado), no la posición.
+- `tests/unit/repositories/planes-repository-tipo-cobro.test.ts`: fija
+  `orderBy: [{ createdAt: "desc" }, { id: "desc" }]` en la lectura del detalle.
+
+### Salida
+- `pnpm run lint`: `✖ 232 problems (0 errors, 232 warnings)`.
+- `vitest related --run` (los dos archivos): `Test Files 1 passed | 1 skipped (2)`,
+  `Tests 5 passed | 11 skipped (16)`. La integración db se salta sin base; corre en CI.
+- `tsc --noEmit`: 4 errores, ninguno en mis archivos (`planes-crear-custom-asigna.test.ts` ×3 por
+  `planTipoCobro` y `zona-pago-mensajero-rastro.test.ts` ×1): el cliente Prisma de la junction está sin generar.
+
+### Veredicto
+Producción ya ordena de forma total y estable (`createdAt desc, id desc`) y no puede crear dos filas de asignación de una empresa en una misma transacción. El empate solo existía en los tests (D14 y también D10), que ahora no dependen del orden. El `orderBy` queda fijado por un unit.

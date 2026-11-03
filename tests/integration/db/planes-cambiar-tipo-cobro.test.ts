@@ -78,11 +78,17 @@ describeSiHayBase("Ajuste planes-custom D10 — cambiar solo el tipo de cobro de
     expect(r.antes.empresa.planTipoCobro).toBe("mensual");
     expect(r.despues.modulos).toEqual(r.antes.modulos);
     // D16: una sola fila nueva, con su acción PROPIA (no `plan_asignado`), del mismo plan, con el tipo de
-    // antes y el de ahora.
-    expect(r.despues.historial).toEqual([
-      ...r.antes.historial,
-      { accion: "plan_tipo_cobro_cambiado", entidadId: r.planId, valorAnterior: "mensual", valorNuevo: "anual" },
-    ]);
+    // antes y el de ahora. Sin depender de la posición: todas las filas nacen en la misma transacción del
+    // caso, comparten `created_at` y el desempate por `id` (uuid aleatorio) no sigue el orden de inserción.
+    const comoTexto = (h: unknown) => JSON.stringify(h);
+    expect(r.despues.historial.map(comoTexto).sort()).toEqual(
+      [
+        ...r.antes.historial,
+        { accion: "plan_tipo_cobro_cambiado", entidadId: r.planId, valorAnterior: "mensual", valorNuevo: "anual" },
+      ]
+        .map(comoTexto)
+        .sort(),
+    );
   });
 
   it("D16: de vuelta a mensual deja otra fila `plan_tipo_cobro_cambiado` (anual → mensual) y ninguna `plan_asignado` nueva", async () => {
@@ -163,10 +169,17 @@ describeSiHayBase("Ajuste planes-custom D14 — el historial de asignaciones del
       return servicio.planDeEmpresa(SUPERADMIN, { organizacionId: org });
     });
     if (r.estado !== "ok") throw new Error(r.estado);
-    // Del más reciente al más antiguo.
-    expect(r.vista.asignaciones.map(({ tipo, tipoCobro, tipoCobroAnterior }) => ({ tipo, tipoCobro, tipoCobroAnterior }))).toEqual([
-      { tipo: "cambio_tipo_cobro", tipoCobro: "anual", tipoCobroAnterior: "mensual" },
+    // Sin depender del orden: las dos filas nacen en la misma transacción del caso (`now()` único) y empatan
+    // en `created_at`; producción desempata por `id` (uuid aleatorio, no sigue la inserción). En producción
+    // cada transacción escribe a lo sumo UNA fila de asignación por empresa, así que ahí no empatan así.
+    // El `orderBy` de la lectura lo fija el unit de `planes-repository-tipo-cobro`.
+    expect(
+      r.vista.asignaciones
+        .map(({ tipo, tipoCobro, tipoCobroAnterior }) => ({ tipo, tipoCobro, tipoCobroAnterior }))
+        .sort((a, b) => a.tipo.localeCompare(b.tipo)),
+    ).toEqual([
       { tipo: "asignacion", tipoCobro: "mensual", tipoCobroAnterior: null },
+      { tipo: "cambio_tipo_cobro", tipoCobro: "anual", tipoCobroAnterior: "mensual" },
     ]);
     // D10: el cobro que muestra el detalle ya es el anual (el siguiente cobro se recalcula al leer).
     expect(r.vista.plan?.cobro.tipo).toBe("anual");
