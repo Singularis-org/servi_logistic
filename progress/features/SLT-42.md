@@ -20,7 +20,7 @@ Bloqueos de F2.0:
    SLT-52 (schema, servicios de cierres, CorteDiarioService, OrdenRepository, openapi…), SLT-56
    (CierresAdmin*) y SLT-64 (CierreDia*, `app/api/cron/procesar-jobs/route.ts`). SLT-56 ya figura
    `done` en el board. Esperar a que terminen o que el humano acepte el choque (`--acepto`).
-   Con SLT-43 (propia) solo AVISO.
+   Con SLT-43 (propia) solo AVISO. Choque ACEPTADO por el humano (ver Decisiones). Resuelto.
 
 ## Evaluación
 - zone `backend` (era `fullstack`; la UI salió a SLT-81 el 2026-11-03): catálogo por país, migración, validación en servidor, hora.
@@ -42,6 +42,11 @@ Bloqueos de F2.0:
 - 2026-11-03 (/afinar-feature): ver tabla de decisiones en `specs/SLT-42-*/requirements.md`.
   libphonenumber entra ahora; documento único por empresa y tipo; 5 tipos de CR; ficha partida
   en SLT-81 (frontend, bloqueada por SLT-42 y SLT-46).
+
+- 2026-11-03: el humano acepta el choque de archivos con SLT-52, SLT-56 y SLT-64 (Carlos Restrepo):
+  «Acepto el choque, arrancar ya». Resuelve quien mergee segundo (F2.3). `--acepto SLT-52,SLT-56,SLT-64`.
+- 2026-11-03: cupo backend 3 → 4 en `arnes.config.json`: «ignoralo, esas estan en pausa para
+  pruebas futuras, las de geo» (SLT-43, SLT-44, SLT-65).
 
 ## Preguntas abiertas
 Las del `requirements.md` (normalizar teléfonos guardados, jobs por zona horaria, largos de documento).
