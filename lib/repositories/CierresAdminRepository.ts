@@ -72,6 +72,7 @@ const ROL_MENSAJERO = "mensajero";
 import {
   CONCEPTO_CONGELADO_SELECT,
   CierreDetalleFaltanteError,
+  DETALLE_SELECT,
   tarifaDe,
 } from "@/lib/utils/cierre-detalle";
 import { fulfillmentCongeladoDe } from "@/lib/utils/fulfillment-congelado";
@@ -117,7 +118,9 @@ import { rutasEvidenciaGestion } from "@/lib/utils/evidencias-gestion";
 import {
   computeTotales,
   pagosDelCierre,
+  rebasarConElCobroCongelado,
   sumarSnapshotsCongelados,
+  type TarifasDePago,
 } from "@/lib/utils/cierre-totales";
 // FICHA 398 -> SLT-52 (T5.1): el resolver del pago, como FUNCION sobre el cliente de la
 // transaccion, para resolverlo DENTRO de la correccion sin instanciar su repositorio ni ensanchar
@@ -1782,7 +1785,24 @@ export class CierresAdminRepository implements ICierresAdminRepository {
           cobraComision: previa.orden.cobraComision,
         },
       ]);
-      const tarifa = tarifas.get(gestionId) ?? null;
+      // SLT-52 (T5.5, design §13.2 paso 2; R52, R54) — en el nuevo, la base del % NO es la del
+      // resolver (valores y `monto_cobrar` de HOY): es el flete sin IVA que ESTE cierre le cobra a
+      // la tienda por el rechazo, desde su `cierre_detail` congelado. Sin detalle, error duro
+      // (69/R14, sin fallback). El viejo no tiene base y no lee nada.
+      let rebasadas: TarifasDePago = tarifas;
+      if (tarifas.get(gestionId)?.modelo === "nuevo") {
+        const detalle = await tx.cierreDetail.findFirst({
+          where: { cierreId, ordenId },
+          select: DETALLE_SELECT,
+        });
+        if (detalle === null) throw new CierreDetalleFaltanteError(cierreId, ordenId);
+        rebasadas = rebasarConElCobroCongelado(
+          [{ gestionId, ordenId, resultado: RESULTADO_RECHAZADA }],
+          tarifas,
+          () => detalle,
+        );
+      }
+      const tarifa = rebasadas.get(gestionId) ?? null;
       const pagoMensajero = pagoPorResultado(RESULTADO_RECHAZADA, tarifa); // "0.00" en el viejo
       const ingresoBodegaRechazo = ingresoBodegaPorResultado(RESULTADO_RECHAZADA, tarifa);
 
@@ -1826,7 +1846,7 @@ export class CierresAdminRepository implements ICierresAdminRepository {
       await tx.gestionPagoCongelado.deleteMany({ where: { gestionOrdenId: gestionId } });
       const { congelados } = pagosDelCierre(
         [{ gestionId, resultado: RESULTADO_RECHAZADA }],
-        tarifas,
+        rebasadas,
       );
       if (congelados.length > 0) {
         await tx.gestionPagoCongelado.createMany({

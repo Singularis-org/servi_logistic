@@ -202,7 +202,7 @@
   Cubre: R24, R33, R40, R41, R42.
   **Contraprueba:** hacer que `tarifaDe` lea el valor vivo en vez del congelado → rojo pegado en
   `progress/impl_SLT-52.md`.
-- [ ] **T5.5** Base del % del pago desde el cobro congelado (design §13; depende de T5.1-T5.4).
+- [x] **T5.5** Base del % del pago desde el cobro congelado (design §13; depende de T5.1-T5.4).
   `baseDelCobroCongelado` en `lib/utils/cierre-totales.ts`; la usan la 398
   (`CierresAdminRepository.corregirResultadoGestionEnCierre`), la 477
   (`CierreDiaRepository.resolicitarCierreRechazado`) y `crearCierre`, que calcula en su tx la base,

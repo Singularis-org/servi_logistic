@@ -1197,3 +1197,98 @@ nuevo arreglado, firmas estrechadas salvo lo que exige T0.1 (medido); typecheck 
 - Gate 1.º: INIT_EXIT=1 por 3 rojos de forma (proyección de `costoReal`, arriba) → arreglados con literales a mano.
 - `sql-a-mano-por-empresa`: sobraba `DineroProductosRepository` en `EXCEPCIONES_SQL_A_MANO` (ya filtra por empresa) → quitada.
 - Gate 2.º (`./init.sh`): **INIT_EXIT=0**; test:rapido 1060 passed | 206 skipped; guardias 323 passed | 3 skipped.
+
+## T5.5 (2026-11-03)
+
+backend_dev, solo T5.5 (R52-R55, y R28 en esos caminos). MCP `codebase-memory-mcp` no conecto (timeout): Grep/Read.
+Sin migracion, sin dependencias, sin `prisma generate`. `.env`: solo booleanos (existe, `DATABASE_URL` presente).
+
+### Archivos
+- `lib/utils/cierre-totales.ts:121` `CobroCongeladoDeOrden` (subconjunto de `DETALLE_SELECT`); `:137` `baseDelCobroCongelado(resultado, detalle)`
+  = `derivarIngresoOrden(…, tarifaDe(detalle, detalle.conceptos))` con el pedido congelado: `ingreso_flete` si `entregado`,
+  `ingreso_flete_devolucion` si no, `0.00` si no aporta; `:161` `rebasarConElCobroCongelado(gestiones, tarifas, cobroDe)`: cambia
+  solo el `baseFlete` de las del nuevo; `cobroDe` solo se llama para ellas (el viejo pasa tal cual, R36).
+- `lib/utils/ingreso-empresa.ts:13-15` — solo el comentario del import: ahora HAY ciclo con `cierre-totales` (desvio 1).
+- `lib/repositories/CierresAdminRepository.ts:1792` (398) — si la tarifa de pago es del nuevo, lee el `cierre_detail` de
+  `(cierreId, ordenId)` con `DETALLE_SELECT` (falta = `CierreDetalleFaltanteError`) y rebasa ANTES de `pagoPorResultado`,
+  `ingresoBodegaPorResultado` y `pagosDelCierre`.
+- `lib/repositories/CierreDiaRepository.ts:2092` (477) — igual, una consulta (`cierreId` + `ordenId IN`) para las rehechas del
+  nuevo, con SU resultado, antes de `derivarPagos`/`derivarIngresoBodega`/`pagosDelCierre`.
+- `lib/repositories/CierreDiaRepository.ts` (`crearCierre`, R55): `:1471` con `pagos.modelo === 'nuevo'` NO escribe los
+  `pagoByGestionId`/`ingresoByGestionId` del servicio; `:1600` guarda en memoria el cobro que congela por orden (mismas entradas
+  del detalle + `conceptosEnMemoriaDe`, `:676`, la conversion que tambien usa `conceptosCongeladosDe`); `:1639` tras
+  `asegurarMismoModelo`: relee las gestiones del servicio que ESTA tx vinculo (`id`, `ordenId`, `resultado`), reconstruye la tarifa
+  de pago sin base desde `pagos.congelados` (`tarifasDePagoSinBase`, `:697`), rebasa, escribe `pago_mensajero` /
+  `ingreso_bodega_rechazo` (`escribirSnapshotsPorGestion`, `:206`, el bloque de siempre extraido sin cambios), las filas de
+  `gestion_pago_congelado` y los dos totales del cierre (`cierreDia.update`, SUMA de los snapshots de la tx). El viejo: sin cambio.
+- NUEVO `tests/unit/utils/cierre-totales-base-congelada.test.ts` (7), NUEVO `tests/integration/db/tarifas-flexibles-base-congelada.test.ts` (6).
+- `tests/unit/repositories/cierre-pago-congelado.test.ts` — solo dobles (ningun importe ni literal tocado): `detalleNuevo(ordenId)`
+  para `cierreDetail.findFirst` (398) y `cierreDetail.findMany` (477); la relectura de `crearCierre` devuelve `ordenId` y
+  `resultado`; `cierreDia.update`; la suma de snapshots del nuevo devuelve `[]`. Sus 11 casos siguen con los mismos esperados.
+
+### R -> test
+| R | test |
+|---|---|
+| R52 | `tarifas-flexibles-base-congelada.test.ts` › «R52 — la 398 corrige a rechazada: base = flete por rechazo CONGELADO (10 % de 20000), no el de hoy (20 % de 50000)», «R52/R28 — sin `tienda_flete_rechazo` al congelar (creado despues): la base es 0.00 y el pago en % da 0»; unit › «SLT-52 R52 — entregado…», «SLT-52 R52 — rechazo…», «SLT-52 R27/R52 — concepto en %…» |
+| R53 | `tarifas-flexibles-base-congelada.test.ts` › «R53 — la re-solicitud 477 vincula la rehecha (rechazo): su base sale del cobro congelado de su orden» |
+| R54 | `tarifas-flexibles-base-congelada.test.ts` › «R54 — cobro congelado en el VIEJO y pago del nuevo: la base es el flete devuelto del viejo congelado (1000.00)»; unit › «SLT-52 R54 — cobro viejo congelado…», «SLT-52 R54 — viejo SIN tarifa congelada…» |
+| R55 | `tarifas-flexibles-base-congelada.test.ts` › «R55 — solicitud: el pago se resolvio con A y el cobro se congela con B -> base, pagos y totales salen de B», «R55 — corte diario: lo mismo en el `vencido`»; unit › «SLT-52 R52/R55 — sustituye la base del nuevo…» |
+| R28 (en esos caminos) | «R52/R28 — sin `tienda_flete_rechazo`…»; unit › «SLT-52 R28 — concepto ausente al congelar…» |
+
+R52 y R54 afirman ademas que la base es lo que la APROBACION le cobra a la tienda (`WalletFeedService`): `ingreso_flete_devolucion:2000.00`
+(+260.00 IVA) y `:1000.00` (+130.00). R55 afirma que el servicio resolvio de verdad con A (`baseFlete` 1500.00) antes del cambio a B:
+el cambio ocurre DENTRO de `resolvePagos` (resolver real que, tras resolver, actualiza el valor como dueño y vuelve al rol de la app).
+
+### Salida real
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: **TC_EXIT=0**, 0 errores.
+- `pnpm exec eslint` sobre los 7 archivos tocados: **LINT_EXIT=0**, sin avisos.
+- Postgres real, `tarifas-flexibles-base-congelada.test.ts`: **Tests 6 passed (6)**.
+- Unit y vecinos (57 archivos: todo test fuera de `tests/integration` que importa `CierreDiaRepository`, `CierresAdminRepository`,
+  `cierre-totales`, `CierreDiaService` o `CorteDiarioService`, + `ingreso-empresa-modelo-nuevo` y `respaldo-identico` (T0.1)):
+  1.ª corrida 8 rojos, todos en `cierre-pago-congelado.test.ts` por dobles sin `cierreDetail.findFirst/findMany` (forma, arreglado
+  arriba); 2.ª: **Test Files 57 passed (57); Tests 1186 passed (1186)**.
+- Postgres real, vecinos (10 archivos: el nuevo, `tarifas-flexibles-snapshot`, `-resolver`, `-respaldo`, `cierre-detail-congelado`,
+  `ajuste-pago-mensajero-cierre`, `resolver-novedad-reprograma-dinero`, `asimetria-sin-tarifa`, `477-resolicitud-rechazado-sql-real`,
+  `correccion-resultado-gestion.int`): **Test Files 2 failed | 8 passed (10); Tests 16 failed | 68 passed (84)**. Los 2 rojos son
+  `477-resolicitud-rechazado-sql-real` y `correccion-resultado-gestion.int`, en `tests/baseline-rojos.json`, rojos AL SEMBRAR
+  («referencia a otra empresa: orden.zona_id -> zona» / «tarifa_zona_mensajero.zona_id -> zona», SL017), igual que en T5.1.
+- `pnpm run test:guardias`: **Test Files 1 failed | 323 passed | 3 skipped (327)**; el rojo es `dependencias-declaradas-presentes`
+  (4, baseline).
+
+### Contrapruebas (`scratchpad/mutar.mjs` + `scratchpad/mut.sh`: `cp` a respaldo, mutar, correr SOLO el `-t` afectado, `cp` de vuelta, `cmp`)
+- **M1 (398 vuelve al `baseFlete` del resolver)** — `rebasadas = rebasarConElCobroCongelado(` -> `void rebasarConElCobroCongelado(`
+  en `CierresAdminRepository.ts` -> `× R52 — la 398 corrige…`, `× R52/R28 — sin tienda_flete_rechazo…` (Tests 2 failed | 4 skipped):
+  `- "base": "2000.00"  + "base": "10000.00"`, `- "importe": "1000.00"  + "importe": "5000.00"`. `cmp`: identico.
+- **M2 (477 igual)** — `tarifas = rebasarConElCobroCongelado(` -> `void …` en `CierreDiaRepository.ts` -> `× R53 — la re-solicitud 477…`
+  (1 failed | 5 skipped): `- "base": "2000.00"  + "base": "10000.00"`, `- "importe": "1000.00"  + "importe": "5000.00"`. `cmp`: identico.
+- **M3 (`monto_cobrar` VIVO en vez del congelado como entrada de `baseDelCobroCongelado`)** — en la 398 `() => detalle` ->
+  `() => ({ ...detalle, montoCobrar: previa.orden.montoCobrar })` -> `× R52 — la 398 corrige…` (1 failed | 1 passed | 4 skipped):
+  `- "base": "2000.00"  + "base": "5000.00"`, `- "importe": "1000.00"  + "importe": "2500.00"`. `cmp`: identico.
+- **M4 (`crearCierre` usa el `baseFlete` del servicio)** — `tarifasDePagoSinBase` copia `p.base` y `crearCierre` no rebasa -> `× R55 —
+  solicitud…`, `× R55 — corte diario…` (2 failed | 4 skipped): `- "base": "3000.00"  + "base": "1500.00"`,
+  `- "importe": "300.00"  + "importe": "150.00"` (satelite `150.00` -> `75.00`). `cmp`: identico.
+- **M5 (devolver 0 en la rama vieja)** — `if (detalle.tarifaModelo !== "nuevo") return "0.00";` al inicio de `baseDelCobroCongelado`
+  -> `× R54 — cobro congelado en el VIEJO…` (1 failed | 5 skipped): `- "base": "1000.00"  + "base": "0.00"`,
+  `- "importe": "500.00"  + "importe": "0.00"`. `cmp`: identico.
+
+### Desvios / abiertos
+1. **Ciclo de import `cierre-totales` <-> `ingreso-empresa`.** El design pide la funcion en `cierre-totales.ts` con
+   `derivarIngresoOrden`, e `ingreso-empresa` ya importaba `computeTotales` de alli (su comentario decia «verificado que no crea
+   ciclo»). Es inocuo (ninguno usa lo importado al evaluar el modulo; los 57 archivos de unit y los 10 de integracion lo cargan) y
+   ambos comentarios lo dicen. No hay guardia de ciclos. Si se prefiere sin ciclo: mover `computeTotales` o la funcion a otro modulo.
+2. **La 398 y la 477 leen el `cierre_detail` SOLO si la tarifa de pago es del nuevo** (el design dice «leer… Si la tarifa de pago es
+   del nuevo, sustituir»). El viejo no tiene base: leerlo no cambia nada y anadiria un error duro nuevo a un camino que hoy no lo tiene.
+3. **`crearCierre`: el `create` del cierre sigue escribiendo los totales de pago del servicio y, en el nuevo, se sobrescriben en la
+   misma tx** con la suma de los snapshots (`cierreDia.update`). El estado final no lleva los del servicio; el `create` no se toca
+   para no cambiar el contrato de sus dobles.
+4. **La tarifa de pago se reconstruye desde `pagos.congelados`** (no se anade un campo a `CrearCierreInput`): cada fila trae el
+   `ValorPago` del actor; una gestion sin filas no tiene valor y paga 0, igual que antes. Solo cuentan las gestiones del servicio
+   (`pagoByGestionId` + congelados) que la tx vinculo, como el `updateMany` de siempre.
+
+### Veredicto T5.5
+Hecha: la base del % sale del cobro congelado en la 398, la 477 y `crearCierre` (solicitud y corte), 6 casos en Postgres real y 7 unit
+en verde, las 5 contrapruebas en rojo y restauradas (`cmp`); typecheck 0, lint 0; sin migracion; sin commitear.
+
+### Gate del implementer (T5.5)
+
+`./init.sh` rapido sobre el arbol de T5.5: `INIT_EXIT=0` (4521 passed, 24 skipped; 246 rojos heredados del baseline fuera de la seleccion). El worktree no tiene `.env`: la integracion contra Postgres la corrio backend_dev aparte (6/6).

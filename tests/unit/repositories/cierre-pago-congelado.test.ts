@@ -79,6 +79,43 @@ function snapshotRow(ordenId: string) {
   };
 }
 
+/**
+ * SLT-52 (T5.5) — el `cierre_detail` congelado del modelo nuevo de una orden, como lo devuelve
+ * `DETALLE_SELECT`: la 398 y la 477 lo leen para rebasar el % del pago (R52/R53). Aqui los pagos son
+ * en monto, asi que la base no mueve ningun importe de estos casos.
+ */
+function detalleNuevo(ordenId: string) {
+  return {
+    ordenId,
+    montoCobrar: new Prisma.Decimal("25000.00"),
+    cobraComision: true,
+    esCentral: false,
+    esZonaEspecial: false,
+    tiendaId: "t1",
+    tarifaModelo: "nuevo",
+    tarifaId: null,
+    tarifaValorFlete: null,
+    tarifaValorFleteGam: null,
+    tarifaValorFleteDevuelto: null,
+    tarifaValorFleteDevueltoGam: null,
+    tarifaComisionCod: null,
+    tarifaIvaFlete: null,
+    tarifaIvaComisionCod: null,
+    tarifaEspecial: null,
+    tarifaEspecialDevuelta: null,
+    conceptos: [
+      {
+        concepto: "tienda_flete_entregado",
+        modo: "monto",
+        valor: new Prisma.Decimal("2000.00"),
+        ivaPct: new Prisma.Decimal("13.00"),
+        nivel: "tienda_zona",
+        tarifaValorId: "tv-tienda_flete_entregado",
+      },
+    ],
+  };
+}
+
 function catalogo(fila: Record<string, unknown>) {
   return {
     findMany: vi.fn(async (args: { where: { id: { in: string[] } } }) =>
@@ -91,17 +128,24 @@ function catalogo(fila: Record<string, unknown>) {
 function txCrear(opts: { vinculadas?: string[] } = {}) {
   const vinculadas = opts.vinculadas ?? ["g1", "g2"];
   return {
-    cierreDia: { create: vi.fn(async () => ({ id: "c1" })) },
+    cierreDia: { create: vi.fn(async () => ({ id: "c1" })), update: vi.fn(async () => ({ id: "c1" })) },
     gestionOrden: {
       updateMany: vi.fn(async () => ({ count: vinculadas.length })),
-      findMany: vi.fn(async (args: { where: { cierreId?: string | null; id?: { in: string[] } } }) => {
-        if (typeof args.where.cierreId !== "string") return []; // rechazos de tienda sueltos
-        // La relectura del pago congelado pide ids; la del snapshot, las filas de la orden.
-        if (args.where.id !== undefined) {
-          return args.where.id.in.filter((id) => vinculadas.includes(id)).map((id) => ({ id }));
-        }
-        return [snapshotRow("o1")];
-      }),
+      findMany: vi.fn(
+        async (args: { where: { cierreId?: string | null; id?: { in: string[] } }; select?: Record<string, unknown> }) => {
+          if (typeof args.where.cierreId !== "string") return []; // rechazos de tienda sueltos
+          // La relectura del pago congelado pide ids (SLT-52 T5.5: con su orden y su resultado,
+          // para rebasar el %); la suma de los totales del nuevo, los snapshots; la del snapshot,
+          // las filas de la orden.
+          if (args.where.id !== undefined) {
+            return args.where.id.in
+              .filter((id) => vinculadas.includes(id))
+              .map((id) => ({ id, ordenId: "o1", resultado: "entregado" }));
+          }
+          if (args.select !== undefined && "pagoMensajero" in args.select) return [];
+          return [snapshotRow("o1")];
+        },
+      ),
     },
     cierreDetail: {
       createMany: vi.fn(async () => ({ count: 1 })),
@@ -319,7 +363,10 @@ function txResolicitud() {
       deleteMany: vi.fn(async () => ({ count: 0 })),
       createMany: vi.fn(async () => ({ count: 1 })),
     },
-    cierreDetail: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+    cierreDetail: {
+      deleteMany: vi.fn(async () => ({ count: 0 })),
+      findMany: vi.fn(async () => [detalleNuevo("o1")]), // SLT-52 T5.5: el cobro congelado de la rehecha
+    },
   };
   const prisma = { $transaction: vi.fn(async (cb: (t: typeof tx) => unknown) => cb(tx)) };
   const repo = new CierreDiaRepository(prisma as unknown as PrismaClient, {} as ITarifaVigenteRepository);
@@ -418,6 +465,8 @@ function txCorreccion() {
       findUnique: vi.fn(async () => ({ orden: { numGuia: 1, numRemision: "REM-1" } })),
     },
     gestionOrdenPago: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+    // SLT-52 T5.5: el cobro congelado de la orden en ese cierre, base del % del rechazo (R52).
+    cierreDetail: { findFirst: vi.fn(async () => detalleNuevo("o-1")) },
     gestionPagoCongelado: {
       deleteMany: vi.fn(async () => ({ count: 1 })),
       createMany: vi.fn(async () => ({ count: 2 })),
