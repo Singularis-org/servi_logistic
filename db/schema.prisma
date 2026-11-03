@@ -1861,6 +1861,8 @@ model Vehiculo {
   // El @unique impide dos tipos con el mismo nombre; el plegado/recorte lo hace el
   // servicio, NO la base (ver la migracion).
   name String @unique
+  // SL-42 (design §2.1, R23): `20261103120000_vehiculo_activo`. Toda fila previa quedo activa.
+  activo Boolean @default(true)
 
   usuarios             Usuario[] // feature 21: mensajeros que declararon este vehiculo
   tarifaZonaMensajeros TarifaZonaMensajero[] // feature 24
