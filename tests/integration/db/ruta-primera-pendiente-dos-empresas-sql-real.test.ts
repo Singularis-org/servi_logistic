@@ -4,14 +4,16 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 
 import { GestionOrdenRepository } from "@/lib/repositories/GestionOrdenRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
-import { loadRouteOptimizationConfig } from "@/lib/config/route-optimization";
 
 /**
- * SLT-59 (review m7) — las tres lecturas nuevas de «primera ruta pendiente» filtran por empresa,
- * contra Postgres REAL y con dos empresas:
- *   - recogida (R57, R58, R76; design §12.2): `EXISTS orden` y `calculada_at`, en `recogerLote`;
+ * SLT-59 (review m7) — las lecturas de «primera ruta pendiente» filtran por empresa, contra Postgres
+ * REAL y con dos empresas:
  *   - gestion  (R59; design §12.3): la subselect `calculada_at` de la re-lectura de gestionable;
  *   - traspaso (R60; design §12.4): `SELECT ... FROM ruta_optimizada` de `traspasarMensajeroLote`.
+ *
+ * SLT-79 (2026-11-03): la recogida ya no lee la ruta (no encola la primera ruta). En su sitio, la
+ * lectura nueva del boton: `OrdenRepository.ultimaRecogidaDelDia`, la ultima fila `recoleccion` del
+ * historial del mensajero, que tampoco debe ver la de otra empresa.
  *
  * QUE SE MIDE. La RLS ya esconde las filas de otra empresa; lo que este archivo prueba es la SEGUNDA
  * barrera, el `organizacion_id` explicito del SQL. Por eso los repositorios corren como DUENO (sin
@@ -19,8 +21,8 @@ import { loadRouteOptimizationConfig } from "@/lib/config/route-optimization";
  *
  * COMO EXISTE UNA FILA DE B QUE «ENCAJA» CON A. Los triggers de misma empresa impiden que una ruta u
  * orden de B apunte a un mensajero de A. Para sembrar ese caso imposible (el que el filtro defiende),
- * la siembra apaga los triggers de usuario de `orden` y `ruta_optimizada` durante dos `INSERT` y los
- * vuelve a encender. Va dentro de la transaccion revertida: no deja rastro. Las FK siguen activas.
+ * la siembra apaga los triggers de usuario de `orden`, `ruta_optimizada` y `orden_historial_estado`
+ * durante esos `INSERT` y los vuelve a encender. Va dentro de la transaccion revertida: no deja rastro. Las FK siguen activas.
  *
  * ⚠️ MISMA REGLA QUE `ruta-optimizada-reduccion-sql-real.test.ts`: solo `DATABASE_URL` del entorno y
  * solo con host `localhost`/`127.0.0.1`. Los modulos que pueden leer `.env` se importan dentro de
@@ -55,12 +57,13 @@ const HOY = new Date("2026-10-30T00:00:00.000Z");
 const AHORA = new Date("2026-10-30T18:00:00.000Z"); // 12:00 de CR
 /** Calculada HOY en CR (09:00): para quien la lea, la primera ruta ya NO esta pendiente. */
 const CALCULADA_HOY = new Date("2026-10-30T15:00:00.000Z");
+/** SLT-79: el inicio del dia de CR del 30 (columna `timestamp`), el `desde` de la ultima recogida. */
+const INICIO_DIA_CR = new Date("2026-10-30T06:00:00.000Z");
 
 /** Cola de jobs en memoria: lo que se mide es la DECISION de encolar, que sale de las lecturas. */
 function colaFake() {
   return {
     enqueue: vi.fn(async () => null),
-    encolarOMoverPendiente: vi.fn(async () => null),
     claimBatch: vi.fn(async () => []),
     complete: vi.fn(async () => {}),
     fail: vi.fn(async () => {}),
@@ -172,6 +175,7 @@ describeSiBaseLocal("SLT-59 m7 — primera ruta pendiente: lecturas por empresa 
     mundo: Mundo,
     mensajeroId: string,
     estatusId: string,
+    extra: { latitud?: number; longitud?: number; deletedAt?: Date } = {},
   ): Promise<string> {
     const marca = `${RUN}-${randomInt(0, 1_000_000_000)}`;
     const o = await tx.orden.create({
@@ -190,6 +194,7 @@ describeSiBaseLocal("SLT-59 m7 — primera ruta pendiente: lecturas por empresa 
         mensajeroAsignadoId: mensajeroId,
         asignadoAt: new Date("2026-10-30T12:00:00.000Z"),
         organizacionId: org,
+        ...extra,
       },
       select: { id: true },
     });
@@ -211,9 +216,27 @@ describeSiBaseLocal("SLT-59 m7 — primera ruta pendiente: lecturas por empresa 
   async function conTriggersApagados(tx: Tx, fn: () => Promise<void>): Promise<void> {
     await tx.$executeRawUnsafe(`ALTER TABLE "orden" DISABLE TRIGGER USER`);
     await tx.$executeRawUnsafe(`ALTER TABLE "ruta_optimizada" DISABLE TRIGGER USER`);
+    await tx.$executeRawUnsafe(`ALTER TABLE "orden_historial_estado" DISABLE TRIGGER USER`);
     await fn();
+    await tx.$executeRawUnsafe(`ALTER TABLE "orden_historial_estado" ENABLE TRIGGER USER`);
     await tx.$executeRawUnsafe(`ALTER TABLE "ruta_optimizada" ENABLE TRIGGER USER`);
     await tx.$executeRawUnsafe(`ALTER TABLE "orden" ENABLE TRIGGER USER`);
+  }
+
+  /** SLT-79: la fila de historial que deja `recogerLote` (arista #11), con su instante. */
+  function sembrarRecogida(tx: Tx, org: string, ordenId: string, actorId: string, at: Date) {
+    return tx.ordenHistorialEstado.create({
+      data: {
+        ordenId,
+        estatusOrigenId: catalogo.porRecoger,
+        estatusDestinoId: catalogo.enReparto,
+        actorUsuarioId: actorId,
+        origenTipo: "recoleccion",
+        createdAt: at,
+        organizacionId: org,
+      },
+      select: { id: true },
+    });
   }
 
   /** Dueno de las tablas (sin RLS) con la empresa `org` fijada para los `DEFAULT` y los registros. */
@@ -239,83 +262,97 @@ describeSiBaseLocal("SLT-59 m7 — primera ruta pendiente: lecturas por empresa 
     return dos.conDosEmpresas(prisma, (tx, a, b) => fn(tx as unknown as Tx, a, b));
   }
 
-  it("R57/R58/R76: la recogida no cuenta la orden por recoger ni la ruta de OTRA empresa", async () => {
+  it("SLT-79: ultimaRecogidaDelDia no ve la recogida de OTRA empresa (ni la de otro mensajero ni la de una orden borrada)", async () => {
+    const A_RECOGE = new Date("2026-10-30T15:00:00.000Z");
     const r = await conDosEmpresas(async (tx, a, b) => {
       const mundoA = await sembrarMundo(tx, a, "A");
       const mundoB = await sembrarMundo(tx, b, "B");
       const mA = mundoA.mensajeroId;
-      // A: dos ordenes por recoger, y se recogen las dos. A no tiene ruta: su primera esta pendiente.
-      const idsA = [
-        await sembrarOrden(tx, a, mundoA, mA, catalogo.porRecoger),
-        await sembrarOrden(tx, a, mundoA, mA, catalogo.porRecoger),
-      ];
-      // B, apuntando al mensajero de A: una orden por recoger y una ruta calculada hoy.
-      await conTriggersApagados(tx, async () => {
-        await sembrarOrden(tx, b, mundoB, mA, catalogo.porRecoger);
-        await sembrarRutaCalculadaHoy(tx, b, mA);
+      // A: la recogida que cuenta.
+      const ordenA = await sembrarOrden(tx, a, mundoA, mA, catalogo.enReparto);
+      await sembrarRecogida(tx, a, ordenA, mA, A_RECOGE);
+      // A, despues, pero NO cuentan: la de otro mensajero y la de una orden borrada.
+      const ordenOtro = await sembrarOrden(tx, a, mundoA, mundoA.otroMensajeroId, catalogo.enReparto);
+      await sembrarRecogida(tx, a, ordenOtro, mundoA.otroMensajeroId, new Date("2026-10-30T16:00:00.000Z"));
+      const borrada = await sembrarOrden(tx, a, mundoA, mA, catalogo.enReparto, {
+        deletedAt: new Date("2026-10-30T16:45:00.000Z"),
       });
-      const deB = await filasDeBParaElMensajero(tx, b, mA);
+      await sembrarRecogida(tx, a, borrada, mA, new Date("2026-10-30T16:30:00.000Z"));
+      // B, apuntando al mensajero de A y mas tarde que todo: la orden y su fila de historial.
+      await conTriggersApagados(tx, async () => {
+        const ordenB = await sembrarOrden(tx, b, mundoB, mA, catalogo.enReparto);
+        await sembrarRecogida(tx, b, ordenB, mA, new Date("2026-10-30T17:00:00.000Z"));
+      });
+      const [deB] = await tx.$queryRawUnsafe<{ n: number }[]>(
+        `SELECT COUNT(*)::int AS "n" FROM "orden_historial_estado"
+          WHERE "actor_usuario_id" = $1 AND "organizacion_id" = $2 AND "origen_tipo" = 'recoleccion'`,
+        mA,
+        b,
+      );
 
       const cliente = await comoDuenoEn(tx, a);
-      const cola = colaFake();
-      const repo = new GestionOrdenRepository(
-        cliente as unknown as ConstructorParameters<typeof GestionOrdenRepository>[0],
-        cola as unknown as ConstructorParameters<typeof GestionOrdenRepository>[1],
+      const repo = new OrdenRepository(
+        cliente as unknown as ConstructorParameters<typeof OrdenRepository>[0],
+        colaFake() as unknown as ConstructorParameters<typeof OrdenRepository>[1],
         () => AHORA,
       );
-      const recogidas = await repo.recogerLote(idsA, mA, catalogo.porRecoger, catalogo.enReparto, HOY);
-      return { mA, deB, recogidas, llamadas: cola.encolarOMoverPendiente.mock.calls };
+      const ultima = await repo.ultimaRecogidaDelDia(mA, INICIO_DIA_CR);
+      // Desde despues de la de A, ya no hay ninguna que cuente.
+      const ninguna = await repo.ultimaRecogidaDelDia(mA, new Date("2026-10-30T15:00:00.001Z"));
+      return { deB: deB.n, ultima, ninguna };
     });
 
-    // Anti-vacuidad: las filas de B existen y apuntan al mensajero de A.
-    expect(r.deB).toEqual({ rutas: 1, ordenes: 1 });
-    expect(r.recogidas).toBe(2);
-    // Con el filtro: no quedan por recoger EN A (-> `recogida`, no `recogida_parcial`) y la ruta de A
-    // no existe (-> primera pendiente, se encola). Sin el filtro, la ruta de B la daria por
-    // calculada y no se encolaria nada; la orden de B daria `recogida_parcial`.
-    expect(r.llamadas).toHaveLength(1);
-    const [tipo, payload, opts] = r.llamadas[0] as unknown as [string, unknown, { runAfter: Date }];
-    expect(tipo).toBe("optimizacion_ruta");
-    expect(payload).toEqual({ mensajeroId: r.mA, origen: "recogida" });
-    expect(opts.runAfter.getTime()).toBe(
-      AHORA.getTime() + loadRouteOptimizationConfig().RUTA_DEBOUNCE_S * 1000,
-    );
+    expect(r.deB).toBe(1); // anti-vacuidad: la fila de B existe y su actor es el mensajero de A
+    // Sin el filtro de empresa saldria la de B (17:00); sin el de mensajero o el de borrada, 16:xx.
+    expect(r.ultima?.getTime()).toBe(A_RECOGE.getTime());
+    expect(r.ninguna).toBeNull();
   });
 
-  it("R59: la gestion no toma el `calculada_at` de la ruta de OTRA empresa", async () => {
-    const r = await conDosEmpresas(async (tx, a, b) => {
-      const mundoA = await sembrarMundo(tx, a, "A");
-      const mA = mundoA.mensajeroId;
-      // Orden de A en reparto y SIN coordenadas: solo se encola si la primera ruta esta pendiente.
-      const ordenId = await sembrarOrden(tx, a, mundoA, mA, catalogo.enReparto);
-      await conTriggersApagados(tx, async () => {
-        await sembrarRutaCalculadaHoy(tx, b, mA);
-      });
-      const deB = await filasDeBParaElMensajero(tx, b, mA);
+  it("R59 -> SLT-79: la gestion no toma el `calculada_at` de la ruta de OTRA empresa", async () => {
+    const correr = (conRutaPropia: boolean) =>
+      conDosEmpresas(async (tx, a, b) => {
+        const mundoA = await sembrarMundo(tx, a, "A");
+        const mA = mundoA.mensajeroId;
+        // Orden de A en reparto y CON coordenadas: desde SLT-79 solo se encola si la primera ruta
+        // del dia de A YA esta calculada.
+        const ordenId = await sembrarOrden(tx, a, mundoA, mA, catalogo.enReparto, {
+          latitud: 9.93,
+          longitud: -84.08,
+        });
+        if (conRutaPropia) await sembrarRutaCalculadaHoy(tx, a, mA);
+        await conTriggersApagados(tx, async () => {
+          await sembrarRutaCalculadaHoy(tx, b, mA);
+        });
+        const deB = await filasDeBParaElMensajero(tx, b, mA);
 
-      const cliente = await comoDuenoEn(tx, a);
-      const cola = colaFake();
-      const repo = new GestionOrdenRepository(
-        cliente as unknown as ConstructorParameters<typeof GestionOrdenRepository>[0],
-        cola as unknown as ConstructorParameters<typeof GestionOrdenRepository>[1],
-        () => AHORA,
-      );
-      const registrada = await repo.registrarGestionPendiente({
-        ordenId,
-        mensajeroId: mA,
-        gestion: { resultado: "novedad", causaDevolucion: "wrong_address", motivo: "SLT-59 m7" },
+        const cliente = await comoDuenoEn(tx, a);
+        const cola = colaFake();
+        const repo = new GestionOrdenRepository(
+          cliente as unknown as ConstructorParameters<typeof GestionOrdenRepository>[0],
+          cola as unknown as ConstructorParameters<typeof GestionOrdenRepository>[1],
+          () => AHORA,
+        );
+        const registrada = await repo.registrarGestionPendiente({
+          ordenId,
+          mensajeroId: mA,
+          gestion: { resultado: "novedad", causaDevolucion: "wrong_address", motivo: "SLT-79" },
+        });
+        return { mA, deB, registrada, llamadas: cola.enqueue.mock.calls };
       });
-      return { mA, deB, registrada, llamadas: cola.enqueue.mock.calls };
-    });
 
-    expect(r.deB.rutas).toBe(1); // anti-vacuidad: la ruta de B existe y apunta al mensajero de A
-    expect(r.registrada).not.toBeNull();
-    // Con el filtro, A no tiene ruta -> primera pendiente -> se encola aunque no haya coordenadas.
-    // Sin el filtro, la ruta de B (calculada hoy) la daria por hecha y no se encolaria nada.
-    expect(r.llamadas).toHaveLength(1);
-    const [tipo, payload] = r.llamadas[0] as unknown as [string, unknown];
+    // Sin ruta propia: A tiene la primera pendiente -> no se encola. Sin el filtro, la ruta de B
+    // (calculada hoy) la daria por hecha y se encolaria.
+    const sinPropia = await correr(false);
+    expect(sinPropia.deB.rutas).toBe(1); // anti-vacuidad
+    expect(sinPropia.registrada).not.toBeNull();
+    expect(sinPropia.llamadas).toHaveLength(0);
+
+    // Control positivo: con su propia ruta de hoy, la misma gestion SI encola.
+    const conPropia = await correr(true);
+    expect(conPropia.llamadas).toHaveLength(1);
+    const [tipo, payload] = conPropia.llamadas[0] as unknown as [string, unknown];
     expect(tipo).toBe("optimizacion_ruta");
-    expect(payload).toEqual({ mensajeroId: r.mA, origen: "gestion" });
+    expect(payload).toEqual({ mensajeroId: conPropia.mA, origen: "gestion" });
   });
 
   it("R60: el traspaso no decide con la ruta de OTRA empresa", async () => {

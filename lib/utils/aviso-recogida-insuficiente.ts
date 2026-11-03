@@ -1,10 +1,14 @@
 // SLT-74 — el aviso que ve el mensajero cuando pulsa «Sincronizar ruta» con la primera ruta del
 // dia pendiente y poco recogido (SLT-59 R64). Puro: no lee reloj, config ni base; la accion le
 // pasa los numeros ya resueltos.
+//
+// SLT-79 (2026-11-03, decision humana «todo manual»): el boton es el UNICO que calcula la primera
+// ruta, y la espera ya no es la de un job sino la de RUTA_PRIMERA_DEBOUNCE_MIN desde la ultima
+// recogida. Dos formas de texto, segun haya algo recogido o no.
 
 /**
  * Menor numero de paquetes recogidos que pasa la guarda del service
- * (`recogidas * 100 < asignadas * pct` corta), o sea ceil(asignadas * pct / 100). En aritmetica
+ * (`recogidas < minimoRecogida(...)` corta), o sea ceil(asignadas * pct / 100). En aritmetica
  * entera para no arrastrar error de coma flotante (7 * 80 / 100 = 5,6 -> 6).
  */
 export function minimoRecogida(asignadas: number, pct: number): number {
@@ -24,22 +28,22 @@ export function formatearEspera(ms: number): string {
 
 export interface DatosAvisoRecogida {
   asignadas: number;
-  recogidas: number;
   /** `RUTA_PRIMERA_MIN_RECOGIDO_PCT` de la config. */
   pct: number;
   /**
-   * Lo que falta para que corra el job pendiente de la primera ruta del dia (puede ser <= 0 si
-   * ya vencio y espera al cron). `undefined` = no hay job pendiente: solo se pide recoger.
+   * SLT-79: lo que falta para que pasen RUTA_PRIMERA_DEBOUNCE_MIN desde la ultima recogida.
+   * `undefined` = no hay nada recogido: solo vale llegar al minimo.
    */
   esperaMs?: number;
 }
 
-/** El `motivo` del `conflict`. Tres formas: sin job pendiente, con espera, o con el job ya vencido. */
+/**
+ * SLT-79 — el `motivo` del `conflict`. Dos formas:
+ *  - con algo recogido: `Recoge 12 de 15 paquetes o espera 4 min 20 s para poder iniciar ruta.`
+ *  - sin nada recogido: `Recoge 12 de 15 paquetes para poder iniciar ruta.`
+ */
 export function avisoRecogidaInsuficiente(d: DatosAvisoRecogida): string {
-  const base =
-    `Todavía no se calcula la ruta: recoge al menos ${minimoRecogida(d.asignadas, d.pct)} ` +
-    `de tus ${d.asignadas} paquetes (llevas ${d.recogidas})`;
-  if (d.esperaMs === undefined) return `${base}.`;
-  if (d.esperaMs <= 0) return `${base} o espera unos segundos: ya se está calculando con los que llevas.`;
-  return `${base} o espera ${formatearEspera(d.esperaMs)} y se calculará con los que llevas.`;
+  const recoge = `Recoge ${minimoRecogida(d.asignadas, d.pct)} de ${d.asignadas} paquetes`;
+  if (d.esperaMs === undefined) return `${recoge} para poder iniciar ruta.`;
+  return `${recoge} o espera ${formatearEspera(d.esperaMs)} para poder iniciar ruta.`;
 }

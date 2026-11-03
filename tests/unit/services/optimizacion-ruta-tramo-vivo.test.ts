@@ -93,7 +93,7 @@ function montar(opts: {
     reducirSecuencia: async () => true,
     marcarDesactualizada: async () => {},
   };
-  const paradasRepo = { contarAsignadasDelDia: async () => ({ asignadas: 0, recogidas: 0 }), findParadasEnReparto: async () => opts.paradas ?? [] };
+  const paradasRepo = { contarAsignadasDelDia: async () => ({ asignadas: 0, recogidas: 0 }), ultimaRecogidaDelDia: async () => null, findParadasEnReparto: async () => opts.paradas ?? [] };
   // Feature 265: `fuente` es REQUERIDA en el desenlace `ok`. Este doble no se ejercita aqui.
   const client = {
     optimizar: async () => ({ status: "ok" as const, secuencia: [], fuente: "proveedor" as const }),

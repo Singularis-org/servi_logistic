@@ -258,6 +258,7 @@ function buildRepo(overrides: Partial<IOrdenRepository> = {}): IOrdenRepository 
     findParaAsignabilidad: vi.fn(async () => []),
     findParadasEnReparto: vi.fn(async () => []),
     contarAsignadasDelDia: vi.fn(async () => ({ asignadas: 0, recogidas: 0 })),
+    ultimaRecogidaDelDia: vi.fn(async () => null),
     findCausasDevueltaVigentes: vi.fn(async () => new Map()),
     // Feature 106: canal integrador (API por key), no ejercitado aqui.
     listByOwner: vi.fn(async () => ({ items: [], total: 0 })),

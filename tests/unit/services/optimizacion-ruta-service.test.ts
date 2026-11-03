@@ -90,7 +90,7 @@ function build(opts: {
   };
 
   const paradasRepo: ParadasRepo = {
-    contarAsignadasDelDia: async () => ({ asignadas: 0, recogidas: 0 }), findParadasEnReparto: vi.fn(async () => opts.paradas ?? []),
+    contarAsignadasDelDia: async () => ({ asignadas: 0, recogidas: 0 }), ultimaRecogidaDelDia: async () => null, findParadasEnReparto: vi.fn(async () => opts.paradas ?? []),
   };
 
   const client = {
@@ -186,9 +186,12 @@ describe("R20 — guarda de OBSOLESCENCIA (job de debounce ya cubierto)", () => 
   });
 
   it("sin ruta previa (calculadaAt null) la guarda no aplica", async () => {
+    // SLT-79: R20 no corta, pero un job sin ruta tiene la primera del dia pendiente y ya no la
+    // calcula (solo el boton): se omite por `primera_ruta_pendiente`, no por `obsoleta`.
     const { service, client } = build({ ruta: null, paradas: [parada("o1"), parada("o2")] });
-    await service.ejecutar(MENSAJERO, { motivo: "debounce", jobCreatedAt: T0 });
-    expect(client.optimizar).toHaveBeenCalledTimes(1);
+    const r = await service.ejecutar(MENSAJERO, { motivo: "debounce", jobCreatedAt: T0 });
+    expect(r).toEqual({ status: "omitida", razon: "primera_ruta_pendiente" });
+    expect(client.optimizar).not.toHaveBeenCalled();
   });
 });
 
@@ -492,7 +495,8 @@ describe("R27 — ante fallo del proveedor se CONSERVA el ultimo orden valido", 
       paradas: [parada("o1"), parada("o2")],
       outcome: { status: "transitorio", detalle: "d" },
     });
-    await expect(service.ejecutar(MENSAJERO, { motivo: "debounce" })).rejects.toThrow();
+    // SLT-79: sin ruta solo el boton recalcula; el fallo se propaga igual.
+    await expect(service.ejecutar(MENSAJERO, { motivo: "manual" })).rejects.toThrow();
   });
 
   it("una optimizacion EXITOSA limpia el ultimoError anterior", async () => {
@@ -550,13 +554,14 @@ describe("R12 — credencial ausente corta ANTES de cualquier red", () => {
     };
     const service = new OptimizacionRutaService(
       rutas as unknown as IRutaOptimizadaRepository,
-      { contarAsignadasDelDia: async () => ({ asignadas: 0, recogidas: 0 }), findParadasEnReparto: async () => [parada("o1"), parada("o2")] },
+      { contarAsignadasDelDia: async () => ({ asignadas: 0, recogidas: 0 }), ultimaRecogidaDelDia: async () => null, findParadasEnReparto: async () => [parada("o1"), parada("o2")] },
       client,
       CONFIG,
       () => T0,
     );
 
-    await expect(service.ejecutar(MENSAJERO, { motivo: "debounce" })).rejects.toThrow(
+    // SLT-79: sin ruta solo el boton recalcula (un job la omite).
+    await expect(service.ejecutar(MENSAJERO, { motivo: "manual" })).rejects.toThrow(
       RutaIntentoFallidoError,
     );
     // LO QUE NO CAMBIA: la secuencia previa sigue INTACTA. Es la mitad de este test que
@@ -586,7 +591,8 @@ describe("265/R24, R26 — una EXCEPCION del cliente se conserva, se marca y se 
     const { service, rutas } = build({
       // [2026-10-29, SLT-59 R1/R20] `o3` es NUEVA: con el mismo conjunto ya no se llamaria.
       paradas: [parada("o1"), parada("o2"), parada("o3")],
-      ruta: ruta({ secuenciaPorOrden: new Map([["o1", 1], ["o2", 2]]) }),
+      // SLT-79: calculada hoy; con la primera pendiente un job ya no llamaria.
+      ruta: ruta({ calculadaAt: CALCULADA_HOY, secuenciaPorOrden: new Map([["o1", 1], ["o2", 2]]) }),
       lanza: error,
     });
 
@@ -606,7 +612,8 @@ describe("265/R24, R26 — una EXCEPCION del cliente se conserva, se marca y se 
       lanza: new TypeError("fetch failed: authorization: Bearer ya29.SECRETO url=https://x"),
     });
 
-    const error = await service.ejecutar(MENSAJERO, { motivo: "debounce" }).catch((e: Error) => e);
+    // SLT-79: sin ruta solo el boton recalcula.
+    const error = await service.ejecutar(MENSAJERO, { motivo: "manual" }).catch((e: Error) => e);
 
     const motivo = (rutas.marcarDesactualizada.mock.calls[0] as unknown[])[1] as string;
     for (const texto of [motivo, (error as Error).message]) {
@@ -621,6 +628,8 @@ describe("265/R24, R26 — una EXCEPCION del cliente se conserva, se marca y se 
     const { service } = build({
       paradas: [parada("o1"), parada("o2")],
       lanza: new Error("lo que sea"),
+      // SLT-79: la cola solo recalcula una ruta ya calculada hoy (aqui, con una parada nueva).
+      ruta: ruta({ calculadaAt: CALCULADA_HOY, secuenciaPorOrden: new Map([["o1", 1]]) }),
     });
     await expect(service.ejecutar(MENSAJERO, { motivo: "debounce" })).rejects.toBeInstanceOf(
       RutaIntentoFallidoError,
@@ -637,7 +646,8 @@ describe("265/R10, §5.3 — `sin_solucion` SIN compuesto: nunca una secuencia p
       paradas: [parada("o1"), parada("o2"), parada("o3")],
       // [2026-10-29, SLT-59 R1/R20] la ruta guardada no tiene `o3`: con el mismo conjunto la
       // guarda nueva ya no llamaria al proveedor y este caso no llegaria a probarse.
-      ruta: ruta({ secuenciaPorOrden: new Map([["o1", 1], ["o2", 2]]) }),
+      // SLT-79: calculada hoy; con la primera pendiente un job ya no llamaria.
+      ruta: ruta({ calculadaAt: CALCULADA_HOY, secuenciaPorOrden: new Map([["o1", 1], ["o2", 2]]) }),
       outcome: {
         status: "sin_solucion",
         detalle: "optimizar ruta: paradas saltadas por el proveedor (servidas 1 de 3)",
@@ -817,7 +827,8 @@ describe("265/R33 — las guardas cortan EN ESTE ORDEN (lo barato antes que lo c
       paradas: [parada("o1")],
       now: T0,
     });
-    await primera.service.ejecutar(MENSAJERO, { motivo: "debounce" });
+    // SLT-79: la primera ruta (sin `calculadaAt`) solo la calcula el boton.
+    await primera.service.ejecutar(MENSAJERO, { motivo: "manual" });
     const huellaReal = metaDe(primera.rutas).huellaSet;
     expect(huellaReal, "la primera corrida tiene que dejar una huella escrita").toBeTruthy();
 
@@ -876,7 +887,8 @@ describe("265/R33 — las guardas cortan EN ESTE ORDEN (lo barato antes que lo c
       now: T0,
     });
 
-    await service.ejecutar(MENSAJERO, { motivo: "debounce" });
+    // SLT-79: la ruta no tiene `calculadaAt` (primera del dia): solo la calcula el boton.
+    await service.ejecutar(MENSAJERO, { motivo: "manual" });
 
     expect(client.optimizar).toHaveBeenCalledTimes(1);
     const enviado = client.optimizar.mock.calls[0][0] as {

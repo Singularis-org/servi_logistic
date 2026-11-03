@@ -22,12 +22,14 @@ export const GOOGLE_API_LOG_EVENTO = "google_api_llamada";
 
 export type ApiGoogle = "route_optimization" | "routes" | "geocoding";
 
-/** Design §13.1. Un recálculo da su `optimizeTours` y su `computeRoutes` con el mismo motivo. */
+/**
+ * Design §13.1. Un recálculo da su `optimizeTours` y su `computeRoutes` con el mismo motivo.
+ *
+ * SLT-79: la primera ruta del día solo la pide «Sincronizar ruta» (`primera_ruta_boton`). Salen
+ * los motivos de los disparos retirados: `primera_ruta_recogida_completa`,
+ * `primera_ruta_debounce_recogida`, `primera_ruta_primera_gestion` y `primera_ruta_salida`.
+ */
 export const MOTIVOS_LLAMADA_RUTA = [
-  "primera_ruta_recogida_completa",
-  "primera_ruta_debounce_recogida",
-  "primera_ruta_primera_gestion",
-  "primera_ruta_salida",
   "primera_ruta_boton",
   "entrega_fuera_de_orden",
   "paradas_nuevas_gestion",

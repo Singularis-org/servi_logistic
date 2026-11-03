@@ -266,52 +266,16 @@ describe("bloque `ruta` del resultado y KPIs", () => {
       paradasSinOptimizar: 1,
       trazado: null,
       tramoSiguiente: null,
-      // SLT-59 (R62): calculada hoy -> no pendiente; origen `centroide` -> sin punto de recogida.
-      primeraRutaPendiente: false,
-      puntoRecogida: null,
+      // SLT-79: sin `primeraRutaPendiente` ni `puntoRecogida` (SLT-59 R62), retirados con la
+      // salida de 1 km. El `toEqual` literal falla si vuelven.
     });
   });
 
-  // SLT-59 T7.7 (R62, R65, R67; design §12.6) — los dos campos salen de la `ruta` ya leida.
-  describe("SLT-59 R62 — `primeraRutaPendiente` y `puntoRecogida`", () => {
-    const AYER = new Date("2026-07-19T20:00:00.000Z");
-    const GPS_HOY = new Date("2026-07-20T15:00:00.000Z");
-
-    it("sin ruta persistida -> primera pendiente y sin punto de recogida", async () => {
-      const r = await listar([row("A", "en_reparto")], null);
-      expect(r.ruta.primeraRutaPendiente).toBe(true);
-      expect(r.ruta.puntoRecogida).toBeNull();
-    });
-
-    it("calculada ayer, con el GPS de la recogida de hoy -> pendiente y punto = ese GPS", async () => {
-      const r = await listar(
-        [row("A", "en_reparto")],
-        ruta({ calculadaAt: AYER, origenLat: 9.9, origenLng: -84.1, origenAt: GPS_HOY, origenFuente: "gps" }),
-      );
-      expect(r.ruta.primeraRutaPendiente).toBe(true);
-      expect(r.ruta.puntoRecogida).toEqual({ lat: 9.9, lng: -84.1 });
-    });
-
-    it("`calculadaAt` nula -> pendiente", async () => {
-      const r = await listar([row("A", "en_reparto")], ruta({ calculadaAt: null }));
-      expect(r.ruta.primeraRutaPendiente).toBe(true);
-    });
-
-    it.each([
-      ["GPS de ayer", { origenAt: AYER, origenFuente: "gps" as const }],
-      ["`ultima_conocida`", { origenAt: GPS_HOY, origenFuente: "ultima_conocida" as const }],
-      ["`centroide`", { origenAt: GPS_HOY, origenFuente: "centroide" as const }],
-    ])("origen %s -> sin punto de recogida", async (_c, over) => {
-      const r = await listar([row("A", "en_reparto")], ruta({ calculadaAt: AYER, ...over }));
-      expect(r.ruta.puntoRecogida).toBeNull();
-    });
-
-    it("R67: no anade lecturas — la ruta se lee una sola vez, como antes", async () => {
-      const svc = build([row("A", "en_reparto")], ruta({ calculadaAt: AYER }));
-      const r = await svc.listarMisAsignaciones(MENSAJERO, AHORA);
-      expect(r.status).toBe("ok");
-      expect(ultimoRutaRepo.findByMensajero).toHaveBeenCalledTimes(1);
-    });
+  it("R67: la ruta se lee una sola vez", async () => {
+    const svc = build([row("A", "en_reparto")], ruta({ calculadaAt: new Date("2026-07-19T20:00:00.000Z") }));
+    const r = await svc.listarMisAsignaciones(MENSAJERO, AHORA);
+    expect(r.status).toBe("ok");
+    expect(ultimoRutaRepo.findByMensajero).toHaveBeenCalledTimes(1);
   });
 
   it("`tramoSiguiente` es el de la PRIMERA parada de la ruta, no el de cualquiera", async () => {

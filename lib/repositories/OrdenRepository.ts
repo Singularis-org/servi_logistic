@@ -3396,6 +3396,34 @@ export class OrdenRepository implements IOrdenRepository {
   }
 
   /**
+   * SLT-79 — la ultima recogida del dia del mensajero, para la espera de
+   * `RUTA_PRIMERA_DEBOUNCE_MIN` del boton (sustituye al job de debounce de SLT-59 R76).
+   *
+   * «Recogida» = la fila que deja `recogerLote`: `origen_tipo = 'recoleccion'` con el mensajero
+   * como actor (la unica arista con esa familia es #11, `por_recoger -> en_reparto`). La orden debe
+   * seguir asignada a el y sin borrar, igual que las recogidas de `contarAsignadasDelDia`: una orden
+   * que ya se traspaso a otro no le abre la espera a este.
+   *
+   * La empresa es la del propio mensajero (`usuario.organizacion_id`), en el mismo SQL: segunda
+   * barrera que no depende de que la RLS tenga el contexto puesto (patron de la review m7 de
+   * SLT-59). Usa el indice `orden_historial_actor_origen_created_idx` (actor, origen, created_at).
+   */
+  async ultimaRecogidaDelDia(mensajeroId: string, desde: Date): Promise<Date | null> {
+    const [fila] = await this.prisma.$queryRaw<{ ultima: Date | null }[]>`
+      SELECT MAX(h."created_at") AS "ultima"
+        FROM "orden_historial_estado" h
+        JOIN "orden" o ON o."id" = h."orden_id"
+       WHERE h."actor_usuario_id" = ${mensajeroId}
+         AND h."origen_tipo" = 'recoleccion'
+         AND h."created_at" >= ${desde}
+         AND h."organizacion_id" = (SELECT u."organizacion_id" FROM "usuario" u WHERE u."id" = ${mensajeroId})
+         AND o."organizacion_id" = h."organizacion_id"
+         AND o."mensajero_asignado_id" = ${mensajeroId}
+         AND o."deleted_at" IS NULL`;
+    return fila?.ultima ?? null;
+  }
+
+  /**
    * Feature 33 (QR por guia): fila de transicion por `num_guia` (UNIQUE). INCLUYE
    * borradas (el service distingue "no existe" de "borrada"); `null` si no hay orden
    * con ese `num_guia`.

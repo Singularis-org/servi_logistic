@@ -7,6 +7,7 @@ import {
 } from "@/lib/utils/aviso-recogida-insuficiente";
 
 // SLT-74 — el aviso de «Sincronizar ruta» con la primera ruta pendiente y poco recogido.
+// SLT-79 — dos formas: con algo recogido (minimo o espera) o sin nada (solo minimo).
 
 describe("SLT-74 — minimoRecogida: ceil(asignadas * pct / 100), el umbral de la guarda del service", () => {
   it.each([
@@ -22,7 +23,7 @@ describe("SLT-74 — minimoRecogida: ceil(asignadas * pct / 100), el umbral de l
     expect(minimoRecogida(asignadas, pct)).toBe(minimo);
   });
 
-  it("coincide con la guarda `recogidas * 100 < asignadas * pct`: minimo pasa, minimo - 1 no", () => {
+  it("minimo pasa y minimo - 1 no, con la cuenta entera `recogidas * 100 < asignadas * pct`", () => {
     for (const pct of [1, 33, 50, 67, 80, 99, 100]) {
       for (let asignadas = 1; asignadas <= 40; asignadas++) {
         const minimo = minimoRecogida(asignadas, pct);
@@ -52,25 +53,22 @@ describe("SLT-74 — formatearEspera: `X min Y s`, solo `Y s` bajo el minuto, se
   });
 });
 
-describe("SLT-74 — avisoRecogidaInsuficiente: las tres formas exactas", () => {
-  const base = { asignadas: 15, recogidas: 10, pct: 80 };
+describe("SLT-79 — avisoRecogidaInsuficiente: las dos formas exactas", () => {
+  const base = { asignadas: 15, pct: 80 };
 
-  it("con job pendiente y tiempo por delante: dice cuanto esperar", () => {
-    expect(avisoRecogidaInsuficiente({ ...base, esperaMs: 158_000 })).toBe(
-      "Todavía no se calcula la ruta: recoge al menos 12 de tus 15 paquetes (llevas 10) o espera 2 min 38 s y se calculará con los que llevas.",
+  it("con algo recogido: «Recoge 12 de 15 paquetes o espera 4 min 20 s para poder iniciar ruta.»", () => {
+    expect(avisoRecogidaInsuficiente({ ...base, esperaMs: 260_000 })).toBe(
+      "Recoge 12 de 15 paquetes o espera 4 min 20 s para poder iniciar ruta.",
     );
   });
 
-  it("con el job ya vencido (esperando al cron): «unos segundos»", () => {
-    const esperado =
-      "Todavía no se calcula la ruta: recoge al menos 12 de tus 15 paquetes (llevas 10) o espera unos segundos: ya se está calculando con los que llevas.";
-    expect(avisoRecogidaInsuficiente({ ...base, esperaMs: 0 })).toBe(esperado);
-    expect(avisoRecogidaInsuficiente({ ...base, esperaMs: -30_000 })).toBe(esperado);
+  it("con algo recogido y menos de un minuto: solo segundos", () => {
+    expect(avisoRecogidaInsuficiente({ ...base, esperaMs: 1_000 })).toBe(
+      "Recoge 12 de 15 paquetes o espera 1 s para poder iniciar ruta.",
+    );
   });
 
-  it("sin job pendiente: solo el conteo", () => {
-    expect(avisoRecogidaInsuficiente(base)).toBe(
-      "Todavía no se calcula la ruta: recoge al menos 12 de tus 15 paquetes (llevas 10).",
-    );
+  it("con 0 recogidas (sin `esperaMs`): «Recoge 12 de 15 paquetes para poder iniciar ruta.»", () => {
+    expect(avisoRecogidaInsuficiente(base)).toBe("Recoge 12 de 15 paquetes para poder iniciar ruta.");
   });
 });
