@@ -4,6 +4,8 @@
 // explicitamente para 91/92). Si la transaccion del writer revierte, el job desaparece con
 // ella (R7): no hay ventana con una orden sin job, ni un job sin su orden.
 import type { IJobRepository, JobTxClient } from "@/lib/interfaces/repositories/IJobRepository";
+import type { MotivoLlamadaGeocode } from "@/lib/clients/registro-llamada-google";
+import type { OrdenHistorialOrigenTipo } from "@/lib/types/orden-historial";
 import { construirQueryDireccion, hashDireccion } from "@/lib/geo/direccion-query";
 
 /**
@@ -16,6 +18,18 @@ export const GEOCODIFICACION_MAX_INTENTOS = 8;
 
 /** Prefijo del `dedupe_key` (patron `DEDUPE_PREFIX` de liberar-reprogramadas). */
 export const DEDUPE_PREFIX = "geocodificacion";
+
+/**
+ * SLT-59 (design §13.2) — el motivo del geocode de una orden nacida en lote. Los dos lotes de
+ * `BulkOrdenService` se distinguen por su `origenTipo` de historial: `carga_masiva` es la carga de
+ * archivo (`cargarMasiva`); `carga_api` es la API de la tienda (`cargarViaApi`), que crea ordenes
+ * sueltas (`orden_creada`). Cualquier otro origen tambien es una orden suelta.
+ */
+export function motivoGeocodeDeCarga(
+  origenTipo: OrdenHistorialOrigenTipo,
+): Extract<MotivoLlamadaGeocode, "orden_creada" | "carga_masiva"> {
+  return origenTipo === "carga_masiva" ? "carga_masiva" : "orden_creada";
+}
 
 /**
  * Clave de idempotencia del job de geocodificacion (R12/R13, decision Q4).
@@ -52,6 +66,8 @@ export async function encolarGeocodificacion(
   // `IJobRepository.enqueue` ya trata el 4.º parametro como opcional.
   tx: JobTxClient | undefined,
   orden: { id: string; direccion: string | null },
+  // SLT-59 (D27; design §13.2): obligatorio. Viaja en el payload y el handler lo registra.
+  motivo: MotivoLlamadaGeocode,
 ): Promise<void> {
   // R9: se encola SOLO si hay direccion libre con contenido tras normalizar (gate
   // F1.4-Q5). `construirQueryDireccion` devuelve null exactamente en ese caso; se le pasa
@@ -67,7 +83,8 @@ export async function encolarGeocodificacion(
   const hash = hashDireccion(orden.direccion ?? "");
   await repo.enqueue(
     "geocodificacion",
-    { ordenId: orden.id }, // R14: SOLO el id. Nunca la direccion (dato personal).
+    // R14: el id y el motivo (no es PII). Nunca la direccion (dato personal).
+    { ordenId: orden.id, motivo },
     {
       dedupeKey: dedupeKeyGeocodificacion(orden.id, hash),
       maxIntentos: GEOCODIFICACION_MAX_INTENTOS, // R34

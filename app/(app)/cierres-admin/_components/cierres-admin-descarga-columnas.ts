@@ -18,7 +18,7 @@
  */
 import type { CierreAdminResumen } from "@/lib/interfaces/services/ICierresAdminService";
 import type { DescargaColumna, DescargaFila } from "@/lib/types/descarga";
-import { fechaDiaISO } from "@/lib/utils/fecha-dia-iso";
+import { fechaDiaInstanteCR } from "@/lib/utils/fecha-dia-iso";
 
 import {
   destinoCierre,
@@ -68,7 +68,7 @@ export function filaDescargaCierrePendiente(cierre: CierreAdminResumen): Descarg
   return {
     estado: ESTADO_LABEL[cierre.estado] ?? cierre.estado,
     mensajero: cierre.mensajeroNombre,
-    fecha: fechaDiaISO(cierre.solicitadoAt),
+    fecha: fechaDiaInstanteCR(cierre.solicitadoAt),
     destino: destino(cierre),
     general: cierre.totales.general, // STRING tal cual (money-safe)
     pagoMensajero: cierre.totalPagoMensajero,
@@ -101,7 +101,7 @@ export function filaDescargaCierreHistorico(cierre: CierreAdminResumen): Descarg
   return {
     estado: ESTADO_LABEL[cierre.estado] ?? cierre.estado,
     mensajero: cierre.mensajeroNombre,
-    fechaResuelta: cierre.resueltoAt === null ? null : fechaDiaISO(cierre.resueltoAt),
+    fechaResuelta: cierre.resueltoAt === null ? null : fechaDiaInstanteCR(cierre.resueltoAt),
     destino: destino(cierre),
     general: cierre.totales.general, // STRING tal cual (money-safe)
     pagoMensajero: cierre.totalPagoMensajero,

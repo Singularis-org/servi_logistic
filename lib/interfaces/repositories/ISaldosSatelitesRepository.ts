@@ -18,15 +18,16 @@ import type {
 // ledger propio se anade despues SIN rehacer las pantallas, porque el DTO ya distingue total,
 // recibido y diferencia.
 //
-// ⚠️ LA FORMULA, UNA SOLA VEZ Y SOBRE EFECTIVO (decision del humano sobre Q2, 2026-09-16):
+// ⚠️ LA FORMULA (SLT-73, R4/R5; D3 reabrio la Q2 de la 431, que la ponia sobre el efectivo):
 //
-//     saldoSinConciliar(zona) = Σ ( total_efectivo − COALESCE(monto_recibido, 0) )
-//                               sobre `cierre_bodega` de esa zona con estado <> 'rechazado'
+//     aporte(cierre_dia)      = total_general − total_pago_mensajero − total_ingreso_bodega_rechazos
+//                               (`paraLaCentral`, con su signo, nunca recortado a cero)
+//     saldoSinConciliar(zona) = Σ aporte de sus `cierre_dia` aprobados con destino satelite,
+//                               consolidados o no
+//                             − Σ COALESCE(monto_recibido, 0) de sus `cierre_bodega` no rechazadas
 //
-// Una sola expresion cubre los tres casos sin un `if` que los separe: sin marcar aporta su
-// efectivo integro; marcada completa aporta 0; marcada por menos aporta LA DIFERENCIA (R18, el
-// caso de los ₡485.000 de ₡500.000). Los `rechazado` quedan fuera porque el estado esta retirado
-// de la pantalla (D2) y en produccion hay CERO; queda declarado como limite.
+// Por consolidacion (R8): faltaPorRecibir = paraLaCentral(snapshot) − COALESCE(monto_recibido, 0).
+// Los `rechazado` no restan su recibido porque el estado esta retirado de la pantalla (D2).
 //
 // Money-safe: la resta se hace con `Prisma.Decimal` dentro del repositorio y sale como `.toFixed(2)`.
 // Ni `Number`, ni `parseFloat`, ni aritmetica en el navegador (R20).
@@ -65,7 +66,8 @@ export interface ISaldosSatelitesRepository {
    *
    * Existe porque la pantalla NO PUEDE sumarlas (R20: nada de aritmetica de dinero en el
    * navegador) y las tres son sumas sobre el conjunto entero de bodegas. Es la MISMA formula
-   * (`saldoDe`) aplicada a tres poblaciones distintas, no tres reglas nuevas.
+   * (`saldoDe`) aplicada a tres poblaciones distintas, no tres reglas nuevas. SLT-73 (R7): el
+   * pendiente es Σ de las deudas por zona y «bodegas con pendiente», las zonas con deuda ≠ 0.
    */
   findResumen(ahora?: Date): Promise<ResumenSatelitesDTO>;
 }

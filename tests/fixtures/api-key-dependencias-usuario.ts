@@ -197,6 +197,9 @@ export const CLASIFICACION_FK_USUARIO: Record<string, ClasificacionFk> = {
   // esta columna. La FK es `Restrict` a proposito —quien afirmo que el dinero llego no se borra
   // dejando la afirmacion huerfana—, pero esa restriccion no alcanza al borrado de una API key.
   "CierreBodega.conciliadoPorUsuario": { categoria: "no_alcanzable", motivo: SOLO_OPERADOR },
+  // SLT-73 — quien MARCO o CORRIGIO la conciliacion que movio la diferencia de la satelite. Misma
+  // categoria y motivo que `conciliadoPorUsuario`: marcar y corregir exigen `esAccesoTotal`.
+  "ConciliacionBodegaAjuste.creador": { categoria: "no_alcanzable", motivo: SOLO_OPERADOR },
   "WalletMovimiento.registrador": { categoria: "no_alcanzable", motivo: SOLO_OPERADOR },
   "WalletTiendaMovimiento.registrador": { categoria: "no_alcanzable", motivo: SOLO_OPERADOR },
   "PagoMensajeroMovimiento.mensajero": { categoria: "no_alcanzable", motivo: SOLO_MENSAJERO },

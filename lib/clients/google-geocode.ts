@@ -14,6 +14,14 @@
 //    jamas la URL, la credencial ni la direccion (que es dato personal).
 import { z } from "zod";
 import type { GeocodeOutcome, IGeocodeClient } from "@/lib/interfaces/external/IGeocodeClient";
+import {
+  registrarLlamadaGoogle,
+  resolverRegistro,
+  resultadoDeFalloDeRed,
+  resultadoDeRespuesta,
+  type ContextoLlamadaGeocode,
+  type OpcionesRegistroLlamada,
+} from "@/lib/clients/registro-llamada-google";
 
 const GEOCODE_ENDPOINT = "https://maps.googleapis.com/maps/api/geocode/json";
 
@@ -63,7 +71,7 @@ const respuestaSchema = z.object({
   results: z.array(resultSchema).optional(),
 });
 
-export interface GoogleGeocodeClientOpts {
+interface GoogleGeocodeClientOptsBase {
   apiKey: string;
   /** Timeout de la llamada en ms. */
   timeoutMs?: number;
@@ -71,18 +79,34 @@ export interface GoogleGeocodeClientOpts {
   fetchImpl?: typeof fetch;
 }
 
+/** SLT-59 (R69): el canal y la empresa de la línea `[google-api]`, inyectables en tests. */
+export type GoogleGeocodeClientOpts = GoogleGeocodeClientOptsBase & OpcionesRegistroLlamada;
+
 export class GoogleGeocodeClient implements IGeocodeClient {
   private readonly apiKey: string;
   private readonly timeoutMs: number;
   private readonly fetchImpl: typeof fetch;
+  private readonly registro: ReturnType<typeof resolverRegistro>;
 
   constructor(opts: GoogleGeocodeClientOpts) {
     this.apiKey = opts.apiKey;
     this.timeoutMs = opts.timeoutMs ?? 10_000;
     this.fetchImpl = opts.fetchImpl ?? fetch;
+    this.registro = resolverRegistro(opts);
   }
 
-  async geocodificar(query: string): Promise<GeocodeOutcome> {
+  /** SLT-59 (R69, R71): una línea por petición; sin la dirección ni la clave (van en la URL). */
+  private registrar(contexto: ContextoLlamadaGeocode, resultado: string): void {
+    registrarLlamadaGoogle(this.registro.registro, {
+      api: "geocoding",
+      contexto,
+      empresaId: this.registro.empresaId(),
+      paradas: null,
+      resultado,
+    });
+  }
+
+  async geocodificar(query: string, contexto: ContextoLlamadaGeocode): Promise<GeocodeOutcome> {
     const url = new URL(GEOCODE_ENDPOINT);
     url.searchParams.set("address", query);
     url.searchParams.set("key", this.apiKey);
@@ -93,11 +117,14 @@ export class GoogleGeocodeClient implements IGeocodeClient {
         method: "GET",
         signal: AbortSignal.timeout(this.timeoutMs),
       });
-    } catch {
+    } catch (error) {
+      this.registrar(contexto, resultadoDeFalloDeRed(error));
       // Fallo de RED o timeout -> transitorio (R23). El detalle NO incluye la URL (que
       // lleva la credencial) ni la direccion: solo la operacion.
       return { status: "transitorio", detalle: `${OPERACION}: fallo de red o timeout` };
     }
+
+    this.registrar(contexto, resultadoDeRespuesta(respuesta.status));
 
     // HTTP 5xx -> transitorio (R23). 4xx distinto de 200 tampoco trae cuerpo util.
     if (respuesta.status >= 500) {

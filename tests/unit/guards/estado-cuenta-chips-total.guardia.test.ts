@@ -8,8 +8,10 @@ import { WALLET_TIENDA_MOVIMIENTO_CATEGORIA_SEED } from "@/lib/types/wallet-tien
 import {
   CHIP_POR_CATEGORIA_MENSAJERO,
   CHIP_POR_CATEGORIA_TIENDA,
+  CHIPS_BODEGA,
   CHIPS_MENSAJERO,
   CHIPS_TIENDA,
+  ORIGEN_POR_CHIP_BODEGA,
 } from "@/lib/utils/estado-cuenta-chips";
 import { codigoSinComentarios } from "../../fixtures/sin-comentarios";
 
@@ -97,6 +99,44 @@ describe("458-B — guardia estado-cuenta-chips-total (R24/R98/R99)", () => {
     const deMas = { ...CHIP_POR_CATEGORIA_TIENDA, categoria_fantasma: () => "cierres" };
     expect(problemas(deMas as unknown as Diccionario, WALLET_TIENDA_MOVIMIENTO_CATEGORIA_SEED, CHIPS_TIENDA, false).problemas).toContain(
       "categoria_fantasma: no es una categoria del libro",
+    );
+  });
+});
+
+// SLT-73 (enmienda 2, R32/R33) — el libro de la BODEGA: cada chip tiene UN origen, y la union de
+// `EstadoCuentaRepository` emite cada chip como `tipo`/`categoria` (un chip que el SQL no emitiera seria
+// un filtro siempre vacio; una rama que emitiera un chip que no existe, una fila sin filtro).
+const FUENTE_REPO = "lib/repositories/EstadoCuentaRepository.ts";
+const ORIGENES_BODEGA = ["cierre_bodega", "cierre_dia"];
+
+function problemasBodega(chips: readonly string[], origenes: Record<string, string>, sql: string): string[] {
+  const salida: string[] = [];
+  for (const chip of chips) {
+    if (!ORIGENES_BODEGA.includes(origenes[chip])) salida.push(`${chip}: sin origen conocido`);
+    if (!sql.includes(`'${chip}'::text`)) salida.push(`${chip}: la union no lo emite`);
+  }
+  for (const clave of Object.keys(origenes)) if (!chips.includes(clave)) salida.push(`${clave}: no es un chip de la bodega`);
+  return salida;
+}
+
+describe("SLT-73 — guardia estado-cuenta-chips-total, libro de la BODEGA (R32/R33)", () => {
+  const sql = codigoSinComentarios(FUENTE_REPO);
+
+  it("cada chip de la bodega (incluido «sin_consolidar») tiene origen y lo emite la union del repositorio", () => {
+    expect(CHIPS_BODEGA).toContain("sin_consolidar");
+    expect(problemasBodega(CHIPS_BODEGA, ORIGEN_POR_CHIP_BODEGA, sql)).toEqual([]);
+    expect(codigoSinComentarios(FUENTE)).toMatch(/ORIGEN_POR_CHIP_BODEGA:\s*Record<\s*ChipBodega,/);
+  });
+
+  it("CONTRAPRUEBA: un chip sin origen, uno que la union no emite o una clave de mas se detectan", () => {
+    const { sin_consolidar: _sin, ...sinUno } = ORIGEN_POR_CHIP_BODEGA;
+    void _sin;
+    expect(problemasBodega(CHIPS_BODEGA, sinUno, sql)).toContain("sin_consolidar: sin origen conocido");
+    expect(problemasBodega([...CHIPS_BODEGA, "fantasma"], { ...ORIGEN_POR_CHIP_BODEGA, fantasma: "cierre_dia" }, sql)).toContain(
+      "fantasma: la union no lo emite",
+    );
+    expect(problemasBodega(CHIPS_BODEGA, { ...ORIGEN_POR_CHIP_BODEGA, otro: "cierre_dia" }, sql)).toContain(
+      "otro: no es un chip de la bodega",
     );
   });
 });

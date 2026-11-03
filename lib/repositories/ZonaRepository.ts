@@ -4,16 +4,25 @@ import { Prisma, type PrismaClient, type RolValue } from "@prisma/client";
 import { ConflictError } from "@/lib/errors";
 import { cambioElPagoAlMensajero } from "@/lib/repositories/_shared/pago-mensajero-cambio";
 import { esViolacionDeClaveForanea } from "@/lib/repositories/_shared/prisma-fk";
-import { textoConstraintP2002 } from "@/lib/repositories/_shared/prisma-unique";
+import {
+  esViolacionDeUnico,
+  textoConstraintP2002,
+} from "@/lib/repositories/_shared/prisma-unique";
 import { zonaUnicaDeDistrito } from "@/lib/repositories/_shared/zona-colapso";
 import { ESTADOS_PAQUETE_EN_ESTANTE } from "@/lib/utils/estados-bodega-satelite";
 import { normalizeName } from "@/lib/utils/normalize";
 import { appendAccion, resolverActorCongelado } from "@/lib/repositories/registrar-accion";
-import { etiquetaDeEntidad } from "@/lib/types/historial-accion-etiquetas";
+import {
+  ETIQUETA_DESCONOCIDA,
+  etiquetaDeEntidad,
+  valorDeCatalogo,
+} from "@/lib/types/historial-accion-etiquetas";
 import type { ImpactoZonaCentralDTO, TarifaZonaMensajeroDTO, ZonaDTO } from "@/lib/types/zona";
 import type {
   CreateZonaData,
+  CreateZonaResult,
   DeleteZonaResult,
+  DistritoEnOtraZona,
   IZonaRepository,
   ListZonasParams,
   ListZonasResult,
@@ -97,6 +106,63 @@ function filasDeCambioDeMarca(
   ];
 }
 
+/** SLT-76 (R8): los distritos que un guardado añade y los que quita, sin repetidos. */
+interface CambioDeDistritos {
+  anadidos: string[];
+  quitados: string[];
+}
+
+/** SLT-76 (R8/R10): `nuevos − previos` y `previos − nuevos`. Los dos vacios = la lista no cambio. */
+function diferenciaDeDistritos(previos: readonly string[], nuevos: readonly string[]): CambioDeDistritos {
+  const antes = new Set(previos);
+  const despues = new Set(nuevos);
+  return {
+    anadidos: [...despues].filter((d) => !antes.has(d)),
+    quitados: [...antes].filter((d) => !despues.has(d)),
+  };
+}
+
+/** Un distrito con su canton, tal como lo lee `update` para el texto de la fila. */
+interface DistritoConCanton {
+  id: string;
+  nombre: string;
+  canton: { nombre: string };
+}
+
+/**
+ * ⭑ SLT-76 (R8/R9) — LAS FILAS DEL CAMBIO DE DISTRITOS, UNA POR DISTRITO.
+ *
+ * La zona es la de DESPUES del guardado. El distrito viaja como «distrito (canton)» —el canton
+ * desambigua dos distritos con el mismo nombre— recortado a 60 en origen por `valorDeCatalogo`,
+ * porque Postgres no trunca `VARCHAR(60)`: aborta. Añadido → solo `valorNuevo`; quitado → solo
+ * `valorAnterior`. Ordenadas por ese texto para que el lote se lea igual siempre.
+ */
+function filasDeCambioDeDistritos(
+  zona: ZonaConNombre,
+  cambio: CambioDeDistritos,
+  distritos: readonly DistritoConCanton[],
+  actor: { actorUsuarioId: string | null; actorNombre: string | null; actorRol: RolValue | null },
+) {
+  const porId = new Map(distritos.map((d) => [d.id, d]));
+  const texto = (distritoId: string) => {
+    const d = porId.get(distritoId);
+    return d ? valorDeCatalogo(`${d.nombre} (${d.canton.nombre})`) : ETIQUETA_DESCONOCIDA;
+  };
+  const entradas = [
+    ...cambio.anadidos.map((d) => ({ texto: texto(d), anterior: null, nuevo: texto(d) })),
+    ...cambio.quitados.map((d) => ({ texto: texto(d), anterior: texto(d), nuevo: null })),
+  ].sort((a, b) => a.texto.localeCompare(b.texto, "es"));
+  return entradas.map((e) => ({
+    accion: "zona_distrito_cambiado" as const,
+    entidadTipo: "zona" as const,
+    entidadId: zona.id,
+    entidadEtiqueta: etiquetaDeEntidad("zona", { nombre: zona.nombre }),
+    valorAnterior: e.anterior,
+    valorNuevo: e.nuevo,
+    ...actor,
+  }));
+}
+
 type TarifaRow = {
   id: string;
   cobroEntregado: Prisma.Decimal;
@@ -148,6 +214,62 @@ function translateEsCentralConflict(e: unknown): never {
     throw new ConflictError("Ya existe una zona central");
   }
   throw e;
+}
+
+/**
+ * ⭑ SLT-75 (R8) — EL INDICE UNICO `(organizacion_id, distrito_id)` DE `zona_distrito`. Es la red
+ * final de una carrera: dos guardados simultaneos que pasaron los dos la lectura de conflictos.
+ */
+const INDICE_DISTRITO_UNICO = "zona_distrito_organizacion_id_distrito_id_key";
+
+/** Junta los textos (`message`, `originalMessage`) de la cadena del error, sin ciclos. */
+function textosDelError(e: unknown, vistos: Set<unknown>, profundidad: number): string[] {
+  if (e === null || typeof e !== "object" || vistos.has(e) || profundidad > 6) return [];
+  vistos.add(e);
+  const o = e as Record<string, unknown>;
+  const propios = [o.message, o.originalMessage].filter((t): t is string => typeof t === "string");
+  const anidados = ["cause", "meta", "driverAdapterError"].flatMap((k) =>
+    textosDelError(o[k], vistos, profundidad + 1),
+  );
+  return [...propios, ...anidados];
+}
+
+/**
+ * SLT-75 (R8): `true` solo si es una violacion de unicidad Y la restriccion es la del distrito
+ * unico por empresa. Hermano de `isEsCentralUniqueViolation`, pero mira tambien la cadena `cause`:
+ * dentro de la `$transaction` interactiva el error del driver puede no llegar como P2002 (ficha
+ * 373, el FK llego como `DriverAdapterError` sin `code`).
+ */
+export function esViolacionDistritoUnico(e: unknown): boolean {
+  if (!esViolacionDeUnico(e)) return false;
+  const texto = [textoConstraintP2002(e) ?? "", ...textosDelError(e, new Set(), 0)]
+    .join(" ")
+    .toLowerCase();
+  return texto.includes(INDICE_DISTRITO_UNICO);
+}
+
+/**
+ * ⭑ SLT-75 (R1, R2, R4, R5, R6) — LOS DISTRITOS PEDIDOS QUE YA ESTAN EN OTRA ZONA.
+ *
+ * Se llama con la `tx` del guardado y ANTES de su primera escritura: si devuelve algo, el guardado
+ * sale sin escribir nada. `zonaIdPropia` excluye la zona que se actualiza (R4). La empresa la acota
+ * la extension de `lib/db/extension-empresa.ts` y la RLS de `zona_distrito` (R5): no hace falta
+ * filtrarla aqui. Una sola consulta, secuencial (nada de `Promise.all` dentro de la `tx`).
+ */
+async function leerDistritosEnOtraZona(
+  tx: Pick<PrismaClient, "zonaDistrito">,
+  distritoIds: string[],
+  zonaIdPropia: string | null,
+): Promise<DistritoEnOtraZona[]> {
+  if (distritoIds.length === 0) return [];
+  const filas = await tx.zonaDistrito.findMany({
+    where: {
+      distritoId: { in: distritoIds },
+      ...(zonaIdPropia ? { zonaId: { not: zonaIdPropia } } : {}),
+    },
+    select: { distrito: { select: { nombre: true } }, zona: { select: { nombre: true } } },
+  });
+  return filas.map((f) => ({ distritoNombre: f.distrito.nombre, zonaNombre: f.zona.nombre }));
 }
 
 function tarifaCreateRows(zonaId: string, tarifas: CreateZonaData["tarifas"]) {
@@ -210,9 +332,16 @@ export class ZonaRepository implements IZonaRepository {
    * no tenga tipo propio en el catalogo no es motivo para que el traslado que provoca sea
    * invisible: las dos filas que escribe son las MISMAS que las de un guardado.
    */
-  async create(data: CreateZonaData, actorUsuarioId: string | null): Promise<ZonaDTO> {
+  async create(data: CreateZonaData, actorUsuarioId: string | null): Promise<CreateZonaResult> {
     try {
-      return await this.prisma.$transaction(async (tx) => {
+      return await this.prisma.$transaction(async (tx): Promise<CreateZonaResult> => {
+        // ⭑ SLT-75 (R1/R6): el rechazo sale ANTES de la primera escritura —tambien antes de
+        // apagar la central previa—, asi que la transaccion confirma cero escrituras.
+        const conflictos = await leerDistritosEnOtraZona(tx, data.distritoIds, null);
+        if (conflictos.length > 0) {
+          return { estado: "distrito_en_otra_zona", conflictos };
+        }
+
         // 376/R12: la central previa se lee ANTES del `updateMany` que la apaga. Despues ya no
         // habria a quien preguntar: el `updateMany` no devuelve las filas que toco.
         const centralPrevia =
@@ -263,9 +392,11 @@ export class ZonaRepository implements IZonaRepository {
         }
 
         const tarifas = await tx.tarifaZonaMensajero.findMany({ where: { zonaId: zona.id } });
-        return toDTO(zona, data.distritoIds.length, tarifas);
+        return { estado: "ok", zona: toDTO(zona, data.distritoIds.length, tarifas) };
       });
     } catch (e) {
+      // SLT-75 (R8): la carrera que paro el indice unico. No se sabe que distrito fue.
+      if (esViolacionDistritoUnico(e)) return { estado: "distrito_en_otra_zona", conflictos: null };
       translateEsCentralConflict(e);
     }
   }
@@ -365,6 +496,13 @@ export class ZonaRepository implements IZonaRepository {
         // apagar y no entra (R1/R3).
         if (data.esCentral === false && exists.esCentral) {
           return { estado: "sin_zona_central" as const };
+        }
+
+        // ⭑ SLT-75 (R2/R4/R6): los distritos pedidos que ya estan en OTRA zona, leidos antes de
+        // la primera escritura. Los de esta misma zona no cuentan (R4).
+        const conflictos = await leerDistritosEnOtraZona(tx, data.distritoIds, id);
+        if (conflictos.length > 0) {
+          return { estado: "distrito_en_otra_zona" as const, conflictos };
         }
 
         // 376/R12: ¿la marca va a LLEGAR a esta zona? Entonces la central previa se lee ANTES del
@@ -643,6 +781,33 @@ export class ZonaRepository implements IZonaRepository {
           );
         }
 
+        // ⭑ SLT-76 (R8-R10) — EL RASTRO DE LOS DISTRITOS: una fila por distrito añadido o quitado,
+        // con un lote PROPIO por guardado (el cuarto de este metodo; agrupa filas homogeneas). Si
+        // la lista no cambio, no se escribe nada (R10). Un guardado rechazado ya salio arriba,
+        // antes de la primera escritura. Con `tx` y nunca con `this.prisma`, que escribiria fuera
+        // de la transaccion (ficha 373).
+        const cambioDeDistritos = diferenciaDeDistritos(
+          distritosPrevios.map((d) => d.distritoId),
+          data.distritoIds,
+        );
+        if (cambioDeDistritos.anadidos.length > 0 || cambioDeDistritos.quitados.length > 0) {
+          const nombres = await tx.distrito.findMany({
+            where: { id: { in: [...cambioDeDistritos.anadidos, ...cambioDeDistritos.quitados] } },
+            select: { id: true, nombre: true, canton: { select: { nombre: true } } },
+          });
+          const actorDeDistritos = await resolverActorCongelado(tx, actorUsuarioId);
+          await appendAccion(
+            tx,
+            filasDeCambioDeDistritos(
+              { id, nombre: zona.nombre },
+              cambioDeDistritos,
+              nombres,
+              actorDeDistritos,
+            ),
+            randomUUID(),
+          );
+        }
+
         return {
           estado: "ok" as const,
           zona: toDTO(zona, data.distritoIds.length, tarifas),
@@ -653,6 +818,10 @@ export class ZonaRepository implements IZonaRepository {
         };
       });
     } catch (e) {
+      // SLT-75 (R8): la carrera que paro el indice unico. No se sabe que distrito fue.
+      if (esViolacionDistritoUnico(e)) {
+        return { estado: "distrito_en_otra_zona" as const, conflictos: null };
+      }
       translateEsCentralConflict(e);
     }
   }

@@ -124,6 +124,7 @@ import {
 
 import { textoSello, textoSelloCompleto } from "./ActualizarAnalitica";
 import { DineroProductoDetalle, hayMonto } from "./DineroProductoDetalle";
+import { contarOrdenes, ORDENES } from "./base-del-kpi";
 import { calcularEfectividad } from "./efectividad";
 import {
   ETIQUETA_EN_PROCESO,
@@ -272,9 +273,10 @@ export const PRODUCTOS_COLUMNAS = {
 
 /** R35 — el universo del recorte y las ordenes cuyo texto no produjo ningun producto. */
 export function textoUniverso(ordenes: number, sinProducto: number): string {
-  const total = formatearValor(ordenes, UNIDAD_CONTEO);
+  // SLT-62, tanda 2 (2026-11-02): «1 orden en el rango», no «1 órdenes». El sustantivo concuerda
+  // con el mismo `contarOrdenes` que usa la fila de KPIs (mismo formateador de conteo).
   const sin = formatearValor(sinProducto, UNIDAD_CONTEO);
-  return `${total} órdenes en el rango · ${sin} sin producto interpretable.`;
+  return `${contarOrdenes(ordenes, ORDENES)} en el rango · ${sin} sin producto interpretable.`;
 }
 
 /**

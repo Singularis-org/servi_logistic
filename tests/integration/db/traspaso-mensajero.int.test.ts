@@ -178,6 +178,11 @@ describeSiHayBase("427/T9 — el traspaso entre mensajeros, contra Postgres real
       const destinoId = await crearUsuario(tx, ROL_MENSAJERO, "destino");
       const terceroId = await crearUsuario(tx, ROL_MENSAJERO, "tercero");
       const actorId = await crearUsuario(tx, ROL_MAESTRO, "actor");
+      // SLT-59 (R60): el traspaso solo encola a quien YA tiene su primera ruta del dia. Los casos de
+      // abajo miden los dos jobs de R32, asi que los dos mensajeros llegan con la ruta de hoy.
+      for (const mensajeroId of [origenId, destinoId]) {
+        await tx.rutaOptimizada.create({ data: { mensajeroId, calculadaAt: AHORA } });
+      }
 
       const porEtiqueta: Record<string, string> = {
         origen: origenId,

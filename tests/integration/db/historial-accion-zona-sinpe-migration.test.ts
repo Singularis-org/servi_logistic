@@ -386,6 +386,9 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("429/T3 (b) — el down recrea la lista PREV
       // SLT-56: `cierre_dia_pago_mensajero_ajustado`, de
       // `20261029120100_historial_accion_pago_mensajero_ajustado`.
       "cierre_dia_pago_mensajero_ajustado",
+      // SLT-76 (2026-11-02): el rastro de los distritos de una zona. Su migracion:
+      // `20261102090000_slt76_historial_zona_distrito`.
+      "zona_distrito_cambiado",
     ];
     const catalogoPrevio = HISTORIAL_ACCION_TIPOS.filter(
       (t) => t !== VALOR_NUEVO && !POSTERIORES.includes(t),

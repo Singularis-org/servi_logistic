@@ -294,6 +294,12 @@ function makeDb() {
       findMany: async () => [] as unknown[],
       updateMany: async () => ({ count: 0 }),
     },
+    // Ficha 451 / SLT-72 (desviacion 2 de su bitacora): aprobar lee SIEMPRE las barridas del
+    // cierre (`cierre_sin_gestion`) para exigir su confirmacion fisica (R10). Este recorrido no
+    // barre ninguna orden: el doble responde vacio y la confirmacion esperada no cambia.
+    cierreSinGestion: {
+      findMany: async () => [] as unknown[],
+    },
   };
 
   // `tx === client`: el doble no simula rollback (ningun caso de este recorrido lo ejercita; la

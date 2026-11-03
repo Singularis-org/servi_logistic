@@ -69,7 +69,13 @@ async function caso(tx: TxDeTest): Promise<Caso> {
     plan: async (topes = {}, p = {}) => {
       const r = await servicio.crear(
         SUPERADMIN,
-        entradaDePlan({ topes: { ordenesPorCiclo: null, porRol: {}, apiKeys: null, ...topes }, ...p }),
+        // SLT-66 R28: solo se asigna un plan con costo concreto; el ayudante crea uno de monto con costo por orden.
+        entradaDePlan({
+          topes: { ordenesPorCiclo: null, porRol: {}, apiKeys: null, ...topes },
+          precio: { tipo: "monto", mensual: "1000.00", anual: null },
+          costoPorOrden: "100.00",
+          ...p,
+        }),
       );
       if (r.estado !== "ok") throw new Error(`no se creó el plan: ${JSON.stringify(r)}`);
       return r.planId;

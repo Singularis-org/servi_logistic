@@ -1,4 +1,4 @@
-import type { UsoDelPlan } from "@/lib/types/consumo-plan";
+import type { FuenteDelCosto, UsoDelPlan } from "@/lib/types/consumo-plan";
 import type { VersionPlan } from "@/lib/types/planes";
 
 // SLT-58 (design §3.1) — el plan de la empresa del contexto, tal como lo devuelve
@@ -20,6 +20,8 @@ export interface PlanDeLaEmpresaLeido {
   cortoDesde?: Date | null;
   uso: UsoDelPlan;
   cambio: CambioProgramadoLeido | null;
+  /** SLT-66 (R18, §3.2): el costo por orden que cobrará la próxima orden y de dónde sale. */
+  costoVigente: { monto: string; fuente: FuenteDelCosto };
 }
 
 export interface IMiPlanRepository {

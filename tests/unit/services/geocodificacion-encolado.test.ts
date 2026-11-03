@@ -30,31 +30,32 @@ describe("R9 — no se encola sin direccion geocodificable", () => {
     ["solo tabuladores y saltos", "\t\n  "],
   ])("no encola cuando la direccion es %s", async (_caso, direccion) => {
     const { repo, enqueue } = repoFake();
-    await encolarGeocodificacion(repo, TX, { id: "orden-1", direccion });
+    await encolarGeocodificacion(repo, TX, { id: "orden-1", direccion }, "orden_creada");
     expect(enqueue).not.toHaveBeenCalled();
   });
 
   it("SI encola cuando hay direccion con contenido", async () => {
     const { repo, enqueue } = repoFake();
-    await encolarGeocodificacion(repo, TX, { id: "orden-1", direccion: "Av. Central 100" });
+    await encolarGeocodificacion(repo, TX, { id: "orden-1", direccion: "Av. Central 100" }, "orden_creada");
     expect(enqueue).toHaveBeenCalledTimes(1);
   });
 });
 
 describe("R14 — payload sin datos personales", () => {
-  it("el payload encolado solo contiene ordenId", async () => {
+  // SLT-59 (D27, design §13.2): y el `motivo`, que no es PII.
+  it("el payload encolado solo contiene ordenId y motivo", async () => {
     const { repo, enqueue } = repoFake();
-    await encolarGeocodificacion(repo, TX, { id: "orden-1", direccion: "Av. Central 100" });
+    await encolarGeocodificacion(repo, TX, { id: "orden-1", direccion: "Av. Central 100" }, "orden_creada");
     const [tipo, payload] = enqueue.mock.calls[0];
     expect(tipo).toBe("geocodificacion");
-    expect(payload).toEqual({ ordenId: "orden-1" });
+    expect(payload).toEqual({ ordenId: "orden-1", motivo: "orden_creada" });
     // La direccion es dato personal: NO viaja en el payload del job.
     expect(JSON.stringify(payload)).not.toContain("Av. Central 100");
   });
 
   it("el encolado va DENTRO de la transaccion del writer (4.º argumento tx)", async () => {
     const { repo, enqueue } = repoFake();
-    await encolarGeocodificacion(repo, TX, { id: "orden-1", direccion: "Av. Central 100" });
+    await encolarGeocodificacion(repo, TX, { id: "orden-1", direccion: "Av. Central 100" }, "orden_creada");
     expect(enqueue.mock.calls[0][3]).toBe(TX);
   });
 });
@@ -62,7 +63,7 @@ describe("R14 — payload sin datos personales", () => {
 describe("R34 — limite de intentos propio", () => {
   it("el encolado fija maxIntentos en 8, por encima del default de la cola", async () => {
     const { repo, enqueue } = repoFake();
-    await encolarGeocodificacion(repo, TX, { id: "orden-1", direccion: "Av. Central 100" });
+    await encolarGeocodificacion(repo, TX, { id: "orden-1", direccion: "Av. Central 100" }, "orden_creada");
     const opts = enqueue.mock.calls[0][2] ?? {};
     expect(opts.maxIntentos).toBe(8);
     expect(GEOCODIFICACION_MAX_INTENTOS).toBe(8);
@@ -118,7 +119,7 @@ describe("R12/R13 — forma normativa de la clave de idempotencia", () => {
 
   it("el encolado real usa esa clave", async () => {
     const { repo, enqueue } = repoFake();
-    await encolarGeocodificacion(repo, TX, { id: "orden-1", direccion: "Av. Central 100" });
+    await encolarGeocodificacion(repo, TX, { id: "orden-1", direccion: "Av. Central 100" }, "orden_creada");
     const opts = enqueue.mock.calls[0][2] ?? {};
     expect(opts.dedupeKey).toBe(dedupeKeyGeocodificacion("orden-1", HASH));
   });
@@ -140,7 +141,7 @@ describe("R10 — actualizacion que cambia efectivamente la direccion", () => {
     expect(guardDebeEncolar("Av. Central 200", "Av. Central 100")).toBe(true);
 
     const { repo, enqueue } = repoFake();
-    await encolarGeocodificacion(repo, TX, { id: "orden-1", direccion: "Av. Central 200" });
+    await encolarGeocodificacion(repo, TX, { id: "orden-1", direccion: "Av. Central 200" }, "orden_creada");
     expect(enqueue).toHaveBeenCalledTimes(1);
     const opts = enqueue.mock.calls[0][2] ?? {};
     // La clave lleva la huella de la direccion NUEVA: no choca con la del primer encolado.
@@ -170,7 +171,7 @@ describe("R11 — actualizacion que no toca la direccion", () => {
   it("si la direccion nueva no es geocodificable, el helper no encola aunque el guard pase", async () => {
     expect(guardDebeEncolar("   ", "Av. Central 100")).toBe(true);
     const { repo, enqueue } = repoFake();
-    await encolarGeocodificacion(repo, TX, { id: "orden-1", direccion: "   " });
+    await encolarGeocodificacion(repo, TX, { id: "orden-1", direccion: "   " }, "orden_creada");
     expect(enqueue).not.toHaveBeenCalled();
   });
 });

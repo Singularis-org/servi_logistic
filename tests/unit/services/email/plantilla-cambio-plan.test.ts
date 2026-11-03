@@ -55,7 +55,7 @@ describe("SL-24 — plantillaCambioPlan (R41)", () => {
       "API keys activas: sin límite → 2",
       "Se incluye el módulo Ranking.",
       "Deja de incluirse el módulo Analítica.",
-      "Precio: sin precio → 25000.00 al mes, con 10.00 % de descuento en el pago anual",
+      "Costo base: sin precio → 25000.00 al mes, con 10.00 % de descuento en el pago anual", // SLT-66 R9
     ]) {
       expect(m.text).toContain(linea);
       expect(m.html).toContain(linea);

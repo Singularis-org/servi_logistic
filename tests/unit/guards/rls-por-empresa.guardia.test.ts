@@ -153,8 +153,9 @@ describe("SL-17 · RLS por empresa en cada tabla de negocio (R24)", () => {
     // 73 de SL-17 + `distrito_zona_especial` (SL-38) + `cobro_plataforma_movimiento` (SL-40, 20261023130100)
     // + `integracion` e `integracion_prueba_minuto` (SL-36, 20261025120000)
     // + `organizacion_modulo` (SL-23, 20261026120000)
-    // + `gestion_pago_mensajero_ajuste` (SLT-56, 20261029120000).
-    expect(tablas.length).toBe(79);
+    // + `gestion_pago_mensajero_ajuste` (SLT-56, 20261029120000)
+    // + `conciliacion_bodega_ajuste` (SLT-73, 20261031140100).
+    expect(tablas.length).toBe(80);
   });
 
   it("cada tabla de negocio tiene su política vigente", () => {

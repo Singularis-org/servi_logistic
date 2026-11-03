@@ -140,11 +140,14 @@ describeSiHayBase("⭑ 458-B/FASE 0 — la fotografia de las cuentas (Postgres r
   });
 
   // ─── R84 — pendiente de la bodega Z ─────────────────────────────────────────────────────────
-  //   efectivo de las NO rechazadas: 5 000 + 4 500 = 9 500,00 (la rechazada de 9 999 no cuenta)
-  //   recibido: 4 000,00 ; pendiente = 9 500 − 4 000 = 5 500,00
-  it("R84: pendiente de la bodega Z (la consolidacion rechazada no cuenta)", () => {
+  //   SLT-73 (R5, enmienda 2): el pendiente es la DEUDA — Σ aportes de los cierres aprobados de la zona
+  //   (consolidados o no) menos lo recibido de las consolidaciones no rechazadas:
+  //     aportes: b1 5 000 − 300 − 200 = 4 500 · b2 6 000 · cierre de b3 (rechazada) 900 · s1 2 000 − 250
+  //              = 1 750  → 13 150,00 ; recibido 4 000,00 ; deuda = 9 150,00
+  //   `totalEfectivo` sigue siendo el contexto de la 431: efectivo de las no rechazadas 5 000 + 4 500.
+  it("R84: pendiente de la bodega Z (la consolidacion rechazada no cuenta; su cierre si)", () => {
     expect(foto().bodegaZ).toEqual({
-      saldoSinConciliar: "5500.00",
+      saldoSinConciliar: "9150.00",
       totalEfectivo: "9500.00",
       totalRecibido: "4000.00",
     });
@@ -307,24 +310,32 @@ describeSiHayBase("⭑ 458-B/FASE 0 — la fotografia de las cuentas (Postgres r
     expect(e.saldoActual).toBe(foto().mensajeroM.cuentaPorPagar);
   });
 
-  // Bodega Z: b1 declarado 5 000 (10 sep) → 5 000 · b2 declarado 4 500 (11 sep) → 9 500 · b2
-  // recibido 4 000 (12 sep) → 5 500. La rechazada no aparece. Final 0 + 9 500 − 4 000 = 5 500,00 =
-  // el pendiente de `/wallet/satelites`.
-  it("TB.6 R20–R22: la bodega Z, con el pendiente acumulado", () => {
+  // Bodega Z (SLT-73, enmienda 2: R31/R32). «Declarado» es el NETO de cada consolidacion (Σ aportes de sus
+  // cierres), no su efectivo; los cierres que cuentan en la deuda y no estan en una consolidacion no
+  // rechazada salen como «sin consolidar», al aprobarse:
+  //   b1 declarado 4 500 (10 sep; efectivo 5 000) → 4 500 · b2 declarado 6 000 (11 sep; efectivo
+  //   4 500 + SINPE 1 500) → 10 500 · b2 recibido 4 000 (12 sep) → 6 500 · cierre de b3, rechazada,
+  //   900 (12 sep) → 7 400 · s1 1 750 (15 sep) → 9 150. La consolidacion rechazada no aparece.
+  //   Final 0 + 13 150 − 4 000 = 9 150,00 = la deuda de `/wallet/satelites`.
+  it("TB.6 R20–R22 / SLT-73 R31–R32: la bodega Z, con el pendiente acumulado = la deuda", () => {
     const e = foto().ec.bodegaTodo;
     expect(e.filas.map(lineaDe)).toEqual([
-      "2026-09-10|5000.00|-|5000.00|declarado",
-      "2026-09-11|4500.00|-|9500.00|declarado",
-      "2026-09-12|-|4000.00|5500.00|recibido",
+      "2026-09-10|4500.00|-|4500.00|declarado",
+      "2026-09-11|6000.00|-|10500.00|declarado",
+      "2026-09-12|-|4000.00|6500.00|recibido",
+      "2026-09-12|900.00|-|7400.00|sin_consolidar",
+      "2026-09-15|1750.00|-|9150.00|sin_consolidar",
     ]);
     expect([e.saldoInicial, e.abonos, e.cargos, e.saldoFinal, e.saldoActual, e.sentido]).toEqual([
       "0.00",
       "4000.00",
-      "9500.00",
-      "5500.00",
-      "5500.00",
+      "13150.00",
+      "9150.00",
+      "9150.00",
       "por_entregar",
     ]);
+    // R31: la misma cifra que la fila de `/wallet/satelites`, escrita a mano arriba (R84).
+    expect(e.saldoActual).toBe("9150.00");
     expect(e.saldoActual).toBe(foto().bodegaZ.saldoSinConciliar);
   });
 });
