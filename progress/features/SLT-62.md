@@ -7,7 +7,7 @@
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F2.1 (2026-11-02): en implementación, adelantada en paralelo a SLT-52. Rama al día con origin/dev.
+F2.2 (2026-11-02): T1-T6 hechas, review OK (0 mayores, 4 menores cerrados), gate verde @50f4cb9f. Siguiente: PR a dev tras OK de Carlos.
 
 ## Evaluación
 zone frontend / complexity low. Nace de las dudas del cliente del 2026-10-30 sobre Analítica y Monitoreo.
@@ -25,6 +25,7 @@ Cupo: fichas propias en vuelo SLT-62/63/64; sin cruce declarado con fichas de ot
 Ninguna.
 
 ## Tandas
+- 2026-11-02 · T1-T5 · 716b4524 · decisiones 684c18ad · captura 92275e63 · menores 50f4cb9f · gate VERDE.
 
 ## Modelos (overrides)
 Subagentes en Opus (memoria: Fable agotado).
