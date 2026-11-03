@@ -183,6 +183,35 @@ tiene al menos un valor guardado en el modelo nuevo.
 - **R44.** El sistema DEBE crear el modelo nuevo con migraciones de esquema que no muevan, cambien
   ni borren ninguna fila existente, cada una con su `down.sql` que la revierte.
 
+### Decisiones de Carlos tras T4 (añadidos 2026-11-02 21:00)
+
+Ningún R anterior decía que el fulfillment fuera sin IVA (R3, R4 y R26 ya tratan todo cobro a la
+tienda con su IVA); el «sin IVA» estaba solo en design §6 y en el código de T4. Por eso no se
+enmienda ningún R en sitio: se añaden R46-R51.
+
+- **R46.** MIENTRAS la empresa está en el modelo nuevo, el sistema DEBE calcular el IVA del
+  fulfillment como el de cualquier cobro a la tienda (R26: el importe del concepto ya redondeado
+  por su % de IVA) y DEBE cobrar a la tienda el fulfillment MÁS su IVA en el costo de la orden por
+  API key y en los dos escenarios de la cotización, sin sumar ninguno de los dos a la liquidación
+  del cierre ni a las wallets (R31).
+- **R47.** MIENTRAS la empresa está en el modelo viejo, el sistema NO DEBE calcular IVA sobre el
+  fulfillment: el costo y la cotización DEBEN dar, centavo a centavo, lo mismo que antes de esta
+  ficha (R36).
+- **R48.** CUANDO nace un cobro por rechazo de tienda y su flete sale del modelo nuevo, el sistema
+  DEBE guardar en el cobro qué valor del modelo nuevo lo produjo (el del flete por devolución por
+  rechazo a la tienda) y dejar vacía la referencia a la tarifa vieja.
+- **R49.** CUANDO nace un cobro por rechazo de tienda y su flete sale del modelo viejo, el sistema
+  DEBE guardar la tarifa vieja como hoy y dejar vacía la referencia al valor nuevo; la base DEBE
+  rechazar un cobro que traiga las dos referencias a la vez.
+- **R50.** SI el valor del modelo nuevo citado por un cobro por rechazo se borra o cambia después,
+  ENTONCES el sistema DEBE permitir el borrado, DEBE dejar vacía la referencia del cobro y NO DEBE
+  cambiar sus importes congelados; los cobros que existían antes de esta columna DEBEN quedar con
+  la referencia vacía, sin tocar ninguna otra columna (R44).
+- **R51.** SI una orden no tiene tarifa para el flete por entregado, ENTONCES el sistema DEBE
+  tratarla como «sin tarifa» aunque tenga comisión COD o fulfillment configurados: la carga y la
+  cotización por API key responden 409 (o la fila va a `error` en un lote mixto), la lectura por
+  API key da el costo estimado `null` y la corrección de datos del cliente responde «sin tarifa».
+
 ### Cobertura de las decisiones cerradas
 
 | Decisión | R |
@@ -216,10 +245,24 @@ tiene al menos un valor guardado en el modelo nuevo.
 | GAM | R35 |
 | Dinero e IVA | R26, R29, R30 |
 | E2E | R36 (E2E de cierre, wallet y satélite en verde), R16-R22 (contraprueba en Postgres) |
+| Fulfillment con IVA (2026-11-02 21:00) | R46, R47, R40 (el % de IVA del fulfillment ya se congela en el cierre) |
+| Traza del valor usado en el cobro por rechazo (2026-11-02 21:00) | R48, R49, R50 |
+| «Sin tarifa» = sin flete por entregado (2026-11-02 21:00) | R51, R25 |
 
 ## Preguntas abiertas
 
-Ninguna. P1-P4, abiertas por `spec_author` al diseñar, las cerró Carlos el 2026-11-02 (ver tabla).
+P1-P4, abiertas por `spec_author` al diseñar, las cerró Carlos el 2026-11-02 (ver tabla).
+
+- **P5 (2026-11-03, abierta).** ¿Cómo se PUBLICA el IVA del fulfillment en la API por key? Hoy el
+  contrato (`docs/api/api-key-openapi.yaml`) tiene un solo campo `fulfillment` («monto fijo…,
+  crudo») en la cotización, en la carga (`costoEnvio` + `fulfillment`) y en `costoEstimado` /
+  `costoReal` de la lectura («exactamente cinco cadenas»). Opciones: (a) campo NUEVO `ivaFulfillment`
+  junto a `fulfillment`, igual que `flete`/`iva` y `comision`/`ivaComision` (`"0.00"` en el modelo
+  viejo; aditivo, pero rompe a quien valide «exactamente cinco»); (b) `fulfillment` pasa a llevar su
+  IVA dentro (sin campo nuevo; cambia el significado de «crudo»). Propuesta de `spec_author`: (a).
+  R46 no depende de la respuesta (el total y `costoEnvio` llevan el IVA en los dos casos); la task
+  T4.8 sí, y queda bloqueada hasta que Carlos elija. Lo mismo aplica al detalle del cierre de
+  administración, que muestra `fulfillment` (T5.3).
 
 ## Decisiones cerradas (no reabrir)
 
@@ -254,3 +297,6 @@ Ninguna. P1-P4, abiertas por `spec_author` al diseñar, las cerró Carlos el 202
 | heredado | GAM | Desaparece del cálculo; la marca queda como «zona de bodega principal» (SLT-51). |
 | heredado | Dinero e IVA | `Decimal`, nunca `float`; IVA aparte en la wallet (SL-39). |
 | heredado | E2E | Sin E2E propio: no hay pantalla (va en SLT-54). Los E2E de cierre, wallet y satélite siguen en verde; contraprueba del resolver en Postgres real. |
+| 2026-11-02 21:00 | ¿El fulfillment del modelo nuevo lleva IVA? | Sí, como todo cobro a la tienda (Carlos, tras T4). Los pagos al mensajero y a la satélite siguen sin IVA (P4). |
+| 2026-11-02 21:00 | ¿Se guarda qué `tarifa_valor` produjo el cobro por rechazo? | Sí: columna nueva + migración de esquema (Carlos, tras T4). |
+| 2026-11-02 21:00 | ¿«Sin tarifa» si solo hay comisión o fulfillment? | Confirmado: «sin tarifa» = sin flete por entregado, aunque haya comisión o fulfillment (Carlos, tras T4). |

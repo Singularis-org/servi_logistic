@@ -1,6 +1,7 @@
 # SLT-52 — tarifas-flexibles-modelo · design.md
 
-> Requisitos: `requirements.md` (R1-R45; P1-P4 cerradas por Carlos el 2026-11-02). Zona backend. Sin pantalla (SLT-54),
+> Requisitos: `requirements.md` (R1-R51; P1-P4 cerradas por Carlos el 2026-11-02; R46-R51 y §12 por
+> sus decisiones de las 21:00, tras T4; P5 abierta). Zona backend. Sin pantalla (SLT-54),
 > sin migración de datos (SLT-53), sin retirar el modelo viejo (SLT-57).
 > El MCP `codebase-memory` no respondió (2026-11-02): todo lo de abajo sale de Grep/Read.
 
@@ -326,7 +327,7 @@ modelo nuevo.
 |---|---|---|---|
 | `derivarIngresoOrden(input, tarifa: TarifaTienda \| null)` | 2.º parámetro | el cuerpo de hoy, sin tocar | flete del concepto `tienda_flete_<resultado>` con base = pedido; entregado → `ingreso_flete` / `ingreso_iva_flete`; cualquier otro resultado → `ingreso_flete_devolucion` / `ingreso_iva_flete_devolucion` (R29); comisión solo en entregado y `cobraComision` (R30) |
 | `resolverFlete` | solo viejo | sin cambio | — (en el nuevo no hay GAM ni especial: R35) |
-| `costosListadoOrden`, `costoEnvioDeTarifa`, `desgloseCargaApi`, `montoFulfillmentDeTarifa`, `tieneFulfillment`, `agregarIngresosPorConcepto` | tarifa → `TarifaTienda \| null` | sin cambio | fulfillment = importe de `tienda_fulfillment` (R31); `fleteOrigen` = `"normal"` (el «especial sin pacto» no existe en el nuevo) |
+| `costosListadoOrden`, `costoEnvioDeTarifa`, `desgloseCargaApi`, `montoFulfillmentDeTarifa`, `tieneFulfillment`, `agregarIngresosPorConcepto` | tarifa → `TarifaTienda \| null` | sin cambio | fulfillment = importe de `tienda_fulfillment` (R31) **más su IVA en el costo y la cotización** (R46; enmendado 2026-11-02, decisión de Carlos: ver §12.1); `fleteOrigen` = `"normal"` (el «especial sin pacto» no existe en el nuevo) |
 | `pagoPorResultado(resultado, tarifa: TarifaPago \| null)` | 2.º parámetro | sin cambio | importe de `mensajero` si su concepto es `mensajero_<resultado>`; si no, `"0.00"` |
 | `ingresoBodegaPorResultado(resultado, tarifa: TarifaPago \| null)` | 2.º parámetro | sin cambio | importe de `satelite` (cualquier resultado, R32) |
 | `derivarPagos`, `derivarIngresoBodega` (`cierre-totales.ts`) | reciben `Map<gestionId, TarifaPago \| null>` | | |
@@ -463,3 +464,71 @@ cada dependencia que pasa es la instancia real y no `undefined` (§9).
   milisegundos podría congelar un cobro y un pago de instantes distintos; es el mismo margen que ya
   existe.
 - **Sin dependencias nuevas.** Todo con Prisma, zod y `Prisma.Decimal`, que ya están.
+
+## 12. Ajustes tras T4 (decisiones de Carlos, 2026-11-02 21:00)
+
+Arreglo mínimo: nada de lo anterior se rediseña.
+
+### 12.1 Fulfillment con IVA (R46, R47)
+
+El modelo de datos ya lo soporta: `tarifa_valor_iva_solo_tienda` exige `iva_pct` en
+`tienda_fulfillment` y `cierre_detail_concepto.iva_pct` es NOT NULL, así que el % ya se guarda y
+se congela (R40). Lo que falta es usarlo:
+
+- `lib/utils/ingreso-empresa.ts`: función pura nueva `ivaFulfillmentDeTarifa(tarifa, montoCobrar)
+  → Decimal`, al lado de `montoFulfillmentDeTarifa` (que NO cambia de significado: sigue siendo el
+  importe sin IVA). Viejo → `0` siempre (R47: `tarifas` no tiene IVA de fulfillment). Nuevo →
+  `ivaDe(valores.tienda_fulfillment, importe)`; concepto ausente → `0`. Única aritmética: `ivaDe`.
+- `desgloseCargaApi`: `costoEnvio = envío + fulfillment + ivaFulfillment`. En el viejo el sumando
+  nuevo es 0 y `costoEnvio` no cambia (T0.1 sigue verde).
+- `calcularEscenarios` (`CotizacionOrdenService`): los dos escenarios restan también
+  `ivaFulfillment` del `total`.
+- Publicación del campo (cotización, carga, `costoEstimado` de la lectura, detalle del cierre de
+  administración): pendiente de **P5**. Propuesta (a): campo aditivo `ivaFulfillment`, con su
+  entrada en `docs/api/api-key-openapi.yaml` y `docs/api/CHANGELOG.md`.
+- `agregarIngresosPorConcepto` y `derivarIngresoOrden` no cambian: el fulfillment sigue fuera de
+  la liquidación (R31, P3).
+
+### 12.2 Traza del `tarifa_valor` en el cobro por rechazo (R48-R50)
+
+Dónde: el cobro nace en `RechazoTiendaService.congelarCobro` y se escribe en
+`rechazo_tienda_cobro` (`RechazoTiendaCobroRepository`). Hoy guarda `tarifa_id` (FK a `tarifas`,
+SET NULL) y en el nuevo lo deja NULL. `cierre_rechazo_tienda` no cita ninguna tarifa y no se toca.
+
+Columna nueva en `rechazo_tienda_cobro`:
+
+| Columna | Tipo | Nota |
+|---|---|---|
+| `tarifa_valor_id` | `TEXT NULL`, FK `tarifa_valor(id)` ON DELETE SET NULL ON UPDATE CASCADE | mismo tipo y misma regla que `cierre_detail_concepto.tarifa_valor_id` (precedente 337: traza deseable, nunca un bloqueo para borrar) |
+
+- CHECK `rechazo_tienda_cobro_una_tarifa`: `tarifa_id IS NULL OR tarifa_valor_id IS NULL` (R49). Las
+  filas existentes tienen la columna nueva en NULL, así que el CHECK vale sin `NOT VALID`.
+- Índice `rechazo_tienda_cobro_tarifa_valor_id_idx`: el SET NULL se ejerce al borrar un valor.
+- NULL en las filas históricas, sin backfill (R50, R44).
+- Multi-empresa: la tabla ya tiene `organizacion_id` y la política `rechazo_tienda_cobro_por_empresa`
+  (`20261022130100_organizacion_id_en_negocio`), que cubre la columna nueva sin cambios. La FK nueva
+  entre tablas de negocio necesita su trigger de misma empresa, generado con
+  `pnpm exec tsx scripts/generar-misma-empresa.ts --faltantes`.
+- Prisma: `tarifaValorId String? @map("tarifa_valor_id")`, relación `tarifaValor TarifaValor?`
+  `onDelete: SetNull`, `@@index([tarifaValorId])`; contraparte en `TarifaValor`.
+- Código: `CrearCobroRechazoTiendaInput` gana `tarifaValorId: string | null`; `congelarCobro` escribe
+  `tarifa?.modelo === "nuevo" ? tarifa.valores.tienda_flete_rechazo?.tarifaValorId ?? null : null`
+  y deja `tarifaId` como hoy.
+
+Migraciones NUEVAS (ninguna de T1 se edita; timestamps orientativos):
+
+| Migración | UP | DOWN |
+|---|---|---|
+| `20261103140000_rechazo_tienda_cobro_tarifa_valor` | `ADD COLUMN tarifa_valor_id`, FK, índice, CHECK | `DROP CONSTRAINT` del CHECK y la FK, `DROP INDEX`, `DROP COLUMN` |
+| `20261103140100_rechazo_tienda_cobro_tarifa_valor_misma_empresa` | trigger generado | `DROP TRIGGER` |
+
+Alternativa descartada: **reusar `tarifa_id` para apuntar también a `tarifa_valor`** (sin FK o con
+una columna de tipo). Pierde la FK y su SET NULL, mezcla dos tablas en una columna y SLT-57, al
+quitar `tarifas`, no podría soltar la FK vieja sin tocar la traza nueva. Otra descartada: **tabla
+hija de conceptos del cobro** como `cierre_detail_concepto`: el cobro por rechazo tiene un solo
+concepto (flete por rechazo + su IVA), y una tabla para una fila es más esquema sin más información.
+
+### 12.3 «Sin tarifa» = sin flete por entregado (R51)
+
+Ya implementado en T4 (`fleteEntregadoSinTarifa`; desvío 6 de la bitácora). No cambia el diseño:
+solo faltan los tests que lo fijan con comisión o fulfillment puestos en cada superficie (T4.7).

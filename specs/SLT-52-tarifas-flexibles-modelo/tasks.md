@@ -1,6 +1,6 @@
 # SLT-52 — tarifas-flexibles-modelo · tasks.md
 
-> Requisitos R1-R45 (`requirements.md`), diseño en `design.md`. Cada tanda cierra con
+> Requisitos R1-R51 (`requirements.md`; R46-R51 añadidos tras T4), diseño en `design.md`. Cada tanda cierra con
 > `./init.sh` en verde y un commit por task lógica. `[P]` = puede ir en paralelo con la task
 > anterior de la misma tanda. El mapa `R<n> -> test` va en `progress/impl_SLT-52.md`.
 >
@@ -127,6 +127,60 @@
   API eligen el mismo `tarifaValorId` por concepto y el mismo importe. Cubre: R38.
   Hecho: cambiar un rango en `precedencia.ts` solo para uno de los caminos (vía doble) lo pone rojo.
 
+## T4.5-T4.8 — Decisiones de Carlos tras T4 (2026-11-02 21:00; depende de T4, antes de T5)
+
+- [ ] **T4.5** Fulfillment con IVA (design §12.1): `ivaFulfillmentDeTarifa` en `ingreso-empresa.ts`;
+  `desgloseCargaApi` suma `fulfillment + ivaFulfillment` a `costoEnvio`; `calcularEscenarios` resta
+  los dos del `total` en entregado y devuelto. `montoFulfillmentDeTarifa` no cambia.
+  Tests en `tests/unit/utils/ingreso-empresa-modelo-nuevo.test.ts`, bloque «SLT-52 R46 —
+  fulfillment con IVA» con **importes literales**: monto 500.00 al 13 % → IVA 65.00 y `costoEnvio`
+  con los dos; fulfillment en % sobre el pedido con IVA redondeado HALF_UP; concepto ausente → IVA
+  0.00; `agregarIngresosPorConcepto` sigue sin emitir fulfillment ni su IVA. Cotización:
+  `tests/unit/services/cotizacion-orden-service.test.ts` › «SLT-52 R46 — el total resta fulfillment
+  e IVA en los dos escenarios» (literales). Viejo: `tests/unit/tarifas/respaldo-identico.test.ts`
+  (T0.1) sin tocar y verde, más un caso «SLT-52 R47 — el viejo no calcula IVA de fulfillment» en
+  el mismo bloque R46 (`ivaFulfillmentDeTarifa` del viejo con fulfillment 1000 → `"0.00"`).
+  Cubre: R46, R47. **Contraprueba:** hacer que `ivaFulfillmentDeTarifa` devuelva 0 en el nuevo →
+  rojo pegado en `progress/impl_SLT-52.md`.
+- [ ] **T4.6** [P] Traza del valor en el cobro por rechazo (design §12.2):
+  - Migración NUEVA `…_rechazo_tienda_cobro_tarifa_valor` (columna, FK SET NULL, índice, CHECK
+    `rechazo_tienda_cobro_una_tarifa`) + `down.sql`; migración NUEVA
+    `…_rechazo_tienda_cobro_tarifa_valor_misma_empresa` con
+    `pnpm exec tsx scripts/generar-misma-empresa.ts --faltantes` + `down.sql`. Ninguna de T1 se edita.
+  - `db/schema.prisma` (`RechazoTiendaCobro.tarifaValorId` + relación; contraparte en `TarifaValor`),
+    `CrearCobroRechazoTiendaInput`, `RechazoTiendaCobroRepository.crear…`,
+    `RechazoTiendaService.congelarCobro`.
+  - Test de integración `tests/integration/db/rechazo-tienda-cobro-tarifa-valor-migration.test.ts`
+    (Postgres real; cada caso afirma antes lo sembrado): conteo de `rechazo_tienda_cobro` igual antes
+    y después de `up` y todas las filas con `tarifa_valor_id` NULL (R50, R44); una fila con
+    `tarifa_id` y `tarifa_valor_id` → rechazo por el CHECK (R49); borrar el `tarifa_valor` citado →
+    el cobro sigue, la referencia queda NULL y `monto_flete`/`monto_iva` no cambian (R50); un valor
+    de la empresa B citado desde un cobro de A → rechazo del trigger; `down` deja el esquema como
+    estaba.
+  - Unit `tests/unit/services/rechazo-tienda-service.test.ts` › «SLT-52 R48 — el cobro en el nuevo
+    guarda el tarifaValorId de tienda_flete_rechazo y tarifaId null» y «SLT-52 R49 — en el viejo
+    guarda tarifaId y tarifaValorId null».
+  Cubre: R48, R49, R50. **Contraprueba:** escribir `tarifaValorId: null` siempre en
+  `congelarCobro` → rojo pegado.
+- [ ] **T4.7** [P] «Sin tarifa» = sin flete por entregado (design §12.3), solo tests: empresa en el
+  nuevo con `tienda_comision_cod` y `tienda_fulfillment` puestos y sin `tienda_flete_entregado`:
+  - carga: `tests/integration/carga-api-key-sin-tarifa.test.ts` › «SLT-52 R51 — solo fulfillment
+    (sin flete por entregado) → 409 y nada persistido»;
+  - cotización: `tests/integration/cotizacion-api-key.test.ts` › «SLT-52 R51 — comisión y
+    fulfillment sin flete por entregado → 409»;
+  - lectura: `tests/unit/services/api-orden-lectura-service.test.ts` › «SLT-52 R51 — costoEstimado
+    null aunque haya fulfillment»;
+  - corrección: `tests/unit/services/corregir-datos-cliente-service.test.ts` › «SLT-52 R51 —
+    sin_tarifa aunque haya comisión y fulfillment».
+  Cubre: R51, R25. Hecho: los cuatro verdes; si alguno sale rojo, es un bug de T4 y se arregla aquí.
+- [ ] **T4.8** **Bloqueada por P5.** Publicar el IVA del fulfillment según lo que elija Carlos
+  (propuesta (a): campo `ivaFulfillment` en cotización, carga y `costoEstimado`; `"0.00"` en el
+  viejo), con `docs/api/api-key-openapi.yaml` y `docs/api/CHANGELOG.md`. Tests:
+  `tests/integration/cotizacion-api-key.test.ts` y
+  `tests/unit/services/api-orden-lectura-service.test.ts` › «SLT-52 R46 — el IVA del fulfillment
+  viaja en la respuesta». Cubre: R46 (superficie pública). La forma del detalle del cierre de
+  administración se resuelve con la misma respuesta, en T5.3.
+
 ## T5 — Cierre: pago por gestión y congelado (depende de T4)
 
 - [ ] **T5.1** `CierreDiaService` (solicitud y vista en vivo), `CorteDiarioService`,
@@ -190,7 +244,7 @@
 - [ ] **T7.3** E2E existentes en verde con empresas en el modelo viejo: `e2e/cierre-*`,
   `e2e/cierres-admin*`, `e2e/cierre-bodega-satelite*`, `e2e/wallet-*`, `e2e/mi-wallet*`,
   `e2e/dos-empresas-humo.spec.ts`. Cubre: R36. Hecho: salida pegada en `progress/impl_SLT-52.md`.
-- [ ] **T7.4** Mapa completo `R1..R45 -> test` en `progress/impl_SLT-52.md`; `./init.sh` verde con
+- [ ] **T7.4** Mapa completo `R1..R51 -> test` en `progress/impl_SLT-52.md`; `./init.sh` verde con
   `INIT_EXIT=$?` escrito dentro del log.
 
 ## Archivos esperados
@@ -205,6 +259,10 @@ Migraciones (timestamps orientativos; si cambian, se actualiza esta lista):
 - `db/migrations/20261103120200_tarifas_flexibles_misma_empresa/down.sql`
 - `db/migrations/20261103120300_historial_tarifas_flexibles/migration.sql`
 - `db/migrations/20261103120300_historial_tarifas_flexibles/down.sql`
+- `db/migrations/20261103140000_rechazo_tienda_cobro_tarifa_valor/migration.sql`
+- `db/migrations/20261103140000_rechazo_tienda_cobro_tarifa_valor/down.sql`
+- `db/migrations/20261103140100_rechazo_tienda_cobro_tarifa_valor_misma_empresa/migration.sql`
+- `db/migrations/20261103140100_rechazo_tienda_cobro_tarifa_valor_misma_empresa/down.sql`
 
 Código:
 - `lib/tarifas/catalogo.ts`
@@ -261,6 +319,10 @@ Código:
 - `lib/utils/aporte-por-orden.ts`
 - `lib/utils/dinero-por-producto.ts`
 - `docs/architecture.md`
+- `lib/repositories/RechazoTiendaCobroRepository.ts`
+- `lib/interfaces/repositories/IRechazoTiendaCobroRepository.ts`
+- `docs/api/api-key-openapi.yaml` (T4.8, según P5)
+- `docs/api/CHANGELOG.md` (T4.8, según P5)
 
 Tests:
 - `tests/unit/tarifas/respaldo-identico.test.ts`
@@ -338,6 +400,7 @@ Tests:
 - `tests/unit/services/rechazo-tienda-service.test.ts`
 - `tests/unit/utils/cascada-tarifa.test.ts`
 - `tests/unit/utils/tarifa-especial-por-distrito.test.ts`
+- `tests/integration/db/rechazo-tienda-cobro-tarifa-valor-migration.test.ts`
 
 Progreso:
 - `progress/impl_SLT-52.md`
