@@ -688,3 +688,31 @@ Ninguno: dev no trae cambios en planes (tipos, repos, servicios, UI, `plan_de_la
 ### Veredicto
 Conflictos resueltos como unión (enum con 76 tipos, el nuestro el último), migración renombrada a
 `20261102120000` sin referencias viejas, sin choques con D1–D17.
+
+## Fixture E2E (CI PR #72)
+
+Rojo: `e2e (aislamiento)`, `e2e/dos-empresas-humo.spec.ts:474` (SL-24, tope del plan de A) moría con
+ZodError en `e2e/_planes-fixture.ts:44`: `crearPlanSchema.parse` de un custom sin `tipoCobro` (D6).
+
+### Archivos
+- `e2e/_planes-fixture.ts` (`asignarPlanConTope`):
+  - manda `tipoCobro: "mensual"` en la entrada (D6);
+  - cambia `repo.crear` + `repo.asignar` por `repo.crearYAsignar({ ...entrada, organizacionId }, actor, { tipoCobro: "mensual" })`
+    (D2: crea y asigna en una transacción; el `asignar` aparte habría devuelto `cambio: false`);
+  - sin `inicio`: el ancla queda en `now()` (`COALESCE` de `asignarEnTx`), igual que el `asignar` sin fecha de
+    antes, así que `ordenesDelCiclo` sigue contando desde el ancla;
+  - el rechazo se comprueba con `estado !== "ok"` y se devuelve `creado.planId`.
+  Topes, módulos, `sin_precio` y `costoPorOrden: null` no cambian: R28 (costo concreto) vive en
+  `PlanesService`, y el fixture usa el repositorio real, como antes. El estado que el spec espera (A con plan
+  y tope 2, ancla puesta, B sin plan) es el mismo.
+- Otros usos: `grep` en `e2e/`, `scripts/` y `prisma/` de `crearPlanSchema|asignarPlanSchema|negociable|.asignar(|
+  PlanesRepository|PlanesService|crearPlan|tipoCobro|.plan.create|planTipoCobro|INSERT INTO "plan`: el
+  único uso es este fixture. Los seeds y `scripts/` no crean planes. No hay test unitario del fixture.
+
+### Verificación (salida real)
+- `pnpm exec tsc --noEmit -p .` filtrado a `^(e2e|scripts)/`: sin líneas. El total de `error TS` del proyecto es `0`.
+- `pnpm exec eslint e2e/_planes-fixture.ts`: `ESLint: No issues found`, exit 0.
+- Playwright no se corrió (no hay base local); lo confirma el job `e2e (aislamiento)` de CI.
+
+### Veredicto
+Fixture al día con D2 y D6 (crear y asignar en una transacción, `tipoCobro: "mensual"`), typecheck y lint en verde, sin otros usos viejos.
