@@ -71,22 +71,24 @@ export const TEXTO_HEROE = {
 } as const;
 
 /**
+ * Concordancia en numero: devuelve `singular` si `n === 1`, si no `plural`.
+ *
+ * SLT-62, tanda 2 (decision de Carlos, 2026-11-02). `contarOrdenes` ya pone el sustantivo en
+ * singular con 1; el ARTICULO y el VERBO que lo rodean tambien tienen que concordar: «de la 1
+ * orden que entró», no «de las 1 orden que entraron». Antes del suelo de 20 ese caso era
+ * inalcanzable; desde SLT-62 se pinta.
+ */
+function segunNumero(n: number, singular: string, plural: string): string {
+  return n === 1 ? singular : plural;
+}
+
+/**
  * «Entregado: 424». La cifra pasa por el formateador de la analitica.
  *
  * FICHA 455 (2026-09-24, R2/R5): el nombre del estado va EXACTO («Entregado») y la cantidad a su
  * lado. Antes era «424 entregadas» / «1 entregada» (y el reemplazo mecanico de la Fase 1 dejo el
  * singular en «1 entregado»): el nombre no se pluraliza ni se pasa a minusculas.
  */
-/**
- * SLT-62, tanda 2 (decision del humano, 2026-11-02) — CONCORDANCIA EN NUMERO. `contarOrdenes` ya
- * pone el sustantivo en singular con 1; el ARTICULO y el VERBO que lo rodean tambien tienen que
- * concordar: «de la 1 orden que entró», no «de las 1 orden que entraron». Antes del suelo de 20
- * ese caso era inalcanzable; desde SLT-62 se pinta.
- */
-function segunNumero(n: number, singular: string, plural: string): string {
-  return n === 1 ? singular : plural;
-}
-
 function contarEntregadas(n: number): string {
   return `${NOMBRE_ESTADO.entregado}: ${formatearValor(n, "conteo")}`;
 }

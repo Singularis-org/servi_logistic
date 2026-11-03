@@ -27,6 +27,8 @@ Los tests los afirman como literales con `\s*` antes del `%`.
 | R6 | `madurez-textos.test.ts` (barrido 3250) + `EfectividadHeroe.test.tsx` (los 3 casos SLT-62, `queryByText` nulo) |
 | R7 | `EfectividadHeroe.test.tsx` › «con 0 de 27 cerradas no hay porcentaje: hay una frase» + `madurez-cohorte.test.ts` › «R2 · CERO CERRADAS…» (existentes) |
 | R8 | `EfectividadHeroe.test.tsx` › «sin ninguna orden en el recorte lo dice con esas palabras» (existente) |
+| R9 | `KpisEfectividad.test.tsx` › «la tarjeta de gestión muestra su % con una base chica (12 órdenes)» (decisión de Carlos 2026-11-02; contraprueba D1 en «Tanda 2») |
+| R10 | `madurez-textos.test.ts` › «SLT-62 · tanda 2 · las frases del héroe concuerdan…» + `KpisEfectividad.test.tsx` › «concuerda en singular con una sola orden» + `ProductosTabla.test.tsx` › «SLT-62 · tanda 2 · el universo concuerda…» (decisión de Carlos 2026-11-02; contraprueba D2 en «Tanda 2») |
 
 ## Rojo antes del cambio
 - T1 (`vitest related --run lib/analytics/madurez-cohorte.ts`): 8 failed | 110 passed, todos en SLT-62 · R1 (5), R2 (2), R3 (1).
@@ -56,7 +58,7 @@ Los tests los afirman como literales con `\s*` antes del `%`.
 - Con 1 orden aparecen «de las 1 orden que entraron» y «100% de las 1 orden con desenlace»: concordancia
   del artículo, antes inalcanzable por el suelo. Fuera de spec; no se tocó.
 
-## T6 (implementer, 2026-11-02) — pendiente, no marcada
+## T6 (implementer, 2026-11-02) — cerrada: gate del leader verde sobre 684c18ad, mapa R1..R10 completo, captura en «Captura T6»
 - Re-ejecutado por el implementer: los 6 archivos tocados, 6 passed files / 84 passed tests.
 - `rg "hacen falta 20|baile solo|muy pocas para un porcentaje|MINIMO_BASE_PORCENTAJE|base_insuficiente|efectividad-cohorte" app/ lib/`: vacío.
 - `./init.sh` no corrido aquí: el gate lo corre el leader.

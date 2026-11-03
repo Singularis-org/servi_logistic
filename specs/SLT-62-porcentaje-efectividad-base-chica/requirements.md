@@ -80,6 +80,19 @@ seguir sin porcentaje y DEBE seguir escribiendo «Ninguna ha terminado todavía�
 **R8.** SI el recorte no tiene ninguna orden cargada, ENTONCES la tarjeta héroe DEBE seguir
 escribiendo «No entró ninguna orden», sin porcentaje y sin barra de madurez.
 
+### Añadidos tras la implementación (decisiones de Carlos, 2026-11-02)
+
+**R9.** CUANDO la cohorte tiene menos de 20 órdenes cargadas y al menos una con desenlace, la
+tarjeta «Efectividad de la gestión» DEBE pintar su porcentaje, igual que con una base grande y sin
+aviso de base pequeña. (Carlos, 2026-11-02: «SÍ, que muestre su % con pocas órdenes, igual que el
+resto».)
+
+**R10.** CUANDO una frase de la analítica de entregas interpola un conteo de órdenes que vale 1, el
+sistema DEBE concordar en número el artículo, el sustantivo y el verbo con ese conteo («de la 1
+orden que entró», «100% de la 1 orden con desenlace terminó en Entregado», «1 de su 1 orden sigue
+viva», «1 orden en el rango» en `textoUniverso` de `ProductosTabla`), y DEBE mantener el plural con
+conteos mayores que 1. (Carlos, 2026-11-02: «SÍ, corregir en esta ficha».)
+
 ## Mapa R -> test (para el implementer)
 
 | R | Test |
@@ -92,6 +105,8 @@ escribiendo «No entró ninguna orden», sin porcentaje y sin barra de madurez.
 | R6 | `tests/unit/components/madurez-textos.test.ts` (barrido) + `tests/components/EfectividadHeroe.test.tsx` (queryByText nulos) |
 | R7 | `tests/components/EfectividadHeroe.test.tsx` › «Zona Puntarenas…» (existente, se conserva) + `tests/unit/analytics/madurez-cohorte.test.ts` › «CERO CERRADAS…» (existente) |
 | R8 | `tests/components/EfectividadHeroe.test.tsx` › «sin ninguna orden en el recorte lo dice con esas palabras» (existente, se conserva) |
+| R9 | `tests/components/KpisEfectividad.test.tsx` › «la tarjeta de gestión muestra su % con una base chica (12 órdenes)» |
+| R10 | `tests/unit/components/madurez-textos.test.ts` › «SLT-62 · tanda 2 · las frases del héroe concuerdan…» + `tests/components/KpisEfectividad.test.tsx` › «concuerda en singular con una sola orden» + `tests/components/ProductosTabla.test.tsx` › «SLT-62 · tanda 2 · el universo concuerda…» |
 
 ## Preguntas abiertas
 

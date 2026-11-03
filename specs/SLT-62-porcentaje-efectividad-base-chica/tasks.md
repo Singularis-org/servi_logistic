@@ -52,7 +52,7 @@ el rojo primero.
   - Revertir cada mutación y verificar con `git diff` que no queda nada.
   - **Hecho:** las cuatro salen rojas y el árbol está limpio.
 
-- [ ] **T6 · Cierre.** Depende de T4 y T5.
+- [x] **T6 · Cierre.** Depende de T4 y T5.
   - `pnpm run typecheck`, `pnpm run lint` y `./init.sh` en verde.
   - Mapa `R1..R8 -> test` en `progress/impl_SLT-62.md`. R7 y R8 apuntan a los tests existentes, que
     se conservan.
