@@ -95,7 +95,6 @@ function armarCadena(body: unknown, paradas: ParadaRutaRow[] = PARADAS) {
       async () => {},
     ),
     guardarTrazado: vi.fn<(m: string, h: string, t: unknown) => Promise<void>>(async () => {}),
-    marcarTramoVivo: vi.fn<(m: string, a: Date) => Promise<void>>(async () => {}),
     reducirSecuencia: vi.fn(async () => true),
     marcarDesactualizada: vi.fn<(m: string, e: string) => Promise<void>>(async () => {}),
   };
