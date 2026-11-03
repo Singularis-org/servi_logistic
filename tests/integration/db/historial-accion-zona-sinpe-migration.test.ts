@@ -386,6 +386,9 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("429/T3 (b) — el down recrea la lista PREV
       // SLT-56: `cierre_dia_pago_mensajero_ajustado`, de
       // `20261029120100_historial_accion_pago_mensajero_ajustado`.
       "cierre_dia_pago_mensajero_ajustado",
+      // Ajuste planes-custom D16: `plan_tipo_cobro_cambiado`, de
+      // `20261103120000_historial_accion_plan_tipo_cobro_cambiado`.
+      "plan_tipo_cobro_cambiado",
     ];
     const catalogoPrevio = HISTORIAL_ACCION_TIPOS.filter(
       (t) => t !== VALOR_NUEVO && !POSTERIORES.includes(t),

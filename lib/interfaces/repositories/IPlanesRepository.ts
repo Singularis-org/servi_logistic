@@ -3,7 +3,15 @@ import type { PlanRastroAccion } from "@prisma/client";
 import type { CambioDelPlanLeido, PlanConUsoLeido } from "@/lib/planes/consumo";
 import type { TipoCorreoCambioPlan, TopePasado } from "@/lib/planes/mensajes";
 import type { CambiosDelPlan } from "@/lib/planes/rastro";
-import type { CrearPlanInput, PlanDTO, TipoCobro, TopeExcedido, TopesPlan, VersionPlan } from "@/lib/types/planes";
+import type {
+  AccionDeAsignacion,
+  CrearPlanInput,
+  PlanDTO,
+  TipoCobro,
+  TopeExcedido,
+  TopesPlan,
+  VersionPlan,
+} from "@/lib/types/planes";
 
 // SL-24 (design §5, §16.5) — el catálogo de planes y su asignación, vistos y escritos por el
 // superadmin, que no tiene empresa: la empresa SÍ es un argumento. Las escrituras vuelven a comprobar
@@ -156,13 +164,18 @@ export interface DetallePlanLeido {
   rastro: FilaRastroLeida[];
 }
 
-/** R21: una fila `plan_asignado` del historial de la empresa. */
+/** R21: una fila del historial de la empresa con una de `ACCIONES_DE_ASIGNACION` (D16). */
 export interface AsignacionLeida {
   creadoAt: Date;
   /** `null` si el actor no resolvió al congelarlo. */
   actorNombre: string | null;
   /** La `entidad_etiqueta` congelada. */
   planNombre: string;
+  /**
+   * Ajuste planes-custom (D16): la acción de la fila. `plan_tipo_cobro_cambiado` es el cambio de solo el
+   * tipo (D10); `plan_asignado`, una asignación.
+   */
+  accion: AccionDeAsignacion;
   /** Ajuste planes-custom (D14): `valor_anterior` y `valor_nuevo` tal cual (los lee `tipoCobroDelHistorial`). */
   valorAnterior: string | null;
   valorNuevo: string | null;
@@ -245,8 +258,8 @@ export interface IPlanesRepository {
     inicio: InicioDelCicloElegido,
   ): Promise<VistaPreviaLeida | null>;
   /**
-   * Ajuste planes-custom (D10): guarda el tipo de cobro del plan que la empresa YA tiene, con su fila
-   * `plan_asignado` en el historial (`valor_anterior` = el tipo de antes), en una transacción y bajo el
+   * Ajuste planes-custom (D10, D16): guarda el tipo de cobro del plan que la empresa YA tiene, con su fila
+   * `plan_tipo_cobro_cambiado` en el historial (el tipo de antes y el nuevo), en una transacción y bajo el
    * cerrojo de la empresa. No toca `plan_id`, el ancla del ciclo ni los módulos. Mismo tipo: nada.
    */
   cambiarTipoCobro(organizacionId: string, tipoCobro: TipoCobro, actorUsuarioId: string): Promise<ResultadoCambiarTipoCobro>;

@@ -468,6 +468,9 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("398/T1.5 (b) — el down recrea las listas 
       // SLT-56: `cierre_dia_pago_mensajero_ajustado`, de
       // `20261029120100_historial_accion_pago_mensajero_ajustado`.
       "cierre_dia_pago_mensajero_ajustado",
+      // Ajuste planes-custom D16: `plan_tipo_cobro_cambiado`, de
+      // `20261103120000_historial_accion_plan_tipo_cobro_cambiado`.
+      "plan_tipo_cobro_cambiado",
     ];
     expect([...origenAntes].sort()).toEqual(
       ORDEN_HISTORIAL_ORIGEN_TIPO_SEED.filter(

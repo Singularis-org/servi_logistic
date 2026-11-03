@@ -108,12 +108,13 @@ function planDeEmpresaLeida(): PlanDeEmpresaLeida {
       tipoCobro: "anual",
     },
     asignaciones: [
-      // Ajuste planes-custom (D14): un cambio de solo el tipo (D10), una asignación con fecha y una fila
-      // anterior al ajuste (sin tipo).
+      // Ajuste planes-custom (D14, D16): un cambio de solo el tipo (D10, con su acción propia), una
+      // asignación con fecha y una fila anterior al ajuste (sin tipo).
       {
         creadoAt: new Date("2026-10-20T09:00:00.000Z"),
         actorNombre: "Ana Pérez",
         planNombre: "Plan «Básico»",
+        accion: "plan_tipo_cobro_cambiado",
         valorAnterior: "mensual",
         valorNuevo: "anual",
       },
@@ -121,10 +122,18 @@ function planDeEmpresaLeida(): PlanDeEmpresaLeida {
         creadoAt: new Date("2026-10-02T09:00:00.000Z"),
         actorNombre: "Ana Pérez",
         planNombre: "Plan «Básico»",
+        accion: "plan_asignado",
         valorAnterior: null,
         valorNuevo: "2026-10-02 · mensual",
       },
-      { creadoAt: new Date("2026-09-15T12:00:00.000Z"), actorNombre: null, planNombre: "Plan «Inicial»", valorAnterior: null, valorNuevo: null },
+      {
+        creadoAt: new Date("2026-09-15T12:00:00.000Z"),
+        actorNombre: null,
+        planNombre: "Plan «Inicial»",
+        accion: "plan_asignado",
+        valorAnterior: null,
+        valorNuevo: null,
+      },
     ],
   };
 }
@@ -299,7 +308,7 @@ describe("SLT-58 — plan de una empresa (R19)", () => {
     expect(repo.planDeEmpresa).toHaveBeenCalledWith(EMPRESA);
   });
 
-  it("Ajuste planes-custom D14: cada fila trae su tipo de cobro; el cambio de solo el tipo (D10) es una fila propia", async () => {
+  it("Ajuste planes-custom D14, D16: cada fila trae su tipo de cobro; el cambio de solo el tipo (D10, `plan_tipo_cobro_cambiado`) es una fila propia", async () => {
     const r = await servicio.planDeEmpresa(SUPERADMIN, { organizacionId: EMPRESA });
     expect(r.estado === "ok" && r.vista.asignaciones.map(({ tipo, tipoCobro, tipoCobroAnterior }) => ({ tipo, tipoCobro, tipoCobroAnterior }))).toEqual([
       { tipo: "cambio_tipo_cobro", tipoCobro: "anual", tipoCobroAnterior: "mensual" },
@@ -311,5 +320,22 @@ describe("SLT-58 — plan de una empresa (R19)", () => {
     expect(r.estado === "ok" && Object.keys(r.vista.asignaciones[0]).sort()).toEqual(
       ["actorNombre", "creadoAt", "planNombre", "tipo", "tipoCobro", "tipoCobroAnterior"],
     );
+  });
+
+  it("Ajuste planes-custom D16: la acción de la fila manda; el mismo valor en `plan_asignado` es una asignación", async () => {
+    const fila = { creadoAt: new Date("2026-10-20T09:00:00.000Z"), actorNombre: "Ana", planNombre: "Plan «Básico»", valorAnterior: null, valorNuevo: "anual" };
+    repo.planDeEmpresa.mockResolvedValueOnce({
+      organizacionId: EMPRESA,
+      plan: null,
+      asignaciones: [
+        { ...fila, accion: "plan_tipo_cobro_cambiado" },
+        { ...fila, accion: "plan_asignado" },
+      ],
+    });
+    const r = await servicio.planDeEmpresa(SUPERADMIN, { organizacionId: EMPRESA });
+    expect(r.estado === "ok" && r.vista.asignaciones.map(({ tipo, tipoCobro }) => ({ tipo, tipoCobro }))).toEqual([
+      { tipo: "cambio_tipo_cobro", tipoCobro: "anual" },
+      { tipo: "asignacion", tipoCobro: "anual" },
+    ]);
   });
 });

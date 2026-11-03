@@ -148,18 +148,39 @@ describe("D5 — inicio del ciclo por defecto: mañana en la hora de la platafor
   });
 });
 
-describe("D10, D14 — el tipo de cobro de cada fila del historial de asignaciones", () => {
+describe("D10, D14, D16 — el tipo de cobro de cada fila del historial de asignaciones", () => {
   it("una asignación (valor_anterior NULL) trae el tipo, con o sin fecha delante", () => {
-    expect(tipoCobroDelHistorial(null, "anual")).toEqual({ tipo: "asignacion", tipoCobro: "anual", tipoCobroAnterior: null });
-    expect(tipoCobroDelHistorial(null, valorDelHistorialDeAsignacion("2026-11-01", "mensual"))).toEqual({
+    expect(tipoCobroDelHistorial("plan_asignado", null, "anual")).toEqual({ tipo: "asignacion", tipoCobro: "anual", tipoCobroAnterior: null });
+    expect(tipoCobroDelHistorial("plan_asignado", null, valorDelHistorialDeAsignacion("2026-11-01", "mensual"))).toEqual({
       tipo: "asignacion",
       tipoCobro: "mensual",
       tipoCobroAnterior: null,
     });
   });
 
-  it("un cambio de solo el tipo (D10) se distingue por valor_anterior y trae los dos tipos", () => {
-    expect(tipoCobroDelHistorial("mensual", "anual")).toEqual({
+  it("D16: un cambio de solo el tipo (D10) es la acción `plan_tipo_cobro_cambiado` y trae los dos tipos", () => {
+    expect(tipoCobroDelHistorial("plan_tipo_cobro_cambiado", "mensual", "anual")).toEqual({
+      tipo: "cambio_tipo_cobro",
+      tipoCobro: "anual",
+      tipoCobroAnterior: "mensual",
+    });
+    expect(tipoCobroDelHistorial("plan_tipo_cobro_cambiado", "anual", "mensual")).toEqual({
+      tipo: "cambio_tipo_cobro",
+      tipoCobro: "mensual",
+      tipoCobroAnterior: "anual",
+    });
+  });
+
+  it("D16: en `plan_tipo_cobro_cambiado`, un valor fuera del vocabulario no se inventa como tipo", () => {
+    expect(tipoCobroDelHistorial("plan_tipo_cobro_cambiado", null, "trimestral")).toEqual({
+      tipo: "cambio_tipo_cobro",
+      tipoCobro: null,
+      tipoCobroAnterior: null,
+    });
+  });
+
+  it("un `plan_asignado` con el tipo de antes (la forma anterior a D16, la que deja el down) sigue siendo un cambio de solo el tipo", () => {
+    expect(tipoCobroDelHistorial("plan_asignado", "mensual", "anual")).toEqual({
       tipo: "cambio_tipo_cobro",
       tipoCobro: "anual",
       tipoCobroAnterior: "mensual",
@@ -167,12 +188,12 @@ describe("D10, D14 — el tipo de cobro de cada fila del historial de asignacion
   });
 
   it("las filas anteriores al ajuste no tienen tipo: NULL o solo la fecha de SLT-58", () => {
-    expect(tipoCobroDelHistorial(null, null)).toEqual({ tipo: "asignacion", tipoCobro: null, tipoCobroAnterior: null });
-    expect(tipoCobroDelHistorial(null, "2026-10-01")).toEqual({ tipo: "asignacion", tipoCobro: null, tipoCobroAnterior: null });
+    expect(tipoCobroDelHistorial("plan_asignado", null, null)).toEqual({ tipo: "asignacion", tipoCobro: null, tipoCobroAnterior: null });
+    expect(tipoCobroDelHistorial("plan_asignado", null, "2026-10-01")).toEqual({ tipo: "asignacion", tipoCobro: null, tipoCobroAnterior: null });
   });
 
   it("un texto fuera del vocabulario no se inventa como tipo", () => {
-    expect(tipoCobroDelHistorial(null, "trimestral")).toEqual({ tipo: "asignacion", tipoCobro: null, tipoCobroAnterior: null });
-    expect(tipoCobroDelHistorial("otro", "anual")).toEqual({ tipo: "asignacion", tipoCobro: "anual", tipoCobroAnterior: null });
+    expect(tipoCobroDelHistorial("plan_asignado", null, "trimestral")).toEqual({ tipo: "asignacion", tipoCobro: null, tipoCobroAnterior: null });
+    expect(tipoCobroDelHistorial("plan_asignado", "otro", "anual")).toEqual({ tipo: "asignacion", tipoCobro: "anual", tipoCobroAnterior: null });
   });
 });

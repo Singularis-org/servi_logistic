@@ -5,6 +5,7 @@ import { ORDEN_MODULOS } from "@/lib/modulos/catalogo";
 import type { CambiosDelPlan } from "@/lib/planes/rastro";
 import { montoCobroSchema } from "@/lib/types/cobro-plataforma";
 import type { CambioPendienteVista, PlanConConsumo } from "@/lib/types/consumo-plan";
+import type { HistorialAccionTipo } from "@/lib/types/historial-accion";
 
 // SL-24 (design §5.1; R1–R3, R25, R37) — el borde de la gestión de planes por el superadmin. Todo
 // llega sin tipar desde la action y se valida aquí antes de tocar la base. Los importes viajan como
@@ -285,7 +286,14 @@ export type DetallePlan = {
  */
 export type TipoDeAsignacion = "asignacion" | "cambio_tipo_cobro";
 
-/** R21: una fila `plan_asignado` del historial de la empresa. */
+/**
+ * Ajuste planes-custom (D16): las acciones del historial general que forman el historial de asignaciones
+ * del detalle (R21, D14). `plan_tipo_cobro_cambiado` es el cambio de solo el tipo de cobro (D10).
+ */
+export const ACCIONES_DE_ASIGNACION = ["plan_asignado", "plan_tipo_cobro_cambiado"] as const satisfies readonly HistorialAccionTipo[];
+export type AccionDeAsignacion = (typeof ACCIONES_DE_ASIGNACION)[number];
+
+/** R21: una fila del historial de la empresa con una de `ACCIONES_DE_ASIGNACION`. */
 export type AsignacionDePlan = {
   creadoAt: string;
   actorNombre: string;

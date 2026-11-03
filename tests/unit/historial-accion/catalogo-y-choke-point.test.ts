@@ -100,8 +100,9 @@ describe("362/T0.1 (R14/R17) — el catalogo es cerrado y sus mapas son exhausti
     // (26) y la quinta categoria, `cambia_modulos`.
     // 73 desde SL-24: `plan_asignado`, la entidad `plan` (27) y la sexta categoria, `cambia_plan`.
     // 74 desde SLT-56: `cierre_dia_pago_mensajero_ajustado` (entidad `gestion_orden`, sin entidad nueva).
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(74);
-    expect(new Set(HISTORIAL_ACCION_TIPOS).size).toBe(74);
+    // 75 desde el ajuste planes-custom D16: `plan_tipo_cobro_cambiado` (entidad `plan`, sin entidad nueva).
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(75);
+    expect(new Set(HISTORIAL_ACCION_TIPOS).size).toBe(75);
     expect(HISTORIAL_ACCION_ENTIDADES).toHaveLength(27); // 27 desde SL-24 (`plan`)
     expect(new Set(HISTORIAL_ACCION_ENTIDADES).size).toBe(27);
     expect(CATEGORIAS_ACCION).toHaveLength(6);
@@ -467,8 +468,18 @@ describe("362/T0.1 (R14/R17) — el catalogo es cerrado y sus mapas son exhausti
     expect(accionesDeCategoria("cambia_integraciones")).toHaveLength(5);
     // 2 desde SL-23: la quinta categoria, solo con `modulo_activado` y `modulo_desactivado`.
     expect(accionesDeCategoria("cambia_modulos")).toEqual(["modulo_activado", "modulo_desactivado"]);
-    // 1 desde SL-24: la sexta categoria, solo con `plan_asignado`.
-    expect(accionesDeCategoria("cambia_plan")).toEqual(["plan_asignado"]);
+    // 1 desde SL-24: la sexta categoria, solo con `plan_asignado`. 2 desde el ajuste planes-custom D16.
+    expect(accionesDeCategoria("cambia_plan")).toEqual(["plan_asignado", "plan_tipo_cobro_cambiado"]);
+  });
+
+  it("⭑ Ajuste planes-custom D16: el cambio de solo el tipo de cobro tiene tipo PROPIO, en «cambia el plan», con su etiqueta", () => {
+    expect(HISTORIAL_ACCION_TIPOS).toContain("plan_tipo_cobro_cambiado");
+    // Justo detras de `plan_asignado`: el orden de la tupla es el del selector de filtros.
+    const i = HISTORIAL_ACCION_TIPOS.indexOf("plan_asignado");
+    expect(HISTORIAL_ACCION_TIPOS[i + 1]).toBe("plan_tipo_cobro_cambiado");
+    expect(CATEGORIA_POR_ACCION.plan_tipo_cobro_cambiado).toBe("cambia_plan");
+    expect(ACCION_LABELS.plan_tipo_cobro_cambiado).toBe("Cambió el tipo de cobro del plan de una empresa");
+    expect(ACCION_LABELS.plan_tipo_cobro_cambiado).not.toBe(ACCION_LABELS.plan_asignado);
   });
 
   it("⭑ SL-36 (design §13, R33): los cinco `integracion_*` son CAMBIA INTEGRACIONES, con entidad y textos propios", () => {

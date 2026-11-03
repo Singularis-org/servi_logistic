@@ -1,7 +1,7 @@
 import { aCentimos, aTexto } from "@/lib/planes/centimos";
 import { fechaMasMeses } from "@/lib/planes/ciclo";
 import type { CobroDelPlan } from "@/lib/types/consumo-plan";
-import type { PrecioPlan, TipoCobro, TipoDeAsignacion } from "@/lib/types/planes";
+import type { AccionDeAsignacion, PrecioPlan, TipoCobro, TipoDeAsignacion } from "@/lib/types/planes";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 
 // Ajuste planes-custom (D7, D8, D9; 2026-10-31) — lo que la empresa paga por su plan en cada período y
@@ -92,7 +92,7 @@ function comoTipoCobro(texto: string | null | undefined): TipoCobro | null {
   return texto === "mensual" || texto === "anual" ? texto : null;
 }
 
-/** D14 — lo que dice una fila `plan_asignado` del historial sobre el tipo de cobro. */
+/** D14 — lo que dice una fila del historial de asignaciones sobre el tipo de cobro. */
 export interface TipoCobroDelHistorial {
   tipo: TipoDeAsignacion;
   tipoCobro: TipoCobro | null;
@@ -100,13 +100,24 @@ export interface TipoCobroDelHistorial {
 }
 
 /**
- * D10, D14 — lee el tipo de cobro de una fila `plan_asignado`. Una asignación (SL-24, SLT-58, D2) deja
- * `valor_anterior` en NULL y en `valor_nuevo` lo de `valorDelHistorialDeAsignacion`; un cambio de solo el
- * tipo (D10) deja el tipo de antes en `valor_anterior` y el nuevo en `valor_nuevo`: así se distingue. Las
- * filas anteriores al ajuste (`NULL` o solo la fecha de SLT-58) no tienen tipo: `tipoCobro: null`.
+ * D10, D14, D16 — lee el tipo de cobro de una fila del historial de asignaciones.
+ * - `plan_tipo_cobro_cambiado` (D16) es el cambio de solo el tipo (D10): el de antes en `valor_anterior`
+ *   y el nuevo en `valor_nuevo`.
+ * - `plan_asignado` es una asignación (SL-24, SLT-58, D2): `valor_anterior` en NULL y en `valor_nuevo` lo
+ *   de `valorDelHistorialDeAsignacion`. Las filas anteriores al ajuste (`NULL` o solo la fecha de SLT-58)
+ *   no tienen tipo: `tipoCobro: null`.
+ * - `plan_asignado` CON un tipo en `valor_anterior` es un cambio de solo el tipo escrito antes de D16: así lo
+ *   escribía la tanda 2 de D10 y así lo deja el `down.sql` de 20261103120000. Se sigue leyendo como cambio.
  */
-export function tipoCobroDelHistorial(valorAnterior: string | null, valorNuevo: string | null): TipoCobroDelHistorial {
+export function tipoCobroDelHistorial(
+  accion: AccionDeAsignacion,
+  valorAnterior: string | null,
+  valorNuevo: string | null,
+): TipoCobroDelHistorial {
   const anterior = comoTipoCobro(valorAnterior);
+  if (accion === "plan_tipo_cobro_cambiado") {
+    return { tipo: "cambio_tipo_cobro", tipoCobro: comoTipoCobro(valorNuevo), tipoCobroAnterior: anterior };
+  }
   const ultimo = valorNuevo === null ? null : valorNuevo.split(" · ").at(-1);
   const tipoCobro = comoTipoCobro(ultimo);
   if (anterior !== null) return { tipo: "cambio_tipo_cobro", tipoCobro, tipoCobroAnterior: anterior };

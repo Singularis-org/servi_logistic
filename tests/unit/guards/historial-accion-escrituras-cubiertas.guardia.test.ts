@@ -658,11 +658,11 @@ const CENSO: EntradaCenso[] = [
     forma: "recibe_tx",
     mutacion: /tx\.\$executeRaw`UPDATE "organizacion" SET "plan_id"/,
   },
-  // Ajuste planes-custom (D10): cambiar solo el tipo de cobro del plan actual deja su propia fila
-  // `plan_asignado` (con `valor_anterior` = el tipo de antes) en la misma transacción que el UPDATE. Lo
-  // prueba `tests/integration/db/planes-cambiar-tipo-cobro.test.ts`.
+  // Ajuste planes-custom (D10, D16): cambiar solo el tipo de cobro del plan actual deja su fila con
+  // acción PROPIA, `plan_tipo_cobro_cambiado` (el tipo de antes y el nuevo), en la misma transacción que el
+  // UPDATE. Lo prueba `tests/integration/db/planes-cambiar-tipo-cobro.test.ts`.
   {
-    tipos: ["plan_asignado"],
+    tipos: ["plan_tipo_cobro_cambiado"],
     archivo: "lib/repositories/PlanesRepository.ts",
     metodo: "cambiarTipoCobro",
     forma: "abre_tx",
@@ -1112,7 +1112,8 @@ describe("362/R16 — cada tipo del catalogo tiene al menos un punto de escritur
     // 73 desde SL-24 (`plan_asignado`, de `PlanesRepository.asignar`).
     // 74 desde SLT-56 (`cierre_dia_pago_mensajero_ajustado`, de
     // `CierresAdminRepository.ajustarPagoMensajeroEnCierre`).
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(74);
+    // 75 desde el ajuste planes-custom D16 (`plan_tipo_cobro_cambiado`, de `PlanesRepository.cambiarTipoCobro`).
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(75);
   });
 });
 

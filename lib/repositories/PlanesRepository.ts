@@ -3,6 +3,7 @@ import { Prisma, type ModuloApagable, type PrismaClient, type RolValue } from "@
 import { comoPlataforma } from "@/lib/db/contexto-empresa";
 import type { ActorCongelado, EntradaAccion } from "@/lib/interfaces/repositories/IHistorialAccionRepository";
 import type {
+  AsignacionLeida,
   AvisoCorreoPlan,
   CambioPendiente,
   DestinatariosDelAviso,
@@ -35,7 +36,9 @@ import { ACTOR_SISTEMA, appendAccion, resolverActorCongelado } from "@/lib/repos
 import type { FuenteDelCosto } from "@/lib/types/consumo-plan";
 import { etiquetaDeEntidad } from "@/lib/types/historial-accion-etiquetas";
 import {
+  ACCIONES_DE_ASIGNACION,
   ROLES_CON_TOPE,
+  type AccionDeAsignacion,
   type CrearPlanInput,
   type PlanDTO,
   type PrecioPlan,
@@ -87,6 +90,13 @@ const ROLES: ReadonlySet<string> = new Set(ROLES_CON_TOPE);
 /* -------------------------------------------------------------------------- */
 /* Filas ↔ DTO                                                                 */
 /* -------------------------------------------------------------------------- */
+
+/** D16: la acción de una fila del historial de asignaciones; la consulta ya filtra por estas dos. */
+function comoAccionDeAsignacion(accion: string): AccionDeAsignacion {
+  const encontrada = ACCIONES_DE_ASIGNACION.find((a) => a === accion);
+  if (encontrada === undefined) throw new Error(`planDeEmpresa: acción ${accion} fuera del historial de asignaciones`);
+  return encontrada;
+}
 
 function precioDe(f: FilaPlan): PrecioPlan {
   if (f.precioMensual === null) return { tipo: "sin_precio" };
@@ -813,11 +823,11 @@ export class PlanesRepository implements IPlanesRepository {
         // leer (`cobroDelPlan`) con el ancla de siempre.
         await tx.$executeRaw`UPDATE "organizacion" SET "plan_tipo_cobro" = ${tipoCobro} WHERE "id" = ${organizacionId}`;
         const actor = await resolverActorCongelado(tx, actorUsuarioId);
-        // D14: una fila propia del historial de asignaciones. `valor_anterior` con el tipo de antes es lo
-        // que la distingue de una asignación, que lo deja en NULL (`tipoCobroDelHistorial`).
+        // D14, D16: una fila propia del historial, con su acción propia; también es una fila propia del
+        // historial de asignaciones del detalle (`ACCIONES_DE_ASIGNACION`).
         await appendAccion(tx, [
           {
-            accion: "plan_asignado",
+            accion: "plan_tipo_cobro_cambiado",
             entidadTipo: "plan",
             entidadId: empresa.plan_id,
             entidadEtiqueta: etiquetaDeEntidad("plan", { nombre: plan.nombre }),
@@ -1149,16 +1159,25 @@ export class PlanesRepository implements IPlanesRepository {
         if (empresa === null) return null;
         // Plataforma no filtra por empresa: el `organizacionId` va explícito (R21).
         const asignaciones = await tx.historialAccion.findMany({
-          where: { organizacionId, accion: "plan_asignado" },
+          // D16: el cambio de solo el tipo (D10) tiene su propia acción y sigue siendo una fila del historial.
+          where: { organizacionId, accion: { in: [...ACCIONES_DE_ASIGNACION] } },
           orderBy: [{ createdAt: "desc" }, { id: "desc" }],
           take: LIMITE_ASIGNACIONES,
-          select: { createdAt: true, actorNombre: true, entidadEtiqueta: true, valorAnterior: true, valorNuevo: true },
+          select: {
+            createdAt: true,
+            actorNombre: true,
+            entidadEtiqueta: true,
+            accion: true,
+            valorAnterior: true,
+            valorNuevo: true,
+          },
         });
-        const lista = asignaciones.map((a) => ({
+        const lista = asignaciones.map((a): AsignacionLeida => ({
           creadoAt: a.createdAt,
           actorNombre: a.actorNombre,
           planNombre: a.entidadEtiqueta,
-          // D14: el tipo de cobro de cada fila y si fue un cambio de solo el tipo (D10).
+          // D14, D16: el tipo de cobro de cada fila y si fue un cambio de solo el tipo (D10).
+          accion: comoAccionDeAsignacion(a.accion),
           valorAnterior: a.valorAnterior,
           valorNuevo: a.valorNuevo,
         }));

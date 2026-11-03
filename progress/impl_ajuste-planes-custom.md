@@ -423,3 +423,172 @@ Tests ajustados:
 
 ### Veredicto
 La UI de D10, D12, D13 y D14 está hecha y probada. Lint da 0 errores y tsc no da ninguno en la UI ni en los tests de componente. Los tests relacionados pasan, tras corregir una expectativa mía. Quedan 3 abiertos.
+
+## Frontend — tanda 3 (D17)
+
+frontend_dev (2026-11-03). Grafo MCP no consultado (bastó Grep/Read sobre `PlanForm` y el modal de `PlanEmpresa`).
+Sin dependencias nuevas, sin `prisma generate`, sin tocar `lib/`, `db/`, `lib/types/historial-accion.ts` ni la UI del historial.
+
+### Archivos
+- `app/(app)/plataforma/planes/_components/PlanForm.tsx` (D17, como el modal de primera asignación, SLT-58 P11):
+  - texto nuevo `TEXTOS_PLAN_FORM.reintentar` («Reintentar», el mismo del modal); el error sigue siendo
+    «No se pudo comprobar el consumo de la empresa» (+ motivo de `inicioCiclo`).
+  - `creacionBloqueada`: si la vista previa vigente está `cargando` o en `fallo`, «Crear plan» queda `disabled`
+    (el modal deshabilita confirmar mientras lee) y `guardar` no hace nada.
+  - En `fallo`, el aviso lleva un botón «Reintentar» (`type="button"`) que relee la misma entrada.
+  - Si se guarda en la pausa de 300 ms y la lectura de ese momento falla, no se crea: queda el aviso con «Reintentar».
+  - Sin cambios: sin empresa sin plan (público o empresa con plan) no hay vista previa y no se bloquea; «—» de filas
+    viejas y el texto de respaldo de D12 no se tocan.
+- `tests/components/PlanFormVistaPreviaCustom.test.tsx`: el test de D13 «el rechazo no bloquea» pasa a afirmar el
+  bloqueo; el de «en vuelo» ahora espera el botón deshabilitado y se crea tras la respuesta; 3 tests nuevos de D17.
+
+### Mapa D17 → test
+| D | Test (`PlanFormVistaPreviaCustom.test.tsx`) |
+|---|------|
+| D17 | «D13, D17: un rechazo de la fecha … bloquea «Crear plan» con «Reintentar»»; «D13, D17: si la vista previa lanza …»; «D17: «Reintentar» relee la misma entrada; con éxito se habilita «Crear plan» y se crea»; «D17: si se guarda en la pausa y la lectura de ese momento falla, no se crea …»; «D17: con empresa con plan o plan público … no se bloquea»; «D12, D13, D17: con la lectura en vuelo «Crear plan» espera deshabilitado …» |
+
+### Salida real (2026-11-03)
+- `pnpm run lint`: `✖ 232 problems (0 errors, 232 warnings)` (los mismos 232). `eslint` sobre los 2 archivos: `ESLint: No issues found`.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec vitest related --run <PlanForm.tsx> tests/components/PlanFormVistaPreviaCustom.test.tsx`:
+  `Test Files 10 passed (10)`, `Tests 122 passed (122)`.
+- `pnpm exec tsc --noEmit` filtrado a `app/`, `components/`, `tests/components/`: 0 errores.
+
+### Veredicto
+D17 hecho y probado: sin vista previa cargada, «Crear plan» del custom queda bloqueado con el error y «Reintentar», como el modal (P11).
+
+## Backend — tanda 3 (D16)
+
+backend_dev (2026-11-03). Sin el grafo MCP: bastó Grep/Read sobre `lib/`, `db/` y los tests de historial.
+No hubo `prisma generate`, dependencias nuevas, UI tocada ni base local.
+
+### Decisión
+El cambio de solo el tipo de cobro (D10) deja de escribir `plan_asignado` y escribe una acción propia:
+- acción `plan_tipo_cobro_cambiado`, categoría `cambia_plan` (la misma que `plan_asignado`);
+- entidad `plan`, el de la empresa, con la etiqueta `Plan «<nombre>»`;
+- `valor_anterior` = el tipo de antes y `valor_nuevo` = el nuevo.
+
+El historial de asignaciones del detalle lee las dos acciones (`ACCIONES_DE_ASIGNACION`) y D14 distingue
+la fila por la acción. Un `plan_asignado` con un tipo en `valor_anterior` es la forma anterior a D16, la
+de la tanda 2 y la que deja el down. Se sigue leyendo como cambio de solo el tipo.
+
+### Migración `db/migrations/20261103120000_historial_accion_plan_tipo_cobro_cambiado/`
+- `migration.sql`: `ALTER TYPE "historial_accion_tipo" ADD VALUE IF NOT EXISTS 'plan_tipo_cobro_cambiado'`. Va
+  sola, por 55P04, y no escribe filas.
+- `down.sql`: **convierte, no borra**. Primero hace el `UPDATE … SET "accion" = 'plan_asignado'` de las filas con el valor y
+  conserva `valor_*`. Después quita el valor con la función dinámica de los downs de enum, copiada tal cual
+  de `20261029120100…/down.sql` y renombrada `_d16`: lee la lista vigente de `pg_enum` y tiene una
+  precondición ruidosa.
+  - Por qué no borra, como SL-23, SL-24 y SLT-56: aquellos borran porque detrás se va la tabla o la columna
+    que el rastro describe. Aquí la empresa sigue con su plan y su `plan_tipo_cobro`, y el cambio ocurrió.
+    La fila convertida es justo la forma con la que el código anterior escribía y lee el cambio.
+  - No hay CHECK sobre `valor_*`, y los triggers de `historial_accion` solo miran `actor_usuario_id` y
+    `organizacion_id`.
+- `db/schema.prisma`: el valor nuevo en `HistorialAccionTipo`, detrás de `plan_asignado`, con su doc.
+
+### Archivos
+Nuevos:
+- `db/migrations/20261103120000_historial_accion_plan_tipo_cobro_cambiado/{migration,down}.sql`
+- `tests/unit/repositories/planes-repository-tipo-cobro.test.ts`: el repositorio con dobles de Prisma.
+- `tests/integration/db/migracion-d16-tipo-cobro-cambiado-ida-y-vuelta.test.ts`: base propia `d16_iv_*`; corre en CI.
+
+Modificados (lib y db):
+- `db/schema.prisma`: el valor nuevo del enum.
+- `lib/types/historial-accion.ts`:
+  - `plan_tipo_cobro_cambiado` en `HISTORIAL_ACCION_TIPOS` (75 tipos), en `CATEGORIA_POR_ACCION` (`cambia_plan`)
+    y en `ACCION_LABELS`, con «Cambió el tipo de cobro del plan de una empresa»;
+  - el comentario de `plan_asignado` ya no menciona D10.
+- `lib/types/planes.ts`: nuevos `ACCIONES_DE_ASIGNACION` (con `satisfies HistorialAccionTipo[]`) y `AccionDeAsignacion`.
+- `lib/interfaces/repositories/IPlanesRepository.ts`: `AsignacionLeida` gana `accion`; docs de `cambiarTipoCobro`.
+- `lib/repositories/PlanesRepository.ts`:
+  - `cambiarTipoCobro` escribe `plan_tipo_cobro_cambiado`;
+  - `planDeEmpresa` filtra `accion IN ACCIONES_DE_ASIGNACION`, selecciona `accion` y la estrecha con
+    `comoAccionDeAsignacion`, que lanza un error con otra acción.
+- `lib/planes/cobro.ts`: `tipoCobroDelHistorial(accion, valorAnterior, valorNuevo)` (firma nueva).
+- `lib/services/PlanesService.ts`: pasa `a.accion` al helper. El servicio de escritura no cambia: delega en el repo.
+
+Tests modificados:
+- Guardia `tests/unit/guards/historial-accion-escrituras-cubiertas.guardia.test.ts`:
+  - el censo de `PlanesRepository#cambiarTipoCobro` pasa a `tipos: ["plan_tipo_cobro_cambiado"]`;
+  - el número duro sube de 74 a 75.
+- `tests/unit/historial-accion/catalogo-y-choke-point.test.ts`:
+  - 75 tipos;
+  - `cambia_plan` = `[plan_asignado, plan_tipo_cobro_cambiado]`;
+  - un caso nuevo de D16: posición, categoría y etiqueta.
+- `tests/unit/planes/cobro.test.ts`: la firma nueva, casos de D16 y la forma heredada.
+- `tests/unit/services/planes-service-lecturas.test.ts`: fixtures con `accion` y un caso nuevo de D16.
+- `tests/integration/db/planes-cambiar-tipo-cobro.test.ts`:
+  - D10 espera `plan_tipo_cobro_cambiado`;
+  - un caso nuevo: ida y vuelta mensual→anual→mensual sin ningún `plan_asignado` nuevo.
+- Tests de migración que fijan el enum. Es el mismo arreglo que hizo SLT-56 (87644f4c y 76da8d49): sin esto
+  caen en CI.
+  - El valor nuevo entra en la lista de POSTERIORES de:
+    - `correccion-resultado-gestion-migration`;
+    - `historial-accion-cobro-tienda-migration`;
+    - `historial-accion-conciliacion-bodega-migration`;
+    - `historial-accion-zona-pago-mensajero-migration`;
+    - `historial-accion-zona-sinpe-migration`;
+    - `historial-accion-orden-zona-reconciliada-migration`.
+  - `caja-459-migration`: las rodajas del final del enum se corren una posición y se añade `slice(-1)`.
+  - `historial-accion-pago-mensajero-ajustado-migration`: su base propia no aplica D16, así que compara
+    contra el catálogo sin el posterior.
+
+Consumidores revisados que no necesitan cambio:
+- el filtro de acciones (`historial-acciones-filtros-def.ts`): deriva de `HISTORIAL_ACCION_TIPOS` y `ACCION_LABELS`;
+- la etiqueta de la fila: el servidor la congela con `ACCION_LABELS`;
+- las columnas y la descarga del historial (`valorLegible`): pintan `valor_*` tal cual, igual que antes;
+- `tests/unit/descarga/censo-tablas.ts`: D16 no añade tabla ni columna;
+- `scripts/verificar-rls-despliegue.ts`: ni tablas ni triggers nuevos.
+
+### Mapa D16 → test
+| Qué | Test |
+|-----|------|
+| El repo escribe la acción propia con antes y después | `planes-repository-tipo-cobro.test.ts` > «D16 — cambiarTipoCobro…» (mensual→anual, anual→mensual, el mismo tipo no escribe) |
+| La lectura del detalle filtra las dos acciones y devuelve la de cada fila | `planes-repository-tipo-cobro.test.ts` > «D14, D16 — planDeEmpresa…» (filtro `in`, `accion` seleccionada, otra acción → error) |
+| D14 sigue distinguiendo la fila de solo el tipo | `cobro.test.ts` > «D10, D14, D16…»; `planes-service-lecturas.test.ts` > «D14, D16…» y «D16: la acción de la fila manda…» |
+| Catálogo: tipo, categoría y etiqueta | `catalogo-y-choke-point.test.ts` > «⭑ Ajuste planes-custom D16…», 75 tipos, `cambia_plan` |
+| Guardia de escrituras cubiertas | `historial-accion-escrituras-cubiertas.guardia.test.ts` (censo `cambiarTipoCobro` → `plan_tipo_cobro_cambiado`, 75) |
+| Integración db: la acción escrita es la nueva, con antes y después (CI) | `planes-cambiar-tipo-cobro.test.ts` > D10 «guarda el tipo…» y «D16: de vuelta a mensual…»; D14 sobre el detalle |
+| Migración de ida y vuelta (CI) | `migracion-d16-tipo-cobro-cambiado-ida-y-vuelta.test.ts`: <br>· carpeta y down en disco; <br>· valor al final del enum, que se puede escribir; <br>· el down convierte a `plan_asignado` con `valor_*` intactos, no toca las demás filas, no pierde ninguna y deja el esquema igual; <br>· al reaplicarla, todo queda igual |
+
+### Salida real (2026-11-03)
+- `pnpm run lint`: `✖ 232 problems (0 errors, 232 warnings)`, los mismos 232 de antes. `eslint` sobre los 25 archivos tocados: sin salida.
+- `pnpm exec vitest related --run <6 de lib/ + 2 tests nuevos> --exclude tests/components/** --exclude tests/integration/*-page.test.tsx`
+  (`NODE_OPTIONS=--max-old-space-size=8192`): `Test Files 142 passed | 43 skipped (185)`, `Tests 2422 passed | 460 skipped (2882)`.
+  Los skipped son `tests/integration/db/`, porque no hay base local.
+- `pnpm exec vitest run tests/components/PlanEmpresa tests/components/historial`: `Test Files 14 passed`, `Tests 180 passed`.
+- `pnpm run test:guardias`: `Test Files 1 failed | 319 passed | 3 skipped (323)`, `Tests 4 failed | 4513 passed`. Los 4 rojos son
+  `dependencias-declaradas-presentes` (guardia 420), del baseline.
+- `pnpm exec tsc --noEmit`: 35 errores, todos del cliente Prisma ajeno. Ninguno es de lógica propia.
+  - Esperables hasta generar, porque el cliente no tiene `plan_tipo_cobro_cambiado`:
+    - `lib/types/historial-accion.ts(380)`: el `satisfies`;
+    - `lib/repositories/PlanesRepository.ts(1163)`: el `in` de la lectura;
+    - `lib/repositories/registrar-accion.ts(60)`;
+    - `HistorialAccionRepository.ts` (×3).
+  - Ya estaban en la tanda 2, de `planTipoCobro` o de otra rama (`zona_distrito_cambiado`, wallet):
+    - `PlanesRepository` (1153, 1184, 1222);
+    - `tests/integration/db/planes-{cambiar-tipo-cobro,crear-custom-asigna}.test.ts`;
+    - `historial-accion.ts(715)`;
+    - `wallet.ts`, `LibroCaja…`, `PagoMensajero…`, `WalletMovimiento…`, `WalletTiendaMovimiento…` y `AnaliticaFinanciera…`;
+    - `abono-tienda-457`, `incentivo-mensajero-slt68` y `zona-pago-mensajero-rastro`.
+
+### Para frontend
+No hace falta código: la pantalla del historial general toma la etiqueta y el filtro de `ACCION_LABELS` y de
+`HISTORIAL_ACCION_TIPOS`. El contrato de `AsignacionDePlan` (D14) no cambia, y `accion` no sale del servicio.
+Lo que cambia en pantalla:
+- en «Registro de acciones», el cambio de solo el tipo se lee «Cambió el tipo de cobro del plan de una
+  empresa», con «mensual»/«anual» en las columnas de antes y después (texto tal cual, como en `plan_asignado`);
+- el filtro de acción y el de categoría «Cambia el plan» lo incluyen solos.
+
+### ABIERTO
+1. **Texto de la etiqueta** «Cambió el tipo de cobro del plan de una empresa». Sigue la forma de las demás
+   etiquetas, con verbo en pasado. D16 dice «tipo de cobro cambiado» como descripción, no como texto literal.
+   Lo confirma el humano; cambiarlo es una línea en `ACCION_LABELS` y otra en `catalogo-y-choke-point.test.ts`.
+2. **Riesgo en CI, no de esta tanda:** el test D14 de la tanda 2 (`planes-cambiar-tipo-cobro.test.ts` > «cada
+   fila con su tipo…») ordena por `created_at`. Asignar y cambiar el tipo ocurren en la misma transacción del
+   caso. Si `created_at` sale del `now()` de la base, las dos filas lo comparten y el orden lo decide el `id`
+   aleatorio. El caso nuevo de D16 no depende del orden. Si el D14 se pone rojo de forma intermitente en CI,
+   esa es la causa.
+3. Las pruebas de integración db, incluidas la de la migración y la de D16, solo corren en CI.
+
+### Veredicto
+D16 está hecho: el cambio de solo el tipo escribe `plan_tipo_cobro_cambiado` (migración con un down que convierte las filas a `plan_asignado`) y D14 sigue distinguiendo la fila. Lint da 0 errores. Pasan 2422 tests relacionados y las guardias, salvo la 420 del baseline. Los errores de tsc son todos del cliente Prisma sin generar. Falta que CI corra la integración db.

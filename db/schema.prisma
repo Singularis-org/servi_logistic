@@ -4657,6 +4657,10 @@ enum HistorialAccionTipo {
   /// asignación con fecha de inicio elegida, `valor_nuevo` lleva esa fecha (`AAAA-MM-DD`); sin fecha y
   /// en un cambio de plan sigue NULL.
   plan_asignado
+  /// Ajuste planes-custom (D16, 20261103120000): el superadmin cambia SOLO el tipo de cobro del plan que
+  /// la empresa ya tiene (D10). Entidad: `plan` (el de la empresa); etiqueta: `Plan «<nombre>»`;
+  /// `valor_anterior` = el tipo de antes y `valor_nuevo` = el nuevo (`mensual` o `anual`).
+  plan_tipo_cobro_cambiado
 
   @@map("historial_accion_tipo")
 }

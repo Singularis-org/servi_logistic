@@ -388,7 +388,7 @@ export class PlanesService implements IPlanesService {
           actorNombre: a.actorNombre ?? "",
           planNombre: a.planNombre,
           // D14: el tipo de cobro de la fila y si fue un cambio de solo el tipo (D10).
-          ...tipoCobroDelHistorial(a.valorAnterior, a.valorNuevo),
+          ...tipoCobroDelHistorial(a.accion, a.valorAnterior, a.valorNuevo),
         })),
       },
     };

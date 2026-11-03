@@ -16,9 +16,9 @@ import { entradaAsignable, planesEnTx, revertida } from "./_fixtures/planes";
 // Ajuste planes-custom (D10, D12, D13, D14; 2026-11-03), contra Postgres, con `PlanesService` y
 // `PlanesRepository` REALES (el repositorio abre su transacción como SAVEPOINT de la del caso, que siempre
 // se revierte):
-//   · D10: cambiar SOLO el tipo de cobro guarda el tipo y deja su fila `plan_asignado` (con
-//     `valor_anterior` = el tipo de antes), sin tocar `plan_id`, el ancla, el ciclo corto ni los módulos;
-//     el mismo tipo no escribe nada; una empresa sin plan es `sin_plan`.
+//   · D10, D16: cambiar SOLO el tipo de cobro guarda el tipo y deja su fila con acción PROPIA,
+//     `plan_tipo_cobro_cambiado` (el tipo de antes y el nuevo), sin tocar `plan_id`, el ancla, el ciclo
+//     corto ni los módulos; el mismo tipo no escribe nada; una empresa sin plan es `sin_plan`.
 //   · D14: la lectura del detalle trae el tipo de cobro de cada fila y el cambio de solo el tipo como fila propia.
 //   · D12: crear un custom con fecha devuelve los topes ya pasados en `avisos`, como la primera asignación.
 //   · D13: la vista previa con los topes del form avisa lo mismo que luego devuelve crear el custom.
@@ -77,11 +77,37 @@ describeSiHayBase("Ajuste planes-custom D10 — cambiar solo el tipo de cobro de
     expect(r.despues.empresa).toEqual({ ...r.antes.empresa, planTipoCobro: "anual" });
     expect(r.antes.empresa.planTipoCobro).toBe("mensual");
     expect(r.despues.modulos).toEqual(r.antes.modulos);
-    // Una sola fila nueva, `plan_asignado` del mismo plan, con el tipo de antes y el de ahora.
+    // D16: una sola fila nueva, con su acción PROPIA (no `plan_asignado`), del mismo plan, con el tipo de
+    // antes y el de ahora.
     expect(r.despues.historial).toEqual([
       ...r.antes.historial,
-      { accion: "plan_asignado", entidadId: r.planId, valorAnterior: "mensual", valorNuevo: "anual" },
+      { accion: "plan_tipo_cobro_cambiado", entidadId: r.planId, valorAnterior: "mensual", valorNuevo: "anual" },
     ]);
+  });
+
+  it("D16: de vuelta a mensual deja otra fila `plan_tipo_cobro_cambiado` (anual → mensual) y ninguna `plan_asignado` nueva", async () => {
+    const r = await revertida(base, async (tx) => {
+      const servicio = new PlanesService(planesEnTx(tx));
+      const { org } = await empresaConPlan(tx, servicio);
+      const antes = await estadoDeLaEmpresa(tx, org);
+      await servicio.cambiarTipoCobro(SUPERADMIN, { organizacionId: org, tipoCobro: "anual" });
+      await servicio.cambiarTipoCobro(SUPERADMIN, { organizacionId: org, tipoCobro: "mensual" });
+      return { antes, despues: await estadoDeLaEmpresa(tx, org) };
+    });
+    // Por `valor_anterior` y no por posición: las dos filas nacen en la misma transacción del caso y pueden
+    // compartir `created_at`.
+    const nuevas = r.despues.historial
+      .filter((h) => !r.antes.historial.some((a) => JSON.stringify(a) === JSON.stringify(h)))
+      .map(({ accion, valorAnterior, valorNuevo }) => ({ accion, valorAnterior, valorNuevo }))
+      .sort((a, b) => String(b.valorAnterior).localeCompare(String(a.valorAnterior)));
+    expect(nuevas).toEqual([
+      { accion: "plan_tipo_cobro_cambiado", valorAnterior: "mensual", valorNuevo: "anual" },
+      { accion: "plan_tipo_cobro_cambiado", valorAnterior: "anual", valorNuevo: "mensual" },
+    ]);
+    expect(r.despues.historial.filter((h) => h.accion === "plan_asignado")).toEqual(
+      r.antes.historial.filter((h) => h.accion === "plan_asignado"),
+    );
+    expect(r.despues.empresa.planTipoCobro).toBe("mensual");
   });
 
   it("el mismo tipo → ok sin cambio, y no escribe nada (ni historial)", async () => {
@@ -129,7 +155,7 @@ describeSiHayBase("Ajuste planes-custom D10 — cambiar solo el tipo de cobro de
 });
 
 describeSiHayBase("Ajuste planes-custom D14 — el historial de asignaciones del detalle trae el tipo de cobro", () => {
-  it("cada fila con su tipo; el cambio de solo el tipo (D10) es una fila propia, distinguible", async () => {
+  it("cada fila con su tipo; el cambio de solo el tipo (D10, D16: `plan_tipo_cobro_cambiado`) es una fila propia, distinguible", async () => {
     const r = await revertida(base, async (tx) => {
       const servicio = new PlanesService(planesEnTx(tx));
       const { org } = await empresaConPlan(tx, servicio);
