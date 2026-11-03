@@ -201,3 +201,69 @@ ningún commit propio de SLT-44 (`9b0cba7`…`f2aa71c`) toca `db/` (0 archivos p
 | R24 | `nodo-geografico-sin-escritor.guardia`, `geo-repository.escrituras`, `geografia-alta`, `distrito-zona-especial-por-empresa`, `zona-repository` (`geografia-historico-intacto`, `geografia-renombrado` no ejecutan en local: baseline) |
 | R25 | Comprobación de diff (arriba): ningún commit de SLT-44 toca `db/`; el literal espera al merge del PR #44 |
 | R26 | `gate-completo` de CI en el PR (pendiente) |
+
+## F2.3 — merge de `origin/dev` (2026-11-03)
+
+Decisión humana (Cristian, 2026-11-03): el fixture `geo-44` se arregla en esta rama y después la rama se lleva a SLT-65.
+
+- Merge `62f3dd5e`: entra `origin/dev`, que ya lleva SLT-43, SLT-73, SLT-75 y SLT-76. Hubo tres conflictos triviales, resueltos igual que en SLT-65 (`d17cbdda`): la cabecera de `lib/db/modelos-de-negocio.ts` (80 de negocio y 25 de plataforma), `catalogo-y-choke-point` (75 tipos y 28 entidades) y los tramos de `caja-459-migration`.
+- Base `logistic_slt44`: estaba atascada en la migración fallida `20261031120100`. Se recreó y se le pasaron `migrate deploy` (incluye `20261101090100` de SLT-75), `db:seed` y `prisma generate`.
+- Ajustes tras el merge, los mismos que SLT-65 `7b29903b`:
+  - `GeoRepository.listArbol`: `zonas` (SLT-75 R14) sale de `asignaciones.zonasPorNodo`.
+  - `scripts/geo-equivalencia/lecturas-de-hoy.ts`: devuelve `zonas`.
+  - `geo-repository-arbol-zonas.test.ts`: cambia solo el doble; ningún `expect`.
+- Fixture `tests/integration/db/_fixtures/geo-44.ts`: «Dos zonas» queda solo en norte, porque el índice único `zona_distrito(organizacion_id, distrito_id)` de SLT-75 prohíbe que un distrito esté en dos zonas.
+
+**Verificación:**
+- `pnpm typecheck`: exit 0.
+- Unit: `geo-repository-arbol-zonas`, `zona-repository`, `geografia-action` y `geografia-service`, 149/149 en verde.
+- Integración contra `logistic_slt44`: 19 en verde y 6 en rojo.
+
+| Archivo | Resultado |
+|---|---|
+| `geo-lecturas-sin-backfill` | todo en verde |
+| `geo-catalogo-repository` | 7 en verde, 1 en rojo |
+| `geo-equivalencia-dinero` | 7 en verde, 1 en rojo |
+| `geo-lecturas-catalogo` | 4 en verde, 4 en rojo |
+
+**ABIERTO: 6 tests dependen de verdad de un distrito en dos zonas.** No se cambió ningún `expect`.
+1. `geo-lecturas-catalogo.test.ts:416` (R20): espera que «Dos zonas» liste las zonas `[norte, sur]`.
+2. `geo-lecturas-catalogo.test.ts:229` (R16): espera el colapso >1, con `zonaId` y `zonaNombre` en null.
+3. `geo-lecturas-catalogo.test.ts:305` (R18): el mismo colapso.
+4. `geo-lecturas-catalogo.test.ts:380` (R19): el mismo colapso.
+5. `geo-equivalencia-dinero.test.ts:228` (R21): espera en norte «hoy 0 / nuevo 1» y ahora da «hoy 1 / nuevo 2». Si el distrito pasa a sur o se queda sin zona, este test se arregla pero se rompe `geo-lecturas-catalogo.test.ts:190`. Ninguna disposición de zonas satisface a los dos.
+6. `geo-catalogo-repository.test.ts:143` (R9): el helper `asignacionesSembradas` (l.102-103) copia a mano el fixture y aún lista «Dos zonas» en sur. El arreglo es borrar la línea 103, pero eso cambia el valor esperado de un `toEqual`.
+
+Hay que decidir una de dos opciones:
+- Cambiar esos `expect` porque el caso >1 ya no existe.
+- Sembrar el caso >1 de otra forma, por ejemplo soltando el índice dentro de la transacción del test.
+
+**Cerrado por T8** (enmienda aprobada por Cristian, «Aprobado», 2026-11-03): se cambian los `expect`.
+
+## T8 — Enmienda del 2026-11-03: un distrito, una zona
+
+Spec commiteado en `1aa7b336`. backend_dev aplicó T8.1–T8.5:
+- T8.1 `tests/integration/db/_fixtures/geo-44.ts`: ya tenía 4 filas en `zonaDistrito.createMany` («Dos zonas» solo en norte). Se añade a la cabecera el nombre del índice `zona_distrito_organizacion_id_distrito_id_key` junto a la migración `20261101090100`. `distritoDosZonasId` no se renombra.
+- T8.2 `geo-lecturas-catalogo.test.ts`: los 4 `expect` de R16, R18, R19 y R20 con los valores de design §13.3, el título del `it` de R19 y el comentario de R15. La aserción de R15 y las comparaciones «nuevo = copia de hoy» no cambian.
+- T8.3 `geo-equivalencia-dinero.test.ts`: `cobertura-por-zona` de norte, `hoy` "0"→"1" y `nuevo` "1"→"2".
+- T8.4 `geo-catalogo-repository.test.ts`: solo se borra `[e.geo.distritoDosZonasId, e.zonas.surId],`.
+- T8.5 `lib/services/geografia-dominio.ts`: solo el JSDoc de `zonaQueCubre` (R27). Ninguna línea ejecutable.
+
+`git diff --stat`: 5 archivos, +24/−11.
+
+**Verificación** (`DATABASE_URL` → `logistic_slt44`, `NODE_OPTIONS=--max-old-space-size=8192`, `vitest run --maxWorkers=2`):
+- `geo-lecturas-catalogo` 8/8, `geo-equivalencia-dinero` 8/8, `geo-catalogo-repository` 8/8, `geo-lecturas-sin-backfill` 1/1 (las 25 de F2.3 en verde).
+- `geografia-dominio` 23/23 (incluido «dos zonas en el nodo más cercano… da `null`»), `geografia-dominio-puro.guardia` 8/8.
+- Los 4 unit de F2.3 (`geo-repository-arbol-zonas`, `zona-repository`, `geografia-action`, `geografia-service`): en verde.
+- Corrida conjunta de los 9 archivos (4 integración, `geografia-dominio` y los 4 unit): `Test Files 9 passed (9)`, `Tests 197 passed (197)`.
+- `pnpm run typecheck`: exit 0.
+
+El ABIERTO de F2.3 queda cerrado.
+
+### Mapa R<n> → test (cambios de la enmienda)
+
+| R | Test |
+|---|---|
+| R16, R18, R19, R20 | `tests/integration/db/geo-lecturas-catalogo.test.ts`. Su texto vigente es el de la enmienda: un distrito, una zona |
+| R21 | `tests/integration/db/geo-equivalencia-dinero.test.ts`. Su texto vigente es el de la enmienda |
+| R27 | `tests/unit/services/geografia-dominio.test.ts` (el colapso >1 se conserva como defensa) |

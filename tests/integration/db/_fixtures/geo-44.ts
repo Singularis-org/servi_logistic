@@ -12,10 +12,15 @@ import { comoDueno } from "./pais-20";
 // empresas, una en Costa Rica y otra en el pais de prueba `XA`, cada una con:
 //
 //   Provincia ─┬─ Canton activo ─┬─ distrito «central»      → zona central          + marca
-//              │                 ├─ distrito «dos zonas»    → zonas norte y sur
+//              │                 ├─ distrito «dos zonas»    → zona norte (solo una: ver abajo)
 //              │                 ├─ distrito «sin zona»     → ninguna
 //              │                 └─ distrito «retirado»     → zona norte (activo = false)
 //              └─ Canton retirado ── distrito «bajo retirado» → zona sur   + marca (activo; su canton no)
+//
+// El distrito «dos zonas» conserva el nombre pero ya no esta en dos zonas: desde SLT-75 (indice unico
+// `zona_distrito_organizacion_id_distrito_id_key` sobre `zona_distrito(organizacion_id, distrito_id)`,
+// migracion `20261101090100`) un distrito esta en a lo
+// sumo una zona por empresa, y sembrarlo en norte y sur hace caer el escenario entero.
 //
 // mas una tienda con tarifa general (y una tarifa general de la zona norte) y dos ordenes, una con
 // distrito y otra sin el. La de `XA` se monta sobre `crearEscenarioGeo43`, que aporta el pais, la
@@ -106,7 +111,6 @@ export async function sembrarEmpresaGeo44(tx: TxDeTest, paisId: string, empresaI
     data: [
       { zonaId: central.id, distritoId: dCentral.id },
       { zonaId: norte.id, distritoId: dDosZonas.id },
-      { zonaId: sur.id, distritoId: dDosZonas.id },
       { zonaId: norte.id, distritoId: dRetirado.id },
       { zonaId: sur.id, distritoId: dBajoRetirado.id },
     ],

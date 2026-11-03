@@ -359,7 +359,8 @@ Unit e integración contra Postgres real (`HAY_BASE_DE_DATOS`). Sin E2E nuevo (d
 Fixture nuevo `tests/integration/db/_fixtures/geo-44.ts`, sobre `geo-43.ts`:
 - dos empresas: una en CR y otra en el país `XA`;
 - zonas con distritos, una central;
-- un distrito en dos zonas y uno sin zona;
+- un distrito en dos zonas y uno sin zona (enmienda 2026-11-03: el distrito «Dos zonas» queda solo
+  en la zona norte; ver §13);
 - un cantón retirado con un distrito activo, y un distrito retirado;
 - marcas especiales de una empresa;
 - una tienda con tarifa y órdenes con y sin distrito.
@@ -384,9 +385,10 @@ el grupo como conjunto (por id), porque hoy su orden no está definido (§3).
 | R13 | `tests/unit/guards/geografia-sin-cte-recursiva.guardia.test.ts`: ningún `WITH RECURSIVE` (sin distinguir mayúsculas) en `lib/` ni en `scripts/`; contraprueba. `nodosBajo` en `geografia-dominio.test.ts`. |
 | R14, R15, R16, R17 | `tests/integration/db/geo-lecturas-catalogo.test.ts`: con el fixture, cada método nuevo frente a su copia en `lecturas-de-hoy.ts`; mismos ids, nombres, padres, `disponible`, zona y marca, mismo orden salvo empates. R15 además con una zona sin distritos (listas vacías) y con una zona de otra empresa (vacías). Las suites existentes `filtros-ordenes-service.test.ts`, `geografia-service.test.ts`, `geografia-dos-paises.test.ts`, `geografia-catalogo-activo.test.ts`, `geografia-superadmin-sin-empresa.test.ts` y `zona-especial-dos-empresas.test.ts` pasan sin cambiar aserciones. |
 | R18 | `geo-lecturas-catalogo.test.ts` (las tres lecturas frente a la copia) y `tests/integration/cotizacion-api-key.test.ts`, `ordenes-carga-masiva-chunk.route.test.ts`, `carga-masiva-errores-roundtrip.test.ts` y `tests/unit/services/geo-resolucion-retirados.test.ts` (existentes) sin cambiar aserciones. |
-| R19 | `geo-lecturas-catalogo.test.ts`: distrito, distrito retirado, distrito en dos zonas, id de cantón → `null`, id de otro país → `null`. `corregir-datos-cliente.repo.test.ts` existente sin cambiar aserciones. |
+| R19 | `geo-lecturas-catalogo.test.ts`: distrito, distrito retirado, distrito con una sola zona no central (enmienda 2026-11-03; antes «en dos zonas»), id de cantón → `null`, id de otro país → `null`. `corregir-datos-cliente.repo.test.ts` existente sin cambiar aserciones. |
 | R20 | `geo-lecturas-catalogo.test.ts` (filas frente a la copia) y `cobertura-repository.test.ts` y `tests/unit/utils/cobertura-vs-resolve-geo.test.ts` existentes sin cambiar aserciones. |
-| R21 | `tests/integration/db/geo-equivalencia-dinero.test.ts`: `compararEmpresa` sobre el fixture → 0 diferencias en distritos, cobertura y cotizaciones de las dos empresas. Contraprueba: con un «nuevo» al que se le añade una asignación en un cantón (inyectada en el dominio) → diferencias > 0 y nombradas. |
+| R21 | `tests/integration/db/geo-equivalencia-dinero.test.ts`: `compararEmpresa` sobre el fixture → 0 diferencias en distritos, cobertura y cotizaciones de las dos empresas. Contraprueba: con un «nuevo» al que se le añade una asignación en un cantón (inyectada en el dominio) → diferencias > 0 y nombradas; cifras de la zona norte tras la enmienda en §13. |
+| R27 | `tests/unit/services/geografia-dominio.test.ts` (existente, sin cambios): «dos zonas en el nodo más cercano y una sola en el abuelo da `null`: no sube». |
 | R22 | `geo-equivalencia-dinero.test.ts`: salida 0 si coincide y 1 si difiere; la muestra respeta `--muestra`; las cifras por bloque aparecen en la salida. |
 | R23 | `geo-equivalencia-dinero.test.ts`: con el cliente del script, un `INSERT` falla con `25006`. Las filas de `orden`, `zona_distrito` y `distrito_zona_especial` quedan iguales antes y después de correrlo. La salida no contiene ningún `destinatario`, `direccion` ni `telefono_dest` del fixture. |
 | R24 | `tests/unit/guards/nodo-geografico-sin-escritor.guardia.test.ts` (existente, SLT-43 R37) sin cambios, y las suites de escrituras (`geo-repository.escrituras.test.ts`, `geografia-alta.test.ts`, `geografia-renombrado.test.ts`, `distrito-zona-especial-por-empresa.test.ts`, `zona-repository.test.ts`) sin cambiar aserciones. |
@@ -445,3 +447,74 @@ toca (R26).
 - **La frontera de §7** (pregunta abierta sobre la dependencia de SLT-46).
 - **Tamaño.** Se escribe para unos 600 nodos por país. Un país con decenas de miles de nodos
   necesitaría revisar §4. Ninguno está en el alcance de la épica.
+
+## 13. Enmienda del 2026-11-03 — un distrito, una zona (SLT-75)
+
+Requisitos: `requirements.md > ### Enmienda del 2026-11-03` (R16, R18–R21 sustituidos y R27
+nuevo). Decisión humana: Cristian, 2026-11-03, «Enmendar spec y tests». Tasks T8.1–T8.6.
+
+### 13.1 Lo que ya existe (para esta enmienda)
+
+- **El índice de SLT-75**, en `dev` y en esta rama desde el merge `62f3dd5e`:
+  `db/migrations/20261101090100_zona_distrito_distrito_unico_por_empresa/migration.sql` crea
+  `"zona_distrito_organizacion_id_distrito_id_key"` sobre `zona_distrito(organizacion_id, distrito_id)`.
+  Es por empresa (SLT-75 R7). Lo precede `20261101090000_zona_distrito_duplicados_sin_zona`, que
+  limpió los duplicados.
+- **SLT-75 conserva el colapso.** Su alcance excluye «rediseñar la N:M o el colapso 1/0/>1 de
+  `_shared/zona-colapso.ts`». Su R14 añade al árbol la lista `zonas` (`{ id, nombre }[]`, ordenada
+  por nombre) sin tocar `zonaId`/`zonaNombre`. En esta rama, `GeoRepository.listArbol` ya la arma
+  desde `asignaciones.zonasPorNodo` (F2.3, igual que SLT-65 `7b29903b`).
+- **El fixture ya está ajustado** (F2.3, `progress/impl_SLT-44.md > F2.3`): en
+  `tests/integration/db/_fixtures/geo-44.ts`, «Dos zonas» queda solo en norte y el comentario de
+  cabecera cita el índice. El nombre del distrito y el campo `distritoDosZonasId` se conservan: son
+  históricos, y renombrarlos tocaría ~15 líneas de cuatro tests sin cambiar ningún resultado.
+- **La rama >1 del dominio** la cubre ya `geografia-dominio.test.ts` («dos zonas en el nodo más
+  cercano y una sola en el abuelo da `null`: no sube») con asignaciones pasadas a mano.
+
+### 13.2 Decisión: el colapso se conserva como defensa (R27)
+
+`zonaQueCubre` sigue delegando en `zonaUnicaDeDistrito`. Con datos de la base, la rama «más de una»
+ya no se alcanza en un mismo nodo. Se queda por tres razones, detalladas en la enmienda de
+`requirements.md`:
+- el dominio es puro y su tipo admite varias zonas por nodo;
+- es la misma regla que `_shared/zona-colapso.ts`, que SLT-75 conserva y que usan
+  `lecturas-de-hoy.ts` y las lecturas viejas de SLT-65;
+- no cuesta nada.
+
+Único cambio de código: el comentario de `zonaQueCubre` dice que, desde SLT-75, la rama >1 es
+defensa (T8.5).
+
+### 13.3 Qué cambia en los tests
+
+Valores medidos en F2.3 contra `logistic_slt44`, con el fixture ya ajustado
+(`progress/impl_SLT-44.md > F2.3`). Ningún otro `expect` cambia.
+
+| Archivo:línea | R | Hoy | Pasa a |
+|---|---|---|---|
+| `tests/integration/db/geo-lecturas-catalogo.test.ts:229` | R16 | `toMatchObject({ zonaId: null, zonaNombre: null })` | `toMatchObject({ zonaId: empresa.zonas.norteId, zonaNombre: expect.stringContaining("Zona norte SLT44"), zonas: [{ id: empresa.zonas.norteId, nombre: expect.stringContaining("Zona norte SLT44") }] })` |
+| `tests/integration/db/geo-lecturas-catalogo.test.ts:305` | R18 | `toMatchObject({ zonaId: null, esCentral: false })` | `toMatchObject({ zonaId: empresa.zonas.norteId, esCentral: false })` |
+| `tests/integration/db/geo-lecturas-catalogo.test.ts:380` | R19 | `toMatchObject({ zonaId: null, zonaNombre: null, esCentral: false })` | `toMatchObject({ zonaId: empresa.zonas.norteId, zonaNombre: expect.stringContaining("Zona norte SLT44"), esCentral: false })` |
+| `tests/integration/db/geo-lecturas-catalogo.test.ts:416` | R20 | `fila("Dos zonas")?.zonas.map((z) => z.id).sort()` `toEqual([norteId, surId].sort())` | `toEqual([empresa.zonas.norteId])` |
+| `tests/integration/db/geo-equivalencia-dinero.test.ts:228-234` | R21 | `bloque: "cobertura-por-zona"`, `id: norteId`, `hoy: "0"`, `nuevo: "1"` | `hoy: "1"`, `nuevo: "2"` (el distrito «Dos zonas», disponible y solo en norte, ya cuenta hoy; el «Sin zona» hereda del cantón) |
+| `tests/integration/db/geo-catalogo-repository.test.ts:103` | R9 | el helper `asignacionesSembradas` lista `[e.geo.distritoDosZonasId, e.zonas.surId]` | se borra la línea. El `toEqual` de :143 (CR) pasa a esperar 4 asignaciones de zona en vez de 5, y el de :150 (`XA`, con la de `geo43`) 5 en vez de 6. Las marcas no cambian |
+
+Se mantienen sin cambios:
+- `geo-lecturas-catalogo.test.ts:190`, R15: norte = `[distritoDosZonasId, distritoRetiradoId]`;
+- las comparaciones «nuevo = copia de hoy», que ya pasan con el fixture nuevo.
+
+Los comentarios y títulos que dicen «dos zonas» como caso (el `it` de R19 en :337 y el comentario
+de :188) se reescriben para describir el distrito con una sola zona. No son aserciones.
+
+### 13.4 Alternativas descartadas
+
+1. **Soltar el índice dentro de la transacción del test** para volver a sembrar el caso >1. El
+   `DROP INDEX` toma un bloqueo `ACCESS EXCLUSIVE` sobre `zona_distrito` hasta el rollback. Las
+   suites de integración corren en paralelo contra la misma base: las que leen zonas se quedarían
+   esperando (ya hay `beforeAll` que vencen por carga, ver `progress/impl_SLT-44.md` tanda 3). Y el
+   test probaría un estado que la base de producción ya no admite.
+2. **Mover «Dos zonas» a sur o dejarlo sin zona.** Arregla `geo-equivalencia-dinero:228` sin
+   cambiar su `expect`, pero rompe `geo-lecturas-catalogo:190` (R15), y ninguna disposición
+   satisface a los dos (F2.3). Esconde el cambio de valores en el fixture en vez de declararlo.
+3. **Retirar el colapso del dominio** (que `zonaQueCubre` tome la única zona sin colapsar). Haría
+   dos reglas para lo mismo mientras `_shared/zona-colapso.ts` siga viva, y lo excluyó SLT-75. Le
+   toca a la ficha que retire `zona-colapso.ts`.
