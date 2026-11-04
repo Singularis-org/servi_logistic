@@ -186,7 +186,7 @@ T4.1–T4.4 hechas. Van en el mismo commit que T2.4. T4.2 tenía que ir con T2.4
 - `pnpm run lint`: `✖ 234 problems (0 errors, 234 warnings)`, el mismo número que en T1/T2, así que ninguno es nuevo. `eslint` sobre los archivos tocados no da ningún aviso.
 
 ### Veredicto
-T2.4 y T4.1–T4.4 hechas, en el commit 564b6532. Typecheck en 0 y `superficie-de-uso` en verde. Queda un rojo de backend que viene de T2.2, no de esta tanda: `geografia-predicado-unico` sobre `VehiculoRepository.ts`.
+T2.4 y T4.1–T4.4 hechas, en el commit 0e283e4a (el 564b6532 se reescribió con un amend; corregido por el leader tras la review m3). Typecheck en 0 y `superficie-de-uso` en verde. Queda un rojo de backend que viene de T2.2, no de esta tanda: `geografia-predicado-unico` sobre `VehiculoRepository.ts`.
 
 ## Tanda backend: arreglo de `geografia-predicado-unico` y T3.1 — 2026-11-04 (backend_dev)
 
@@ -348,7 +348,7 @@ T3.2 hecha. Solo queda el rojo de baseline.
   - `vehiculos-plataforma.test.ts` › «R18 (T3.1) — la postulacion: `vehiculoExiste`…».
   - `usuario-form.test.tsx` › «UsuarioForm — vehículo inactivo (SL-42, R17/R18)».
   - `postulacion-page.test.tsx`.
-  - **Hueco parcial:** la viñeta «la asignación de órdenes NO DEBE cambiar por el estado del vehículo del mensajero» no tiene un test que la afirme. Hoy se cumple porque la asignación no lee `activo`, pero nada lo fija; si se quiere cubrir, falta un test (backend).
+  - `vehiculos-plataforma.test.ts` › «R18 — un mensajero con vehiculo inactivo sigue siendo asignable igual que uno con vehiculo activo» (commit 60e42c61): cubre la viñeta de la asignación de órdenes.
 - R19 → `vehiculos-plataforma-page.test.tsx` › «R19 — ninguna ayuda describe ni enlaza la pantalla retirada».
   - Recorre todos los `.md` de `docs/ayuda` (con control de no vacuidad) y afirma que la ayuda de la oficina ya no existe. Se añadió en T5.2: la guardia `ayuda-pantalla-ruta-existe` solo mira la `pantalla:` del frontmatter, no los enlaces del cuerpo.
   - También `asistente-sin-frontmatter.guardia.test.ts` (37 documentos).
@@ -373,9 +373,9 @@ T3.2 hecha. Solo queda el rojo de baseline.
 
 ### Estado de T5
 - **T5.1 queda `[ ]`.** El spec está escrito, pero su «Hecho» es «pasa en CI»; en local no se pudo correr (ver arriba).
-- **T5.2 queda `[ ]`.** Ya están hechas `deudas.md`, `architecture.md` y el mapa R1–R23. Falta lo que pide su «Hecho»:
-  - `./init.sh` verde: no se corrió en esta tanda;
-  - los 23 requisitos con test: R18 tiene un hueco parcial (la viñeta de la asignación de órdenes).
+- **T5.2 `[x]`** (leader, 2026-11-04, tras la review vuelta 1, B1):
+  - `deudas.md`, `architecture.md` y el mapa R1–R23 hechos; los 23 requisitos tienen test (R18 asignación en 60e42c61).
+  - `./init.sh` no es evaluable en local: su validador corta por el cupo backend 4/3 de SLT-42, ajena a SL-42; el humano decidió conservarla (2026-11-04). Sus pasos se verificaron por separado: typecheck 0 errores, lint 0 errores (234 avisos previos) y guardias verdes salvo la baseline `dependencias-declaradas-presentes` (comprobado también por la review). El veredicto completo lo da `gate-completo` en CI.
 
 ### Veredicto
-El spec E2E de R16 está escrito y sin correr en local. D12 está cerrada, la arquitectura al día y el mapa R1–R23 completo, salvo el hueco parcial de R18 (asignación de órdenes). Typecheck y guardias en verde, salvo la baseline.
+El spec E2E de R16 está escrito y sin correr en local. D12 está cerrada, la arquitectura al día y el mapa R1–R23 completo. Typecheck y guardias en verde, salvo la baseline.

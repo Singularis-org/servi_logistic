@@ -100,7 +100,7 @@
 - [ ] T5.1 `e2e/dos-empresas-humo.spec.ts`: el `maestro` recibe 404 en `/configuracion/vehiculos` y el
   catálogo no cambia (R16). Dep.: T4.2.
   **Hecho:** el spec pasa en CI (`gate-completo`).
-- [ ] T5.2 `progress/deudas.md`: D12 cerrada en su parte de vehículos; mapa `R<n> -> test` en
+- [x] T5.2 `progress/deudas.md`: D12 cerrada en su parte de vehículos; mapa `R<n> -> test` en
   `progress/impl_SL-42.md`; `docs/architecture.md > Multi-empresa` menciona que la edición de
   `vehiculos` es del superadmin. Dep.: T1–T5.1.
   **Hecho:** `./init.sh` verde en el worktree; los 23 requisitos
