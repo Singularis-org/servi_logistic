@@ -27,7 +27,7 @@
 - [x] T2.1 `lib/types/vehiculos.ts`: `activo` en `VehiculoDTO`, `renombrarVehiculoSchema`,
   `cambiarActivacionVehiculoSchema` (design §4.1). Dep.: T1.1.
   **Hecho:** `tests/unit/types/vehiculos.test.ts` cubre R9 (vacío, <2, >40, campo desconocido).
-- [ ] T2.2 `IVehiculoRepository` + `VehiculoRepository`: `findMany({ soloActivos? })`, `rename`,
+- [x] T2.2 `IVehiculoRepository` + `VehiculoRepository`: `findMany({ soloActivos? })`, `rename`,
   `setActivo`, con el rastro en la misma `$transaction`. **(P1)** quitar `delete` y `contarUsos`.
   Dep.: T2.1, T1.2.
   **Hecho:** `tests/integration/db/vehiculos-plataforma.test.ts` cubre R6 (desactivar no toca

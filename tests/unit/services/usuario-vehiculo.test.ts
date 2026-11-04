@@ -106,12 +106,11 @@ function buildZonaRepo(): IZonaRepository {
 function buildVehiculoRepo(exists: boolean): IVehiculoRepository {
   return {
     findMany: vi.fn().mockResolvedValue([]),
-    findById: vi.fn().mockResolvedValue(exists ? { id: "v1", name: "moto" } : null),
+    findById: vi.fn().mockResolvedValue(exists ? { id: "v1", name: "moto", activo: true } : null),
     findByName: vi.fn().mockResolvedValue(null),
     create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-    contarUsos: vi.fn().mockResolvedValue(0),
+    rename: vi.fn(),
+    setActivo: vi.fn(),
   };
 }
 

@@ -1,26 +1,37 @@
-import type { PrismaClient, Vehiculo } from "@prisma/client";
+import type { Prisma, PrismaClient, Vehiculo } from "@prisma/client";
 import type { VehiculoDTO } from "@/lib/types/vehiculos";
 import type { IVehiculoRepository } from "@/lib/interfaces/repositories/IVehiculoRepository";
-import { appendAccion, resolverActorCongelado } from "@/lib/repositories/registrar-accion";
-import { etiquetaDeEntidad } from "@/lib/types/historial-accion-etiquetas";
+import { resolverActorCongelado } from "@/lib/repositories/registrar-accion";
+import { appendRastroVehiculo } from "@/lib/repositories/registrar-rastro-vehiculo";
 
-// FICHA 362 (R9): el borrado registra su accion en la MISMA transaccion, asi que el `Pick` gana
-// `$transaction` y `historialAccion`.
-type VehiculoPrismaClient = Pick<
-  PrismaClient,
-  "vehiculo" | "usuario" | "tarifaZonaMensajero" | "$transaction" | "historialAccion"
->;
+// SL-42 (design §2.2, §4.2): cada escritura y su rastro van en la MISMA `$transaction`. `usuario`
+// entra en el `Pick` porque el rastro congela el nombre del actor, y `usuario` es de negocio: el
+// borde corre esto dentro de `comoPlataforma` (design §3, enmienda 2026-11-04).
+type VehiculoPrismaClient = Pick<PrismaClient, "vehiculo" | "usuario" | "vehiculoRastro" | "$transaction">;
 
-// Serializa la fila de Prisma a VehiculoDTO: id, name y activo, sin campos internos.
+type Tx = Prisma.TransactionClient;
+
 function toDTO(row: Vehiculo): VehiculoDTO {
   return { id: row.id, name: row.name, activo: row.activo };
+}
+
+/**
+ * El actor congelado del rastro. `actor_nombre` es NOT NULL: un id que no resuelve queda en ''
+ * (mismo criterio que `plan_rastro`), en vez de tumbar la accion que registra.
+ */
+async function actorDelRastro(tx: Tx, actorUsuarioId: string) {
+  const { actorNombre } = await resolverActorCongelado(tx, actorUsuarioId);
+  return { actorUsuarioId, actorNombre: actorNombre ?? "" };
 }
 
 export class VehiculoRepository implements IVehiculoRepository {
   constructor(private readonly prisma: VehiculoPrismaClient) {}
 
-  async findMany(): Promise<VehiculoDTO[]> {
-    const rows = await this.prisma.vehiculo.findMany({ orderBy: { name: "asc" } });
+  async findMany(opciones: { soloActivos?: boolean } = {}): Promise<VehiculoDTO[]> {
+    const rows = await this.prisma.vehiculo.findMany({
+      where: opciones.soloActivos ? { activo: true } : undefined,
+      orderBy: { name: "asc" },
+    });
     return rows.map(toDTO);
   }
 
@@ -34,52 +45,59 @@ export class VehiculoRepository implements IVehiculoRepository {
     return row ? toDTO(row) : null;
   }
 
-  async create(name: string): Promise<VehiculoDTO> {
-    return toDTO(await this.prisma.vehiculo.create({ data: { name } }));
-  }
-
-  async update(id: string, name: string): Promise<VehiculoDTO | null> {
-    // updateMany en vez de update: no lanza si la fila no existe, devuelve count 0.
-    const res = await this.prisma.vehiculo.updateMany({ where: { id }, data: { name } });
-    if (res.count === 0) return null;
-    return this.findById(id);
-  }
-
-  /**
-   * FICHA 362 (R4/R9/R11) — `vehiculo_borrado`. El metodo se envuelve en `$transaction` (forma 2
-   * del design §2.3: era un `deleteMany` suelto).
-   *
-   * ⚠️ EL NOMBRE SE LEE ANTES DEL BORRADO y el registro se escribe DESPUES de comprobar
-   * `count > 0`: si el `deleteMany` no alcanza ninguna fila —el vehiculo ya no estaba— NO se
-   * escribe fila de registro. «Se pidio borrar» y «se borro» son cosas distintas (R11/R12).
-   */
-  async delete(id: string, actorUsuarioId: string | null): Promise<boolean> {
+  async create(name: string, actorUsuarioId: string): Promise<VehiculoDTO> {
     return this.prisma.$transaction(async (tx) => {
-      const previo = await tx.vehiculo.findUnique({ where: { id }, select: { name: true } });
-      const res = await tx.vehiculo.deleteMany({ where: { id } });
-      if (res.count === 0) return false;
-
-      const actor = await resolverActorCongelado(tx, actorUsuarioId);
-      await appendAccion(tx, [
-        {
-          accion: "vehiculo_borrado",
-          entidadTipo: "vehiculo",
-          entidadId: id,
-          entidadEtiqueta: etiquetaDeEntidad("vehiculo", { nombre: previo?.name ?? "" }),
-          ...actor,
-        },
-      ]);
-      return true;
+      const row = await tx.vehiculo.create({ data: { name, activo: true } });
+      await appendRastroVehiculo(tx, {
+        accion: "vehiculo_creado",
+        vehiculoId: row.id,
+        vehiculoNombre: row.name,
+        ...(await actorDelRastro(tx, actorUsuarioId)),
+      });
+      return toDTO(row);
     });
   }
 
-  async contarUsos(id: string): Promise<number> {
-    // Las DOS relaciones que declara el modelo: mensajeros que declararon este
-    // vehiculo (feature 21) y tarifas de zona por tipo de vehiculo (feature 24).
-    const [usuarios, tarifas] = await Promise.all([
-      this.prisma.usuario.count({ where: { vehiculoId: id } }),
-      this.prisma.tarifaZonaMensajero.count({ where: { vehiculoId: id } }),
-    ]);
-    return usuarios + tarifas;
+  async rename(id: string, name: string, actorUsuarioId: string): Promise<VehiculoDTO | null> {
+    return this.prisma.$transaction(async (tx) => {
+      const previo = await tx.vehiculo.findUnique({ where: { id } });
+      if (!previo) return null;
+      // El no-op se decide aqui otra vez, dentro de la tx: el servicio ya lo filtra, pero solo el
+      // valor leido junto a la escritura garantiza que no quede un rastro de un cambio que no hubo.
+      if (previo.name === name) return toDTO(previo);
+
+      // updateMany y no update: si la fila desaparece entre la lectura y la escritura, count 0 en
+      // vez de P2025, y sin rastro.
+      const res = await tx.vehiculo.updateMany({ where: { id }, data: { name } });
+      if (res.count === 0) return null;
+      await appendRastroVehiculo(tx, {
+        accion: "vehiculo_renombrado",
+        vehiculoId: id,
+        vehiculoNombre: name,
+        valorAnterior: previo.name,
+        valorNuevo: name,
+        ...(await actorDelRastro(tx, actorUsuarioId)),
+      });
+      return toDTO({ ...previo, name });
+    });
+  }
+
+  async setActivo(id: string, activo: boolean, actorUsuarioId: string): Promise<VehiculoDTO | null> {
+    return this.prisma.$transaction(async (tx) => {
+      const previo = await tx.vehiculo.findUnique({ where: { id } });
+      if (!previo) return null;
+      if (previo.activo === activo) return toDTO(previo);
+
+      // Solo la columna `activo`: ni `usuario.vehiculo_id` ni `tarifa_zona_mensajero` se tocan (R6).
+      const res = await tx.vehiculo.updateMany({ where: { id }, data: { activo } });
+      if (res.count === 0) return null;
+      await appendRastroVehiculo(tx, {
+        accion: activo ? "vehiculo_activado" : "vehiculo_desactivado",
+        vehiculoId: id,
+        vehiculoNombre: previo.name,
+        ...(await actorDelRastro(tx, actorUsuarioId)),
+      });
+      return toDTO({ ...previo, activo });
+    });
   }
 }
