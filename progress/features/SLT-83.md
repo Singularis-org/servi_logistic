@@ -7,7 +7,7 @@
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F1.0 hecho (2026-11-04): tarjeta creada y tomada, worktree listo. Siguiente: F1.2 (spec_author).
+F1.3 (2026-11-04): spec en specs/SLT-83-planes-costo-por-orden-porcentual/ (R1-R29). Siguiente: F1.4, aprobación humana.
 
 ## Evaluación
 - zone fullstack: modelo del plan (modo + % + mínimo), congelado en la orden, cargo en wallet al

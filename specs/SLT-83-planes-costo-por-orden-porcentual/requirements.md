@@ -185,7 +185,7 @@
   (SLT-66 R20). El detalle de empresa del superadmin DEBE mostrar los mismos datos, con el aviso «Plan sin
   costo concreto» cuando corresponda (SLT-66 R18, R20).
   *Test:* `tests/unit/planes/costeo-porcentual.test.ts`, `tests/components/ConsumoDelPlanPorcentual.test.tsx`.
-- **R24** *(pendiente de P1; escrito con la recomendación)* — Lo cobrado en el ciclo DEBE ser la suma de
+- **R24** — Lo cobrado en el ciclo DEBE ser la suma de
   los cargos menos la de los reversos de la empresa cuyo instante cae en el ciclo en curso, en decimal
   exacto y con dos decimales. Las órdenes del ciclo sin estado final DEBEN ser las órdenes porcentuales del
   ciclo que no están en un estado final.
@@ -223,15 +223,7 @@
 
 ## Preguntas abiertas
 
-- **P1** *(bloquea R24; no bloquea el resto)* — «Lo cobrado de verdad en el ciclo»: ¿qué cargos cuentan?
-  - **A (recomendada):** los cargos y reversos cuyo instante cae en el ciclo en curso. Una orden creada el
-    ciclo anterior que se entrega en este cuenta en este. Es lo que hace hoy la wallet con los reversos
-    (SL-40 D7: un período pasado no cambia), y cuadra con «cargos registrados hasta hoy».
-  - **B:** el neto de las órdenes del ciclo (creadas en él), aunque su cargo salga en el ciclo siguiente.
-    Entonces la cifra de un ciclo ya cerrado sigue cambiando.
-
-  Ejemplo: una orden creada el día 30 del ciclo 1 se entrega el día 2 del ciclo 2 por 2.000,00. Con A
-  cuenta en el ciclo 2; con B, en el ciclo 1, que ya cerró.
+Ninguna.
 
 ## Mapa decisiones → requisitos
 
@@ -247,6 +239,7 @@
 | Rango y redondeo | R2, R9 |
 | Impuestos | R10 |
 | «Mi plan» con plan porcentual (y detalle de empresa) | R23, R24, R25 |
+| P1: lo cobrado en el ciclo, por fecha del cargo | R24 |
 | Costo concreto | R5 |
 | Quién configura | R3 |
 | Wallet y caja | R18 |
@@ -272,3 +265,4 @@
 | 2026-11-04 | Wallet y caja | Heredado de SLT-66 R17: cargos y reversos de fuente `plan` entran a la deuda de la wallet; ninguna cifra de la caja cambia. |
 | 2026-11-04 | ¿Hace falta E2E? | Sí: mueve importes (`docs/checkpoints-proyecto.md > Flujos criticos`). |
 | 2026-11-04 | ¿Librería nueva? | No. |
+| 2026-11-04 | P1: «lo cobrado en el ciclo» de «Mi plan», ¿qué cargos cuentan? | Opción A: por fecha del cargo. Cuentan los cargos y reversos cuyo instante cae en el ciclo en curso; una orden creada el ciclo anterior y entregada en este cuenta en este. Un ciclo cerrado no cambia. |

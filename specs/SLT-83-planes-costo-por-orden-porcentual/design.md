@@ -1,6 +1,6 @@
 # SLT-83 — planes-costo-por-orden-porcentual · design.md
 
-> Requisitos: `requirements.md` (R1–R29, P1 abierta). Hereda el diseño de
+> Requisitos: `requirements.md` (R1–R29; P1 cerrada el 2026-11-04 con la opción A). Hereda el diseño de
 > `specs/SL-40-cobro-plataforma-por-orden/` («SL-40 §N») y `specs/SLT-66-planes-sin-tope-maestro-y-costeo/`
 > («SLT-66 §N»). Escrito por `spec_author` el 2026-11-04.
 
@@ -155,7 +155,7 @@ Todas `plpgsql`, `SECURITY DEFINER`, `SET search_path = public, pg_temp`, `REVOK
 8. **`plan_cobro_del_ciclo(p_organizacion_id text, p_desde timestamp) RETURNS TABLE ("cobrado" numeric(12,2),
    "pendientes" integer)`** (`STABLE`), una sola definición de las dos cifras de R24:
    - `cobrado` = Σ `monto` de los `cargo` − Σ `monto` de los `reverso` de la empresa con
-     `ocurrido_at >= p_desde` (P1, opción A; con la B, el filtro sería por `orden.created_at`);
+     `ocurrido_at >= p_desde` (P1 cerrada, opción A: por fecha del cargo; un ciclo cerrado no cambia);
    - `pendientes` = órdenes con fila en `cobro_plataforma_porcentual_orden`, `created_at >= p_desde`,
      `deleted_at IS NULL` y `NOT orden_estado_es_final(estatus_id)`.
 9. **`CREATE OR REPLACE FUNCTION plan_de_la_empresa(text)`**. Copia literal de `20261104130000` con dos
@@ -500,8 +500,6 @@ Ninguna nueva (decisión cerrada). El decimal exacto sale de `numeric` en la bas
 
 ## 13. Riesgos
 
-- **P1 sin cerrar.** Solo cambia el filtro de `plan_cobro_del_ciclo` (§2.3 punto 8) y el test de R24. El
-  resto se implementa igual.
 - **`DROP` de `cobro_plataforma_tarifa_de`.** Si alguna función no listada la usa, fallaría al llamarse, no
   al migrar. Grep: la usan el trigger de alta, `plan_de_la_empresa`, `PlanesRepository.planDeEmpresa` y
   `EmpresasPlataformaRepository`. T1 lo vuelve a comprobar con

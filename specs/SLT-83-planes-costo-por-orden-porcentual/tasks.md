@@ -5,8 +5,7 @@
 > paralelo con las demás `[P]` de su tanda. Cada task cierra con su test en verde y `./init.sh` en verde al
 > final de la tanda.
 >
-> **P1 abierta** (R24): T7 se escribe con la opción A. Si el humano elige B, solo cambian el filtro de
-> `plan_cobro_del_ciclo` y el test de R24.
+> **P1 cerrada** (2026-11-04, opción A): lo cobrado en el ciclo se filtra por la fecha del cargo (R24, T7).
 
 ## Tanda A — base de datos (backend_dev)
 
