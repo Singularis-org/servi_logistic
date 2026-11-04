@@ -379,3 +379,22 @@ T3.2 hecha. Solo queda el rojo de baseline.
 
 ### Veredicto
 El spec E2E de R16 está escrito y sin correr en local. D12 está cerrada, la arquitectura al día y el mapa R1–R23 completo. Typecheck y guardias en verde, salvo la baseline.
+
+## F2.3 — sync con dev (2026-11-04)
+- Merge de `origin/dev` (PR #74, SLT-52) en `16f6e2f4`.
+  - Conflicto único en `lib/types/historial-accion.ts`, en A.2. Dev agrega `grupo_distritos_borrado` y SL-42 reescribe el comentario de `vehiculo_borrado` (sin escritor, P1). Se conservaron los dos.
+  - Auto-merges sin intervención: `db/schema.prisma`, `docs/architecture.md`, `lib/db/excepciones-aislamiento.ts`, `lib/db/modelos-de-negocio.ts` y la guardia `historial-accion-escrituras-cubiertas`.
+- Migraciones: `prisma migrate deploy` contra localhost dio «No pending migrations». La base compartida ya tenía las 6 de SLT-52 (`20261103120000_tarifas_flexibles_enums` … `20261103140100_rechazo_tienda_cobro_tarifa_valor_misma_empresa`), aplicadas desde otro worktree. `prisma generate` hecho.
+  - Ojo: SLT-52 y SL-42 comparten los prefijos `20261103120000` y `20261103120100`. Orden lexicográfico: tarifas antes que vehículo en cada par. No chocan en tablas.
+- Verificación (NODE_OPTIONS=--max-old-space-size=8192):
+  - `pnpm run typecheck`: 0 errores.
+  - `pnpm run lint`: 0 errores, 234 avisos previos.
+  - `pnpm run test:guardias`: `Test Files 2 failed | 323 passed | 3 skipped (328)`, `Tests 4 failed | 4540 passed | 27 skipped`.
+    - Los 4 son la baseline `dependencias-declaradas-presentes`.
+    - Además falló `filtros-url-r25` (timeout del `beforeAll` de ESLint bajo carga, igual que en T5). Corrido solo: `Tests 3 passed (3)`.
+  - Por ruta (vehículos + historial-accion): el sistema mató la corrida por falta de memoria. No se relanzó.
+    - Antes del corte, 7 fallos en integración de historial-accion: 4 de «el enum de entidades tiene N valores» y 3 en `historial-accion-migration` (policies, FK RESTRICT, plan por índice con timeout de 20 s).
+    - Causa de los 4 del enum: la base local tiene `nodo_geografico` en `historial_accion_entidad` (30 valores frente a 29 en TS). Lo agrega `20260906120100` y lo retira `20260907120100`: es deriva de la base compartida, no algo del merge.
+    - Los 3 restantes no se diagnosticaron.
+    - Los tests de vehículos y `vehiculo-service` no llegaron a reportar.
+- Veredicto: merge limpio; typecheck, lint y guardias en verde salvo la baseline. Los tests por ruta quedan pendientes de una corrida con memoria disponible (o de `gate-completo` en CI).
