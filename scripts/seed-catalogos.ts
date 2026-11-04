@@ -5,18 +5,28 @@ import { CODIGO_VIGENTE_DE_ANTERIOR, ORDER_STATUS_SEED } from "@/lib/types/order
 import { VEHICULOS_SEED } from "@/lib/types/vehiculos";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 
-const TIPOS_IDENTIFICACION = ["cedula", "ruc", "pasaporte"] as const;
+// SLT-42: desde 20261103120100 los tipos son por pais y la migracion ya deja los
+// cinco de CR en cualquier base, asi que el `create` no deberia correr nunca.
+// Lleva la fila completa (la misma de la migracion) solo para que, si corriera,
+// no cree un tipo sin pais ni regla.
+const TIPOS_IDENTIFICACION = [
+  { value: "cedula", clave: "cedula_fisica", nombre: "Cédula física", caracteres: "digitos", largoMin: 9, largoMax: 9, orden: 1 },
+  { value: "ruc", clave: "cedula_juridica", nombre: "Cédula jurídica", caracteres: "digitos", largoMin: 10, largoMax: 10, orden: 2 },
+  { value: "pasaporte", clave: "pasaporte", nombre: "Pasaporte", caracteres: "alfanumerico", largoMin: 6, largoMax: 20, orden: 5 },
+] as const;
+const PAIS_DE_LOS_TIPOS_SEMBRADOS = "CR";
 
 // Siembra idempotente de los tipos de identificacion. Recibe el cliente Prisma
 // por parametro para poder testear la logica sin instanciar la conexion real.
+// `update: {}`: una fila que ya existe no se toca nunca.
 export async function seedTiposIdentificacion(
   prisma: Pick<PrismaClient, "tipoIdentificacion">
 ): Promise<void> {
-  for (const value of TIPOS_IDENTIFICACION) {
+  for (const tipo of TIPOS_IDENTIFICACION) {
     await prisma.tipoIdentificacion.upsert({
-      where: { value },
+      where: { value: tipo.value },
       update: {},
-      create: { value },
+      create: { ...tipo, paisId: PAIS_DE_LOS_TIPOS_SEMBRADOS },
     });
   }
 }

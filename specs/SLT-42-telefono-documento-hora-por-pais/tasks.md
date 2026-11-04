@@ -9,35 +9,35 @@
 
 ## Bloque 0 — Dependencia
 
-- [ ] **T0.1** Fila de `libphonenumber-js` en `docs/dependencias.md`, con los cuatro checks
+- [x] **T0.1** Fila de `libphonenumber-js` en `docs/dependencias.md`, con los cuatro checks
   verificados y la aprobación, y `pnpm add libphonenumber-js`.
   *Hecho:* la guardia `guard-dependencias-aprobadas` en verde; `package.json` y `pnpm-lock.yaml`
   con la dependencia.
 
 ## Bloque 1 — Base de datos (depende de F1.4)
 
-- [ ] **T1.0** Comprobaciones previas en producción, en solo lectura, hechas por una persona y no por
+- [ ] **T1.0** («pendiente: la hace una persona antes del deploy») Comprobaciones previas en producción, en solo lectura, hechas por una persona y no por
   un agente (`design.md` §2.5; P7). La primera es `SELECT count(*) FROM organizacion WHERE pais_id
   <> 'CR'` → 0. El resultado de las tres se anota en `progress/features/SLT-42.md`.
   *Hecho:* las tres dan lo esperado. Si aparece una empresa fuera de CR, se para y decide el humano:
   T1.1–T1.3 no se aplican fuera de la base de test hasta entonces.
 
-- [ ] **T1.1** Migración `20261103120000_slt42_pais_telefono_y_zona` + `down.sql` + `model Pais` en
+- [x] **T1.1** Migración `20261103120000_slt42_pais_telefono_y_zona` + `down.sql` + `model Pais` en
   `db/schema.prisma` (`design.md` §2.1).
   *Hecho:* sube, baja y vuelve a subir en la base de test; CR queda con 506 / 8 / `America/Costa_Rica`.
-- [ ] **T1.2** Migración `20261103120100_slt42_tipo_documento_por_pais` + `down.sql` + `model
+- [x] **T1.2** Migración `20261103120100_slt42_tipo_documento_por_pais` + `down.sql` + `model
   TipoIdentificacion` (§2.2): precondición, columnas, filas de CR, índices y política restrictiva.
   *Hecho:* el `down` aborta si un usuario usa `dimex`/`nite`; sin usuarios, vuelve al esquema exacto
   de antes.
-- [ ] **T1.3** Migración `20261103120200_slt42_usuario_documento_unico_por_tipo` + `down.sql` (§2.3).
+- [x] **T1.3** Migración `20261103120200_slt42_usuario_documento_unico_por_tipo` + `down.sql` (§2.3).
   *Hecho:* el `down` aborta con repetidos de `(organizacion_id, cedula)`; la guardia
   `unicos-por-empresa` en verde. Si para entonces existe la guardia de migraciones destructivas, el
   `DROP INDEX` figura en su lista de excepciones con la ficha SLT-42 (excepción P4, `design.md` §2.3).
-- [ ] **T1.4** Test `tests/integration/db/migracion-slt42-ida-y-vuelta.test.ts` (R1, R3, R7, R8):
+- [x] **T1.4** Test `tests/integration/db/migracion-slt42-ida-y-vuelta.test.ts` (R1, R3, R7, R8):
   foto de `usuario`, `organizacion`, `pais` y las tres filas viejas de `tipo_identificacion`, antes
   y después de subir. Las columnas viejas, idénticas.
   *Hecho:* verde; cubre también bajar y volver a subir.
-- [ ] **T1.5** Test `tests/integration/db/tipo-documento-por-pais.test.ts` (R2, R4, R5, R11, R13) con
+- [x] **T1.5** Test `tests/integration/db/tipo-documento-por-pais.test.ts` (R2, R4, R5, R11, R13) con
   dos empresas, en CR y en `XA`. La fábrica `tests/fabricas/paises.ts` gana zona, prefijo y tipos de
   prueba.
   *Hecho:* verde. `servi_app` recibe `42501` al escribir en `pais` y en `tipo_identificacion`.
