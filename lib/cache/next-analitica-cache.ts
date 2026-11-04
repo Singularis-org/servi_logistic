@@ -68,8 +68,8 @@ export class NextAnaliticaCache implements IAnaliticaCache {
    * El TTL entra por CONSTRUCTOR, con el de la analitica por defecto.
    *
    * Se parametrizo (2026-08-17) al aparecer un segundo consumidor del MISMO puerto con otro
-   * TTL: el conteo de entregas, que pide 15 min porque lee tablas VIVAS y no tiene
-   * invalidador por evento (`lib/config/conteo-entregas-cache.ts`). La alternativa era un
+   * TTL: el conteo de entregas, que pide 15 min porque lee tablas VIVAS y una gestion nueva no
+   * invalida nada (`lib/config/conteo-entregas-cache.ts`). La alternativa era un
    * segundo archivo adaptador, y eso obliga a tocar la allowlist de
    * `cache-aislamiento.guardia.test.ts` (R21) para meter un tercer import de `next/cache` en
    * el arbol — un parametro es mas barato y deja intacta la garantia que ese guardia compra.
@@ -130,9 +130,10 @@ export function crearAnaliticaCacheDeNext(
  * de entorno para lo mismo obligaria a acordarse de las dos el dia que haya que apagar la
  * analitica en produccion, y ese dia nadie lee comentarios.
  *
- * SIN `conRegistroDeInvalidacion`: ese decorador registra INVALIDACIONES, y esta vertical no
- * tiene ninguna —su unico mecanismo de caducidad es el TTL, porque lee tablas vivas sin job
- * que avise—. Envolverla dejaria un registro que no puede emitir nunca una linea.
+ * SIN `conRegistroDeInvalidacion`: ese decorador registra INVALIDACIONES, y este puerto solo se
+ * usa para LEER. Las etiquetas de estas lecturas las invalidan otros, con el puerto de
+ * `crearAnaliticaCacheDeNext`: el boton «Actualizar» y, desde SLT-64, anular o corregir una gestion.
+ * Una gestion NUEVA no invalida nada: ahi la caducidad sigue siendo el TTL.
  */
 export function crearConteoEntregasCacheDeNext(
   env: Readonly<Record<string, string | undefined>> = process.env,

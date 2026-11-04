@@ -58,12 +58,12 @@ con el import.
 
 ## T3 [P] · Etiquetas de entregas en una sola constante (R17)
 
-- [ ] **T3.1** Crear `lib/analytics/tags-entregas.ts`, puro, que exporta `TAGS_LECTURAS_ENTREGAS` con
+- [x] **T3.1** Crear `lib/analytics/tags-entregas.ts`, puro, que exporta `TAGS_LECTURAS_ENTREGAS` con
   las ocho etiquetas. No va en `entregas-conteo.ts` porque crearía un ciclo con
   `productos-consulta.ts` (design §3).
-- [ ] **T3.2** `lib/actions/analitica-refrescar.ts` construye su lista con
+- [x] **T3.2** `lib/actions/analitica-refrescar.ts` construye su lista con
   `[...TAGS_LECTURAS_ENTREGAS, ...TAGS_OPERATIVA]`.
-- [ ] **T3.3** Escribir `tests/unit/analytics/tags-entregas-fuente-unica.test.ts` con las tres
+- [x] **T3.3** Escribir `tests/unit/analytics/tags-entregas-fuente-unica.test.ts` con las tres
   comprobaciones de design §3.
 
 **Hecho cuando:** el test se pone rojo si `analitica-refrescar.ts` vuelve a escribir su propia
@@ -71,27 +71,27 @@ lista, y `tests/unit/analytics/refrescar-cache-analitica.test.ts` sigue verde si
 
 ## T4 · Invalidación en las dos acciones (R12–R16) · depende de T3
 
-- [ ] **T4.1** Añadir `"correccion_gestion"` a `OrigenInvalidacion` (`IAnaliticaCache.ts`), con su
+- [x] **T4.1** Añadir `"correccion_gestion"` a `OrigenInvalidacion` (`IAnaliticaCache.ts`), con su
   línea en el comentario del dominio. `lib/cache/registro-invalidacion.ts` no enumera los orígenes y
   no cambia.
-- [ ] **T4.2** `deshacerGestion` (`lib/actions/cierre-dia.ts`) y `corregirResultadoGestion`
+- [x] **T4.2** `deshacerGestion` (`lib/actions/cierre-dia.ts`) y `corregirResultadoGestion`
   (`lib/actions/cierres-admin.ts`):
   - ganan `cache?: IAnaliticaCache` en `CierreDiaDeps` y `CierresAdminDeps`, con
     `crearAnaliticaCacheDeNext()` por defecto;
   - invalidan `TAGS_LECTURAS_ENTREGAS` solo si el servicio devuelve `ok`;
   - si la invalidación falla, o falla construir el puerto, lo capturan, lo registran sin PII y
     devuelven el `ok` (R15).
-- [ ] **T4.3** Corregir los comentarios de `crearConteoEntregasCacheDeNext`
+- [x] **T4.3** Corregir los comentarios de `crearConteoEntregasCacheDeNext`
   (`lib/cache/next-analitica-cache.ts`) y de `lib/config/conteo-entregas-cache.ts` (design §3). Solo
   comentarios.
-- [ ] **T4.4** Escribir `tests/unit/actions/deshacer-gestion-invalida-analitica.test.ts`.
+- [x] **T4.4** Escribir `tests/unit/actions/deshacer-gestion-invalida-analitica.test.ts`.
   - `ok` → una invalidación con origen `correccion_gestion` y las ocho etiquetas.
   - Cada estado no-ok (`forbidden`, `conflict`, `validation_error`, `unauthenticated`) → cero
     invalidaciones.
   - Una caché que lanza → la respuesta sigue siendo `ok` y hay una línea en el log.
-- [ ] **T4.5** Escribir `tests/unit/actions/corregir-resultado-invalida-analitica.test.ts`, con los
+- [x] **T4.5** Escribir `tests/unit/actions/corregir-resultado-invalida-analitica.test.ts`, con los
   mismos tres casos y los estados de la corrección (los de arriba más `no_encontrada`).
-- [ ] **T4.6** Escribir `tests/unit/analytics/cache-invalidacion-correccion-cableado.test.ts`.
+- [x] **T4.6** Escribir `tests/unit/analytics/cache-invalidacion-correccion-cableado.test.ts`.
   Comprueba en estático que la rama por defecto de las dos acciones usa
   `crearAnaliticaCacheDeNext()`.
 
