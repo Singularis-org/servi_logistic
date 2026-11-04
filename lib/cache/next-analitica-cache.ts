@@ -38,12 +38,18 @@ import type { IAnaliticaCache, OrigenInvalidacion } from "@/lib/interfaces/exter
  * argument is now deprecated, add second argument of "max" or use "updateTag"»
  * (`revalidate.js:41-44`).
  *
- * Se usa `"max"`, que es exactamente lo que ese mensaje indica como sustituto del
- * comportamiento de un solo argumento. `updateTag` NO sirve aqui: lanza fuera de una Server
- * Action y esta invalidacion la disparan handlers de job desde un route handler de cron
- * (`revalidate.js:49-57`).
+ * SLT-64: se usa `{ expire: 0 }`, que caduca la entrada al momento; la siguiente lectura va a la
+ * base. Con `"max"` (lo que habia) la entrada solo quedaba obsoleta y la primera lectura tras
+ * invalidar aun traia la cifra vieja: medido en el navegador, `progress/impl_SLT-64.md`.
+ * `updateTag` caducaria igual, pero NO sirve aqui: lanza fuera de una Server Action y esta
+ * invalidacion tambien la disparan handlers de job desde un route handler de cron
+ * (`revalidate.js:49-57`). `revalidateTag` no distingue entre los dos contextos.
+ *
+ * ⚠ EFECTO DE ESTE PERFIL EN LAS SERVER ACTIONS: con `expire: 0`, `revalidate.js:209-212` marca
+ * la ruta como revalidada, asi que la respuesta de la accion trae la pagina en curso renderizada
+ * de nuevo.
  */
-const PERFIL_INVALIDACION = "max";
+const PERFIL_INVALIDACION = { expire: 0 };
 
 /**
  * SL-17 (design §7.6, R34) — la empresa de la entrada, resuelta FUERA de `unstable_cache`:

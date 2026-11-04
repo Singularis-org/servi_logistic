@@ -200,3 +200,101 @@ usuarios. Dev server parado, puertos libres, spec y config temporales borrados.
 ### Veredicto
 
 T3 → T4 terminadas, con R12–R17 cubiertos y 28/28 mutaciones matadas; queda abierta la decisión sobre la primera lectura tras invalidar.
+
+## Cierre del hallazgo: la primera lectura tras invalidar
+
+**Causa.** Con `"max"`, `revalidateTag` solo marca la entrada como obsoleta (`revalidateTag.md:20`) y
+la lectura siguiente la sirve mientras revalida en segundo plano. Con `{ expire: 0 }`, el manifiesto
+guarda `expired = ahora` y `areTagsExpired` hace que `IncrementalCache.get` devuelva `null`
+(`incremental-cache/index.js:373`): la lectura va a la base.
+
+**Cambio.** `PERFIL_INVALIDACION = { expire: 0 }` en `lib/cache/next-analitica-cache.ts`, con su
+comentario reescrito. `tests/unit/cache/cache-por-empresa.test.ts` lo fija como literal.
+
+**Comprobado en el código de Next instalado.** `revalidateTag` acepta el objeto
+(`revalidate.d.ts:9`) y `revalidate()` no distingue entre Server Action y route handler
+(`revalidate.js:102-213`). `updateTag` sí los distingue, y por eso no sirve aquí. El route handler lo
+vacía en `app-route/module.js:224`.
+
+### Medición
+
+Misma receta del paso 3: Chromium con Playwright, un solo `next dev` en el 3064 y datos creados por
+los servicios reales (4 `entregado`, 1 `reprogramado`, 1 en reparto sin gestión, 0 cierres). El spec
+se reescribió, porque el anterior se borró. Por eso se corrió primero con `"max"`: reproduce la tabla
+del paso 3, así que la receta distingue los dos perfiles. Cada corrida usó una empresa nueva. Las
+cifras son `rótulo / tarjeta «Entregado»`.
+
+| Paso | `"max"` (antes) | `{ expire: 0 }` (después) |
+|---|---|---|
+| 1. Inicial | 4 / 4 | 4 / 4 |
+| 2. Control: se anula una gestión por SQL, sin invalidar | 4 / 4 | 4 / 4 |
+| 3. El mensajero deshace otra por `/cierre-dia`; **primera lectura** | **4 / 4** | **2 / 2** |
+| 4. Segunda lectura | 2 / 2 | 2 / 2 |
+| 5. Tercera lectura, 8 s después | 2 / 2 | 2 / 2 |
+| 6. Control: se anula otra por SQL, sin invalidar | 2 / 2 | 2 / 2 |
+| 7. Clic en «Actualizar»; **primera lectura**, la del propio clic | **2 / 2** | **1 / 1** |
+| 7b. Misma pantalla, 3 s después, sin navegar | 2 / 2 | 1 / 1 |
+| 8. Se navega de nuevo a `/analitica` | 1 / 1 | 1 / 1 |
+
+Los pasos 2 y 6 demuestran que la caché estaba viva: lo que movió la cifra fue la invalidación, no el
+TTL.
+
+### Efectos
+
+- **Botón «Actualizar»: medido.** Con `"max"` el botón no traía la cifra nueva: el usuario pulsaba y
+  seguía viendo la vieja. Ahora la trae en el propio clic, y lo que dice `analitica-refrescar.ts` («la
+  siguiente lectura falla en caché») pasa a ser cierto. El servidor registró origen `manual`.
+- **Job puntual `analitica_invalidacion_cache`: medido a medias.** Se insertó el job a mano y se llamó
+  al cron `procesar-jobs` por su ruta real. Terminó `done`, con 1 intento y sin error, y el log trae
+  la línea con origen `backfill`. Eso prueba que `{ expire: 0 }` no lanza en el route handler. No prueba
+  la cifra: las lecturas de `analitica:operativa` no se pintan hoy en la pantalla.
+- **Job del rollup `analitica_rollup_diario`: solo por lectura de código, no se midió.** Usa el mismo
+  adaptador y la misma ruta (`procesar-jobs/route.ts:209-218`, `analitica-rollup-diario-handler.ts:119`).
+  Tras el rollup, la primera lectura de `TAGS_OPERATIVA` irá a la base en vez de servir la entrada
+  anterior, y esa lectura tarda lo que tarde la consulta.
+- **Coste nuevo en las tres acciones: medido en parte.** `{ expire: 0 }` activa
+  `pathWasRevalidated` (`revalidate.js:209-212`), así que la respuesta lleva
+  `x-action-revalidated: 1` y la página en curso renderizada de nuevo. Medido en `next dev`: 65 416
+  bytes en deshacer y 102 674 en «Actualizar». Las dos pantallas siguieron funcionando, sin error en el
+  log. No se capturó el tamaño con `"max"`, así que no hay diferencia medida. `corregirResultadoGestion`
+  tiene el mismo cambio, pero no se ejerció en el navegador.
+
+**No medido.**
+- `next start` ni el despliegue: todo es en `next dev` con una sola instancia.
+- Las otras dos vías de deshacer y `corregirResultadoGestion`, en el navegador.
+- Que «Actualizar» conserve un filtro distinto del de por defecto tras el nuevo render.
+
+**En el log de las dos corridas:** `Error: aborted` aparece 1 vez con cada perfil. `Unable to start a
+transaction in the given time` aparece 2 veces con `"max"` y 0 con `{ expire: 0 }`. Ninguno se investigó.
+
+### Mutación
+
+Volver a `"max"` la mata «invalida la misma etiqueta con la que se escribió, y no la de otra empresa»:
+1 fallado y 13 pasados, por `AssertionError`. Sin la mutación, 14/14.
+
+### Limpieza
+
+Se comparó el contenido de las 110 tablas (hash por fila; `_prisma_migrations` no entra) antes y
+después. Quedan **sin filas de prueba**: se borraron las dos empresas de prueba con sus datos, sus
+sesiones, dispositivos e intentos de login, y 4 notificaciones `alert` de otras empresas que creó
+el cron durante la corrida.
+
+**Sí queda una diferencia, y no se pudo revertir:** 12 jobs `geocodificacion` que ya estaban en la base
+local, de otras empresas, avanzaron sus reintentos porque el cron los procesó. Siguen `pending`, con 4
+intentos. La foto guardaba hashes, no el contenido, así que no hay de dónde restaurarlos.
+
+Dev server parado, puertos libres; spec y config temporales borrados; `.next/dev` borrado.
+
+### Tests
+
+- `pnpm typecheck`: 0 errores.
+- `eslint` sobre los dos archivos de código: 0 problemas.
+- `pnpm exec vitest related --run lib/cache/next-analitica-cache.ts tests/unit/cache/cache-por-empresa.test.ts`:
+  3381 pasados, 17 fallados, 17 saltados.
+- Los 17 fallados son todos de `tests/integration/db/premio-ranking-idempotencia.test.ts`, el mismo
+  archivo y el mismo número que en T3 → T4. Ese archivo está en `tests/baseline-rojos.json`.
+- No se corrieron `pnpm run test:guardias` ni `./init.sh`: quedan para el gate de la feature.
+
+### Veredicto
+
+Hallazgo cerrado: con `{ expire: 0 }` la primera lectura trae la cifra nueva, tanto al deshacer como con «Actualizar».

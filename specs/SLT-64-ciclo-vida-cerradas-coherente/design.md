@@ -167,6 +167,7 @@ el vocabulario de la fila («cerradas» frente a «con desenlace», ficha 441) s
   orígenes (usa el tipo), así que no cambia.
 - La etiqueta lleva la empresa (`org:<id>:<tag>`): `NextAnaliticaCache.invalidar` la resuelve del
   contexto de la petición, que es la empresa del actor y de la orden.
+- Decisión posterior a la medición: `NextAnaliticaCache` invalida con `{ expire: 0 }` y no con `"max"`, para que la primera lectura ya traiga la cifra nueva (`progress/impl_SLT-64.md`).
 - Se corrigen dos comentarios que esta ficha deja falsos: el de `crearConteoEntregasCacheDeNext`
   («esta vertical no tiene ninguna [invalidación]») y el de `lib/config/conteo-entregas-cache.ts`
   («ni van a tener un invalidador por escritura»). La gestión nueva sigue sin invalidar.
