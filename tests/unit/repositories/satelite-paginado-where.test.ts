@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
+import { delegadosDelCatalogo } from "@/tests/fixtures/doble-catalogo-geografico";
 import {
   ESTADOS_BODEGA_SATELITE,
   ESTADOS_CUSTODIA_SATELITE,
@@ -101,7 +102,8 @@ function clienteFalso(pagina: string[], total: number) {
     return [{ total }];
   });
   const findMany = vi.fn(async (_args?: { where?: unknown }) => pagina.map(filaPrisma));
-  const prisma = { $queryRaw, orden: { findMany } } as unknown as PrismaClient;
+  // SLT-65: la marca de zona especial sale del catalogo de la empresa (sin marcas).
+  const prisma = { $queryRaw, orden: { findMany }, ...delegadosDelCatalogo() } as unknown as PrismaClient;
   return { prisma, repo: new OrdenRepository(prisma), consultas, $queryRaw, findMany };
 }
 

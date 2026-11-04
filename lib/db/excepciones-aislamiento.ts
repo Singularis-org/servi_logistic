@@ -209,6 +209,24 @@ export const EXCEPCIONES_DE_PLATAFORMA: readonly ExcepcionDeAislamiento[] = [
     motivo:
       "catálogo de planes y su asignación: los escribe el superadmin, que no tiene empresa (R5); y los destinatarios de los correos del cambio de plan, los maestros activos de las empresas con el plan (R41, R45); y las lecturas del catálogo, el detalle de un plan y el plan de una empresa para el superadmin (SLT-58); y la vista previa de la primera asignación (SLT-58 §11)",
   },
+  {
+    archivo: "scripts/geo-backfill-nodo.ts",
+    ficha: "SLT-43",
+    motivo:
+      "comando de consola por lotes: llena el nodo geográfico de las órdenes y zonas y el snapshot de los cierres de todas las empresas (R27)",
+  },
+  {
+    archivo: "scripts/geo-explain-consultas.ts",
+    ficha: "SLT-65",
+    motivo:
+      "comando de consola de solo lectura, solo contra localhost: elige la empresa con más órdenes vivas y mide el conteo sin entregar del superadmin, que no tiene empresa (design §10, R25)",
+  },
+  {
+    archivo: "scripts/geo-equivalencia-consultas.ts",
+    ficha: "SLT-65",
+    motivo:
+      "comando de consola de solo lectura, solo contra localhost: compara el conteo sin entregar por país en plataforma, como lo lee el superadmin, que no tiene empresa (design §9, R22)",
+  },
 ];
 
 /**

@@ -146,10 +146,15 @@ describeSiHayBase("459/B.5 — las migraciones de la 459 contra Postgres", () =>
       "grupo_distritos_cambiado",
       "grupo_distritos_borrado",
     ]);
+    // Ajuste planes-custom D16 (20261104130100) suma UN tipo (`plan_tipo_cobro_cambiado`) al final
+    // y ninguna entidad.
     expect(tipos.slice(-1)).toEqual(["plan_tipo_cobro_cambiado"]);
-    expect(entidades.slice(-8, -6)).toEqual(["pago_por_cuenta_tienda", "aporte_capital"]);
-    expect(entidades.slice(-6, -2)).toEqual(["abono_tienda", "integracion", "organizacion_modulo", "plan"]);
-    expect(entidades.slice(-2)).toEqual(["tarifa_valor", "grupo_distritos"]);
+    // SLT-43 (20261104120000) suma UNA entidad (`nodo_geografico`) al final y NINGUN tipo: los
+    // tramos de entidades se leen uno mas atras; los de tipos no cambian por ella.
+    expect(entidades.slice(-9, -7)).toEqual(["pago_por_cuenta_tienda", "aporte_capital"]);
+    expect(entidades.slice(-7, -3)).toEqual(["abono_tienda", "integracion", "organizacion_modulo", "plan"]);
+    expect(entidades.slice(-3, -1)).toEqual(["tarifa_valor", "grupo_distritos"]);
+    expect(entidades.slice(-1)).toEqual(["nodo_geografico"]);
   });
 
   it("(b) los CHECK admiten los pares nuevos y RECHAZAN los invertidos", async () => {

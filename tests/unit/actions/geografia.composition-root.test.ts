@@ -11,16 +11,33 @@ import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
 
 const MAESTRO: Actor = { usuarioId: "u-maestro", rol: "maestro" };
 
-const provinciaFindMany = vi.fn(async () => [
-  { id: "p1", nombre: "Puntarenas", activo: true, cantones: [] },
+// SLT-44 (design §10, «cambian de entrada, no de salida»): el arbol sale del catalogo
+// (`nodo_geografico`) y de las asignaciones de la empresa, no de `provincia.findMany`. El doble da
+// la misma provincia como nodo; el aserto de anti-vacuidad mira ahora la consulta de nodos.
+const nodoGeograficoFindMany = vi.fn(async () => [
+  {
+    id: "p1",
+    nombre: "Puntarenas",
+    nombreNormalizado: "puntarenas",
+    profundidad: 1,
+    padreId: null,
+    tipoId: "t1",
+    codigoOficial: null,
+    activo: true,
+  },
 ]);
 
 vi.mock("@/lib/db/prisma-client", () => ({
   getPrismaClient: () => ({
     orden: {},
-    provincia: { findMany: provinciaFindMany },
+    provincia: {},
     canton: {},
     distrito: {},
+    organizacion: { findFirst: vi.fn(async () => ({ paisId: "CR" })) },
+    tipoNivelGeografico: { findMany: vi.fn(async () => []) },
+    nodoGeografico: { findMany: nodoGeograficoFindMany },
+    zonaDistrito: { findMany: vi.fn(async () => []) },
+    distritoZonaEspecial: { findMany: vi.fn(async () => []) },
   }),
   PRISMA_OMIT: {},
 }));
@@ -31,6 +48,6 @@ describe("374/D3 — el composition root de la lectura", () => {
   it("`listarArbolGeografico` sin deps llega al repositorio real", async () => {
     const r = await listarArbolGeografico({ getActor: async () => MAESTRO });
     expect(r.status).toBe("ok");
-    expect(provinciaFindMany).toHaveBeenCalled();
+    expect(nodoGeograficoFindMany).toHaveBeenCalled();
   });
 });

@@ -87,16 +87,15 @@ const CONSULTAS_DEL_DETALLE = [
   "order_status", //   2. `estatus` de la orden
   "usuario", //   3. `mensajeroAsignado` (feature 404)
   "zona", // ⭑ 4. 415: la zona DE LA ORDEN (id, nombre, esCentral)
-  "distrito", // ⭑ 5. 415: el distrito (desde SL-38 la marca es la relacion de 9b)
+  // ⭑ 5 y 9b. SLT-65 (design §3; decision humana 2026-10-31, «Sí, actualizar los literales»): salen
+  //   `distrito` y `distrito_zona_especial` como relaciones del detalle. El `select` trae ahora
+  //   `distritoId`/`cantonId` (columnas, sin consulta propia) y la marca sale del catalogo: ver
+  //   la carga del catalogo, que NO esta en esta lista (ver abajo). NO MEDIDO: la base local no
+  //   tiene ordenes (archivo en `tests/baseline-rojos.json`); lista derivada del codigo.
   "cierre_detail", // ⭑ 6. 415: la fila congelada del cierre aprobado (take: 1)
   "gestion_orden", //   7. la relacion `gestiones` (superconjunto)
   "orden_historial_estado", //   8. 405: el historial de la ORDEN (R6)
   "orden_incidente", //   9. `incidentesAdmin` (feature 268)
-  // ⭑ 9b. SL-38 (2026-10-23): `distrito.zonasEspeciales` — la marca de zona especial de la EMPRESA,
-  //   que sustituye a la columna `distrito.zona_especial`. Es una relacion anidada mas, y Prisma la
-  //   resuelve con su propia consulta (UNA para la orden, take 1). MEDIDO con este mismo espia en
-  //   `sl38_base` (progress/impl_SL-38.md, T7): el detalle pasa de TRECE a CATORCE.
-  "distrito_zona_especial",
   "usuario", //  10. 405: `gestiones.mensajero` (R9)
   // ⭑ 11b. FICHA 454 (R32, 2026-09-23): `gestiones.eventos` — el evento de registro de CALLE de
   //   cada gestion (take 1), que deriva `pendienteConfirmacion`. UNA consulta para todas las
@@ -104,6 +103,11 @@ const CONSULTAS_DEL_DETALLE = [
   "orden_evento",
   "order_status", //  11. 405: `historialEstados.estatusDestino` (R6)
   "orden_incidente_evidencia", //  12. la portada del incidente del admin (268)
+  // ⭑ SLT-65 (decision humana 2026-11-03): la carga del catalogo de la empresa (`marcasDeOrdenes` ->
+  //   `deLaEmpresa`: `zona_distrito`, `zona`, `organizacion`, `tipo_nivel_geografico`,
+  //   `nodo_geografico`, `distrito_zona_especial`) va UNA vez por instancia del repositorio, en la
+  //   PRIMERA lectura. El escenario la paga con una lectura de CALENTAMIENTO antes de medir, asi que
+  //   esta lista es la lectura EN CALIENTE: el coste propio del detalle, sin la carga.
 ];
 
 /** Sufijo unico por corrida: `num_remision` es UNICO entre las ordenes vivas de una tienda. */
@@ -366,6 +370,12 @@ describeSiHayBase("ficha 405 — el detalle por API key publica las gestiones VI
 
       const repo = new OrdenRepository(tx as unknown as PrismaClient);
 
+      // SLT-65 (decision humana 2026-11-03): CALENTAMIENTO. La primera lectura del repo carga el
+      // catalogo geografico de la empresa (memorizado por instancia). Se paga aqui, fuera de la
+      // medida, para que las dos lecturas medidas abajo partan de la MISMA base (catalogo ya en
+      // memoria) y la comparacion con/sin gestiones compare solo el coste del detalle.
+      await repo.findDetalleByOrdenIdForOwner(propia, tiendaPropia.id);
+
       // R19/R19-b: se cuentan las consultas que emite CADA lectura, y se guarda ADEMAS la TABLA
       // de cada una para que un rojo diga QUE consulta sobra en vez de solo cuántas hay. El espia
       // recoge todo lo que pasa por la conexion, asi que se mide por delta alrededor de la llamada.
@@ -594,7 +604,7 @@ describeSiHayBase("ficha 405 — el detalle por API key publica las gestiones VI
   //
   // El requisito se reescribió con el número MEDIDO y aquí se CONGELA. Las dos mitades se afirman
   // por separado, porque protegen cosas distintas.
-  it("R19/R19-b (+415, +454): el detalle emite EXACTAMENTE 14 consultas, y son estas catorce", async () => {
+  it("R19/R19-b (+415, +454, SLT-65): el detalle en caliente emite EXACTAMENTE 12 consultas, y son estas doce", async () => {
     const m = await escenario();
 
     // ⭑ EL NUMERO, CON NOMBRE Y APELLIDOS. Un `toEqual` de la lista entera: si mañana alguien
@@ -603,7 +613,9 @@ describeSiHayBase("ficha 405 — el detalle por API key publica las gestiones VI
     // ⏳ 2026-09-10 (feature 415): NUEVE -> DOCE, medido con este mismo espia.
     // ⏳ 2026-09-23 (ficha 454): DOCE -> TRECE (`orden_evento`, R32), medido igual.
     // ⏳ 2026-10-23 (SL-38): TRECE -> CATORCE (`distrito_zona_especial`, la marca de la empresa).
-    expect(m.tablasConGestiones).toHaveLength(14);
+    // ⏳ 2026-11-03 (SLT-65): CATORCE -> DOCE en caliente. Salen `distrito` y
+    //   `distrito_zona_especial` del `select`; la carga del catalogo se paga en el calentamiento.
+    expect(m.tablasConGestiones).toHaveLength(12);
     // Y el espía está midiendo de verdad: una lista vacía significaría que el `log: query` no
     // llegó y que este caso lleva pasando en falso.
     expect(m.tablasConGestiones.length).toBeGreaterThan(0);
@@ -617,7 +629,8 @@ describeSiHayBase("ficha 405 — el detalle por API key publica las gestiones VI
     // La segunda mitad del requisito, y la que de verdad importa para el coste: si alguien
     // resolviera `estadoResultante` con una consulta por gestión, aquí habría tres de más.
     expect(m.tablasConGestiones).toHaveLength(m.tablasSinGestiones.length);
-    // Ojo con el matiz: una orden SIN gestiones emite las mismas 14. Prisma pide la relación
+    // Ojo con el matiz: una orden SIN gestiones emite las mismas 12 (en caliente, tras el
+    // calentamiento del escenario: las dos lecturas parten del catalogo ya cargado). Prisma pide la relación
     // igualmente, y por eso el conteo no se mueve.
     expect(m.tablasSinGestiones).toEqual(CONSULTAS_DEL_DETALLE);
   });

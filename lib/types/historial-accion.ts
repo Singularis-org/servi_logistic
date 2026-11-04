@@ -449,6 +449,9 @@ export const HISTORIAL_ACCION_ENTIDADES = [
   // la fila sobrevive al borrado fisico del valor o del grupo.
   "tarifa_valor",
   "grupo_distritos",
+  // ⭑ SLT-43 — el nodo del modelo geografico jerarquico. Nadie lo escribe hasta SLT-46; el filtro de
+  // `/historico/acciones` lo excluye hasta entonces (`historial-acciones-filtros-def.ts`).
+  "nodo_geografico",
 ] as const satisfies readonly PrismaHistorialAccionEntidad[];
 
 export type HistorialAccionEntidad = (typeof HISTORIAL_ACCION_ENTIDADES)[number];
@@ -723,6 +726,7 @@ export const ENTIDAD_LABELS: Record<HistorialAccionEntidad, string> = {
   plan: "Plan",
   tarifa_valor: "Valor de tarifa",
   grupo_distritos: "Grupo de distritos",
+  nodo_geografico: "Nodo geográfico",
 };
 
 /** Los tipos de UNA categoria. Es la traduccion `categoria -> accion IN (…)` del borde (R17). */

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
+import { delegadosDelCatalogo } from "@/tests/fixtures/doble-catalogo-geografico";
 import { idEstado, sembrarCatalogoEstados } from "@/tests/fixtures/catalogo-estados";
 import { ESTADOS_BODEGA_SATELITE } from "@/lib/utils/estados-bodega-satelite";
 import type { OrderStatusValue } from "@/lib/types/order-status";
@@ -116,6 +117,8 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
     // abierta con UNA consulta SQL (`senalesGestionDe`). Sin filas: señales en reposo.
     $queryRaw: vi.fn().mockResolvedValue([]),
     $transaction: vi.fn(),
+    // SLT-65: la marca de zona especial sale del catalogo de la empresa (sin marcas por defecto).
+    ...delegadosDelCatalogo(),
     ...overrides,
   };
   // El `$transaction` fake ejecuta el callback con el propio prisma como `tx`.
