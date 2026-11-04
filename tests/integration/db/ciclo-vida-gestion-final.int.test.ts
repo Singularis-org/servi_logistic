@@ -209,13 +209,13 @@ describeSiHayBase("SLT-64 — el ciclo de vida lee la gestion final (Postgres re
 
     it("R1: los tres resultados de cierre cuentan, cada uno con sus segundos", async () => {
       await caso(async (f) => {
-        const entregada = await f.orden("entregada");
-        const rechazada = await f.orden("rechazada");
+        const entregado = await f.orden("entregado");
+        const rechazo = await f.orden("rechazo");
         const incidente = await f.orden("incidente");
-        await f.gestion(entregada, "entregado", "09:00");
-        await f.gestion(rechazada, "devolucion_a_origen_por_rechazo", "10:00");
+        await f.gestion(entregado, "entregado", "09:00");
+        await f.gestion(rechazo, "devolucion_a_origen_por_rechazo", "10:00");
         await f.gestion(incidente, "incidente", "11:00");
-        for (const id of [entregada, rechazada, incidente]) {
+        for (const id of [entregado, rechazo, incidente]) {
           await afirmarFixture(f.tx, id, { gestiones: 1, vigentes: 1 });
         }
 
