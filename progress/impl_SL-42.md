@@ -292,6 +292,7 @@ T3.2 hecha. Solo queda el rojo de baseline.
 - R1:
   - `tests/unit/components/vehiculos-plataforma-page.test.tsx` › «R1 — la puerta, antes de leer».
   - `tests/unit/auth/menu-visibility.test.ts` › «SL-42 — ítem «Vehículos» del superadmin» › R1 (dos casos).
+  - `e2e/superadmin-arranque.spec.ts` › «entra con OTP y aterriza en «Empresas», con «Empresas», «Planes», «Geografía» y «Vehículos» como únicos ítems del menú (…; SL-42 R1)».
 - R2:
   - `vehiculos-plataforma-page.test.tsx` › «R2 — el listado» (3 casos).
   - `tests/unit/services/vehiculo-service.test.ts` › «listarTodos — R2».
@@ -398,3 +399,6 @@ El spec E2E de R16 está escrito y sin correr en local. D12 está cerrada, la ar
     - Los 3 restantes no se diagnosticaron.
     - Los tests de vehículos y `vehiculo-service` no llegaron a reportar.
 - Veredicto: merge limpio; typecheck, lint y guardias en verde salvo la baseline. Los tests por ruta quedan pendientes de una corrida con memoria disponible (o de `gate-completo` en CI).
+
+### Arreglo del E2E de PR #76 (2026-11-04)
+- `e2e/superadmin-arranque.spec.ts`: el menú del superadmin es exactamente `["Empresas", "Planes", "Geografía", "Vehículos"]`, y el título y la cabecera citan SL-42 R1. Ningún otro spec de `e2e/` fija el menú del superadmin ni el submenú «Configuración» del `maestro`; `superadmin-empresas.spec.ts` solo afirma que «Empresas» no está.
