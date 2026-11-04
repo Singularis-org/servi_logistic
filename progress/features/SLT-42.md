@@ -60,6 +60,7 @@ Las del `requirements.md` (normalizar teléfonos guardados, jobs por zona horari
 
 ## Tandas
 - 2026-11-04 · T0.1, T1.1–T1.5, T2.1–T2.4, T3.1–T3.2 · 31a5b0eb · gate rápido local rojo por carga (6 tests de UI, verdes 3/3 en la rama y en dev sin carga; ver impl_SLT-42.md); subido. T1.0 pendiente (persona, antes del deploy).
+- 2026-11-04 · T4.1–T4.4 (+ migraciones slt42 renombradas a 20261104140000–140200 tras el merge de dev) · f0f20c0a, f38e1c9f, 070e6e96 · typecheck exit 0; test:guardias 9 rojos: `dependencias-declaradas-presentes` (4, en el baseline), `rollup-guards` R47 (1, REAL de SLT-42: la cifra de la caché de `calendario-zona.ts` del fix-up de la tanda 1 coincide con el umbral de volumen), 4 que pasan solas (`dominio-ordenex-fuera`, `filtros-url-r25`, `otp-debug-solo-en-pruebas`, `sin-estados-retirados`) y `descargas-por-registro` (timeout de 20 s, también sola; ningún archivo de UI tocado). Preguntas abiertas en impl_SLT-42.md > Tanda 2.
 
 ## Modelos (overrides)
 
