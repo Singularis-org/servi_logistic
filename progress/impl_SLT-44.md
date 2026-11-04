@@ -288,3 +288,10 @@ Salida (`DATABASE_URL` → `logistic_slt44_r1104`, `NODE_OPTIONS=--max-old-space
 - `geo-backfill` 16/16, `geo-catalogo-repository` 8/8, `geo-equivalencia` 4/4, `geo-equivalencia-dinero` 8/8, `geo-lecturas-catalogo` 8/8, `geo-lecturas-sin-backfill` 1/1, `geo-nodo-invariantes` 15/15, `geo-nodo-rls` 2/2, `geo-normalizar-nombre` 4/4, `geo-sincronia-geografia` 8/8, `geo-sincronia-orden-zonas` 10/10, `geo-tipo-nivel` 7/7, `geo-trigger-orden-rendimiento` 1/1.
 - `zona-distrito-unica` 9/9; `zona-distrito-unica-migration` 24/24; `catalogo-y-choke-point` 52/52; `caja-459-migration` 6/6.
 - `pnpm run typecheck`: exit 0.
+
+## 2026-11-04 — merge de `origin/feature/SLT-43-geo-jerarquica-modelo` (arreglo del rojo SLT-76 R15)
+
+- Merge de SLT-43 `337bd521` → `d4ba69c6`, sin conflictos ni migraciones nuevas: trae solo el cambio de entrada en
+  `salida-a-reparto-sql-real.test.ts` (la provincia ajena deja de compartir id con su cantón) y la bitácora de SLT-43.
+- `logistic_slt44_r1104`: `prisma migrate status` → al día. `salida-a-reparto-sql-real.test.ts` solo, `timeout 600`:
+  `Test Files 1 passed (1)`, `Tests 7 passed (7)`.
