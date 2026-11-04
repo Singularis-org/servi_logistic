@@ -30,7 +30,7 @@ Ninguna.
 
 | Fecha | Pregunta | Decisión |
 |---|---|---|
-| 2026-11-04 | ¿Se migran las tarifas actuales? | No. Nuform las digita aquí, sin corregir nada por nosotros (ni los 2.000 a la satélite ni las 3 tiendas): son datos del cliente. |
+| 2026-11-04 | ¿Se migran las tarifas actuales? | No. La empresa usuaria las digita aquí, sin corregir nada por nosotros (ni los 2.000 a la satélite ni las 3 tiendas con precio propio): son datos del cliente. |
 | 2026-11-04 | ¿Cómo entra en vigor lo digitado? | Con el botón «Activar tarifas nuevas» del maestro. Hasta entonces la empresa cobra y paga con el modelo viejo aunque tenga valores nuevos. Enmienda R36/R37 de SLT-52: decide la activación, no la existencia de un valor. |
 | 2026-11-04 | ¿Si al activar falta algo? | Lista lo que falta por zona y pide confirmación expresa. No bloquea. Lo vacío se resuelve como «sin tarifa», según SLT-52. |
 | 2026-11-04 | ¿Se puede volver atrás? | No desde la pantalla. Los errores se corrigen editando el valor y aplican desde el siguiente cierre. Los cierres hechos no cambian. |
