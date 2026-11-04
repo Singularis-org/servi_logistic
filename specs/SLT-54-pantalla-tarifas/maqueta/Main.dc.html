@@ -118,7 +118,7 @@ class Component extends DCLogic {
       ['Alajuela', '1 grupo', 'Completa', true],
       ['Cartago', 'Sin grupos', 'Completa', true],
       ['Guanacaste', 'Zona especial: 8 distritos', 'Completa', true],
-      ['Limón', 'Zona especial: 4 distritos', 'Faltan 2', false],
+      ['Limón', 'Zona especial: 4 distritos', 'Faltan 1', false],
       ['Puntarenas', 'Zona especial: 18 distritos', 'Completa', true],
       ['Turrialba', 'Sin grupos', 'Sin empezar', false],
     ].map(([nombre, detalle, chip, ok]) => {
@@ -142,7 +142,7 @@ class Component extends DCLogic {
     const datos = {
       tienda: [
         fila('Flete por entregado', '2.800', '13', '₡2.800'),
-        fila('Flete por devolución a origen', '2.800', '13', '₡2.800'),
+        fila('Flete por devolución a origen', '', '13', '₡2.800'),
         fila('Flete por reprogramado', '', '13', 'No cobra'),
         fila('Flete por novedad', '', '13', 'No cobra'),
         fila('Flete por incidente', '', '13', 'No cobra'),

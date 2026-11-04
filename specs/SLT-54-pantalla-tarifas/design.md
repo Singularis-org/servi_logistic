@@ -96,7 +96,7 @@ valores, vieja (una empresa activada y sin valores vuelve a la vieja, y conviene
 | Dato | De dónde sale |
 |---|---|
 | Moneda y formato | `lib/config/moneda.ts`. `formatMontoString` para pintar y `montoParaCampo` para el valor inicial de un campo, que viaja con punto y sin símbolo. El «Monto ₡» de la maqueta se compone con `monedaConfig.simbolo`. |
-| IVA | Lo digita la empresa por concepto. No hay porcentaje en código (P3). |
+| IVA | Lo digita la empresa por concepto. No hay porcentaje en código: el campo nace vacío (decisión P3). |
 | Geografía | Distritos de la zona, con su RLS por país. «Grupos de distritos» y «N distritos» se componen con `useEtiquetasGeograficas` (guardia `etiquetas-geograficas-sin-literal`). Los mensajes de `GrupoDistritosService` dicen «El distrito» a mano: pasan a nombrar solo el distrito y la zona, como ya hace `mensajeDistritoEnOtraZona`. |
 | Vehículos | Catálogo de plataforma, único. Nada por país. |
 
@@ -173,7 +173,7 @@ faltantesDeZona({ zona, grupos, valores, vehiculosActivos }): EstadoZona
 - **Vehículo inactivo:** no se exige, pero su valor guardado sigue resolviendo (R53), así que no debilita
   la regla.
 - **Dónde corre:** `TarifasPantallaService` lee una vez los valores de la empresa con `tiendaId` y
-  `mensajeroId` nulos, los grupos y los vehículos activos: consultas fijas, sin N+1. Decisión marcada: P1.
+  `mensajeroId` nulos, los grupos y los vehículos activos: consultas fijas, sin N+1. Decisión cerrada: P1.
 - **Lo que no hace:** no escribe, no decide `sin tarifa` en el cálculo. La fuente de verdad sigue siendo el
   resolver.
 
@@ -287,9 +287,9 @@ zona tiene tarifa. Pasa a mirar `usaModeloNuevo` y, si está activada, lee `tari
 eso esta pantalla no la escribe: cambiarla mientras se digita movería importes, y Carlos lo descartó. Se ve
 de solo lectura en el selector de distritos, para que el `maestro` pueda repetir ese conjunto en su grupo sin
 que nadie lo migre. Tras activar la marca no decide nada (SLT-52 R35), se oculta y SLT-57 la retira. La lectura
-de la marca en el selector va por el punto único. El Excel sigue leyéndola: P4.
+de la marca en el selector va por el punto único. El Excel sigue leyéndola, sin cambio (decisión P4, R30).
 
-## 9. Pago por vehículo (R47-R54). Depende de `maqueta/Vehiculo.dc.html`, sin ver por Carlos
+## 9. Pago por vehículo (R47-R54). Sale de `maqueta/Vehiculo.dc.html`
 
 **Qué hace hoy `zona.cobro_vehiculo`, medido:** se escribe en `ZonaRepository.create` y `update` y se
 devuelve en `ZonaDTO`, y `lib/types/zona.ts` lo usa para validar `tarifas`. **Ningún cálculo lo lee:**
@@ -336,7 +336,7 @@ junto a cada campo: se pinta una línea bajo cada campo, con el mismo texto. Sal
 - **Solo lectura:** a `admin` se le pintan los valores como texto y no se montan botones de escribir. La
   autorización vive en el servidor: R5 y SLT-52 R13.
 - **Menú (R56):** ítem `{ label: "Tarifas", href: "/configuracion/tarifas", roles: ["admin"] }` al final, sin mover
-  `primerDestino`. Decisión marcada: P2.
+  `primerDestino`. Decisión cerrada: P2.
 
 ## 11. Huecos heredados
 

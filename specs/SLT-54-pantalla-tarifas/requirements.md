@@ -24,9 +24,7 @@
 nuevo. *Empresa activada*: la que tiene su activación. *Modelo viejo* y *modelo nuevo*, *concepto*,
 *valor*, *grupo* y *sin tarifa*: como en SLT-52. *Nivel*: zona, grupo o tienda, cada uno con sus
 variantes de SLT-52 R5 y R6. *Referencia*: lo que rige hoy, mostrado junto a un campo sin copiarlo.
-*Esencial*: concepto cuya ausencia cuenta como faltante. Los requisitos marcados *(propuesto, Pn)*
-son la propuesta de `spec_author` a la pregunta abierta Pn: se prueban como están escritos si Carlos
-la acepta.
+*Esencial*: concepto cuya ausencia cuenta como faltante.
 
 ### Activación e interruptor
 
@@ -64,16 +62,16 @@ la acepta.
 
 ### Lista de lo que falta
 
-- **R13.** *(propuesto, P1)* El sistema DEBE tratar como esenciales de una zona el flete por entregado
+- **R13.** El sistema DEBE tratar como esenciales de una zona el flete por entregado
   a la tienda, el flete por devolución a origen a la tienda y el pago al mensajero por entregado. Los
   demás conceptos NO DEBEN contar como faltantes.
-- **R14.** *(propuesto, P1)* SI un esencial no se resuelve con ningún valor de nivel zona o grupo para
+- **R14.** SI un esencial no se resuelve con ningún valor de nivel zona o grupo para
   una zona o para un grupo de ella, siguiendo la precedencia de SLT-52, ENTONCES el sistema DEBE
   contarlo como faltante. Un 0 escrito NO DEBE contar como faltante (SLT-52 R23) y un precio de tienda
   NO DEBE cubrir a la zona.
-- **R15.** *(propuesto, P1)* El pago al mensajero por entregado DEBE contar como cubierto si existe el
+- **R15.** El pago al mensajero por entregado DEBE contar como cubierto si existe el
   valor para todos los vehículos o si existe un valor por cada vehículo activo del catálogo.
-- **R16.** *(propuesto, P1)* SI un grupo no tiene valor propio en un esencial y su zona sí, ENTONCES el
+- **R16.** SI un grupo no tiene valor propio en un esencial y su zona sí, ENTONCES el
   sistema NO DEBE contarlo como faltante y DEBE informarlo en la lista como «usa el valor de la zona».
 - **R17.** El sistema DEBE mostrar por zona su estado: «Completa» sin faltantes, «Faltan N» con N
   faltantes y «Sin empezar» si no tiene ningún valor de nivel zona o grupo; y DEBE mostrar «M de T
@@ -82,8 +80,9 @@ la acepta.
   activar, los faltantes por zona con un enlace «Completar» que lleva a esa zona, y dos salidas:
   seguir digitando o activar. SI hay faltantes, ENTONCES la acción de activar DEBE permanecer
   deshabilitada hasta marcar la casilla de confirmación; SI no los hay, la casilla NO DEBE mostrarse.
-- **R19.** El diálogo DEBE avisar que lo vacío se cobra y se paga en 0 y que, sin flete por entregado,
-  la API por key responde «sin tarifa», de forma coherente con SLT-52 R24, R25 y R51.
+- **R19.** El diálogo DEBE avisar que lo que falta se cobra y se paga en 0 y que, sin flete por
+  entregado, la API por key responde «sin tarifa», de forma coherente con SLT-52 R24, R25 y R51; ese
+  aviso NO DEBE aplicarse a lo informado como «usa el valor de la zona» (R16).
 
 ### Referencia «Hoy rige»
 
@@ -118,7 +117,8 @@ la acepta.
   `zona.cobro_vehiculo`.
 - **R30.** MIENTRAS la empresa no está activada, el Excel de cobertura DEBE seguir marcando «tarifa
   general» con el modelo viejo; MIENTRAS está activada, DEBE marcarla si la zona tiene flete por
-  entregado propio de nivel zona.
+  entregado propio de nivel zona. La columna de zona especial del Excel DEBE seguir leyendo la marca
+  `distrito_zona_especial`, también tras activar, hasta que SLT-57 la retire.
 
 ### Empresa nueva
 
@@ -196,7 +196,7 @@ la acepta.
 - **R55.** SI el rol es `maestro`, la pantalla DEBE permitir editar y activar; SI es `admin`, DEBE
   mostrar los mismos datos en solo lectura, sin controles de escritura ni de activar; SI es otro rol o
   no hay sesión, DEBE mostrar solo el aviso de permiso. Reconcilia la página de hoy con SLT-52 R13.
-- **R56.** *(propuesto, P2)* MIENTRAS el rol es `admin`, el menú DEBE mostrarle «Tarifas» como ítem
+- **R56.** MIENTRAS el rol es `admin`, el menú DEBE mostrarle «Tarifas» como ítem
   propio, sin cambiar su destino tras el login; ningún otro rol distinto de `maestro` DEBE verlo.
 - **R57.** SI la lectura de la pantalla falla, ENTONCES DEBE mostrar un error con reintento, y NO un
   estado vacío; SI la empresa no tiene zonas, ENTONCES DEBE mostrar un estado vacío que enseña a crear
@@ -210,7 +210,7 @@ la acepta.
   `DESIGN.md`, sin colores fijos, con texto de contraste de al menos 4,5:1.
 - **R61.** La pantalla DEBE sacar símbolo y formato de moneda de `lib/config/moneda.ts` y los nombres
   de nivel geográfico de las etiquetas del país; el IVA NO DEBE traer un porcentaje escrito en el
-  código. *(propuesto, P3: el campo nace vacío)*
+  código: el campo DEBE nacer vacío y ser obligatorio al digitar un cobro a la tienda.
 
 ### Huecos heredados de SLT-52
 
@@ -258,29 +258,14 @@ la acepta.
 | E2E | R67, R68, R69 |
 | Salida | R11 (sin datos movidos), `tasks.md > Tanda F` (no se despliega suelta) |
 | ¿Vehículo inactivo en Tarifas? | R51, R52, R53 |
+| ¿Qué cuenta como faltante? (P1) | R13, R14, R15, R16, R17, R19 |
+| ¿El `admin` ve «Tarifas» en su menú? (P2) | R56 |
+| ¿El IVA viene prellenado? (P3) | R61 |
+| ¿Qué dice el Excel de «zona especial» tras activar? (P4) | R30 |
 
 ## Preguntas abiertas
 
-Para Carlos. Ninguna bloquea el resto del spec; los requisitos afectados dicen *(propuesto, Pn)*.
-
-- **P1. ¿Qué cuenta como faltante?** Propuesta: tres esenciales por zona (flete por entregado, flete
-  por devolución a origen y pago al mensajero por entregado), y un grupo sin valor propio no falta si
-  su zona lo tiene: se informa como «usa el valor de la zona». Es lo que hace el cálculo (SLT-52 R16,
-  R19) y es lo único que dejaría «sin tarifa». Diferencia con la maqueta: `Activar` lista como falta
-  los fletes del grupo «Zona especial» de Limón. Si Carlos prefiere contarlos, un grupo sin esos
-  fletes cuenta como faltante aunque cobre el valor de la zona, y el aviso «queda en 0» habría que
-  matizarlo porque ahí no sería cierto. Tampoco cuenta la comisión COD: una zona sin ella cobra 0 de
-  comisión sin aparecer en la lista.
-- **P2. ¿El `admin` ve «Tarifas» en su menú?** `Configuración` es solo de `maestro` y SLT-52 R13 solo
-  dice que `admin` lee. Propuesta: ítem propio al final de su menú (R56). Alternativa: leer solo
-  entrando por URL.
-- **P3. ¿El IVA viene prellenado?** La maqueta pinta 13 de ejemplo, pero no hay ningún IVA por defecto
-  en configuración ni por país, y un 13 fijo sería un literal de país. Propuesta: nace vacío y es
-  obligatorio al digitar un cobro; la referencia enseña el de hoy. Coste: digitarlo concepto por
-  concepto. Si se quiere prellenar, hace falta decidir de dónde sale.
-- **P4. ¿Qué dice el Excel de cobertura de «zona especial» tras activar?** Hoy lee la marca
-  `distrito_zona_especial`, que tras activar ya no decide dinero (SLT-52 R35) y ya no se edita.
-  Propuesta: sin cambio hasta SLT-57, que retira la marca. Coste: la columna se queda congelada.
+Ninguna.
 
 ## Decisiones cerradas (no reabrir)
 
@@ -301,3 +286,7 @@ Para Carlos. Ninguna bloquea el resto del spec; los requisitos afectados dicen *
 | heredado | E2E | Obligatorio: toca importes. Reescribir `zona-especial-dos-empresas` y quitar su excepción antes del 2026-11-30 (SLT-51). |
 | heredado | Salida | La épica sale completa a producción (SLT-51). |
 | 2026-11-04 | ¿Vehículo inactivo en Tarifas? | No aparece como columna para digitar, salvo que ya tenga un valor guardado; en ese caso se ve marcado como inactivo. |
+| 2026-11-04 | ¿Qué cuenta como faltante? (P1) | Tres esenciales por zona: flete por entregado, flete por devolución a origen y pago al mensajero por entregado. Un grupo sin valor propio no falta si su zona lo tiene: se informa como «usa el valor de la zona». La comisión COD no cuenta: una zona sin ella cobra 0 de comisión sin aparecer en la lista. Carlos: «va con tus recomendaciones». |
+| 2026-11-04 | ¿El `admin` ve «Tarifas» en su menú? (P2) | Sí, como ítem propio al final de su menú. Carlos: «va con tus recomendaciones». |
+| 2026-11-04 | ¿El IVA viene prellenado? (P3) | No. Nace vacío y es obligatorio al digitar un cobro; la referencia enseña el de hoy. No hay un IVA por defecto en configuración ni por país. Carlos: «va con tus recomendaciones». |
+| 2026-11-04 | ¿Qué dice el Excel de cobertura de «zona especial» tras activar? (P4) | Sin cambio hasta SLT-57, que retira la marca: la columna se queda congelada. Carlos: «va con tus recomendaciones». |

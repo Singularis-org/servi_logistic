@@ -4,9 +4,8 @@
 > primer gate. `[P]` = paralelizable dentro de su tanda. Reparto: A, B y C → `backend_dev`; D y E →
 > `frontend_dev`; F → implementer.
 >
-> **Antes de empezar:** resueltas P1-P4. Un cambio en P1 toca solo T2.1 y sus tests; en P2, T4.6; en P3,
-> T4.3; en P4, ninguna. Los dobles y los E2E de la lista pueden crecer: si aparece un archivo más, se
-> añade a `## Archivos esperados`.
+> **Antes de empezar:** P1-P4 están cerradas (`requirements.md > Decisiones cerradas`). Los dobles y los
+> E2E de la lista pueden crecer: si aparece un archivo más, se añade a `## Archivos esperados`.
 
 ## Tanda A — Activación e interruptor (backend)
 
@@ -45,7 +44,7 @@
   `actualizarDistritosEspeciales`; guarda en `crearZona` y `actualizarZona`. *Hecho:* `zonas-action.test.ts` adaptado,
   `tarifas-action.test.ts` reescrito; guardia `superficie-de-uso` verde; nueva guardia `tarifas-sin-escritura-vieja`.
 - [ ] **T2.6 [P] Cobertura** (R30). `listZonaIdsConTarifaGeneral` por modelo. *Hecho:* `cobertura-repository.test.ts` con
-  empresa activada y sin activar, y dos empresas.
+  empresa activada y sin activar, y dos empresas; la columna de zona especial sigue leyendo la marca tras activar.
 
 ## Tanda C — Huecos del lado servidor (backend)
 
@@ -66,7 +65,7 @@
 - [ ] **T4.2 Faltantes y activar** (R17, R18, R19). *Hecho:* `TarifasActivar.test.tsx`: casilla, sin faltantes sin casilla,
   «Completar», `ya_activada`.
 - [ ] **T4.3 Rejilla de valores** (R20, R22, R23, R34-R39). *Hecho:* `TarifasValores.test.tsx`: la referencia nunca
-  entra en el campo; `ivaPct` ausente en el payload espiado; vacío quita; fila en error; IVA vacío (P3).
+  entra en el campo; `ivaPct` ausente en el payload espiado; vacío quita; fila en error; el IVA nace vacío y es obligatorio al digitar un cobro (R61).
 - [ ] **T4.4 Grupos y tiendas** (R41-R46). *Hecho:* `TarifasGrupos.test.tsx`, `TarifasTiendas.test.tsx`; marca de solo lectura y
   sin llamada de escritura.
 - [ ] **T4.5 Por vehículo** (R47-R51, R54). *Hecho:* `TarifasVehiculo.test.tsx`: con 1, 2 y 8 vehículos; alta sin tocar nada;
@@ -123,7 +122,7 @@
 | R27 | `tests/integration/actions/zonas-action.test.ts` › «la action rechaza costos» |
 | R28 | `tests/unit/guards/superficie-de-uso.guardia.test.ts`; `tests/unit/guards/tarifas-sin-escritura-vieja.guardia.test.ts` |
 | R29 | `tests/integration/db/tarifa-activacion.test.ts` › «guardar no escribe en el viejo» |
-| R30 | `tests/integration/db/cobertura-repository.test.ts` › «tarifa general por modelo» |
+| R30 | `tests/integration/db/cobertura-repository.test.ts` › «tarifa general por modelo» y «la marca sigue en el Excel tras activar» |
 | R31, R32 | `tests/integration/db/tarifa-empresa-nueva.test.ts` |
 | R33-R39 | `tests/components/TarifasValores.test.tsx`; R36 y R37 también en `tests/integration/actions/tarifas-action.test.ts` |
 | R40 | `tests/components/TarifasModulo.test.tsx` › «en vigor»; `e2e/tarifas-activacion.spec.ts` |
@@ -137,7 +136,7 @@
 | R56 | `tests/unit/auth/menu-visibility.test.ts` › «Tarifas para admin»; `tests/unit/auth/destino-post-login.test.ts` |
 | R57, R58 | `tests/components/TarifasModulo.test.tsx` |
 | R59, R60 | `e2e/tarifas-maqueta.spec.ts`; `tests/components/TarifasDisposicion.test.tsx` |
-| R61 | `tests/components/TarifasDisposicion.test.tsx`; `tests/unit/guards/etiquetas-geograficas-sin-literal.guardia.test.ts` |
+| R61 | `tests/components/TarifasDisposicion.test.tsx`; `tests/components/TarifasValores.test.tsx` › «el IVA nace vacío»; `tests/unit/guards/etiquetas-geograficas-sin-literal.guardia.test.ts` |
 | R62, R63, R65 | `tests/components/CierreDesgloseModeloNuevo.test.tsx`; `tests/unit/repositories/cierres-admin-repository.test.ts` |
 | R64 | `tests/integration/db/cierre-aporte-modelo-nuevo.test.ts`; `tests/unit/utils/aporte-por-orden-equivalencia.test.ts` |
 | R66 | `tests/unit/repositories/convergencia-tarifa-listado-cierre.test.ts`; `tests/components/OrdenesColumnaFulfillment.test.tsx` |
