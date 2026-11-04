@@ -6,6 +6,7 @@ import type {
   ListarPendientesInput,
   ListarPendientesResult,
   MensajeroEstado,
+  PersonaDePostulacion,
   PostulacionRow,
 } from "@/lib/interfaces/repositories/IAprobacionPostulacionRepository";
 
@@ -79,6 +80,15 @@ export class AprobacionPostulacionRepository implements IAprobacionPostulacionRe
       select: { id: true, estado: true },
     });
     return usuario ? { id: usuario.id, estado: usuario.estado } : null;
+  }
+
+  // SLT-42 (R10, R11, R14): mismo filtro que la transicion de `actualizarEstadoSiPendiente`; la
+  // empresa la pone la extension, como en el resto del repositorio.
+  async personaPendiente(id: string): Promise<PersonaDePostulacion | null> {
+    return this.prisma.usuario.findFirst({
+      where: { id, estado: ESTADO_PENDIENTE, rol: { value: ROL_MENSAJERO } },
+      select: { telefono: true, cedula: true, tipoIdentificacionId: true },
+    });
   }
 
   /**

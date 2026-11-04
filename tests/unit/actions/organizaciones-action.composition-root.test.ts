@@ -77,9 +77,36 @@ const emailOtpChallenge = {
   })),
 };
 const organizacion = { findUnique: vi.fn(async () => null) };
+// SLT-42 (R6, R10, R14): antes de escribir, el servicio lee el país elegido y su tipo de documento
+// por el `PaisRepository` real, fuera de la transacción del alta.
+const pais = {
+  findUnique: vi.fn(async () => ({
+    id: "CR",
+    disponible: true,
+    prefijoTelefonico: "506",
+    telefonoDigitosNacionales: 8,
+    zonaHoraria: "America/Costa_Rica",
+  })),
+};
+const tipoIdentificacion = {
+  findFirst: vi.fn(async () => ({ id: "ti-1" })),
+  findMany: vi.fn(async () => [
+    {
+      id: "ti-1",
+      value: "cedula",
+      paisId: "CR",
+      clave: "cedula_fisica",
+      nombre: "Cédula física",
+      caracteres: "digitos",
+      largoMin: 9,
+      largoMax: 9,
+      activo: true,
+    },
+  ]),
+};
 
 vi.mock("@/lib/db/prisma-client", () => ({
-  getPrismaClient: () => ({ $transaction, usuario, emailOtpChallenge, organizacion }),
+  getPrismaClient: () => ({ $transaction, usuario, emailOtpChallenge, organizacion, pais, tipoIdentificacion }),
   PRISMA_OMIT: {},
 }));
 
@@ -111,7 +138,7 @@ describe("SL-17 — la action pasa un OrganizacionRepository real y corre en pla
         nombre: "Envíos del Sur",
         slug: "envios-del-sur",
         paisId: "CR",
-        maestro: { nombre: "Lucía", email: "lucia@ejemplo.test", telefono: "8888", documento: "1122", tipoDocumento: "cedula" },
+        maestro: { nombre: "Lucía", email: "lucia@ejemplo.test", telefono: "88887777", documento: "112223333", tipoDocumento: "cedula" },
       },
       {
         getActor: async () => ({ usuarioId: "u-super", rol: "maestro" }),

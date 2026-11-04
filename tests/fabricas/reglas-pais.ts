@@ -1,6 +1,7 @@
 import { PaisSinZonaHoraria } from "@/lib/db/errores-pais";
 import type { IReglasPaisEmpresa, ReglasPais } from "@/lib/interfaces/services/IReglasPaisEmpresa";
-import type { TipoDocumentoDTO } from "@/lib/types/pais";
+import type { PaisesDelAlta } from "@/lib/services/OrganizacionService";
+import type { PaisDTO, TipoDocumentoDTO } from "@/lib/types/pais";
 
 // SLT-42 (design §4.2) — doble de `IReglasPaisEmpresa` para los tests unitarios de los servicios que
 // lo reciben por constructor. Devuelve siempre el mismo país, sin base ni contexto de empresa, y
@@ -43,5 +44,56 @@ export function reglasPaisFijas(datos: Partial<ReglasPaisFijas> = {}): IReglasPa
       const tipo = delPais.find((t) => t.id === idOValue) ?? delPais.find((t) => t.value === idOValue) ?? null;
       return Promise.resolve(tipo);
     },
+  };
+}
+
+/**
+ * SLT-42 (T4.3) — un país tal como lo lee el alta de empresa (`PaisesDelAlta`): `PaisDTO` y sus tipos.
+ * Sin `datos`, Costa Rica como la deja la migración (R3).
+ */
+export interface PaisDelAltaFijo {
+  pais: PaisDTO;
+  tiposDocumento: readonly TipoDocumentoDTO[];
+}
+
+export function paisDelAltaFijo(datos: Partial<PaisDTO> = {}, tiposDocumento: readonly TipoDocumentoDTO[] = TIPOS_CR): PaisDelAltaFijo {
+  return {
+    pais: {
+      id: "CR",
+      nombre: "Costa Rica",
+      nivel1Singular: "Provincia",
+      nivel1Plural: "Provincias",
+      nivel2Singular: "Cantón",
+      nivel2Plural: "Cantones",
+      nivel3Singular: "Distrito",
+      nivel3Plural: "Distritos",
+      digitosCodigoNivel1: null,
+      digitosCodigoNivel2: null,
+      digitosCodigoNivel3: null,
+      disponible: true,
+      prefijoTelefonico: CR.telefono?.prefijo ?? null,
+      telefonoDigitosNacionales: CR.telefono?.digitosNacionales ?? null,
+      zonaHoraria: CR.zonaHoraria,
+      ...datos,
+    },
+    tiposDocumento,
+  };
+}
+
+/**
+ * Doble de `PaisesDelAlta` con los países `paises` (por defecto, solo CR). Cumple el contrato del
+ * repositorio: `tipoDocumentoDelPais` solo encuentra tipos de ESE país, por `id` o por `value`, y
+ * trae también los inactivos; `tieneTipoDocumentoActivo` cuenta solo los activos.
+ */
+export function paisesDelAltaFijos(paises: readonly PaisDelAltaFijo[] = [paisDelAltaFijo()]): PaisesDelAlta {
+  const de = (paisId: string) => paises.find((p) => p.pais.id === paisId);
+  return {
+    porId: (id) => Promise.resolve(de(id)?.pais ?? null),
+    tipoDocumentoDelPais: (paisId, idOValue) => {
+      const tipos = (de(paisId)?.tiposDocumento ?? []).filter((t) => t.paisId === paisId);
+      return Promise.resolve(tipos.find((t) => t.id === idOValue) ?? tipos.find((t) => t.value === idOValue) ?? null);
+    },
+    tieneTipoDocumentoActivo: (paisId) =>
+      Promise.resolve((de(paisId)?.tiposDocumento ?? []).some((t) => t.paisId === paisId && t.activo)),
   };
 }

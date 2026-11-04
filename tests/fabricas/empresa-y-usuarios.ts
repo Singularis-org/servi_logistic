@@ -7,6 +7,7 @@ import { getPrismaClient } from "../../lib/db/prisma-client";
 import { ORDEN_MODULOS } from "../../lib/modulos/catalogo";
 import { CierreBodegaRepository } from "../../lib/repositories/CierreBodegaRepository";
 import { OrganizacionRepository } from "../../lib/repositories/OrganizacionRepository";
+import { PaisRepository } from "../../lib/repositories/PaisRepository";
 import { SessionRepository } from "../../lib/repositories/SessionRepository";
 import { UserRepository } from "../../lib/repositories/UserRepository";
 import { VehiculoRepository } from "../../lib/repositories/VehiculoRepository";
@@ -55,7 +56,10 @@ export interface DatosEmpresa {
   contrasena: string;
   /** Por defecto, «Maestro <nombre>». */
   nombreMaestro?: string;
-  /** Único global (`usuario.cedula`). Por defecto, el slug. */
+  /**
+   * SLT-42 (R10): tiene que cumplir la regla del tipo (cédula física de CR: 9 dígitos). Por defecto,
+   * la que sale del correo del maestro.
+   */
   documentoMaestro?: string;
   /** SL-20: el país del alta. Por defecto Costa Rica, como toda empresa de test (R10). */
   paisId?: string;
@@ -85,7 +89,8 @@ export async function crearEmpresa(
   plataforma: ContextoPlataforma = { ficha: "SL-43", motivo: "fábrica: alta de empresa" },
 ): Promise<EmpresaCreada> {
   const nombreMaestro = datos.nombreMaestro ?? `Maestro ${datos.nombre}`;
-  const servicio = new OrganizacionService(new OrganizacionRepository(getPrismaClient()));
+  const prisma = getPrismaClient();
+  const servicio = new OrganizacionService(new OrganizacionRepository(prisma), new PaisRepository(prisma));
   const resultado = await comoPlataforma(plataforma.ficha, plataforma.motivo, () =>
     servicio.altaEmpresa({
       nombre: datos.nombre,
@@ -95,7 +100,7 @@ export async function crearEmpresa(
         nombre: nombreMaestro,
         email: datos.correoMaestro,
         telefono: TELEFONO,
-        documento: datos.documentoMaestro ?? datos.slug,
+        documento: datos.documentoMaestro ?? cedulaDelCorreo(datos.correoMaestro),
         tipoDocumento: TIPO_IDENTIFICACION,
       },
     }),

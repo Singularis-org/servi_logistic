@@ -16,9 +16,14 @@ import type {
 } from "@/lib/types/aprobacion-postulacion";
 import { aprobacionPostulacionesConfig } from "@/lib/config/aprobacion-postulaciones";
 import { TopeDelPlanAlcanzado, traducirErrorDeTope } from "@/lib/planes/tope-error";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { validarPersonaDelPais } from "@/lib/services/validacion-documento-telefono";
 
 // R2: solo `maestro` y `admin` aprueban/rechazan/listan.
 const ROLES_APROBADORES = new Set<RolValue>(["maestro", "admin"]);
+
+/** SLT-42: las claves de `fieldErrors` al aprobar, las de los campos de `PostulacionPendienteDTO`. */
+const CAMPOS_DE_LA_POSTULACION = { telefono: "telefono", documento: "cedula", tipo: "tipoIdentificacion" } as const;
 
 /**
  * Feature 22 — logica de negocio de la aprobacion de postulaciones. Autoriza por
@@ -31,6 +36,12 @@ export class AprobacionPostulacionService implements IAprobacionPostulacionServi
     private readonly repo: IAprobacionPostulacionRepository,
     private readonly signedUrls: ISignedUrlProvider,
     private readonly ttlSeconds: number = aprobacionPostulacionesConfig.SIGNED_URL_TTL_SECONDS,
+    /**
+     * SLT-42 (R10, R11, R14, R16): las reglas del pais de la empresa, para validar al aprobar.
+     * OPCIONAL EN EL CONSTRUCTOR, OBLIGATORIO EN EL USO, como en `UsuarioService`: `aprobar` LANZA
+     * si no esta, en vez de dar de alta sin validar. Rechazar no lo necesita.
+     */
+    private readonly reglasPais?: IReglasPaisEmpresa,
   ) {}
 
   async listarPendientes(
@@ -53,6 +64,9 @@ export class AprobacionPostulacionService implements IAprobacionPostulacionServi
   }
 
   async aprobar(usuarioId: string, actor: Actor): Promise<DecisionServiceResult> {
+    if (!ROLES_APROBADORES.has(actor.rol)) return { status: "forbidden" };
+    const rechazo = await this.rechazoDeLaPersona(usuarioId);
+    if (rechazo !== null) return rechazo;
     return this.decidir(usuarioId, actor, "activo");
   }
 
@@ -93,6 +107,33 @@ export class AprobacionPostulacionService implements IAprobacionPostulacionServi
     const actual = await this.repo.findMensajeroById(usuarioId);
     if (!actual) return { status: "not_found" }; // R13/R17
     return { status: "conflict" }; // R14/R18: existe pero ya no esta pendiente
+  }
+
+  /**
+   * SLT-42 (R10, R11, R14, R16): aprobar es el alta del mensajero en la empresa, asi que su tipo,
+   * su documento y su telefono tienen que cumplir la regla del pais, tambien los de una postulacion
+   * recibida antes de esta ficha. Solo se valida: aprobar no reescribe datos (R15/R19 de la
+   * feature 22). `null` si vale o si no es una postulacion pendiente (eso lo resuelve `decidir`).
+   */
+  private async rechazoDeLaPersona(
+    usuarioId: string,
+  ): Promise<{ status: "validation_error"; fieldErrors: Record<string, string[]> } | null> {
+    if (!this.reglasPais) {
+      throw new Error(
+        "AprobacionPostulacionService.aprobar requiere las reglas del pais de la empresa: sin ellas " +
+          "el mensajero se daria de alta sin validar su telefono ni su documento (SLT-42)",
+      );
+    }
+    const persona = await this.repo.personaPendiente(usuarioId);
+    if (persona === null) return null;
+    const { paisId } = await this.reglasPais.deLaEmpresa();
+    const tipo = await this.reglasPais.tipoDocumento(persona.tipoIdentificacionId);
+    const r = validarPersonaDelPais(
+      paisId,
+      { telefono: persona.telefono, documento: persona.cedula, tipo },
+      CAMPOS_DE_LA_POSTULACION,
+    );
+    return r.ok ? null : { status: "validation_error", fieldErrors: r.fieldErrors };
   }
 
   /** Proyecta una fila a DTO firmando las URLs de sus documentos (R8/R9). */

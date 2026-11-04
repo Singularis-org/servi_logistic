@@ -161,6 +161,12 @@ export class PaisRepository implements IPaisRepository {
     };
   }
 
+  /** SLT-42 (R6). El inactivo no cuenta: no se puede elegir en ningún alta (R11). */
+  async tieneTipoDocumentoActivo(paisId: string): Promise<boolean> {
+    const fila = await this.prisma.tipoIdentificacion.findFirst({ where: { paisId, activo: true }, select: { id: true } });
+    return fila !== null;
+  }
+
   /**
    * SLT-42 (design §6.1, R25): `SELECT DISTINCT p.zona_horaria FROM pais p JOIN organizacion o ON
    * o.pais_id = p.id WHERE p.zona_horaria IS NOT NULL`, escrito con el cliente. En plataforma porque

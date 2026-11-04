@@ -274,3 +274,49 @@ Veredicto: Parte A y T4.1 terminadas. Typecheck y lint limpios, tests de T4.1 en
 3. País sin prefijo o sin dígitos: chat y envíos lanzan `PaisIncompleto` antes de escribir. En el webhook eso hace fallar el lote de esa empresa (no es un 200). El design no fija este caso para WhatsApp.
 
 Veredicto: T4.4 terminada; typecheck limpio, tests de chat y envíos en verde, R18–R21 con test.
+
+## Tanda 2 · T4.2 y T4.3, y el módulo compartido (2026-11-04)
+
+### Archivos
+- Nuevo `lib/services/validacion-documento-telefono.ts`: un módulo puro con la validación de tipo, documento y teléfono que antes estaba dentro de `UsuarioService`. Lo usan `UsuarioService` (sin cambio de comportamiento), `PostulacionMensajeroService`, `AprobacionPostulacionService` y `OrganizacionService`.
+- `lib/actions/{postulacion-mensajero,aprobacion-postulaciones,organizaciones}.ts` inyectan las reglas reales y `PaisRepository`.
+- `PostulacionRepository.cedulaExiste(cedula, tipoId)` (ahora por empresa y tipo, R13), `AprobacionPostulacionRepository.personaPendiente(id)` y `PaisRepository.tieneTipoDocumentoActivo(paisId)` (R6). Las interfaces cambian en consecuencia, y `IAprobacionPostulacionService` admite `validation_error`.
+- `lib/types/postulacion-mensajero.ts` valida solo la forma.
+- Tests nuevos:
+  - `tests/unit/services/postulacion-mensajero-service-pais.test.ts`
+  - `tests/unit/services/organizacion-service-pais.test.ts`
+  - `tests/unit/actions/postulacion-composition-pais.test.ts`
+  - `tests/integration/db/postulacion-documento-por-tipo.test.ts`
+- Tests ajustados:
+  - Postulación, aprobación, notificaciones y organización inyectan `reglasPaisFijas()` y usan datos válidos de CR.
+  - `postulacion-schemas` comprueba solo la forma.
+  - `organizacion-alta` usa `PA` completo en lugar de `XA` (R16).
+  - `pais-repositorio` tiene un caso nuevo.
+- Fábricas: `reglas-pais.ts` (`paisDelAltaFijo`, `paisesDelAltaFijos`), `empresa-y-usuarios.ts` y `e2e.ts`.
+- Fixtures E2E con documentos de 9 dígitos: `e2e/_dos-empresas-fixture.ts`, `dos-empresas-humo.spec.ts` y `superadmin-empresas.spec.ts`. El E2E no se corrió; corre en CI.
+
+### Mapa R → test (T4.2, T4.3)
+| R | Test |
+|---|---|
+| R6 | `organizacion-service-pais` «R6: un país %s rechaza…» (sin prefijo, sin dígitos, sin zona, sin tipos, solo con inactivos), «R6: un país que no existe…», «R6: el país incompleto se rechaza antes…»; `pais-repositorio` «SLT-42 (R6): tieneTipoDocumentoActivo…» |
+| R10 | `postulacion-mensajero-service-pais` «R10: …» (recibir y aprobar); `organizacion-service-pais` «R10: …» |
+| R11 | `postulacion-mensajero-service-pais` «R11: …» (no existe, inactivo, de otro país, por `value`; al aprobar); `organizacion-service-pais` «R11: …» |
+| R13 (postulación) | `postulacion-mensajero-service-pais` «R13: el duplicado del documento se busca…»; `postulacion-documento-por-tipo` «R13: cedulaExiste choca solo con…» |
+| R14 | `postulacion-mensajero-service-pais` «R14: …» (recibir y aprobar); `organizacion-service-pais` «R14: …» (incluye «un número válido de OTRO país» y «la región es la del país ELEGIDO») |
+| R15 | `postulacion-mensajero-service-pais` «R15: el teléfono válido se guarda…»; `organizacion-service-pais` «R15: …» |
+| R16 | Un «R16: …» por cada punto: recibir, aprobar y alta de empresa |
+
+### Salida
+- Typecheck (`NODE_OPTIONS=--max-old-space-size=8192`): exit 0. `eslint --max-warnings=0` sobre los 39 archivos: limpio.
+- Unit y componentes, 30 archivos: `Test Files 30 passed (30) · Tests 501 passed (501)`.
+- Integración en `logistic_slt42_test`, 9 archivos: `Test Files 9 passed (9) · Tests 92 passed (92)`, ninguno saltado.
+- Guardias `geografia-predicado-unico`, `sql-a-mano-por-empresa`, `superadmin-fuera-de-empresa`, `plataforma-solo-en-lista`, `etiquetas-geograficas-sin-literal` y `historial-accion-*`: en verde.
+
+### Desvíos y preguntas para el leader o el humano
+1. **Aprobar solo valida (R15).** No reescribe el teléfono al formato nacional, porque la feature 22 dice que aprobar solo cambia `estado`. Las postulaciones nuevas ya se guardan en forma nacional. Falta confirmarlo.
+2. **Aprobar tiene un desenlace nuevo: `validation_error`.** Una postulación vieja con datos fuera de regla no se puede aprobar, solo rechazar. El panel muestra el texto genérico; la UI no se tocó.
+3. **Pregunta.** El alta de empresa valida R6 y los datos del maestro antes de comprobar si es una repetición. Repetir el alta en un país que quedó incompleto responde `invalida` en vez de `ya_existe`. ¿Hay que mover la comprobación de repetición antes, como en SL-20 §13?
+4. **El alta de empresa señala un solo campo** (contrato `{ estado: "invalida", campo }`). Si fallan varios, el tipo o el documento ganan al teléfono.
+5. **Fuera del design:** `IPaisRepository.tieneTipoDocumentoActivo`. Además, `cedulaExiste` pasa a buscar por empresa y tipo, e `IPostulacionRepository.tipoIdentificacionExiste` queda sin uso (no se borró).
+6. **El tipo de la postulación llega como `id`, no como `value`.** Así lo manda `app/postulacion/page.tsx`. Se aceptan las dos formas, con un test para cada una.
+7. **El navegador ya no comprueba que cédula y teléfono sean numéricos.** `postulacionSchema` lo comparte el cliente; esa comprobación queda solo en el servidor.

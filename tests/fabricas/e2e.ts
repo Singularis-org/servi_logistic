@@ -178,7 +178,6 @@ export async function crearEmpresaE2E(etiqueta: string): Promise<EmpresaE2E> {
       correoMaestro: correoE2E("maestro"),
       contrasena: contrasenaE2E(),
       nombreMaestro: `Maestro E2E ${s}`,
-      documentoMaestro: `e2e-${s}`,
     },
     { ficha: "SL-44", motivo: "fábrica E2E: alta de empresa" },
   );

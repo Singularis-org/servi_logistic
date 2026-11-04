@@ -5,6 +5,7 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IAprobacionPostulacionRepository } from "@/lib/interfaces/repositories/IAprobacionPostulacionRepository";
 import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlProvider";
 import { aprobarPostulacion } from "@/lib/actions/aprobacion-postulaciones";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // SL-24 (R27, design §6.3) — aprobar una postulación es un alta de `mensajero`. Con su tope lleno el
 // trigger de `usuario` la rechaza (SQLSTATE SL024) y el servicio devuelve `tope_plan` con el mensaje.
@@ -28,10 +29,12 @@ function servicio(actualizar: IAprobacionPostulacionRepository["actualizarEstado
   const repo = {
     actualizarEstadoSiPendiente: vi.fn(actualizar),
     findMensajeroById: vi.fn().mockResolvedValue({ id: "usr-1", estado: "pendiente" }),
+    // SLT-42: una postulación pendiente con datos válidos de Costa Rica (R10, R11, R14).
+    personaPendiente: vi.fn().mockResolvedValue({ telefono: "88887777", cedula: "112223333", tipoIdentificacionId: "tipo-cr-cedula" }),
     listPendientes: vi.fn(),
   } as unknown as IAprobacionPostulacionRepository;
   const urls = { createSignedUrl: vi.fn(), createSignedUrls: vi.fn() } as unknown as ISignedUrlProvider;
-  return { repo, service: new AprobacionPostulacionService(repo, urls) };
+  return { repo, service: new AprobacionPostulacionService(repo, urls, undefined, reglasPaisFijas()) };
 }
 
 describe("SL-24 R27 — AprobacionPostulacionService.aprobar con el tope de mensajero lleno", () => {

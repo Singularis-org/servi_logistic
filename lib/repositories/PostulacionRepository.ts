@@ -25,8 +25,11 @@ export class PostulacionRepository implements IPostulacionRepository {
     return row !== null;
   }
 
-  async cedulaExiste(cedula: string): Promise<boolean> {
-    const row = await this.prisma.usuario.findFirst({ where: { cedula }, select: { id: true } });
+  async cedulaExiste(cedula: string, tipoIdentificacionId: string): Promise<boolean> {
+    const row = await this.prisma.usuario.findFirst({
+      where: { cedula, tipoIdentificacionId },
+      select: { id: true },
+    });
     return row !== null;
   }
 

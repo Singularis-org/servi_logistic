@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 import type { IOrganizacionRepository } from "@/lib/interfaces/repositories/IOrganizacionRepository";
 import type { AltaEmpresaDatos, AltaEmpresaResultado } from "@/lib/types/organizacion";
+import { paisDelAltaFijo, paisesDelAltaFijos } from "@/tests/fabricas/reglas-pais";
 
 // SL-17 / T2.8 (design §7.7) — R44, R45, R46 en el servicio, con el repositorio doble.
 //
@@ -74,7 +75,7 @@ describe("R46 — la entrada inválida nombra el campo y no llega al repositorio
 
   it.each(casos)("%s → invalida(%s)", async (_titulo, mutar, campo) => {
     const { repo, altaEmpresa } = repoDoble();
-    const r = await new OrganizacionService(repo).altaEmpresa(mutar(entradaValida()));
+    const r = await new OrganizacionService(repo, paisesDelAltaFijos()).altaEmpresa(mutar(entradaValida()));
     expect(r).toEqual({ estado: "invalida", campo });
     expect(altaEmpresa).not.toHaveBeenCalled();
     expect(secretosHasheados).toHaveLength(0);
@@ -82,7 +83,7 @@ describe("R46 — la entrada inválida nombra el campo y no llega al repositorio
 
   it("una entrada que no es objeto también es inválida", async () => {
     const { repo, altaEmpresa } = repoDoble();
-    const r = await new OrganizacionService(repo).altaEmpresa(null);
+    const r = await new OrganizacionService(repo, paisesDelAltaFijos()).altaEmpresa(null);
     expect(r.estado).toBe("invalida");
     expect(altaEmpresa).not.toHaveBeenCalled();
   });
@@ -90,7 +91,7 @@ describe("R46 — la entrada inválida nombra el campo y no llega al repositorio
   it("los bordes del slug valen: 3 y 63 caracteres", async () => {
     for (const slug of ["abc", "a".repeat(63), "a1-b2-c3"]) {
       const { repo, altaEmpresa } = repoDoble();
-      const r = await new OrganizacionService(repo).altaEmpresa({ ...entradaValida(), slug });
+      const r = await new OrganizacionService(repo, paisesDelAltaFijos()).altaEmpresa({ ...entradaValida(), slug });
       expect(r.estado).toBe("creada");
       expect(altaEmpresa.mock.calls[0][0].slug).toBe(slug);
     }
@@ -100,7 +101,7 @@ describe("R46 — la entrada inválida nombra el campo y no llega al repositorio
 describe("R44 — el maestro nace sin contraseña utilizable", () => {
   it("el repositorio recibe los datos validados y un hash de un secreto de 32 bytes", async () => {
     const { repo, altaEmpresa } = repoDoble();
-    await new OrganizacionService(repo).altaEmpresa(entradaValida());
+    await new OrganizacionService(repo, paisesDelAltaFijos()).altaEmpresa(entradaValida());
 
     expect(altaEmpresa).toHaveBeenCalledTimes(1);
     const datos = altaEmpresa.mock.calls[0][0];
@@ -115,7 +116,7 @@ describe("R44 — el maestro nace sin contraseña utilizable", () => {
 
   it("ninguna contraseña que alguien pueda teclear abre la cuenta", async () => {
     const { repo, altaEmpresa } = repoDoble();
-    await new OrganizacionService(repo).altaEmpresa(entradaValida());
+    await new OrganizacionService(repo, paisesDelAltaFijos()).altaEmpresa(entradaValida());
     const { passwordHash, email, documento, telefono } = altaEmpresa.mock.calls[0][0].maestro;
 
     for (const intento of ["", " ", "password", "123456", email, documento, telefono, passwordHash]) {
@@ -125,7 +126,7 @@ describe("R44 — el maestro nace sin contraseña utilizable", () => {
 
   it("el secreto y el hash son distintos en cada alta", async () => {
     const { repo, altaEmpresa } = repoDoble();
-    const servicio = new OrganizacionService(repo);
+    const servicio = new OrganizacionService(repo, paisesDelAltaFijos());
     await servicio.altaEmpresa(entradaValida());
     await servicio.altaEmpresa(entradaValida());
 
@@ -137,7 +138,7 @@ describe("R44 — el maestro nace sin contraseña utilizable", () => {
 
   it("ni el secreto ni el hash salen en el resultado", async () => {
     const { repo, altaEmpresa } = repoDoble();
-    const r = await new OrganizacionService(repo).altaEmpresa(entradaValida());
+    const r = await new OrganizacionService(repo, paisesDelAltaFijos()).altaEmpresa(entradaValida());
     const texto = JSON.stringify(r);
     expect(texto).not.toContain(secretosHasheados[0]);
     expect(texto).not.toContain(altaEmpresa.mock.calls[0][0].maestro.passwordHash);
@@ -146,9 +147,21 @@ describe("R44 — el maestro nace sin contraseña utilizable", () => {
 
 describe("SL-20 R6 — el país validado llega al repositorio", () => {
   it("el repositorio recibe el `paisId` de la entrada, sin cambiarlo", async () => {
+    // SLT-42: el país tiene que estar completo y el maestro cumplir SUS reglas (R6, R10, R14). Los
+    // países de prueba `XA`–`XZ` no tienen reglas de teléfono en libphonenumber (R16), así que el
+    // segundo país es uno real: Panamá, con un tipo de documento de prueba.
+    const PA = paisDelAltaFijo(
+      { id: "PA", nombre: "Panamá", prefijoTelefonico: "507", telefonoDigitosNacionales: 8, zonaHoraria: "America/Panama" },
+      [{ id: "tipo-pa", value: "PA_cedula", paisId: "PA", clave: "cedula", nombre: "Cédula", caracteres: "digitos", largoMin: 8, largoMax: 8, activo: true }],
+    );
     const { repo, altaEmpresa } = repoDoble();
-    await new OrganizacionService(repo).altaEmpresa({ ...entradaValida(), paisId: "XA" });
-    expect(altaEmpresa.mock.calls[0][0].paisId).toBe("XA");
+    const e = entradaValida();
+    await new OrganizacionService(repo, paisesDelAltaFijos([paisDelAltaFijo(), PA])).altaEmpresa({
+      ...e,
+      paisId: "PA",
+      maestro: { ...e.maestro, telefono: "61234567", documento: "12345678", tipoDocumento: "PA_cedula" },
+    });
+    expect(altaEmpresa.mock.calls[0][0].paisId).toBe("PA");
   });
 });
 
@@ -168,7 +181,7 @@ describe("R44–R46 — los cinco desenlaces del repositorio se devuelven tal cu
 
   it.each(desenlaces)("%o", async (desenlace) => {
     const { repo } = repoDoble(desenlace);
-    expect(await new OrganizacionService(repo).altaEmpresa(entradaValida())).toEqual(desenlace);
+    expect(await new OrganizacionService(repo, paisesDelAltaFijos()).altaEmpresa(entradaValida())).toEqual(desenlace);
   });
 
   it("un error del repositorio no se traga", async () => {
@@ -177,6 +190,6 @@ describe("R44–R46 — los cinco desenlaces del repositorio se devuelven tal cu
         throw new Error("la base se cayó");
       }),
     };
-    await expect(new OrganizacionService(repo).altaEmpresa(entradaValida())).rejects.toThrow("la base se cayó");
+    await expect(new OrganizacionService(repo, paisesDelAltaFijos()).altaEmpresa(entradaValida())).rejects.toThrow("la base se cayó");
   });
 });

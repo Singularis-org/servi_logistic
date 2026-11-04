@@ -337,6 +337,28 @@ describeSiHayBase("SL-20 — PaisRepository contra Postgres", () => {
     expect(r.deCr).toBeNull();
   });
 
+  it("SLT-42 (R6): tieneTipoDocumentoActivo es true solo si ESE país tiene algún tipo activo", async () => {
+    const r = await revertida(base, async (tx) => {
+      await crearPaisDePrueba(tx, "XA");
+      await crearPaisDePrueba(tx, "XB");
+      await crearPaisDePrueba(tx, "XC");
+      await crearTipoDocumentoDePrueba(tx, "XA", { clave: "nacional" });
+      await crearTipoDocumentoDePrueba(tx, "XA", { clave: "viejo", activo: false });
+      // XB solo tiene un inactivo; XC no tiene ninguno.
+      await crearTipoDocumentoDePrueba(tx, "XB", { clave: "viejo", activo: false });
+      const repo = new PaisRepository(clienteConSavepoint(tx));
+      return {
+        xa: await repo.tieneTipoDocumentoActivo("XA"),
+        xb: await repo.tieneTipoDocumentoActivo("XB"),
+        xc: await repo.tieneTipoDocumentoActivo("XC"),
+        cr: await repo.tieneTipoDocumentoActivo("CR"),
+        noExiste: await repo.tieneTipoDocumentoActivo("XZ"),
+      };
+    });
+
+    expect(r).toEqual({ xa: true, xb: false, xc: false, cr: true, noExiste: false });
+  });
+
   it("SLT-42 (design §6.1): zonasConEmpresas da las zonas distintas de los países con empresas, sin NULL ni países sin empresas", async () => {
     const r = await revertida(base, async (tx) => {
       // XA y XB comparten zona: sale una vez. XC tiene empresa y no zona. XD tiene zona y no empresa.

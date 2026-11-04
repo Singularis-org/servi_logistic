@@ -36,10 +36,12 @@ import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEm
 import { descargaConfig } from "@/lib/config/descarga";
 import { esPlataforma } from "@/lib/auth/plataforma";
 import { EmpresaNoResuelta } from "@/lib/db/contexto-empresa";
-import { numericIdentifierSchema } from "@/lib/types/auth";
-import type { TipoDocumentoDTO } from "@/lib/types/pais";
-import { validarDocumento } from "@/lib/utils/documento";
-import { validarTelefonoDelPais } from "@/lib/validacion/telefono";
+import {
+  rechazoGenerico,
+  validarPersonaDelPais,
+  validarTelefonoDePersona,
+  validarTipoYDocumento,
+} from "@/lib/services/validacion-documento-telefono";
 import { TopeDelPlanAlcanzado, traducirErrorDeTope } from "@/lib/planes/tope-error";
 import { rechazoDeNombreDeEtiqueta } from "@/lib/utils/nombre-imprimible-etiqueta";
 import { hashPassword } from "@/lib/utils/password";
@@ -92,25 +94,8 @@ function rechazoDeTopeEnRol(tope: TopeDelPlanAlcanzado): {
   return { status: "validation_error", fieldErrors: { rolId: [tope.message] } };
 }
 
-// SLT-42 (R11): un tipo de otro pais no se distingue de uno que no existe; para la empresa no existe.
-// El inactivo si lleva su propio texto: existe, pero ya no se puede elegir (desvio aceptado 2).
-function rechazoDeTipo(tipo: TipoDocumentoDTO | null): string | null {
-  if (tipo === null) return "El tipo de documento indicado no existe";
-  if (!tipo.activo) return "El tipo de documento indicado ya no está activo";
-  return null;
-}
-
-// SLT-42 (R14, R16): el texto de cada motivo de rechazo del telefono.
-const MENSAJE_TELEFONO = {
-  invalido: "El teléfono no es válido para el país de la empresa",
-  pais_sin_reglas: "El país de la empresa no tiene reglas de teléfono",
-} as const;
-
-// SLT-42 (R17): la regla generica de antes, para cuando no hay empresa de la que sacar el pais.
-function rechazoGenerico(valor: string): string | null {
-  const r = numericIdentifierSchema().safeParse(valor);
-  return r.success ? null : (r.error.issues[0]?.message ?? "valor no valido");
-}
+// SLT-42: las claves de `fieldErrors` de `UsuarioForm` para tipo, documento y telefono.
+const CAMPOS_DE_USUARIO = { telefono: "telefono", documento: "cedula", tipo: "tipoIdentificacionId" } as const;
 
 type ValidacionDePersona =
   | { ok: true; telefono: string; cedula: string; tipoIdentificacionId: string }
@@ -756,19 +741,12 @@ export class UsuarioService implements IUsuarioService {
     campoDelDocumento: "cedula" | "tipoIdentificacionId",
   ): Promise<{ ok: true; tipoId: string; cedula: string } | { ok: false; campo: string; mensaje: string }> {
     const tipo = await this.reglasDelPais(operacion).tipoDocumento(tipoPedido);
-    const motivoTipo = rechazoDeTipo(tipo);
-    if (tipo === null || motivoTipo !== null) {
-      return { ok: false, campo: "tipoIdentificacionId", mensaje: motivoTipo ?? "" };
-    }
-    const documento = validarDocumento(cedula, tipo);
-    if (!documento.ok) {
-      const mensaje =
-        campoDelDocumento === "cedula"
-          ? documento.mensaje
-          : `El documento guardado no cumple la regla de este tipo. ${documento.mensaje}`;
-      return { ok: false, campo: campoDelDocumento, mensaje };
-    }
-    return { ok: true, tipoId: tipo.id, cedula: documento.valor };
+    const r = validarTipoYDocumento(tipo, cedula);
+    if (r.ok) return { ok: true, tipoId: r.tipo.id, cedula: r.documento };
+    if (r.en === "tipo") return { ok: false, campo: "tipoIdentificacionId", mensaje: r.mensaje };
+    const mensaje =
+      campoDelDocumento === "cedula" ? r.mensaje : `El documento guardado no cumple la regla de este tipo. ${r.mensaje}`;
+    return { ok: false, campo: campoDelDocumento, mensaje };
   }
 
   /** SLT-42 (R10, R11, R14-R17): el alta valida los tres campos y junta todos los errores. */
@@ -778,14 +756,10 @@ export class UsuarioService implements IUsuarioService {
     const paisId = await this.paisDeLaEmpresa("crear");
     if (paisId === null) return validarPersonaSinEmpresa(input);
 
-    const fieldErrors: Record<string, string[]> = {};
-    const doc = await this.validarTipoYDocumento("crear", input.tipoIdentificacionId, input.cedula, "cedula");
-    if (!doc.ok) fieldErrors[doc.campo] = [doc.mensaje];
-    const telefono = validarTelefonoDelPais(input.telefono, paisId); // R14, R16
-    if (!telefono.ok) fieldErrors.telefono = [MENSAJE_TELEFONO[telefono.motivo]];
-
-    if (!doc.ok || !telefono.ok) return { ok: false, fieldErrors };
-    return { ok: true, telefono: telefono.nacional, cedula: doc.cedula, tipoIdentificacionId: doc.tipoId };
+    const tipo = await this.reglasDelPais("crear").tipoDocumento(input.tipoIdentificacionId);
+    const r = validarPersonaDelPais(paisId, { telefono: input.telefono, documento: input.cedula, tipo }, CAMPOS_DE_USUARIO);
+    if (!r.ok) return r;
+    return { ok: true, telefono: r.telefono, cedula: r.documento, tipoIdentificacionId: r.tipo.id };
   }
 
   /**
@@ -820,9 +794,9 @@ export class UsuarioService implements IUsuarioService {
     const fieldErrors: Record<string, string[]> = {};
     const resultado = { ok: true as const, ...sinCambios };
     if (cambiaTelefono) {
-      const r = validarTelefonoDelPais(input.telefono ?? "", paisId); // R14, R16
+      const r = validarTelefonoDePersona(input.telefono ?? "", paisId); // R14, R16
       if (r.ok) resultado.telefono = r.nacional; // R15
-      else fieldErrors.telefono = [MENSAJE_TELEFONO[r.motivo]];
+      else fieldErrors.telefono = [r.mensaje];
     }
     if (cambiaTipo) {
       const doc = await this.validarTipoYDocumento(

@@ -98,6 +98,7 @@ function repoDoble(
     cambiarDisponible: vi.fn<IPaisRepository["cambiarDisponible"]>(async () => o.cambiarDisponible ?? "cambiado"),
     // SLT-42: el servicio de países no los usa; están para cumplir el puerto.
     tipoDocumentoDelPais: vi.fn<IPaisRepository["tipoDocumentoDelPais"]>(async () => null),
+    tieneTipoDocumentoActivo: vi.fn<IPaisRepository["tieneTipoDocumentoActivo"]>(async () => true),
     zonasConEmpresas: vi.fn<IPaisRepository["zonasConEmpresas"]>(async () => []),
   } satisfies IPaisRepository;
   return repo;

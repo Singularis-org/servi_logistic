@@ -54,6 +54,13 @@ export interface IPaisRepository {
   tipoDocumentoDelPais(paisId: string, idOValue: string): Promise<TipoDocumentoDTO | null>;
 
   /**
+   * SLT-42 (R6; design §4.2): si el país tiene al menos un tipo de documento activo. Lo usa el alta
+   * de empresa, en plataforma, para no dejar nacer una empresa con la que no se podría dar de alta a
+   * nadie.
+   */
+  tieneTipoDocumentoActivo(paisId: string): Promise<boolean>;
+
+  /**
    * SLT-42 (R25; design §6.1): las zonas horarias distintas de los países que tienen al menos una
    * empresa, sin los `NULL`, por orden alfabético. Lectura de plataforma: abre `comoPlataforma` por
    * su cuenta (la llama la cola de jobs, que no tiene empresa).

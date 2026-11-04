@@ -80,10 +80,10 @@
   `tests/unit/services/usuario-service-pais.test.ts` (R5, R9–R12, R14–R16) y el caso de R17 en
   `usuario-service-superadmin.test.ts`.
   *Hecho:* verde; los tests de `UsuarioService` que ya existían, en verde con `reglasPaisFijas(CR)`.
-- [ ] **T4.2** `[P]` `PostulacionMensajeroService` y `AprobacionPostulacionService` +
+- [x] **T4.2** `[P]` `PostulacionMensajeroService` y `AprobacionPostulacionService` +
   `tests/unit/services/postulacion-mensajero-service-pais.test.ts`.
   *Hecho:* verde.
-- [ ] **T4.3** `[P]` `OrganizacionService.altaEmpresa` (R6, y R10/R14 del maestro con el país elegido) +
+- [x] **T4.3** `[P]` `OrganizacionService.altaEmpresa` (R6, y R10/R14 del maestro con el país elegido) +
   `tests/unit/services/organizacion-service-pais.test.ts`.
   *Hecho:* verde; `validation_error` en `paisId` y en `maestro.*` sin escribir.
 - [x] **T4.4** `[P]` WhatsApp con el prefijo del país: `ChatConversacionRepository` y

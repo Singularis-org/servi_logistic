@@ -394,6 +394,7 @@ describe("SL-20/R47 — disponibilidad de un país por el borde, con el servicio
       deLaEmpresa: vi.fn(),
       cambiarDisponible: vi.fn(async () => resultado),
       tipoDocumentoDelPais: vi.fn(),
+      tieneTipoDocumentoActivo: vi.fn(),
       zonasConEmpresas: vi.fn(),
     } satisfies Record<keyof IPaisRepository, Espia>;
   }
@@ -437,6 +438,7 @@ describe("SL-20/R23, R41 — alta de país del catálogo por el borde, con el se
       deLaEmpresa: vi.fn(),
       cambiarDisponible: vi.fn(),
       tipoDocumentoDelPais: vi.fn(),
+      tieneTipoDocumentoActivo: vi.fn(),
       zonasConEmpresas: vi.fn(),
     } satisfies Record<keyof IPaisRepository, Espia>;
   }
