@@ -36,3 +36,4 @@ R25 literal no sale vacío hasta que el PR #44 (SLT-43) entre en `dev`. Siguient
     puro, comparte la regla con `_shared/zona-colapso.ts`, que SLT-75 conserva, y no cuesta nada.
   - Pendiente de la aprobación humana de la enmienda antes de T8.
 - 2026-11-03 · Cristian aprueba la enmienda por escrito: «Aprobado» (2026-11-03). Se ejecutan T8.1–T8.6.
+- 2026-11-04 · B1 de la vuelta 2 arreglado con un cherry-pick de 9b4e0004 (`c8476f7a`). `zona-distrito-unica.test.ts` 9/9 contra `logistic_slt44`; typecheck exit 0.
