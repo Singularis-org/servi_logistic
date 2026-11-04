@@ -212,6 +212,12 @@ T2.4 y T4.1–T4.4 hechas, en el commit 564b6532. Typecheck en 0 y `superficie-d
   - un id inexistente sigue diciendo «no existe».
 - R18 → `tests/unit/services/postulacion-mensajero-service.test.ts` › «SL-42/R18: un tipo de vehiculo inactivo -> validation_error en vehiculo_id, sin subir ni crear».
 - R18 (SQL) → `tests/integration/db/vehiculos-plataforma.test.ts` › «R18 (T3.1) — la postulacion: `vehiculoExiste` es true con el activo y false con el inactivo o el que no existe».
+- R18 (asignación sin cambio) → `tests/integration/db/vehiculos-plataforma.test.ts` › «R18 — un mensajero con vehiculo inactivo sigue siendo asignable igual que uno con vehiculo activo».
+  - Ejercita `OrdenRepository.findMensajeroIdsConVehiculo`, el único filtro de vehículo de la asignación, contra Postgres.
+  - Ese filtro lo comparten `AsignacionSateliteService`, `GuiaAsignacionService` y `TraspasoMensajeroService`.
+  - Hay un control de que el filtro sí filtra: el mensajero sin vehículo queda fuera.
+  - Integración y no unitario: la elegibilidad se decide en SQL. No se tocó código de producción.
+  - 2026-11-04: `vitest run tests/integration/db/vehiculos-plataforma.test.ts` → `Tests 12 passed (12)`, 0 skipped. `tsc --noEmit`: 0 errores.
 
 ### Verificación (NODE_OPTIONS=--max-old-space-size=8192; DATABASE_URL local, comprobado `localhost` sin imprimirla)
 - `vitest run tests/unit/guards/geografia-predicado-unico.guardia.test.ts tests/integration/db/vehiculos-plataforma.test.ts`: `Tests 21 passed (21)`.

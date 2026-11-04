@@ -8,6 +8,7 @@ import { conAislamientoPorEmpresa } from "@/lib/db/extension-empresa";
 import { appendRastroVehiculo } from "@/lib/repositories/registrar-rastro-vehiculo";
 import { VehiculoRepository } from "@/lib/repositories/VehiculoRepository";
 import { PostulacionRepository } from "@/lib/repositories/PostulacionRepository";
+import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import {
   cambiarActivacionVehiculoAction,
   crearVehiculoAction,
@@ -324,6 +325,47 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("SL-42 — VehiculoRepository: escritura y r
       return { activo, inactivo, fantasma };
     });
     expect(r).toEqual({ activo: true, inactivo: false, fantasma: false });
+  });
+
+  // R18 — «la asignacion de ordenes NO DEBE cambiar por el estado del vehiculo del mensajero». El
+  // filtro de vehiculo de la asignacion es UNO y vive en SQL: `findMensajeroIdsConVehiculo`, que
+  // comparten `AsignacionSateliteService`, `GuiaAsignacionService` y `TraspasoMensajeroService`
+  // («sin vehiculo no se recibe trabajo»). Por eso se prueba aqui y no con dobles: un servicio
+  // solo ve el Set que le da esta consulta.
+  it("R18 — un mensajero con vehiculo inactivo sigue siendo asignable igual que uno con vehiculo activo", async () => {
+    const r = await conSuperadmin(async ({ tx, repo, actorId }) => {
+      const activo = await repo.create(nombreUnico("sl42 asigna activo"), actorId);
+      const inactivo = await repo.create(nombreUnico("sl42 asigna inactivo"), actorId);
+      await repo.setActivo(inactivo.id, false, actorId);
+
+      const org = await crearOrganizacion(tx);
+      await fijarEmpresa(tx, org.id);
+      const rolMensajero = await idDeRol(tx, "mensajero");
+      const mensajeros: Record<"conActivo" | "conInactivo" | "sinVehiculo", string> = {
+        conActivo: "",
+        conInactivo: "",
+        sinVehiculo: "",
+      };
+      for (const clave of Object.keys(mensajeros) as (keyof typeof mensajeros)[]) {
+        const u = await insertarUsuario(tx, rolMensajero, org.id);
+        if (!u.desenlace.ok) throw new Error(`no se sembro el mensajero: ${JSON.stringify(u.desenlace)}`);
+        mensajeros[clave] = u.id;
+      }
+      const asignar = `UPDATE "usuario" SET "vehiculo_id" = $1 WHERE "id" = $2`;
+      await tx.$executeRawUnsafe(asignar, activo.id, mensajeros.conActivo);
+      await tx.$executeRawUnsafe(asignar, inactivo.id, mensajeros.conInactivo);
+
+      const ordenes = new OrdenRepository(tx as unknown as PrismaClient);
+      const elegibles = await ordenes.findMensajeroIdsConVehiculo(Object.values(mensajeros));
+      const soloElInactivo = await ordenes.findMensajeroIdsConVehiculo([mensajeros.conInactivo]);
+      return { mensajeros, elegibles, soloElInactivo };
+    });
+    // Control: la consulta SI filtra (el que no tiene vehiculo queda fuera), asi que el resultado
+    // no es verde por no filtrar nada.
+    expect(r.elegibles.has(r.mensajeros.sinVehiculo)).toBe(false);
+    expect(r.elegibles.has(r.mensajeros.conActivo)).toBe(true);
+    expect(r.elegibles.has(r.mensajeros.conInactivo)).toBe(true);
+    expect([...r.soloElInactivo]).toEqual([r.mensajeros.conInactivo]);
   });
 
   it("R12/R21 — renombrar o cambiar el estado de un id que no existe devuelve null y no deja rastro", async () => {
