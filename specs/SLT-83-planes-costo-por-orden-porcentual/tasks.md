@@ -60,7 +60,7 @@
   *Hecho:* `tests/unit/planes/rastro-costo-porcentual.test.ts` (R4),
   `tests/unit/planes/costo-concreto-porcentual.test.ts` (R5),
   `tests/integration/db/plan-costo-porcentual-escritura.test.ts` completo (R1, R2, R4) en verde.
-- [ ] **T9. Servicio** `PlanesService`: el orden quién → zod → existe → reglas no cambia; `plan_sin_costo`
+- [x] **T9. Servicio** `PlanesService`: el orden quién → zod → existe → reglas no cambia; `plan_sin_costo`
   con la definición nueva. Depende de T8.
   *Hecho:* `tests/unit/services/planes-service-costo-porcentual.test.ts` (R3, R5) en verde; las demás
   `planes-service*.test.ts` en verde con cambios solo de tipo.

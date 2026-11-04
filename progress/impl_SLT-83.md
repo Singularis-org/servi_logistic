@@ -419,3 +419,29 @@ los `PlanConUsoLeido` ganan `cobroCiclo: { cobrado: "0.00", pendientes: 0 }` (el
 - El aviso de zona horaria de la Tanda A no mordió: el test pone el ancla a 10 días y separa los ciclos por días.
 
 **Veredicto T7:** las tres lecturas dan el modo, lo cobrado en el ciclo y las pendientes, y el modo fijo sigue igual.
+
+## T9
+
+**Archivos.**
+- `lib/services/PlanesService.ts`: **sin cambios de código**. El orden quién → zod → existe → reglas → repositorio ya
+  cubre el campo nuevo (lo valida el esquema de T6) y `plan_sin_costo` usa `tieneCostoConcreto`, que T8 amplió
+  (R5). Lo confirma el test nuevo.
+- Creado `tests/unit/services/planes-service-costo-porcentual.test.ts` (26 casos).
+- Las demás `tests/unit/services/planes-service*.test.ts` no cambian en T9 (sus ajustes de tipo fueron en T6/T7).
+
+**R → test.**
+- R3 → «%s: crear un plan porcentual → forbidden sin llamar al repositorio» y «%s: editar de inmediato o programar
+  el porcentual → forbidden…» (sin sesión y los seis roles de empresa), «forbidden va antes que zod…», y el control
+  «el superadmin sí crea, edita y programa…».
+- R1, R2 (en el servicio) → «%s → validation_error en %s, al crear y al editar, sin llamar al repositorio».
+- R5 → «base monto y porcentaje %s → ok y se asigna, con fecha y sin ella» (con y sin mínimo), «base «sin precio» y
+  porcentaje → plan_sin_costo, sin asignar ni vista previa», «un pendiente que pasa a porcentual…», «asignables
+  conserva los porcentuales de base monto…», «crear un custom porcentual…».
+
+**Salida.**
+- `pnpm exec vitest run tests/unit/services/planes-service-costo-porcentual.test.ts` → `Test Files 1 passed (1) ·
+  Tests 26 passed (26)`.
+- `pnpm exec vitest run tests/unit/services/planes-service` (las 8) → `Test Files 8 passed (8) · Tests 281 passed (281)`.
+- `pnpm run typecheck` → sin errores. `eslint` del test nuevo y de `PlanesService.ts` → 0 problemas.
+
+**Veredicto T9:** el servicio aplica R3 y R5 al modo porcentual sin cambiar su orden.
