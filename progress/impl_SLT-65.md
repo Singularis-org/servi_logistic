@@ -1017,3 +1017,29 @@ Salida (`DATABASE_URL` → `logistic_slt65_r1104`, un archivo por corrida con `t
 - Archivos con conflicto: `ordenes-api-key-orden-consulta.route` 31/31, `ordenes-api-key-composicion-415` 3/3, `costo-orden-forma-unica.guardia` 11/11, `orden-repository.no-regresion-106` 7/7.
 - `pnpm run test:guardias`: 332/333 archivos y 4623 tests en verde. Solo falla `dependencias-declaradas-presentes` (4 tests), que está en la baseline.
 - `tsc --noEmit`: exit 0.
+
+## Vuelta 3 de la review: B1, m1 y m2 (implementer, 2026-11-04)
+
+Commit `9a181b6d`. Base de datos: `logistic_slt65_r1104`.
+
+- **B1, dobles.** Se añade `...delegadosDelCatalogo(...)` (`tests/fixtures/doble-catalogo-geografico.ts`) en dos sitios, igual que el mock del composition root de `367b4ba4`. No cambia ningún `expect`.
+  - `tests/unit/repositories/cierre-pago-congelado.test.ts`, en `txCrear`. Lleva los nodos `p1`/`ct1`/`d1` con los nombres de antes (Cartago/Central/Oriental) y sin marcas.
+  - `tests/unit/repositories/convergencia-tarifa-listado-cierre.test.ts`, en el `it` R38 del LISTADO. Lleva el nodo `DISTRITO`, sin marca.
+- **m1 y R6, autorizados por Cristian el 2026-11-04 («Autorizar»).** El `costeo` esperado suma solo `distritoId`: `distritoId: null` en el R6 de `orden-repository.api-lectura.test.ts` y `distritoId: f.distritoId` en `geo-consultas-ordenes.test.ts:163-165` (ya estaba desde `42fd8469`). La marca no cambia. La decisión queda anotada en `progress/features/SLT-65.md > Decisiones`.
+- **m2.** `specs/SLT-65-geo-jerarquica-consultas/design.md:26` y `:393` citan ahora `20261104120000`–`120500`.
+
+### Corridas (un archivo por corrida, `timeout 600`)
+
+- `cierre-pago-congelado`: 11/11. `convergencia-tarifa-listado-cierre`: 10/10. `orden-repository.api-lectura`: 29/29. `geo-consultas-ordenes` (contra la base): 6/6.
+- `pnpm typecheck` (tsc --noEmit): exit 0.
+- **Suite unitaria.**
+  - `tests/unit` entera (8 GB): pasó los 600 s, `exit=124`.
+  - Por carpetas (8 GB, `timeout 600` cada una):
+    - `services`: 7277/7277.
+    - `analytics`: 2262/2262.
+    - `repositories`: 2121/2121.
+    - `utils`: 1765/1765.
+    - `guards`: 3290 pasan, 5 fallan y 1 se omite.
+      - 4 de los rojos son de `dependencias-declaradas-presentes`, que está en la baseline.
+      - El otro es `sin-estados-retirados` (`STACK_TRACE_ERROR` bajo carga). Corrido solo da 6/6, así que es un flake de saturación.
+  - Claude Code mató la corrida por falta de memoria del sistema durante `components`. No llegaron a correr `components`, `actions`, `types` ni el resto de carpetas pequeñas. Se dejaron sin relanzar, como pide el aviso del sistema, y quedan para el gate de CI.
