@@ -887,9 +887,13 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
       );
       expect(Number(fila[0].c)).toBe(100);
       // R11 también: cada orden nació por un camino con trigger, que deja su cargo.
+      // SLT-83 (design §13, T5): solo las órdenes SIN condiciones porcentuales congeladas. Una orden
+      // porcentual no lleva cargo hasta su estado final, así que «toda orden tiene su cargo» ya no es cierto
+      // para ellas. La demo tiene excepción propia (no congela nada): el acotado no le quita ninguna orden.
       const sinCargoUnico = await contar(
         `SELECT count(*)::int AS n FROM orden o
           WHERE o.organizacion_id = $1
+            AND NOT EXISTS (SELECT 1 FROM cobro_plataforma_porcentual_orden c WHERE c.orden_id = o.id)
             AND (SELECT count(*) FROM cobro_plataforma_movimiento m WHERE m.orden_id = o.id AND m.tipo = 'cargo') <> 1`,
         org,
       );

@@ -190,3 +190,38 @@ pendiente vuelve a la sembrada y una orden nueva se carga 100.00 «plan» (regla
 `eslint` → 0 problemas.
 
 **Veredicto T4:** ida y vuelta de M1–M3 en verde, con las bajadas negándose ante datos porcentuales.
+
+## T5
+
+**Búsqueda** (design §13: el invariante «toda orden tiene su cargo» de SL-40 deja de ser cierto para las
+órdenes porcentuales sin estado final). Grep en `tests/`, `scripts/`, `lib/`, `app/` y `e2e/` de
+`cobro_plataforma_movimiento`, `cobrosPlataforma`, «toda orden», «sin cargo», «cada orden»:
+
+| Dónde | Qué afirma | Qué se hace |
+|---|---|---|
+| `tests/integration/db/demo-qa.test.ts:889` | toda orden de la empresa demo tiene exactamente un cargo | **Acotado** a las órdenes sin condiciones congeladas (`NOT EXISTS` en `cobro_plataforma_porcentual_orden`). La demo tiene excepción propia (R7: no congela nada), así que hoy no le quita ninguna orden |
+| `tests/unit/guards/cobro-plataforma-solo-por-trigger.guardia.test.ts` | nadie escribe cargos desde `lib/`/`app/` | Sigue cierto (escriben solo los triggers). Sin cambio |
+| `tests/integration/db/cobro-plataforma-cargos.test.ts` R18 | una orden sin cargo (anterior a SL-40) se anula y recupera sin registrar nada | No afirma el invariante: sin cambio |
+| `tests/integration/db/demo-qa-borrado.test.ts:114, 232` | la empresa sembrada tiene filas en `cobro_plataforma_movimiento` | Su empresa no tiene plan porcentual: sigue cierto. Sin cambio |
+| `db/migrations/20261024120000_cobro_plataforma_blindaje_orden` (comentario) | «desde SL-40 toda orden tiene su cargo» | Migración aplicada: no se edita. La nueva regla queda en la cabecera de `20261104150200` |
+| `scripts/` | ninguna comprobación del invariante | — |
+
+**Fuera de mi capa, para el leader:** los textos de la wallet (`app/(app)/wallet/_components/wallet-labels.ts:127-128`,
+«Lo que la plataforma cobra por cada orden creada…», «Cada orden nueva suma su cobro aquí») y su E2E
+(`e2e/cobro-plataforma-sl40.spec.ts:57-59`) y la descripción del formulario de planes («el costo por orden
+se cobra en cada orden nueva», `PlanesModule.tsx:33`, `PlanDetalle.tsx:73`) dejan de ser exactos para un
+plan porcentual. No son tests del invariante ni lo pide el spec; no los toco (UI, y cambiar el texto es una
+decisión fuera del spec).
+
+**Archivos.** Modificado `tests/integration/db/demo-qa.test.ts` (el acotado y su comentario).
+
+**Salida.**
+- La base de la feature necesitó `pnpm run db:seed` (faltaban los catálogos de vehículos que pide la demo).
+- `pnpm exec vitest run tests/integration/db/demo-qa.test.ts` → `Test Files 1 passed (1) · Tests 12 passed (12)`.
+- `eslint` → 0 problemas.
+
+**Pendiente:** el «Hecho» de T5 es la suite de integración de `db` entera en verde con `./init.sh --completo`
+o en CI. No la corro aquí (instrucción: nunca la suite completa en local), así que T5 queda **sin marcar**
+en `tasks.md` hasta que CI la dé en verde.
+
+**Veredicto T5:** el único test que afirmaba el invariante queda acotado; verificación completa pendiente de CI.
