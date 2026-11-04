@@ -22,11 +22,8 @@ import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IOptimizacionRutaService } from "@/lib/interfaces/services/IOptimizacionRutaService";
 import {
-  calcularRutaAlSalirSchema,
   sincronizarRutaSchema,
-  trazarTramoVivoSchema,
   type SincronizarRutaResult,
-  type TrazarTramoVivoResultUI,
 } from "@/lib/types/ruta-mensajero";
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import type { AppErrorShape } from "@/lib/errors";
@@ -124,15 +121,15 @@ export async function sincronizarRuta(
     }
     // SLT-59 (R64, design §12.5): la forma `conflict` ya existe y el boton ya hace
     // `toast.warning(motivo)`, asi que la UI no cambia. El porcentaje es el de la config (R55).
-    // SLT-74: el minimo se muestra en paquetes, no en %, y si el job de la primera ruta ya esta
-    // pendiente se dice cuanto falta para que corra (`esperaMs`, lo mide el service).
+    // SLT-74: el minimo se muestra en paquetes, no en %.
+    // SLT-79: con algo recogido el service dice cuanto falta para los RUTA_PRIMERA_DEBOUNCE_MIN
+    // desde la ultima recogida (`esperaMs`); con nada recogido no viene y solo se pide recoger.
     if (resultado.status === "omitida" && resultado.razon === "recogida_insuficiente") {
       const pct = (deps.config ?? loadRouteOptimizationConfig()).RUTA_PRIMERA_MIN_RECOGIDO_PCT;
       return {
         status: "conflict" as const,
         motivo: avisoRecogidaInsuficiente({
           asignadas: resultado.asignadas,
-          recogidas: resultado.recogidas,
           pct,
           esperaMs: resultado.esperaMs,
         }),
@@ -154,110 +151,7 @@ export async function sincronizarRuta(
   return isAppErrorShape(r) ? toRutaActionError(r) : r;
 }
 
-/**
- * SLT-59 (R62, R63, design §12.6) — disparo de salida: la pantalla de reparto vio al mensajero
- * alejarse del punto de recogida con la primera ruta del dia pendiente. Mismo borde que
- * `sincronizarRuta` (actor, rol antes de parsear, zod), y las guardas viven en el service: el
- * cliente pide, pero quien decide si se paga es `ejecutar` con `motivo: "salida"` (R63, R66).
- *
- * Cualquier `omitida` se devuelve como `ok` con `omitida: true`: la pantalla no avisa de nada
- * (sin toast), solo refresca si hubo calculo. Sin `intervalo_minimo`: lo acota R63.
- */
-export async function calcularRutaAlSalir(
-  input: unknown,
-  deps: RutaMensajeroDeps = {},
-): Promise<SincronizarRutaResult> {
-  const r = await withErrorHandler(async () => {
-    const actor = await (deps.getActor ?? resolveActorFromSession)();
-    if (!actor) throw new UnauthenticatedError();
-    // R33, igual que en `sincronizarRuta`: el rol va ANTES de parsear y de construir el service.
-    if (actor.rol !== ROL_AUTORIZADO) return { status: "forbidden" as const };
+// SLT-79 (2026-11-03, decision humana «todo manual»): aqui vivia `calcularRutaAlSalir` (SLT-59
+// R62/R63), el disparo de la primera ruta cuando la pantalla veia al mensajero a mas de 1 km del
+// punto de recogida. Se retiro: la primera ruta del dia la calcula solo `sincronizarRuta`.
 
-    const data = calcularRutaAlSalirSchema.parse(input); // ZodError -> VALIDATION_ERROR
-    const service = deps.service ?? buildService();
-
-    let resultado;
-    try {
-      resultado = await service.ejecutar(actor.usuarioId, {
-        motivo: "salida",
-        ubicacion: data.ubicacion,
-      });
-    } catch (error) {
-      // Mismo trato que el boton (R27, R31): la ruta ya quedo `desactualizada` con el ultimo
-      // orden valido intacto, y el texto es fijo.
-      if (error instanceof RutaIntentoFallidoError) {
-        return {
-          status: "conflict" as const,
-          motivo: "no se pudo recalcular la ruta ahora; se conserva el ultimo orden",
-        };
-      }
-      throw error;
-    }
-
-    return {
-      status: "ok" as const,
-      omitida: resultado.status === "omitida",
-      secuenciaFuente: resultado.status === "ok" ? resultado.secuenciaFuente : null,
-      ...(resultado.trazado !== undefined ? { trazado: resultado.trazado } : {}),
-    };
-  });
-  return isAppErrorShape(r) ? toRutaActionError(r) : r;
-}
-
-/**
- * Trayecto por calles desde donde el mensajero ESTA hasta una parada concreta.
- *
- * ═══ POR QUE ESTA ES LA UNICA LLAMADA QUE NO SE PUEDE CACHEAR ═══
- * El resto del dibujo se guarda y se reutiliza mientras la ruta no cambie. Este no: arranca
- * en la posicion actual, asi que en cuanto el mensajero se mueve el resultado anterior deja
- * de ser el suyo. Cada pulsacion es una llamada FACTURADA nueva, y de ahi que sea un boton
- * explicito y no algo que corra solo.
- *
- * Las guardas viven en el service (intervalo minimo persistido + pertenencia de la parada);
- * aqui solo se resuelve el actor, se valida el borde y se traduce el desenlace.
- */
-export async function trazarTramoVivo(
-  input: unknown,
-  deps: RutaMensajeroDeps = {},
-): Promise<TrazarTramoVivoResultUI> {
-  const r = await withErrorHandler(async () => {
-    const actor = await (deps.getActor ?? resolveActorFromSession)();
-    if (!actor) throw new UnauthenticatedError();
-    // R33, igual que en `sincronizarRuta`: el rol se comprueba ANTES de parsear y ANTES de
-    // construir el service. Una Server Action es un endpoint, no una parte de la pagina.
-    if (actor.rol !== ROL_AUTORIZADO) return { status: "forbidden" as const };
-
-    const data = trazarTramoVivoSchema.parse(input); // ZodError -> VALIDATION_ERROR
-    const service = deps.service ?? buildService();
-
-    const resultado = await service.trazarTramoVivo(actor.usuarioId, {
-      ubicacion: data.ubicacion,
-      ordenId: data.ordenId,
-    });
-
-    switch (resultado.status) {
-      case "ok":
-        return {
-          status: "ok" as const,
-          encodedPolyline: resultado.encodedPolyline,
-          distanciaM: resultado.distanciaM,
-          duracionS: resultado.duracionS,
-        };
-      case "no_autorizada":
-        // Se colapsa con «no eres mensajero»: ver el comentario del tipo. El cliente no
-        // puede distinguir «no es tuya» de «no existe», que es justo lo que se busca.
-        return { status: "forbidden" as const };
-      case "intervalo_minimo":
-        return {
-          status: "conflict" as const,
-          motivo: "pediste el trayecto hace muy poco; intenta de nuevo en unos segundos",
-        };
-      case "no_disponible":
-        return {
-          status: "conflict" as const,
-          motivo: "no se pudo calcular el trayecto ahora",
-        };
-    }
-  });
-  return isAppErrorShape(r) ? toRutaActionError(r) : r;
-}

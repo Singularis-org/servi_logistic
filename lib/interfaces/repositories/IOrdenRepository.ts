@@ -1784,6 +1784,15 @@ export interface IOrdenRepository {
     mensajeroId: string,
     dia: Date,
   ): Promise<{ asignadas: number; recogidas: number }>;
+  /**
+   * SLT-79 — instante de la ULTIMA recogida del mensajero desde `desde` (inicio del dia de Costa
+   * Rica en UTC, `inicioDelDiaCREnUtc`: se compara con `created_at`, que es `timestamp`). «Recogida»
+   * = fila de `orden_historial_estado` con `origen_tipo = 'recoleccion'` (arista #11
+   * `por_recoger -> en_reparto`, la que escribe `recogerLote`) y el mensajero como actor, sobre una
+   * orden que sigue asignada a el y no borrada: las mismas que cuenta `contarAsignadasDelDia` como
+   * recogidas. Acotada a la empresa del mensajero. `null` si no hay ninguna.
+   */
+  ultimaRecogidaDelDia(mensajeroId: string, desde: Date): Promise<Date | null>;
 
   /**
    * FICHA 454 (R54/R55): de `ids`, las ordenes `en_reparto` con una gestion PENDIENTE de confirmar

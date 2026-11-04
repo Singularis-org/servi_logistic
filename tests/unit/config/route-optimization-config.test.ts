@@ -33,7 +33,8 @@ const VARS = [
   // SLT-59 (R55): enfriamiento de la recuperacion (D21) y umbral de la primera ruta (D25).
   "RUTA_RECUPERACION_ENFRIAMIENTO_MIN",
   "RUTA_PRIMERA_MIN_RECOGIDO_PCT",
-  // SLT-59 (R76): debounce deslizante de la primera ruta durante la recogida (D29).
+  // SLT-59 (R76): debounce de la primera ruta (D29). SLT-79: ahora es la espera del boton desde la
+  // ultima recogida; ya no hay job.
   "RUTA_PRIMERA_DEBOUNCE_MIN",
 ] as const;
 
@@ -188,7 +189,7 @@ describe("R10 — enteros: default ante ausente, vacio o invalido", () => {
     ["RUTA_OPT_MAX_INTENTOS", 3, "2"],
     ["RUTA_RECUPERACION_ENFRIAMIENTO_MIN", 5, "15"],
     ["RUTA_PRIMERA_MIN_RECOGIDO_PCT", 80, "60"],
-    // SLT-59 (R76, D29) y SLT-74: 5 min sin recoger antes de calcular la primera ruta.
+    // SLT-59 (R76, D29), SLT-74 y SLT-79: 5 min sin recoger para que el boton calcule la primera ruta.
     ["RUTA_PRIMERA_DEBOUNCE_MIN", 5, "3"],
   ] as const)("SLT-59/R36, R55, R76 — %s: un unico punto de lectura, sin lanzar nunca", (nombre, porDefecto, override) => {
     it(`ausente -> ${porDefecto}, el valor decidido por el humano`, () => {

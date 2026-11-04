@@ -36,21 +36,23 @@
 // filas completadas no se purgan. La segunda recogida del mensajero —y todas las demas,
 // para siempre— se descartarian en silencio. Es la trampa exacta que documento el gate
 // F1.4-Q4 de la feature 91.
-import type {
-  IJobRepository,
-  IJobRepositoryMovible,
-  JobTxClient,
-} from "@/lib/interfaces/repositories/IJobRepository";
+import type { IJobRepository, JobTxClient } from "@/lib/interfaces/repositories/IJobRepository";
 import { loadRouteOptimizationConfig } from "@/lib/config/route-optimization";
 import { inicioDelDiaCREnUtc } from "@/lib/utils/fecha-cr";
 
 /**
- * SLT-59 (design §13.1, D28/D29) — que evento encolo el job. No es PII. Lo escriben la recogida de
- * la primera ruta del dia (R58, R76), la gestion y el traspaso; el servicio lo lee para el motivo de
- * la llamada (`motivoLlamadaRuta`).
+ * SLT-59 (design §13.1, D28/D29) — que evento encolo el job. No es PII. Lo escriben la gestion y el
+ * traspaso; el servicio lo lee para el motivo de la llamada (`motivoLlamadaRuta`).
+ *
+ * SLT-79: `recogida` y `recogida_parcial` salen de la lista (nadie los encola ya). Los jobs que
+ * quedaron encolados con ellos antes del despliegue los acepta el handler como legado
+ * (`ORIGENES_JOB_RUTA_RETIRADOS`) y corren como `job_sin_origen`.
  */
-export const ORIGENES_JOB_RUTA = ["recogida", "recogida_parcial", "gestion", "traspaso"] as const;
+export const ORIGENES_JOB_RUTA = ["gestion", "traspaso"] as const;
 export type OrigenJobRuta = (typeof ORIGENES_JOB_RUTA)[number];
+
+/** SLT-79 — origenes de jobs que ya no se encolan; solo para leer los que quedaron en la cola. */
+export const ORIGENES_JOB_RUTA_RETIRADOS = ["recogida", "recogida_parcial"] as const;
 
 /** Prefijo del `dedupe_key` (patron `DEDUPE_PREFIX` de liberar-reprogramadas / 91). */
 export const DEDUPE_PREFIX = "optimizacion_ruta";
@@ -87,7 +89,7 @@ export async function encolarOptimizacionDebounce(
   repo: IJobRepository,
   tx: JobTxClient | undefined,
   mensajeroId: string,
-  opts: { ahora: Date; debounceS: number; origen: Extract<OrigenJobRuta, "gestion" | "traspaso"> },
+  opts: { ahora: Date; debounceS: number; origen: OrigenJobRuta },
 ): Promise<void> {
   const runAfter = new Date(opts.ahora.getTime() + opts.debounceS * 1000);
   await repo.enqueue(
@@ -104,20 +106,13 @@ export async function encolarOptimizacionDebounce(
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════
-// SLT-59 (R57, R58, R76, R77; design §12.2 y su nota D29) — LA PRIMERA RUTA DEL DIA, POR RECOGIDA.
+// SLT-59 (R57, R58, R76, R77) — LA PRIMERA RUTA DEL DIA, POR RECOGIDA: RETIRADO EN SLT-79.
 // ══════════════════════════════════════════════════════════════════════════════════════
-// Mientras el mensajero carga en bodega, cada recogida NO paga una optimizacion (Route Optimization
-// factura POR ENVIO). Deja UN job por mensajero y dia, con una clave propia que NO es por ventana:
-//   - quedan paquetes por recoger -> `ahora + RUTA_PRIMERA_DEBOUNCE_MIN` (debounce deslizante, R76);
-//   - era el ultimo               -> `ahora + RUTA_DEBOUNCE_S` (R58).
-// Cada recogida MUEVE el mismo job (`encolarOMoverPendiente`); si ya corrio, ni se crea ni se toca
-// (R77). La clave vive en otro espacio que `:debounce:`, asi que no traga ni es tragada por los
-// jobs de gestion y traspaso.
-
-/** Clave del job de la primera ruta: una por mensajero y dia de Costa Rica (`YYYY-MM-DD`). */
-export function dedupeKeyPrimeraRecogida(mensajeroId: string, diaCR: string): string {
-  return `ruta-opt:primera-recogida:${mensajeroId}:${diaCR}`;
-}
+// ⏳ 2026-11-03 (SLT-79, decision humana «todo manual»): la primera ruta del dia la calcula SOLO el
+// boton «Sincronizar ruta». Aqui vivian `dedupeKeyPrimeraRecogida` y `encolarPrimeraRutaPorRecogida`,
+// el job por mensajero y dia que cada recogida movia (debounce deslizante, R76) o adelantaba al
+// recoger el ultimo paquete (R58). Ya no lo encola nadie. La espera de `RUTA_PRIMERA_DEBOUNCE_MIN`
+// sigue existiendo, pero como condicion del boton, medida desde la ultima recogida del dia.
 
 /**
  * Glosario «primera ruta pendiente»: la ruta nunca se calculo o se calculo antes de que empezara
@@ -125,31 +120,4 @@ export function dedupeKeyPrimeraRecogida(mensajeroId: string, diaCR: string): st
  */
 export function primeraRutaPendiente(calculadaAt: Date | null, diaCR: string): boolean {
   return calculadaAt === null || calculadaAt.getTime() < inicioDelDiaCREnUtc(diaCR).getTime();
-}
-
-/**
- * R58/R76: deja o mueve el job de la primera ruta del dia. Quien llama ya comprobo que la primera
- * ruta esta pendiente; aqui solo se decide CUANDO corre y con que `origen`.
- */
-export async function encolarPrimeraRutaPorRecogida(
-  repo: IJobRepositoryMovible,
-  tx: JobTxClient | undefined,
-  mensajeroId: string,
-  opts: { ahora: Date; diaCR: string; quedanPorRecoger: boolean },
-): Promise<void> {
-  const config = loadRouteOptimizationConfig();
-  const esperaMs = opts.quedanPorRecoger
-    ? config.RUTA_PRIMERA_DEBOUNCE_MIN * 60_000
-    : config.RUTA_DEBOUNCE_S * 1000;
-  const origen: OrigenJobRuta = opts.quedanPorRecoger ? "recogida_parcial" : "recogida";
-  await repo.encolarOMoverPendiente(
-    "optimizacion_ruta",
-    { mensajeroId, origen },
-    {
-      runAfter: new Date(opts.ahora.getTime() + esperaMs),
-      dedupeKey: dedupeKeyPrimeraRecogida(mensajeroId, opts.diaCR),
-      maxIntentos: config.RUTA_OPT_MAX_INTENTOS,
-    },
-    tx,
-  );
 }

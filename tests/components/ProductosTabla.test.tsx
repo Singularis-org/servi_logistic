@@ -18,6 +18,7 @@ import {
   PRODUCTOS_TEXTOS,
   hayVariasTiendas,
   textoTiendaUnica,
+  textoUniverso,
   tiendaUnicaDe,
 } from "@/app/(app)/analitica/_components/entregas/ProductosTabla";
 import { calcularEfectividad } from "@/app/(app)/analitica/_components/entregas/efectividad";
@@ -750,5 +751,17 @@ describe("FICHA 345 · el rótulo de multiproducto (R36) y el universo (R35)", (
     // Las dos cifras del DTO, no la suma de la columna: la suma puede superar el total.
     expect(screen.getByText(/768 órdenes en el rango/)).toBeInTheDocument();
     expect(screen.getByText(/7 sin producto interpretable/)).toBeInTheDocument();
+  });
+});
+
+// SLT-62, tanda 2 (decisión del humano, 2026-11-02) — el universo del recorte concuerda en número.
+// Antes: «1 órdenes en el rango». Literales escritos a mano.
+describe("SLT-62 · tanda 2 · el universo concuerda con una sola orden", () => {
+  it("con una orden: «1 orden en el rango»", () => {
+    expect(textoUniverso(1, 0)).toBe("1 orden en el rango · 0 sin producto interpretable.");
+  });
+
+  it("con varias: «12 órdenes en el rango»", () => {
+    expect(textoUniverso(12, 1)).toBe("12 órdenes en el rango · 1 sin producto interpretable.");
   });
 });

@@ -5,7 +5,6 @@ import { JobQueueService } from "@/lib/services/JobQueueService";
 import { crearOptimizacionRutaHandler } from "@/lib/services/jobs/optimizacion-ruta-handler";
 import {
   encolarOptimizacionDebounce,
-  encolarPrimeraRutaPorRecogida,
   primeraRutaPendiente,
 } from "@/lib/services/jobs/optimizacion-ruta-encolado";
 import { codificarPolilinea, distanciaHaversineKm } from "@/lib/geo/polilinea";
@@ -23,10 +22,8 @@ import type {
   TrazarRutaOutcome,
 } from "@/lib/interfaces/external/IRoutesClient";
 import type {
-  EncolarOMoverOpts,
   EnqueueOpts,
-  IJobRepositoryMovible,
-  ILectorJobPendiente,
+  IJobRepository,
   JobDTO,
 } from "@/lib/interfaces/repositories/IJobRepository";
 import type {
@@ -62,6 +59,12 @@ import type { RegistroLlamadaLogger } from "@/lib/logging/google-api-log";
 // Historia: T0.1 midio «Hoy» contra el codigo anterior (bitacora, Tanda 1); T5.1 afirmo la tabla de
 // la revision 3 (design §8.1). T7.8 (2026-10-31) afirma las tablas vigentes de design §8.0: la
 // carga en bodega, la salida y la recuperacion a mano (D21-D25).
+//
+// SLT-79 (2026-11-03, decision humana «todo manual»): la primera ruta del dia la calcula SOLO el
+// boton. Recoger y la primera gestion ya no encolan, y la salida de 1 km ya no existe. El boton
+// calcula con recogidas >= minimo, o con >= 1 recogida y 5 min desde la ultima. Las tablas de
+// este archivo son las de ese comportamiento; la bitacora `progress/impl_SLT-79.md` compara con
+// las de SLT-59.
 
 const T0 = new Date("2026-10-29T13:00:00.000Z"); // 07:00 en CR, en minuto exacto
 const MIN = 60_000;
@@ -136,7 +139,6 @@ interface FilaRuta {
   ultimoError: string | null;
   secuenciaFuente: SecuenciaFuentePersistida | null;
   trazado: TrazadoPersistido | null;
-  tramoVivoAt: Date | null;
   actualizadaAt: Date;
   paradas: FilaParada[];
 }
@@ -165,7 +167,6 @@ class RutasEnMemoria implements IRutaOptimizadaRepository {
       ultimoError: null,
       secuenciaFuente: null,
       trazado: null,
-      tramoVivoAt: null,
       actualizadaAt: this.reloj(),
       paradas: [],
     };
@@ -192,7 +193,6 @@ class RutasEnMemoria implements IRutaOptimizadaRepository {
       ultimoError: f.ultimoError,
       secuenciaFuente: f.secuenciaFuente,
       trazado: f.trazado === null ? null : { ...f.trazado },
-      tramoVivoAt: f.tramoVivoAt,
       actualizadaAt: f.actualizadaAt,
       secuenciaPorOrden: new Map(f.paradas.map((p) => [p.ordenId, p.secuencia])),
       tramoPorOrden: new Map(
@@ -274,19 +274,17 @@ class RutasEnMemoria implements IRutaOptimizadaRepository {
     Object.assign(f, { estado: "desactualizada", ultimoError });
     this.tocar(f);
   }
-
-  async marcarTramoVivo(_m: string, at: Date): Promise<void> {
-    if (this.fila !== null) this.fila.tramoVivoAt = at;
-  }
 }
 
 /**
  * Las ordenes asignadas del dia al mensajero. Solo las recogidas estan en reparto, y una gestionada
  * sale del conjunto en el acto, como hace `OrdenRepository.findParadasEnReparto` desde la ficha 454
  * con la gestion pendiente. `contarAsignadasDelDia` cuenta las 7 asignadas y las recogidas (R64).
+ * SLT-79: `ultimaRecogidaDelDia` es el instante de la ultima recogida (el historial `recoleccion`).
  */
 class ParadasEnMemoria {
   private readonly recogidas = new Set<string>();
+  private ultima: Date | null = null;
   private readonly gestionadas = new Set<string>();
   private readonly filas: ParadaRutaRow[] = [
     ...Object.entries(PARADAS).map(([ordenId, p], i) => ({
@@ -298,12 +296,9 @@ class ParadasEnMemoria {
     { ordenId: SIN_COORDENADAS, latitud: null, longitud: null, createdAt: en(-13) },
   ];
 
-  recoger(ids: string[]): void {
+  recoger(ids: string[], at: Date): void {
     for (const id of ids) this.recogidas.add(id);
-  }
-
-  quedanPorRecoger(): boolean {
-    return this.filas.some((f) => !this.recogidas.has(f.ordenId));
+    this.ultima = at;
   }
 
   tieneCoordenadas(ordenId: string): boolean {
@@ -321,13 +316,18 @@ class ParadasEnMemoria {
   async contarAsignadasDelDia(): Promise<{ asignadas: number; recogidas: number }> {
     return { asignadas: this.filas.length, recogidas: this.recogidas.size };
   }
+
+  async ultimaRecogidaDelDia(): Promise<Date | null> {
+    return this.ultima;
+  }
 }
 
 /**
- * La cola en memoria: `ON CONFLICT (dedupe_key) DO NOTHING`, el `DO UPDATE … WHERE estado =
- * 'pending'` de `encolarOMoverPendiente` (D29) y el reclamo por `run_after`.
+ * La cola en memoria: `ON CONFLICT (dedupe_key) DO NOTHING` y el reclamo por `run_after`.
+ * SLT-79: sin `encolarOMoverPendiente` ni `findPendienteByDedupeKey`; el job de la primera ruta ya
+ * no existe.
  */
-class JobsEnMemoria implements IJobRepositoryMovible, ILectorJobPendiente {
+class JobsEnMemoria implements IJobRepository {
   readonly filas: JobDTO[] = [];
 
   constructor(private readonly reloj: () => Date) {}
@@ -341,18 +341,6 @@ class JobsEnMemoria implements IJobRepositoryMovible, ILectorJobPendiente {
       return null;
     }
     return this.crear(tipo, payload, opts);
-  }
-
-  async encolarOMoverPendiente(
-    tipo: JobTipo,
-    payload: Record<string, unknown>,
-    opts: EncolarOMoverOpts,
-  ): Promise<JobDTO | null> {
-    const previa = this.filas.find((j) => j.dedupeKey === opts.dedupeKey);
-    if (previa === undefined) return this.crear(tipo, payload, opts);
-    if (previa.estado !== "pending") return null;
-    Object.assign(previa, { runAfter: opts.runAfter, payload, updatedAt: this.reloj() });
-    return { ...previa };
   }
 
   private crear(tipo: JobTipo, payload: Record<string, unknown>, opts: EnqueueOpts): JobDTO {
@@ -408,11 +396,6 @@ class JobsEnMemoria implements IJobRepositoryMovible, ILectorJobPendiente {
 
   async findByDedupeKeys(keys: string[]): Promise<JobDTO[]> {
     return this.filas.filter((j) => j.dedupeKey !== null && keys.includes(j.dedupeKey));
-  }
-
-  // SLT-74: la lectura del aviso de `recogida_insuficiente` (una sola empresa en este arnes).
-  async findPendienteByDedupeKey(dedupeKey: string): Promise<JobDTO | null> {
-    return this.filas.find((j) => j.dedupeKey === dedupeKey && j.estado === "pending") ?? null;
   }
 
   pendientes(): JobDTO[] {
@@ -512,7 +495,6 @@ function montarJornada() {
     reloj,
     undefined,
     { trazar },
-    jobs,
   );
   const cola = new JobQueueService(
     jobs,
@@ -567,19 +549,11 @@ interface Conteo {
 
 /**
  * Una recogida como la hace la app: `GestionOrdenRepository.recogerLote` pasa las ordenes a reparto
- * y, con la primera ruta del dia pendiente, deja o mueve el job del dia (R58, R76); despues
- * `registrarUbicacion` guarda el GPS como origen (92/R23).
+ * (y deja la fila `recoleccion` del historial); despues `registrarUbicacion` guarda el GPS como
+ * origen (92/R23). SLT-79: ya NO encola nada (antes, el job de la primera ruta, R58/R76).
  */
 async function recoger(j: Jornada, ids: string[], gps: Punto): Promise<void> {
-  j.paradas.recoger(ids);
-  const diaCR = fechaCalendarioCR(j.ahora);
-  if (primeraRutaPendiente(j.rutas.fila?.calculadaAt ?? null, diaCR)) {
-    await encolarPrimeraRutaPorRecogida(j.jobs, undefined, M, {
-      ahora: j.ahora,
-      diaCR,
-      quedanPorRecoger: j.paradas.quedanPorRecoger(),
-    });
-  }
+  j.paradas.recoger(ids, j.ahora);
   await j.rutas.upsertOrigen(M, { ...gps, capturadaAt: j.ahora, fuente: "gps" });
 }
 
@@ -596,16 +570,15 @@ async function sincronizar(j: Jornada, gps: Punto): Promise<EjecutarOptimizacion
   return j.service.ejecutar(M, { motivo: "manual", ubicacion: gps });
 }
 
-/** Disparo de salida (R62): la pantalla manda la posicion en vivo; el servidor decide (R63). */
-async function salir(j: Jornada, gps: Punto): Promise<EjecutarOptimizacionResult> {
-  return j.service.ejecutar(M, { motivo: "salida", ubicacion: gps });
-}
+// SLT-79: aqui vivia `salir`, el disparo de salida de 1 km (SLT-59 R62/R63). Se retiro.
 
 /**
  * La gestion como la hace la app: `registrarGestionPendiente` saca la orden del reparto y, en la
- * misma transaccion, encola con debounce si la orden tiene coordenadas o la primera ruta del dia
- * esta pendiente (R21/R22, R59); despues `MisAsignacionesService` guarda el GPS como origen
- * (92/R23) y la Server Action llama a `reducirSinLlamadas` (R44).
+ * misma transaccion, encola con debounce si la orden tiene coordenadas (R21/R22); despues
+ * `MisAsignacionesService` guarda el GPS como origen (92/R23) y la Server Action llama a
+ * `reducirSinLlamadas` (R44).
+ * SLT-79: con la primera ruta del dia pendiente NO encola (antes encolaba aunque la orden no tuviera
+ * coordenadas, R59).
  */
 async function gestionar(j: Jornada, ordenId: string, gps: Punto): Promise<void> {
   j.paradas.gestionar(ordenId);
@@ -613,7 +586,7 @@ async function gestionar(j: Jornada, ordenId: string, gps: Punto): Promise<void>
     j.rutas.fila?.calculadaAt ?? null,
     fechaCalendarioCR(j.ahora),
   );
-  if (j.paradas.tieneCoordenadas(ordenId) || pendiente) {
+  if (j.paradas.tieneCoordenadas(ordenId) && !pendiente) {
     await encolarOptimizacionDebounce(j.jobs, undefined, M, {
       ahora: j.ahora,
       debounceS: CONFIG.RUTA_DEBOUNCE_S,
@@ -737,7 +710,7 @@ const JORNADA_A: Evento[] = [
   {
     n: "2",
     tMin: 5,
-    descripcion: "Sincroniza a mano, GPS a 50 m de A",
+    descripcion: "Sincroniza a mano, GPS a 50 m de A (SLT-79: calcula la primera ruta)",
     correr: (j) => sincronizar(j, alNorte(A, 50)),
   },
   {
@@ -785,14 +758,17 @@ const JORNADA_A: Evento[] = [
 ];
 
 /**
- * design §8.0, jornada A, columna «Nuevo» (enmienda D30): el job del dia nace en la fila 0, con la
- * primera recogida parcial (R76), y la fila 1b solo lo adelanta (R58).
+ * Jornada A con SLT-79 («todo manual»). Frente a la de SLT-59 (design §8.0, enmienda D30):
+ *   - fila 0: 0 jobs (antes 1: el job de la primera ruta nacia con la primera recogida, R76);
+ *   - fila 1b: 0 / 0 (antes 1 / 1: «recoger todas» adelantaba ese job a +60 s y pagaba, R58);
+ *   - fila 2: 1 / 1 (antes 0 / 0): la primera ruta la paga el boton, con las 7 recogidas.
+ * El total de llamadas no cambia {3, 3}; los jobs bajan de 6 a 5.
  */
 const NUEVO_A: (Conteo & { n: string })[] = [
-  { n: "0", opt: 0, routes: 0, jobs: 1 },
+  { n: "0", opt: 0, routes: 0, jobs: 0 },
   { n: "1", opt: 0, routes: 0, jobs: 0 },
-  { n: "1b", opt: 1, routes: 1, jobs: 0 },
-  { n: "2", opt: 0, routes: 0, jobs: 0 },
+  { n: "1b", opt: 0, routes: 0, jobs: 0 },
+  { n: "2", opt: 1, routes: 1, jobs: 0 },
   { n: "3", opt: 0, routes: 0, jobs: 0 },
   { n: "4", opt: 0, routes: 0, jobs: 1 },
   { n: "5", opt: 0, routes: 0, jobs: 1 },
@@ -803,15 +779,17 @@ const NUEVO_A: (Conteo & { n: string })[] = [
   { n: "10", opt: 0, routes: 0, jobs: 1 },
 ];
 
-// ── Jornada B (respaldo de D25) ───────────────────────────────────────────────────────────
-// 7 asignadas; s6 nunca se recoge. Las 6 recogidas van de t = -10 a t = -5.
+// ── Jornada B (respaldo de D25; SLT-79: el boton con poco recogido) ─────────────────────
+// 7 asignadas (minimo al 80 %: 6). Recoge 5, de t = -10 a t = -6, y nunca llega al minimo: la
+// primera ruta sale por la espera de 5 min desde la ultima recogida. Antes (SLT-59) la pagaba la
+// salida de 1 km (fila B3, `primera_ruta_salida`) y el job de la recogida salia `obsoleta`.
 
-const RECOGIDAS_B = ["s1", "s2", "s3", "s4", "s5", SIN_COORDENADAS];
+const RECOGIDAS_B = ["s1", "s2", "s3", "s4", "s5"];
 
 const recogeB1: Evento = {
   n: "B1",
   tMin: -10,
-  descripcion: "Recoge 6 de 7 de una en una, 1 por minuto (GPS en B)",
+  descripcion: "Recoge 5 de 7 de una en una, 1 por minuto (GPS en B)",
   correr: (j) => recogerDeUnaEnUna(j, RECOGIDAS_B, B),
 };
 
@@ -820,41 +798,41 @@ const JORNADA_B: Evento[] = [
   {
     n: "B2",
     tMin: -4,
-    descripcion: "Pantalla abierta, la posicion en vivo llega a 400 m de B",
-    correr: (j) => salir(j, alOeste(B, 400)),
+    descripcion: "Pulsa 2 min despues de la ultima recogida, con 5 de 7",
+    correr: (j) => sincronizar(j, B),
   },
   {
     n: "B3",
-    tMin: -3,
-    descripcion: "La posicion en vivo pasa de 1000 m de B",
-    correr: (j) => salir(j, alOeste(B, 1100)),
+    tMin: -1,
+    descripcion: "Pulsa a los 5 min justos de la ultima recogida",
+    correr: (j) => sincronizar(j, B),
   },
   {
     n: "B4",
-    tMin: -2,
-    descripcion: "Otra lectura a 1,5 km, o se recarga la pagina",
-    correr: (j) => salir(j, alOeste(B, 1500)),
+    tMin: 0,
+    descripcion: "Pulsa otra vez, sin cambios ni desvio",
+    correr: (j) => sincronizar(j, B),
   },
 ];
 
-/** design §8.0, jornada B (enmienda D30): B1 deja el job de R76, que luego sale `obsoleta`. */
+/** SLT-79: B3 paga la primera ruta y nada mas; ningun job en toda la jornada. */
 const NUEVO_B: (Conteo & { n: string })[] = [
-  { n: "B1", opt: 0, routes: 0, jobs: 1 },
+  { n: "B1", opt: 0, routes: 0, jobs: 0 },
   { n: "B2", opt: 0, routes: 0, jobs: 0 },
   { n: "B3", opt: 1, routes: 1, jobs: 0 },
   { n: "B4", opt: 0, routes: 0, jobs: 0 },
 ];
 
 describe("SLT-59/R37 — jornada de referencia (design §8.0)", () => {
-  it("jornada A: la columna «Nuevo» fila a fila y en total {3, 3, 6}", async () => {
+  it("jornada A: fila a fila y en total {3, 3, 5} (SLT-79; antes {3, 3, 6})", async () => {
     const { j, filas, desenlaces } = await medir(JORNADA_A);
     console.info(informe("jornada A", JORNADA_A, filas));
 
     expect(filas).toEqual(NUEVO_A);
-    expect(totales(filas)).toEqual({ opt: 3, routes: 3, jobs: 6 });
+    expect(totales(filas)).toEqual({ opt: 3, routes: 3, jobs: 5 });
 
-    // Fila 1 (R64): el boton con el 57 % no paga y dice cuantas lleva. SLT-74: y cuanto falta para
-    // el job de la fila 0 (ultima recogida parcial en t = -7, +5 min -> t = -2; se pulsa en t = -6).
+    // Fila 1 (R64 -> SLT-79): el boton con 4 de 7 (minimo 6) no paga. Falta para los 5 min desde la
+    // ultima recogida (t = -7, +5 min -> t = -2; se pulsa en t = -6): 4 min.
     expect(desenlaces[1]).toEqual({
       status: "omitida",
       razon: "recogida_insuficiente",
@@ -862,8 +840,13 @@ describe("SLT-59/R37 — jornada de referencia (design §8.0)", () => {
       asignadas: 7,
       esperaMs: 4 * MIN,
     });
-    // Fila 0 (R76): un solo job de recogida en todo el dia; la fila 1b lo movio (R58).
-    expect(j.jobs.filas.filter((f) => f.dedupeKey?.startsWith("ruta-opt:primera-recogida:"))).toHaveLength(1);
+    // Fila 2: la primera ruta la calcula el boton.
+    expect(desenlaces[3]).toMatchObject({ status: "ok" });
+    // SLT-79: ningun job antes de que exista la primera ruta, y ninguno con un origen de recogida.
+    expect(j.jobs.filas.every((f) => f.createdAt >= en(5))).toBe(true);
+    expect(j.jobs.filas.map((f) => (f.payload as { origen?: string }).origen)).toEqual(
+      Array(5).fill("gestion"),
+    );
     // El arnes recorrio la jornada entera: sin paradas, cola vacia, y la orden sin coordenadas
     // nunca llega al proveedor.
     expect(j.rutas.fila?.paradas).toEqual([]);
@@ -877,7 +860,7 @@ describe("SLT-59/R37 — jornada de referencia (design §8.0)", () => {
     const { j, lineasPorFila } = await medir(JORNADA_A);
 
     expect(secuencia(lineasPorFila, JORNADA_A.map((e) => e.n))).toEqual([
-      ["1b", recalculo("primera_ruta_recogida_completa")],
+      ["2", recalculo("primera_ruta_boton")],
       ["6", recalculo("sincronizacion_manual_desvio")],
       ["7", recalculo("entrega_fuera_de_orden")],
     ]);
@@ -887,19 +870,26 @@ describe("SLT-59/R37 — jornada de referencia (design §8.0)", () => {
 
   it("filas 11-13: el 401 cuesta 1 llamada; el boton respeta el enfriamiento y luego recupera", async () => {
     // Fila 11 (R29): un job cuyo `optimizeTours` responde 401 queda en dead-letter tras UNA llamada.
+    // SLT-79: la primera ruta ya no la calcula un job; la calcula el boton (1 llamada buena) y el
+    // job que recibe el 401 es el de una entrega fuera de orden.
     const j11 = montarJornada();
-    j11.proveedor.estado.rechazar = true;
     await j11.avanzarHasta(en(-10));
     await recoger(j11, TODAS, B);
-    await j11.avanzarHasta(en(24 * 60));
+    await j11.avanzarHasta(en(0));
+    await sincronizar(j11, B);
     expect(j11.optimizar).toHaveBeenCalledTimes(1);
+    j11.proveedor.estado.rechazar = true;
+    await j11.avanzarHasta(en(10));
+    await gestionar(j11, "s2", PARADAS.s2);
+    await j11.avanzarHasta(en(24 * 60));
+    expect(j11.optimizar).toHaveBeenCalledTimes(2);
     expect(j11.jobs.filas).toHaveLength(1);
     expect(j11.jobs.filas[0]).toMatchObject({ estado: "failed", intentos: 1 });
-    // T8.4 (§13.3): 1 linea, con el motivo del job y el 401.
-    expect(j11.lineasGoogleApi).toHaveLength(1);
-    expect(JSON.parse(j11.lineasGoogleApi[0].slice(GOOGLE_API_LOG_PREFIJO.length + 1))).toMatchObject({
+    // T8.4 (§13.3): la linea del job, con su motivo y el 401.
+    expect(j11.lineasGoogleApi).toHaveLength(3);
+    expect(JSON.parse(j11.lineasGoogleApi[2].slice(GOOGLE_API_LOG_PREFIJO.length + 1))).toMatchObject({
       api: "route_optimization",
-      motivo: "primera_ruta_recogida_completa",
+      motivo: "entrega_fuera_de_orden",
       resultado: "401",
       intento: 1,
       maxIntentos: CONFIG.RUTA_OPT_MAX_INTENTOS,
@@ -907,9 +897,12 @@ describe("SLT-59/R37 — jornada de referencia (design §8.0)", () => {
 
     // Filas 12 y 13 (R53): con la ruta del dia hecha, una sincronizacion a mano falla con 401
     // (fuera de las filas). Despues, el boton sin cambios ni desvio espera el enfriamiento.
+    // SLT-79: la ruta del dia la hace el boton.
     const j = montarJornada();
     await j.avanzarHasta(en(-10));
     await recoger(j, TODAS, B);
+    await j.avanzarHasta(en(0));
+    await sincronizar(j, B);
     await j.avanzarHasta(en(30));
     j.proveedor.estado.rechazar = true;
     await expect(sincronizar(j, alNorte(PARADAS.s3, 1500))).rejects.toThrow();
@@ -934,54 +927,78 @@ describe("SLT-59/R37 — jornada de referencia (design §8.0)", () => {
     expect(lineasPorFila["13"].map(apiMotivo)).toEqual(recalculo("recuperacion_ruta_caida"));
   });
 
-  it("jornada B: la salida a mas de 1000 m paga la primera ruta y nada mas, {1, 1, 1}", async () => {
-    const { filas, lineasPorFila } = await medir(JORNADA_B);
+  it("jornada B (SLT-79): bajo el minimo, la primera ruta sale a los 5 min de la ultima recogida, {1, 1, 0}", async () => {
+    const { j, filas, desenlaces, lineasPorFila } = await medir(JORNADA_B);
     console.info(informe("jornada B", JORNADA_B, filas));
     expect(filas).toEqual(NUEVO_B);
-    expect(totales(filas)).toEqual({ opt: 1, routes: 1, jobs: 1 });
-    // T8.4 (§13.3): B3 -> `primera_ruta_salida` x2; el job de R76 sale `obsoleta` sin linea.
+    expect(totales(filas)).toEqual({ opt: 1, routes: 1, jobs: 0 });
+    // B2: ultima recogida en t = -6, se pulsa en t = -4 -> faltan 3 min.
+    expect(desenlaces[1]).toEqual({
+      status: "omitida",
+      razon: "recogida_insuficiente",
+      recogidas: 5,
+      asignadas: 7,
+      esperaMs: 3 * MIN,
+    });
+    expect(desenlaces[2]).toMatchObject({ status: "ok" });
+    expect(desenlaces[3]).toMatchObject({ status: "omitida", razon: "sin_cambios" });
+    // T8.4 (§13.3): B3 -> `primera_ruta_boton` x2.
     expect(secuencia(lineasPorFila, JORNADA_B.map((e) => e.n))).toEqual([
-      ["B3", recalculo("primera_ruta_salida")],
+      ["B3", recalculo("primera_ruta_boton")],
     ]);
+    expect(j.jobs.filas).toEqual([]);
   });
 
-  it("variante B: la primera gestion antes de alejarse -> 1 / 1 / 2 (R59)", async () => {
+  it("SLT-79: recoger todo y no pulsar -> ninguna ruta, ningun job y 0 llamadas en todo el dia", async () => {
+    const j = montarJornada();
+    await j.avanzarHasta(en(-10));
+    await recogerDeUnaEnUna(j, TODAS, B);
+    await j.avanzarHasta(en(24 * 60));
+    expect(j.conteo()).toEqual({ opt: 0, routes: 0, jobs: 0 });
+    expect(j.rutas.fila?.calculadaAt ?? null).toBeNull();
+  });
+
+  it("SLT-79: la primera gestion con la primera ruta pendiente no encola ni paga -> 0 / 0 / 0 (antes 1 / 1 / 2, R59)", async () => {
     const eventos: Evento[] = [
       recogeB1,
       {
         n: "B-gestion",
         tMin: -4,
-        descripcion: "Gestiona s1 antes de alejarse",
+        descripcion: "Gestiona s1 antes de pulsar el boton",
         correr: (j) => gestionar(j, "s1", alOeste(B, 100)),
       },
     ];
     const { j, filas } = await medir(eventos);
     console.info(informe("variante B, primera gestion", eventos, filas));
-    expect(totales(filas)).toEqual({ opt: 1, routes: 1, jobs: 2 });
-    // T8.4 (§13.3): `primera_ruta_primera_gestion` x2.
-    expect(j.lineasGoogleApi.map(apiMotivo)).toEqual(recalculo("primera_ruta_primera_gestion"));
+    expect(totales(filas)).toEqual({ opt: 0, routes: 0, jobs: 0 });
+    expect(j.lineasGoogleApi).toEqual([]);
   });
 
-  it("variante B: el boton con 6 de 7 recogidas (86 %) -> 1 / 1 / 1 (R64)", async () => {
+  it("variante: el boton con 6 de 7 recogidas (86 %) -> 1 / 1 / 0 (R64; antes 1 / 1 / 1)", async () => {
     const eventos: Evento[] = [
-      recogeB1,
+      {
+        n: "B1",
+        tMin: -10,
+        descripcion: "Recoge 6 de 7 de una en una",
+        correr: (j) => recogerDeUnaEnUna(j, [...RECOGIDAS_B, SIN_COORDENADAS], B),
+      },
       { n: "B-boton", tMin: -4, descripcion: "Pulsa con el 86 %", correr: (j) => sincronizar(j, B) },
     ];
     const { j, filas, desenlaces } = await medir(eventos);
-    console.info(informe("variante B, boton 86 %", eventos, filas));
+    console.info(informe("variante, boton 86 %", eventos, filas));
     expect(desenlaces[1]).toMatchObject({ status: "ok" });
-    expect(totales(filas)).toEqual({ opt: 1, routes: 1, jobs: 1 });
+    expect(totales(filas)).toEqual({ opt: 1, routes: 1, jobs: 0 });
     // T8.4 (§13.3): `primera_ruta_boton` x2.
     expect(j.lineasGoogleApi.map(apiMotivo)).toEqual(recalculo("primera_ruta_boton"));
   });
 
-  it("variante B: el boton con 5 de 7 recogidas (71 %) no paga, dice «5 de 7» y deja 0 / 0 / 1 (R64, R76)", async () => {
+  it("variante: el boton con 5 de 7 justo tras la quinta recogida no paga y deja 0 / 0 / 0 (antes 0 / 0 / 1)", async () => {
     const j = montarJornada();
     await j.avanzarHasta(en(-10));
     const antes = j.conteo();
-    await recogerDeUnaEnUna(j, ["s1", "s2", "s3", "s4", "s5"], B);
+    await recogerDeUnaEnUna(j, RECOGIDAS_B, B);
     const desenlace = await sincronizar(j, B);
-    // SLT-74: la quinta recogida (t = -6) acaba de mover el job a +5 min.
+    // SLT-79: la quinta recogida (t = -6) es de este mismo instante: faltan los 5 min enteros.
     expect(desenlace).toEqual({
       status: "omitida",
       razon: "recogida_insuficiente",
@@ -989,15 +1006,14 @@ describe("SLT-59/R37 — jornada de referencia (design §8.0)", () => {
       asignadas: 7,
       esperaMs: 5 * MIN,
     });
-    // La accion lo traduce a `conflict` «llevas 5 de 7» (`sincronizar-ruta.test.ts`). El job es
-    // el de las recogidas parciales (R76): uno solo, aun pendiente.
+    // La accion lo traduce a «Recoge 6 de 7 paquetes o espera 5 min 0 s para poder iniciar ruta.»
+    // (`sincronizar-ruta.test.ts`). Ya no queda ningun job pendiente que lo calcule solo.
     const despues = j.conteo();
     expect({
       opt: despues.opt - antes.opt,
       routes: despues.routes - antes.routes,
       jobs: despues.jobs - antes.jobs,
-    }).toEqual({ opt: 0, routes: 0, jobs: 1 });
-    expect(j.jobs.filas[0]).toMatchObject({ estado: "pending", payload: { origen: "recogida_parcial" } });
+    }).toEqual({ opt: 0, routes: 0, jobs: 0 });
     // T8.4 (§13.3): ninguna linea.
     expect(j.lineasGoogleApi).toEqual([]);
   });

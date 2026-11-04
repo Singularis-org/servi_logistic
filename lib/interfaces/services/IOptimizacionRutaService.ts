@@ -5,11 +5,10 @@ import type { OrigenJobRuta } from "@/lib/services/jobs/optimizacion-ruta-encola
 /**
  * Motivo del disparo. Solo `manual` esta sujeto al intervalo minimo de R34.
  *
- * SLT-59 (R62, R63, design §12.6): `salida` = la pantalla de reparto vio al mensajero alejarse
- * del punto de recogida con la primera ruta del dia pendiente. Es automatico para el desvio
- * (R51), pero lleva su propia guarda en `ejecutar` (R63).
+ * SLT-79: `salida` (SLT-59 R62/R63, el disparo de 1 km de la pantalla de reparto) se retiro. La
+ * primera ruta del dia solo la calcula `manual`.
  */
-export type MotivoOptimizacion = "debounce" | "inmediato" | "manual" | "salida";
+export type MotivoOptimizacion = "debounce" | "inmediato" | "manual";
 
 export interface EjecutarOptimizacionOpts {
   motivo: MotivoOptimizacion;
@@ -103,7 +102,9 @@ export type EjecutarOptimizacionResult =
        * SLT-59 revision 4 (design §12.7):
        *   `enfriamiento`     R53: manual sobre una ruta `desactualizada` antes de
        *                      `RUTA_RECUPERACION_ENFRIAMIENTO_MIN`; trae el trazado en cache.
-       *   `salida_no_aplica` R63: el disparo de salida no cumple alguna condicion.
+       *   `primera_ruta_pendiente` SLT-79: un disparo automatico (job) con la primera ruta del
+       *                      dia pendiente. Solo el boton la calcula; 0 lecturas de paradas.
+       *                      (Sustituye a `salida_no_aplica`, que se fue con el disparo de salida.)
        */
       razon:
         | "obsoleta"
@@ -113,7 +114,7 @@ export type EjecutarOptimizacionResult =
         | "reducida"
         | "reduccion_descartada"
         | "enfriamiento"
-        | "salida_no_aplica";
+        | "primera_ruta_pendiente";
       /**
        * R35 con UNA parada: no hubo nada que ORDENAR —por eso `omitida`— pero si hay algo
        * que DIBUJAR, la linea del origen a esa unica parada. Las demas razones nunca lo
@@ -132,50 +133,19 @@ export type EjecutarOptimizacionResult =
       recogidas: number;
       asignadas: number;
       /**
-       * SLT-74: ms que faltan para que corra el job PENDIENTE de la primera ruta del dia (el de
-       * las recogidas parciales, R76). Puede ser <= 0 si ya vencio y espera al cron. Ausente si
-       * no hay job pendiente (nada recogido aun, o ya corrio) o si no se pudo leer.
+       * SLT-79: con al menos una recogida, ms que faltan para que pasen `RUTA_PRIMERA_DEBOUNCE_MIN`
+       * minutos desde la ULTIMA recogida del dia (siempre > 0: con 0 o menos el boton ya calcula).
+       * Ausente con 0 recogidas: entonces solo vale llegar al minimo.
        */
       esperaMs?: number;
       trazado?: undefined;
     };
-
-/**
- * Desenlace del trayecto EN VIVO (ubicacion actual -> una parada concreta).
- *
- *   `no_autorizada`   — esa orden no es una parada en reparto de este mensajero. Se devuelve
- *                       el MISMO valor que si no existiera: distinguirlos convertiria la
- *                       action en un oraculo para saber si una guia ajena esta en reparto.
- *   `intervalo_minimo`— se pidio demasiado pronto. CERO llamadas.
- *   `no_disponible`   — sin cliente de trazado, o el proveedor no dio geometria.
- */
-export type TrazarTramoVivoResult =
-  | { status: "ok"; encodedPolyline: string; distanciaM: number | null; duracionS: number | null }
-  | { status: "no_autorizada" }
-  | { status: "intervalo_minimo" }
-  | { status: "no_disponible" };
 
 export interface IOptimizacionRutaService {
   ejecutar(
     mensajeroId: string,
     opts: EjecutarOptimizacionOpts,
   ): Promise<EjecutarOptimizacionResult>;
-
-  /**
-   * Trayecto por calles desde donde el mensajero ESTA hasta una parada concreta.
-   *
-   * Es lo unico de esta feature que NO se puede cachear: en cuanto se mueve, el resultado
-   * anterior deja de empezar donde el esta. Cada llamada se FACTURA, y por eso lleva su propia
-   * guarda de intervalo minimo persistida (`tramoVivoAt`) — el cerrojo del cliente no cuenta,
-   * porque una Server Action se puede invocar en bucle sin pasar por el boton.
-   *
-   * NO toca la ruta optimizada: ni la secuencia, ni el origen, ni el trazado guardado. Es una
-   * consulta de apoyo, no un recalculo.
-   */
-  trazarTramoVivo(
-    mensajeroId: string,
-    input: { ubicacion: { lat: number; lng: number }; ordenId: string },
-  ): Promise<TrazarTramoVivoResult>;
 
   /**
    * SLT-59 (R27, design §3.2) — aplica la reduccion de la secuencia SOLO si no cuesta ninguna

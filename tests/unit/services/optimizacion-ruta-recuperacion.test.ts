@@ -68,7 +68,6 @@ function rutaCaida(haceMs: number, over: Partial<RutaOptimizadaDTO> = {}): RutaO
     ultimoError: "optimizar ruta: HTTP 500",
     secuenciaFuente: "proveedor",
     trazado: TRAZADO,
-    tramoVivoAt: null,
     actualizadaAt: new Date(T0.getTime() - haceMs),
     secuenciaPorOrden: new Map([
       ["s1", 1],
@@ -88,11 +87,11 @@ function build(ruta: RutaOptimizadaDTO, paradas: ParadaRutaRow[]) {
     guardarTrazado: vi.fn(async () => {}),
     reducirSecuencia: vi.fn(async () => true),
     marcarDesactualizada: vi.fn(async () => {}),
-    marcarTramoVivo: vi.fn(async () => {}),
   };
   const paradasRepo = {
     findParadasEnReparto: vi.fn(async () => paradas),
     contarAsignadasDelDia: vi.fn(async () => ({ asignadas: 0, recogidas: 0 })),
+    ultimaRecogidaDelDia: vi.fn(async () => null),
   };
   const client = {
     optimizar: vi.fn(async (input: { paradas: { ordenId: string }[] }) => ({
@@ -124,8 +123,7 @@ function build(ruta: RutaOptimizadaDTO, paradas: ParadaRutaRow[]) {
     rutas.reemplazarSecuencia.mock.calls.length +
     rutas.guardarTrazado.mock.calls.length +
     rutas.reducirSecuencia.mock.calls.length +
-    rutas.marcarDesactualizada.mock.calls.length +
-    rutas.marcarTramoVivo.mock.calls.length;
+    rutas.marcarDesactualizada.mock.calls.length;
   return { service, rutas, paradasRepo, client, routes, escrituras };
 }
 

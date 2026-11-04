@@ -6,6 +6,10 @@ import type { JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
 // escribe `origen` (`recogida_parcial` o `recogida`); el handler lo acepta, sigue aceptando el payload
 // sin `origen` (gestion, traspaso, jobs encolados antes del despliegue) y rechaza un `origen` que no
 // esta en la lista. Lo que el `origen` decide (el motivo de la llamada) es de la Fase 8.
+//
+// SLT-79: la recogida ya no encola. `recogida` y `recogida_parcial` se siguen ACEPTANDO (jobs que
+// quedaron en la cola antes del despliegue: no son payloads invalidos que reintentar), pero llegan
+// al servicio como `origen: null`.
 
 function job(payload: Record<string, unknown>): JobDTO {
   return {
@@ -38,6 +42,8 @@ describe("SLT-59 R76 — el payload del job admite el `origen` de la recogida", 
       await handler(job({ mensajeroId: "m-1", origen }));
       expect(ejecutar).toHaveBeenCalledTimes(1);
       expect((ejecutar.mock.calls[0] as unknown[])[0]).toBe("m-1");
+      const opts = (ejecutar.mock.calls[0] as unknown[])[1] as { job: { origen: string | null } };
+      expect(opts.job.origen).toBe(origen.startsWith("recogida") ? null : origen);
     },
   );
 

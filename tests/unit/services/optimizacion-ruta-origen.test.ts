@@ -60,7 +60,6 @@ function ruta(over: Partial<RutaOptimizadaDTO> = {}): RutaOptimizadaDTO {
     // pasan por `over`. `null` = no consta, que es el estado de toda ruta anterior a la 265.
     secuenciaFuente: null,
     trazado: null,
-    tramoVivoAt: null,
     actualizadaAt: new Date(T0.getTime() - 60 * 60_000), // SLT-59 (R54): enfriamiento ya pasado
     tramoPorOrden: new Map(),
     secuenciaPorOrden: new Map(),
@@ -81,11 +80,10 @@ function build(
     upsertOrigen: vi.fn<(m: string, u: unknown) => Promise<void>>(async () => {}),
     reemplazarSecuencia: vi.fn<(m: string, s: string[], meta: unknown) => Promise<void>>(async () => {}),
     guardarTrazado: vi.fn<(m: string, h: string, t: unknown) => Promise<void>>(async () => {}),
-    marcarTramoVivo: vi.fn<(m: string, a: Date) => Promise<void>>(async () => {}),
     reducirSecuencia: vi.fn(async () => true),
     marcarDesactualizada: vi.fn<(m: string, e: string) => Promise<void>>(async () => {}),
   };
-  const paradasRepo: ParadasRepo = { contarAsignadasDelDia: async () => ({ asignadas: 0, recogidas: 0 }), findParadasEnReparto: vi.fn(async () => paradas) };
+  const paradasRepo: ParadasRepo = { contarAsignadasDelDia: async () => ({ asignadas: 0, recogidas: 0 }), ultimaRecogidaDelDia: async () => null, findParadasEnReparto: vi.fn(async () => paradas) };
   const client = {
     optimizar: vi.fn(async (input: { paradas: { ordenId: string }[] }) => ({
       status: "ok" as const,

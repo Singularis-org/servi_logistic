@@ -14,14 +14,17 @@ import {
   RutaCredencialRechazadaError,
 } from "@/lib/services/OptimizacionRutaService";
 import { JobFallidoPermanente } from "@/lib/services/jobs/job-fallido-permanente";
-import { ORIGENES_JOB_RUTA } from "@/lib/services/jobs/optimizacion-ruta-encolado";
+import {
+  ORIGENES_JOB_RUTA,
+  ORIGENES_JOB_RUTA_RETIRADOS,
+  type OrigenJobRuta,
+} from "@/lib/services/jobs/optimizacion-ruta-encolado";
 import { GoogleRouteOptimizationClient } from "@/lib/clients/google-route-optimization";
 import { GoogleRoutesClient } from "@/lib/clients/google-routes";
 import { HaversineRouteOptimizationClient } from "@/lib/clients/haversine-route-optimization";
 import { FallbackRouteOptimizationClient } from "@/lib/clients/fallback-route-optimization";
 import { RutaOptimizadaRepository } from "@/lib/repositories/RutaOptimizadaRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
-import { JobRepository } from "@/lib/repositories/JobRepository";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { loadRouteOptimizationConfig } from "@/lib/config/route-optimization";
 import { credencialesIntegracionReales } from "@/lib/services/integraciones/credencial-de-la-empresa";
@@ -35,8 +38,17 @@ import { optlog, opterror } from "@/lib/logging/optimizer-log";
  */
 const payloadSchema = z.object({
   mensajeroId: z.string().min(1),
-  origen: z.enum(ORIGENES_JOB_RUTA).optional(),
+  // SLT-79: un job encolado antes del despliegue con un origen retirado se sigue leyendo (no es un
+  // payload invalido que la cola deba reintentar) y corre como `job_sin_origen`.
+  origen: z.enum([...ORIGENES_JOB_RUTA, ...ORIGENES_JOB_RUTA_RETIRADOS]).optional(),
 });
+
+/** SLT-79 — el origen vigente, o `null` si falta o es uno retirado. */
+function origenVigente(origen: string | undefined): OrigenJobRuta | null {
+  return (ORIGENES_JOB_RUTA as readonly string[]).includes(origen ?? "")
+    ? (origen as OrigenJobRuta)
+    : null;
+}
 
 /**
  * Adapta `OptimizacionRutaService.ejecutar` a la firma `JobHandler`.
@@ -60,7 +72,7 @@ export function crearOptimizacionRutaHandler(service: OptimizacionRutaService): 
         // SLT-59 (D27, D28; R70): el motivo sale del `origen` y cada intento registra el suyo.
         // `job.intentos` ya viene incrementado por el claim: es el numero de ESTE intento.
         job: {
-          origen: parsed.data.origen ?? null,
+          origen: origenVigente(parsed.data.origen),
           intento: job.intentos,
           maxIntentos: job.maxIntentos,
         },
@@ -184,7 +196,5 @@ export function buildOptimizacionRutaService(
     now,
     undefined,
     routes,
-    // SLT-74: el aviso de `recogida_insuficiente` dice cuanto falta para la primera ruta.
-    new JobRepository(prisma),
   );
 }

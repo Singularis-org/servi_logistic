@@ -2,7 +2,6 @@ import { describe, it, expect, vi } from "vitest";
 import {
   OptimizacionRutaService,
   primeraRutaPendiente,
-  puntoDeRecogida,
   type ParadasRepo,
 } from "@/lib/services/OptimizacionRutaService";
 import type {
@@ -15,17 +14,18 @@ import type { IRouteOptimizationClient } from "@/lib/interfaces/external/IRouteO
 import type { IRoutesClient } from "@/lib/interfaces/external/IRoutesClient";
 import type { ParadaRutaRow } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { RouteOptimizationConfig } from "@/lib/config/route-optimization";
-import { distanciaHaversineKm } from "@/lib/geo/polilinea";
 import { primeraRutaPendiente as primeraRutaPendienteDeLosWriters } from "@/lib/services/jobs/optimizacion-ruta-encolado";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
-import type { JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
 
 // SLT-59 revision 4 (D23, D25; design §12.1, §12.5, §12.6) — la primera ruta del dia.
 //   R59  con la primera pendiente se recalcula siempre (ni omitir ni reducir).
 //   R64  el boton con la primera pendiente exige el % minimo recogido; si no, 0 llamadas.
 //   R67  la lectura de conteo solo ocurre con la primera pendiente y en manual.
-//   R63  el disparo de salida se vuelve a comprobar en el servidor; si no aplica, 0 llamadas.
-//   R66  una sola vez: con la primera ya calculada, la salida no vuelve a pagar.
+//
+// SLT-79 (2026-11-03, decision humana «todo manual»): la primera ruta del dia la calcula SOLO el
+// boton. Se retiran R63/R66 (disparo de salida) y el job de la recogida. Un job con la primera
+// pendiente se omite. El boton la calcula si recogidas >= minimo, O si recogidas >= 1 y pasaron
+// RUTA_PRIMERA_DEBOUNCE_MIN (5) minutos desde la ultima recogida del dia.
 
 const MENSAJERO = "m-1";
 // 16:00 de CR del 29. «Ayer» es cualquier instante anterior a 2026-10-29T06:00:00Z.
@@ -58,10 +58,6 @@ const CONFIG: RouteOptimizationConfig = {
   RUTA_PRIMERA_DEBOUNCE_MIN: 5,
 };
 
-/** Un punto `metros` al OESTE de `base`, a lo largo del paralelo (lejos de la fila de paradas). */
-function alOeste(base: { lat: number; lng: number }, metros: number) {
-  return { lat: base.lat, lng: base.lng - metros / (M_POR_GRADO * Math.cos((base.lat * Math.PI) / 180)) };
-}
 /** Un punto `metros` al SUR de `base`, sobre el meridiano: Haversine da la distancia exacta. */
 function alSur(base: { lat: number; lng: number }, metros: number) {
   return { lat: base.lat - metros / M_POR_GRADO, lng: base.lng };
@@ -90,7 +86,6 @@ function rutaDeAyer(over: Partial<RutaOptimizadaDTO> = {}): RutaOptimizadaDTO {
     ultimoError: null,
     secuenciaFuente: "proveedor",
     trazado: null,
-    tramoVivoAt: null,
     actualizadaAt: new Date(T0.getTime() - 30 * MIN),
     secuenciaPorOrden: new Map([
       ["s1", 1],
@@ -110,8 +105,11 @@ function build(opts: {
   ruta: RutaOptimizadaDTO | null;
   paradas?: ParadaRutaRow[];
   conteo?: { asignadas: number; recogidas: number };
-  /** SLT-74: el job pendiente de la primera ruta (su `runAfter`), `null` si no hay, o un fallo. */
-  jobPendiente?: { runAfter: Date } | null | "falla";
+  /**
+   * SLT-79: la ultima recogida del dia. Por defecto hace 1 minuto (todavia cargando); `null` = no
+   * hay ninguna en el historial de hoy.
+   */
+  ultimaRecogida?: Date | null;
 }) {
   let ruta = opts.ruta;
   const rutas = {
@@ -133,11 +131,13 @@ function build(opts: {
     guardarTrazado: vi.fn(async () => {}),
     reducirSecuencia: vi.fn(async () => true),
     marcarDesactualizada: vi.fn(async () => {}),
-    marcarTramoVivo: vi.fn(async () => {}),
   };
   const paradasRepo = {
     findParadasEnReparto: vi.fn(async () => opts.paradas ?? TODAS()),
     contarAsignadasDelDia: vi.fn(async () => opts.conteo ?? { asignadas: 0, recogidas: 0 }),
+    ultimaRecogidaDelDia: vi.fn(async () =>
+      opts.ultimaRecogida === undefined ? new Date(T0.getTime() - MIN) : opts.ultimaRecogida,
+    ),
   };
   const client = {
     optimizar: vi.fn(async (input: { paradas: { ordenId: string }[] }) => ({
@@ -155,12 +155,6 @@ function build(opts: {
       tramos: [],
     })),
   };
-  const jobs = {
-    findPendienteByDedupeKey: vi.fn(async (): Promise<JobDTO | null> => {
-      if (opts.jobPendiente === "falla") throw new Error("base caida");
-      return opts.jobPendiente ? ({ runAfter: opts.jobPendiente.runAfter } as JobDTO) : null;
-    }),
-  };
   const service = new OptimizacionRutaService(
     rutas as unknown as IRutaOptimizadaRepository,
     paradasRepo as ParadasRepo,
@@ -169,20 +163,18 @@ function build(opts: {
     () => T0,
     undefined,
     routes as unknown as IRoutesClient,
-    jobs,
   );
   const escrituras = () =>
     rutas.upsertOrigen.mock.calls.length +
     rutas.reemplazarSecuencia.mock.calls.length +
     rutas.guardarTrazado.mock.calls.length +
     rutas.reducirSecuencia.mock.calls.length +
-    rutas.marcarDesactualizada.mock.calls.length +
-    rutas.marcarTramoVivo.mock.calls.length;
+    rutas.marcarDesactualizada.mock.calls.length;
   const llamadas = () => client.optimizar.mock.calls.length + routes.trazar.mock.calls.length;
-  return { service, rutas, paradasRepo, client, routes, jobs, escrituras, llamadas };
+  return { service, rutas, paradasRepo, client, routes, escrituras, llamadas };
 }
 
-describe("SLT-59 — glosario: primera ruta pendiente y punto de recogida (puras)", () => {
+describe("SLT-59 — glosario: primera ruta pendiente (pura)", () => {
   it("primera pendiente: sin ruta, `calculadaAt` nula o anterior al inicio del dia de CR", () => {
     expect(primeraRutaPendiente(null, T0)).toBe(true);
     expect(primeraRutaPendiente({ calculadaAt: null }, T0)).toBe(true);
@@ -217,42 +209,71 @@ describe("SLT-59 — glosario: primera ruta pendiente y punto de recogida (puras
       }
     }
   });
-
-  it("punto de recogida: solo un `gps` capturado hoy", () => {
-    const base = rutaDeAyer();
-    expect(puntoDeRecogida(base, T0)).toEqual(RECOGIDA);
-    expect(puntoDeRecogida({ ...base, origenFuente: "ultima_conocida" }, T0)).toBeNull();
-    expect(puntoDeRecogida({ ...base, origenFuente: "centroide" }, T0)).toBeNull();
-    expect(puntoDeRecogida({ ...base, origenAt: AYER }, T0)).toBeNull();
-    expect(puntoDeRecogida(null, T0)).toBeNull();
-  });
 });
 
-describe("SLT-59 T7.4 — R59: con la primera ruta pendiente se recalcula", () => {
-  it("R59: job `debounce` con la primera pendiente, el mismo conjunto y sin desvio -> recalcula", async () => {
-    const { service, client, routes, rutas } = build({ ruta: rutaDeAyer() });
+describe("SLT-79 — un disparo automatico NO calcula la primera ruta del dia", () => {
+  it("job `debounce` con la primera pendiente -> `primera_ruta_pendiente`, 0 llamadas, 0 escrituras, sin leer paradas", async () => {
+    const { service, paradasRepo, escrituras, llamadas } = build({ ruta: rutaDeAyer() });
     const r = await service.ejecutar(MENSAJERO, { motivo: "debounce", jobCreatedAt: T0 });
-    expect(r.status).toBe("ok");
-    expect(client.optimizar).toHaveBeenCalledTimes(1);
-    expect(routes.trazar).toHaveBeenCalledTimes(1);
-    expect(rutas.reemplazarSecuencia).toHaveBeenCalledTimes(1);
+    expect(r).toEqual({ status: "omitida", razon: "primera_ruta_pendiente" });
+    expect(llamadas()).toBe(0);
+    expect(escrituras()).toBe(0);
+    expect(paradasRepo.findParadasEnReparto).not.toHaveBeenCalled();
+  });
+
+  it("job sin ruta todavia (nunca calculada) -> tambien se omite", async () => {
+    const { service, llamadas, escrituras } = build({ ruta: null });
+    const r = await service.ejecutar(MENSAJERO, { motivo: "debounce", jobCreatedAt: T0 });
+    expect(r).toEqual({ status: "omitida", razon: "primera_ruta_pendiente" });
+    expect(llamadas()).toBe(0);
+    expect(escrituras()).toBe(0);
+  });
+
+  it("job con origen legado `recogida` (encolado antes del despliegue) -> se omite igual", async () => {
+    const { service, llamadas } = build({ ruta: rutaDeAyer() });
+    const r = await service.ejecutar(MENSAJERO, {
+      motivo: "debounce",
+      jobCreatedAt: T0,
+      job: { origen: null, intento: 1, maxIntentos: 3 },
+    });
+    expect(r).toEqual({ status: "omitida", razon: "primera_ruta_pendiente" });
+    expect(llamadas()).toBe(0);
   });
 
   it("R67: un job con la primera pendiente no lee el conteo (solo el boton lo lee)", async () => {
     const { service, paradasRepo } = build({ ruta: rutaDeAyer() });
     await service.ejecutar(MENSAJERO, { motivo: "debounce", jobCreatedAt: T0 });
     expect(paradasRepo.contarAsignadasDelDia).not.toHaveBeenCalled();
+    expect(paradasRepo.ultimaRecogidaDelDia).not.toHaveBeenCalled();
+  });
+
+  it("con la primera ruta ya calculada hoy, el job sigue funcionando (paradas nuevas -> recalcula)", async () => {
+    const { service, client } = build({
+      ruta: rutaDeAyer({
+        calculadaAt: new Date(T0.getTime() - 60 * MIN),
+        secuenciaPorOrden: new Map([["s1", 1], ["s2", 2]]),
+      }),
+    });
+    const r = await service.ejecutar(MENSAJERO, { motivo: "debounce", jobCreatedAt: T0 });
+    expect(r.status).toBe("ok");
+    expect(client.optimizar).toHaveBeenCalledTimes(1);
   });
 });
 
 describe("SLT-59 T7.5 — R64/R67: el boton con la primera ruta pendiente", () => {
-  it("R64: 3 de 4 (75 %) -> `recogida_insuficiente`, 0 llamadas, 0 escrituras y sin leer paradas", async () => {
+  it("R64: 3 de 4 (75 %) recogiendo hace 1 min -> `recogida_insuficiente`, 0 llamadas, 0 escrituras y sin leer paradas", async () => {
     const { service, paradasRepo, escrituras, llamadas } = build({
       ruta: rutaDeAyer(),
       conteo: { asignadas: 4, recogidas: 3 },
     });
     const r = await service.ejecutar(MENSAJERO, { motivo: "manual", ubicacion: alSur(RECOGIDA, 10) });
-    expect(r).toEqual({ status: "omitida", razon: "recogida_insuficiente", recogidas: 3, asignadas: 4 });
+    expect(r).toEqual({
+      status: "omitida",
+      razon: "recogida_insuficiente",
+      recogidas: 3,
+      asignadas: 4,
+      esperaMs: 4 * MIN,
+    });
     expect(llamadas()).toBe(0);
     expect(escrituras()).toBe(0);
     expect(paradasRepo.findParadasEnReparto).not.toHaveBeenCalled();
@@ -306,147 +327,127 @@ describe("SLT-59 T7.5 — R64/R67: el boton con la primera ruta pendiente", () =
   });
 });
 
-describe("SLT-59 T7.6 — R63/R66: el disparo de salida", () => {
-  it("R63: a 1001 m del punto de recogida con la primera pendiente -> recalcula, y `upsertOrigen` va antes de llamar", async () => {
-    const lejos = alSur(RECOGIDA, 1001);
-    const { service, client, routes, rutas } = build({ ruta: rutaDeAyer() });
-    const r = await service.ejecutar(MENSAJERO, { motivo: "salida", ubicacion: lejos });
+describe("SLT-79 — el boton con la primera pendiente: minimo O 5 min desde la ultima recogida", () => {
+  // 15 asignadas al 80 % -> minimo 12.
+  const ASIGNADAS = 15;
+  const MINIMO = 12;
+  const hace = (ms: number) => new Date(T0.getTime() - ms);
+
+  it("exactamente en el minimo (12 de 15) -> calcula, sin leer la ultima recogida", async () => {
+    const { service, client, paradasRepo } = build({
+      ruta: rutaDeAyer(),
+      conteo: { asignadas: ASIGNADAS, recogidas: MINIMO },
+    });
+    const r = await service.ejecutar(MENSAJERO, { motivo: "manual" });
     expect(r.status).toBe("ok");
     expect(client.optimizar).toHaveBeenCalledTimes(1);
-    expect(routes.trazar).toHaveBeenCalledTimes(1);
-    expect(rutas.upsertOrigen).toHaveBeenCalledTimes(1);
-    expect(rutas.upsertOrigen.mock.calls[0][1]).toMatchObject({ lat: lejos.lat, lng: lejos.lng, fuente: "gps" });
-    expect(rutas.upsertOrigen.mock.invocationCallOrder[0]).toBeLessThan(
-      client.optimizar.mock.invocationCallOrder[0],
-    );
+    expect(paradasRepo.ultimaRecogidaDelDia).not.toHaveBeenCalled();
   });
 
-  it("R63: a 1000 m justos -> `salida_no_aplica`, 0 llamadas, 0 escrituras y sin leer paradas", async () => {
-    const borde = alSur(RECOGIDA, 1000);
-    expect(distanciaHaversineKm(borde, RECOGIDA) * 1000).toBeLessThanOrEqual(1000);
-    const { service, paradasRepo, escrituras, llamadas } = build({ ruta: rutaDeAyer() });
-    const r = await service.ejecutar(MENSAJERO, { motivo: "salida", ubicacion: borde });
-    expect(r).toEqual({ status: "omitida", razon: "salida_no_aplica" });
-    expect(llamadas()).toBe(0);
-    expect(escrituras()).toBe(0);
-    expect(paradasRepo.findParadasEnReparto).not.toHaveBeenCalled();
-  });
-
-  it("R63: con la primera ruta ya hecha -> `salida_no_aplica`", async () => {
-    const { service, escrituras, llamadas } = build({
-      ruta: rutaDeAyer({ calculadaAt: new Date(T0.getTime() - 60 * MIN) }),
-    });
-    const r = await service.ejecutar(MENSAJERO, { motivo: "salida", ubicacion: alOeste(RECOGIDA, 3000) });
-    expect(r).toEqual({ status: "omitida", razon: "salida_no_aplica" });
-    expect(llamadas()).toBe(0);
-    expect(escrituras()).toBe(0);
-  });
-
-  it.each([
-    ["origen `ultima_conocida`", { origenFuente: "ultima_conocida" as const }],
-    ["origen `centroide`", { origenFuente: "centroide" as const }],
-    ["origen GPS de ayer", { origenAt: AYER }],
-  ])("R63: sin punto de recogida (%s) -> `salida_no_aplica`", async (_c, over) => {
-    const { service, escrituras, llamadas } = build({ ruta: rutaDeAyer(over) });
-    const r = await service.ejecutar(MENSAJERO, { motivo: "salida", ubicacion: alOeste(RECOGIDA, 3000) });
-    expect(r).toEqual({ status: "omitida", razon: "salida_no_aplica" });
-    expect(llamadas()).toBe(0);
-    expect(escrituras()).toBe(0);
-  });
-
-  it("R63: sin ruta (nunca hubo recogida con GPS) -> `salida_no_aplica`", async () => {
-    const { service, llamadas } = build({ ruta: null });
-    const r = await service.ejecutar(MENSAJERO, { motivo: "salida", ubicacion: alOeste(RECOGIDA, 3000) });
-    expect(r).toEqual({ status: "omitida", razon: "salida_no_aplica" });
-    expect(llamadas()).toBe(0);
-  });
-
-  it("R63: ruta `desactualizada` dentro del enfriamiento -> `salida_no_aplica`; pasado, recalcula", async () => {
-    const dentro = build({
-      ruta: rutaDeAyer({ estado: "desactualizada", actualizadaAt: new Date(T0.getTime() - 2 * MIN) }),
-    });
-    const r = await dentro.service.ejecutar(MENSAJERO, {
-      motivo: "salida",
-      ubicacion: alOeste(RECOGIDA, 3000),
-    });
-    expect(r).toEqual({ status: "omitida", razon: "salida_no_aplica" });
-    expect(dentro.llamadas()).toBe(0);
-    expect(dentro.escrituras()).toBe(0);
-
-    const pasado = build({
-      ruta: rutaDeAyer({ estado: "desactualizada", actualizadaAt: new Date(T0.getTime() - 5 * MIN) }),
-    });
-    await pasado.service.ejecutar(MENSAJERO, { motivo: "salida", ubicacion: alOeste(RECOGIDA, 3000) });
-    expect(pasado.client.optimizar).toHaveBeenCalledTimes(1);
-  });
-
-  it("R66: dos disparos de salida seguidos -> la segunda vez, 0 llamadas", async () => {
-    const { service, client, routes } = build({ ruta: rutaDeAyer() });
-    const lejos = alOeste(RECOGIDA, 3000);
-    await service.ejecutar(MENSAJERO, { motivo: "salida", ubicacion: lejos });
-    expect(client.optimizar).toHaveBeenCalledTimes(1);
-    expect(routes.trazar).toHaveBeenCalledTimes(1);
-
-    const segunda = await service.ejecutar(MENSAJERO, { motivo: "salida", ubicacion: lejos });
-    expect(segunda).toEqual({ status: "omitida", razon: "salida_no_aplica" });
-    expect(client.optimizar).toHaveBeenCalledTimes(1);
-    expect(routes.trazar).toHaveBeenCalledTimes(1);
-  });
-
-  it("R63: la salida sin ubicacion no aplica (la accion siempre la exige)", async () => {
-    const { service, llamadas } = build({ ruta: rutaDeAyer() });
-    const r = await service.ejecutar(MENSAJERO, { motivo: "salida" });
-    expect(r).toEqual({ status: "omitida", razon: "salida_no_aplica" });
-    expect(llamadas()).toBe(0);
-  });
-});
-
-describe("SLT-74 — `recogida_insuficiente` dice cuanto falta para el job pendiente de la primera ruta", () => {
-  it("con job pendiente: `esperaMs` = run_after - ahora, leido con la clave del dia de CR", async () => {
-    const { service, jobs, llamadas } = build({
+  it("minimo menos 1 (11 de 15) recogiendo hace 1 min -> `recogida_insuficiente` con la espera restante", async () => {
+    const { service, llamadas, escrituras } = build({
       ruta: rutaDeAyer(),
-      conteo: { asignadas: 15, recogidas: 10 },
-      jobPendiente: { runAfter: new Date(T0.getTime() + 158_000) },
+      conteo: { asignadas: ASIGNADAS, recogidas: MINIMO - 1 },
+      ultimaRecogida: hace(MIN),
     });
     const r = await service.ejecutar(MENSAJERO, { motivo: "manual" });
     expect(r).toEqual({
       status: "omitida",
       razon: "recogida_insuficiente",
-      recogidas: 10,
-      asignadas: 15,
-      esperaMs: 158_000,
+      recogidas: MINIMO - 1,
+      asignadas: ASIGNADAS,
+      esperaMs: 4 * MIN,
     });
-    // T0 = 16:00 de CR del 29: la clave del job es la de ese dia (la misma que deja la recogida).
-    expect(jobs.findPendienteByDedupeKey).toHaveBeenCalledTimes(1);
-    expect(jobs.findPendienteByDedupeKey).toHaveBeenCalledWith("ruta-opt:primera-recogida:m-1:2026-10-29");
+    expect(llamadas()).toBe(0);
+    expect(escrituras()).toBe(0);
+  });
+
+  it("exactamente 5 min desde la ultima recogida (con 1 recogida) -> calcula", async () => {
+    const { service, client } = build({
+      ruta: rutaDeAyer(),
+      conteo: { asignadas: ASIGNADAS, recogidas: 1 },
+      ultimaRecogida: hace(5 * MIN),
+    });
+    const r = await service.ejecutar(MENSAJERO, { motivo: "manual" });
+    expect(r.status).toBe("ok");
+    expect(client.optimizar).toHaveBeenCalledTimes(1);
+  });
+
+  it("4:59 desde la ultima recogida -> `recogida_insuficiente`, falta 1 s", async () => {
+    const { service, llamadas } = build({
+      ruta: rutaDeAyer(),
+      conteo: { asignadas: ASIGNADAS, recogidas: 1 },
+      ultimaRecogida: hace(4 * MIN + 59_000),
+    });
+    const r = await service.ejecutar(MENSAJERO, { motivo: "manual" });
+    expect(r).toEqual({
+      status: "omitida",
+      razon: "recogida_insuficiente",
+      recogidas: 1,
+      asignadas: ASIGNADAS,
+      esperaMs: 1_000,
+    });
     expect(llamadas()).toBe(0);
   });
 
-  it("con el job ya vencido (espera al cron): `esperaMs` <= 0 tal cual", async () => {
-    const { service } = build({
+  it("0 recogidas -> `recogida_insuficiente` SIN `esperaMs` y sin leer la ultima recogida", async () => {
+    const { service, paradasRepo, llamadas } = build({
       ruta: rutaDeAyer(),
-      conteo: { asignadas: 15, recogidas: 10 },
-      jobPendiente: { runAfter: new Date(T0.getTime() - 20_000) },
+      conteo: { asignadas: ASIGNADAS, recogidas: 0 },
+      ultimaRecogida: hace(60 * MIN),
     });
     const r = await service.ejecutar(MENSAJERO, { motivo: "manual" });
-    expect(r).toMatchObject({ razon: "recogida_insuficiente", esperaMs: -20_000 });
+    expect(r).toEqual({ status: "omitida", razon: "recogida_insuficiente", recogidas: 0, asignadas: ASIGNADAS });
+    expect(paradasRepo.ultimaRecogidaDelDia).not.toHaveBeenCalled();
+    expect(llamadas()).toBe(0);
   });
 
-  it("sin job pendiente: sin `esperaMs`", async () => {
-    const { service } = build({ ruta: rutaDeAyer(), conteo: { asignadas: 15, recogidas: 0 }, jobPendiente: null });
+  it("con recogidas y ninguna recogida en el historial de hoy -> no hay carga que esperar, calcula", async () => {
+    const { service, client } = build({
+      ruta: rutaDeAyer(),
+      conteo: { asignadas: ASIGNADAS, recogidas: 3 },
+      ultimaRecogida: null,
+    });
     const r = await service.ejecutar(MENSAJERO, { motivo: "manual" });
-    expect(r).toEqual({ status: "omitida", razon: "recogida_insuficiente", recogidas: 0, asignadas: 15 });
+    expect(r.status).toBe("ok");
+    expect(client.optimizar).toHaveBeenCalledTimes(1);
   });
 
-  it("si la lectura del job falla, el aviso sale sin `esperaMs` en vez de tumbar el boton", async () => {
-    const { service } = build({ ruta: rutaDeAyer(), conteo: { asignadas: 15, recogidas: 10 }, jobPendiente: "falla" });
-    const r = await service.ejecutar(MENSAJERO, { motivo: "manual" });
-    expect(r).toEqual({ status: "omitida", razon: "recogida_insuficiente", recogidas: 10, asignadas: 15 });
-  });
-
-  it("con recogida suficiente no se lee el job (solo el aviso lo necesita)", async () => {
-    const { service, jobs } = build({ ruta: rutaDeAyer(), conteo: { asignadas: 5, recogidas: 4 } });
+  it("la ultima recogida se pide desde el inicio del dia de CR (columna `timestamp`, 06:00Z)", async () => {
+    const { service, paradasRepo } = build({
+      ruta: rutaDeAyer(),
+      conteo: { asignadas: ASIGNADAS, recogidas: 3 },
+    });
     await service.ejecutar(MENSAJERO, { motivo: "manual" });
-    expect(jobs.findPendienteByDedupeKey).not.toHaveBeenCalled();
+    expect(paradasRepo.ultimaRecogidaDelDia).toHaveBeenCalledTimes(1);
+    expect(paradasRepo.ultimaRecogidaDelDia).toHaveBeenCalledWith(
+      MENSAJERO,
+      new Date("2026-10-29T06:00:00.000Z"),
+    );
+  });
+
+  it("la espera sale de RUTA_PRIMERA_DEBOUNCE_MIN, no de una constante", async () => {
+    const rutas = {
+      findByMensajero: vi.fn(async () => rutaDeAyer()),
+      upsertOrigen: vi.fn(),
+      reemplazarSecuencia: vi.fn(),
+      guardarTrazado: vi.fn(),
+      reducirSecuencia: vi.fn(),
+      marcarDesactualizada: vi.fn(),
+    };
+    const paradasRepo: ParadasRepo = {
+      findParadasEnReparto: vi.fn(async () => TODAS()),
+      contarAsignadasDelDia: vi.fn(async () => ({ asignadas: ASIGNADAS, recogidas: 2 })),
+      ultimaRecogidaDelDia: vi.fn(async () => hace(MIN)),
+    };
+    const service = new OptimizacionRutaService(
+      rutas as unknown as IRutaOptimizadaRepository,
+      paradasRepo,
+      { optimizar: vi.fn() } as unknown as IRouteOptimizationClient,
+      { ...CONFIG, RUTA_PRIMERA_DEBOUNCE_MIN: 10 },
+      () => T0,
+    );
+    const r = await service.ejecutar(MENSAJERO, { motivo: "manual" });
+    expect(r).toMatchObject({ razon: "recogida_insuficiente", esperaMs: 9 * MIN });
   });
 });

@@ -76,7 +76,6 @@ function rutaPrevia(): RutaOptimizadaDTO {
     ultimoError: null,
     secuenciaFuente: "proveedor",
     trazado: null,
-    tramoVivoAt: null,
     actualizadaAt: new Date(T0.getTime() - 60 * 60_000), // SLT-59 (R54): enfriamiento ya pasado
     tramoPorOrden: new Map(),
     secuenciaPorOrden: new Map([
@@ -92,12 +91,11 @@ function build(http: number) {
     upsertOrigen: vi.fn(async () => {}),
     reemplazarSecuencia: vi.fn(async () => {}),
     guardarTrazado: vi.fn(async () => {}),
-    marcarTramoVivo: vi.fn(async () => {}),
     reducirSecuencia: vi.fn(async () => true),
     marcarDesactualizada: vi.fn<(m: string, e: string) => Promise<void>>(async () => {}),
   };
   const paradasRepo: ParadasRepo = {
-    contarAsignadasDelDia: async () => ({ asignadas: 0, recogidas: 0 }), findParadasEnReparto: vi.fn(async () => [parada("o1", 1), parada("o2", 2), parada("o3", 3)]),
+    contarAsignadasDelDia: async () => ({ asignadas: 0, recogidas: 0 }), ultimaRecogidaDelDia: async () => null, findParadasEnReparto: vi.fn(async () => [parada("o1", 1), parada("o2", 2), parada("o3", 3)]),
   };
   const fetchImpl = vi.fn(async () => new Response("{}", { status: http }));
   const client: IRouteOptimizationClient = new GoogleRouteOptimizationClient({

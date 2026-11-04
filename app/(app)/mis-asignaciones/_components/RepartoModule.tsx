@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -29,8 +29,6 @@ import type { BloqueoDetalle } from "@/lib/utils/bloqueo-cierre";
 // frase que pinta la card, la que devuelve el servidor y la que lee la tienda.
 import { avisoReservaParaOtroDia } from "@/lib/utils/dia-reparto-textos";
 import { normalizeName } from "@/lib/utils/normalize";
-import { calcularRutaAlSalir } from "@/lib/actions/ruta-mensajero";
-import { distanciaHaversineKm } from "@/lib/geo/polilinea";
 
 import { coincideBusqueda } from "./mis-asignaciones-buscador";
 import { FiltroCantonDistrito } from "./FiltroCantonDistrito";
@@ -47,7 +45,6 @@ import { PosOrderCardMosaico } from "./pos-card/PosOrderCardMosaico";
 import { RutaMapa } from "./RutaMapa";
 import { useSeguimientoUbicacion } from "./useSeguimientoUbicacion";
 import { SincronizarRutaButton } from "./SincronizarRutaButton";
-import { TrayectoVivoButton } from "./TrayectoVivoButton";
 import { CarruselCards } from "@/components/shared/CarruselCards";
 
 import { VistaCardsToggle, type VistaCards } from "./VistaCardsToggle";
@@ -125,15 +122,6 @@ export interface RepartoModuleProps {
    * controles de escoger y gestionar. Defensa SUAVE; el backend (R25) es la defensa real.
    */
   bloqueo: BloqueoDetalle;
-  /**
-   * SLT-59 (R62, design §12.6) — metros desde el punto de recogida a partir de los cuales el
-   * mensajero «ya salió» y se calcula su primera ruta del día. Lo baja el Server Component desde
-   * `RUTA_REOPT_DISTANCIA_M`, para que no exista un segundo literal en el cliente.
-   *
-   * Opcional a propósito: sin él no hay disparo de salida (0 llamadas facturadas), que es el
-   * desenlace seguro; quedan la gestión y el botón. La única pantalla real lo pasa siempre.
-   */
-  umbralSalidaM?: number;
 }
 
 // Feature 114: textos del buscador (separados para i18n futura, lenguaje claro). La
@@ -180,7 +168,6 @@ export function RepartoModule({
   ordenEnGestionId,
   ruta,
   bloqueo,
-  umbralSalidaM,
 }: RepartoModuleProps) {
   const router = useRouter();
   const toast = useToast();
@@ -328,7 +315,7 @@ export function RepartoModule({
   // Eran dos `useMemo` sobre `orden.ayuda`: uno partía `porGestionarVisual` en dos listas y otro
   // calculaba las «candidatas» del panel. Funcionaban para lo que se veía y para nada más: la
   // orden con ayuda seguía dentro de `porGestionar`, así que seguía siendo parada del mapa,
-  // contacto del chat, candidata de `TrayectoVivoButton` y —sobre todo— GESTIONABLE. El corte era
+  // contacto del chat y —sobre todo— GESTIONABLE. El corte era
   // maquetación sobre un dato que no se había movido.
   //
   // Ahora el servidor manda TRES listas y este módulo pinta lo que llega. `visualSinAyuda` es
@@ -379,62 +366,11 @@ export function RepartoModule({
   // cae a la del botón mientras el GPS no haya dado su primer fix bueno.
   const origenMapa = ubicacionVivo ?? ubicacionActual;
 
-  // SLT-59 (R62, design §12.6) — DISPARO DE SALIDA. La posición en vivo solo existe en el
-  // navegador: el servidor no se entera de que el mensajero dejó la bodega hasta su primera
-  // gestión. Aquí, sin coste, se detecta que se alejó del punto de recogida y se pide la primera
-  // ruta del día UNA vez por montaje (el ref), aunque el GPS siga dando lecturas: cada llamada
-  // es una optimización facturada, y la decisión final la vuelve a comprobar el servidor (R63).
-  // Lo que no sea un cálculo hecho se calla: nada que el mensajero tenga que resolver (sin toast).
-  const salidaDisparada = useRef(false);
-  const primeraRutaPendiente = ruta.primeraRutaPendiente;
-  const recogidaLat = ruta.puntoRecogida?.lat ?? null;
-  const recogidaLng = ruta.puntoRecogida?.lng ?? null;
-  // Sobre `porGestionar` SIN filtrar: el buscador no puede decidir si hay algo que optimizar.
-  const hayParadasConCoordenadas = porGestionar.some(
-    (o) => o.latitud !== null && o.longitud !== null,
-  );
-  useEffect(() => {
-    if (salidaDisparada.current || ubicacionVivo === null) return;
-    if (umbralSalidaM === undefined || !primeraRutaPendiente || !hayParadasConCoordenadas) return;
-    if (recogidaLat === null || recogidaLng === null) return;
-    const metros =
-      distanciaHaversineKm(ubicacionVivo, { lat: recogidaLat, lng: recogidaLng }) * 1000;
-    if (metros <= umbralSalidaM) return;
-    salidaDisparada.current = true;
-    calcularRutaAlSalir({ ubicacion: { lat: ubicacionVivo.lat, lng: ubicacionVivo.lng } })
-      .then((result) => {
-        if (result.status !== "ok" || result.omitida) return;
-        // Como el botón: el trazado se eleva antes del refresh, que no toca el estado de cliente.
-        if (result.trazado) {
-          setTrazadoRuta({
-            encodedPolyline: result.trazado.encodedPolyline,
-            fuente: result.trazado.fuente,
-          });
-        }
-        router.refresh();
-      })
-      .catch(() => {
-        // Un fallo aquí no le pide nada al mensajero: le quedan la gestión y el botón.
-      });
-  }, [
-    ubicacionVivo,
-    umbralSalidaM,
-    primeraRutaPendiente,
-    hayParadasConCoordenadas,
-    recogidaLat,
-    recogidaLng,
-    router,
-  ]);
-
-  // Trayecto en vivo pedido a mano. Cuando existe MANDA sobre el tramo persistido: el
-  // mensajero acaba de pedir explícitamente «desde donde estoy», y seguir resaltando el
-  // tramo que arranca en el origen de la optimización sería ignorar lo que pidió.
-  const [trayectoVivo, setTrayectoVivo] = useState<string | null>(null);
 
   // Feature 235 (R35): la orden cuyo HILO está abierto, o `null`. Carga bajo demanda, mismo
   // montaje que `HiloNotasNovedadModal` hace del lado tienda: el hilo no viaja en el listado.
   const [hiloOrden, setHiloOrden] = useState<MiAsignacionDTO | null>(null);
-  const tramoResaltado = trayectoVivo ?? ruta.tramoSiguiente?.encodedPolyline ?? null;
+  const tramoResaltado = ruta.tramoSiguiente?.encodedPolyline ?? null;
 
   // Orden que el mensajero eligió explícitamente para el panel de detalle. Es
   // solo una PREFERENCIA: la orden mostrada se DERIVA (ver `detalleOrden`) para
@@ -780,15 +716,6 @@ export function RepartoModule({
                 <SincronizarRutaButton
                   onUbicacion={setUbicacionActual}
                   onTrazado={setTrazadoRuta}
-                />
-                {/* Trayecto EN VIVO: cada pulsación es una llamada facturada (no se puede
-                    cachear algo que arranca donde el mensajero está AHORA), por eso es un
-                    botón aparte y explícito. La siguiente parada es la primera de la lista,
-                    que ya viene ordenada por secuencia desde el servidor. */}
-                <TrayectoVivoButton
-                  ubicacion={origenMapa}
-                  ordenId={porGestionar[0]?.id ?? null}
-                  onTrayecto={setTrayectoVivo}
                 />
               </div>
             </div>
