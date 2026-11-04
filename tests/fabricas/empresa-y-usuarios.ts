@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type { ModuloApagable, PrismaClient, RolValue } from "@prisma/client";
 
 import { comoPlataforma, conEmpresa } from "../../lib/db/contexto-empresa";
@@ -10,6 +12,7 @@ import { UserRepository } from "../../lib/repositories/UserRepository";
 import { VehiculoRepository } from "../../lib/repositories/VehiculoRepository";
 import { ZonaRepository } from "../../lib/repositories/ZonaRepository";
 import { OrganizacionService } from "../../lib/services/OrganizacionService";
+import { construirReglasPaisEmpresa } from "../../lib/services/ReglasPaisEmpresaService";
 import { UsuarioService } from "../../lib/services/UsuarioService";
 import { VEHICULOS_SEED } from "../../lib/types/vehiculos";
 import { hashPassword } from "../../lib/utils/password";
@@ -131,7 +134,17 @@ function servicioDeUsuarios(): UsuarioService {
     new VehiculoRepository(prisma),
     new SessionRepository(prisma),
     new CierreBodegaRepository(prisma),
+    construirReglasPaisEmpresa(prisma),
   );
+}
+
+/**
+ * SLT-42 (R10): la cédula física de Costa Rica, 9 dígitos, sacada del correo. Determinista para que
+ * la demo de QA dé lo mismo en cada corrida; el correo ya es único, así que choca solo por azar.
+ */
+function cedulaDelCorreo(correo: string): string {
+  const n = createHash("sha256").update(correo).digest().readUInt32BE(0) % 1_000_000_000;
+  return String(n).padStart(9, "0");
 }
 
 export interface DatosUsuario {
@@ -141,7 +154,10 @@ export interface DatosUsuario {
   contrasena: string;
   /** Por defecto, «<rol> <parte local del correo>». */
   nombre?: string;
-  /** Único global (`usuario.cedula`). Por defecto, la parte local del correo. */
+  /**
+   * Único por empresa y tipo (SLT-42, R13) y con la regla de la cédula física de CR (9 dígitos, R10).
+   * Por defecto, una derivada del correo.
+   */
   cedula?: string;
   zonaId?: string;
   vehiculoId?: string;
@@ -183,7 +199,7 @@ export async function crearUsuario(
         email: datos.correo,
         telefono: TELEFONO,
         tipoIdentificacionId: tipo.id,
-        cedula: datos.cedula ?? local,
+        cedula: datos.cedula ?? cedulaDelCorreo(datos.correo),
         rolId: rolFila.id,
         ...(datos.zonaId ? { zonaId: datos.zonaId } : {}),
         ...(vehiculoId ? { vehiculoId } : {}),

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { UsuarioService } from "@/lib/services/UsuarioService";
+import { CR, reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 import {
   type IUserRepository,
   type UsuarioPublico,
@@ -33,10 +34,10 @@ function usuario(over: Partial<UsuarioPublico> = {}): UsuarioPublico {
     id: "usr-1",
     nombre: "Ana",
     email: "ana@example.com",
-    telefono: "099",
+    telefono: "88880000",
     estado: "activo",
-    cedula: "1710034065",
-    tipoIdentificacionId: "tipo-1",
+    cedula: "171003406",
+    tipoIdentificacionId: "tipo-cr-cedula",
     rolId: "rol-msg",
     fulfillment: false,
     zonaId: "z1",
@@ -118,9 +119,9 @@ function buildVehiculoRepo(exists: boolean): IVehiculoRepository {
 const baseCrear = {
   nombre: "Ana",
   email: "ana@example.com",
-  telefono: "099",
-  tipoIdentificacionId: "tipo-1",
-  cedula: "1710034065",
+  telefono: "88880000",
+  tipoIdentificacionId: "tipo-cr-cedula",
+  cedula: "171003406",
   passwordMode: "manual" as const,
   password: "Abcdef1!",
 };
@@ -140,7 +141,7 @@ beforeEach(() => {
 
 describe("crear — vehiculo por rol (feature 21)", () => {
   it("mensajero con vehiculoId existente lo persiste", async () => {
-    const svc = new UsuarioService(repo, buildZonaRepo(), buildVehiculoRepo(true));
+    const svc = new UsuarioService(repo, buildZonaRepo(), buildVehiculoRepo(true), undefined, undefined, reglasPaisFijas(CR));
     const r = await svc.crear(
       { ...baseCrear, rolId: "rol-msg", zonaId: "z1", vehiculoId: "v1" },
       MAESTRO,
@@ -150,7 +151,7 @@ describe("crear — vehiculo por rol (feature 21)", () => {
   });
 
   it("mensajero SIN vehiculo -> validation_error (es obligatorio para el rol)", async () => {
-    const svc = new UsuarioService(repo, buildZonaRepo(), buildVehiculoRepo(true));
+    const svc = new UsuarioService(repo, buildZonaRepo(), buildVehiculoRepo(true), undefined, undefined, reglasPaisFijas(CR));
     const r = await svc.crear({ ...baseCrear, rolId: "rol-msg", zonaId: "z1" }, MAESTRO);
     expect(r.status).toBe("validation_error");
     if (r.status === "validation_error") {
@@ -160,7 +161,7 @@ describe("crear — vehiculo por rol (feature 21)", () => {
   });
 
   it("rol no aplicable (adminSatelite) fuerza vehiculoId=null aunque se envie", async () => {
-    const svc = new UsuarioService(repo, buildZonaRepo(), buildVehiculoRepo(true));
+    const svc = new UsuarioService(repo, buildZonaRepo(), buildVehiculoRepo(true), undefined, undefined, reglasPaisFijas(CR));
     await svc.crear(
       { ...baseCrear, rolId: "rol-sat", zonaId: "z1", vehiculoId: "v1" },
       MAESTRO,
@@ -169,7 +170,7 @@ describe("crear — vehiculo por rol (feature 21)", () => {
   });
 
   it("vehiculoId inexistente -> validation_error sin tocar la base", async () => {
-    const svc = new UsuarioService(repo, buildZonaRepo(), buildVehiculoRepo(false));
+    const svc = new UsuarioService(repo, buildZonaRepo(), buildVehiculoRepo(false), undefined, undefined, reglasPaisFijas(CR));
     const r = await svc.crear(
       { ...baseCrear, rolId: "rol-msg", zonaId: "z1", vehiculoId: "fantasma" },
       MAESTRO,
@@ -184,21 +185,21 @@ describe("crear — vehiculo por rol (feature 21)", () => {
 
 describe("actualizar — vehiculo por rol (feature 21)", () => {
   it("asocia un vehiculo existente a un mensajero", async () => {
-    const svc = new UsuarioService(repo, buildZonaRepo(), buildVehiculoRepo(true));
+    const svc = new UsuarioService(repo, buildZonaRepo(), buildVehiculoRepo(true), undefined, undefined, reglasPaisFijas(CR));
     const r = await svc.actualizar("usr-1", { vehiculoId: "v1" }, MAESTRO);
     expect(r.status).toBe("ok");
     expect(actualizado(repo).vehiculoId).toBe("v1");
   });
 
   it("vehiculoId=null en un mensajero -> validation_error (no se puede dejar sin vehiculo)", async () => {
-    const svc = new UsuarioService(repo, buildZonaRepo(), buildVehiculoRepo(true));
+    const svc = new UsuarioService(repo, buildZonaRepo(), buildVehiculoRepo(true), undefined, undefined, reglasPaisFijas(CR));
     const r = await svc.actualizar("usr-1", { vehiculoId: null }, MAESTRO);
     expect(r.status).toBe("validation_error");
     expect(repo.update).not.toHaveBeenCalled();
   });
 
   it("no toca el vehiculo si no se envia ni cambia el rol", async () => {
-    const svc = new UsuarioService(repo, buildZonaRepo(), buildVehiculoRepo(true));
+    const svc = new UsuarioService(repo, buildZonaRepo(), buildVehiculoRepo(true), undefined, undefined, reglasPaisFijas(CR));
     await svc.actualizar("usr-1", { nombre: "Ana B" }, MAESTRO);
     expect(actualizado(repo)).not.toHaveProperty("vehiculoId");
   });
@@ -207,7 +208,7 @@ describe("actualizar — vehiculo por rol (feature 21)", () => {
     repo = buildRepo({
       findById: vi.fn().mockResolvedValue(usuario({ vehiculoId: "v1" })),
     });
-    const svc = new UsuarioService(repo, buildZonaRepo(), buildVehiculoRepo(true));
+    const svc = new UsuarioService(repo, buildZonaRepo(), buildVehiculoRepo(true), undefined, undefined, reglasPaisFijas(CR));
     await svc.actualizar("usr-1", { rolId: "rol-admin" }, MAESTRO);
     expect(actualizado(repo).vehiculoId).toBeNull();
   });

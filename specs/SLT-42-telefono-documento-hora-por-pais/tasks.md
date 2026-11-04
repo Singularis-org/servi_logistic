@@ -22,14 +22,14 @@
   *Hecho:* las tres dan lo esperado. Si aparece una empresa fuera de CR, se para y decide el humano:
   T1.1–T1.3 no se aplican fuera de la base de test hasta entonces.
 
-- [x] **T1.1** Migración `20261103120000_slt42_pais_telefono_y_zona` + `down.sql` + `model Pais` en
+- [x] **T1.1** Migración `20261104140000_slt42_pais_telefono_y_zona` + `down.sql` + `model Pais` en
   `db/schema.prisma` (`design.md` §2.1).
   *Hecho:* sube, baja y vuelve a subir en la base de test; CR queda con 506 / 8 / `America/Costa_Rica`.
-- [x] **T1.2** Migración `20261103120100_slt42_tipo_documento_por_pais` + `down.sql` + `model
+- [x] **T1.2** Migración `20261104140100_slt42_tipo_documento_por_pais` + `down.sql` + `model
   TipoIdentificacion` (§2.2): precondición, columnas, filas de CR, índices y política restrictiva.
   *Hecho:* el `down` aborta si un usuario usa `dimex`/`nite`; sin usuarios, vuelve al esquema exacto
   de antes.
-- [x] **T1.3** Migración `20261103120200_slt42_usuario_documento_unico_por_tipo` + `down.sql` (§2.3).
+- [x] **T1.3** Migración `20261104140200_slt42_usuario_documento_unico_por_tipo` + `down.sql` (§2.3).
   *Hecho:* el `down` aborta con repetidos de `(organizacion_id, cedula)`; la guardia
   `unicos-por-empresa` en verde. Si para entonces existe la guardia de migraciones destructivas, el
   `DROP INDEX` figura en su lista de excepciones con la ficha SLT-42 (excepción P4, `design.md` §2.3).
@@ -75,7 +75,7 @@
 
 ## Bloque 4 — Documento y teléfono en los servicios (depende de T2.2–T2.4, T3.2)
 
-- [ ] **T4.1** `UsuarioService` (alta y edición) + `UserRepository.listTiposIdentificacion` por país +
+- [x] **T4.1** `UsuarioService` (alta y edición) + `UserRepository.listTiposIdentificacion` por país +
   schemas de `lib/types/usuario.ts` solo de forma.
   `tests/unit/services/usuario-service-pais.test.ts` (R5, R9–R12, R14–R16) y el caso de R17 en
   `usuario-service-superadmin.test.ts`.
@@ -148,12 +148,12 @@ Orden sugerido. Cada task deja su grupo en verde con sus tests de hoy, inyectand
 ## Archivos esperados
 
 Nuevos:
-- `db/migrations/20261103120000_slt42_pais_telefono_y_zona/migration.sql`
-- `db/migrations/20261103120000_slt42_pais_telefono_y_zona/down.sql`
-- `db/migrations/20261103120100_slt42_tipo_documento_por_pais/migration.sql`
-- `db/migrations/20261103120100_slt42_tipo_documento_por_pais/down.sql`
-- `db/migrations/20261103120200_slt42_usuario_documento_unico_por_tipo/migration.sql`
-- `db/migrations/20261103120200_slt42_usuario_documento_unico_por_tipo/down.sql`
+- `db/migrations/20261104140000_slt42_pais_telefono_y_zona/migration.sql`
+- `db/migrations/20261104140000_slt42_pais_telefono_y_zona/down.sql`
+- `db/migrations/20261104140100_slt42_tipo_documento_por_pais/migration.sql`
+- `db/migrations/20261104140100_slt42_tipo_documento_por_pais/down.sql`
+- `db/migrations/20261104140200_slt42_usuario_documento_unico_por_tipo/migration.sql`
+- `db/migrations/20261104140200_slt42_usuario_documento_unico_por_tipo/down.sql`
 - `lib/utils/calendario-zona.ts`
 - `lib/utils/telefono-pais.ts`
 - `lib/utils/documento.ts`

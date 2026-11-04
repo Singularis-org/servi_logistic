@@ -13,7 +13,7 @@ model Session {
   createdAt DateTime @default(now())
 }
 
-// SLT-42 (design §2.2; 20261103120100): catálogo de tipos de documento POR PAÍS. Las filas «cedula»,
+// SLT-42 (design §2.2; 20261104140100): catálogo de tipos de documento POR PAÍS. Las filas «cedula»,
 // «ruc» y «pasaporte» de antes son ahora tipos de CR (mismo `id`, el usuario no se tocó). La empresa
 // solo lee los de su país (política restrictiva `tipo_identificacion_del_pais`); escribe la plataforma.
 model TipoIdentificacion {
@@ -232,7 +232,7 @@ model Usuario {
   // no expresa: vive en la migracion 20261026090000_usuario_unico_por_empresa.
   @@unique([organizacionId, email], map: "usuario_email_key")
   // SLT-42/R13 (P4): el documento es único por empresa Y TIPO, con el mismo nombre de índice
-  // (20261103120200_slt42_usuario_documento_unico_por_tipo; NULLS NOT DISTINCT también vive ahí).
+  // (20261104140200_slt42_usuario_documento_unico_por_tipo; NULLS NOT DISTINCT también vive ahí).
   @@unique([organizacionId, tipoIdentificacionId, cedula], map: "usuario_cedula_key")
   @@index([email]) // SL-18/R25: el login y la recuperacion buscan por email sin empresa
   @@map("usuario")
@@ -5838,7 +5838,7 @@ model Pais {
   /// SL-20 (enmienda 2026-10-26, decisión 6; 20261026130500): hay cobertura en el país (R44). Con
   /// `false` no se acepta en un alta NUEVA de empresa (R45); las que ya están siguen igual (R46).
   disponible          Boolean  @default(true)
-  /// SLT-42 (R1; 20261103120000): datos de teléfono y hora. NULL = el país aún no los tiene (R6, R28).
+  /// SLT-42 (R1; 20261104140000): datos de teléfono y hora. NULL = el país aún no los tiene (R6, R28).
   /// Prefijo internacional en dígitos, sin '+'.
   prefijoTelefonico         String? @map("prefijo_telefonico")
   telefonoDigitosNacionales Int?    @map("telefono_digitos_nacionales") @db.SmallInt

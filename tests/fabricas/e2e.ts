@@ -199,7 +199,6 @@ export async function crearUsuarioE2E(
     correo: correoE2E(rol),
     contrasena: contrasenaE2E(),
     nombre: `E2E ${rol} ${s}`,
-    cedula: `e2e-${s}`,
     ...extra,
   });
 }
