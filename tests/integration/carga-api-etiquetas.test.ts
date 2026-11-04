@@ -41,7 +41,7 @@ function okSummary(overrides: Partial<CargaViaApiSummary> = {}): CargaViaApiSumm
     // 2026-08-31: las filas que fallan viajan en su propia lista. Aqui no falla ninguna.
     errores: [],
     ordenes: [
-      { id: "ord-1", numRemision: "REM-1", numGuia: 1042, estado: "por_recolectar_en_tienda", estadoNombre: "Por recolectar en tienda", costoEnvio: "3.92", fulfillment: "0.00" },
+      { id: "ord-1", numRemision: "REM-1", numGuia: 1042, estado: "por_recolectar_en_tienda", estadoNombre: "Por recolectar en tienda", costoEnvio: "3.92", fulfillment: "0.00", ivaFulfillment: "0.00" },
     ],
     cargaId: "33333333-3333-4333-8333-333333333333", // feature 141/R39
     ...overrides,
@@ -115,6 +115,7 @@ function summaryDeLoteGrande(n: number): CargaViaApiSummary {
     estado: "en_ruta_bodega_central", estadoNombre: "En ruta a bodega central",
     costoEnvio: "3.92",
     fulfillment: "0.00",
+    ivaFulfillment: "0.00",
   }));
   const filas: CargaViaApiRow[] = ordenes.map((o, i) => ({
     fila: i + 1,

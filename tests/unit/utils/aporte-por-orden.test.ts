@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Prisma } from "@prisma/client";
 import type { TarifaVigente } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
+import type { TarifaCongelada } from "@/lib/utils/cierre-detalle";
 import {
   agregarIngresosPorConcepto,
   type OrdenIngresoInput,
@@ -52,6 +53,9 @@ const TARIFA: TarifaVigente = {
 /** La tarifa que estaria VIGENTE hoy, distinta de la congelada. No debe influir en nada. */
 const TARIFA_VIGENTE_HOY: TarifaVigente = { ...TARIFA, valorFlete: "9999.00" };
 
+/** SLT-52 (T5.3): lo que `tarifaDe` devuelve del congelado viejo es el sobre; mismos importes. */
+const viejo = (tarifa: TarifaVigente): TarifaCongelada => ({ modelo: "viejo", tarifa });
+
 interface OrdenSintetica {
   orden: OrdenCongelada;
   gestiones: GestionDelCierre[];
@@ -70,7 +74,7 @@ const CONJUNTO: OrdenSintetica[] = [
       esZonaEspecial: false,
       montoCobrar: "14900.00",
       cobraComision: true,
-      tarifa: TARIFA,
+      tarifa: viejo(TARIFA),
     },
     gestiones: [{ resultado: "entregado", montoRecibido: "14900.00", pagoMensajero: null, indemnizacion: null }],
   },
@@ -81,7 +85,7 @@ const CONJUNTO: OrdenSintetica[] = [
       esZonaEspecial: false,
       montoCobrar: "16618.40",
       cobraComision: true,
-      tarifa: TARIFA,
+      tarifa: viejo(TARIFA),
     },
     gestiones: [{ resultado: "entregado", montoRecibido: "16618.40", pagoMensajero: null, indemnizacion: null }],
   },
@@ -92,7 +96,7 @@ const CONJUNTO: OrdenSintetica[] = [
       esZonaEspecial: false,
       montoCobrar: "7333.33",
       cobraComision: true,
-      tarifa: TARIFA,
+      tarifa: viejo(TARIFA),
     },
     gestiones: [
       { resultado: "entregado", montoRecibido: "3000.00", pagoMensajero: null, indemnizacion: null },
@@ -106,7 +110,7 @@ const CONJUNTO: OrdenSintetica[] = [
       esZonaEspecial: false,
       montoCobrar: "5000.00",
       cobraComision: true,
-      tarifa: TARIFA,
+      tarifa: viejo(TARIFA),
     },
     gestiones: [{ resultado: "devolucion_a_origen_por_rechazo", montoRecibido: null, pagoMensajero: null, indemnizacion: null }],
   },
@@ -128,7 +132,7 @@ const CONJUNTO: OrdenSintetica[] = [
       esZonaEspecial: false,
       montoCobrar: "1000.00",
       cobraComision: false,
-      tarifa: TARIFA,
+      tarifa: viejo(TARIFA),
     },
     gestiones: [
       { resultado: "novedad", montoRecibido: null, pagoMensajero: null, indemnizacion: null },
@@ -138,7 +142,7 @@ const CONJUNTO: OrdenSintetica[] = [
 ];
 
 /** Las gestiones del conjunto, APLANADAS: es exactamente lo que el feed recorre. */
-function entradasDelFeed(): Array<{ input: OrdenIngresoInput; tarifa: TarifaVigente | null }> {
+function entradasDelFeed(): Array<{ input: OrdenIngresoInput; tarifa: TarifaCongelada | null }> {
   return CONJUNTO.flatMap(({ orden, gestiones }) =>
     gestiones.map((g) => ({
       input: {
@@ -217,7 +221,7 @@ describe("ficha 344 — el aporte por orden (R22/R46/R49)", () => {
     expect(
       aporteDeOrden(
         fuente,
-        { ...orden.orden, tarifa: TARIFA_VIGENTE_HOY },
+        { ...orden.orden, tarifa: viejo(TARIFA_VIGENTE_HOY) },
         orden.gestiones,
       )?.toFixed(2),
     ).toBe("9999.00");

@@ -994,3 +994,26 @@ distrito en dos zonas, que SLT-44 ya arregló en `590682e9`. No lo aislé más p
   - `filtros-url-r25`, `otp-debug-solo-en-pruebas`, `descargas-por-registro` y `sin-estados-retirados`:
     cayeron por timeout (20 s en `readdirSync` del árbol). Esa corrida coincidió con la de integración.
     Corridos solos pasan: 2 + 27 tests en lote, y 9/9 y 6/6 por separado. No son rojos de SLT-65.
+
+## F2.3 — Merge de SLT-44 con las migraciones de SLT-43 renombradas (implementer, 2026-11-04)
+
+- `3e261867`: commit de `progress/review_SLT-65.md` (review vuelta 2, B1).
+- Merge de `origin/feature/SLT-44-geo-jerarquica-dominio` (`98976157`). Trae SLT-43 con sus 6 migraciones renombradas a `20261104120000`…`20261104120500`, después de SLT-52, y además SLT-52, que entra por primera vez en esta rama. SLT-65 no tiene migraciones propias.
+- Conflictos y cómo se resolvieron. En todos se unen los dos lados:
+  - `CierreDiaRepository.crearCierre`: el snapshot usa `...congeladoDeLaFila(f, descriptivos)` (SLT-65) seguido de `tarifaModelo` y `tarifaColumnas(tarifa?.modelo === "viejo" ? …)` (SLT-52). Los nombres congelados salen solo de `congeladoDeLaFila`.
+  - `OrdenRepository.toListItemDTO(row, tarifa: TarifaDeFila | null, esZonaEspecial)`.
+  - En 3 dobles de test (`ordenes-api-key-orden-consulta.route`, `ordenes-api-key-composicion-415`, `costo-orden-forma-unica.guardia`) van `...delegadosDelCatalogo()` y `...sinValoresDelModeloNuevo()`. No comparten claves.
+- Ajustes tras el merge, para que el typecheck pase y la copia de hoy refleje `dev`:
+  - `distritoId` aparecía duplicado porque lo añadieron SLT-52 y SLT-65. Se quitó la línea de SLT-65 en `OrdenRepository` (`apiOrdenSelect`, el tipo de la fila y `findBaseCobroDevolucion`) y en el literal de `orden-repository.no-regresion-106`. La semántica no cambia.
+  - `scripts/geo-equivalencia-consultas.ts`: `DETALLE_SELECT` suma `tarifaModelo` y `conceptos`, y la llamada pasa a `tarifaDe(d, d.conceptos)`. Es el patrón de `CierresAdminRepository`.
+  - `scripts/geo-equivalencia/consultas-de-hoy.ts`: se añade `distritoId` en `API_ORDEN_SELECT` y en `findBaseCobroDevolucion`, igual que hizo SLT-52 en `dev`.
+  - `geo-consultas-ordenes.test.ts:163`: el `costeo` esperado suma `distritoId: f.distritoId`, el campo que SLT-52 añadió al `costeo`. La marca y el resto del `expect` no cambian. **Es un cambio de un literal esperado: lo revisa el reviewer.**
+- Base: `logistic_slt65_r1104` es nueva, con `migrate deploy` (301), `db:seed` y `db:generate`. La base compartida `logistic` no se tocó.
+
+Salida (`DATABASE_URL` → `logistic_slt65_r1104`, un archivo por corrida con `timeout 600`):
+- `slt43-migraciones-aditivas` 9/9; `migracion-slt43-ida-y-vuelta` 8/8.
+- `geo-*` de integración, los 21: `geo-65-fixture` 1/1, `geo-backfill` 16/16, `geo-catalogo-repository` 8/8, `geo-consultas-cierre` 5/5, `geo-consultas-conteo` 4/4, `geo-consultas-ordenes` 6/6 (tras el ajuste; antes 1 rojo), `geo-consultas-zona` 4/4, `geo-equivalencia` 4/4, `geo-equivalencia-consultas` 9/9, `geo-equivalencia-dinero` 8/8, `geo-explain-consultas` 11/11, `geo-lecturas-catalogo` 8/8, `geo-lecturas-sin-backfill` 2/2, `geo-nodo-invariantes` 15/15, `geo-nodo-rls` 2/2, `geo-normalizar-nombre` 4/4, `geo-sincronia-geografia` 8/8, `geo-sincronia-orden-zonas` 10/10, `geo-tipo-nivel` 7/7, `geo-trigger-orden-rendimiento` 1/1.
+- `zona-distrito-unica` 9/9, `zona-distrito-unica-migration` 24/24, `catalogo-y-choke-point` 52/52, `caja-459-migration` 6/6.
+- Archivos con conflicto: `ordenes-api-key-orden-consulta.route` 31/31, `ordenes-api-key-composicion-415` 3/3, `costo-orden-forma-unica.guardia` 11/11, `orden-repository.no-regresion-106` 7/7.
+- `pnpm run test:guardias`: 332/333 archivos y 4623 tests en verde. Solo falla `dependencias-declaradas-presentes` (4 tests), que está en la baseline.
+- `tsc --noEmit`: exit 0.

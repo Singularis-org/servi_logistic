@@ -112,13 +112,15 @@ const SELECT_DETALLE_106 = {
   },
   // --- 415 (2026-09-10): la zona de la ORDEN y las entradas del costo ---------------------------
   zonaId: true,
+  // SLT-52 (R16/R18): el distrito completa el par con el que se resuelve la tarifa (decide el grupo
+  // de distritos en el modelo nuevo). Entra en el costeo y NO se publica, como `zonaId`.
+  distritoId: true,
   cobraComision: true,
   // `esCentral` se lee pero NO se publica: elige la columna de flete (GAM vs estandar).
   zona: { select: { id: true, nombre: true, esCentral: true } },
   // SLT-65 (design §3; decision humana 2026-10-31, «Sí, actualizar los literales»): la marca de la
   // empresa ya no viaja en la relacion `distrito`; sale del catalogo sobre el lugar de la orden, y
-  // aqui solo van las dos FK que lo definen. Ni nombres ni geografia publicada (415/R5).
-  distritoId: true,
+  // aqui solo van las dos FK que lo definen (`distritoId` ya va arriba, por SLT-52). Ni nombres ni geografia publicada (415/R5).
   cantonId: true,
   // La fila congelada elegible MAS RECIENTE. El `where` lleva las DOS mitades y las dos son
   // load-bearing: `tiendaId` es el tienda_id CONGELADO (415/R33) y `cierre.estado` impide que
@@ -143,6 +145,12 @@ const SELECT_DETALLE_106 = {
       tarifaEspecial: true,
       tarifaEspecialDevuelta: true,
       tarifaFulfillment: true,
+      // SLT-52 (design §7, R41/R46): el modelo congelado y los conceptos de la fila. Ninguna de
+      // estas se publica: las aisla `orden-repository.api-lectura.test.ts` › «SLT-52/R18».
+      tarifaModelo: true,
+      conceptos: {
+        select: { concepto: true, modo: true, valor: true, ivaPct: true, nivel: true, tarifaValorId: true },
+      },
     },
   },
   gestiones: {

@@ -220,6 +220,7 @@ export async function findBaseCobroDevolucion(
       id: true,
       tiendaId: true,
       zonaId: true,
+      distritoId: true,
       montoCobrar: true,
       cobraComision: true,
       zona: { select: { esCentral: true } },
@@ -231,6 +232,7 @@ export async function findBaseCobroDevolucion(
     ordenId: row.id,
     tiendaId: row.tiendaId,
     zonaId: row.zonaId,
+    distritoId: row.distritoId,
     esCentral: row.zona.esCentral,
     // La marca es del distrito PARA LA EMPRESA de la orden (SL-38), no de la zona. Una orden
     // sin distrito -- el unico FK nullable de `orden`-- entra como `false`: sin distrito no hay
@@ -322,6 +324,9 @@ export function API_ORDEN_SELECT(ownerId: string) {
     // R19/R24: la mitad del par (tienda, zona) con el que el service resuelve la tarifa vigente de
     // toda la pagina en UNA sola consulta. No se publica.
     zonaId: true,
+    // SLT-52 (R16/R18): el distrito completa el par con el que se resuelve la tarifa (decide el
+    // grupo de distritos en el modelo nuevo). No se publica.
+    distritoId: true,
     // R20: entrada VIVA de la formula. No se publica.
     cobraComision: true,
     /**

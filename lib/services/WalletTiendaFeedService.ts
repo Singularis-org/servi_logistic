@@ -146,7 +146,7 @@ export class WalletTiendaFeedService implements IWalletTiendaFeedService {
           montoCobrar: d.montoCobrar === null ? null : d.montoCobrar.toFixed(2),
           cobraComision: d.cobraComision,
         },
-        tarifaDe(d),
+        tarifaDe(d, d.conceptos), // SLT-52 (R41/R42): lo congelado del detalle, de los dos modelos
       );
 
       for (const concepto of WALLET_INGRESO_CONCEPTO_SEED) {

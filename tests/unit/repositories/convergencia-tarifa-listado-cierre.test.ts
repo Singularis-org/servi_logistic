@@ -5,6 +5,10 @@ import { delegadosDelCatalogo } from "@/tests/fixtures/doble-catalogo-geografico
 import { CierreDiaRepository } from "@/lib/repositories/CierreDiaRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
 import { idEstado, sembrarCatalogoEstados } from "@/tests/fixtures/catalogo-estados";
+import { sinValoresDelModeloNuevo } from "../../fixtures/tarifa-tienda";
+import { clavePar } from "@/lib/utils/cascada-tarifa";
+import { costoEstimadoDe } from "@/lib/utils/api-orden-costo";
+import { montoFulfillmentDeTarifa } from "@/lib/utils/ingreso-empresa";
 
 /**
  * FEATURE 274 (T8.4) — TEST DE CONVERGENCIA (R8/R21). El que justifica la feature entera.
@@ -120,6 +124,8 @@ async function resolverPorListado(filas: readonly FilaTarifa[]): Promise<Resuelt
       count: vi.fn(async () => 1),
     },
     tarifa: { findMany: tarifaFindMany },
+    // SLT-52 (T4.3): el listado tambien pasa por el resolver unico, que decide antes el modelo.
+    ...sinValoresDelModeloNuevo(),
     // FICHA 454 (R29, 2026-09-24): las señales de la pagina (gestion pendiente, ayuda); aqui vacias.
     $queryRaw: vi.fn(async () => []),
     // SLT-65: la marca de zona especial sale del catalogo de la empresa (sin marcas por defecto).
@@ -222,6 +228,8 @@ async function resolverPorCierre(filas: readonly FilaTarifa[]): Promise<Resuelto
     },
     cierreDetail: { createMany: vi.fn(async () => ({ count: 1 })) },
     tarifa: { findMany: tarifaFindMany },
+    // SLT-52: empresa sin valores del modelo nuevo -> el resolver unico usa la cascada vieja (R36).
+    ...sinValoresDelModeloNuevo(),
     // FICHA 450: los catalogos del snapshot, leidos en serie dentro de esta misma tx.
     zona: catalogoDoble450(() => ({ nombre: "Limón", esCentral: false })),
     usuario: catalogoDoble450(() => ({ nombre: "Tienda X" })),
@@ -239,6 +247,12 @@ async function resolverPorCierre(filas: readonly FilaTarifa[]): Promise<Resuelto
     tarifa: {
       findMany: vi.fn(async () => {
         throw new Error("el cierre resolvio la tarifa FUERA de su transaccion");
+      }),
+    },
+    // SLT-52: tambien el interruptor de modelo tiene que leerse DENTRO de la transaccion.
+    tarifaValor: {
+      findFirst: vi.fn(async () => {
+        throw new Error("el cierre decidio el modelo de tarifas FUERA de su transaccion");
       }),
     },
   };
@@ -390,5 +404,163 @@ describe("274/T8.4 — el listado y la liquidacion resuelven la MISMA fila (R8/R
     const c = await resolverPorCierre(ESCENARIOS[0].filas);
     const d = await resolverPorCierre(ESCENARIOS[1].filas);
     expect(c.tarifaId).not.toBe(d.tarifaId);
+  });
+});
+
+// --------------------------------------------------------------------------------------
+// SLT-52 T4.4 (R38) — el MISMO invariante con una empresa en el modelo NUEVO.
+//
+// El doble devuelve la tabla `tarifa_valor` ENTERA (sin filtrar por el WHERE), con el valor que
+// debe ganar en cada concepto y señuelos de otro nivel, otra zona y otra tienda, cada uno con un
+// importe distinto: si un camino eligiera otra fila, su importe lo delataria. `tarifas` revienta
+// si alguien la lee: en el nuevo no se mira el modelo viejo (R37).
+//
+// Caminos: el LISTADO (`OrdenRepository.list`), el CIERRE (la llamada exacta de `crearCierre`:
+// `resolveTarifas(pares, tx)` con el cliente de la transaccion; el congelado en si es T5.2) y el
+// COSTO de la API por key (`resolveTarifas` + `costoEstimadoDe`, lo que hace
+// `ApiOrdenLecturaService`).
+// --------------------------------------------------------------------------------------
+
+const DISTRITO = "d1";
+const GRUPO = "g1";
+
+function valor(over: {
+  id: string;
+  concepto: string;
+  modo: "monto" | "porcentaje";
+  valor: string;
+  zonaId?: string | null;
+  grupoId?: string | null;
+  tiendaId?: string | null;
+}) {
+  return {
+    id: over.id,
+    concepto: over.concepto,
+    modo: over.modo,
+    valor: new Prisma.Decimal(over.valor),
+    ivaPct: new Prisma.Decimal("13.00"),
+    zonaId: over.zonaId ?? null,
+    grupoId: over.grupoId ?? null,
+    tiendaId: over.tiendaId ?? null,
+    mensajeroId: null,
+    vehiculoId: null,
+  };
+}
+
+const TABLA_NUEVA = [
+  // Flete por entregado: gana la tienda en el grupo (rango 1) con 1500.00.
+  valor({ id: "tf-tienda-grupo", concepto: "tienda_flete_entregado", modo: "monto", valor: "1500.00", zonaId: ZONA, grupoId: GRUPO, tiendaId: TIENDA }),
+  valor({ id: "tf-zona", concepto: "tienda_flete_entregado", modo: "monto", valor: "1000.00", zonaId: ZONA }),
+  valor({ id: "tf-otra-zona", concepto: "tienda_flete_entregado", modo: "monto", valor: "9.00", zonaId: "z9", tiendaId: TIENDA }),
+  // Comision: solo la de la zona aplica (2 %); la de otra tienda es señuelo.
+  valor({ id: "tc-zona", concepto: "tienda_comision_cod", modo: "porcentaje", valor: "2.00", zonaId: ZONA }),
+  valor({ id: "tc-otra-tienda", concepto: "tienda_comision_cod", modo: "porcentaje", valor: "50.00", zonaId: ZONA, tiendaId: "t9" }),
+  // Fulfillment: la tienda en todas sus zonas (rango 3).
+  valor({ id: "tff-general", concepto: "tienda_fulfillment", modo: "monto", valor: "100.00", tiendaId: TIENDA }),
+];
+
+function prismaNuevo() {
+  return {
+    tarifa: {
+      findMany: vi.fn(async () => {
+        throw new Error("una empresa en el modelo nuevo leyo `tarifas`");
+      }),
+    },
+    tarifaValor: {
+      findFirst: vi.fn(async () => ({ id: "tf-zona" })),
+      findMany: vi.fn(async () => [...TABLA_NUEVA]),
+    },
+    grupoDistritosDistrito: {
+      findMany: vi.fn(async () => [{ zonaId: ZONA, distritoId: DISTRITO, grupoId: GRUPO }]),
+    },
+  };
+}
+
+const PAR_NUEVO = { tiendaId: TIENDA, zonaId: ZONA, distritoId: DISTRITO };
+
+describe("SLT-52 T4.4 — modelo nuevo: listado, cierre y costo API eligen el mismo valor (R38)", () => {
+  it("afirma lo sembrado: la tabla trae los ganadores y los señuelos", () => {
+    expect(TABLA_NUEVA.map((v) => v.id)).toEqual([
+      "tf-tienda-grupo",
+      "tf-zona",
+      "tf-otra-zona",
+      "tc-zona",
+      "tc-otra-tienda",
+      "tff-general",
+    ]);
+  });
+
+  it("el CIERRE (resolveTarifas con el tx) elige tf-tienda-grupo, tc-zona y tff-general", async () => {
+    const tx = prismaNuevo();
+    const fuera = {
+      tarifaValor: {
+        findFirst: vi.fn(async () => {
+          throw new Error("el cierre decidio el modelo FUERA de su transaccion");
+        }),
+      },
+    };
+    const res = await new TarifaVigenteRepository(fuera as unknown as PrismaClient).resolveTarifas(
+      [PAR_NUEVO],
+      tx as unknown as PrismaClient,
+    );
+    const t = res.get(clavePar(PAR_NUEVO)) ?? null;
+    expect(t?.modelo).toBe("nuevo");
+    if (t?.modelo !== "nuevo") throw new Error("se esperaba el modelo nuevo");
+    expect({
+      entregado: [t.valores.tienda_flete_entregado?.tarifaValorId, t.valores.tienda_flete_entregado?.valor],
+      comision: [t.valores.tienda_comision_cod?.tarifaValorId, t.valores.tienda_comision_cod?.valor],
+      fulfillment: [t.valores.tienda_fulfillment?.tarifaValorId, t.valores.tienda_fulfillment?.valor],
+    }).toEqual({
+      entregado: ["tf-tienda-grupo", "1500.00"],
+      comision: ["tc-zona", "2.00"],
+      fulfillment: ["tff-general", "100.00"],
+    });
+  });
+
+  it("el LISTADO cobra con esos mismos valores: 1500.00 + 195.00 y 2 % de 25000.00 = 500.00 + 65.00", async () => {
+    const prisma = {
+      ...prismaNuevo(),
+      orden: {
+        findMany: vi.fn(async () => [{ ...ordenListRow(), distritoId: DISTRITO }]),
+        count: vi.fn(async () => 1),
+      },
+      $queryRaw: vi.fn(async () => []),
+    };
+    const res = await new OrdenRepository(prisma as unknown as PrismaClient).list({
+      where: {},
+      sortBy: "created_at",
+      sortDir: "desc",
+      skip: 0,
+      take: 50,
+    });
+    // Con tf-zona saldria 1130.00; con la de otra zona, 10.17; con la comision ajena, 14125.00.
+    expect(res.items[0].fleteConIva).toBe("1695.00");
+    expect(res.items[0].comisionConIva).toBe("565.00");
+    // En el nuevo no hay fila de `tarifas` que mostrar.
+    expect(res.items[0].relaciones?.tienda?.tarifa).toBeNull();
+  });
+
+  it("el COSTO de la API por key da los mismos importes, con el fulfillment de tff-general", async () => {
+    const t =
+      (await new TarifaVigenteRepository(prismaNuevo() as unknown as PrismaClient).resolveTarifas([
+        PAR_NUEVO,
+      ])).get(clavePar(PAR_NUEVO)) ?? null;
+    const montoCobrar = "25000.00";
+    expect(
+      costoEstimadoDe(t, montoFulfillmentDeTarifa(t, montoCobrar).toFixed(2), {
+        esCentral: false,
+        esZonaEspecial: false,
+        montoCobrar,
+        cobraComision: true,
+      }),
+    ).toEqual({
+      flete: "1500.00",
+      iva: "195.00",
+      comision: "500.00",
+      ivaComision: "65.00",
+      fulfillment: "100.00",
+      // SLT-52 R46: tff-general 100.00 al 13 % = 13.00, por la misma tarifa que el resto.
+      ivaFulfillment: "13.00",
+    });
   });
 });

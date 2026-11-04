@@ -23,8 +23,8 @@ import type {
 } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type {
   ITarifaVigenteRepository,
-  TarifaVigenteResuelta,
 } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
+import type { TarifaTienda } from "@/lib/types/tarifa-flexible";
 import type {
   CotizacionGeoRepository,
   CotizacionOrdenResult,
@@ -41,6 +41,7 @@ import {
 } from "@/lib/services/geo-resolucion";
 import { MSG_FILA_SIN_TARIFA } from "@/lib/services/mensajes-tarifa";
 import { clavePar, type ParTarifa } from "@/lib/utils/cascada-tarifa";
+
 import {
   filaCotizacionSchema,
   type CostosDevuelto,
@@ -48,7 +49,12 @@ import {
   type CotizacionFilaCotizada,
   type CotizacionFilaError,
 } from "@/lib/types/cotizacion";
-import { derivarIngresoOrden, montoFulfillmentDeTarifa } from "@/lib/utils/ingreso-empresa";
+import {
+  derivarIngresoOrden,
+  fleteEntregadoSinTarifa,
+  ivaFulfillmentDeTarifa,
+  montoFulfillmentDeTarifa,
+} from "@/lib/utils/ingreso-empresa";
 import { serializarMontoCotizacion } from "@/lib/utils/monto-cotizacion";
 
 /**
@@ -76,7 +82,8 @@ type CotizacionTarifaRepository = Pick<ITarifaVigenteRepository, "resolveTarifas
  * ver `lib/utils/ingreso-empresa.ts`): se suma APARTE, como sexto concepto del precio que se
  * publica, y es tambien el predicado de "esta tienda hace fulfillment".
  */
-type TarifaCotizada = TarifaVigenteResuelta;
+// SLT-52: la tarifa del resolver unico (viejo o nuevo); las funciones de calculo aceptan las dos.
+type TarifaCotizada = TarifaTienda;
 
 /**
  * Feature 274 (design §4.4) — el resultado de la PRIMERA pasada sobre una fila. La cotizacion
@@ -105,11 +112,19 @@ type FilaPendiente = Extract<FilaPreparada, { estado: "pendiente" }>;
  * la consulta es una sola y un lote de 200 filas de la misma zona no tiene por que pedir 200
  * veces el mismo par (R32/R7).
  */
+/**
+ * SLT-52 (R16/R18): el par de una fila, con el distrito que resolvio su geografia. Un solo sitio
+ * para construirlo y para buscarlo: si divergieran, la fila quedaria sin tarifa.
+ */
+function parDe(tiendaId: string, geo: ResolvedGeo): ParTarifa {
+  return { tiendaId, zonaId: geo.zonaId, distritoId: geo.distritoId };
+}
+
 function paresDistintos(tiendaId: string, pendientes: readonly FilaPendiente[]): ParTarifa[] {
   const vistos = new Set<string>();
   const pares: ParTarifa[] = [];
   for (const pendiente of pendientes) {
-    const par: ParTarifa = { tiendaId, zonaId: pendiente.geo.zonaId };
+    const par = parDe(tiendaId, pendiente.geo);
     const clave = clavePar(par);
     if (vistos.has(clave)) continue;
     vistos.add(clave);
@@ -131,6 +146,7 @@ interface MontosEntregado {
   comision: Prisma.Decimal;
   ivaComision: Prisma.Decimal;
   fulfillment: Prisma.Decimal;
+  ivaFulfillment: Prisma.Decimal; // SLT-52 (R46)
   total: Prisma.Decimal;
 }
 
@@ -140,6 +156,7 @@ interface MontosDevuelto {
   iva: Prisma.Decimal;
   comision: Prisma.Decimal;
   fulfillment: Prisma.Decimal;
+  ivaFulfillment: Prisma.Decimal; // SLT-52 (R46)
   total: Prisma.Decimal;
 }
 
@@ -156,6 +173,7 @@ function serializarEntregado(montos: MontosEntregado): CostosEntregado {
     // El monto fijo de bodega. Cero explicito cuando la tienda no hace fulfillment: el
     // integrador lee un cero, no un campo que a veces esta y a veces no.
     fulfillment: serializarMontoCotizacion(montos.fulfillment),
+    ivaFulfillment: serializarMontoCotizacion(montos.ivaFulfillment),
     total: serializarMontoCotizacion(montos.total),
   };
 }
@@ -169,6 +187,7 @@ function serializarDevuelto(montos: MontosDevuelto): CostosDevuelto {
     comision: serializarMontoCotizacion(montos.comision),
     // El fulfillment SI se cobra en la devolucion: el servicio de bodega ya se presto.
     fulfillment: serializarMontoCotizacion(montos.fulfillment),
+    ivaFulfillment: serializarMontoCotizacion(montos.ivaFulfillment),
     total: serializarMontoCotizacion(montos.total),
   };
 }
@@ -212,10 +231,15 @@ export class CotizacionOrdenService implements ICotizacionOrdenService {
     const pares = paresDistintos(tiendaId, pendientes);
     const tarifas =
       pares.length === 0
-        ? new Map<string, TarifaCotizada | null>()
+        ? new Map<string, TarifaTienda | null>()
         : await this.tarifaRepo.resolveTarifas(pares);
-    const tarifaDe = (geo: ResolvedGeo): TarifaCotizada | null =>
-      tarifas.get(clavePar({ tiendaId, zonaId: geo.zonaId })) ?? null;
+    // SLT-52 (R25): una fila «sin tarifa» es la que no tiene flete por entregado. En el viejo es
+    // `null`; en el nuevo el resolver nunca da `null` y lo que falta es ese concepto —una tienda
+    // con comision pero sin flete tampoco se puede cotizar—. Es la misma regla que la carga.
+    const tarifaDe = (geo: ResolvedGeo): TarifaCotizada | null => {
+      const t = tarifas.get(clavePar(parDe(tiendaId, geo))) ?? null;
+      return fleteEntregadoSinTarifa(t) ? null : t;
+    };
 
     // R35 (design §3.6): el `409` sobrevive SOLO cuando alguna fila llego a resolver y NINGUNA
     // resolvio. Se comprueba ANTES de calcular un solo importe, para que esa respuesta siga sin
@@ -418,7 +442,11 @@ function calcularEscenarios(
   // FULFILLMENT (2026-08-25): NO sale de `derivarIngresoOrden` —sigue fuera de la formula de
   // liquidacion— sino de la tarifa directamente, y entra igual en los DOS escenarios. Cero si
   // la tienda no hace fulfillment, que es el mismo total que se publicaba antes de hoy.
-  const fulfillment = montoFulfillmentDeTarifa(tarifa);
+  // SLT-52 (R31): en el nuevo un fulfillment en % va sobre el pedido, por eso viaja `montoCobrar`.
+  const fulfillment = montoFulfillmentDeTarifa(tarifa, montoCobrar);
+  // SLT-52 (R46): el fulfillment se cobra con su IVA, igual en los dos escenarios; 0 en el viejo
+  // (R47), y por eso los totales del viejo no cambian ni un centimo.
+  const ivaFulfillment = ivaFulfillmentDeTarifa(tarifa, montoCobrar);
 
   return {
     entregado: {
@@ -427,14 +455,17 @@ function calcularEscenarios(
       comision,
       ivaComision,
       fulfillment,
-      // R30/D1: lo que RECIBE la tienda = monto a cobrar menos los CINCO conceptos
-      // facturados. R32: sin monto a cobrar la base es cero y el total sale NEGATIVO.
+      ivaFulfillment,
+      // R30/D1: lo que RECIBE la tienda = monto a cobrar menos los conceptos facturados
+      // (SLT-52 R46: tambien el IVA del fulfillment). R32: sin monto a cobrar la base es cero y
+      // el total sale NEGATIVO.
       total: new Prisma.Decimal(montoCobrar ?? 0)
         .minus(flete)
         .minus(iva)
         .minus(comision)
         .minus(ivaComision)
-        .minus(fulfillment),
+        .minus(fulfillment)
+        .minus(ivaFulfillment),
     },
     devuelto: {
       flete: fleteDevolucion,
@@ -443,9 +474,10 @@ function calcularEscenarios(
       // para una devolucion (no hubo recaudo), y esa ausencia se publica como cero explicito.
       comision: escenarioDevolucion.ingreso_comision_cod ?? cero(),
       fulfillment,
-      // R31/D1: la DEUDA de la tienda = el negativo de (flete + IVA + fulfillment) de la
+      ivaFulfillment,
+      // R31/D1: la DEUDA de la tienda = el negativo de (flete + IVA + fulfillment + su IVA) de la
       // devolucion. El fulfillment suma a la deuda porque el servicio ya se presto.
-      total: fleteDevolucion.plus(ivaDevolucion).plus(fulfillment).negated(),
+      total: fleteDevolucion.plus(ivaDevolucion).plus(fulfillment).plus(ivaFulfillment).negated(),
     },
   };
 }

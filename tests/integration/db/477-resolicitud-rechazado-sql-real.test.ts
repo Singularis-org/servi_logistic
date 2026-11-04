@@ -233,11 +233,18 @@ describeSiHayBase("477/T4.4 — re-solicitar un cierre rechazado (Postgres real)
         g1b: await gestionDe(e, g1b),
         detalle: JSON.stringify(await detalleDe(e, x)),
       });
+      // SLT-52 (T5.1): la re-solicitud ya no recibe una tarifa resuelta; recibe la zona de este
+      // camino (la destino del cierre) y el vehiculo, y resuelve el pago dentro de su transaccion.
+      const { destinoZonaId } = await e.tx.cierreDia.findUniqueOrThrow({
+        where: { id: x },
+        select: { destinoZonaId: true },
+      });
       // No es suyo: la escritura exige el dueño.
       const ajeno = await e.s.cierreDiaRepo.resolicitarCierreRechazado({
         cierreId: x,
         mensajeroId: e.mensajero2Id,
-        tarifa: { cobroEntregado: "1500.00", cobroRechazado: "164.00" },
+        zonaId: destinoZonaId,
+        vehiculoId: null,
       });
       const trasAjeno = await foto();
       // Carrera: otra via lo saco de `rechazado` entre la lectura y la escritura.
@@ -246,7 +253,8 @@ describeSiHayBase("477/T4.4 — re-solicitar un cierre rechazado (Postgres real)
       const carrera = await e.s.cierreDiaRepo.resolicitarCierreRechazado({
         cierreId: x,
         mensajeroId: e.mensajeroId,
-        tarifa: { cobroEntregado: "1500.00", cobroRechazado: "164.00" },
+        zonaId: destinoZonaId,
+        vehiculoId: null,
       });
       return { ajeno, trasAjeno, carrera, antes, despues: await foto() };
     });

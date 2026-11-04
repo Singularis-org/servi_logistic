@@ -10,6 +10,8 @@ import type {
   TarifaVigenteResuelta,
 } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
 import { clavePar, type ParTarifa } from "@/lib/utils/cascada-tarifa";
+import type { TarifaTienda } from "@/lib/types/tarifa-flexible";
+import { tarifaVieja } from "../../fixtures/tarifa-tienda";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { RawRow } from "@/lib/parsers/spreadsheet";
 
@@ -46,10 +48,10 @@ const TARIFA_STUB: TarifaVigenteResuelta = {
 };
 
 const tarifaRepoStub: ITarifaVigenteRepository = {
-  resolveTarifa: vi.fn(async () => TARIFA_STUB),
+  resolveTarifa: vi.fn(async () => tarifaVieja(TARIFA_STUB)),
   resolveTarifas: vi.fn(
     async (pares: readonly ParTarifa[]) =>
-      new Map<string, TarifaVigenteResuelta | null>(pares.map((p) => [clavePar(p), TARIFA_STUB])),
+      new Map<string, TarifaTienda | null>(pares.map((p) => [clavePar(p), tarifaVieja(TARIFA_STUB)])),
   ),
 };
 

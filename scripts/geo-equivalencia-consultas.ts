@@ -16,7 +16,7 @@ import {
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { planificarReconciliacion, type TxDeReconciliacion } from "@/lib/repositories/ZonaRepository";
 import type { NivelGeografico } from "@/lib/types/geografia-nodo";
-import { tarifaDe } from "@/lib/utils/cierre-detalle";
+import { CONCEPTO_CONGELADO_SELECT, tarifaDe } from "@/lib/utils/cierre-detalle";
 import { derivarIngresoOrden } from "@/lib/utils/ingreso-empresa";
 
 import { compararPorId, type Cifras, type Diferencia } from "./geo-equivalencia/comparacion";
@@ -137,6 +137,9 @@ const DETALLE_SELECT = {
   tarifaIvaComisionCod: true,
   tarifaEspecial: true,
   tarifaEspecialDevuelta: true,
+  // SLT-52 (R41, R42): el modelo con que se congelo y, en el nuevo, el cobro por concepto.
+  tarifaModelo: true,
+  conceptos: { select: CONCEPTO_CONGELADO_SELECT },
 } as const satisfies Prisma.CierreDetailSelect;
 
 async function compararCierres(
@@ -212,7 +215,7 @@ async function compararCierres(
           montoCobrar: d.montoCobrar === null ? null : d.montoCobrar.toFixed(2),
           cobraComision: d.cobraComision,
         },
-        tarifaDe(d),
+        tarifaDe(d, d.conceptos),
       );
       for (const monto of Object.values(derivado)) if (monto !== undefined) total = total.plus(monto);
     }

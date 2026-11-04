@@ -165,6 +165,14 @@ export interface FuentesEtiqueta {
    */
   plan: { nombre: string };
   /**
+   * SLT-52 (R14) — un valor del modelo nuevo de tarifas: la etiqueta legible de su concepto y del
+   * nivel donde vive (zona, grupo, tienda). Vocabulario del catalogo y nombres de configuracion;
+   * nunca un dato de cliente. El importe va en `monto`/`valor_*`, no aqui.
+   */
+  tarifa_valor: { concepto: string; nivel: string | null };
+  /** SLT-52 (R14) — un grupo de distritos: su nombre y el de su zona, como `zona`. */
+  grupo_distritos: { nombre: string; zonaNombre: string | null };
+  /**
    * SLT-43 (design §2.5) — un nodo del modelo jerarquico se etiqueta como los de la 374: la cadena
    * de nombres de la HOJA A LA RAIZ, porque el nodo puede estar a cualquier profundidad y su nombre
    * a secas es ambiguo. Mismo genero de dato que `provincia`/`canton`/`distrito`: catalogo publico.
@@ -257,6 +265,8 @@ const CONSTRUCTORES: {
     const nombre = (f?.nombre ?? "").trim();
     return nombre === "" ? limpiar(null) : limpiar(`Plan «${nombre}»`);
   },
+  tarifa_valor: (f) => unir(f?.concepto, f?.nivel),
+  grupo_distritos: (f) => unir(f?.nombre, f?.zonaNombre),
   // SLT-43 — el criterio de la 374 (`distrito`), para una cadena de largo variable.
   nodo_geografico: (f) => unir(...(f?.nombres ?? [])),
 };

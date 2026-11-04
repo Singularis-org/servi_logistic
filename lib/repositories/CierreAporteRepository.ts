@@ -46,7 +46,12 @@ function buildWhere(
 ): Prisma.CierreDetailWhereInput {
   return {
     cierreId,
-    ...(criterio.exigeTarifa ? { tarifaId: { not: null } } : {}),
+    // «Hay tarifa congelada» = `tarifaDe` no da `null`. SLT-52 (R41/R42): en el nuevo nunca es
+    // `null` y `tarifa_id` va NULL, asi que el `tarifa_id IS NOT NULL` solo vale para el viejo; sin
+    // la rama del nuevo, un cierre nuevo no listaria ninguna orden que aporte flete o comision.
+    ...(criterio.exigeTarifa
+      ? { OR: [{ tarifaId: { not: null } }, { tarifaModelo: "nuevo" as const }] }
+      : {}),
     ...(criterio.exigeCobraComision ? { cobraComision: true } : {}),
     // Supresion de los aportes en cero (Q2): `monto_cobrar > 0` excluye tambien el NULL, que es
     // lo correcto —sin COD no hay comision que cobrar—. Va en el `WHERE`, no en memoria, para
@@ -147,7 +152,8 @@ function aFilaDeAporte(
       cobraComision: d.cobraComision,
       // La MISMA reconstruccion que usan los feeds; `null` = sin tarifa vigente al
       // solicitar (gap R9 preservado: esa orden no deriva ningun concepto).
-      tarifa: tarifaDe(d),
+      // SLT-52 (R41/R42): en el nuevo, los conceptos congelados del detalle.
+      tarifa: tarifaDe(d, d.conceptos),
     },
     gestiones: gestiones.map((g) => ({
       resultado: g.resultado,

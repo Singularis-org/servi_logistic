@@ -37,3 +37,4 @@ R25 literal no sale vacío hasta que el PR #44 (SLT-43) entre en `dev`. Siguient
   - Pendiente de la aprobación humana de la enmienda antes de T8.
 - 2026-11-03 · Cristian aprueba la enmienda por escrito: «Aprobado» (2026-11-03). Se ejecutan T8.1–T8.6.
 - 2026-11-04 · B1 de la vuelta 2 arreglado con un cherry-pick de 9b4e0004 (`c8476f7a`). `zona-distrito-unica.test.ts` 9/9 contra `logistic_slt44`; typecheck exit 0.
+- 2026-11-04 · F2.3 · Merge `d4fe9fe5` de SLT-43 con las migraciones renombradas a `20261104120000`–`120500` (después de SLT-52). Los conflictos se resolvieron con el lado de SLT-43. Contra la base nueva `logistic_slt44_r1104` están en verde las migraciones SLT-43, los 13 `geo-*` de integración, `zona-distrito-unica`, `catalogo-y-choke-point` y el typecheck. ABIERTO: `logistic_slt44` quedó con los nombres viejos (P3009), y recrearla con `migrate reset` necesita el consentimiento del humano. Detalle en `progress/impl_SLT-44.md`.

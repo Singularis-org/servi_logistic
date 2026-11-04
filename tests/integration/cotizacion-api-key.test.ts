@@ -18,6 +18,8 @@ import type {
   TarifaVigenteResuelta,
 } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
 import { clavePar, type ParTarifa } from "@/lib/utils/cascada-tarifa";
+import type { TarifaTienda, ValorCobro, ValoresTienda } from "@/lib/types/tarifa-flexible";
+import { tarifaVieja } from "../fixtures/tarifa-tienda";
 import type { ICotizacionOrdenService } from "@/lib/interfaces/services/ICotizacionOrdenService";
 import { cargaMasivaConfig } from "@/lib/config/carga-masiva";
 import { monedaConfig } from "@/lib/config/moneda";
@@ -230,10 +232,13 @@ function buildTarifaRepo(
   };
 
   return {
-    resolveTarifa: vi.fn(async (_tiendaId: string, zonaId: string | null) => paraZona(zonaId)),
+    // SLT-52: empresa en el modelo viejo; la tarifa va envuelta en `TarifaTienda`.
+    resolveTarifa: vi.fn(async (_tiendaId: string, zonaId: string | null) =>
+      tarifaVieja(paraZona(zonaId)),
+    ),
     resolveTarifas: vi.fn(async (pares: readonly ParTarifa[]) => {
-      const mapa = new Map<string, TarifaVigenteResuelta | null>();
-      for (const par of pares) mapa.set(clavePar(par), paraZona(par.zonaId));
+      const mapa = new Map<string, TarifaTienda | null>();
+      for (const par of pares) mapa.set(clavePar(par), tarifaVieja(paraZona(par.zonaId)));
       return mapa;
     }),
   };
@@ -398,7 +403,7 @@ describe("cotizacion por API key — autenticacion (R1/R2/R3/R4)", () => {
     // La tarifa se resuelve SIEMPRE contra el actor de la key, nunca contra el cuerpo. Desde la
     // 274 lo que viaja es el PAR (tienda, zona), y la mitad `tienda` sigue saliendo del actor.
     expect(tarifaRepo.resolveTarifas).toHaveBeenCalledWith([
-      { tiendaId: KEY_ACTOR.usuarioId, zonaId: "z1" },
+      { tiendaId: KEY_ACTOR.usuarioId, zonaId: "z1", distritoId: "d1" },
     ]);
     const paresPedidos = vi.mocked(tarifaRepo.resolveTarifas).mock.calls.flatMap(([pares]) => [
       ...pares,
@@ -1105,5 +1110,99 @@ describe("cotizacion por API key — tarifa por zona (feature 274, R32-R36)", ()
     }
     // Ni se consulta la tarifa: no hay un solo par que pedir.
     expect(tarifaRepo.resolveTarifas).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// 8. SLT-52 — empresa en el modelo NUEVO por el borde HTTP (R46, R51). Sin base de datos: el
+// resolver es un doble que devuelve la tarifa nueva tal cual, y el service es el REAL.
+// Importes a mano, pedido 25900, IVA 13 %:
+//   flete entregado 2500.00 -> IVA 325.00; comision 3.50 % = 906.50 -> IVA 117.845 -> 117.85
+//   flete rechazo 1396.46 -> IVA 181.5398 -> 181.54; fulfillment 500.00 -> IVA 65.00
+//   entregado total = 25900 - (2500 + 325 + 906.50 + 117.85 + 500 + 65) = 21485.65
+//   devuelto  total = -(1396.46 + 181.54 + 500 + 65)                    = -2143.00
+// ---------------------------------------------------------------------------------------
+function cobroNuevo(
+  concepto: ValorCobro["concepto"],
+  modo: ValorCobro["modo"],
+  valor: string,
+): ValorCobro {
+  return { concepto, modo, valor, ivaPct: "13.00", nivel: "zona", tarifaValorId: `tv-${concepto}` };
+}
+
+function depsNuevo(valores: ValoresTienda): CotizacionApiDeps & {
+  tarifaRepo: ITarifaVigenteRepository;
+} {
+  const tarifa: TarifaTienda = { modelo: "nuevo", valores };
+  const tarifaRepo: ITarifaVigenteRepository = {
+    resolveTarifa: vi.fn(async () => tarifa),
+    resolveTarifas: vi.fn(async (pares: readonly ParTarifa[]) => {
+      const mapa = new Map<string, TarifaTienda | null>();
+      for (const par of pares) mapa.set(clavePar(par), tarifa);
+      return mapa;
+    }),
+  };
+  return {
+    autenticar: async () => ({ status: "ok", actor: KEY_ACTOR, apiKeyId: "k1" }),
+    cotizacionService: new CotizacionOrdenService(buildRepoDoble().repo, tarifaRepo),
+    tarifaRepo,
+  };
+}
+
+describe("cotizacion por API key — modelo nuevo (SLT-52)", () => {
+  it("SLT-52 R46 — el IVA del fulfillment viaja en la respuesta", async () => {
+    const { tarifaRepo, ...cotizacionDeps } = depsNuevo({
+      tienda_flete_entregado: cobroNuevo("tienda_flete_entregado", "monto", "2500.00"),
+      tienda_flete_rechazo: cobroNuevo("tienda_flete_rechazo", "monto", "1396.46"),
+      tienda_comision_cod: cobroNuevo("tienda_comision_cod", "porcentaje", "3.50"),
+      tienda_fulfillment: cobroNuevo("tienda_fulfillment", "monto", "500.00"),
+    });
+
+    const res = await handleCotizacionApi(reqConBearer({ ordenes: [filaOk()] }, SECRETO), cotizacionDeps);
+
+    expect(tarifaRepo.resolveTarifas).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { filas: { costos: unknown }[] };
+    expect(body.filas).toHaveLength(1);
+    expect(body.filas[0].costos).toEqual({
+      entregado: {
+        flete: "2500.00",
+        iva: "325.00",
+        comision: "906.50",
+        ivaComision: "117.85",
+        fulfillment: "500.00",
+        ivaFulfillment: "65.00",
+        total: "21485.65",
+      },
+      devuelto: {
+        flete: "1396.46",
+        iva: "181.54",
+        comision: "0.00",
+        fulfillment: "500.00",
+        ivaFulfillment: "65.00",
+        total: "-2143.00",
+      },
+    });
+  });
+
+  it("SLT-52 R51 — comisión y fulfillment sin flete por entregado → 409", async () => {
+    const { tarifaRepo, ...cotizacionDeps } = depsNuevo({
+      tienda_comision_cod: cobroNuevo("tienda_comision_cod", "porcentaje", "3.50"),
+      tienda_fulfillment: cobroNuevo("tienda_fulfillment", "monto", "500.00"),
+    });
+
+    const res = await handleCotizacionApi(
+      reqConBearer({ ordenes: [filaOk(), filaOk({ num_remision: "REM-0002" })] }, SECRETO),
+      cotizacionDeps,
+    );
+
+    // Lo sembrado llego al service: el resolver se consulto y devolvio el modelo nuevo.
+    expect(tarifaRepo.resolveTarifas).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body).toEqual(new ConflictError(MSG_COTIZACION_SIN_TARIFA).toShape());
+    // Ni un importe: ni la comision ni el fulfillment se publican como precio.
+    expect(body).not.toHaveProperty("filas");
+    expect(JSON.stringify(body)).not.toContain("500.00");
   });
 });

@@ -276,3 +276,15 @@ envuelve el escenario en `conEmpresa(A, …)`; no cambia ningún `expect`.
 Salida (`DATABASE_URL` → `logistic_slt44`, `NODE_OPTIONS=--max-old-space-size=8192`):
 - `vitest run tests/integration/db/zona-distrito-unica.test.ts`: `Test Files 1 passed (1)`, `Tests 9 passed (9)` (R14 en verde).
 - `pnpm run typecheck`: exit 0.
+
+## 2026-11-04 · F2.3 · Renombrado en cascada de las migraciones de SLT-43
+
+- Merge `d4fe9fe5` de `origin/feature/SLT-43-geo-jerarquica-modelo` (`37e25447`). Ahora las 6 migraciones de SLT-43 son `20261104120000_geo_enums_nodo_geografico` … `20261104120500_indices_nodo_geografico` y van después de las de SLT-52 (`20261103140100`). SLT-44 no tiene migraciones propias, así que no hay orden que comprobar.
+- Hubo 3 conflictos: la cabecera de `modelos-de-negocio.ts` (85 de negocio), `catalogo-y-choke-point` (80 tipos, 30 entidades) y los tramos de `caja-459-migration` (`nodo_geografico` después de `tarifa_valor` y `grupo_distritos`). Los 3 se resolvieron con el lado de SLT-43, porque esta rama no tocaba esos archivos más allá de lo que ya traía de dev. No quedan referencias a los nombres `20261031120[0-5]00_*` de geo.
+- Base: `logistic_slt44` tenía aplicados los nombres viejos, y `migrate deploy` falla con P3009 en `20261104120100`. `prisma migrate reset` exige el consentimiento explícito del humano, así que no se ejecutó. Se creó una base nueva, `logistic_slt44_r1104`, con `migrate deploy` (301 migraciones), `db:seed` y `db:generate`. **ABIERTO:** falta borrar o recrear `logistic_slt44`, y eso lo decide el humano.
+
+Salida (`DATABASE_URL` → `logistic_slt44_r1104`, `NODE_OPTIONS=--max-old-space-size=8192`, un archivo por corrida con `timeout 600`):
+- `slt43-migraciones-aditivas` 9/9; `migracion-slt43-ida-y-vuelta` 8/8.
+- `geo-backfill` 16/16, `geo-catalogo-repository` 8/8, `geo-equivalencia` 4/4, `geo-equivalencia-dinero` 8/8, `geo-lecturas-catalogo` 8/8, `geo-lecturas-sin-backfill` 1/1, `geo-nodo-invariantes` 15/15, `geo-nodo-rls` 2/2, `geo-normalizar-nombre` 4/4, `geo-sincronia-geografia` 8/8, `geo-sincronia-orden-zonas` 10/10, `geo-tipo-nivel` 7/7, `geo-trigger-orden-rendimiento` 1/1.
+- `zona-distrito-unica` 9/9; `zona-distrito-unica-migration` 24/24; `catalogo-y-choke-point` 52/52; `caja-459-migration` 6/6.
+- `pnpm run typecheck`: exit 0.

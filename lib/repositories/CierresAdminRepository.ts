@@ -69,7 +69,13 @@ import { RESULTADOS_QUE_VUELVEN } from "@/lib/types/gestion-retorno";
 /** Valores de rol que este catálogo consulta. Salen del seed, no se inventan aquí. */
 const ROL_ADMIN_SATELITE = "adminSatelite";
 const ROL_MENSAJERO = "mensajero";
-import { CierreDetalleFaltanteError, tarifaDe } from "@/lib/utils/cierre-detalle";
+import {
+  CONCEPTO_CONGELADO_SELECT,
+  CierreDetalleFaltanteError,
+  DETALLE_SELECT,
+  tarifaDe,
+} from "@/lib/utils/cierre-detalle";
+import { fulfillmentCongeladoDe } from "@/lib/utils/fulfillment-congelado";
 import { derivarIngresoOrden, resolverFlete } from "@/lib/utils/ingreso-empresa";
 import { esRechazoSla, ORIGEN_TIPO_RECHAZO_SLA } from "@/lib/utils/rechazo-sla-flag";
 import type { OrdenHistorialOrigenTipo } from "@/lib/types/orden-historial";
@@ -109,11 +115,19 @@ import { rutasEvidenciaGestion } from "@/lib/utils/evidencias-gestion";
 // FICHA 398: `computeTotales` recalcula los CUATRO totales del recaudo (la MISMA funcion que los
 // congelo al solicitar) y `sumarSnapshotsCongelados` rehace los DOS por gestion SUMANDO lo ya
 // escrito — nunca re-derivando con la tarifa viva, que moveria dinero de las otras gestiones.
-import { computeTotales, sumarSnapshotsCongelados } from "@/lib/utils/cierre-totales";
-// FICHA 398: el resolver de la tarifa del pago al mensajero, como FUNCION sobre el delegado, para
-// resolverla DENTRO de la transaccion de la correccion sin instanciar su repositorio ni ensanchar
-// el `Pick` de este. Es el cuerpo del resolver de la 39, no una copia.
-import { resolvePagoTarifaCon } from "@/lib/repositories/TarifaZonaMensajeroRepository";
+import {
+  computeTotales,
+  pagosDelCierre,
+  sumarSnapshotsCongelados,
+  type TarifasDePago,
+} from "@/lib/utils/cierre-totales";
+import { rebasarConElCobroCongelado } from "@/lib/utils/cobro-congelado";
+// FICHA 398 -> SLT-52 (T5.1): el resolver del pago, como FUNCION sobre el cliente de la
+// transaccion, para resolverlo DENTRO de la correccion sin instanciar su repositorio ni ensanchar
+// el `Pick` de este. Desde SLT-52 es el resolver UNICO (`resolverPagosCon`): decide el modelo de
+// la empresa y, en el viejo, corre el mismo cuerpo de la 39 (`resolvePagoTarifaCon`).
+import { resolverPagosCon } from "@/lib/repositories/_shared/resolver-tarifas";
+import { filaPagoCongelado } from "@/lib/repositories/_shared/pago-congelado";
 // FICHA 398: los dos derivadores PUROS del importe por gestion (39 y 56). Se llaman aunque el
 // resultado sea conocido ("0.00" para el pago de un rechazo) para que la regla siga viviendo en un
 // solo sitio.
@@ -250,6 +264,9 @@ export const DETALLE_ADMIN_SELECT = {
   tarifaIvaComisionCod: true,
   tarifaEspecial: true,
   tarifaEspecialDevuelta: true,
+  // SLT-52 (R41, R42, R46): el modelo con que se congelo y, en el nuevo, el cobro por concepto.
+  tarifaModelo: true,
+  conceptos: { select: CONCEPTO_CONGELADO_SELECT },
 } as const;
 
 // Feature 69/T18 — lo que aporta la GESTION (que NO se congela: es suyo, no de la orden).
@@ -365,8 +382,11 @@ function toAjustesPago(rows: GestionAdminRow["ajustesPagoMensajero"]): AjustePag
  * `tarifaVigente` ya normalizo esos campos a STRING escala 2.
  */
 function toTarifaSnapshot(d: DetalleAdminRow): TarifaSnapshotDTO | null {
-  const t = tarifaDe(d);
-  if (d.tarifaId === null || t === null) return null;
+  // SLT-52: este DTO es la fila de `tarifas` congelada; en el nuevo no hay tal fila (`null`) y el
+  // cobro se explica por el desglose del ingreso (y su fulfillment, R46).
+  const congelada = tarifaDe(d, d.conceptos);
+  if (d.tarifaId === null || congelada === null || congelada.modelo !== "viejo") return null;
+  const t = congelada.tarifa;
   return {
     tarifaId: d.tarifaId,
     valorFlete: t.valorFlete,
@@ -400,7 +420,7 @@ function toIngresoEmpresa(
   g: Pick<GestionAdminRow, "resultado">,
   d: DetalleAdminRow,
 ): IngresoEmpresaDTO {
-  const tarifa = tarifaDe(d);
+  const tarifa = tarifaDe(d, d.conceptos);
   const montoCobrar = decimalToString(d.montoCobrar);
   const derivado = derivarIngresoOrden(
     {
@@ -415,10 +435,18 @@ function toIngresoEmpresa(
   // Los dos origenes salen del MISMO `resolverFlete` que acaba de decidir los montos, no de
   // una segunda lectura de las columnas: si divergieran, la pantalla explicaria un importe
   // que no es el que se derivo. Sin tarifa congelada (gap R9) no hubo eleccion que hacer.
+  // En el nuevo no hay pacto especial que elegir (R35): el origen es `normal`, como en el listado.
   const origen =
-    tarifa === null
+    tarifa === null || tarifa.modelo === "nuevo"
       ? null
-      : resolverFlete(tarifa, { esCentral: d.esCentral, esZonaEspecial: d.esZonaEspecial });
+      : resolverFlete(tarifa.tarifa, { esCentral: d.esCentral, esZonaEspecial: d.esZonaEspecial });
+  // SLT-52 (R46, P5 = a): fulfillment e IVA del fulfillment de lo congelado, con la misma forma que
+  // la API por key. FUERA del `total`: no son conceptos de la liquidacion (R31).
+  const { fulfillment, ivaFulfillment } = fulfillmentCongeladoDe(
+    tarifa,
+    d.tarifaFulfillment,
+    montoCobrar,
+  );
   let total = new Prisma.Decimal(0);
   for (const monto of Object.values(derivado)) {
     if (monto !== undefined) total = total.plus(monto);
@@ -454,6 +482,8 @@ function toIngresoEmpresa(
     ),
     comisionConIva: conIva(derivado.ingreso_comision_cod, derivado.ingreso_iva_comision_cod),
     total: total.toFixed(2),
+    fulfillment,
+    ivaFulfillment,
     tarifa: toTarifaSnapshot(d),
   };
 }
@@ -1684,7 +1714,19 @@ export class CierresAdminRepository implements ICierresAdminRepository {
         },
         select: {
           cierreId: true,
-          orden: { select: { id: true, numGuia: true, numRemision: true } },
+          // SLT-52 (T5.1): + lo que la orden aporta al `ContextoPagoGestion` (design §5).
+          orden: {
+            select: {
+              id: true,
+              numGuia: true,
+              numRemision: true,
+              distritoId: true,
+              tiendaId: true,
+              zonaId: true,
+              montoCobrar: true,
+              cobraComision: true,
+            },
+          },
           // FICHA 454 (T1.14): el evento de registro decide la RAMA de la correccion.
           ...SELECT_REGISTRO_DE_CALLE,
           mensajeroId: true,
@@ -1724,12 +1766,44 @@ export class CierresAdminRepository implements ICierresAdminRepository {
       // en los 149 rechazos con destino `bodega_central` y vale 1.000 (6 veces) o 1.700 (1) en
       // los de `bodega_satelite`. La divergencia es conocida y ACEPTADA; la alternativa —dejarlo
       // en 0.00— subestimaria el ingreso de la bodega en un importe real.
-      const tarifa = await resolvePagoTarifaCon(
-        tx.tarifaZonaMensajero,
-        previa.cierre.destinoZonaId,
-        previa.cierre.mensajero.vehiculoId,
-      );
-      const pagoMensajero = pagoPorResultado(RESULTADO_RECHAZADA, tarifa); // "0.00"
+      //
+      // SLT-52 (T5.1, R19/R20/R33): con el resolver UNICO y por GESTION —la misma zona y el mismo
+      // vehiculo de siempre, mas el distrito de la orden—. En el modelo nuevo el mensajero tambien
+      // puede cobrar por un rechazo (R32), asi que el "0.00" de arriba es solo del viejo.
+      const tarifas = await resolverPagosCon(tx, [
+        {
+          gestionId,
+          resultado: RESULTADO_RECHAZADA,
+          mensajeroId: previa.mensajeroId,
+          zonaId: previa.cierre.destinoZonaId,
+          vehiculoId: previa.cierre.mensajero.vehiculoId,
+          distritoId: previa.orden.distritoId,
+          tiendaId: previa.orden.tiendaId,
+          zonaOrdenId: previa.orden.zonaId,
+          montoCobrar:
+            previa.orden.montoCobrar === null ? null : previa.orden.montoCobrar.toFixed(2),
+          cobraComision: previa.orden.cobraComision,
+        },
+      ]);
+      // SLT-52 (T5.5, design §13.2 paso 2; R52, R54) — en el nuevo, la base del % NO es la del
+      // resolver (valores y `monto_cobrar` de HOY): es el flete sin IVA que ESTE cierre le cobra a
+      // la tienda por el rechazo, desde su `cierre_detail` congelado. Sin detalle, error duro
+      // (69/R14, sin fallback). El viejo no tiene base y no lee nada.
+      let rebasadas: TarifasDePago = tarifas;
+      if (tarifas.get(gestionId)?.modelo === "nuevo") {
+        const detalle = await tx.cierreDetail.findFirst({
+          where: { cierreId, ordenId },
+          select: DETALLE_SELECT,
+        });
+        if (detalle === null) throw new CierreDetalleFaltanteError(cierreId, ordenId);
+        rebasadas = rebasarConElCobroCongelado(
+          [{ gestionId, ordenId, resultado: RESULTADO_RECHAZADA }],
+          tarifas,
+          () => detalle,
+        );
+      }
+      const tarifa = rebasadas.get(gestionId) ?? null;
+      const pagoMensajero = pagoPorResultado(RESULTADO_RECHAZADA, tarifa); // "0.00" en el viejo
       const ingresoBodegaRechazo = ingresoBodegaPorResultado(RESULTADO_RECHAZADA, tarifa);
 
       // (1) EL SELLO — LA UNICA GUARDIA QUE DECIDE. Aqui viven las CUATRO condiciones, y ninguna
@@ -1763,6 +1837,21 @@ export class CierresAdminRepository implements ICierresAdminRepository {
         // eso con informacion fresca, y aqui cualquiera de los dos es lo mismo.
         const existe = await tx.gestionOrden.count({ where: { id: gestionId } });
         return { status: existe > 0 ? ("conflict" as const) : ("fuera_de_alcance" as const) };
+      }
+
+      // SLT-52 (T5.2, R40; design §7) — RE-CONGELA el pago de ESTA gestion, y solo de esta: se
+      // borra lo que tuviera (congelado con el resultado viejo) y, en el modelo nuevo, se escribe
+      // el del resultado corregido con el mismo importe que acaba de ir a `pago_mensajero` /
+      // `ingreso_bodega_rechazo`. Va DESPUES del sello: si el sello no casa, no se toca nada.
+      await tx.gestionPagoCongelado.deleteMany({ where: { gestionOrdenId: gestionId } });
+      const { congelados } = pagosDelCierre(
+        [{ gestionId, resultado: RESULTADO_RECHAZADA }],
+        rebasadas,
+      );
+      if (congelados.length > 0) {
+        await tx.gestionPagoCongelado.createMany({
+          data: congelados.map(filaPagoCongelado),
+        });
       }
 
       // (2) EL DESGLOSE DEL COBRO QUE NO HUBO. Sin este `deleteMany`, `computeTotales` seguiria

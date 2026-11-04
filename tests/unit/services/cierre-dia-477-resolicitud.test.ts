@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { conResolvePagosViejo } from "@/tests/fixtures/tarifa-tienda";
 
 import { CierreDiaService } from "@/lib/services/CierreDiaService";
 import type {
@@ -66,7 +67,7 @@ function montar(opts: {
     findBloqueoDetalle: vi.fn(async () => SIN_BLOQUEO),
     findOrdenesEnCorreccion: vi.fn(async () => new Set<string>()),
   };
-  const tarifaRepo = { resolvePagoTarifa: vi.fn(async () => TARIFA_DESTINO) };
+  const tarifaRepo = conResolvePagosViejo({ resolvePagoTarifa: vi.fn(async () => TARIFA_DESTINO) });
   const notificar = vi.fn(async () => {});
   const firmar = vi.fn(async (paths: string[]) => Object.fromEntries(paths.map((p) => [p, `https://f/${p}`])));
   const service = new CierreDiaService(
@@ -103,12 +104,16 @@ describe("477 · solicitarCierre — la rama de re-solicitud por estado", () => 
 
     expect(r).toEqual({ status: "ok", via: "resolicitado" });
     // La zona del CIERRE, no la del mensajero hoy (que podria haber cambiado de zona).
-    expect(tarifaRepo.resolvePagoTarifa).toHaveBeenCalledWith("z-destino", "veh-moto");
+    // SLT-52 (T5.1): el servicio ya no resuelve la tarifa; le pasa al repositorio la zona y el
+    // vehiculo, y alli se resuelve el pago POR GESTION dentro de la transaccion (las rehechas solo
+    // se conocen alli). Que esa zona llegue al resolver lo prueba el test del repositorio.
+    expect(tarifaRepo.resolvePagoTarifa).not.toHaveBeenCalled();
     expect(ordenRepo.findUsuarioZonaId).not.toHaveBeenCalled();
     expect(repo.resolicitarCierreRechazado).toHaveBeenCalledWith({
       cierreId: "c-rech",
       mensajeroId: "m1",
-      tarifa: TARIFA_DESTINO,
+      zonaId: "z-destino",
+      vehiculoId: "veh-moto",
     });
     expect(repo.transicionarASolicitado).not.toHaveBeenCalled();
     expect(repo.crearCierre).not.toHaveBeenCalled();

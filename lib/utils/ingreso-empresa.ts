@@ -7,10 +7,12 @@ import type {
 } from "@/lib/interfaces/services/ICierreDiaService";
 import type { WalletIngresoConcepto } from "@/lib/types/wallet";
 import type { OrigenFlete } from "@/lib/types/tarifa";
+import type { ValoresTienda } from "@/lib/types/tarifa-flexible";
+import { importeDe, ivaDe } from "@/lib/tarifas/calculo";
+import { conceptoPorResultado } from "@/lib/tarifas/catalogo";
 // Ficha 396 — `partesPorTienda` particiona el recaudo con LA MISMA funcion que produce el total
-// general del cierre, no con una suma escrita aqui (R13/R15). Import de VALOR, y verificado que
-// no crea ciclo: `cierre-totales.ts` importa `pago-mensajero`, `ingreso-bodega` y tipos, y
-// ninguno de los tres importa este archivo.
+// general del cierre, no con una suma escrita aqui (R13/R15). Import de VALOR. SIN ciclo: la base del %
+// del pago que usa `derivarIngresoOrden` vive en `cobro-congelado.ts`, no en `cierre-totales.ts` (SLT-52 T7).
 import { computeTotales, type GestionConPagos } from "@/lib/utils/cierre-totales";
 
 /**
@@ -95,6 +97,29 @@ function aplicarPorcentaje(base: Prisma.Decimal, porcentaje: Prisma.Decimal): Pr
 }
 
 /**
+ * SLT-52 (design §6) — lo que aceptan las funciones de cobro mientras conviven los dos modelos.
+ *
+ * `ConModelo<T>` es la union del resolver unico (`TarifaTienda`) con el modelo viejo reducido a lo
+ * que cada funcion lee (`T`): un `TarifaTienda` entra tal cual, y el congelado del cierre
+ * (`tarifaDe` -> `TarifaCongelada`) tambien.
+ *
+ * `T` SIN envolver: SOLO PARA EL RESPALDO T0.1. Desde T5.3 ningun llamador de produccion pasa una
+ * tarifa suelta (medido estrechando esta union: los unicos errores de tipos caen en `tests/`). Se
+ * conserva porque `tests/unit/tarifas/respaldo-identico.test.ts` —intocable: es el contrato del
+ * modelo viejo— llama a `derivarIngresoOrden`, `costosListadoOrden`, `costoEnvioDeTarifa` y
+ * `desgloseCargaApi` con la tarifa suelta. Una tarifa suelta es SIEMPRE el modelo viejo (no lleva
+ * `modelo`), asi que no hay ambiguedad posible.
+ */
+export type ConModelo<T> =
+  | { modelo: "viejo"; tarifa: T }
+  | { modelo: "nuevo"; valores: ValoresTienda };
+export type TarifaDeCobro<T = TarifaVigente> = T | ConModelo<T>;
+
+function conModelo<T extends object>(tarifa: TarifaDeCobro<T>): ConModelo<T> {
+  return "modelo" in tarifa ? (tarifa as ConModelo<T>) : { modelo: "viejo", tarifa };
+}
+
+/**
  * `OrigenFlete` es informacion de AUDITORIA, no un monto: se re-exporta desde `lib/types/tarifa`
  * (que no importa Prisma) y vive fuera de `IngresoOrdenDerivado` a proposito, porque los
  * llamadores de esa interfaz recorren sus valores como Decimales (`Object.values(derivado)`)
@@ -149,10 +174,19 @@ export function resolverFlete(
  */
 export function derivarIngresoOrden(
   input: OrdenIngresoInput,
-  tarifa: TarifaVigente | null,
+  tarifa: TarifaDeCobro | null,
 ): IngresoOrdenDerivado {
   if (tarifa === null) return {}; // R9: gap seguro, no bloquea; ningun concepto aporta.
+  const t = conModelo(tarifa);
+  if (t.modelo === "nuevo") return derivarIngresoModeloNuevo(input, t.valores);
+  return derivarIngresoModeloViejo(input, t.tarifa);
+}
 
+/** El cuerpo de `derivarIngresoOrden` anterior a SLT-52, sin tocar (R36). */
+function derivarIngresoModeloViejo(
+  input: OrdenIngresoInput,
+  tarifa: TarifaVigente,
+): IngresoOrdenDerivado {
   const ivaFletePct = new Prisma.Decimal(tarifa.ivaFlete);
 
   if (input.resultado === "entregado") {
@@ -192,6 +226,60 @@ export function derivarIngresoOrden(
 }
 
 /**
+ * SLT-52 (design §6, R27, R29, R30, R35) — el cobro a la tienda de UNA gestion en el modelo nuevo.
+ *
+ * - Flete: el concepto `tienda_flete_<resultado>` sobre el valor del pedido (R27). Su importe sale
+ *   de `fleteSinIvaDeGestion`, la MISMA funcion que da la base del % del pago (R28): si cada una
+ *   lo calculara por su lado, el pago y el cobro de la misma gestion podrian divergir.
+ * - Categoria (R29): el de entregado es el flete descontable de lo recaudado (`ingreso_flete`); el
+ *   de cualquier otro resultado va a `ingreso_flete_devolucion`, porque no sale de lo recaudado.
+ *   Asi las identidades de 393/395/396 (`pagoTiendaEmpresa`, `ganaLaTienda`, `partesPorTienda`)
+ *   siguen siendo ciertas sin una categoria de wallet nueva.
+ * - Comision COD: solo en entregado y si la orden cobra comision (R30).
+ * - Concepto ausente = sin tarifa (R23): no aporta nada. Un 0 escrito aporta `0.00`.
+ * - `esCentral` y `esZonaEspecial` NO se leen (R35): en el nuevo no hay GAM ni pacto especial; la
+ *   zona especial es un grupo de distritos mas, y ya la eligio el resolver.
+ * - El fulfillment no entra aqui (R31): no se liquida en el cierre ni en las wallets.
+ */
+function derivarIngresoModeloNuevo(
+  input: Pick<OrdenIngresoInput, "resultado" | "montoCobrar" | "cobraComision">,
+  valores: ValoresTienda,
+): IngresoOrdenDerivado {
+  const out: IngresoOrdenDerivado = {};
+  const valorFlete = valores[conceptoPorResultado("tienda", input.resultado)];
+  if (valorFlete !== undefined) {
+    const flete = fleteSinIvaDeGestion(input.resultado, valores, input.montoCobrar);
+    const iva = ivaDe(valorFlete, flete);
+    if (input.resultado === "entregado") {
+      out.ingreso_flete = flete;
+      out.ingreso_iva_flete = iva;
+    } else {
+      out.ingreso_flete_devolucion = flete;
+      out.ingreso_iva_flete_devolucion = iva;
+    }
+  }
+  const comision = valores.tienda_comision_cod;
+  if (input.resultado === "entregado" && input.cobraComision && comision !== undefined) {
+    const importe = importeDe(comision, new Prisma.Decimal(input.montoCobrar ?? "0"));
+    out.ingreso_comision_cod = importe;
+    out.ingreso_iva_comision_cod = ivaDe(comision, importe);
+  }
+  return out;
+}
+
+/**
+ * SLT-52 (design §5, R25) — ¿falta el flete por entregado? Es lo que decide el 409 de la API por
+ * key. En el viejo, «sin tarifa» es que la cascada no dio fila (`null`); en el nuevo el resolver
+ * nunca da `null` y lo que falta es el CONCEPTO: una tienda con comision pero sin flete por
+ * entregado tampoco se puede cotizar.
+ */
+export function fleteEntregadoSinTarifa(tarifa: ConModelo<unknown> | null): boolean {
+  if (tarifa === null) return true;
+  if (tarifa.modelo === "viejo") return false;
+  return tarifa.valores.tienda_flete_entregado === undefined;
+}
+
+/**
  * Feature 98 (design §3.2, R2/R7/R8/D1/D2) — costo del envio que la tienda paga por UNA orden
  * creada por la via API: FLETE + IVA del flete. Funcion PURA money-safe: toda la aritmetica
  * con `Prisma.Decimal`, salida STRING escala 2 (`ROUND_HALF_UP`), nunca number/parseFloat.
@@ -205,12 +293,39 @@ export function derivarIngresoOrden(
  * `tarifa === null` (tienda sin tarifa vigente) -> "0.00" (gap D1/R8): la orden se crea igual,
  * nunca `null`, nunca `error` por ausencia de tarifa.
  */
+/*
+ * SLT-52: dos firmas. La suelta (modelo viejo) es la de hoy. La de `ConModelo` exige `montoCobrar`
+ * porque en el nuevo un flete en % va sobre el pedido (R27): con un parametro opcional, un
+ * llamador que lo olvidara cobraria 0 por un flete en % sin que nada avisara.
+ */
 export function costoEnvioDeTarifa(
   tarifa: TarifaVigente | null,
   esCentral: boolean,
   esZonaEspecial: boolean,
+): string;
+export function costoEnvioDeTarifa(
+  tarifa: TarifaDeCobro | null,
+  esCentral: boolean,
+  esZonaEspecial: boolean,
+  montoCobrar: string | null,
+): string;
+export function costoEnvioDeTarifa(
+  entrada: TarifaDeCobro | null,
+  esCentral: boolean,
+  esZonaEspecial: boolean,
+  montoCobrar: string | null = null,
 ): string {
-  if (tarifa === null) return "0.00"; // R8/D1: gap seguro, no bloquea la carga.
+  if (entrada === null) return "0.00"; // R8/D1: gap seguro, no bloquea la carga.
+  const t = conModelo(entrada);
+  if (t.modelo === "nuevo") {
+    // El mismo calculo que el cierre (R38): flete por entregado + su IVA, sin comision.
+    const d = derivarIngresoModeloNuevo(
+      { resultado: "entregado", montoCobrar, cobraComision: false },
+      t.valores,
+    );
+    return (d.ingreso_flete ?? new Prisma.Decimal(0)).plus(d.ingreso_iva_flete ?? 0).toFixed(2);
+  }
+  const tarifa = t.tarifa;
   const { flete } = resolverFlete(tarifa, { esCentral, esZonaEspecial });
   const ivaFlete = aplicarPorcentaje(flete, new Prisma.Decimal(tarifa.ivaFlete));
   return round2(flete.plus(ivaFlete)).toFixed(2); // D2: flete + IVA del flete.
@@ -260,7 +375,7 @@ export interface CostosListadoOrdenInput {
 }
 
 export function costosListadoOrden(
-  tarifa: TarifaVigente | null,
+  tarifa: TarifaDeCobro | null,
   orden: CostosListadoOrdenInput,
 ): CostosListadoOrden {
   const derivado = derivarIngresoOrden({ resultado: "entregado", ...orden }, tarifa);
@@ -271,8 +386,18 @@ export function costosListadoOrden(
   return {
     fleteConIva: conIva(derivado.ingreso_flete, derivado.ingreso_iva_flete),
     comisionConIva: conIva(derivado.ingreso_comision_cod, derivado.ingreso_iva_comision_cod),
-    fleteOrigen: tarifa === null ? "normal" : resolverFlete(tarifa, orden).origen,
+    fleteOrigen: origenDelFlete(tarifa, orden),
   };
+}
+
+/**
+ * En el modelo nuevo el origen es siempre `normal`: el «especial sin pacto» es un hueco de la
+ * tarifa vieja (pacto por distrito) que no existe cuando la zona especial es un grupo (R35).
+ */
+function origenDelFlete(tarifa: TarifaDeCobro | null, orden: CostosListadoOrdenInput): OrigenFlete {
+  if (tarifa === null) return "normal";
+  const t = conModelo(tarifa);
+  return t.modelo === "nuevo" ? "normal" : resolverFlete(t.tarifa, orden).origen;
 }
 
 /**
@@ -741,7 +866,7 @@ const CONCEPTOS: WalletIngresoConcepto[] = [
  * `gestiones` ya trae, por cada una, su input derivado y la tarifa vigente resuelta de su zona.
  */
 export function agregarIngresosPorConcepto(
-  gestiones: Array<{ input: OrdenIngresoInput; tarifa: TarifaVigente | null }>,
+  gestiones: Array<{ input: OrdenIngresoInput; tarifa: TarifaDeCobro | null }>,
 ): ConceptoIngresoAgregado[] {
   const totales = new Map<WalletIngresoConcepto, Prisma.Decimal>();
   for (const c of CONCEPTOS) totales.set(c, new Prisma.Decimal(0));
@@ -790,14 +915,62 @@ export interface TarifaConFulfillment {
   fulfillment: string; // MONTO -> STRING 2 dec
 }
 
-/** El monto de fulfillment de la tarifa; CERO si no hay tarifa (mismo gap seguro que R9). */
-export function montoFulfillmentDeTarifa(tarifa: TarifaConFulfillment | null): Prisma.Decimal {
-  return tarifa === null ? new Prisma.Decimal(0) : new Prisma.Decimal(tarifa.fulfillment);
+/**
+ * El monto de fulfillment de la tarifa; CERO si no hay tarifa (mismo gap seguro que R9).
+ *
+ * SLT-52 (R31): en el nuevo es el importe de `tienda_fulfillment` (concepto ausente = 0), y como su
+ * base en % es el pedido (R27) la firma con `ConModelo` exige `montoCobrar`. Es el importe SIN IVA:
+ * su IVA (R46) lo da `ivaFulfillmentDeTarifa`, aparte, para que el desglose publique los dos.
+ *
+ * SLT-52 (T5.3): solo el sobre. La forma suelta de T4 se retiro: ningun llamador la usaba y el
+ * respaldo T0.1 no la ejercita.
+ */
+export function montoFulfillmentDeTarifa(
+  t: ConModelo<TarifaConFulfillment> | null,
+  montoCobrar: string | null,
+): Prisma.Decimal {
+  if (t === null) return new Prisma.Decimal(0);
+  if (t.modelo === "viejo") return new Prisma.Decimal(t.tarifa.fulfillment);
+  const valor = t.valores.tienda_fulfillment;
+  return valor === undefined
+    ? new Prisma.Decimal(0)
+    : importeDe(valor, new Prisma.Decimal(montoCobrar ?? "0"));
 }
 
-/** `true` = la tienda de esta tarifa hace fulfillment (su monto es mayor que cero). */
-export function tieneFulfillment(tarifa: TarifaConFulfillment | null): boolean {
-  return montoFulfillmentDeTarifa(tarifa).gt(0);
+/**
+ * SLT-52 (R46, R47, design §12.1) — el IVA del fulfillment que se cobra a la tienda.
+ *
+ * Nuevo: el fulfillment es un cobro a la tienda como cualquier otro (R26), asi que su IVA es el
+ * `ivaDe` del importe ya redondeado; concepto ausente = 0. Viejo: SIEMPRE 0, porque `tarifas` no
+ * tiene un % de IVA para el fulfillment y R47 exige que el costo no cambie ni un centimo.
+ *
+ * Acepta el sobre con cualquier tarifa vieja (no lee ningun campo suyo): asi el congelado del
+ * cierre (`TarifaCongelada`, cuya `TarifaVigente` no trae fulfillment) tambien puede preguntarlo.
+ * SLT-52 (T5.3): solo el sobre; la forma suelta se retiro (el congelado ya llega envuelto).
+ */
+export function ivaFulfillmentDeTarifa(
+  t: ConModelo<unknown> | null,
+  montoCobrar: string | null,
+): Prisma.Decimal {
+  if (t === null) return new Prisma.Decimal(0);
+  if (t.modelo === "viejo") return new Prisma.Decimal(0);
+  const valor = t.valores.tienda_fulfillment;
+  if (valor === undefined) return new Prisma.Decimal(0);
+  return ivaDe(valor, importeDe(valor, new Prisma.Decimal(montoCobrar ?? "0")));
+}
+
+/**
+ * `true` = la tienda de esta tarifa hace fulfillment (su monto es mayor que cero).
+ *
+ * SLT-52: en el nuevo, un `tienda_fulfillment` con valor mayor que cero, sea monto o %. No depende
+ * del pedido: decide DONDE nace la orden, no cuanto cuesta, y una orden prepagada (pedido 0) de una
+ * tienda con fulfillment en % sigue saliendo de nuestra bodega.
+ */
+export function tieneFulfillment(t: ConModelo<TarifaConFulfillment> | null): boolean {
+  if (t === null) return false;
+  if (t.modelo === "viejo") return new Prisma.Decimal(t.tarifa.fulfillment).gt(0);
+  const valor = t.valores.tienda_fulfillment;
+  return valor !== undefined && new Prisma.Decimal(valor.valor).gt(0);
 }
 
 /**
@@ -811,19 +984,59 @@ export function tieneFulfillment(tarifa: TarifaConFulfillment | null): boolean {
  * Sin fulfillment el desglose vale `"0.00"` y `costoEnvio` da EXACTAMENTE lo que daba antes.
  */
 export interface DesgloseCargaApi {
-  costoEnvio: string; // flete + IVA del flete + fulfillment
+  costoEnvio: string; // flete + IVA del flete + fulfillment + IVA del fulfillment (SLT-52 R46)
   fulfillment: string; // el sumando de arriba, aparte; "0.00" si la tienda no hace fulfillment
+  // SLT-52: el IVA del fulfillment NO viaja en este objeto. Su forma la fija T0.1
+  // (`respaldo-identico.test.ts`, `toStrictEqual` sobre el viejo) y no se toca; el campo publico
+  // `ivaFulfillment` lo pone la carga con `ivaFulfillmentDeTarifa`, la misma funcion que suma aqui.
 }
 
 export function desgloseCargaApi(
   tarifa: (TarifaVigente & TarifaConFulfillment) | null,
   esCentral: boolean,
   esZonaEspecial: boolean,
+): DesgloseCargaApi;
+export function desgloseCargaApi(
+  tarifa: TarifaDeCobro<TarifaVigente & TarifaConFulfillment> | null,
+  esCentral: boolean,
+  esZonaEspecial: boolean,
+  montoCobrar: string | null,
+): DesgloseCargaApi;
+export function desgloseCargaApi(
+  tarifa: TarifaDeCobro<TarifaVigente & TarifaConFulfillment> | null,
+  esCentral: boolean,
+  esZonaEspecial: boolean,
+  montoCobrar: string | null = null,
 ): DesgloseCargaApi {
-  const envio = new Prisma.Decimal(costoEnvioDeTarifa(tarifa, esCentral, esZonaEspecial));
-  const fulfillment = montoFulfillmentDeTarifa(tarifa);
+  const envio = new Prisma.Decimal(
+    costoEnvioDeTarifa(tarifa, esCentral, esZonaEspecial, montoCobrar),
+  );
+  // La forma suelta solo llega desde el respaldo T0.1; se envuelve aqui y no en las dos funciones.
+  const t = tarifa === null ? null : conModelo(tarifa);
+  const fulfillment = montoFulfillmentDeTarifa(t, montoCobrar);
+  const ivaFulfillment = ivaFulfillmentDeTarifa(t, montoCobrar);
   return {
-    costoEnvio: round2(envio.plus(fulfillment)).toFixed(2),
+    costoEnvio: round2(envio.plus(fulfillment).plus(ivaFulfillment)).toFixed(2),
     fulfillment: round2(fulfillment).toFixed(2),
   };
+}
+
+/**
+ * SLT-52 (design §5, R28, decision P1) — el flete SIN IVA que se le cobra a la tienda por UNA
+ * gestion segun su resultado, en el modelo nuevo. Es la base del % del pago al mensajero y a la
+ * satelite: se calcula con la misma regla que el cobro a la tienda (`importeDe` sobre el valor del
+ * pedido, R27) para que la base del pago y el flete cobrado no puedan divergir.
+ *
+ * Concepto ausente = la tienda no paga nada por ese resultado → base `0.00` y el % da 0 (R28).
+ * Nace en T3.2 para el resolver; la rama nueva de `derivarIngresoOrden` calcula su flete con esta
+ * misma funcion (T4.1).
+ */
+export function fleteSinIvaDeGestion(
+  resultado: GestionResultado,
+  valores: ValoresTienda,
+  montoCobrar: string | null,
+): Prisma.Decimal {
+  const valor = valores[conceptoPorResultado("tienda", resultado)];
+  if (valor === undefined) return new Prisma.Decimal("0");
+  return importeDe(valor, new Prisma.Decimal(montoCobrar ?? "0"));
 }

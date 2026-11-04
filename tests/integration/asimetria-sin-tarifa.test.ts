@@ -6,6 +6,7 @@ import { CierreDiaRepository } from "@/lib/repositories/CierreDiaRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
 import { BulkOrdenService } from "@/lib/services/BulkOrdenService";
 import { CotizacionOrdenService } from "@/lib/services/CotizacionOrdenService";
+import { sinValoresDelModeloNuevo } from "../fixtures/tarifa-tienda";
 // ⏳ 2026-09-10 (feature 415, T8): la QUINTA superficie ante el mismo hueco.
 import { ApiOrdenLecturaService } from "@/lib/services/ApiOrdenLecturaService";
 import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlProvider";
@@ -133,7 +134,8 @@ const TABLA_CON_TARIFA: FilaTarifa[] = [
  * doble le haya escondido las candidatas ajenas.
  */
 function prismaTarifas(filas: readonly FilaTarifa[]) {
-  return { tarifa: { findMany: vi.fn(async () => [...filas]) } };
+  // SLT-52: empresa sin valores del modelo nuevo -> el resolver unico usa la cascada vieja (R36).
+  return { tarifa: { findMany: vi.fn(async () => [...filas]) }, ...sinValoresDelModeloNuevo() };
 }
 
 function resolverReal(filas: readonly FilaTarifa[]): TarifaVigenteRepository {
@@ -567,6 +569,7 @@ describe("415/R22 — la QUINTA superficie: la LECTURA por API key devuelve `nul
       comision: "1250.00",
       ivaComision: "162.50",
       fulfillment: "1.00",
+      ivaFulfillment: "0.00", // SLT-52 R47: el viejo no calcula IVA de fulfillment
     });
   });
 });

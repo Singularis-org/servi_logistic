@@ -161,6 +161,8 @@ describeSiHayBase("SLT-65 T2.4 — la marca de las lecturas de ordenes sale del 
             f.numRemision,
             {
               zonaId: f.zonaId,
+              // SLT-52: el `costeo` lleva el distrito de la orden (par de la tarifa, R16/R18).
+              distritoId: f.distritoId,
               esCentral: f.zona.esCentral,
               esZonaEspecial: esZonaEspecialDeLaEmpresa(f.distrito),
               montoCobrar: f.montoCobrar === null ? null : f.montoCobrar.toFixed(2),

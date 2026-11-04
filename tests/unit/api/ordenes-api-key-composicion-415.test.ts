@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Prisma } from "@prisma/client";
+import { sinValoresDelModeloNuevo } from "../../fixtures/tarifa-tienda";
 
 import { delegadosDelCatalogo } from "@/tests/fixtures/doble-catalogo-geografico";
 
@@ -86,6 +87,7 @@ const COSTO_ESPERADO = {
   comision: "906.50",
   ivaComision: "117.85",
   fulfillment: "696.00",
+  ivaFulfillment: "0.00", // SLT-52 R47: el viejo no calcula IVA de fulfillment
 };
 
 const prismaFalso = {
@@ -97,6 +99,8 @@ const prismaFalso = {
   tarifa: { findMany: vi.fn(async () => [FILA_TARIFA]) },
   // SLT-65: la marca de zona especial sale del catalogo de la empresa (sin marcas por defecto).
   ...delegadosDelCatalogo(),
+  // SLT-52: empresa sin valores del modelo nuevo -> el resolver unico usa la cascada vieja (R36).
+  ...sinValoresDelModeloNuevo(),
 };
 
 // La frontera con el exterior, y SOLO ella.

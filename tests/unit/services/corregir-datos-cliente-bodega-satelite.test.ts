@@ -7,6 +7,7 @@ import type {
   OrdenParaCorreccionRow,
 } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { TarifaVigente } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
+import { tarifaViejaDeFormula } from "../../fixtures/tarifa-tienda";
 import type { OrderStatusValue } from "@/lib/types/order-status";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -117,7 +118,7 @@ function escenario(estatusValue: OrderStatusValue, distritoFila: DistritoResuelt
   );
   const service = new CorregirDatosClienteService(
     { findParaCorreccion, findDistritoParaCorreccion, corregirDatosCliente },
-    { resolveTarifa: vi.fn(async () => tarifa()) },
+    { resolveTarifa: vi.fn(async () => tarifaViejaDeFormula(tarifa())) },
   );
   return { service, corregirDatosCliente, findDistritoParaCorreccion };
 }

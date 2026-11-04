@@ -272,6 +272,33 @@ esta bien hecha, no solo si "funciona".
 Decisión del humano (plan-saas, 2026-10-20/21): una sola base compartida, datos separados por
 `organizacion_id`. Una tabla que nace sin la columna obliga a migrarla después con datos dentro.
 
+## Tarifas flexibles (SLT-52)
+
+- **Tablas.** `tarifa_valor` (un valor por concepto del catálogo fijo `lib/tarifas/catalogo.ts`,
+  en modo `monto` o `porcentaje`, con su nivel: tienda+grupo, tienda+zona, tienda general, grupo,
+  zona, grupo+vehículo, zona+vehículo), `grupo_distritos` y `grupo_distritos_distrito` (un distrito
+  en un solo grupo por zona). Lo congelado al cerrar: `cierre_detail.tarifa_modelo`,
+  `cierre_detail_concepto` (cobro a la tienda por orden) y `gestion_pago_congelado` (pago por
+  gestión). Las cinco llevan `organizacion_id` y RLS como el resto.
+- **Resolver único.** `lib/repositories/_shared/resolver-tarifas.ts` es el único sitio que elige
+  la fila de tarifa, con la precedencia pura de `lib/tarifas/precedencia.ts` y un número fijo de
+  consultas por lote. `TarifaVigenteRepository` y `TarifaZonaMensajeroRepository` son fachadas que
+  delegan en él; el cálculo vive en `lib/tarifas/calculo.ts` y en las funciones públicas de
+  `ingreso-empresa.ts`, `pago-mensajero.ts` e `ingreso-bodega.ts`. Listado, cierre, API y
+  cotización no pueden divergir porque no hay dos implementaciones. La base del % del pago es el
+  flete sin IVA que ese cierre le cobra a la tienda por esa gestión (lo congelado, no lo vivo).
+  Todo `new CierreDiaRepository(`, `new CierreDiaService(` y `new CorteDiarioService(` recibe el
+  repositorio de tarifas: lo vigila `tests/unit/guards/tarifas-resolver-inyectado.guardia.test.ts`.
+- **Interruptor por empresa.** Una empresa está en el modelo nuevo si tiene al menos una fila en
+  `tarifa_valor`; si no, se calcula exactamente como antes (`tarifas` y `tarifa_zona_mensajero`).
+  **Consecuencia:** el primer valor nuevo apaga el modelo viejo de la empresa entera, y lo que no
+  tenga valor queda «sin tarifa» (0 en el cierre, 409 en la API). La migración de datos de una
+  empresa (SLT-53) va antes de abrirle la pantalla de tarifas (SLT-54).
+- **Quién escribe.** Solo `TarifaValorService` y `GrupoDistritosService` (fábrica
+  `lib/tarifas/servicios.ts`), con historial; escribe el `maestro`, leen `maestro` y `admin`. Lo
+  congelado lo escribe solo el cierre (`CierreDiaRepository`) y nadie lo recalcula al leer
+  (`tarifaDe` en `lib/utils/cierre-detalle.ts`).
+
 ## Patron de capas: Controller → Service → Repository
 
 ```

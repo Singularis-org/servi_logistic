@@ -7,6 +7,7 @@ import type {
   OrdenParaCorreccionRow,
 } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { TarifaVigente } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
+import { tarifaViejaDeFormula } from "../../fixtures/tarifa-tienda";
 
 // FICHA 374 (R30) — LA PUERTA REAL contra un distrito RETIRADO en la correccion de ubicacion.
 //
@@ -97,7 +98,7 @@ function escenario(distritoFila: DistritoResueltoRow | null) {
       _estadosBloqueados: readonly string[],
     ) => "ok" as const,
   );
-  const resolveTarifa = vi.fn(async () => tarifa());
+  const resolveTarifa = vi.fn(async () => tarifaViejaDeFormula(tarifa()));
   const service = new CorregirDatosClienteService(
     { findParaCorreccion, findDistritoParaCorreccion, corregirDatosCliente },
     { resolveTarifa },

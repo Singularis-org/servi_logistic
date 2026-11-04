@@ -645,11 +645,21 @@ export class ZonaRepository implements IZonaRepository {
             })
           : [];
 
-        // Reemplazo completo del N:M y de las tarifas.
-        await tx.zonaDistrito.deleteMany({ where: { zonaId: id } });
-        if (data.distritoIds.length > 0) {
+        // ⭑ SLT-52 (R12) — el N:M se reemplaza POR DIFERENCIA: se borran solo los distritos que
+        // salen y se crean solo los que entran; los que se quedan no se tocan. `zona_distrito` es el
+        // padre CASCADE de `grupo_distritos_distrito`: el `deleteMany({ zonaId })` + `createMany` de
+        // antes vaciaba los grupos de distritos en CADA guardado, aunque no cambiara ningun distrito.
+        // La empresa la pone la extension del cliente en cada consulta (como en `distritosPrevios`).
+        const previos = new Set(distritosPrevios.map((d) => d.distritoId));
+        const pedidos = new Set(data.distritoIds);
+        const salen = [...previos].filter((d) => !pedidos.has(d));
+        const entran = data.distritoIds.filter((d) => !previos.has(d));
+        if (salen.length > 0) {
+          await tx.zonaDistrito.deleteMany({ where: { zonaId: id, distritoId: { in: salen } } });
+        }
+        if (entran.length > 0) {
           await tx.zonaDistrito.createMany({
-            data: data.distritoIds.map((distritoId) => ({ zonaId: id, distritoId })),
+            data: entran.map((distritoId) => ({ zonaId: id, distritoId })),
           });
         }
         if (data.tarifas !== undefined) {
