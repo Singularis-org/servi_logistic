@@ -157,3 +157,90 @@ Condiciones de merge, que no son hallazgos:
 - T7.2: una persona corre `pnpm geo:equivalencia-dinero` sobre una copia de producción con SLT-43 y
   pega una salida 0 en el PR;
 - el PR #44 (SLT-43) mergeado antes, o a la vez.
+
+## Vuelta 2 — 2026-11-04 (acotada a `bf0a5d35^..590682e9`)
+
+Alcance ampliado por enmienda del spec (`docs/gate.md > La vuelta 2 del reviewer`): trazabilidad
+completa de R9, R16, R18–R21 y R27. Del resto de requisitos, solo que el merge no los rompa.
+Rango: merge `62f3dd5e` (origin/dev), `bf0a5d35` (ajustes post-merge y fixture), `1aa7b336`
+(enmienda aprobada por Cristian), `590682e9` (T8.1–T8.6).
+
+### Checklist
+
+- [x] Cada `expect` cambiado coincide con T8 y con la enmienda:
+  - `geo-lecturas-catalogo` :229 (R16), :305 (R18), :380 (R19) y :416 (R20) llevan literalmente
+    los valores de T8.2 / design §13.3. También cambian el título del `it` de R19 y el comentario
+    de :188, como pide T8.2.
+  - `geo-equivalencia-dinero` (R21): norte pasa de hoy "0"→"1" y de nuevo "1"→"2". Cuadra con el
+    R21 enmendado: «nuevo = hoy + los disponibles del cantón sin asignación propia».
+  - `geo-catalogo-repository` (R9): solo se borra la línea del helper (T8.4).
+- [x] Ningún otro `expect` cambió. En `geo-repository-arbol-zonas.test.ts` solo cambia el doble de
+  Prisma, que se adapta al catálogo; sus `expect` siguen intactos. R15 (:190) y las comparaciones
+  «nuevo = hoy» tampoco se tocan.
+- [x] T8.1–T8.6 marcadas `[x]`. Fixture con 4 filas en `zonaDistrito.createMany`; la cabecera cita
+  el índice y la migración `20261101090100`.
+- [x] R27: el JSDoc de `zonaQueCubre` cambia y ninguna línea ejecutable cambia. La rama >1 la cubre
+  `geografia-dominio.test.ts:212`, que pasa las asignaciones como argumento, sin base.
+- [x] Resoluciones de conflicto del merge (`git show --remerge-diff 62f3dd5e`). No pierden nada de
+  ninguno de los dos lados:
+  - `modelos-de-negocio.ts` queda en 80 de negocio (de dev) y 25 de plataforma (de SLT-44).
+  - `catalogo-y-choke-point`: 75 tipos (de dev, `zona_distrito_cambiado`) y 28 entidades (de
+    SLT-44, `nodo_geografico`).
+  - `caja-459-migration`: los tramos de tipos salen de dev y los de entidades de SLT-44, con el
+    comentario fusionado.
+  - En verde: `catalogo-y-choke-point`, `caja-459-migration`, `organizacion-en-modelos.guardia` y
+    `fk-misma-empresa.guardia`, 80/80.
+- [x] `listArbol` y `lecturas-de-hoy` respetan el `zonas` de SLT-75:
+  - `GeoRepository.listArbol` lo saca de `asignaciones.zonasPorNodo` (solo asignaciones directas,
+    ya acotadas a la empresa por la RLS en `leerDeLaEmpresa`), ordenado igual que en dev.
+  - `lecturas-de-hoy.listArbol` reproduce literalmente el `zonas` de `GeoRepository` en dev
+    (`87fda9f6`, SLT-75 `3b387753`).
+  - Lo miden el R16 de `geo-lecturas-catalogo` (árbol canónico nuevo = hoy, y `zonas` del
+    distrito «Dos zonas») y `geo-repository-arbol-zonas`.
+- [ ] **El merge no rompe otros tests: FALLA.** `zona-distrito-unica.test.ts > ⭑ R14` (SLT-75) sale
+  rojo en esta rama. Ver B1.
+- [x] Typecheck: exit 0. Lint de los archivos del diff: 0 errores (ver m2).
+
+**Ejecutado** (base `logistic_slt44`, `--maxWorkers=2`):
+- `geo-lecturas-catalogo`, `geo-equivalencia-dinero`, `geo-catalogo-repository`,
+  `geo-lecturas-sin-backfill`, `geografia-dominio` y `geo-repository-arbol-zonas`: todo en verde.
+- `zona-distrito-unica`: 8/9, con R14 en rojo.
+- Total: 59/60.
+
+### Hallazgos
+
+- **B1 (BLOQUEANTE): el merge deja en rojo `tests/integration/db/zona-distrito-unica.test.ts > ⭑
+  R14: listArbol de la empresa A no trae la zona de B`** (SLT-75, viene de dev). Falla con
+  `EmpresaNoResuelta: Sin empresa en contexto para Organizacion.findFirst`
+  (`CatalogoGeograficoRepository.ts:104`).
+  - Causa: en esta rama `listArbol` sale del catálogo de SLT-44, que pide la `organizacion` por el
+    id de `contextoActual()`. El escenario del test deja en el contexto la empresa por defecto de
+    `enTransaccionRevertida`, no A.
+  - El archivo no está en `tests/baseline-rojos.json`: es un rojo nuevo, y `gate-completo` lo verá
+    en el PR de SLT-44.
+  - SLT-65 ya lo arregló en `9b4e0004`: envuelve el `fn` del escenario en `conEmpresa(A, …)`, sin
+    cambiar ningún `expect`. Ese commit no está en esta rama.
+  - Qué falta: llevar ese arreglo a SLT-44 (cherry-pick de `9b4e0004` o el mismo cambio), anotarlo
+    en `progress/impl_SLT-44.md` y volver a correr `zona-distrito-unica` en verde.
+  - Sobre el producto: el `zonas` de SLT-75 se respeta (lo prueban los tests de arriba). El fallo
+    es del arnés del test frente al contrato nuevo del catálogo (R10), pero bloquea el gate.
+- **m1 (menor): la cabecera de `scripts/geo-equivalencia/lecturas-de-hoy.ts`** sigue diciendo
+  «copia literal… en el commit 3c4c22c… NO SE EDITA». Ahora lleva además el `zonas` de SLT-75
+  (`3b387753`). El cambio es correcto, porque «hoy» en dev ya trae `zonas`. Pero la cabecera
+  debería nombrar ese segundo commit de origen, para que nadie lea la edición como un retoque
+  hecho para que pase un test.
+- **m2 (menor, previo al rango): aviso de lint** en `geo-catalogo-repository.test.ts:9`:
+  `'EscenarioGeo44' is defined but never used`. No lo introduce este rango.
+- **m3 (nota): el distrito sin zona en R16.** El test de :234 no afirma `zonas: []` ni
+  `zonaNombre: null`. Lo cubre la igualdad `arbolCanonico(nuevo) = arbolCanonico(deHoy)`, con un
+  «hoy» que ya trae `zonas`. No hay acción.
+
+### Veredicto
+
+**RECHAZADO** por B1. Todo lo demás del rango está bien:
+- la enmienda y T8 cuadran `expect` por `expect`;
+- las resoluciones del merge conservan los dos lados;
+- `zonas` se respeta en `listArbol` y en `lecturas-de-hoy`.
+
+La vuelta 3 puede acotarse al commit que traiga el arreglo de `zona-distrito-unica`, más una
+corrida de ese archivo y de los cuatro de integración geo.
