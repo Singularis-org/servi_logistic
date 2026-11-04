@@ -244,3 +244,31 @@ Rango: merge `62f3dd5e` (origin/dev), `bf0a5d35` (ajustes post-merge y fixture),
 
 La vuelta 3 puede acotarse al commit que traiga el arreglo de `zona-distrito-unica`, más una
 corrida de ese archivo y de los cuatro de integración geo.
+
+## Vuelta 3 — 2026-11-04 (acotada a 590682e9..a1faab48)
+
+Alcance: solo el arreglo de B1 de la vuelta 2. No se rehace el resto.
+
+### Checklist
+
+- [x] **Ningún `expect` cambia.** El diff de código del rango toca un solo archivo,
+  `tests/integration/db/zona-distrito-unica.test.ts` (+5 −2): el import de `conEmpresa` y el
+  `fn(...)` del escenario envuelto en `conEmpresa(A, () => fn(...))`. Ninguna línea `+`/`−` contiene
+  `expect`.
+- [x] **El cherry-pick es fiel.** Las líneas `+`/`−` de `c8476f7a` son idénticas a las de `9b4e0004`
+  (SLT-65), y el commit lleva `cherry picked from commit 9b4e0004…`.
+- [x] **`zona-distrito-unica.test.ts` en verde contra `logistic_slt44`**
+  (`NODE_OPTIONS=--max-old-space-size=8192`, `--maxWorkers=2`, `timeout 300`):
+  `Test Files 1 passed (1)`, `Tests 9 passed (9)`. R14 en verde.
+- [x] Typecheck (`tsc --noEmit`): exit 0.
+- [x] Bitácora: `progress/impl_SLT-44.md` anota el arreglo de B1 y su corrida.
+
+### Hallazgos
+
+- **B1: CERRADO.**
+- Siguen abiertos m1 y m2 de la vuelta 2. Son menores y no bloquean.
+- Sin regresiones en el rango.
+
+### Veredicto
+
+**OK.**
