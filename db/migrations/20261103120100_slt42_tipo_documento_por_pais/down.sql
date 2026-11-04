@@ -6,8 +6,8 @@
 --
 -- Las filas «cedula», «ruc» y «pasaporte» se quedan: sus columnas de antes (`id`, `value`) nunca
 -- cambiaron, así que al soltar las columnas nuevas vuelven a su forma exacta. En una base nueva la
--- subida pudo haber insertado «ruc» y «pasaporte»; tampoco se borran, porque `db:seed` las espera y
--- borrarlas podría llevarse una fila que existía antes (R8).
+-- subida pudo haber insertado «ruc» y «pasaporte»; tampoco se borran: el down no sabe si existían
+-- antes (las sembraba `db:seed` hasta SLT-42) y borrarlas podría llevarse una fila previa (R8).
 --
 -- Va DESPUÉS del down de 20261103120200 y ANTES del de 20261103120000 (orden inverso).
 
