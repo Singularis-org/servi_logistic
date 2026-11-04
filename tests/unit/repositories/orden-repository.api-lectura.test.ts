@@ -157,6 +157,9 @@ describe("OrdenRepository.listByOwner (feature 106, T5)", () => {
       zona: { id: ZONA_ID, nombre: "GAM" },
       costeo: {
         zonaId: ZONA_ID,
+        // SLT-52 (R16/R18): el `costeo` lleva el distrito de la orden (par de la tarifa); la fila
+        // del doble no tiene distrito. Autorizado por Cristian el 2026-11-04 (SLT-65, vuelta 3).
+        distritoId: null,
         esCentral: true,
         esZonaEspecial: false,
         // R17: CADENA de escala 2, mientras que el publicado de arriba es el `number` 1500.

@@ -23,7 +23,7 @@ Buscado el 2026-10-31 en los tres sitios de `docs/specs.md`, con los términos `
   - `specs/SLT-44-geo-jerarquica-dominio`: §7 es la frontera que esta tarjeta recoge, §6.2 el
     script de dinero y §10 la regla de los dobles.
   - `specs/SLT-43-geo-jerarquica-modelo`: columnas `nodo_geografico_id` con FK `NOT VALID`,
-    índices `20261031120500` y `ubicacion_snapshot` (§2.6, que queda para SLT-47).
+    índices `20261104120500` y `ubicacion_snapshot` (§2.6, que queda para SLT-47).
   - `specs/366-zona-orden-desactualizada` y `377` (reconciliación al guardar zona),
     `SL-38-zona-especial-por-empresa` (marca por empresa, punto único), `374-catalogo-geografico-admin`
     (conteo sin entregar), `450` (lecturas en serie en la transacción del cierre) y
@@ -390,7 +390,7 @@ Si §10 marca regresión, las mitigaciones van en este orden y se miden otra vez
 1. **Listado de `/ordenes`:** sacar del catálogo ya cargado los tres nombres (pregunta abierta 2).
    Quita tres consultas sin migración, pero necesita el sí del humano, porque roza SLT-47.
 2. **Un índice**, en una migración que solo contenga `CREATE INDEX` y su `DROP INDEX` en `down.sql`.
-   - Nombre: `db/migrations/20261101120000_<qué>_slt65/`. SLT-43 ocupa `20261031120000`–`120500`.
+   - Nombre: `db/migrations/20261101120000_<qué>_slt65/`. SLT-43 ocupa `20261104120000`–`120500`.
    - Antes de crearla, se comprueba que el timestamp no existe en `origin/dev` ni en las ramas en
      vuelo (`node scripts/archivos-en-vuelo.mjs`).
    - Sin `CONCURRENTLY`, porque Prisma corre cada migración en una transacción (SLT-43 §2.4). Se

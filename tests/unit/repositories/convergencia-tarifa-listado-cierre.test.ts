@@ -520,6 +520,9 @@ describe("SLT-52 T4.4 — modelo nuevo: listado, cierre y costo API eligen el mi
   it("el LISTADO cobra con esos mismos valores: 1500.00 + 195.00 y 2 % de 25000.00 = 500.00 + 65.00", async () => {
     const prisma = {
       ...prismaNuevo(),
+      // SLT-65 (design §14.1): la marca de zona especial sale del catalogo de la empresa
+      // (`marcasDeOrdenes`); el distrito de la fila es un nodo sin marca.
+      ...delegadosDelCatalogo({ nodos: [DISTRITO] }),
       orden: {
         findMany: vi.fn(async () => [{ ...ordenListRow(), distritoId: DISTRITO }]),
         count: vi.fn(async () => 1),

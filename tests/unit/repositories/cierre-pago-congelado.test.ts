@@ -15,6 +15,7 @@ import type {
 } from "@/lib/types/tarifa-flexible";
 import { clavePar } from "@/lib/utils/cascada-tarifa";
 import { sembrarCatalogoEstados } from "@/tests/fixtures/catalogo-estados";
+import { delegadosDelCatalogo } from "@/tests/fixtures/doble-catalogo-geografico";
 
 // La re-solicitud (477) y la correccion (398) resuelven el pago DENTRO de su transaccion con el
 // resolver unico. Aqui se sustituye SOLO esa funcion para poder afirmar con que contextos se llama y
@@ -160,6 +161,15 @@ function txCrear(opts: { vinculadas?: string[] } = {}) {
     provincia: catalogo({ nombre: "Cartago" }),
     canton: catalogo({ nombre: "Central" }),
     distrito: catalogo({ nombre: "Oriental", zonasEspeciales: [] }),
+    // SLT-65 (design §14.1): la geografia del snapshot sale del catalogo de la empresa
+    // (`leerDescriptivosDeOrdenes`), con los mismos nombres para los FK de `snapshotRow` y sin marcas.
+    ...delegadosDelCatalogo({
+      nodos: [
+        { id: "p1", nombre: "Cartago" },
+        { id: "ct1", nombre: "Central" },
+        { id: "d1", nombre: "Oriental" },
+      ],
+    }),
   };
 }
 
