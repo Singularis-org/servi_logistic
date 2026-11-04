@@ -301,7 +301,7 @@ const FRASES_OPERADOR: readonly FraseOperador[] = [
     "<span>La empresa · Informe de tránsito",
   ]),
   ...enArchivo("docs/api/api-key-openapi.yaml", [
-    "Los CINCO conceptos que la empresa factura por una orden, en el escenario de",
+    "Los SEIS conceptos que la empresa factura por una orden, en el escenario de", // SLT-52 R46: + ivaFulfillment
   ]),
   ...enArchivo("docs/api/guia-integracion/guia-integracion.html", [
     "dato de referencia de la empresa",
@@ -621,7 +621,7 @@ export function frasesPlataformaQueFaltan(
  * primera comilla, que el YAML escapa), igual en `docs/api/api-key-openapi.yaml`.
  */
 const DESCRIPCIONES_QUE_CAMBIAN = [
-  "Los CINCO conceptos que la empresa factura por una orden, en el escenario de ENTREGA",
+  "Los SEIS conceptos que la empresa factura por una orden, en el escenario de ENTREGA", // SLT-52 R46
   "Servi Logistic puede retirar una",
   "invocalo con tu propio `Authorization: Bearer svl_...`, igual que cualquier otra llamada al canal",
 ] as const;

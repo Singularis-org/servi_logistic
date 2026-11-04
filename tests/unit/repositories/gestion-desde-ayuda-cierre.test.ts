@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
+import { pagoViejoPorGestion } from "@/tests/fixtures/tarifa-tienda";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CierreDiaRepository } from "@/lib/repositories/CierreDiaRepository";
@@ -585,10 +586,10 @@ describe("💰 R30 — los movimientos son IDENTICOS venga la gestion del mensaj
       const delMensajero = [fila("g-mensajero", resultado)];
       const deLaTienda = [fila("g-tienda", resultado)];
 
-      const pagoM = derivarPagos(delMensajero, TARIFA);
-      const pagoT = derivarPagos(deLaTienda, TARIFA);
-      const ingM = derivarIngresoBodega(delMensajero, TARIFA);
-      const ingT = derivarIngresoBodega(deLaTienda, TARIFA);
+      const pagoM = derivarPagos(delMensajero, pagoViejoPorGestion(delMensajero, TARIFA));
+      const pagoT = derivarPagos(deLaTienda, pagoViejoPorGestion(deLaTienda, TARIFA));
+      const ingM = derivarIngresoBodega(delMensajero, pagoViejoPorGestion(delMensajero, TARIFA));
+      const ingT = derivarIngresoBodega(deLaTienda, pagoViejoPorGestion(deLaTienda, TARIFA));
 
       expect(pagoT.total).toBe(pagoM.total);
       expect(ingT.total).toBe(ingM.total);
@@ -605,20 +606,20 @@ describe("💰 R30 — los movimientos son IDENTICOS venga la gestion del mensaj
     // se resuelve por zona + vehiculo DEL MENSAJERO, coherente con «cuenta como del mensajero», y
     // el resultado es el mismo string.
     const deLaTienda = [fila("g-tienda", "devolucion_a_origen_por_rechazo")];
-    const { ingresoByGestionId, total } = derivarIngresoBodega(deLaTienda, TARIFA);
+    const { ingresoByGestionId, total } = derivarIngresoBodega(deLaTienda, pagoViejoPorGestion(deLaTienda, TARIFA));
     expect(ingresoByGestionId["g-tienda"]).toBe("1000.00");
     expect(total).toBe("1000.00");
     // Y no se le paga nada al mensajero por un rechazo: solo `entregada` paga.
-    expect(derivarPagos(deLaTienda, TARIFA).total).toBe("0.00");
+    expect(derivarPagos(deLaTienda, pagoViejoPorGestion(deLaTienda, TARIFA)).total).toBe("0.00");
   });
 
   it("`reprogramada` de la tienda es money-neutral: 0.00 en pago y 0.00 en ingreso", () => {
     const deLaTienda = [fila("g-tienda", "reprogramado")];
-    expect(derivarPagos(deLaTienda, TARIFA)).toEqual({
+    expect(derivarPagos(deLaTienda, pagoViejoPorGestion(deLaTienda, TARIFA))).toEqual({
       pagoByGestionId: { "g-tienda": "0.00" },
       total: "0.00",
     });
-    expect(derivarIngresoBodega(deLaTienda, TARIFA)).toEqual({
+    expect(derivarIngresoBodega(deLaTienda, pagoViejoPorGestion(deLaTienda, TARIFA))).toEqual({
       ingresoByGestionId: { "g-tienda": "0.00" },
       total: "0.00",
     });
@@ -627,7 +628,7 @@ describe("💰 R30 — los movimientos son IDENTICOS venga la gestion del mensaj
   });
 
   it("los importes viajan como STRING de escala 2 — ni un `number` en el camino", () => {
-    const { total } = derivarIngresoBodega([fila("g-tienda", "devolucion_a_origen_por_rechazo")], TARIFA);
+    const { total } = derivarIngresoBodega([fila("g-tienda", "devolucion_a_origen_por_rechazo")], pagoViejoPorGestion([fila("g-tienda", "devolucion_a_origen_por_rechazo")], TARIFA));
     expect(typeof total).toBe("string");
     expect(total).toMatch(/^\d+\.\d{2}$/);
   });

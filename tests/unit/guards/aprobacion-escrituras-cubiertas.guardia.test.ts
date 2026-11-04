@@ -209,6 +209,22 @@ const ESCRITURAS_FUERA_DE_LA_APROBACION = [
       "no en la de la resolucion.",
     cubiertaPor: ["tests/integration/db/ajuste-pago-mensajero-cierre.int.test.ts"],
   },
+  {
+    // SLT-52 (T5.2, design §2.5 y §7, R40): la correccion de un resultado RE-CONGELA el pago de su
+    // gestion (borra el congelado del resultado viejo y, en el modelo nuevo, escribe el del nuevo).
+    escritura: "tx.gestionPagoCongelado.deleteMany",
+    que:
+      "correccion #69 (`corregirResultadoGestionEnCierre`): borra el pago congelado de ESA gestion " +
+      "antes de re-congelarlo con el resultado corregido, en la transaccion propia de la correccion.",
+    cubiertaPor: ["tests/unit/repositories/cierre-pago-congelado.test.ts"],
+  },
+  {
+    escritura: "tx.gestionPagoCongelado.createMany",
+    que:
+      "correccion #69: el pago congelado del resultado corregido (solo modelo nuevo), con el mismo " +
+      "importe que se escribe en `pago_mensajero` / `ingreso_bodega_rechazo`.",
+    cubiertaPor: ["tests/unit/repositories/cierre-pago-congelado.test.ts"],
+  },
 ] as const;
 
 /**

@@ -84,6 +84,8 @@ function ingreso(over: Partial<IngresoEmpresaDTO> = {}): IngresoEmpresaDTO {
     fleteDevolucionConIva: null,
     comisionConIva: "565.00",
     total: "1695.00",
+    fulfillment: "0.00", // SLT-52 (R46): el fulfillment congelado y su IVA, fuera del total
+    ivaFulfillment: "0.00",
     tarifa: tarifa(),
     ...over,
   };

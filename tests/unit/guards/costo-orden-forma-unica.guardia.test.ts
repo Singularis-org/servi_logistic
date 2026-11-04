@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { Prisma, type PrismaClient } from "@prisma/client";
+import { sinValoresDelModeloNuevo } from "../../fixtures/tarifa-tienda";
 
 import { quitarComentarios } from "@/tests/fixtures/sin-comentarios";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
@@ -117,7 +118,8 @@ const CLAVES_DEL_ITEM = [
 ];
 
 const CLAVES_DE_ZONA = ["id", "nombre"];
-const CLAVES_DE_COSTO = ["comision", "flete", "fulfillment", "iva", "ivaComision"];
+// SLT-52 R46 (P5 = a): + `ivaFulfillment`, el IVA del fulfillment ("0.00" en el modelo viejo, R47).
+const CLAVES_DE_COSTO = ["comision", "flete", "fulfillment", "iva", "ivaComision", "ivaFulfillment"];
 
 const TARIFA = {
   id: "tarifa-1",
@@ -192,6 +194,8 @@ async function listadoYDetalle() {
       findFirst: vi.fn(async () => fila),
     },
     tarifa: { findMany: vi.fn(async () => [TARIFA]) },
+    // SLT-52: empresa sin valores del modelo nuevo -> el resolver unico usa la cascada vieja (R36).
+    ...sinValoresDelModeloNuevo(),
   };
   const svc = new ApiOrdenLecturaService(
     new OrdenRepository(prisma as unknown as PrismaClient),
@@ -272,6 +276,7 @@ describe("415/T9 (3) — COMPORTAMIENTO: listado y detalle dan el MISMO fragment
       comision: "906.50",
       ivaComision: "117.85",
       fulfillment: "696.00",
+      ivaFulfillment: "0.00", // SLT-52 R47
     });
     expect(item.costoReal).toEqual({
       flete: "2500.00",
@@ -279,6 +284,7 @@ describe("415/T9 (3) — COMPORTAMIENTO: listado y detalle dan el MISMO fragment
       comision: "906.50",
       ivaComision: "117.85",
       fulfillment: "692.00",
+      ivaFulfillment: "0.00", // SLT-52 R47
     });
   });
 });

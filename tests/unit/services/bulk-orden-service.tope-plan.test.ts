@@ -13,6 +13,8 @@ import type {
 import type { CupoOrdenes, ICupoPlanRepository } from "@/lib/interfaces/repositories/ICupoPlanRepository";
 import { notificadorNoOp } from "@/lib/notificaciones/notificadores";
 import { clavePar, type ParTarifa } from "@/lib/utils/cascada-tarifa";
+import type { TarifaTienda } from "@/lib/types/tarifa-flexible";
+import { tarifaVieja } from "../../fixtures/tarifa-tienda";
 import { TopeDelPlanAlcanzado } from "@/lib/planes/tope-error";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { RawRow } from "@/lib/parsers/spreadsheet";
@@ -44,10 +46,10 @@ const TARIFA: TarifaVigenteResuelta = {
 };
 
 const tarifaRepo: ITarifaVigenteRepository = {
-  resolveTarifa: vi.fn(async () => TARIFA),
+  resolveTarifa: vi.fn(async () => tarifaVieja(TARIFA)),
   resolveTarifas: vi.fn(
     async (pares: readonly ParTarifa[]) =>
-      new Map<string, TarifaVigenteResuelta | null>(pares.map((p) => [clavePar(p), TARIFA])),
+      new Map<string, TarifaTienda | null>(pares.map((p) => [clavePar(p), tarifaVieja(TARIFA)])),
   ),
 };
 
@@ -281,10 +283,10 @@ describe("SL-24 — BulkOrdenService.cargarViaApi (R21, R23)", () => {
       ]),
     });
     const tarifaSoloZ1: ITarifaVigenteRepository = {
-      resolveTarifa: vi.fn(async () => TARIFA),
+      resolveTarifa: vi.fn(async () => tarifaVieja(TARIFA)),
       resolveTarifas: vi.fn(
         async (pares: readonly ParTarifa[]) =>
-          new Map(pares.map((p) => [clavePar(p), p.zonaId === "z1" ? TARIFA : null])),
+          new Map(pares.map((p) => [clavePar(p), p.zonaId === "z1" ? tarifaVieja(TARIFA) : null])),
       ),
     };
     const sinTarifa = { ...rowApi("SIN"), distrito: "Barrio Dos" };

@@ -66,6 +66,17 @@ const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 /** Un cierre que no existe: basta para que las dos `SELECT` salgan igual. */
 const CIERRE_INEXISTENTE = "00000000-0000-4000-8000-000000000450";
 
+/**
+ * Los recuentos POR TABLA casan con el identificador EXACTO, con las comillas dobles que pone
+ * Prisma (`FROM "public"."cierre_detail"`), no con la subcadena: desde SLT-52 (T5.3) el feed lee
+ * tambien `cierre_detail_concepto` —la relacion anidada `conceptos` de `DETALLE_SELECT`, que Prisma
+ * emite como una SEGUNDA consulta, EN SERIE— y la subcadena `cierre_detail` contaria las dos.
+ * Las aserciones de R1 (en vuelo, solapes, conexiones) NO cambian: esa segunda consulta va por la
+ * misma conexion y R1 sigue exigiendo 0 solapes.
+ */
+const TABLA_DETALLE = '"cierre_detail"';
+const TABLA_DETALLE_CONCEPTO = '"cierre_detail_concepto"';
+
 describeSiHayBase("FICHA 450 · una consulta a la vez sobre la conexion de la transaccion", () => {
   let contado: PrismaContado;
 
@@ -140,17 +151,24 @@ describeSiHayBase("FICHA 450 · una consulta a la vez sobre la conexion de la tr
 
       // ANTI-VACIO: sin esto, un feed que no consultara nada saldria verde. Las DOS `SELECT`
       // tienen que haberse emitido de verdad, y por la MISMA conexion (la de la tx).
-      expect(contado.sonda.cuantasConteniendo("cierre_detail")).toBe(1);
+      // SLT-52 (T5.3): mas la de `cierre_detail_concepto`, EN SERIE y por esa misma conexion.
+      expect(contado.sonda.cuantasConteniendo(TABLA_DETALLE)).toBe(1);
+      expect(contado.sonda.cuantasConteniendo(TABLA_DETALLE_CONCEPTO)).toBe(1);
       expect(contado.sonda.cuantasConteniendo("gestion_orden")).toBe(1);
       const conexionDelDetalle = contado.sonda.consultas.find((c) =>
-        c.sql.includes("cierre_detail"),
+        c.sql.includes(TABLA_DETALLE),
+      )?.conexion;
+      const conexionDeLosConceptos = contado.sonda.consultas.find((c) =>
+        c.sql.includes(TABLA_DETALLE_CONCEPTO),
       )?.conexion;
       const conexionDeLasGestiones = contado.sonda.consultas.find((c) =>
         c.sql.includes("gestion_orden"),
       )?.conexion;
       expect(conexionDelDetalle).toBe(conexionDeLasGestiones);
+      expect(conexionDeLosConceptos).toBe(conexionDeLasGestiones);
 
-      // R1: ni un solape sobre esa conexion.
+      // R1: ni un solape sobre esa conexion. La subcadena `cierre_detail` casa A PROPOSITO con
+      // las dos tablas del detalle: van por la misma conexion, que es la que se mide.
       expect(contado.sonda.maximoEnVueloDeLaConexionDe("cierre_detail")).toBe(1);
       expect(contado.sonda.solapes).toEqual([]);
       // Sin gestiones no hay movimientos: el negocio ya lo cubren las suites unitarias (R5).
@@ -171,8 +189,11 @@ describeSiHayBase("FICHA 450 · una consulta a la vez sobre la conexion de la tr
 
       console.log(resumenDeLaSonda("R1 · feed del ledger por tienda (43)", contado.sonda));
 
-      expect(contado.sonda.cuantasConteniendo("cierre_detail")).toBe(1);
+      expect(contado.sonda.cuantasConteniendo(TABLA_DETALLE)).toBe(1);
+      // SLT-52 (T5.3): la de los conceptos congelados, en serie; R1 sigue exigiendo 0 solapes.
+      expect(contado.sonda.cuantasConteniendo(TABLA_DETALLE_CONCEPTO)).toBe(1);
       expect(contado.sonda.cuantasConteniendo("gestion_orden")).toBe(1);
+      // Subcadena a proposito: cubre las dos tablas del detalle, que van por la misma conexion.
       expect(contado.sonda.maximoEnVueloDeLaConexionDe("cierre_detail")).toBe(1);
       expect(contado.sonda.solapes).toEqual([]);
       expect(movimientos).toEqual([]);
@@ -199,8 +220,10 @@ describeSiHayBase("FICHA 450 · una consulta a la vez sobre la conexion de la tr
 
       console.log(resumenDeLaSonda("R1 · los dos feeds en la misma tx", contado.sonda));
 
-      // 4 lecturas de los feeds + la sonda de secuela, TODAS por la misma conexion.
-      expect(contado.sonda.cuantasConteniendo("cierre_detail")).toBe(2);
+      // 6 lecturas de los feeds (4 + las 2 de `cierre_detail_concepto` que SLT-52/T5.3 anadio en
+      // serie) + la sonda de secuela, TODAS por la misma conexion y sin un solo solape (R1).
+      expect(contado.sonda.cuantasConteniendo(TABLA_DETALLE)).toBe(2);
+      expect(contado.sonda.cuantasConteniendo(TABLA_DETALLE_CONCEPTO)).toBe(2);
       expect(contado.sonda.cuantasConteniendo("gestion_orden")).toBe(2);
       expect(contado.sonda.conexionesUsadas()).toBe(1);
       expect(contado.sonda.maximoEnVuelo()).toBe(1);

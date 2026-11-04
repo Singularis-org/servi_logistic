@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { conResolvePagosViejo } from "@/tests/fixtures/tarifa-tienda";
 import { CierreDiaService } from "@/lib/services/CierreDiaService";
 import type {
   CierreGestionPendienteRow,
@@ -128,9 +129,11 @@ function build(opts: {
     findEstatusIdByValue: vi.fn(async () => "s-reparto"),
     findBloqueoDetalle,
   } as unknown as IOrdenRepository;
-  const tarifaZonaRepo: ITarifaZonaMensajeroRepository = {
+  // SLT-52 (T5.1): el service resuelve el pago POR GESTION con `resolvePagos`; el doble lo responde
+  // como el resolver real en el modelo viejo, delegando en `resolvePagoTarifa` (39/R4).
+  const tarifaZonaRepo: ITarifaZonaMensajeroRepository = conResolvePagosViejo({
     resolvePagoTarifa: vi.fn(async () => TARIFA),
-  };
+  });
   const signedUrls = {
     createSignedUrl: vi.fn(async (p: string) => `https://signed/${p}`),
     createSignedUrls: vi.fn(async () => ({})),

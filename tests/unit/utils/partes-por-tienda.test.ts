@@ -88,6 +88,8 @@ function ingreso(campos: {
     fleteDevolucionConIva: campos.fleteDevolucionConIva ?? null,
     comisionConIva: campos.comisionConIva ?? null,
     total: campos.total,
+    fulfillment: "0.00", // SLT-52 (R46): el fulfillment congelado y su IVA, fuera del total
+    ivaFulfillment: "0.00",
     tarifa: null,
   };
 }

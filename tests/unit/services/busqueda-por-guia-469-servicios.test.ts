@@ -141,8 +141,11 @@ describe("469 — DetalleMovimientoService con `resaltar`", () => {
         montoCobrar: null,
         cobraComision: false,
         tarifa: {
-          valorFlete: "1000.00", valorFleteGam: "1500.00", valorFleteDevuelto: "400.00", valorFleteDevueltoGam: "600.00",
-          comisionCod: "3.50", ivaFlete: "13.00", ivaComisionCod: "13.00", tarifaEspecial: null, tarifaEspecialDevuelta: null,
+          modelo: "viejo",
+          tarifa: {
+            valorFlete: "1000.00", valorFleteGam: "1500.00", valorFleteDevuelto: "400.00", valorFleteDevueltoGam: "600.00",
+            comisionCod: "3.50", ivaFlete: "13.00", ivaComisionCod: "13.00", tarifaEspecial: null, tarifaEspecialDevuelta: null,
+          },
         },
       },
       gestiones: [{ resultado: "entregado", montoRecibido: null, pagoMensajero: null, indemnizacion: null }],
