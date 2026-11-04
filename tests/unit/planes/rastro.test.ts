@@ -16,6 +16,7 @@ const BASE: PlanDTO = {
   precio: { tipo: "monto", mensual: "25000", anual: { tipo: "descuento", porcentaje: "10" } },
   archivado: false,
   costoPorOrden: null, // SLT-66 R7: el plan lleva costo por orden; aquí, vacío.
+  costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
 };
 
 describe("SL-24 — diferenciasDelPlan", () => {

@@ -43,6 +43,9 @@ export const planDeLaEmpresaFilaSchema = z.object({
   descuento_anual_pct: importe,
   // SLT-66 (M3, R18): el del plan, `null` si no lo fija; y el vigente de `cobro_plataforma_tarifa_de`.
   costo_por_orden: importe,
+  // SLT-83 (M3, R1): el modo porcentual del plan; los dos `null` = no es porcentual.
+  costo_por_orden_pct: importe,
+  costo_por_orden_minimo: importe,
   costo_vigente: z.object({
     monto: z.string(),
     fuente: z.enum(["empresa", "plan", "global", "sin_configurar"]),
@@ -104,6 +107,8 @@ function aLeido(f: FilaPlanDeLaEmpresa): PlanDeLaEmpresaLeido {
       modulos: f.modulos,
       precio: precioDe(f),
       costoPorOrden: f.costo_por_orden,
+      costoPorOrdenPorcentual:
+        f.costo_por_orden_pct === null ? null : { porcentaje: f.costo_por_orden_pct, minimo: f.costo_por_orden_minimo },
     },
     ancla: f.ciclo_ancla,
     cortoDesde: f.ciclo_corto_desde,

@@ -30,6 +30,7 @@ const VERSION: VersionPlan = {
   modulos: [],
   precio: { tipo: "sin_precio" },
   costoPorOrden: null, // SLT-66 R7: el plan lleva costo por orden; aquí, vacío.
+  costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
 };
 
 /** Las 00:00 de la plataforma del 2027-01-10 (−06:00). */

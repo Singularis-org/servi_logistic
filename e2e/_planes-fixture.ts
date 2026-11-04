@@ -52,6 +52,7 @@ export async function asignarPlanConTope(dueno: PrismaClient, organizacionId: st
     // SLT-66 R8: `costoPorOrden` es obligatorio y `null` es vacío (como `entradaDePlan` de los tests de
     // integración). Sigue sin precio: R28 vive en el servicio y aquí se asigna con el repositorio real.
     costoPorOrden: null,
+    costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del esquema
     // Ajuste planes-custom (D2, D6): un custom se asigna al crearlo y lleva su tipo de cobro.
     tipoCobro: "mensual",
   });
@@ -84,6 +85,7 @@ export async function crearPlanPublicoConCosto(
     modulos: [...ORDEN_MODULOS],
     precio: { tipo: "monto", mensual: "1000.00", anual: null },
     costoPorOrden,
+    costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del esquema
   });
   return new PlanesRepository(dueno).crear(entrada, actor);
 }

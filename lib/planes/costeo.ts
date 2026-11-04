@@ -18,7 +18,7 @@ export function costeoDelCiclo(
   plan: PlanParaCosto,
   costoVigente: { monto: string; fuente: FuenteDelCosto },
   ordenes: number,
-): CosteoDelCiclo {
+): Extract<CosteoDelCiclo, { modo: "fijo" }> {
   const { precio } = plan;
   const costo = aCentimos(costoVigente.monto);
   const subtotal = costo * BigInt(ordenes);
@@ -27,6 +27,7 @@ export function costeoDelCiclo(
   const base: CosteoDelCiclo["base"] =
     mensual === null ? { tipo: "por_definir" } : { tipo: "monto", mensual: aTexto(mensual) };
   return {
+    modo: "fijo",
     base,
     costoPorOrden: aTexto(costo),
     fuente: costoVigente.fuente,

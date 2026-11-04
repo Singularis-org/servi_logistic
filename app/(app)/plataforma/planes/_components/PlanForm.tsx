@@ -219,6 +219,9 @@ function versionDe(f: Formulario) {
     modulos: ORDEN_MODULOS.filter((m) => f.modulos.includes(m)),
     precio: precioDe(f),
     costoPorOrden: f.costoPorOrden.trim() === "" ? null : f.costoPorOrden.trim(),
+    // SLT-83 (T6): ajuste mínimo de backend_dev para que el esquema, que ahora exige la clave, siga
+    // aceptando el formulario solo fijo. El modo porcentual lo trae T11 (frontend_dev).
+    costoPorOrdenPorcentual: null,
   };
 }
 

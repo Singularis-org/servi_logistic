@@ -122,6 +122,14 @@ function aDTO(f: FilaPlan): PlanDTO {
     modulos: f.modulos.map((m) => m.modulo),
     precio: precioDe(f),
     costoPorOrden: f.costoPorOrden === null ? null : f.costoPorOrden.toFixed(2),
+    // SLT-83 (R1): el modo se deriva de qué columna tiene valor; el `CHECK` impide los dos a la vez.
+    costoPorOrdenPorcentual:
+      f.costoPorOrdenPct === null
+        ? null
+        : {
+            porcentaje: f.costoPorOrdenPct.toFixed(2),
+            minimo: f.costoPorOrdenMinimo === null ? null : f.costoPorOrdenMinimo.toFixed(2),
+          },
     archivado: f.archivadoAt !== null,
   };
 }
@@ -538,6 +546,7 @@ async function crearEnTx(tx: Tx, input: CrearPlanInput, actorUsuarioId: string):
     modulos: input.modulos,
     precio: input.precio,
     costoPorOrden: input.costoPorOrden,
+    costoPorOrdenPorcentual: input.costoPorOrdenPorcentual,
     archivado: false,
   };
   const actor = await resolverActorCongelado(tx, actorUsuarioId);
@@ -1205,6 +1214,7 @@ export class PlanesRepository implements IPlanesRepository {
               modulos: dto.modulos,
               precio: dto.precio,
               costoPorOrden: dto.costoPorOrden,
+              costoPorOrdenPorcentual: dto.costoPorOrdenPorcentual,
             },
             ancla,
             cortoDesde: empresa.planCicloCortoDesdeAt,

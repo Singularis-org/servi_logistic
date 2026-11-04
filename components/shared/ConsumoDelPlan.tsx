@@ -15,13 +15,17 @@ import type {
 } from "@/lib/types/consumo-plan";
 import { cn } from "@/lib/utils";
 
+// SLT-83 (T6): ajuste de tipo mínimo de backend_dev. `CosteoDelCiclo` pasó a unión por `modo`; esta
+// pieza pinta solo el modo fijo, sin cambio. La rama porcentual es de T14 (frontend_dev).
+type CosteoFijo = Extract<CosteoDelCiclo, { modo: "fijo" }>;
+
 /** Textos de la pieza, en un solo sitio para cuando llegue la i18n (design §6.5). */
 const TEXTOS = {
   costoDelCiclo: "Costo del ciclo",
   costoBase: (base: CosteoDelCiclo["base"]) =>
     `Costo base: ${base.tipo === "monto" ? `${base.mensual} al mes` : "por definir"}`,
   costoPorOrden: (c: string) => `Costo por orden: ${c}`,
-  ordenesDelCiclo: ({ ordenes, costoPorOrden, subtotalOrdenes }: CosteoDelCiclo) =>
+  ordenesDelCiclo: ({ ordenes, costoPorOrden, subtotalOrdenes }: CosteoFijo) =>
     `Órdenes del ciclo: ${ordenes} × ${costoPorOrden} = ${subtotalOrdenes}`,
   total: (t: string) => `Total estimado del ciclo: ${t}`,
   excepcion: "precio acordado para tu empresa",
@@ -105,7 +109,7 @@ export function ConsumoDelPlan({
           </CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
-          <CostoDelCiclo costeo={plan.costeo} textoExcepcion={textoExcepcion} />
+          {plan.costeo.modo === "fijo" && <CostoDelCiclo costeo={plan.costeo} textoExcepcion={textoExcepcion} />}
           <CobroDelPlanVista cobro={plan.cobro} />
           <p className="text-sm font-medium">{TEXTOS.modulos}</p>
           {plan.modulos.length === 0 ? (
@@ -170,7 +174,7 @@ export function ConsumoDelPlan({
  * (`costeoDelCiclo`, en el servidor): aquí no se suma ni se convierte nada, para no perder exactitud.
  * La aritmética no se importa en este componente porque lo monta también una pantalla de cliente.
  */
-function CostoDelCiclo({ costeo, textoExcepcion }: { costeo: CosteoDelCiclo; textoExcepcion: string }) {
+function CostoDelCiclo({ costeo, textoExcepcion }: { costeo: CosteoFijo; textoExcepcion: string }) {
   // P1: solo la excepción lleva nota; el plan y el global se pintan con su importe y nada más.
   const nota = costeo.fuente === "empresa" ? textoExcepcion : null;
   return (

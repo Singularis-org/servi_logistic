@@ -21,6 +21,7 @@ const VIGENTE: VersionPlan = {
   modulos: ["analitica", "ranking"],
   precio: { tipo: "monto", mensual: "45000", anual: null },
   costoPorOrden: null, // SLT-66 R8: campo nuevo del tipo.
+  costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
 };
 
 // Mitad de ciclo: ancla el 15 de enero a las 06:00 UTC, «ahora» el 1 de marzo a las 06:00 UTC.

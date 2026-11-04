@@ -38,6 +38,7 @@ const LEIDO: PlanConUsoLeido = {
     modulos: ["analitica"],
     precio: { tipo: "monto", mensual: "45000", anual: null },
     costoPorOrden: null, // SLT-66 R8: campo nuevo de la versión
+    costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
   },
   ancla: new Date("2026-01-15T06:00:00.000Z"),
   // SLT-66 R5: el uso ya no lleva `maestro`.
@@ -50,6 +51,7 @@ const LEIDO: PlanConUsoLeido = {
       modulos: ["analitica"],
       precio: { tipo: "monto", mensual: "45000", anual: null },
       costoPorOrden: null, // SLT-66 R8: campo nuevo de la versión
+      costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
     },
   },
   costoVigente: { monto: "500.00", fuente: "global" }, // SLT-66 R18: campo nuevo de la lectura
@@ -95,6 +97,7 @@ function planDTO(extra: Partial<PlanDTO> & Pick<PlanDTO, "id" | "nombre">): Plan
     modulos: [],
     precio: { tipo: "sin_precio" },
     costoPorOrden: null, // SLT-66 R8: campo nuevo del PlanDTO
+    costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
     archivado: false,
     ...extra,
   };

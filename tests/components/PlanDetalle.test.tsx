@@ -31,6 +31,7 @@ const DETALLE: DetallePlan = {
     modulos: ["analitica", "ranking"],
     precio: { tipo: "monto", mensual: "10.00", anual: null },
     costoPorOrden: null, // SLT-66 R8: campo nuevo del PlanDTO
+    costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
     archivado: false,
   },
   empresaNombre: null,

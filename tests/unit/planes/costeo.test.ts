@@ -16,6 +16,7 @@ const conCosto = (precio: PrecioPlan, costoPorOrden: string | null = "100.00") =
 describe("SLT-66 — costeoDelCiclo: total con base «monto» (R19)", () => {
   it("R19: base + órdenes × costo = total, con el costo y la fuente vigentes", () => {
     expect(costeoDelCiclo(conCosto(MENSUAL), DEL_PLAN, 3)).toEqual({
+      modo: "fijo", // SLT-83: el costeo pasó a unión por modo
       base: { tipo: "monto", mensual: "50000.00" },
       costoPorOrden: "100.00",
       fuente: "plan",

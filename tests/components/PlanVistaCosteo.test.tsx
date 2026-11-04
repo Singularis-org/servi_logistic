@@ -38,6 +38,7 @@ function plan(extra: Partial<PlanDTO> & Pick<PlanDTO, "id" | "nombre">): PlanDTO
     modulos: [],
     precio: { tipo: "monto", mensual: "50000.00", anual: null },
     costoPorOrden: "100.00",
+    costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
     archivado: false,
     ...extra,
   };
@@ -215,7 +216,7 @@ describe("SLT-66 R24 — modal de asignación", () => {
       plan: {
         ...planConConsumo(
           {
-            vigente: { nombre: actual.nombre, topes: actual.topes, modulos: [], precio: actual.precio, costoPorOrden: "100.00" },
+            vigente: { nombre: actual.nombre, topes: actual.topes, modulos: [], precio: actual.precio, costoPorOrden: "100.00", costoPorOrdenPorcentual: null },
             ancla: new Date("2026-10-01T06:00:00.000Z"),
             uso: { ordenes: 0, apiKeys: 0, porRol: { admin: 0, mensajero: 0, adminTienda: 0, adminSatelite: 0 } },
             cambio: null,

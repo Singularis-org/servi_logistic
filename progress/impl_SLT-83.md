@@ -240,3 +240,69 @@ Ninguno es de este cambio:
 una columna `TIMESTAMP` sin zona toma la zona de la sesión, mientras `plan_inicio_ciclo_en_curso` trabaja en
 UTC (`now() AT TIME ZONE 'UTC'`). En Supabase la sesión es UTC; la base local de esta feature está en
 `America/Bogota`. Si el test de R24 (T7) sale corrido 5 h en local, la causa es esa, no la función.
+
+## T6
+
+**Archivos.**
+- `lib/types/planes.ts`: `porcentajeSchema` exportado; `costoPorOrdenPorcentualSchema` (`{ porcentaje, minimo }`,
+  `.strict()`) y su tipo `CostoPorOrdenPorcentual`; `costoPorOrdenPorcentual` obligatorio (`null` = no
+  porcentual) en `crearPlanSchema`, `editarPlanSchema` y `versionPlanSchema`, con el refine de «un solo modo»
+  (`path: ["costoPorOrdenPorcentual"]`) en los tres esquemas finales. `editarPlanSchema` sale ahora de un
+  objeto base (`edicionDelPlan`) porque zod 4 no deja `.omit()` sobre un objeto con refinamientos.
+  `VersionPlan` y `PlanDTO` ganan el campo.
+- `lib/types/consumo-plan.ts`: `CostoVigente` (unión fijo/porcentual), `CobroDelCiclo`, y `CosteoDelCiclo`
+  discriminado por `modo` (design §4.3).
+- Lo mínimo para que compile (la lógica completa va en T7/T8): `PlanesRepository.aDTO` arma
+  `costoPorOrdenPorcentual` de `costoPorOrdenPct`/`costoPorOrdenMinimo` (`toFixed(2)`); el DTO de `crear` y la
+  `vigente` de `planDeEmpresa` lo pasan; `MiPlanRepository` lee `costo_por_orden_pct`/`_minimo` de
+  `plan_de_la_empresa` a la versión vigente; `costeoDelCiclo` devuelve `modo: "fijo"`.
+- **Fuera de mi capa (ajustes mínimos, sin texto ni comportamiento visible nuevo; los rehace la Tanda D):**
+  - `components/shared/ConsumoDelPlan.tsx`: `CostoDelCiclo` tipado a la rama `modo: "fijo"` y montado solo
+    con ella (el typecheck se rompía al pasar a unión). La rama porcentual es de T14.
+  - `app/(app)/plataforma/planes/_components/PlanForm.tsx` (`versionDe`): envía `costoPorOrdenPorcentual:
+    null`. No es de tipo sino de ejecución: con la clave ya obligatoria en el esquema, el formulario daba
+    `validation_error` en todo envío y 21 tests de `PlanForm*`/`PlanDetalle`/`PlanesModule` caían. Es lo
+    que el design pide para «el modo no elegido» (§6.1). El selector de modo es de T11.
+- Creado `tests/unit/types/planes-schema-costo-porcentual.test.ts`.
+
+**Tests existentes tocados solo por tipo (design §9.3).** Ganan `costoPorOrdenPorcentual: null` (PlanDTO,
+VersionPlan o entrada de crear/editar) o `modo: "fijo"` (costeo); ninguna aserción de comportamiento cambia:
+- §9.3: `tests/unit/planes/costeo.test.ts` (`modo` en el `toEqual`), `rastro-costeo.test.ts`,
+  `tests/unit/types/planes-schema-costeo.test.ts`, `tests/unit/services/planes-service{,-costeo,-asignar-costo,
+  -crear-custom,-inicio-ciclo,-lecturas}.test.ts`, `tests/components/ConsumoDelPlan.test.tsx`,
+  `ConsumoDelPlanCosteo.test.tsx`, `PlanForm.test.tsx` (el payload esperado gana la clave),
+  `PlanFormCosteo.test.tsx`, `tests/integration/db/_fixtures/planes.ts`, `e2e/_planes-fixture.ts`.
+- No nombrados en §9.3, mismo tipo de cambio (construyen `PlanDTO`/`VersionPlan` o una entrada de
+  `editar`): `tests/unit/planes/rastro.test.ts`, `tests/unit/types/planes-schema.test.ts`,
+  `tests/unit/services/mi-plan-service.test.ts`, `tests/components/{MiPlanModule,PlanDetalle,PlanDetalleAsignar,
+  PlanDetalleDesasignado,PlanEmpresa,PlanEmpresaSinCosto,PlanEmpresaTipoCobro,PlanesModule,PlanVistaCosteo}.test.tsx`,
+  `tests/integration/{plataforma-empresa-detalle-page,plataforma-planes-page}.test.tsx`,
+  `tests/integration/db/{cobro-plataforma-plan,mi-plan-repository,planes-asignacion,planes-cambio-correos,
+  planes-cambio-programado,planes-costeo-escritura,planes-edicion-en-uso,planes-historial,
+  planes-lecturas-plataforma}.test.ts`. En `mi-plan-repository` la `vigente` esperada gana la clave.
+
+**R → test.**
+- R1 → `planes-schema-costo-porcentual.test.ts`: «%s entra al crear, al editar y en una versión programada»
+  (fijo, porcentual con y sin mínimo, vacío), «fijo y porcentual a la vez es validation_error en
+  costoPorOrdenPorcentual, en las tres entradas», «la clave ausente es validation_error…», «un importe fijo
+  dentro del porcentual…».
+- R2 → mismo archivo: porcentaje `0.01`, `2`, `2.35`, `100`, `100.00` entran; `0`, `0.00`, `100.01`, `2.355`,
+  `-1`, vacío, número y `null` → error en `costoPorOrdenPorcentual.porcentaje`; mínimo `0`, `500`, `500.5`,
+  `9999999999.99` entran, `null` vale; negativo, tres decimales, fuera de `DECIMAL(12,2)`, vacío y número →
+  error en `costoPorOrdenPorcentual.minimo`.
+
+**Salida.**
+- `pnpm exec vitest run tests/unit/types/planes-schema-costo-porcentual.test.ts` →
+  `Test Files 1 passed (1) · Tests 33 passed (33)`.
+- Unit tocados (`tests/unit/types/planes-schema{,-costeo}`, `tests/unit/planes/`, `tests/unit/services/planes-service*`,
+  `mi-plan-service`, más el nuevo) → `Test Files 17 passed (17) · Tests 451 passed (451)`.
+- Componentes y páginas tocados (16 archivos, incl. `PlanFormCustomAsigna`) → `Test Files 16 passed (16) ·
+  Tests 243 passed (243)`.
+- Integración de `db` tocada (`cobro-plataforma-plan`, `mi-plan-repository`, `planes-costeo-escritura`,
+  `planes-lecturas-plataforma`) → `Test Files 4 passed (4) · Tests 28 passed (28)`; (`planes-asignacion`,
+  `planes-cambio-correos`, `planes-cambio-programado`, `planes-edicion-en-uso`, `planes-historial`) →
+  `Test Files 5 passed (5) · Tests 45 passed (45)`.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck` → `tsc --noEmit`, sin errores.
+- `pnpm exec eslint` de los 46 archivos tocados → 0 problemas.
+
+**Veredicto T6:** el borde admite el modo porcentual con un solo modo a la vez, y lo existente compila y pasa sin cambios de aserción.

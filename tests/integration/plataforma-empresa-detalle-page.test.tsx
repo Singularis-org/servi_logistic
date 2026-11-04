@@ -173,6 +173,7 @@ describe("SLT-58 (R19) — el plan de la empresa en su detalle", () => {
               modulos: ["analitica"],
               precio: { tipo: "sin_precio" }, // Ajuste planes-custom (D1): sin «negociable».
               costoPorOrden: null, // SLT-66 R8: campo nuevo de la versión
+              costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
             },
             ancla: new Date("2026-01-15T06:00:00.000Z"),
             uso: { ordenes: 1000, apiKeys: 0, porRol: { admin: 0, mensajero: 9, adminTienda: 0, adminSatelite: 0 } }, // SLT-66 R5: sin `maestro`
@@ -198,6 +199,7 @@ describe("SLT-58 (R19) — el plan de la empresa en su detalle", () => {
     modulos: ["analitica"],
     precio: { tipo: "sin_precio" }, // Ajuste planes-custom (D1): sin «negociable».
     costoPorOrden: null, // SLT-66 R8: campo nuevo del PlanDTO
+    costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
     archivado: false,
   };
 

@@ -42,7 +42,7 @@
 
 ## Tanda B — tipos, dominio y escritura (backend_dev)
 
-- [ ] **T6. Tipos y esquemas** (design §4.1): exportar `porcentajeSchema`; `costoPorOrdenPorcentualSchema`;
+- [x] **T6. Tipos y esquemas** (design §4.1): exportar `porcentajeSchema`; `costoPorOrdenPorcentualSchema`;
   campo en `crearPlanSchema`, `editarPlanSchema` y `versionPlanSchema` con el refine de «no los dos»;
   `VersionPlan`, `PlanDTO`; `CostoVigente` y `CosteoDelCiclo` en unión (`lib/types/consumo-plan.ts`).
   Ajustar por tipo los tests de §9.3. Depende de T1.

@@ -21,6 +21,7 @@ function version(precio: PrecioPlan, costoPorOrden: string | null): VersionPlan 
     modulos: [],
     precio,
     costoPorOrden,
+    costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
   };
 }
 

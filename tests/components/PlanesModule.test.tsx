@@ -26,6 +26,7 @@ const PUBLICO: PlanDelCatalogo = {
   modulos: ["analitica"],
   precio: { tipo: "monto", mensual: "10.00", anual: { tipo: "fijo", monto: "100.00" } },
   costoPorOrden: null, // SLT-66 R8: campo nuevo del PlanDTO
+  costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
   archivado: false,
   empresaNombre: null,
   empresas: 1200,
@@ -41,6 +42,7 @@ const CUSTOM: PlanDelCatalogo = {
   modulos: [],
   precio: { tipo: "sin_precio" }, // Ajuste planes-custom (D1): sin «negociable».
   costoPorOrden: null, // SLT-66 R8: campo nuevo del PlanDTO
+  costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
   archivado: false,
   empresaNombre: "Envíos Norte",
   empresas: 1,
