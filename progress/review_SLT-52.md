@@ -181,3 +181,53 @@ Ninguno es inaceptable:
 Arreglar H1 (constante 167, su comentario y `tests/unit/scripts/verificar-rls-despliegue.test.ts`).
 Los menores no bloquean: H3, H5 y H6 se arreglan en un minuto si el implementer vuelve, y H8 pasa
 a la ficha de SLT-54.
+
+## Vuelta 2 (2026-11-03)
+
+Acotada a `b7baa743..66119764` (un commit: `66119764 fix(SLT-52): hallazgos de la revisión F2.2`).
+
+### Veredicto: **OK con menores**
+
+H1 (el único mayor) está arreglado y su test muere con la mutación. No hay regresiones ni hallazgos nuevos.
+
+### Alcance del commit
+
+10 archivos. Todos caen dentro de H1, H3, H5, H6, H10 o la bitácora:
+- H1: `scripts/verificar-rls-despliegue.ts`, `tests/unit/scripts/verificar-rls-despliegue.test.ts`.
+- H3: `lib/repositories/TarifaValorRepository.ts`, `lib/interfaces/repositories/ITarifaValorRepository.ts`
+  (el tipo de retorno de `fijar`), `lib/services/TarifaValorService.ts`, `tests/unit/services/tarifa-valor-service.test.ts`.
+- H5: `tests/integration/db/tarifas-flexibles-escritura.test.ts`.
+- H6: `lib/services/BulkOrdenService.ts` (solo el comentario).
+- H10: `specs/SLT-52-tarifas-flexibles-modelo/design.md` (solo esa fila).
+- Bitácora: `progress/impl_SLT-52.md` (añade la sección de arreglos).
+
+No toca nada más.
+
+### Estado de cada hallazgo
+
+| # | Estado | Evidencia |
+|---|---|---|
+| H1 (mayor) | **Cerrado** | `TRIGGERS_MISMA_EMPRESA = 167` y el comentario nombra `20261103140100`. Medido por mí: 167 `CREATE TRIGGER sme_` en `db/migrations/*/migration.sql` y 0 `DROP TRIGGER sme_`. Test 4/4. **Mutación a 166: caen los 4 tests.** Archivo restaurado y árbol limpio. |
+| H2 | Aceptado | No se toca (ver vuelta 1). |
+| H3 | **Cerrado** | Un P2002 de `tarifa_valor_nivel_key` devuelve `"nivel_ocupado"` y el service lo traduce a `validation_error` en `concepto`; cualquier otro error se relanza. El `try/catch` envuelve el `$transaction` **dentro** de `fijar`. Guardia `historial-accion-escrituras-cubiertas` (junto con `aprobacion-escrituras-cubiertas`): 98/98. Servicio 64/64, con 3 `it` nuevos (`meta.target`, forma del driver adapter, y otros P2002/P2003 que se propagan). |
+| H4 | Aceptado | No se toca. |
+| H5 | **Cerrado** | `it("R9 — quitar el valor del nivel especifico …")`: grupo=2100 → resuelve `2100.00`/`grupo`; `quitarValor` del servicio real → resuelve `1500.00`/`zona`. Literales con `toEqual`, contra Postgres; se ejecutó y no salió saltado (archivo 6/6). |
+| H6 | **Cerrado** | `BulkOrdenService.ts:570` → «redondeado a la unidad de la moneda». |
+| H7 | Aceptado | Sin cambios. |
+| H8 | Derivado a SLT-54 | Ya está comentado en la ficha de SLT-54. |
+| H9 | Aceptado | Sin cambios. |
+| H10 | **Cerrado** | La fila del design dice ya que la única raíz que cambia es la de `CierreDiaRepository` y nombra sus tres puntos. |
+
+### Verificación que corrí
+
+- `vitest run` de `verificar-rls-despliegue.test.ts`, `tarifa-valor-service.test.ts` y `tarifas-flexibles-escritura.test.ts`: 3 archivos, 74/74, ninguno saltado.
+- Guardias `*-escrituras-cubiertas`: 2 archivos, 98/98.
+- Mutación de H1 (167 → 166): 4/4 rojos; restaurada.
+- Gate del implementer (`init-slt52-fixrev.log`):
+  - `INIT_EXIT=1`; typecheck y lint pasan.
+  - `test:rapido`: 4 archivos y 9 tests rojos, 1278 archivos y 17408 tests verdes.
+  - Los 4 rojos son los conocidos ajenos: `caja-backfill` (5) y `notificacion-evento-{bloqueo-cierre,gasto-fijo,webhook-suscripcion}-migration` (1+1+2). No hay ningún rojo de SLT-52.
+
+### Menor (observación, no bloquea)
+
+- El texto del error de H3 lo redactó el implementer, porque el spec no lo define. Es razonable y no nombra la moneda; queda a la vista por si producto quiere otro.
