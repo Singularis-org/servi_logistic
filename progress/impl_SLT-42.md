@@ -152,3 +152,32 @@ backend_dev además corrió:
   - la migración 120100 inserta «ruc»/«pasaporte» si faltan;
   - un tipo inactivo se devuelve con `activo: false` y el servicio lo rechaza (R11).
 - La corrida de `vitest related` dio 2 rojos. Uno es R22. El otro, `premio-ranking-devengo-migration`, ya está en `tests/baseline-rojos.json`.
+
+## Rojos del gate rápido tras el fix-up de la tanda 1 (2026-11-04)
+Método: cada archivo corrió solo (`pnpm exec vitest run <archivo>`) 3 veces en esta rama (HEAD `b4e70be2`) y 3 veces en un
+worktree temporal de `origin/dev` (`42328714`), ya borrado. Resultado: **ningún rojo es de SLT-42**, todos son del grupo (b),
+fallos por carga. Ninguno se reproduce aislado, ni aquí ni en `dev`.
+
+| Archivo | Rama (aislado) | `dev` (aislado) | Grupo |
+|---|---|---|---|
+| `tests/components/CierresAdminFiltros.test.tsx` | 3/3 verde (13/13) | 3/3 verde | (b) |
+| `tests/components/descarga/CierresDescargaColumnas.test.tsx` | 3/3 verde (8/8) | 3/3 verde | (b) |
+| `tests/components/DescargarDataset.test.tsx` (R22) | 6/9 verde (ver abajo) | 6/6 verde | (b) |
+| `tests/components/OrdenesPageFiltros.test.tsx` | 3/3 verde (8/8) | 3/3 verde | (b) |
+| `tests/integration/wallet-page.test.tsx` | 3/3 verde (19/19) | 3/3 verde | (b) |
+| `tests/unit/components/ordenes-listado-vistas.test.tsx` | 3/3 verde (10/10) | 3/3 verde | (b) |
+
+Detalle de **R22**:
+- Las 3 primeras corridas en la rama fallaron (`expected "vi.fn()" to be called 1 times, but got 0 times`, unos 1,3 s).
+  Coincidieron con un `pnpm install` en paralelo del worktree de `dev`.
+- Después, sin carga, `backend_dev` corrió el archivo 3 veces seguidas (verde) y 4 copias a la vez (verde). Yo lo corrí
+  3 veces más alternando rama y `dev` (verde en las dos).
+- Diagnóstico de `backend_dev`, con instrumentación temporal ya revertida:
+  - Con la fecha falsa, `fechaCalendarioCR()` devuelve `"2026-10-02"` al instante.
+  - `construirDescarga` no rechaza.
+  - R22 tarda lo mismo con el `fecha-cr.ts` de la rama (612-712 ms) que con el de `dev` (651-728 ms).
+- El costo es el `import("exceljs")` en frío, unos 620 ms (`lib/utils/xlsx-template.ts`), contra el `waitFor` de 1000 ms.
+  Con carga se pasa. El fallo no lo causan la caché de `calendario-zona.ts` ni `telefono-cr.ts`.
+- No hubo cambio de código de producción, así que no hay commit `fix`. Si el leader quiere quitar la fragilidad, hay que tocar
+  el test (precalentar exceljs o subir el timeout de ese `waitFor`), y eso queda fuera de este encargo.
+- Esto corrige la nota anterior («con el `fecha-cr.ts` viejo también falla 2 de 4»). La causa es la misma: carga, no SLT-42.
