@@ -153,6 +153,15 @@ esta bien hecha, no solo si "funciona".
     con `comoPlataforma`. La UI pinta los nombres de nivel del país de la empresa con
     `useEtiquetasGeograficas`; ningún texto de nivel va escrito a mano
     (`etiquetas-geograficas-sin-literal.guardia`).
+- **Catálogo de vehículos (SL-42, 2026-11-04).** `vehiculos` es uno solo para todas las empresas, que
+  solo lo leen: el `maestro` en el formulario de usuarios y la postulación pública, y solo los activos
+  para una elección nueva (`WHERE_VEHICULO_ELEGIBLE`, `lib/repositories/_shared/vehiculo-activo.ts`).
+  - **Edición:** es del superadmin (`GESTION_ROLES = ROLES_PLATAFORMA` en `VehiculoService`). Crea,
+    renombra, activa y desactiva desde `/plataforma/vehiculos`; no hay borrado. El borde
+    `lib/actions/vehiculos-plataforma.ts` corre el servicio dentro de `comoPlataforma` y está en
+    `EXCEPCIONES_DE_PLATAFORMA`. `/configuracion/vehiculos` ya no existe.
+  - **Rastro:** cada escritura deja una fila en `vehiculo_rastro`, en la misma transacción. Esa tabla
+    tiene `REVOKE ALL` para `servi_app`. Nada se escribe en `historial_accion`.
 - **Módulos por empresa (SL-23, 2026-10-26).** Cada empresa tiene un núcleo que nunca se apaga y 3
   módulos apagables (`lib/modulos/catalogo.ts`, enum `modulo_apagable`). Recolección, Bodegas
   satélite, API e integraciones y WhatsApp fueron apagables hasta el 2026-10-27, y Wallet hasta el

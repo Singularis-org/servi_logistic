@@ -7,7 +7,7 @@
 //
 // Se monta la página REAL y su módulo real; lo único doblado es el borde: las Server Actions, la
 // sesión, el router de Next y el toast. Los textos van LITERALES: son el contrato de pantalla.
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -244,5 +244,23 @@ describe("R16 — /configuracion/vehiculos ya no existe", () => {
     const raiz = path.resolve(__dirname, "../../..");
     expect(existsSync(path.join(raiz, "app/(app)/configuracion/vehiculos"))).toBe(false);
     expect(existsSync(path.join(raiz, "app/(app)/plataforma/vehiculos/page.tsx"))).toBe(true);
+  });
+});
+
+describe("R19 — ninguna ayuda describe ni enlaza la pantalla retirada", () => {
+  function markdownsDe(dir: string): string[] {
+    return readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+      e.isDirectory() ? markdownsDe(path.join(dir, e.name)) : e.name.endsWith(".md") ? [path.join(dir, e.name)] : [],
+    );
+  }
+
+  it("ningún .md de docs/ayuda menciona /configuracion/vehiculos, y la de la oficina ya no existe", () => {
+    const raiz = path.resolve(__dirname, "../../..");
+    const docs = markdownsDe(path.join(raiz, "docs/ayuda"));
+    // Control de no vacuidad: si la carpeta no se leyó, el caso de abajo pasaría sin mirar nada.
+    expect(docs.length).toBeGreaterThan(0);
+    const conLaRuta = docs.filter((f) => readFileSync(f, "utf8").includes("/configuracion/vehiculos"));
+    expect(conLaRuta.map((f) => path.relative(raiz, f))).toEqual([]);
+    expect(existsSync(path.join(raiz, "docs/ayuda/oficina/configuracion-vehiculos.md"))).toBe(false);
   });
 });

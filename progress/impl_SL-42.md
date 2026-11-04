@@ -256,3 +256,120 @@ T2.4 y T4.1–T4.4 hechas, en el commit 564b6532. Typecheck en 0 y `superficie-d
 
 ### Veredicto
 T3.2 hecha. Solo queda el rojo de baseline.
+
+## T5 — Verificación y cierre (frontend_dev, 2026-11-04)
+
+### T5.1 — `e2e/dos-empresas-humo.spec.ts`
+- El caso de vehículos ya no crea desde la pantalla del `maestro`, porque ya no existe. Ahora afirma tres cosas:
+  - `/configuracion/vehiculos` responde 404 con «no encontrado»;
+  - no aparece «Tipos de vehículo»;
+  - el catálogo entero (`id`, `name`, `activo`) queda igual antes y después de la visita.
+- El caso de geografía (SL-32 R26) no cambia.
+- Sale `guardarYLeer`, que solo usaba ese caso, y el import de `randomUUID`.
+- La cabecera del spec (punto 7) se actualiza.
+- Sin `skip`, `fixme` ni `.only`.
+- **El E2E no corrió en local.** Lo que se hizo:
+  - se creó una base desechable propia (`sl42_e2e`, en localhost, separada de `logistic`), con `prisma migrate deploy` y `pnpm run db:seed`; los dos terminaron bien («All migrations have been successfully applied.» y «Seed de catalogos completado…»);
+  - `next build` no terminó en los 590 s del comando: se quedó en «Running TypeScript ...» y lo cortó el `timeout` (`exit=124`; Next escribió «Next.js build worker exited with code: 143»).
+  - Los comandos en primer plano tienen un tope de 10 min y en esta tanda no se puede dejar nada en segundo plano, así que no fue posible construir y arrancar la app. No se intentó más.
+  - La base desechable se borró y el `.next` a medias, también. No queda ningún proceso vivo.
+  - El spec lo corre CI (`gate-completo`, grupo `aislamiento`). **T5.1 queda `[ ]` hasta verlo verde allí.**
+
+### T5.2
+- `progress/deudas.md`: D12 queda RESUELTA en su parte de vehículos y, con ella, entera.
+- `docs/architecture.md > Multi-empresa`: nuevo bloque «Catálogo de vehículos (SL-42)».
+  - La edición es del superadmin, por `lib/actions/vehiculos-plataforma.ts` con `comoPlataforma` y dentro de `EXCEPCIONES_DE_PLATAFORMA`.
+  - El rastro va a `vehiculo_rastro`.
+  - Las empresas solo leen, y solo los activos para una elección nueva.
+
+### Mapa completo R → test (R1–R23)
+- R1:
+  - `tests/unit/components/vehiculos-plataforma-page.test.tsx` › «R1 — la puerta, antes de leer».
+  - `tests/unit/auth/menu-visibility.test.ts` › «SL-42 — ítem «Vehículos» del superadmin» › R1 (dos casos).
+- R2:
+  - `vehiculos-plataforma-page.test.tsx` › «R2 — el listado» (3 casos).
+  - `tests/unit/services/vehiculo-service.test.ts` › «listarTodos — R2».
+- R3 → `menu-visibility.test.ts` › «R3: el aterrizaje del superadmin sigue en «Empresas»…».
+- R4:
+  - `vehiculo-service.test.ts` › «crear › R4».
+  - `tests/unit/actions/vehiculos-plataforma-action.test.ts` › «R4: el servicio recibe el nombre ya normalizado».
+  - `tests/integration/db/vehiculos-plataforma.test.ts` › «R7/R21 — el alta del superadmin sin empresa guarda el tipo activo…».
+  - `vehiculos-plataforma-page.test.tsx` › «R4: crea con el nombre normalizado…».
+- R5:
+  - `vehiculo-service.test.ts` › «renombrar › R5».
+  - `vehiculos-plataforma.test.ts` › «R5/R21 — el renombre deja anterior y nuevo; renombrar su propio nombre no escribe…».
+  - `vehiculos-plataforma-page.test.tsx` › «R5: renombra…».
+- R6:
+  - `vehiculo-service.test.ts` › «cambiarActivacion › R6».
+  - `vehiculos-plataforma.test.ts` › «R6/R21 — desactivar no borra la fila ni toca al mensajero ni la tarifa…».
+  - `vehiculos-plataforma-page.test.tsx` › «R6: desactiva un activo y activa un inactivo».
+- R7: `vehiculos-plataforma.test.ts`:
+  - «R7/R21 — el alta del superadmin sin empresa…»;
+  - el bloque del borde por el cliente de la app, sin empresa, con el control «sin `comoPlataforma` → `EmpresaNoResuelta`».
+- R8:
+  - `vehiculos-plataforma-action.test.ts` › «R8: el modulo exporta exactamente las cuatro actions».
+  - `vehiculos-plataforma-page.test.tsx` › «R8: no ofrece borrar».
+- R9:
+  - `tests/unit/types/vehiculos.test.ts` › «SL-42/R9 — …».
+  - `vehiculos-plataforma-action.test.ts` › «R9 — `validation_error` con el error en su campo».
+- R10:
+  - `vehiculo-service.test.ts` › «R10».
+  - `vehiculos-plataforma-action.test.ts` › «R10: el unico violado en carrera es conflict».
+  - `vehiculos-plataforma.test.ts` › «R10/R21 — el alta con un nombre que ya existe choca con el unico…».
+- R11 → `vehiculos-plataforma-action.test.ts` › «R11 %s: permission denied -> error…» y «causa=desconocido».
+- R12:
+  - `vehiculo-service.test.ts` (`not_found`).
+  - `vehiculos-plataforma.test.ts` › «R12/R21 — renombrar o cambiar el estado de un id que no existe…».
+- R13 → `vehiculos-plataforma-page.test.tsx` › «R13 — un mensaje por desenlace; «ya existe» solo con conflict».
+- R14:
+  - `vehiculo-service.test.ts` › «R14 — cada rol de empresa (maestro incluido)…».
+  - `vehiculos-plataforma-action.test.ts` › «R14 — sin sesion o con un rol de empresa…».
+  - `tests/integration/actions/vehiculos-action.test.ts` (el archivo de empresa ya no exporta escrituras).
+  - Guardia `superadmin-fuera-de-empresa`.
+- R15 → `menu-visibility.test.ts` › «R15: el maestro no ve /configuracion/vehiculos en ningún ítem…».
+- R16:
+  - `vehiculos-plataforma-page.test.tsx` › «R16 — /configuracion/vehiculos ya no existe».
+  - `menu-visibility.test.ts` › «R16: ningún ítem ni subítem…».
+  - `e2e/dos-empresas-humo.spec.ts` › «vehículos (SL-42 R16) y geografía (SL-32 R26) le dan 404 al maestro…».
+- R17:
+  - `vehiculo-service.test.ts` › «R17: el maestro sigue listando».
+  - `vehiculos-action.test.ts`.
+  - `tests/unit/components/usuario-form.test.tsx` › «R17/R18: al crear un mensajero ofrece solo los activos».
+  - `tests/integration/postulacion-page.test.tsx` › «solo vehículos activos (SL-42, R17/R18)».
+- R18:
+  - `tests/unit/services/usuario-vehiculo.test.ts` › «SL-42/R18 — vehiculo inactivo».
+  - `tests/unit/services/postulacion-mensajero-service.test.ts` › «SL-42/R18: …».
+  - `vehiculos-plataforma.test.ts` › «R18 (T3.1) — la postulacion: `vehiculoExiste`…».
+  - `usuario-form.test.tsx` › «UsuarioForm — vehículo inactivo (SL-42, R17/R18)».
+  - `postulacion-page.test.tsx`.
+  - **Hueco parcial:** la viñeta «la asignación de órdenes NO DEBE cambiar por el estado del vehículo del mensajero» no tiene un test que la afirme. Hoy se cumple porque la asignación no lee `activo`, pero nada lo fija; si se quiere cubrir, falta un test (backend).
+- R19 → `vehiculos-plataforma-page.test.tsx` › «R19 — ninguna ayuda describe ni enlaza la pantalla retirada».
+  - Recorre todos los `.md` de `docs/ayuda` (con control de no vacuidad) y afirma que la ayuda de la oficina ya no existe. Se añadió en T5.2: la guardia `ayuda-pantalla-ruta-existe` solo mira la `pantalla:` del frontmatter, no los enlaces del cuerpo.
+  - También `asistente-sin-frontmatter.guardia.test.ts` (37 documentos).
+- R20:
+  - `vehiculo-service.test.ts` › «R20».
+  - Guardia `historial-accion-escrituras-cubiertas` › «SL-42 (P1): `vehiculo_borrado` esta sin escritor…».
+- R21 → `vehiculos-plataforma.test.ts`: los casos R5/R21, R6/R21, R7/R21, R10/R21 y R12/R21, y el bloque del borde.
+- R22 → `vehiculos-plataforma.test.ts`:
+  - «R22 — SQL a mano con servi_app…»;
+  - «R22 — por el cliente de la app en contexto de empresa…».
+- R23 → `tests/integration/db/vehiculos-migration.test.ts`:
+  - «SL-42/R23 — el up y el down, contra Postgres»;
+  - «SL-42/R23 — `servi_app`…».
+
+### Verificación T5 (NODE_OPTIONS=--max-old-space-size=8192)
+- `vitest run tests/unit/components/vehiculos-plataforma-page.test.tsx` (con el caso R19 nuevo): `Tests 25 passed (25)`.
+- `pnpm run typecheck`: 0 errores.
+- `eslint` sobre el spec E2E y el test tocado: sin avisos.
+- `pnpm run test:guardias`: `Test Files 2 failed | 321 passed | 3 skipped (326)`, `Tests 4 failed | 4529 passed`.
+  - Los 4 fallos son de `dependencias-declaradas-presentes`, que está en la baseline.
+  - `filtros-url-r25` falló con «Hook timed out in 60000ms» en su `beforeAll` de ESLint, que coincidió con un `typecheck` lanzado a la vez. Corrido solo: `Tests 3 passed (3)`.
+
+### Estado de T5
+- **T5.1 queda `[ ]`.** El spec está escrito, pero su «Hecho» es «pasa en CI»; en local no se pudo correr (ver arriba).
+- **T5.2 queda `[ ]`.** Ya están hechas `deudas.md`, `architecture.md` y el mapa R1–R23. Falta lo que pide su «Hecho»:
+  - `./init.sh` verde: no se corrió en esta tanda;
+  - los 23 requisitos con test: R18 tiene un hueco parcial (la viñeta de la asignación de órdenes).
+
+### Veredicto
+El spec E2E de R16 está escrito y sin correr en local. D12 está cerrada, la arquitectura al día y el mapa R1–R23 completo, salvo el hueco parcial de R18 (asignación de órdenes). Typecheck y guardias en verde, salvo la baseline.
