@@ -565,13 +565,8 @@ const CENSO: EntradaCenso[] = [
     forma: "abre_tx",
     mutacion: /tx\.zona\.delete\(/,
   },
-  {
-    tipos: ["vehiculo_borrado"],
-    archivo: "lib/repositories/VehiculoRepository.ts",
-    metodo: "delete",
-    forma: "abre_tx",
-    mutacion: /tx\.vehiculo\.deleteMany\(/,
-  },
+  // SL-42 (P1) — `VehiculoRepository.delete` estaba aqui como productor de `vehiculo_borrado`. El
+  // borrado se retiro y el catalogo es del superadmin: sale del censo, ver `SIN_ESCRITOR_DESDE`.
   {
     tipos: ["plantilla_eliminada"],
     archivo: "lib/repositories/PlantillaMensajeRepository.ts",
@@ -754,6 +749,13 @@ const SIN_ESCRITOR_DESDE: TiposSinEscritor[] = [
     motivo:
       "la geografia es del superadmin, que no tiene empresa: sus acciones van a " +
       "`historial_plataforma` por `appendAccionPlataforma` (D15)",
+  },
+  {
+    tipos: ["vehiculo_borrado"],
+    desde: "SL-42",
+    motivo:
+      "el borrado de vehiculos se retiro (P1: desactivar lo sustituye) y el catalogo es del " +
+      "superadmin, cuyas acciones van a `vehiculo_rastro` (R20, R21); el valor queda por las filas viejas",
   },
 ];
 
@@ -1118,18 +1120,19 @@ describe("362/T7.1 — el detector se prueba a si mismo", () => {
   });
 
   it("CONTRAPRUEBA: el recortador recorta EL METODO, no el archivo entero", () => {
-    const cuerpo = cuerpoDelMetodo("lib/repositories/VehiculoRepository.ts", "delete");
-    const archivo = codigoSinComentarios("lib/repositories/VehiculoRepository.ts");
+    // SL-42: era `VehiculoRepository.delete`, retirado. Mismo molde: un metodo con su `appendAccion`.
+    const cuerpo = cuerpoDelMetodo("lib/repositories/PlantillaMensajeRepository.ts", "softDelete");
+    const archivo = codigoSinComentarios("lib/repositories/PlantillaMensajeRepository.ts");
     expect(cuerpo.length).toBeGreaterThan(120);
     expect(cuerpo.length).toBeLessThan(archivo.length);
-    expect(cuerpo).toContain("vehiculo.deleteMany");
+    expect(cuerpo).toContain("plantillaMensaje.updateMany");
     // Y NO trae el metodo de al lado.
-    expect(cuerpo).not.toContain("contarUsos");
+    expect(cuerpo).not.toContain("setTemplate");
   });
 
   it("CONTRAPRUEBA: pedir un metodo inexistente LANZA en vez de medir vacio", () => {
     expect(() =>
-      cuerpoDelMetodo("lib/repositories/VehiculoRepository.ts", "metodoQueNoExiste"),
+      cuerpoDelMetodo("lib/repositories/PlantillaMensajeRepository.ts", "metodoQueNoExiste"),
     ).toThrow(/no se encontro/);
   });
 });
@@ -1236,7 +1239,23 @@ describe("SL-20/R35 — los `nodo_geografico_*` quedan SIN escritor en `historia
   it("`GeoRepository` sigue escribiendo esas acciones, pero por `appendAccionPlataforma`", () => {
     const codigo = codigoSinComentarios("lib/repositories/GeoRepository.ts");
     expect(codigo).toMatch(/appendAccionPlataforma\s*\(\s*tx\b/);
-    for (const t of SIN_ESCRITOR) expect(codigo, `${t} sin productor de plataforma`).toContain(`"${t}"`);
+    const deSL20 = SIN_ESCRITOR_DESDE.filter((e) => e.desde === "SL-20").flatMap((e) => e.tipos);
+    expect(deSL20).toHaveLength(3);
+    for (const t of deSL20) expect(codigo, `${t} sin productor de plataforma`).toContain(`"${t}"`);
+  });
+
+  it("SL-42 (P1): `vehiculo_borrado` esta sin escritor y `VehiculoRepository` no llama a `appendAccion`", () => {
+    expect(SIN_ESCRITOR).toContain("vehiculo_borrado");
+    const codigo = codigoSinComentarios("lib/repositories/VehiculoRepository.ts");
+    expect(codigo).not.toMatch(/\bappendAccion\s*\(/);
+    expect(codigo).not.toContain("vehiculo_borrado");
+    // Sus escrituras van al rastro de plataforma (R21).
+    expect(codigo).toMatch(/appendRastroVehiculo\s*\(\s*tx\b/);
+  });
+
+  it("CONTRAPRUEBA: volver a escribir `vehiculo_borrado` por `appendAccion` se detecta", () => {
+    const mutado = `await appendAccion(tx, [{ accion: "vehiculo_borrado" }]);`;
+    expect(sinEscritorEscritos(mutado, SIN_ESCRITOR)).toEqual(["vehiculo_borrado"]);
   });
 
   it("CONTRAPRUEBA: volver a llamar a `appendAccion` con uno de ellos en `GeoRepository` se detecta", () => {

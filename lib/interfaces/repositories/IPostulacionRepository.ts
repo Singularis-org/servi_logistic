@@ -16,7 +16,7 @@ export interface IPostulacionRepository {
   findRolIdByValue(value: string): Promise<string | null>;
   /** R9: true si el tipo de identificacion existe en el catalogo. */
   tipoIdentificacionExiste(id: string): Promise<boolean>;
-  /** R9: true si el vehiculo existe en el catalogo. */
+  /** R9: true si el vehiculo existe en el catalogo. SL-42 (R18): y esta activo; un inactivo es false. */
   vehiculoExiste(id: string): Promise<boolean>;
   /**
    * R12/R13/R16/R21/R24: crea el usuario mensajero (estado default `pendiente`)

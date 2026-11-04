@@ -48,8 +48,8 @@ vi.mock("@/hooks/useToast", () => ({
 }));
 
 const VEHICULOS: VehiculoDTO[] = [
-  { id: "v-moto", name: "Moto" },
-  { id: "v-carro", name: "Carro" },
+  { id: "v-moto", name: "Moto", activo: true },
+  { id: "v-carro", name: "Carro", activo: true },
 ];
 
 /** Valor precargado del bloque de pago, como llega al EDITAR una zona ya guardada. */

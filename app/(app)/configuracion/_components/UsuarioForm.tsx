@@ -42,6 +42,9 @@ import type { CambioUsuarioEvaluable } from "@/lib/interfaces/services/IUsuarioS
  */
 const ROL_NO_ASIGNABLE = "apiKey";
 
+/** SL-42 (R18): marca del vehículo inactivo que el usuario que se edita conserva. */
+const SUFIJO_VEHICULO_INACTIVO = " (inactivo)";
+
 /** Modo de contraseña inicial (R30/R36). */
 type PasswordMode = "manual" | "generate";
 
@@ -201,7 +204,7 @@ export const UsuarioForm = forwardRef<UsuarioFormHandle, UsuarioFormProps>(
     );
 
     // Feature 21: catalogo de vehiculos para el select (solo aplica a `mensajero`).
-    // Es un catalogo corto y administrable desde Configuracion > Vehiculos.
+    // Es un catalogo corto de la plataforma: lo administra el superadmin en /plataforma/vehiculos (SL-42).
     const { data: vehiculos } = useSWR("usuarios:vehiculos", async () => {
       const res = await listarVehiculos();
       return res.status === "ok" ? res.items : [];
@@ -209,9 +212,22 @@ export const UsuarioForm = forwardRef<UsuarioFormHandle, UsuarioFormProps>(
 
     // `value` = id del vehiculo (lo que espera el backend en `vehiculoId`);
     // `label` = nombre del tipo (p. ej. "moto").
+    //
+    // SL-42 (R17, R18): un tipo inactivo no se ofrece para una eleccion nueva. Se conserva solo el
+    // que el usuario que se edita YA tiene guardado (`usuario.vehiculoId`, no el del estado del
+    // formulario): si no, el select aparecería vacío y el maestro no podria guardar la ficha sin
+    // cambiarle el vehiculo. Va marcado para que se lea que ya no se ofrece. El servidor rechaza
+    // igualmente un inactivo nuevo (`UsuarioService.resolverVehiculo`).
+    const vehiculoGuardado = usuario?.vehiculoId ?? null;
     const vehiculoOptions: SelectOption[] = useMemo(
-      () => (vehiculos ?? []).map((v) => ({ value: v.id, label: v.name })),
-      [vehiculos],
+      () =>
+        (vehiculos ?? [])
+          .filter((v) => v.activo || v.id === vehiculoGuardado)
+          .map((v) => ({
+            value: v.id,
+            label: v.activo ? v.name : `${v.name}${SUFIJO_VEHICULO_INACTIVO}`,
+          })),
+      [vehiculos, vehiculoGuardado],
     );
 
     const isEditar = mode === "editar";
