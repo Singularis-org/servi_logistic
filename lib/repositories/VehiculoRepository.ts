@@ -3,6 +3,7 @@ import type { VehiculoDTO } from "@/lib/types/vehiculos";
 import type { IVehiculoRepository } from "@/lib/interfaces/repositories/IVehiculoRepository";
 import { resolverActorCongelado } from "@/lib/repositories/registrar-accion";
 import { appendRastroVehiculo } from "@/lib/repositories/registrar-rastro-vehiculo";
+import { WHERE_VEHICULO_ELEGIBLE } from "@/lib/repositories/_shared/vehiculo-activo";
 
 // SL-42 (design §2.2, §4.2): cada escritura y su rastro van en la MISMA `$transaction`. `usuario`
 // entra en el `Pick` porque el rastro congela el nombre del actor, y `usuario` es de negocio: el
@@ -29,7 +30,7 @@ export class VehiculoRepository implements IVehiculoRepository {
 
   async findMany(opciones: { soloActivos?: boolean } = {}): Promise<VehiculoDTO[]> {
     const rows = await this.prisma.vehiculo.findMany({
-      where: opciones.soloActivos ? { activo: true } : undefined,
+      where: opciones.soloActivos ? WHERE_VEHICULO_ELEGIBLE : undefined,
       orderBy: { name: "asc" },
     });
     return rows.map(toDTO);
@@ -47,7 +48,8 @@ export class VehiculoRepository implements IVehiculoRepository {
 
   async create(name: string, actorUsuarioId: string): Promise<VehiculoDTO> {
     return this.prisma.$transaction(async (tx) => {
-      const row = await tx.vehiculo.create({ data: { name, activo: true } });
+      // Nace activo por el DEFAULT de la columna (R4): el flag no se escribe a mano aqui.
+      const row = await tx.vehiculo.create({ data: { name } });
       await appendRastroVehiculo(tx, {
         accion: "vehiculo_creado",
         vehiculoId: row.id,
