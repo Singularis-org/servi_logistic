@@ -7,6 +7,7 @@ import type {
   OrdenParaCorreccionRow,
 } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { TarifaVigente } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
+import { tarifaViejaDeFormula } from "../../fixtures/tarifa-tienda";
 
 // FICHA 327 / C4 — EL DINERO DEL AVISO, CONTRA NUMEROS CALCULADOS A MANO.
 //
@@ -107,7 +108,7 @@ async function avisoDe(opciones: {
     },
     {
       resolveTarifa: vi.fn(async () =>
-        opciones.tarifaFila === undefined ? tarifa() : opciones.tarifaFila,
+        tarifaViejaDeFormula(opciones.tarifaFila === undefined ? tarifa() : opciones.tarifaFila),
       ),
     },
   );
@@ -221,5 +222,32 @@ describe("327/C4 — R12/R13: comision y ausencia de tarifa", () => {
     // La diferencia con el caso de arriba se ve aqui: mismo `0.00`, distinto significado. La
     // pantalla NO puede decidirlo por el numero.
     expect(aviso.propuesta.tarifa).not.toBe("resuelta");
+  });
+});
+
+describe("SLT-52 — R16/R18: cada ubicacion del aviso pide su tarifa con SU distrito", () => {
+  it("la actual con el distrito de la orden y la propuesta con el distrito elegido", async () => {
+    // En el modelo nuevo el distrito decide el grupo de distritos y, con el, el precio. Si la
+    // propuesta se resolviera con el distrito de la orden, el aviso enseñaria el importe viejo.
+    const resolveTarifa = vi.fn(async () => tarifaViejaDeFormula(tarifa()));
+    const service = new CorregirDatosClienteService(
+      {
+        findParaCorreccion: vi.fn(async () => orden()),
+        findDistritoParaCorreccion: vi.fn(async () => distrito()),
+        corregirDatosCliente: vi.fn(async () => "ok" as const),
+      },
+      { resolveTarifa },
+    );
+
+    const r = await service.corregir(
+      { ordenId: ORDEN_ID, provinciaId: "p-1", cantonId: "c-1", distritoId: "d-2" },
+      MAESTRO,
+    );
+
+    expect(r.status).toBe("confirmacion_requerida");
+    expect(resolveTarifa.mock.calls).toEqual([
+      ["tienda-1", "z-1", "d-1"],
+      ["tienda-1", "z-2", "d-2"],
+    ]);
   });
 });

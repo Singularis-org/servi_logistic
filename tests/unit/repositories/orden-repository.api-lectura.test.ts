@@ -613,9 +613,11 @@ describe("OrdenRepository — zona y costo del canal (feature 415)", () => {
 
     const select = (prisma.orden.findMany as ReturnType<typeof vi.fn>).mock.calls[0][0].select;
     const claves = Object.keys(select.cierreDetalles.select).sort();
-    // Las QUINCE del design §4, ni una mas: las cuatro entradas congeladas y las once de tarifa.
+    // Las QUINCE del design §4 (las cuatro entradas congeladas y las once de tarifa) MAS las dos
+    // de SLT-52 (design §7, R41/R46): `tarifaModelo` y la relacion `conceptos`. Ni una mas.
     expect(claves).toEqual([
       "cobraComision",
+      "conceptos",
       "esCentral",
       "esZonaEspecial",
       "montoCobrar",
@@ -626,6 +628,7 @@ describe("OrdenRepository — zona y costo del canal (feature 415)", () => {
       "tarifaId",
       "tarifaIvaComisionCod",
       "tarifaIvaFlete",
+      "tarifaModelo",
       "tarifaValorFlete",
       "tarifaValorFleteDevuelto",
       "tarifaValorFleteDevueltoGam",
@@ -636,6 +639,35 @@ describe("OrdenRepository — zona y costo del canal (feature 415)", () => {
     for (const prohibida of ["id", "cierreId", "ordenId", "zonaId", "zonaNombre", "createdAt", "tiendaId"]) {
       expect(claves).not.toContain(prohibida);
     }
+    // SLT-52: de cada concepto congelado, las SEIS que `tarifaDe` lee, ni una mas: ni el `id` de
+    // la fila hija, ni su `cierre_detail_id`, ni la empresa, ni la fecha.
+    expect(select.cierreDetalles.select.conceptos).toEqual({
+      select: { concepto: true, modo: true, valor: true, ivaPct: true, nivel: true, tarifaValorId: true },
+    });
+  });
+
+  it("SLT-52/R18: lo nuevo del `select` congelado (`tarifaModelo`, `conceptos`) NO sale en el item publicado", async () => {
+    const prisma = buildPrisma({
+      orden: {
+        findMany: vi.fn().mockResolvedValue([
+          ordenSelectRow({ cierreDetalles: [cierreDetalleRow({ tarifaModelo: "viejo", conceptos: [] })] }),
+        ]),
+        count: vi.fn().mockResolvedValue(1),
+        findFirst: vi.fn(),
+      },
+    });
+    const repo = new OrdenRepository(prisma as unknown as PrismaClient);
+
+    const res = await repo.listByOwner({ ownerId: OWNER, skip: 0, take: 50 });
+
+    // Las columnas crudas se quedan dentro del repositorio: ni en el item ni en `costeo.congelado`
+    // (que solo lleva la tarifa reconstruida y el fulfillment, no la fila de Prisma).
+    const publicadas = Object.keys(res.items[0]);
+    const congeladas = Object.keys(res.items[0].costeo.congelado!);
+    for (const nueva of ["tarifaModelo", "conceptos", "concepto", "modo", "nivel", "ivaPct", "tarifaValorId"]) {
+      expect(publicadas).not.toContain(nueva);
+      expect(congeladas).not.toContain(nueva);
+    }
   });
 
   it("415/R25+R29: el congelado se reconstruye con la tarifa y el fulfillment de la FILA", async () => {
@@ -643,7 +675,9 @@ describe("OrdenRepository — zona y costo del canal (feature 415)", () => {
       orden: {
         findMany: vi
           .fn()
-          .mockResolvedValue([ordenSelectRow({ cierreDetalles: [cierreDetalleRow()] })]),
+          .mockResolvedValue([
+            ordenSelectRow({ cierreDetalles: [cierreDetalleRow({ tarifaModelo: "viejo", conceptos: [] })] }),
+          ]),
         count: vi.fn().mockResolvedValue(1),
         findFirst: vi.fn(),
       },
@@ -654,17 +688,22 @@ describe("OrdenRepository — zona y costo del canal (feature 415)", () => {
 
     // Los valores van A MANO: son los mismos que `cierreDetalleRow` siembra, escritos aqui como
     // cadenas de escala 2 —que es lo que `tarifaDe` produce— y no leidos de la fixture.
+    // SLT-52 (design §7): una fila del modelo VIEJO sale con lo de siempre dentro del sobre
+    // `{ modelo: "viejo", tarifa }`; los importes no cambian.
     expect(res.items[0].costeo.congelado).toEqual({
       tarifa: {
-        valorFlete: "3000.00",
-        valorFleteGam: "2500.00",
-        valorFleteDevuelto: "1500.00",
-        valorFleteDevueltoGam: "1200.00",
-        comisionCod: "3.50",
-        ivaFlete: "13.00",
-        ivaComisionCod: "13.00",
-        tarifaEspecial: null,
-        tarifaEspecialDevuelta: null,
+        modelo: "viejo",
+        tarifa: {
+          valorFlete: "3000.00",
+          valorFleteGam: "2500.00",
+          valorFleteDevuelto: "1500.00",
+          valorFleteDevueltoGam: "1200.00",
+          comisionCod: "3.50",
+          ivaFlete: "13.00",
+          ivaComisionCod: "13.00",
+          tarifaEspecial: null,
+          tarifaEspecialDevuelta: null,
+        },
       },
       fulfillment: "692.00",
       esCentral: true,

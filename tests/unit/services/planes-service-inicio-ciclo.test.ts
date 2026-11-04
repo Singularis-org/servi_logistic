@@ -55,6 +55,9 @@ function doble() {
     editar: vi.fn<IPlanesRepository["editar"]>(async () => ({ estado: "not_found" })),
     archivar: vi.fn<IPlanesRepository["archivar"]>(async () => ({ estado: "not_found" })),
     asignar: vi.fn<IPlanesRepository["asignar"]>(async () => ({ estado: "ok", cambio: true, avisos: [] })),
+    crearYAsignar: vi.fn<IPlanesRepository["crearYAsignar"]>(async () => ({ estado: "ok", planId: PLAN, avisos: [] })),
+    vistaPreviaConTopes: vi.fn<IPlanesRepository["vistaPreviaConTopes"]>(async () => null),
+    cambiarTipoCobro: vi.fn<IPlanesRepository["cambiarTipoCobro"]>(async () => ({ estado: "not_found" })),
     vistaPreviaAsignacion: vi.fn<IPlanesRepository["vistaPreviaAsignacion"]>(async () => ({
       avisos: [],
       siguienteCiclo: new Date("2026-11-29T18:00:00.000Z"),
@@ -86,7 +89,9 @@ function llamadasAlRepositorio(): number {
 const asignar = (inicioCiclo?: unknown, ahora = AHORA) =>
   servicioA(ahora).asignar(
     SUPERADMIN,
-    inicioCiclo === undefined ? { organizacionId: EMPRESA, planId: PLAN } : { organizacionId: EMPRESA, planId: PLAN, inicioCiclo },
+    inicioCiclo === undefined
+      ? { organizacionId: EMPRESA, planId: PLAN, tipoCobro: "mensual" }
+      : { organizacionId: EMPRESA, planId: PLAN, inicioCiclo, tipoCobro: "mensual" },
   );
 
 const previsualizar = (inicioCiclo: unknown, actor: Actor | null = SUPERADMIN, ahora = AHORA) =>
@@ -97,32 +102,31 @@ beforeEach(() => {
 });
 
 describe("SLT-58 — R29: la fecha de inicio es opcional; sin ella, SL-24 R9", () => {
-  it("sin fecha, el repositorio recibe «sin fecha»: la llamada de SL-24 con tres argumentos", async () => {
+  it("sin fecha, el repositorio recibe «sin fecha» (`inicio` undefined) y el tipo de cobro (D6)", async () => {
     expect(await asignar()).toEqual({ estado: "ok", planId: PLAN, cambio: true, avisos: [], vigenteDesde: null });
     expect(repo.asignar).toHaveBeenCalledTimes(1);
-    expect(repo.asignar.mock.calls[0]).toEqual([EMPRESA, PLAN, "u-sa"]);
-    expect(repo.asignar.mock.calls[0]).toHaveLength(3);
+    expect(repo.asignar.mock.calls[0]).toEqual([EMPRESA, PLAN, "u-sa", undefined, "mensual"]);
   });
 
   it("con «hoy», el ancla es el instante de la asignación (P9); con otra fecha, sus 00:00 de la plataforma", async () => {
     await asignar("2026-10-29");
-    expect(repo.asignar).toHaveBeenLastCalledWith(EMPRESA, PLAN, "u-sa", { fecha: "2026-10-29", ancla: "ahora" });
+    expect(repo.asignar).toHaveBeenLastCalledWith(EMPRESA, PLAN, "u-sa", { fecha: "2026-10-29", ancla: "ahora" }, "mensual");
     await asignar("2026-10-14");
     expect(repo.asignar).toHaveBeenLastCalledWith(EMPRESA, PLAN, "u-sa", {
       fecha: "2026-10-14",
       ancla: new Date("2026-10-14T06:00:00.000Z"),
-    });
+    }, "mensual");
     await asignar("2026-11-05");
     expect(repo.asignar).toHaveBeenLastCalledWith(EMPRESA, PLAN, "u-sa", {
       fecha: "2026-11-05",
       ancla: new Date("2026-11-05T06:00:00.000Z"),
-    });
+    }, "mensual");
   });
 
   it("«hoy» es la fecha de la plataforma, no la UTC: a las 23:00 del 29 en la plataforma ya es 30 en UTC", async () => {
     const tarde = new Date("2026-10-30T05:00:00.000Z");
     await asignar("2026-10-29", tarde);
-    expect(repo.asignar).toHaveBeenLastCalledWith(EMPRESA, PLAN, "u-sa", { fecha: "2026-10-29", ancla: "ahora" });
+    expect(repo.asignar).toHaveBeenLastCalledWith(EMPRESA, PLAN, "u-sa", { fecha: "2026-10-29", ancla: "ahora" }, "mensual");
   });
 });
 
@@ -183,7 +187,7 @@ describe("SLT-58 — R31: la fecha solo en la primera asignación", () => {
   it("cambiar de plan sin fecha sigue como SL-24 (P2a)", async () => {
     repo.empresa.mockResolvedValue({ id: EMPRESA, nombre: "Mensajería Uno", planId: randomUUID() });
     expect((await asignar()).estado).toBe("ok");
-    expect(repo.asignar.mock.calls[0]).toEqual([EMPRESA, PLAN, "u-sa"]);
+    expect(repo.asignar.mock.calls[0]).toEqual([EMPRESA, PLAN, "u-sa", undefined, "mensual"]);
   });
 
   it("carrera: si el repositorio, bajo cerrojo, ve que ya tenía plan, su validation_error llega tal cual", async () => {

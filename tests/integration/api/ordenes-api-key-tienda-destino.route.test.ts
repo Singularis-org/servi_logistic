@@ -29,6 +29,8 @@ import type {
   TarifaVigenteResuelta,
 } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
 import { clavePar, type ParTarifa } from "@/lib/utils/cascada-tarifa";
+import type { TarifaTienda } from "@/lib/types/tarifa-flexible";
+import { tarifaVieja } from "../../fixtures/tarifa-tienda";
 import type { IEtiquetasDescargaService } from "@/lib/interfaces/services/IEtiquetasDescargaService";
 import type { IManifiestoService } from "@/lib/interfaces/services/IManifiestoService";
 
@@ -118,18 +120,22 @@ function ordenRepo(): { repo: IOrdenRepository; escritas: CreateOrdenData[][] } 
  */
 function tarifaRepo(): { repo: ITarifaVigenteRepository; pares: ParTarifa[] } {
   const pares: ParTarifa[] = [];
+  // SLT-52: la cascada vieja no mira el distrito; el doble indexa por (tienda, zona) y responde
+  // con la tarifa envuelta en el modelo viejo.
   const porPar = new Map<string, TarifaVigenteResuelta>([
-    [clavePar({ tiendaId: U_MERCADITO, zonaId: "z1" }), TARIFA],
+    [clavePar({ tiendaId: U_MERCADITO, zonaId: "z1", distritoId: null }), TARIFA],
   ]);
+  const deTiendaYZona = (p: ParTarifa) =>
+    tarifaVieja(porPar.get(clavePar({ ...p, distritoId: null })) ?? null);
   const repo: ITarifaVigenteRepository = {
-    resolveTarifa: vi.fn(async (tiendaId: string, zonaId: string | null) => {
-      pares.push({ tiendaId, zonaId });
-      return porPar.get(clavePar({ tiendaId, zonaId })) ?? null;
+    resolveTarifa: vi.fn(async (tiendaId: string, zonaId: string | null, distritoId: string | null) => {
+      pares.push({ tiendaId, zonaId, distritoId });
+      return deTiendaYZona({ tiendaId, zonaId, distritoId });
     }),
     resolveTarifas: vi.fn(async (solicitados: readonly ParTarifa[]) => {
       pares.push(...solicitados);
-      return new Map<string, TarifaVigenteResuelta | null>(
-        solicitados.map((p) => [clavePar(p), porPar.get(clavePar(p)) ?? null]),
+      return new Map<string, TarifaTienda | null>(
+        solicitados.map((p) => [clavePar(p), deTiendaYZona(p)]),
       );
     }),
   };
@@ -222,14 +228,16 @@ describe("302 — key SIN tienda destino: el camino existente, intacto", () => {
   it("escribe `tiendaId` = la cuenta dedicada de la key (comportamiento 88/[D4])", async () => {
     const { repo: ordenes, escritas } = ordenRepo();
     // Aqui la tarifa la tiene la CUENTA DEDICADA: es el mundo de antes de la 302.
-    const porPar = new Map([[clavePar({ tiendaId: U_KEY, zonaId: "z1" }), TARIFA]]);
+    const porPar = new Map([[clavePar({ tiendaId: U_KEY, zonaId: "z1", distritoId: null }), TARIFA]]);
+    const deTiendaYZona = (p: ParTarifa) =>
+      tarifaVieja(porPar.get(clavePar({ ...p, distritoId: null })) ?? null);
     const tarifas: ITarifaVigenteRepository = {
-      resolveTarifa: vi.fn(
-        async (t: string, z: string | null) => porPar.get(clavePar({ tiendaId: t, zonaId: z })) ?? null,
+      resolveTarifa: vi.fn(async (t: string, z: string | null, d: string | null) =>
+        deTiendaYZona({ tiendaId: t, zonaId: z, distritoId: d }),
       ),
       resolveTarifas: vi.fn(
         async (solicitados: readonly ParTarifa[]) =>
-          new Map(solicitados.map((p) => [clavePar(p), porPar.get(clavePar(p)) ?? null])),
+          new Map(solicitados.map((p) => [clavePar(p), deTiendaYZona(p)])),
       ),
     };
 

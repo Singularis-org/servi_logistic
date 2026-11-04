@@ -357,6 +357,7 @@ describe("255/R21 — CotizacionRow no declara `required`: una fila incompleta n
       "comision",
       "ivaComision",
       "fulfillment",
+      "ivaFulfillment", // SLT-52 R46 (P5 = a): el IVA del fulfillment, en los dos escenarios
       "total",
     ]);
     expect([...schemas.CotizacionEscenarioDevuelto.required]).toEqual([
@@ -364,6 +365,7 @@ describe("255/R21 — CotizacionRow no declara `required`: una fila incompleta n
       "iva",
       "comision",
       "fulfillment",
+      "ivaFulfillment",
       "total",
     ]);
     expect([...schemas.CotizacionCostos.required]).toEqual(["entregado", "devuelto"]);

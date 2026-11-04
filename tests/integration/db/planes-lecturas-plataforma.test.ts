@@ -184,6 +184,10 @@ describeSiHayBase("SLT-58 — lecturas del superadmin en PlanesRepository (R13, 
       creadoAt: new Date("2026-10-20T10:00:00.000Z"),
       actorNombre: "Ana Pérez",
       planNombre: "Plan «Tercero»",
+      // D14: cada asignación trae su acción y el valor anterior/nuevo (null en una asignación sin tipo de cobro).
+      accion: "plan_asignado",
+      valorAnterior: null,
+      valorNuevo: null,
     });
     // El plan con su uso (R19, contado por las funciones de los triggers) y su pendiente.
     expect(a.plan).not.toBeNull();

@@ -153,6 +153,15 @@ describe("366/T1 — el `migration.sql` y el `down.sql`, como texto", () => {
       // SLT-76 (2026-11-02): el rastro de los distritos de una zona. Su migracion:
       // `20261102090000_slt76_historial_zona_distrito`.
       "zona_distrito_cambiado",
+      // SLT-52 (2026-11-02): el rastro del modelo nuevo de tarifas. Su migracion:
+      // `20261103120300_historial_tarifas_flexibles`.
+      "tarifa_valor_fijado",
+      "tarifa_valor_quitado",
+      "grupo_distritos_creado",
+      "grupo_distritos_cambiado",
+      "grupo_distritos_borrado",
+      // Ajuste planes-custom D16: `plan_tipo_cobro_cambiado`, de `20261104130100_historial_accion_plan_tipo_cobro_cambiado`.
+      "plan_tipo_cobro_cambiado",
     ];
     expect([...HISTORIAL_ACCION_TIPOS].sort()).toEqual(
       [...previos, VALOR_NUEVO, ...POSTERIORES].sort(),

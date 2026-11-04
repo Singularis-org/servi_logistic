@@ -396,6 +396,8 @@ describe("CierresAdminService.verCierreDetalle — ingreso y ganancia", () => {
       fleteDevolucionConIva: null,
       comisionConIva: null,
       total: "0.00",
+      fulfillment: "0.00", // SLT-52 (R46): el fulfillment congelado y su IVA, fuera del total
+      ivaFulfillment: "0.00",
       tarifa: null,
       ...over,
     };
@@ -513,6 +515,8 @@ describe("395 — el detalle del cierre de MENSAJERO emite la linea puente y el 
       fleteDevolucionConIva: null,
       comisionConIva: null,
       total: "0.00",
+      fulfillment: "0.00", // SLT-52 (R46): el fulfillment congelado y su IVA, fuera del total
+      ivaFulfillment: "0.00",
       tarifa: null,
       ...over,
     };
@@ -1875,6 +1879,8 @@ describe("Feature 158 · verCierreDetalle — el incidente es un grupo PROPIO (R
               fleteDevolucionConIva: null,
               comisionConIva: null,
               total: "0.00",
+              fulfillment: "0.00", // SLT-52 (R46): el fulfillment congelado y su IVA, fuera del total
+              ivaFulfillment: "0.00",
               tarifa: null,
             },
           }),
@@ -2230,6 +2236,8 @@ describe("396 — `verCierreDetalle` emite el desglose por tienda", () => {
       fleteDevolucionConIva: null,
       comisionConIva: null,
       total: "0.00",
+      fulfillment: "0.00", // SLT-52 (R46): el fulfillment congelado y su IVA, fuera del total
+      ivaFulfillment: "0.00",
       tarifa: null,
       ...over,
     };

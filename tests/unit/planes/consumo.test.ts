@@ -12,7 +12,6 @@ import type { TopesPlan } from "@/lib/types/planes";
 describe("SLT-58 — texto del precio (R1)", () => {
   it.each([
     { caso: "R1: sin precio", precio: { tipo: "sin_precio" } as const, texto: "sin precio" },
-    { caso: "R1: negociable", precio: { tipo: "negociable" } as const, texto: "negociable" },
     {
       caso: "R1: solo mensual",
       precio: { tipo: "monto", mensual: "15000.00", anual: null } as const,

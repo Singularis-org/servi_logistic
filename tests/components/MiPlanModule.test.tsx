@@ -39,6 +39,7 @@ function leido(extra: Partial<PlanConUsoLeido> = {}): PlanConUsoLeido {
     },
     cambio: null,
     costoVigente: { monto: "500.00", fuente: "global" }, // SLT-66 R18: campo nuevo de la lectura.
+    tipoCobro: "mensual", // Ajuste planes-custom (D6): campo nuevo de la lectura.
     ...extra,
   };
 }
@@ -163,5 +164,36 @@ describe("SLT-58 R11 — «Mi plan» es solo información", () => {
     expect(screen.queryAllByRole("textbox")).toHaveLength(0);
     expect(screen.queryAllByRole("combobox")).toHaveLength(0);
     expect(container.querySelectorAll("form, button, input, select, textarea")).toHaveLength(0);
+  });
+});
+
+describe("Ajuste planes-custom D9 — «Mi plan» muestra el tipo de cobro, el monto del período y el siguiente cobro", () => {
+  it("mensual: el mensual del plan y el siguiente aniversario mensual del ancla", () => {
+    render(<MiPlanModule plan={plan()} />);
+    const cobro = screen.getByRole("list", { name: "Cobro del plan" });
+    expect(within(cobro).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+      "Tipo de cobro: Mensual",
+      "Monto del período: 45000.00 al mes",
+      // Ancla 15-ene, «ahora» 1-mar (hora de la plataforma): el siguiente es el 15-mar.
+      "Siguiente cobro: 2026-03-15",
+    ]);
+  });
+
+  it("anual sin precio anual: mensual × 12 y el siguiente aniversario anual del ancla", () => {
+    render(<MiPlanModule plan={plan({ tipoCobro: "anual" })} />);
+    const cobro = screen.getByRole("list", { name: "Cobro del plan" });
+    expect(within(cobro).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+      "Tipo de cobro: Anual",
+      "Monto del período: 540000.00 al año",
+      "Siguiente cobro: 2027-01-15",
+    ]);
+  });
+
+  it("sin costo base: el monto del período queda «por definir» y el costo del ciclo no cambia", () => {
+    render(<MiPlanModule plan={plan({ vigente: { ...VIGENTE, precio: { tipo: "sin_precio" } } })} />);
+    const cobro = screen.getByRole("list", { name: "Cobro del plan" });
+    expect(within(cobro).getByText("Monto del período: por definir")).toBeInTheDocument();
+    // SLT-66: el costeo del ciclo sigue en su bloque, sin mezclarse con el cobro.
+    expect(screen.getByRole("list", { name: "Costo del ciclo" })).toHaveTextContent("Costo base: por definir");
   });
 });

@@ -58,10 +58,10 @@ describe("SL-24 — diferenciasDelPlan", () => {
     ["modulos", { modulos: ["monitoreo"] }, { antes: ["analitica", "ranking"], despues: ["monitoreo"] }],
     [
       "precio",
-      { precio: { tipo: "negociable" } },
+      { precio: { tipo: "sin_precio" } },
       {
         antes: { tipo: "monto", mensual: "25000.00", anual: { tipo: "descuento", porcentaje: "10.00" } },
-        despues: { tipo: "negociable" },
+        despues: { tipo: "sin_precio" },
       },
     ],
     ["archivado", { archivado: true }, { antes: false, despues: true }],

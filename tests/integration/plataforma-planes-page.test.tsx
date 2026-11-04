@@ -36,6 +36,7 @@ vi.mock("@/lib/actions/_shared/empresas-plataforma", () => ({
 }));
 vi.mock("@/lib/actions/planes", () => ({
   crearPlanAction: vi.fn(),
+  previsualizarCustomAction: vi.fn(),
   editarPlanAction: vi.fn(),
   archivarPlanAction: vi.fn(),
   cancelarCambioPlanAction: vi.fn(),
@@ -58,7 +59,7 @@ const PLAN = {
   organizacionId: null,
   topes: { ordenesPorCiclo: 3000, porRol: {}, apiKeys: null },
   modulos: [],
-  precio: { tipo: "negociable" as const },
+  precio: { tipo: "sin_precio" as const }, // Ajuste planes-custom (D1): sin «negociable».
   costoPorOrden: null, // SLT-66 R8: campo nuevo del PlanDTO
   archivado: false,
 };
@@ -158,6 +159,45 @@ describe("SLT-58 R13, R16 — con el superadmin, las páginas pintan", () => {
     expect(within(panel).getByRole("combobox", { name: "Empresa" })).toHaveAccessibleDescription(
       "No se pudieron cargar las empresas.",
     );
+  });
+
+  it("D4, D5: el custom pide «Inicio del ciclo» (mañana del reloj del servidor) solo si la empresa no tiene plan", async () => {
+    // Solo `Date` es falso: 2026-10-29 12:00 en la hora de la plataforma (UTC−6).
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-29T18:00:00.000Z"));
+    try {
+      const user = userEvent.setup();
+      actorMock.mockResolvedValue(superadmin);
+      empresasMock.mockResolvedValue({
+        status: "ok",
+        empresas: [
+          { id: "6f1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f60", nombre: "Envíos Norte", plan: null },
+          {
+            id: "7a1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f61",
+            nombre: "Reparto Sur",
+            plan: { id: PLAN_ID, nombre: "Básico", tipoCobro: "mensual" },
+          },
+        ],
+      });
+
+      render(<ToastProvider>{await PlanesPage()}</ToastProvider>);
+      await user.click(screen.getByRole("button", { name: "Nuevo plan" }));
+      const panel = await screen.findByRole("dialog");
+      await user.click(within(panel).getByRole("radio", { name: "Custom" }));
+
+      await user.click(within(panel).getByRole("combobox", { name: "Empresa" }));
+      await user.click(within(await screen.findByRole("listbox")).getByRole("option", { name: "Envíos Norte" }));
+      const campo = within(panel).getByLabelText("Inicio del ciclo de órdenes");
+      expect(campo).toHaveValue("2026-10-30");
+      expect(campo).toHaveAttribute("min", "2026-09-29");
+      expect(campo).toHaveAttribute("max", "2026-11-29");
+
+      await user.click(within(panel).getByRole("combobox", { name: "Empresa" }));
+      await user.click(within(await screen.findByRole("listbox")).getByRole("option", { name: "Reparto Sur" }));
+      expect(within(panel).queryByLabelText("Inicio del ciclo de órdenes")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("el detalle lee con su actor y el plan de la URL, y titula con el nombre", async () => {

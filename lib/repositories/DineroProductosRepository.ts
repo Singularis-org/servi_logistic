@@ -72,7 +72,14 @@
 // Sigue sin haber migracion: la columna existe desde el 2026-08-19 y esta ficha SOLO LEE.
 
 import { Prisma } from "@prisma/client";
-import type { GestionResultado, PrismaClient } from "@prisma/client";
+import type {
+  GestionResultado,
+  PrismaClient,
+  TarifaConcepto,
+  TarifaModelo,
+  TarifaModo,
+  TarifaNivel,
+} from "@prisma/client";
 
 import type { ConsultaProductos } from "@/lib/analytics/productos-consulta";
 import type {
@@ -82,7 +89,8 @@ import type {
 } from "@/lib/interfaces/repositories/IDineroProductosRepository";
 import { condicionesDeConsulta } from "@/lib/repositories/ConteoPorStatusRepository";
 import { descargaConfig } from "@/lib/config/descarga";
-import { tarifaDe } from "@/lib/utils/cierre-detalle";
+import { tarifaDe, type ConceptoCongeladoRow, type TarifaCongelada } from "@/lib/utils/cierre-detalle";
+import { fulfillmentCongeladoDe } from "@/lib/utils/fulfillment-congelado";
 import type { OrdenCongelada } from "@/lib/utils/aporte-por-orden";
 import { RESULTADOS_QUE_APORTAN } from "@/lib/utils/dinero-por-producto";
 
@@ -140,6 +148,60 @@ interface FilaCruda {
    * entrar en `TarifaVigente`.
    */
   readonly tarifa_fulfillment: Prisma.Decimal | null;
+  /** SLT-52 (R42): `viejo` en todo detalle anterior a la ficha; `null` sin fila de snapshot. */
+  readonly tarifa_modelo: TarifaModelo | null;
+  /**
+   * SLT-52 (R41): las filas de `cierre_detail_concepto` de ESE detalle y de SU empresa, como
+   * `json_agg` (`[]` sin filas o sin detalle). Importes como texto: el JSON no lleva `numeric`.
+   */
+  readonly conceptos: readonly ConceptoCongeladoJson[] | string;
+}
+
+/** Una fila de `cierre_detail_concepto` tal como la arma el `json_build_object` de la consulta. */
+interface ConceptoCongeladoJson {
+  readonly concepto: TarifaConcepto;
+  readonly modo: TarifaModo;
+  readonly valor: string;
+  readonly ivaPct: string;
+  readonly nivel: TarifaNivel;
+  readonly tarifaValorId: string | null;
+}
+
+/** El `json_agg` -> las filas que `tarifaDe` sabe leer (texto -> `Decimal`, money-safe). */
+function conceptosDe(f: FilaCruda): ConceptoCongeladoRow[] {
+  const crudos: readonly ConceptoCongeladoJson[] =
+    typeof f.conceptos === "string" ? (JSON.parse(f.conceptos) as ConceptoCongeladoJson[]) : f.conceptos;
+  return crudos.map((c) => ({
+    concepto: c.concepto,
+    modo: c.modo,
+    valor: new Prisma.Decimal(c.valor),
+    ivaPct: new Prisma.Decimal(c.ivaPct),
+    nivel: c.nivel,
+    tarifaValorId: c.tarifaValorId,
+  }));
+}
+
+/**
+ * La tarifa CONGELADA de la fila (los dos modelos), por la reconstruccion unica. La comparten
+ * `congeladaDe` y `fulfillmentDe` para que la orden y su fulfillment no puedan leer dos cosas.
+ */
+function tarifaCongeladaDeFila(f: FilaCruda): TarifaCongelada | null {
+  return tarifaDe(
+    {
+      tarifaModelo: f.tarifa_modelo ?? "viejo",
+      tarifaId: f.tarifa_id,
+      tarifaValorFlete: f.tarifa_valor_flete,
+      tarifaValorFleteGam: f.tarifa_valor_flete_gam,
+      tarifaValorFleteDevuelto: f.tarifa_valor_flete_devuelto,
+      tarifaValorFleteDevueltoGam: f.tarifa_valor_flete_devuelto_gam,
+      tarifaComisionCod: f.tarifa_comision_cod,
+      tarifaIvaFlete: f.tarifa_iva_flete,
+      tarifaIvaComisionCod: f.tarifa_iva_comision_cod,
+      tarifaEspecial: f.tarifa_especial,
+      tarifaEspecialDevuelta: f.tarifa_especial_devuelta,
+    },
+    conceptosDe(f),
+  );
 }
 
 /** Los resultados que aportan, como parametros. DERIVADOS del criterio (R24), nunca escritos. */
@@ -161,18 +223,7 @@ function congeladaDe(f: FilaCruda): OrdenCongelada | null {
     esZonaEspecial: f.es_zona_especial === true,
     montoCobrar: f.monto_cobrar === null ? null : f.monto_cobrar.toFixed(2),
     cobraComision: f.cobra_comision === true,
-    tarifa: tarifaDe({
-      tarifaId: f.tarifa_id,
-      tarifaValorFlete: f.tarifa_valor_flete,
-      tarifaValorFleteGam: f.tarifa_valor_flete_gam,
-      tarifaValorFleteDevuelto: f.tarifa_valor_flete_devuelto,
-      tarifaValorFleteDevueltoGam: f.tarifa_valor_flete_devuelto_gam,
-      tarifaComisionCod: f.tarifa_comision_cod,
-      tarifaIvaFlete: f.tarifa_iva_flete,
-      tarifaIvaComisionCod: f.tarifa_iva_comision_cod,
-      tarifaEspecial: f.tarifa_especial,
-      tarifaEspecialDevuelta: f.tarifa_especial_devuelta,
-    }),
+    tarifa: tarifaCongeladaDeFila(f),
   };
 }
 
@@ -196,11 +247,14 @@ function congeladaDe(f: FilaCruda): OrdenCongelada | null {
  */
 function fulfillmentDe(f: FilaCruda): string | null {
   if (f.detalle_id === null) return null;
-  // `== null` y NO `=== null`, por el mismo motivo escrito en `tarifaDe` para `tarifa_especial`:
-  // una fila que no proyecte la columna llega como `undefined`, significa lo mismo que `NULL`
-  // —no hay fulfillment— y ninguno de los dos puede REVENTAR en un camino de dinero. Con
-  // `=== null` un `undefined` se iba a `.toFixed` y tiraba la lectura entera.
-  return f.tarifa_fulfillment == null ? "0.00" : f.tarifa_fulfillment.toFixed(2);
+  // `== null` y NO `=== null` (dentro de `fulfillmentCongeladoDe`), por el mismo motivo escrito en
+  // `tarifaDe` para `tarifa_especial`: una fila que no proyecte la columna llega como `undefined`,
+  // significa lo mismo que `NULL` —no hay fulfillment— y ninguno de los dos puede REVENTAR en un
+  // camino de dinero.
+  // SLT-52 (R46): en el nuevo la columna va NULL y el monto sale del concepto congelado; misma
+  // funcion que el `costoReal` de la API y el detalle del cierre.
+  const montoCobrar = f.monto_cobrar === null ? null : f.monto_cobrar.toFixed(2);
+  return fulfillmentCongeladoDe(tarifaCongeladaDeFila(f), f.tarifa_fulfillment, montoCobrar).fulfillment;
 }
 
 export class DineroProductosRepository implements IDineroProductosRepository {
@@ -247,7 +301,23 @@ export class DineroProductosRepository implements IDineroProductosRepository {
              d."tarifa_especial"                 AS tarifa_especial,
              d."tarifa_especial_devuelta"        AS tarifa_especial_devuelta,
              -- FICHA 449: se proyecta, pero NO entra en tarifaDe. Ver fulfillmentDe.
-             d."tarifa_fulfillment"              AS tarifa_fulfillment
+             d."tarifa_fulfillment"              AS tarifa_fulfillment,
+             d."tarifa_modelo"::text             AS tarifa_modelo,
+             -- SLT-52 (R41): el cobro congelado por concepto de ESTE detalle. La empresa se exige
+             -- aqui ademas de la RLS y del trigger de misma empresa: una fila hija de otra empresa
+             -- colgada de este detalle no puede entrar en el dinero de esta.
+             (SELECT COALESCE(
+                       json_agg(json_build_object(
+                         'concepto',      dc."concepto",
+                         'modo',          dc."modo",
+                         'valor',         dc."valor"::text,
+                         'ivaPct',        dc."iva_pct"::text,
+                         'nivel',         dc."nivel",
+                         'tarifaValorId', dc."tarifa_valor_id")),
+                       '[]'::json)
+                FROM "cierre_detail_concepto" dc
+               WHERE dc."cierre_detail_id" = d."id"
+                 AND dc."organizacion_id" = d."organizacion_id") AS conceptos
       FROM "orden" o
       JOIN "order_status" s ON s."id" = o."estatus_id"
       JOIN "usuario"      t ON t."id" = o."tienda_id"

@@ -229,6 +229,13 @@ export interface IngresoEmpresaDTO {
   fleteDevolucionConIva: string | null;
   comisionConIva: string | null;
   total: string; // suma de los conceptos presentes (STRING escala 2)
+  // SLT-52 (R46, P5 = a) — el fulfillment de la orden y su IVA, CONGELADOS, con la misma forma que
+  // `costoReal` de la API por key: STRING escala 2, "0.00" si no hay. NO entran en `total` ni en
+  // las wallets (R31). Viejo: la columna `tarifa_fulfillment` e IVA "0.00" (R47). Nuevo: el concepto
+  // `tienda_fulfillment` congelado con su % de IVA. `null` = anulado para un actor sin acceso total
+  // (ficha 481: el fulfillment es dato de la central), nunca "0.00".
+  fulfillment: string | null;
+  ivaFulfillment: string | null;
   tarifa: TarifaSnapshotDTO | null; // null = sin tarifa vigente al solicitar (R9)
 }
 

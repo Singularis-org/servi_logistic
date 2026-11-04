@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import type { ParTarifa } from "@/lib/utils/cascada-tarifa";
+import type { TarifaTienda } from "@/lib/types/tarifa-flexible";
 
 // Feature 42 (design §2.1, F1.4-Q1) — contrato del resolver de la TARIFA VIGENTE.
 //
@@ -35,7 +36,9 @@ import type { ParTarifa } from "@/lib/utils/cascada-tarifa";
 
 // Cliente (o cliente de transaccion) que necesita el resolver batch: feature 69/design §3.1,
 // la resolucion del snapshot corre DENTRO de la `$transaction` de `crearCierre`.
-export type TarifaTxClient = Pick<PrismaClient, "tarifa">;
+// SLT-52: mas los delegados del modelo nuevo (`tarifa_valor` y los grupos de distritos); el resolver
+// unico decide con ellos que modelo usa la empresa. El `prisma` de las raices ya los tiene.
+export type TarifaTxClient = Pick<PrismaClient, "tarifa" | "tarifaValor" | "grupoDistritosDistrito">;
 
 // Tarifa vigente resuelta para un par (tienda, zona). MONTOS: valorFlete[Gam],
 // valorFleteDevuelto[Gam], tarifaEspecial[Devuelta]. PORCENTAJES (0..100): comisionCod,
@@ -79,32 +82,33 @@ export interface TarifaVigenteResuelta extends TarifaVigente {
   fulfillment: string; // MONTO -> STRING 2 dec
 }
 
+
 export interface ITarifaVigenteRepository {
   /**
-   * Cascada (R1-R6) para UN par (tienda, zona). `null` = sin tarifa (R2): ningun nivel tiene
-   * fila. `zonaId` null -> solo se intenta el nivel 2 (R6).
-   *
-   * Sustituye a `resolveTarifaPorTienda` Y a `resolveTarifaCotizablePorTienda`: hay un solo
-   * resolver porque ya no hay `status` que los separe (R37).
-   *
-   * Se implementa sobre el mismo camino que `resolveTarifas` (design §5, alternativa A
-   * descartada): una sola implementacion de la regla, para que el singular y el lote no
+   * El cobro a la tienda de UN par (tienda, zona, distrito de la orden), por el mismo camino que
+   * `resolveTarifas`: una sola implementacion de la regla, para que el singular y el lote no
    * puedan divergir.
+   *
+   * SLT-52 (design §5): devuelve `TarifaTienda`. En el modelo viejo es la cascada de la 274
+   * envuelta (`null` = sin tarifa, R2; `zonaId` null -> solo el nivel 2, R6); en el nuevo nunca es
+   * `null` y cada concepto ausente es «sin tarifa» (R23). `distritoId` es OBLIGATORIO (`null` = la
+   * orden no tiene distrito): decide el grupo de distritos (R16, R18).
    */
-  resolveTarifa(tiendaId: string, zonaId: string | null): Promise<TarifaVigente | null>;
+  resolveTarifa(
+    tiendaId: string,
+    zonaId: string | null,
+    distritoId: string | null,
+  ): Promise<TarifaTienda | null>;
 
   /**
-   * Cascada para N pares en UNA sola query (R7, sin N+1). El Map se indexa por `clavePar` y
-   * trae una entrada por CADA par pedido, con `null` cuando no resuelve.
+   * El cobro a la tienda de N pares con un numero fijo de consultas (R39). El Map se indexa por
+   * `clavePar` (que incluye el distrito) y trae una entrada por CADA par pedido.
    *
-   * `tx` OPCIONAL y SEGUNDO. Cambio de firma respecto de la 69, donde el batch era
-   * `resolveTarifasPorTiendas(tx, tiendaIds)` con `tx` primero y OBLIGATORIO: el cierre de dia
-   * pasa el cliente de su `$transaction` (el snapshot se congela dentro), pero la carga via
-   * API, la cotizacion y el listado no tienen transaccion y tenian que inventarse una. Al
-   * invertirlo, el llamador sin tx simplemente no pasa nada.
+   * `tx` OPCIONAL y SEGUNDO: el cierre de dia pasa el cliente de su `$transaction` (el snapshot se
+   * congela dentro); la carga via API, la cotizacion y el listado no tienen transaccion.
    */
   resolveTarifas(
     pares: readonly ParTarifa[],
     tx?: TarifaTxClient,
-  ): Promise<Map<string, TarifaVigenteResuelta | null>>;
+  ): Promise<Map<string, TarifaTienda | null>>;
 }

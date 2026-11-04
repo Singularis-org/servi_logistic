@@ -73,8 +73,8 @@ async function intentar(tx: TxDeTest, sql: string, ...args: unknown[]): Promise<
   }
 }
 
+// D1 (ajuste planes-custom): la columna `precio_negociable` ya no existe (20261104130000).
 type Precio = {
-  negociable?: boolean;
   mensual?: string | null;
   anual?: string | null;
   pct?: string | null;
@@ -84,10 +84,9 @@ type Precio = {
 function insertarPublicoConPrecio(tx: TxDeTest, p: Precio): Promise<string | null> {
   return intentar(
     tx,
-    `INSERT INTO "plan" ("id", "nombre", "visibilidad", "precio_negociable", "precio_mensual", "precio_anual", "descuento_anual_pct")
-     VALUES ($1, 'Plan de prueba', 'publico', $2, $3::numeric, $4::numeric, $5::numeric)`,
+    `INSERT INTO "plan" ("id", "nombre", "visibilidad", "precio_mensual", "precio_anual", "descuento_anual_pct")
+     VALUES ($1, 'Plan de prueba', 'publico', $2::numeric, $3::numeric, $4::numeric)`,
     randomUUID(),
-    p.negociable ?? false,
     p.mensual ?? null,
     p.anual ?? null,
     p.pct ?? null,
@@ -180,7 +179,6 @@ describeSiHayBase("SL-24 — catálogo de planes en la base (R1, R2, R3, R6, R7,
     expect(leido.organizacionExclusivaId).toBeNull();
     expect(leido.topeOrdenesCiclo).toBe(500);
     expect(leido.topeApiKeys).toBe(2);
-    expect(leido.precioNegociable).toBe(false);
     expect(leido.precioMensual?.toFixed(2)).toBe("49.90");
     expect(leido.precioAnual).toBeNull();
     expect(leido.descuentoAnualPct?.toFixed(2)).toBe("15.00");
@@ -202,10 +200,9 @@ describeSiHayBase("SL-24 — catálogo de planes en la base (R1, R2, R3, R6, R7,
     expect(leido.modulos).toEqual([]);
   });
 
-  it("R3 — las cinco formas del precio entran", async () => {
+  it("R3 — las cuatro formas del precio entran (D1: «negociable» ya no es una)", async () => {
     const resultados = await revertida(async (tx) => ({
       sinPrecio: await insertarPublicoConPrecio(tx, {}),
-      negociable: await insertarPublicoConPrecio(tx, { negociable: true }),
       mensual: await insertarPublicoConPrecio(tx, { mensual: "10.00" }),
       mensualYAnual: await insertarPublicoConPrecio(tx, { mensual: "10.00", anual: "100.00" }),
       mensualYPct: await insertarPublicoConPrecio(tx, { mensual: "10.00", pct: "100" }),
@@ -213,7 +210,6 @@ describeSiHayBase("SL-24 — catálogo de planes en la base (R1, R2, R3, R6, R7,
     }));
     expect(resultados).toEqual({
       sinPrecio: null,
-      negociable: null,
       mensual: null,
       mensualYAnual: null,
       mensualYPct: null,
@@ -223,9 +219,6 @@ describeSiHayBase("SL-24 — catálogo de planes en la base (R1, R2, R3, R6, R7,
 
   it("R3 — las combinaciones prohibidas y los rangos fuera de límite dan 23514", async () => {
     const resultados = await revertida(async (tx) => ({
-      negociableConMensual: await insertarPublicoConPrecio(tx, { negociable: true, mensual: "10.00" }),
-      negociableConAnual: await insertarPublicoConPrecio(tx, { negociable: true, anual: "10.00" }),
-      negociableConPct: await insertarPublicoConPrecio(tx, { negociable: true, pct: "10" }),
       anualYPct: await insertarPublicoConPrecio(tx, { mensual: "10.00", anual: "100.00", pct: "10" }),
       anualSinMensual: await insertarPublicoConPrecio(tx, { anual: "100.00" }),
       pctSinMensual: await insertarPublicoConPrecio(tx, { pct: "10" }),

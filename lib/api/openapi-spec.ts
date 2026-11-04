@@ -110,6 +110,14 @@ function schemaNombre(campo: string, nullable = false) {
   };
 }
 
+/**
+ * SLT-52 (R46, R47, P5 = a) — el IVA del fulfillment. Aparece en la carga, en los dos escenarios de
+ * la cotizacion y en `OrdenCosto`; un solo texto para que las cuatro apariciones no diverjan. El
+ * `.yaml` espejo lo escribe entero.
+ */
+const DESC_IVA_FULFILLMENT =
+  "IVA del fulfillment, string escala 2: el % de IVA de tu tarifa aplicado al fulfillment ya redondeado. `\"0.00\"` si tu tarifa no tiene fulfillment o no le aplica IVA. Nunca `null`.";
+
 // Tope duro de filas por lote de carga (cargaMasivaConfig.MAX_CHUNK_ROWS, default 5000).
 const MAX_CARGA_ROWS = 5000;
 
@@ -224,6 +232,7 @@ export const openApiSpec = {
                           estado: "por_recolectar_en_tienda", estadoNombre: "Por recolectar en tienda",
                           costoEnvio: "3.39",
                           fulfillment: "0.00",
+                          ivaFulfillment: "0.00",
                         },
                       ],
                     },
@@ -250,6 +259,7 @@ export const openApiSpec = {
                           estado: "por_recolectar_en_tienda", estadoNombre: "Por recolectar en tienda",
                           costoEnvio: "3.39",
                           fulfillment: "0.00",
+                          ivaFulfillment: "0.00",
                         },
                       ],
                     },
@@ -676,6 +686,7 @@ export const openApiSpec = {
                               comision: "906.50",
                               ivaComision: "117.85",
                               fulfillment: "0.00",
+                              ivaFulfillment: "0.00",
                               total: "22050.65",
                             },
                             devuelto: {
@@ -683,6 +694,7 @@ export const openApiSpec = {
                               iva: "181.54",
                               comision: "0.00",
                               fulfillment: "0.00",
+                              ivaFulfillment: "0.00",
                               total: "-1578.00",
                             },
                           },
@@ -1480,10 +1492,10 @@ export const openApiSpec = {
        */
       OrdenCosto: {
         type: "object",
-        required: ["flete", "iva", "comision", "ivaComision", "fulfillment"],
+        required: ["flete", "iva", "comision", "ivaComision", "fulfillment", "ivaFulfillment"],
         additionalProperties: false,
         description:
-          "Los CINCO conceptos que " + EMPRESA.enFrase + " factura por una orden, en el escenario de ENTREGA («cuánto cuesta este paquete si se entrega»). Importes en texto crudo con dos decimales y punto decimal, sin símbolo de moneda y sin separador de miles (`\"2500.00\"`) — el mismo dialecto que la cotización y el `costoEnvio` de la carga. Un `\"0.00\"` es un CERO AFIRMADO (por ejemplo, una orden que no cobra comisión), nunca un dato faltante: dentro de este objeto ningún concepto es `null` y ninguno se omite. **NO hay ningún campo que sume los cinco, ni `total` ni equivalente**: sumalos vos, que sabés qué estás sumando.",
+          "Los SEIS conceptos que " + EMPRESA.enFrase + " factura por una orden, en el escenario de ENTREGA («cuánto cuesta este paquete si se entrega»). Importes en texto crudo con dos decimales y punto decimal, sin símbolo de moneda y sin separador de miles (`\"2500.00\"`) — el mismo dialecto que la cotización y el `costoEnvio` de la carga. Un `\"0.00\"` es un CERO AFIRMADO (por ejemplo, una orden que no cobra comisión), nunca un dato faltante: dentro de este objeto ningún concepto es `null` y ninguno se omite. **NO hay ningún campo que sume los seis, ni `total` ni equivalente**: sumalos vos, que sabés qué estás sumando.",
         properties: {
           flete: { type: "string", description: "Flete del envío." },
           iva: { type: "string", description: "IVA del flete." },
@@ -1494,6 +1506,8 @@ export const openApiSpec = {
             description:
               "Monto fijo de fulfillment por orden cuando el paquete sale de nuestra bodega. `\"0.00\"` si tu tienda no hace fulfillment.",
           },
+          // SLT-52 (R46, P5 = a): campo aditivo; el mismo texto en los cuatro schemas que lo llevan.
+          ivaFulfillment: { type: "string", description: DESC_IVA_FULFILLMENT },
         },
       },
       Pagination: {
@@ -1854,7 +1868,7 @@ export const openApiSpec = {
       CargaOrden: {
         type: "object",
         description: "Una orden efectivamente creada (bloque plano listo para consumir).",
-        required: ["id", "numRemision", "numGuia", "estado", "estadoNombre", "costoEnvio", "fulfillment"],
+        required: ["id", "numRemision", "numGuia", "estado", "estadoNombre", "costoEnvio", "fulfillment", "ivaFulfillment"],
         properties: {
           id: { type: "string", format: "uuid", description: "Id interno de la orden creada." },
           numRemision: { type: "string" },
@@ -1868,13 +1882,14 @@ export const openApiSpec = {
           costoEnvio: {
             type: "string",
             description:
-              "Costo total del envío (flete + IVA de la tarifa vigente del par (tienda, zona), MÁS el fulfillment si lo hay), string escala 2. Toda orden creada lo trae con un importe real: una fila sin tarifa no llega a crearse. Distinto de `monto_cobrar`/COD.",
+              "Costo total del envío (flete + IVA de la tarifa vigente del par (tienda, zona), MÁS el fulfillment y su IVA si los hay), string escala 2. Toda orden creada lo trae con un importe real: una fila sin tarifa no llega a crearse. Distinto de `monto_cobrar`/COD.",
           },
           fulfillment: {
             type: "string",
             description:
               "Cuánto de `costoEnvio` es el servicio de bodega, string escala 2. `\"0.00\"` si tu tarifa no tiene fulfillment — y entonces `costoEnvio` es solo flete + IVA. Nunca `null`.",
           },
+          ivaFulfillment: { type: "string", description: DESC_IVA_FULFILLMENT },
         },
       },
       CargaResponse: {
@@ -2050,8 +2065,8 @@ export const openApiSpec = {
       CotizacionEscenarioEntregado: {
         type: "object",
         description:
-          "Costo si la orden se ENTREGA: seis conceptos. `total` es lo que RECIBE la tienda = monto a cobrar − (flete + iva + comision + ivaComision + fulfillment), y es negativo si no hay COD que cubra lo facturado.",
-        required: ["flete", "iva", "comision", "ivaComision", "fulfillment", "total"],
+          "Costo si la orden se ENTREGA: siete conceptos. `total` es lo que RECIBE la tienda = monto a cobrar − (flete + iva + comision + ivaComision + fulfillment + ivaFulfillment), y es negativo si no hay COD que cubra lo facturado.",
+        required: ["flete", "iva", "comision", "ivaComision", "fulfillment", "ivaFulfillment", "total"],
         properties: {
           flete: { type: "string", description: "Flete de la zona del distrito. String money-safe de escala 2, crudo." },
           iva: { type: "string", description: "IVA del flete. String money-safe de escala 2, crudo." },
@@ -2062,14 +2077,15 @@ export const openApiSpec = {
             description:
               "Monto fijo del servicio de bodega por orden, crudo. Cero si tu tarifa no tiene fulfillment; nunca ausente.",
           },
+          ivaFulfillment: { type: "string", description: DESC_IVA_FULFILLMENT },
           total: { type: "string", description: "Lo que recibe la tienda. String money-safe de escala 2, crudo; negativo si el COD no cubre lo facturado." },
         },
       },
       CotizacionEscenarioDevuelto: {
         type: "object",
         description:
-          "Costo si la orden se DEVUELVE, es decir si el paquete vuelve a tu tienda: cinco conceptos, SIN `ivaComision` (no hay comisión que gravar). `comision` es un cero EXPLÍCITO — la afirmación de que una devolución no cobra comisión COD, no un dato ausente. `fulfillment` en cambio SÍ se cobra: el servicio de bodega ya se prestó. `total` es la DEUDA de la tienda = −(flete + iva + fulfillment), y por eso es negativo. **Cuándo se cobra este escenario:** al cerrarse la orden en Devolución a origen por rechazo (`devolucion_a_origen_por_rechazo`), que es el resultado con el que el paquete regresa. Un intento de entrega fallido que aún se puede reprogramar o recuperar NO cobra nada por sí solo; los importes de aquí aparecen cuando el retorno se consuma.",
-        required: ["flete", "iva", "comision", "fulfillment", "total"],
+          "Costo si la orden se DEVUELVE, es decir si el paquete vuelve a tu tienda: seis conceptos, SIN `ivaComision` (no hay comisión que gravar). `comision` es un cero EXPLÍCITO — la afirmación de que una devolución no cobra comisión COD, no un dato ausente. `fulfillment` y su IVA en cambio SÍ se cobran: el servicio de bodega ya se prestó. `total` es la DEUDA de la tienda = −(flete + iva + fulfillment + ivaFulfillment), y por eso es negativo. **Cuándo se cobra este escenario:** al cerrarse la orden en Devolución a origen por rechazo (`devolucion_a_origen_por_rechazo`), que es el resultado con el que el paquete regresa. Un intento de entrega fallido que aún se puede reprogramar o recuperar NO cobra nada por sí solo; los importes de aquí aparecen cuando el retorno se consuma.",
+        required: ["flete", "iva", "comision", "fulfillment", "ivaFulfillment", "total"],
         properties: {
           flete: {
             type: "string",
@@ -2090,6 +2106,7 @@ export const openApiSpec = {
             description:
               "El MISMO monto que en el escenario entregado: preparar y despachar el paquete ya costó, lo reciba el destinatario o no. Cero si tu tarifa no tiene fulfillment.",
           },
+          ivaFulfillment: { type: "string", description: DESC_IVA_FULFILLMENT },
           total: { type: "string", description: "Deuda de la tienda. String money-safe de escala 2, crudo y negativo." },
         },
       },

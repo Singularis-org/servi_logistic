@@ -1,5 +1,6 @@
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type {
+  CambiarTipoCobroResult,
   CatalogoResult,
   DetallePlanResult,
   ListarPlanesAsignablesResult,
@@ -7,6 +8,7 @@ import type {
   PlanDeEmpresaResult,
   PlanResult,
   VistaPreviaAsignacionResult,
+  VistaPreviaCustomResult,
 } from "@/lib/types/planes";
 
 // SL-24 (design §5; R1–R17, R37–R40) — la gestión de planes. Solo el superadmin, salvo
@@ -26,6 +28,10 @@ export interface IPlanesService {
   asignar(actor: Actor | null, input: unknown): Promise<PlanResult>;
   /** SLT-58 (R37): `{ organizacionId, planId, inicioCiclo }`; solo lee. */
   previsualizarAsignacion(actor: Actor | null, input: unknown): Promise<VistaPreviaAsignacionResult>;
+  /** Ajuste planes-custom (D13): `{ organizacionId, inicioCiclo, topes }`; solo lee. */
+  previsualizarCustom(actor: Actor | null, input: unknown): Promise<VistaPreviaCustomResult>;
+  /** Ajuste planes-custom (D10): `{ organizacionId, tipoCobro }`; solo el tipo de cobro del plan actual. */
+  cambiarTipoCobro(actor: Actor | null, input: unknown): Promise<CambiarTipoCobroResult>;
   cancelarCambio(actor: Actor | null, input: unknown): Promise<PlanResult>;
   asignables(actor: Actor | null, input: unknown): Promise<ListarPlanesAsignablesResult>;
   planesPublicos(): Promise<PlanDTO[]>;

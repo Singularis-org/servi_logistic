@@ -71,7 +71,6 @@ describe("SLT-66 — costeoDelCiclo: base 0.00 y plan sin costo concreto (R20)",
 
   it.each([
     { caso: "sin precio", precio: { tipo: "sin_precio" } as const },
-    { caso: "negociable", precio: { tipo: "negociable" } as const },
   ])("R20: base $caso → «por definir», sin total, pero con subtotal", ({ precio }) => {
     const c = costeoDelCiclo(conCosto(precio), DEL_PLAN, 3);
     expect(c.base).toEqual({ tipo: "por_definir" });
@@ -123,7 +122,6 @@ describe("SLT-66 — costeoDelCiclo: el anual no toca el costo ni el total (R10)
 describe("SLT-66 — tieneCostoConcreto: la forma del plan, no el importe (R28)", () => {
   const BASES: readonly { caso: string; precio: PrecioPlan; monto: boolean }[] = [
     { caso: "sin precio", precio: { tipo: "sin_precio" }, monto: false },
-    { caso: "negociable", precio: { tipo: "negociable" }, monto: false },
     { caso: "monto sin anual", precio: { tipo: "monto", mensual: "50000.00", anual: null }, monto: true },
     {
       caso: "monto con anual fijo",

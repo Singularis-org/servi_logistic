@@ -1,6 +1,10 @@
 import { Prisma } from "@prisma/client";
 import type { GestionResultado } from "@prisma/client";
-import type { PagoTarifa } from "@/lib/interfaces/repositories/ITarifaZonaMensajeroRepository";
+import {
+  importePagoNuevo,
+  pagoConModelo,
+  type TarifaDePago,
+} from "@/lib/utils/pago-mensajero";
 
 /**
  * Feature 56 (F1.4-Q1/Q2) — ingreso de la BODEGA por una gestion. ESPEJO de
@@ -17,9 +21,14 @@ import type { PagoTarifa } from "@/lib/interfaces/repositories/ITarifaZonaMensaj
  */
 export function ingresoBodegaPorResultado(
   resultado: GestionResultado,
-  tarifa: PagoTarifa | null,
+  entrada: TarifaDePago | null,
 ): string {
-  if (tarifa === null) return "0.00"; // R6: gap seguro, no bloquea
+  if (entrada === null) return "0.00"; // R6: gap seguro, no bloquea
+  const t = pagoConModelo(entrada);
+  // SLT-52 (R32): en el nuevo la satelite cobra su concepto por CUALQUIER resultado, no solo por
+  // el rechazo; la regla «solo rechazada» de abajo es del modelo viejo.
+  if (t.modelo === "nuevo") return importePagoNuevo("satelite", resultado, t.satelite, t.baseFlete);
+  const tarifa = t.tarifa;
   if (resultado !== "devolucion_a_origen_por_rechazo") return "0.00"; // R4 (Q2: solo rechazada genera ingreso)
   const cobro = new Prisma.Decimal(tarifa.cobroRechazado);
   // R5 (Q1-a): "aplica el pago por rechazo" = cobroRechazado configurado > 0. Si es 0 -> 0.00.
