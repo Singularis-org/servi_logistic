@@ -295,3 +295,132 @@ Compilé con TypeScript los blobs de `c597021b` y `0060494a`, sin comentarios, y
 
 **RECHAZADO.** Bloqueantes: B1 y B2. Con el caso de R1 corregido y la salida de los E2E en la bitácora,
 la vuelta 2 se puede acotar a ese diff.
+
+## Vuelta 2 (acotada a ada23ade..e5d6f2e5; ampliada a la coherencia de R12 y R13, porque el arreglo enmienda el spec)
+
+**Veredicto: OK.** 0 bloqueantes y 4 menores nuevos (n1–n4). B1 y B2 quedan cerrados. Lo medí yo, salvo
+lo marcado. No corrí `./init.sh` ni la suite: el gate lo midió el leader en `e5d6f2e5` (`INIT_EXIT=0`).
+**No corrí el E2E:** exige una base desechable migrada, y esta revisión excluye las migraciones. MCP de
+grafo no usado: bastó Grep/Read sobre un diff acotado.
+
+### Checklist
+
+- [x] **B1:** matada por aserción, medido.
+- [x] **B2, parte 1:** salida de los tres specs en la bitácora. La leí, no la repetí.
+- [x] **B2, parte 2:** caso (c) leído. Afirma la cifra, no se salta y la guardia está en verde. Que muera
+  con `"max"` lo afirma la bitácora; no lo repetí.
+- [x] **m1:** 5 mutaciones propias, todas matadas.
+- [x] **m2:** R12 y R13 enmendados, coherentes. Quedan n2 y n4.
+- [x] **m5:** los dos comentarios pedidos, corregidos. Aparecieron otros dos: n1.
+- [x] **m6:** `design.md` dice `text`; ya no hay ningún «uuid».
+- [x] **m7:** `tasks.md` sin ningún `[ ]`, «Archivos esperados» completo, ficha en `in_progress` y `## Tandas` llena.
+- [x] **Sin lógica de producción nueva:** medido.
+- [x] **Nota de `NEXT_PUBLIC_APP_URL`:** la evidencia la sostiene.
+- [x] `git status --porcelain` vacío tras revertir las mutaciones.
+
+### Ejecución
+
+| Archivos | Casos | Pasados | Fallados | Saltados |
+|---|---|---|---|---|
+| `ciclo-vida-gestion-final.int`, `deshacer-gestion-invalida-analitica`, `e2e-sin-saltos.guardia` y `cache-por-empresa` | 98 | 98 | 0 | 0 |
+
+`ciclo-vida-gestion-final.int` corrió contra la base local del `.env`, sin imprimir ningún valor.
+
+| Mutación propia | Archivo | Resultado |
+|---|---|---|
+| `(created_at, id) >` pasa a `created_at > … OR (created_at = … AND g2."id" < g."id")` | `CicloVidaRepository` | **Matada, 28/29.** «R3: el empate lo decide el `id` mayor»: `expected { segundosAcum: 100800, n: 1 } to deeply equal { segundosAcum: 14400, n: 1 }` |
+| el cierre rechazado cae en la vía pendiente (`cierreId !== null` a `false`) | `CierreDiaService` | Matada, 15/17: «escribe por su vía» y «pierde la carrera», solo en esa vía |
+| pendiente: perder la carrera da `ok` | `CierreDiaService` | Matada, 16/17, solo esa vía |
+| cierre rechazado: perder la carrera da `ok` | `CierreDiaService` | Matada, 16/17, solo esa vía |
+| legada: perder la carrera da `ok` | `CierreDiaService` | Matada, 16/17, solo esa vía |
+| legada: escribe además por `anularGestionPendiente` | `CierreDiaService` | Matada, 16/17, por «escribe solo por la suya» |
+
+El caso de B1 cae por aserción y el número esperado identifica qué orden contó: 100 800 s son las 28 h
+de `pierdeElCierre`. Las mutaciones de m1 no repiten las de la bitácora: esas quitan el `ok`, y estas
+cambian de vía y dan `ok` al perder la carrera.
+
+### Lógica de producción en el rango
+
+- `git diff --stat ada23ade..HEAD`: los únicos archivos de la app son `lib/types/cohorte-carga.ts` y
+  `app/(app)/analitica/_components/entregas/base-del-kpi.ts`.
+- Compilé con TypeScript sus blobs de `ada23ade` y `HEAD`, sin comentarios: **idénticos**. Los blobs con
+  comentarios sí difieren, así que la comparación no es trivial.
+- `e2e/cierres-admin.spec.ts` y el resto son tests, specs y bitácoras.
+
+### B2: lo que sostiene la salida y el caso (c)
+
+**Salida.** Cuadra con el código: `cierres-admin.spec.ts:163` y `cierre-dia.spec.ts:98` son las líneas
+que imprime el reportero, y los dos specs están en el proyecto `dinero`. 2 + 3 + 8 + 10 = 23 casos.
+
+**El caso (c), por puntos:**
+
+- **Sin salto.** No usa ninguna forma de salto, y `e2e-sin-saltos` está en verde.
+- **Sin rama que lo vacíe.** No hay ningún `if` que evite aserciones. Crea sus datos en una empresa propia.
+- **La cifra es exacta.** La frase sale de `textoDesenlacesDeFila` (`ProductosTabla.tsx:682`), con el número
+  crudo y sin animación. La regex está anclada: `Entregado: 1` no casa con `Entregado: 12`.
+- **La primera lectura tiene precondición.** Antes afirma `Entregado: 2`, de modo que hay entrada en caché y
+  las dos órdenes caen en la misma fila. Por eso «1» no puede venir de otra fila.
+- **R8 se afirma aparte.** «(2 órdenes cerradas)» no baja. Esta aserción no prueba frescura, porque la cifra
+  no cambia; la frescura la prueba la frase. El caso no lo presenta de otro modo.
+- **Lo que lee.** Es la fila de productos, no la tarjeta «Entregado», aunque el título dice «Entregado».
+  El spec lo explica en su comentario, y la adaptación es la misma para las ocho etiquetas. La tarjeta solo
+  se midió con el spec temporal de la bitácora (3 → 1). Lo acepto: la mutación que importa es del
+  adaptador, no de cada tarjeta.
+
+**Lo que no pude comprobar.** Que el caso muera con `"max"` lo afirma la bitácora. La propia bitácora vio
+peticiones RSC a `/analitica` antes de navegar, sin investigar su origen. Si una de esas peticiones hace
+revalidar en segundo plano antes del `goto`, esa muerte podría depender del tiempo. No es falso verde con
+el código actual, y `cache-por-empresa` fija el `{ expire: 0 }` de forma determinista (la mutación murió
+en la vuelta 1), así que no lo bloqueo.
+
+### La nota de `NEXT_PUBLIC_APP_URL`: sostenida
+
+No es una suposición: hay camino de código, experimento antes/después y un precedente escrito.
+
+- **El aviso solo nace en esa rama.** `BienvenidaMaestroService.ts:63-68` escribe esa línea cuando
+  `baseUrl === null` y devuelve `no_enviada`. El caso esperaba `sin_correo`, que es lo que da el servicio con
+  URL y sin SMTP (`playwright.config.ts:162-163` vacía el SMTP).
+- **Falta de verdad.** En el `.env` del worktree, `NEXT_PUBLIC_APP_URL` y `NEXT_PUBLIC_SITE_URL` no tienen
+  valor (conteo 0, sin imprimir nada). Son las dos únicas que lee `baseUrlDeLaApp`.
+- **Es de la build.** `superadmin-empresas.spec.ts:49-51` y `gate.yml:370-372` lo dicen con sus palabras:
+  Next la incrusta al compilar, y sin ella el paso 2 falla.
+- **Los recuentos cuadran.** Con el caso 2 de un spec `serial` caído: 4 + 5 de `dinero` = 9 pasados, 1
+  fallado, y 5 + 8 de `aislamiento` = 13 sin correr. Es lo que declara.
+- **Antes y después.** Con la variable exportada antes de la build, el mismo código da 23/23 dos veces.
+- **Sin solape con la rama.** `git diff --name-only origin/dev...HEAD` no toca ese spec, ni el servicio, ni
+  `lib/config/email.ts`, ni `app-url.ts`.
+
+Lo único que no verifiqué es la línea de log citada, porque el log ya no existe. Con lo anterior no hace
+falta. **No está en `docs/verification.md`:** confirmado por Grep, ver n3.
+
+### Coherencia de R12 y R13
+
+- **Sin choque con lo demás.** R12 y R13 añaden «la primera lectura trae la cifra nueva», y eso encaja con
+  `design.md:171`, con el adaptador y con «invalidar antes de responder». Las dos secciones de evidencia que
+  citan existen en la bitácora (`Cierre del hallazgo…` en la línea 204, `Vuelta 2` en la 302).
+- **R13** tiene test de navegador: (c), con fila propia en la tabla de trazabilidad.
+- **R12** se sostiene por composición, sin agujero: el bloque de m1 prueba las tres vías hasta la caché, el
+  cableado prueba que la caché es el adaptador real, y el adaptador lo fijan `cache-por-empresa` y (c).
+  Ninguna regresión de una sola pieza pasa. La fila explícita falta: n2.
+- **m3 y m4 siguen abiertos**, como se pidió. m4 está anotado como comprobación tras el merge. Con R12 y R13
+  ya en `DEBE`, ese Preview pasa a ser la comprobación de un requisito, no solo de una optimización.
+
+### Hallazgos de la vuelta 2
+
+- **n1 — menor.** Quedan dos comentarios falsos del mismo tipo que m5. Se me escaparon en la vuelta 1:
+  - `base-del-kpi.ts:91`: `CicloVidaKpi` «llegó a estado TERMINAL, fechado en el cierre».
+  - `madurez-textos.ts:25`: `CicloVidaKpi` y `CohorteCargaTabla` «cuentan estados terminales» (cierto ya
+    solo para el segundo).
+- **n2 — menor.** La tabla de trazabilidad de `requirements.md` no dice qué test cubre la cláusula de primera
+  lectura de R12. Solo cita evidencia de bitácora. Falta una fila que nombre la composición de arriba.
+- **n3 — menor, fuera de esta ficha.** `docs/verification.md > El E2E` no menciona `NEXT_PUBLIC_APP_URL`.
+  Quien siga la receta con un `.env` sin ella tropieza con este rojo. Va por `/afinar-regla` o nota aparte.
+- **n4 — menor, para el leader.** El `{ expire: 0 }` y la enmienda de R12 y R13 no están en
+  `progress/features/SLT-64.md > Decisiones` ni en la tabla de decisiones de `requirements.md`. Solo en
+  `## Tandas`, que dice «sin respuesta de Carlos». Son `DEBE` nuevos que el humano no ha visto: decírselo
+  en la puerta de F2.4.
+
+### Veredicto de la vuelta 2
+
+**OK.** Ningún bloqueante. n1–n4, m3 y m4 no impiden pasar a F2.3. Sigue siendo obligatorio el
+`gate-completo` en CI.
