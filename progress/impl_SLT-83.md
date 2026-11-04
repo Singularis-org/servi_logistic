@@ -225,3 +225,18 @@ o en CI. No la corro aquí (instrucción: nunca la suite completa en local), as�
 en `tasks.md` hasta que CI la dé en verde.
 
 **Veredicto T5:** el único test que afirmaba el invariante queda acotado; verificación completa pendiente de CI.
+
+## Guardias al cierre de la Tanda A
+
+`pnpm run test:guardias` → `Test Files 3 failed | 325 passed (328) · Tests 6 failed | 4562 passed | 1 skipped`.
+Ninguno es de este cambio:
+- `dependencias-declaradas-presentes.guardia.test.ts` (4): está en `tests/baseline-rojos.json`.
+- `descargas-por-registro.guardia.test.ts` y `sin-estados-retirados.guardia.test.ts` (1 cada uno): `Test timed
+  out in 20000ms`, también al correrlos solos (la máquina tenía otros `tsc`/`vitest` de otros worktrees).
+  Recorren `app/` y `lib/` buscando símbolos de UI y de estados retirados; esta tanda no toca ninguno de
+  esos archivos. Queda para CI.
+
+**Aviso para T7 (no es de esta tanda):** los movimientos guardan `ocurrido_at = now()` (como SL-40), que en
+una columna `TIMESTAMP` sin zona toma la zona de la sesión, mientras `plan_inicio_ciclo_en_curso` trabaja en
+UTC (`now() AT TIME ZONE 'UTC'`). En Supabase la sesión es UTC; la base local de esta feature está en
+`America/Bogota`. Si el test de R24 (T7) sale corrido 5 h en local, la causa es esa, no la función.
