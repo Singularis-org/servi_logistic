@@ -1795,3 +1795,34 @@ Gate (`./init.sh`, 2.ª corrida, log `scratchpad/init-slt52-fixrev.log`): **INIT
 ajenos: `caja-backfill` (5) y `notificacion-evento-{bloqueo-cierre,gasto-fijo,webhook-suscripcion}-migration` (1+1+2).
 Pasos posteriores a `test:rapido` corridos a mano: paso 7 (toda migración con `down.sql`): OK, ninguna sin `down.sql`;
 paso 8 (`.env`): presente.
+
+## CI del PR #74 (2026-11-03)
+
+**Rojo:** run 41770120818, shard 2/3 — `tests/integration/db/schema-drift-saneamiento.test.ts` ›
+«el censo encuentra las QUINCE tablas…»: el censo derivado devolvía 17 tablas y el literal tenía 15.
+
+**Causa:** la migración `20261103120100_tarifas_flexibles_tablas` crea dos tablas con
+`"updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP`: **`grupo_distritos`** y
+**`tarifa_valor`** (`grupo_distritos_distrito`, `cierre_detail_concepto` y `gestion_pago_congelado`
+no tienen default en `updated_at`).
+
+**Arreglo:**
+- `db/schema.prisma` **sin cambios**: `GrupoDistritos.updatedAt` y `TarifaValor.updatedAt` ya
+  declaran `@default(now()) @updatedAt`. `prisma migrate diff --from-config-datasource --to-schema
+  db/schema.prisma --script` contra la base local → `-- This is an empty migration.`
+- Test: las 2 tablas entran a mano en el literal del censo (en su orden), con su comentario de
+  origen; «QUINCE» → «DIECISIETE» en el nombre del caso. El literal sigue escrito a mano.
+
+**Evidencia:**
+- Archivo contra Postgres local: `Tests 16 passed (16)`, sin saltos; el caso del censo corre
+  (`✓ … el censo encuentra las DIECISIETE tablas … 1642ms`).
+- Mutación: quitado `"tarifa_valor"` del literal → `× el censo encuentra las DIECISIETE tablas…`,
+  `Tests 1 failed | 15 passed (16)`. Restaurado desde copia y comprobado con `cmp`.
+- Gate `./init.sh`: `INIT_EXIT=1`; `Test Files 5 failed | 1277 passed (1282)`,
+  `Tests 10 failed | 17407 passed | 26 skipped`. Rojos:
+  - ajenos conocidos: `caja-backfill` (5) y los 3 `notificacion-evento-*-migration` (4);
+  - **`tarifas-flexibles-resolver` › «R18: un distrito de la zona que no esta en ningun grupo
+    salta los grupos»: `Test timed out in 20000ms`** solo dentro de la suite entera. Aislado,
+    el archivo pasa dos veces (`31 passed`) y ese caso tarda 53 ms: apunta a contención con
+    otro test en paralelo (probable espera por lock con los `down` DDL de las migraciones), no a la
+    lógica. Queda señalado para el leader; no se toca en este arreglo.
