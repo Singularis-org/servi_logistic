@@ -102,13 +102,21 @@ quita de la lista de escritores vivos de `lib/types/historial-accion.ts` y de la
 - Módulos (SL-23): `/plataforma/vehiculos` y la action `vehiculos-plataforma` son `nucleo` en
   `lib/modulos/reparto.ts`; sale `/configuracion/vehiculos`.
 
-### Contexto de datos: sin `comoPlataforma`
+### Contexto de datos: `comoPlataforma` en el borde *(enmienda 2026-11-04)*
 
-El superadmin no tiene empresa, así que la extensión (`lib/db/extension-empresa.ts`, fila «ninguno»)
-corre los modelos de plataforma tal cual, como dueño: puede escribir `vehiculos` y `vehiculo_rastro`
-sin la envoltura `servi_app`. Con el borrado retirado (P1), ninguna operación toca una tabla de negocio, y
-el borde **no** llama a `comoPlataforma` ni entra en `EXCEPCIONES_DE_PLATAFORMA` (alternativa A3).
-R7 se prueba en integración contra la base real con un superadmin sin empresa.
+El superadmin no tiene empresa. Sin contexto, la extensión (`lib/db/extension-empresa.ts`, rama
+`!ctx`) corre los modelos de plataforma (`vehiculos`, `vehiculo_rastro`) tal cual, como dueño. Con un
+modelo de negocio falla con `EmpresaNoResuelta`, también dentro de un `$transaction` interactivo. El
+rastro (R21) congela el nombre del actor, y para eso lee `usuario`, que **es de negocio**. Así que la
+premisa «ninguna operación toca una tabla de negocio» era falsa.
+
+Decisión (humano, 2026-11-04): el borde `lib/actions/vehiculos-plataforma.ts` corre el servicio
+dentro de `comoPlataforma("SL-42", MOTIVO, fn)`, igual que `lib/actions/geografia-plataforma.ts`
+(SL-20). Así la lectura del nombre del actor no falla. El archivo entra en `EXCEPCIONES_DE_PLATAFORMA`
+(`lib/db/excepciones-aislamiento.ts`) con la ficha `SL-42` y su motivo: «gestión del catálogo de
+vehículos por el superadmin, que no tiene empresa; congelar el nombre del actor en el rastro (R21)».
+La guardia `plataforma-solo-en-lista` lo vigila. R7 se prueba en integración contra la base real con
+un superadmin sin empresa.
 
 ## 4. Contratos
 
@@ -203,10 +211,10 @@ Ninguna librería nueva.
   `NOT NULL` con FK a `pais`, y sus índices y su lectura van por país. Hacerla nulable rompe esa
   invariante para dar sitio a una entidad que no es de ningún país. `plan_rastro` ya fijó el
   precedente de un rastro propio para un catálogo de plataforma sin país.
-- **A3. Envolver el borde en `comoPlataforma`, como `geografia-plataforma.ts`.** Descartada: allí
-  hace falta porque el conteo lee `orden`, que es de negocio. Aquí, con el borrado retirado (P1),
-  ninguna operación toca negocio, y añadir sin necesidad una excepción a `EXCEPCIONES_DE_PLATAFORMA`
-  haría crecer una lista que solo debe bajar.
+- **A3. Correr el borde sin `comoPlataforma`, sin entrar en `EXCEPCIONES_DE_PLATAFORMA`.** Era la
+  propuesta original, para no hacer crecer una lista que solo debe bajar. Descartada el 2026-11-04
+  (humano): el rastro lee el nombre del actor en `usuario`, que es de negocio, y sin contexto la
+  extensión lo rechaza con `EmpresaNoResuelta` (§3).
 - **A4. Mantener las writes en `lib/actions/vehiculos.ts` cambiando su rol.** Descartada: mezcla en
   un archivo una lectura de empresa y escrituras de plataforma, y el reparto por módulo
   (`MODULO_POR_ACTION`) y las guardias de plataforma trabajan por archivo.

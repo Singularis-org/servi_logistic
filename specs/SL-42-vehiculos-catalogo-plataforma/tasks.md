@@ -41,12 +41,20 @@
   R17 (el `maestro` sigue listando) y R20 (no se llama a `historial_accion`).
 - [ ] T2.4 `lib/actions/vehiculos-plataforma.ts` (design §4.3) y en `lib/modulos/reparto.ts` la action
   como `nucleo`. `lib/actions/vehiculos.ts` se queda solo con `listarVehiculos` (design §4.4).
-  Dep.: T2.3.
+  El servicio corre dentro de `comoPlataforma("SL-42", …)`, y el archivo entra en
+  `EXCEPCIONES_DE_PLATAFORMA` de `lib/db/excepciones-aislamiento.ts` con su ficha y su motivo
+  (design §3, enmienda 2026-11-04). Dep.: T2.3.
+  **Misma tanda y mismo commit que T4.2** (decisión 2026-11-04): quitar las writes de
+  `lib/actions/vehiculos.ts` rompe el typecheck hasta que se borra `app/(app)/configuracion/vehiculos/`.
+  Sin stubs.
   **Hecho:** `tests/unit/actions/vehiculos-plataforma-action.test.ts` cubre R9 (`validation_error`
   por campo), R10 (único en carrera → `conflict`), R11 (otro fallo, p. ej. `permission denied` → `error`
   con log sin nombre ni mensaje de la base; nunca `conflict` ni `in_use`), R12 y R14 (`maestro` →
   `forbidden`, sin sesión → `unauthenticated`, en las cuatro actions).
   `tests/integration/actions/vehiculos-action.test.ts` se ajusta: solo prueba `listarVehiculos`.
+  `tests/unit/guards/plataforma-solo-en-lista.guardia.test.ts` verde con la entrada nueva, y
+  `tests/integration/db/vehiculos-plataforma.test.ts` cubre R7 y R21 por el borde: el superadmin sin
+  empresa escribe el cambio y su rastro, con el nombre del actor congelado, sin `EmpresaNoResuelta`.
 - [ ] T2.5 [P] **(P1)** Retirar `vehiculo_borrado` de los escritores vivos (`lib/types/historial-accion.ts`)
   y ajustar las guardias que lo enumeran; el valor del enum se queda (design §2.3). Dep.: T2.2.
   **Hecho:** `historial-accion-escrituras-cubiertas`, `historial-accion-punto-unico` y
@@ -77,6 +85,7 @@
   empresa sin llamar a la action), R2 (lista activos e inactivos; un fallo de carga no se pinta como
   vacío) y R13 (un mensaje por desenlace; «ya existe» solo con `conflict`).
 - [ ] T4.2 Borrar `app/(app)/configuracion/vehiculos/` y su entrada en `MODULO_POR_RUTA`. Dep.: T4.1.
+  **Misma tanda y mismo commit que T2.4** (decisión 2026-11-04), sin stubs.
   **Hecho:** R16 en `vehiculos-plataforma-page.test.tsx` (la ruta no existe en `app/`).
 - [ ] T4.3 [P] Menú: ítem «Vehículos» de plataforma, `IconKey` `"car"` en `Sidebar.tsx`, sale el
   subítem de «Configuración». Dep.: ninguna.
@@ -116,6 +125,7 @@ Datos:
 - `db/migrations/20261103120100_vehiculo_rastro/migration.sql`
 - `db/migrations/20261103120100_vehiculo_rastro/down.sql`
 - `lib/db/modelos-de-negocio.ts`
+- `lib/db/excepciones-aislamiento.ts`
 
 Backend:
 - `lib/types/vehiculos.ts`
@@ -152,6 +162,7 @@ Tests:
 - `tests/unit/components/usuario-form.test.tsx`
 - `tests/unit/auth/menu-visibility.test.ts`
 - `tests/unit/guards/superadmin-fuera-de-empresa.guardia.test.ts`
+- `tests/unit/guards/plataforma-solo-en-lista.guardia.test.ts`
 - `tests/unit/guards/historial-accion-escrituras-cubiertas.guardia.test.ts`
 - `tests/unit/guards/historial-accion-punto-unico.guardia.test.ts`
 - `tests/unit/historial-accion/catalogo-y-choke-point.test.ts`

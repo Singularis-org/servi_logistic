@@ -124,6 +124,8 @@ cualquier otro.
 | 2026-11-03 | P1: ¿se retira el borrado? | Sí. La acción de borrar se retira y desactivar la sustituye (humano). | R8 |
 | 2026-11-03 | P2: ¿las acciones de vehículos dejan rastro de plataforma? | Sí, en una tabla propia `vehiculo_rastro`, calcada de `plan_rastro` (SL-24), sin pantalla de lectura (humano). | R21, R22 |
 | 2026-11-03 | P3: ¿qué hace un vehículo inactivo en las empresas? | Deja de ofrecerse para elecciones nuevas, y quien ya lo tiene lo conserva. La asignación de órdenes no cambia (humano). | R17, R18 |
+| 2026-11-04 | ¿Cómo se lee el nombre del actor para el rastro, si `usuario` es de negocio y el superadmin no tiene empresa? | El borde `lib/actions/vehiculos-plataforma.ts` corre dentro de `comoPlataforma`, como `geografia-plataforma.ts` (SL-20), y entra en `EXCEPCIONES_DE_PLATAFORMA` con ficha y motivo. Corrige la premisa de design §3/A3 (humano). | R7, R21 |
+| 2026-11-04 | ¿Cómo se ordenan T2.4 y T4.2, si quitar las writes del `maestro` rompe el typecheck hasta borrar `app/(app)/configuracion/vehiculos/`? | Van en la misma tanda y en el mismo commit, sin stubs (humano). | R14, R16 |
 
 ## Preguntas abiertas
 
