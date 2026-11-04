@@ -33,7 +33,7 @@
   **Hecho:** `tests/integration/db/vehiculos-plataforma.test.ts` cubre R6 (desactivar no toca
   `usuario.vehiculo_id` ni `tarifa_zona_mensajero`), R7 (superadmin sin empresa contra la base real)
   y R21 (fila de rastro solo si escribe; ninguna en el no-op).
-- [ ] T2.3 `IVehiculoService` + `VehiculoService`: `GESTION_ROLES = ROLES_PLATAFORMA`, `listarTodos`,
+- [x] T2.3 `IVehiculoService` + `VehiculoService`: `GESTION_ROLES = ROLES_PLATAFORMA`, `listarTodos`,
   `renombrar`, `cambiarActivacion`; `listar` sigue con `READ_ROLES`. **(P1)** quitar `borrar`.
   Dep.: T2.2.
   **Hecho:** `tests/unit/services/vehiculo-service.test.ts` cubre R4, R5 (incluido el propio nombre),
