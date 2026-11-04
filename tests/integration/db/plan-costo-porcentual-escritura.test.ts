@@ -1,8 +1,15 @@
+import { randomUUID } from "node:crypto";
+
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
+import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { PlanesService } from "@/lib/services/PlanesService";
+import type { CostoPorOrdenPorcentual, CrearPlanInput } from "@/lib/types/planes";
+import { fijarEmpresa } from "@/tests/fabricas/organizaciones";
+
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
-import { capturar, crearPlan, revertida, sqlstateDe } from "./_fixtures/planes";
+import { capturar, crearPlan, planesEnTx, revertida, sqlstateDe } from "./_fixtures/planes";
 
 // SLT-83 (design §2.1; R1, R2) — el costo por orden porcentual del plan contra Postgres.
 //
@@ -11,7 +18,10 @@ import { capturar, crearPlan, revertida, sqlstateDe } from "./_fixtures/planes";
 // formas válidas (vacío, fijo, porcentual con y sin mínimo). Cada caso corre en un SAVEPOINT dentro de
 // una transacción que se revierte.
 //
-// T8 completa este archivo con la escritura por `PlanesService`/`PlanesRepository` y el rastro (R4).
+// T8 (design §4.2; R1, R2, R4): la escritura por `PlanesService` y `PlanesRepository` REALES. Crear,
+// editar de inmediato y programar guardan el modo con la versión; `plan_rastro` deja antes y después en
+// forma canónica; una edición sin cambio real no escribe; aplicar el programado deja las columnas; y lo
+// que el esquema rechaza no llega a la base.
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
@@ -148,5 +158,212 @@ describeSiHayBase("SLT-83 R1, R2 — los CHECK del costo por orden porcentual", 
     expect(r.solo).toEqual({ sqlstate: "23514", check: "plan_costo_por_orden_minimo_check" });
     expect(r.conFijo).toEqual({ sqlstate: "23514", check: "plan_costo_por_orden_minimo_check" });
     expect(r.despues).toEqual({ fijo: null, pct: null, minimo: null });
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* T8 — la escritura por el servicio y el rastro (R1, R2, R4)                  */
+/* -------------------------------------------------------------------------- */
+
+const SUPERADMIN: Actor = { usuarioId: randomUUID(), rol: "superadmin", organizacionId: null };
+/** 2026-10-31 12:00 UTC = 06:00 en la plataforma. */
+const AHORA = new Date("2026-10-31T12:00:00.000Z");
+/** 2026-12-01 a las 00:00 de la plataforma (−06:00), más un minuto: ya rige. */
+const YA_RIGE = new Date("2026-12-01T06:01:00.000Z");
+
+type Modo = { costoPorOrden: string | null; costoPorOrdenPorcentual: CostoPorOrdenPorcentual | null };
+
+function entrada(modo: Modo): CrearPlanInput {
+  return {
+    nombre: `slt83 ${randomUUID().slice(0, 8)}`,
+    visibilidad: "publico",
+    organizacionId: null,
+    topes: { ordenesPorCiclo: 100, porRol: {}, apiKeys: null },
+    modulos: [],
+    precio: { tipo: "monto", mensual: "50000", anual: null },
+    ...modo,
+  };
+}
+
+async function preparar(tx: TxDeTest, modo: Modo) {
+  await fijarEmpresa(tx, "");
+  const servicio = new PlanesService(planesEnTx(tx), () => AHORA);
+  const e = entrada(modo);
+  const creado = await servicio.crear(SUPERADMIN, e);
+  if (creado.estado !== "ok") throw new Error(`no se creó el plan: ${JSON.stringify(creado)}`);
+  const { visibilidad: _v, organizacionId: _o, ...version } = e;
+  void _v;
+  void _o;
+  const editar = (cambio: Partial<Modo>, vigenteDesde: string | null = null) =>
+    servicio.editar(SUPERADMIN, { planId: creado.planId, ...version, ...cambio, vigenteDesde });
+  return { planId: creado.planId, servicio, editar };
+}
+
+/** Las dos claves del rastro que mira esta ficha, en el orden en que se escribieron. */
+async function rastro(tx: TxDeTest, planId: string) {
+  const filas = await tx.planRastro.findMany({
+    where: { planId },
+    select: { accion: true, cambios: true },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+  });
+  return filas.map((f) => {
+    const c = f.cambios as Record<string, unknown>;
+    return { accion: f.accion, costoPorOrden: c.costoPorOrden, costoPorOrdenPorcentual: c.costoPorOrdenPorcentual };
+  });
+}
+
+const PORCENTUAL: Modo = { costoPorOrden: null, costoPorOrdenPorcentual: { porcentaje: "2", minimo: "500" } };
+
+describeSiHayBase("SLT-83 R1, R2, R4 — el modo porcentual se guarda con la versión del plan", () => {
+  beforeAll(() => {
+    base = crearPrismaDeTest();
+  });
+
+  afterAll(async () => {
+    await base?.$disconnect();
+  });
+
+  it("R4: crear un plan porcentual lo guarda en las columnas, el DTO y el rastro de alta, con dos decimales", async () => {
+    const r = await revertida(base, async (tx) => {
+      const p = await preparar(tx, PORCENTUAL);
+      const sinMinimo = await preparar(tx, {
+        costoPorOrden: null,
+        costoPorOrdenPorcentual: { porcentaje: "2.35", minimo: null },
+      });
+      return {
+        columnas: await leer(tx, p.planId),
+        dto: (await planesEnTx(tx).plan(p.planId))?.costoPorOrdenPorcentual,
+        rastro: await rastro(tx, p.planId),
+        columnasSinMinimo: await leer(tx, sinMinimo.planId),
+      };
+    });
+    expect(r.columnas).toEqual({ fijo: null, pct: "2.00", minimo: "500.00" });
+    expect(r.dto).toEqual({ porcentaje: "2.00", minimo: "500.00" });
+    expect(r.rastro).toEqual([
+      {
+        accion: "creado",
+        costoPorOrden: { antes: null, despues: null },
+        costoPorOrdenPorcentual: { antes: null, despues: { porcentaje: "2.00", minimo: "500.00" } },
+      },
+    ]);
+    expect(r.columnasSinMinimo).toEqual({ fijo: null, pct: "2.35", minimo: null });
+  });
+
+  it("R4: editar de inmediato pasa de fijo a porcentual y de vuelta, con antes y después en el rastro", async () => {
+    const r = await revertida(base, async (tx) => {
+      const p = await preparar(tx, { costoPorOrden: "100", costoPorOrdenPorcentual: null });
+      const aPorcentual = await p.editar(PORCENTUAL);
+      const enPorcentual = await leer(tx, p.planId);
+      const otroPorcentaje = await p.editar({ costoPorOrden: null, costoPorOrdenPorcentual: { porcentaje: "5", minimo: null } });
+      const enOtro = await leer(tx, p.planId);
+      const aFijo = await p.editar({ costoPorOrden: "80", costoPorOrdenPorcentual: null });
+      return {
+        aPorcentual,
+        enPorcentual,
+        otroPorcentaje,
+        enOtro,
+        aFijo,
+        final: await leer(tx, p.planId),
+        rastro: await rastro(tx, p.planId),
+      };
+    });
+    expect(r.aPorcentual).toMatchObject({ estado: "ok", cambio: true });
+    expect(r.enPorcentual).toEqual({ fijo: null, pct: "2.00", minimo: "500.00" });
+    expect(r.otroPorcentaje).toMatchObject({ estado: "ok", cambio: true });
+    expect(r.enOtro).toEqual({ fijo: null, pct: "5.00", minimo: null });
+    expect(r.aFijo).toMatchObject({ estado: "ok", cambio: true });
+    expect(r.final).toEqual({ fijo: "80.00", pct: null, minimo: null });
+    expect(r.rastro.slice(1)).toEqual([
+      {
+        accion: "editado",
+        costoPorOrden: { antes: "100.00", despues: null },
+        costoPorOrdenPorcentual: { antes: null, despues: { porcentaje: "2.00", minimo: "500.00" } },
+      },
+      {
+        accion: "editado",
+        costoPorOrden: undefined,
+        costoPorOrdenPorcentual: {
+          antes: { porcentaje: "2.00", minimo: "500.00" },
+          despues: { porcentaje: "5.00", minimo: null },
+        },
+      },
+      {
+        accion: "editado",
+        costoPorOrden: { antes: null, despues: "80.00" },
+        costoPorOrdenPorcentual: { antes: { porcentaje: "5.00", minimo: null }, despues: null },
+      },
+    ]);
+  });
+
+  it("R4: una edición sin cambio real («2» = «2.00», «500» = «500.00») no escribe", async () => {
+    const r = await revertida(base, async (tx) => {
+      const p = await preparar(tx, {
+        costoPorOrden: null,
+        costoPorOrdenPorcentual: { porcentaje: "2.00", minimo: "500.00" },
+      });
+      const editado = await p.editar(PORCENTUAL);
+      return { editado, rastro: await rastro(tx, p.planId) };
+    });
+    expect(r.editado).toMatchObject({ estado: "ok", cambio: false });
+    expect(r.rastro.map((f) => f.accion)).toEqual(["creado"]);
+  });
+
+  it("R4: programarlo no toca las columnas; aplicar el programado las deja con el modo nuevo", async () => {
+    const r = await revertida(base, async (tx) => {
+      const p = await preparar(tx, { costoPorOrden: "100", costoPorOrdenPorcentual: null });
+      const programado = await p.editar(PORCENTUAL, "2026-12-01");
+      const enEspera = await leer(tx, p.planId);
+      const pendiente = await tx.planCambioProgramado.findUniqueOrThrow({
+        where: { planId: p.planId },
+        select: { id: true, version: true },
+      });
+      const aplicado = await planesEnTx(tx).aplicarCambioProgramado(
+        { planId: p.planId, cambioId: pendiente.id },
+        YA_RIGE,
+      );
+      return {
+        programado,
+        enEspera,
+        version: pendiente.version,
+        aplicado,
+        final: await leer(tx, p.planId),
+        rastro: await rastro(tx, p.planId),
+      };
+    });
+    expect(r.programado).toMatchObject({ estado: "ok", cambio: true, vigenteDesde: "2026-12-01" });
+    expect(r.enEspera).toEqual({ fijo: "100.00", pct: null, minimo: null });
+    expect(r.version).toMatchObject({ costoPorOrden: null, costoPorOrdenPorcentual: { porcentaje: "2", minimo: "500" } });
+    expect(r.aplicado).toMatchObject({ estado: "aplicado" });
+    expect(r.final).toEqual({ fijo: null, pct: "2.00", minimo: "500.00" });
+    const aplicada = r.rastro.find((f) => f.accion === "cambio_aplicado");
+    expect(aplicada?.costoPorOrden).toEqual({ antes: "100.00", despues: null });
+    expect(aplicada?.costoPorOrdenPorcentual).toEqual({ antes: null, despues: { porcentaje: "2.00", minimo: "500.00" } });
+  });
+
+  it("R1, R2: fijo y porcentual a la vez, o un porcentaje o mínimo fuera de rango, no escriben nada", async () => {
+    const r = await revertida(base, async (tx) => {
+      const p = await preparar(tx, { costoPorOrden: "100", costoPorOrdenPorcentual: null });
+      const ambos = await p.editar({ costoPorOrden: "100", costoPorOrdenPorcentual: { porcentaje: "2", minimo: null } });
+      const pctMalo = await p.editar({ costoPorOrden: null, costoPorOrdenPorcentual: { porcentaje: "100.01", minimo: null } });
+      const minimoMalo = await p.editar({ costoPorOrden: null, costoPorOrdenPorcentual: { porcentaje: "2", minimo: "-1" } });
+      const conAmbos = entrada({ costoPorOrden: "100", costoPorOrdenPorcentual: { porcentaje: "2", minimo: null } });
+      const creaAmbos = await p.servicio.crear(SUPERADMIN, conAmbos);
+      const planes = await tx.plan.count({ where: { nombre: conAmbos.nombre } });
+      return { ambos, pctMalo, minimoMalo, creaAmbos, planes, final: await leer(tx, p.planId), rastro: await rastro(tx, p.planId) };
+    });
+    expect(r.ambos).toMatchObject({ estado: "validation_error", fieldErrors: { costoPorOrdenPorcentual: expect.any(Array) } });
+    expect(r.pctMalo).toMatchObject({
+      estado: "validation_error",
+      fieldErrors: { "costoPorOrdenPorcentual.porcentaje": expect.any(Array) },
+    });
+    expect(r.minimoMalo).toMatchObject({
+      estado: "validation_error",
+      fieldErrors: { "costoPorOrdenPorcentual.minimo": expect.any(Array) },
+    });
+    expect(r.creaAmbos).toMatchObject({ estado: "validation_error" });
+    // El alta rechazada no dejó ningún plan.
+    expect(r.planes).toBe(0);
+    expect(r.final).toEqual({ fijo: "100.00", pct: null, minimo: null });
+    expect(r.rastro.map((f) => f.accion)).toEqual(["creado"]);
   });
 });

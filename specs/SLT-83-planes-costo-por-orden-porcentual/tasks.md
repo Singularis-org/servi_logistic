@@ -55,7 +55,7 @@
   `tests/integration/db/empresas-plataforma-cobro-porcentual.test.ts` (R22) en verde;
   `tests/unit/planes/costeo.test.ts` y `plan-de-la-empresa-costeo.test.ts` en verde solo con cambios de
   tipo (R26).
-- [ ] **T8. Escritura y rastro** (design §4.2): `PlanesRepository.crear`/`aplicarVersion`/`aDTO`,
+- [x] **T8. Escritura y rastro** (design §4.2): `PlanesRepository.crear`/`aplicarVersion`/`aDTO`,
   `diferenciasDelPlan`, `lineasDeCambioDelPlan`, `tieneCostoConcreto`. Depende de T6. `[P]` con T7.
   *Hecho:* `tests/unit/planes/rastro-costo-porcentual.test.ts` (R4),
   `tests/unit/planes/costo-concreto-porcentual.test.ts` (R5),

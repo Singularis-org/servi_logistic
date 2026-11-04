@@ -11,7 +11,11 @@ const MENSUAL: PrecioPlan = { tipo: "monto", mensual: "50000.00", anual: null };
 const DEL_PLAN = { monto: "100.00", fuente: "plan" } as const;
 
 /** SLT-66 R28: `costeoDelCiclo` recibe el plan (base y costo por orden), no solo la base. */
-const conCosto = (precio: PrecioPlan, costoPorOrden: string | null = "100.00") => ({ precio, costoPorOrden });
+const conCosto = (precio: PrecioPlan, costoPorOrden: string | null = "100.00") => ({
+  precio,
+  costoPorOrden,
+  costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
+});
 
 describe("SLT-66 — costeoDelCiclo: total con base «monto» (R19)", () => {
   it("R19: base + órdenes × costo = total, con el costo y la fuente vigentes", () => {
@@ -137,19 +141,19 @@ describe("SLT-66 — tieneCostoConcreto: la forma del plan, no el importe (R28)"
   ];
 
   it.each(BASES)("R28: base $caso con costo por orden → concreto solo si la base es monto", ({ precio, monto }) => {
-    expect(tieneCostoConcreto({ precio, costoPorOrden: "100.00" })).toBe(monto);
+    expect(tieneCostoConcreto({ precio, costoPorOrden: "100.00", costoPorOrdenPorcentual: null })).toBe(monto);
   });
 
   it.each(BASES)("R28: base $caso sin costo por orden → nunca concreto", ({ precio }) => {
-    expect(tieneCostoConcreto({ precio, costoPorOrden: null })).toBe(false);
+    expect(tieneCostoConcreto({ precio, costoPorOrden: null, costoPorOrdenPorcentual: null })).toBe(false);
   });
 
   it("R28: costo por orden 0.00 cuenta como concreto", () => {
-    expect(tieneCostoConcreto({ precio: { tipo: "monto", mensual: "50000.00", anual: null }, costoPorOrden: "0.00" })).toBe(true);
+    expect(tieneCostoConcreto({ precio: { tipo: "monto", mensual: "50000.00", anual: null }, costoPorOrden: "0.00", costoPorOrdenPorcentual: null })).toBe(true);
   });
 
   it("R28: base 0.00 cuenta como concreta", () => {
-    expect(tieneCostoConcreto({ precio: { tipo: "monto", mensual: "0.00", anual: null }, costoPorOrden: "100.00" })).toBe(true);
-    expect(tieneCostoConcreto({ precio: { tipo: "monto", mensual: "0.00", anual: null }, costoPorOrden: "0.00" })).toBe(true);
+    expect(tieneCostoConcreto({ precio: { tipo: "monto", mensual: "0.00", anual: null }, costoPorOrden: "100.00", costoPorOrdenPorcentual: null })).toBe(true);
+    expect(tieneCostoConcreto({ precio: { tipo: "monto", mensual: "0.00", anual: null }, costoPorOrden: "0.00", costoPorOrdenPorcentual: null })).toBe(true);
   });
 });

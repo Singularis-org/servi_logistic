@@ -125,6 +125,7 @@ describeSiHayBase("SL-24 — el rastro de los planes (R29, R40, R43)", () => {
           modulos: { antes: null, despues: ["ranking"] },
           precio: { antes: null, despues: { tipo: "monto", mensual: "25000.00", anual: null } },
           costoPorOrden: { antes: null, despues: null }, // SLT-66 R8: campo obligatorio nuevo; el alta lo registra como los demás.
+          costoPorOrdenPorcentual: { antes: null, despues: null }, // SLT-83: campo nuevo del rastro; el alta lo registra como los demás.
           archivado: { antes: null, despues: false },
         },
       },

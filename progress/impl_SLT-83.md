@@ -306,3 +306,55 @@ VersionPlan o entrada de crear/editar) o `modo: "fijo"` (costeo); ninguna aserci
 - `pnpm exec eslint` de los 46 archivos tocados → 0 problemas.
 
 **Veredicto T6:** el borde admite el modo porcentual con un solo modo a la vez, y lo existente compila y pasa sin cambios de aserción.
+
+## T8
+
+(Hecha antes que T7: T7 necesita el `tieneCostoConcreto` de R5 para el aviso del costeo.)
+
+**Archivos.**
+- `lib/planes/costo-concreto.ts`: `PlanParaCosto` gana `costoPorOrdenPorcentual`; `tieneCostoConcreto` =
+  base «monto» y (fijo o porcentual) (R5).
+- `lib/planes/rastro.ts`: campo `costoPorOrdenPorcentual` en `CampoDelPlan`/`CAMPOS` y en `planCanonico`
+  (`porcentaje` y `minimo` con `importeCanonico`; `"2"` = `"2.00"`).
+- `lib/planes/mensajes.ts`: `CambioDelPlanParaCorreo.costoPorOrdenPorcentual`; `textoDelCostoPorOrdenPorcentual`
+  (design §4.4, la usa la línea; su test de textos es T10); línea `Costo por orden porcentual: A → B` en
+  `lineasDeCambioDelPlan`; constante `SIN_COSTO_PORCENTUAL`.
+- `lib/repositories/PlanesRepository.ts`: `columnasDelPorcentual`; `crearEnTx` y `aplicarVersion` escriben
+  `costoPorOrdenPct`/`costoPorOrdenMinimo` (`null` las vacía al pasar a fijo o vacío). `aDTO` ya lo hizo T6.
+- Creados `tests/unit/planes/rastro-costo-porcentual.test.ts`, `tests/unit/planes/costo-concreto-porcentual.test.ts`;
+  completado `tests/integration/db/plan-costo-porcentual-escritura.test.ts` (5 casos nuevos).
+- Tests existentes tocados por tipo: `tests/unit/planes/costeo.test.ts` (los `tieneCostoConcreto({...})` y
+  `conCosto` ganan `costoPorOrdenPorcentual: null`), `tests/components/PlanVistaCosteo.test.tsx` (dos
+  `lineasDeCosto({...})`), y el rastro de alta exacto de `tests/unit/planes/rastro.test.ts` y
+  `tests/integration/db/planes-historial.test.ts`, que gana `costoPorOrdenPorcentual: { antes: null, despues:
+  null }` (el mismo cambio que SLT-66 hizo con `costoPorOrden`).
+
+**ABIERTO (texto no fijado por el spec).** La línea `Costo por orden porcentual: A → B` necesita un texto
+para el lado vacío (el plan es fijo o vacío antes o después). Puse `SIN_COSTO_PORCENTUAL = "sin costo
+porcentual"`, provisional, en una sola constante. Además, al pasar de fijo a porcentual la línea del fijo
+dice `100.00 por orden → se aplica el valor global` (texto de SLT-66 para `costoPorOrden: null`), que no es
+exacto con un plan porcentual. Los dos los decide el humano; no cambio el de SLT-66.
+
+**R → test.**
+- R4 → `rastro-costo-porcentual.test.ts` (canónico sin cambios, cambio de porcentaje, quitar mínimo, fijo →
+  porcentual, alta; líneas de «qué cambia» en los tres sentidos y rastro viejo) y
+  `plan-costo-porcentual-escritura.test.ts`: «R4: crear un plan porcentual…», «R4: editar de inmediato pasa de
+  fijo a porcentual y de vuelta…», «R4: una edición sin cambio real…», «R4: programarlo no toca las columnas;
+  aplicar el programado…».
+- R1, R2 → mismo archivo: «R1, R2: fijo y porcentual a la vez, o un porcentaje o mínimo fuera de rango, no
+  escriben nada» (más los `CHECK` de T1).
+- R5 → `costo-concreto-porcentual.test.ts` (con y sin mínimo, mínimo 0.00, base sin precio, base 0.00, sin
+  ningún modo, fijo).
+
+**Salida.**
+- `pnpm exec vitest run tests/integration/db/plan-costo-porcentual-escritura.test.ts` → `Test Files 1 passed (1) ·
+  Tests 16 passed (16)`.
+- `tests/unit/planes/` (incl. los dos nuevos) + `planes-historial`, `planes-costeo-escritura`,
+  `planes-cambio-programado`, `planes-cambio-correos`, `planes-edicion-en-uso`, `planes-crear-custom-asigna`,
+  `cobro-plataforma-plan` → `Test Files 15 passed (15) · Tests 186 passed (186)`.
+- `tests/unit/planes/`, `plantilla-cambio-plan`, `mi-plan-service`, `planes-service*`, `PlanVistaCosteo`,
+  `PlanEmpresa`, `PlanDetalle` → 20 archivos; tras corregir el rastro de alta de `rastro.test.ts`, en verde
+  (`Tests 485`).
+- `pnpm run typecheck` → sin errores. `eslint` de los 11 archivos tocados → 0 problemas.
+
+**Veredicto T8:** el modo porcentual se escribe, se rastrea y cuenta como costo concreto; queda abierto un texto.

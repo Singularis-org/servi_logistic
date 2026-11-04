@@ -2,7 +2,8 @@ import type { ModuloApagable, RolValue } from "@prisma/client";
 
 import { ROL_LABELS } from "@/lib/auth/rol-label";
 import { nombreDelModulo } from "@/lib/modulos/catalogo";
-import { ROLES_CON_TOPE, type PrecioPlan, type RolConTope } from "@/lib/types/planes";
+import { importeCanonico } from "@/lib/planes/rastro";
+import { ROLES_CON_TOPE, type CostoPorOrdenPorcentual, type PrecioPlan, type RolConTope } from "@/lib/types/planes";
 
 // SL-24 (design §6.4, §6.6) — los textos del tope del plan. Un solo sitio para las tres vías (carga
 // de órdenes, usuarios y API keys) y para el superadmin. El rol sale de `ROL_LABELS`, la etiqueta que
@@ -159,6 +160,8 @@ export interface CambioDelPlanParaCorreo {
   modulos?: { antes: readonly ModuloApagable[]; despues: readonly ModuloApagable[] };
   precio?: { antes: PrecioPlan; despues: PrecioPlan };
   costoPorOrden?: { antes: string | null; despues: string | null };
+  /** SLT-83 (R4): un rastro anterior a la ficha no la trae y no pinta esa línea. */
+  costoPorOrdenPorcentual?: { antes: CostoPorOrdenPorcentual | null; despues: CostoPorOrdenPorcentual | null };
 }
 
 type TopesDelPlanParaCorreo = {
@@ -188,6 +191,26 @@ export function textoDelPrecio(p: PrecioPlan): string {
 /** SLT-66 (design §4.4): el costo por orden del plan, sin símbolo de moneda; vacío = el global (R12). */
 export function textoDelCostoPorOrden(c: string | null): string {
   return c === null ? "se aplica el valor global" : `${c} por orden`;
+}
+
+/**
+ * SLT-83 (design §4.4; R21): el costo por orden de un plan porcentual, sin símbolo de moneda y con dos
+ * decimales aunque llegue «2» de una versión aún sin guardar.
+ */
+export function textoDelCostoPorOrdenPorcentual(c: CostoPorOrdenPorcentual): string {
+  const porcentaje = `${importeCanonico(c.porcentaje)} % del valor del paquete`;
+  return c.minimo === null ? porcentaje : `${porcentaje}, mínimo ${importeCanonico(c.minimo)}`;
+}
+
+/**
+ * SLT-83 (R4): el lado vacío de la línea «Costo por orden porcentual» (el plan es fijo o vacío).
+ * ABIERTO: el spec no fija este texto; es provisional hasta que el humano lo apruebe
+ * (`progress/impl_SLT-83.md > T8`).
+ */
+export const SIN_COSTO_PORCENTUAL = "sin costo porcentual";
+
+function textoDelPorcentualOVacio(c: CostoPorOrdenPorcentual | null): string {
+  return c === null ? SIN_COSTO_PORCENTUAL : textoDelCostoPorOrdenPorcentual(c);
 }
 
 /**
@@ -222,6 +245,10 @@ export function lineasDeCambioDelPlan(c: CambioDelPlanParaCorreo): string[] {
   if (c.costoPorOrden) {
     const { antes, despues } = c.costoPorOrden;
     lineas.push(`Costo por orden: ${textoDelCostoPorOrden(antes)} → ${textoDelCostoPorOrden(despues)}`);
+  }
+  if (c.costoPorOrdenPorcentual) {
+    const { antes, despues } = c.costoPorOrdenPorcentual;
+    lineas.push(`Costo por orden porcentual: ${textoDelPorcentualOVacio(antes)} → ${textoDelPorcentualOVacio(despues)}`);
   }
   return lineas;
 }

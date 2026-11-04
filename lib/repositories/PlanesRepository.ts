@@ -39,6 +39,7 @@ import {
   ACCIONES_DE_ASIGNACION,
   ROLES_CON_TOPE,
   type AccionDeAsignacion,
+  type CostoPorOrdenPorcentual,
   type CrearPlanInput,
   type PlanDTO,
   type PrecioPlan,
@@ -142,6 +143,11 @@ function columnasDelPrecio(p: PrecioPlan) {
     precioAnual: p.anual?.tipo === "fijo" ? p.anual.monto : null,
     descuentoAnualPct: p.anual?.tipo === "descuento" ? p.anual.porcentaje : null,
   };
+}
+
+/** SLT-83 (R1, R4): las dos columnas del modo porcentual; `null` las vacía (el plan pasa a fijo o vacío). */
+function columnasDelPorcentual(c: CostoPorOrdenPorcentual | null) {
+  return { costoPorOrdenPct: c?.porcentaje ?? null, costoPorOrdenMinimo: c?.minimo ?? null };
 }
 
 function filasDeTopes(t: TopesPlan): { rol: RolValue; maximo: number }[] {
@@ -348,6 +354,7 @@ async function aplicarVersion(tx: Tx, antes: PlanDTO, version: VersionPlan, acto
       topeApiKeys: version.topes.apiKeys,
       ...columnasDelPrecio(version.precio),
       costoPorOrden: version.costoPorOrden,
+      ...columnasDelPorcentual(version.costoPorOrdenPorcentual),
     },
   });
   await tx.planTopeRol.deleteMany({ where: { planId: antes.id } });
@@ -532,6 +539,7 @@ async function crearEnTx(tx: Tx, input: CrearPlanInput, actorUsuarioId: string):
       topeApiKeys: input.topes.apiKeys,
       ...columnasDelPrecio(input.precio),
       costoPorOrden: input.costoPorOrden,
+      ...columnasDelPorcentual(input.costoPorOrdenPorcentual),
       topesPorRol: { create: filasDeTopes(input.topes) },
       modulos: { create: input.modulos.map((modulo) => ({ modulo })) },
     },

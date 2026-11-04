@@ -68,7 +68,7 @@ describe("SLT-66 R24, R10 — lineasDeCosto", () => {
   });
 
   it("R24: sin costo por orden, «se aplica el valor global»; vale con cualquier forma de la base", () => {
-    expect(lineasDeCosto({ precio: { tipo: "sin_precio" }, costoPorOrden: null })).toEqual([
+    expect(lineasDeCosto({ precio: { tipo: "sin_precio" }, costoPorOrden: null, costoPorOrdenPorcentual: null })).toEqual([
       "Costo base: sin precio",
       "Costo por orden: se aplica el valor global",
     ]);
@@ -77,7 +77,7 @@ describe("SLT-66 R24, R10 — lineasDeCosto", () => {
   it("R10: con descuento o anual fijo, el anual no cambia el costo por orden", () => {
     expect(lineasDeCosto(CON_ANUAL).at(-1)).toBe("El pago anual no cambia el costo por orden.");
     expect(
-      lineasDeCosto({ precio: { tipo: "monto", mensual: "1.00", anual: { tipo: "fijo", monto: "10.00" } }, costoPorOrden: "0.00" }),
+      lineasDeCosto({ precio: { tipo: "monto", mensual: "1.00", anual: { tipo: "fijo", monto: "10.00" } }, costoPorOrden: "0.00", costoPorOrdenPorcentual: null }),
     ).toContain("El pago anual no cambia el costo por orden.");
     // Sin anual, no hay nota.
     expect(lineasDeCosto(CONCRETO)).toHaveLength(2);
