@@ -570,6 +570,35 @@ describeSiHayBase("SLT-64 — el ciclo de vida lee la gestion final (Postgres re
       });
     });
 
+    // `recortarFiltroConteoEntregas` copia el alcance dentro del filtro, asi que por la puerta real la
+    // faceta tapa a `condicionDeAlcance`: una mutacion que la quita paso en verde los dos casos de
+    // arriba. Se vacia el filtro para medir la condicion sola, que es la que sostiene la frontera
+    // si el recorte del filtro falla.
+    it("R9: `condicionDeAlcance` recorta por si sola, sin la faceta que el borde escribe en el filtro", async () => {
+      await caso(async (f) => {
+        await f.testigo();
+        const otraTienda = await f.orden("otra-tienda", D, { tiendaId: f.base.tienda2 });
+        await f.gestion(otraTienda, "entregado", "12:00");
+        const otraZona = await f.orden("otra-zona", D, { zonaId: f.base.zonaB, tiendaId: f.base.tienda2 });
+        await f.gestion(otraZona, "entregado", "12:00");
+        await afirmarFixture(f.tx, otraTienda, { gestiones: 1, vigentes: 1 });
+        await afirmarFixture(f.tx, otraZona, { gestiones: 1, vigentes: 1 });
+        const repo = new CicloVidaRepository(f.tx as unknown as PrismaClient);
+
+        const deTienda = consultaDe({}, f.actor);
+        expect(deTienda.filtro.tienda_id).toEqual([f.base.tienda1]);
+        expect(await repo.acumularCiclos({ ...deTienda, filtro: {} })).toEqual({
+          segundosAcum: TESTIGO_SEGUNDOS,
+          n: 1,
+        });
+
+        const deZona = consultaDe({}, { usuarioId: f.base.mensajero1, rol: "adminSatelite", zonaId: f.base.zonaB });
+        expect(deZona.filtro.zona_id).toEqual([f.base.zonaB]);
+        // Solo `otraZona`: 08:00 -> 12:00 = 14 400 s.
+        expect(await repo.acumularCiclos({ ...deZona, filtro: {} })).toEqual({ segundosAcum: 14400, n: 1 });
+      });
+    });
+
     it("R9: una orden borrada no cuenta", async () => {
       await caso(async (f) => {
         await f.testigo();

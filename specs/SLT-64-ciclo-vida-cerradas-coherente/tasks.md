@@ -10,8 +10,8 @@ Los tests contra Postgres necesitan `DATABASE_URL` exportada en el worktree
 
 ## T1 [P] · La fuente única de «resultado de cierre» (R10)
 
-- [ ] **T1.1** Añadir `RESULTADOS_DE_CIERRE` a `lib/types/conteo-ciclo-vida.ts` (design §1).
-- [ ] **T1.2** Escribir `tests/unit/analytics/ciclo-vida-resultados-de-cierre.guardia.test.ts`. Comprueba:
+- [x] **T1.1** Añadir `RESULTADOS_DE_CIERRE` a `lib/types/conteo-ciclo-vida.ts` (design §1).
+- [x] **T1.2** Escribir `tests/unit/analytics/ciclo-vida-resultados-de-cierre.guardia.test.ts`. Comprueba:
   - que la lista es exactamente `entregado`, `devolucion_a_origen_por_rechazo` e `incidente`;
   - que cada valor existe en el enum `GestionResultado` de Prisma;
   - que `CicloVidaRepository` importa la constante y no escribe los literales (se ignoran los
@@ -22,14 +22,14 @@ con el import.
 
 ## T2 · La consulta nueva del ciclo de vida (R1–R9, R11) · depende de T1
 
-- [ ] **T2.1** Reescribir `CicloVidaRepository.acumularCiclos`:
+- [x] **T2.1** Reescribir `CicloVidaRepository.acumularCiclos`:
   - la consulta es la de design §1: gestión de cierre, vigente y última, por `NOT EXISTS` con la
     tupla `(created_at, id)`;
   - `resultado::text`;
   - `condicionDeVentanaTerminal` se renombra a `condicionDeVentanaDeCierre` y pasa a fechar
     `g."created_at"`;
   - `condicionesDeCiclo` no se toca.
-- [ ] **T2.2** Corregir los comentarios que dejarían de ser ciertos (lista en design §1 > Contratos):
+- [x] **T2.2** Corregir los comentarios que dejarían de ser ciertos (lista en design §1 > Contratos):
   - las cabeceras de `CicloVidaRepository.ts`, `lib/actions/ciclo-vida.ts`,
     `lib/types/conteo-ciclo-vida.ts`, `CicloVidaKpi.tsx` e `ICicloVidaRepository.ts`;
   - `claveDeCicloVida` en `lib/analytics/entregas-conteo.ts`;
@@ -38,10 +38,10 @@ con el import.
     `cohorte-carga-reloj.int.test.ts` y `cohorte-terminales.guardia.test.ts`.
 
   Todos son solo comentarios: ni rótulo ni lógica.
-- [ ] **T2.3** Escribir `tests/integration/db/ciclo-vida-gestion-final.int.test.ts`, con todos los
+- [x] **T2.3** Escribir `tests/integration/db/ciclo-vida-gestion-final.int.test.ts`, con todos los
   escenarios de design §7 (R1–R9, R11), incluidas la anulación (R7), la corrección real (R8), la
   aprobación real (R6) y otra empresa bajo `comoApp` (R9).
-- [ ] **T2.4** Actualizar los tests que hoy fijan la definición vieja:
+- [x] **T2.4** Actualizar los tests que hoy fijan la definición vieja:
   - `tests/unit/analytics/ciclo-vida.test.ts`:
     - el nombre de la función y la columna de la ventana (`h."created_at"`);
     - el esqueleto del SQL (`DISTINCT ON`, `ORDER BY h…`, `u.cerrado_at`);
