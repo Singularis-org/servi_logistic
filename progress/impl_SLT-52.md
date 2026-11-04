@@ -1707,3 +1707,54 @@ filas=54 faltan=[R7]
 Veredicto: T7.1 hecha (guardia verde, roja con la mutacion real); ciclo de import quitado sin cambio
 de logica; fk-real es deuda previa en baseline (SL-31); mapa 55/55 verificado. T7.2 y T7.3 quedan fuera
 de esta tanda; T7.4 se cierra del todo con el gate del leader.
+
+### T7.2 docs/architecture.md (implementer)
+
+Sección nueva `## Tarifas flexibles (SLT-52)`, antes de «Patron de capas»: tablas (las tres de
+valores y grupos y las tres de congelado), resolver único y fachadas, guardia de inyección,
+interruptor por empresa con su consecuencia (el primer valor apaga el modelo viejo; SLT-53 va antes
+que SLT-54) y quién escribe (los dos services con historial; lo congelado solo el cierre).
+
+### T7.3 E2E en local (empresas en el modelo viejo)
+
+Base desechable `servi_e2e_slt52` en el Postgres local (`migrate deploy` + `db:seed`, todas las
+migraciones aplicadas), `next build`, `E2E_PUERTO=3044`.
+
+- Corridas 1 y 2, con dependencias: cae `plataforma-vacia › superadmin-empresas.spec.ts:214`
+  (aviso de correo de bienvenida) y los 17 restantes no corren. Causa: el entorno local, no SLT-52
+  (la rama no toca empresas ni correo): el `.env` local no tiene `NEXT_PUBLIC_APP_URL`.
+- Corridas 3 y 4 (`--no-deps`), sobre la misma base: **27 passed** en las dos, 0 flaky, en
+  cierre-dia (2), cierre-vencido-modelo (5), cierres-admin (2), cierres-admin-rechazos-sla (1),
+  cierre-bodega-satelite (3), wallet (4), wallet-mensajeros (3), wallet-iva-aparte-sl39 (4) y
+  mi-wallet (3). `dos-empresas-humo` cae en su caso 1 (`:217`): «el log del servidor no recibió
+  ningún enlace … ¿falta NEXT_PUBLIC_APP_URL en el build?». Es la misma causa de entorno.
+- Corridas 5 y 6: rebuild con `NEXT_PUBLIC_APP_URL=http://localhost:3044` y `--project=aislamiento
+  e2e/dos-empresas-humo.spec.ts` con su dependencia: **18 passed** las dos (superadmin-arranque 3,
+  superadmin-empresas 7, dos-empresas-humo 8), `E2E_EXIT=0`.
+
+```
+== corrida 3 / 4 (dinero + humo, --no-deps)
+  1 failed   [aislamiento] › e2e\dos-empresas-humo.spec.ts:217:5 (NEXT_PUBLIC_APP_URL ausente)
+  7 did not run
+  27 passed (2.1m)
+== corrida 5 / 6 (humo con build que lleva NEXT_PUBLIC_APP_URL)
+  18 passed (1.6m) / 18 passed (1.5m)
+  E2E_EXIT=0
+```
+
+Queda pendiente una sola corrida conjunta con el build bueno (dinero + humo juntos). La suite E2E
+entera la corre el CI (check `e2e`).
+
+### Guardia `dependencias-declaradas-presentes`
+
+Solo se confirma, sin arreglar. El archivo de la guardia, `init.sh` y `package.json` son idénticos
+en esta rama y en `origin/dev` (87fda9f6). Está en `tests/baseline-rojos.json` desde el 2026-10-21
+(ficha 420; la retira SL-29), así que el gate rápido la excluye. No es de SLT-52.
+
+### Gate (implementer, HEAD 64f156c7 + docs)
+
+`INIT_EXIT=1`. Test Files: 4 failed | 1279 passed. Tests: 9 failed | 17439 passed | 26 skipped.
+Los únicos rojos son los conocidos por el estado de la base local: `caja-backfill` (5) y
+`notificacion-evento-{bloqueo-cierre,gasto-fijo,webhook-suscripcion}-migration` (1+1+2). Ningún
+otro paso del gate sale rojo y no hay rojos de SLT-52. Log:
+`C:\Users\ArqDev\AppData\Local\Temp\claude\aab05f6b97f87a08\f7f7aab5-fce1-4ca5-876a-bed4e91ec523\scratchpad\init-slt52-t7.log`.

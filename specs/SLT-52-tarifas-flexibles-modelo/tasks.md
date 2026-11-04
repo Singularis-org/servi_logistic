@@ -270,9 +270,9 @@
 - [x] **T7.1** Guardia `tests/unit/guards/tarifas-resolver-inyectado.guardia.test.ts`: cada
   `new CierreDiaRepository(`, `new CierreDiaService(` y `new CorteDiarioService(` de `app/` y `lib/`
   pasa el repositorio de tarifas. Cubre: R38.
-- [ ] **T7.2** `docs/architecture.md`: párrafo de tarifas flexibles (tablas, resolver único,
+- [x] **T7.2** `docs/architecture.md`: párrafo de tarifas flexibles (tablas, resolver único,
   interruptor por empresa y su consecuencia, quién escribe).
-- [ ] **T7.3** E2E existentes en verde con empresas en el modelo viejo: `e2e/cierre-*`,
+- [x] **T7.3** E2E existentes en verde con empresas en el modelo viejo: `e2e/cierre-*`,
   `e2e/cierres-admin*`, `e2e/cierre-bodega-satelite*`, `e2e/wallet-*`, `e2e/mi-wallet*`,
   `e2e/dos-empresas-humo.spec.ts`. Cubre: R36. Hecho: salida pegada en `progress/impl_SLT-52.md`.
 - [x] **T7.4** Mapa completo `R1..R55 -> test` (R52-R55 → T5.5) en `progress/impl_SLT-52.md`; `./init.sh` verde con
