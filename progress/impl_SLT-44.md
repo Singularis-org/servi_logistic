@@ -267,3 +267,12 @@ El ABIERTO de F2.3 queda cerrado.
 | R16, R18, R19, R20 | `tests/integration/db/geo-lecturas-catalogo.test.ts`. Su texto vigente es el de la enmienda: un distrito, una zona |
 | R21 | `tests/integration/db/geo-equivalencia-dinero.test.ts`. Su texto vigente es el de la enmienda |
 | R27 | `tests/unit/services/geografia-dominio.test.ts` (el colapso >1 se conserva como defensa) |
+
+## 2026-11-04 · B1 de la review (vuelta 2)
+
+B1 de la vuelta 2 arreglado con un cherry-pick de 9b4e0004 (`c8476f7a`): `zona-distrito-unica.test.ts`
+envuelve el escenario en `conEmpresa(A, …)`; no cambia ningún `expect`.
+
+Salida (`DATABASE_URL` → `logistic_slt44`, `NODE_OPTIONS=--max-old-space-size=8192`):
+- `vitest run tests/integration/db/zona-distrito-unica.test.ts`: `Test Files 1 passed (1)`, `Tests 9 passed (9)` (R14 en verde).
+- `pnpm run typecheck`: exit 0.
