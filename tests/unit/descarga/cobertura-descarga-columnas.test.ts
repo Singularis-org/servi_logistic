@@ -7,7 +7,7 @@ import {
   COLUMNAS_DESCARGA_COBERTURA,
   columnasDescargaCobertura,
   filaCobertura as filaCoberturaDe,
-} from "@/app/(app)/configuracion/tarifas/_components/cobertura-descarga-columnas";
+} from "@/app/(app)/configuracion/zonas/_components/cobertura-descarga-columnas";
 import type { CoberturaDistritoDTO } from "@/lib/types/cobertura";
 import { ETIQUETAS_CR, ETIQUETAS_XA } from "../../fabricas/etiquetas-geograficas";
 

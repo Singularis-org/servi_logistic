@@ -7,7 +7,6 @@ import {
   CobroVehiculoTarifas,
   type CobroVehiculoValue,
 } from "@/app/(app)/configuracion/tarifas/_components/CobroVehiculoTarifas";
-import { CrearZonaForm } from "@/app/(app)/configuracion/tarifas/_components/CrearZonaForm";
 import {
   TarifaCamposGrid,
   tarifaValoresVacios,
@@ -34,19 +33,9 @@ import type { VehiculoDTO } from "@/lib/types/vehiculos";
  * payload que se guarda (eso no lo tocó la 303).
  */
 
-// `CrearZonaForm` (la sección que ENVUELVE el bloque de pagos) sólo se monta aquí para leer
-// sus dos textos: nada de esto llega a llamarse.
-vi.mock("@/lib/actions/zonas", () => ({
-  crearZona: vi.fn(),
-  actualizarZona: vi.fn(),
-}));
-vi.mock("@/lib/actions/tarifas", () => ({
-  crearTarifa: vi.fn(),
-  actualizarTarifa: vi.fn(),
-}));
-vi.mock("@/lib/actions/geografia", () => ({
-  actualizarDistritosEspeciales: vi.fn(),
-}));
+// SLT-51: los casos de la sección de `CrearZonaForm` que envolvía el bloque de pagos se fueron
+// con ella (el formulario de zona ya no pide costos). `CobroVehiculoTarifas` se sigue probando
+// suelto, sin superficie, hasta que SLT-54 decida si lo reutiliza.
 vi.mock("@/hooks/useToast", () => ({
   useToast: () => ({
     success: vi.fn(),
@@ -275,69 +264,6 @@ describe("Aviso del cero — pago al mensajero (el caso GAM)", () => {
 
     // Y no se cuela un aviso de más en el resto de la sección.
     expect(screen.getAllByText(AVISO_MONTO_CERO.pago)).toHaveLength(1);
-  });
-});
-
-describe("La sección que envuelve el bloque (CrearZonaForm)", () => {
-  function renderZona() {
-    return render(
-      <CrearZonaForm
-        mode="crear"
-        provincias={[]}
-        vehiculos={VEHICULOS}
-        zonas={[]}
-        onSaved={vi.fn()}
-        onCancel={vi.fn()}
-      />,
-    );
-  }
-
-  it("ya no le atribuye al mensajero los dos dineros", () => {
-    renderZona();
-
-    expect(
-      screen.getByRole("heading", { name: "Pagos por zona" }),
-    ).toBeInTheDocument();
-    expect(screen.queryByText("Pago a mensajeros")).not.toBeInTheDocument();
-  });
-
-  it("titula la sección UNA sola vez, con y sin cobro por vehículo (feature 310)", async () => {
-    const user = userEvent.setup();
-    renderZona();
-
-    // El humano lo reportó con captura: «Pagos por zona» y, justo debajo, «Pagos por zona
-    // (mensajero y bodega)». Dos títulos casi iguales seguidos. Queda el encabezado.
-    const titulos = () => screen.getAllByText(/^Pagos por zona/);
-    expect(titulos()).toHaveLength(1);
-    expect(titulos()[0]).toBe(screen.getByRole("heading", { name: "Pagos por zona" }));
-
-    await user.click(screen.getByLabelText("Cobro por vehículo"));
-    expect(titulos()).toHaveLength(1);
-  });
-
-  it("explica los dos destinatarios y no habla de «no entrega»", () => {
-    renderZona();
-
-    expect(
-      screen.getByText(/la entrega se le paga al mensajero/i),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/una Devolución a origen por rechazo es ingreso de la bodega responsable del mensajero/i),
-    ).toBeInTheDocument();
-    // «no entrega» abarcaba `devuelta` y `reprogramada`, que no pagan nada.
-    expect(screen.queryByText(/por no entrega/i)).not.toBeInTheDocument();
-  });
-
-  it("SL-15 R3: la sección dice quién paga («la empresa») y el ejemplo SINPE es ficticio", () => {
-    renderZona();
-
-    expect(
-      screen.getByText(
-        "Lo que la empresa paga por cada gestión en esta zona: la entrega se le paga al mensajero; " +
-          "una Devolución a origen por rechazo es ingreso de la bodega responsable del mensajero.",
-      ),
-    ).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("Ej: Mensajería Ejemplo CR S.A.")).toBeInTheDocument();
   });
 });
 

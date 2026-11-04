@@ -22,18 +22,32 @@ function rutaCaptura(nombre: string): string {
 /* 1 · R3 — ninguna captura es la de la marca anterior, byte a byte           */
 /* -------------------------------------------------------------------------- */
 
-/** SHA-256 de las tres capturas tal como estaban en `dev` antes de SL-9 (medidas en T1). */
-const HUELLAS_MARCA_ANTERIOR: Record<(typeof CAPTURAS)[number], string> = {
-  "inicio-narrow.png": "aa0f6826301706c9059611da3f80358ee0d100f7c858a5b4994a20c40c81f2bb",
-  "ingreso-narrow.png": "79cba346f3ac7fd8f93846af85d5460c76e66957f3910e4e8bc6719419d0a0e9",
-  "inicio-wide.png": "4ca3d4adfd3ac62d51b76a79a6ea7dd6b1ca2cb6a89be7e74acbfd7c3b7cfc0a",
+/**
+ * SHA-256 de las capturas que ya no valen, por archivo:
+ *  1. las de `dev` antes de SL-9 (marca anterior, medidas en SL-9 T1);
+ *  2. las que generó SL-9 (`progress/impl_SL-9.md > T4 — Corrida`), con la paleta de gráficas y
+ *     los grises de antes de SL-33 (SL-33, R15 y D11). Verificadas contra el padre de `b8d4848`.
+ */
+const HUELLAS_PROHIBIDAS: Record<(typeof CAPTURAS)[number], readonly string[]> = {
+  "inicio-narrow.png": [
+    "aa0f6826301706c9059611da3f80358ee0d100f7c858a5b4994a20c40c81f2bb",
+    "2452d0280ed0e74157e37432c0fcffd36f23d65e7bf0b5abaa2a767a623f42cb",
+  ],
+  "ingreso-narrow.png": [
+    "79cba346f3ac7fd8f93846af85d5460c76e66957f3910e4e8bc6719419d0a0e9",
+    "e357545c3fa624e10e558f80e0375abb3369fe9f8a5bfe24bd7b02b6fa3c0dad",
+  ],
+  "inicio-wide.png": [
+    "4ca3d4adfd3ac62d51b76a79a6ea7dd6b1ca2cb6a89be7e74acbfd7c3b7cfc0a",
+    "01c048093a2a554f07e1bd419af86c6797d9fe637e8cc6dd6cf50dc6bda1e3cf",
+  ],
 };
 
-describe("marca · capturas de la PWA · huellas (R3)", () => {
-  it.each(CAPTURAS)("%s no es la captura de la marca anterior", (nombre) => {
+describe("marca · capturas de la PWA · huellas (R3; SL-33 R15)", () => {
+  it.each(CAPTURAS)("%s no es una captura anterior (marca vieja ni la de SL-9)", (nombre) => {
     const sha = crypto.createHash("sha256").update(fs.readFileSync(rutaCaptura(nombre))).digest("hex");
-    expect(sha, `${nombre} sigue siendo la captura de la marca anterior`).not.toBe(
-      HUELLAS_MARCA_ANTERIOR[nombre],
+    expect(HUELLAS_PROHIBIDAS[nombre], `${nombre} sigue siendo una captura anterior`).not.toContain(
+      sha,
     );
   });
 });
@@ -56,21 +70,22 @@ const COLORES_MARCA_NUEVA: readonly Rgb[] = [
 ];
 const DISTANCIA_MAXIMA = 24;
 
-// Umbrales (decision del humano, 2026-10-28; `design.md > D2 > Umbral fijado`). Medidas, con la
-// marca anterior sumando naranja y navy:
+// Umbrales (decision del humano, 2026-10-28; SL-9 `design.md > D2 > Umbral fijado`, y SL-33
+// `design.md > D11`). Medidas, con la marca anterior sumando naranja y navy:
 //
-//   captura          anterior/viejas  anterior/nuevas      nueva/viejas  nueva/nuevas
-//   inicio-narrow    78.323 %         1.289 % (todo navy)  0 %           18.509 %
-//   ingreso-narrow    2.283 %         0.015 %              0 %            4.197 %
-//   inicio-wide      81.199 %         0.836 % (todo navy)  0 %           23.020 %
+//   captura          anterior/viejas  anterior/SL-9        anterior/SL-33  nueva/viejas  nueva/SL-33
+//   inicio-narrow    78.323 %         1.289 % (todo navy)  0.039 %         0 %           19.748 %
+//   ingreso-narrow    2.283 %         0.015 %              0.015 %         0 %            4.197 %
+//   inicio-wide      81.199 %         0.836 % (todo navy)  0.020 %         0 %           23.829 %
 //
-// El navy que queda en las capturas nuevas viene del titulo de servicios de la landing:
-// `TituloSeccion` (`app/_landing/primitivas.tsx`) usa `text-asfalto-9`, y `--color-asfalto-9`
-// vale `#0d2444`, a distancia <= 24 del navy `#0b2545`. Los tokens `asfalto-*` son de SL-33, que
-// los cambiara; al cerrar SL-33 las capturas se regeneran con el script y este hueco se agranda.
-// Por eso el umbral de la marca anterior es < 1.8 %: entre el maximo de las nuevas (1.289 %) y
-// el minimo de las viejas (2.283 %).
-const UMBRAL_MARCA_ANTERIOR = 0.018;
+// En SL-9 quedaba navy en la landing: `TituloSeccion` usaba `text-asfalto-9`, que valia
+// `#0d2444`, a distancia <= 24 del navy `#0b2545`, y el umbral se fijo en < 1.8 %. SL-33 paso
+// `asfalto-9` a `stone-900` y regenero las capturas con `scripts/capturas-pwa.mjs`: lo que queda
+// (0.039 % como maximo, todo navy) son pixeles sueltos de suavizado de bordes, no una superficie.
+// El umbral baja al maximo medido redondeado hacia arriba a la decima: < 0.1 %. Deja 2.5 veces
+// el maximo de las nuevas y queda muy por debajo del minimo de las viejas (2.283 %); ademas ya
+// pone rojas las capturas de SL-9 con el titulo navy (1.289 % y 0.836 %).
+const UMBRAL_MARCA_ANTERIOR = 0.001;
 const UMBRAL_MARCA_NUEVA = 0.01;
 
 /** Fraccion de pixeles a distancia euclidea RGB <= 24 de alguno de los colores dados. */

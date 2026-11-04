@@ -15,6 +15,10 @@ import type {
   OptimizarOutcome,
 } from "@/lib/interfaces/external/IRouteOptimizationClient";
 
+// SLT-59 (R68): el contexto de la llamada es obligatorio; aqui solo se pasa (su registro se
+// prueba en `google-registro-llamada.test.ts`).
+const CTX = { motivo: "prueba_integracion", intento: 1, maxIntentos: 1 } as const;
+
 // Feature 92 (design §9.A) — el compuesto solo cae al fallback ante credencial AUSENTE.
 
 const INPUT: OptimizarInput = {
@@ -53,7 +57,7 @@ describe("FallbackRouteOptimizationClient", () => {
   it("con credencial: devuelve el resultado del primario y NO toca el fallback", async () => {
     const primary = stub({ outcome: OK_PRIMARY });
     const fallback = stub({ outcome: OK_FALLBACK });
-    const r = await new FallbackRouteOptimizationClient(primary, fallback).optimizar(INPUT);
+    const r = await new FallbackRouteOptimizationClient(primary, fallback).optimizar(INPUT, CTX);
 
     expect(r).toEqual(OK_PRIMARY);
     expect(primary.optimizar).toHaveBeenCalledOnce();
@@ -63,17 +67,17 @@ describe("FallbackRouteOptimizationClient", () => {
   it("SIN credencial (RutaNoConfiguradoError): delega en el fallback local", async () => {
     const primary = stub({ throws: new RutaNoConfiguradoError("sin_configurar") });
     const fallback = stub({ outcome: OK_FALLBACK });
-    const r = await new FallbackRouteOptimizationClient(primary, fallback).optimizar(INPUT);
+    const r = await new FallbackRouteOptimizationClient(primary, fallback).optimizar(INPUT, CTX);
 
     expect(r).toEqual(OK_FALLBACK);
-    expect(fallback.optimizar).toHaveBeenCalledWith(INPUT);
+    expect(fallback.optimizar).toHaveBeenCalledWith(INPUT, CTX);
   });
 
   it("avisa (sin PII) cuando cae al fallback", async () => {
     const warn = vi.fn();
     const primary = stub({ throws: new RutaNoConfiguradoError("ilegible") });
     const fallback = stub({ outcome: OK_FALLBACK });
-    await new FallbackRouteOptimizationClient(primary, fallback, { warn }).optimizar(INPUT);
+    await new FallbackRouteOptimizationClient(primary, fallback, { warn }).optimizar(INPUT, CTX);
 
     expect(warn).toHaveBeenCalledOnce();
     const mensaje = warn.mock.calls[0][0] as string;
@@ -87,7 +91,7 @@ describe("FallbackRouteOptimizationClient", () => {
     const primary = stub({ throws: new RutaTokenError("HTTP 401") });
     const fallback = stub({ outcome: OK_FALLBACK });
     await expect(
-      new FallbackRouteOptimizationClient(primary, fallback).optimizar(INPUT),
+      new FallbackRouteOptimizationClient(primary, fallback).optimizar(INPUT, CTX),
     ).rejects.toBeInstanceOf(RutaTokenError);
     expect(fallback.optimizar).not.toHaveBeenCalled();
   });
@@ -96,7 +100,7 @@ describe("FallbackRouteOptimizationClient", () => {
     const primary = stub({ throws: new RutaPeticionRechazadaError(400) });
     const fallback = stub({ outcome: OK_FALLBACK });
     await expect(
-      new FallbackRouteOptimizationClient(primary, fallback).optimizar(INPUT),
+      new FallbackRouteOptimizationClient(primary, fallback).optimizar(INPUT, CTX),
     ).rejects.toBeInstanceOf(RutaPeticionRechazadaError);
     expect(fallback.optimizar).not.toHaveBeenCalled();
   });
@@ -140,10 +144,10 @@ describe("FallbackRouteOptimizationClient", () => {
 
     const primary = stub({ throws: real });
     const fallback = stub({ outcome: OK_FALLBACK });
-    const r = await new FallbackRouteOptimizationClient(primary, fallback).optimizar(INPUT);
+    const r = await new FallbackRouteOptimizationClient(primary, fallback).optimizar(INPUT, CTX);
 
     expect(r).toEqual(OK_FALLBACK);
-    expect(fallback.optimizar).toHaveBeenCalledWith(INPUT);
+    expect(fallback.optimizar).toHaveBeenCalledWith(INPUT, CTX);
   });
 
   it("un outcome transitorio/config_invalida del primario se PROPAGA tal cual (no es excepcion)", async () => {
@@ -151,7 +155,7 @@ describe("FallbackRouteOptimizationClient", () => {
     // proveedor no es asunto suyo y llega intacto al servicio, que aplica su politica (R27).
     const primary = stub({ outcome: { status: "transitorio", detalle: "x" } });
     const fallback = stub({ outcome: OK_FALLBACK });
-    const r = await new FallbackRouteOptimizationClient(primary, fallback).optimizar(INPUT);
+    const r = await new FallbackRouteOptimizationClient(primary, fallback).optimizar(INPUT, CTX);
 
     expect(r).toEqual({ status: "transitorio", detalle: "x" });
     expect(fallback.optimizar).not.toHaveBeenCalled();
@@ -183,10 +187,10 @@ describe("265/R9-R11 — `sin_solucion` se ordena en local, cubra lo que cubra l
     const primary = stub({ outcome: sinSolucion(servidas, enviadas) });
     const fallback = stub({ outcome: OK_FALLBACK });
 
-    const r = await new FallbackRouteOptimizationClient(primary, fallback).optimizar(INPUT);
+    const r = await new FallbackRouteOptimizationClient(primary, fallback).optimizar(INPUT, CTX);
 
     expect(r).toEqual(OK_FALLBACK);
-    expect(fallback.optimizar).toHaveBeenCalledWith(INPUT);
+    expect(fallback.optimizar).toHaveBeenCalledWith(INPUT, CTX);
   });
 
   it("R10: la secuencia devuelta cubre TODAS las paradas de entrada, ni una menos", async () => {
@@ -197,7 +201,7 @@ describe("265/R9-R11 — `sin_solucion` se ordena en local, cubra lo que cubra l
     const primary = stub({ outcome: sinSolucion(0, 2) });
     const local = new HaversineRouteOptimizationClient();
 
-    const r = await new FallbackRouteOptimizationClient(primary, local).optimizar(INPUT);
+    const r = await new FallbackRouteOptimizationClient(primary, local).optimizar(INPUT, CTX);
 
     expect(r.status).toBe("ok");
     if (r.status !== "ok") return;
@@ -210,7 +214,7 @@ describe("265/R9-R11 — `sin_solucion` se ordena en local, cubra lo que cubra l
     const primary = stub({ outcome: sinSolucion(2, 6) });
     const fallback = stub({ outcome: OK_FALLBACK });
 
-    await new FallbackRouteOptimizationClient(primary, fallback, { warn }).optimizar(INPUT);
+    await new FallbackRouteOptimizationClient(primary, fallback, { warn }).optimizar(INPUT, CTX);
 
     expect(warn).toHaveBeenCalledOnce();
     const mensaje = warn.mock.calls[0][0] as string;
@@ -226,7 +230,7 @@ describe("265/R9-R11 — `sin_solucion` se ordena en local, cubra lo que cubra l
     for (const status of ["transitorio", "config_invalida"] as const) {
       const primary = stub({ outcome: { status, detalle: "d" } });
       const fallback = stub({ outcome: OK_FALLBACK });
-      const r = await new FallbackRouteOptimizationClient(primary, fallback).optimizar(INPUT);
+      const r = await new FallbackRouteOptimizationClient(primary, fallback).optimizar(INPUT, CTX);
       expect(r).toEqual({ status, detalle: "d" });
       expect(fallback.optimizar).not.toHaveBeenCalled();
     }
@@ -239,7 +243,7 @@ describe("265/R35, R44 — la procedencia la pone quien ordena, y el compuesto l
     const r = await new FallbackRouteOptimizationClient(
       primary,
       new HaversineRouteOptimizationClient(),
-    ).optimizar(INPUT);
+    ).optimizar(INPUT, CTX);
     expect(r).toMatchObject({ status: "ok", fuente: "proveedor" });
   });
 
@@ -256,7 +260,7 @@ describe("265/R35, R44 — la procedencia la pone quien ordena, y el compuesto l
     const r = await new FallbackRouteOptimizationClient(
       primary,
       new HaversineRouteOptimizationClient(),
-    ).optimizar(INPUT);
+    ).optimizar(INPUT, CTX);
     expect(r).toMatchObject({ status: "ok", fuente: "local" });
   });
 });

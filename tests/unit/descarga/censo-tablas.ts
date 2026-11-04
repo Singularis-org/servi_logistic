@@ -53,7 +53,7 @@
 // sale `app/(app)/configuracion/_components/ZonasModule.tsx` («Zonas (configuración)»,
 // censada `fuera` precisamente porque ninguna página la montaba). Igual que con
 // `OrdenesApartado.tsx` el 2026-07-31, lo que se borró fue la vista, no una capacidad: la
-// gestión de zonas vive y funciona en `configuracion/tarifas/_components/ZonasTarifasModule`,
+// gestión de zonas vive y funciona en `configuracion/zonas/_components/ZonasModule`,
 // que no monta `<DataTable>` y por eso nunca figuró en este censo. Totales VIGENTES:
 // **32 tablas = 26 dentro de alcance + 6 fuera**, con 31 instancias de `<DataTable>` en 30
 // archivos (los de partida son los de la 172, ver `cobertura-tablas.guardia.test.ts`).
@@ -288,7 +288,7 @@ export const CENSO_DATATABLE: ArchivoCensado[] = [
   // `app/(app)/configuracion/_components/ZonasModule.tsx`, censado `fuera` porque ninguna
   // página lo montaba. Esa entrada dejó de existir con el archivo: la decisión humana fue
   // borrar el árbol entero (módulo + `ZonaForm` + `zonas-columns`), no seguir vigilándolo. La
-  // gestión de zonas VIVA es `configuracion/tarifas/_components/ZonasTarifasModule.tsx`, que
+  // gestión de zonas VIVA es `configuracion/zonas/_components/ZonasModule.tsx`, que
   // no monta `<DataTable>` y por eso nunca entró en este censo. Con el borrado bajan los
   // totales de `cobertura-tablas.guardia.test.ts`: 31→30 archivos, 32→31 instancias, 6→5
   // exclusiones con `<DataTable>` y 33→32 tablas censadas.

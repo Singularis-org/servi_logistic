@@ -55,13 +55,15 @@ const badgeVariants = cva(
         // por su significado («devueltas», «en reparto») metería el dominio de una pantalla dentro
         // de una primitiva, que es justo lo que no puede pasar aquí.
         //
-        // Los cuatro pares cumplen AA para texto normal en los DOS temas (5.98 / 6.38 / 9.45 /
-        // 8.49 en claro; 6.91 / 7.02 / 8.45 / 6.48 en oscuro) y los ata, token a token,
-        // `tests/unit/guards/contraste-tokens.guardia.test.ts`.
-        chart6: "bg-chart-6-soft text-chart-6-strong dark:bg-chart-6/15",
+        // Los cuatro pares cumplen AA para texto normal en los DOS temas (5.28 / 5.44 / 6.06 /
+        // 5.46 en claro; 5.20 / 5.04 / 7.98 / 7.88 en oscuro, de `chart5` a `chart12`) y los ata,
+        // token a token, `tests/unit/guards/contraste-tokens.guardia.test.ts`. SL-33 movió los
+        // índices (`chart6`→`chart7`, `chart13`→`chart5`) para que cada par siga en la familia de
+        // color de la maqueta con la paleta de gráficas aprobada.
+        chart5: "bg-chart-5-soft text-chart-5-strong dark:bg-chart-5/15",
+        chart7: "bg-chart-7-soft text-chart-7-strong dark:bg-chart-7/15",
         chart11: "bg-chart-11-soft text-chart-11-strong dark:bg-chart-11/15",
         chart12: "bg-chart-12-soft text-chart-12-strong dark:bg-chart-12/15",
-        chart13: "bg-chart-13-soft text-chart-13-strong dark:bg-chart-13/15",
         outline:
           "border-border text-foreground [a]:hover:bg-muted [a]:hover:text-muted-foreground",
         ghost:

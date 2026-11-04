@@ -53,11 +53,12 @@
    *    listada arriba como paleta fija y medida con el lector que no ve el papel, y así parecía
    *    comprar «1.19 → 11.39». Con la 224 dentro y midiendo el papel de verdad: si el variant
    *    disparara imprimiría `--foreground` ya claro (`#111111` desde SL-8, 18.88) y como no
-   *    dispara imprime `asfalto-7` (`#1f3a63`, 11.39). O sea **18.88 → 11.39**. No es un problema
+   *    dispara imprime `asfalto-7` (`#292524`, `stone-800` desde SL-33, 15.17; antes 11.39). O sea
+   *    **18.88 → 15.17**. No es un problema
    *    de lectura —las
    *    dos pasan AAA— pero la frase «esta regla mejora el papel» no vale para esta fila, y no se
    *    revierte la regla por ella: apagar el variant se decidió para toda la app y ésta es la
-   *    única que pierde, sobre un suelo de 11.39.
+   *    única que pierde, sobre un suelo de 15.17.
    *
    *    «LA ÚNICA» ESTÁ CENSADA, no prometida: hoy hay UNA sola utilidad `dark:text-<token>` en
    *    todo el árbol (`dark:text-foreground`, en `RankingPodio`), y ésa es la condición para que
@@ -68,7 +69,7 @@
    *    revisión que resulte innecesaria. Falla hacia el lado ruidoso.
    *  · Dentro de `.papel-al-imprimir`, donde los tokens YA son claros, esto COMPLETA la 217: lo
    *    impreso pasa a ser EXACTAMENTE el tema claro, y deja de depender del tema de pantalla.
-   *    `Button` destructive 5.32 → 5.30, `Button` outline 17.78 → 17.60, `Badge` destructive
+   *    `Button` destructive 5.32 → 5.30, `Button` outline 17.66 → 17.60, `Badge` destructive
    *    5.32 → 5.30. (El destructivo decía 2.90 → 3.29 hasta la feature 222, con la variante
    *    colgada de `--destructive`; hoy usa el par de `danger`, el mismo que el `Badge`. El
    *    outline decía 14.78 → 14.79 hasta SL-8: con el fondo claro de la marca, `#F7F7F5`, la
@@ -179,13 +180,13 @@
   --color-brand-soft: #FFF8D9;
   --color-navy: #1C1C1A;
   --color-navy-deep: #111111;
-  --color-asfalto-0: #f2f5fb;
-  --color-asfalto-1: #e9edf6;
-  --color-asfalto-2: #dde1ee;
-  --color-asfalto-4: #8a94ad;
-  --color-asfalto-5: #4a5368;
-  --color-asfalto-7: #1f3a63;
-  --color-asfalto-9: #0d2444;
+  --color-asfalto-0: #f5f5f4;
+  --color-asfalto-1: #e7e5e4;
+  --color-asfalto-2: #e7e5e4;
+  --color-asfalto-4: #78716c;
+  --color-asfalto-5: #44403c;
+  --color-asfalto-7: #292524;
+  --color-asfalto-9: #1c1917;
   --color-info: #1a56db;
   --color-ink-blue: #1d5fd4;
   /* Hover del azul de acción (`ink-blue`), un tono más oscuro de la misma rampa. */
@@ -214,16 +215,20 @@
      Mismos tres roles que los semánticos (DESIGN.md): `-soft` fondo claro, `--chart-N` acento
      —el que ya pinta el segmento, sin tocar—, `-strong` texto. En oscuro no hay `-soft`: el
      `Badge` compone `--chart-N/15`, y por eso el acento GIRA con el tema y el `-soft` no.
+     SL-33 — con la paleta de gráficas aprobada los pares pasan de `chart-6/11/12/13` a
+     `chart-7/12/11/5` (violeta, ocre profundo, piedra y azul: la familia de la maqueta,
+     `specs/SL-33-paleta-secundaria/design.md > D3`). Cada `-soft` es
+     `componer(--chart-N claro, #FFFFFF, 0.15)`, la misma α que `--color-brand-soft`.
      Los ocho números medidos están junto a cada `-strong`, y los ata
      `tests/unit/guards/contraste-tokens.guardia.test.ts`. */
-  --color-chart-6-soft: #ede9fe;
-  --color-chart-11-soft: #ffedd5;
-  --color-chart-12-soft: #f1f5f9;
-  --color-chart-13-soft: #dbeafe;
-  --color-chart-6-strong: var(--chart-6-strong);
+  --color-chart-5-soft: #dde4f9;
+  --color-chart-7-soft: #ecdef8;
+  --color-chart-11-soft: #e6e5e4;
+  --color-chart-12-soft: #ede4db;
+  --color-chart-5-strong: var(--chart-5-strong);
+  --color-chart-7-strong: var(--chart-7-strong);
   --color-chart-11-strong: var(--chart-11-strong);
   --color-chart-12-strong: var(--chart-12-strong);
-  --color-chart-13-strong: var(--chart-13-strong);
   /* Ficha 458 — EL TOKEN DE TEXTO DE ENLACE. Nació porque el primario anterior no llegaba al 4.5
      de texto sobre `--background` (2.99) y se apuntó a un tono más oscuro de su rampa. SL-8 lo
      re-apunta al propio `--primary`, que con la marca ya es tinta de lectura en los dos temas:
@@ -234,7 +239,7 @@
   --color-hivis: #f4c500;
   --color-kraft-canvas: #F7F7F5;
   --color-kraft-card: #ffffff;
-  --color-kraft-inset: #f1f4fb;
+  --color-kraft-inset: #f5f5f4;
 }
 
 /*
@@ -284,44 +289,45 @@
   --popover-foreground: #111111;
   --primary: #111111;
   --primary-foreground: #ffffff; /* 18.88 sobre `--primary` */
-  --secondary: #eef1f8;
+  --secondary: #f5f5f4;
   --secondary-foreground: #111111;
-  --muted: #f1f4fb;
-  --muted-foreground: #4a5368;
+  --muted: #f5f5f4;
+  --muted-foreground: #44403c;
   --accent: #FFF8D9; /* componer(#FFD000, #FFFFFF, 0.15) */
   --accent-foreground: #111111; /* 17.70 sobre `--accent` */
   --destructive: #ef4444;
-  --border: #e3e8f2;
-  --input: #e3e8f2;
+  --border: #e7e5e4;
+  --input: #e7e5e4;
   /* Feature 226 — el anillo de foco es un INDICADOR de interfaz: WCAG 1.4.11 le pide 3:1
      contra el fondo adyacente, no el 4.5 de texto. Nació separado de `--primary` porque el
      primario anterior no llegaba a 3 en tres de las seis superficies donde el portal monta un
      botón. Con la marca de SL-8 el primario es `#111111` y el anillo vuelve a ser el mismo
-     color: el peor de los seis es `--secondary`, con 16.70 (`--muted` 17.15, `--background`
-     17.60, `--accent` 17.70, `--card` y `--popover` 18.88).
+     color: los peores de los seis son `--secondary` y `--muted`, con 17.31 (`stone-100` desde
+     SL-33; antes 16.70 y 17.15), y luego `--background` 17.60, `--accent` 17.70, `--card` y
+     `--popover` 18.88).
      Medido con la aritmetica de `tests/fixtures/contraste.ts`; atado en
      `tests/unit/guards/contraste-tokens.guardia.test.ts`. */
   --ring: #111111;
-  --chart-1: #f26419;
-  --chart-2: #0b2545;
-  --chart-3: #1a56db;
-  --chart-4: #10b981;
-  --chart-5: #f59e0b;
-  --chart-6: #8b5cf6;
-  --chart-7: #ec4899;
-  --chart-8: #06b6d4;
-  --chart-9: #84cc16;
-  --chart-10: #ef4444;
-  --chart-11: #9a3412;
-  --chart-12: #64748b;
-  --chart-13: #1e3a8a;
-  --chart-14: #047857;
-  --chart-15: #b45309;
-  --chart-16: #6d28d9;
-  --chart-17: #9d174d;
-  --chart-18: #0e7490;
-  --chart-19: #4d7c0f;
-  --chart-20: #991b1b;
+  --chart-1: #111111;
+  --chart-2: #a16207;
+  --chart-3: #0f766e;
+  --chart-4: #b91c1c;
+  --chart-5: #1d4ed8;
+  --chart-6: #15803d;
+  --chart-7: #7e22ce;
+  --chart-8: #be185d;
+  --chart-9: #0369a1;
+  --chart-10: #4d7c0f;
+  --chart-11: #57534e;
+  --chart-12: #854d0e;
+  --chart-13: #0d9488;
+  --chart-14: #dc2626;
+  --chart-15: #2563eb;
+  --chart-16: #16a34a;
+  --chart-17: #9333ea;
+  --chart-18: #db2777;
+  --chart-19: #0284c7;
+  --chart-20: #78716c;
   /* La barra lateral es la misma superficie oscura en los dos temas (`#1C1C1A`). */
   --sidebar: #1C1C1A;
   --sidebar-foreground: #C0C0BE; /* componer(#F7F7F5, #1C1C1A, 0.75) · 9.37 sobre la barra */
@@ -340,15 +346,14 @@
   --warning-strong: #92400e; /* vs card 7.09 · vs bg 6.61 · vs warning-soft 6.37 · vs warning/15 6.31 */
   --danger-strong: #b91c1c; /* vs card 6.47 · vs bg 6.03 · vs danger-soft 5.30 */
   --info-strong: #1d4ed8; /* vs card 6.70 · vs bg 6.25 · vs info-soft 6.16 */
-  /* Feature 292 — la tinta de los cuatro pares de `--chart-*` (modo claro). Es el PROPIO color
-     del segmento donde ya cumple AA sobre su `-soft` —`chart-11` (6.38) y `chart-13` (8.49)—
-     y el tono más oscuro de la MISMA rampa donde el segmento no llegaba: `chart-6` daba 3.57 y
-     `chart-12` 4.34. Ni un tono nuevo: los dos movidos son el mismo violeta y la misma pizarra,
-     dos escalones más abajo. */
-  --chart-6-strong: #6d28d9; /* vs card 7.10 · vs bg 6.62 · vs chart-6-soft 5.98 */
-  --chart-11-strong: #9a3412; /* vs card 7.31 · vs bg 6.81 · vs chart-11-soft 6.38 */
-  --chart-12-strong: #334155; /* vs card 10.35 · vs bg 9.65 · vs chart-12-soft 9.45 */
-  --chart-13-strong: #1e3a8a; /* vs card 10.36 · vs bg 9.66 · vs chart-13-soft 8.49 */
+  /* Feature 292 — la tinta de los cuatro pares de `--chart-*` (modo claro). SL-33: con la
+     paleta de gráficas aprobada es el PROPIO color del segmento en los cuatro, porque los cuatro
+     cumplen AA con margen sobre su `-soft` (antes, con la paleta anterior, dos de ellos bajaban
+     un tono de su rampa). Así no hay un tono que no esté en la paleta aprobada. */
+  --chart-5-strong: #1d4ed8; /* vs card 6.70 · vs bg 6.25 · vs chart-5-soft 5.28 */
+  --chart-7-strong: #7e22ce; /* vs card 6.98 · vs bg 6.51 · vs chart-7-soft 5.44 */
+  --chart-11-strong: #57534e; /* vs card 7.63 · vs bg 7.11 · vs chart-11-soft 6.06 */
+  --chart-12-strong: #854d0e; /* vs card 6.85 · vs bg 6.39 · vs chart-12-soft 5.46 */
 }
 
 /*
@@ -438,36 +443,36 @@
     --popover-foreground: #111111;
     --primary: #111111;
     --primary-foreground: #ffffff;
-    --secondary: #eef1f8;
+    --secondary: #f5f5f4;
     --secondary-foreground: #111111;
-    --muted: #f1f4fb;
-    --muted-foreground: #4a5368;
+    --muted: #f5f5f4;
+    --muted-foreground: #44403c;
     --accent: #FFF8D9;
     --accent-foreground: #111111;
     --destructive: #ef4444;
-    --border: #e3e8f2;
-    --input: #e3e8f2;
+    --border: #e7e5e4;
+    --input: #e7e5e4;
     --ring: #111111;
-    --chart-1: #f26419;
-    --chart-2: #0b2545;
-    --chart-3: #1a56db;
-    --chart-4: #10b981;
-    --chart-5: #f59e0b;
-    --chart-6: #8b5cf6;
-    --chart-7: #ec4899;
-    --chart-8: #06b6d4;
-    --chart-9: #84cc16;
-    --chart-10: #ef4444;
-    --chart-11: #9a3412;
-    --chart-12: #64748b;
-    --chart-13: #1e3a8a;
-    --chart-14: #047857;
-    --chart-15: #b45309;
-    --chart-16: #6d28d9;
-    --chart-17: #9d174d;
-    --chart-18: #0e7490;
-    --chart-19: #4d7c0f;
-    --chart-20: #991b1b;
+    --chart-1: #111111;
+    --chart-2: #a16207;
+    --chart-3: #0f766e;
+    --chart-4: #b91c1c;
+    --chart-5: #1d4ed8;
+    --chart-6: #15803d;
+    --chart-7: #7e22ce;
+    --chart-8: #be185d;
+    --chart-9: #0369a1;
+    --chart-10: #4d7c0f;
+    --chart-11: #57534e;
+    --chart-12: #854d0e;
+    --chart-13: #0d9488;
+    --chart-14: #dc2626;
+    --chart-15: #2563eb;
+    --chart-16: #16a34a;
+    --chart-17: #9333ea;
+    --chart-18: #db2777;
+    --chart-19: #0284c7;
+    --chart-20: #78716c;
     --sidebar: #1C1C1A;
     --sidebar-foreground: #C0C0BE;
     --sidebar-primary: #FFD000;
@@ -480,10 +485,10 @@
     --warning-strong: #92400e;
     --danger-strong: #b91c1c;
     --info-strong: #1d4ed8;
-    --chart-6-strong: #6d28d9;
-    --chart-11-strong: #9a3412;
-    --chart-12-strong: #334155;
-    --chart-13-strong: #1e3a8a;
+    --chart-5-strong: #1d4ed8;
+    --chart-7-strong: #7e22ce;
+    --chart-11-strong: #57534e;
+    --chart-12-strong: #854d0e;
   }
 }
 
@@ -750,7 +755,7 @@
  *   · `Badge` warning ................. 1.67 → 7.09
  *   · `Badge` danger .................. 2.77 → 6.47
  *   · `Badge` info .................... 2.08 → 6.70
- *   · `--muted-foreground` ............ 2.12 → 7.70
+ *   · `--muted-foreground` ............ 2.12 → 10.27 (7.70 hasta SL-33)
  *
  * Y BORRA EL PRECIO QUE COBRABA LA 221: con «gráficos de fondo» marcado, los cuatro `Badge`
  * imprimían su fondo `-soft` CLARO bajo una tinta que seguía siendo la OSCURA (1.70, 1.50, 2.26
@@ -770,8 +775,8 @@
  * Sobre el `bg-primary` que la sostiene se lee en las dos; en PAPEL, donde ese fondo NO se
  * imprime, mide **18.88 → 1.00**: blanco sobre blanco, desaparece. Afecta a `Badge` default
  * (`components/ui/badge.tsx`), `Button` default (`components/ui/button.tsx`), `Pagination` y
- * `RankingPodio` — 15 usos. En LÍNEA, no en tinta: `--border` 13.79 → 1.23 e `--input`
- * 12.10 → 1.23, o sea que los bordes casi se van del papel.
+ * `RankingPodio` — 15 usos. En LÍNEA, no en tinta: `--border` 13.79 → 1.26 e `--input`
+ * 12.10 → 1.26 (1.23 hasta SL-33), o sea que los bordes casi se van del papel.
  *
  * SON TRES, Y ESTÁN CENSADAS EN VEZ DE ELEGIDAS A MANO: la guardia barre los tokens y exige que
  * lo que baje sea exactamente esta lista. Descarta los que son SUPERFICIE porque ahí el número
@@ -821,36 +826,36 @@
     --popover-foreground: #111111;
     --primary: #111111;
     --primary-foreground: #ffffff;
-    --secondary: #eef1f8;
+    --secondary: #f5f5f4;
     --secondary-foreground: #111111;
-    --muted: #f1f4fb;
-    --muted-foreground: #4a5368;
+    --muted: #f5f5f4;
+    --muted-foreground: #44403c;
     --accent: #FFF8D9;
     --accent-foreground: #111111;
     --destructive: #ef4444;
-    --border: #e3e8f2;
-    --input: #e3e8f2;
+    --border: #e7e5e4;
+    --input: #e7e5e4;
     --ring: #111111;
-    --chart-1: #f26419;
-    --chart-2: #0b2545;
-    --chart-3: #1a56db;
-    --chart-4: #10b981;
-    --chart-5: #f59e0b;
-    --chart-6: #8b5cf6;
-    --chart-7: #ec4899;
-    --chart-8: #06b6d4;
-    --chart-9: #84cc16;
-    --chart-10: #ef4444;
-    --chart-11: #9a3412;
-    --chart-12: #64748b;
-    --chart-13: #1e3a8a;
-    --chart-14: #047857;
-    --chart-15: #b45309;
-    --chart-16: #6d28d9;
-    --chart-17: #9d174d;
-    --chart-18: #0e7490;
-    --chart-19: #4d7c0f;
-    --chart-20: #991b1b;
+    --chart-1: #111111;
+    --chart-2: #a16207;
+    --chart-3: #0f766e;
+    --chart-4: #b91c1c;
+    --chart-5: #1d4ed8;
+    --chart-6: #15803d;
+    --chart-7: #7e22ce;
+    --chart-8: #be185d;
+    --chart-9: #0369a1;
+    --chart-10: #4d7c0f;
+    --chart-11: #57534e;
+    --chart-12: #854d0e;
+    --chart-13: #0d9488;
+    --chart-14: #dc2626;
+    --chart-15: #2563eb;
+    --chart-16: #16a34a;
+    --chart-17: #9333ea;
+    --chart-18: #db2777;
+    --chart-19: #0284c7;
+    --chart-20: #78716c;
     --sidebar: #1C1C1A;
     --sidebar-foreground: #C0C0BE;
     --sidebar-primary: #FFD000;
@@ -863,10 +868,10 @@
     --warning-strong: #92400e;
     --danger-strong: #b91c1c;
     --info-strong: #1d4ed8;
-    --chart-6-strong: #6d28d9;
-    --chart-11-strong: #9a3412;
-    --chart-12-strong: #334155;
-    --chart-13-strong: #1e3a8a;
+    --chart-5-strong: #1d4ed8;
+    --chart-7-strong: #7e22ce;
+    --chart-11-strong: #57534e;
+    --chart-12-strong: #854d0e;
   }
 }
 
@@ -908,26 +913,26 @@ body:has(> .dark) {
   --border: #2D2D2C; /* componer(#F7F7F5, #111111, 0.12) · línea, no texto */
   --input: #363635; /* componer(#F7F7F5, #111111, 0.16) */
   --ring: #FFD000; /* 12.84 sobre el fondo · 11.60 sobre la tarjeta */
-  --chart-1: #ff7a33;
-  --chart-2: #3b82f6;
-  --chart-3: #1a56db;
-  --chart-4: #10b981;
-  --chart-5: #f59e0b;
-  --chart-6: #a78bfa;
-  --chart-7: #f472b6;
-  --chart-8: #22d3ee;
-  --chart-9: #a3e635;
-  --chart-10: #f87171;
-  --chart-11: #fdba74;
-  --chart-12: #94a3b8;
-  --chart-13: #93c5fd;
-  --chart-14: #6ee7b7;
-  --chart-15: #fcd34d;
-  --chart-16: #c4b5fd;
-  --chart-17: #f9a8d4;
-  --chart-18: #67e8f9;
-  --chart-19: #bef264;
-  --chart-20: #fca5a5;
+  --chart-1: #ffd000;
+  --chart-2: #fde68a;
+  --chart-3: #2dd4bf;
+  --chart-4: #f87171;
+  --chart-5: #60a5fa;
+  --chart-6: #4ade80;
+  --chart-7: #c084fc;
+  --chart-8: #f472b6;
+  --chart-9: #38bdf8;
+  --chart-10: #a3e635;
+  --chart-11: #d6d3d1;
+  --chart-12: #facc15;
+  --chart-13: #99f6e4;
+  --chart-14: #fecaca;
+  --chart-15: #bfdbfe;
+  --chart-16: #bbf7d0;
+  --chart-17: #e9d5ff;
+  --chart-18: #fbcfe8;
+  --chart-19: #bae6fd;
+  --chart-20: #a8a29e;
   /* La barra lateral es la misma superficie en los dos temas: los mismos valores que en claro. */
   --sidebar: #1C1C1A;
   --sidebar-foreground: #C0C0BE;
@@ -943,16 +948,14 @@ body:has(> .dark) {
   --warning-strong: #fbbf24; /* vs bg 11.31 · vs card 10.22 · vs warning/15 7.70 */
   --danger-strong: #f87171; /* vs bg 6.83 · vs card 6.17 · vs danger/15 5.27 */
   --info-strong: #93b4f7; /* vs bg 9.09 · vs card 8.22 · vs info/15 7.39 */
-  /* Feature 292 — la otra mitad de los cuatro pares de `--chart-*`. Mismo criterio que en claro:
-     el propio color del segmento donde cumple con margen —`chart-11` (7.21) y `chart-13` (6.89)
-     sobre su fondo compuesto— y un escalón más claro de la misma rampa donde el segmento se
-     quedaba en el filo: `chart-6` daba 4.69 y `chart-12` 4.89 sobre la tarjeta anterior (4.91 y
-     5.17 sobre la de la marca), AA por pocas décimas, y este repo ya aprendió que aprobar por una
-     centésima no es aprobar (feature 210). */
-  --chart-6-strong: #c4b5fd; /* vs bg 10.23 · vs card 9.25 · vs chart-6/15 7.24 */
-  --chart-11-strong: #fdba74; /* vs bg 11.20 · vs card 10.12 · vs chart-11/15 7.21 */
-  --chart-12-strong: #cbd5e1; /* vs bg 12.72 · vs card 11.50 · vs chart-12/15 8.92 */
-  --chart-13-strong: #93c5fd; /* vs bg 10.47 · vs card 9.46 · vs chart-13/15 6.89 */
+  /* Feature 292 — la otra mitad de los cuatro pares de `--chart-*`. SL-33: mismo criterio que en
+     claro, el propio color del segmento en los cuatro. El más justo es `chart-7`, 5.04 sobre su
+     fondo compuesto: por encima del filo de 4.69 y 4.89 que la 292 no dio por bueno, porque este
+     repo ya aprendió que aprobar por una centésima no es aprobar (feature 210). */
+  --chart-5-strong: #60a5fa; /* vs bg 7.43 · vs card 6.71 · vs chart-5/15 5.20 */
+  --chart-7-strong: #c084fc; /* vs bg 7.15 · vs card 6.46 · vs chart-7/15 5.04 */
+  --chart-11-strong: #d6d3d1; /* vs bg 12.68 · vs card 11.46 · vs chart-11/15 7.98 */
+  --chart-12-strong: #facc15; /* vs bg 12.33 · vs card 11.15 · vs chart-12/15 7.88 */
 }
 
 /*
@@ -995,26 +998,26 @@ body:has(> .dark) {
     --border: #2D2D2C;
     --input: #363635;
     --ring: #FFD000;
-    --chart-1: #ff7a33;
-    --chart-2: #3b82f6;
-    --chart-3: #1a56db;
-    --chart-4: #10b981;
-    --chart-5: #f59e0b;
-    --chart-6: #a78bfa;
-    --chart-7: #f472b6;
-    --chart-8: #22d3ee;
-    --chart-9: #a3e635;
-    --chart-10: #f87171;
-    --chart-11: #fdba74;
-    --chart-12: #94a3b8;
-    --chart-13: #93c5fd;
-    --chart-14: #6ee7b7;
-    --chart-15: #fcd34d;
-    --chart-16: #c4b5fd;
-    --chart-17: #f9a8d4;
-    --chart-18: #67e8f9;
-    --chart-19: #bef264;
-    --chart-20: #fca5a5;
+    --chart-1: #ffd000;
+    --chart-2: #fde68a;
+    --chart-3: #2dd4bf;
+    --chart-4: #f87171;
+    --chart-5: #60a5fa;
+    --chart-6: #4ade80;
+    --chart-7: #c084fc;
+    --chart-8: #f472b6;
+    --chart-9: #38bdf8;
+    --chart-10: #a3e635;
+    --chart-11: #d6d3d1;
+    --chart-12: #facc15;
+    --chart-13: #99f6e4;
+    --chart-14: #fecaca;
+    --chart-15: #bfdbfe;
+    --chart-16: #bbf7d0;
+    --chart-17: #e9d5ff;
+    --chart-18: #fbcfe8;
+    --chart-19: #bae6fd;
+    --chart-20: #a8a29e;
     --sidebar: #1C1C1A;
     --sidebar-foreground: #C0C0BE;
     --sidebar-primary: #FFD000;
@@ -1027,10 +1030,10 @@ body:has(> .dark) {
     --warning-strong: #fbbf24;
     --danger-strong: #f87171;
     --info-strong: #93b4f7;
-    --chart-6-strong: #c4b5fd;
-    --chart-11-strong: #fdba74;
-    --chart-12-strong: #cbd5e1;
-    --chart-13-strong: #93c5fd;
+    --chart-5-strong: #60a5fa;
+    --chart-7-strong: #c084fc;
+    --chart-11-strong: #d6d3d1;
+    --chart-12-strong: #facc15;
   }
 }
 

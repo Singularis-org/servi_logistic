@@ -16,6 +16,7 @@ import {
 import { aprobacionPostulacionesConfig } from "@/lib/config/aprobacion-postulaciones";
 import type { ActionError } from "@/lib/types/orden";
 import type { PostulacionPendienteDTO } from "@/lib/types/aprobacion-postulacion";
+import type { ResultadoTopePlan } from "@/lib/types/planes";
 
 import { PostulacionCard } from "./PostulacionCard";
 import { decisionErrorMessage } from "./decision-error-messages";
@@ -60,8 +61,10 @@ function nombreCompleto(p: PostulacionPendienteDTO): string {
     .join(" ");
 }
 
-/** Type guard: el resultado de decision es un ActionError (status != "ok"). */
-function esActionError(result: { status: string }): result is ActionError {
+/** Type guard: el resultado de decision es un rechazo (status != "ok"). */
+function esActionError(
+  result: { status: string },
+): result is ActionError | ResultadoTopePlan {
   return result.status !== "ok";
 }
 
@@ -128,6 +131,17 @@ export function PostulacionesPendientesPanel() {
   }
 
   function handleError(err: unknown) {
+    // SL-24 (R28): el tope del plan trae su propio texto (cuántos permite y qué hacer); se
+    // muestra tal cual en vez del genérico por `status`.
+    if (
+      err &&
+      typeof err === "object" &&
+      "status" in err &&
+      (err as { status: unknown }).status === "tope_plan"
+    ) {
+      toast.error((err as ResultadoTopePlan).mensaje);
+      return;
+    }
     // El error lanzado en handleConfirm es el propio ActionError.
     const status =
       err && typeof err === "object" && "status" in err

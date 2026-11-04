@@ -34,6 +34,7 @@ import type { IZonaRepository } from "@/lib/interfaces/repositories/IZonaReposit
 import type { IVehiculoRepository } from "@/lib/interfaces/repositories/IVehiculoRepository";
 import { descargaConfig } from "@/lib/config/descarga";
 import { esPlataforma } from "@/lib/auth/plataforma";
+import { TopeDelPlanAlcanzado, traducirErrorDeTope } from "@/lib/planes/tope-error";
 import { rechazoDeNombreDeEtiqueta } from "@/lib/utils/nombre-imprimible-etiqueta";
 import { hashPassword } from "@/lib/utils/password";
 import { generateStrongPassword } from "@/lib/utils/password-generator";
@@ -74,6 +75,15 @@ function zonaErrorMessage(reason: "required" | "not_found"): string {
   return reason === "required"
     ? "La zona es obligatoria para este rol"
     : "La zona indicada no existe";
+}
+
+// SL-24 (design §6.3, R28): en crear y en actualizar el tope se pinta bajo el campo de rol, que es
+// lo que lo provoca. `rolId` es la clave del campo en `UsuarioForm`.
+function rechazoDeTopeEnRol(tope: TopeDelPlanAlcanzado): {
+  status: "validation_error";
+  fieldErrors: Record<string, string[]>;
+} {
+  return { status: "validation_error", fieldErrors: { rolId: [tope.message] } };
 }
 
 export class UsuarioService implements IUsuarioService {
@@ -386,6 +396,9 @@ export class UsuarioService implements IUsuarioService {
       if (error instanceof CatalogoInvalidoError) {
         return { status: "validation_error", fieldErrors: { [error.campo]: [error.message] } }; // R18
       }
+      // SL-24 (R27): cambiar a un rol con el tope lleno. Mismo campo que en el alta.
+      const tope = traducirErrorDeTope(error);
+      if (tope instanceof TopeDelPlanAlcanzado) return rechazoDeTopeEnRol(tope);
       throw error;
     }
   }
@@ -402,7 +415,16 @@ export class UsuarioService implements IUsuarioService {
     if (objetivo && (await this.esRolDePlataforma(objetivo.rolId))) return { status: "not_found" };
 
     // FICHA 362 (R9): QUIEN cambio el estado; el registro lleva el estado anterior y el nuevo.
-    const usuario = await this.repo.setEstado(id, input.estado, actor.usuarioId); // R20/R21
+    let usuario: UsuarioPublico | null;
+    try {
+      usuario = await this.repo.setEstado(id, input.estado, actor.usuarioId); // R20/R21
+    } catch (error) {
+      // SL-24 (R27, decision P4): activar desde `inactivo` o `bloqueado` es un alta. El trigger de
+      // `usuario` la rechaza con el tope del rol lleno y la transaccion no cambia nada.
+      const tope = traducirErrorDeTope(error);
+      if (tope instanceof TopeDelPlanAlcanzado) return { status: "tope_plan", mensaje: tope.message };
+      throw error;
+    }
     if (!usuario) return { status: "not_found" }; // R22
     return { status: "ok", usuario };
   }
@@ -626,6 +648,9 @@ export class UsuarioService implements IUsuarioService {
     if (error instanceof UsuarioDuplicadoError) {
       return { status: "conflict", campo: error.campo }; // R10/R11
     }
+    // SL-24 (R27): nace `activo`, asi que el alta cuenta para el tope de su rol.
+    const tope = traducirErrorDeTope(error);
+    if (tope instanceof TopeDelPlanAlcanzado) return rechazoDeTopeEnRol(tope);
     throw error;
   }
 

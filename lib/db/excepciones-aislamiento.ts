@@ -45,18 +45,15 @@ export const EXCEPCIONES_SQL_A_MANO: readonly ExcepcionDeAislamiento[] = [
   porRls("lib/repositories/CorreccionFechaReprogramacionRepository.ts"),
   porRls("lib/repositories/CuentasPorPagarAnaliticaRepository.ts"),
   porRls("lib/repositories/DevolucionTiendaRepository.ts"),
-  porRls("lib/repositories/DineroProductosRepository.ts"),
   porRls("lib/repositories/EstadoCuentaRepository.ts"),
   porRls("lib/repositories/FiltrosWalletRepository.ts"),
   porRls("lib/repositories/FinanzasDiarioRepository.ts"),
-  porRls("lib/repositories/GestionOrdenRepository.ts"),
   porRls("lib/repositories/HistoricoConversacionesRepository.ts"),
   porRls("lib/repositories/InformeTransitoRepository.ts"),
   porRls("lib/repositories/IngresosAnaliticaRepository.ts"),
   porRls("lib/repositories/LiquidacionPagoRepository.ts"),
   porRls("lib/repositories/OrdenHistorialRepository.ts"),
   porRls("lib/repositories/OrdenIdentificadaRepository.ts"),
-  porRls("lib/repositories/OrdenRepository.ts"),
   porRls("lib/repositories/PickingRepository.ts"),
   porRls("lib/repositories/ReprogramadaRetenidaRepository.ts"),
   porRls("lib/repositories/TableroDiaRepository.ts"),
@@ -205,6 +202,12 @@ export const EXCEPCIONES_DE_PLATAFORMA: readonly ExcepcionDeAislamiento[] = [
     archivo: "lib/repositories/ModulosEmpresaRepository.ts",
     ficha: "SL-23",
     motivo: "encender y apagar módulos de una empresa: lo hace el superadmin, que no tiene empresa (R10)",
+  },
+  {
+    archivo: "lib/repositories/PlanesRepository.ts",
+    ficha: "SL-24",
+    motivo:
+      "catálogo de planes y su asignación: los escribe el superadmin, que no tiene empresa (R5); y los destinatarios de los correos del cambio de plan, los maestros activos de las empresas con el plan (R41, R45); y las lecturas del catálogo, el detalle de un plan y el plan de una empresa para el superadmin (SLT-58); y la vista previa de la primera asignación (SLT-58 §11)",
   },
 ];
 

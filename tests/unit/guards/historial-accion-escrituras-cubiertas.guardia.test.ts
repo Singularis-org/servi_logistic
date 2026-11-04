@@ -102,6 +102,18 @@ const CENSO: EntradaCenso[] = [
     mutacion: /tx\.gestionOrden\.updateMany\(/,
   },
   {
+    // ⭑ SLT-56 — el AJUSTE del pago al mensajero de una gestion de un cierre abierto. Metodo propio
+    // por la misma razon que la 398: dentro de otro que ya llama a `appendAccion`, borrar este
+    // dejaria la guardia verde. La mutacion exigida es el SELLO (`pago_mensajero` de la gestion),
+    // que es lo que la fila documenta. Que la fila se escribe de verdad, con su `monto`, lo mide
+    // `tests/integration/db/ajuste-pago-mensajero-cierre.int.test.ts` contra Postgres real.
+    tipos: ["cierre_dia_pago_mensajero_ajustado"],
+    archivo: "lib/repositories/CierresAdminRepository.ts",
+    metodo: "ajustarPagoMensajeroEnCierre",
+    forma: "abre_tx",
+    mutacion: /tx\.gestionOrden\.updateMany\(/,
+  },
+  {
     tipos: ["cierre_bodega_aprobado", "cierre_bodega_rechazado"],
     archivo: "lib/repositories/CierresBodegaAdminRepository.ts",
     metodo: "resolverCierreBodega",
@@ -201,6 +213,43 @@ const CENSO: EntradaCenso[] = [
     metodo: "update",
     forma: "abre_tx",
     mutacion: /tx\.tarifa\.updateMany\(/,
+  },
+  // SLT-52 (R14, T6.2) — el modelo nuevo de tarifas. Un metodo por escritura; `grupo_distritos_cambiado`
+  // tiene DOS productores (renombrar y mover distritos), cada uno con su propia transaccion.
+  {
+    tipos: ["tarifa_valor_fijado"],
+    archivo: "lib/repositories/TarifaValorRepository.ts",
+    metodo: "fijar",
+    forma: "abre_tx",
+    mutacion: /tx\.tarifaValor\.(?:create|update)\(/,
+  },
+  {
+    tipos: ["tarifa_valor_quitado"],
+    archivo: "lib/repositories/TarifaValorRepository.ts",
+    metodo: "quitar",
+    forma: "abre_tx",
+    mutacion: /tx\.tarifaValor\.deleteMany\(/,
+  },
+  {
+    tipos: ["grupo_distritos_creado"],
+    archivo: "lib/repositories/GrupoDistritosRepository.ts",
+    metodo: "crear",
+    forma: "abre_tx",
+    mutacion: /tx\.grupoDistritos\.create\(/,
+  },
+  {
+    tipos: ["grupo_distritos_cambiado"],
+    archivo: "lib/repositories/GrupoDistritosRepository.ts",
+    metodo: "renombrar",
+    forma: "abre_tx",
+    mutacion: /tx\.grupoDistritos\.update\(/,
+  },
+  {
+    tipos: ["grupo_distritos_cambiado"],
+    archivo: "lib/repositories/GrupoDistritosRepository.ts",
+    metodo: "fijarDistritos",
+    forma: "abre_tx",
+    mutacion: /tx\.grupoDistritosDistrito\.deleteMany\(/,
   },
   {
     tipos: ["incidente_aprobado", "incidente_rechazado"],
@@ -502,6 +551,14 @@ const CENSO: EntradaCenso[] = [
     mutacion: /tx\.tarifa\.delete\(/,
   },
   {
+    // SLT-52 (R12, R14): fisico, y arrastra los distritos y valores del grupo por CASCADE.
+    tipos: ["grupo_distritos_borrado"],
+    archivo: "lib/repositories/GrupoDistritosRepository.ts",
+    metodo: "borrar",
+    forma: "abre_tx",
+    mutacion: /tx\.grupoDistritos\.deleteMany\(/,
+  },
+  {
     tipos: ["zona_borrada"],
     archivo: "lib/repositories/ZonaRepository.ts",
     metodo: "hardDelete",
@@ -640,14 +697,27 @@ const CENSO: EntradaCenso[] = [
     archivo: "lib/repositories/ModulosEmpresaRepository.ts",
     metodo: "encender",
     forma: "abre_tx",
-    mutacion: /tx\.organizacionModulo\.createMany\(/,
+    // SL-24 (design §7.1): la sentencia vive en `_shared/modulos-en-tx.ts`, que recibe ESTA `tx`.
+    mutacion: /encenderEnTx\(\s*tx\b/,
   },
   {
     tipos: ["modulo_desactivado"],
     archivo: "lib/repositories/ModulosEmpresaRepository.ts",
     metodo: "apagar",
     forma: "abre_tx",
-    mutacion: /tx\.organizacionModulo\.deleteMany\(/,
+    mutacion: /apagarEnTx\(\s*tx\b/,
+  },
+  // --- SL-24 (design §5.2, §9; R29) · cambia el plan ---
+  //
+  // La asignación corre en `comoPlataforma` y abre su `$transaction`; el `plan_asignado` y las filas
+  // de módulos de la sincronización van en la MISMA llamada (comparten `lote_id`). Lo prueba
+  // `tests/integration/db/planes-historial.test.ts`.
+  {
+    tipos: ["plan_asignado"],
+    archivo: "lib/repositories/PlanesRepository.ts",
+    metodo: "asignar",
+    forma: "abre_tx",
+    mutacion: /tx\.\$executeRaw`UPDATE "organizacion" SET "plan_id"/,
   },
 ];
 
@@ -674,6 +744,23 @@ const SIN_ESCRITOR_DESDE: TiposSinEscritor[] = [
       "`historial_plataforma` por `appendAccionPlataforma` (D15)",
   },
 ];
+
+/**
+ * SLT-52 (tasks T1.4 -> T6.2) — tipos que YA estan en el enum y AUN no tienen escritor porque la
+ * feature que los añade los escribe en una tanda posterior de la misma rama. Distinto de
+ * `SIN_ESCRITOR_DESDE` (retirados para siempre): estos estan en camino. La entrada nombra la ficha y
+ * la task que los escribe; el test de arriba la pone en rojo en cuanto el censo los declara, asi que
+ * no puede quedarse olvidada con el productor ya hecho. Antes de mergear la ficha tiene que estar
+ * vacia de sus tipos (SLT-52 T7.4).
+ */
+interface TiposConEscritorPendiente {
+  tipos: string[];
+  ficha: string;
+  tarea: string;
+}
+
+// SLT-52 T6.2 ya escribe sus cinco tipos (ver el censo): la lista queda vacia.
+const ESCRITOR_PENDIENTE_EN_CURSO: TiposConEscritorPendiente[] = [];
 
 /** Los archivos `.ts` de `lib/`, relativos a la raiz. */
 function archivosDeLib(dir = "lib"): string[] {
@@ -1051,10 +1138,11 @@ describe("362/R16 — cada tipo del catalogo tiene al menos un punto de escritur
   it("TODO valor del enum tiene productor declarado (o esta SIN ESCRITOR con su ficha), y ninguno sobra", () => {
     const producidos = new Set(CENSO.flatMap((e) => e.tipos));
     const sinEscritor = new Set(SIN_ESCRITOR_DESDE.flatMap((e) => e.tipos));
+    const pendientes = new Set(ESCRITOR_PENDIENTE_EN_CURSO.flatMap((e) => e.tipos));
     const delCatalogo = new Set<string>(HISTORIAL_ACCION_TIPOS);
 
     const sinProductor = [...delCatalogo]
-      .filter((t) => !producidos.has(t) && !sinEscritor.has(t))
+      .filter((t) => !producidos.has(t) && !sinEscritor.has(t) && !pendientes.has(t))
       .sort();
     expect(
       sinProductor,
@@ -1067,6 +1155,14 @@ describe("362/R16 — cada tipo del catalogo tiene al menos un punto de escritur
 
     const enLosDos = [...sinEscritor].filter((t) => producidos.has(t)).sort();
     expect(enLosDos, "un tipo no puede tener productor y estar a la vez «sin escritor»").toEqual([]);
+
+    // La lista de pendientes solo puede bajar: en cuanto el censo declara el productor, la entrada
+    // sobra y esto se pone en rojo hasta quitarla.
+    const pendienteYaProducido = [...pendientes].filter((t) => producidos.has(t) || !delCatalogo.has(t)).sort();
+    expect(
+      pendienteYaProducido,
+      "un tipo «pendiente de escritor» ya tiene productor (o ya no existe): quitalo de ESCRITOR_PENDIENTE_EN_CURSO",
+    ).toEqual([]);
   });
 
   it("los 55 tipos del Anexo A (+ Q1, Q2, la 366, la 371, la 373, la 374, la 375, la 376, la 380, la 381, la 398, la 429 y la 431) siguen siendo 55", () => {
@@ -1090,8 +1186,13 @@ describe("362/R16 — cada tipo del catalogo tiene al menos un punto de escritur
     // 72 desde SL-23 (`modulo_activado` y `modulo_desactivado`, un metodo de
     // `ModulosEmpresaRepository` por tipo).
     // SL-20 no cambia el numero: los tres `nodo_geografico_*` se quedan en el enum, sin escritor.
-    // 73 desde SLT-76 (`zona_distrito_cambiado`, en `ZonaRepository.update`).
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(73);
+    // 73 desde SL-24 (`plan_asignado`, de `PlanesRepository.asignar`).
+    // 74 desde SLT-56 (`cierre_dia_pago_mensajero_ajustado`, de
+    // `CierresAdminRepository.ajustarPagoMensajeroEnCierre`).
+    // 75 desde SLT-76 (`zona_distrito_cambiado`, en `ZonaRepository.update`).
+    // 80 desde SLT-52 (`tarifa_valor_fijado`/`_quitado` y `grupo_distritos_creado`/`_cambiado`/
+    // `_borrado`; sus productores, desde T6.2, en `TarifaValorRepository` y `GrupoDistritosRepository`).
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(80);
   });
 });
 

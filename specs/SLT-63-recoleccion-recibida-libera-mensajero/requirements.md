@@ -6,8 +6,8 @@
 > la orden sigue a nombre de ese mensajero (`mensajero_asignado_id`). Medido en producción el
 > 2026-10-29 (`progress/verificacion-analitica-monitoreo-2026-10-29.md` §4 y §6), tiene dos efectos:
 > el filtro «Reasignables» de `/ordenes` no la muestra, y Monitoreo la cuenta en «Asignados / Otros
-> estados» del mensajero (Jason Alfaro: 43 en vez de 38; guías 15383266, 24335845, 31084953,
-> 79389505 y 79796683). Esta ficha arregla exactamente eso.
+> estados» del mensajero (un mensajero real: 43 en vez de 38, por 5
+> guías recolectadas). Esta ficha arregla exactamente eso.
 >
 > **Lo que NO entra.**
 > - La recepción de devoluciones en la central (`devolviendo_a_bodega_central → por_devolver_a_tienda`):
@@ -104,8 +104,8 @@ SQL o del `data` donde vive el criterio (`tasks.md > T5`).
 ## Preguntas abiertas
 
 - **Q1 — CERRADA: (a), ver D2.** Las órdenes que ya están en `en_bodega_central` con el
-  mensajero de la recolección (en producción, al menos las 5 de Jason Alfaro) no se arreglan solas:
-  el cambio solo actúa en recepciones nuevas. Hoy siguen saliendo en el Monitoreo de Alfaro de los
+  mensajero de la recolección (en producción, al menos 5 de un mismo mensajero) no se arreglan solas:
+  el cambio solo actúa en recepciones nuevas. Hoy siguen saliendo en el Monitoreo de ese mensajero de los
   días en que se asignó la recolección y no aparecen en «Reasignables». Se pueden asignar desde
   `/ordenes` sin ese filtro, y al asignarlas se corrigen. ¿Qué prefieres?
   - **(a)** Una migración de datos que deje sin asignación a toda orden viva en `en_bodega_central`

@@ -380,17 +380,12 @@ const ARISTAS_ANALYTICS_AUTORIZADAS = [
   {
     feature: 441,
     modulo: "@/lib/analytics/madurez-cohorte",
-    nombres: [
-      "evaluarMadurezDeCohorte",
-      "MadurezDeCohorte",
-      "PorcentajeDeEntrega",
-      "MINIMO_BASE_PORCENTAJE",
-    ],
+    nombres: ["evaluarMadurezDeCohorte", "MadurezDeCohorte", "PorcentajeDeEntrega"],
     motivo:
-      "LA REGLA de cuando un porcentaje de cohorte NO se puede afirmar (cero desenlaces, base " +
-      "por debajo del suelo) mas la madurez que va al lado del numero. Es un modulo PURO: " +
-      "recibe numeros y devuelve numeros, sin reloj, sin base y sin catalogo — su unica " +
-      "dependencia es `lib/config/efectividad-cohorte`, donde vive el umbral con su medicion. " +
+      "LA REGLA de cuando un porcentaje de cohorte NO se puede afirmar (cero desenlaces; el " +
+      "suelo de base chica se quito en SLT-62) mas la madurez que va al lado del numero. Es un " +
+      "modulo PURO: recibe numeros y devuelve numeros, sin reloj, sin base, sin catalogo y sin " +
+      "dependencias. " +
       "Vive en `lib/analytics/` y no en la ruta porque la comparten el KPI principal y las " +
       "pantallas de tienda y satelite (ficha 443), y porque asi se prueba sin renderizar nada. " +
       "No trae ni una fila ni un nombre de tabla al navegador: `metrics` sigue FUERA.",

@@ -41,9 +41,9 @@ export function pagosDesdeEscalar(
  * derivado del par escalar. Pensado para usarse DESPUÉS de aplicar los `overrides`, para que
  * un `montoRecibido`/`metodoPago` sobreescrito arrastre su desglose.
  */
-export function conPagos(
-  fila: Omit<CierreGestionPendienteRow, "pagos">,
+export function conPagos<F extends Omit<CierreGestionPendienteRow, "pagos">>(
+  fila: F,
   pagos?: LineaPagoFixture[],
-): CierreGestionPendienteRow {
+): F & Pick<CierreGestionPendienteRow, "pagos"> {
   return { ...fila, pagos: pagos ?? pagosDesdeEscalar(fila.montoRecibido, fila.metodoPago) };
 }

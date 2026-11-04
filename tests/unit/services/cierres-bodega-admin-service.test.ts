@@ -97,6 +97,7 @@ function detalleCierreRow(
     totales: { efectivo: "10.00", simpe: "0.00", transferencia: "0.00", general: "10.00" },
     totalPagoMensajero: "5.00", // feature 39/R20: snapshot del pago del cierre_dia
     totalIngresoBodegaRechazos: "0.00", // feature 56/R19: snapshot del ingreso del cierre_dia
+    gestionesAjustadas: 0, // SLT-56 (R20): campo nuevo del contrato del repo
     ...overrides,
   };
 }
@@ -322,6 +323,8 @@ describe("CierresBodegaAdminService.verCierreBodegaDetalle — ingreso y gananci
       fleteDevolucionConIva: null,
       comisionConIva: null,
       total: "0.00",
+      fulfillment: "0.00", // SLT-52 (R46): el fulfillment congelado y su IVA, fuera del total
+      ivaFulfillment: "0.00",
       tarifa: null,
       ...over,
     };
@@ -882,6 +885,8 @@ describe("CierresBodegaAdminService.verCierreBodegaDetalle — las dos cascadas 
       fleteDevolucionConIva: null,
       comisionConIva: null,
       total: "0.00",
+      fulfillment: "0.00", // SLT-52 (R46): el fulfillment congelado y su IVA, fuera del total
+      ivaFulfillment: "0.00",
       tarifa: null,
       ...over,
     };
@@ -1246,6 +1251,8 @@ describe("396/D1 — `verCierreBodegaDetalle` emite el desglose por tienda en lo
       fleteDevolucionConIva: null,
       comisionConIva: null,
       total: "0.00",
+      fulfillment: "0.00", // SLT-52 (R46): el fulfillment congelado y su IVA, fuera del total
+      ivaFulfillment: "0.00",
       tarifa: null,
       ...over,
     };

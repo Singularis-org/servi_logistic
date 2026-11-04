@@ -26,11 +26,14 @@ const OSM_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
 const OSM_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
-/** Marcador del punto compartido por el cliente (destino). Pin naranja, distinguible. */
+/**
+ * Marcador del punto compartido por el cliente (destino). Pin en Negro Servi (#111111): se
+ * distingue sobre la tierra y las calles claras de OSM, que no cambian con el tema.
+ */
 function iconoCliente(): L.DivIcon {
   return L.divIcon({
     className: "",
-    html: `<div style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:9999px 9999px 9999px 0;transform:rotate(-45deg);background:#f26419;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>`,
+    html: `<div style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:9999px 9999px 9999px 0;transform:rotate(-45deg);background:#111111;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>`,
     iconSize: [28, 28],
     iconAnchor: [14, 28],
   });

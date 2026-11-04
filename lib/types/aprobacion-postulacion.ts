@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { MensajeroDocumentoTipo } from "@prisma/client";
 import type { ActionError } from "@/lib/types/orden";
+import type { ResultadoTopePlan } from "@/lib/types/planes";
 import { aprobacionPostulacionesConfig } from "@/lib/config/aprobacion-postulaciones";
 
 // Feature 22 — DTOs, schemas de borde (zod) y resultados tipados de las Server
@@ -56,6 +57,8 @@ export type ListarPostulacionesResult =
     }
   | ActionError;
 
+// SL-24 (R27, R28): `tope_plan` solo puede salir de aprobar (aprobar es un alta; rechazar no).
 export type DecisionResult =
   | { status: "ok"; usuarioId: string; estado: "activo" | "inactivo" }
+  | ResultadoTopePlan
   | ActionError;

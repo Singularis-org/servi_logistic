@@ -17,6 +17,10 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
     orden: {
       findFirst: vi.fn(),
     },
+    // SLT-40: el hilo del saliente citado se lee desde `chat_mensaje`.
+    chatMensaje: {
+      findFirst: vi.fn(),
+    },
     // R25/D4: la resolucion del entrante matchea el telefono NORMALIZADO en ambos lados via SQL
     // crudo (`regexp_replace`), porque Prisma no puede normalizar la columna en el WHERE.
     $queryRaw: vi.fn(),
@@ -278,5 +282,79 @@ describe("Feature 311 · migrarTelefono (R16/R18)", () => {
     expect(await repo.migrarTelefono("", "50699996666")).toBe(0);
     expect(await repo.migrarTelefono("50688887777", "")).toBe(0);
     expect(prisma.$executeRaw).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SLT-40 — T3 (R4/R7/R13). `findHiloDeSalienteCitado`: el hilo del saliente que cita un
+// entrante. Solo lee; la decision vive en `decidirEnrutadoPorCita`.
+// ---------------------------------------------------------------------------
+
+function filaSaliente(orden: { deletedAt: Date | null; mensajeroAsignadoId: string | null }) {
+  return {
+    conversacion: {
+      id: "hilo-7",
+      ordenId: "orden-7",
+      telefonoE164: "50688887777",
+      orden,
+    },
+  };
+}
+
+describe("SLT-40 · findHiloDeSalienteCitado (R4/R7/R13)", () => {
+  it("R4: mapea la fila del saliente a HiloCitado con la orden viva y su mensajero actual", async () => {
+    const prisma = buildPrisma();
+    prisma.chatMensaje.findFirst.mockResolvedValue(
+      filaSaliente({ deletedAt: null, mensajeroAsignadoId: "men-7" }),
+    );
+    const repo = new ChatConversacionRepository(prisma as unknown as PrismaClient);
+
+    expect(await repo.findHiloDeSalienteCitado("wamid.SAL")).toEqual({
+      conversacionId: "hilo-7",
+      ordenId: "orden-7",
+      telefonoE164: "50688887777",
+      ordenEliminada: false,
+      ordenMensajeroAsignadoId: "men-7",
+    });
+  });
+
+  it("R4: orden con deleted_at -> ordenEliminada true; sin mensajero -> null", async () => {
+    const prisma = buildPrisma();
+    prisma.chatMensaje.findFirst.mockResolvedValue(
+      filaSaliente({
+        deletedAt: new Date("2026-10-01T00:00:00.000Z"),
+        mensajeroAsignadoId: null,
+      }),
+    );
+    const repo = new ChatConversacionRepository(prisma as unknown as PrismaClient);
+
+    const hilo = await repo.findHiloDeSalienteCitado("wamid.SAL");
+
+    expect(hilo?.ordenEliminada).toBe(true);
+    expect(hilo?.ordenMensajeroAsignadoId).toBeNull();
+  });
+
+  it("R7: el where filtra por el wamid y direccion saliente (un id de entrante no cuenta)", async () => {
+    const prisma = buildPrisma();
+    prisma.chatMensaje.findFirst.mockResolvedValue(null);
+    const repo = new ChatConversacionRepository(prisma as unknown as PrismaClient);
+
+    await repo.findHiloDeSalienteCitado("wamid.X");
+
+    expect(prisma.chatMensaje.findFirst).toHaveBeenCalledTimes(1);
+    expect(prisma.chatMensaje.findFirst.mock.calls[0][0].where).toEqual({
+      waMessageId: "wamid.X",
+      direccion: "saliente",
+    });
+  });
+
+  it("R7/R13: sin fila (no existe, es entrante o es de otra empresa) devuelve null", async () => {
+    // La extension del cliente pone `organizacion_id` y la RLS lo respalda: un saliente de otra
+    // empresa no llega como fila, y el repositorio lo traduce a null igual que un id inexistente.
+    const prisma = buildPrisma();
+    prisma.chatMensaje.findFirst.mockResolvedValue(null);
+    const repo = new ChatConversacionRepository(prisma as unknown as PrismaClient);
+
+    expect(await repo.findHiloDeSalienteCitado("wamid.OTRA")).toBeNull();
   });
 });

@@ -110,27 +110,42 @@ describeSiHayBase("459/B.5 — las migraciones de la 459 contra Postgres", () =>
     // Ficha 458-B: DOS tipos mas detras de los de la 457 (ninguna entidad).
     // SL-36: CINCO tipos y UNA entidad detras de todo lo anterior (`integracion_*`).
     // SL-23: DOS tipos y UNA entidad detras de los de SL-36 (`modulo_*`, `organizacion_modulo`).
-    // SLT-76: UN tipo detras de los de SL-23 (`zona_distrito_cambiado`), ninguna entidad.
-    expect(tipos.slice(-18, -14)).toEqual([
+    // SL-24: UN tipo y UNA entidad detras de los de SL-23 (`plan_asignado`, `plan`).
+    // SLT-56: UN tipo detras del de SL-24 (`cierre_dia_pago_mensajero_ajustado`), ninguna entidad.
+    // SLT-76: UN tipo detras del de SLT-56 (`zona_distrito_cambiado`), ninguna entidad: su migracion
+    // (20261102090000) se aplica despues de la de SLT-56 (20261029120100).
+    // SLT-52: CINCO tipos y DOS entidades detras de todo lo anterior (el modelo nuevo de tarifas,
+    // 20261103120300): los cortes de arriba se corren cinco y dos posiciones.
+    expect(tipos.slice(-25, -21)).toEqual([
       "pago_por_cuenta_tienda_registrado",
       "pago_por_cuenta_tienda_anulado",
       "aporte_capital_registrado",
       "aporte_capital_anulado",
     ]);
-    expect(tipos.slice(-14, -12)).toEqual(["cobro_tienda_anulado", "wallet_movimiento_manual_anulado"]);
-    expect(tipos.slice(-12, -10)).toEqual(["abono_tienda_registrado", "abono_tienda_anulado"]);
-    expect(tipos.slice(-10, -8)).toEqual(["cobro_rechazo_tienda_anulado", "egreso_caja_anulado"]);
-    expect(tipos.slice(-8, -3)).toEqual([
+    expect(tipos.slice(-21, -19)).toEqual(["cobro_tienda_anulado", "wallet_movimiento_manual_anulado"]);
+    expect(tipos.slice(-19, -17)).toEqual(["abono_tienda_registrado", "abono_tienda_anulado"]);
+    expect(tipos.slice(-17, -15)).toEqual(["cobro_rechazo_tienda_anulado", "egreso_caja_anulado"]);
+    expect(tipos.slice(-15, -10)).toEqual([
       "integracion_conectada",
       "integracion_actualizada",
       "integracion_probada",
       "integracion_token_regenerado",
       "integracion_desconectada",
     ]);
-    expect(tipos.slice(-3, -1)).toEqual(["modulo_activado", "modulo_desactivado"]);
-    expect(tipos.slice(-1)).toEqual(["zona_distrito_cambiado"]);
-    expect(entidades.slice(-5, -3)).toEqual(["pago_por_cuenta_tienda", "aporte_capital"]);
-    expect(entidades.slice(-3)).toEqual(["abono_tienda", "integracion", "organizacion_modulo"]);
+    expect(tipos.slice(-10, -8)).toEqual(["modulo_activado", "modulo_desactivado"]);
+    expect(tipos.slice(-8, -7)).toEqual(["plan_asignado"]);
+    expect(tipos.slice(-7, -6)).toEqual(["cierre_dia_pago_mensajero_ajustado"]);
+    expect(tipos.slice(-6, -5)).toEqual(["zona_distrito_cambiado"]);
+    expect(tipos.slice(-5)).toEqual([
+      "tarifa_valor_fijado",
+      "tarifa_valor_quitado",
+      "grupo_distritos_creado",
+      "grupo_distritos_cambiado",
+      "grupo_distritos_borrado",
+    ]);
+    expect(entidades.slice(-8, -6)).toEqual(["pago_por_cuenta_tienda", "aporte_capital"]);
+    expect(entidades.slice(-6, -2)).toEqual(["abono_tienda", "integracion", "organizacion_modulo", "plan"]);
+    expect(entidades.slice(-2)).toEqual(["tarifa_valor", "grupo_distritos"]);
   });
 
   it("(b) los CHECK admiten los pares nuevos y RECHAZAN los invertidos", async () => {

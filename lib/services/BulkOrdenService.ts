@@ -39,9 +39,10 @@ import type {
 } from "@/lib/interfaces/services/IBulkOrdenService";
 import type {
   ITarifaVigenteRepository,
-  TarifaVigenteResuelta,
 } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
 import { clavePar, type ParTarifa } from "@/lib/utils/cascada-tarifa";
+import { Prisma } from "@prisma/client";
+import type { TarifaTienda } from "@/lib/types/tarifa-flexible";
 import type { MontoAjustado } from "@/lib/utils/monto-cobrar";
 import { MSG_CARGA_SIN_TARIFA, MSG_FILA_SIN_TARIFA } from "@/lib/services/mensajes-tarifa";
 import { ConflictError } from "@/lib/errors/app-error";
@@ -56,8 +57,18 @@ import {
   type GeoResult,
 } from "@/lib/services/geo-resolucion";
 import { parseCantonDistrito } from "@/lib/utils/canton-distrito";
-import { desgloseCargaApi, tieneFulfillment } from "@/lib/utils/ingreso-empresa";
+import {
+  desgloseCargaApi,
+  ivaFulfillmentDeTarifa,
+  fleteEntregadoSinTarifa,
+  tieneFulfillment,
+} from "@/lib/utils/ingreso-empresa";
 import { nombreDeEstado } from "@/lib/types/order-status";
+import {
+  SIN_CUPO,
+  type ICupoPlanRepository,
+} from "@/lib/interfaces/repositories/ICupoPlanRepository";
+import { TopeDelPlanAlcanzado, traducirErrorDeTope } from "@/lib/planes/tope-error";
 
 /** SL-17 (D15): la tienda de la carga no existe para la empresa en curso. */
 export const MSG_TIENDA_NO_ENCONTRADA = "tienda no encontrada";
@@ -154,7 +165,58 @@ export class BulkOrdenService implements IBulkOrdenService {
      * de ordenes ya persistidas.
      */
     private readonly notificarCarga: CargaMasivaNotificador = notificadorNoOp,
+    /**
+     * SL-24 (design §6.1): la lectura previa del cupo de órdenes del plan. OPCIONAL para no tocar
+     * los constructores que ya existen (tests y `tests/fabricas/`). `SIN_CUPO` no comprueba nada
+     * y el trigger sigue siendo la autoridad. Los dos routes de carga inyectan el real.
+     */
+    private readonly cupoPlan: ICupoPlanRepository = SIN_CUPO,
   ) {}
+
+  /**
+   * SL-24 (R21) — el rechazo previo. `null` si la carga cabe, si no hay nada que crear o si la
+   * empresa no tiene tope de órdenes. Una carga que deja el uso justo en el tope cabe.
+   */
+  private async topeExcedido(pedidas: number): Promise<TopeDelPlanAlcanzado | null> {
+    if (pedidas === 0) return null;
+    const cupo = await this.cupoPlan.cupoOrdenes();
+    if (cupo === null || cupo.usados + pedidas <= cupo.maximo) return null;
+    return new TopeDelPlanAlcanzado({ tope: "ordenes", maximo: cupo.maximo, usados: cupo.usados, pedidas });
+  }
+
+  /**
+   * SL-24 (R22) — cada fila `creada` cuya remisión está en `remisiones` pasa a `error` con el
+   * mensaje del tope. Las `duplicada` y las `error` no cambian. La fila se reescribe entera: los
+   * avisos de una orden que no se creó (`estatus`, `montoAjustado`, `textoNormalizado`) se caen.
+   */
+  private filasAErrorDeTope(filas: RowResult[], remisiones: Set<string>, mensaje: string): void {
+    filas.forEach((f, idx) => {
+      if (f.resultado !== "creada" || !remisiones.has(f.numRemision)) return;
+      filas[idx] = { fila: f.fila, numRemision: f.numRemision, resultado: "error", errores: { plan: [mensaje] } };
+    });
+  }
+
+  /**
+   * SL-24 (design §6.1) — el trigger rechazó un lote: otra alta se coló entre la lectura previa y el
+   * `INSERT`. Los lotes anteriores de la misma petición ya confirmaron, así que se pregunta a la
+   * base cuáles de `pendientes` existen: esas siguen `creada` (con su estado real) y el resto pasa a
+   * `error`. Devuelve cuántas entraron. Mismo patrón que `reclasificarOmitidas`.
+   */
+  private async reclasificarTrasTope(
+    filas: RowResult[],
+    pendientes: string[],
+    tiendaId: string,
+    tope: TopeDelPlanAlcanzado,
+  ): Promise<number> {
+    const existentes =
+      pendientes.length === 0 ? new Map<string, string>() : await this.repo.findExistingRemisiones(pendientes, tiendaId);
+    for (const f of filas) {
+      const real = f.resultado === "creada" ? existentes.get(f.numRemision) : undefined;
+      if (real !== undefined) f.estatus = real;
+    }
+    this.filasAErrorDeTope(filas, new Set(pendientes.filter((r) => !existentes.has(r))), tope.message);
+    return existentes.size;
+  }
 
   async cargarMasiva(
     rows: RawRow[],
@@ -240,6 +302,15 @@ export class BulkOrdenService implements IBulkOrdenService {
       });
     });
 
+    // SL-24 (R21, R22): la comprobación previa del tope del plan, ANTES del `dryRun` para que la
+    // vista previa diga lo mismo que la carga real. Si no cabe, no se persiste nada: cada fila que
+    // se iba a crear sale como error con el mensaje del tope, y sin lote.
+    const tope = await this.topeExcedido(toCreate.length);
+    if (tope !== null) {
+      this.filasAErrorDeTope(filas, new Set(toCreate.map((o) => o.numRemision)), tope.message);
+      return { status: "ok", summary: this.buildSummary(rows.length, filas, null) };
+    }
+
     // Dry-run / validación previa (R17): se omite TODA la persistencia; el summary ya lleva
     // la clasificación completa (creadas/duplicadas/error) para el preview, con el estado
     // inicial que correspondería. Al salir antes de tocar el repositorio, el dry-run no
@@ -270,25 +341,36 @@ export class BulkOrdenService implements IBulkOrdenService {
       // Feature 155/R3/R8/R11: la rama que numera usa la ruta de lote CON guia (misma
       // secuencia atomica, guarda `num_guia IS NULL`); la otra, la de siempre. Las dos
       // encolan geocodificacion por orden efectivamente insertada.
-      if (destino.conGuia) {
-        const persistido = await this.repo.createManyOrdenesConGuia(
-          toCreate,
-          cargaMasivaConfig.BATCH_SIZE,
-          historial,
-          lote,
-        );
-        cargaId = persistido.cargaId;
-        // Feature 294: lo que no entro, se dice. Ver `reclasificarOmitidas`.
-        await this.reclasificarOmitidas(filas, persistido.omitidas, tiendaId);
-      } else {
-        const persistido = await this.repo.createManyOrdenes(
-          toCreate,
-          cargaMasivaConfig.BATCH_SIZE,
-          historial,
-          lote,
-        );
-        cargaId = persistido.cargaId;
-        await this.reclasificarOmitidas(filas, persistido.omitidas, tiendaId);
+      try {
+        if (destino.conGuia) {
+          const persistido = await this.repo.createManyOrdenesConGuia(
+            toCreate,
+            cargaMasivaConfig.BATCH_SIZE,
+            historial,
+            lote,
+          );
+          cargaId = persistido.cargaId;
+          // Feature 294: lo que no entro, se dice. Ver `reclasificarOmitidas`.
+          await this.reclasificarOmitidas(filas, persistido.omitidas, tiendaId);
+        } else {
+          const persistido = await this.repo.createManyOrdenes(
+            toCreate,
+            cargaMasivaConfig.BATCH_SIZE,
+            historial,
+            lote,
+          );
+          cargaId = persistido.cargaId;
+          await this.reclasificarOmitidas(filas, persistido.omitidas, tiendaId);
+        }
+      } catch (e) {
+        // SL-24 (design §6.1): saltó el trigger del tope. Lo que entró en un lote anterior sigue
+        // `creada`; el resto pasa a error. El id del lote solo se conoce si el cliente lo trajo: si
+        // esta petición lo creó y un lote anterior confirmó, el id no vuelve (residuo de §6.1).
+        const traducido = traducirErrorDeTope(e);
+        if (!(traducido instanceof TopeDelPlanAlcanzado)) throw traducido;
+        const pendientes = toCreate.map((o) => o.numRemision);
+        await this.reclasificarTrasTope(filas, pendientes, tiendaId, traducido);
+        cargaId = options.cargaId ?? null;
       }
     }
 
@@ -483,7 +565,10 @@ export class BulkOrdenService implements IBulkOrdenService {
     // insertarse (R28) y un lote donde NINGUNA fila resuelve no deja ni una orden ni una fila
     // de `carga` (R29). Ademas cada orden se tarifa con SU par (tienda, zona), no con una
     // unica tarifa de lote (R25), en UNA sola consulta (R26).
-    const tarifaPorRemision = new Map<string, TarifaVigenteResuelta>();
+    const tarifaPorRemision = new Map<string, TarifaTienda>();
+    // SLT-52 (R27): el pedido de cada orden, como texto, para un flete o fulfillment en % del
+    // modelo nuevo. `montoCobrar` ya llega redondeado a la unidad de la moneda por `normalizarMontoCobrar`.
+    const montoCobrarPorRemision = new Map<string, string | null>();
     const conTarifa: CreateOrdenData[] = [];
     if (toCreate.length > 0) {
       // El par de una fila: la tienda de la key (todo el lote es suyo, D4) y la zona de SU
@@ -491,6 +576,9 @@ export class BulkOrdenService implements IBulkOrdenService {
       const parDe = (orden: CreateOrdenData): ParTarifa => ({
         tiendaId,
         zonaId: zonaPorRemision.get(orden.numRemision) ?? null,
+        // SLT-52 (R16/R18): el distrito que la fila resolvio en su geografia; `undefined` = la
+        // fila no lo trae, que para la tarifa es «sin distrito».
+        distritoId: orden.distritoId ?? null,
       });
       // Pares DISTINTOS (design §4.3): dos filas de la misma zona son un solo par a resolver.
       const paresPorClave = new Map<string, ParTarifa>();
@@ -502,12 +590,18 @@ export class BulkOrdenService implements IBulkOrdenService {
 
       const sinTarifa: CreateOrdenData[] = [];
       for (const orden of toCreate) {
+        // SLT-52 (R25): «sin tarifa» = sin flete por entregado. En el viejo es `null`; en el nuevo
+        // el resolver nunca da `null` y lo que falta es ese concepto.
         const tarifa = resueltas.get(clavePar(parDe(orden))) ?? null;
-        if (tarifa === null) {
+        if (tarifa === null || fleteEntregadoSinTarifa(tarifa)) {
           sinTarifa.push(orden);
           continue;
         }
         tarifaPorRemision.set(orden.numRemision, tarifa);
+        montoCobrarPorRemision.set(
+          orden.numRemision,
+          orden.montoCobrar == null ? null : new Prisma.Decimal(orden.montoCobrar).toFixed(2),
+        );
         // FULFILLMENT: aqui, y solo aqui, se decide donde nace ESTA orden. El monto de la
         // tarifa que acaba de resolver es el predicado, y el `estatusId` que se persiste sale
         // del mismo sitio: nunca se escribe un estado que no case con lo que se cobro.
@@ -574,6 +668,12 @@ export class BulkOrdenService implements IBulkOrdenService {
     // inserta se le pasa al segundo, asi que sigue habiendo UNA fila de `carga` por peticion
     // (feature 141/R30) y `total_files` sigue siendo el tamaño del array recibido. Un lote
     // homogeneo —el caso normal— hace exactamente una llamada, igual que antes.
+    // SL-24 (R21, R23): la comprobación previa del tope del plan, sobre lo que esta petición va a
+    // insertar de verdad (`conTarifa`: las filas sin tarifa ya salieron). Si no cabe, nada se
+    // persiste y el borde responde 409 con `details.codigo = "tope_plan"`.
+    const tope = await this.topeExcedido(conTarifa.length);
+    if (tope !== null) throw tope;
+
     const grupos: Array<{ destino: DestinoCreacion; ordenes: CreateOrdenData[] }> = [
       { destino: destinoSinFulfillment, ordenes: [] },
       { destino: destinoConFulfillment, ordenes: [] },
@@ -588,23 +688,36 @@ export class BulkOrdenService implements IBulkOrdenService {
     // Feature 294: las que `skipDuplicates` descarto, acumuladas sobre los DOS grupos.
     const omitidas: string[] = [];
     let cargaId: string | null = null;
-    for (const grupo of grupos) {
-      if (grupo.ordenes.length === 0) continue;
-      const persistido = await this.repo.createManyOrdenesConGuia(
-        grupo.ordenes,
-        cargaMasivaConfig.BATCH_SIZE,
-        { actorUsuarioId: tiendaId, origenTipo: "carga_api" },
-        {
-          cargaId, // null en el primero; el id ya resuelto en el segundo (R30: un solo lote)
-          usuarioCargaId: tiendaId,
-          totalFiles: rows.length,
-          name: options.name ?? null,
-        },
-        { conGuia: grupo.destino.conGuia },
-      );
-      cargaId = persistido.cargaId ?? cargaId;
-      creadas.push(...persistido.creadas);
-      omitidas.push(...persistido.omitidas);
+    try {
+      for (const grupo of grupos) {
+        if (grupo.ordenes.length === 0) continue;
+        const persistido = await this.repo.createManyOrdenesConGuia(
+          grupo.ordenes,
+          cargaMasivaConfig.BATCH_SIZE,
+          { actorUsuarioId: tiendaId, origenTipo: "carga_api" },
+          {
+            cargaId, // null en el primero; el id ya resuelto en el segundo (R30: un solo lote)
+            usuarioCargaId: tiendaId,
+            totalFiles: rows.length,
+            name: options.name ?? null,
+          },
+          { conGuia: grupo.destino.conGuia },
+        );
+        cargaId = persistido.cargaId ?? cargaId;
+        creadas.push(...persistido.creadas);
+        omitidas.push(...persistido.omitidas);
+      }
+    } catch (e) {
+      // SL-24 (design §6.1): saltó el trigger del tope. Si no entró ninguna orden, la petición se
+      // rechaza entera con el 409 (R23). Si entró alguna en un lote anterior, el resumen lo dice
+      // fila a fila: las que existen siguen `creada` y el resto pasa a error. Las de un lote ya
+      // confirmado del grupo que falló no traen `numGuia` (residuo aceptado de §6.1).
+      const traducido = traducirErrorDeTope(e);
+      if (!(traducido instanceof TopeDelPlanAlcanzado)) throw traducido;
+      const yaCreadas = new Set(creadas.map((c) => c.numRemision));
+      const pendientes = conTarifa.map((o) => o.numRemision).filter((r) => !yaCreadas.has(r));
+      const entraron = await this.reclasificarTrasTope(filas, pendientes, tiendaId, traducido);
+      if (creadas.length === 0 && entraron === 0) throw traducido;
     }
 
     // Feature 294 — ANTES de armar el bloque `ordenes`: una fila que no entro se reclasifica a
@@ -640,6 +753,7 @@ export class BulkOrdenService implements IBulkOrdenService {
         tarifaPorRemision.get(creada.numRemision) ?? null,
         esCentralPorRemision.get(creada.numRemision) ?? false,
         esZonaEspecialPorRemision.get(creada.numRemision) ?? false,
+        montoCobrarPorRemision.get(creada.numRemision) ?? null,
       );
       ordenes.push({
         id: creada.ordenId,
@@ -656,6 +770,11 @@ export class BulkOrdenService implements IBulkOrdenService {
         // es una guarda de tipos, no un camino vivo.
         costoEnvio: desglose.costoEnvio,
         fulfillment: desglose.fulfillment,
+        // SLT-52 (R46, P5 = a): el IVA del fulfillment que `costoEnvio` ya suma, aparte.
+        ivaFulfillment: ivaFulfillmentDeTarifa(
+          tarifaPorRemision.get(creada.numRemision) ?? null,
+          montoCobrarPorRemision.get(creada.numRemision) ?? null,
+        ).toFixed(2),
       });
     }
 

@@ -56,9 +56,10 @@ describe("466/R16 — las descripciones del escenario devuelto y del costo conge
 });
 
 describe("466/R17 — el contrato NO cambia de forma", () => {
-  it("el escenario devuelto conserva sus cinco campos, su `required` y sus tipos", () => {
-    expect(devuelto.required).toEqual(["flete", "iva", "comision", "fulfillment", "total"]);
-    expect(Object.keys(devuelto.properties)).toEqual(["flete", "iva", "comision", "fulfillment", "total"]);
+  // SLT-52 R46 (P5 = a) sumo `ivaFulfillment` despues de la 466; la 466 no cambio la forma.
+  it("el escenario devuelto conserva sus campos, su `required` y sus tipos", () => {
+    expect(devuelto.required).toEqual(["flete", "iva", "comision", "fulfillment", "ivaFulfillment", "total"]);
+    expect(Object.keys(devuelto.properties)).toEqual(["flete", "iva", "comision", "fulfillment", "ivaFulfillment", "total"]);
     for (const p of Object.values(devuelto.properties)) expect(p.type).toBe("string");
   });
 

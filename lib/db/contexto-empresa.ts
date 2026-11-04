@@ -1,5 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
+import { llevaSqlstate } from "./sqlstate";
+
 // SL-17 (design §5) — el contexto de datos de cada operacion: una empresa, un contexto de
 // plataforma declarado, o nada. Vive en `AsyncLocalStorage` para que lo herede todo lo que se
 // ejecuta dentro de `conEmpresa`/`comoPlataforma` sin pasarlo de mano en mano por las capas.
@@ -103,38 +105,14 @@ export class UsuarioSinEmpresa extends Error {
 
 export const SQLSTATE_EMPRESA_CRUZADA = "SL017";
 
-// Formas reales en Prisma 7.8 + @prisma/adapter-pg (leidas en `@prisma/client/runtime` y en
-// `@prisma/adapter-pg`):
-//  - SQL a mano: `PrismaClientKnownRequestError` P2010 con `meta.driverAdapterError`, un
-//    `DriverAdapterError` cuyo `cause` es `{ kind: "postgres", code, originalCode, message }`, y
-//    el mensaje «Raw query failed. Code: `SL017`…».
-//  - Operacion de modelo: el SQLSTATE no tiene codigo Prisma, asi que el runtime relanza el
-//    propio `DriverAdapterError` (mismo `cause`).
-//  - `pg` directo: el error del driver con `code: "SL017"`.
-// Se recorre el grafo `cause`/`meta`/`driverAdapterError` en vez de fijar una sola forma: la
-// envoltura en lote o un `cause` intermedio no deben hacer que se escape sin traducir.
-const CLAVES_ANIDADAS = ["cause", "meta", "driverAdapterError"] as const;
-
-function llevaSqlstateEmpresaCruzada(e: unknown, vistos: Set<unknown>, profundidad: number): boolean {
-  if (e === null || typeof e !== "object" || vistos.has(e) || profundidad > 6) return false;
-  vistos.add(e);
-  const o = e as Record<string, unknown>;
-  if (o.code === SQLSTATE_EMPRESA_CRUZADA || o.originalCode === SQLSTATE_EMPRESA_CRUZADA) return true;
-  if (
-    o.code === "P2010" &&
-    typeof o.message === "string" &&
-    o.message.includes(`Code: \`${SQLSTATE_EMPRESA_CRUZADA}\``)
-  ) {
-    return true;
-  }
-  return CLAVES_ANIDADAS.some((k) => llevaSqlstateEmpresaCruzada(o[k], vistos, profundidad + 1));
-}
+// Las formas en que llega el SQLSTATE por Prisma 7.8 + adapter-pg, y por que se recorre la cadena
+// de causas, estan en `lib/db/sqlstate.ts` (SL-24 lo comparte para `SL024`).
 
 /**
  * Convierte un error con SQLSTATE `SL017` en `EmpresaCruzada` (con el original en `cause`);
  * cualquier otro error se devuelve tal cual. Pensado para `throw traducirErrorDeEmpresa(e)`.
  */
 export function traducirErrorDeEmpresa(e: unknown, modelo?: string): unknown {
-  if (e instanceof EmpresaCruzada || !llevaSqlstateEmpresaCruzada(e, new Set(), 0)) return e;
+  if (e instanceof EmpresaCruzada || !llevaSqlstate(e, SQLSTATE_EMPRESA_CRUZADA)) return e;
   return new EmpresaCruzada(modelo ?? "desconocido", { cause: e });
 }

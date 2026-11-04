@@ -85,7 +85,69 @@ su `contraste()`.
 
 La barra lateral es la misma en los dos temas: los `--sidebar*` valen lo mismo en claro y en oscuro.
 
-No cambian con la marca: `--destructive`, los `--chart-*` y los `*-strong`.
+## Paleta de gráficas
+
+La aprobó el humano el 2026-10-28 (`specs/SL-33-paleta-secundaria/requirements.md > Paleta de
+gráficas aprobada`). La columna «Claro» va en el tema claro y en los dos bloques de impresión; la
+«Oscuro», en `.dark` y, hex a hex, en `.tema-sistema`. Cada hex es el valor del token en
+`app/globals.css`. Las cifras son el `contraste()` de `tests/fixtures/contraste.ts` sobre el fondo y
+la tarjeta de su tema: `#F7F7F5` y `#ffffff` en claro, `#111111` y `#1C1C1A` en oscuro. Las 40
+llegan a 3:1; la más justa es `--chart-16` sobre el fondo claro, 3.07.
+
+| Token | Claro | s/ fondo | s/ tarjeta | Oscuro | s/ fondo | s/ tarjeta |
+| --- | --- | --- | --- | --- | --- | --- |
+| `--chart-1` | `#111111` | 17.60 | 18.88 | `#ffd000` | 12.84 | 11.60 |
+| `--chart-2` | `#a16207` | 4.59 | 4.92 | `#fde68a` | 15.16 | 13.70 |
+| `--chart-3` | `#0f766e` | 5.10 | 5.47 | `#2dd4bf` | 10.14 | 9.17 |
+| `--chart-4` | `#b91c1c` | 6.03 | 6.47 | `#f87171` | 6.83 | 6.17 |
+| `--chart-5` | `#1d4ed8` | 6.25 | 6.70 | `#60a5fa` | 7.43 | 6.71 |
+| `--chart-6` | `#15803d` | 4.68 | 5.02 | `#4ade80` | 10.84 | 9.79 |
+| `--chart-7` | `#7e22ce` | 6.51 | 6.98 | `#c084fc` | 7.15 | 6.46 |
+| `--chart-8` | `#be185d` | 5.63 | 6.04 | `#f472b6` | 7.13 | 6.44 |
+| `--chart-9` | `#0369a1` | 5.53 | 5.93 | `#38bdf8` | 8.81 | 7.97 |
+| `--chart-10` | `#4d7c0f` | 4.66 | 4.99 | `#a3e635` | 12.52 | 11.32 |
+| `--chart-11` | `#57534e` | 7.11 | 7.63 | `#d6d3d1` | 12.68 | 11.46 |
+| `--chart-12` | `#854d0e` | 6.39 | 6.85 | `#facc15` | 12.33 | 11.15 |
+| `--chart-13` | `#0d9488` | 3.49 | 3.74 | `#99f6e4` | 14.98 | 13.54 |
+| `--chart-14` | `#dc2626` | 4.50 | 4.83 | `#fecaca` | 13.05 | 11.80 |
+| `--chart-15` | `#2563eb` | 4.82 | 5.17 | `#bfdbfe` | 13.29 | 12.01 |
+| `--chart-16` | `#16a34a` | 3.07 | 3.30 | `#bbf7d0` | 15.58 | 14.08 |
+| `--chart-17` | `#9333ea` | 5.02 | 5.38 | `#e9d5ff` | 13.87 | 12.54 |
+| `--chart-18` | `#db2777` | 4.29 | 4.60 | `#fbcfe8` | 13.66 | 12.35 |
+| `--chart-19` | `#0284c7` | 3.82 | 4.10 | `#bae6fd` | 14.23 | 12.86 |
+| `--chart-20` | `#78716c` | 4.47 | 4.80 | `#a8a29e` | 7.49 | 6.77 |
+
+Los cuatro pares del `Badge` que acompañan a la barra del monitoreo son `chart-5`, `chart-7`,
+`chart-11` y `chart-12`. Su `-soft` es `componer(--chart-N claro, #FFFFFF, 0.15)` y su `-strong`, el
+propio color del segmento; los ocho miden 4.5:1 o más (`specs/SL-33-paleta-secundaria/design.md >
+D4`).
+
+## Grises cálidos (tema claro)
+
+Los grises del tema claro y de la paleta fija salen de la escala `stone` de Tailwind, escrita en
+HEX (los de Tailwind v3). Cada hex de la columna «Ahora» es el del token en `app/globals.css`; los
+bloques de impresión repiten los del tema claro. Los nombres (`asfalto-*`, `kraft-inset`) no
+cambian. Cada par es «antes → después» con el `contraste()` del fixture. Ninguno baja salvo la línea
+de `asfalto-2`, única excepción aceptada por el humano el 2026-10-28.
+
+| Token | Antes | Ahora | Pares (antes → después) |
+| --- | --- | --- | --- |
+| `--secondary` | `#eef1f8` | `stone-100` `#f5f5f4` | `#111111` encima 16.70 → 17.31 · anillo `destructive` encima 3.33 → 3.45 |
+| `--muted` | `#f1f4fb` | `stone-100` `#f5f5f4` | `#111111` encima 17.15 → 17.31 · `--muted-foreground` encima 6.99 → 9.42 |
+| `--muted-foreground` | `#4a5368` | `stone-700` `#44403c` | s/ tarjeta 7.70 → 10.27 · s/ fondo 7.18 → 9.58 · s/ `--muted` 6.99 → 9.42 |
+| `--border`, `--input` | `#e3e8f2` | `stone-200` `#e7e5e4` | línea s/ tarjeta 1.23 → 1.26 · s/ fondo 1.15 → 1.17 |
+| `asfalto-0` | `#f2f5fb` | `stone-100` `#f5f5f4` | `#111111` encima 17.29 → 17.31 |
+| `asfalto-1` | `#e9edf6` | `stone-200` `#e7e5e4` | `asfalto-7` encima 9.71 → 12.08 · anillo `asfalto-4` 2.59 → 3.82 · línea s/ `kraft-inset` 1.07 → 1.15 · s/ blanco 1.17 → 1.26 |
+| `asfalto-2` | `#dde1ee` | `stone-200` `#e7e5e4` | texto s/ `#111111` 14.46 → 15.04 · `asfalto-9` encima 11.88 → 13.93 · línea en oscuro s/ `#1C1C1A` 13.07 → 13.59 · **línea s/ blanco 1.31 → 1.26 y s/ fondo 1.22 → 1.17 (excepción aceptada)** |
+| `asfalto-4` | `#8a94ad` | `stone-500` `#78716c` | s/ blanco 3.03 → 4.80 · s/ fondo 2.83 → 4.47 · anillo s/ `asfalto-1` 2.59 → 3.82 |
+| `asfalto-5` | `#4a5368` | `stone-700` `#44403c` | s/ blanco 7.70 → 10.27 · s/ `kraft-inset` 6.99 → 9.42 · s/ fondo 7.18 → 9.58 |
+| `asfalto-7` | azul de la marca anterior | `stone-800` `#292524` | s/ blanco 11.39 → 15.17 · s/ `kraft-inset` 10.35 → 13.90 · s/ `asfalto-1` 9.71 → 12.08 |
+| `asfalto-9` | navy de la marca anterior | `stone-900` `#1c1917` | s/ blanco 15.52 → 17.49 · s/ fondo 14.47 → 16.30 · `#FFD000` encima 10.55 → 11.89 · blanco encima 15.52 → 17.49 |
+| `kraft-inset` | `#f1f4fb` | `stone-100` `#f5f5f4` | `asfalto-7` encima 10.35 → 13.90 · `asfalto-5` encima 6.99 → 9.42 |
+
+Los dos HEX «antes» de `asfalto-7` y `asfalto-9` no se escriben aquí: son de la marca anterior y el
+repo ya no los lleva fuera de `tests/`, `specs/` y `progress/` (están en
+`specs/SL-8-marca-logo-paleta-fuente/design.md > D5`).
 
 ## Hecho en SL-8
 
@@ -103,7 +165,7 @@ No cambian con la marca: `--destructive`, los `--chart-*` y los `*-strong`.
 - Los indicadores del mensajero usan iconos de `lucide-react` sobre `--accent`. Los
   `public/icons/icono_*.png` se borraron.
 - El brillo de esas tarjetas es `brand-soft` en tema claro.
-- El título de servicios de la landing (`TituloSeccion`, `text-asfalto-9` = `#0d2444`) sigue cerca
-  del navy de la marca anterior. Lo corrige SL-33, y cuando SL-33 cierre hay que volver a correr el
-  script de capturas. Mientras tanto, la guardia de capturas admite hasta un 1.8 % de píxeles de la
-  marca anterior.
+- El título de servicios de la landing (`TituloSeccion`, `text-asfalto-9`) salía en el navy de la
+  marca anterior. SL-33 lo corrige: `asfalto-9` pasa a `stone-900` (ver «Grises cálidos»). Cuando
+  SL-33 cierre hay que volver a correr el script de capturas. Mientras tanto, la guardia de capturas
+  admite hasta un 1.8 % de píxeles de la marca anterior.

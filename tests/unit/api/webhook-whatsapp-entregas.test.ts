@@ -47,7 +47,7 @@ function req(): Request {
 }
 
 function servicio(entregaEstado: () => IEntregaEstadoService) {
-  const ingerirEventos = vi.fn(async () => ({ mensajesRegistrados: 0, statusesAplicados: 1, sinResolver: 0, hilosMigrados: 0 }));
+  const ingerirEventos = vi.fn(async () => ({ mensajesRegistrados: 0, statusesAplicados: 1, sinResolver: 0, hilosMigrados: 0, enrutadosPorCita: 0 }));
   const service = new WebhookWhatsappService({
     enrutado: {
       porNumeros: async () => new Map([["2", { organizacionId: "org-a", integracionId: "int-a" }]]),

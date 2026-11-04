@@ -16,6 +16,8 @@ import type {
   IRechazoTiendaCobroRepository,
 } from "@/lib/interfaces/repositories/IRechazoTiendaCobroRepository";
 import { clavePar } from "@/lib/utils/cascada-tarifa";
+import type { TarifaTienda } from "@/lib/types/tarifa-flexible";
+import { tarifaVieja } from "../../fixtures/tarifa-tienda";
 
 // 💰 Feature 240 (T3.1) — regla del RECHAZO MANUAL por la tienda. Molde:
 // `reprogramacion-tienda-service.test.ts` (100), su hermana de esta misma card.
@@ -77,7 +79,8 @@ const ESTATUS: Record<string, string> = { novedad: "os-devuelta", devolucion_a_o
 const AHORA = new Date("2026-08-31T15:00:00.000Z"); // 09:00 en Costa Rica -> dia CR 2026-08-31
 const DIA_CR = "2026-08-31";
 
-const PAR = { tiendaId: "store-1", zonaId: "z1" };
+// SLT-52 (R16/R18): el par lleva el distrito de la orden, que el repo lee con la base del cobro.
+const PAR = { tiendaId: "store-1", zonaId: "z1", distritoId: "dist-1" };
 
 /**
  * FICHA 337 — la tarifa que resuelve para el par de la orden de estos casos. Los numeros estan
@@ -110,6 +113,7 @@ function buildOrdenRepo(overrides: Partial<OrdenRepoDoble> = {}): OrdenRepoDoble
       ordenId: "o1",
       tiendaId: "store-1",
       zonaId: "z1",
+      distritoId: "dist-1",
       esCentral: false,
       esZonaEspecial: false,
       montoCobrar: "25000.00",
@@ -142,7 +146,7 @@ const TX_FALSO = {} as Parameters<
 
 function buildTarifaRepo(overrides: Partial<TarifaRepoDoble> = {}): TarifaRepoDoble {
   return {
-    resolveTarifas: vi.fn(async () => new Map([[clavePar(PAR), tarifaResuelta()]])),
+    resolveTarifas: vi.fn(async () => new Map([[clavePar(PAR), tarifaVieja(tarifaResuelta())]])),
     ...overrides,
   };
 }
@@ -455,6 +459,7 @@ describe("💰 337 — el rechazo da de alta un COBRO PENDIENTE contra la tienda
       montoFlete: "500.00", // STRING escala 2, nunca number
       montoIva: "65.00",
       tarifaId: "tar-1", // auditoria: de que fila salio
+      tarifaValorId: null, // SLT-52 R49: modelo viejo, sin traza al nuevo
       generadoEl: DIA_CR, // dia CALENDARIO de Costa Rica, del reloj inyectado
     });
   });
@@ -466,6 +471,7 @@ describe("💰 337 — el rechazo da de alta un COBRO PENDIENTE contra la tienda
         ordenId: "o1",
         tiendaId: "store-1",
         zonaId: "z1",
+        distritoId: "dist-1",
         esCentral: true,
         esZonaEspecial: false,
         montoCobrar: "25000.00",
@@ -488,6 +494,7 @@ describe("💰 337 — el rechazo da de alta un COBRO PENDIENTE contra la tienda
           ordenId: "o1",
           tiendaId: "store-1",
           zonaId: "z1",
+          distritoId: "dist-1",
           esCentral: false,
           esZonaEspecial: true,
           montoCobrar: null,
@@ -498,7 +505,7 @@ describe("💰 337 — el rechazo da de alta un COBRO PENDIENTE contra la tienda
       {
         resolveTarifas: vi.fn(
           async () =>
-            new Map([[clavePar(PAR), tarifaResuelta({ tarifaEspecialDevuelta: "300.00" })]]),
+            new Map([[clavePar(PAR), tarifaVieja(tarifaResuelta({ tarifaEspecialDevuelta: "300.00" }))]]),
         ),
       },
     );
@@ -516,7 +523,7 @@ describe("💰 337 — el rechazo da de alta un COBRO PENDIENTE contra la tienda
     const { service, cobroRepo, gestionRepo } = build(
       {},
       {},
-      { resolveTarifas: vi.fn(async () => new Map([[clavePar(PAR), null]])) },
+      { resolveTarifas: vi.fn(async () => new Map<string, TarifaTienda | null>([[clavePar(PAR), null]])) },
     );
 
     await expect(service.rechazar("o1", MOTIVO, TIENDA)).resolves.toEqual({ status: "ok" });
@@ -540,7 +547,9 @@ describe("💰 337 — el rechazo da de alta un COBRO PENDIENTE contra la tienda
             new Map([
               [
                 clavePar(PAR),
-                tarifaResuelta({ valorFleteDevuelto: "0.00", valorFleteDevueltoGam: "0.00" }),
+                tarifaVieja(
+                  tarifaResuelta({ valorFleteDevuelto: "0.00", valorFleteDevueltoGam: "0.00" }),
+                ),
               ],
             ]),
         ),
@@ -559,7 +568,7 @@ describe("💰 337 — el rechazo da de alta un COBRO PENDIENTE contra la tienda
       {},
       {
         resolveTarifas: vi.fn(
-          async () => new Map([[clavePar(PAR), tarifaResuelta({ ivaFlete: "0.00" })]]),
+          async () => new Map([[clavePar(PAR), tarifaVieja(tarifaResuelta({ ivaFlete: "0.00" }))]]),
         ),
       },
     );
@@ -608,6 +617,71 @@ describe("💰 337 — el rechazo da de alta un COBRO PENDIENTE contra la tienda
 
     await service.rechazar("o1", MOTIVO, TIENDA);
 
-    expect(tarifaRepo.resolveTarifas).toHaveBeenCalledWith([{ tiendaId: "store-1", zonaId: "z1" }]);
+    expect(tarifaRepo.resolveTarifas).toHaveBeenCalledWith([
+      { tiendaId: "store-1", zonaId: "z1", distritoId: "dist-1" },
+    ]);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* SLT-52 T4.6 — la traza del valor que produjo el cobro (design §12.2)        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Un `TarifaTienda` del modelo NUEVO con el flete por rechazo y, a proposito, OTRO concepto con su
+ * propio `tarifaValorId`: si el service citara el valor equivocado (p. ej. el del flete entregado),
+ * el id no coincide y el caso cae.
+ */
+function tarifaNueva(): TarifaTienda {
+  return {
+    modelo: "nuevo",
+    valores: {
+      tienda_flete_entregado: {
+        concepto: "tienda_flete_entregado",
+        modo: "monto",
+        valor: "1000.00",
+        nivel: "zona",
+        tarifaValorId: "tv-entregado",
+        ivaPct: "13.00",
+      },
+      tienda_flete_rechazo: {
+        concepto: "tienda_flete_rechazo",
+        modo: "monto",
+        valor: "500.00",
+        nivel: "zona",
+        tarifaValorId: "tv-rechazo",
+        ivaPct: "13.00",
+      },
+    },
+  };
+}
+
+describe("SLT-52 T4.6 — el cobro por rechazo guarda que tarifa lo produjo (R48/R49)", () => {
+  it("SLT-52 R48 — el cobro en el nuevo guarda el tarifaValorId de tienda_flete_rechazo y tarifaId null", async () => {
+    const { service, cobroRepo } = build(
+      {},
+      {},
+      { resolveTarifas: vi.fn(async () => new Map<string, TarifaTienda | null>([[clavePar(PAR), tarifaNueva()]])) },
+    );
+
+    await expect(service.rechazar("o1", MOTIVO, TIENDA)).resolves.toEqual({ status: "ok" });
+
+    // Precondicion: el cobro nacio (500,00 + 13 %), asi que la traza se esta mirando en un cobro real.
+    const cobro = cobroCreado(cobroRepo);
+    expect(cobro.montoFlete).toBe("500.00");
+    expect(cobro.montoIva).toBe("65.00");
+    expect(cobro.tarifaValorId).toBe("tv-rechazo");
+    expect(cobro.tarifaId).toBeNull();
+  });
+
+  it("SLT-52 R49 — en el viejo guarda tarifaId y tarifaValorId null", async () => {
+    const { service, cobroRepo } = build();
+
+    await service.rechazar("o1", MOTIVO, TIENDA);
+
+    const cobro = cobroCreado(cobroRepo);
+    expect(cobro.montoFlete).toBe("500.00");
+    expect(cobro.tarifaId).toBe("tar-1");
+    expect(cobro.tarifaValorId).toBeNull();
   });
 });

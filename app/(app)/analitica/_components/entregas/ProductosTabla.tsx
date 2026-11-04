@@ -124,6 +124,7 @@ import {
 
 import { textoSello, textoSelloCompleto } from "./ActualizarAnalitica";
 import { DineroProductoDetalle, hayMonto } from "./DineroProductoDetalle";
+import { contarOrdenes, ORDENES } from "./base-del-kpi";
 import { calcularEfectividad } from "./efectividad";
 import {
   ETIQUETA_EN_PROCESO,
@@ -272,9 +273,10 @@ export const PRODUCTOS_COLUMNAS = {
 
 /** R35 — el universo del recorte y las ordenes cuyo texto no produjo ningun producto. */
 export function textoUniverso(ordenes: number, sinProducto: number): string {
-  const total = formatearValor(ordenes, UNIDAD_CONTEO);
+  // SLT-62, tanda 2 (2026-11-02): «1 orden en el rango», no «1 órdenes». El sustantivo concuerda
+  // con el mismo `contarOrdenes` que usa la fila de KPIs (mismo formateador de conteo).
   const sin = formatearValor(sinProducto, UNIDAD_CONTEO);
-  return `${total} órdenes en el rango · ${sin} sin producto interpretable.`;
+  return `${contarOrdenes(ordenes, ORDENES)} en el rango · ${sin} sin producto interpretable.`;
 }
 
 /**
@@ -636,8 +638,8 @@ function NombreProducto({ children }: { readonly children: string }) {
  * sigue en proceso. Dos vocabularios de color en la misma pantalla —naranja significando una
  * cosa arriba y otra abajo— es exactamente lo que la ficha 292 arreglo en el monitoreo.
  *
- * ⚠ NI UN HEXADECIMAL: los tres tokens giran con el modo oscuro. Un `#0d2444` fijo, que es lo
- * que propone el mockup, desapareceria sobre fondo oscuro.
+ * ⚠ NI UN HEXADECIMAL: los tres tokens giran con el modo oscuro. Un HEX fijo, el azul de la marca
+ * anterior que proponia el mockup, desapareceria sobre fondo oscuro.
  *
  * Un tramo en CERO no pinta segmento (misma regla que la 258): un `<span>` de ancho 0 % es un
  * nodo invisible que ensucia el DOM sin decir nada.

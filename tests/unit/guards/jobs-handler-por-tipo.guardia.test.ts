@@ -73,6 +73,7 @@ describe("410/R36 · guardia: ningun tipo de job se queda sin handler", () => {
     expect([...buildRecurrencias().keys()].sort()).toEqual([
       "analitica_rollup_diario",
       "liberar_reprogramadas",
+      "plan_cambios_vencidos", // SL-24 (design §16.3): el barrido horario de cambios de plan vencidos
       "whatsapp_envio_mantenimiento",
     ]);
   });

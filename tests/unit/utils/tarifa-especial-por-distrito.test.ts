@@ -267,13 +267,22 @@ describe("el resolver del DINERO trae las dos columnas del pacto", () => {
 
   async function resolver(fila: Record<string, unknown>) {
     const findMany = vi.fn(async () => [fila]);
-    const repo = new TarifaVigenteRepository({ tarifa: { findMany } } as unknown as PrismaClient);
-    const par = { tiendaId: "t1", zonaId: "z1" };
+    // SLT-52: el resolver unico pregunta antes si la empresa tiene valores del modelo nuevo; esta
+    // no tiene ninguno, asi que resuelve con `tarifas` (R36) y devuelve la tarifa envuelta.
+    const repo = new TarifaVigenteRepository({
+      tarifa: { findMany },
+      tarifaValor: { findFirst: vi.fn(async () => null) },
+    } as unknown as PrismaClient);
+    const par = { tiendaId: "t1", zonaId: "z1", distritoId: null };
     const resueltas = await repo.resolveTarifas([par]);
+    const t = resueltas.get(clavePar(par));
+    if (t === undefined || t === null || t.modelo !== "viejo") {
+      throw new Error("se esperaba la tarifa del modelo viejo");
+    }
     return {
       select: (findMany.mock.calls[0] as unknown as [{ select: Record<string, boolean> }])[0]
         .select,
-      resuelta: resueltas.get(clavePar(par)),
+      resuelta: t.tarifa,
     };
   }
 
@@ -353,6 +362,8 @@ describe("el LISTADO cobra el pacto y senala el hueco", () => {
     const prisma = {
       // FICHA 454 (R29, 2026-09-24): las señales de la pagina (gestion pendiente, ayuda); vacias.
       $queryRaw: vi.fn(async () => []),
+      // SLT-52 (T4.3): el importe del listado pasa por el resolver unico; empresa sin valores nuevos.
+      tarifaValor: { findFirst: vi.fn(async () => null) },
       orden: {
         findMany: vi.fn(async () => [ordenListRow(marcas)]),
         count: vi.fn(async () => 1),

@@ -387,6 +387,10 @@ export function UsuariosModule({ initialData }: UsuariosModuleProps) {
         toast.success(
           destino === "inactivo" ? "Usuario inactivado" : "Usuario activado",
         );
+      } else if (res.status === "tope_plan") {
+        // SL-24 (R28): el servidor ya redacta cuántos permite el plan y qué hacer; el genérico
+        // mandaría a revisar unos datos que están bien.
+        toast.error(res.mensaje);
       } else {
         toast.error(mensajeError(res.status));
       }

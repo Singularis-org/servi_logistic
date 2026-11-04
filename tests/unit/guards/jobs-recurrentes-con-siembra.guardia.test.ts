@@ -106,6 +106,7 @@ describe("313 · frente 1 — todo job recurrente tiene su siembra registrada", 
     expect([...TIPOS_RECURRENTES].sort()).toEqual([
       "analitica_rollup_diario",
       "liberar_reprogramadas",
+      "plan_cambios_vencidos", // SL-24 (design §16.3): el barrido horario de cambios de plan vencidos
       "whatsapp_envio_mantenimiento", // ficha 474: el mantenimiento diario de los envios por WhatsApp
     ]);
   });
@@ -160,6 +161,14 @@ describe("313 · frente 1 (control positivo) — el censo SABE ponerse rojo", ()
 /** Dos instantes distintos que caen en la MISMA ventana de corrida para los dos tipos. */
 const AHORA = new Date("2026-08-02T16:00:00.000Z");
 const MAS_TARDE = new Date("2026-08-03T02:00:00.000Z");
+/**
+ * SL-24 (design §16.3): `plan_cambios_vencidos` corre cada hora, asi que su ventana es la hora en
+ * punto. Su segundo instante cae en la misma hora que `AHORA`; los diarios siguen con `MAS_TARDE`,
+ * que cruza el cambio de fecha UTC sin cruzar el de CR.
+ */
+const MAS_TARDE_POR_TIPO: Partial<Record<JobTipo, Date>> = {
+  plan_cambios_vencidos: new Date("2026-08-02T16:59:59.999Z"),
+};
 
 interface Encolado {
   tipo: JobTipo;
@@ -221,7 +230,7 @@ describe("313 · frente 2 — la siembra encola lo mismo que re-agendaria la rec
       const primera: Encolado[] = [];
       const segunda: Encolado[] = [];
       await siembra.sembrar(repoQueRegistra(primera), AHORA);
-      await siembra.sembrar(repoQueRegistra(segunda), MAS_TARDE);
+      await siembra.sembrar(repoQueRegistra(segunda), MAS_TARDE_POR_TIPO[siembra.tipo] ?? MAS_TARDE);
 
       expect(segunda[0].opts.dedupeKey).toBe(primera[0].opts.dedupeKey);
       expect(segunda[0].opts.runAfter?.toISOString()).toBe(
@@ -399,6 +408,8 @@ describe("313 · frente 4 — el build de Vercel corre el paso, y alguien mide e
         "tests/integration/db/siembra-whatsapp-envio-mantenimiento-idempotente.test.ts",
         "seedJobWhatsappEnvioMantenimiento",
       ],
+      // SL-24 (design §16.3): el barrido horario de cambios de plan vencidos.
+      ["tests/integration/db/planes-cambio-programado.test.ts", "sembrarPlanCambiosVencidos"],
     ];
     for (const [ruta, sembrador] of pruebas) {
       expect(pruebaLaIdempotenciaDe(ruta, sembrador), `${ruta} ya no prueba ${sembrador}`).toBe(

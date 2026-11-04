@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseWebhookEventos } from "@/lib/types/whatsapp-webhook";
+import { citadoDe, parseWebhookEventos } from "@/lib/types/whatsapp-webhook";
 
 // Feature 109 — B2.T (R5). El esquema zod DESCARTA (strip) los campos no reconocidos de
 // Meta y NORMALIZA el payload a mensajes entrantes + statuses de dominio.
@@ -437,5 +437,163 @@ describe("Feature 311 · tipos fuera de alcance y desconocidos (R11)", () => {
     const m = eventos.mensajes[0];
     expect(m.tipo).toBe("otro");
     expect(JSON.stringify(m)).not.toContain("no debe sobrevivir");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SLT-40 — T1. El parser conserva `context.id` (el wamid que el cliente cita con «Responder»)
+// como `citadoWaMessageId`, para todo `type`. Una cita inutil es "sin cita", nunca un fallo
+// del lote; y de `context` no sobrevive nada salvo el id.
+// ---------------------------------------------------------------------------
+
+describe("SLT-40 · id citado del entrante (R1/R2/R3)", () => {
+  it("R1: un texto con `context.id` conserva el id citado", () => {
+    const eventos = parseWebhookEventos(
+      payloadEntrante({ context: { from: "15550001111", id: "wamid.SALIENTE1" } }),
+    );
+    const m = eventos.mensajes[0];
+    expect(m.tipo).toBe("texto");
+    expect(m.cuerpo).toBe("Hola, donde va mi paquete?");
+    expect(m.citadoWaMessageId).toBe("wamid.SALIENTE1");
+  });
+
+  it("R1: una imagen con `context.id` conserva el id citado y su media", () => {
+    const eventos = parseWebhookEventos(
+      payloadConMensajes({
+        ...BASE,
+        id: "wamid.IMG",
+        type: "image",
+        image: { id: "MEDIA-1", mime_type: "image/jpeg" },
+        context: { id: "wamid.SALIENTE2" },
+      }),
+    );
+    const m = eventos.mensajes[0];
+    expect(m.tipo).toBe("imagen");
+    expect(m.media?.mediaId).toBe("MEDIA-1");
+    expect(m.citadoWaMessageId).toBe("wamid.SALIENTE2");
+  });
+
+  it("R1: un `button` de plantilla (tipo `otro`) con `context.id` conserva el id citado", () => {
+    const eventos = parseWebhookEventos(
+      payloadConMensajes({
+        ...BASE,
+        id: "wamid.BOTON",
+        type: "button",
+        button: { text: "Si", payload: "SI" },
+        context: { from: "15550001111", id: "wamid.PLANTILLA" },
+      }),
+    );
+    const m = eventos.mensajes[0];
+    expect(m.tipo).toBe("otro");
+    expect(m.citadoWaMessageId).toBe("wamid.PLANTILLA");
+  });
+
+  it("R1: el id citado se recorta de espacios alrededor", () => {
+    const eventos = parseWebhookEventos(payloadEntrante({ context: { id: "  wamid.X  " } }));
+    expect(eventos.mensajes[0].citadoWaMessageId).toBe("wamid.X");
+  });
+
+  it("R2: sin `context` el entrante no lleva id citado (ni la clave)", () => {
+    const m = parseWebhookEventos(payloadEntrante()).mensajes[0];
+    expect(m.citadoWaMessageId).toBeUndefined();
+    expect("citadoWaMessageId" in m).toBe(false);
+  });
+
+  const CONTEXTOS_RAROS = [
+    { caso: "`id` numerico", context: { id: 12345 } },
+    { caso: "`context` string", context: "wamid.NO_ES_OBJETO" },
+    { caso: "`context` null", context: null },
+    { caso: "`context` array", context: ["wamid.X"] },
+    { caso: "`context` sin `id`", context: { from: "15550001111" } },
+    { caso: "`id` vacio", context: { id: "" } },
+    { caso: "`id` solo espacios", context: { id: "   " } },
+  ] as const;
+
+  it.each(CONTEXTOS_RAROS)(
+    "R2: $caso se trata como entrante sin id citado, sin lanzar",
+    ({ context }) => {
+      const eventos = parseWebhookEventos(payloadEntrante({ context }));
+      expect(eventos.mensajes).toHaveLength(1);
+      const m = eventos.mensajes[0];
+      expect(m.tipo).toBe("texto");
+      expect(m.cuerpo).toBe("Hola, donde va mi paquete?");
+      expect("citadoWaMessageId" in m).toBe(false);
+    },
+  );
+
+  it("R2: un `context` raro no tumba a los demas mensajes ni statuses del lote", () => {
+    const eventos = parseWebhookEventos({
+      entry: [
+        {
+          changes: [
+            {
+              value: {
+                messages: [
+                  { ...BASE, id: "wamid.RARO", type: "text", text: { body: "a" }, context: 42 },
+                  {
+                    ...BASE,
+                    id: "wamid.CITA",
+                    type: "text",
+                    text: { body: "b" },
+                    context: { id: "wamid.SALIENTE3" },
+                  },
+                  { ...BASE, id: "wamid.SIN", type: "text", text: { body: "c" } },
+                ],
+                statuses: [{ id: "wamid.OUT", status: "delivered", timestamp: "1700000001" }],
+              },
+            },
+          ],
+        },
+      ],
+    });
+    expect(eventos.mensajes.map((m) => m.waMessageId)).toEqual([
+      "wamid.RARO",
+      "wamid.CITA",
+      "wamid.SIN",
+    ]);
+    expect(eventos.mensajes.map((m) => m.citadoWaMessageId)).toEqual([
+      undefined,
+      "wamid.SALIENTE3",
+      undefined,
+    ]);
+    expect(eventos.statuses).toHaveLength(1);
+    expect(eventos.statuses[0].estado).toBe("delivered");
+  });
+
+  it("R2: `citadoDe` devuelve null sin `context` o con `id` vacio, y el id recortado si vale", () => {
+    type Msg = Parameters<typeof citadoDe>[0];
+    const base = { id: "w", from: "1", timestamp: "1", type: "text" };
+    expect(citadoDe(base as Msg)).toBeNull();
+    expect(citadoDe({ ...base, context: {} } as Msg)).toBeNull();
+    expect(citadoDe({ ...base, context: { id: " \t " } } as Msg)).toBeNull();
+    expect(citadoDe({ ...base, context: { id: " wamid.Y " } } as Msg)).toBe("wamid.Y");
+  });
+
+  it("R3: de `context` solo sobrevive el id (`from`, `forwarded` y demas desaparecen)", () => {
+    const eventos = parseWebhookEventos(
+      payloadEntrante({
+        context: {
+          from: "15559998888",
+          id: "wamid.SALIENTE4",
+          forwarded: true,
+          frequently_forwarded: true,
+          referred_product: { catalog_id: "CAT-1", product_retailer_id: "SKU-1" },
+        },
+      }),
+    );
+    const m = eventos.mensajes[0];
+    expect(m).toEqual({
+      waMessageId: "wamid.ENTRANTE1",
+      telefonoE164: "573001112233",
+      tipo: "texto",
+      cuerpo: "Hola, donde va mi paquete?",
+      citadoWaMessageId: "wamid.SALIENTE4",
+      ocurridoAt: new Date(1700000000 * 1000),
+    });
+    const serializado = JSON.stringify(m);
+    expect(serializado).not.toContain("15559998888");
+    expect(serializado).not.toContain("forwarded");
+    expect(serializado).not.toContain("CAT-1");
+    expect(serializado).not.toContain("SKU-1");
   });
 });

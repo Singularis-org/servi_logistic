@@ -2,14 +2,12 @@ import { cierreConfig } from "@/lib/config/cierre";
 import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlProvider";
 import type {
   CierreGestionPendienteRow,
+  GestionPendienteDeCierreRow,
   ICierreDiaRepository,
 } from "@/lib/interfaces/repositories/ICierreDiaRepository";
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { IZonaRepository } from "@/lib/interfaces/repositories/IZonaRepository";
-import type {
-  ITarifaZonaMensajeroRepository,
-  PagoTarifa,
-} from "@/lib/interfaces/repositories/ITarifaZonaMensajeroRepository";
+import type { ITarifaZonaMensajeroRepository } from "@/lib/interfaces/repositories/ITarifaZonaMensajeroRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type {
   CierreDetalleGestion,
@@ -29,8 +27,11 @@ import { rangoDePagina } from "@/lib/utils/rango-pagina";
 import { resolverDestinoCierre } from "@/lib/utils/bodega-responsable";
 import {
   computeTotales,
+  contextosPagoDe,
   derivarPagos,
   derivarIngresoBodega,
+  pagosDelCierre,
+  type TarifasDePago,
 } from "@/lib/utils/cierre-totales";
 import {
   emitirBestEffort,
@@ -268,15 +269,21 @@ export class CierreDiaService implements ICierreDiaService {
   }
 
   /**
-   * Feature 39/R1-R4: resuelve la tarifa de pago vigente del mensajero (por su zona +
-   * vehiculo, con fallback a la tarifa por defecto de la zona). `null` si el mensajero no
-   * tiene zona o la zona no tiene tarifa -> pago 0.00 no bloqueante (R8).
+   * Feature 39/R1-R4 -> SLT-52 (T5.1, R19/R20/R24): el pago de CADA gestion del mensajero, con su
+   * zona y su vehiculo y el distrito de cada orden (el grupo lo elige el distrito, asi que dos
+   * gestiones del mismo dia pueden pagar distinto). Un lote, un numero fijo de consultas (R39).
+   * Sin zona -> mapa vacio: pago 0.00 no bloqueante (R8), como antes.
    */
-  private async resolveTarifaMensajero(usuarioId: string): Promise<PagoTarifa | null> {
+  private async resolvePagosMensajero(
+    usuarioId: string,
+    gestiones: readonly GestionPendienteDeCierreRow[],
+  ): Promise<TarifasDePago> {
     const zonaId = await this.ordenRepo.findUsuarioZonaId(usuarioId); // R4: zona del MENSAJERO
-    if (zonaId === null) return null; // sin zona -> pago 0.00 (R8), no bloquea la vista
+    if (zonaId === null) return new Map(); // sin zona -> pago 0.00 (R8), no bloquea la vista
     const vehiculoId = await this.ordenRepo.findUsuarioVehiculoId(usuarioId);
-    return this.tarifaZonaRepo.resolvePagoTarifa(zonaId, vehiculoId); // R1/R2/R3
+    return this.tarifaZonaRepo.resolvePagos(
+      contextosPagoDe(gestiones, { mensajeroId: usuarioId, zonaId, vehiculoId }),
+    );
   }
 
   async listarCierreDia(
@@ -285,10 +292,9 @@ export class CierreDiaService implements ICierreDiaService {
   ): Promise<ListarCierreDiaServiceResult> {
     if (actor.rol !== ROL_AUTORIZADO) return { status: "forbidden" }; // R1/R2
 
-    // R2/R3/R10/R18: SOLO lectura (R17). Filtrado por el actor en el repo. Feature 39:
-    // resuelve la tarifa de pago del mensajero UNA vez (por zona+vehiculo) para derivar
-    // el pago EN VIVO (R10/R11), en paralelo con el resto de lecturas.
-    const [gestiones, pendientes, cierresPasados, tarifa] = await Promise.all([
+    // R2/R3/R10/R18: SOLO lectura (R17). Filtrado por el actor en el repo. SLT-52 (T5.1): el pago
+    // EN VIVO (39/R10/R11) se resuelve POR GESTION, asi que espera a tener las gestiones.
+    const [gestiones, pendientes, cierresPasados] = await Promise.all([
       this.repo.findGestionesPendientes(actor.usuarioId),
       // Feature 246: el conteo excluye lo reservado para DESPUES de hoy (ver el repo). El dia se
       // resuelve AQUI, desde el `now` inyectable, y baja como parametro: ningun repositorio lee el
@@ -300,8 +306,8 @@ export class CierreDiaService implements ICierreDiaService {
         startOfDayCR(now),
       ),
       this.repo.findCierresByMensajero(actor.usuarioId),
-      this.resolveTarifaMensajero(actor.usuarioId),
     ]);
+    const tarifa = await this.resolvePagosMensajero(actor.usuarioId, gestiones);
 
     // R10/R11: pago DERIVADO por gestion (money-safe) + total, con la tarifa vigente.
     // Concepto INDEPENDIENTE del dinero recibido (R21): no toca `totales`.
@@ -309,12 +315,13 @@ export class CierreDiaService implements ICierreDiaService {
 
     // Feature 56/R9/R10: ingreso de bodega por rechazo DERIVADO por gestion + total, con la
     // MISMA tarifa ya resuelta (sin query extra). Concepto INDEPENDIENTE del pago al
-    // mensajero (R7b) y del dinero recibido (R20). R23: tarifaFaltante = (tarifa === null).
+    // mensajero (R7b) y del dinero recibido (R20). R23: tarifaFaltante = la gestion no tiene
+    // tarifa de pago. SLT-52: por gestion; en el viejo es la zona sin tarifa (todas o ninguna, como
+    // antes); en el nuevo nunca, porque un actor sin valor paga 0 sin ser un hueco (R24).
     const { ingresoByGestionId, total: totalIngresoBodegaRechazos } = derivarIngresoBodega(
       gestiones,
       tarifa,
     );
-    const tarifaFaltante = tarifa === null;
 
     // R5: firma en lote las evidencias (path crudo -> URL firmada de TTL acotado).
     // Feature 486 (R3/R8): TODAS las fotos de todas las gestiones, en UNA sola firma.
@@ -341,7 +348,7 @@ export class CierreDiaService implements ICierreDiaService {
           urlByPath,
           pagoByGestionId[g.gestionId], // feature 39: pago DERIVADO en vivo (override snapshot)
           ingresoByGestionId[g.gestionId], // feature 56: ingreso DERIVADO en vivo (override snapshot)
-          tarifaFaltante, // feature 56/R23: derivado server-side (tarifa === null)
+          (tarifa.get(g.gestionId) ?? null) === null, // feature 56/R23: derivado server-side
         ),
       );
     }
@@ -617,15 +624,15 @@ export class CierreDiaService implements ICierreDiaService {
       // El `vencido` sigue por `transicionarASolicitado` EXACTAMENTE como hoy (R21): solo estado.
       let ok: boolean;
       if (resolicitable.estado === "rechazado") {
+        // SLT-52 (T5.1): el pago de las rehechas se resuelve POR GESTION dentro de la transaccion
+        // del repositorio (solo alli se sabe cuales se vinculan); aqui se fija la zona de ESTE
+        // camino (la destino del cierre, R17) y el vehiculo.
         const vehiculoId = await this.ordenRepo.findUsuarioVehiculoId(actor.usuarioId);
-        const tarifa = await this.tarifaZonaRepo.resolvePagoTarifa(
-          resolicitable.destinoZonaId,
-          vehiculoId,
-        );
         ok = await this.repo.resolicitarCierreRechazado({
           cierreId: resolicitable.id,
           mensajeroId: actor.usuarioId,
-          tarifa,
+          zonaId: resolicitable.destinoZonaId,
+          vehiculoId,
         });
       } else {
         ok = await this.repo.transicionarASolicitado(
@@ -693,8 +700,11 @@ export class CierreDiaService implements ICierreDiaService {
     // R12/R13: snapshot del pago al mensajero con la tarifa vigente en ESTE instante
     // (por zona del mensajero + vehiculo; zonaId ya resuelto). El numero se congela: una
     // edicion posterior de la tarifa (feature 55) NO altera el cierre (R15).
+    // SLT-52 (T5.1, R19/R20/R33): resuelto POR GESTION, con el distrito de cada orden.
     const vehiculoId = await this.ordenRepo.findUsuarioVehiculoId(actor.usuarioId);
-    const tarifa = await this.tarifaZonaRepo.resolvePagoTarifa(zonaId, vehiculoId);
+    const tarifa = await this.tarifaZonaRepo.resolvePagos(
+      contextosPagoDe(gestiones, { mensajeroId: actor.usuarioId, zonaId, vehiculoId }),
+    );
     const { pagoByGestionId, total: totalPagoMensajero } = derivarPagos(gestiones, tarifa);
 
     // Feature 56/R8/R11/R12: snapshot del ingreso de bodega por rechazos con la MISMA
@@ -719,6 +729,7 @@ export class CierreDiaService implements ICierreDiaService {
       totalPagoMensajero, // R13: total snapshoteado
       ingresoByGestionId, // feature 56/R11: ingreso snapshoteado por gestion
       totalIngresoBodegaRechazos, // feature 56/R12: total snapshoteado del ingreso de bodega
+      pagos: pagosDelCierre(gestiones, tarifa), // SLT-52 (T5.2, R40): el pago congelado por gestion
     });
     if (cierreId === null) return { status: "conflict", motivo: MSG_VACIO };
 
@@ -1041,6 +1052,9 @@ export function toDetalleDTO(
     // Passthrough: solo viene poblado desde los repos de admin (38/40), que lo derivan del
     // snapshot. En la vista en vivo del mensajero es `undefined` y la UI no muestra nada.
     ingresoEmpresa: g.ingresoEmpresa,
+    // SLT-56 (R19/R20, Q2): la clave solo existe si el repo la leyo. Asi la vista del mensajero,
+    // cuyo repo no la selecciona, no lleva ni siquiera un `ajustesPago: undefined` en su DTO.
+    ...(g.ajustesPago !== undefined ? { ajustesPago: g.ajustesPago } : {}),
   };
 }
 

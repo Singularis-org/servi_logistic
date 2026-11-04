@@ -91,7 +91,7 @@ export function firmaValida(cuerpoCrudo: string, firma: string, appSecret: strin
 }
 
 function resumenVacio(): IngestaResumen {
-  return { mensajesRegistrados: 0, statusesAplicados: 0, sinResolver: 0, hilosMigrados: 0 };
+  return { mensajesRegistrados: 0, statusesAplicados: 0, sinResolver: 0, hilosMigrados: 0, enrutadosPorCita: 0 };
 }
 
 function sumar(total: IngestaResumen, parcial: IngestaResumen): void {
@@ -99,6 +99,7 @@ function sumar(total: IngestaResumen, parcial: IngestaResumen): void {
   total.statusesAplicados += parcial.statusesAplicados;
   total.sinResolver += parcial.sinResolver;
   total.hilosMigrados += parcial.hilosMigrados;
+  total.enrutadosPorCita += parcial.enrutadosPorCita;
 }
 
 function nombreDelError(error: unknown): string {

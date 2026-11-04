@@ -8,7 +8,7 @@ import type { ProvinciaArbolDTO } from "@/lib/actions/geografia";
 /**
  * ⭑ FICHA 376 / T12 — R24: EL BORRADO RECHAZADO DICE CUÁL DE LOS DOS RECHAZOS FUE.
  *
- * Hasta esta ficha, `ZonasTarifasModule` pintaba «No se puede eliminar: la zona está en uso.»
+ * Hasta esta ficha, `ZonasModule` pintaba «No se puede eliminar: la zona está en uso.»
  * para CUALQUIER `conflict`. Con la guarda de R10 esa frase pasó a ser falsa en un caso: la zona
  * central se rechaza aunque no tenga ni una orden ni un usuario apuntando. Y los dos rechazos
  * piden salidas OPUESTAS —vaciar la zona frente a marcar otra como central—, así que decirlos con
@@ -72,12 +72,12 @@ vi.mock("@/hooks/useToast", () => ({
   }),
 }));
 
-const { ZonasTarifasModule } = await import(
-  "@/app/(app)/configuracion/tarifas/_components/ZonasTarifasModule"
+const { ZonasModule } = await import(
+  "@/app/(app)/configuracion/zonas/_components/ZonasModule"
 );
 
 const TEXTO_CENTRAL =
-  "No se puede eliminar la zona central. Marca otra zona como central antes de eliminarla.";
+  "No se puede eliminar la zona de bodega principal. Marca otra zona como bodega principal antes de eliminarla.";
 const TEXTO_EN_USO = "No se puede eliminar: la zona está en uso.";
 
 function provincias(): ProvinciaArbolDTO[] {
@@ -86,7 +86,7 @@ function provincias(): ProvinciaArbolDTO[] {
 
 function renderModulo() {
   return render(
-    <ZonasTarifasModule
+    <ZonasModule
       initialZonas={[
         {
           id: "z-gam",
@@ -97,7 +97,6 @@ function renderModulo() {
         },
       ]}
       provincias={provincias()}
-      vehiculos={[]}
     />,
   );
 }

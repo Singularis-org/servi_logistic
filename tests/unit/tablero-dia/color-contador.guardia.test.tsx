@@ -72,8 +72,8 @@ const enReposo = (clases: string): string[] =>
 
 /**
  * La FAMILIA de color que pinta el fondo de un elemento en reposo:
- *   `bg-chart-6`  ->  `chart-6`      (el segmento: el token a pelo)
- *   `bg-chart-6-soft` -> `chart-6`   (el `Badge`: el `-soft` del par)
+ *   `bg-chart-7`  ->  `chart-7`      (el segmento: el token a pelo)
+ *   `bg-chart-7-soft` -> `chart-7`   (el `Badge`: el `-soft` del par)
  *   `bg-muted-foreground/40` -> «sin acento»
  *   sin ningún `bg-` -> «sin acento»
  *
@@ -94,7 +94,7 @@ function familiaDelFondo(clases: string): string {
   return token.replace(/-soft$/, "");
 }
 
-/** La familia de la TINTA, con la misma regla: `text-chart-6-strong` -> `chart-6`. */
+/** La familia de la TINTA, con la misma regla: `text-chart-7-strong` -> `chart-7`. */
 function familiaDeLaTinta(clases: string): string | null {
   const tintas = enReposo(clases).filter((c) => /^text-/.test(c) && !/^text-(xs|sm|base|lg|xl)$/.test(c));
   const fuerte = tintas.find((c) => /-strong$/.test(c));
@@ -122,8 +122,8 @@ function pintar(): { badge: (c: string) => HTMLElement; segmento: (c: string) =>
 
 describe("Feature 292 · el lector de familias NO es complaciente", () => {
   it("lee el token de un fondo, con y sin `-soft`, y descarta lo que lleva modificador", () => {
-    expect(familiaDelFondo("bg-chart-6")).toBe("chart-6");
-    expect(familiaDelFondo("bg-chart-6-soft dark:bg-chart-6/15")).toBe("chart-6");
+    expect(familiaDelFondo("bg-chart-7")).toBe("chart-7");
+    expect(familiaDelFondo("bg-chart-7-soft dark:bg-chart-7/15")).toBe("chart-7");
     expect(familiaDelFondo("bg-success-soft text-success-strong dark:bg-success/15")).toBe("success");
     expect(familiaDelFondo("border-border text-foreground [a]:hover:bg-muted")).toBe(SIN_ACENTO);
     expect(familiaDelFondo("bg-muted-foreground/40")).toBe(SIN_ACENTO);
@@ -136,17 +136,17 @@ describe("Feature 292 · el lector de familias NO es complaciente", () => {
     // lector devolviera lo mismo para los dos lados de cualquiera de estas parejas, la guardia
     // de abajo pasaría con el defecto puesto.
     for (const [variante, segmento] of [
-      ["bg-warning-soft", "bg-chart-6"],
-      ["bg-danger-soft", "bg-chart-11"],
-      ["bg-secondary", "bg-chart-12"],
-      ["bg-info-soft", "bg-chart-13"],
+      ["bg-warning-soft", "bg-chart-7"],
+      ["bg-danger-soft", "bg-chart-12"],
+      ["bg-secondary", "bg-chart-11"],
+      ["bg-info-soft", "bg-chart-5"],
     ] as const) {
       expect(familiaDelFondo(variante)).not.toBe(familiaDelFondo(segmento));
     }
   });
 
   it("dos fondos en reposo son un error, no una respuesta a medias", () => {
-    expect(() => familiaDelFondo("bg-success-soft bg-chart-6-soft")).toThrow(/dos utilidades/);
+    expect(() => familiaDelFondo("bg-success-soft bg-chart-7-soft")).toThrow(/dos utilidades/);
   });
 });
 

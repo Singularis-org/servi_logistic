@@ -21,6 +21,8 @@ import type {
   TarifaVigenteResuelta,
 } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
 import { clavePar, type ParTarifa } from "@/lib/utils/cascada-tarifa";
+import type { TarifaTienda } from "@/lib/types/tarifa-flexible";
+import { tarifaVieja } from "../fixtures/tarifa-tienda";
 import { MSG_CARGA_SIN_TARIFA, MSG_FILA_SIN_TARIFA } from "@/lib/services/mensajes-tarifa";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { ApiKeyAuthResult } from "@/lib/interfaces/services/IApiKeyAuthService";
@@ -48,13 +50,17 @@ const TARIFA_Z1: TarifaVigenteResuelta = {
 /** Doble del resolver de la cascada: mapa `zonaId -> tarifa`; lo que no este, no resuelve (R2). */
 function tarifaRepo(porZona: Record<string, TarifaVigenteResuelta>): ITarifaVigenteRepository {
   return {
+    // SLT-52: empresa en el modelo viejo; la tarifa va envuelta en `TarifaTienda`.
     resolveTarifa: vi.fn(async (_t: string, zonaId: string | null) =>
-      zonaId === null ? null : porZona[zonaId] ?? null,
+      tarifaVieja(zonaId === null ? null : porZona[zonaId] ?? null),
     ),
     resolveTarifas: vi.fn(
       async (pares: readonly ParTarifa[]) =>
-        new Map<string, TarifaVigenteResuelta | null>(
-          pares.map((p) => [clavePar(p), p.zonaId === null ? null : porZona[p.zonaId] ?? null]),
+        new Map<string, TarifaTienda | null>(
+          pares.map((p) => [
+            clavePar(p),
+            tarifaVieja(p.zonaId === null ? null : porZona[p.zonaId] ?? null),
+          ]),
         ),
     ),
   };
@@ -195,9 +201,12 @@ describe("carga por API key: lote MIXTO -> 200 con la fila sin tarifa en error (
     expect(body.ordenes[0]).toMatchObject({ numRemision: "REM-OK", costoEnvio: "3.92" });
     // El barrido conserva su intencion —ningun precio fabricado por falta de tarifa— pero
     // EXCLUYE el desglose `fulfillment` (2026-08-25): ahi el cero afirma que esta tienda no
-    // hace fulfillment, que es lo contrario de un dato que falta.
+    // hace fulfillment, que es lo contrario de un dato que falta. SLT-52: tambien su IVA
+    // (`ivaFulfillment`), que es el mismo cero afirmado.
     const sinDesglose = (body.ordenes as Array<Record<string, unknown>>).map((o) =>
-      Object.fromEntries(Object.entries(o).filter(([clave]) => clave !== "fulfillment")),
+      Object.fromEntries(
+        Object.entries(o).filter(([clave]) => clave !== "fulfillment" && clave !== "ivaFulfillment"),
+      ),
     );
     expect(JSON.stringify(sinDesglose)).not.toContain("0.00");
   });
@@ -224,5 +233,97 @@ describe("carga por API key: nadie llega a resolver -> 200, no 409 (274/R30)", (
     // La tarifa no es el motivo del fallo: ni siquiera se pregunta por ella.
     expect(tarifas.resolveTarifas).not.toHaveBeenCalled();
     expect(repo.createManyOrdenesConGuia).not.toHaveBeenCalled();
+  });
+});
+
+// SLT-52 T4.3 (R25) — el MISMO 409 con una empresa en el modelo NUEVO. Ahi el resolver nunca da
+// `null`: lo que falta es el concepto `tienda_flete_entregado`. Una tienda que solo tiene comision
+// (o fulfillment) puesta tampoco se puede cargar, igual que en el viejo sin fila.
+function cobroNuevo(
+  concepto: "tienda_flete_entregado" | "tienda_comision_cod" | "tienda_fulfillment",
+  valor: string,
+): NonNullable<Extract<TarifaTienda, { modelo: "nuevo" }>["valores"][typeof concepto]> {
+  return { concepto, modo: "monto", valor, ivaPct: "12.00", nivel: "zona", tarifaValorId: `tv-${concepto}` };
+}
+
+function tarifaRepoNuevo(
+  porZona: Record<string, Extract<TarifaTienda, { modelo: "nuevo" }>["valores"]>,
+): ITarifaVigenteRepository {
+  const de = (zonaId: string | null): TarifaTienda => ({
+    modelo: "nuevo",
+    valores: zonaId === null ? {} : porZona[zonaId] ?? {},
+  });
+  return {
+    resolveTarifa: vi.fn(async (_t: string, zonaId: string | null) => de(zonaId)),
+    resolveTarifas: vi.fn(
+      async (pares: readonly ParTarifa[]) =>
+        new Map<string, TarifaTienda | null>(pares.map((p) => [clavePar(p), de(p.zonaId)])),
+    ),
+  };
+}
+
+describe("SLT-52 R25: modelo nuevo — sin flete por entregado es «sin tarifa»", () => {
+  const SOLO_COMISION = { tienda_comision_cod: cobroNuevo("tienda_comision_cod", "50.00") };
+  const CON_FLETE = { tienda_flete_entregado: cobroNuevo("tienda_flete_entregado", "3.50") };
+
+  it("ninguna fila tiene flete por entregado (aunque haya comision) -> 409 y nada persistido", async () => {
+    const repo = ordenRepo();
+    const tarifas = tarifaRepoNuevo({ z1: SOLO_COMISION, z2: {} });
+    const res = await handleCargaApi(
+      req([fila("REM-1", "Barrio Uno"), fila("REM-2", "Cumbaya")]),
+      deps(repo, tarifas),
+    );
+    // Lo sembrado: el doble SI devuelve el modelo nuevo para los dos pares (no `null`).
+    expect(tarifas.resolveTarifas).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ code: "CONFLICT", message: MSG_CARGA_SIN_TARIFA });
+    expect(repo.createManyOrdenesConGuia).not.toHaveBeenCalled();
+  });
+
+  it("lote mixto: la fila con flete se crea (3.50 + 12 % = 3.92) y la otra va a `error`", async () => {
+    const repo = ordenRepo();
+    const res = await handleCargaApi(
+      req([fila("REM-OK", "Barrio Uno"), fila("REM-SIN", "Cumbaya")]),
+      deps(repo, tarifaRepoNuevo({ z1: CON_FLETE, z2: SOLO_COMISION })),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({ total: 2, creadas: 1, conError: 1 });
+    const sin = body.errores.find((f: { numRemision: string }) => f.numRemision === "REM-SIN");
+    expect(sin).toMatchObject({ resultado: "error", errores: { tarifa: [MSG_FILA_SIN_TARIFA] } });
+    expect(body.ordenes).toHaveLength(1);
+    expect(body.ordenes[0]).toMatchObject({
+      numRemision: "REM-OK",
+      costoEnvio: "3.92",
+      fulfillment: "0.00",
+    });
+  });
+});
+
+// SLT-52 R51 (design §12.3) — «sin tarifa» = sin flete por entregado, aunque la empresa tenga
+// comision COD Y fulfillment puestos. El fulfillment es ademas lo que decide donde nace la orden:
+// si contara como tarifa, la fila se crearia en `en_preparacion` cobrando solo bodega.
+describe("SLT-52 R51 — carga: solo comisión y fulfillment", () => {
+  it("SLT-52 R51 — solo fulfillment (sin flete por entregado) → 409 y nada persistido", async () => {
+    const repo = ordenRepo();
+    const SIN_FLETE = {
+      tienda_comision_cod: cobroNuevo("tienda_comision_cod", "50.00"),
+      tienda_fulfillment: cobroNuevo("tienda_fulfillment", "2.00"),
+    };
+    const tarifas = tarifaRepoNuevo({ z1: SIN_FLETE, z2: SIN_FLETE });
+    const res = await handleCargaApi(
+      req([fila("REM-1", "Barrio Uno"), fila("REM-2", "Cumbaya")]),
+      deps(repo, tarifas),
+    );
+
+    // Lo sembrado llego: el resolver se consulto y devolvio el modelo nuevo con los dos conceptos.
+    expect(tarifas.resolveTarifas).toHaveBeenCalledTimes(1);
+    const mapa = await (tarifas.resolveTarifas as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect([...mapa.values()][0]).toMatchObject({ modelo: "nuevo", valores: SIN_FLETE });
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ code: "CONFLICT", message: MSG_CARGA_SIN_TARIFA });
+    expect(repo.createManyOrdenesConGuia).not.toHaveBeenCalled();
+    expect(repo.createManyOrdenes).not.toHaveBeenCalled();
   });
 });

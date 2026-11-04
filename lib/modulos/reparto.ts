@@ -33,6 +33,7 @@ export const MODULO_POR_RUTA: Readonly<Record<string, Destino>> = {
   "/novedades": "nucleo",
   "/configuracion": "nucleo",
   "/configuracion/tarifas": "nucleo",
+  "/configuracion/zonas": "nucleo",
   "/ayuda": "nucleo",
   "/ayuda/[...slug]": "nucleo",
   "/historico/acciones": "nucleo",
@@ -43,6 +44,10 @@ export const MODULO_POR_RUTA: Readonly<Record<string, Destino>> = {
   "/configuracion/vehiculos": "nucleo",
   "/plataforma/empresas": "nucleo",
   "/plataforma/empresas/[organizacionId]": "nucleo",
+  // SLT-58: los planes son de plataforma (superadmin) y «Mi plan» lo ve cada empresa; sin puerta de módulo.
+  "/plataforma/planes": "nucleo",
+  "/plataforma/planes/[planId]": "nucleo",
+  "/mi-plan": "nucleo",
   // SL-20: la geografía se gestiona desde la plataforma (superadmin), ya no desde `/configuracion`.
   "/plataforma/geografia": "nucleo",
   // Recolección y Bodegas satélite (núcleo desde el 2026-10-27).
@@ -185,6 +190,8 @@ export const MODULO_POR_ACTION: Readonly<Record<string, Destino>> = {
   "order-status": "nucleo",
   organizaciones: "nucleo",
   "password-reset": "nucleo",
+  // SL-24: de plataforma, como `modulos-empresa` (solo el superadmin).
+  planes: "nucleo",
   "postulacion-mensajero": "nucleo",
   "postulacion-recurso": "nucleo",
   push: "nucleo",
@@ -228,6 +235,11 @@ export const MODULO_POR_JOB: Readonly<Record<JobTipo, Destino>> = {
   // API e integraciones (núcleo desde el 2026-10-27).
   webhook_estado: "nucleo",
   webhook_evento: "nucleo",
+  // Cambio programado de un plan (SL-24, design §16.3 y §16.4): de plataforma, sin módulo.
+  plan_aplicar_cambio: "nucleo",
+  plan_recordatorio_cambio: "nucleo",
+  plan_aviso_correo: "nucleo",
+  plan_cambios_vencidos: "nucleo",
 };
 
 /** §3.4 — carpetas de `app/api/cron/`. */

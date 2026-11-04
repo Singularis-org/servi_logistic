@@ -26,9 +26,10 @@ import type { GrupoNovedad } from "@/lib/types/novedad-grupo";
 // ⏳ 2026-09-09 (feature 404, design §D5): la forma del mensajero publico se declara UNA vez, en el
 // archivo de DTOs del canal, y las tres superficies la importan de ahi.
 import type { ApiMensajeroDTO, ApiZonaDTO } from "@/lib/types/api-orden";
-// Feature 415 (T3): la tarifa reconstruida desde la fila congelada viaja con el MISMO tipo que la
-// vigente, que es lo que permite que las dos alimenten la MISMA funcion de derivacion (R16).
-import type { TarifaVigente } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
+// Feature 415 (T3): la tarifa reconstruida desde la fila congelada viaja en el MISMO sobre que la
+// vigente (SLT-52: `ConModelo`), que es lo que permite que las dos alimenten la MISMA funcion de
+// derivacion (R16).
+import type { TarifaCongelada } from "@/lib/utils/cierre-detalle";
 // ⏳ 2026-09-10 (feature 405, R8/R21): las DOS causas TIPIFICADAS, importadas de sus fuentes
 // unicas. NO se reescriben aqui como union de strings: `causa-devolucion.ts` y
 // `causa-incidente.ts` tienen su doble candado contra el enum de Prisma, y una copia literal se
@@ -185,6 +186,8 @@ export interface OrdenBaseCobroDevolucionRow {
   tiendaId: string;
   /** La otra mitad de la cascada de tarifa (feature 274): el par es (tienda, zona). */
   zonaId: string;
+  /** SLT-52 (R16/R18): el distrito de la orden completa el par; `null` = sin distrito. */
+  distritoId: string | null;
   /** De la ZONA: elige la columna GAM del flete de devolucion. */
   esCentral: boolean;
   /** Del DISTRITO: elige el pacto especial. Ya normalizada (la columna de origen es tri-valuada). */
@@ -1106,6 +1109,11 @@ export interface ApiOrdenRow {
 export interface ApiOrdenCosteoRow {
   /** `orden.zona_id`: la mitad del par (tienda, zona) con el que se resuelve la tarifa vigente. */
   zonaId: string;
+  /**
+   * SLT-52 (R16/R18): `orden.distrito_id`, la otra mitad del par con el que se resuelve la tarifa
+   * (decide el grupo de distritos en el modelo nuevo). `null` = la orden no tiene distrito.
+   */
+  distritoId: string | null;
   /** `zona.es_central` VIVO (R20): elige la columna de flete GAM vs estandar. */
   esCentral: boolean;
   /**
@@ -1145,8 +1153,9 @@ export interface ApiOrdenCongeladoRow {
    * La tarifa congelada reconstruida con `tarifaDe` (`lib/utils/cierre-detalle.ts`), la UNICA
    * funcion que lo hace en el repo. `null` cuando `cierre_detail.tarifa_id IS NULL`: la tienda no
    * tenia tarifa vigente al SOLICITAR el cierre, y ese cierre liquido cero (R28).
+   * SLT-52 (R41, R42): el sobre de los dos modelos; en el nuevo, los conceptos congelados.
    */
-  tarifa: TarifaVigente | null;
+  tarifa: TarifaCongelada | null;
   /**
    * `cierre_detail.tarifa_fulfillment` como CADENA de escala 2; `"0.00"` cuando la columna es
    * NULL (R29). No hay historico posible de ese monto: por eso se congela.
@@ -1765,6 +1774,25 @@ export interface IOrdenRepository {
    * Ordenadas por `createdAt asc`, que es el criterio de recorte de R38.
    */
   findParadasEnReparto(mensajeroId: string): Promise<ParadaRutaRow[]>;
+  /**
+   * SLT-59 (glosario «Asignadas del dia», R64, R67) — las ordenes del mensajero, no borradas, en
+   * `por_recoger` dentro del dia en curso (`fecha_reparto` nula o `<= dia`, el predicado de la
+   * recogida) o ya en `en_reparto`; `recogidas` = las de ese conjunto en `en_reparto`. `dia` va en
+   * la convencion `@db.Date` (`startOfDayCR`). Una sola lectura.
+   */
+  contarAsignadasDelDia(
+    mensajeroId: string,
+    dia: Date,
+  ): Promise<{ asignadas: number; recogidas: number }>;
+  /**
+   * SLT-79 — instante de la ULTIMA recogida del mensajero desde `desde` (inicio del dia de Costa
+   * Rica en UTC, `inicioDelDiaCREnUtc`: se compara con `created_at`, que es `timestamp`). «Recogida»
+   * = fila de `orden_historial_estado` con `origen_tipo = 'recoleccion'` (arista #11
+   * `por_recoger -> en_reparto`, la que escribe `recogerLote`) y el mensajero como actor, sobre una
+   * orden que sigue asignada a el y no borrada: las mismas que cuenta `contarAsignadasDelDia` como
+   * recogidas. Acotada a la empresa del mensajero. `null` si no hay ninguna.
+   */
+  ultimaRecogidaDelDia(mensajeroId: string, desde: Date): Promise<Date | null>;
 
   /**
    * FICHA 454 (R54/R55): de `ids`, las ordenes `en_reparto` con una gestion PENDIENTE de confirmar

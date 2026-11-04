@@ -63,6 +63,11 @@ function filaEnVivo(overrides: Record<string, unknown> = {}) {
       provincia: { nombre: "Cartago" },
       canton: { nombre: "Central" },
       distrito: { nombre: "Oriental" },
+      // SLT-52 (T5.1): lo que la orden aporta al contexto del pago (`WITH_DETALLE_PENDIENTE`).
+      distritoId: "d1",
+      zonaId: "z1",
+      montoCobrar: new Prisma.Decimal("12.50"),
+      cobraComision: false,
     },
     ...overrides,
   };
@@ -86,6 +91,7 @@ function filaAdmin(overrides: Record<string, unknown> = {}) {
     causaIncidente: null,
     indemnizacion: null,
     historialEstados: [],
+    ajustesPagoMensajero: [], // SLT-56 (R19): la relacion que ahora lee GESTION_ADMIN_SELECT
     ...overrides,
   };
 }
@@ -344,6 +350,7 @@ describe("R23 — camino 3 (bodega): `CierresBodegaAdminRepository.findCierreBod
             totalPagoMensajero: new Prisma.Decimal("5.00"),
             totalIngresoBodegaRechazos: new Prisma.Decimal("0.00"),
             mensajero: { nombre: "Ana" },
+            _count: { gestiones: 0 }, // SLT-56 (R20): el conteo de gestiones ajustadas del select
           },
         ]),
       },

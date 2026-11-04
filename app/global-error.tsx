@@ -23,7 +23,9 @@ import { reemitirEnCliente } from "@/lib/errors/reemitir-en-cliente";
  * tokens: los tokens viven en `app/globals.css` y este es exactamente el caso en el que no se
  * puede contar con ese archivo. Es la misma decision que toma la pantalla interna de Next
  * (`next/dist/client/components/builtin/global-error.js`, que tambien va con estilos en linea).
- * Los valores son los de `--color-navy-deep` (#0d2444) y `--color-brand` (#f26419).
+ * Los valores son los de `--color-navy-deep` (#111111, Negro Servi) para el fondo y
+ * `--color-brand-light` (#FFD000, Amarillo Servi) para el boton, con tinta #111111 encima: tinta
+ * negra sobre bloque amarillo, nunca texto amarillo sobre blanco (`docs/marca.md`).
  *
  * ── LA SALIDA ES UNA RECARGA DURA, NO `reset()`
  * Si lo que fallo fue el layout raiz, `reset()` vuelve a montar exactamente lo mismo y falla
@@ -44,7 +46,7 @@ const ESTILO_CUERPO: CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   padding: "1.5rem",
-  backgroundColor: "#0d2444",
+  backgroundColor: "#111111",
   color: "#ffffff",
   fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
 };
@@ -56,8 +58,8 @@ const ESTILO_BOTON: CSSProperties = {
   padding: "0.625rem 1rem",
   fontSize: "0.875rem",
   fontWeight: 500,
-  backgroundColor: "#f26419",
-  color: "#ffffff",
+  backgroundColor: "#FFD000",
+  color: "#111111",
 };
 
 const ESTILO_ENLACE: CSSProperties = {

@@ -118,8 +118,8 @@ export function RutaMapaInner({
   // un vistazo si lo que tiene delante es navegable o solo el orden de visita.
   const esPorCalles = trazado?.fuente === "routes";
 
-  // Tramo a la siguiente parada. Se dibuja ENCIMA del recorrido completo, en naranja: es lo
-  // que el mensajero tiene delante ahora, y el resto de la ruta es contexto.
+  // Tramo a la siguiente parada. Se dibuja ENCIMA del recorrido completo, en Negro Servi
+  // (#111111): es lo que el mensajero tiene delante ahora, y el resto de la ruta es contexto.
   const lineaTramo = useMemo<LatLngTuple[]>(() => {
     if (!tramoSiguiente) return [];
     const puntos = decodificarPolilinea(tramoSiguiente);
@@ -163,7 +163,7 @@ export function RutaMapaInner({
       {lineaTramo.length >= 2 ? (
         <Polyline
           positions={lineaTramo}
-          pathOptions={{ color: "#f26419", weight: 6, opacity: 0.95 }}
+          pathOptions={{ color: "#111111", weight: 6, opacity: 0.95 }}
         />
       ) : null}
 

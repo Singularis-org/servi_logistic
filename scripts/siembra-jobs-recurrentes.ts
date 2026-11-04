@@ -7,6 +7,7 @@ import { comoPlataforma } from "@/lib/db/contexto-empresa";
 import { seedJobLiberarReprogramadas } from "./seed-jobs-liberar-reprogramadas";
 import { seedJobAnaliticaRollupDiario } from "./seed-jobs-analitica-rollup-diario";
 import { seedJobWhatsappEnvioMantenimiento } from "./seed-jobs-whatsapp-envio-mantenimiento";
+import { sembrarPlanCambiosVencidos } from "@/lib/planes/jobs-cambio-plan";
 
 // Ficha 313 — REGISTRO UNICO DE LAS SIEMBRAS DE LOS JOBS RECURRENTES, y lo que las corre.
 //
@@ -85,6 +86,16 @@ export const SIEMBRAS_RECURRENTES: readonly SiembraRecurrente[] = [
       "los marca caducados) y un envio a hora fija cuya cadena se rompio no se re-siembra: deja de " +
       "enviarse sin que nada falle",
     sembrar: seedJobWhatsappEnvioMantenimiento,
+  },
+  {
+    // SL-24 (design §16.3): el barrido horario de los cambios de plan vencidos. El sembrador vive
+    // junto a su recurrencia, con la MISMA `dedupe_key`.
+    tipo: "plan_cambios_vencidos",
+    script: "lib/planes/jobs-cambio-plan.ts",
+    siNoCorre:
+      "un cambio programado de un plan cuyo trabajo puntual se perdio (base restaurada, dedupe_key " +
+      "que choco) no se aplica nunca: el plan sigue con la version vieja pasada su fecha sin que nada falle",
+    sembrar: sembrarPlanCambiosVencidos,
   },
 ];
 

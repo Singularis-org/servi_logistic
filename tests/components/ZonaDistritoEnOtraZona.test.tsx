@@ -25,11 +25,6 @@ vi.mock("@/lib/actions/zonas", () => ({
   impactoZonaCentral: vi.fn().mockResolvedValue({ status: "ok", impacto: [] }),
 }));
 
-vi.mock("@/lib/actions/tarifas", () => ({
-  crearTarifa: vi.fn(),
-  actualizarTarifa: vi.fn(),
-}));
-
 vi.mock("@/lib/actions/geografia", () => ({
   actualizarDistritosEspeciales: vi.fn().mockResolvedValue({ status: "ok" }),
   listarArbolGeografico: vi.fn(),
@@ -50,8 +45,8 @@ vi.mock("@/hooks/useToast", () => ({
   }),
 }));
 
-const { CrearZonaForm, cobroVacio } = await import(
-  "@/app/(app)/configuracion/tarifas/_components/CrearZonaForm"
+const { CrearZonaForm } = await import(
+  "@/app/(app)/configuracion/zonas/_components/CrearZonaForm"
 );
 
 const MSG_UNO = "Distrito Alfa ya está en la zona Zona Norte.";
@@ -93,13 +88,11 @@ function renderEditar() {
     <CrearZonaForm
       mode="editar"
       provincias={arbol()}
-      vehiculos={[]}
       zonas={[]}
       initial={{
         zonaId: "z-1",
         nombre: "Zona Prueba",
         distritoIds: ["d1"],
-        cobro: cobroVacio(),
       }}
       onSaved={vi.fn()}
       onCancel={vi.fn()}

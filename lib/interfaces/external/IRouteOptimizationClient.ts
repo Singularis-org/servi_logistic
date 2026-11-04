@@ -5,6 +5,8 @@
 // `lib/clients/` + `lib/config/` + `lib/auth/google-sa-token.ts`. El resto del diseno
 // —persistencia, debounce, reordenado, gate— es identico para ambas APIs.
 
+import type { ContextoLlamadaRuta } from "@/lib/clients/registro-llamada-google";
+
 /** Una parada a visitar. El `ordenId` NO viaja al proveedor: es la tabla de traduccion. */
 export interface ParadaEntrada {
   ordenId: string;
@@ -69,5 +71,6 @@ export type OptimizarOutcome =
   | { status: "sin_solucion"; detalle: string; servidas: number; enviadas: number };
 
 export interface IRouteOptimizationClient {
-  optimizar(input: OptimizarInput): Promise<OptimizarOutcome>;
+  /** SLT-59 (R68): el contexto con el `motivo` es obligatorio; sin el, no compila. */
+  optimizar(input: OptimizarInput, contexto: ContextoLlamadaRuta): Promise<OptimizarOutcome>;
 }

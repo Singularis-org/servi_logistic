@@ -155,6 +155,7 @@ describe("SincronizarRutaButton", () => {
     await vi.waitFor(() =>
       expect(warningMock).toHaveBeenCalledWith(
         "la ruta se sincronizo hace muy poco; intenta de nuevo en unos segundos",
+        { duration: 10_000 },
       ),
     );
     expect(refreshMock).not.toHaveBeenCalled();

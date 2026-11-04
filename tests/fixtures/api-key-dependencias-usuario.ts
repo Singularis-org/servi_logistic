@@ -277,6 +277,25 @@ export const CLASIFICACION_FK_USUARIO: Record<string, ClasificacionFk> = {
     categoria: "no_alcanzable",
     motivo: `Corregir la fecha de una reprogramacion es solo de maestro/admin: ${SOLO_OPERADOR}`,
   },
+  // SLT-56: ajustar el pago al mensajero de una gestion al revisar su cierre.
+  "GestionPagoMensajeroAjuste.actor": {
+    categoria: "no_alcanzable",
+    motivo: `Ajustar el pago al mensajero es solo de maestro/admin/adminSatelite: ${SOLO_OPERADOR}`,
+  },
+  // ── SLT-52: el modelo nuevo de tarifas ───────────────────────────────────────────────────────
+  "TarifaValor.tienda": {
+    categoria: "bloquea",
+    motivo:
+      "R10 de la 373, extendida por SLT-52. ⚠️ CASCADE como `Tarifa.tienda`: el precio propio de una " +
+      "tienda `apiKey` en el modelo nuevo es configuracion de dinero y no desaparece dentro de " +
+      "«eliminar una API key». El guard lo comprueba en el mismo `tarifas` " +
+      "(`ApiKeyRepository.dependenciasPorCuenta`, `EXISTS … tarifa_valor`).",
+  },
+  "TarifaValor.mensajero": { categoria: "no_alcanzable", motivo: `El valor propio del mensajero: ${SOLO_MENSAJERO}` },
+  "TarifaValor.actualizadoPorUsuario": {
+    categoria: "no_alcanzable",
+    motivo: `Fijar un valor de tarifa es solo del maestro (SLT-52 R13): ${SOLO_OPERADOR}`,
+  },
   // ── FICHA 410 (2026-09-10): el canal de push web ─────────────────────────────────────────────
   // Las dos son CASCADE y las dos son INALCANZABLES para una cuenta dedicada. No se clasifican
   // como `se_borra_con_ella` —que es para lo que desaparece DENTRO de la transaccion del borrado

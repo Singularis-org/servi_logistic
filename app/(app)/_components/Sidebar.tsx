@@ -8,11 +8,13 @@ import {
   ChartColumn,
   ChevronLeft,
   ChevronRight,
+  CircleGauge,
   CircleHelp,
   ClipboardCheck,
   Gauge,
   History,
   Home,
+  Layers,
   MapIcon,
   Megaphone,
   Package,
@@ -198,6 +200,11 @@ export const ICON_BY_KEY: Record<IconKey, SidebarIcon> = {
   // del `building` de «Empresas»: un país y su división no son una empresa. Se importa como
   // `MapIcon` para no tapar el `Map` global.
   map: MapIcon,
+  // SLT-58 (R10): «Mi plan». Icono PROPIO, distinto del `gauge` de «Monitoreo»: el consumo del
+  // plan no es el pulso del día.
+  gaugeCircle: CircleGauge,
+  // SLT-58 (R23): «Planes», el catálogo del superadmin. Icono PROPIO: un plan no es una empresa.
+  layers: Layers,
 };
 
 // Entrada escalonada de los items al cargar (solo la primera vez). Cada item

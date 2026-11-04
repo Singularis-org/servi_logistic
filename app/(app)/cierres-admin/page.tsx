@@ -244,6 +244,12 @@ export default async function CierresAdminPage() {
          * devolución. Y al mensajero no le llega ni la pantalla.
          */
         puedeCorregirResultado={esAccesoTotal(actor.rol)}
+        /**
+         * SLT-56 (design §5; R1/R2/R21) — el permiso de AJUSTAR el pago al mensajero. A diferencia
+         * de sus vecinas, el `adminSatelite` SÍ ajusta: los cierres de su bodega, sin aprobación
+         * de la central (R2). Que no toque los de otra bodega lo impone el servicio (R3).
+         */
+        puedeAjustarPagoMensajero={esAccesoTotal(actor.rol) || actor.rol === "adminSatelite"}
       />
         }
       />

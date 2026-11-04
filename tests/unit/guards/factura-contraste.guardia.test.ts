@@ -862,16 +862,21 @@ function hexDeFondo(tema: "claro" | "oscuro", par: Par): string {
  * reviewer: la aserción y el suelo eran correctos, pero el comentario anunciaba un fondo que no
  * era, y el siguiente que lo lea lo va a usar. Para regenerarlos, medir con `contraste()` y
  * `hexDeFondo()` sobre `INVENTARIO`; no reconstruirlos mentalmente.
+ *
+ * ── SL-33, re-medido el 2026-10-28 con los grises `stone` (el número de antes, a la derecha)
+ * `--muted` y `--secondary` claros pasan a `stone-100` (`#f5f5f4`) y `--muted-foreground` a
+ * `stone-700` (`#44403c`). Suben los nueve suelos claros que cuelgan de ellos (P2–P8, P24, P25),
+ * todos; ninguno baja. Los oscuros no se mueven: SL-33 no toca el tema oscuro (R12).
  */
 const SUELO: Record<string, { claro: number; oscuro: number }> = {
   P1: { claro: 18.88, oscuro: 15.91 }, // #111111/#ffffff · #F7F7F5/#1C1C1A  (antes 15.70 · 13.74)
-  P2: { claro: 17.15, oscuro: 14.65 }, // #111111/#f1f4fb · #F7F7F5/#232323  (antes 14.26 · 12.22)
-  P3: { claro: 18.2, oscuro: 15.38 }, //  #111111/#f9fbfd · #F7F7F5/#1f1f1e  (antes 15.13 · 13.10)
-  P4: { claro: 18.06, oscuro: 15.2 }, //  #111111/#f8fafd · #F7F7F5/#20201f  (antes 15.01 · 12.92)
-  P5: { claro: 7.7, oscuro: 8.04 }, //    #4a5368/#ffffff · #B2B2B1/#1C1C1A  (antes 7.70 · 7.21)
-  P6: { claro: 6.99, oscuro: 7.41 }, //   #4a5368/#f1f4fb · #B2B2B1/#232323  (antes 6.99 · 6.41)
-  P7: { claro: 7.42, oscuro: 7.77 }, //   #4a5368/#f9fbfd · #B2B2B1/#1f1f1e  (antes 7.42 · 6.87)
-  P8: { claro: 7.36, oscuro: 7.68 }, //   #4a5368/#f8fafd · #B2B2B1/#20201f  (antes 7.36 · 6.78)
+  P2: { claro: 17.31, oscuro: 14.65 }, // #111111/#f5f5f4 · #F7F7F5/#232323  (antes 17.15 · 14.65)
+  P3: { claro: 18.25, oscuro: 15.38 }, // #111111/#fbfbfb · #F7F7F5/#1f1f1e  (antes 18.20 · 15.38)
+  P4: { claro: 18.09, oscuro: 15.2 }, //  #111111/#fafafa · #F7F7F5/#20201f  (antes 18.06 · 15.20)
+  P5: { claro: 10.27, oscuro: 8.04 }, //  #44403c/#ffffff · #B2B2B1/#1C1C1A  (antes 7.70 · 8.04)
+  P6: { claro: 9.42, oscuro: 7.41 }, //   #44403c/#f5f5f4 · #B2B2B1/#232323  (antes 6.99 · 7.41)
+  P7: { claro: 9.93, oscuro: 7.77 }, //   #44403c/#fbfbfb · #B2B2B1/#1f1f1e  (antes 7.42 · 7.77)
+  P8: { claro: 9.84, oscuro: 7.68 }, //   #44403c/#fafafa · #B2B2B1/#20201f  (antes 7.36 · 7.68)
   P9: { claro: 4.77, oscuro: 6.97 }, //   #047857/#dbf5ec · #34d399/#1a3429  (antes 4.77 · 6.60) ← el más justo
   P10: { claro: 6.31, oscuro: 7.7 }, //   #92400e/#fef0da · #fbbf24/#3d3018  (antes 6.31 · 7.59)
   P11: { claro: 6.47, oscuro: 6.17 }, //  #b91c1c/#ffffff · #f87171/#1C1C1A  (antes 6.47 · 5.89)
@@ -883,8 +888,8 @@ const SUELO: Record<string, { claro: number; oscuro: number }> = {
   P21: { claro: 18.88, oscuro: 12.84 }, // #ffffff/#111111 · #111111/#FFD000 (antes 3.18 · 7.06) ← SL-8 la pagó
   P22: { claro: 5.3, oscuro: 5.27 }, //   #b91c1c/#fee2e2 · #f87171/#3c2220  (antes 5.30 · 5.20) ← la 222 lo arregló
   P23: { claro: 17.6, oscuro: 14.5 }, //  #111111/#F7F7F5 · #F7F7F5/#242422  (antes 14.79 · 12.08)
-  P24: { claro: 7.18, oscuro: 7.33 }, //  #4a5368/#F7F7F5 · #B2B2B1/#242422  (antes 7.25 · 6.34) ← baja por R18
-  P25: { claro: 16.7, oscuro: 14.65 }, // #111111/#eef1f8 · #F7F7F5/#232323  (antes 13.86 · 12.22)
+  P24: { claro: 9.58, oscuro: 7.33 }, //  #44403c/#F7F7F5 · #B2B2B1/#242422  (antes 7.18 · 7.33; 7.25 antes de SL-8)
+  P25: { claro: 17.31, oscuro: 14.65 }, // #111111/#f5f5f4 · #F7F7F5/#232323  (antes 16.70 · 14.65)
   P26: { claro: 5.3, oscuro: 5.27 }, //   #b91c1c/#fee2e2 · #f87171/#3c2220  (antes 5.30 · 5.20) ← coincide con la 210
 };
 

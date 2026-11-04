@@ -105,7 +105,7 @@ export function SincronizarRutaButton({
         case "conflict":
           // R34: pulsado dentro del intervalo mínimo, o el proveedor falló y se conservó
           // el último orden válido (R27). Se avisa sin fingir que recalculó.
-          toast.warning(result.motivo);
+          toast.warning(result.motivo, { duration: 10_000 });
           break;
         case "forbidden":
           toast.error("No tienes permiso para sincronizar la ruta.");

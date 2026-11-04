@@ -142,7 +142,7 @@ dato:
 |---|---|
 | `key` | label `key:<KEY>` si la tarjeta lo tiene (migradas); si no, `<tracker.prefijo>-<idShort>` |
 | `id` | número de la key |
-| `title` | nombre de la tarjeta, sin espacios sobrantes (`docs/jira.md > Cómo se nombra una ficha`) |
+| `title` | nombre de la tarjeta **sin el prefijo `<KEY> · `**, sin espacios sobrantes (`docs/jira.md > Cómo se nombra una ficha`) |
 | `epic` / `epic_name` | label `epic:<KEY> <nombre>` (`epic:AB-17 Identidad y acceso`) |
 | `description` | descripción de la tarjeta |
 | `status` | nombre de la lista, traducido con `tracker.estados` |
@@ -161,6 +161,21 @@ dato:
   fijo se lee y se edita a mano sin herramientas.
 - **Los labels se separan con `|`** en `crear --labels` y en `editar`: un nombre de épica puede
   llevar comas.
+
+## La key en el título
+
+- **Cada tarjeta se llama `<KEY> · <título>`** (`SLT-51 · Zonas separadas de Tarifas`). Trello no
+  muestra el `idShort` en el tablero: sin el prefijo, el humano no sabe qué tarjeta es cada key.
+- **`importar` (F0) rotula** toda tarjeta abierta cuyo nombre no empiece por su key: la añade si
+  falta y la corrige si es otra. Si alguien la borra, el siguiente F0 la repone.
+- **`crear` y `editar --nombre` ya la ponen.** El `title` de `feature_list.json` va sin prefijo.
+- **El prefijo es cosmético.** La key sigue saliendo del label `key:` o del `idShort`, nunca del
+  nombre: cambiarlo a mano no cambia la key.
+
+### Por qué
+
+2026-10-29: el humano aprobó SLT-51 y SLT-56 en el chat y no pudo moverlas en Trello porque
+ninguna tarjeta decía su key.
 
 ## El assignee: el candado visible del equipo
 
@@ -183,7 +198,7 @@ cuándo`:
 
 | Paso | Comando |
 |---|---|
-| **F0** | `importar`: regenera `features` de `feature_list.json` en la raíz del worktree principal |
+| **F0** | `importar`: regenera `features` de `feature_list.json` en la raíz del worktree principal y rotula con su key el título de las tarjetas que no la lleven |
 | **F1.0** | `tomar <key>` y `editar <key> --labels-mas "zone:<z>\|complexity:<c>"` |
 | **F1.3** | `mover <key> spec_ready` y `comentar <key> "specs/<key>-<slug>/"` |
 | **F1.4** | el humano mueve la tarjeta de `spec_ready` a `in_progress`; si la aprobó por escrito en el chat, el leader corre `mover <key> in_progress --aprobado-por-escrito "<cita literal>"`. `aprobacion <key>` lo confirma y distingue las dos formas |

@@ -22,14 +22,15 @@ import { cn } from "@/lib/utils"
  * Ninguno llega a 3. Con los anillos opacos y la paleta de entonces: `ring-ring` 3.68 / 5.57 y
  * `ring-destructive` 3.33 / 5.24.
  *
- * ── CON LA MARCA DE SL-8 (re-medido 2026-10-22, misma aritmética y mismas seis superficies)
+ * ── CON LA MARCA DE SL-8 Y LOS GRISES DE SL-33 (re-medido 2026-10-28, misma aritmética y mismas
+ * seis superficies)
  * `--ring` es `--primary` en los dos temas (`#111111` en claro, `#FFD000` en oscuro): `ring-ring`
- * mide 16.70 / 10.68 y `ring-destructive` 3.33 / 5.68 en la peor superficie. El anillo de marca
+ * mide 17.31 / 10.68 y `ring-destructive` 3.45 / 5.68 en la peor superficie. El anillo de marca
  * de `brand-outline` es el de la base, así que es el mismo número.
  *
  * ── DOS COSAS QUE NO SE PUEDEN LEER COMO ADORNO
- * 1. El alfa se queda fuera aunque hoy llegaría: `ring-ring/50` daría 3.44 / 3.74 con la paleta
- *    nueva, por centésimas sobre el umbral y dependiendo de la superficie de debajo. Una primitiva
+ * 1. El alfa se queda fuera aunque hoy llegaría: `ring-ring/50` daría 3.48 / 3.74 con la paleta
+ *    nueva, por décimas sobre el umbral y dependiendo de la superficie de debajo. Una primitiva
  *    no sabe dónde la montan; opaco no depende de eso.
  * 2. `brand-outline` no pinta su propio anillo y hereda el de la base. Su
  *    `focus-visible:border-brand` se queda: el borde sigue siendo de marca.
@@ -67,10 +68,14 @@ const buttonVariants = cva(
         // `Alert` y los `aria-invalid` de media app (los de la clase base, aquí arriba).
         //
         // ── EL HOVER ES OPACO A PROPÓSITO, y no un tinte más hondo
-        // Una capa `hover:bg-danger/20` mide 4.99 sobre la tarjeta pero 4.44 sobre `secondary` y
-        // 4.44 sobre el `muted` oscuro: un fondo con alfa vale lo que valga la superficie que
-        // tenga debajo, y el botón no sabe dónde lo montan. `--danger-strong` opaco NO depende de
-        // ella: 6.47 en claro y 5.89 en oscuro, en cualquier sitio. `text-card` acompaña al vuelco
+        // Una capa `hover:bg-danger/20` ya cumple AA, pero por márgenes mínimos: en su peor
+        // superficie (`secondary` y `muted`) mide 4.62 en claro y 4.54 en oscuro, doce y cuatro
+        // centésimas sobre el 4.5 (re-medido 2026-10-28, tras SL-33). Un fondo con alfa vale lo
+        // que valga la superficie que tenga debajo; una primitiva no sabe dónde la montan y no
+        // puede fiarse del alfa: el próximo fondo un poco distinto de `muted` la tumba, y nada
+        // aquí lo avisaría. `--danger-strong` opaco NO depende de ella: 6.47 en claro y 6.17 en
+        // oscuro, en cualquier sitio (caso `danger/20` de `contraste-tokens.guardia.test.ts`, que
+        // vigila que el argumento no caduque). `text-card` acompaña al vuelco
         // porque gira con el tema igual que el fondo (blanco sobre rojo oscuro en claro; azul
         // oscuro sobre rojo claro en oscuro), así que un solo par de clases sirve para los dos.
         //
@@ -87,7 +92,8 @@ const buttonVariants = cva(
         // sería otra decisión «sin medición que la respalde»; ESA MEDICIÓN LLEGÓ con la feature
         // 226 y el anillo pasó de `ring-destructive/20` (1.29 en claro, 1.31 en oscuro, con el
         // alfa comiéndose el contraste dos veces) a `--destructive` OPACO: 3.33 y 5.24 sobre la
-        // peor de las seis superficies (3.33 y 5.68 con la marca de SL-8). El TOKEN no cambia,
+        // peor de las seis superficies (3.33 y 5.68 con la marca de SL-8; 3.45 y 5.68 con los
+        // grises de SL-33). El TOKEN no cambia,
         // cambia el alfa.
         //
         // DEUDA VIVA, la misma que dejó dicha la 210 y que esta ficha NO cierra: `destructive` y

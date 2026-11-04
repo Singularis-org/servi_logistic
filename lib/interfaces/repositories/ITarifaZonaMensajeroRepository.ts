@@ -2,6 +2,16 @@
 // Prisma (sin logica de negocio: el mapeo resultado->monto vive en el util puro
 // lib/utils/pago-mensajero.ts). Money-safe: los Decimal se devuelven ya serializados
 // a STRING escala 2.
+import type { PrismaClient } from "@prisma/client";
+import type { ContextoPagoGestion, TarifaPago } from "@/lib/types/tarifa-flexible";
+
+// SLT-52 (design §5): delegados que lee el resolver del pago, viejo y nuevo. Es el tipo del
+// constructor de la fachada y del `tx` de `resolvePagos`; el `prisma` de las raices y el cliente
+// de una transaccion ya lo cumplen.
+export type PagoTarifaTxClient = Pick<
+  PrismaClient,
+  "tarifaZonaMensajero" | "tarifaValor" | "grupoDistritosDistrito"
+>;
 
 // Tarifa de pago de una zona (resuelta por vehiculo o por defecto). `cobroEntregado`
 // es el UNICO campo que la 39 paga al mensajero (solo por `entregada`). `cobroRechazado`
@@ -20,6 +30,19 @@ export interface ITarifaZonaMensajeroRepository {
    *    por defecto de la zona (vehiculo_id IS NULL);
    * 3) `null` si la zona no tiene ninguna tarifa capturada (gap de datos, R8).
    * El indice unico (zona_id, vehiculo_id) NULLS NOT DISTINCT garantiza determinismo.
+   *
+   * SLT-52: solo modelo viejo. Sus llamadores pasan a `resolvePagos` en T5.1.
    */
   resolvePagoTarifa(zonaId: string, vehiculoId: string | null): Promise<PagoTarifa | null>;
+
+  /**
+   * SLT-52 (R19-R22, R28, R36, R37, R39) — el pago de N gestiones, indexado por `gestionId`, con
+   * el modelo de la empresa y un numero fijo de consultas. En el viejo, `null` = la zona no tiene
+   * tarifa; en el nuevo nunca es `null` y cada actor sin valor viene `null` (= paga 0, R24).
+   * `tx` cuando el llamador esta dentro de su transaccion.
+   */
+  resolvePagos(
+    ctxs: readonly ContextoPagoGestion[],
+    tx?: PagoTarifaTxClient,
+  ): Promise<Map<string, TarifaPago | null>>;
 }

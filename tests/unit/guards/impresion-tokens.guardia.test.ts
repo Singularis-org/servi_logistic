@@ -523,6 +523,9 @@ const PAPEL = "#ffffff";
  * SL-8, re-medido el 2026-10-22: T1 pasa de 1.19 → 15.70 a 1.07 → 18.88 (tinta oscura `#F7F7F5`,
  * clara `#111111`) y el «antes» de T6 de 2.26 a 2.12 (`--muted-foreground` oscuro `#B2B2B1`). T2 a
  * T5 no se mueven: los `-strong` no son de la marca.
+ *
+ * SL-33, re-medido el 2026-10-28: el «después» de T6 sube de 7.70 a 10.27 (`--muted-foreground`
+ * claro pasa de `#4a5368` a `stone-700`, `#44403c`).
  */
 const EN_PAPEL = [
   { id: "T1", que: "texto `--foreground` (el 1.19 que nombró la ficha; 1.07 desde SL-8)", cual: "foreground", antes: 1.07, despues: 18.88 },
@@ -530,7 +533,7 @@ const EN_PAPEL = [
   { id: "T3", que: "`Badge` warning (`--warning-strong`)", cual: "warning-strong", antes: 1.67, despues: 7.09 },
   { id: "T4", que: "`Badge` danger (`--danger-strong`)", cual: "danger-strong", antes: 2.77, despues: 6.47 },
   { id: "T5", que: "`Badge` info (`--info-strong`)", cual: "info-strong", antes: 2.08, despues: 6.7 },
-  { id: "T6", que: "texto secundario (`--muted-foreground`)", cual: "muted-foreground", antes: 2.12, despues: 7.7 },
+  { id: "T6", que: "texto secundario (`--muted-foreground`)", cual: "muted-foreground", antes: 2.12, despues: 10.27 },
 ] as const;
 
 describe("feature 224 — en papel sin fondos, la tinta pasa a ser la clara", () => {
@@ -641,10 +644,11 @@ const ROL: Record<string, "tinta" | "superficie" | "linea" | "grafico"> = {
   // `--chart-N` a secas pinta un segmento de barra, pero su `-strong` es el TEXTO del `Badge`
   // que acompaña a ese segmento. Clasificarlo de gráfico lo sacaría del barrido de legibilidad
   // de abajo, que es donde tiene que estar.
-  "--chart-6-strong": "tinta",
+  // SL-33 los reasigna a `chart-5/7/11/12` (`specs/SL-33-paleta-secundaria/design.md > D3`).
+  "--chart-5-strong": "tinta",
+  "--chart-7-strong": "tinta",
   "--chart-11-strong": "tinta",
   "--chart-12-strong": "tinta",
-  "--chart-13-strong": "tinta",
 };
 
 /**
@@ -682,11 +686,14 @@ const ROL: Record<string, "tinta" | "superficie" | "linea" | "grafico"> = {
  * censo, no a mano. Las tres que quedan se re-miden: P1 18.33 → 18.88 de «antes» (la tinta sobre
  * el amarillo es `#111111`), P3 12.30 → 13.79 y P4 10.29 → 12.10 (bordes oscuros nuevos); sus
  * «después» no se mueven, porque `--primary-foreground`, `--border` e `--input` claros no cambian.
+ *
+ * SL-33, re-medido el 2026-10-28: `--border` e `--input` claros pasan a `stone-200` (`#e7e5e4`) y el
+ * «después» de P3 y P4 sube de 1.23 a 1.26. Siguen siendo las tres filas del censo.
  */
 const SE_PIERDE_EN_PAPEL = [
   { id: "P1", que: "`Badge`/`Button` default y `Pagination` (`--primary-foreground`)", cual: "primary-foreground", antes: 18.88, despues: 1 },
-  { id: "P3", que: "los bordes (`--border`)", cual: "border", antes: 13.79, despues: 1.23 },
-  { id: "P4", que: "el borde de los campos (`--input`)", cual: "input", antes: 12.1, despues: 1.23 },
+  { id: "P3", que: "los bordes (`--border`)", cual: "border", antes: 13.79, despues: 1.26 },
+  { id: "P4", que: "el borde de los campos (`--input`)", cual: "input", antes: 12.1, despues: 1.26 },
 ] as const;
 
 describe("feature 224 — LO QUE EMPEORA: la tinta que se apoyaba en un fondo que no se imprime", () => {
@@ -759,7 +766,7 @@ describe("feature 224 — LO QUE EMPEORA: la tinta que se apoyaba en un fondo qu
     // SL-8: el segundo par que se perdía entero (`--sidebar-primary-foreground`, 18.21 → 1.00) ya
     // no baja. Los que quedan con número en la prosa son los dos bordes.
     expect(crudo, "faltan los dos bordes que casi se van del papel").toMatch(
-      /13\.79 → 1\.23[\s\S]{0,80}12\.10 → 1\.23/,
+      /13\.79 → 1\.26[\s\S]{0,80}12\.10 → 1\.26/, // SL-33: 1.23 → 1.26 (`stone-200`)
     );
     expect(
       crudo,

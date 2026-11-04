@@ -344,8 +344,9 @@ describe("376/R7 — la Server Action rechaza sola, sin formulario de por medio"
     if (r.status === "validation_error") {
       expect(Object.keys(r.fieldErrors)).toEqual(["esCentral"]);
       // El texto ES el contrato: es lo que la pantalla pinta junto a la casilla (R23).
+      // SLT-51 (R10): la marca se rotula «zona de bodega principal» en la pantalla.
       expect(r.fieldErrors.esCentral).toEqual([
-        "Tiene que haber una zona central. Para quitarle la marca a ésta, márcala en otra zona.",
+        "Tiene que haber una zona de bodega principal. Para quitarle la marca a ésta, márcala en otra zona.",
       ]);
     }
   });
@@ -422,5 +423,79 @@ describe("376/Q4 — la accion de impacto", () => {
     });
     expect(r.status).toBe("validation_error");
     expect(service.impactoZonaCentral).not.toHaveBeenCalled();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// SLT-51 — R2 (solo `maestro` escribe o lee una zona) y R7/R8 (payload sin costos)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Con el ZonaService REAL y un repositorio doble: el rechazo vive en el servicio, y lo que se
+// afirma es que ningun metodo del repositorio llega a ejecutarse — ni lecturas de validacion.
+
+const ROLES_NO_MAESTRO = ["admin", "mensajero", "adminTienda", "adminSatelite", "apiKey"] as const;
+
+function llamadasAlRepo(repo: IZonaRepository): number {
+  return Object.values(repo).reduce(
+    (n, fn) => n + (fn as ReturnType<typeof vi.fn>).mock.calls.length,
+    0,
+  );
+}
+
+describe("SLT-51/R2 — un rol distinto de `maestro` recibe forbidden y no se escribe nada", () => {
+  for (const rol of ROLES_NO_MAESTRO) {
+    it(`${rol}: crear, obtener, actualizar y borrar -> forbidden`, async () => {
+      const repo = repoConGuarda();
+      const deps = {
+        zonaService: new ZonaService(repo),
+        getActor: getActor({ usuarioId: "u1", rol } as Actor),
+      };
+      expect((await crearZona(validCrear, deps)).status).toBe("forbidden");
+      expect((await obtenerZona("z1", deps)).status).toBe("forbidden");
+      expect(
+        (await actualizarZona("z1", { nombre: "Zona Sur", distritoIds: ["d1"] }, deps)).status,
+      ).toBe("forbidden");
+      expect((await borrarZona("z1", deps)).status).toBe("forbidden");
+      expect(llamadasAlRepo(repo)).toBe(0);
+    });
+  }
+});
+
+describe("SLT-51/R7/R8 — actualizar sin costos, o con solo uno de los dos", () => {
+  it("R7: sin `cobroVehiculo` ni `tarifas` -> ok, y el repo los recibe `undefined`", async () => {
+    const repo = repoConGuarda();
+    const r = await actualizarZona(
+      "z1",
+      { nombre: "Zona Sur", distritoIds: ["d1"] },
+      { zonaService: new ZonaService(repo), getActor: getActor(MAESTRO) },
+    );
+    expect(r.status).toBe("ok");
+    const datos = (repo.update as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect(datos.cobroVehiculo).toBeUndefined();
+    expect(datos.tarifas).toBeUndefined();
+  });
+
+  it("⭑ R8: solo `tarifas` -> validation_error en `cobroVehiculo`, sin tocar el repo", async () => {
+    const repo = repoConGuarda();
+    const r = await actualizarZona(
+      "z1",
+      { nombre: "Zona Sur", distritoIds: ["d1"], tarifas: [{ cobroEntregado: 1, cobroRechazado: 1 }] },
+      { zonaService: new ZonaService(repo), getActor: getActor(MAESTRO) },
+    );
+    expect(r.status).toBe("validation_error");
+    if (r.status === "validation_error") expect(Object.keys(r.fieldErrors)).toEqual(["cobroVehiculo"]);
+    expect(llamadasAlRepo(repo)).toBe(0);
+  });
+
+  it("⭑ R8: solo `cobroVehiculo` -> validation_error en `tarifas`, sin tocar el repo", async () => {
+    const repo = repoConGuarda();
+    const r = await actualizarZona(
+      "z1",
+      { nombre: "Zona Sur", distritoIds: ["d1"], cobroVehiculo: true },
+      { zonaService: new ZonaService(repo), getActor: getActor(MAESTRO) },
+    );
+    expect(r.status).toBe("validation_error");
+    if (r.status === "validation_error") expect(Object.keys(r.fieldErrors)).toEqual(["tarifas"]);
+    expect(llamadasAlRepo(repo)).toBe(0);
   });
 });

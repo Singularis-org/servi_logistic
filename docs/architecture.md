@@ -1,4 +1,4 @@
-<!-- perfil: revisado=2026-10-21 por=Carlos Restrepo -->
+<!-- perfil: revisado=2026-10-28 por=Camilo -->
 > **Este repo es servi_logistic, NO Ordenex.** Es un SaaS multi-empresa de última milla derivado del
 > código de Ordenex (copiado el 2026-10-21). Lo que en el código, los tests o `specs/` diga «Ordenex»
 > es herencia pendiente de limpiar (`docs/limpieza-ordenex.md`). El plan manda: `docs/plan-saas.md`.
@@ -175,10 +175,89 @@ esta bien hecha, no solo si "funciona".
     superadmin), la puerta no aplica y decide la autorización de siempre.
   - **Guardias:** `modulos-reparto.guardia` (toda pieza repartida exactamente una vez, y cada pieza de
     un módulo con su puerta) y `modulos-sin-seed.guardia`.
+- **Planes y límites (SL-24, 2026-10-28).** El superadmin crea planes (públicos o custom de una
+  empresa) y asigna uno a cada empresa. La base cuenta los topes dentro de la transacción del alta.
+  Una empresa sin plan no tiene límites.
+  - **Tablas de plataforma:** `plan`, `plan_tope_rol`, `plan_modulo`, `plan_rastro` (migración
+    `20261028130000_plan`) y `plan_cambio_programado` (`20261028130300_plan_cambio_programado`), en
+    `MODELOS_DE_PLATAFORMA`. Tienen RLS sin ninguna política y `REVOKE ALL … FROM servi_app`: una
+    empresa no las lee ni las escribe, tampoco con SQL a mano (`42501`). La asignación vive en
+    `organizacion.plan_id` y `organizacion.plan_ciclo_ancla_at`, el ancla del ciclo, que se fija en
+    la primera asignación y no cambia al cambiar de plan. `servi_app` las lee y no las escribe.
+  - **Triggers de topes** (`20261028130200_plan_topes_triggers`): `plan_tope_ordenes` (de sentencia,
+    en `orden`), `plan_tope_usuario_alta` y `plan_tope_usuario_cambio` (en `usuario`), y
+    `plan_tope_api_key_alta` y `plan_tope_api_key_cambio` (en `api_key`). Al pasar el tope lanzan
+    SQLSTATE `SL024` con el JSON del tope en `MESSAGE`, no en `DETAIL`. `traducirErrorDeTope`
+    (`lib/planes/tope-error.ts`) lo traduce a `TopeDelPlanAlcanzado`, con `details.codigo = "tope_plan"`.
+    Las funciones son `SECURITY DEFINER` con `EXECUTE` revocado a `PUBLIC`. La única que `servi_app`
+    llama es `plan_cupo_ordenes`, y solo con su propia empresa (la lee `CupoPlanRepository`).
+  - **Ciclo en UTC (decisión 2026-10-28):** `plan_inicio_ciclo(ancla, ahora)` recibe siempre
+    `now() AT TIME ZONE 'UTC'`, nunca `now()::timestamp`. Las columnas son `TIMESTAMP` sin zona y
+    Prisma escribe en UTC, así que la hora local de la sesión correría el ciclo. Su gemela en TS es
+    `lib/planes/ciclo.ts`.
+  - **Cerrojos** (design §4.4 y §5): un alta toma `organizacion` y `plan` en `FOR SHARE` y después el
+    consultivo `(24, hashtext(empresa))`. Asignar toma `organizacion` en `FOR UPDATE` y el plan en
+    `FOR SHARE`, y editar toma `plan` en `FOR UPDATE`. Así dos altas no pasan juntas el tope y un
+    alta no se cruza con un cambio de plan. Ninguna operación pide la empresa después del plan en
+    exclusiva, por lo que no hay interbloqueo.
+  - **Quién escribe:** solo `lib/repositories/PlanesRepository.ts`, en `comoPlataforma`, con su
+    entrada en `EXCEPCIONES_DE_PLATAFORMA`. Un plan no se borra, se archiva. `plan_rastro` solo
+    recibe filas nuevas, y `plan_cambio_programado` se escribe solo desde ese repositorio
+    (`planes-sin-borrado.guardia`). La semilla no crea planes (`planes-sin-seed.guardia`).
+  - **Cambio programado:** una edición con fecha futura se guarda en `plan_cambio_programado`, con
+    uno como mucho por plan. Lo aplica el job `plan_aplicar_cambio`, encolado con
+    `run_after = vigente_desde`, y como red el recurrente `plan_cambios_vencidos`. Los dos llaman a
+    `PlanesRepository.aplicarCambioProgramado`, que es idempotente.
+  - **Correos:** guardar, cancelar o archivar con un cambio pendiente encolan `plan_aviso_correo`,
+    uno por empresa con el plan, en la misma transacción. `plan_recordatorio_cambio` reparte los
+    avisos 7 días y 1 día antes. El correo va por la cola: si falla, la edición se mantiene.
+    Los cuatro jobs están en `lib/planes/jobs-cambio-plan.ts` y son de núcleo (`MODULO_POR_JOB`).
+  - **Pantallas de planes (SLT-58, 2026-10-29).** La empresa lee su plan y su consumo con
+    `plan_de_la_empresa(organizacion_id)` (migración `20261029120000_plan_de_la_empresa`), que la
+    llama `MiPlanRepository`. Es la segunda y última función que `servi_app` puede llamar; la otra
+    es `plan_cupo_ordenes`. Es `STABLE` y `SECURITY DEFINER`, con `search_path` fijo y `EXECUTE`
+    revocado a `PUBLIC`. Con otra empresa que la del contexto lanza `42501`, y sin plan devuelve
+    `NULL`. Cuenta el uso con las mismas `plan_uso_*` y `plan_inicio_ciclo_en_curso` que los triggers. Del
+    cambio programado devuelve solo la fecha y la versión: nunca los avisos ni el actor.
+    - **Inicio del ciclo elegido:** en la primera asignación el superadmin elige el inicio del ciclo de órdenes (hoy ±1 mes, `rangoDelInicioDelCiclo`); si es futura, el tramo hasta el ancla es un ciclo corto que empieza en `organizacion.plan_ciclo_corto_desde_at`, y si la empresa ya pasa topes se asigna igual y se avisa (`avisos`). La única definición del ciclo en curso es `plan_inicio_ciclo_en_curso` (migración `20261029150000_plan_ciclo_inicio_elegido`), que llaman los triggers, `plan_cupo_ordenes` y `plan_de_la_empresa`; su gemela TS es `inicioDelCicloEnCurso` (`lib/planes/ciclo.ts`), probada con la misma tabla de casos (`tests/integration/db/_fixtures/ciclo-corto.ts`).
+    - **Rutas:** `/mi-plan` para el `maestro` y el `admin` de una empresa. Para el superadmin,
+      `/plataforma/planes`, `/plataforma/planes/[planId]` y el bloque Plan de
+      `/plataforma/empresas/[organizacionId]`. Las cuatro son `nucleo` en `lib/modulos/reparto.ts`,
+      sin puerta de módulo.
+    - **Quién escribe:** las pantallas solo llaman a las actions de SL-24 (`lib/actions/planes`).
+      Las lecturas nuevas del superadmin están en `PlanesRepository`, en `comoPlataforma`, y no
+      escriben. Llevan la ficha `"SL-24"` porque `FichaJira` no admite `SLT` (deuda D29).
 
 ### Por qué
 Decisión del humano (plan-saas, 2026-10-20/21): una sola base compartida, datos separados por
 `organizacion_id`. Una tabla que nace sin la columna obliga a migrarla después con datos dentro.
+
+## Tarifas flexibles (SLT-52)
+
+- **Tablas.** `tarifa_valor` (un valor por concepto del catálogo fijo `lib/tarifas/catalogo.ts`,
+  en modo `monto` o `porcentaje`, con su nivel: tienda+grupo, tienda+zona, tienda general, grupo,
+  zona, grupo+vehículo, zona+vehículo), `grupo_distritos` y `grupo_distritos_distrito` (un distrito
+  en un solo grupo por zona). Lo congelado al cerrar: `cierre_detail.tarifa_modelo`,
+  `cierre_detail_concepto` (cobro a la tienda por orden) y `gestion_pago_congelado` (pago por
+  gestión). Las cinco llevan `organizacion_id` y RLS como el resto.
+- **Resolver único.** `lib/repositories/_shared/resolver-tarifas.ts` es el único sitio que elige
+  la fila de tarifa, con la precedencia pura de `lib/tarifas/precedencia.ts` y un número fijo de
+  consultas por lote. `TarifaVigenteRepository` y `TarifaZonaMensajeroRepository` son fachadas que
+  delegan en él; el cálculo vive en `lib/tarifas/calculo.ts` y en las funciones públicas de
+  `ingreso-empresa.ts`, `pago-mensajero.ts` e `ingreso-bodega.ts`. Listado, cierre, API y
+  cotización no pueden divergir porque no hay dos implementaciones. La base del % del pago es el
+  flete sin IVA que ese cierre le cobra a la tienda por esa gestión (lo congelado, no lo vivo).
+  Todo `new CierreDiaRepository(`, `new CierreDiaService(` y `new CorteDiarioService(` recibe el
+  repositorio de tarifas: lo vigila `tests/unit/guards/tarifas-resolver-inyectado.guardia.test.ts`.
+- **Interruptor por empresa.** Una empresa está en el modelo nuevo si tiene al menos una fila en
+  `tarifa_valor`; si no, se calcula exactamente como antes (`tarifas` y `tarifa_zona_mensajero`).
+  **Consecuencia:** el primer valor nuevo apaga el modelo viejo de la empresa entera, y lo que no
+  tenga valor queda «sin tarifa» (0 en el cierre, 409 en la API). La migración de datos de una
+  empresa (SLT-53) va antes de abrirle la pantalla de tarifas (SLT-54).
+- **Quién escribe.** Solo `TarifaValorService` y `GrupoDistritosService` (fábrica
+  `lib/tarifas/servicios.ts`), con historial; escribe el `maestro`, leen `maestro` y `admin`. Lo
+  congelado lo escribe solo el cierre (`CierreDiaRepository`) y nadie lo recalcula al leer
+  (`tarifaDe` en `lib/utils/cierre-detalle.ts`).
 
 ## Patron de capas: Controller → Service → Repository
 

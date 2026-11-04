@@ -23,10 +23,11 @@ import { inicioDelDiaCREnUtc, inicioDelDiaSiguienteCREnUtc } from "@/lib/utils/f
 // una segunda regla de resolucion.
 import type {
   ITarifaVigenteRepository,
-  TarifaVigenteResuelta,
 } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
 import { clavePar, type ParTarifa } from "@/lib/utils/cascada-tarifa";
+import type { TarifaTienda } from "@/lib/types/tarifa-flexible";
 import { costoEstimadoDe, costoRealDe } from "@/lib/utils/api-orden-costo";
+import { montoFulfillmentDeTarifa } from "@/lib/utils/ingreso-empresa";
 
 // Subconjunto del repo que este service consume (DI ligera para tests, sin construir toda la
 // superficie de IOrdenRepository).
@@ -42,6 +43,14 @@ type LecturaRepo = Pick<
 type LecturaTarifaRepo = Pick<ITarifaVigenteRepository, "resolveTarifas">;
 
 /**
+ * SLT-52 (R16/R18): el par de una fila, con el distrito de la orden. Un solo sitio para construirlo
+ * y para buscarlo en el Map: si el par pedido y el buscado divergieran, la fila quedaria sin tarifa.
+ */
+function parDe(tiendaId: string, fila: ApiOrdenRow): ParTarifa {
+  return { tiendaId, zonaId: fila.costeo.zonaId, distritoId: fila.costeo.distritoId };
+}
+
+/**
  * ⏳ 2026-09-10 (feature 415, R24) — los pares (tienda, zona) DISTINTOS de la pagina, en orden de
  * primera aparicion. Copiado del patron que ya existe (`CotizacionOrdenService.paresDistintos`):
  * la consulta de tarifas es UNA sola y una pagina de 100 ordenes de la misma zona no tiene por que
@@ -53,7 +62,7 @@ function paresDistintos(tiendaId: string, filas: readonly ApiOrdenRow[]): ParTar
   const vistos = new Set<string>();
   const pares: ParTarifa[] = [];
   for (const fila of filas) {
-    const par: ParTarifa = { tiendaId, zonaId: fila.costeo.zonaId };
+    const par = parDe(tiendaId, fila);
     const clave = clavePar(par);
     if (vistos.has(clave)) continue;
     vistos.add(clave);
@@ -65,7 +74,7 @@ function paresDistintos(tiendaId: string, filas: readonly ApiOrdenRow[]): ParTar
 /** Fila publica del repo -> DTO publico (renombra `estatusValue` a `estado`). */
 function toListItemDTO(
   row: ApiOrdenRow,
-  tarifaVigente: TarifaVigenteResuelta | null,
+  tarifaVigente: TarifaTienda | null,
 ): ApiOrdenListItemDTO {
   const { costeo } = row;
   return {
@@ -90,12 +99,18 @@ function toListItemDTO(
     // ⏳ 2026-09-10 (feature 415, R19/R20/R22): la tarifa VIGENTE del par (tienda, zona) con las
     // entradas VIVAS de la orden. `null` cuando ninguna tarifa resuelve: es el hueco DECLARADO, no
     // cinco ceros (design §D7). Los importes los deriva el modulo puro; aqui no se calcula nada.
-    costoEstimado: costoEstimadoDe(tarifaVigente, tarifaVigente?.fulfillment ?? "0.00", {
+    // SLT-52 (R31): el fulfillment por la misma funcion que la carga y la cotizacion; en el nuevo
+    // un fulfillment en % va sobre el pedido de ESTA orden.
+    costoEstimado: costoEstimadoDe(
+      tarifaVigente,
+      montoFulfillmentDeTarifa(tarifaVigente, costeo.montoCobrar).toFixed(2),
+      {
       esCentral: costeo.esCentral,
       esZonaEspecial: costeo.esZonaEspecial,
       montoCobrar: costeo.montoCobrar,
       cobraComision: costeo.cobraComision,
-    }),
+      },
+    ),
     // ⏳ 2026-09-10 (feature 415, R25/R26/R28): la tarifa y las entradas CONGELADAS de la fila
     // elegible que trajo el repo. Sin fila -> `null` («no ha entrado en ningun cierre aprobado»).
     // Con fila y sin tarifa congelada -> cinco `"0.00"`, que es el cero AFIRMADO de design §D8:
@@ -146,7 +161,7 @@ export class ApiOrdenLecturaService implements IApiOrdenLecturaService {
   private async tarifasDe(
     ownerId: string,
     filas: readonly ApiOrdenRow[],
-  ): Promise<Map<string, TarifaVigenteResuelta | null>> {
+  ): Promise<Map<string, TarifaTienda | null>> {
     const pares = paresDistintos(ownerId, filas);
     if (pares.length === 0) return new Map();
     return this.tarifaRepo.resolveTarifas(pares);
@@ -187,7 +202,7 @@ export class ApiOrdenLecturaService implements IApiOrdenLecturaService {
       items: items.map((row) =>
         toListItemDTO(
           row,
-          tarifas.get(clavePar({ tiendaId: actor.usuarioId, zonaId: row.costeo.zonaId })) ?? null,
+          tarifas.get(clavePar(parDe(actor.usuarioId, row))) ?? null,
         ),
       ),
       pagination: { limit, offset, total },
@@ -253,7 +268,7 @@ export class ApiOrdenLecturaService implements IApiOrdenLecturaService {
     // este MISMO spread, sin declarar nada propio. Una sola fila -> un solo par -> UNA llamada.
     const tarifas = await this.tarifasDe(actor.usuarioId, [row]);
     const tarifa =
-      tarifas.get(clavePar({ tiendaId: actor.usuarioId, zonaId: row.costeo.zonaId })) ?? null;
+      tarifas.get(clavePar(parDe(actor.usuarioId, row))) ?? null;
 
     return { ...toListItemDTO(row, tarifa), evidencias, gestiones };
   }

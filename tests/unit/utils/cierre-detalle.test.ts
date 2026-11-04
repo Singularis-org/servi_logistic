@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Prisma } from "@prisma/client";
 import { tarifaDe, detalleDe, CierreDetalleFaltanteError } from "@/lib/utils/cierre-detalle";
-import type { CierreDetalleRow } from "@/lib/utils/cierre-detalle";
+import type { CierreDetalleRow, ConceptoCongeladoRow } from "@/lib/utils/cierre-detalle";
 
 // Feature 69 — tests unit de la lectura COMPARTIDA del snapshot. `tarifaDe` no tenia test
 // propio y por ahi se colo la desviacion de R11 (`toString()` en vez de `toFixed(2)`): un
@@ -12,6 +12,8 @@ import type { CierreDetalleRow } from "@/lib/utils/cierre-detalle";
 function detalleRow(overrides: Partial<CierreDetalleRow> = {}): CierreDetalleRow {
   return {
     ordenId: "o1",
+    tarifaModelo: "viejo",
+    conceptos: [],
     montoCobrar: new Prisma.Decimal("12500.00"),
     cobraComision: true,
     esCentral: false,
@@ -30,7 +32,10 @@ function detalleRow(overrides: Partial<CierreDetalleRow> = {}): CierreDetalleRow
 
 describe("tarifaDe (R11)", () => {
   it("R11: los 7 campos salen como STRING escala 2 FIJA (toFixed(2), no toString)", () => {
-    const t = tarifaDe(detalleRow());
+    const congelada = tarifaDe(detalleRow(), []);
+    // SLT-52 (R42): el viejo sale envuelto en su sobre; lo de dentro es lo de siempre.
+    expect(congelada?.modelo).toBe("viejo");
+    const t = congelada?.modelo === "viejo" ? congelada.tarifa : null;
 
     // El caso que la desviacion rompia: "1000.00", no "1000".
     expect(t).toEqual({
@@ -61,11 +66,102 @@ describe("tarifaDe (R11)", () => {
     // emitiera otro texto para el mismo Decimal, un cierre backfilleado y uno nuevo
     // liquidarian "igual" pero con entradas distintas al ojo: eso es lo que se prohibe.
     const valor = new Prisma.Decimal("1000.00");
-    expect(tarifaDe(detalleRow({ tarifaValorFlete: valor }))?.valorFlete).toBe(valor.toFixed(2));
+    const t = tarifaDe(detalleRow({ tarifaValorFlete: valor }), []);
+    expect(t?.modelo === "viejo" ? t.tarifa.valorFlete : null).toBe(valor.toFixed(2));
   });
 
   it("R9/decision (c): tarifa_id null -> null (gap preservado, no se inventa tarifa 0)", () => {
-    expect(tarifaDe(detalleRow({ tarifaId: null }))).toBeNull();
+    expect(tarifaDe(detalleRow({ tarifaId: null }), [])).toBeNull();
+  });
+});
+
+// SLT-52 (design §7, R41, R42) — la rama nueva: los valores salen de las filas congeladas de
+// `cierre_detail_concepto`, nunca de `tarifa_valor`. Importes escritos a mano.
+function concepto(o: Partial<ConceptoCongeladoRow> & Pick<ConceptoCongeladoRow, "concepto">): ConceptoCongeladoRow {
+  return {
+    modo: "monto",
+    valor: new Prisma.Decimal("1500"),
+    ivaPct: new Prisma.Decimal("13"),
+    nivel: "zona",
+    tarifaValorId: "tv-1",
+    ...o,
+  };
+}
+
+describe("tarifaDe — modelo nuevo (SLT-52 R41/R42)", () => {
+  const nuevo = (o: Partial<CierreDetalleRow> = {}) =>
+    detalleRow({
+      tarifaModelo: "nuevo",
+      tarifaId: null,
+      tarifaValorFlete: null,
+      tarifaValorFleteGam: null,
+      tarifaValorFleteDevuelto: null,
+      tarifaValorFleteDevueltoGam: null,
+      tarifaComisionCod: null,
+      tarifaIvaFlete: null,
+      tarifaIvaComisionCod: null,
+      ...o,
+    });
+
+  it("SLT-52 R41 — cada fila congelada es un valor, con su modo, % de IVA y nivel en escala 2", () => {
+    const t = tarifaDe(nuevo(), [
+      concepto({ concepto: "tienda_flete_entregado", valor: new Prisma.Decimal("1500"), nivel: "grupo" }),
+      concepto({
+        concepto: "tienda_fulfillment",
+        modo: "porcentaje",
+        valor: new Prisma.Decimal("2.5"),
+        ivaPct: new Prisma.Decimal("13"),
+        tarifaValorId: "tv-ff",
+      }),
+    ]);
+    expect(t).toEqual({
+      modelo: "nuevo",
+      valores: {
+        tienda_flete_entregado: {
+          concepto: "tienda_flete_entregado",
+          modo: "monto",
+          valor: "1500.00",
+          ivaPct: "13.00",
+          nivel: "grupo",
+          tarifaValorId: "tv-1",
+        },
+        tienda_fulfillment: {
+          concepto: "tienda_fulfillment",
+          modo: "porcentaje",
+          valor: "2.50",
+          ivaPct: "13.00",
+          nivel: "zona",
+          tarifaValorId: "tv-ff",
+        },
+      },
+    });
+  });
+
+  it("SLT-52 R41 — el valor de origen borrado (FK SET NULL) se lee con `tarifaValorId: null` y el mismo importe", () => {
+    const t = tarifaDe(nuevo(), [concepto({ concepto: "tienda_flete_entregado", tarifaValorId: null })]);
+    expect(t?.modelo === "nuevo" ? t.valores.tienda_flete_entregado : undefined).toEqual({
+      concepto: "tienda_flete_entregado",
+      modo: "monto",
+      valor: "1500.00",
+      ivaPct: "13.00",
+      nivel: "zona",
+      tarifaValorId: null,
+    });
+  });
+
+  it("SLT-52 R24 — sin filas no es `null`: es el nuevo sin conceptos (cada uno cuenta 0)", () => {
+    expect(tarifaDe(nuevo(), [])).toEqual({ modelo: "nuevo", valores: {} });
+  });
+
+  it("SLT-52 R42 — un detalle viejo ignora cualquier fila de concepto (el viejo no escribe ninguna)", () => {
+    const t = tarifaDe(detalleRow(), [concepto({ concepto: "tienda_flete_entregado" })]);
+    expect(t?.modelo).toBe("viejo");
+  });
+
+  it("SLT-52 — una fila que no es de la tienda se para, no se cobra", () => {
+    expect(() => tarifaDe(nuevo(), [concepto({ concepto: "mensajero_entregado" })])).toThrow(
+      /no es un cobro a la tienda/,
+    );
   });
 });
 

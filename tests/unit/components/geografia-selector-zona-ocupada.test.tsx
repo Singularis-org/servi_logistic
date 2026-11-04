@@ -10,7 +10,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { GeografiaSelector } from "@/app/(app)/configuracion/tarifas/_components/GeografiaSelector";
+import { GeografiaSelector } from "@/app/(app)/configuracion/zonas/_components/GeografiaSelector";
 import type { DistritoArbolDTO, ProvinciaArbolDTO } from "@/lib/types/geografia-nodo";
 
 const Z_EDITADA = { id: "z-editada", nombre: "Zona Editada" };

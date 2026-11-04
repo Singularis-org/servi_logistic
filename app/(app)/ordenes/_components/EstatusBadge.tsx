@@ -80,7 +80,7 @@ const ORDER_STATUS_CLASS: Partial<Record<OrderStatusValue, string>> = {
     "bg-brand-soft text-brand-dark dark:bg-brand/15 dark:text-brand-light",
   // Feature 208: era `text-navy dark:bg-navy/20 dark:text-asfalto-2` — tres hex
   // fijos para decir "tinta y realce del tema". `foreground` hace lo mismo con un
-  // solo token y en claro es el mismo azul (#12233f vs #0b2545).
+  // solo token y en claro era el mismo azul (el azul de la marca anterior).
   en_bodega_central: "text-foreground dark:bg-foreground/10",
   reprogramado: "border-hivis/60 dark:border-hivis/40",
 };

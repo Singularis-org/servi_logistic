@@ -32,6 +32,7 @@ import {
   cierreIdSchema,
   actualizarPagosGestionSchema,
   corregirResultadoGestionSchema,
+  ajustarPagoMensajeroGestionSchema,
   aprobarCierreSchema,
   rechazarCierreSchema,
   forzarSolicitudVencidoSchema,
@@ -51,6 +52,7 @@ import {
   type ForzarSolicitudVencidoResult,
   type ActualizarPagosGestionResult,
   type CorregirResultadoGestionResult,
+  type AjustarPagoMensajeroGestionResult,
 } from "@/lib/types/cierres-admin";
 import { filtrosDescargaGestionesSchema } from "@/lib/types/filtros-cierres";
 import type { CatalogoFiltrosCierresDTO } from "@/lib/types/filtros-cierres";
@@ -408,6 +410,28 @@ export async function corregirResultadoGestion(
     const data = corregirResultadoGestionSchema.parse(input); // ZodError -> VALIDATION_ERROR
     const service = deps.service ?? buildService();
     return service.corregirResultadoGestion(data, actor);
+  });
+  return isAppErrorShape(r) ? toCierresAdminActionError(r) : r;
+}
+
+/**
+ * SLT-56 (design §4.2) — ajusta el pago al mensajero de una gestión de un cierre abierto. Mismo
+ * orden que `corregirResultadoGestion`: el actor ANTES de parsear (sin sesión no se revela qué
+ * campos faltan), zod en el borde y el resto de desenlaces los decide el servicio. Sin guardia de
+ * rol aquí: quién ajusta lo decide `resolveAlcance` (el adminSatelite sí puede).
+ *
+ * La dispara `AjustarPagoMensajeroDialog.tsx` (T8), desde el detalle del cierre.
+ */
+export async function ajustarPagoMensajeroGestion(
+  input: unknown,
+  deps: CierresAdminDeps = {},
+): Promise<AjustarPagoMensajeroGestionResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError();
+    const data = ajustarPagoMensajeroGestionSchema.parse(input); // ZodError -> VALIDATION_ERROR
+    const service = deps.service ?? buildService();
+    return service.ajustarPagoMensajeroGestion(data, actor);
   });
   return isAppErrorShape(r) ? toCierresAdminActionError(r) : r;
 }

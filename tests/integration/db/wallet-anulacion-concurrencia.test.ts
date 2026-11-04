@@ -117,6 +117,7 @@ describeSiHayBase("458-B/TB.9 — R67: dos anulaciones a la vez dejan UN solo ju
           montoFlete: "800.00",
           montoIva: "104.00",
           tarifaId: null,
+          tarifaValorId: null, // SLT-52: cobro del modelo viejo, sin traza al nuevo
           generadoEl: "2026-09-20",
         });
         const cobro = await prisma.rechazoTiendaCobro.findUniqueOrThrow({ where: { gestionId }, select: { id: true } });

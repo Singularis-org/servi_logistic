@@ -16,9 +16,11 @@ import {
   indexarPorKey,
   keyDeTarjeta,
   listaParaEstado,
+  nombreConClave,
   partirLabels,
   planDeLabels,
   tarjetaAFicha,
+  tituloSinClave,
 } from '../../scripts/trello.mjs'
 import { resolverTracker } from '../../scripts/tracker.mjs'
 
@@ -147,6 +149,27 @@ describe('guardia: cliente de Trello, tarjeta -> ficha', () => {
 
   it('title es el nombre de la tarjeta sin espacios sobrantes (docs/jira.md > Como se nombra una ficha)', () => {
     expect(tarjetaAFicha(tarjeta({ name: '  Alta de clientes \n' }), CTX).title).toBe('Alta de clientes')
+  })
+
+  // docs/trello.md > La key en el titulo
+  it('tituloSinClave quita el prefijo `<KEY> · ` (propio o ajeno) y nada mas', () => {
+    expect(tituloSinClave('SLT-51 · Zonas separadas de Tarifas')).toBe('Zonas separadas de Tarifas')
+    expect(tituloSinClave('  AB-3 ·Otra ')).toBe('Otra')
+    expect(tituloSinClave('Zona 3 - centro')).toBe('Zona 3 - centro')
+    expect(tituloSinClave('SLT-51 sin separador')).toBe('SLT-51 sin separador')
+    expect(tituloSinClave('Tarifas · SLT-51')).toBe('Tarifas · SLT-51')
+    expect(tituloSinClave(undefined)).toBe('')
+  })
+
+  it('nombreConClave pone la key, corrige una equivocada y es idempotente', () => {
+    expect(nombreConClave('SLT-51', 'Zonas')).toBe('SLT-51 · Zonas')
+    expect(nombreConClave('SLT-51', 'SLT-50 · x')).toBe('SLT-51 · x')
+    const una = nombreConClave('SLT-51', ' Zonas ')
+    expect(nombreConClave('SLT-51', una)).toBe(una)
+  })
+
+  it('title va sin el prefijo `<KEY> · ` del nombre de la tarjeta', () => {
+    expect(tarjetaAFicha(tarjeta({ name: 'AB-7 · Alta de clientes' }), CTX).title).toBe('Alta de clientes')
   })
 
   it('F0 conserva con aviso una in_progress cuya tarjeta ya no esta abierta; descarta las demas ausentes', () => {

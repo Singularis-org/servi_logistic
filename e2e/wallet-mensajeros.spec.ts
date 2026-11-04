@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { crearEscenarioCaja, importe, type CajaE2E } from "./_escenarios/caja";
+import { navegarCon } from "./_escenarios/pulsar";
 import { paginaDe } from "./_escenarios/reparto";
 
 /**
@@ -57,8 +58,13 @@ test.describe.serial("Cuentas por pagar a mensajeros — cuenta, desglose y bloq
   test("el estado de cuenta del mensajero desglosa el devengo y el pago del cierre", async ({ browser }) => {
     const page = await paginaDe(browser, c.r.empresa.maestro);
     await page.goto("/wallet/mensajeros");
-    await page.getByRole("link", { name: `Ver estado de cuenta de ${c.mensajero.nombre}` }).click();
-    await expect(page).toHaveURL(new RegExp(`/wallet/mensajeros/${c.mensajero.id}$`));
+    // Recién cargada, la página puede no estar hidratada y el clic en el enlace se pierde (run
+    // 40875969358 de CI: la URL siguió en `/wallet/mensajeros`): ver `navegarCon`.
+    await navegarCon(
+      page,
+      page.getByRole("link", { name: `Ver estado de cuenta de ${c.mensajero.nombre}` }),
+      new RegExp(`/wallet/mensajeros/${c.mensajero.id}$`),
+    );
 
     const tarjeta = page.getByRole("region", { name: `Saldo de ${c.mensajero.nombre}` });
     await expect(tarjeta.getByText(`La empresa le debe`)).toContainText(importe(2000));

@@ -272,6 +272,8 @@ export interface RutaResumenDTO {
     distanciaM: number | null;
     duracionS: number | null;
   } | null;
+  // SLT-79: aqui iban `primeraRutaPendiente` y `puntoRecogida` (SLT-59 R62/R65), lo que la
+  // pantalla necesitaba para disparar la salida de 1 km. Se retiraron con ese disparo.
 }
 
 // Feature 61: KPIs del portal del mensajero, calculados SERVER-SIDE (autoritativos).
@@ -302,8 +304,7 @@ export interface MisAsignacionesKpis {
 // FEATURE 235 (T3.1, R18) - PASA DE DOS GRUPOS A TRES, y el corte SUBE AL SERVIDOR. Hasta el
 // 2026-08-19 el portal recibia DOS listas y partia la de reparto EN EL CLIENTE, con un `useMemo`
 // de `RepartoModule` sobre `orden.ayuda`: la orden con ayuda pedida seguia en `porGestionar`, o
-// sea seguia siendo parada del mapa, contacto del chat, candidata de `TrayectoVivoButton` y
-// gestionable. La separacion era MAQUETACION. R18 exige que llegue ya partida desde el servidor,
+// sea seguia siendo parada del mapa, contacto del chat y gestionable. La separacion era MAQUETACION. R18 exige que llegue ya partida desde el servidor,
 // y `conAyuda` es esa tercera lista.
 //
 // El ensanche del corte de la 167/R34 (de dos estatus leidos a tres) es DELIBERADO y entra por la

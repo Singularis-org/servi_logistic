@@ -61,10 +61,19 @@ export interface CreateZonaData {
  * Prisma NO distingue las dos cosas, por eso R1 se mide contra Postgres real
  * (`tests/integration/db/zona-central-guarda-y-rastro.test.ts`).
  */
+/**
+ * SLT-51 (R6/R7): `cobroVehiculo` y `tarifas` se vuelven opcionales con la misma semantica que
+ * `esCentral`. `tarifas` ausente significa «no toques el pago al mensajero»: ni reemplazo de filas
+ * ni fila de historial (380). El zod del borde garantiza que llegan los dos o ninguno.
+ */
 export type UpdateZonaData = Omit<
   CreateZonaData,
-  "esCentral" | "sinpeNumero" | "sinpeNombre"
-> & { esCentral?: boolean };
+  "esCentral" | "sinpeNumero" | "sinpeNombre" | "cobroVehiculo" | "tarifas"
+> & {
+  esCentral?: boolean;
+  cobroVehiculo?: boolean;
+  tarifas?: TarifaZonaMensajeroData[];
+};
 
 export interface ListZonasParams {
   skip: number;

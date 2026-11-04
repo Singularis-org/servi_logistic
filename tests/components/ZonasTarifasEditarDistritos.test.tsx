@@ -33,24 +33,6 @@ vi.mock("@/lib/actions/zonas", () => ({
   impactoZonaCentral: vi.fn().mockResolvedValue({ status: "ok", impacto: [] }),
 }));
 
-vi.mock("@/lib/actions/tarifas", () => ({
-  listarTarifas: vi.fn().mockResolvedValue({
-    status: "ok",
-    items: [],
-    page: 1,
-    pageSize: 100,
-    total: 0,
-  }),
-  borrarTarifa: vi.fn(),
-  crearTarifa: vi.fn(),
-  actualizarTarifa: vi.fn(),
-}));
-
-vi.mock("@/lib/actions/usuarios-por-rol", () => ({
-  listarAdminTiendas: vi.fn().mockResolvedValue({ status: "ok", usuarios: [] }),
-  listarUsuariosPorRol: vi.fn().mockResolvedValue({ status: "ok", usuarios: [] }),
-}));
-
 const listarArbolMock = vi.fn();
 vi.mock("@/lib/actions/geografia", () => ({
   listarArbolGeografico: (...a: unknown[]) => listarArbolMock(...a),
@@ -72,8 +54,8 @@ vi.mock("@/hooks/useToast", () => ({
   }),
 }));
 
-const { ZonasTarifasModule } = await import(
-  "@/app/(app)/configuracion/tarifas/_components/ZonasTarifasModule"
+const { ZonasModule } = await import(
+  "@/app/(app)/configuracion/zonas/_components/ZonasModule"
 );
 
 const ZONA_Z = { id: "z-z", nombre: "Zona Zeta" };
@@ -111,12 +93,11 @@ function arbolCon(zonas: { id: string; nombre: string }[]): ProvinciaArbolDTO[] 
 /** El árbol de las props dice que el distrito está LIBRE: es el viejo. */
 function renderModulo() {
   return render(
-    <ZonasTarifasModule
+    <ZonasModule
       initialZonas={[
         { id: ZONA_Z.id, nombre: ZONA_Z.nombre, cobroVehiculo: false, distritosCount: 1, esCentral: false },
       ]}
       provincias={arbolCon([])}
-      vehiculos={[]}
     />,
   );
 }
@@ -146,7 +127,6 @@ beforeEach(() => {
       cobroVehiculo: false,
       distritosCount: 1,
       esCentral: false,
-      tarifas: [],
     },
   });
 });

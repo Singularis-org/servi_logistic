@@ -27,6 +27,21 @@ export interface ResolucionOrdenEntrante {
   telefonoE164: string;
 }
 
+/**
+ * SLT-40: hilo al que pertenece el SALIENTE citado por un entrante, sin decidir nada. Lleva lo
+ * justo para que `decidirEnrutadoPorCita` aplique D1/D3/D4 sin volver a la base.
+ */
+export interface HiloCitado {
+  conversacionId: string;
+  ordenId: string;
+  /** Numero guardado en el hilo (`chat_conversacion.telefono_e164`). */
+  telefonoE164: string;
+  /** `orden.deleted_at IS NOT NULL`. */
+  ordenEliminada: boolean;
+  /** Mensajero asignado ACTUAL de la orden, no el guardado en el hilo (D4). */
+  ordenMensajeroAsignadoId: string | null;
+}
+
 /** Datos para el upsert del hilo (get-or-create por orden+numero, R13). */
 export interface UpsertHiloInput {
   ordenId: string;
@@ -94,4 +109,13 @@ export interface IChatConversacionRepository {
    * `chat_conversacion`.
    */
   migrarTelefono(anterior: string, nuevo: string): Promise<number>;
+
+  /**
+   * SLT-40 (design §3, R4/R7/R13): el hilo del SALIENTE cuyo `wa_message_id` es `waMessageId`,
+   * o `null`. Solo lee: la decision la toma `decidirEnrutadoPorCita`.
+   *
+   * `null` cuando el id no esta en `chat_mensaje`, es de un ENTRANTE (R7) o es de otra empresa
+   * (R13: la extension del cliente pone `organizacion_id` y la RLS lo respalda).
+   */
+  findHiloDeSalienteCitado(waMessageId: string): Promise<HiloCitado | null>;
 }

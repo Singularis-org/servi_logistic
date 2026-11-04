@@ -21,6 +21,9 @@ import { construirTokenProvider, RutaNoConfiguradoError } from "@/lib/auth/googl
 
 const MENSAJERO = "m-1";
 const T0 = new Date("2026-07-20T12:00:00.000Z");
+// SLT-59 (R59): la ruta de la segunda corrida ya se calculo HOY; con `null` la primera ruta del dia
+// estaria pendiente y se recalcularia siempre.
+const CALCULADA_HOY = new Date(T0.getTime() - 60 * 60_000);
 
 const CONFIG: RouteOptimizationConfig = {
   ROUTE_OPT_TIMEOUT_MS: 20_000,
@@ -32,6 +35,11 @@ const CONFIG: RouteOptimizationConfig = {
   // que ejercitan la guarda lo bajan por `config` para no depender de el.
   RUTA_ORIGEN_MAX_KM: 200,
   ROUTES_ROUTING_PREFERENCE: "TRAFFIC_UNAWARE",
+  RUTA_REOPT_DISTANCIA_M: 1000,
+  RUTA_OPT_MAX_INTENTOS: 3,
+  RUTA_RECUPERACION_ENFRIAMIENTO_MIN: 5,
+  RUTA_PRIMERA_MIN_RECOGIDO_PCT: 80,
+  RUTA_PRIMERA_DEBOUNCE_MIN: 5,
 };
 
 function parada(id: string, over: Partial<ParadaRutaRow> = {}): ParadaRutaRow {
@@ -54,7 +62,7 @@ function ruta(over: Partial<RutaOptimizadaDTO> = {}): RutaOptimizadaDTO {
     // pasan por `over`. `null` = no consta, que es el estado de toda ruta anterior a la 265.
     secuenciaFuente: null,
     trazado: null,
-    tramoVivoAt: null,
+    actualizadaAt: new Date(T0.getTime() - 60 * 60_000), // SLT-59 (R54): enfriamiento ya pasado
     tramoPorOrden: new Map(),
     secuenciaPorOrden: new Map(),
     ...over,
@@ -75,12 +83,12 @@ function build(opts: {
     upsertOrigen: vi.fn<(m: string, u: unknown) => Promise<void>>(async () => {}),
     reemplazarSecuencia: vi.fn<(m: string, s: string[], meta: unknown) => Promise<void>>(async () => {}),
     guardarTrazado: vi.fn<(m: string, h: string, t: unknown) => Promise<void>>(async () => {}),
-    marcarTramoVivo: vi.fn<(m: string, a: Date) => Promise<void>>(async () => {}),
+    reducirSecuencia: vi.fn(async () => true),
     marcarDesactualizada: vi.fn<(m: string, e: string) => Promise<void>>(async () => {}),
   };
 
   const paradasRepo: ParadasRepo = {
-    findParadasEnReparto: vi.fn(async () => opts.paradas ?? []),
+    contarAsignadasDelDia: async () => ({ asignadas: 0, recogidas: 0 }), ultimaRecogidaDelDia: async () => null, findParadasEnReparto: vi.fn(async () => opts.paradas ?? []),
   };
 
   const client = {
@@ -128,6 +136,17 @@ function nuestroError(name: string, message: string): Error {
   e.name = name;
   return e;
 }
+/** SLT-59: secuencias guardadas para los casos en que la guarda debe reconocer el conjunto. */
+const SEC_O1_O2 = new Map([
+  ["o1", 1],
+  ["o2", 2],
+]);
+const SEC_O1_O2_O3 = new Map([
+  ["o1", 1],
+  ["o2", 2],
+  ["o3", 3],
+]);
+
 function metaDe(rutas: { reemplazarSecuencia: { mock: { calls: unknown[][] } } }): MetaPersistida {
   return rutas.reemplazarSecuencia.mock.calls[0][2] as MetaPersistida;
 }
@@ -165,9 +184,12 @@ describe("R20 — guarda de OBSOLESCENCIA (job de debounce ya cubierto)", () => 
   });
 
   it("sin ruta previa (calculadaAt null) la guarda no aplica", async () => {
+    // SLT-79: R20 no corta, pero un job sin ruta tiene la primera del dia pendiente y ya no la
+    // calcula (solo el boton): se omite por `primera_ruta_pendiente`, no por `obsoleta`.
     const { service, client } = build({ ruta: null, paradas: [parada("o1"), parada("o2")] });
-    await service.ejecutar(MENSAJERO, { motivo: "debounce", jobCreatedAt: T0 });
-    expect(client.optimizar).toHaveBeenCalledTimes(1);
+    const r = await service.ejecutar(MENSAJERO, { motivo: "debounce", jobCreatedAt: T0 });
+    expect(r).toEqual({ status: "omitida", razon: "primera_ruta_pendiente" });
+    expect(client.optimizar).not.toHaveBeenCalled();
   });
 });
 
@@ -236,9 +258,11 @@ describe("R35 — 0 o 1 parada con coordenadas", () => {
     await primera.service.ejecutar(MENSAJERO, { motivo: "manual" });
     const huella = metaDe(primera.rutas).huellaSet as string;
 
+    // [2026-10-29, SLT-59 R2] «sin cambios» ya no es la huella sino el CONJUNTO guardado: la
+    // ruta tiene que llevar su secuencia para que la guarda la reconozca.
     const segunda = build({
       paradas: [parada("o1")],
-      ruta: ruta({ huellaSet: huella, estado: "vigente" }),
+      ruta: ruta({ huellaSet: huella, calculadaAt: CALCULADA_HOY, estado: "vigente", secuenciaPorOrden: new Map([["o1", 1]]) }),
     });
     const r = await segunda.service.ejecutar(MENSAJERO, { motivo: "inmediato" });
 
@@ -276,7 +300,11 @@ describe("R36 — huella del conjunto de paradas + origen", () => {
     const huella = metaDe(primera.rutas).huellaSet as string;
 
     // Segunda pasada: la ruta ya lleva esa huella y sigue vigente.
-    const segunda = build({ paradas, ruta: ruta({ huellaSet: huella, estado: "vigente" }) });
+    // [2026-10-29, SLT-59 R1] Y su secuencia: el criterio es el conjunto guardado, no la huella.
+    const segunda = build({
+      paradas,
+      ruta: ruta({ huellaSet: huella, calculadaAt: CALCULADA_HOY, estado: "vigente", secuenciaPorOrden: SEC_O1_O2_O3 }),
+    });
     const r = await segunda.service.ejecutar(MENSAJERO, { motivo: "manual" });
 
     expect(r).toEqual({ status: "omitida", razon: "sin_cambios" });
@@ -300,7 +328,8 @@ describe("R36 — huella del conjunto de paradas + origen", () => {
 
     const segunda = build({
       paradas,
-      ruta: ruta({ huellaSet: huella, estado: "vigente", trazado: cacheado }),
+      // [2026-10-29, SLT-59 R1] con su secuencia: el criterio es el conjunto guardado.
+      ruta: ruta({ huellaSet: huella, calculadaAt: CALCULADA_HOY, estado: "vigente", trazado: cacheado, secuenciaPorOrden: SEC_O1_O2 }),
     });
     const r = await segunda.service.ejecutar(MENSAJERO, { motivo: "manual" });
 
@@ -321,7 +350,8 @@ describe("R36 — huella del conjunto de paradas + origen", () => {
 
     const segunda = build({
       paradas,
-      ruta: ruta({ huellaSet: huella, estado: "vigente", trazado: null }),
+      // [2026-10-29, SLT-59 R1] con su secuencia: el criterio es el conjunto guardado.
+      ruta: ruta({ huellaSet: huella, calculadaAt: CALCULADA_HOY, estado: "vigente", trazado: null, secuenciaPorOrden: SEC_O1_O2 }),
     });
     const r = await segunda.service.ejecutar(MENSAJERO, { motivo: "manual" });
 
@@ -431,7 +461,9 @@ describe("R27 — ante fallo del proveedor se CONSERVA el ultimo orden valido", 
     "%s -> NO se tocan las paradas, se marca desactualizada y se LANZA",
     async (status) => {
       const { service, rutas } = build({
-        paradas: [parada("o1"), parada("o2")],
+        // [2026-10-29, SLT-59 R1/R20] con el mismo conjunto la guarda nueva ya no llama; `o3`
+        // es una parada NUEVA para que este caso siga llegando al proveedor.
+        paradas: [parada("o1"), parada("o2"), parada("o3")],
         ruta: ruta({
           calculadaAt: new Date(T0.getTime() - 100_000),
           secuenciaPorOrden: new Map([
@@ -461,7 +493,8 @@ describe("R27 — ante fallo del proveedor se CONSERVA el ultimo orden valido", 
       paradas: [parada("o1"), parada("o2")],
       outcome: { status: "transitorio", detalle: "d" },
     });
-    await expect(service.ejecutar(MENSAJERO, { motivo: "debounce" })).rejects.toThrow();
+    // SLT-79: sin ruta solo el boton recalcula; el fallo se propaga igual.
+    await expect(service.ejecutar(MENSAJERO, { motivo: "manual" })).rejects.toThrow();
   });
 
   it("una optimizacion EXITOSA limpia el ultimoError anterior", async () => {
@@ -508,7 +541,7 @@ describe("R12 — credencial ausente corta ANTES de cualquier red", () => {
       upsertOrigen: vi.fn(async () => {}),
       reemplazarSecuencia: vi.fn(async () => {}),
       guardarTrazado: vi.fn(async () => {}),
-      marcarTramoVivo: vi.fn(async () => {}),
+      reducirSecuencia: vi.fn(async () => true),
       marcarDesactualizada: vi.fn(async () => {}),
     };
     const client: IRouteOptimizationClient = {
@@ -518,13 +551,14 @@ describe("R12 — credencial ausente corta ANTES de cualquier red", () => {
     };
     const service = new OptimizacionRutaService(
       rutas as unknown as IRutaOptimizadaRepository,
-      { findParadasEnReparto: async () => [parada("o1"), parada("o2")] },
+      { contarAsignadasDelDia: async () => ({ asignadas: 0, recogidas: 0 }), ultimaRecogidaDelDia: async () => null, findParadasEnReparto: async () => [parada("o1"), parada("o2")] },
       client,
       CONFIG,
       () => T0,
     );
 
-    await expect(service.ejecutar(MENSAJERO, { motivo: "debounce" })).rejects.toThrow(
+    // SLT-79: sin ruta solo el boton recalcula (un job la omite).
+    await expect(service.ejecutar(MENSAJERO, { motivo: "manual" })).rejects.toThrow(
       RutaIntentoFallidoError,
     );
     // LO QUE NO CAMBIA: la secuencia previa sigue INTACTA. Es la mitad de este test que
@@ -552,8 +586,10 @@ describe("265/R24, R26 — una EXCEPCION del cliente se conserva, se marca y se 
     ["de libreria (mensaje NO fiable)", new TypeError("fetch failed: Bearer ya29.token url=https://x")],
   ])("excepcion %s -> orden previo intacto + desactualizada + RutaIntentoFallidoError", async (_c, error) => {
     const { service, rutas } = build({
-      paradas: [parada("o1"), parada("o2")],
-      ruta: ruta({ secuenciaPorOrden: new Map([["o1", 1], ["o2", 2]]) }),
+      // [2026-10-29, SLT-59 R1/R20] `o3` es NUEVA: con el mismo conjunto ya no se llamaria.
+      paradas: [parada("o1"), parada("o2"), parada("o3")],
+      // SLT-79: calculada hoy; con la primera pendiente un job ya no llamaria.
+      ruta: ruta({ calculadaAt: CALCULADA_HOY, secuenciaPorOrden: new Map([["o1", 1], ["o2", 2]]) }),
       lanza: error,
     });
 
@@ -573,7 +609,8 @@ describe("265/R24, R26 — una EXCEPCION del cliente se conserva, se marca y se 
       lanza: new TypeError("fetch failed: authorization: Bearer ya29.SECRETO url=https://x"),
     });
 
-    const error = await service.ejecutar(MENSAJERO, { motivo: "debounce" }).catch((e: Error) => e);
+    // SLT-79: sin ruta solo el boton recalcula.
+    const error = await service.ejecutar(MENSAJERO, { motivo: "manual" }).catch((e: Error) => e);
 
     const motivo = (rutas.marcarDesactualizada.mock.calls[0] as unknown[])[1] as string;
     for (const texto of [motivo, (error as Error).message]) {
@@ -588,6 +625,8 @@ describe("265/R24, R26 — una EXCEPCION del cliente se conserva, se marca y se 
     const { service } = build({
       paradas: [parada("o1"), parada("o2")],
       lanza: new Error("lo que sea"),
+      // SLT-79: la cola solo recalcula una ruta ya calculada hoy (aqui, con una parada nueva).
+      ruta: ruta({ calculadaAt: CALCULADA_HOY, secuenciaPorOrden: new Map([["o1", 1]]) }),
     });
     await expect(service.ejecutar(MENSAJERO, { motivo: "debounce" })).rejects.toBeInstanceOf(
       RutaIntentoFallidoError,
@@ -602,7 +641,10 @@ describe("265/R10, §5.3 — `sin_solucion` SIN compuesto: nunca una secuencia p
     // «no se recalculo», nunca «se persistio media ruta».
     const { service, rutas } = build({
       paradas: [parada("o1"), parada("o2"), parada("o3")],
-      ruta: ruta({ secuenciaPorOrden: new Map([["o1", 1], ["o2", 2], ["o3", 3]]) }),
+      // [2026-10-29, SLT-59 R1/R20] la ruta guardada no tiene `o3`: con el mismo conjunto la
+      // guarda nueva ya no llamaria al proveedor y este caso no llegaria a probarse.
+      // SLT-79: calculada hoy; con la primera pendiente un job ya no llamaria.
+      ruta: ruta({ calculadaAt: CALCULADA_HOY, secuenciaPorOrden: new Map([["o1", 1], ["o2", 2]]) }),
       outcome: {
         status: "sin_solucion",
         detalle: "optimizar ruta: paradas saltadas por el proveedor (servidas 1 de 3)",
@@ -667,7 +709,16 @@ describe("265/R35, R36, R37 — la procedencia llega a `reemplazarSecuencia`", (
     // Segundo disparo con el mismo conjunto y el mismo origen, y la ruta ya `vigente`.
     const segunda = build({
       paradas,
-      ruta: ruta({ huellaSet: meta.huellaSet, estado: "vigente" }),
+      // [2026-10-29, SLT-59 R1] con la secuencia degradada guardada: la guarda mira el conjunto.
+      ruta: ruta({
+        huellaSet: meta.huellaSet,
+        calculadaAt: CALCULADA_HOY,
+        estado: "vigente",
+        secuenciaPorOrden: new Map([
+          ["o2", 1],
+          ["o1", 2],
+        ]),
+      }),
     });
     const r = await segunda.service.ejecutar(MENSAJERO, { motivo: "inmediato" });
 
@@ -773,14 +824,23 @@ describe("265/R33 — las guardas cortan EN ESTE ORDEN (lo barato antes que lo c
       paradas: [parada("o1")],
       now: T0,
     });
-    await primera.service.ejecutar(MENSAJERO, { motivo: "debounce" });
+    // SLT-79: la primera ruta (sin `calculadaAt`) solo la calcula el boton.
+    await primera.service.ejecutar(MENSAJERO, { motivo: "manual" });
     const huellaReal = metaDe(primera.rutas).huellaSet;
     expect(huellaReal, "la primera corrida tiene que dejar una huella escrita").toBeTruthy();
 
     // Segunda corrida: MISMA parada, MISMO origen y la huella ya guardada + ruta vigente. Las
     // dos guardas cortarian.
     const { service, client, rutas } = build({
-      ruta: ruta({ ...origenPersistido, huellaSet: huellaReal, estado: "vigente" }),
+      // [2026-10-29, SLT-59 R2/R8] la guarda nueva reconoce «sin cambios» por el CONJUNTO
+      // guardado, asi que la ruta lleva su secuencia de una parada.
+      ruta: ruta({
+        ...origenPersistido,
+        huellaSet: huellaReal,
+        calculadaAt: CALCULADA_HOY,
+        estado: "vigente",
+        secuenciaPorOrden: new Map([["o1", 1]]),
+      }),
       paradas: [parada("o1")],
       now: T0,
     });
@@ -791,10 +851,15 @@ describe("265/R33 — las guardas cortan EN ESTE ORDEN (lo barato antes que lo c
     // secuencia trivial NO se reescribiria: una ruta que se quedo con UNA parada dejaria de
     // reafirmar `secuenciaFuente: null`, y la marca vieja («la ordeno el proveedor») se
     // quedaria pegada a una ruta que ya nadie ordeno.
+    //
+    // [2026-10-29, SLT-59 R2/R6/R12, D1] Por decision del humano la rama de UNA parada aplica
+    // ahora su propia guarda ANTES de escribir: con el mismo conjunto y sin desvio NO reescribe
+    // nada (R6), y la procedencia se conserva a proposito (R12: una reduccion hereda la de su
+    // secuencia). Lo que este caso sigue fijando es el ORDEN: gana la rama R35 (`sin_paradas`),
+    // no la guarda de 2+ paradas (`sin_cambios`).
     expect(r).toMatchObject({ status: "omitida", razon: "sin_paradas" });
     expect(client.optimizar).not.toHaveBeenCalled();
-    expect(rutas.reemplazarSecuencia).toHaveBeenCalledTimes(1);
-    expect(metaDe(rutas).secuenciaFuente).toBeNull();
+    expect(rutas.reemplazarSecuencia).not.toHaveBeenCalled();
   });
 
   it("el recorte R38 va ANTES de la guarda del origen (265/R16): el centroide es el de las paradas que SE ENVIAN", async () => {
@@ -819,7 +884,8 @@ describe("265/R33 — las guardas cortan EN ESTE ORDEN (lo barato antes que lo c
       now: T0,
     });
 
-    await service.ejecutar(MENSAJERO, { motivo: "debounce" });
+    // SLT-79: la ruta no tiene `calculadaAt` (primera del dia): solo la calcula el boton.
+    await service.ejecutar(MENSAJERO, { motivo: "manual" });
 
     expect(client.optimizar).toHaveBeenCalledTimes(1);
     const enviado = client.optimizar.mock.calls[0][0] as {

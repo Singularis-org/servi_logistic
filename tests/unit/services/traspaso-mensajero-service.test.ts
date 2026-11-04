@@ -570,8 +570,9 @@ describe("427/R38-R41 — los DOS avisos, fuera de la transaccion y sin cambiar 
       MAESTRO,
     );
     for (const espia of [recibido, cedido]) {
-      const ctx = JSON.stringify(espia.mock.calls[0][0]);
-      expect(ctx).not.toContain("8888");
+      // Sin `loteId`: es un uuid aleatorio y puede traer "8888" (vino en CI, PR #36).
+      const ctx = JSON.stringify({ ...espia.mock.calls[0][0], loteId: undefined });
+      expect(ctx).not.toContain("8888-8888");
       expect(ctx).not.toContain("enfermo");
     }
   });

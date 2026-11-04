@@ -153,6 +153,8 @@ describe("itemsVisibles por rol (mapeo real de SIDEBAR_ITEMS)", () => {
       // ningún rol y por eso el ítem no necesita `destinoInicial: false`. La lista se
       // sigue comparando por IGUALDAD: un ítem nuevo no declarado aquí pone el caso rojo.
       "Histórico",
+      // SLT-58 R10: «Mi plan» justo después de «Histórico»; el aterrizaje sigue en «Inicio».
+      "Mi plan",
       // ⭑ Ficha 433: «Ayuda» entra LA ÚLTIMA, detrás de «Histórico». Es el ÚNICO ítem visible
       // para los cinco roles, así que es también el único capaz de mover el aterrizaje de
       // TODOS a la vez: arriba, `primerDestino` habría mandado a los cinco a `/ayuda`. La
@@ -178,6 +180,7 @@ describe("itemsVisibles por rol (mapeo real de SIDEBAR_ITEMS)", () => {
       "Cierres del día",
       "Incidentes", // feature 158 (Q-I)
       "Histórico", // feature 321 (R2/R9): para no mover el aterrizaje de nadie
+      "Mi plan", // SLT-58 R10: tras «Histórico»; el aterrizaje sigue en «Inicio»
       "Ayuda", // ⭑ ficha 433: LA ÚLTIMA, y por el mismo motivo — la ven los cinco roles
     ]);
     expect(visibles).not.toContain("Configuración");
@@ -334,11 +337,35 @@ describe("primerDestino (aterrizaje de /dashboard)", () => {
     expect(primerDestino(itemsVisibles(SIDEBAR_ITEMS, null))).toBeNull();
   });
 
+  it("SLT-51/R1: el subítem «Zonas» no cambia el primer destino de ningún rol", () => {
+    const sinZonas = SIDEBAR_ITEMS.map((i) =>
+      i.children
+        ? { ...i, children: i.children.filter((c) => c.href !== "/configuracion/zonas") }
+        : i,
+    );
+    expect(sinZonas).not.toEqual(SIDEBAR_ITEMS);
+    for (const rol of [
+      "maestro",
+      "admin",
+      "adminTienda",
+      "adminSatelite",
+      "mensajero",
+      "apiKey",
+    ] as RolValue[]) {
+      expect(primerDestino(itemsVisibles(SIDEBAR_ITEMS, actor(rol)))).toBe(
+        primerDestino(itemsVisibles(sinZonas, actor(rol))),
+      );
+    }
+    expect(primerDestino(itemsVisibles(SIDEBAR_ITEMS, actor("maestro")))).toBe("/dashboard");
+  });
+
   it("conserva los children del ítem padre visible (Configuración → Usuarios/Tarifas/API/Plantillas)", () => {
     const [visibleConfig] = itemsVisibles(SIDEBAR_ITEMS, actor("maestro"))
       .filter((i) => i.label === "Configuración");
     expect(visibleConfig.children?.map((c) => c.href)).toEqual([
       "/configuracion",
+      // SLT-51 (R1): «Zonas» entre Usuarios y Tarifas; no es el primer hijo.
+      "/configuracion/zonas",
       "/configuracion/tarifas",
       "/configuracion/api",
       // SL-36 (design §14): «Integraciones» junto a «API»; no es el primer hijo.
@@ -964,7 +991,8 @@ describe("SL-32 — ítem «Empresas» del superadmin", () => {
   // SL-20 (R21) suma «Geografía» detrás de «Empresas»: el aterrizaje sigue siendo «Empresas».
   it("R36: el superadmin ve exactamente [Empresas, Geografía] y aterriza en /plataforma/empresas", () => {
     const visibles = itemsVisibles(SIDEBAR_ITEMS, actor("superadmin"));
-    expect(labels(visibles)).toEqual(["Empresas", "Geografía"]);
+    // SLT-58 R23: «Planes» entre «Empresas» y «Geografía»; el aterrizaje sigue en «Empresas».
+    expect(labels(visibles)).toEqual(["Empresas", "Planes", "Geografía"]);
     expect(primerDestino(visibles)).toBe("/plataforma/empresas");
     expect(visibles[0].href).toBe("/plataforma/empresas");
     expect(visibles[0].iconKey).toBe("building");
@@ -984,7 +1012,8 @@ describe("SL-32 — ítem «Empresas» del superadmin", () => {
   // justo delante. Literal a mano.
   it("R36: va justo antes de «Mi bodega» y «Ayuda», y es el único con /plataforma/empresas", () => {
     expect(SIDEBAR_ITEMS.filter((i) => i.href === "/plataforma/empresas")).toHaveLength(1);
-    expect(SIDEBAR_ITEMS.slice(-4).map((i) => i.label)).toEqual(["Empresas", "Geografía", "Mi bodega", "Ayuda"]);
+    // SLT-58 R23: «Planes» entra entre «Empresas» y «Geografía».
+    expect(SIDEBAR_ITEMS.slice(-5).map((i) => i.label)).toEqual(["Empresas", "Planes", "Geografía", "Mi bodega", "Ayuda"]);
   });
 });
 

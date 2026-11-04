@@ -20,18 +20,8 @@ import { verifyPassword } from "@/lib/utils/password";
 import { computeDeviceHash } from "@/lib/utils/device";
 import { OtpChallengeIssuer } from "@/lib/services/OtpChallengeIssuer";
 import { authConfig } from "@/lib/config/auth";
-import { esPlataforma } from "@/lib/auth/plataforma";
+import { puedeIniciarSesion } from "@/lib/auth/puede-iniciar-sesion";
 import { NOMBRE_EMPRESA_PLATAFORMA } from "@/lib/types/auth";
-
-/**
- * SL-18 R12, R15 (design §3.2 paso 6): una cuenta habilitada esta activa y tiene empresa, o es la
- * de plataforma. Se aplica a CADA cuenta candidata del email, no a una sola.
- */
-// SLT-32: puedeIniciarSesion. Cuando SLT-32 mergee su predicado, esta funcion se sustituye por el
-// suyo (contrato en design §9); hasta entonces vive aqui, en un solo sitio.
-function puedeIniciarSesion(cuenta: CuentaConHash): boolean {
-  return cuenta.estado === "activo" && (cuenta.organizacionId !== null || esPlataforma(cuenta.rol));
-}
 
 export class AuthService implements IAuthService {
   private readonly otpIssuer: OtpChallengeIssuer;
@@ -127,7 +117,7 @@ export class AuthService implements IAuthService {
     const elegibles = validas.filter(puedeIniciarSesion);
     if (elegibles.length === 0) {
       const primera = validas[0];
-      // SL-18 R15 (design §3.2 paso 6): una cuenta activa sin empresa fallaria con
+      // SL-18 R15 / SLT-32 (design §3.2 paso 6): una cuenta activa sin empresa fallaria con
       // `estado_no_activo:activo`, que no dice por que se rechazo; el motivo debe nombrar la causa.
       const riskReason =
         primera.estado !== "activo" ? `estado_no_activo:${primera.estado}` : "sin_empresa";
@@ -214,6 +204,30 @@ export class AuthService implements IAuthService {
 
     await this.otpRepo.markConsumed(challenge.id);
 
+    const usuario = await this.userRepo.findCuentaPorId(challenge.usuarioId);
+    const contexto = {
+      emailUsado: usuario?.email ?? "",
+      ipAddress: input.ipAddress,
+      userAgent: input.userAgent,
+    };
+
+    // SLT-32: el desafio pudo emitirse antes de que la cuenta perdiera su empresa o su estado; se
+    // revalida aqui con el mismo predicado que el login. Se responde con el fallo generico del
+    // OTP: el contrato de este paso no tiene otro, y la UI ya lo maneja.
+    if (!usuario || !puedeIniciarSesion(usuario)) {
+      await this.registrarIntento(contexto, {
+        usuarioId: challenge.usuarioId,
+        exitoso: false,
+        riskScore: 0,
+        riskReason: !usuario
+          ? "usuario_no_encontrado"
+          : usuario.estado !== "activo"
+            ? `estado_no_activo:${usuario.estado}`
+            : "sin_empresa",
+      });
+      return { status: "invalid_or_expired" };
+    }
+
     // R19: OTP superado -> concede sesion y confia el dispositivo/IP.
     await this.trustedDeviceRepo.upsert({
       usuarioId: challenge.usuarioId,
@@ -221,13 +235,8 @@ export class AuthService implements IAuthService {
       ipAddress: challenge.ipAddress,
     });
 
-    const usuario = await this.userRepo.findById(challenge.usuarioId);
     await this.registrarIntento(
-      {
-        emailUsado: usuario?.email ?? "",
-        ipAddress: input.ipAddress,
-        userAgent: input.userAgent,
-      },
+      contexto,
       {
         usuarioId: challenge.usuarioId,
         exitoso: true,

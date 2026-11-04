@@ -159,6 +159,19 @@ export interface FuentesEtiqueta {
    * que es vocabulario del catalogo: ni texto libre ni dato de cliente.
    */
   organizacion_modulo: { moduloNombre: string };
+  /**
+   * SL-24 (design §9) — el plan asignado se etiqueta `Plan «<nombre>»`, recortado a
+   * `ETIQUETA_MAX_CHARS`. El nombre lo escribe el superadmin: es de plataforma, no dato de cliente.
+   */
+  plan: { nombre: string };
+  /**
+   * SLT-52 (R14) — un valor del modelo nuevo de tarifas: la etiqueta legible de su concepto y del
+   * nivel donde vive (zona, grupo, tienda). Vocabulario del catalogo y nombres de configuracion;
+   * nunca un dato de cliente. El importe va en `monto`/`valor_*`, no aqui.
+   */
+  tarifa_valor: { concepto: string; nivel: string | null };
+  /** SLT-52 (R14) — un grupo de distritos: su nombre y el de su zona, como `zona`. */
+  grupo_distritos: { nombre: string; zonaNombre: string | null };
 }
 
 /**
@@ -241,6 +254,12 @@ const CONSTRUCTORES: {
   distrito: (f) => unir(f?.nombre, f?.cantonNombre, f?.provinciaNombre),
   integracion: (f) => limpiar(f?.servicioNombre),
   organizacion_modulo: (f) => limpiar(f?.moduloNombre),
+  plan: (f) => {
+    const nombre = (f?.nombre ?? "").trim();
+    return nombre === "" ? limpiar(null) : limpiar(`Plan «${nombre}»`);
+  },
+  tarifa_valor: (f) => unir(f?.concepto, f?.nivel),
+  grupo_distritos: (f) => unir(f?.nombre, f?.zonaNombre),
 };
 
 /**

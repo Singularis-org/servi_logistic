@@ -4,6 +4,10 @@ import {
   GeocodeRespuestaInvalidaError,
 } from "@/lib/clients/google-geocode";
 
+// SLT-59 (R68): el contexto de la llamada es obligatorio; aqui solo se pasa (su registro se
+// prueba en `google-registro-llamada.test.ts`).
+const CTX = { motivo: "prueba_integracion", intento: 1, maxIntentos: 1 } as const;
+
 // Feature 91 (R19, habilita R18/R20-R24) — el cliente TRADUCE los estados del proveedor a
 // vocabulario de dominio y NO decide politica. Todos los casos se ejercitan con `fetch`
 // INYECTADO: estos tests NO tocan la red y NO necesitan credencial real.
@@ -36,7 +40,7 @@ const RESPUESTA_OK = {
 
 describe("traduccion de los estados del proveedor", () => {
   it("OK -> ok con latitud, longitud y precision", async () => {
-    const outcome = await clienteCon(fetchJson(RESPUESTA_OK)).geocodificar(DIRECCION);
+    const outcome = await clienteCon(fetchJson(RESPUESTA_OK)).geocodificar(DIRECCION, CTX);
     expect(outcome).toMatchObject({
       status: "ok",
       latitud: 9.9333,
@@ -47,32 +51,32 @@ describe("traduccion de los estados del proveedor", () => {
 
   it("ZERO_RESULTS -> sin_resultados", async () => {
     const outcome = await clienteCon(fetchJson({ status: "ZERO_RESULTS", results: [] })).geocodificar(
-      DIRECCION,
+      DIRECCION, CTX,
     );
     expect(outcome.status).toBe("sin_resultados");
   });
 
   it("INVALID_REQUEST -> consulta_invalida", async () => {
     const outcome = await clienteCon(fetchJson({ status: "INVALID_REQUEST" })).geocodificar(
-      DIRECCION,
+      DIRECCION, CTX,
     );
     expect(outcome.status).toBe("consulta_invalida");
   });
 
   it("REQUEST_DENIED -> config_invalida", async () => {
     const outcome = await clienteCon(fetchJson({ status: "REQUEST_DENIED" })).geocodificar(
-      DIRECCION,
+      DIRECCION, CTX,
     );
     expect(outcome.status).toBe("config_invalida");
   });
 
   it.each(["OVER_QUERY_LIMIT", "UNKNOWN_ERROR"])("%s -> transitorio", async (status) => {
-    const outcome = await clienteCon(fetchJson({ status })).geocodificar(DIRECCION);
+    const outcome = await clienteCon(fetchJson({ status })).geocodificar(DIRECCION, CTX);
     expect(outcome.status).toBe("transitorio");
   });
 
   it("HTTP 5xx -> transitorio sin intentar parsear el cuerpo", async () => {
-    const outcome = await clienteCon(fetchJson({ status: "OK" }, 503)).geocodificar(DIRECCION);
+    const outcome = await clienteCon(fetchJson({ status: "OK" }, 503)).geocodificar(DIRECCION, CTX);
     expect(outcome.status).toBe("transitorio");
   });
 
@@ -80,13 +84,13 @@ describe("traduccion de los estados del proveedor", () => {
     const fetchImpl = vi.fn(async () => {
       throw new Error("ECONNRESET");
     }) as unknown as typeof fetch;
-    const outcome = await clienteCon(fetchImpl).geocodificar(DIRECCION);
+    const outcome = await clienteCon(fetchImpl).geocodificar(DIRECCION, CTX);
     expect(outcome.status).toBe("transitorio");
   });
 
   it("un estado DESCONOCIDO del proveedor se trata como transitorio, no se completa en silencio", async () => {
     const outcome = await clienteCon(fetchJson({ status: "ESTADO_FUTURO" })).geocodificar(
-      DIRECCION,
+      DIRECCION, CTX,
     );
     expect(outcome.status).toBe("transitorio");
   });
@@ -99,7 +103,7 @@ describe("R19 — validacion de la respuesta en el borde", () => {
       status: "OK",
       results: [{ geometry: { location: { lat: "9.9", lng: -84 }, location_type: "ROOFTOP" } }],
     };
-    const promesa = clienteCon(fetchJson(body)).geocodificar(DIRECCION);
+    const promesa = clienteCon(fetchJson(body)).geocodificar(DIRECCION, CTX);
     await expect(promesa).rejects.toBeInstanceOf(GeocodeRespuestaInvalidaError);
 
     const error = (await promesa.catch((e: unknown) => e)) as Error;
@@ -113,23 +117,23 @@ describe("R19 — validacion de la respuesta en el borde", () => {
 
   it("status OK sin results incumple el contrato y lanza", async () => {
     await expect(
-      clienteCon(fetchJson({ status: "OK", results: [] })).geocodificar(DIRECCION),
+      clienteCon(fetchJson({ status: "OK", results: [] })).geocodificar(DIRECCION, CTX),
     ).rejects.toBeInstanceOf(GeocodeRespuestaInvalidaError);
   });
 
   it("cuerpo que no es JSON lanza error de integracion", async () => {
     const fetchImpl = vi.fn(async () => new Response("<html>500</html>", { status: 200 })) as
       unknown as typeof fetch;
-    await expect(clienteCon(fetchImpl).geocodificar(DIRECCION)).rejects.toBeInstanceOf(
+    await expect(clienteCon(fetchImpl).geocodificar(DIRECCION, CTX)).rejects.toBeInstanceOf(
       GeocodeRespuestaInvalidaError,
     );
   });
 
   it("ningun detalle de outcome transitorio filtra credencial, URL ni direccion", async () => {
     const casos = [
-      await clienteCon(fetchJson({ status: "OVER_QUERY_LIMIT" })).geocodificar(DIRECCION),
-      await clienteCon(fetchJson({ status: "REQUEST_DENIED" })).geocodificar(DIRECCION),
-      await clienteCon(fetchJson({ status: "OK" }, 500)).geocodificar(DIRECCION),
+      await clienteCon(fetchJson({ status: "OVER_QUERY_LIMIT" })).geocodificar(DIRECCION, CTX),
+      await clienteCon(fetchJson({ status: "REQUEST_DENIED" })).geocodificar(DIRECCION, CTX),
+      await clienteCon(fetchJson({ status: "OK" }, 500)).geocodificar(DIRECCION, CTX),
     ];
     for (const caso of casos) {
       const detalle = "detalle" in caso ? caso.detalle : "";
@@ -145,7 +149,7 @@ describe("credencial y consulta", () => {
     const spy = vi.fn(async () =>
       new Response(JSON.stringify(RESPUESTA_OK), { status: 200 }),
     ) as unknown as typeof fetch;
-    await clienteCon(spy).geocodificar(DIRECCION);
+    await clienteCon(spy).geocodificar(DIRECCION, CTX);
     const url = String((spy as unknown as { mock: { calls: unknown[][] } }).mock.calls[0][0]);
     expect(url).toContain(`key=${encodeURIComponent(API_KEY)}`);
     expect(url).toContain("address=");

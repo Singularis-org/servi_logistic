@@ -1,6 +1,7 @@
 // SL-32 — tipos del listado de la pantalla «Empresas» del superadmin (R29, R35).
 
 import type { DeudaPlataformaDTO } from "@/lib/types/cobro-plataforma";
+import type { FuenteDelCosto } from "@/lib/types/consumo-plan";
 import type { EstadoVisibleIntegracion, ServicioIntegracion } from "@/lib/types/integraciones";
 
 /**
@@ -16,9 +17,16 @@ export type EmpresaListada = {
   maestros: { nombre: string; email: string }[];
   /**
    * SL-40 (R10): la excepción del cobro por orden, con dos decimales, o `null` si la empresa usa el
-   * valor global. La tarifa vigente la elige la pantalla entre textos ya derivados, sin aritmética.
+   * valor global. SLT-66: la sigue usando la edición de la celda; lo que se cobra hoy es `cobroVigente`.
    */
   cobroPorOrden: string | null;
+  /**
+   * SLT-66 (R31, design §6.4): lo que se cobraría hoy por una orden nueva y de dónde sale, con la misma
+   * `cobro_plataforma_tarifa_de` que usa el trigger del cargo (§3.2). Dos decimales.
+   */
+  cobroVigente: { monto: string; fuente: FuenteDelCosto };
+  /** SLT-66 (R32): el plan asignado, o `null` sin plan. */
+  plan: { id: string; nombre: string } | null;
   /**
    * SL-45 (R28, design §9): la deuda vigente de la empresa con la plataforma, con la regla de R13
    * (cargos − reversos − pagos vigentes). Es el mismo DTO que pinta la wallet: la pantalla elige

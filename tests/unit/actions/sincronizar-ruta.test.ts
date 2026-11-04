@@ -1,6 +1,20 @@
 import { describe, it, expect, vi } from "vitest";
+import * as rutaMensajero from "@/lib/actions/ruta-mensajero";
 import { sincronizarRuta } from "@/lib/actions/ruta-mensajero";
-import { RutaIntentoFallidoError } from "@/lib/services/OptimizacionRutaService";
+import {
+  OptimizacionRutaService,
+  RutaCredencialRechazadaError,
+  RutaIntentoFallidoError,
+  type ParadasRepo,
+} from "@/lib/services/OptimizacionRutaService";
+import type {
+  IRutaOptimizadaRepository,
+  RutaOptimizadaDTO,
+} from "@/lib/interfaces/repositories/IRutaOptimizadaRepository";
+import type { IRouteOptimizationClient } from "@/lib/interfaces/external/IRouteOptimizationClient";
+import type { IRoutesClient } from "@/lib/interfaces/external/IRoutesClient";
+import type { RouteOptimizationConfig } from "@/lib/config/route-optimization";
+import { codificarPolilinea } from "@/lib/geo/polilinea";
 import type {
   EjecutarOptimizacionOpts,
   EjecutarOptimizacionResult,
@@ -226,4 +240,246 @@ describe("265/R39 — la action devuelve QUIEN ordeno la secuencia", () => {
       expect(r).toEqual({ status: "ok", omitida: true, secuenciaFuente: null });
     },
   );
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// SLT-59 (R31) — la credencial rechazada tiene tipo propio para la cola, pero la pantalla no
+// debe notar la diferencia: es una subclase del fallo de proveedor que este borde ya traduce.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+describe("SLT-59 R31 — 401/403 en la sincronizacion manual: el mismo resultado que cualquier fallo del proveedor", () => {
+  it.each([401, 403])(
+    "HTTP %i -> `conflict` identico al de un fallo transitorio, sin lanzar ni filtrar el detalle",
+    async (http) => {
+      const transitorio = build(new RutaIntentoFallidoError("optimizar ruta: HTTP 503"));
+      const rechazada = build(
+        new RutaCredencialRechazadaError(`optimizar ruta: credencial rechazada (HTTP ${http})`),
+      );
+
+      const esperado = await sincronizarRuta({}, { service: transitorio.service, getActor: actorDe(MENSAJERO) });
+      const r = await sincronizarRuta({}, { service: rechazada.service, getActor: actorDe(MENSAJERO) });
+
+      expect(r).toEqual(esperado);
+      expect(r.status).toBe("conflict");
+      expect(JSON.stringify(r)).not.toMatch(/credencial|HTTP/);
+    },
+  );
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// SLT-59 (R45, R49) — la sincronizacion manual que no recalcula
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+describe("SLT-59 R49 — una reduccion que no se escribio llega como `omitida`", () => {
+  it("`reduccion_descartada` -> { ok, omitida: true, secuenciaFuente: null }, sin trazado", async () => {
+    const { service } = build({ status: "omitida", razon: "reduccion_descartada" });
+    const r = await sincronizarRuta({}, { service, getActor: actorDe(MENSAJERO) });
+    expect(r).toEqual({ status: "ok", omitida: true, secuenciaFuente: null });
+    expect(r).not.toHaveProperty("trazado");
+  });
+});
+
+describe("SLT-59 R45 — ruta vigente, mismo conjunto y sin desvio: la ruta actual con 0 llamadas", () => {
+  // Con el servicio REAL detras de la accion: es la unica forma de afirmar a la vez la forma
+  // de la respuesta y que no se llamo ni a `optimizeTours` ni a `computeRoutes`.
+  const T0 = new Date("2026-10-31T12:00:00.000Z");
+  const LNG = -84.09;
+  const P = {
+    o: { lat: 9.9, lng: LNG },
+    s1: { lat: 9.91, lng: LNG },
+    s2: { lat: 9.92, lng: LNG },
+  };
+  const CONFIG: RouteOptimizationConfig = {
+    ROUTE_OPT_TIMEOUT_MS: 20_000,
+    RUTA_DEBOUNCE_S: 60,
+    RUTA_ORIGEN_TTL_MIN: 120,
+    RUTA_SYNC_MIN_INTERVALO_S: 10,
+    RUTA_MAX_PARADAS: 100,
+    RUTA_ORIGEN_MAX_KM: 200,
+    ROUTES_ROUTING_PREFERENCE: "TRAFFIC_UNAWARE",
+    RUTA_REOPT_DISTANCIA_M: 1000,
+    RUTA_OPT_MAX_INTENTOS: 3,
+    RUTA_RECUPERACION_ENFRIAMIENTO_MIN: 5,
+    RUTA_PRIMERA_MIN_RECOGIDO_PCT: 80,
+    RUTA_PRIMERA_DEBOUNCE_MIN: 5,
+  };
+  const tramoS1 = { encodedPolyline: codificarPolilinea([P.o, P.s1]), distanciaM: 1000, duracionS: 100 };
+  const tramoS2 = { encodedPolyline: codificarPolilinea([P.s1, P.s2]), distanciaM: 1100, duracionS: 110 };
+  const RUTA: RutaOptimizadaDTO = {
+    id: "r1",
+    mensajeroId: MENSAJERO.usuarioId,
+    estado: "vigente",
+    calculadaAt: new Date(T0.getTime() - 30 * 60_000),
+    origenLat: P.o.lat,
+    origenLng: LNG,
+    origenAt: new Date(T0.getTime() - 30 * 60_000),
+    origenFuente: "gps",
+    huellaSet: "huella-previa",
+    ultimoError: null,
+    secuenciaFuente: "proveedor",
+    trazado: {
+      encodedPolyline: codificarPolilinea([P.o, P.s1, P.s2]),
+      distanciaM: 2100,
+      duracionS: 210,
+      fuente: "routes",
+    },
+    actualizadaAt: new Date(T0.getTime() - 60 * 60_000), // SLT-59 (R54): enfriamiento ya pasado
+    secuenciaPorOrden: new Map([
+      ["s1", 1],
+      ["s2", 2],
+    ]),
+    tramoPorOrden: new Map([
+      ["s1", tramoS1],
+      ["s2", tramoS2],
+    ]),
+  };
+
+  it("devuelve `omitida` con el trazado guardado; 0 `optimizar`, 0 `trazar` y el origen sin tocar", async () => {
+    const rutas = {
+      findByMensajero: vi.fn(async () => RUTA),
+      upsertOrigen: vi.fn(async () => {}),
+      reemplazarSecuencia: vi.fn(async () => {}),
+      guardarTrazado: vi.fn(async () => {}),
+      reducirSecuencia: vi.fn(async () => true),
+      marcarDesactualizada: vi.fn(async () => {}),
+    };
+    const paradasRepo: ParadasRepo = {
+      contarAsignadasDelDia: async () => ({ asignadas: 0, recogidas: 0 }),
+      ultimaRecogidaDelDia: async () => null,
+      findParadasEnReparto: vi.fn(async () =>
+        (["s1", "s2"] as const).map((id) => ({
+          ordenId: id,
+          latitud: P[id].lat,
+          longitud: P[id].lng,
+          createdAt: T0,
+        })),
+      ),
+    };
+    const optimizar = vi.fn();
+    const trazar = vi.fn();
+    const service = new OptimizacionRutaService(
+      rutas as unknown as IRutaOptimizadaRepository,
+      paradasRepo,
+      { optimizar } as unknown as IRouteOptimizationClient,
+      CONFIG,
+      () => T0,
+      undefined,
+      { trazar } as unknown as IRoutesClient,
+    );
+
+    // Ubicacion recibida sobre la linea de la ruta, entre el origen y s1: no desviado.
+    const r = await sincronizarRuta(
+      { ubicacion: { lat: 9.905, lng: LNG } },
+      { service, getActor: actorDe(MENSAJERO) },
+    );
+
+    expect(r).toEqual({
+      status: "ok",
+      omitida: true,
+      secuenciaFuente: null,
+      trazado: { ...RUTA.trazado, tramos: [tramoS1, tramoS2] },
+    });
+    expect(optimizar).not.toHaveBeenCalled();
+    expect(trazar).not.toHaveBeenCalled();
+    // R46: no recalculo, asi que la ubicacion recibida no pisa el origen guardado.
+    expect(rutas.upsertOrigen).not.toHaveBeenCalled();
+    expect(rutas.reemplazarSecuencia).not.toHaveBeenCalled();
+    expect(rutas.reducirSecuencia).not.toHaveBeenCalled();
+  });
+});
+
+// ═══ SLT-59 T7.5 — R64 -> SLT-79: el boton con poco recogido ═══════════════════════════════
+
+describe("SLT-79 — `recogida_insuficiente` se traduce a `conflict` con el texto exacto", () => {
+  it("0 recogidas (sin `esperaMs`): «Recoge X de Y paquetes para poder iniciar ruta.», minimo del % de la config", async () => {
+    const { service } = build({ status: "omitida", razon: "recogida_insuficiente", recogidas: 0, asignadas: 4 });
+    const r = await sincronizarRuta(
+      {},
+      { service, getActor: actorDe(MENSAJERO), config: { RUTA_PRIMERA_MIN_RECOGIDO_PCT: 70 } },
+    );
+    expect(r).toEqual({ status: "conflict", motivo: "Recoge 3 de 4 paquetes para poder iniciar ruta." });
+  });
+
+  it("con recogidas (`esperaMs`): «Recoge 12 de 15 paquetes o espera 4 min 20 s para poder iniciar ruta.»", async () => {
+    const { service } = build({
+      status: "omitida",
+      razon: "recogida_insuficiente",
+      recogidas: 10,
+      asignadas: 15,
+      esperaMs: 260_000,
+    });
+    const r = await sincronizarRuta(
+      {},
+      { service, getActor: actorDe(MENSAJERO), config: { RUTA_PRIMERA_MIN_RECOGIDO_PCT: 80 } },
+    );
+    expect(r).toEqual({
+      status: "conflict",
+      motivo: "Recoge 12 de 15 paquetes o espera 4 min 20 s para poder iniciar ruta.",
+    });
+  });
+
+  // SLT-74: minimo = ceil(asignadas * pct / 100), el mismo umbral que la guarda del service.
+  it.each([
+    { asignadas: 15, minimo: 12 },
+    { asignadas: 7, minimo: 6 }, // 5,6 redondea hacia arriba
+    { asignadas: 10, minimo: 8 },
+  ])("$asignadas asignadas al 80 % piden $minimo", async ({ asignadas, minimo }) => {
+    const { service } = build({ status: "omitida", razon: "recogida_insuficiente", recogidas: 0, asignadas });
+    const r = await sincronizarRuta(
+      {},
+      { service, getActor: actorDe(MENSAJERO), config: { RUTA_PRIMERA_MIN_RECOGIDO_PCT: 80 } },
+    );
+    expect(r).toEqual({
+      status: "conflict",
+      motivo: `Recoge ${minimo} de ${asignadas} paquetes para poder iniciar ruta.`,
+    });
+  });
+
+  it("sin config inyectada usa la del entorno (default 80)", async () => {
+    const previo = process.env.RUTA_PRIMERA_MIN_RECOGIDO_PCT;
+    delete process.env.RUTA_PRIMERA_MIN_RECOGIDO_PCT;
+    try {
+      const { service } = build({
+        status: "omitida",
+        razon: "recogida_insuficiente",
+        recogidas: 1,
+        asignadas: 5,
+        esperaMs: 1_000,
+      });
+      const r = await sincronizarRuta({}, { service, getActor: actorDe(MENSAJERO) });
+      expect(r).toEqual({
+        status: "conflict",
+        motivo: "Recoge 4 de 5 paquetes o espera 1 s para poder iniciar ruta.",
+      });
+    } finally {
+      if (previo !== undefined) process.env.RUTA_PRIMERA_MIN_RECOGIDO_PCT = previo;
+    }
+  });
+
+  it("`primera_ruta_pendiente` (solo la produce un job) llega como `ok/omitida` si alguna vez sube aqui", async () => {
+    const { service } = build({ status: "omitida", razon: "primera_ruta_pendiente" });
+    const r = await sincronizarRuta({}, { service, getActor: actorDe(MENSAJERO) });
+    expect(r).toEqual({ status: "ok", omitida: true, secuenciaFuente: null });
+  });
+
+  it("`enfriamiento` (R53) llega como `ok/omitida` con el trazado en cache, igual que R45", async () => {
+    const trazado = {
+      encodedPolyline: "abc",
+      distanciaM: 10,
+      duracionS: 5,
+      fuente: "routes" as const,
+      tramos: [],
+    };
+    const { service } = build({ status: "omitida", razon: "enfriamiento", trazado });
+    const r = await sincronizarRuta({}, { service, getActor: actorDe(MENSAJERO) });
+    expect(r).toEqual({ status: "ok", omitida: true, secuenciaFuente: null, trazado });
+  });
+});
+
+// ═══ SLT-79 — el disparo de salida (SLT-59 R62/R63) ya no existe ══════════════════════════
+
+describe("SLT-79 — la primera ruta solo se pide con «Sincronizar ruta»", () => {
+  it("el modulo ya no exporta `calcularRutaAlSalir`", () => {
+    expect("calcularRutaAlSalir" in rutaMensajero).toBe(false);
+  });
 });

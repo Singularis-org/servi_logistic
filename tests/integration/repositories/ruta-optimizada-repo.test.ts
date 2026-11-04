@@ -350,3 +350,238 @@ describe("265/R45 — al LEER, la columna se estrecha y `null` significa «no co
     expect(ruta?.secuenciaFuente).toBe(esperado);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// SLT-59 (R12, R17, R18) — LA REDUCCION DE LA SECUENCIA
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Fila en memoria con la semantica que importa del `updateMany` condicionado: solo escribe si
+ * el `where` encaja, y devuelve cuantas filas toco. Asi se comprueba el ESTADO que queda, no
+ * solo los argumentos que se pasaron.
+ */
+function buildPrismaReduccion(
+  huellaEnLaFila: string,
+  estadoEnLaFila: "vigente" | "desactualizada" = "vigente",
+) {
+  const cabecera: Record<string, unknown> = {
+    id: "ruta-1",
+    mensajeroId: MENSAJERO,
+    estado: estadoEnLaFila,
+    calculadaAt: T0,
+    origenLat: new Prisma.Decimal("9.9281000"),
+    origenLng: new Prisma.Decimal("-84.0907000"),
+    origenAt: T0,
+    origenFuente: "gps",
+    huellaSet: huellaEnLaFila,
+    ultimoError: "aviso viejo",
+    secuenciaFuente: "proveedor",
+    trazadoPolilinea: "viejo",
+    trazadoDistanciaM: 9000,
+    trazadoDuracionS: 900,
+    trazadoFuente: "routes",
+  };
+  let paradas: Record<string, unknown>[] = [
+    { rutaId: "ruta-1", ordenId: "o1", secuencia: 1, tramoPolilinea: "t1" },
+    { rutaId: "ruta-1", ordenId: "o2", secuencia: 2, tramoPolilinea: "t2" },
+    { rutaId: "ruta-1", ordenId: "o3", secuencia: 3, tramoPolilinea: "t3" },
+  ];
+  const tx = {
+    rutaOptimizada: {
+      updateMany: vi.fn(
+        async (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+          const encaja = Object.entries(args.where).every(([k, v]) => cabecera[k] === v);
+          if (encaja) Object.assign(cabecera, args.data);
+          return { count: encaja ? 1 : 0 };
+        },
+      ),
+      findUnique: vi.fn(async () => ({ id: "ruta-1" })),
+    },
+    rutaOptimizadaParada: {
+      deleteMany: vi.fn(async () => {
+        const count = paradas.length;
+        paradas = [];
+        return { count };
+      }),
+      createMany: vi.fn(async (args: { data: Record<string, unknown>[] }) => {
+        paradas.push(...args.data);
+        return { count: args.data.length };
+      }),
+    },
+  };
+  const prisma = {
+    rutaOptimizada: tx.rutaOptimizada,
+    rutaOptimizadaParada: tx.rutaOptimizadaParada,
+    $transaction: vi.fn(async (cb: (t: typeof tx) => Promise<unknown>) => cb(tx)),
+  };
+  return { prisma, tx, cabecera, paradas: () => paradas };
+}
+
+const TRAMO_O2 = { encodedPolyline: "t2", distanciaM: 1200.4, duracionS: 180.6 };
+const TRAMO_O3 = { encodedPolyline: "t3", distanciaM: 800, duracionS: null };
+
+describe("SLT-59 — reducirSecuencia persiste la secuencia previa sin las paradas que faltan", () => {
+  it("deja las restantes en 1..n, en su orden, con su tramo (redondeado como la columna INTEGER)", async () => {
+    const { prisma, paradas } = buildPrismaReduccion("h-previa");
+
+    const aplicada = await repoDe(prisma).reducirSecuencia(MENSAJERO, "h-previa", {
+      huellaSet: "h-nueva",
+      paradas: [
+        { ordenId: "o2", tramo: TRAMO_O2 },
+        { ordenId: "o3", tramo: TRAMO_O3 },
+      ],
+      trazado: { encodedPolyline: "t2t3", distanciaM: 2000.4, duracionS: null, fuente: "routes" },
+    });
+
+    expect(aplicada).toBe(true);
+    expect(paradas()).toEqual([
+      {
+        rutaId: "ruta-1",
+        ordenId: "o2",
+        secuencia: 1,
+        tramoPolilinea: "t2",
+        tramoDistanciaM: 1200,
+        tramoDuracionS: 181,
+      },
+      {
+        rutaId: "ruta-1",
+        ordenId: "o3",
+        secuencia: 2,
+        tramoPolilinea: "t3",
+        tramoDistanciaM: 800,
+        tramoDuracionS: null,
+      },
+    ]);
+  });
+
+  it("una parada sin tramo se guarda con las columnas de tramo a null", async () => {
+    const { prisma, paradas } = buildPrismaReduccion("h-previa");
+
+    await repoDe(prisma).reducirSecuencia(MENSAJERO, "h-previa", {
+      huellaSet: "h-nueva",
+      paradas: [{ ordenId: "o3", tramo: null }],
+      trazado: null,
+    });
+
+    expect(paradas()).toEqual([
+      {
+        rutaId: "ruta-1",
+        ordenId: "o3",
+        secuencia: 1,
+        tramoPolilinea: null,
+        tramoDistanciaM: null,
+        tramoDuracionS: null,
+      },
+    ]);
+  });
+
+  it("R12/R17: calculada_at, origen, secuencia_fuente, ultimo_error y estado quedan intactos", async () => {
+    // `calculada_at` es lo critico: 92/R20 descarta los jobs creados antes de ella. Si una
+    // reduccion la moviera, un job de recogida en vuelo se daria por cubierto sin que nadie
+    // hubiera optimizado las paradas nuevas.
+    const { prisma, cabecera } = buildPrismaReduccion("h-previa");
+    const antes = { ...cabecera };
+
+    await repoDe(prisma).reducirSecuencia(MENSAJERO, "h-previa", {
+      huellaSet: "h-nueva",
+      paradas: [{ ordenId: "o3", tramo: TRAMO_O3 }],
+      trazado: { encodedPolyline: "t3", distanciaM: 800, duracionS: null, fuente: "routes" },
+    });
+
+    for (const campo of [
+      "calculadaAt",
+      "origenLat",
+      "origenLng",
+      "origenAt",
+      "origenFuente",
+      "secuenciaFuente",
+      "ultimoError",
+      "estado",
+    ]) {
+      expect(cabecera[campo]).toBe(antes[campo]);
+    }
+    expect(cabecera.huellaSet).toBe("h-nueva");
+    expect(cabecera.trazadoPolilinea).toBe("t3");
+    expect(cabecera.trazadoFuente).toBe("routes");
+  });
+
+  it("sin trazado (R15/R16) LIMPIA las cuatro columnas: el viejo describe paradas que ya no estan", async () => {
+    const { prisma, cabecera } = buildPrismaReduccion("h-previa");
+
+    await repoDe(prisma).reducirSecuencia(MENSAJERO, "h-previa", {
+      huellaSet: "h-nueva",
+      paradas: [{ ordenId: "o3", tramo: null }],
+      trazado: null,
+    });
+
+    expect(cabecera.trazadoPolilinea).toBeNull();
+    expect(cabecera.trazadoDistanciaM).toBeNull();
+    expect(cabecera.trazadoDuracionS).toBeNull();
+    expect(cabecera.trazadoFuente).toBeNull();
+  });
+
+  it("todo va en UNA transaccion, con la escritura condicionada ANTES de tocar las paradas", async () => {
+    const { prisma, tx } = buildPrismaReduccion("h-previa");
+
+    await repoDe(prisma).reducirSecuencia(MENSAJERO, "h-previa", {
+      huellaSet: "h-nueva",
+      paradas: [{ ordenId: "o3", tramo: null }],
+      trazado: null,
+    });
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    // R48: la barrera es huella Y estado; sin el estado, una ruta recien marcada
+    // `desactualizada` (que conserva la huella) aceptaria la reduccion.
+    expect(tx.rutaOptimizada.updateMany.mock.calls[0][0].where).toEqual({
+      mensajeroId: MENSAJERO,
+      huellaSet: "h-previa",
+      estado: "vigente",
+    });
+    expect(tx.rutaOptimizada.updateMany.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.rutaOptimizadaParada.deleteMany.mock.invocationCallOrder[0],
+    );
+    expect(tx.rutaOptimizadaParada.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.rutaOptimizadaParada.createMany.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("R18: con la huella cambiada no escribe NADA y devuelve false, sin lanzar", async () => {
+    // Otro disparo reescribio la ruta entre la lectura y esta escritura: sus paradas ya son de
+    // otra secuencia, y pegar la reduccion encima la corromperia.
+    const { prisma, tx, cabecera, paradas } = buildPrismaReduccion("h-de-otro-disparo");
+    const cabeceraAntes = { ...cabecera };
+    const paradasAntes = paradas().map((p) => ({ ...p }));
+
+    const aplicada = await repoDe(prisma).reducirSecuencia(MENSAJERO, "h-previa", {
+      huellaSet: "h-nueva",
+      paradas: [{ ordenId: "o3", tramo: TRAMO_O3 }],
+      trazado: null,
+    });
+
+    expect(aplicada).toBe(false);
+    expect(cabecera).toEqual(cabeceraAntes);
+    expect(paradas()).toEqual(paradasAntes);
+    expect(tx.rutaOptimizadaParada.deleteMany).not.toHaveBeenCalled();
+    expect(tx.rutaOptimizadaParada.createMany).not.toHaveBeenCalled();
+  });
+  it("R48: con la ruta `desactualizada` y la huella IGUAL no escribe NADA y devuelve false, sin lanzar", async () => {
+    // `marcarDesactualizada` no cambia la huella: entre la lectura (vigente) y la escritura un
+    // fallo de recalculo pudo marcarla. Escribir encima ocultaria ese estado con una secuencia
+    // que nadie recalculo.
+    const { prisma, tx, cabecera, paradas } = buildPrismaReduccion("h-previa", "desactualizada");
+    const cabeceraAntes = { ...cabecera };
+    const paradasAntes = paradas().map((p) => ({ ...p }));
+
+    const aplicada = await repoDe(prisma).reducirSecuencia(MENSAJERO, "h-previa", {
+      huellaSet: "h-nueva",
+      paradas: [{ ordenId: "o3", tramo: TRAMO_O3 }],
+      trazado: { encodedPolyline: "t3", distanciaM: 800, duracionS: null, fuente: "routes" },
+    });
+
+    expect(aplicada).toBe(false);
+    expect(cabecera).toEqual(cabeceraAntes);
+    expect(paradas()).toEqual(paradasAntes);
+    expect(tx.rutaOptimizadaParada.deleteMany).not.toHaveBeenCalled();
+    expect(tx.rutaOptimizadaParada.createMany).not.toHaveBeenCalled();
+  });
+});

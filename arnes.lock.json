@@ -32,7 +32,7 @@
     "docs/jira.md": "614c3eef05f411ecbc318a88f2fe067cc31f31976897d61d65bc864f886dbcd5",
     "docs/lectura.md": "7ec10c5958f1f5547a9fee3bee042b5d3530cebe82985d27e2b1bc37c6d06df8",
     "docs/specs.md": "1c5c5219c60c874c26eb2b43d4e8be6dc7f7fa0649f7163ecc64bd30304c2b63",
-    "docs/trello.md": "95dd1758cab1c7c5a99167d90f4293997cb216ae8d8846062aab888461c9e17d",
+    "docs/trello.md": "ffb246b46677393e92f0d4fd4d0406e0146bb39721a414243fab0389db0c5ee5",
     "docs/worktrees.md": "4e5ce6678275a6136a74357ab6b9ba6b2f2fc7f1d06c3400cf3f5edb2b3cc7b2",
     "init.sh": "72043cd4bf257457f16db7744b8385964874f3ebc8cec09a5862f11fda2a8110",
     "progress/README.md": "c072d602a087642db725af1b25ced07ee7a4e798d9d525e5f869b61195562667",
@@ -46,7 +46,7 @@
     "scripts/test-rapido.mjs": "56942c9ca25e28bd450ea3934fa9ac3ff4684a674ef7cb32e97fba7d42667f31",
     "scripts/tests-de-arbol.mjs": "5b05da30a39f2374a267ca12f2eacbddbae05a202fc94eaf1273608962911629",
     "scripts/tracker.mjs": "a5403e37bb76ed3f8844d01dacbd1f3cd7a6f968e7bec00b2831271713990d89",
-    "scripts/trello.mjs": "8a2094fb8e13bb9ee5b7cbd2fc621bc78a6c239f33af8b6a51e6a0a9a5980d8c",
+    "scripts/trello.mjs": "b3449b8ef9e59c962ecb53859b43f14bc577135aee31b46da219fa0a14696ea2",
     "scripts/unir-informes-vitest.mjs": "1d9a20f90a5732a45768541220d1e664c8bffb3038f87b70f70113d44f76b85b",
     "scripts/validate-features.mjs": "b79d0ae075d0efb286ea58076ddb3c1333ba146f36879f52f40ef75bb491e9dc",
     "scripts/wt.sh": "7b44007249c130d94f5ca7b8d31a5a4c288163f4222de559856c1aa76a0a43ec",
@@ -57,8 +57,8 @@
     "tests/guards/guard-modelos-de-agentes.test.ts": "f992813344b14abf8a7c4b7905a20f370f07c95a3cf85e1cb37fe250c9e21bb9",
     "tests/guards/guard-test-rapido-rojos-heredados.test.ts": "9b7bc186db608192ac5d9d03eb8690f2b89dbe7f638759e68b1a576b2ba3fbb6",
     "tests/guards/guard-tests-de-arbol-en-el-gate.test.ts": "ff947d5ac6ca9cf4642ed0cd0d375a1fcc7dd211e70b76f7648f0ef53cdf209e",
-    "tests/guards/guard-trello-cliente.test.ts": "e9875fe49f2bc67c7da3d77ccbeee5c6d7375af582f16b4ad46d78d619e41f80",
-    "tests/guards/guard-trello-red.test.ts": "abc86c4a8ff03deffd111a54851b66d2a7e864b91cae7e4d4632581a5ca61f42",
+    "tests/guards/guard-trello-cliente.test.ts": "ad05a2eadcceb7039e6862d9328aa993c551270b922958a6133fdb45193583e0",
+    "tests/guards/guard-trello-red.test.ts": "1d39351dc3c1045420e47303b3bc9b4aaa2ff4664f9f85205fb03d3bd903ab5f",
     "tests/guards/guard-unir-informes-vitest.test.ts": "5c6aa29de5039484239f67d851054b25a21d994c81f59c2406c2979b695cac0d",
     "tests/guards/guard-validador-equipo.test.ts": "22b030466bd0795afc140a94b6f49dd15cc1ef0a273fd509da7d6a88fb411ef4",
     "tests/guards/guard-validador-estados.test.ts": "d321137caef74bdd7edfd146f08d37a1b241797064d0b74083b8f3c449d45f9b",
@@ -87,6 +87,16 @@
         "tests/guards/guard-validador-titulo.test.ts"
       ],
       "fecha": "2026-10-22"
+    },
+    {
+      "pr": "https://github.com/singularis-co/harness_config/pull/21",
+      "archivos": [
+        "docs/trello.md",
+        "scripts/trello.mjs",
+        "tests/guards/guard-trello-cliente.test.ts",
+        "tests/guards/guard-trello-red.test.ts"
+      ],
+      "fecha": "2026-10-30"
     }
   ]
 }

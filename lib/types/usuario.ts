@@ -6,6 +6,7 @@ import { esPlataforma } from "@/lib/auth/plataforma";
 import { strongPasswordSchema } from "@/lib/types/password-policy";
 import type { ListarCompletoResult } from "@/lib/types/descarga-listado";
 import type { ListarPaginadoResult } from "@/lib/types/listado-paginado";
+import type { ResultadoTopePlan } from "@/lib/types/planes";
 import type {
   RolItem,
   UsuarioListItem,
@@ -232,7 +233,11 @@ export type ListarUsuariosResult = ListarPaginadoResult<UsuarioListItemDTO, Acti
 export type ListarUsuariosCompletoResult = ListarCompletoResult<UsuarioListItemDTO>;
 export type ObtenerUsuarioResult = { status: "ok"; usuario: UsuarioPublico } | ActionError;
 export type ActualizarUsuarioResult = { status: "ok"; usuario: UsuarioPublico } | ActionError;
-export type CambiarEstadoUsuarioResult = { status: "ok"; usuario: UsuarioPublico } | ActionError;
+// SL-24 (R27, R28): `tope_plan` al activar con el tope del rol lleno; la pantalla muestra `mensaje`.
+export type CambiarEstadoUsuarioResult =
+  | { status: "ok"; usuario: UsuarioPublico }
+  | ResultadoTopePlan
+  | ActionError;
 export type ListarTiposIdentificacionResult =
   | { status: "ok"; tipos: { id: string; value: string }[] }
   | ActionError;

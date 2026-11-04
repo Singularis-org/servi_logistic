@@ -25,6 +25,7 @@ import { generateApiKey } from "@/lib/utils/api-key-generator";
 import { hashApiKey } from "@/lib/utils/api-key-hash";
 import { cedulaSintetica, emailSintetico, slugify } from "@/lib/utils/api-key-identity";
 import { hashPassword } from "@/lib/utils/password";
+import { TopeDelPlanAlcanzado, traducirErrorDeTope } from "@/lib/planes/tope-error";
 import { generateStrongPassword } from "@/lib/utils/password-generator";
 
 // [D2] Mismo criterio que `UsuarioService.ALLOWED_ROLES`: generar una key ES crear un
@@ -133,6 +134,10 @@ export class ApiKeyService implements IApiKeyService {
       if (error instanceof UsuarioDuplicadoError) {
         return { status: "conflict", campo: error.campo };
       }
+      // SL-24 (R35): la key nace `activa` y cuenta para el tope de API keys del plan. El trigger
+      // de `api_key` la rechaza dentro de `createConUsuario`, que deshace tambien la cuenta dedicada.
+      const tope = traducirErrorDeTope(error);
+      if (tope instanceof TopeDelPlanAlcanzado) return { status: "tope_plan", mensaje: tope.message };
       throw error;
     }
   }
@@ -224,7 +229,15 @@ export class ApiKeyService implements IApiKeyService {
   async activar(input: ApiKeyIdInput, actor: Actor): Promise<ActivarApiKeyResult> {
     if (!ALLOWED_ROLES.has(actor.rol)) return { status: "forbidden" }; // R1
 
-    const apiKey = await this.repo.setEstado(input.id, "activa", actor.usuarioId); // R4 + 362
+    let apiKey: Awaited<ReturnType<IApiKeyRepository["setEstado"]>>;
+    try {
+      apiKey = await this.repo.setEstado(input.id, "activa", actor.usuarioId); // R4 + 362
+    } catch (error) {
+      // SL-24 (R35): activar una key `inactiva` es un alta; con el tope lleno no cambia nada.
+      const tope = traducirErrorDeTope(error);
+      if (tope instanceof TopeDelPlanAlcanzado) return { status: "tope_plan", mensaje: tope.message };
+      throw error;
+    }
     if (apiKey === null) return { status: "not_found" }; // R3
     return { status: "ok", apiKey };
   }

@@ -52,7 +52,7 @@ function orden(cierreId: string, n: number, valorFlete = "1000.00"): OrdenAporte
       esZonaEspecial: false,
       montoCobrar: "5000.00",
       cobraComision: false,
-      tarifa: { ...TARIFA, valorFlete },
+      tarifa: { modelo: "viejo", tarifa: { ...TARIFA, valorFlete } },
     },
     gestiones: [{ resultado: "entregado", montoRecibido: "5000.00", pagoMensajero: null, indemnizacion: null }],
   };

@@ -300,6 +300,9 @@ describe("R22 · lo que sale del repositorio ya es money-safe", () => {
         // FICHA 449: la decima columna congelada. Va aqui porque el `SELECT` real la proyecta;
         // una fila de prueba a la que le falte una columna del `SELECT` no es la fila real.
         tarifa_fulfillment: new Prisma.Decimal("696"),
+        // SLT-52 (T5.3): las dos columnas que el `SELECT` real proyecta desde entonces.
+        tarifa_modelo: "viejo",
+        conceptos: [],
       },
     ]);
     const lectura = await new DineroProductosRepository(prisma as never).leerDineroPorOrden(
@@ -313,8 +316,11 @@ describe("R22 · lo que sale del repositorio ya es money-safe", () => {
     // texto — que es exactamente lo que la feature 69 existe para eliminar.
     expect(f.montoRecibido).toBe("10000.00");
     expect(f.congelada?.montoCobrar).toBe("10000.00");
-    expect(f.congelada?.tarifa?.valorFlete).toBe("3000.00");
-    expect(f.congelada?.tarifa?.ivaFlete).toBe("13.00");
+    // SLT-52 (T5.3): la tarifa congelada llega en su sobre; la vieja va dentro.
+    const t = f.congelada?.tarifa;
+    expect(t?.modelo).toBe("viejo");
+    expect(t?.modelo === "viejo" ? t.tarifa.valorFlete : null).toBe("3000.00");
+    expect(t?.modelo === "viejo" ? t.tarifa.ivaFlete : null).toBe("13.00");
     // La guia es un ENTERO de identificacion, no dinero: cruza como texto sin escala.
     expect(f.guia).toBe("1234");
     expect(f.numGuia).toBe(1234);
@@ -388,6 +394,9 @@ function filaCrudaConSnapshot(fulfillment: Prisma.Decimal | null) {
     tarifa_especial: null,
     tarifa_especial_devuelta: null,
     tarifa_fulfillment: fulfillment,
+    // SLT-52 (T5.3): las dos columnas que el `SELECT` real proyecta desde entonces.
+    tarifa_modelo: "viejo",
+    conceptos: [],
   };
 }
 
@@ -418,7 +427,9 @@ describe("FICHA 449 · `tarifa_fulfillment` se proyecta y sube en un campo propi
 
   it("⚠ NO entra en la tarifa congelada: `congelada.tarifa` no gana ninguna clave", async () => {
     const f = await unaFila(filaCrudaConSnapshot(new Prisma.Decimal("696")));
-    const tarifa = f.congelada?.tarifa;
+    // SLT-52 (T5.3): la `TarifaVigente` vieja va dentro del sobre que devuelve `tarifaDe`.
+    const sobre = f.congelada?.tarifa;
+    const tarifa = sobre?.modelo === "viejo" ? sobre.tarifa : null;
     expect(tarifa, "la fila de prueba tenia que traer tarifa congelada").toBeTruthy();
     expect(Object.keys(tarifa as object).filter((k) => /fulfillment/i.test(k))).toEqual([]);
     // ANTI-VACIO: la tarifa se reconstruyo de verdad.

@@ -153,3 +153,65 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Qué falta:** subirlos a `singularis-co/harness_config` con `./scripts/arnes-sync.sh --subir`. Antes, `./scripts/arnes-sync.sh --aplicar` de los 19 cambios pendientes, resolviendo 6 conflictos (`docs/trello.md`, `scripts/trello.mjs`, `scripts/validate-features.mjs`, `tests/guards/guard-trello-cliente.test.ts`, `guard-trello-red.test.ts`, `guard-validador-tracker.test.ts`), y decidir qué hacer con `.claude/commands/tracker-connect.md` y `scripts/tracker.mjs`, que la plantilla no trae.
 - **Cerrada (2026-10-28):** subido por el PR #17 de la plantilla (tracker configurable, ya rebasado sobre `main` por merge y con la regla añadida), mergeado como arnés 2.8.0 (7779020). `arnes-sync` contra `main`: 61 iguales, 0 a bajar; `arnes.lock.json` al día. `tracker-connect.md` y `tracker.mjs` vienen en la plantilla.
 - **Dueño:** cerrada.
+
+### D25 — El `.env` del worktree principal apunta al Supabase de la app de origen
+- **Origen:** SL-9 (2026-10-28). La guardia `recursos-origen-fuera` (SL-34) reconoció como recurso de origen el proyecto Supabase de `SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_URL` del `.env` local. SL-9 no lo usó (capturas con `pnpm dev` y solo la `DATABASE_URL` local).
+- **Qué falta:** sustituir esas variables por un proyecto Supabase de servi_logistic, o quitarlas del `.env` local si nada las necesita.
+- **Dueño:** Camilo.
+
+### D26 — Un id de recurso de origen quedó en el historial de `dev`
+- **Origen:** SL-9, PR #31 (merge normal, no squash). El commit `0bfcc01` lo retiró del árbol, pero los commits anteriores de la rama siguen en el historial.
+- **Qué falta:** decidir si basta con que no esté en el árbol (lo que vigila SL-34) o si hay que reescribir historial. No es un secreto, pero el repo es público.
+- **Dueño:** Camilo.
+
+### D27 — `pnpm run typecheck` se queda sin memoria con el heap por defecto de Node
+- **Origen:** gate de SL-24 (2026-10-27), en Windows 11 con Node v22.13.1 y 24 GB de RAM. `tsc --noEmit` cayó con `FATAL ERROR: Ineffective mark-compacts near heap limit Allocation failed - JavaScript heap out of memory` (exit 134), y `./init.sh` salió en rojo sin que el cambio tocara código. Con `NODE_OPTIONS=--max-old-space-size=8192 ./init.sh` salió `init OK`.
+- **Qué falta:** fijar el heap en el script `typecheck` de `package.json` (por ejemplo `node --max-old-space-size=8192 ./node_modules/typescript/bin/tsc --noEmit`) o en `init.sh`, y comprobar que el job estático de CI no lo necesita también.
+- **Dueño:** Camilo (decidir si va a ficha).
+
+### D28 — Los correos de cambio de plan muestran el precio sin símbolo de moneda
+- **Origen:** SL-24 T12 (2026-10-28). El plan no guarda moneda y la plataforma sirve a varios países, así que los importes van tal cual («100 al mes»). Decidido por Camilo.
+- **Qué falta:** cuando se ponga símbolo de moneda por país, tomarlo de la configuración de la empresa destinataria, no fijarlo en la plantilla (`lib/planes/mensajes.ts`, sección «Correos del cambio de plan»).
+- **Dueño:** Camilo.
+
+### D29 — `FichaJira` no admite el prefijo `SLT`
+- **Origen:** SLT-58 T4 (2026-10-29). `FichaJira` (`lib/db/contexto-empresa.ts`) es `` `SL-${number}` ``, así que las lecturas de plataforma de SLT-58 en `PlanesRepository` llaman a `comoPlataforma` con la ficha `"SL-24"` y citan SLT-58 en el motivo. Decidido por el humano: se deja así.
+- **Qué falta:** ampliar `FichaJira` (y su validación en `comoPlataforma` y `excepciones-aislamiento.ts`) para aceptar `SLT-<n>`, y pasar esas llamadas a `"SLT-58"`.
+- **Dueño:** Camilo (decidir si va a ficha).
+
+### D30 — Tablas de `plataforma/` con `Table` cruda en vez de `DataTable`
+- **Origen:** revisión de diseño de SLT-58 (2026-10-29, `progress/design_SLT-58.md`). `PlanesModule` (catálogo de planes) y `EmpresasModule` pintan sus listas con la `Table` cruda, aunque DESIGN.md pide `DataTable`. Por ahora, en móvil se ocultan las columnas secundarias.
+- **Qué falta:** pasar las dos a `DataTable` en un mismo cambio.
+- **Dueño:** Camilo (decidir si va a ficha).
+
+### D31 — Dos relojes en la primera asignación con fecha
+- **Origen:** review de SLT-58 (2026-10-30, `progress/review_SLT-58.md`, menor 2). El servicio decide «hoy», el rango y el ancla de las fechas elegidas; la base (`now()`) decide el ancla «ahora» y si hay ciclo corto. Con los relojes desfasados cerca de medianoche UTC, una fecha de mañana podría guardarse sin ciclo corto. Sin test; impacto esperado mínimo.
+- **Qué falta:** que una sola fuente de tiempo decida las dos cosas (pasar el instante del servicio a la base o al revés) y un test del borde.
+- **Dueño:** Camilo (decidir si va ficha).
+
+### D32 — Deadlock 40P01 de `liquidacion-reparto-migration` con las escrituras reales del shard (hermana de D18) — RESUELTA (2026-11-01)
+- **Origen:** CI del PR #53 (SLT-68, hotfix a `prod`), 2026-10-30. Dos intentos seguidos cayeron en el shard 2 con 40P01, en archivos distintos: `demo-qa` (borrado de `orden`) y `liquidacion-reparto-migration` («205 / bloque B — las restricciones RECHAZAN de verdad»). No lo causa SLT-68: su test corre en el shard 3. En el PR #52 (SLT-69) el mismo par compartió shard y pasó.
+- **Causa (DETAIL del log de Postgres del shard):** `aplicarDdl` (línea ~558) hace `DROP TABLE IF EXISTS "liquidacion_reparto"` en el esquema desechable; la tabla tiene FK a `public.usuario`, así que el DOWN pide `AccessExclusiveLock` sobre `usuario` mientras otro test del shard la escribe (`UPDATE usuario SET orden_en_gestion_id …`, o la cascada `SET NULL` desde `orden`). El test usa `enTransaccionRevertida` sin `serializarEscriturasReales`, y no toma el lock de la 227 (`demo-qa` sí lo toma).
+- **No se reproduce en local** con el trío solo (0/8 con y sin SLT-68): hace falta el resto del shard escribiendo en `usuario`/`orden`.
+- **Qué falta (una de):**
+  - que `medir` llame a `serializarEscriturasReales(tx)` como primera sentencia (cierra el choque con `demo-qa`, no con un `UPDATE usuario` sin lock);
+  - `LOCK TABLE public.usuario IN ACCESS EXCLUSIVE MODE` antes del UP/DOWN;
+  - que la FK del reparto apunte a un `usuario` clonado en el esquema desechable.
+  Un reintento no vale (mismo criterio que D18). Para el hotfix SLT-68 el humano aceptó relanzar el gate a sabiendas (2026-10-30, «la 1, relanza el CI»).
+- **Resolución:** SLT-76 (T7.1, PR #68 a `prod`, squash `3ede2017`). `medir` llama a `serializarEscriturasReales(tx)` y después a `LOCK TABLE public.usuario IN ACCESS EXCLUSIVE MODE`, antes de `CREATE SCHEMA`; la `Medicion` registra `pg_locks` con su `it`. Las dos mutaciones (sin `LOCK`, sin `serializar`) salen rojas. Medido en local: en solitario 8/8, con otros 5 archivos que escriben en `usuario` 5/5 y con los 80 de `tests/integration/db` en paralelo 3/3, sin 40P01 (`progress/impl_SLT-76.md`). Anotada al sincronizar `prod` en `dev`.
+- **Dueño:** cerrada.
+
+### D33 — `MontoInput` con un solo uso: migrar los demás formularios de monto
+- **Origen:** review de SLT-67 (2026-10-30, `progress/review_SLT-67.md`, menor 1). El campo compartido `components/shared/MontoInput.tsx` (con `montoParaCampo`) solo lo usa `PlanForm`; `docs/architecture.md` pide dos usos para vivir en `shared/`. Se dejó ahí por decisión del humano (reutilizable).
+- **Qué falta:** usarlo en los campos de monto candidatos (`MarcarRecibidoDialog`, `RegistrarPagoDialog`, `RegistrarMovimientoDialog`, `GastoFijoPlantillaDialog`, `AjustarPagoMensajeroDialog`, `TarifaCampos`, `CobroPorOrden`, `PremioInputRow`, `DesglosePagoField`). Lista en `progress/impl_SLT-67.md`.
+- **Dueño:** Camilo (decidir si va a ficha).
+
+### D34 — Carga de 500 órdenes con guía al borde del timeout de transacción
+- **Origen:** tanda B de SLT-66 (2026-10-31, `progress/impl_SLT-66.md` > Tanda B). Medido antes de M3: la carga de 500 órdenes con guía por `OrdenRepository` tarda 3–4,9 s, al borde del timeout de 5 s de las transacciones interactivas de Prisma; una serie lo superó. Previo a SLT-66 (M3 no lo cambia de forma medible).
+- **Qué falta:** trocear la carga o subir el timeout de esa transacción, con medición.
+- **Dueño:** Camilo (decidir si va a ficha).
+
+### D35 — Textos de costo del plan con «.00» y sufijo repetido
+- **Origen:** review de SLT-66 (2026-10-31, `progress/review_SLT-66.md`, m1). En el detalle y el catálogo del plan sale «Costo por orden: 100.00 por orden» (repite «por orden»), mientras «Mi plan» dice «Costo por orden: 100.00». Los montos de pantalla del plan muestran «.00» en enteros desde SL-24; SLT-67 solo lo quitó de los campos de entrada.
+- **Qué falta:** quitar el sufijo duplicado y decidir si los montos de pantalla siguen la regla de SLT-67 (entero sin decimales). Toca `PlanVistaCosteo`, `PlanEmpresa:517-523` y `PlanesModule`.
+- **Dueño:** Camilo (decidir si va a ficha).

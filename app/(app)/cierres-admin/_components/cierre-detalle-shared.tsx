@@ -19,6 +19,9 @@ import type { CierreEstado } from "@/lib/types/cierre";
 import type { OrigenFlete } from "@/lib/utils/ingreso-empresa";
 import type { EtiquetasGeograficas } from "@/lib/types/pais";
 import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
+// SLT-56 (R19/R20) — la marca «Ajustado» con su historial. Vive en su propio archivo: lleva un
+// popover, y este archivo pinta nombres de estado (guardia `estado-con-info`, brazo d).
+import { MarcaAjustado } from "./MarcaAjustado";
 // Feature 158 (T2.3): las etiquetas visibles de la causa del incidente viven donde nacieron
 // (junto al panel que las captura), no se duplican aquí. Importar un módulo de etiquetas de
 // otra ruta tiene precedente EXACTO en este repo: `GestionarOrdenPanel` (mis-asignaciones)
@@ -835,8 +838,13 @@ export function IngresoBodegaRechazosDesglose({
  */
 export function renderPagoMensajero(g: CierreDetalleGestion): ReactNode {
   return (
-    <span className="inline-flex items-center gap-2">
+    <span className="inline-flex flex-wrap items-center gap-2">
       {money(g.pagoMensajero)}
+      {/* SLT-56 (R19/R20): la marca sale de que haya ajustes, no de un flag aparte. La vista del
+          mensajero no los trae nunca (Q2), así que allí no se pinta. */}
+      {g.ajustesPago && g.ajustesPago.length > 0 ? (
+        <MarcaAjustado ajustes={g.ajustesPago} />
+      ) : null}
       {g.tarifaFaltante ? (
         <Badge
           variant="outline"

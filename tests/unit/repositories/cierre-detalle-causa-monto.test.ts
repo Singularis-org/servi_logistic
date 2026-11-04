@@ -77,6 +77,7 @@ function filaAdmin(over: Record<string, unknown> = {}) {
     // Feature 212/R21: el desglose que pide `GESTION_ADMIN_SELECT`. Un `incidente` no cobra.
     pagos: [] as { metodo: string; monto: Prisma.Decimal }[],
     historialEstados: [],
+    ajustesPagoMensajero: [], // SLT-56 (R19): la relacion que ahora lee GESTION_ADMIN_SELECT
     ...over,
   };
 }

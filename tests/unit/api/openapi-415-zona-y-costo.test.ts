@@ -152,14 +152,16 @@ describe("415/R38 — `Zona` y `Mensajero`: misma forma, misma regla", () => {
 // R10/R11 — `OrdenCosto`: cinco claves y NINGUNA suma
 // ---------------------------------------------------------------------------------------------
 
-describe("415/R10+R11 — `OrdenCosto` declara cinco conceptos y ningun total", () => {
-  it("exactamente cinco propiedades, todas requeridas, `additionalProperties: false`", () => {
+// SLT-52 R46 (P5 = a): el sexto concepto es `ivaFulfillment`; sigue sin haber ningun total.
+describe("415/R10+R11 — `OrdenCosto` declara seis conceptos y ningun total", () => {
+  it("exactamente seis propiedades, todas requeridas, `additionalProperties: false`", () => {
     expect(Object.keys(costo.properties as Nodo).sort()).toEqual([
       "comision",
       "flete",
       "fulfillment",
       "iva",
       "ivaComision",
+      "ivaFulfillment",
     ]);
     expect([...(costo.required as string[])].sort()).toEqual([
       "comision",
@@ -167,6 +169,7 @@ describe("415/R10+R11 — `OrdenCosto` declara cinco conceptos y ningun total", 
       "fulfillment",
       "iva",
       "ivaComision",
+      "ivaFulfillment",
     ]);
     expect(costo.additionalProperties).toBe(false);
   });
@@ -183,7 +186,7 @@ describe("415/R10+R11 — `OrdenCosto` declara cinco conceptos y ningun total", 
       expect(claves, prohibida).not.toContain(prohibida);
     }
     // Y lo dice con todas las letras, para que nadie la reintroduzca «por comodidad».
-    expect(costo.description as string).toMatch(/NO hay ningún campo que sume los cinco/i);
+    expect(costo.description as string).toMatch(/NO hay ningún campo que sume los seis/i);
   });
 
   it("R12: la description declara el dialecto crudo de escala 2, sin moneda ni miles", () => {

@@ -88,6 +88,7 @@ export default defineConfig({
       testMatch: specs(
         "dos-empresas-humo",
         "zona-especial-dos-empresas",
+        "zonas-crear-sin-costos",
         "wallet-iva-aparte-sl39",
         "marca",
         "auth",
@@ -97,6 +98,10 @@ export default defineConfig({
         "cobro-plataforma-sl40",
         "pago-plataforma-sl45",
         "integraciones-por-empresa",
+        // SLT-58 R28: el superadmin crea y asigna un plan custom; «Mi plan» por empresa y por rol.
+        "planes-superadmin",
+        // SLT-66 R26: costo por orden del plan; toca el global del cobro y lo devuelve al terminar.
+        "planes-costeo",
       ),
     },
     {
@@ -126,6 +131,7 @@ export default defineConfig({
         "wallet",
         "mi-wallet",
         "wallet-mensajeros",
+        "ajuste-pago-mensajero-cierre",
         // SLT-68 · R22: el incentivo manual a un mensajero.
         "incentivo-mensajero-slt68",
       ),

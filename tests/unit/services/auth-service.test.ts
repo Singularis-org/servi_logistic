@@ -11,7 +11,8 @@ import type { IEmailProvider } from "@/lib/interfaces/external/IEmailProvider";
 
 const REQUEST_CONTEXT = { ipAddress: "1.2.3.4", userAgent: "vitest-agent" };
 
-// SL-18 T1.3: la cuenta que devuelve `findCuentasPorEmailConHash` y, en `findById`, su forma publica.
+// SL-18 T1.3: la cuenta que devuelve `findCuentasPorEmailConHash` y, en `findCuentaPorId` (SLT-32),
+// la del desafio OTP.
 // Aqui el email tiene UNA cuenta (el login de siempre); con varias empresas, ver
 // `auth-service-empresas.test.ts` (SL-18 T2.2).
 type UsuarioDeTest = UsuarioPublico & CuentaConHash;
@@ -41,6 +42,7 @@ function buildMocks() {
   const userRepo: IUserRepository = {
     findCuentasPorEmailConHash: vi.fn(),
     findById: vi.fn(),
+    findCuentaPorId: vi.fn(), // SLT-32: la cuenta del desafio OTP, con estado, empresa y rol
     findCuentasPorEmail: vi.fn(),
     create: vi.fn(),
     listMensajeros: vi.fn().mockResolvedValue([]),
@@ -263,6 +265,107 @@ describe("AuthService.login", () => {
       expect.objectContaining({ usuarioId: usuario.id, exitoso: true }),
     );
   });
+
+  describe("SLT-32: usuario sin empresa", () => {
+    it.each([
+      ["null", null],
+      ["vacia", ""],
+    ])(
+      "rechaza con account_unavailable y registra intento fallido sin_empresa cuando la empresa es %s",
+      async (_caso, organizacionId) => {
+        const mocks = buildMocks();
+        const usuario = await buildUsuario({ organizacionId });
+        (mocks.userRepo.findCuentasPorEmailConHash as ReturnType<typeof vi.fn>).mockResolvedValue([usuario]);
+
+        const result = await mocks.authService.login({
+          email: usuario.email,
+          password: "clave-correcta",
+          ...REQUEST_CONTEXT,
+        });
+
+        expect(result).toEqual({ status: "account_unavailable" });
+        expect(mocks.loginAttemptRepo.registrar).toHaveBeenCalledTimes(1);
+        expect(mocks.loginAttemptRepo.registrar).toHaveBeenCalledWith(
+          expect.objectContaining({
+            usuarioId: usuario.id,
+            exitoso: false,
+            riskReason: "sin_empresa",
+          }),
+        );
+        expect(mocks.sessionRepo.create).not.toHaveBeenCalled();
+        expect(mocks.trustedDeviceRepo.upsert).not.toHaveBeenCalled();
+        expect(mocks.otpRepo.create).not.toHaveBeenCalled();
+        expect(mocks.emailProvider.sendOtpCode).not.toHaveBeenCalled();
+        expect(mocks.riskEngine.evaluate).not.toHaveBeenCalled();
+      },
+    );
+
+    it("no emite OTP a un usuario sin empresa aunque el riesgo sea alto", async () => {
+      const mocks = buildMocks();
+      const usuario = await buildUsuario({ organizacionId: null });
+      (mocks.userRepo.findCuentasPorEmailConHash as ReturnType<typeof vi.fn>).mockResolvedValue([usuario]);
+      (mocks.riskEngine.evaluate as ReturnType<typeof vi.fn>).mockResolvedValue({
+        score: 90,
+        reasons: ["dispositivo_no_reconocido"],
+        isHigh: true,
+      });
+
+      const result = await mocks.authService.login({
+        email: usuario.email,
+        password: "clave-correcta",
+        ...REQUEST_CONTEXT,
+      });
+
+      expect(result).toEqual({ status: "account_unavailable" });
+      expect(mocks.otpRepo.create).not.toHaveBeenCalled();
+      expect(mocks.emailProvider.sendOtpCode).not.toHaveBeenCalled();
+    });
+
+    it("SL-32: la cuenta de plataforma (superadmin, sin empresa) SI inicia sesion", async () => {
+      const mocks = buildMocks();
+      const usuario = await buildUsuario({
+        organizacionId: null,
+        rol: "superadmin",
+        empresaNombre: null,
+      });
+      (mocks.userRepo.findCuentasPorEmailConHash as ReturnType<typeof vi.fn>).mockResolvedValue([usuario]);
+
+      const result = await mocks.authService.login({
+        email: usuario.email,
+        password: "clave-correcta",
+        ...REQUEST_CONTEXT,
+      });
+
+      expect(result).toEqual({ status: "ok", sessionId: "sess-1", expiresAt: expect.any(Date) });
+      expect(mocks.sessionRepo.create).toHaveBeenCalledWith({ userId: usuario.id, ttlHours: 24 });
+      expect(mocks.loginAttemptRepo.registrar).not.toHaveBeenCalledWith(
+        expect.objectContaining({ riskReason: "sin_empresa" }),
+      );
+    });
+
+    it("con empresa concede la sesion igual que antes y no registra sin_empresa", async () => {
+      const mocks = buildMocks();
+      const usuario = await buildUsuario({ organizacionId: "org-1" });
+      (mocks.userRepo.findCuentasPorEmailConHash as ReturnType<typeof vi.fn>).mockResolvedValue([usuario]);
+
+      const result = await mocks.authService.login({
+        email: usuario.email,
+        password: "clave-correcta",
+        ...REQUEST_CONTEXT,
+      });
+
+      expect(result).toEqual({
+        status: "ok",
+        sessionId: "sess-1",
+        expiresAt: expect.any(Date),
+      });
+      expect(mocks.sessionRepo.create).toHaveBeenCalledWith({ userId: usuario.id, ttlHours: 24 });
+      expect(mocks.trustedDeviceRepo.upsert).toHaveBeenCalled();
+      expect(mocks.loginAttemptRepo.registrar).not.toHaveBeenCalledWith(
+        expect.objectContaining({ riskReason: "sin_empresa" }),
+      );
+    });
+  });
 });
 
 describe("AuthService.verifyChallenge", () => {
@@ -285,7 +388,7 @@ describe("AuthService.verifyChallenge", () => {
       consumedAt: null,
       createdAt: new Date(),
     });
-    (mocks.userRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(await buildUsuario());
+    (mocks.userRepo.findCuentaPorId as ReturnType<typeof vi.fn>).mockResolvedValue(await buildUsuario());
 
     const result = await mocks.authService.verifyChallenge({
       challengeId: "challenge-1",
@@ -339,6 +442,132 @@ describe("AuthService.verifyChallenge", () => {
 
     expect(result).toEqual({ status: "invalid_or_expired" });
     expect(mocks.sessionRepo.create).not.toHaveBeenCalled();
+  });
+
+  it("SLT-32: OTP valido de un usuario sin empresa no concede sesion ni confia el dispositivo", async () => {
+    const mocks = buildMocks();
+    const code = "654321";
+    const bcrypt = await import("bcryptjs");
+    const codeHash = await bcrypt.default.hash(code, 10);
+    (mocks.otpRepo.findActiveById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "challenge-1",
+      usuarioId: "usr-1",
+      codeHash,
+      deviceHash: "hash-device",
+      ipAddress: "1.2.3.4",
+      expiresAt: new Date(Date.now() + 600_000),
+      consumedAt: null,
+      createdAt: new Date(),
+    });
+    (mocks.userRepo.findCuentaPorId as ReturnType<typeof vi.fn>).mockResolvedValue(
+      await buildUsuario({ organizacionId: null }),
+    );
+
+    const result = await mocks.authService.verifyChallenge({
+      challengeId: "challenge-1",
+      code,
+      ...REQUEST_CONTEXT,
+    });
+
+    expect(result).toEqual({ status: "invalid_or_expired" });
+    expect(mocks.sessionRepo.create).not.toHaveBeenCalled();
+    expect(mocks.trustedDeviceRepo.upsert).not.toHaveBeenCalled();
+    expect(mocks.loginAttemptRepo.registrar).toHaveBeenCalledWith(
+      expect.objectContaining({ usuarioId: "usr-1", exitoso: false, riskReason: "sin_empresa" }),
+    );
+    expect(mocks.loginAttemptRepo.registrar).not.toHaveBeenCalledWith(
+      expect.objectContaining({ exitoso: true }),
+    );
+  });
+
+  it("SLT-32: OTP valido de una cuenta que dejo de estar activa registra estado_no_activo", async () => {
+    const mocks = buildMocks();
+    const code = "654321";
+    const bcrypt = await import("bcryptjs");
+    const codeHash = await bcrypt.default.hash(code, 10);
+    (mocks.otpRepo.findActiveById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "challenge-1",
+      usuarioId: "usr-1",
+      codeHash,
+      deviceHash: "hash-device",
+      ipAddress: "1.2.3.4",
+      expiresAt: new Date(Date.now() + 600_000),
+      consumedAt: null,
+      createdAt: new Date(),
+    });
+    (mocks.userRepo.findCuentaPorId as ReturnType<typeof vi.fn>).mockResolvedValue(
+      await buildUsuario({ estado: "bloqueado" }),
+    );
+
+    const result = await mocks.authService.verifyChallenge({ challengeId: "challenge-1", code, ...REQUEST_CONTEXT });
+
+    expect(result).toEqual({ status: "invalid_or_expired" });
+    expect(mocks.sessionRepo.create).not.toHaveBeenCalled();
+    expect(mocks.loginAttemptRepo.registrar).toHaveBeenCalledWith(
+      expect.objectContaining({ usuarioId: "usr-1", exitoso: false, riskReason: "estado_no_activo:bloqueado" }),
+    );
+  });
+
+  it("SL-32: OTP valido de la cuenta de plataforma (superadmin, sin empresa) concede sesion", async () => {
+    const mocks = buildMocks();
+    const code = "654321";
+    const bcrypt = await import("bcryptjs");
+    const codeHash = await bcrypt.default.hash(code, 10);
+    (mocks.otpRepo.findActiveById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "challenge-1",
+      usuarioId: "usr-1",
+      codeHash,
+      deviceHash: "hash-device",
+      ipAddress: "1.2.3.4",
+      expiresAt: new Date(Date.now() + 600_000),
+      consumedAt: null,
+      createdAt: new Date(),
+    });
+    (mocks.userRepo.findCuentaPorId as ReturnType<typeof vi.fn>).mockResolvedValue(
+      await buildUsuario({ organizacionId: null, rol: "superadmin", empresaNombre: null }),
+    );
+
+    const result = await mocks.authService.verifyChallenge({ challengeId: "challenge-1", code, ...REQUEST_CONTEXT });
+
+    expect(result.status).toBe("ok");
+    expect(mocks.sessionRepo.create).toHaveBeenCalledWith({ userId: "usr-1", ttlHours: 24 });
+    expect(mocks.loginAttemptRepo.registrar).toHaveBeenCalledWith(
+      expect.objectContaining({ usuarioId: "usr-1", exitoso: true, riskReason: "otp_verificado" }),
+    );
+  });
+
+  it("SLT-32: OTP valido cuyo usuario ya no existe no concede sesion y registra usuario_no_encontrado", async () => {
+    const mocks = buildMocks();
+    const code = "654321";
+    const bcrypt = await import("bcryptjs");
+    const codeHash = await bcrypt.default.hash(code, 10);
+    (mocks.otpRepo.findActiveById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "challenge-1",
+      usuarioId: "usr-borrado",
+      codeHash,
+      deviceHash: "hash-device",
+      ipAddress: "1.2.3.4",
+      expiresAt: new Date(Date.now() + 600_000),
+      consumedAt: null,
+      createdAt: new Date(),
+    });
+    (mocks.userRepo.findCuentaPorId as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+    const result = await mocks.authService.verifyChallenge({
+      challengeId: "challenge-1",
+      code,
+      ...REQUEST_CONTEXT,
+    });
+
+    expect(result).toEqual({ status: "invalid_or_expired" });
+    expect(mocks.sessionRepo.create).not.toHaveBeenCalled();
+    expect(mocks.trustedDeviceRepo.upsert).not.toHaveBeenCalled();
+    expect(mocks.loginAttemptRepo.registrar).toHaveBeenCalledWith(
+      expect.objectContaining({ usuarioId: "usr-borrado", exitoso: false, riskReason: "usuario_no_encontrado" }),
+    );
+    expect(mocks.loginAttemptRepo.registrar).not.toHaveBeenCalledWith(
+      expect.objectContaining({ exitoso: true }),
+    );
   });
 });
 

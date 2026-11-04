@@ -18,7 +18,7 @@ import type { IJobRepository, JobTxClient } from "@/lib/interfaces/repositories/
 import { JobRepository } from "@/lib/repositories/JobRepository";
 import {
   encolarOptimizacionDebounce,
-  encolarOptimizacionInmediata,
+  primeraRutaPendiente,
 } from "@/lib/services/jobs/optimizacion-ruta-encolado";
 import { loadRouteOptimizationConfig } from "@/lib/config/route-optimization";
 // FICHA 454 (T1.4): los predicados UNICOS de «gestion pendiente» y «ayuda abierta», el encolado del
@@ -33,8 +33,10 @@ import { encolarWebhookEvento } from "@/lib/services/jobs/webhook-evento-encolad
 import { emitirOrdenRechazadaEnTransaccion } from "@/lib/notificaciones/emitir";
 import type { NotificacionTxClient } from "@/lib/interfaces/repositories/INotificacionRepository";
 // Feature 261 (B5): el dia de reparto entra al SQL crudo como texto `YYYY-MM-DD` con `::date`.
-// NO se importa `startOfDayCR`: este repositorio NO resuelve ningun dia, lo RECIBE resuelto.
+// NO se importa `startOfDayCR`: este repositorio NO resuelve ningun dia de reparto, lo RECIBE resuelto.
+// SLT-59 (R59) / SLT-79: `fechaCalendarioCR` solo fija el dia contra el que se mira si la primera ruta esta pendiente.
 import { fechaRepartoComoTexto } from "@/lib/utils/dia-reparto";
+import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 
 // Feature 61: estado terminal de entrega para el KPI "entregadas" del portal.
 const ESTATUS_ENTREGADA = "entregado";
@@ -734,24 +736,12 @@ export class GestionOrdenRepository implements IGestionOrdenRepository {
           origenTipo: "recoleccion", // R23
         })),
       );
-      // Feature 92 (R16): la recogida cambia el conjunto de paradas del mensajero -> se
-      // encola una reoptimizacion DIFERIDA, DENTRO de esta misma transaccion (outbox): si
-      // el UPDATE revierte, el job se va con el. El debounce colapsa las 8 recogidas de
-      // "recoger todas" en UN job (R17), no en ocho llamadas facturadas.
-      //
-      // Solo si alguna orden gano la guarda: `rows.length === 0` significa que nada
-      // cambio, asi que no hay nada que reoptimizar.
-      if (rows.length > 0) {
-        await encolarOptimizacionDebounce(
-          this.jobRepo,
-          tx as unknown as JobTxClient,
-          mensajeroId,
-          {
-            ahora: this.now(),
-            debounceS: loadRouteOptimizationConfig().RUTA_DEBOUNCE_S,
-          },
-        );
-      }
+      // Feature 92 (R16) -> SLT-59 (R57, R58, R76, R77): recoger encolaba el job de la primera
+      // ruta del dia. ⏳ 2026-11-03 (SLT-79, decision humana «todo manual»): ya NO encola nada. La
+      // primera ruta la calcula solo el boton «Sincronizar ruta», y su espera de
+      // `RUTA_PRIMERA_DEBOUNCE_MIN` se mide desde la ultima fila `recoleccion` de este historial
+      // (`OrdenRepository.ultimaRecogidaDelDia`). Con la primera ruta ya calculada, recoger tampoco
+      // encolaba: las paradas nuevas entran por el boton.
       return rows.length;
     });
   }
@@ -777,6 +767,8 @@ export class GestionOrdenRepository implements IGestionOrdenRepository {
    *   6. Webhook `orden.gestion_registrada` (outbox, R33) y, si es `rechazada`, el aviso N1 AHORA,
    *      una sola vez (R35, design DD): la aprobacion ya no lo emite.
    *   7. Reoptimizacion inmediata de la ruta (R5, como hoy): la orden deja de ser parada (R6).
+   *      ⏳ 2026-10-29 (SLT-59, R21-R23): ya no es inmediata; va con debounce y solo si la orden tiene
+   *      coordenadas. Ver el paso (7) en el cuerpo.
    *
    * NO hay `orden.update` ni `appendCambioEstado`: `orden_historial_estado` no gana ninguna fila (R1).
    */
@@ -791,8 +783,20 @@ export class GestionOrdenRepository implements IGestionOrdenRepository {
       // `gestion_orden` no competiria con nadie (design §5).
       await tx.$queryRaw`SELECT "id" FROM "orden" WHERE "id" = ${ordenId} FOR UPDATE`;
       // (2) Re-lectura en una sentencia POSTERIOR al candado.
-      const gestionable = await tx.$queryRaw<{ id: string }[]>`
-        SELECT "o"."id"
+      // SLT-59 (R21, R22): las coordenadas viajan en ESTA misma sentencia, ya bajo el candado, para
+      // decidir el paso (7) sin una consulta mas.
+      // SLT-59 (R59, design §12.3): y en la MISMA sentencia, `calculada_at` de su ruta, para saber si
+      // la primera ruta del dia sigue pendiente. Cero viajes nuevos (R67).
+      // Review m7: la ruta se busca en la empresa de la orden que se gestiona, no solo por
+      // `mensajero_id`: segunda barrera que no depende de que la RLS tenga el contexto puesto.
+      const gestionable = await tx.$queryRaw<
+        { id: string; tiene_coordenadas: boolean; calculada_at: Date | null }[]
+      >`
+        SELECT "o"."id",
+               ("o"."latitud" IS NOT NULL AND "o"."longitud" IS NOT NULL) AS "tiene_coordenadas",
+               (SELECT "r"."calculada_at" FROM "ruta_optimizada" "r"
+                 WHERE "r"."mensajero_id" = ${mensajeroId}
+                   AND "r"."organizacion_id" = "o"."organizacion_id") AS "calculada_at"
           FROM "orden" "o"
           JOIN "order_status" "s" ON "s"."id" = "o"."estatus_id"
          WHERE "o"."id" = ${ordenId}
@@ -840,13 +844,26 @@ export class GestionOrdenRepository implements IGestionOrdenRepository {
           numRemision: orden.numRemision,
         });
       }
-      // (7) Namespace `:inmediato:` disjunto del `:debounce:` (ver `encolarOptimizacionInmediata`).
-      await encolarOptimizacionInmediata(
-        this.jobRepo,
-        tx as unknown as JobTxClient,
-        mensajeroId,
-        gestionId,
-      );
+      // (7) ⏳ 2026-10-29 (SLT-59, D2/D12; R21-R23): antes era una reoptimizacion INMEDIATA en su
+      // propio namespace. Ahora va con debounce, en la MISMA clave que la recogida y el traspaso: si
+      // ya hay un job en la ventana, esta gestion se colapsa en el (ese job lee el conjunto al
+      // correr). Una orden sin coordenadas nunca fue parada de la ruta: su gestion no la cambia.
+      // La entrega en orden ya se refleja en la propia peticion (R27, Server Action `gestionar`).
+      // SLT-59 (R59, acota R22): con la primera ruta del dia pendiente se encolaba AUNQUE la orden no
+      // tuviera coordenadas: «la primera gestion del dia» era uno de los disparos de esa primera ruta.
+      // ⏳ 2026-11-03 (SLT-79): al reves. Con la primera ruta pendiente NO se encola nada (la calcula
+      // solo el boton); con ella ya calculada, solo si la orden era parada (tiene coordenadas).
+      const ahoraGestion = this.now();
+      if (
+        gestionable[0].tiene_coordenadas &&
+        !primeraRutaPendiente(gestionable[0].calculada_at ?? null, fechaCalendarioCR(ahoraGestion))
+      ) {
+        await encolarOptimizacionDebounce(this.jobRepo, tx as unknown as JobTxClient, mensajeroId, {
+          ahora: ahoraGestion,
+          debounceS: loadRouteOptimizationConfig().RUTA_DEBOUNCE_S,
+          origen: "gestion", // SLT-59 (D28, §13.1)
+        });
+      }
       return { gestionId, ordenEventoId: evento.id };
     });
   }

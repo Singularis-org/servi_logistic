@@ -100,7 +100,7 @@ function tablasConDefaultEnUpdatedAt(): string[] {
 }
 
 describe("updated_at · el modelo declara el DEFAULT que el SQL creo", () => {
-  it("el censo encuentra las QUINCE tablas cuyo CREATE TABLE le puso default a updated_at", () => {
+  it("el censo encuentra las DIECISIETE tablas cuyo CREATE TABLE le puso default a updated_at", () => {
     // Contrapeso: si el parser se rompiera y devolviera [], el caso de abajo pasaria por vacio
     // en vez de por limpio. Esta lista es la que devuelve la BASE viva consultando
     // `information_schema.columns` (evidencia en progress/chore_saneamiento-deudas.md).
@@ -131,6 +131,12 @@ describe("updated_at · el modelo declara el DEFAULT que el SQL creo", () => {
       // abajo sigue en verde y `migrate dev` no propondra un `DROP DEFAULT` sobre ella.
       "gasto_fijo_cobro",
       "gasto_fijo_plantilla",
+      // SLT-52 (2026-11-03) - el grupo de distritos de las tarifas flexibles. Su `CREATE TABLE`
+      // (`20261103120100_tarifas_flexibles_tablas/migration.sql`) escribe
+      // `"updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP`; el modelo `GrupoDistritos`
+      // lo declara con `@default(now()) @updatedAt`.
+      // (`grupo_distritos_distrito` NO entra: no tiene `updated_at` — es la tabla puente.)
+      "grupo_distritos",
       // SL-36 (2026-10-25) - la integracion de un servicio por empresa. Su `CREATE TABLE`
       // (`20261025120000_integracion/migration.sql`) escribe
       // `"updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP`; el modelo `Integracion` lo
@@ -140,6 +146,11 @@ describe("updated_at · el modelo declara el DEFAULT que el SQL creo", () => {
       "jobs",
       // SL-17 M1 (`20261022130000_organizacion_y_rol_app`): la empresa nace con `updated_at DEFAULT CURRENT_TIMESTAMP`.
       "organizacion",
+      // SL-24 (2026-10-27) - el catálogo de planes. Su `CREATE TABLE`
+      // (`20261028130000_plan/migration.sql`) escribe
+      // `"updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP`; el modelo `Plan` lo declara
+      // con `@default(now()) @updatedAt`.
+      "plan",
       "premio_ranking",
       // FICHA 410 (2026-09-10) - las suscripciones de push web. Su `CREATE TABLE`
       // (`20260912120000_push_suscripcion/migration.sql`) escribe
@@ -157,6 +168,11 @@ describe("updated_at · el modelo declara el DEFAULT que el SQL creo", () => {
       // propondra un `DROP DEFAULT` sobre ella.
       "rechazo_tienda_cobro",
       "ruta_optimizada",
+      // SLT-52 (2026-11-03) - el valor de una tarifa flexible. Su `CREATE TABLE`
+      // (`20261103120100_tarifas_flexibles_tablas/migration.sql`) escribe
+      // `"updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP`; el modelo `TarifaValor` lo
+      // declara con `@default(now()) @updatedAt`.
+      "tarifa_valor",
       // FICHA 422 (2026-09-11) - la preferencia de avisos, que es de la PERSONA. Su
       // `CREATE TABLE` (`20260915120000_usuario_preferencia/migration.sql`) escribe
       // `"updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP` -- copiado del molde de la

@@ -169,6 +169,10 @@ model Usuario {
   postulacionesRecursoAtendidas       PostulacionRecurso[]               @relation("PostulacionRecursoAtendidaPor") // feature 253: postulaciones de vehiculo/bodega que ESTE admin marco atendidas; la FK es RESTRICT (quien atendio es evidencia)
   diaRepartoCambiosRealizados         OrdenDiaRepartoCambio[]            @relation("OrdenDiaRepartoCambioActor") // feature 262/R20: correcciones del dia de reparto que ESTE usuario hizo; la FK es RESTRICT (quien corrigio es evidencia y no se pierde al dar de baja al usuario)
   fechaReprogramacionCambiosHechos    GestionFechaReprogramacionCambio[] @relation("GestionFechaReprogramacionCambioActor") // ficha 371: correcciones de la fecha de una reprogramacion que ESTE usuario hizo; FK RESTRICT por el mismo motivo que la linea de arriba
+  ajustesPagoMensajeroHechos          GestionPagoMensajeroAjuste[]       @relation("GestionPagoMensajeroAjusteActor") // SLT-56: ajustes del pago al mensajero que ESTE usuario hizo; FK RESTRICT (quien ajusto es evidencia)
+  tarifaValoresComoTienda             TarifaValor[]                      @relation("TarifaValorTienda") // SLT-52: precios propios de ESTA tienda en el modelo nuevo
+  tarifaValoresComoMensajero          TarifaValor[]                      @relation("TarifaValorMensajero") // SLT-52/SLT-55: valor propio de ESTE mensajero
+  tarifaValoresActualizados           TarifaValor[]                      @relation("TarifaValorActualizadoPor") // SLT-52: valores que ESTE usuario fijo por ultima vez (SET NULL)
   traspasosCedidos                    OrdenTraspasoMensajero[]           @relation("OrdenTraspasoAnterior") // ficha 427/R25: ordenes que dejaron de ser de ESTE mensajero por un traspaso. FK RESTRICT: quien llevaba un paquete es evidencia y no se pierde al dar de baja al usuario
   traspasosRecibidos                  OrdenTraspasoMensajero[]           @relation("OrdenTraspasoNuevo") // ficha 427/R25: ordenes que ESTE mensajero recibio por un traspaso. FK RESTRICT por el mismo motivo
   traspasosEjecutados                 OrdenTraspasoMensajero[]           @relation("OrdenTraspasoActor") // ficha 427/R25/R26: traspasos que ESTE usuario ejecuto. `actor_rol` va CONGELADO en la fila, asi que esta relacion NO es la que pinta la linea de tiempo
@@ -614,6 +618,9 @@ model Zona {
   cierreDetalles       CierreDetail[] // feature 69/R6: snapshots que congelaron esta zona
   notificaciones       Notificacion[] // feature 146/F1.4-1: notificaciones ACOTADAS a esta zona (alcance del adminSatelite)
   analyticsDaily       AnalyticsDaily[] // feature 123/R31: filas del rollup diario cuya zona (DE LA ORDEN) es esta
+  gruposDistritos         GrupoDistritos[] // SLT-52 R10: grupos de distritos de esta zona
+  grupoDistritosDistritos GrupoDistritosDistrito[] // SLT-52: distritos de los grupos de esta zona (FK simple, la del trigger de misma empresa)
+  tarifaValores           TarifaValor[] // SLT-52: valores del modelo nuevo acotados a esta zona
 
   organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
@@ -744,6 +751,9 @@ model ZonaDistrito {
 
   zona     Zona     @relation(fields: [zonaId], references: [id], onDelete: Cascade)
   distrito Distrito @relation(fields: [distritoId], references: [id], onDelete: Cascade)
+  // SLT-52 R12: el grupo de distritos en el que esta este distrito de la zona. FK compuesta
+  // `(zona_id, distrito_id)` CASCADE: borrar esta fila saca al distrito de su grupo.
+  grupos   GrupoDistritosDistrito[]
 
   organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
@@ -1064,6 +1074,10 @@ model Orden {
   // `db/migrations/20261026090200_indices_ordenes_gestiones_historial/migration.sql`.
   @@index([organizacionId, prioridad(sort: Desc), createdAt(sort: Desc), id])
   @@index([organizacionId])
+  // SL-24 (design §2.6): el conteo del tope de órdenes por ciclo (las vivas de una empresa desde el
+  // inicio del ciclo). ⚠️ EN LA BASE ES PARCIAL —`WHERE "deleted_at" IS NULL`— y eso no se puede
+  // escribir aqui: vive en `db/migrations/20261028130000_plan/migration.sql`.
+  @@index([organizacionId, createdAt], map: "orden_organizacion_id_created_at_vivas_idx")
   @@map("orden")
 }
 
@@ -1405,6 +1419,10 @@ model GestionOrden {
   // Ficha 371: rastro append-only de las correcciones de `fecha_reprogramacion` de ESTA gestion.
   // La FK es RESTRICT: el rastro sobrevive a cualquier intento de borrar la gestion corregida.
   fechaReprogramacionCambios GestionFechaReprogramacionCambio[] @relation("GestionFechaReprogramacionCambioGestion")
+  // SLT-56: ajustes del pago al mensajero de ESTA gestion. Existir al menos uno = «Ajustado».
+  ajustesPagoMensajero       GestionPagoMensajeroAjuste[]       @relation("GestionPagoMensajeroAjusteGestion")
+  // SLT-52 R40: el pago de ESTA gestion al mensajero y a la satelite, congelado (modelo nuevo).
+  pagosCongelados            GestionPagoCongelado[]
   // Ficha 454 (design §1.1/§3): hechos de orden sobre ESTA gestion. El evento `gestion_registrada`
   // es el que la hace «gestion de calle con el modelo nuevo» (pendiente hasta aprobar su cierre).
   eventos                    OrdenEvento[]                      @relation("OrdenEventoGestion")
@@ -1626,6 +1644,7 @@ model CierreDia {
   sinGestion         CierreSinGestion[] // feature 264/R1: las ordenes que el corte barrio a `sin_gestionar` al crear este cierre
   rechazosTienda     CierreRechazoTienda[] // ficha 425/R1-R2: los rechazos de TIENDA que este cierre puso delante de quien lo aprueba. Vinculo de REVISION, no de dinero: esas gestiones conservan `cierre_id` NULL
   liquidacionPagos   LiquidacionPago[] // feature 172/R21/R22: pagos al mensajero registrados CONTRA este cierre
+  ajustesPagoMensajero GestionPagoMensajeroAjuste[] @relation("GestionPagoMensajeroAjusteCierre") // SLT-56: ajustes de pago hechos al revisar ESTE cierre
 
   organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
@@ -1842,6 +1861,224 @@ model TarifaZonaMensajero {
   @@map("tarifa_zona_mensajero")
 }
 
+// ─── SLT-52 — modelo nuevo de tarifas (design §2) ──────────────────────────────────────────────
+// Convive con `Tarifa` + `TarifaZonaMensajero` hasta SLT-57: una empresa sin ninguna fila en
+// `tarifa_valor` sigue en el modelo viejo (R36/R37). Los CHECK, el unico NULLS NOT DISTINCT y la
+// RLS viven en `20261103120100_tarifas_flexibles_tablas`; Prisma no los expresa.
+
+/// SLT-52 R1: quien paga o cobra un concepto. `tienda` solo aparece en los cobros.
+enum TarifaActor {
+  tienda
+  mensajero
+  satelite
+
+  @@map("tarifa_actor")
+}
+
+/// SLT-52 R1: la lista CERRADA de conceptos, fijada por la app. `lib/tarifas/catalogo.ts` la repite
+/// con actor, resultado y base del porcentaje. `*_rechazo` = `devolucion_a_origen_por_rechazo`.
+enum TarifaConcepto {
+  tienda_flete_entregado
+  tienda_flete_reprogramado
+  tienda_flete_novedad
+  tienda_flete_rechazo
+  tienda_flete_incidente
+  tienda_fulfillment
+  tienda_comision_cod
+  mensajero_entregado
+  mensajero_reprogramado
+  mensajero_novedad
+  mensajero_rechazo
+  mensajero_incidente
+  satelite_entregado
+  satelite_reprogramado
+  satelite_novedad
+  satelite_rechazo
+  satelite_incidente
+
+  @@map("tarifa_concepto")
+}
+
+/// SLT-52 R3: la empresa elige, concepto por concepto, monto fijo o porcentaje.
+enum TarifaModo {
+  monto
+  porcentaje
+
+  @@map("tarifa_modo")
+}
+
+/// SLT-52: el nivel del que salio un valor resuelto. Se congela en el cierre para poder explicar
+/// despues por que se cobro o pago ese importe.
+enum TarifaNivel {
+  tienda_grupo
+  tienda_zona
+  tienda_general
+  grupo
+  zona
+  mensajero
+  grupo_vehiculo
+  zona_vehiculo
+
+  @@map("tarifa_nivel")
+}
+
+/// SLT-52 R42: con que modelo se congelo un `cierre_detail`.
+enum TarifaModelo {
+  viejo
+  nuevo
+
+  @@map("tarifa_modelo")
+}
+
+/// SLT-52 R10: un conjunto de distritos de UNA zona con valores propios. La zona especial de hoy
+/// sera un grupo mas cuando SLT-53 migre los datos.
+model GrupoDistritos {
+  id        String   @id @default(uuid())
+  zonaId    String   @map("zona_id")
+  /// CHECK `grupo_distritos_nombre_no_vacio` (`~ '[^[:space:]]'`) solo en la migracion.
+  nombre    String   @db.VarChar(60)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  zona      Zona                     @relation(fields: [zonaId], references: [id], onDelete: Cascade)
+  distritos GrupoDistritosDistrito[]
+  valores   TarifaValor[]
+
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
+  @@unique([organizacionId, zonaId, nombre]) // R10
+  // Destino de las FK compuestas `(grupo_id, zona_id)`: lo que impide en la BASE un grupo de otra
+  // zona. Anclado (lleva el PK): en `UNICOS_SIN_EMPRESA`.
+  @@unique([id, zonaId])
+  @@index([organizacionId])
+  @@index([zonaId])
+  @@map("grupo_distritos")
+}
+
+/// SLT-52 R11/R12: los distritos de un grupo. `zona_id` es la columna que comparten las dos FK
+/// compuestas: el grupo y el distrito tienen que ser de la MISMA zona, y el distrito que sale de la
+/// zona (`zona_distrito`) sale del grupo por cascada.
+model GrupoDistritosDistrito {
+  id         String   @id @default(uuid())
+  grupoId    String   @map("grupo_id")
+  zonaId     String   @map("zona_id")
+  distritoId String   @map("distrito_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  // La relacion simple a `Zona` es la que lleva el trigger de misma empresa; las dos compuestas
+  // quedan cubiertas a traves de ella (`lib/db/fk-de-negocio.ts`, regla de la columna compartida).
+  zona         Zona           @relation(fields: [zonaId], references: [id], onDelete: Cascade)
+  grupo        GrupoDistritos @relation(fields: [grupoId, zonaId], references: [id, zonaId], onDelete: Cascade)
+  zonaDistrito ZonaDistrito   @relation(fields: [zonaId, distritoId], references: [zonaId, distritoId], onDelete: Cascade)
+
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
+  @@unique([organizacionId, zonaId, distritoId]) // R11: un distrito, a lo sumo un grupo por zona
+  @@index([grupoId])
+  @@index([organizacionId])
+  @@index([zonaId, distritoId])
+  @@map("grupo_distritos_distrito")
+}
+
+/// SLT-52 R3-R9: el valor de un concepto en un nivel. El nivel lo dicen las columnas que van NULL;
+/// los CHECK `tarifa_valor_niveles_*` impiden las combinaciones que no son de su actor (R7) y
+/// `tarifa_valor_iva_solo_tienda` que un pago lleve IVA (R45, P4). Borrado fisico (R9): lo congelado
+/// copia los importes.
+model TarifaValor {
+  id             String         @id @default(uuid())
+  concepto       TarifaConcepto
+  modo           TarifaModo
+  valor          Decimal        @db.Decimal(12, 2) // monto o porcentaje segun `modo`
+  ivaPct         Decimal?       @map("iva_pct") @db.Decimal(5, 2) // NOT NULL en cobros a la tienda, NULL en pagos (CHECK)
+  zonaId         String?        @map("zona_id")
+  grupoId        String?        @map("grupo_id")
+  tiendaId       String?        @map("tienda_id")
+  mensajeroId    String?        @map("mensajero_id") // lo escribe SLT-55
+  vehiculoId     String?        @map("vehiculo_id")
+  actualizadoPor String?        @map("actualizado_por")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @default(now()) @updatedAt @map("updated_at")
+
+  zona             Zona?           @relation(fields: [zonaId], references: [id], onDelete: Cascade)
+  grupo            GrupoDistritos? @relation(fields: [grupoId, zonaId], references: [id, zonaId], onDelete: Cascade)
+  tienda           Usuario?        @relation("TarifaValorTienda", fields: [tiendaId], references: [id], onDelete: Cascade)
+  mensajero        Usuario?        @relation("TarifaValorMensajero", fields: [mensajeroId], references: [id], onDelete: Cascade)
+  vehiculo         Vehiculo?       @relation(fields: [vehiculoId], references: [id], onDelete: Restrict)
+  actualizadoPorUsuario Usuario?   @relation("TarifaValorActualizadoPor", fields: [actualizadoPor], references: [id], onDelete: SetNull)
+
+  cierreDetailConceptos  CierreDetailConcepto[]
+  gestionPagosCongelados GestionPagoCongelado[]
+  rechazoTiendaCobros    RechazoTiendaCobro[]
+
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
+  // R8: NULLS NOT DISTINCT, creado a mano en la migracion (Prisma no lo expresa).
+  @@unique([organizacionId, concepto, zonaId, grupoId, tiendaId, mensajeroId, vehiculoId], map: "tarifa_valor_nivel_key")
+  @@index([organizacionId, zonaId])
+  @@index([organizacionId, tiendaId])
+  @@index([organizacionId, mensajeroId])
+  @@index([grupoId])
+  @@index([vehiculoId])
+  @@map("tarifa_valor")
+}
+
+/// SLT-52 R40/R43: el cobro a la tienda CONGELADO por orden del cierre, un concepto por fila. Sin
+/// fila = sin tarifa. Inmutable para `servi_app` (REVOKE UPDATE, DELETE).
+model CierreDetailConcepto {
+  id             String         @id @default(uuid())
+  cierreDetailId String         @map("cierre_detail_id")
+  concepto       TarifaConcepto // CHECK: solo `tienda_*`
+  modo           TarifaModo
+  valor          Decimal        @db.Decimal(12, 2)
+  ivaPct         Decimal        @map("iva_pct") @db.Decimal(5, 2)
+  nivel          TarifaNivel
+  tarifaValorId  String?        @map("tarifa_valor_id")
+  createdAt      DateTime       @default(now()) @map("created_at")
+
+  cierreDetail CierreDetail @relation(fields: [cierreDetailId], references: [id], onDelete: Restrict)
+  // SET NULL (precedente 337): la traza es deseable, nunca un bloqueo para borrar el valor.
+  tarifaValor  TarifaValor? @relation(fields: [tarifaValorId], references: [id], onDelete: SetNull)
+
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
+  @@unique([cierreDetailId, concepto]) // anclado a `cierre_detail`
+  @@index([organizacionId])
+  @@index([tarifaValorId])
+  @@map("cierre_detail_concepto")
+}
+
+/// SLT-52 R40/R34: el pago de UNA gestion al mensajero o a la satelite, congelado. SIN columna de
+/// IVA (P4): la tabla no puede representar un IVA de pago. La re-solicitud (477) y la correccion de
+/// un resultado (398) lo re-congelan, por eso no se revoca UPDATE/DELETE.
+model GestionPagoCongelado {
+  id             String         @id @default(uuid())
+  gestionOrdenId String         @map("gestion_orden_id")
+  actor          TarifaActor // CHECK: nunca `tienda`
+  concepto       TarifaConcepto // CHECK: del actor de la fila
+  modo           TarifaModo
+  valor          Decimal        @db.Decimal(12, 2)
+  nivel          TarifaNivel
+  tarifaValorId  String?        @map("tarifa_valor_id")
+  base           Decimal?       @db.Decimal(12, 2) // R28: flete sin IVA de esa gestion; solo en porcentaje (CHECK)
+  importe        Decimal        @db.Decimal(12, 2) // lo que se escribe en pago_mensajero / ingreso_bodega_rechazo
+  createdAt      DateTime       @default(now()) @map("created_at")
+
+  gestionOrden GestionOrden @relation(fields: [gestionOrdenId], references: [id], onDelete: Restrict)
+  tarifaValor  TarifaValor? @relation(fields: [tarifaValorId], references: [id], onDelete: SetNull)
+
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
+  @@unique([gestionOrdenId, actor]) // anclado a `gestion_orden`
+  @@index([organizacionId])
+  @@index([tarifaValorId])
+  @@map("gestion_pago_congelado")
+}
+
 // Catalogo de tipos de vehiculo (feature 50). Backed por enum Postgres
 // vehiculo_value. OJO: columna "name" (NO "value" como rol/order_status/tipo_id).
 // El id (uuid PK) queda listo para el FK usuario.vehiculo_id de la feature 21
@@ -1856,6 +2093,7 @@ model Vehiculo {
 
   usuarios             Usuario[] // feature 21: mensajeros que declararon este vehiculo
   tarifaZonaMensajeros TarifaZonaMensajero[] // feature 24
+  tarifaValores        TarifaValor[] // SLT-52: valores de pago acotados a este tipo de vehiculo (FK RESTRICT)
 
   @@map("vehiculos")
 }
@@ -2894,6 +3132,10 @@ model RechazoTiendaCobro {
   montoFlete  Decimal                  @map("monto_flete") @db.Decimal(12, 2) // ingreso_flete_devolucion; CHECK > 0
   montoIva    Decimal                  @map("monto_iva") @db.Decimal(12, 2) // ingreso_iva_flete_devolucion; CHECK >= 0 (el cero es un valor real)
   tarifaId    String?                  @map("tarifa_id") // QUE FILA de `tarifas` produjo los importes (auditoria); SET NULL
+  // SLT-52 R48-R50: QUE `tarifa_valor` (concepto `tienda_flete_rechazo`) produjo los importes en
+  // el modelo nuevo. Traza, nunca bloqueo: SET NULL. CHECK `rechazo_tienda_cobro_una_tarifa`: a lo
+  // sumo una de las dos referencias (R49).
+  tarifaValorId String?                @map("tarifa_valor_id")
   estado      RechazoTiendaCobroEstado @default(pendiente)
   generadoEl  DateTime                 @map("generado_el") @db.Date // dia CALENDARIO CR del rechazo
   decididoPor String?                  @map("decidido_por") // FK usuario: quien aprobo o rechazo
@@ -2906,6 +3148,7 @@ model RechazoTiendaCobro {
   tienda    Usuario                      @relation("RechazoTiendaCobroTienda", fields: [tiendaId], references: [id], onDelete: Restrict)
   decisor   Usuario?                     @relation("RechazoTiendaCobroDecisor", fields: [decididoPor], references: [id], onDelete: Restrict)
   tarifa    Tarifa?                      @relation(fields: [tarifaId], references: [id], onDelete: SetNull)
+  tarifaValor TarifaValor?               @relation(fields: [tarifaValorId], references: [id], onDelete: SetNull)
   // Ficha 458-B (D7, R63/R73): la anulacion del cobro. 0 o 1; su existencia ES «anulado». `estado`
   // sigue `aprobado` y esta fila no se actualiza (A14 descartada).
   anulacion RechazoTiendaCobroAnulacion?
@@ -2921,6 +3164,7 @@ model RechazoTiendaCobro {
   @@index([estado, generadoEl]) // la COLA de pendientes, del mas antiguo al mas reciente
   @@index([tiendaId]) // "que le he cobrado a esta tienda" + el RESTRICT al borrar usuarios
   @@index([decididoPor]) // el RESTRICT se ejerce al borrar usuarios (patron gasto_fijo_cobro)
+  @@index([tarifaValorId]) // el SET NULL se ejerce al borrar un valor (SLT-52 R50)
   @@index([organizacionId])
   @@map("rechazo_tienda_cobro")
 }
@@ -3098,6 +3342,10 @@ model CierreDetail {
   // normal. Marcar o desmarcar despues no la mueve: es el congelado. NOT NULL: «¿se cobro como
   // especial?» solo admite si o no.
   esZonaEspecial Boolean  @default(false) @map("es_zona_especial")
+  // SLT-52 R42: con que modelo se congelo esta fila. Las anteriores a SLT-52 quedan en `viejo` por
+  // el DEFAULT (solo catalogo, sin reescribir filas) y se leen exactamente como antes. Con `nuevo`,
+  // el cobro congelado esta en `conceptos` y las columnas `tarifa_*` van NULL.
+  tarifaModelo   TarifaModelo @default(viejo) @map("tarifa_modelo")
 
   // --- tarifa congelada (R8): todas o ninguna. NULL = la tienda no tenia tarifa vigente al
   // solicitar (gap R9, decision (c)): conceptos 0.00, NO bloquea el cierre. `tarifa_id` deja
@@ -3145,6 +3393,9 @@ model CierreDetail {
   // contrapartida auditable de la tarifa congelada: un SET NULL borraria esa traza en silencio
   // al borrar una tarifa. Sin esta linea, todo `migrate dev` proponia drop+add de la FK.
   tarifa Tarifa?   @relation(fields: [tarifaId], references: [id], onDelete: Restrict)
+  // SLT-52 R40: con `tarifa_modelo = nuevo`, el cobro congelado vive aqui y las columnas `tarifa_*`
+  // de arriba van NULL.
+  conceptos CierreDetailConcepto[]
 
   organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
@@ -3397,6 +3648,14 @@ enum JobTipo {
   whatsapp_envio_ejecucion // ficha 474 (design §4.2): ejecuta UNA ejecucion de origen `evento` ya creada; payload { ejecucionId }
   whatsapp_envio_reintento // ficha 474 (design §4.3): reintenta UNA entrega con fallo transitorio de Meta; payload { entregaId }, max_intentos 5
   whatsapp_envio_mantenimiento // ficha 474 (design §1.6): RECURRENTE diario 03:30 CR; purga PDFs caducados (R44) y re-siembra cadenas rotas (R25). Payload {}
+  /// SL-24 (design §16.3): aplica UN cambio programado de plan al llegar su fecha; payload { cambioId }. Núcleo
+  plan_aplicar_cambio
+  /// SL-24 (design §16.4): recordatorio por correo de UN cambio programado (7 días y 24 h antes). Núcleo
+  plan_recordatorio_cambio
+  /// SL-24 (design §16.4): aviso por correo a los maestros de las empresas del plan. Núcleo
+  plan_aviso_correo
+  /// SL-24 (design §16.3): RECURRENTE, sin empresa; barrido de seguridad de los cambios vencidos. Núcleo
+  plan_cambios_vencidos
 
   @@map("job_tipo")
 }
@@ -4236,6 +4495,55 @@ model GestionFechaReprogramacionCambio {
   @@map("gestion_fecha_reprogramacion_cambio")
 }
 
+/// SLT-56 (design §1.1, migracion `20261029120000_gestion_pago_mensajero_ajuste`) — RASTRO de cada
+/// AJUSTE del pago al mensajero de una gestion, hecho al revisar su cierre ABIERTO. Append-only:
+/// sin `updated_at` ni `deleted_at`, y `servi_app` no tiene UPDATE ni DELETE (R17). Un ajuste
+/// posterior sobre la misma gestion AÑADE otra fila; por eso no hay unico.
+///
+/// Tabla propia y no `historial_accion`: el motivo es obligatorio y aquella prohibe texto libre
+/// (362/R5). La marca «Ajustado» se deriva de que existan filas: no hay booleano en `gestion_orden`.
+model GestionPagoMensajeroAjuste {
+  id String @id @default(uuid())
+
+  gestionId String @map("gestion_id")
+
+  /// El cierre EN EL QUE se ajusto. Se guarda aparte porque una gestion puede salir de un cierre
+  /// rechazado (477) y la pregunta «que se ajusto en este cierre» no puede depender de donde este hoy.
+  cierreId String @map("cierre_id")
+
+  /// Importes escala 2, como `gestion_orden.pago_mensajero`, que es la columna que el ajuste pisa.
+  pagoAnterior Decimal @map("pago_anterior") @db.Decimal(12, 2)
+  pagoNuevo    Decimal @map("pago_nuevo") @db.Decimal(12, 2)
+
+  /// Siempre hay una persona: ningun cron ajusta pagos.
+  actorUsuarioId String @map("actor_usuario_id")
+
+  /// CONGELADO (precedente `historial_accion.actor_rol`): un admin que mañana cambia de rol no
+  /// re-etiqueta lo que hizo hoy.
+  actorRol RolValue @map("actor_rol")
+
+  /// Obligatorio (R7). Texto libre: por eso vive aqui y no en `historial_accion`.
+  motivo String
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  gestion GestionOrden @relation("GestionPagoMensajeroAjusteGestion", fields: [gestionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  cierre  CierreDia    @relation("GestionPagoMensajeroAjusteCierre", fields: [cierreId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  actor   Usuario      @relation("GestionPagoMensajeroAjusteActor", fields: [actorUsuarioId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  /// Los CHECK `..._pago_nuevo_no_negativo`, `..._pago_distinto` y `..._motivo_no_vacio` VIVEN SOLO
+  /// EN LA MIGRACION: Prisma no expresa CHECK (mismo caso que la 371).
+
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
+  @@index([gestionId, createdAt]) // la lectura del detalle: los ajustes de esta gestion, en orden; cubre la FK por prefijo
+  @@index([cierreId]) // la FK RESTRICT al cierre, indexada
+  @@index([actorUsuarioId]) // la FK RESTRICT del actor, indexada (patron 371)
+  @@index([organizacionId])
+  @@map("gestion_pago_mensajero_ajuste")
+}
+
 /// FICHA 427 (design §4.1, migracion `20260917120000_orden_traspaso_mensajero`) — RASTRO de los
 /// TRASPASOS de una orden entre mensajeros: quien la paso, desde quien, hacia quien, por que y
 /// cuando. Fila INMUTABLE, append-only: sin `updated_at`, sin `deleted_at`. Un traspaso posterior
@@ -4514,6 +4822,9 @@ enum HistorialAccionTipo {
   /// sitio donde sobrevive. La NOTA no entra (R5 de la 362: texto libre tecleado por una persona).
   cierre_bodega_conciliado
   cierre_bodega_conciliacion_revertida
+  /// SLT-56: alguien ajusto el pago al mensajero de una gestion al revisar su cierre abierto.
+  /// `monto` = el pago nuevo; el antes/despues y el motivo viven en `gestion_pago_mensajero_ajuste`.
+  cierre_dia_pago_mensajero_ajustado
   /// SLT-76 (R8-R11): un maestro cambio los DISTRITOS de una zona al editarla. Una fila por distrito
   /// añadido o quitado, todas con el lote del guardado. Entra en «mueve dinero»: el distrito decide
   /// la zona de cada orden, y la zona su flete y el pago al mensajero. `valor_anterior`/`valor_nuevo`
@@ -4629,6 +4940,19 @@ enum HistorialAccionTipo {
   /// `organizacion_modulo`; etiqueta: el nombre del módulo; `valor_nuevo`: su clave.
   modulo_activado
   modulo_desactivado
+  /// SL-24 (design §9): el superadmin asigna o cambia el plan de la empresa. Entidad: `plan` (el plan
+  /// nuevo); etiqueta: `Plan «<nombre>»`; `valor_anterior` y `valor_nuevo` NULL (el nombre es texto
+  /// libre y esas columnas son de vocabulario cerrado). SLT-58 (design §11.4, R39): en la primera
+  /// asignación con fecha de inicio elegida, `valor_nuevo` lleva esa fecha (`AAAA-MM-DD`); sin fecha y
+  /// en un cambio de plan sigue NULL.
+  plan_asignado
+  /// SLT-52 (R14, design §3): el modelo nuevo de tarifas. Los cuatro primeros mueven dinero; borrar
+  /// un grupo hace desaparecer sus valores (cascada). Los escriben los services de T6.
+  tarifa_valor_fijado
+  tarifa_valor_quitado
+  grupo_distritos_creado
+  grupo_distritos_cambiado
+  grupo_distritos_borrado
 
   @@map("historial_accion_tipo")
 }
@@ -4677,6 +5001,11 @@ enum HistorialAccionEntidad {
   /// SL-23 (design §4.3): la activación de un módulo, 1:1 con su tabla. `entidad_id` es el id de la
   /// fila creada o borrada; sin FK, sobrevive al apagado.
   organizacion_modulo
+  /// SL-24 (design §9): el plan asignado, 1:1 con su tabla. `entidad_id` sin FK.
+  plan
+  /// SLT-52: el valor y el grupo del modelo nuevo de tarifas, 1:1 con sus tablas. `entidad_id` sin FK.
+  tarifa_valor
+  grupo_distritos
 
   @@map("historial_accion_entidad")
 }
@@ -5369,6 +5698,12 @@ model Organizacion {
   gestionOrdenEvidencias GestionOrdenEvidencia[]
   gestionOrdenPagos GestionOrdenPago[]
   gestionFechaReprogramacionCambios GestionFechaReprogramacionCambio[]
+  gestionPagoMensajeroAjustes GestionPagoMensajeroAjuste[]
+  grupoDistritos GrupoDistritos[] // SLT-52
+  grupoDistritosDistritos GrupoDistritosDistrito[] // SLT-52
+  tarifaValores TarifaValor[] // SLT-52
+  cierreDetailConceptos CierreDetailConcepto[] // SLT-52
+  gestionPagosCongelados GestionPagoCongelado[] // SLT-52
   rutaOptimizadas RutaOptimizada[]
   rutaOptimizadaParadas RutaOptimizadaParada[]
   cierreDias CierreDia[]
@@ -5426,6 +5761,21 @@ model Organizacion {
   // SL-43 (design §3.1): la creó la demo de QA, que borra solo estas. Por la marca y no por el slug,
   // para no borrar nunca una empresa real con un slug parecido. Solo la pone la demo, como dueño.
   esDemo Boolean @default(false) @map("es_demo")
+
+  // SL-24 (design §2.4): el plan asignado y el ancla de sus ciclos. NULL = sin plan, sin límites (R14).
+  // Solo los escribe el superadmin: `organizacion` es de solo lectura para `servi_app`. El
+  // `CHECK ("plan_id" IS NULL OR "plan_ciclo_ancla_at" IS NOT NULL)` vive solo en el SQL de
+  // 20261028130000 (Prisma no expresa CHECK). FK NO ACTION y no RESTRICT: ver esa migración.
+  planId           String?   @map("plan_id")
+  plan             Plan?     @relation("PlanAsignado", fields: [planId], references: [id], onDelete: NoAction, onUpdate: Cascade)
+  planCicloAnclaAt DateTime? @map("plan_ciclo_ancla_at")
+  planesExclusivos Plan[]    @relation("PlanExclusivo") // SL-24: los custom de esta empresa
+
+  // SLT-58 (design §11.2, R34): dónde empieza el ciclo corto, el instante de la primera asignación
+  // cuando la fecha elegida es futura. NULL en todo lo demás (R41). El
+  // `CHECK (… IS NULL OR (ancla IS NOT NULL AND … < ancla))` vive solo en el SQL de 20261029150000.
+  // Lo lee `plan_inicio_ciclo_en_curso`; solo lo escribe el superadmin, como el ancla.
+  planCicloCortoDesdeAt DateTime? @map("plan_ciclo_corto_desde_at") @db.Timestamp(3)
 
   // SL-20 (design §2.2): el país de la empresa, fijado en el alta. No cambia nunca: lo impide el
   // trigger `organizacion_pais_inmutable` (SQLSTATE SL020, R7). El `DEFAULT 'CR'` es solo para los
@@ -5534,6 +5884,8 @@ enum CobroPlataformaFuente {
   empresa
   global
   sin_configurar
+  /// SLT-66 (design §2.2, R12): el costo por orden del plan de la empresa
+  plan
 
   @@map("cobro_plataforma_fuente")
 }
@@ -5559,6 +5911,130 @@ model EntornoMarca {
   valor String
 
   @@map("entorno_marca")
+}
+
+// SL-24 (design §2.1) — un plan es público (varias empresas, lo verá el autoservicio) o custom (de UNA
+// empresa). Inmutable tras crear (R2).
+enum PlanVisibilidad {
+  publico
+  custom
+
+  @@map("plan_visibilidad")
+}
+
+// SL-24 (design §2.8) — qué cambio de un plan deja una fila en `plan_rastro`.
+enum PlanRastroAccion {
+  creado
+  editado
+  archivado
+  /// SL-24 (design §16.2, R43): el rastro de un cambio programado (enmienda del 2026-10-28)
+  cambio_programado
+  cambio_reemplazado
+  cambio_cancelado
+  cambio_aplicado
+  /// SLT-66 (design §2.2, R34): la migración quitó el plan a una empresa (lo escribe 20261031140300)
+  desasignado
+
+  @@map("plan_rastro_accion")
+}
+
+// SL-24 (design §2.1) — el catálogo de planes. De PLATAFORMA: sin `organizacion_id` (la de un custom es
+// `organizacion_exclusiva_id`, que no aísla nada: dice de quién es el plan). Los topes `NULL` son «sin
+// tope». No se borra: se archiva (R6). Viven solo en el SQL de 20261028130000, porque Prisma no los
+// expresa:
+//   · los CHECK `plan_nombre_check`, `plan_custom_con_empresa`, `plan_precio_forma` (las cinco formas
+//     del precio, R3) y los de rango de topes, montos y porcentaje;
+//   · la RLS sin políticas y el `REVOKE ALL … FROM servi_app` (R8).
+// CASCADE con la empresa del custom: un custom no tiene sentido sin ella (design §2.1).
+model Plan {
+  id                      String          @id @default(uuid())
+  nombre                  String          @db.VarChar(80)
+  visibilidad             PlanVisibilidad
+  organizacionExclusivaId String?         @map("organizacion_exclusiva_id")
+  organizacionExclusiva   Organizacion?   @relation("PlanExclusivo", fields: [organizacionExclusivaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  topeOrdenesCiclo        Int?            @map("tope_ordenes_ciclo")
+  topeApiKeys             Int?            @map("tope_api_keys")
+  precioNegociable        Boolean         @default(false) @map("precio_negociable")
+  precioMensual           Decimal?        @map("precio_mensual") @db.Decimal(12, 2)
+  precioAnual             Decimal?        @map("precio_anual") @db.Decimal(12, 2)
+  descuentoAnualPct       Decimal?        @map("descuento_anual_pct") @db.Decimal(5, 2)
+  // SLT-66 (R7, R8): NULL = el plan no lo fija y se cobra el global (R12). El CHECK
+  // `plan_costo_por_orden_check` (`>= 0`) vive solo en el SQL de 20261031140000.
+  costoPorOrden           Decimal?        @map("costo_por_orden") @db.Decimal(12, 2)
+  archivadoAt           DateTime?       @map("archivado_at")
+  createdAt               DateTime        @default(now()) @map("created_at")
+  updatedAt               DateTime        @default(now()) @updatedAt @map("updated_at")
+
+  topesPorRol      PlanTopeRol[]
+  modulos          PlanModulo[]
+  empresas         Organizacion[]        @relation("PlanAsignado")
+  cambioProgramado PlanCambioProgramado?
+
+  @@map("plan")
+}
+
+// SL-24 (design §2.2) — el tope de un rol en un plan. Sin fila = ese rol no tiene tope. De PLATAFORMA.
+// Viven solo en el SQL: el CHECK de los roles con tope (`admin`, `mensajero`, `Admin Tienda`,
+// `adminSatelite`; ni `apiKey` ni `superadmin`, R25; SLT-66 R1 sacó a `maestro` en 20261031140000),
+// `maximo >= 0`, la RLS sin políticas y el `REVOKE ALL … FROM servi_app` (20261028130000).
+model PlanTopeRol {
+  planId String   @map("plan_id")
+  plan   Plan     @relation(fields: [planId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  rol    RolValue
+  maximo Int
+
+  @@id([planId, rol])
+  @@map("plan_tope_rol")
+}
+
+// SL-24 (design §2.3) — un módulo incluido en un plan. Reusa el enum de SL-23. De PLATAFORMA; la RLS
+// sin políticas y el `REVOKE ALL … FROM servi_app` viven solo en el SQL de 20261028130000.
+model PlanModulo {
+  planId String         @map("plan_id")
+  plan   Plan           @relation(fields: [planId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  modulo ModuloApagable
+
+  @@id([planId, modulo])
+  @@map("plan_modulo")
+}
+
+// SL-24 (design §2.8) — el rastro de plataforma de crear, editar y archivar un plan (R29). Solo se
+// añade. `planId` y `actorUsuarioId` son opacos y SIN FK, a propósito: el rastro sobrevive al CASCADE
+// que borra un custom con su empresa. `cambios` es `{ campo: { antes, despues } }` con los importes
+// como texto. La RLS sin políticas y el `REVOKE ALL … FROM servi_app` viven solo en el SQL de
+// 20261028130000.
+model PlanRastro {
+  id             String           @id @default(uuid())
+  planId         String           @map("plan_id")
+  planNombre     String           @map("plan_nombre") @db.VarChar(80)
+  accion         PlanRastroAccion
+  cambios        Json
+  actorUsuarioId String           @map("actor_usuario_id")
+  actorNombre    String           @map("actor_nombre") @db.VarChar(120)
+  createdAt      DateTime         @default(now()) @map("created_at")
+
+  @@index([planId, createdAt])
+  @@map("plan_rastro")
+}
+
+// SL-24 (design §16.1, enmienda del 2026-10-28) — el cambio pendiente de un plan, a aplicar en
+// `vigenteDesde` (R37–R40). De PLATAFORMA. `planId` UNIQUE: un solo pendiente por plan (R39); reemplazar
+// es borrar y crear con `id` nuevo, que los trabajos comparan (§16.3). `version` es la edición completa
+// (`EditarPlanInput` sin `planId` ni `vigenteDesde`) y `avisosAlProgramar` los `TopeExcedido[]` del
+// momento de guardar. La RLS sin políticas y el `REVOKE ALL … FROM servi_app` viven solo en el SQL de
+// 20261028130300.
+model PlanCambioProgramado {
+  id                String   @id @default(uuid())
+  planId            String   @unique @map("plan_id")
+  plan              Plan     @relation(fields: [planId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  vigenteDesde      DateTime @map("vigente_desde")
+  version           Json
+  avisosAlProgramar Json     @map("avisos_al_programar")
+  actorUsuarioId    String   @map("actor_usuario_id")
+  actorNombre       String   @map("actor_nombre") @db.VarChar(120)
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  @@map("plan_cambio_programado")
 }
 
 // SL-40 (design §3.3) — los cargos y reversos del cobro de la plataforma, append-only. De NEGOCIO.

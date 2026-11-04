@@ -47,7 +47,7 @@ No se crea ningún modelo, tabla, endpoint ni pantalla.
 | Lector | Predicado | Efecto |
 |---|---|---|
 | «Reasignables», `OrdenRepository.list` (~2007) | `mensajeroAsignadoId: null AND estatus = en_bodega_central` | No la muestra |
-| Monitoreo, `TableroDiaRepository.contarPorMensajero` (y el detalle y el ritmo, que comparten `cteIdsDelDia`) | La rama (c) de recolección la mete en el universo, `asignadas` la atribuye a `mensajero_asignado_id`, y su estatus `en_bodega_central` cae en «otros» | +5 a Alfaro |
+| Monitoreo, `TableroDiaRepository.contarPorMensajero` (y el detalle y el ritmo, que comparten `cteIdsDelDia`) | La rama (c) de recolección la mete en el universo, `asignadas` la atribuye a `mensajero_asignado_id`, y su estatus `en_bodega_central` cae en «otros» | +5 al mensajero de la recolección |
 
 ## 2. Quién más lee `mensajero_asignado_id` y qué le pasa con el arreglo
 
@@ -55,7 +55,7 @@ Revisé los lectores con dinero, cierre o comunicación detrás. Los recuentos s
 
 | Lector | ¿Lo rompe liberar en la recepción? | Por qué |
 |---|---|---|
-| Pago al mensajero / cierre del día / wallet (`CierresAdminRepository`, `CierreDiaRepository`, `WalletMovimiento`) | No | Se pagan **gestiones** (`gestion_orden.mensajero_id`), no la asignación. Una recolección no crea gestión ni mueve dinero (157/R36). El cierre de Alfaro del 29 tiene 38 gestiones y ninguna de las 5. R10 lo asegura con un test. |
+| Pago al mensajero / cierre del día / wallet (`CierresAdminRepository`, `CierreDiaRepository`, `WalletMovimiento`) | No | Se pagan **gestiones** (`gestion_orden.mensajero_id`), no la asignación. Una recolección no crea gestión ni mueve dinero (157/R36). El cierre de ese mensajero del 29 tiene 38 gestiones y ninguna de las 5. R10 lo asegura con un test. |
 | Corte diario (`CorteDiarioRepository`) | No | Corta órdenes en reparto con mensajero; `en_bodega_central` no entra. |
 | Traspaso (`TraspasoMensajeroService`) | No | Mira `recolectando` (recolección pendiente), no `en_bodega_central`. |
 | «Recolectadas hoy» (`RecoleccionTiendaService.listarRecoleccion` → `findMisAsignacionesByIds`) | **Sí, si no se toca** | La lectura de datos exige `mensajeroAsignadoId = actor`. Si se libera en la recepción, la orden recibida desaparece de la lista y se rompe 167/R26. El test de servicio usa dobles y seguiría verde. Se arregla en §3.3. |

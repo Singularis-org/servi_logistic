@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import useSWR, { useSWRConfig } from "swr";
 
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+// SLT-56 (R20) — la marca «Con ajustes» de un cierre del día dentro del cierre de bodega.
+import { CON_AJUSTES_BADGE_LABEL, conAjustesNota } from "./cierre-labels";
 import { Modal } from "@/components/shared/Modal";
 import { Pagination } from "@/components/shared/Pagination";
 import { SegmentedToggle } from "@/components/shared/SegmentedToggle";
@@ -793,9 +796,25 @@ export function CierresBodegaAdminModule({
                 aria-label={`Cierre del día · ${cierreDia.mensajeroNombre}`}
                 className="flex flex-col gap-4 rounded-lg border border-border p-4"
               >
-                <h3 className="text-base font-semibold">
-                  {cierreDia.mensajeroNombre}
-                </h3>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-base font-semibold">
+                    {cierreDia.mensajeroNombre}
+                  </h3>
+                  {/* SLT-56 (R20): este cierre del día tiene gestiones con el pago ajustado. La
+                      cifra llega del servidor; las gestiones llevan su marca «Ajustado» con el
+                      historial en la lista de abajo (la misma fila que el detalle del cierre). */}
+                  {(cierreDia.gestionesAjustadas ?? 0) > 0 ? (
+                    <Badge
+                      variant="warning"
+                      title={conAjustesNota(cierreDia.gestionesAjustadas ?? 0)}
+                    >
+                      {CON_AJUSTES_BADGE_LABEL}
+                      <span className="sr-only">
+                        {`: ${conAjustesNota(cierreDia.gestionesAjustadas ?? 0)}`}
+                      </span>
+                    </Badge>
+                  ) : null}
+                </div>
                 <TotalesPanel
                   totales={cierreDia.totales}
                   ariaLabel={`Totales · ${cierreDia.mensajeroNombre}`}

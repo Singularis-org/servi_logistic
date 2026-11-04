@@ -1,24 +1,25 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   DEDUPE_PREFIX,
-  OPTIMIZACION_MAX_INTENTOS,
   dedupeKeyDebounce,
-  dedupeKeyInmediato,
   encolarOptimizacionDebounce,
-  encolarOptimizacionInmediata,
+  primeraRutaPendiente,
 } from "@/lib/services/jobs/optimizacion-ruta-encolado";
+import * as encolado from "@/lib/services/jobs/optimizacion-ruta-encolado";
 import type { EnqueueOpts, IJobRepository } from "@/lib/interfaces/repositories/IJobRepository";
 import type { JobTipo } from "@prisma/client";
 
-// Feature 92 (R17/R18/R19) — las claves de idempotencia del job de optimizacion.
+// Feature 92 (R17/R18) y SLT-59 (R23, R24, R32) — las claves de idempotencia del job de
+// optimizacion.
 //
-// Este archivo protege las DOS trampas que el design §4 documenta como normativas:
-//  A. el namespace del disparo INMEDIATO es DISJUNTO del de DEBOUNCE. Si se unificaran, el
-//     `ON CONFLICT ("dedupe_key") DO NOTHING` haria que un debounce en vuelo TRAGARA la
-//     reoptimizacion de la gestion EN SILENCIO: sin error, sin log, sin job.
-//  B. la clave del debounce lleva una VENTANA TEMPORAL. Sin ella quedaria ocupada PARA
-//     SIEMPRE por la primera fila `done` (el indice unico de `dedupe_key` no esta acotado
-//     por estado y las filas completadas no se purgan). Es la trampa exacta de F1.4-Q4/91.
+// La trampa que este archivo protege: la clave del debounce lleva una VENTANA TEMPORAL. Sin ella
+// quedaria ocupada PARA SIEMPRE por la primera fila `done` (el indice unico de `dedupe_key` no esta
+// acotado por estado y las filas completadas no se purgan). Es la trampa exacta de F1.4-Q4/91, y
+// desde SLT-59 tambien es la de la gestion (R24), que ya usa esta misma clave.
+//
+// ⏳ 2026-10-29 (SLT-59, T3.2): se retiraron los casos del disparo INMEDIATO (namespace
+// `:inmediato:`): la gestion ahora comparte el espacio `:debounce:` y que un job en vuelo la trague
+// es lo buscado (R23).
 
 const MENSAJERO = "m-1";
 const T0 = new Date("2026-07-20T10:00:00.000Z");
@@ -72,7 +73,7 @@ describe("R18 — la clave del debounce lleva ventana temporal", () => {
 describe("R17 — el debounce colapsa eventos de la misma ventana", () => {
   it("dos recogidas en el mismo instante -> UNA sola fila de job", async () => {
     const { repo, filas } = colaEnMemoria();
-    const opts = { ahora: T0, debounceS: 60 };
+    const opts = { ahora: T0, debounceS: 60, origen: "gestion" as const };
 
     await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, opts);
     await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, opts);
@@ -83,63 +84,136 @@ describe("R17 — el debounce colapsa eventos de la misma ventana", () => {
   it("la segunda recogida NO adelanta el runAfter de la primera", async () => {
     const { repo, filas } = colaEnMemoria();
 
-    await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, { ahora: T0, debounceS: 60 });
+    await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, { ahora: T0, debounceS: 60, origen: "gestion" });
     const runAfterPrimero = filas[0].opts.runAfter;
     // 20 s despues, dentro de la misma ventana de destino.
     await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, {
       ahora: new Date(T0.getTime() + 20_000),
       debounceS: 60,
+      origen: "gestion",
     });
 
     expect(filas).toHaveLength(1);
     expect(filas[0].opts.runAfter).toBe(runAfterPrimero);
   });
 
-  it("el runAfter es ahora + debounceS y el payload lleva SOLO el mensajeroId (PII)", async () => {
+  // SLT-59 (D28): y el `origen` del evento, que no es PII.
+  it("el runAfter es ahora + debounceS y el payload lleva SOLO el mensajeroId y el origen (PII)", async () => {
     const { repo, filas } = colaEnMemoria();
-    await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, { ahora: T0, debounceS: 60 });
+    await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, { ahora: T0, debounceS: 60, origen: "gestion" });
 
     expect(filas[0].tipo).toBe("optimizacion_ruta");
-    expect(filas[0].payload).toEqual({ mensajeroId: MENSAJERO });
+    expect(filas[0].payload).toEqual({ mensajeroId: MENSAJERO, origen: "gestion" });
     expect(filas[0].opts.runAfter?.getTime()).toBe(T0.getTime() + 60_000);
-    expect(filas[0].opts.maxIntentos).toBe(OPTIMIZACION_MAX_INTENTOS);
   });
 });
 
-describe("R19 — el disparo INMEDIATO nunca lo traga el debounce", () => {
-  it("los dos espacios de claves son DISJUNTOS", () => {
-    const debounce = dedupeKeyDebounce(MENSAJERO, T0);
-    const inmediato = dedupeKeyInmediato(MENSAJERO, "g-1");
-    expect(debounce).not.toBe(inmediato);
-    expect(debounce).toContain(":debounce:");
-    expect(inmediato).toContain(":inmediato:");
-  });
-
-  it("con un debounce EN VUELO, la gestion inserta su fila igual", async () => {
+describe("SLT-59 D28 — el job agrupado por debounce conserva el origen del PRIMER evento", () => {
+  it("traspaso y luego gestion en la misma ventana -> una fila con origen traspaso", async () => {
     const { repo, filas } = colaEnMemoria();
-
-    await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, { ahora: T0, debounceS: 60 });
-    await encolarOptimizacionInmediata(repo, undefined, MENSAJERO, "gestion-1");
-
-    expect(filas).toHaveLength(2);
-    // Y el inmediato NO lleva runAfter: corre en cuanto el cron lo reclame.
-    expect(filas[1].opts.runAfter).toBeUndefined();
-    expect(filas[1].opts.dedupeKey).toBe(dedupeKeyInmediato(MENSAJERO, "gestion-1"));
-  });
-
-  it("dos gestiones distintas -> dos filas (el eventoId las distingue)", async () => {
-    const { repo, filas } = colaEnMemoria();
-
-    await encolarOptimizacionInmediata(repo, undefined, MENSAJERO, "gestion-1");
-    await encolarOptimizacionInmediata(repo, undefined, MENSAJERO, "gestion-2");
-
-    expect(filas).toHaveLength(2);
-  });
-
-  it("re-encolar la MISMA gestion es idempotente (una sola fila)", async () => {
-    const { repo, filas } = colaEnMemoria();
-    await encolarOptimizacionInmediata(repo, undefined, MENSAJERO, "gestion-1");
-    await encolarOptimizacionInmediata(repo, undefined, MENSAJERO, "gestion-1");
+    await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, {
+      ahora: T0,
+      debounceS: 60,
+      origen: "traspaso",
+    });
+    await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, {
+      ahora: new Date(T0.getTime() + 10_000),
+      debounceS: 60,
+      origen: "gestion",
+    });
     expect(filas).toHaveLength(1);
+    expect(filas[0].payload).toEqual({ mensajeroId: MENSAJERO, origen: "traspaso" });
+  });
+});
+
+describe("R23 — una gestion con un job de debounce en vuelo no crea otro ni lo adelanta", () => {
+  it("recogida y luego gestion en la misma ventana -> UNA fila, con el runAfter de la recogida", async () => {
+    const { repo, filas } = colaEnMemoria();
+
+    // Recogida y gestion pasan por el MISMO helper desde SLT-59: lo que las distingue es el instante.
+    await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, { ahora: T0, debounceS: 60, origen: "gestion" });
+    const runAfterRecogida = filas[0].opts.runAfter;
+    await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, {
+      ahora: new Date(T0.getTime() + 15_000),
+      debounceS: 60,
+      origen: "gestion",
+    });
+
+    expect(filas).toHaveLength(1);
+    expect(filas[0].opts.runAfter).toBe(runAfterRecogida);
+    expect(filas[0].opts.dedupeKey).toContain(":debounce:");
+  });
+
+  it("ya no existe el namespace `:inmediato:`: ninguna fila lo usa", async () => {
+    const { repo, filas } = colaEnMemoria();
+    await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, { ahora: T0, debounceS: 60, origen: "gestion" });
+    expect(filas.every((f) => !String(f.opts.dedupeKey).includes(":inmediato:"))).toBe(true);
+  });
+});
+
+describe("R24 — la clave de la gestion nunca queda ocupada para siempre por una fila `done`", () => {
+  it("una gestion en la ventana SIGUIENTE inserta su propia fila aunque la anterior siga en la tabla", async () => {
+    const { repo, filas } = colaEnMemoria();
+
+    await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, { ahora: T0, debounceS: 60, origen: "gestion" });
+    // La fila anterior sigue ahi (como una `done` que no se purga); 2 minutos despues es otra ventana.
+    await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, {
+      ahora: new Date(T0.getTime() + 120_000),
+      debounceS: 60,
+      origen: "gestion",
+    });
+
+    expect(filas).toHaveLength(2);
+    expect(filas[0].opts.dedupeKey).not.toBe(filas[1].opts.dedupeKey);
+  });
+});
+
+describe("R32 — max_intentos de la reoptimizacion sale de RUTA_OPT_MAX_INTENTOS", () => {
+  const previo = process.env.RUTA_OPT_MAX_INTENTOS;
+  afterEach(() => {
+    if (previo === undefined) delete process.env.RUTA_OPT_MAX_INTENTOS;
+    else process.env.RUTA_OPT_MAX_INTENTOS = previo;
+  });
+
+  it("sin override, el job se encola con 3 intentos (D9), no con los 5 de antes", async () => {
+    delete process.env.RUTA_OPT_MAX_INTENTOS;
+    const { repo, filas } = colaEnMemoria();
+    await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, { ahora: T0, debounceS: 60, origen: "gestion" });
+    expect(filas[0].opts.maxIntentos).toBe(3);
+  });
+
+  it("con RUTA_OPT_MAX_INTENTOS=2, el job se encola con 2", async () => {
+    process.env.RUTA_OPT_MAX_INTENTOS = "2";
+    const { repo, filas } = colaEnMemoria();
+    await encolarOptimizacionDebounce(repo, undefined, MENSAJERO, { ahora: T0, debounceS: 60, origen: "gestion" });
+    expect(filas[0].opts.maxIntentos).toBe(2);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════════════
+// SLT-59 (R57, R58, R76, R77; design §12.2 nota D29) — la primera ruta del dia por recogida.
+// ══════════════════════════════════════════════════════════════════════════════════════
+
+describe("SLT-79 — ya no existe el job de la primera ruta por recogida", () => {
+  it("el modulo no exporta ni su clave ni su encolador (SLT-59 R76/R58 retirados)", () => {
+    expect("dedupeKeyPrimeraRecogida" in encolado).toBe(false);
+    expect("encolarPrimeraRutaPorRecogida" in encolado).toBe(false);
+  });
+
+  it("los origenes vigentes son solo gestion y traspaso; los de la recogida quedan como legado", () => {
+    expect([...encolado.ORIGENES_JOB_RUTA]).toEqual(["gestion", "traspaso"]);
+    expect([...encolado.ORIGENES_JOB_RUTA_RETIRADOS]).toEqual(["recogida", "recogida_parcial"]);
+  });
+});
+
+describe("SLT-59 glosario — primera ruta pendiente (puro, R67)", () => {
+  // El dia CR del 20 empieza a las 06:00Z (`inicioDelDiaCREnUtc`), no a medianoche UTC.
+  it.each([
+    ["nunca calculada", null, true],
+    ["calculada ayer por la noche en CR (05:59Z del 20)", new Date("2026-07-20T05:59:59.999Z"), true],
+    ["calculada justo al empezar el dia CR (06:00Z)", new Date("2026-07-20T06:00:00.000Z"), false],
+    ["calculada hoy a mediodia", new Date("2026-07-20T18:00:00.000Z"), false],
+  ])("%s -> %s", (_caso, calculadaAt, esperado) => {
+    expect(primeraRutaPendiente(calculadaAt, "2026-07-20")).toBe(esperado);
   });
 });
