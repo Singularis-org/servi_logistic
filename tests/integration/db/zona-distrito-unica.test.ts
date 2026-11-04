@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
+import { conEmpresa } from "@/lib/db/contexto-empresa";
 import { ZonaRepository, esViolacionDistritoUnico } from "@/lib/repositories/ZonaRepository";
 import { GeoRepository } from "@/lib/repositories/GeoRepository";
 import { ZonaService } from "@/lib/services/ZonaService";
@@ -158,7 +159,9 @@ describeSiHayBase("SLT-75 — un distrito, a lo sumo una zona por empresa (Postg
       if (rol !== "servi_app") throw new Error(`el escenario no bajo al rol de la app: ${rol}`);
 
       const repo = () => new ZonaRepository(clienteConSavepoint(tx));
-      return fn({
+      // `enTransaccionRevertida` deja en `contextoActual` su empresa por defecto, no A: el catalogo
+      // (SLT-44) pide `organizacion` por el id del contexto, y con la RLS de A no la encontraria.
+      return conEmpresa(A, () => fn({
         tx,
         A,
         B,
@@ -175,7 +178,7 @@ describeSiHayBase("SLT-75 — un distrito, a lo sumo una zona por empresa (Postg
         como,
         repo,
         service: () => new ZonaService(repo()),
-      });
+      }));
     });
   }
 
