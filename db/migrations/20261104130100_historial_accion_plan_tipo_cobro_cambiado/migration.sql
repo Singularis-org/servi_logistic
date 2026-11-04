@@ -1,0 +1,11 @@
+-- Ajuste planes-custom (D16; 2026-11-03) — cambiar SOLO el tipo de cobro del plan de una empresa (D10)
+-- tiene acción PROPIA en su historial de acciones, `plan_tipo_cobro_cambiado`, y deja de escribirse como
+-- `plan_asignado`. Categoría «cambia el plan», como `plan_asignado`. Entidad `plan`, que ya existe
+-- (20261028130100): `entidad_id` es el plan que la empresa ya tenía. `valor_anterior` = el tipo de antes
+-- y `valor_nuevo` = el tipo nuevo (`mensual` o `anual`, vocabulario cerrado).
+--
+-- VA SOLA: Postgres prohíbe USAR un valor de enum en la misma transacción que lo añade (55P04).
+-- Nada aquí escribe filas; el primer uso ocurre en runtime. No convierte filas: el D10 de la tanda 2
+-- (fila `plan_asignado` con `valor_anterior`) no llegó a `dev`, y la lectura del detalle sigue leyendo
+-- esa forma por si el `down.sql` la devuelve (`tipoCobroDelHistorial`).
+ALTER TYPE "historial_accion_tipo" ADD VALUE IF NOT EXISTS 'plan_tipo_cobro_cambiado';

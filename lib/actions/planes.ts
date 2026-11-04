@@ -6,7 +6,13 @@ import type { IPlanesService } from "@/lib/interfaces/services/IPlanesService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { PlanesRepository } from "@/lib/repositories/PlanesRepository";
 import { PlanesService } from "@/lib/services/PlanesService";
-import type { ListarPlanesAsignablesResult, PlanResult, VistaPreviaAsignacionResult } from "@/lib/types/planes";
+import type {
+  CambiarTipoCobroResult,
+  ListarPlanesAsignablesResult,
+  PlanResult,
+  VistaPreviaAsignacionResult,
+  VistaPreviaCustomResult,
+} from "@/lib/types/planes";
 
 // SL-24 (design §5, §16.5) — el borde de la gestión de planes del superadmin. El actor sale de la
 // sesión y la autorización la decide el servicio (R5), antes de tocar la base. Es de plataforma, así
@@ -31,7 +37,9 @@ async function conServicio<T>(deps: PlanesDeps, fn: (s: IPlanesService, actor: A
 }
 
 /**
- * Crea un plan público o custom (R1–R3).
+ * Crea un plan público o custom (R1–R3). Ajuste planes-custom (D2, D4, D6): un custom se asigna a su
+ * empresa en la misma operación, con `tipoCobro` obligatorio e `inicioCiclo` opcional (solo si la empresa
+ * no tiene plan). Si la asignación se rechaza, no se crea nada y vuelve el rechazo de `asignarPlanAction`.
  */
 export async function crearPlanAction(input: unknown, deps: PlanesDeps = {}): Promise<PlanResult> {
   return conServicio(deps, (s, actor) => s.crear(actor, input));
@@ -53,7 +61,8 @@ export async function archivarPlanAction(input: unknown, deps: PlanesDeps = {}):
 
 /**
  * Asigna o cambia el plan de una empresa (R9–R13). SLT-58: `inicioCiclo` (`AAAA-MM-DD`) opcional, solo
- * en la primera asignación (R29–R31); los topes ya pasados vuelven en `avisos` (R36, R42).
+ * en la primera asignación (R29–R31); los topes ya pasados vuelven en `avisos` (R36, R42). Ajuste
+ * planes-custom (D6): `tipoCobro` (`mensual` | `anual`) obligatorio.
  */
 export async function asignarPlanAction(input: unknown, deps: PlanesDeps = {}): Promise<PlanResult> {
   return conServicio(deps, (s, actor) => s.asignar(actor, input));
@@ -69,6 +78,23 @@ export async function previsualizarAsignacionPlanAction(
   deps: PlanesDeps = {},
 ): Promise<VistaPreviaAsignacionResult> {
   return conServicio(deps, (s, actor) => s.previsualizarAsignacion(actor, input));
+}
+
+/**
+ * Ajuste planes-custom (D13): la vista previa de SLT-58 R37 en el form del custom, antes de crearlo.
+ * `{ organizacionId, inicioCiclo, topes }`: los topes son los que el superadmin está escribiendo; la
+ * empresa no tiene plan. Solo lee.
+ */
+export async function previsualizarCustomAction(input: unknown, deps: PlanesDeps = {}): Promise<VistaPreviaCustomResult> {
+  return conServicio(deps, (s, actor) => s.previsualizarCustom(actor, input));
+}
+
+/**
+ * Ajuste planes-custom (D10): cambia solo el tipo de cobro (`mensual` | `anual`) del plan que la empresa
+ * ya tiene, con su fila en el historial de asignaciones. No toca el ancla del ciclo ni los módulos.
+ */
+export async function cambiarTipoCobroAction(input: unknown, deps: PlanesDeps = {}): Promise<CambiarTipoCobroResult> {
+  return conServicio(deps, (s, actor) => s.cambiarTipoCobro(actor, input));
 }
 
 /**

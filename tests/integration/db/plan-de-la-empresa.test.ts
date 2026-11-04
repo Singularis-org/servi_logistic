@@ -182,7 +182,9 @@ describeSiHayBase("SLT-58 — plan_de_la_empresa: la empresa lee su plan y su co
     });
 
     expect(plan.nombre).toEqual(expect.stringMatching(/^sl24 /));
-    expect(plan.precio_negociable).toBe(false);
+    // D1 (ajuste planes-custom): sin `precio_negociable`. D6: el tipo de cobro, `mensual` por defecto.
+    expect(plan).not.toHaveProperty("precio_negociable");
+    expect(plan.tipo_cobro).toBe("mensual");
     expect(plan.precio_mensual).toBe("49.90");
     expect(plan.precio_anual).toBeNull(); // mensual + porcentaje: el CHECK `plan_precio_forma` no deja los dos
     expect(plan.descuento_anual_pct).toBe("16.67");
@@ -212,7 +214,7 @@ describeSiHayBase("SLT-58 — plan_de_la_empresa: la empresa lee su plan y su co
     expect(Object.keys(plan).sort()).toEqual(
       [
         "nombre",
-        "precio_negociable",
+        "tipo_cobro", // ajuste planes-custom D6 (20261104130000)
         "precio_mensual",
         "precio_anual",
         "descuento_anual_pct",

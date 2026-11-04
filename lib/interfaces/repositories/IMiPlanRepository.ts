@@ -1,5 +1,5 @@
 import type { FuenteDelCosto, UsoDelPlan } from "@/lib/types/consumo-plan";
-import type { VersionPlan } from "@/lib/types/planes";
+import type { TipoCobro, VersionPlan } from "@/lib/types/planes";
 
 // SLT-58 (design §3.1) — el plan de la empresa del contexto, tal como lo devuelve
 // `plan_de_la_empresa`, ya validado y con los roles en su clave de la app. La empresa no es un
@@ -22,6 +22,8 @@ export interface PlanDeLaEmpresaLeido {
   cambio: CambioProgramadoLeido | null;
   /** SLT-66 (R18, §3.2): el costo por orden que cobrará la próxima orden y de dónde sale. */
   costoVigente: { monto: string; fuente: FuenteDelCosto };
+  /** Ajuste planes-custom (D6): cómo paga la empresa el plan (`plan_de_la_empresa.tipo_cobro`). */
+  tipoCobro: TipoCobro;
 }
 
 export interface IMiPlanRepository {

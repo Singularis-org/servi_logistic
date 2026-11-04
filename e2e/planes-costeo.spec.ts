@@ -5,11 +5,12 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 
 import { ORDEN_MODULOS, nombreDelModulo } from "../lib/modulos/catalogo";
 import type { BulkSummary } from "../lib/types/carga-masiva";
-import { fechaCalendarioCR } from "../lib/utils/fecha-cr";
-import { crearUsuarioE2E, sesionDe, type EmpresaE2E } from "../tests/fabricas/e2e";
+import { fechaCalendarioCR, mananaCalendarioCR } from "../lib/utils/fecha-cr";
+import { crearEmpresaE2E, crearUsuarioE2E, sesionDe, type EmpresaE2E } from "../tests/fabricas/e2e";
 
 import { crearZonaE2E, type ZonaE2E } from "./_aislamiento-datos";
 import { altaDeEmpresa, clienteDueno, prepararAcceso, type Empresa } from "./_dos-empresas-fixture";
+import { crearPlanPublicoConCosto } from "./_planes-fixture";
 import {
   asegurarSuperadmin,
   conCandadoDelSuperadmin,
@@ -25,11 +26,15 @@ import { CAJA_A, sembrarCaja } from "./_wallet-iva-sl39-siembra";
  * 1. `beforeAll`: guarda el valor GLOBAL del cobro y lo fija en 500,00, para que el caso pruebe que el
  *    plan gana al global. Da de alta la empresa A (`altaDeEmpresa`) con su caja (`sembrarCaja`, para
  *    que la wallet pinte la región de la deuda), una zona y una tienda.
- * 2. El superadmin entra con OTP y crea por `PlanForm` un custom de A «Con monto»: costo base mensual
- *    50000 y costo por orden 100. Lo asigna desde el listado de «Empresas» (R32): la fila dice «Sin
- *    plan», «Asignar plan a {A}» lleva al bloque «Plan» del detalle (`#plan`) y ahí se confirma el modal
- *    de SLT-58 con la fecha de hoy. De vuelta al listado, la fila dice el plan, «Cambiar plan» y, en
- *    «Cobro por orden», «₡100» y «del plan» (R31).
+ * 2. El superadmin entra con OTP. En el listado de «Empresas» la fila de A dice «Sin plan» y el cobro
+ *    global. Crea por `PlanForm` un custom de A «Con monto»: costo base mensual 50000, costo por orden
+ *    100, tipo de cobro «Mensual» (D6) e inicio del ciclo en hoy (D4; abre en mañana, D5). Crearlo lo
+ *    deja asignado a A (ajuste planes-custom D2). De vuelta al listado, la fila de A dice el plan con
+ *    «· Mensual» (D9), «Cambiar plan» y, en «Cobro por orden», «₡100» y «del plan» (R31).
+ * 2b. «Asignar plan» del listado (R32) sigue existiendo para planes públicos: B, una segunda empresa sin
+ *    plan, lo pulsa; lleva al bloque «Plan» del detalle (`#plan`) y ahí se confirma el modal de SLT-58
+ *    con un plan PÚBLICO con costo concreto (R28, creado por el fixture), la fecha de hoy y «Anual». De
+ *    vuelta al listado, la fila de B dice ese plan con «· Anual», «₡250» y «del plan».
  * 3. El maestro de A abre `/wallet`: la deuda con la plataforma es «₡0».
  * 4. La tienda de A crea una orden con su sesión por el endpoint de la carga masiva (precedente SL-24
  *    §11.1).
@@ -67,8 +72,11 @@ const TEXTO = {
   total: "Total estimado del ciclo: 50100.00",
 } as const;
 
-/** Lo que pinta `money()`: `money("100.00")` y `money("0.00")`, escritos a mano. */
-const PINTADO = { costoPlan: "₡100", global: "₡500", deudaCero: "₡0" } as const;
+/** El costo por orden del plan público de B (paso 2b): distinto del de A y del global. */
+const COSTO_POR_ORDEN_PUBLICO = "250.00";
+
+/** Lo que pinta `money()`: `money("100.00")`, `money("250.00")` y `money("0.00")`, escritos a mano. */
+const PINTADO = { costoPlan: "₡100", costoPublico: "₡250", global: "₡500", deudaCero: "₡0" } as const;
 
 let dueno: PrismaClient | undefined;
 let empresaA: Empresa | undefined;
@@ -81,6 +89,11 @@ let contextoA: BrowserContext | undefined;
 let paginaA: Page | undefined;
 const nombreDelPlan = `Plan E2E costeo ${randomBytes(4).toString("hex")}`;
 let planId = "";
+/** B: sin plan hasta el paso 2b, que le asigna el público desde «Asignar plan» del listado (R32). */
+let empresaB: EmpresaE2E | undefined;
+let nombreB = "";
+const nombreDelPublico = `Plan E2E costeo publico ${randomBytes(4).toString("hex")}`;
+let publicoId = "";
 let ordenId = "";
 /** El valor global del cobro al empezar (`null`: sin configurar), para devolverlo en el `afterAll`. */
 let globalAntes: Prisma.Decimal | null = null;
@@ -146,6 +159,13 @@ test.beforeAll(async ({ browser }) => {
   const tienda = await crearUsuarioE2E(comoEmpresaE2E(empresa()), "adminTienda");
   sesionTienda = await sesionDe(browser, tienda);
 
+  // B, sin plan, y el plan público con costo concreto que se le asigna en el paso 2b (R28, D2).
+  empresaB = await crearEmpresaE2E("costeo-b");
+  nombreB = (
+    await base().organizacion.findUniqueOrThrow({ where: { id: empresaB.organizacionId }, select: { nombre: true } })
+  ).nombre;
+  publicoId = await crearPlanPublicoConCosto(base(), nombreDelPublico, COSTO_POR_ORDEN_PUBLICO);
+
   contextoA = await browser.newContext({ userAgent });
   paginaA = await contextoA.newPage();
   await paginaA.goto("/login");
@@ -182,16 +202,33 @@ test.afterAll(async () => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* 1. El superadmin crea el plan y lo asigna desde «Empresas»                  */
+/* 1. El superadmin crea el custom (asignado, D2) y asigna un público          */
 /* -------------------------------------------------------------------------- */
 
-function filaDeA(page: Page): Locator {
-  return page.getByRole("table").locator("tbody tr").filter({ hasText: empresa().slug });
+function filaDe(page: Page, slug: string): Locator {
+  return page.getByRole("table").locator("tbody tr").filter({ hasText: slug });
 }
 
-test("el superadmin crea un custom de A «Con monto» con costo por orden 100 (R26)", async () => {
+function filaDeA(page: Page): Locator {
+  return filaDe(page, empresa().slug);
+}
+
+function b(): EmpresaE2E {
+  if (!empresaB) throw new Error("no hay empresa B: falló el beforeAll");
+  return empresaB;
+}
+
+test("el superadmin crea un custom de A «Con monto» con costo por orden 100, que queda asignado (R26, D2, D4–D6)", async () => {
   test.setTimeout(240_000);
   const page = superadmin();
+
+  // Antes de crearlo, A no tiene plan y su cobro sale del global de este spec.
+  await page.goto("/plataforma/empresas");
+  const filaAntes = filaDeA(page);
+  await expect(filaAntes).toHaveCount(1, { timeout: 60_000 });
+  await expect(filaAntes).toContainText(TEXTO.sinPlan);
+  await expect(filaAntes).toContainText(PINTADO.global);
+
   await page.goto("/plataforma/planes");
   await page.getByRole("button", { name: "Nuevo plan" }).click();
   const form = page.getByRole("dialog").getByRole("form", { name: "Crear plan" });
@@ -209,7 +246,21 @@ test("el superadmin crea un custom de A «Con monto» con costo por orden 100 (R
   await form.getByRole("radio", { name: "Con monto", exact: true }).click();
   await form.getByLabel("Costo base mensual", { exact: true }).fill(COSTO_BASE_MENSUAL);
   await form.getByLabel("Costo por orden", { exact: true }).fill(COSTO_POR_ORDEN);
-  await form.getByRole("button", { name: "Crear plan" }).click();
+
+  // D6: «Mensual», el tipo por defecto, que es el que da el total mensual de «Mi plan».
+  const mensual = form.getByRole("radiogroup", { name: "Tipo de cobro" }).getByRole("radio", { name: "Mensual", exact: true });
+  await mensual.click();
+  await expect(mensual).toBeChecked();
+  // D4/D5: abre en mañana; se pone hoy para que la orden del paso 4 caiga dentro del ciclo.
+  const inicio = form.getByLabel("Inicio del ciclo de órdenes", { exact: true });
+  await expect(inicio).toHaveValue(mananaCalendarioCR(new Date()));
+  await inicio.fill(fechaCalendarioCR(new Date()));
+
+  // D13/D17: «Crear plan» espera a la vista previa.
+  const crear = form.getByRole("button", { name: "Crear plan" });
+  await expect(crear).toBeEnabled({ timeout: 60_000 });
+  await expect(form).not.toContainText("No se pudo comprobar el consumo de la empresa");
+  await crear.click();
 
   await expect(page.getByRole("status").filter({ hasText: `Plan «${nombreDelPlan}» creado.` })).toBeVisible({
     timeout: 60_000,
@@ -222,56 +273,88 @@ test("el superadmin crea un custom de A «Con monto» con costo por orden 100 (R
   expect(plan.visibilidad).toBe("custom");
   expect(plan.organizacionExclusivaId).toBe(empresa().organizacionId);
   planId = plan.id;
+  const asignada = await base().organizacion.findUniqueOrThrow({
+    where: { id: empresa().organizacionId },
+    select: { planId: true, planTipoCobro: true },
+  });
+  expect(asignada.planId, "crear un custom con empresa lo asigna (D2)").toBe(planId);
+  expect(asignada.planTipoCobro).toBe("mensual");
 });
 
-test("lo asigna desde «Asignar plan» del listado de «Empresas»; la fila dice el plan y «₡100 del plan» (R26, R31, R32)", async ({}, info) => {
+test("la fila de A en «Empresas» dice el plan, su tipo de cobro y «₡100 del plan» (R26, R31, D9)", async ({}, info) => {
   test.setTimeout(240_000);
   expect(planId, "no hay plan: falló el caso anterior").not.toBe("");
   const page = superadmin();
   await page.goto("/plataforma/empresas");
   const fila = filaDeA(page);
   await expect(fila).toHaveCount(1, { timeout: 60_000 });
+  await expect(fila).toContainText(`${nombreDelPlan} · Mensual`);
+  await expect(fila.getByRole("link", { name: `Cambiar el plan de ${nombreA}`, exact: true })).toHaveText(
+    TEXTO.cambiarPlan,
+  );
+  await expect(fila).not.toContainText(TEXTO.sinPlan);
+  await expect(fila.getByText(PINTADO.costoPlan, { exact: true })).toBeVisible();
+  await expect(fila.getByText(TEXTO.delPlan, { exact: true })).toBeVisible();
+  await page.screenshot({ path: info.outputPath("slt66-empresas.png"), fullPage: true });
+});
+
+test("«Asignar plan» del listado lleva a B al bloque «Plan» y le asigna un público con costo; la fila dice «₡250 del plan» (R28, R31, R32, D6, D9)", async () => {
+  test.setTimeout(240_000);
+  expect(publicoId, "no hay plan público: falló el beforeAll").not.toBe("");
+  const page = superadmin();
+  await page.goto("/plataforma/empresas");
+  const fila = filaDe(page, b().slug);
+  await expect(fila).toHaveCount(1, { timeout: 60_000 });
   await expect(fila).toContainText(TEXTO.sinPlan);
-  // Sin plan, el cobro de A sale del global de este spec.
+  // Sin plan, el cobro de B sale del global de este spec.
   await expect(fila).toContainText(PINTADO.global);
 
-  await fila.getByRole("link", { name: `Asignar plan a ${nombreA}`, exact: true }).click();
-  await page.waitForURL((u) => u.pathname === `/plataforma/empresas/${empresa().organizacionId}` && u.hash === "#plan", {
+  await fila.getByRole("link", { name: `Asignar plan a ${nombreB}`, exact: true }).click();
+  await page.waitForURL((u) => u.pathname === `/plataforma/empresas/${b().organizacionId}` && u.hash === "#plan", {
     timeout: 60_000,
   });
 
   const bloque = page.getByRole("region", { name: TEXTO.regionPlan, exact: true });
   await bloque.getByRole("combobox", { name: "Plan a asignar" }).click({ timeout: 60_000 });
-  await page.getByRole("option", { name: `${nombreDelPlan} (Custom)`, exact: true }).click();
+  await page.getByRole("option", { name: `${nombreDelPublico} (Público)`, exact: true }).click();
   await bloque.getByRole("button", { name: "Asignar plan", exact: true }).click();
 
-  // El modal de la primera asignación (SLT-58), con el inicio del ciclo en hoy.
+  // El modal de la primera asignación (SLT-58): el inicio del ciclo abre en mañana (D5) y se pone hoy;
+  // el tipo de cobro se cambia a «Anual» (D6).
   const modal = page.getByRole("dialog", { name: TEXTO.modal });
   await expect(modal).toBeVisible({ timeout: 30_000 });
-  await expect(modal.getByLabel("Inicio del ciclo de órdenes")).toHaveValue(fechaCalendarioCR(new Date()));
+  const inicio = modal.getByLabel("Inicio del ciclo de órdenes");
+  await expect(inicio).toHaveValue(mananaCalendarioCR(new Date()));
+  await inicio.fill(fechaCalendarioCR(new Date()));
+  const anual = modal.getByRole("radiogroup", { name: "Tipo de cobro" }).getByRole("radio", { name: "Anual", exact: true });
+  await anual.click();
+  await expect(anual).toBeChecked();
   const confirmar = modal.getByRole("button", { name: "Asignar plan", exact: true });
   await expect(confirmar).toBeEnabled({ timeout: 60_000 });
   await confirmar.click();
-  await expect(bloque.getByRole("heading", { name: nombreDelPlan, exact: true })).toBeVisible({ timeout: 60_000 });
+  await expect(bloque.getByRole("heading", { name: nombreDelPublico, exact: true })).toBeVisible({ timeout: 60_000 });
 
   const asignada = await base().organizacion.findUniqueOrThrow({
-    where: { id: empresa().organizacionId },
-    select: { planId: true },
+    where: { id: b().organizacionId },
+    select: { planId: true, planTipoCobro: true },
   });
-  expect(asignada.planId).toBe(planId);
+  expect(asignada.planId).toBe(publicoId);
+  expect(asignada.planTipoCobro).toBe("anual");
 
-  // De vuelta al listado: el plan, «Cambiar plan» y el cobro vigente con su fuente.
+  // De vuelta al listado: el plan con su tipo, «Cambiar plan» y el cobro vigente con su fuente.
   await page.goto("/plataforma/empresas");
-  const filaTras = filaDeA(page);
+  const filaTras = filaDe(page, b().slug);
   await expect(filaTras).toHaveCount(1, { timeout: 60_000 });
-  await expect(filaTras).toContainText(nombreDelPlan);
-  await expect(filaTras.getByRole("link", { name: `Cambiar el plan de ${nombreA}`, exact: true })).toHaveText(
+  await expect(filaTras).toContainText(`${nombreDelPublico} · Anual`);
+  await expect(filaTras.getByRole("link", { name: `Cambiar el plan de ${nombreB}`, exact: true })).toHaveText(
     TEXTO.cambiarPlan,
   );
   await expect(filaTras).not.toContainText(TEXTO.sinPlan);
-  await expect(filaTras.getByText(PINTADO.costoPlan, { exact: true })).toBeVisible();
+  await expect(filaTras.getByText(PINTADO.costoPublico, { exact: true })).toBeVisible();
   await expect(filaTras.getByText(TEXTO.delPlan, { exact: true })).toBeVisible();
-  await page.screenshot({ path: info.outputPath("slt66-empresas.png"), fullPage: true });
+  // El público no tocó a A: A sigue con su custom.
+  const deA = await base().organizacion.findUniqueOrThrow({ where: { id: empresa().organizacionId }, select: { planId: true } });
+  expect(deA.planId).toBe(planId);
 });
 
 /* -------------------------------------------------------------------------- */

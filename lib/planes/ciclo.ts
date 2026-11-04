@@ -6,7 +6,7 @@
 // Por eso todo se hace con los componentes UTC: así se replica la aritmética de Postgres sin que la
 // zona del proceso mueva la frontera.
 
-import { fechaCalendarioCR, inicioDelDiaCREnUtc } from "@/lib/utils/fecha-cr";
+import { fechaCalendarioCR, inicioDelDiaCREnUtc, mananaCalendarioCR } from "@/lib/utils/fecha-cr";
 
 /** `fecha + meses`, como `timestamp + interval 'n months'`: si el día no existe, el último del mes. */
 function sumarMeses(fecha: Date, meses: number): Date {
@@ -79,8 +79,11 @@ export interface RangoDelInicioDelCiclo {
   max: string;
 }
 
-/** `AAAA-MM-DD` + `meses`, con el mismo recorte al último día del mes que `sumarMeses`. */
-function fechaMasMeses(fecha: string, meses: number): string {
+/**
+ * `AAAA-MM-DD` + `meses`, con el mismo recorte al último día del mes que `sumarMeses`. La usa también el
+ * siguiente cobro (`lib/planes/cobro.ts`, ajuste planes-custom D8).
+ */
+export function fechaMasMeses(fecha: string, meses: number): string {
   return sumarMeses(new Date(`${fecha}T00:00:00.000Z`), meses).toISOString().slice(0, 10);
 }
 
@@ -91,6 +94,15 @@ function fechaMasMeses(fecha: string, meses: number): string {
 export function rangoDelInicioDelCiclo(ahora: Date): RangoDelInicioDelCiclo {
   const hoy = fechaCalendarioCR(ahora);
   return { hoy, min: fechaMasMeses(hoy, -1), max: fechaMasMeses(hoy, 1) };
+}
+
+/**
+ * Ajuste planes-custom (D5, 2026-10-31) — la fecha de inicio del ciclo que proponen el formulario del
+ * custom y el modal de primera asignación: MAÑANA en la hora de la plataforma (`AAAA-MM-DD`). Siempre
+ * cae dentro de `rangoDelInicioDelCiclo`.
+ */
+export function inicioDelCicloPorDefecto(ahora: Date): string {
+  return mananaCalendarioCR(ahora);
 }
 
 /**

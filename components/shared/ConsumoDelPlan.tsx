@@ -3,8 +3,10 @@ import { Ban, Infinity as InfinityIcon, TriangleAlert, type LucideIcon } from "l
 import { EmptyState } from "@/components/shared/EmptyState";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { TEXTOS_TIPO_COBRO } from "@/components/shared/tipo-cobro";
 import { SIN_LINEAS_DE_CAMBIO, textoCambioProgramado, TITULO_LINEAS_DE_CAMBIO } from "@/lib/planes/mensajes";
 import type {
+  CobroDelPlan,
   CosteoDelCiclo,
   EstadoFila,
   FilaConsumo,
@@ -25,6 +27,12 @@ const TEXTOS = {
   excepcion: "precio acordado para tu empresa",
   anualNoAplica: "El pago anual no cambia el costo por orden.",
   estimado: "Estimado: el costo base no se cobra todavía; cada orden se cobra al crearla y se descuenta si se anula.",
+  /** Ajuste planes-custom (D9): cómo paga la empresa su plan. Solo informativo (D8). */
+  cobro: "Cobro del plan",
+  tipoCobro: (tipo: CobroDelPlan["tipo"]) => `${TEXTOS_TIPO_COBRO.campo}: ${TEXTOS_TIPO_COBRO.tipo[tipo]}`,
+  montoPeriodo: ({ tipo, montoPeriodo }: CobroDelPlan) =>
+    `Monto del período: ${montoPeriodo === null ? "por definir" : `${montoPeriodo} ${tipo === "anual" ? "al año" : "al mes"}`}`,
+  siguienteCobro: (fecha: string) => `Siguiente cobro: ${fecha}`,
   modulos: "Módulos incluidos",
   sinModulos: "Ninguno",
   consumo: "Consumo",
@@ -98,6 +106,7 @@ export function ConsumoDelPlan({
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
           <CostoDelCiclo costeo={plan.costeo} textoExcepcion={textoExcepcion} />
+          <CobroDelPlanVista cobro={plan.cobro} />
           <p className="text-sm font-medium">{TEXTOS.modulos}</p>
           {plan.modulos.length === 0 ? (
             <p className="text-sm text-muted-foreground">{TEXTOS.sinModulos}</p>
@@ -185,6 +194,26 @@ function CostoDelCiclo({ costeo, textoExcepcion }: { costeo: CosteoDelCiclo; tex
         )}
       </ul>
       <p className="text-xs text-muted-foreground">{TEXTOS.estimado}</p>
+    </div>
+  );
+}
+
+/**
+ * Ajuste planes-custom (D9) — el tipo de cobro, el monto de UN período y la fecha del siguiente cobro.
+ * Llegan ya calculados del servidor (`cobroDelPlan`: decimal exacto, D7; aniversario, D8): aquí no se
+ * calcula nada. No cambia el costeo del ciclo de arriba.
+ */
+function CobroDelPlanVista({ cobro }: { cobro: CobroDelPlan }) {
+  return (
+    <div className="flex flex-col gap-2 pb-2">
+      <p className="text-sm font-medium">{TEXTOS.cobro}</p>
+      <ul aria-label={TEXTOS.cobro} className="flex flex-col gap-1 text-sm">
+        <li>{TEXTOS.tipoCobro(cobro.tipo)}</li>
+        <li>{TEXTOS.montoPeriodo(cobro)}</li>
+        <li>
+          {TEXTOS.siguienteCobro(cobro.siguienteCobro)}
+        </li>
+      </ul>
     </div>
   );
 }

@@ -160,6 +160,8 @@ describe("366/T1 — el `migration.sql` y el `down.sql`, como texto", () => {
       "grupo_distritos_creado",
       "grupo_distritos_cambiado",
       "grupo_distritos_borrado",
+      // Ajuste planes-custom D16: `plan_tipo_cobro_cambiado`, de `20261104130100_historial_accion_plan_tipo_cobro_cambiado`.
+      "plan_tipo_cobro_cambiado",
     ];
     expect([...HISTORIAL_ACCION_TIPOS].sort()).toEqual(
       [...previos, VALOR_NUEVO, ...POSTERIORES].sort(),

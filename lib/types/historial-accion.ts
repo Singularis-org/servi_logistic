@@ -50,8 +50,8 @@ import { esFechaCalendarioValida } from "@/lib/utils/fecha-cr";
 // saldo con el que la central lo persigue. El motivo de cada uno esta escrito a su lado.
 
 /**
- * Los 80 tipos de accion. El ORDEN de esta tupla es el del Anexo A (dinero, desaparicion,
- * permisos) mas las integraciones de SL-36, los modulos de SL-23 y el plan de SL-24, y es el que consume el selector de filtros: no se
+ * Los 81 tipos de accion. El ORDEN de esta tupla es el del Anexo A (dinero, desaparicion,
+ * permisos) mas las integraciones de SL-36, los modulos de SL-23 y el plan de SL-24 (y su tipo de cobro, D16), y es el que consume el selector de filtros: no se
  * reordena por gusto.
  */
 export const HISTORIAL_ACCION_TIPOS = [
@@ -380,13 +380,19 @@ export const HISTORIAL_ACCION_TIPOS = [
   "modulo_activado",
   "modulo_desactivado",
 
-  // --- A.6 · cambia el plan de una empresa (1) ---
+  // --- A.6 · cambia el plan de una empresa (2) ---
   // SL-24 (design §9): el superadmin asigna o cambia el plan de una empresa. Categoria propia: no
   // mueve dinero (el precio es informativo, R4), no borra nada y no cambia quien puede hacer que,
-  // sino CUANTO puede hacer la empresa. `entidad_id` es el plan nuevo; `valor_anterior` y
-  // `valor_nuevo` van a NULL porque el nombre de un plan es texto libre. Crear, editar y archivar un
-  // plan no estan aqui: son de plataforma y van a `plan_rastro`.
-  "plan_asignado",
+  // sino CUANTO puede hacer la empresa. `entidad_id` es el plan nuevo; el nombre del plan (texto
+  // libre) no va en `valor_*`. Ajuste planes-custom: `valor_nuevo` lleva el tipo de cobro (D6), con la
+  // fecha de inicio del ciclo delante si la hubo (SLT-58 R39); `valor_anterior` va a NULL. Crear,
+  // editar y archivar un plan no estan aqui: son de plataforma y van a `plan_rastro`.
+  "plan_asignado", // PlanesRepository.asignarEnTx
+  // Ajuste planes-custom (D16): el superadmin cambia SOLO el tipo de cobro del plan que la empresa ya
+  // tiene (D10). Tipo propio y metodo propio (la guardia del censo mide POR METODO). Misma entidad
+  // (`plan`, el de la empresa) y misma categoria que `plan_asignado`. `valor_anterior` = el tipo de
+  // antes y `valor_nuevo` = el nuevo (`mensual` o `anual`).
+  "plan_tipo_cobro_cambiado", // PlanesRepository.cambiarTipoCobro
 ] as const satisfies readonly PrismaHistorialAccionTipo[];
 
 export type HistorialAccionTipo = (typeof HISTORIAL_ACCION_TIPOS)[number];
@@ -580,6 +586,8 @@ export const CATEGORIA_POR_ACCION: Record<HistorialAccionTipo, CategoriaAccion> 
   modulo_activado: "cambia_modulos",
   modulo_desactivado: "cambia_modulos",
   plan_asignado: "cambia_plan",
+  // D16: cambia el tipo de cobro del plan; no mueve dinero (el precio es informativo, R4 de SL-24).
+  plan_tipo_cobro_cambiado: "cambia_plan",
 };
 
 /** Etiqueta legible de cada tipo. Exhaustiva por el mismo mecanismo que la categoria. */
@@ -669,6 +677,7 @@ export const ACCION_LABELS: Record<HistorialAccionTipo, string> = {
   modulo_activado: "Activó un módulo de una empresa",
   modulo_desactivado: "Desactivó un módulo de una empresa",
   plan_asignado: "Asignó un plan a una empresa",
+  plan_tipo_cobro_cambiado: "Cambió el tipo de cobro del plan de una empresa",
 };
 
 /** Etiqueta legible de cada categoria, para el selector de filtros y la descarga. */

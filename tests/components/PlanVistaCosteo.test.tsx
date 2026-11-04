@@ -67,8 +67,8 @@ describe("SLT-66 R24, R10 — lineasDeCosto", () => {
   });
 
   it("R24: sin costo por orden, «se aplica el valor global»; vale con cualquier forma de la base", () => {
-    expect(lineasDeCosto({ precio: { tipo: "negociable" }, costoPorOrden: null })).toEqual([
-      "Costo base: negociable",
+    expect(lineasDeCosto({ precio: { tipo: "sin_precio" }, costoPorOrden: null })).toEqual([
+      "Costo base: sin precio",
       "Costo por orden: se aplica el valor global",
     ]);
   });
@@ -85,7 +85,16 @@ describe("SLT-66 R24, R10 — lineasDeCosto", () => {
 
 describe("SLT-66 R24 — catálogo", () => {
   it("R24: la columna «Costo» pinta el costo base y el costo por orden", () => {
-    render(<PlanesModule planes={[catalogo(CONCRETO), catalogo(SIN_COSTO)]} empresas={[]} crearPlan={vi.fn()} />);
+    render(
+      <PlanesModule
+        planes={[catalogo(CONCRETO), catalogo(SIN_COSTO)]}
+        empresas={[]}
+        inicioCicloPorDefecto="2026-10-30"
+        rangoInicioCiclo={{ hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" }}
+        crearPlan={vi.fn()}
+        previsualizarCustom={vi.fn().mockResolvedValue({ estado: "ok", avisos: [], siguienteCiclo: "2026-11-30" })}
+      />,
+    );
 
     expect(screen.getByRole("columnheader", { name: "Costo" })).toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "Precio" })).toBeNull();
@@ -167,7 +176,9 @@ describe("SLT-66 R24 — modal de asignación", () => {
           asignables={asignables}
           asignarPlan={vi.fn().mockResolvedValue(OK)}
           rangoInicioCiclo={{ hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" }}
+          inicioCicloPorDefecto="2026-10-30"
           previsualizarAsignacion={vi.fn().mockResolvedValue(VISTA_PREVIA_OK)}
+          cambiarTipoCobro={vi.fn()}
         />
       </ToastProvider>,
     );
@@ -209,6 +220,7 @@ describe("SLT-66 R24 — modal de asignación", () => {
             uso: { ordenes: 0, apiKeys: 0, porRol: { admin: 0, mensajero: 0, adminTienda: 0, adminSatelite: 0 } },
             cambio: null,
             costoVigente: { monto: "100.00", fuente: "plan" },
+            tipoCobro: "mensual", // Ajuste planes-custom (D6).
           },
           new Date("2026-10-10T06:00:00.000Z"),
         ),
