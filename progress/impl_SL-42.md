@@ -187,3 +187,42 @@ T4.1–T4.4 hechas. Van en el mismo commit que T2.4. T4.2 tenía que ir con T2.4
 
 ### Veredicto
 T2.4 y T4.1–T4.4 hechas, en el commit 564b6532. Typecheck en 0 y `superficie-de-uso` en verde. Queda un rojo de backend que viene de T2.2, no de esta tanda: `geografia-predicado-unico` sobre `VehiculoRepository.ts`.
+
+## Tanda backend: arreglo de `geografia-predicado-unico` y T3.1 — 2026-11-04 (backend_dev)
+
+### Commits
+- `359db649` fix — `geografia-predicado-unico` estaba rojo por los dos `activo: true` de T2.2 en `VehiculoRepository.ts`.
+  - La guardia no es ambigua: su cabecera ya decía «si algún día naciera otro `activo`, esta guardia obligaría a pasar por aquí».
+  - Arreglo, el más estrecho posible:
+    - el recorte de vehículos tiene su propia fuente única, `lib/repositories/_shared/vehiculo-activo.ts` (`WHERE_VEHICULO_ELEGIBLE`). No pasa por `_shared/geografia-activa.ts`: un vehículo no tiene ascendientes;
+    - el `create` deja de escribir `activo: true`: lo pone el DEFAULT de la columna, y el test de integración de R4 lo comprueba;
+    - la guardia admite ESE archivo y nada más, acotado por un caso nuevo: debe llevar exactamente `["activo: true"]` y no nombrar ningún nivel geográfico.
+  - La regla de geografía no cambia.
+- `fe04bb20` T3.1 (P3, R18):
+  - `UsuarioService.resolverVehiculo` recibe el vehículo actual del usuario. Un tipo inactivo es `validation_error` en `vehiculoId` («ya no está disponible»), salvo que sea el que ya tiene.
+  - `PostulacionRepository.vehiculoExiste` recorta con `WHERE_VEHICULO_ELEGIBLE`, así que un inactivo cuenta como no válido. La clave del error sigue siendo `vehiculo_id`, la del formulario público.
+
+### R → test (T3.1)
+- R18 → `tests/unit/services/usuario-vehiculo.test.ts` › «SL-42/R18 — vehiculo inactivo»:
+  - alta con un inactivo → `validation_error` en `vehiculoId`, sin escribir;
+  - edición que cambia a un inactivo → `validation_error`, sin escribir;
+  - edición que reenvía el mismo inactivo → ok;
+  - edición que no toca el vehículo, o que reenvía el mismo rol → conserva el inactivo;
+  - de inactivo a activo → ok;
+  - un id inexistente sigue diciendo «no existe».
+- R18 → `tests/unit/services/postulacion-mensajero-service.test.ts` › «SL-42/R18: un tipo de vehiculo inactivo -> validation_error en vehiculo_id, sin subir ni crear».
+- R18 (SQL) → `tests/integration/db/vehiculos-plataforma.test.ts` › «R18 (T3.1) — la postulacion: `vehiculoExiste` es true con el activo y false con el inactivo o el que no existe».
+
+### Verificación (NODE_OPTIONS=--max-old-space-size=8192; DATABASE_URL local, comprobado `localhost` sin imprimirla)
+- `vitest run tests/unit/guards/geografia-predicado-unico.guardia.test.ts tests/integration/db/vehiculos-plataforma.test.ts`: `Tests 21 passed (21)`.
+- `vitest run tests/unit/services/usuario-vehiculo.test.ts tests/unit/services/postulacion-mensajero-service.test.ts tests/integration/db/vehiculos-plataforma.test.ts`: `Tests 38 passed (38)`, 0 skipped. La integración CORRIÓ contra Postgres.
+- `pnpm exec tsc --noEmit`: 0 errores.
+- `pnpm exec eslint` sobre los 9 archivos tocados: sin salida (0 problemas).
+- Revisado: ningún otro test de `UsuarioService` inyecta un repositorio de vehículos, así que el `activo` ausente en sus dobles no los afecta.
+- `pnpm run test:guardias`:
+  - resultado: `Test Files 1 failed | 322 passed | 3 skipped (326)`, `Tests 4 failed | 4532 passed | 24 skipped (4560)`;
+  - los 4 rojos son todos de `dependencias-declaradas-presentes`, la baseline aceptada;
+  - `geografia-predicado-unico` está verde.
+
+### Veredicto
+`geografia-predicado-unico` verde con una excepción acotada para vehículos; T3.1 hecha y verde, con R18 probado en el servicio y en el SQL. T3.2 (frontend) queda pendiente.
