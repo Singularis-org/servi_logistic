@@ -113,8 +113,13 @@ de Analítica **antes** de responder. Las tres vías son:
 - la gestión de un cierre rechazado propio;
 - la rama legada.
 
+La primera lectura de esas etiquetas tras responder DEBE traer la cifra nueva, no la entrada anterior
+de la caché (deriva de D2). Evidencia: `progress/impl_SLT-64.md > Cierre del hallazgo: la primera
+lectura tras invalidar`.
+
 **R13.** CUANDO se corrige con éxito el resultado de una gestión en un cierre abierto, el sistema
-DEBE invalidar las mismas etiquetas que en R12 antes de responder.
+DEBE invalidar las mismas etiquetas que en R12 antes de responder. La primera lectura tras responder
+DEBE traer la cifra nueva (deriva de D2). Evidencia: `progress/impl_SLT-64.md > Vuelta 2`.
 
 **R14.** SI el deshacer o la corrección no se aplica (`conflict`, `forbidden`, `validation_error`,
 `unauthenticated` o, en la corrección, `no_encontrada`), ENTONCES el sistema NO DEBE invalidar ninguna
@@ -142,6 +147,7 @@ Las mutaciones que cada test debe matar están en `design.md > §7`.
 | R12, R14, R15, R16 | `tests/unit/actions/deshacer-gestion-invalida-analitica.test.ts` |
 | R13, R14, R15, R16 | `tests/unit/actions/corregir-resultado-invalida-analitica.test.ts` |
 | R12, R13 (cableado real) | `tests/unit/analytics/cache-invalidacion-correccion-cableado.test.ts` |
+| R13 (primera lectura, en navegador) | `e2e/cierres-admin.spec.ts`, caso (c) |
 | R17 | `tests/unit/analytics/tags-entregas-fuente-unica.test.ts` |
 
 ## Preguntas abiertas

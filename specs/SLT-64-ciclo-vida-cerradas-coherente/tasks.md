@@ -114,7 +114,7 @@ lista, y `tests/unit/analytics/refrescar-cache-analitica.test.ts` sigue verde si
   `entregado` sin cierre aprobado), `/analitica` tiene que mostrar en el ciclo de vida
   «(N órdenes cerradas)» con N > 0, coherente con «Entregado N» cuando la ventana cubre carga y
   gestión. Las cifras se anotan en la bitácora.
-- [ ] `./init.sh` en verde.
+- [x] `./init.sh` en verde.
 
 ## Archivos esperados
 
@@ -138,6 +138,11 @@ lista, y `tests/unit/analytics/refrescar-cache-analitica.test.ts` sigue verde si
 - `lib/actions/cierres-admin.ts`
 - `lib/repositories/CohorteCargaRepository.ts`
 - `lib/repositories/ventana-de-carga.ts`
+- `lib/repositories/ConteoCargadasPorDiaRepository.ts`
+- `lib/types/cohorte-carga.ts`
+- `app/(app)/analitica/_components/entregas/base-del-kpi.ts`
+- `tests/unit/cache/cache-por-empresa.test.ts`
+- `e2e/cierres-admin.spec.ts`
 - `tests/unit/analytics/ciclo-vida-resultados-de-cierre.guardia.test.ts`
 - `tests/unit/analytics/ciclo-vida.test.ts`
 - `tests/unit/analytics/cohorte-terminales.guardia.test.ts`

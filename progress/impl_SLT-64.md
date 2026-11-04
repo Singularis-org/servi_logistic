@@ -298,3 +298,180 @@ Dev server parado, puertos libres; spec y config temporales borrados; `.next/dev
 ### Veredicto
 
 Hallazgo cerrado: con `{ expire: 0 }` la primera lectura trae la cifra nueva, tanto al deshacer como con «Actualizar».
+
+## Vuelta 2
+
+Responde a `progress/review_SLT-64.md`: B1, B2, m1, m2, m5, m6 y m7. No se hizo m3. m4 y
+`progress/features/SLT-64.md` quedan para el leader. El código de producción solo cambia en dos
+comentarios (m5).
+
+### Archivos
+
+- `tests/integration/db/ciclo-vida-gestion-final.int.test.ts`: B1.
+- `e2e/cierres-admin.spec.ts`: caso (c) nuevo (B2, parte 2).
+- `tests/unit/actions/deshacer-gestion-invalida-analitica.test.ts`: m1.
+- `lib/types/cohorte-carga.ts`, `app/(app)/analitica/_components/entregas/base-del-kpi.ts`: m5.
+- `specs/…/requirements.md` (m2), `design.md` (m6), `tasks.md` (m7).
+
+### Mapa R → test: lo que cambia
+
+| R | Test |
+|---|---|
+| R1 (desempate por `id`) | `ciclo-vida-gestion-final.int`, «R3: el empate lo decide el `id` mayor», ya con duraciones distintas |
+| R12 (las tres vías) | `deshacer-gestion-invalida-analitica`, bloque «las tres vías, con `CierreDiaService` real» |
+| R13 (primera lectura, en navegador) | `e2e/cierres-admin.spec.ts`, caso (c) |
+
+### B1: el desempate de R1
+
+Las dos órdenes del caso ya no duran lo mismo: `pierdeElCierre` se carga en `D_MENOS_1`.
+
+| Mutación | Resultado |
+|---|---|
+| ninguna | 29/29 |
+| `(g2."created_at" > g."created_at" OR (g2."created_at" = g."created_at" AND g2."id" < g."id"))` | **Matada**: 1 fallado y 28 pasados, por aserción: `expected { segundosAcum: 100800, n: 1 } to deeply equal { segundosAcum: 14400, n: 1 }` |
+
+100 800 s son las 28 h de la orden que no debía contar. Mutación revertida.
+
+### B2, parte 1: los tres specs
+
+Con la receta de `docs/verification.md > El E2E`: base desechable recreada antes de la primera corrida,
+migrada (295) y con `db:seed`; `next build` sobre el código final; `E2E_PUERTO=3044`; `--project=aislamiento
+--project=dinero`. `dos-empresas-humo` arrastra `plataforma-vacia` por `dependencies`, de ahí los dos
+archivos `superadmin-*`.
+
+| Spec | Corrida 1 | Corrida 2 |
+|---|---|---|
+| `e2e/cierre-dia.spec.ts` | 2 pasados, 0 fallados, 0 saltados | 2, 0, 0 |
+| `e2e/cierres-admin.spec.ts` (con el caso nuevo) | 3, 0, 0 | 3, 0, 0 |
+| `e2e/dos-empresas-humo.spec.ts` | 8, 0, 0 | 8, 0, 0 |
+| `superadmin-arranque` y `superadmin-empresas` (dependencia) | 10, 0, 0 | 10, 0, 0 |
+
+Corrida 1 (líneas recortadas a 150 caracteres, sin las del servidor):
+
+```
+Running 23 tests using 1 worker
+  ok  1 [plataforma-vacia] › e2e\superadmin-arranque.spec.ts:53:5 › el comando de arranque deja un superadmin sin empresa y no imprime sus datos (
+  ok  2 [plataforma-vacia] › e2e\superadmin-arranque.spec.ts:71:5 › entra con OTP y aterriza en «Empresas», con «Empresas», «Planes» y «Geo
+  ok  3 [plataforma-vacia] › e2e\superadmin-arranque.spec.ts:88:5 › /configuracion no le deja entrar (R6, R5) (331ms)
+  ok  4 [plataforma-vacia] › e2e\superadmin-empresas.spec.ts:206:5 › 1. «Empresas» abre con el formulario de alta y sin aviso (R29) (175ms)
+  ok  5 [plataforma-vacia] › e2e\superadmin-empresas.spec.ts:214:5 › 2. crea A y B desde el formulario y las dos salen en el listado con su maestr
+  ok  6 [plataforma-vacia] › e2e\superadmin-empresas.spec.ts:254:5 › 3. repetir el slug de A marca su campo y no crea nada (R31) (680ms)
+  ok  7 [plataforma-vacia] › e2e\superadmin-empresas.spec.ts:272:5 › 4. un slug inválido marca el campo sin crear nada (R34) (623ms)
+  ok  8 [plataforma-vacia] › e2e\superadmin-empresas.spec.ts:322:7 › 5-6. el maestro de A crea su contraseña con el enlace de bienvenida, «Empre
+  ok  9 [plataforma-vacia] › e2e\superadmin-empresas.spec.ts:322:7 › 5-6. el maestro de B crea su contraseña con «¿Olvidaste tu contraseña?»,
+  ok 10 [plataforma-vacia] › e2e\superadmin-empresas.spec.ts:348:5 › 7. con las dos contraseñas creadas, ni la fila de A ni la de B ofrecen «Ree
+  ok 11 [dinero] › e2e\cierre-dia.spec.ts:55:7 › Cierre del día — el mensajero solicita y deshace › (a) totales por método y ganancia → So
+  ok 12 [dinero] › e2e\cierre-dia.spec.ts:98:7 › Cierre del día — el mensajero solicita y deshace › (b) Devolver a gestión → la fila sale,
+  ok 13 [dinero] › e2e\cierres-admin.spec.ts:75:7 › Cierres del día — el admin aprueba o rechaza › (a) detalle con totales y evidencia → Ap
+  ok 14 [dinero] › e2e\cierres-admin.spec.ts:118:7 › Cierres del día — el admin aprueba o rechaza › (b) Rechazar exige motivo → con motivo
+  ok 15 [dinero] › e2e\cierres-admin.spec.ts:163:7 › Cierres del día — corregir el resultado mueve Analítica en la primera lectura › (c) el
+  ok 16 [aislamiento] › e2e\dos-empresas-humo.spec.ts:217:5 › alta de A y B desde «Empresas» por el superadmin, y el correo de recuperación de
+  ok 17 [aislamiento] › e2e\dos-empresas-humo.spec.ts:242:7 › el maestro de A recorre todas las rutas de su menú sin error ni datos de B (20.1s)
+  ok 18 [aislamiento] › e2e\dos-empresas-humo.spec.ts:242:7 › el maestro de B recorre todas las rutas de su menú sin error ni datos de A (17.8s)
+  ok 19 [aislamiento] › e2e\dos-empresas-humo.spec.ts:287:5 › cada maestro abre el webhook de su API key y ve su URL, no la de la otra empresa (2.
+  ok 20 [aislamiento] › e2e\dos-empresas-humo.spec.ts:308:5 › B abriendo los detalles de A ve «no encontrado», y A los ve con su marcador (3.3s)
+  ok 21 [aislamiento] › e2e\dos-empresas-humo.spec.ts:336:5 › SL-23: el superadmin dejó A con los 3 módulos y B sin «Ranking»; B no lo ve ni l
+  ok 22 [aislamiento] › e2e\dos-empresas-humo.spec.ts:408:5 › vehículos carga y escribir desde la pantalla falla cerrado (R40); geografía le da
+  ok 23 [aislamiento] › e2e\dos-empresas-humo.spec.ts:474:5 › SL-24: la tienda de A, al tope de su plan, no crea por la carga masiva y la de B, si
+  23 passed (1.7m)
+```
+
+Corrida 2, sobre la misma base:
+
+```
+Running 23 tests using 1 worker
+  23 passed (1.6m)
+PW_EXIT=0
+```
+
+**Un rojo por el camino, y no es de esta rama.** La primera corrida dio 9 pasados, 1 fallado y 13 sin
+correr: `superadmin-empresas` caso 2 esperaba «El correo no está configurado en este entorno», y al caer
+impidió correr `dos-empresas-humo`, que depende de ese proyecto.
+- **Causa medida.** El log del servidor dice `[bienvenida] no se envio: falta NEXT_PUBLIC_APP_URL`. CI la
+  fija antes de `next build` (`.github/workflows/gate.yml:372`); el `.env` del worktree no la trae.
+- **Arreglo de la corrida.** Exportar `NEXT_PUBLIC_APP_URL=http://localhost:3044` antes de la build, como
+  CI, sin tocar el `.env`. Con eso, el caso pasa con el mismo código.
+- **`origin/dev` no se corrió:** no hizo falta para atribuirlo, porque hay causa medida y
+  `git diff origin/dev...HEAD` no toca ese spec, `BienvenidaMaestroService` ni `lib/config/email.ts`.
+- **Aviso para el leader:** `docs/verification.md > El E2E` no menciona esta variable. Quien siga la receta
+  con un `.env` sin ella tropezará con este mismo rojo. No se tocó el doc.
+
+### B2, parte 2: `corregirResultadoGestion` en navegador
+
+Encajó de forma natural, así que queda como **caso E2E**: `e2e/cierres-admin.spec.ts`, (c). Corre en
+`next start`, con una empresa propia, dos entregas (6.000 y 2.500) y un cierre solicitado.
+
+**Tras la respuesta con render, el diálogo y el detalle siguen funcionando:**
+- el diálogo no se cierra y enseña el aviso y los totales del servidor: Total general 6.000;
+- «Cerrar» lo cierra y el detalle de detrás sigue abierto, releído: 6.000;
+- la orden corregida aparece en la pestaña «Devolución a origen por rechazo».
+
+**La cifra de la primera lectura.** Medido con un spec temporal, ya borrado, en `next start` y con tres
+entregas en un cierre solicitado. Las cifras son las de la tarjeta «Entregado» ya asentada.
+
+| Paso | `"max"` | `{ expire: 0 }` |
+|---|---|---|
+| 1. Inicial | 3 | 3 |
+| 2. Control: se anula una por SQL, sin invalidar | 3 | 3 |
+| 3. Corrección por el diálogo; **primera lectura** | **3** | **1** |
+| 4. Segunda lectura | 1 | 1 |
+
+El paso 2 demuestra que la caché estaba viva. 1 = 3, menos la anulada del control, menos la corregida. En
+el caso E2E, sin control, la frase de desenlaces pasa de `Entregado: 2` a `Entregado: 1` en la primera
+lectura, y «(2 órdenes cerradas)» no baja (R8). El log trae `[analitica_cache_invalidacion]` con origen
+`correccion_gestion` y las ocho etiquetas.
+
+**Mutación, y un falso verde que destapó.** La primera versión del caso leía la tarjeta y **sobrevivió** a
+`"max"`: la cifra se anima desde 0, así que al subir a 2 pasa por el 1 y la espera de Playwright lo daba
+por bueno. Ahora lee la frase de desenlaces, que no se anima. Con `"max"` el caso cae en la lectura final,
+por aserción: `locator('p').filter({ hasText: /^Entregado: 1( ·|$)/ })`, no visible. Sin la mutación, verde.
+
+**Lo que esto mide y lo que no.** Es la primera medición de `{ expire: 0 }` en `next start`, y confirma lo
+de `next dev`, con una sola instancia. Vercel sigue sin medirse (m4). Solo se ejerció la vía de deshacer
+pendiente en navegador (`cierre-dia` (b)); las otras dos las cubre m1, con repositorio doble.
+
+Al medir se vieron peticiones RSC a `/analitica` después de corregir y antes de navegar: 2 con
+`{ expire: 0 }` y 1 con `"max"`. No se investigó su origen. Es dato para m3.
+
+### m1: las tres vías con el servicio real
+
+Bloque `it.each` en `deshacer-gestion-invalida-analitica.test.ts`: `deshacerGestion`, `CierreDiaService`
+real, repositorio doble y caché espía. Cada vía comprueba que escribe solo por la suya, que invalida una vez
+con las ocho etiquetas, y que si la escritura pierde la carrera da `conflict` y cero invalidaciones.
+
+| Mutación en `CierreDiaService` | Resultado |
+|---|---|
+| la vía del cierre rechazado no da `ok` | matada: 1 fallado, 16 pasados, solo su caso |
+| la vía pendiente no da `ok` | matada: 1 fallado, 16 pasados, solo su caso |
+| la vía legada no da `ok` | matada: 1 fallado, 16 pasados, solo su caso |
+
+### m2, m5, m6 y m7
+
+- **m2.** R12 y R13 ya dicen que la primera lectura tras responder trae la cifra nueva, con evidencia aquí.
+- **m5.** Los dos comentarios hablan de la gestión final, no del estado terminal. Solo comentarios.
+- **m6.** `design.md` dice que `id` es `text` y que el orden sigue la collation.
+- **m7.** `tasks.md`: marcado `./init.sh` por el `INIT_EXIT=0` que midió el leader en `0060494a`, que repetirá
+  el gate tras esta vuelta. «Archivos esperados» suma los cuatro pedidos y `e2e/cierres-admin.spec.ts`.
+
+### Tests
+
+Todo contra la base desechable, nunca la del `.env`.
+
+- `pnpm typecheck` (`NODE_OPTIONS=--max-old-space-size=8192`): exit 0, 0 errores.
+- `eslint` sobre los archivos de código y test tocados: exit 0.
+- `pnpm exec vitest related --run <los dos de m5 y los dos tests>`: 18 archivos pasados; 318 pasados, 0
+  fallados, 17 saltados, exit 0. No se identificó de qué archivos son los 17 saltados, porque el reportero
+  no los nombra. `ciclo-vida-gestion-final.int` (29/29) y el test de m1 (17/17) se corrieron además por su
+  cuenta, sin saltos.
+- No se corrieron `./init.sh` ni la suite completa, por instrucción.
+
+### Limpieza
+
+Base desechable borrada (`existe: false`). Puertos 3044 y 54329 libres. `test-results/` y los archivos
+temporales borrados; las mutaciones revertidas. No se corrió a mano el cron de jobs y no se tocó la base del
+`.env`. `.next` queda con la build de la corrida, con `NEXT_PUBLIC_APP_URL` a `localhost:3044`, y está en
+`.gitignore`.
+
+### Veredicto
+
+B1 y B2 cerrados con mutaciones que muerden: los tres specs en verde en dos corridas y `corregirResultadoGestion` probado en navegador, con la cifra nueva a la primera.

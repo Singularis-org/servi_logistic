@@ -304,12 +304,15 @@ describeSiHayBase("SLT-64 — el ciclo de vida lee la gestion final (Postgres re
         const ganaElCierre = await f.orden("gana-cierre");
         await gestionCon(ganaElCierre, "reprogramado", "01");
         await gestionCon(ganaElCierre, "entregado", "02");
-        const pierdeElCierre = await f.orden("pierde-cierre");
+        // Cargada un dia antes: si el desempate se invierte, cuenta ESTA orden y la cifra lo delata.
+        const pierdeElCierre = await f.orden("pierde-cierre", D_MENOS_1);
         await gestionCon(pierdeElCierre, "entregado", "03");
         await gestionCon(pierdeElCierre, "reprogramado", "04");
         await afirmarFixture(f.tx, ganaElCierre, { gestiones: 2, vigentes: 2 });
         await afirmarFixture(f.tx, pierdeElCierre, { gestiones: 2, vigentes: 2 });
 
+        // Solo `ganaElCierre`: 08:00 -> 12:00 = 14 400 s. Con el `id` menor contaria `pierdeElCierre`,
+        // de D-1 08:00 a D 12:00 = 28 h = 100 800 s.
         expect(await f.leer()).toEqual({ segundosAcum: 14400, n: 1 });
       });
     });

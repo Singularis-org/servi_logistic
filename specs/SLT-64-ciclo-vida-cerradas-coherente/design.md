@@ -58,8 +58,9 @@ Lo que garantiza cada pieza:
 - **Una contribución por orden (R3).** El `NOT EXISTS` deja pasar solo la última gestión vigente de
   cada orden. Dos gestiones de la misma orden no pueden ser «la última» a la vez.
 - **Mismo desempate que el «Entregado N».** `(created_at, id) >` es el mismo orden que
-  `ORDER BY created_at DESC, id DESC` en `ConteoPorStatusRepository`. Comparar `id` uuid con `>`
-  es determinista, como el `ORDER BY id DESC` de allí.
+  `ORDER BY created_at DESC, id DESC` en `ConteoPorStatusRepository`. La columna `id` es `text`:
+  comparar con `>` es determinista y sigue la collation de la columna, igual que el
+  `ORDER BY id DESC` de allí.
 - **La comparación se hace en texto.** `resultado` es el enum `gestion_resultado`, y Prisma manda
   los parámetros como texto: sin un cast, Postgres no encuentra el operador `enum = text`.
   `ConteoDevolucionesRepository` lo resuelve por el otro lado, con un solo valor

@@ -6,15 +6,22 @@ import { crearAnaliticaCacheDeNext } from "@/lib/cache/next-analitica-cache";
 import { defaultLogger } from "@/lib/errors/logger";
 import type { IAnaliticaCache } from "@/lib/interfaces/external/IAnaliticaCache";
 import type {
+  GestionDeshacerRow,
+  ICierreDiaRepository,
+} from "@/lib/interfaces/repositories/ICierreDiaRepository";
+import type {
   DeshacerGestionServiceResult,
   ICierreDiaService,
 } from "@/lib/interfaces/services/ICierreDiaService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { CierreDiaService } from "@/lib/services/CierreDiaService";
+import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
 
 // SLT-64 / T4.4 — R12, R14, R15, R16: deshacer una gestión invalida las lecturas de entregas.
 //
 // Este borde no ve por qué vía anuló el servicio (pendiente, cierre rechazado propio o legada): las
-// tres devuelven el mismo `ok`, y eso es lo que aquí decide invalidar.
+// tres devuelven el mismo `ok`, y eso es lo que aquí decide invalidar. El bloque «las tres vías» une
+// la acción con el servicio real para comprobarlo por cada una.
 
 vi.mock("@/lib/cache/next-analitica-cache", () => ({ crearAnaliticaCacheDeNext: vi.fn() }));
 
@@ -126,6 +133,105 @@ describe("R12, R16 · deshacer con éxito invalida", () => {
     expect(crearAnaliticaCacheDeNext).toHaveBeenCalledTimes(1);
     expect(invalidar).toHaveBeenCalledTimes(1);
     expect(invalidar.mock.calls[0][0]).toBe("correccion_gestion");
+  });
+});
+
+describe("R12 · las tres vías, con `CierreDiaService` real y el repositorio doble", () => {
+  // La fila es la del caso de cada vía. Los valores de la orden son los que la guarda de cada una
+  // admite: 454 sigue `en_reparto`, y la legada ya transicionó al registrarse.
+  const FILA_BASE: GestionDeshacerRow = {
+    gestionId: GESTION,
+    ordenId: "o1",
+    mensajeroId: MENSAJERO.usuarioId,
+    resultado: "entregado",
+    cierreId: null,
+    anuladaAt: null,
+    orden: { deletedAt: null, estatusId: "s-actual", estatusValue: "en_reparto" },
+    desdeAyudaTienda: false,
+    registradaComoPendiente: true,
+    cierreEstado: null,
+    cierreMensajeroId: null,
+  };
+
+  const VIAS = [
+    {
+      via: "la gestión pendiente sin cierre",
+      fila: FILA_BASE,
+      escritura: "anularGestionPendiente",
+    },
+    {
+      via: "la gestión de un cierre rechazado propio",
+      fila: {
+        ...FILA_BASE,
+        cierreId: "c-rechazado",
+        cierreEstado: "rechazado",
+        cierreMensajeroId: MENSAJERO.usuarioId,
+      },
+      escritura: "anularGestionDeCierreRechazado",
+    },
+    {
+      via: "la rama legada",
+      fila: {
+        ...FILA_BASE,
+        registradaComoPendiente: false,
+        orden: { ...FILA_BASE.orden, estatusValue: "entregado" },
+      },
+      escritura: "anularGestionYDevolverAGestion",
+    },
+  ] as const;
+
+  function servicioReal(fila: GestionDeshacerRow, escrituraGana: boolean) {
+    const escrituras = {
+      anularGestionPendiente: vi.fn(async () => escrituraGana),
+      anularGestionDeCierreRechazado: vi.fn(async () => escrituraGana),
+      anularGestionYDevolverAGestion: vi.fn(async () => escrituraGana),
+    };
+    const repo = {
+      findGestionParaDeshacer: vi.fn(async () => fila),
+      findUltimaGestionNoAnuladaId: vi.fn(async () => GESTION),
+      ...escrituras,
+    };
+    const service = new CierreDiaService(
+      repo as unknown as ICierreDiaRepository,
+      { findCentralZonaId: vi.fn(async () => null) },
+      {
+        findUsuarioZonaId: vi.fn(async () => "z1"),
+        findUsuarioVehiculoId: vi.fn(async () => null),
+        findEstatusIdByValue: vi.fn(async () => "s-reparto"),
+        findBloqueoDetalle: vi.fn(async () => SIN_BLOQUEO),
+        findOrdenesEnCorreccion: vi.fn(async () => new Set<string>()),
+      },
+      { createSignedUrl: vi.fn(), createSignedUrls: vi.fn(async () => ({})) },
+      { resolvePagoTarifa: vi.fn(async () => null) } as never,
+    );
+    return { service, escrituras };
+  }
+
+  it.each(VIAS)("$via: escribe por su vía e invalida las ocho etiquetas", async ({ fila, escritura }) => {
+    const { cache, invalidar } = cacheEspia();
+    const { service, escrituras } = servicioReal(fila, true);
+
+    const r = await deshacerGestion(ENTRADA, { service, getActor, cache });
+
+    expect(r).toEqual(OK);
+    for (const [nombre, llamada] of Object.entries(escrituras)) {
+      expect(llamada, nombre).toHaveBeenCalledTimes(nombre === escritura ? 1 : 0);
+    }
+    expect(invalidar).toHaveBeenCalledTimes(1);
+    const [origen, tags] = invalidar.mock.calls[0];
+    expect(origen).toBe("correccion_gestion");
+    expect([...tags].sort()).toEqual(OCHO_ETIQUETAS);
+  });
+
+  it.each(VIAS)("$via: si la escritura pierde la carrera, `conflict` y cero invalidaciones", async ({ fila, escritura }) => {
+    const { cache, invalidar } = cacheEspia();
+    const { service, escrituras } = servicioReal(fila, false);
+
+    const r = await deshacerGestion(ENTRADA, { service, getActor, cache });
+
+    expect(r.status).toBe("conflict");
+    expect(escrituras[escritura]).toHaveBeenCalledTimes(1);
+    expect(invalidar).not.toHaveBeenCalled();
   });
 });
 

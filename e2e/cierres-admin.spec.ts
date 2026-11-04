@@ -138,3 +138,65 @@ test.describe("Cierres del día — el admin aprueba o rechaza", () => {
     ]);
   });
 });
+
+/**
+ * SLT-64 (B2 de la revisión) — CORREGIR EL RESULTADO DE UNA ENTREGA, con la respuesta de la acción que
+ * ahora trae la página renderizada (`{ expire: 0 }`). Empresa propia: las cifras de Analítica son
+ * exactas y los casos de arriba no entran en ellas. La primera visita a `/analitica` deja la entrada
+ * en la caché, y la segunda es la primera lectura tras invalidar.
+ */
+test.describe("Cierres del día — corregir el resultado mueve Analítica en la primera lectura", () => {
+  let propio: RepartoE2E;
+
+  test.beforeAll(async () => {
+    propio = await crearEscenarioReparto("cierres-corregir");
+  });
+
+  async function verCifras(page: Page, entregado: string, cerradas: string) {
+    await page.goto("/analitica");
+    // La frase de desenlaces y no la tarjeta: la cifra de la tarjeta se anima desde 0, así que al
+    // subir a 2 pasa por el 1 y esta espera daría por buena la cifra vieja (medido con `"max"`).
+    await expect(page.locator("p", { hasText: new RegExp(`^Entregado: ${entregado}( ·|$)`) })).toBeVisible();
+    await expect(page.getByText(`(${cerradas} órdenes cerradas)`, { exact: false })).toBeVisible();
+  }
+
+  test("(c) el diálogo y el detalle siguen vivos tras la respuesta, y «Entregado» baja a la primera", async ({ browser }) => {
+    const m = await crearMensajero(propio, "central");
+    const queda = await llevarA(propio, await crearOrden(propio, { zona: "central", montoCobrar: 6000 }), "en_reparto", { mensajero: m });
+    const corregida = await llevarA(propio, await crearOrden(propio, { zona: "central", montoCobrar: 2500 }), "en_reparto", { mensajero: m });
+    await gestionar(propio, queda, m, { resultado: "entregado", pagos: [{ metodo: "efectivo", monto: 6000 }] });
+    await gestionar(propio, corregida, m, { resultado: "entregado", pagos: [{ metodo: "efectivo", monto: 2500 }] });
+    await solicitarCierre(propio, m);
+
+    const page = await paginaDe(browser, propio.empresa.maestro);
+    await verCifras(page, "2", "2");
+
+    const detalle = await abrirDetalle(page, m);
+    const totales = detalle.getByRole("region", { name: "Totales del cierre" });
+    await expect(totales.getByText("Total general", { exact: true }).locator("xpath=ancestor::div[1]")).toContainText(importe(8500));
+    const ordenes = detalle.getByRole("region", { name: "Órdenes del cierre" });
+    await ordenes.getByRole("tab", { name: /Entregado/ }).click();
+    await ordenes.getByRole("button", { name: new RegExp(corregida.numRemision), expanded: false }).click();
+    await detalle.getByRole("button", { name: `Corregir el resultado de la orden ${corregida.numRemision} · ${corregida.destinatario}` }).click();
+
+    const dialogo = page.getByRole("dialog", { name: "Corregir el resultado de la entrega" });
+    await dialogo.getByLabel("Motivo de la corrección").fill("La entrega nunca ocurrió");
+    await dialogo.getByRole("button", { name: /^Marcar como / }).click();
+
+    // El diálogo no se cierra: enseña los totales que devolvió el servidor, ya sin los 2.500.
+    await expect(page.getByText(/^Resultado corregido: la entrega pasó a /)).toBeVisible();
+    const tras = dialogo.getByRole("region", { name: "Totales del cierre tras la corrección" });
+    await expect(tras.getByText("Total general", { exact: true }).locator("xpath=ancestor::div[1]")).toContainText(importe(6000));
+    await dialogo.getByRole("button", { name: "Cerrar" }).last().click();
+    await expect(dialogo).toHaveCount(0);
+
+    // Y el detalle de detrás sigue abierto, releído del servidor.
+    await expect(detalle).toBeVisible();
+    await expect(totales.getByText("Total general", { exact: true }).locator("xpath=ancestor::div[1]")).toContainText(importe(6000));
+    await ordenes.getByRole("tab", { name: /Devolución a origen por rechazo/ }).click();
+    await expect(ordenes.getByRole("button", { name: new RegExp(corregida.numRemision) })).toBeVisible();
+
+    // R13: la primera lectura tras responder trae la cifra nueva. R8: sigue cerrada, así que el rótulo no baja.
+    await verCifras(page, "1", "2");
+  });
+});

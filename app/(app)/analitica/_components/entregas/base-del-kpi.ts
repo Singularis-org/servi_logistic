@@ -51,7 +51,7 @@ export const ORDENES: SustantivoContado = { singular: "orden", plural: "órdenes
 
 /**
  * Las que además CERRARON. `CicloVidaKpi` no mide sobre el universo entero sino sobre las que
- * llegaron a un estado terminal, y el adjetivo es la mitad del dato: sin él, su promedio se
+ * tienen una gestión final de cierre, y el adjetivo es la mitad del dato: sin él, su promedio se
  * leería como si hablara de todas.
  */
 export const ORDENES_CERRADAS: SustantivoContado = {
