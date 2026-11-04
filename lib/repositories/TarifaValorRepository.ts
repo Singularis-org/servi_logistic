@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 
+import { textoConstraintP2002 } from "@/lib/repositories/_shared/prisma-unique";
 import { appendAccion, resolverActorCongelado } from "@/lib/repositories/registrar-accion";
 import { nivelDeValor } from "@/lib/tarifas/niveles";
 import {
@@ -140,48 +141,58 @@ export class TarifaValorRepository implements ITarifaValorRepository {
    * Prisma no admite `null` en un `where` de unico compuesto. Se busca la fila del nivel exacto
    * (`null` en el `where` es `IS NULL`) y se actualiza o se crea, dentro de la transaccion.
    *
-   * Dos fijaciones simultaneas del mismo nivel nuevo chocan en `tarifa_valor_nivel_key` y la
-   * segunda sale como error: la base no deja dos filas, que es lo que R8 pide.
+   * Dos fijaciones simultaneas del mismo nivel nuevo chocan en `tarifa_valor_nivel_key`: la base no
+   * deja dos filas, que es lo que R8 pide, y la segunda sale como `"nivel_ocupado"` (el service la
+   * traduce a `validation_error`, como `GrupoDistritosRepository` con su `nombre_repetido`). Otra
+   * violacion, de otra restriccion, se propaga.
    */
-  async fijar(datos: FijarValorDatos, actorUsuarioId: string | null): Promise<FijarValorResultado> {
-    return this.prisma.$transaction(async (tx) => {
-      const nivel = {
-        concepto: datos.concepto,
-        zonaId: datos.zonaId,
-        grupoId: datos.grupoId,
-        tiendaId: datos.tiendaId,
-        mensajeroId: null,
-        vehiculoId: datos.vehiculoId,
-      };
-      const anterior = await tx.tarifaValor.findFirst({
-        where: nivel,
-        select: { id: true, modo: true, valor: true, ivaPct: true },
-      });
-      const importe = {
-        modo: datos.modo,
-        valor: new Prisma.Decimal(datos.valor),
-        ivaPct: datos.ivaPct === null ? null : new Prisma.Decimal(datos.ivaPct),
-        actualizadoPor: actorUsuarioId,
-      };
-      const fila =
-        anterior === null
-          ? await tx.tarifaValor.create({ data: { ...nivel, ...importe }, select: { id: true } })
-          : await tx.tarifaValor.update({ where: { id: anterior.id }, data: importe, select: { id: true } });
+  async fijar(
+    datos: FijarValorDatos,
+    actorUsuarioId: string | null,
+  ): Promise<FijarValorResultado | "nivel_ocupado"> {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const nivel = {
+          concepto: datos.concepto,
+          zonaId: datos.zonaId,
+          grupoId: datos.grupoId,
+          tiendaId: datos.tiendaId,
+          mensajeroId: null,
+          vehiculoId: datos.vehiculoId,
+        };
+        const anterior = await tx.tarifaValor.findFirst({
+          where: nivel,
+          select: { id: true, modo: true, valor: true, ivaPct: true },
+        });
+        const importe = {
+          modo: datos.modo,
+          valor: new Prisma.Decimal(datos.valor),
+          ivaPct: datos.ivaPct === null ? null : new Prisma.Decimal(datos.ivaPct),
+          actualizadoPor: actorUsuarioId,
+        };
+        const fila =
+          anterior === null
+            ? await tx.tarifaValor.create({ data: { ...nivel, ...importe }, select: { id: true } })
+            : await tx.tarifaValor.update({ where: { id: anterior.id }, data: importe, select: { id: true } });
 
-      const actor = await resolverActorCongelado(tx, actorUsuarioId);
-      await appendAccion(tx, [
-        {
-          accion: "tarifa_valor_fijado",
-          entidadTipo: "tarifa_valor",
-          entidadId: fila.id,
-          entidadEtiqueta: await etiquetaDelValor(tx, fila.id),
-          ...actor,
-          valorAnterior: anterior === null ? null : textoDelValor(anterior),
-          valorNuevo: textoDelValor(datos),
-        },
-      ]);
-      return { id: fila.id, reemplazo: anterior !== null };
-    });
+        const actor = await resolverActorCongelado(tx, actorUsuarioId);
+        await appendAccion(tx, [
+          {
+            accion: "tarifa_valor_fijado",
+            entidadTipo: "tarifa_valor",
+            entidadId: fila.id,
+            entidadEtiqueta: await etiquetaDelValor(tx, fila.id),
+            ...actor,
+            valorAnterior: anterior === null ? null : textoDelValor(anterior),
+            valorNuevo: textoDelValor(datos),
+          },
+        ]);
+        return { id: fila.id, reemplazo: anterior !== null };
+      });
+    } catch (e) {
+      if (textoConstraintP2002(e)?.includes("tarifa_valor_nivel_key")) return "nivel_ocupado";
+      throw e;
+    }
   }
 
   /**

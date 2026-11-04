@@ -18,7 +18,7 @@ describe("verificar-rls-despliegue — el contrato sale de MODELOS_DE_NEGOCIO (R
   it("con una lista inventada de 2 modelos espera 2 politicas y 2 triggers sin cambio de empresa", () => {
     expect(contratoEsperado(DOS_MODELOS, [])).toEqual({
       politicasPorEmpresa: 2,
-      triggersMismaEmpresa: 166,
+      triggersMismaEmpresa: 167,
       triggersSinCambio: 2,
     });
   });
@@ -29,25 +29,26 @@ describe("verificar-rls-despliegue — el contrato sale de MODELOS_DE_NEGOCIO (R
     // SLT-73: `conciliacion_bodega_ajuste` suma su politica, su trigger sin cambio y DOS de misma
     // empresa (sus FK a `cierre_bodega` y a `usuario`).
     // SLT-52: `grupo_distritos`, `grupo_distritos_distrito`, `tarifa_valor`, `cierre_detail_concepto` y
-    // `gestion_pago_congelado` suman cinco politicas, cinco sin-cambio y DIEZ `sme_*` (156 -> 166).
+    // `gestion_pago_congelado` suman cinco politicas, cinco sin-cambio y DIEZ `sme_*` (156 -> 166); su T4.6 suma
+    // el de `rechazo_tienda_cobro.tarifa_valor_id` (166 -> 167).
     // SL-23: `organizacion_modulo` tampoco suma triggers de misma empresa: su unica FK es a `organizacion`.
     // SL-36 no suma triggers de misma empresa: sus dos tablas no tienen FK a otra tabla de negocio.
     // SL-19: `jobs` (empresa opcional) suma su `jobs_por_empresa`, pero no tiene trigger sin cambio.
     expect(MODELOS_CON_EMPRESA_OPCIONAL.map((m) => m.tabla)).toEqual(["jobs"]);
-    expect(contratoEsperado()).toEqual({ politicasPorEmpresa: 86, triggersMismaEmpresa: 166, triggersSinCambio: 85 });
+    expect(contratoEsperado()).toEqual({ politicasPorEmpresa: 86, triggersMismaEmpresa: 167, triggersSinCambio: 85 });
   });
 
   it("SL-19 — una tabla de empresa opcional suma una politica y ningun trigger sin cambio de empresa", () => {
     expect(contratoEsperado(DOS_MODELOS, [{ modelo: "Opcional", tabla: "opcional" }])).toEqual({
       politicasPorEmpresa: 3,
-      triggersMismaEmpresa: 166,
+      triggersMismaEmpresa: 167,
       triggersSinCambio: 2,
     });
   });
 
   it("el punto 6 da OK con lo que pide el contrato y FALLA con una tabla de mas o de menos", () => {
     const contrato = contratoEsperado(DOS_MODELOS, []);
-    const cuadra = { politicas: 2, para_app: 2, con_rls: 2, sme: 166, sin_cambio: 2 };
+    const cuadra = { politicas: 2, para_app: 2, con_rls: 2, sme: 167, sin_cambio: 2 };
     expect(evaluarCatalogo(cuadra, contrato)).toMatchObject({ punto: 6, ok: true });
     expect(evaluarCatalogo({ ...cuadra, politicas: 3, para_app: 3, con_rls: 3 }, contrato).ok).toBe(false);
     expect(evaluarCatalogo({ ...cuadra, sin_cambio: 1 }, contrato).ok).toBe(false);

@@ -567,7 +567,7 @@ export class BulkOrdenService implements IBulkOrdenService {
     // unica tarifa de lote (R25), en UNA sola consulta (R26).
     const tarifaPorRemision = new Map<string, TarifaTienda>();
     // SLT-52 (R27): el pedido de cada orden, como texto, para un flete o fulfillment en % del
-    // modelo nuevo. `montoCobrar` ya llega redondeado al colon por `normalizarMontoCobrar`.
+    // modelo nuevo. `montoCobrar` ya llega redondeado a la unidad de la moneda por `normalizarMontoCobrar`.
     const montoCobrarPorRemision = new Map<string, string | null>();
     const conTarifa: CreateOrdenData[] = [];
     if (toCreate.length > 0) {

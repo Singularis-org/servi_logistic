@@ -38,8 +38,11 @@ export interface ITarifaValorRepository {
   esTiendaTarifable(tiendaId: string): Promise<boolean>;
   /** `vehiculos` es catalogo de plataforma: solo se comprueba que exista. */
   existeVehiculo(vehiculoId: string): Promise<boolean>;
-  /** Upsert por la clave natural (R8) + `tarifa_valor_fijado` con antes/despues, en UNA transaccion. */
-  fijar(datos: FijarValorDatos, actorUsuarioId: string | null): Promise<FijarValorResultado>;
+  /**
+   * Upsert por la clave natural (R8) + `tarifa_valor_fijado` con antes/despues, en UNA transaccion.
+   * `"nivel_ocupado"`: otra fijacion simultanea creo antes la fila de ese nivel (`tarifa_valor_nivel_key`).
+   */
+  fijar(datos: FijarValorDatos, actorUsuarioId: string | null): Promise<FijarValorResultado | "nivel_ocupado">;
   /** Borrado fisico (R9) + `tarifa_valor_quitado`, en UNA transaccion. */
   quitar(id: string, actorUsuarioId: string | null): Promise<"ok" | "not_found">;
   listar(filtro: { zonaId?: string }): Promise<TarifaValorDTO[]>;

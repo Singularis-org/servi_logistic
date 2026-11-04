@@ -1758,3 +1758,40 @@ Los únicos rojos son los conocidos por el estado de la base local: `caja-backfi
 `notificacion-evento-{bloqueo-cierre,gasto-fijo,webhook-suscripcion}-migration` (1+1+2). Ningún
 otro paso del gate sale rojo y no hay rojos de SLT-52. Log:
 `C:\Users\ArqDev\AppData\Local\Temp\claude\aab05f6b97f87a08\f7f7aab5-fce1-4ca5-876a-bed4e91ec523\scratchpad\init-slt52-t7.log`.
+
+## Arreglos de la revisión F2.2 (2026-11-03)
+
+Origen: `progress/review_SLT-52.md` (RECHAZO por H1). Solo H1, H3, H5, H6 y H10; H2, H4, H7, H8 y H9 no se tocan.
+
+- **H1 (mayor):** `scripts/verificar-rls-despliegue.ts` → `TRIGGERS_MISMA_EMPRESA = 167`; el comentario nombra
+  `20261103140100_rechazo_tienda_cobro_tarifa_valor_misma_empresa` (T4.6, FK `rechazo_tienda_cobro.tarifa_valor_id`).
+  167 medido por mí: `grep -rhoE 'CREATE (OR REPLACE )?TRIGGER "?sme_' db/migrations/*/migration.sql | wc -l` = 167
+  (0 `DROP TRIGGER sme_` en `migration.sql`). Test: `tests/unit/scripts/verificar-rls-despliegue.test.ts` (los cinco 166 → 167),
+  4/4. Mutación (constante a 166): caen los 4; restaurado.
+- **H3:** `TarifaValorRepository.fijar` captura el P2002 de `tarifa_valor_nivel_key` (por `meta.target` o mensaje del driver
+  adapter, con `textoConstraintP2002`) y devuelve `"nivel_ocupado"`; cualquier otro error se relanza.
+  `TarifaValorService` lo traduce a `validation_error` en `concepto` (mismo reparto que `GrupoDistritosRepository` /
+  `nombre_repetido`). Interfaz `ITarifaValorRepository.fijar` → `FijarValorResultado | "nivel_ocupado"`. Texto del error
+  redactado por el implementer (el spec no lo define): «Otro cambio fijó este concepto en el mismo nivel al mismo tiempo.
+  Recarga y vuelve a intentarlo.». Tests: `tests/unit/services/tarifa-valor-service.test.ts`, describe «R8 — carrera en
+  tarifa_valor_nivel_key (repositorio real)», 3 `it` (P2002 meta.target; P2002 forma driver adapter; otro P2002 y P2003 se
+  propagan). Archivo 64/64. Mutación (sin traducción): caen los dos primeros; restaurado.
+- **H5 (R9):** `tests/integration/db/tarifas-flexibles-escritura.test.ts`, `it("R9 — quitar el valor del nivel especifico hace
+  que el concepto caiga al nivel siguiente al resolver")`: zona=1500 y grupo=2100 → resuelve 2100.00/grupo; `quitarValor` del
+  servicio real sobre el grupo → resuelve 1500.00/zona (literales). Contra Postgres, ejecutado (no saltado), archivo 6/6.
+  Mutación (`quitar` sin `deleteMany`): cae; restaurado.
+- **H6:** `lib/services/BulkOrdenService.ts:570` → «redondeado a la unidad de la moneda». `lib/types/cotizacion.ts` sin tocar (viene de dev).
+- **H10:** `design.md` (fila «Lo que ya existe» de los resolvers): las raíces de las fachadas no cambian; la de
+  `CierreDiaRepository` sí (recibe `TarifaVigenteRepository` en `lib/actions/cierre-dia.ts`, `app/api/cron/corte-diario/route.ts`
+  y `scripts/demo-qa/receta.ts`), vigilada por la guardia de T7.1.
+
+- **Rojo propio encontrado por el gate (1.ª corrida):** `historial-accion-escrituras-cubiertas.guardia` (TarifaValorRepository#fijar):
+  la traducción de H3 sacaba el `$transaction` a un helper privado y la guardia analiza el cuerpo de `fijar`. Arreglo: el
+  try/catch envuelve el `$transaction` dentro de `fijar`; helper eliminado; guardia sin tocar. Guardia 90/90, servicio 64/64,
+  escritura 6/6; mutación H3 repetida: caen los 2 tests P2002 (62/64); restaurado.
+
+Gate (`./init.sh`, 2.ª corrida, log `scratchpad/init-slt52-fixrev.log`): **INIT_EXIT=1**. typecheck paso, lint paso;
+`test:rapido` 4 archivos / 9 tests rojos, 1278 archivos / 17408 tests verdes, 26 saltados. Los 4 rojos son solo los conocidos
+ajenos: `caja-backfill` (5) y `notificacion-evento-{bloqueo-cierre,gasto-fijo,webhook-suscripcion}-migration` (1+1+2).
+Pasos posteriores a `test:rapido` corridos a mano: paso 7 (toda migración con `down.sql`): OK, ninguna sin `down.sql`;
+paso 8 (`.env`): presente.

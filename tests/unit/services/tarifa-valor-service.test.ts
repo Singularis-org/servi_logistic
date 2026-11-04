@@ -366,3 +366,54 @@ describe("R8/R14 — upsert y historial en la misma transaccion (repositorio rea
     expect(tx.historialAccion.createMany).not.toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// R8 (revision F2.2, H3) — la carrera de dos fijaciones del mismo nivel nuevo: la base rechaza la
+// segunda en `tarifa_valor_nivel_key` y el borde la devuelve como `validation_error`, no como 500.
+// ---------------------------------------------------------------------------------------------
+
+function errorPrisma(code: string, meta: Record<string, unknown>): Prisma.PrismaClientKnownRequestError {
+  return new Prisma.PrismaClientKnownRequestError("rechazo de la base", { code, clientVersion: "test", meta });
+}
+
+describe("R8 — carrera en tarifa_valor_nivel_key (repositorio real)", () => {
+  it("un P2002 en tarifa_valor_nivel_key (meta.target) sale como validation_error en concepto, sin historial", async () => {
+    const { tx, raiz } = prismaDoble(null);
+    tx.tarifaValor.create.mockRejectedValue(errorPrisma("P2002", { target: "tarifa_valor_nivel_key" }));
+
+    const res = await servicioReal(raiz).fijarValor(cobro(), MAESTRO);
+
+    expect(res).toEqual({
+      status: "validation_error",
+      fieldErrors: {
+        concepto: ["Otro cambio fijó este concepto en el mismo nivel al mismo tiempo. Recarga y vuelve a intentarlo."],
+      },
+    });
+    expect(tx.historialAccion.createMany).not.toHaveBeenCalled();
+  });
+
+  it("el mismo P2002 con la forma del driver adapter (originalMessage) tambien sale como validation_error", async () => {
+    const { tx, raiz } = prismaDoble(null);
+    tx.tarifaValor.create.mockRejectedValue(
+      errorPrisma("P2002", {
+        driverAdapterError: {
+          cause: { originalMessage: "llave duplicada viola restriccion de unicidad «tarifa_valor_nivel_key»" },
+        },
+      }),
+    );
+
+    const res = await servicioReal(raiz).fijarValor(cobro(), MAESTRO);
+
+    expect(res).toMatchObject({ status: "validation_error" });
+  });
+
+  it("un P2002 de otra restriccion y un P2003 se propagan tal cual", async () => {
+    const otroUnico = errorPrisma("P2002", { target: "tarifa_valor_pkey" });
+    const fk = errorPrisma("P2003", { field_name: "tarifa_valor_zona_id_fkey" });
+    for (const error of [otroUnico, fk]) {
+      const { tx, raiz } = prismaDoble(null);
+      tx.tarifaValor.create.mockRejectedValue(error);
+      await expect(servicioReal(raiz).fijarValor(cobro(), MAESTRO)).rejects.toBe(error);
+    }
+  });
+});

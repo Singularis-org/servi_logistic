@@ -3,6 +3,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
 import type { Actor } from "@/lib/interfaces/services/ITarifaValorService";
+import { resolverCobrosCon } from "@/lib/repositories/_shared/resolver-tarifas";
 import { serviciosDeTarifas, type ServiciosDeTarifas } from "@/lib/tarifas/servicios";
 import { comoApp, crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
@@ -118,6 +119,8 @@ interface Escenario {
   B: string;
   /** Zona de A con d1..d4 en `zona_distrito`. */
   Z: string;
+  /** Tienda de A (la de `crearFksDeOrden`), para resolver el cobro (R9). */
+  T: string;
   d1: string;
   d2: string;
   d3: string;
@@ -181,6 +184,7 @@ async function sembrar(tx: TxDeTest): Promise<Escenario> {
     A,
     B,
     Z,
+    T: fksA.tiendaId,
     d1,
     d2,
     d3,
@@ -323,6 +327,48 @@ describeSiHayBase("SLT-52 T6.4 — escritura de valores y grupos (Postgres real,
         { accion: "tarifa_valor_fijado", entidadId: r.id, actorUsuarioId: e.maestro.usuarioId, valorAnterior: null, valorNuevo: "monto 1500.00 IVA 13.00" },
         { accion: "tarifa_valor_quitado", entidadId: r.id, actorUsuarioId: e.maestro.usuarioId, valorAnterior: "monto 1500.00 IVA 13.00", valorNuevo: null },
       ]);
+    });
+  });
+
+  it("R9 — quitar el valor del nivel especifico hace que el concepto caiga al nivel siguiente al resolver", async () => {
+    await conEscenario(async (e) => {
+      // PREMISA: la zona de A empieza sin valores.
+      expect(await valoresDeLaZona(e.tx, e.Z)).toEqual([]);
+
+      const G = await crearGrupoOk(e, "Centro", [e.d1]);
+      const general = await e.s.tarifaValor.fijarValor(cobroDeZona(e.Z, "1500"), e.maestro);
+      if (general.status !== "ok") throw new Error(`fijar zona: ${JSON.stringify(general)}`);
+      const especifico = await e.s.tarifaValor.fijarValor({ ...cobroDeZona(e.Z, "2100"), grupoId: G }, e.maestro);
+      if (especifico.status !== "ok") throw new Error(`fijar grupo: ${JSON.stringify(especifico)}`);
+
+      const par = { tiendaId: e.T, zonaId: e.Z, distritoId: e.d1 };
+      const fleteDe = async () => {
+        const t = (await resolverCobrosCon(e.tx, [par])).get(`${e.T}|${e.Z}|${e.d1}`);
+        if (t === null || t === undefined || t.modelo !== "nuevo") throw new Error(`modelo nuevo esperado: ${JSON.stringify(t)}`);
+        return t.valores.tienda_flete_entregado;
+      };
+
+      // Con los dos niveles fijados gana el del grupo (el distrito d1 esta en G).
+      expect(await fleteDe()).toEqual({
+        concepto: "tienda_flete_entregado",
+        modo: "monto",
+        valor: "2100.00",
+        ivaPct: "13.00",
+        nivel: "grupo",
+        tarifaValorId: especifico.id,
+      });
+
+      expect(await e.s.tarifaValor.quitarValor(especifico.id, e.maestro)).toEqual({ status: "ok" });
+
+      // Sin el del grupo, el concepto cae al de la zona.
+      expect(await fleteDe()).toEqual({
+        concepto: "tienda_flete_entregado",
+        modo: "monto",
+        valor: "1500.00",
+        ivaPct: "13.00",
+        nivel: "zona",
+        tarifaValorId: general.id,
+      });
     });
   });
 

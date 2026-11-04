@@ -22,6 +22,11 @@ function errorEn(campo: string, mensaje: string): ValidationError {
   return { status: "validation_error", fieldErrors: { [campo]: [mensaje] } };
 }
 
+const NIVEL_OCUPADO = errorEn(
+  "concepto",
+  "Otro cambio fijó este concepto en el mismo nivel al mismo tiempo. Recarga y vuelve a intentarlo.",
+);
+
 /**
  * SLT-52 (design §8) — escribe y lee `tarifa_valor`. La empresa sale del contexto (la extension del
  * cliente), nunca del input; el historial lo escribe el repositorio en la misma transaccion (R14).
@@ -46,7 +51,7 @@ export class TarifaValorService implements ITarifaValorService {
     const referencias = await this.referenciasInvalidas(dato);
     if (referencias !== null) return referencias;
 
-    const { id } = await this.repo.fijar(
+    const res = await this.repo.fijar(
       {
         concepto: dato.concepto,
         modo: dato.modo,
@@ -60,7 +65,9 @@ export class TarifaValorService implements ITarifaValorService {
       },
       actor.usuarioId,
     );
-    return { status: "ok", id };
+    // R8: una fijacion simultanea del mismo nivel gano la carrera; la base no deja dos filas.
+    if (res === "nivel_ocupado") return NIVEL_OCUPADO;
+    return { status: "ok", id: res.id };
   }
 
   async quitarValor(id: string, actor: Actor): Promise<QuitarValorResult> {
