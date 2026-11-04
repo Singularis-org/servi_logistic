@@ -26,7 +26,8 @@ import { D, consultaDe, rangoDe } from "../../_cohorte-carga";
  *
  * `ConteoPorStatusRepository` (y `ConteoEntregasRepository`, que lo pliega en desenlaces con la lista
  * `DESENLACES` de codigos), `ConteoDevolucionesRepository` (gestiones con `resultado = <codigo>`) y
- * `CicloVidaRepository` (ultima transicion a un estado TERMINAL, por codigo) comparan codigos en SQL.
+ * `CicloVidaRepository` (ultima gestion vigente con resultado de cierre, por codigo; SLT-64) comparan
+ * codigos en SQL.
  * Cohorte de carga del dia D (2001-06-15), vista por la tienda, en tx revertida:
  *   O1 `R.entregado` y transicion terminal a `C.entregado` · O2 `R.novedad` (not_found) ·
  *   O3 `R.novedad` sin causa · O4 `R.rechazo` · O5 `R.reprogramado` · O6 `R.incidente` y transicion
@@ -138,7 +139,7 @@ describeSiHayBase("455/C07 — conteos de entregas, devoluciones y ciclo de vida
 
 // Valores medidos sobre el codigo de HOY (2026-09-24), con los codigos leidos en su clave del interruptor.
 // O7 y O8 nunca se gestionaron: cuentan por su `order_status` (la semilla las deja en
-// `C.enBodegaCentral`); O8 cierra ciclo por su transicion terminal, pero el desglose es por status.
+// `C.enBodegaCentral`). Su transicion terminal no cierra ciclo: sin gestion vigente no cuenta (SLT-64).
 const POR_STATUS_ESPERADO = [
   "enBodegaCentral:2",
   "entregado:1",
@@ -156,5 +157,10 @@ const DESENLACES_ESPERADOS = [
   "reprogramado:1",
 ];
 const CAUSAS_ESPERADAS = ["not_found:1", "sin_causa:1"];
-// O1 08:00->12:00 (14 400 s) + O6 08:50->15:00 (22 200 s) + O8 09:10->18:10 (32 400 s).
-const CICLO_ESPERADO = { segundosAcum: 69000, n: 3 };
+// SLT-64: cierran las de gestion final `entregado`, `rechazo` o `incidente`, calculado desde el fixture:
+//   O1 entregado 08:00->12:00 = 4 h 00 min = 14 400 s
+//   O4 rechazo   08:30->14:00 = 5 h 30 min = 19 800 s
+//   O6 incidente 08:50->15:00 = 6 h 10 min = 22 200 s
+//   14 400 + 19 800 + 22 200 = 56 400 s, n = 3.
+// No cuentan O2 y O3 (`novedad`), O5 (`reprogramado`), O7 (sin gestion) ni O8 (solo transicion terminal).
+const CICLO_ESPERADO = { segundosAcum: 56400, n: 3 };

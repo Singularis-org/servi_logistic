@@ -23,7 +23,7 @@
 // ventana de una lectura y no de las otras deja de ser algo que pueda pasar por descuido.
 //
 // ⚠ LO QUE ESTA FUNCION NO ES: la ventana de CICLO DE VIDA. `CicloVidaRepository` acota la
-// transicion TERMINAL (`condicionDeVentanaTerminal`, sobre `h."created_at"`) porque contesta «de
+// GESTION FINAL (`condicionDeVentanaDeCierre`, sobre `g."created_at"`) porque contesta «de
 // lo que CERRO esta semana, cuanto tardo», y una orden creada en enero y cerrada en agosto cuenta
 // alli en AGOSTO. Aqui cuenta en ENERO. Las dos son correctas para su pregunta y NO deben
 // converger nunca; por eso aquella no usa esta funcion y no es una omision.
