@@ -63,7 +63,8 @@ plan». Causa: crear (SL-24 R1) solo guarda el plan con `plan.organizacion_id`; 
 - [~] verificación tandas 2–3 (de los subagentes; sin regenerar Prisma por la junction compartida): lint 0 errores;
   related verdes (2422 backend, 122 frontend D17); guardias verdes salvo la del baseline; tsc sin errores en UI, y
   los de `lib/` son todos del cliente Prisma sin generar (incluido `plan_tipo_cobro_cambiado`). Integración db solo en CI.
-- [ ] PR a `dev`
+- [x] PR a `dev` — #72, CI completo en verde en fabc20a0 (2026-11-03): gate-completo, vitest 3/3,
+  e2e aislamiento/dinero/reparto, estatico. Pendiente: merge por el humano.
 
 ### Abierto tras la tanda 3
 1. Etiqueta del historial general para D16: «Cambió el tipo de cobro del plan de una empresa» (la
