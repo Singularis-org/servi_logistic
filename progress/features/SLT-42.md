@@ -48,6 +48,13 @@ Bloqueos de F2.0:
 - 2026-11-03: cupo backend 3 → 4 en `arnes.config.json`: «ignoralo, esas estan en pausa para
   pruebas futuras, las de geo» (SLT-43, SLT-44, SLT-65).
 
+- 2026-11-04 (tras tanda 1, desvíos de `progress/impl_SLT-42.md`):
+  1. Guardia `geografia-predicado-unico`: se acota a geografía (provincia/cantón/distrito/nodos); deja de mirar otras tablas.
+  2. Migración 120100: inserta «ruc»/«pasaporte» si faltan (CI, bases nuevas) en vez de abortar. Desvío aceptado del design.
+  3. `scripts/seed-catalogos.ts`: se QUITAN los tipos de documento del seed; solo los crea la migración.
+  4. Tipo de documento inactivo: la lectura lo devuelve con `activo: false` y el servicio lo rechaza (R11), con mensaje propio.
+  5. Excepción de plataforma etiquetada `SL-20` en vez de `SLT-42` (deuda D29, criterio de SLT-58): aceptado por el leader.
+
 ## Preguntas abiertas
 Las del `requirements.md` (normalizar teléfonos guardados, jobs por zona horaria, largos de documento).
 
