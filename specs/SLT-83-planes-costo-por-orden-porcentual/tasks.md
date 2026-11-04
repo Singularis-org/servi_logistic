@@ -18,7 +18,7 @@
   comentario de los `CHECK`. Depende de T0.
   *Hecho:* `tests/integration/db/plan-costo-porcentual-escritura.test.ts`, casos de `CHECK` (R1, R2) en
   verde; diff de drift vacío.
-- [ ] **T2. M2 `20261104150100_cobro_plataforma_porcentual_orden`** (design §2.2): tabla, índices, RLS,
+- [x] **T2. M2 `20261104150100_cobro_plataforma_porcentual_orden`** (design §2.2): tabla, índices, RLS,
   política, `REVOKE`, triggers de SL-17 generados, índice `(organizacion_id, ocurrido_at)` y `down.sql`.
   Prisma: modelo, relaciones inversas en `Orden` y `Organizacion`. `MODELOS_DE_NEGOCIO` gana el modelo.
   Depende de T1.

@@ -67,3 +67,44 @@ Fuera de `db/` y `lib/` (no lo pide T0, para T3): la nombran también
 - `pnpm exec eslint tests/integration/db/plan-costo-porcentual-escritura.test.ts` → sin salida (0 problemas).
 
 **Veredicto T0+T1:** punto de partida confirmado, M1 aplicada sin drift y sus `CHECK` probados en verde.
+
+## T2
+
+**Archivos.**
+- Creado `db/migrations/20261104150100_cobro_plataforma_porcentual_orden/migration.sql` (design §2.2):
+  tabla `cobro_plataforma_porcentual_orden` (PK `orden_id`, FK `orden` CASCADE, FK `organizacion`
+  RESTRICT, `CHECK` de porcentaje y mínimo), `UNIQUE (organizacion_id, orden_id)`, índice
+  `(organizacion_id)`, RLS + política `cobro_plataforma_porcentual_orden_por_empresa`,
+  `REVOKE INSERT, UPDATE, DELETE … FROM servi_app`, índice `(organizacion_id, ocurrido_at)` en
+  `cobro_plataforma_movimiento` y los dos triggers de SL-17 pegados de
+  `pnpm exec tsx scripts/generar-misma-empresa.ts --faltantes`.
+- Creado su `down.sql`: se niega si la tabla tiene filas; si no, triggers, política, tabla e índice.
+- Modificado `db/schema.prisma`: `model CobroPlataformaPorcentualOrden` (con el comentario de `CHECK`,
+  política, `REVOKE` y triggers), `Orden.cobroPorcentual`, `Organizacion.cobrosPorcentuales` y
+  `@@index([organizacionId, ocurridoAt])` en `CobroPlataformaMovimiento`.
+- Modificado `lib/db/modelos-de-negocio.ts`: entra `CobroPlataformaPorcentualOrden`.
+- Creado `tests/integration/db/cobro-plataforma-porcentual-aislamiento.test.ts` (R17).
+- **Contadores existentes que sube la tabla nueva** (no son cambios de regla: son el control positivo
+  que cada tabla de negocio nueva actualiza, como hicieron SL-40, SLT-56, SLT-73 y SLT-52):
+  - `tests/unit/guards/rls-por-empresa.guardia.test.ts`: el control `tablas.length` pasa de 85 a 86;
+  - `scripts/verificar-rls-despliegue.ts`: `TRIGGERS_MISMA_EMPRESA` 167 → 168 (la FK nueva a `orden`);
+  - `tests/unit/scripts/verificar-rls-despliegue.test.ts`: `MODELOS_DE_NEGOCIO` 85 → 86 y el contrato
+    86/167/85 → 87/168/86, más el 167 → 168 de los casos con lista inventada.
+  Medido en `servi_logistic_slt83`: `pg_trigger` tiene 168 `sme_*` y 86 `*_sin_cambio_de_empresa`.
+
+**R → test.**
+- R17 → `cobro-plataforma-porcentual-aislamiento.test.ts`: `servi_app` no inserta/actualiza/borra
+  condiciones (42501) y sí lee la suya; tampoco escribe movimientos (42501); lee solo sus condiciones;
+  condición de A con orden de B → SL017; cambiar la empresa de una condición → SL017.
+- R17 (gate) → guardias `organizacion-en-modelos`, `rls-por-empresa`, `fk-misma-empresa`.
+
+**Salida.**
+- `prisma migrate deploy` → aplicada; `prisma migrate diff --from-config-datasource --to-schema
+  db/schema.prisma --script` → `-- This is an empty migration.`;
+  `generar-misma-empresa.ts --faltantes` después → 0 triggers pendientes.
+- `down.sql` en `BEGIN … ROLLBACK` con la tabla vacía: tabla e índice desaparecen.
+- `pnpm exec vitest run` de `cobro-plataforma-porcentual-aislamiento`, `plan-costo-porcentual-escritura`,
+  las tres guardias y `verificar-rls-despliegue` → `Test Files 6 passed (6) · Tests 63 passed (63)`.
+- `pnpm run typecheck` → exit 0. `eslint` de los archivos tocados → 0 problemas.
+
+**Veredicto T2:** tabla de condiciones aislada por empresa y de solo lectura para `servi_app`, en verde.
