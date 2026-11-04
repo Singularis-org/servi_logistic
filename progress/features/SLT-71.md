@@ -20,6 +20,8 @@ se abortó y lo resuelve `backend_dev`. Siguiente: F1.1/F1.2 (spec).
 - Cruce de archivos: pendiente de `tasks.md`.
 
 ## Decisiones
+- 2026-11-04 · Alcance y decisiones cerradas en `specs/SLT-71-geo-jerarquica-transito-analitica/requirements.md` (`/afinar-feature`; tarjetas SLT-71 y SLT-47 actualizadas).
+- 2026-11-04 · Base montada sobre SLT-65 (PR #75) en `fe16f5d1`, por decisión del humano.
 - 2026-11-04 (humano): tomar SLT-71 con SLT-44 sin mergear y subir el cupo backend a 5 (`arnes.config.json`).
 - 2026-10-31 (humano, al acotar SLT-65 con `/afinar-feature`): el dinero va aparte; SLT-71 sale de SLT-65.
 
