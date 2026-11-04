@@ -97,7 +97,7 @@
 
 ## T5 — Verificación y cierre
 
-- [ ] T5.1 `e2e/dos-empresas-humo.spec.ts`: el `maestro` recibe 404 en `/configuracion/vehiculos` y el
+- [x] T5.1 `e2e/dos-empresas-humo.spec.ts`: el `maestro` recibe 404 en `/configuracion/vehiculos` y el
   catálogo no cambia (R16). Dep.: T4.2.
   **Hecho:** el spec pasa en CI (`gate-completo`).
 - [x] T5.2 `progress/deudas.md`: D12 cerrada en su parte de vehículos; mapa `R<n> -> test` en

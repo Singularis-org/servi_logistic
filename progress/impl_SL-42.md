@@ -419,3 +419,7 @@ El spec E2E de R16 está escrito y sin correr en local. D12 está cerrada, la ar
   - `tests/unit/ayuda/acotamiento-por-rol.test.ts`
 - **Antes:** `Test Files 5 failed`, `Tests 8 failed | 72 passed (80)`.
 - **Después:** `Test Files 5 passed (5)`, `Tests 80 passed (80)`. `eslint` sobre los 5 archivos: sin avisos.
+
+## T5.1 cerrada en CI — 2026-11-04 (leader)
+- PR #76, run 41885831066 sobre `a494b4eb`: `gate-completo` success; `e2e (aislamiento)` success con `e2e/dos-empresas-humo.spec.ts`. La salida es la de CI, no local (`next build` no cabe en el tope local; review m2).
+- Antes, dos rojos de CI de SL-42 arreglados: E2E `superadmin-arranque` (menú con «Vehículos», `0c28c48f`) y 5 tests con recuentos de ayuda (`a494b4eb`).
