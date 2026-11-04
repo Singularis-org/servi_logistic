@@ -59,6 +59,7 @@ Bloqueos de F2.0:
 Las del `requirements.md` (normalizar teléfonos guardados, jobs por zona horaria, largos de documento).
 
 ## Tandas
+- 2026-11-04 · T0.1, T1.1–T1.5, T2.1–T2.4, T3.1–T3.2 · 31a5b0eb · gate rápido local rojo por carga (6 tests de UI, verdes 3/3 en la rama y en dev sin carga; ver impl_SLT-42.md); subido. T1.0 pendiente (persona, antes del deploy).
 
 ## Modelos (overrides)
 
