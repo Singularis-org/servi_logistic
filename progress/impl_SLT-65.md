@@ -1063,3 +1063,14 @@ Ninguno viene de SLT-52 ni de SLT-75 por sí solo. Los tests de SLT-52 y SLT-76 
 - `geografia-superadmin-sin-empresa`: 4/4. `tarifas-flexibles-base-congelada`: 6/6. `tarifas-flexibles-snapshot`: 6/6. `zona-distrito-rastro`: 4/4. `zona-especial-dos-empresas`: 13/13, con la limpieza sin errores.
 - `pnpm run typecheck` (tsc --noEmit): exit 0. Lint de los 5 archivos (backend_dev): sin hallazgos.
 - `salida-a-reparto-sql-real`: sigue en 1 rojo de 7 hasta que el arreglo baje de SLT-43.
+
+### 2026-11-04 — el arreglo de `salida-a-reparto-sql-real` baja de SLT-43
+
+- Paso 0: con datos reales la colisión no ocurre. Los ids de `provincia`, `canton` y `distrito` son uuid aleatorios
+  (`@default(uuid())`, `gen_random_uuid()` en la migración de seed, `randomUUID()` por nodo en la carga CSV de SL-20).
+  Solo el literal del test la fuerza.
+- SLT-43 `337bd521` cambia el id de la provincia ajena a `…-0001` (sin tocar ningún `expect`); SLT-44 lo mergea
+  (`d4ba69c6`) y aquí entra con `git merge origin/feature/SLT-44-geo-jerarquica-dominio` → `68567ea4`, sin conflictos
+  ni migraciones nuevas.
+- `logistic_slt65_r1104` (`migrate status` al día), `timeout 600`: `salida-a-reparto-sql-real.test.ts`
+  `Test Files 1 passed (1)`, `Tests 7 passed (7)`. `pnpm run typecheck`: exit 0.
