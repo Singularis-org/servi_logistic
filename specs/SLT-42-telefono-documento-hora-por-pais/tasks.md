@@ -44,19 +44,19 @@
 
 ## Bloque 2 — Módulos puros (depende de T0.1 solo para T2.4) `[P]`
 
-- [ ] **T2.1** `[P]` `lib/utils/calendario-zona.ts` + `tests/unit/utils/calendario-zona.test.ts`
+- [x] **T2.1** `[P]` `lib/utils/calendario-zona.ts` + `tests/unit/utils/calendario-zona.test.ts`
   (R22, R23). Los casos de CR son los mismos ejemplos que documentan `fecha-cr.ts`, y además una zona
   con horario de verano en sus dos días de cambio.
   *Hecho:* verde. Las funciones de `fecha-cr.ts` pasan a ser envoltorios de estas con la zona de CR,
   y sus tests de hoy siguen en verde sin tocarlos.
-- [ ] **T2.2** `[P]` `lib/utils/telefono-pais.ts` + `tests/unit/utils/telefono-pais.test.ts` (R18,
+- [x] **T2.2** `[P]` `lib/utils/telefono-pais.ts` + `tests/unit/utils/telefono-pais.test.ts` (R18,
   R20, R21). La tabla de casos de CR se genera con el código de hoy **antes** de cambiarlo y se
   congela en el test.
   *Hecho:* verde; `telefono-cr.ts` y `whatsapp-telefono.ts` son envoltorios.
-- [ ] **T2.3** `[P]` `lib/utils/documento.ts` + `tests/unit/utils/documento.test.ts` (R10, regla de
+- [x] **T2.3** `[P]` `lib/utils/documento.ts` + `tests/unit/utils/documento.test.ts` (R10, regla de
   P5).
   *Hecho:* verde.
-- [ ] **T2.4** `[P]` `lib/validacion/telefono.ts` (`server-only`, `libphonenumber-js/max`) +
+- [x] **T2.4** `[P]` `lib/validacion/telefono.ts` (`server-only`, `libphonenumber-js/max`) +
   `tests/unit/validacion/telefono.test.ts` (R14, R15, R16).
   *Hecho:* verde: CR válido e inválido, número de Panamá con región CR rechazado, `XA` da
   `pais_sin_reglas`.
