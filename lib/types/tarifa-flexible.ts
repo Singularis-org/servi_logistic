@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { GestionResultado, TarifaNivel } from "@prisma/client";
+import type { GestionResultado, TarifaConcepto, TarifaNivel } from "@prisma/client";
 
 import {
   CONCEPTOS_PAGO,
@@ -196,3 +196,75 @@ export const escrituraValorSchema = z.discriminatedUnion("concepto", [
 ]);
 
 export type EscrituraValorInput = z.infer<typeof escrituraValorSchema>;
+
+// ---------------------------------------------------------------------------------------------
+// Escritura: lo que llega al service y lo que devuelve la lectura (T6.2, design §8).
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Lo que `TarifaValorService.fijarValor` recibe. Tipado ANCHO a proposito: `ivaPct` admite texto
+ * en cualquier concepto porque es el service quien lo valida con `escrituraValorSchema` y devuelve
+ * `validation_error` en `ivaPct` cuando un pago lo trae (R45). Con el tipo estrecho del esquema, un
+ * pago con `"0"` no compilaria y el rechazo no se podria ni probar ni explicar al usuario.
+ * `mensajeroId` no esta: el valor propio del mensajero lo escribe SLT-55.
+ */
+export interface FijarValorInput {
+  concepto: TarifaConcepto;
+  modo: ModoTarifa;
+  valor: string;
+  ivaPct?: string | null;
+  zonaId: string | null;
+  grupoId: string | null;
+  tiendaId: string | null;
+  vehiculoId: string | null;
+}
+
+/** Un `tarifa_valor` leido. Importes en texto con 2 decimales (money-safe). */
+export interface TarifaValorDTO {
+  id: string;
+  concepto: TarifaConcepto;
+  modo: ModoTarifa;
+  valor: string;
+  /** `null` en los pagos (P4). */
+  ivaPct: string | null;
+  nivel: TarifaNivel;
+  zonaId: string | null;
+  grupoId: string | null;
+  tiendaId: string | null;
+  mensajeroId: string | null;
+  vehiculoId: string | null;
+  updatedAt: Date;
+}
+
+/** `varchar(60)` en la base; el CHECK `grupo_distritos_nombre_no_vacio` impide uno en blanco. */
+const nombreGrupoSchema = z
+  .string()
+  .trim()
+  .min(1, "El grupo necesita un nombre.")
+  .max(60, "El nombre del grupo no puede pasar de 60 caracteres.");
+
+const distritoIdsSchema = z.array(idSchema);
+
+export const crearGrupoSchema = z.object({
+  zonaId: idSchema,
+  nombre: nombreGrupoSchema,
+  distritoIds: distritoIdsSchema,
+});
+
+export const renombrarGrupoSchema = z.object({ nombre: nombreGrupoSchema });
+
+export const fijarDistritosSchema = z.object({ distritoIds: distritoIdsSchema });
+
+export type CrearGrupoInput = z.input<typeof crearGrupoSchema>;
+
+export interface DistritoDelGrupo {
+  id: string;
+  nombre: string;
+}
+
+export interface GrupoDistritosDTO {
+  id: string;
+  zonaId: string;
+  nombre: string;
+  distritos: DistritoDelGrupo[];
+}

@@ -1321,3 +1321,87 @@ igualdad de conexion de los conceptos con las gestiones. Las aserciones de R1 (`
 `notificacion-evento-bloqueo-cierre-migration`, `notificacion-evento-gasto-fijo-migration`,
 `notificacion-evento-webhook-suscripcion-migration` (estado de la base local, tambien en dev) y `carga-division` (2: cuenta
 `historial_accion` global y otra prueba escribe a la vez; sola pasa 16/16). Ninguno de SLT-52; la 450 verde dentro del gate.
+
+## T6.1-T6.3 (2026-11-03)
+
+MCP `codebase-memory` no respondio (timeout de conexion): todo por Grep/Read. Sin migracion, sin
+`prisma generate`, sin dependencias nuevas.
+
+### Archivos
+
+Creados:
+- `lib/interfaces/repositories/ITarifaValorRepository.ts`, `lib/interfaces/repositories/IGrupoDistritosRepository.ts` (T6.1)
+- `lib/repositories/TarifaValorRepository.ts`, `lib/repositories/GrupoDistritosRepository.ts` (T6.1)
+- `lib/interfaces/services/ITarifaValorService.ts`, `lib/interfaces/services/IGrupoDistritosService.ts` (T6.2)
+- `lib/services/TarifaValorService.ts`, `lib/services/GrupoDistritosService.ts` (T6.2)
+- `lib/tarifas/niveles.ts` — `nivelDeValor(concepto, columnas)`: el nivel o el campo culpable (R5-R7), misma regla que los CHECK `tarifa_valor_niveles_*`
+- `lib/tarifas/servicios.ts` — fabrica `serviciosDeTarifas(prisma)` (T6.3)
+- `tests/unit/services/tarifa-valor-service.test.ts`, `tests/unit/services/grupo-distritos-service.test.ts`, `tests/unit/tarifas/servicios-composicion.test.ts`
+
+Modificados:
+- `lib/types/tarifa-flexible.ts` — `FijarValorInput` (ancho: `ivaPct` admite texto para poder rechazar `"0"` en un pago), `TarifaValorDTO`, esquemas `crearGrupoSchema`/`renombrarGrupoSchema`/`fijarDistritosSchema`, `GrupoDistritosDTO`.
+- `tests/unit/guards/historial-accion-escrituras-cubiertas.guardia.test.ts` — 6 entradas nuevas en el censo (`TarifaValorRepository.fijar`/`quitar`, `GrupoDistritosRepository.crear`/`renombrar`/`fijarDistritos`/`borrar`, todas `abre_tx`) y `ESCRITOR_PENDIENTE_EN_CURSO` vaciada (sus 5 tipos ya tienen productor).
+
+### Desvios del design §8 (decididos y anotados)
+
+1. **El historial lo escribe el repositorio, no el service.** El design da a los services `IHistorialAccionRepository`, pero en
+   este codigo esa interfaz es de LECTURA y la escritura tiene un punto unico, `appendAccion(tx, …)`, que exige la `tx` en curso;
+   la guardia `historial-accion-escrituras-cubiertas` mide por METODO de repositorio que abre `$transaction`. Patron calcado de
+   `TarifaRepository`: el service pasa `actor.usuarioId` y el repositorio hace mutacion + `appendAccion` en la misma transaccion.
+   Los services no reciben un repositorio de historial.
+2. **`fijarValor` no devuelve `not_found`.** Zona, grupo, tienda o vehiculo inexistentes en la empresa son `validation_error` en su
+   campo (patron `TarifaService`); `not_found` queda en `quitarValor`, `renombrarGrupo`, `fijarDistritos` y `borrarGrupo`.
+3. **Upsert sin `prisma.upsert`**: el unico es NULLS NOT DISTINCT y Prisma no admite `null` en un `where` de unico compuesto.
+   `findFirst` del nivel exacto + `update`/`create` dentro de la tx. Una carrera de dos altas en el mismo nivel la para
+   `tarifa_valor_nivel_key` (sale como error; no quedan dos filas).
+4. Antes/despues del historial (`valor_anterior`/`valor_nuevo`, `varchar(60)` via `valorDeCatalogo`): valor → `"monto 1500.00 IVA 13.00"`
+   / `"porcentaje 12.50"`; renombrar → los dos nombres; mover distritos → `"3 distritos"` → `"2 distritos"`; crear → `null` →
+   `"N distritos"`; borrar grupo → `"2 distritos, 3 valores"` → `null` (R12: cuantos valores se fueron por cascada). `monto` NULL.
+5. `fijarDistritos` borra solo los que salen y crea solo los que entran (los que se quedan no se tocan).
+6. Un `ivaPct: null` en un pago tambien se rechaza (lo decide `escrituraPagoSchema` de T1, `z.never().optional()`): la pantalla de
+   SLT-54 tiene que OMITIR el campo en los pagos, no mandarlo a `null`.
+
+### Mapa R → test
+
+| R | Test |
+|---|---|
+| R3 | `tarifa-valor-service` › «guarda el modo, el valor y el IVA del cobro tal como llegan (R3)» |
+| R4 | `tarifa-valor-service` › «R3/R4/R45 — rangos e IVA» (negativo, % > 100, IVA > 100, IVA < 0, cobro sin IVA ausente/null) y «un monto de 150 es valido» |
+| R5 | `tarifa-valor-service` › «R5/R6» cobro: zona, grupo, tienda_zona, tienda_grupo, tienda_general |
+| R6 | `tarifa-valor-service` › «R5/R6» mensajero/satelite: zona, zona_vehiculo, grupo, grupo_vehiculo |
+| R7 | `tarifa-valor-service` › «R7» (vehiculo en cobro, tienda en pago, grupo sin zona ×2, sin nivel ×2, tienda no tarifable, grupo de otra zona, zona/vehiculo inexistentes) |
+| R8 | `tarifa-valor-service` › «fijar un nivel ya ocupado REEMPLAZA la fila…» y «fijar un nivel libre CREA la fila…» (repositorio real) |
+| R9 | `tarifa-valor-service` › «R9 — quitar», «quitar borra la fila…» y «quitar un id que no existe…» (repositorio real) |
+| R10 | `grupo-distritos-service` › «R10» (zona, nombre recortado y distritos sin repetir, nombre ocupado, renombrar excluyendo al propio, blanco y > 60, not_found) |
+| R11 | `grupo-distritos-service` › «R11» (ajeno nombrado, en otro grupo nombrado, grupo propio excluido) y «lo que la base rechaza…» (P2002 de distritos y de nombre, repositorio real) |
+| R13 | `tarifa-valor-service` y `grupo-distritos-service` › «R13 — matriz de roles» (7 roles sin escritura, admin lee, 6 sin lectura); `servicios-composicion` (la fabrica que usaran las actions de SLT-54) |
+| R14 | `tarifa-valor-service` › «R8/R14 …» y `grupo-distritos-service` › «R14 — historial…» (fila por la `tx`, cero por el cliente raiz, antes/despues literales) |
+| R45 | `tarifa-valor-service` › «pago al mensajero con IVA 0», «… con IVA 13», «pago a la satelite con IVA 0», «un pago sin IVA se guarda con ivaPct null» |
+
+R12 (cascada en la base) y R15 (dos empresas) quedan para T6.4 en Postgres real; aqui solo el conteo de R12 en el historial.
+
+### Verificacion
+
+- `pnpm run typecheck`: exit 0.
+- `pnpm run lint`: exit 0, `✖ 232 problems (0 errors, 232 warnings)`; ninguno en los archivos de esta tanda.
+- `pnpm exec vitest run` de los 3 tests + la guardia del historial: `Test Files 4 passed (4) · Tests 190 passed (190)`
+  (tarifa-valor 61, grupo-distritos 35, composicion 4, guardia 90).
+- `pnpm exec vitest related --run` sobre los 7 `lib/` tocados: `Test Files 4 passed (4) · Tests 127 passed (127)`.
+- `pnpm run test:guardias`: `Test Files 1 failed | 326 passed (327) · Tests 4 failed | 4561 passed | 1 skipped`; los 4 rojos son
+  `dependencias-declaradas-presentes.guardia` (baseline, igual que en T1-T5).
+- CRLF: cuatro archivos salieron con CRLF de un script de edicion; normalizados a LF antes de las mutaciones y de la verificacion final.
+
+### Mutaciones (a mano, restauradas y comprobadas con `cmp` contra la copia del scratchpad: IGUAL en las 8)
+
+| # | Mutacion | Rojo |
+|---|---|---|
+| M1 | `TarifaValorService`: `ROLES_QUE_ESCRIBEN` con `"admin"` | 2 failed: «'admin' recibe forbidden al fijar…», «… al quitar…» |
+| M1b | `GrupoDistritosService`: idem | 1 failed: «'admin' recibe forbidden en las cuatro escrituras…» |
+| M2 | `TarifaValorService`: quitar `ivaPct` de los pagos antes de validar (ignorar en vez de rechazar) | 3 failed: pago mensajero IVA 0, IVA 13, satelite IVA 0 |
+| M3 | `GrupoDistritosService`: `const ajenos: string[] = []` | 1 failed: «un distrito que no es de la zona se rechaza nombrandolo…» |
+| M4 | `TarifaValorRepository.fijar`: `appendAccion(this.prisma, …)` (fuera de la tx) | 2 failed: «…REEMPLAZA la fila…», «…CREA la fila…» |
+| M4b | `GrupoDistritosRepository.crear`: idem | 1 failed: «crear: grupo y distritos por la tx…» |
+| M5 | fabrica: `new TarifaValorService(undefined as never)` | 2 failed: «TarifaValorService recibe un TarifaValorRepository real…», «listar valores llega al cliente…» |
+| M5b | fabrica: `new GrupoDistritosRepository({} as never)` (otro cliente) | 2 failed: «GrupoDistritosService recibe…», «listar grupos llega al cliente…» |
+
+Veredicto: T6.1-T6.3 hechas; services, repositorios y fabrica verdes con 8/8 mutaciones en rojo; R12/R15 en Postgres real quedan para T6.4.

@@ -236,10 +236,10 @@
 
 ## T6 — Services de escritura (depende de T1; puede ir en paralelo con T3-T5) [P]
 
-- [ ] **T6.1** `TarifaValorRepository` + `ITarifaValorRepository`; `GrupoDistritosRepository` +
+- [x] **T6.1** `TarifaValorRepository` + `ITarifaValorRepository`; `GrupoDistritosRepository` +
   `IGrupoDistritosRepository`. Toda query filtra por `organizacion_id` (vía extensión) y nada de SQL
   a mano.
-- [ ] **T6.2** `TarifaValorService` + interfaz y `GrupoDistritosService` + interfaz (design §8).
+- [x] **T6.2** `TarifaValorService` + interfaz y `GrupoDistritosService` + interfaz (design §8).
   Tests `tests/unit/services/tarifa-valor-service.test.ts` y
   `tests/unit/services/grupo-distritos-service.test.ts`: matriz de roles (maestro escribe, admin lee,
   el resto `forbidden`, sin escribir), rangos, nivel incompatible, tienda con rol no tarifable,
@@ -247,7 +247,7 @@
   pago con IVA (también `"0"`) → `validation_error` en `ivaPct` sin escribir, cobro sin IVA →
   `validation_error`, historial con antes/después en la misma transacción.
   Cubre: R3, R4, R5, R6, R7, R8, R9, R10, R11, R13, R14, R45.
-- [ ] **T6.3** `lib/tarifas/servicios.ts` (fábrica) + `tests/unit/tarifas/servicios-composicion.test.ts`:
+- [x] **T6.3** `lib/tarifas/servicios.ts` (fábrica) + `tests/unit/tarifas/servicios-composicion.test.ts`:
   cada dependencia que la fábrica pasa es una instancia real (no `undefined`, no un doble) y el
   service la usa (una llamada llega al repositorio). Cubre: R13 (la puerta llega a las actions de
   SLT-54).

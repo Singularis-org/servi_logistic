@@ -214,6 +214,43 @@ const CENSO: EntradaCenso[] = [
     forma: "abre_tx",
     mutacion: /tx\.tarifa\.updateMany\(/,
   },
+  // SLT-52 (R14, T6.2) — el modelo nuevo de tarifas. Un metodo por escritura; `grupo_distritos_cambiado`
+  // tiene DOS productores (renombrar y mover distritos), cada uno con su propia transaccion.
+  {
+    tipos: ["tarifa_valor_fijado"],
+    archivo: "lib/repositories/TarifaValorRepository.ts",
+    metodo: "fijar",
+    forma: "abre_tx",
+    mutacion: /tx\.tarifaValor\.(?:create|update)\(/,
+  },
+  {
+    tipos: ["tarifa_valor_quitado"],
+    archivo: "lib/repositories/TarifaValorRepository.ts",
+    metodo: "quitar",
+    forma: "abre_tx",
+    mutacion: /tx\.tarifaValor\.deleteMany\(/,
+  },
+  {
+    tipos: ["grupo_distritos_creado"],
+    archivo: "lib/repositories/GrupoDistritosRepository.ts",
+    metodo: "crear",
+    forma: "abre_tx",
+    mutacion: /tx\.grupoDistritos\.create\(/,
+  },
+  {
+    tipos: ["grupo_distritos_cambiado"],
+    archivo: "lib/repositories/GrupoDistritosRepository.ts",
+    metodo: "renombrar",
+    forma: "abre_tx",
+    mutacion: /tx\.grupoDistritos\.update\(/,
+  },
+  {
+    tipos: ["grupo_distritos_cambiado"],
+    archivo: "lib/repositories/GrupoDistritosRepository.ts",
+    metodo: "fijarDistritos",
+    forma: "abre_tx",
+    mutacion: /tx\.grupoDistritosDistrito\.deleteMany\(/,
+  },
   {
     tipos: ["incidente_aprobado", "incidente_rechazado"],
     archivo: "lib/repositories/IncidenteAdminRepository.ts",
@@ -514,6 +551,14 @@ const CENSO: EntradaCenso[] = [
     mutacion: /tx\.tarifa\.delete\(/,
   },
   {
+    // SLT-52 (R12, R14): fisico, y arrastra los distritos y valores del grupo por CASCADE.
+    tipos: ["grupo_distritos_borrado"],
+    archivo: "lib/repositories/GrupoDistritosRepository.ts",
+    metodo: "borrar",
+    forma: "abre_tx",
+    mutacion: /tx\.grupoDistritos\.deleteMany\(/,
+  },
+  {
     tipos: ["zona_borrada"],
     archivo: "lib/repositories/ZonaRepository.ts",
     metodo: "hardDelete",
@@ -714,19 +759,8 @@ interface TiposConEscritorPendiente {
   tarea: string;
 }
 
-const ESCRITOR_PENDIENTE_EN_CURSO: TiposConEscritorPendiente[] = [
-  {
-    tipos: [
-      "tarifa_valor_fijado",
-      "tarifa_valor_quitado",
-      "grupo_distritos_creado",
-      "grupo_distritos_cambiado",
-      "grupo_distritos_borrado",
-    ],
-    ficha: "SLT-52",
-    tarea: "T6.2 (TarifaValorService / GrupoDistritosService)",
-  },
-];
+// SLT-52 T6.2 ya escribe sus cinco tipos (ver el censo): la lista queda vacia.
+const ESCRITOR_PENDIENTE_EN_CURSO: TiposConEscritorPendiente[] = [];
 
 /** Los archivos `.ts` de `lib/`, relativos a la raiz. */
 function archivosDeLib(dir = "lib"): string[] {
@@ -1157,7 +1191,7 @@ describe("362/R16 — cada tipo del catalogo tiene al menos un punto de escritur
     // `CierresAdminRepository.ajustarPagoMensajeroEnCierre`).
     // 75 desde SLT-76 (`zona_distrito_cambiado`, en `ZonaRepository.update`).
     // 80 desde SLT-52 (`tarifa_valor_fijado`/`_quitado` y `grupo_distritos_creado`/`_cambiado`/
-    // `_borrado`; su productor llega en T6.2 y hasta entonces estan en `ESCRITOR_PENDIENTE_EN_CURSO`).
+    // `_borrado`; sus productores, desde T6.2, en `TarifaValorRepository` y `GrupoDistritosRepository`).
     expect(HISTORIAL_ACCION_TIPOS).toHaveLength(80);
   });
 });
