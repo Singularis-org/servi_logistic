@@ -225,6 +225,8 @@ function cierreDiaFake(estadoInicial = "solicitado") {
       count: vi.fn().mockResolvedValue(1), // existe en alcance -> `conflict`, no `fuera_de_alcance`
       // FICHA 362: la resolucion lee ademas el total y el mensajero para congelar la fila.
       findUnique: vi.fn().mockResolvedValue({
+        // SLT-73 (T3): la aprobacion lee el destino; esta suite mide la de la CENTRAL, que asienta.
+        destinoTipo: "bodega_central",
         mensajeroId: "m1",
         totalGeneral: new Prisma.Decimal("0.00"),
         solicitadoAt: new Date("2026-09-02T12:00:00Z"),
@@ -283,6 +285,8 @@ function buildPrisma(
           count: vi.fn().mockResolvedValue(1),
           // FICHA 362: la resolucion lee el total y el mensajero para congelar la fila del registro.
           findUnique: vi.fn().mockResolvedValue({
+            // SLT-73 (T3): la aprobacion lee el destino; esta suite mide la de la CENTRAL, que asienta.
+            destinoTipo: "bodega_central",
             totalGeneral: new Prisma.Decimal("0.00"),
             solicitadoAt: new Date("2026-09-02T12:00:00Z"),
             mensajero: { nombre: "Mensa", primerApellido: "Uno" },
@@ -332,7 +336,7 @@ function makeRepo(prisma: ReturnType<typeof buildPrisma>) {
       { construirMovimientosPorTienda: vi.fn().mockResolvedValue([]) },
       // Feature 44: dobles no-op del libro del pago por mensajero (feed devuelve libro/egreso
       // vacios; el pago por mensajero tiene su propio test de idempotencia).
-      { crearMovimientos: vi.fn().mockResolvedValue(0), listarPorMensajero: vi.fn(), agregarCuentaPorPagar: vi.fn(), listarCuentasPorPagarTodos: vi.fn(), listarCuentasPorPagarPaginado: vi.fn(), listarCuentasPorPagarCompleto: vi.fn(), obtenerNombreMensajero: vi.fn(), sumarPremiosVivosPorCierre: vi.fn(async () => ({})), listarPremiosPorDias: vi.fn(async () => []) },
+      { crearMovimientos: vi.fn().mockResolvedValue(0), listarPorMensajero: vi.fn(), agregarCuentaPorPagar: vi.fn(), listarCuentasPorPagarTodos: vi.fn(), listarCuentasPorPagarPaginado: vi.fn(), listarCuentasPorPagarCompleto: vi.fn(), obtenerNombreMensajero: vi.fn(), sumarPremiosVivosPorCierre: vi.fn(async () => ({})), listarPremiosPorDias: vi.fn(async () => []), obtenerIncentivo: vi.fn(async () => null) },
       { construirMovimientosDePago: vi.fn().mockResolvedValue({ libro: [], egresoCaja: [] }) },
       // Feature 158/T1.14: doble del feed del egreso de indemnizacion. Este caso cubre la
       // idempotencia de los conceptos de INGRESO; la del egreso de indemnizacion tiene su

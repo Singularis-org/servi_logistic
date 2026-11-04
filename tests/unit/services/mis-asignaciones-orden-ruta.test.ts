@@ -71,12 +71,15 @@ function ruta(over: Partial<RutaOptimizadaDTO> = {}): RutaOptimizadaDTO {
     // Feature 265 (R35): esta suite mira el REORDENADO de la lectura, no la procedencia.
     secuenciaFuente: null,
     trazado: null,
-    tramoVivoAt: null,
+    actualizadaAt: new Date("2026-07-20T11:00:00.000Z"),
     tramoPorOrden: new Map(),
     secuenciaPorOrden: new Map(),
     ...over,
   };
 }
+
+/** SLT-59 (R67): el doble de la ruta del ultimo `build`, para contar sus lecturas. */
+let ultimoRutaRepo: Pick<IRutaOptimizadaRepository, "findByMensajero" | "upsertOrigen">;
 
 function build(rows: MiAsignacionRow[], rutaPrevia: RutaOptimizadaDTO | null) {
   const repo = {
@@ -96,6 +99,7 @@ function build(rows: MiAsignacionRow[], rutaPrevia: RutaOptimizadaDTO | null) {
     findByMensajero: vi.fn(async () => rutaPrevia),
     upsertOrigen: vi.fn(async () => {}),
   } as unknown as Pick<IRutaOptimizadaRepository, "findByMensajero" | "upsertOrigen">;
+  ultimoRutaRepo = rutaRepo;
 
   // Feature 115 (R17): sin marcas -> `marcarLuego` false; este test mide el orden por ruta.
   const metaRepo = {
@@ -118,8 +122,15 @@ function build(rows: MiAsignacionRow[], rutaPrevia: RutaOptimizadaDTO | null) {
   );
 }
 
-async function listar(rows: MiAsignacionRow[], rutaPrevia: RutaOptimizadaDTO | null) {
-  const r = await build(rows, rutaPrevia).listarMisAsignaciones(MENSAJERO);
+/** 12:00 de CR del 20 de julio: la `calculadaAt` de la fixture (06:00 de CR) es de hoy. */
+const AHORA = new Date("2026-07-20T18:00:00.000Z");
+
+async function listar(
+  rows: MiAsignacionRow[],
+  rutaPrevia: RutaOptimizadaDTO | null,
+  ahora: Date = AHORA,
+) {
+  const r = await build(rows, rutaPrevia).listarMisAsignaciones(MENSAJERO, ahora);
   if (r.status !== "ok") throw new Error("se esperaba ok");
   return r;
 }
@@ -254,7 +265,16 @@ describe("bloque `ruta` del resultado y KPIs", () => {
       paradasSinOptimizar: 1,
       trazado: null,
       tramoSiguiente: null,
+      // SLT-79: sin `primeraRutaPendiente` ni `puntoRecogida` (SLT-59 R62), retirados con la
+      // salida de 1 km. El `toEqual` literal falla si vuelven.
     });
+  });
+
+  it("R67: la ruta se lee una sola vez", async () => {
+    const svc = build([row("A", "en_reparto")], ruta({ calculadaAt: new Date("2026-07-19T20:00:00.000Z") }));
+    const r = await svc.listarMisAsignaciones(MENSAJERO, AHORA);
+    expect(r.status).toBe("ok");
+    expect(ultimoRutaRepo.findByMensajero).toHaveBeenCalledTimes(1);
   });
 
   it("`tramoSiguiente` es el de la PRIMERA parada de la ruta, no el de cualquiera", async () => {

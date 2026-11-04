@@ -188,8 +188,15 @@ describe("461/A.2 — R24: R7 sobre subconjuntos al azar CON los conceptos nuevo
       if (filas.some((f) => f.categoria === "ingreso_cobro_tienda")) conCobro += 1;
       if (filas.some((f) => f.categoria === "egreso_reverso_cobro_tienda")) conReverso += 1;
       const r = derivarCaja(filas, { periodoFiltrado: azar() < 0.5 });
-      expect(suma(r.ganancia, r.iva, r.deTerceros, r.capital), `conjunto ${n}`).toBe(r.enCaja);
-      expect(suma(r.deEmpresa, r.deTerceros), `conjunto ${n}`).toBe(r.enCaja);
+      // SLT-73 (design §2.9.4, R27): − «Por cobrar a satélites» (el catalogo trae las dos diferencias).
+      const p = new Prisma.Decimal(r.porCobrarSatelites);
+      expect(
+        new Prisma.Decimal(suma(r.ganancia, r.iva, r.deTerceros, r.capital)).sub(p).toFixed(2),
+        `conjunto ${n}`,
+      ).toBe(r.enCaja);
+      expect(new Prisma.Decimal(suma(r.deEmpresa, r.deTerceros)).sub(p).toFixed(2), `conjunto ${n}`).toBe(
+        r.enCaja,
+      );
       // Y ni el cobro ni su reverso estan en «Entro»/«Salio»: la cifra es la de los efectivos solos.
       const efectivos = derivarCaja(
         filas.filter(

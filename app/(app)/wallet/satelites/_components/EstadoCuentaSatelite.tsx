@@ -10,14 +10,22 @@ import { ESTADO_CUENTA_BODEGA_PAGINA } from "./satelites-labels";
 
 // FICHA 458-D (T D.4, design §3.2/§5; R17–R24, R31) — el estado de cuenta de UNA bodega satélite: el
 // extracto «Declarado / Recibido» con lo que tiene por entregar tras cada movimiento (el corrido lo
-// calcula la base, R21) y, debajo, la CONCILIACIÓN de hoy (R31): marcar y desmarcar lo recibido con su
+// calcula la base, R21; con SLT-73 «Declarado» es el neto para la central, y los cierres aprobados sin
+// consolidar tienen su propia fila) y, debajo, la CONCILIACIÓN de hoy (R31): marcar y desmarcar lo recibido con su
 // mismo efecto y sus mismos textos. Tras marcar o desmarcar se relee el estado de cuenta de ESTA bodega
 // (R30) y el listado de bodegas. La bodega no tiene filas de libro: no hay «Ver» ni «Anular…».
 
-/** El nombre de cada fila de la bodega, por su chip (que el servidor decide: «declarado» / «recibido»). */
+/**
+ * El nombre de cada fila de la bodega, por su chip (que el servidor decide: «declarado» / «recibido» /
+ * «sin_consolidar»). La descarga toma el concepto de aquí (`lineaDeFila` → `filaBaseCuenta`).
+ *
+ * SLT-73 (R32): «declarado» es el neto para la central de la consolidación, y «sin_consolidar» es un
+ * cierre aprobado que cuenta en la deuda sin estar en una consolidación (puede ser negativo).
+ */
 const CONCEPTO_BODEGA: Readonly<Record<string, string>> = {
   declarado: ESTADO_CUENTA_BODEGA_PAGINA.declarado,
   recibido: ESTADO_CUENTA_BODEGA_PAGINA.recibido,
+  sin_consolidar: ESTADO_CUENTA_BODEGA_PAGINA.sinConsolidar,
 };
 
 export const ROTULOS_BODEGA: RotulosEstadoCuenta = {

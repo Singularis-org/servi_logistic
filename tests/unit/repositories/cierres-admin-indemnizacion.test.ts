@@ -79,6 +79,8 @@ function buildPrisma(
       count: vi.fn(async () => 1),
       // FICHA 362: `resolverCierre` lee ademas el total y el mensajero para congelar la fila.
       findUnique: vi.fn(async () => ({
+        // SLT-73 (T3): la aprobacion lee el destino; esta suite mide la de la CENTRAL, que asienta.
+        destinoTipo: "bodega_central",
         mensajeroId: "m1",
         totalGeneral: new Prisma.Decimal("0.00"),
         solicitadoAt: new Date("2026-09-02T12:00:00Z"),
@@ -157,7 +159,7 @@ function buildRepo(prisma: ReturnType<typeof buildPrisma>) {
     { construirMovimientosDeIngreso: vi.fn(async () => []) },
     { crearMovimientos: vi.fn(async () => 0), listarPorTienda: vi.fn(), agregarSaldoPorTienda: vi.fn(), listarSaldosTodasTiendas: vi.fn(), listarSaldosTiendasPaginado: vi.fn(), agregarDesglosePorTienda: vi.fn(), listarCierresDeTienda: vi.fn(async () => []), obtenerPorIdDeTienda: vi.fn(async () => null), registrarCobroEnHistorial: vi.fn(async () => undefined), obtenerCobroPorId: vi.fn(async () => null), nombreDeTienda: vi.fn(async () => ""), obtenerCobroPorClave: vi.fn(async () => null) /* ficha 461; no ejercitados aqui */ },
     { construirMovimientosPorTienda: vi.fn(async () => []) },
-    { crearMovimientos: vi.fn(async () => 0), listarPorMensajero: vi.fn(), agregarCuentaPorPagar: vi.fn(), listarCuentasPorPagarTodos: vi.fn(), listarCuentasPorPagarPaginado: vi.fn(), listarCuentasPorPagarCompleto: vi.fn(), obtenerNombreMensajero: vi.fn(), sumarPremiosVivosPorCierre: vi.fn(async () => ({})), listarPremiosPorDias: vi.fn(async () => []) },
+    { crearMovimientos: vi.fn(async () => 0), listarPorMensajero: vi.fn(), agregarCuentaPorPagar: vi.fn(), listarCuentasPorPagarTodos: vi.fn(), listarCuentasPorPagarPaginado: vi.fn(), listarCuentasPorPagarCompleto: vi.fn(), obtenerNombreMensajero: vi.fn(), sumarPremiosVivosPorCierre: vi.fn(async () => ({})), listarPremiosPorDias: vi.fn(async () => []), obtenerIncentivo: vi.fn(async () => null) },
     { construirMovimientosDePago: vi.fn(async () => ({ libro: [], egresoCaja: [] })) },
     // Feed REAL: es justo lo que se quiere ejercitar (lee de la tx lo recien escrito).
     new WalletIndemnizacionFeedService(),

@@ -542,7 +542,12 @@ describeSiHayBase("⭑ 459/T B.14 → 461/T B.12 — R7 y R8 al centimo tras cad
   it("R7 (SL-39 R4): cifra principal = ganancia + IVA + «De las tiendas» + capital, tras CADA paso (libro entero y diferencia)", () => {
     for (const p of m().pasos) {
       const r = p.lectura.resumen;
-      expect(suma([r.ganancia, r.iva, r.deTerceros, r.capital]), `R7 libro entero · ${p.nombre}`).toBe(r.enCaja);
+      // SLT-73 (R27): menos «Por cobrar a satélites» (el libro entero puede traer diferencias de la satélite).
+      const porCobrar = new Prisma.Decimal(r.porCobrarSatelites).neg().toFixed(2);
+      expect(
+        suma([r.ganancia, r.iva, r.deTerceros, r.capital, porCobrar]),
+        `R7 libro entero · ${p.nombre}`,
+      ).toBe(r.enCaja);
       expect(
         suma([
           delta(p, (l) => l.resumen.ganancia),

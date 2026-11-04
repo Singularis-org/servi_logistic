@@ -84,6 +84,60 @@ describe("fkDeNegocio (parser del esquema)", () => {
   });
 });
 
+// SLT-52 (design §2.3/§2.4): la FK compuesta `(grupo_id, zona_id)` -> `grupo(id, zona_id)` queda
+// cubierta por las dos FK simples a `Zona`, una en cada lado. Si falta cualquiera de las dos, lanza.
+describe("fkDeNegocio: FK compuesta cubierta por una columna compartida", () => {
+  const COMPARTIDA = `
+model Zona {
+  id      String  @id
+  grupos  Grupo[]
+  valores Valor[]
+  @@map("zona")
+}
+model Grupo {
+  id      String  @id
+  zonaId  String  @map("zona_id")
+  zona    Zona    @relation(fields: [zonaId], references: [id])
+  valores Valor[]
+  @@unique([id, zonaId])
+  @@map("grupo")
+}
+model Valor {
+  id      String  @id
+  zonaId  String? @map("zona_id")
+  grupoId String? @map("grupo_id")
+  zona    Zona?   @relation(fields: [zonaId], references: [id])
+  grupo   Grupo?  @relation(fields: [grupoId, zonaId], references: [id, zonaId])
+  @@map("valor")
+}`;
+  const MODELOS = ["Zona", "Grupo", "Valor"];
+
+  it("no lanza y deja solo las FK simples, que son las que llevan trigger", () => {
+    expect(fkDeNegocio(COMPARTIDA, MODELOS).map((f) => `${f.modelo}.${f.campo}`)).toEqual([
+      "Grupo.zona",
+      "Valor.zona",
+    ]);
+  });
+
+  it("lanza si la columna compartida no es FK simple en el origen", () => {
+    const sinZonaEnValor = COMPARTIDA.replace(
+      '  zona    Zona?   @relation(fields: [zonaId], references: [id])\n  grupo   Grupo?',
+      "  grupo   Grupo?",
+    );
+    expect(sinZonaEnValor).not.toBe(COMPARTIDA);
+    expect(() => fkDeNegocio(sinZonaEnValor, MODELOS)).toThrow(/compuesta.*Valor\.grupo/);
+  });
+
+  it("lanza si la columna compartida no es FK simple en el destino", () => {
+    const sinZonaEnGrupo = COMPARTIDA.replace(
+      "  zona    Zona    @relation(fields: [zonaId], references: [id])\n",
+      "",
+    );
+    expect(sinZonaEnGrupo).not.toBe(COMPARTIDA);
+    expect(() => fkDeNegocio(sinZonaEnGrupo, MODELOS)).toThrow(/compuesta.*Valor\.grupo/);
+  });
+});
+
 describe("nombres deterministas de trigger", () => {
   it("sme_ + 40 primeros de <tabla>_<col> + _ + 8 del md5 de <tabla>.<col>", () => {
     const md5 = createHash("md5").update("gestion_fecha_reprogramacion_cambio.actor_usuario_id").digest("hex");

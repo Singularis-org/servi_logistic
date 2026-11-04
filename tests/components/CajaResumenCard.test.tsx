@@ -53,6 +53,10 @@ const RESUMEN: CajaResumenDTO = {
   flujoDesde: "2026-08-25",
   iva: "0.00", // SL-39
   signoIva: "cero" as const,
+  porCobrarSatelites: "0.00",
+  signoPorCobrarSatelites: "cero",
+  porcentajePorCobrarSatelites: "0.00",
+  deEmpresaEnCaja: "2000.00",
 };
 
 /** Vocabulario que NO puede aparecer en esta pantalla: es de contador, no del maestro. */
@@ -400,6 +404,9 @@ describe("CajaResumenCard — money-safe en el navegador (R64)", () => {
       // SL-39: la región del IVA también se pinta, y por el mismo motivo no puede ser `0.00`.
       iva: "7.00",
       signoIva: "positivo",
+      // SLT-73 (D14): el bloque «Por cobrar a satélites» se pinta siempre; por el mismo motivo.
+      porCobrarSatelites: "3.00",
+      signoPorCobrarSatelites: "positivo",
     });
 
     expect(screen.getByText("₡12.345.678.901,99")).toBeInTheDocument();

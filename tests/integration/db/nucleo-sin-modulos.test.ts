@@ -114,10 +114,17 @@ async function sembrar(base: PrismaClient): Promise<Siembra> {
 
       const estatus = async (value: string) =>
         (await tx.orderStatus.findUniqueOrThrow({ where: { value }, select: { id: true } })).id;
-      const orden = (n: number, estatusId: string) =>
+      // Ficha 451 / SLT-72 (R15): una orden en reparto ya pasó por «Generar guía». Sin guía, su
+      // barrida bloquearía la aprobación por diseño (límite aceptado en Q2; 0 de 185 en producción),
+      // así que la orden nace con la guía que da la misma secuencia que la app.
+      const guia = async () =>
+        (await tx.$queryRawUnsafe<{ guia: number }[]>(`SELECT nextval('orden_num_guia_seq')::int AS guia`))[0]
+          .guia;
+      const orden = async (n: number, estatusId: string) =>
         tx.orden.create({
           data: {
             numRemision: `R31-${n}-${organizacionId.slice(0, 8)}`,
+            numGuia: await guia(),
             destinatario: "Destinatario R31",
             telefonoDest: "88880000",
             producto: "Producto",
@@ -241,17 +248,39 @@ describeSiHayBase("SL-23 R31 — el núcleo de cierres en una empresa sin ningú
     expect(bloqueo).toMatchObject({ status: "ok", bloqueo: { bloqueado: false } });
   });
 
-  it("«Cierres del día»: aprobar escribe sus movimientos de caja, con todos los módulos apagados", async () => {
-    const r = await comoEmpresa(() => aprobarCierre({ cierreId: vencidoId }, como(s!.adminSatelite)));
+  // SLT-73 (R1, D2): el cierre de este escenario es de la SATÉLITE (lo aprueba el adminSatelite), y
+  // aprobarlo ya NO escribe en la caja: su dinero entra al conciliar la consolidación (R10). Lo que
+  // este caso sigue midiendo es que el núcleo APRUEBA con todos los módulos apagados; que una
+  // aprobación de la central asienta lo mide `slt73-aprobar-central-igual.int.test.ts`.
+  it("«Cierres del día»: aprobar funciona con todos los módulos apagados (satélite: sin movimientos de caja, SLT-73)", async () => {
+    // Ficha 451 / SLT-72 (R10, sin puerta de escape): el corte barrió `ordenEnReparto` a este
+    // cierre, así que aprobar EXIGE su confirmación física. La guía es la copia congelada de
+    // `cierre_sin_gestion`, la misma que la pantalla muestra y manda.
+    const barridas = await base.cierreSinGestion.findMany({
+      where: { cierreId: vencidoId },
+      select: { ordenId: true, numGuia: true },
+    });
+    expect(barridas.map((b) => b.ordenId)).toEqual([s!.ordenEnReparto]);
+    expect(barridas[0]?.numGuia).toEqual(expect.any(Number));
+    const r = await comoEmpresa(() =>
+      aprobarCierre(
+        {
+          cierreId: vencidoId,
+          confirmacionFisica: barridas.map((b) => ({ origen: "barrida", ordenId: b.ordenId, numGuia: b.numGuia })),
+        },
+        como(s!.adminSatelite),
+      ),
+    );
     expect(r.status).toBe("ok");
 
     const caja = await base.walletMovimiento.findMany({
       where: { organizacionId: s!.organizacionId, origenId: vencidoId },
       select: { tipo: true, categoria: true, monto: true },
     });
-    expect(caja.map((m) => `${m.tipo}|${m.categoria}|${m.monto.toFixed(2)}`)).toContain(
-      "ingreso|ingreso_cod_recaudado|1000.00",
-    );
+    expect(
+      (await base.cierreDia.findUniqueOrThrow({ where: { id: vencidoId }, select: { estado: true, destinoTipo: true } })),
+    ).toEqual({ estado: "aprobado", destinoTipo: "bodega_satelite" });
+    expect(caja).toEqual([]);
   });
 
   it("«Cierres del día»: registrarPagoMensajeroAction registra el pago al mensajero", async () => {

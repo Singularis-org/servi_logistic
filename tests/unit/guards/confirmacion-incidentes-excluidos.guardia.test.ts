@@ -182,3 +182,126 @@ describe("Feature 238 — AUTOCOMPROBACION: el detector se sabe romper", () => {
     ).toBe(false);
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+// FICHA 451 / SLT-72 (T1.3, R4) — EL SEGUNDO EJE: «que ORIGEN de paquete vuelve» tambien se
+// declara en UN solo sitio.
+//
+// Desde la 451 el punto unico cubre dos origenes —la gestion y la orden BARRIDA sin gestionar— con
+// `RETORNO_POR_ORIGEN`. El riesgo es el mismo de arriba aplicado al eje nuevo: que un servicio, un
+// componente o un WHERE decida por su cuenta si la barrida vuelve (`barrida: true`, un
+// `origen === "barrida" ? ...` suelto) y la pantalla pida un conjunto distinto del que el servidor
+// exige. El detector busca la palabra `barrida` (como literal o como clave) con un IDENTIFICADOR
+// de «vuelve/retorna/retorno» declarado, asignado o llamado cerca. Los usos legitimos de la regla
+// —llamar a `vuelveABodegaElPaquete(...)` o leer `RETORNO_POR_ORIGEN.barrida`— se neutralizan
+// antes, porque CONSULTAN la regla en vez de escribir otra.
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+
+/** Solo el punto unico puede declarar la regla de origen. Sin coincidencias registradas: no hay ninguna. */
+const PERMITIDOS_ORIGEN: Record<string, string> = {
+  [PUNTO_UNICO]: "la regla de la 451: RETORNO_POR_ORIGEN",
+};
+
+function quitarComentarios(fuente: string): string {
+  return fuente.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
+}
+
+/**
+ * ¿Este codigo declara SU PROPIA regla de «el paquete barrido vuelve / no vuelve»?
+ *
+ * Escrito EN UN ARCHIVO DE TEST, nunca por `node -e` (el `\b` llega como backspace alli).
+ */
+export function declaraSuPropiaReglaDeOrigen(fuente: string): boolean {
+  const codigo = quitarComentarios(fuente)
+    .replace(/vuelveABodegaElPaquete\s*\(/g, "(")
+    .replace(/RETORNO_POR_ORIGEN\.(?:barrida|gestion)/g, "");
+  const identificadorDeRegla = /[A-Za-z_]*(?:vuelve|retorna(?!ble)|retorno)[A-Za-z_]*\s*(?:=(?!=)|:|\()/i;
+  for (const m of codigo.matchAll(/["'`]barrida["'`]|\bbarrida\s*:/g)) {
+    const i = m.index ?? 0;
+    const ventana = codigo.slice(Math.max(0, i - 120), i + 120);
+    if (identificadorDeRegla.test(ventana)) return true;
+  }
+  return false;
+}
+
+const declaranOrigen = new Set<string>();
+for (const arbol of ARBOLES) {
+  for (const archivo of archivos(path.join(RAIZ, arbol))) {
+    if (declaraSuPropiaReglaDeOrigen(readFileSync(archivo, "utf8"))) declaranOrigen.add(relativo(archivo));
+  }
+}
+
+describe("Ficha 451 (R4) — «que ORIGEN vuelve a bodega» se declara UNA sola vez", () => {
+  it("AUTOCOMPROBACION del censo: encuentra al menos el punto unico", () => {
+    expect(declaranOrigen.has(PUNTO_UNICO)).toBe(true);
+  });
+
+  it("ningun archivo de produccion fuera del punto unico declara su propia regla de origen", () => {
+    const intrusos = [...declaranOrigen].filter((r) => !(r in PERMITIDOS_ORIGEN)).sort();
+    expect(
+      intrusos,
+      "Estos archivos deciden por su cuenta si una orden barrida vuelve a bodega.\n" +
+        "Usa `vuelveABodegaElPaquete` / `RETORNO_POR_ORIGEN` de `lib/types/gestion-retorno.ts`:\n" +
+        "una segunda regla puede divergir y dejar la pantalla pidiendo otro conjunto que el servidor.",
+    ).toEqual([]);
+  });
+
+  it("R3: el punto unico conserva la red del eje nuevo (`satisfies Record<OrigenDelPaquete,`)", () => {
+    // Sin el `satisfies`, un tercer origen entraria sin que nadie decidiera si su paquete vuelve.
+    const fuente = readFileSync(path.join(RAIZ, PUNTO_UNICO), "utf8");
+    expect(fuente).toMatch(/as const satisfies Record<OrigenDelPaquete, "siempre" \| "nunca" \| "segun_resultado">/);
+  });
+});
+
+describe("Ficha 451 — AUTOCOMPROBACION: el detector de reglas de origen se sabe romper", () => {
+  it("se pone ROJO ante una regla de origen plantada", () => {
+    expect(
+      declaraSuPropiaReglaDeOrigen(`
+        const VUELVE_POR_ORIGEN = {
+          gestion: "segun_resultado",
+          barrida: "siempre",
+        };
+      `),
+    ).toBe(true);
+    expect(declaraSuPropiaReglaDeOrigen(`const barridaVuelve = origen === "barrida";`)).toBe(true);
+    expect(
+      declaraSuPropiaReglaDeOrigen(`function retornaElPaquete(o: string) { return o === "barrida"; }`),
+    ).toBe(true);
+  });
+
+  it("y ante la tabla del punto unico, aunque se copie en otro archivo", () => {
+    expect(
+      declaraSuPropiaReglaDeOrigen(`
+        export const RETORNO_POR_ORIGEN = { gestion: "segun_resultado", barrida: "siempre" } as const;
+      `),
+    ).toBe(true);
+  });
+
+  it("NO ladra ante quien CONSULTA la regla en vez de escribirla", () => {
+    expect(declaraSuPropiaReglaDeOrigen(`const ok = vuelveABodegaElPaquete({ origen: "barrida" });`)).toBe(false);
+    expect(declaraSuPropiaReglaDeOrigen(`if (RETORNO_POR_ORIGEN.barrida === "siempre") hacer();`)).toBe(false);
+  });
+
+  it("NO ladra ante el discriminante del borde ni ante el servicio que lee las dos fuentes", () => {
+    expect(
+      declaraSuPropiaReglaDeOrigen(`
+        z.object({ origen: z.literal("barrida"), ordenId: z.string().uuid() }),
+      `),
+    ).toBe(false);
+    expect(
+      declaraSuPropiaReglaDeOrigen(`
+        const gestiones = await this.repo.findGestionesRetornablesDelCierre(cierreId, alcance);
+        if (entrada.origen === "barrida") porClave.get(entrada.ordenId);
+      `),
+    ).toBe(false);
+  });
+
+  it("NO ladra ante un texto de pantalla que dice que el paquete vuelve", () => {
+    expect(
+      declaraSuPropiaReglaDeOrigen(`
+        {fila.origen === "barrida" ? <Badge>Sin gestionar</Badge> : null}
+        <p>Estos paquetes vuelven a bodega con el mensajero.</p>
+      `),
+    ).toBe(false);
+  });
+});

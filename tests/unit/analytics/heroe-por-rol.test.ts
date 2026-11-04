@@ -22,6 +22,8 @@ import { ROLES_ACCESO_ANALITICA } from "@/lib/auth/menu-visibility";
  *   | `adminTienda`   |    68    | «17,6 %» — una orden menos: la que NO es suya             |
  *   | `adminSatelite` |     8    | «1 entregada de 8 ordenes» + «son muy pocas para un %»    |
  *
+ *   Desde SLT-62 (2026-11-02) el suelo de 20 se quito: ese caso del satelite (1 de 8) pinta «12,5%».
+ *
  * O sea: el heroe YA aparece para la tienda y para el satelite, y YA trae el alcance de cada
  * uno. Lo que faltaba no era el numero: era que nada impidiera perderlo. Este archivo es esa
  * pieza — la mutacion «el heroe desaparece para un rol» tiene DOS formas y aqui estan las dos.

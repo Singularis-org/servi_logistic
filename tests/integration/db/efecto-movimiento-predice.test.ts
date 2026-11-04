@@ -4,10 +4,13 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { AporteCapitalRepository } from "@/lib/repositories/AporteCapitalRepository";
+import { LiquidacionPagoRepository } from "@/lib/repositories/LiquidacionPagoRepository";
 import { PagoMensajeroMovimientoRepository } from "@/lib/repositories/PagoMensajeroMovimientoRepository";
 import { UserRepository } from "@/lib/repositories/UserRepository";
 import { WalletMovimientoRepository } from "@/lib/repositories/WalletMovimientoRepository";
 import { WalletTiendaMovimientoRepository } from "@/lib/repositories/WalletTiendaMovimientoRepository";
+import { CajaIncentivoMensajeroFeedService } from "@/lib/services/CajaIncentivoMensajeroFeedService";
+import { IncentivoMensajeroService } from "@/lib/services/IncentivoMensajeroService";
 import { PrevisualizarMovimientoService } from "@/lib/services/PrevisualizarMovimientoService";
 import type { ConceptoRegistro, EfectoMovimientoDTO } from "@/lib/types/efecto-movimiento";
 import { listarMovimientosSchema } from "@/lib/types/wallet";
@@ -135,6 +138,16 @@ describeSiHayBase("458-B/TB.12 — «Así queda» predice lo que queda (Postgres
         await paso("pago_a_mensajero", "1.00", { tipo: "mensajero", id: esc.mensajeroId }, () =>
           s.liquidacion.registrarRepartoMensajero({ claveIdempotencia: k(), mensajeroId: esc.mensajeroId, monto: "1.00", metodo: "efectivo", fechaPago: hoy }, m),
         );
+        // SLT-68 (R19): el incentivo, por su servicio REAL cableado como su `buildService()`.
+        const incentivos = new IncentivoMensajeroService(
+          new LiquidacionPagoRepository(c),
+          mensajeroRepo,
+          new CajaIncentivoMensajeroFeedService(new WalletMovimientoRepository(c)),
+          (fn) => c.$transaction((t) => fn(t as never)),
+        );
+        await paso("incentivo_a_mensajero", "17.00", { tipo: "mensajero", id: esc.mensajeroId }, () =>
+          incentivos.registrar({ mensajeroId: esc.mensajeroId, monto: "17.00", motivo: "Buena semana", claveIdempotencia: k() }, m),
+        );
         // El cobro deja a la tienda B en contra (R47) y asi la tienda B puede pagarle a la empresa (457).
         const cobro = new Prisma.Decimal(await saldoTienda(esc.tiendaB)).abs().add("50.00").toFixed(2);
         await paso("cobro_a_tienda", cobro, B, () =>
@@ -166,6 +179,7 @@ describeSiHayBase("458-B/TB.12 — «Así queda» predice lo que queda (Postgres
         "correccion_resta",
         "correccion_suma",
         "gasto_empresa",
+        "incentivo_a_mensajero",
         "pago_a_mensajero",
         "pago_a_tienda",
         "pago_gasto_tienda",
@@ -205,6 +219,8 @@ describeSiHayBase("458-B/TB.12 — «Así queda» predice lo que queda (Postgres
       correccion_resta: [true, true, false, false],
       pago_a_tienda: [true, false, true, false],
       pago_a_mensajero: [false, false, false, false],
+      // SLT-68 (R19): egreso propio ⇒ baja la cifra y la ganancia.
+      incentivo_a_mensajero: [true, true, false, false],
       aporte: [true, false, false, true],
       correccion_suma: [true, true, false, false],
       tienda_paga_a_empresa: [true, false, true, false],

@@ -114,10 +114,21 @@ export function escenarioCierres(deps: DepsEscenarioCierres) {
       where: { cierreId, anuladaAt: null, resultado: { in: [...RESULTADOS_QUE_VUELVEN] } },
       select: { id: true, orden: { select: { numGuia: true } } },
     });
-    const confirmacion = retornables.map((g) => {
-      if (g.orden.numGuia === null) throw new Error("escenario cierres: una gestión retornable sin guía.");
-      return { gestionId: g.id, numGuia: g.orden.numGuia };
+    // Ficha 451 / SLT-72: tambien las ordenes que el cierre barrio sin gestionar, por su guia CONGELADA.
+    const barridas = await deps.lector().cierreSinGestion.findMany({
+      where: { cierreId },
+      select: { ordenId: true, numGuia: true },
     });
+    const confirmacion = [
+      ...retornables.map((g) => {
+        if (g.orden.numGuia === null) throw new Error("escenario cierres: una gestión retornable sin guía.");
+        return { origen: "gestion" as const, gestionId: g.id, numGuia: g.orden.numGuia };
+      }),
+      ...barridas.map((b) => {
+        if (b.numGuia === null) throw new Error("escenario cierres: una orden barrida sin guía.");
+        return { origen: "barrida" as const, ordenId: b.ordenId, numGuia: b.numGuia };
+      }),
+    ];
     const res = await conEmpresa(r.empresa.organizacionId, () => cierresAdmin().aprobarCierre(cierreId, quien, [], confirmacion));
     if (res.status !== "ok") throw new Error(`escenario cierres: aprobarCierre no fue ok: ${JSON.stringify(res)}`);
   }

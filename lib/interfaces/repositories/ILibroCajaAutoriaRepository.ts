@@ -45,6 +45,8 @@ export interface IdsDeDocumentos {
   rechazos: readonly string[];
   /** Filas del podio de los premios del ranking. */
   premios: readonly string[];
+  /** SLT-68: devengos `incentivo` del libro del mensajero (el documento del incentivo). */
+  incentivos: readonly string[];
   /** Filas de la caja cuya constancia es `ajuste_caja_anulacion` (egreso, correccion, indemnizacion). */
   movimientos: readonly string[];
 }
@@ -62,6 +64,8 @@ export interface ILibroCajaAutoriaRepository {
   rechazos(gestionIds: readonly string[]): Promise<Map<string, { tienda: CuentaNombrada; aprobo: string | null }>>;
   /** Fila del podio → el mensajero premiado. */
   podios(ids: readonly string[]): Promise<Map<string, CuentaNombrada>>;
+  /** SLT-68: devengo `incentivo` → el mensajero que lo recibe. */
+  incentivos(ids: readonly string[]): Promise<Map<string, CuentaNombrada>>;
   /** Incidente → la tienda de la orden y quien lo resolvio. */
   incidentes(ids: readonly string[]): Promise<Map<string, { tienda: CuentaNombrada; resolvio: string | null }>>;
   /** Pago de un gasto de una tienda (459) → la tienda y el beneficiario (texto libre). */

@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { movimientosCajaDe } from "./_escenarios/caja";
 import { aprobarCierre, importe, solicitarCierre } from "./_escenarios/cierres";
 import {
   baseReparto,
@@ -23,8 +24,11 @@ import {
  *     en «Solicitados».
  *  2. El maestro abre la consolidación pendiente: totales agregados, el cierre del día de cada
  *     mensajero con sus gestiones y la evidencia firmada de la rechazada; la «Marca recibido» por
- *     lo declarado y pasa a «Resueltos».
- *  3. El maestro la «Desmarca» y vuelve a «Pendientes».
+ *     lo que la satélite le debe a la central (SLT-73 R8) y pasa a «Resueltos». Desde SLT-73
+ *     (R10) esa marca es la que asienta en los libros el dinero del cierre del día de la satélite.
+ *  3. Como la marca ya entró a la caja, el detalle NO ofrece «Desmarcar» (SLT-76 R3/R4: antes se
+ *     ofrecía y se rechazaba con el aviso de SLT-73 R14), y la consolidación sigue conciliada, en
+ *     «Resueltos».
  *
  * ⚠️ Desde la ficha 431 la central ya no APRUEBA ni RECHAZA una consolidación: marca si el efectivo
  * llegó (y cuánto), y la marca se deshace con «Desmarcar». El «aprobar / rechazar con motivo» que
@@ -34,6 +38,13 @@ import {
  * efectivo y un rechazo (foto al doble de Storage), por `MisAsignacionesService`; su cierre del día
  * solicitado (`CierreDiaService`) y aprobado por el adminSatelite (`CierresAdminService`, con la
  * guía del rechazo confirmada). Cifras a mano: efectivo 9.000 = total general 9.000.
+ *
+ * SLT-73 (D3/D4, R8): «Monto recibido» llega precargado con `paraLaCentral`, no con el efectivo:
+ *   total general 9.000 − pago al mensajero 1.500 (la entrega, `cobroEntregado`; el rechazo no
+ *   se le paga al mensajero) − ganancia de la satélite por rechazos 500 (`cobroRechazado` del
+ *   rechazo, `total_ingreso_bodega_rechazos`) = 7.000.
+ * Medido en la base de la corrida: `total_general` 9000.00, `total_pago_mensajero` 1500.00,
+ * `total_ingreso_bodega_rechazos` 500.00.
  */
 
 let r: RepartoE2E;
@@ -111,16 +122,23 @@ test.describe.serial("Cierre de bodega satélite — solicitar, marcar recibido 
     await expect.poll(() => foto.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBeGreaterThan(0);
     await visor.getByRole("button", { name: "Cerrar" }).first().click();
 
+    // SLT-73 (R1): aprobar el cierre del día de la satélite no escribió nada en la caja.
+    const delCierre = async () => (await movimientosCajaDe(r)).filter((mv) => mv.origenTipo === "cierre_dia");
+    expect(await delCierre()).toEqual([]);
+
     await detalle.getByRole("button", { name: /^Marcar recibido la consolidación de / }).click();
     const marcar = page.getByRole("dialog", { name: "Marcar recibido" });
-    await expect(marcar.getByLabel("Monto recibido")).toHaveValue(/^9000(\.00)?$/);
+    // SLT-73 (R8): la precarga es `paraLaCentral` = 9.000 − 1.500 − 500 = 7.000 (cuenta en la cabecera).
+    await expect(marcar.getByLabel("Monto recibido")).toHaveValue(/^7000(\.00)?$/);
     await marcar.getByRole("button", { name: "Marcar recibido" }).click();
-    await expect(page.getByText(/^Marcada como recibida por /)).toContainText(importe(9000));
+    await expect(page.getByText(/^Marcada como recibida por /)).toContainText(importe(7000));
 
     const [c] = await consolidacionDeLaZona();
     // Ficha 431 (D2): la marca guarda `aprobado` (se lee «Recibido») con lo contado.
-    expect([c.estado, String(c.montoRecibido)]).toEqual(["aprobado", "9000"]);
+    expect([c.estado, String(c.montoRecibido)]).toEqual(["aprobado", "7000"]);
     expect(c.conciliadoAt).not.toBeNull();
+    // SLT-73 (R10): la marca asentó en la caja el dinero del cierre del día de la satélite.
+    expect((await delCierre()).length).toBeGreaterThan(0);
 
     await modulo.getByRole("group", { name: "Cierres de bodega por estado" }).getByRole("button", { name: /^Resueltos/ }).click();
     await expect(
@@ -130,22 +148,32 @@ test.describe.serial("Cierre de bodega satélite — solicitar, marcar recibido 
     ).toBeVisible();
   });
 
-  test("3 — el maestro la desmarca y vuelve a pendientes", async ({ browser }) => {
+  test("3 — una consolidación que ya entró a la caja no ofrece «Desmarcar» y sigue en resueltos", async ({ browser }) => {
     const page = await paginaDe(browser, r.empresa.maestro);
     await pestanaBodega(page);
     const modulo = page.getByRole("region", { name: "Cierres de bodega satélite" });
     await modulo.getByRole("group", { name: "Cierres de bodega por estado" }).getByRole("button", { name: /^Resueltos/ }).click();
     await modulo.getByRole("button", { name: `Ver el cierre de bodega resuelto de ${r.zonaSatelite.nombre}` }).click();
     const detalle = page.getByRole("dialog", { name: "Detalle del cierre de bodega" });
-    await detalle.getByRole("button", { name: /^Desmarcar la consolidación de / }).click();
-    await page.getByRole("dialog", { name: "Desmarcar" }).getByRole("button", { name: "Desmarcar" }).click();
-    await expect(page.getByText("Marca deshecha. La consolidación vuelve a estar pendiente de conciliar.")).toBeVisible();
+    // Control: el detalle está cargado (con sus totales) antes de afirmar una ausencia.
+    const totales = detalle.getByRole("region", { name: "Totales del cierre de bodega" });
+    await expect(totales.getByText("Efectivo", { exact: true }).locator("xpath=ancestor::div[1]")).toContainText(importe(9000));
+    const antes = await movimientosCajaDe(r);
+    // SLT-76 (R3/R4): la marca asentó el dinero (paso 2), así que el servidor la da por NO
+    // desmarcable y la pantalla no ofrece una acción que se iba a rechazar con `con_asientos`.
+    // Recibida por lo esperado (7.000 de 7.000): tampoco «Corregir» ni «Marcar recibido».
+    await expect(detalle.getByRole("button", { name: /^Desmarcar la consolidación de / })).toHaveCount(0);
+    await expect(detalle.getByRole("button", { name: /^(Corregir el monto recibido|Marcar recibido la consolidación) / })).toHaveCount(0);
 
+    // Ni la marca ni ningún libro cambian.
     const [c] = await consolidacionDeLaZona();
-    expect([c.estado, c.conciliadoAt, c.montoRecibido]).toEqual(["solicitado", null, null]);
-    await modulo.getByRole("group", { name: "Cierres de bodega por estado" }).getByRole("button", { name: /^Pendientes/ }).click();
+    expect([c.estado, String(c.montoRecibido)]).toEqual(["aprobado", "7000"]);
+    expect(c.conciliadoAt).not.toBeNull();
+    expect(await movimientosCajaDe(r)).toEqual(antes);
+    await page.keyboard.press("Escape");
+    await modulo.getByRole("group", { name: "Cierres de bodega por estado" }).getByRole("button", { name: /^Resueltos/ }).click();
     await expect(
-      modulo.getByRole("button", { name: `Ver / decidir el cierre de bodega de ${r.zonaSatelite.nombre}` }),
+      modulo.getByRole("button", { name: `Ver el cierre de bodega resuelto de ${r.zonaSatelite.nombre}` }),
     ).toBeVisible();
   });
 });

@@ -41,7 +41,7 @@ describe("455/F4 — la ventana «Rechazar» de novedades", () => {
 
 describe("455/F5 — analítica", () => {
   it("«terminaron en Entregado»", () => {
-    expect(fraseSobreCerradas({ valor: 0.5, base: 10 } as never, 20)).toMatch(/ de las 10 .* terminaron en Entregado$/);
+    expect(fraseSobreCerradas({ valor: 0.5, base: 10 } as never)).toMatch(/ de las 10 .* terminaron en Entregado$/);
   });
   it("el aviso del desglose y la pista del flete nombran los grupos como la frase de «En qué terminaron»", () => {
     expect(PRODUCTOS_TEXTOS.avisoDesglose).toBe(

@@ -25,6 +25,7 @@ const PUBLICO: PlanDelCatalogo = {
   topes: { ordenesPorCiclo: 3000, porRol: { mensajero: 5 }, apiKeys: 2 },
   modulos: ["analitica"],
   precio: { tipo: "monto", mensual: "10.00", anual: { tipo: "fijo", monto: "100.00" } },
+  costoPorOrden: null, // SLT-66 R8: campo nuevo del PlanDTO
   archivado: false,
   empresaNombre: null,
   empresas: 1200,
@@ -39,6 +40,7 @@ const CUSTOM: PlanDelCatalogo = {
   topes: { ordenesPorCiclo: null, porRol: {}, apiKeys: null },
   modulos: [],
   precio: { tipo: "negociable" },
+  costoPorOrden: null, // SLT-66 R8: campo nuevo del PlanDTO
   archivado: false,
   empresaNombre: "Envíos Norte",
   empresas: 1,
@@ -81,7 +83,8 @@ describe("SLT-58 R13 — el catálogo de planes", () => {
     expect(celdas(filaDe("Básico"))).toEqual([
       "Básico",
       "Público",
-      "10.00 al mes, 100.00 al año",
+      // SLT-66 R9, R24: la columna «Costo» lleva el costo base y el costo por orden.
+      "Costo base: 10.00 al mes, 100.00 al añoCosto por orden: se aplica el valor global",
       "Órdenes por ciclo: 3.000Usuarios activos con el rol Mensajero: 5API keys activas: 2",
       "1.200",
       "Desde 2030-01-15",
@@ -89,7 +92,7 @@ describe("SLT-58 R13 — el catálogo de planes", () => {
     expect(celdas(filaDe("Norte a medida"))).toEqual([
       "Norte a medida",
       "Custom de Envíos Norte",
-      "negociable",
+      "Costo base: negociableCosto por orden: se aplica el valor global", // SLT-66 R9, R24
       "Órdenes por ciclo: sin límiteUsuarios: sin límite por rolAPI keys activas: sin límite",
       "1",
       "Ninguno",
@@ -108,7 +111,7 @@ describe("SLT-58 R13 — el catálogo de planes", () => {
 
     const fila = filaDe("Viejo");
     expect(within(fila).getByText("Archivado")).toBeInTheDocument();
-    expect(celdas(fila)[2]).toBe("sin precio");
+    expect(celdas(fila)[2]).toBe("Costo base: sin precioCosto por orden: se aplica el valor global"); // SLT-66 R9, R24
     // Solo el archivado lleva la marca.
     expect(screen.getAllByText("Archivado")).toHaveLength(1);
     // Archivar es un estado inactivo, no una alerta: badge neutro, no `warning`.

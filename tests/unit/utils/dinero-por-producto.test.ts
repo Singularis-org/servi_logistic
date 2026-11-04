@@ -45,7 +45,7 @@ function congelada(opts: Partial<OrdenCongelada> = {}): OrdenCongelada {
     esZonaEspecial: false,
     montoCobrar: "10000.00",
     cobraComision: true,
-    tarifa: TARIFA,
+    tarifa: { modelo: "viejo", tarifa: TARIFA }, // SLT-52: el sobre que da `tarifaDe`
     ...opts,
   };
 }
@@ -261,7 +261,7 @@ describe("R18 · una orden en DOS cierres: los aportes se SUMAN, con el snapshot
       g({ montoRecibido: "10000.00" }),
       g({
         montoRecibido: "5000.00",
-        congelada: congelada({ montoCobrar: "5000.00", tarifa: otraTarifa }),
+        congelada: congelada({ montoCobrar: "5000.00", tarifa: { modelo: "viejo", tarifa: otraTarifa } }),
       }),
     ]);
 

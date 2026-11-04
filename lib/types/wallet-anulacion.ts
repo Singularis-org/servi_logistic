@@ -60,7 +60,8 @@ export type CaminoAnulacion =
   | "abono_tienda" // pago de una tienda a la empresa (457)
   | "liquidacion_pago" // pago de la empresa a una tienda o a un mensajero (172)
   | "rechazo_tienda_cobro" // cobro por rechazo aprobado (458-B)
-  | "premio_del_ranking"; // premio del ranking (293); no se llama `premio_ranking` para no confundirse con la categoria (guardia premio-ranking-alcance)
+  | "premio_del_ranking" // premio del ranking (293); no se llama `premio_ranking` para no confundirse con la categoria (guardia premio-ranking-alcance)
+  | "incentivo_mensajero"; // incentivo manual a un mensajero (SLT-68); el id es el del devengo `incentivo`
 
 /** Por que un destino existente no se puede anular (R65). Texto para la pantalla en 458-C. */
 export type MotivoNoAnulable =

@@ -38,6 +38,11 @@ import { quitarComentarios } from "@/tests/fixtures/sin-comentarios";
 const REPO_ROOT = path.join(__dirname, "..", "..", "..");
 const REPO_FILE = path.join(REPO_ROOT, "lib", "repositories", "CierresAdminRepository.ts");
 const repoSrc = fs.readFileSync(REPO_FILE, "utf8");
+// SLT-73 (T2, design §2.1): las escrituras por repositorio inyectado de la aprobacion (42, 43, 173,
+// 44 y 158) se MOVIERON tal cual a `asentarCierreDia`, que la aprobacion llama con sus propias
+// dependencias. Se censan alli, y aqui se exige que la aprobacion siga llamandolo.
+const ASIENTOS_FILE = path.join(REPO_ROOT, "lib", "repositories", "_shared", "asientos-cierre-dia.ts");
+const asientosSrc = fs.readFileSync(ASIENTOS_FILE, "utf8");
 
 /**
  * Las suites que EJECUTAN la transaccion de aprobacion. Si una suite nueva la ejecuta, entra
@@ -145,6 +150,20 @@ const ESCRITURAS_DE_LA_APROBACION = [
       "mensajero (rama `aBodega` y rama `enElTope`); incidente BLST-765.",
     cubiertaPor: ["tests/integration/db/484-puntero-aprobacion-sql-real.test.ts"],
   },
+  {
+    // FICHA 451 / SLT-72 (T4.2, R20-R22) — LA MARCA DE CONFIRMACION FISICA sobre el OTRO origen: las
+    // ordenes que ESTE cierre barrio sin gestionar. Escritura NUEVA de la transaccion, pegada a la
+    // marca de la 238: guardada por `(cierreId, ordenId IN ids)`, `data` con una sola clave
+    // (`confirmadaFisicaAt`) y fallo cerrado si `count` no cuadra. Sin dinero ni historial.
+    escritura: "tx.cierreSinGestion.updateMany",
+    que:
+      "la marca `cierre_sin_gestion.confirmada_fisica_at` de las barridas confirmadas por bodega al " +
+      "aprobar (451): guardada por `cierreId` + `ordenId IN ids`, una sola clave, money-neutral.",
+    cubiertaPor: [
+      "tests/unit/repositories/cierres-admin-confirmacion-fisica.test.ts",
+      "tests/integration/db/cierre-sin-gestion-confirmacion-sql-real.test.ts",
+    ],
+  },
 ] as const;
 
 /**
@@ -190,6 +209,22 @@ const ESCRITURAS_FUERA_DE_LA_APROBACION = [
       "no en la de la resolucion.",
     cubiertaPor: ["tests/integration/db/ajuste-pago-mensajero-cierre.int.test.ts"],
   },
+  {
+    // SLT-52 (T5.2, design §2.5 y §7, R40): la correccion de un resultado RE-CONGELA el pago de su
+    // gestion (borra el congelado del resultado viejo y, en el modelo nuevo, escribe el del nuevo).
+    escritura: "tx.gestionPagoCongelado.deleteMany",
+    que:
+      "correccion #69 (`corregirResultadoGestionEnCierre`): borra el pago congelado de ESA gestion " +
+      "antes de re-congelarlo con el resultado corregido, en la transaccion propia de la correccion.",
+    cubiertaPor: ["tests/unit/repositories/cierre-pago-congelado.test.ts"],
+  },
+  {
+    escritura: "tx.gestionPagoCongelado.createMany",
+    que:
+      "correccion #69: el pago congelado del resultado corregido (solo modelo nuevo), con el mismo " +
+      "importe que se escribe en `pago_mensajero` / `ingreso_bodega_rechazo`.",
+    cubiertaPor: ["tests/unit/repositories/cierre-pago-congelado.test.ts"],
+  },
 ] as const;
 
 /**
@@ -212,18 +247,21 @@ const ESCRITURAS_SQL_DE_LA_APROBACION = [
   },
 ] as const;
 
-/** Escrituras de la transaccion que salen por un REPOSITORIO inyectado, no por `tx.` directo. */
+/**
+ * Escrituras de la transaccion que salen por un REPOSITORIO inyectado, no por `tx.` directo. Desde
+ * SLT-73 viven en `asentarCierreDia` (`deps.` = las dependencias que la aprobacion le pasa).
+ */
 const ESCRITURAS_POR_REPO_INYECTADO = [
   {
-    escritura: "this.walletMovimientoRepo.crearMovimientos",
+    escritura: "deps.walletMovimientoRepo.crearMovimientos",
     cubiertaPor: ["tests/integration/db/wallet-idempotencia.test.ts"],
   },
   {
-    escritura: "this.walletTiendaMovimientoRepo.crearMovimientos",
+    escritura: "deps.walletTiendaMovimientoRepo.crearMovimientos",
     cubiertaPor: ["tests/unit/repositories/cierres-admin-repository.test.ts"],
   },
   {
-    escritura: "this.pagoMensajeroMovimientoRepo.crearMovimientos",
+    escritura: "deps.pagoMensajeroMovimientoRepo.crearMovimientos",
     cubiertaPor: ["tests/unit/repositories/cierres-admin-repository.test.ts"],
   },
 ] as const;
@@ -306,9 +344,15 @@ describe("239/R33 — el inventario de escrituras de la aprobacion esta CERRADO"
   });
 
   it("las escrituras por repositorio inyectado siguen invocandose en la transaccion", () => {
+    // SLT-73: la aprobacion las delega en `asentarCierreDia`, con sus dependencias y su `tx`.
+    expect(repoSrc, "la aprobacion ya no llama a asentarCierreDia").toContain(
+      "await asentarCierreDia(tx, cierreId, this.asientos())",
+    );
     for (const e of ESCRITURAS_POR_REPO_INYECTADO) {
-      expect(repoSrc, `${e.escritura} ya no aparece en el repositorio`).toContain(e.escritura);
+      expect(asientosSrc, `${e.escritura} ya no aparece en asentarCierreDia`).toContain(e.escritura);
     }
+    // Ni una escritura sobre `tx.` directo en el modulo compartido: todo sale por los repositorios.
+    expect(censarEscriturasTx(asientosSrc)).toEqual([]);
   });
 
   it("la escritura de `gestion_aprobada` ya no existe (feature 239/T2.3)", () => {

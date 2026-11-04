@@ -1,7 +1,18 @@
 import { Prisma } from "@prisma/client";
-import type { TarifaVigente } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
 import type { ApiOrdenCostoDTO } from "@/lib/types/api-orden";
-import { derivarIngresoOrden } from "@/lib/utils/ingreso-empresa";
+import {
+  derivarIngresoOrden,
+  fleteEntregadoSinTarifa,
+  ivaFulfillmentDeTarifa,
+  type ConModelo,
+} from "@/lib/utils/ingreso-empresa";
+import type { TarifaVigente } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
+
+/**
+ * SLT-52 (T5.3) — la tarifa de los dos envoltorios: el `TarifaTienda` del resolver (estimado) o el
+ * `TarifaCongelada` de `tarifaDe` (real). Siempre en su sobre: aqui no entra una tarifa suelta.
+ */
+type TarifaDelCosto = ConModelo<TarifaVigente>;
 import { serializarMontoCotizacion } from "@/lib/utils/monto-cotizacion";
 
 /**
@@ -63,7 +74,7 @@ function serializar(monto: Prisma.Decimal | undefined): string {
  * contiene el objeto, no dentro de el.
  */
 function conceptos(
-  tarifa: TarifaVigente | null,
+  tarifa: TarifaDelCosto | null,
   fulfillment: string,
   entradas: EntradasCostoOrden,
 ): ApiOrdenCostoDTO {
@@ -82,6 +93,10 @@ function conceptos(
     // para el real— y aqui solo se re-serializa para que pase por el MISMO validador que los
     // otros cuatro.
     fulfillment: serializarMontoCotizacion(new Prisma.Decimal(fulfillment)),
+    // SLT-52 (R46, P5 = a): el IVA del fulfillment sale de la MISMA tarifa que los otros conceptos
+    // y por la misma funcion que la carga y la cotizacion. En el viejo es siempre "0.00" (R47): el
+    // estimado y el real de una tarifa vieja no cambian.
+    ivaFulfillment: serializar(ivaFulfillmentDeTarifa(tarifa, entradas.montoCobrar)),
   };
 }
 
@@ -102,11 +117,14 @@ function conceptos(
  * listarla. La respuesta es el hueco DECLARADO, sin mentir sobre el precio.
  */
 export function costoEstimadoDe(
-  tarifa: TarifaVigente | null,
+  tarifa: TarifaDelCosto | null,
   fulfillment: string,
   entradas: EntradasCostoOrden,
 ): ApiOrdenCostoDTO | null {
   if (tarifa === null) return null;
+  // SLT-52 (R25): en el modelo nuevo el resolver nunca da `null`; el hueco es que falte el flete por
+  // entregado, y se declara igual que en el viejo, por la misma regla que el 409 de la carga.
+  if (fleteEntregadoSinTarifa(tarifa)) return null;
   return conceptos(tarifa, fulfillment, entradas);
 }
 
@@ -132,7 +150,7 @@ export function costoEstimadoDe(
  * decide aqui: es `costoReal: null` y lo resuelve el llamador, que es quien sabe si hubo fila.
  */
 export function costoRealDe(
-  tarifa: TarifaVigente | null,
+  tarifa: TarifaDelCosto | null,
   fulfillment: string,
   entradas: EntradasCostoOrden,
 ): ApiOrdenCostoDTO {

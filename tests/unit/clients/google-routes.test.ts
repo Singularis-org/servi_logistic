@@ -2,6 +2,10 @@ import { describe, it, expect, vi } from "vitest";
 import { GoogleRoutesClient } from "@/lib/clients/google-routes";
 import { RutaNoConfiguradoError } from "@/lib/auth/google-token-shared";
 
+// SLT-59 (R68): el contexto de la llamada es obligatorio; aqui solo se pasa (su registro se
+// prueba en `google-registro-llamada.test.ts`).
+const CTX = { motivo: "prueba_integracion", intento: 1, maxIntentos: 1 } as const;
+
 // Feature 92 (seguimiento) — cliente de Google Routes (`computeRoutes`). Se ejercitan TODOS
 // los desenlaces sin red: `fetch` y el proveedor de token son inyectables.
 //
@@ -47,7 +51,7 @@ describe("trazado ok", () => {
     const outcome = await clienteCon(fetchImpl).trazar({
       origen: ORIGEN,
       paradasEnOrden: PARADAS,
-    });
+    }, CTX);
 
     expect(outcome).toEqual({
       status: "ok",
@@ -80,7 +84,7 @@ describe("trazado ok", () => {
     const outcome = await clienteCon(fetchImpl).trazar({
       origen: ORIGEN,
       paradasEnOrden: PARADAS,
-    });
+    }, CTX);
 
     expect(fetchImpl).toHaveBeenCalledTimes(1); // UNA sola llamada
     if (outcome.status !== "ok") throw new Error("se esperaba ok");
@@ -98,7 +102,7 @@ describe("trazado ok", () => {
       respuestaOk({ routes: [{ polyline: { encodedPolyline: POLILINEA } }] }),
     ) as unknown as typeof fetch;
 
-    await clienteCon(fetchImpl).trazar({ origen: ORIGEN, paradasEnOrden: PARADAS });
+    await clienteCon(fetchImpl).trazar({ origen: ORIGEN, paradasEnOrden: PARADAS }, CTX);
 
     const init = vi.mocked(fetchImpl).mock.calls[0][1] as RequestInit;
     const mask = (init.headers as Record<string, string>)["x-goog-fieldmask"];
@@ -126,7 +130,7 @@ describe("trazado ok", () => {
     const outcome = await clienteCon(fetchImpl).trazar({
       origen: ORIGEN,
       paradasEnOrden: PARADAS,
-    });
+    }, CTX);
 
     if (outcome.status !== "ok") throw new Error("se esperaba ok");
     expect(outcome.tramos).toEqual([]);
@@ -153,7 +157,7 @@ describe("trazado ok", () => {
     const outcome = await clienteCon(fetchImpl).trazar({
       origen: ORIGEN,
       paradasEnOrden: PARADAS,
-    });
+    }, CTX);
 
     if (outcome.status !== "ok") throw new Error("se esperaba ok");
     expect(outcome.tramos).toEqual([]);
@@ -166,7 +170,7 @@ describe("trazado ok", () => {
       return respuestaOk({ routes: [{ polyline: { encodedPolyline: POLILINEA } }] });
     }) as unknown as typeof fetch;
 
-    await clienteCon(fetchImpl).trazar({ origen: ORIGEN, paradasEnOrden: PARADAS });
+    await clienteCon(fetchImpl).trazar({ origen: ORIGEN, paradasEnOrden: PARADAS }, CTX);
 
     // El ultimo es el destino; los anteriores, intermedios EN SU ORDEN.
     expect(cuerpo.optimizeWaypointOrder).toBe(false);
@@ -187,7 +191,7 @@ describe("trazado ok", () => {
       return respuestaOk({ routes: [{ polyline: { encodedPolyline: POLILINEA } }] });
     }) as unknown as typeof fetch;
 
-    await clienteCon(fetchImpl).trazar({ origen: ORIGEN, paradasEnOrden: PARADAS });
+    await clienteCon(fetchImpl).trazar({ origen: ORIGEN, paradasEnOrden: PARADAS }, CTX);
 
     // Se comprueban las piezas y no la cadena entera: afirmar el literal completo obliga a
     // reescribir el test cada vez que se pide un campo mas, sin comprobar nada nuevo.
@@ -205,7 +209,7 @@ describe("trazado ok", () => {
     const outcome = await clienteCon(fetchImpl).trazar({
       origen: ORIGEN,
       paradasEnOrden: PARADAS,
-    });
+    }, CTX);
 
     expect(outcome).toMatchObject({ status: "ok", distanciaM: null, duracionS: null });
   });
@@ -220,7 +224,7 @@ describe("trazado ok", () => {
     const outcome = await clienteCon(fetchImpl).trazar({
       origen: ORIGEN,
       paradasEnOrden: PARADAS,
-    });
+    }, CTX);
     expect(outcome).toMatchObject({ status: "ok", duracionS: null });
   });
 });
@@ -228,7 +232,7 @@ describe("trazado ok", () => {
 describe("desenlaces que NO son ok", () => {
   it("sin paradas -> omitida, sin llamar al proveedor", async () => {
     const fetchImpl = vi.fn() as unknown as typeof fetch;
-    const outcome = await clienteCon(fetchImpl).trazar({ origen: ORIGEN, paradasEnOrden: [] });
+    const outcome = await clienteCon(fetchImpl).trazar({ origen: ORIGEN, paradasEnOrden: [] }, CTX);
     expect(outcome).toEqual({ status: "omitida", razon: "sin_paradas" });
     expect(fetchImpl).not.toHaveBeenCalled();
   });
@@ -245,7 +249,7 @@ describe("desenlaces que NO son ok", () => {
     const outcome = await clienteCon(fetchImpl).trazar({
       origen: ORIGEN,
       paradasEnOrden: muchas,
-    });
+    }, CTX);
     expect(outcome).toEqual({ status: "omitida", razon: "demasiadas_paradas" });
     expect(fetchImpl).not.toHaveBeenCalled();
   });
@@ -262,7 +266,7 @@ describe("desenlaces que NO son ok", () => {
     const outcome = await clienteCon(fetchImpl).trazar({
       origen: ORIGEN,
       paradasEnOrden: justas,
-    });
+    }, CTX);
     expect(outcome).toMatchObject({ status: "ok" });
   });
 
@@ -278,7 +282,7 @@ describe("desenlaces que NO son ok", () => {
     const outcome = await clienteCon(fetchImpl).trazar({
       origen: ORIGEN,
       paradasEnOrden: PARADAS,
-    });
+    }, CTX);
     expect(outcome.status).toBe(esperado);
   });
 
@@ -289,7 +293,7 @@ describe("desenlaces que NO son ok", () => {
     const outcome = await clienteCon(fetchImpl).trazar({
       origen: ORIGEN,
       paradasEnOrden: PARADAS,
-    });
+    }, CTX);
     expect(outcome.status).toBe("transitorio");
   });
 
@@ -302,7 +306,7 @@ describe("desenlaces que NO son ok", () => {
     const outcome = await clienteCon(fetchImpl).trazar({
       origen: ORIGEN,
       paradasEnOrden: PARADAS,
-    });
+    }, CTX);
     expect(outcome).toEqual({ status: "omitida", razon: "sin_polilinea" });
   });
 
@@ -313,7 +317,7 @@ describe("desenlaces que NO son ok", () => {
     const outcome = await clienteCon(fetchImpl).trazar({
       origen: ORIGEN,
       paradasEnOrden: PARADAS,
-    });
+    }, CTX);
     expect(outcome.status).toBe("transitorio");
     if (outcome.status === "transitorio") {
       expect(outcome.detalle).toContain("distanceMeters");
@@ -334,7 +338,7 @@ describe("credencial y saneo de mensajes", () => {
       },
     });
     await expect(
-      cliente.trazar({ origen: ORIGEN, paradasEnOrden: PARADAS }),
+      cliente.trazar({ origen: ORIGEN, paradasEnOrden: PARADAS }, CTX),
     ).rejects.toBeInstanceOf(RutaNoConfiguradoError);
     expect(fetchImpl).not.toHaveBeenCalled();
   });
@@ -344,7 +348,7 @@ describe("credencial y saneo de mensajes", () => {
     const outcome = await clienteCon(fetchImpl, async () => "token-secretisimo").trazar({
       origen: ORIGEN,
       paradasEnOrden: PARADAS,
-    });
+    }, CTX);
     const detalle = "detalle" in outcome ? outcome.detalle : "";
     expect(detalle).not.toContain("token-secretisimo");
     expect(detalle).not.toContain("9.93");

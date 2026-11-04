@@ -5,6 +5,7 @@ import type { ModuloApagable } from "@prisma/client";
 
 import { FormField } from "@/components/shared/FormField";
 import { FieldError } from "@/components/shared/FieldError";
+import { MontoInput } from "@/components/shared/MontoInput";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -12,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { RadioGroup } from "@/components/ui/radio-group";
 import { Select, type SelectOption } from "@/components/ui/select";
 import { ROL_LABELS } from "@/lib/auth/rol-label";
+import { montoParaCampo } from "@/lib/config/moneda";
 import { nombreDelModulo, ORDEN_MODULOS } from "@/lib/modulos/catalogo";
 import {
   crearPlanSchema,
@@ -43,17 +45,20 @@ export const TEXTOS_PLAN_FORM = {
   rol: (rol: RolConTope) => TEXTOS_PLAN.rol(ROL_LABELS[rol]),
   apiKeys: "API keys activas",
   modulos: "Módulos incluidos",
-  precio: "Precio informativo",
+  // SLT-66 (R9): el precio informativo de SL-24 se llama «costo base».
+  precio: "Costo base",
   sinPrecio: "Sin precio",
   negociable: "Negociable",
   monto: "Con monto",
-  mensual: "Monto mensual",
+  mensual: "Costo base mensual",
   anual: "Pago anual",
   anualNinguno: "Sin precio anual",
   anualFijo: "Monto anual fijo",
   anualDescuento: "Descuento sobre el anual",
   montoAnual: "Monto anual",
   porcentaje: "Porcentaje de descuento",
+  costoPorOrden: "Costo por orden",
+  costoPorOrdenAyuda: "Vacío: se aplica el valor global de la plataforma.",
   aplicar: "Aplicar",
   inmediato: "De inmediato",
   programado: "A partir de",
@@ -72,6 +77,7 @@ const RECHAZOS = {
   archivado: "El plan está archivado.",
   custom_de_otra_empresa: "Ese plan es de otra empresa.",
   sin_cambio_programado: "El plan ya no tiene un cambio pendiente.",
+  plan_sin_costo: "Ese plan no tiene costo base y costo por orden concretos: crea un custom con sus precios para asignarlo.",
   generico: "No se pudo guardar. Inténtalo de nuevo.",
 } as const;
 
@@ -109,6 +115,8 @@ type Formulario = {
   anual: AnualForma;
   montoAnual: string;
   porcentaje: string;
+  /** SLT-66 (R7, R23): vacío = sin costo por orden del plan (se aplica el global). */
+  costoPorOrden: string;
   aplicar: Accion;
   vigenteDesde: string;
 };
@@ -133,10 +141,11 @@ function inicial(plan: PlanDTO | null): Formulario {
     apiKeys: texto(plan?.topes.apiKeys),
     modulos: plan?.modulos ?? [],
     precio: precio.tipo,
-    mensual: precio.tipo === "monto" ? precio.mensual : "",
+    mensual: precio.tipo === "monto" ? montoParaCampo(precio.mensual) : "",
     anual: anual === null ? "ninguno" : anual.tipo,
-    montoAnual: anual?.tipo === "fijo" ? anual.monto : "",
+    montoAnual: anual?.tipo === "fijo" ? montoParaCampo(anual.monto) : "",
     porcentaje: anual?.tipo === "descuento" ? anual.porcentaje : "",
+    costoPorOrden: plan?.costoPorOrden == null ? "" : montoParaCampo(plan.costoPorOrden),
     aplicar: "inmediato",
     vigenteDesde: "",
   };
@@ -170,6 +179,7 @@ function versionDe(f: Formulario) {
     // En el orden de pantalla, sea cual sea el orden en que se marcaron.
     modulos: ORDEN_MODULOS.filter((m) => f.modulos.includes(m)),
     precio: precioDe(f),
+    costoPorOrden: f.costoPorOrden.trim() === "" ? null : f.costoPorOrden.trim(),
   };
 }
 
@@ -483,7 +493,7 @@ export function PlanForm(props: PlanFormProps) {
         {form.precio === "monto" ? (
           <div className="flex flex-col gap-4">
             <FormField id={idDe("precio.mensual")} label={TEXTOS_PLAN_FORM.mensual} error={errorDe("precio.mensual")}>
-              <Input inputMode="decimal" value={form.mensual} onChange={(ev) => cambiar("mensual", ev.target.value)} />
+              <MontoInput value={form.mensual} onChange={(v) => cambiar("mensual", v)} />
             </FormField>
             {/* Título visible: sin él, los tres radios aparecen sin contexto bajo «Monto mensual». */}
             <fieldset id={idDe("precio.anual")} className="flex flex-col gap-2">
@@ -508,11 +518,7 @@ export function PlanForm(props: PlanFormProps) {
                 label={TEXTOS_PLAN_FORM.montoAnual}
                 error={errorDe("precio.anual.monto")}
               >
-                <Input
-                  inputMode="decimal"
-                  value={form.montoAnual}
-                  onChange={(ev) => cambiar("montoAnual", ev.target.value)}
-                />
+                <MontoInput value={form.montoAnual} onChange={(v) => cambiar("montoAnual", v)} />
               </FormField>
             ) : null}
             {form.anual === "descuento" ? (
@@ -531,6 +537,16 @@ export function PlanForm(props: PlanFormProps) {
           </div>
         ) : null}
       </fieldset>
+
+      {/* SLT-66 (R7, R23): fuera del grupo «Costo base», porque no depende de su forma. */}
+      <FormField
+        id={idDe("costoPorOrden")}
+        label={TEXTOS_PLAN_FORM.costoPorOrden}
+        hint={TEXTOS_PLAN_FORM.costoPorOrdenAyuda}
+        error={errorDe("costoPorOrden")}
+      >
+        <MontoInput value={form.costoPorOrden} onChange={(v) => cambiar("costoPorOrden", v)} />
+      </FormField>
 
       {props.modo === "editar" ? (
         <fieldset className="flex flex-col gap-4">
@@ -603,6 +619,7 @@ function camposEnOrden(modo: PlanFormProps["modo"], f: Formulario): string[] {
   if (f.precio === "monto") claves.push("precio.mensual", "precio.anual");
   if (f.precio === "monto" && f.anual === "fijo") claves.push("precio.anual.monto");
   if (f.precio === "monto" && f.anual === "descuento") claves.push("precio.anual.porcentaje");
+  claves.push("costoPorOrden");
   if (modo === "editar" && f.aplicar === "programado") claves.push("vigenteDesde");
   return claves;
 }

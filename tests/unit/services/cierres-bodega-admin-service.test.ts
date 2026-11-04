@@ -82,6 +82,8 @@ function marcaDesdeOverrides(overrides: Partial<CierreBodegaResumenRow>) {
   if (overrides.conciliadoPorNombre !== undefined)
     salida.conciliadoPorNombre = overrides.conciliadoPorNombre;
   if (overrides.conciliadoNota !== undefined) salida.conciliadoNota = overrides.conciliadoNota;
+  // SLT-76 (R3): el dato lo decide el servidor; un caso que lo fije no puede perderlo aquí.
+  if (overrides.desmarcable !== undefined) salida.desmarcable = overrides.desmarcable;
   return salida;
 }
 
@@ -321,6 +323,8 @@ describe("CierresBodegaAdminService.verCierreBodegaDetalle — ingreso y gananci
       fleteDevolucionConIva: null,
       comisionConIva: null,
       total: "0.00",
+      fulfillment: "0.00", // SLT-52 (R46): el fulfillment congelado y su IVA, fuera del total
+      ivaFulfillment: "0.00",
       tarifa: null,
       ...over,
     };
@@ -881,6 +885,8 @@ describe("CierresBodegaAdminService.verCierreBodegaDetalle — las dos cascadas 
       fleteDevolucionConIva: null,
       comisionConIva: null,
       total: "0.00",
+      fulfillment: "0.00", // SLT-52 (R46): el fulfillment congelado y su IVA, fuera del total
+      ivaFulfillment: "0.00",
       tarifa: null,
       ...over,
     };
@@ -1245,6 +1251,8 @@ describe("396/D1 — `verCierreBodegaDetalle` emite el desglose por tienda en lo
       fleteDevolucionConIva: null,
       comisionConIva: null,
       total: "0.00",
+      fulfillment: "0.00", // SLT-52 (R46): el fulfillment congelado y su IVA, fuera del total
+      ivaFulfillment: "0.00",
       tarifa: null,
       ...over,
     };

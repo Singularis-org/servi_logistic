@@ -136,6 +136,7 @@ export class RechazoTiendaCobroRepository implements IRechazoTiendaCobroReposito
           montoFlete: new Prisma.Decimal(input.montoFlete), // STRING -> Decimal (money-safe)
           montoIva: new Prisma.Decimal(input.montoIva),
           tarifaId: input.tarifaId,
+          tarifaValorId: input.tarifaValorId, // SLT-52 R48: la traza del modelo nuevo
           generadoEl: diaAColumna(input.generadoEl),
         },
       ],

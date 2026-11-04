@@ -75,6 +75,13 @@ export interface CierreBodegaResumen {
    * sin la marca y el compilador callase — el mismo motivo por el que `paraLaCentral` lo es.
    */
   conciliado: boolean;
+  /**
+   * SLT-76 (R3/R4) — ¿se ofrece «Desmarcar»? `conciliado && !consolidacionesConDinero.has(id)`,
+   * DERIVADO EN EL SERVIDOR con el MISMO predicado con el que `revertirConciliacion` responde
+   * `con_asientos` (asientos `cierre_dia` de sus cierres o un ajuste de diferencia). REQUERIDO: una
+   * superficie que no lo lea no compila. `false` en toda consolidacion sin conciliar.
+   */
+  desmarcable: boolean;
   /** `null` = sin conciliar. NUNCA `"0.00"` por ausencia. */
   montoRecibido: string | null;
   /** R17/R18/R20 — derivado en el SERVIDOR sobre el EFECTIVO. Puede ser NEGATIVO. */

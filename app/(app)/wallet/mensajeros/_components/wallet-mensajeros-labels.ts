@@ -130,6 +130,9 @@ export const CATEGORIA_PAGO_LABEL: Record<PagoMensajeroMovimientoCategoria, stri
   // Feature 293 (T1.6, R34, Q4 cerrada por el leader): rotulo PROPIO y distinguible del de los
   // ajustes. Sin esta linea el `Record` deja de compilar: el compilador es la guardia.
   premio_ranking: "Premio del ranking",
+  // SLT-68 (D6, R18): categoria propia del incentivo y de su contraasiento.
+  incentivo: "Incentivo",
+  reverso_incentivo: "Anulación de incentivo",
 };
 
 export { ORIGEN_PAGO_LABEL };

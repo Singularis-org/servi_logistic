@@ -154,6 +154,11 @@ export interface LectoresDocumentosCaja {
    * implementa `PremioCajaDocumentosRepository`. Sin valor por defecto.
    */
   premios: { estadoDeDocumentos(ids: readonly string[]): Promise<EstadoDocumentoCaja[]> };
+  /**
+   * SLT-68 (design §5, R16) — los incentivos a un mensajero: id = el devengo `incentivo`. Lo
+   * implementa `IncentivoCajaDocumentosRepository`. Sin valor por defecto.
+   */
+  incentivos: { estadoDeDocumentos(ids: readonly string[]): Promise<EstadoDocumentoCaja[]> };
 }
 
 export interface IWalletService {

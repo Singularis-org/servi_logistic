@@ -30,7 +30,7 @@ describe("469 — WalletService (caja)", () => {
   const vacio = { estadoDeDocumentos: async () => [] };
   const SIN_DOCUMENTOS = {
     pagosPorCuenta: vacio, aportes: vacio, cobros: vacio, ajustes: vacio, abonos: vacio, egresos: vacio,
-    indemnizaciones: vacio, rechazos: vacio, pagosATienda: vacio, premios: vacio,
+    indemnizaciones: vacio, rechazos: vacio, pagosATienda: vacio, premios: vacio, incentivos: vacio,
   };
   function montar(busqueda: ReturnType<typeof busquedaQueDa>) {
     const listar = vi.fn<(f: ListarMovimientosFiltros) => Promise<{ movimientos: never[]; total: number }>>(async () => ({ movimientos: [], total: 0 }));
@@ -103,7 +103,7 @@ describe("469 — EstadoCuentaService", () => {
       nombreDeCuenta: async () => "Bodega Norte",
       enLecturaConsistente: async <T>(fn: (r: IEstadoCuentaRepository) => Promise<T>) => fn(repo as unknown as IEstadoCuentaRepository),
       paginaDeBodega,
-      totalesDeBodega: async () => ({ efectivo: "0.00", recibido: "0.00" }),
+      totalesDeBodega: async () => ({ declarado: "0.00", recibido: "0.00" }),
       periodoDeBodega: async () => [],
     };
     const svc = new EstadoCuentaService(
@@ -141,8 +141,11 @@ describe("469 — DetalleMovimientoService con `resaltar`", () => {
         montoCobrar: null,
         cobraComision: false,
         tarifa: {
-          valorFlete: "1000.00", valorFleteGam: "1500.00", valorFleteDevuelto: "400.00", valorFleteDevueltoGam: "600.00",
-          comisionCod: "3.50", ivaFlete: "13.00", ivaComisionCod: "13.00", tarifaEspecial: null, tarifaEspecialDevuelta: null,
+          modelo: "viejo",
+          tarifa: {
+            valorFlete: "1000.00", valorFleteGam: "1500.00", valorFleteDevuelto: "400.00", valorFleteDevueltoGam: "600.00",
+            comisionCod: "3.50", ivaFlete: "13.00", ivaComisionCod: "13.00", tarifaEspecial: null, tarifaEspecialDevuelta: null,
+          },
         },
       },
       gestiones: [{ resultado: "entregado", montoRecibido: null, pagoMensajero: null, indemnizacion: null }],

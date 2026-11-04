@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { pagoViejoPorGestion } from "@/tests/fixtures/tarifa-tienda";
 import type { CierreGestionPendienteRow } from "@/lib/interfaces/repositories/ICierreDiaRepository";
 import type { PagoTarifa } from "@/lib/interfaces/repositories/ITarifaZonaMensajeroRepository";
 import { derivarIngresoBodega } from "@/lib/utils/cierre-totales";
@@ -65,7 +66,7 @@ describe("Feature 99 [💰] · el snapshot de la 56 cobra la gestion sintetica d
       gestion({ gestionId: "g-sla", resultado: "devolucion_a_origen_por_rechazo", motivo: "escalado SLA not_found" }),
     ];
 
-    const { ingresoByGestionId, total } = derivarIngresoBodega(gestiones, TARIFA);
+    const { ingresoByGestionId, total } = derivarIngresoBodega(gestiones, pagoViejoPorGestion(gestiones, TARIFA));
 
     // R20: el escalado por SLA cobra el ingreso de bodega por rechazo, IDENTICO a un rechazo directo.
     expect(ingresoByGestionId["g-sla"]).toBe("800.00");
@@ -93,15 +94,14 @@ describe("Feature 99 [💰] · el snapshot de la 56 cobra la gestion sintetica d
       gestion({ gestionId: "g-sla-1", resultado: "devolucion_a_origen_por_rechazo" }),
       gestion({ gestionId: "g-sla-2", resultado: "devolucion_a_origen_por_rechazo" }),
     ];
-    const { total } = derivarIngresoBodega(dos, TARIFA);
+    const { total } = derivarIngresoBodega(dos, pagoViejoPorGestion(dos, TARIFA));
     expect(total).toBe("1600.00"); // 2 x 800 — el snapshot no deduplica; la idempotencia es del repo
   });
 
   it("R23: sin tarifa (gap de datos) el ingreso es 0.00 sin lanzar (money-safe)", () => {
     const { ingresoByGestionId, total } = derivarIngresoBodega(
       [gestion({ gestionId: "g-sla", resultado: "devolucion_a_origen_por_rechazo" })],
-      null,
-    );
+      pagoViejoPorGestion([gestion({ gestionId: "g-sla", resultado: "devolucion_a_origen_por_rechazo" })], null));
     expect(ingresoByGestionId["g-sla"]).toBe("0.00");
     expect(total).toBe("0.00");
   });

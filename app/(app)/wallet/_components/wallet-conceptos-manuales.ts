@@ -59,7 +59,7 @@ import {
 // Módulo PURO: sin React y sin leer ningún reloj. La fecha del movimiento la pone el diálogo.
 
 /**
- * Los ONCE conceptos (ficha 458-C; SL-45 suma el pago a la plataforma), en el orden en que se ofrecen: tres tramos CONSECUTIVOS, uno por
+ * Los DOCE conceptos (ficha 458-C; SL-45 suma el pago a la plataforma; SLT-68, el incentivo a un mensajero), en el orden en que se ofrecen: tres tramos CONSECUTIVOS, uno por
  * grupo. `gasto_fijo` NO está: lo emite el cron desde su plantilla (R38). El primero sigue siendo el
  * gasto de la empresa: quien abre y registra sin tocar el catálogo registra lo mismo que antes.
  */
@@ -70,6 +70,8 @@ export const CONCEPTO_MANUAL_IDS = [
   "ajuste_egreso",
   "pago_a_tienda",
   "pago_a_mensajero",
+  // SLT-68 (design §6.4, R19): justo después del pago a un mensajero, en «Sale dinero de la empresa».
+  "incentivo_a_mensajero",
   "pago_plataforma",
   "aporte_capital",
   "abono_tienda",
@@ -140,6 +142,14 @@ export type DestinoConcepto =
       readonly clase: "pago_mensajero";
       readonly categoria: null;
       readonly categoriaMensajero: PagoMensajeroMovimientoCategoria;
+    }
+  | {
+      // SLT-68 (design §6.4): el incentivo a un mensajero. Escribe en los DOS libros: el egreso propio
+      // en la caja y el DEVENGO `incentivo` en el libro del mensajero. Ninguna de las dos viaja: las
+      // fija el servidor.
+      readonly clase: "incentivo_mensajero";
+      readonly categoria: "egreso_pago_mensajero";
+      readonly categoriaMensajero: "incentivo";
     };
 
 /**
@@ -150,7 +160,7 @@ export type DestinoConcepto =
  * FICHA 461: el cobro cae en los DOS, como el pago de un gasto. Ya no hay ningún concepto que
  * escriba SOLO en el libro de la tienda, así que esa variante desaparece del tipo.
  */
-export type LibroDestino = "caja" | "caja_y_tienda" | "mensajero";
+export type LibroDestino = "caja" | "caja_y_tienda" | "mensajero" | "caja_y_mensajero";
 
 /**
  * FICHA 459 (R59) — los tres grupos del selector, por lo que le pasa al dinero.
@@ -257,6 +267,17 @@ export const CONCEPTOS_MANUALES: readonly ConceptoManual[] = [
     grupo: "sale",
   },
   {
+    // ⭑ SLT-68 (design §6.4, R19) — la empresa le reconoce un incentivo a un mensajero: sube su cuenta
+    // por pagar (devengo imputado a su último cierre aprobado) y baja la ganancia (egreso propio). Se
+    // paga después con «La empresa le paga a un mensajero».
+    id: "incentivo_a_mensajero",
+    label: `${EMPRESA.alInicio} le da un incentivo a un mensajero`,
+    descripcionLabel: "Motivo del incentivo",
+    descripcionPlaceholder: "Ej. Cumplió todas las entregas de la semana",
+    destino: { clase: "incentivo_mensajero", categoria: "egreso_pago_mensajero", categoriaMensajero: "incentivo" },
+    grupo: "sale",
+  },
+  {
     // ⭑ SL-45 (design §7.1, R6) — la empresa deja dicho que le pagó a la plataforma. Es un egreso
     // manual más (sale de la caja, baja la ganancia) y baja la deuda con la plataforma; el tope
     // (no pagar más de lo que se debe) lo decide el servidor dentro de la transacción.
@@ -357,6 +378,9 @@ export const FRASE_DEL_EFECTO: Record<ConceptoManualId, string> = {
     `Sale dinero de ${EMPRESA.enFrase} hacia la tienda y baja lo que ${EMPRESA.enFrase} le debe; la ganancia no cambia.`,
   pago_a_mensajero:
     `${EMPRESA.alInicio} le paga al mensajero lo que le debe por sus cierres y baja su cuenta por pagar; la ganancia no cambia.`,
+  // SLT-68 (design §6.4): literal.
+  incentivo_a_mensajero:
+    `${EMPRESA.alInicio} le reconoce un incentivo al mensajero: sube lo que le debe y baja su ganancia.`,
   // SL-45 (design §7.1, R6): literal.
   pago_plataforma:
     `Sale dinero de ${EMPRESA.enFrase} hacia la plataforma y baja lo que ${EMPRESA.enFrase} le debe; baja la ganancia.`,
@@ -379,6 +403,8 @@ export const FRASE_DEL_EFECTO: Record<ConceptoManualId, string> = {
 export function libroDelConcepto(concepto: ConceptoManual): LibroDestino {
   // FICHA 458-C: el pago a un mensajero cae SOLO en su libro; el pago a una tienda, en los dos.
   if (concepto.destino.clase === "pago_mensajero") return "mensajero";
+  // SLT-68: el incentivo, en la caja (egreso) y en el libro del mensajero (devengo).
+  if (concepto.destino.clase === "incentivo_mensajero") return "caja_y_mensajero";
   if (concepto.destino.clase === "pago_tienda") return "caja_y_tienda";
   if (concepto.destino.clase === "cobro_tienda") return "caja_y_tienda";
   if (concepto.destino.clase === "pago_por_cuenta_tienda") return "caja_y_tienda";
@@ -404,6 +430,15 @@ export function nombreEnElLibro(concepto: ConceptoManual): string {
 }
 
 /**
+ * SLT-68 — el nombre con que el concepto sale en el libro del MENSAJERO cuando también escribe en la
+ * caja (`CATEGORIA_PAGO_LABEL`, el diccionario de `/wallet/mensajeros`). Cadena vacía si no.
+ */
+export function nombreEnElLibroDelMensajero(concepto: ConceptoManual): string {
+  const { destino } = concepto;
+  return destino.clase === "incentivo_mensajero" ? CATEGORIA_PAGO_LABEL[destino.categoriaMensajero] : "";
+}
+
+/**
  * FICHA 459/461 — el nombre con que el concepto sale en el libro de la TIENDA, desde la empresa
  * (`CATEGORIA_TIENDA_LABEL`, el mismo diccionario que pinta `/wallet/tiendas`; R46). Cadena vacía
  * para los conceptos que no escriben en ese libro.
@@ -426,12 +461,18 @@ export function nombreEnElLibroDeLaTienda(concepto: ConceptoManual): string {
  * la de los dos conceptos que escriben en los dos libros nombra los DOS, cada uno con el nombre de
  * su diccionario.
  */
-const FRASE_DEL_LIBRO: Record<LibroDestino, (nombre: string, nombreTienda: string) => string> = {
+const FRASE_DEL_LIBRO: Record<
+  LibroDestino,
+  (nombre: string, nombreTienda: string, nombreMensajero: string) => string
+> = {
   caja: (nombre) => `Se registra en el libro como «${nombre}».`,
   caja_y_tienda: (nombre, nombreTienda) =>
     `Se registra en la caja como «${nombre}» y en el libro de la tienda como «${nombreTienda}».`,
   // FICHA 458-C (R52): el pago a un mensajero, en el libro del mensajero y con el nombre de ese libro.
   mensajero: (nombre) => `Se registra en el libro del mensajero como «${nombre}».`,
+  // SLT-68 (design §6.4): el incentivo, en los dos libros.
+  caja_y_mensajero: (nombre, _nombreTienda, nombreMensajero) =>
+    `Se registra en la caja como «${nombre}» y en el libro del mensajero como «${nombreMensajero}».`,
 };
 
 /** R4 — «Se registra en el libro […] como «…».», ya resuelta para el concepto elegido. */
@@ -439,6 +480,7 @@ export function fraseDelLibro(concepto: ConceptoManual): string {
   return FRASE_DEL_LIBRO[libroDelConcepto(concepto)](
     nombreEnElLibro(concepto),
     nombreEnElLibroDeLaTienda(concepto),
+    nombreEnElLibroDelMensajero(concepto),
   );
 }
 
@@ -459,7 +501,12 @@ export const CABECERA_CAJA = {
  * dice «no se puede editar ni deshacer»: desde esta ficha SÍ se anula (HD1).
  */
 const DESCRIPCION_CABECERA_DOS_LIBROS: Record<
-  "pago_por_cuenta_tienda" | "cobro_tienda" | "abono_tienda" | "pago_tienda" | "pago_mensajero",
+  | "pago_por_cuenta_tienda"
+  | "cobro_tienda"
+  | "abono_tienda"
+  | "pago_tienda"
+  | "pago_mensajero"
+  | "incentivo_mensajero",
   string
 > = {
   pago_por_cuenta_tienda:
@@ -474,6 +521,9 @@ const DESCRIPCION_CABECERA_DOS_LIBROS: Record<
     `Elegí la tienda, el monto, la fecha real y el método. Solo se admite hasta lo que ${EMPRESA.enFrase} le debe a la tienda. El pago no se edita: si hay un error, se anula con un motivo.`,
   pago_mensajero:
     "Elegí el mensajero, el monto, la fecha real y el método. El importe se reparte entre sus cierres pendientes. El pago no se edita: si hay un error, se anula con un motivo.",
+  // SLT-68 (design §6.4): literal.
+  incentivo_mensajero:
+    `Elegí el mensajero, el monto, el motivo y la fecha. El incentivo se suma a lo que ${EMPRESA.enFrase} le debe y se paga con «${EMPRESA.alInicio} le paga a un mensajero». No se edita: si hay un error, se anula con un motivo.`,
 };
 
 /**
@@ -492,7 +542,8 @@ export function cabeceraDelConcepto(concepto: ConceptoManual): {
     destino.clase === "cobro_tienda" ||
     destino.clase === "abono_tienda" ||
     destino.clase === "pago_tienda" ||
-    destino.clase === "pago_mensajero"
+    destino.clase === "pago_mensajero" ||
+    destino.clase === "incentivo_mensajero"
   ) {
     return { titulo: concepto.label, descripcion: DESCRIPCION_CABECERA_DOS_LIBROS[destino.clase] };
   }
@@ -511,6 +562,7 @@ export const CONCEPTO_REGISTRO_DE: Record<ConceptoManualId, ConceptoRegistro> = 
   ajuste_egreso: "correccion_resta",
   pago_a_tienda: "pago_a_tienda",
   pago_a_mensajero: "pago_a_mensajero",
+  incentivo_a_mensajero: "incentivo_a_mensajero",
   pago_plataforma: "pago_plataforma",
   aporte_capital: "aporte",
   abono_tienda: "tienda_paga_a_empresa",
@@ -539,6 +591,7 @@ export function cuentaDelConcepto(concepto: ConceptoManual): CuentaDelConcepto {
     case "pago_tienda":
       return "tienda";
     case "pago_mensajero":
+    case "incentivo_mensajero":
       return "mensajero";
     default:
       return null;

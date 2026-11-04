@@ -433,6 +433,16 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("381/B.7 (b) — el down recrea 50 tipos y 2
       // SLT-56: `cierre_dia_pago_mensajero_ajustado`, de
       // `20261029120100_historial_accion_pago_mensajero_ajustado`.
       "cierre_dia_pago_mensajero_ajustado",
+      // SLT-76 (2026-11-02): el rastro de los distritos de una zona. Su migracion:
+      // `20261102090000_slt76_historial_zona_distrito`.
+      "zona_distrito_cambiado",
+      // SLT-52 (2026-11-02): el rastro del modelo nuevo de tarifas. Su migracion:
+      // `20261103120300_historial_tarifas_flexibles`.
+      "tarifa_valor_fijado",
+      "tarifa_valor_quitado",
+      "grupo_distritos_creado",
+      "grupo_distritos_cambiado",
+      "grupo_distritos_borrado",
     ];
     expect([...tiposAntes].sort()).toEqual(
       [...HISTORIAL_ACCION_TIPOS]
@@ -445,7 +455,8 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("381/B.7 (b) — el down recrea 50 tipos y 2
         .filter(
           (e) =>
             e !== ENTIDAD_NUEVA &&
-            !["pago_por_cuenta_tienda", "aporte_capital", "abono_tienda", "integracion", "organizacion_modulo", "plan"].includes(e),
+            !["pago_por_cuenta_tienda", "aporte_capital", "abono_tienda", "integracion", "organizacion_modulo", "plan",
+              "tarifa_valor", "grupo_distritos"].includes(e),
         )
         .sort(),
     );

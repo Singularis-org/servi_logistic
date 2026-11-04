@@ -1,7 +1,7 @@
 // Clasificacion de los modelos de `db/schema.prisma` (SL-17, design §2): la UNICA lista que leen la
 // extension de aislamiento, las guardias y el generador de migraciones.
 //
-//   · negocio    (78): llevan `organizacion_id`; la extension filtra y la RLS manda.
+//   · negocio    (80): llevan `organizacion_id`; la extension filtra y la RLS manda.
 //   · plataforma (23): catalogos, geografia, autenticacion previa a la empresa, cache tecnica, el
 //                      valor global del cobro por orden (SL-40), la marca de entorno (SL-43), los
 //                      paises y el historial de plataforma (SL-20) y el catalogo de planes con su
@@ -52,6 +52,10 @@ export const MODELOS_DE_NEGOCIO: readonly ModeloClasificado[] = [
   { modelo: "DistritoZonaEspecial", tabla: "distrito_zona_especial" }, // SL-38
   { modelo: "Tarifa", tabla: "tarifas" },
   { modelo: "TarifaZonaMensajero", tabla: "tarifa_zona_mensajero" },
+  // SLT-52: el modelo nuevo de tarifas (valores por concepto y nivel, y grupos de distritos)
+  { modelo: "GrupoDistritos", tabla: "grupo_distritos" },
+  { modelo: "GrupoDistritosDistrito", tabla: "grupo_distritos_distrito" },
+  { modelo: "TarifaValor", tabla: "tarifa_valor" },
   { modelo: "PremioRanking", tabla: "premio_ranking" },
   { modelo: "GastoFijoPlantilla", tabla: "gasto_fijo_plantilla" },
   // Ordenes
@@ -72,12 +76,16 @@ export const MODELOS_DE_NEGOCIO: readonly ModeloClasificado[] = [
   { modelo: "GestionOrdenPago", tabla: "gestion_orden_pago" },
   { modelo: "GestionFechaReprogramacionCambio", tabla: "gestion_fecha_reprogramacion_cambio" },
   { modelo: "GestionPagoMensajeroAjuste", tabla: "gestion_pago_mensajero_ajuste" }, // SLT-56
+  { modelo: "GestionPagoCongelado", tabla: "gestion_pago_congelado" }, // SLT-52: pago de la gestion congelado
   { modelo: "RutaOptimizada", tabla: "ruta_optimizada" },
   { modelo: "RutaOptimizadaParada", tabla: "ruta_optimizada_parada" },
   // Cierres
   { modelo: "CierreDia", tabla: "cierre_dia" },
   { modelo: "CierreBodega", tabla: "cierre_bodega" },
+  // SLT-73: un evento (marca o correccion) que movio la diferencia de la satelite al conciliar
+  { modelo: "ConciliacionBodegaAjuste", tabla: "conciliacion_bodega_ajuste" },
   { modelo: "CierreDetail", tabla: "cierre_detail" },
+  { modelo: "CierreDetailConcepto", tabla: "cierre_detail_concepto" }, // SLT-52: cobro a la tienda congelado
   { modelo: "CierreSinGestion", tabla: "cierre_sin_gestion" },
   { modelo: "CierreRechazoTienda", tabla: "cierre_rechazo_tienda" },
   // Dinero

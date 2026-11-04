@@ -177,10 +177,15 @@ describe("459/A.2 — R7 sobre subconjuntos al azar (semilla fija)", () => {
         filas.push(fila(categoria, new Prisma.Decimal(centimos).div(100).toFixed(2)));
       }
       const r = derivarCaja(filas, { periodoFiltrado: azar() < 0.5 });
-      const suma = new Prisma.Decimal(r.ganancia).add(r.iva).add(r.deTerceros).add(r.capital);
+      // SLT-73 (design §2.9.4, R27): − «Por cobrar a satélites» (el catalogo trae las dos diferencias).
+      const suma = new Prisma.Decimal(r.ganancia)
+        .add(r.iva)
+        .add(r.deTerceros)
+        .add(r.capital)
+        .sub(r.porCobrarSatelites);
       expect(suma.toFixed(2), `conjunto ${n}`).toBe(r.enCaja);
       expect(
-        new Prisma.Decimal(r.deEmpresa).add(r.deTerceros).toFixed(2),
+        new Prisma.Decimal(r.deEmpresa).add(r.deTerceros).sub(r.porCobrarSatelites).toFixed(2),
         `conjunto ${n}`,
       ).toBe(r.enCaja);
       comprobados += 1;

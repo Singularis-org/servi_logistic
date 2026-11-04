@@ -22,6 +22,10 @@ import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteReposit
 import { TarifaZonaMensajeroRepository } from "@/lib/repositories/TarifaZonaMensajeroRepository";
 import { UserRepository } from "@/lib/repositories/UserRepository";
 import { WalletMovimientoRepository } from "@/lib/repositories/WalletMovimientoRepository";
+import {
+  ASIENTOS_POR_DEFECTO,
+  asentarCierreDia,
+} from "@/lib/repositories/_shared/asientos-cierre-dia";
 import { WalletTiendaMovimientoRepository } from "@/lib/repositories/WalletTiendaMovimientoRepository";
 import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
 import { AjusteCajaAnulacionRepository } from "@/lib/repositories/AjusteCajaAnulacionRepository";
@@ -325,6 +329,7 @@ export function montarServicios459(tx: TxDeTest) {
       // Ficha 458-C (revision B3, R71): el pago de la empresa a una tienda y el premio del ranking.
       pagosATienda: new PagoTiendaCajaDocumentosRepository(c),
       premios: new PremioCajaDocumentosRepository(c),
+      incentivos: { estadoDeDocumentos: async () => [] }, // SLT-68: lo exige `LectoresDocumentosCaja`
     }, undefined, busquedaPorGuiaDe(c)), // FICHA 469: como `buildService()`, con la busqueda por guia
     // Ficha 459 (T B.14) — los dos escritores nuevos, cableados como su `buildService()`.
     pagoPorCuenta: new PagoPorCuentaTiendaService(
@@ -595,9 +600,23 @@ export async function sembrarEscenario459(
     cierreId,
     actorAdminSat,
     [{ gestionId: g5, monto: "6500.00" }],
-    [{ gestionId: g4, numGuia: o4.numGuia }],
+    [{ origen: "gestion" as const, gestionId: g4, numGuia: o4.numGuia }],
   );
   afirmarOk(pasos, "aprobarCierre", aprobacion);
+  // SLT-73 (R1/R10, D2): el mensajero de este escenario es de la SATELITE (aprueba el adminSatelite),
+  // y aprobar su cierre ya NO escribe dinero: entra al CONCILIAR la consolidacion, que llama a
+  // `asentarCierreDia`. El escenario sigue necesitando esos asientos en el libro, asi que se escriben
+  // aqui con el MISMO escritor y las MISMAS dependencias que el `adminRepo` de arriba. No se sustituye
+  // por consolidar + marcar (T4): las ~35 suites de este escenario no corren en la base local (falta la
+  // zona central, baseline) y la marca cambia la fecha de los asientos y anade una diferencia si lo
+  // recibido no cuadra; un cambio a ciegas aqui no se puede verificar (bitacora SLT-73, tanda 2).
+  await asentarCierreDia(tx, cierreId, {
+    ...ASIENTOS_POR_DEFECTO,
+    walletMovimientoRepo: new WalletMovimientoRepository(s.cliente),
+    walletTiendaMovimientoRepo: new WalletTiendaMovimientoRepository(s.cliente),
+    walletTiendaFeedService: new WalletTiendaFeedService({ TIENDA_DEBITA_FLETE_DEVOLUCION: true }),
+    pagoMensajeroMovimientoRepo: new PagoMensajeroMovimientoRepository(s.cliente),
+  });
 
   // ── Cobro por devolución a origen de tienda (337), fuera de todo cierre ───────────────────────────────
   const o6 = await sembrarOrden({
@@ -619,6 +638,7 @@ export async function sembrarEscenario459(
     montoFlete: "1000.00",
     montoIva: "130.00",
     tarifaId: null,
+    tarifaValorId: null, // SLT-52: cobro del modelo viejo, sin traza al nuevo
     generadoEl: "2026-09-24",
   });
   const cobroRechazo = await tx.rechazoTiendaCobro.findFirstOrThrow({

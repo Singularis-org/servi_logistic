@@ -18,6 +18,8 @@ import { BarraComposicionCaja } from "./BarraComposicionCaja";
 import {
   CAJA_COMPOSICION_LABEL,
   CAJA_COMPOSICION_MENSAJE,
+  CAJA_POR_COBRAR_SATELITES_LABEL,
+  CAJA_POR_COBRAR_SATELITES_PISTA,
   CAJA_RESUMEN_AVISO_PERIODO,
   CAJA_RESUMEN_AVISO_TERCEROS,
   CAJA_RESUMEN_LABEL,
@@ -94,6 +96,14 @@ import {
 //  - La region de la deuda puede llevar UNA accion, el boton «Registrar pago a la plataforma», que le
 //    pasa el modulo (`accionDeudaPlataforma`) solo en «debe». Es la unica excepcion a «cero elementos
 //    interactivos»: sin la prop, la tarjeta sigue sin ningun control.
+//
+// ── SLT-73 (D12–D14, design §2.9.8) — EL BOLSILLO «POR COBRAR A SATÉLITES» ──
+//
+//  - Lo que una satelite entrego de menos al conciliar y aun debe es un TERCER bloque, hermano de
+//    los otros dos y FUERA del de la empresa: Carlos dijo que no es de la empresa (D12, R28).
+//  - Se pinta SIEMPRE, tambien con importe cero y en los dos estados (D14).
+//  - El importe es el STRING del servidor tal cual y la pista la elige su signo: aqui no se compara
+//    ningun importe.
 
 /**
  * Feature 200 (tanda 2) — las insignias de signo usan las variantes SEMANTICAS de la
@@ -143,6 +153,9 @@ const BOLSILLO_EMPRESA: Record<ModoComposicionCaja, SuperficieEmpresa> = {
   dos_bolsillos: EMPRESA_NEUTRO,
   solo_empresa: EMPRESA_NEUTRO,
   sin_reparto: EMPRESA_NEUTRO,
+  // SLT-73 (design §2.9.8): con lo que debe una satelite la empresa no esta en peligro; ese dinero
+  // tiene su propio bloque y su propio tramo.
+  tres_tramos: EMPRESA_NEUTRO,
   solo_tiendas: {
     superficie: "peligro",
     clase: "border-danger/30 bg-danger-soft dark:bg-danger/15",
@@ -217,6 +230,7 @@ export function CajaResumenCard({
 
   const badgePrincipal = SIGNO_BADGE[resumen.signoEnCaja];
   const badgeGanancia = SIGNO_BADGE[resumen.signoGanancia];
+  const badgeSatelites = SIGNO_BADGE[resumen.signoPorCobrarSatelites];
   const empresa = conBarra ? BOLSILLO_EMPRESA[resumen.modoComposicion] : EMPRESA_NEUTRO;
   // R16/R17/R18 de la 231: lo que hay que decir cuando la barra no se puede partir. Solo con barra.
   const mensajeModo = conBarra ? CAJA_COMPOSICION_MENSAJE[resumen.modoComposicion] : null;
@@ -282,8 +296,8 @@ export function CajaResumenCard({
         {/* 2 — la barra (R2 de la 231), SOLO en estado «saldo» (R22 de la 459). */}
         {conBarra ? <BarraComposicionCaja resumen={resumen} /> : null}
 
-        {/* 3 — los DOS bolsillos, hermanos y a la vez (R3). */}
-        <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
+        {/* 3 — los bolsillos, hermanos y a la vez (R3). SLT-73: el de las satelites es el tercero. */}
+        <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
           <section
             aria-label={CAJA_RESUMEN_LABEL.deTerceros}
             data-bolsillo="tiendas"
@@ -403,6 +417,28 @@ export function CajaResumenCard({
               </p>
             )}
           </div>
+
+          {/* SLT-73 (R28, D14): el bolsillo de lo que deben las satelites, siempre y fuera del de
+              la empresa. */}
+          <section
+            aria-label={CAJA_POR_COBRAR_SATELITES_LABEL.rotulo}
+            data-bolsillo="satelites"
+            className={cn(BOLSILLO, SUPERFICIE_NEUTRA)}
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="size-2 shrink-0 rounded-full bg-danger" aria-hidden="true" />
+              <span className="text-sm font-medium text-muted-foreground">
+                {CAJA_POR_COBRAR_SATELITES_LABEL.rotulo}
+              </span>
+              <Badge variant={badgeSatelites.variant}>{badgeSatelites.label}</Badge>
+            </div>
+            <span className={cn(CIFRA_BOLSILLO, "text-foreground")}>
+              {money(resumen.porCobrarSatelites)}
+            </span>
+            <p role="note" className="text-xs text-muted-foreground">
+              {CAJA_POR_COBRAR_SATELITES_PISTA[resumen.signoPorCobrarSatelites]}
+            </p>
+          </section>
         </div>
 
         {/* R60 de la 173: en que se diferencian, junto a las cifras y no en otra pantalla. Se

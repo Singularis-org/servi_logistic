@@ -20,6 +20,8 @@ export const CONCEPTO_REGISTRO_SEED = [
   "correccion_resta",
   "pago_a_tienda",
   "pago_a_mensajero",
+  // SLT-68 (design §6.4, R19): el incentivo a un mensajero (sube su cuenta por pagar, baja la ganancia).
+  "incentivo_a_mensajero",
   // SL-45 (design §7.1): el pago a la plataforma, un egreso propio de la caja.
   "pago_plataforma",
   // Llega

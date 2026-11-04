@@ -157,8 +157,11 @@ export interface IEstadoCuentaRepository {
    */
   desgloseDeTienda(tiendaId: string): Promise<DesgloseTiendaAgregadoRow[]>;
   totalesDeMensajero(mensajeroId: string, antesDe?: Date): Promise<{ devengado: string; pagado: string }>;
-  /** Bodega: el efectivo declarado y lo recibido, sin las consolidaciones rechazadas. */
-  totalesDeBodega(zonaId: string, antesDe?: Date): Promise<{ efectivo: string; recibido: string }>;
+  /**
+   * Bodega: lo que sube el pendiente (`declarado` = el neto de las consolidaciones no rechazadas + los
+   * cierres sin consolidar; SLT-73 R31-R33) y lo recibido. La resta es la deuda de `/wallet/satelites`.
+   */
+  totalesDeBodega(zonaId: string, antesDe?: Date): Promise<{ declarado: string; recibido: string }>;
 
   /** Los movimientos del periodo `[desdeUtc, hastaUtc)` (para los totales netos, D3). */
   periodoDeTienda(tiendaId: string, desdeUtc?: Date, hastaUtc?: Date): Promise<MovimientoDelPeriodoRow[]>;
@@ -171,6 +174,8 @@ export interface IEstadoCuentaRepository {
   conComprobante(tipo: TipoDeDocumentoDeLibro, ids: readonly string[]): Promise<Set<string>>;
   /** Los reversos de premio (`ajuste_pago` con `premio_dia`) de ese mensajero en esos dias. */
   reversosDePremio(mensajeroId: string, dias: readonly Date[]): Promise<AnulacionLeida[]>;
+  /** SLT-68 (R16) — los `reverso_incentivo` de ese mensajero cuyo `origen_id` es uno de estos incentivos. */
+  reversosDeIncentivo(mensajeroId: string, incentivoIds: readonly string[]): Promise<AnulacionLeida[]>;
   /** FICHA 458-D (servidor) — metodo y referencia de estos documentos de pago, UNA consulta por tipo. */
   pagosDe(tipo: TipoDeDocumentoDePago, ids: readonly string[]): Promise<PagoDeDocumento[]>;
   /**

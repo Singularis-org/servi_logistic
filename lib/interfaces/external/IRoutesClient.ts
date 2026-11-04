@@ -7,6 +7,8 @@
 // Son dos APIs, dos SKUs y dos facturas. Separarlas en dos interfaces mantiene el trazado
 // como algo OPCIONAL: si Routes falla o no esta configurado, la ruta sigue ordenada y
 // utilizable; solo se queda sin dibujo.
+import type { ContextoLlamadaRuta } from "@/lib/clients/registro-llamada-google";
+
 export interface ParadaTrazado {
   ordenId: string;
   lat: number;
@@ -70,5 +72,6 @@ export type TrazarRutaOutcome =
   | { status: "config_invalida"; detalle: string };
 
 export interface IRoutesClient {
-  trazar(input: TrazarRutaInput): Promise<TrazarRutaOutcome>;
+  /** SLT-59 (R68): el contexto con el `motivo` es obligatorio; sin el, no compila. */
+  trazar(input: TrazarRutaInput, contexto: ContextoLlamadaRuta): Promise<TrazarRutaOutcome>;
 }

@@ -208,8 +208,24 @@ export function entradaDePlan(p: Partial<CrearPlanInput> = {}): CrearPlanInput {
     topes: { ordenesPorCiclo: null, porRol: {}, apiKeys: null },
     modulos: [],
     precio: { tipo: "sin_precio" },
+    costoPorOrden: null, // SLT-66 R7: sin costo por orden salvo que el caso lo pida.
     ...p,
   };
+}
+
+/** Costo base y costo por orden concretos: lo mínimo que SLT-66 R28 pide para poder asignar un plan. */
+export const COSTO_CONCRETO = {
+  precio: { tipo: "monto", mensual: "1000.00", anual: null },
+  costoPorOrden: "100.00",
+} as const satisfies Partial<CrearPlanInput>;
+
+/**
+ * Como `entradaDePlan`, pero con costo concreto de partida, para los casos que asignan el plan por
+ * `PlanesService`: desde SLT-66 R28 un plan sin costo concreto responde `plan_sin_costo` al asignarlo.
+ * Lo que el caso pida pisa ese costo.
+ */
+export function entradaAsignable(p: Partial<CrearPlanInput> = {}): CrearPlanInput {
+  return entradaDePlan({ ...COSTO_CONCRETO, ...p });
 }
 
 /**

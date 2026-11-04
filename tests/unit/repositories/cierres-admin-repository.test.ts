@@ -70,7 +70,7 @@ function buildWalletDeps() {
     // 293/T2.2-T3.3: los dos metodos NUEVOS del contrato (lectura). No-op aqui: este
     // doble no ejercita el premio.
     sumarPremiosVivosPorCierre: vi.fn(async () => ({})),
-    listarPremiosPorDias: vi.fn(async () => []),
+    listarPremiosPorDias: vi.fn(async () => []), obtenerIncentivo: vi.fn(async () => null),
   };
   const walletMensajeroFeedService: IWalletMensajeroFeedService = {
     construirMovimientosDePago: vi.fn().mockResolvedValue({ libro: [], egresoCaja: [] }),
@@ -151,6 +151,8 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
       count: vi.fn(),
       // FICHA 362: `resolverCierre` lee el total y el mensajero para congelar la fila del registro.
       findUnique: vi.fn().mockResolvedValue({
+        // SLT-73 (T3): la aprobacion lee el destino; esta suite mide la de la CENTRAL, que asienta.
+        destinoTipo: "bodega_central",
         totalGeneral: new Prisma.Decimal("0.00"),
         solicitadoAt: new Date("2026-09-02T12:00:00Z"),
         mensajero: { nombre: "Mensa", primerApellido: "Uno" },

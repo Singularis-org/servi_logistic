@@ -60,6 +60,10 @@ export const CATEGORIA_LABEL: Record<WalletMovimientoCategoria, string> = {
   egreso_indemnizacion: `Indemnización que ${EMPRESA.enFrase} paga por un incidente`,
   // SL-45 (R6, R23, R26): el nombre del pago en el libro, el diálogo y las descargas.
   egreso_pago_plataforma: "Pago a la plataforma",
+  // SLT-73 (design §1.2, D10): la diferencia entre lo que la bodega satélite debía entregar al
+  // conciliar y lo que entregó. Sigue siendo deuda de la satélite.
+  egreso_diferencia_satelite: "Diferencia de la satélite (entregó menos)",
+  ingreso_diferencia_satelite: "Diferencia de la satélite (entregó más)",
   // Las correcciones de caja (antes «ajustes») y el capital de la empresa.
   ingreso_ajuste: "Corrección de caja (suma)",
   egreso_ajuste: "Corrección de caja (resta)",
@@ -97,6 +101,10 @@ export const ORIGEN_LABEL: Record<WalletOrigenTipo, string> = {
   cobro_tienda_completado: `Cobro de ${EMPRESA.enFrase} a una tienda (línea de caja completada al corregir)`,
   // Ficha 457 (design §2): el documento del pago de una tienda a la empresa.
   abono_tienda: `Pago de una tienda a ${EMPRESA.enFrase}`,
+  // SLT-68 (design §5): el egreso de caja del incentivo, su reverso y el `reverso_incentivo`.
+  incentivo_mensajero: "Incentivo a un mensajero",
+  // SLT-73 (design §1.2): la marca o la corrección de una conciliación que movió la diferencia.
+  conciliacion_bodega_ajuste: "Diferencia de la satélite",
 };
 
 /**
@@ -130,6 +138,8 @@ export const ORIGEN_TIENDA_LABEL: Record<WalletOrigenTipo, string> = {
   aporte_capital: "Aporte de dinero a la caja",
   cobro_manual_reclasificado: "Cobro reclasificado como pago de un gasto de la tienda",
   cobro_tienda_completado: `Cobro de ${EMPRESA.enFrase} a una tienda (línea de caja completada al corregir)`,
+  incentivo_mensajero: "Incentivo a un mensajero",
+  conciliacion_bodega_ajuste: "Diferencia de la satélite",
 };
 
 /**
@@ -157,6 +167,9 @@ export const ORIGEN_PAGO_LABEL: Record<WalletOrigenTipo, string> = {
   cobro_tienda: `Cobro de ${EMPRESA.enFrase} a una tienda`,
   cobro_tienda_completado: `Cobro de ${EMPRESA.enFrase} a una tienda (línea de caja completada al corregir)`,
   abono_tienda: `Pago de una tienda a ${EMPRESA.enFrase}`,
+  // SLT-68 (design §5): el egreso de caja del incentivo, su reverso y el `reverso_incentivo`.
+  incentivo_mensajero: "Incentivo a un mensajero",
+  conciliacion_bodega_ajuste: "Diferencia de la satélite",
 };
 
 /**

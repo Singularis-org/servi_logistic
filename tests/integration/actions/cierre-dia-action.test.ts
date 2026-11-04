@@ -1,8 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
+import { conResolvePagosViejo } from "@/tests/fixtures/tarifa-tienda";
 import { deshacerGestion, listarCierreDia, solicitarCierre } from "@/lib/actions/cierre-dia";
 import { CierreDiaService } from "@/lib/services/CierreDiaService";
 import type {
-  CierreGestionPendienteRow,
+  GestionPendienteDeCierreRow,
   CrearCierreInput,
   GestionDeshacerRow,
   ICierreDiaRepository,
@@ -57,11 +58,11 @@ const GESTION_DESHACIBLE: GestionDeshacerRow = {
 
 // Repo en memoria: findGestionesPendientes solo devuelve las NO vinculadas;
 // crearCierre las vincula y guarda el cierre; findCierresByMensajero lo lista (R18).
-function inMemoryRepo(seed: CierreGestionPendienteRow[]): ICierreDiaRepository {
+function inMemoryRepo(seed: GestionPendienteDeCierreRow[]): ICierreDiaRepository {
   let pendientes = [...seed];
   const cierres: CierrePasadoDTO[] = [];
   // Gestiones que quedaron VINCULADAS a cada cierre (lo que ve el detalle de "ver").
-  const gestionesPorCierre = new Map<string, CierreGestionPendienteRow[]>();
+  const gestionesPorCierre = new Map<string, GestionPendienteDeCierreRow[]>();
   return {
     findGestionesPendientes: vi.fn(async () => [...pendientes]),
     contarOrdenesPendientesGestion: vi.fn(async () => 0),
@@ -126,18 +127,23 @@ function realService(repo: ICierreDiaRepository): ICierreDiaService {
     findBloqueoDetalle: vi.fn(async () => SIN_BLOQUEO), // feature 111/R5
   } as unknown as IOrdenRepository;
   // Feature 39: tarifa por defecto (cobroEntregado 5.00); resuelve el pago en vivo/snapshot.
-  const tarifaZonaRepo = {
+  const tarifaZonaRepo = conResolvePagosViejo({
     resolvePagoTarifa: vi.fn(async () => ({ cobroEntregado: "5.00", cobroRechazado: "3.00" })),
-  } as unknown as ITarifaZonaMensajeroRepository;
+  }) as unknown as ITarifaZonaMensajeroRepository;
   return new CierreDiaService(repo, zonaRepo, ordenRepo, fakeSignedUrls(), tarifaZonaRepo);
 }
 
-function pendiente(overrides: Partial<CierreGestionPendienteRow> = {}): CierreGestionPendienteRow {
+function pendiente(overrides: Partial<GestionPendienteDeCierreRow> = {}): GestionPendienteDeCierreRow {
   // Feature 212/T9: el desglose es OBLIGATORIO en la fila. Por defecto se deriva del par
   // escalar (UNA linea, igual que el backfill), asi que los casos previos no cambian; un
   // caso que quiera un cobro MIXTO pasa sus propias lineas en `overrides.pagos`.
   const { pagos, ...resto } = overrides;
-  const fila: Omit<CierreGestionPendienteRow, "pagos"> = {
+  const fila: Omit<GestionPendienteDeCierreRow, "pagos"> = {
+    // SLT-52 (T5.1): lo que la orden aporta al contexto del pago (la fila EN VIVO lo lleva).
+    distritoId: "d-oriental",
+    zonaOrdenId: "z-orden",
+    montoCobrar: null,
+    cobraComision: false,
     gestionId: "g1",
     ordenId: "o1",
     fechaGestion: "2026-07-11",

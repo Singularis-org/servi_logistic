@@ -128,6 +128,7 @@ async function sembrar469(tx: TxDeTest, cat: Catalogo459): Promise<Escenario469>
       montoFlete: "400.00",
       montoIva: "52.00",
       tarifaId: null,
+      tarifaValorId: null, // SLT-52: cobro del modelo viejo, sin traza al nuevo
       generadoEl: DIA_C3,
     });
     return gestion.id;

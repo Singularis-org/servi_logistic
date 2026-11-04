@@ -140,7 +140,7 @@ describe("463 — WalletService: el termino y el orden SOLO van al libro", () =>
   const vacio = { estadoDeDocumentos: async () => [] };
   const SIN_DOCUMENTOS = {
     pagosPorCuenta: vacio, aportes: vacio, cobros: vacio, ajustes: vacio, abonos: vacio, egresos: vacio,
-    indemnizaciones: vacio, rechazos: vacio, pagosATienda: vacio, premios: vacio,
+    indemnizaciones: vacio, rechazos: vacio, pagosATienda: vacio, premios: vacio, incentivos: vacio,
   };
   function repoEspia(total: number) {
     const listar = vi.fn<(f: ListarMovimientosFiltros) => Promise<{ movimientos: never[]; total: number }>>(async () => ({ movimientos: [], total }));

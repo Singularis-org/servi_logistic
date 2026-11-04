@@ -988,14 +988,27 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
           MOTIVO_CIERRE_SIN_EJECUTAR,
         ),
       ).toBe(0);
+      // SLT-79: la primera ruta del día es manual y la demo no siembra rutas calculadas, así que ni la
+      // recogida ni la gestión encolan `optimizacion_ruta`: la demo no deja ninguno, ni cerrado.
+      expect(
+        await contar(`SELECT count(*)::int AS n FROM jobs WHERE organizacion_id = $1 AND tipo = 'optimizacion_ruta'`, org),
+      ).toBe(0);
 
       // R24: sin integraciones, suscripciones, plantillas ni envíos.
       for (const t of ["integracion", "webhook_suscripcion", "plantilla_mensaje", "whatsapp_envio"]) {
         expect(await contar(`SELECT count(*)::int AS n FROM "${t}" WHERE organizacion_id = $1`, org), t).toBe(0);
       }
     }
-    // R22: la salida cuenta, por tipo, lo que cerró sin ejecutar.
-    expect(salidas.join("\n")).toMatch(/jobs cerrados sin ejecutar \(QA no procesa la cola\): optimizacion_ruta \d+/);
+    // R22: la salida cuenta, por tipo, lo que cerró sin ejecutar («ninguno» si no cerró nada).
+    // SLT-79: ya no hay `optimizacion_ruta` que cerrar (ver arriba), así que la línea no lo nombra.
+    const lineaSinEjecutar = salidas
+      .join("\n")
+      .split("\n")
+      .find((l) => l.includes("jobs cerrados sin ejecutar (QA no procesa la cola): "));
+    expect(lineaSinEjecutar).toMatch(
+      /jobs cerrados sin ejecutar \(QA no procesa la cola\): (ninguno|[a-z_]+ \d+(, [a-z_]+ \d+)*)$/,
+    );
+    expect(lineaSinEjecutar).not.toContain("optimizacion_ruta");
     // R24: ningún correo.
     expect(espiaConsola).not.toHaveBeenCalled();
     expect(espiaSmtp).not.toHaveBeenCalled();

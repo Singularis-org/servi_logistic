@@ -16,6 +16,9 @@ import type {
   GestionEditableDelCierre,
   GestionIncidenteDelCierre,
   GestionRetornableDelCierre,
+  BarridaDelCierre,
+  ConfirmacionFisicaBarrida,
+  ConfirmacionFisicaGestion,
   ICierresAdminRepository,
   ResolverCierreInput,
   ResolverCierreResult,
@@ -33,6 +36,10 @@ import type { IWalletMensajeroFeedService } from "@/lib/interfaces/services/IWal
 import type { IWalletIndemnizacionFeedService } from "@/lib/interfaces/services/IWalletIndemnizacionFeedService";
 import type { ICajaCodFeedService } from "@/lib/interfaces/services/ICajaCodFeedService";
 import { CajaCodFeedService } from "@/lib/services/CajaCodFeedService";
+import {
+  asentarCierreDia,
+  type AsientosCierreDiaDeps,
+} from "@/lib/repositories/_shared/asientos-cierre-dia";
 import type { CierreEstado } from "@/lib/types/cierre";
 import { nombreDeEstado } from "@/lib/types/order-status";
 import type {
@@ -62,7 +69,13 @@ import { RESULTADOS_QUE_VUELVEN } from "@/lib/types/gestion-retorno";
 /** Valores de rol que este catálogo consulta. Salen del seed, no se inventan aquí. */
 const ROL_ADMIN_SATELITE = "adminSatelite";
 const ROL_MENSAJERO = "mensajero";
-import { CierreDetalleFaltanteError, tarifaDe } from "@/lib/utils/cierre-detalle";
+import {
+  CONCEPTO_CONGELADO_SELECT,
+  CierreDetalleFaltanteError,
+  DETALLE_SELECT,
+  tarifaDe,
+} from "@/lib/utils/cierre-detalle";
+import { fulfillmentCongeladoDe } from "@/lib/utils/fulfillment-congelado";
 import { derivarIngresoOrden, resolverFlete } from "@/lib/utils/ingreso-empresa";
 import { esRechazoSla, ORIGEN_TIPO_RECHAZO_SLA } from "@/lib/utils/rechazo-sla-flag";
 import type { OrdenHistorialOrigenTipo } from "@/lib/types/orden-historial";
@@ -102,11 +115,19 @@ import { rutasEvidenciaGestion } from "@/lib/utils/evidencias-gestion";
 // FICHA 398: `computeTotales` recalcula los CUATRO totales del recaudo (la MISMA funcion que los
 // congelo al solicitar) y `sumarSnapshotsCongelados` rehace los DOS por gestion SUMANDO lo ya
 // escrito — nunca re-derivando con la tarifa viva, que moveria dinero de las otras gestiones.
-import { computeTotales, sumarSnapshotsCongelados } from "@/lib/utils/cierre-totales";
-// FICHA 398: el resolver de la tarifa del pago al mensajero, como FUNCION sobre el delegado, para
-// resolverla DENTRO de la transaccion de la correccion sin instanciar su repositorio ni ensanchar
-// el `Pick` de este. Es el cuerpo del resolver de la 39, no una copia.
-import { resolvePagoTarifaCon } from "@/lib/repositories/TarifaZonaMensajeroRepository";
+import {
+  computeTotales,
+  pagosDelCierre,
+  sumarSnapshotsCongelados,
+  type TarifasDePago,
+} from "@/lib/utils/cierre-totales";
+import { rebasarConElCobroCongelado } from "@/lib/utils/cobro-congelado";
+// FICHA 398 -> SLT-52 (T5.1): el resolver del pago, como FUNCION sobre el cliente de la
+// transaccion, para resolverlo DENTRO de la correccion sin instanciar su repositorio ni ensanchar
+// el `Pick` de este. Desde SLT-52 es el resolver UNICO (`resolverPagosCon`): decide el modelo de
+// la empresa y, en el viejo, corre el mismo cuerpo de la 39 (`resolvePagoTarifaCon`).
+import { resolverPagosCon } from "@/lib/repositories/_shared/resolver-tarifas";
+import { filaPagoCongelado } from "@/lib/repositories/_shared/pago-congelado";
 // FICHA 398: los dos derivadores PUROS del importe por gestion (39 y 56). Se llaman aunque el
 // resultado sea conocido ("0.00" para el pago de un rechazo) para que la regla siga viviendo en un
 // solo sitio.
@@ -243,6 +264,9 @@ export const DETALLE_ADMIN_SELECT = {
   tarifaIvaComisionCod: true,
   tarifaEspecial: true,
   tarifaEspecialDevuelta: true,
+  // SLT-52 (R41, R42, R46): el modelo con que se congelo y, en el nuevo, el cobro por concepto.
+  tarifaModelo: true,
+  conceptos: { select: CONCEPTO_CONGELADO_SELECT },
 } as const;
 
 // Feature 69/T18 — lo que aporta la GESTION (que NO se congela: es suyo, no de la orden).
@@ -358,8 +382,11 @@ function toAjustesPago(rows: GestionAdminRow["ajustesPagoMensajero"]): AjustePag
  * `tarifaVigente` ya normalizo esos campos a STRING escala 2.
  */
 function toTarifaSnapshot(d: DetalleAdminRow): TarifaSnapshotDTO | null {
-  const t = tarifaDe(d);
-  if (d.tarifaId === null || t === null) return null;
+  // SLT-52: este DTO es la fila de `tarifas` congelada; en el nuevo no hay tal fila (`null`) y el
+  // cobro se explica por el desglose del ingreso (y su fulfillment, R46).
+  const congelada = tarifaDe(d, d.conceptos);
+  if (d.tarifaId === null || congelada === null || congelada.modelo !== "viejo") return null;
+  const t = congelada.tarifa;
   return {
     tarifaId: d.tarifaId,
     valorFlete: t.valorFlete,
@@ -393,7 +420,7 @@ function toIngresoEmpresa(
   g: Pick<GestionAdminRow, "resultado">,
   d: DetalleAdminRow,
 ): IngresoEmpresaDTO {
-  const tarifa = tarifaDe(d);
+  const tarifa = tarifaDe(d, d.conceptos);
   const montoCobrar = decimalToString(d.montoCobrar);
   const derivado = derivarIngresoOrden(
     {
@@ -408,10 +435,18 @@ function toIngresoEmpresa(
   // Los dos origenes salen del MISMO `resolverFlete` que acaba de decidir los montos, no de
   // una segunda lectura de las columnas: si divergieran, la pantalla explicaria un importe
   // que no es el que se derivo. Sin tarifa congelada (gap R9) no hubo eleccion que hacer.
+  // En el nuevo no hay pacto especial que elegir (R35): el origen es `normal`, como en el listado.
   const origen =
-    tarifa === null
+    tarifa === null || tarifa.modelo === "nuevo"
       ? null
-      : resolverFlete(tarifa, { esCentral: d.esCentral, esZonaEspecial: d.esZonaEspecial });
+      : resolverFlete(tarifa.tarifa, { esCentral: d.esCentral, esZonaEspecial: d.esZonaEspecial });
+  // SLT-52 (R46, P5 = a): fulfillment e IVA del fulfillment de lo congelado, con la misma forma que
+  // la API por key. FUERA del `total`: no son conceptos de la liquidacion (R31).
+  const { fulfillment, ivaFulfillment } = fulfillmentCongeladoDe(
+    tarifa,
+    d.tarifaFulfillment,
+    montoCobrar,
+  );
   let total = new Prisma.Decimal(0);
   for (const monto of Object.values(derivado)) {
     if (monto !== undefined) total = total.plus(monto);
@@ -447,6 +482,8 @@ function toIngresoEmpresa(
     ),
     comisionConIva: conIva(derivado.ingreso_comision_cod, derivado.ingreso_iva_comision_cod),
     total: total.toFixed(2),
+    fulfillment,
+    ivaFulfillment,
     tarifa: toTarifaSnapshot(d),
   };
 }
@@ -997,6 +1034,24 @@ export class CierresAdminRepository implements ICierresAdminRepository {
   ) {}
 
   /**
+   * SLT-73 (T2, design §2.2): las dependencias que este repositorio YA recibe por constructor, mas
+   * `CAJA_COD_FEED`, en la forma que pide `asentarCierreDia`. Se pasan en vez de caer en el default
+   * real del modulo compartido para no romper los dobles que las suites inyectan.
+   */
+  private asientos(): AsientosCierreDiaDeps {
+    return {
+      walletMovimientoRepo: this.walletMovimientoRepo,
+      walletFeedService: this.walletFeedService,
+      walletTiendaMovimientoRepo: this.walletTiendaMovimientoRepo,
+      walletTiendaFeedService: this.walletTiendaFeedService,
+      pagoMensajeroMovimientoRepo: this.pagoMensajeroMovimientoRepo,
+      walletMensajeroFeedService: this.walletMensajeroFeedService,
+      walletIndemnizacionFeedService: this.walletIndemnizacionFeedService,
+      cajaCodFeed: CAJA_COD_FEED,
+    };
+  }
+
+  /**
    * Feature 158 (T1.12, R19/R21/R25): las gestiones `incidente` del cierre, con el ALCANCE en el
    * WHERE (via la relacion `cierre`), nunca filtrado en memoria. Fuera de alcance -> [] (no se
    * distingue de "el cierre no tiene incidentes": R25 no revela nada).
@@ -1060,6 +1115,23 @@ export class CierresAdminRepository implements ICierresAdminRepository {
       numGuia: r.orden.numGuia,
       resultado: r.resultado,
     }));
+  }
+
+  /**
+   * Ficha 451 / SLT-72 (T2.1, design §5.3, R5/R6/R8/R9) — las ordenes que ESTE cierre barrio sin
+   * gestionar. Molde literal de la lectura de gestiones retornables de arriba, sin `resultado`
+   * (una barrida no lo tiene: vuelve SIEMPRE, `RETORNO_POR_ORIGEN.barrida`) y sin `anuladaAt` (la
+   * tabla no tiene bajas: fila inmutable, 264).
+   *
+   * `cierreId` es el ancla (R9: nunca la barrida de otro cierre) y el ALCANCE va en el WHERE por la
+   * relacion al cierre (R8), nunca en memoria. `numGuia` es la copia CONGELADA (Q2 de la 451).
+   */
+  async findBarridasDelCierre(cierreId: string, alcance: Alcance): Promise<BarridaDelCierre[]> {
+    const rows = await this.prisma.cierreSinGestion.findMany({
+      where: { cierreId, cierre: alcanceWhere(alcance) },
+      select: { ordenId: true, numGuia: true },
+    });
+    return rows.map((r) => ({ ordenId: r.ordenId, numGuia: r.numGuia }));
   }
 
   /** R2/R4/R5/R8/R9: cierres del alcance, mas reciente primero, totales -> string. */
@@ -1642,7 +1714,19 @@ export class CierresAdminRepository implements ICierresAdminRepository {
         },
         select: {
           cierreId: true,
-          orden: { select: { id: true, numGuia: true, numRemision: true } },
+          // SLT-52 (T5.1): + lo que la orden aporta al `ContextoPagoGestion` (design §5).
+          orden: {
+            select: {
+              id: true,
+              numGuia: true,
+              numRemision: true,
+              distritoId: true,
+              tiendaId: true,
+              zonaId: true,
+              montoCobrar: true,
+              cobraComision: true,
+            },
+          },
           // FICHA 454 (T1.14): el evento de registro decide la RAMA de la correccion.
           ...SELECT_REGISTRO_DE_CALLE,
           mensajeroId: true,
@@ -1682,12 +1766,44 @@ export class CierresAdminRepository implements ICierresAdminRepository {
       // en los 149 rechazos con destino `bodega_central` y vale 1.000 (6 veces) o 1.700 (1) en
       // los de `bodega_satelite`. La divergencia es conocida y ACEPTADA; la alternativa —dejarlo
       // en 0.00— subestimaria el ingreso de la bodega en un importe real.
-      const tarifa = await resolvePagoTarifaCon(
-        tx.tarifaZonaMensajero,
-        previa.cierre.destinoZonaId,
-        previa.cierre.mensajero.vehiculoId,
-      );
-      const pagoMensajero = pagoPorResultado(RESULTADO_RECHAZADA, tarifa); // "0.00"
+      //
+      // SLT-52 (T5.1, R19/R20/R33): con el resolver UNICO y por GESTION —la misma zona y el mismo
+      // vehiculo de siempre, mas el distrito de la orden—. En el modelo nuevo el mensajero tambien
+      // puede cobrar por un rechazo (R32), asi que el "0.00" de arriba es solo del viejo.
+      const tarifas = await resolverPagosCon(tx, [
+        {
+          gestionId,
+          resultado: RESULTADO_RECHAZADA,
+          mensajeroId: previa.mensajeroId,
+          zonaId: previa.cierre.destinoZonaId,
+          vehiculoId: previa.cierre.mensajero.vehiculoId,
+          distritoId: previa.orden.distritoId,
+          tiendaId: previa.orden.tiendaId,
+          zonaOrdenId: previa.orden.zonaId,
+          montoCobrar:
+            previa.orden.montoCobrar === null ? null : previa.orden.montoCobrar.toFixed(2),
+          cobraComision: previa.orden.cobraComision,
+        },
+      ]);
+      // SLT-52 (T5.5, design §13.2 paso 2; R52, R54) — en el nuevo, la base del % NO es la del
+      // resolver (valores y `monto_cobrar` de HOY): es el flete sin IVA que ESTE cierre le cobra a
+      // la tienda por el rechazo, desde su `cierre_detail` congelado. Sin detalle, error duro
+      // (69/R14, sin fallback). El viejo no tiene base y no lee nada.
+      let rebasadas: TarifasDePago = tarifas;
+      if (tarifas.get(gestionId)?.modelo === "nuevo") {
+        const detalle = await tx.cierreDetail.findFirst({
+          where: { cierreId, ordenId },
+          select: DETALLE_SELECT,
+        });
+        if (detalle === null) throw new CierreDetalleFaltanteError(cierreId, ordenId);
+        rebasadas = rebasarConElCobroCongelado(
+          [{ gestionId, ordenId, resultado: RESULTADO_RECHAZADA }],
+          tarifas,
+          () => detalle,
+        );
+      }
+      const tarifa = rebasadas.get(gestionId) ?? null;
+      const pagoMensajero = pagoPorResultado(RESULTADO_RECHAZADA, tarifa); // "0.00" en el viejo
       const ingresoBodegaRechazo = ingresoBodegaPorResultado(RESULTADO_RECHAZADA, tarifa);
 
       // (1) EL SELLO — LA UNICA GUARDIA QUE DECIDE. Aqui viven las CUATRO condiciones, y ninguna
@@ -1721,6 +1837,21 @@ export class CierresAdminRepository implements ICierresAdminRepository {
         // eso con informacion fresca, y aqui cualquiera de los dos es lo mismo.
         const existe = await tx.gestionOrden.count({ where: { id: gestionId } });
         return { status: existe > 0 ? ("conflict" as const) : ("fuera_de_alcance" as const) };
+      }
+
+      // SLT-52 (T5.2, R40; design §7) — RE-CONGELA el pago de ESTA gestion, y solo de esta: se
+      // borra lo que tuviera (congelado con el resultado viejo) y, en el modelo nuevo, se escribe
+      // el del resultado corregido con el mismo importe que acaba de ir a `pago_mensajero` /
+      // `ingreso_bodega_rechazo`. Va DESPUES del sello: si el sello no casa, no se toca nada.
+      await tx.gestionPagoCongelado.deleteMany({ where: { gestionOrdenId: gestionId } });
+      const { congelados } = pagosDelCierre(
+        [{ gestionId, resultado: RESULTADO_RECHAZADA }],
+        rebasadas,
+      );
+      if (congelados.length > 0) {
+        await tx.gestionPagoCongelado.createMany({
+          data: congelados.map(filaPagoCongelado),
+        });
       }
 
       // (2) EL DESGLOSE DEL COBRO QUE NO HUBO. Sin este `deleteMany`, `computeTotales` seguiria
@@ -2025,68 +2156,23 @@ export class CierresAdminRepository implements ICierresAdminRepository {
           }
         }
 
-        const movs = await this.walletFeedService.construirMovimientosDeIngreso(cierreId, tx);
-        await this.walletMovimientoRepo.crearMovimientos(tx, movs); // R6/R13: idempotente
-        // Feature 43/T10 (R5/R7/R12/R13): TRAS alimentar la 42, alimenta el LEDGER por tienda
-        // en la MISMA tx (todo-o-nada: si falla, rollback de la aprobacion Y de la 42).
-        const movsTienda = await this.walletTiendaFeedService.construirMovimientosPorTienda(
-          cierreId,
-          tx,
-        );
-        await this.walletTiendaMovimientoRepo.crearMovimientos(tx, movsTienda); // R6/R13: idempotente
-
-        // Feature 173/T B.2 (design §3.1, R11/R12/R15): TRAS acreditar el ledger por tienda, el
-        // CONTRA-ENTREGA entra en la CAJA PRINCIPAL, en la MISMA tx (todo-o-nada: si el insert
-        // falla, la aprobacion entera revierte y no queda un cierre aprobado sin su COD).
+        // SLT-73 (T2, design §2.1): los asientos de dinero del cierre (42, 43, 173, 44 y 158), en
+        // el MISMO orden y con las MISMAS dependencias inyectadas, viven ahora en
+        // `asentarCierreDia`: los comparte la marca de conciliacion de una consolidacion satelite.
         //
-        // El orden respecto a la linea de arriba NO es estetico y no se sostiene en este
-        // comentario: el feed LEE del ledger los creditos que `crearMovimientos` acaba de
-        // escribir (R12), asi que invertirlo dejaria la caja sin el ingreso.
-        // `cierres-admin-caja-cod.test.ts` lo afirma midiendo el orden real de las llamadas.
-        //
-        // La guardia es la transcripcion literal del antecedente de R13 —«si un cierre no
-        // acredita contra-entrega alguno»—: la acreditacion es exactamente el credito
-        // `cod_recaudado` que el feed de la 43 acaba de construir. Si no lo hay, no hay nada
-        // que leer ni que emitir. NO decide el MONTO (eso sale del ledger y solo del ledger):
-        // decide si hay algo que preguntar.
-        const acreditoCod = movsTienda.some(
-          (m) => m.tipo === "credito" && m.categoria === "cod_recaudado",
-        );
-        if (acreditoCod) {
-          const ingresoCod = await CAJA_COD_FEED.construirIngresoCod(cierreId, tx);
-          if (ingresoCod.length > 0) {
-            // R14/R48: idempotente por el indice unico parcial (origen_tipo, origen_id,
-            // categoria) de la 42. Re-aprobar NO emite un segundo ingreso, y la barrera es la
-            // base, no un `if` de aqui.
-            await this.walletMovimientoRepo.crearMovimientos(tx, ingresoCod);
-          }
-        }
-
-        // Feature 44/T10 (R5/R7/R11/R12/R17): TRAS 42 y 43, alimenta el LIBRO del pago por
-        // mensajero EN LA MISMA tx (todo-o-nada). El feed lee el cierre una vez y devuelve el
-        // libro (devengo + pago) Y el egreso egreso_pago_mensajero=P para la caja 42 (Qa=SI).
-        const movsMensajero = await this.walletMensajeroFeedService.construirMovimientosDePago(
-          cierreId,
-          tx,
-        );
-        await this.pagoMensajeroMovimientoRepo.crearMovimientos(tx, movsMensajero.libro); // R6/R12: idempotente
-        // Qa (R17): el egreso del costo total P se inserta con el repo de la 42, idempotente por
-        // el constraint existente (origen_tipo, origen_id, categoria) -> un egreso por cierre. Se
-        // toca la caja 42 SOLO si hay egreso (P>0); si P=0 el feed no lo emite y no se re-inserta.
-        if (movsMensajero.egresoCaja.length > 0) {
-          await this.walletMovimientoRepo.crearMovimientos(tx, movsMensajero.egresoCaja);
-        }
-
-        // Feature 158 (T1.14, R26/R27/R28): TRAS 42/43/44, el EGRESO de indemnizacion, en la
-        // MISMA tx. El feed lee de la base la suma de `gestion_orden.indemnizacion` de las
-        // gestiones `incidente` de ESTE cierre —lo que el bloque de arriba acaba de escribir—
-        // y devuelve 0 o 1 movimiento. Cierre sin incidentes -> lista vacia -> ni una fila en
-        // 0.00 (R27). Se inserta con el repo de la 42, idempotente por el indice unico parcial
-        // `(origen_tipo, origen_id, categoria)`: reintentar la aprobacion NO duplica (R28).
-        const egresoIndemnizacion =
-          await this.walletIndemnizacionFeedService.construirEgresoIndemnizacion(cierreId, tx);
-        if (egresoIndemnizacion.length > 0) {
-          await this.walletMovimientoRepo.crearMovimientos(tx, egresoIndemnizacion);
+        // SLT-73 (T3, R1/R3, D2/D8): SOLO un cierre de la CENTRAL asienta al aprobar. El dinero de
+        // un cierre de la satelite no se sabe si entro hasta que se concilia su consolidacion, y
+        // entra ahi (R10). El destino se lee DENTRO de esta tx, sobre la fila que el `updateMany`
+        // de arriba acaba de bloquear: es la misma foto que decide la transicion. La persistencia
+        // de la indemnizacion (arriba) no es dinero y sigue para los dos destinos (R2).
+        // `null` no puede ocurrir (el `updateMany` acaba de aplicar a esta fila); si ocurriera, no se
+        // asienta: el lado seguro del dinero es no escribirlo.
+        const destino = await tx.cierreDia.findUnique({
+          where: { id: cierreId },
+          select: { destinoTipo: true },
+        });
+        if (destino?.destinoTipo === "bodega_central") {
+          await asentarCierreDia(tx, cierreId, this.asientos());
         }
 
         // Feature 109 (T3.1, R16-R19/R22/R27): LIBERA a bodega las ordenes `sin_gestionar` del
@@ -2546,8 +2632,15 @@ export class CierresAdminRepository implements ICierresAdminRepository {
         // UNA consulta, no N. A diferencia del bucle de indemnizaciones —que escribe un valor
         // distinto por fila— aqui el valor es el MISMO para todas, asi que un solo `updateMany`
         // hace el trabajo. El techo real medido es de 14 gestiones por cierre.
-        if (confirmacionFisica.length > 0) {
-          const ids = confirmacionFisica.map((c) => c.gestionId);
+        // Ficha 451 / SLT-72: la lista trae los DOS origenes; aqui se parten porque son dos tablas.
+        const confirmacionGestiones = confirmacionFisica.filter(
+          (c): c is ConfirmacionFisicaGestion => !("ordenId" in c),
+        );
+        const confirmacionBarridas = confirmacionFisica.filter(
+          (c): c is ConfirmacionFisicaBarrida => "ordenId" in c,
+        );
+        if (confirmacionGestiones.length > 0) {
+          const ids = confirmacionGestiones.map((c) => c.gestionId);
           const aplicado = await tx.gestionOrden.updateMany({
             where: {
               id: { in: ids },
@@ -2566,6 +2659,27 @@ export class CierresAdminRepository implements ICierresAdminRepository {
           // R18 — FALLO CERRADO. Si alguna no caso la guardia, se lanza y la `$transaction`
           // revierte TODO. Es el equivalente del `count !== 1` del bucle de indemnizaciones.
           if (aplicado.count !== ids.length) {
+            throw new ConfirmacionFisicaNoAplicableError(cierreId);
+          }
+        }
+        // Ficha 451 / SLT-72 (T4.2, design §5.4, R20/R21/R22) — LA MISMA MARCA SOBRE EL OTRO
+        // ORIGEN: las ordenes que ESTE cierre barrio sin gestionar. Pegada a la de arriba y en el
+        // mismo bloque a proposito: es money-neutral, va despues de todos los feeds de dinero, y asi
+        // no mueve ninguna asercion de orden de `cierres-admin-caja-cod.test.ts` (R39). La
+        // liberacion de esas ordenes (109/276) ya corrio mas arriba en esta MISMA tx, acotada a las
+        // barridas de este cierre (271); como la cobertura exacta se verifico antes de abrirla
+        // (R16), toda orden liberada queda marcada aqui (R26).
+        if (confirmacionBarridas.length > 0) {
+          const ordenIds = confirmacionBarridas.map((c) => c.ordenId);
+          const aplicado = await tx.cierreSinGestion.updateMany({
+            // `cierreId` es GUARDIA, no filtro (R9): sin el, aprobar un cierre podria marcar la
+            // barrida de la misma orden en OTRO cierre que tambien la barrio.
+            where: { cierreId, ordenId: { in: ordenIds } },
+            // R22 — una sola clave: ni montos, ni descriptivos congelados, ni movimientos.
+            data: { confirmadaFisicaAt: new Date() },
+          });
+          // R21 — FALLO CERRADO: si alguna no caso, la `$transaction` revierte la aprobacion entera.
+          if (aplicado.count !== ordenIds.length) {
             throw new ConfirmacionFisicaNoAplicableError(cierreId);
           }
         }

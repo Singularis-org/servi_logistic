@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { conResolvePagosViejo } from "@/tests/fixtures/tarifa-tienda";
 import { CierreDiaService } from "@/lib/services/CierreDiaService";
 import type {
   CierreGestionPendienteRow,
@@ -215,12 +216,12 @@ function servicio(repo: ICierreDiaRepository) {
     return Object.fromEntries(paths.map((p) => [p, `https://firmada/${p}`]));
   });
   const signedUrls = { createSignedUrls } as unknown as ISignedUrlProvider;
-  const tarifaRepo = {
+  const tarifaRepo = conResolvePagosViejo({
     resolvePagoTarifa: vi.fn(async () => {
       tarifa.n += 1;
       return null;
     }),
-  } as unknown as ITarifaZonaMensajeroRepository;
+  }) as unknown as ITarifaZonaMensajeroRepository;
 
   return {
     svc: new CierreDiaService(repo, zonaRepo, ordenRepo, signedUrls, tarifaRepo),

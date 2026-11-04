@@ -19,7 +19,9 @@ import {
 //   · que las guardas por estado del `WHERE` seleccionan de verdad (`count !== 1` -> `conflict`);
 //   · que la fila de `historial_accion` QUEDA ESCRITA, con su `monto`, en el mismo acto (R13);
 //   · que al revertir, el monto del historial es EL QUE SE BORRA — el unico sitio donde sobrevive;
-//   · que NO se escribe en ningun libro de dinero (R14).
+//   · SLT-73 (R14, D11): revertir una marca que ya asento dinero responde `con_asientos` sin tocar
+//     nada. Ese caso vive en `slt73-revertir-con-asientos.int.test.ts`, con datos propios: este
+//     archivo esta en el baseline y en el CI su rojo no contaria (review SLT-73, m2).
 //
 // ⚠️ LO QUE ESTE ARCHIVO **NO** PUEDE CAZAR, Y ESTA MEDIDO EN ESTE REPO: si alguien cambiara
 // `appendAccion(tx, …)` por `appendAccion(this.prisma, …)`, ESTOS CASOS SEGUIRIAN VERDES — aqui
@@ -331,39 +333,6 @@ describeSiHayBase("431/T7 — la marca de conciliacion (Postgres real)", () => {
     expect(r.res).toBe("conflict");
     expect(r.fila?.estado).toBe("solicitado");
     expect(r.filas).toBe(0);
-  });
-
-  it("⭑ R14: marcar y revertir NO escriben en NINGUN libro de dinero", async () => {
-    // La marca es SEGUIMIENTO, no contabilidad. Es lo que hace que revertirla sea seguro, y es un
-    // limite declarado de la ficha. Se cuentan las filas de los TRES libros antes y despues.
-    const r = await enTransaccionRevertida(prisma, async (tx) => {
-      await serializarEscriturasReales(tx);
-      const usuarioId = await algunUsuarioId(tx);
-      const zonaId = await sembrarZona(tx, "sin-libro");
-      const id = await sembrarConsolidacion(tx, zonaId, usuarioId, "500.00");
-
-      const contar = async () => ({
-        caja: await tx.walletMovimiento.count(),
-        tienda: await tx.walletTiendaMovimiento.count(),
-        mensajero: await tx.pagoMensajeroMovimiento.count(),
-      });
-
-      const antes = await contar();
-      const repo = new CierresBodegaAdminRepository(tx as unknown as PrismaClient);
-      await repo.marcarConciliado({
-        id,
-        montoRecibido: "485.00",
-        nota: null,
-        actorUsuarioId: usuarioId,
-      });
-      const trasMarcar = await contar();
-      await repo.revertirConciliacion({ id, actorUsuarioId: usuarioId });
-      const trasRevertir = await contar();
-      return { antes, trasMarcar, trasRevertir };
-    });
-
-    expect(r.trasMarcar).toEqual(r.antes);
-    expect(r.trasRevertir).toEqual(r.antes);
   });
 
   it("marcar -> revertir -> marcar otra vez: la marca es REVERSIBLE de verdad (D6)", async () => {

@@ -22,7 +22,7 @@ import type {
   CierrePasadoDTO,
 } from "@/lib/interfaces/services/ICierreDiaService";
 import type { DescargaColumna, DescargaFila } from "@/lib/types/descarga";
-import { fechaDiaISO } from "@/lib/utils/fecha-dia-iso";
+import { fechaDiaInstanteCR } from "@/lib/utils/fecha-dia-iso";
 import { CAUSA_INCIDENTE_LABEL } from "@/app/(app)/mis-asignaciones/_components/causa-incidente-options";
 import {
   CAUSA_INCIDENTE_COL,
@@ -253,6 +253,6 @@ export function filaDescargaDiaCierrePasado(cierre: CierrePasadoDTO): DescargaFi
     transferencia: cierre.totales.transferencia,
     general: cierre.totales.general,
     ganancia: cierre.totalPagoMensajero,
-    fecha: fechaDiaISO(cierre.solicitadoAt),
+    fecha: fechaDiaInstanteCR(cierre.solicitadoAt),
   };
 }

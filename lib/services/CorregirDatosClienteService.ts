@@ -23,7 +23,7 @@ import {
   type CampoCorregible,
 } from "@/lib/types/correccion-datos-cliente";
 import { paqueteEnEstanteSatelite } from "@/lib/utils/estados-bodega-satelite";
-import { costosListadoOrden } from "@/lib/utils/ingreso-empresa";
+import { costosListadoOrden, fleteEntregadoSinTarifa } from "@/lib/utils/ingreso-empresa";
 import {
   mensajeCorreccionCaracterNoImprimible,
   mensajeCorreccionSugerencia,
@@ -527,14 +527,14 @@ export class CorregirDatosClienteService implements ICorregirDatosClienteService
     // ejercita tambien con un cliente TRANSACCIONAL en los tests contra Postgres, donde dos
     // consultas concurrentes sobre la misma conexion no estan definidas. El aviso es un camino
     // raro (solo al cambiar de distrito): dos viajes en serie no son un coste que valga el riesgo.
-    const actual = await this.ubicacionConCostos(orden, {
+    const actual = await this.ubicacionConCostos(orden, orden.distritoId, {
       zonaId: orden.zonaId,
       zonaNombre: orden.zonaNombre,
       distritoNombre: orden.distritoNombre,
       esCentral: orden.esCentral,
       esZonaEspecial: orden.esZonaEspecial,
     });
-    const propuesta = await this.ubicacionConCostos(orden, {
+    const propuesta = await this.ubicacionConCostos(orden, distrito.id, {
       zonaId,
       zonaNombre: distrito.zonaNombre ?? "",
       distritoNombre: distrito.nombre,
@@ -562,18 +562,27 @@ export class CorregirDatosClienteService implements ICorregirDatosClienteService
    */
   private async ubicacionConCostos(
     orden: Pick<OrdenParaCorreccionRow, "tiendaId" | "montoCobrar" | "cobraComision">,
+    // SLT-52 (R16/R18): el distrito de ESA ubicacion (la actual o la propuesta), que decide su
+    // grupo en el modelo nuevo. No va dentro de `ubicacion` porque esa forma es la del DTO.
+    distritoId: string | null,
     ubicacion: Omit<
       UbicacionConCostos,
       "tarifa" | "fleteConIva" | "comisionConIva" | "fleteOrigen"
     >,
   ): Promise<UbicacionConCostos> {
-    const tarifa = await this.tarifas.resolveTarifa(orden.tiendaId, ubicacion.zonaId);
+    const tarifa = await this.tarifas.resolveTarifa(orden.tiendaId, ubicacion.zonaId, distritoId);
     const costos = costosListadoOrden(tarifa, {
       esCentral: ubicacion.esCentral,
       esZonaEspecial: ubicacion.esZonaEspecial,
       montoCobrar: orden.montoCobrar,
       cobraComision: orden.cobraComision,
     });
-    return { ...ubicacion, tarifa: tarifa === null ? "sin_tarifa" : "resuelta", ...costos };
+    // SLT-52 (R25, R38): «sin tarifa» con la MISMA regla que el 409 de la API. En el viejo es `null`;
+    // en el nuevo, que falte el flete por entregado (el resolver nunca da `null` ahi).
+    return {
+      ...ubicacion,
+      tarifa: fleteEntregadoSinTarifa(tarifa) ? "sin_tarifa" : "resuelta",
+      ...costos,
+    };
   }
 }
