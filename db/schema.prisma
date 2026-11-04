@@ -5970,6 +5970,12 @@ model Plan {
   // SLT-66 (R7, R8): NULL = el plan no lo fija y se cobra el global (R12). El CHECK
   // `plan_costo_por_orden_check` (`>= 0`) vive solo en el SQL de 20261031140000.
   costoPorOrden           Decimal?        @map("costo_por_orden") @db.Decimal(12, 2)
+  // SLT-83 (R1, R2): el costo por orden porcentual. NULL/NULL = el plan no es porcentual; el modo se
+  // deriva de qué columna tiene valor. Viven solo en el SQL de 20261104150000 los CHECK
+  // `plan_costo_por_orden_pct_check` (`> 0` y `<= 100`), `plan_costo_por_orden_minimo_check` (`>= 0` y
+  // solo con porcentaje) y `plan_costo_por_orden_un_modo` (nunca fijo y porcentual a la vez).
+  costoPorOrdenPct        Decimal?        @map("costo_por_orden_pct") @db.Decimal(5, 2)
+  costoPorOrdenMinimo     Decimal?        @map("costo_por_orden_minimo") @db.Decimal(12, 2)
   archivadoAt           DateTime?       @map("archivado_at")
   createdAt               DateTime        @default(now()) @map("created_at")
   updatedAt               DateTime        @default(now()) @updatedAt @map("updated_at")

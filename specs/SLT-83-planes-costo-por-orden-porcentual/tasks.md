@@ -9,11 +9,11 @@
 
 ## Tanda A — base de datos (backend_dev)
 
-- [ ] **T0. Comprobar el punto de partida.** Las migraciones de `dev` siguen terminando en
+- [x] **T0. Comprobar el punto de partida.** Las migraciones de `dev` siguen terminando en
   `20261104130100`; si no, renombrar los timestamps de §2 antes de escribirlas. Buscar en `db/migrations/`
   y `lib/` todo lo que llama a `cobro_plataforma_tarifa_de` (`design.md > §13`).
   *Hecho:* lista de llamadores anotada en `progress/impl_SLT-83.md`.
-- [ ] **T1. M1 `20261104150000_plan_costo_por_orden_porcentual`** (design §2.1) con su `down.sql`, que se
+- [x] **T1. M1 `20261104150000_plan_costo_por_orden_porcentual`** (design §2.1) con su `down.sql`, que se
   niega si hay datos porcentuales. Prisma: `Plan.costoPorOrdenPct`, `Plan.costoPorOrdenMinimo` con el
   comentario de los `CHECK`. Depende de T0.
   *Hecho:* `tests/integration/db/plan-costo-porcentual-escritura.test.ts`, casos de `CHECK` (R1, R2) en
