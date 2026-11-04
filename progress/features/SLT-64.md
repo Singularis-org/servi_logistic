@@ -2,7 +2,7 @@
 
 | key | nombre | zone | complexity | rama | assignee | estado |
 |---|---|---|---|---|---|---|
-| SLT-64 | ciclo-vida-cerradas-coherente | backend | medium | feature/SLT-64-ciclo-vida-cerradas-coherente | Carlos Restrepo | pending |
+| SLT-64 | ciclo-vida-cerradas-coherente | backend | medium | feature/SLT-64-ciclo-vida-cerradas-coherente | Carlos Restrepo | in_progress |
 
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
@@ -25,6 +25,11 @@ Cupo: fichas propias en vuelo SLT-62/63/64; sin cruce declarado con fichas de ot
 Ninguna.
 
 ## Tandas
+- T1 → T2: hasta 99abb72d; R8 verde sin parche tras `prisma generate`.
+- T3 → T4: 37ee4d32; gate `INIT_EXIT=0`.
+- Hallazgo de medición: la primera lectura tras invalidar traía la cifra vieja. `PERFIL_INVALIDACION` pasa de `"max"` a `{ expire: 0 }` (0060494a); gate `INIT_EXIT=0`. Lo anunció el leader sin respuesta de Carlos; revertible en la rama.
+- Revisión vuelta 1: RECHAZO (B1 desempate de R1 sin medir, B2 sin E2E). Vuelta 2 de arreglos: 14f8f5db.
+- Pendiente tras el merge (m4): en el Preview de `dev`, deshacer una gestión y recargar una vez; `{ expire: 0 }` solo se midió en `next dev` y `next start`.
 
 ## Modelos (overrides)
 Subagentes en Opus (memoria: Fable agotado).
