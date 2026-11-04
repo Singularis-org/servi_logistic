@@ -226,3 +226,33 @@ T2.4 y T4.1–T4.4 hechas, en el commit 564b6532. Typecheck en 0 y `superficie-d
 
 ### Veredicto
 `geografia-predicado-unico` verde con una excepción acotada para vehículos; T3.1 hecha y verde, con R18 probado en el servicio y en el SQL. T3.2 (frontend) queda pendiente.
+
+## T3.2 — Lecturas de empresa en la UI (frontend_dev, 2026-11-04)
+
+### Archivos
+- `app/(app)/configuracion/_components/UsuarioForm.tsx`: el select de vehículo ofrece los activos y además el que el usuario que se edita ya tiene guardado (`usuario.vehiculoId`) aunque esté inactivo. Ese se marca «(inactivo)».
+- `app/postulacion/page.tsx`: `vehiculoRepo.findMany({ soloActivos: true })`. El recorte lo hace el repositorio con `WHERE_VEHICULO_ELEGIBLE`; no hizo falta ninguna lectura nueva de backend.
+- `tests/unit/components/usuario-form.test.tsx`: los fixtures llevan `activo` (con `v3` inactivo) y hay un bloque nuevo «vehículo inactivo (SL-42, R17/R18)».
+- `tests/integration/postulacion-page.test.tsx`: bloque nuevo «solo vehículos activos (SL-42, R17/R18)».
+- `specs/.../tasks.md`: T3.2 `[x]`.
+
+### R → test (T3.2)
+- R17:
+  - `usuario-form.test.tsx` › «R17/R18: al crear un mensajero ofrece solo los activos»: el `maestro` sigue leyendo el catálogo.
+  - `postulacion-page.test.tsx` › «pide al repositorio solo los activos y ofrece exactamente lo que devuelve».
+- R18:
+  - Alta: el inactivo no se ofrece (`usuario-form.test.tsx` › «al crear…»).
+  - Edición con un vehículo activo: el inactivo no se ofrece (`usuario-form.test.tsx` › «R18: al editar un mensajero con un vehículo activo…»).
+  - El que ya tiene un inactivo lo conserva, marcado (`usuario-form.test.tsx` › «R18: el mensajero que ya tiene un inactivo lo conserva…»).
+  - Una edición que no cambia el inactivo lo envía tal cual (`usuario-form.test.tsx` › «R18: editar sin cambiar el vehículo inactivo…»).
+  - Postulación: `findMany({ soloActivos: true })` (`postulacion-page.test.tsx`).
+  - El rechazo en el servidor ya lo cubre T3.1.
+
+### Verificación (NODE_OPTIONS=--max-old-space-size=8192)
+- `vitest run tests/unit/components/usuario-form.test.tsx tests/integration/postulacion-page.test.tsx`: `Test Files 2 passed (2)`, `Tests 37 passed (37)`.
+- `pnpm run typecheck`: 0 errores.
+- `eslint` sobre los 4 archivos tocados: sin avisos.
+- `pnpm run test:guardias`: `Test Files 1 failed | 322 passed | 3 skipped (326)`, `Tests 4 failed | 4532 passed`. Los 4 rojos son de `dependencias-declaradas-presentes`, que está en la baseline. `geografia-predicado-unico` ya está verde gracias a 359db649.
+
+### Veredicto
+T3.2 hecha. Solo queda el rojo de baseline.

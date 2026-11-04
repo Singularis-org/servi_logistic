@@ -71,7 +71,7 @@
   **Hecho:** `tests/unit/services/usuario-vehiculo.test.ts` y
   `tests/unit/services/postulacion-mensajero-service.test.ts` cubren R18 (alta y cambio a inactivo →
   `validation_error` en `vehiculoId`; edición sin cambiar el inactivo → válida).
-- [ ] T3.2 [P] **(P3)** `UsuarioForm` ofrece los activos más el actual; `app/postulacion/page.tsx`
+- [x] T3.2 [P] **(P3)** `UsuarioForm` ofrece los activos más el actual; `app/postulacion/page.tsx`
   solo los activos. Dep.: T2.4.
   **Hecho:** `tests/unit/components/usuario-form.test.tsx` y `tests/integration/postulacion-page.test.tsx`
   cubren R17 y R18.
