@@ -283,3 +283,58 @@ falta lo corre `gate-completo` en CI, y no lo cuento como bloqueante.
 
 ### Veredicto
 **OK.**
+
+## Vuelta 5 — 2026-11-04 (acotada a 73304e1b..ba2a1769)
+
+Alcance: arreglos de los 6 rojos de CI del PR #75 (run 41867912004): d59a3f8f, el merge de SLT-44
+68567ea4 (que trae 337bd521 de SLT-43) y las bitacoras. Base: `logistic_slt65_r1104`.
+
+### Checklist
+- [x] **1. Prioridad: `EmpresaNoResuelta` en el cierre es cosa del arnes de los tests, no de produccion.**
+  - En produccion la empresa de la RLS y la de `contextoActual()` salen de la misma fuente. La
+    `$transaction` de empresa (`extension-empresa.ts:282-291`) hace `set_config` con `ctx.organizacionId`
+    y corre `fn` dentro de `dentroDeTransaccionDeEmpresa(id)`, asi que las dos coinciden.
+  - El cron del corte (`app/api/cron/corte-diario/route.ts:112`) va por `paraCadaEmpresa`, que envuelve
+    cada empresa en `conEmpresa(id, ...)` (`para-cada-empresa.ts:78`). La accion `lib/actions/cierre-dia.ts`
+    resuelve la empresa por sesion.
+  - Superadmin o plataforma: `CatalogoGeograficoRepository.deLaEmpresa` lanza `EmpresaNoResuelta` de
+    forma explicita (`:123`), sin leer.
+  - Si alguna vez divergieran, `leerDeLaEmpresa` pide `organizacion` por el id del contexto **y** bajo
+    la RLS de la conexion. Un desacuerdo da `null`, y con eso lanza `EmpresaNoResuelta`. Falla cerrado:
+    nunca devuelve el catalogo del pais de otra empresa.
+  - Los unicos `set_config('app.organizacion_id')` a mano fuera de la extension son dos:
+    `OrganizacionRepository:67` (alta de empresa) y `PlanesRepository:471` (encolar avisos, y restaura
+    el valor anterior). Ninguno pasa por `CierreDiaRepository` ni por el catalogo.
+  - La divergencia solo la provoca el helper de test (`comoApp`, que hace `set_config` sin
+    `conEmpresa`). El arreglo en el test es correcto y es el mismo patron que `9b4e0004`.
+- [x] **2. zona-especial-dos-empresas.** `historial_accion` entra en el `afterAll` y borra por
+  `organizacion_id = ANY([A, B])`, las dos empresas creadas por el test. Ningun `it` lee
+  `historial_accion`. Solo cambia el orden de la limpieza por la FK RESTRICT; no oculta ninguna aserción.
+- [x] **3. geografia-superadmin-sin-empresa (contraprueba).** Desde R10 (`c10045e1`), un id que no
+  existe devuelve 0 en `OrdenRepository:2967`, antes de `orden.count`. Con `randomUUID()` la contraprueba
+  ya no llegaba al modelo de negocio. Con un distrito real (`profundidad: 3`) el camino es este:
+  `nodoGeografico.findUnique` y `dePais` (plataforma, no exigen empresa), y despues `orden.count`
+  (negocio), que lanza `EmpresaNoResuelta` fuera de `comoPlataforma`. Sigue probando lo que dice
+  su titulo, que el contexto es lo que lo salva. R10 lo cubren sus propios tests y este cambio no lo toca.
+  Si la base no tiene distritos, el test lanza un error explicito en vez de pasar en vacio.
+- [x] **4. salida-a-reparto-sql-real (337bd521).** Solo cambia el id de la provincia ajena
+  (`…-0000` pasa a `…-0001`), que es entrada del escenario. El id del canton y las aserciones siguen igual.
+- [x] **5. Ningun `expect` cambio.** En `git diff 73304e1b..ba2a1769 -- tests`, ninguna linea `+`/`-`
+  contiene `expect`.
+
+### Verificacion ejecutada (`timeout 600`, un archivo por corrida, `logistic_slt65_r1104`)
+- `tarifas-flexibles-snapshot`: 6/6.
+- `tarifas-flexibles-base-congelada`: 6/6.
+- `zona-distrito-rastro`: 4/4.
+- `zona-especial-dos-empresas`: 13/13; el `afterAll` termina sin error.
+- `geografia-superadmin-sin-empresa`: 4/4.
+- `salida-a-reparto-sql-real`: 7/7.
+
+### Hallazgos
+- Ninguno bloqueante.
+- menor: la explicacion del arreglo («el catalogo pide `organizacion` por el id del contexto») esta
+  copiada en tres tests. Si `comoApp` envolviera `conEmpresa` en un solo sitio, no se repetiria. No
+  bloquea, y cambiar la fabrica compartida queda fuera del alcance.
+
+### Veredicto
+**OK.**
