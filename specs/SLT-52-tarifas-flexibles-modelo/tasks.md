@@ -251,11 +251,11 @@
   cada dependencia que la fábrica pasa es una instancia real (no `undefined`, no un doble) y el
   service la usa (una llamada llega al repositorio). Cubre: R13 (la puerta llega a las actions de
   SLT-54).
-- [ ] **T6.4** `tests/integration/db/tarifas-flexibles-escritura.test.ts` (Postgres real, dos
+- [x] **T6.4** `tests/integration/db/tarifas-flexibles-escritura.test.ts` (Postgres real, dos
   empresas): fijar, reemplazar y quitar valores; crear grupo, mover distritos, borrar grupo; la
   empresa A no alcanza nada de B; la fila de historial existe y el rollback de un fallo no deja
   historial. Cubre: R8, R9, R12, R14, R15.
-- [ ] **T6.5** `ZonaRepository.update` (`lib/repositories/ZonaRepository.ts:~568`) hace
+- [x] **T6.5** `ZonaRepository.update` (`lib/repositories/ZonaRepository.ts:~568`) hace
   `zonaDistrito.deleteMany({ zonaId })` + `createMany` en cada guardado; con el CASCADE de R12 eso
   vaciaría los grupos de distritos al guardar una zona aunque no cambie ningún distrito. Arreglo:
   borrar solo los distritos que salen y crear solo los que entran. Test de integración en Postgres

@@ -1405,3 +1405,99 @@ R12 (cascada en la base) y R15 (dos empresas) quedan para T6.4 en Postgres real;
 | M5b | fabrica: `new GrupoDistritosRepository({} as never)` (otro cliente) | 2 failed: «GrupoDistritosService recibe…», «listar grupos llega al cliente…» |
 
 Veredicto: T6.1-T6.3 hechas; services, repositorios y fabrica verdes con 8/8 mutaciones en rojo; R12/R15 en Postgres real quedan para T6.4.
+
+## T6.4-T6.5 (2026-11-03)
+
+MCP `codebase-memory` no respondio (timeout de conexion): todo por Grep/Read. Sin migracion, sin
+`prisma generate`, sin dependencias nuevas. `.env` presente (DATABASE_URL definida: si); los tests
+de integracion CORREN, no se saltan.
+
+### Archivos
+
+Creados:
+- `tests/integration/db/tarifas-flexibles-escritura.test.ts` (T6.4) — 5 casos, Postgres real, dos empresas,
+  todo en `enTransaccionRevertida`. Escribe por la fabrica `serviciosDeTarifas` (services + repos reales)
+  como `servi_app` con la empresa A (`comoApp`). El cliente que reciben los repos (`clienteDeEscritura`)
+  abre un SAVEPOINT real por `$transaction` y lleva dos trampas de R14: el `historialAccion` del cliente
+  RAIZ lanza (historial fuera de la tx = rojo) y, con `fallarTrasHistorial`, el de dentro escribe la fila
+  y luego lanza (el savepoint debe llevarse cambio y fila).
+- `tests/integration/db/zona-update-conserva-grupos.test.ts` (T6.5) — 2 casos, Postgres real.
+
+Modificados:
+- `lib/repositories/ZonaRepository.ts` (`update`) — la N:M se reemplaza por diferencia: `deleteMany`
+  solo de los que salen (`zonaId` + `distritoId in salen`) y `createMany` solo de los que entran,
+  usando `distritosPrevios` (ya se leia). La empresa la sigue poniendo la extension (ninguna query de
+  ese metodo lleva `organizacion_id` explicito; `zonaId` es de la empresa activa).
+- `tests/unit/repositories/zona-repository.test.ts` — 2 premisas que describian el reemplazo completo:
+  «SLT-76 … con la misma lista» ahora afirma que NI `deleteMany` NI `createMany` corren; «R8 (update)»
+  pasa `previos = []` para que d1 ENTRE y el `createMany` (que lanza el P2002 del doble) llegue a correr.
+- `specs/SLT-52-tarifas-flexibles-modelo/tasks.md` — T6.4 y T6.5 `[x]`.
+
+### Mapa R → test
+
+| R | Test |
+|---|---|
+| R8 | `tarifas-flexibles-escritura` › «R8/R14 — fijar crea; fijar el mismo nivel REEMPLAZA (misma fila); otro nivel es otra fila…» (misma `id`, 1800.50; grupo y zona+vehiculo son filas aparte) |
+| R9 | `tarifas-flexibles-escritura` › «R9/R14 — quitar borra la fila y deja historial; quitarla otra vez es not_found…» (la resolucion con el nivel siguiente ya la cubre `tarifas-flexibles-resolver`, T3.4) |
+| R12 | `tarifas-flexibles-escritura` › «R12/R14 — crear grupos, mover un distrito entre ellos y borrar uno…» (CASCADE de distritos y valores; el distrito que se queda conserva su fila); `zona-update-conserva-grupos` › «guardar la zona SIN cambiar distritos conserva cada grupo…» y «quitar d2 de la zona (y meter d4) saca a d2 de su grupo, y SOLO a el» |
+| R14 | los tres anteriores (filas literales con actor y antes/despues) y `tarifas-flexibles-escritura` › «R14 — si algo falla DESPUES de escribir el historial, el savepoint se lleva el cambio Y su fila…» (fijar, quitar, crear, mover, borrar) |
+| R15 | `tarifas-flexibles-escritura` › «R15 — con la empresa A activa no se lee, ni se escribe, ni se borra nada de B (tampoco con SQL a mano)» |
+
+### Verificacion (salida real)
+
+- `pnpm run typecheck`: exit 0 (corrido de nuevo tras el ultimo cambio).
+- `pnpm run lint`: exit 0, `✖ 232 problems (0 errors, 232 warnings)`; en los archivos tocados solo el
+  warning previo `ZonaRepository.ts 13:10 'normalizeName' is defined but never used` (linea no tocada).
+- `pnpm exec vitest run tests/integration/db/tarifas-flexibles-escritura.test.ts tests/integration/db/zona-update-conserva-grupos.test.ts`:
+  `Test Files  2 passed (2)` / `Tests  7 passed (7)` — 0 skipped.
+- `pnpm exec vitest run tests/unit/repositories/zona-repository.test.ts`: `Tests  61 passed (61)`.
+- `pnpm exec vitest run tests/integration/db/tarifa-zona-borrado-fk-real.test.ts tests/integration/db/zona- tests/integration/actions/zonas-action.test.ts tests/integration/db/tarifas-flexibles-escritura.test.ts`:
+  `Test Files  1 failed | 16 passed (17)` / `Tests  7 failed | 201 passed (208)`. El unico rojo es
+  `tarifa-zona-borrado-fk-real` (`DriverAdapterError: referencia a otra empresa: orden.tienda_id -> usuario`),
+  que NO llama a `update` y falla IGUAL con el `ZonaRepository.ts` de HEAD: `Tests  7 failed | 2 passed (9)`.
+- `pnpm exec vitest related --run lib/repositories/ZonaRepository.ts` arrastra casi toda la suite (439 archivos):
+  `Test Files  100 failed | 339 passed (439)` / `Tests  228 failed | 4371 passed | 398 skipped (4997)`.
+  Rojos atribuibles a este cambio: solo los 2 de `zona-repository.test.ts` (premisas del reemplazo
+  completo), ya corregidos. De los demas, los que usan `Zona*` (`cierre-rechazo-tienda-aprobacion`,
+  `cierre-rechazo-tienda-totales`, `corte-diario-segundo-cierre-sql-real`, `historial-accion-atomicidad`,
+  `tarifa-zona-borrado-fk-real`) dan EXACTAMENTE lo mismo con el repositorio de HEAD
+  (`Tests  17 failed | 5 passed | 26 skipped (48)` en los dos); el resto (caja/wallet/libro/458…) no usa
+  `ZonaRepository`. Rojo previo, no de esta tanda; queda anotado para el leader/T7.4.
+
+### Mutaciones (copia en el scratchpad, mutar, correr, restaurar, `cmp` ok en todas)
+
+| # | Mutacion | Resultado |
+|---|---|---|
+| M1 | `TarifaValorRepository.fijar`: la busqueda del nivel nunca encuentra (`id` imposible) → siempre `create` | ROJO: `× R8/R14 …` (P2002 de `tarifa_valor_nivel_key`) y `× R14 … savepoint` — `Tests 2 failed, 3 passed (5)` |
+| M2 | `fijar`: `grupoId: undefined` en el `where` del nivel | ROJO: `× R8/R14` (`expected [ …3 ] to deeply equal [ …4 ]`) y `× R12/R14` (`to have a length of 3 but got 2`) |
+| M3 | `fijar`: `appendAccion(this.prisma, …)` (historial fuera de la tx) | ROJO: 4 de 5 casos (`HistorialFueraDeLaTransaccion`) |
+| M4 | `GrupoDistritosRepository.borrar`: `appendAccion(this.prisma, …)` | ROJO: `× R12/R14`, `× R14 … savepoint` (`expected error to be instance of FalloTrasElHistorial`) |
+| M5 | Politica `tarifa_valor_por_empresa` `USING (true) WITH CHECK (true)` (ALTER POLICY dentro de la tx revertida) | ROJO: `× R15` (`expected { status: 'ok', items: [ {…(12)} ] } to deeply equal { status: 'ok', items: [] }`) |
+| M6 | Politica `grupo_distritos_por_empresa` `USING (true)` | ROJO: `× R15` (`items: [ {…(4)} ]`) |
+| M7 | Sin `servi_app` en la siembra (`fijarEmpresa` en vez de `comoApp`) | VERDE — EQUIVALENTE para este archivo: el caso R15 vuelve a llamar `comoApp(e.tx, e.A)` tras su premisa, asi que la mutacion de la siembra no le llega. Repetida donde vive (M7b). |
+| M7b | Sin `servi_app` en el caso R15 (`fijarEmpresa` en vez de `comoApp`) | ROJO: `× R15` (`items: [ {…(12)} ]`) |
+| M8 | `GrupoDistritosRepository.fijarDistritos`: borra todos los del grupo y recrea los pedidos | Primera corrida VERDE (el estado final es el mismo). Se anadio la afirmacion de que la fila del distrito que se queda conserva su `id` (design §8, desvio 5 de T6.1); despues: ROJO `× R12/R14` (`expected '3c27…' to be 'e4ff…'`) |
+| M9 | `ZonaRepository.update`: `deleteMany({ zonaId })` sin `in: salen` + `createMany` de los que entran | ROJO: `× R12 — quitar d2…` (`expected [ Array(1) ] to deeply equal [ …(3) ]`); el caso «sin cambios» sigue verde porque con `salen` vacio no se borra (no equivalente: lo mata el otro caso) |
+
+Sobre «quitar `organizacion_id` del WHERE»: los repositorios de valores y grupos NO tienen
+`organizacion_id` en ningun `where` (lo pone la extension y lo respalda la RLS, design §8), y el test
+ejecuta los repos sobre el `tx` crudo: la barrera medida es la RLS. Por eso la mutacion del filtro de
+empresa es M5/M6/M7b (la politica o el rol), no una edicion del repo. La extension (`conAislamientoPorEmpresa`)
+no se ejerce aqui: no se puede montar sobre un `tx` interactivo.
+
+**Contraprueba T6.5** — `update` vuelve a `deleteMany({ where: { zonaId: id } })` + `createMany(data.distritoIds)`:
+
+```
+[C-T65-contraprueba] VITEST_EXIT=1
+[C-T65-contraprueba] restaurado (cmp ok)
+     × R12 — guardar la zona SIN cambiar distritos conserva cada grupo con sus distritos, y el valor del grupo 621ms
+     × R12 — quitar d2 de la zona (y meter d4) saca a d2 de su grupo, y SOLO a el 113ms
+AssertionError: expected [] to deeply equal [ …(2) ]
+AssertionError: expected [ …(2) ] to deeply equal [ …(2) ]
+      Tests  2 failed (2)
+```
+
+(La primera contraprueba, antes de anadir la afirmacion de los `id` de `zona_distrito`, tambien dio
+`Tests  2 failed (2)`, con `expected [] to deeply equal [ Array(1) ]` en el segundo caso.)
+
+Veredicto: T6.4-T6.5 hechas; 7/7 de integracion en verde y corriendo, 9 mutaciones + contraprueba en rojo, M7 equivalente explicada y repetida (M7b) donde mata.

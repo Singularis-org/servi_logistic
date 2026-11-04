@@ -998,8 +998,10 @@ describe("SLT-76 — `update` sin cambio de distritos no toca su rastro (R10)", 
     const res = await repoOf(buildPrisma(tx)).update("zB", DATOS_BASE, "u-maestro");
 
     expect(res.estado).toBe("ok");
-    // Premisa: el guardado si corrio el reemplazo de la N:M.
-    expect(tx.zonaDistrito.deleteMany).toHaveBeenCalled();
+    // SLT-52 (R12): con la misma lista la N:M ni se borra ni se recrea (antes era un reemplazo
+    // completo, y su CASCADE vaciaba los grupos de distritos de la zona).
+    expect(tx.zonaDistrito.deleteMany).not.toHaveBeenCalled();
+    expect(tx.zonaDistrito.createMany).not.toHaveBeenCalled();
     expect(tx.distrito.findMany).not.toHaveBeenCalled();
     expect(tx.historialAccion.createMany).not.toHaveBeenCalled();
   });
@@ -1404,7 +1406,8 @@ describe("SLT-75 — ZonaRepository: un distrito en otra zona no se guarda", () 
   });
 
   it("⭑ R8 (update): la tx lanza el error del indice unico → `{ distrito_en_otra_zona, conflictos: null }`", async () => {
-    const tx = txConNM(["d1"], []);
+    // SLT-52: d1 tiene que ENTRAR (no estar ya en la zona) para que el `createMany` corra.
+    const tx = txConNM([], []);
     tx.zonaDistrito.createMany.mockRejectedValue(p2002DistritoUnico());
     const prisma = buildPrisma(tx);
 
