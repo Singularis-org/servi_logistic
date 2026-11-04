@@ -174,3 +174,80 @@ Los menores m1–m6 de la vuelta 1 siguen como estaban. m4 queda registrado como
 
 **RECHAZADO** por B1: las migraciones de SLT-43 no van detrás de las de dev y dos tests de orden fuera de
 la baseline salen en rojo. Las resoluciones de conflicto, 7b29903b y 9b4e0004 están bien.
+
+## Vuelta 3 — 2026-11-04 (acotada a 89d82120..42fd8469)
+
+Alcance: cierre de B1 de la vuelta 2 por el merge de SLT-44 (que trae SLT-43 renombrada y SLT-52 por
+primera vez), las resoluciones de conflicto en repositorios compartidos y los ajustes mecánicos.
+Base: `logistic_slt65_r1104` (localhost). MCP del grafo no usado; Grep/Read y git.
+
+### Checklist
+
+- [x] **Orden de migraciones (B1 vuelta 2).** En `db/migrations` las 6 de SLT-43 son
+  `20261104120000`…`20261104120500`, detrás de la última de dev/SLT-52 (`20261103140100`). El listado
+  está ordenado y no hay prefijos de SLT-43 repetidos. `prisma migrate status` contra la base: 301/301, al día.
+  Ningún archivo de código o test referencia `2026103112010[0-5]00`/`…120500` de SLT-43. `20261031120000`
+  solo aparece como `liberar_recolecciones_recibidas` (dev), que sigue. **B1 cerrado.**
+- [x] Tests de SLT-43 contra la base: `slt43-migraciones-aditivas` y `migracion-slt43-ida-y-vuelta` en verde.
+- [~] **Resoluciones en `CierreDiaRepository` y `OrdenRepository`.** El código de producción une bien los
+  dos lados. En `crearCierre`, `...congeladoDeLaFila(f, descriptivos)` (SLT-65) va con `tarifaModelo`,
+  `tarifaColumnas(tarifa?.modelo === "viejo" …)`, el `createManyAndReturn` y los conceptos, y el pago
+  rebasado (SLT-52) entra completo. La tarifa resuelve por `(tienda, zona, distrito)`. En `OrdenRepository`,
+  `distritoId` está una sola vez en select, tipo y `costeo`, más `cantonId`. La marca sale de
+  `marcasDeOrdenes`/`esZonaEspecialDeLaOrden`, y `toListItemDTO` recibe `TarifaDeFila` (`tarifa?.cobro`).
+  No veo comportamiento perdido en producción. **Pero los dobles de test de SLT-52 no se adaptaron** (B1 abajo).
+- [x] `excepciones-aislamiento.ts` deja de listar `DineroProductosRepository`, como en dev y en SLT-44
+  (no la quitó el implementer). `ZonaRepository` (update por diferencia, R12 de SLT-52) entra limpio.
+- [x] Scripts: `DETALLE_SELECT` suma `tarifaModelo` y `conceptos`, y la llamada es `tarifaDe(d, d.conceptos)`.
+  La copia de hoy suma `distritoId`, igual que dev.
+- [x] Tests corridos y en verde: `geo-consultas-ordenes`, `geo-consultas-cierre`, `geo-equivalencia-consultas`,
+  `cierre-detail-congelado`, `asimetria-sin-tarifa`, `cierre-dia-repository`, `orden-repository`,
+  `gestion-desde-ayuda-cierre`. También `tsc --noEmit`, con exit 0.
+- [ ] **Unit tests de `tests/unit/{repositories,api,utils,tarifas}`: 9 rojos en 3 archivos, ninguno en la baseline.**
+- [x] Decisiones: el Menor m7 y la F2.3 del 2026-11-04 están en `progress/features/SLT-65.md` (líneas 42 y 43).
+
+### Hallazgos
+
+- **BLOQUEANTE B1 — el merge deja en rojo tests de SLT-52 y de la 106 que relaciona el diff.** Ninguno está
+  en `tests/baseline-rojos.json`. El implementer no los corrió: su bitácora no los lista.
+  - `tests/unit/repositories/cierre-pago-congelado.test.ts` (SLT-52), 7/7 rojos. R40/R42, R40/R46, R40/R34,
+    R23 y R42 caen con `TypeError: Cannot read properties of undefined (reading 'findMany')` en
+    `CatalogoGeograficoRepository.leerDeLaEmpresa` (`tx.zonaDistrito`), llamado desde
+    `leerDescriptivosDeOrdenes` (`CierreDiaRepository.ts:1579`). Los dos R37 esperan
+    `ModelosDeTarifaMezclados` y reciben ese `TypeError`. El doble del `tx` no trae
+    `...delegadosDelCatalogo(...)`, que es lo que hizo `convergencia-tarifa-listado-cierre` en `resolverPorCierre`.
+  - `tests/unit/repositories/convergencia-tarifa-listado-cierre.test.ts`, «SLT-52 T4.4 — el LISTADO cobra con
+    esos mismos valores» (R38). Es el mismo `TypeError`, desde `OrdenRepository.marcasDeOrdenes`. El
+    `prisma` de ese `it` usa `prismaNuevo()` sin los delegados del catálogo.
+  - `tests/unit/repositories/orden-repository.api-lectura.test.ts:146`, R6 (feature 106). El `costeo` recibido
+    trae `distritoId: null` y el esperado no lo tiene. La causa es la unión de los dos lados. SLT-65 puso
+    `distritoId: null` en `ordenSelectRow` y SLT-52 añadió `distritoId` al `costeo`. En dev pasaba porque la
+    fila no traía la clave (`undefined` == ausente para `toEqual`). Es el mismo efecto mecánico que el
+    hallazgo m1 de abajo, y arreglarlo también cambia un literal esperado, así que pide la misma autorización.
+  - Qué falta: adaptar los dobles de los dos primeros archivos con `delegadosDelCatalogo` (sin tocar ningún
+    `expect`) y resolver el R6 de la 106 con la misma autorización que m1. Después, correr
+    `pnpm vitest related` sobre `CierreDiaRepository.ts` y `OrdenRepository.ts`.
+- **menor m1 (PIDE AUTORIZACIÓN HUMANA) — `geo-consultas-ordenes.test.ts:163-165`.** El `costeo` esperado suma
+  `distritoId: f.distritoId`. Dictamen: **es solo el efecto mecánico del campo de SLT-52 y no oculta
+  ninguna regresión.**
+  - `toApiOrdenRow` pone `distritoId: r.distritoId` en el `costeo` desde SLT-52 (dev, R16/R18: el distrito
+    completa el par de la tarifa).
+  - La copia de hoy lee la misma columna `orden.distrito_id` (se añadió al `API_ORDEN_SELECT` de la copia,
+    igual que en dev).
+  - La aserción de la marca no cambia: sigue siendo `esZonaEspecial: esZonaEspecialDeLaEmpresa(f.distrito)`
+    frente a la marca nueva del catálogo. `zonaId`, `esCentral`, `montoCobrar`, `cobraComision` y
+    `congelado` tampoco cambian.
+  - El test pasa contra `logistic_slt65_r1104`.
+  - Aun así cambia un literal esperado: queda pendiente de que el humano lo autorice.
+- **menor m2 — referencias viejas en el spec.** `specs/SLT-65-geo-jerarquica-consultas/design.md:26` y `:393`
+  siguen diciendo que SLT-43 ocupa `20261031120000`–`120500`. Es solo documentación: no rompe nada, pero
+  ahora engaña. Mismo caso en `progress/impl_SLT-43.md`, `impl_SLT-44.md`, `impl_SLT-66.md` e
+  `impl_SLT-79.md`, que son bitácoras históricas y no se tocan.
+
+### Veredicto (vuelta 3)
+
+**RECHAZADO** por B1: 9 unit tests rojos fuera de la baseline (7 de `cierre-pago-congelado`, 1 de
+`convergencia-tarifa-listado-cierre` y el R6 de `orden-repository.api-lectura`). Son dobles de test que no
+se adaptaron al catálogo de SLT-65 tras el merge. El código de producción no se pierde. B1 de la vuelta 2
+(orden de migraciones) queda cerrado. m1 (literal de `geo-consultas-ordenes`) es mecánico y espera la
+autorización humana.
