@@ -39,7 +39,8 @@ function leido(extra: Partial<PlanConUsoLeido> = {}): PlanConUsoLeido {
       porRol: { admin: 2, mensajero: 8, adminTienda: 4, adminSatelite: 0 },
     },
     cambio: null,
-    costoVigente: { monto: "500.00", fuente: "global" }, // SLT-66 R18: campo nuevo de la lectura.
+    costoVigente: { modo: "fijo", monto: "500.00", fuente: "global" }, // SLT-66 R18: campo nuevo de la lectura.
+    cobroCiclo: { cobrado: "0.00", pendientes: 0 }, // SLT-83: campo nuevo de la lectura
     tipoCobro: "mensual", // Ajuste planes-custom (D6): campo nuevo de la lectura.
     ...extra,
   };

@@ -47,7 +47,8 @@ function leido(cambio: PlanDeLaEmpresaLeido["cambio"] = null): PlanDeLaEmpresaLe
     },
     cambio,
     // SLT-66 R18: la lectura trae el costo vigente (el plan no fija costo por orden: el global).
-    costoVigente: { monto: "500.00", fuente: "global" },
+    costoVigente: { modo: "fijo", monto: "500.00", fuente: "global" },
+    cobroCiclo: { cobrado: "0.00", pendientes: 0 }, // SLT-83: campo nuevo de la lectura
     // Ajuste planes-custom (D6): cómo paga la empresa.
     tipoCobro: "mensual",
   };

@@ -33,7 +33,7 @@ const NORTE: EmpresaListada = {
   maestros: [{ nombre: "Ana Pérez", email: "ana@norte.test" }],
   cobroPorOrden: "300.00",
   // SLT-66 R31/R32: campos nuevos del listado; lo vigente es la excepción, como antes.
-  cobroVigente: { monto: "300.00", fuente: "empresa" },
+  cobroVigente: { modo: "fijo", monto: "300.00", fuente: "empresa" },
   plan: null,
   // SL-45 (R28): el Record del listado exige la deuda; aquí, al día.
   deudaPlataforma: { deuda: "0.00", estado: "al_dia", importe: "0.00" },
@@ -49,7 +49,7 @@ const SUR: EmpresaListada = {
   maestros: [],
   cobroPorOrden: null,
   // SLT-66 R31/R32: campos nuevos del listado; sin excepción, el global de `montar` (500).
-  cobroVigente: { monto: "500.00", fuente: "global" },
+  cobroVigente: { modo: "fijo", monto: "500.00", fuente: "global" },
   plan: null,
   // SL-45 (R28): el Record del listado exige la deuda; aquí, al día.
   deudaPlataforma: { deuda: "0.00", estado: "al_dia", importe: "0.00" },
@@ -151,7 +151,7 @@ describe("SL-40 (R10) — la columna «Cobro por orden» de cada fila", () => {
     // SLT-66 R31: lo vigente llega del servidor por fila; sin global, la fuente es `sin_configurar` a 0.
     montar({
       cobroGlobal: { monto: null },
-      empresas: [NORTE, { ...SUR, cobroVigente: { monto: "0.00", fuente: "sin_configurar" } }],
+      empresas: [NORTE, { ...SUR, cobroVigente: { modo: "fijo", monto: "0.00", fuente: "sin_configurar" } }],
     });
 
     const sur = celdaCobro("Reparto Sur");
@@ -210,7 +210,7 @@ describe("SL-40 (R11) — tras un éxito, los valores nuevos sin recargar a mano
       <EmpresasModule
         {...props}
         cobroGlobal={{ monto: "650.00" }}
-        empresas={[NORTE, { ...SUR, cobroVigente: { monto: "650.00", fuente: "global" } }]}
+        empresas={[NORTE, { ...SUR, cobroVigente: { modo: "fijo", monto: "650.00", fuente: "global" } }]}
       />,
     );
     expect(bloque().getByText(/Valor global:/).textContent).toBe(`Valor global: ${money("650.00")}`);
@@ -371,7 +371,7 @@ const A_FAVOR: EmpresaListada = {
   creadaEn: new Date("2026-10-01T12:00:00Z"),
   maestros: [],
   cobroPorOrden: null,
-  cobroVigente: { monto: "500.00", fuente: "global" }, // SLT-66 R31: campo nuevo; no es de este test.
+  cobroVigente: { modo: "fijo", monto: "500.00", fuente: "global" }, // SLT-66 R31: campo nuevo; no es de este test.
   plan: null, // SLT-66 R32: campo nuevo; no es de este test.
   deudaPlataforma: { deuda: "-250.00", estado: "a_favor", importe: "250.00" },
   pagadoPlataforma: "750.00",

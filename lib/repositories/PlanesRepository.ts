@@ -28,12 +28,12 @@ import type {
 import { inicioDelSiguienteCiclo } from "@/lib/planes/ciclo";
 import { valorDelHistorialDeAsignacion } from "@/lib/planes/cobro";
 import type { CambioDelPlanLeido } from "@/lib/planes/consumo";
+import { costoVigenteDeLaTarifa, type TarifaLeida } from "@/lib/planes/costeo";
 import { SOLO_PRIMERA_ASIGNACION } from "@/lib/planes/mensajes";
 import { diferenciasDelPlan, hayCambios, type CambiosDelPlan } from "@/lib/planes/rastro";
 import { apagarEnTx, encenderEnTx, entradaDelCambio } from "@/lib/repositories/_shared/modulos-en-tx";
 import { JobRepository } from "@/lib/repositories/JobRepository";
 import { ACTOR_SISTEMA, appendAccion, resolverActorCongelado } from "@/lib/repositories/registrar-accion";
-import type { FuenteDelCosto } from "@/lib/types/consumo-plan";
 import { etiquetaDeEntidad } from "@/lib/types/historial-accion-etiquetas";
 import {
   ACCIONES_DE_ASIGNACION,
@@ -1208,10 +1208,22 @@ export class PlanesRepository implements IPlanesRepository {
         const uso = await usoDe(tx, organizacionId);
         // SLT-66 (R18, §3.2): la misma función que el trigger del cargo, para que el detalle diga lo que
         // cobrará la próxima orden. El enum va como texto: el driver no conoce el tipo de Postgres.
-        const [costoVigente] = await tx.$queryRaw<{ monto: string; fuente: FuenteDelCosto }[]>`
-          SELECT "monto"::text AS "monto", "fuente"::text AS "fuente"
+        // SLT-83 (R22, R23): con su modo (porcentaje y mínimo).
+        const [tarifa] = await tx.$queryRaw<TarifaLeida[]>`
+          SELECT "monto"::text AS "monto", "fuente"::text AS "fuente",
+                 "porcentaje"::text AS "porcentaje", "minimo"::text AS "minimo"
           FROM cobro_plataforma_tarifa_de(${organizacionId})`;
-        if (costoVigente === undefined) throw new Error(`planDeEmpresa: sin tarifa vigente para ${organizacionId}`);
+        if (tarifa === undefined) throw new Error(`planDeEmpresa: sin tarifa vigente para ${organizacionId}`);
+        // SLT-83 (R24): la misma función y el mismo inicio de ciclo que `plan_de_la_empresa` («Mi plan»).
+        const [cobroCiclo] = await tx.$queryRaw<{ cobrado: string; pendientes: number }[]>`
+          SELECT c."cobrado"::text AS "cobrado", c."pendientes"
+            FROM "organizacion" o
+           CROSS JOIN LATERAL plan_cobro_del_ciclo(
+                   o."id",
+                   plan_inicio_ciclo_en_curso(o."plan_ciclo_corto_desde_at", o."plan_ciclo_ancla_at", (now() AT TIME ZONE 'UTC'))
+                 ) c
+           WHERE o."id" = ${organizacionId}`;
+        if (cobroCiclo === undefined) throw new Error(`planDeEmpresa: sin cobro del ciclo para ${organizacionId}`);
         return {
           organizacionId,
           plan: {
@@ -1235,7 +1247,8 @@ export class PlanesRepository implements IPlanesRepository {
               >,
             },
             cambio: pendienteDe(plan.cambioProgramado),
-            costoVigente,
+            costoVigente: costoVigenteDeLaTarifa(tarifa),
+            cobroCiclo,
             // El CHECK de 20261104130000 deja solo `mensual` | `anual`.
             tipoCobro: tipoCobroSchema.parse(empresa.planTipoCobro),
           },

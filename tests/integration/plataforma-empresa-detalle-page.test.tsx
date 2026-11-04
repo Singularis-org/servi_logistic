@@ -178,7 +178,8 @@ describe("SLT-58 (R19) — el plan de la empresa en su detalle", () => {
             ancla: new Date("2026-01-15T06:00:00.000Z"),
             uso: { ordenes: 1000, apiKeys: 0, porRol: { admin: 0, mensajero: 9, adminTienda: 0, adminSatelite: 0 } }, // SLT-66 R5: sin `maestro`
             cambio: null,
-            costoVigente: { monto: "500.00", fuente: "global" }, // SLT-66 R18: campo nuevo de la lectura
+            costoVigente: { modo: "fijo", monto: "500.00", fuente: "global" }, // SLT-66 R18: campo nuevo de la lectura
+            cobroCiclo: { cobrado: "0.00", pendientes: 0 }, // SLT-83: campo nuevo de la lectura
             tipoCobro: "anual", // Ajuste planes-custom (D6): campo nuevo de la lectura
           },
           new Date("2026-03-01T06:00:00.000Z"),

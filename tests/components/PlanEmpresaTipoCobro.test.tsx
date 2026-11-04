@@ -41,7 +41,8 @@ function leido(tipoCobro: TipoCobro): PlanConUsoLeido {
     ancla: new Date("2026-01-15T06:00:00.000Z"),
     uso: { ordenes: 1000, apiKeys: 2, porRol: { admin: 0, mensajero: 8, adminTienda: 0, adminSatelite: 0 } },
     cambio: null,
-    costoVigente: { monto: "500.00", fuente: "global" },
+    costoVigente: { modo: "fijo", monto: "500.00", fuente: "global" },
+    cobroCiclo: { cobrado: "0.00", pendientes: 0 }, // SLT-83: campo nuevo de la lectura
     tipoCobro,
   };
 }

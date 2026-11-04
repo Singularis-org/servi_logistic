@@ -47,7 +47,7 @@
   `VersionPlan`, `PlanDTO`; `CostoVigente` y `CosteoDelCiclo` en unión (`lib/types/consumo-plan.ts`).
   Ajustar por tipo los tests de §9.3. Depende de T1.
   *Hecho:* `tests/unit/types/planes-schema-costo-porcentual.test.ts` (R1, R2) en verde; typecheck en verde.
-- [ ] **T7. Lecturas** (design §4.3): `MiPlanRepository`, `PlanesRepository.planDeEmpresa`,
+- [x] **T7. Lecturas** (design §4.3): `MiPlanRepository`, `PlanesRepository.planDeEmpresa`,
   `EmpresasPlataformaRepository.planYCobroVigente`, `lib/planes/consumo.ts`, `lib/planes/costeo.ts`.
   Depende de T3 y T6.
   *Hecho:* `tests/unit/planes/costeo-porcentual.test.ts` (R23),

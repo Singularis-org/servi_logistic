@@ -8,7 +8,7 @@ import type { PrecioPlan } from "@/lib/types/planes";
 // exacto y sin el anual (R19, R20, R10).
 
 const MENSUAL: PrecioPlan = { tipo: "monto", mensual: "50000.00", anual: null };
-const DEL_PLAN = { monto: "100.00", fuente: "plan" } as const;
+const DEL_PLAN = { modo: "fijo", monto: "100.00", fuente: "plan" } as const;
 
 /** SLT-66 R28: `costeoDelCiclo` recibe el plan (base y costo por orden), no solo la base. */
 const conCosto = (precio: PrecioPlan, costoPorOrden: string | null = "100.00") => ({
@@ -39,7 +39,7 @@ describe("SLT-66 — costeoDelCiclo: total con base «monto» (R19)", () => {
   });
 
   it("R19: decimal exacto, sin coma flotante (0.10 × 3 = 0.30, no 0.30000000000000004)", () => {
-    const c = costeoDelCiclo(conCosto({ tipo: "monto", mensual: "0.20", anual: null }, "0.10"), { monto: "0.10", fuente: "plan" }, 3);
+    const c = costeoDelCiclo(conCosto({ tipo: "monto", mensual: "0.20", anual: null }, "0.10"), { modo: "fijo", monto: "0.10", fuente: "plan" }, 3);
     expect(c.subtotalOrdenes).toBe("0.30");
     expect(c.total).toBe("0.50");
   });
@@ -47,7 +47,7 @@ describe("SLT-66 — costeoDelCiclo: total con base «monto» (R19)", () => {
   it("R19: importes grandes de DECIMAL(12,2) sin perder céntimos", () => {
     const c = costeoDelCiclo(
       conCosto({ tipo: "monto", mensual: "9999999999.99", anual: null }),
-      { monto: "9999999999.99", fuente: "empresa" },
+      { modo: "fijo", monto: "9999999999.99", fuente: "empresa" },
       100000,
     );
     expect(c.subtotalOrdenes).toBe("999999999999000.00");
@@ -55,12 +55,12 @@ describe("SLT-66 — costeoDelCiclo: total con base «monto» (R19)", () => {
   });
 
   it("R19: los importes salen con dos decimales aunque entren sin ellos", () => {
-    const c = costeoDelCiclo(conCosto({ tipo: "monto", mensual: "100", anual: null }, "7"), { monto: "7", fuente: "plan" }, 2);
+    const c = costeoDelCiclo(conCosto({ tipo: "monto", mensual: "100", anual: null }, "7"), { modo: "fijo", monto: "7", fuente: "plan" }, 2);
     expect(c).toMatchObject({ base: { tipo: "monto", mensual: "100.00" }, costoPorOrden: "7.00", total: "114.00" });
   });
 
   it("R18: con excepción de la empresa el costo y la fuente son los de la excepción", () => {
-    const c = costeoDelCiclo(conCosto(MENSUAL), { monto: "80.00", fuente: "empresa" }, 2);
+    const c = costeoDelCiclo(conCosto(MENSUAL), { modo: "fijo", monto: "80.00", fuente: "empresa" }, 2);
     expect(c).toMatchObject({ costoPorOrden: "80.00", fuente: "empresa", subtotalOrdenes: "160.00", total: "50160.00" });
     expect(c.sinCostoConcreto).toBe(false);
   });
@@ -68,7 +68,7 @@ describe("SLT-66 — costeoDelCiclo: total con base «monto» (R19)", () => {
 
 describe("SLT-66 — costeoDelCiclo: base 0.00 y plan sin costo concreto (R20)", () => {
   it("R20: una base de 0.00 es un monto y suma 0", () => {
-    const c = costeoDelCiclo(conCosto({ tipo: "monto", mensual: "0.00", anual: null }, "0.00"), { monto: "0.00", fuente: "plan" }, 4);
+    const c = costeoDelCiclo(conCosto({ tipo: "monto", mensual: "0.00", anual: null }, "0.00"), { modo: "fijo", monto: "0.00", fuente: "plan" }, 4);
     expect(c.base).toEqual({ tipo: "monto", mensual: "0.00" });
     expect(c.total).toBe("0.00");
     expect(c.sinCostoConcreto).toBe(false);
@@ -86,25 +86,25 @@ describe("SLT-66 — costeoDelCiclo: base 0.00 y plan sin costo concreto (R20)",
   });
 
   it("R20: plan sin costo por orden → el global, con total, y el aviso de sin costo concreto", () => {
-    const c = costeoDelCiclo(conCosto(MENSUAL, null), { monto: "500.00", fuente: "global" }, 2);
+    const c = costeoDelCiclo(conCosto(MENSUAL, null), { modo: "fijo", monto: "500.00", fuente: "global" }, 2);
     expect(c).toMatchObject({ costoPorOrden: "500.00", fuente: "global", subtotalOrdenes: "1000.00", total: "51000.00" });
     expect(c.sinCostoConcreto).toBe(true);
   });
 
   it("R28/R20: excepción en la empresa + plan sin costo por orden → aviso, y el total con lo que paga", () => {
-    const c = costeoDelCiclo(conCosto(MENSUAL, null), { monto: "80.00", fuente: "empresa" }, 2);
+    const c = costeoDelCiclo(conCosto(MENSUAL, null), { modo: "fijo", monto: "80.00", fuente: "empresa" }, 2);
     expect(c).toMatchObject({ costoPorOrden: "80.00", fuente: "empresa", subtotalOrdenes: "160.00", total: "50160.00" });
     expect(c.sinCostoConcreto).toBe(true);
   });
 
   it("R28/R20: plan con costo por orden 0.00 y excepción en la empresa → sin aviso", () => {
-    const c = costeoDelCiclo(conCosto(MENSUAL, "0.00"), { monto: "80.00", fuente: "empresa" }, 1);
+    const c = costeoDelCiclo(conCosto(MENSUAL, "0.00"), { modo: "fijo", monto: "80.00", fuente: "empresa" }, 1);
     expect(c.sinCostoConcreto).toBe(false);
     expect(c.total).toBe("50080.00");
   });
 
   it("R20: sin plan de costo ni global → 0.00 sin_configurar, con total", () => {
-    const c = costeoDelCiclo(conCosto(MENSUAL, null), { monto: "0.00", fuente: "sin_configurar" }, 5);
+    const c = costeoDelCiclo(conCosto(MENSUAL, null), { modo: "fijo", monto: "0.00", fuente: "sin_configurar" }, 5);
     expect(c).toMatchObject({ costoPorOrden: "0.00", subtotalOrdenes: "0.00", total: "50000.00", sinCostoConcreto: true });
   });
 });

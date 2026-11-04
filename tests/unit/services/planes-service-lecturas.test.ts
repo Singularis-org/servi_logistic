@@ -105,7 +105,8 @@ function planDeEmpresaLeida(): PlanDeEmpresaLeida {
       uso: { ordenes: 85, apiKeys: 2, porRol: { admin: 0, mensajero: 5, adminTienda: 0, adminSatelite: 0 } },
       cambio: { vigenteDesde: RIGE, version: PENDIENTE },
       // SLT-66 R18: la lectura trae el costo vigente (el plan no fija costo por orden: el global).
-      costoVigente: { monto: "500.00", fuente: "global" },
+      costoVigente: { modo: "fijo", monto: "500.00", fuente: "global" },
+      cobroCiclo: { cobrado: "0.00", pendientes: 0 }, // SLT-83: campo nuevo de la lectura
       // Ajuste planes-custom (D6): la empresa paga en anual.
       tipoCobro: "anual",
     },

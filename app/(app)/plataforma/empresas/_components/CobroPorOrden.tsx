@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { FormField } from "@/components/shared/FormField";
 import { money } from "@/lib/config/moneda";
-import type { FuenteDelCosto } from "@/lib/types/consumo-plan";
+import type { CostoVigente, FuenteDelCosto } from "@/lib/types/consumo-plan";
 import {
   MENSAJE_MONTO_COBRO_INVALIDO,
   montoCobroSchema,
@@ -182,8 +182,8 @@ export interface CeldaCobroEmpresaProps {
   nombreEmpresa: string;
   /** La excepción de la empresa, o `null` si no tiene. Solo la usa el editor. */
   cobroPorOrden: string | null;
-  /** SLT-66 (R31): lo que se cobraría hoy por una orden nueva, y de dónde sale. */
-  cobroVigente: { monto: string; fuente: FuenteDelCosto };
+  /** SLT-66 (R31): lo que se cobraría hoy por una orden nueva, y de dónde sale. SLT-83: fijo o porcentual. */
+  cobroVigente: CostoVigente;
   fijarCobroEmpresa: FijarCobroEmpresa;
 }
 
@@ -247,7 +247,8 @@ export function CeldaCobroEmpresa({
   return (
     <div className="flex flex-col gap-2">
       <div>
-        <span className="tabular-nums">{money(cobroVigente.monto)}</span>
+        {/* SLT-83 (T7): ajuste de tipo mínimo de backend_dev; el texto del modo porcentual es de T13. */}
+        {cobroVigente.modo === "fijo" ? <span className="tabular-nums">{money(cobroVigente.monto)}</span> : null}
         <span className="block text-xs text-muted-foreground">{ORIGEN[cobroVigente.fuente]}</span>
       </div>
 

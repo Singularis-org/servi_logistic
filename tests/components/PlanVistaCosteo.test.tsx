@@ -220,7 +220,8 @@ describe("SLT-66 R24 — modal de asignación", () => {
             ancla: new Date("2026-10-01T06:00:00.000Z"),
             uso: { ordenes: 0, apiKeys: 0, porRol: { admin: 0, mensajero: 0, adminTienda: 0, adminSatelite: 0 } },
             cambio: null,
-            costoVigente: { monto: "100.00", fuente: "plan" },
+            costoVigente: { modo: "fijo", monto: "100.00", fuente: "plan" },
+            cobroCiclo: { cobrado: "0.00", pendientes: 0 }, // SLT-83: campo nuevo de la lectura
             tipoCobro: "mensual", // Ajuste planes-custom (D6).
           },
           new Date("2026-10-10T06:00:00.000Z"),

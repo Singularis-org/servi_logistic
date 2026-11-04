@@ -60,8 +60,9 @@ function vista(
       tipoCobro: "mensual", // Ajuste planes-custom (D6): campo nuevo de la lectura.
       costoVigente:
         excepcion === undefined
-          ? { monto: actual.costoPorOrden ?? "500.00", fuente: actual.costoPorOrden ? "plan" : "global" }
-          : { monto: excepcion, fuente: "empresa" },
+          ? { modo: "fijo", monto: actual.costoPorOrden ?? "500.00", fuente: actual.costoPorOrden ? "plan" : "global" }
+          : { modo: "fijo", monto: excepcion, fuente: "empresa" },
+      cobroCiclo: { cobrado: "0.00", pendientes: 0 }, // SLT-83: campo nuevo de la lectura
     },
     new Date("2026-10-10T06:00:00.000Z"),
   );

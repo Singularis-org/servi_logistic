@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import type { IMiPlanRepository, PlanDeLaEmpresaLeido } from "@/lib/interfaces/repositories/IMiPlanRepository";
 import { ORDEN_MODULOS } from "@/lib/modulos/catalogo";
+import { costoVigenteDeLaTarifa } from "@/lib/planes/costeo";
 import { type PrecioPlan, type RolConTope, type TopesPlan, tipoCobroSchema, versionPlanSchema } from "@/lib/types/planes";
 
 // SLT-58 (design §2, §3.1) — «Mi plan» lee por `plan_de_la_empresa`, la segunda y última función que
@@ -46,10 +47,15 @@ export const planDeLaEmpresaFilaSchema = z.object({
   // SLT-83 (M3, R1): el modo porcentual del plan; los dos `null` = no es porcentual.
   costo_por_orden_pct: importe,
   costo_por_orden_minimo: importe,
+  // SLT-83 (M3): `monto` es null en el modo porcentual, que trae `porcentaje` y `minimo`.
   costo_vigente: z.object({
-    monto: z.string(),
+    monto: importe,
     fuente: z.enum(["empresa", "plan", "global", "sin_configurar"]),
+    porcentaje: importe,
+    minimo: importe,
   }),
+  // SLT-83 (R24): `plan_cobro_del_ciclo`. `cobrado` lleva signo: un reverso del ciclo de un cargo anterior.
+  cobro_ciclo: z.object({ cobrado: z.string(), pendientes: conteo }),
   // Ajuste planes-custom (D6): `organizacion.plan_tipo_cobro` (20261104130000).
   tipo_cobro: tipoCobroSchema,
   tope_ordenes_ciclo: conteo.nullable(),
@@ -114,7 +120,8 @@ function aLeido(f: FilaPlanDeLaEmpresa): PlanDeLaEmpresaLeido {
     cortoDesde: f.ciclo_corto_desde,
     uso: { ordenes: f.uso.ordenes, apiKeys: f.uso.api_keys, porRol },
     cambio: f.cambio === null ? null : { vigenteDesde: f.cambio.vigente_desde, version: f.cambio.version },
-    costoVigente: f.costo_vigente,
+    costoVigente: costoVigenteDeLaTarifa(f.costo_vigente),
+    cobroCiclo: f.cobro_ciclo,
     tipoCobro: f.tipo_cobro,
   };
 }

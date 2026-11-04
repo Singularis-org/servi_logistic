@@ -54,7 +54,8 @@ const LEIDO: PlanConUsoLeido = {
       costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
     },
   },
-  costoVigente: { monto: "500.00", fuente: "global" }, // SLT-66 R18: campo nuevo de la lectura
+  costoVigente: { modo: "fijo", monto: "500.00", fuente: "global" }, // SLT-66 R18: campo nuevo de la lectura
+  cobroCiclo: { cobrado: "0.00", pendientes: 0 }, // SLT-83: campo nuevo de la lectura
   tipoCobro: "mensual", // Ajuste planes-custom (D6): campo nuevo de la lectura
 };
 

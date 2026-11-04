@@ -358,3 +358,64 @@ exacto con un plan porcentual. Los dos los decide el humano; no cambio el de SLT
 - `pnpm run typecheck` → sin errores. `eslint` de los 11 archivos tocados → 0 problemas.
 
 **Veredicto T8:** el modo porcentual se escribe, se rastrea y cuenta como costo concreto; queda abierto un texto.
+
+## T7
+
+**Archivos.**
+- `lib/planes/centimos.ts`: `aCentimosConSigno` y `aTexto` con signo. Lo cobrado en el ciclo (R24, por fecha del
+  movimiento) puede ser negativo: un reverso de este ciclo de un cargo del anterior.
+- `lib/planes/costeo.ts`: `costeoDelCiclo(plan, costoVigente, ordenes, cobroCiclo)` con la rama porcentual (total =
+  base + cobrado, céntimos exactos, `null` con base por definir). Sobrecargas: con `CostoVigente` fijo devuelve la
+  rama fijo y `cobroCiclo` es opcional (las llamadas de SLT-66 no cambian salvo el `modo`); con el porcentual es
+  obligatorio. `TarifaLeida` y `costoVigenteDeLaTarifa` (la fila de `cobro_plataforma_tarifa_de` → `CostoVigente`;
+  una forma imposible lanza), compartida por las tres lecturas.
+- `lib/planes/consumo.ts`: `PlanConUsoLeido.costoVigente: CostoVigente` y `cobroCiclo`; pasa todo a `costeoDelCiclo`.
+- `lib/interfaces/repositories/IMiPlanRepository.ts`, `lib/repositories/MiPlanRepository.ts`: el zod de
+  `costo_vigente` admite `monto` null, `porcentaje`, `minimo`; suma `cobro_ciclo`; mapea a `CostoVigente`.
+- `lib/repositories/PlanesRepository.ts` (`planDeEmpresa`): lee `porcentaje`/`minimo` de la tarifa y
+  `plan_cobro_del_ciclo(org, plan_inicio_ciclo_en_curso(corto, ancla, now UTC))` en la misma `comoPlataforma`.
+- `lib/repositories/EmpresasPlataformaRepository.ts` (`planYCobroVigente`) y `lib/types/empresas-plataforma.ts`:
+  `EmpresaListada.cobroVigente: CostoVigente`.
+- **Fuera de mi capa (ajuste mínimo de tipo):** `app/(app)/plataforma/empresas/_components/CobroPorOrden.tsx` —
+  `cobroVigente: CostoVigente` y el importe se pinta solo en el modo fijo (igual que hoy). Para un plan porcentual
+  la celda queda solo con la fuente («del plan») hasta T13, que trae el texto.
+- Creados `tests/unit/planes/costeo-porcentual.test.ts`, `tests/integration/db/plan-de-la-empresa-porcentual.test.ts`,
+  `tests/integration/db/empresas-plataforma-cobro-porcentual.test.ts`.
+
+**Tests existentes tocados solo por tipo (design §9.3).** Los `costoVigente`/`cobroVigente` ganan `modo: "fijo"` y
+los `PlanConUsoLeido` ganan `cobroCiclo: { cobrado: "0.00", pendientes: 0 }` (el modo fijo no lo usa):
+- §9.3: `tests/unit/planes/costeo.test.ts`, `tests/components/ConsumoDelPlanCosteo.test.tsx`,
+  `EmpresasModuleCobro.test.tsx`, `EmpresasModulePlan.test.tsx`, `tests/integration/db/plan-de-la-empresa-costeo.test.ts`
+  (el `costoVigente` leído por el repositorio y el superadmin se compara con `{ modo: "fijo", ...esperado }`).
+- Mismo cambio, no nombrados en §9.3: `tests/components/{empresas-module,MiPlanModule,PlanEmpresa,PlanEmpresaSinCosto,
+  PlanEmpresaTipoCobro,PlanVistaCosteo}.test.tsx`, `tests/integration/{empresas-page,plataforma-empresa-detalle-page}.test.tsx`,
+  `tests/integration/db/empresas-plataforma-plan.test.ts` (`toEqual({ modo: "fijo", ...esperado })`),
+  `tests/unit/services/{empresas-plataforma-service,mi-plan-service,planes-service-lecturas}.test.ts`.
+
+**R → test.**
+- R23 → `costeo-porcentual.test.ts` (base + cobrado; el número de órdenes no multiplica; sin mínimo; decimal exacto y
+  grande; cobrado negativo; base por definir sin total y con aviso; excepción con plan porcentual; anual; sin
+  `cobroCiclo` lanza; `costoVigenteDeLaTarifa`) y `plan-de-la-empresa-porcentual.test.ts` «R23, R24: «Mi plan»
+  (MiPlanRepository)… total base + cobrado» y «…el detalle de empresa del superadmin… lee lo mismo».
+- R24 → `plan-de-la-empresa-porcentual.test.ts`: «plan_de_la_empresa cuenta por la fecha del movimiento y las
+  pendientes del ciclo» (orden del ciclo anterior entregada en este: cuenta; reverso en el ciclo de un cargo del
+  anterior: resta; pendiente del ciclo; anulada y pendiente del ciclo anterior: no cuentan → 1.500,00 y 2), «lo
+  cobrado puede ser negativo…», «una empresa con plan fijo…».
+- R25 → mismo archivo: ««Mi plan» y el detalle de empresa no escriben movimientos ni wallet», «pedir el de otra
+  empresa da 42501, y plan_cobro_del_ciclo está cerrada a servi_app».
+- R22 → `empresas-plataforma-cobro-porcentual.test.ts` (porcentual con y sin mínimo «del plan», igual a lo que congela
+  la orden; excepción → fijo «propio»; plan fijo y sin plan como hoy).
+- R26 → `tests/unit/planes/costeo.test.ts` y `ConsumoDelPlanCosteo.test.tsx` en verde con cambios solo de tipo.
+
+**Salida.**
+- `tests/unit/planes/` (incl. `costeo-porcentual` 19 casos), `empresas-plataforma-service`, `mi-plan-service`,
+  `planes-service-lecturas` → `Test Files 12 passed (12) · Tests 202 passed (202)`.
+- Integración: `empresas-plataforma-cobro-porcentual`, `plan-de-la-empresa-porcentual`, `plan-de-la-empresa-costeo`,
+  `empresas-plataforma-plan`, `empresas-plataforma`, `mi-plan-repository`, `plan-de-la-empresa`,
+  `planes-lecturas-plataforma` → `Test Files 8 passed (8) · Tests 43 passed (43)`
+  (`plan-de-la-empresa-porcentual`: 7 casos).
+- Componentes y páginas tocados (12 archivos) → `Test Files 12 passed (12) · Tests 241 passed (241)`.
+- `pnpm run typecheck` → sin errores. `eslint` de los 29 archivos tocados → 0 problemas.
+- El aviso de zona horaria de la Tanda A no mordió: el test pone el ancla a 10 días y separa los ciclos por días.
+
+**Veredicto T7:** las tres lecturas dan el modo, lo cobrado en el ciclo y las pendientes, y el modo fijo sigue igual.
