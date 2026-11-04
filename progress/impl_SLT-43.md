@@ -584,3 +584,20 @@ Sustituto: `pnpm run typecheck` exit 0; `pnpm run lint` exit 0; `pnpm run test:g
 ## 2026-10-30 — renombre de migraciones por choque con SLT-56
 
 - El 2026-10-30, al mergear `origin/dev` (SLT-56, PR #48; SLT-51, PR #49), las seis migraciones de SLT-43 se renombraron de `20261029*` a `20261030*` (mismo orden y sufijo) porque SLT-56 trae `20261029120000_gestion_pago_mensajero_ajuste` y `20261029120100_historial_accion_pago_mensajero_ajustado`. Las referencias de esta bitácora, del spec, del schema, de los SQL y de los tests se actualizaron en su sitio. Con SLT-56 antes, `cierre_dia_pago_mensajero_ajustado` es el último valor de `historial_accion_tipo` y `nodo_geografico` el último de `historial_accion_entidad`; `PREVIA` en `migracion-slt43-ida-y-vuelta` pasa a ser `20261029120100_historial_accion_pago_mensajero_ajustado`.
+
+## 2026-11-04 — rojo de CI en #44/#55/#75: `salida-a-reparto-sql-real`, SLT-76 R15
+
+- **Causa:** el test creaba una provincia y un cantón con el MISMO id literal (`00000000-…-000000000000`). La
+  sincronía de SLT-43 copia los dos a `nodo_geografico` con su id, así que el nodo quedaba como padre de sí mismo
+  y violaba `nodo_geografico_padre_id_check`.
+- **Con datos reales no puede pasar:** `provincia`, `canton` y `distrito` tienen `@default(uuid())`; la migración
+  de seed `20260713005000_seed_geografia_cr` usa `gen_random_uuid()`; `GeoRepository` crea con el default o con
+  `IdsDelPlan.nuevo` (`randomUUID()` por nodo) en la carga por CSV de SL-20; `db:seed` no crea geografía. Solo el
+  literal del test fuerza la colisión.
+- **Cambio (de entrada, sin tocar ningún `expect`):** id de la provincia ajena → `00000000-0000-0000-0000-000000000001`.
+  El cantón sigue con `…000`, que es el que tiene que ordenar primero.
+- **Verificación:** base nueva `logistic_slt43_r1104b` (localhost; `CREATE DATABASE` + `migrate deploy` + `db:seed`),
+  cada archivo solo con `timeout 600`:
+  - `salida-a-reparto-sql-real.test.ts`: `Test Files 1 passed (1)`, `Tests 7 passed (7)`.
+  - `migracion-slt43-ida-y-vuelta.test.ts`: `Test Files 1 passed (1)`, `Tests 8 passed (8)`.
+  - `slt43-migraciones-aditivas.test.ts`: `Test Files 1 passed (1)`, `Tests 9 passed (9)`.
