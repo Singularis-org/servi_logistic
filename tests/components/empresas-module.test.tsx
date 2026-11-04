@@ -39,6 +39,9 @@ const EMPRESAS: EmpresaListada[] = [
       { nombre: "Luis Gómez", email: "luis@norte.test" },
     ],
     cobroPorOrden: null,
+    // SLT-66 R31/R32: campos nuevos del listado; no son de este test.
+    cobroVigente: { monto: "0.00", fuente: "sin_configurar" },
+    plan: null,
     // SL-45 (R28): el Record del listado exige la deuda; aquí, al día.
     deudaPlataforma: { deuda: "0.00", estado: "al_dia", importe: "0.00" },
     pagadoPlataforma: "0.00",
@@ -51,6 +54,9 @@ const EMPRESAS: EmpresaListada[] = [
     creadaEn: new Date("2026-09-05T12:00:00Z"),
     maestros: [],
     cobroPorOrden: null,
+    // SLT-66 R31/R32: campos nuevos del listado; no son de este test.
+    cobroVigente: { monto: "0.00", fuente: "sin_configurar" },
+    plan: null,
     // SL-45 (R28): el Record del listado exige la deuda; aquí, al día.
     deudaPlataforma: { deuda: "0.00", estado: "al_dia", importe: "0.00" },
     pagadoPlataforma: "0.00",

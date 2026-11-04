@@ -43,6 +43,8 @@ import type { CierreDestinoTipo } from "@/lib/types/cierre";
 // «Cierre del día» y remitirlo a la pantalla en la que está sería ruido (R52).
 import { avisoBloqueo } from "@/lib/constants/bloqueo-mensajero";
 import type { BloqueoDetalle } from "@/lib/utils/bloqueo-cierre";
+// SLT-76 (R1/R2): el día del cierre se lee en el calendario de Costa Rica, no recortando el ISO.
+import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 // Feature 158 (T2.3): la columna de la causa es la MISMA que la del detalle del admin — se
 // reusa en vez de reescribirla, para que las dos pantallas no puedan divergir en la etiqueta.
 import { COLUMNA_CAUSA_INCIDENTE } from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
@@ -932,7 +934,7 @@ export function CierreDiaModule({
                   type="button"
                   size="sm"
                   variant="outline"
-                  aria-label={`${VER_DETALLE_LABEL} del cierre del ${c.solicitadoAt.slice(0, 10)}`}
+                  aria-label={`${VER_DETALLE_LABEL} del cierre del ${fechaCalendarioCR(new Date(c.solicitadoAt))}`}
                   onClick={() => abrirDetalle(c)}
                 >
                   {VER_DETALLE_LABEL}
@@ -1023,7 +1025,7 @@ export function CierreDiaModule({
         title={DETALLE_TITULO}
         description={
           cierreAbierto
-            ? `${ESTADO_LABEL[cierreAbierto.estado]} · ${cierreAbierto.solicitadoAt.slice(0, 10)} · ${DESTINO_LABEL[cierreAbierto.destinoTipo]}`
+            ? `${ESTADO_LABEL[cierreAbierto.estado]} · ${fechaCalendarioCR(new Date(cierreAbierto.solicitadoAt))} · ${DESTINO_LABEL[cierreAbierto.destinoTipo]}`
             : undefined
         }
         confirmLabel="Cerrar"

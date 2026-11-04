@@ -126,6 +126,8 @@ export interface ApiOrdenCostoDTO {
   comision: string; // MONTO escala 2 (comision COD)
   ivaComision: string; // MONTO escala 2 (IVA de la comision COD)
   fulfillment: string; // MONTO escala 2 (monto fijo por orden cuando el paquete sale de bodega)
+  // SLT-52 (R46, P5 = a): MONTO escala 2, el IVA del fulfillment; "0.00" en el modelo viejo (R47).
+  ivaFulfillment: string;
 }
 
 /** Un item del LISTADO paginado (GET coleccion). Campos publicos de la orden (R6). */

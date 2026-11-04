@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { conResolvePagosViejo } from "@/tests/fixtures/tarifa-tienda";
 import { CorteDiarioService } from "@/lib/services/CorteDiarioService";
 import type {
   ICorteDiarioRepository,
@@ -89,9 +90,11 @@ function build(opts: {
     findUsuarioVehiculoId: vi.fn(async () => null),
     findEstatusIdByValue: vi.fn(async (v: string) => ESTATUS_IDS[v] ?? null),
   } as unknown as Pick<IOrdenRepository, "findUsuarioVehiculoId" | "findEstatusIdByValue">;
-  const tarifaZonaRepo: ITarifaZonaMensajeroRepository = {
+  // SLT-52 (T5.1): el service resuelve el pago POR GESTION con `resolvePagos`; el doble lo responde
+  // como el resolver real en el modelo viejo, delegando en `resolvePagoTarifa` (39/R4).
+  const tarifaZonaRepo: ITarifaZonaMensajeroRepository = conResolvePagosViejo({
     resolvePagoTarifa: vi.fn(async () => TARIFA),
-  };
+  });
   const logger = { warn: vi.fn() };
   const notificar = vi.fn(async () => {});
   const service = new CorteDiarioService(

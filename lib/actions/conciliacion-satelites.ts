@@ -11,6 +11,7 @@ import type {
   ListarSaldosSatelitesServiceResult,
   MarcaConciliacionServiceResult,
   ResumenSatelitesServiceResult,
+  RevertirConciliacionServiceResult,
 } from "@/lib/interfaces/services/IConciliacionSatelitesService";
 import { CierresBodegaAdminRepository } from "@/lib/repositories/CierresBodegaAdminRepository";
 import { SaldosSatelitesRepository } from "@/lib/repositories/SaldosSatelitesRepository";
@@ -21,6 +22,7 @@ import {
   listarSaldosSatelitesCompletoSchema,
   listarSaldosSatelitesSchema,
   marcarConsolidacionRecibidaSchema,
+  MENSAJE_REVERTIR_CON_ASIENTOS,
   revertirConciliacionSchema,
   type ConsolidacionSateliteDTO,
   type SaldoSateliteDTO,
@@ -210,13 +212,26 @@ export async function corregirConsolidacionRecibidaAction(
 }
 
 /**
+ * SLT-73 (R14, D11) — lo que devuelve «Revertir»: lo de marcar y corregir mas `con_asientos`, que
+ * viaja con su mensaje para que la pantalla no tenga que redactarlo.
+ */
+export type RevertirConciliacionActionResult =
+  | Exclude<RevertirConciliacionServiceResult, { status: "con_asientos" }>
+  | { status: "con_asientos"; mensaje: string }
+  | { status: "unauthenticated" }
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> };
+
+/**
  * R12/R13 — REVERTIR la marca. Devuelve la consolidacion a «Pendiente de conciliar» y borra los
  * cuatro datos de la marca; el monto que se borra queda documentado en el historial.
+ *
+ * SLT-73 (R14): si la marca ya asento el dinero en los libros, el servicio responde `con_asientos`
+ * sin cambiar nada y aqui se le pone el mensaje «Ya entró a la caja: corrige el monto…».
  */
 export async function revertirConciliacionAction(
   input: unknown,
   deps: ConciliacionSatelitesDeps = {},
-): Promise<MarcaConciliacionActionResult> {
+): Promise<RevertirConciliacionActionResult> {
   const r = await withErrorHandler(async () => {
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
@@ -224,7 +239,11 @@ export async function revertirConciliacionAction(
     const service = deps.service ?? buildService();
     return service.revertirConciliacion(data, actor);
   });
-  return isAppErrorShape(r) ? toConciliacionActionError(r) : r;
+  if (isAppErrorShape(r)) return toConciliacionActionError(r);
+  if (r.status === "con_asientos") {
+    return { status: "con_asientos", mensaje: MENSAJE_REVERTIR_CON_ASIENTOS };
+  }
+  return r;
 }
 
 /**

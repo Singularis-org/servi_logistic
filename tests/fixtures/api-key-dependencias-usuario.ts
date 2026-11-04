@@ -197,6 +197,9 @@ export const CLASIFICACION_FK_USUARIO: Record<string, ClasificacionFk> = {
   // esta columna. La FK es `Restrict` a proposito —quien afirmo que el dinero llego no se borra
   // dejando la afirmacion huerfana—, pero esa restriccion no alcanza al borrado de una API key.
   "CierreBodega.conciliadoPorUsuario": { categoria: "no_alcanzable", motivo: SOLO_OPERADOR },
+  // SLT-73 — quien MARCO o CORRIGIO la conciliacion que movio la diferencia de la satelite. Misma
+  // categoria y motivo que `conciliadoPorUsuario`: marcar y corregir exigen `esAccesoTotal`.
+  "ConciliacionBodegaAjuste.creador": { categoria: "no_alcanzable", motivo: SOLO_OPERADOR },
   "WalletMovimiento.registrador": { categoria: "no_alcanzable", motivo: SOLO_OPERADOR },
   "WalletTiendaMovimiento.registrador": { categoria: "no_alcanzable", motivo: SOLO_OPERADOR },
   "PagoMensajeroMovimiento.mensajero": { categoria: "no_alcanzable", motivo: SOLO_MENSAJERO },
@@ -278,6 +281,20 @@ export const CLASIFICACION_FK_USUARIO: Record<string, ClasificacionFk> = {
   "GestionPagoMensajeroAjuste.actor": {
     categoria: "no_alcanzable",
     motivo: `Ajustar el pago al mensajero es solo de maestro/admin/adminSatelite: ${SOLO_OPERADOR}`,
+  },
+  // ── SLT-52: el modelo nuevo de tarifas ───────────────────────────────────────────────────────
+  "TarifaValor.tienda": {
+    categoria: "bloquea",
+    motivo:
+      "R10 de la 373, extendida por SLT-52. ⚠️ CASCADE como `Tarifa.tienda`: el precio propio de una " +
+      "tienda `apiKey` en el modelo nuevo es configuracion de dinero y no desaparece dentro de " +
+      "«eliminar una API key». El guard lo comprueba en el mismo `tarifas` " +
+      "(`ApiKeyRepository.dependenciasPorCuenta`, `EXISTS … tarifa_valor`).",
+  },
+  "TarifaValor.mensajero": { categoria: "no_alcanzable", motivo: `El valor propio del mensajero: ${SOLO_MENSAJERO}` },
+  "TarifaValor.actualizadoPorUsuario": {
+    categoria: "no_alcanzable",
+    motivo: `Fijar un valor de tarifa es solo del maestro (SLT-52 R13): ${SOLO_OPERADOR}`,
   },
   // ── FICHA 410 (2026-09-10): el canal de push web ─────────────────────────────────────────────
   // Las dos son CASCADE y las dos son INALCANZABLES para una cuenta dedicada. No se clasifican

@@ -8,10 +8,10 @@ import { ROLES_CON_TOPE, type PlanDTO, type PrecioPlan, type TopesPlan } from "@
 // base son el mismo precio, y el orden de los módulos o de las claves de `porRol` no es un cambio. Sin
 // eso, guardar sin tocar nada escribiría una fila falsa (§2.8: una edición sin cambios no escribe).
 
-export type CampoDelPlan = "nombre" | "topes" | "modulos" | "precio" | "archivado";
+export type CampoDelPlan = "nombre" | "topes" | "modulos" | "precio" | "costoPorOrden" | "archivado";
 export type CambiosDelPlan = Partial<Record<CampoDelPlan, { antes: unknown; despues: unknown }>>;
 
-const CAMPOS: readonly CampoDelPlan[] = ["nombre", "topes", "modulos", "precio", "archivado"];
+const CAMPOS: readonly CampoDelPlan[] = ["nombre", "topes", "modulos", "precio", "costoPorOrden", "archivado"];
 
 /** Texto con dos decimales y sin ceros a la izquierda, sin pasar por `Number` («007.5» → «7.50»). */
 export function importeCanonico(texto: string): string {
@@ -46,6 +46,8 @@ export function planCanonico(p: PlanDTO): PlanDTO {
     topes: topesCanonicos(p.topes),
     modulos: ORDEN_MODULOS.filter((m) => p.modulos.includes(m)),
     precio: precioCanonico(p.precio),
+    // SLT-66 (R11): «100» y el «100.00» de la base son el mismo costo; vacío sigue siendo `null`.
+    costoPorOrden: p.costoPorOrden === null ? null : importeCanonico(p.costoPorOrden),
   };
 }
 

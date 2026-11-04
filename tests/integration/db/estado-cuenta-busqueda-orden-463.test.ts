@@ -18,7 +18,8 @@ vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabric
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 //
 // Escenario: el de la 458 (`_fixtures/wallet-458.ts`): la tienda C (7 filas, con empates de instante
-// controlados), el mensajero M (6 filas, idem) y la bodega Z (3 filas armadas desde `cierre_bodega`).
+// controlados), el mensajero M (6 filas, idem) y la bodega Z (5 filas: 3 de sus consolidaciones y 2
+// «sin consolidar», SLT-73).
 // Todas las lecturas van por las ACTIONS (el borde real: el esquema pone el orden por defecto).
 //
 // Lo que se afirma:
@@ -105,7 +106,7 @@ describeSiHayBase("463/T3 — buscador y orden de los estados de cuenta (Postgre
         // tres filas comparten `fecha`: solo `orden` (declarado antes que recibido) y el id las ordenan.
         const t5 = new Date(T4.getTime() + 3_600_000);
         for (const recibida of [true, false]) {
-          await tx.cierreBodega.create({
+          const cb = await tx.cierreBodega.create({
             data: {
               zonaId: esc.zonaZ,
               solicitadoPor: esc.maestro.usuarioId,
@@ -116,6 +117,23 @@ describeSiHayBase("463/T3 — buscador y orden de los estados de cuenta (Postgre
               ...(recibida
                 ? { resueltoPor: esc.maestro.usuarioId, resueltoAt: t5, conciliadoAt: t5, conciliadoPor: esc.maestro.usuarioId, montoRecibido: "650.00" }
                 : {}),
+            },
+            select: { id: true },
+          });
+          // SLT-73 (enmienda 2, R32): lo declarado es el neto de los cierres de la consolidacion; sin su
+          // cierre valdria 0,00 y las dos filas empatadas serian identicas.
+          await tx.cierreDia.create({
+            data: {
+              mensajeroId: esc.mensajeroM,
+              estado: "aprobado",
+              destinoTipo: "bodega_satelite",
+              destinoZonaId: esc.zonaZ,
+              totalEfectivo: "700.00",
+              totalGeneral: "700.00",
+              solicitadoAt: T4,
+              resueltoAt: T4,
+              resueltoPor: esc.maestro.usuarioId,
+              cierreBodegaId: cb.id,
             },
           });
         }
@@ -244,9 +262,9 @@ describeSiHayBase("463/T3 — buscador y orden de los estados de cuenta (Postgre
     await prisma?.$disconnect();
   });
 
-  it("no-vacuidad: las tres cuentas tienen filas (tienda 7, mensajero 6, bodega 3 + 3 empatadas)", () => {
+  it("no-vacuidad: las tres cuentas tienen filas (tienda 7, mensajero 6, bodega 5 + 3 empatadas)", () => {
     const c = m().cuentas;
-    expect([c.tienda.total, c.mensajero.total, c.bodega.total]).toEqual([7, 6, 6]);
+    expect([c.tienda.total, c.mensajero.total, c.bodega.total]).toEqual([7, 6, 8]);
     expect(c.tienda.asc).toHaveLength(7);
   });
 
@@ -299,9 +317,9 @@ describeSiHayBase("463/T3 — buscador y orden de los estados de cuenta (Postgre
       filas.filter((f) => f.registro.nombre === maestroNombre).map(lineaCompleta);
     expect(registradoPorMaestro(enteras.tienda).length).toBeGreaterThan(0);
     expect(b.tiendaRegistrador.lineas).toEqual(registradoPorMaestro(enteras.tienda));
-    // La bodega no tiene descripcion: solo encuentra por quien registro (el «Recibido» del escenario y
-    // las tres filas empatadas que solicito/recibio el maestro).
-    expect(registradoPorMaestro(enteras.bodega)).toHaveLength(4);
+    // La bodega no tiene descripcion: solo encuentra por quien registro (el «Recibido» del escenario, las
+    // dos filas «sin consolidar» que aprobo el maestro —SLT-73— y las tres empatadas que solicito/recibio).
+    expect(registradoPorMaestro(enteras.bodega)).toHaveLength(6);
     expect(b.bodegaRegistrador.lineas).toEqual(registradoPorMaestro(enteras.bodega));
     expect(b.mensajeroDescripcion.total).toBe(2); // m3 y m6, «458 liquidacion»
   });

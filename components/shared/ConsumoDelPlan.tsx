@@ -2,14 +2,29 @@ import { Ban, Infinity as InfinityIcon, TriangleAlert, type LucideIcon } from "l
 
 import { EmptyState } from "@/components/shared/EmptyState";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SIN_LINEAS_DE_CAMBIO, textoCambioProgramado, TITULO_LINEAS_DE_CAMBIO } from "@/lib/planes/mensajes";
-import type { EstadoFila, FilaConsumo, PlanConConsumo, ReinicioDelCiclo } from "@/lib/types/consumo-plan";
+import type {
+  CosteoDelCiclo,
+  EstadoFila,
+  FilaConsumo,
+  PlanConConsumo,
+  ReinicioDelCiclo,
+} from "@/lib/types/consumo-plan";
 import { cn } from "@/lib/utils";
 
 /** Textos de la pieza, en un solo sitio para cuando llegue la i18n (design §6.5). */
 const TEXTOS = {
-  precio: "Precio informativo",
+  costoDelCiclo: "Costo del ciclo",
+  costoBase: (base: CosteoDelCiclo["base"]) =>
+    `Costo base: ${base.tipo === "monto" ? `${base.mensual} al mes` : "por definir"}`,
+  costoPorOrden: (c: string) => `Costo por orden: ${c}`,
+  ordenesDelCiclo: ({ ordenes, costoPorOrden, subtotalOrdenes }: CosteoDelCiclo) =>
+    `Órdenes del ciclo: ${ordenes} × ${costoPorOrden} = ${subtotalOrdenes}`,
+  total: (t: string) => `Total estimado del ciclo: ${t}`,
+  excepcion: "precio acordado para tu empresa",
+  anualNoAplica: "El pago anual no cambia el costo por orden.",
+  estimado: "Estimado: el costo base no se cobra todavía; cada orden se cobra al crearla y se descuenta si se anula.",
   modulos: "Módulos incluidos",
   sinModulos: "Ninguno",
   consumo: "Consumo",
@@ -30,6 +45,11 @@ export interface ConsumoDelPlanProps {
   readonly textoSinPlan: string;
   /** Nivel del título de cada bloque, para encajar bajo el encabezado de quien lo monta. */
   readonly nivelDeTitulo?: 2 | 3;
+  /**
+   * SLT-66 (P1): la nota del costo por orden cuando sale de la excepción de la empresa. La empresa lee
+   * «precio acordado para tu empresa» (el valor por defecto); el superadmin, «excepción de la empresa».
+   */
+  readonly textoExcepcion?: string;
 }
 
 /**
@@ -55,7 +75,12 @@ const BARRA_NORMAL = "bg-muted-foreground";
  * y sin directiva de cliente: todo llega por props desde un Server Component, así que lo montan igual
  * «Mi plan» y el detalle de empresa del superadmin.
  */
-export function ConsumoDelPlan({ plan, textoSinPlan, nivelDeTitulo = 2 }: ConsumoDelPlanProps) {
+export function ConsumoDelPlan({
+  plan,
+  textoSinPlan,
+  nivelDeTitulo = 2,
+  textoExcepcion = TEXTOS.excepcion,
+}: ConsumoDelPlanProps) {
   // R6: sin plan no hay precio, módulos, filas ni ciclo que mostrar; solo el aviso, como estado vacío.
   if (plan === null) {
     return <EmptyState icon={InfinityIcon} title={textoSinPlan} />;
@@ -70,11 +95,9 @@ export function ConsumoDelPlan({ plan, textoSinPlan, nivelDeTitulo = 2 }: Consum
           <CardTitle {...titulo} className="text-lg font-semibold">
             {plan.nombre}
           </CardTitle>
-          <CardDescription>
-            {TEXTOS.precio}: <span className="text-foreground">{plan.precioTexto}</span>
-          </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
+          <CostoDelCiclo costeo={plan.costeo} textoExcepcion={textoExcepcion} />
           <p className="text-sm font-medium">{TEXTOS.modulos}</p>
           {plan.modulos.length === 0 ? (
             <p className="text-sm text-muted-foreground">{TEXTOS.sinModulos}</p>
@@ -129,6 +152,39 @@ export function ConsumoDelPlan({ plan, textoSinPlan, nivelDeTitulo = 2 }: Consum
           </CardContent>
         </Card>
       )}
+    </div>
+  );
+}
+
+/**
+ * SLT-66 (design §6.3; R18–R21, R10). Los importes llegan ya calculados como texto con dos decimales
+ * (`costeoDelCiclo`, en el servidor): aquí no se suma ni se convierte nada, para no perder exactitud.
+ * La aritmética no se importa en este componente porque lo monta también una pantalla de cliente.
+ */
+function CostoDelCiclo({ costeo, textoExcepcion }: { costeo: CosteoDelCiclo; textoExcepcion: string }) {
+  // P1: solo la excepción lleva nota; el plan y el global se pintan con su importe y nada más.
+  const nota = costeo.fuente === "empresa" ? textoExcepcion : null;
+  return (
+    <div className="flex flex-col gap-2 pb-2">
+      <p className="text-sm font-medium">{TEXTOS.costoDelCiclo}</p>
+      <ul aria-label={TEXTOS.costoDelCiclo} className="flex flex-col gap-1 text-sm">
+        <li>{TEXTOS.costoBase(costeo.base)}</li>
+        <li className="flex flex-col">
+          <span>{TEXTOS.costoPorOrden(costeo.costoPorOrden)}</span>
+          {nota && <span className="text-xs text-muted-foreground">{nota}</span>}
+          {costeo.anualNoAplicaAlCosto && (
+            <span className="text-xs text-muted-foreground">{TEXTOS.anualNoAplica}</span>
+          )}
+        </li>
+        <li>{TEXTOS.ordenesDelCiclo(costeo)}</li>
+        {/* R20: con la base por definir no hay total; sumar solo las órdenes daría una cifra engañosa. */}
+        {costeo.total !== null && (
+          <li>
+            <strong className="font-semibold">{TEXTOS.total(costeo.total)}</strong>
+          </li>
+        )}
+      </ul>
+      <p className="text-xs text-muted-foreground">{TEXTOS.estimado}</p>
     </div>
   );
 }

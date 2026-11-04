@@ -89,6 +89,8 @@ function ingreso(over: Partial<IngresoEmpresaDTO> = {}): IngresoEmpresaDTO {
     fleteDevolucionConIva: null,
     comisionConIva: null,
     total: "0.00",
+    fulfillment: "0.00", // SLT-52 (R46): el fulfillment congelado y su IVA, fuera del total
+    ivaFulfillment: "0.00",
     tarifa: tarifa(),
     ...over,
   };
@@ -263,6 +265,8 @@ describe("💰 337/338 — el panel de cobros carga el importe en la fila que DE
             esZonaEspecial: true,
             fleteOrigen: "especial",
             fleteDevolucionOrigen: "especial",
+            fulfillment: "0.00", // SLT-52 (R46): el fulfillment congelado y su IVA, fuera del total
+            ivaFulfillment: "0.00",
             tarifa: tarifa({ tarifaEspecial: "2500.00", tarifaEspecialDevuelta: "1200.00" }),
           }),
           "reprogramado",

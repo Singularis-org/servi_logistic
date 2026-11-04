@@ -1,0 +1,12 @@
+-- SLT-75 (T2, design §2.1/§3.2, R7) — un distrito, a lo sumo UNA zona por empresa.
+--
+-- Empieza por `organizacion_id`: es un unico POR EMPRESA (docs/architecture.md > Multi-empresa),
+-- asi que el mismo distrito sigue pudiendo estar en zonas de empresas distintas. Por eso NO lleva
+-- entrada en `tests/unit/guards/_unicos-sin-empresa.ts`.
+--
+-- El nombre es el que Prisma da por defecto a `@@unique([organizacionId, distritoId])`: sin drift.
+-- Sin CONCURRENTLY: la tabla es pequena y CONCURRENTLY no corre dentro de la transaccion.
+--
+-- Va DESPUES de 20261101090000, que limpia los duplicados. Si aun quedara alguno, esto falla y
+-- aborta el deploy: no se crea un indice a medias.
+CREATE UNIQUE INDEX "zona_distrito_organizacion_id_distrito_id_key" ON "zona_distrito"("organizacion_id", "distrito_id");

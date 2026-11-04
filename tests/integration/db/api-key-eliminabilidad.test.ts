@@ -222,6 +222,27 @@ describeSiHayBase("373/C1 — dependenciasDeCuentasDedicadas contra Postgres", (
     expect(r.mapa.get(r.cuenta)).toEqual({ ordenes: false, dinero: false, tarifas: true });
   });
 
+  it("⭑ SLT-52: con un precio propio en el modelo NUEVO (`tarifa_valor`) -> `tarifas: true`", async () => {
+    // Su FK a la tienda es CASCADE como la de `tarifas`: si el `OR` se cayera, el borrado de la key
+    // se llevaria el precio pactado en silencio. Sin fila en `tarifas`, solo este EXISTS lo ve.
+    const r = await enTransaccionRevertida(prisma, async (tx) => {
+      await serializarEscriturasReales(tx);
+      const cuenta = await sembrarCuenta(tx, "tarifa-valor");
+      await tx.tarifaValor.create({
+        data: { concepto: "tienda_flete_entregado", modo: "monto", valor: "1.00", ivaPct: "13.00", tiendaId: cuenta },
+        select: { id: true },
+      });
+      const sembradas = {
+        nuevas: await tx.tarifaValor.count({ where: { tiendaId: cuenta } }),
+        viejas: await tx.tarifa.count({ where: { tiendaId: cuenta } }),
+      };
+      return { cuenta, sembradas, mapa: await dependencias(tx, [cuenta]) };
+    });
+
+    expect(r.sembradas).toEqual({ nuevas: 1, viejas: 0 });
+    expect(r.mapa.get(r.cuenta)).toEqual({ ordenes: false, dinero: false, tarifas: true });
+  });
+
   it("⭑ cada cuenta recibe LO SUYO: cuatro cuentas distintas en UNA sola consulta", async () => {
     // Es la mutacion mas facil de colar: un `EXISTS` que ignore `u.id` y responda lo mismo para
     // todas. Con cuatro cuentas y cuatro respuestas distintas, no hay forma de que pase por azar.

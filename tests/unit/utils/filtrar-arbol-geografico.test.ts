@@ -23,7 +23,10 @@ function distrito(
   nombre: string,
   activo = true,
 ): ProvinciaArbolDTO["cantones"][number]["distritos"][number] {
-  return { id, nombre, zonaId: "z1", zonaNombre: "Zona 1", zonaEspecial: false, activo };
+  return { id, nombre, zonaId: "z1",
+    zonaNombre: "Zona 1",
+    zonas: [{ id: "z1", nombre: "Zona 1" }],
+    zonaEspecial: false, activo };
 }
 
 const ARBOL: ProvinciaArbolDTO[] = [

@@ -138,8 +138,11 @@ describeSiHayBase("SL-32 — listado de empresas del superadmin contra Postgres 
     const r = await conDatos((listado, s) => ({ listado, s }));
     const mias = r.listado.filter((e) => e.id === r.s.a.id || e.id === r.s.b.id);
 
+    // SLT-66 R31, R32: los dos campos nuevos del listado. Su valor se mide en empresas-plataforma-plan
+    // (aquí el global no está fijado); este caso sigue midiendo lo de SL-32.
+    const nuevosSlt66 = { cobroVigente: expect.anything(), plan: null };
     expect(mias).toEqual([
-      { id: r.s.b.id, nombre: r.s.b.nombre, slug: r.s.b.slug, creadaEn: ALTA_B, maestros: [r.s.maestroB], cobroPorOrden: null, deudaPlataforma: AL_DIA, pagadoPlataforma: "0.00", pais: COSTA_RICA },
+      { id: r.s.b.id, nombre: r.s.b.nombre, slug: r.s.b.slug, creadaEn: ALTA_B, maestros: [r.s.maestroB], cobroPorOrden: null, deudaPlataforma: AL_DIA, pagadoPlataforma: "0.00", pais: COSTA_RICA, ...nuevosSlt66 },
       {
         id: r.s.a.id,
         nombre: r.s.a.nombre,
@@ -149,6 +152,7 @@ describeSiHayBase("SL-32 — listado de empresas del superadmin contra Postgres 
         cobroPorOrden: null,
         deudaPlataforma: AL_DIA, pagadoPlataforma: "0.00",
         pais: COSTA_RICA,
+        ...nuevosSlt66,
       },
     ]);
     expect(JSON.stringify(r.listado)).not.toContain(r.s.admin.email);
@@ -171,6 +175,7 @@ describeSiHayBase("SL-32 — listado de empresas del superadmin contra Postgres 
     for (const e of mias) {
       expect(Object.keys(e).sort()).toEqual([
         "cobroPorOrden",
+        "cobroVigente", // SLT-66 R31
         "creadaEn",
         "deudaPlataforma",
         "id",
@@ -178,6 +183,7 @@ describeSiHayBase("SL-32 — listado de empresas del superadmin contra Postgres 
         "nombre",
         "pagadoPlataforma",
         "pais",
+        "plan", // SLT-66 R32
         "slug",
       ]);
       for (const m of e.maestros) expect(Object.keys(m).sort()).toEqual(["email", "nombre"]);

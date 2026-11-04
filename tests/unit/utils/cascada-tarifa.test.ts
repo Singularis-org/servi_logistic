@@ -29,7 +29,13 @@ const fila = (id: string, tiendaId: string | null, zonaId: string | null): Fila 
   zonaId,
 });
 
-const par = (tiendaId: string, zonaId: string | null): ParTarifa => ({ tiendaId, zonaId });
+// SLT-52: `distritoId` es obligatorio en el par; la cascada vieja no lo mira, asi que aqui va
+// `null` salvo en los casos que prueban la clave.
+const par = (tiendaId: string, zonaId: string | null, distritoId: string | null = null): ParTarifa => ({
+  tiendaId,
+  zonaId,
+  distritoId,
+});
 
 function resolver(filas: readonly Fila[], p: ParTarifa): Fila | null {
   return elegirPorCascada(filas, [p]).get(clavePar(p)) ?? null;
@@ -183,6 +189,24 @@ describe("R7 — resolucion en lote: una entrada por par pedido y un where de tr
   it("distingue el par sin zona del par con zona de la misma tienda", () => {
     expect(clavePar(par(T1, ZA))).not.toBe(clavePar(par(T1, null)));
     expect(clavePar(par(T1, ZA))).toBe(clavePar(par(T1, ZA)));
+  });
+
+  it("SLT-52 R18: la clave distingue el distrito (dos ordenes de la misma tienda y zona en grupos distintos no se pisan)", () => {
+    expect(clavePar(par(T1, ZA, "d1"))).not.toBe(clavePar(par(T1, ZA, "d2")));
+    expect(clavePar(par(T1, ZA, "d1"))).not.toBe(clavePar(par(T1, ZA, null)));
+    expect(clavePar(par(T1, ZA, "d1"))).toBe(clavePar(par(T1, ZA, "d1")));
+    // Literal: es el contrato con el que se indexa el Map del lote.
+    expect(clavePar(par(T1, ZA, "d1"))).toBe(`${T1}|${ZA}|d1`);
+    expect(clavePar(par(T1, null, null))).toBe(`${T1}||`);
+  });
+
+  it("SLT-52: pares que solo difieren en el distrito tienen una entrada cada uno y resuelven la misma fila vieja", () => {
+    const filas = [{ id: "t1-za", tiendaId: T1, zonaId: ZA }];
+    const pares = [par(T1, ZA, "d1"), par(T1, ZA, "d2")];
+    const resueltas = elegirPorCascada(filas, pares);
+    expect(resueltas.size).toBe(2);
+    expect(resueltas.get(clavePar(pares[0]!))?.id).toBe("t1-za");
+    expect(resueltas.get(clavePar(pares[1]!))?.id).toBe("t1-za");
   });
 
   it("whereCascada con N pares produce EXACTAMENTE las tres ramas del design", () => {

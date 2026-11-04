@@ -14,6 +14,7 @@ import {
   composicionCajaNombreAccesible,
   CATEGORIA_TODAS_OPTION,
   DOCUMENTO_CAJA_NOMBRE,
+  DUENO_LABEL,
   MOTIVO_NO_ANULABLE_LABEL,
   ORIGEN_LABEL,
   TIPO_EGRESO_MANUAL_LABEL,
@@ -74,6 +75,9 @@ const CONCEPTOS_ESPERADOS: Record<WalletMovimientoCategoria, string> = {
   egreso_reverso_iva_flete_devolucion: "IVA del flete por devolución a origen cobrado a la tienda anulado",
   // SL-45 (R23): el nombre del pago en el libro, tal como lo pide el requisito.
   egreso_pago_plataforma: "Pago a la plataforma",
+  // SLT-73 (design §1.2): la diferencia de la satelite al conciliar, en los dos sentidos.
+  egreso_diferencia_satelite: "Diferencia de la satélite (entregó menos)",
+  ingreso_diferencia_satelite: "Diferencia de la satélite (entregó más)",
 };
 
 /** design §7.3 — los 13 origenes del libro de la caja (+ el de la 457: 14). */
@@ -95,17 +99,19 @@ const ORIGENES_ESPERADOS: Record<WalletOrigenTipo, string> = {
   abono_tienda: "Pago de una tienda a la empresa",
   // SLT-68 (design §5): el egreso de caja del incentivo y su reverso.
   incentivo_mensajero: "Incentivo a un mensajero",
+  // SLT-73 (design §1.2): el evento de conciliacion que movio la diferencia de la satelite.
+  conciliacion_bodega_ajuste: "Diferencia de la satélite",
 };
 
 describe("461 — CATEGORIA_LABEL: cada concepto de la caja, desde la empresa (R42, design §7.2)", () => {
-  it("dice exactamente los 28 textos aprobados (23 de la 461 + 2 de la 457 + 2 de la 458-B + 1 de SL-45), y el seed es exactamente esas 28 claves", () => {
+  it("dice exactamente los 30 textos aprobados (23 de la 461 + 2 de la 457 + 2 de la 458-B + 1 de SL-45 + 2 de SLT-73), y el seed es exactamente esas 30 claves", () => {
     expect(CATEGORIA_LABEL).toEqual(CONCEPTOS_ESPERADOS);
     // Anti-vacuidad: la igualdad de arriba compara contra una lista escrita a mano; esta linea
     // afirma que esa lista cubre el catalogo ENTERO y no un subconjunto que casara por casualidad.
     expect([...WALLET_MOVIMIENTO_CATEGORIA_SEED].sort()).toEqual(
       Object.keys(CONCEPTOS_ESPERADOS).sort(),
     );
-    expect(WALLET_MOVIMIENTO_CATEGORIA_SEED).toHaveLength(28);
+    expect(WALLET_MOVIMIENTO_CATEGORIA_SEED).toHaveLength(30);
   });
 
   it("⭑ 457 (R45/R53): el pago de una tienda a la empresa y su anulacion, con los nombres reservados por la 461", () => {
@@ -142,8 +148,8 @@ describe("461 — CATEGORIA_LABEL: cada concepto de la caja, desde la empresa (R
     );
   });
 
-  it("el filtro por concepto ofrece los 28 con SU nombre (R42; 457/R45; 458-B; SL-45), tras la opcion «todas»", () => {
-    // 458-A (TA.3): el filtro ofrece los conceptos CON movimientos; con los 28 presentes, los 28.
+  it("el filtro por concepto ofrece los 30 con SU nombre (R42; 457/R45; 458-B; SL-45; SLT-73), tras la opcion «todas»", () => {
+    // 458-A (TA.3): el filtro ofrece los conceptos CON movimientos; con los 30 presentes, los 30.
     const lista = opcionesDeConceptos(
       WALLET_MOVIMIENTO_CATEGORIA_SEED.map((categoria) => ({ categoria, movimientos: 1 })),
       CATEGORIA_LABEL,
@@ -152,7 +158,7 @@ describe("461 — CATEGORIA_LABEL: cada concepto de la caja, desde la empresa (R
     );
     expect(lista[0]).toEqual({ value: "", label: "Todas las categorías" });
     const opciones = new Map(lista.slice(1).map((o) => [o.value, o.label]));
-    expect(opciones.size).toBe(28);
+    expect(opciones.size).toBe(30);
     for (const [clave, texto] of Object.entries(CONCEPTOS_ESPERADOS)) {
       expect(opciones.get(clave), clave).toBe(`${texto} (1)`);
     }
@@ -160,10 +166,10 @@ describe("461 — CATEGORIA_LABEL: cada concepto de la caja, desde la empresa (R
 });
 
 describe("461 — ORIGEN_LABEL: cada origen de la caja, desde la empresa (R42, design §7.3)", () => {
-  it("dice exactamente los 15 textos aprobados (13 de la 461 + 1 de la 457 + 1 de SLT-68), y el seed es exactamente esas 15 claves", () => {
+  it("dice exactamente los 16 textos aprobados (13 de la 461 + 1 de la 457 + 1 de SLT-68 + 1 de SLT-73), y el seed es exactamente esas 16 claves", () => {
     expect(ORIGEN_LABEL).toEqual(ORIGENES_ESPERADOS);
     expect([...WALLET_ORIGEN_TIPO_SEED].sort()).toEqual(Object.keys(ORIGENES_ESPERADOS).sort());
-    expect(WALLET_ORIGEN_TIPO_SEED).toHaveLength(15);
+    expect(WALLET_ORIGEN_TIPO_SEED).toHaveLength(16);
   });
 
   it("las dos lineas del cobro se distinguen: la completada dice que se completo al corregir (R37)", () => {
@@ -480,5 +486,15 @@ describe("SL-45 R1–R3 — el rótulo, la pista y el importe de la deuda, por e
 
   it("R1/R4: el botón de la región se llama «Registrar pago a la plataforma»", () => {
     expect(CAJA_RESUMEN_LABEL.registrarPagoPlataforma).toBe("Registrar pago a la plataforma");
+  });
+});
+
+// SLT-73 (D12, design §2.9.8, R29) — la diferencia de la satélite tiene dueño propio.
+describe("SLT-73 R29 — el dueño de la diferencia de la satélite", () => {
+  it("se llama «Satélite», no «Tienda» ni la empresa", () => {
+    expect(DUENO_LABEL.por_cobrar_satelite).toBe("Satélite");
+    expect(DUENO_LABEL.por_cobrar_satelite).not.toBe(DUENO_LABEL.terceros);
+    expect(DUENO_LABEL.por_cobrar_satelite).not.toBe(DUENO_LABEL.propio);
+    expect(DUENO_LABEL.por_cobrar_satelite).not.toBe(DUENO_LABEL.capital);
   });
 });

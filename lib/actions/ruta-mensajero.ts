@@ -23,12 +23,15 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IOptimizacionRutaService } from "@/lib/interfaces/services/IOptimizacionRutaService";
 import {
   sincronizarRutaSchema,
-  trazarTramoVivoSchema,
   type SincronizarRutaResult,
-  type TrazarTramoVivoResultUI,
 } from "@/lib/types/ruta-mensajero";
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import type { AppErrorShape } from "@/lib/errors";
+import {
+  loadRouteOptimizationConfig,
+  type RouteOptimizationConfig,
+} from "@/lib/config/route-optimization";
+import { avisoRecogidaInsuficiente } from "@/lib/utils/aviso-recogida-insuficiente";
 
 /** Unico rol autorizado (R33). */
 const ROL_AUTORIZADO = "mensajero";
@@ -36,6 +39,8 @@ const ROL_AUTORIZADO = "mensajero";
 export interface RutaMensajeroDeps {
   service?: IOptimizacionRutaService;
   getActor?: () => Promise<Actor | null>;
+  /** SLT-59 (R64): de aqui sale el porcentaje del mensaje; los tests lo inyectan. */
+  config?: Pick<RouteOptimizationConfig, "RUTA_PRIMERA_MIN_RECOGIDO_PCT">;
 }
 
 /**
@@ -114,6 +119,22 @@ export async function sincronizarRuta(
         motivo: "la ruta se sincronizo hace muy poco; intenta de nuevo en unos segundos",
       };
     }
+    // SLT-59 (R64, design §12.5): la forma `conflict` ya existe y el boton ya hace
+    // `toast.warning(motivo)`, asi que la UI no cambia. El porcentaje es el de la config (R55).
+    // SLT-74: el minimo se muestra en paquetes, no en %.
+    // SLT-79: con algo recogido el service dice cuanto falta para los RUTA_PRIMERA_DEBOUNCE_MIN
+    // desde la ultima recogida (`esperaMs`); con nada recogido no viene y solo se pide recoger.
+    if (resultado.status === "omitida" && resultado.razon === "recogida_insuficiente") {
+      const pct = (deps.config ?? loadRouteOptimizationConfig()).RUTA_PRIMERA_MIN_RECOGIDO_PCT;
+      return {
+        status: "conflict" as const,
+        motivo: avisoRecogidaInsuficiente({
+          asignadas: resultado.asignadas,
+          pct,
+          esperaMs: resultado.esperaMs,
+        }),
+      };
+    }
     // El trazado (polilinea + distancia) sube al cliente para que el mapa lo pinte al
     // instante. No va atado a `status`: con UNA sola parada la optimizacion se OMITE (R35)
     // y aun asi hay linea que dibujar. Se reenvia siempre que el service lo produzca.
@@ -130,60 +151,7 @@ export async function sincronizarRuta(
   return isAppErrorShape(r) ? toRutaActionError(r) : r;
 }
 
-/**
- * Trayecto por calles desde donde el mensajero ESTA hasta una parada concreta.
- *
- * ═══ POR QUE ESTA ES LA UNICA LLAMADA QUE NO SE PUEDE CACHEAR ═══
- * El resto del dibujo se guarda y se reutiliza mientras la ruta no cambie. Este no: arranca
- * en la posicion actual, asi que en cuanto el mensajero se mueve el resultado anterior deja
- * de ser el suyo. Cada pulsacion es una llamada FACTURADA nueva, y de ahi que sea un boton
- * explicito y no algo que corra solo.
- *
- * Las guardas viven en el service (intervalo minimo persistido + pertenencia de la parada);
- * aqui solo se resuelve el actor, se valida el borde y se traduce el desenlace.
- */
-export async function trazarTramoVivo(
-  input: unknown,
-  deps: RutaMensajeroDeps = {},
-): Promise<TrazarTramoVivoResultUI> {
-  const r = await withErrorHandler(async () => {
-    const actor = await (deps.getActor ?? resolveActorFromSession)();
-    if (!actor) throw new UnauthenticatedError();
-    // R33, igual que en `sincronizarRuta`: el rol se comprueba ANTES de parsear y ANTES de
-    // construir el service. Una Server Action es un endpoint, no una parte de la pagina.
-    if (actor.rol !== ROL_AUTORIZADO) return { status: "forbidden" as const };
+// SLT-79 (2026-11-03, decision humana «todo manual»): aqui vivia `calcularRutaAlSalir` (SLT-59
+// R62/R63), el disparo de la primera ruta cuando la pantalla veia al mensajero a mas de 1 km del
+// punto de recogida. Se retiro: la primera ruta del dia la calcula solo `sincronizarRuta`.
 
-    const data = trazarTramoVivoSchema.parse(input); // ZodError -> VALIDATION_ERROR
-    const service = deps.service ?? buildService();
-
-    const resultado = await service.trazarTramoVivo(actor.usuarioId, {
-      ubicacion: data.ubicacion,
-      ordenId: data.ordenId,
-    });
-
-    switch (resultado.status) {
-      case "ok":
-        return {
-          status: "ok" as const,
-          encodedPolyline: resultado.encodedPolyline,
-          distanciaM: resultado.distanciaM,
-          duracionS: resultado.duracionS,
-        };
-      case "no_autorizada":
-        // Se colapsa con «no eres mensajero»: ver el comentario del tipo. El cliente no
-        // puede distinguir «no es tuya» de «no existe», que es justo lo que se busca.
-        return { status: "forbidden" as const };
-      case "intervalo_minimo":
-        return {
-          status: "conflict" as const,
-          motivo: "pediste el trayecto hace muy poco; intenta de nuevo en unos segundos",
-        };
-      case "no_disponible":
-        return {
-          status: "conflict" as const,
-          motivo: "no se pudo calcular el trayecto ahora",
-        };
-    }
-  });
-  return isAppErrorShape(r) ? toRutaActionError(r) : r;
-}

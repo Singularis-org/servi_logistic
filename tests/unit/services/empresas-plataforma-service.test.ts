@@ -28,6 +28,9 @@ const EMPRESAS: EmpresaListada[] = [
     pagadoPlataforma: "0.00",
     // SL-20 (R9): el país de la empresa.
     pais: { id: "CR", nombre: "Costa Rica" },
+    // SLT-66 R31, R32: el tipo del listado exige el cobro vigente y el plan; aquí, sin configurar y sin plan.
+    cobroVigente: { monto: "0.00", fuente: "sin_configurar" },
+    plan: null,
   },
   {
     id: "00000000-0000-4000-8000-000000000001",
@@ -41,6 +44,9 @@ const EMPRESAS: EmpresaListada[] = [
     pagadoPlataforma: "0.00",
     // SL-20 (R9): el país de la empresa.
     pais: { id: "CR", nombre: "Costa Rica" },
+    // SLT-66 R31, R32: el tipo del listado exige el cobro vigente y el plan; aquí, sin configurar y sin plan.
+    cobroVigente: { monto: "0.00", fuente: "sin_configurar" },
+    plan: null,
   },
 ];
 

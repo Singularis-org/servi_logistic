@@ -462,6 +462,8 @@ export class MisAsignacionesService implements IMisAsignacionesService {
           porGestionar.length > 0
             ? (ruta?.tramoPorOrden.get(porGestionar[0].id) ?? null)
             : null,
+        // SLT-79: aqui iban `primeraRutaPendiente` y `puntoRecogida` (SLT-59 R62/R67), retirados
+        // con el disparo de salida.
       },
     }; // R10
   }

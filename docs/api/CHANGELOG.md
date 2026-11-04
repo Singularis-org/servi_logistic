@@ -21,6 +21,28 @@
 
 ---
 
+## 2026-11-03 — Campo NUEVO `ivaFulfillment`: el IVA del fulfillment, en la carga, la cotización y el costo de la orden
+
+> **Aditivo.** Se añade una clave; ninguna se quita ni cambia de forma. Un cliente que ignora las
+> claves que no conoce sigue funcionando. Ojo si validás las respuestas con un esquema cerrado
+> (`OrdenCosto` lleva `additionalProperties: false`): actualizá el esquema antes de la release.
+
+**Qué cambia, en una frase:** cuando tu tarifa cobra fulfillment con IVA, ese IVA se te cobra y se
+publica en su propio campo, `ivaFulfillment` (texto de dos decimales, nunca `null`). Con una tarifa
+que no tiene IVA de fulfillment vale `"0.00"` y **ningún importe cambia** respecto de hoy.
+
+| Dónde | Campo nuevo | Qué más cambia |
+|---|---|---|
+| `POST /api/ordenes/api-key/carga` → `ordenes[]` (`CargaOrden`) | `ivaFulfillment` | `costoEnvio` = flete + IVA + `fulfillment` + `ivaFulfillment` |
+| `POST /api/ordenes/api-key/cotizacion` → `costos.entregado` | `ivaFulfillment` | `total` = monto a cobrar − (flete + iva + comision + ivaComision + fulfillment + ivaFulfillment) |
+| `POST /api/ordenes/api-key/cotizacion` → `costos.devuelto` | `ivaFulfillment` | `total` = −(flete + iva + fulfillment + ivaFulfillment) |
+| `costoEstimado` y `costoReal` del listado y del detalle (`OrdenCosto`) | `ivaFulfillment` | sigue sin haber ningún campo que sume los conceptos |
+
+Contrato: `lib/api/openapi-spec.ts` y su espejo `docs/api/api-key-openapi.yaml`; guía de
+integración: `docs/api/guia-integracion/guia-integracion.html` (§5.1-§5.4).
+
+---
+
 ## 2026-10-01 — Sin ruptura — El flete de una devolución a origen cambia de nombre en las descripciones
 
 > **Sin ruptura.** Solo cambian **textos de descripción** del contrato. Ningún campo, valor

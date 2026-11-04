@@ -920,7 +920,7 @@ export function CierresBodegaAdminModule({
                 cierreBodegaId={detalle.cierre.cierreBodegaId}
                 bodega={detalle.cierre.zonaNombre}
                 fecha={fechaCalendarioCR(new Date(detalle.cierre.solicitadoAt))}
-                declarado={detalle.cierre.totales.efectivo}
+                declarado={detalle.cierre.paraLaCentral}
                 marca={detalle.cierre}
                 nota={detalle.cierre.conciliadoNota}
                 puedeConciliar={puedeConciliar}

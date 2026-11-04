@@ -11,6 +11,7 @@ import { ApiOrdenResolucionService } from "@/lib/services/ApiOrdenResolucionServ
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { ApiKeyAuthResult } from "@/lib/interfaces/services/IApiKeyAuthService";
 import type { ApiOrdenDetalleDTO } from "@/lib/types/api-orden";
+import { sinValoresDelModeloNuevo } from "../../fixtures/tarifa-tienda";
 // ⏳ 2026-09-09 (feature 404, T6): los casos del campo nuevo cablean la CADENA REAL por debajo del
 // handler (ApiOrdenLecturaService -> OrdenRepository -> Prisma mockeado). Con el `detalleDe` falso
 // de arriba pasarian aunque el repositorio no proyectara nada.
@@ -615,6 +616,7 @@ const COSTO_VIGENTE_415 = {
   comision: "906.50",
   ivaComision: "117.85",
   fulfillment: "696.00",
+  ivaFulfillment: "0.00", // SLT-52 R47: el viejo no calcula IVA de fulfillment
 };
 const COSTO_CONGELADO_415 = { ...COSTO_VIGENTE_415, fulfillment: "692.00" };
 
@@ -630,6 +632,8 @@ function depsDetalleConTarifa(fila: Record<string, unknown> | null, tarifas: unk
     },
     usuario: { findMany: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn() },
     tarifa: { findMany: vi.fn(async () => tarifas) },
+    // SLT-52: empresa sin valores del modelo nuevo -> el resolver unico usa la cascada vieja (R36).
+    ...sinValoresDelModeloNuevo(),
   };
   const repo = new OrdenRepository(prisma as unknown as PrismaClient);
   const svc = new ApiOrdenLecturaService(

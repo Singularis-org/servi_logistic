@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { pagoViejoPorGestion } from "@/tests/fixtures/tarifa-tienda";
 import { Prisma } from "@prisma/client";
 
 import {
@@ -74,10 +75,10 @@ describe("💰 398 — sumar snapshots frente a re-derivar con la tarifa VIVA", 
       gestionId: g.gestionId,
       resultado: g.resultado,
     })) as unknown as CierreGestionPendienteRow[];
-    const { total } = derivarPagos(filas, {
+    const { total } = derivarPagos(filas, pagoViejoPorGestion(filas, {
       cobroEntregado: "1500.00",
       cobroRechazado: "1000.00",
-    });
+    }));
     expect(total).toBe("1500.00");
     // Y la diferencia es exactamente lo que se le habria movido a la gestion ajena.
     expect(new Prisma.Decimal(total).minus("900.00").toFixed(2)).toBe("600.00");
@@ -88,10 +89,10 @@ describe("💰 398 — sumar snapshots frente a re-derivar con la tarifa VIVA", 
       gestionId: g.gestionId,
       resultado: g.resultado,
     })) as unknown as CierreGestionPendienteRow[];
-    const reDerivado = derivarPagos(filas, {
+    const reDerivado = derivarPagos(filas, pagoViejoPorGestion(filas, {
       cobroEntregado: "1500.00",
       cobroRechazado: "1000.00",
-    }).total;
+    })).total;
     const sumado = sumarSnapshotsCongelados(GESTIONES.map((g) => g.pagoMensajero));
     expect(reDerivado).not.toBe(sumado);
   });

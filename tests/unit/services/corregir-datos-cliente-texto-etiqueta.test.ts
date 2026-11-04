@@ -8,6 +8,7 @@ import type {
   OrdenParaCorreccionRow,
 } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { TarifaVigente } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
+import { tarifaViejaDeFormula } from "../../fixtures/tarifa-tienda";
 
 /**
  * FICHA 383 (T6) — LA CORRECCION DE DATOS DEL CLIENTE RECHAZA LO QUE NO SE PODRA IMPRIMIR.
@@ -102,7 +103,7 @@ function escenario(ordenFila: OrdenParaCorreccionRow = orden()) {
       _estadosBloqueados: readonly string[],
     ) => "ok" as const,
   );
-  const resolveTarifa = vi.fn(async () => tarifa());
+  const resolveTarifa = vi.fn(async () => tarifaViejaDeFormula(tarifa()));
   const service = new CorregirDatosClienteService(
     { findParaCorreccion, findDistritoParaCorreccion, corregirDatosCliente },
     { resolveTarifa },

@@ -41,6 +41,10 @@ T8 (enmienda «sin `ruta`», aprobada por Camilo 2026-10-29): T8.1–T8.10 hecha
   caso «decision 4» de `carga-division.test.ts`, dentro de la misma excepción; (2) `ubicacionSnapshot: undefined` en
   `454/correccion-ramas-sql-real.test.ts` y `477-resolicitud-rechazado-sql-real.test.ts`, por el typecheck, sin
   cambiar aserciones. Registradas en design (R36).
+- 2026-11-04 · Cristian: las seis migraciones de SLT-43 van detrás de todas las de `dev` (prod ya tiene
+  las de `dev`). Merge de `origin/dev` y renombrado `20261031120000`–`120500` → `20261104120000`–`120500`
+  (`20261104120000_geo_enums_nodo_geografico` … `20261104120500_indices_nodo_geografico`); `nodo_geografico`
+  queda detrás de `tarifa_valor` y `grupo_distritos` (30 entidades). Detalle en `progress/impl_SLT-43.md`.
 
 ## Modelos (overrides)
 

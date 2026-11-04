@@ -105,6 +105,9 @@ export class JobRepository implements IJobRepository {
     return rows.length > 0 ? toDTO(rows[0]) : null;
   }
 
+  // SLT-79: aqui vivia `encolarOMoverPendiente` (SLT-59 R76/R77), el encolado con debounce
+  // deslizante del job de la primera ruta del dia. Se quedo sin llamador al retirarse ese job.
+
   async claimBatch(limit: number, opts: ClaimOpts): Promise<JobDTO[]> {
     const { now, visibilityCutoff } = opts;
     // R10-R13 (feature 90, design §3.1) + REPARTO POR TURNOS (feature 402, design §1).
@@ -191,6 +194,9 @@ export class JobRepository implements IJobRepository {
       SELECT * FROM "jobs" WHERE "dedupe_key" IN (${Prisma.join(keys)})`;
     return rows.map(toDTO);
   }
+
+  // SLT-79: aqui vivia `findPendienteByDedupeKey` (SLT-74), la lectura del job pendiente de la
+  // primera ruta para el aviso del boton. El aviso ya mide desde la ultima recogida del dia.
 
   async complete(id: string): Promise<void> {
     // R14: exito -> `done`. `updated_at` a mano (el raw no dispara el @updatedAt de Prisma).
