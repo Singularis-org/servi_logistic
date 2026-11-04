@@ -94,3 +94,83 @@ Ninguno.
 ## Veredicto
 
 **OK.** No hay bloqueantes y hay 6 menores. El merge queda condicionado a lo mismo que pide el proceso: `gate-completo` y `e2e` en verde en CI (m3, m5 y m6), y al cierre de m1 y m4 por parte del leader.
+
+## Vuelta 2 (acotada a b3d7291c..a853b0dc) — 2026-11-04
+
+Alcance: 367b4ba4, el merge de `origin/dev` 0c86d71b (6 conflictos), 7b29903b, el merge de SLT-44 d2769756
+y 9b4e0004. No se rehace la trazabilidad R1–R28.
+
+### Checklist
+- [x] **Resolución de conflictos sin pérdida (ZonaRepository).** El delta que dev trae a `ZonaRepository.ts`
+  (merge-base `62e3d892` → `87fda9f6`) es **idéntico línea a línea** al que entra en la rama (`1c3c37d9` →
+  `a853b0dc`): `leerDistritosEnOtraZona`, `esViolacionDistritoUnico`, `CreateZonaResult`, el rastro
+  `zona_distrito_cambiado` de SLT-76 y los dos `catch`. La única línea de dev que desaparece es el import
+  de `zonaUnicaDeDistrito`, que ya estaba en el merge-base y que SLT-65 sustituyó por `zonaQueCubre`
+  (design §6.1). Lo de SLT-65 (`sinTransaccionAnidada`, `nodosBajo`, `whereLugarEn`, `planificarReconciliacion`) sigue.
+- [x] **zona-repository.test.** El delta de dev entra entero, salvo dos diferencias de la unión: (1) las
+  respuestas de `nmEnOrden` pasan por `filaDeZona`, que es la forma del catálogo de SLT-65; (2) la aserción
+  de la segunda lectura de dev (`llamadasNMDeReconciliacion(tx)[1].where.distritoId.in`) se queda en la
+  forma `lugaresLeidos` de `orden.count`, que es la enmienda (1) autorizada el 2026-11-03. Conserva el
+  conjunto `{dViejo, dQueSigue, dNuevo}` y el «sin repetidos». 61/61 en verde.
+- [x] **Los otros 4 conflictos.** `modelos-de-negocio.ts`, `catalogo-y-choke-point.test.ts` y
+  `caja-459-migration.test.ts`: el delta de dev entra exacto. Los literales de la unión suman los dos lados
+  (75 tipos con `zona_distrito_cambiado`, 28 entidades con `nodo_geografico`, y en caja-459 los tramos
+  desplazados uno por cada lado). `deudas.md`: D34 y D35 de dev se quedan y la de SLT-65 pasa a D36, sin
+  referencias colgando a «D34» en SLT-65.
+- [x] **7b29903b sin `expect` cambiados.** `GeoRepository.listArbol` saca `zonas` (SLT-75 R14) de
+  `asignaciones.zonasPorNodo` del catálogo. `lecturas-de-hoy` añade la misma lista para que la
+  equivalencia la compare. En `geo-repository-arbol-zonas` solo cambia el doble, y las aserciones quedan
+  intactas. `esLecturaDeConflictos` pasa de `select.zona` a `select.distrito`, y es correcto: la carga del
+  catálogo (`CatalogoGeograficoRepository:94`) también pide `select.zona`, y solo `leerDistritosEnOtraZona`
+  pide `distrito`.
+- [x] **9b4e0004 sin `expect` cambiados.** Solo envuelve el escenario en `conEmpresa(A, …)`.
+- [~] **367b4ba4.** Cambia **un** `expect`: `toMatchObject({ cantonId: "c-1", … })` pasa a la forma
+  `whereLugarEn([c-1, d-1])`, y además suma dos aserciones. La autorización humana existe («Diagnosticar y
+  enmendar», Cristian, 2026-11-03), pero solo consta en `progress/impl_SLT-65.md:905`, no en
+  `progress/features/SLT-65.md > Decisiones` (m7).
+- [ ] **Orden de las migraciones de SLT-43 frente a dev: NO es válido** (B1).
+- [x] Typecheck: `tsc --noEmit` sale con 0. Guardias (`tests/guards` + `tests/unit/guards`): 253/254; el único
+  rojo es `dependencias-declaradas-presentes`, que está en la baseline. Suites unitarias `tests/unit/db`,
+  `tests/unit/repositories`, `tests/unit/historial-accion`, `zona-service` y `geografia-service`: 2535/2536.
+  El único rojo es B1.
+
+### Hallazgos
+
+**B1 (BLOQUEANTE). Las seis migraciones de SLT-43 han quedado intercaladas entre las de dev, y las dos
+guardias de orden que SLT-43 dejó salen en rojo. Ninguna de las dos está en `tests/baseline-rojos.json`.**
+- Dev trae `20261031120000_liberar_recolecciones_recibidas`, con el **mismo timestamp** que
+  `20261031120000_geo_enums_nodo_geografico`, y `20261031130000`…`20261102090100`. En disco el orden queda
+  así: `geo_enums`, `liberar`, `tipo_nivel` … `indices`, y después las 12 de dev.
+- `tests/unit/db/slt43-migraciones-aditivas.test.ts:106`, «las carpetas de SLT-43 son exactamente las
+  seis»: el filtro `202610311` recoge también 9 carpetas de dev. **Rojo.** No lo coge `vitest related`
+  porque lee del disco, así que `./init.sh` rápido no lo ve, pero `gate-completo` sí.
+- `tests/integration/db/migracion-slt43-ida-y-vuelta.test.ts:74`, «van en orden detrás de la última de
+  dev»: `20261031120100_tipo_nivel_geografico fuera de orden: expected 278 to be 277`. **Rojo.** Su `PREVIA`
+  (`20261030120100_incentivo_mensajero_checks`) ya no es la última de dev.
+- En producción: `origin/prod` ya tiene aplicadas `20261031120000_liberar…`, `…130000`, `…140000_slt73…`,
+  `20261101…` y `20261102…`. Las seis de SLT-43 tienen timestamps anteriores, así que entrarían fuera de
+  orden en `migrate deploy`.
+- Revisé el contenido y no veo dependencia de datos entre las seis de SLT-43 y las 13 de dev. Dev no toca
+  `orden.{provincia,canton,distrito}_id`, `zona_distrito.distrito_id` ni los enums de entidad. SLT-76 añade
+  un valor a `historial_accion_tipo` y SLT-43 a `historial_accion_entidad`. Por eso el esquema final sería
+  el mismo en los dos órdenes.
+- Aun así, la regla que el proyecto sigue (renombres de SLT-43 del 2026-10-30 y el 2026-10-31,
+  `progress/impl_SLT-43.md`) es que las seis vayan **detrás de la última de dev**, y sus propios tests lo
+  exigen.
+- **Qué falta:** renombrar las seis a un timestamp posterior a `20261102090100_slt76_retirar_respaldos` (mismo
+  sufijo, mismo SQL). Hay que actualizar el filtro de `slt43-migraciones-aditivas`, `PREVIA` y `M_*` del
+  ida-y-vuelta, el comentario de `caja-459-migration.test.ts:133` («SLT-43 (20261031120000)») y las
+  referencias del spec y las bitácoras.
+- El arreglo es de SLT-43, y SLT-44 lo hereda igual (su merge de dev `62f3dd5e` tiene el mismo estado). El
+  leader decide si se hace en SLT-43 y se propaga, o aquí. Mientras tanto, SLT-65 no puede pasar
+  `gate-completo`.
+
+**m7 (menor).** La enmienda del `expect` del composition root (367b4ba4) no consta en `progress/features/SLT-65.md > Decisiones`,
+solo en la bitácora del implementer. Qué falta: que el leader la anote con la cita de Cristian.
+
+Los menores m1–m6 de la vuelta 1 siguen como estaban. m4 queda registrado como D36.
+
+### Veredicto (vuelta 2)
+
+**RECHAZADO** por B1: las migraciones de SLT-43 no van detrás de las de dev y dos tests de orden fuera de
+la baseline salen en rojo. Las resoluciones de conflicto, 7b29903b y 9b4e0004 están bien.
