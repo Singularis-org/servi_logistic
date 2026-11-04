@@ -1501,3 +1501,209 @@ AssertionError: expected [ …(2) ] to deeply equal [ …(2) ]
 `Tests  2 failed (2)`, con `expected [] to deeply equal [ Array(1) ]` en el segundo caso.)
 
 Veredicto: T6.4-T6.5 hechas; 7/7 de integracion en verde y corriendo, 9 mutaciones + contraprueba en rojo, M7 equivalente explicada y repetida (M7b) donde mata.
+
+## T7 (2026-11-03) — T7.1 y T7.4
+
+MCP `codebase-memory` no respondio (timeout de conexion): todo por Grep/Read. Sin migracion, sin
+`prisma generate`, sin dependencias nuevas. `.env` presente (no se imprimio ningun valor).
+`docs/architecture.md` aparecio modificado en el arbol durante esta tanda y NO es de este
+implementer (T7.2, otra mano): no entra en este commit.
+
+### Archivos tocados
+
+- `tests/unit/guards/tarifas-resolver-inyectado.guardia.test.ts` (nuevo, T7.1)
+- `lib/utils/cobro-congelado.ts` (nuevo: `CobroCongeladoDeOrden`, `baseDelCobroCongelado`,
+  `rebasarConElCobroCongelado`, movidos tal cual desde `cierre-totales.ts`)
+- `lib/utils/cierre-totales.ts` (sin el bloque movido ni el import de `ingreso-empresa`;
+  `tarifaDeLaGestion` pasa a `export`)
+- `lib/utils/ingreso-empresa.ts` (solo el comentario del import: ya no hay ciclo)
+- `lib/repositories/CierreDiaRepository.ts`, `lib/repositories/CierresAdminRepository.ts`
+  (import de `rebasarConElCobroCongelado` / `CobroCongeladoDeOrden` desde `cobro-congelado`)
+- `tests/unit/utils/cierre-totales-base-congelada.test.ts` (import desde `cobro-congelado`)
+- `specs/SLT-52-tarifas-flexibles-modelo/tasks.md` (T7.1 y T7.4 `[x]`; `cobro-congelado.ts` en
+  «Archivos esperados»)
+
+### T7.1 guardia
+
+`tests/unit/guards/tarifas-resolver-inyectado.guardia.test.ts` recorre `app/` y `lib/` (sin
+`*.test.*`), quita comentarios con `quitarComentarios` y normaliza CRLF. Por cada
+`new CierreDiaRepository(` exige `new TarifaVigenteRepository(` entre sus argumentos (parentesis
+balanceados); por cada `new CierreDiaService(` / `new CorteDiarioService(` exige
+`new CierreDiaRepository(` y `new TarifaZonaMensajeroRepository(`. Suelo: >100 archivos revisados y
+al menos 2 `CierreDiaRepository`, 1 `CierreDiaService`, 1 `CorteDiarioService` (hoy:
+`app/api/cron/corte-diario/route.ts` y `lib/actions/cierre-dia.ts`). Incluye un caso de
+contraprueba del detector (llamada sin tarifa, service sin pago al mensajero, tarifa solo en un
+comentario).
+
+Salida real:
+
+```
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+```
+
+Contraprueba a mano (`cp` a respaldo, `sed` que deja `new CierreDiaRepository(prisma),` en
+`app/api/cron/corte-diario/route.ts`, correr, restaurar con `cp`, `git diff --stat` del archivo
+vacio despues):
+
+```
+     × cada new CierreDiaRepository/CierreDiaService/CorteDiarioService de app/ y lib/ lleva la tarifa 349ms
+ FAIL  tests/unit/guards/tarifas-resolver-inyectado.guardia.test.ts > GUARDIA SLT-52/R38 — ... > cada new CierreDiaRepository/... lleva la tarifa
++   "app/api/cron/corte-diario/route.ts: new CierreDiaRepository( sin TarifaVigenteRepository",
+      Tests  1 failed | 1 passed (2)
+RESTAURADO
+```
+
+### Import circular
+
+Habia ciclo `cierre-totales.ts` -> `ingreso-empresa.ts` (`derivarIngresoOrden`, T5.5) y
+`ingreso-empresa.ts` -> `cierre-totales.ts` (`computeTotales`, ficha 396, `partesPorTienda`).
+
+Decision: **quitado**. Lo que creaba el ciclo era solo lo de T5.5 (`CobroCongeladoDeOrden`,
+`baseDelCobroCongelado`, `rebasarConElCobroCongelado`), y se movio a `lib/utils/cobro-congelado.ts`,
+que depende de los dos sin que ninguno dependa de el. Por que esto y no lo otro:
+- mover `computeTotales` rompe `pagos-aritmetica-decimal.guardia.test.ts`, que lee
+  `lib/utils/cierre-totales.ts` y exige alli `export function computeTotales`;
+- mover `partesPorTienda` obliga a tocar componentes de `app/` (fuera de alcance de backend) y
+  muchos tests.
+Sin cambio de comportamiento: el bloque movido es **identico byte a byte** al de HEAD
+(`git show HEAD:lib/utils/cierre-totales.ts | sed -n 115,176p` contra el cuerpo del archivo nuevo:
+`diff` vacio). Unica diferencia de API: `tarifaDeLaGestion` pasa a `export` para que el modulo nuevo
+use la MISMA funcion. Desviacion de ubicacion respecto a design §13 («en `cierre-totales.ts`»):
+anotada aqui; la funcion es la misma.
+
+Tests de los modulos tocados (unit + guardias que leen esos fuentes):
+
+```
+npx vitest run tests/unit/guards/tarifas-resolver-inyectado.guardia.test.ts tests/unit/utils/cierre-totales-base-congelada.test.ts tests/unit/utils/cierre-totales.test.ts tests/unit/utils/cierre-totales-pagos.test.ts tests/unit/utils/ingreso-empresa-modelo-nuevo.test.ts tests/unit/utils/partes-por-tienda.test.ts tests/unit/guards/caja-173-alcance.guardia.test.ts tests/unit/guards/pagos-aritmetica-decimal.guardia.test.ts tests/unit/guards/pagos-proyeccion.guardia.test.ts tests/unit/repositories/cierre-dia-repository.test.ts tests/unit/repositories/cierres-admin-corregir-resultado-where.test.ts
+ Test Files  11 passed (11)
+      Tests  279 passed (279)
+VITEST_EXIT=0
+```
+
+Typecheck y lint (despues del cambio):
+
+```
+> tsc --noEmit
+TC_EXIT=0
+✖ 232 problems (0 errors, 232 warnings)
+LINT_EXIT=0
+```
+
+(Ninguno de los 232 warnings es de un archivo tocado en esta tanda: `grep` de los nombres en el log
+del lint, vacio.)
+
+### tarifa-zona-borrado-fk-real
+
+`tests/integration/db/tarifa-zona-borrado-fk-real.test.ts` falla con
+`referencia a otra empresa: orden.tienda_id -> usuario`. Diagnostico:
+- (a) `git diff origin/dev...HEAD -- tests/integration/db/tarifa-zona-borrado-fk-real.test.ts tests/integration/db/_*.ts`
+  vacio: ni el test ni `_postgres-real.ts` (que da `fksDeOrden`, la tienda que el test usa para
+  sembrar su orden) los toca SLT-52. El mensaje sale del trigger de FK de negocio de `orden.tienda_id`
+  (lo afirma `aislamiento-fk-misma-empresa.test.ts` en `origin/dev`), no de `lib/db/fk-de-negocio.ts`:
+  el diff de SLT-52 ahi solo AÑADE `coberturaPorColumnaCompartida` para FKs COMPUESTAS
+  (`grupo_id, zona_id`), que no aplica a una FK simple. El rojo nace en la siembra (una tienda de la
+  base que no es de la empresa de la orden), igual en `origin/dev`.
+- (b) Esta en `tests/baseline-rojos.json` (linea 631) y tambien en `origin/dev:tests/baseline-rojos.json`
+  (`grep -c` = 1), con motivo «La app nace vacia (SL-11)… La retira SL-31», desde 2026-10-22.
+
+Conclusion: **deuda previa, no la introduce SLT-52**; no se toca. La retira SL-31.
+
+### Mapa R1..R55 -> test
+
+Cada fila: un test concreto (archivo › nombre literal del `it`/`test`, plantilla incluida si es
+`it.each`). Ninguno hace `return` antes de asertar: los de integracion se SALTAN sin base
+(`describe.skipIf` / `describeSiHayBase`; el `if (!HAY_BASE_DE_DATOS) return;` es del `beforeAll`,
+no de un `it`), y aqui corrieron todos contra Postgres local. Ningun R quedo sin test: no hubo que
+escribir ninguno nuevo en T7.4 (la guardia de T7.1 suma cobertura a R38).
+
+Corrida de los archivos del mapa:
+
+```
+unit (11 archivos):        Test Files  11 passed (11) | Tests  324 passed (324) | VITEST_EXIT=0
+integracion (9 archivos):  Test Files  9 passed (9)   | Tests  120 passed (120) | VITEST_EXIT=0
+```
+
+| R | archivo | test | verificado grep |
+| --- | --- | --- | --- |
+| R1 | `tests/unit/tarifas/catalogo.test.ts` | tiene los mismos conceptos que el enum de la base, ni uno mas ni uno menos | ok |
+| R2 | `tests/unit/tarifas/catalogo.test.ts` | resultado %s tiene exactamente un concepto para %s | ok |
+| R3 | `tests/unit/services/tarifa-valor-service.test.ts` | guarda el modo, el valor y el IVA del cobro tal como llegan (R3) | ok |
+| R4 | `tests/integration/db/tarifas-flexibles-migration.test.ts` | R4: valor negativo se rechaza y 0 se acepta | ok |
+| R5 | `tests/unit/services/tarifa-valor-service.test.ts` | %s → nivel %s | ok |
+| R6 | `tests/integration/db/tarifas-flexibles-migration.test.ts` | R7: cada nivel incompatible con su actor se rechaza, y cada nivel valido se acepta | ok |
+| R7 | `tests/unit/services/tarifa-valor-service.test.ts` | %s → validation_error en %s | ok |
+| R8 | `tests/integration/db/tarifas-flexibles-escritura.test.ts` | R8/R14 — fijar crea; fijar el mismo nivel REEMPLAZA (misma fila); otro nivel es otra fila; cada fijacion deja su historial | ok |
+| R9 | `tests/integration/db/tarifas-flexibles-escritura.test.ts` | R9/R14 — quitar borra la fila y deja historial; quitarla otra vez es not_found y no deja otra fila | ok |
+| R10 | `tests/integration/db/tarifas-flexibles-migration.test.ts` | R10: el nombre es unico dentro de la zona, no vacio, y se repite en otra zona | ok |
+| R11 | `tests/integration/db/tarifas-flexibles-migration.test.ts` | R11: un distrito en DOS grupos de la zona, o fuera de la zona, o con un grupo de otra zona, se rechaza | ok |
+| R12 | `tests/integration/db/tarifas-flexibles-migration.test.ts` | R12: sacar un distrito de la zona lo saca del grupo; borrar el grupo borra sus distritos y sus valores | ok |
+| R13 | `tests/unit/services/tarifa-valor-service.test.ts` | $rol recibe forbidden al fijar y no se escribe ni se consulta nada | ok |
+| R14 | `tests/integration/db/tarifas-flexibles-escritura.test.ts` | R14 — si algo falla DESPUES de escribir el historial, el savepoint se lleva el cambio Y su fila de historial | ok |
+| R15 | `tests/integration/db/tarifas-flexibles-escritura.test.ts` | R15 — con la empresa A activa no se lee, ni se escribe, ni se borra nada de B (tampoco con SQL a mano) | ok |
+| R16 | `tests/integration/db/tarifas-flexibles-resolver.test.ts` | R16: el distrito de OTRO grupo de la zona cobra lo de ese grupo, no lo de G1 | ok |
+| R17 | `tests/unit/tarifas/precedencia.test.ts` | R17: la tienda sin pacto en el grupo pero con pacto en la zona usa su zona antes que el grupo | ok |
+| R18 | `tests/integration/db/tarifas-flexibles-resolver.test.ts` | R18: una orden SIN distrito salta los niveles de grupo (gana tienda_zona; sin tienda, la zona) | ok |
+| R19 | `tests/unit/services/cierre-pago-por-gestion.test.ts` | SLT-52 R19 — pide el pago con la zona y el vehiculo del MENSAJERO y el distrito de CADA orden | ok |
+| R20 | `tests/integration/db/tarifas-flexibles-resolver.test.ts` | R20: la satelite usa la misma zona, distrito y precedencia sin el nivel del mensajero | ok |
+| R21 | `tests/integration/db/tarifas-flexibles-resolver.test.ts` | R21: el distrito de la orden que no esta en ningun grupo de la zona del mensajero usa la zona | ok |
+| R22 | `tests/integration/db/tarifas-flexibles-resolver.test.ts` | R22: un mensajero sin vehiculo salta los niveles por vehiculo (gana el grupo para todos) | ok |
+| R23 | `tests/unit/tarifas/precedencia.test.ts` | R23: un concepto sin fila en ningun nivel es `null` (sin tarifa); solo señuelos tambien | ok |
+| R24 | `tests/unit/services/cierre-pago-por-gestion.test.ts` | SLT-52 R24 — un concepto sin tarifa cuenta 0 y el cierre se crea igual | ok |
+| R25 | `tests/integration/carga-api-key-sin-tarifa.test.ts` | ninguna fila tiene flete por entregado (aunque haya comision) -> 409 y nada persistido | ok |
+| R26 | `tests/unit/tarifas/calculo.test.ts` | HALF_UP en el medio exacto: 100.10 * 5% = 5.005 → 5.01 (HALF_EVEN daria 5.00) | ok |
+| R27 | `tests/unit/tarifas/calculo.test.ts` | R27: porcentaje sobre un pedido sin valor (base 0) → 0.00 | ok |
+| R28 | `tests/integration/db/tarifas-flexibles-resolver.test.ts` | R28: la base del % es el flete sin IVA que se cobra a la tienda por ESA gestion | ok |
+| R29 | `tests/unit/utils/ingreso-empresa-modelo-nuevo.test.ts` | %s cobra su concepto en su categoria | ok |
+| R30 | `tests/unit/utils/ingreso-empresa-modelo-nuevo.test.ts` | entregado sin cobraComision: solo el flete | ok |
+| R31 | `tests/unit/utils/ingreso-empresa-modelo-nuevo.test.ts` | agregarIngresosPorConcepto sigue sin emitir el fulfillment ni su IVA (R31) | ok |
+| R32 | `tests/unit/tarifas/precedencia.test.ts` | R20/R32: la satelite elige con su propio concepto y varios resultados a la vez | ok |
+| R33 | `tests/unit/services/cierre-pago-por-gestion.test.ts` | SLT-52 R19/R20/R33 — cada gestion paga lo de SU grupo: 1500 y 1700 al mensajero, 200 y 450.50 a la satelite | ok |
+| R34 | `tests/unit/utils/pago-modelo-nuevo.test.ts` | monto 1250.50 se paga 1250.50, no 1413.07 (1250.50 + 13 %) | ok |
+| R35 | `tests/unit/utils/ingreso-empresa-modelo-nuevo.test.ts` | esCentral=%s esZonaEspecial=%s: mismo cobro, listado y costo API | ok |
+| R36 | `tests/unit/tarifas/respaldo-identico.test.ts` | costoEnvioDeTarifa: $caso | ok (E2E: T7.3) |
+| R37 | `tests/unit/repositories/cierre-pago-congelado.test.ts` | SLT-52 R37 — cobro nuevo y pago viejo (la empresa cambio entre medias): LANZA | ok |
+| R38 | `tests/unit/repositories/convergencia-tarifa-listado-cierre.test.ts` | el COSTO de la API por key da los mismos importes, con el fulfillment de tff-general | ok (+ guardia `tarifas-resolver-inyectado.guardia.test.ts`) |
+| R39 | `tests/integration/db/tarifas-flexibles-respaldo.test.ts` | R39: en el viejo, un lote de 1 y uno de 50 cuestan las mismas consultas (interruptor + tarifas) | ok |
+| R40 | `tests/unit/repositories/cierre-pago-congelado.test.ts` | SLT-52 R40/R46 — un concepto de cobro por fila, con modo, valor, IVA, nivel y valor de origen (fulfillment con su IVA) | ok |
+| R41 | `tests/integration/db/tarifas-flexibles-snapshot.test.ts` | R41/R46 — cambiar y BORRAR valores y grupos despues no mueve el detalle, la aprobacion, las wallets, el aporte ni Analitica | ok |
+| R42 | `tests/integration/db/tarifas-flexibles-snapshot.test.ts` | R42/R47 — un cierre del modelo VIEJO se congela y se lee exactamente como antes | ok |
+| R43 | `tests/integration/db/tarifas-flexibles-migration.test.ts` | R43: con `servi_app`, UPDATE y DELETE de `cierre_detail_concepto` dan 42501; el INSERT y el re-congelado del pago, no | ok |
+| R44 | `tests/integration/db/tarifas-flexibles-migration.test.ts` | R44: ninguna escribe filas en las tablas del modelo viejo ni en cierre_detail | ok |
+| R45 | `tests/integration/db/tarifas-flexibles-migration.test.ts` | R45 (P4): un pago al mensajero o a la satelite con IVA 0 o 13 se rechaza; con IVA NULL se acepta | ok |
+| R46 | `tests/integration/cotizacion-api-key.test.ts` | SLT-52 R46 — el IVA del fulfillment viaja en la respuesta | ok |
+| R47 | `tests/unit/utils/ingreso-empresa-modelo-nuevo.test.ts` | SLT-52 R47 — el viejo no calcula IVA de fulfillment | ok |
+| R48 | `tests/unit/services/rechazo-tienda-service.test.ts` | SLT-52 R48 — el cobro en el nuevo guarda el tarifaValorId de tienda_flete_rechazo y tarifaId null | ok |
+| R49 | `tests/unit/services/rechazo-tienda-service.test.ts` | SLT-52 R49 — en el viejo guarda tarifaId y tarifaValorId null | ok |
+| R50 | `tests/integration/db/rechazo-tienda-cobro-tarifa-valor-migration.test.ts` | R50: borrar el valor citado deja el cobro, su referencia en NULL y los importes intactos | ok |
+| R51 | `tests/integration/carga-api-key-sin-tarifa.test.ts` | SLT-52 R51 — solo fulfillment (sin flete por entregado) → 409 y nada persistido | ok |
+| R52 | `tests/integration/db/tarifas-flexibles-base-congelada.test.ts` | R52 — la 398 corrige a rechazada: base = flete por rechazo CONGELADO (10 % de 20000), no el de hoy (20 % de 50000) | ok |
+| R53 | `tests/integration/db/tarifas-flexibles-base-congelada.test.ts` | R53 — la re-solicitud 477 vincula la rehecha (rechazo): su base sale del cobro congelado de su orden | ok |
+| R54 | `tests/integration/db/tarifas-flexibles-base-congelada.test.ts` | R54 — cobro congelado en el VIEJO y pago del nuevo: la base es el flete devuelto del viejo congelado (1000.00) | ok |
+| R55 | `tests/integration/db/tarifas-flexibles-base-congelada.test.ts` | R55 — solicitud: el pago se resolvio con A y el cobro se congela con B -> base, pagos y totales salen de B | ok |
+
+Verificacion mecanica: `verificar-mapa.cjs` (scratchpad de la sesion, uso unico) lee ESTA tabla y
+comprueba cada par archivo/nombre como `grep -F`, y que esten R1..R55 sin huecos. Salida real:
+
+```
+OK R1 tests/unit/tarifas/catalogo.test.ts
+OK R2 tests/unit/tarifas/catalogo.test.ts
+OK R3 tests/unit/services/tarifa-valor-service.test.ts
+OK R55 tests/integration/db/tarifas-flexibles-base-congelada.test.ts
+... (51 lineas OK mas, R4..R54)
+filas=55 faltan=[]
+55/55 OK
+```
+
+Autocomprobacion del verificador: sobre una copia de esta bitacora con el nombre de R50 alterado y la
+fila de R7 borrada, da:
+
+```
+NO-ENCONTRADO R50 tests/integration/db/rechazo-tienda-cobro-tarifa-valor-migration.test.ts :: R50: borrar el valor INVENTADO deja el cobro, su referencia en NULL y los importes intactos
+filas=54 faltan=[R7]
+53/55 OK
+```
+
+Veredicto: T7.1 hecha (guardia verde, roja con la mutacion real); ciclo de import quitado sin cambio
+de logica; fk-real es deuda previa en baseline (SL-31); mapa 55/55 verificado. T7.2 y T7.3 quedan fuera
+de esta tanda; T7.4 se cierra del todo con el gate del leader.

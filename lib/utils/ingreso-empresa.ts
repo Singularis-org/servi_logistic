@@ -11,9 +11,8 @@ import type { ValoresTienda } from "@/lib/types/tarifa-flexible";
 import { importeDe, ivaDe } from "@/lib/tarifas/calculo";
 import { conceptoPorResultado } from "@/lib/tarifas/catalogo";
 // Ficha 396 — `partesPorTienda` particiona el recaudo con LA MISMA funcion que produce el total
-// general del cierre, no con una suma escrita aqui (R13/R15). Import de VALOR. Desde SLT-52 (T5.5)
-// hay ciclo: `cierre-totales.ts` importa `derivarIngresoOrden` de aqui para la base del % del pago.
-// Es inocuo mientras ninguno de los dos use lo importado al evaluar el modulo (solo en funciones).
+// general del cierre, no con una suma escrita aqui (R13/R15). Import de VALOR. SIN ciclo: la base del %
+// del pago que usa `derivarIngresoOrden` vive en `cobro-congelado.ts`, no en `cierre-totales.ts` (SLT-52 T7).
 import { computeTotales, type GestionConPagos } from "@/lib/utils/cierre-totales";
 
 /**

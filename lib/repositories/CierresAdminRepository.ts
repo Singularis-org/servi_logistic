@@ -118,10 +118,10 @@ import { rutasEvidenciaGestion } from "@/lib/utils/evidencias-gestion";
 import {
   computeTotales,
   pagosDelCierre,
-  rebasarConElCobroCongelado,
   sumarSnapshotsCongelados,
   type TarifasDePago,
 } from "@/lib/utils/cierre-totales";
+import { rebasarConElCobroCongelado } from "@/lib/utils/cobro-congelado";
 // FICHA 398 -> SLT-52 (T5.1): el resolver del pago, como FUNCION sobre el cliente de la
 // transaccion, para resolverlo DENTRO de la correccion sin instanciar su repositorio ni ensanchar
 // el `Pick` de este. Desde SLT-52 es el resolver UNICO (`resolverPagosCon`): decide el modelo de

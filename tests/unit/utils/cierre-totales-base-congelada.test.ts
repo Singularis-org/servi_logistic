@@ -5,7 +5,7 @@ import {
   baseDelCobroCongelado,
   rebasarConElCobroCongelado,
   type CobroCongeladoDeOrden,
-} from "@/lib/utils/cierre-totales";
+} from "@/lib/utils/cobro-congelado";
 import type { TarifaPago, ValorPago } from "@/lib/types/tarifa-flexible";
 
 // SLT-52 (T5.5, design §13, R28, R52-R55) — la base del % del pago es el flete SIN IVA que el cobro

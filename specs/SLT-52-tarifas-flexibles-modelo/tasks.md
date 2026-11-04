@@ -267,7 +267,7 @@
 
 ## T7 — Cierre de la feature (depende de todo)
 
-- [ ] **T7.1** Guardia `tests/unit/guards/tarifas-resolver-inyectado.guardia.test.ts`: cada
+- [x] **T7.1** Guardia `tests/unit/guards/tarifas-resolver-inyectado.guardia.test.ts`: cada
   `new CierreDiaRepository(`, `new CierreDiaService(` y `new CorteDiarioService(` de `app/` y `lib/`
   pasa el repositorio de tarifas. Cubre: R38.
 - [ ] **T7.2** `docs/architecture.md`: párrafo de tarifas flexibles (tablas, resolver único,
@@ -275,7 +275,7 @@
 - [ ] **T7.3** E2E existentes en verde con empresas en el modelo viejo: `e2e/cierre-*`,
   `e2e/cierres-admin*`, `e2e/cierre-bodega-satelite*`, `e2e/wallet-*`, `e2e/mi-wallet*`,
   `e2e/dos-empresas-humo.spec.ts`. Cubre: R36. Hecho: salida pegada en `progress/impl_SLT-52.md`.
-- [ ] **T7.4** Mapa completo `R1..R55 -> test` (R52-R55 → T5.5) en `progress/impl_SLT-52.md`; `./init.sh` verde con
+- [x] **T7.4** Mapa completo `R1..R55 -> test` (R52-R55 → T5.5) en `progress/impl_SLT-52.md`; `./init.sh` verde con
   `INIT_EXIT=$?` escrito dentro del log.
 
 ## Archivos esperados
@@ -345,6 +345,7 @@ Código:
 - `lib/utils/pago-mensajero.ts`
 - `lib/utils/ingreso-bodega.ts`
 - `lib/utils/cierre-totales.ts`
+- `lib/utils/cobro-congelado.ts` (T7: `baseDelCobroCongelado` y `rebasarConElCobroCongelado` salen de `cierre-totales.ts` para cortar el ciclo con `ingreso-empresa.ts`)
 - `lib/utils/cierre-detalle.ts`
 - `lib/utils/api-orden-costo.ts`
 - `lib/utils/aporte-por-orden.ts`

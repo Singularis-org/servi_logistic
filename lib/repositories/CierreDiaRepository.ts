@@ -73,11 +73,10 @@ import {
   derivarIngresoBodega,
   derivarPagos,
   pagosDelCierre,
-  rebasarConElCobroCongelado,
   sumarSnapshotsCongelados,
-  type CobroCongeladoDeOrden,
   type TarifasDePago,
 } from "@/lib/utils/cierre-totales";
+import { rebasarConElCobroCongelado, type CobroCongeladoDeOrden } from "@/lib/utils/cobro-congelado";
 import {
   CierreDetalleFaltanteError,
   DETALLE_SELECT,
