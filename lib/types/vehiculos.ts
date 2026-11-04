@@ -43,11 +43,23 @@ export type CrearVehiculoInput = z.infer<typeof crearVehiculoSchema>;
 export const actualizarVehiculoSchema = z.object({ name: nombreSchema }).strict();
 export type ActualizarVehiculoInput = z.infer<typeof actualizarVehiculoSchema>;
 
-// DTO expuesto por la capa de lectura: id (uuid PK estable) + name. No expone
-// campos internos (R11).
+// SL-42 (design §4.1; R5, R6, R9, R12) — las entradas del superadmin. El `id` viaja dentro del
+// objeto, y no como argumento suelto, para que `strict` cubra la entrada entera: un campo de mas
+// es `validation_error` aunque venga junto a un id valido.
+export const renombrarVehiculoSchema = z.object({ id: z.string().min(1), name: nombreSchema }).strict();
+export type RenombrarVehiculoInput = z.infer<typeof renombrarVehiculoSchema>;
+
+export const cambiarActivacionVehiculoSchema = z
+  .object({ id: z.string().min(1), activo: z.boolean() })
+  .strict();
+export type CambiarActivacionVehiculoInput = z.infer<typeof cambiarActivacionVehiculoSchema>;
+
+// DTO expuesto por la capa de lectura: id (uuid PK estable), name y, desde SL-42, `activo`: la
+// pantalla del superadmin lista los inactivos (R2) y las lecturas de empresa los filtran (R18).
 export interface VehiculoDTO {
   id: string;
   name: string;
+  activo: boolean;
 }
 
 /**

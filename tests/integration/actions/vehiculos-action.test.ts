@@ -13,9 +13,9 @@ const getActor = (actor: Actor) => async (): Promise<Actor | null> => actor;
 const noActor = async (): Promise<Actor | null> => null;
 
 const SEED: VehiculoDTO[] = [
-  { id: "veh-1", name: "camion" },
-  { id: "veh-2", name: "carro" },
-  { id: "veh-3", name: "moto" },
+  { id: "veh-1", name: "camion", activo: true },
+  { id: "veh-2", name: "carro", activo: true },
+  { id: "veh-3", name: "moto", activo: true },
 ];
 
 // `IVehiculoService` volvio a tener CRUD completo: la migracion `vehiculo_name_texto`

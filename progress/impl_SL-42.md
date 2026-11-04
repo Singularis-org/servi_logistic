@@ -35,3 +35,28 @@ Con `DATABASE_URL` en la base local `logistic` (2026-11-03, `NODE_OPTIONS=--max-
 
 ### Veredicto
 T1.1 y T1.2 hechas: migraciones aplicadas, guardia y tests de R22/R23 en verde contra Postgres; `vitest related` pendiente (lo paró la falta de memoria).
+
+## Tanda T2 (T2.1 hecha; T2.2–T2.6 PARADAS) — 2026-11-04
+
+### Archivos
+Modificados:
+- `lib/types/vehiculos.ts`: `activo` en `VehiculoDTO`; `renombrarVehiculoSchema` y `cambiarActivacionVehiculoSchema` (`strict`, con `id` dentro del objeto) y sus tipos de entrada.
+- `lib/repositories/VehiculoRepository.ts`: `toDTO` devuelve `activo` (solo eso, para que compile; el resto de T2.2 no se tocó).
+- `tests/unit/types/vehiculos.test.ts`: bloque «SL-42/R9».
+- Fixtures con `activo: true`: `tests/unit/services/vehiculo-service.test.ts`, `tests/integration/actions/vehiculos-action.test.ts`, `tests/components/TarifasAlineacionRejilla.test.tsx`, `tests/components/TarifasClaridadMontos.test.tsx`.
+
+### R → test (esta tanda)
+- R9 → `tests/unit/types/vehiculos.test.ts` › «SL-42/R9 — renombrar y cambiar la activacion validan la entrada entera» (vacío, <2 y >40 tras normalizar, campo desconocido en los tres schemas, id vacío, `activo` no booleano). La parte del borde (`validation_error` por campo) queda para T2.4.
+
+### Verificación (NODE_OPTIONS=--max-old-space-size=8192)
+- `pnpm run typecheck`: sin errores (tras añadir `activo` a las fixtures tipadas como `VehiculoDTO`).
+- `pnpm exec eslint` sobre los archivos de lib y el test de tipos: sin salida (0 problemas).
+- `pnpm exec vitest run tests/unit/types/vehiculos.test.ts tests/unit/services/vehiculo-service.test.ts tests/integration/actions/vehiculos-action.test.ts tests/components/TarifasAlineacionRejilla.test.tsx tests/components/TarifasClaridadMontos.test.tsx`: `Test Files 5 passed (5)`, `Tests 46 passed (46)`. Sin integración contra Postgres en esta task.
+
+### Bloqueo de T2.2 (hueco del design, sin decidir)
+R21 pide congelar el **nombre** del actor en `vehiculo_rastro`. El nombre está en `usuario`, que es modelo de **negocio** (`lib/db/modelos-de-negocio.ts`). El design §3 (alternativa A3) descarta `comoPlataforma` porque supone que «ninguna operación toca una tabla de negocio». Pero sin contexto, la extensión rechaza todo modelo de negocio con `EmpresaNoResuelta` (`lib/db/extension-empresa.ts`, `aplicar`, rama `!ctx`), también dentro de la `$transaction` interactiva. `resolverActorCongelado(tx, id)` fallaría así, y R7 lo prohíbe. Los precedentes leen el actor dentro de `comoPlataforma`: `PlanesRepository` (SL-24, en `EXCEPCIONES_DE_PLATAFORMA`) y `geografia-plataforma.ts` (SL-20). Hace falta decisión humana; opciones en el informe al leader.
+
+Un segundo punto para T2.4: `app/(app)/configuracion/vehiculos/_components/VehiculosModule.tsx` importa `crearVehiculo`, `actualizarVehiculo` y `borrarVehiculo`. Sacarlos de `lib/actions/vehiculos.ts` antes de T4.2 deja el typecheck rojo, y backend no toca `app/`.
+
+### Veredicto
+T2.1 hecha y verde. T2.2–T2.6 paradas por el hueco del contexto de datos para el actor del rastro (R7 contra R21).

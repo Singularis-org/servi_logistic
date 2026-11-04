@@ -24,7 +24,7 @@
 
 ## T2 — Dominio y borde (backend_dev)
 
-- [ ] T2.1 `lib/types/vehiculos.ts`: `activo` en `VehiculoDTO`, `renombrarVehiculoSchema`,
+- [x] T2.1 `lib/types/vehiculos.ts`: `activo` en `VehiculoDTO`, `renombrarVehiculoSchema`,
   `cambiarActivacionVehiculoSchema` (design §4.1). Dep.: T1.1.
   **Hecho:** `tests/unit/types/vehiculos.test.ts` cubre R9 (vacío, <2, >40, campo desconocido).
 - [ ] T2.2 `IVehiculoRepository` + `VehiculoRepository`: `findMany({ soloActivos? })`, `rename`,

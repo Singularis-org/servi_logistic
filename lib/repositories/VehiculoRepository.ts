@@ -11,9 +11,9 @@ type VehiculoPrismaClient = Pick<
   "vehiculo" | "usuario" | "tarifaZonaMensajero" | "$transaction" | "historialAccion"
 >;
 
-// Serializa la fila de Prisma a VehiculoDTO: solo id + name, sin campos internos.
+// Serializa la fila de Prisma a VehiculoDTO: id, name y activo, sin campos internos.
 function toDTO(row: Vehiculo): VehiculoDTO {
-  return { id: row.id, name: row.name };
+  return { id: row.id, name: row.name, activo: row.activo };
 }
 
 export class VehiculoRepository implements IVehiculoRepository {

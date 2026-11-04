@@ -19,9 +19,9 @@ const DESCONOCIDO: Actor = { usuarioId: "x", rol: "invitado" as RolValue };
 const NO_MAESTRO = [ADMIN, MENSAJERO, TIENDA, SATELITE, DESCONOCIDO];
 
 const SEED_ROWS: VehiculoDTO[] = [
-  { id: "veh-1", name: "camion" },
-  { id: "veh-2", name: "carro" },
-  { id: "veh-3", name: "moto" },
+  { id: "veh-1", name: "camion", activo: true },
+  { id: "veh-2", name: "carro", activo: true },
+  { id: "veh-3", name: "moto", activo: true },
 ];
 
 function buildRepo(overrides: Partial<IVehiculoRepository> = {}): IVehiculoRepository {
@@ -30,8 +30,8 @@ function buildRepo(overrides: Partial<IVehiculoRepository> = {}): IVehiculoRepos
     // El catalogo dejo de ser solo-lectura: el contrato gana el resto del CRUD.
     findById: vi.fn().mockResolvedValue(SEED_ROWS[0]),
     findByName: vi.fn().mockResolvedValue(null),
-    create: vi.fn(async (name: string) => ({ id: "veh-nuevo", name })),
-    update: vi.fn(async (id: string, name: string) => ({ id, name })),
+    create: vi.fn(async (name: string) => ({ id: "veh-nuevo", name, activo: true })),
+    update: vi.fn(async (id: string, name: string) => ({ id, name, activo: true })),
     delete: vi.fn().mockResolvedValue(true),
     contarUsos: vi.fn().mockResolvedValue(0),
     ...overrides,
