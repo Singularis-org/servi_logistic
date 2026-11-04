@@ -49,3 +49,7 @@ T8 (enmienda «sin `ruta`», aprobada por Camilo 2026-10-29): T8.1–T8.10 hecha
 ## Modelos (overrides)
 
 ## Cierre
+- 2026-11-04 · Rojo de CI en #44/#55/#75 (`salida-a-reparto-sql-real`, SLT-76 R15): el test daba a la provincia y al
+  cantón el mismo id literal y la sincronía dejaba un nodo padre de sí mismo. Con datos reales no ocurre (uuid
+  aleatorio en default, seed y carga CSV). Se cambia solo el id de la provincia en el test; 3 archivos verdes contra
+  `logistic_slt43_r1104b`. Detalle en `progress/impl_SLT-43.md`.
