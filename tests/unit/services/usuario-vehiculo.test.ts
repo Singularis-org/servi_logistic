@@ -211,3 +211,71 @@ describe("actualizar — vehiculo por rol (feature 21)", () => {
     expect(actualizado(repo).vehiculoId).toBeNull();
   });
 });
+
+// SL-42 (design §4.5; R18) — un tipo desactivado por la plataforma no se elige de nuevo, y quien
+// ya lo tiene lo conserva.
+describe("SL-42/R18 — vehiculo inactivo", () => {
+  /** El catalogo con `v1` activo y `v-off` inactivo; cualquier otro id no existe. */
+  function catalogoConInactivo(): IVehiculoRepository {
+    const filas: Record<string, { id: string; name: string; activo: boolean }> = {
+      v1: { id: "v1", name: "moto", activo: true },
+      "v-off": { id: "v-off", name: "carreta", activo: false },
+    };
+    return { ...buildVehiculoRepo(true), findById: vi.fn(async (id: string) => filas[id] ?? null) };
+  }
+
+  function errorDeVehiculo(r: Awaited<ReturnType<UsuarioService["crear"]>>): string[] | undefined {
+    return r.status === "validation_error" ? r.fieldErrors.vehiculoId : undefined;
+  }
+
+  it("R18: el alta de un mensajero con un tipo inactivo -> validation_error en `vehiculoId`, sin escribir", async () => {
+    const svc = new UsuarioService(repo, buildZonaRepo(), catalogoConInactivo());
+    const r = await svc.crear({ ...baseCrear, rolId: "rol-msg", zonaId: "z1", vehiculoId: "v-off" }, MAESTRO);
+    expect(r.status).toBe("validation_error");
+    expect(errorDeVehiculo(r)?.[0]).toMatch(/ya no esta disponible/);
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+
+  it("R18: la edicion que CAMBIA a un tipo inactivo -> validation_error en `vehiculoId`, sin escribir", async () => {
+    repo = buildRepo({ findById: vi.fn().mockResolvedValue(usuario({ vehiculoId: "v1" })) });
+    const svc = new UsuarioService(repo, buildZonaRepo(), catalogoConInactivo());
+    const r = await svc.actualizar("usr-1", { vehiculoId: "v-off" }, MAESTRO);
+    expect(r.status).toBe("validation_error");
+    if (r.status === "validation_error") expect(r.fieldErrors.vehiculoId?.[0]).toMatch(/ya no esta disponible/);
+    expect(repo.update).not.toHaveBeenCalled();
+  });
+
+  it("R18: la edicion que reenvia el mismo tipo inactivo que ya tiene sigue siendo valida", async () => {
+    repo = buildRepo({ findById: vi.fn().mockResolvedValue(usuario({ vehiculoId: "v-off" })) });
+    const svc = new UsuarioService(repo, buildZonaRepo(), catalogoConInactivo());
+    const r = await svc.actualizar("usr-1", { vehiculoId: "v-off", nombre: "Ana B" }, MAESTRO);
+    expect(r.status).toBe("ok");
+    expect(actualizado(repo).vehiculoId).toBe("v-off");
+  });
+
+  it("R18: la edicion que no toca el vehiculo (otro campo, o el mismo rol) conserva el inactivo", async () => {
+    repo = buildRepo({ findById: vi.fn().mockResolvedValue(usuario({ vehiculoId: "v-off" })) });
+    const svc = new UsuarioService(repo, buildZonaRepo(), catalogoConInactivo());
+    expect((await svc.actualizar("usr-1", { nombre: "Ana B" }, MAESTRO)).status).toBe("ok");
+    expect(actualizado(repo)).not.toHaveProperty("vehiculoId");
+
+    // Reenviar el rol que ya tiene recalcula el vehiculo con el actual: tampoco cae.
+    vi.clearAllMocks();
+    expect((await svc.actualizar("usr-1", { rolId: "rol-msg" }, MAESTRO)).status).toBe("ok");
+    expect(actualizado(repo).vehiculoId).toBe("v-off");
+  });
+
+  it("R18: cambiar de un inactivo a un tipo activo es valido", async () => {
+    repo = buildRepo({ findById: vi.fn().mockResolvedValue(usuario({ vehiculoId: "v-off" })) });
+    const svc = new UsuarioService(repo, buildZonaRepo(), catalogoConInactivo());
+    const r = await svc.actualizar("usr-1", { vehiculoId: "v1" }, MAESTRO);
+    expect(r.status).toBe("ok");
+    expect(actualizado(repo).vehiculoId).toBe("v1");
+  });
+
+  it("un id que no existe sigue diciendo que no existe, no que esta inactivo", async () => {
+    const svc = new UsuarioService(repo, buildZonaRepo(), catalogoConInactivo());
+    const r = await svc.crear({ ...baseCrear, rolId: "rol-msg", zonaId: "z1", vehiculoId: "fantasma" }, MAESTRO);
+    expect(errorDeVehiculo(r)?.[0]).toMatch(/no existe/);
+  });
+});

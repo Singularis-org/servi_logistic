@@ -66,7 +66,7 @@
 
 ## T3 — Lecturas de empresa (P3) (backend_dev + frontend_dev)
 
-- [ ] T3.1 **(P3)** `UsuarioService.resolverVehiculo` y `PostulacionRepository.vehiculoExiste`
+- [x] T3.1 **(P3)** `UsuarioService.resolverVehiculo` y `PostulacionRepository.vehiculoExiste`
   rechazan un inactivo nuevo (design §4.5). Dep.: T2.2.
   **Hecho:** `tests/unit/services/usuario-vehiculo.test.ts` y
   `tests/unit/services/postulacion-mensajero-service.test.ts` cubren R18 (alta y cambio a inactivo →

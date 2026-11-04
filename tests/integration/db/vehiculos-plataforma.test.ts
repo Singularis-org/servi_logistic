@@ -7,6 +7,7 @@ import { conEmpresa } from "@/lib/db/contexto-empresa";
 import { conAislamientoPorEmpresa } from "@/lib/db/extension-empresa";
 import { appendRastroVehiculo } from "@/lib/repositories/registrar-rastro-vehiculo";
 import { VehiculoRepository } from "@/lib/repositories/VehiculoRepository";
+import { PostulacionRepository } from "@/lib/repositories/PostulacionRepository";
 import {
   cambiarActivacionVehiculoAction,
   crearVehiculoAction,
@@ -310,6 +311,19 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("SL-42 — VehiculoRepository: escritura y r
     expect(r.reactivado?.activo).toBe(true);
     expect(r.rastro.map((f) => f.accion)).toEqual(["vehiculo_creado", "vehiculo_desactivado", "vehiculo_activado"]);
     expect(r.rastro[1]).toMatchObject({ vehiculo_nombre: r.vehiculo.name, valor_anterior: null, valor_nuevo: null });
+  });
+
+  it("R18 (T3.1) — la postulacion: `vehiculoExiste` es true con el activo y false con el inactivo o el que no existe", async () => {
+    const r = await conSuperadmin(async ({ tx, repo, actorId }) => {
+      const postulacion = new PostulacionRepository(tx as unknown as PrismaClient);
+      const vehiculo = await repo.create(nombreUnico("sl42 postulacion"), actorId);
+      const activo = await postulacion.vehiculoExiste(vehiculo.id);
+      await repo.setActivo(vehiculo.id, false, actorId);
+      const inactivo = await postulacion.vehiculoExiste(vehiculo.id);
+      const fantasma = await postulacion.vehiculoExiste(randomUUID());
+      return { activo, inactivo, fantasma };
+    });
+    expect(r).toEqual({ activo: true, inactivo: false, fantasma: false });
   });
 
   it("R12/R21 — renombrar o cambiar el estado de un id que no existe devuelve null y no deja rastro", async () => {
