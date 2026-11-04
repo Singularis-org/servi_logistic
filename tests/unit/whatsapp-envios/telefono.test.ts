@@ -1,9 +1,15 @@
 import { describe, it, expect } from "vitest";
-import { enmascararTelefono, telefonoValido } from "@/lib/whatsapp-envios/telefono";
+import { enmascararTelefono } from "@/lib/whatsapp-envios/telefono";
+import { telefonoSirveParaEnvio, type ReglasTelefono } from "@/lib/utils/telefono-pais";
+
+// SLT-42 (R20, R21): `telefonoValido` se retiro; sus casos se mantienen sobre
+// `telefonoSirveParaEnvio` con las reglas de Costa Rica y deben dar lo mismo.
+const CR: ReglasTelefono = { prefijo: "506", digitosNacionales: 8 };
+const telefonoValido = (raw: string | null): boolean => telefonoSirveParaEnvio(raw, CR);
 
 // Ficha 474 (T2.4, R17/R29/R42) — validez y enmascarado.
 
-describe("474/R29 — telefonoValido", () => {
+describe("474/R29 — telefono valido para envio (SLT-42: telefonoSirveParaEnvio con CR)", () => {
   it("vacio es invalido", () => {
     expect(telefonoValido("")).toBe(false);
     expect(telefonoValido(null)).toBe(false);

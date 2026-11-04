@@ -20,6 +20,7 @@ import type {
   ChatMensajeDTO,
   IChatMensajeRepository,
 } from "@/lib/interfaces/repositories/IChatMensajeRepository";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 const WAMID = "wamid.OUT-FALLIDO";
 
@@ -96,6 +97,7 @@ function deps(over: Partial<IChatMensajeRepository> = {}) {
   const lineas: string[] = [];
   const logger: ChatLogger = { warn: (m) => lineas.push(m) };
   const service = new ChatWhatsappService({
+    reglasPais: reglasPaisFijas(),
     conversacionRepo,
     mensajeRepo,
     encolarReintento,
@@ -243,6 +245,7 @@ describe("reintentarEnvio: un saliente de plantilla se reenvia COMO plantilla", 
     const enviarTexto = vi.fn(async () => ({ status: "ok" as const, mensajeId: "wamid.TXT" }));
     const reconciliarSaliente = vi.fn(async () => {});
     const service = new ChatWhatsappService({
+      reglasPais: reglasPaisFijas(),
       conversacionRepo: { findById: vi.fn(async () => hilo) } as unknown as IChatConversacionRepository,
       mensajeRepo: {
         findById: vi.fn(async () => salienteDTO({ tipo, estado: "queued" })),
@@ -285,6 +288,7 @@ describe("reintentarEnvio: un saliente de plantilla se reenvia COMO plantilla", 
   it("sin las deps de plantilla LANZA en vez de degradar a texto libre", async () => {
     const enviarTexto = vi.fn();
     const service = new ChatWhatsappService({
+      reglasPais: reglasPaisFijas(),
       conversacionRepo: { findById: vi.fn(async () => hilo) } as unknown as IChatConversacionRepository,
       mensajeRepo: {
         findById: vi.fn(async () => salienteDTO({ tipo: "plantilla", estado: "queued" })),

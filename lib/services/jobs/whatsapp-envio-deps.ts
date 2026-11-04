@@ -22,6 +22,7 @@ import { WhatsappMediaUploadClient } from "@/lib/clients/whatsapp-media-upload";
 import { whatsappDeLaEmpresa } from "@/lib/services/whatsapp/whatsapp-de-la-empresa";
 import { consoleLogger } from "@/lib/services/whatsapp/chat-logger";
 import { EjecucionEnvioService, type MetaEnvios } from "@/lib/services/EjecucionEnvioService";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { WhatsappEnvioService } from "@/lib/services/WhatsappEnvioService";
 
 export interface EnviosWhatsappDeps {
@@ -54,7 +55,9 @@ export function buildEnviosWhatsappDeps(now: () => Date = () => new Date()): Env
   const plantillas = new PlantillaMensajeRepository(prisma);
   const cola = new JobRepository(prisma);
   const almacen = new SupabaseAlmacenEnviosWhatsapp();
-  const ejecutor = new EjecucionEnvioService({ envios, ejecuciones, plantillas, almacen, cola, meta: metaReal, now });
-  const configuracion = new WhatsappEnvioService({ envios, ejecuciones, plantillas, cola, now });
+  // SLT-42 (R18, R20): el telefono de cada destinatario se valida con el pais de la empresa.
+  const reglasPais = construirReglasPaisEmpresa(prisma);
+  const ejecutor = new EjecucionEnvioService({ envios, ejecuciones, plantillas, almacen, cola, meta: metaReal, reglasPais, now });
+  const configuracion = new WhatsappEnvioService({ envios, ejecuciones, plantillas, cola, reglasPais, now });
   return { prisma, envios, ejecuciones, cola, almacen, ejecutor, configuracion };
 }

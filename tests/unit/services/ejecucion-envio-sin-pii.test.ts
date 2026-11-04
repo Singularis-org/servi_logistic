@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { EjecucionEnvioService, type MetaEnvios } from "@/lib/services/EjecucionEnvioService";
 import type { WhatsappEnvioOutcome } from "@/lib/clients/whatsapp-cloud";
 import { destinatario, ejecucionFila, ejecucionesRepo, envio, enviosRepo, plantilla } from "./_dobles-envios-474";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Ficha 474 (T7.2, R45) — ni el token, ni un secreto, ni un telefono COMPLETO en motivos, historial
 // ni logs. El detalle crudo de Meta (que repite el numero destino) NO se persiste: el motivo es el
@@ -20,6 +21,7 @@ describe("474/R45 — sin PII ni secretos", () => {
     const ej = ejecucionesRepo(ejecucionFila());
     const logs: string[] = [];
     const s = new EjecucionEnvioService({
+      reglasPais: reglasPaisFijas(),
       envios: enviosRepo({
         obtener: vi.fn(async () => envio({ encendido: true })),
         resolverDestinatarios: vi.fn(async () => [destinatario({ telefono: "8888-2222" })]),
@@ -46,6 +48,7 @@ describe("474/R45 — sin PII ni secretos", () => {
     const ej = ejecucionesRepo(ejecucionFila());
     const logs: string[] = [];
     const s = new EjecucionEnvioService({
+      reglasPais: reglasPaisFijas(),
       envios: enviosRepo({
         obtener: vi.fn(async () => envio({ encendido: true })),
         resolverDestinatarios: vi.fn(async () => [destinatario({ telefono: "8888-2222" })]),

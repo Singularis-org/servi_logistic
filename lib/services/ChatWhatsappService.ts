@@ -12,7 +12,9 @@ import type { IChatMensajeRepository } from "@/lib/interfaces/repositories/IChat
 import type { IPlantillaMensajeRepository } from "@/lib/interfaces/repositories/IPlantillaMensajeRepository";
 import type { IOrdenEnvioReader } from "@/lib/repositories/OrdenEnvioReader";
 import type { WebhookEventos, WebhookStatus } from "@/lib/types/whatsapp-webhook";
-import { normalizarTelefonoWa } from "@/lib/utils/whatsapp-telefono";
+import { PaisIncompleto } from "@/lib/db/errores-pais";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { normalizarTelefono, type ReglasTelefono } from "@/lib/utils/telefono-pais";
 import { esErrorTransitorio } from "@/lib/services/whatsapp/errores-meta";
 import { decidirEnrutadoPorCita, type DecisionCita } from "@/lib/services/whatsapp/enrutado-por-cita";
 import { construirComponentsEnvio } from "@/lib/utils/whatsapp-template";
@@ -135,6 +137,12 @@ export interface ChatWhatsappServiceDeps {
   conversacionRepo: IChatConversacionRepository;
   mensajeRepo: IChatMensajeRepository;
   /**
+   * SLT-42 (R18): reglas del pais de la empresa en curso. El telefono del cliente (clave del hilo,
+   * destino del envio, comparacion con `orden.telefono_dest`) se normaliza con SU prefijo y SUS
+   * digitos nacionales. Se lee una vez por operacion; la ingesta corre ya en `conEmpresa`.
+   */
+  reglasPais: IReglasPaisEmpresa;
+  /**
    * Cliente de envio. OPCIONAL: el webhook de INGESTA no envia nada (ni entrantes ni
    * statuses tocan la Graph API), asi que se construye el service sin cliente cuando la
    * credencial de ENVIO no esta configurada. `enviarTexto`/`reintentarEnvio` lo exigen.
@@ -196,6 +204,17 @@ export class ChatWhatsappService {
   }
 
   /**
+   * SLT-42 (R18): prefijo y digitos nacionales del pais de la empresa. Un pais sin ellos no puede
+   * normalizar: se falla cerrado con `PaisIncompleto` antes de escribir nada, en vez de keyear el
+   * hilo con una regla inventada.
+   */
+  private async reglasTelefono(): Promise<ReglasTelefono> {
+    const pais = await this.deps.reglasPais.deLaEmpresa();
+    if (pais.telefono === null) throw new PaisIncompleto(pais.paisId);
+    return pais.telefono;
+  }
+
+  /**
    * R6/R7/R8/R25: ingiere el lote ya normalizado del webhook. Por cada entrante resuelve la
    * orden destino por una de dos vias:
    *  - SLT-40: si el cliente uso «Responder» y el id citado es un SALIENTE de esta empresa cuya
@@ -214,7 +233,24 @@ export class ChatWhatsappService {
     let hilosMigrados = 0;
     let enrutadosPorCita = 0;
 
+    // SLT-42: el pais se lee con el primer entrante; un lote de puros statuses no lo lee.
+    let reglasDelLote: ReglasTelefono | undefined;
+
     for (const mensaje of eventos.mensajes) {
+      reglasDelLote ??= await this.reglasTelefono();
+      const reglas = reglasDelLote;
+      // SLT-42: el parser entrega los numeros del cambio de numero TAL CUAL; aqui se normalizan
+      // con el pais, y asi se guardan, se migran y keyean el hilo como antes.
+      const sistema =
+        mensaje.sistema === undefined
+          ? undefined
+          : {
+              telefonoAnterior:
+                mensaje.sistema.telefonoAnterior === null
+                  ? null
+                  : normalizarTelefono(mensaje.sistema.telefonoAnterior, reglas),
+              telefonoNuevo: normalizarTelefono(mensaje.sistema.telefonoNuevo, reglas),
+            };
       // Feature 311 (design §3, R16/R17/R18): el CAMBIO DE NUMERO se aplica ANTES de resolver
       // la orden, para que la burbuja de sistema de este mismo evento se escriba en un hilo ya
       // coherente con el numero nuevo.
@@ -229,10 +265,11 @@ export class ChatWhatsappService {
       //
       // El repo es tolerante al conflicto y devuelve 0 sin lanzar (P5), asi que la ingesta del
       // lote y su 200 se mantienen pase lo que pase. No se loguea ningun numero (R35).
-      if (mensaje.sistema !== undefined && mensaje.sistema.telefonoAnterior !== null) {
+      if (sistema !== undefined && sistema.telefonoAnterior !== null) {
         hilosMigrados += await this.deps.conversacionRepo.migrarTelefono(
-          mensaje.sistema.telefonoAnterior,
-          mensaje.sistema.telefonoNuevo,
+          sistema.telefonoAnterior,
+          sistema.telefonoNuevo,
+          reglas,
         );
       }
 
@@ -242,7 +279,7 @@ export class ChatWhatsappService {
       // La resolucion usa el `from` del evento, que en un cambio de numero es el ANTERIOR. Y
       // TIENE que ser asi: la orden se busca por `orden.telefono_dest`, que R17 prohibe tocar,
       // asi que el unico numero que casa con la orden sigue siendo el anterior.
-      const from = normalizarTelefonoWa(mensaje.telefonoE164);
+      const from = normalizarTelefono(mensaje.telefonoE164, reglas);
 
       // SLT-40 (design §4.2): la cita va ANTES que la regla por numero porque es la senal mas
       // precisa. Sin id citado no se consulta nada extra (R18). Esta rama no loguea nada: ni el
@@ -252,6 +289,7 @@ export class ChatWhatsappService {
           ? decidirEnrutadoPorCita(
               from,
               await this.deps.conversacionRepo.findHiloDeSalienteCitado(mensaje.citadoWaMessageId),
+              reglas,
             )
           : { via: "regla_actual", motivo: "sin_cita" };
       const resolucion =
@@ -262,7 +300,7 @@ export class ChatWhatsappService {
               mensajeroId: decision.mensajeroId,
               telefonoE164: decision.telefonoE164,
             }
-          : await this.deps.conversacionRepo.resolverOrdenActivaPorNumero(from);
+          : await this.deps.conversacionRepo.resolverOrdenActivaPorNumero(from, reglas);
       if (resolucion === null) {
         // R25/D4: el numero no mapea a ninguna orden viva y asignada. No se pierde el 200:
         // se cuenta y se sigue (sin loguear el numero, R11).
@@ -270,15 +308,17 @@ export class ChatWhatsappService {
         continue;
       }
 
-      const hilo = await this.deps.conversacionRepo.upsertParaOrden({
-        ordenId: resolucion.ordenId,
-        mensajeroId: resolucion.mensajeroId,
-        // Feature 311 (R18): tras migrar, el hilo de esta orden vive bajo el numero NUEVO. El
-        // upsert tiene que keyear por ese numero o crearia un hilo vacio con el viejo y la
-        // evidencia caeria fuera del hilo que el mensajero mira.
-        telefonoE164:
-          mensaje.sistema !== undefined ? mensaje.sistema.telefonoNuevo : resolucion.telefonoE164,
-      });
+      const hilo = await this.deps.conversacionRepo.upsertParaOrden(
+        {
+          ordenId: resolucion.ordenId,
+          mensajeroId: resolucion.mensajeroId,
+          // Feature 311 (R18): tras migrar, el hilo de esta orden vive bajo el numero NUEVO. El
+          // upsert tiene que keyear por ese numero o crearia un hilo vacio con el viejo y la
+          // evidencia caeria fuera del hilo que el mensajero mira.
+          telefonoE164: sistema !== undefined ? sistema.telefonoNuevo : resolucion.telefonoE164,
+        },
+        reglas,
+      );
 
       const insertado = await this.deps.mensajeRepo.insertarEntranteIdempotente({
         conversacionId: hilo.id,
@@ -301,8 +341,8 @@ export class ChatWhatsappService {
         reaccionAWaMessageId: mensaje.reaccion?.objetivoWaMessageId ?? null,
         reaccionEmoji: mensaje.reaccion?.emoji ?? null,
         contactos: mensaje.contactos ?? null,
-        sistemaTelefonoAnterior: mensaje.sistema?.telefonoAnterior ?? null,
-        sistemaTelefonoNuevo: mensaje.sistema?.telefonoNuevo ?? null,
+        sistemaTelefonoAnterior: sistema?.telefonoAnterior ?? null,
+        sistemaTelefonoNuevo: sistema?.telefonoNuevo ?? null,
         ocurridoAt: mensaje.ocurridoAt,
       });
 
@@ -382,12 +422,12 @@ export class ChatWhatsappService {
   async enviarTexto(input: EnviarTextoChatInput): Promise<EnviarTextoChatResult> {
     const client = this.requireClient();
     // Numero normalizado (solo digitos): misma clave del hilo y mismo destino en la Graph API.
-    const telefonoE164 = normalizarTelefonoWa(input.telefonoE164);
-    const hilo = await this.deps.conversacionRepo.upsertParaOrden({
-      ordenId: input.ordenId,
-      mensajeroId: input.mensajeroId,
-      telefonoE164,
-    });
+    const reglas = await this.reglasTelefono();
+    const telefonoE164 = normalizarTelefono(input.telefonoE164, reglas);
+    const hilo = await this.deps.conversacionRepo.upsertParaOrden(
+      { ordenId: input.ordenId, mensajeroId: input.mensajeroId, telefonoE164 },
+      reglas,
+    );
 
     // La ventana se decide por el ULTIMO ENTRANTE REAL del hilo (no la columna, que puede
     // quedar desincronizada): asi el envio coincide con el panel, que habilita el input cuando
@@ -448,12 +488,12 @@ export class ChatWhatsappService {
   async enviarPlantilla(input: EnviarPlantillaChatInput): Promise<EnviarPlantillaChatResult> {
     const client = this.requireClient();
     // Numero normalizado (solo digitos): misma clave del hilo y mismo destino en la Graph API.
-    const telefonoE164 = normalizarTelefonoWa(input.telefonoE164);
-    const hilo = await this.deps.conversacionRepo.upsertParaOrden({
-      ordenId: input.ordenId,
-      mensajeroId: input.mensajeroId,
-      telefonoE164,
-    });
+    const reglas = await this.reglasTelefono();
+    const telefonoE164 = normalizarTelefono(input.telefonoE164, reglas);
+    const hilo = await this.deps.conversacionRepo.upsertParaOrden(
+      { ordenId: input.ordenId, mensajeroId: input.mensajeroId, telefonoE164 },
+      reglas,
+    );
 
     const ahora = this.now();
     const outcome = await client.enviarPlantilla(
@@ -528,12 +568,12 @@ export class ChatWhatsappService {
       throw new Error("ChatWhatsappService: envio de adjuntos no configurado (cliente/subidor)");
     }
 
-    const telefonoE164 = normalizarTelefonoWa(input.telefonoE164);
-    const hilo = await this.deps.conversacionRepo.upsertParaOrden({
-      ordenId: input.ordenId,
-      mensajeroId: input.mensajeroId,
-      telefonoE164,
-    });
+    const reglas = await this.reglasTelefono();
+    const telefonoE164 = normalizarTelefono(input.telefonoE164, reglas);
+    const hilo = await this.deps.conversacionRepo.upsertParaOrden(
+      { ordenId: input.ordenId, mensajeroId: input.mensajeroId, telefonoE164 },
+      reglas,
+    );
 
     // R3: fuera de la ventana Meta NO acepta media libre (solo plantillas). Se sale AQUI, antes
     // de subir un solo byte: descubrirlo tras la subida seria gastar la red del mensajero para

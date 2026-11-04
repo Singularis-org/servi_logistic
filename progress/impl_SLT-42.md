@@ -181,3 +181,96 @@ Detalle de **R22**:
 - No hubo cambio de código de producción, así que no hay commit `fix`. Si el leader quiere quitar la fragilidad, hay que tocar
   el test (precalentar exceljs o subir el timeout de ese `waitFor`), y eso queda fuera de este encargo.
 - Esto corrige la nota anterior («con el `fecha-cr.ts` viejo también falla 2 de 4»). La causa es la misma: carga, no SLT-42.
+
+## Tanda 2 · Parte A (choque de migraciones) y T4.1 (2026-11-04)
+
+### Parte A — renombre de las tres migraciones
+- `git mv` a `20261104140000_slt42_pais_telefono_y_zona`, `20261104140100_slt42_tipo_documento_por_pais` y
+  `20261104140200_slt42_usuario_documento_unico_por_tipo`, detrás de la última de `dev` (`20261104130100`). El SQL no cambió;
+  sí las referencias a sus nombres en los `down.sql`, `db/schema.prisma`, `scripts/seed-catalogos.ts`, `tests/fabricas/reglas-pais.ts`,
+  el test de ida y vuelta (también `ULTIMA_ANTERIOR`, que pasa a ser `20261104130100_historial_accion_plan_tipo_cobro_cambiado`),
+  `design.md` y `tasks.md`.
+- Dependencias cruzadas con SLT-52: ninguna. Sus ocho migraciones no tocan `pais`, `tipo_identificacion` ni `usuario_cedula_key`.
+  Solo tienen FK a `usuario(id)`, y eso no lo cambia SLT-42.
+- `logistic_slt42_test`: se renombraron las 3 filas de `_prisma_migrations`, y después `prisma migrate deploy` aplicó las 8 de SLT-52.
+- `migracion-slt42-ida-y-vuelta` + `tipo-documento-por-pais`: `Test Files 2 passed (2) · Tests 12 passed (12)`, ninguno saltado.
+
+### T4.1 — archivos
+- Modificados en `lib/`: `services/UsuarioService.ts`, `repositories/UserRepository.ts`, `interfaces/repositories/IUserRepository.ts`,
+  `interfaces/services/IUsuarioService.ts`, `types/usuario.ts` y `actions/usuarios.ts` (cablea `construirReglasPaisEmpresa`).
+- Tests nuevos: `tests/unit/services/usuario-service-pais.test.ts` y `tests/integration/db/tipos-identificacion-por-pais.test.ts`.
+- Tests ajustados:
+  - inyectan `reglasPaisFijas(CR)` y usan datos válidos de CR: `usuario-service`, `-tope-plan`, `usuario-vehiculo`, `usuario-zona` y
+    `nombres-que-imprime-la-etiqueta`;
+  - `usuario-service-superadmin`: casos de R17;
+  - `usuario-restablecer-contrasena`: el constructor pasa de 5 a 6 parámetros;
+  - `user-repository.crud`, `usuarios-composition` (sexto cable), `aislamiento-usuarios` (reglas reales) y `historial-accion-atomicidad`.
+- Fábricas: `empresa-y-usuarios.ts` pasa las reglas reales y saca la cédula por defecto del correo (9 dígitos). `e2e.ts` ya no manda
+  `cedula: "e2e-…"`, que R10 rechazaría.
+
+### Mapa R → test (T4.1)
+| R | Test |
+|---|---|
+| R5 | `usuario-service-pais` «R5: pide al repositorio…»; `tipos-identificacion-por-pais` «R5: el WHERE…» y «R5, R31: por el servicio…»; `user-repository.crud` «SLT-42 R5…» |
+| R9 | `usuario-service-pais`: los tres «R9: …» |
+| R10 | `usuario-service-pais`: los cinco «R10: …» |
+| R11 | `usuario-service-pais`: los cinco «R11: …» (inexistente, inactivo, de otro país, en alta y en edición) |
+| R12 | `usuario-service-pais`: los dos «R12: …» |
+| R14 | `usuario-service-pais`: los cuatro «R14…» |
+| R15 | `usuario-service-pais`: los dos «R15: …» |
+| R16 | `usuario-service-pais`: los dos «R16: …» |
+| R17 | `usuario-service-superadmin`: los cuatro «R17: …» |
+| R31 (R5) | `tipos-identificacion-por-pais` (CR y `XA`) |
+
+### Salida
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: exit 0.
+- `eslint --max-warnings=0` sobre los 24 archivos tocados: «No issues found».
+- Unit (18 archivos: los de UsuarioService, actions, repositorio, `geografia-predicado-unico` y `empresas-page`): `Test Files 18 passed (18) · Tests 281 passed (281)`.
+- Integración en `logistic_slt42_test`: el nuevo, `aislamiento-usuarios`, `usuarios-sin-superadmin` y `restablecer-contrasena-sql-real` dan
+  `Test Files 4 passed (4) · Tests 24 passed (24)`.
+- `historial-accion-atomicidad`: 17 fallos, por «referencia a otra empresa» en los datos de la base de pruebas. La versión de HEAD da
+  los mismos 17, así que es del entorno y no del cambio. Los 3 casos de 379 que tocan el servicio no llegan a ejercitarlo.
+- `test:guardias`: 7 rojos, ninguno de T4.1:
+  - `dependencias-declaradas-presentes` (4), el heredado de la incidencia 8;
+  - `catalogo-postgres-acota-esquema` (2), porque falta `telefono-cr-sql.ts` mientras T4.4 está en curso;
+  - `rollup-guards` R47 (1), por una cifra en `lib/utils/calendario-zona.ts` (fix-up de la tanda 1).
+
+### Desvíos / decisiones a confirmar
+1. `listTiposIdentificacion(paisId?)`: el país es opcional porque `app/(app)/plataforma/empresas/page.tsx` (plataforma, sin empresa)
+   lo llama sin argumento. Sin país devuelve el catálogo entero ordenado por `value`, como antes. Que esa pantalla filtre por el país
+   elegido le toca a SLT-81/T4.3.
+2. R17 en `UsuarioService`: «sin empresa» es que el puerto lance `EmpresaNoResuelta`. En ese caso teléfono y documento pasan por
+   `numericIdentifierSchema`; cualquier otro error se propaga. En la práctica no se alcanza (`ALLOWED_ROLES` = maestro).
+3. El tope de forma del borde es 30 caracteres para teléfono y documento (`USUARIO_*_MAX_CHARS`). El design no da la cifra: el 30 sale
+   del CHECK de `largo_max`.
+4. R12: el error va en `tipoIdentificacionId`, con el mensaje de la regla del documento («El documento guardado no cumple la regla de este tipo. …»).
+
+Veredicto: Parte A y T4.1 terminadas. Typecheck y lint limpios, tests de T4.1 en verde; los rojos que quedan son del entorno o de otras tareas.
+
+## Tanda 2 · T4.4 WhatsApp con el prefijo del país (2026-11-04)
+
+**Archivos**
+- Producción: `lib/repositories/ChatConversacionRepository.ts` (resolución D4 con `sqlNormalizarTelefono("o.telefono_dest", 1, 2)` vía `$queryRawUnsafe`, prefijo/dígitos/número como `$1/$2/$3`), `lib/interfaces/repositories/IChatConversacionRepository.ts` (`resolverOrdenActivaPorNumero`, `upsertParaOrden`, `migrarTelefono` reciben `ReglasTelefono`), `lib/services/ChatWhatsappService.ts` (dep `reglasPais: IReglasPaisEmpresa`; `PaisIncompleto` si el país no tiene prefijo/dígitos; la ingesta normaliza `from` y el cambio de número), `lib/services/whatsapp/enrutado-por-cita.ts` (recibe reglas), `lib/types/whatsapp-webhook.ts` (el parser ya no normaliza: entrega los números del cambio de número recortados; «utilizable» = tiene algún dígito), `lib/services/EjecucionEnvioService.ts` y `lib/services/WhatsappEnvioService.ts` (`telefonoSirveParaEnvio`/`normalizarTelefono` con reglas; `construirPreview(resueltos, reglas)`), `lib/whatsapp-envios/telefono.ts` (se retira `telefonoValido`), `lib/services/jobs/whatsapp-bienvenida-handler.ts` (guarda «sin teléfono» = sin dígitos), composición: `app/api/webhooks/whatsapp/route.ts`, `lib/actions/chat-whatsapp.ts`, `lib/services/jobs/whatsapp-chat-envio-handler.ts`, `lib/services/jobs/whatsapp-envio-deps.ts` (`construirReglasPaisEmpresa(prisma)`), `lib/utils/busqueda-texto-sql.ts` (comentario). **Borrado:** `lib/utils/telefono-cr-sql.ts`.
+- Tests nuevos: `tests/unit/services/chat-whatsapp-telefono-por-pais.test.ts`. Ampliados/parametrizados: `tests/integration/db/chat-entrante-telefono-cr.test.ts`, `tests/unit/repositories/chat-conversacion-repository.test.ts`, `tests/unit/services/enrutado-por-cita.test.ts`, `tests/unit/services/previsualizar-destinatarios.test.ts`, `tests/unit/services/ejecucion-envio-prueba.test.ts`, `tests/unit/types/whatsapp-webhook.test.ts`, `tests/unit/whatsapp-envios/telefono.test.ts`, `tests/unit/utils/telefono-pais.test.ts`. Ajustados solo para inyectar `reglasPaisFijas()` o pasar `TEL_CR`: `chat-whatsapp-service`, `chat-whatsapp-respuesta-citada`, `whatsapp-fallo-saliente`, `ejecucion-envio-{service,informe-error,sin-pii}`, `whatsapp-envio-service{,-picking}`, `envios-whatsapp-actions`, y los de integración `chat-respuesta-citada`, `corregir-datos-cliente.chat`, `whatsapp-envio-ejecucion-admintienda`.
+- `chat-entrante-telefono-cr` y `corregir-datos-cliente.chat` siembran ahora en la empresa de las FKs (`enTransaccionRevertida(..., { organizacionId })`): con la empresa nueva del fixture caían en «referencia a otra empresa» (están en `tests/baseline-rojos.json` por eso). Ahora pasan.
+
+**R → test**
+| R | Test |
+|---|---|
+| R18 | `chat-whatsapp-telefono-por-pais.test.ts` (ingesta, cambio de número, `enviarTexto`, `enviarPlantilla` con país `999`/7); `chat-conversacion-repository.test.ts` «SLT-42 R18/R19: el prefijo y los digitos del pais viajan como PARAMETROS…» y «SLT-42 R18: con otro pais…»; `enrutado-por-cita.test.ts` «SLT-42 R18…»; `chat-entrante-telefono-cr.test.ts` casos «local de otro pais…» y los dos «SLT-42 R18…» (Postgres real) |
+| R19 | `chat-entrante-telefono-cr.test.ts` «R19: `sqlNormalizarTelefono` y `normalizarTelefono` producen EL MISMO texto (Costa Rica / un pais con otro prefijo y otro largo)» (Postgres real) |
+| R20 | `ejecucion-envio-prueba.test.ts` «SLT-42 R18/R20…» (3 its); `previsualizar-destinatarios.test.ts` «SLT-42 R20…»; `whatsapp-envios/telefono.test.ts` |
+| R21 | `chat-whatsapp-telefono-por-pais.test.ts` «R21: con Costa Rica…»; los casos CR de `chat-entrante-telefono-cr.test.ts`; todos los tests de chat y envíos previos, en verde con `reglasPaisFijas()` |
+
+**Salida**
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: exit 0.
+- `vitest run` (48 archivos unitarios que importan lo tocado + guardia `sql-a-mano-por-empresa`): `Test Files 48 passed (48) · Tests 708 passed (708)`.
+- `vitest run` integración contra `logistic_slt42_test` (9 archivos: chat-entrante, corregir-datos chat, chat-respuesta-citada, admintienda, busqueda-texto paridad, webhook route y middleware, jobs bienvenida y chat-envio): `Test Files 9 passed (9) · Tests 53 passed (53)`, ninguno saltado. `historico-conversaciones.int.test.ts` sigue rojo en su `beforeAll` (mismo fixture, en el baseline; no lo toqué).
+- `eslint --max-warnings=0` sobre los 36 archivos: 0 errores, 8 warnings `no-unused-vars` (`_d/_n/_i/_c`) en `ejecucion-envio-prueba.test.ts:22` y `ejecucion-envio-service.test.ts:25`, líneas previas a T4.4.
+
+**Desvíos y preguntas**
+1. Rastreo público (`RastreoPublicoService`) sigue con `normalizarTelefonoCR`: corre sin empresa en contexto (busca por guía) y el design no dice de dónde saca el país para el teléfono; T5.6 resuelve su zona. Solo compara los últimos `DIGITOS_SEGUNDO_FACTOR` dígitos, así que el prefijo no cambia el resultado mientras ese número ≤ dígitos nacionales. Pregunta abierta.
+2. `CorregirDatosClienteService` sigue importando `normalizarTelefonoWa` (solo para «¿tiene dígitos?») porque `corregir-datos-sin-rastro.guardia.test.ts` exige ese import literal. Fuera del alcance de T4.4; lo verá la guardia de R29.
+3. País sin prefijo o sin dígitos: chat y envíos lanzan `PaisIncompleto` antes de escribir. En el webhook eso hace fallar el lote de esa empresa (no es un 200). El design no fija este caso para WhatsApp.
+
+Veredicto: T4.4 terminada; typecheck limpio, tests de chat y envíos en verde, R18–R21 con test.

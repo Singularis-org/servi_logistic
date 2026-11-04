@@ -7,7 +7,6 @@ import {
 } from "@/lib/utils/telefono-pais";
 import { normalizarTelefonoCR } from "@/lib/utils/telefono-cr";
 import { normalizarTelefonoWa } from "@/lib/utils/whatsapp-telefono";
-import { telefonoValido } from "@/lib/whatsapp-envios/telefono";
 
 // SLT-42 (R18, R20, R21). La tabla de CR se genero el 2026-11-03 corriendo el codigo ANTERIOR a esta
 // ficha (`normalizarTelefonoCR`, `normalizarTelefonoWa` y `telefonoValido` sin tocar) sobre cada
@@ -65,11 +64,12 @@ describe("telefono-pais con los datos de CR da lo mismo que el codigo anterior (
     expect(telefonoSirveParaEnvio(undefined, CR)).toBe(false);
   });
 
-  it("los envoltorios de la UI y el validador viejo siguen dando la tabla congelada", () => {
-    for (const [entrada, normalizado, sirve] of TABLA_CR_CONGELADA) {
+  // `telefonoValido` (el validador viejo) se retiro en T4.4: su columna `sirve` la cubre ahora el
+  // `it.each` de `telefonoSirveParaEnvio` de arriba.
+  it("los envoltorios de la UI siguen dando la tabla congelada", () => {
+    for (const [entrada, normalizado] of TABLA_CR_CONGELADA) {
       expect(normalizarTelefonoCR(entrada)).toBe(normalizado);
       expect(normalizarTelefonoWa(entrada)).toBe(normalizado);
-      expect(telefonoValido(entrada)).toBe(sirve);
     }
   });
 });

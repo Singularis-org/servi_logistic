@@ -44,8 +44,10 @@ import {
 import { esEventoDisponible, eventosDisponibles, perfilDeEvento } from "@/lib/whatsapp-envios/eventos";
 import { encolarProximaOcurrencia } from "@/lib/whatsapp-envios/encolar";
 import { diaIsoDe } from "@/lib/whatsapp-envios/proxima-ocurrencia";
-import { enmascararTelefono, telefonoValido } from "@/lib/whatsapp-envios/telefono";
-import { normalizarTelefonoWa } from "@/lib/utils/whatsapp-telefono";
+import { enmascararTelefono } from "@/lib/whatsapp-envios/telefono";
+import { PaisIncompleto } from "@/lib/db/errores-pais";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { normalizarTelefono, telefonoSirveParaEnvio, type ReglasTelefono } from "@/lib/utils/telefono-pais";
 import { MAX_DESTINATARIOS } from "@/lib/config/whatsapp-envios";
 
 // R1 (D1): SOLO `maestro`, el patron de `/configuracion` y de las plantillas.
@@ -77,6 +79,11 @@ export interface WhatsappEnvioServiceDeps {
   ejecuciones: Pick<IWhatsappEjecucionRepository, "ultimaPorEnvio">;
   plantillas: ILectorPlantillaDeInforme;
   cola: Pick<IJobRepository, "enqueue">;
+  /**
+   * SLT-42 (R18, R20): reglas del pais de la empresa en curso. Si un destinatario «tiene telefono
+   * valido» se decide con SU prefijo y SUS digitos nacionales.
+   */
+  reglasPais: IReglasPaisEmpresa;
   now?: () => Date;
   /** Catalogo inyectable (tests); por defecto el real. */
   informe?: (clave: string) => InformeWhatsapp<unknown> | null;
@@ -95,6 +102,13 @@ export class WhatsappEnvioService implements IWhatsappEnvioService {
   constructor(private readonly deps: WhatsappEnvioServiceDeps) {
     this.now = deps.now ?? (() => new Date());
     this.informe = deps.informe ?? informePorClave;
+  }
+
+  /** SLT-42 (R18, R20): sin prefijo o digitos del pais se falla cerrado con `PaisIncompleto`. */
+  private async reglasTelefono(): Promise<ReglasTelefono> {
+    const pais = await this.deps.reglasPais.deLaEmpresa();
+    if (pais.telefono === null) throw new PaisIncompleto(pais.paisId);
+    return pais.telefono;
   }
 
   async listar(actor: Actor): Promise<ListarEnviosServiceResult> {
@@ -163,7 +177,8 @@ export class WhatsappEnvioService implements IWhatsappEnvioService {
       for (const [campo, msgs] of Object.entries(v.errores)) for (const m of msgs) motivos.push(`${campo}: ${m}`);
     }
     const resueltos = await this.deps.envios.resolverDestinatarios(id, ROLES_PERMITIDOS);
-    if (!resueltos.some((d) => telefonoValido(d.telefono))) motivos.push(MSG.noEncendibleSinTelefono);
+    const reglas = await this.reglasTelefono();
+    if (!resueltos.some((d) => telefonoSirveParaEnvio(d.telefono, reglas))) motivos.push(MSG.noEncendibleSinTelefono);
     if (motivos.length > 0) return { status: "no_encendible", motivos };
 
     const ok = await this.deps.envios.cambiarEncendido(id, true, actor.usuarioId);
@@ -202,7 +217,7 @@ export class WhatsappEnvioService implements IWhatsappEnvioService {
     if (!ALLOWED_ROLES.has(actor.rol)) return { status: "forbidden" };
     const roles = sel.roles.filter((r) => ROLES_PERMITIDOS.includes(r));
     const resueltos = await this.deps.envios.resolverDestinatariosDe({ roles, usuarioIds: sel.usuarioIds }, ROLES_PERMITIDOS);
-    return { status: "ok", preview: construirPreview(resueltos) };
+    return { status: "ok", preview: construirPreview(resueltos, await this.reglasTelefono()) };
   }
 
   listarEventosDisponibles(actor: Actor): { status: "ok"; eventos: EventoDisponibleDTO[] } | { status: "forbidden" } {
@@ -378,17 +393,18 @@ export class WhatsappEnvioService implements IWhatsappEnvioService {
 /** R17: lista deduplicada por usuario con avisos de telefono invalido y de telefono compartido. */
 export function construirPreview(
   resueltos: { usuarioId: string; nombre: string; telefono: string; rol: RolValue }[],
+  reglas: ReglasTelefono,
 ): PreviewDestinatariosDTO {
-  const normal = new Map(resueltos.map((d) => [d.usuarioId, normalizarTelefonoWa(d.telefono)]));
+  const normal = new Map(resueltos.map((d) => [d.usuarioId, normalizarTelefono(d.telefono, reglas)]));
   const cuenta = new Map<string, number>();
   for (const d of resueltos) {
-    if (!telefonoValido(d.telefono)) continue;
+    if (!telefonoSirveParaEnvio(d.telefono, reglas)) continue;
     const n = normal.get(d.usuarioId) as string;
     cuenta.set(n, (cuenta.get(n) ?? 0) + 1);
   }
   const avisos: string[] = [];
   const destinatarios = resueltos.map((d) => {
-    const valido = telefonoValido(d.telefono);
+    const valido = telefonoSirveParaEnvio(d.telefono, reglas);
     const n = normal.get(d.usuarioId) as string;
     const compartido = valido && (cuenta.get(n) ?? 0) > 1;
     if (!valido) avisos.push(`${d.nombre} no tiene un teléfono válido: no recibirá el mensaje.`);

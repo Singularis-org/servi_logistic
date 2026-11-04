@@ -11,6 +11,7 @@ import { z } from "zod";
 import type { JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
 import type { JobHandler } from "@/lib/interfaces/services/IJobQueueService";
 import { ChatWhatsappService } from "@/lib/services/ChatWhatsappService";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { ChatConversacionRepository } from "@/lib/repositories/ChatConversacionRepository";
 import { ChatMensajeRepository } from "@/lib/repositories/ChatMensajeRepository";
 import { PlantillaMensajeRepository } from "@/lib/repositories/PlantillaMensajeRepository";
@@ -31,6 +32,8 @@ export async function buildWhatsappChatEnvioService(): Promise<ChatWhatsappServi
   return new ChatWhatsappService({
     conversacionRepo: new ChatConversacionRepository(prisma),
     mensajeRepo: new ChatMensajeRepository(prisma),
+    // SLT-42 (R18): el telefono del cliente se normaliza con el pais de la empresa.
+    reglasPais: construirReglasPaisEmpresa(prisma),
     client: new WhatsappCloudClient({ config, logger: consoleLogger, fetchImpl }),
     // Necesarios para reenviar un saliente `tipo=plantilla` COMO plantilla (misma cadena de
     // resolucion que `EnvioPlantillaWhatsappService`). Sin ellos el reintento de una plantilla

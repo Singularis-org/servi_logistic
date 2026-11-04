@@ -86,7 +86,7 @@
 - [ ] **T4.3** `[P]` `OrganizacionService.altaEmpresa` (R6, y R10/R14 del maestro con el país elegido) +
   `tests/unit/services/organizacion-service-pais.test.ts`.
   *Hecho:* verde; `validation_error` en `paisId` y en `maestro.*` sin escribir.
-- [ ] **T4.4** `[P]` WhatsApp con el prefijo del país: `ChatConversacionRepository` y
+- [x] **T4.4** `[P]` WhatsApp con el prefijo del país: `ChatConversacionRepository` y
   `busqueda-texto-sql.ts` con `sqlNormalizarTelefono` parametrizado; envío, webhook, bienvenida y
   rastreo con `normalizarTelefono`/`telefonoSirveParaEnvio`. Se retira `telefono-cr-sql.ts`.
   `chat-entrante-telefono-cr.test.ts` se parametriza (R19).

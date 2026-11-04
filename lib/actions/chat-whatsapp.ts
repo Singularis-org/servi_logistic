@@ -11,6 +11,7 @@ import { OrdenEnvioReader } from "@/lib/repositories/OrdenEnvioReader";
 import { ChatConversacionRepository } from "@/lib/repositories/ChatConversacionRepository";
 import { ChatMensajeRepository } from "@/lib/repositories/ChatMensajeRepository";
 import { ChatWhatsappService } from "@/lib/services/ChatWhatsappService";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { crearEncolarReintentoChatEnvio } from "@/lib/services/jobs/whatsapp-chat-envio-encolado";
 import { JobRepository } from "@/lib/repositories/JobRepository";
 import { PlantillaMensajeRepository } from "@/lib/repositories/PlantillaMensajeRepository";
@@ -71,6 +72,8 @@ async function buildEnvioService(): Promise<ChatWhatsappService | null> {
   return new ChatWhatsappService({
     conversacionRepo: new ChatConversacionRepository(prisma),
     mensajeRepo: new ChatMensajeRepository(prisma),
+    // SLT-42 (R18): el telefono del cliente se normaliza con el pais de la empresa.
+    reglasPais: construirReglasPaisEmpresa(prisma),
     client: new WhatsappCloudClient({ config, logger: consoleLogger, fetchImpl }),
     // Feature 316: cliente de SUBIDA aparte del de envio (design 3.1). Sin el, `enviarMedia`
     // del service falla claro en vez de a medias.

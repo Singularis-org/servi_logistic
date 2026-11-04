@@ -4,6 +4,7 @@ import type { InformeWhatsapp } from "@/lib/whatsapp-envios/informes/tipos";
 import { crearInformePicking } from "@/lib/whatsapp-envios/informes/picking/informe";
 import type { IPickingRepository } from "@/lib/interfaces/repositories/IPickingRepository";
 import { destinatario, ejecucionFila, ejecucionesRepo, envio, enviosRepo, plantilla } from "./_dobles-envios-474";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Ficha 476 (T1.1, design §3.1, R7) — la rama `{ tipo: "error" }` de ResultadoInforme en el MOTOR: la
 // ejecucion termina `error` con el motivo del informe (visible en el historial), sin entregas, sin
@@ -31,6 +32,7 @@ function montar(origen: "programado" | "prueba" = "programado") {
   const subir = vi.fn();
   const metaFabrica = vi.fn((): MetaEnvios => ({ enviador: { enviarPlantilla }, subidor: { subir }, idioma: "es" }));
   const s = new EjecucionEnvioService({
+    reglasPais: reglasPaisFijas(),
     envios,
     ejecuciones: ej.repo,
     plantillas: {

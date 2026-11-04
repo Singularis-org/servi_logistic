@@ -14,6 +14,7 @@ import {
   serializarEscriturasReales,
 } from "./_postgres-real";
 import { ETIQUETA_ROL, crearEnvio, crearPlantilla, crearUsuario, usuarioModelo } from "./_whatsapp-envios-474";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Ficha 474 — m4 de la review (enmienda de R16 AL EJECUTAR). El envio se guardo con un usuario
 // `admin` elegido por USUARIO; despues ese usuario pasa a `adminTienda`. Con un informe NO apto
@@ -73,6 +74,7 @@ describeSiHayBase("474/R16 enmienda (m4) — adminTienda excluido al ejecutar", 
         idioma: "es",
       };
       const s = new EjecucionEnvioService({
+        reglasPais: reglasPaisFijas(),
         envios: new WhatsappEnvioRepository(cliente),
         ejecuciones,
         plantillas: {

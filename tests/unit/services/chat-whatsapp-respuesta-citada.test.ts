@@ -8,6 +8,11 @@ import type {
 } from "@/lib/interfaces/repositories/IChatConversacionRepository";
 import type { IChatMensajeRepository } from "@/lib/interfaces/repositories/IChatMensajeRepository";
 import type { WebhookEventos, WebhookMensajeEntrante } from "@/lib/types/whatsapp-webhook";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import type { ReglasTelefono } from "@/lib/utils/telefono-pais";
+
+// SLT-42 (R18): el servicio pasa al repositorio las reglas del pais (aqui, `reglasPaisFijas()` = CR).
+const TEL_CR: ReglasTelefono = { prefijo: "506", digitosNacionales: 8 };
 
 // SLT-40 T4 (design §4.2) — el paso nuevo de `ingerirEventos`: un entrante que cita un saliente
 // va al hilo de ese saliente; si la cita no sirve, la regla por numero de siempre. Repos fakeados:
@@ -99,6 +104,7 @@ function montar(hilo: HiloCitado | null, insertado = true) {
   const msg = fakeMensajeRepo(insertado);
   const warn = vi.fn();
   const service = new ChatWhatsappService({
+    reglasPais: reglasPaisFijas(),
     conversacionRepo: conv,
     mensajeRepo: msg,
     logger: { warn },
@@ -118,7 +124,7 @@ describe("SLT-40 — ingerirEventos enruta por mensaje citado", () => {
       ordenId: "orden-vieja",
       mensajeroId: "men-vieja",
       telefonoE164: FROM,
-    });
+    }, TEL_CR);
     expect(m.conv.resolverOrdenActivaPorNumero).not.toHaveBeenCalled();
     expect(m.msg.insertarEntranteIdempotente).toHaveBeenCalledWith(
       expect.objectContaining({ conversacionId: "hilo-vieja", waMessageId: "wamid.ENTRANTE_1" }),
@@ -132,7 +138,7 @@ describe("SLT-40 — ingerirEventos enruta por mensaje citado", () => {
 
       await m.service.ingerirEventos(lote(entrante({ tipo, cuerpo: tipo === "texto" ? CUERPO : null })));
 
-      expect(m.conv.upsertParaOrden).toHaveBeenCalledWith(expect.objectContaining({ ordenId: "orden-vieja" }));
+      expect(m.conv.upsertParaOrden).toHaveBeenCalledWith(expect.objectContaining({ ordenId: "orden-vieja" }), TEL_CR);
       expect(m.conv.resolverOrdenActivaPorNumero).not.toHaveBeenCalled();
     },
   );
@@ -147,7 +153,7 @@ describe("SLT-40 — ingerirEventos enruta por mensaje citado", () => {
       ordenId: "orden-vieja",
       mensajeroId: "men-B",
       telefonoE164: FROM,
-    });
+    }, TEL_CR);
   });
 
   it("R9: una orden citada en estado terminal pero no eliminada se enruta por cita", async () => {
@@ -171,12 +177,12 @@ describe("SLT-40 — ingerirEventos enruta por mensaje citado", () => {
 
     const r = await m.service.ingerirEventos(lote(entrante()));
 
-    expect(m.conv.resolverOrdenActivaPorNumero).toHaveBeenCalledWith(FROM);
+    expect(m.conv.resolverOrdenActivaPorNumero).toHaveBeenCalledWith(FROM, TEL_CR);
     expect(m.conv.upsertParaOrden).toHaveBeenCalledWith({
       ordenId: "orden-nueva",
       mensajeroId: "men-nueva",
       telefonoE164: FROM,
-    });
+    }, TEL_CR);
     expect(r.enrutadosPorCita).toBe(0);
     expect(r.mensajesRegistrados).toBe(1);
   });
@@ -271,8 +277,8 @@ describe("SLT-40 — ingerirEventos enruta por mensaje citado", () => {
     const r = await m.service.ingerirEventos(lote(entrante({ citadoWaMessageId: undefined })));
 
     expect(m.conv.findHiloDeSalienteCitado).not.toHaveBeenCalled();
-    expect(m.conv.resolverOrdenActivaPorNumero).toHaveBeenCalledWith(FROM);
-    expect(m.conv.upsertParaOrden).toHaveBeenCalledWith(expect.objectContaining({ ordenId: "orden-nueva" }));
+    expect(m.conv.resolverOrdenActivaPorNumero).toHaveBeenCalledWith(FROM, TEL_CR);
+    expect(m.conv.upsertParaOrden).toHaveBeenCalledWith(expect.objectContaining({ ordenId: "orden-nueva" }), TEL_CR);
     expect(r.enrutadosPorCita).toBe(0);
   });
 });

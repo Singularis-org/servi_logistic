@@ -41,9 +41,10 @@ import type { InformeWhatsapp } from "@/lib/whatsapp-envios/informes/tipos";
 import { CLAVE_DESTINATARIO_NOMBRE, informePorClave } from "@/lib/whatsapp-envios/informes/catalogo";
 import { sanearValor } from "@/lib/whatsapp-envios/sanear-valor";
 import { MOTIVO_TRANSITORIO_AGOTADO, acotarMotivo, motivoMeta } from "@/lib/whatsapp-envios/motivo-meta";
-import { telefonoValido } from "@/lib/whatsapp-envios/telefono";
 import { dedupeKeyReintento, MAX_INTENTOS_REINTENTO } from "@/lib/whatsapp-envios/encolar";
-import { normalizarTelefonoWa } from "@/lib/utils/whatsapp-telefono";
+import { PaisIncompleto } from "@/lib/db/errores-pais";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { normalizarTelefono, telefonoSirveParaEnvio, type ReglasTelefono } from "@/lib/utils/telefono-pais";
 import { construirComponentsEnvio } from "@/lib/utils/whatsapp-template";
 import { retencionDiasPdf, VENTANA_PRUEBA_MS } from "@/lib/config/whatsapp-envios";
 import type { NotificacionEvento } from "@/lib/types/notificacion";
@@ -94,6 +95,11 @@ export interface EjecucionEnvioServiceDeps {
    * desde SL-36: la credencial se lee de la base de la empresa en curso.
    */
   meta: () => MetaEnvios | Promise<MetaEnvios>;
+  /**
+   * SLT-42 (R18, R20): reglas del pais de la empresa en curso. El telefono de cada destinatario se
+   * normaliza y se valida con SU prefijo y SUS digitos nacionales.
+   */
+  reglasPais: IReglasPaisEmpresa;
   now?: () => Date;
   informe?: (clave: string) => InformeWhatsapp<unknown> | null;
   logger?: LoggerEnvios;
@@ -116,6 +122,16 @@ export class EjecucionEnvioService implements IEjecucionEnvioService {
     this.now = deps.now ?? (() => new Date());
     this.informe = deps.informe ?? informePorClave;
     this.logger = deps.logger ?? { warn: (m) => console.warn(m) };
+  }
+
+  /**
+   * SLT-42 (R18, R20): prefijo y digitos nacionales del pais de la empresa. Sin ellos no hay como
+   * normalizar ni validar: se falla cerrado con `PaisIncompleto` en vez de usar otro pais.
+   */
+  private async reglasTelefono(): Promise<ReglasTelefono> {
+    const pais = await this.deps.reglasPais.deLaEmpresa();
+    if (pais.telefono === null) throw new PaisIncompleto(pais.paisId);
+    return pais.telefono;
   }
 
   async ejecutar(ejecucionId: string, opts: { destinatarioPrueba?: DestinatarioPrueba } = {}): Promise<ResultadoEjecucion> {
@@ -154,12 +170,13 @@ export class EjecucionEnvioService implements IEjecucionEnvioService {
     if (resueltos !== null && !informe.aptoParaAdminTienda) {
       const excluidos = resueltos.filter((d) => d.rol === "adminTienda");
       if (excluidos.length > 0) {
+        const reglas = await this.reglasTelefono();
         await this.deps.ejecuciones.insertarEntregas(
           e.id,
           excluidos.map((d) => ({
             usuarioId: d.usuarioId,
             destinatarioNombre: d.nombre,
-            telefono: normalizarTelefonoWa(d.telefono),
+            telefono: normalizarTelefono(d.telefono, reglas),
             estado: "rechazo_permanente" as const,
             motivo: MOTIVOS.adminTienda,
           })),
@@ -260,14 +277,15 @@ export class EjecucionEnvioService implements IEjecucionEnvioService {
     }
 
     // R23/R27/R29: entregas idempotentes por (ejecucion, usuario).
+    const reglas = await this.reglasTelefono();
     await this.deps.ejecuciones.insertarEntregas(
       e.id,
       destinatarios.map((d) => {
-        const valido = telefonoValido(d.telefono);
+        const valido = telefonoSirveParaEnvio(d.telefono, reglas);
         return {
           usuarioId: d.usuarioId,
           destinatarioNombre: d.nombre,
-          telefono: normalizarTelefonoWa(d.telefono),
+          telefono: normalizarTelefono(d.telefono, reglas),
           estado: valido ? "pendiente" : "telefono_invalido",
           motivo: valido ? null : MOTIVOS.telefonoInvalido,
         };
@@ -339,7 +357,7 @@ export class EjecucionEnvioService implements IEjecucionEnvioService {
     }
     // R40: el telefono de quien pulsa, validado ANTES de crear nada.
     const yo = await this.deps.envios.contactoDeUsuario(actor.usuarioId);
-    if (yo === null || !telefonoValido(yo.telefono)) {
+    if (yo === null || !telefonoSirveParaEnvio(yo.telefono, await this.reglasTelefono())) {
       return {
         status: "telefono_invalido",
         mensaje: "Tu teléfono no es válido para WhatsApp: corrígelo en tu perfil antes de probar.",
