@@ -402,3 +402,20 @@ El spec E2E de R16 está escrito y sin correr en local. D12 está cerrada, la ar
 
 ### Arreglo del E2E de PR #76 (2026-11-04)
 - `e2e/superadmin-arranque.spec.ts`: el menú del superadmin es exactamente `["Empresas", "Planes", "Geografía", "Vehículos"]`, y el título y la cabecera citan SL-42 R1. Ningún otro spec de `e2e/` fija el menú del superadmin ni el submenú «Configuración» del `maestro`; `superadmin-empresas.spec.ts` solo afirma que «Empresas» no está.
+
+### Arreglo de `gate-completo` de PR #76: recuentos de la ayuda (2026-11-04)
+- **Causa:** T4.4 retiró `docs/ayuda/oficina/configuracion-vehiculos.md` (`roles: [maestro, admin]`). Cinco tests fijan a mano los recuentos del catálogo de ayuda; no estaban relacionados por import y por eso el gate local no los corrió. No hay ningún fallo de código de la app.
+- **Ajustes, con su nota SL-42 (R19):**
+  - catálogo y maestro: 38→37;
+  - admin: 38→37;
+  - carpeta `oficina/`: 23→22;
+  - lo que el maestro ve como suyo: 28→27;
+  - lo que el admin ve como suyo: 21→20.
+- **Archivos:**
+  - `tests/components/AyudaLayout.test.tsx`
+  - `tests/integration/asistente-route.test.ts`
+  - `tests/unit/asistente/acotamiento-por-rol.test.ts`
+  - `tests/unit/asistente/contexto-documental.test.ts`
+  - `tests/unit/ayuda/acotamiento-por-rol.test.ts`
+- **Antes:** `Test Files 5 failed`, `Tests 8 failed | 72 passed (80)`.
+- **Después:** `Test Files 5 passed (5)`, `Tests 80 passed (80)`. `eslint` sobre los 5 archivos: sin avisos.
