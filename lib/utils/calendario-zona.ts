@@ -51,7 +51,7 @@ interface Pared {
 // los barridos de 366/400 dias se salian del `testTimeout`. Ambas funciones son puras (zona + ms ->
 // resultado), asi que memoizar no cambia ningun resultado. El tope evita crecer sin limite en un
 // proceso largo: al llenarse, el mapa de esa zona se vacia entero (sencillo y suficiente).
-const TOPE_MEMO = 20_000;
+const TOPE_MEMO = 16_384;
 const memoPared = new Map<string, Map<number, Pared>>();
 const memoInstante = new Map<string, Map<number, number>>();
 

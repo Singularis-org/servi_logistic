@@ -320,3 +320,5 @@ Veredicto: T4.4 terminada; typecheck limpio, tests de chat y envíos en verde, R
 5. **Fuera del design:** `IPaisRepository.tieneTipoDocumentoActivo`. Además, `cedulaExiste` pasa a buscar por empresa y tipo, e `IPostulacionRepository.tipoIdentificacionExiste` queda sin uso (no se borró).
 6. **El tipo de la postulación llega como `id`, no como `value`.** Así lo manda `app/postulacion/page.tsx`. Se aceptan las dos formas, con un test para cada una.
 7. **El navegador ya no comprueba que cédula y teléfono sean numéricos.** `postulacionSchema` lo comparte el cliente; esa comprobación queda solo en el servidor.
+
+- **Decisión 2026-11-04, humano: opción A.** `TOPE_MEMO` de `lib/utils/calendario-zona.ts` pasa de `20_000` a `16_384`: la guardia R47 (`tests/unit/analytics/rollup-guards.test.ts`) exige que la cifra de volumen 20000 viva solo en `lib/config/analitica-rollup.ts`, y el tope de la caché coincidía por casualidad. La guardia no se toca.
