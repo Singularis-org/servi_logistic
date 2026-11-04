@@ -962,3 +962,35 @@ Decisión humana (Cristian, 2026-11-03): «Diagnosticar y enmendar».
 - `pnpm run test:guardias`: 331 archivos, 330 en verde. Hay 4 rojos, todos en `dependencias-declaradas-presentes.guardia.test.ts`, que está en `baseline-rojos.json`.
 - Unit: `zona-repository` 61/61 en verde. `catalogo-y-choke-point` y `caja-459-migration` en verde. `geo-repository-arbol-zonas`, `catalogo-filtros-ordenes`, `geografia-service` y `geografia-action`: 103/103.
 - Integración: `zona-distrito-unica` y `geo-lecturas-catalogo` dan 10 rojos y 7 verdes. No están en la baseline. Son dos choques entre SLT-44 y SLT-75 que quedan ABIERTOS en `progress/features/SLT-65.md > Decisiones`: el fixture `geo-44` con un distrito en dos zonas, y `EmpresaNoResuelta` en el R14 de SLT-75.
+
+## Paso B tras el merge de SLT-44 (implementer, 2026-11-04)
+
+**Contexto:** merge de `origin/feature/SLT-44-geo-jerarquica-dominio` (Parte A, `590682e9`, enmienda
+«un distrito, una zona») en `d2769756`. El implementer anterior se colgó (watchdog de 600 s). En
+esta vuelta todo corre archivo por archivo, con `timeout`, el `.env` de la raíz (`localhost:5432/logistic`)
+y `NODE_OPTIONS=--max-old-space-size=8192`.
+
+**Commit `9b4e0004` test(SLT-65):** `zona-distrito-unica.test.ts` envuelve el `fn(...)` del escenario
+en `conEmpresa(A, ...)`. `enTransaccionRevertida` deja la empresa por defecto en `contextoActual`, y el
+catálogo de SLT-44 busca `organizacion` por ese id, de ahí `EmpresaNoResuelta` en R14. Es un arreglo
+del arnés del test: no cambia ningún `expect`.
+
+**R4: guardar:** con ese cambio pasa. No hizo falta tocarlo ni llamar a backend_dev. Su rojo de la
+corrida del 2026-11-03 salía de la misma causa (contexto de empresa) o del fixture geo-44 con un
+distrito en dos zonas, que SLT-44 ya arregló en `590682e9`. No lo aislé más porque ya está en verde.
+
+**Corridas (todas exit 0):**
+- `zona-distrito-unica`: 9/9.
+- `geo-lecturas-catalogo` 8/8 · `geo-equivalencia-dinero` 8/8 · `geo-catalogo-repository` 8/8 ·
+  `geo-lecturas-sin-backfill` 2/2 · `geo-consultas-conteo` 4/4 · `geo-consultas-cierre` 5/5 ·
+  `geo-consultas-ordenes` 6/6 · `geo-consultas-zona` 4/4 · `geo-equivalencia` 4/4 ·
+  `geo-equivalencia-consultas` 9/9 · `geo-65-fixture` 1/1 · `geo-backfill` 16/16 ·
+  `geo-explain-consultas` 11/11 · `geo-nodo-invariantes` 15/15 · `geo-nodo-rls` 2/2 ·
+  `geo-normalizar-nombre` 4/4 · `geo-sincronia-geografia` 8/8 · `geo-sincronia-orden-zonas` 10/10 ·
+  `geo-tipo-nivel` 7/7 · `geo-trigger-orden-rendimiento` en verde (el bucle salió 0).
+- `pnpm run typecheck`: exit 0.
+- `pnpm run test:guardias`: 323 de 331 archivos en verde y 7 tests en rojo. Detalle:
+  - `dependencias-declaradas-presentes` (4 tests): está en `baseline-rojos.json`.
+  - `filtros-url-r25`, `otp-debug-solo-en-pruebas`, `descargas-por-registro` y `sin-estados-retirados`:
+    cayeron por timeout (20 s en `readdirSync` del árbol). Esa corrida coincidió con la de integración.
+    Corridos solos pasan: 2 + 27 tests en lote, y 9/9 y 6/6 por separado. No son rojos de SLT-65.
