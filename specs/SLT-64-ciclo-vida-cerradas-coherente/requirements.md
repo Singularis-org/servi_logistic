@@ -22,17 +22,19 @@
    mensajero**, no cierre aprobado.
 2. La cifra sigue a la **última gestión vigente** en el momento de la consulta. Una anulación o una
    corrección la mueven.
-3. Lo precalculado se invalida o se recalcula cuando se anula o se corrige una gestión:
-   - la caché de las lecturas de entregas de Analítica (TTL de 15 min, hoy sin invalidador por evento);
-   - el rollup diario `analytics_daily` de la fecha afectada.
+3. La caché de las lecturas de entregas de Analítica (TTL de 15 min, hoy sin invalidador por evento)
+   se invalida cuando se anula o se corrige una gestión.
 4. El inicio del reloj (`orden.created_at`) no cambia. El fin pasa a ser el instante de la gestión
    final.
 
 **Lo que NO entra** (con su porqué en `design.md > §2 Consumidores`):
 
-- **La tabla de cohorte de carga.** Su desenlace sigue en la transición terminal. Se decide en Q2.
+- **El recálculo por evento del rollup `analytics_daily`** (los antiguos R18–R23): va a ficha aparte
+  (por crear), por decisión de Carlos del 2026-10-30, porque añade un tipo de job con migración y
+  escribe dentro de las transacciones de anular y corregir; lo imprescindible está en `design.md > §8`.
+- **La tabla de cohorte de carga.** Su desenlace sigue en la transición terminal (Q2, decidida).
 - **La métrica `tiempo_ciclo` del rollup** (Q5 de `AnaliticaRollupRepository`), que se publica por
-  API key, ni su gemela en vivo (`AnaliticaOperativaVivaRepository`). Se decide en Q3.
+  API key, ni su gemela en vivo (`AnaliticaOperativaVivaRepository`) (Q3, decidida).
 - **Madurez, efectividad, anillo, desglose por status y productos.** Ya leen la última gestión
   vigente y no cambian de lógica; solo ganan la invalidación de caché.
 - **Monitoreo** (`TableroDiaRepository`): no es Analítica.
@@ -44,7 +46,7 @@
 | # | Fecha · quién | Decisión | Requisitos que la cubren |
 |---|---|---|---|
 | D1 | 2026-10-30 · Carlos | «Cerrada» en Analítica es la **gestión final del mensajero** (entregado, devolución, incidente), no el cierre aprobado. Del código sale el conjunto exacto: `entregado`, `devolucion_a_origen_por_rechazo` e `incidente` (ver Q1 sobre `novedad`). | R1, R2, R6, R10 |
-| D2 | 2026-10-30 · Carlos | Si una gestión se anula o se corrige, el dato de Analítica se mueve con la corrección: se usa la última gestión vigente al consultar, y la caché y el rollup se invalidan o se recalculan. | R5, R7, R8, R12–R23 |
+| D2 | 2026-10-30 · Carlos | Si una gestión se anula o se corrige, el dato de Analítica se mueve con la corrección: la cifra sigue a la última gestión vigente al consultar y la caché se invalida aquí. El rollup `analytics_daily` queda para la ficha aparte (por crear). | R5, R7, R8, R12–R17 |
 | D3 | 2026-10-30 · Carlos (vía leader) | El inicio de la métrica no cambia (`orden.created_at`). El fin pasa a ser el instante de la gestión final vigente. | R3 |
 | D4 | 2026-10-30 · spec_author (técnica, D2 la deriva) | La ventana del filtro cae sobre el instante de la gestión final, igual que hoy cae sobre la transición terminal: lo que cerró en el periodo, con su duración. | R4 |
 
@@ -115,7 +117,8 @@ de Analítica **antes** de responder. Las tres vías son:
 DEBE invalidar las mismas etiquetas que en R12 antes de responder.
 
 **R14.** SI el deshacer o la corrección no se aplica (`conflict`, `forbidden`, `validation_error`,
-`unauthenticated` o `fuera_de_alcance`), ENTONCES el sistema NO DEBE invalidar ninguna etiqueta.
+`unauthenticated` o, en la corrección, `no_encontrada`), ENTONCES el sistema NO DEBE invalidar ninguna
+etiqueta.
 
 **R15.** SI la invalidación falla después de que la escritura se confirmó, ENTONCES el sistema:
 - DEBE registrar el fallo en el log, sin PII ni ids de dominio;
@@ -128,31 +131,6 @@ la lista de etiquetas invalidadas (registro de la 128, R23).
 «Actualizar» de Analítica (`refrescarCacheAnalitica`) para las lecturas de entregas. NO DEBE haber
 una segunda lista escrita a mano.
 
-### C. Rollup diario
-
-**R18.** CUANDO se anula o se corrige con éxito una gestión cuyo `created_at`, en fecha de Costa
-Rica, es **anterior** a la fecha de hoy en Costa Rica, el sistema DEBE encolar, **en la misma
-transacción** que la escritura, un trabajo `analitica_reagregar_fecha` para esa fecha y con la
-empresa de la orden.
-
-**R19.** SI la fecha de Costa Rica del `created_at` de la gestión es la de hoy, ENTONCES el sistema
-NO DEBE encolar ese trabajo.
-
-**R20.** SI la escritura de anulación o de corrección revierte, ENTONCES NO DEBE quedar ningún
-trabajo `analitica_reagregar_fecha` encolado por ella.
-
-**R21.** CUANDO el drenador procesa un trabajo `analitica_reagregar_fecha`, el sistema DEBE
-re-agregar **exactamente** la fecha de su payload con el mismo agregado del job diario y, después,
-DEBE invalidar las etiquetas del dominio `operativa`. SI la re-agregación o la invalidación fallan,
-ENTONCES el trabajo NO DEBE reportar éxito.
-
-**R22.** CUANDO se re-agrega la fecha D después de anular una gestión `entregado` de D,
-`analytics_daily` DEBE dejar de contar esa gestión en la medida `entregas` de D.
-
-**R23.** La migración que añade el valor `analitica_reagregar_fecha` al enum `job_tipo` DEBE traer
-su `down.sql`, que lo retira recreando el tipo con el criterio de
-`20260803140000_job_tipo_analitica_invalidacion_cache`.
-
 ## Trazabilidad prevista
 
 Las mutaciones que cada test debe matar están en `design.md > §7`.
@@ -162,51 +140,26 @@ Las mutaciones que cada test debe matar están en `design.md > §7`.
 | R1, R2, R3, R4, R5, R6, R7, R8, R9, R11 | `tests/integration/db/ciclo-vida-gestion-final.int.test.ts` (Postgres real) |
 | R10 | `tests/unit/analytics/ciclo-vida-resultados-de-cierre.guardia.test.ts` |
 | R12, R14, R15, R16 | `tests/unit/actions/deshacer-gestion-invalida-analitica.test.ts` |
-| R13, R14, R15 | `tests/unit/actions/corregir-resultado-invalida-analitica.test.ts` |
+| R13, R14, R15, R16 | `tests/unit/actions/corregir-resultado-invalida-analitica.test.ts` |
 | R12, R13 (cableado real) | `tests/unit/analytics/cache-invalidacion-correccion-cableado.test.ts` |
 | R17 | `tests/unit/analytics/tags-entregas-fuente-unica.test.ts` |
-| R18, R19, R20 | `tests/integration/db/reagregacion-por-correccion.int.test.ts` (Postgres real) |
-| R21 | `tests/unit/services/analitica-reagregar-fecha-handler.test.ts` |
-| R22 | `tests/integration/db/rollup-reagregado-tras-anulacion.int.test.ts` (Postgres real) |
-| R23 | `tests/integration/db/job-tipo-analitica-reagregar-fecha-migration.test.ts` |
 
 ## Preguntas abiertas
 
-Ninguna bloquea el diseño: el spec avanza con el **supuesto por defecto** de cada una, y la
-aprobación del spec en `spec_ready` lo confirma o lo cambia.
+Ninguna. Q1, Q2 y Q3 quedaron decididas con su supuesto por defecto: **No, 2026-10-30, Carlos**.
+Q4 salió de este spec con el rollup y pasa a la ficha aparte (`design.md > §8`).
 
-- **Q1 — ¿`novedad` cierra?**
-  - **Lo que dijo Carlos:** «entregado, devolución, incidente».
-  - **Lo que hay en el código:**
-    - `novedad` no es final: lleva la orden a `novedad`, la tienda la resuelve con plazo y la orden
-      puede volver a reparto (spec 100, «resolver novedad»);
-    - `devolucion_a_origen_por_rechazo` sí lo es: lleva a `rechazada`, de ahí a `por_devolver` y de
-      ahí a `devuelta_a_tienda`, que es terminal, sin otra gestión de entrega;
-    - pero el rollup llama «devoluciones» a las `novedad` y «rechazos» a las de rechazo
-      (`AnaliticaRollupRepository` Q3).
-  - **Consecuencia del supuesto:** una orden con `novedad` que termina devuelta a la tienda **no**
-    cuenta como cerrada en el ciclo de vida.
-  - **Supuesto por defecto:** «devolución» = `devolucion_a_origen_por_rechazo`, y `novedad` no cierra.
-  - **Hay que confirmar:** si `novedad` cierra, o si la llegada a `devuelta_a_tienda` también debe
-    cerrar la orden.
-- **Q2 — La cohorte de carga.** Su desenlace y sus «días promedio» siguen en la transición terminal.
-  Su DTO lo declara a propósito: «`devuelta` significa devolución anclada, no lote cerrado».
-  - **Consecuencia:** mientras no haya cierres aprobados, la cohorte mostrará todo «viva» al lado de
-    un ciclo de vida con cerradas.
-  - **Supuesto por defecto:** la cohorte no cambia en esta ficha. Cambiarla toca su tipo de cubos,
-    la tabla y ocho tests de integración.
-  - **Hay que confirmar:** ¿se alinea aquí, en otra ficha o no se alinea?
-- **Q3 — `tiempo_ciclo` del rollup y de la API.** El catálogo publica `tiempo_ciclo` por API key
-  (`METRICAS_API_KEY`) y lo calcula sobre la transición terminal (Q5 del rollup), igual que el
-  tablero operativo en vivo. Hoy ese tablero no se pinta: su región del shell está comentada.
-  - **Consecuencia:** tras esta ficha hay dos «tiempos de ciclo» con definiciones distintas, el de la
+- **Q1 — ¿`novedad` cierra? No.** «Devolución» = `devolucion_a_origen_por_rechazo`. Tampoco cierra la
+  llegada a `devuelta_a_tienda`.
+  - **Por qué:** `novedad` no es final; la tienda la resuelve con plazo y la orden puede volver a
+    reparto (spec 100, «resolver novedad»).
+  - **Consecuencia aceptada:** una orden con `novedad` que termina devuelta a la tienda **no** cuenta
+    como cerrada en el ciclo de vida.
+- **Q2 — ¿Se alinea la cohorte de carga? No.** Su desenlace y sus «días promedio» siguen en la
+  transición terminal.
+  - **Consecuencia aceptada:** mientras no haya cierres aprobados, la cohorte mostrará todo «viva» al
+    lado de un ciclo de vida con cerradas.
+- **Q3 — ¿Se toca `tiempo_ciclo` del rollup y de la API? No.** Es un contrato público
+  (`METRICAS_API_KEY`).
+  - **Consecuencia aceptada:** hay dos «tiempos de ciclo» con definiciones distintas, el de la
     pantalla y el de la API.
-  - **Supuesto por defecto:** no se toca, porque es un contrato público.
-  - **Hay que confirmar:** ¿se acepta la divergencia o se abre una ficha para la API?
-- **Q4 — El rollup se recalcula por evento.**
-  - **La regla de hoy:** D3+D8 de la 124 dice que el job diario nunca recomputa fechas pasadas y que
-    corregir es un acto deliberado del backfill (125).
-  - **Lo que pide D2 de esta ficha:** recalcular la fecha cuando se anula o se corrige una gestión.
-    R18 lo hace con un trabajo **aparte** del diario, que no toca R35 de la 124.
-  - **Supuesto por defecto:** D2 deroga D8 para este caso.
-  - **Hay que confirmar:** ¿se acepta?
