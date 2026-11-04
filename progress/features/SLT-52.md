@@ -7,7 +7,7 @@
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F2.1 (2026-11-03): T0-T5 hechas (incl. T4.5-T4.8 y T5.5). Siguiente: T6 → T7 → reviewer. Detalle en `progress/impl_SLT-52.md`.
+F2.1 (2026-11-03): T0-T6 hechas. Siguiente: T7 → reviewer. Detalle en `progress/impl_SLT-52.md`.
 Ojo: `prisma generate` ya conoce las tablas de T1; una base sin sus migraciones falla en `cierreDetail.create`.
 
 ## Evaluación
@@ -52,6 +52,7 @@ Ninguna.
   CierreDiaRepository:1352 (T5.2). Firmas dobles a estrechar en T5.
 - 2026-11-03 · T4.5-T4.8 (IVA del fulfillment, `rechazo_tienda_cobro.tarifa_valor_id` + 2 migraciones, R51, `ivaFulfillment` en la API) · f6efb67e · gate VERDE. 5 mutaciones en rojo. `costoReal.ivaFulfillment` = "0.00" hasta T5.3.
 - 2026-11-03 · T5.1-T5.5 (cierre: pago por gestión, congelado, base del % desde el cobro congelado R52-R55) · ceb2455a, 02899491, 561a2059 · gate VERDE sin .env (no corría integración). Con .env salió la 450 (recuento por subcadena con `cierre_detail_concepto`) → fbc659d9. Rojos que quedan: 4 del estado de la base local (también en dev) + `carga-division`, inestable en paralelo.
+- 2026-11-03 · T6 (escritura de tarifa_valor y grupos, fábrica, ZonaRepository.update por diferencia) · 63d627cb, 5fd6ec27 · gate con .env: solo los 4 rojos de la base local (también en dev) + `slt73-marcar-asienta`, inestable en paralelo (solo pasa 11/11). 18 mutaciones en rojo.
 - 2026-11-03 · T5 (pago por gestión con el resolver, congelado en crearCierre, lectura congelada, ivaFulfillment del snapshot; integración 6/6) · ceb2455a + este commit · gate VERDE. 11 mutaciones en rojo.
 
 ## Modelos (overrides)
