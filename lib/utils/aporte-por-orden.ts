@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import type { GestionResultado } from "@prisma/client";
-import type { TarifaVigente } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
+import type { TarifaCongelada } from "@/lib/utils/cierre-detalle";
 import { derivarIngresoOrden } from "@/lib/utils/ingreso-empresa";
 import type { WalletIngresoConcepto, WalletMovimientoCategoria } from "@/lib/types/wallet";
 import type { WalletTiendaMovimientoCategoria } from "@/lib/types/wallet-tienda";
@@ -436,8 +436,11 @@ export interface OrdenCongelada {
   /** STRING escala 2, o `null` (la columna es nullable en origen). Nunca `number`. */
   montoCobrar: string | null;
   cobraComision: boolean;
-  /** Reconstruida con `tarifaDe`; `null` = la tienda no tenia tarifa vigente al solicitar. */
-  tarifa: TarifaVigente | null;
+  /**
+   * Reconstruida con `tarifaDe` (SLT-52: el sobre de los dos modelos); `null` = la tienda no tenia
+   * tarifa vigente al solicitar (solo en el viejo).
+   */
+  tarifa: TarifaCongelada | null;
 }
 
 /** Una gestion de ESA orden en ESE cierre. Los importes, STRING escala 2, o `null`. */

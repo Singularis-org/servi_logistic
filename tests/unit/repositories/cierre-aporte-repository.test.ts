@@ -83,7 +83,8 @@ describe("CierreAporteRepository — la forma de la consulta (R21/R22)", () => {
     const where = whereDe(findMany);
     expect(where.cierreId).toBe(CIERRE);
     // Los tres hechos de `cierre_detail` que exige la comision COD, en el WHERE y no en memoria.
-    expect(where.tarifaId).toEqual({ not: null });
+    // SLT-52 (R41/R42): «hay tarifa congelada» = tarifa vieja (`tarifa_id`) o cierre del nuevo.
+    expect(where.OR).toEqual([{ tarifaId: { not: null } }, { tarifaModelo: "nuevo" }]);
     expect(where.cobraComision).toBe(true);
     expect(where.montoCobrar).toEqual({ gt: 0 });
     // Y el hecho de la GESTION, como un EXISTS acotado al MISMO cierre.
@@ -103,7 +104,7 @@ describe("CierreAporteRepository — la forma de la consulta (R21/R22)", () => {
       rango: RANGO,
     });
     const where = whereDe(findMany);
-    expect(where.tarifaId).toEqual({ not: null });
+    expect(where.OR).toEqual([{ tarifaId: { not: null } }, { tarifaModelo: "nuevo" }]);
     // Las claves que NO exige sencillamente NO aparecen: un `false`/`undefined` explicito
     // cambiaria el SQL emitido.
     expect("cobraComision" in where).toBe(false);
@@ -122,6 +123,7 @@ describe("CierreAporteRepository — la forma de la consulta (R21/R22)", () => {
     });
     const where = whereDe(findMany);
     expect("tarifaId" in where).toBe(false);
+    expect("OR" in where).toBe(false);
     expect(where.orden).toEqual({
       gestiones: {
         some: {
@@ -229,8 +231,11 @@ describe("CierreAporteRepository — la forma de la consulta (R21/R22)", () => {
     // Money-safe en la proyeccion: Decimal -> STRING escala 2, y la tarifa reconstruida con la
     // MISMA funcion que usan los feeds.
     expect(pagina.items[0].orden.montoCobrar).toBe("14900.00");
-    expect(pagina.items[0].orden.tarifa?.valorFlete).toBe("1000.00");
-    expect(pagina.items[0].orden.tarifa?.comisionCod).toBe("3.50");
+    // SLT-52 (T5.3): el sobre que da `tarifaDe`; la vieja va dentro.
+    const sobre = pagina.items[0].orden.tarifa;
+    expect(sobre?.modelo).toBe("viejo");
+    expect(sobre?.modelo === "viejo" ? sobre.tarifa.valorFlete : null).toBe("1000.00");
+    expect(sobre?.modelo === "viejo" ? sobre.tarifa.comisionCod : null).toBe("3.50");
     expect(pagina.items[0].gestiones).toEqual([
       { resultado: "entregado", montoRecibido: "14900.00", pagoMensajero: "1500.00", indemnizacion: null },
       { resultado: "reprogramado", montoRecibido: null, pagoMensajero: null, indemnizacion: null },

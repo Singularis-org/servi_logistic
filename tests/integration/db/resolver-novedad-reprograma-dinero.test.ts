@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { pagoViejoPorGestion } from "@/tests/fixtures/tarifa-tienda";
 import type { CierreGestionPendienteRow } from "@/lib/interfaces/repositories/ICierreDiaRepository";
 import type { PagoTarifa } from "@/lib/interfaces/repositories/ITarifaZonaMensajeroRepository";
 import type { TarifaVigente } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
@@ -138,8 +139,8 @@ describe("Feature 100 [💰] T5.3 — cerrar un dia CON la reprogramada da los M
   ];
 
   it("pago total al mensajero no cambia", () => {
-    const sin = derivarPagos(diaSinReprogramada, TARIFA_MENSAJERO);
-    const con = derivarPagos(diaConReprogramada, TARIFA_MENSAJERO);
+    const sin = derivarPagos(diaSinReprogramada, pagoViejoPorGestion(diaSinReprogramada, TARIFA_MENSAJERO));
+    const con = derivarPagos(diaConReprogramada, pagoViejoPorGestion(diaConReprogramada, TARIFA_MENSAJERO));
     expect(con.total).toBe(sin.total);
     expect(con.total).toBe("1500.00"); // solo la entregada paga
     // La linea de la reprogramada existe en el desglose pero en 0.00 (no aporta al total).
@@ -147,8 +148,8 @@ describe("Feature 100 [💰] T5.3 — cerrar un dia CON la reprogramada da los M
   });
 
   it("ingreso total de bodega por rechazo no cambia", () => {
-    const sin = derivarIngresoBodega(diaSinReprogramada, TARIFA_MENSAJERO);
-    const con = derivarIngresoBodega(diaConReprogramada, TARIFA_MENSAJERO);
+    const sin = derivarIngresoBodega(diaSinReprogramada, pagoViejoPorGestion(diaSinReprogramada, TARIFA_MENSAJERO));
+    const con = derivarIngresoBodega(diaConReprogramada, pagoViejoPorGestion(diaConReprogramada, TARIFA_MENSAJERO));
     expect(con.total).toBe(sin.total);
     expect(con.total).toBe("800.00"); // solo la rechazada cobra
     expect(con.ingresoByGestionId["g-reprogramada"]).toBe("0.00");

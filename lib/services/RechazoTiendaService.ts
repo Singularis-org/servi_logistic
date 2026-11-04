@@ -14,7 +14,8 @@ import type {
   RechazarNovedadResult,
 } from "@/lib/interfaces/services/IRechazoTiendaService";
 import { derivarIngresoOrden } from "@/lib/utils/ingreso-empresa";
-import { clavePar } from "@/lib/utils/cascada-tarifa";
+import { clavePar, type ParTarifa } from "@/lib/utils/cascada-tarifa";
+
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 
 // Estado de ORIGEN elegible (la DEVOLUCION ANCLADA de la 239: confirmada en bodega, visible para la
@@ -245,8 +246,12 @@ export class RechazoTiendaService implements IRechazoTiendaService {
 
     // La cascada (tienda, zona) de la feature 274, en su forma de LOTE con un solo par: es la que
     // devuelve `tarifaId`. `null` = ningun nivel tiene fila (R2 de la 274).
-    const par = { tiendaId: base.tiendaId, zonaId: base.zonaId };
+    // SLT-52 (R16/R18): con el distrito de la orden, que decide su grupo en el modelo nuevo.
+    const par: ParTarifa = { tiendaId: base.tiendaId, zonaId: base.zonaId, distritoId: base.distritoId };
     const tarifas = await this.tarifaRepo.resolveTarifas([par]);
+    // SLT-52 (R29, R38): el `TarifaTienda` del resolver unico entra tal cual. En el modelo nuevo
+    // el flete del rechazo es el concepto `tienda_flete_rechazo` y cae en la misma categoria
+    // (`ingreso_flete_devolucion`), asi que lo de abajo no cambia; sin ese concepto no hay cobro.
     const tarifa = tarifas.get(clavePar(par)) ?? null;
 
     const derivado = derivarIngresoOrden(
@@ -277,7 +282,11 @@ export class RechazoTiendaService implements IRechazoTiendaService {
       montoIva: iva === undefined ? "0.00" : iva.toFixed(2),
       // Auditoria: QUE FILA de `tarifas` produjo los dos importes. `null` no puede darse en esta
       // rama (sin tarifa no hay flete), pero se escribe total en vez de con un `!`.
-      tarifaId: tarifa === null ? null : tarifa.tarifaId,
+      // SLT-52 (R48/R49): cada modelo cita su propia fuente y deja la otra en `null`. En el nuevo
+      // no hay fila de `tarifas` que citar; lo que produjo el flete es el valor
+      // `tienda_flete_rechazo`, y esa es la traza. La base rechaza las dos a la vez (CHECK).
+      tarifaId: tarifa?.modelo === "viejo" ? tarifa.tarifa.tarifaId : null,
+      tarifaValorId: tarifa?.modelo === "nuevo" ? (tarifa.valores.tienda_flete_rechazo?.tarifaValorId ?? null) : null,
       // Dia CALENDARIO de Costa Rica. NO `toISOString().slice(0,10)`: despues de las 18:00 CR eso
       // devuelve el dia SIGUIENTE (el off-by-one que cerro la feature 166).
       generadoEl: fechaCalendarioCR(this.now()),

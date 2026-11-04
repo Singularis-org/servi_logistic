@@ -546,6 +546,8 @@ describe("CierresAdminModule", () => {
           fleteDevolucionConIva: null,
           comisionConIva: "847.50",
           total: "3672.50",
+          fulfillment: "0.00", // SLT-52 (R46): el fulfillment congelado y su IVA, fuera del total
+          ivaFulfillment: "0.00",
           tarifa: {
             tarifaId: "tar_88",
             valorFlete: "2000.00",

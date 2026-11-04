@@ -8,7 +8,13 @@ import type {
   ICorteDiarioService,
 } from "@/lib/interfaces/services/ICorteDiarioService";
 import { resolverDestinoCierre } from "@/lib/utils/bodega-responsable";
-import { computeTotales, derivarPagos, derivarIngresoBodega } from "@/lib/utils/cierre-totales";
+import {
+  computeTotales,
+  contextosPagoDe,
+  derivarPagos,
+  derivarIngresoBodega,
+  pagosDelCierre,
+} from "@/lib/utils/cierre-totales";
 import { startOfDayCR } from "@/lib/utils/fecha-cr";
 // Feature 271 (T6.4, R38/R39/R47/R61): el aviso del `vencido` y la conversion de su jornada.
 import {
@@ -195,8 +201,12 @@ export class CorteDiarioService implements ICorteDiarioService {
       const { destinoTipo } = resolverDestinoCierre(m.zonaId, centralZonaId);
 
       // R8: snapshot money-safe con los MISMOS helpers que solicitarCierre (37/39/56).
+      // SLT-52 (T5.1, R19/R20/R33): el pago POR GESTION, con la zona del mensajero (la que este
+      // camino usa hoy), su vehiculo y el distrito de cada orden.
       const vehiculoId = await this.ordenRepo.findUsuarioVehiculoId(m.mensajeroId);
-      const tarifa = await this.tarifaZonaRepo.resolvePagoTarifa(m.zonaId, vehiculoId);
+      const tarifa = await this.tarifaZonaRepo.resolvePagos(
+        contextosPagoDe(gestiones, { mensajeroId: m.mensajeroId, zonaId: m.zonaId, vehiculoId }),
+      );
       const totales = computeTotales(gestiones);
       const { pagoByGestionId, total: totalPagoMensajero } = derivarPagos(gestiones, tarifa);
       const { ingresoByGestionId, total: totalIngresoBodegaRechazos } = derivarIngresoBodega(
@@ -221,6 +231,7 @@ export class CorteDiarioService implements ICorteDiarioService {
         totalPagoMensajero,
         ingresoByGestionId,
         totalIngresoBodegaRechazos,
+        pagos: pagosDelCierre(gestiones, tarifa), // SLT-52 (T5.2, R40)
       });
       if (cierreId !== null) {
         vencidosCreados += 1;

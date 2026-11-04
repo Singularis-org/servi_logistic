@@ -1,5 +1,7 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import type { TarifaVigente } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
+import { esConceptoTienda } from "@/lib/tarifas/catalogo";
+import type { ValoresTienda } from "@/lib/types/tarifa-flexible";
 
 /**
  * Feature 69 (design §4.1/§4.2) — lectura COMPARTIDA del snapshot `cierre_detail` por los dos
@@ -17,6 +19,38 @@ import type { TarifaVigente } from "@/lib/interfaces/repositories/ITarifaVigente
 // el `resultado`/`montoRecibido`, que son de la GESTION, no de la orden). `orden`, `zona` y
 // `tarifas` YA NO se consultan al aprobar (R12/R13): ese era el bug.
 export type CierreDetalleTxClient = Pick<PrismaClient, "cierreDetail" | "gestionOrden">;
+
+/**
+ * SLT-52 (R40, R41) — el cobro a la tienda congelado por concepto (`cierre_detail_concepto`), lo
+ * que `tarifaDe` lee cuando el detalle es del modelo nuevo. Va como relacion anidada del detalle:
+ * la RLS de la tabla hija la acota a la empresa igual que al padre.
+ */
+export const CONCEPTO_CONGELADO_SELECT = {
+  concepto: true,
+  modo: true,
+  valor: true,
+  ivaPct: true,
+  nivel: true,
+  tarifaValorId: true,
+} as const;
+
+export type ConceptoCongeladoRow = Prisma.CierreDetailConceptoGetPayload<{
+  select: typeof CONCEPTO_CONGELADO_SELECT;
+}>;
+
+/**
+ * SLT-52 (design §7) — lo que `tarifaDe` reconstruye: el sobre del resolver con la tarifa vieja
+ * reducida a la `TarifaVigente` (los campos de la formula; ni `tarifaId` ni lo que no liquida) o
+ * los valores del nuevo tal como se congelaron. No es `TarifaTienda`: su rama vieja exige
+ * `TarifaVigenteResuelta`, y esa lleva campos que el congelado no debe devolver (ficha 449).
+ *
+ * Es estructuralmente `ConModelo<TarifaVigente>` (`ingreso-empresa.ts`), escrito aqui y no importado:
+ * este modulo entra en el arbol del panel del navegador y `ingreso-empresa` importa `Prisma` como
+ * valor (`pagos-captura.guardia.test.ts`, R19). TypeScript los compara por forma.
+ */
+export type TarifaCongelada =
+  | { modelo: "viejo"; tarifa: TarifaVigente }
+  | { modelo: "nuevo"; valores: ValoresTienda };
 
 // Proyeccion del snapshot: las entradas de la formula + la tarifa congelada.
 export const DETALLE_SELECT = {
@@ -38,6 +72,9 @@ export const DETALLE_SELECT = {
   tarifaIvaComisionCod: true,
   tarifaEspecial: true,
   tarifaEspecialDevuelta: true,
+  // SLT-52 (R41, R42): con que modelo se congelo y, en el nuevo, sus conceptos.
+  tarifaModelo: true,
+  conceptos: { select: CONCEPTO_CONGELADO_SELECT },
 } as const;
 
 export type CierreDetalleRow = Prisma.CierreDetailGetPayload<{ select: typeof DETALLE_SELECT }>;
@@ -49,6 +86,7 @@ export type CierreDetalleRow = Prisma.CierreDetailGetPayload<{ select: typeof DE
  */
 export type TarifaCongeladaRow = Pick<
   CierreDetalleRow,
+  | "tarifaModelo"
   | "tarifaId"
   | "tarifaValorFlete"
   | "tarifaValorFleteGam"
@@ -89,8 +127,50 @@ export class CierreDetalleFaltanteError extends Error {
  * (gap R9, decision (c)) -> `derivarIngresoOrden` ya lo maneja devolviendo conceptos 0.00 sin
  * lanzar (`ingreso-empresa.ts:58`). El gap se PRESERVA tal cual: la 69 no lo abre ni lo cierra.
  * Money-safe: Decimal -> STRING escala 2, nunca number/parseFloat (R11).
+ *
+ * SLT-52 (design §7, R41, R42): sigue siendo la UNICA reconstruccion, ahora de los dos modelos.
+ * - `tarifa_modelo = 'viejo'` (todo cierre anterior a SLT-52, R42): exactamente lo de antes,
+ *   envuelto en `{ modelo: "viejo" }`; `conceptos` no se mira (el viejo no escribe ninguno).
+ * - `'nuevo'`: los valores salen de las filas de `cierre_detail_concepto` de ESTE detalle, nunca de
+ *   `tarifa_valor`: un valor o un grupo cambiado o borrado despues no mueve el cierre (R41). Nunca
+ *   `null`: un concepto sin fila es «sin tarifa» y cuenta 0 (R23, R24).
+ * Una fila que no trae `tarifaModelo` (proyeccion parcial) se lee como vieja: es lo que era antes.
  */
-export function tarifaDe(d: TarifaCongeladaRow): TarifaVigente | null {
+export function tarifaDe(
+  d: TarifaCongeladaRow,
+  conceptos: readonly ConceptoCongeladoRow[],
+): TarifaCongelada | null {
+  if (d.tarifaModelo === "nuevo") return { modelo: "nuevo", valores: valoresCongeladosDe(conceptos) };
+  const tarifa = tarifaViejaDe(d);
+  return tarifa === null ? null : { modelo: "viejo", tarifa };
+}
+
+/**
+ * Las filas congeladas -> `ValoresTienda`, con la misma forma que da el resolver (texto escala 2).
+ * `tarifaValorId` puede ser `null`: la FK es SET NULL y el valor de origen pudo borrarse despues
+ * (R41); el importe no depende de el. El CHECK de la tabla ya impide un concepto que no sea de la
+ * tienda; si llegara uno, se para en vez de cobrarlo a quien no toca.
+ */
+function valoresCongeladosDe(conceptos: readonly ConceptoCongeladoRow[]): ValoresTienda {
+  const valores: ValoresTienda = {};
+  for (const c of conceptos) {
+    if (!esConceptoTienda(c.concepto)) {
+      throw new Error(`cierre_detail_concepto: ${c.concepto} no es un cobro a la tienda`);
+    }
+    valores[c.concepto] = {
+      concepto: c.concepto,
+      modo: c.modo,
+      valor: c.valor.toFixed(2),
+      ivaPct: c.ivaPct.toFixed(2),
+      nivel: c.nivel,
+      tarifaValorId: c.tarifaValorId,
+    };
+  }
+  return valores;
+}
+
+/** La rama vieja de `tarifaDe`, sin cambios desde la 69. */
+function tarifaViejaDe(d: TarifaCongeladaRow): TarifaVigente | null {
   if (d.tarifaId === null) return null;
   // Las 8 columnas de tarifa se congelan todas o ninguna (R8), asi que con `tarifa_id`
   // presente el resto no puede ser null. El `"0.00"` de `dec2` no es una politica: es el

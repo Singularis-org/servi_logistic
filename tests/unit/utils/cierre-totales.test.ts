@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { pagoViejoPorGestion } from "@/tests/fixtures/tarifa-tienda";
 import {
   computeTotales,
   derivarPagos,
@@ -79,14 +80,16 @@ describe("derivarPagos (R8) — pago al mensajero snapshot", () => {
         g({ gestionId: "a", resultado: "entregado" }),
         g({ gestionId: "b", resultado: "devolucion_a_origen_por_rechazo" }),
       ],
-      TARIFA,
-    );
+      pagoViejoPorGestion([
+        g({ gestionId: "a", resultado: "entregado" }),
+        g({ gestionId: "b", resultado: "devolucion_a_origen_por_rechazo" }),
+      ], TARIFA));
     expect(pagoByGestionId).toEqual({ a: "5.00", b: "0.00" });
     expect(total).toBe("5.00");
   });
 
   it("tarifa null -> pago 0.00 no bloqueante", () => {
-    const { total } = derivarPagos([g({ resultado: "entregado" })], null);
+    const { total } = derivarPagos([g({ resultado: "entregado" })], pagoViejoPorGestion([g({ resultado: "entregado" })], null));
     expect(total).toBe("0.00");
   });
 });
@@ -98,8 +101,10 @@ describe("derivarIngresoBodega (R8) — ingreso de bodega por rechazo snapshot",
         g({ gestionId: "a", resultado: "devolucion_a_origen_por_rechazo" }),
         g({ gestionId: "b", resultado: "entregado" }),
       ],
-      TARIFA,
-    );
+      pagoViejoPorGestion([
+        g({ gestionId: "a", resultado: "devolucion_a_origen_por_rechazo" }),
+        g({ gestionId: "b", resultado: "entregado" }),
+      ], TARIFA));
     expect(ingresoByGestionId).toEqual({ a: "3.00", b: "0.00" });
     expect(total).toBe("3.00");
   });

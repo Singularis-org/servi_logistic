@@ -62,7 +62,17 @@ function clienteFalso(
         registrar("gestionOrden", "findFirst")(args);
         return {
           cierreId: CIERRE,
-          orden: { id: ORDEN, numGuia: 100234, numRemision: "REM-1" },
+          orden: {
+            id: ORDEN,
+            numGuia: 100234,
+            numRemision: "REM-1",
+            // SLT-52 (T5.1): lo que la orden aporta al contexto del pago.
+            distritoId: "d-1",
+            tiendaId: "t-1",
+            zonaId: "z-orden",
+            montoCobrar: new Prisma.Decimal("25000.00"),
+            cobraComision: false,
+          },
           cierre: { destinoZonaId: "z-1", mensajero: { vehiculoId: "v-1" } },
         };
       }),
@@ -94,6 +104,20 @@ function clienteFalso(
         };
       }),
       findFirst: vi.fn(async () => null),
+    },
+    // SLT-52 (T5.1): el resolver unico pregunta primero si la empresa tiene valores del modelo
+    // nuevo; «ninguno» -> la resolucion es la de la 39 de arriba, sin tocar un importe (R36).
+    tarifaValor: { findFirst: vi.fn(async () => null) },
+    // SLT-52 (T5.2): la correccion re-congela el pago de ESA gestion (borra y, en el nuevo, escribe).
+    gestionPagoCongelado: {
+      deleteMany: vi.fn(async (args: Record<string, unknown>) => {
+        registrar("gestionPagoCongelado", "deleteMany")(args);
+        return { count: 0 };
+      }),
+      createMany: vi.fn(async (args: Record<string, unknown>) => {
+        registrar("gestionPagoCongelado", "createMany")(args);
+        return { count: 0 };
+      }),
     },
     orden: {
       updateMany: vi.fn(async (args: Record<string, unknown>) => {
