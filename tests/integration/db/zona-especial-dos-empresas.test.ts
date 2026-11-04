@@ -239,6 +239,9 @@ describeSiHayBase("SL-38 T8 — dos empresas de punta a punta: cada una solo ve 
       // En el orden que piden las FK, bajo el lock de la 227 como la siembra.
       await bajoLockDeEscrituraReal(async () => {
         for (const tabla of [
+          // El rastro que la reconciliacion de zona deja (SLT-76/SLT-65): su FK a `organizacion` y
+          // a `usuario` es RESTRICT, asi que va antes que las dos.
+          "historial_accion",
           "cierre_detail",
           "gestion_orden",
           "cierre_dia",

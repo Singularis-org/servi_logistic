@@ -1043,3 +1043,23 @@ Commit `9a181b6d`. Base de datos: `logistic_slt65_r1104`.
       - 4 de los rojos son de `dependencias-declaradas-presentes`, que está en la baseline.
       - El otro es `sin-estados-retirados` (`STACK_TRACE_ERROR` bajo carga). Corrido solo da 6/6, así que es un flake de saturación.
   - Claude Code mató la corrida por falta de memoria del sistema durante `components`. No llegaron a correr `components`, `actions`, `types` ni el resto de carpetas pequeñas. Se dejaron sin relanzar, como pide el aviso del sistema, y quedan para el gate de CI.
+
+## Rojos nuevos del gate-completo en CI, run 41867912004 (implementer, 2026-11-04)
+
+Los 3 shards pasan; al unir los informes salen 6 archivos en rojo que no están en la baseline. dev (42328714) está en verde, así que estos rojos los trae esta rama. Se reprodujeron los 6 en local contra `logistic_slt65_r1104`, un archivo por corrida con `timeout 600`.
+
+| Archivo | Causa | Clase | Arreglo |
+|---|---|---|---|
+| `tarifas-flexibles-snapshot`, `tarifas-flexibles-base-congelada` (6+6) | `EmpresaNoResuelta` en `CatalogoGeograficoRepository.leerDeLaEmpresa`. SLT-65 hace que `CierreDiaRepository:421` lea del catálogo, y el helper `comoEmpresa` del test fijaba el rol con `comoApp` pero dejaba en `contextoActual` la empresa por defecto de `enTransaccionRevertida`. | (a) | `comoEmpresa` envuelve con `conEmpresa(org, fn)`, igual que `9b4e0004`. |
+| `zona-distrito-rastro` (3) | La misma causa, en el escenario del test. | (a) | `conEmpresa(empresa, () => fn(...))`. |
+| `zona-especial-dos-empresas` (13 en verde, `afterAll` en rojo) | La reconciliación de zonas (SLT-65 sobre SLT-76) escribe en `historial_accion` para las dos empresas. La limpieza borra `organizacion` y choca con la FK `historial_accion_organizacion_id_fkey`. | (a) | `historial_accion` va primero en el bucle de borrado por `organizacion_id`. |
+| `geografia-superadmin-sin-empresa` (CONTRAPRUEBA) | Con R10 de SLT-65 (`c10045e1`), `OrdenRepository.contarSinEntregarPorNodoGeografico` busca primero el nodo, cosa que no exige empresa, y con un id inexistente devuelve 0 sin llegar a `orden.count`. El test usaba `randomUUID()`. | (a) | Se usa un distrito que existe (`nodoGeografico`, `profundidad: 3`). El `rejects.toBeInstanceOf(EmpresaNoResuelta)` no cambia. **Al reviewer:** cambia la entrada del test, no la aserción. |
+| `salida-a-reparto-sql-real` (SLT-76 R15) | El test crea la provincia y el cantón ajenos con el MISMO id (`00000000-…-0000`). El trigger de sincronía de SLT-43 (`20261104120300`) cuelga el nodo del cantón de ese id y choca con `nodo_geografico_padre_id_check` (`padre_id <> id`). El rojo ya sale en los gate-completo de SLT-43 (PR #44, run 41852091780) y de SLT-44 (PR #55, run 41854736207). | (a), raíz en SLT-43 | **No se aplica aquí.** Va en SLT-43 y baja en cascada: darle a la provincia ajena otro id (p. ej. `…-0001`) sin tocar el del cantón ni ningún `expect`. |
+
+Ninguno viene de SLT-52 ni de SLT-75 por sí solo. Los tests de SLT-52 y SLT-76 caen al pasar por código de SLT-65.
+
+### Corridas tras el arreglo (`timeout 600`, un archivo por corrida)
+
+- `geografia-superadmin-sin-empresa`: 4/4. `tarifas-flexibles-base-congelada`: 6/6. `tarifas-flexibles-snapshot`: 6/6. `zona-distrito-rastro`: 4/4. `zona-especial-dos-empresas`: 13/13, con la limpieza sin errores.
+- `pnpm run typecheck` (tsc --noEmit): exit 0. Lint de los 5 archivos (backend_dev): sin hallazgos.
+- `salida-a-reparto-sql-real`: sigue en 1 rojo de 7 hasta que el arreglo baje de SLT-43.
