@@ -45,7 +45,39 @@ interface Pared {
   segundo: number;
 }
 
+// Memo por zona de las dos conversiones caras. `formatToParts` cuesta microsegundos por llamada y
+// el troceo de una serie o un barrido de fechas la pide millones de veces con los MISMOS instantes
+// (inicios de dia, mediodias): sin memo, `fecha-cr.ts` paso de aritmetica pura a ~30x mas lento y
+// los barridos de 366/400 dias se salian del `testTimeout`. Ambas funciones son puras (zona + ms ->
+// resultado), asi que memoizar no cambia ningun resultado. El tope evita crecer sin limite en un
+// proceso largo: al llenarse, el mapa de esa zona se vacia entero (sencillo y suficiente).
+const TOPE_MEMO = 20_000;
+const memoPared = new Map<string, Map<number, Pared>>();
+const memoInstante = new Map<string, Map<number, number>>();
+
+function memoDeZona<V>(memo: Map<string, Map<number, V>>, zona: string): Map<number, V> {
+  let m = memo.get(zona);
+  if (!m) {
+    m = new Map<number, V>();
+    memo.set(zona, m);
+  } else if (m.size >= TOPE_MEMO) {
+    m.clear();
+  }
+  return m;
+}
+
 function pared(instante: Date, zona: string): Pared {
+  const t = instante.getTime();
+  const memo = memoDeZona(memoPared, zona);
+  const guardada = memo.get(t);
+  if (guardada) return guardada;
+  const calculada = paredSinMemo(instante, zona);
+  // Un instante invalido da campos NaN: no se guarda (NaN como clave no aporta nada).
+  if (!Number.isNaN(t)) memo.set(t, calculada);
+  return calculada;
+}
+
+function paredSinMemo(instante: Date, zona: string): Pared {
   const p: Record<string, number> = {};
   for (const parte of formateador(zona).formatToParts(instante)) {
     if (parte.type !== "literal") p[parte.type] = Number(parte.value);
@@ -97,6 +129,17 @@ function sumarDias(fecha: string, dias: number): string {
  */
 function instanteDePared(objetivoMs: number, zona: string): Date {
   if (Number.isNaN(objetivoMs)) return new Date(Number.NaN);
+  const memo = memoDeZona(memoInstante, zona);
+  let t = memo.get(objetivoMs);
+  if (t === undefined) {
+    t = instanteDeParedSinMemo(objetivoMs, zona).getTime();
+    memo.set(objetivoMs, t);
+  }
+  // Siempre un `Date` nuevo: quien lo recibe puede mutarlo sin tocar el memo.
+  return new Date(t);
+}
+
+function instanteDeParedSinMemo(objetivoMs: number, zona: string): Date {
   // Desfases alrededor del objetivo: como mucho hay un cambio de hora en esta ventana.
   const desfases = new Set(
     [-UN_DIA_MS, 0, UN_DIA_MS].map((d) => desfaseEnMs(new Date(objetivoMs + d), zona)),
