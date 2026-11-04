@@ -108,9 +108,9 @@ lista, y `tests/unit/analytics/refrescar-cache-analitica.test.ts` sigue verde si
 
 ## Cierre
 
-- [ ] Llevar el mapa `R<n> → test` (R1–R17) a `progress/impl_SLT-64.md`, junto con la tabla de
+- [x] Llevar el mapa `R<n> → test` (R1–R17) a `progress/impl_SLT-64.md`, junto con la tabla de
   mutaciones de T2 y T4 y el caso que mató cada una.
-- [ ] Verificar lo que ve el usuario. Con datos locales que reproduzcan la evidencia §5 (gestiones
+- [x] Verificar lo que ve el usuario. Con datos locales que reproduzcan la evidencia §5 (gestiones
   `entregado` sin cierre aprobado), `/analitica` tiene que mostrar en el ciclo de vida
   «(N órdenes cerradas)» con N > 0, coherente con «Entregado N» cuando la ventana cubre carga y
   gestión. Las cifras se anotan en la bitácora.
