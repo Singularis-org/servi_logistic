@@ -1,8 +1,10 @@
 # SLT-71 — geo-jerarquica-transito-analitica · design.md
 
 > Requisitos: `requirements.md` (R1–R25). El Alcance, «Lo que NO entra» y la tabla «Decisiones
-> cerradas» no se reabren aquí. Las tres preguntas abiertas tienen su propuesta en §9.2 (1), §4 (2) y
-> §7 y §13 (3).
+> cerradas» no se reabren aquí. Las tres preguntas del spec las cerró el humano el 2026-11-04
+> (tabla de decisiones): las lecturas que comparten el recorte entran (§3.4, §9.2); tránsito falla y
+> deja log con un nodo ausente (§4); SLT-64 mergea primero y la copia de «antes» sale de `dev` con
+> SLT-64 dentro (§7, §13).
 >
 > Las líneas citadas son de `fe16f5d1`, la base montada sobre SLT-65.
 
@@ -19,7 +21,8 @@ Buscado el 2026-11-04 en los tres sitios de `docs/specs.md`. Términos: `Informe
     de tránsito y `GestionOrdenRepository` (R25).
   - **SLT-64** «Ciclo de vida dice 0 cerradas» (`in_progress`, otra persona) toca la semántica del
     ciclo de vida, no su filtro por lugar. No es la misma feature, pero es probable que comparta
-    `CicloVidaRepository.ts`: pregunta abierta 3.
+    `CicloVidaRepository.ts`. Choque aceptado: SLT-64 mergea primero y SLT-71 lo integra en F2.3
+    (decisión «¿Choque de archivos con SLT-64?»).
   - Ninguna otra ficha migra estas lecturas al nodo.
 - **Specs**:
   - `specs/SLT-65-geo-jerarquica-consultas`: el molde de este spec. Copia congelada, scripts de
@@ -28,7 +31,7 @@ Buscado el 2026-11-04 en los tres sitios de `docs/specs.md`. Términos: `Informe
   - `specs/475-informe-transito-whatsapp`: el contrato del informe (R22: fallos que se propagan; R40:
     3 consultas fijas).
   - `specs/345-analitica-productos`, `347-dinero-por-producto` y `411-analitica-cohorte-de-carga`:
-    por qué cuatro lecturas más importan el `where` de las del alcance (pregunta abierta 1).
+    por qué cuatro lecturas más importan el `where` de las del alcance (entran: decisión «¿Lecturas que comparten el recorte?»).
 - **Código**. El MCP `codebase-memory-mcp` no se consultó: el índice de este worktree no está
   garantizado (lo mantiene el leader). Todo lo de abajo sale de Grep/Read. Se **reutiliza** sin
   copiar:
@@ -197,7 +200,8 @@ export function condicionesDeCiclo(consulta: ConsultaConteoEntregas, lugares: Lu
 
 ### 3.4 Los repositorios
 
-Cada repositorio de los sitios 2–5, y los cuatro que comparten el recorte (pregunta abierta 1), hace
+Cada repositorio de los sitios 2–5, y los cuatro que comparten el recorte (`ConteoProductosRepository`,
+`DineroProductosRepository`, `CohorteCargaRepository` y `ConteoHoyGestionRepository`), hace
 lo mismo:
 
 ```ts
@@ -232,7 +236,7 @@ async contarX(consulta) {
   cliente, no los resueltos. No cambia (R6).
 - El TTL de 15 minutos ya cubre que el catálogo cambie, igual que cubre que cambien las órdenes.
 
-## 4. Tránsito: nombres desde el catálogo (R8–R12) — pregunta abierta 2
+## 4. Tránsito: nombres desde el catálogo (R8–R12)
 
 `InformeTransitoRepository`:
 
@@ -250,12 +254,25 @@ export type InformeTransitoPrismaClient = Pick<PrismaClient, "$queryRaw"> & Cata
    vez por instancia. Mapea:
    - `canton` = `nodo(catalogo, canton_id)?.nombre`;
    - `distrito` = `distrito_id === null ? null : nodo(catalogo, distrito_id)?.nombre`.
-4. **Nodo ausente** (R12). Si el cantón o un distrito no nulo no está en el catálogo, lanza
-   `CatalogoGeograficoInconsistente(nodoId, "nodo de una orden en tránsito ausente del catálogo")`
-   (la clase de `geografia-dominio.ts`; no se crea otra). `seleccionarTransito` la envuelve como
-   `informe transito: filasEnAlerta falló (...)` (R22 de la 475), y el motor deja la ejecución en
-   error. Así funciona la propuesta de la pregunta abierta 2. Si el humano elige omitir la fila, el
-   paso 4 pasa a ser un `filter`, y R12 se reescribe.
+4. **Nodo ausente** (R12; decisión «¿Tránsito con un cantón o distrito ausente del catálogo?»). Se
+   recorren **todas** las filas antes de fallar, y se juntan los ids de nodo ausentes y los ids de
+   las órdenes que los usan, sin duplicados y ordenados. Si hay alguno:
+   - **Log.** Se escribe una línea con el logger de errores que ya existe: `ErrorLogger` y
+     `defaultLogger` de `lib/errors/logger.ts`, el que usan las actions con `withErrorHandler`. El
+     texto es `analitica - informe transito - error: nodos ausentes del catalogo=[<ids>]
+     ordenes=[<ids>]`.
+     - Solo lleva ids: ni nombres de lugar, ni destinatario, ni monto (misma regla que R18).
+     - El repositorio recibe el logger como segundo argumento opcional del constructor
+       (`logger: ErrorLogger = defaultLogger`), así que las composiciones no cambian y el test
+       inyecta un doble.
+     - Se descartó `registrarFallo` de `lib/clients/probadores/comun.ts`. Es propio de las pruebas
+       de integraciones: usa `logger.warn` con el prefijo `[integraciones]` y un tipo de logger
+       distinto. Tampoco se crea un logger nuevo.
+   - **Fallo.** Después lanza
+     `CatalogoGeograficoInconsistente(primerNodoAusente, "nodo de una orden en tránsito ausente del catálogo")`
+     (la clase de `geografia-dominio.ts`; no se crea otra). `seleccionarTransito` la envuelve como
+     `informe transito: filasEnAlerta falló (...)` (R22 de la 475), y el motor deja la ejecución en
+     error sin mandar nada.
 5. `zonas` y `contarSinHito` no cambian.
 
 - **R10.** Siguen siendo las 3 llamadas al repositorio de `seleccionarTransito`. El catálogo son 5
@@ -310,8 +327,10 @@ export type InformeTransitoPrismaClient = Pick<PrismaClient, "$queryRaw"> & Cata
 
 ## 7. La lectura de hoy, congelada: `scripts/geo-equivalencia/analitica-de-hoy.ts`
 
-Es una copia **literal**, tomada de la base (`fe16f5d1`, o la de `dev` si SLT-64 entra antes:
-pregunta abierta 3) **antes** de tocar ningún repositorio (T1.2). No se edita después.
+Es una copia **literal**, tomada de `origin/dev` **después** del merge de SLT-64, que entra primero
+(decisión «¿Choque de archivos con SLT-64?»). Se integra `dev` en la rama, y el commit de la copia
+cita el SHA de `dev` del que sale. Se toma **antes** de tocar ningún repositorio (T1.2) y no se edita
+después. Las líneas de la tabla son de `fe16f5d1` y se reajustan a esa base.
 
 | Función de la copia | Copia de |
 |---|---|
@@ -321,6 +340,7 @@ pregunta abierta 3) **antes** de tocar ningún repositorio (T1.2). No se edita d
 | `condicionesDeDevolucionesDeHoy` y `contarDevolucionesPorCausaDeHoy` | `ConteoDevolucionesRepository.ts:56–147` |
 | `condicionesDeCicloDeHoy`, `condicionDeVentanaTerminal` y `acumularCiclosDeHoy` | `CicloVidaRepository.ts:63–164` |
 | `filasEnAlertaDeHoy(cliente, consulta)` | `InformeTransitoRepository.ts:37–132` |
+| `contarProductosDeHoy`, `dineroProductosDeHoy`, `cohorteCargaDeHoy` y `conteoHoyGestionDeHoy` | El método de lectura de `ConteoProductosRepository`, `DineroProductosRepository`, `CohorteCargaRepository` y `ConteoHoyGestionRepository`, sobre los constructores de hoy de esta misma copia |
 
 - Vive en `scripts/` por lo mismo que `consultas-de-hoy.ts`: nombra `canton`, `distrito` y las
   columnas viejas, que las guardias de `lib/` vigilan.
@@ -342,7 +362,7 @@ Por empresa, dentro de `conEmpresa`, con un actor `maestro` (alcance `global` de
 | Bloque | Qué compara (hoy = copia §7; nuevo = repositorio) |
 |---|---|
 | `analitica` | Para cada lectura (desglose por estado, entregas, cargadas por día, devoluciones y ciclo de vida) y para cada filtro de la lista de abajo, el resultado entero de hoy frente al nuevo. Una diferencia se imprime con la lectura, el filtro (tipo e id del nodo) y las dos cifras |
-| `comparten-recorte` | Si la pregunta abierta 1 se cierra con «entran»: productos y cohorte, con los mismos filtros. Dinero por producto se compara por importe total |
+| `comparten-recorte` | Productos, cohorte de carga y contador de hoy, con los mismos filtros. Dinero por producto se compara por importe total |
 | `transito` | `filasEnAlertaDeHoy` frente a `filasEnAlerta` con `PARAMETROS_POR_DEFECTO`, por `ordenId`: los mismos ids y, por orden, «distinto» en cantón o distrito, sin imprimir el nombre |
 | `cadena-incoherente` | Informativo: las órdenes vivas cuyo distrito no cuelga de su cantón o cuyo cantón no cuelga de su provincia, con su número y sus ids. Un filtro cuya única diferencia son esas órdenes no cuenta como diferencia |
 
@@ -395,10 +415,10 @@ SLT-65 T1.1 hizo con `comparacion.ts`.
   `OR` puede cambiar.
 - Sin faceta, «después» es idéntico a «antes» (R5), y se comprueba en un test, no en el script.
 
-**Por qué el constructor no tiene dos modos (pregunta abierta 1).** Para no tocar las cuatro lecturas
-que comparten el recorte, `lugares` podría ser opcional: sin él, las facetas seguirían por columna.
-Se descarta, porque en la misma pantalla habría dos filtros por lugar distintos y SLT-48 heredaría el
-modo viejo. Los archivos de esos cuatro llamadores quedan en «Archivos esperados», a confirmar.
+**Por qué el constructor no tiene dos modos** (decisión «¿Lecturas que comparten el recorte?»). Para
+no tocar las cuatro lecturas que comparten el recorte, `lugares` podría ser opcional: sin él, las
+facetas seguirían por columna. Se descarta, porque en la misma pantalla habría dos filtros por lugar
+distintos y SLT-48 heredaría el modo viejo. Las cuatro pasan los ids resueltos.
 
 ### 9.3 La regla (R20, R21)
 
@@ -467,7 +487,7 @@ dos formas:
 | R8, R9 | `tests/integration/db/geo-transito-nombres.test.ts`: `filasEnAlerta` = `filasEnAlertaDeHoy` en el fixture, fila a fila, y el modelo de `seleccionarTransito` es igual con las dos. Las suites `informe-transito-seleccion`, `-zonas`, `-parados`, `-hitos` y `-catalogo-real` existentes pasan sin cambiar aserciones |
 | R10 | `informe-transito-repo-consultas.test.ts` existente (3 llamadas) sin cambios. En `geo-transito-nombres.test.ts`: con 1 y con 40 órdenes en alerta, el número de consultas capturadas es el mismo, y el SQL de `filasEnAlerta` no contiene `"canton"` ni `"distrito"` como tabla |
 | R11 | `geo-transito-nombres.test.ts`: sin órdenes en alerta, ninguna consulta toca `nodo_geografico` |
-| R12 | `geo-transito-nombres.test.ts`: con un catálogo inyectado sin el cantón de una orden en alerta, `generar` rechaza con `informe transito: filasEnAlerta falló`. Se ajusta si la pregunta abierta 2 se cierra con «omitir» |
+| R12 | `geo-transito-nombres.test.ts`: con un catálogo inyectado sin el cantón de una orden en alerta y sin el distrito de otra, `generar` rechaza con `informe transito: filasEnAlerta falló` y no produce contenido. El logger doble recibe exactamente una línea, que empieza por `analitica - informe transito - error: ` y contiene los dos ids de nodo y los dos ids de orden. No contiene ningún dato de `DATOS_PERSONALES_GEO65` ni ningún nombre de nodo del fixture. Contraprueba: con el catálogo completo, el logger no recibe nada |
 | R13 | `geo-analitica-lugar.test.ts` y `geo-transito-nombres.test.ts`: la empresa `XA` carga solo nodos de `XA`; una instancia lee el catálogo una vez aunque se llame dos veces; en `comoPlataforma` con faceta → `EmpresaNoResuelta` |
 | R14 | `geografia-lecturas-sin-nodo-fk.guardia.test.ts` ampliada (§6), con contraprueba. `geo-lecturas-sin-backfill.test.ts` ampliado: con `nodo_geografico_id` en NULL, las lecturas de analítica con faceta y tránsito dan lo mismo |
 | R15 | `geografia-sin-cte-recursiva.guardia.test.ts` existente, sin cambios |
@@ -531,11 +551,11 @@ comprueba con el diff.
   `orden`. §9 lo mide y bloquea, y §10 lo corrige.
 - **Carga del catálogo con caché fría.** Unas 5 consultas cuando hay faceta y la caché de analítica
   no tiene la entrada. La decisión «¿Costo fijo del catálogo?» lo acepta si `orden` no empeora (R21).
-- **Las cuatro lecturas que comparten el recorte** (pregunta abierta 1): más archivos en el diff, y
-  más dobles unitarios que cambian de entrada.
-- **Choque con SLT-64** en `CicloVidaRepository.ts` (pregunta abierta 3). Si SLT-64 entra después, su
-  cambio tiene que respetar la nueva firma de `condicionesDeCiclo`. Si entra antes, la copia de §7
-  se toma después de su merge.
+- **Las cuatro lecturas que comparten el recorte**: más archivos en el diff, y más dobles unitarios
+  que cambian de entrada.
+- **Choque con SLT-64** en `CicloVidaRepository.ts`, aceptado. SLT-64 mergea primero. SLT-71 integra
+  `dev` con SLT-64 dentro antes de T1.2, para la copia de §7, y otra vez en F2.3. Si SLT-64 no ha
+  mergeado cuando toque T1.2, T1.2 y T3.2 esperan.
 - **Choque con SLT-47** en `OrdenRepository.ts`: aquí solo se cambia la importación de
   `PROFUNDIDAD_DEL_NIVEL`. Lo detecta `archivos-en-vuelo.mjs`.
 - **Tránsito sin contexto de empresa.** Lo verifica T0.1.

@@ -30,8 +30,8 @@
 > - **«Lecturas de analítica»**: el desglose por estado, el conteo de entregas (el anillo, que pliega
 >   el desglose), las cargadas por día, las devoluciones por causa y el ciclo de vida.
 > - **«Lecturas que comparten el recorte»**: las que reutilizan hoy el `where` de una lectura de
->   analítica: productos, dinero por producto, cohorte de carga y contador de hoy (pregunta
->   abierta 1).
+>   analítica: productos, dinero por producto, cohorte de carga y contador de hoy. Entran (decisión
+>   «¿Lecturas que comparten el recorte?»).
 > - **«Cadena coherente»**: el distrito de la orden cuelga de su cantón y el cantón de su provincia.
 >
 > El inventario de SQL, los archivos y los tests concretos están en `design.md`.
@@ -57,8 +57,8 @@
   `canton_id` y `distrito_id` con la misma validación, y las respuestas `validation_error`,
   `forbidden` y `unauthenticated` y la clave de caché DEBEN ser las de hoy.
 - **R7** (ubicuo) Las lecturas que comparten el recorte DEBEN aplicar las facetas geográficas con el
-  mismo constructor de condiciones que la lectura de la que lo toman. NO DEBE existir una segunda
-  escritura del filtro por lugar. (Su alcance depende de la pregunta abierta 1.)
+  mismo constructor de condiciones que la lectura de la que lo toman, con los ids ya resueltos. NO
+  DEBE existir una segunda escritura del filtro por lugar, ni un modo que siga filtrando por columna.
 
 ### Nombres de lugar en tránsito
 
@@ -74,8 +74,12 @@
 - **R11** (condicional) SI no hay ninguna fila en alerta, ENTONCES la generación NO DEBE cargar el
   catálogo.
 - **R12** (condicional) SI el cantón o el distrito de una fila en alerta no está en el catálogo,
-  ENTONCES la generación DEBE fallar como un fallo de lectura de `filasEnAlerta`, sin mandar nada.
-  (Propuesta: pregunta abierta 2.)
+  ENTONCES:
+  - la generación DEBE fallar como un fallo de lectura de `filasEnAlerta`, sin mandar nada;
+  - el sistema DEBE escribir en el log del servidor, con el logger de errores existente, una línea
+    con el prefijo `analitica - informe transito - error: ` seguido del detalle;
+  - el detalle DEBE nombrar los ids de los nodos ausentes y los ids de las órdenes afectadas, y NO
+    DEBE contener nombres de lugar, destinatarios, direcciones ni teléfonos (misma regla que R18).
 
 ### Contexto de empresa
 
@@ -168,30 +172,13 @@
 | ¿Lugar de una orden? | R1, R14 |
 | ¿Árbol? | R1, R15 |
 | ¿Migraciones? | R23 |
+| ¿Lecturas que comparten el recorte? | R7 |
+| ¿Tránsito con un nodo ausente del catálogo? | R12 |
+| ¿Choque de archivos con SLT-64? | R4, R17, R19 (la copia de «antes» se toma de `dev` con SLT-64 dentro) |
 
 ## Preguntas abiertas
 
-1. **¿Entran las cuatro lecturas que comparten el recorte?** Productos (`ConteoProductosRepository`),
-   dinero por producto (`DineroProductosRepository`), cohorte de carga (`CohorteCargaRepository`) y
-   contador de hoy (`ConteoHoyGestionRepository`) no los nombra la tarjeta. Pero no escriben su propio
-   filtro: importan `condicionesDeConsulta` o `condicionesSinFecha`, que son dos de los sitios del
-   alcance. Si el constructor pasa a pedir los ids ya resueltos, esas cuatro tienen que pasárselos.
-   - **Propuesta: entran.** Cada una carga el catálogo solo si hay faceta geográfica (R5), y su
-     comportamiento no cambia (R4).
-   - La otra salida es un constructor con dos modos, por columna y por lugar. Se descarta en
-     `design.md` §9.2: dejaría dos filtros por lugar en la misma pantalla.
-2. **Tránsito: cantón o distrito ausente del catálogo (R12).** Hoy no puede pasar: las FK lo impiden,
-   y el `JOIN` con `canton` dejaría fuera la fila. Con el catálogo sí puede pasar, si la sincronía de
-   SLT-43 fallara.
-   - **Propuesta:** que la generación falle con el nombre de la operación, como cualquier fallo de
-     lectura del informe (R22 de la 475), y que no se mande un informe al que le falta un paquete en
-     silencio.
-   - La alternativa es omitir la fila, que es lo que haría hoy el `JOIN`.
-3. **Choque de archivos con SLT-64** (Carlos Restrepo, `in_progress`): «Ciclo de vida dice 0
-   cerradas». Es probable que toque `lib/repositories/CicloVidaRepository.ts`, que esta feature
-   también toca, y su cambio movería «el antes» del ciclo de vida. Hace falta que el humano acepte el
-   choque (`docs/equipo.md > Conflicto de archivos entre personas`) y decida el orden de merge. La
-   copia congelada (design §7) se toma de la base que quede en `dev` cuando empiece T1.
+Ninguna.
 
 ## Decisiones cerradas (no reabrir)
 
@@ -209,3 +196,6 @@
 | 2026-10-30 | ¿Lugar de una orden? | Se lee de las FK viejas (`COALESCE(distrito_id, canton_id)`); el deploy no depende del backfill de SLT-43. Heredado de la tarjeta y de SLT-43. |
 | 2026-10-30 | ¿Árbol? | Sin `ruta` ni CTE recursiva. Heredado de SLT-43 y SLT-44. |
 | — | ¿Migraciones? | Solo aditivas (regla de la épica, SLT-43). |
+| 2026-11-04 | ¿Lecturas que comparten el recorte? | Entran: `ConteoProductosRepository`, `DineroProductosRepository`, `CohorteCargaRepository` y `ConteoHoyGestionRepository` pasan los ids resueltos. Un solo constructor de condiciones, sin modo doble (humano). |
+| 2026-11-04 | ¿Tránsito con un cantón o distrito ausente del catálogo? | La generación falla y no manda nada. Además se escribe una línea de log de servidor con el prefijo `analitica - informe transito - error: {detalle}`, con el logger de errores existente. El detalle nombra los ids de los nodos ausentes y de las órdenes, nunca nombres, direcciones ni teléfonos (humano). |
+| 2026-11-04 | ¿Choque de archivos con SLT-64? | Aceptado. SLT-64 mergea primero y SLT-71 lo integra en F2.3. La copia congelada de «antes» para los scripts de equivalencia y de `EXPLAIN` se toma de `dev` con SLT-64 ya dentro (humano). |

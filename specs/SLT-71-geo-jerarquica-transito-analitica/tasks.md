@@ -1,10 +1,12 @@
 # SLT-71 — geo-jerarquica-transito-analitica · tasks.md
 
 > Requisitos R1–R25 en `requirements.md`; diseño en `design.md`. Ninguna task empieza antes de que
-> se apruebe el spec, ni antes de que se cierren las preguntas abiertas que le afectan:
-> - la 1 afecta a T3.3 y T5.2;
-> - la 2 afecta a T4.1 y T4.2;
-> - la 3 afecta a T1.2 y T3.2.
+> se apruebe el spec. Las tres preguntas del spec se cerraron el 2026-11-04 (tabla de decisiones).
+>
+> **Dependencia de SLT-64** (decisión «¿Choque de archivos con SLT-64?»): SLT-64 mergea primero.
+> - T1.2 y T3.2 esperan a que SLT-64 esté en `dev`.
+> - Antes de T1.2 se integra `origin/dev` en la rama, y la copia de «antes» sale de esa base.
+> - En F2.3 se vuelve a integrar `dev`, con SLT-64 dentro.
 >
 > `[P]` = paralelizable con las otras `[P]` de su bloque. Las dependencias van entre corchetes.
 > Ningún agente corre los scripts de T5 ni de T6 fuera de la base de tests local.
@@ -28,9 +30,9 @@
   de la lectura, y `geo-explain-consultas.ts` re-exporta. **Hecho:**
   `tests/integration/db/geo-explain-consultas.test.ts` pasa sin cambios.
 - [ ] **T1.2** `scripts/geo-equivalencia/analitica-de-hoy.ts`: copia **literal** de la tabla de
-  design §7, **antes** de tocar ningún repositorio, desde la base que fije la pregunta abierta 3.
-  **Hecho:** compila. El commit de la copia va solo y precede a los de T2–T4, y el reviewer la
-  compara con la base citada en el commit.
+  design §7, **antes** de tocar ningún repositorio, desde `origin/dev` con SLT-64 ya mergeada e
+  integrada en la rama. **Hecho:** compila. El commit de la copia va solo, cita el SHA de `dev` y
+  precede a los de T2–T4. El reviewer la compara con ese SHA.
 
 ## T2 — El filtro por lugar [T1]
 
@@ -49,12 +51,12 @@
   `conteo-devoluciones.test.ts` y `conteo-entregas-*.test.ts` pasan, cambiando solo lo de design
   §11.1.
 - [ ] **T3.2** [P] `ConteoCargadasPorDiaRepository` (sitio 3) y `CicloVidaRepository` (sitio 5), con
-  el mismo patrón. `CicloVidaRepository` espera el orden de merge de la pregunta abierta 3.
+  el mismo patrón. `CicloVidaRepository` se toca sobre la versión de SLT-64 ya integrada.
   **Hecho:** typecheck en verde. `ciclo-vida.test.ts` y `conteo-cargadas-servicio.test.ts` pasan,
   cambiando solo lo de §11.1.
-- [ ] **T3.3** Las cuatro lecturas que comparten el recorte, **solo si la pregunta abierta 1 se
-  cierra con «entran»**: `ConteoProductosRepository`, `DineroProductosRepository`,
-  `CohorteCargaRepository` y `ConteoHoyGestionRepository` pasan `lugares`. **Hecho:** typecheck en
+- [ ] **T3.3** Las cuatro lecturas que comparten el recorte (`ConteoProductosRepository`,
+  `DineroProductosRepository`, `CohorteCargaRepository` y `ConteoHoyGestionRepository`) pasan
+  `lugares` al constructor único. **Hecho:** typecheck en
   verde. `conteo-productos-sql`, `dinero-productos-sql`, `cohorte-carga-sql`,
   `conteo-hoy-gestion-servicio` y sus `*.int.test.ts` pasan, cambiando solo lo de §11.1 (R7).
 - [ ] **T3.4** `tests/integration/db/geo-analitica-lugar.test.ts` (R1–R5, R13), sobre T3.1–T3.3.
@@ -65,10 +67,13 @@
 ## T4 — Tránsito [T2.1]
 
 - [ ] **T4.1** [P] `InformeTransitoRepository.filasEnAlerta` sin `JOIN` y con los nombres del
-  catálogo, sin cargarlo cuando no hay filas. Nodo ausente según la pregunta abierta 2 (design §4).
-  **Hecho:** typecheck en verde. `informe-transito-*.test.ts` (unitarios y de integración) pasan sin
+  catálogo, sin cargarlo cuando no hay filas. Un nodo ausente escribe la línea
+  `analitica - informe transito - error: …` con `ErrorLogger` (inyectable, por defecto
+  `defaultLogger`) y la generación falla (design §4). **Hecho:** typecheck en verde. `informe-transito-*.test.ts` (unitarios y de integración) pasan sin
   cambiar aserciones.
-- [ ] **T4.2** `tests/integration/db/geo-transito-nombres.test.ts` (R8–R13). **Hecho:** pasa.
+- [ ] **T4.2** `tests/integration/db/geo-transito-nombres.test.ts` (R8–R13), con el test de la línea
+  de log de R12 (prefijo, ids de nodo y de orden, sin datos personales ni nombres, y la contraprueba
+  sin log). **Hecho:** pasa.
 
 ## T5 — Script de equivalencia [T3, T4]
 
@@ -76,8 +81,7 @@
   `pnpm geo:equivalencia-analitica` en `package.json`. **Hecho:** corre contra la base de tests
   local y sale 0 con el fixture.
 - [ ] **T5.2** `tests/integration/db/geo-equivalencia-analitica.test.ts` (R17, R18), con la
-  contraprueba del nodo inyectado. El bloque `comparten-recorte` depende de la pregunta abierta 1.
-  **Hecho:** pasa.
+  contraprueba del nodo inyectado y el bloque `comparten-recorte`. **Hecho:** pasa.
 
 ## T6 — Script de rendimiento [T1.1, T3, T4]
 
@@ -138,11 +142,10 @@
 - `lib/repositories/ConteoCargadasPorDiaRepository.ts`
 - `lib/repositories/ConteoDevolucionesRepository.ts`
 - `lib/repositories/CicloVidaRepository.ts`
-- Solo si la pregunta abierta 1 se cierra con «entran»:
-  - `lib/repositories/ConteoProductosRepository.ts`
-  - `lib/repositories/DineroProductosRepository.ts`
-  - `lib/repositories/CohorteCargaRepository.ts`
-  - `lib/repositories/ConteoHoyGestionRepository.ts`
+- `lib/repositories/ConteoProductosRepository.ts`
+- `lib/repositories/DineroProductosRepository.ts`
+- `lib/repositories/CohorteCargaRepository.ts`
+- `lib/repositories/ConteoHoyGestionRepository.ts`
 - `scripts/geo-equivalencia/medicion.ts`
 - `scripts/geo-equivalencia/analitica-de-hoy.ts`
 - `scripts/geo-explain-consultas.ts`
