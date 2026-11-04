@@ -24,7 +24,7 @@ function okSummary(overrides: Partial<CargaViaApiSummary> = {}): CargaViaApiSumm
     // 2026-08-31: `filas` solo lleva lo que entro; lo que falla va en esta lista hermana.
     errores: [],
     ordenes: [
-      { id: "ord-1", numRemision: "REM-1", numGuia: 1042, estado: "por_recolectar_en_tienda", estadoNombre: "Por recolectar en tienda", costoEnvio: "3.92", fulfillment: "0.00" },
+      { id: "ord-1", numRemision: "REM-1", numGuia: 1042, estado: "por_recolectar_en_tienda", estadoNombre: "Por recolectar en tienda", costoEnvio: "3.92", fulfillment: "0.00", ivaFulfillment: "0.00" },
     ],
     cargaId: "22222222-2222-4222-8222-222222222222", // feature 141/R39
     ...overrides,
@@ -441,8 +441,8 @@ describe("carga API: contrato de la respuesta por modo (R47/R48/R53/R54)", () =>
     const summary = okSummary({
       creadas: 2,
       ordenes: [
-        { id: "ord-1", numRemision: "REM-1", numGuia: 1042, estado: "en_ruta_bodega_central", estadoNombre: "En ruta a bodega central", costoEnvio: "3.92", fulfillment: "0.00" },
-        { id: "ord-2", numRemision: "REM-2", numGuia: 1043, estado: "en_ruta_bodega_central", estadoNombre: "En ruta a bodega central", costoEnvio: "3.92", fulfillment: "0.00" },
+        { id: "ord-1", numRemision: "REM-1", numGuia: 1042, estado: "en_ruta_bodega_central", estadoNombre: "En ruta a bodega central", costoEnvio: "3.92", fulfillment: "0.00", ivaFulfillment: "0.00" },
+        { id: "ord-2", numRemision: "REM-2", numGuia: 1043, estado: "en_ruta_bodega_central", estadoNombre: "En ruta a bodega central", costoEnvio: "3.92", fulfillment: "0.00", ivaFulfillment: "0.00" },
       ],
     });
     const service = fakeService({

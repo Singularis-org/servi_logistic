@@ -464,11 +464,22 @@ describeSiHayBase("💰 SLT-56 — ajustar el pago al mensajero de una gestion d
         data: { estado: "rechazado", motivoRechazo: "faltan comprobantes", resueltoPor: c.admin.id, resueltoAt: new Date() },
       });
       const cierreDia = new CierreDiaRepository(clienteConSavepoint(tx) as never, {} as never);
+      // Una tarifa DISTINTA a la congelada en la zona del cierre: si la re-solicitud re-derivara, el
+      // pago cambiaria. SLT-52 (T5.1): la re-solicitud resuelve el pago dentro de su transaccion con
+      // la zona destino del cierre, asi que la tarifa distinta se escribe en la base.
+      const { destinoZonaId } = await tx.cierreDia.findUniqueOrThrow({
+        where: { id: c.cierreId },
+        select: { destinoZonaId: true },
+      });
+      await tx.tarifaZonaMensajero.updateMany({
+        where: { zonaId: destinoZonaId },
+        data: { cobroEntregado: new Prisma.Decimal("9999.00"), cobroRechazado: new Prisma.Decimal("8888.00") },
+      });
       const reabierto = await cierreDia.resolicitarCierreRechazado({
         cierreId: c.cierreId,
         mensajeroId: c.mensajero.id,
-        // Una tarifa DISTINTA a la congelada: si la re-solicitud re-derivara, el pago cambiaria.
-        tarifa: { cobroEntregado: "9999.00", cobroRechazado: "8888.00" },
+        zonaId: destinoZonaId,
+        vehiculoId: null,
       });
       const estado = await tx.cierreDia.findUniqueOrThrow({ where: { id: c.cierreId }, select: { estado: true } });
       return { reabierto, estado: estado.estado, despues: await foto(ctx), c };

@@ -12,7 +12,7 @@ Grep/Read sobre el diff).
 ### Archivos
 
 Nuevos:
-- `db/migrations/20261102120000_plan_sin_negociable_y_tipo_cobro/{migration,down}.sql`
+- `db/migrations/20261104130000_plan_sin_negociable_y_tipo_cobro/{migration,down}.sql`
 - `lib/planes/centimos.ts` (céntimos `bigint`, extraído de `costeo.ts` para compartirlo con `cobro.ts`)
 - `lib/planes/cobro.ts` (D6–D9: `montoDelPeriodo`, `siguienteCobro`, `cobroDelPlan`, `valorDelHistorialDeAsignacion`)
 - `tests/unit/planes/cobro.test.ts`, `tests/unit/services/planes-service-crear-custom.test.ts`
@@ -26,7 +26,7 @@ Tests modificados: los 25 de `git diff --stat tests/` (integración db de planes
 composition-root y la guardia de historial). Esta sesión: `tests/integration/db/planes-crear-custom-asigna.test.ts`
 (+ D8: crear+asignar no mueve `wallet_movimiento` ni `cobro_plataforma_movimiento`).
 
-### Migración `20261102120000_plan_sin_negociable_y_tipo_cobro`
+### Migración `20261104130000_plan_sin_negociable_y_tipo_cobro`
 - Sube: versiones pendientes `{"precio":{"tipo":"negociable"}}` → `sin_precio`; DROP CHECK
   `plan_precio_forma`, DROP COLUMN `plan.precio_negociable` (se borra, no se deja sin uso: solo la nombraba
   `plan_de_la_empresa`, que se recrea; justificado en la cabecera); CHECK nuevo de cuatro formas;
@@ -471,7 +471,7 @@ El historial de asignaciones del detalle lee las dos acciones (`ACCIONES_DE_ASIG
 la fila por la acción. Un `plan_asignado` con un tipo en `valor_anterior` es la forma anterior a D16, la
 de la tanda 2 y la que deja el down. Se sigue leyendo como cambio de solo el tipo.
 
-### Migración `db/migrations/20261103120000_historial_accion_plan_tipo_cobro_cambiado/`
+### Migración `db/migrations/20261104130100_historial_accion_plan_tipo_cobro_cambiado/`
 - `migration.sql`: `ALTER TYPE "historial_accion_tipo" ADD VALUE IF NOT EXISTS 'plan_tipo_cobro_cambiado'`. Va
   sola, por 55P04, y no escribe filas.
 - `down.sql`: **convierte, no borra**. Primero hace el `UPDATE … SET "accion" = 'plan_asignado'` de las filas con el valor y
@@ -487,7 +487,7 @@ de la tanda 2 y la que deja el down. Se sigue leyendo como cambio de solo el tip
 
 ### Archivos
 Nuevos:
-- `db/migrations/20261103120000_historial_accion_plan_tipo_cobro_cambiado/{migration,down}.sql`
+- `db/migrations/20261104130100_historial_accion_plan_tipo_cobro_cambiado/{migration,down}.sql`
 - `tests/unit/repositories/planes-repository-tipo-cobro.test.ts`: el repositorio con dobles de Prisma.
 - `tests/integration/db/migracion-d16-tipo-cobro-cambiado-ida-y-vuelta.test.ts`: base propia `d16_iv_*`; corre en CI.
 

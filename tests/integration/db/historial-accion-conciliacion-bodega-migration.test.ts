@@ -406,8 +406,15 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("431/T1 (b) — el down recrea la lista PREV
       // SLT-76 (2026-11-02): el rastro de los distritos de una zona. Su migracion:
       // `20261102090000_slt76_historial_zona_distrito`.
       "zona_distrito_cambiado",
+      // SLT-52 (2026-11-02): el rastro del modelo nuevo de tarifas. Su migracion:
+      // `20261103120300_historial_tarifas_flexibles`.
+      "tarifa_valor_fijado",
+      "tarifa_valor_quitado",
+      "grupo_distritos_creado",
+      "grupo_distritos_cambiado",
+      "grupo_distritos_borrado",
       // Ajuste planes-custom D16: `plan_tipo_cobro_cambiado`, de
-      // `20261103120000_historial_accion_plan_tipo_cobro_cambiado`.
+      // `20261104130100_historial_accion_plan_tipo_cobro_cambiado`.
       "plan_tipo_cobro_cambiado",
     ];
     const catalogoPrevio = HISTORIAL_ACCION_TIPOS.filter(

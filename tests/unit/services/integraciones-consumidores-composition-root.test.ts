@@ -296,7 +296,25 @@ const claveRutas = (proyecto: string, email: string, privateKey: string) => ({
 
 function armarReposDeRutas() {
   const rutas = {
-    findByMensajero: vi.fn(async () => null),
+    // SLT-79: una ruta ya calculada hoy (sin paradas). Con la primera del dia pendiente un job ya no
+    // calcula nada (solo el boton), y este caso necesita que el job llame a Google.
+    findByMensajero: vi.fn(async () => ({
+      id: "r1",
+      mensajeroId: "m-1",
+      estado: "vigente" as const,
+      calculadaAt: new Date(AHORA.getTime() - 60 * 60_000),
+      origenLat: null,
+      origenLng: null,
+      origenAt: null,
+      origenFuente: null,
+      huellaSet: null,
+      ultimoError: null,
+      secuenciaFuente: null,
+      trazado: null,
+      actualizadaAt: new Date(AHORA.getTime() - 60 * 60_000),
+      secuenciaPorOrden: new Map<string, number>(),
+      tramoPorOrden: new Map(),
+    })),
     upsertOrigen: vi.fn(async () => {}),
     reemplazarSecuencia: vi.fn(async () => {}),
     guardarTrazado: vi.fn(async () => {}),

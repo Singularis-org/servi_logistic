@@ -638,6 +638,7 @@ export async function sembrarEscenario459(
     montoFlete: "1000.00",
     montoIva: "130.00",
     tarifaId: null,
+    tarifaValorId: null, // SLT-52: cobro del modelo viejo, sin traza al nuevo
     generadoEl: "2026-09-24",
   });
   const cobroRechazo = await tx.rechazoTiendaCobro.findFirstOrThrow({

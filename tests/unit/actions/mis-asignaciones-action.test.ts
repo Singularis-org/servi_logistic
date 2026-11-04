@@ -47,8 +47,6 @@ function buildService(overrides: Partial<IMisAsignacionesService> = {}): IMisAsi
       paradasSinOptimizar: 0,
       trazado: null,
       tramoSiguiente: null,
-      primeraRutaPendiente: false,
-      puntoRecogida: null,
     },
     })),
     recogerAsignaciones: vi.fn(async () => ({ status: "ok" as const, recogidas: ["o1"] })),

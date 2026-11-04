@@ -3,26 +3,24 @@ import type { PrismaClient } from "@prisma/client";
 import { GestionOrdenRepository } from "@/lib/repositories/GestionOrdenRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import type {
-  EncolarOMoverOpts,
   EnqueueOpts,
-  IJobRepositoryMovible,
+  IJobRepository,
   JobDTO,
   JobTxClient,
 } from "@/lib/interfaces/repositories/IJobRepository";
 import type { JobTipo } from "@prisma/client";
-import {
-  dedupeKeyDebounce,
-  dedupeKeyPrimeraRecogida,
-} from "@/lib/services/jobs/optimizacion-ruta-encolado";
+import { dedupeKeyDebounce } from "@/lib/services/jobs/optimizacion-ruta-encolado";
 import { idEstado, sembrarCatalogoEstados } from "@/tests/fixtures/catalogo-estados";
 
 // Feature 92 (R16/R17/R19) -> SLT-59 (R57-R61, R76, R77) — encolado TRANSACTIONAL OUTBOX desde los
 // writers del mensajero. Prisma va mockeado (patron de `orden-geocode-enqueue.test.ts`). El
 // `$transaction` fake respeta lo que importa: si el callback LANZA, la cola vuelve a como estaba.
 // La cola en memoria honra la unicidad de `dedupe_key` igual que el indice unico parcial de la
-// migracion de la 90, y el `DO UPDATE … WHERE estado = 'pending'` de `encolarOMoverPendiente`
-// igual que `JobRepository` (el SQL en si lo fija `job-repo-posponer.test.ts`). Asi el efecto de
-// la clave se observa como FILAS, no como llamadas.
+// migracion de la 90. Asi el efecto de la clave se observa como FILAS, no como llamadas.
+//
+// SLT-79 (2026-11-03, decision humana «todo manual»): la primera ruta del dia la calcula SOLO el
+// boton. Recoger ya no encola (SLT-59 R57/R58/R76/R77 retirados) y la primera gestion tampoco
+// (R59 retirado). El traspaso ya solo encolaba con la primera ruta hecha (R60) y sigue igual.
 
 const MENSAJERO = "m-1";
 const T0 = new Date("2026-07-20T12:00:00.000Z");
@@ -31,14 +29,11 @@ const T0 = new Date("2026-07-20T12:00:00.000Z");
  * servicio. Medianoche UTC de la fecha calendario: el 20 de julio.
  */
 const DIA_CR = new Date("2026-07-20T00:00:00.000Z");
-const DIA_TEXTO = "2026-07-20";
 /** El dia CR del 20 empieza a las 06:00Z: esto es «hoy» y lo de abajo, «ayer». */
 const CALCULADA_HOY = new Date("2026-07-20T07:00:00.000Z");
 const CALCULADA_AYER = new Date("2026-07-19T22:00:00.000Z");
-const MIN = 60_000;
 const POR_RECOGER = idEstado("mensajero_recogiendo_en_bodega");
 const EN_REPARTO = idEstado("en_reparto");
-const CLAVE_DEL_DIA = dedupeKeyPrimeraRecogida(MENSAJERO, DIA_TEXTO);
 
 interface Fila {
   tipo: JobTipo;
@@ -46,11 +41,9 @@ interface Fila {
   opts: EnqueueOpts;
   tx?: JobTxClient;
   estado: "pending" | "processing" | "done" | "failed";
-  /** Por donde entro: `enqueue` (ventana) o `encolarOMoverPendiente` (clave por dia). */
-  via: "enqueue" | "mover";
 }
 
-class ColaEnMemoria implements IJobRepositoryMovible {
+class ColaEnMemoria implements IJobRepository {
   filas: Fila[] = [];
 
   async enqueue(
@@ -62,26 +55,7 @@ class ColaEnMemoria implements IJobRepositoryMovible {
     const key = opts.dedupeKey ?? null;
     // ON CONFLICT ("dedupe_key") WHERE dedupe_key IS NOT NULL DO NOTHING.
     if (key !== null && this.filas.some((f) => f.opts.dedupeKey === key)) return null;
-    this.filas.push({ tipo, payload, opts, tx, estado: "pending", via: "enqueue" });
-    return null;
-  }
-  async encolarOMoverPendiente(
-    tipo: JobTipo,
-    payload: Record<string, unknown>,
-    opts: EncolarOMoverOpts,
-    tx?: JobTxClient,
-  ): Promise<JobDTO | null> {
-    const existente = this.filas.find((f) => f.opts.dedupeKey === opts.dedupeKey);
-    if (existente === undefined) {
-      this.filas.push({ tipo, payload, opts: { ...opts }, tx, estado: "pending", via: "mover" });
-      return null;
-    }
-    // ON CONFLICT … DO UPDATE SET run_after, payload … WHERE "jobs"."estado" = 'pending'.
-    if (existente.estado === "pending") {
-      existente.opts = { ...existente.opts, runAfter: opts.runAfter };
-      existente.payload = payload;
-      existente.tx = tx;
-    }
+    this.filas.push({ tipo, payload, opts, tx, estado: "pending" });
     return null;
   }
   async claimBatch(): Promise<JobDTO[]> {
@@ -121,18 +95,19 @@ function sqlDe(q: unknown): string {
 }
 
 /**
- * Prisma fake de `recogerLote`. El `UPDATE … RETURNING` devuelve los ids que ganaron la guarda; la
- * consulta de §12.2 devuelve si quedan por recoger y el `calculada_at` de la ruta (null = nunca).
+ * Prisma fake de `recogerLote`. El `UPDATE … RETURNING` devuelve los ids que ganaron la guarda. Si
+ * alguien vuelve a leer la ruta para decidir un job (lo que hacia SLT-59 §12.2), contesta «primera
+ * pendiente»: el test lo veria como un job encolado.
  */
 function prismaRecoger(
   cola: ColaEnMemoria,
   idsGanadores: { id: string }[],
-  opts: { quedan?: boolean; calculadaAt?: Date | null; falla?: boolean } = {},
+  opts: { falla?: boolean } = {},
 ) {
   const tx = {
     $queryRaw: vi.fn(async (q: unknown) => {
-      if (sqlDe(q).includes("quedan_por_recoger")) {
-        return [{ quedan_por_recoger: opts.quedan ?? false, calculada_at: opts.calculadaAt ?? null }];
+      if (sqlDe(q).includes("ruta_optimizada")) {
+        return [{ quedan_por_recoger: true, calculada_at: null }];
       }
       return idsGanadores;
     }),
@@ -194,12 +169,7 @@ function repoGestion(prisma: unknown, cola: ColaEnMemoria, ahora: Date = T0) {
   return new GestionOrdenRepository(prisma as unknown as PrismaClient, cola, () => ahora);
 }
 
-function recoger(
-  cola: ColaEnMemoria,
-  ahora: Date,
-  ids: string[],
-  opts: { quedan?: boolean; calculadaAt?: Date | null; falla?: boolean } = {},
-) {
+function recoger(cola: ColaEnMemoria, ahora: Date, ids: string[], opts: { falla?: boolean } = {}) {
   const fake = prismaRecoger(cola, ids.map((id) => ({ id })), opts);
   const promesa = repoGestion(fake.prisma, cola, ahora).recogerLote(
     ids,
@@ -219,7 +189,7 @@ const GESTION_INPUT = {
 
 beforeEach(async () => {
   await sembrarCatalogoEstados(); // feature 140: la guardia del choke point es de fallo CERRADO
-  // Los defaults de la config: 60 s de debounce, 5 min de debounce de la primera ruta (D29, SLT-74).
+  // Los defaults de la config: 60 s de debounce y 5 min de espera de la primera ruta (SLT-74/SLT-79).
   vi.stubEnv("RUTA_DEBOUNCE_S", "");
   vi.stubEnv("RUTA_PRIMERA_DEBOUNCE_MIN", "");
 });
@@ -229,215 +199,50 @@ afterEach(() => {
 });
 
 /* ------------------------------------------------------------------------------------------ */
-/* La recogida: R57, R58, R76, R77                                                             */
+/* La recogida — SLT-79: no encola nada (SLT-59 R57, R58, R76, R77 retirados)                  */
 /* ------------------------------------------------------------------------------------------ */
 
-describe("SLT-59 R57/R76 — recogida parcial con la primera ruta pendiente: un job del dia a +5 min", () => {
-  it("R76: deja UN job con runAfter = ahora + RUTA_PRIMERA_DEBOUNCE_MIN y origen = recogida_parcial", async () => {
+describe("SLT-79 — recoger NO encola ningun job, con o sin la primera ruta del dia", () => {
+  it("una recogida parcial -> 0 jobs (antes R76: job del dia a +5 min)", async () => {
     const cola = new ColaEnMemoria();
-    const { promesa, tx } = recoger(cola, T0, ["o1"], { quedan: true });
-    await promesa;
-
-    expect(cola.ruta).toHaveLength(1);
-    const job = cola.ruta[0];
-    expect(job.via).toBe("mover");
-    expect(job.opts.dedupeKey).toBe(CLAVE_DEL_DIA);
-    expect(job.opts.dedupeKey).toBe(`ruta-opt:primera-recogida:${MENSAJERO}:${DIA_TEXTO}`);
-    expect(job.opts.runAfter?.getTime()).toBe(T0.getTime() + 5 * MIN);
-    // PII: el mensajero y el origen del evento; nada mas.
-    expect(job.payload).toEqual({ mensajeroId: MENSAJERO, origen: "recogida_parcial" });
-    // Outbox: va con el cliente de la transaccion de la recogida.
-    expect(job.tx).toBe(tx);
+    await recoger(cola, T0, ["o1"]).promesa;
+    expect(cola.filas).toHaveLength(0);
   });
 
-  it("R76: una segunda recogida parcial a los 4 min MUEVE el mismo job a ahora + 5 min", async () => {
+  it("dos recogidas parciales seguidas -> 0 jobs", async () => {
     const cola = new ColaEnMemoria();
-    await recoger(cola, T0, ["o1"], { quedan: true }).promesa;
-    const t4 = new Date(T0.getTime() + 4 * MIN);
-    await recoger(cola, t4, ["o2"], { quedan: true }).promesa;
-
-    expect(cola.ruta).toHaveLength(1);
-    expect(cola.ruta[0].opts.runAfter?.getTime()).toBe(t4.getTime() + 5 * MIN);
-    expect(cola.ruta[0].payload).toEqual({ mensajeroId: MENSAJERO, origen: "recogida_parcial" });
+    await recoger(cola, T0, ["o1"]).promesa;
+    await recoger(cola, new Date(T0.getTime() + 4 * 60_000), ["o2"]).promesa;
+    expect(cola.filas).toHaveLength(0);
   });
 
-  it("R76/R58: la ultima recogida mueve el MISMO job a ahora + RUTA_DEBOUNCE_S con origen = recogida", async () => {
-    const cola = new ColaEnMemoria();
-    await recoger(cola, T0, ["o1"], { quedan: true }).promesa;
-    const t7 = new Date(T0.getTime() + 7 * MIN);
-    await recoger(cola, t7, ["o2"], { quedan: false }).promesa;
-
-    expect(cola.ruta).toHaveLength(1);
-    expect(cola.ruta[0].opts.dedupeKey).toBe(CLAVE_DEL_DIA);
-    expect(cola.ruta[0].opts.runAfter?.getTime()).toBe(t7.getTime() + 60_000);
-    expect(cola.ruta[0].payload).toEqual({ mensajeroId: MENSAJERO, origen: "recogida" });
-  });
-
-  it("R76: RUTA_PRIMERA_DEBOUNCE_MIN se lee de la config (override a 3 min)", async () => {
-    vi.stubEnv("RUTA_PRIMERA_DEBOUNCE_MIN", "3");
-    const cola = new ColaEnMemoria();
-    await recoger(cola, T0, ["o1"], { quedan: true }).promesa;
-    expect(cola.ruta[0].opts.runAfter?.getTime()).toBe(T0.getTime() + 3 * MIN);
-  });
-
-  it("R76: la clave es por DIA y por MENSAJERO: otro mensajero tiene su propio job", async () => {
-    const cola = new ColaEnMemoria();
-    for (const m of ["m-1", "m-2"]) {
-      const { prisma } = prismaRecoger(cola, [{ id: "o1" }], { quedan: true });
-      await repoGestion(prisma, cola, T0).recogerLote(["o1"], m, POR_RECOGER, EN_REPARTO, DIA_CR);
-    }
-    expect(cola.ruta.map((f) => f.opts.dedupeKey).sort()).toEqual([
-      dedupeKeyPrimeraRecogida("m-1", DIA_TEXTO),
-      dedupeKeyPrimeraRecogida("m-2", DIA_TEXTO),
-    ]);
-  });
-});
-
-describe("SLT-59 R57 — con la primera ruta del dia ya calculada, recoger NO encola", () => {
-  it("recogida parcial con la ruta calculada HOY -> 0 jobs", async () => {
-    const cola = new ColaEnMemoria();
-    await recoger(cola, T0, ["o1"], { quedan: true, calculadaAt: CALCULADA_HOY }).promesa;
-    expect(cola.ruta).toHaveLength(0);
-  });
-
-  it("el ultimo paquete con la ruta calculada HOY -> 0 jobs (R58 solo con la primera pendiente)", async () => {
-    const cola = new ColaEnMemoria();
-    await recoger(cola, T0, ["o1"], { quedan: false, calculadaAt: CALCULADA_HOY }).promesa;
-    expect(cola.ruta).toHaveLength(0);
-  });
-
-  it("una ruta calculada AYER no cuenta: la primera de hoy sigue pendiente y se encola", async () => {
-    const cola = new ColaEnMemoria();
-    await recoger(cola, T0, ["o1"], { quedan: false, calculadaAt: CALCULADA_AYER }).promesa;
-    expect(cola.ruta).toHaveLength(1);
-  });
-
-  it("si NINGUNA orden gano la guarda, ni consulta ni encola", async () => {
-    const cola = new ColaEnMemoria();
-    // Se pide `o1`, pero el `UPDATE … RETURNING` no devuelve ninguna (perdio la guarda).
-    const fake = prismaRecoger(cola, [], { quedan: false });
-    await repoGestion(fake.prisma, cola, T0).recogerLote(["o1"], MENSAJERO, POR_RECOGER, EN_REPARTO, DIA_CR);
-
-    expect(cola.ruta).toHaveLength(0);
-    // Solo el UPDATE: la consulta de la primera ruta no corre si nada cambio.
-    expect(fake.tx.$queryRaw).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe("SLT-59 R58 — la recogida que deja sin paquetes por recoger encola a + RUTA_DEBOUNCE_S", () => {
-  it("el ultimo paquete con la primera pendiente -> 1 job a ahora + 60 s, origen = recogida", async () => {
-    const cola = new ColaEnMemoria();
-    const { promesa, tx } = recoger(cola, T0, ["o1"], { quedan: false });
-    await promesa;
-
-    expect(cola.ruta).toHaveLength(1);
-    expect(cola.ruta[0].opts.runAfter?.getTime()).toBe(T0.getTime() + 60_000);
-    expect(cola.ruta[0].opts.dedupeKey).toBe(CLAVE_DEL_DIA);
-    expect(cola.ruta[0].payload).toEqual({ mensajeroId: MENSAJERO, origen: "recogida" });
-    expect(cola.ruta[0].tx).toBe(tx);
-  });
-
-  it("«recoger todas» (8 paquetes, una transaccion) -> UN solo job", async () => {
+  it("«recoger todas» (8 paquetes, el ultimo incluido) -> 0 jobs (antes R58: job a +60 s)", async () => {
     const cola = new ColaEnMemoria();
     const ids = Array.from({ length: 8 }, (_, i) => `o${i}`);
-    const { promesa, prisma } = recoger(cola, T0, ids, { quedan: false });
-    await promesa;
-
+    const { promesa, prisma } = recoger(cola, T0, ids);
+    expect(await promesa).toBe(8);
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
-    expect(cola.ruta).toHaveLength(1);
+    expect(cola.filas).toHaveLength(0);
   });
 
-  it("R67: UNA sola consulta extra, con el MISMO predicado de dia que el UPDATE (una reservada para mañana no cuenta)", async () => {
-    // Con un doble el SQL no se ejecuta: esto fija la FORMA. Que Postgres excluya la de mañana lo
-    // prueba el predicado copiado del `UPDATE`, que `recoger-lote-dia-reserva.int.test.ts` mide
-    // contra la base real.
+  it("la recogida ya no lee la ruta: ninguna sentencia nombra `ruta_optimizada`", async () => {
     const cola = new ColaEnMemoria();
-    const { promesa, tx } = recoger(cola, T0, ["o1"], { quedan: true });
+    const { promesa, tx } = recoger(cola, T0, ["o1"]);
     await promesa;
-
-    const sentencias = tx.$queryRaw.mock.calls.map((c) => ({
-      sql: sqlDe(c[0]),
-      valores: c.slice(1) as unknown[],
-    }));
-    // Ademas del UPDATE y de las lecturas del choke point de estados (`appendCambioEstado`), UNA
-    // sola sentencia nueva, y despues del UPDATE.
-    const nuevas = sentencias.filter((s) => s.sql.includes("ruta_optimizada"));
-    expect(nuevas).toHaveLength(1);
-    const consulta = nuevas[0];
-    const iUpdate = sentencias.findIndex((s) => s.sql.includes('UPDATE "orden"'));
-    expect(iUpdate).toBeGreaterThanOrEqual(0);
-    expect(sentencias.indexOf(consulta)).toBeGreaterThan(iUpdate);
-    expect(consulta.sql).toContain("quedan_por_recoger");
-    expect(consulta.sql).toContain("calculada_at");
-    expect(consulta.sql).toContain("ruta_optimizada");
-    expect(consulta.sql).toMatch(/"fecha_reparto" IS NULL OR "fecha_reparto" <=/);
-    expect(consulta.sql).toMatch(/::date/);
-    expect(consulta.sql).toMatch(/"deleted_at" IS NULL/);
-    expect(consulta.valores).toContain(DIA_TEXTO);
-    expect(consulta.valores).toContain(POR_RECOGER);
-    expect(consulta.valores).toContain(MENSAJERO);
-    expect(consulta.valores.some((v) => v instanceof Date)).toBe(false);
-  });
-});
-
-describe("SLT-59 R77 — el job del dia que ya no esta `pending` no se crea ni se mueve", () => {
-  for (const estado of ["processing", "done", "failed"] as const) {
-    it(`con el job del dia en \`${estado}\`, otra recogida no crea otro ni le cambia el runAfter`, async () => {
-      const cola = new ColaEnMemoria();
-      await recoger(cola, T0, ["o1"], { quedan: true }).promesa;
-      cola.ruta[0].estado = estado;
-      const runAfterOriginal = cola.ruta[0].opts.runAfter?.getTime();
-
-      await recoger(cola, new Date(T0.getTime() + 4 * MIN), ["o2"], { quedan: true }).promesa;
-      await recoger(cola, new Date(T0.getTime() + 6 * MIN), ["o3"], { quedan: false }).promesa;
-
-      expect(cola.ruta).toHaveLength(1);
-      expect(cola.ruta[0].opts.runAfter?.getTime()).toBe(runAfterOriginal);
-      expect(cola.ruta[0].payload).toEqual({ mensajeroId: MENSAJERO, origen: "recogida_parcial" });
-    });
-  }
-});
-
-describe("R16 y SLT-59 R25/R58 — una transaccion REVERTIDA no deja jobs huerfanos", () => {
-  it("si el append del historial revienta en recogerLote, no queda job", async () => {
-    const cola = new ColaEnMemoria();
-    await expect(recoger(cola, T0, ["o1"], { quedan: false, falla: true }).promesa).rejects.toThrow();
-    expect(cola.ruta).toHaveLength(0);
+    const sentencias = tx.$queryRaw.mock.calls.map((c) => sqlDe(c[0]));
+    expect(sentencias.some((q) => q.includes('UPDATE "orden"'))).toBe(true);
+    expect(sentencias.some((q) => q.includes("ruta_optimizada"))).toBe(false);
   });
 
-  it("si la transaccion revierte DESPUES de mover el job, el movimiento tambien se deshace", async () => {
+  it("si el append del historial revienta, la recogida falla y no queda nada en la cola", async () => {
     const cola = new ColaEnMemoria();
-    await recoger(cola, T0, ["o1"], { quedan: true }).promesa;
-    const runAfterOriginal = cola.ruta[0].opts.runAfter?.getTime();
-
-    // El job va por el `tx` de la recogida: si esa transaccion no confirma, el `DO UPDATE` se va
-    // con ella. El doble lo modela con un `$transaction` que falla al confirmar.
-    const fake = prismaRecoger(cola, [{ id: "o2" }], { quedan: false });
-    const transaccion = fake.prisma.$transaction;
-    const falloAlConfirmar = vi.fn(async (cb: (t: typeof fake.tx) => Promise<unknown>) =>
-      transaccion(async (t) => {
-        await cb(t);
-        throw new Error("commit boom");
-      }),
-    );
-    await expect(
-      repoGestion({ $transaction: falloAlConfirmar }, cola, new Date(T0.getTime() + MIN)).recogerLote(
-        ["o2"],
-        MENSAJERO,
-        POR_RECOGER,
-        EN_REPARTO,
-        DIA_CR,
-      ),
-    ).rejects.toThrow("commit boom");
-
-    expect(cola.ruta).toHaveLength(1);
-    expect(cola.ruta[0].opts.runAfter?.getTime()).toBe(runAfterOriginal);
-    expect(cola.ruta[0].tx).not.toBe(fake.tx);
+    await expect(recoger(cola, T0, ["o1"], { falla: true }).promesa).rejects.toThrow();
+    expect(cola.filas).toHaveLength(0);
   });
 });
 
 /* ------------------------------------------------------------------------------------------ */
-/* La gestion: R21-R25 y R59 (R22 acotado)                                                     */
+/* La gestion: R21-R25; R59 retirado en SLT-79                                                */
 /* ------------------------------------------------------------------------------------------ */
 
 // ⏳ 2026-10-29 (SLT-59, D2/D12): este bloque probaba 92/R19 (gestion INMEDIATA, namespace propio).
@@ -466,7 +271,7 @@ describe("SLT-59 R21 — una gestion sobre una orden CON coordenadas encola con 
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 
-  it("R59/R67: coordenadas y `calculada_at` salen de la MISMA re-lectura de gestionable", async () => {
+  it("R67: coordenadas y `calculada_at` salen de la MISMA re-lectura de gestionable", async () => {
     const cola = new ColaEnMemoria();
     const { prisma, tx } = prismaGestion(cola);
     await repoGestion(prisma, cola).registrarGestionPendiente(GESTION_INPUT);
@@ -482,8 +287,8 @@ describe("SLT-59 R21 — una gestion sobre una orden CON coordenadas encola con 
   });
 });
 
-describe("SLT-59 R22 (acotado por R59) — una gestion SIN coordenadas", () => {
-  it("con la primera ruta del dia YA calculada: no deja fila, pero la gestion se registra", async () => {
+describe("SLT-79 — la gestion solo encola con la primera ruta del dia ya calculada", () => {
+  it("SIN coordenadas y la primera ruta YA calculada: no deja fila, pero la gestion se registra (R22)", async () => {
     const cola = new ColaEnMemoria();
     const { prisma } = prismaGestion(cola, {
       coordenadas: false,
@@ -497,25 +302,17 @@ describe("SLT-59 R22 (acotado por R59) — una gestion SIN coordenadas", () => {
     expect(cola.ruta).toHaveLength(0);
   });
 
-  it("R59: con la primera ruta del dia PENDIENTE (nunca calculada) -> 1 job con debounce", async () => {
+  it.each([
+    ["SIN coordenadas, nunca calculada (antes R59: 1 job)", false, null],
+    ["SIN coordenadas, ruta de AYER (antes R59: 1 job)", false, CALCULADA_AYER],
+    ["CON coordenadas, nunca calculada", true, null],
+    ["CON coordenadas, ruta de AYER", true, CALCULADA_AYER],
+  ])("la primera gestion del dia con la primera ruta PENDIENTE (%s) -> 0 jobs", async (_c, coordenadas, calculadaAt) => {
     const cola = new ColaEnMemoria();
-    const { prisma, tx } = prismaGestion(cola, { coordenadas: false, calculadaAt: null });
-
-    await repoGestion(prisma, cola).registrarGestionPendiente(GESTION_INPUT);
-
-    expect(cola.ruta).toHaveLength(1);
-    expect(cola.ruta[0].opts.runAfter?.getTime()).toBe(T0.getTime() + 60_000);
-    expect(cola.ruta[0].opts.dedupeKey).toBe(
-      dedupeKeyDebounce(MENSAJERO, new Date(T0.getTime() + 60_000)),
-    );
-    expect(cola.ruta[0].tx).toBe(tx);
-  });
-
-  it("R59: una ruta calculada AYER tambien deja la primera de hoy pendiente -> 1 job", async () => {
-    const cola = new ColaEnMemoria();
-    const { prisma } = prismaGestion(cola, { coordenadas: false, calculadaAt: CALCULADA_AYER });
-    await repoGestion(prisma, cola).registrarGestionPendiente(GESTION_INPUT);
-    expect(cola.ruta).toHaveLength(1);
+    const { prisma } = prismaGestion(cola, { coordenadas, calculadaAt, gestionId: "gestion-1" });
+    const res = await repoGestion(prisma, cola).registrarGestionPendiente(GESTION_INPUT);
+    expect(res?.gestionId).toBe("gestion-1");
+    expect(cola.ruta).toHaveLength(0);
   });
 });
 
@@ -644,7 +441,6 @@ describe("SLT-59 R60 — el traspaso solo encola a quien ya tiene su primera rut
 
     expect(mensajerosEncolados(cola)).toEqual([DESTINO, ORIGEN].sort());
     for (const f of cola.ruta) {
-      expect(f.via).toBe("enqueue");
       expect(f.opts.runAfter?.getTime()).toBe(T0.getTime() + 60_000);
       expect(f.tx).toBe(tx);
       // SLT-59 (D28, T8.3): el traspaso deja su `origen` en el payload.
@@ -668,10 +464,9 @@ describe("SLT-59 R60 — el traspaso solo encola a quien ya tiene su primera rut
 });
 
 describe("SLT-59 R61 — una nueva asignacion NO encola ninguna reoptimizacion", () => {
-  it("asignarBodegaLote (crea ordenes por recoger) -> 0 jobs, ni por `enqueue` ni por `encolarOMoverPendiente`", async () => {
+  it("asignarBodegaLote (crea ordenes por recoger) -> 0 jobs", async () => {
     const cola = new ColaEnMemoria();
     const enqueue = vi.spyOn(cola, "enqueue");
-    const mover = vi.spyOn(cola, "encolarOMoverPendiente");
     const tx = {
       orden: {
         findMany: vi.fn(async () => [{ id: "o1", estatusId: idEstado("en_bodega_central") }]),
@@ -693,6 +488,5 @@ describe("SLT-59 R61 — una nueva asignacion NO encola ninguna reoptimizacion",
     expect(n).toBe(1);
     expect(cola.ruta).toHaveLength(0);
     expect(enqueue).not.toHaveBeenCalled();
-    expect(mover).not.toHaveBeenCalled();
   });
 });

@@ -14,11 +14,10 @@ import { SinGestionDevueltaError } from "@/lib/interfaces/repositories/IGestionO
 import type { OrdenHistorialOrigenTipo } from "@/lib/types/orden-historial";
 import { appendCambioEstado } from "@/lib/repositories/registrar-cambio-estado";
 import { resolverSinpeBodega } from "@/lib/utils/sinpe-bodega";
-import type { IJobRepositoryMovible, JobTxClient } from "@/lib/interfaces/repositories/IJobRepository";
+import type { IJobRepository, JobTxClient } from "@/lib/interfaces/repositories/IJobRepository";
 import { JobRepository } from "@/lib/repositories/JobRepository";
 import {
   encolarOptimizacionDebounce,
-  encolarPrimeraRutaPorRecogida,
   primeraRutaPendiente,
 } from "@/lib/services/jobs/optimizacion-ruta-encolado";
 import { loadRouteOptimizationConfig } from "@/lib/config/route-optimization";
@@ -35,7 +34,7 @@ import { emitirOrdenRechazadaEnTransaccion } from "@/lib/notificaciones/emitir";
 import type { NotificacionTxClient } from "@/lib/interfaces/repositories/INotificacionRepository";
 // Feature 261 (B5): el dia de reparto entra al SQL crudo como texto `YYYY-MM-DD` con `::date`.
 // NO se importa `startOfDayCR`: este repositorio NO resuelve ningun dia de reparto, lo RECIBE resuelto.
-// SLT-59 (R59): `fechaCalendarioCR` solo fija el dia contra el que se mira si la primera ruta esta pendiente.
+// SLT-59 (R59) / SLT-79: `fechaCalendarioCR` solo fija el dia contra el que se mira si la primera ruta esta pendiente.
 import { fechaRepartoComoTexto } from "@/lib/utils/dia-reparto";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 
@@ -490,7 +489,7 @@ export class GestionOrdenRepository implements IGestionOrdenRepository {
    */
   constructor(
     private readonly prisma: GestionPrismaClient,
-    private readonly jobRepo: IJobRepositoryMovible = new JobRepository(
+    private readonly jobRepo: IJobRepository = new JobRepository(
       prisma as unknown as ConstructorParameters<typeof JobRepository>[0],
     ),
     /** Reloj inyectable: el `runAfter` del debounce debe ser determinista en tests. */
@@ -737,47 +736,12 @@ export class GestionOrdenRepository implements IGestionOrdenRepository {
           origenTipo: "recoleccion", // R23
         })),
       );
-      // Feature 92 (R16) -> SLT-59 (R57, R58, R76, R77; design §12.2 y nota D29): recoger ya NO
-      // reoptimiza cada vez. Solo encola mientras la PRIMERA ruta del dia esta pendiente, y siempre
-      // el MISMO job del dia (`encolarPrimeraRutaPorRecogida`): a +RUTA_PRIMERA_DEBOUNCE_MIN si
-      // quedan paquetes por recoger, a +RUTA_DEBOUNCE_S si este era el ultimo. Con la primera ruta ya calculada, nada.
-      // Va DENTRO de esta transaccion (outbox): si revierte, el job se va con ella.
-      //
-      // UNA consulta, con el predicado de dia COPIADO del `UPDATE` de arriba (R67). Solo si alguna
-      // orden gano la guarda: `rows.length === 0` significa que nada cambio.
-      //
-      // Review m7: las dos lecturas filtran por `organizacion_id`, y la empresa es la de una orden
-      // que esta misma transaccion acaba de recoger (la RLS solo deja recoger las de la sesion). Es
-      // una segunda barrera que no depende del contexto: una fila de otra empresa con este
-      // `mensajero_id` no cuenta como «quedan por recoger» ni presta su `calculada_at`.
-      if (rows.length > 0) {
-        const [estado] = await tx.$queryRaw<
-          { quedan_por_recoger: boolean; calculada_at: Date | null }[]
-        >`
-          WITH "empresa" AS (
-            SELECT "organizacion_id" FROM "orden" WHERE "id" = ${rows[0].id}
-          )
-          SELECT
-            EXISTS (
-              SELECT 1 FROM "orden"
-               WHERE "mensajero_asignado_id" = ${mensajeroId}
-                 AND "organizacion_id" = (SELECT "organizacion_id" FROM "empresa")
-                 AND "estatus_id" = ${origenEstatusId}
-                 AND "deleted_at" IS NULL
-                 AND ("fecha_reparto" IS NULL OR "fecha_reparto" <= ${diaTexto}::date)
-            ) AS "quedan_por_recoger",
-            (SELECT "calculada_at" FROM "ruta_optimizada"
-              WHERE "mensajero_id" = ${mensajeroId}
-                AND "organizacion_id" = (SELECT "organizacion_id" FROM "empresa")) AS "calculada_at"`;
-        if (estado !== undefined && primeraRutaPendiente(estado.calculada_at ?? null, diaTexto)) {
-          await encolarPrimeraRutaPorRecogida(
-            this.jobRepo,
-            tx as unknown as JobTxClient,
-            mensajeroId,
-            { ahora: this.now(), diaCR: diaTexto, quedanPorRecoger: estado.quedan_por_recoger },
-          );
-        }
-      }
+      // Feature 92 (R16) -> SLT-59 (R57, R58, R76, R77): recoger encolaba el job de la primera
+      // ruta del dia. ⏳ 2026-11-03 (SLT-79, decision humana «todo manual»): ya NO encola nada. La
+      // primera ruta la calcula solo el boton «Sincronizar ruta», y su espera de
+      // `RUTA_PRIMERA_DEBOUNCE_MIN` se mide desde la ultima fila `recoleccion` de este historial
+      // (`OrdenRepository.ultimaRecogidaDelDia`). Con la primera ruta ya calculada, recoger tampoco
+      // encolaba: las paradas nuevas entran por el boton.
       return rows.length;
     });
   }
@@ -885,12 +849,14 @@ export class GestionOrdenRepository implements IGestionOrdenRepository {
       // ya hay un job en la ventana, esta gestion se colapsa en el (ese job lee el conjunto al
       // correr). Una orden sin coordenadas nunca fue parada de la ruta: su gestion no la cambia.
       // La entrega en orden ya se refleja en la propia peticion (R27, Server Action `gestionar`).
-      // SLT-59 (R59, acota R22): con la primera ruta del dia pendiente se encola AUNQUE la orden no
-      // tenga coordenadas: «la primera gestion del dia» es uno de los disparos de esa primera ruta.
+      // SLT-59 (R59, acota R22): con la primera ruta del dia pendiente se encolaba AUNQUE la orden no
+      // tuviera coordenadas: «la primera gestion del dia» era uno de los disparos de esa primera ruta.
+      // ⏳ 2026-11-03 (SLT-79): al reves. Con la primera ruta pendiente NO se encola nada (la calcula
+      // solo el boton); con ella ya calculada, solo si la orden era parada (tiene coordenadas).
       const ahoraGestion = this.now();
       if (
-        gestionable[0].tiene_coordenadas ||
-        primeraRutaPendiente(gestionable[0].calculada_at ?? null, fechaCalendarioCR(ahoraGestion))
+        gestionable[0].tiene_coordenadas &&
+        !primeraRutaPendiente(gestionable[0].calculada_at ?? null, fechaCalendarioCR(ahoraGestion))
       ) {
         await encolarOptimizacionDebounce(this.jobRepo, tx as unknown as JobTxClient, mensajeroId, {
           ahora: ahoraGestion,

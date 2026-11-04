@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { conResolvePagosViejo } from "@/tests/fixtures/tarifa-tienda";
 import fs from "fs";
 import path from "path";
 import { PostulacionMensajeroService } from "@/lib/services/PostulacionMensajeroService";
@@ -186,7 +187,7 @@ function cierreService(repo: ReturnType<typeof cierreRepo>, notificar: CierreNot
       findBloqueoDetalle: vi.fn().mockResolvedValue(SIN_BLOQUEO),
     } as never,
     { createSignedUrls: vi.fn().mockResolvedValue({}) } as never,
-    { resolvePagoTarifa: vi.fn().mockResolvedValue(null) } as never,
+    conResolvePagosViejo({ resolvePagoTarifa: vi.fn().mockResolvedValue(null) }) as never,
     notificar,
   );
 }

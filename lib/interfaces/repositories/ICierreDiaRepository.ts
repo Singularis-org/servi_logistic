@@ -10,7 +10,7 @@ import type {
   IngresoEmpresaDTO,
 } from "@/lib/interfaces/services/ICierreDiaService";
 import type { PaginaRepositorio, RangoPagina } from "@/lib/utils/rango-pagina";
-import type { PagoTarifa } from "@/lib/interfaces/repositories/ITarifaZonaMensajeroRepository";
+import type { PagosDelCierre } from "@/lib/types/tarifa-flexible";
 
 // Feature 37 — contrato del repositorio del cierre del dia. Solo queries Prisma;
 // sin logica de negocio (esa vive en CierreDiaService). Money-safe: los Decimal se
@@ -192,6 +192,27 @@ export interface CierreGestionPendienteRow {
   ajustesPago?: AjustePagoGestionDTO[];
 }
 
+/**
+ * SLT-52 (T5.1, design §5, R19-R21, R28) — la gestion PENDIENTE de cierre (vista en vivo, solicitud
+ * y corte) con lo que su orden aporta al `ContextoPagoGestion`: el distrito que elige el grupo y la
+ * zona, el pedido y la comision con los que se resuelve el flete que es la base del % del pago.
+ * `tiendaId` ya viaja en la fila base.
+ *
+ * Es un subtipo y no campos nuevos de `CierreGestionPendienteRow` porque esa fila la producen
+ * tambien los detalles de ADMIN desde el snapshot (`toPendienteRowDesdeSnapshot`), donde el pago
+ * ya esta congelado y no se resuelve nada. Requeridos: una proyeccion que los olvide no compila, en
+ * vez de saltarse los grupos de distritos en silencio.
+ */
+export interface GestionPendienteDeCierreRow extends CierreGestionPendienteRow {
+  /** `orden.distrito_id` VIVO (el unico FK nullable de `orden`). */
+  distritoId: string | null;
+  /** `orden.zona_id` VIVO: la zona con la que se resuelve el flete a la tienda (base del %). */
+  zonaOrdenId: string;
+  /** `orden.monto_cobrar` como texto escala 2; `null` = sin valor. */
+  montoCobrar: string | null;
+  cobraComision: boolean;
+}
+
 // Feature 109 (T1.2, R6/R8): input OPCIONAL del corte diario. Cuando esta presente,
 // `crearCierre` transiciona en la MISMA tx las ordenes `en_reparto` del mensajero a
 // `sin_gestionar` (via el choke point 49, actor null, `origen_tipo = corte_sin_gestionar`) y
@@ -242,6 +263,14 @@ export interface CrearCierreInput {
   // crea el cierre, en paralelo al pago al mensajero.
   ingresoByGestionId: Record<string, string>;
   totalIngresoBodegaRechazos: string;
+  /**
+   * SLT-52 (T5.2, R40, R37) — el pago resuelto por gestion que se congela en
+   * `gestion_pago_congelado` en esta MISMA tx (solo filas del modelo nuevo). Los dos llamadores de
+   * produccion (`solicitarCierre`, corte diario) lo pasan siempre; opcional solo para no reescribir
+   * los dobles de los tests que no tocan el modelo nuevo. Si la empresa esta en el modelo nuevo y
+   * falta, `crearCierre` LANZA: un cierre nuevo sin su pago congelado no se puede explicar despues.
+   */
+  pagos?: PagosDelCierre;
 }
 
 // Fila cruda de un cierre pasado (R18); el repo la mapea a CierrePasadoDTO.
@@ -319,14 +348,20 @@ export interface AnularGestionDeCierreRechazadoInput {
 }
 
 /**
- * FICHA 477 (design §5.1, R15-R20) — input de la re-solicitud de un cierre `rechazado`. `tarifa`
- * es la de pago resuelta por el SERVICIO para la zona destino del cierre y el vehiculo del
- * mensajero (R17); `null` = sin tarifa -> pago e ingreso 0.00, como en la creacion (39/R8).
+ * FICHA 477 (design §5.1, R15-R20) — input de la re-solicitud de un cierre `rechazado`.
+ *
+ * SLT-52 (T5.1, R19/R20/R33): ya no viaja una tarifa unica resuelta por el servicio. El pago se
+ * resuelve POR GESTION —el distrito de cada orden elige su grupo— y las gestiones que se vinculan
+ * solo se conocen DENTRO de la transaccion, asi que el repositorio lo resuelve alli con
+ * `resolverPagosCon(tx, …)`, igual que la correccion de un resultado (398). Lo que el servicio
+ * aporta es la zona que este camino usa (la DESTINO del cierre, R17 de la 477) y el vehiculo del
+ * mensajero.
  */
 export interface ResolicitarCierreRechazadoInput {
   cierreId: string;
   mensajeroId: string;
-  tarifa: PagoTarifa | null;
+  zonaId: string;
+  vehiculoId: string | null;
 }
 
 /** FICHA 477 (R26) — una orden en correccion de un cierre rechazado, con sus descriptivos CONGELADOS. */
@@ -400,7 +435,7 @@ export interface ICierreDiaRepository {
    * (`gestionesDelCierreWhere`): lo que la pantalla lista y lo que el documento se lleva no pueden
    * ser dos conjuntos.
    */
-  findGestionesPendientes(mensajeroId: string): Promise<CierreGestionPendienteRow[]>;
+  findGestionesPendientes(mensajeroId: string): Promise<GestionPendienteDeCierreRow[]>;
   /**
    * R10: cuenta las ordenes asignadas al mensajero (no borradas) cuyo estado esta
    * en `estados` (por_recoger/en_reparto/ayuda_tienda = pendientes de gestion) **y** que no esten

@@ -13,6 +13,8 @@ import type { IManifiestoService } from "@/lib/interfaces/services/IManifiestoSe
 import type { ApiKeyAuthResult } from "@/lib/interfaces/services/IApiKeyAuthService";
 import { notificadorNoOp } from "@/lib/notificaciones/notificadores";
 import { clavePar, type ParTarifa } from "@/lib/utils/cascada-tarifa";
+import type { TarifaTienda } from "@/lib/types/tarifa-flexible";
+import { tarifaVieja } from "../../fixtures/tarifa-tienda";
 
 // SL-24 (R23, design §6.1) — una carga por API key que pasa el tope del plan responde 409 con
 // `code: "CONFLICT"` y `details.codigo = "tope_plan"`, sin crear ninguna orden. Se ejercita el borde
@@ -35,10 +37,10 @@ const TARIFA: TarifaVigenteResuelta = {
 };
 
 const tarifaRepo: ITarifaVigenteRepository = {
-  resolveTarifa: vi.fn(async () => TARIFA),
+  resolveTarifa: vi.fn(async () => tarifaVieja(TARIFA)),
   resolveTarifas: vi.fn(
     async (pares: readonly ParTarifa[]) =>
-      new Map<string, TarifaVigenteResuelta | null>(pares.map((p) => [clavePar(p), TARIFA])),
+      new Map<string, TarifaTienda | null>(pares.map((p) => [clavePar(p), tarifaVieja(TARIFA)])),
   ),
 };
 

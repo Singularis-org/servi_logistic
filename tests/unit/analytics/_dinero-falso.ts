@@ -46,7 +46,7 @@ export function congelada(opts: Partial<OrdenCongelada> = {}): OrdenCongelada {
     esZonaEspecial: false,
     montoCobrar: "10000.00",
     cobraComision: true,
-    tarifa: TARIFA,
+    tarifa: { modelo: "viejo", tarifa: TARIFA }, // SLT-52: el sobre que da `tarifaDe`
     ...opts,
   };
 }

@@ -58,13 +58,35 @@ plan». Causa: crear (SL-24 R1) solo guarda el plan con `plan.organizacion_id`; 
   repetirlo con un cliente Prisma propio de la rama, o dejarlo para el CI.
   Los tests de `tests/integration/db/` (migración, atomicidad D2, tipo_cobro) solo corren en CI.
 - [x] tanda 2 (D10, D12, D13, D14) — 6ee33cd (backend), b243ee6 (frontend); D11 sin cambios, D15 textos aprobados
-- [x] tanda 3 (D16, D17) — 37d1bbd (backend D16, migración `20261103120000_historial_accion_plan_tipo_cobro_cambiado`
+- [x] tanda 3 (D16, D17) — 37d1bbd (backend D16, migración `20261104130100_historial_accion_plan_tipo_cobro_cambiado`
   con down), 5b5c021 (frontend D17)
 - [~] verificación tandas 2–3 (de los subagentes; sin regenerar Prisma por la junction compartida): lint 0 errores;
   related verdes (2422 backend, 122 frontend D17); guardias verdes salvo la del baseline; tsc sin errores en UI, y
   los de `lib/` son todos del cliente Prisma sin generar (incluido `plan_tipo_cobro_cambiado`). Integración db solo en CI.
 - [x] PR a `dev` — #72, CI completo en verde en fabc20a0 (2026-11-03): gate-completo, vitest 3/3,
   e2e aislamiento/dinero/reparto, estatico. Pendiente: merge por el humano.
+
+- [x] 2026-11-04 — merge de `origin/dev` en la rama (conflictos del PR #72, decisión de Cristian
+  «Renombrar y resolver»). 12 conflictos, todos aditivos sobre el historial (SLT-52 tarifas flexibles
+  y rechazo-tienda contra D16): `db/schema.prisma`, `lib/types/historial-accion.ts`,
+  `caja-459-migration`, `correccion-resultado-gestion-migration`, seis `historial-accion-*-migration`,
+  la guardia `historial-accion-escrituras-cubiertas` y `catalogo-y-choke-point`. Unidos los dos lados,
+  `plan_tipo_cobro_cambiado` DETRÁS de los cinco de SLT-52 (su migración se aplica después).
+  Totales comprobados contra las listas reales: 81 tipos (80 de dev + D16), 29 entidades (sin
+  entidad nueva). Slices de `caja-459` corridos una posición en tipos; entidades igual que dev.
+  Renombrado con `git mv` detrás de la última de dev (`20261103140100`):
+  `20261102120000_plan_sin_negociable_y_tipo_cobro` → `20261104130000_…` y
+  `20261103120000_historial_accion_plan_tipo_cobro_cambiado` → `20261104130100_…`. Referencias
+  actualizadas en schema, `lib/` (comentarios), tests (constantes `M`/`M_ANTERIOR`; el `M_ANTERIOR` de
+  la migración de planes pasa a `20261103140100_rechazo_tienda_cobro_tarifa_valor_misma_empresa`) y
+  progress. Verificación en base nueva `logistic_planes_r1104` (deploy + seed + generate): 40 archivos
+  uno por uno (los 12 del conflicto, `plan-*`/`planes-*`, `historial-accion-*`, ida-y-vuelta de las
+  dos migraciones): 36 verdes; rojos solo `historial-accion-{atomicidad,lectura,migration,q1-ubicacion}`,
+  los cuatro en `tests/baseline-rojos.json`. `test:guardias`: rojo solo
+  `dependencias-declaradas-presentes` (baseline); otras cinco salieron rojas bajo carga (tsc en
+  paralelo) y verdes corridas solas. Typecheck local SIN resultado: `tsc --noEmit` murió por heap
+  (134), luego superó 600 s dos veces y la tercera la paró el sistema por falta de memoria. Queda
+  para el CI del PR #72.
 
 ### Abierto tras la tanda 3
 1. Etiqueta del historial general para D16: «Cambió el tipo de cobro del plan de una empresa» (la

@@ -144,6 +144,10 @@ export interface RouteOptimizationConfig {
    * primera ruta del dia aunque queden paquetes por recoger. Debounce deslizante: cada recogida
    * parcial empuja el job a `ahora + esto`. Entero >= 1; fuera de rango cae al default.
    *
+   * SLT-79 (2026-11-03): ya no hay job. Es la espera del BOTON: con al menos una recogida y por
+   * debajo de `RUTA_PRIMERA_MIN_RECOGIDO_PCT`, «Sincronizar ruta» calcula la primera ruta cuando
+   * pasaron estos minutos desde la ultima recogida del dia.
+   *
    * Decidido por el humano 2026-10-31 (SLT-59, D29); bajado de 10 a 5 el mismo dia (SLT-74).
    * No calibrado con datos de produccion.
    */

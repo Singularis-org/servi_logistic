@@ -94,6 +94,7 @@ export const UNICOS_SIN_EMPRESA: readonly UnicoSinEmpresa[] = [
   anclado("carga", "carga_usuario_carga_name_key", "usuario"),
   anclado("chat_conversacion", "chat_conversacion_orden_id_telefono_e164_key", "orden"),
   anclado("cierre_detail", "cierre_detail_cierre_id_orden_id_key", "cierre_dia"),
+  anclado("cierre_detail_concepto", "cierre_detail_concepto_cierre_detail_id_concepto_key", "cierre_detail"), // SLT-52
   anclado("cierre_rechazo_tienda", "cierre_rechazo_tienda_gestion_id_key", "gestion_orden"),
   anclado("cierre_sin_gestion", "cierre_sin_gestion_cierre_id_orden_id_key", "cierre_dia"),
   anclado("cobro_tienda_anulacion", "cobro_tienda_anulacion_cobro_id_key", "wallet_tienda_movimiento"),
@@ -101,6 +102,9 @@ export const UNICOS_SIN_EMPRESA: readonly UnicoSinEmpresa[] = [
   anclado("gasto_fijo_cobro", "gasto_fijo_cobro_movimiento_uq", "wallet_movimiento"),
   anclado("gestion_orden_evidencia", "gestion_orden_evidencia_gestion_id_indice_key", "gestion_orden"),
   anclado("gestion_orden_pago", "gestion_orden_pago_gestion_id_metodo_key", "gestion_orden"),
+  anclado("gestion_pago_congelado", "gestion_pago_congelado_gestion_orden_id_actor_key", "gestion_orden"), // SLT-52
+  // SLT-52: destino de las FK compuestas `(grupo_id, zona_id)`; lleva el PK y `zona_id` NOT NULL.
+  anclado("grupo_distritos", "grupo_distritos_id_zona_id_key", "zona"),
   anclado("liquidacion_anulacion", "liquidacion_anulacion_pago_id_key", "liquidacion_pago"),
   anclado("mensajero_documento", "mensajero_documento_usuario_id_tipo_key", "usuario"),
   anclado("notificacion_lectura", "notificacion_lectura_notificacion_id_usuario_id_key", "notificacion"),

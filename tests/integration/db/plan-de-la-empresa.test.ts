@@ -214,7 +214,7 @@ describeSiHayBase("SLT-58 — plan_de_la_empresa: la empresa lee su plan y su co
     expect(Object.keys(plan).sort()).toEqual(
       [
         "nombre",
-        "tipo_cobro", // ajuste planes-custom D6 (20261102120000)
+        "tipo_cobro", // ajuste planes-custom D6 (20261104130000)
         "precio_mensual",
         "precio_anual",
         "descuento_anual_pct",

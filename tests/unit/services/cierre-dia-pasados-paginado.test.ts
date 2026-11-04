@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { conResolvePagosViejo } from "@/tests/fixtures/tarifa-tienda";
 import { CierreDiaService } from "@/lib/services/CierreDiaService";
 import type { ICierreDiaRepository } from "@/lib/interfaces/repositories/ICierreDiaRepository";
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
@@ -130,12 +131,12 @@ function servicio(repo: ICierreDiaRepository, contarTarifa?: { n: number }) {
     }),
   } as unknown as IOrdenRepository;
   const signedUrls = { createSignedUrls: vi.fn(async () => ({})) } as unknown as ISignedUrlProvider;
-  const tarifaRepo = {
+  const tarifaRepo = conResolvePagosViejo({
     resolvePagoTarifa: vi.fn(async () => {
       if (contarTarifa) contarTarifa.n += 1;
       return null;
     }),
-  } as unknown as ITarifaZonaMensajeroRepository;
+  }) as unknown as ITarifaZonaMensajeroRepository;
   return new CierreDiaService(repo, zonaRepo, ordenRepo, signedUrls, tarifaRepo);
 }
 

@@ -577,18 +577,21 @@ describe("costosListadoOrden (feature 204) — CONTRAPRUEBA: la fórmula del nav
 // ---------------------------------------------------------------------------
 describe("fulfillment (2026-08-25)", () => {
   const conMonto = (fulfillment: string) => ({ ...TARIFA, fulfillment });
+  // SLT-52 (T5.3): `tieneFulfillment` y `montoFulfillmentDeTarifa` solo aceptan el sobre; la tarifa
+  // vieja va envuelta y los importes no cambian.
+  const enSobre = (fulfillment: string) => ({ modelo: "viejo" as const, tarifa: conMonto(fulfillment) });
 
   it("tieneFulfillment: el predicado es `> 0`, no la presencia del campo", () => {
-    expect(tieneFulfillment(conMonto("2.00"))).toBe(true);
-    expect(tieneFulfillment(conMonto("0.01"))).toBe(true);
-    expect(tieneFulfillment(conMonto("0.00"))).toBe(false);
+    expect(tieneFulfillment(enSobre("2.00"))).toBe(true);
+    expect(tieneFulfillment(enSobre("0.01"))).toBe(true);
+    expect(tieneFulfillment(enSobre("0.00"))).toBe(false);
     // Sin tarifa no hay servicio de bodega que cobrar (mismo gap seguro que R9).
     expect(tieneFulfillment(null)).toBe(false);
   });
 
   it("montoFulfillmentDeTarifa: el monto exacto, y cero sin tarifa", () => {
-    expect(montoFulfillmentDeTarifa(conMonto("2.50")).toFixed(2)).toBe("2.50");
-    expect(montoFulfillmentDeTarifa(null).toFixed(2)).toBe("0.00");
+    expect(montoFulfillmentDeTarifa(enSobre("2.50"), null).toFixed(2)).toBe("2.50");
+    expect(montoFulfillmentDeTarifa(null, null).toFixed(2)).toBe("0.00");
   });
 
   it("desgloseCargaApi: `costoEnvio` suma el fulfillment y el desglose lo aisla", () => {

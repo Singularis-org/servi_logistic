@@ -107,7 +107,7 @@ export interface TipoCobroDelHistorial {
  *   de `valorDelHistorialDeAsignacion`. Las filas anteriores al ajuste (`NULL` o solo la fecha de SLT-58)
  *   no tienen tipo: `tipoCobro: null`.
  * - `plan_asignado` CON un tipo en `valor_anterior` es un cambio de solo el tipo escrito antes de D16: así lo
- *   escribía la tanda 2 de D10 y así lo deja el `down.sql` de 20261103120000. Se sigue leyendo como cambio.
+ *   escribía la tanda 2 de D10 y así lo deja el `down.sql` de 20261104130100. Se sigue leyendo como cambio.
  */
 export function tipoCobroDelHistorial(
   accion: AccionDeAsignacion,

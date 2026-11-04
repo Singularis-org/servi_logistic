@@ -97,8 +97,6 @@ const RUTA_VIGENTE: RutaResumenDTO = {
   paradasSinOptimizar: 0,
   trazado: null,
   tramoSiguiente: null,
-  primeraRutaPendiente: false,
-  puntoRecogida: null,
 };
 
 function renderModule(porGestionar: MiAsignacionDTO[]) {

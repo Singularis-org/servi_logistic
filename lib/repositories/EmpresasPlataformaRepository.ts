@@ -139,7 +139,7 @@ export class EmpresasPlataformaRepository implements IEmpresasPlataformaReposito
         plan:
           f.plan_id === null || f.plan_nombre === null
             ? null
-            : // El CHECK de 20261102120000 deja solo `mensual` | `anual`; con plan la empresa existe.
+            : // El CHECK de 20261104130000 deja solo `mensual` | `anual`; con plan la empresa existe.
               { id: f.plan_id, nombre: f.plan_nombre, tipoCobro: f.plan_tipo_cobro ?? "mensual" },
       };
     };

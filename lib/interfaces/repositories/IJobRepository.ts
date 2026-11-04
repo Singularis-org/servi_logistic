@@ -55,14 +55,6 @@ export interface EnqueueOpts {
   lastError?: string;
 }
 
-/** SLT-59 (D29): sin `dedupeKey` no hay fila que mover, asi que aqui es obligatoria. */
-export interface EncolarOMoverOpts {
-  runAfter: Date;
-  dedupeKey: string;
-  /** Solo cuenta al CREAR la fila; mover no la cambia. Default `JOBS_MAX_ATTEMPTS`. */
-  maxIntentos?: number;
-}
-
 /** Reloj/umbrales inyectados al claim para tests deterministas (R12/R13). */
 export interface ClaimOpts {
   /** Momento de la corrida. Filtra `pending` vencidos (`run_after <= now`) y sella `locked_at`. */
@@ -138,33 +130,9 @@ export interface IJobRepository {
   findByDedupeKeys(keys: string[]): Promise<JobDTO[]>;
 }
 
-/**
- * SLT-59 (R76, R77, design §12.2 nota D29) — la cola con encolado de debounce DESLIZANTE. Va en un
- * contrato aparte para no obligar a los dobles de `IJobRepository` de las demas fichas a
- * implementarlo: solo lo exige quien lo usa (`GestionOrdenRepository`). `JobRepository` cumple los dos.
- */
-export interface IJobRepositoryMovible extends IJobRepository {
-  /**
-   * Igual que `enqueue`, pero si la `dedupeKey` ya existe y esa fila sigue `pending`, le MUEVE
-   * `run_after` y le reescribe `payload` en vez de no hacer nada. Si la fila ya no esta `pending`
-   * (en curso, hecha, muerta o descartada) no crea otra ni la toca: devuelve `null`. Mismo `tx`.
-   */
-  encolarOMoverPendiente(
-    tipo: JobTipo,
-    payload: Record<string, unknown>,
-    opts: EncolarOMoverOpts,
-    tx?: JobTxClient,
-  ): Promise<JobDTO | null>;
-}
-
-/**
- * SLT-74 — lectura del job `pending` de una `dedupeKey`, o `null`. Contrato aparte por la misma
- * razon que `IJobRepositoryMovible`: solo lo exige quien lo usa (`OptimizacionRutaService`, para
- * decir cuanto falta para la primera ruta). Acotada a la empresa en curso.
- */
-export interface ILectorJobPendiente {
-  findPendienteByDedupeKey(dedupeKey: string): Promise<JobDTO | null>;
-}
+// SLT-79: aqui vivian `IJobRepositoryMovible` (SLT-59 R76/R77, encolado con debounce deslizante)
+// e `ILectorJobPendiente` (SLT-74). Los dos servian solo al job de la primera ruta del dia, que ya
+// no existe: la primera ruta la calcula solo el boton «Sincronizar ruta».
 
 /**
  * Cliente transaccional aceptado por `enqueue(..., tx)`: el `tx` que Prisma pasa al

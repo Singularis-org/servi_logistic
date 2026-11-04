@@ -34,8 +34,8 @@ import {
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
-const M_ANTERIOR = "20261102120000_plan_sin_negociable_y_tipo_cobro";
-const M = "20261103120000_historial_accion_plan_tipo_cobro_cambiado";
+const M_ANTERIOR = "20261104130000_plan_sin_negociable_y_tipo_cobro";
+const M = "20261104130100_historial_accion_plan_tipo_cobro_cambiado";
 const TIPO_NUEVO = "plan_tipo_cobro_cambiado";
 
 const BASE = `d16_iv_${randomUUID().replace(/-/g, "").slice(0, 12)}`;

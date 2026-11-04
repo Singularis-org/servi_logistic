@@ -73,7 +73,7 @@ async function intentar(tx: TxDeTest, sql: string, ...args: unknown[]): Promise<
   }
 }
 
-// D1 (ajuste planes-custom): la columna `precio_negociable` ya no existe (20261102120000).
+// D1 (ajuste planes-custom): la columna `precio_negociable` ya no existe (20261104130000).
 type Precio = {
   mensual?: string | null;
   anual?: string | null;

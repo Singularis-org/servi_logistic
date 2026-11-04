@@ -56,9 +56,11 @@ function buildRegistro(orden: Record<string, unknown> = ORDEN, cola = colaFake()
       // ⏳ 2026-10-29 (SLT-59, R21/R22): la re-lectura trae ademas `tiene_coordenadas`, y solo con
       // coordenadas se encola la reoptimizacion. Va en `true` para que el encolado siga ocurriendo:
       // el caso R20 de abajo lo usa como el paso posterior que revierte la tx.
+      // SLT-79: y con la primera ruta del dia ya calculada (`calculada_at` = ahora, el reloj real
+      // del repositorio): con ella pendiente la gestion ya no encola.
       return partes.join(" ").includes("webhook_suscripcion")
         ? []
-        : [{ id: orden.id, tiene_coordenadas: true }];
+        : [{ id: orden.id, tiene_coordenadas: true, calculada_at: new Date() }];
     }),
     ordenEvento: { create: vi.fn(async () => ({ id: "ev-1" })) },
     gestionOrden: { create: vi.fn(async () => ({ id: "g-1" })) },

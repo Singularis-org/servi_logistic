@@ -47,7 +47,7 @@ export const planDeLaEmpresaFilaSchema = z.object({
     monto: z.string(),
     fuente: z.enum(["empresa", "plan", "global", "sin_configurar"]),
   }),
-  // Ajuste planes-custom (D6): `organizacion.plan_tipo_cobro` (20261102120000).
+  // Ajuste planes-custom (D6): `organizacion.plan_tipo_cobro` (20261104130000).
   tipo_cobro: tipoCobroSchema,
   tope_ordenes_ciclo: conteo.nullable(),
   tope_api_keys: conteo.nullable(),
