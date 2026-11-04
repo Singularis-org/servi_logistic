@@ -150,6 +150,7 @@ describeSiHayBase("SLT-56 — tabla de ajustes y tipo de historial, de ida y vue
     // La base se para en las migraciones de SLT-56: los tipos que entran DESPUES no estan.
     // SLT-76 (2026-11-02): `zona_distrito_cambiado`, de `20261102090000_slt76_historial_zona_distrito`.
     // SLT-52: los cinco del modelo nuevo de tarifas, de `20261103120300_historial_tarifas_flexibles`.
+    // Ajuste planes-custom D16: `20261104130100_historial_accion_plan_tipo_cobro_cambiado`.
     const POSTERIORES: readonly string[] = [
       "zona_distrito_cambiado",
       "tarifa_valor_fijado",
@@ -157,6 +158,7 @@ describeSiHayBase("SLT-56 — tabla de ajustes y tipo de historial, de ida y vue
       "grupo_distritos_creado",
       "grupo_distritos_cambiado",
       "grupo_distritos_borrado",
+      "plan_tipo_cobro_cambiado",
     ];
     expect([...enLaBase].sort()).toEqual(
       HISTORIAL_ACCION_TIPOS.filter((t) => !POSTERIORES.includes(t)).sort(),

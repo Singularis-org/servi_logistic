@@ -332,8 +332,9 @@ describeSiHayBase("SLT-66 — el cargo de cada orden con el costo por orden del 
     await todasComoSeEspera();
   });
 
-  it("R14: P con base negociable; B crea p3 → 120.00 «plan» (la forma del costo base no cuenta)", async () => {
-    await editarP({ precio: { tipo: "negociable" } });
+  it("R14: P con base sin precio; B crea p3 → 120.00 «plan» (la forma del costo base no cuenta)", async () => {
+    // D1 (ajuste planes-custom): «negociable» ya no existe; «sin precio» es la otra forma sin monto.
+    await editarP({ precio: { tipo: "sin_precio" } });
     await crear(B, "p3", "sinGuia");
     esperado.p3 = [cargo("120.00", "plan")];
     await todasComoSeEspera();

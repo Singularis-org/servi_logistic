@@ -709,15 +709,27 @@ const CENSO: EntradaCenso[] = [
   },
   // --- SL-24 (design §5.2, §9; R29) · cambia el plan ---
   //
-  // La asignación corre en `comoPlataforma` y abre su `$transaction`; el `plan_asignado` y las filas
-  // de módulos de la sincronización van en la MISMA llamada (comparten `lote_id`). Lo prueba
-  // `tests/integration/db/planes-historial.test.ts`.
+  // La asignación corre en `comoPlataforma`; el `plan_asignado` y las filas de módulos de la
+  // sincronización van en la MISMA llamada (comparten `lote_id`). Lo prueba
+  // `tests/integration/db/planes-historial.test.ts`. Ajuste planes-custom (D2): el cuerpo vive en
+  // `asignarEnTx`, que recibe la `tx` de `asignar` o de `crearYAsignar` (crear y asignar un custom en
+  // una sola transacción, `tests/integration/db/planes-crear-custom-asigna.test.ts`).
   {
     tipos: ["plan_asignado"],
     archivo: "lib/repositories/PlanesRepository.ts",
-    metodo: "asignar",
-    forma: "abre_tx",
+    metodo: "asignarEnTx",
+    forma: "recibe_tx",
     mutacion: /tx\.\$executeRaw`UPDATE "organizacion" SET "plan_id"/,
+  },
+  // Ajuste planes-custom (D10, D16): cambiar solo el tipo de cobro del plan actual deja su fila con
+  // acción PROPIA, `plan_tipo_cobro_cambiado` (el tipo de antes y el nuevo), en la misma transacción que el
+  // UPDATE. Lo prueba `tests/integration/db/planes-cambiar-tipo-cobro.test.ts`.
+  {
+    tipos: ["plan_tipo_cobro_cambiado"],
+    archivo: "lib/repositories/PlanesRepository.ts",
+    metodo: "cambiarTipoCobro",
+    forma: "abre_tx",
+    mutacion: /tx\.\$executeRaw`UPDATE "organizacion" SET "plan_tipo_cobro"/,
   },
 ];
 
@@ -1192,7 +1204,8 @@ describe("362/R16 — cada tipo del catalogo tiene al menos un punto de escritur
     // 75 desde SLT-76 (`zona_distrito_cambiado`, en `ZonaRepository.update`).
     // 80 desde SLT-52 (`tarifa_valor_fijado`/`_quitado` y `grupo_distritos_creado`/`_cambiado`/
     // `_borrado`; sus productores, desde T6.2, en `TarifaValorRepository` y `GrupoDistritosRepository`).
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(80);
+        // 81 desde el ajuste planes-custom D16 (`plan_tipo_cobro_cambiado`, de `PlanesRepository.cambiarTipoCobro`).
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(81);
   });
 });
 

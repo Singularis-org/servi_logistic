@@ -26,7 +26,7 @@ const PENDIENTE: VersionPlan = {
   nombre: "custom A v2",
   topes: { ordenesPorCiclo: 50, porRol: { adminTienda: 7 }, apiKeys: null },
   modulos: ["monitoreo", "analitica"],
-  precio: { tipo: "negociable" },
+  precio: { tipo: "sin_precio" }, // D1 (ajuste planes-custom): «negociable» ya no existe.
   costoPorOrden: null, // SLT-66 R7: el plan lleva costo por orden; aquí, vacío.
 };
 
@@ -94,6 +94,18 @@ describeSiHayBase("SLT-58 — MiPlanRepository: el plan de la empresa del contex
       porRol: { admin: 0, mensajero: 0, adminTienda: 1, adminSatelite: 0 }, // SLT-66 R5: sin uso de maestro
     });
     expect(leido.cambio).toEqual({ vigenteDesde: new Date(VIGENTE_DESDE), version: PENDIENTE });
+    // D6 (ajuste planes-custom): sin haberlo elegido, la empresa queda en el DEFAULT `mensual`.
+    expect(leido.tipoCobro).toBe("mensual");
+  });
+
+  it("D6 (ajuste planes-custom) — el tipo de cobro de la empresa llega por plan_de_la_empresa", async () => {
+    const r = await revertida(base, async (tx) => {
+      const e = await escenario(tx);
+      await tx.$executeRawUnsafe(`UPDATE "organizacion" SET "plan_tipo_cobro" = 'anual' WHERE "id" = $1`, e.A);
+      await comoApp(tx, e.A);
+      return new MiPlanRepository(tx).planDeLaEmpresa();
+    });
+    expect(r?.tipoCobro).toBe("anual");
   });
 
   it("R6 — una empresa sin plan da null", async () => {

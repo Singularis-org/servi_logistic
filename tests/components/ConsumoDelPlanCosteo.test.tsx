@@ -35,6 +35,8 @@ function leido(
     uso: { ordenes, apiKeys: 0, porRol: { admin: 1, mensajero: 2, adminTienda: 0, adminSatelite: 0 } },
     cambio: null,
     costoVigente,
+    // Ajuste planes-custom (D6): campo nuevo; estos casos no lo comprueban.
+    tipoCobro: "mensual",
   };
 }
 
@@ -88,10 +90,8 @@ describe("SLT-66 R20 — las situaciones de la base", () => {
     expect(screen.queryByText("precio acordado para tu empresa")).toBeNull();
   });
 
-  it.each([
-    ["negociable", { tipo: "negociable" } as PrecioPlan],
-    ["sin precio", { tipo: "sin_precio" } as PrecioPlan],
-  ])("base %s: «Costo base: por definir», costo y subtotal, y ningún total", (_caso, precio) => {
+  // Ajuste planes-custom (D1): «negociable» ya no es una forma del costo base.
+  it.each([["sin precio", { tipo: "sin_precio" } as PrecioPlan]])("base %s: «Costo base: por definir», costo y subtotal, y ningún total", (_caso, precio) => {
     pintar(leido(version(precio, "100.00"), { monto: "100.00", fuente: "plan" }));
     const b = bloque();
     expect(within(b).getByText("Costo base: por definir")).toBeInTheDocument();

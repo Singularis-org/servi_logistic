@@ -47,6 +47,7 @@ vi.mock("@/lib/actions/_shared/planes-plataforma", () => ({
 vi.mock("@/lib/actions/planes", () => ({
   listarPlanesAsignablesAction: (...a: unknown[]) => asignablesMock(...a),
   asignarPlanAction: (...a: unknown[]) => asignarMock(...a),
+  cambiarTipoCobroAction: vi.fn(),
   previsualizarAsignacionPlanAction: (...a: unknown[]) => previsualizarMock(...a),
 }));
 
@@ -170,13 +171,14 @@ describe("SLT-58 (R19) — el plan de la empresa en su detalle", () => {
               nombre: "Plan Crecer",
               topes: { ordenesPorCiclo: 3000, porRol: { mensajero: 10 }, apiKeys: null },
               modulos: ["analitica"],
-              precio: { tipo: "negociable" },
+              precio: { tipo: "sin_precio" }, // Ajuste planes-custom (D1): sin «negociable».
               costoPorOrden: null, // SLT-66 R8: campo nuevo de la versión
             },
             ancla: new Date("2026-01-15T06:00:00.000Z"),
             uso: { ordenes: 1000, apiKeys: 0, porRol: { admin: 0, mensajero: 9, adminTienda: 0, adminSatelite: 0 } }, // SLT-66 R5: sin `maestro`
             cambio: null,
             costoVigente: { monto: "500.00", fuente: "global" }, // SLT-66 R18: campo nuevo de la lectura
+            tipoCobro: "anual", // Ajuste planes-custom (D6): campo nuevo de la lectura
           },
           new Date("2026-03-01T06:00:00.000Z"),
         ),
@@ -194,7 +196,7 @@ describe("SLT-58 (R19) — el plan de la empresa en su detalle", () => {
     organizacionId: null,
     topes: { ordenesPorCiclo: 3000, porRol: { mensajero: 10 }, apiKeys: null },
     modulos: ["analitica"],
-    precio: { tipo: "negociable" },
+    precio: { tipo: "sin_precio" }, // Ajuste planes-custom (D1): sin «negociable».
     costoPorOrden: null, // SLT-66 R8: campo nuevo del PlanDTO
     archivado: false,
   };
@@ -212,6 +214,12 @@ describe("SLT-58 (R19) — el plan de la empresa en su detalle", () => {
     expect(within(plan).getByRole("heading", { name: "Plan Crecer" })).toBeInTheDocument();
     expect(within(plan).getByText("1.000 de 3.000 órdenes del ciclo")).toBeInTheDocument();
     expect(within(plan).getByText("Cerca del tope")).toBeInTheDocument(); // 9 de 10 mensajeros
+    // Ajuste planes-custom (D9): el detalle del superadmin muestra tipo, monto del período y siguiente cobro.
+    expect(
+      within(within(plan).getByRole("list", { name: "Cobro del plan" }))
+        .getAllByRole("listitem")
+        .map((li) => li.textContent),
+    ).toEqual(["Tipo de cobro: Anual", "Monto del período: por definir", "Siguiente cobro: 2027-01-15"]);
 
     const modulos = screen.getByRole("region", { name: "Módulos" });
     // La sección del plan va antes que la de los módulos.
@@ -292,7 +300,7 @@ describe("SLT-58 (R19) — el plan de la empresa en su detalle", () => {
     expect(asignarMock).not.toHaveBeenCalled();
   });
 
-  it("§11.5 (R29, R37): el modal de primera asignación trae el rango del reloj del servidor y lee la vista previa con la action", async () => {
+  it("§11.5 (R29, R37), D5: el modal de primera asignación trae el rango y MAÑANA del reloj del servidor y lee la vista previa con la action", async () => {
     // Solo `Date` es falso: 2026-10-29 12:00 en la hora de la plataforma (UTC−6).
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-10-29T18:00:00.000Z"));
@@ -308,13 +316,14 @@ describe("SLT-58 (R19) — el plan de la empresa en su detalle", () => {
       await user.click(screen.getByRole("button", { name: "Asignar plan" }));
 
       const campo = within(await screen.findByRole("dialog")).getByLabelText("Inicio del ciclo de órdenes");
-      expect(campo).toHaveValue("2026-10-29");
+      // Ajuste planes-custom (D5): por defecto mañana en la hora de la plataforma, no hoy.
+      expect(campo).toHaveValue("2026-10-30");
       expect(campo).toHaveAttribute("min", "2026-09-29");
       expect(campo).toHaveAttribute("max", "2026-11-29");
       expect(previsualizarMock).toHaveBeenCalledWith({
         organizacionId: ORG,
         planId: ACTUAL_DTO.id,
-        inicioCiclo: "2026-10-29",
+        inicioCiclo: "2026-10-30",
       });
     } finally {
       vi.useRealTimers();

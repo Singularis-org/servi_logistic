@@ -26,7 +26,17 @@ const PLAN: PlanDTO = {
 afterEach(() => cleanup());
 
 function montarCrear(enviar = vi.fn().mockResolvedValue(OK)) {
-  render(<PlanForm modo="crear" empresas={[]} enviar={enviar} onGuardado={vi.fn()} />);
+  render(
+    <PlanForm
+      modo="crear"
+      empresas={[]}
+      inicioCicloPorDefecto="2026-10-30"
+      rangoInicioCiclo={{ hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" }}
+      enviar={enviar}
+      previsualizar={vi.fn().mockResolvedValue({ estado: "ok", avisos: [], siguienteCiclo: "2026-11-30" })}
+      onGuardado={vi.fn()}
+    />,
+  );
   return enviar;
 }
 
@@ -46,7 +56,8 @@ describe("SLT-66 R9 — «Costo base»", () => {
     montarCrear();
 
     const grupo = screen.getByRole("radiogroup", { name: "Costo base" });
-    expect(within(grupo).getAllByRole("radio")).toHaveLength(3);
+    // Ajuste planes-custom (D1): «Sin precio» y «Con monto»; ya no «Negociable».
+    expect(within(grupo).getAllByRole("radio")).toHaveLength(2);
     expect(screen.queryByText("Precio informativo")).toBeNull();
     await user.click(screen.getByRole("radio", { name: "Con monto" }));
     expect(screen.getByLabelText("Costo base mensual")).toBeInTheDocument();
@@ -75,12 +86,13 @@ describe("SLT-66 R23 — «Costo por orden»", () => {
     const enviar = montarCrear();
 
     await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Por orden");
-    await user.click(screen.getByRole("radio", { name: "Negociable" }));
+    // Ajuste planes-custom (D1): sin «Negociable»; la otra forma no «monto» es «Sin precio».
+    await user.click(screen.getByRole("radio", { name: "Sin precio" }));
     await user.type(screen.getByLabelText("Costo por orden"), "100.50");
     await user.click(screen.getByRole("button", { name: "Crear plan" }));
 
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
-    expect(enviar.mock.calls[0][0]).toMatchObject({ precio: { tipo: "negociable" }, costoPorOrden: "100.50" });
+    expect(enviar.mock.calls[0][0]).toMatchObject({ precio: { tipo: "sin_precio" }, costoPorOrden: "100.50" });
     expect(typeof enviar.mock.calls[0][0].costoPorOrden).toBe("string");
   });
 

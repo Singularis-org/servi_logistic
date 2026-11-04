@@ -1,6 +1,6 @@
 import type { ModuloApagable } from "@prisma/client";
 
-import type { RolConTope } from "@/lib/types/planes";
+import type { RolConTope, TipoCobro } from "@/lib/types/planes";
 
 // SLT-58 (design §5) — lo que ve una empresa de su plan y el superadmin en el detalle de una empresa.
 // Todo serializable (cruza de Server Component a cliente): las fechas viajan como `AAAA-MM-DD`.
@@ -50,6 +50,17 @@ export type CosteoDelCiclo = {
   anualNoAplicaAlCosto: boolean;
 };
 
+/**
+ * Ajuste planes-custom (D7–D9): cómo paga la empresa su plan. Solo informativo: no mueve dinero.
+ */
+export type CobroDelPlan = {
+  tipo: TipoCobro;
+  /** D7: lo de UN período (mes o año), dos decimales; `null` si el plan no tiene costo base. */
+  montoPeriodo: string | null;
+  /** D8: `AAAA-MM-DD` en la hora de la plataforma; hoy si hoy es el aniversario. */
+  siguienteCobro: string;
+};
+
 export type PlanConConsumo = {
   nombre: string;
   /** `textoDelPrecio`: sin moneda (D26). */
@@ -60,6 +71,8 @@ export type PlanConConsumo = {
   cambioPendiente: CambioPendienteVista | null;
   /** SLT-66 (R18–R20). */
   costeo: CosteoDelCiclo;
+  /** Ajuste planes-custom (D9): tipo de cobro, monto del período y siguiente cobro. */
+  cobro: CobroDelPlan;
 };
 
 export type MiPlanResult =

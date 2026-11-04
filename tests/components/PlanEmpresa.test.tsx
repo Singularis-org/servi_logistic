@@ -24,7 +24,7 @@ import type {
   VistaPreviaAsignacionResult,
 } from "@/lib/types/planes";
 
-type EntradaAsignar = { organizacionId: string; planId: string; inicioCiclo?: string };
+type EntradaAsignar = { organizacionId: string; planId: string; inicioCiclo?: string; tipoCobro: "mensual" | "anual" };
 type EntradaVistaPrevia = { organizacionId: string; planId: string; inicioCiclo: string };
 
 const ORG = "6f1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f60";
@@ -53,13 +53,29 @@ const LEIDO: PlanConUsoLeido = {
     },
   },
   costoVigente: { monto: "500.00", fuente: "global" }, // SLT-66 R18: campo nuevo de la lectura
+  tipoCobro: "mensual", // Ajuste planes-custom (D6): campo nuevo de la lectura
 };
 
 const AHORA = new Date("2026-03-01T06:00:00.000Z");
 
 const ASIGNACIONES: AsignacionDePlan[] = [
-  { creadoAt: "2026-03-01T18:30:00.000Z", actorNombre: "Sara Admin", planNombre: "Plan «Plan Crecer»" },
-  { creadoAt: "2026-01-15T06:00:00.000Z", actorNombre: "Pedro Plataforma", planNombre: "Plan «Básico»" },
+  // Ajuste planes-custom (D14): cada fila trae su tipo; estas son asignaciones (sin tipo anterior).
+  {
+    creadoAt: "2026-03-01T18:30:00.000Z",
+    actorNombre: "Sara Admin",
+    planNombre: "Plan «Plan Crecer»",
+    tipo: "asignacion",
+    tipoCobro: "mensual",
+    tipoCobroAnterior: null,
+  },
+  {
+    creadoAt: "2026-01-15T06:00:00.000Z",
+    actorNombre: "Pedro Plataforma",
+    planNombre: "Plan «Básico»",
+    tipo: "asignacion",
+    tipoCobro: null,
+    tipoCobroAnterior: null,
+  },
 ];
 
 function vista(extra: Partial<PlanDeEmpresaVista> = {}): PlanDeEmpresaVista {
@@ -108,6 +124,8 @@ const OK: PlanResult = { estado: "ok", planId: PUBLICO.id, cambio: true, avisos:
 
 // El rango que la página calcula en el servidor (§11.5); aquí, fijo.
 const RANGO: RangoDelInicioDelCiclo = { hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" };
+/** Ajuste planes-custom (D5): el inicio del ciclo por defecto es MAÑANA (lo calcula la página). */
+const MANANA = "2026-10-30";
 const VISTA_PREVIA_OK: VistaPreviaAsignacionResult = { estado: "ok", avisos: [], siguienteCiclo: "2026-11-29" };
 
 function montar({
@@ -135,7 +153,9 @@ function montar({
         planActual={planActual}
         asignarPlan={asignar}
         rangoInicioCiclo={RANGO}
+        inicioCicloPorDefecto={MANANA}
         previsualizarAsignacion={previsualizar}
+        cambiarTipoCobro={vi.fn()}
       />
     </ToastProvider>,
   );
@@ -243,7 +263,7 @@ describe("SLT-58 R20 — asignar o cambiar el plan", () => {
     await elegir(user, "Enterprise Norte (Custom)");
     await cambiarYConfirmar(user);
 
-    expect(asignar).toHaveBeenCalledWith({ organizacionId: ORG, planId: CUSTOM_SUYO.id });
+    expect(asignar).toHaveBeenCalledWith({ organizacionId: ORG, planId: CUSTOM_SUYO.id, tipoCobro: "mensual" });
     await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
@@ -336,8 +356,9 @@ describe("SLT-58 R21 — el historial de asignaciones", () => {
     const tabla = screen.getByRole("table", { name: "Historial de asignaciones" });
     const filas = within(tabla).getAllByRole("row").slice(1);
     expect(filas.map((f) => within(f).getAllByRole("cell").map((c) => c.textContent))).toEqual([
-      ["2026-03-01 12:30", "Sara Admin", "Plan «Plan Crecer»"],
-      ["2026-01-15 00:00", "Pedro Plataforma", "Plan «Básico»"],
+      // D14: la columna «Tipo de cobro»; la fila anterior al ajuste no lo guardaba («—»).
+      ["2026-03-01 12:30", "Sara Admin", "Plan «Plan Crecer»", "Mensual"],
+      ["2026-01-15 00:00", "Pedro Plataforma", "Plan «Básico»", "—"],
     ]);
   });
 
@@ -410,7 +431,7 @@ describe("SLT-58 R20 — «Cambiar plan» pide confirmación con el resumen (dec
     await cambiarYConfirmar(user);
 
     expect(asignar).toHaveBeenCalledTimes(1);
-    expect(asignar).toHaveBeenCalledWith({ organizacionId: ORG, planId: PUBLICO.id });
+    expect(asignar).toHaveBeenCalledWith({ organizacionId: ORG, planId: PUBLICO.id, tipoCobro: "mensual" });
   });
 
   it("R20: con el plan actual archivado (fuera de los asignables) compara contra el `planActual` de la página", async () => {
@@ -526,7 +547,7 @@ describe("SLT-58 R20 — la primera asignación también pide confirmación (dec
       "Módulos incluidos: Analítica, Monitoreo",
     ]);
     // R38: la frase con la fecha elegida sustituye a «empieza hoy».
-    expect(modal).toHaveTextContent("El ciclo de órdenes empieza el 2026-10-29.");
+    expect(modal).toHaveTextContent(`El ciclo de órdenes empieza el ${MANANA}.`);
     expect(modal).not.toHaveTextContent("El ciclo de órdenes empieza hoy.");
     expect(asignar).not.toHaveBeenCalled();
   });
@@ -557,7 +578,12 @@ describe("SLT-58 R20 — la primera asignación también pide confirmación (dec
     await confirmarPrimera(user, await abrirPrimera(user));
 
     expect(asignar).toHaveBeenCalledTimes(1);
-    expect(asignar).toHaveBeenCalledWith({ organizacionId: ORG, planId: PUBLICO.id, inicioCiclo: RANGO.hoy });
+    expect(asignar).toHaveBeenCalledWith({
+      organizacionId: ORG,
+      planId: PUBLICO.id,
+      inicioCiclo: MANANA,
+      tipoCobro: "mensual",
+    });
     await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
   });
 });
@@ -569,17 +595,19 @@ describe("SLT-58 §11.5 — la fecha de inicio del ciclo en la primera asignaci�
   const vistaPreviaCon = (avisos: Extract<VistaPreviaAsignacionResult, { estado: "ok" }>["avisos"]) =>
     ({ estado: "ok", avisos, siguienteCiclo: "2026-11-05" }) satisfies VistaPreviaAsignacionResult;
 
-  it("R29: el campo trae «hoy» por defecto, con el min/max del servidor, y la vista previa lee esa fecha", async () => {
+  it("R29, D5: el campo trae «mañana» por defecto, con el min/max del servidor, y la vista previa lee esa fecha", async () => {
     const user = userEvent.setup();
     const previsualizar = vi.fn().mockResolvedValue(VISTA_PREVIA_OK);
     montar({ v: SIN_PLAN(), previsualizar });
 
     const campo = campoFecha(await abrirPrimera(user));
     expect(campo).toHaveAttribute("type", "date");
-    expect(campo).toHaveValue("2026-10-29");
+    // Ajuste planes-custom (D5): ya no «hoy» (RANGO.hoy) sino mañana.
+    expect(campo).toHaveValue(MANANA);
+    expect(campo).not.toHaveValue(RANGO.hoy);
     expect(campo).toHaveAttribute("min", "2026-09-29");
     expect(campo).toHaveAttribute("max", "2026-11-29");
-    expect(previsualizar).toHaveBeenCalledWith({ organizacionId: ORG, planId: PUBLICO.id, inicioCiclo: "2026-10-29" });
+    expect(previsualizar).toHaveBeenCalledWith({ organizacionId: ORG, planId: PUBLICO.id, inicioCiclo: MANANA });
   });
 
   it("R29, R38: la fecha elegida viaja en la asignación y la frase la repite", async () => {
@@ -591,7 +619,12 @@ describe("SLT-58 §11.5 — la fecha de inicio del ciclo en la primera asignaci�
     expect(modal).toHaveTextContent("El ciclo de órdenes empieza el 2026-10-05.");
     await confirmarPrimera(user, modal);
 
-    expect(asignar).toHaveBeenCalledWith({ organizacionId: ORG, planId: PUBLICO.id, inicioCiclo: "2026-10-05" });
+    expect(asignar).toHaveBeenCalledWith({
+      organizacionId: ORG,
+      planId: PUBLICO.id,
+      inicioCiclo: "2026-10-05",
+      tipoCobro: "mensual",
+    });
   });
 
   it("R37: aviso de órdenes con «3.200 de 3.000» y el día del siguiente ciclo, de un rol y de las API keys", async () => {
@@ -716,9 +749,14 @@ describe("SLT-58 §11.5 — la fecha de inicio del ciclo en la primera asignaci�
     await user.click(await within(modal).findByRole("button", { name: "Reintentar" }));
 
     expect(previsualizar).toHaveBeenCalledTimes(2);
-    expect(previsualizar).toHaveBeenLastCalledWith({ organizacionId: ORG, planId: PUBLICO.id, inicioCiclo: "2026-10-29" });
+    expect(previsualizar).toHaveBeenLastCalledWith({ organizacionId: ORG, planId: PUBLICO.id, inicioCiclo: MANANA });
     await confirmarPrimera(user, modal);
-    expect(asignar).toHaveBeenCalledWith({ organizacionId: ORG, planId: PUBLICO.id, inicioCiclo: "2026-10-29" });
+    expect(asignar).toHaveBeenCalledWith({
+      organizacionId: ORG,
+      planId: PUBLICO.id,
+      inicioCiclo: MANANA,
+      tipoCobro: "mensual",
+    });
   });
 
   it("R37 (P11): «Volver» con la lectura fallida cierra sin asignar", async () => {
@@ -800,5 +838,73 @@ describe("SLT-58 §11.5 — la fecha de inicio del ciclo en la primera asignaci�
     expect(asignar).toHaveBeenCalledTimes(1);
     expect(vi.mocked(asignar).mock.calls[0]![0]).not.toHaveProperty("inicioCiclo");
     expect(previsualizar).not.toHaveBeenCalled();
+  });
+});
+
+describe("Ajuste planes-custom D6 — el tipo de cobro se elige en el modal de asignación", () => {
+  it("D6: la primera asignación ofrece «Mensual» y «Anual», con «Mensual» por defecto, y envía el elegido", async () => {
+    const user = userEvent.setup();
+    const asignar = montar({ v: vista({ plan: null }) });
+
+    const modal = await abrirPrimera(user);
+    const grupo = within(modal).getByRole("radiogroup", { name: "Tipo de cobro" });
+    expect(within(grupo).getAllByRole("radio").map((r) => r.closest("label")?.textContent)).toEqual([
+      "Mensual",
+      "Anual",
+    ]);
+    expect(within(grupo).getByRole("radio", { name: "Mensual" })).toBeChecked();
+
+    await user.click(within(grupo).getByRole("radio", { name: "Anual" }));
+    await confirmarPrimera(user, modal);
+
+    expect(asignar).toHaveBeenCalledWith({ organizacionId: ORG, planId: PUBLICO.id, inicioCiclo: MANANA, tipoCobro: "anual" });
+  });
+
+  it("D6: «Cambiar plan» también lo pide y lo envía (sin `inicioCiclo`)", async () => {
+    const user = userEvent.setup();
+    const asignar = montar();
+
+    await elegir(user, "Básico (Público)");
+    await user.click(screen.getByRole("button", { name: "Cambiar plan" }));
+    const modal = await screen.findByRole("dialog", { name: "¿Cambiar el plan de esta empresa?" });
+    const grupo = within(modal).getByRole("radiogroup", { name: "Tipo de cobro" });
+    expect(within(grupo).getByRole("radio", { name: "Mensual" })).toBeChecked();
+    await user.click(within(grupo).getByRole("radio", { name: "Anual" }));
+    await user.click(within(modal).getByRole("button", { name: "Cambiar plan" }));
+
+    expect(asignar).toHaveBeenCalledWith({ organizacionId: ORG, planId: PUBLICO.id, tipoCobro: "anual" });
+  });
+
+  it("D6: cada apertura del modal vuelve a «Mensual»", async () => {
+    const user = userEvent.setup();
+    montar({ v: vista({ plan: null }) });
+
+    let modal = await abrirPrimera(user);
+    await user.click(within(modal).getByRole("radio", { name: "Anual" }));
+    await user.click(within(modal).getByRole("button", { name: "Volver" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    await user.click(screen.getByRole("button", { name: "Asignar plan" }));
+    modal = await screen.findByRole("dialog", { name: "¿Asignar este plan a la empresa?" });
+    expect(within(modal).getByRole("radio", { name: "Mensual" })).toBeChecked();
+  });
+
+  it("D6: un `validation_error` de `tipoCobro` en la primera asignación va junto al campo con el modal abierto", async () => {
+    const user = userEvent.setup();
+    montar({
+      v: vista({ plan: null }),
+      asignar: vi.fn().mockResolvedValue({
+        estado: "validation_error",
+        fieldErrors: { tipoCobro: ["Elige el tipo de cobro."] },
+      } satisfies PlanResult),
+    });
+
+    const modal = await abrirPrimera(user);
+    await confirmarPrimera(user, modal);
+
+    expect(await within(modal).findByText("Elige el tipo de cobro.")).toBeInTheDocument();
+    expect(within(modal).getByRole("radiogroup", { name: "Tipo de cobro" })).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(refreshMock).not.toHaveBeenCalled();
   });
 });
