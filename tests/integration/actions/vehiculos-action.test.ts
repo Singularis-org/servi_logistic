@@ -18,17 +18,28 @@ const SEED: VehiculoDTO[] = [
   { id: "veh-3", name: "moto", activo: true },
 ];
 
-// `IVehiculoService` volvio a tener CRUD completo: la migracion `vehiculo_name_texto`
-// convirtio `vehiculos.name` de enum a TEXT y el catalogo paso a ser administrable.
+// SL-42 (design §4.4): `lib/actions/vehiculos.ts` se queda solo con `listarVehiculos`, la lectura
+// de empresa (R17). Las escrituras del superadmin se prueban en
+// `tests/unit/actions/vehiculos-plataforma-action.test.ts`.
 function fakeService(overrides: Partial<IVehiculoService> = {}): IVehiculoService {
   return {
     listar: vi.fn().mockResolvedValue({ status: "ok", items: SEED }),
+    listarTodos: vi.fn().mockResolvedValue({ status: "ok", items: SEED }),
     crear: vi.fn().mockResolvedValue({ status: "ok", vehiculo: SEED[0] }),
-    actualizar: vi.fn().mockResolvedValue({ status: "ok", vehiculo: SEED[0] }),
-    borrar: vi.fn().mockResolvedValue({ status: "ok" }),
+    renombrar: vi.fn().mockResolvedValue({ status: "ok", vehiculo: SEED[0] }),
+    cambiarActivacion: vi.fn().mockResolvedValue({ status: "ok", vehiculo: SEED[0] }),
     ...overrides,
   };
 }
+
+describe("SL-42 (R14) — el archivo de empresa ya no exporta escrituras", () => {
+  it("solo `listarVehiculos`", async () => {
+    const modulo = await import("@/lib/actions/vehiculos");
+    expect(Object.keys(modulo).filter((k) => typeof (modulo as Record<string, unknown>)[k] === "function")).toEqual([
+      "listarVehiculos",
+    ]);
+  });
+});
 
 describe("R10: sin sesion valida -> unauthenticated sin tocar el service", () => {
   it("listarVehiculos", async () => {

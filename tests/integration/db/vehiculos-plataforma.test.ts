@@ -8,12 +8,28 @@ import { conAislamientoPorEmpresa } from "@/lib/db/extension-empresa";
 import { appendRastroVehiculo } from "@/lib/repositories/registrar-rastro-vehiculo";
 import { VehiculoRepository } from "@/lib/repositories/VehiculoRepository";
 import {
+  cambiarActivacionVehiculoAction,
+  crearVehiculoAction,
+  listarVehiculosPlataformaAction,
+  renombrarVehiculoAction,
+  type VehiculosPlataformaDeps,
+} from "@/lib/actions/vehiculos-plataforma";
+import { EmpresaNoResuelta } from "@/lib/db/contexto-empresa";
+import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
+import { VehiculoService } from "@/lib/services/VehiculoService";
+import {
   comoApp,
   crearOrganizacion,
   datosDeOrganizacionDePrueba,
   fijarEmpresa,
 } from "@/tests/fabricas/organizaciones";
-import { HAY_BASE_DE_DATOS, clienteConSavepoint, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
+import {
+  HAY_BASE_DE_DATOS,
+  bajoLockDeEscrituraReal,
+  clienteConSavepoint,
+  crearPrismaDeTest,
+  type TxDeTest,
+} from "./_postgres-real";
 import { intentar, revertida } from "./_fixtures/pais-20";
 import {
   idDeRol,
@@ -328,5 +344,139 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("SL-42 — VehiculoRepository: escritura y r
     expect(r.error).not.toBeNull();
     expect(r.filas).toBe(1);
     expect(r.nuevas).toBe(0);
+  });
+});
+
+// T2.4 (design §3 enmienda 2026-11-04, §4.3; R7, R21) — el BORDE contra Postgres, por el cliente de
+// la app (`conAislamientoPorEmpresa`) y sin empresa, como corre una peticion del superadmin. Solo se
+// inyectan el actor (no hay cookie) y el servicio construido sobre ese cliente: `comoPlataforma` y
+// todo lo de debajo son los reales.
+//
+// AQUI SE COMMITEA: el cliente de la app abre sus propias conexiones y no ve una tx revertida. Cada
+// vehiculo lleva un nombre unico y `afterAll` borra sus filas y las de su rastro. El superadmin: si la
+// base no tiene, se crea y se borra al final (como `carga-division.test.ts`); si ya tiene uno (base de
+// desarrollo), se usa ese y no se toca. El lock de superadmin se sostiene todo el archivo.
+
+describe.skipIf(!HAY_BASE_DE_DATOS)("SL-42 — el borde del superadmin sin empresa, por el cliente de la app (R7, R21)", () => {
+  let base: PrismaClient;
+  let app: PrismaClient;
+  let actor: Actor;
+  let actorNombre: string;
+  let superadminCreado: string | null = null;
+  const creados: string[] = [];
+  let soltarSuperadmin: () => Promise<void> = async () => {};
+
+  beforeAll(async () => {
+    base = crearPrismaDeTest();
+    app = conAislamientoPorEmpresa(base, async () => null);
+    soltarSuperadmin = await tomarLockDeSuperadmin();
+    const id = await bajoLockDeEscrituraReal(() =>
+      base.$transaction(async (tx) => {
+        const rol = await idDeRol(tx, "superadmin");
+        const existente = await tx.$queryRawUnsafe<{ id: string }[]>(
+          `SELECT "id" FROM "usuario" WHERE "rol_id" = $1`,
+          rol,
+        );
+        if (existente.length > 0) return existente[0].id;
+        const u = await insertarUsuario(tx, rol, null);
+        if (!u.desenlace.ok) throw new Error(`no se sembro el superadmin: ${JSON.stringify(u.desenlace)}`);
+        superadminCreado = u.id;
+        return u.id;
+      }),
+    );
+    const u = await base.usuario.findUniqueOrThrow({
+      where: { id },
+      select: { nombre: true, primerApellido: true, organizacionId: true },
+    });
+    if (u.organizacionId !== null) throw new Error("el superadmin de la base tiene empresa: no prueba R7");
+    actor = { usuarioId: id, rol: "superadmin" };
+    actorNombre = [u.nombre, u.primerApellido].filter((p) => p != null && p !== "").join(" ").slice(0, 120);
+  }, 60_000);
+
+  afterAll(async () => {
+    try {
+      if (base !== undefined) {
+        await bajoLockDeEscrituraReal(async () => {
+          if (creados.length > 0) {
+            await base.vehiculoRastro.deleteMany({ where: { vehiculoId: { in: creados } } });
+            await base.vehiculo.deleteMany({ where: { id: { in: creados } } });
+          }
+          if (superadminCreado !== null) {
+            await base.$executeRawUnsafe(`DELETE FROM "usuario" WHERE "id" = $1`, superadminCreado);
+          }
+        });
+      }
+    } finally {
+      await soltarSuperadmin();
+      await base?.$disconnect();
+    }
+  }, 60_000);
+
+  function depsDeApp(): VehiculosPlataformaDeps {
+    return { getActor: async () => actor, vehiculoService: new VehiculoService(new VehiculoRepository(app)) };
+  }
+
+  async function rastroDeApp(vehiculoId: string) {
+    return base.vehiculoRastro.findMany({
+      where: { vehiculoId },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      select: { accion: true, vehiculoNombre: true, valorAnterior: true, valorNuevo: true, actorUsuarioId: true, actorNombre: true },
+    });
+  }
+
+  it("control: sin `comoPlataforma`, el mismo servicio sobre el cliente de la app cae en EmpresaNoResuelta y no deja nada", async () => {
+    const nombre = nombreUnico("sl42 sin contexto");
+    const servicio = new VehiculoService(new VehiculoRepository(app));
+    await expect(servicio.crear({ name: nombre }, actor)).rejects.toBeInstanceOf(EmpresaNoResuelta);
+    expect(await base.vehiculo.count({ where: { name: nombre } })).toBe(0);
+  });
+
+  it("R7/R21: alta, renombre, desactivar y activar por el borde; cada una con su rastro y el actor congelado", async () => {
+    const nombre = nombreUnico("sl42 borde");
+    const alta = await crearVehiculoAction({ name: `  ${nombre.replace(" ", "   ")} ` }, depsDeApp());
+    expect(alta.status).toBe("ok");
+    if (alta.status !== "ok") return;
+    creados.push(alta.vehiculo.id);
+    expect(alta.vehiculo).toEqual({ id: alta.vehiculo.id, name: nombre, activo: true });
+
+    const nuevo = nombreUnico("sl42 borde nuevo");
+    expect((await renombrarVehiculoAction({ id: alta.vehiculo.id, name: nuevo }, depsDeApp())).status).toBe("ok");
+    expect((await renombrarVehiculoAction({ id: alta.vehiculo.id, name: nuevo }, depsDeApp())).status).toBe("ok");
+    const off = await cambiarActivacionVehiculoAction({ id: alta.vehiculo.id, activo: false }, depsDeApp());
+    expect(off).toEqual({ status: "ok", vehiculo: { id: alta.vehiculo.id, name: nuevo, activo: false } });
+    expect((await cambiarActivacionVehiculoAction({ id: alta.vehiculo.id, activo: false }, depsDeApp())).status).toBe("ok");
+    expect((await cambiarActivacionVehiculoAction({ id: alta.vehiculo.id, activo: true }, depsDeApp())).status).toBe("ok");
+
+    // R2: la lista del superadmin trae el tipo; la fila sigue en la base.
+    const lista = await listarVehiculosPlataformaAction(depsDeApp());
+    expect(lista.status === "ok" && lista.items.some((v) => v.id === alta.vehiculo.id)).toBe(true);
+
+    const comun = { actorUsuarioId: actor.usuarioId, actorNombre };
+    // Los dos no-op (mismo nombre, mismo estado) no dejan fila.
+    expect(await rastroDeApp(alta.vehiculo.id)).toEqual([
+      { accion: "vehiculo_creado", vehiculoNombre: nombre, valorAnterior: null, valorNuevo: null, ...comun },
+      { accion: "vehiculo_renombrado", vehiculoNombre: nuevo, valorAnterior: nombre, valorNuevo: nuevo, ...comun },
+      { accion: "vehiculo_desactivado", vehiculoNombre: nuevo, valorAnterior: null, valorNuevo: null, ...comun },
+      { accion: "vehiculo_activado", vehiculoNombre: nuevo, valorAnterior: null, valorNuevo: null, ...comun },
+    ]);
+  });
+
+  it("R10/R12 por el borde: nombre repetido -> conflict, id inexistente -> not_found, sin rastro", async () => {
+    const nombre = nombreUnico("sl42 repetido");
+    const alta = await crearVehiculoAction({ name: nombre }, depsDeApp());
+    if (alta.status !== "ok") throw new Error(`alta: ${alta.status}`);
+    creados.push(alta.vehiculo.id);
+
+    expect(await crearVehiculoAction({ name: nombre }, depsDeApp())).toEqual({ status: "conflict" });
+    const fantasma = randomUUID();
+    expect(await renombrarVehiculoAction({ id: fantasma, name: nombreUnico("x") }, depsDeApp())).toEqual({
+      status: "not_found",
+    });
+    expect(await cambiarActivacionVehiculoAction({ id: fantasma, activo: false }, depsDeApp())).toEqual({
+      status: "not_found",
+    });
+    expect(await base.vehiculo.count({ where: { name: nombre } })).toBe(1);
+    expect((await rastroDeApp(alta.vehiculo.id)).map((f) => f.accion)).toEqual(["vehiculo_creado"]);
+    expect(await rastroDeApp(fantasma)).toEqual([]);
   });
 });

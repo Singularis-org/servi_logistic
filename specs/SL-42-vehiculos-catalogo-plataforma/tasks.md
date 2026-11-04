@@ -39,7 +39,7 @@
   **Hecho:** `tests/unit/services/vehiculo-service.test.ts` cubre R4, R5 (incluido el propio nombre),
   R6 (no-op sin escribir), R10, R12, R14 (cada rol de empresa → `forbidden` sin llamar al repositorio),
   R17 (el `maestro` sigue listando) y R20 (no se llama a `historial_accion`).
-- [ ] T2.4 `lib/actions/vehiculos-plataforma.ts` (design §4.3) y en `lib/modulos/reparto.ts` la action
+- [x] T2.4 `lib/actions/vehiculos-plataforma.ts` (design §4.3) y en `lib/modulos/reparto.ts` la action
   como `nucleo`. `lib/actions/vehiculos.ts` se queda solo con `listarVehiculos` (design §4.4).
   El servicio corre dentro de `comoPlataforma("SL-42", …)`, y el archivo entra en
   `EXCEPCIONES_DE_PLATAFORMA` de `lib/db/excepciones-aislamiento.ts` con su ficha y su motivo
@@ -78,21 +78,21 @@
 
 ## T4 — Interfaz (frontend_dev)
 
-- [ ] T4.1 `app/(app)/plataforma/vehiculos/page.tsx`, `_components/VehiculosPlataformaModule.tsx` y
+- [x] T4.1 `app/(app)/plataforma/vehiculos/page.tsx`, `_components/VehiculosPlataformaModule.tsx` y
   `_components/vehiculos-plataforma-textos.ts`; `MODULO_POR_RUTA` con `/plataforma/vehiculos`
   (design §5). Dep.: T2.4.
   **Hecho:** `tests/unit/components/vehiculos-plataforma-page.test.tsx` cubre R1 (404 a cada rol de
   empresa sin llamar a la action), R2 (lista activos e inactivos; un fallo de carga no se pinta como
   vacío) y R13 (un mensaje por desenlace; «ya existe» solo con `conflict`).
-- [ ] T4.2 Borrar `app/(app)/configuracion/vehiculos/` y su entrada en `MODULO_POR_RUTA`. Dep.: T4.1.
+- [x] T4.2 Borrar `app/(app)/configuracion/vehiculos/` y su entrada en `MODULO_POR_RUTA`. Dep.: T4.1.
   **Misma tanda y mismo commit que T2.4** (decisión 2026-11-04), sin stubs.
   **Hecho:** R16 en `vehiculos-plataforma-page.test.tsx` (la ruta no existe en `app/`).
-- [ ] T4.3 [P] Menú: ítem «Vehículos» de plataforma, `IconKey` `"car"` en `Sidebar.tsx`, sale el
+- [x] T4.3 [P] Menú: ítem «Vehículos» de plataforma, `IconKey` `"car"` en `Sidebar.tsx`, sale el
   subítem de «Configuración». Dep.: ninguna.
   **Hecho:** `tests/unit/auth/menu-visibility.test.ts` cubre R1 (solo el superadmin ve el ítem), R3
   (aterrizajes sin cambio) y R15 (el `maestro` no ve `/configuracion/vehiculos` en ningún ítem);
   `tests/components/Sidebar.test.tsx` verde.
-- [ ] T4.4 [P] Retirar `docs/ayuda/oficina/configuracion-vehiculos.md`. Dep.: ninguna.
+- [x] T4.4 [P] Retirar `docs/ayuda/oficina/configuracion-vehiculos.md`. Dep.: ninguna.
   **Hecho:** R19: ninguna ayuda enlaza a `/configuracion/vehiculos`; las guardias de ayuda verdes.
 
 ## T5 — Verificación y cierre

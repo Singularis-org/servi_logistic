@@ -33,18 +33,19 @@ const docs = await leerCatalogoAyuda();
 const CAMPOS = ["titulo", "modulo", "pantalla", "roles", "actualizado", "fuentes"];
 
 describe("436/R2 — ninguna cadena del contexto lleva metadatos", () => {
-  it("CONTROL DE NO-VACUIDAD: hay 38 documentos y TODOS traen frontmatter con `fuentes`", () => {
+  it("CONTROL DE NO-VACUIDAD: hay 37 documentos y TODOS traen frontmatter con `fuentes`", () => {
     // Sin esto, un catálogo vacío —o unos documentos sin metadatos— dejarían la guardia verde sin
     // haber comprobado nada. Y es la comprobación que además demuestra que hay algo que esconder.
     // SL-36: 33→38 por las cinco guías de integraciones.
     // SL-20 (decisión 9): 38→37, se retira configuracion-geografia.
     // SLT-51: 37→38, entra configuracion-zonas.
-    expect(docs.length).toBe(38);
+    // SL-42 (R19): 38→37, se retira configuracion-vehiculos.
+    expect(docs.length).toBe(37);
     const conFuentes = docs.filter((doc) => {
       const crudo = readFileSync(path.join(DIR_AYUDA, `${doc.slug}.md`), "utf8");
       return (partirFrontmatter(crudo).datos.fuentes ?? []).length > 0;
     });
-    expect(conFuentes.length).toBe(38);
+    expect(conFuentes.length).toBe(37);
   });
 
   it("⭑ ningún cuerpo enviado contiene la palabra `fuentes:`", () => {
