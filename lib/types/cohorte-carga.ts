@@ -11,7 +11,7 @@
 // lote ENTRO — y la orden se sigue HASTA SU DESENLACE, caiga donde caiga en el tiempo.
 //
 // ⚠ NO es lo que mide `CicloVidaDTO`, y la diferencia no es de matiz: alli la ventana cae sobre
-// la transicion TERMINAL («de lo que CERRO esta semana, cuanto tardo») y una orden creada en
+// la GESTION FINAL del mensajero («de lo que CERRO esta semana, cuanto tardo») y una orden creada en
 // enero y cerrada en agosto cuenta en AGOSTO. Aqui esa misma orden cuenta en ENERO, que es
 // cuando entro el lote. Tampoco es el universo de los KPI del dia (el inventario VIVO al corte),
 // que incluye ordenes cargadas semanas antes.

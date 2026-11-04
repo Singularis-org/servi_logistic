@@ -24,7 +24,7 @@ const unstableCache = vi.fn<UnstableCache>(
       return valor;
     },
 );
-const revalidateTag = vi.fn<(tag: string, perfil: string) => void>();
+const revalidateTag = vi.fn<(tag: string, perfil: string | { expire?: number }) => void>();
 vi.mock("next/cache", () => ({
   unstable_cache: (...a: Parameters<typeof unstableCache>) => unstableCache(...a),
   revalidateTag: (...a: Parameters<typeof revalidateTag>) => revalidateTag(...a),
@@ -141,7 +141,9 @@ describe("R34/R42 · la invalidacion alcanza solo la etiqueta de la empresa", ()
 
     await conEmpresa("emp-a", () => cache.invalidar("manual", TAGS));
 
-    expect(revalidateTag.mock.calls).toEqual([[`org:emp-a:${ANALITICA_TAGS.operativa}`, "max"]]);
+    // `{ expire: 0 }` escrito a mano: es el contrato (SLT-64). Con `"max"` la primera lectura tras
+    // invalidar aun trae la cifra vieja.
+    expect(revalidateTag.mock.calls).toEqual([[`org:emp-a:${ANALITICA_TAGS.operativa}`, { expire: 0 }]]);
     expect(revalidateTag.mock.calls[0][0]).toBe(tagsDe(0)?.[0]);
   });
 

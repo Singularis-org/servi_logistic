@@ -554,7 +554,7 @@ export function claveDeConteoDevoluciones(consulta: ConsultaConteoEntregas): str
 export const TAG_CONTEO_DEVOLUCIONES = "conteo-devoluciones";
 
 /**
- * La clave del CICLO DE VIDA (segundos entre creacion y cierre terminal).
+ * La clave del CICLO DE VIDA (segundos entre la creacion y la gestion final).
  *
  * Sexto prefijo, por el mismo motivo que los anteriores: las seis lecturas comparten
  * `ConsultaConteoEntregas` entera, asi que sin prefijo colisionarian en la MISMA clave con
