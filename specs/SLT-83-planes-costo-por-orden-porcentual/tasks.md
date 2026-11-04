@@ -31,7 +31,7 @@
   `cobro-plataforma-porcentual-importe.test.ts` (R9) y `cobro-porcentual-estados-finales.test.ts` (R19)
   en verde; las suites de SL-40 y SLT-66 (`cobro-plataforma-cargos`, `cobro-plataforma-plan`) sin cambios
   y en verde.
-- [ ] **T4. Ida y vuelta** de M1–M3: `tests/integration/db/migracion-slt83-ida-y-vuelta.test.ts` (R27). Con
+- [x] **T4. Ida y vuelta** de M1–M3: `tests/integration/db/migracion-slt83-ida-y-vuelta.test.ts` (R27). Con
   `aplicarMigracionesHasta`: sube, crea y cobra una orden porcentual, comprueba que las bajadas se niegan,
   limpia, baja las tres y crea una orden que se cobra con la regla de SLT-66. Depende de T3.
   *Hecho:* test en verde.

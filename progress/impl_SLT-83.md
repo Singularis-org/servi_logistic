@@ -168,3 +168,25 @@ Fuera de `db/` y `lib/` (no lo pide T0, para T3): la nombran también
 - `pnpm run typecheck` → exit 0. `eslint` de los seis archivos de test tocados → 0 problemas.
 
 **Veredicto T3:** el cobro porcentual vive en la base con un solo invariante, y SL-40/SLT-66 siguen verdes.
+
+## T4
+
+**Archivos.** Creado `tests/integration/db/migracion-slt83-ida-y-vuelta.test.ts` (R27), con base propia
+`slt83_iv_<rand>` (se crea y se borra en el test; la de la feature no se toca) y `aplicarMigracionesHasta`.
+
+**Qué recorre.** Siembra antes de M1 (empresa, plan fijo de 100 asignado, global 500, cambio programado
+pendiente) → sube M1–M3 → el plan sigue fijo y la versión gana `costoPorOrdenPorcentual: null`; una orden
+con plan fijo se carga 100.00 «plan» → el plan pasa al 2 % (mínimo 500): una orden de 100.000 congela
+sin cargo y al entrar a `entregado` se carga 2.000,00 → los `down.sql` de M2 y M1 se niegan (P0001, con
+su mensaje) con la condición congelada, con el plan porcentual y con una versión pendiente porcentual, y
+la foto no cambia → limpios esos datos como dueño, bajan M3, M2 y M1 y la foto (columnas, constraints,
+índices, tipos, md5 de funciones, triggers, privilegios y políticas) es la de antes de M1, la versión
+pendiente vuelve a la sembrada y una orden nueva se carga 100.00 «plan» (regla de SLT-66).
+
+**R → test.** R27 → `migracion-slt83-ida-y-vuelta.test.ts` (5 casos).
+
+**Salida.** `pnpm exec vitest run tests/integration/db/migracion-slt83-ida-y-vuelta.test.ts` →
+`Test Files 1 passed (1) · Tests 5 passed (5)`; la base temporal no queda (`pg_database` sin `slt83%`).
+`eslint` → 0 problemas.
+
+**Veredicto T4:** ida y vuelta de M1–M3 en verde, con las bajadas negándose ante datos porcentuales.
