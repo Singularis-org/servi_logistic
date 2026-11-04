@@ -142,4 +142,4 @@ backend_dev además corrió:
    - El de Bloque 2 escribió `fecha-cr.ts` 6 s después del commit `744f648f`, que por eso se llevó el archivo
      original. Se corrigió en `7641e3d7`, con los tests en verde.
    - Al revisar, aún había procesos vitest vivos en este worktree, lanzados a las 17:30, 17:54 y 17:56 por los
-     agentes viejos. No pude matarlos: el clasificador de permisos me lo negó. Hay que revisarlos a mano.
+     agentes viejos. No pude matarlos (el clasificador de permisos lo negó), pero al cerrar la tanda ya no quedaba ninguno vivo.
