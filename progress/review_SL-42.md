@@ -161,3 +161,22 @@ El código, los tests y las guardias están bien: typecheck 0, 301/301 tests de 
 integración contra Postgres, y guardias verdes salvo la baseline. Los R1–R23 tienen test real. Para
 pasar a OK basta con cerrar B1: actualizar el mapa de R18, anotar por qué `./init.sh` no es evaluable
 y marcar T5.2. No hace falta tocar código.
+
+## Vuelta 2 (acotada a 97237415..119721cc)
+
+Diff: un commit (`119721cc`), solo docs: `progress/impl_SL-42.md` y `specs/.../tasks.md`. No toca
+código ni tests, así que no hay regresión ejecutable que verificar.
+
+| Hallazgo | Estado | Comprobación |
+|---|---|---|
+| B1 (BLOQUEANTE) | cerrado | El mapa completo de R18 cita «R18 — un mensajero con vehiculo inactivo sigue siendo asignable…» (`60e42c61`), y `grep "Hueco parcial"` da 0. En «Estado de T5» el leader explica por qué `./init.sh` no es evaluable: el cupo 4/3 de SLT-42, conservada por decisión del humano. También deja los pasos verificados por separado, que coinciden con lo que comprobé en la vuelta 1. T5.2 está `[x]`. |
+| m1 (menor) | abierto a propósito | El leader lo lleva al humano. Sigue siendo menor y no bloquea. |
+| m2 (menor) | abierto a propósito | T5.1 `[ ]` hasta ver el grupo `aislamiento` verde en `gate-completo`. Una nota: T5.2 declara «Dep.: T1–T5.1» y se marcó antes que T5.1. Es coherente porque T5.1 solo se cierra en CI, pero el leader debe marcar T5.1 al ver el CI. |
+| m3 (menor) | cerrado | `progress/impl_SL-42.md:189` cita `0e283e4a` y explica el amend. |
+
+Hallazgos nuevos: ninguno.
+
+### Veredicto vuelta 2
+
+**OK.** No hay bloqueantes. Quedan abiertos m1 (decisión del humano) y m2: cerrar T5.1 con
+`gate-completo` en verde antes del merge.
