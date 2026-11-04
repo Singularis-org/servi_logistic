@@ -251,3 +251,35 @@ Base: `logistic_slt65_r1104` (localhost). MCP del grafo no usado; Grep/Read y gi
 se adaptaron al catálogo de SLT-65 tras el merge. El código de producción no se pierde. B1 de la vuelta 2
 (orden de migraciones) queda cerrado. m1 (literal de `geo-consultas-ordenes`) es mecánico y espera la
 autorización humana.
+
+## Vuelta 4 — 2026-11-04 (acotada a 48ebdc3b..72fd897e)
+
+Commits: `9a181b6d` (arreglos) y `72fd897e` (bitácora). Base: `logistic_slt65_r1104`.
+
+### Checklist
+- [x] **B1 (dobles).** `cierre-pago-congelado.test.ts` (+10) solo importa `delegadosDelCatalogo` y lo
+  esparce en `txCrear` con los nodos `p1`/`ct1`/`d1` (Cartago/Central/Oriental, sin marcas).
+  `convergencia-tarifa-listado-cierre.test.ts` (+3) solo lo esparce en el `prisma` del `it` del LISTADO,
+  con el nodo `DISTRITO`. Ninguna línea `expect` cambia en ninguno de los dos archivos.
+- [x] **m1 (autorizado).** Solo cambia el `costeo` esperado, y en él solo el campo `distritoId`:
+  `distritoId: null` en el R6 de `orden-repository.api-lectura.test.ts` (+3, en este rango) y
+  `distritoId: f.distritoId` en `geo-consultas-ordenes.test.ts:163-165`. Ese segundo cambio entró en
+  `42fd8469`, antes de este rango; el diff de ese merge contra su primer padre añade solo esas 2
+  líneas. La marca (`esZonaEspecial`) y los demás campos no cambian. La autorización está en
+  `progress/features/SLT-65.md > ## Decisiones` (2026-11-04, Cristian: «Autorizar»).
+- [x] **m2.** `design.md:26` y `:393` citan `20261104120000`–`120500`. No queda ningún `20261031` en design.md.
+- [x] **Ejecución.** Corrí cada archivo solo, con `timeout 300`, y `DATABASE_URL` apuntando a `logistic_slt65_r1104`:
+  - `cierre-pago-congelado`: 11/11.
+  - `convergencia-tarifa-listado-cierre`: 10/10.
+  - `orden-repository.api-lectura`: 29/29.
+  - `geo-consultas-ordenes`: 6/6, ejecutados, ninguno saltado.
+
+### Hallazgos
+Ninguno nuevo. B1 y m1 de la vuelta 3 quedan cerrados, y m2 también. No veo regresiones en el rango.
+
+Nota: en local no se corrió la suite unitaria completa porque no cabe en memoria. El leader informa
+que pasaron services, analytics, repositories, utils y guards, y que solo falla la baseline. Lo que
+falta lo corre `gate-completo` en CI, y no lo cuento como bloqueante.
+
+### Veredicto
+**OK.**
