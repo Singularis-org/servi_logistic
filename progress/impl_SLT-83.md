@@ -108,3 +108,63 @@ Fuera de `db/` y `lib/` (no lo pide T0, para T3): la nombran también
 - `pnpm run typecheck` → exit 0. `eslint` de los archivos tocados → 0 problemas.
 
 **Veredicto T2:** tabla de condiciones aislada por empresa y de solo lectura para `servi_app`, en verde.
+
+## T3
+
+**Archivos.**
+- Creado `db/migrations/20261104150200_cobro_plataforma_porcentual_funciones/migration.sql` (design §2.3,
+  §3): `orden_estado_es_final`, `cobro_plataforma_importe_porcentual`, `cobro_plataforma_tarifa_de`
+  (DROP + CREATE con `porcentaje` y `minimo`), `cobro_plataforma_porcentual_conciliar`,
+  `cobro_plataforma_al_crear_orden` (rama porcentual), `cobro_plataforma_al_cambiar_borrado` (entrada de
+  conciliación al principio), `cobro_plataforma_al_cambiar_estado` + trigger `AFTER UPDATE OF estatus_id`,
+  `plan_cobro_del_ciclo` y `plan_de_la_empresa` (`costo_vigente` con `porcentaje`/`minimo`,
+  `cobro_ciclo`, `costo_por_orden_pct`, `costo_por_orden_minimo`). Todas `SECURITY DEFINER`,
+  `search_path` fijo y `REVOKE EXECUTE … FROM PUBLIC`; `plan_de_la_empresa` conserva su `GRANT`.
+- Creado su `down.sql`: los cuerpos de origen se extrajeron por script de sus migraciones
+  (`20261104130000` para `plan_de_la_empresa`, `20261023130200` para `al_cambiar_borrado`, `20261031140200`
+  para `al_crear_orden` y `tarifa_de`), así que son byte a byte los de origen.
+- Creado `tests/integration/db/_fixtures/cobro-porcentual.ts` (empresas, planes, órdenes por SQL de dueño,
+  movimientos, condiciones, deuda).
+- Creados `tests/integration/db/cobro-plataforma-porcentual.test.ts`,
+  `cobro-plataforma-porcentual-importe.test.ts`, `cobro-porcentual-estados-finales.test.ts`.
+- **Tests existentes tocados (design §9.3, solo forma):**
+  - `tests/integration/db/plan-de-la-empresa-costeo.test.ts`: el `costo_vigente` CRUDO de
+    `plan_de_la_empresa` gana `porcentaje: null, minimo: null` en los dos `expect(r.empresa)`; las
+    aserciones de cargo, repositorio y superadmin no cambian.
+  - `tests/integration/db/plan-de-la-empresa.test.ts` (R9 de SLT-58, lista exacta de claves): gana
+    `costo_por_orden_pct`, `costo_por_orden_minimo` y `cobro_ciclo`. Es el mismo tipo de cambio que hizo
+    SLT-66 en esa lista; §9.3 nombra solo el de `-costeo`, así que lo dejo anotado para el reviewer.
+
+**Comprobaciones.**
+- `down.sql` en `BEGIN … ROLLBACK` sobre la base migrada: el `md5(pg_get_functiondef)` y el `proacl` de
+  `cobro_plataforma_tarifa_de`, `plan_de_la_empresa`, `cobro_plataforma_al_crear_orden` y
+  `cobro_plataforma_al_cambiar_borrado` son iguales a los de antes de subir M3.
+- Drift: `prisma migrate diff --from-config-datasource --to-schema db/schema.prisma --script` →
+  `-- This is an empty migration.`
+- Mutaciones de design §9.4, aplicadas a mano en la base y revertidas: `round` → `trunc` y quitar
+  `incidente` de `orden_estado_es_final` → 11 tests en rojo en los tres archivos nuevos; restaurados los
+  cuerpos de la migración → verde.
+
+**R → test.**
+- R6 → `cobro-plataforma-porcentual.test.ts` «R6: un alta de tres órdenes en una sola sentencia…» y §3.5.
+- R7 → «R7: con excepción…», «R7: con plan fijo o vacío…».
+- R8 → «R8: entrar a %s…» (×3), «R8: una orden que nace en %s…» (×3), «…nace anulada…».
+- R9 → `cobro-plataforma-porcentual-importe.test.ts` (9 casos sobre la función y 9 sobre cargos reales).
+- R10 → «R10: el cargo porcentual no lleva el descuento anual…».
+- R11 → «R11: cambie lo que cambie…», «R11: una orden creada con modo fijo…».
+- R12 → «R12: salir de un estado final…», «R12: pasar de un estado final a otro…».
+- R13 → «R13: cambiar el monto_cobrar…» y el último paso de §3.5.
+- R14 → «R14: anular sin cargo vigente…», «R14: anular con cargo vigente…».
+- R15 → «R15: el invariante se cumple tras cada paso…», «R15: una sentencia que cambia estado y anulación…».
+- R16 → «R16: si la operación no se confirma…».
+- R18 → «R18: la deuda de la wallet sube…» y la deuda de A en cada paso de §3.5.
+- R19 → `cobro-porcentual-estados-finales.test.ts`.
+
+**Salida.**
+- `pnpm exec vitest run` de `cobro-plataforma-porcentual-importe`, `cobro-porcentual-estados-finales`,
+  `cobro-plataforma-porcentual`, `cobro-plataforma-cargos` (SL-40), `cobro-plataforma-plan` (SLT-66),
+  `plan-de-la-empresa-costeo`, `plan-de-la-empresa` y `cobro-plataforma-porcentual-aislamiento` →
+  `Test Files 8 passed (8) · Tests 99 passed (99)`.
+- `pnpm run typecheck` → exit 0. `eslint` de los seis archivos de test tocados → 0 problemas.
+
+**Veredicto T3:** el cobro porcentual vive en la base con un solo invariante, y SL-40/SLT-66 siguen verdes.

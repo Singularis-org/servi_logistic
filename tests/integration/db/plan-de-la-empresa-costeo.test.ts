@@ -130,7 +130,8 @@ describeSiHayBase("SLT-66 — plan_de_la_empresa: el costeo de la empresa (R18, 
       const r = await revertida(base, (tx) => leerYCargar(tx, plan, excepcion));
       const esperado = { monto, fuente };
       expect(r.cargo).toEqual([esperado]);
-      expect(r.empresa).toEqual(esperado);
+      // SLT-83 (design §2.3, §9.3): el `costo_vigente` crudo gana `porcentaje` y `minimo`, null fuera del modo porcentual.
+      expect(r.empresa).toEqual({ ...esperado, porcentaje: null, minimo: null });
       expect(r.repositorio).toEqual(esperado);
       expect(r.superadmin).toEqual(esperado);
       // El costo del plan sale aparte, tal cual (con excepción también: es el del plan, no el vigente).
@@ -144,7 +145,8 @@ describeSiHayBase("SLT-66 — plan_de_la_empresa: el costeo de la empresa (R18, 
       const r = await revertida(base, (tx) => leerYCargar(tx, null, null));
       const esperado = { monto: "0.00", fuente: "sin_configurar" };
       expect(r.cargo).toEqual([esperado]);
-      expect(r.empresa).toEqual(esperado);
+      // SLT-83 (design §2.3, §9.3): el `costo_vigente` crudo gana `porcentaje` y `minimo`, null fuera del modo porcentual.
+      expect(r.empresa).toEqual({ ...esperado, porcentaje: null, minimo: null });
       expect(r.repositorio).toEqual(esperado);
       expect(r.superadmin).toEqual(esperado);
     } finally {

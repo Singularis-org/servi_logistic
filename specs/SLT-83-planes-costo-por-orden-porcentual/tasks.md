@@ -24,7 +24,7 @@
   Depende de T1.
   *Hecho:* guardias `organizacion-en-modelos`, `rls-por-empresa`, `fk-misma-empresa` en verde;
   `tests/integration/db/cobro-plataforma-porcentual-aislamiento.test.ts` (R17) en verde.
-- [ ] **T3. M3 `20261104150200_cobro_plataforma_porcentual_funciones`** (design §2.3, §3): las nueve
+- [x] **T3. M3 `20261104150200_cobro_plataforma_porcentual_funciones`** (design §2.3, §3): las nueve
   piezas, con los cuerpos copiados literalmente de su origen salvo lo que nombra el design, y el `down.sql`
   con los cuerpos de origen. Depende de T2.
   *Hecho:* `cobro-plataforma-porcentual.test.ts` (R6–R8, R10–R16, R18; tabla de §3.5 entera),
