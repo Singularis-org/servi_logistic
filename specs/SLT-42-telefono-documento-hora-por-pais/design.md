@@ -452,6 +452,20 @@ ficha (`SLT-81` o `SL-22`) y el motivo. Además de la guardia, el test exige que
 respecto de un tope numérico escrito en el mismo archivo (patrón de `EXCEPCIONES_SQL_A_MANO`). Los
 envoltorios `*-cr.ts` están en la lista: sí contienen el literal, porque la UI aún los usa.
 
+## Desvíos aceptados en implementación (2026-11-04)
+
+Decididos por el humano tras la tanda 1 (`progress/features/SLT-42.md > Decisiones`, 2026-11-04):
+
+1. **Migración `20261103120100`: inserta «ruc» y «pasaporte» si faltan**, en vez de abortar (§2). Ninguna
+   migración los creaba antes (los sembraba `db:seed`, que corre después de `migrate deploy`), así que en una
+   base nueva o en CI la precondición fallaba. Inserta filas completas con `ON CONFLICT DO NOTHING` y, si ya
+   existen, solo rellena las columnas nuevas. En producción el resultado es el del design.
+2. **Tipo de documento inactivo:** `tipoDocumentoDelPais` y `IReglasPaisEmpresa.tipoDocumento` lo devuelven con
+   `activo: false` (no `null`), y el servicio lo rechaza (R11) con un mensaje propio.
+3. **`scripts/seed-catalogos.ts` ya no siembra tipos de documento**: solo los crea la migración.
+4. **La guardia `geografia-predicado-unico` se acota a geografía** (provincia, cantón, distrito y nodo
+   geográfico). Deja pasar `activo: true` en otras tablas, como `tipo_identificacion` (filtro de R5).
+
 ## 9. Alternativas descartadas
 
 1. **Tabla nueva `pais_tipo_documento` y columna nueva `usuario.tipo_documento_id`.** Es lo más

@@ -221,6 +221,8 @@ País, documento y teléfono:
 - `lib/utils/busqueda-texto-sql.ts`
 - `lib/whatsapp-envios/telefono.ts`
 - `tests/fabricas/paises.ts`
+- `scripts/seed-catalogos.ts` (2026-11-04: se le quitan los tipos de documento)
+- `tests/unit/guards/geografia-predicado-unico.guardia.test.ts` (2026-11-04: se acota a geografía)
 - `tests/integration/db/pais-repositorio.test.ts`
 - `tests/integration/db/chat-entrante-telefono-cr.test.ts`
 - `tests/unit/services/usuario-service-superadmin.test.ts`
