@@ -17,11 +17,181 @@
 
 ## Requisitos (EARS)
 
-_Pendiente: los escribe spec_author (F1.2)._
+> Escritos por `spec_author` el 2026-11-04. Vocabulario:
+> - **«Hoy»**: el comportamiento de la rama en `fe16f5d1` (base montada sobre SLT-65, PR #75), antes
+>   de esta feature.
+> - **«Catálogo»**: el de SLT-44 (nodos y tipos del país de la empresa), que carga
+>   `CatalogoGeograficoRepository.deLaEmpresa()`.
+> - **«Lugar de una orden»**: el nodo `COALESCE(distrito_id, canton_id)` de la orden (decisión «¿Lugar
+>   de una orden?»).
+> - **«Nodos bajo X»**: los descendientes de X que calcula el dominio de SLT-44 (`nodosBajo`).
+> - **«Faceta geográfica»**: `provincia_id`, `canton_id` o `distrito_id` del filtro de analítica.
+>   **«Nivel de la faceta»**: la profundidad que nombra (provincia 1, cantón 2, distrito 3).
+> - **«Lecturas de analítica»**: el desglose por estado, el conteo de entregas (el anillo, que pliega
+>   el desglose), las cargadas por día, las devoluciones por causa y el ciclo de vida.
+> - **«Lecturas que comparten el recorte»**: las que reutilizan hoy el `where` de una lectura de
+>   analítica: productos, dinero por producto, cohorte de carga y contador de hoy (pregunta
+>   abierta 1).
+> - **«Cadena coherente»**: el distrito de la orden cuelga de su cantón y el cantón de su provincia.
+>
+> El inventario de SQL, los archivos y los tests concretos están en `design.md`.
+
+### Filtro por lugar en analítica
+
+- **R1** (por evento) CUANDO una lectura de analítica recibe una faceta geográfica, el sistema DEBE
+  contar solo las órdenes cuyo lugar es uno de los ids válidos de esa faceta o uno de los nodos bajo
+  ellos. La lista de ids DEBE llegar ya calculada por el dominio de SLT-44, en un único parámetro de
+  la consulta por faceta (`= ANY($ids)`).
+- **R2** (ubicuo) Con varias facetas geográficas a la vez, una orden DEBE cumplirlas todas, como hoy.
+  Las demás condiciones (alcance, borrado, zona, tienda, mensajero y ventana) NO DEBEN cambiar, y el
+  alcance DEBE seguir siendo la primera condición.
+- **R3** (condicional) SI un id de una faceta geográfica no está en el catálogo, o su profundidad no
+  es el nivel de la faceta, ENTONCES ese id NO DEBE aportar órdenes. SI ningún id de la faceta es
+  válido, ENTONCES la lectura DEBE contar cero órdenes por esa faceta, como hoy, y nunca tratarla
+  como «sin filtro».
+- **R4** (de estado) MIENTRAS la cadena de cada orden sea coherente, cada lectura de analítica DEBE
+  devolver, con cualquier combinación de facetas, alcance y ventana, el mismo resultado que hoy.
+- **R5** (condicional) SI una lectura de analítica no trae ninguna faceta geográfica, ENTONCES NO
+  DEBE cargar el catálogo, y su SQL y sus parámetros DEBEN ser los de hoy.
+- **R6** (ubicuo) La entrada de analítica NO DEBE cambiar: el filtro sigue aceptando `provincia_id`,
+  `canton_id` y `distrito_id` con la misma validación, y las respuestas `validation_error`,
+  `forbidden` y `unauthenticated` y la clave de caché DEBEN ser las de hoy.
+- **R7** (ubicuo) Las lecturas que comparten el recorte DEBEN aplicar las facetas geográficas con el
+  mismo constructor de condiciones que la lectura de la que lo toman. NO DEBE existir una segunda
+  escritura del filtro por lugar. (Su alcance depende de la pregunta abierta 1.)
+
+### Nombres de lugar en tránsito
+
+- **R8** (ubicuo) Cada fila del informe de tránsito DEBE llevar como cantón el nombre del nodo
+  `canton_id` de la orden en el catálogo, y como distrito el del nodo `distrito_id`. Si la orden no
+  tiene distrito, el distrito DEBE ser `null`.
+- **R9** (de estado) MIENTRAS los nombres del catálogo coincidan con los de las tablas viejas, las
+  filas en alerta, los totales, las variables del mensaje y el PDF de una generación DEBEN ser los de
+  hoy, y su vista previa DEBE dar las mismas cifras.
+- **R10** (ubicuo) La consulta de filas en alerta NO DEBE unir con `canton` ni con `distrito`. La
+  selección DEBE seguir haciendo 3 llamadas al repositorio por generación, y el número de consultas
+  NO DEBE depender del número de órdenes (R40 de la ficha 475).
+- **R11** (condicional) SI no hay ninguna fila en alerta, ENTONCES la generación NO DEBE cargar el
+  catálogo.
+- **R12** (condicional) SI el cantón o el distrito de una fila en alerta no está en el catálogo,
+  ENTONCES la generación DEBE fallar como un fallo de lectura de `filasEnAlerta`, sin mandar nada.
+  (Propuesta: pregunta abierta 2.)
+
+### Contexto de empresa
+
+- **R13** (de estado) MIENTRAS una lectura de esta feature carga el catálogo, DEBE ser el del país de
+  la empresa del contexto (job de envíos, sesión o caché de analítica), una sola carga por instancia
+  de repositorio. SI corre en contexto de plataforma, ENTONCES DEBE fallar con `EmpresaNoResuelta`
+  sin devolver filas.
+
+### Reglas heredadas de SLT-43, SLT-44 y SLT-65
+
+- **R14** (ubicuo) Ninguna lectura de esta feature DEBE leer `orden.nodo_geografico_id`. El resultado
+  DEBE ser el mismo haya corrido o no el script de datos de SLT-43.
+- **R15** (ubicuo) Ninguna lectura de esta feature DEBE calcular ancestros o descendientes con una
+  consulta recursiva en la base, ni con una columna `ruta`.
+- **R16** (ubicuo) Ningún repositorio de esta feature que use el catálogo DEBE crearse a nivel de
+  módulo en `lib/` ni en `app/`.
+
+### Equivalencia
+
+- **R17** (por evento) CUANDO una persona ejecuta el script de equivalencia de esta feature sobre una
+  base, el script DEBE comparar, por empresa, el resultado de hoy y el nuevo de:
+  - cada lectura de analítica sin facetas, con cada provincia, con una muestra de cantones y de
+    distritos de tamaño configurable, con una combinación de dos facetas y con un id de nivel
+    equivocado;
+  - las filas en alerta del informe de tránsito, por orden, con los parámetros por defecto.
+
+  DEBE imprimir las cifras de cada bloque, el número de órdenes con cadena incoherente y sus ids, y
+  terminar con un código distinto de 0 si algo difiere. Las órdenes con cadena incoherente se cuentan
+  aparte: si son la única diferencia, el script DEBE terminar en 0.
+- **R18** (ubicuo) Los scripts de esta feature NO DEBEN escribir en ninguna tabla: toda su lectura
+  DEBE correr en transacciones de solo lectura y solo contra una base local. NO DEBEN imprimir SQL,
+  parámetros, destinatarios, direcciones, teléfonos ni nombres de lugar: solo cifras e ids de
+  empresa, nodo, zona y orden.
+
+### Rendimiento
+
+- **R19** (por evento) CUANDO una persona ejecuta el script de rendimiento sobre una base, el script
+  DEBE medir antes y después estas lecturas: filas en alerta de tránsito, conteo de entregas,
+  desglose por estado, cargadas por día, devoluciones por causa y ciclo de vida. Las de analítica se
+  miden con la faceta de la provincia con más órdenes. Para cada una DEBE:
+  - correr `EXPLAIN ANALYZE` de todas sus consultas, catálogo incluido, 5 veces;
+  - sumar los `Execution Time` de cada corrida y tomar la mediana;
+  - imprimir las dos medianas, el porcentaje y los Seq Scan sobre `orden` de cada lado.
+- **R20** (ubicuo) El script DEBE marcar regresión:
+  - en tránsito y en las cuatro lecturas de conteo, si la mediana de después supera en más de 20 % a
+    la de antes;
+  - en todas, ciclo de vida incluido, si aparece un Seq Scan sobre `orden` que antes no estaba.
+
+  En ciclo de vida, el porcentaje DEBE imprimirse y NO DEBE marcar regresión.
+- **R21** (condicional) SI una lectura supera el 20 % solo por las consultas del catálogo (la suma
+  sin ellas no supera el 20 % y no hay Seq Scan nuevo sobre `orden`), ENTONCES el script DEBE
+  marcarla como «costo fijo del catálogo», imprimir las dos sumas sin catálogo y no contarla como
+  regresión.
+- **R22** (por evento) CUANDO el script termina, DEBE salir con 1 si alguna lectura tiene regresión,
+  con 2 si alguna lectura falló al leer, y con 0 en otro caso.
+- **R23** (condicional) SI hace falta un índice para quitar una regresión de R20, ENTONCES DEBE ir en
+  una migración que solo contenga `CREATE INDEX`, con su `down.sql` y un timestamp que no choque con
+  ninguna migración de `dev` ni de las ramas en vuelo. Esta feature NO DEBE añadir ninguna otra
+  migración.
+
+### Lo que no cambia
+
+- **R24** (de estado) MIENTRAS conviven los dos modelos, la analítica y el informe de tránsito DEBEN
+  comportarse igual para Costa Rica:
+  - las interfaces de los repositorios, los DTO y `FilaTransito` no cambian;
+  - las suites de integración existentes de analítica y de tránsito pasan sin cambiar aserciones;
+  - los E2E existentes pasan en el gate completo de CI.
+
+  Solo pueden cambiar las aserciones unitarias que fijan el texto SQL de las facetas geográficas
+  (`o."provincia_id" IN (`, etc.), y solo en esas líneas.
+- **R25** (ubicuo) Esta feature NO DEBE cambiar lo que es de otras tarjetas:
+  - `GestionOrdenRepository` y los filtros de pantalla, la barra de analítica y la presentación del
+    PDF de tránsito (SLT-47);
+  - los filtros por lugar de `OrdenRepository` (`condicionesSatelite` y `list`) (SLT-47);
+  - órdenes, cierres, zonas y dinero (SLT-65); la API (SLT-45).
+
+**Qué requisito cubre cada decisión cerrada:**
+
+| Decisión | Requisitos |
+|---|---|
+| ¿Qué lecturas bloquean por +20 %? | R19, R20 |
+| ¿Costo fijo del catálogo? | R21 |
+| ¿Gestión de orden? | R25 |
+| ¿Nombres de lugar en tránsito? | R8, R9, R10 |
+| ¿Qué es regresión en el `EXPLAIN ANALYZE`? | R19, R20, R23 |
+| ¿E2E nuevo? | R24 |
+| ¿Guardia de caché del catálogo? | R16 |
+| ¿Órdenes con cadena incoherente? | R17 |
+| ¿Dónde se miden la equivalencia y los tiempos? | R17, R18, R19 |
+| ¿Lugar de una orden? | R1, R14 |
+| ¿Árbol? | R1, R15 |
+| ¿Migraciones? | R23 |
 
 ## Preguntas abiertas
 
-Ninguna.
+1. **¿Entran las cuatro lecturas que comparten el recorte?** Productos (`ConteoProductosRepository`),
+   dinero por producto (`DineroProductosRepository`), cohorte de carga (`CohorteCargaRepository`) y
+   contador de hoy (`ConteoHoyGestionRepository`) no los nombra la tarjeta. Pero no escriben su propio
+   filtro: importan `condicionesDeConsulta` o `condicionesSinFecha`, que son dos de los sitios del
+   alcance. Si el constructor pasa a pedir los ids ya resueltos, esas cuatro tienen que pasárselos.
+   - **Propuesta: entran.** Cada una carga el catálogo solo si hay faceta geográfica (R5), y su
+     comportamiento no cambia (R4).
+   - La otra salida es un constructor con dos modos, por columna y por lugar. Se descarta en
+     `design.md` §9.2: dejaría dos filtros por lugar en la misma pantalla.
+2. **Tránsito: cantón o distrito ausente del catálogo (R12).** Hoy no puede pasar: las FK lo impiden,
+   y el `JOIN` con `canton` dejaría fuera la fila. Con el catálogo sí puede pasar, si la sincronía de
+   SLT-43 fallara.
+   - **Propuesta:** que la generación falle con el nombre de la operación, como cualquier fallo de
+     lectura del informe (R22 de la 475), y que no se mande un informe al que le falta un paquete en
+     silencio.
+   - La alternativa es omitir la fila, que es lo que haría hoy el `JOIN`.
+3. **Choque de archivos con SLT-64** (Carlos Restrepo, `in_progress`): «Ciclo de vida dice 0
+   cerradas». Es probable que toque `lib/repositories/CicloVidaRepository.ts`, que esta feature
+   también toca, y su cambio movería «el antes» del ciclo de vida. Hace falta que el humano acepte el
+   choque (`docs/equipo.md > Conflicto de archivos entre personas`) y decida el orden de merge. La
+   copia congelada (design §7) se toma de la base que quede en `dev` cuando empiece T1.
 
 ## Decisiones cerradas (no reabrir)
 
