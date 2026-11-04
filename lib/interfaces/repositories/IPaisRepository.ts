@@ -1,4 +1,4 @@
-import type { DatosDeAltaDePais, PaisDisponibleDTO, PaisDTO } from "@/lib/types/pais";
+import type { DatosDeAltaDePais, PaisDisponibleDTO, PaisDTO, TipoDocumentoDTO } from "@/lib/types/pais";
 
 // SL-20 (design §5) — persistencia de los países. La tabla es de plataforma: `listar`, `porId` y
 // `crear` corren como dueño (`comoPlataforma`, lo pone la action); `deLaEmpresa` corre en el
@@ -44,4 +44,19 @@ export interface IPaisRepository {
 
   /** El país de la empresa, o `null` si la empresa no existe o no es visible en este contexto. */
   deLaEmpresa(organizacionId: string): Promise<PaisDTO | null>;
+
+  /**
+   * SLT-42 (R11; design §4.2): el tipo de documento `idOValue` (su `id` o su `value`) SOLO si es del
+   * país `paisId`; un tipo de otro país es `null`, igual que uno que no existe. Lo trae aunque esté
+   * inactivo, con su `activo`: el filtro de inactivos es de quien lo usa. Corre en el contexto de la
+   * empresa: la RLS `tipo_identificacion_del_pais` acota además al país de esa empresa.
+   */
+  tipoDocumentoDelPais(paisId: string, idOValue: string): Promise<TipoDocumentoDTO | null>;
+
+  /**
+   * SLT-42 (R25; design §6.1): las zonas horarias distintas de los países que tienen al menos una
+   * empresa, sin los `NULL`, por orden alfabético. Lectura de plataforma: abre `comoPlataforma` por
+   * su cuenta (la llama la cola de jobs, que no tiene empresa).
+   */
+  zonasConEmpresas(): Promise<string[]>;
 }

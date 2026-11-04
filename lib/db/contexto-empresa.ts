@@ -66,6 +66,31 @@ export function dentroDeTransaccionDeEmpresa<T>(organizacionId: string, fn: () =
 }
 
 /* -------------------------------------------------------------------------- */
+/* Memoria del marco (SLT-42, design §4.2, R30)                                */
+/* -------------------------------------------------------------------------- */
+
+// Lo que un servicio puede recordar mientras dura UN marco de `conEmpresa` (una petición, una
+// iteración de `paraCadaEmpresa`) y nada más. Cuelga del propio objeto de contexto, que nace en cada
+// `conEmpresa` y muere con él: lo leído para una empresa no puede servir a otra. No es enumerable,
+// para que el contexto siga comparándose igual (`toEqual`) y no se copie por accidente.
+const CLAVE_MEMORIA = Symbol.for("servi-logistic.memoria-del-marco");
+type ConMemoria = { [CLAVE_MEMORIA]?: Map<symbol, unknown> };
+
+/**
+ * La memoria del marco de empresa en curso, o `undefined` si no hay marco de empresa explícito (sin
+ * contexto, o en plataforma): entonces no se recuerda nada y cada lectura va a la base.
+ */
+export function memoriaDelMarco(): Map<symbol, unknown> | undefined {
+  const ctx = almacen.getStore();
+  if (ctx?.tipo !== "empresa") return undefined;
+  const conMemoria = ctx as ConMemoria;
+  if (!conMemoria[CLAVE_MEMORIA]) {
+    Object.defineProperty(conMemoria, CLAVE_MEMORIA, { value: new Map<symbol, unknown>(), enumerable: false });
+  }
+  return conMemoria[CLAVE_MEMORIA];
+}
+
+/* -------------------------------------------------------------------------- */
 /* Errores                                                                     */
 /* -------------------------------------------------------------------------- */
 

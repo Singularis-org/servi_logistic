@@ -63,11 +63,11 @@
 
 ## Bloque 3 — Puerto del país (depende de T1.1, T1.2)
 
-- [ ] **T3.1** `PaisDTO` con los campos nuevos; `IPaisRepository` y `PaisRepository` con
+- [x] **T3.1** `PaisDTO` con los campos nuevos; `IPaisRepository` y `PaisRepository` con
   `tipoDocumentoDelPais` y `zonasConEmpresas` (con su entrada en `EXCEPCIONES_DE_PLATAFORMA`);
   errores `PaisSinZonaHoraria` y `PaisIncompleto` en `lib/db/errores-pais.ts`.
   *Hecho:* typecheck; `tests/integration/db/pais-repositorio.test.ts` ampliado y en verde.
-- [ ] **T3.2** `IReglasPaisEmpresa` + `ReglasPaisEmpresaService` (memoria solo dentro del marco de
+- [x] **T3.2** `IReglasPaisEmpresa` + `ReglasPaisEmpresaService` (memoria solo dentro del marco de
   `conEmpresa`) + `tests/fabricas/reglas-pais.ts` + `tests/unit/services/reglas-pais-empresa-service.test.ts`
   (R28, R30).
   *Hecho:* verde: dos contextos seguidos devuelven cada uno su país, y sin zona lanza

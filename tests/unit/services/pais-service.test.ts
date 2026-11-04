@@ -33,6 +33,9 @@ const COSTA_RICA: PaisDTO = {
   digitosCodigoNivel2: 3,
   digitosCodigoNivel3: 5,
   disponible: true,
+  prefijoTelefonico: "506",
+  telefonoDigitosNacionales: 8,
+  zonaHoraria: "America/Costa_Rica",
 };
 
 const PAIS_XA: PaisDTO = {
@@ -48,6 +51,9 @@ const PAIS_XA: PaisDTO = {
   digitosCodigoNivel2: null,
   digitosCodigoNivel3: null,
   disponible: true,
+  prefijoTelefonico: null,
+  telefonoDigitosNacionales: null,
+  zonaHoraria: null,
 };
 
 /** El alta elige el país del catálogo por su código (R41) y teclea los seis nombres de nivel. */
@@ -77,10 +83,22 @@ function repoDoble(
     listarDisponibles: vi.fn(async () => paises.filter((p) => p.disponible).map(({ id, nombre }) => ({ id, nombre }))),
     porId: vi.fn(async (id: string) => paises.find((p) => p.id === id) ?? null),
     crear: vi.fn<IPaisRepository["crear"]>(async (datos) =>
-      o.crear ?? { estado: "creado", pais: { ...datos, digitosCodigoNivel1: null, digitosCodigoNivel2: null, digitosCodigoNivel3: null, disponible: true } },
+      o.crear ?? { estado: "creado", pais: {
+        ...datos,
+        digitosCodigoNivel1: null,
+        digitosCodigoNivel2: null,
+        digitosCodigoNivel3: null,
+        disponible: true,
+        prefijoTelefonico: null,
+        telefonoDigitosNacionales: null,
+        zonaHoraria: null,
+      } },
     ),
     deLaEmpresa: vi.fn(async () => (o.deLaEmpresa === undefined ? COSTA_RICA : o.deLaEmpresa)),
     cambiarDisponible: vi.fn<IPaisRepository["cambiarDisponible"]>(async () => o.cambiarDisponible ?? "cambiado"),
+    // SLT-42: el servicio de países no los usa; están para cumplir el puerto.
+    tipoDocumentoDelPais: vi.fn<IPaisRepository["tipoDocumentoDelPais"]>(async () => null),
+    zonasConEmpresas: vi.fn<IPaisRepository["zonasConEmpresas"]>(async () => []),
   } satisfies IPaisRepository;
   return repo;
 }
