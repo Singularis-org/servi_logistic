@@ -288,7 +288,10 @@ export const HISTORIAL_ACCION_TIPOS = [
   // borra en FISICO, `db/schema.prisma`).
   "tarifa_borrada", // tarifas.borrarTarifa
   "zona_borrada", // zonas.borrarZona — fisico, y arrastra sus tarifas en cascada
-  "vehiculo_borrado", // vehiculos.borrarVehiculo
+  // SL-42 (P1): sin escritor. El borrado se retiro y el catalogo es del superadmin (rastro propio,
+  // `vehiculo_rastro`). El valor se queda en el enum y aqui: hay filas viejas que lo usan y la
+  // pantalla las etiqueta. Solo se lee.
+  "vehiculo_borrado",
   "plantilla_eliminada", // plantillas.eliminarPlantilla
   // ⭑ FICHA 374 — retirar (y devolver) un nodo del catalogo geografico: provincia, canton o
   // distrito. ENTRAN LOS DOS AQUI, en «hace desaparecer algo», y no es una excepcion: es el

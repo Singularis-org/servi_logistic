@@ -55,7 +55,7 @@
   `tests/unit/guards/plataforma-solo-en-lista.guardia.test.ts` verde con la entrada nueva, y
   `tests/integration/db/vehiculos-plataforma.test.ts` cubre R7 y R21 por el borde: el superadmin sin
   empresa escribe el cambio y su rastro, con el nombre del actor congelado, sin `EmpresaNoResuelta`.
-- [ ] T2.5 [P] **(P1)** Retirar `vehiculo_borrado` de los escritores vivos (`lib/types/historial-accion.ts`)
+- [x] T2.5 [P] **(P1)** Retirar `vehiculo_borrado` de los escritores vivos (`lib/types/historial-accion.ts`)
   y ajustar las guardias que lo enumeran; el valor del enum se queda (design §2.3). Dep.: T2.2.
   **Hecho:** `historial-accion-escrituras-cubiertas`, `historial-accion-punto-unico` y
   `tests/unit/historial-accion/catalogo-y-choke-point.test.ts` verdes.
