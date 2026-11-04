@@ -1,9 +1,19 @@
 import { Prisma } from "@prisma/client";
-import type { CierreGestionPendienteRow } from "@/lib/interfaces/repositories/ICierreDiaRepository";
-import type { PagoTarifa } from "@/lib/interfaces/repositories/ITarifaZonaMensajeroRepository";
+import type {
+  CierreGestionPendienteRow,
+  GestionPendienteDeCierreRow,
+} from "@/lib/interfaces/repositories/ICierreDiaRepository";
 import type { CierreTotales } from "@/lib/interfaces/services/ICierreDiaService";
-import { pagoPorResultado } from "@/lib/utils/pago-mensajero";
+import type {
+  ContextoPagoGestion,
+  PagoCongelado,
+  PagosDelCierre,
+  TarifaPago,
+} from "@/lib/types/tarifa-flexible";
+import { importePagoNuevo, pagoPorResultado } from "@/lib/utils/pago-mensajero";
 import { ingresoBodegaPorResultado } from "@/lib/utils/ingreso-bodega";
+// SLT-52 (T7) — este modulo NO importa `ingreso-empresa` (que si importa `computeTotales` de aqui).
+// La base del % rebasada al cobro congelado vive en `lib/utils/cobro-congelado.ts`.
 
 // Feature 41 (R4/R8) — helpers de SNAPSHOT del cierre extraídos de `CierreDiaService`
 // (features 37/39/56) a un util reusable, SIN alterar la aritmética `Prisma.Decimal`
@@ -12,17 +22,99 @@ import { ingresoBodegaPorResultado } from "@/lib/utils/ingreso-bodega";
 // `vencido` es indistinguible de un `solicitado` en cuanto a totales; solo cambia el
 // estado y el actor (el job vs el mensajero). NUNCA number/parseFloat sobre montos.
 
+/**
+ * SLT-52 (design §6, T5.1) — la tarifa de pago de un cierre, POR GESTION: el distrito de cada orden
+ * elige su grupo, asi que dos gestiones del mismo mensajero pueden pagar distinto (R19/R20). Es lo
+ * que devuelve `resolvePagos` / `resolverPagosCon`. Una gestion que no esta en el mapa, o con
+ * `null` (modelo viejo, zona sin tarifa), paga `"0.00"`, como hoy (39/R8, R24).
+ *
+ * Estrechado en T5.1: hasta T4 tambien aceptaba la `PagoTarifa` unica del viejo sin envolver.
+ */
+export type TarifasDePago = ReadonlyMap<string, TarifaPago | null>;
+
+export function tarifaDeLaGestion(tarifas: TarifasDePago, gestionId: string): TarifaPago | null {
+  return tarifas.get(gestionId) ?? null;
+}
+
+/**
+ * SLT-52 (T5.1, design §5, R19/R20) — el `ContextoPagoGestion` de cada gestion pendiente. La zona
+ * y el vehiculo son los del PAGADOR que cada camino usa hoy (solicitud y corte: la zona del
+ * mensajero; R19); el distrito, la tienda, la zona de la orden, el pedido y la comision son los de
+ * la ORDEN (R21, R28). Puro: el servicio decide la zona, esto solo arma el lote.
+ */
+export function contextosPagoDe(
+  gestiones: readonly GestionPendienteDeCierreRow[],
+  pagador: { mensajeroId: string; zonaId: string; vehiculoId: string | null },
+): ContextoPagoGestion[] {
+  return gestiones.map((g) => ({
+    gestionId: g.gestionId,
+    resultado: g.resultado,
+    mensajeroId: pagador.mensajeroId,
+    zonaId: pagador.zonaId,
+    vehiculoId: pagador.vehiculoId,
+    distritoId: g.distritoId,
+    tiendaId: g.tiendaId,
+    zonaOrdenId: g.zonaOrdenId,
+    montoCobrar: g.montoCobrar,
+    cobraComision: g.cobraComision,
+  }));
+}
+
+/**
+ * SLT-52 (T5.2, R40, R34) — las filas de `gestion_pago_congelado` de un lote de gestiones, y el
+ * modelo con el que se resolvio.
+ *
+ * Solo el modelo NUEVO congela filas; el viejo devuelve `[]` (sigue escribiendo unicamente
+ * `pago_mensajero` / `ingreso_bodega_rechazo`, R36). Un actor sin valor no tiene fila (sin tarifa =
+ * paga 0, R24), igual que un concepto sin tarifa no tiene fila en `cierre_detail_concepto`.
+ * `importe` sale de `importePagoNuevo`, la MISMA funcion que da `pago_mensajero` e
+ * `ingreso_bodega_rechazo` (`pagoPorResultado` / `ingresoBodegaPorResultado`): no pueden divergir.
+ *
+ * `modelo`: el del resolver para este lote. En el nuevo nunca hay `null`; un lote cuyas entradas
+ * son todas `null` es del viejo (zona sin tarifa). Sin gestiones, `null`: no se resolvio nada.
+ */
+export function pagosDelCierre(
+  gestiones: readonly Pick<CierreGestionPendienteRow, "gestionId" | "resultado">[],
+  tarifas: TarifasDePago,
+): PagosDelCierre {
+  let modelo: PagosDelCierre["modelo"] = null;
+  const congelados: PagoCongelado[] = [];
+  for (const g of gestiones) {
+    const t = tarifaDeLaGestion(tarifas, g.gestionId);
+    if (t === null) {
+      modelo ??= "viejo";
+      continue;
+    }
+    modelo = t.modelo;
+    if (t.modelo !== "nuevo") continue;
+    for (const [actor, valor] of [
+      ["mensajero", t.mensajero],
+      ["satelite", t.satelite],
+    ] as const) {
+      if (valor === null) continue;
+      congelados.push({
+        gestionId: g.gestionId,
+        actor,
+        valor,
+        base: valor.modo === "porcentaje" ? t.baseFlete : null,
+        importe: importePagoNuevo(actor, g.resultado, valor, t.baseFlete),
+      });
+    }
+  }
+  return { modelo, congelados };
+}
+
 // Feature 39/R10-R13: pago al mensajero por gestión (DERIVADO/snapshot según uso) +
 // total, con la tarifa ya resuelta. Solo `entregada` paga `cobroEntregado`; el resto
 // 0.00 (F1.4). Suma money-safe con Prisma.Decimal (R9). Separado del dinero recibido (R21).
 export function derivarPagos(
-  gestiones: CierreGestionPendienteRow[],
-  tarifa: PagoTarifa | null,
+  gestiones: readonly Pick<CierreGestionPendienteRow, "gestionId" | "resultado">[],
+  tarifa: TarifasDePago,
 ): { pagoByGestionId: Record<string, string>; total: string } {
   const pagoByGestionId: Record<string, string> = {};
   let total = new Prisma.Decimal(0);
   for (const g of gestiones) {
-    const pago = pagoPorResultado(g.resultado, tarifa);
+    const pago = pagoPorResultado(g.resultado, tarifaDeLaGestion(tarifa, g.gestionId));
     pagoByGestionId[g.gestionId] = pago;
     total = total.plus(pago);
   }
@@ -35,13 +127,13 @@ export function derivarPagos(
 // Suma money-safe con Prisma.Decimal (R7). Independiente del pago al mensajero (R7b) y
 // del dinero recibido (R20).
 export function derivarIngresoBodega(
-  gestiones: CierreGestionPendienteRow[],
-  tarifa: PagoTarifa | null,
+  gestiones: readonly Pick<CierreGestionPendienteRow, "gestionId" | "resultado">[],
+  tarifa: TarifasDePago,
 ): { ingresoByGestionId: Record<string, string>; total: string } {
   const ingresoByGestionId: Record<string, string> = {};
   let total = new Prisma.Decimal(0);
   for (const g of gestiones) {
-    const ingreso = ingresoBodegaPorResultado(g.resultado, tarifa);
+    const ingreso = ingresoBodegaPorResultado(g.resultado, tarifaDeLaGestion(tarifa, g.gestionId));
     ingresoByGestionId[g.gestionId] = ingreso;
     total = total.plus(ingreso);
   }

@@ -98,9 +98,19 @@ const FILA_CONGELADA = {
   tarifaFulfillment: new Prisma.Decimal("696"),
 } as never;
 
+/**
+ * SLT-52 (T5.3): `tarifaDe` devuelve el sobre `{ modelo: "viejo", tarifa }`. La `TarifaVigente`
+ * reconstruida —lo que esta guardia vigila— es la de dentro; el sobre no añade claves a ella.
+ * En el modelo nuevo el fulfillment SI viaja (`valores.tienda_fulfillment`, design §6/§12.1) y lo
+ * que lo deja fuera de la liquidacion es `agregarIngresosPorConcepto` (R31, sus propios tests).
+ */
+function viejaDe(t: ReturnType<typeof tarifaDe>) {
+  return t !== null && t.modelo === "viejo" ? t.tarifa : null;
+}
+
 describe("(a) EN EJECUCION · `tarifaDe` no devuelve el fulfillment ni teniendolo delante", () => {
   it("la `TarifaVigente` reconstruida NO tiene ninguna clave que lo nombre", () => {
-    const tarifa = tarifaDe(FILA_CONGELADA);
+    const tarifa = viejaDe(tarifaDe(FILA_CONGELADA, []));
     expect(tarifa, "`tarifaDe` devolvio null: la fila de prueba dejo de ser valida").not.toBeNull();
     const claves = Object.keys(tarifa as object);
     expect(claves.filter((k) => NOMBRA_FULFILLMENT.test(k))).toEqual([]);
@@ -121,7 +131,7 @@ describe("(a) EN EJECUCION · `tarifaDe` no devuelve el fulfillment ni teniendol
   });
 
   it("(e) AUTOCOMPROBACION · el mismo predicado SI detecta una tarifa contaminada", () => {
-    const contaminada = { ...(tarifaDe(FILA_CONGELADA) as object), fulfillment: "696.00" };
+    const contaminada = { ...(viejaDe(tarifaDe(FILA_CONGELADA, [])) as object), fulfillment: "696.00" };
     expect(Object.keys(contaminada).filter((k) => NOMBRA_FULFILLMENT.test(k))).toEqual([
       "fulfillment",
     ]);
@@ -138,7 +148,7 @@ describe("(a) EN EJECUCION · `tarifaDe` no devuelve el fulfillment ni teniendol
       montoCobrar: "10000.00",
       cobraComision: true,
     };
-    const limpia = tarifaDe(FILA_CONGELADA);
+    const limpia = viejaDe(tarifaDe(FILA_CONGELADA, []));
     const conPolizon = { ...(limpia as object), fulfillment: "696.00" } as never;
 
     const sumar = (d: ReturnType<typeof derivarIngresoOrden>): string => {

@@ -133,7 +133,12 @@ export interface CostosEntregado {
   ivaComision: string;
   /** Monto fijo de bodega por orden; cero explicito si la tienda no hace fulfillment. */
   fulfillment: string;
-  /** R30/D1: lo que RECIBE la tienda = monto a cobrar − los CINCO conceptos. */
+  /**
+   * SLT-52 (R46, P5 = a): el IVA del fulfillment. Cero explicito en el modelo viejo (R47) y cuando
+   * la tienda no hace fulfillment.
+   */
+  ivaFulfillment: string;
+  /** R30/D1 + SLT-52 R46: lo que RECIBE la tienda = monto a cobrar − los SEIS conceptos cobrados. */
   total: string;
 }
 
@@ -159,7 +164,9 @@ export interface CostosDevuelto {
    * nada. Cero explicito cuando la tienda no hace fulfillment.
    */
   fulfillment: string;
-  /** R31/D1: la DEUDA de la tienda = −(flete + iva + fulfillment), negativo. */
+  /** SLT-52 (R46, P5 = a): el IVA del fulfillment; el MISMO que en el escenario entregado. */
+  ivaFulfillment: string;
+  /** R31/D1 + SLT-52 R46: la DEUDA de la tienda = −(flete + iva + fulfillment + ivaFulfillment). */
   total: string;
 }
 

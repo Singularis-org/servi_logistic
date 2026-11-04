@@ -53,7 +53,7 @@ import { ESTADOS_USUARIO_NO_ASIGNABLES } from "@/lib/constants/estado-usuario-as
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 // Feature 274 — LA REGLA de resolucion de tarifa vive en un modulo PURO, compartido con el
 // resolver del cierre de dia: el listado no puede tener una regla propia (R18/R21).
-import { clavePar, elegirPorCascada, whereCascada } from "@/lib/utils/cascada-tarifa";
+import { clavePar } from "@/lib/utils/cascada-tarifa";
 import type { ParTarifa } from "@/lib/utils/cascada-tarifa";
 import type {
   OrdenDTO,
@@ -195,12 +195,19 @@ import {
   primeraRutaPendiente,
 } from "@/lib/services/jobs/optimizacion-ruta-encolado";
 import { loadRouteOptimizationConfig } from "@/lib/config/route-optimization";
-import type { TarifaVigente } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
+import type { TarifaTienda } from "@/lib/types/tarifa-flexible";
+import { resolverCobrosYFilasViejasCon } from "@/lib/repositories/_shared/resolver-tarifas";
 import { costosListadoOrden } from "@/lib/utils/ingreso-empresa";
 // ⏳ 2026-09-10 (feature 415, T3): la reconstruccion de la tarifa CONGELADA se importa de su fuente
 // UNICA y no se reescribe aqui. `TarifaCongeladaRow` es justo el subconjunto de columnas que
 // `tarifaDe` necesita, asi que el `select` de `cierreDetalles` y este tipo no pueden divergir.
-import { tarifaDe as tarifaCongeladaDe, type TarifaCongeladaRow } from "@/lib/utils/cierre-detalle";
+import {
+  CONCEPTO_CONGELADO_SELECT,
+  tarifaDe as tarifaCongeladaDe,
+  type ConceptoCongeladoRow,
+  type TarifaCongeladaRow,
+} from "@/lib/utils/cierre-detalle";
+import { fulfillmentCongeladoDe } from "@/lib/utils/fulfillment-congelado";
 import { ORIGEN_TIPO_RECHAZO_SLA } from "@/lib/utils/rechazo-sla-flag";
 // Feature 236 (T2.1, R3/R5): la DECLARACION UNICA de los grupos de `/novedades`. El predicado de
 // cada superficie sale de aqui y de ningun otro sitio; ver `novedadWhere`.
@@ -338,6 +345,9 @@ function apiOrdenSelect(ownerId: string) {
     // R19/R24: la mitad del par (tienda, zona) con el que el service resuelve la tarifa vigente de
     // toda la pagina en UNA sola consulta. No se publica.
     zonaId: true,
+    // SLT-52 (R16/R18): el distrito completa el par con el que se resuelve la tarifa (decide el
+    // grupo de distritos en el modelo nuevo). No se publica.
+    distritoId: true,
     // R20: entrada VIVA de la formula. No se publica.
     cobraComision: true,
     /**
@@ -419,6 +429,10 @@ function apiOrdenSelect(ownerId: string) {
         tarifaEspecial: true,
         tarifaEspecialDevuelta: true,
         tarifaFulfillment: true,
+        // SLT-52 (R41, R42, R46): el modelo con que se congelo y, en el nuevo, el cobro por
+        // concepto (incluido el fulfillment con su % de IVA). Lo que `tarifaDe` lee.
+        tarifaModelo: true,
+        conceptos: { select: CONCEPTO_CONGELADO_SELECT },
       },
     },
   } satisfies Prisma.OrdenSelect;
@@ -598,6 +612,8 @@ type ApiOrdenSelectRow = {
   // ⏳ 2026-09-10 (feature 415): la zona de la ORDEN. `orden.zona_id` es NOT NULL, asi que la
   // relacion NUNCA viene `null`. `esCentral` entra en el costeo y NO se publica.
   zonaId: string;
+  // SLT-52: el unico FK nullable de `orden`; `null` = sin distrito (salta los grupos, R18).
+  distritoId: string | null;
   cobraComision: boolean;
   zona: { id: string; nombre: string; esCentral: boolean };
   // El unico FK nullable de `orden`. La marca es de la empresa (SL-38): `[]` = no especial.
@@ -610,6 +626,7 @@ type ApiOrdenSelectRow = {
       esCentral: boolean;
       esZonaEspecial: boolean;
       tarifaFulfillment: Prisma.Decimal | null;
+      conceptos: ConceptoCongeladoRow[];
     }
   >;
 };
@@ -675,6 +692,7 @@ function toApiOrdenRow(r: ApiOrdenSelectRow): ApiOrdenRow {
     // ⛔ NO PUBLICABLE: las entradas del calculo. El service las consume y no cruzan al DTO.
     costeo: {
       zonaId: r.zonaId,
+      distritoId: r.distritoId,
       esCentral: r.zona.esCentral,
       // R21 / SL-38: la marca de la EMPRESA de la orden. Una orden SIN distrito entra como
       // `false`: sin distrito no hay marca que aplicar.
@@ -702,16 +720,19 @@ function toApiOrdenRow(r: ApiOrdenSelectRow): ApiOrdenRow {
 function congeladoDe(filas: ApiOrdenSelectRow["cierreDetalles"]): ApiOrdenCongeladoRow | null {
   const d = filas[0];
   if (d === undefined) return null;
+  const tarifa = tarifaCongeladaDe(d, d.conceptos);
+  // R17: cadena de escala 2 tambien aqui, por el mismo motivo.
+  const montoCobrar = d.montoCobrar !== null ? d.montoCobrar.toFixed(2) : null;
   return {
-    tarifa: tarifaCongeladaDe(d),
+    tarifa,
     // R29: `tarifa_fulfillment` NULL -> `"0.00"`. Por construccion solo puede ser NULL cuando
     // `tarifa_id` tambien lo es (`CierreDiaRepository.tarifaColumnas` escribe las columnas de
     // tarifa todas o ninguna), asi que el cero afirmado de R28 sale completo.
-    fulfillment: d.tarifaFulfillment !== null ? d.tarifaFulfillment.toFixed(2) : "0.00",
+    // SLT-52 (R46): en el nuevo la columna va NULL y el monto sale del concepto congelado.
+    fulfillment: fulfillmentCongeladoDe(tarifa, d.tarifaFulfillment, montoCobrar).fulfillment,
     esCentral: d.esCentral,
     esZonaEspecial: d.esZonaEspecial,
-    // R17: cadena de escala 2 tambien aqui, por el mismo motivo.
-    montoCobrar: d.montoCobrar !== null ? d.montoCobrar.toFixed(2) : null,
+    montoCobrar,
     cobraComision: d.cobraComision,
   };
 }
@@ -856,6 +877,8 @@ type OrdenPrismaClient = Pick<
   | "ordenHistorialEstado" // feature 236: fecha de la solicitud de ayuda, que ordena su pestaña (D7/R17)
   | "carga" // feature 141: lote de carga masiva asegurado en la tx de la insercion batch
   | "tarifa" // feature 274: la tarifa del listado, resuelta por cascada en UNA query (R18/R19)
+  | "tarifaValor" // SLT-52 (R38): el resolver unico del cobro decide el modelo y lee el nuevo
+  | "grupoDistritosDistrito" // SLT-52 (R16): el grupo del distrito de cada orden del listado
   | "$transaction" // feature 17: generarGuiaLote necesita transaccion (R25)
   | "$executeRaw" // feature 41/R23: anti-TOCTOU (NOT EXISTS cierre bloqueante en el lote)
   | "$queryRaw" // feature 91: lo exige `JobRepository` (encolado outbox de geocodificacion)
@@ -1208,36 +1231,27 @@ function toTarifaDTO(t: TarifaListRow): TarifaDTO {
 }
 
 /**
- * Feature 204 — la MISMA tarifa, en la forma que consume la aritmetica de dinero: los 7
- * campos como STRING escala 2 (`TarifaVigente`), no como `number`.
- *
- * Convive con `toTarifaDTO` a proposito y no lo sustituye: aquel serializa la tarifa para
- * MOSTRARLA (`TarifaDTO`, Decimal -> number, contrato de la feature 18) y este la prepara
- * para OPERAR con ella en `Prisma.Decimal`. Son dos usos distintos del mismo dato y el
- * segundo no admite `number`: ahi es donde se pierde el centimo.
+ * SLT-52 (R38) — lo que el listado sabe de la tarifa de UNA fila, en dos piezas con dos usos:
+ * - `cobro`: el `TarifaTienda` del resolver UNICO (`resolverCobrosCon`). De aqui, y solo de aqui,
+ *   salen los importes, asi que el listado no puede cobrar distinto que el cierre o la API.
+ * - `vista`: la fila de `tarifas` que se MUESTRA (`TarifaDTO`, feature 18). Solo existe en el modelo
+ *   viejo; en el nuevo no hay fila vieja que ensenar (la pantalla de valores es SLT-54).
  */
-function toTarifaVigente(t: TarifaListRow): TarifaVigente {
-  return {
-    valorFlete: t.valorFlete.toFixed(2),
-    valorFleteGam: t.valorFleteGam.toFixed(2),
-    valorFleteDevuelto: t.valorFleteDevuelto.toFixed(2),
-    valorFleteDevueltoGam: t.valorFleteDevueltoGam.toFixed(2),
-    comisionCod: t.comisionCod.toFixed(2),
-    ivaFlete: t.ivaFlete.toFixed(2),
-    ivaComisionCod: t.ivaComisionCod.toFixed(2),
-    tarifaEspecial: t.tarifaEspecial == null ? null : t.tarifaEspecial.toFixed(2),
-    tarifaEspecialDevuelta:
-      t.tarifaEspecialDevuelta == null ? null : t.tarifaEspecialDevuelta.toFixed(2),
-  };
+interface TarifaDeFila {
+  cobro: TarifaTienda | null;
+  vista: TarifaListRow | null;
+}
+
+interface TarifasDePagina {
+  cobro: ReadonlyMap<string, TarifaTienda | null>;
+  vista: ReadonlyMap<string, TarifaListRow | null>;
 }
 
 // Feature 274: la tarifa que le toca a una fila, buscada por la clave de su par (tienda, zona).
 // `?? null` cubre el caso imposible de un par que no se pidio; nunca se inventa una tarifa.
-function tarifaDe(
-  tarifas: ReadonlyMap<string, TarifaListRow | null>,
-  row: OrdenListRow,
-): TarifaListRow | null {
-  return tarifas.get(clavePar({ tiendaId: row.tiendaId, zonaId: row.zonaId })) ?? null;
+function tarifaDe(tarifas: TarifasDePagina, row: OrdenListRow): TarifaDeFila {
+  const clave = clavePar({ tiendaId: row.tiendaId, zonaId: row.zonaId, distritoId: row.distritoId });
+  return { cobro: tarifas.cobro.get(clave) ?? null, vista: tarifas.vista.get(clave) ?? null };
 }
 
 // Arma el bloque `relaciones` con los datos de las relaciones directas (FK) de la
@@ -1275,7 +1289,7 @@ function toRelaciones(row: OrdenListRow, tarifa: TarifaListRow | null): OrdenLis
 // WITH_ESTATUS_Y_TIENDA: `include` no restringe los escalares del modelo).
 // Ademas expone en `relaciones` los datos de TODAS las relaciones directas (FK),
 // con la tarifa activa anidada dentro de `tienda` (resueltas via joins en el listado).
-function toListItemDTO(row: OrdenListRow, tarifa: TarifaListRow | null): OrdenListItemDTO {
+function toListItemDTO(row: OrdenListRow, tarifa: TarifaDeFila | null): OrdenListItemDTO {
   // Feature 204: las dos columnas de dinero DERIVADO ("Flete + IVA" y "Comisión + IVA") se
   // resuelven AQUI, con Decimal, y viajan como STRING ya derivado. Antes las calculaba el
   // navegador multiplicando los `number` de la tarifa, y no daba lo mismo: sobre las órdenes
@@ -1283,7 +1297,8 @@ function toListItemDTO(row: OrdenListRow, tarifa: TarifaListRow | null): OrdenLi
   // Feature 274 (R18/R20): la tarifa ya viene resuelta por la cascada; `null` = ningun nivel
   // tiene fila y los importes salen en "0.00" (R39: el listado NO bloquea, a diferencia de los
   // dos bordes de API por key, que devuelven 409 — la asimetria es deliberada).
-  const costos = costosListadoOrden(tarifa === null ? null : toTarifaVigente(tarifa), {
+  // SLT-52 (R38): el importe sale del `TarifaTienda` del resolver unico, nunca de la fila mostrada.
+  const costos = costosListadoOrden(tarifa?.cobro ?? null, {
     esCentral: row.zona.esCentral,
     // SL-38: la marca de la EMPRESA de la orden. Una orden sin distrito entra como `false`: sin
     // distrito no hay marca que aplicar.
@@ -1322,7 +1337,7 @@ function toListItemDTO(row: OrdenListRow, tarifa: TarifaListRow | null): OrdenLi
     // `toFechaISO` da el dia correcto sin tocar ninguna zona horaria. El navegador NO construye
     // ninguna fecha: recibe el texto y lo pone en palabras con `fechaLegible`.
     fechaRepartoISO: toFechaISO(row.fechaReparto),
-    relaciones: toRelaciones(row, tarifa),
+    relaciones: toRelaciones(row, tarifa?.vista ?? null),
   };
 }
 
@@ -2138,30 +2153,34 @@ export class OrdenRepository implements IOrdenRepository {
    * consulta seis pares, no cincuenta. `elegirPorCascada` devuelve una entrada por cada par
    * pedido, con `null` cuando ningun nivel de la cascada tiene fila (R20).
    */
-  private async resolverTarifasDePagina(
-    rows: readonly OrdenListRow[],
-  ): Promise<Map<string, TarifaListRow | null>> {
+  private async resolverTarifasDePagina(rows: readonly OrdenListRow[]): Promise<TarifasDePagina> {
     // Cero filas, cero consultas (el `where` seria `{ OR: [] }`, que en Prisma no filtra nada
     // y traeria la tabla entera).
-    if (rows.length === 0) return new Map<string, TarifaListRow | null>();
+    if (rows.length === 0) return { cobro: new Map(), vista: new Map() };
 
     const pares: ParTarifa[] = [];
     const vistos = new Set<string>();
     for (const row of rows) {
       // En `orden`, `tienda_id` y `zona_id` son NOT NULL: el par siempre alcanza los 3 niveles.
-      const par: ParTarifa = { tiendaId: row.tiendaId, zonaId: row.zonaId };
+      // SLT-52: con el distrito de la orden, el mismo par que resuelve el cierre (R16/R38).
+      const par: ParTarifa = { tiendaId: row.tiendaId, zonaId: row.zonaId, distritoId: row.distritoId };
       const clave = clavePar(par);
       if (vistos.has(clave)) continue;
       vistos.add(clave);
       pares.push(par);
     }
 
-    const filas = await this.prisma.tarifa.findMany({
-      where: whereCascada(pares),
-      select: TARIFA_SELECT,
-    });
-
-    return elegirPorCascada(filas, pares);
+    // SLT-52 (R38): el COBRO por el resolver unico, el mismo que el cierre y la API por key. Antes el
+    // listado elegia la fila con su propia consulta a `tarifas`; con la regla compartida no podia
+    // elegir otra, pero una empresa en el modelo nuevo habria visto aqui la tarifa vieja. La fila
+    // que se MUESTRA sale de la misma consulta del resolver (con las columnas de `TarifaDTO`), y
+    // solo existe en el viejo: en el nuevo no se lee `tarifas` (R37).
+    const { cobros, filasViejas } = await resolverCobrosYFilasViejasCon<TarifaListRow>(
+      this.prisma,
+      pares,
+      TARIFA_SELECT,
+    );
+    return { cobro: cobros, vista: filasViejas };
   }
 
   /**
@@ -2772,6 +2791,7 @@ export class OrdenRepository implements IOrdenRepository {
         id: true,
         tiendaId: true,
         zonaId: true,
+        distritoId: true,
         montoCobrar: true,
         cobraComision: true,
         zona: { select: { esCentral: true } },
@@ -2783,6 +2803,7 @@ export class OrdenRepository implements IOrdenRepository {
       ordenId: row.id,
       tiendaId: row.tiendaId,
       zonaId: row.zonaId,
+      distritoId: row.distritoId,
       esCentral: row.zona.esCentral,
       // La marca es del distrito PARA LA EMPRESA de la orden (SL-38), no de la zona. Una orden
       // sin distrito -- el unico FK nullable de `orden`-- entra como `false`: sin distrito no hay

@@ -521,7 +521,7 @@
   "ordenes": [
     { "id": "6f1c2d3e-4a5b-6c7d-8e9f-0a1b2c3d4e5f", "numRemision": "REM-0001", "numGuia": 100234,
       "estado": "por_recolectar_en_tienda", "estadoNombre": "Por recolectar en tienda",
-      "costoEnvio": "3.39", "fulfillment": "0.00", "downloadUrl": null }
+      "costoEnvio": "3.39", "fulfillment": "0.00", "ivaFulfillment": "0.00", "downloadUrl": null }
   ],
   "cargaId": "9c2b7f10-5d3a-4e21-9a4b-77c8e0f1a2b3",
   "downloadType": "consolidate",
@@ -532,7 +532,7 @@
   <ul>
     <li><strong>Dos listas.</strong> <code>filas</code> trae solo lo que entró (<code>creada</code> y <code>duplicada</code>; en una duplicada, <code>estado</code> es el de la orden que ya ocupa esa remisión); <code>errores</code> trae solo lo que no se creó, con el detalle por campo. Los contadores se calculan sobre el lote completo: <code>conError === errores.length</code>. La pregunta «¿falló algo?» se responde con <code>errores.length</code>.</li>
     <li><strong><code>cargaId</code> es <code>null</code> si no se creó ninguna orden.</strong> Se necesita para el PDF consolidado del lote (§5.6): guárdelo cuando no sea nulo.</li>
-    <li><code>costoEnvio</code> es flete + IVA + fulfillment de la tarifa vigente del par (tienda, zona), en texto de dos decimales; <code>fulfillment</code> es la parte de ese total que corresponde al servicio de bodega (<code>"0.00"</code> si su tienda no lo tiene). Es distinto del COD.</li>
+    <li><code>costoEnvio</code> es flete + IVA + fulfillment + IVA del fulfillment de la tarifa vigente del par (tienda, zona), en texto de dos decimales; <code>fulfillment</code> es la parte de ese total que corresponde al servicio de bodega y <code>ivaFulfillment</code> su IVA (los dos <code>"0.00"</code> si su tienda no lo tiene). Es distinto del COD.</li>
     <li><span class="w">⚠</span> <strong>Una fila puede no crear orden por un problema de tarifa o de cobertura.</strong> Vuelve en <code>errores</code> con la clave <code>tarifa</code>, que agrupa dos causas distintas: (1) no hay tarifa vigente para el par (tienda, zona del distrito de la fila); (2) la zona no tiene cobertura de la empresa. En ambos casos el mensaje es el mismo: <code>{ "tarifa": ["no hay tarifa vigente para la zona de esta fila"] }</code>. Es un tema comercial con la empresa, no de código.</li>
     <li>Una provincia, un cantón o un distrito <strong>retirados del catálogo</strong> producen un error de fila propio, bajo la clave del nivel afectado: <code>la provincia esta retirada del catalogo</code>, <code>el canton esta retirado del catalogo</code>, <code>el distrito '&lt;nombre&gt;' esta retirado del catalogo</code>. Un nodo retirado no vuelve solo: corrija la dirección o pida a la empresa reactivarlo.</li>
     <li><span class="w">⚠</span> <strong><code>409</code> si NINGUNA de las filas que llegaron a la resolución de tarifa la resolvió.</strong> En ese caso no se persiste nada: ni órdenes, ni lote, ni notificación. <code>{ "status": "error", "code": "CONFLICT", "message": "la tienda no tiene una tarifa vigente asociada: no se pueden crear órdenes" }</code></li>
@@ -556,9 +556,9 @@
     { "fila": 1, "numRemision": "REM-0001", "montoCobrar": "25900.00", "resultado": "cotizada",
       "costos": {
         "entregado": { "flete": "2500.00", "iva": "325.00", "comision": "906.50",
-                       "ivaComision": "117.85", "fulfillment": "0.00", "total": "22050.65" },
+                       "ivaComision": "117.85", "fulfillment": "0.00", "ivaFulfillment": "0.00", "total": "22050.65" },
         "devuelto":  { "flete": "1396.46", "iva": "181.54", "comision": "0.00",
-                       "fulfillment": "0.00", "total": "-1578.00" }
+                       "fulfillment": "0.00", "ivaFulfillment": "0.00", "total": "-1578.00" }
       } }
   ],
   "errores": [
@@ -570,7 +570,7 @@
   <ul>
     <li><strong>Lectura pura.</strong> No crea órdenes, no consume números de guía, no persiste nada.</li>
     <li><strong>Importes crudos:</strong> texto con dos decimales y punto decimal, sin símbolo de moneda ni separador de miles (<code>"2500.00"</code>, <code>"-1578.00"</code>). Es el mismo dialecto que <code>costoEnvio</code>, <code>costoEstimado</code> y <code>costoReal</code>.</li>
-    <li><strong>Devuelve los dos escenarios:</strong> <code>entregado</code> (seis conceptos; <code>total</code> es lo que <em>recibe</em> la tienda = monto a cobrar − los cinco conceptos, y puede ser negativo) y <code>devuelto</code> (cinco conceptos, sin <code>ivaComision</code>; <code>comision</code> es un cero explícito; <code>total</code> es la <em>deuda</em> de la tienda, negativo). El escenario <code>devuelto</code> es lo que se cobra cuando la orden termina en <code>devolucion_a_origen_por_rechazo</code>: una novedad que sigue viva no cobra nada por sí sola.</li>
+    <li><strong>Devuelve los dos escenarios:</strong> <code>entregado</code> (siete conceptos; <code>total</code> es lo que <em>recibe</em> la tienda = monto a cobrar − los seis conceptos cobrados, y puede ser negativo) y <code>devuelto</code> (seis conceptos, sin <code>ivaComision</code>; <code>comision</code> es un cero explícito; <code>total</code> es la <em>deuda</em> de la tienda, negativo). El escenario <code>devuelto</code> es lo que se cobra cuando la orden termina en <code>devolucion_a_origen_por_rechazo</code>: una novedad que sigue viva no cobra nada por sí sola.</li>
     <li><code>montoCobrar</code> es <strong>el valor sobre el que se cotizó</strong>: ya redondeado al colón, igual que en la carga (<code>"11898.81"</code> se cotiza como <code>"11899.00"</code>), y <code>"0.00"</code> si la fila no traía monto.</li>
     <li>No hay bloque de totales del lote: la cotización es <strong>por orden</strong>. Si necesita un agregado, súmelo usted con la tasa de entrega real de su operación.</li>
     <li>Una fila queda en <code>errores</code> por: terna ausente o vacía, distrito no encontrado o ambiguo, distrito sin zona, nivel retirado del catálogo, <code>monto_cobrar</code> con formato inválido, o (clave <code>tarifa</code>) sin tarifa vigente. <code>422</code> solo por el lote entero (vacío, por encima del tope o con valores que no son texto).</li>
@@ -605,7 +605,7 @@
       "mensajero": { "id": "018f2c31-0000-4000-8000-0000000000aa", "nombre": "Carlos Jiménez Mora" },
       "zona": { "id": "018f2c31-0000-4000-8000-0000000000b1", "nombre": "GAM" },
       "costoEstimado": { "flete": "2500.00", "iva": "325.00", "comision": "906.50",
-                         "ivaComision": "117.85", "fulfillment": "0.00" },
+                         "ivaComision": "117.85", "fulfillment": "0.00", "ivaFulfillment": "0.00" },
       "costoReal": null }
   ],
   "pagination": { "limit": 50, "offset": 0, "total": 1 }
@@ -614,7 +614,7 @@
   <ul>
     <li><code>mensajero</code> es <strong>quién lleva la orden en el momento de la lectura</strong> (<code>null</code> = nadie), no quién la gestionó; varios flujos limpian la asignación (generación de guía, quitar mensajero, devolución o recuperación a bodega, liberación de una orden en <code>reprogramado</code>, el barrido del cierre diario). Agrupe por <code>id</code> (UUID en texto, estable), nunca por <code>nombre</code>. Para «quién gestionó cada intento», use <code>gestiones[]</code> del detalle.</li>
     <li><code>zona</code> es la <strong>zona del envío</strong> (a dónde va el paquete; nunca <code>null</code>), no la del mensajero. Misma forma y misma regla que <code>mensajero</code>: agrupe por <code>id</code>.</li>
-    <li><code>costoEstimado</code> y <code>costoReal</code> son lo que ese paquete le cuesta a su tienda <strong>si se entrega</strong>, con exactamente cinco conceptos y sin ningún campo que los sume. <code>costoEstimado</code> se calcula con la tarifa vigente <em>hoy</em> y <strong>puede cambiar entre dos lecturas</strong> mientras <code>costoReal</code> sea <code>null</code>; <code>costoReal</code> es lo que se congeló cuando la orden entró en un cierre aprobado y ya no se mueve (salvo un segundo cierre aprobado: se publica el más reciente). <code>costoEstimado: null</code> significa «no hay tarifa configurada para su tienda en esa zona» (avise a la empresa), <strong>no</strong> envío gratis; <code>costoReal: null</code> significa «todavía no entró en ningún cierre aprobado». Archive <code>costoReal</code>, no el estimado. Si la orden termina en Devolución a origen por rechazo (<code>devolucion_a_origen_por_rechazo</code>), lo que se factura es el escenario <code>devuelto</code> de la cotización, no estos importes.</li>
+    <li><code>costoEstimado</code> y <code>costoReal</code> son lo que ese paquete le cuesta a su tienda <strong>si se entrega</strong>, con exactamente seis conceptos (el sexto, <code>ivaFulfillment</code>, es el IVA del fulfillment) y sin ningún campo que los sume. <code>costoEstimado</code> se calcula con la tarifa vigente <em>hoy</em> y <strong>puede cambiar entre dos lecturas</strong> mientras <code>costoReal</code> sea <code>null</code>; <code>costoReal</code> es lo que se congeló cuando la orden entró en un cierre aprobado y ya no se mueve (salvo un segundo cierre aprobado: se publica el más reciente). <code>costoEstimado: null</code> significa «no hay tarifa configurada para su tienda en esa zona» (avise a la empresa), <strong>no</strong> envío gratis; <code>costoReal: null</code> significa «todavía no entró en ningún cierre aprobado». Archive <code>costoReal</code>, no el estimado. Si la orden termina en Devolución a origen por rechazo (<code>devolucion_a_origen_por_rechazo</code>), lo que se factura es el escenario <code>devuelto</code> de la cotización, no estos importes.</li>
   </ul>
 
   <!-- 5.4 -->
@@ -637,9 +637,9 @@
   "mensajero": { "id": "018f2c31-0000-4000-8000-0000000000bb", "nombre": "Ana Solís Vargas" },
   "zona": { "id": "018f2c31-0000-4000-8000-0000000000b1", "nombre": "GAM" },
   "costoEstimado": { "flete": "2500.00", "iva": "325.00", "comision": "906.50",
-                     "ivaComision": "117.85", "fulfillment": "0.00" },
+                     "ivaComision": "117.85", "fulfillment": "0.00", "ivaFulfillment": "0.00" },
   "costoReal": { "flete": "2500.00", "iva": "325.00", "comision": "906.50",
-                 "ivaComision": "117.85", "fulfillment": "0.00" },
+                 "ivaComision": "117.85", "fulfillment": "0.00", "ivaFulfillment": "0.00" },
   "evidencias": [
     { "resultado": "devolucion_a_origen_por_rechazo", "resultadoNombre": "Devolución a origen por rechazo",
       "contentType": "image/jpeg",

@@ -188,7 +188,7 @@ describe("R18 · ⚠ MUTACION M10 · una orden en DOS cierres cuenta UNA vez", (
           ordenId: "o1",
           gestionId: "g2",
           montoRecibido: "5000.00",
-          congelada: congelada({ montoCobrar: "5000.00", tarifa: otraTarifa }),
+          congelada: congelada({ montoCobrar: "5000.00", tarifa: { modelo: "viejo", tarifa: otraTarifa } }),
         }),
       ],
       "base c",

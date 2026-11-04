@@ -90,7 +90,10 @@ async function dependenciasPorCuenta(
            EXISTS (SELECT 1 FROM "orden" o WHERE o."tienda_id" = u.id)                     AS ordenes,
            (EXISTS (SELECT 1 FROM "wallet_tienda_movimiento" w WHERE w."tienda_id" = u.id)
             OR EXISTS (SELECT 1 FROM "liquidacion_pago" p WHERE p."tienda_id" = u.id))     AS dinero,
-           EXISTS (SELECT 1 FROM "tarifas" t WHERE t."tienda_id" = u.id)                   AS tarifas
+           -- SLT-52: un precio propio en el modelo nuevo es configuracion de dinero igual que una
+           -- fila de "tarifas", y su FK tambien es CASCADE: sin esto se borraria en silencio.
+           (EXISTS (SELECT 1 FROM "tarifas" t WHERE t."tienda_id" = u.id)
+            OR EXISTS (SELECT 1 FROM "tarifa_valor" tv WHERE tv."tienda_id" = u.id))       AS tarifas
     FROM unnest(${[...usuarioIds]}::text[]) AS u(id)`;
 
   return new Map(

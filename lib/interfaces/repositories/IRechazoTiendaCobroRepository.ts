@@ -54,6 +54,12 @@ export interface CrearCobroRechazoTiendaInput {
   montoIva: string;
   /** Auditoria: la fila de `tarifas` que gano la cascada (tienda, zona). `null` = sin tarifa. */
   tarifaId: string | null;
+  /**
+   * SLT-52 R48/R49: el `tarifa_valor` (`tienda_flete_rechazo`) que produjo los importes en el
+   * modelo nuevo. `null` en el viejo y sin tarifa. Nunca a la vez que `tarifaId` (CHECK
+   * `rechazo_tienda_cobro_una_tarifa`).
+   */
+  tarifaValorId: string | null;
   /** `YYYY-MM-DD`: dia calendario CR del rechazo. Va a una columna `DATE`. */
   generadoEl: string;
 }

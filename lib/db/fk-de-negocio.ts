@@ -159,11 +159,52 @@ function parsearModelos(textoEsquema: string): Map<string, ModeloParseado> {
   return modelos;
 }
 
+/** El modelo al que apunta la FK SIMPLE de negocio cuya columna es `campoEscalar`, o `null`. */
+function destinoDeFkSimple(
+  modelo: ModeloParseado,
+  campoEscalar: string,
+  deNegocio: ReadonlySet<string>,
+): string | null {
+  for (const c of modelo.campos.values()) {
+    if (c.relacion === null || !deNegocio.has(c.tipo)) continue;
+    const { fields, references } = c.relacion;
+    if (fields.length === 1 && references.length === 1 && fields[0] === campoEscalar) return c.tipo;
+  }
+  return null;
+}
+
+/**
+ * Una FK compuesta de negocio queda cubierta si alguno de sus pares (columna nuestra, columna
+ * referida) es FK simple de negocio al MISMO modelo en los dos lados: los dos triggers simples y la
+ * igualdad que impone la FK compuesta encadenan la misma empresa (ver `fkDeNegocio`).
+ */
+function coberturaPorColumnaCompartida(
+  modelo: ModeloParseado,
+  destino: ModeloParseado,
+  fields: readonly string[],
+  references: readonly string[],
+  deNegocio: ReadonlySet<string>,
+): boolean {
+  if (fields.length !== references.length) return false;
+  return fields.some((campo, i) => {
+    const nuestro = destinoDeFkSimple(modelo, campo, deNegocio);
+    return nuestro !== null && nuestro === destinoDeFkSimple(destino, references[i], deNegocio);
+  });
+}
+
 /**
  * Las FK cuyo modelo de origen y de destino son de negocio. Las que van a plataforma, a
  * `Organizacion` (la propia `organizacion_id`) o a `Job` quedan fuera porque su destino no esta en la
  * lista. Lanza si una FK de negocio es compuesta: el trigger generico compara una sola columna, y
  * omitirla en silencio dejaria la referencia sin garantia (design §3 M3).
+ *
+ * Excepcion (SLT-52, design §2.3/§2.4): una FK compuesta queda CUBIERTA, sin trigger propio, si
+ * comparte una columna con la fila referida y esa columna es, en los DOS modelos, una FK simple de
+ * negocio al MISMO modelo (`coberturaPorColumnaCompartida`). Ejemplo: `(grupo_id, zona_id)` ->
+ * `grupo_distritos(id, zona_id)`. Nuestra `zona_id` es de nuestra empresa (su trigger), la `zona_id`
+ * del grupo es de la empresa del grupo (el suyo), y la FK obliga a que sean la misma zona: el grupo es
+ * de nuestra empresa. Si la columna compartida no tiene FK simple en alguno de los dos lados, sigue
+ * lanzando.
  */
 export function fkDeNegocio(
   textoEsquema: string,
@@ -182,6 +223,7 @@ export function fkDeNegocio(
       if (!destino) throw new Error(`${modelo.nombre}.${campo.nombre}: el modelo ${campo.tipo} no esta en el esquema`);
       const { fields, references } = campo.relacion;
       if (fields.length !== 1 || references.length !== 1) {
+        if (coberturaPorColumnaCompartida(modelo, destino, fields, references, deNegocio)) continue;
         throw new Error(
           `FK compuesta entre modelos de negocio: ${modelo.nombre}.${campo.nombre} ` +
             `(fields: [${fields.join(", ")}], references: [${references.join(", ")}])`,
