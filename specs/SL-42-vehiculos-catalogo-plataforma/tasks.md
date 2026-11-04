@@ -59,7 +59,7 @@
   y ajustar las guardias que lo enumeran; el valor del enum se queda (design §2.3). Dep.: T2.2.
   **Hecho:** `historial-accion-escrituras-cubiertas`, `historial-accion-punto-unico` y
   `tests/unit/historial-accion/catalogo-y-choke-point.test.ts` verdes.
-- [ ] T2.6 [P] Guardia `superadmin-fuera-de-empresa`: `GESTION_ROLES` de `VehiculoService` en
+- [x] T2.6 [P] Guardia `superadmin-fuera-de-empresa`: `GESTION_ROLES` de `VehiculoService` en
   `EXCEPCIONES_DE_LISTA` (`soloPlataforma: true`) y `/plataforma/vehiculos` en
   `HREFS_ITEMS_PLATAFORMA`, con su contraprueba. Dep.: T2.3.
   **Hecho:** guardia verde; con `maestro` en `GESTION_ROLES` sale rojo.
