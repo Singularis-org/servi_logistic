@@ -19,7 +19,7 @@ import type {
   DescargaTipo,
 } from "@/lib/types/descarga";
 import { buildCsvRows } from "@/lib/utils/csv-template";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendario } from "@/lib/utils/calendario-zona";
 import { buildXlsxLibro, buildXlsxRows, XLSX_MIME } from "@/lib/utils/xlsx-template";
 import { comprobarLimiteExcel } from "@/lib/utils/limite-excel";
 
@@ -143,17 +143,19 @@ export function nombresDeHojaUnicos(nombres: readonly string[]): string[] {
  * llega por parametro para ser determinista en test, mismo patron que
  * `nombreArchivoErrores` (feature 143) y `manifiestoFileName` (feature 148).
  *
- * La fecha es el DIA CALENDARIO EN COSTA RICA de ese instante (`fechaCalendarioCR`), no el del
- * reloj del navegador: el recorrido de la 457 (observacion O3) midio un navegador en UTC−5 que a
- * las 23:xx de CR ya nombraba el archivo con el dia siguiente, mientras la columna Fecha de dentro
- * salia en hora de CR. El nombre y el contenido hablan ahora del mismo dia.
+ * La fecha es el DIA CALENDARIO EN `zona` de ese instante (`fechaCalendario`), no el del reloj
+ * del navegador: el recorrido de la 457 (observacion O3) midio un navegador en UTC−5 que a las
+ * 23:xx de CR ya nombraba el archivo con el dia siguiente, mientras la columna Fecha de dentro
+ * salia en hora de CR. El nombre y el contenido hablan ahora del mismo dia. SLT-42: la zona es la
+ * de la empresa; la UI pasa la de CR hasta SLT-81.
  */
 export function nombreArchivoDescarga(
   titulo: string,
   tipo: DescargaTipo,
   fecha: Date,
+  zona: string,
 ): string {
-  return `${slugTitulo(titulo)}-${fechaCalendarioCR(fecha)}.${tipo}`;
+  return `${slugTitulo(titulo)}-${fechaCalendario(fecha, zona)}.${tipo}`;
 }
 
 /**
@@ -176,6 +178,7 @@ export function nombreArchivoDescarga(
  */
 export async function construirDescarga(
   config: DescargaConfig,
+  zona: string,
   fecha: Date = new Date(),
 ): Promise<DescargaArchivo> {
   const { titulo, columnas, filas } = config;
@@ -195,7 +198,7 @@ export async function construirDescarga(
       "construirDescarga: las hojas adicionales solo existen en xlsx; un csv no puede llevarlas",
     );
   }
-  const nombreArchivo = nombreArchivoDescarga(titulo, tipo, fecha);
+  const nombreArchivo = nombreArchivoDescarga(titulo, tipo, fecha, zona);
   // Traduccion del vocabulario del contrato (clave/encabezado) al de los generadores
   // reusados (key/header). Es lo UNICO que este despachador aporta sobre ellos.
   // Ficha 468 (R22): `formato` viaja SOLO si la columna lo declara; sin el, la columna del generador es

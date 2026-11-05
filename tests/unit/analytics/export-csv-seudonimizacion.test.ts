@@ -9,6 +9,7 @@ import { construirDescarga } from "@/lib/utils/descarga-dataset";
 
 import { AHORA, TIENDA, cubo, rollupFalso, servicioCon } from "./_fake-operativa";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 134 — R8 y R9. EL TEST DE FUGA (T3.1, task BLINDADA).
 //
 // Es la razon de ser de esta feature. Una columna de uuids reales dentro de un `.csv`
@@ -68,7 +69,7 @@ async function csvDeAdminTienda(): Promise<string> {
     titulo: "Entregas por mensajero",
     columnas: COLUMNAS_DESCARGA_ANALITICA_OPERATIVA,
     filas: filasDeSerie([{ etiqueta: "Entregas", serie: resultado.datos }]),
-  });
+  }, ZONA_CR);
   return String(archivo.contenido);
 }
 

@@ -41,6 +41,7 @@ import { resolverRango } from "@/lib/analytics/ranges";
 import { RANGO_PRESETS, RANGO_TOPE_DIAS } from "@/lib/analytics/types";
 import type { EntradaRango, RangoResuelto } from "@/lib/analytics/types";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /* -------------------------------------------------------------------------- */
 /* 1. El filtro                                                                */
 /* -------------------------------------------------------------------------- */
@@ -376,7 +377,8 @@ export function prepararConteoEntregas(
   }
 
   const entrada = entradaDeRango(parseado.filtro);
-  const rango = entrada === null ? null : resolverRango(entrada, now);
+  // SLT-42 pendiente T5.5: zona de la empresa
+  const rango = entrada === null ? null : resolverRango(entrada, ZONA_CR, now);
 
   const resolucion = resolverAlcanceConteoEntregas(actor);
   if (resolucion.estado === "denegado") return { status: "forbidden", motivo: resolucion.motivo };

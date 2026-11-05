@@ -9,6 +9,7 @@ import { categoriaDePunto } from "@/app/(app)/analitica/_components/operativo/te
 import { PENUMBRA, type SerieOperativa } from "@/lib/types/analitica-operativa";
 import { construirDescarga } from "@/lib/utils/descarga-dataset";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 134 — R10. EQUIVALENCIA PANTALLA-ARCHIVO: ni una fila de mas, ni una de menos.
 //
 // Se parte de la MISMA `SerieOperativa` que consume `prepararPanel()` —la puerta unica por la
@@ -77,7 +78,7 @@ describe("Feature 134 (R10) — el archivo trae exactamente lo que pinta el pane
       titulo: "Resultado de las gestiones",
       columnas: COLUMNAS_DESCARGA_ANALITICA_OPERATIVA,
       filas,
-    });
+    }, ZONA_CR);
     const [cabecera, ...datos] = String(archivo.contenido).split("\r\n");
     const col = (nombre: string) => cabecera.split(",").indexOf(nombre);
 

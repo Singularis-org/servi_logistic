@@ -15,9 +15,10 @@ import {
 } from "@/lib/repositories/ConteoHoyGestionRepository";
 import { ConteoHoyGestionService } from "@/lib/services/ConteoHoyGestionService";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /** Mediodía CR del 17 (18:00Z sería otro día; 12:00Z son las 06:00 de Costa Rica). */
 const AHORA = new Date("2026-08-17T12:00:00.000Z");
-const HOY = resolverRango({ preset: "dia" }, AHORA);
+const HOY = resolverRango({ preset: "dia" }, ZONA_CR, AHORA);
 
 function consultaDe(raw: object = {}, rol = "maestro", extra: object = {}): ConsultaConteoEntregas {
   const preparada = prepararConteoEntregas(raw, { usuarioId: "u1", rol, ...extra } as never, AHORA);

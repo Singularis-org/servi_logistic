@@ -12,6 +12,7 @@ import {
   type ConsultaCrudaFake,
 } from "./_fake-prisma-dinero";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 180 / T2.5 — `IngresosAnaliticaRepository.sumarPorCuboYCategoria`.
 //
 // QUE MIDE ESTE ARCHIVO Y QUE NO, dicho antes de la primera asercion para que nadie lo confunda
@@ -56,7 +57,7 @@ function consultaDe(metricaId: string): ConsultaAnalitica {
 
 /** Los cubos SALEN DE `trocear` (R22): ni uno solo se escribe a mano en este archivo. */
 function cubosDe(consulta: ConsultaAnalitica): readonly CuboTemporal[] {
-  return trocear(consulta.rango);
+  return trocear(consulta.rango, ZONA_CR);
 }
 
 type FilaCruda = Record<string, unknown>;

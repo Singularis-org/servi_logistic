@@ -24,6 +24,7 @@ import type {
   ICohorteCargaRepository,
 } from "@/lib/interfaces/repositories/ICohorteCargaRepository";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Ficha 411 / T5.1 y T1.3 — el SERVICIO de la cohorte y su clave de cache, con dobles.
 //
 // Lo que este archivo mide vive todo fuera del SQL: la agregacion, los derivados, el sello y la
@@ -298,7 +299,7 @@ describe("R28 · la clave lleva prefijo PROPIO y el alcance dentro", () => {
       claveDeConteoEntregas(consulta),
       claveDeConteoPorStatus(consulta),
       claveDeConteoCargadasPorDia(consulta),
-      claveDeConteoHoyGestion(consulta, resolverRango({ preset: "dia" }, AHORA)),
+      claveDeConteoHoyGestion(consulta, resolverRango({ preset: "dia" }, ZONA_CR, AHORA)),
       claveDeConteoDevoluciones(consulta),
       claveDeCicloVida(consulta),
       claveDeConteoProductos(productos.consulta),

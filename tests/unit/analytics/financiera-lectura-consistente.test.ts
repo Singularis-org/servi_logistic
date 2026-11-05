@@ -16,6 +16,7 @@ import { CuentasPorPagarAnaliticaRepository } from "@/lib/repositories/CuentasPo
 import { IngresosAnaliticaRepository } from "@/lib/repositories/IngresosAnaliticaRepository";
 import { fakePrismaDinero, type LlamadaFake } from "./_fake-prisma-dinero";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 187 (T2.5) — EL ALCANCE DE LECTURA CONSISTENTE EN LOS DOS REPOSITORIOS: R2 (mitad
 // unitaria), R3 y R10.
 //
@@ -136,7 +137,7 @@ describe("R1 · dentro del alcance no se escapa ni una consulta por el cliente d
   it("las DOS lecturas de la caja salen por el cliente de la transaccion, y por el mismo", async () => {
     const f = fake();
     const consulta = consultaDe("ingreso_flete");
-    const cubos = trocear(consulta.rango);
+    const cubos = trocear(consulta.rango, ZONA_CR);
     await new IngresosAnaliticaRepository(f.cliente).enLecturaConsistente(async (r) => [
       await r.sumarPorCategoria(consulta),
       await r.sumarPorCuboYCategoria(consulta, cubos),
@@ -150,7 +151,7 @@ describe("R1 · dentro del alcance no se escapa ni una consulta por el cliente d
   it("las TRES de la cuenta de mensajeros, igual: un solo alcance para las tres", async () => {
     const f = fake();
     const consulta = consultaDe("cuenta_por_pagar_mensajero");
-    const cubos = trocear(consulta.rango);
+    const cubos = trocear(consulta.rango, ZONA_CR);
     await new CuentasPorPagarAnaliticaRepository(f.cliente).enLecturaConsistente(async (r) => [
       await r.cuentaPorPagarMensajerosAlCorte(consulta),
       await r.cuentaPorPagarMensajerosAntesDe(consulta),
@@ -224,7 +225,7 @@ describe("R3 · dentro de la lectura consistente no se emite ni una escritura", 
     const consulta = consultaDe("ingreso_flete");
     await new IngresosAnaliticaRepository(f.cliente).enLecturaConsistente(async (r) => [
       await r.sumarPorCategoria(consulta),
-      await r.sumarPorCuboYCategoria(consulta, trocear(consulta.rango)),
+      await r.sumarPorCuboYCategoria(consulta, trocear(consulta.rango, ZONA_CR)),
     ]);
 
     expect(f.llamadas.map((l) => l.operacion)).toEqual(["groupBy", "queryRaw"]);
@@ -237,7 +238,7 @@ describe("R3 · dentro de la lectura consistente no se emite ni una escritura", 
     await new CuentasPorPagarAnaliticaRepository(f.cliente).enLecturaConsistente(async (r) => [
       await r.cuentaPorPagarMensajerosAlCorte(consulta),
       await r.cuentaPorPagarMensajerosAntesDe(consulta),
-      await r.cuentaPorPagarMensajerosPorCubo(consulta, trocear(consulta.rango)),
+      await r.cuentaPorPagarMensajerosPorCubo(consulta, trocear(consulta.rango, ZONA_CR)),
     ]);
 
     expect(f.llamadas.map((l) => l.operacion)).toEqual(["groupBy", "groupBy", "queryRaw"]);

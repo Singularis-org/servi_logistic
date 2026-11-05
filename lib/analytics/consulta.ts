@@ -42,6 +42,7 @@ import { politicaIdentidadMensajero } from "@/lib/analytics/identidad";
 import type { PoliticaIdentidad } from "@/lib/analytics/identidad";
 import type { EntradaRango, RangoResuelto } from "@/lib/analytics/types";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /**
  * La marca. NO se exporta y no hay forma de nombrarla desde fuera de este archivo, que es
  * justo lo que impide construir una `ConsultaAnalitica` a mano.
@@ -109,7 +110,8 @@ export function prepararConsultaAnalitica(
   }
 
   // (2) RANGO.
-  const rango = resolverRango(entradaDeRango(parseado.filtro), now);
+  // SLT-42 pendiente T5.5: zona de la empresa
+  const rango = resolverRango(entradaDeRango(parseado.filtro), ZONA_CR, now);
 
   // (3) ALCANCE. Feature 267 — `canal` se REENVIA tal cual, sin interpretarlo aqui: el
   // unico sitio que decide que puede ver un canal es `resolverAlcance`. Su default

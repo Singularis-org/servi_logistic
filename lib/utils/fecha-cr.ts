@@ -25,7 +25,7 @@ import {
   ultimosNDias,
 } from "@/lib/utils/calendario-zona";
 
-const ZONA_CR = "America/Costa_Rica";
+export const ZONA_CR = "America/Costa_Rica";
 
 /**
  * Devuelve la medianoche UTC de la fecha CALENDARIO de Costa Rica correspondiente a

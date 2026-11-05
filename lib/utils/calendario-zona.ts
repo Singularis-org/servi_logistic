@@ -200,6 +200,24 @@ export function inicioDelDiaSiguienteEnUtc(fecha: string, zona: string): Date {
   return inicioDelDiaEnUtc(sumarDias(fecha, 1), zona);
 }
 
+/**
+ * Suma `dias` (negativo para restar) a una fecha CALENDARIO `YYYY-MM-DD`. No depende de la zona: la
+ * aritmetica es de calendario, nunca de 24 h, asi que un dia de 23 o 25 h cuenta como uno (R23).
+ */
+export function sumarDiasCalendario(fecha: string, dias: number): string {
+  return sumarDias(fecha, dias);
+}
+
+/** Dias de calendario de `desde` a `hasta` (`YYYY-MM-DD`; negativo si `hasta` es anterior). Sin zona. */
+export function diferenciaEnDiasCalendario(desde: string, hasta: string): number {
+  return Math.round((fechaAUtcMs(hasta) - fechaAUtcMs(desde)) / UN_DIA_MS);
+}
+
+/** Dia de la semana de una fecha CALENDARIO `YYYY-MM-DD` (0 = domingo ... 6 = sabado). Sin zona. */
+export function diaDeLaSemana(fecha: string): number {
+  return new Date(fechaAUtcMs(fecha)).getUTCDay();
+}
+
 /** Fecha calendario de MAÑANA en `zona` (`YYYY-MM-DD`). */
 export function manana(now: Date, zona: string): string {
   return sumarDias(fechaCalendario(now, zona), 1);

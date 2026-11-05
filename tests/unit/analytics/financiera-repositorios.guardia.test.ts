@@ -12,6 +12,7 @@ import { ConciliacionCierresAnaliticaRepository } from "@/lib/repositories/Conci
 import { trocear } from "@/lib/analytics/cubo-temporal";
 import { fakePrismaQueFalla } from "./_fake-prisma-dinero";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 127 / T C.5 — GUARDIA TRANSVERSAL DE LOS REPOSITORIOS: R30 y R32.
 //
 // Dos cosas que un repositorio de dinero no puede hacer, y que ninguna de las dos se ve en el
@@ -287,7 +288,7 @@ describe("R32 · un fallo de la base se propaga; nunca se convierte en un cero",
         // ni siquiera consulta y este caso pasaria sin comprobar nada.
         return new IngresosAnaliticaRepository(cliente).sumarPorCuboYCategoria(
           consulta,
-          trocear(consulta.rango),
+          trocear(consulta.rango, ZONA_CR),
         );
       },
     },
@@ -297,7 +298,7 @@ describe("R32 · un fallo de la base se propaga; nunca se convierte en un cero",
         const consulta = consultaDe("cuenta_por_pagar_mensajero");
         return new CuentasPorPagarAnaliticaRepository(cliente).cuentaPorPagarMensajerosPorCubo(
           consulta,
-          trocear(consulta.rango),
+          trocear(consulta.rango, ZONA_CR),
         );
       },
     },
@@ -321,7 +322,7 @@ describe("R32 · un fallo de la base se propaga; nunca se convierte en un cero",
         const consulta = consultaDe("ingreso_flete");
         return new IngresosAnaliticaRepository(cliente).enLecturaConsistente(async (r) => [
           await r.sumarPorCategoria(consulta),
-          await r.sumarPorCuboYCategoria(consulta, trocear(consulta.rango)),
+          await r.sumarPorCuboYCategoria(consulta, trocear(consulta.rango, ZONA_CR)),
         ]);
       },
     },
@@ -332,7 +333,7 @@ describe("R32 · un fallo de la base se propaga; nunca se convierte en un cero",
         return new CuentasPorPagarAnaliticaRepository(cliente).enLecturaConsistente(async (r) => [
           await r.cuentaPorPagarMensajerosAlCorte(consulta),
           await r.cuentaPorPagarMensajerosAntesDe(consulta),
-          await r.cuentaPorPagarMensajerosPorCubo(consulta, trocear(consulta.rango)),
+          await r.cuentaPorPagarMensajerosPorCubo(consulta, trocear(consulta.rango, ZONA_CR)),
         ]);
       },
     },
@@ -348,7 +349,7 @@ describe("R32 · un fallo de la base se propaga; nunca se convierte en un cero",
   it("y los dos que consultan por cubo reciben cubos de verdad: el caso no pasa por lista vacia", () => {
     // Con `cubos: []` los dos metodos devuelven `[]` sin tocar la base, asi que su caso de
     // propagacion pasaria verde sin haber comprobado nada. Esto lo impide.
-    expect(trocear(consultaDe("ingreso_flete").rango).length).toBeGreaterThan(0);
+    expect(trocear(consultaDe("ingreso_flete").rango, ZONA_CR).length).toBeGreaterThan(0);
   });
 
   for (const caso of casos) {
