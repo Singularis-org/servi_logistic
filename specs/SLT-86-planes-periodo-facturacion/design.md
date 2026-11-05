@@ -1,8 +1,9 @@
 # SLT-86 — Planes: período de facturación · design.md
 
-> Parte de `dev` **después del merge de SLT-83** (`tasks.md > T0`). Esta rama sale de `dev` sin SLT-83: los
-> nombres de función y los archivos que SLT-83 cambia (sobre todo `plan_de_la_empresa`, `costeo.ts` y
-> `cobro_plataforma_tarifa_de`) se ajustan en T0 a lo que haya en `dev`. Las propuestas de este diseño (rangos,
+> Parte de `dev` **después del merge de SLT-83** (`tasks.md > T0`, hecha el 2026-11-05: merge `229ddce1`,
+> con SLT-83 en `8eb66b88`). Los nombres de función y los archivos que SLT-83 cambió (`plan_de_la_empresa`,
+> `costeo.ts`, `cobro_plataforma_tarifa_de`, `plan_cobro_del_ciclo`) ya están contrastados con `dev` en §9 y
+> §12. Las propuestas de este diseño (rangos,
 > textos, actor de la migración, cancelación) y P4 = (a) las aprobó el humano el 2026-11-05: están en
 > «Decisiones cerradas» de `requirements.md`.
 
@@ -23,7 +24,7 @@ Buscado (feature_list.json, `specs/` y código con Grep/Read; **el grafo MCP no 
 | Tope de órdenes por ciclo (SL-24) | `plan.tope_ordenes_ciclo`, `TopesPlan.ordenesPorCiclo`, trigger `plan_tope_ordenes`, `plan_cupo_ordenes`, `CupoPlanRepository`/`ICupoPlanRepository`, el chequeo previo de `BulkOrdenService` y de las rutas `app/api/ordenes/carga-masiva/chunk` y `app/api/ordenes/api-key/carga`, `lib/planes/tope-error.ts` (variante `ordenes`), `AvisosDeTopes.tsx` y las filas de `ConsumoDelPlan.tsx` | **Se retira** entero (R8, R34). `plan_uso_ordenes` se queda: sirve para contar las órdenes del período (R7). |
 | Precio anual fijo y descuento anual | `plan.precio_anual`, `plan.descuento_anual_pct`, CHECK `plan_precio_forma`; `PrecioPlan.anual` | **Se retiran**: pasan a descuentos del período anual (R33). |
 | Costeo del ciclo (SLT-66 R19) y aviso `anualNoAplicaAlCosto` | `lib/planes/costeo.ts`, `ConsumoDelPlan.tsx` | La base pasa a ser el costo del período o del tramo (R28). El aviso se va. |
-| «Lo cobrado en el ciclo» (SLT-83 R24, por fecha del cargo) | rama `feature/SLT-83-planes-costo-por-orden-porcentual` (PR #79) | Pasa a contar dentro del período en curso de calendario (decisión del 2026-11-05). Ver §12. |
+| «Lo cobrado en el ciclo» y las órdenes sin estado final (SLT-83 R23, R24, por fecha del cargo) | SQL `plan_cobro_del_ciclo(org, p_desde)` (migración `20261104150200_cobro_plataforma_porcentual_funciones`), llamada desde `plan_de_la_empresa` y desde `PlanesRepository.planDeEmpresa` | Pasa a contar dentro del período en curso de calendario (decisión del 2026-11-05) cambiando solo el `p_desde` que recibe. Ver §12. |
 | Periodicidad de gastos fijos (feature 84) | `GastoFijoPlantilla`, `lib/utils/periodicidad.ts` | **No se reutiliza** (A3, §10). |
 
 Ficha relacionada en el board: SLT-85 (traza de cobros por orden), que no se solapa.
@@ -178,10 +179,12 @@ Funciones gemelas: `inicioDelPeriodoCalendario(tipo, ahora)`, `finDelPeriodoCale
     (`{plan_nombre, tipo_cobro, desde}`, **sin actor**, R32);
   - pierde `precio_anual`, `descuento_anual_pct`, `tope_ordenes_ciclo`, `ciclo_corto_desde`.
 
-  «Lo cobrado en el ciclo» de SLT-83 se cuenta desde `ciclo_inicio`, así que pasa a ser por período de
-  calendario sin tocar su lógica (R28).
-- `PlanesRepository` (detalle de empresa y lista) usa la misma función. `usoDe` ya no cuenta órdenes contra un
-  tope: solo usuarios y API keys.
+  «Lo cobrado en el ciclo» de SLT-83 (`cobro_ciclo`) pasa a ser
+  `plan_cobro_del_ciclo(org, plan_inicio_ciclo_de(ancla, tipo, ahora))`: por período de calendario sin tocar
+  `plan_cobro_del_ciclo` (R28, §12).
+- `PlanesRepository` (detalle de empresa y lista) usa la misma función: en `usoDe` y en la consulta de
+  `cobroCiclo` de `planDeEmpresa`, que hoy pasan `plan_inicio_ciclo_en_curso(...)`. `usoDe` ya no cuenta
+  órdenes contra un tope: solo usuarios y API keys.
 - `plan_tope_ordenes` (trigger) y `plan_cupo_ordenes` **se borran** (R8, R34).
 
 ### 3.4 Se retira el ciclo corto (P4 = a, decisión del 2026-11-05)
@@ -386,31 +389,57 @@ El timestamp va detrás de la última de `dev` tras SLT-83 (T0).
   R20; los sustituyen `plan-ciclo-periodo` y `ciclo-periodo`);
 - `tests/integration/db/plan-ciclo-corto.test.ts` y `tests/integration/db/_fixtures/ciclo-corto.ts` (P4 = a).
 
-**Se adaptan:**
-- **Por quitar el tope de órdenes:**
+**Se adaptan** (rehecha en T0 contra `dev` con SLT-83, buscando en `tests/` y `e2e/` `ordenesPorCiclo`,
+`tope_ordenes_ciclo`, `tope: "ordenes"`, `CupoPlan`, `anual:`, `precio_anual`, `descuento_anual_pct`,
+`anualNoAplicaAlCosto`, `plan_ciclo_corto_desde_at`, `cortoDesde`, `inicioDelCiclo*`, `plan_inicio_ciclo*` y
+`reinicio`). Un mismo archivo puede caer en más de un motivo; se lista en el primero. Los marcados (SLT-83) los
+trajo esa ficha.
+- **Por quitar el tope de órdenes** (`TopesPlan.ordenesPorCiclo`, `TopeExcedido.tope = "ordenes"`, la columna):
   - de integración: `planes-catalogo`, `plan-de-la-empresa`, `mi-plan-repository`, `planes-acceso-servi-app`,
-    `plan-maestro-sin-tope`, `planes-cambio-programado`, `planes-cambio-correos` y `_fixtures/planes.ts`;
-  - de componentes: `PlanForm`, `PlanDetalle`, `PlanesModule`, `PlanEmpresa`, `MiPlanModule`, `ConsumoDelPlan`,
-    `ConsumoDelPlanCosteo` y `PlanFormVistaPreviaCustom`;
-  - `e2e/_planes-fixture.ts`, `e2e/planes-superadmin.spec.ts` y `e2e/planes-costeo.spec.ts`.
-- **Por el tipo `PrecioPlan`:**
-  - `tests/unit/planes/cobro.test.ts` (D7, con los mismos números), `costeo.test.ts`, `consumo.test.ts` y
-    `planes-schema.test.ts`;
+    `plan-maestro-sin-tope`, `planes-cambio-programado`, `planes-cambio-correos`, `planes-edicion-en-uso`,
+    `planes-historial`, `planes-lecturas-plataforma`, `planes-costeo-escritura`, `cobro-plataforma-plan`,
+    `plan-costo-porcentual-escritura` (SLT-83) y `_fixtures/planes.ts`;
+  - `tests/integration/plataforma-planes-page.test.tsx`;
+  - unitarios: `tests/unit/planes/tope-error.test.ts` (la variante `ordenes`), `rastro.test.ts`,
+    `rastro-costeo.test.ts`, `rastro-costo-porcentual.test.ts` (SLT-83), `tests/unit/services/planes-service.test.ts`,
+    `planes-service-costeo.test.ts`, `planes-service-costo-porcentual.test.ts` (SLT-83),
+    `planes-service-lecturas.test.ts`, `mi-plan-service.test.ts`, `tests/unit/types/planes-schema-costeo.test.ts`,
+    `planes-schema-costo-porcentual.test.ts` (SLT-83) y `tests/unit/services/email/plantilla-cambio-plan.test.ts`;
+  - de componentes: `PlanForm`, `PlanDetalle`, `PlanDetalleAsignar` (SLT-83), `PlanDetalleDesasignado`,
+    `PlanesModule`, `PlanEmpresa`, `PlanEmpresaCostoPorcentual` (SLT-83), `PlanFormCostoPorcentual` (SLT-83),
+    `MiPlanModule`, `ConsumoDelPlan`, `ConsumoDelPlanCosteo`, `ConsumoDelPlanPorcentual` (SLT-83) y
+    `PlanFormVistaPreviaCustom`;
+  - `e2e/_planes-fixture.ts`, `e2e/planes-superadmin.spec.ts`, `e2e/planes-costeo.spec.ts` y
+    `e2e/dos-empresas-humo.spec.ts` (espera el mensaje del tope de órdenes de la carga).
+- **Por el tipo `PrecioPlan`** (sin `anual`, con `descuentos`) **y `CosteoDelCiclo`** (sin `anualNoAplicaAlCosto`):
+  - `tests/unit/planes/cobro.test.ts` (D7, con los mismos números), `costeo.test.ts`, `consumo.test.ts`,
+    `costeo-porcentual.test.ts` (SLT-83), `costo-concreto-porcentual.test.ts` (SLT-83),
+    `mensajes-costo-porcentual.test.ts` (SLT-83) y `planes-schema.test.ts`;
+  - `tests/integration/db/plan-de-la-empresa-porcentual.test.ts` (SLT-83: solo el tipo; el conteo por período
+    sigue dando lo mismo, §12);
+  - `tests/integration/db/cobro-plataforma-porcentual.test.ts` (SLT-83 R10: escribe `descuento_anual_pct`;
+    pasa a un descuento en `plan_descuento_periodo`, que es lo que R13 dice que no toca el cargo);
   - `migracion-planes-custom-ida-y-vuelta` (su `M_ANTERIOR`).
-- **Por la fecha de efecto y la primera asignación (P1, P4):**
+- **Por la fecha de efecto, la primera asignación y el ciclo corto (P1, P4):**
   - de integración: `planes-cambiar-tipo-cobro`, `planes-asignacion*`, `planes-asignacion-inicio-ciclo` y
     `planes-crear-custom-asigna`;
   - de servicios: `planes-service-tipo-cobro`, `planes-service-inicio-ciclo`, `planes-service-crear-custom` y
     `planes-service-asignar-costo`;
+  - `tests/unit/repositories/planes-repository-tipo-cobro.test.ts` (su doble de `organizacion` trae
+    `planCicloCortoDesdeAt`);
   - de componentes: `PlanEmpresaTipoCobro`, `PlanEmpresaSinCosto`, `PlanFormCustomAsigna`, `PlanVistaCosteo`
     y `PlanFormCosteo`;
   - `tests/integration/plataforma-empresa-detalle-page.test.tsx` y `tests/unit/actions/planes.composition-root.test.ts`.
 - **Migraciones anteriores:**
-  - `migracion-sl24-ida-y-vuelta`, `migracion-ciclo-elegido-ida-y-vuelta`, `migracion-slt66-ida-y-vuelta` y
-    `migracion-slt66-desasignar` siguen probando su propia ida y vuelta, aplicadas hasta su punto;
+  - `migracion-sl24-ida-y-vuelta`, `migracion-ciclo-elegido-ida-y-vuelta`, `migracion-slt66-ida-y-vuelta`,
+    `migracion-slt66-desasignar` y `migracion-slt83-ida-y-vuelta` (SLT-83) siguen probando su propia ida y
+    vuelta, aplicadas hasta su punto en una base propia: no leen el estado final y **no se adaptan**;
   - se adaptan solo si leen el estado final de la base (columnas que esta migración quita).
 
-T0 rehace esta lista contra `dev` con SLT-83 (sus tests de costeo porcentual pueden leer el tope o el ciclo).
+No leen el tope ni el ciclo, y quedan igual: `cobro-plataforma-porcentual-aislamiento`,
+`cobro-plataforma-porcentual-importe`, `cobro-porcentual-estados-finales`, `empresas-plataforma-cobro-porcentual`,
+`plan-de-la-empresa-costeo`, `_fixtures/cobro-porcentual.ts`, `EmpresasModuleCobroPorcentual.test.tsx` y
+`e2e/planes-costo-porcentual.spec.ts` (SLT-83).
 
 ## 10. Alternativas descartadas
 
@@ -438,13 +467,31 @@ Ninguna librería nueva. Fechas con `Date` UTC desplazado y céntimos `bigint`, 
 
 ## 12. Dependencia con SLT-83
 
-No se leyó la rama remota con `git show`, porque este agente no tiene shell. Se leyó su `requirements.md` en el
-worktree local. SLT-86 da por hecho que:
-- **SLT-83 R24** («lo cobrado en el ciclo», por fecha del cargo) pasa a contar los cargos y reversos cuyo
-  instante cae en el **período en curso de calendario**, con su tramo (decisión del 2026-11-05). Se logra porque
-  cuenta desde `ciclo_inicio` de `plan_de_la_empresa`. Si en `dev` lo calcula en otro sitio, T0 lo pasa a
-  `plan_inicio_ciclo_de`.
-- **SLT-83 R23** («órdenes del ciclo sin estado final») pasa a ser las del período en curso.
-- **SLT-83 R10** («sin descuento anual») pasa a «ningún descuento de período» (R13).
+Contrastado en T0 contra `dev` con SLT-83 integrada (merge `8eb66b88`), leyendo el código:
+
+- **Dónde se cuenta (SLT-83 R23, R24).** Una sola definición en SQL, `plan_cobro_del_ciclo(p_organizacion_id,
+  p_desde)` (`db/migrations/20261104150200_cobro_plataforma_porcentual_funciones/migration.sql`, pieza 8):
+  - `cobrado` = Σ cargos − Σ reversos de la empresa con `ocurrido_at >= p_desde` (R24);
+  - `pendientes` = órdenes porcentuales vivas con `created_at >= p_desde` que no están en un estado final (R23).
+
+  La función no conoce el ciclo: lo recibe en `p_desde`. Hay **dos** llamadas, y las dos le pasan hoy
+  `plan_inicio_ciclo_en_curso(o."plan_ciclo_corto_desde_at", o."plan_ciclo_ancla_at", now() AT TIME ZONE 'UTC')`:
+  - `plan_de_la_empresa` (misma migración, pieza 9), clave `cobro_ciclo` → `MiPlanRepository` (`cobro_ciclo`) →
+    `lib/planes/consumo.ts > planConConsumo` → `costeoDelCiclo` («Mi plan»);
+  - `PlanesRepository.planDeEmpresa` (`lib/repositories/PlanesRepository.ts`, consulta `cobroCiclo` con
+    `CROSS JOIN LATERAL plan_cobro_del_ciclo(...)`) → el mismo `costeoDelCiclo` (detalle de empresa del
+    superadmin).
+
+  `lib/planes/costeo.ts > costeoDelCiclo` solo suma `cobroCiclo.cobrado` a la base: no calcula fechas.
+- **Cómo pasa a período de calendario.** Tal como decía este diseño: en las dos llamadas, `p_desde` pasa a ser
+  `plan_inicio_ciclo_de(o."plan_ciclo_ancla_at", o."plan_tipo_cobro", now() AT TIME ZONE 'UTC')`, el mismo
+  `ciclo_inicio` de §3.3. `plan_cobro_del_ciclo` no se toca. Lo hacen T3 (`plan_de_la_empresa`, en la migración
+  de §8) y T9 (`PlanesRepository.planDeEmpresa`). No cambia ningún requisito: R28 ya lo dice así.
+- **SLT-83 R23** («órdenes del ciclo sin estado final») pasa a ser las del período en curso, con el mismo cambio.
+- **SLT-83 R10** («sin descuento anual») pasa a «ningún descuento de período» (R13). Su test,
+  `cobro-plataforma-porcentual.test.ts`, escribe `descuento_anual_pct = 20` por SQL: se adapta (§9).
 - Las condiciones congeladas de las órdenes porcentuales (SLT-83 R11) no se tocan.
-- Si los tests de SLT-83 usan el tope de órdenes o el ciclo anclado, entran en §9.
+- `tests/integration/db/plan-de-la-empresa-porcentual.test.ts` (R24) pone el ancla a 10 días y lleva lo de
+  «antes» a −12 y −15 días. Con `GREATEST(entrada, inicio de calendario)` el inicio queda en `[−10 días, ahora]`
+  y el caso sigue dando lo mismo: solo se adapta por el tipo (`anualNoAplicaAlCosto`, §9).
+- Los tests de SLT-83 que leen el tope de órdenes o el precio anual están en §9.

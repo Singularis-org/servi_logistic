@@ -4,7 +4,7 @@
 > T2 fija los tipos. `[P]` = puede ir en paralelo con las otras `[P]` de su bloque. No queda ninguna pregunta
 > abierta: P4 = (a) y las propuestas del spec las aprobó el humano el 2026-11-05.
 
-## T0 — Integrar `dev` tras el merge de SLT-83
+## [x] T0 — Integrar `dev` tras el merge de SLT-83
 
 - **Depende de:** el merge del PR #79 (SLT-83) en `dev`.
 - **Pasos:**
@@ -236,9 +236,41 @@
 - `tests/components/MiPlanModule.test.tsx`
 - `tests/components/ConsumoDelPlan.test.tsx`
 - `tests/components/ConsumoDelPlanCosteo.test.tsx`
+- `tests/integration/db/planes-edicion-en-uso.test.ts`
+- `tests/integration/db/planes-historial.test.ts`
+- `tests/integration/db/planes-lecturas-plataforma.test.ts`
+- `tests/integration/db/planes-costeo-escritura.test.ts`
+- `tests/integration/db/cobro-plataforma-plan.test.ts`
+- `tests/integration/db/plan-costo-porcentual-escritura.test.ts`
+- `tests/integration/db/plan-de-la-empresa-porcentual.test.ts`
+- `tests/integration/db/cobro-plataforma-porcentual.test.ts`
+- `tests/integration/plataforma-planes-page.test.tsx`
+- `tests/unit/planes/tope-error.test.ts`
+- `tests/unit/planes/rastro.test.ts`
+- `tests/unit/planes/rastro-costeo.test.ts`
+- `tests/unit/planes/rastro-costo-porcentual.test.ts`
+- `tests/unit/planes/costeo-porcentual.test.ts`
+- `tests/unit/planes/costo-concreto-porcentual.test.ts`
+- `tests/unit/planes/mensajes-costo-porcentual.test.ts`
+- `tests/unit/services/planes-service.test.ts`
+- `tests/unit/services/planes-service-costeo.test.ts`
+- `tests/unit/services/planes-service-costo-porcentual.test.ts`
+- `tests/unit/services/planes-service-lecturas.test.ts`
+- `tests/unit/services/mi-plan-service.test.ts`
+- `tests/unit/services/email/plantilla-cambio-plan.test.ts`
+- `tests/unit/types/planes-schema-costeo.test.ts`
+- `tests/unit/types/planes-schema-costo-porcentual.test.ts`
+- `tests/unit/repositories/planes-repository-tipo-cobro.test.ts`
+- `tests/components/PlanDetalleAsignar.test.tsx`
+- `tests/components/PlanDetalleDesasignado.test.tsx`
+- `tests/components/PlanEmpresaCostoPorcentual.test.tsx`
+- `tests/components/PlanFormCostoPorcentual.test.tsx`
+- `tests/components/ConsumoDelPlanPorcentual.test.tsx`
 - `e2e/_planes-fixture.ts`
 - `e2e/planes-superadmin.spec.ts`
 - `e2e/planes-costeo.spec.ts`
+- `e2e/dos-empresas-humo.spec.ts`
 - `progress/impl_SLT-86.md`
 
-El timestamp de la migración es provisional: T0 lo fija detrás de la última de `dev` y actualiza esta lista.
+El timestamp de la migración (`20261106120000`) quedó fijado en T0, detrás de la última de `dev`
+(`20261104150200_cobro_plataforma_porcentual_funciones`).
