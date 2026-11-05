@@ -66,8 +66,8 @@ export interface EscenarioGeo71 {
   geo65: EscenarioGeo65;
   cr: EmpresaGeo71;
   xa: EmpresaGeo71;
-  /** La orden con cadena incoherente, en Costa Rica. */
-  incoherenteId: string;
+  /** La orden con cadena incoherente, en Costa Rica (`null` si se pidio sin ella). */
+  incoherenteId: string | null;
 }
 
 const DIA_MS = 86_400_000;
@@ -245,11 +245,18 @@ export async function sembrarEmpresaGeo71(tx: TxDeTest, e: EmpresaGeo65): Promis
   return { base: e, segunda, ordenes, gestionesDevueltasIds };
 }
 
-export async function crearEscenarioGeo71(tx: TxDeTest): Promise<EscenarioGeo71> {
+/**
+ * `incoherente: false` deja fuera la orden de cadena incoherente: la quieren los tests de «misma
+ * cifra que hoy» (R4 solo vale con la cadena coherente). Por defecto se siembra.
+ */
+export async function crearEscenarioGeo71(
+  tx: TxDeTest,
+  opciones: { incoherente?: boolean } = {},
+): Promise<EscenarioGeo71> {
   const geo65 = await crearEscenarioGeo65(tx);
   const cr = await sembrarEmpresaGeo71(tx, geo65.cr);
   const xa = await sembrarEmpresaGeo71(tx, geo65.xa);
-  const incoherenteId = await sembrarOrdenIncoherente(tx, geo65.cr.base);
+  const incoherenteId = opciones.incoherente === false ? null : await sembrarOrdenIncoherente(tx, geo65.cr.base);
   await comoDueno(tx);
   return { geo65, cr, xa, incoherenteId };
 }

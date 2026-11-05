@@ -59,10 +59,10 @@
   `lugares` al constructor único. **Hecho:** typecheck en
   verde. `conteo-productos-sql`, `dinero-productos-sql`, `cohorte-carga-sql`,
   `conteo-hoy-gestion-servicio` y sus `*.int.test.ts` pasan, cambiando solo lo de §11.1 (R7).
-- [ ] **T3.4** `tests/integration/db/geo-analitica-lugar.test.ts` (R1–R5, R13), sobre T3.1–T3.3.
+- [x] **T3.4** `tests/integration/db/geo-analitica-lugar.test.ts` (R1–R5, R13), sobre T3.1–T3.3.
   **Hecho:** pasa. `conteo-por-status-cohorte.int.test.ts`, `efectividad-por-rol.int.test.ts`,
   `cohorte-carga-*.int.test.ts`, `conteo-productos.int.test.ts`, `dinero-productos.int.test.ts` y
-  `455/caracterizacion/sql-crudo-*.test.ts` pasan sin cambiar aserciones.
+  `455/caracterizacion/sql-crudo-*.test.ts` pasan sin cambiar aserciones; `conteo-productos.int` y `dinero-productos.int` siguen como rojos de baseline (decisión del humano del 2026-11-04: T3.4 la cierra `geo-analitica-lugar.test.ts` sobre `geo-71`).
 
 ## T4 — Tránsito [T2.1]
 
