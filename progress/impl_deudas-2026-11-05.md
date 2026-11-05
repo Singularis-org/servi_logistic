@@ -248,3 +248,91 @@ Proyecto `dinero`, misma build, `workers: 1`, una tras otra sobre la misma base.
 ### Archivos
 
 **Modificados:** `e2e/wallet-mensajeros.spec.ts`, `app/(app)/analitica/_components/entregas/{base-del-kpi,madurez-textos}.ts`, `specs/SLT-64-ciclo-vida-cerradas-coherente/requirements.md`, `docs/verification.md`, esta bitácora
+
+## Tanda 4 — Los 4 rojos nuevos del gate completo
+
+**Veredicto:** 2 eran de esta rama y están arreglados. `demo-qa` es de la siembra de la base del gate y `planes-asignacion` es inestable por un conteo global del test, ajeno a la rama.
+
+| Rojo | Atribución | Causa | Qué se hizo |
+|---|---|---|---|
+| `sql-a-mano-por-empresa` | Rama, tanda 1 | `detalle-modelo-nuevo.ts` nombra `cierre_detail` sin `organizacion_id` | Filtro de empresa en el SQL, sin excepción |
+| `nombres-estado-retirados` | Rama, tanda 2 | 3 notas `_MODELO_NUEVO` con la frase aprobada, 4 «entregadas» en total | Excepción con los 4 textos exactos y motivo ampliado |
+| `demo-qa` | Siembra | `beforeAll`: «faltan catálogos… vehiculo». El informe lo muestra como `failed`, 12 saltados y sin mensaje porque el error es del `describe` | Nada |
+| `planes-asignacion` R4 | Test inestable | `tx.walletMovimiento.count()` cuenta toda la base y ve lo que otra conexión commitea entre las dos lecturas | Nada, como se pidió |
+
+### El filtro de empresa
+
+- **`w."organizacion_id" = NULLIF(current_setting('app.organizacion_id', true), '')`:** la misma expresión que las políticas RLS.
+- **`cd."organizacion_id" = w."organizacion_id"` en el `EXISTS`:** no es redundante. `origen_id` es polimórfico y sin FK, y el test siembra una fila de A que apunta a un cierre de B.
+- **Sin cambio de contrato:** ni firmas ni parámetros, porque la empresa sale de la sesión. Sin empresa en la sesión, la lista sale vacía y se usa el rótulo de hoy.
+- **Guardia `caja-173-alcance`, tocada a propósito:** admite `organizacion_id` como tercera columna del detalle en `fugasDeLecturaDelModelo` y en el literal de no vacuidad. No es dinero, y sigue cayendo con un importe o con otra columna (C1, C2). Conviene que el reviewer lo mire.
+- **La excepción `porRls` de `libro-caja-a-quien-sql.ts` sigue:** el filtro va en el fragmento de `detalle-modelo-nuevo.ts`, y las demás consultas de ese archivo siguen dependiendo de la RLS.
+
+### Mapa rojo → test
+
+| Caso | Test |
+|---|---|
+| Empresa en la fila y en el `EXISTS`, como dueño de las tablas y sin RLS | `deudas-d39-d40-modelo-nuevo.test.ts`, «otra empresa no contamina: la RLS y, sin RLS, el filtro de empresa de la propia sentencia» |
+| Control de no vacuidad de la siembra cruzada | El mismo test, `sembrado` |
+| Sin empresa en la sesión | El mismo test, `sinRlsSinEmpresa` |
+| Excepción de `cierre-labels.ts` | `nombres-estado-retirados`, «cada excepcion y cada pendiente sigue haciendo falta…» |
+
+### Mutaciones
+
+**8/8 muertas** con `scratchpad/mutar-rojos-gate.cjs`, fuera del repo. Cada corrida exige tests ejecutados, 0 saltados y que caiga el test esperado. Línea base y final en verde; árbol intacto por huella.
+
+- **E1:** sin empresa en el `EXISTS`. Cae el test de dos empresas.
+- **E2:** sin empresa de la sesión en la fila. Cae el test de dos empresas.
+- **E3:** sin los dos filtros. Cae la guardia de SQL a mano.
+- **G1:** un quinto «entregadas» en una frase nueva. Cae la excepción.
+- **G2:** otro estado retirado. Caen las dos aserciones de la guardia.
+- **G3:** una nota pierde la frase. Cae la excepción.
+- **C1 y C2:** el fragmento lee un importe u otra columna del detalle. Cae `caja-173-alcance`.
+
+**W1 a W7 de la tanda 1 repetidas sobre el fragmento nuevo: 7/7 muertas.** Las otras 20 de esa lista no tocan el fragmento y no se repitieron.
+
+### Medidas de `demo-qa`
+
+`git diff` vacío entre `49f45a7e` y esta rama en `db`, `scripts`, `tests/fabricas`, `e2e/_storage-falso`, el propio test, `_postgres-real` y sus dos ayudantes de exclusión y limpieza. Sí cambian archivos de `lib/` y `app/`, y no se trazó cuáles carga la demo; lo que los descarta es la tabla de abajo. `49f45a7e` se corrió desde `git archive`, ya borrado.
+
+| Base | Rama | `49f45a7e` |
+|---|---|---|
+| Sin `db:seed` | Rojo: 12 saltados, «faltan catálogos… vehiculo» | Rojo: igual |
+| Con `db:seed` | Verde: 12/12, dos corridas | Verde: 12/12, una corrida |
+
+CI siembra antes de la suite (`gate.yml:187` y `:385`). No se midió en CI. `progress/features/SLT-58.md:40` ya recogió este mismo rojo el 2026-10-29.
+
+### Medidas de `planes-asignacion`
+
+- **Sola, sobre base recreada:** 5 de 5 en verde, 12/12 cada una, con 0 filas de `wallet_movimiento` antes y después.
+- **La rama no escribe en la caja:** el diff de `lib/` y `app/` no añade ninguna escritura de `wallet_movimiento`, y `git diff --quiet` no da cambios en `PlanesService`, `PlanesRepository`, sus fixtures ni el test.
+- **Reproducido con otra conexión que commitea filas sin parar:** rama 2 rojos de 5 y `49f45a7e` 2 de 5, con la misma forma de error (`wallet: 875` contra `874`, `1045` contra `1044`). Se comprobó que las filas seguían creciendo durante cada corrida.
+- **Una corrida previa se descarta:** en ella `49f45a7e` salió verde, pero la ventana del insertor pudo acabar antes. Por eso se repitió alternando árboles.
+
+Propuesta, sin aplicar: contar solo las filas de la empresa del caso. Es un cambio del test, y no entra en el baseline porque nada demuestra que deba quedarse rojo.
+
+### Salida real
+
+- `pnpm run typecheck`: exit 0.
+- `pnpm run lint`: exit 0, 0 errores y 234 avisos, el mismo número que en la tanda 3.
+- Las 2 guardias: 28 de 28.
+- `caja-173-alcance`: 39 de 39. `deudas-d39-d40-modelo-nuevo`: 16 de 16.
+- `pnpm run test:guardias`: 330 archivos en verde y 1 en rojo; 4616 tests en verde, 4 rojos y 1 saltado. El rojo es `dependencias-declaradas-presentes`, en el baseline.
+- `vitest related` de los 4 archivos tocados: 485 archivos, 351 en verde y 134 en rojo; 5878 tests, 5065 en verde, 91 rojos y 722 saltados. Exit 1. **Los 134 están en `tests/baseline-rojos.json`; fuera de él, 0.**
+
+### No verificado
+
+- **Las suites rojas del baseline:** los 134 archivos de `related` no comprueban este cambio; muchos fallan por base sin usuarios o sin empresa en el contexto. Solo se sabe que ninguno es rojo nuevo.
+- **El gate completo con estos arreglos:** lo corre el leader.
+- **Quién commitea en el gate la fila que rompió R4:** el mecanismo está reproducido, el archivo concreto no se identificó.
+- **Coste del `EXISTS`:** sigue sin medir con volumen real.
+- **Lectura sin empresa en la app real:** los llamadores que vi con Grep son las acciones de la caja y de los filtros; no se ejecutaron con un usuario de plataforma. Si ocurriera, saldría el rótulo de hoy, como fija `sinRlsSinEmpresa`.
+- **El grafo de código** no se consultó: Grep y Read.
+
+### Estado de la desechable
+
+Recreada, con 304 migraciones y `db:seed`; 0 empresas y 0 usuarios. La base del gate no tenía catálogos: sin `db:seed`, `demo-qa` volverá a salir roja.
+
+### Archivos
+
+**Modificados:** `lib/repositories/_shared/detalle-modelo-nuevo.ts`, `tests/integration/db/deudas-d39-d40-modelo-nuevo.test.ts`, `tests/unit/guards/{caja-173-alcance,nombres-estado-retirados}.guardia.test.ts`, esta bitácora

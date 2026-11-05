@@ -133,7 +133,7 @@ function fugasDeLecturaDelModelo(codigo: string, columnas: readonly string[]): s
     ...metodosDelDetalle(c).filter((m) => m !== "findMany"),
     ...columnas.filter((col) => new RegExp(`\\b${col}\\b`).test(c)),
     ...sumasEnJs(c),
-    ...columnasSqlDelDetalle(c).filter((col) => !["cierre_id", "tarifa_modelo"].includes(col)),
+    ...columnasSqlDelDetalle(c).filter((col) => !["cierre_id", "organizacion_id", "tarifa_modelo"].includes(col)),
   ];
 }
 
@@ -329,8 +329,9 @@ describe("R33 — el repositorio que sirve las dos cifras NO puede leer los otro
     const modulo = codigoSinComentarios(LECTURA_DEL_MODELO);
     expect(metodosDelDetalle(modulo), "el modulo ya no lee el detalle: la regla mira el vacio").toContain("findMany");
     expect(fugasDeLecturaDelModelo(modulo, columnas)).toEqual([]);
-    // D39, CONTROL DE NO-VACUIDAD: el fragmento SQL existe, y lo de arriba solo le deja estas dos columnas.
-    expect(columnasSqlDelDetalle(modulo).sort()).toEqual(["cierre_id", "tarifa_modelo"]);
+    // D39, CONTROL DE NO-VACUIDAD: el fragmento SQL existe, y lo de arriba solo le deja estas tres columnas.
+    // `organizacion_id` no es dinero: es el filtro de empresa que pide `sql-a-mano-por-empresa`.
+    expect(columnasSqlDelDetalle(modulo).sort()).toEqual(["cierre_id", "organizacion_id", "tarifa_modelo"]);
     expect(fugasDeLecturaDelModelo('const s = Prisma.sql`SELECT cd."monto_x", cd."tarifa_valor_flete"`;', columnas)).toContain("tarifa_valor_flete");
 
     for (const repo of [REPO_CAJA, REPO_ESTADO_CUENTA]) {

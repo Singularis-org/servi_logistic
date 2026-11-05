@@ -367,7 +367,7 @@ describeSiHayBase("D39 — el agregado de la caja dice si incluye cobros del mod
     expect(r.conNuevo.composicion.categoriasConModeloNuevo).toEqual([IVA]);
   });
 
-  it("otra empresa no contamina: la RLS para el `EXISTS`, y como dueno de las tablas se ve", async () => {
+  it("otra empresa no contamina: la RLS y, sin RLS, el filtro de empresa de la propia sentencia", async () => {
     const r = await enTransaccionRevertida(base, async (tx) => {
       await serializarEscriturasReales(tx);
       const B = await crearEmpresa(tx);
@@ -377,14 +377,33 @@ describeSiHayBase("D39 — el agregado de la caja dice si incluye cobros del mod
       const A = await crearEmpresa(tx);
       // `origen_id` es polimorfico y no tiene FK: un movimiento de A puede apuntar al cierre de B.
       await crearMovimiento(tx, deB, FLETE);
-      const sinRls = await tx.$queryRaw<{ categoria: string }[]>(categoriasConModeloNuevoSql({ categoria: FLETE }));
 
+      // Como dueno de las tablas la RLS no actua: lo que quede fuera lo saca el texto de la sentencia.
+      const sembrado = await tx.$queryRaw<{ categoria: string; organizacion: string }[]>`
+        SELECT w."categoria"::text AS "categoria", w."organizacion_id" AS "organizacion"
+        FROM "wallet_movimiento" w WHERE w."origen_id" = ${deB}`;
+      const sinRlsComoA = await tx.$queryRaw<{ categoria: string }[]>(categoriasConModeloNuevoSql({}));
       const lecturaDeA = await leerCaja(tx, A.org);
       await fijarEmpresa(tx, B.org);
+      const sinRlsComoB = await tx.$queryRaw<{ categoria: string }[]>(categoriasConModeloNuevoSql({}));
+      await fijarEmpresa(tx, "");
+      const sinRlsSinEmpresa = await tx.$queryRaw<{ categoria: string }[]>(categoriasConModeloNuevoSql({}));
+      await fijarEmpresa(tx, B.org);
       const lecturaDeB = await leerCaja(tx, B.org);
-      return { sinRls, lecturaDeA, lecturaDeB };
+      return { A: A.org, B: B.org, sembrado, sinRlsComoA, sinRlsComoB, sinRlsSinEmpresa, lecturaDeA, lecturaDeB };
     });
-    expect(r.sinRls.map((f) => f.categoria)).toContain(FLETE);
+    // CONTROL DE NO-VACUIDAD: las dos filas apuntan al cierre de B, una de cada empresa.
+    expect(r.sembrado.map((f) => [f.categoria, f.organizacion]).sort()).toEqual(
+      [
+        [FLETE, r.A],
+        [IVA, r.B],
+      ].sort(),
+    );
+    // La fila de A que apunta a B cae por el `EXISTS`, y la de B por la empresa de la sesion.
+    expect(r.sinRlsComoA).toEqual([]);
+    // La de A tampoco se le cuela a B, que solo ve la suya.
+    expect(r.sinRlsComoB.map((f) => f.categoria)).toEqual([IVA]);
+    expect(r.sinRlsSinEmpresa).toEqual([]);
 
     expect(r.lecturaDeA.composicion.categoriasConModeloNuevo).toEqual([]);
     expect(r.lecturaDeA.conceptos).toEqual([{ categoria: FLETE, movimientos: 1 }]);

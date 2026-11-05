@@ -91,10 +91,14 @@ export async function consolidacionesConModeloNuevo(
  * D39 — la condicion sobre la fila `w` de `wallet_movimiento`: nace de un cierre con alguna gestion del
  * modelo nuevo. Es el criterio de `incluyeModeloNuevo` de cada fila del libro, en SQL, para los agregados
  * que no tienen fila: sin periodo, la pantalla mira toda la historia, y una lista de ids en un `IN`
- * creceria hasta el tope de parametros de Postgres. Solo nombra `cierre_id` y `tarifa_modelo` (guardia
- * `caja-173-alcance`). La empresa la pone la RLS de las dos tablas.
+ * creceria hasta el tope de parametros de Postgres. De `cierre_detail` solo nombra `cierre_id`,
+ * `organizacion_id` y `tarifa_modelo` (guardia `caja-173-alcance`).
+ *
+ * La empresa va en el texto, ademas de en la RLS, y con la misma expresion que sus politicas: `origen_id` es
+ * polimorfico y no tiene FK, asi que nada impide que apunte al cierre de otra empresa. Sin contexto de empresa
+ * no sale ninguna fila.
  */
-export const FILA_DE_CAJA_CON_MODELO_NUEVO_SQL = Prisma.sql`(w."origen_tipo"::text = 'cierre_dia' AND EXISTS (
+export const FILA_DE_CAJA_CON_MODELO_NUEVO_SQL = Prisma.sql`(w."origen_tipo"::text = 'cierre_dia' AND w."organizacion_id" = NULLIF(current_setting('app.organizacion_id', true), '') AND EXISTS (
   SELECT 1 FROM "cierre_detail" cd
-  WHERE cd."cierre_id" = w."origen_id" AND cd."tarifa_modelo" = 'nuevo'
+  WHERE cd."cierre_id" = w."origen_id" AND cd."organizacion_id" = w."organizacion_id" AND cd."tarifa_modelo" = 'nuevo'
 ))`;
