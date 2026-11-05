@@ -59,5 +59,5 @@ Ninguna.
 
 ## Cierre
 PR #74 mergeado a `dev` por Carlos (42328714): modelo de tarifas flexibles y resolver único.
-YA ESTÁ EN PRODUCCIÓN: salió con el PR #73 (`dev` -> `prod`, 2026-11-04). Allí el modelo se activa con que exista una fila en `tarifa_valor`, sin interruptor (`usaModeloNuevo`); producción medida el 2026-11-05: 0 filas. SLT-54, que trae el interruptor, aún no está en `prod`.
+YA ESTÁ EN PRODUCCIÓN: salió con el PR #73 (`dev` -> `prod`, 2026-11-04). Allí el modelo se activa con que exista una fila en `tarifa_valor`, sin interruptor (`usaModeloNuevo`); en `origin/prod` nada fuera de tests llama a `serviciosDeTarifas`, así que ninguna pantalla escribe esa tabla; producción medida el 2026-11-05: 0 filas. SLT-54, que trae el interruptor, aún no está en `prod`.
 Deudas: ninguna propia.

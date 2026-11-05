@@ -403,7 +403,7 @@ Corregido. Comprobado:
 - **El servidor del spec solo**, por la sonda tardía de arriba.
 - **El CI**, donde `retries: 1` y `failOnFlakyTests` cambian lo que se ve.
 - **`e2e/mi-wallet.spec.ts:71`:** sigue con el clic crudo, fuera de alcance.
-- **SQL fuera de una plantilla en el módulo:** la regla nueva no lee cadenas normales. Ejecutarlas exige `$queryRawUnsafe` o `Prisma.raw`, que caen en `fugasDeLecturaDelModelo` y en `escriturasCrudas`.
+- **SQL fuera de una plantilla en el módulo:** la regla nueva no lee cadenas normales. La revisión, vuelta 2, comprobó que `Prisma.sql([cadena])` y `new Prisma.Sql([...], [])` no caen: queda como D45.
 - **El grafo de código** no se consultó: Grep y Read.
 
 ### Estado de la desechable

@@ -249,10 +249,10 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Qué falta:** leer la etiqueta del nivel, como `TarifasZonas.tsx` (SLT-54, T7.3).
 - **Dueño:** Carlos Restrepo (decidir si va a ficha).
 
-### D42 — `e2e/wallet-mensajeros.spec.ts:81`, clic crudo e inestable
+### D42 — `e2e/wallet-mensajeros.spec.ts:58`, test inestable sin causa medida
 - **Origen:** tanda I2 y revisión de SLT-54, vuelta 3 (2026-11-05). `dinero` dio 44/0/0, 42/1/0 con 1 sin correr y 44/0/0; cayó `:58` por botón desmontado. El spec solo dio 45 de 45. El diff no lo explica, y ya había caído antes en CI. Causa sin medir. El clic de `:81` abre un panel sin `abrirCon` (`e2e/_escenarios/pulsar.ts`).
 - **Medido (2026-11-05, rama `chore/deudas-2026-11-05`):** `:58` y `:81` son el mismo test: `:58` lo declara y `:81` es el paso que cayó. La caída anterior en CI fue en otro paso (`:63`). El clic pasó primero a `abrirCon` y `dinero` dio 49/0/0 en 3 corridas sin el cambio y en 5 con él: el fallo no se reprodujo, así que esto no demuestra causa ni arreglo.
-- **Qué clic quedó:** `desplegar` (`e2e/_escenarios/pulsar.ts`), que lee `aria-expanded` y solo pulsa si sigue cerrado. `abrirCon` prohíbe los controles que alternan. `desplegar` vivía en `e2e/wallet.spec.ts` y pasó a `pulsar.ts`, para los dos specs.
+- **Qué clic quedó:** `desplegar` (`e2e/_escenarios/pulsar.ts`), que lee `aria-expanded` y solo pulsa si sigue cerrado. `abrirCon` prohíbe los controles que alternan. `desplegar` vivía en `e2e/wallet.spec.ts` y pasó a `pulsar.ts`, para los dos specs. Con `desplegar`, `dinero` dio 49/0/0 en 1 corrida.
 - **Qué falta:** si vuelve a caer en CI, buscar la causa. `playwright.config.ts:70` usa `on-first-retry`, así que el intento que cae no guarda traza; solo la guarda el reintento. `e2e/mi-wallet.spec.ts:71` tiene el mismo clic crudo.
 - **Dueño:** Carlos Restrepo.
 
@@ -264,4 +264,14 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 ### D44 — Coste del `EXISTS` de D39 en la caja, sin medir con volumen real
 - **Origen:** revisión de `chore/deudas-2026-11-05` (`progress/review_deudas-2026-11-05.md`, menor 1). Datos sintéticos: 266-376 ms con 500.000 filas de `cierre_detail` y unos 1.430 ms con 2.500.000, frente a 58-155 ms del agregado. El peor caso es la empresa sin gestiones nuevas. Analítica lo paga sin leer el dato (`finanzas/cargar-kpis.ts:142`), y si esa lectura falla cae el resumen entero de la caja.
 - **Qué falta:** medir el volumen de producción antes de promover EP-8. Si duele, índice parcial `(cierre_id) WHERE tarifa_modelo = 'nuevo'`, que en la medida lo bajó a 85-113 ms.
+- **Dueño:** Carlos Restrepo.
+
+### D45 — La guardia `caja-173-alcance` solo lee SQL entre backticks
+- **Origen:** revisión de `chore/deudas-2026-11-05`, vuelta 2, V2-1. La regla de vocabulario cubre cualquier alias, pero dejó de ver una cadena normal con `cd."col"`, `Prisma.sql(['…'])` y `new Prisma.Sql([...], [])`. El módulo real no hace nada de eso.
+- **Qué falta:** que la regla lea también las cadenas normales, con contraprueba.
+- **Dueño:** Carlos Restrepo.
+
+### D46 — `caja-backfill` sale verde sin comprobar nada en una base sin usuarios
+- **Origen:** misma revisión, por lectura, sin ejecutar. `tests/integration/db/caja-backfill.test.ts:176,215,303,334,363` hacen `return` sin usuarios. Con datos de E2E en la base falla con `referencia a otra empresa`, porque `:80-81` toma usuarios y zona de cualquier empresa. Preexistente.
+- **Qué falta:** sembrar una empresa propia en el test y quitar los `return`.
 - **Dueño:** Carlos Restrepo.
