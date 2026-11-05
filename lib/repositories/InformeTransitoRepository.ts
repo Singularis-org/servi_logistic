@@ -10,9 +10,22 @@
 //
 // Tres consultas fijas por generacion (`zonas`, `filasEnAlerta`, `contarSinHito`): el numero de
 // consultas no depende del numero de ordenes (R40), y solo vuelven las ordenes en alerta.
+//
+// SLT-71 (design §4; R8–R12) — LOS NOMBRES DE CANTON Y DISTRITO SALEN DEL CATALOGO. `filasEnAlerta` ya
+// no une con `canton` ni con `distrito`: devuelve los ids de la orden y los nombra con el catalogo del
+// pais de la empresa (`deLaEmpresa`), que se carga una vez por instancia y solo si hay filas (R11). Son
+// consultas fijas: no dependen del numero de ordenes (R10). Un canton o distrito que no este en el
+// catalogo hace FALLAR la generacion, despues de dejar una linea en el log de errores con solo ids
+// (R12): un informe con un lugar sin nombre no se manda.
 import { Prisma } from "@prisma/client";
 import type { PrismaClient } from "@prisma/client";
+import { defaultLogger, type ErrorLogger } from "@/lib/errors/logger";
 import type { IInformeTransitoRepository } from "@/lib/interfaces/repositories/IInformeTransitoRepository";
+import {
+  CatalogoGeograficoRepository,
+  type CatalogoPrismaClient,
+} from "@/lib/repositories/CatalogoGeograficoRepository";
+import { CatalogoGeograficoInconsistente, nodo } from "@/lib/services/geografia-dominio";
 import type { Hito } from "@/lib/whatsapp-envios/informes/transito/parametros";
 import type {
   ConsultaTransito,
@@ -20,8 +33,14 @@ import type {
   ZonaInforme,
 } from "@/lib/whatsapp-envios/informes/transito/tipos";
 
-/** Cliente minimo: solo lecturas crudas. Sin `$executeRaw`: este repo no puede escribir (R39). */
-export type InformeTransitoPrismaClient = Pick<PrismaClient, "$queryRaw">;
+/**
+ * Cliente minimo: solo lecturas crudas, mas los modelos del catalogo (SLT-71). Sin `$executeRaw`: este
+ * repo no puede escribir (R39).
+ */
+export type InformeTransitoPrismaClient = Pick<PrismaClient, "$queryRaw"> & CatalogoPrismaClient;
+
+/** El prefijo de la linea de log de un nodo ausente (R12 de SLT-71). */
+export const PREFIJO_LOG_NODO_AUSENTE = "analitica - informe transito - error: ";
 
 /**
  * El instante del hito de la orden `c` (design §1). Mapa CERRADO: el hito elige un fragmento fijo.
@@ -77,15 +96,26 @@ interface FilaCruda {
   estado: string;
   zona_id: string;
   destinatario: string;
-  canton: string;
-  distrito: string | null;
+  canton_id: string;
+  distrito_id: string | null;
   monto_cobrar: string | null;
   hito_at: Date;
   ultima_at: Date | null;
 }
 
 export class InformeTransitoRepository implements IInformeTransitoRepository {
-  constructor(private readonly prisma: InformeTransitoPrismaClient) {}
+  // SLT-71 (R13, R16): el catalogo, uno por instancia y creado al primer uso.
+  private catalogoRepo: CatalogoGeograficoRepository | null = null;
+
+  /** `logger`: el de errores de las actions; los tests inyectan un doble (design §4). */
+  constructor(
+    private readonly prisma: InformeTransitoPrismaClient,
+    private readonly logger: ErrorLogger = defaultLogger,
+  ) {}
+
+  private catalogoGeografico(): CatalogoGeograficoRepository {
+    return (this.catalogoRepo ??= new CatalogoGeograficoRepository(this.prisma));
+  }
 
   async zonas(): Promise<ZonaInforme[]> {
     const filas = await this.prisma.$queryRaw<{ id: string; nombre: string; es_central: boolean }[]>`
@@ -100,12 +130,10 @@ export class InformeTransitoRepository implements IInformeTransitoRepository {
       "cand" AS (${candidatas(consulta)})
       SELECT c."id" AS "orden_id", c."num_remision", c."num_guia", c."estado", c."zona_id",
              c."destinatario", c."monto_cobrar"::text AS "monto_cobrar",
-             k."nombre" AS "canton", d."nombre" AS "distrito",
+             c."canton_id", c."distrito_id",
              hito."at" AS "hito_at", ult."at" AS "ultima_at"
         FROM "cand" c
         JOIN "cortes" z ON z."zona_id" = c."zona_id"
-        JOIN "canton" k ON k."id" = c."canton_id"
-        LEFT JOIN "distrito" d ON d."id" = c."distrito_id"
         CROSS JOIN LATERAL (${FRAGMENTO_HITO[consulta.hito]}) hito
         LEFT JOIN LATERAL (
           SELECT h."created_at" AS "at"
@@ -116,15 +144,41 @@ export class InformeTransitoRepository implements IInformeTransitoRepository {
         ) ult ON true
        WHERE hito."at" IS NOT NULL
          AND hito."at" < z."corte"`;
-    return filas.map((f) => ({
+    // R11: sin filas en alerta no se carga el catalogo.
+    if (filas.length === 0) return [];
+    const { catalogo } = await this.catalogoGeografico().deLaEmpresa();
+    const nombreDe = (id: string): string | null => nodo(catalogo, id)?.nombre ?? null;
+
+    // R12: se recorren TODAS las filas antes de fallar, para que el log nombre cada nodo ausente.
+    const ausentes = new Set<string>();
+    const ordenesAfectadas = new Set<string>();
+    const nombradas = filas.map((f) => {
+      const canton = nombreDe(f.canton_id);
+      const distrito = f.distrito_id === null ? null : nombreDe(f.distrito_id);
+      if (canton === null) ausentes.add(f.canton_id);
+      if (f.distrito_id !== null && distrito === null) ausentes.add(f.distrito_id);
+      if (canton === null || (f.distrito_id !== null && distrito === null)) ordenesAfectadas.add(f.orden_id);
+      return { f, canton: canton ?? "", distrito };
+    });
+    if (ausentes.size > 0) {
+      const nodos = [...ausentes].sort();
+      const ordenes = [...ordenesAfectadas].sort();
+      // Solo ids: ni nombres de lugar, ni destinatario, ni monto (R12, misma regla que R18).
+      this.logger.logError(
+        `${PREFIJO_LOG_NODO_AUSENTE}nodos ausentes del catalogo=[${nodos.join(",")}] ordenes=[${ordenes.join(",")}]`,
+      );
+      throw new CatalogoGeograficoInconsistente(nodos[0], "nodo de una orden en tránsito ausente del catálogo");
+    }
+
+    return nombradas.map(({ f, canton, distrito }) => ({
       ordenId: f.orden_id,
       numRemision: f.num_remision,
       numGuia: f.num_guia === null ? null : Number(f.num_guia),
       estado: f.estado,
       zonaId: f.zona_id,
       destinatario: f.destinatario,
-      canton: f.canton,
-      distrito: f.distrito,
+      canton,
+      distrito,
       montoCobrar: f.monto_cobrar,
       hitoAt: f.hito_at,
       ultimaTransicionAt: f.ultima_at,

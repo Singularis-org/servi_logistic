@@ -66,7 +66,7 @@
 
 ## T4 — Tránsito [T2.1]
 
-- [ ] **T4.1** [P] `InformeTransitoRepository.filasEnAlerta` sin `JOIN` y con los nombres del
+- [x] **T4.1** [P] `InformeTransitoRepository.filasEnAlerta` sin `JOIN` y con los nombres del
   catálogo, sin cargarlo cuando no hay filas. Un nodo ausente escribe la línea
   `analitica - informe transito - error: …` con `ErrorLogger` (inyectable, por defecto
   `defaultLogger`) y la generación falla (design §4). **Hecho:** typecheck en verde. `informe-transito-*.test.ts` (unitarios y de integración) pasan sin
