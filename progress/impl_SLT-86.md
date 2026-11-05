@@ -154,3 +154,93 @@ Todos los casos están en `tests/integration/db/migracion-slt86-ida-y-vuelta.tes
 - `asignarEnTx` todavía escribe `plan_ciclo_corto_desde_at`, que no existe desde T1. Lo arregla T8.
 - `docs/architecture.md` (línea 231) todavía nombra `inicioDelCicloEnCurso` y `_fixtures/ciclo-corto.ts`, que se
   retiraron. Lo tiene que actualizar quien mantenga el perfil.
+
+## Tanda 3 — T5, T6 y T7 (2026-11-05)
+
+### Commits
+- `a226affb` feat(SLT-86): T5 costo base, tramo, siguiente cobro e historial.
+- `1a6c37ca` feat(SLT-86): T6 costeo y consumo por período.
+- `124e58c0` feat(SLT-86): T7 rastro, versión y mensajes.
+
+### Archivos
+- **T5**, modificados: `lib/planes/cobro.ts` (`montoDelPeriodo` con factor y descuento, `costoDelTramo`,
+  `costoDelPeriodoEnCurso`, `siguienteCobro(tipo, ahora, pendiente)`, `cobroDelPlan` con la forma de T2 y
+  `tipoCobroDelHistorial` con `desde`), `lib/types/planes.ts` (`AsignacionDePlan.desde`),
+  `tests/unit/planes/cobro.test.ts`, `tests/unit/services/planes-service-lecturas.test.ts` (solo la lista de
+  claves de una asignación). Creado: `tests/unit/planes/cobro-periodo.test.ts`.
+- **T6**, modificados: `lib/planes/costeo.ts` (recibe el costo del período ya calculado; sin
+  `anualNoAplicaAlCosto`), `lib/planes/consumo.ts` (`PlanConUsoLeido` con `entrada`, `precioDelPeriodo` y
+  `pendiente`, sin `ancla` ni `cortoDesde`; sin fila de órdenes; `ordenesDelPeriodo`; `reinicioDelCiclo(tipo,
+  ahora)`), `lib/planes/ciclo.ts` (comentario), `lib/planes/mensajes.ts` (`textoDelPrecio` y `base.periodo`,
+  adelantados porque `planConConsumo` los llama), tests `costeo`, `costeo-porcentual`,
+  `costo-concreto-porcentual`, `consumo`, `mensajes-costo-porcentual`. Creado:
+  `tests/unit/planes/costeo-periodo.test.ts`.
+- **T7**, modificados: `lib/planes/rastro.ts` (claves `descuento_<periodo>`, `precio` solo con el mensual,
+  topes sin órdenes), `lib/planes/mensajes.ts` (líneas de descuentos y del `tope_ordenes_ciclo` de la
+  migración; topes viejos con órdenes), tests `rastro`, `rastro-costeo`, `rastro-costo-porcentual` y
+  `tests/unit/services/email/plantilla-cambio-plan.test.ts`. Creados: `tests/unit/planes/rastro-periodo.test.ts`
+  y `tests/unit/planes/mensajes-periodo.test.ts`.
+- `tasks.md`: T5, T6 y T7 marcadas.
+
+### Mapa R → test (de esta tanda)
+
+| R | Test |
+|---|---|
+| R7 | `costeo-periodo` (`ordenesDelPeriodo` = `costeo.ordenes`, sin fila de órdenes) |
+| R9 | `cobro-periodo` (factores, 100.01 → 50.01, 50 000 → 100 000 y 600 000, sin precio en los cuatro tipos) |
+| R10 | `cobro-periodo` (95 000.00, 0.00, 540 000.00, un descuento no toca otro período, un solo redondeo) |
+| R12 | `cobro-periodo` (22 000.00, 6 200.00, 93 698.63; tramo con descuento; período completo) |
+| R15 (TS) | `costeo-periodo` (la base sale de `precioDelPeriodo`, no del precio vigente) |
+| R24 | `mensajes-periodo` («{mensual} / mes», «Descuento {tipo}: …» en el orden de los tipos, sin órdenes) |
+| R27 | `cobro-periodo` (siguiente cobro por tipo y con pendiente; período desde–hasta y tramo; anual con el 1 de enero), `consumo` (reinicio), `costeo-periodo` |
+| R28 | `costeo-periodo` (fijo y porcentual, período completo y tramo, sin precio, sin aviso del anual), `costeo`, `costeo-porcentual` |
+| R30 | `cobro-periodo` (filas nuevas con tipo y fecha; filas viejas igual), `rastro-periodo` (precio con anual, topes con órdenes, fila de la migración), `mensajes-periodo` |
+| R31 | `rastro-periodo` (antes y después por descuento, sin cambios no escribe, sin precio deja los descuentos en null, líneas de detalle, «Mi plan» y correo), `plantilla-cambio-plan` |
+
+### Salida real
+- Tests, por ruta (`pnpm exec vitest run <archivos>`): 14 archivos, 221/221.
+  - `cobro-periodo` 34, `cobro` 15, `costeo-periodo` 12, `costeo` 23, `costeo-porcentual` 19,
+    `costo-concreto-porcentual` 6, `consumo` 30, `mensajes-costo-porcentual` 15, `mensajes-periodo` 10,
+    `rastro-periodo` 12, `rastro` 9, `rastro-costeo` 9, `rastro-costo-porcentual` 13, `plantilla-cambio-plan` 14.
+- eslint de todos los archivos tocados: 0 errores y 0 avisos.
+- typecheck (`NODE_OPTIONS=--max-old-space-size=8192`): **230 errores en 54 archivos** (antes de la tanda: 277).
+  Ninguno en `cobro.ts`, `costeo.ts`, `consumo.ts`, `rastro.ts`, `mensajes.ts`, `ciclo.ts`, `lib/types/planes.ts`
+  ni en los tests de `tests/unit/planes/` y del correo.
+  - Nuevos por el contrato de `PlanConUsoLeido` (T9): `MiPlanService.ts` (1), `PlanesRepository.ts` (`ancla`),
+    `plan-de-la-empresa-porcentual` (1), `planes-service-lecturas` (+1), `mi-plan-service`.
+  - Nuevos por `AsignacionDePlan.desde` y la forma de `CobroDelPlan`/`CosteoDelCiclo` (frontend, T11/T12):
+    `PlanEmpresa`, `PlanEmpresaTipoCobro`, `PlanEmpresaCostoPorcentual`, `MiPlanModule`, `ConsumoDelPlanCosteo`,
+    `ConsumoDelPlanPorcentual`, `PlanVistaCosteo`, `planes-lecturas-plataforma` (+1 o +2 cada uno).
+
+### Tests retirados
+- En `cobro.test.ts`, el bloque D8 (siguiente cobro en el aniversario del ancla, 7 casos) y el D9 (forma
+  `montoPeriodo`): R27 los sustituye por el período de calendario y viven en `cobro-periodo`.
+- En `consumo.test.ts`, los dos bloques de `reinicioDelCiclo` por ancla y del ciclo corto (SLT-58 R5, R40; 11 casos):
+  el reinicio es ahora el fin del período de calendario (R27) y el ciclo corto se retiró (P4 = a). Los sustituye
+  el bloque «SLT-86 — reinicioDelCiclo». La fila «órdenes del ciclo» sale de `filasDeConsumo` (R8).
+- En `costeo.test.ts` y `costeo-porcentual.test.ts`, los casos de `anualNoAplicaAlCosto` (R28 lo retira),
+  sustituidos por «un descuento no toca el costo por orden».
+- En `plantilla-cambio-plan.test.ts`, la línea «Órdenes por ciclo» y el tope pasado de órdenes (R8).
+
+### Avisos de la tanda
+- **Rastro (design §5.4).** `precio` guarda solo `{tipo, mensual}` y cada descuento va en `descuento_<periodo>`
+  (`DescuentoPeriodo | null`). Un alta trae las cuatro claves. `PlanDetalle.lineasDelRastro` (T11) tiene que
+  pasar `descuento_*` y `tope_ordenes_ciclo` a `lineasDeCambioDelPlan` y pintar los descuentos del alta.
+- **Textos elegidos** donde §7.1 no fija el detalle (a confirmar):
+  - el tipo en minúscula: «Descuento anual: 10.00 %»;
+  - las partes del precio unidas con « · »: «50000.00 / mes · Descuento anual: 10.00 %»;
+  - el lado vacío de un descuento en «qué cambia»: «sin descuento»;
+  - las filas viejas: «15000.00 / mes · 150000.00 al año».
+  - No cambié los textos de SLT-83 «Cobrado en el ciclo» ni «Total del ciclo hasta hoy»: §7.1 no los toca.
+- **R30, fecha de efecto:** `tipoCobroDelHistorial` devuelve `desde` (el primer segmento de `valor_nuevo` si es
+  una fecha) y `AsignacionDePlan` gana `desde: string | null`. Lo pinta T11. Las filas de SLT-58 con solo la
+  fecha de inicio también la devuelven.
+- **Contrato para T9:** `PlanConUsoLeido` pide `entrada`, `precioDelPeriodo` (`precio_del_periodo` de
+  `plan_de_la_empresa`) y `pendiente` (`cambio_empresa`, sin actor). `MiPlanRepository`,
+  `PlanesRepository.planDeEmpresa` y los dobles de `mi-plan-service` y `planes-service-lecturas` aún no lo
+  arman. Esos dos tests de servicio fallan en ejecución (11 casos) hasta T9.
+- `inicioDelSiguienteCiclo` sigue en `ciclo.ts`. `consumo.ts` ya no la usa; queda solo para la vista previa de
+  `PlanesRepository` (línea 554), y se borra en T9.
+- `ordenesYaPasadas` (aviso de órdenes de SLT-58) sigue en `mensajes.ts` porque lo importa
+  `AvisosDeTopes.tsx`; se borra cuando T12 quite ese aviso (R8).
+- Grafo MCP: no lo consulté; trabajé con Grep/Read.
