@@ -46,7 +46,7 @@ export const TIPO_LABEL: Record<WalletMovimientoTipo, string> = {
   egreso: "Sale",
 };
 
-export { CATEGORIA_LABEL } from "@/lib/constants/wallet-rotulos";
+export { CATEGORIA_LABEL, conceptoDeMovimientoCaja } from "@/lib/constants/wallet-rotulos";
 
 // ── SL-39 (design §5) — el nombre del impuesto, en UN solo sitio ──
 //

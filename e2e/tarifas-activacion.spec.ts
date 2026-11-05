@@ -87,6 +87,14 @@ async function abrirResuelto(page: Page, m: MensajeroE2E): Promise<Locator> {
   return detalle;
 }
 
+/** La columna de una tarjeta de cierre, que vive detrás de su desplegable. */
+async function ajustesDeLaTarjeta(comprobante: Locator, m: MensajeroE2E): Promise<Locator> {
+  await comprobante.getByRole("button", { name: `Ver detalles del cierre de ${m.nombre}` }).click();
+  const ajustes = comprobante.getByRole("region", { name: "Ajustes" });
+  await expect(ajustes).toBeVisible();
+  return ajustes;
+}
+
 /** Despliega la única gestión de esa pestaña y devuelve su sección de cobros. */
 async function cobrosDeLaGestion(detalle: Locator, pestana: RegExp): Promise<Locator> {
   const ordenes = detalle.getByRole("region", { name: "Órdenes del cierre" });
@@ -289,6 +297,28 @@ test.describe.serial("Tarifas — digitar, activar y cierre (R67)", () => {
     await expect(detalleViejo.getByText("Ingreso de bodega", { exact: true })).toHaveCount(0);
     await expect(detalleViejo.getByText("Manual (mensajero)", { exact: true })).toBeVisible();
     await expect(detalleViejo.getByRole("region", { name: "Órdenes del cierre" }).getByText("Ingreso de bodega:", { exact: true })).toHaveCount(0);
+    await detalleViejo.getByRole("button", { name: "Cerrar", exact: true }).last().click();
+    await expect(detalleViejo).toHaveCount(0);
+
+    // R71: la tarjeta del listado dice lo mismo que su detalle, cada una con su cierre.
+    const historico = satelite.getByRole("region", { name: "Histórico" });
+    const tarjetaNueva = await ajustesDeLaTarjeta(historico.getByRole("region", { name: `Comprobante del cierre de ${cierreNuevo.m.nombre}` }), cierreNuevo.m);
+    await expect(tarjetaNueva.getByText("Ingreso de bodega", { exact: true }).locator("..")).toContainText(importe(570));
+    await expect(tarjetaNueva).not.toContainText("devoluciones a origen");
+    const tarjetaVieja = await ajustesDeLaTarjeta(historico.getByRole("region", { name: `Comprobante del cierre de ${cierreViejo.m.nombre}` }), cierreViejo.m);
+    await expect(tarjetaVieja.getByText("Ingreso de bodega por devoluciones a origen", { exact: true }).locator("..")).toContainText(importe(300));
+
+    // R71: la consolidación junta los dos cierres, así que el total se lee como nuevo sobre 300 + 570.
+    await satelite.goto("/cierres-admin");
+    await satelite.getByRole("group", { name: "Tipo de cierre" }).getByRole("button", { name: "Bodega" }).click();
+    const bodega = satelite.getByRole("region", { name: "Cierre de bodega" });
+    await expect(bodega.getByRole("region", { name: "Ingreso de bodega a consolidar", exact: true })).toContainText(importe(870));
+    await expect(bodega.getByRole("region", { name: "Ingreso de bodega por devoluciones a origen a consolidar" })).toHaveCount(0);
+    const aConsolidar = bodega.getByRole("region", { name: "Cierres del día a consolidar" });
+    const consolidableNuevo = await ajustesDeLaTarjeta(aConsolidar.getByRole("region", { name: `Comprobante del cierre de ${cierreNuevo.m.nombre}` }), cierreNuevo.m);
+    await expect(consolidableNuevo.getByText("Ingreso de bodega", { exact: true })).toBeVisible();
+    const consolidableViejo = await ajustesDeLaTarjeta(aConsolidar.getByRole("region", { name: `Comprobante del cierre de ${cierreViejo.m.nombre}` }), cierreViejo.m);
+    await expect(consolidableViejo.getByText("Ingreso de bodega por devoluciones a origen", { exact: true })).toBeVisible();
     await satelite.context().close();
   });
 

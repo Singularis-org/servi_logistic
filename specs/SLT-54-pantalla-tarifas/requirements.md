@@ -247,8 +247,11 @@ variantes de SLT-52 R5 y R6. *Referencia*: lo que rige hoy, mostrado junto a un 
   «Ingreso de bodega», sin «por devoluciones a origen» y sin las sublíneas «Automático (por plazo vencido)» y
   «Manual (mensajero)», y la fila de cada gestión con importe de satélite DEBE enseñarlo, cualquiera que sea su
   resultado, de modo que las filas sumen el total. Los cierres del modelo viejo NO DEBEN cambiar ni texto ni
-  importe. *Abierto:* la tarjeta del listado y el total de la consolidación no reciben el modelo del servidor y
-  siguen con el rótulo viejo.
+  importe. MIENTRAS un cierre tiene alguna gestión del modelo nuevo, su tarjeta del listado y su tarjeta de la
+  consolidación DEBEN usar ese mismo rótulo; MIENTRAS alguno de los consolidables la tiene, también el total de la
+  consolidación. *Nota (tanda H2):* ese dato llega del servidor y un conjunto mixto se lee como nuevo. Con el mismo
+  dato, el libro de la caja nombra el cobro de un cierre así «Flete de gestiones no entregadas cobrado a la tienda»
+  y «IVA del flete de gestiones no entregadas cobrado a la tienda» (menor 6). Fuera: D38 y D39 de `progress/deudas.md`.
 - **R72.** MIENTRAS una fila de la descarga de cierres es `tarifaModelo: "nuevo"`, DEBE poblar flete, total, pago
   al mensajero e ingreso de bodega con cualquier resultado que los tenga, de modo que cada columna sume lo que da
   el comprobante. Las filas del modelo viejo NO DEBEN cambiar.

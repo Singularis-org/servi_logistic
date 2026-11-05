@@ -231,3 +231,13 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** review de SLT-54 (2026-11-05, `progress/review_SLT-54.md`, menor 4). Fallan por su siembra (14 fallan y 6 se saltan) y `tests/baseline-rojos.json` los tapa también en `gate-completo`. No hay regresión: con copias temporales que crean sus FK en la transacción, 20 de 20 en verde. Pero son un `WHERE` de dinero sin vigilancia en CI.
 - **Qué falta:** portar los dos a `crearFksDeOrden` (SL-31) y sacarlos del baseline.
 - **Dueño:** Carlos Restrepo (decidir si va a ficha).
+
+### D38 — El libro de la tienda sigue diciendo «devolución a origen» en el cobro del modelo nuevo
+- **Origen:** tandas H1 y H2 de SLT-54 (2026-11-05, `progress/impl_SLT-54.md`). `desglose-tienda-labels.ts:47` y `:50` repiten la frase del menor 6 de la revisión, y `WalletTiendaMovimientoDTO` no trae `incluyeModeloNuevo`.
+- **Qué falta:** añadir el campo a ese DTO, como en `WalletMovimientoDTO`, y rotular por fila igual que `conceptoDeMovimientoCaja`. Pendiente antes de cerrar EP-8.
+- **Dueño:** Carlos Restrepo.
+
+### D39 — `ComposicionGananciaCard` y el filtro del libro rotulan por categoría, sin fila
+- **Origen:** tandas H1 y H2 de SLT-54 (2026-11-05, `progress/impl_SLT-54.md`). `ComposicionGananciaCard` suma por categoría sobre agregados, y el filtro por concepto de `LibroCajaBarra` elige una categoría: ninguno tiene una fila a la que preguntar el modelo. Los dos siguen diciendo «devolución a origen», aunque el grupo incluya cobros del modelo nuevo.
+- **Qué falta:** decidir un rótulo cierto para los dos modelos o traer el dato en el agregado. Pendiente antes de cerrar EP-8.
+- **Dueño:** Carlos Restrepo.

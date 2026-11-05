@@ -89,7 +89,6 @@ import {
   RECHAZO_MANUAL_BADGE_LABEL,
   RECHAZO_MANUAL_BADGE_NOTA,
   PAGO_MENSAJERO_LABEL,
-  INGRESO_BODEGA_RECHAZOS_LABEL,
   rotuloIngresoBodega,
   INGRESO_BODEGA_RECHAZOS_SLA_LABEL,
   INGRESO_BODEGA_RECHAZOS_MANUAL_LABEL,
@@ -768,6 +767,7 @@ export function CierreFacturaResumen({
       solicitadoAt={cierre.solicitadoAt}
       resueltoAt={cierre.resueltoAt}
       motivoRechazo={motivoRechazoVisible(cierre.estado, cierre.motivoRechazo)}
+      modeloNuevo={cierre.incluyeModeloNuevo === true}
     />
   );
 }
@@ -848,6 +848,11 @@ interface HojaResumenProps {
    * compara un importe con otro: si falta algo lo dice `hayFaltantePorRecibir` sobre el string.
    */
   marcaConciliacion?: MarcaConciliacionComprobante;
+  /**
+   * SLT-54 (R71): el cierre tiene alguna gestión del modelo nuevo; entonces ese total incluye entregas y
+   * nombrar la devolución sería falso. Ausente ⇒ el rótulo de siempre.
+   */
+  modeloNuevo?: boolean;
 }
 
 /** Los seis campos de la marca tal como viajan en `CierreBodegaResumen`. */
@@ -885,6 +890,7 @@ function HojaResumen({
   audiencia = "admin",
   cascadaCentral,
   marcaConciliacion,
+  modeloNuevo = false,
 }: Readonly<HojaResumenProps>) {
   const [open, setOpen] = useState(false);
   // Design §7.2: en la hoja del mensajero no entra la plata de la empresa.
@@ -1039,7 +1045,7 @@ function HojaResumen({
                     mensajero, igual que en su detalle (design §7.2). */}
                 {esMensajero ? null : (
                   <LineaMonto
-                    label={INGRESO_BODEGA_RECHAZOS_LABEL}
+                    label={rotuloIngresoBodega(modeloNuevo)}
                     monto={totalIngresoBodegaRechazos}
                     ultima
                   />
@@ -1259,6 +1265,7 @@ export function CierreConsolidableFacturaResumen({
       totales={cierre.totales}
       totalPagoMensajero={cierre.totalPagoMensajero}
       totalIngresoBodegaRechazos={cierre.totalIngresoBodegaRechazos}
+      modeloNuevo={cierre.incluyeModeloNuevo === true}
     />
   );
 }

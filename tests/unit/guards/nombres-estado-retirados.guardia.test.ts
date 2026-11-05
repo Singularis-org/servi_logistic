@@ -103,6 +103,12 @@ const EXCEPCIONES: Record<string, { textos: readonly string[]; motivo: string }>
       "SLT-54 (R65, design §11): «Flete de gestiones no entregadas» es el rótulo aprobado de un GRUPO de " +
       "gestiones, en negativo; no nombra el estado (R6)",
   },
+  "lib/constants/wallet-rotulos.ts": {
+    textos: ["entregadas", "entregadas"],
+    motivo:
+      "SLT-54 (menor 6 de la revisión F2.2): el concepto del flete del cierre con el modelo nuevo y su IVA " +
+      "usan el rótulo aprobado de R65, «gestiones no entregadas»; no nombra el estado (R6)",
+  },
   "lib/types/order-status.ts": {
     // FICHA 456 (2026-09-24, reconciliacion R-456-3 de `progress/impl_456.md`): «sin gestionar» es la
     // frase del texto APROBADO por el humano para explicar «Novedad interna» («El mensajero terminó el

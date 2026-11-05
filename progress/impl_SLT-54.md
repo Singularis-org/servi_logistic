@@ -1082,3 +1082,106 @@ $ pnpm run test:guardias
 ```
 
 Los rojos del related son de integración, en su mayoría por una siembra que necesita datos que esta base no tiene («la tabla `usuario` está vacía»). El related se corrió antes de quitar una línea sobrante de un fixture de `cierre-pagos-lectura`, que se volvió a correr aparte. No comparé esos rojos uno a uno contra la rama base: el criterio es el baseline, por archivo, y por archivo el baseline no distingue un rojo nuevo dentro de un archivo que ya estaba rojo.
+
+## Tanda H2 — Conectar el modelo en pantalla (frontend)
+
+**Veredicto:** la tarjeta del listado, la tarjeta y el total de la consolidación y el libro de la caja ya siguen el modelo del cierre. El viejo, falso o ausente, no cambia ni un texto. Sin tocar backend, esquema ni importes.
+
+### Superficies
+
+| Superficie | Con el campo verdadero | Dato |
+|---|---|---|
+| Tarjeta del listado (`CierreFacturaResumen`) | «Ingreso de bodega» | `cierre.incluyeModeloNuevo` |
+| Tarjeta de la consolidación (`CierreConsolidableFacturaResumen`) | «Ingreso de bodega» | `cierre.incluyeModeloNuevo` |
+| Total de la consolidación, rótulo y región | «Ingreso de bodega», «Ingreso de bodega a consolidar» | `incluyeModeloNuevoAgregado`, prop nueva desde `page.tsx` |
+| Libro de la caja: celda, nombre del desplegable, detalle de la fila, descarga y panel de la composición | «Flete de gestiones no entregadas cobrado a la tienda», «IVA del flete de gestiones no entregadas cobrado a la tienda» | `m.incluyeModeloNuevo`, por `conceptoDeMovimientoCaja` |
+
+Las tarjetas no pintaban sublíneas de origen, ni antes ni ahora: el test afirma que siguen sin salir.
+
+### Decisiones, por revisar
+
+- **El IVA también.** El encargo citaba `wallet-rotulos.ts:32`. La línea 35 repite la frase sobre el mismo cobro: dejarla habría enseñado flete nuevo con IVA viejo en el mismo cierre.
+- **`CATEGORIA_LABEL` no cambia.** Es el nombre de la categoría, y lo leen el filtro y `WalletEgresoService`. Lo nuevo es una función por fila encima de él.
+- **`incluyeModeloNuevoAgregado` es obligatoria en la prop.** Así el compilador no deja a la página sin pasarla; un campo opcional habría fallado en silencio. Costó una línea en 5 fixtures de test. Las dos tarjetas, en cambio, leen un campo opcional: ahí lo vigilan las mutaciones T3 y T4 y el E2E.
+- **Texto literal en `lib/`.** `FLETE_NO_ENTREGADAS_LABEL` vive en `app/`, y `lib/` no lee de ahí. La frase queda repetida a mano y atada por el test literal.
+- **Guardia `nombres-estado-retirados`, tocada a propósito.** Declara «entregadas» dos veces en `wallet-rotulos.ts`, con el mismo motivo que la excepción de R65. Conviene que el reviewer lo mire.
+
+### Abierto, sin tocar
+
+- **D38:** el libro de la tienda repite la frase (`desglose-tienda-labels.ts:47,50`) y su DTO no trae el campo.
+- **D39:** `ComposicionGananciaCard` rotula por categoría, sin fila. **Añadido por mí a D39:** el filtro por concepto de `LibroCajaBarra` tiene el mismo límite. Elegir «Flete por devolución a origen…» en el filtro devuelve también filas que ahora se llaman «Flete de gestiones no entregadas…». No lo pedía el encargo; lo encontré al recorrer los lectores de `CATEGORIA_LABEL`.
+- El encabezado de las descargas de cierres sigue siendo de catálogo, como el menor 1 de la Tanda G.
+
+### Archivos
+
+**Nuevos:** `tests/components/CierreIngresoBodegaTarjetaListado.test.tsx`, `tests/components/WalletConceptoModeloNuevo.test.tsx`
+
+**Modificados:** `app/(app)/cierres-admin/_components/`: `ConsolidacionBodegaModule.tsx`, `cierre-factura.tsx`; `app/(app)/cierres-admin/page.tsx`; `app/(app)/wallet/_components/`: `DetalleFilaComposicion.tsx`, `VerMovimientoCaja.tsx`, `WalletLedger.tsx`, `libro-caja-kardex.ts`, `wallet-labels.ts`; `lib/constants/wallet-rotulos.ts`; `e2e/tarifas-activacion.spec.ts`; `tests/components/DetalleFilaComposicion.test.tsx`; la prop en `tests/components/ConsolidacionBodegaRefresco.test.tsx`, `tests/components/descarga/CierresDescarga.test.tsx`, `tests/components/descarga/CierresDescargaColumnas.test.tsx`, `tests/components/paginacion/BajoRiesgoPaginacion.test.tsx`, `tests/components/paginacion/ColasPaginacion.test.tsx`; `tests/unit/guards/nombres-estado-retirados.guardia.test.ts`; `specs/SLT-54-pantalla-tarifas/requirements.md`, `tasks.md`; `progress/deudas.md`; esta bitácora
+
+`lib/constants/wallet-rotulos.ts` está en `lib/`, pero es un diccionario de rótulos, sin lógica de servidor: el encargo lo pedía. No cambia ningún servicio ni repositorio.
+
+### Mapa R → test (tanda H2)
+
+| Caso | Test |
+|---|---|
+| R71, tarjeta del listado: nuevo, mixto, viejo (falso y ausente) | `CierreIngresoBodegaTarjetaListado` › «R71 — la tarjeta del listado» |
+| R71, tarjeta de la consolidación: nuevo, viejo (falso y ausente) | `CierreIngresoBodegaTarjetaListado` › «R71 — la tarjeta de la consolidación» |
+| R71, total de la consolidación: nuevo, mixto, viejo, sin derivar de la página | `CierreIngresoBodegaTarjetaListado` › «R71 — el total de la consolidación» |
+| Menor 6, rótulo: nuevo, viejo (falso y ausente), solo cambian dos categorías | `WalletConceptoModeloNuevo` › «el rótulo de una fila» |
+| Menor 6, libro: nuevo, mixto, viejo, cobro por rechazo | `WalletConceptoModeloNuevo` › «el libro de la caja» |
+| Menor 6, detalle y descarga | `WalletConceptoModeloNuevo` › «el detalle de la fila y la descarga…» |
+| Menor 6, panel de la composición, escritorio y móvil | `DetalleFilaComposicion` › «SLT-54…» |
+| R71, en pantalla | `e2e/tarifas-activacion.spec.ts` › «el siguiente cierre cobra y paga con lo digitado, y el anterior no cambia» |
+
+El literal del viejo va en cada superficie. El dato de un cierre mixto lo calcula el servidor y lo mide `tests/integration/db/cierre-incluye-modelo-nuevo.test.ts`; en componente, «mixto» es la lista con cierres de los dos lados y el total con la página solo vieja.
+
+### Mutaciones
+
+Script `h2-mut.cjs` en el scratchpad: corre primero la base y aborta si no hay tests, hay rojos o hay saltos; restaura cada archivo en `finally`. **18 de 18 matadas, todas por aserción, con tests ejecutados en cada una.** La primera pasada dio 17 de 18: sobrevivió W10, porque el panel móvil no tenía test del campo. Añadí el caso y W10 cae (`BASE total 50, fail 0, skip 0`; 25 ejecutados, 1 rojo). Las otras 17 corrieron antes de añadirlo, sobre `BASE total 49, fail 0, skip 0`.
+
+| Id | Mutación | Ejecutados | Rojos |
+|---|---|---|---|
+| T1, T2 | Tarjeta: rótulo siempre viejo; siempre nuevo | 11 | 4 y 6 |
+| T3, T4 | La tarjeta del listado; la de la consolidación, sin pasar el campo | 11 | 2 y 2 |
+| C1, C2 | Total: rótulo; región, siempre viejos | 11 | 1 y 3 |
+| C3 | Total derivado de la página | 11 | 1 |
+| L1 | Cambia el literal del viejo | 11 | 7 |
+| W1, W2 | Libro: siempre viejo; siempre nuevo | 14 | 6 y 9 |
+| W3, W4 | Ausente como nuevo; el IVA se queda viejo | 14 | 3 y 3 |
+| W5, W6 | Celda; nombre del desplegable, leen la categoría | 14 | 1 y 2 |
+| W7, W8 | Detalle; descarga, leen la categoría | 14 | 1 y 2 |
+| W9, W10 | Panel de la composición, escritorio; móvil | 24 y 25 | 1 y 1 |
+
+Lo que ninguna mutación cubre es que `page.tsx` pase el agregado: lo obliga el compilador y lo afirma el E2E.
+
+### E2E
+
+`servi_e2e_slt54`, host local comprobado, recreada, migrada y con catálogos, sobre `next build` + `next start`. Borrada al terminar (`existe: false`). No se tocó la base de `.env`; ninguna URL impresa.
+
+```
+$ playwright test --project=dinero
+  43 passed (1.6m) | 0 failed | 0 skipped | 0 flaky
+```
+
+`tarifas-activacion` ya recorría esa pantalla como satélite. Ahora afirma en la tarjeta del histórico «Ingreso de bodega» sobre 570 y el viejo sobre 300; en la consolidación, que junta los dos cierres, «Ingreso de bodega a consolidar» sobre 870, sin la región vieja, y cada tarjeta con el suyo. El libro de la caja no tiene E2E de este rótulo. 0 menciones de `useToast` o `ToastProvider` en el log del servidor. Tras el E2E solo cambiaron docs y esta bitácora.
+
+### Salida de los comandos
+
+Sin `./init.sh` ni la suite completa, por encargo. El grafo no tiene proyecto para este worktree (`list_projects`): Grep y Read.
+
+```
+$ NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck        -> exit 0
+$ pnpm run lint                                                    -> exit 0; 0 errores, 233 avisos
+$ vitest tests/integration/db/cierre-incluye-modelo-nuevo.test.ts + los 3 de componentes   (DATABASE_URL = servi_gate_slt54)
+  Test Files  4 passed (4)
+       Tests  59 passed (59)
+$ vitest related --run <7 archivos de la tanda>                    (DATABASE_URL = servi_gate_slt54)
+  total 4172 | passed 3916 | failed 40 | skipped 216 | archivos 315
+  - 34 archivos con rojos: todos en tests/baseline-rojos.json; 0 fuera
+$ pnpm run test:guardias
+  Test Files  1 failed | 330 passed (331)
+       Tests  4 failed | 4614 passed | 1 skipped (4619)
+  - 4 rojos: dependencias-declaradas-presentes (baseline)
+```
+
+El related se corrió antes de añadir el caso móvil de `DetalleFilaComposicion`, que se volvió a correr en la línea de los 59. Como en H1, el criterio es el baseline por archivo, y por archivo no distingue un rojo nuevo dentro de un archivo que ya estaba rojo; no comparé esos 40 uno a uno contra la rama base. Los 233 avisos de lint son de todo el repo; `eslint` sobre los archivos de la tanda no dio ninguno antes del caso móvil.

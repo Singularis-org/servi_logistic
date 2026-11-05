@@ -104,7 +104,12 @@
 
 ## Tanda H1 — El modelo de tarifa en los DTO (backend). Depende de G
 
-- [x] **T8.1 Campo aditivo en listado, consolidación y libro de la caja** (R71, menor 6). `lib/repositories/_shared/detalle-modelo-nuevo.ts` y sus DTO. *Hecho:* integración contra Postgres y mutaciones. Falta conectarlo en pantalla.
+- [x] **T8.1 Campo aditivo en listado, consolidación y libro de la caja** (R71, menor 6). `lib/repositories/_shared/detalle-modelo-nuevo.ts` y sus DTO. *Hecho:* integración contra Postgres y mutaciones.
+
+## Tanda H2 — Conectar el modelo en pantalla (frontend). Depende de H1
+
+- [x] **T9.1 Tarjeta del listado y consolidación** (R71). `cierre-factura.tsx`, `ConsolidacionBodegaModule.tsx`, `page.tsx`. *Hecho:* tests de nuevo, viejo y mixto con literal del viejo, E2E y mutaciones.
+- [x] **T9.2 Libro de la caja** (R71, menor 6). `conceptoDeMovimientoCaja` en `wallet-rotulos.ts` y sus lectores por fila. *Hecho:* tests de nuevo, viejo y mixto con literal del viejo y mutaciones.
 
 ## Mapa R → test
 
@@ -155,7 +160,7 @@
 | R68 | `e2e/tarifas-activacion.spec.ts` › «dos empresas» |
 | R69 | `e2e/zona-especial-dos-empresas.spec.ts`; `tests/unit/guards/e2e-sin-saltos.guardia.test.ts` |
 | R70 | `e2e/tarifas-maqueta.spec.ts`; `tests/components/TarifasDisposicion.test.tsx` |
-| R71 | `tests/components/CierreIngresoBodegaModeloNuevo.test.tsx`; `tests/components/CierreBodegaDetalleCascadas.test.tsx` › «R71»; `e2e/tarifas-activacion.spec.ts`; `tests/integration/db/cierre-incluye-modelo-nuevo.test.ts` (el dato del servidor) |
+| R71 | `tests/components/CierreIngresoBodegaModeloNuevo.test.tsx`; `tests/components/CierreBodegaDetalleCascadas.test.tsx` › «R71»; `tests/components/CierreIngresoBodegaTarjetaListado.test.tsx` (tarjeta del listado y consolidación); `tests/components/WalletConceptoModeloNuevo.test.tsx` y `tests/components/DetalleFilaComposicion.test.tsx` › «SLT-54» (libro de la caja, menor 6); `e2e/tarifas-activacion.spec.ts`; `tests/integration/db/cierre-incluye-modelo-nuevo.test.ts` (el dato del servidor) |
 | R72 | `tests/unit/descarga/cierres-gestiones-fundida-descarga-columnas.test.ts` › «SLT-54 (R72)» |
 
 ## Archivos esperados
