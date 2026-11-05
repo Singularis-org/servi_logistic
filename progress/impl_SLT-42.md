@@ -541,3 +541,79 @@ Veredicto: T5.1 y T5.2 hechas; zona obligatoria en utilidades y schemas, CR idé
 - `pnpm run test:guardias`: `Test Files 1 failed | 324 passed | 3 skipped · Tests 4 failed | 4550 passed | 24 skipped`; los 4 son `dependencias-declaradas-presentes`, en el baseline.
 
 Veredicto: T5.3 hecha; zona de la empresa en órdenes, reparto, cierres, corte y reprogramadas, con R22/R23/R28/R30 cubiertos por test. Sin rojos nuevos de T5.3; quedan `demo-qa` (rojo de T4.2/T4.3) y 17 archivos sin `vitest related` por memoria.
+
+## Tanda 4a · T5.4: zona de la empresa en wallet, liquidación, caja e historial (2026-11-05)
+
+Un agente anterior dejó el trabajo sin commitear porque murió antes del commit. En esta tanda se revisó, se verificó y se cerró en el commit `a6109cff`.
+
+### Qué cambió (53 archivos de producción, 141 de test)
+- **Servicios.** Reciben `reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">` como último parámetro del constructor, con el patrón de T5.3: `AbonoTienda`, `AporteCapital`, `CobroTienda`, `ComoQuedo`, `ConciliacionSatelites`, `EstadoCuenta`, `FiltrosWallet`, `GeneracionGastosFijos`, `HistorialAccion`, `IncentivoMensajero`, `LibroCajaAutoria`, `Liquidacion`, `OrigenLegible`, `PagoPorCuentaTienda`, `PrevisualizarMovimiento`, `WalletComprobante`, `WalletEgreso` y `Wallet`. `CierresAdminService` y `CierresBodegaAdminService` solo pasan la zona a sus repositorios.
+- **Composition roots.** Son 20 actions de `lib/actions/`: wallet*, liquidación, estado de cuenta, gastos fijos, aportes, abono, pago por cuenta, cómo quedó, conciliación, efecto-movimiento, historial, incentivo, libro-caja-autoría y `_shared/comprobante-lateral`. Se suman `app/api/cron/generar-gastos-fijos/route.ts`, que la pone por empresa dentro de `paraCadaEmpresa`, y `scripts/demo-qa/receta.ts`.
+  - Todas inyectan `construirReglasPaisEmpresa(prisma)`.
+  - Las actions de lectura usan `zonaDelBorde`, y los schemas con «hoy» se construyen por zona.
+  - Un script recorrió todo `lib/`, `app/` y `scripts/`: ninguna construcción de esos 18 servicios queda sin reglas.
+- **Etiquetas del historial** (`lib/types/historial-accion-etiquetas.ts`). `cierre_dia` y `cierre_bodega` llevan `zonaHoraria`, y la ponen `CierresAdminRepository` y `CierresBodegaAdminRepository` (decisión 3 de «tras T5.3»).
+- **Contratos.**
+  - `ISaldosSatelitesRepository`: `findSaldosPaginado`, `findSaldosCompleto` y `findResumen` reciben `zonaHoraria`.
+  - `IWalletMovimientoRepository.primerDiaDeLaCaja({ zonaHoraria, excluirCapital? })`: las opciones dejan de ser opcionales.
+  - `ICajaBackfillTesoreriaService`: sus deps llevan `reglasPais?`.
+  - `IGeneracionGastosFijosService.fecha` es el día de la corrida en la zona del país.
+- **Lo que queda en CR en este alcance.** Nada: no hay `ZONA_CR`, `fechaCalendarioCR` ni `hoyCR` en servicios, repositorios, actions ni tipos de wallet, liquidación, caja, gastos fijos, aportes, estado de cuenta e historial. Tampoco quedan marcadores `SLT-42 pendiente T5.4`.
+
+### Mapa R → test (T5.4, `tests/unit/services/hora-por-pais-wallet.test.ts`)
+| R | Test |
+|---|---|
+| R22 | «el dia del cierre es el del calendario del pais de la empresa» (etiqueta del historial); «el dia del cierre en el origen sale de la zona del pais» (OrigenLegible); «el dia y la hora de cada cierre son los de la zona del pais» (FiltrosWallet); ««desde el 20» empieza a las 06:00Z en Costa Rica y a las 05:00Z en Bogota» (HistorialAccion); «el mismo instante es la corrida del 20 en Costa Rica y la del 21 en Bogota» (GeneracionGastosFijos); «a las 05:30Z del 21, «el 21» es futuro en Costa Rica y es hoy en Bogota» (AporteCapital) |
+| R23 | «buscar el dia del cambio de hora de Madrid da una franja de 23 h, de pared a pared» (FiltrosWallet) |
+| R28 | «buscar un dia sin zona en el pais falla con PaisSinZonaHoraria y no consulta» (FiltrosWallet); «con rango y sin zona falla sin consultar; sin rango no la necesita» (HistorialAccion); «sin zona en el pais, la corrida falla … antes de leer o escribir» (GeneracionGastosFijos); «sin zona falla … antes de subir el comprobante o escribir» y «en el borde, sin zona la accion falla y no llega al servicio» (AporteCapital); «con fecha elegida y sin zona en el pais, falla sin escribir; sin fecha no la necesita» (WalletService) |
+
+### Desvíos del design
+1. **`CajaBackfillTesoreriaService` recibe la zona por otro lado y nadie se la inyecta en producción.**
+   - Recibe `reglasPais` dentro de su objeto `deps`, porque su constructor ya era un objeto. No la recibe como último parámetro posicional.
+   - Lee la zona de forma perezosa (`zonaPerezosa`): solo si hay pagos o anulaciones que fechar.
+   - No tiene composition root de producción en `lib/`, `app/` ni `scripts/`: solo lo construyen los tests.
+2. **`WalletService.registrarMovimientoManual` lee la zona antes de escribir.** La lee antes de guardar el comprobante, y solo si hay fecha elegida. Sin fecha manda el `DEFAULT` de la columna, como antes.
+3. **Los repositorios reciben la zona, como en T5.3.** Los de saldos de satélites y de la caja la usan para contar días y formatear fechas; la calcula el servicio.
+
+### Salida
+- **Typecheck.** `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: exit 0.
+- **Lint.** `eslint` sobre los 53 archivos de producción, el test nuevo y `tests/fabricas/reglas-pais.ts`: sin salida (0 errores, 0 warnings).
+- **Guardias.** `pnpm test:guardias`: `Test Files 1 failed | 324 passed | 3 skipped (328) · Tests 4 failed | 4550 passed | 24 skipped (4578)`. Los 4 rojos son de `dependencias-declaradas-presentes`, en el baseline.
+- **Tests unitarios tocados.** El test nuevo y los 57 tocados: `Test Files 58 passed (58) · Tests 1293 passed (1293)`.
+- **`vitest related --run`.** Se corrió en 11 lotes de 5 archivos, con `NODE_OPTIONS=--max-old-space-size=8192` y **sin `DATABASE_URL`** (ver abajo).
+  - Lote 1: `Test Files 2 failed | 206 passed | 31 skipped (239) · Tests 3 failed | 3042 passed | 222 skipped`.
+  - Lote 2: `Test Files 1 failed | 185 passed | 6 skipped (192) · Tests 1 failed | 2605 passed | 46 skipped`.
+  - Todos los rojos de los lotes 1 y 2 son de UI:
+    - `tests/components/WalletCaja463.test.tsx`: 2 casos.
+    - `tests/components/WalletCajaBarra467.test.tsx`: 1 caso.
+    - Los fallos fueron un timeout de 20 s, un `listbox` que no aparece y una llamada de más.
+  - Corridos aislados, los dos archivos pasan: `Test Files 2 passed (2) · Tests 52 passed (52)`. Es carga: en la misma máquina corrían a la vez vitest y tsc de otros proyectos, y cada lote tardaba 25–40 min.
+  - Los lotes 3–11 se corrieron con `--exclude 'tests/components/**'`: la UI no es del alcance de backend y era casi todo el tiempo. Ninguno dio rojo:
+
+    | Lote | Resultado |
+    |---|---|
+    | 3 | `20 passed \| 16 skipped (36)` |
+    | 4 | `63 passed \| 27 skipped (90)` |
+    | 5 | sin tests (solo interfaces) |
+    | 6 | `143 passed \| 175 skipped (318)` |
+    | 7 | `92 passed \| 135 skipped (227)` |
+    | 8 | `68 passed \| 51 skipped (119)` |
+    | 9 | `65 passed \| 54 skipped (119)` |
+    | 10 | `79 passed \| 58 skipped (137)` |
+    | 11 | `416 passed \| 315 skipped (731)`; `Tests 6190 passed \| 2316 skipped` |
+- **Integración contra base: no se corrió.**
+  - El clasificador de permisos negó armar la `DATABASE_URL` de `logistic_slt42_test` con las credenciales del `.env`.
+  - Sin ella, los ~100 tests tocados de `tests/integration/db` se saltan; son los "skipped" de los lotes.
+  - Queda para CI, o para una corrida con la URL que ponga el humano.
+
+### Preguntas abiertas
+1. **¿Quién corre `CajaBackfillTesoreriaService`?** No tiene composition root de producción. Puede que se corra desde un script fuera del repo, o que sea código muerto.
+   - Si se usa, su llamador tiene que pasar `construirReglasPaisEmpresa(prisma)`.
+   - Si no la pasa, falla con `PaisSinZonaHoraria` en cuanto haya pagos que fechar.
+2. **Falta la integración de T5.4 contra `logistic_slt42_test`.** Hay que correrla con `DATABASE_URL`, que no pude armar sin leer credenciales.
+3. **Quedan en CR, fuera de T5.4:**
+   - `PlanesService`: usa `fechaCalendarioCR` para el ciclo. El design §0 dice que el ciclo de planes es UTC y no se toca, pero la fecha que se muestra sigue en CR.
+   - `FinanzasDiarioService` y `premio-ranking-devengo`: son de T5.5.
+   - La UI de wallet (`WalletLedger`, `GastoFijoPlantillaDialog`, las columnas de descarga): no es de backend.
+
+Veredicto: T5.4 hecha. Wallet, liquidación, caja, gastos fijos, aportes, estado de cuenta e historial usan la zona de la empresa, con R22/R23/R28 cubiertos. Typecheck, lint, guardias y `vitest related` (sin UI) en verde; falta la integración con base.
