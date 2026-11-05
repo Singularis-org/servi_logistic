@@ -134,6 +134,9 @@ export default defineConfig({
         "ajuste-pago-mensajero-cierre",
         // SLT-68 · R22: el incentivo manual a un mensajero.
         "incentivo-mensajero-slt68",
+        // SLT-83 R28: costo por orden porcentual; la orden llega a entregado por el cierre real.
+        // Usa el superadmin de prueba y no toca el global del cobro.
+        "planes-costo-porcentual",
       ),
     },
   ],

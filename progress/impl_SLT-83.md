@@ -726,3 +726,68 @@ pnpm exec eslint <los 4 fuentes, 6 tests y 2 E2E tocados> → sin salida, exit 0
 ```
 
 **Veredicto:** los cuatro textos aprobados quedan en pantalla y fijados por test; la ayuda del asistente queda pendiente de decisión.
+
+## T15
+
+**Archivos.**
+- Creado: `e2e/planes-costo-porcentual.spec.ts` (design §9.2, R28).
+- Modificado: `playwright.config.ts` (el spec, en el proyecto `dinero` y solo ahí).
+- `e2e/_planes-fixture.ts`: sin cambio (ya llevaba `costoPorOrdenPorcentual: null`; el plan pasa a
+  porcentual por pantalla, así que no hizo falta un creador de plan porcentual).
+- `specs/.../tasks.md`: T15 marcada.
+
+**Por qué `dinero`.** Lleva la orden a `entregado` con `llevarA` + `gestionar` + cierre aprobado (como el resto
+del grupo), crea su superadmin con `asegurarSuperadmin` (la base del grupo no tiene otro) y no toca el valor
+global del cobro, así que no choca con `wallet*`, que no afirma la deuda.
+
+**Recorrido.** Plan público de `crearPlanPublicoConCosto` (base 1000.00 al mes, fijo 100.00) → el superadmin lo
+edita por pantalla a «Porcentual», 2 % y mínimo 500 → lo asigna a la empresa del escenario de reparto desde el
+bloque «Plan» (modal de SLT-58, «Mensual») con el inicio del ciclo **5 días atrás** → orden de 100.000 por la
+carga masiva (`crearOrden`) → `entregado` por el cierre real → «Mi plan».
+
+**Zona horaria.** El ciclo empieza 5 días atrás (dentro del rango ± 1 mes de SLT-58 R30), no hoy: el cargo cae
+dentro del ciclo aunque la sesión de Postgres (`ocurrido_at = now()`, `America/Bogota` en local), el runner y la
+hora de la plataforma no compartan zona, y aunque la corrida empiece cerca de medianoche.
+
+**R → test** (`e2e/planes-costo-porcentual.spec.ts`):
+- R28.1, R21 → «el superadmin pone por pantalla el plan en «Porcentual», 2 % y mínimo 500» (y el detalle dice
+  «2.00 % del valor del paquete, mínimo 500.00»; por detrás `costo_por_orden` NULL, 2.00 / 500.00).
+- R28.2, R28.3, R22 → «lo asigna a la empresa y «Empresas» dice «2.00 % (mín. 500.00)» «del plan»».
+- R28.4, R6, R18 → «la empresa crea una orden de 100.000 y la deuda de la wallet no cambia» («₡0» antes y
+  después; condiciones congeladas 2.00 / 500.00; ningún movimiento; «Mi plan»: cobrado 0.00 y 1 sin estado final).
+- R28.5, R8, R18 → «la orden llega a «entregado» y la deuda sube 2.000,00» (un único `cargo:2000.00:plan`; «₡2.000»).
+- R28.6, R23 → ««Mi plan» muestra lo cobrado en el ciclo, 0 órdenes sin estado final y el total»
+  («Costo base: 1000.00 al mes», «Costo por orden: 2.00 % del valor del paquete, mínimo 500.00», «Cobrado en el
+  ciclo: 2000.00», «Órdenes del ciclo sin estado final: 0», «Total del ciclo hasta hoy: 1000.00 + 2000.00 = 3000.00»).
+
+Las cifras van escritas a mano a partir de `lib/planes/mensajes.ts` (`textoDelCostoPorOrdenPorcentual`,
+`textoDelCobroVigente`, `lineasDelCosteoPorcentual`), `ConsumoDelPlan` y `money()`, como `planes-costeo.spec.ts`.
+
+**Base y comandos.** Base desechable `servi_logistic_slt83_e2e` en `localhost:5432` (usuario/clave del `.env` del
+repo principal): `DROP DATABASE … WITH (FORCE)` / `CREATE DATABASE`, `pnpm exec prisma migrate deploy`,
+`pnpm run db:seed`; `next build` con esa `DATABASE_URL`. Puertos 3044 y 54329 libres.
+
+**Salida real.**
+```
+pnpm exec eslint e2e/planes-costo-porcentual.spec.ts playwright.config.ts → sin salida, exit 0
+NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck → tsc --noEmit, sin errores
+pnpm exec vitest run tests/unit/guards/e2e-sin-saltos.guardia.test.ts → Tests 38 passed (38)
+# base recreada; dos corridas seguidas sobre ella
+E2E_PUERTO=3044 pnpm exec playwright test e2e/planes-costo-porcentual.spec.ts --reporter=list → 5 passed (22.3s)
+E2E_PUERTO=3044 pnpm exec playwright test e2e/planes-costo-porcentual.spec.ts --reporter=list → 5 passed (20.9s)
+# misma base, una vez cada uno, con --no-deps (ver aviso)
+… e2e/planes-costeo.spec.ts --no-deps         → 5 passed (23.4s)
+… e2e/cobro-plataforma-sl40.spec.ts --no-deps → 2 passed (16.9s)
+… e2e/pago-plataforma-sl45.spec.ts --no-deps  → 6 passed (23.0s)
+```
+0 failed, 0 skipped, 0 flaky en todas.
+
+**Aviso (no es de esta task).** Sin `--no-deps`, esos tres specs (proyecto `aislamiento`) arrastran
+`plataforma-vacia`, y en local cae `e2e/superadmin-empresas.spec.ts:224` («2. crea A y B…»): espera que el aviso
+de bienvenida diga «El correo no está configurado en este entorno.» y la pantalla dice solo «Empresa creada, pero
+el correo de bienvenida no salió. Reenvíalo con «Reenviar bienvenida» en la fila de la empresa.». No está en
+`tests/baseline-rojos.json` y SLT-83 no toca ese spec ni `lib/services/email`. Parece de entorno local (el
+servidor no ve el correo como «no configurado»); queda para que lo confirme CI. Los tres specs pedidos se
+corrieron sin esa dependencia.
+
+**Veredicto T15:** el E2E de R28 pasa en local dos veces seguidas y los tres E2E vecinos siguen en verde.

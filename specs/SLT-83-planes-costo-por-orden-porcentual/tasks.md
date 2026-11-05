@@ -88,7 +88,7 @@
 
 ## Tanda E — E2E y cierre (los dos)
 
-- [ ] **T15. E2E** `e2e/planes-costo-porcentual.spec.ts` (design §9.2, R28). Ajustar por tipo
+- [x] **T15. E2E** `e2e/planes-costo-porcentual.spec.ts` (design §9.2, R28). Ajustar por tipo
   `e2e/_planes-fixture.ts`. Depende de T11–T14.
   *Hecho:* `pnpm exec playwright test e2e/planes-costo-porcentual.spec.ts` en verde; `planes-costeo.spec.ts`
   y `cobro-plataforma-sl40.spec.ts` en verde.
