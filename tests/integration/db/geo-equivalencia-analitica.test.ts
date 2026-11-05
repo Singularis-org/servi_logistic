@@ -286,6 +286,38 @@ describeSiHayBase("SLT-71 T5.2 — geo:equivalencia-analitica (Postgres real)", 
     sinDatosDeMas(salida, r.nombres);
   }, 300_000);
 
+  it("R17 (review v2, m5): una diferencia NO disculpada en un filtro con incoherentes lleva `(solo-hoy=… solo-lugar=…)`", async () => {
+    const r = await conEscenario(async (tx, e) => {
+      // CR tiene la orden incoherente: provincia y canton activo por columna, distrito bajo el canton
+      // retirado por lugar. Con el canton retirado movido a la segunda provincia, la primera pierde por
+      // lugar sus ordenes Y la incoherente: la diferencia es mayor que `solo-hoy` y no se disculpa.
+      const empresa = e.cr;
+      const g = empresa.base.base.geo;
+      const informe = await comoLaEmpresa(tx, empresa, () => {
+        const cliente = clienteConSavepoint(tx);
+        return compararEmpresaAnalitica(cliente, empresa.base.base.empresaId, {
+          muestra: MUESTRA_POR_DEFECTO,
+          clienteNuevo: conNodoMovido(cliente, g.cantonRetiradoId, empresa.segunda.provinciaId),
+        });
+      });
+      return { informe, provincia: g.provinciaId };
+    });
+
+    const { informe } = r;
+    expect(codigoDeSalida([informe], 0)).toBe(1);
+    const filtro = `provincia=${r.provincia}`;
+    const marcada = informe.diferencias.find((d) => d.bloque === "analitica" && d.id === filtro && d.campo.startsWith("por-status"));
+    expect(marcada?.campo).toBe("por-status (solo-hoy=1 solo-lugar=0)");
+    const hoy = Number(/^n=(\d+)$/.exec(marcada?.hoy ?? "")?.[1]);
+    const nuevo = Number(/^n=(\d+)$/.exec(marcada?.nuevo ?? "")?.[1]);
+    // Mas de una orden de diferencia: no cabe en la incoherente.
+    expect(hoy - nuevo).toBeGreaterThan(1);
+    expect(lineasDeInforme(informe)).toContain(
+      `  empresa ${informe.organizacionId} [analitica] ${filtro} por-status (solo-hoy=1 solo-lugar=0): hoy=n=${hoy} nuevo=n=${nuevo}`,
+    );
+    // Sin incoherentes en el filtro no hay marca: lo fija la contraprueba de XA (`d.campo === "por-status"`).
+  }, 300_000);
+
   it("R17: --muestra fija cuantos cantones y distritos entran, los de mas ordenes vivas", async () => {
     const r = await conEscenario(async (tx, e) =>
       comoLaEmpresa(tx, e.cr, () =>

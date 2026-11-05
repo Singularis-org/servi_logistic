@@ -56,7 +56,10 @@ import { esBaseLocal } from "./geo-explain-consultas";
 // comparacion que difiere SOLO por ellas no cuenta como diferencia (`disculpable`, review v1 m1): las
 // ordenes que entran solo por la columna (`solo-hoy`) o solo por el lugar (`solo-lugar`) explican el
 // cambio en su sentido y cubo a cubo, y no mueven ni segundos ni importe. Cada par disculpado se
-// imprime con sus cifras como `[solo-incoherentes]`, para auditarlo; no cambia la salida.
+// imprime con sus cifras como `[solo-incoherentes]`, para auditarlo; no cambia la salida. La regla es
+// estricta: una DIFERENCIA en un filtro con incoherentes lleva la misma marca `(solo-hoy=… solo-lugar=…)`;
+// si la salida es 1 solo por diferencias marcadas, puede ser una incoherente con segundos, importe o
+// varias filas, y se revisa a mano (review v2, m5).
 //
 // SOLO LECTURA (R18): el cliente de SLT-44, con `default_transaction_read_only = on`. SIN DATOS
 // PERSONALES (R18): la salida lleva cifras e ids de empresa, nodo, zona y orden; nunca SQL,
@@ -470,6 +473,16 @@ function consultasDelFiltro(raw: FiltroDeComparacion["raw"]): ConsultasDelFiltro
 }
 
 /**
+ * Review v2 (m5) — la marca de una diferencia NO disculpada cuando el filtro tiene ordenes
+ * incoherentes. La regla no se afloja: una incoherente que aporta segundos, importe o mas de una fila,
+ * o un intercambio con Δ = 0, deja la salida en 1 (lado seguro). Con la marca, quien corre el script
+ * reconoce el caso y lo revisa a mano. Sin incoherentes en el filtro, no hay marca.
+ */
+export function marcaDeIncoherentes(inc: IncoherentesDelFiltro): string {
+  return inc.soloHoy + inc.soloLugar === 0 ? "" : ` (solo-hoy=${inc.soloHoy} solo-lugar=${inc.soloLugar})`;
+}
+
+/**
  * Compara una lectura en un filtro. Devuelve si cuenta como distinta. Las que difieren solo por las
  * ordenes incoherentes (`disculpable`) no cuentan, pero quedan en `disculpadas` con sus cifras, para
  * que quien corre el script pueda auditarlas (review v1, m1).
@@ -492,7 +505,7 @@ async function compararLectura<Q>(
     salida.disculpadas.push({
       bloque,
       id: filtro.etiqueta,
-      campo: `${lectura.nombre} (solo-hoy=${inc.soloHoy} solo-lugar=${inc.soloLugar})`,
+      campo: `${lectura.nombre}${marcaDeIncoherentes(inc)}`,
       hoy: a.cifra,
       nuevo: b.cifra,
     });
@@ -501,7 +514,7 @@ async function compararLectura<Q>(
   salida.diferencias.push({
     bloque,
     id: filtro.etiqueta,
-    campo: nivelMalo ? `${lectura.nombre} (nivel equivocado: tiene que dar cero)` : lectura.nombre,
+    campo: (nivelMalo ? `${lectura.nombre} (nivel equivocado: tiene que dar cero)` : lectura.nombre) + marcaDeIncoherentes(inc),
     hoy: a.cifra,
     nuevo: b.cifra,
   });
