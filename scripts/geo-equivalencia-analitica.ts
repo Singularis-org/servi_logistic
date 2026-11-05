@@ -53,9 +53,10 @@ import { esBaseLocal } from "./geo-explain-consultas";
 //
 // LAS ORDENES DE CADENA INCOHERENTE (decision heredada de SLT-65). Con la cadena rota, la columna del
 // nivel y el lugar de la orden pueden discrepar, y la lectura nueva cuenta por el lugar. Una
-// comparacion que difiere SOLO por ellas no cuenta como diferencia: el filtro tiene faceta
-// geografica, alguna orden incoherente entra en el filtro por un lado y no por el otro, y la cifra
-// difiere como mucho en ese numero de ordenes. Se cuenta aparte (`solo-incoherentes`).
+// comparacion que difiere SOLO por ellas no cuenta como diferencia (`disculpable`, review v1 m1): las
+// ordenes que entran solo por la columna (`solo-hoy`) o solo por el lugar (`solo-lugar`) explican el
+// cambio en su sentido y cubo a cubo, y no mueven ni segundos ni importe. Cada par disculpado se
+// imprime con sus cifras como `[solo-incoherentes]`, para auditarlo; no cambia la salida.
 //
 // SOLO LECTURA (R18): el cliente de SLT-44, con `default_transaction_read_only = on`. SIN DATOS
 // PERSONALES (R18): la salida lleva cifras e ids de empresa, nodo, zona y orden; nunca SQL,
@@ -85,8 +86,10 @@ export interface InformeDeEmpresa {
   compartenRecorte: Cifras;
   /** Por orden en alerta. */
   transito: Cifras;
-  /** Pares (lectura, filtro) que difieren solo por ordenes de cadena incoherente. Informativo. */
+  /** Pares (lectura, filtro) que difieren solo por ordenes de cadena incoherente (`disculpadas.length`). Informativo. */
   soloIncoherentes: number;
+  /** Cada par disculpado, con sus cifras de hoy y nuevas, para auditarlo (review v1, m1). Informativo. */
+  disculpadas: Diferencia[];
   /** Ordenes vivas con la cadena de FK viejas rota, por id. Informativo. */
   cadenaIncoherente: string[];
   diferencias: Diferencia[];
@@ -245,14 +248,31 @@ function entraPorLugar(o: OrdenIncoherente, lugares: LugaresDelFiltro): boolean 
   });
 }
 
-/** Cuantas ordenes incoherentes entran por un lado del filtro y no por el otro. */
+/**
+ * Las ordenes incoherentes que entran por un solo lado del filtro, por sentido (review v1, m1):
+ * `soloHoy` entran por la columna y no por el lugar (la cifra de hoy puede ser MAYOR); `soloLugar`, al
+ * reves (la nueva puede ser mayor).
+ */
+export interface IncoherentesDelFiltro {
+  soloHoy: number;
+  soloLugar: number;
+}
+
 export function incoherentesAfectadas(
   incoherentes: readonly OrdenIncoherente[],
   catalogo: CatalogoGeografico,
   filtro: FacetasGeograficas,
-): number {
+): IncoherentesDelFiltro {
   const lugares = resolverLugaresDelFiltro(catalogo, filtro);
-  return incoherentes.filter((o) => entraHoy(o, filtro) !== entraPorLugar(o, lugares)).length;
+  let soloHoy = 0;
+  let soloLugar = 0;
+  for (const o of incoherentes) {
+    const porHoy = entraHoy(o, filtro);
+    const porLugar = entraPorLugar(o, lugares);
+    if (porHoy && !porLugar) soloHoy++;
+    if (porLugar && !porHoy) soloLugar++;
+  }
+  return { soloHoy, soloLugar };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -260,22 +280,65 @@ export function incoherentesAfectadas(
 // ---------------------------------------------------------------------------------------------
 
 /**
- * Lo que se imprime de una lectura (cifras, nunca textos) y cuantas ordenes cuenta, para saber si una
- * diferencia cabe en las incoherentes.
+ * Lo que se imprime de una lectura (cifras, nunca textos) y lo que hace falta para saber si una
+ * diferencia cabe en las ordenes incoherentes (`disculpable`).
  */
-interface Resumen {
+export interface Resumen {
   /** Para comparar los dos lados. */
   clave: string;
   /** Para imprimir: solo numeros. */
   cifra: string;
   /** Ordenes (o gestiones) que cuenta la lectura. */
   ordenes: number;
+  /** El reparto de `ordenes` por cubo (estado, dia, causa, desenlace...). Nunca se imprime. */
+  cubos: Readonly<Record<string, number>>;
+  /** Lo que una orden incoherente NO puede mover para disculparse (segundos, importe, limite). */
+  fijos: Readonly<Record<string, string>>;
 }
 
 const suma = (xs: readonly number[]) => xs.reduce((s, n) => s + n, 0);
 
-function resumenDeConteo(resultado: unknown, ordenes: number, cifra = `n=${ordenes}`): Resumen {
-  return { clave: JSON.stringify(resultado), cifra, ordenes };
+function resumenDeConteo(
+  resultado: unknown,
+  cubos: Readonly<Record<string, number>>,
+  opciones: { cifra?: string; fijos?: Record<string, string> } = {},
+): Resumen {
+  const ordenes = suma(Object.values(cubos));
+  return { clave: JSON.stringify(resultado), cifra: opciones.cifra ?? `n=${ordenes}`, ordenes, cubos, fijos: opciones.fijos ?? {} };
+}
+
+/** Los cubos de unas filas: la clave es la fila sin sus campos de cifra. */
+function cubosDe<F extends object>(filas: readonly F[], conteo: keyof F, sinClave: readonly (keyof F)[] = []): Record<string, number> {
+  const cubos: Record<string, number> = {};
+  for (const f of filas) {
+    const resto = Object.fromEntries(Object.entries(f).filter(([k]) => k !== conteo && !sinClave.includes(k as keyof F)));
+    const k = JSON.stringify(resto);
+    cubos[k] = (cubos[k] ?? 0) + Number(f[conteo]);
+  }
+  return cubos;
+}
+
+/**
+ * Review v1 (m1) — si una diferencia entre hoy (`a`) y nuevo (`b`) la explican SOLO las ordenes
+ * incoherentes del filtro:
+ *  - lo que una orden no puede mover tiene que coincidir (`fijos`: segundos de ciclo, importe...);
+ *  - el total tiene que moverse (Δ = 0 con claves distintas no se disculpa) y en su sentido:
+ *    `a − b ∈ [−soloLugar, soloHoy]`;
+ *  - cubo a cubo, lo que hoy tiene de mas cabe en `soloHoy` y lo que tiene de menos en `soloLugar`.
+ */
+export function disculpable(a: Resumen, b: Resumen, inc: IncoherentesDelFiltro): boolean {
+  if (inc.soloHoy + inc.soloLugar === 0) return false;
+  if (JSON.stringify(a.fijos) !== JSON.stringify(b.fijos)) return false;
+  const delta = a.ordenes - b.ordenes;
+  if (delta === 0 || delta > inc.soloHoy || delta < -inc.soloLugar) return false;
+  let deMas = 0;
+  let deMenos = 0;
+  for (const k of new Set([...Object.keys(a.cubos), ...Object.keys(b.cubos)])) {
+    const d = (a.cubos[k] ?? 0) - (b.cubos[k] ?? 0);
+    if (d > 0) deMas += d;
+    else deMenos -= d;
+  }
+  return deMas <= inc.soloHoy && deMenos <= inc.soloLugar;
 }
 
 interface Lectura<Q> {
@@ -284,15 +347,15 @@ interface Lectura<Q> {
   nueva: (cliente: PrismaClient, q: Q) => Promise<Resumen>;
 }
 
-const porStatus = async (p: Promise<readonly { conteo: number }[]>) => {
+const porStatus = async <F extends { conteo: number }>(p: Promise<readonly F[]>) => {
   const filas = await p;
-  return resumenDeConteo(filas, suma(filas.map((f) => f.conteo)));
+  return resumenDeConteo(filas, cubosDe(filas, "conteo"));
 };
 
-const deDesenlaces = (porDesenlace: Readonly<Record<string, number>>) =>
-  resumenDeConteo(porDesenlace, suma(Object.values(porDesenlace)));
+const deDesenlaces = (porDesenlace: Readonly<Record<string, number>>) => resumenDeConteo(porDesenlace, porDesenlace);
 
-const deCiclo = (c: { segundosAcum: number; n: number }) => resumenDeConteo(c, c.n, `n=${c.n} segundos=${c.segundosAcum}`);
+const deCiclo = (c: { segundosAcum: number; n: number }) =>
+  resumenDeConteo(c, { n: c.n }, { cifra: `n=${c.n} segundos=${c.segundosAcum}`, fijos: { segundos: String(c.segundosAcum) } });
 
 /** Las cinco lecturas de analitica (design §8, bloque `analitica`). */
 const ANALITICA: readonly Lectura<ConsultaConteoEntregas>[] = [
@@ -334,18 +397,27 @@ interface ConsultasDelFiltro {
 
 /** Dinero por producto: por importe total recaudado y numero de ordenes (design §8). */
 function deDinero(l: Awaited<ReturnType<typeof hoy.dineroProductosDeHoy>>): Resumen {
-  if (l.estado !== "ok") return { clave: `limite-excedido ${l.limite}`, cifra: `limite-excedido=${l.limite}`, ordenes: 0 };
+  if (l.estado !== "ok") {
+    const cifra = `limite-excedido=${l.limite}`;
+    return { clave: cifra, cifra, ordenes: 0, cubos: {}, fijos: { limite: String(l.limite) } };
+  }
   let total = new Prisma.Decimal(0);
   for (const f of l.filas) if (f.montoRecibido !== null) total = total.plus(f.montoRecibido);
   const ordenes = new Set(l.filas.map((f) => f.ordenId)).size;
   const cifra = `ordenes=${ordenes} importe=${total.toFixed(2)}`;
-  return { clave: cifra, cifra, ordenes };
+  return { clave: cifra, cifra, ordenes, cubos: { ordenes }, fijos: { importe: total.toFixed(2) } };
 }
 
-const deCohorte = (filas: readonly { n: number }[]) => resumenDeConteo(filas, suma(filas.map((f) => f.n)));
+/** Productos y cohorte: `n` por cubo. Los segundos de la cohorte no son clave, pero no pueden moverse. */
+const deCohorte = <F extends { n: number }>(filas: readonly F[]) => {
+  const segundos = suma(filas.map((f) => Number((f as { segundosAcum?: number | null }).segundosAcum ?? 0)));
+  return resumenDeConteo(filas, cubosDe(filas, "n", ["segundosAcum" as keyof F]), { fijos: { segundos: String(segundos) } });
+};
 
 const deHoyGestion = (c: { sinGestion: number; conGestion: number }) =>
-  resumenDeConteo(c, c.sinGestion + c.conGestion, `sin-gestion=${c.sinGestion} con-gestion=${c.conGestion}`);
+  resumenDeConteo(c, { "sin-gestion": c.sinGestion, "con-gestion": c.conGestion }, {
+    cifra: `sin-gestion=${c.sinGestion} con-gestion=${c.conGestion}`,
+  });
 
 /** Las cuatro que comparten el recorte (design §8, bloque `comparten-recorte`). */
 const COMPARTEN: readonly Lectura<ConsultasDelFiltro>[] = [
@@ -398,8 +470,9 @@ function consultasDelFiltro(raw: FiltroDeComparacion["raw"]): ConsultasDelFiltro
 }
 
 /**
- * Compara una lectura en un filtro. Devuelve si cuenta como distinta; las que difieren solo por las
- * ordenes incoherentes las suma a `soloIncoherentes`.
+ * Compara una lectura en un filtro. Devuelve si cuenta como distinta. Las que difieren solo por las
+ * ordenes incoherentes (`disculpable`) no cuentan, pero quedan en `disculpadas` con sus cifras, para
+ * que quien corre el script pueda auditarlas (review v1, m1).
  */
 async function compararLectura<Q>(
   bloque: string,
@@ -407,16 +480,22 @@ async function compararLectura<Q>(
   filtro: FiltroDeComparacion,
   q: Q,
   clientes: { hoy: PrismaClient; nuevo: PrismaClient },
-  afectadas: number,
-  salida: { diferencias: Diferencia[]; soloIncoherentes: number },
+  inc: IncoherentesDelFiltro,
+  salida: { diferencias: Diferencia[]; disculpadas: Diferencia[] },
 ): Promise<boolean> {
   // En serie: dentro de la transaccion del test las lecturas comparten conexion.
   const a = await lectura.hoy(clientes.hoy, q);
   const b = await lectura.nueva(clientes.nuevo, q);
   const nivelMalo = filtro.nivelEquivocado && (a.ordenes !== 0 || b.ordenes !== 0);
   if (a.clave === b.clave && !nivelMalo) return false;
-  if (!nivelMalo && afectadas > 0 && Math.abs(a.ordenes - b.ordenes) <= afectadas) {
-    salida.soloIncoherentes++;
+  if (!nivelMalo && disculpable(a, b, inc)) {
+    salida.disculpadas.push({
+      bloque,
+      id: filtro.etiqueta,
+      campo: `${lectura.nombre} (solo-hoy=${inc.soloHoy} solo-lugar=${inc.soloLugar})`,
+      hoy: a.cifra,
+      nuevo: b.cifra,
+    });
     return false;
   }
   salida.diferencias.push({
@@ -506,19 +585,19 @@ export async function compararEmpresaAnalitica(
     const filtros = await filtrosDeLaEmpresa(cliente, catalogo, opciones.muestra);
     const incoherentes = await ordenesIncoherentes(cliente);
 
-    const salida = { diferencias: [] as Diferencia[], soloIncoherentes: 0 };
+    const salida = { diferencias: [] as Diferencia[], disculpadas: [] as Diferencia[] };
     const analitica: Cifras = { comparados: 0, distintos: 0 };
     const compartenRecorte: Cifras = { comparados: 0, distintos: 0 };
     for (const filtro of filtros) {
-      const afectadas = incoherentesAfectadas(incoherentes, catalogo, filtro.raw);
+      const inc = incoherentesAfectadas(incoherentes, catalogo, filtro.raw);
       const q = consultasDelFiltro(filtro.raw);
       for (const lectura of ANALITICA) {
         analitica.comparados++;
-        if (await compararLectura("analitica", lectura, filtro, q.entregas, clientes, afectadas, salida)) analitica.distintos++;
+        if (await compararLectura("analitica", lectura, filtro, q.entregas, clientes, inc, salida)) analitica.distintos++;
       }
       for (const lectura of COMPARTEN) {
         compartenRecorte.comparados++;
-        if (await compararLectura("comparten-recorte", lectura, filtro, q, clientes, afectadas, salida)) {
+        if (await compararLectura("comparten-recorte", lectura, filtro, q, clientes, inc, salida)) {
           compartenRecorte.distintos++;
         }
       }
@@ -530,7 +609,8 @@ export async function compararEmpresaAnalitica(
       analitica,
       compartenRecorte,
       transito,
-      soloIncoherentes: salida.soloIncoherentes,
+      soloIncoherentes: salida.disculpadas.length,
+      disculpadas: salida.disculpadas,
       cadenaIncoherente: incoherentes.map((o) => o.id),
       diferencias: salida.diferencias,
     };
@@ -553,6 +633,7 @@ export function lineasDeInforme(informe: InformeDeEmpresa): string[] {
     cifras(e, "transito", informe.transito),
     `${e} cadena-incoherente: ordenes=${informe.cadenaIncoherente.length}`,
     ...informe.cadenaIncoherente.map((id) => `  ${e} [cadena-incoherente] ${id}`),
+    ...informe.disculpadas.map((d) => `  ${e} [solo-incoherentes] [${d.bloque}] ${d.id} ${d.campo}: hoy=${d.hoy} nuevo=${d.nuevo}`),
     ...informe.diferencias.map((d) => `  ${e} [${d.bloque}] ${d.id} ${d.campo}: hoy=${d.hoy} nuevo=${d.nuevo}`),
   ];
 }

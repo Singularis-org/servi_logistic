@@ -10,12 +10,14 @@ import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograf
 import {
   codigoDeSalida,
   compararEmpresaAnalitica,
+  disculpable,
   filtrosDeLaEmpresa,
   hayDiferencias,
   leerArgumentos,
   lineasDeInforme,
   MUESTRA_POR_DEFECTO,
   type InformeDeEmpresa,
+  type Resumen,
 } from "@/scripts/geo-equivalencia-analitica";
 import { crearClienteDeSoloLectura } from "@/scripts/geo-equivalencia-dinero";
 import { comoApp } from "@/tests/fabricas/organizaciones";
@@ -156,6 +158,7 @@ describe("SLT-71 R17 — argumentos y codigo de salida de geo:equivalencia-anali
       compartenRecorte: cero,
       transito: cero,
       soloIncoherentes: 4,
+      disculpadas: [],
       cadenaIncoherente: ["x"],
       diferencias: [],
     };
@@ -165,6 +168,43 @@ describe("SLT-71 R17 — argumentos y codigo de salida de geo:equivalencia-anali
       expect(codigoDeSalida([igual, { ...igual, [bloque]: { comparados: 3, distintos: 1 } }], 0)).toBe(1);
     }
     expect(codigoDeSalida([igual], 1)).toBe(2);
+  });
+});
+
+// Review v1 (m1): la regla que disculpa una diferencia por ordenes de cadena incoherente.
+describe("SLT-71 R17 — `disculpable`: solo lo que explican las incoherentes, en su sentido y cubo a cubo", () => {
+  const resumen = (cubos: Record<string, number>, fijos: Record<string, string> = {}): Resumen => ({
+    clave: JSON.stringify([cubos, fijos]),
+    cifra: "n",
+    ordenes: Object.values(cubos).reduce((s, n) => s + n, 0),
+    cubos,
+    fijos,
+  });
+
+  it("disculpa: hoy cuenta de mas en un cubo las que entran solo por la columna (y al reves por el lugar)", () => {
+    expect(disculpable(resumen({ a: 3, b: 1 }), resumen({ a: 2, b: 1 }), { soloHoy: 1, soloLugar: 0 })).toBe(true);
+    expect(disculpable(resumen({ a: 2 }), resumen({ a: 2, b: 1 }), { soloHoy: 0, soloLugar: 1 })).toBe(true);
+  });
+
+  it("no disculpa de mas: el sentido y el tamaño los fijan `soloHoy` y `soloLugar` por separado", () => {
+    // Hoy tiene de menos, pero ninguna entra solo por el lugar.
+    expect(disculpable(resumen({ a: 1 }), resumen({ a: 2 }), { soloHoy: 1, soloLugar: 0 })).toBe(false);
+    // Dos de mas con una sola orden que entra solo por la columna.
+    expect(disculpable(resumen({ a: 3 }), resumen({ a: 1 }), { soloHoy: 1, soloLugar: 1 })).toBe(false);
+    // Sin incoherentes en el filtro, nada se disculpa.
+    expect(disculpable(resumen({ a: 3 }), resumen({ a: 2 }), { soloHoy: 0, soloLugar: 0 })).toBe(false);
+  });
+
+  it("no disculpa el mismo total con otro reparto entre cubos (Δ = 0 con claves distintas)", () => {
+    expect(disculpable(resumen({ a: 2, b: 1 }), resumen({ a: 1, b: 2 }), { soloHoy: 1, soloLugar: 1 })).toBe(false);
+    // Ni un total que cabe con un reparto que no: dos de mas en `a` y una de menos en `b`.
+    expect(disculpable(resumen({ a: 3, b: 0 }), resumen({ a: 1, b: 1 }), { soloHoy: 1, soloLugar: 1 })).toBe(false);
+  });
+
+  it("no disculpa si cambian los segundos del ciclo de vida o el importe del dinero", () => {
+    expect(disculpable(resumen({ n: 3 }, { segundos: "100" }), resumen({ n: 2 }, { segundos: "60" }), { soloHoy: 1, soloLugar: 0 })).toBe(false);
+    expect(disculpable(resumen({ ordenes: 3 }, { importe: "10.00" }), resumen({ ordenes: 2 }, { importe: "5.00" }), { soloHoy: 1, soloLugar: 0 })).toBe(false);
+    expect(disculpable(resumen({ ordenes: 3 }, { importe: "5.00" }), resumen({ ordenes: 2 }, { importe: "5.00" }), { soloHoy: 1, soloLugar: 0 })).toBe(true);
   });
 });
 
@@ -217,6 +257,21 @@ describeSiHayBase("SLT-71 T5.2 — geo:equivalencia-analitica (Postgres real)", 
     expect(lineas).toContain(`empresa ${cr.organizacionId} cadena-incoherente: ordenes=1`);
     expect(lineas.join("\n")).toContain(String(r.incoherenteId));
     expect(codigoDeSalida([cr, xa], 0)).toBe(0);
+    // Review v1 (m1): cada par disculpado deja su rastro, con bloque, filtro, lectura y cifras. La
+    // orden incoherente entra por la columna del canton activo y no por su lugar: solo-hoy, y hoy
+    // cuenta una mas.
+    expect(cr.disculpadas).toHaveLength(cr.soloIncoherentes);
+    const rastro = lineas.filter((l) => l.includes("[solo-incoherentes]"));
+    expect(rastro).toHaveLength(cr.soloIncoherentes);
+    const canton = `canton=${r.salida[0].empresa.base.base.geo.cantonId}`;
+    const linea = rastro.find((l) => l.includes(`[analitica] ${canton} por-status `)) ?? "";
+    const m = new RegExp(
+      `^  empresa ${cr.organizacionId} \\[solo-incoherentes\\] \\[analitica\\] ${canton} por-status ` +
+        `\\(solo-hoy=1 solo-lugar=0\\): hoy=n=(\\d+) nuevo=n=(\\d+)$`,
+    ).exec(linea);
+    expect(m, linea).not.toBeNull();
+    expect(Number(m?.[1]) - Number(m?.[2])).toBe(1);
+    for (const d of cr.disculpadas) expect(d.hoy).toMatch(/^[a-z-]+=\d/);
   }, 300_000);
 
   it("R17 contraprueba: un canton movido a otra provincia en el catalogo nuevo da diferencias en `analitica`, nombradas por filtro, y salida 1", async () => {
