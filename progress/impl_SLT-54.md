@@ -982,3 +982,103 @@ $ pnpm run test:guardias
        Tests  4 failed | 4614 passed | 1 skipped (4619)
   - 4 rojos: dependencias-declaradas-presentes (baseline)
 ```
+
+## Tanda H1 — El modelo de tarifa en los DTO (backend)
+
+**Veredicto:** los tres DTO y el total de la consolidación ya dicen si incluyen el modelo nuevo, y wallet también. Sin esquema, sin migraciones, sin tocar importes ni UI. Falta conectarlo en pantalla (`frontend_dev`).
+
+### Campos
+
+Todos son aditivos y salen de `cierre_detail.tarifa_modelo`, lo congelado al solicitar; ninguno lee `tarifa_activacion`. Mixto cuenta como incluye nuevo. Ausente se lee como viejo.
+
+| Campo | Superficie | DTO | Archivo del DTO | Dónde se calcula |
+|---|---|---|---|---|
+| `incluyeModeloNuevo?: boolean` | Tarjeta del listado (`cierre-factura.tsx:1040`) | `CierreAdminResumen` | `lib/interfaces/services/ICierresAdminService.ts` | Conteo filtrado en `CIERRE_RESUMEN_SELECT`, `CierresAdminRepository.ts` |
+| `incluyeModeloNuevo?: boolean` | Tarjeta de la consolidación | `CierreBodegaResumenLite` | `lib/interfaces/services/ICierreBodegaService.ts` | Conteo filtrado en `CONSOLIDABLE_SELECT`, `CierreBodegaRepository.ts` |
+| `incluyeModeloNuevoAgregado: boolean` | Total de la consolidación | `ListarConsolidacionServiceResult`, rama `ok` | `lib/interfaces/services/ICierreBodegaService.ts` | `some` sobre el conjunto completo, `CierreBodegaService.listarConsolidacion`. La página no lo recorta (mismo criterio que R49) |
+| `incluyeModeloNuevo?: boolean` | Libro de la caja (`wallet-rotulos.ts:32`) | `WalletMovimientoDTO` | `lib/types/wallet.ts` | Lote `cierresConModeloNuevo`, `WalletMovimientoRepository.ts` |
+
+Las filas de repositorio `CierreAdminResumenRow` y `CierreDiaConsolidableRow` llevan el mismo campo. La lógica compartida está en `lib/repositories/_shared/detalle-modelo-nuevo.ts`.
+
+### Wallet: hecho, con un límite
+
+Se deduce sin migración. El cobro del cierre se asienta con origen `cierre_dia` y `origen_id` = el cierre (`WalletFeedService.ts:101`). `listar` hace una sola consulta por lectura sobre los cierres de la página, y ninguna si la página no tiene filas de un cierre. Pasan por ahí el libro, su descarga y el detalle de una fila de la composición. `obtenerPorId` también lo trae, porque R31 de la 231 exige que diga lo mismo que el listado.
+
+- **Solo el cobro que nace de un cierre.** Un movimiento con origen `gestion_orden` sale `false`, incluso en una empresa activada. Son los cobros por rechazo de tienda, donde el rótulo «devolución a origen» es cierto.
+- **`obtenerPorClave` y `obtenerPorOrigen` no lo traen.** Son caminos de escritura y no pintan el rótulo.
+- **Abierto, fuera de este encargo:** el libro de la tienda repite la misma frase en `desglose-tienda-labels.ts:47` y `:50`, y `WalletTiendaMovimientoDTO` no trae el campo. El DTO encargado era el de `wallet-rotulos.ts`. Se resolvería igual; hace falta decidir si entra.
+- **`ComposicionGananciaCard`** rotula por categoría sobre agregados, sin fila: este campo no le alcanza. Queda para la decisión del rótulo en la tanda de frontend.
+
+### Para `frontend_dev`
+
+- `CierreFacturaResumen` → `cierre.incluyeModeloNuevo === true` hacia `HojaResumen`.
+- `CierreConsolidableFacturaResumen` → igual.
+- `ConsolidacionBodegaModule` necesita una prop nueva; `page.tsx:153` tiene a mano `consolidacion.incluyeModeloNuevoAgregado`.
+- El `ariaLabel` de `ConsolidacionBodegaModule.tsx:363` repite la frase.
+- `CierreBodegaFacturaResumen` no lo necesita: dice «Gana la bodega satélite». `CierreFacturaResumenPropio` tampoco: el mensajero no ve esa línea.
+
+### Decisiones
+
+- **Opcional en el tipo, salvo el agregado.** Hacerlo obligatorio tocaba decenas de fixtures de test. Sigue el patrón de `reprogramadasRetenidasHoy?`. El compilador no obliga a poblarlo: lo obligan las mutaciones F1, F3 y F6.
+- **`_count` filtrado y no una consulta aparte.** Medido con el espía de SQL: tres cierres, una sentencia que toca `cierre_detail`.
+- **`aPagina` es una función suelta, no un método.** R47 de la 173 fija la lista cerrada de métodos del repositorio.
+- **Guardia `caja-173-alcance`, tocada a propósito:** declara el módulo nuevo y añade `cierreDetail` al cliente. No es un libro y no suma; las reglas de la guardia siguen en pie y pasa en verde. Conviene que el reviewer lo mire.
+- **Cruce de empresas por detalle:** quise sembrar un detalle de B colgado de un cierre de A y lo rechaza el trigger de la base («referencia a otra empresa»). El cruce que sí es sembrable es un movimiento de A con `origen_id` del cierre de B, porque ese campo no tiene FK. Ese lo para la RLS, y la contraprueba como dueño de las tablas sí lo ve.
+
+### Archivos
+
+**Nuevos:** `lib/repositories/_shared/detalle-modelo-nuevo.ts`, `tests/integration/db/cierre-incluye-modelo-nuevo.test.ts`
+
+**Modificados:** `lib/interfaces/repositories/ICierreBodegaRepository.ts`, `lib/interfaces/repositories/ICierresAdminRepository.ts`, `lib/interfaces/services/ICierreBodegaService.ts`, `lib/interfaces/services/ICierresAdminService.ts`, `lib/repositories/CierreBodegaRepository.ts`, `lib/repositories/CierresAdminRepository.ts`, `lib/repositories/WalletMovimientoRepository.ts`, `lib/services/CierreBodegaService.ts`, `lib/services/CierresAdminService.ts`, `lib/types/wallet.ts`; fixtures y literales en `tests/components/descarga/CierresDescarga.test.tsx`, `tests/components/descarga/CierresDescargaColumnas.test.tsx`, `tests/unit/guards/caja-173-alcance.guardia.test.ts`, `tests/unit/repositories/cierre-bodega-repository.test.ts`, `tests/unit/repositories/cierre-pagos-lectura.test.ts`, `tests/unit/repositories/cierres-admin-repository.test.ts`, `tests/unit/repositories/wallet-movimiento-repository.test.ts`; `specs/SLT-54-pantalla-tarifas/tasks.md`; esta bitácora
+
+### Mapa R → test (tanda H1)
+
+Todo en `tests/integration/db/cierre-incluye-modelo-nuevo.test.ts`, 9 casos sobre `servi_gate_slt54`, leídos como `servi_app`.
+
+| Caso del encargo | Test |
+|---|---|
+| R71, solo viejo → falso | «solo viejo: falso…»; «un cierre sin ninguna fila de detalle…» |
+| R71, solo nuevo → verdadero | «solo nuevo: verdadero…» |
+| R71, mixto → verdadero | «mixto dentro de un cierre»; «mixto entre cierres» |
+| R71, activada con cierre anterior → falso | «empresa activada…», con la solicitud real antes y después de activar |
+| R71, otra empresa no contamina | «otra empresa no contamina…» |
+| Menor 6, wallet | Los mismos casos, por las dos ramas de `listar`; «solo un movimiento con origen `cierre_dia`…» |
+| Sin N+1 | «tres cierres cuestan una sentencia…» |
+
+### Mutaciones
+
+Script `h1-mut.cjs` en el scratchpad: corre primero la base y aborta si no hay tests, hay rojos o hay saltos (`BASE total 9, fail 0, skip 0`). Restaura cada archivo en `finally`. **14 de 14 matadas, todas por aserción, con los 9 casos ejecutados en cada una.** Final: 0 rojos de 9.
+
+| Id | Mutación | Rojos de 9 |
+|---|---|---|
+| F1 | Tarjeta: el repositorio siempre `false` | 6 |
+| F2 | Tarjeta: el servicio no lo pasa | 7 |
+| F3 | Consolidable: el repositorio siempre `false` | 6 |
+| F4 | Agregado: `every` en vez de `some` | 2 |
+| F5 | Agregado: siempre `false` | 5 |
+| F6 | Wallet: siempre `false` | 6 |
+| F7 | Wallet: sin mirar `origen_tipo` | 1 |
+| F8 | Wallet: `obtenerPorId` sin el modelo | 1 |
+| S1, S2 | Conteo sin `WHERE`; conteo del viejo | 4 y 6 |
+| S3 | Umbral `> 1` | 6 |
+| S4, S5 | Lote sin filtro de modelo; lote del viejo | 4 y 6 |
+| S6 | Una consulta por fila en el libro | 1 («esperado 1, medido 3») |
+
+### Salida de los comandos
+
+Sin `./init.sh` ni la suite completa. El grafo no tiene proyecto para este worktree: Grep y Read.
+
+```
+$ NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck        -> exit 0
+$ pnpm exec eslint <archivos de la tanda>                          -> exit 0, sin salida
+$ vitest tests/integration/db/cierre-incluye-modelo-nuevo.test.ts tests/unit/repositories/cierre-pagos-lectura.test.ts
+  total 23 | passed 23 | failed 0 | skipped 0
+$ vitest related --run <6 archivos de lib>                         (DATABASE_URL = servi_gate_slt54)
+  total 6034 | passed 5208 | failed 89 | skipped 737 | archivos 495
+  - 135 archivos con rojos o sin arrancar: todos en tests/baseline-rojos.json; 0 fuera
+$ pnpm run test:guardias
+  total 4619 | passed 4614 | failed 4 | skipped 1 | archivos 331
+  - 4 rojos: dependencias-declaradas-presentes (baseline)
+```
+
+Los rojos del related son de integración, en su mayoría por una siembra que necesita datos que esta base no tiene («la tabla `usuario` está vacía»). El related se corrió antes de quitar una línea sobrante de un fixture de `cierre-pagos-lectura`, que se volvió a correr aparte. No comparé esos rojos uno a uno contra la rama base: el criterio es el baseline, por archivo, y por archivo el baseline no distingue un rojo nuevo dentro de un archivo que ya estaba rojo.

@@ -102,6 +102,10 @@
 - [x] **T7.2 Descarga** (R72). `cierres-gestiones-fundida-descarga-columnas.ts`. *Hecho:* test por resultado y modelo que suma la columna.
 - [x] **T7.3 Etiquetas en la lista de zonas** (R61). `tarifas-textos.ts`, `TarifasZonas.tsx`. *Hecho:* test con «Municipio» y guardia del conteo.
 
+## Tanda H1 — El modelo de tarifa en los DTO (backend). Depende de G
+
+- [x] **T8.1 Campo aditivo en listado, consolidación y libro de la caja** (R71, menor 6). `lib/repositories/_shared/detalle-modelo-nuevo.ts` y sus DTO. *Hecho:* integración contra Postgres y mutaciones. Falta conectarlo en pantalla.
+
 ## Mapa R → test
 
 | R | Test |
@@ -151,7 +155,7 @@
 | R68 | `e2e/tarifas-activacion.spec.ts` › «dos empresas» |
 | R69 | `e2e/zona-especial-dos-empresas.spec.ts`; `tests/unit/guards/e2e-sin-saltos.guardia.test.ts` |
 | R70 | `e2e/tarifas-maqueta.spec.ts`; `tests/components/TarifasDisposicion.test.tsx` |
-| R71 | `tests/components/CierreIngresoBodegaModeloNuevo.test.tsx`; `tests/components/CierreBodegaDetalleCascadas.test.tsx` › «R71»; `e2e/tarifas-activacion.spec.ts` |
+| R71 | `tests/components/CierreIngresoBodegaModeloNuevo.test.tsx`; `tests/components/CierreBodegaDetalleCascadas.test.tsx` › «R71»; `e2e/tarifas-activacion.spec.ts`; `tests/integration/db/cierre-incluye-modelo-nuevo.test.ts` (el dato del servidor) |
 | R72 | `tests/unit/descarga/cierres-gestiones-fundida-descarga-columnas.test.ts` › «SLT-54 (R72)» |
 
 ## Archivos esperados

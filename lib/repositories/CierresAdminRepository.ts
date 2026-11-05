@@ -127,6 +127,10 @@ import { rebasarConElCobroCongelado } from "@/lib/utils/cobro-congelado";
 // el `Pick` de este. Desde SLT-52 es el resolver UNICO (`resolverPagosCon`): decide el modelo de
 // la empresa y, en el viejo, corre el mismo cuerpo de la 39 (`resolvePagoTarifaCon`).
 import { resolverPagosCon } from "@/lib/repositories/_shared/resolver-tarifas";
+import {
+  CONTEO_DETALLE_MODELO_NUEVO,
+  incluyeModeloNuevoDe,
+} from "@/lib/repositories/_shared/detalle-modelo-nuevo";
 import { filaPagoCongelado } from "@/lib/repositories/_shared/pago-congelado";
 // FICHA 398: los dos derivadores PUROS del importe por gestion (39 y 56). Se llaman aunque el
 // resultado sea conocido ("0.00" para el pago de un rechazo) para que la regla siga viviendo en un
@@ -574,9 +578,10 @@ const CIERRE_RESUMEN_SELECT = {
   motivoRechazo: true,
   mensajero: { select: NOMBRE_USUARIO_SELECT },
   destinoZona: { select: { nombre: true } },
+  _count: CONTEO_DETALLE_MODELO_NUEVO, // SLT-54 (R71): en la misma sentencia, sin consulta por fila
 } as const;
 
-type CierreResumenRow = Prisma.CierreDiaGetPayload<{ select: typeof CIERRE_RESUMEN_SELECT }>;
+type CierreResumenRow =Prisma.CierreDiaGetPayload<{ select: typeof CIERRE_RESUMEN_SELECT }>;
 
 function toResumenRow(r: CierreResumenRow): CierreAdminResumenRow {
   return {
@@ -595,6 +600,7 @@ function toResumenRow(r: CierreResumenRow): CierreAdminResumenRow {
     },
     totalPagoMensajero: r.totalPagoMensajero.toFixed(2), // R17: snapshot money-safe STRING
     totalIngresoBodegaRechazos: r.totalIngresoBodegaRechazos.toFixed(2), // feature 56/R16: snapshot money-safe STRING
+    incluyeModeloNuevo: incluyeModeloNuevoDe(r), // SLT-54 (R71)
     solicitadoAt: r.solicitadoAt.toISOString(),
     resueltoAt: r.resueltoAt ? r.resueltoAt.toISOString() : null,
     motivoRechazo: r.motivoRechazo,

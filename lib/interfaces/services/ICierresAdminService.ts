@@ -79,6 +79,12 @@ export interface CierreAdminResumen {
   totalPagoMensajero: string; // feature 39/R17: snapshot total del pago al mensajero (STRING), separado de `totales`
   totalIngresoBodegaRechazos: string; // feature 56/R16: snapshot total del ingreso de bodega por rechazos (STRING), separado de `totales` y del pago al mensajero
   /**
+   * SLT-54 (R71) — ¿este cierre tiene alguna gestion congelada con el modelo nuevo? Sale de
+   * `cierre_detail.tarifa_modelo`, no del interruptor actual de la empresa. Lo puebla el repositorio
+   * en toda lectura; opcional en el tipo (aditivo). Ausente se lee como modelo viejo.
+   */
+  incluyeModeloNuevo?: boolean;
+  /**
    * Feature 172 (T C.2, §5/R22/R26/R28) — lo que de ESTE cierre sigue sin entregarse al
    * mensajero, DERIVADO en el servidor: `min(P, E)` menos los pagos VIGENTES registrados contra
    * el (`derivarPendienteCierre`). STRING de escala 2, money-safe: la pantalla no hace

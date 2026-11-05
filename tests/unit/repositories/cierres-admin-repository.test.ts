@@ -133,6 +133,7 @@ function cierreResumenRow(overrides: Record<string, unknown> = {}) {
     solicitadoAt: new Date("2026-07-12T10:00:00.000Z"),
     resueltoAt: null,
     motivoRechazo: null,
+    _count: { detalle: 0 }, // SLT-54 (R71): sin filas del modelo nuevo
     mensajero: { nombre: "Ana Mensajera" },
     destinoZona: { nombre: "Central" },
     // Feature 264 (R27): la marca por cierre. `true` = sus ordenes sin gestionar SI se
@@ -316,6 +317,7 @@ describe("CierresAdminRepository.findCierresByAlcance (R2/R4/R5)", () => {
       totales: { efectivo: "10.00", simpe: "5.50", transferencia: "0.00", general: "15.50" },
       totalPagoMensajero: "5.00", // feature 39/R17: snapshot money-safe STRING
       totalIngresoBodegaRechazos: "3.00", // feature 56/R16: snapshot money-safe STRING
+      incluyeModeloNuevo: false, // SLT-54 (R71)
       solicitadoAt: "2026-07-12T10:00:00.000Z",
       resueltoAt: null,
       motivoRechazo: null,

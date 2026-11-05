@@ -98,6 +98,7 @@ const CRUCE_A_QUIEN = "lib/repositories/libro-caja-a-quien-sql.ts";
 const MODULOS_IMPORTADOS_DECLARADOS = [
   "lib/repositories/registrar-accion.ts", // auditoria (362): escribe por delegado, lo cuenta R31
   CRUCE_A_QUIEN, // el cruce «A quién» (458-E): SQL de solo lectura, sin montos
+  "lib/repositories/_shared/detalle-modelo-nuevo.ts", // SLT-54: el modelo del cierre de una fila, sin montos ni SQL crudo
 ];
 
 /** El codigo sin las lineas de `import … from "…"` (su `from` no es SQL). */
@@ -217,6 +218,9 @@ describe("R33 — el repositorio que sirve las dos cifras NO puede leer los otro
       // CRITERIO de pertenencia: lo que se suma sigue siendo `wallet_movimiento.monto` y nada mas.
       // Eso lo afirma el caso «el filtro «A quién» solo SUMA la caja» de abajo.
       $queryRaw: {} as PrismaClient["$queryRaw"],
+      // SLT-54 (menor 6 de la revision F2.2): `cierreDetail`, para decir con que modelo se congelo el
+      // cierre de una fila. No es un libro y no se suma: solo se lee `cierre_id` donde `tarifa_modelo`.
+      cierreDetail: {} as PrismaClient["cierreDetail"],
     };
     const repo = new WalletMovimientoRepository(clienteDeUnaSolaTabla);
 
