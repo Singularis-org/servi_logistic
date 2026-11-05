@@ -71,7 +71,7 @@
   `analitica - informe transito - error: …` con `ErrorLogger` (inyectable, por defecto
   `defaultLogger`) y la generación falla (design §4). **Hecho:** typecheck en verde. `informe-transito-*.test.ts` (unitarios y de integración) pasan sin
   cambiar aserciones.
-- [ ] **T4.2** `tests/integration/db/geo-transito-nombres.test.ts` (R8–R13), con el test de la línea
+- [x] **T4.2** `tests/integration/db/geo-transito-nombres.test.ts` (R8–R13), con el test de la línea
   de log de R12 (prefijo, ids de nodo y de orden, sin datos personales ni nombres, y la contraprueba
   sin log). **Hecho:** pasa.
 
