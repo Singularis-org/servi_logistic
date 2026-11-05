@@ -311,3 +311,20 @@ Salida (`DATABASE_URL` → `logistic_slt44_r1104`, `NODE_OPTIONS=--max-old-space
     `tarifaActivacion.findFirst → null` (SLT-54 R30, empresa sin activar).
 - Verificación local: ver el commit del merge (tsc + guardias + tests unitarios de cobertura). Las
   migraciones nuevas de dev no se aplicaron a ninguna base local en este paso; CI da el veredicto.
+
+## 2026-11-05 — Rojo de CI tras integrar dev (SLT-54): `tarifa-empresa-nueva.test.ts`
+
+- Causa raíz (test, no producción): el test de SLT-54 da de alta una empresa NUEVA dentro de
+  `enTransaccionRevertida`, que deja en el contexto (`conEmpresa`) su empresa POR DEFECTO. Su
+  `comoEmpresa` fijaba la nueva solo en la base (`comoApp`: GUC + rol `servi_app`), no en el
+  contexto. `CatalogoGeograficoRepository.deLaEmpresa` (SLT-44) pide la organización por el id del
+  contexto: la por defecto, que la RLS de la nueva no deja ver → `EmpresaNoResuelta` → 500 en vez
+  de 409. En producción contexto y GUC salen del mismo id (la extensión fija uno desde el otro; las
+  rutas por key corren en `conEmpresaDeLaKey`), así que un usuario no llega a este estado.
+- Arreglo: `comoEmpresa` del test corre `fn` dentro de `conEmpresa(org, …)`, como hacen los tests
+  de aislamiento (`aislamiento-ordenes`, `aislamiento-cierres`).
+- Archivo: `tests/integration/db/tarifa-empresa-nueva.test.ts`.
+- Local (Postgres `logistic_slt44_r1104`, migraciones de dev aplicadas con `migrate deploy`):
+  `tarifa-empresa-nueva` 5/5 verde (antes 4 rojos, 500≠409); `tsc --noEmit` 0; eslint del archivo
+  sin issues; guardias 239/240, solo el rojo de baseline `dependencias-declaradas-presentes`.
+- Veredicto: verde local; el rojo era de montaje del test.
