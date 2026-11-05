@@ -16,6 +16,7 @@ F1.2 (2026-11-05): alcance sembrado con /afinar-feature. Siguiente: spec_author.
 
 ## Decisiones
 - 2026-11-05 · Alcance y decisiones → `specs/SLT-86-planes-periodo-facturacion/requirements.md`.
+- 2026-11-05 · spec_author bloqueó: ya existía el tipo de cobro por empresa (PR #72). Humano: el período vive en la empresa, descuento en el plan por período, migración sin perder nada. Requirements y tarjeta enmendados.
 
 ## Preguntas abiertas
 Ninguna.
