@@ -182,3 +182,86 @@ garantizado tras el merge.
 Tanda 1 cerrada: `dev` integrado con SLT-64, contextos comprobados sin llamadores en plataforma, fixture
 con antivacío verde, medición extraída sin cambiar su test y copia literal de `c301fc87` en su propio
 commit; T2 sin empezar.
+
+## F2.1 tanda 2 — T2 cerrada; T3 PARADA antes de tocar los repositorios (backend_dev, 2026-11-04)
+
+### T2.1 — `sqlLugarEn` y `PROFUNDIDAD_DEL_NIVEL`
+
+- `lib/repositories/_shared/lugar-orden.ts`: `PROFUNDIDAD_DEL_NIVEL` (movida, mismo valor) y
+  `sqlLugarEn(ids)` →
+  `(o."distrito_id" = ANY($1::text[]) OR (o."distrito_id" IS NULL AND o."canton_id" = ANY($2::text[])))`.
+  Un array por rama, copiado; sin `COALESCE`.
+- `lib/repositories/OrdenRepository.ts`: solo la importación de `PROFUNDIDAD_DEL_NIVEL` y el borrado de
+  su declaración (R25).
+- `tests/unit/repositories/lugar-orden.test.ts` ampliado (forma, parámetros, copia, profundidades).
+
+### T2.2 — `lugares-del-filtro.ts`
+
+- `lib/repositories/_shared/lugares-del-filtro.ts`: `FacetasGeograficas`, `LugaresDelFiltro`,
+  `SIN_FACETAS_GEOGRAFICAS`, `tieneFacetasGeograficas`, `resolverLugaresDelFiltro` (puro),
+  `condicionesDeLugar` (puro; `[]` → `FALSE`) y `lugaresDelFiltro` (carga el catálogo solo con faceta).
+- `tests/unit/repositories/lugares-del-filtro.test.ts`: catálogo de 4 niveles; R1, R3, R5 y el rechazo de
+  plataforma (R13) que sube tal cual.
+
+### BLOQUEO — aserciones de salida fuera de design §11.1 (T3.1–T3.3)
+
+R1 obliga a mandar los ids de cada faceta como **un parámetro de tipo array** (`= ANY($ids)`). Hoy
+viajan como un parámetro escalar por id (`IN ($1, $2)`). Por eso cambian los **parámetros** de las
+condiciones, no solo su texto. Design §11.1 solo deja cambiar el texto del SQL. Estas aserciones de
+parámetros no están en esa lista y no pueden quedar verdes con R1:
+
+| archivo:línea | aserción de hoy | por qué no puede seguir verde |
+|---|---|---|
+| `tests/unit/analytics/conteo-por-status-sql.test.ts:111–115` | `parametrosDe({ zona_id: ["z1","z2"], canton_id: ["c1"] })` `toEqual(["z1","z2","c1"])` | con faceta, los parámetros de `c1` son dos arrays (`[…ids], […ids]`); sin faceta resuelta, `c1` no está |
+| `tests/unit/analytics/conteo-cargadas-servicio.test.ts:205–207` | `parametrosDe(...)` `toEqual(expect.arrayContaining(["z1","p1","c1","d1","t1"]))` | `p1`, `c1` y `d1` viajan dentro de arrays, no como escalares |
+| `tests/unit/analytics/cohorte-carga-sql.test.ts:152` | por faceta, `parametrosDe(consulta)` `toContain("x1")` | para las tres geográficas, `x1` va dentro de un array (o, si no está en el catálogo, la faceta es `FALSE` y no hay parámetro) |
+
+Además, para tenerlo en cuenta (no son aserciones, pero el reviewer lo verá en el diff):
+
+- Los helpers `sqlDe` y `parametrosDe` de esos tests, y las llamadas a `condicionesDeConsulta(consulta)`
+  de `conteo-productos-sql.test.ts` y `dinero-productos-sql.test.ts`, tienen que pasar el segundo
+  parámetro `lugares`, que es obligatorio (§3.3). Esto cambia la **entrada**: no es un doble de
+  `$queryRaw`.
+- Las líneas de §11.1 se movieron con el merge de `dev`. Hoy, `ciclo-vida.test.ts` tiene el bucle en
+  `:94–96` (§11.1 dice `:105`) y `conteo-devoluciones.test.ts` en `:139–141`. Son las mismas
+  aserciones.
+
+**Decisión que pide el humano:** ampliar §11.1 con las tres filas de arriba. La forma propuesta: el
+parámetro de una faceta geográfica pasa a ser el array de ids resueltos, por ejemplo
+`["z1","z2",["c1",…],["c1",…]]`. O bien la alternativa que el humano prefiera. Hasta entonces, T3.1–T3.4
+no empiezan y T4 queda sin tocar. No se modificó ningún test existente.
+
+### Corridas (Postgres local `logistic_slt71`, `NODE_OPTIONS=--max-old-space-size=8192`)
+
+Los tests de integración **corrieron** contra `logistic_slt71`.
+
+```
+$ pnpm exec tsc --noEmit
+rc=0
+$ pnpm exec eslint lib/repositories/_shared/lugar-orden.ts lib/repositories/_shared/lugares-del-filtro.ts \
+    lib/repositories/OrdenRepository.ts tests/unit/repositories/lugar-orden.test.ts \
+    tests/unit/repositories/lugares-del-filtro.test.ts
+(sin salida)
+$ pnpm exec vitest run tests/integration/db/geo-consultas-conteo.test.ts \
+    tests/unit/repositories/lugar-orden.test.ts tests/unit/repositories/lugares-del-filtro.test.ts
+ Test Files  3 passed (3)
+      Tests  33 passed (33)
+$ pnpm run test:guardias
+ Test Files  1 failed | 333 passed (334)
+      Tests  4 failed | 4635 passed | 1 skipped (4640)   # solo el baseline dependencias-declaradas-presentes
+```
+
+### Mapa R → test (actualizado)
+
+| R | test | estado |
+|---|---|---|
+| R1 | `tests/unit/repositories/lugares-del-filtro.test.ts` (resolver, condiciones); `lugar-orden.test.ts` (forma de `sqlLugarEn`) | unidad hecha; integración en T3.4 (pendiente) |
+| R3 | `lugares-del-filtro.test.ts` (otro nivel, ausente, todos inválidos → `[]` → `FALSE`) | unidad hecha; integración en T3.4 |
+| R5 | `lugares-del-filtro.test.ts` (sin faceta no crea ni carga el catálogo; sin condiciones) | unidad hecha; integración en T3.4 |
+| R13 | `lugares-del-filtro.test.ts` (el rechazo `EmpresaNoResuelta` sube tal cual) | parcial; integración en T3.4/T4.2 |
+| R2, R4, R6–R12, R14–R25 | — | pendientes (T3–T8) |
+
+### Veredicto
+
+T2.1 y T2.2 cerradas y en verde. T3 parada por tres aserciones de parámetros que §11.1 no cubre;
+espera la decisión del humano.
