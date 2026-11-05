@@ -109,6 +109,12 @@ const EXCEPCIONES: Record<string, { textos: readonly string[]; motivo: string }>
       "SLT-54 (menor 6 de la revisión F2.2): el concepto del flete del cierre con el modelo nuevo y su IVA " +
       "usan el rótulo aprobado de R65, «gestiones no entregadas»; no nombra el estado (R6)",
   },
+  "app/(app)/mi-wallet/_components/mi-wallet-labels.ts": {
+    textos: ["entregadas", "entregadas"],
+    motivo:
+      "SLT-54 (R71, D38): el concepto del flete del cierre con el modelo nuevo y su IVA, dichos desde la tienda, " +
+      "usan el rótulo aprobado de R65, «gestiones no entregadas»; no nombra el estado (R6)",
+  },
   "lib/types/order-status.ts": {
     // FICHA 456 (2026-09-24, reconciliacion R-456-3 de `progress/impl_456.md`): «sin gestionar» es la
     // frase del texto APROBADO por el humano para explicar «Novedad interna» («El mensajero terminó el

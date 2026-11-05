@@ -133,7 +133,7 @@ describe("SLT-54 — filas y columnas", () => {
     render(<TarifasValores {...props({ actor: "mensajero" })} />);
 
     await u.click(screen.getByRole("combobox", { name: "Modo de Por entregado" }));
-    expect(screen.getByRole("option", { name: `Monto ${monedaConfig.simbolo}` })).toBeInTheDocument();
+    expect(await screen.findByRole("option", { name: `Monto ${monedaConfig.simbolo}` })).toBeInTheDocument();
     await u.click(screen.getByRole("option", { name: "%" }));
     await u.type(screen.getByRole("textbox", { name: "Valor de Por entregado" }), "50");
     await u.click(guardarBoton());

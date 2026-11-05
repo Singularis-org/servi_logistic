@@ -976,4 +976,18 @@ describe("SLT-54 R65 — el rótulo del flete que no es de entrega, por nivel", 
     expect(within(deAna).getByText(NOTA_NUEVA)).toBeInTheDocument();
     expect(within(deBeto).getByText(NOTA_VIEJA)).toBeInTheDocument();
   });
+
+  it("R71 (menor 5): la nota de «Para la central» sigue al cierre: nuevo sin devoluciones; viejo, literal", async () => {
+    const [ana, beto] = DETALLE_OK.cierres;
+    await abrirDetalle({ ...DETALLE_OK, cierres: [{ ...ana, ...conNuevo }, beto] });
+    const NOTA_NUEVA = "Lo recaudado menos el pago a los mensajeros y menos lo que gana la bodega satélite por sus gestiones.";
+    const NOTA_VIEJA =
+      "Lo recaudado menos el pago a los mensajeros y menos lo que gana la bodega satélite por las devoluciones a origen.";
+    expect(within(central()).getByText(NOTA_NUEVA)).toBeInTheDocument();
+    expect(within(central()).queryByText(NOTA_VIEJA)).toBeNull();
+    cleanup();
+    await abrirDetalle();
+    expect(within(central()).getByText(NOTA_VIEJA)).toBeInTheDocument();
+    expect(within(central()).queryByText(NOTA_NUEVA)).toBeNull();
+  });
 });

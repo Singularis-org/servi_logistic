@@ -69,6 +69,7 @@ import {
   FLETE_NO_ENTREGADAS_NOTA,
   hayGestionEnModeloNuevo,
   PARA_LA_CENTRAL_NOTA,
+  PARA_LA_CENTRAL_NOTA_MODELO_NUEVO,
   PARA_LA_CENTRAL_NEGATIVO_NOTA,
   EFECTIVO_NO_CUBRE_NOTA,
   GANA_BODEGA_SATELITE_NOTA,
@@ -264,7 +265,7 @@ function lineasCascadaCentral(
   // R26/R36/R37: la nota fija dice de qué resta sale; las dos condicionales, qué pasa cuando el
   // número no es tranquilo. Van SUELTAS y no unidas en un párrafo: cada una está o no está, y
   // fundirlas dejaría sin poder distinguir cuál se puso.
-  const notas = [PARA_LA_CENTRAL_NOTA];
+  const notas = [modeloNuevo ? PARA_LA_CENTRAL_NOTA_MODELO_NUEVO : PARA_LA_CENTRAL_NOTA];
   if (esMontoNegativo(nivel.paraLaCentral)) notas.push(PARA_LA_CENTRAL_NEGATIVO_NOTA);
   if (!nivel.efectivoCubreDescuentos) notas.push(EFECTIVO_NO_CUBRE_NOTA);
 

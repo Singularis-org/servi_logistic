@@ -1297,3 +1297,117 @@ $ pnpm run test:guardias
 ```
 
 El criterio del related es el baseline por archivo, que no distingue un rojo nuevo dentro de un archivo que ya estaba rojo. Por eso busqué además los mensajes que delatarían este cambio, pero no comparé esos 92 uno a uno contra la rama base. Los 60 de la tercera línea son anteriores al ajuste del control de no vacuidad; el `FINAL` de la repetición dio 0 de 12 y 0 de 39. Los 233 avisos de lint son de todo el repo.
+
+## Tanda I2 — El rótulo del cobro en el estado de cuenta de la tienda (frontend)
+
+**Veredicto:** D38 cerrada. Con `incluyeModeloNuevo` verdadero, la tienda y la oficina ya no leen «devolución a origen» en el flete ni en su IVA; falso o ausente, el texto de siempre. Sin tocar backend, esquema ni importes.
+
+### D38
+
+| Superficie | Flete, con el campo verdadero | IVA, con el campo verdadero |
+|---|---|---|
+| `/mi-wallet` (`conceptoDeFilaMiWallet`) | «La empresa te cobró el flete de gestiones no entregadas» | «La empresa te cobró el IVA del flete de gestiones no entregadas» |
+| `/wallet/tiendas` (`conceptoDeFilaTienda`) | «Flete de gestiones no entregadas cobrado a la tienda» | «IVA del flete de gestiones no entregadas cobrado a la tienda» |
+
+Las dos superficies pasan por `rotulos.concepto`, así que el cambio llega a la tabla, al nombre del desplegable, a las dos hojas de la descarga y al nombre con que se pide anular. La oficina toma el texto de `conceptoDeMovimientoCaja`, sin copiarlo: `CATEGORIA_TIENDA_LABEL` ya prometía el mismo texto que el libro de la caja. La tienda tiene el suyo, en segunda persona. Los diccionarios por categoría no cambian: «Registrar movimiento» sigue prometiendo el de la oficina (R46).
+
+### El filtro de `/mi-wallet`: no existe
+
+El encargo y la revisión citan un filtro por concepto que rotula la categoría. **Ya no está en la pantalla:** lo retiró la 458-D (lo dice la cabecera de `MiWalletFiltros.test.tsx`), y la barra filtra por periodo, tipo de movimiento y cierre. El único lector de `CATEGORIA_MI_WALLET_LABEL` en pantalla era `MiEstadoCuenta.tsx:55`. `CONCEPTO_MI_WALLET_TODOS_OPTION` quedó sin lector, solo lo lee su test, y el comentario del diccionario sigue nombrando ese filtro; no los toqué. No hay rótulo por categoría que resolver, así que no pasa a deudas como pendiente: consta en D38.
+
+### Menores
+
+| Menor | Estado |
+|---|---|
+| 3 | Hecho: D41 en `progress/deudas.md`. D38 cerrada y D39 actualizada. |
+| 4 | Hecho, con un test nuevo en `tarifas-activacion`. Ver «Decisiones». |
+| 5 | **A medias.** `CierresBodegaAdminModule.tsx:267`, hecho (`PARA_LA_CENTRAL_NOTA_MODELO_NUEVO`). `cierre-factura.tsx:1073`, **no**: ver abajo. `ConciliacionSatelite.tsx:167,174`, no: sin dato. Los dos, en D40. |
+| 9 | Hecho: R71 pasa el libro de la caja a cláusula MIENTRAS…DEBE e incluye D38; fila del mapa y T10 en `tasks.md`. Marcado pendiente de visto bueno de Carlos en el PR. |
+| 11 | Hecho: `findByRole` en `TarifasValores.test.tsx:136`, el mismo arreglo que «R33, R41». No medí la intermitencia: no falló aquí. |
+
+**Por qué no `cierre-factura.tsx:1073`, aunque el encargo la pedía.** Esa rama solo se pinta con `cascadaCentral`, y el único que la pasa es `CierreBodegaFacturaResumen`, que no pasa `modeloNuevo`. Su `CierreBodegaResumen` no trae el campo (lo trae `CierreBodegaResumenLite`, otro tipo). Escribí el condicional y lo quité: con `modeloNuevo` siempre falso era código muerto que parecía arreglado. Pide backend, y por eso va a D40.
+
+### Decisiones, por revisar
+
+- **Guardia `nombres-estado-retirados`, tocada a propósito.** Declara «entregadas» dos veces en `mi-wallet-labels.ts`, con el motivo de R65. La oficina no la necesita porque no repite el texto.
+- **E2E en la zona central, sin literal del viejo.** Un cierre de satélite no entra en el estado de cuenta ni en la caja hasta consolidarse: con la satélite, `/mi-wallet` salió vacío. El test digita el flete de reprogramado en la central y afirma además que «devolución a origen» no aparece en ninguna de las dos tablas. El viejo literal queda en componente: esta empresa no tiene un cierre viejo de la central.
+- **`NEXT_PUBLIC_APP_URL` en la build del E2E.** Una corrida de `aislamiento` cayó en `superadmin-empresas` («falta NEXT_PUBLIC_APP_URL»), de entorno y no de esta tanda: Next la incrusta al compilar y el `.env` del worktree no la trae. Reconstruí como `gate.yml`.
+
+### Archivos
+
+**Nuevos:** `tests/components/EstadoCuentaTiendaModeloNuevo.test.tsx`
+
+**Modificados:** `app/(app)/mi-wallet/_components/`: `MiEstadoCuenta.tsx`, `mi-wallet-labels.ts`; `app/(app)/wallet/tiendas/_components/`: `EstadoCuentaTienda.tsx`, `desglose-tienda-labels.ts`; `app/(app)/cierres-admin/_components/`: `CierresBodegaAdminModule.tsx`, `cierre-detalle-shared.tsx`, `cierre-labels.ts`; `e2e/tarifas-activacion.spec.ts`; `tests/components/CierreBodegaDetalleCascadas.test.tsx`, `tests/components/TarifasValores.test.tsx`; `tests/unit/guards/nombres-estado-retirados.guardia.test.ts`; `specs/SLT-54-pantalla-tarifas/requirements.md`, `tasks.md`; `progress/deudas.md`; esta bitácora
+
+### Mapa R → test (tanda I2)
+
+Todo en `tests/components/EstadoCuentaTiendaModeloNuevo.test.tsx`, salvo donde se dice otro. Cada caso corre en las dos superficies, con reprogramado, flete 250 e IVA 32,50 al 13 %.
+
+| Caso | Test |
+|---|---|
+| R71/D38, rótulo: nuevo, viejo (falso y ausente), cobro por rechazo, solo cambian dos categorías | «el rótulo de una fila» |
+| R71/D38, tabla: nuevo, viejo literal, mixto, nombre del desplegable | «la tabla» |
+| R71/D38, descarga, hojas «Movimientos» y «Detalle por guía»: nuevo, viejo literal, mixto | «la descarga» |
+| R71/D38, oficina igual que la caja; tienda distinta de oficina; nombre para anular | «lo propio de cada lado» |
+| R71, de punta a punta en `/mi-wallet` y el libro de la caja (menor 4) | `e2e/tarifas-activacion.spec.ts` › «un reprogramado del modelo nuevo no se lee como devolución…» |
+| R71, nota de «Para la central» (menor 5) | `CierreBodegaDetalleCascadas` › «R71 (menor 5)…» |
+
+El mixto de un solo cierre lo calcula el servidor y lo mide `estado-cuenta-tienda-modelo-nuevo.test.ts`; en componente, «mixto» es la lista con filas de los dos lados. `/wallet/tiendas` no tiene E2E de este rótulo: el encargo pedía la tienda o la oficina, y se recorre la tienda.
+
+### Mutaciones
+
+Script `i2-mut.cjs` en el scratchpad: corre primero la base y aborta si no hay tests, hay rojos o hay saltos (`BASE total 54, fail 0, skip 0`); restaura cada archivo en `finally` y compara la huella al final (`ARBOL RESTAURADO true`). **14 de 14 matadas, todas por aserción, con todos los casos ejecutados en cada una** (saltos 0, sin suite rota).
+
+| Id | Mutación | Ejecutados | Rojos |
+|---|---|---|---|
+| M1, M2 | `/mi-wallet`: siempre viejo; siempre nuevo | 29 | 7 y 7 |
+| M3 | `/mi-wallet`: ausente se lee como nuevo | 29 | 3 |
+| M4 | `/mi-wallet`: el IVA se queda viejo | 29 | 5 |
+| M5 | `/mi-wallet`: la superficie no le pasa el campo | 29 | 7 |
+| M6 | `/mi-wallet`: cambia el literal del viejo | 29 | 6 |
+| O1, O2 | Oficina: siempre viejo; siempre nuevo | 29 | 9 y 8 |
+| O3 | Oficina: ausente se lee como nuevo | 29 | 4 |
+| O4 | Oficina: el IVA se queda viejo | 29 | 6 |
+| O5 | Oficina: la superficie no le pasa el campo | 29 | 9 |
+| O6 | Oficina: cambia el literal del viejo | 29 | 7 |
+| N1, N2 | Nota de «Para la central»: siempre vieja; siempre nueva | 25 | 1 y 2 |
+
+No muté el test E2E.
+
+### E2E
+
+`servi_e2e_slt54`, host local comprobado, recreada, migrada y con catálogos, sobre `next build` + `next start`. Borrada al terminar (`existe: false`). No se tocó la base de `.env`; ninguna URL impresa. 0 menciones de `useToast` o `ToastProvider` en el log del servidor.
+
+```
+$ playwright test --project=dinero              (build sin NEXT_PUBLIC_APP_URL)
+  44 passed (1.6m) | 0 failed | 0 skipped | 0 flaky
+$ playwright test --project=aislamiento         (esa misma build; arrastra plataforma-vacia)
+  4 passed | 1 failed | 81 did not run: superadmin-empresas, de entorno, ver «Decisiones»
+$ next build con NEXT_PUBLIC_APP_URL, base nueva
+$ playwright test --project=dinero
+  42 passed (2.1m) | 1 failed | 1 did not run: wallet-mensajeros.spec.ts:58, ver abajo
+$ playwright test --project=aislamiento
+  86 passed (2.8m) | 0 failed | 0 skipped | 0 flaky
+$ playwright test --project=dinero              (repetición, misma build, base nueva)
+  44 passed (1.7m) | 0 failed | 0 skipped | 0 flaky
+```
+
+**El rojo de `wallet-mensajeros`, sin causa medida.** En una corrida de tres, el clic en «Ver las órdenes que componen “Pago devengado”» agotó los 30 s con `element was detached from the DOM, retrying`. Sale en el libro del mensajero, que este cambio no toca (sus rótulos son otros y `EstadoCuenta.tsx` no cambió), y no se repitió en las otras dos. No busqué por qué se desmonta el botón ni mido su frecuencia: es intermitente hasta donde sé, y no consta que sea anterior a esta tanda.
+
+### Salida de los comandos
+
+Sin `./init.sh` ni la suite completa, por encargo. No consulté el grafo: Grep y Read.
+
+```
+$ NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck        -> exit 0
+$ pnpm run lint                                                    -> exit 0; 0 errores, 233 avisos
+$ pnpm run test:guardias
+  Test Files  1 failed | 330 passed (331)
+       Tests  4 failed | 4616 passed | 1 skipped (4621)
+  - 4 rojos: dependencias-declaradas-presentes (baseline)
+$ vitest <17 archivos que el cambio toca, 3 de ellos de integración>   (DATABASE_URL = servi_gate_slt54)
+  Test Files  17 passed (17)
+       Tests  287 passed (287)
+```
+
+Typecheck y guardias se repitieron tras el ajuste final del test E2E, con el mismo resultado; `eslint` de los archivos de la tanda, exit 0. El `lint` completo y los 17 archivos son anteriores a ese ajuste, que solo tocó `e2e/tarifas-activacion.spec.ts`. No corrí `vitest related`: elegí los 17 a mano, por lectores de los diccionarios y de las notas, así que un lector indirecto queda para el CI.

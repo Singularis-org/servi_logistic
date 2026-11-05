@@ -249,9 +249,16 @@ variantes de SLT-52 R5 y R6. *Referencia*: lo que rige hoy, mostrado junto a un 
   resultado, de modo que las filas sumen el total. Los cierres del modelo viejo NO DEBEN cambiar ni texto ni
   importe. MIENTRAS un cierre tiene alguna gestión del modelo nuevo, su tarjeta del listado y su tarjeta de la
   consolidación DEBEN usar ese mismo rótulo; MIENTRAS alguno de los consolidables la tiene, también el total de la
-  consolidación. *Nota (tanda H2):* ese dato llega del servidor y un conjunto mixto se lee como nuevo. Con el mismo
-  dato, el libro de la caja nombra el cobro de un cierre así «Flete de gestiones no entregadas cobrado a la tienda»
-  y «IVA del flete de gestiones no entregadas cobrado a la tienda» (menor 6). Fuera: D38 y D39 de `progress/deudas.md`.
+  consolidación. MIENTRAS el cierre de una fila del libro de la caja tiene alguna gestión del modelo nuevo, esa fila
+  DEBE nombrar su cobro «Flete de gestiones no entregadas cobrado a la tienda» y «IVA del flete de gestiones no
+  entregadas cobrado a la tienda», en la tabla, el detalle y la descarga (menor 6). MIENTRAS el cierre de una fila del
+  estado de cuenta de una tienda tiene alguna gestión del modelo nuevo de esa tienda, esa fila DEBE nombrar el cobro con
+  esos mismos textos en `/wallet/tiendas`, y en `/mi-wallet` con «La empresa te cobró el flete de gestiones no
+  entregadas» y «La empresa te cobró el IVA del flete de gestiones no entregadas», en la tabla, el desplegable y las
+  dos hojas de la descarga (D38). Las filas del modelo viejo y el cobro por rechazo NO DEBEN cambiar de texto.
+  *Nota:* ese dato llega del servidor y un conjunto mixto se lee como nuevo. Fuera: D39, D40 y D41 de
+  `progress/deudas.md`. Cláusula del libro de la caja y D38 redactadas en la tanda I2, pendientes de visto bueno de
+  Carlos en el PR.
 - **R72.** MIENTRAS una fila de la descarga de cierres es `tarifaModelo: "nuevo"`, DEBE poblar flete, total, pago
   al mensajero e ingreso de bodega con cualquier resultado que los tenga, de modo que cada columna sume lo que da
   el comprobante. Las filas del modelo viejo NO DEBEN cambiar.

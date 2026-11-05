@@ -312,6 +312,9 @@ export const GANA_BODEGA_SATELITE_LABEL = "Gana la bodega satélite";
 /** R26 — de qué resta sale «Para la central», en el idioma de quien la hace. */
 export const PARA_LA_CENTRAL_NOTA =
   "Lo recaudado menos el pago a los mensajeros y menos lo que gana la bodega satélite por las devoluciones a origen.";
+/** SLT-54 (R71, menor 5): en el nuevo la satélite gana por cualquier resultado (SLT-52 R32). */
+export const PARA_LA_CENTRAL_NOTA_MODELO_NUEVO =
+  "Lo recaudado menos el pago a los mensajeros y menos lo que gana la bodega satélite por sus gestiones.";
 
 /**
  * R36 — qué significa que salga NEGATIVO. Sin esta nota, un «−₡3.400» en una pantalla de dinero

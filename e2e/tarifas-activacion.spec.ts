@@ -331,6 +331,33 @@ test.describe.serial("Tarifas — digitar, activar y cierre (R67)", () => {
     expect((await congeladoDelCierre(cierreNuevo.cierreId)).totalPagoMensajero).toBe("2200");
     expect(await activacionesDe(r.empresa.organizacionId)).toBe(1);
   });
+
+  // R71, D38: el flete de un reprogramado cae en la categoría de la devolución, y no hubo devolución alguna. En la
+  // zona central, porque el cierre de una satélite no entra en esos libros hasta consolidarse.
+  test("un reprogramado del modelo nuevo no se lee como devolución, ni en la tienda ni en la caja", async ({ browser }) => {
+    test.setTimeout(300_000);
+    await abrirTarifas(page);
+    await irAZona(page, r.zonaCentral.nombre);
+    await digitarYGuardar(page, "Cobro a la tienda", [{ concepto: "Flete por reprogramado", valor: "250", iva: "13" }], "Guardar cambios");
+    const m = await crearMensajero(r, "central");
+    const orden = await llevarA(r, await crearOrden(r, { zona: "central" }), "en_reparto", { mensajero: m });
+    await gestionar(r, orden, m, { resultado: "reprogramado" });
+    await aprobarCierre(r, await solicitarCierre(r, m));
+
+    const tienda = await paginaDe(browser, r.tienda);
+    await tienda.goto("/mi-wallet");
+    const cuenta = tienda.getByRole("table", { name: `Estado de cuenta de ${r.tienda.nombre}` });
+    await expect(cuenta.getByRole("row").filter({ hasText: "La empresa te cobró el flete de gestiones no entregadas" })).toContainText(importe(250));
+    await expect(cuenta.getByRole("row").filter({ hasText: "La empresa te cobró el IVA del flete de gestiones no entregadas" })).toContainText("32,50");
+    await expect(cuenta).not.toContainText("devolución a origen");
+    await tienda.context().close();
+
+    await page.goto("/wallet");
+    const libro = page.getByRole("table", { name: "Libro de movimientos" });
+    await expect(libro.getByRole("row").filter({ hasText: "Flete de gestiones no entregadas cobrado a la tienda" }).filter({ hasNotText: "IVA del" })).toContainText(importe(250));
+    await expect(libro.getByRole("row").filter({ hasText: "IVA del flete de gestiones no entregadas cobrado a la tienda" })).toContainText("32,50");
+    await expect(libro).not.toContainText("devolución a origen");
+  });
 });
 
 test.describe.serial("Tarifas — dos empresas y permisos (R68, R55)", () => {

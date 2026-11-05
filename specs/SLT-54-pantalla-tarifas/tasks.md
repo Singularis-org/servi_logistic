@@ -111,6 +111,11 @@
 - [x] **T9.1 Tarjeta del listado y consolidación** (R71). `cierre-factura.tsx`, `ConsolidacionBodegaModule.tsx`, `page.tsx`. *Hecho:* tests de nuevo, viejo y mixto con literal del viejo, E2E y mutaciones.
 - [x] **T9.2 Libro de la caja** (R71, menor 6). `conceptoDeMovimientoCaja` en `wallet-rotulos.ts` y sus lectores por fila. *Hecho:* tests de nuevo, viejo y mixto con literal del viejo y mutaciones.
 
+## Tandas I1 e I2 — El modelo de tarifa en el estado de cuenta de la tienda. Dependen de H2
+
+- [x] **T10.1 Campo aditivo en la fila** (R71, D38). `EstadoCuentaService`, `EstadoCuentaRepository`. *Hecho:* integración contra Postgres y mutaciones.
+- [x] **T10.2 Rótulo por fila** (R71, D38). `mi-wallet-labels.ts`, `desglose-tienda-labels.ts` y sus superficies. *Hecho:* tests de nuevo, viejo y mixto con literal del viejo, en tabla y descarga, E2E y mutaciones.
+
 ## Mapa R → test
 
 | R | Test |
@@ -160,7 +165,7 @@
 | R68 | `e2e/tarifas-activacion.spec.ts` › «dos empresas» |
 | R69 | `e2e/zona-especial-dos-empresas.spec.ts`; `tests/unit/guards/e2e-sin-saltos.guardia.test.ts` |
 | R70 | `e2e/tarifas-maqueta.spec.ts`; `tests/components/TarifasDisposicion.test.tsx` |
-| R71 | `tests/components/CierreIngresoBodegaModeloNuevo.test.tsx`; `tests/components/CierreBodegaDetalleCascadas.test.tsx` › «R71»; `tests/components/CierreIngresoBodegaTarjetaListado.test.tsx` (tarjeta del listado y consolidación); `tests/components/WalletConceptoModeloNuevo.test.tsx` y `tests/components/DetalleFilaComposicion.test.tsx` › «SLT-54» (libro de la caja, menor 6); `e2e/tarifas-activacion.spec.ts`; `tests/integration/db/cierre-incluye-modelo-nuevo.test.ts` (el dato del servidor) |
+| R71 | `tests/components/CierreIngresoBodegaModeloNuevo.test.tsx`; `tests/components/CierreBodegaDetalleCascadas.test.tsx` › «R71»; `tests/components/CierreIngresoBodegaTarjetaListado.test.tsx` (tarjeta del listado y consolidación); `tests/components/WalletConceptoModeloNuevo.test.tsx` y `tests/components/DetalleFilaComposicion.test.tsx` › «SLT-54» (libro de la caja, menor 6); `tests/components/EstadoCuentaTiendaModeloNuevo.test.tsx` (estado de cuenta de la tienda en las dos superficies y sus descargas, D38); `e2e/tarifas-activacion.spec.ts`; `tests/integration/db/cierre-incluye-modelo-nuevo.test.ts` y `tests/integration/db/estado-cuenta-tienda-modelo-nuevo.test.ts` (el dato del servidor) |
 | R72 | `tests/unit/descarga/cierres-gestiones-fundida-descarga-columnas.test.ts` › «SLT-54 (R72)» |
 
 ## Archivos esperados
