@@ -8,7 +8,6 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { inicioDelDiaPlataforma, inicioDelSiguienteCiclo } from "@/lib/planes/ciclo";
 import { TopeDelPlanAlcanzado, traducirErrorDeTope } from "@/lib/planes/tope-error";
 import { ApiKeyRepository } from "@/lib/repositories/ApiKeyRepository";
-import { CupoPlanRepository } from "@/lib/repositories/CupoPlanRepository";
 import { MiPlanRepository } from "@/lib/repositories/MiPlanRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { PlanesService } from "@/lib/services/PlanesService";
@@ -179,13 +178,12 @@ async function antiguas(tx: TxDeTest, idsDeOrden: string[], intervalo: string): 
 const anular = (tx: TxDeTest, idsDeOrden: string[]) =>
   tx.$executeRawUnsafe(`UPDATE "orden" SET "deleted_at" = now() WHERE "id" = ANY($1::text[])`, idsDeOrden);
 
-/** Las tres lecturas del uso de órdenes que deben coincidir (R33): cupo, «Mi plan» y el detalle. */
+/** Las lecturas del uso de órdenes que deben coincidir (R33): «Mi plan» y el detalle. SLT-86 (R8): sin el cupo. */
 async function usoLeido(tx: TxDeTest, organizacionId: string) {
   await fijarEmpresa(tx, organizacionId);
-  const cupo = await new CupoPlanRepository(tx).cupoOrdenes();
   const miPlan = await new MiPlanRepository(tx).planDeLaEmpresa();
   const detalle = await planesEnTx(tx).planDeEmpresa(organizacionId);
-  return { cupo: cupo?.usados ?? null, miPlan: miPlan?.uso.ordenes ?? null, detalle: detalle?.plan?.uso.ordenes ?? null };
+  return { miPlan: miPlan?.uso.ordenes ?? null, detalle: detalle?.plan?.uso.ordenes ?? null };
 }
 
 async function tiendas(tx: TxDeTest, organizacionId: string, n: number): Promise<string[]> {
@@ -316,7 +314,7 @@ describeSiHayBase("SLT-58 — primera asignación con fecha de inicio del ciclo 
       return { res, uso, una, otra };
     });
     expect(r.res).toMatchObject({ estado: "ok", cambio: true, avisos: [] });
-    expect(r.uso).toEqual({ cupo: 2, miPlan: 2, detalle: 2 });
+    expect(r.uso).toEqual({ miPlan: 2, detalle: 2 });
     expect(Array.isArray(r.una) && r.una.length).toBe(1);
     expect(topeDe(r.otra)).toBe(true);
   });
@@ -347,8 +345,8 @@ describeSiHayBase("SLT-58 — primera asignación con fecha de inicio del ciclo 
       return { res, enCorto, pasada, inicio, ancla };
     });
     expect(r.res).toMatchObject({ estado: "ok", avisos: [] });
-    expect(r.enCorto).toEqual({ cupo: 1, miPlan: 1, detalle: 1 });
-    expect(r.pasada).toEqual({ cupo: 0, miPlan: 0, detalle: 0 });
+    expect(r.enCorto).toEqual({ miPlan: 1, detalle: 1 });
+    expect(r.pasada).toEqual({ miPlan: 0, detalle: 0 });
     expect(r.inicio).toBe(r.ancla);
   });
 

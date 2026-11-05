@@ -9,8 +9,7 @@ import { type PrecioPlan, type RolConTope, type TopesPlan, tipoCobroSchema, vers
 // SLT-58 (design §2, §3.1) — «Mi plan» lee por `plan_de_la_empresa`, la segunda y última función que
 // `servi_app` puede ejecutar: las tablas `plan*` siguen cerradas a la app (R9).
 //
-// La empresa es la que la extensión fijó en `app.organizacion_id`, igual que `CupoPlanRepository`: en
-// una lectura por sesión `contextoActual()` vendría vacío. La función exige que el argumento sea esa
+// La empresa es la que la extensión fijó en `app.organizacion_id`: en una lectura por sesión `contextoActual()` vendría vacío. La función exige que el argumento sea esa
 // misma empresa (`42501` si no), así que no hay forma de pedir el plan de otra.
 //
 // El `jsonb` es un borde sin tipar: se valida con zod antes de salir de aquí. La `version` del cambio

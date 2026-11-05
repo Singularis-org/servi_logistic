@@ -6,8 +6,8 @@ import { EmpresaCruzada, traducirErrorDeEmpresa } from "@/lib/db/contexto-empres
 
 // SL-24 (design §4.5) — el recorrido de la cadena de causas, extraído de `contexto-empresa.ts`. Las
 // formas son las de Prisma 7.8 + adapter-pg (comentario de `lib/db/sqlstate.ts`); que de verdad
-// lleguen así contra la base lo prueban `plan-topes-ordenes` (SL024) y `aislamiento-fk-misma-empresa`
-// (SL017).
+// lleguen así contra la base lo prueban `plan-sin-tope-ordenes` (SL024 del tope de usuarios; SLT-86 retiró
+// `plan-topes-ordenes`) y `aislamiento-fk-misma-empresa` (SL017).
 
 function adaptador(codigo: string, mensaje: string) {
   return Object.assign(new Error(mensaje), {

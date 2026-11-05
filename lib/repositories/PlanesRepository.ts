@@ -119,7 +119,7 @@ function aDTO(f: FilaPlan): PlanDTO {
     nombre: f.nombre,
     visibilidad: f.visibilidad,
     organizacionId: f.organizacionExclusivaId,
-    topes: { ordenesPorCiclo: f.topeOrdenesCiclo, porRol, apiKeys: f.topeApiKeys },
+    topes: { porRol, apiKeys: f.topeApiKeys },
     modulos: f.modulos.map((m) => m.modulo),
     precio: precioDe(f),
     costoPorOrden: f.costoPorOrden === null ? null : f.costoPorOrden.toFixed(2),
@@ -172,8 +172,9 @@ async function bloquearPlanParaEscribir(tx: Tx, planId: string): Promise<boolean
 /* Uso contra topes (R12, R16)                                                 */
 /* -------------------------------------------------------------------------- */
 
+// SLT-86 (R8): sin órdenes. Ya no tienen tope, así que no se cuentan contra uno; las órdenes del período
+// las cuenta `planDeEmpresa` aparte.
 interface FilaUso {
-  ordenes: number;
   api_keys: number;
   admin: number;
   mensajero: number;
@@ -189,48 +190,22 @@ const COLUMNA_DEL_ROL: Record<RolConTope, keyof FilaUso> = {
   adminSatelite: "admin_satelite",
 };
 
-/**
- * SLT-58 (§11.4, paso 2): el ciclo que tendría la empresa con la fecha elegida, para contar sus
- * órdenes antes de escribirlo. `ancla: null` = `now()` de la base (la fecha es «hoy», P9).
- */
-interface CicloCandidato {
-  /** `TIMESTAMP` sin zona como texto (`AAAA-MM-DD HH:MM:SS.mmm`, números UTC), o `null` = ahora. */
-  ancla: string | null;
-}
-
 /** Un `Date` UTC como literal de `TIMESTAMP` sin zona: la zona de la sesión no lo mueve. */
 function comoTimestamp(instante: Date): string {
   return instante.toISOString().replace("T", " ").replace("Z", "");
 }
 
-function cicloCandidato(inicio: InicioDelCicloElegido): CicloCandidato {
-  return { ancla: inicio.ancla === "ahora" ? null : comoTimestamp(inicio.ancla) };
-}
-
 /**
- * El uso de una empresa, con las mismas funciones que cuentan los triggers (una sola definición de
- * «uso», §4.2). Sin ancla (empresa sin plan) el ciclo empieza ahora: asignar el primer plan no
- * cuenta órdenes previas (§5.2, paso 3). `'Admin Tienda'` es la etiqueta de Postgres de `adminTienda`.
+ * El uso de una empresa contra los topes que quedan (usuarios por rol y API keys), con las mismas
+ * funciones que cuentan los triggers (una sola definición de «uso», §4.2). `'Admin Tienda'` es la
+ * etiqueta de Postgres de `adminTienda`.
  *
- * SLT-58 (§11.2, §11.4): el ciclo sale de `plan_inicio_ciclo_en_curso`, la misma envoltura que los
- * triggers, el cupo y «Mi plan». Con un `candidato` (primera asignación con fecha) se cuenta con el
- * ciclo que dejaría la asignación: ancla futura → ciclo corto desde ahora (R34); ancla pasada → el
- * ciclo de SL-24 R20 desde ella (R33).
+ * SLT-86 (R8): sin órdenes ni ciclo. Ninguno de los dos topes que quedan depende de la fecha, así que el
+ * «ciclo candidato» de SLT-58 (§11.4) ya no hace falta.
  */
-async function usoDe(tx: Tx, organizacionId: string, candidato?: CicloCandidato): Promise<FilaUso> {
-  const ahora = Prisma.sql`(now() AT TIME ZONE 'UTC')`;
-  let inicio: Prisma.Sql;
-  if (candidato === undefined) {
-    inicio = Prisma.sql`plan_inicio_ciclo_en_curso(o."plan_ciclo_corto_desde_at", COALESCE(o."plan_ciclo_ancla_at", ${ahora}), ${ahora})`;
-  } else if (candidato.ancla === null) {
-    inicio = Prisma.sql`plan_inicio_ciclo_en_curso(NULL, ${ahora}, ${ahora})`;
-  } else {
-    const ancla = Prisma.sql`${candidato.ancla}::timestamp`;
-    inicio = Prisma.sql`plan_inicio_ciclo_en_curso(CASE WHEN ${ancla} > ${ahora} THEN ${ahora} END, ${ancla}, ${ahora})`;
-  }
+async function usoDe(tx: Tx, organizacionId: string): Promise<FilaUso> {
   const [fila] = await tx.$queryRaw<FilaUso[]>`
-    SELECT plan_uso_ordenes(o."id", ${inicio}) AS "ordenes",
-           plan_uso_api_keys(o."id") AS "api_keys",
+    SELECT plan_uso_api_keys(o."id") AS "api_keys",
            plan_uso_rol(o."id", 'admin'::rol_value) AS "admin",
            plan_uso_rol(o."id", 'mensajero'::rol_value) AS "mensajero",
            plan_uso_rol(o."id", 'Admin Tienda'::rol_value) AS "admin_tienda",
@@ -245,17 +220,15 @@ async function excedidosDe(
   tx: Tx,
   empresas: readonly { id: string; nombre: string }[],
   topes: TopesPlan,
-  candidato?: CicloCandidato,
 ): Promise<TopeExcedido[]> {
   const excedidos: TopeExcedido[] = [];
   for (const empresa of empresas) {
-    const uso = await usoDe(tx, empresa.id, candidato);
+    const uso = await usoDe(tx, empresa.id);
     const pasa = (tope: TopeExcedido["tope"], usados: number, maximo: number | null | undefined) => {
       if (maximo !== null && maximo !== undefined && usados > maximo) {
         excedidos.push({ organizacionId: empresa.id, empresa: empresa.nombre, tope, usados, maximo });
       }
     };
-    pasa("ordenes", uso.ordenes, topes.ordenesPorCiclo);
     for (const rol of ROLES_CON_TOPE) pasa(rol, uso[COLUMNA_DEL_ROL[rol]], topes.porRol[rol]);
     pasa("api_keys", uso.api_keys, topes.apiKeys);
   }
@@ -350,7 +323,6 @@ async function aplicarVersion(tx: Tx, antes: PlanDTO, version: VersionPlan, acto
     where: { id: antes.id },
     data: {
       nombre: version.nombre,
-      topeOrdenesCiclo: version.topes.ordenesPorCiclo,
       topeApiKeys: version.topes.apiKeys,
       ...columnasDelPrecio(version.precio),
       costoPorOrden: version.costoPorOrden,
@@ -535,7 +507,6 @@ async function crearEnTx(tx: Tx, input: CrearPlanInput, actorUsuarioId: string):
       nombre: input.nombre,
       visibilidad: input.visibilidad,
       organizacionExclusivaId: input.organizacionId,
-      topeOrdenesCiclo: input.topes.ordenesPorCiclo,
       topeApiKeys: input.topes.apiKeys,
       ...columnasDelPrecio(input.precio),
       costoPorOrden: input.costoPorOrden,
@@ -575,7 +546,8 @@ async function vistaPreviaEnTx(
 ): Promise<VistaPreviaLeida | null> {
   const empresa = await tx.organizacion.findUnique({ where: { id: organizacionId }, select: { id: true, nombre: true } });
   if (empresa === null) return null;
-  const avisos = await excedidosDe(tx, [empresa], topes, cicloCandidato(inicio));
+  // SLT-86 (R8): sin órdenes; los avisos son de usuarios y API keys, que no dependen de la fecha.
+  const avisos = await excedidosDe(tx, [empresa], topes);
   // El «ahora» de la base, en la escala del ancla (P10: el aviso nombra el día del cambio de ciclo).
   const [{ ahora }] = await tx.$queryRaw<{ ahora: Date }[]>`SELECT (now() AT TIME ZONE 'UTC') AS "ahora"`;
   const ancla = inicio.ancla === "ahora" ? ahora : inicio.ancla;
@@ -746,15 +718,10 @@ export class PlanesRepository implements IPlanesRepository {
     if (empresa.plan_id === planId) return { estado: "ok", cambio: false };
 
     // R12: bajar a un plan que la empresa ya pasa se rechaza sin escribir nada. SLT-58 (R36, R42;
-    // P7 y P14 cerradas): en la primera asignación CON fecha, el uso se cuenta con el ciclo que
-    // resulta de la fecha y ningún tope pasado rechaza: se asigna y se avisa. Los triggers ya
-    // bloquean desde aquí las altas que pasen el tope (SL-24 R16).
-    const excedidos = await excedidosDe(
-      tx,
-      [empresa],
-      plan.topes,
-      inicio === undefined ? undefined : cicloCandidato(inicio),
-    );
+    // P7 y P14 cerradas): en la primera asignación CON fecha ningún tope pasado rechaza: se asigna y
+    // se avisa. Los triggers ya bloquean desde aquí las altas que pasen el tope (SL-24 R16). SLT-86
+    // (R8): solo usuarios y API keys.
+    const excedidos = await excedidosDe(tx, [empresa], plan.topes);
     if (inicio === undefined && excedidos.length > 0) return { estado: "tope_excedido", excedidos };
 
     // P2a: el ancla del primer plan se conserva; sin plan, nace ahora, en la escala de
@@ -1215,15 +1182,16 @@ export class PlanesRepository implements IPlanesRepository {
           FROM cobro_plataforma_tarifa_de(${organizacionId})`;
         if (tarifa === undefined) throw new Error(`planDeEmpresa: sin tarifa vigente para ${organizacionId}`);
         // SLT-83 (R24): la misma función y el mismo inicio de ciclo que `plan_de_la_empresa` («Mi plan»).
-        const [cobroCiclo] = await tx.$queryRaw<{ cobrado: string; pendientes: number }[]>`
-          SELECT c."cobrado"::text AS "cobrado", c."pendientes"
+        // SLT-86 (§3.3; R7, R28): el inicio es el del período en curso de calendario, y las órdenes del
+        // período se cuentan aquí con el mismo inicio, porque `usoDe` ya no las cuenta (R8).
+        const [periodo] = await tx.$queryRaw<{ cobrado: string; pendientes: number; ordenes: number }[]>`
+          SELECT c."cobrado"::text AS "cobrado", c."pendientes", plan_uso_ordenes(o."id", ci."inicio") AS "ordenes"
             FROM "organizacion" o
-           CROSS JOIN LATERAL plan_cobro_del_ciclo(
-                   o."id",
-                   plan_inicio_ciclo_en_curso(o."plan_ciclo_corto_desde_at", o."plan_ciclo_ancla_at", (now() AT TIME ZONE 'UTC'))
-                 ) c
+           CROSS JOIN LATERAL (SELECT plan_inicio_ciclo_de(o."plan_ciclo_ancla_at", o."plan_tipo_cobro", (now() AT TIME ZONE 'UTC')) AS "inicio") ci
+           CROSS JOIN LATERAL plan_cobro_del_ciclo(o."id", ci."inicio") c
            WHERE o."id" = ${organizacionId}`;
-        if (cobroCiclo === undefined) throw new Error(`planDeEmpresa: sin cobro del ciclo para ${organizacionId}`);
+        if (periodo === undefined) throw new Error(`planDeEmpresa: sin cobro del ciclo para ${organizacionId}`);
+        const cobroCiclo = { cobrado: periodo.cobrado, pendientes: periodo.pendientes };
         return {
           organizacionId,
           plan: {
@@ -1239,7 +1207,7 @@ export class PlanesRepository implements IPlanesRepository {
             ancla,
             cortoDesde: empresa.planCicloCortoDesdeAt,
             uso: {
-              ordenes: uso.ordenes,
+              ordenes: periodo.ordenes,
               apiKeys: uso.api_keys,
               porRol: Object.fromEntries(ROLES_CON_TOPE.map((rol) => [rol, uso[COLUMNA_DEL_ROL[rol]]])) as Record<
                 RolConTope,

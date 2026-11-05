@@ -50,7 +50,7 @@
 - **Hecho:** `tests/unit/planes/ciclo-periodo.test.ts` y `tests/integration/db/plan-ciclo-periodo.test.ts`
   (tabla base = TS) verdes.
 
-## T4 — Retirar el tope de órdenes (R8, R34)
+## [x] T4 — Retirar el tope de órdenes (R8, R34)
 
 - **Depende de:** T1, T2.
 - **Pasos:**

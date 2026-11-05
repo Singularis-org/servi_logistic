@@ -83,8 +83,8 @@ export async function capturar(tx: TxDeTest, fn: () => Promise<unknown>): Promis
 
 type ClienteDePlanes = Pick<TxDeTest, "plan" | "$executeRawUnsafe">;
 
+// SLT-86 (R8): sin `ordenes`; ningún plan topa ya las órdenes.
 export interface PlanDePrueba {
-  ordenes?: number | null;
   apiKeys?: number | null;
   porRol?: Partial<Record<RolValue, number>>;
   /** La empresa de un custom; sin ella, público. */
@@ -98,7 +98,6 @@ export async function crearPlan(c: ClienteDePlanes, p: PlanDePrueba = {}): Promi
       nombre: `sl24 ${randomUUID().slice(0, 8)}`,
       visibilidad: p.custom ? "custom" : "publico",
       organizacionExclusivaId: p.custom ?? null,
-      topeOrdenesCiclo: p.ordenes ?? null,
       topeApiKeys: p.apiKeys ?? null,
       archivadoAt: p.archivado ? new Date() : null,
       topesPorRol: {
@@ -175,7 +174,7 @@ export function entradaDePlan(p: Partial<CrearPlanInput> = {}): CrearPlanInput {
     nombre: `sl24 ${randomUUID().slice(0, 8)}`,
     visibilidad: "publico",
     organizacionId: null,
-    topes: { ordenesPorCiclo: null, porRol: {}, apiKeys: null },
+    topes: { porRol: {}, apiKeys: null },
     modulos: [],
     precio: { tipo: "sin_precio" },
     costoPorOrden: null, // SLT-66 R7: sin costo por orden salvo que el caso lo pida.
@@ -186,7 +185,7 @@ export function entradaDePlan(p: Partial<CrearPlanInput> = {}): CrearPlanInput {
 
 /** Costo base y costo por orden concretos: lo mínimo que SLT-66 R28 pide para poder asignar un plan. */
 export const COSTO_CONCRETO = {
-  precio: { tipo: "monto", mensual: "1000.00", anual: null },
+  precio: { tipo: "monto", mensual: "1000.00", descuentos: {} },
   costoPorOrden: "100.00",
 } as const satisfies Partial<CrearPlanInput>;
 
