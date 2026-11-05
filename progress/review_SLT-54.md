@@ -261,3 +261,132 @@ Verificación: **M** = mi mutación lo puso rojo. **C** = lo corrí en verde y l
 | R70 | E2E `tarifas-maqueta`, `TarifasDisposicion` | C, E |
 
 **Para volver a revisión:** arreglar M1, M2 y M3 con sus tests, y decidir los menores 1, 6 y 7 junto con ellos. La vuelta 2 se acota a ese diff.
+
+## Vuelta 2 (acotada a 8b922a10..7f8a77cb; ampliada porque enmienda el spec, R71 y R72, y toca piezas compartidas)
+
+### Veredicto: RECHAZADO
+
+Un hallazgo mayor y once menores. M1, M2 y M3 están cerrados, los `WHERE` nuevos están bien probados y las guardias siguen
+vigilando lo que vigilaban, con un hueco menor. Lo que rechaza es D38: **la tienda lee en su propia cuenta un cobro por una
+devolución que no hubo.** Si Carlos prefiere llevarlo a ficha aparte, es decisión suya y tiene que constar antes de activar a una
+empresa; sin esa decisión, bloquea.
+
+### Mayor
+
+#### D38. La tienda ve «te cobró el flete por devolución a origen» por un reprogramado
+
+- **Dónde:** `app/(app)/mi-wallet/_components/mi-wallet-labels.ts:108,111`, leído en `MiEstadoCuenta.tsx:55` (tabla, filtro y descarga).
+  La misma frase en la oficina: `app/(app)/wallet/tiendas/_components/desglose-tienda-labels.ts:47,50`, leída en `EstadoCuentaTienda.tsx:40`.
+  **D38 solo cita la de la oficina: le falta la que ve la tienda.**
+- **Quién lo ve:** `adminTienda`, es decir, un tercero que paga (`/mi-wallet`); y `maestro` y `admin` (`/wallet/tiendas`).
+- **Medido**, con `WalletTiendaFeedService.construirMovimientosPorTienda` real, una gestión `reprogramado` del modelo nuevo y flete
+  de 250 al 13 %. `TIENDA_DEBITA_FLETE_DEVOLUCION` vale `true` por defecto.
+
+  | Categoría | Importe | Lo que lee la tienda |
+  |---|---|---|
+  | `flete_devolucion` | 250,00 | «La empresa te cobró el flete por devolución a origen» |
+  | `iva_flete_devolucion` | 32,50 | «La empresa te cobró el IVA del flete por devolución a origen» |
+
+- **¿Falso o impreciso?** **Falso** si la tienda no tuvo devoluciones en ese cierre, como aquí: el importe es correcto y el motivo no
+  ocurrió. Con devoluciones y otros fletes en el mismo cierre, el movimiento los agrega por tienda y categoría, y entonces es impreciso.
+- **Por qué mayor:** es el mismo defecto que M1, en una superficie peor: M1 lo leía el `maestro`, que puede abrir las filas, y esto
+  lo lee quien recibe el cobro y puede reclamarlo. Esta ficha es la que hace alcanzable ese estado. Y ya se arregló en el libro de la caja.
+- **Qué falta:** rotular por fila como `conceptoDeMovimientoCaja`, en las dos superficies. Comprobar a qué fila llega el dato: las dos
+  pantallas pintan la fila del estado de cuenta, y D38 solo nombra `WalletTiendaMovimientoDTO`. Una empresa sin activar no cambia: test
+  literal del viejo y test del nuevo. De paso, corregir el comentario `WalletTiendaFeedService.ts:18`, «ya SOLO nacen de una gestion
+  `rechazada`», falso desde SLT-52.
+
+### Menores
+
+1. **D39, `ComposicionGananciaCard.tsx:219,267` y el filtro de `LibroCajaBarra.tsx:114`.** Los ven `maestro` y `admin`, nadie de fuera. En
+   la tarjeta, un periodo sin devoluciones dice «Flete por devolución a origen cobrado a la tienda» sobre un total que es de otros
+   fletes: falso en ese caso, pero la fila se abre y `DetalleFilaComposicion` nombra bien cada movimiento (test del encargo, móvil
+   incluido). El filtro no enseña importe, y es impreciso. Menor por audiencia y porque la verdad está a un clic. Decidir antes de cerrar EP-8, como dice la deuda.
+2. **Menor 1, encabezado «Flete por devolución a origen + IVA»** (`cierres-gestiones-fundida-descarga-columnas.ts:292`). Sigue menor: el
+   importe es correcto y cada fila lleva su resultado. Y no es nuevo: en el modelo viejo una novedad ya cae en esa columna con
+   282,50 (test literal «viejo, novedad»). Cambiarlo tocaría el archivo del viejo.
+3. **`ZonasModule.tsx:250` y `GeografiaSelector.tsx:266`.** «N distrito(s)» a mano. Preexistente, fuera del diff y sin dinero; R61 habla de
+   la pantalla de Tarifas. Falso solo en un país con otro nombre de nivel. No consta en `progress/deudas.md`: hay que anotarlo.
+4. **El rótulo del libro de la caja no tiene E2E.** Menor: los tres tramos están cubiertos por separado (el dato, en
+   `cierre-incluye-modelo-nuevo`; el rótulo, en `WalletConceptoModeloNuevo`) y `WalletService.ts:285-287` propaga la fila con `...m`.
+   Leído, no ejecutado de punta a punta. Lo paga un test de una línea si se toca el E2E por D38.
+5. **Quedan notas del mismo tipo que M1, sin deuda escrita.** `PARA_LA_CENTRAL_NOTA` dice «lo que gana la bodega satélite por las
+   devoluciones a origen» en `CierresBodegaAdminModule.tsx:267`, junto a la nota que la Tanda G sí corrigió, y en `cierre-factura.tsx:1073`.
+   `ConciliacionSatelite.tsx:167,174` lleva esa nota y `GANA_BODEGA_SATELITE_NOTA` vieja, sobre el mismo 570. Rótulo cierto, importe cierto, nota
+   falsa, audiencia interna. La primera se arregla en una línea; las otras piden dato. Añadir a D39 o resolver con D38.
+6. **Notas de pago a la tienda en el nuevo.** `GANA_LA_TIENDA_NOTA` y `PAGO_TIENDA_HOY_NOTA` (`CascadasCierreMensajero.tsx:201,272`) y
+   `DESGLOSE_POR_TIENDA_NOTA` (`DesglosePorTienda.tsx:147`) atribuyen la diferencia solo al flete por devolución. Imprecisas, como el menor 2 de la vuelta 1, no falsas.
+7. **Guardia `caja-173-alcance`: el `Pick` abre una tabla con importes y nada lo compensa.** Ver abajo, G4 y G5.
+8. **El filtro por cierre del lote no tiene test** (`detalle-modelo-nuevo.ts:36`, B5). Sin él, la respuesta es igual, porque luego se pregunta por
+   id, pero cada página lee todos los cierres nuevos de la empresa. Es coste, no dato.
+9. **R71, redacción.** El comportamiento del libro de la caja va en una *Nota* descriptiva, sin DEBE, y es un requisito con test. Pasarlo a
+   cláusula EARS.
+10. **`CierresAdminRepository.ts:584`:** `type CierreResumenRow =Prisma…`, sin espacio. Cosmético.
+11. **`TarifasValores.test.tsx:135`** lee el popup igual que el test que se arregló. Mismo riesgo de rojo intermitente; no falló aquí.
+
+### Lo que pediste verificar
+
+**1. M1, M2 y M3: cerrados.**
+
+- **M1:** con entrega 120 + rechazo 450, «Ingreso de bodega» sobre 570 en tarjeta, región y par; sin sublíneas; filas 120 y 450; el mensajero no lo ve.
+  Mi F1 (modelo fijo en viejo) da 4 rojos de 17 y F2 (pinta el 0), 1. La tarjeta del listado y la consolidación, que eran el hueco de la Tanda
+  G, siguen el dato (F5, 3 de 11). El E2E es del implementer, no lo repetí.
+- **M2:** reprogramado con flete 250: 282,50 en la columna con IVA, 282,50 de total, pago 100 e ingreso de bodega 120. Las cinco filas del nuevo son las del
+  encargo, y la columna suma lo que da el comprobante. Mi F3 da 2 de 55. El encabezado «Ingreso bodega» de esa columna es neutro: no miente.
+- **M3:** «8 municipios», «1 municipio»; mi F6 (cruzados) da 3 de 22.
+- **Una empresa sin activar no cambia:** en el rango, los tests existentes solo ganan líneas (única excepción, `TarifasModulo`, punto 5), las constantes de
+  texto viejas no se tocaron, el `aria-label` compuesto da el mismo literal, y hay test literal del viejo por superficie. Mi F4 (sin modelo se lee como
+  nuevo) da 4 de 55.
+
+**2. `incluyeModeloNuevo` y `incluyeModeloNuevoAgregado`: bien.** Salen de `cierre_detail.tarifa_modelo`, sin leer `tarifa_activacion`. El caso de la
+activación usa la solicitud real: el cierre anterior sigue en falso con la empresa ya activada, también como único conjunto; el siguiente, en
+verdadero. Mixto dentro de un cierre y entre cierres, medidos. Sin N+1: una sentencia con tres cierres, y ninguna en una página sin cierres.
+La empresa la pone la RLS, y el test depende de ella: leer sin `servi_app` lo pone rojo (B8).
+
+| Id | Mutación | Resultado |
+|---|---|---|
+| B1, B2 | Conteo sin `WHERE`; conteo del viejo | Matadas (4 y 6 de 9) |
+| B3, B4 | Lote sin filtro de modelo; lote del viejo | Matadas (4 y 6 de 9) |
+| B5 | Lote sin filtro de cierre | **Sobrevive**: misma respuesta, más lectura (menor 8) |
+| B6 | Libro sin mirar `origen_tipo` | Matada (1) |
+| B7 | Agregado con `every` | Matada (2) |
+| B8 | El test lee sin el rol de la app, sin RLS | Matada (1, «otra empresa no contamina») |
+| B9 | Umbral `> 1` | Matada (6) |
+
+**3. Guardias: no se debilitó lo que vigilaban, salvo un hueco menor.**
+
+- `nombres-estado-retirados`: la excepción es **por texto y con recuento exacto**. Un tercer «4 entregadas» (G1), «Entregadas hoy» (G2) y retirar la frase
+  para dejar la excepción caducada (G3) salen rojos. Admite «gestiones no entregadas» y nada más. Correcta.
+- `caja-173-alcance`, lo que sigue en pie: módulo sin declarar (G7), SQL crudo de escritura en el módulo nuevo (G6) y nombrar el ledger de la tienda (G8) salen
+  rojos. R33 prohíbe leer los otros **libros**, y `cierre_detail` no lo es.
+- **El hueco:** `cierre_detail` tiene importes. Con el `Pick` ampliado, sumarlos por Prisma desde el repositorio (G4) o desde el módulo nuevo (G5)
+  **sobrevive**: antes `tsc` lo paraba en el repositorio. El módulo del cruce sí tiene `not.toMatch(/monto/i)` y este no, aunque el comentario de la guardia dice que un
+  módulo nuevo se somete «a las reglas que le toquen». Falta: que el repositorio no use `cierreDetail.` y que el módulo no nombre `monto`, `_sum` ni `aggregate`.
+
+**4. R71 y R72: valen, con el menor 9.** Forma MIENTRAS…DEBE, comprobables, «NO DEBEN» para el viejo. Filas en el mapa de `tasks.md:163-164`, con archivos y títulos
+presentes; T7, T8 y T9 en `[x]`. R71 agrupa varias superficies, y *Fuera: D38 y D39* no es un requisito sino una exclusión, que **este veredicto discute para D38**.
+Siguen «pendientes de visto bueno de Carlos en el PR»: hay que pedírselo.
+
+**5. `TarifasModulo` › «R33, R41»: arreglo real, no tapa un defecto.** Con el test viejo sobre `HEAD`, rojo en 4 corridas de 4 (`Unable to find… "option"`). Medí la serie tras el clic en ese test, ejecutando el archivo entero: 0 opciones hasta los 2 ms, 3 opciones a los 5 ms y estable hasta los
+400 ms, con 0 llamadas a `cargarZona`. Es decir, el popup no parpadea, no se cierra y no recarga la zona. Ejecutado solo, abre a los 0 ms. Las aserciones son las
+mismas; solo se espera. No busqué por qué el orden de los tests cambia esos 5 ms. Tras el cambio, 3 de 3 en verde.
+
+### Mutaciones del reviewer
+
+`v2-mut.cjs`: corre antes la base y aborta si no hay tests, hay rojos o hay saltos (`BASE total 160, fail 0, skip 0`); restaura cada archivo en `finally`. Sobre
+`servi_gate_slt54`. **20 de 23 matadas por aserción; sobreviven B5, G4 y G5**, explicadas arriba. Las F y las G que no salen en la tabla están en su punto.
+
+### Lo que corrí
+
+| Comando | Resultado |
+|---|---|
+| `pnpm run typecheck` | exit 0 |
+| `eslint`, 7 archivos del diff | 0 errores |
+| 11 archivos de la ficha y guardias tocadas, sobre `servi_gate_slt54` | 229 de 229 |
+| `pnpm run test:guardias` | 4614 pasan, 4 fallan, los de `dependencias-declaradas-presentes`, en el baseline |
+| Literales prohibidos en las líneas añadidas | Ninguno |
+| Dependencias, esquema y migraciones en el rango | Sin cambios |
+
+**Sin correr, por encargo:** suite completa, E2E, `./init.sh`. El grafo no tiene proyecto para este worktree: Grep y Read. Tasks abiertas: T6.3 y T6.5, del leader, como en la vuelta 1.
+
+**Para volver a revisión:** arreglar D38 con test del viejo y del nuevo en las dos superficies, o que Carlos decida por escrito llevarlo a ficha aparte. La vuelta 3 se acota a ese diff.
