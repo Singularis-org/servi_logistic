@@ -8,7 +8,8 @@ import { describe, expect, it } from "vitest";
  *
  * La guardia general (`tests/guards/migraciones-destructivas.guard.test.ts`) deja pasar una migración
  * destructiva si trae su `DESTRUCTIVA.md`; la épica GEO no admite ninguna, con o sin papel. Esto lee el
- * `migration.sql` de cada carpeta `20261104*` (los `down.sql` deshacen a propósito y no cuentan) y
+ * `migration.sql` de cada una de las seis carpetas del spec, por su NOMBRE exacto (no por fecha: dev
+ * suma migraciones propias el mismo día; los `down.sql` deshacen a propósito y no cuentan) y
  * reprocha:
  *   · `DROP`, `TRUNCATE`, `RENAME` y `ALTER COLUMN` en cualquier sitio;
  *   · `DELETE`, `UPDATE` o `INSERT` sobre una tabla que no crearon estas migraciones (los eventos de
@@ -102,7 +103,10 @@ function leer(nombre: string): { nombre: string; sql: string } {
 
 describe("SLT-43 · R19 — migraciones solo aditivas", () => {
   it("las carpetas de SLT-43 son exactamente las seis del spec y cada una trae su down.sql", () => {
-    const enDisco = readdirSync(DIR_MIGRACIONES).filter((n) => n.startsWith("20261104")).sort();
+    // Por nombre exacto, no por fecha: las migraciones de dev del mismo día no son de SLT-43.
+    const enDisco = readdirSync(DIR_MIGRACIONES)
+      .filter((n) => (CARPETAS_SLT43 as readonly string[]).includes(n))
+      .sort();
     expect(enDisco).toEqual(CARPETAS_SLT43);
     for (const c of CARPETAS_SLT43) {
       expect(readFileSync(resolve(DIR_MIGRACIONES, c, "down.sql"), "utf8").trim().length).toBeGreaterThan(0);
