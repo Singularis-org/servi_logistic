@@ -141,11 +141,18 @@ const ivaPctSchema = z
   .string()
   .regex(PORCENTAJE_0_A_100, "El IVA debe ser un porcentaje entre 0 y 100 con hasta 2 decimales.");
 
-/** Los niveles; que la combinacion sea valida para el actor (R7) lo decide el service (T6.2). */
+/**
+ * Los niveles; que la combinacion sea valida para el actor (R7) lo decide el service (T6.2).
+ *
+ * SLT-55 (R6): `mensajeroId` se declara aunque la rejilla por zona no lo mande. Si zod no lo conociera, lo
+ * descartaria en silencio y un valor con mensajero y zona se guardaria como valor de la ZONA, que paga a
+ * todos sus mensajeros. Con `default` y no obligatorio: esos payloads no tienen por que empezar a mandarlo.
+ */
 const nivelSchema = {
   zonaId: idSchema.nullable(),
   grupoId: idSchema.nullable(),
   tiendaId: idSchema.nullable(),
+  mensajeroId: idSchema.nullable().default(null),
   vehiculoId: idSchema.nullable(),
 };
 
@@ -206,7 +213,7 @@ export type EscrituraValorInput = z.infer<typeof escrituraValorSchema>;
  * en cualquier concepto porque es el service quien lo valida con `escrituraValorSchema` y devuelve
  * `validation_error` en `ivaPct` cuando un pago lo trae (R45). Con el tipo estrecho del esquema, un
  * pago con `"0"` no compilaria y el rechazo no se podria ni probar ni explicar al usuario.
- * `mensajeroId` no esta: el valor propio del mensajero lo escribe SLT-55.
+ * `mensajeroId` solo lo trae el valor propio del mensajero (SLT-55); ausente equivale a `null`.
  */
 export interface FijarValorInput {
   concepto: TarifaConcepto;
@@ -216,6 +223,7 @@ export interface FijarValorInput {
   zonaId: string | null;
   grupoId: string | null;
   tiendaId: string | null;
+  mensajeroId?: string | null;
   vehiculoId: string | null;
 }
 
