@@ -2,7 +2,7 @@
 
 | key | nombre | zone | complexity | rama | assignee | estado |
 |---|---|---|---|---|---|---|
-| SLT-52 | tarifas-flexibles-modelo | backend | high | feature/SLT-52-tarifas-flexibles-modelo | Carlos Restrepo | in_progress |
+| SLT-52 | tarifas-flexibles-modelo | backend | high | feature/SLT-52-tarifas-flexibles-modelo | Carlos Restrepo | done |
 
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
@@ -58,3 +58,4 @@ Ninguna.
 ## Modelos (overrides)
 
 ## Cierre
+PR #74 mergeado a `dev` por Carlos (42328714): modelo de tarifas flexibles y resolver único. Sin promover: sale con EP-8.

@@ -236,12 +236,14 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** tandas H1 y H2 de SLT-54 (2026-11-05, `progress/impl_SLT-54.md`).
 - **Cierre:** tandas I1 (`FilaEstadoCuentaDTO.incluyeModeloNuevo`) e I2 (rótulo por fila en `/mi-wallet` y `/wallet/tiendas`, tabla, desplegable y descargas). El filtro de `/mi-wallet` que citaba la revisión ya no existe: lo retiró la 458-D, y la barra filtra por tipo de movimiento y cierre. `CONCEPTO_MI_WALLET_TODOS_OPTION` quedó sin lector en pantalla, solo lo lee su test. No hay rótulo por categoría que resolver.
 
-### D39 — `ComposicionGananciaCard` y el filtro del libro rotulan por categoría, sin fila
+### D39 — `ComposicionGananciaCard` y el filtro del libro rotulan por categoría, sin fila — CERRADA
+- **Cierre:** rama `chore/deudas-2026-11-05` (`progress/impl_deudas-2026-11-05.md`): `ComposicionGananciaDTO.categoriasConModeloNuevo` y `ConceptoConMovimientosDTO.incluyeModeloNuevo`, leídos de `cierre_detail.tarifa_modelo` bajo el mismo `WHERE` que las filas. Un concepto elegido con 0 movimientos cae al rótulo viejo.
 - **Origen:** tandas H1 y H2 de SLT-54 (2026-11-05, `progress/impl_SLT-54.md`). `ComposicionGananciaCard` suma por categoría sobre agregados, y el filtro por concepto de `LibroCajaBarra` elige una categoría: ninguno tiene una fila a la que preguntar el modelo. Los dos siguen diciendo «devolución a origen», aunque el grupo incluya cobros del modelo nuevo. Sigue abierta tras D38: ese cierre no toca el libro de la caja. Los ven `maestro` y `admin`, y la fila se abre con el nombre correcto (revisión F2.2, vuelta 2, menor 1).
 - **Qué falta:** decidir un rótulo cierto para los dos modelos o traer el dato en el agregado. Pendiente antes de cerrar EP-8.
 - **Dueño:** Carlos Restrepo.
 
-### D40 — Notas de la bodega satélite que hablan de devoluciones sin saber el modelo
+### D40 — Notas de la bodega satélite que hablan de devoluciones sin saber el modelo — CERRADA
+- **Cierre:** rama `chore/deudas-2026-11-05`: `incluyeModeloNuevo` en `CierreBodegaResumen` y `ConsolidacionSateliteDTO`; las notas eligen por modelo, y `GANA_LA_TIENDA_NOTA`, `PAGO_TIENDA_HOY_NOTA` y `DESGLOSE_POR_TIENDA_NOTA` tienen variante `_MODELO_NUEVO`. El encabezado de la descarga no se tocó: pasa a D43.
 - **Origen:** review de SLT-54 (2026-11-05, `progress/review_SLT-54.md`, vuelta 2, menor 5) y tanda I2. Tres notas dicen «por las devoluciones a origen» sobre un importe que en el modelo nuevo también incluye entregas: `PARA_LA_CENTRAL_NOTA` en la tarjeta del cierre de bodega (`cierre-factura.tsx:1073`) y, en `ConciliacionSatelite.tsx:167,174`, `GANA_BODEGA_SATELITE_NOTA` y `PARA_LA_CENTRAL_NOTA`. Rótulo e importe son ciertos; la nota no. `ConciliacionSatelite.tsx` solo lo leen `maestro` y `admin`; `cierre-factura.tsx:1073` también lo lee el `adminSatelite` sobre su propio cierre (`CierresBodegaSolicitadosLista`, revisión F2.2, vuelta 3, menor 1). Otros textos del mismo tipo, imprecisos y con el importe correcto: encabezado de la descarga «Flete por devolución a origen + IVA» (`cierres-gestiones-fundida-descarga-columnas.ts:292`; cambiarlo toca el archivo del viejo), `GANA_LA_TIENDA_NOTA`, `PAGO_TIENDA_HOY_NOTA` y `DESGLOSE_POR_TIENDA_NOTA` (vuelta 2, menores 2 y 6). Ni `CierreBodegaResumen` ni `ConsolidacionSateliteDTO` traen el modelo (el campo está en `CierreBodegaResumenLite`, otro tipo).
 - **Qué falta:** el campo en esos dos DTO (`lib/`), como `incluyeModeloNuevo`, y elegir la nota con él. Los textos ya existen: `PARA_LA_CENTRAL_NOTA_MODELO_NUEVO` y `GANA_BODEGA_SATELITE_NOTA_MODELO_NUEVO`. Pendiente antes de cerrar EP-8.
 - **Dueño:** Carlos Restrepo.
@@ -253,5 +255,11 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 
 ### D42 — `e2e/wallet-mensajeros.spec.ts:81`, clic crudo e inestable
 - **Origen:** tanda I2 y revisión de SLT-54, vuelta 3 (2026-11-05). `dinero` dio 44/0/0, 42/1/0 con 1 sin correr y 44/0/0; cayó `:58` por botón desmontado. El spec solo dio 45 de 45. El diff no lo explica, y ya había caído antes en CI. Causa sin medir. El clic de `:81` abre un panel sin `abrirCon` (`e2e/_escenarios/pulsar.ts`).
-- **Qué falta:** pasar el clic a `abrirCon` y medir si la inestabilidad desaparece.
+- **Medido (2026-11-05, rama `chore/deudas-2026-11-05`):** `:58` y `:81` son el mismo test: `:58` lo declara y `:81` es el paso que cayó. La caída anterior en CI fue en otro paso (`:63`). El clic pasó a `abrirCon`. `dinero` dio 49/0/0 en 3 corridas sin el cambio y en 5 con él: el fallo no se reprodujo, así que esto no demuestra causa ni arreglo.
+- **Qué falta:** si vuelve a caer en CI, medir con esa traza. `e2e/mi-wallet.spec.ts:71` tiene el mismo clic crudo.
+- **Dueño:** Carlos Restrepo.
+
+### D43 — Encabezado de la descarga «Flete por devolución a origen + IVA» con el modelo nuevo
+- **Origen:** D40. `cierres-gestiones-fundida-descarga-columnas.ts:292` lo escribe para los dos modelos; en el nuevo el importe es correcto y el nombre, impreciso. Cambiarlo toca el archivo del modelo viejo.
+- **Qué falta:** decidir si se hace antes de promover EP-8 o cuando el modelo viejo se retire (SLT-57).
 - **Dueño:** Carlos Restrepo.
