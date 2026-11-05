@@ -493,3 +493,112 @@ La excepción de `nombres-estado-retirados` para `mi-wallet-labels.ts` es por te
 - [x] Sin dependencias, esquema ni migraciones nuevas; sin el nombre del cliente
 - [ ] Visto bueno de Carlos a R71 y R72: pendiente, en el PR
 - [ ] T6.3 y T6.5: del leader, antes del PR y en la salida
+
+## Vuelta 4: integración con dev
+
+Alcance: merge `33e7a113` (padres `2804fd06` y `8eb66b88`) y commit `e3e51935`. La feature no se re-revisa.
+
+**Veredicto: OK.** Sin bloqueantes. Tres menores. Queda abierto el check `gate-completo`: los tres shards de vitest seguían en curso al escribir esto, y nadie mergea sin él.
+
+### 1. Conflictos resueltos
+
+Los contadores salen del catálogo, no del test. Apliqué `prisma migrate deploy` real a una base desechable nueva y conté en `pg_trigger` y `pg_policies`:
+
+| Contador | Código | Catálogo real |
+|---|---|---|
+| Modelos de negocio | 87 (`MODELOS_DE_NEGOCIO`) | 87 triggers `*_sin_cambio_de_empresa` |
+| Políticas `*_por_empresa` | 88 (87 + `jobs`) | 88 |
+| Triggers `sme_*` | 169 | 169 |
+
+No se perdió nada:
+
+- `playwright.config.ts`: entran `tarifas-activacion` y `planes-costo-porcentual`.
+- `lib/db/modelos-de-negocio.ts`: entran las dos tablas.
+- `wallet-labels.ts`: conserva la pista de SLT-83 y la reexportación de SLT-54.
+- `db/schema.prisma`: `prisma migrate diff` contra la base migrada dice «No difference detected», con exit 0.
+- Sin literales viejos de 86 o 168 en `tests/` ni `scripts/`.
+- `git diff-tree --cc` lista los 7 archivos que tocaron las dos fichas, más `progress/features/SLT-54.md`, que es la bitácora de la ficha y no código.
+
+### 2. `M_ANTERIOR`
+
+No quedó debilitado. Se usa solo en la línea 146, para exigir que M1, M2 y M3 sean contiguas a la anterior. El literal viejo fallaba porque dejaba M1 en `i + 3`.
+
+La parte de ida y vuelta no lo usa: `aplicarMigracionesHasta(db, M1)` corta por nombre, y ahora aplica también las de SLT-54 antes de sembrar. La foto previa a M1 incluye `tarifa_activacion`, así que la bajada se compara con ese estado, más estricto que antes. Pasa 6 de 6. Ver el menor 1.
+
+### 3. Interacción de negocio SLT-83 y SLT-54
+
+No encontré fallo.
+
+- **Base del cálculo.** `cobro_plataforma_porcentual_conciliar` (`20261104150200`, línea 121) calcula sobre `orden.monto_cobrar`, leído de la fila.
+- **SLT-54 no toca esa base.** Su diff en `lib/`, `app/` y migraciones no escribe `monto_cobrar` ni `estatus_id`, ni nombra `cobro_plataforma`, `deudaPlataforma` o `costoPorOrden`. Las apariciones de `montoCobrar` son de lectura: el desglose y `montoFulfillmentDeTarifa` en `OrdenRepository`.
+- **SLT-83 no lee tarifas.** Sus migraciones no nombran `tarifa_valor`, `tarifa_activacion` ni `tarifas`. Su `cobro_plataforma_tarifa` es el global de plataforma, otra tabla. Su diff en `lib/` y `app/` no nombra tarifas nuevas ni cierres.
+- **Sin funciones compartidas.** Solo hay 7 archivos comunes: los 4 del conflicto, `schema.prisma`, `modelos-de-negocio.ts` y `wallet-labels.ts`. Ambos diffs son aditivos y en bloques separados. `ingreso` no aparece en el diff de SLT-83.
+
+Cifras, leídas del SQL y no ejecutadas para este cruce: orden de 100.000, plan al 2 % con mínimo 500. El cargo es 2.000,00 con el modelo viejo y con el nuevo, porque el importe no depende de la tarifa. El caso con el modelo viejo sí corrió en el E2E de CI. Ver «Sin verificar» para el cruce con empresa activada.
+
+### 4. Migraciones fuera de orden
+
+No hay dependencia entre fichas, ni guardia que exija orden, y nada falla. Demostrado con dos bases desechables nuevas en el servidor local, borradas al terminar:
+
+| Paso | Resultado |
+|---|---|
+| `migrate deploy` sin las de SLT-54, el estado de dev | exit 0 |
+| `migrate deploy` con las 304 | exit 0; `_prisma_migrations` queda 130100, 150000, 150100, 150200, 140000, 140100 |
+| `migrate status` después | «Database schema is up to date!» |
+| Catálogo fuera de orden frente a cronológico: columnas, restricciones, índices, triggers, políticas, md5 de funciones y `proacl`, enums, grants, RLS | 0 diferencias |
+| `migrate diff` frente a `schema.prisma`, en las dos bases | exit 0 |
+| Bajar SLT-54 con SLT-83 arriba | Igual a la foto previa, 0 diferencias; al resubir, 0 frente a cronológico |
+| Bajar SLT-83 con SLT-54 arriba, y resubir | Sin error; 4 diferencias, solo el `ordinal_position` de las 2 columnas de `plan` |
+| Bajar las 5 en orden inverso, y resubir | Sin error; las mismas 4 diferencias |
+
+Las 4 diferencias son lo normal al recrear columnas: Postgres no reusa la posición de una columna borrada. No cambian el esquema lógico, y `migrate diff` no las ve.
+
+Las guardias `fk-misma-empresa` y `unicos-por-empresa` recorren las migraciones por nombre, sin mirar el orden de aplicación. Ninguna guardia compara contra `_prisma_migrations`.
+
+### 5. Rojos
+
+`.vitest-rojos.json` es del gate de las 10:02, posterior a `e3e51935` (10:00), y coincide con el log: 245 archivos, 284 tests.
+
+- **Ningún rojo apunta a las fichas.** Solo un bloque nombra sus objetos: `orden-traspaso-migration` (427/T2), que lista toda migración posterior a su tope y crece con cada ficha. Es deuda anterior.
+- **`historial-accion-migration`:** el rojo es por la política y la segunda FK de SL-17, sin relación.
+- **`wallet-458-migration`:** compara por posición fija contra valores anteriores, y el otro rojo es falta de datos. También `abono-tienda-457`, `cobro-tienda-461` y `wallet-461`, cuyos valores recibidos no son de estas fichas.
+- **Tests de las dos fichas:** los 44 archivos filtrados por nombre, de SLT-54, SLT-83 y su entorno, sin un rojo.
+- **Clasificación de los 71 rojos que no son falta de datos:** ninguno nombra objetos de las fichas.
+
+Por qué puede subir el total al bajar un archivo: en esta corrida, 180 de los 245 archivos caen en el `beforeAll` sin registrar ni un test en rojo. Si una suite encuentra datos que dejó otra, pasa el `beforeAll`, corre, y aporta rojos individuales. **Es hipótesis:** la corrida anterior no se guardó, así que no pude comparar test a test.
+
+### Hallazgos
+
+Sin bloqueantes.
+
+- **menor 1.** `tests/integration/db/migracion-slt83-ida-y-vuelta.test.ts:144`: el título dice «van detrás de la última de dev», y `M_ANTERIOR` todavía no está en dev. Será cierto al mergear; el test es correcto.
+- **menor 2.** `scripts/db-rollback.ts:12` elige la última migración por nombre. En una base que recibió las de SLT-54 después, baja primero `150200`, y no la última aplicada de verdad. No rompe nada: los downs funcionan en ese orden.
+- **menor 3.** El baseline por archivo y la base local sin datos dejan fuera de la comparación los 245 archivos, entre ellos los de cierres, estado de cuenta y wallet. Un rojo nuevo dentro de uno de ellos no se ve en el gate local. Es deuda anterior, y es el motivo de no dar por cubierto el cruce con ese gate.
+
+### Lo que corrí
+
+| Comando | Resultado |
+|---|---|
+| `pnpm run typecheck` | Sin errores |
+| `eslint --quiet`, los 5 archivos tocados tras el merge que son código | Sin errores |
+| `vitest run`, 10 archivos (guardias RLS, FK y únicos, `verificar-rls-despliegue`, `migracion-slt83`, `tarifa-activacion` y su migración, `cobro-plataforma-porcentual`, `plan-de-la-empresa-porcentual`, `wallet-labels`), base desechable migrada y sembrada, borrada al terminar | 138 de 138 |
+| CI `e2e (dinero)` sobre `e3e51935`, leído del log | 49 pasan, con `planes-costo-porcentual` y `tarifas-activacion` |
+| CI `estatico`, `e2e (aislamiento)`, `e2e (reparto)` sobre `e3e51935` | success |
+
+### Sin verificar
+
+- **El cruce de punta a punta: empresa activada con plan porcentual y un cierre real aprobado.** Ningún test lo cubre y no lo ejecuté. Los E2E lo cubren por separado. Lo sostiene el análisis estático del punto 3.
+- **`vitest` de CI, los 3 shards:** en curso.
+- **La base de dev real y producción:** no las toqué. Lo demostrado reproduce el estado de dev en una base nueva, sin sus datos.
+- **`prisma migrate dev` sobre una base fuera de orden:** no lo probé. `deploy` y `status` sí.
+- **La suite local completa:** no la corrí, por encargo. Usé el log existente.
+- **El grafo:** no lo consulté, usé Grep y `git diff`. La búsqueda de cruces es por texto: una dependencia que no nombre esos términos no aparecería.
+
+### Checklist
+
+- [x] Conflictos: contadores contra el catálogo real; nada perdido
+- [x] `M_ANTERIOR`: no debilitado
+- [x] Interacción de negocio: sin fallo por análisis estático; cruce sin ejecutar
+- [x] Migraciones fuera de orden: demostrado, con subida y bajada
+- [x] Rojos: ninguno apunta a las fichas
+- [ ] `gate-completo` en verde: pendiente, antes del merge
