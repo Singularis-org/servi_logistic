@@ -151,3 +151,181 @@ Tres más (`vehiculos-plataforma`, `plan-de-la-empresa`, `zona-central-guarda-y-
 **En el baseline:** `dependencias-declaradas-presentes.guardia.test.ts` (4 rojos, en guardias) y otros 217 archivos en `vitest related`, en su mayoría por lo que le falta a la base local: catálogo `order_status` sin sembrar (`ayuda_tienda`, `devolucion_por_confirmar`) y `referencia a otra empresa`. Ninguno menciona el interruptor salvo `orden-traspaso-migration`, que lista migraciones y ya estaba en el baseline.
 
 **Sin correr aquí:** E2E y `./init.sh`, por encargo. Los E2E que siembran `tarifa_valor` entran en la tanda F.
+
+
+## Tanda B — Lecturas, referencia y vías viejas (backend)
+
+**Veredicto:** hecha. `activarTarifasNuevas` ya no falla cerrado: la raíz de composición le pasa el mismo service que la pantalla, y un test mide la lista hasta el cliente. 66 de 66 mutaciones matadas por aserción. La UI vieja tuvo que cambiar, lo mínimo (abajo).
+
+### Lo que la tanda D tiene que recoger
+
+- **`_components/tarifas-retiradas.ts` es provisional.** Sustituye las cuatro actions retiradas en `TiendasModule` y `CrearTiendaForm`: todo responde `forbidden`, así que la pantalla vieja compila, enseña su aviso de carga y no lee ni escribe precios. Sale en T4.1 con esos dos archivos; `tests/components/CrearTiendaForm.test.tsx` lo mockea y sale con ellos. Está en `tasks.md > Pantalla vieja, salen`.
+- **Siete actions con `@sin-superficie`:** `cargarPantallaTarifas`, `cargarZonaTarifas`, `guardarValoresTarifa` y las cuatro de grupos, además de `activarTarifasNuevas` de la tanda A. La guardia exige quitarlas cuando la pantalla las monte.
+- **`guardarValoresTarifa` responde siempre `{ status: "ok", resultados }` si hay sesión y la entrada es válida:** un `admin` recibe `forbidden` fila por fila. La pantalla pinta por `clave`.
+- **Lista de precios de tienda (R41):** `cargarPantallaTarifas` trae `preciosTienda`, todos los valores con tienda de la empresa.
+
+### Decisiones y desviaciones del spec, medidas
+
+- **`cargarZonaTarifas({ zonaId, tiendaId? })`.** Design §7 solo cita `zonaId`. La referencia de una tienda necesita saber cuál: sin `tiendaId`, sería una lectura por cada tienda en cada zona abierta. El selector de nivel la pide al elegirla.
+- **Nivel «Toda la zona» con distritos marcados y sin marcar: da «Varía».** R23 cita los distritos de un grupo; la zona es el conjunto de sus distritos y el cálculo real les cobra importes distintos. Mostrar solo el normal escondería el pacto.
+- **`ParModeloViejo` en vez de `ParTarifa`** en `leerModeloViejoCon`. La guardia `tarifas-distrito-pasado` rechaza con razón un `distritoId: null` a mano. La cascada vieja no mira el distrito, así que el tipo no lo lleva. La guardia no cambió.
+- **Catálogo sin vehículos activos:** el pago por entregado solo lo cubre el valor para todos. Un `every` sobre lista vacía lo daría por cubierto sin ningún valor.
+- **Mensaje de R52:** `existeVehiculo` da paso a `vehiculoEsElegibleONivelOcupado`, que responde `false` tanto si no existe como si está inactivo, con un solo mensaje.
+- **`CoberturaRepository`:** se quitó el `zonaId: { not: null }` que puse primero: sobrevivía a su mutación porque el CHECK de niveles ya lo impide, y design §8 no lo pide.
+- **Sin tocar `distritosEspecialesSchema` ni `DistritoZonaEspecialService`:** los usa `scripts/demo-qa/receta.ts`.
+- **R53** ya estaba en el mapa sin test; se añadió en `tarifas-flexibles-resolver.test.ts`.
+
+### Archivos
+
+**Nuevos**
+- `lib/tarifas/faltantes.ts`, `lib/tarifas/referencia-vigente.ts`
+- `lib/interfaces/repositories/ITarifasPantallaRepository.ts`, `lib/repositories/TarifasPantallaRepository.ts`
+- `lib/interfaces/services/ITarifasPantallaService.ts`, `lib/services/TarifasPantallaService.ts`
+- `app/(app)/configuracion/tarifas/_components/tarifas-retiradas.ts` (provisional)
+- `tests/unit/tarifas/faltantes.test.ts`, `tests/unit/tarifas/referencia-vigente.test.ts`, `tests/unit/services/tarifas-pantalla-service.test.ts`
+- `tests/integration/db/tarifas-referencia.test.ts`, `tests/unit/guards/tarifas-sin-escritura-vieja.guardia.test.ts`
+
+**Código modificado**
+- `lib/actions/tarifas.ts` (salen cuatro; entran las de lectura, guardado y grupos), `lib/actions/zonas.ts` (R27), `lib/actions/geografia.ts` (sale `actualizarDistritosEspeciales`)
+- `lib/tarifas/servicios.ts` (T2.3), `lib/repositories/_shared/resolver-tarifas.ts` (`leerModeloViejoCon`), `lib/repositories/CoberturaRepository.ts` (R30)
+- `lib/repositories/TarifaValorRepository.ts`, `lib/services/TarifaValorService.ts`, `lib/interfaces/repositories/ITarifaValorRepository.ts` (R52), `lib/services/GrupoDistritosService.ts` (mensajes)
+- `lib/interfaces/services/ITarifaActivacionService.ts` (`usaZona`), `lib/types/tarifa-flexible.ts` (esquemas del borde), `lib/types/historial-accion.ts` (comentarios)
+- `TiendasModule.tsx`, `CrearTiendaForm.tsx`: solo la línea del import
+
+**Tests modificados o retirados**
+- Reescrito: `tests/integration/actions/tarifas-action.test.ts`. Retirado: `tests/unit/actions/distritos-especiales-action.test.ts`
+- Ampliados: `servicios-composicion.test.ts`, `tarifa-activacion.test.ts`, `cobertura-repository.test.ts`, `tarifas-flexibles-escritura.test.ts`, `tarifas-flexibles-resolver.test.ts`, `zonas-action.test.ts`, `tarifa-valor-service.test.ts`, `zona-guardado-conserva-costos.test.ts`
+- Ajustados: `grupo-distritos-service.test.ts`, `tarifa-activacion-service.test.ts`, `geografia-action.test.ts`, `cobertura.composition-root.test.ts`, `tarifa-valor-lectores.guardia.test.ts`, `distrito-zona-especial-por-empresa.test.ts`, `zona-especial-dos-empresas.test.ts`, `tests/fabricas/escenarios/reparto.ts` (comentario) y los mocks de `Zona*` y `CrearZonaFormReconciliacion`
+
+### Mapa R → test (tanda B)
+
+| R | Test |
+|---|---|
+| R13-R16 | `tests/unit/tarifas/faltantes.test.ts`; R14 también `tarifas-referencia.test.ts` › «lo que juzgan los faltantes…» |
+| R17 | `faltantes.test.ts` › «estados»; `tarifas-pantalla-service.test.ts` › «la pantalla da los mismos estados» |
+| R6 por la raíz | `servicios-composicion.test.ts` › «activar por la fabrica pide confirmacion…»; `tarifa-activacion.test.ts` › «con faltantes reales pide confirmación» |
+| R21-R23 | `tests/unit/tarifas/referencia-vigente.test.ts` (literales); `tests/integration/db/tarifas-referencia.test.ts` › «la referencia sale de la fila…», «la referencia dice lo mismo que cobra el cálculo real» |
+| R24, R45 | `tarifas-referencia.test.ts` › «activada no lee el viejo» (cuenta los accesos a los delegados, con control positivo) |
+| R12 | `tarifas-referencia.test.ts` › «la empresa A no ve nada de B», como `servi_app` |
+| R26 | `tests/integration/actions/tarifas-action.test.ts` › «las acciones viejas ya no existen»; `tarifas-sin-escritura-vieja.guardia.test.ts` |
+| R27 | `zonas-action.test.ts` › «la action rechaza costos»; `zona-guardado-conserva-costos.test.ts` › «SLT-54 R27» (Postgres) |
+| R28 | `superficie-de-uso.guardia`; `tarifas-sin-escritura-vieja.guardia`; `geografia-action.test.ts` |
+| R29 | `tarifa-activacion.test.ts` › «guardar no escribe en el viejo» |
+| R30 | `cobertura-repository.test.ts` › «tarifa general por modelo», «dos empresas», «la marca sigue en el Excel tras activar» |
+| R35, R38 | `tarifas-action.test.ts` › «guardar valores» |
+| R36, R37 | `tarifas-action.test.ts` › «`ivaPct` en un pago», «dos cambios del mismo concepto y nivel» |
+| R42 (servidor) | `tarifas-action.test.ts` › «las cuatro actions de grupos» |
+| R46 | `tarifas-referencia.test.ts` › «marca y grupo por separado» |
+| R48 | `tarifas-referencia.test.ts` › «un vehículo dado de alta aparece» |
+| R52 | `tarifa-valor-service.test.ts` › «vehículo inactivo»; `tarifas-flexibles-escritura.test.ts` › «inactivo» (5 casos más empresa ajena) |
+| R53 | `tarifas-flexibles-resolver.test.ts` › «vehículo inactivo sigue pagando» |
+| R55 (servidor) | `tarifas-pantalla-service.test.ts` › «matriz de roles»; `tarifas-referencia.test.ts` › «admin lee lo mismo que maestro» |
+| R57 (servidor) | `tarifas-pantalla-service.test.ts` › «un fallo de lectura es `error`» |
+
+R20, R25, R33, R34, R39-R41, R43-R45 de pantalla, R47, R49-R51, R54-R61 de pantalla: tanda D.
+
+### Mutaciones
+
+Autocomprobación antes de mutar: cada conjunto de tests corrió sin mutar y dio su total (24, 39, 27, 13, 27, 32, 12, 37, 21, 14 tests), 0 saltados. Cada mutación se aplicó, corrió y revirtió; `git status --porcelain` vacío al final de cada tanda. Una mutación cuenta como matada solo con un rojo nuevo por aserción. Salvo donde se indica, en la primera pasada: 4 sobrevivieron y se resolvieron (abajo).
+
+| Mutación | Primer caso que la mató | Rojo |
+|---|---|---|
+| F1 cuenta faltante un 0 escrito (filtra por importe) -> precio de tienda cubre (R14) | un precio de tienda no cubre a la zona, ni en la zona ni en un g | `expected [ 'tienda_flete_rechazo' ] to deeply equal [ 'tienda_flete_entregado', ...(1) ]` |
+| F2 valor propio del mensajero cubre (R14) | un valor propio del mensajero no cubre a la zona | `expected [] to deeply equal [ 'mensajero_entregado' ]` |
+| F3 el grupo cubre a la zona (zona con solo grupos, R14) | zona con solo grupos: un esencial que solo tiene el grupo falta  | `expected [] to deeply equal [ Array(1) ]` |
+| F4 grupo sin valor cuenta como faltante (R16) | un precio de tienda no cubre a la zona, ni en la zona ni en un g | `expected [ 'tienda_flete_entregado', ...(2) ] to deeply equal [ 'tienda_flete_entregado', ` |
+| F5 no informa usaZona (R16) | no suma faltante y se informa, un aviso por esencial | `expected [] to deeply equal [ { grupoId: 'g1', ...(2) }, ...(2) ]` |
+| F6 un vehiculo basta en vez de todos los activos (R15) | le falta si queda un vehculo activo sin valor | `expected [] to deeply equal [ 'mensajero_entregado' ]` |
+| F7 catalogo vacio da por cubierto (every vacio, R15) | sin vehculos activos en el catlogo, solo lo cubre el valor para  | `expected [] to deeply equal [ 'mensajero_entregado' ]` |
+| F8 cualquier fila por vehiculo cubre (inactivo suple, R15) | le falta si queda un vehculo activo sin valor | `expected [] to deeply equal [ 'mensajero_entregado' ]` |
+| F9 sin_empezar por faltantes=3 en vez de por valores (R17) | Faltan: un valor que no es esencial ya la saca de Sin empezar | `expected 'sin_empezar' to be 'faltan' // Object.is equality` |
+| F10 comision COD es esencial (R13) | son exactamente tres: flete por entregado, flete por devolucin a | `expected [ 'tienda_flete_entregado', ...(3) ] to deeply equal [ 'tienda_flete_entregado', ` |
+| F11 M de T cuenta tambien las que faltan (R17) | M de T: cuenta solo las completas | `expected 3 to be 2 // Object.is equality` |
+| R1 sonda rota: no distingue No paga (T2.2) | mensajero por entregado: su importe, sin IVA | `expected { tipo: 'no_paga' } to deeply equal { Object (tipo, valor, ...) }` |
+| R2 sin sonda: el 0 configurado y el No paga se confunden (R22) | un 0 configurado es un importe en 0, no No paga | `expected { tipo: 'no_paga' } to deeply equal { tipo: 'monto', valor: '0.00', ...(1) }` |
+| R3 ignora la marca en las variantes (pacto, R21) | nivel zona: la fila general, con la marca de sus distritos y el  | `expected { tipo: 'monto', ...(2) } to deeply equal { tipo: 'varia', ...(2) }` |
+| R4 ignora la bodega principal de la zona (R21) | bodega principal: la variante de la zona central, y el pacto la  | `expected { tipo: 'monto', ...(2) } to deeply equal { tipo: 'monto', ...(2) }` |
+| R5 Varia ordena como texto (R23) | el orden es numrico: 900 es menor que 10000 aunque como texto no | `expected { tipo: 'varia', ...(2) } to deeply equal { Object (tipo, desde, ...) }` |
+| R6 grupo con las marcas de toda la zona (R23) | nivel grupo: vara entre los distritos de ESE grupo | `expected { tipo: 'varia', ...(2) } to deeply equal { tipo: 'monto', ...(2) }` |
+| R7 tienda en todas sus zonas sin la variante principal (R23) | en todas sus zonas: vara entre la bodega principal y las dems | `expected { tipo: 'monto', ...(2) } to deeply equal { tipo: 'varia', ...(2) }` |
+| R8 Todos los vehiculos solo lee la por defecto (R23) | nivel zona: la fila general, con la marca de sus distritos y el  | `expected { Object (tipo, valor, ...) } to deeply equal { Object (tipo, desde, ...) }` |
+| R9 cascada: el par de zona lleva una tienda real (R21) | pedir una tienda no cambia lo que dice el nivel zona | `expected { tipo: 'monto', ...(2) } to deeply equal { tipo: 'varia', ...(2) }` |
+| R10 pago: sin caida por vehiculo (lee solo la general, R21) | nivel zona: la fila general, con la marca de sus distritos y el  | `expected { Object (tipo, valor, ...) } to deeply equal { Object (tipo, desde, ...) }` |
+| R11 sin_tarifa pierde frente a No cobra (R22) | sin fila, Sin tarifa, tambin en lo que el viejo nunca cobra | `expected { tipo: 'no_cobra' } to deeply equal { tipo: 'sin_tarifa' }` |
+| R12 pago general en la clave de un vehiculo (lectura, R21) | nivel zona: la fila general, con la marca de sus distritos y el  | `expected { Object (tipo, valor, ...) } to deeply equal { Object (tipo, desde, ...) }` |
+| E1 sin referencia nula tras activar (lee el viejo, R24) | activada no lee el viejo: sin referencia, sin marca y sin tocar  | `expected { zona: { ...(17) }, ...(3) } to be null` |
+| E2 activada sigue leyendo la marca (R45) | activada no lee el viejo: sin referencia, sin marca y sin tocar  | `expected [ false, true, true, false ] to deeply equal [ false, false, false, false ]` |
+| E3 no hay not_found por empresa: zona leida sin filtro (R12) | una zona de B es not_found para A, con todos sus datos | `expected { status: 'ok', grupos: [], ...(3) } to deeply equal { status: 'not_found' }` |
+| E4 faltantes leen los precios de tienda (WHERE, R14) | R14: lo que juzgan los faltantes no trae precios de tienda, ni v | `expected [ [ 'satelite_rechazo', ...(2) ], ...(2) ] to deeply equal [ [ 'satelite_rechazo'` |
+| E5 lista de tiendas sin filtro de rol (R41) | la pantalla de A trae sus zonas, sus tiendas, sus precios y sus  | `expected [ ...(6) ] to deeply equal [ ...(3) ]` |
+| E6 precios de tienda sin WHERE (R41) | los precios de tienda son solo los que llevan tienda | `expected [ ...(2) ] to deeply equal [ Array(1) ]` |
+| W1 el admin escribe valores (R55/R13) | escritura por rol: el admin no escribe, fila por fila | `expected { status: 'ok', resultados: [ ...(2) ] } to deeply equal { status: 'ok', resultad` |
+| W2 el admin no lee la pantalla (R55) | el admin lee los mismos datos en solo lectura | `expected { status: 'forbidden' } to match object { status: 'ok', puedeEscribir: false }` |
+| W3 otro rol lee la pantalla (R55) | 'adminTienda' recibe forbidden en la pantalla, sin leer nada | `expected { Object (status, activacion, ...) } to deeply equal { status: 'forbidden' }` |
+| W4 puedeEscribir para cualquiera (R55) | el admin lee los mismos datos en solo lectura | `expected { Object (status, activacion, ...) } to match object { status: 'ok', puedeEscribi` |
+| W5 el admin escribe grupos (R55) | escritura por rol: el admin recibe forbidden en las cuatro, sin  | `expected { status: 'ok', id: 'g1' } to deeply equal { status: 'forbidden' }` |
+| W6 inactivo admite valor nuevo (R52) | inactivo: un valor nuevo se rechaza en vehiculoId, sin escribir | `expected { status: 'ok', ...(1) } to deeply equal { status: 'validation_error', ...(1) }` |
+| W7 inactivo: reemplazar ya no vale (R52) | inactivo: reemplazar el valor que ya tiene sigue valiendo y cons | `expected { status: 'validation_error', ...(1) } to deeply equal { status: 'ok', ...(1) }` |
+| W8 inactivo: el nivel exacto no cuenta, basta otro concepto (R52) | inactivo: el nivel exacto cuenta: otro concepto u otro grupo del | `expected { status: 'ok', ...(1) } to deeply equal { status: 'validation_error', ...(1) }` |
+| W9 una excepcion tira el guardado (R38) | R38: una excepcin en una fila se queda en esa fila y las siguien | `expected { status: 'error' } to deeply equal { status: 'ok', resultados: [ ...(2) ] }` |
+| W10 se pierde el fieldErrors de la fila (R37, R38) | R38: un concepto con error conserva los dems y dice su campo | `expected [] to deeply equal [ 'valor' ]` |
+| W11 tope de cambios sin aplicar (design 7) | el tope es 200 entradas: una ms se rechaza entera | `expected 'ok' to be 'validation_error' // Object.is equality` |
+| W12 mensaje de grupo con la palabra del nivel (T2.4) | un rechazo de SLT-52 R11 nombra el distrito sin la palabra del n | `expected { status: 'validation_error', ...(1) } to deeply equal { status: 'validation_erro` |
+| A1 la fabrica pasa una lista vacia (R6) | SLT-54 T2.3  TarifaActivacionService recibe su repositorio real  | `expected { ...(1) } to be TarifasPantallaService{ ...(1) } // Object.is equality` |
+| A2 la fabrica falla cerrado de nuevo (T2.3) | con faltantes reales pide confirmacin, con la lista leda de la b | `expected 'error' to be 'confirmacion_requerida' // Object.is equality` |
+| A3 faltantesPorZona devuelve vacio aunque calcule (R6) | SLT-54 T2.3  activar por la fabrica pide confirmacion con los fa | `expected { status: 'ok', ...(1) } to deeply equal { ...(2) }` |
+| A4 usa los vehiculos inactivos como exigibles (R15, en servicio) | reparte los valores por zona y solo exige los vehculos activos | `expected [ { zonaId: 'z1', ...(3) }, ...(1) ] to deeply equal [ { zonaId: 'z1', ...(3) }, ` |
+| V1 crearZona acepta cobroVehiculo (R27) | crearZona con cobroVehiculo verdadero | `expected { status: 'validation_error', ...(1) } to deeply equal { status: 'validation_erro` |
+| V2 crearZona acepta tarifas (R27) | crearZona con cobroVehiculo verdadero | `expected { status: 'validation_error', ...(1) } to deeply equal { status: 'validation_erro` |
+| V3 actualizarZona sin guarda (R27) | actualizarZona con los dos, en falso y sin filas | `expected 2 to be +0 // Object.is equality` |
+| V4 crearZona rechaza un payload sin costos (R27) | forbidden se propaga | `expected 'validation_error' to be 'forbidden' // Object.is equality` |
+| V5 vuelve crearTarifa (R26) | crearTarifa no se exporta | `expected [ 'crearTarifa', ...(8) ] to not include 'crearTarifa'` |
+| V6 vuelve la accion de la marca (R28) | ninguna Server Action retirada ha vuelto | `expected [ 'lib/actions/geografia.ts' ] to deeply equal []` |
+| V7 una action importa TarifaService (R26) | ninguna action ni nada de `app/` importa una via de escritura ni | `expected [ [ 'lib/actions/tarifas.ts', ...(1) ] ] to deeply equal []` |
+| C1 cobertura ignora el modelo (R30) | tarifa general por modelo: sin activar la de `tarifas`, activada | `expected [ Array(1) ] to deeply equal [ ...(2) ]` |
+| C2 cobertura sin grupoId en el WHERE (R30) | tarifa general por modelo: sin activar la de `tarifas`, activada | `expected [ ...(3) ] to deeply equal [ ...(2) ]` |
+| C3 cobertura sin tiendaId en el WHERE (R30) | tarifa general por modelo: sin activar la de `tarifas`, activada | `expected [ ...(4) ] to deeply equal [ ...(2) ]` |
+| C4 cobertura sin concepto en el WHERE (R30) | tarifa general por modelo: sin activar la de `tarifas`, activada | `expected [ ...(3) ] to deeply equal [ ...(2) ]` |
+| L1 pantalla fuera de la lista de lectores (T1.5) | solo leen la tabla los archivos de la lista, y todos los de la l | `expected [ ...(5) ] to deeply equal [ ...(4) ]` |
+| E4b faltantes leen el valor propio del mensajero (WHERE, R14) | R14: lo que juzgan los faltantes no trae precios de tienda, ni v | `expected [ ...(3) ] to deeply equal [ [ 'satelite_rechazo', ...(2) ], ...(1) ]` |
+| V8 guardar escribe en tarifas (R29) | guardar no escribe en el viejo, ni antes ni despus de activar | `expected { ...(4) } to deeply equal { ...(4) }` |
+| V9 guardar pisa zona.cobro_vehiculo (R29) | guardar no escribe en el viejo, ni antes ni despus de activar | `expected { ...(4) } to deeply equal { ...(4) }` |
+
+**Lectura por empresa, apagando la RLS tabla por tabla en la base local y leyendo como `servi_app`** (se restauró y comprobó cada una; con todas de vuelta, 27 de 27):
+
+| Tabla | Rojos | Caso |
+|---|---|---|
+| `zona` | 4 | «una zona de B es not_found para A» |
+| `tarifas` | 2 | «una tienda de B pedida desde A», «el repositorio, pidiendo por los ids de B» |
+| `tarifa_zona_mensajero` | 1 | «el repositorio, pidiendo por los ids de B» |
+| `distrito_zona_especial` | 6 | «nivel grupo: varía entre los distritos de ESE grupo» |
+| `tarifa_valor` | 2 | «lo que juzgan los faltantes…» |
+| `grupo_distritos` | 1 | «el repositorio, pidiendo por los ids de B» |
+
+**Supervivientes de la primera pasada, y qué se hizo:**
+- R9 (el par de zona lleva la tienda pedida): faltaba mirar el nivel zona con una tienda pedida. Test añadido.
+- E4 y E6 (`WHERE` de faltantes y de precios de tienda): la primera se filtraba después en memoria y en la segunda A solo tenía un valor. Tests añadidos contra el repositorio; se sumó E4b.
+- C5 (`zonaId: { not: null }` en cobertura): equivalente, lo impide el CHECK. Se quitó del código y deja de contarse.
+- La RLS de `tarifas`, `tarifa_zona_mensajero` y `grupo_distritos` sobrevivía: las zonas de A ya filtraban. Test añadido que pide por los ids de B, con su control positivo desde B.
+
+### Salida de los comandos
+
+```
+$ NODE_OPTIONS=--max-old-space-size=8192 pnpm exec tsc --noEmit -p .    -> exit 0, 0 errores
+$ pnpm exec eslint <archivos .ts y .tsx de la tanda>                     -> exit 0, 0 errores, 2 avisos
+$ pnpm run test:guardias
+  Test Files  1 failed | 330 passed (331)
+       Tests  4 failed | 4612 passed | 1 skipped (4617)
+  (los 4 rojos: dependencias-declaradas-presentes.guardia.test.ts, en el baseline)
+$ los 81 archivos que importan lo tocado, mas los rojos conocidos, en tandas de 15 (sin `vitest related`)
+  total 1444 | ok 1432 | ko 12 | skip 0
+  (incluye el arreglo de cobertura.composition-root, re-corrido aparte: 6 de 6 con zona-guardado-conserva-costos)
+```
+
+### Rojos fuera del baseline
+
+Ninguno nuevo. Los 10 esperados, sobre la base local: `caja-backfill` (5), `notificacion-evento-bloqueo-cierre-migration` (1), `-gasto-fijo-migration` (1), `-webhook-suscripcion-migration` (2), `whatsapp-envios-migration` (1).
+
+**En el baseline:** `cobertura-repository.test.ts` (2, los de la ficha 465: `referencia a otra empresa: tarifas.tienda_id -> usuario`). Los tres casos nuevos de R30 de ese archivo pasan.
+
+**Sin correr aquí:** `vitest related`, `./init.sh` y E2E, por encargo.
