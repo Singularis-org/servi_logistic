@@ -102,3 +102,77 @@ Los rojos, clasificados:
 **Nuevos:** `tests/integration/db/deudas-d39-d40-modelo-nuevo.test.ts`, esta bitácora
 
 **Modificados:** `lib/constants/wallet-rotulos.ts`, `lib/interfaces/repositories/{ICierreBodegaRepository,IFiltrosWalletRepository,IWalletMovimientoRepository}.ts`, `lib/interfaces/services/ICierreBodegaService.ts`, `lib/repositories/_shared/detalle-modelo-nuevo.ts`, `lib/repositories/{CierreBodegaRepository,FiltrosWalletRepository,SaldosSatelitesRepository,WalletMovimientoRepository,libro-caja-a-quien-sql}.ts`, `lib/services/{CajaBackfillTesoreriaService,CierresBodegaAdminService,FiltrosWalletService,WalletService}.ts`, `lib/types/{conciliacion-satelites,wallet,wallet-filtros}.ts`, la guardia `caja-173-alcance` y los dobles y literales de 19 archivos de test
+
+## Tanda 2 — D39 y D40: la pantalla consume el dato
+
+**Veredicto:** la conciliación, la tarjeta de bodega, la composición de la ganancia, el filtro del libro y las tres notas de mensajero dicen el texto del modelo nuevo cuando el dato lo pide, y sin él cada frase queda idéntica a la de hoy. No se tocó `lib/`.
+
+### Cambios
+
+| Deuda | Dónde | Qué |
+|---|---|---|
+| D40 | `ConciliacionSatelite.tsx:159,170,177` | `c.incluyeModeloNuevo === true` elige las dos notas `_MODELO_NUEVO` |
+| D40 | `cierre-factura.tsx:1075,1182` | `CierreBodegaFacturaResumen` pasa el campo a `HojaResumen`, que elige la nota. La otra rama de `modeloNuevo` en esa hoja (`:1049`) no se pinta con `cascadaCentral` |
+| D40 | `cierre-labels.ts:389,396,552` | Las tres variantes nuevas |
+| D40 | `CascadasCierreMensajero.tsx:204,275,367` | `lineasParticion` recibe `modeloNuevo` |
+| D40 | `DesglosePorTienda.tsx:149` | La nota según la prop |
+| D39 | `ComposicionGananciaCard.tsx:190,222,270` | Rótulo por categoría con `conceptoDeMovimientoCaja` |
+| D39 | `LibroCajaBarra.tsx:86,133` | `rotulosDeConceptos`: diccionario para `opcionesDeConceptos` |
+
+`cierre-detalle-shared.tsx` reexporta dos variantes, porque es la puerta por la que `CascadasCierreMensajero` pide sus textos.
+
+### Las tres notas nuevas son ciertas con el cambio mínimo
+
+- **La cifra:** `pagoTienda − ganaLaTienda` es `fleteDevolucionConIva` (`ingreso-empresa.ts:650`), y en el nuevo esa categoría recoge todo resultado distinto de entregado (`derivarIngresoModeloNuevo`, SLT-52 R29).
+- **«Se le cobra aparte, contra su saldo»:** `WalletTiendaFeedService` debita esas dos categorías al aprobar, sea cual sea el resultado. Depende del interruptor `TIENDA_DEBITA_FLETE_DEVOLUCION`, igual que la frase del modelo viejo.
+- **Mixto:** una devolución a origen también es una gestión no entregada, así que el texto sigue siendo cierto.
+
+### Decisiones
+
+- **Reversos:** conservan su rótulo, porque `conceptoDeMovimientoCaja` no los cubre. El test lo fija con la fila del reverso del IVA.
+- **Concepto ajeno al catálogo de la caja:** sigue sin ofrecerse, aunque traiga la marca, con test propio.
+- **Elegido con 0 movimientos:** cae a `CATEGORIA_LABEL`. La opción puede cambiar de nombre al cambiar de periodo, como ya se anotó en la tanda 1.
+
+### Mapa deuda → test
+
+Todo en `tests/components/DeudasD39D40ModeloEnPantalla.test.tsx`, 27 casos con esperados literales.
+
+| Caso | Test |
+|---|---|
+| D40, conciliación | «la cuenta de una consolidación»: nuevo, ausente y `false`, con cifras |
+| D40, tarjeta | «la tarjeta del cierre de bodega»: nuevo, ausente y `false`, con cifra |
+| D40, roles de la tarjeta | «el `adminSatelite` en sus solicitados y el maestro en los resueltos…» |
+| D40, mensajero | «las dos notas del cierre de mensajero»: nuevo, ausente y `false`; cada nota en su línea |
+| D40, desglose | «la nota del desglose por tienda»: nuevo, ausente y `false`; el cierre le pasa el modelo |
+| D39, composición | «la composición de la ganancia»: las dos categorías, una sola de cada lado, lista ausente y vacía, reverso y filas ajenas |
+| D39, filtro | «el filtro de concepto del libro»: con marca, sin marca, sin contagio, sin rótulo por modelo, concepto ajeno y elegido con 0 |
+
+### Mutaciones
+
+**46/46 muertas**, una a una, con `scratchpad/mutar-d39d40-pantalla.cjs` (fuera del repo). Cada corrida exige 27 tests ejecutados, 0 saltados y al menos un fallo, y el patrón debe aparecer exactamente una vez. Línea base y final: 27/27 en verde. Árbol intacto, comprobado por huella de los 7 archivos mutados.
+
+- **Conciliación (C1–C8):** condición invertida, fija y ausente como nuevo, ramas invertidas, nota equivocada.
+- **Tarjeta (F1–F6):** rama invertida, nota fija, campo sin entregar, condición invertida.
+- **Mensajero (M1–M7) y desglose (D1–D3):** ramas, notas cruzadas, modelo sin pasar.
+- **Literales (L1–L6):** cada texto viejo con una palabra cambiada y cada nuevo diciendo el viejo.
+- **Composición (G1–G8):** lista ignorada, fija, invertida y por tarjeta en vez de por categoría.
+- **Filtro (B1–B8):** diccionario ignorado, marca fija, invertida y contagiada, elegido con 0 sin rótulo o con el nuevo, valor técnico.
+
+### Salida real
+
+- `pnpm typecheck`: exit 0. `pnpm lint`: exit 0, 0 errores y 234 avisos, el mismo número que en la tanda 1.
+- `vitest related` de los 9 archivos, con la base desechable: 203 archivos, 3054 tests, 3054 en verde, 0 rojos, 0 saltados. Exit 0.
+
+### No verificado
+
+- **Pantalla real:** sin navegador ni dev server. Los tests montan componentes con dobles de las acciones, así que el camino completo base → DTO → DOM no se recorrió.
+- **Roles:** los componentes no filtran por rol. Solo se comprobó que `adminSatelite` y maestro leen la misma nota en sus dos listas; quién entra a cada página no se probó aquí.
+- **E2E:** no se corrió ninguno.
+- **Coste del `EXISTS`** con volumen real: sigue sin medir, como en la tanda 1.
+- **El grafo de código** no se consultó en esta tanda: la tanda 1 anotó que no tiene índice de este worktree. Se exploró con Grep y Read.
+
+### Archivos
+
+**Nuevos:** `tests/components/DeudasD39D40ModeloEnPantalla.test.tsx`
+
+**Modificados:** `app/(app)/cierres-admin/_components/{CascadasCierreMensajero,DesglosePorTienda,cierre-detalle-shared,cierre-factura}.tsx`, `app/(app)/cierres-admin/_components/cierre-labels.ts`, `app/(app)/wallet/_components/{ComposicionGananciaCard,LibroCajaBarra}.tsx`, `app/(app)/wallet/satelites/_components/ConciliacionSatelite.tsx`, esta bitácora

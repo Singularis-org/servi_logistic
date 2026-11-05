@@ -117,6 +117,7 @@ import {
   PARA_LA_CENTRAL_LABEL,
   GANA_BODEGA_SATELITE_LABEL,
   PARA_LA_CENTRAL_NOTA,
+  PARA_LA_CENTRAL_NOTA_MODELO_NUEVO,
   PARA_LA_CENTRAL_NEGATIVO_NOTA,
   EFECTIVO_NO_CUBRE_NOTA,
   // FICHA 395: el lector del cero SALIO de aqui y vive junto a `esMontoNegativo`, su hermano.
@@ -1070,7 +1071,9 @@ function HojaResumen({
                   destacado
                   ultima
                 />
-                <NotaColumna>{PARA_LA_CENTRAL_NOTA}</NotaColumna>
+                <NotaColumna>
+                  {modeloNuevo ? PARA_LA_CENTRAL_NOTA_MODELO_NUEVO : PARA_LA_CENTRAL_NOTA}
+                </NotaColumna>
                 {/* R36 — el negativo NO es un error: el pago al mensajero es fijo por entrega e
                     independiente de lo recaudado, así que una jornada prepagada lo produce. Sin
                     esta nota, un «−₡1.000» en una pantalla de dinero es peor que no tenerlo. */}
@@ -1176,6 +1179,7 @@ export function CierreBodegaFacturaResumen({
       solicitadoAt={cierre.solicitadoAt}
       resueltoAt={cierre.resueltoAt}
       motivoRechazo={cierre.motivoRechazo}
+      modeloNuevo={cierre.incluyeModeloNuevo === true}
       /* Feature 393 (R20/R38): los dos datos llegan YA DERIVADOS del servidor —del mapper que
          comparten las ocho lecturas de esta cabecera—, así que la tarjeta del maestro y la de la
          satélite no pueden discrepar: salen del mismo sitio. Aquí no se calcula nada. */
