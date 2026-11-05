@@ -126,7 +126,7 @@ describe("SL-36/R20 — con el service real, cada empresa ingiere lo suyo en su 
         }),
       },
       entregaEstado: () => ({ aplicar: async () => 0 }),
-      logger: { warn: () => {} },
+      logger: { warn: () => {}, error: () => {} },
     });
     return { service, vistos };
   }

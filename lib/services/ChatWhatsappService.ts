@@ -179,6 +179,8 @@ export interface ChatWhatsappServiceDeps {
 /** Logger inyectable del chat. Solo mensajes agregados: nunca numero destino ni cuerpo. */
 export interface ChatLogger {
   warn(message: string): void;
+  /** SLT-42: fallos que piden accion humana (p. ej. un pais incompleto que deja mensajes sin registrar). */
+  error(message: string): void;
 }
 
 /**

@@ -1,8 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 
-import { CorregirDatosClienteService } from "@/lib/services/CorregirDatosClienteService";
+import { CorregirDatosClienteService, MENSAJE_PAIS_SIN_TELEFONO } from "@/lib/services/CorregirDatosClienteService";
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
-import { PaisIncompleto } from "@/lib/db/errores-pais";
 import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import type { CorregirDatosClienteInput } from "@/lib/interfaces/services/ICorregirDatosClienteService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
@@ -510,12 +509,16 @@ describe("SLT-42 (punto 4 tras la tanda 2) — el telefono se valida con el pais
     expect(deLaEmpresa).not.toHaveBeenCalled();
   });
 
-  it("un pais sin prefijo o sin digitos falla cerrado con PaisIncompleto y no escribe", async () => {
+  it("un pais sin prefijo o sin digitos devuelve fieldErrors.telefonoDest con texto propio y no escribe", async () => {
+    // Decision tras la tanda 2b: no se lanza `PaisIncompleto` (que llegaba como error generico).
     const { service, corregirDatosCliente } = escenario({ reglasPais: reglasPaisFijas({ paisId: "XB", telefono: null }) });
 
-    await expect(service.corregir({ ordenId: ORDEN_ID, telefonoDest: "7770001" }, MAESTRO)).rejects.toBeInstanceOf(
-      PaisIncompleto,
-    );
+    const r = await service.corregir({ ordenId: ORDEN_ID, telefonoDest: "7770001" }, MAESTRO);
+
+    expect(r).toEqual({ status: "validation_error", fieldErrors: { telefonoDest: [MENSAJE_PAIS_SIN_TELEFONO] } });
+    expect(MENSAJE_PAIS_SIN_TELEFONO).toMatch(/soporte/);
+    // Sin PII: el texto no lleva el numero tecleado ni el pais.
+    expect(MENSAJE_PAIS_SIN_TELEFONO).not.toContain("7770001");
     expect(corregirDatosCliente).not.toHaveBeenCalled();
   });
 });

@@ -1,4 +1,3 @@
-import { PaisIncompleto } from "@/lib/db/errores-pais";
 import type {
   CorregirDatosClienteData,
   DistritoResueltoRow,
@@ -116,6 +115,13 @@ export type CorregirDatosClienteReglasPais = Pick<IReglasPaisEmpresa, "deLaEmpre
  * el schema, para que «vacio» tenga UNA sola definicion para los cuatro: el `min(1)` del borde
  * caza la cadena vacia y este barrido caza la de solo espacios, igual para todos.
  */
+/**
+ * SLT-42 (decision tras la tanda 2b): el texto de `fieldErrors.telefonoDest` cuando el pais de la
+ * empresa no tiene prefijo o digitos. No lo arregla quien corrige la orden: lo arregla soporte.
+ */
+export const MENSAJE_PAIS_SIN_TELEFONO =
+  "El pais de la empresa no tiene configurado el telefono; avisa a soporte";
+
 const CAMPOS_NO_VACIABLES = ["destinatario", "telefonoDest", "producto", "direccion"] as const;
 
 /**
@@ -273,12 +279,15 @@ export class CorregirDatosClienteService implements ICorregirDatosClienteService
     //
     // SLT-42: la normalizacion es la del PAIS de la empresa (`normalizarTelefono` con su prefijo y
     // sus digitos), la misma que keyea el hilo del chat. Solo se lee el pais si el telefono cambia.
-    // Un pais sin prefijo o sin digitos falla cerrado con `PaisIncompleto`, como el chat.
+    // Un pais sin prefijo o sin digitos no puede validar el numero: no se guarda y se devuelve en
+    // `fieldErrors.telefonoDest` con un texto propio (decision del humano tras la tanda 2b), no
+    // como el error generico de un `PaisIncompleto` lanzado.
     const telefono = valores.telefonoDest;
     if (cambios.includes("telefonoDest") && telefono !== undefined) {
       const pais = await this.reglasPais.deLaEmpresa();
-      if (pais.telefono === null) throw new PaisIncompleto(pais.paisId);
-      if (normalizarTelefono(telefono, pais.telefono) === "") {
+      if (pais.telefono === null) {
+        fieldErrors.telefonoDest = [MENSAJE_PAIS_SIN_TELEFONO];
+      } else if (normalizarTelefono(telefono, pais.telefono) === "") {
         fieldErrors.telefonoDest = ["Numero de telefono no utilizable"];
       }
     }

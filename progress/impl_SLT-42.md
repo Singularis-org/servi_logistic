@@ -404,3 +404,38 @@ Commits: `a35d50f6` (decisiones en la ficha), `13757c87` (código y tests) y el 
 6. Ningún test recorre `construirReglasPaisEmpresa` dentro de `buildService()` de corregir datos: el composition root solo prueba el distrito. Lo cubre el typecheck.
 
 Veredicto: decisiones 2, 4, 6 y 7 implementadas con test. El punto 9 queda aclarado: es un rojo del fixture, está en el baseline y no es de SLT-42. Typecheck limpio; en las guardias solo queda el rojo del baseline.
+
+## Tanda 2c · decisiones 2, 4 y 6 tras la tanda 2b (2026-11-04)
+
+### Archivos
+- Producción:
+  - `lib/services/CorregirDatosClienteService.ts`: con el país sin prefijo o sin dígitos devuelve `validation_error` con `fieldErrors.telefonoDest = [MENSAJE_PAIS_SIN_TELEFONO]` («El pais de la empresa no tiene configurado el telefono; avisa a soporte») en vez de lanzar `PaisIncompleto`. La constante se exporta para los tests. No se escribe nada.
+  - `lib/services/ChatWhatsappService.ts`: `ChatLogger` gana `error(message)`.
+  - `lib/services/whatsapp/chat-logger.ts`: `consoleLogger.error` → `console.error`.
+  - `lib/services/WebhookWhatsappService.ts`: el aviso de mensajes saltados por `PaisIncompleto` sale por `logger.error` (sin el prefijo «ERROR:», sin PII: empresa y país).
+- Tests:
+  - Nuevo `tests/integration/db/corregir-datos-cliente.pais-real.test.ts`: la Server Action `corregirDatosCliente` sin `deps.service`, o sea `buildService()` real con `construirReglasPaisEmpresa(prisma)`; `getPrismaClient` apunta a la tx del test (patrón de `picking-ordenes-en-preparacion`). Siembra su propio país de prueba (`XS` con `599`/7, `XT` incompleto), una empresa en ese país, su geografía, zona, tienda y orden. No lee filas de otra empresa.
+  - `tests/unit/services/corregir-datos-cliente-service.test.ts`: el caso de país incompleto ahora espera `fieldErrors.telefonoDest` con el texto propio.
+  - `tests/unit/services/webhook-whatsapp-pais-incompleto.test.ts`: comprueba que el aviso sale por `error`.
+  - Dobles de `ChatLogger` que pidió el typecheck (se añade `error`): `procesar-jobs-whatsapp-bienvenida`, `webhook-whatsapp.route`, `webhook-whatsapp-entregas`, `webhook-whatsapp-por-empresa`, `chat-whatsapp-respuesta-citada`, `chat-whatsapp-service`, `webhook-whatsapp-service` y `whatsapp-fallo-saliente`.
+
+### R → test
+| Decisión / R | Test |
+|---|---|
+| 2 (corregir con país incompleto, R6) | `corregir-datos-cliente-service`: «un pais sin prefijo o sin digitos devuelve fieldErrors.telefonoDest con texto propio y no escribe»; `corregir-datos-cliente.pais-real`: «R6: con el pais sin prefijo ni digitos devuelve fieldErrors.telefonoDest y no escribe» |
+| 4 (log en `error`, R18) | `webhook-whatsapp-pais-incompleto`: «lote con dos empresas, una con país incompleto…» (el aviso está en `errores`, sin PII) |
+| 6 (ruta real, R18) | `corregir-datos-cliente.pais-real`: «R18: corrige el telefono y queda resoluble con el prefijo del pais de la empresa» (se guarda tal cual, 312/R17, y el entrante `599`+local resuelve a la orden con las reglas leídas de la base) |
+
+Mutación comprobada: con `buildService()` cableado a unas reglas fijas de CR en vez de `construirReglasPaisEmpresa(prisma)`, el caso R6 de `pais-real` se pone rojo («expected { status: 'ok' } to deeply equal { status: 'validation_error' }»). Se revirtió.
+
+### Salida
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec tsc --noEmit -p .`: exit 0.
+- `eslint --max-warnings=0` sobre los 15 archivos tocados: 0 errores, 3 warnings `no-unused-vars` (`_ordenId`, `_data`, `_estadosBloqueados`) en `corregir-datos-cliente-service.test.ts:124-126`, ya en HEAD.
+- `vitest run` de los 11 archivos de test tocados, con `DATABASE_URL` a `logistic_slt42_test`: `Test Files 11 passed (11) · Tests 186 passed (186)`; `pais-real` con sus 2 casos ejecutados, ninguno saltado.
+- `vitest related --run` de los 4 archivos de producción: `Test Files 2 failed | 245 passed (247) · Tests 3338 passed | 24 skipped`. Los 2 rojos son `corregir-datos-cliente.{chat,repo}` y fallan en el `beforeAll`: «la tabla `orden` esta vacia». `logistic_slt42_test` tiene hoy 0 filas en `orden`, `organizacion`, `usuario` y `zona` (contado en solo lectura). Es el fixture de la base, no el cambio: esas suites toman FKs de una orden existente y en la tanda 2b la base sí tenía datos.
+- `pnpm run test:guardias`: `Tests 4 failed | 4550 passed | 24 skipped`; los 4 son `dependencias-declaradas-presentes`, en el baseline.
+
+### Preguntas
+1. `logistic_slt42_test` está vacía de datos de negocio (0 empresas, órdenes, usuarios y zonas). ¿Se volvió a crear entre la tanda 2b y esta? Las suites que toman FKs de una orden existente (`corregir-datos-cliente.{chat,repo}` y otras) no pueden correr hasta que se siembre (`pnpm run db:seed` + zonas) o se pasen a sembrar sus datos, como `pais-real`.
+
+Veredicto: decisiones 2, 4 y 6 implementadas con test. Typecheck limpio; en las guardias solo queda el rojo del baseline.

@@ -1018,7 +1018,7 @@ describe("Feature 311 · PII en los logs de la ingesta (R35)", () => {
       reglasPais: reglasPaisFijas(),
       conversacionRepo: conv,
       mensajeRepo: msg,
-      logger: { warn },
+      logger: { warn, error: vi.fn() },
     });
 
     await service.ingerirEventos(

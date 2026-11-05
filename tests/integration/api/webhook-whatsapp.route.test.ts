@@ -146,7 +146,7 @@ function serviceSobre(tx: TxDeTest) {
   return buildWebhookWhatsappService({
     prisma: clienteConTransaccionAnidada(tx),
     cifrador: boveda,
-    logger: { warn: () => {} },
+    logger: { warn: () => {}, error: () => {} },
   });
 }
 

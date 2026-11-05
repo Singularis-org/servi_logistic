@@ -66,6 +66,14 @@ Bloqueos de F2.0:
   8. Los 9 desvíos menores del design de la tanda 2 (lista en `progress/impl_SLT-42.md > Tanda 2`) quedan aceptados (humano).
   9. `historial-accion-atomicidad` (17 rojos por datos de `logistic_slt42_test`): se recrea esa base desde cero y se vuelve a correr el test para comprobar el ajuste de T4.1 (humano).
 
+- 2026-11-04 (tras tanda 2b, preguntas de `progress/impl_SLT-42.md > Tanda 2b > Preguntas`):
+  1. Corte de «postulación previa» (`POSTULACION_VALIDADA_POR_PAIS_DESDE`): queda `2026-11-04T14:00Z` por ahora y se ajusta al instante real del deploy como paso de T1.0 (humano).
+  2. Corregir datos con país incompleto: devuelve `fieldErrors.telefonoDest` con texto propio en vez del error genérico (humano). Implementado en la tanda 2c.
+  3. Webhook que salta una empresa por país incompleto: los estados de entrega y el «último contacto» se siguen aplicando; solo se saltan los mensajes entrantes (humano).
+  4. `ChatLogger` gana nivel `error`; el aviso de mensajes saltados sale por `console.error` (humano). Implementado en la tanda 2c.
+  5. `historial-accion-atomicidad`: no se arregla en SLT-42; queda para SL-31, que ya lo tiene en el baseline (humano).
+  6. Test de integración que recorre `construirReglasPaisEmpresa` dentro de `buildService()` de corregir datos (humano). Implementado en la tanda 2c.
+
 ## Preguntas abiertas
 Las del `requirements.md` (normalizar teléfonos guardados, jobs por zona horaria, largos de documento).
 
@@ -73,6 +81,7 @@ Las del `requirements.md` (normalizar teléfonos guardados, jobs por zona horari
 - 2026-11-04 · T0.1, T1.1–T1.5, T2.1–T2.4, T3.1–T3.2 · 31a5b0eb · gate rápido local rojo por carga (6 tests de UI, verdes 3/3 en la rama y en dev sin carga; ver impl_SLT-42.md); subido. T1.0 pendiente (persona, antes del deploy).
 - 2026-11-04 · T4.1–T4.4 (+ migraciones slt42 renombradas a 20261104140000–140200 tras el merge de dev) · f0f20c0a, f38e1c9f, 070e6e96 · typecheck exit 0; test:guardias 9 rojos: `dependencias-declaradas-presentes` (4, en el baseline), `rollup-guards` R47 (1, REAL de SLT-42: la cifra de la caché de `calendario-zona.ts` del fix-up de la tanda 1 coincide con el umbral de volumen), 4 que pasan solas (`dominio-ordenex-fuera`, `filtros-url-r25`, `otp-debug-solo-en-pruebas`, `sin-estados-retirados`) y `descargas-por-registro` (timeout de 20 s, también sola; ningún archivo de UI tocado). Preguntas abiertas en impl_SLT-42.md > Tanda 2.
 - 2026-11-04 · Tanda 2b (decisiones 2, 4, 6, 7 y 9 de «tras tanda 2») · a35d50f6, 13757c87 · typecheck exit 0; test:guardias solo con los 4 rojos de `dependencias-declaradas-presentes` (baseline); los tests tocados, en verde. `logistic_slt42_test` recreada: `historial-accion-atomicidad` sigue rojo por el fixture (no hay órdenes, o las FKs son de otra empresa; está en el baseline y no es de SLT-42). `descargas-por-registro`: la lentitud es de la guardia, no de SLT-42. Preguntas en impl_SLT-42.md > Tanda 2b.
+- 2026-11-04 · Tanda 2c (decisiones 2, 4 y 6 de «tras tanda 2b») · commit de esta tanda · typecheck exit 0; test:guardias solo con los 4 rojos de `dependencias-declaradas-presentes` (baseline); 11 archivos de test tocados en verde; `corregir-datos-cliente.{chat,repo}` rojos en `beforeAll` porque `logistic_slt42_test` está sin datos (pregunta en impl_SLT-42.md > Tanda 2c).
 
 ## Modelos (overrides)
 

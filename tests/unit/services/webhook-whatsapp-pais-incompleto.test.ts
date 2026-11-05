@@ -108,7 +108,14 @@ function reglasPorEmpresa(): IReglasPaisEmpresa {
 function montar() {
   const insertados: { empresa: string | undefined; waMessageId: string }[] = [];
   const logs: string[] = [];
-  const logger = { warn: (m: string) => logs.push(m) };
+  const errores: string[] = [];
+  const logger = {
+    warn: (m: string) => logs.push(m),
+    error: (m: string) => {
+      errores.push(m);
+      logs.push(m);
+    },
+  };
   const anotados: string[] = [];
   const service = new WebhookWhatsappService({
     enrutado: {
@@ -131,7 +138,7 @@ function montar() {
     logger,
     reloj: () => AHORA,
   });
-  return { service, insertados, logs, anotados };
+  return { service, insertados, logs, errores, anotados };
 }
 
 describe("SLT-42 — webhook de WhatsApp con el país de una empresa incompleto", () => {
@@ -140,12 +147,14 @@ describe("SLT-42 — webhook de WhatsApp con el país de una empresa incompleto"
       object: "whatsapp_business_account",
       entry: [{ id: "w", changes: [cambio("num-b", "wamid.B", "50688880002"), cambio("num-a", "wamid.A", "50688880001")] }],
     });
-    const { service, insertados, logs } = montar();
+    const { service, insertados, logs, errores } = montar();
 
     const res = await route.handlePost(post(raw), { service });
 
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ ok: true, mensajesRegistrados: 1 });
+    // Decisión tras la tanda 2b: el aviso sale con nivel `error`, no `warn`.
+    expect(errores.filter((m) => m.includes("incompleto"))).toHaveLength(1);
     // Solo la empresa con el país completo escribe; la del país incompleto no escribe nada.
     expect(insertados).toEqual([{ empresa: "org-a", waMessageId: "wamid.A" }]);
 
@@ -182,7 +191,7 @@ describe("SLT-42 — webhook de WhatsApp con el país de una empresa incompleto"
       anotarWebhook: async () => {},
       ingesta: { ingerirEventos: async () => Promise.reject(new Error("caida de la base")) },
       entregaEstado: () => ({ aplicar: async () => 0 }),
-      logger: { warn: () => {} },
+      logger: { warn: () => {}, error: () => {} },
     });
     await expect(service.recibir({ cuerpoCrudo: raw, firma: firmar(raw) })).rejects.toThrow("caida de la base");
   });

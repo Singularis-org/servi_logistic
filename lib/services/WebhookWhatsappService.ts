@@ -252,10 +252,10 @@ export class WebhookWhatsappService implements IWebhookWhatsappService {
       // normalizar el numero del cliente. La ingesta falla cerrado ANTES de escribir; aqui se
       // saltan los mensajes de ESTA empresa, queda en el log y el lote sigue con las demas. La
       // respuesta a Meta sigue siendo 200: reintentar no arregla el maestro de paises. Sin PII:
-      // solo la empresa y el pais.
+      // solo la empresa y el pais. Nivel `error` (decision tras la tanda 2b): pide accion humana.
       if (!(error instanceof PaisIncompleto)) throw error;
-      this.deps.logger.warn(
-        `[webhook-whatsapp] ERROR: mensajes saltados, la empresa ${lote.destino.organizacionId} tiene el pais ${error.paisId} incompleto (sin prefijo o sin digitos)`,
+      this.deps.logger.error(
+        `[webhook-whatsapp] mensajes saltados, la empresa ${lote.destino.organizacionId} tiene el pais ${error.paisId} incompleto (sin prefijo o sin digitos)`,
       );
     }
     if (eventos.statuses.length > 0) await this.aplicarEntregas(eventos);

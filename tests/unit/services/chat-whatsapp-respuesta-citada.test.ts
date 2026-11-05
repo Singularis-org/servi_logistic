@@ -107,7 +107,7 @@ function montar(hilo: HiloCitado | null, insertado = true) {
     reglasPais: reglasPaisFijas(),
     conversacionRepo: conv,
     mensajeRepo: msg,
-    logger: { warn },
+    logger: { warn, error: vi.fn() },
     now: () => AHORA,
   });
   return { conv, msg, warn, service };
