@@ -22,14 +22,16 @@ const BASE: CambioPlanParams = {
   cambios: {
     nombre: { antes: "Básico", despues: "Básico plus" },
     topes: {
-      antes: { ordenesPorCiclo: 100, porRol: { adminTienda: 3 }, apiKeys: null },
-      despues: { ordenesPorCiclo: 50, porRol: { adminTienda: 3, mensajero: 10 }, apiKeys: 2 },
+      antes: { porRol: { adminTienda: 3 }, apiKeys: null },
+      despues: { porRol: { adminTienda: 3, mensajero: 10 }, apiKeys: 2 },
     },
     modulos: { antes: ["analitica"], despues: ["ranking"] },
     precio: {
       antes: { tipo: "sin_precio" },
-      despues: { tipo: "monto", mensual: "25000.00", anual: { tipo: "descuento", porcentaje: "10.00" } },
+      despues: { tipo: "monto", mensual: "25000.00" },
     },
+    // SLT-86 (R31): cada descuento del período va en su clave del rastro.
+    descuento_anual: { antes: null, despues: { tipo: "porcentaje", porcentaje: "10.00" } },
   },
   vigenteDesde: RIGE,
   reemplazaA: null,
@@ -50,12 +52,12 @@ describe("SL-24 — plantillaCambioPlan (R41)", () => {
     expect(m.text).toContain("Esto es lo que cambia:");
     for (const linea of [
       "Nombre del plan: Básico → Básico plus",
-      "Órdenes por ciclo: 100 → 50",
       "Usuarios activos con el rol Mensajero: sin límite → 10",
       "API keys activas: sin límite → 2",
       "Se incluye el módulo Ranking.",
       "Deja de incluirse el módulo Analítica.",
-      "Costo base: sin precio → 25000.00 al mes, con 10.00 % de descuento en el pago anual", // SLT-66 R9
+      "Costo base: sin precio → 25000.00 / mes", // SLT-66 R9; SLT-86: «{mensual} / mes»
+      "Descuento anual: sin descuento → 10.00 %", // SLT-86 R31
     ]) {
       expect(m.text).toContain(linea);
       expect(m.html).toContain(linea);
@@ -63,6 +65,8 @@ describe("SL-24 — plantillaCambioPlan (R41)", () => {
     // Un tope que no cambia no se lista.
     expect(m.text).not.toContain("Admin de tienda");
     expect(m.text).not.toContain("reemplaza");
+    // SLT-86 (R8): el correo ya no habla de órdenes.
+    expect(m.text).not.toContain("Órdenes por ciclo");
   });
 
   it("la fecha es el día de la plataforma: las 00:00 a −06:00 son ese día, no el anterior", () => {
@@ -80,12 +84,10 @@ describe("SL-24 — plantillaCambioPlan (R41)", () => {
   it("con topes pasados, dice cuál, con su uso y el tope (mensajeTopesPasados de T3)", () => {
     const m = correo({
       topesPasados: [
-        { empresa: "Mensajería Uno", tope: "ordenes", usados: 80, maximo: 50 },
         { empresa: "Mensajería Uno", tope: "adminTienda", usados: 4, maximo: 3 },
       ],
     });
     expect(m.text).toContain("Con el plan nuevo, tu empresa ya pasa estos topes:");
-    expect(m.text).toContain("Mensajería Uno ya tiene 80 órdenes en el ciclo en curso y el plan permite 50.");
     expect(m.text).toContain("Mensajería Uno ya tiene 4 usuarios activos con el rol Admin de tienda y el plan permite 3.");
   });
 
@@ -111,7 +113,7 @@ describe("SL-24 — recordatorios (R42)", () => {
     const m = correo({ tipo: "recordatorio_7" });
     expect(m.subject).toBe("El plan Básico cambia en 7 días");
     expect(m.text).toContain("Faltan 7 días: el plan Básico de Mensajería Uno cambia a partir del 15 nov 2026.");
-    expect(m.text).toContain("Órdenes por ciclo: 100 → 50");
+    expect(m.text).toContain("Descuento anual: sin descuento → 10.00 %");
   });
 
   it("a 1 día", () => {

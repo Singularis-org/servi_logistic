@@ -74,7 +74,7 @@
 - **Pasos:** `lib/planes/costeo.ts`, `lib/planes/consumo.ts`.
 - **Hecho:** `tests/unit/planes/costeo-periodo.test.ts` verde (modo fijo y modo porcentual).
 
-## T7 — Rastro, versión y mensajes (R24, R30, R31) [P]
+## [x] T7 — Rastro, versión y mensajes (R24, R30, R31) [P]
 
 - **Depende de:** T2.
 - **Pasos:** `lib/planes/rastro.ts`, `lib/planes/mensajes.ts`.

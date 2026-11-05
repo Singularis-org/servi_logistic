@@ -162,14 +162,28 @@ export interface CambioDelPlanParaCorreo {
   nombre?: { antes: string; despues: string };
   topes?: { antes: TopesDelPlanParaCorreo; despues: TopesDelPlanParaCorreo };
   modulos?: { antes: readonly ModuloApagable[]; despues: readonly ModuloApagable[] };
-  precio?: { antes: PrecioPlan; despues: PrecioPlan };
+  /** SLT-86 (R30): una fila de antes de la ficha trae aquí el anual (`PrecioAnterior`). */
+  precio?: { antes: PrecioDelRastro; despues: PrecioDelRastro };
+  /** SLT-86 (R31): un descuento por período, en su propia clave del rastro (`rastro.ts`). */
+  descuento_quincenal?: CambioDeDescuento;
+  descuento_mensual?: CambioDeDescuento;
+  descuento_bimestral?: CambioDeDescuento;
+  descuento_anual?: CambioDeDescuento;
+  /**
+   * SLT-86 (R30, R34): la fila `editado` que deja la migración al retirar el tope de órdenes, con
+   * `antes` como texto («<n>») y `despues` en `null`. Ningún cambio nuevo la escribe.
+   */
+  tope_ordenes_ciclo?: { antes: string | number | null; despues: string | number | null };
   costoPorOrden?: { antes: string | null; despues: string | null };
   /** SLT-83 (R4): un rastro anterior a la ficha no la trae y no pinta esa línea. */
   costoPorOrdenPorcentual?: { antes: CostoPorOrdenPorcentual | null; despues: CostoPorOrdenPorcentual | null };
 }
 
+type CambioDeDescuento = { antes: DescuentoPeriodo | null; despues: DescuentoPeriodo | null };
+
 type TopesDelPlanParaCorreo = {
-  ordenesPorCiclo: number | null;
+  /** SLT-86 (R8, R30): solo en las filas de antes de la ficha; las nuevas no lo traen. */
+  ordenesPorCiclo?: number | null;
   porRol: Partial<Record<RolConTope, number>>;
   apiKeys: number | null;
 };
@@ -178,6 +192,15 @@ export const SIN_LIMITE = "sin límite";
 
 function limite(n: number | null | undefined): string {
   return n === null || n === undefined ? SIN_LIMITE : String(n);
+}
+
+/** Un tope tal como lo guardó la migración de SLT-86 en el rastro: texto o número; `null` = sin límite. */
+function limiteDelRastro(n: string | number | null): string {
+  return n === null ? SIN_LIMITE : String(n);
+}
+
+function ladoDelDescuento(d: DescuentoPeriodo | null): string {
+  return d === null ? SIN_DESCUENTO : valorDelDescuento(d);
 }
 
 /**
@@ -352,6 +375,16 @@ export function lineasDeCambioDelPlan(c: CambioDelPlanParaCorreo): string[] {
   }
   // SLT-66 (R9): el precio mensual de SL-24 se llama ahora «costo base».
   if (c.precio) lineas.push(`Costo base: ${textoDelPrecio(c.precio.antes)} → ${textoDelPrecio(c.precio.despues)}`);
+  // SLT-86 (R31): un descuento por línea, en el orden de los tipos.
+  for (const tipo of TIPOS_COBRO) {
+    const d = c[`descuento_${tipo}`];
+    if (d) lineas.push(`Descuento ${tipo}: ${ladoDelDescuento(d.antes)} → ${ladoDelDescuento(d.despues)}`);
+  }
+  // SLT-86 (R30): la fila de la migración que retiró el tope de órdenes.
+  if (c.tope_ordenes_ciclo) {
+    const { antes, despues } = c.tope_ordenes_ciclo;
+    lineas.push(`Órdenes por ciclo: ${limiteDelRastro(antes)} → ${limiteDelRastro(despues)}`);
+  }
   if (c.costoPorOrden) {
     const { antes, despues } = c.costoPorOrden;
     const porcentual = c.costoPorOrdenPorcentual;

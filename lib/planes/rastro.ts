@@ -1,5 +1,14 @@
 import { ORDEN_MODULOS } from "@/lib/modulos/catalogo";
-import { ROLES_CON_TOPE, type CostoPorOrdenPorcentual, type PlanDTO, type PrecioPlan, type TopesPlan } from "@/lib/types/planes";
+import {
+  ROLES_CON_TOPE,
+  TIPOS_COBRO,
+  type CostoPorOrdenPorcentual,
+  type DescuentoPeriodo,
+  type PlanDTO,
+  type PrecioPlan,
+  type TipoCobro,
+  type TopesPlan,
+} from "@/lib/types/planes";
 
 // SL-24 (design §2.8, §5) — qué cambió entre dos versiones de un plan, para la columna `cambios` de
 // `plan_rastro`: `{ "<campo>": { antes, despues } }` solo con los campos que cambiaron. Pura.
@@ -7,22 +16,36 @@ import { ROLES_CON_TOPE, type CostoPorOrdenPorcentual, type PlanDTO, type Precio
 // Las dos versiones se comparan en su forma CANÓNICA: un importe «10» y el «10.00» que devuelve la
 // base son el mismo precio, y el orden de los módulos o de las claves de `porRol` no es un cambio. Sin
 // eso, guardar sin tocar nada escribiría una fila falsa (§2.8: una edición sin cambios no escribe).
+//
+// SLT-86 (design §5.4; R31): cada descuento del período va en su propia clave, `descuento_<periodo>`, y
+// `precio` guarda solo el costo base mensual. Así cambiar un descuento deja su antes y su después sin
+// arrastrar el resto del precio. Las filas viejas (`precio` con el anual, `topes.ordenesPorCiclo` y el
+// `tope_ordenes_ciclo` que escribe la migración) no se reescriben: las pinta `lineasDeCambioDelPlan`.
+
+export type ClaveDeDescuento = `descuento_${TipoCobro}`;
 
 export type CampoDelPlan =
   | "nombre"
   | "topes"
   | "modulos"
   | "precio"
+  | ClaveDeDescuento
   | "costoPorOrden"
   | "costoPorOrdenPorcentual"
   | "archivado";
 export type CambiosDelPlan = Partial<Record<CampoDelPlan, { antes: unknown; despues: unknown }>>;
+
+/** La clave del rastro del descuento de un período. */
+export function claveDeDescuento(tipo: TipoCobro): ClaveDeDescuento {
+  return `descuento_${tipo}`;
+}
 
 const CAMPOS: readonly CampoDelPlan[] = [
   "nombre",
   "topes",
   "modulos",
   "precio",
+  ...TIPOS_COBRO.map(claveDeDescuento),
   "costoPorOrden",
   "costoPorOrdenPorcentual",
   "archivado",
@@ -34,15 +57,20 @@ export function importeCanonico(texto: string): string {
   return `${entero.replace(/^0+(?=\d)/, "")}.${decimales.padEnd(2, "0")}`;
 }
 
-function precioCanonico(p: PrecioPlan): PrecioPlan {
-  if (p.tipo !== "monto") return { tipo: p.tipo };
-  const anual =
-    p.anual === null
-      ? null
-      : p.anual.tipo === "fijo"
-        ? { tipo: "fijo" as const, monto: importeCanonico(p.anual.monto) }
-        : { tipo: "descuento" as const, porcentaje: importeCanonico(p.anual.porcentaje) };
-  return { tipo: "monto", mensual: importeCanonico(p.mensual), anual };
+/** El costo base del rastro: solo el mensual; los descuentos van en sus claves. */
+type CostoBaseDelRastro = { tipo: "sin_precio" } | { tipo: "monto"; mensual: string };
+
+function precioCanonico(p: PrecioPlan): CostoBaseDelRastro {
+  return p.tipo === "monto" ? { tipo: "monto", mensual: importeCanonico(p.mensual) } : { tipo: p.tipo };
+}
+
+/** R10, R11: «10» y «10.00» son el mismo descuento; sin precio no hay descuentos aunque lleguen. */
+function descuentoCanonico(p: PrecioPlan, tipo: TipoCobro): DescuentoPeriodo | null {
+  const d = p.tipo === "monto" ? p.descuentos[tipo] : undefined;
+  if (d === undefined) return null;
+  return d.tipo === "porcentaje"
+    ? { tipo: "porcentaje", porcentaje: importeCanonico(d.porcentaje) }
+    : { tipo: "monto", monto: importeCanonico(d.monto) };
 }
 
 /** SLT-83 (R4): «2» y el «2.00» de la base son el mismo porcentaje; un mínimo vacío sigue siendo `null`. */
@@ -57,20 +85,23 @@ function topesCanonicos(t: TopesPlan): TopesPlan {
     const maximo = t.porRol[rol];
     if (maximo !== undefined) porRol[rol] = maximo;
   }
-  return { ordenesPorCiclo: t.ordenesPorCiclo, porRol, apiKeys: t.apiKeys };
+  return { porRol, apiKeys: t.apiKeys };
 }
 
-/** La forma canónica del plan: la que se compara y la que se guarda en el rastro. */
-export function planCanonico(p: PlanDTO): PlanDTO {
-  return {
-    ...p,
+/** La forma canónica del plan, campo a campo: la que se compara y la que se guarda en el rastro. */
+export function planCanonico(p: PlanDTO): Record<CampoDelPlan, unknown> {
+  const canonico: Partial<Record<CampoDelPlan, unknown>> = {
+    nombre: p.nombre,
     topes: topesCanonicos(p.topes),
     modulos: ORDEN_MODULOS.filter((m) => p.modulos.includes(m)),
     precio: precioCanonico(p.precio),
     // SLT-66 (R11): «100» y el «100.00» de la base son el mismo costo; vacío sigue siendo `null`.
     costoPorOrden: p.costoPorOrden === null ? null : importeCanonico(p.costoPorOrden),
     costoPorOrdenPorcentual: porcentualCanonico(p.costoPorOrdenPorcentual),
+    archivado: p.archivado,
   };
+  for (const tipo of TIPOS_COBRO) canonico[claveDeDescuento(tipo)] = descuentoCanonico(p.precio, tipo);
+  return canonico as Record<CampoDelPlan, unknown>;
 }
 
 /**
