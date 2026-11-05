@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { crearEscenarioCaja, importe, type CajaE2E } from "./_escenarios/caja";
-import { navegarCon } from "./_escenarios/pulsar";
+import { abrirCon, navegarCon } from "./_escenarios/pulsar";
 import { paginaDe } from "./_escenarios/reparto";
 
 /**
@@ -78,7 +78,13 @@ test.describe.serial("Cuentas por pagar a mensajeros — cuenta, desglose y bloq
     await expect(devengo).toContainText(importe(3000));
     await expect(pago).toContainText(importe(1000));
 
-    await page.getByRole("button", { name: /^Ver las órdenes que componen «Pago devengado»/ }).click();
+    // D42. Este botón alterna, y `abrirCon` avisa de eso: la región se monta en el mismo clic, antes de
+    // leer las órdenes, así que solo se vuelve a pulsar si sigue cerrada. Por eso se espera la región
+    // y no el destinatario, que llega tras la lectura y haría que un reintento plegara el panel.
+    await abrirCon(
+      page.getByRole("button", { name: /^Ver las órdenes que componen «Pago devengado»/ }),
+      page.getByRole("region", { name: /^Órdenes que componen «Pago devengado»/ }),
+    );
     await expect(page.getByText(c.conCod.destinatario)).toBeVisible();
     await expect(page.getByText(c.sinCod.destinatario)).toBeVisible();
   });

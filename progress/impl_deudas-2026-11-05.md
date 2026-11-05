@@ -176,3 +176,75 @@ Todo en `tests/components/DeudasD39D40ModeloEnPantalla.test.tsx`, 27 casos con e
 **Nuevos:** `tests/components/DeudasD39D40ModeloEnPantalla.test.tsx`
 
 **Modificados:** `app/(app)/cierres-admin/_components/{CascadasCierreMensajero,DesglosePorTienda,cierre-detalle-shared,cierre-factura}.tsx`, `app/(app)/cierres-admin/_components/cierre-labels.ts`, `app/(app)/wallet/_components/{ComposicionGananciaCard,LibroCajaBarra}.tsx`, `app/(app)/wallet/satelites/_components/ConciliacionSatelite.tsx`, esta bitácora
+
+## Tanda 3 — D42 y los menores n1, n2 y n3 de SLT-64
+
+Veredicto de D42: el clic pasa a `abrirCon` y no hubo ningún fallo en 5 corridas, pero tampoco lo hubo en 3 corridas sin el cambio. **No se puede concluir que la inestabilidad haya desaparecido, y la causa sigue sin medir.**
+
+### D42: relación entre `:58` y `:81`
+
+- **Son el mismo test.** `:58` es la línea donde se declara el test que el reportero nombra; `:81` es un paso de su cuerpo. Comparten botón y panel porque no hay dos pasos distintos que comparar.
+- **El clic de `:81` no «explica» la caída de `:58`: es el paso que cayó.** `progress/impl_SLT-54.md:1395` nombra ese botón y el registro `element was detached from the DOM, retrying`.
+- **La caída anterior de CI fue otro paso del mismo test:** la navegación de `:63`, en el run 40875969358, que `navegarCon` ya cubre. Son dos puntos de caída; no consta que tengan la misma causa.
+
+### D42: el cambio
+
+`e2e/wallet-mensajeros.spec.ts:81` pasa a `abrirCon(botón, región «Órdenes que componen «Pago devengado»…»)`.
+
+- **Lo que espera es la región y no el destinatario.** El botón alterna, y `pulsar.ts` avisa de que `abrirCon` no sirve si un segundo clic deshace el primero. Por lectura de `DataTable.tsx` y `DetalleMovimientoCierre.tsx`, la región se monta en el mismo clic, antes de leer las órdenes. Si se esperara el destinatario, un reintento podría plegar el panel. Las aserciones del destinatario siguen después.
+- **Lo que cambia:** cada intento de clic tiene 2 s y se reintenta con el localizador resuelto de nuevo, en vez de que un solo clic consuma el plazo del test.
+- **Lo que no cambia:** por qué se desmonta el botón. Si la página entera se quedara parada, `abrirCon` también caería a los 30 s.
+- Sin `retries`, sin `waitForTimeout` y sin subir ningún plazo.
+
+### D42: medida
+
+Proyecto `dinero`, misma build, `workers: 1`, una tras otra sobre la misma base.
+
+| Corrida | Spec | Passed | Failed | Flaky | Skipped | Did not run | Exit |
+|---|---|---|---|---|---|---|---|
+| base-1 | sin el cambio, con sonda | 49 | 0 | 0 | 0 | 0 | 0 |
+| base-2 | sin el cambio, con sonda | 49 | 0 | 0 | 0 | 0 | 0 |
+| base-3 | sin el cambio, con sonda | 49 | 0 | 0 | 0 | 0 | 0 |
+| tras-1 | con `abrirCon` | 49 | 0 | 0 | 0 | 0 | 0 |
+| tras-2 | con `abrirCon` | 49 | 0 | 0 | 0 | 0 | 0 |
+| tras-3 | con `abrirCon` | 49 | 0 | 0 | 0 | 0 | 0 |
+| tras-4 | con `abrirCon` | 49 | 0 | 0 | 0 | 0 | 0 |
+| tras-5 | con `abrirCon` | 49 | 0 | 0 | 0 | 0 | 0 |
+
+- **El fallo no se reprodujo antes del cambio**, así que estas corridas no distinguen el antes del después. Es «sin fallo en 5 corridas», no una causa demostrada. La única tasa disponible es muy pobre: 1 caída en 6 corridas sin el cambio, contando las 3 de SLT-54. Con esa tasa, 5 corridas limpias saldrían por azar cerca de 4 veces de cada 10.
+- **Sonda temporal, no commiteada, en las corridas `base`:** un `MutationObserver` sobre el botón, más `pageerror`, errores de consola y peticiones RSC del test. En las 3 corridas, el botón se quitó **0 veces** y se puso 1, y hubo 0 errores. El desmontaje no es algo habitual que el clic sortee: en las corridas que pasan no ocurre. Solo se sabe de él por el registro de la corrida caída de SLT-54.
+- **Diferencia con la corrida caída:** aquí se corrió con `--trace retain-on-failure`, para guardar la traza si caía, y allí no había traza. No se generó ninguna.
+
+### D42: la base
+
+- **El servidor apuntó a la desechable, medido durante las corridas:** netstat da las conexiones Postgres del proceso que escucha en el puerto del E2E, y `pg_stat_activity` las cruza por puerto de cliente. En `tras-1` a `tras-5`, y en una medida a mano durante `base-3`, 3 conexiones, las 3 en `servi_gate_deudas`. La sonda automática de las corridas `base` falló por un error mío de escapado y no midió nada; esas tres corridas las respalda el recuento de abajo y que usaron el mismo entorno.
+- **El `.env` no manda:** `@next/env` y `process.loadEnvFile` no pisan lo que ya trae el entorno.
+- **La base local no se tocó:** organizaciones 11, usuarios 44, movimientos de wallet 13 y cierres 6, iguales antes y después.
+- **La desechable** tenía 0 empresas y 304 migraciones; se le aplicó `migrate deploy` y `db:seed` sin recrearla. Queda con los datos de las corridas: 128 organizaciones.
+
+### n1, n2 y n3
+
+- **n1.** Corregidos `base-del-kpi.ts:91` y `madurez-textos.ts:25`, en `app/(app)/analitica/_components/entregas/`. Comprobado en el código: `CicloVidaRepository` usa `RESULTADOS_DE_CIERRE` y `CohorteCargaRepository` usa `ESTADOS_TERMINALES`. Solo comentarios.
+- **n2.** Fila añadida en `specs/SLT-64-ciclo-vida-cerradas-coherente/requirements.md`. Cubre la cláusula **por composición**: `deshacer-gestion-invalida-analitica` (bloque «las tres vías»), `cache-invalidacion-correccion-cableado`, `cache-por-empresa` y el caso (c) de `cierres-admin`. La fila dice que ningún test deshace y luego lee en navegador; lo comprobé con Grep en `e2e/`. El caso (c) mide el perfil de caché por la vía de corregir, no por la de deshacer.
+- **n3.** Añadido a `docs/verification.md > El E2E`. Comprobado: 16 archivos de `.next/server` llevan el origen incrustado tras el `next build`; `gate.yml` la pone antes del build; `lib/config/app-url.ts` cae a `NEXT_PUBLIC_SITE_URL`; `enlaceEnviadoA` solo lee lo que va detrás de `#enlace=`. Sin valores reales.
+
+### Salida real
+
+- `pnpm typecheck`: exit 0.
+- `pnpm lint`: exit 0, 0 errores y 234 avisos, el mismo número que en la tanda 2.
+- `vitest related` de los archivos tocados: 16 archivos, 289 tests, 272 en verde, 0 rojos, 17 saltados. Exit 0. Los 17 son todos de `tests/components/AnaliticaPage.test.tsx`, marcados `INERTE` con fecha 2026-08-19: ya estaban y este cambio no los toca.
+- `tests/unit/guards/e2e-sin-saltos.guardia.test.ts`: 38 de 38.
+
+### No verificado
+
+- **La causa del desmontaje.** No se reprodujo, y por tanto tampoco se sabe si `abrirCon` rescata ese fallo.
+- **El camino de reintento de `abrirCon` en este botón.** No medí si algún clic se reintentó. Que un reintento no pliegue el panel sale de leer el código, no de una corrida.
+- **El CI**, donde `retries: 1` y `failOnFlakyTests` cambian lo que se ve.
+- **Una base recreada entre corridas:** las 8 corrieron sobre la misma, con datos acumulados, y la corrida caída de SLT-54 fue sobre una base nueva.
+- **n3 en `superadmin-empresas`:** ese spec no se corrió; no es del proyecto `dinero`.
+- **Fuera de alcance, sin tocar:** `e2e/mi-wallet.spec.ts:71` tiene el mismo clic crudo sobre el mismo tipo de botón.
+- **El grafo de código** no se consultó: Grep y Read.
+
+### Archivos
+
+**Modificados:** `e2e/wallet-mensajeros.spec.ts`, `app/(app)/analitica/_components/entregas/{base-del-kpi,madurez-textos}.ts`, `specs/SLT-64-ciclo-vida-cerradas-coherente/requirements.md`, `docs/verification.md`, esta bitácora

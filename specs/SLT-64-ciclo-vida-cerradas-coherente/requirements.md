@@ -148,6 +148,7 @@ Las mutaciones que cada test debe matar están en `design.md > §7`.
 | R13, R14, R15, R16 | `tests/unit/actions/corregir-resultado-invalida-analitica.test.ts` |
 | R12, R13 (cableado real) | `tests/unit/analytics/cache-invalidacion-correccion-cableado.test.ts` |
 | R13 (primera lectura, en navegador) | `e2e/cierres-admin.spec.ts`, caso (c) |
+| R12 (primera lectura, por composición; ningún test deshace y lee en navegador) | `tests/unit/actions/deshacer-gestion-invalida-analitica.test.ts`, bloque «las tres vías» (de cada vía a la caché) + `tests/unit/analytics/cache-invalidacion-correccion-cableado.test.ts` (la caché es el adaptador real) + `tests/unit/cache/cache-por-empresa.test.ts` (ese adaptador invalida con `{ expire: 0 }`) + `e2e/cierres-admin.spec.ts`, caso (c) (ese perfil trae la cifra nueva, medido por la vía de corregir) |
 | R17 | `tests/unit/analytics/tags-entregas-fuente-unica.test.ts` |
 
 ## Preguntas abiertas
