@@ -7,13 +7,19 @@ import {
   type ConsultaConteoEntregas,
 } from "@/lib/analytics/entregas-conteo";
 import { resolverRango } from "@/lib/analytics/ranges";
+import type { RangoResuelto } from "@/lib/analytics/types";
 import type { IAnaliticaCache } from "@/lib/interfaces/external/IAnaliticaCache";
 import type { IConteoHoyGestionRepository } from "@/lib/interfaces/repositories/IConteoHoyGestionRepository";
 import {
-  condicionesDeHoy,
+  condicionesDeHoy as condicionesDeHoyCon,
   ConteoHoyGestionRepository,
 } from "@/lib/repositories/ConteoHoyGestionRepository";
+import { lugaresDe } from "./_catalogo-facetas";
 import { ConteoHoyGestionService } from "@/lib/services/ConteoHoyGestionService";
+
+// SLT-71 (design §11.1): `lugares` es obligatorio. La entrada de los casos son los lugares de su filtro,
+// resueltos sobre el catalogo de prueba (`p1` → `c1` → `d1`); las aserciones no cambian por esto.
+const condicionesDeHoy = (c: ConsultaConteoEntregas, dia: RangoResuelto) => condicionesDeHoyCon(c, dia, lugaresDe(c.filtro));
 
 /** Mediodía CR del 17 (18:00Z sería otro día; 12:00Z son las 06:00 de Costa Rica). */
 const AHORA = new Date("2026-08-17T12:00:00.000Z");

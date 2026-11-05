@@ -50,6 +50,11 @@ import {
   condicionesSinFecha,
   DIA_CR,
 } from "@/lib/repositories/ConteoCargadasPorDiaRepository";
+import {
+  CatalogoGeograficoRepository,
+  type CatalogoPrismaClient,
+} from "@/lib/repositories/CatalogoGeograficoRepository";
+import { lugaresDelFiltro, type LugaresDelFiltro } from "@/lib/repositories/_shared/lugares-del-filtro";
 import { ESTADOS_TERMINALES } from "@/lib/types/order-status-transiciones";
 import type { ConsultaConteoEntregas } from "@/lib/analytics/entregas-conteo";
 import type {
@@ -61,7 +66,7 @@ import type { CohorteDesenlace } from "@/lib/types/cohorte-carga";
 /** Cliente MINIMO consumido (patron del resto de la vertical): una sola consulta cruda.
  *  `$queryRawUnsafe` NO esta y no puede estar: el tipo del cliente es la primera barrera
  *  contra la interpolacion de strings. */
-type CohorteCargaPrismaClient = Pick<PrismaClient, "$queryRaw">;
+type CohorteCargaPrismaClient = Pick<PrismaClient, "$queryRaw"> & CatalogoPrismaClient; // SLT-71: mas el catalogo, solo con faceta geografica
 
 /**
  * Los `value` TERMINALES del catalogo, como lista SQL.
@@ -103,7 +108,7 @@ interface FilaCohorte {
  * SIGUIENTE, justamente para que `hastaFecha` sea inclusiva. Un `<=` meteria el dia siguiente
  * entero.
  */
-export function condicionesDeCohorte(consulta: ConsultaConteoEntregas): Prisma.Sql[] {
+export function condicionesDeCohorte(consulta: ConsultaConteoEntregas, lugares: LugaresDelFiltro): Prisma.Sql[] {
   const { rango } = consulta;
   if (rango === null) {
     throw new Error(
@@ -122,7 +127,7 @@ export function condicionesDeCohorte(consulta: ConsultaConteoEntregas): Prisma.S
     // sobre `gestion_orden`— y aqui eso es lo correcto y no una omision: una orden no la carga
     // un mensajero. Consecuencia declarada: con un mensajero seleccionado, esta seccion NO se
     // recorta y otras si, asi que la pantalla tiene que decirlo.
-    ...condicionesSinFecha(consulta),
+    ...condicionesSinFecha(consulta, lugares),
     // FICHA 441 — la ventana se IMPORTA (`ventanaDeCarga`) y ya no se escribe aqui. Es la
     // MISMA que aplican la serie de cargadas por dia y el desglose por status desde que aquel
     // dejo de preguntar por la fecha de la ultima gestion. El `rango` nunca es `null` en este
@@ -132,10 +137,18 @@ export function condicionesDeCohorte(consulta: ConsultaConteoEntregas): Prisma.S
 }
 
 export class CohorteCargaRepository implements ICohorteCargaRepository {
+  // SLT-71 (R7, R13, R16): el catalogo, uno por instancia y creado al primer uso.
+  private catalogoRepo: CatalogoGeograficoRepository | null = null;
+
   constructor(private readonly prisma: CohorteCargaPrismaClient) {}
 
+  private catalogoGeografico(): CatalogoGeograficoRepository {
+    return (this.catalogoRepo ??= new CatalogoGeograficoRepository(this.prisma));
+  }
+
   async contarCohortes(consulta: ConsultaConteoEntregas): Promise<readonly CohorteCuboCrudo[]> {
-    const where = Prisma.join(condicionesDeCohorte(consulta), " AND ");
+    const lugares = await lugaresDelFiltro(() => this.catalogoGeografico(), consulta.filtro);
+    const where = Prisma.join(condicionesDeCohorte(consulta, lugares), " AND ");
 
     // UNA sola consulta por lectura (R38), nunca una por dia del rango.
     //

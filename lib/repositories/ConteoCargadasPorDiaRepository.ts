@@ -55,6 +55,15 @@ import type { PrismaClient } from "@prisma/client";
 
 import { ventanaDeCarga } from "@/lib/repositories/ventana-de-carga";
 import { condicionDeAlcance } from "@/lib/repositories/ConteoPorStatusRepository";
+import {
+  CatalogoGeograficoRepository,
+  type CatalogoPrismaClient,
+} from "@/lib/repositories/CatalogoGeograficoRepository";
+import {
+  condicionesDeLugar,
+  lugaresDelFiltro,
+  type LugaresDelFiltro,
+} from "@/lib/repositories/_shared/lugares-del-filtro";
 import { inicioDelDiaCREnUtc } from "@/lib/utils/fecha-cr";
 import type { ConsultaConteoEntregas } from "@/lib/analytics/entregas-conteo";
 import type { IConteoCargadasPorDiaRepository } from "@/lib/interfaces/repositories/IConteoCargadasPorDiaRepository";
@@ -63,7 +72,7 @@ import type { ConteoDeDia } from "@/lib/types/conteo-cargadas";
 /** Cliente MINIMO consumido (patron `ConteoPorStatusRepository`): una sola consulta cruda.
  *  `$queryRawUnsafe` NO esta y no puede estar: el tipo del cliente es la primera barrera
  *  contra la interpolacion de strings. */
-type ConteoCargadasPrismaClient = Pick<PrismaClient, "$queryRaw">;
+type ConteoCargadasPrismaClient = Pick<PrismaClient, "$queryRaw"> & CatalogoPrismaClient; // SLT-71: mas el catalogo, solo con faceta geografica
 
 /**
  * Segundos que hay que RESTAR a un instante UTC para leer el reloj de pared de Costa Rica.
@@ -134,7 +143,7 @@ function enLista(columna: Prisma.Sql, ids: readonly string[] | undefined): Prism
  * del contador de hoy (`ConteoHoyGestionRepository`), el dia CR en curso y solo ese— y compartir
  * el resto del `where` es lo que impide que se separen en todo lo demas.
  */
-export function condicionesSinFecha(consulta: ConsultaConteoEntregas): Prisma.Sql[] {
+export function condicionesSinFecha(consulta: ConsultaConteoEntregas, lugares: LugaresDelFiltro): Prisma.Sql[] {
   const { filtro, alcance } = consulta;
 
   const condiciones: Prisma.Sql[] = [
@@ -146,17 +155,14 @@ export function condicionesSinFecha(consulta: ConsultaConteoEntregas): Prisma.Sq
     Prisma.sql`o."deleted_at" IS NULL`,
   ];
 
-  const facetas: [Prisma.Sql, readonly string[] | undefined][] = [
-    [Prisma.sql`o."zona_id"`, filtro.zona_id],
-    [Prisma.sql`o."provincia_id"`, filtro.provincia_id],
-    [Prisma.sql`o."canton_id"`, filtro.canton_id],
-    [Prisma.sql`o."distrito_id"`, filtro.distrito_id],
-    [Prisma.sql`o."tienda_id"`, filtro.tienda_id],
-  ];
-  for (const [columna, ids] of facetas) {
-    const fragmento = enLista(columna, ids);
-    if (fragmento) condiciones.push(fragmento);
-  }
+  // SLT-71 (design §3.3; R1, R2): las tres facetas geograficas ya no filtran por su columna sino por
+  // el LUGAR de la orden, con los ids que resolvio el dominio (`lugares`), en el mismo sitio que antes
+  // (entre la zona y la tienda). `lugares` es obligatorio: ninguna lectura filtra por columna en silencio.
+  const zona = enLista(Prisma.sql`o."zona_id"`, filtro.zona_id);
+  if (zona) condiciones.push(zona);
+  condiciones.push(...condicionesDeLugar(lugares));
+  const tienda = enLista(Prisma.sql`o."tienda_id"`, filtro.tienda_id);
+  if (tienda) condiciones.push(tienda);
 
   // ⚠ MENSAJERO: ESTA LECTURA NO ADMITE ESA FACETA (decision humana del 2026-08-18), y por eso
   // AQUI NO HAY NINGUN `EXISTS` sobre `gestion_orden` — es la unica de las seis dimensiones del
@@ -187,9 +193,9 @@ export function condicionesSinFecha(consulta: ConsultaConteoEntregas): Prisma.Sq
  * El `where` completo de la serie: el recorte comun MAS su ventana. Pura y exportada por el
  * mismo motivo que la anterior.
  */
-export function condicionesDeCargadas(consulta: ConsultaConteoEntregas): Prisma.Sql[] {
+export function condicionesDeCargadas(consulta: ConsultaConteoEntregas, lugares: LugaresDelFiltro): Prisma.Sql[] {
   const { rango } = consulta;
-  const condiciones = condicionesSinFecha(consulta);
+  const condiciones = condicionesSinFecha(consulta, lugares);
 
   // La ventana cae sobre `o."created_at"` — la fecha de CARGA, la misma por la que se agrupa.
   // Se IMPORTA (`ventanaDeCarga`) y no se escribe aqui: desde la ficha 441 es la MISMA ventana
@@ -201,10 +207,18 @@ export function condicionesDeCargadas(consulta: ConsultaConteoEntregas): Prisma.
 }
 
 export class ConteoCargadasPorDiaRepository implements IConteoCargadasPorDiaRepository {
+  // SLT-71 (R13, R16): el catalogo, uno por instancia y creado al primer uso.
+  private catalogoRepo: CatalogoGeograficoRepository | null = null;
+
   constructor(private readonly prisma: ConteoCargadasPrismaClient) {}
 
+  private catalogoGeografico(): CatalogoGeograficoRepository {
+    return (this.catalogoRepo ??= new CatalogoGeograficoRepository(this.prisma));
+  }
+
   async contarCargadasPorDia(consulta: ConsultaConteoEntregas): Promise<readonly ConteoDeDia[]> {
-    const where = Prisma.join(condicionesDeCargadas(consulta), " AND ");
+    const lugares = await lugaresDelFiltro(() => this.catalogoGeografico(), consulta.filtro);
+    const where = Prisma.join(condicionesDeCargadas(consulta, lugares), " AND ");
 
     // Ni un JOIN: el dia de carga esta en la propia fila de `orden`, asi que esta consulta no
     // necesita el `LEFT JOIN LATERAL` sobre la ultima gestion vigente que si necesitan las

@@ -54,7 +54,7 @@
   el mismo patrón. `CicloVidaRepository` se toca sobre la versión de SLT-64 ya integrada.
   **Hecho:** typecheck en verde. `ciclo-vida.test.ts` y `conteo-cargadas-servicio.test.ts` pasan,
   cambiando solo lo de §11.1.
-- [ ] **T3.3** Las cuatro lecturas que comparten el recorte (`ConteoProductosRepository`,
+- [x] **T3.3** Las cuatro lecturas que comparten el recorte (`ConteoProductosRepository`,
   `DineroProductosRepository`, `CohorteCargaRepository` y `ConteoHoyGestionRepository`) pasan
   `lugares` al constructor único. **Hecho:** typecheck en
   verde. `conteo-productos-sql`, `dinero-productos-sql`, `cohorte-carga-sql`,
