@@ -284,11 +284,16 @@ describeSiHayBase("D39 — el agregado de la caja dice si incluye cobros del mod
       await crearMovimiento(tx, cierre, "ingreso_flete");
       // El cobro por rechazo: su origen es la gestion, aunque el id coincida. Esa devolucion si hubo.
       await crearMovimiento(tx, cierre, FLETE, { origenTipo: "gestion_orden" });
-      return leerCaja(tx, e.org);
+      // La propia sentencia no trae la otra categoria: no depende de que el repositorio la descarte.
+      const filas = await comoEmpresa(tx, e.org, () =>
+        tx.$queryRaw<{ categoria: string }[]>(categoriasConModeloNuevoSql({})),
+      );
+      return { filas, lectura: await leerCaja(tx, e.org) };
     });
-    expect(l.composicion.categoriasConModeloNuevo).toEqual([]);
-    expect(concepto(l, FLETE)).toEqual({ categoria: FLETE, movimientos: 1 });
-    expect(concepto(l, "ingreso_flete")).toEqual({ categoria: "ingreso_flete", movimientos: 1 });
+    expect(l.filas).toEqual([]);
+    expect(l.lectura.composicion.categoriasConModeloNuevo).toEqual([]);
+    expect(concepto(l.lectura, FLETE)).toEqual({ categoria: FLETE, movimientos: 1 });
+    expect(concepto(l.lectura, "ingreso_flete")).toEqual({ categoria: "ingreso_flete", movimientos: 1 });
   });
 
   it("el periodo consultado manda: `desde` inclusivo, `hasta` exclusivo, y lo de otro periodo no contamina", async () => {
