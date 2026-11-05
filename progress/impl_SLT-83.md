@@ -568,3 +568,37 @@ pnpm exec eslint "app/(app)/plataforma/planes/_components/PlanForm.tsx" tests/co
 ```
 
 **Veredicto T11:** el formulario elige el modo, envía solo el elegido y pinta los errores junto a su campo.
+
+## T12
+
+**Archivos.**
+- `app/(app)/plataforma/planes/_components/plan-vista.ts` (design §6.2): nueva `textoDelCostoPorOrdenDelPlan(plan)`
+  — `textoDelCostoPorOrdenPorcentual` si el plan es porcentual; si no, `textoDelCostoPorOrden` como SLT-66 R24.
+  `lineasDeCosto` la usa, así el catálogo (`PlanesModule`) y el modal de asignación (`PlanEmpresa`, primera
+  asignación y cambio de plan) la heredan sin cambiar de componente.
+- `app/(app)/plataforma/planes/[planId]/_components/PlanDetalle.tsx`: el dato «Costo por orden» de la versión
+  vigente usa `textoDelCostoPorOrdenDelPlan` (antes leía `textoDelCostoPorOrden` directo, sin pasar por
+  `lineasDeCosto`). En el historial: el alta de un plan porcentual dice su porcentual (no «se aplica el valor
+  global»), y una edición pasa `costoPorOrdenPorcentual` a `lineasDeCambioDelPlan`, que ya tenía las líneas
+  aprobadas («cobra porcentual», «Costo por orden porcentual: …»; R4 «aparece en las líneas de "qué cambia" del
+  detalle»). Un rastro anterior a la ficha no trae la clave: sale igual que hoy. `descripcionEditar` no se toca.
+- Creado `tests/components/PlanEmpresaCostoPorcentual.test.tsx` (8 casos).
+
+**Tests existentes tocados.** Ninguno.
+
+**R → test.**
+- R21 → `PlanEmpresaCostoPorcentual.test.tsx`: «primera asignación» (con mínimo, sin mínimo, fijo y vacío como
+  SLT-66), «cambio de plan» (porcentual con y sin mínimo; a fijo como SLT-66), «catálogo y detalle del plan»
+  (columna «Costo», dato «Costo por orden»).
+- R4 (detalle) → mismo archivo: «el historial del detalle pinta el alta porcentual y el paso de fijo a porcentual».
+
+**Salida.**
+```
+pnpm exec vitest run tests/components/PlanEmpresaCostoPorcentual.test.tsx tests/components/PlanVistaCosteo.test.tsx tests/components/PlanEmpresa.test.tsx tests/components/PlanEmpresaSinCosto.test.tsx tests/components/PlanEmpresaTipoCobro.test.tsx tests/components/PlanDetalle.test.tsx tests/components/PlanDetalleAsignar.test.tsx tests/components/PlanDetalleDesasignado.test.tsx tests/components/PlanesModule.test.tsx
+ Test Files  9 passed (9)
+      Tests  130 passed (130)
+NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck → tsc --noEmit, sin errores
+pnpm exec eslint plan-vista.ts PlanDetalle.tsx tests/components/PlanEmpresaCostoPorcentual.test.tsx → No issues found
+```
+
+**Veredicto T12:** catálogo, detalle y modal pintan el costo porcentual con el texto de `mensajes.ts`.
