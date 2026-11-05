@@ -74,6 +74,12 @@ Bloqueos de F2.0:
   5. `historial-accion-atomicidad`: no se arregla en SLT-42; queda para SL-31, que ya lo tiene en el baseline (humano).
   6. Test de integración que recorre `construirReglasPaisEmpresa` dentro de `buildService()` de corregir datos (humano). Implementado en la tanda 2c.
 
+- 2026-11-05 (tras T5.3, desvíos de `progress/impl_SLT-42.md > Tanda 3 · T5.3`):
+  1. `reglasPais` queda opcional en los constructores de servicio (la real la inyecta cada composition root); T7.1 suma una guardia que exige `construirReglasPaisEmpresa` en cada composition root de esos servicios (humano).
+  2. Rutas (`OptimizacionRutaService`, 2 marcadores «rutas, sin task asignada») pasa a T5.5 (humano).
+  3. `lib/types/historial-accion-etiquetas.ts` (fecha en CR para cierres, bodega y órdenes) pasa a T5.4 (humano).
+  4. Desvíos menores aceptados: repositorios con `zona` para formatear fechas; filtros de cierres como instantes (toca 2 servicios de bodega); `generarGuiaLote` exige `fechaReparto` con mensajero; 3 actions de lectura leen la zona en el borde; `jornada-cierre.ts` sin cambios (humano).
+
 ## Preguntas abiertas
 Las del `requirements.md` (normalizar teléfonos guardados, jobs por zona horaria, largos de documento).
 

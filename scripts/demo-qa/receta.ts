@@ -218,6 +218,9 @@ const TELEFONO = "88880000";
 
 export type ClaveEmpresaDemo = "A" | "B";
 
+/** Cédulas ficticias del maestro de cada empresa demo (9 dígitos, la regla de CR, `PAIS_DEMO`). */
+const DOCUMENTO_MAESTRO_DEMO: Record<ClaveEmpresaDemo, string> = { A: "900000001", B: "900000002" };
+
 export interface ContextoReceta {
   /** Cliente dueño (`DIRECT_URL`), sin la extensión de empresa: lee, y marca `es_demo` (D5.3). */
   dueno: PrismaClient;
@@ -389,7 +392,9 @@ export async function crearEmpresaDemo(
             paisId: PAIS_DEMO,
             correoMaestro: correoDemo(slugEmpresa, "maestro"),
             contrasena: opciones.contrasena,
-            documentoMaestro: `demo-qa-${clave.toLowerCase()}-maestro`,
+            // SLT-42 (R10): el documento tiene que cumplir la regla del tipo en el país de la demo
+            // (cédula física de CR: 9 dígitos). Ficticio y fijo por empresa, para que A y B no choquen.
+            documentoMaestro: DOCUMENTO_MAESTRO_DEMO[clave],
             marcarContrasenaDefinida: true,
           },
           { ficha: "SL-43", motivo: "demo de QA: alta de la empresa demo" },
