@@ -14,6 +14,7 @@ import {
   DESGLOSE_NO_REPARTIDO_NOTA,
   DESGLOSE_NO_REPARTIDO_NOTA_MODELO_NUEVO,
   DESGLOSE_POR_TIENDA_NOTA,
+  DESGLOSE_POR_TIENDA_NOTA_MODELO_NUEVO,
   DESGLOSE_POR_TIENDA_TITULO,
   TIENDA_GANA_TOTAL_LABEL,
   TIENDA_PAGO_HOY_LABEL,
@@ -144,7 +145,9 @@ export function DesglosePorTienda({ partes, de, modeloNuevo = false }: Readonly<
     <section aria-label={`${DESGLOSE_POR_TIENDA_TITULO} · ${de}`} className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
         <h3 className="text-base font-semibold">{DESGLOSE_POR_TIENDA_TITULO}</h3>
-        <p className="text-xs text-muted-foreground">{DESGLOSE_POR_TIENDA_NOTA}</p>
+        <p className="text-xs text-muted-foreground">
+          {modeloNuevo ? DESGLOSE_POR_TIENDA_NOTA_MODELO_NUEVO : DESGLOSE_POR_TIENDA_NOTA}
+        </p>
         <p className="text-xs text-muted-foreground">
           {modeloNuevo ? DESGLOSE_NO_REPARTIDO_NOTA_MODELO_NUEVO : DESGLOSE_NO_REPARTIDO_NOTA}
         </p>

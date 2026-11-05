@@ -207,6 +207,11 @@ export interface ConsolidacionSateliteDTO {
   nota: string | null;
   /** Cuantos `cierre_dia` componen esta consolidacion. */
   cantidadCierres: number;
+  /**
+   * D40 — ¿alguno de esos `cierre_dia` tiene una gestion congelada con el modelo nuevo? Sale de
+   * `cierre_detail.tarifa_modelo`, no del interruptor actual. Opcional en el tipo; ausente se lee como viejo.
+   */
+  incluyeModeloNuevo?: boolean;
 }
 
 // ── Schemas zod de borde ──

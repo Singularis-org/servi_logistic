@@ -29,6 +29,7 @@ import {
   GANA_LA_TIENDA_LABEL,
   GANA_LA_TIENDA_NEGATIVO_NOTA,
   GANA_LA_TIENDA_NOTA,
+  GANA_LA_TIENDA_NOTA_MODELO_NUEVO,
   INGRESO_BODEGA_LABEL,
   INGRESO_BODEGA_RECHAZOS_LABEL,
   IVA_FACTURADO_LABEL,
@@ -39,6 +40,7 @@ import {
   NETO_EMPRESA_NOTA_MODELO_NUEVO,
   PAGO_MENSAJERO_LABEL,
   PAGO_TIENDA_HOY_NOTA,
+  PAGO_TIENDA_HOY_NOTA_MODELO_NUEVO,
   PAGO_TIENDA_LABEL,
   TOTAL_GENERAL_LABEL,
   esMontoCero,
@@ -193,12 +195,13 @@ function lineasParticion(
   facturado: string,
   ganaLaTienda: string,
   marcaDeVariasTiendas: string | null,
+  modeloNuevo: boolean | undefined,
 ): LineaCascada[] {
   // La nota fija dice de qué resta sale y la separa del pago de hoy; la condicional dice qué
   // significa que salga negativo. Van SUELTAS y no unidas en un párrafo, igual que en las
   // cascadas del cierre de bodega: cada una está o no está, y fundirlas dejaría sin poder
   // distinguir cuál se puso.
-  const notas = [GANA_LA_TIENDA_NOTA];
+  const notas = [modeloNuevo ? GANA_LA_TIENDA_NOTA_MODELO_NUEVO : GANA_LA_TIENDA_NOTA];
   if (esMontoNegativo(ganaLaTienda)) notas.push(GANA_LA_TIENDA_NEGATIVO_NOTA);
   // FICHA 396 (R1): «Gana la tienda» también es la suma de varias. R1 sólo obliga a marcar «Pago
   // a tienda»; marcar las dos es decisión del `frontend_dev`, porque marcar una sola diría —por
@@ -269,7 +272,7 @@ function lineasFacturaTienda(
   // FICHA 396 (R1) — LA MARCA, pegada al importe que la ficha viene a explicar. Va DESPUÉS de
   // `PAGO_TIENDA_HOY_NOTA` porque primero hay que saber qué es esa cifra y sólo después que es
   // de varias tiendas. Sin dos o más tiendas no hay marca, y la línea queda como la dejó la 395.
-  const notasDelPago = [PAGO_TIENDA_HOY_NOTA];
+  const notasDelPago = [props.modeloNuevo ? PAGO_TIENDA_HOY_NOTA_MODELO_NUEVO : PAGO_TIENDA_HOY_NOTA];
   if (marcaDeVariasTiendas !== null) notasDelPago.push(marcaDeVariasTiendas);
 
   return [
@@ -361,6 +364,7 @@ export function CascadasCierreMensajero(props: Readonly<CascadasCierreMensajeroP
           props.totalesIngreso.total,
           props.ganaLaTienda,
           marca,
+          props.modeloNuevo,
         )}
       />
       <CascadaDinero

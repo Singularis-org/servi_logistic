@@ -66,6 +66,7 @@ function buildMovimientoRepo(count: number): IWalletMovimientoRepository {
     crearMovimientos: vi.fn().mockResolvedValue(count),
     listar: vi.fn(),
     agregarPorCategoriaYTipo: vi.fn(),
+    categoriasConModeloNuevo: vi.fn(),
     obtenerPorId: vi.fn(),
     agregarPorCategoria: vi.fn(),
     obtenerPorOrigen: vi.fn(), // ficha 333: lectura por la clave del libro; este camino no la usa

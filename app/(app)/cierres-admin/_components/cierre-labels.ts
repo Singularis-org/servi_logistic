@@ -385,10 +385,16 @@ export const GANA_LA_TIENDA_LABEL = "Gana la tienda";
  */
 export const GANA_LA_TIENDA_NOTA =
   `Lo recaudado menos todo lo que ${EMPRESA.enFrase} le factura, incluido el flete por devolución a origen. No es lo que se le paga hoy.`;
+/** D40: en el nuevo ese flete suma también reprogramado, novedad e incidente (SLT-52 R29). */
+export const GANA_LA_TIENDA_NOTA_MODELO_NUEVO =
+  `Lo recaudado menos todo lo que ${EMPRESA.enFrase} le factura, incluido el flete de gestiones no entregadas. No es lo que se le paga hoy.`;
 
 /** FICHA 395 — la otra mitad del par: por qué el pago de hoy no es lo que la tienda gana. */
 export const PAGO_TIENDA_HOY_NOTA =
   "Es lo que se le paga de este dinero hoy. No es lo que gana en total: el flete por devolución a origen se le cobra aparte.";
+/** D40: la misma frase en el modelo nuevo. El feed lo debita igual (`CONCEPTOS_DEVOLUCION`). */
+export const PAGO_TIENDA_HOY_NOTA_MODELO_NUEVO =
+  "Es lo que se le paga de este dinero hoy. No es lo que gana en total: el flete de gestiones no entregadas se le cobra aparte.";
 
 /**
  * FICHA 395 — qué significa que la tienda gane un NEGATIVO. Mismo criterio que
@@ -542,6 +548,9 @@ export const TIENDA_GANA_TOTAL_LABEL = "Gana en total";
  */
 export const DESGLOSE_POR_TIENDA_NOTA =
   "«Se le paga hoy» y «Gana en total» no son la misma cifra: la diferencia es el flete por devolución a origen, que a la tienda se le cobra aparte, contra su saldo.";
+/** D40: la misma identidad en el nuevo: `pagoTienda − ganaLaTienda` es `fleteDevolucionConIva`. */
+export const DESGLOSE_POR_TIENDA_NOTA_MODELO_NUEVO =
+  "«Se le paga hoy» y «Gana en total» no son la misma cifra: la diferencia es el flete de gestiones no entregadas, que a la tienda se le cobra aparte, contra su saldo.";
 
 /**
  * FICHA 396 (R17) — lo que el desglose NO reparte, dicho mientras se enseña el desglose.

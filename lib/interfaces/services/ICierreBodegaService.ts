@@ -90,6 +90,12 @@ export interface CierreBodegaResumen {
   conciliadoPorNombre: string | null;
   /** Nota de quien marco. Se ENSENA (distingue el backfill retroactivo) y NO se descarga. */
   conciliadoNota: string | null;
+  /**
+   * D40 — ¿algun `cierre_dia` de esta consolidacion tiene una gestion congelada con el modelo nuevo? Sale
+   * de `cierre_detail.tarifa_modelo`, no del interruptor actual de la empresa. Lo puebla el repositorio;
+   * opcional en el tipo (aditivo). Ausente se lee como modelo viejo.
+   */
+  incluyeModeloNuevo?: boolean;
 }
 
 // Cabecera de un `cierre_dia` consolidable (aprobado, sin cierre de bodega): mensajero

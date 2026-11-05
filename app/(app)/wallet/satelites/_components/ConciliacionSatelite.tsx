@@ -22,8 +22,10 @@ import {
   CASCADA_CENTRAL_TITULO,
   GANA_BODEGA_SATELITE_LABEL,
   GANA_BODEGA_SATELITE_NOTA,
+  GANA_BODEGA_SATELITE_NOTA_MODELO_NUEVO,
   PARA_LA_CENTRAL_LABEL,
   PARA_LA_CENTRAL_NOTA,
+  PARA_LA_CENTRAL_NOTA_MODELO_NUEVO,
 } from "@/app/(app)/cierres-admin/_components/cierre-labels";
 import { cierreBodegaConfig } from "@/lib/config/cierre-bodega";
 import { METODO_LABEL } from "@/lib/constants/metodo-pago-label";
@@ -154,6 +156,7 @@ function conciliadoPorTexto(c: ConsolidacionSateliteDTO): string {
  * Sin marca no hay línea de recibido: «nadie lo contó» no es «llegaron cero».
  */
 function lineasCuentaConsolidacion(c: ConsolidacionSateliteDTO): LineaCascada[] {
+  const modeloNuevo = c.incluyeModeloNuevo === true;
   const lineas: LineaCascada[] = [
     { label: METODO_LABEL.efectivo, monto: c.totales.efectivo, signo: "neutro" },
     { label: METODO_LABEL.SINPE, monto: c.totales.simpe, signo: "suma" },
@@ -164,14 +167,14 @@ function lineasCuentaConsolidacion(c: ConsolidacionSateliteDTO): LineaCascada[] 
       label: GANA_BODEGA_SATELITE_LABEL,
       monto: c.gananciaSatelite,
       signo: "resta",
-      notas: [GANA_BODEGA_SATELITE_NOTA],
+      notas: [modeloNuevo ? GANA_BODEGA_SATELITE_NOTA_MODELO_NUEVO : GANA_BODEGA_SATELITE_NOTA],
     },
     {
       label: PARA_LA_CENTRAL_LABEL,
       monto: c.paraLaCentral,
       signo: "neutro",
       destacado: true,
-      notas: [PARA_LA_CENTRAL_NOTA],
+      notas: [modeloNuevo ? PARA_LA_CENTRAL_NOTA_MODELO_NUEVO : PARA_LA_CENTRAL_NOTA],
     },
   ];
   if (c.montoRecibido !== null) {

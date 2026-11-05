@@ -11,6 +11,7 @@ import { esperadoDe, saldoDe } from "@/lib/utils/conciliacion-satelite";
 import { APORTE_SATELITE_WHERE } from "@/lib/repositories/_shared/aporte-satelite-sql";
 // SLT-76 (R3/R4): el MISMO predicado con el que `revertirConciliacion` rechaza (`con_asientos`).
 import { consolidacionesConDinero } from "@/lib/repositories/_shared/conciliacion-con-dinero";
+import { consolidacionesConModeloNuevo } from "@/lib/repositories/_shared/detalle-modelo-nuevo";
 import { diasNaturalesCRDesde, inicioDelMesCREnUtc } from "@/lib/utils/fecha-cr";
 import { CUENTA_USUARIO_SELECT, etiquetaDeCuenta } from "@/lib/utils/etiqueta-cuenta";
 import type { PaginaRepositorio, RangoPagina } from "@/lib/utils/rango-pagina";
@@ -105,6 +106,7 @@ type ConsolidacionRow = Prisma.CierreBodegaGetPayload<{ select: typeof CONSOLIDA
 function toConsolidacionDTO(
   r: ConsolidacionRow,
   conDinero: ReadonlySet<string>,
+  conModeloNuevo: ReadonlySet<string>,
 ): ConsolidacionSateliteDTO {
   // SLT-73 (R8/R9): lo esperado es la cascada B de la 393, no el efectivo.
   const esperado = esperadoDe(r);
@@ -131,6 +133,7 @@ function toConsolidacionDTO(
       r.conciliadoPorUsuario === null ? null : etiquetaDeCuenta(r.conciliadoPorUsuario),
     nota: r.conciliadoNota,
     cantidadCierres: r._count.cierresDia,
+    incluyeModeloNuevo: conModeloNuevo.has(r.id), // D40
   };
 }
 
@@ -341,7 +344,9 @@ export class SaldosSatelitesRepository implements ISaldosSatelitesRepository {
   ): Promise<ConsolidacionSateliteDTO[]> {
     const conciliadas = rows.filter((r) => r.conciliadoAt !== null).map((r) => r.id);
     const conDinero = await consolidacionesConDinero(this.prisma, conciliadas);
-    return rows.map((r) => toConsolidacionDTO(r, conDinero));
+    // D40: una consulta por lectura, con las ids de la pagina o del conjunto.
+    const conModeloNuevo = await consolidacionesConModeloNuevo(this.prisma, rows.map((r) => r.id));
+    return rows.map((r) => toConsolidacionDTO(r, conDinero, conModeloNuevo));
   }
 
   async findConsolidacionesPaginado(

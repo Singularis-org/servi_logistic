@@ -34,6 +34,7 @@ const FILAS = {
 function repo(): IFiltrosWalletRepository & { quienesDelLibroCaja: ReturnType<typeof vi.fn> } {
   return {
     contarConceptosCaja: vi.fn(),
+    categoriasConModeloNuevoCaja: vi.fn(),
     contarConceptosTienda: vi.fn(),
     cierresDeTienda: vi.fn(),
     cierresDeMensajero: vi.fn(),

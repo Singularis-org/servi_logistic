@@ -99,7 +99,7 @@ const CRUCE_A_QUIEN = "lib/repositories/libro-caja-a-quien-sql.ts";
 const MODULOS_IMPORTADOS_DECLARADOS = [
   "lib/repositories/registrar-accion.ts", // auditoria (362): escribe por delegado, lo cuenta R31
   CRUCE_A_QUIEN, // el cruce «A quién» (458-E): SQL de solo lectura, sin montos
-  "lib/repositories/_shared/detalle-modelo-nuevo.ts", // SLT-54: el modelo del cierre de una fila, sin montos ni SQL crudo
+  "lib/repositories/_shared/detalle-modelo-nuevo.ts", // SLT-54 y D39: el modelo del cierre de una fila, sin montos; su SQL es el fragmento de D39, que no ejecuta
 ];
 
 const REPO_ESTADO_CUENTA = "lib/repositories/EstadoCuentaRepository.ts";
@@ -123,7 +123,8 @@ function metodosDelDetalle(codigo: string): string[] {
 
 /**
  * Lo que la lectura del modelo no puede nombrar: el cliente entero (con el que su tipo acotado no sirve de
- * nada), SQL crudo, una agregacion, otro metodo del delegado o una entrada de dinero del detalle.
+ * nada), una ejecucion de SQL crudo, una agregacion, otro metodo del delegado, una entrada de dinero del
+ * detalle o una palabra de SQL fuera de su lista cerrada.
  */
 function fugasDeLecturaDelModelo(codigo: string, columnas: readonly string[]): string[] {
   const c = sinImports(codigo);
@@ -133,7 +134,48 @@ function fugasDeLecturaDelModelo(codigo: string, columnas: readonly string[]): s
     ...metodosDelDetalle(c).filter((m) => m !== "findMany"),
     ...columnas.filter((col) => new RegExp(`\\b${col}\\b`).test(c)),
     ...sumasEnJs(c),
+    ...palabrasDeSql(c).filter((p) => !VOCABULARIO_SQL_DE_LA_LECTURA.has(p.toLowerCase())),
   ];
+}
+
+/**
+ * D39 — todo lo que el fragmento SQL de la lectura del modelo puede decir. Es una lista cerrada de palabras, y
+ * no de columnas de un alias: `d."tarifa_valor_flete"`, `d.tarifa_valor_flete` o `cd.*` se leerian igual
+ * cambiando el alias o quitando las comillas. Un alias nuevo tambien cae: hay que declararlo aqui.
+ */
+const VOCABULARIO_SQL_DE_LA_LECTURA: ReadonlySet<string> = new Set([
+  // Las tablas y sus alias.
+  "w",
+  "cierre_detail",
+  "cd",
+  // De `wallet_movimiento`.
+  "origen_tipo",
+  "origen_id",
+  // De `cierre_detail`. `organizacion_id` tambien es de `wallet_movimiento`.
+  "cierre_id",
+  "organizacion_id",
+  "tarifa_modelo",
+  // La sintaxis del fragmento.
+  "select",
+  "from",
+  "where",
+  "and",
+  "exists",
+  "text",
+  "nullif",
+  "current_setting",
+  "true",
+]);
+
+/**
+ * Las palabras SQL de cada plantilla de un fuente, y cada `*`. Cuenta toda plantilla y no solo `Prisma.sql`,
+ * para que renombrar la etiqueta no la saque de la regla. Una interpolacion deja su nombre como palabra. Las
+ * cadenas `'…'` se quitan: son valores, no columnas.
+ */
+function palabrasDeSql(codigo: string): string[] {
+  return [...codigo.matchAll(/`([^`]*)`/g)].flatMap((plantilla) =>
+    [...plantilla[1].replace(/'[^']*'/g, "''").matchAll(/[A-Za-z_]\w*|\*/g)].map((m) => m[0]),
+  );
 }
 
 /** El codigo sin las lineas de `import … from "…"` (su `from` no es SQL). */
@@ -256,7 +298,7 @@ describe("R33 — el repositorio que sirve las dos cifras NO puede leer los otro
       // SLT-54 (menor 6 de la revision F2.2): para decir con que modelo se congelo el cierre de una fila.
       // `cierre_detail` no es un libro pero guarda las entradas del dinero, asi que no entra el delegado:
       // entra `LectorDeModeloDeDetalle`, un `findMany` cuyo tipo solo admite leer `cierre_id`. Lo afirma
-      // «la lectura del modelo solo llega a `tarifa_modelo`», mas abajo.
+      // «la lectura del modelo no llega a ninguna columna de dinero», mas abajo.
       cierreDetail: {} as LectorDeModeloDeDetalle["cierreDetail"],
     };
     const repo = new WalletMovimientoRepository(clienteDeUnaSolaTabla);
@@ -315,7 +357,7 @@ describe("R33 — el repositorio que sirve las dos cifras NO puede leer los otro
     }
   });
 
-  it("SLT-54: la lectura del modelo solo llega a `tarifa_modelo`, y los libros no tocan `cierre_detail` por su cuenta", () => {
+  it("SLT-54: la lectura del modelo no llega a ninguna columna de dinero, y los libros no tocan `cierre_detail` por su cuenta", () => {
     const columnas = entradasDeDineroDelDetalle();
     // CONTROL DE NO-VACUIDAD: la lista sale del esquema y trae lo que tiene que traer.
     expect(columnas).toEqual(expect.arrayContaining(["montoCobrar", "tarifaValorFlete", "tarifaIvaFlete", "conceptos"]));
@@ -323,6 +365,9 @@ describe("R33 — el repositorio que sirve las dos cifras NO puede leer los otro
     const modulo = codigoSinComentarios(LECTURA_DEL_MODELO);
     expect(metodosDelDetalle(modulo), "el modulo ya no lee el detalle: la regla mira el vacio").toContain("findMany");
     expect(fugasDeLecturaDelModelo(modulo, columnas)).toEqual([]);
+    // D39, CONTROL DE NO-VACUIDAD: el fragmento SQL existe, y lo de arriba solo le deja este vocabulario.
+    // `organizacion_id` no es dinero: es el filtro de empresa que pide `sql-a-mano-por-empresa`.
+    expect(palabrasDeSql(modulo)).toEqual(expect.arrayContaining(["cierre_detail", "cierre_id", "organizacion_id", "tarifa_modelo"]));
 
     for (const repo of [REPO_CAJA, REPO_ESTADO_CUENTA]) {
       const codigo = codigoSinComentarios(repo);
@@ -480,6 +525,20 @@ describe("M1 (revision 458-E) — contrapruebas: cada regla del repositorio de l
     expect(fugasDeLecturaDelModelo('import type { PrismaClient } from "@prisma/client";', columnas)).toEqual(["PrismaClient"]);
     expect(fugasDeLecturaDelModelo('c.$queryRaw`SELECT 1`', columnas)).toEqual(["$queryRaw"]);
     expect(fugasDeLecturaDelModelo("filas.reduce((a, f) => a, 0)", columnas)).toEqual([".reduce("]);
+  });
+
+  it("D39: el SQL de la lectura del modelo no se libra de la regla con otro alias, sin comillas ni con otra etiqueta", () => {
+    const columnas = ["montoCobrar", "tarifaValorFlete", "conceptos"];
+    // Son palabras del propio vocabulario: lo legitimo no da fugas, aunque vaya con otras cadenas.
+    expect(fugasDeLecturaDelModelo(`const s = Prisma.sql\`SELECT 1 FROM "cierre_detail" cd WHERE cd."tarifa_modelo" = 'nuevo'\`;`, columnas)).toEqual([]);
+
+    expect(fugasDeLecturaDelModelo('const s = Prisma.sql`SELECT cd."tarifa_valor_flete"`;', columnas)).toEqual(["tarifa_valor_flete"]);
+    expect(fugasDeLecturaDelModelo('const s = Prisma.sql`SELECT d."tarifa_valor_flete" FROM "cierre_detail" d`;', columnas)).toEqual(
+      expect.arrayContaining(["d", "tarifa_valor_flete"]),
+    );
+    expect(fugasDeLecturaDelModelo('const s = Prisma.sql`SELECT cd.tarifa_valor_flete FROM cierre_detail cd`;', columnas)).toEqual(["tarifa_valor_flete"]);
+    expect(fugasDeLecturaDelModelo('const s = Prisma.sql`SELECT cd.* FROM "cierre_detail" cd`;', columnas)).toEqual(["*"]);
+    expect(fugasDeLecturaDelModelo("const s = sql`SELECT ${columna} FROM cierre_detail`;", columnas)).toEqual(["columna"]);
   });
 
   it("el censo de imports ve un modulo de SQL nuevo", () => {

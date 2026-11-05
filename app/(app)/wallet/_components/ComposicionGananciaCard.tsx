@@ -37,9 +37,9 @@ import { DesgloseEgresosLista } from "./DesgloseEgresosLista";
 import { FilaComposicion } from "./FilaComposicion";
 import type { WalletFiltrosValue } from "./wallet-filtros-input";
 import {
-  CATEGORIA_LABEL,
   COMPOSICION_IVA_LABEL,
   IMPUESTO_ROTULO,
+  conceptoDeMovimientoCaja,
   money,
 } from "./wallet-labels";
 
@@ -185,6 +185,9 @@ export function ComposicionGananciaCard({
   filtros,
 }: ComposicionGananciaCardProps) {
   const badge = SIGNO_BADGE[resumen.signoGanancia];
+  // D39: el servidor responde categoría por categoría. Con un IVA al 0 % hay flete del modelo nuevo
+  // sin fila de su IVA, y esa fila conserva el rótulo de siempre.
+  const conModeloNuevo: ReadonlySet<string> = new Set(composicion.categoriasConModeloNuevo);
 
   return (
     <Card>
@@ -216,7 +219,7 @@ export function ComposicionGananciaCard({
                   key={categoria}
                   fila={categoria}
                   // R25: la etiqueta legible que ya existe, nunca el valor del enum.
-                  label={CATEGORIA_LABEL[categoria]}
+                  label={conceptoDeMovimientoCaja({ categoria, incluyeModeloNuevo: conModeloNuevo.has(categoria) })}
                   valor={composicion.ingresos[categoria]}
                   icono={INGRESO_ICONO[categoria]}
                   tono="ingreso"
@@ -264,7 +267,7 @@ export function ComposicionGananciaCard({
               <FilaComposicion
                 key={categoria}
                 fila={categoria}
-                label={CATEGORIA_LABEL[categoria]}
+                label={conceptoDeMovimientoCaja({ categoria, incluyeModeloNuevo: conModeloNuevo.has(categoria) })}
                 valor={composicion.iva[categoria]}
                 icono={IVA_ICONO}
                 tono={IVA_TONO[categoria]}
