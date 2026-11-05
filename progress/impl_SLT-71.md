@@ -474,3 +474,157 @@ descartó y se repitió por grupos con la máquina activa; esos grupos son los r
 T3.1–T3.4, T4.1 y T4.2 cerradas. Solo cambiaron las aserciones autorizadas (§11.1, las tres de
 parámetros y la guardia `alcance-dinero:222`). Integración verde salvo los rojos de entorno del
 baseline. T5 sin empezar.
+
+## F2.1 tanda 3 — T5, T6 y T7 cerradas (backend_dev, 2026-11-05)
+
+### Commits
+
+| commit | qué |
+|---|---|
+| `b61f9d64` | T5.1: `scripts/geo-equivalencia-analitica.ts` y `pnpm geo:equivalencia-analitica` |
+| `b7ca6a36` | T5.2: `tests/integration/db/geo-equivalencia-analitica.test.ts` |
+| `029f738d` | T6.1: `scripts/geo-explain-analitica.ts`, `pnpm geo:explain-analitica` y la suma sin catálogo en `medicion.ts` |
+| `b794c905` | T6.2: `tests/integration/db/geo-explain-analitica.test.ts` |
+| `edfc87b2` | T7.1: `geografia-lecturas-sin-nodo-fk.guardia` y `geo-lecturas-sin-backfill` ampliadas (R14) |
+| `b385b6be` | T7.2: antivacío de `catalogo-geografico-sin-instancia-de-modulo.guardia` (R16) |
+| `eaec3e99` | T7.3: la URL no local de los dos tests de scripts se arma por partes (la marcaba `recursos-origen-fuera`, SL-34) |
+| (este) | bitácora y T7.3 en `[x]` |
+
+### T5.1 — `geo:equivalencia-analitica` (design §8)
+
+- Reutiliza sin copiar:
+  - `crearClienteDeSoloLectura` y `leerArgumentos` (SLT-44);
+  - `compararPorId`, `Cifras` y `Diferencia` (`comparacion.ts`);
+  - `esBaseLocal` (`geo-explain-consultas.ts`) y `nombreDeError` (`medicion.ts`);
+  - `paraCadaEmpresa` y `resolverLugaresDelFiltro`.
+
+  No abre plataforma, así que no entra en `EXCEPCIONES_DE_PLATAFORMA`.
+- Bloques:
+  - `analitica`: las 5 lecturas;
+  - `comparten-recorte`: productos, dinero (importe total y número de órdenes), cohorte (solo con rango) y contador de hoy;
+  - `transito`: por `ordenId`. `canton`, `distrito`, `destinatario`, `numRemision`, `numGuia` y `montoCobrar` solo dicen
+    «distinto». Un fallo de `filasEnAlerta` (R12) cuenta como diferencia, con el nombre del error;
+  - `cadena-incoherente`.
+- Filtros (`filtrosDeLaEmpresa`, exportada), cada uno sin rango y con `mes`:
+  - sin filtro;
+  - cada provincia del catálogo (`PROFUNDIDAD_DEL_NIVEL.provincia`);
+  - los `--muestra` cantones y distritos con más órdenes vivas;
+  - provincia y cantón a la vez;
+  - el cantón con más órdenes pedido como distrito. Los dos lados tienen que dar cero; si no, es diferencia.
+- `--muestra` vale **20** por defecto (design §8). El parser de SLT-44 trae 200, así que se sustituye solo si no se pasa.
+- **Cadena incoherente: cómo se aplica «si son la única diferencia, sale 0»**. Design §8 no fija el mecanismo. Un par
+  (lectura, filtro) que difiere se disculpa si se cumplen las tres:
+  - el filtro tiene faceta geográfica;
+  - alguna orden incoherente entra por un lado y no por el otro (columna de hoy frente a lugar con los ids resueltos);
+  - la cifra de órdenes difiere como mucho en ese número.
+
+  Se cuenta aparte (`solo-incoherentes`) y no cambia la salida. **Para revisión del reviewer.**
+
+### T6.1 — `geo:explain-analitica` (design §9)
+
+- Las seis lecturas:
+  - las de analítica, con `provincia_id` = la provincia con más órdenes vivas de la empresa;
+  - tránsito, con `PARAMETROS_POR_DEFECTO` y todas las zonas. Las zonas se leen fuera de la medición.
+
+  Se crea un repositorio nuevo por corrida, así que la carga del catálogo entra en cada una.
+- `medicion.ts` gana `leeElCatalogo` y `LadoMedido.sinCatalogo` (opcional; `medirLectura` lo rellena siempre).
+  - Tablas del catálogo: las de design §9.3 **más `zona`**, porque Prisma pide la zona de `zona_distrito` en una consulta
+    aparte (ya lo anota `TABLAS_DE_LA_GEOGRAFIA` de SLT-65).
+  - `geo-explain-consultas.test.ts` pasa sin cambios.
+- `veredicto`, en este orden:
+  1. Seq Scan nuevo (`despues > antes`) → `regresion`, en las seis.
+  2. Bloquea y sube más de 20 % tanto el total como la suma sin catálogo → `regresion`.
+  3. Bloquea y sube más de 20 % solo el total → `costo-fijo-del-catalogo`. Se imprime con las dos medianas sin catálogo.
+  4. En otro caso → `ok`.
+
+  Ciclo de vida imprime el porcentaje y no bloquea.
+- Salida (R22): 2 si alguna lectura falló, 1 si hay regresión, 0 en otro caso.
+- Sin `--empresa`, toma la empresa con más órdenes vivas. Las cuenta empresa por empresa con `paraCadaEmpresa`, sin abrir
+  plataforma.
+
+### T7
+
+- **T7.1.** La guardia barre enteros los 10 archivos de design §6: tránsito, los 4 de analítica, los 4 que comparten el
+  recorte y `lugares-del-filtro.ts`.
+  - Cada uno tiene su ancla antivacío (`lugaresDelFiltro(` o `deLaEmpresa()`), y hay dos contrapruebas.
+  - `geo-lecturas-sin-backfill` gana el caso SLT-71 en la base propia: las 9 lecturas con 6 facetas y tránsito dan lo mismo
+    con la columna llena, en NULL y desviada.
+- **T7.2.** El antivacío suma `InformeTransitoRepository` y `ConteoPorStatusRepository`. Las calcula el AST; el cálculo no
+  cambia.
+- **T7.3.** `pnpm run test:guardias` completo: solo queda el rojo de baseline `dependencias-declaradas-presentes` (4 tests).
+  `geografia-sin-cte-recursiva` (R15), `alcance-obligatorio` y `modulo-puro` están en verde y sin cambios.
+
+### Ninguna aserción existente cambiada
+
+Esta tanda no tocó ningún `expect` existente:
+- `geo-lecturas-sin-backfill` y las dos guardias solo **añaden** casos;
+- el antivacío de la guardia del catálogo añade dos nombres al `arrayContaining`.
+
+### Scripts sobre `logistic_slt71`
+
+- La URL se arma con el `DATABASE_URL` de `../../.env`, cambiando solo el nombre de la base. No se imprime, y se aborta si el
+  host no es local.
+- La base tiene migraciones y seed, pero **ninguna empresa**:
+
+```
+$ pnpm -s geo:equivalencia-analitica
+total: empresas=0 con-diferencias=0 cadena-incoherente=0 fallidas=0 salida=0
+$ pnpm -s geo:explain-analitica
+no hay ninguna empresa con ordenes vivas            # salida 2
+```
+
+Las cifras sobre datos salen de los tests sobre `geo-71` (abajo). Antes del merge, las da T8.3 (una persona, sobre la copia de
+producción).
+
+### Mapa R → test (actualizado)
+
+| R | test |
+|---|---|
+| R1–R13 | como en la tanda 2 (arriba) |
+| R14 | `tests/unit/guards/geografia-lecturas-sin-nodo-fk.guardia.test.ts` (bloques SLT-71, con contraprueba); `tests/integration/db/geo-lecturas-sin-backfill.test.ts` (caso SLT-71) |
+| R15 | `tests/unit/guards/geografia-sin-cte-recursiva.guardia.test.ts`, sin cambios (verde en T7.3) |
+| R16 | `tests/unit/guards/catalogo-geografico-sin-instancia-de-modulo.guardia.test.ts` (antivacío ampliado) |
+| R17 | `tests/integration/db/geo-equivalencia-analitica.test.ts`: 0 diferencias en CR y XA; la incoherente solo en `cadena-incoherente`, con salida 0; contraprueba con un cantón movido de provincia → salida 1; `--muestra`; argumentos y código de salida |
+| R18 | `geo-equivalencia-analitica.test.ts` y `tests/integration/db/geo-explain-analitica.test.ts`: INSERT → 25006; URL no local → sale 2 sin imprimirla; filas iguales; salida sin `DATOS_PERSONALES_GEO65`, nombres de nodo ni SQL |
+| R19 | `geo-explain-analitica.test.ts`: seis lecturas, 5 corridas por lado, sumas sin catálogo, provincia con más órdenes |
+| R20, R21 | `geo-explain-analitica.test.ts`, unidad de `veredicto`: +21/+21 → regresión; +21/+5 → costo fijo; +19 y +20 → ok; ciclo de vida +50 → ok; Seq Scan nuevo → regresión en las seis. `geo-explain-consultas.test.ts` sin cambios |
+| R22 | `geo-explain-analitica.test.ts`: código 0/1/2; con el catálogo roto las seis salen fallidas y el código es 2 |
+| R23–R25 | pendientes (T8: comprobaciones de diff y gate) |
+
+### Corridas (Postgres local `logistic_slt71`, `NODE_OPTIONS=--max-old-space-size=8192`, desde el worktree)
+
+Los tests de integración **corrieron** contra `logistic_slt71`; ninguno se saltó.
+
+```
+$ pnpm exec tsc --noEmit                       # tras T5, T6 y T7.1
+(sin salida, rc=0)
+$ pnpm exec eslint <los 8 archivos de la tanda>
+(sin salida, rc=0)
+$ pnpm exec vitest run tests/integration/db/geo-equivalencia-analitica.test.ts
+ Test Files  1 passed (1)      Tests  8 passed (8)
+$ pnpm exec vitest run tests/integration/db/geo-explain-analitica.test.ts tests/integration/db/geo-explain-consultas.test.ts
+ Test Files  2 passed (2)      Tests  22 passed (22)
+$ pnpm exec vitest run tests/integration/db/geo-lecturas-sin-backfill.test.ts
+ Test Files  1 passed (1)      Tests  3 passed (3)
+$ pnpm exec vitest run tests/unit/guards/geografia-lecturas-sin-nodo-fk.guardia.test.ts
+ Test Files  1 passed (1)      Tests  14 passed (14)
+$ pnpm exec vitest run tests/unit/guards/catalogo-geografico-sin-instancia-de-modulo.guardia.test.ts
+ Test Files  1 passed (1)      Tests  7 passed (7)
+$ pnpm exec vitest run recursos-origen-fuera.guardia geo-equivalencia-analitica geo-explain-analitica   # tras eaec3e99
+ Test Files  3 passed (3)      Tests  54 passed | 1 skipped (55)
+$ pnpm run test:guardias
+ Test Files  1 failed | 333 passed (334)
+      Tests  4 failed | 4639 passed | 1 skipped (4644)   # solo el baseline dependencias-declaradas-presentes
+```
+
+La primera corrida de `test:guardias` dio un rojo nuevo en `recursos-origen-fuera` (SL-34): la URL con credenciales estaba
+escrita entera en los dos tests nuevos. Se arregló en `eaec3e99` armando la URL por partes; la guardia no se tocó.
+
+### Grafo de código
+
+No se usó el MCP: todo con Grep/Read, porque el índice del worktree no está garantizado.
+
+### Veredicto
+
+T5.1–T7.3 cerradas: los dos scripts y sus tests en verde sobre `geo-71`, y las guardias en verde salvo el baseline. No se
+cambió ninguna aserción existente. T8 sin empezar.

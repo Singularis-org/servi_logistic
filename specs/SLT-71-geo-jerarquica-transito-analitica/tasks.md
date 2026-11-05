@@ -99,7 +99,7 @@
 - [x] **T7.2** [P] Ampliar el antivacío de
   `tests/unit/guards/catalogo-geografico-sin-instancia-de-modulo.guardia.test.ts` (R16). **Hecho:**
   verde sobre el repo.
-- [ ] **T7.3** `pnpm run test:guardias` completo. **Hecho:** en verde, incluidas
+- [x] **T7.3** `pnpm run test:guardias` completo. **Hecho:** en verde, incluidas
   `geografia-sin-cte-recursiva` (R15), `alcance-obligatorio` y `modulo-puro`.
 
 ## T8 — Cierre de la implementación [T5, T6, T7]
