@@ -180,8 +180,8 @@ según cómo esté la empresa con la plataforma:
 
 | Cómo está | Qué dice la región | Botón |
 | --- | --- | --- |
-| **Debe** | **Lo que la empresa debe a la plataforma**, con lo que se debe y la pista «Lo que la plataforma cobra por cada orden creada, menos las anuladas y lo ya pagado. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.» | **Registrar pago a la plataforma** |
-| **Al día** | **Lo que la empresa debe a la plataforma**, en cero, con la pista «La empresa está al día con la plataforma. Cada orden nueva suma su cobro aquí.» | — |
+| **Debe** | **Lo que la empresa debe a la plataforma**, con lo que se debe y la pista «Lo que la plataforma cobra por las órdenes de la empresa (al crearlas o, con plan porcentual, al llegar a un estado final), menos las anuladas y lo ya pagado. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.» | **Registrar pago a la plataforma** |
+| **Al día** | **Lo que la empresa debe a la plataforma**, en cero, con la pista «La empresa está al día con la plataforma. Cada orden suma su cobro aquí cuando se cobra.» | — |
 | **A favor** | **Saldo a favor de la empresa con la plataforma**, con lo que tiene a favor y la pista «La empresa pagó más de lo que hoy debe, porque se anularon órdenes ya pagadas. Se descuenta de los próximos cobros.» | — |
 
 - **Qué cuenta.** Cada orden que se crea, por la pantalla, por la carga masiva o por la API, suma lo

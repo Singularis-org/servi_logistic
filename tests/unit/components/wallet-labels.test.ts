@@ -339,7 +339,7 @@ describe("SL-39 R10 — la ganancia sin IVA, en palabras", () => {
         rotulo: "Lo que la empresa debe a la plataforma",
         // SL-45 (R1): la pista de «debe», escrita a mano.
         pista:
-          "Lo que la plataforma cobra por tus órdenes (al crearlas o, con plan porcentual, al llegar a un estado final), menos las anuladas y lo ya pagado. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.",
+          "Lo que la plataforma cobra por las órdenes de la empresa (al crearlas o, con plan porcentual, al llegar a un estado final), menos las anuladas y lo ya pagado. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.",
         valor: "500.00",
         signo: null,
       },
@@ -459,7 +459,7 @@ describe("SL-45 R1–R3 — el rótulo, la pista y el importe de la deuda, por e
     expect(leer({ deuda: "500.00", estado: "debe", importe: "500.00" })).toEqual({
       rotulo: "Lo que la empresa debe a la plataforma",
       pista:
-        "Lo que la plataforma cobra por tus órdenes (al crearlas o, con plan porcentual, al llegar a un estado final), menos las anuladas y lo ya pagado. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.",
+        "Lo que la plataforma cobra por las órdenes de la empresa (al crearlas o, con plan porcentual, al llegar a un estado final), menos las anuladas y lo ya pagado. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.",
       valor: "500.00",
       signo: null,
     });

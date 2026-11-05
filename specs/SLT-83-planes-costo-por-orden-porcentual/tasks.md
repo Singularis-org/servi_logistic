@@ -140,6 +140,10 @@ Pantallas:
 - `components/shared/ConsumoDelPlan.tsx`
 - `app/(app)/wallet/_components/wallet-labels.ts`
 
+Ayuda:
+
+- `docs/ayuda/oficina/wallet-caja.md`
+
 Tests nuevos:
 
 - `tests/unit/types/planes-schema-costo-porcentual.test.ts`

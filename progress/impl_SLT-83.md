@@ -727,6 +727,39 @@ pnpm exec eslint <los 4 fuentes, 6 tests y 2 E2E tocados> → sin salida, exit 0
 
 **Veredicto:** los cuatro textos aprobados quedan en pantalla y fijados por test; la ayuda del asistente queda pendiente de decisión.
 
+### Pista de la wallet en tercera persona y ayuda alineada (decisión del humano, 2026-11-04)
+
+**Decisión.** Resuelve los dos avisos de arriba: la pista de deuda deja «tus órdenes» y nombra a la empresa como el
+resto del mensaje (`${EMPRESA.enFrase}`), todo en tercera persona. La ayuda `docs/ayuda/oficina/wallet-caja.md`
+(tabla de la región, l. 183-184) copia los dos textos nuevos de la wallet, con «la empresa» como las líneas vecinas.
+Nada más cambia.
+
+**Literales finales** (`app/(app)/wallet/_components/wallet-labels.ts`, con `EMPRESA.enFrase` = «la empresa»):
+- `deudaPlataformaPista`: «Lo que la plataforma cobra por las órdenes de la empresa (al crearlas o, con plan
+  porcentual, al llegar a un estado final), menos las anuladas y lo ya pagado. Cuando la empresa le pague, el pago se
+  registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.»
+- `deudaPlataformaAlDiaPista` (sin cambio en pantalla, ahora también en la ayuda): «La empresa está al día con la
+  plataforma. Cada orden suma su cobro aquí cuando se cobra.»
+
+**Tests/E2E ajustados** (solo el literal esperado):
+- `tests/unit/components/wallet-labels.test.ts` (l. 342, 462).
+- `tests/components/WalletDeudaPlataformaSL40.test.tsx` (l. 207) y `tests/components/WalletDeudaPlataformaSL45.test.tsx` (l. 194).
+- `tests/unit/asistente/contexto-sl45.test.ts` (l. 39, 41): fija los dos literales nuevos en la ayuda.
+- `e2e/cobro-plataforma-sl40.spec.ts` (l. 57) y `e2e/pago-plataforma-sl45.spec.ts` (l. 52): no corridos; solo
+  cambia el literal, los confirma CI.
+
+**Salida.**
+```
+pnpm exec vitest run tests/unit/components/wallet-labels.test.ts tests/components/WalletDeudaPlataformaSL40.test.tsx tests/components/WalletDeudaPlataformaSL45.test.tsx tests/unit/asistente/contexto-sl45.test.ts tests/unit/asistente/contexto-457.test.ts tests/unit/asistente/contexto-458.test.ts tests/unit/asistente/contexto-460.test.ts tests/unit/asistente/contexto-461.test.ts tests/unit/asistente/contexto-documental.test.ts tests/unit/guards/docs-marca-heredada.guardia.test.ts tests/unit/guards/nombres-wallet-461.guardia.test.ts tests/unit/guards/wallet-barra-unica-467.guardia.test.ts tests/unit/guards/asistente-sin-frontmatter.guardia.test.ts
+ Test Files  13 passed (13)
+      Tests  271 passed (271)
+pnpm exec eslint <wallet-labels.ts, 4 tests y 2 E2E tocados> → sin salida, exit 0
+pnpm exec tsc --noEmit → sin errores, exit 0
+```
+(Además de los tests tocados se corrieron las guardias y los tests del asistente que leen `wallet-caja.md`.)
+
+**Veredicto:** pista en tercera persona en pantalla y en la ayuda, alineadas y fijadas por test.
+
 ## T15
 
 **Archivos.**
