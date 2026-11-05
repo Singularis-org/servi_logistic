@@ -276,7 +276,7 @@ describeSiHayBase("SLT-54 R30 — el Excel de cobertura por modelo, leyendo como
     await tx.tarifaValor.create({ data: { ...FLETE, zonaId: zGrupo, grupoId: grupo.id } });
     await tx.tarifaValor.create({ data: { ...FLETE, zonaId: zTienda, tiendaId } });
     await tx.tarifaValor.create({ data: { ...FLETE, concepto: "tienda_flete_rechazo", zonaId: zOtroConcepto } });
-    // Una fila de tienda sin zona: con el `zonaId: { not: null }` quitado, saldria un `null`.
+    // Una fila de tienda sin zona: sin el `tiendaId: null` del `WHERE`, saldria un `null`.
     await tx.tarifaValor.create({ data: { ...FLETE, tiendaId } });
 
     const distritoMarcado = await tx.distrito.findFirstOrThrow({

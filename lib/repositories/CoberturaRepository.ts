@@ -68,7 +68,6 @@ export class CoberturaRepository implements ICoberturaRepository {
       const valores = await this.prisma.tarifaValor.findMany({
         where: {
           concepto: "tienda_flete_entregado",
-          zonaId: { not: null },
           grupoId: null,
           tiendaId: null,
           mensajeroId: null,
@@ -77,6 +76,7 @@ export class CoberturaRepository implements ICoberturaRepository {
         select: { zonaId: true },
         distinct: ["zonaId"],
       });
+      // Sin tienda ni mensajero, el CHECK `tarifa_valor_niveles_*` obliga a que la fila tenga zona.
       return valores.map((v) => v.zonaId as string);
     }
     // Nivel 3 de la cascada (`lib/utils/cascada-tarifa.ts`): tienda NULL y zona con valor. La

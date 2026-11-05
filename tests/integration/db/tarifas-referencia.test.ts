@@ -343,6 +343,15 @@ describeSiHayBase("SLT-54 R21-R23 — la referencia sale de la fila y las funcio
       });
     });
 
+    it("pedir una tienda no cambia lo que dice el nivel zona", async () => {
+      await conEscenario(async (tx, e) => {
+        const { referencia } = await referenciaDe(tx, e, e.Z, e.tiendaPropia);
+        // (T, Z) lleva 3000: el nivel «Toda la zona» sigue siendo la fila general.
+        expect(referencia.zona.tienda_flete_entregado).toEqual(varia("2800.00", "4100.00"));
+        expect(referencia.grupos[e.G2].tienda_flete_entregado).toEqual(monto("2800.00"));
+      });
+    });
+
     it("en todas sus zonas: varía entre la bodega principal y las demás", async () => {
       await conEscenario(async (tx, e) => {
         const { referencia } = await referenciaDe(tx, e, e.Z, e.tiendaPropia);
@@ -400,6 +409,41 @@ describeSiHayBase("SLT-54 R12 — la empresa A no ve nada de B, leyendo como `se
       expect(res.puedeEscribir).toBe(true);
       // Los estados salen de los valores de A: el de B no le cuenta a ninguna zona.
       expect(res.zonas.every((z) => z.estado === "sin_empezar")).toBe(true);
+    });
+  });
+
+  it("los precios de tienda son solo los que llevan tienda", async () => {
+    await conEscenario(async (tx, e) => {
+      await tx.tarifaValor.create({
+        data: { organizacionId: e.A, concepto: "tienda_flete_rechazo", modo: "monto", valor: "5.00", ivaPct: "13.00", zonaId: e.Z },
+      });
+      const res = await comoEmpresa(tx, e.A, () => servicio(tx).cargarPantalla(e.maestroA));
+      if (res.status !== "ok") throw new Error(res.status);
+      expect(res.preciosTienda.map((p) => p.id)).toEqual([e.precioTiendaA]);
+    });
+  });
+
+  it("R14: lo que juzgan los faltantes no trae precios de tienda, ni valores propios del mensajero, ni de B", async () => {
+    await conEscenario(async (tx, e) => {
+      const mensajero = await tx.usuario.findFirstOrThrow({
+        where: { organizacionId: e.A, rol: { value: "mensajero" } },
+        select: { id: true },
+      });
+      await tx.tarifaValor.create({
+        data: { organizacionId: e.A, concepto: "mensajero_entregado", modo: "monto", valor: "5.00", mensajeroId: mensajero.id },
+      });
+      await tx.tarifaValor.create({
+        data: { organizacionId: e.A, concepto: "tienda_flete_rechazo", modo: "monto", valor: "5.00", ivaPct: "13.00", zonaId: e.Z },
+      });
+      await tx.tarifaValor.create({
+        data: { organizacionId: e.A, concepto: "satelite_rechazo", modo: "monto", valor: "5.00", zonaId: e.Z, grupoId: e.G1 },
+      });
+      const repo = new TarifasPantallaRepository(clienteConSavepoint(tx));
+      const filas = await comoEmpresa(tx, e.A, () => repo.valoresDeZonaOGrupo());
+      expect(filas.map((f) => [f.concepto, f.zonaId, f.grupoId]).sort()).toEqual([
+        ["satelite_rechazo", e.Z, e.G1],
+        ["tienda_flete_rechazo", e.Z, null],
+      ]);
     });
   });
 
