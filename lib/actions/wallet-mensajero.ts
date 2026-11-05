@@ -1,5 +1,8 @@
 "use server";
 
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
+import { zonaDelBorde } from "@/lib/actions/_shared/zona-del-borde";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { PagoMensajeroMovimientoRepository } from "@/lib/repositories/PagoMensajeroMovimientoRepository";
 import { WalletMensajeroService } from "@/lib/services/WalletMensajeroService";
@@ -30,7 +33,6 @@ import {
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import type { AppErrorShape } from "@/lib/errors";
 
-import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 44 (T13) — Server Actions del LIBRO del pago por mensajero (lecturas internas del
 // mismo proyecto -> Server Action, no Route API, patron wallet-tienda.ts). Resuelve el actor por
 // sesion, valida en el borde con zod y delega en el servicio bajo `withErrorHandler`.
@@ -86,11 +88,14 @@ export interface WalletMensajeroDeps {
   getActor?: () => Promise<Actor | null>;
   /** Ficha 458-A (TA.2): el origen legible de las filas; en produccion, el real sobre Prisma. */
   origenes?: IOrigenLegibleService;
+  /** SLT-42 (R22, R28): la zona del pais de la empresa; en produccion, la real (`zonaDelBorde`). */
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
 }
 
 /** Ficha 458-A (TA.2) — composition root del origen legible (una consulta por tipo presente). */
 function buildOrigenes(): IOrigenLegibleService {
-  return new OrigenLegibleService(new OrigenLegibleRepository(getPrismaClient()));
+  // SLT-42 (R22, R28): con la zona horaria del pais de la empresa.
+  return new OrigenLegibleService(new OrigenLegibleRepository(getPrismaClient()), construirReglasPaisEmpresa(getPrismaClient()));
 }
 
 /**
@@ -173,8 +178,9 @@ export async function listarPagosDeMensajeroAction(
   const r = await withErrorHandler(async () => {
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
-    // SLT-42 pendiente T5.4: zona de la empresa
-    const data = listarPagosDeMensajeroSchema(ZONA_CR).parse(input); // mensajeroId REQUERIDO -> ZodError si falta
+    // SLT-42 (R22, R28): «hoy» en la zona del pais de la empresa; sin zona, falla sin tocar nada.
+    const zona = await zonaDelBorde(deps.reglasPais);
+    const data = listarPagosDeMensajeroSchema(zona).parse(input); // mensajeroId REQUERIDO -> ZodError si falta
     const service = deps.service ?? buildService();
     const r = await service.listarPagosDeMensajero(data, actor);
     return origenEnPagina(deps.origenes ?? buildOrigenes(), "mensajero", r, actor);
@@ -197,8 +203,9 @@ export async function listarPagosDeMensajeroCompletoAction(
   const r = await withErrorHandler(async () => {
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R16: antes de tocar el service
-    // SLT-42 pendiente T5.4: zona de la empresa
-    const data = listarPagosDeMensajeroCompletoSchema(ZONA_CR).parse(input); // R18: mensajeroId REQUERIDO
+    // SLT-42 (R22, R28): «hoy» en la zona del pais de la empresa; sin zona, falla sin tocar nada.
+    const zona = await zonaDelBorde(deps.reglasPais);
+    const data = listarPagosDeMensajeroCompletoSchema(zona).parse(input); // R18: mensajeroId REQUERIDO
     const service = deps.service ?? buildService();
     const r = await service.listarPagosDeMensajeroCompleto(data, actor);
     return origenEnItems(deps.origenes ?? buildOrigenes(), "mensajero", r, actor);

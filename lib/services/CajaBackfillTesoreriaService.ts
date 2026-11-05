@@ -18,7 +18,8 @@ import type {
 import type { ICajaPagoTiendaFeedService } from "@/lib/interfaces/services/ICajaPagoTiendaFeedService";
 import type { AgregadoCajaRow, WalletMovimientoDTO } from "@/lib/types/wallet";
 import { descripcionDeAnulacion, descripcionDePago } from "@/lib/utils/descripcion-pago";
-import { fechaCalendarioCR, inicioDelDiaCREnUtc } from "@/lib/utils/fecha-cr";
+import { fechaCalendario, inicioDelDiaEnUtc } from "@/lib/utils/calendario-zona";
+import { zonaPerezosa, type ZonaDeLaOperacion } from "@/lib/services/zona-de-la-empresa";
 
 /**
  * Feature 173 / T E.1 (design §6, R36-R44) — el registro RETROACTIVO de la caja en modo
@@ -43,7 +44,7 @@ import { fechaCalendarioCR, inicioDelDiaCREnUtc } from "@/lib/utils/fecha-cr";
  * | --- | --- |
  * | cierre aprobado | `MIN(fecha_movimiento)` de los movimientos de caja que ese cierre ya tiene; si no tiene ninguno, `resuelto_at`; y si tampoco, `solicitado_at` |
  * | pago a tienda | `liquidacion_pago.fecha_pago` |
- * | anulacion | el DIA (calendario CR) de `liquidacion_anulacion.created_at` |
+ * | anulacion | el DIA (calendario del pais de la empresa, SLT-42) de `liquidacion_anulacion.created_at` |
  *
  * El tercer escalon de la cadena del cierre no esta en el design: esta porque `resuelto_at` es
  * NULLABLE en el esquema, y un NULL ahi no puede acabar en `now()`. `solicitado_at` es
@@ -66,9 +67,11 @@ export class CajaBackfillTesoreriaService implements ICajaBackfillTesoreriaServi
   }
 
   async ejecutar(modo: ModoBackfillCaja): Promise<InformeBackfillCaja> {
+    // SLT-42 (R22, R28): la zona se lee una vez, y solo si hay pagos o anulaciones que fechar.
+    const zona = zonaPerezosa(this.deps.reglasPais, "CajaBackfillTesoreriaService.ejecutar");
     const deCierres = await this.deCierresAprobados();
-    const dePagos = await this.dePagosATienda();
-    const deAnulaciones = await this.deAnulacionesDePagoATienda();
+    const dePagos = await this.dePagosATienda(zona);
+    const deAnulaciones = await this.deAnulacionesDePagoATienda(zona);
     const candidatas = [...deCierres.filas, ...dePagos.filas, ...deAnulaciones.filas];
 
     // La caja se consulta DESPUES de tener las candidatas, y con las claves que ellas traen:
@@ -180,7 +183,7 @@ export class CajaBackfillTesoreriaService implements ICajaBackfillTesoreriaServi
   }
 
   /** R37 — el egreso de cada pago a tienda ya registrado, derivado del documento del pago. */
-  private async dePagosATienda(): Promise<Cosecha> {
+  private async dePagosATienda(zona: ZonaDeLaOperacion): Promise<Cosecha> {
     const pagos = await this.deps.cliente.liquidacionPago.findMany({
       where: { tiendaId: { not: null } }, // los pagos a MENSAJERO no generan nada: `[P2]` = (a)
       select: {
@@ -202,9 +205,9 @@ export class CajaBackfillTesoreriaService implements ICajaBackfillTesoreriaServi
         descripcion: descripcionDePago(pago.metodo, pago.referencia),
         registradoPor: pago.registradoPor,
         // R41: lo MISMO que escribe el camino vivo. Ficha 461 (R73, auditoria T2): el inicio del dia
-        // de pago en CR (`inicioDelDiaCREnUtc(fechaPago)`, 06:00Z); `fecha_pago` es `@db.Date`, asi
-        // que su `YYYY-MM-DD` es la fecha calendario del documento.
-        fechaMovimiento: inicioDelDiaCREnUtc(pago.fechaPago.toISOString().slice(0, 10)),
+        // de pago en la zona del pais (SLT-42); `fecha_pago` es `@db.Date`, asi que su `YYYY-MM-DD`
+        // es la fecha calendario del documento.
+        fechaMovimiento: inicioDelDiaEnUtc(pago.fechaPago.toISOString().slice(0, 10), await zona()),
       });
       filas.push(...this.recogerComo("pago_a_tienda", pago.id, pago.fechaPago));
     }
@@ -212,7 +215,7 @@ export class CajaBackfillTesoreriaService implements ICajaBackfillTesoreriaServi
   }
 
   /** R38 — el reverso de cada anulacion de un pago a TIENDA ya registrada. */
-  private async deAnulacionesDePagoATienda(): Promise<Cosecha> {
+  private async deAnulacionesDePagoATienda(zona: ZonaDeLaOperacion): Promise<Cosecha> {
     const anulaciones = await this.deps.cliente.liquidacionAnulacion.findMany({
       where: { pago: { tiendaId: { not: null } } }, // la de un pago a mensajero, tampoco
       select: {
@@ -227,9 +230,10 @@ export class CajaBackfillTesoreriaService implements ICajaBackfillTesoreriaServi
     const filas: Candidata[] = [];
     for (const anulacion of anulaciones) {
       // R41 — el DIA de la anulacion, con las MISMAS dos funciones que usa el camino vivo
-      // (`inicioDelDiaCREnUtc(fechaCalendarioCR(...))`, ficha 461/R73). Lo unico que cambia es de
-      // donde sale el instante: alli del reloj, aqui del documento.
-      const diaDeLaAnulacion = inicioDelDiaCREnUtc(fechaCalendarioCR(anulacion.createdAt));
+      // (`inicioDelDiaEnUtc(fechaCalendario(...))` en la zona del pais, ficha 461/R73 y SLT-42). Lo
+      // unico que cambia es de donde sale el instante: alli del reloj, aqui del documento.
+      const z = await zona();
+      const diaDeLaAnulacion = inicioDelDiaEnUtc(fechaCalendario(anulacion.createdAt, z), z);
       await this.puertoEnSeco.emitirReversoDeAnulacion(this.deps.cliente, {
         pagoId: anulacion.pagoId,
         // R76 de la 172: se anula ENTERO, y el monto es el del PAGO, nunca uno recalculado.

@@ -1,6 +1,7 @@
 "use server";
 
 import { getPrismaClient } from "@/lib/db/prisma-client";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import type { AppErrorShape } from "@/lib/errors";
@@ -36,6 +37,12 @@ export interface LibroCajaAutoriaDeps {
   getActor?: () => Promise<Actor | null>;
 }
 
+/** El composition root. SLT-42 (R22): con la zona horaria del pais de la empresa. */
+function buildService(): LibroCajaAutoriaService {
+  const prisma = getPrismaClient();
+  return new LibroCajaAutoriaService(new LibroCajaAutoriaRepository(prisma), construirReglasPaisEmpresa(prisma));
+}
+
 /**
  * «A quien» y «Registro» de las filas de una pagina del libro de la caja, por sus ids.
  *
@@ -50,7 +57,7 @@ export async function autoriaDelLibroCajaAction(
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = autoriaLibroCajaSchema.parse(input);
-    const service = deps.service ?? new LibroCajaAutoriaService(new LibroCajaAutoriaRepository(getPrismaClient()));
+    const service = deps.service ?? buildService();
     return service.resolver(data, actor);
   });
   return isAppErrorShape(r) ? toAutoriaActionError(r) : r;

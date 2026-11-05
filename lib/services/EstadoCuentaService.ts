@@ -20,6 +20,8 @@ import type {
 } from "@/lib/interfaces/services/IEstadoCuentaService";
 import type { IOrigenLegibleService } from "@/lib/interfaces/services/IOrigenLegibleService";
 import type { IBusquedaPorGuiaService } from "@/lib/interfaces/services/IBusquedaPorGuiaService";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 import type { ModoBusquedaLibro, ParDeGuia, SuperficieConGuia } from "@/lib/types/busqueda-por-guia";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type {
@@ -61,11 +63,10 @@ import {
   type ChipMensajero,
   type ChipTienda,
 } from "@/lib/utils/estado-cuenta-chips";
-import { fechaCalendarioCR, inicioDelDiaCREnUtc, inicioDelDiaSiguienteCREnUtc, ZONA_CR } from "@/lib/utils/fecha-cr";
+import { fechaCalendario, horaDePared, inicioDelDiaEnUtc, inicioDelDiaSiguienteEnUtc } from "@/lib/utils/calendario-zona";
 import { derivarSaldoTienda } from "@/lib/utils/saldo-tienda";
 import { derivarDesgloseTienda } from "@/lib/utils/desglose-tienda";
 import { fechaDiaMovimientoCR } from "@/lib/utils/fecha-dia-iso";
-import { horaCostaRica } from "@/lib/utils/hora-cr";
 
 /** El documento de una fila ORIGINAL de un libro de cuenta: por donde se anula y se lee su estado. */
 type DocumentoDeFila =
@@ -114,8 +115,9 @@ function signoDe(saldo: string): "positivo" | "negativo" | "cero" {
   return s.gt(0) ? "positivo" : s.lt(0) ? "negativo" : "cero";
 }
 
-function aAnulacion(a: AnulacionLeida): AnulacionDeFilaDTO {
-  return { motivo: a.motivo, por: a.anuladoPorNombre, fecha: fechaCalendarioCR(a.fecha), hora: horaCostaRica(a.fecha.toISOString()) };
+/** SLT-42 (R22): el dia y la hora de la anulacion, en la zona del pais de la empresa. */
+function aAnulacion(a: AnulacionLeida, zona: string): AnulacionDeFilaDTO {
+  return { motivo: a.motivo, por: a.anuladoPorNombre, fecha: fechaCalendario(a.fecha, zona), hora: horaDePared(a.fecha, zona) };
 }
 
 /**
@@ -136,6 +138,11 @@ export class EstadoCuentaService implements IEstadoCuentaService {
      * (memoria «el composition root que no inyecta»).
      */
     private readonly busqueda: Pick<IBusquedaPorGuiaService, "resolver">,
+    /**
+     * SLT-42 (R22, R28): la zona del pais de la empresa: los limites del periodo y el dia y la hora de
+     * cada fila y de cada anulacion. La real la pone el composition root.
+     */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
 
   /**
@@ -219,8 +226,10 @@ export class EstadoCuentaService implements IEstadoCuentaService {
     const nombre = await this.repo.nombreDeCuenta(tipo, id);
     if (nombre === null) return { status: "no_encontrado" }; // R81: inexistente o de otro papel, igual
 
-    const desdeUtc = input.desde === undefined ? undefined : inicioDelDiaCREnUtc(input.desde); // R16
-    const hastaUtc = input.hasta === undefined ? undefined : inicioDelDiaSiguienteCREnUtc(input.hasta);
+    // SLT-42 (R22, R28): los dias del periodo y de cada fila son los del pais de la empresa.
+    const zona = await zonaDeLaEmpresa(this.reglasPais, "EstadoCuentaService.leerCuenta");
+    const desdeUtc = input.desde === undefined ? undefined : inicioDelDiaEnUtc(input.desde, zona); // R16
+    const hastaUtc = input.hasta === undefined ? undefined : inicioDelDiaSiguienteEnUtc(input.hasta, zona);
     // FICHA 469 (R33): guia o texto, en el servidor y FUERA de la lectura consistente (design §3.3): el
     // saldo corrido no depende del filtro, asi que un cierre aprobado entre medias no descuadra nada.
     const busqueda = await this.resolverBusqueda(tipo, id, input.q);
@@ -247,10 +256,10 @@ export class EstadoCuentaService implements IEstadoCuentaService {
     // intermitente en la pantalla), aunque el dinero estuviera bien.
     const lectura = await this.repo.enLecturaConsistente((repo) =>
       tipo === "tienda"
-        ? this.leerTienda(repo, id, ventana)
+        ? this.leerTienda(repo, id, ventana, zona)
         : tipo === "mensajero"
-          ? this.leerMensajero(repo, id, ventana)
-          : this.leerBodega(repo, id, ventana),
+          ? this.leerMensajero(repo, id, ventana, zona)
+          : this.leerBodega(repo, id, ventana, zona),
     );
 
     // R22 — lo que se enseña TIENE que cuadrar. Sin `hasta` el periodo termina hoy y el final es el
@@ -333,14 +342,14 @@ export class EstadoCuentaService implements IEstadoCuentaService {
 
   // ── Tienda ──────────────────────────────────────────────────────────────────────────────────
 
-  private async leerTienda(repo: IEstadoCuentaRepository, tiendaId: string, v: Ventana): Promise<Lectura> {
+  private async leerTienda(repo: IEstadoCuentaRepository, tiendaId: string, v: Ventana, zona: string): Promise<Lectura> {
     const pagina = await repo.paginaDeTienda(tiendaId, v);
     const actual = await repo.totalesDeTienda(tiendaId);
     const antes = v.desdeUtc === undefined ? null : await repo.totalesDeTienda(tiendaId, v.desdeUtc);
     const periodo = await repo.periodoDeTienda(tiendaId, v.desdeUtc, v.hastaUtc);
     const totales = totalesNetos(periodo, claveDeParTienda, (m: MovimientoDelPeriodoRow) => m.tipo === "credito");
     const documentos = pagina.filas.map(documentoDeTienda);
-    const estados = await this.estadosDeDocumentos(repo, documentos, null);
+    const estados = await this.estadosDeDocumentos(repo, documentos, null, zona);
     const aprobadores = await repo.quienAproboLosCierres(cierresDe(pagina.filas));
     // 172 R55 — la cuenta ENTERA por concepto, en la MISMA foto que `actual`, clasificada por la MISMA
     // funcion que la cabecera del maestro (171): aqui no se decide en que importe cae nada.
@@ -362,6 +371,7 @@ export class EstadoCuentaService implements IEstadoCuentaService {
           documento: documentos[i],
           estados,
           aprobadores,
+          zona,
         }),
       ),
     };
@@ -369,14 +379,14 @@ export class EstadoCuentaService implements IEstadoCuentaService {
 
   // ── Mensajero ───────────────────────────────────────────────────────────────────────────────
 
-  private async leerMensajero(repo: IEstadoCuentaRepository, mensajeroId: string, v: Ventana): Promise<Lectura> {
+  private async leerMensajero(repo: IEstadoCuentaRepository, mensajeroId: string, v: Ventana, zona: string): Promise<Lectura> {
     const pagina = await repo.paginaDeMensajero(mensajeroId, v);
     const actual = await repo.totalesDeMensajero(mensajeroId);
     const antes = v.desdeUtc === undefined ? null : await repo.totalesDeMensajero(mensajeroId, v.desdeUtc);
     const periodo = await repo.periodoDeMensajero(mensajeroId, v.desdeUtc, v.hastaUtc);
     const totales = totalesNetos(periodo, claveDeParMensajero, (m: MovimientoDelPeriodoRow) => m.tipo === "devengo");
     const documentos = pagina.filas.map(documentoDeMensajero);
-    const estados = await this.estadosDeDocumentos(repo, documentos, mensajeroId);
+    const estados = await this.estadosDeDocumentos(repo, documentos, mensajeroId, zona);
     const aprobadores = await repo.quienAproboLosCierres(cierresDe(pagina.filas));
     return {
       libro: "mensajero",
@@ -399,6 +409,7 @@ export class EstadoCuentaService implements IEstadoCuentaService {
           documento: documentos[i],
           estados,
           aprobadores,
+          zona,
         }),
       ),
     };
@@ -406,7 +417,7 @@ export class EstadoCuentaService implements IEstadoCuentaService {
 
   // ── Bodega ──────────────────────────────────────────────────────────────────────────────────
 
-  private async leerBodega(repo: IEstadoCuentaRepository, zonaId: string, v: Ventana): Promise<Lectura> {
+  private async leerBodega(repo: IEstadoCuentaRepository, zonaId: string, v: Ventana, zona: string): Promise<Lectura> {
     const pagina = await repo.paginaDeBodega(zonaId, v);
     const actual = await repo.totalesDeBodega(zonaId);
     const antes = v.desdeUtc === undefined ? null : await repo.totalesDeBodega(zonaId, v.desdeUtc);
@@ -430,8 +441,7 @@ export class EstadoCuentaService implements IEstadoCuentaService {
         ref: null,
         // SLT-73 (R32): una fila `sin_consolidar` nace de un `cierre_dia`, no de una consolidacion.
         consolidacionId: f.origenTipo === "cierre_bodega" ? f.origenId : null,
-        // SLT-42 pendiente T5.4: zona de la empresa
-        fecha: fechaDiaMovimientoCR(f.fechaMovimiento.toISOString(), ZONA_CR),
+        fecha: fechaDiaMovimientoCR(f.fechaMovimiento.toISOString(), zona), // SLT-42 (R22)
         categoria: f.categoria,
         origenTipo: f.origenTipo,
         origen: null,
@@ -462,6 +472,7 @@ export class EstadoCuentaService implements IEstadoCuentaService {
     repo: IEstadoCuentaRepository,
     documentos: (DocumentoDeFila | null)[],
     mensajeroId: string | null,
+    zona: string,
   ): Promise<Map<string, EstadoDeDocumento>> {
     const estados = new Map<string, EstadoDeDocumento>();
     const tipos: TipoDeDocumentoDeLibro[] = ["liquidacion_pago", "cobro_tienda", "pago_por_cuenta_tienda", "abono_tienda"];
@@ -483,7 +494,7 @@ export class EstadoCuentaService implements IEstadoCuentaService {
         const a = anulaciones.get(id);
         const p = pagos.get(id);
         estados.set(`${tipo}:${id}`, {
-          anulacion: a === undefined ? null : aAnulacion(a),
+          anulacion: a === undefined ? null : aAnulacion(a, zona),
           tieneComprobante: comprobantes.has(id),
           pago: p === undefined ? null : { metodo: p.metodo, referencia: p.referencia },
         });
@@ -501,8 +512,8 @@ export class EstadoCuentaService implements IEstadoCuentaService {
               : {
                   motivo: e.anulacion.motivo,
                   por: e.anulacion.anuladoPorNombre,
-                  fecha: fechaCalendarioCR(e.anulacion.createdAt),
-                  hora: horaCostaRica(e.anulacion.createdAt.toISOString()),
+                  fecha: fechaCalendario(e.anulacion.createdAt, zona),
+                  hora: horaDePared(e.anulacion.createdAt, zona),
                 },
           tieneComprobante: false,
           pago: null,
@@ -515,7 +526,7 @@ export class EstadoCuentaService implements IEstadoCuentaService {
       for (const dia of dias) {
         const r = reversos.get(dia.toISOString());
         estados.set(`premio:${dia.toISOString()}`, {
-          anulacion: r === undefined ? null : aAnulacion(r),
+          anulacion: r === undefined ? null : aAnulacion(r, zona),
           tieneComprobante: false,
           pago: null,
         });
@@ -528,7 +539,7 @@ export class EstadoCuentaService implements IEstadoCuentaService {
       for (const id of incentivos) {
         const r = reversos.get(id);
         estados.set(`incentivo:${id}`, {
-          anulacion: r === undefined ? null : aAnulacion(r),
+          anulacion: r === undefined ? null : aAnulacion(r, zona),
           tieneComprobante: false,
           pago: null,
         });
@@ -547,6 +558,8 @@ export class EstadoCuentaService implements IEstadoCuentaService {
       documento: DocumentoDeFila | null;
       estados: Map<string, EstadoDeDocumento>;
       aprobadores: Map<string, string | null>;
+      /** SLT-42 (R22): la zona del pais de la empresa, para el dia de la fila. */
+      zona: string;
     },
   ): FilaEstadoCuentaDTO {
     // El premio (293) y el incentivo (SLT-68) cuelgan de un cierre para ser pagables, pero no los produjo
@@ -559,8 +572,7 @@ export class EstadoCuentaService implements IEstadoCuentaService {
     return {
       ref: { libro: c.libro, movimientoId: f.id },
       consolidacionId: null,
-      // SLT-42 pendiente T5.4: zona de la empresa
-      fecha: fechaDiaMovimientoCR(f.fechaMovimiento.toISOString(), ZONA_CR),
+      fecha: fechaDiaMovimientoCR(f.fechaMovimiento.toISOString(), c.zona), // SLT-42 (R22)
       categoria: f.categoria,
       origenTipo: f.origenTipo,
       origen: null, // lo pone `leerCuenta` en lote, fuera de la transaccion

@@ -12,6 +12,15 @@ import {
 import { ORIGENES_FALSOS } from "@/tests/fixtures/origenes-falsos";
 
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
+
+// SLT-42 (T5.4): la zona del pais de la empresa en el borde, sin sesion ni base: la de CR, como antes.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
 // Ficha 458-A (TA.6, R36, m1 de la auditoria) — `/mi-wallet` se acota a la tienda de la SESION y el
 // listado PAGINADO rechaza, como el completo, cualquier clave que nombre una tienda: `validation_error`
 // sin leer nada. Antes el paginado no era `.strict()` y la clave se descartaba en silencio.

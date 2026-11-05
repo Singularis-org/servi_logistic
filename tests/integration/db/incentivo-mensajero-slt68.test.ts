@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -42,6 +42,18 @@ import {
   type Personas459,
 } from "./_fixtures/escrituras-459";
 import { busquedaPorGuiaDe } from "./_fixtures/busqueda-469";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+
+// SLT-42 (T5.4): la zona del pais de la empresa es la de CR, como antes. Las reglas reales leen el pais
+// de la empresa en curso con el cliente global, que no ve la empresa de una transaccion revertida ni
+// tiene empresa fuera de `conEmpresa`; la zona por pais la miden `hora-por-pais-wallet` y `demo-qa`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // SLT-68 (design §3, §4, §5, §10) — el INCENTIVO MANUAL A UN MENSAJERO contra Postgres de verdad.
@@ -225,6 +237,10 @@ describeSiHayBase("SLT-68 — el incentivo manual a un mensajero, contra Postgre
       ((fn: (tx: never) => Promise<unknown>) => app.$transaction((tx) => fn(tx as never), { timeout: 20_000 })) as unknown as LiquidacionTxRunner,
       new CajaPagoTiendaFeedService(new WalletMovimientoRepository(app)),
       new LiquidacionRepartoRepository(app),
+      undefined,
+      undefined,
+      undefined,
+      reglasPaisFijas(),
     );
   }
 
@@ -606,7 +622,7 @@ describeSiHayBase("SLT-68 — el incentivo manual a un mensajero, contra Postgre
       const id = await registrarOk(e);
       const [egreso] = await caja(e);
       expect(egreso, "el registro no dejo egreso de caja").toBeDefined();
-      const autoria = new LibroCajaAutoriaService(new LibroCajaAutoriaRepository(app));
+      const autoria = new LibroCajaAutoriaService(new LibroCajaAutoriaRepository(app), reglasPaisFijas());
       const documentos = new IncentivoCajaDocumentosRepository(app);
       const filtradas = async () =>
         (
@@ -641,8 +657,9 @@ describeSiHayBase("SLT-68 — el incentivo manual a un mensajero, contra Postgre
       const servicio = new EstadoCuentaService(
         new EstadoCuentaRepository(app),
         new RechazoTiendaCobroAnulacionRepository(app),
-        new OrigenLegibleService(new OrigenLegibleRepository(app)),
+        new OrigenLegibleService(new OrigenLegibleRepository(app), reglasPaisFijas()),
         busquedaPorGuiaDe(app),
+        reglasPaisFijas(),
       );
       const leer = async () => {
         const r = await servicio.leer(

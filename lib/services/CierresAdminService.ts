@@ -1154,11 +1154,14 @@ export class CierresAdminService implements ICierresAdminService {
       };
     }
 
+    // SLT-42 (R22, R28): el dia del cierre en el historial, con la zona del pais; sin zona, nada se escribe.
+    const zonaHoraria = await zonaDeLaEmpresa(this.reglasPais, "CierresAdminService.aprobarCierre");
     // R10/R12-R15: transicion guardada. Aprobar limpia motivoRechazo (null).
     const res = await this.repo.resolverCierre({
       cierreId,
       alcance: scope.alcance,
       nuevoEstado: "aprobado",
+      zonaHoraria,
       resueltoPor: actor.usuarioId, // R14
       motivoRechazo: null,
       liberacionSinGestionar, // feature 109/R16: libera `sin_gestionar` en la misma tx
@@ -1775,11 +1778,14 @@ export class CierresAdminService implements ICierresAdminService {
 
     if (scope.status === "sinZona") return { status: "no_encontrada" }; // R13
 
+    // SLT-42 (R22, R28): el dia del cierre en el historial, con la zona del pais; sin zona, nada se escribe.
+    const zonaHoraria = await zonaDeLaEmpresa(this.reglasPais, "CierresAdminService.rechazarCierre");
     // R11-R15: transicion guardada; persiste el motivo con el cierre.
     const res = await this.repo.resolverCierre({
       cierreId,
       alcance: scope.alcance,
       nuevoEstado: "rechazado",
+      zonaHoraria,
       resueltoPor: actor.usuarioId, // R14
       motivoRechazo: motivoLimpio,
     });

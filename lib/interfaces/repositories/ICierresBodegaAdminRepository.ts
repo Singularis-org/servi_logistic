@@ -32,6 +32,8 @@ export interface ResolverCierreBodegaInput {
   nuevoEstado: "aprobado" | "rechazado";
   resueltoPor: string;
   motivoRechazo: string | null;
+  /** SLT-42 (R22): la zona IANA del pais de la empresa, para el dia del cierre en la etiqueta del historial. */
+  zonaHoraria: string;
 }
 
 // Resultado de la transicion guardada: `updated` (aplicada), `conflict` (existe pero
@@ -52,12 +54,16 @@ export interface MarcarConciliadoInput {
   nota: string | null;
   /** Quien marca (`esAccesoTotal`). Va a `conciliado_por` Y al espejo `resuelto_por` (§4.1). */
   actorUsuarioId: string;
+  /** SLT-42 (R22): la zona IANA del pais de la empresa, para el dia del cierre en la etiqueta del historial. */
+  zonaHoraria: string;
 }
 
 /** ⭑ FICHA 431 (R12) — deshacer la marca. No hace falta monto: se BORRA el que hubiera. */
 export interface RevertirConciliacionInput {
   id: string;
   actorUsuarioId: string;
+  /** SLT-42 (R22): la zona IANA del pais de la empresa, para el dia del cierre en la etiqueta del historial. */
+  zonaHoraria: string;
 }
 
 /**
@@ -72,6 +78,8 @@ export interface CorregirConciliacionInput {
   nota: string | null;
   /** Quien corrige (`esAccesoTotal`). Va a `conciliado_por` Y al espejo `resuelto_por`. */
   actorUsuarioId: string;
+  /** SLT-42 (R22): la zona IANA del pais de la empresa, para el dia del cierre en la etiqueta del historial. */
+  zonaHoraria: string;
 }
 
 /**

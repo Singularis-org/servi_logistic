@@ -923,7 +923,11 @@ export async function crearEmpresaDemo(
     });
     await llamar("ConciliacionSatelitesService.marcarRecibida", () =>
       conEmpresa(org, () =>
-        new ConciliacionSatelitesService(new SaldosSatelitesRepository(app), new CierresBodegaAdminRepository(app)).marcarRecibida(
+        new ConciliacionSatelitesService(
+          new SaldosSatelitesRepository(app),
+          new CierresBodegaAdminRepository(app),
+          construirReglasPaisEmpresa(app), // SLT-42 (R22): la zona horaria del pais de la empresa.
+        ).marcarRecibida(
           recibida,
           maestro,
         ),
@@ -1041,6 +1045,9 @@ export async function crearEmpresaDemo(
           new SupabaseFileStorage(undefined, walletComprobanteConfig.BUCKET),
           new SupabaseSignedUrlProvider(undefined, walletComprobanteConfig.BUCKET),
           (fn) => app.$transaction((tx) => fn(tx)),
+          undefined,
+          undefined,
+          construirReglasPaisEmpresa(app), // SLT-42 (R22): la zona horaria del pais de la empresa.
         ).registrar(entradaAporte, comprobante, maestro),
       ),
     );
@@ -1059,6 +1066,7 @@ export async function crearEmpresaDemo(
           undefined,
           undefined,
           buildComprobantes(app),
+          construirReglasPaisEmpresa(app), // SLT-42 (R22): la zona horaria del pais de la empresa.
         ).registrarPagoMensajero(
           // SLT-42 pendiente T6: zona de la empresa
           registrarPagoMensajeroSchema(ZONA_CR).parse({
@@ -1097,6 +1105,9 @@ export async function crearEmpresaDemo(
           new SupabaseFileStorage(undefined, walletComprobanteConfig.BUCKET),
           new SupabaseSignedUrlProvider(undefined, walletComprobanteConfig.BUCKET),
           (fn) => app.$transaction((tx) => fn(tx)),
+          undefined,
+          undefined,
+          construirReglasPaisEmpresa(app), // SLT-42 (R22): la zona horaria del pais de la empresa.
         ).registrar(entradaAbono, comprobante, maestro),
       ),
     );
@@ -1110,6 +1121,7 @@ export async function crearEmpresaDemo(
           app,
           buildComprobantes(app),
           new TopePagoPlataformaService(new CobroPlataformaMovimientoRepository(app), new PagoPlataformaRepository(app)),
+          construirReglasPaisEmpresa(app), // SLT-42 (R22): la zona horaria del pais de la empresa.
         ).registrarEgreso(
           // SLT-42 pendiente T6: zona de la empresa
           registrarEgresoConLateralesSchema(ZONA_CR).parse({

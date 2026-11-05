@@ -3,6 +3,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { CierresBodegaAdminRepository } from "@/lib/repositories/CierresBodegaAdminRepository";
 import { CierreDetalleFaltanteError } from "@/lib/utils/cierre-detalle";
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // Feature 40 — tests unit del CierresBodegaAdminRepository (mockea Prisma, sin DB real).
 // Cubre R15 (findCierresBodega orderBy desc + totales string), R11
@@ -339,7 +340,7 @@ describe("CierresBodegaAdminRepository.resolverCierreBodega (R16/R18/R19/R20/R21
     prisma.cierreBodega.updateMany.mockResolvedValue({ count: 1 });
     const repo = new CierresBodegaAdminRepository(prisma as unknown as PrismaClient);
 
-    const r = await repo.resolverCierreBodega({
+    const r = await repo.resolverCierreBodega({ zonaHoraria: ZONA_DE_CR,
       id: "cb1",
       nuevoEstado: "rechazado",
       resueltoPor: "adm-maestro",
@@ -366,7 +367,7 @@ describe("CierresBodegaAdminRepository.resolverCierreBodega (R16/R18/R19/R20/R21
     prisma.cierreBodega.updateMany.mockResolvedValue({ count: 1 });
     const repo = new CierresBodegaAdminRepository(prisma as unknown as PrismaClient);
 
-    await repo.resolverCierreBodega({
+    await repo.resolverCierreBodega({ zonaHoraria: ZONA_DE_CR,
       id: "cb1",
       nuevoEstado: "aprobado",
       resueltoPor: "adm-maestro",
@@ -384,7 +385,7 @@ describe("CierresBodegaAdminRepository.resolverCierreBodega (R16/R18/R19/R20/R21
     prisma.cierreBodega.count.mockResolvedValue(1);
     const repo = new CierresBodegaAdminRepository(prisma as unknown as PrismaClient);
 
-    const r = await repo.resolverCierreBodega({
+    const r = await repo.resolverCierreBodega({ zonaHoraria: ZONA_DE_CR,
       id: "cb1",
       nuevoEstado: "aprobado",
       resueltoPor: "adm-maestro",
@@ -401,7 +402,7 @@ describe("CierresBodegaAdminRepository.resolverCierreBodega (R16/R18/R19/R20/R21
     prisma.cierreBodega.count.mockResolvedValue(0);
     const repo = new CierresBodegaAdminRepository(prisma as unknown as PrismaClient);
 
-    const r = await repo.resolverCierreBodega({
+    const r = await repo.resolverCierreBodega({ zonaHoraria: ZONA_DE_CR,
       id: "cb-x",
       nuevoEstado: "aprobado",
       resueltoPor: "adm-maestro",

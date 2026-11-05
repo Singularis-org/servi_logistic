@@ -20,6 +20,7 @@ import {
 } from "./_fixtures/slt73-cierre-aprobable";
 import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // SLT-76 · T2 · R3/R4 — «DESMARCAR» SE OFRECE SOLO CUANDO REVERTIR NO DEVOLVERIA `con_asientos`.
 //
@@ -118,7 +119,7 @@ describeSiHayBase("SLT-76 R3/R4 — `desmarcable` en las dos superficies (Postgr
 
       const revertir: string[] = [];
       for (const id of ids) {
-        revertir.push(await admin.revertirConciliacion({ id, actorUsuarioId: k.maestroId }));
+        revertir.push(await admin.revertirConciliacion({ zonaHoraria: ZONA_DE_CR, id, actorUsuarioId: k.maestroId }));
       }
       return { control, historicoMaestro, historicoCompleto, detalleMaestro, paginaSatelite, desglose, revertir };
     });

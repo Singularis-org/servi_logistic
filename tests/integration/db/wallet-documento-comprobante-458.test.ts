@@ -27,6 +27,18 @@ import type { WalletMovimientoDTO } from "@/lib/types/wallet";
 
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
 import { cargarCatalogo459, enTransaccionRevertida459, montarServicios459, sembrarEscenario459 } from "./_fixtures/caja-459";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+
+// SLT-42 (T5.4): la zona del pais de la empresa es la de CR, como antes. Las reglas reales leen el pais
+// de la empresa en curso con el cliente global, que no ve la empresa de una transaccion revertida ni
+// tiene empresa fuera de `conEmpresa`; la zona por pais la miden `hora-por-pais-wallet` y `demo-qa`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
 
 // SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
 vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
@@ -88,10 +100,12 @@ describeSiHayBase("458-B/M1 — «tiene comprobante» de la correccion y del cob
           storage,
           urls,
           runTx,
+          undefined,
+          reglasPaisFijas(),
         );
         const cajaRepo = new WalletMovimientoRepository(c);
         const tiendaRepo = new WalletTiendaMovimientoRepository(c);
-        const wallet = new WalletService(cajaRepo, c, new AporteCapitalRepository(c), {} as never, puerto);
+        const wallet = new WalletService(cajaRepo, c, new AporteCapitalRepository(c), {} as never, puerto, undefined, reglasPaisFijas());
         const cobro = new CobroTiendaService(
           tiendaRepo,
           new UserRepository(c),
@@ -100,6 +114,7 @@ describeSiHayBase("458-B/M1 — «tiene comprobante» de la correccion y del cob
           runTx,
           undefined,
           puerto,
+          reglasPaisFijas(),
         );
         const actor = esc.maestro;
         const getActor = async () => actor;
@@ -117,7 +132,7 @@ describeSiHayBase("458-B/M1 — «tiene comprobante» de la correccion y del cob
               claveIdempotencia: clave(n),
               ...(conComprobante ? { comprobante: png() } : {}),
             }),
-            { getActor, service: wallet },
+            { reglasPais: reglasPaisFijas(), getActor, service: wallet },
           );
         const cobrar = (n: string, conComprobante: boolean) =>
           registrarCobroTiendaAction(
@@ -128,7 +143,7 @@ describeSiHayBase("458-B/M1 — «tiene comprobante» de la correccion y del cob
               descripcion: `Bolsas ${n}`,
               ...(conComprobante ? { comprobante: png() } : {}),
             }),
-            { getActor, service: cobro },
+            { reglasPais: reglasPaisFijas(), getActor, service: cobro },
           );
         status.correccionCon = (await correccion("correccionCon", true)).status;
         status.correccionSin = (await correccion("correccionSin", false)).status;
@@ -162,14 +177,14 @@ describeSiHayBase("458-B/M1 — «tiene comprobante» de la correccion y del cob
         }
         // ── m6: `adjuntar` rechaza un movimiento ANULADO, en los cuatro caminos laterales ─────────
         const anulaciones: Record<string, string> = {};
-        const egresos = new WalletEgresoService(cajaRepo, c, puerto);
+        const egresos = new WalletEgresoService(cajaRepo, c, puerto, undefined, reglasPaisFijas());
         const sueldo = await registrarEgresoAdministrativoAction(
           { tipoEgreso: "sueldo", monto: "30.00", descripcion: "Sueldo m6", claveIdempotencia: clave("sueldo"), contraparteNombre: "Ana" },
-          { getActor, service: egresos },
+          { reglasPais: reglasPaisFijas(), getActor, service: egresos },
         );
         const control = await registrarEgresoAdministrativoAction(
           { tipoEgreso: "sueldo", monto: "31.00", descripcion: "Sueldo control m6", claveIdempotencia: clave("control"), contraparteNombre: "Ana" },
-          { getActor, service: egresos },
+          { reglasPais: reglasPaisFijas(), getActor, service: egresos },
         );
         status.sueldo = sueldo.status;
         status.control = control.status;

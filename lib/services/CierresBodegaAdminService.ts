@@ -488,9 +488,12 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
     if (!esAccesoTotal(actor.rol)) return { status: "forbidden" }; // R2
 
     // R16/R18-R20: transicion guardada. Aprobar limpia motivoRechazo (null).
+    // SLT-42 (R22, R28): el dia del cierre en el historial, con la zona del pais; sin zona, nada se escribe.
+    const zonaHoraria = await zonaDeLaEmpresa(this.reglasPais, "CierresBodegaAdminService.aprobarCierreBodega");
     const res = await this.repo.resolverCierreBodega({
       id: cierreBodegaId,
       nuevoEstado: "aprobado",
+      zonaHoraria,
       resueltoPor: actor.usuarioId, // R20
       motivoRechazo: null,
     });
@@ -514,9 +517,12 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
     }
 
     // R17-R20: transicion guardada; persiste el motivo con el cierre.
+    // SLT-42 (R22, R28): el dia del cierre en el historial, con la zona del pais; sin zona, nada se escribe.
+    const zonaHoraria = await zonaDeLaEmpresa(this.reglasPais, "CierresBodegaAdminService.rechazarCierreBodega");
     const res = await this.repo.resolverCierreBodega({
       id: cierreBodegaId,
       nuevoEstado: "rechazado",
+      zonaHoraria,
       resueltoPor: actor.usuarioId, // R20
       motivoRechazo: motivoLimpio,
     });

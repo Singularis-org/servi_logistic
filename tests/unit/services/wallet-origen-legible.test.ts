@@ -11,6 +11,7 @@ import {
 } from "@/lib/services/OrigenLegibleService";
 import { WALLET_ORIGEN_TIPO_SEED, type WalletOrigenTipo } from "@/lib/types/wallet";
 import type { FilaConOrigenTecnico } from "@/lib/types/wallet-origen";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Ficha 458-A (TA.2, design §3.3) — R5 (diccionario total, sin valor tecnico), R6 (la entidad
 // concreta), R4 (sin entidad: texto legible, nunca un id) y el LOTE (una consulta por tipo presente).
@@ -93,14 +94,14 @@ const CASOS_CAJA: Record<WalletOrigenTipo, { fila: FilaConOrigenTecnico; texto: 
 describe("458-A R5/R6 — el origen de cada movimiento dice su entidad concreta", () => {
   it("un caso por cada origen del catalogo (el diccionario de casos es total por tipo)", async () => {
     expect(Object.keys(CASOS_CAJA).sort()).toEqual([...WALLET_ORIGEN_TIPO_SEED].sort());
-    const svc = new OrigenLegibleService(repoFalso());
+    const svc = new OrigenLegibleService(repoFalso(), reglasPaisFijas());
     const tipos = Object.keys(CASOS_CAJA) as WalletOrigenTipo[];
     const origenes = await svc.resolver("caja", tipos.map((t) => CASOS_CAJA[t].fila), MAESTRO);
     tipos.forEach((t, i) => expect({ t, texto: origenes[i].texto }).toEqual({ t, texto: CASOS_CAJA[t].texto }));
   });
 
   it("el gasto se nombra por su concepto: sueldo, gasto de la empresa y gasto fijo con su periodo", async () => {
-    const svc = new OrigenLegibleService(repoFalso());
+    const svc = new OrigenLegibleService(repoFalso(), reglasPaisFijas());
     const r = await svc.resolver(
       "caja",
       [
@@ -122,7 +123,7 @@ describe("458-A R5/R6 — el origen de cada movimiento dice su entidad concreta"
   });
 
   it("458/O1 — el nombre de la tienda sale una sola vez cuando la descripción ya empieza por él", async () => {
-    const svc = new OrigenLegibleService(repoFalso());
+    const svc = new OrigenLegibleService(repoFalso(), reglasPaisFijas());
     const r = await svc.resolver(
       "caja",
       [
@@ -143,7 +144,7 @@ describe("458-A R5/R6 — el origen de cada movimiento dice su entidad concreta"
   });
 
   it("458/O1 — el rótulo no se quita nunca, aunque la descripción lo repita", async () => {
-    const svc = new OrigenLegibleService(repoFalso());
+    const svc = new OrigenLegibleService(repoFalso(), reglasPaisFijas());
     const [o] = await svc.resolver(
       "caja",
       [fila("cobro_tienda", { descripcion: "Cobro de la empresa a una tienda · Tania Tienda" })],
@@ -153,13 +154,13 @@ describe("458-A R5/R6 — el origen de cada movimiento dice su entidad concreta"
   });
 
   it("`gestion_orden` en el libro de la TIENDA: el flete por devolución a origen dice la guía (459/461 §7.3)", async () => {
-    const svc = new OrigenLegibleService(repoFalso());
+    const svc = new OrigenLegibleService(repoFalso(), reglasPaisFijas());
     const [o] = await svc.resolver("tienda", [fila("gestion_orden", { categoria: "flete_devolucion" })], TIENDA);
     expect(o.texto).toBe("Gestión de orden · cobro por devolución a origen · guía 4321");
   });
 
   it("el libro del mensajero rotula con su diccionario, que ya no dice «Liquidación» ni «Manual»", async () => {
-    const svc = new OrigenLegibleService(repoFalso());
+    const svc = new OrigenLegibleService(repoFalso(), reglasPaisFijas());
     const r = await svc.resolver(
       "mensajero",
       [fila("pago_mensajero"), fila("manual", { origenId: null })],
@@ -172,7 +173,7 @@ describe("458-A R5/R6 — el origen de cada movimiento dice su entidad concreta"
   });
 
   it("la tienda no ve qué mensajero movió su dinero (D2): su cierre dice solo el día", async () => {
-    const svc = new OrigenLegibleService(repoFalso());
+    const svc = new OrigenLegibleService(repoFalso(), reglasPaisFijas());
     const [o] = await svc.resolver("tienda", [fila("cierre_dia")], TIENDA);
     expect(o.texto).toBe("Cierre del día · 2026-09-12");
     expect(o.enlace).toBeNull();
@@ -181,7 +182,7 @@ describe("458-A R5/R6 — el origen de cada movimiento dice su entidad concreta"
   it("R4: si la entidad no aparece (fila huérfana) el texto es el rótulo, nunca el id", async () => {
     const repo = repoFalso();
     for (const k of Object.keys(repo)) repo[k].mockResolvedValue([]);
-    const svc = new OrigenLegibleService(repo);
+    const svc = new OrigenLegibleService(repo, reglasPaisFijas());
     const tipos = Object.keys(CASOS_CAJA) as WalletOrigenTipo[];
     const r = await svc.resolver("caja", tipos.map((t) => CASOS_CAJA[t].fila), MAESTRO);
     for (const o of r) {
@@ -192,7 +193,7 @@ describe("458-A R5/R6 — el origen de cada movimiento dice su entidad concreta"
   });
 
   it("R1: ningún texto ni nombre accesible lleva un uuid; el id vive solo en `href` (D1)", async () => {
-    const svc = new OrigenLegibleService(repoFalso());
+    const svc = new OrigenLegibleService(repoFalso(), reglasPaisFijas());
     const tipos = Object.keys(CASOS_CAJA) as WalletOrigenTipo[];
     const r = await svc.resolver("caja", tipos.map((t) => CASOS_CAJA[t].fila), MAESTRO);
     for (const o of r) {
@@ -206,7 +207,7 @@ describe("458-A R5/R6 — el origen de cada movimiento dice su entidad concreta"
 describe("458-A — la lectura va EN LOTE: una consulta por tipo presente, ninguna por fila", () => {
   it("20 filas de 2 tipos → 2 consultas (y ninguna de los tipos ausentes)", async () => {
     const repo = repoFalso();
-    const svc = new OrigenLegibleService(repo);
+    const svc = new OrigenLegibleService(repo, reglasPaisFijas());
     const filas = Array.from({ length: 20 }, (_, i) =>
       i % 2 === 0 ? fila("cierre_dia", { origenId: `c${i}` }) : fila("pago_tienda", { origenId: `p${i}` }),
     );
@@ -221,11 +222,11 @@ describe("458-A — la lectura va EN LOTE: una consulta por tipo presente, ningu
 
   it("ids repetidos se piden una sola vez; una página sin entidades no consulta nada", async () => {
     const repo = repoFalso();
-    const svc = new OrigenLegibleService(repo);
+    const svc = new OrigenLegibleService(repo, reglasPaisFijas());
     await svc.resolver("caja", [fila("cierre_dia"), fila("cierre_dia")], MAESTRO);
     expect(vi.mocked(repo.cierres).mock.calls[0][0]).toEqual([UUID]);
     const vacio = repoFalso();
-    await new OrigenLegibleService(vacio).resolver(
+    await new OrigenLegibleService(vacio, reglasPaisFijas()).resolver(
       "caja",
       [fila("manual", { origenId: null }), fila("aporte_capital")],
       MAESTRO,
@@ -234,7 +235,7 @@ describe("458-A — la lectura va EN LOTE: una consulta por tipo presente, ningu
   });
 
   it("`adjuntar` conserva la fila y el orden y le añade `origen`", async () => {
-    const svc = new OrigenLegibleService(repoFalso());
+    const svc = new OrigenLegibleService(repoFalso(), reglasPaisFijas());
     const filas = [
       { ...fila("manual", { origenId: null }), id: "a" },
       { ...fila("cierre_dia"), id: "b" },
@@ -248,7 +249,7 @@ describe("458-A — la lectura va EN LOTE: una consulta por tipo presente, ningu
 describe("458-A R7/R8 — el enlace a la entidad, solo si el rol accede a su pantalla", () => {
   it("maestro y admin: cierre → /cierres-admin, orden → /ordenes por guía, podio → ranking del día", async () => {
     for (const actor of [MAESTRO, ADMIN]) {
-      const svc = new OrigenLegibleService(repoFalso());
+      const svc = new OrigenLegibleService(repoFalso(), reglasPaisFijas());
       const [cierre, orden, podio] = await svc.resolver(
         "caja",
         [fila("cierre_dia"), fila("gestion_orden", { categoria: "ingreso_flete_devolucion" }), fila("ranking_snapshot_fila")],
@@ -264,7 +265,7 @@ describe("458-A R7/R8 — el enlace a la entidad, solo si el rol accede a su pan
   });
 
   it("adminTienda: sin enlace al cierre (no ve `/cierres-admin`), con enlace a SU orden", async () => {
-    const svc = new OrigenLegibleService(repoFalso());
+    const svc = new OrigenLegibleService(repoFalso(), reglasPaisFijas());
     const [cierre, orden] = await svc.resolver(
       "tienda",
       [fila("cierre_dia"), fila("gestion_orden", { categoria: "flete_devolucion" })],
@@ -275,7 +276,7 @@ describe("458-A R7/R8 — el enlace a la entidad, solo si el rol accede a su pan
   });
 
   it("un rol sin acceso a ninguna pantalla (mensajero) recibe el nombre sin enlace", async () => {
-    const svc = new OrigenLegibleService(repoFalso());
+    const svc = new OrigenLegibleService(repoFalso(), reglasPaisFijas());
     const r = await svc.resolver(
       "caja",
       [fila("cierre_dia"), fila("gestion_orden"), fila("ranking_snapshot_fila")],
@@ -286,7 +287,7 @@ describe("458-A R7/R8 — el enlace a la entidad, solo si el rol accede a su pan
   });
 
   it("los orígenes sin pantalla propia (estado de cuenta: 458-D) no inventan un enlace", async () => {
-    const svc = new OrigenLegibleService(repoFalso());
+    const svc = new OrigenLegibleService(repoFalso(), reglasPaisFijas());
     const r = await svc.resolver(
       "caja",
       [fila("pago_tienda"), fila("pago_por_cuenta_tienda"), fila("abono_tienda"), fila("cobro_tienda")],

@@ -29,7 +29,8 @@ import { instanteDelMovimientoManual } from "@/lib/utils/fecha-movimiento-manual
 import { esAccesoTotal } from "@/lib/auth/acceso-total";
 import { CATEGORIA_LABEL } from "@/lib/constants/wallet-rotulos";
 
-import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 // Roles autorizados (R17): acceso total (maestro/admin, dueños de la caja central), espejo de
 // WalletService.
 
@@ -61,6 +62,8 @@ export class WalletEgresoService implements IWalletEgresoService {
     private readonly comprobantes?: IWalletComprobanteService,
     /** SL-45 (design §6) — el tope del pago a la plataforma. Sin él, registrar un pago lanza. */
     private readonly tope?: ITopePagoPlataforma,
+    /** SLT-42 (R22, R28): la zona del pais de la empresa, para el instante de un egreso con fecha elegida. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
 
   async registrarEgreso(
@@ -76,8 +79,23 @@ export class WalletEgresoService implements IWalletEgresoService {
     }
     // FICHA 458-B (R42/R74–R76): «a quien», referencia y comprobante, en la MISMA transaccion que el
     // asiento. Sin ninguno de los tres, lo de abajo es exactamente el registro de antes.
+    // Ficha 334 (R22/R23): con «hoy» la clave NO viaja y manda el DEFAULT de la columna. SLT-42 (R22,
+    // R28): un dia anterior empieza en la zona del pais; se lee ANTES del comprobante y de escribir, y
+    // solo si hay fecha elegida.
+    const fechaMovimiento =
+      input.fecha === undefined
+        ? undefined
+        : instanteDelMovimientoManual(
+            input.fecha,
+            await zonaDeLaEmpresa(this.reglasPais, "WalletEgresoService.registrarEgreso"),
+          );
     return registrarConComprobante(this.comprobantes, "wallet_movimiento", comprobante, async (guardado) => {
-      const r = await this.escribirEgreso(input, actor, lateralesDeCaja(input, guardado, actor.usuarioId));
+      const r = await this.escribirEgreso(
+        input,
+        actor,
+        lateralesDeCaja(input, guardado, actor.usuarioId),
+        fechaMovimiento,
+      );
       return { quedo: r.status === "ok", resultado: r };
     });
   }
@@ -86,6 +104,7 @@ export class WalletEgresoService implements IWalletEgresoService {
     input: RegistrarEgresoAdministrativoInput,
     actor: Actor,
     laterales: LateralesDelRegistro | undefined,
+    fechaMovimiento: Date | undefined,
   ): Promise<Extract<RegistrarEgresoServiceResult, { status: "ok" | "ya_registrado" | "validation_error" }>> {
     // R2: mapeo tipo de egreso manual -> categoria del libro (gasto_variable /
     // egreso_gasto_variable, sueldo / egreso_sueldo). El gasto FIJO no llega aqui (rechazado
@@ -96,9 +115,6 @@ export class WalletEgresoService implements IWalletEgresoService {
     // Ficha 334 (R28, design §5): el `id` lo genera EL SERVICIO y viaja en la insercion, para
     // poder releer despues EXACTAMENTE esta fila. Sigue siendo UN SOLO INSERT.
     const id = randomUUID();
-    // Ficha 334 (R22/R23): con «hoy» la clave NO viaja y manda el DEFAULT de la columna.
-    // SLT-42 pendiente T5.4: zona de la empresa
-    const fechaMovimiento = instanteDelMovimientoManual(input.fecha, ZONA_CR);
     // FICHA 362 (R6/R9) — `egreso_administrativo_registrado`, en la MISMA transaccion que el
     // asiento. La abre el repositorio: el servicio no conoce Prisma.
     const mov: CrearMovimientoInput & { id: string } = {

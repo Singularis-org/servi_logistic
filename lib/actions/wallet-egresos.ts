@@ -1,5 +1,8 @@
 "use server";
 
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
+import { zonaDelBorde } from "@/lib/actions/_shared/zona-del-borde";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { WalletMovimientoRepository } from "@/lib/repositories/WalletMovimientoRepository";
 import { WalletEgresoService } from "@/lib/services/WalletEgresoService";
@@ -19,7 +22,6 @@ import { buildComprobantes, leerComprobanteOpcional } from "@/lib/actions/_share
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import type { AppErrorShape } from "@/lib/errors";
 
-import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 45 (T5) — Server Actions de EGRESOS administrativos (mutaciones/lecturas internas
 // del mismo proyecto -> Server Action, no Route API, patron lib/actions/wallet.ts). Resuelve
 // el actor por sesion, valida en el borde con zod y delega en el servicio bajo
@@ -74,12 +76,14 @@ function buildService(): IWalletEgresoService {
     new CobroPlataformaMovimientoRepository(prisma),
     new PagoPlataformaRepository(prisma),
   );
-  return new WalletEgresoService(repo, prisma, buildComprobantes(prisma), tope);
+  return new WalletEgresoService(repo, prisma, buildComprobantes(prisma), tope, construirReglasPaisEmpresa(prisma)); // SLT-42 (R22, R28): la zona horaria del pais de la empresa.
 }
 
 export interface WalletEgresoDeps {
   service?: IWalletEgresoService;
   getActor?: () => Promise<Actor | null>;
+  /** SLT-42 (R22, R28): la zona del pais de la empresa; en produccion, la real (`zonaDelBorde`). */
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
 }
 
 /**
@@ -104,8 +108,9 @@ export async function registrarEgresoAdministrativoAction(
     if (!actor) throw new UnauthenticatedError(); // R18: antes de tocar el service
     // FICHA 458-B (R42/R74): el objeto de hoy o un FormData con «a quien», referencia y comprobante.
     const { crudo, comprobante } = separarComprobante(input);
-    // SLT-42 pendiente T5.4: zona de la empresa
-    const data = registrarEgresoConLateralesSchema(ZONA_CR).parse(crudo); // ZodError -> VALIDATION_ERROR (R4/R5/R19)
+    // SLT-42 (R22, R28): «hoy» en la zona del pais de la empresa; sin zona, falla sin tocar nada.
+    const zona = await zonaDelBorde(deps.reglasPais);
+    const data = registrarEgresoConLateralesSchema(zona).parse(crudo); // ZodError -> VALIDATION_ERROR (R4/R5/R19)
     const archivo = await leerComprobanteOpcional(comprobante);
     const service = deps.service ?? buildService();
     return archivo === null ? service.registrarEgreso(data, actor) : service.registrarEgreso(data, actor, archivo);
@@ -130,8 +135,9 @@ export async function verDesgloseEgresosAction(
   const r = await withErrorHandler(async () => {
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
-    // SLT-42 pendiente T5.4: zona de la empresa
-    const data = listarMovimientosSchema(ZONA_CR).parse(input); // mismos filtros que el libro
+    // SLT-42 (R22, R28): «hoy» en la zona del pais de la empresa; sin zona, falla sin tocar nada.
+    const zona = await zonaDelBorde(deps.reglasPais);
+    const data = listarMovimientosSchema(zona).parse(input); // mismos filtros que el libro
     const service = deps.service ?? buildService();
     return service.verDesgloseEgresos(data, actor);
   });

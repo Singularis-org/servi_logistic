@@ -2749,6 +2749,7 @@ export class CierresAdminRepository implements ICierresAdminRepository {
               mensajeroNombre:
                 cierre === null ? null : etiquetaDePersona(cierre.mensajero),
               fecha: cierre?.solicitadoAt ?? new Date(),
+              zonaHoraria: input.zonaHoraria, // SLT-42 (R22)
             }),
             monto: cierre?.totalGeneral ?? null,
             ...actor,

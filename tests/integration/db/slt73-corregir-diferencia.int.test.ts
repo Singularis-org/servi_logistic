@@ -20,6 +20,7 @@ import {
   marcarRecibido,
   sembrarCierreAprobable,
 } from "./_fixtures/slt73-cierre-aprobable";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // SLT-73 · T4 · R13/R15/R22 — CORREGIR EL MONTO RECIBIDO ESCRIBE LA VARIACION DE LA DIFERENCIA, Y
 // NUNCA TOCA LO ANTERIOR.
@@ -89,20 +90,20 @@ describeSiHayBase("SLT-73 T4 — corregir escribe la variacion de la diferencia"
       await serializarEscriturasReales(tx);
       const s = await sembrarConsolidacion(tx);
       const repo = new CierresBodegaAdminRepository(clienteConSavepoint(tx));
-      const marca = await repo.marcarConciliado({
+      const marca = await repo.marcarConciliado({ zonaHoraria: ZONA_DE_CR,
         id: s.id,
         montoRecibido: "485.00",
         nota: null,
         actorUsuarioId: s.maestroId,
       });
       const trasMarca = await ajustesDe(tx, s.id);
-      const c1 = await repo.corregirConciliacion({
+      const c1 = await repo.corregirConciliacion({ zonaHoraria: ZONA_DE_CR,
         id: s.id,
         montoRecibido: "500.00",
         nota: null,
         actorUsuarioId: s.correctorId,
       });
-      const c2 = await repo.corregirConciliacion({
+      const c2 = await repo.corregirConciliacion({ zonaHoraria: ZONA_DE_CR,
         id: s.id,
         montoRecibido: "490.00",
         nota: null,
@@ -147,9 +148,9 @@ describeSiHayBase("SLT-73 T4 — corregir escribe la variacion de la diferencia"
       await serializarEscriturasReales(tx);
       const s = await sembrarConsolidacion(tx);
       const repo = new CierresBodegaAdminRepository(clienteConSavepoint(tx));
-      await repo.marcarConciliado({ id: s.id, montoRecibido: "485.00", nota: null, actorUsuarioId: s.maestroId });
+      await repo.marcarConciliado({ zonaHoraria: ZONA_DE_CR, id: s.id, montoRecibido: "485.00", nota: null, actorUsuarioId: s.maestroId });
       const antes = await ajustesDe(tx, s.id);
-      const res = await repo.corregirConciliacion({
+      const res = await repo.corregirConciliacion({ zonaHoraria: ZONA_DE_CR,
         id: s.id,
         montoRecibido: "485.00",
         nota: "solo cambia la nota",
@@ -170,9 +171,9 @@ describeSiHayBase("SLT-73 T4 — corregir escribe la variacion de la diferencia"
       const leerConciliadoAt = async () =>
         (await tx.cierreBodega.findUniqueOrThrow({ where: { id: s.id }, select: { conciliadoAt: true } }))
           .conciliadoAt;
-      await repo.marcarConciliado({ id: s.id, montoRecibido: "485.00", nota: null, actorUsuarioId: s.maestroId });
+      await repo.marcarConciliado({ zonaHoraria: ZONA_DE_CR, id: s.id, montoRecibido: "485.00", nota: null, actorUsuarioId: s.maestroId });
       const instanteMarca = await leerConciliadoAt();
-      await repo.corregirConciliacion({
+      await repo.corregirConciliacion({ zonaHoraria: ZONA_DE_CR,
         id: s.id,
         montoRecibido: "490.00",
         nota: null,
@@ -217,9 +218,9 @@ describeSiHayBase("SLT-73 T4 — corregir escribe la variacion de la diferencia"
       const repo = new CierresBodegaAdminRepository(clienteConSavepoint(tx));
       const marca = await marcarRecibido(tx, id, "18000.00", k.maestroId);
       const trasMarca = await invarianteR8(tx, k.cierreId, id);
-      const c1 = await repo.corregirConciliacion({ id, montoRecibido: "18800.00", nota: null, actorUsuarioId: k.maestroId });
+      const c1 = await repo.corregirConciliacion({ zonaHoraria: ZONA_DE_CR, id, montoRecibido: "18800.00", nota: null, actorUsuarioId: k.maestroId });
       const trasC1 = await invarianteR8(tx, k.cierreId, id);
-      const c2 = await repo.corregirConciliacion({ id, montoRecibido: "18400.00", nota: null, actorUsuarioId: k.maestroId });
+      const c2 = await repo.corregirConciliacion({ zonaHoraria: ZONA_DE_CR, id, montoRecibido: "18400.00", nota: null, actorUsuarioId: k.maestroId });
       const trasC2 = await invarianteR8(tx, k.cierreId, id);
       return { estados: [marca, c1, c2], momentos: [trasMarca, trasC1, trasC2] };
     });
@@ -248,7 +249,7 @@ describeSiHayBase("SLT-73 T4 — corregir escribe la variacion de la diferencia"
           k.cierreId,
         );
       }
-      const res = await new CierresBodegaAdminRepository(clienteConSavepoint(tx)).corregirConciliacion({
+      const res = await new CierresBodegaAdminRepository(clienteConSavepoint(tx)).corregirConciliacion({ zonaHoraria: ZONA_DE_CR,
         id,
         montoRecibido: "18000.00",
         nota: null,

@@ -18,7 +18,7 @@ import { conPagos } from "@/tests/fixtures/cierre-pagos";
 import { efectivoCubreDescuentos, paraLaCentral } from "@/lib/utils/ingreso-empresa";
 
 import { marcaPorEstado } from "@/tests/fixtures/marca-conciliacion";
-import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { reglasPaisFijas, ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Feature 40 — tests unit del CierresBodegaAdminService (lado maestro; dobles de
 // repo/signedUrls, sin DB/red). Cubre R2 (rol), R11 (detalle por cierre_dia con grupos
 // + totales), R12 (evidencia firmada), R13 (montos string, snapshot no recompute), R14
@@ -818,6 +818,7 @@ describe("Feature 238 (R39) — aprobar un CierreBodega NO pide confirmacion fis
       nuevoEstado: "aprobado",
       resueltoPor: "adm-maestro",
       motivoRechazo: null,
+      zonaHoraria: ZONA_DE_CR, // SLT-42 (R22): el dia del cierre en el historial
     });
 
     // (3) El servicio no tiene con que exigirla: ni colaborador, ni metodo de lectura.

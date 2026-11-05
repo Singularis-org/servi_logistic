@@ -109,7 +109,10 @@ Orden sugerido. Cada task deja su grupo en verde con sus tests de hoy, inyectand
   *Hecho:* typecheck; sus tests en verde.
 - [x] **T5.3** Servicios y repositorios de órdenes, reparto, cierres, corte y reprogramadas.
   *Hecho:* verde.
-- [ ] **T5.4** `[P]` Wallet, liquidación, estado de cuenta, gastos fijos, aportes y caja.
+- [x] **T5.4** `[P]` Wallet, liquidación, estado de cuenta, gastos fijos, aportes y caja.
+  - [x] `lib/types/historial-accion-etiquetas.ts`: la fecha del cierre (`cierre_dia`, `cierre_bodega`) en la
+    zona del país; la reciben `CierresAdminRepository` y `CierresBodegaAdminRepository` (decisión del
+    humano, 2026-11-05, tras T5.3).
   *Hecho:* verde.
 - [ ] **T5.5** `[P]` Analítica, tablero, ranking, notificaciones, avisos e informes de WhatsApp.
   *Hecho:* verde.

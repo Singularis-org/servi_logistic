@@ -33,6 +33,12 @@ export const CR: ReglasPaisFijas = {
   tiposDocumento: TIPOS_CR,
 };
 
+/**
+ * La zona IANA de Costa Rica, para los tests de repositorio que reciben la zona ya resuelta (la
+ * calcula el servicio con `IReglasPaisEmpresa`; aquí, la de CR para que el resultado sea el de antes).
+ */
+export const ZONA_DE_CR: string = CR.zonaHoraria as string;
+
 /** Un doble del puerto con el país fijo `datos`. Sin argumento, Costa Rica. */
 export function reglasPaisFijas(datos: Partial<ReglasPaisFijas> = {}): IReglasPaisEmpresa {
   const r: ReglasPaisFijas = { ...CR, ...datos };

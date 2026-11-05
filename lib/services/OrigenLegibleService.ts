@@ -30,7 +30,8 @@ import type {
 import { fechaDiaMovimientoCR } from "@/lib/utils/fecha-dia-iso";
 import { PARAM_TERMINO_DEFAULT } from "@/lib/utils/filtros-url";
 
-import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 /**
  * El diccionario de rotulos de cada libro (461 §7.3). `Record` TOTAL sobre `WalletOrigenTipo` en los
  * tres (R9): un origen nuevo no compila sin su nombre en cada uno.
@@ -163,13 +164,15 @@ function sinLoQueDiceLaDescripcion(texto: string, descripcion: string | null): s
 /**
  * Compone el origen de UNA fila a partir de las entidades ya leidas. PURA: sin base, sin reloj.
  * Si la entidad no aparece (fila huerfana, `origen_id` nulo), el origen es el rotulo solo: legible
- * y nunca un identificador (R4).
+ * y nunca un identificador (R4). SLT-42 (R22): `zona` es la del pais de la empresa y fecha el dia de
+ * un cierre; `null` solo cuando la pagina no trae ningun cierre (entonces no se usa).
  */
 export function componerOrigen(
   libro: LibroWallet,
   fila: FilaConOrigenTecnico,
   e: Entidades,
   acceso: Acceso,
+  zona: string | null,
 ): OrigenLegibleDTO {
   const rotulo = DICCIONARIO_ORIGEN[libro][fila.origenTipo];
   const id = fila.origenId;
@@ -182,8 +185,8 @@ export function componerOrigen(
     case "cierre_dia": {
       const c = id === null ? undefined : e.cierres.get(id);
       if (c === undefined) return solo(null);
-      // SLT-42 pendiente T5.4: zona de la empresa
-      const dia = fechaDiaMovimientoCR(c.solicitadoAt, ZONA_CR);
+      if (zona === null) throw new Error("componerOrigen: un cierre sin la zona del pais de la empresa (SLT-42)");
+      const dia = fechaDiaMovimientoCR(c.solicitadoAt, zona);
       const mensajero = acceso.nombraMensajero ? c.mensajero : null;
       return solo(
         unir(rotulo, dia, mensajero),
@@ -263,7 +266,11 @@ export function componerOrigen(
  * consulta por fila.
  */
 export class OrigenLegibleService implements IOrigenLegibleService {
-  constructor(private readonly repo: IOrigenLegibleRepository) {}
+  constructor(
+    private readonly repo: IOrigenLegibleRepository,
+    /** SLT-42 (R22, R28): la zona del pais de la empresa, para el dia de los cierres. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
+  ) {}
 
   async resolver(
     libro: LibroWallet,
@@ -317,7 +324,9 @@ export class OrigenLegibleService implements IOrigenLegibleService {
       movimientosTienda,
     };
     const acceso = accesoDe(actor);
-    return filas.map((f) => componerOrigen(libro, f, entidades, acceso));
+    // SLT-42 (R22, R28): solo los cierres llevan dia; sin ninguno en la pagina, la zona no se lee.
+    const zona = cierres.size === 0 ? null : await zonaDeLaEmpresa(this.reglasPais, "OrigenLegibleService.resolver");
+    return filas.map((f) => componerOrigen(libro, f, entidades, acceso, zona));
   }
 
   async adjuntar<T extends FilaConOrigenTecnico>(

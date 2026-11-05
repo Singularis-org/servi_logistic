@@ -13,6 +13,7 @@ import { idEstado, sembrarCatalogoEstados } from "@/tests/fixtures/catalogo-esta
 import type { IWalletIndemnizacionFeedService } from "@/lib/interfaces/services/IWalletIndemnizacionFeedService";
 import { APLICACION_GESTIONES } from "@/tests/fixtures/anclaje-devolucion";
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // Feature 38 — tests unit del CierresAdminRepository (mockea Prisma, sin DB real,
 // patron cierre-dia-repository.test.ts). Cubre R2/R4/R5 (findCierresByAlcance con
@@ -590,7 +591,7 @@ describe("CierresAdminRepository.resolverCierre (R10/R12/R13/R14/R15)", () => {
     prisma.cierreDia.updateMany.mockResolvedValue({ count: 1 });
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
 
-    const r = await repo.resolverCierre({
+    const r = await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_SAT,
       nuevoEstado: "rechazado",
@@ -622,7 +623,7 @@ describe("CierresAdminRepository.resolverCierre (R10/R12/R13/R14/R15)", () => {
     prisma.cierreDia.updateMany.mockResolvedValue({ count: 1 });
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
 
-    await repo.resolverCierre({
+    await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_MAESTRO,
       nuevoEstado: "aprobado",
@@ -648,7 +649,7 @@ describe("CierresAdminRepository.resolverCierre (R10/R12/R13/R14/R15)", () => {
     prisma.cierreDia.updateMany.mockResolvedValue({ count: 1 });
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
 
-    await repo.resolverCierre({
+    await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_SAT,
       nuevoEstado: "aprobado",
@@ -675,7 +676,7 @@ describe("CierresAdminRepository.resolverCierre (R10/R12/R13/R14/R15)", () => {
     prisma.cierreDia.count.mockResolvedValue(1); // existe en alcance pero ya no `solicitado`
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
 
-    const r = await repo.resolverCierre({
+    const r = await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_SAT,
       nuevoEstado: "aprobado",
@@ -697,7 +698,7 @@ describe("CierresAdminRepository.resolverCierre (R10/R12/R13/R14/R15)", () => {
     prisma.cierreDia.count.mockResolvedValue(0);
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
 
-    const r = await repo.resolverCierre({
+    const r = await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c-ajeno",
       alcance: ALCANCE_SAT,
       nuevoEstado: "aprobado",
@@ -836,7 +837,7 @@ describe("CierresAdminRepository.resolverCierre — enganche wallet (feature 42/
     (wallet.walletFeedService.construirMovimientosDeIngreso as ReturnType<typeof vi.fn>).mockResolvedValue(movs);
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>, wallet);
 
-    const r = await repo.resolverCierre({
+    const r = await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_MAESTRO,
       nuevoEstado: "aprobado",
@@ -860,7 +861,7 @@ describe("CierresAdminRepository.resolverCierre — enganche wallet (feature 42/
     const wallet = buildWalletDeps();
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>, wallet);
 
-    await repo.resolverCierre({
+    await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_SAT,
       nuevoEstado: "rechazado",
@@ -879,7 +880,7 @@ describe("CierresAdminRepository.resolverCierre — enganche wallet (feature 42/
     const wallet = buildWalletDeps();
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>, wallet);
 
-    const r = await repo.resolverCierre({
+    const r = await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_SAT,
       nuevoEstado: "aprobado",
@@ -900,7 +901,7 @@ describe("CierresAdminRepository.resolverCierre — enganche wallet (feature 42/
     const wallet = buildWalletDeps();
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>, wallet);
 
-    const r = await repo.resolverCierre({
+    const r = await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c-vencido",
       alcance: ALCANCE_SAT,
       nuevoEstado: "aprobado",
@@ -931,7 +932,7 @@ describe("CierresAdminRepository.resolverCierre — enganche wallet (feature 42/
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>, wallet);
 
     await expect(
-      repo.resolverCierre({
+      repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
         cierreId: "c1",
         alcance: ALCANCE_MAESTRO,
         nuevoEstado: "aprobado",
@@ -957,7 +958,7 @@ describe("CierresAdminRepository.resolverCierre — enganche ledger por tienda (
     (wallet.walletTiendaFeedService.construirMovimientosPorTienda as ReturnType<typeof vi.fn>).mockResolvedValue(movsTienda);
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>, wallet);
 
-    const r = await repo.resolverCierre({
+    const r = await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_MAESTRO,
       nuevoEstado: "aprobado",
@@ -982,7 +983,7 @@ describe("CierresAdminRepository.resolverCierre — enganche ledger por tienda (
     const wallet = buildWalletDeps();
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>, wallet);
 
-    await repo.resolverCierre({
+    await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_SAT,
       nuevoEstado: "rechazado",
@@ -1001,7 +1002,7 @@ describe("CierresAdminRepository.resolverCierre — enganche ledger por tienda (
     const wallet = buildWalletDeps();
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>, wallet);
 
-    const r = await repo.resolverCierre({
+    const r = await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_SAT,
       nuevoEstado: "aprobado",
@@ -1022,7 +1023,7 @@ describe("CierresAdminRepository.resolverCierre — enganche ledger por tienda (
     const wallet = buildWalletDeps();
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>, wallet);
 
-    const r = await repo.resolverCierre({
+    const r = await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c-vencido",
       alcance: ALCANCE_SAT,
       nuevoEstado: "aprobado",
@@ -1049,7 +1050,7 @@ describe("CierresAdminRepository.resolverCierre — enganche ledger por tienda (
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>, wallet);
 
     await expect(
-      repo.resolverCierre({
+      repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
         cierreId: "c1",
         alcance: ALCANCE_MAESTRO,
         nuevoEstado: "aprobado",
@@ -1079,7 +1080,7 @@ describe("CierresAdminRepository.resolverCierre — enganche pago al mensajero (
     (wallet.walletMensajeroFeedService.construirMovimientosDePago as ReturnType<typeof vi.fn>).mockResolvedValue({ libro, egresoCaja });
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>, wallet);
 
-    const r = await repo.resolverCierre({
+    const r = await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_MAESTRO,
       nuevoEstado: "aprobado",
@@ -1107,7 +1108,7 @@ describe("CierresAdminRepository.resolverCierre — enganche pago al mensajero (
     const wallet = buildWalletDeps();
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>, wallet);
 
-    await repo.resolverCierre({
+    await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_SAT,
       nuevoEstado: "rechazado",
@@ -1128,7 +1129,7 @@ describe("CierresAdminRepository.resolverCierre — enganche pago al mensajero (
     const wallet = buildWalletDeps();
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>, wallet);
 
-    const r = await repo.resolverCierre({
+    const r = await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_SAT,
       nuevoEstado: "aprobado",
@@ -1149,7 +1150,7 @@ describe("CierresAdminRepository.resolverCierre — enganche pago al mensajero (
     const wallet = buildWalletDeps();
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>, wallet);
 
-    const r = await repo.resolverCierre({
+    const r = await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c-vencido",
       alcance: ALCANCE_SAT,
       nuevoEstado: "aprobado",
@@ -1177,7 +1178,7 @@ describe("CierresAdminRepository.resolverCierre — enganche pago al mensajero (
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>, wallet);
 
     await expect(
-      repo.resolverCierre({
+      repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
         cierreId: "c1",
         alcance: ALCANCE_MAESTRO,
         nuevoEstado: "aprobado",
@@ -1269,7 +1270,7 @@ describe("CierresAdminRepository.resolverCierre — liberación de `novedad_inte
   }
 
   function aprobar(repo: CierresAdminRepository) {
-    return repo.resolverCierre({
+    return repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_MAESTRO,
       nuevoEstado: "aprobado",
@@ -1358,7 +1359,7 @@ describe("CierresAdminRepository.resolverCierre — liberación de `novedad_inte
 
     // Rechazar NO pasa liberacionSinGestionar (el service no lo hace); aunque lo pasara, la
     // liberacion vive DENTRO del `if (nuevoEstado === 'aprobado')`.
-    await repo.resolverCierre({
+    await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_MAESTRO,
       nuevoEstado: "rechazado",
@@ -1378,7 +1379,7 @@ describe("CierresAdminRepository.resolverCierre — liberación de `novedad_inte
     const prisma = buildLiberacionPrisma([{ id: "o1", zonaId: "z-sat" }]);
     const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
 
-    await repo.resolverCierre({
+    await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_MAESTRO,
       nuevoEstado: "aprobado",

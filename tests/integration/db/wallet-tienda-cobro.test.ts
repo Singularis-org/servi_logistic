@@ -20,6 +20,7 @@ import {
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // ⭑ FICHA 381 / T G.1 — EL COBRO MANUAL CONTRA POSTGRES REAL.
@@ -141,6 +142,9 @@ describeSiHayBase("381/G.1 — cobrarle un costo a una tienda (Postgres real)", 
       new CajaCobroTiendaFeedService(new WalletMovimientoRepository(cliente)),
       new CobroTiendaAnulacionRepository(cliente),
       (fn) => cliente.$transaction((t) => fn(t as never)),
+      undefined,
+      undefined,
+      reglasPaisFijas(),
     );
   }
 

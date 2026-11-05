@@ -13,6 +13,7 @@ import {
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { AgregadoDiarioCajaRow } from "@/lib/interfaces/repositories/IFinanzasDiarioRepository";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, enTransaccionRevertida } from "./_postgres-real";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * Ficha 334 — la fecha elegida, contra **Postgres de verdad**.
@@ -102,7 +103,7 @@ describeSiHayBase("ficha 334 — la fecha elegida contra Postgres (R22/R24/R25/R
   it("R22/R24: un gasto fechado AYER se guarda a las 06:00Z de ayer, y `created_at` es el presente", async () => {
     await enTransaccionRevertida(prisma, async (tx) => {
       const actor = await actorDeLaBase(tx);
-      const svc = new WalletEgresoService(repoDe(tx), tx as unknown as PrismaClient);
+      const svc = new WalletEgresoService(repoDe(tx), tx as unknown as PrismaClient, undefined, undefined, reglasPaisFijas());
 
       const r = await svc.registrarEgreso(
         {
@@ -152,6 +153,9 @@ describeSiHayBase("ficha 334 — la fecha elegida contra Postgres (R22/R24/R25/R
       const r = await new WalletEgresoService(
         repoDe(tx),
         tx as unknown as PrismaClient,
+        undefined,
+        undefined,
+        reglasPaisFijas(),
       ).registrarEgreso(
         {
           claveIdempotencia: randomUUID(),
@@ -187,6 +191,9 @@ describeSiHayBase("ficha 334 — la fecha elegida contra Postgres (R22/R24/R25/R
       const r = await new WalletEgresoService(
         repo,
         tx as unknown as PrismaClient,
+        undefined,
+        undefined,
+        reglasPaisFijas(),
       ).registrarEgreso(
         {
           claveIdempotencia: randomUUID(),
@@ -220,7 +227,7 @@ describeSiHayBase("ficha 334 — la fecha elegida contra Postgres (R22/R24/R25/R
     await enTransaccionRevertida(prisma, async (tx) => {
       const actor = await actorDeLaBase(tx);
       const repo = repoDe(tx);
-      const svc = new WalletService(repo, tx as unknown as PrismaClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459);
+      const svc = new WalletService(repo, tx as unknown as PrismaClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459, undefined, undefined, reglasPaisFijas());
 
       // El rango se cierra sobre UN SOLO instante: son exactamente las filas que comparten
       // `fecha_movimiento`, que es donde vive el empate. Ficha 461 (R72): `hasta` es EXCLUSIVO en el

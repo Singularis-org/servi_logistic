@@ -20,8 +20,9 @@ import type {
 } from "@/lib/types/incentivo-mensajero";
 import { derivarCuentaPorPagar } from "@/lib/utils/cuenta-por-pagar";
 import { instanteDelMovimientoManual } from "@/lib/utils/fecha-movimiento-manual";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 
-import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /**
  * SLT-68 (design §6.1/§6.2) — el INCENTIVO MANUAL A UN MENSAJERO: «un premio sin podio».
  *
@@ -45,6 +46,8 @@ export class IncentivoMensajeroService implements IIncentivoMensajeroService {
     private readonly caja: ICajaIncentivoMensajeroFeedService,
     private readonly runTransaction: IncentivoTxRunner,
     private readonly nuevoId: () => string = randomUUID,
+    /** SLT-42 (R22, R28): la zona del pais de la empresa, para el instante de un incentivo con fecha elegida. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
 
   async registrar(
@@ -62,8 +65,14 @@ export class IncentivoMensajeroService implements IIncentivoMensajeroService {
     // La identidad del incentivo: el egreso de caja la nombra antes de que exista el devengo.
     const id = this.nuevoId();
     const descripcion = `Incentivo · ${input.motivo}`;
-    // SLT-42 pendiente T5.4: zona de la empresa
-    const fechaMovimiento = instanteDelMovimientoManual(input.fecha, ZONA_CR);
+    // SLT-42 (R22, R28): un dia anterior empieza en la zona del pais; solo se lee si hay fecha elegida.
+    const fechaMovimiento =
+      input.fecha === undefined
+        ? undefined
+        : instanteDelMovimientoManual(
+            input.fecha,
+            await zonaDeLaEmpresa(this.reglasPais, "IncentivoMensajeroService.registrar"),
+          );
 
     const escrito = await this.runTransaction(async (tx) => {
       // El mismo candado que el pago a mensajero: serializa contra un reparto simultaneo del cierre.

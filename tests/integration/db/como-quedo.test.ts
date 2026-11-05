@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { Prisma, type PrismaClient } from "@prisma/client";
 
+import { ZONA_DE_CR, reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 import { comoQuedoAction } from "@/lib/actions/como-quedo";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { AporteCapitalRepository } from "@/lib/repositories/AporteCapitalRepository";
@@ -18,6 +19,17 @@ import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
 import { cargarCatalogo459, enTransaccionRevertida459, montarServicios459, sembrarEscenario459 } from "./_fixtures/caja-459";
 
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
+
+// SLT-42 (T5.4): la zona del pais de la empresa es la de CR, como antes. Las reglas reales leen el pais
+// de la empresa en curso con el cliente global, que no ve la empresa de una transaccion revertida ni
+// tiene empresa fuera de `conEmpresa`; la zona por pais la miden `hora-por-pais-wallet` y `demo-qa`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
 // SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
 vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
 
@@ -79,7 +91,7 @@ describeSiHayBase("458-B/TB.13 — «Cómo quedó» (Postgres real)", () => {
         const esc = await sembrarEscenario459(tx, cat);
         const c = s.cliente;
         const maestro = esc.maestro;
-        const servicio = new ComoQuedoService(new ComoQuedoRepository(c), new WalletMovimientoRepository(c), new AporteCapitalRepository(c));
+        const servicio = new ComoQuedoService(new ComoQuedoRepository(c), new WalletMovimientoRepository(c), new AporteCapitalRepository(c), reglasPaisFijas());
         const deps = (actor: Actor) => ({ getActor: async () => actor, service: servicio });
         const ver = (libro: "caja" | "tienda" | "mensajero", movimientoId: string, actor: Actor = maestro) =>
           comoQuedoAction({ destino: { libro, movimientoId } }, deps(actor));
@@ -95,7 +107,7 @@ describeSiHayBase("458-B/TB.13 — «Cómo quedó» (Postgres real)", () => {
           FROM pago_mensajero_movimiento WHERE mensajero_id = ${mensajeroId} ORDER BY fecha_movimiento, created_at, id`;
 
         const haySaldo = await new AporteCapitalRepository(c).haySaldoInicialVigente();
-        const primerDia = await new WalletMovimientoRepository(c).primerDiaDeLaCaja();
+        const primerDia = await new WalletMovimientoRepository(c).primerDiaDeLaCaja({ zonaHoraria: ZONA_DE_CR });
         const cajaHasta = (id: string): ComoQuedoDTO["caja"] => {
           const i = cajaEntera.findIndex((f) => f.id === id);
           if (i < 0) throw new Error(`fila de caja ${id} no esta`);

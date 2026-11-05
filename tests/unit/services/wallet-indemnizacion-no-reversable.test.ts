@@ -9,6 +9,7 @@ import type {
 } from "@/lib/interfaces/repositories/IWalletMovimientoRepository";
 import type { WalletMovimientoDTO } from "@/lib/types/wallet";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 158 (T1.17, R30) — la indemnizacion NO es reversable por el flujo de reversa de
 // egresos ADMINISTRATIVOS (45). Esto se cumple SIN tocar `WalletEgresoService`: la reversa
@@ -65,7 +66,7 @@ const writeClient = {} as WalletTxClient;
 describe("R30 — la reversa de egresos administrativos RECHAZA la indemnizacion", () => {
   it("reversar un `egreso_indemnizacion` (origen cierre_dia) -> not_found, sin escribir nada", async () => {
     const repo = buildRepo(movimiento());
-    const svc = new WalletEgresoService(repo, writeClient);
+    const svc = new WalletEgresoService(repo, writeClient, undefined, undefined, reglasPaisFijas());
 
     const r = await svc.reversarEgreso({ movimientoId: "w1" }, MAESTRO);
 
@@ -79,7 +80,7 @@ describe("R30 — la reversa de egresos administrativos RECHAZA la indemnizacion
     const repo = buildRepo(
       movimiento({ categoria: "egreso_gasto_variable", origenTipo: "gasto", origenId: null }),
     );
-    const svc = new WalletEgresoService(repo, writeClient);
+    const svc = new WalletEgresoService(repo, writeClient, undefined, undefined, reglasPaisFijas());
 
     const r = await svc.reversarEgreso({ movimientoId: "w1" }, MAESTRO);
 
@@ -92,7 +93,7 @@ describe("R30 — la reversa de egresos administrativos RECHAZA la indemnizacion
   it("R30: tampoco se reversa si alguien le pusiera la categoria a un origen de cierre", async () => {
     for (const origenTipo of ["cierre_dia", "pago_mensajero", "manual"] as const) {
       const repo = buildRepo(movimiento({ origenTipo }));
-      const svc = new WalletEgresoService(repo, writeClient);
+      const svc = new WalletEgresoService(repo, writeClient, undefined, undefined, reglasPaisFijas());
       const r = await svc.reversarEgreso({ movimientoId: "w1" }, MAESTRO);
       expect(r, `origen ${origenTipo} no deberia ser reversable`).toEqual({ status: "not_found" });
     }

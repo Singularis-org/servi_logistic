@@ -1,5 +1,8 @@
 "use server";
 
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
+import { zonaDelBorde } from "@/lib/actions/_shared/zona-del-borde";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { walletComprobanteConfig } from "@/lib/config/wallet-comprobante";
@@ -29,7 +32,6 @@ import {
   type RegistrarPagoPorCuentaTiendaResult,
 } from "@/lib/types/pago-por-cuenta-tienda";
 
-import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // FICHA 459 (design §7.1) — el BORDE del pago por cuenta de una tienda. Archivo NUEVO a proposito:
 // `wallet-tienda.ts` y `liquidacion.ts` tienen tests de lista exacta de exportaciones.
 //
@@ -55,12 +57,17 @@ function buildService(): IPagoPorCuentaTiendaService {
     new SupabaseFileStorage(undefined, walletComprobanteConfig.BUCKET),
     new SupabaseSignedUrlProvider(undefined, walletComprobanteConfig.BUCKET),
     (fn) => prisma.$transaction((tx) => fn(tx)),
+    undefined, // el reloj por defecto
+    undefined, // la configuracion por defecto
+    construirReglasPaisEmpresa(prisma), // SLT-42 (R22, R28): la zona horaria del pais de la empresa.
   );
 }
 
 export interface PagoPorCuentaTiendaDeps {
   service?: IPagoPorCuentaTiendaService;
   getActor?: () => Promise<Actor | null>;
+  /** SLT-42 (R22, R28): la zona del pais de la empresa; en produccion, la real (`zonaDelBorde`). */
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
 }
 
 function toActionError(
@@ -112,8 +119,9 @@ export async function registrarPagoPorCuentaTiendaAction(
   const r = await withErrorHandler(async () => {
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R38: antes de mirar la entrada
-    // SLT-42 pendiente T5.4: zona de la empresa
-    const { comprobante, ...input } = registrarPagoPorCuentaTiendaSchema(ZONA_CR).parse(
+    // SLT-42 (R22, R28): «hoy» en la zona del pais de la empresa; sin zona, falla sin tocar nada.
+    const zona = await zonaDelBorde(deps.reglasPais);
+    const { comprobante, ...input } = registrarPagoPorCuentaTiendaSchema(zona).parse(
       crudoDelFormData(formData),
     );
     const archivo = await leerComprobante(comprobante);

@@ -20,6 +20,7 @@ import { derivarSaldoTienda } from "@/lib/utils/saldo-tienda";
 
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
 import { cargarCatalogo459, enTransaccionRevertida459, montarServicios459, sembrarEscenario459 } from "./_fixtures/caja-459";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FICHA 458-B / TB.12 (R44, R50) — «Así queda» PREDICE lo que queda: contra Postgres, para cada uno
@@ -65,6 +66,7 @@ describeSiHayBase("458-B/TB.12 — «Así queda» predice lo que queda (Postgres
           tiendaRepo,
           new UserRepository(c),
           mensajeroRepo,
+          reglasPaisFijas(),
         );
         const m: Actor = esc.maestro;
         const hoy = fechaCalendarioCR(new Date());
@@ -144,6 +146,8 @@ describeSiHayBase("458-B/TB.12 — «Así queda» predice lo que queda (Postgres
           mensajeroRepo,
           new CajaIncentivoMensajeroFeedService(new WalletMovimientoRepository(c)),
           (fn) => c.$transaction((t) => fn(t as never)),
+          undefined,
+          reglasPaisFijas(),
         );
         await paso("incentivo_a_mensajero", "17.00", { tipo: "mensajero", id: esc.mensajeroId }, () =>
           incentivos.registrar({ mensajeroId: esc.mensajeroId, monto: "17.00", motivo: "Buena semana", claveIdempotencia: k() }, m),

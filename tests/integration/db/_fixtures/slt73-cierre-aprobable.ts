@@ -26,7 +26,7 @@ import { sinRetenidas } from "@/tests/fixtures/retenidas-doble";
 
 import { clienteConSavepoint, type TxDeTest } from "../_postgres-real";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./orden-minima";
-import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { reglasPaisFijas, ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // SLT-73 · T3 — UN CIERRE DEL DIA LISTO PARA APROBAR, igual para la central y para la satelite.
 //
@@ -364,7 +364,7 @@ export async function marcarRecibido(
     asientos === undefined
       ? new CierresBodegaAdminRepository(c)
       : new CierresBodegaAdminRepository(c, asientos);
-  return repo.marcarConciliado({ id: cierreBodegaId, montoRecibido, nota: null, actorUsuarioId });
+  return repo.marcarConciliado({ zonaHoraria: ZONA_DE_CR, id: cierreBodegaId, montoRecibido, nota: null, actorUsuarioId });
 }
 
 /**

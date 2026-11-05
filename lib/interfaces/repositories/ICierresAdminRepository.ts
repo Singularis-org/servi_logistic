@@ -347,6 +347,9 @@ interface ResolverCierreBase {
   alcance: Alcance;
   resueltoPor: string;
   motivoRechazo: string | null;
+  // SLT-42 (R22): la zona IANA del pais de la empresa, para el dia del cierre en la etiqueta del
+  // historial. La pone el servicio; obligatoria para que un olvido de cableado no compile.
+  zonaHoraria: string;
   // Feature 158 (T1.14, R19-R23/R28): presente SOLO al aprobar -> DENTRO de la MISMA tx
   // escribe `gestion_orden.indemnizacion` (con `cierreId` y `resultado` como GUARDIA del
   // WHERE, no como filtro cosmetico) y emite el egreso `egreso_indemnizacion` del cierre.

@@ -46,7 +46,8 @@ import type { AQuienFiltro } from "@/lib/types/libro-caja-a-quien";
 import type { IBusquedaPorGuiaService } from "@/lib/interfaces/services/IBusquedaPorGuiaService";
 import type { ModoBusquedaLibro, ParDeGuia } from "@/lib/types/busqueda-por-guia";
 
-import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 // Roles autorizados (R19/R65): acceso total (maestro/admin, dueños de la caja central).
 // Cualquier otro rol -> forbidden SIN exponer movimientos ni cifras.
 
@@ -198,6 +199,11 @@ export class WalletService implements IWalletService {
      * y exige un `BusquedaPorGuiaService` real.
      */
     private readonly busqueda?: Pick<IBusquedaPorGuiaService, "resolver">,
+    /**
+     * SLT-42 (R22, R28): la zona del pais de la empresa: el dia del primer movimiento de la caja y el
+     * instante de un ajuste con fecha elegida. La real la pone el composition root.
+     */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
 
   /**
@@ -437,7 +443,9 @@ export class WalletService implements IWalletService {
     // saldo inicial vigente (decide el estado de la caja) y el dia del primer movimiento (el
     // «desde» del flujo registrado). El numero no cambia con ellos; cambia el rotulo.
     const haySaldoInicialVigente = await this.haySaldoInicialVigente();
-    const primerDia = await this.repo.primerDiaDeLaCaja();
+    const primerDia = await this.repo.primerDiaDeLaCaja({
+      zonaHoraria: await zonaDeLaEmpresa(this.reglasPais, "WalletService.verResumenCaja"),
+    });
     return {
       status: "ok",
       resumen: derivarCaja(filas, {
@@ -501,10 +509,25 @@ export class WalletService implements IWalletService {
     comprobante: ComprobanteRecibido | null = null,
   ): Promise<RegistrarMovimientoManualServiceResult> {
     if (!esAccesoTotal(actor.rol)) return { status: "forbidden" }; // R19
+    // Ficha 334 (R22/R23): con «hoy» la clave NO viaja y manda el DEFAULT de la columna. SLT-42 (R22,
+    // R28): un dia anterior empieza en la zona del pais; se lee ANTES del comprobante y de escribir, y
+    // solo si hay fecha elegida (sin fecha la operacion no la necesita).
+    const fechaMovimiento =
+      input.fecha === undefined
+        ? undefined
+        : instanteDelMovimientoManual(
+            input.fecha,
+            await zonaDeLaEmpresa(this.reglasPais, "WalletService.registrarMovimientoManual"),
+          );
     // FICHA 458-B (R42/R74–R76): «a quien» (opcional, D5), referencia y comprobante, en la MISMA
     // transaccion que el asiento. Sin ninguno de los tres, lo de abajo es el registro de antes.
     return registrarConComprobante(this.comprobantes, "wallet_movimiento", comprobante, async (guardado) => {
-      const r = await this.escribirMovimientoManual(input, actor, lateralesDeCaja(input, guardado, actor.usuarioId));
+      const r = await this.escribirMovimientoManual(
+        input,
+        actor,
+        lateralesDeCaja(input, guardado, actor.usuarioId),
+        fechaMovimiento,
+      );
       return { quedo: r.status === "ok", resultado: r };
     });
   }
@@ -513,6 +536,7 @@ export class WalletService implements IWalletService {
     input: RegistrarMovimientoManualInput,
     actor: Actor,
     laterales: LateralesDelRegistro | undefined,
+    fechaMovimiento: Date | undefined,
   ): Promise<Extract<RegistrarMovimientoManualServiceResult, { status: "ok" | "ya_registrado" }>> {
 
     // R15/Q6: manual = origen_tipo manual, origen_id NULL, registrado_por = actor, monto
@@ -523,9 +547,6 @@ export class WalletService implements IWalletService {
     // poder releer despues EXACTAMENTE esta fila. `createMany` sobre Postgres no devuelve los
     // ids generados y sigue habiendo UN SOLO INSERT (precedente: registrar-cambio-dia-reparto).
     const id = randomUUID();
-    // Ficha 334 (R22/R23): con «hoy» la clave NO viaja y manda el DEFAULT de la columna.
-    // SLT-42 pendiente T5.4: zona de la empresa
-    const fechaMovimiento = instanteDelMovimientoManual(input.fecha, ZONA_CR);
     // FICHA 362 (R6/R9) — `wallet_movimiento_manual_registrado`. Se usa
     // `crearMovimientoRegistrado` y no `crearMovimientos`: el ajuste manual es una DECISION
     // humana sobre el dinero de la casa, y el registro tiene que ir en la misma transaccion que

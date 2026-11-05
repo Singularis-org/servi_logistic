@@ -284,6 +284,10 @@ export function montarServicios459(tx: TxDeTest) {
       (fn) => c.$transaction((t) => fn(t as never)),
       new CajaPagoTiendaFeedService(cajaRepo),
       new LiquidacionRepartoRepository(c),
+      undefined,
+      undefined,
+      undefined,
+      reglasPaisFijas(),
     ),
     // Ficha 461 (T B.7): el cobro con su puerto de caja REAL y su repositorio de anulaciones, cableado
     // como su `buildCobroTiendaService()`.
@@ -293,6 +297,9 @@ export function montarServicios459(tx: TxDeTest) {
       new CajaCobroTiendaFeedService(cajaRepo),
       new CobroTiendaAnulacionRepository(c),
       (fn) => c.$transaction((t) => fn(t as never)),
+      undefined,
+      undefined,
+      reglasPaisFijas(),
     ),
     rechazoCobroRepo: new RechazoTiendaCobroRepository(c),
     rechazoCobro: new RechazoTiendaCobroService(
@@ -324,7 +331,7 @@ export function montarServicios459(tx: TxDeTest) {
       new CajaPremioRankingFeedService(cajaRepo),
       (fn) => c.$transaction((t) => fn(t as never)),
     ),
-    egresos: new WalletEgresoService(cajaRepo, c),
+    egresos: new WalletEgresoService(cajaRepo, c, undefined, undefined, reglasPaisFijas()),
     wallet: new WalletService(cajaRepo, c, new AporteCapitalRepository(c), {
       pagosPorCuenta: new PagoPorCuentaTiendaRepository(c),
       aportes: new AporteCapitalRepository(c),
@@ -339,7 +346,8 @@ export function montarServicios459(tx: TxDeTest) {
       pagosATienda: new PagoTiendaCajaDocumentosRepository(c),
       premios: new PremioCajaDocumentosRepository(c),
       incentivos: { estadoDeDocumentos: async () => [] }, // SLT-68: lo exige `LectoresDocumentosCaja`
-    }, undefined, busquedaPorGuiaDe(c)), // FICHA 469: como `buildService()`, con la busqueda por guia
+    }, undefined, busquedaPorGuiaDe(c),
+    reglasPaisFijas(),), // FICHA 469: como `buildService()`, con la busqueda por guia
     // Ficha 459 (T B.14) — los dos escritores nuevos, cableados como su `buildService()`.
     pagoPorCuenta: new PagoPorCuentaTiendaService(
       new PagoPorCuentaTiendaRepository(c),
@@ -351,6 +359,9 @@ export function montarServicios459(tx: TxDeTest) {
       URLS_NO_USADAS,
       ((fn: (t: never) => Promise<unknown>) =>
         c.$transaction((t) => fn(t as never))) as unknown as PagoPorCuentaTxRunner,
+        undefined,
+        undefined,
+        reglasPaisFijas(),
     ),
     aporteCapital: new AporteCapitalService(
       new AporteCapitalRepository(c),
@@ -360,6 +371,9 @@ export function montarServicios459(tx: TxDeTest) {
       URLS_NO_USADAS,
       ((fn: (t: never) => Promise<unknown>) =>
         c.$transaction((t) => fn(t as never))) as unknown as AporteCapitalTxRunner,
+        undefined,
+        undefined,
+        reglasPaisFijas(),
     ),
     // Ficha 457 (T5.4) — el pago de una tienda a la empresa, cableado como su `buildService()`: el puerto
     // de caja REAL, el MISMO candado (`LiquidacionPagoRepository`) y el repositorio del documento.
@@ -373,6 +387,9 @@ export function montarServicios459(tx: TxDeTest) {
       URLS_NO_USADAS,
       ((fn: (t: never) => Promise<unknown>) =>
         c.$transaction((t) => fn(t as never))) as unknown as AbonoTiendaTxRunner,
+        undefined,
+        undefined,
+        reglasPaisFijas(),
     ),
     walletTienda: new WalletTiendaService(tiendaRepo),
     walletMensajero: new WalletMensajeroService(mensajeroRepo),

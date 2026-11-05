@@ -4,6 +4,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { CierresBodegaAdminRepository } from "@/lib/repositories/CierresBodegaAdminRepository";
 import type { AsientosCierreDiaDeps } from "@/lib/repositories/_shared/asientos-cierre-dia";
 import type { CrearMovimientoInput } from "@/lib/interfaces/repositories/IWalletMovimientoRepository";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // ⭑ FICHA 431 / T7 — `marcarConciliado` y `revertirConciliacion`: LA FORMA DE LA ESCRITURA.
@@ -180,7 +181,7 @@ describe("431/T7 — CierresBodegaAdminRepository.marcarConciliado", () => {
     // `conciliado_at` es EL predicado de la marca. Con uno solo, una fila incoherente —que el
     // `CHECK` impide, pero el `WHERE` no deberia necesitar— se dejaria marcar dos veces.
     const { prisma, updateMany } = buildPrisma();
-    await repoCon(prisma).marcarConciliado({
+    await repoCon(prisma).marcarConciliado({ zonaHoraria: ZONA_DE_CR,
       id: "cb1",
       montoRecibido: "485.00",
       nota: null,
@@ -196,7 +197,7 @@ describe("431/T7 — CierresBodegaAdminRepository.marcarConciliado", () => {
 
   it("⭑ R8/R9: escribe los cuatro datos, el estado y el ESPEJO, con el monto como Decimal", async () => {
     const { prisma, updateMany } = buildPrisma();
-    await repoCon(prisma).marcarConciliado({
+    await repoCon(prisma).marcarConciliado({ zonaHoraria: ZONA_DE_CR,
       id: "cb1",
       montoRecibido: "485.00",
       nota: "faltaron 15",
@@ -219,7 +220,7 @@ describe("431/T7 — CierresBodegaAdminRepository.marcarConciliado", () => {
 
   it("⭑ R13: registra `cierre_bodega_conciliado` con el monto RECIBIDO y sin la nota", async () => {
     const { prisma, createMany } = buildPrisma();
-    await repoCon(prisma).marcarConciliado({
+    await repoCon(prisma).marcarConciliado({ zonaHoraria: ZONA_DE_CR,
       id: "cb1",
       montoRecibido: "485.00",
       nota: "una nota que NO viaja",
@@ -239,7 +240,7 @@ describe("431/T7 — CierresBodegaAdminRepository.marcarConciliado", () => {
 
   it("R11: `count !== 1` con la fila existente -> `conflict`, y NO registra nada", async () => {
     const { prisma, createMany } = buildPrisma({ count: 0, existe: 1 });
-    const r = await repoCon(prisma).marcarConciliado({
+    const r = await repoCon(prisma).marcarConciliado({ zonaHoraria: ZONA_DE_CR,
       id: "cb1",
       montoRecibido: "1.00",
       nota: null,
@@ -253,7 +254,7 @@ describe("431/T7 — CierresBodegaAdminRepository.marcarConciliado", () => {
 
   it("`count !== 1` y la fila NO existe -> `fuera_de_alcance`", async () => {
     const { prisma } = buildPrisma({ count: 0, existe: 0 });
-    const r = await repoCon(prisma).marcarConciliado({
+    const r = await repoCon(prisma).marcarConciliado({ zonaHoraria: ZONA_DE_CR,
       id: "no-existe",
       montoRecibido: "1.00",
       nota: null,
@@ -267,7 +268,7 @@ describe("431/T7 — CierresBodegaAdminRepository.marcarConciliado", () => {
 describe("431/T7 — CierresBodegaAdminRepository.revertirConciliacion", () => {
   it("⭑ R12: la guarda del `WHERE` exige que de verdad estuviera marcada", async () => {
     const { prisma, updateMany } = buildPrisma();
-    await repoCon(prisma).revertirConciliacion({ id: "cb1", actorUsuarioId: "u-maestro" });
+    await repoCon(prisma).revertirConciliacion({ zonaHoraria: ZONA_DE_CR, id: "cb1", actorUsuarioId: "u-maestro" });
 
     expect(updateMany.mock.calls[0][0].where).toEqual({
       id: "cb1",
@@ -278,7 +279,7 @@ describe("431/T7 — CierresBodegaAdminRepository.revertirConciliacion", () => {
 
   it("⭑ R12: pone a NULL las cuatro columnas de la marca Y las dos del espejo", async () => {
     const { prisma, updateMany } = buildPrisma();
-    await repoCon(prisma).revertirConciliacion({ id: "cb1", actorUsuarioId: "u-maestro" });
+    await repoCon(prisma).revertirConciliacion({ zonaHoraria: ZONA_DE_CR, id: "cb1", actorUsuarioId: "u-maestro" });
 
     expect(updateMany.mock.calls[0][0].data).toEqual({
       estado: "solicitado", // se LEE «Pendiente de conciliar»
@@ -295,7 +296,7 @@ describe("431/T7 — CierresBodegaAdminRepository.revertirConciliacion", () => {
     // Es el unico sitio donde sobrevive: tras el `updateMany`, `monto_recibido` es NULL. Si la
     // lectura se hiciera despues, este monto seria `null` y el rastro diria «alguien deshizo algo».
     const { prisma, createMany, findUnique, updateMany } = buildPrisma();
-    await repoCon(prisma).revertirConciliacion({ id: "cb1", actorUsuarioId: "u-maestro" });
+    await repoCon(prisma).revertirConciliacion({ zonaHoraria: ZONA_DE_CR, id: "cb1", actorUsuarioId: "u-maestro" });
 
     const fila = createMany.mock.calls[0][0].data[0];
     expect(fila.accion).toBe("cierre_bodega_conciliacion_revertida");
@@ -308,7 +309,7 @@ describe("431/T7 — CierresBodegaAdminRepository.revertirConciliacion", () => {
 
   it("revertir algo que no estaba marcado -> `conflict`, sin registrar", async () => {
     const { prisma, createMany } = buildPrisma({ count: 0, existe: 1 });
-    const r = await repoCon(prisma).revertirConciliacion({
+    const r = await repoCon(prisma).revertirConciliacion({ zonaHoraria: ZONA_DE_CR,
       id: "cb1",
       actorUsuarioId: "u-maestro",
     });
@@ -319,7 +320,7 @@ describe("431/T7 — CierresBodegaAdminRepository.revertirConciliacion", () => {
 
   it("revertir algo que no existe -> `fuera_de_alcance`", async () => {
     const { prisma } = buildPrisma({ count: 0, existe: 0 });
-    const r = await repoCon(prisma).revertirConciliacion({
+    const r = await repoCon(prisma).revertirConciliacion({ zonaHoraria: ZONA_DE_CR,
       id: "no-existe",
       actorUsuarioId: "u-maestro",
     });
@@ -332,7 +333,7 @@ describe("431/T7 — CierresBodegaAdminRepository.revertirConciliacion", () => {
       cierresDia: [{ id: "cd1" }, { id: "cd2" }],
       asentados: 7,
     });
-    const r = await repoCon(prisma).revertirConciliacion({ id: "cb1", actorUsuarioId: "u-maestro" });
+    const r = await repoCon(prisma).revertirConciliacion({ zonaHoraria: ZONA_DE_CR, id: "cb1", actorUsuarioId: "u-maestro" });
 
     expect(r).toBe("con_asientos");
     expect(walletFindMany.mock.calls[0][0]).toEqual({
@@ -346,7 +347,7 @@ describe("431/T7 — CierresBodegaAdminRepository.revertirConciliacion", () => {
 
   it("SLT-76 R5: SIN asientos de sus cierres pero CON un ajuste de diferencia -> `con_asientos`, sin update ni historial", async () => {
     const { prisma, updateMany, createMany, ajusteFindMany } = buildPrisma({ cierresDia: [], ajustes: 1 });
-    const r = await repoCon(prisma).revertirConciliacion({ id: "cb1", actorUsuarioId: "u-maestro" });
+    const r = await repoCon(prisma).revertirConciliacion({ zonaHoraria: ZONA_DE_CR, id: "cb1", actorUsuarioId: "u-maestro" });
 
     expect(r).toBe("con_asientos");
     expect(ajusteFindMany.mock.calls[0][0]).toEqual({
@@ -360,7 +361,7 @@ describe("431/T7 — CierresBodegaAdminRepository.revertirConciliacion", () => {
 
   it("SLT-73 R14: con cierres pero SIN asientos en la caja, revierte como siempre", async () => {
     const { prisma, updateMany } = buildPrisma({ cierresDia: [{ id: "cd1" }], asentados: 0 });
-    const r = await repoCon(prisma).revertirConciliacion({ id: "cb1", actorUsuarioId: "u-maestro" });
+    const r = await repoCon(prisma).revertirConciliacion({ zonaHoraria: ZONA_DE_CR, id: "cb1", actorUsuarioId: "u-maestro" });
     expect(r).toBe("updated");
     expect(updateMany).toHaveBeenCalledTimes(1);
   });
@@ -369,7 +370,7 @@ describe("431/T7 — CierresBodegaAdminRepository.revertirConciliacion", () => {
 describe("SLT-73 — marcarConciliado asienta y escribe la diferencia", () => {
   it("R10: busca los cierres aprobados satelite DE ESTA consolidacion, por fecha de solicitud", async () => {
     const { prisma, cierreDiaFindMany } = buildPrisma();
-    await repoCon(prisma).marcarConciliado({
+    await repoCon(prisma).marcarConciliado({ zonaHoraria: ZONA_DE_CR,
       id: "cb1",
       montoRecibido: "550.00",
       nota: null,
@@ -385,7 +386,7 @@ describe("SLT-73 — marcarConciliado asienta y escribe la diferencia", () => {
   it("R10: asienta cada cierre con los asientos inyectados, en el orden devuelto", async () => {
     const { prisma } = buildPrisma({ cierresDia: [{ id: "cd-a" }, { id: "cd-b" }] });
     const a = asientosDoble();
-    await repoCon(prisma, a.deps).marcarConciliado({
+    await repoCon(prisma, a.deps).marcarConciliado({ zonaHoraria: ZONA_DE_CR,
       id: "cb1",
       montoRecibido: "550.00",
       nota: null,
@@ -399,7 +400,7 @@ describe("SLT-73 — marcarConciliado asienta y escribe la diferencia", () => {
     // aqui: el doble distingue el objeto `tx` del `prisma` que recibe el constructor.
     const { prisma, tx } = buildPrisma({ cierresDia: [{ id: "cd-a" }] });
     const a = asientosDoble();
-    await repoCon(prisma, a.deps).marcarConciliado({
+    await repoCon(prisma, a.deps).marcarConciliado({ zonaHoraria: ZONA_DE_CR,
       id: "cb1",
       montoRecibido: "485.00",
       nota: null,
@@ -413,7 +414,7 @@ describe("SLT-73 — marcarConciliado asienta y escribe la diferencia", () => {
   it("R11/R22: recibido 485 con esperado 550 -> UN egreso de 65,00 fechado en la marca", async () => {
     const { prisma, updateMany, ajusteCreate } = buildPrisma();
     const a = asientosDoble();
-    await repoCon(prisma, a.deps).marcarConciliado({
+    await repoCon(prisma, a.deps).marcarConciliado({ zonaHoraria: ZONA_DE_CR,
       id: "cb1",
       montoRecibido: "485.00",
       nota: null,
@@ -442,7 +443,7 @@ describe("SLT-73 — marcarConciliado asienta y escribe la diferencia", () => {
   it("R11: recibido igual al esperado -> ni ajuste ni movimiento", async () => {
     const { prisma, ajusteCreate } = buildPrisma();
     const a = asientosDoble();
-    await repoCon(prisma, a.deps).marcarConciliado({
+    await repoCon(prisma, a.deps).marcarConciliado({ zonaHoraria: ZONA_DE_CR,
       id: "cb1",
       montoRecibido: "550.00",
       nota: null,
@@ -454,7 +455,7 @@ describe("SLT-73 — marcarConciliado asienta y escribe la diferencia", () => {
 
   it("R11: `conflict` no asienta nada", async () => {
     const { prisma, cierreDiaFindMany, ajusteCreate } = buildPrisma({ count: 0, existe: 1 });
-    await repoCon(prisma).marcarConciliado({
+    await repoCon(prisma).marcarConciliado({ zonaHoraria: ZONA_DE_CR,
       id: "cb1",
       montoRecibido: "1.00",
       nota: null,
@@ -478,6 +479,7 @@ describe("473/T1 — CierresBodegaAdminRepository.corregirConciliacion", () => {
     montoRecibido: "600.00",
     nota: "una nota que NO viaja",
     actorUsuarioId: "u-maestro",
+    zonaHoraria: ZONA_DE_CR,
   };
 
   it("⭑ R8: el WHERE de corregirConciliacion exige aprobado, conciliadoAt no nulo y el monto leido", async () => {

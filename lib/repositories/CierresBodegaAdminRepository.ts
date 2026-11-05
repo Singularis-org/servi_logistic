@@ -585,6 +585,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
           entidadEtiqueta: etiquetaDeEntidad("cierre_bodega", {
             zonaNombre: cierre?.zona.nombre ?? null,
             fecha: cierre?.solicitadoAt ?? new Date(),
+            zonaHoraria: input.zonaHoraria, // SLT-42 (R22)
           }),
           monto: cierre?.totalGeneral ?? null,
           ...actor,
@@ -681,6 +682,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
           entidadEtiqueta: etiquetaDeEntidad("cierre_bodega", {
             zonaNombre: cierre?.zona.nombre ?? null,
             fecha: cierre?.solicitadoAt ?? ahora,
+            zonaHoraria: input.zonaHoraria, // SLT-42 (R22)
           }),
           // El monto RECIBIDO, no el consolidado: es lo que la persona afirma haber contado.
           monto,
@@ -759,6 +761,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
           entidadEtiqueta: etiquetaDeEntidad("cierre_bodega", {
             zonaNombre: previo?.zona.nombre ?? null,
             fecha: previo?.solicitadoAt ?? new Date(),
+            zonaHoraria: input.zonaHoraria, // SLT-42 (R22)
           }),
           // EL MONTO QUE SE BORRA. Leido arriba, dentro de la misma transaccion.
           monto: previo?.montoRecibido ?? null,
@@ -849,6 +852,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
           entidadEtiqueta: etiquetaDeEntidad("cierre_bodega", {
             zonaNombre: previo.zona.nombre,
             fecha: previo.solicitadoAt,
+            zonaHoraria: input.zonaHoraria, // SLT-42 (R22)
           }),
           // El monto NUEVO; el par anterior/nuevo distingue esta fila de una marca (D1).
           monto,

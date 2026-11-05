@@ -22,7 +22,7 @@ import type {
 } from "@/lib/types/wallet";
 import { NATURALEZA_POR_CATEGORIA } from "@/lib/utils/caja-tesoreria";
 import { WALLET_MOVIMIENTO_CATEGORIA_SEED } from "@/lib/types/wallet";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendario } from "@/lib/utils/calendario-zona";
 import { whereLibroCajaConTerminoSql, whereLibroCajaSql } from "@/lib/repositories/libro-caja-a-quien-sql";
 import type { AQuienFiltro } from "@/lib/types/libro-caja-a-quien";
 import { ordenTotal, type DireccionOrden } from "@/lib/types/ordenamiento-listado";
@@ -432,13 +432,13 @@ export class WalletMovimientoRepository implements IWalletMovimientoRepository, 
   }
 
   /**
-   * Ficha 459 (design §2.5, R15/R71) — el dia CR del primer movimiento de la caja, o `null`.
+   * Ficha 459 (design §2.5, R15/R71) — el dia del primer movimiento de la caja, o `null`.
    *
    * `MIN(fecha_movimiento)` sobre el indice `wallet_movimiento_fecha_movimiento_idx`, y el dia se
-   * resuelve con `fechaCalendarioCR` (la convencion CR del repo, UTC−6). Con `excluirCapital`, el
+   * resuelve en `zonaHoraria`, la zona del pais de la empresa (SLT-42, R22). Con `excluirCapital`, el
    * `WHERE` deja fuera las categorias que `NATURALEZA_POR_CATEGORIA` declara `capital`.
    */
-  async primerDiaDeLaCaja(opciones: { excluirCapital?: boolean } = {}): Promise<string | null> {
+  async primerDiaDeLaCaja(opciones: { excluirCapital?: boolean; zonaHoraria: string }): Promise<string | null> {
     const where: Prisma.WalletMovimientoWhereInput =
       opciones.excluirCapital === true ? { categoria: { notIn: [...CATEGORIAS_DE_CAPITAL] } } : {};
     const agregado = await this.prisma.walletMovimiento.aggregate({
@@ -446,7 +446,7 @@ export class WalletMovimientoRepository implements IWalletMovimientoRepository, 
       _min: { fechaMovimiento: true },
     });
     const primero = agregado._min.fechaMovimiento;
-    return primero === null ? null : fechaCalendarioCR(primero);
+    return primero === null ? null : fechaCalendario(primero, opciones.zonaHoraria);
   }
 
   /** Feature 45 (R11): SUM(monto) por categoria administrativa, con los mismos filtros. STRING. */

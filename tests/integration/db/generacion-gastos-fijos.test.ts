@@ -8,6 +8,7 @@ import type { IGastoFijoPlantillaRepository } from "@/lib/interfaces/repositorie
 import type { IGastoFijoCobroRepository } from "@/lib/interfaces/repositories/IGastoFijoCobroRepository";
 import type { GeneracionGastosFijosTx } from "@/lib/interfaces/services/IGeneracionGastosFijosService";
 import type { GastoFijoPlantillaDTO } from "@/lib/types/gasto-fijo-plantilla";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 45 (R28/R31) — idempotencia del cron por (plantilla, periodo). Simula el indice
 // unico parcial (origen_tipo, origen_id, categoria) WHERE origen_id IS NOT NULL con una tienda
@@ -130,6 +131,8 @@ function serviceFor(store: ReturnType<typeof makeWalletStore>, activas: GastoFij
       // Ficha 333 (R10): runner en memoria con la misma semantica que `prisma.$transaction`. La
       // tienda de arriba ya modela el indice unico parcial, que es lo que este archivo mide.
       async (fn) => fn(client as unknown as GeneracionGastosFijosTx),
+      undefined,
+      reglasPaisFijas(),
     ),
     repo: new WalletMovimientoRepository(client),
   };
