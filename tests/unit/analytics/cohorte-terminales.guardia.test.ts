@@ -8,7 +8,7 @@ import { ESTADOS_TERMINALES } from "@/lib/types/order-status-transiciones";
 // Ficha 411 / T2.4 — GUARDIA de R8: LA COHORTE NO DECLARA UNA SEGUNDA LISTA DE TERMINALES.
 //
 // POR QUE ESTE CENSO Y NO OTRA COSA. `TERMINALES` ya esta rendido a SQL dos veces en el repo
-// —`AnaliticaOperativaVivaRepository` y `CicloVidaRepository`, las dos con la MISMA linea
+// —`AnaliticaOperativaVivaRepository` y `AnaliticaRollupRepository`, las dos con la MISMA linea
 // `Prisma.join([...ESTADOS_TERMINALES])`— y las dos son PRIVADAS de su modulo. El repositorio de
 // esta ficha rinde la misma constante con la misma linea en vez de importar la de un vecino,
 // porque cruzar hacia aquellos modulos lo metería en censos de otra vertical.

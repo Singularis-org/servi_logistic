@@ -8,7 +8,7 @@ import type { TarifaDTO } from "@/lib/types/tarifa";
  * NO es un archivo de test (no acaba en `.test.ts`): vitest no lo recoge.
  *
  * Existe por una razon concreta: el recorte por alcance de R13 solo se puede demostrar sobre
- * un DTO que traiga los cinco campos restringidos CON VALOR. Un fixture que los dejara en
+ * un DTO que traiga los seis campos restringidos CON VALOR. Un fixture que los dejara en
  * `undefined` haria verde cualquier asercion de «no viaja» sin que hubiera nada que retirar —
  * el detector vacio que este repo ya pago mas de una vez.
  *
@@ -28,12 +28,14 @@ import type { TarifaDTO } from "@/lib/types/tarifa";
  * tiene que quitar el separador antes — lo hace la guardia, no el fixture.
  */
 
-/** Los cinco valores que NO pueden sobrevivir a un recorte de alcance `zona` (R13). */
+/** Los seis valores que NO pueden sobrevivir a un recorte de alcance `zona` (R13). */
 export const CENTINELAS = {
   /** `fleteConIva`: STRING de importe en el DTO, y por eso el centinela tambien lo es. */
   flete: "9999991",
   /** `comisionConIva`: idem, y distinto del anterior para poder decir CUAL sobrevivio. */
   comision: "9999992",
+  /** `fulfillment` del item (SLT-54 R66), distinto del de la tarifa: el recorte tiene que retirar los dos. */
+  fulfillment: "9999993",
   email: "correo@centinela",
   telefono: "TELEFONO-CENTINELA",
   /** Numero irrepetible dentro de la tarifa: si viaja la tarifa, viaja el. */
@@ -113,6 +115,7 @@ export function ordenDeListado(
     cobraComision: true,
     fleteConIva: CENTINELAS.flete,
     comisionConIva: CENTINELAS.comision,
+    fulfillment: CENTINELAS.fulfillment,
     fechaReprogramacion: null,
     intentosEntrega: 0,
     createdAt: new Date("2026-01-01T00:00:00.000Z"),

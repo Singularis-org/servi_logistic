@@ -64,6 +64,12 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Resuelto en SL-38 (2026-10-23):** la marca de zona especial es de la empresa, en `distrito_zona_especial` con RLS; `actualizarDistritosEspeciales` vuelve al maestro por servicio y repositorio, y la columna `distrito.zona_especial` sale.
 - **Dueño:** Carlos Restrepo (decidir) y quien tome SL-26. **2026-10-26:** la parte de geografía pasa a SL-20 (`specs/SL-20-pais-geografia-configurable/requirements.md`); la de vehículos sigue aquí (SL-42).
 - **Parte de geografía cerrada en SL-20 (2026-10-27):** el alta, el renombre, el retiro y la reactivación de nodos salen de `lib/actions/geografia.ts` (el maestro solo conserva la lectura para Tarifas) y pasan al superadmin en `lib/actions/geografia-plataforma.ts`, con errores tipados (`conflict` solo por único; otra causa es `error`, R36, R51, R52). Queda abierta la parte de vehículos (SL-42).
+- **Parte de vehículos cerrada en SL-42 (2026-11-04):**
+  - Las escrituras salen de `lib/actions/vehiculos.ts`; al `maestro` le queda solo `listarVehiculos`.
+  - El superadmin las hace en `/plataforma/vehiculos` con `lib/actions/vehiculos-plataforma.ts` (`comoPlataforma`). El borrado se retira y desactivar lo sustituye.
+  - Errores tipados: `conflict` solo por el único; cualquier otra causa es `error` con log (R9–R14).
+  - `/configuracion/vehiculos` y su ayuda se retiran (R16, R19).
+- **Estado:** RESUELTA en SL-42 (2026-11-04): con la parte de vehículos, D12 queda cerrada entera.
 
 ### D13 — Coste medido de la envoltura y de los triggers
 - **Origen:** SL-17, T1.1, T2.7 y T4.1. En local, la envoltura suma ~1,1 ms por operación (mediana 0,62 → 1,76 ms) y los triggers de misma empresa ~1,1 ms por `INSERT` de `orden` (mediana 0,42 → 1,51 ms; ~0,27 ms por FK). Por el pooler de Supabase: ver `progress/impl_SL-17.md > T4.1`.
@@ -216,7 +222,41 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Qué falta:** quitar el sufijo duplicado y decidir si los montos de pantalla siguen la regla de SLT-67 (entero sin decimales). Toca `PlanVistaCosteo`, `PlanEmpresa:517-523` y `PlanesModule`.
 - **Dueño:** Camilo (decidir si va a ficha).
 
-### D36 — `enUnaFoto` reutiliza la constante de opciones de `$transaction`
+### D36 — `useToast` da 500 en `next dev` al abrir `/configuracion/tarifas` por URL tras el login
+- **Origen:** review de SLT-54 (2026-11-05, `progress/review_SLT-54.md`, menor 3). La tanda D lo midió en 6 de 7 intentos; la tanda E no lo reprodujo (0 de 20). En `next start`, 3 de 3 en 200 y 0 menciones en el log de la última corrida E2E. `ToastProvider` envuelve `app/(app)/layout.tsx` y `LogoutButton` cuelga de él; la página se recupera en cliente. Sin causa raíz: la idea de dos instancias del módulo no está medida.
+- **Qué falta:** buscar la causa si vuelve a aparecer. Si aparece en `next start`, deja de ser menor.
+- **Dueño:** Carlos Restrepo (decidir si va a ficha).
+
+### D37 — `detalle-movimiento-cierre-postgres` y `detalle-en-lote-464` ciegos, también en CI
+- **Origen:** review de SLT-54 (2026-11-05, `progress/review_SLT-54.md`, menor 4). Fallan por su siembra (14 fallan y 6 se saltan) y `tests/baseline-rojos.json` los tapa también en `gate-completo`. No hay regresión: con copias temporales que crean sus FK en la transacción, 20 de 20 en verde. Pero son un `WHERE` de dinero sin vigilancia en CI.
+- **Qué falta:** portar los dos a `crearFksDeOrden` (SL-31) y sacarlos del baseline.
+- **Dueño:** Carlos Restrepo (decidir si va a ficha).
+
+### D38 — El libro de la tienda sigue diciendo «devolución a origen» en el cobro del modelo nuevo — CERRADA
+- **Origen:** tandas H1 y H2 de SLT-54 (2026-11-05, `progress/impl_SLT-54.md`).
+- **Cierre:** tandas I1 (`FilaEstadoCuentaDTO.incluyeModeloNuevo`) e I2 (rótulo por fila en `/mi-wallet` y `/wallet/tiendas`, tabla, desplegable y descargas). El filtro de `/mi-wallet` que citaba la revisión ya no existe: lo retiró la 458-D, y la barra filtra por tipo de movimiento y cierre. `CONCEPTO_MI_WALLET_TODOS_OPTION` quedó sin lector en pantalla, solo lo lee su test. No hay rótulo por categoría que resolver.
+
+### D39 — `ComposicionGananciaCard` y el filtro del libro rotulan por categoría, sin fila
+- **Origen:** tandas H1 y H2 de SLT-54 (2026-11-05, `progress/impl_SLT-54.md`). `ComposicionGananciaCard` suma por categoría sobre agregados, y el filtro por concepto de `LibroCajaBarra` elige una categoría: ninguno tiene una fila a la que preguntar el modelo. Los dos siguen diciendo «devolución a origen», aunque el grupo incluya cobros del modelo nuevo. Sigue abierta tras D38: ese cierre no toca el libro de la caja. Los ven `maestro` y `admin`, y la fila se abre con el nombre correcto (revisión F2.2, vuelta 2, menor 1).
+- **Qué falta:** decidir un rótulo cierto para los dos modelos o traer el dato en el agregado. Pendiente antes de cerrar EP-8.
+- **Dueño:** Carlos Restrepo.
+
+### D40 — Notas de la bodega satélite que hablan de devoluciones sin saber el modelo
+- **Origen:** review de SLT-54 (2026-11-05, `progress/review_SLT-54.md`, vuelta 2, menor 5) y tanda I2. Tres notas dicen «por las devoluciones a origen» sobre un importe que en el modelo nuevo también incluye entregas: `PARA_LA_CENTRAL_NOTA` en la tarjeta del cierre de bodega (`cierre-factura.tsx:1073`) y, en `ConciliacionSatelite.tsx:167,174`, `GANA_BODEGA_SATELITE_NOTA` y `PARA_LA_CENTRAL_NOTA`. Rótulo e importe son ciertos; la nota no. `ConciliacionSatelite.tsx` solo lo leen `maestro` y `admin`; `cierre-factura.tsx:1073` también lo lee el `adminSatelite` sobre su propio cierre (`CierresBodegaSolicitadosLista`, revisión F2.2, vuelta 3, menor 1). Otros textos del mismo tipo, imprecisos y con el importe correcto: encabezado de la descarga «Flete por devolución a origen + IVA» (`cierres-gestiones-fundida-descarga-columnas.ts:292`; cambiarlo toca el archivo del viejo), `GANA_LA_TIENDA_NOTA`, `PAGO_TIENDA_HOY_NOTA` y `DESGLOSE_POR_TIENDA_NOTA` (vuelta 2, menores 2 y 6). Ni `CierreBodegaResumen` ni `ConsolidacionSateliteDTO` traen el modelo (el campo está en `CierreBodegaResumenLite`, otro tipo).
+- **Qué falta:** el campo en esos dos DTO (`lib/`), como `incluyeModeloNuevo`, y elegir la nota con él. Los textos ya existen: `PARA_LA_CENTRAL_NOTA_MODELO_NUEVO` y `GANA_BODEGA_SATELITE_NOTA_MODELO_NUEVO`. Pendiente antes de cerrar EP-8.
+- **Dueño:** Carlos Restrepo.
+
+### D41 — «N distrito(s)» a mano en zonas y en el selector de geografía
+- **Origen:** review de SLT-54 (2026-11-05, `progress/review_SLT-54.md`, vuelta 2, menor 3). `ZonasModule.tsx:250` y `GeografiaSelector.tsx:266` escriben el nombre del nivel en vez de leer la configuración del país. Preexistente, sin dinero; R61 habla de la pantalla de Tarifas. Falso solo en un país con otro nombre de nivel.
+- **Qué falta:** leer la etiqueta del nivel, como `TarifasZonas.tsx` (SLT-54, T7.3).
+- **Dueño:** Carlos Restrepo (decidir si va a ficha).
+
+### D42 — `e2e/wallet-mensajeros.spec.ts:81`, clic crudo e inestable
+- **Origen:** tanda I2 y revisión de SLT-54, vuelta 3 (2026-11-05). `dinero` dio 44/0/0, 42/1/0 con 1 sin correr y 44/0/0; cayó `:58` por botón desmontado. El spec solo dio 45 de 45. El diff no lo explica, y ya había caído antes en CI. Causa sin medir. El clic de `:81` abre un panel sin `abrirCon` (`e2e/_escenarios/pulsar.ts`).
+- **Qué falta:** pasar el clic a `abrirCon` y medir si la inestabilidad desaparece.
+- **Dueño:** Carlos Restrepo.
+
+### D43 — `enUnaFoto` reutiliza la constante de opciones de `$transaction`
 - **Origen:** SLT-65 (2026-10-31, review F2.2 de 2026-11-03, menor 4). `CatalogoGeograficoRepository.enUnaFoto` (SLT-44) pasa la constante `OPCIONES_TRANSACCION` a `$transaction`. Prisma 7 escribe `newTxId` en ese objeto, y tras abrir un `tx` anidado la siguiente carga falla con «Transaction already closed». SLT-65 lo rodea con `lib/repositories/_shared/sin-transaccion-anidada.ts`.
 - **Qué falta:** el arreglo de raíz en SLT-44, una línea: `{ ...OPCIONES_TRANSACCION }`. Después, valorar si se retira el rodeo de SLT-65.
 - **Dueño:** Camilo (SLT-44, PR #55).

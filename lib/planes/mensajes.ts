@@ -1,8 +1,11 @@
 import type { ModuloApagable, RolValue } from "@prisma/client";
 
 import { ROL_LABELS } from "@/lib/auth/rol-label";
+import { money } from "@/lib/config/moneda";
 import { nombreDelModulo } from "@/lib/modulos/catalogo";
-import { ROLES_CON_TOPE, type PrecioPlan, type RolConTope } from "@/lib/types/planes";
+import { importeCanonico } from "@/lib/planes/rastro";
+import type { CosteoDelCiclo, CostoVigente } from "@/lib/types/consumo-plan";
+import { ROLES_CON_TOPE, type CostoPorOrdenPorcentual, type PrecioPlan, type RolConTope } from "@/lib/types/planes";
 
 // SL-24 (design §6.4, §6.6) — los textos del tope del plan. Un solo sitio para las tres vías (carga
 // de órdenes, usuarios y API keys) y para el superadmin. El rol sale de `ROL_LABELS`, la etiqueta que
@@ -159,6 +162,8 @@ export interface CambioDelPlanParaCorreo {
   modulos?: { antes: readonly ModuloApagable[]; despues: readonly ModuloApagable[] };
   precio?: { antes: PrecioPlan; despues: PrecioPlan };
   costoPorOrden?: { antes: string | null; despues: string | null };
+  /** SLT-83 (R4): un rastro anterior a la ficha no la trae y no pinta esa línea. */
+  costoPorOrdenPorcentual?: { antes: CostoPorOrdenPorcentual | null; despues: CostoPorOrdenPorcentual | null };
 }
 
 type TopesDelPlanParaCorreo = {
@@ -175,8 +180,9 @@ function limite(n: number | null | undefined): string {
 
 /** El precio como texto informativo, sin símbolo de moneda (D26). Lo pintan también las pantallas (SLT-58 R1, R13). */
 export function textoDelPrecio(p: PrecioPlan): string {
-  if (p.tipo === "sin_precio") return "sin precio";
-  if (p.tipo === "negociable") return "negociable";
+  // D1 (ajuste planes-custom): «negociable» ya no existe, pero `plan_rastro` y los correos encolados
+  // antes de 20261104130000 pueden traerlo; se pinta como lo que es ahora, «sin precio».
+  if (p.tipo !== "monto") return "sin precio";
   const mensual = `${p.mensual} al mes`;
   if (p.anual === null) return mensual;
   return p.anual.tipo === "fijo"
@@ -187,6 +193,91 @@ export function textoDelPrecio(p: PrecioPlan): string {
 /** SLT-66 (design §4.4): el costo por orden del plan, sin símbolo de moneda; vacío = el global (R12). */
 export function textoDelCostoPorOrden(c: string | null): string {
   return c === null ? "se aplica el valor global" : `${c} por orden`;
+}
+
+/**
+ * SLT-83 (R4; aprobado por el humano el 2026-11-04): el lado del costo fijo en la línea «Costo por
+ * orden» cuando ese lado está vacío porque el plan cobra porcentual, en lugar de «se aplica el valor
+ * global».
+ */
+export const COBRA_PORCENTUAL = "cobra porcentual";
+
+/**
+ * SLT-83 (R4): un lado de la línea «Costo por orden». Vacío con el porcentual de ese mismo lado no
+ * nulo es «cobra porcentual»; sin porcentual, o en un rastro anterior a la ficha, sigue SLT-66.
+ */
+function textoDelLadoFijo(c: string | null, porcentual: CostoPorOrdenPorcentual | null | undefined): string {
+  return c === null && porcentual ? COBRA_PORCENTUAL : textoDelCostoPorOrden(c);
+}
+
+/**
+ * SLT-83 (design §4.4; R21): el costo por orden de un plan porcentual, sin símbolo de moneda y con dos
+ * decimales aunque llegue «2» de una versión aún sin guardar.
+ */
+export function textoDelCostoPorOrdenPorcentual(c: CostoPorOrdenPorcentual): string {
+  const porcentaje = `${importeCanonico(c.porcentaje)} % del valor del paquete`;
+  return c.minimo === null ? porcentaje : `${porcentaje}, mínimo ${importeCanonico(c.minimo)}`;
+}
+
+/**
+ * SLT-83 (R4): el lado vacío de la línea «Costo por orden porcentual» (el plan es fijo o vacío).
+ * Texto aprobado por el humano el 2026-11-04 (`progress/impl_SLT-83.md > Textos aprobados`).
+ */
+export const SIN_COSTO_PORCENTUAL = "sin costo porcentual";
+
+function textoDelPorcentualOVacio(c: CostoPorOrdenPorcentual | null): string {
+  return c === null ? SIN_COSTO_PORCENTUAL : textoDelCostoPorOrdenPorcentual(c);
+}
+
+/**
+ * SLT-83 (design §4.4; R22): la columna «Cobro por orden» del listado de «Empresas». El modo fijo es el
+ * importe de hoy, con `money` como lo pinta la celda desde SL-40; el porcentual, `«{p} % (mín. {m})»` o
+ * `«{p} %»`, sin moneda como el resto de importes del plan (SLT-66 §2.5). La fuente va aparte.
+ */
+export function textoDelCobroVigente(c: CostoVigente): string {
+  if (c.modo === "fijo") return money(c.monto);
+  const porcentaje = `${importeCanonico(c.porcentaje)} %`;
+  return c.minimo === null ? porcentaje : `${porcentaje} (mín. ${importeCanonico(c.minimo)})`;
+}
+
+/** SLT-83 (design §4.4; R23): la nota bajo el costo por orden porcentual de «Mi plan». */
+export const NOTA_COBRO_PORCENTUAL = "se cobra cuando la orden llega a un estado final";
+
+/** Las líneas del costo del ciclo de «Mi plan» y del detalle de empresa con un plan porcentual. */
+export interface LineasDelCosteoPorcentual {
+  costoPorOrden: string;
+  nota: string;
+  cobrado: string;
+  pendientes: string;
+  /** `null` con la base por definir: sin total (SLT-66 R20). */
+  total: string | null;
+}
+
+/**
+ * SLT-83 (R23; aprobado por el humano el 2026-11-04): el término del cobrado en la línea del total. Un
+ * cobrado negativo se pinta como resta con su valor absoluto («− 500.00», U+2212), nunca «+ -500.00».
+ * El signo sale del texto decimal: la pantalla no hace aritmética con el dinero.
+ */
+function sumaDelCobrado(cobrado: string): string {
+  return cobrado.startsWith("-") ? `\u2212 ${cobrado.slice(1)}` : `+ ${cobrado}`;
+}
+
+/**
+ * SLT-83 (design §4.4; R23): los textos de un costeo porcentual. Los importes llegan ya calculados del
+ * servidor (`costeoDelCiclo`) y se pintan tal cual, sin moneda, como las líneas del modo fijo. Las
+ * órdenes sin estado final son solo un conteo: no se estima su importe.
+ */
+export function lineasDelCosteoPorcentual(c: Extract<CosteoDelCiclo, { modo: "porcentual" }>): LineasDelCosteoPorcentual {
+  return {
+    costoPorOrden: `Costo por orden: ${textoDelCostoPorOrdenPorcentual(c)}`,
+    nota: NOTA_COBRO_PORCENTUAL,
+    cobrado: `Cobrado en el ciclo: ${c.cobrado}`,
+    pendientes: `Órdenes del ciclo sin estado final: ${c.pendientes}`,
+    total:
+      c.total === null || c.base.tipo !== "monto"
+        ? null
+        : `Total del ciclo hasta hoy: ${c.base.mensual} ${sumaDelCobrado(c.cobrado)} = ${c.total}`,
+  };
 }
 
 /**
@@ -220,7 +311,14 @@ export function lineasDeCambioDelPlan(c: CambioDelPlanParaCorreo): string[] {
   if (c.precio) lineas.push(`Costo base: ${textoDelPrecio(c.precio.antes)} → ${textoDelPrecio(c.precio.despues)}`);
   if (c.costoPorOrden) {
     const { antes, despues } = c.costoPorOrden;
-    lineas.push(`Costo por orden: ${textoDelCostoPorOrden(antes)} → ${textoDelCostoPorOrden(despues)}`);
+    const porcentual = c.costoPorOrdenPorcentual;
+    lineas.push(
+      `Costo por orden: ${textoDelLadoFijo(antes, porcentual?.antes)} → ${textoDelLadoFijo(despues, porcentual?.despues)}`,
+    );
+  }
+  if (c.costoPorOrdenPorcentual) {
+    const { antes, despues } = c.costoPorOrdenPorcentual;
+    lineas.push(`Costo por orden porcentual: ${textoDelPorcentualOVacio(antes)} → ${textoDelPorcentualOVacio(despues)}`);
   }
   return lineas;
 }

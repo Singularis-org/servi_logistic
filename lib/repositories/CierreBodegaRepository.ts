@@ -23,6 +23,10 @@ import { saldoDe } from "@/lib/utils/conciliacion-satelite";
 // Feature 393 (design §2.3): las dos derivaciones de la cascada «lo que va a la central».
 // La resta vive en la funcion pura; el repositorio solo la llama.
 import { efectivoCubreDescuentos, paraLaCentral } from "@/lib/utils/ingreso-empresa";
+import {
+  CONTEO_DETALLE_MODELO_NUEVO,
+  incluyeModeloNuevoDe,
+} from "@/lib/repositories/_shared/detalle-modelo-nuevo";
 // SLT-76 (R3/R4): el MISMO predicado con el que `revertirConciliacion` rechaza (`con_asientos`).
 import {
   consolidacionesConDinero,
@@ -67,6 +71,7 @@ const CONSOLIDABLE_SELECT = {
   totalPagoMensajero: true, // feature 39/R18: snapshot del pago al mensajero del cierre_dia
   totalIngresoBodegaRechazos: true, // feature 56/R17: snapshot del ingreso de bodega por rechazos del cierre_dia
   mensajero: { select: NOMBRE_USUARIO_SELECT },
+  _count: CONTEO_DETALLE_MODELO_NUEVO, // SLT-54 (R71): en la misma sentencia, sin consulta por fila
 } as const;
 
 // Proyeccion de la cabecera de un cierre de bodega (join a zona/usuario + _count).
@@ -289,6 +294,7 @@ function toConsolidableRow(r: ConsolidableRow): CierreDiaConsolidableRow {
     totales: totalesToString(r),
     totalPagoMensajero: r.totalPagoMensajero.toFixed(2), // R18: snapshot money-safe STRING
     totalIngresoBodegaRechazos: r.totalIngresoBodegaRechazos.toFixed(2), // feature 56/R17: snapshot money-safe STRING
+    incluyeModeloNuevo: incluyeModeloNuevoDe(r), // SLT-54 (R71)
   };
 }
 

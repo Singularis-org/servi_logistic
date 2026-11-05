@@ -42,10 +42,12 @@ import { fleteSinIvaDeGestion } from "@/lib/utils/ingreso-empresa";
  * como fachadas con el mismo constructor y delegan aqui, asi que ninguna raiz de composicion
  * cambia y ninguna superficie puede quedarse calculando con otra regla.
  *
- * EL INTERRUPTOR ES POR EMPRESA (R36/R37): una empresa con al menos un valor en `tarifa_valor`
- * calcula TODO con el modelo nuevo y no lee `tarifas` ni `tarifa_zona_mensajero`; sin valores, todo
- * con el viejo, por el mismo codigo de hoy. Se decide una vez por llamada, no por concepto: mezclar
- * los dos modelos en una orden podria cobrar con una regla y pagar con otra (design §10.5).
+ * EL INTERRUPTOR ES POR EMPRESA Y LO DECIDE LA ACTIVACION (SLT-54 R1/R2, enmienda R36/R37 de SLT-52):
+ * una empresa con su fila en `tarifa_activacion` calcula TODO con el modelo nuevo y no lee `tarifas`
+ * ni `tarifa_zona_mensajero`, aunque no tenga un solo valor; sin fila, todo con el viejo, por el mismo
+ * codigo de hoy, aunque tenga valores guardados: el maestro digita sin mover un centavo hasta activar.
+ * Se decide una vez por llamada, no por concepto: mezclar los dos modelos en una orden podria cobrar
+ * con una regla y pagar con otra (design §10.5).
  *
  * EMPRESA: ninguna consulta de aqui pone `organizacion_id` a mano. La pone la extension del cliente
  * (`lib/db/extension-empresa.ts`) y la respalda la RLS de las tablas (R15); con el cliente de una
@@ -73,13 +75,13 @@ export type ClientePagos = PagoTarifaTxClient;
 // ---------------------------------------------------------------------------------------------
 
 /**
- * R36/R37: ¿la empresa del contexto tiene al menos un valor del modelo nuevo? Un `findFirst` sin
- * `where`: el filtro por empresa lo inyecta la extension (y la RLS lo respalda), y `select: id` deja
- * la consulta en un indice.
+ * SLT-54 R1/R2: ¿la empresa del contexto esta activada? Tener valores NO cuenta: fijar o quitar uno no
+ * puede cambiar el modelo (R3). Un `findFirst` sin `where`: el filtro por empresa lo inyecta la
+ * extension (y la RLS lo respalda, R12), y el unico por empresa deja la consulta en un indice.
  */
-export async function usaModeloNuevo(db: Pick<PrismaClient, "tarifaValor">): Promise<boolean> {
-  const alguno = await db.tarifaValor.findFirst({ select: { id: true } });
-  return alguno !== null;
+export async function usaModeloNuevo(db: Pick<PrismaClient, "tarifaActivacion">): Promise<boolean> {
+  const fila = await db.tarifaActivacion.findFirst({ select: { id: true } });
+  return fila !== null;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -322,6 +324,74 @@ function envolverViejas(
     out.set(clave, fila === null ? null : { modelo: "viejo", tarifa: toTarifaVigenteResuelta(fila) });
   }
   return out;
+}
+
+/**
+ * SLT-54 (design §6) — un par sin tienda solo alcanza el nivel 3 de la cascada: `""` no es el id de
+ * nadie, el mismo recurso que `contextoCobroDe` usa para el par sin zona. Asi la tarifa general de una
+ * zona sale de la misma `nivelDeCascada`, sin una segunda regla.
+ */
+export const SIN_TIENDA = "";
+
+/**
+ * Sin distrito a proposito: la cascada vieja no lo mira (`nivelDeCascada`), y la referencia aplica la
+ * marca de cada distrito despues, sobre la fila elegida. Sigue sin ser un `ParTarifa`, cuyo distrito
+ * decide el grupo del modelo nuevo y no se puede omitir.
+ */
+export interface ParModeloViejo {
+  /** `SIN_TIENDA` para la tarifa general de la zona. */
+  tiendaId: string;
+  zonaId: string | null;
+}
+
+export interface PedidoModeloViejo {
+  pares: readonly ParModeloViejo[];
+  pagos: readonly { zonaId: string; vehiculoId: string | null }[];
+}
+
+export interface LecturaModeloViejo {
+  /** Indexado por `claveCobroViejo`. `null` = ningun nivel de la cascada tiene fila. */
+  cobros: Map<string, TarifaVigenteResuelta | null>;
+  /** Indexado por `clavePagoViejo`. `null` = la zona no tiene tarifa para ese vehiculo ni por defecto. */
+  pagos: Map<string, PagoTarifa | null>;
+}
+
+function aParSinDistrito(par: ParModeloViejo) {
+  return { ...par, distritoId: null };
+}
+
+export function claveCobroViejo(par: ParModeloViejo): string {
+  return clavePar(aParSinDistrito(par));
+}
+
+export function clavePagoViejo(zonaId: string, vehiculoId: string | null): string {
+  return `${zonaId}|${vehiculoId ?? ""}`;
+}
+
+/**
+ * SLT-54 (design §6, R21) — lo que el modelo viejo daria HOY, para la referencia «Hoy rige». Salta el
+ * interruptor a proposito: la pantalla lo pide mientras la empresa digita valores que aun no rigen, y
+ * por eso solo se llama sin activar (R24). La fila sale de `cobrosViejos` y `resolvePagoTarifaCon`, las
+ * mismas del calculo: una segunda lectura podria ensenar un precio que el cierre no cobra.
+ */
+export async function leerModeloViejoCon(
+  db: Pick<PrismaClient, "tarifa" | "tarifaZonaMensajero">,
+  pedido: PedidoModeloViejo,
+): Promise<LecturaModeloViejo> {
+  const cobros = new Map<string, TarifaVigenteResuelta | null>();
+  if (pedido.pares.length > 0) {
+    for (const [clave, cobro] of await cobrosViejos(db, pedido.pares.map(aParSinDistrito))) {
+      cobros.set(clave, cobro !== null && cobro.modelo === "viejo" ? cobro.tarifa : null);
+    }
+  }
+  // En serie: es el cuerpo de hoy y puede correr sobre el cliente de una transaccion.
+  const pagos = new Map<string, PagoTarifa | null>();
+  for (const { zonaId, vehiculoId } of pedido.pagos) {
+    const clave = clavePagoViejo(zonaId, vehiculoId);
+    if (pagos.has(clave)) continue;
+    pagos.set(clave, await resolvePagoTarifaCon(db.tarifaZonaMensajero, zonaId, vehiculoId));
+  }
+  return { cobros, pagos };
 }
 
 // ---------------------------------------------------------------------------------------------

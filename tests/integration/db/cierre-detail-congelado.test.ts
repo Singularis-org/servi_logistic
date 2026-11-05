@@ -3,7 +3,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { CierreDiaRepository } from "@/lib/repositories/CierreDiaRepository";
 import { CierresAdminRepository } from "@/lib/repositories/CierresAdminRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
-import { sinValoresDelModeloNuevo } from "../../fixtures/tarifa-tienda";
+import { empresaSinActivar } from "../../fixtures/tarifa-tienda";
 import { WalletMovimientoRepository } from "@/lib/repositories/WalletMovimientoRepository";
 import { WalletFeedService } from "@/lib/services/WalletFeedService";
 import { WalletTiendaFeedService } from "@/lib/services/WalletTiendaFeedService";
@@ -341,7 +341,7 @@ function makeDb() {
       ),
     },
     // SLT-52: empresa sin valores del modelo nuevo -> el resolver unico usa la cascada vieja (R36).
-    ...sinValoresDelModeloNuevo(),
+    ...empresaSinActivar(),
     walletMovimiento: {
       createMany: vi.fn(async ({ data }: { data: CrearMovimientoInput[] }) => {
         for (const d of data) movs.push({ ...d, id: `w${++seq}` });

@@ -28,16 +28,23 @@ import { codigoSinComentarios } from "../../fixtures/sin-comentarios";
 // DOS COSAS QUE ESTA GUARDIA NO HACE, y se dicen para que no se supongan:
 //   - NO barre `app/`. Ahi no hay Prisma: la pantalla recibe el arbol con el flag ya proyectado y
 //     un componente puede escribir `activo: true` legitimamente al montar su estado.
-//   - NO distingue `activo` de OTRAS tablas. Hoy el unico `activo` booleano del esquema es el de
-//     los tres niveles geograficos; `gasto_fijo_plantilla` y `webhook_suscripcion` usan `activa`,
-//     en femenino, y no entran. Si algun dia naciera otro `activo`, esta guardia obligaria a pasar
-//     por aqui — que es exactamente lo que se quiere.
+//   - NO distingue `activo` de OTRAS tablas. `gasto_fijo_plantilla` y `webhook_suscripcion` usan
+//     `activa`, en femenino, y no entran. Si algun dia naciera otro `activo`, esta guardia obligaria
+//     a pasar por aqui — que es exactamente lo que se quiere.
+//
+// SL-42 — Y NACIO: `vehiculos.activo` (R18). No es geografia: un vehiculo no tiene ascendientes y
+// su disponibilidad es su propio flag, asi que no pasa por `_shared/geografia-activa.ts`. Sigue la
+// MISMA disciplina con su propia fuente unica, `_shared/vehiculo-activo.ts`, que es la UNICA
+// excepcion de este barrido y queda acotada abajo: un solo literal, `activo: true`, y nada mas.
+// La regla de la geografia no cambia.
 //
 // La selecciona `pnpm exec vitest run guard` por el nombre del archivo.
 
 const RAIZ = path.resolve(__dirname, "../../..");
 const ARBOL = path.join(RAIZ, "lib");
 const FUENTE_UNICA = "lib/repositories/_shared/geografia-activa.ts";
+/** SL-42: la fuente unica del flag de `vehiculos`, otro modelo. Ver la cabecera. */
+const FUENTE_UNICA_VEHICULOS = "lib/repositories/_shared/vehiculo-activo.ts";
 
 /**
  * EL DETECTOR. Devuelve cada literal `activo: <booleano>` encontrado, con el texto que lo rodea
@@ -122,6 +129,14 @@ describe("374/G2 — el barrido lee de verdad", () => {
     expect(propios.length).toBeGreaterThanOrEqual(8);
   });
 
+  it("SL-42: la fuente de vehiculos existe y lleva EXACTAMENTE un `activo: true` (la excepcion no crece)", () => {
+    // Si alguien metiera aqui un `activo: false` o una segunda forma del predicado, la excepcion
+    // dejaria de ser la de un recorte y pasaria a esconder una regla: sale rojo.
+    expect(literalesDeActivoEn(codigoSinComentarios(FUENTE_UNICA_VEHICULOS))).toEqual(["activo: true"]);
+    // Y no se cuela geografia: el archivo no nombra ningun nivel geografico.
+    expect(codigoSinComentarios(FUENTE_UNICA_VEHICULOS)).not.toMatch(/provincia|canton|distrito/i);
+  });
+
   it("`lib/` tiene un numero razonable de fuentes", () => {
     expect(fuentes(ARBOL).length).toBeGreaterThan(200);
   });
@@ -136,7 +151,7 @@ describe("374/R11 — toda referencia al flag pasa por `_shared/geografia-activa
     const hallazgos: string[] = [];
     for (const archivo of fuentes(ARBOL)) {
       const rel = relativo(archivo);
-      if (rel === FUENTE_UNICA) continue;
+      if (rel === FUENTE_UNICA || rel === FUENTE_UNICA_VEHICULOS) continue;
       for (const literal of literalesDeActivoEn(codigoSinComentarios(rel))) {
         hallazgos.push(`${rel}: ${literal}`);
       }

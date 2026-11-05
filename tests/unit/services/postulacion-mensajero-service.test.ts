@@ -114,6 +114,27 @@ describe("PostulacionMensajeroService", () => {
     expect(repo.crearMensajeroConDocumentos).not.toHaveBeenCalled();
   });
 
+  it("SL-42/R18: un tipo de vehiculo inactivo -> validation_error en vehiculo_id, sin subir ni crear", async () => {
+    // El repositorio responde `false` para un inactivo (`vehiculoExiste` recorta con
+    // `WHERE_VEHICULO_ELEGIBLE`; el SQL lo prueba `tests/integration/db/vehiculos-plataforma.test.ts`).
+    // Aqui se fija lo que hace el servicio con esa respuesta: la postulacion es siempre una eleccion
+    // nueva, asi que no hay «vehiculo actual» que conservar.
+    const inactivo = "veh-inactivo";
+    const repo = buildRepo({ vehiculoExiste: vi.fn(async (id: string) => id !== inactivo) });
+    const storage = buildStorage();
+    const service = new PostulacionMensajeroService(repo, storage);
+
+    const result = await service.postular({ ...buildCommand(), vehiculoId: inactivo });
+
+    expect(repo.vehiculoExiste).toHaveBeenCalledWith(inactivo);
+    expect(result.status).toBe("validation_error");
+    if (result.status === "validation_error") {
+      expect(result.fieldErrors.vehiculo_id).toBeDefined();
+    }
+    expect(storage.upload).not.toHaveBeenCalled();
+    expect(repo.crearMensajeroConDocumentos).not.toHaveBeenCalled();
+  });
+
   it("R9: tipo_identificacion inexistente -> validation_error en ese campo", async () => {
     const repo = buildRepo({ tipoIdentificacionExiste: vi.fn().mockResolvedValue(false) });
     const service = new PostulacionMensajeroService(repo, buildStorage());

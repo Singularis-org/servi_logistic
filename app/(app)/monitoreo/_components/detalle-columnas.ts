@@ -70,7 +70,7 @@ export const COLUMNA_RESULTADO_LABEL = "Resultado del día";
  *
  *   · `flete`       lee `fleteConIva`;
  *   · `comision`    lee `comisionConIva`;
- *   · `fulfillment` lee `relaciones.tienda.tarifa.fulfillment`.
+ *   · `fulfillment` lee `fulfillment`.
  *
  * `montoCobrar` NO esta, y es la decision de R17: ese importe se muestra en los DOS alcances
  * —el satelite de zona ya lo ve en su propia pantalla de recepcion—, asi que retirarlo aqui

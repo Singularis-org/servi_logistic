@@ -109,7 +109,7 @@ async function preparar(tx: TxDeTest, plan: Partial<CrearPlanInput> = {}, empres
   for (let i = 0; i < empresas; i++) {
     const nombre = `SL24 correos ${i} ${randomUUID().slice(0, 6)}`;
     const { id } = await crearOrganizacion(tx, { nombre });
-    const r = await servicio.asignar(SUPERADMIN, { organizacionId: id, planId: creado.planId });
+    const r = await servicio.asignar(SUPERADMIN, { organizacionId: id, planId: creado.planId, tipoCobro: "mensual" });
     if (r.estado !== "ok") throw new Error(`no se asignó: ${JSON.stringify(r)}`);
     const maestros = [await maestro(tx, id)];
     if (i === 0) {
@@ -130,6 +130,7 @@ async function preparar(tx: TxDeTest, plan: Partial<CrearPlanInput> = {}, empres
       modulos: entrada.modulos,
       precio: entrada.precio,
       costoPorOrden: entrada.costoPorOrden, // SLT-66 R8: campo obligatorio nuevo; no cambia lo que se comprueba.
+      costoPorOrdenPorcentual: null, // SLT-83: campo obligatorio nuevo; no cambia lo que se comprueba.
       vigenteDesde,
       ...cambio,
     });
@@ -235,7 +236,7 @@ describeSiHayBase("SL-24 — los correos del cambio de un plan (R41, R42, R45)",
       await p.editar("2026-11-07", { topes: { ordenesPorCiclo: null, porRol: { admin: 1 }, apiKeys: null } });
       // Después de programar: una empresa nueva con el plan y dos admins (pasa el tope 1).
       const nueva = await crearOrganizacion(tx, { nombre: `SL24 nueva ${randomUUID().slice(0, 6)}` });
-      const asignada = await p.servicio.asignar(SUPERADMIN, { organizacionId: nueva.id, planId: p.planId });
+      const asignada = await p.servicio.asignar(SUPERADMIN, { organizacionId: nueva.id, planId: p.planId, tipoCobro: "mensual" });
       if (asignada.estado !== "ok") throw new Error(JSON.stringify(asignada));
       const maestroNueva = await maestro(tx, nueva.id);
       for (let i = 0; i < 2; i++) await crearUsuarioDePrueba(tx, "admin");

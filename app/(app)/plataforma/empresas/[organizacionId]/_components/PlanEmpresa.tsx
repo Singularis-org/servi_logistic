@@ -5,10 +5,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { TriangleAlert } from "lucide-react";
 
+import { AvisosDeTopes, textoDelAvisoDeTope } from "@/components/shared/AvisosDeTopes";
 import { ConsumoDelPlan } from "@/components/shared/ConsumoDelPlan";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { FormField } from "@/components/shared/FormField";
 import { Modal } from "@/components/shared/Modal";
+import { TipoCobroCampo } from "@/components/shared/TipoCobroCampo";
+import { TEXTOS_TIPO_COBRO } from "@/components/shared/tipo-cobro";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,13 +20,9 @@ import { Select, type SelectOption } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/useToast";
 import type { RangoDelInicioDelCiclo } from "@/lib/planes/ciclo";
-import { formatearConteo } from "@/lib/planes/consumo";
 import {
-  apiKeysYaPasadas,
   lineasDeCambioDelPlan,
-  ordenesYaPasadas,
   rangoInicioCiclo as textoRangoInicioCiclo,
-  rolYaPasado,
   SIN_LINEAS_DE_CAMBIO,
   TITULO_LINEAS_DE_CAMBIO,
   type CambioDelPlanParaCorreo,
@@ -31,9 +30,12 @@ import {
 import { diferenciasDelPlan } from "@/lib/planes/rastro";
 import { nombreDelModulo } from "@/lib/modulos/catalogo";
 import type {
+  AsignacionDePlan,
+  CambiarTipoCobroResult,
   PlanDeEmpresaVista,
   PlanDTO,
   PlanResult,
+  TipoCobro,
   TopeExcedido,
   VistaPreviaAsignacionResult,
 } from "@/lib/types/planes";
@@ -98,7 +100,39 @@ const TEXTOS = {
   planAsignado: "Plan asignado",
   publico: "Público",
   custom: "Custom",
+  /** Ajuste planes-custom (D14): el tipo de cobro de cada fila del historial. */
+  tipoCobro: TEXTOS_TIPO_COBRO.campo,
+  sinTipoCobro: "—",
+  cambioDeTipoCobro: (antes: string | null, despues: string) =>
+    antes === null ? `Cambió a ${despues}` : `Cambió de ${antes} a ${despues}`,
+  /** Ajuste planes-custom (D10): cambiar solo el tipo de cobro del plan actual. */
+  cambiarTipoCobro: "Cambiar tipo de cobro",
+  cambiarTipoCobroTitulo: "¿Cambiar el tipo de cobro?",
+  cambiarTipoCobroTexto: (plan: string) =>
+    `La empresa sigue con «${plan}»: no cambian sus topes, sus módulos ni su ciclo de órdenes.`,
+  tipoCobroCambiado: "Tipo de cobro cambiado.",
+  tipoCobroSinCambio: "La empresa ya tenía ese tipo de cobro.",
+  tipoCobroValidacion: "Revisa el tipo de cobro elegido.",
+  tipoCobroFallo: "No se pudo cambiar el tipo de cobro. Inténtalo de nuevo.",
 } as const;
+
+/** Ajuste planes-custom (D10): el texto de cada rechazo de `cambiarTipoCobroAction`. */
+const RECHAZOS_TIPO_COBRO: Record<Exclude<CambiarTipoCobroResult["estado"], "ok" | "validation_error">, string> = {
+  forbidden: "No tienes permiso para esto.",
+  not_found: "Esa empresa ya no existe.",
+  sin_plan: "La empresa ya no tiene plan: el tipo de cobro se elige al asignarle uno.",
+};
+
+/** D14: la celda «Tipo de cobro» de una fila del historial de asignaciones. */
+function textoDelTipoCobroDeLaFila(a: AsignacionDePlan): string {
+  if (a.tipoCobro === null) return TEXTOS.sinTipoCobro;
+  const despues = TEXTOS_TIPO_COBRO.tipo[a.tipoCobro];
+  if (a.tipo === "asignacion") return despues;
+  return TEXTOS.cambioDeTipoCobro(
+    a.tipoCobroAnterior === null ? null : TEXTOS_TIPO_COBRO.tipo[a.tipoCobroAnterior],
+    despues,
+  );
+}
 
 /** design §6.5: el texto de cada rechazo de `asignarPlanAction` (R18). `tope_excedido` trae el suyo. */
 const RECHAZOS: Record<Exclude<PlanResult["estado"], "ok" | "tope_excedido" | "validation_error">, string> = {
@@ -126,14 +160,24 @@ export interface PlanEmpresaProps {
   planActual?: PlanDTO | null;
   /**
    * `asignarPlanAction`, inyectada desde la página para poder probarla. `inicioCiclo` solo viaja en la
-   * primera asignación (R29); «Cambiar plan» nunca lo manda (R31).
+   * primera asignación (R29); «Cambiar plan» nunca lo manda (R31). `tipoCobro` viaja siempre (D6).
    */
-  asignarPlan: (input: { organizacionId: string; planId: string; inicioCiclo?: string }) => Promise<PlanResult>;
+  asignarPlan: (input: {
+    organizacionId: string;
+    planId: string;
+    inicioCiclo?: string;
+    tipoCobro: TipoCobro;
+  }) => Promise<PlanResult>;
   /**
    * SLT-58 §11.5 (R30): el rango de la fecha de inicio del ciclo, calculado en el servidor para no
    * depender del reloj del navegador. `hoy` es el valor por defecto del campo.
    */
   rangoInicioCiclo: RangoDelInicioDelCiclo;
+  /**
+   * Ajuste planes-custom (D5): el valor por defecto de «Inicio del ciclo» en la primera asignación,
+   * MAÑANA en la hora de la plataforma (`inicioDelCicloPorDefecto`, del reloj del servidor).
+   */
+  inicioCicloPorDefecto: string;
   /** `previsualizarAsignacionPlanAction` (R37), inyectada desde la página para poder probarla. */
   previsualizarAsignacion: (input: {
     organizacionId: string;
@@ -147,6 +191,11 @@ export interface PlanEmpresaProps {
    * sigue siendo el clic y el modal.
    */
   planPreseleccionado?: string;
+  /**
+   * Ajuste planes-custom (D10): `cambiarTipoCobroAction`, inyectada desde la página para poder probarla.
+   * Solo se ofrece si la empresa tiene plan; no toca el plan, el ancla ni los módulos.
+   */
+  cambiarTipoCobro: (input: { organizacionId: string; tipoCobro: TipoCobro }) => Promise<CambiarTipoCobroResult>;
 }
 
 /**
@@ -158,15 +207,6 @@ type VistaPrevia =
   | { fase: "ok"; avisos: TopeExcedido[]; siguienteCiclo: string }
   | { fase: "invalida" }
   | { fase: "fallo"; motivo: string | null };
-
-/** R37/R42: el texto de un tope que la empresa ya pasa; `siguienteCiclo` es la fecha de P10. */
-function textoDelAviso(aviso: TopeExcedido, siguienteCiclo: string): string {
-  const usados = formatearConteo(aviso.usados);
-  const maximo = formatearConteo(aviso.maximo);
-  if (aviso.tope === "ordenes") return ordenesYaPasadas(usados, maximo, siguienteCiclo);
-  if (aviso.tope === "api_keys") return apiKeysYaPasadas(usados, maximo);
-  return rolYaPasado(usados, maximo, aviso.tope);
-}
 
 /**
  * R20: si el selector ofrece el plan a ESTA empresa (público o custom suyo, no archivado y distinto del
@@ -199,13 +239,17 @@ export function PlanEmpresa({
   planActual,
   asignarPlan,
   rangoInicioCiclo,
+  inicioCicloPorDefecto,
   previsualizarAsignacion,
   planPreseleccionado,
+  cambiarTipoCobro,
 }: PlanEmpresaProps) {
   const tituloId = useId();
   const historialId = useId();
   const campoId = useId();
   const fechaId = useId();
+  const tipoCobroId = useId();
+  const nuevoTipoCobroId = useId();
   const router = useRouter();
   const toast = useToast();
   const planActualId = vista?.plan?.planId ?? null;
@@ -219,7 +263,10 @@ export function PlanEmpresa({
   const [rechazo, setRechazo] = useState<string | null>(null);
   const [errorDeCampo, setErrorDeCampo] = useState<string[] | undefined>(undefined);
   const [confirmando, setConfirmando] = useState(false);
-  const [inicioCiclo, setInicioCiclo] = useState(rangoInicioCiclo.hoy);
+  const [inicioCiclo, setInicioCiclo] = useState(inicioCicloPorDefecto);
+  /** D6: el tipo de cobro de esta asignación; cada apertura del modal empieza en «mensual». */
+  const [tipoCobro, setTipoCobro] = useState<TipoCobro>("mensual");
+  const [errorDeTipoCobro, setErrorDeTipoCobro] = useState<string[] | undefined>(undefined);
   const [vistaPrevia, setVistaPrevia] = useState<VistaPrevia>({ fase: "cargando" });
   const [errorDeFecha, setErrorDeFecha] = useState<string[] | undefined>(undefined);
   /** Los avisos del `ok` de la primera asignación (§11.5), bajo la sección y con el texto del modal. */
@@ -227,6 +274,11 @@ export function PlanEmpresa({
   // Cada lectura de la vista previa lleva su número: si el superadmin cambia la fecha antes de que
   // vuelva la anterior, la respuesta vieja se descarta y no pisa los avisos de la fecha nueva.
   const lecturaRef = useRef(0);
+  /** D10: el modal de «Cambiar tipo de cobro», con el tipo elegido (arranca en el actual). */
+  const [cambiandoTipo, setCambiandoTipo] = useState(false);
+  const [nuevoTipoCobro, setNuevoTipoCobro] = useState<TipoCobro>("mensual");
+  const [errorDeNuevoTipo, setErrorDeNuevoTipo] = useState<string[] | undefined>(undefined);
+  const [tipoEnVuelo, setTipoEnVuelo] = useState(false);
 
   // R20: solo los asignables a ESTA empresa (públicos y customs suyos, no archivados). El servicio ya
   // filtra; se vuelve a mirar aquí para que la pantalla nunca ofrezca uno que la base rechazaría. El
@@ -272,10 +324,12 @@ export function PlanEmpresa({
     if (planId === "" || enVuelo) return;
     setRechazo(null);
     setAvisosAsignados([]);
+    setTipoCobro("mensual");
+    setErrorDeTipoCobro(undefined);
     if (vista?.plan === null) {
-      // R29: cada apertura empieza en «hoy»; R37: y lee la vista previa de esa fecha.
-      setInicioCiclo(rangoInicioCiclo.hoy);
-      void leerVistaPrevia(rangoInicioCiclo.hoy);
+      // D5: cada apertura empieza en «mañana» (antes, R29: «hoy»); R37: y lee la vista previa de esa fecha.
+      setInicioCiclo(inicioCicloPorDefecto);
+      void leerVistaPrevia(inicioCicloPorDefecto);
     }
     setConfirmando(true);
   }
@@ -314,6 +368,54 @@ export function PlanEmpresa({
     void leerVistaPrevia(fecha);
   }
 
+  /** D10: abre el modal con el tipo que la empresa ya tiene. */
+  function abrirCambioDeTipo() {
+    if (!vista?.plan || tipoEnVuelo) return;
+    setRechazo(null);
+    setAvisosAsignados([]);
+    setErrorDeNuevoTipo(undefined);
+    setNuevoTipoCobro(vista.plan.cobro.tipo);
+    setCambiandoTipo(true);
+  }
+
+  /**
+   * D10: guarda solo el tipo de cobro. Con `cambio: true` relee la página (tipo, monto del período y
+   * siguiente cobro salen recalculados del servidor); con `cambio: false` no había nada que cambiar.
+   * Un rechazo se explica y no da el cambio por hecho.
+   */
+  async function guardarTipoCobro() {
+    if (tipoEnVuelo) return;
+    setTipoEnVuelo(true);
+    setRechazo(null);
+    setErrorDeNuevoTipo(undefined);
+    let seguirAbierto = false;
+    try {
+      const r = await cambiarTipoCobro({ organizacionId, tipoCobro: nuevoTipoCobro });
+      if (r.estado === "ok") {
+        if (r.cambio) {
+          toast.success(TEXTOS.tipoCobroCambiado);
+          router.refresh();
+        } else {
+          toast.info(TEXTOS.tipoCobroSinCambio);
+        }
+      } else if (r.estado === "validation_error" && r.fieldErrors.tipoCobro) {
+        // El error del tipo junto a su campo, con el modal abierto para elegir otro.
+        seguirAbierto = true;
+        setErrorDeNuevoTipo(r.fieldErrors.tipoCobro);
+      } else if (r.estado === "validation_error") {
+        setRechazo(TEXTOS.tipoCobroValidacion);
+      } else {
+        setRechazo(RECHAZOS_TIPO_COBRO[r.estado]);
+      }
+    } catch (error) {
+      console.error("[PlanEmpresa] cambiarTipoCobro lanzó", error);
+      setRechazo(TEXTOS.tipoCobroFallo);
+    } finally {
+      setTipoEnVuelo(false);
+      if (!seguirAbierto) setCambiandoTipo(false);
+    }
+  }
+
   /** Con el plan actual ilegible no hay resumen: se ofrece releer la página, nunca confirmar. */
   const sinResumen = Boolean(vista?.plan) && lineasDeCambio === null;
 
@@ -327,11 +429,13 @@ export function PlanEmpresa({
     setErrorDeCampo(undefined);
     let seguirAbierto = false;
     try {
-      const r = await asignarPlan(primera ? { organizacionId, planId, inicioCiclo } : { organizacionId, planId });
+      const r = await asignarPlan(
+        primera ? { organizacionId, planId, inicioCiclo, tipoCobro } : { organizacionId, planId, tipoCobro },
+      );
       if (r.estado === "ok") {
         setPlanId("");
         if (primera && vistaPrevia.fase === "ok") {
-          setAvisosAsignados(r.avisos.map((a) => textoDelAviso(a, vistaPrevia.siguienteCiclo)));
+          setAvisosAsignados(r.avisos.map((a) => textoDelAvisoDeTope(a, vistaPrevia.siguienteCiclo)));
         }
         toast.success(TEXTOS.asignado);
         router.refresh();
@@ -340,12 +444,18 @@ export function PlanEmpresa({
         seguirAbierto = true;
         setVistaPrevia({ fase: "invalida" });
         setErrorDeFecha(r.fieldErrors.inicioCiclo);
+      } else if (primera && r.estado === "validation_error" && r.fieldErrors.tipoCobro) {
+        // D6: el error del tipo de cobro junto a su campo, con el modal abierto.
+        seguirAbierto = true;
+        setErrorDeTipoCobro(r.fieldErrors.tipoCobro);
       } else if (r.estado === "tope_excedido") {
         // R20: qué tope se pasa, con el uso y el tope; el texto ya viene redactado del servicio.
         setRechazo(r.mensaje);
       } else if (r.estado === "validation_error") {
         // R18: el error de validación junto a su campo (el único que la pantalla deja elegir).
-        setErrorDeCampo(r.fieldErrors.planId ?? r.fieldErrors.organizacionId ?? [TEXTOS.validacion]);
+        setErrorDeCampo(
+          r.fieldErrors.planId ?? r.fieldErrors.organizacionId ?? r.fieldErrors.tipoCobro ?? [TEXTOS.validacion],
+        );
       } else {
         setRechazo(RECHAZOS[r.estado]);
       }
@@ -380,6 +490,14 @@ export function PlanEmpresa({
             nivelDeTitulo={3}
             textoExcepcion={TEXTOS.excepcion}
           />
+          {vista.plan !== null && (
+            // D10: cambia solo el tipo de cobro del plan que la empresa ya tiene.
+            <div>
+              <Button type="button" variant="outline" loading={tipoEnVuelo} onClick={abrirCambioDeTipo}>
+                {TEXTOS.cambiarTipoCobro}
+              </Button>
+            </div>
+          )}
           {vista.plan?.archivado && <p className="text-sm text-muted-foreground">{TEXTOS.planArchivado}</p>}
           {vista.plan?.costeo.sinCostoConcreto && (
             // Un estado fijo del plan, no un aviso que llega: `note` y no el `alert` de la primitiva.
@@ -448,6 +566,7 @@ export function PlanEmpresa({
                     <TableHead>{TEXTOS.fecha}</TableHead>
                     <TableHead>{TEXTOS.quien}</TableHead>
                     <TableHead>{TEXTOS.planAsignado}</TableHead>
+                    <TableHead>{TEXTOS.tipoCobro}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -459,6 +578,8 @@ export function PlanEmpresa({
                       </TableCell>
                       <TableCell>{a.actorNombre}</TableCell>
                       <TableCell>{a.planNombre}</TableCell>
+                      {/* D14: el tipo de cobro de la fila; un cambio de solo el tipo (D10) dice de cuál a cuál. */}
+                      <TableCell>{textoDelTipoCobroDeLaFila(a)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -513,8 +634,45 @@ export function PlanEmpresa({
                 <li key={linea}>{linea}</li>
               ))}
             </ul>
+            {/* D6: el tipo de cobro se elige también en un cambio de plan. */}
+            <div className="mt-3">
+              <TipoCobroCampo
+                id={tipoCobroId}
+                value={tipoCobro}
+                onValueChange={setTipoCobro}
+                error={errorDeTipoCobro}
+                disabled={enVuelo}
+              />
+            </div>
           </Modal>
         )
+      ) : null}
+
+      {vista?.plan ? (
+        // D10: el tipo de cobro nuevo; el plan, el ancla y los módulos no cambian.
+        <Modal
+          open={cambiandoTipo}
+          onOpenChange={setCambiandoTipo}
+          title={TEXTOS.cambiarTipoCobroTitulo}
+          description={TEXTOS.cambiarTipoCobroTexto(vista.plan.nombre)}
+          confirmLabel={TEXTOS.cambiarTipoCobro}
+          confirmDisabled={tipoEnVuelo}
+          cancelLabel={TEXTOS.volver}
+          closeOnConfirm={false}
+          size="md"
+          onConfirm={() => guardarTipoCobro()}
+        >
+          <TipoCobroCampo
+            id={nuevoTipoCobroId}
+            value={nuevoTipoCobro}
+            onValueChange={(t) => {
+              setNuevoTipoCobro(t);
+              setErrorDeNuevoTipo(undefined);
+            }}
+            error={errorDeNuevoTipo}
+            disabled={tipoEnVuelo}
+          />
+        </Modal>
       ) : null}
 
       {vista && vista.plan === null && elegido !== null && lineasDePrimera !== null ? (
@@ -552,6 +710,17 @@ export function PlanEmpresa({
               )}
             </FormField>
             {inicioCiclo !== "" && <p>{TEXTOS.cicloEmpiezaEl(inicioCiclo)}</p>}
+            {/* D6: el tipo de cobro de la primera asignación. */}
+            <TipoCobroCampo
+              id={tipoCobroId}
+              value={tipoCobro}
+              onValueChange={(t) => {
+                setTipoCobro(t);
+                setErrorDeTipoCobro(undefined);
+              }}
+              error={errorDeTipoCobro}
+              disabled={enVuelo}
+            />
             {vistaPrevia.fase === "fallo" ? (
               <AvisoDeError>
                 {vistaPrevia.motivo === null
@@ -559,30 +728,12 @@ export function PlanEmpresa({
                   : `${TEXTOS.vistaPreviaNoCargo}\n${vistaPrevia.motivo}`}
               </AvisoDeError>
             ) : vistaPrevia.fase === "ok" && vistaPrevia.avisos.length > 0 ? (
-              <AvisosDeTopes avisos={vistaPrevia.avisos.map((a) => textoDelAviso(a, vistaPrevia.siguienteCiclo))} />
+              <AvisosDeTopes avisos={vistaPrevia.avisos.map((a) => textoDelAvisoDeTope(a, vistaPrevia.siguienteCiclo))} />
             ) : null}
           </div>
         </Modal>
       ) : null}
     </section>
-  );
-}
-
-/**
- * R37/R42: los topes que la empresa ya pasa con el plan. No es un error (el plan se asigna igual), así
- * que va en el `Alert` normal; uno por tope, con el mismo texto antes y después de confirmar.
- */
-function AvisosDeTopes({ avisos }: { avisos: string[] }) {
-  return (
-    <Alert>
-      <AlertDescription>
-        <ul className="flex list-disc flex-col gap-1 pl-5">
-          {avisos.map((aviso) => (
-            <li key={aviso}>{aviso}</li>
-          ))}
-        </ul>
-      </AlertDescription>
-    </Alert>
   );
 }
 

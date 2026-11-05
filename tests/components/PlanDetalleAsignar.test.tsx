@@ -27,6 +27,7 @@ const CONCRETO: PlanDTO = {
   modulos: [],
   precio: { tipo: "monto", mensual: "50000.00", anual: null },
   costoPorOrden: "100.00",
+  costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
   archivado: false,
 };
 
@@ -87,7 +88,6 @@ describe("SLT-66 R33 — «Asignar a una empresa»", () => {
 
   it.each<[string, Partial<PlanDTO>]>([
     ["sin costo por orden", { costoPorOrden: null }],
-    ["base negociable", { precio: { tipo: "negociable" } }],
     ["base sin precio", { precio: { tipo: "sin_precio" } }],
   ])("R33: %s → «%s» no se ofrece y dice cómo completarlo", (_caso, extra) => {
     montar({ ...CONCRETO, ...extra }, [NORTE]);

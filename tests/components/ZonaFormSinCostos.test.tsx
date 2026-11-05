@@ -16,9 +16,9 @@ import {
  * R4: al crear y al editar solo hay nombre, distritos y la casilla de bodega principal (+ SINPE al
  * crear). Ni pago al mensajero (tampoco por vehículo), ni tarifa de cobro de la zona, ni el botón
  * de distrito especial.
- * R5: el payload que llega a la acción no lleva `cobroVehiculo` ni `tarifas`, y el formulario no
- * llama a `crearTarifa`/`actualizarTarifa` ni a `actualizarDistritosEspeciales`. Se espían las
- * acciones de verdad que importaría el formulario: si alguien vuelve a cablearlas, se ve aquí.
+ * R5: el payload que llega a la acción no lleva `cobroVehiculo` ni `tarifas`. SLT-54 (R26, R28)
+ * retiró las acciones que el formulario podría haber llamado: que no vuelvan lo vigila la guardia
+ * `tarifas-sin-escritura-vieja`.
  */
 const crearZonaMock = vi.fn();
 const actualizarZonaMock = vi.fn();
@@ -28,17 +28,7 @@ vi.mock("@/lib/actions/zonas", () => ({
   impactoZonaCentral: vi.fn(),
 }));
 
-const crearTarifaMock = vi.fn();
-const actualizarTarifaMock = vi.fn();
-vi.mock("@/lib/actions/tarifas", () => ({
-  crearTarifa: (...a: unknown[]) => crearTarifaMock(...a),
-  actualizarTarifa: (...a: unknown[]) => actualizarTarifaMock(...a),
-}));
-
-const actualizarDistritosEspecialesMock = vi.fn();
 vi.mock("@/lib/actions/geografia", () => ({
-  actualizarDistritosEspeciales: (...a: unknown[]) =>
-    actualizarDistritosEspecialesMock(...a),
   listarArbolGeografico: vi.fn(),
 }));
 
@@ -190,13 +180,9 @@ describe("SLT-51/R5 — guardar no manda ni escribe costos", () => {
     });
     expect(payload).not.toHaveProperty("cobroVehiculo");
     expect(payload).not.toHaveProperty("tarifas");
-
-    expect(crearTarifaMock).not.toHaveBeenCalled();
-    expect(actualizarTarifaMock).not.toHaveBeenCalled();
-    expect(actualizarDistritosEspecialesMock).not.toHaveBeenCalled();
   });
 
-  it("editar: el payload no lleva cobroVehiculo ni tarifas, y no toca tarifas ni especiales", async () => {
+  it("editar: el payload no lleva cobroVehiculo ni tarifas", async () => {
     const user = userEvent.setup();
     renderForm("editar");
     await abrirArbol(user);
@@ -212,9 +198,5 @@ describe("SLT-51/R5 — guardar no manda ni escribe costos", () => {
     expect(payload).not.toHaveProperty("sinpeNumero");
     expect(payload).toMatchObject({ nombre: "Norte", esCentral: false });
     expect([...(payload.distritoIds as string[])].sort()).toEqual(["d1", "d2"]);
-
-    expect(crearTarifaMock).not.toHaveBeenCalled();
-    expect(actualizarTarifaMock).not.toHaveBeenCalled();
-    expect(actualizarDistritosEspecialesMock).not.toHaveBeenCalled();
   });
 });

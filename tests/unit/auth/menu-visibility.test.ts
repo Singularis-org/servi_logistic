@@ -181,9 +181,24 @@ describe("itemsVisibles por rol (mapeo real de SIDEBAR_ITEMS)", () => {
       "Incidentes", // feature 158 (Q-I)
       "Histórico", // feature 321 (R2/R9): para no mover el aterrizaje de nadie
       "Mi plan", // SLT-58 R10: tras «Histórico»; el aterrizaje sigue en «Inicio»
+      "Tarifas", // SLT-54 R56: ítem propio, tras lo suyo; el aterrizaje sigue en «Inicio»
       "Ayuda", // ⭑ ficha 433: LA ÚLTIMA, y por el mismo motivo — la ven los cinco roles
     ]);
     expect(visibles).not.toContain("Configuración");
+  });
+
+  it("SLT-54 R56: «Tarifas para admin» como ítem propio; ningún otro rol distinto del maestro la ve", () => {
+    const hrefs = (rol: RolValue) =>
+      itemsVisibles(SIDEBAR_ITEMS, actor(rol)).flatMap((i) => [i.href, ...(i.children ?? []).map((c) => c.href)]);
+
+    const delAdmin = itemsVisibles(SIDEBAR_ITEMS, actor("admin")).filter((i) => i.href === "/configuracion/tarifas");
+    expect(delAdmin.map((i) => i.label)).toEqual(["Tarifas"]);
+
+    // El maestro la conserva dentro de «Configuración», una sola vez.
+    expect(hrefs("maestro").filter((h) => h === "/configuracion/tarifas")).toHaveLength(1);
+    for (const rol of ["adminTienda", "adminSatelite", "mensajero", "superadmin"] as RolValue[]) {
+      expect(hrefs(rol)).not.toContain("/configuracion/tarifas");
+    }
   });
 
   it("adminTienda ve Analítica + Órdenes + Novedades + Mi wallet, NO Configuración ni Incidentes", () => {
@@ -375,9 +390,8 @@ describe("primerDestino (aterrizaje de /dashboard)", () => {
       // aprobada. No es el primer hijo, así que no mueve el aterrizaje (lo afirma
       // `menu-visibility-envios-whatsapp.test.ts`).
       "/configuracion/envios-whatsapp",
-      // Ficha 273: el catalogo de tipos de vehiculo pasa a administrarse por CRUD y
-      // hereda la visibilidad maestro-only del item padre.
-      "/configuracion/vehiculos",
+      // SL-42 (R15): aquí iba "/configuracion/vehiculos" (ficha 273). El catálogo es de la
+      // plataforma; el caso de abajo lo fija.
       // SL-32 (R26): aquí iba "/configuracion/geografia" (ficha 374). Gestionar la geografía es de
       // la plataforma; el caso de abajo lo fija.
       // ⭑ Ficha 429 (T21-B/T23): el SINPE de las ocho bodegas. Va EL ÚLTIMO: `primerDestino` mira
@@ -992,7 +1006,8 @@ describe("SL-32 — ítem «Empresas» del superadmin", () => {
   it("R36: el superadmin ve exactamente [Empresas, Geografía] y aterriza en /plataforma/empresas", () => {
     const visibles = itemsVisibles(SIDEBAR_ITEMS, actor("superadmin"));
     // SLT-58 R23: «Planes» entre «Empresas» y «Geografía»; el aterrizaje sigue en «Empresas».
-    expect(labels(visibles)).toEqual(["Empresas", "Planes", "Geografía"]);
+    // SL-42 R1/R3: «Vehículos» detrás de «Geografía»; el aterrizaje sigue en «Empresas».
+    expect(labels(visibles)).toEqual(["Empresas", "Planes", "Geografía", "Vehículos"]);
     expect(primerDestino(visibles)).toBe("/plataforma/empresas");
     expect(visibles[0].href).toBe("/plataforma/empresas");
     expect(visibles[0].iconKey).toBe("building");
@@ -1013,7 +1028,15 @@ describe("SL-32 — ítem «Empresas» del superadmin", () => {
   it("R36: va justo antes de «Mi bodega» y «Ayuda», y es el único con /plataforma/empresas", () => {
     expect(SIDEBAR_ITEMS.filter((i) => i.href === "/plataforma/empresas")).toHaveLength(1);
     // SLT-58 R23: «Planes» entra entre «Empresas» y «Geografía».
-    expect(SIDEBAR_ITEMS.slice(-5).map((i) => i.label)).toEqual(["Empresas", "Planes", "Geografía", "Mi bodega", "Ayuda"]);
+    // SL-42 R1: «Vehículos» entra entre «Geografía» y «Mi bodega».
+    expect(SIDEBAR_ITEMS.slice(-6).map((i) => i.label)).toEqual([
+      "Empresas",
+      "Planes",
+      "Geografía",
+      "Vehículos",
+      "Mi bodega",
+      "Ayuda",
+    ]);
   });
 });
 
@@ -1053,5 +1076,63 @@ describe("SL-20 — ítem «Geografía» del superadmin", () => {
   it("R22: ningún ítem ni subítem apunta a /configuracion/geografia", () => {
     const hrefs = SIDEBAR_ITEMS.flatMap((i) => [i.href, ...(i.children ?? []).map((c) => c.href)]);
     expect(hrefs).not.toContain("/configuracion/geografia");
+  });
+});
+
+// SL-42 (R1, R3, R15): «Vehículos», el catálogo de tipos de vehículo, es del superadmin y de nadie
+// más; el `maestro` pierde su subítem de «Configuración». Barrido de los siete `RolValue` con el
+// esperado escrito a mano.
+describe("SL-42 — ítem «Vehículos» del superadmin", () => {
+  const SIETE: RolValue[] = [
+    "maestro",
+    "admin",
+    "adminTienda",
+    "adminSatelite",
+    "mensajero",
+    "apiKey",
+    "superadmin",
+  ];
+  const HREF = "/plataforma/vehiculos";
+  const RUTA_RETIRADA = "/configuracion/vehiculos";
+
+  it("R1: hay un solo ítem que navega a /plataforma/vehiculos, con el icono «car» y sin subítems", () => {
+    const items = SIDEBAR_ITEMS.filter((i) => i.href === HREF);
+    expect(items).toHaveLength(1);
+    expect(items[0].label).toBe("Vehículos");
+    expect(items[0].iconKey).toBe("car");
+    expect(items[0].children).toBeUndefined();
+  });
+
+  it("R1: solo el superadmin lo ve; ningún rol de empresa, y sin sesión tampoco", () => {
+    const item = SIDEBAR_ITEMS.find((i) => i.href === HREF)!;
+    expect(SIETE.filter((rol) => puedeVer(item, actor(rol)))).toEqual(["superadmin"]);
+    for (const rol of SIETE.filter((r) => r !== "superadmin")) {
+      const visibles = itemsVisibles(SIDEBAR_ITEMS, actor(rol));
+      expect(visibles.map((i) => i.href)).not.toContain(HREF);
+    }
+    expect(puedeVer(item, null)).toBe(false);
+  });
+
+  it("R3: el aterrizaje del superadmin sigue en «Empresas» y el de cada rol de empresa no cambia", () => {
+    const sinVehiculos = SIDEBAR_ITEMS.filter((i) => i.href !== HREF);
+    expect(primerDestino(itemsVisibles(SIDEBAR_ITEMS, actor("superadmin")))).toBe("/plataforma/empresas");
+    for (const rol of SIETE) {
+      expect(primerDestino(itemsVisibles(SIDEBAR_ITEMS, actor(rol)))).toBe(
+        primerDestino(itemsVisibles(sinVehiculos, actor(rol))),
+      );
+    }
+  });
+
+  it("R15: el maestro no ve /configuracion/vehiculos en ningún ítem, y su aterrizaje no cambia", () => {
+    const visibles = itemsVisibles(SIDEBAR_ITEMS, actor("maestro"));
+    const hrefs = visibles.flatMap((i) => [i.href, ...(i.children ?? []).map((c) => c.href)]);
+    expect(hrefs).not.toContain(RUTA_RETIRADA);
+    expect(hrefs).not.toContain(HREF);
+    expect(primerDestino(visibles)).toBe("/dashboard");
+  });
+
+  it("R16: ningún ítem ni subítem del menú apunta a /configuracion/vehiculos", () => {
+    const hrefs = SIDEBAR_ITEMS.flatMap((i) => [i.href, ...(i.children ?? []).map((c) => c.href)]);
+    expect(hrefs).not.toContain(RUTA_RETIRADA);
   });
 });

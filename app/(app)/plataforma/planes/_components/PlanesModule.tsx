@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 
+import { AvisosDeTopes, textosDeLosAvisosDeTopes } from "@/components/shared/AvisosDeTopes";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -13,16 +14,23 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatearConteo } from "@/lib/planes/consumo";
-import type { CrearPlanInput, PlanDelCatalogo, PlanResult } from "@/lib/types/planes";
+import type { RangoDelInicioDelCiclo } from "@/lib/planes/ciclo";
+import type {
+  CrearPlanInput,
+  PlanDelCatalogo,
+  PlanResult,
+  PrevisualizarCustomInput,
+  VistaPreviaCustomResult,
+} from "@/lib/types/planes";
 
-import { PlanForm } from "./PlanForm";
+import { PlanForm, type EmpresaParaCustom } from "./PlanForm";
 import { lineasDeCosto, lineasDeTopes, TEXTOS_PLAN, textoDeVisibilidad } from "./plan-vista";
 
 /** Textos de la pantalla, en un solo sitio para cuando llegue la i18n. */
 const TEXTOS = {
   nuevo: "Nuevo plan",
   tituloNuevo: "Nuevo plan",
-  descripcionNuevo: "Los topes vacíos no tienen límite. El costo base es informativo; el costo por orden se cobra en cada orden nueva.",
+  descripcionNuevo: "Los topes vacíos no tienen límite. El costo base es informativo. El costo por orden fijo se cobra al crear cada orden; el porcentual, cuando la orden llega a un estado final.",
   mostrarArchivados: "Mostrar archivados",
   columnaNombre: "Nombre",
   columnaVisibilidad: "Visibilidad",
@@ -54,10 +62,16 @@ export interface PlanesModuleProps {
   errorDeCarga?: boolean;
   /** El catálogo entero, también los archivados, en el orden del servidor. */
   planes: PlanDelCatalogo[];
-  /** Las empresas para un plan custom (`listarEmpresasPlataforma`). */
-  empresas: { id: string; nombre: string }[] | null;
+  /** Las empresas para un plan custom (`listarEmpresasPlataforma`), con si ya tienen plan (D4). */
+  empresas: EmpresaParaCustom[] | null;
+  /** Ajuste planes-custom (D5): «Inicio del ciclo» por defecto del custom, del reloj del servidor. */
+  inicioCicloPorDefecto: string;
+  /** SLT-58 (R30): el `min`/`max` de «Inicio del ciclo», del reloj del servidor. */
+  rangoInicioCiclo: RangoDelInicioDelCiclo;
   /** `crearPlanAction`, inyectada desde la página para poder probarla. */
   crearPlan: (input: CrearPlanInput) => Promise<PlanResult>;
+  /** Ajuste planes-custom (D13): `previsualizarCustomAction`, inyectada desde la página. */
+  previsualizarCustom: (input: PrevisualizarCustomInput) => Promise<VistaPreviaCustomResult>;
 }
 
 /**
@@ -66,18 +80,29 @@ export interface PlanesModuleProps {
  * programado. Los archivados se esconden por defecto y, al mostrarlos, llevan la marca «Archivado».
  * «Nuevo plan» abre el formulario en un panel lateral; tras crear, se relee la página.
  */
-export function PlanesModule({ errorDeCarga = false, planes, empresas, crearPlan }: PlanesModuleProps) {
+export function PlanesModule({
+  errorDeCarga = false,
+  planes,
+  empresas,
+  inicioCicloPorDefecto,
+  rangoInicioCiclo,
+  crearPlan,
+  previsualizarCustom,
+}: PlanesModuleProps) {
   const router = useRouter();
   const idArchivados = useId();
   const [mostrarArchivados, setMostrarArchivados] = useState(false);
   const [abierto, setAbierto] = useState(false);
   const [creado, setCreado] = useState<string | null>(null);
+  /** Ajuste planes-custom (D12): los topes ya pasados del `ok` de un custom con fecha, con el texto del modal. */
+  const [avisosCreado, setAvisosCreado] = useState<string[]>([]);
 
   const visibles = mostrarArchivados ? planes : planes.filter((p) => !p.archivado);
 
-  function alCrear(nombre: string) {
+  function alCrear(r: Extract<PlanResult, { estado: "ok" }>, nombre: string, siguienteCiclo: string | null) {
     setAbierto(false);
     setCreado(nombre);
+    setAvisosCreado(textosDeLosAvisosDeTopes(r.avisos, siguienteCiclo));
     router.refresh();
   }
 
@@ -111,6 +136,7 @@ export function PlanesModule({ errorDeCarga = false, planes, empresas, crearPlan
           type="button"
           onClick={() => {
             setCreado(null);
+            setAvisosCreado([]);
             setAbierto(true);
           }}
         >
@@ -124,6 +150,7 @@ export function PlanesModule({ errorDeCarga = false, planes, empresas, crearPlan
           <AlertDescription>{TEXTOS.creado(creado)}</AlertDescription>
         </Alert>
       ) : null}
+      {creado !== null && avisosCreado.length > 0 ? <AvisosDeTopes avisos={avisosCreado} /> : null}
 
       <Catalogo planes={visibles} hayArchivadosOcultos={!mostrarArchivados && planes.length > 0} />
 
@@ -137,8 +164,11 @@ export function PlanesModule({ errorDeCarga = false, planes, empresas, crearPlan
             <PlanForm
               modo="crear"
               empresas={empresas}
+              inicioCicloPorDefecto={inicioCicloPorDefecto}
+              rangoInicioCiclo={rangoInicioCiclo}
               enviar={crearPlan}
-              onGuardado={(_r, nombre) => alCrear(nombre)}
+              previsualizar={previsualizarCustom}
+              onGuardado={alCrear}
             />
           </div>
         </SheetContent>

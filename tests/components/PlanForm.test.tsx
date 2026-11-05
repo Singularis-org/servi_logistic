@@ -13,10 +13,14 @@ import type { PlanDTO, PlanResult } from "@/lib/types/planes";
 
 const ORG = "6f1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f60";
 const PLAN_ID = "0b6f3a2e-1c4d-4e5f-8a9b-0c1d2e3f4a5b";
+// Ajuste planes-custom (D4): «Envíos Norte» aún no tiene plan; «Reparto Sur» ya lo tiene.
 const EMPRESAS = [
-  { id: ORG, nombre: "Envíos Norte" },
-  { id: "7a1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f61", nombre: "Reparto Sur" },
+  { id: ORG, nombre: "Envíos Norte", tienePlan: false },
+  { id: "7a1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f61", nombre: "Reparto Sur", tienePlan: true },
 ];
+/** D5: mañana en la hora de la plataforma, como lo calcula la página. */
+const MANANA = "2026-10-30";
+const RANGO = { hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" };
 
 const OK: PlanResult = { estado: "ok", planId: PLAN_ID, cambio: true, avisos: [], vigenteDesde: null };
 
@@ -29,13 +33,24 @@ const PLAN: PlanDTO = {
   modulos: ["analitica"],
   precio: { tipo: "monto", mensual: "10.00", anual: null },
   costoPorOrden: null, // SLT-66 R8: campo nuevo del PlanDTO
+  costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
   archivado: false,
 };
 
 afterEach(() => cleanup());
 
 function montarCrear(enviar = vi.fn().mockResolvedValue(OK), onGuardado = vi.fn()) {
-  render(<PlanForm modo="crear" empresas={EMPRESAS} enviar={enviar} onGuardado={onGuardado} />);
+  render(
+    <PlanForm
+      modo="crear"
+      empresas={EMPRESAS}
+      inicioCicloPorDefecto={MANANA}
+      rangoInicioCiclo={RANGO}
+      enviar={enviar}
+      previsualizar={vi.fn().mockResolvedValue({ estado: "ok", avisos: [], siguienteCiclo: "2026-11-30" })}
+      onGuardado={onGuardado}
+    />,
+  );
   return { enviar, onGuardado };
 }
 
@@ -82,8 +97,13 @@ describe("SLT-58 R14 — crear un plan", () => {
       modulos: ["monitoreo"],
       precio: { tipo: "monto", mensual: "25.50", anual: { tipo: "descuento", porcentaje: "10" } },
       costoPorOrden: null, // SLT-66 R8: campo nuevo; vacío = null
+      costoPorOrdenPorcentual: null, // SLT-83: campo nuevo; el modo no elegido viaja null
+      // Ajuste planes-custom (D2, D4–D6): el custom se asigna al crearlo; la empresa no tiene plan.
+      tipoCobro: "mensual",
+      inicioCiclo: MANANA,
     });
-    expect(onGuardado).toHaveBeenCalledWith(OK, "Plan Norte");
+    // D12: la empresa no tiene plan; `onGuardado` recibe el siguiente ciclo de la vista previa (D13).
+    expect(onGuardado).toHaveBeenCalledWith(OK, "Plan Norte", "2026-11-30");
   });
 
   it("R14: un plan público sin topes ni precio sale con organizacionId null y todo sin límite", async () => {
@@ -102,6 +122,7 @@ describe("SLT-58 R14 — crear un plan", () => {
       modulos: [],
       precio: { tipo: "sin_precio" },
       costoPorOrden: null, // SLT-66 R8: campo nuevo; vacío = null
+      costoPorOrdenPorcentual: null, // SLT-83: campo nuevo; el modo no elegido viaja null
     });
   });
 
@@ -165,6 +186,7 @@ describe("SLT-58 R15 — editar: de inmediato o a partir de una fecha", () => {
       modulos: ["analitica"],
       precio: { tipo: "monto", mensual: "10", anual: null },
       costoPorOrden: null, // SLT-66 R8: campo nuevo; vacío = null
+      costoPorOrdenPorcentual: null, // SLT-83: campo nuevo; el modo no elegido viaja null
       vigenteDesde: null,
     });
   });
@@ -320,7 +342,17 @@ describe("SLT-58 — revisión de diseño del formulario", () => {
 
   it("si las empresas no se pudieron leer, lo dice junto al campo «Empresa»", async () => {
     const user = userEvent.setup();
-    render(<PlanForm modo="crear" empresas={null} enviar={vi.fn()} onGuardado={vi.fn()} />);
+    render(
+      <PlanForm
+        modo="crear"
+        empresas={null}
+        inicioCicloPorDefecto={MANANA}
+        rangoInicioCiclo={RANGO}
+        enviar={vi.fn()}
+        previsualizar={vi.fn().mockResolvedValue({ estado: "ok", avisos: [], siguienteCiclo: "2026-11-30" })}
+        onGuardado={vi.fn()}
+      />,
+    );
 
     expect(screen.queryByText("No se pudieron cargar las empresas.")).toBeNull();
     await user.click(screen.getByRole("radio", { name: "Custom" }));
@@ -354,7 +386,6 @@ describe("SLT-58 — revisión de diseño del formulario", () => {
     const precio = screen.getByRole("radiogroup", { name: "Costo base" });
     expect(within(precio).getAllByRole("radio").map((r) => r.closest("label")?.textContent)).toEqual([
       "Sin precio",
-      "Negociable",
       "Con monto",
     ]);
     await user.click(screen.getByRole("radio", { name: "Con monto" }));

@@ -20,6 +20,8 @@ import {
   COBRADO_SOBRE_RECAUDADO_NOTA,
   FACTURADO_EMPRESA_LABEL,
   FLETE_DEV_CON_IVA_LABEL,
+  FLETE_NO_ENTREGADAS_CON_IVA_LABEL,
+  FLETE_NO_ENTREGADAS_NOTA,
   FLETE_RECHAZO_AUN_NO_COBRADO_NOTA,
   FLETE_RECHAZO_NO_DEDUCIBLE_NOTA,
   FLETE_RECHAZO_NO_SE_COBRARA_NOTA,
@@ -27,12 +29,14 @@ import {
   GANA_LA_TIENDA_LABEL,
   GANA_LA_TIENDA_NEGATIVO_NOTA,
   GANA_LA_TIENDA_NOTA,
+  INGRESO_BODEGA_LABEL,
   INGRESO_BODEGA_RECHAZOS_LABEL,
   IVA_FACTURADO_LABEL,
   IVA_FACTURADO_NOTA,
   NETO_EMPRESA_LABEL,
   NETO_EMPRESA_NEGATIVO_NOTA,
   NETO_EMPRESA_NOTA,
+  NETO_EMPRESA_NOTA_MODELO_NUEVO,
   PAGO_MENSAJERO_LABEL,
   PAGO_TIENDA_HOY_NOTA,
   PAGO_TIENDA_LABEL,
@@ -175,6 +179,8 @@ export interface CascadasCierreMensajeroProps {
    * `.pagoTienda` es `pagoTienda`, y la de `.ganaLaTienda` es `ganaLaTienda`.
    */
   partesPorTienda: readonly ParteDeTienda[];
+  /** SLT-54 (R65): alguna gestión del cierre es del modelo nuevo. Sin ella, los rótulos de siempre. */
+  modeloNuevo?: boolean;
 }
 
 /**
@@ -252,7 +258,7 @@ function lineasFacturaTienda(
   marcaDeVariasTiendas: string | null,
 ): LineaCascada[] {
   const { totalesIngreso, general, pagoTienda, cobradoSobreRecaudado } = props;
-  const notasDelFlete = [FLETE_RECHAZO_NO_DEDUCIBLE_NOTA];
+  const notasDelFlete = [props.modeloNuevo ? FLETE_NO_ENTREGADAS_NOTA : FLETE_RECHAZO_NO_DEDUCIBLE_NOTA];
   const cargo = notaDelCargoAlSaldo(
     totalesIngreso.fleteDevolucionConIva,
     props.fleteRechazoYaCobradoATienda,
@@ -274,7 +280,7 @@ function lineasFacturaTienda(
       notas: [COBRADO_SOBRE_RECAUDADO_NOTA],
     },
     {
-      label: FLETE_DEV_CON_IVA_LABEL,
+      label: props.modeloNuevo ? FLETE_NO_ENTREGADAS_CON_IVA_LABEL : FLETE_DEV_CON_IVA_LABEL,
       monto: totalesIngreso.fleteDevolucionConIva,
       signo: "suma",
       notas: notasDelFlete,
@@ -307,7 +313,7 @@ function lineasFacturaTienda(
  * rótulo sería falso. Lo dejó escrito la propia 393 en `cierre-labels`.
  */
 function lineasNetoEmpresa(props: CascadasCierreMensajeroProps): LineaCascada[] {
-  const notas = [NETO_EMPRESA_NOTA];
+  const notas = [props.modeloNuevo ? NETO_EMPRESA_NOTA_MODELO_NUEVO : NETO_EMPRESA_NOTA];
   if (esMontoNegativo(props.netoEmpresa)) notas.push(NETO_EMPRESA_NEGATIVO_NOTA);
 
   return [
@@ -322,7 +328,7 @@ function lineasNetoEmpresa(props: CascadasCierreMensajeroProps): LineaCascada[] 
     },
     { label: PAGO_MENSAJERO_LABEL, monto: props.totalPagoMensajero, signo: "resta" },
     {
-      label: INGRESO_BODEGA_RECHAZOS_LABEL,
+      label: props.modeloNuevo ? INGRESO_BODEGA_LABEL : INGRESO_BODEGA_RECHAZOS_LABEL,
       monto: props.totalIngresoBodegaRechazos,
       signo: "resta",
     },
@@ -364,7 +370,9 @@ export function CascadasCierreMensajero(props: Readonly<CascadasCierreMensajeroP
       />
       {/* FICHA 396 — el desglose va AQUÍ: después de la cascada que termina en «Pago a tienda»,
           que es la cifra que parte, y antes de la de la empresa, que ya no habla de tiendas. */}
-      {marca !== null ? <DesglosePorTienda partes={props.partesPorTienda} de={de} /> : null}
+      {marca !== null ? (
+        <DesglosePorTienda partes={props.partesPorTienda} de={de} modeloNuevo={props.modeloNuevo} />
+      ) : null}
       <CascadaDinero
         titulo={CASCADA_NETO_EMPRESA_TITULO}
         ariaLabel={`${CASCADA_NETO_EMPRESA_TITULO} · ${de}`}

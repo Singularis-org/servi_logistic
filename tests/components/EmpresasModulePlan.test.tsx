@@ -36,22 +36,22 @@ function empresa(
 
 const PROPIA = empresa("org-1", "Envíos Norte", {
   cobroPorOrden: "80.00",
-  cobroVigente: { monto: "80.00", fuente: "empresa" },
-  plan: { id: "plan-1", nombre: "Plan Crecer" },
+  cobroVigente: { modo: "fijo", monto: "80.00", fuente: "empresa" },
+  plan: { id: "plan-1", nombre: "Plan Crecer", tipoCobro: "mensual" },
 });
 const DEL_PLAN = empresa("org-2", "Reparto Sur", {
   cobroPorOrden: null,
-  cobroVigente: { monto: "100.00", fuente: "plan" },
-  plan: { id: "plan-2", nombre: "Plan Custom Sur" },
+  cobroVigente: { modo: "fijo", monto: "100.00", fuente: "plan" },
+  plan: { id: "plan-2", nombre: "Plan Custom Sur", tipoCobro: "anual" },
 });
 const GLOBAL = empresa("org-3", "Mensajería Este", {
   cobroPorOrden: null,
-  cobroVigente: { monto: "500.00", fuente: "global" },
+  cobroVigente: { modo: "fijo", monto: "500.00", fuente: "global" },
   plan: null,
 });
 const SIN_CONFIGURAR = empresa("org-4", "Correos Oeste", {
   cobroPorOrden: null,
-  cobroVigente: { monto: "0.00", fuente: "sin_configurar" },
+  cobroVigente: { modo: "fijo", monto: "0.00", fuente: "sin_configurar" },
   plan: null,
 });
 
@@ -148,5 +148,24 @@ describe("SLT-66 R32 — la columna «Plan»", () => {
     expect(enlace).toHaveTextContent("Plan y módulos");
     expect(enlace).toHaveAttribute("href", "/plataforma/empresas/org-1");
     expect(screen.queryByRole("link", { name: "Módulos de Envíos Norte" })).toBeNull();
+  });
+});
+
+describe("Ajuste planes-custom D9 — la lista muestra solo el tipo de cobro junto al plan", () => {
+  it.each([
+    ["Envíos Norte", "Plan Crecer · Mensual"],
+    ["Reparto Sur", "Plan Custom Sur · Anual"],
+  ])("%s: «%s»", (nombre, texto) => {
+    montar();
+    const c = celda("Plan", nombre);
+    expect(c).toHaveTextContent(texto);
+    // Ni el monto del período ni el siguiente cobro: eso va en el detalle.
+    expect(c).not.toHaveTextContent(/Monto del período|Siguiente cobro/);
+  });
+
+  it("sin plan no hay tipo de cobro", () => {
+    montar();
+    const c = celda("Plan", "Mensajería Este");
+    expect(c).not.toHaveTextContent(/Mensual|Anual/);
   });
 });

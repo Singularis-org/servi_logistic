@@ -105,7 +105,7 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
     tarifa: { findMany: vi.fn().mockResolvedValue([]) },
     // SLT-52 (T4.3): el importe del listado pasa por el resolver unico, que pregunta primero si la
     // empresa tiene valores del modelo nuevo. «Ninguno»: estos casos son del modelo viejo (R36).
-    tarifaValor: { findFirst: vi.fn().mockResolvedValue(null) },
+    tarifaActivacion: { findFirst: vi.fn().mockResolvedValue(null) },
     orderStatus: { findUnique: vi.fn() },
     zona: { findUnique: vi.fn() },
     provincia: { findUnique: vi.fn() },

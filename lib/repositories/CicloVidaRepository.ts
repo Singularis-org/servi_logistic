@@ -1,33 +1,28 @@
-// El CICLO DE VIDA de una orden: de su creacion a su ultima transicion terminal.
+// El CICLO DE VIDA de una orden: de su creacion a su GESTION FINAL vigente.
 //
-// ─── ESTA DEFINICION NO ES NUEVA, Y ESO ES LO IMPORTANTE ────────────────────────────────
+// ─── QUE ES «CERRADA» AQUI (SLT-64, D1 y D3) ────────────────────────────────────────────
 //
-// El reloj arranca en `orden.created_at` y para en la ULTIMA transicion a un
-// `ESTADOS_TERMINALES` (`entregada`, `devuelta_a_tienda`, `incidente`) de
-// `orden_historial_estado`. Es, literalmente, la consulta Q5 de `AnaliticaRollupRepository`
-// —la que alimenta la metrica `tiempo_ciclo` del catalogo— con el `where` de esta vertical en
-// vez del de una ventana de rollup.
+// El reloj arranca en `orden.created_at` y para en el `created_at` de la ULTIMA gestion vigente
+// de la orden, si su resultado es uno de `RESULTADOS_DE_CIERRE`. No lee
+// `orden_historial_estado`: desde la ficha 454 la transicion terminal solo se escribe al APROBAR
+// el cierre, y la pantalla decia «0 cerradas» al lado de «Entregado 11» mientras nadie aprobara.
 //
-// Se copio el CRITERIO, a conciencia, y no por comodidad: escribir aqui una variante —empezar
-// en la primera asignacion, o parar en la PRIMERA transicion terminal en vez de la ultima—
-// habria dado dos «tiempos de ciclo» distintos en el mismo producto, y nadie sabria cual
-// mirar. Las tres decisiones que se heredan, con su porque:
+// Tres decisiones que sostienen la consulta:
 //
-//   - `DISTINCT ON (orden_id) ... ORDER BY created_at DESC, id DESC` — la ULTIMA transicion
-//     terminal, no la primera. El caso que esto resuelve es real: una orden entra a terminal,
-//     alguien la revierte y vuelve a entrar. Con la primera, el reloj pararia en un cierre que
-//     se deshizo; y el `DISTINCT ON` ademas garantiza UNA contribucion por orden, nunca dos.
-//     El desempate por `id` no sobra: dos transiciones pueden compartir `created_at`, y sin el
-//     Postgres podria elegir una u otra entre ejecuciones.
-//   - la VENTANA cae sobre la transicion TERMINAL, no sobre la creacion de la orden. Una orden
-//     creada en enero y cerrada en agosto cuenta en agosto. Atribuyendo por creacion, el mes
-//     en curso saldria siempre artificialmente rapido: solo habrian cerrado las faciles.
-//   - los terminales se IMPORTAN de `ESTADOS_TERMINALES` y no se escriben aqui: si manana
-//     entra un cuarto, esta consulta lo recoge sola.
+//   - `NOT EXISTS` con la tupla `(created_at, id)`: es el mismo orden que el
+//     `ORDER BY created_at DESC, id DESC` de `ConteoPorStatusRepository`, para que esta cifra y el
+//     «Entregado N» elijan la misma gestion. Da ademas UNA contribucion por orden. El desempate
+//     por `id` no sobra: dos gestiones pueden compartir `created_at`.
+//   - la VENTANA cae sobre la gestion final, no sobre la creacion de la orden: lo que cerro en el
+//     periodo, con su duracion. Una orden creada en enero y cerrada en agosto cuenta en agosto.
+//     El `NOT EXISTS` NO lleva ventana: la ultima gestion se elige entre TODAS las vigentes, y un
+//     `reprogramado` posterior al periodo tambien la desmiente (R5).
+//   - `resultado::text`: la columna es un enum y Prisma manda los parametros como texto; sin el
+//     cast Postgres no encuentra el operador `enum = text`.
 //
-// ⚠ LO QUE NO SE HEREDA es el `estatus_al_corte` del rollup: alli hace falta porque el cubo se
-// desagrega por estatus. Aqui no hay desagregacion, asi que se omite — y omitirlo es lo
-// correcto, no una simplificacion: ese CTE recorre el historial entero de cada orden.
+// ⚠ NO ES LA METRICA `tiempo_ciclo` del rollup (Q5 de `AnaliticaRollupRepository`), que se publica
+// por API key y sigue parando en la transicion terminal. Son dos «tiempos de ciclo» con definicion
+// distinta, decision aceptada en SLT-64 (Q3).
 //
 // ─── COSTE DECLARADO ────────────────────────────────────────────────────────────────────
 //
@@ -35,18 +30,18 @@
 // recorte por ROL se REUSA —`condicionDeAlcance` se importa—, las condiciones se construyen en
 // `condicionesDeCiclo`, funcion PURA y exportada, y el alcance es SIEMPRE la primera. La
 // condicion de FECHA es distinta a proposito y no debe converger nunca: aqui cae sobre la
-// transicion terminal, que es el evento que se esta fechando.
+// gestion final, que es el evento que se esta fechando.
 
 import { Prisma } from "@prisma/client";
 import type { PrismaClient } from "@prisma/client";
 
 import { condicionDeAlcance } from "@/lib/repositories/ConteoPorStatusRepository";
-import { ESTADOS_TERMINALES } from "@/lib/types/order-status-transiciones";
 import type { ConsultaConteoEntregas } from "@/lib/analytics/entregas-conteo";
 import type {
   CicloCrudo,
   ICicloVidaRepository,
 } from "@/lib/interfaces/repositories/ICicloVidaRepository";
+import { RESULTADOS_DE_CIERRE } from "@/lib/types/conteo-ciclo-vida";
 
 /** Cliente MINIMO consumido (patron del resto de la vertical): una sola consulta cruda. */
 type CicloVidaPrismaClient = Pick<PrismaClient, "$queryRaw">;
@@ -56,11 +51,8 @@ interface FilaCiclo {
   readonly n: number;
 }
 
-/**
- * Los `value` TERMINALES del catalogo, como lista SQL. Se importan del dominio y NO se
- * reescriben: mismo criterio —y misma linea— que `AnaliticaRollupRepository`.
- */
-const TERMINALES = Prisma.join([...ESTADOS_TERMINALES]);
+/** Los resultados que cierran una orden, como lista SQL. Se importan: la lista vive en un solo sitio (R10). */
+const RESULTADOS = Prisma.join([...RESULTADOS_DE_CIERRE]);
 
 /** Lista de ids como parametros, nunca interpolada: cada uno entra como `$n`. */
 function comoParametros(ids: readonly string[]): Prisma.Sql {
@@ -74,13 +66,11 @@ function enLista(columna: Prisma.Sql, ids: readonly string[] | undefined): Prism
 }
 
 /**
- * Las condiciones que se aplican sobre la ORDEN ya emparejada con su cierre. Funcion PURA y
- * exportada: es donde vive la semantica y se comprueba sin base de datos.
+ * Las condiciones que se aplican sobre la ORDEN ya emparejada con su gestion final. Funcion PURA
+ * y exportada: es donde vive la semantica y se comprueba sin base de datos.
  *
- * La ventana NO esta aqui: va dentro del CTE, sobre `h.created_at`, porque es lo que
- * selecciona QUE cierres entran — y aplicarla fuera del `DISTINCT ON` cambiaria el resultado
- * (se elegiria la ultima transicion de todos los tiempos y luego se descartaria si cae fuera,
- * en vez de la ultima DENTRO de la ventana).
+ * La ventana NO esta aqui porque fecha la gestion, no la orden: ver
+ * `condicionDeVentanaDeCierre`.
  */
 export function condicionesDeCiclo(consulta: ConsultaConteoEntregas): Prisma.Sql[] {
   const { filtro, alcance } = consulta;
@@ -119,15 +109,15 @@ export function condicionesDeCiclo(consulta: ConsultaConteoEntregas): Prisma.Sql
 }
 
 /**
- * La ventana del CTE: sobre la transicion terminal. Sin rango no se anade nada y entran todos
- * los cierres registrados — «sin filtrar» significa todo, tambien aqui.
+ * La ventana: sobre la gestion final. Sin rango no se anade nada y entran todas las cerradas del
+ * recorte — «sin filtrar» significa todo, tambien aqui.
  */
-export function condicionDeVentanaTerminal(consulta: ConsultaConteoEntregas): Prisma.Sql {
+export function condicionDeVentanaDeCierre(consulta: ConsultaConteoEntregas): Prisma.Sql {
   const { rango } = consulta;
   if (rango === null) return Prisma.sql`TRUE`;
   // Semiabierta `[desde, hasta)`: `resolverRango` devuelve `hasta` como las 00:00 CR del dia
   // SIGUIENTE, para que `hastaFecha` sea inclusiva.
-  return Prisma.sql`h."created_at" >= ${rango.desde} AND h."created_at" < ${rango.hasta}`;
+  return Prisma.sql`g."created_at" >= ${rango.desde} AND g."created_at" < ${rango.hasta}`;
 }
 
 export class CicloVidaRepository implements ICicloVidaRepository {
@@ -135,28 +125,27 @@ export class CicloVidaRepository implements ICicloVidaRepository {
 
   async acumularCiclos(consulta: ConsultaConteoEntregas): Promise<CicloCrudo> {
     const where = Prisma.join(condicionesDeCiclo(consulta), " AND ");
-    const ventana = condicionDeVentanaTerminal(consulta);
+    const ventana = condicionDeVentanaDeCierre(consulta);
 
     // `SUM(...)::bigint` llega como STRING por el driver cuando el tipo es `bigint`, y como
     // `null` si no hubo ninguna fila. Las dos cosas se normalizan abajo: un `Number(null)` es
     // `0`, que aqui es correcto —cero filas, cero segundos— pero conviene que sea explicito y
     // no un accidente de coercion.
     const filas = await this.prisma.$queryRaw<FilaCiclo[]>`
-      WITH ultimo_terminal AS (
-        SELECT DISTINCT ON (h."orden_id")
-               h."orden_id"   AS orden_id,
-               h."created_at" AS cerrado_at
-        FROM "orden_historial_estado" h
-        JOIN "order_status" s ON s."id" = h."estatus_destino_id"
-        WHERE s."value" IN (${TERMINALES})
-          AND ${ventana}
-        ORDER BY h."orden_id", h."created_at" DESC, h."id" DESC
-      )
-      SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (u.cerrado_at - o."created_at"))::bigint), 0)::bigint AS seg,
+      SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (g."created_at" - o."created_at"))::bigint), 0)::bigint AS seg,
              COUNT(*)::int AS n
-      FROM ultimo_terminal u
-      JOIN "orden" o ON o."id" = u.orden_id
-      WHERE ${where}`;
+      FROM "gestion_orden" g
+      JOIN "orden" o ON o."id" = g."orden_id"
+      WHERE g."anulada_at" IS NULL
+        AND g."resultado"::text IN (${RESULTADOS})
+        AND ${ventana}
+        AND NOT EXISTS (
+          SELECT 1 FROM "gestion_orden" g2
+          WHERE g2."orden_id" = g."orden_id"
+            AND g2."anulada_at" IS NULL
+            AND (g2."created_at", g2."id") > (g."created_at", g."id")
+        )
+        AND ${where}`;
 
     const fila = filas[0];
     if (!fila) return { segundosAcum: 0, n: 0 };

@@ -272,7 +272,7 @@ describe("el resolver del DINERO trae las dos columnas del pacto", () => {
     // no tiene ninguno, asi que resuelve con `tarifas` (R36) y devuelve la tarifa envuelta.
     const repo = new TarifaVigenteRepository({
       tarifa: { findMany },
-      tarifaValor: { findFirst: vi.fn(async () => null) },
+      tarifaActivacion: { findFirst: vi.fn(async () => null) },
     } as unknown as PrismaClient);
     const par = { tiendaId: "t1", zonaId: "z1", distritoId: null };
     const resueltas = await repo.resolveTarifas([par]);
@@ -367,7 +367,7 @@ describe("el LISTADO cobra el pacto y senala el hueco", () => {
       // FICHA 454 (R29, 2026-09-24): las señales de la pagina (gestion pendiente, ayuda); vacias.
       $queryRaw: vi.fn(async () => []),
       // SLT-52 (T4.3): el importe del listado pasa por el resolver unico; empresa sin valores nuevos.
-      tarifaValor: { findFirst: vi.fn(async () => null) },
+      tarifaActivacion: { findFirst: vi.fn(async () => null) },
       orden: {
         findMany: vi.fn(async () => [ordenListRow(marcas)]),
         count: vi.fn(async () => 1),

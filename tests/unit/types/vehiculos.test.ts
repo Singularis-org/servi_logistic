@@ -2,7 +2,13 @@ import { describe, it, expect } from "vitest";
 import fs from "fs";
 import path from "path";
 import { VehiculoValue } from "@prisma/client";
-import { VEHICULOS_SEED } from "@/lib/types/vehiculos";
+import {
+  VEHICULOS_SEED,
+  VEHICULO_NOMBRE_MAX,
+  cambiarActivacionVehiculoSchema,
+  crearVehiculoSchema,
+  renombrarVehiculoSchema,
+} from "@/lib/types/vehiculos";
 
 // Cobertura de la fuente unica de verdad de vehiculos (`lib/types/vehiculos.ts`)
 // y de la declaracion del enum/modelo en `db/schema.prisma`. Patron
@@ -91,5 +97,73 @@ describe("db/schema.prisma declara el modelo Vehiculo con columna name (R2, R13)
     const match = schema.match(/model\s+Usuario\s*\{([\s\S]*?)\n\}/);
     const body = match ? match[1] : "";
     expect(body).toMatch(/vehiculoId\s+String\?\s+@map\("vehiculo_id"\)/);
+  });
+});
+
+// SL-42 (design §4.1; R9) — los schemas del superadmin. El nombre se valida DESPUES de normalizar:
+// «  a  » son 3 caracteres crudos pero 1 normalizado, y eso es lo que se guardaria.
+describe("SL-42/R9 — renombrar y cambiar la activacion validan la entrada entera", () => {
+  const ID = "veh-1";
+
+  it("R9: renombrar con nombre vacio o solo espacios es error en `name`", () => {
+    for (const name of ["", "    "]) {
+      const r = renombrarVehiculoSchema.safeParse({ id: ID, name });
+      expect(r.success).toBe(false);
+      if (!r.success) expect(r.error.flatten().fieldErrors.name).toBeDefined();
+    }
+  });
+
+  it("R9: renombrar con menos de 2 caracteres tras normalizar es error en `name`", () => {
+    const r = renombrarVehiculoSchema.safeParse({ id: ID, name: "  a  " });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.flatten().fieldErrors.name).toBeDefined();
+  });
+
+  it("R9: renombrar con mas de 40 caracteres tras normalizar es error en `name`; 40 justos pasan", () => {
+    const largo = renombrarVehiculoSchema.safeParse({ id: ID, name: "x".repeat(VEHICULO_NOMBRE_MAX + 1) });
+    expect(largo.success).toBe(false);
+    if (!largo.success) expect(largo.error.flatten().fieldErrors.name).toBeDefined();
+    // Los espacios que la normalizacion colapsa no cuentan para el maximo.
+    const conEspacios = `  ${"x".repeat(20)}     ${"y".repeat(19)}  `;
+    const r = renombrarVehiculoSchema.safeParse({ id: ID, name: conEspacios });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.name).toHaveLength(VEHICULO_NOMBRE_MAX);
+  });
+
+  it("R4/R5: el nombre valido sale normalizado (recortado y espacios internos colapsados)", () => {
+    const r = renombrarVehiculoSchema.safeParse({ id: ID, name: "  Furgon   3/4 " });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data).toEqual({ id: ID, name: "Furgon 3/4" });
+  });
+
+  it("R9: un campo desconocido es error, en renombrar, en cambiar la activacion y en crear", () => {
+    expect(renombrarVehiculoSchema.safeParse({ id: ID, name: "Moto", extra: 1 }).success).toBe(false);
+    expect(cambiarActivacionVehiculoSchema.safeParse({ id: ID, activo: false, name: "x" }).success).toBe(false);
+    expect(crearVehiculoSchema.safeParse({ name: "Moto", activo: false }).success).toBe(false);
+  });
+
+  it("R9/R12: sin id, o con id vacio, es error en `id`", () => {
+    for (const entrada of [{ name: "Moto" }, { id: "", name: "Moto" }]) {
+      const r = renombrarVehiculoSchema.safeParse(entrada);
+      expect(r.success).toBe(false);
+      if (!r.success) expect(r.error.flatten().fieldErrors.id).toBeDefined();
+    }
+    const r = cambiarActivacionVehiculoSchema.safeParse({ id: "", activo: true });
+    expect(r.success).toBe(false);
+  });
+
+  it("R6/R9: `activo` tiene que ser booleano; true y false pasan", () => {
+    expect(cambiarActivacionVehiculoSchema.safeParse({ id: ID, activo: "false" }).success).toBe(false);
+    expect(cambiarActivacionVehiculoSchema.safeParse({ id: ID }).success).toBe(false);
+    expect(cambiarActivacionVehiculoSchema.safeParse({ id: ID, activo: false }).success).toBe(true);
+    expect(cambiarActivacionVehiculoSchema.safeParse({ id: ID, activo: true }).success).toBe(true);
+  });
+
+  it("R9: crear con nombre de menos de 2 o mas de 40 caracteres es error en `name`", () => {
+    for (const name of ["", " b ", "z".repeat(VEHICULO_NOMBRE_MAX + 1)]) {
+      const r = crearVehiculoSchema.safeParse({ name });
+      expect(r.success).toBe(false);
+      if (!r.success) expect(r.error.flatten().fieldErrors.name).toBeDefined();
+    }
   });
 });

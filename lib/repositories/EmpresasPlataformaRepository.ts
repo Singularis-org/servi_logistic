@@ -3,8 +3,9 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { comoPlataforma } from "@/lib/db/contexto-empresa";
 import type { SumaCobroPlataformaPorTipo } from "@/lib/interfaces/repositories/ICobroPlataformaMovimientoRepository";
 import type { IEmpresasPlataformaRepository } from "@/lib/interfaces/repositories/IEmpresasPlataformaRepository";
-import type { FuenteDelCosto } from "@/lib/types/consumo-plan";
+import { costoVigenteDeLaTarifa, type TarifaLeida } from "@/lib/planes/costeo";
 import type { EmpresaListada, EstadoIntegracionDeEmpresa } from "@/lib/types/empresas-plataforma";
+import type { TipoCobro } from "@/lib/types/planes";
 import { SERVICIOS_INTEGRACION } from "@/lib/types/integraciones";
 import { derivarDeudaPlataforma } from "@/lib/utils/deuda-plataforma";
 
@@ -15,13 +16,13 @@ export type EmpresasPlataformaPrismaClient = Pick<
   "organizacion" | "cobroPlataformaMovimiento" | "walletMovimiento" | "integracion" | "$queryRaw"
 >;
 
-/** SLT-66 (R31, R32): una fila de `planYCobroVigente`. */
-type PlanYCobroLeido = {
+/** SLT-66 (R31, R32): una fila de `planYCobroVigente`. SLT-83 (R22): la tarifa con su modo. */
+type PlanYCobroLeido = TarifaLeida & {
   id: string;
-  monto: string;
-  fuente: FuenteDelCosto;
   plan_id: string | null;
   plan_nombre: string | null;
+  /** Ajuste planes-custom (D9): `organizacion.plan_tipo_cobro`; `null` solo si la empresa ya no está. */
+  plan_tipo_cobro: TipoCobro | null;
 };
 
 /**
@@ -122,7 +123,8 @@ export class EmpresasPlataformaRepository implements IEmpresasPlataformaReposito
   private async planYCobroVigente(organizacionIds: string[]) {
     const filas = await this.prisma.$queryRaw<PlanYCobroLeido[]>`
       SELECT i."id", t."monto"::text AS "monto", t."fuente"::text AS "fuente",
-             p."id" AS "plan_id", p."nombre" AS "plan_nombre"
+             t."porcentaje"::text AS "porcentaje", t."minimo"::text AS "minimo",
+             p."id" AS "plan_id", p."nombre" AS "plan_nombre", o."plan_tipo_cobro" AS "plan_tipo_cobro"
         FROM unnest(${organizacionIds}::text[]) AS i("id")
         LEFT JOIN "organizacion" o ON o."id" = i."id"
         LEFT JOIN "plan" p ON p."id" = o."plan_id"
@@ -132,8 +134,12 @@ export class EmpresasPlataformaRepository implements IEmpresasPlataformaReposito
       const f = porEmpresa.get(id);
       if (f === undefined) throw new Error(`EmpresasPlataformaRepository.listar: sin cobro vigente para ${id}`);
       return {
-        cobroVigente: { monto: f.monto, fuente: f.fuente },
-        plan: f.plan_id === null || f.plan_nombre === null ? null : { id: f.plan_id, nombre: f.plan_nombre },
+        cobroVigente: costoVigenteDeLaTarifa(f),
+        plan:
+          f.plan_id === null || f.plan_nombre === null
+            ? null
+            : // El CHECK de 20261104130000 deja solo `mensual` | `anual`; con plan la empresa existe.
+              { id: f.plan_id, nombre: f.plan_nombre, tipoCobro: f.plan_tipo_cobro ?? "mensual" },
       };
     };
   }

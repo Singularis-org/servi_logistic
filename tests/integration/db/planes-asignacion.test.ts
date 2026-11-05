@@ -55,11 +55,15 @@ async function caso(tx: TxDeTest): Promise<Caso> {
     tx,
     servicio,
     plan: async (p) => {
+      // Ajuste planes-custom (D2): por el servicio un custom nace ya asignado a su empresa. Para medir
+      // `asignar` con un custom (como los que dejó sin asignar la migración de SLT-66), se crea por el
+      // repositorio, que sigue sabiendo crear sin asignar.
+      if (p?.visibilidad === "custom") return planesEnTx(tx).crear(entradaAsignable(p), SUPERADMIN.usuarioId);
       const r = await servicio.crear(SUPERADMIN, entradaAsignable(p));
       if (r.estado !== "ok") throw new Error(`no se creó el plan: ${JSON.stringify(r)}`);
       return r.planId;
     },
-    asignar: (organizacionId, planId) => servicio.asignar(SUPERADMIN, { organizacionId, planId }),
+    asignar: (organizacionId, planId) => servicio.asignar(SUPERADMIN, { organizacionId, planId, tipoCobro: "mensual" }),
     empresa: async () => (await crearOrganizacion(tx)).id,
   };
 }
@@ -202,6 +206,7 @@ describeSiHayBase("SL-24 — asignar un plan a una empresa (R4, R6, R9–R13)", 
         modulos: ["analitica"],
         precio: { tipo: "sin_precio" },
         costoPorOrden: null, // SLT-66 R8: campo obligatorio nuevo; no cambia lo que se comprueba.
+        costoPorOrdenPorcentual: null, // SLT-83: campo obligatorio nuevo; no cambia lo que se comprueba.
         vigenteDesde: null,
       });
       const trasEditar = await modulos(tx, org);

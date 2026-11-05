@@ -21,10 +21,10 @@ import {
  *
  * ─── QUE MIDE EL RELOJ, Y CON QUE DEFINICION ────────────────────────────────────────────
  *
- * Segundos entre `orden.created_at` y la transicion terminal que clasifica la orden. Es la MISMA
- * definicion de ciclo que ya usa el producto (`CicloVidaRepository`, y antes la consulta Q5 del
- * rollup diario), y se hereda a proposito: una variante propia —arrancar en la primera
- * asignacion, parar en la primera terminal— daria dos «tiempos» distintos en el mismo producto.
+ * Segundos entre `orden.created_at` y la transicion terminal que clasifica la orden. Es la
+ * definicion de la consulta Q5 del rollup diario, y se hereda a proposito: una variante propia
+ * —arrancar en la primera asignacion, parar en la primera terminal— daria un «tiempo» mas. El
+ * KPI de `CicloVidaRepository` para en la gestion final desde SLT-64; la cohorte no (Q2).
  *
  * ─── LO QUE ESTE ARCHIVO NO DEJA PASAR ──────────────────────────────────────────────────
  *

@@ -13,8 +13,9 @@
  * - `job_rollup_diario` — el job de la 124 acaba de reescribir el rollup de una fecha.
  * - `backfill` — el backfill de la 125 recomputo un rango (llega por job encolado, §7.1).
  * - `manual` — invocacion humana de mantenimiento.
+ * - `correccion_gestion` — SLT-64: se anulo o se corrigio una gestion y se movio la ultima vigente.
  */
-export type OrigenInvalidacion = "job_rollup_diario" | "backfill" | "manual";
+export type OrigenInvalidacion = "job_rollup_diario" | "backfill" | "manual" | "correccion_gestion";
 
 export interface IAnaliticaCache {
   /**

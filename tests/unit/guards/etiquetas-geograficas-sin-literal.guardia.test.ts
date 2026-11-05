@@ -147,3 +147,44 @@ describe("SL-20 / R19 — ningún literal «Provincia», «Cantón» o «Distrit
     }
   });
 });
+
+// SLT-54 (M3 de la revisión F2.2) — un conteo no lleva artículo ni concordancia, así que la excusa de las
+// minúsculas no aplica: «8 distritos» se escapó porque la guardia de arriba solo mira la mayúscula inicial.
+// Se limita a Tarifas: `ZonasModule` y `GeografiaSelector` llevan el mismo conteo y están fuera de esta ficha.
+const NIVEL_EN_MINUSCULA = "(?:provincias?|cant[oó]n(?:es)?|distritos?)";
+const CONTEO = new RegExp(`(?:\\d\\s+|^\\s+)${NIVEL_EN_MINUSCULA}(?![\\p{L}\\p{N}_])`, "u");
+
+function conteosDeNivel(fuente: string): string[] {
+  const sf = ts.createSourceFile("fuente.tsx", fuente, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const hallados: string[] = [];
+  const visitar = (nodo: ts.Node) => {
+    if (
+      ts.isStringLiteral(nodo) ||
+      ts.isNoSubstitutionTemplateLiteral(nodo) ||
+      ts.isTemplateMiddle(nodo) ||
+      ts.isTemplateTail(nodo) ||
+      ts.isJsxText(nodo)
+    ) {
+      if (CONTEO.test(nodo.text)) hallados.push(nodo.text);
+    }
+    ts.forEachChild(nodo, visitar);
+  };
+  visitar(sf);
+  return hallados;
+}
+
+describe("SLT-54 / R61 — Tarifas no escribe a mano el nivel en un conteo", () => {
+  it("contraprueba: caza el conteo en literal, plantilla y JSX; no una frase", () => {
+    expect(conteosDeNivel('const a = "1 distrito";')).toHaveLength(1);
+    expect(conteosDeNivel("const b = `${n} distritos`;")).toHaveLength(1);
+    expect(conteosDeNivel("const c = <p>{n} cantones</p>;")).toHaveLength(1);
+    expect(conteosDeNivel('const d = "Filtrar por cantón y distrito";')).toEqual([]);
+    expect(conteosDeNivel("const e = `el distrito ${n} ya está en otro grupo`;")).toEqual([]);
+  });
+
+  it("el barrido de la pantalla de Tarifas no encuentra ninguno", () => {
+    const fuentes = listarFuentes(path.join(RAIZ, "app/(app)/configuracion/tarifas"));
+    expect(fuentes.length, "no se leyó la carpeta de Tarifas").toBeGreaterThan(5);
+    expect(fuentes.flatMap((f) => conteosDeNivel(readFileSync(f, "utf8")))).toEqual([]);
+  });
+});

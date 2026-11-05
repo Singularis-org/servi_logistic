@@ -295,3 +295,19 @@ Salida (`DATABASE_URL` → `logistic_slt44_r1104`, `NODE_OPTIONS=--max-old-space
   `salida-a-reparto-sql-real.test.ts` (la provincia ajena deja de compartir id con su cantón) y la bitácora de SLT-43.
 - `logistic_slt44_r1104`: `prisma migrate status` → al día. `salida-a-reparto-sql-real.test.ts` solo, `timeout 600`:
   `Test Files 1 passed (1)`, `Tests 7 passed (7)`.
+
+## 2026-11-05 — merge de `origin/feature/SLT-43-geo-jerarquica-modelo` `0434a444` (dev nuevo: SLT-54, SLT-83, SL-42)
+
+- SLT-43 ya traía `origin/dev` `49f45a7e` y el arreglo de `migracion-slt43-ida-y-vuelta` y
+  `slt43-migraciones-aditivas`. Llegan 488 archivos, entre ellos 9 migraciones nuevas de dev
+  (`20261103120000_vehiculo_activo` … `20261104150200_cobro_plataforma_porcentual_funciones`).
+- 3 conflictos, resueltos conservando los dos lados:
+  - `docs/architecture.md`: el párrafo del catálogo de vehículos (SL-42) y el interruptor por
+    `tarifa_activacion` / «Sin migración de datos» (SLT-54) de dev, más lo geo de esta rama.
+  - `lib/repositories/CoberturaRepository.ts`: lecturas por `nodoGeografico`/`tipoNivelGeografico`
+    de SLT-44 más la rama `usaModeloNuevo` de SLT-54 R30 en `listZonaIdsConTarifaGeneral`; el `Pick`
+    del cliente suma `tarifaActivacion` y `tarifaValor` a los modelos geo.
+  - `tests/unit/actions/cobertura.composition-root.test.ts`: mocks geo de SLT-44 más
+    `tarifaActivacion.findFirst → null` (SLT-54 R30, empresa sin activar).
+- Verificación local: ver el commit del merge (tsc + guardias + tests unitarios de cobertura). Las
+  migraciones nuevas de dev no se aplicaron a ninguna base local en este paso; CI da el veredicto.
