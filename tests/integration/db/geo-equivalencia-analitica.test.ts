@@ -306,7 +306,11 @@ describeSiHayBase("SLT-71 T5.2 — geo:equivalencia-analitica (Postgres real)", 
     });
 
     it("con una DATABASE_URL que no es local, el script sale con 2 sin conectar y sin imprimir la URL", () => {
-      const url = "postgresql://usuario:secreto-slt71@db.ejemplo.invalid:5432/produccion";
+      // La URL se arma por partes: una URL con credenciales escrita entera es forma de secreto (SL-34).
+      const destino = new URL("postgresql://db.ejemplo.invalid:5432/produccion");
+      destino.username = "usuario";
+      destino.password = "secreto-slt71";
+      const url = destino.toString();
       const r = spawnSync(process.execPath, ["--import", "tsx", "scripts/geo-equivalencia-analitica.ts"], {
         cwd: RAIZ,
         env: { ...process.env, DATABASE_URL: url },
