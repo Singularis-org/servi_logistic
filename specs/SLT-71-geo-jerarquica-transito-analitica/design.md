@@ -502,16 +502,37 @@ dos formas:
 
 ### 11.1 Aserciones que cambian, y por qué
 
-R24 permite cambiar **solo** las aserciones unitarias que fijan el texto del SQL de las facetas
-geográficas, porque ese texto es justo lo que esta feature cambia:
+R24 permite cambiar **solo** las aserciones unitarias que fijan el texto del SQL o los valores de
+los parámetros de las facetas geográficas, porque eso es justo lo que esta feature cambia. Las líneas
+son las de la base después de integrar `dev`.
+
+**Texto del SQL:**
 - `conteo-por-status-sql.test.ts:105–107` y `:121–123`;
-- `conteo-devoluciones.test.ts:139`;
-- `ciclo-vida.test.ts:105`;
+- `conteo-devoluciones.test.ts:139–141`;
+- `ciclo-vida.test.ts:94–96`;
 - `conteo-cargadas-servicio.test.ts:202`;
 - `cohorte-carga-sql.test.ts:143–145`.
 
-`o."provincia_id" IN (` pasa a ser «una condición de lugar con `= ANY` por faceta». Las aserciones de
-zona, tienda, mensajero, alcance y orden de los parámetros no geográficos no se tocan.
+`o."provincia_id" IN (` pasa a ser «una condición de lugar con `= ANY` por faceta».
+
+**Valores de los parámetros** (decisión «¿Aserciones de parámetros de las facetas?»). R1 manda los
+ids de cada faceta como **un solo parámetro array** (`= ANY($ids)`), así que cambian los valores, no
+solo el texto. Lo esperado pasa a ser, por faceta, el array de ids resueltos:
+- `conteo-por-status-sql.test.ts:111–115`: hoy `["z1","z2","c1"]`. Pasa a `"z1"`, `"z2"` y, por la
+  faceta de cantón, el array resuelto de `c1`.
+- `conteo-cargadas-servicio.test.ts:205–207`: hoy `arrayContaining(["z1","p1","c1","d1","t1"])`.
+  Pasa a `"z1"`, `"t1"` y un array resuelto por cada faceta (`p1`, `c1`, `d1`).
+- `cohorte-carga-sql.test.ts:152`: hoy `toContain("x1")` por faceta. Pasa a contener el array
+  resuelto de `x1`. Si `x1` no está en el catálogo del doble, la faceta pasa a ser `FALSE` y no manda
+  ningún parámetro (R3), y la aserción lo refleja.
+
+Las aserciones de zona, tienda, mensajero, alcance y orden de los parámetros no geográficos no se
+tocan.
+
+**Cambios de entrada, no de aserción:**
+- en `conteo-productos-sql.test.ts` y `dinero-productos-sql.test.ts`, los helpers (`sqlDe`,
+  `parametrosDe`) y las llamadas a `condicionesDeConsulta(consulta)` ganan el argumento obligatorio
+  `lugares`.
 
 Los dobles de esos tests cambian **de entrada**: cuando el caso trae faceta, ganan los delegados del
 catálogo (`zonaDistrito`, `organizacion`, `tipoNivelGeografico`, `nodoGeografico` y
