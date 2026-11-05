@@ -628,3 +628,105 @@ No se usó el MCP: todo con Grep/Read, porque el índice del worktree no está g
 
 T5.1–T7.3 cerradas: los dos scripts y sus tests en verde sobre `geo-71`, y las guardias en verde salvo el baseline. No se
 cambió ninguna aserción existente. T8 sin empezar.
+
+## F2.1 T8.1 — Mapa R → test completo y comprobaciones de diff (backend_dev, 2026-11-05)
+
+**T8.1 queda SIN marcar.** Hay dos motivos:
+- la comprobación de R23 contra `origin/dev` no sale vacía;
+- R24 depende del gate de CI.
+
+El detalle está abajo; lo decide el leader o el humano.
+
+### Mapa R → test (R1–R25)
+
+Formato: archivo › `describe` › `it` (o solo `it` cuando el `describe` no aporta).
+
+| R | test |
+|---|---|
+| R1 | `tests/unit/repositories/lugares-del-filtro.test.ts` › «provincia → ella y sus tres niveles por debajo, ordenados por id»; `tests/unit/repositories/lugar-orden.test.ts` › «los ids viajan como UN array por rama, no como un parametro por id»; `tests/integration/db/geo-analitica-lugar.test.ts` › «R1 (profundidad 4): un nodo bajo el distrito pedido aporta sus ordenes, por el dominio y no por la columna» |
+| R2 | `geo-analitica-lugar.test.ts` › «R2: con faceta geografica, el alcance sigue siendo la primera condicion de las cinco lecturas»; `lugares-del-filtro.test.ts` › «una condicion por faceta, en el orden provincia, canton, distrito» |
+| R3 | `lugares-del-filtro.test.ts` › «R3: si ningun id es valido, la faceta queda `[]` (cero ordenes), nunca omitida» y «R3: una faceta `[]` es `FALSE`, sin array vacio»; `geo-analitica-lugar.test.ts` › «R3: un id de canton pedido como distrito, o uno de otro pais, da cero en las cinco lecturas» |
+| R4 | `geo-analitica-lugar.test.ts` › «R1, R2, R4, R7: con la cadena coherente, cada lectura da lo mismo que hoy con cada faceta, combinacion y rango» |
+| R5 | `geo-analitica-lugar.test.ts` › «R5: sin faceta geografica no se toca el catalogo y el SQL y los parametros son los de hoy»; `lugares-del-filtro.test.ts` › «R5: sin faceta geografica no crea ni carga el catalogo» |
+| R6 | `tests/unit/analytics/conteo-entregas-contrato.test.ts` › «acepta las siete facetas, incluida la cadena geográfica» y `tests/unit/analytics/entregas-filtro-analitica.test.ts` › «las siete facetas viajan con las claves del esquema, y pasan la validación», sin cambios; además, `lib/analytics/` vacío en el diff (abajo) |
+| R7 | `tests/unit/analytics/alcance-dinero.guardia.test.ts` › «(2) el repositorio de dinero IMPORTA `condicionesDeConsulta` y la usa»; `tests/unit/analytics/conteo-productos-sql.test.ts` › «el ALCANCE es la PRIMERA condicion, antes que cualquier faceta del cliente»; `geo-analitica-lugar.test.ts` › «R1, R2, R4, R7: …» (productos, dinero, cohorte y contador de hoy frente a la copia) |
+| R8 | `tests/integration/db/geo-transito-nombres.test.ts` › «R8, R9: las filas en alerta y el modelo de la seleccion son los de hoy, fila a fila, en las dos empresas» |
+| R9 | mismo `it` de R8 (el modelo de `seleccionarTransito`, del que salen totales, variables y PDF) |
+| R10 | `geo-transito-nombres.test.ts` › «R10: sin unir con canton ni distrito, y el numero de consultas no depende del de ordenes (1 y 40)»; `tests/unit/whatsapp-envios/informe-transito-repo-consultas.test.ts` › «con 1 orden en alerta» y «con 500 ordenes en alerta (y el PDF de todas)», sin cambios |
+| R11 | `geo-transito-nombres.test.ts` › «R11: sin ordenes en alerta, la generacion no carga el catalogo» |
+| R12 | `geo-transito-nombres.test.ts` › «R12: un canton y un distrito ausentes del catalogo hacen fallar la generacion con una sola linea de log, solo con ids» |
+| R13 | `geo-analitica-lugar.test.ts` › «R13: la empresa XA carga solo su catalogo, una vez por instancia aunque se lea dos veces» y «R13: en plataforma, con faceta, las cinco lecturas fallan con EmpresaNoResuelta sin devolver filas»; `geo-transito-nombres.test.ts` › «R13: XA carga solo su catalogo, una vez por instancia; en plataforma falla con EmpresaNoResuelta» |
+| R14 | `tests/unit/guards/geografia-lecturas-sin-nodo-fk.guardia.test.ts` › «ni transito, ni los cuatro conteos y ciclo de vida, ni las cuatro que comparten el recorte, ni `lugares-del-filtro` nombran la columna» (con sus contrapruebas SLT-71); `tests/integration/db/geo-lecturas-sin-backfill.test.ts` › «las nueve lecturas de analitica por provincia, canton, distrito y combinacion, y transito: llena = en NULL = desviada» |
+| R15 | `tests/unit/guards/geografia-sin-cte-recursiva.guardia.test.ts` › «el barrido lee de verdad (anti-vacuidad)» y el resto del archivo, sin cambios |
+| R16 | `tests/unit/guards/catalogo-geografico-sin-instancia-de-modulo.guardia.test.ts` › «las clases vigiladas estan calculadas y no vacias (antivacio)» y «ninguna `new` de una clase vigilada corre al cargar el modulo» |
+| R17 | `tests/integration/db/geo-equivalencia-analitica.test.ts` › «R17: sobre el fixture todo coincide en las dos empresas; …», «R17 contraprueba: un canton movido a otra provincia …» y «R17: --muestra fija cuantos cantones y distritos entran …» |
+| R18 | `geo-equivalencia-analitica.test.ts` › describe «R18 — no escribe, solo contra localhost …» (3 `it`); `tests/integration/db/geo-explain-analitica.test.ts` › «R19, R18: mide las seis lecturas …», «R18: con el cliente del script, un INSERT falla con 25006 …» y «R18: con una DATABASE_URL que no es local, …» |
+| R19 | `geo-explain-analitica.test.ts` › «R19, R18: mide las seis lecturas con 5 corridas por lado, no escribe y no imprime SQL, nombres ni datos personales» |
+| R20 | `geo-explain-analitica.test.ts` › «+21 % total y +21 % sin catalogo → regresion; …», «ciclo de vida con +50 % (total y sin catalogo) es ok: …» y «un Seq Scan sobre `orden` que antes no estaba es regresion en las seis; …» |
+| R21 | `geo-explain-analitica.test.ts` › «+21 % total y +21 % sin catalogo → regresion; +21 % total y +5 % sin catalogo → costo fijo del catalogo; +19 % → ok» y «el costo fijo del catalogo se imprime con las dos medianas sin catalogo, sin SQL» |
+| R22 | `geo-explain-analitica.test.ts` › «R22: 0 sin regresion (el costo fijo no cuenta), 1 con regresion, 2 si una lectura fallo» y «R22: si la lectura nueva falla al leer, la lectura sale como fallida y el codigo es 2» |
+| R23 | Sin test: es la comprobación del diff de `db/` (abajo), como fija design §11. T9 no aplica. **Ver la comprobación: no pasa contra `origin/dev`.** |
+| R24 | Las suites existentes con las aserciones intactas salvo las de §11.1 (lista abajo). La parte «las suites de integración de tránsito y los E2E pasan» **no tiene evidencia local**: las 5 `informe-transito-*` de integración son rojos de baseline (sin usuarios sembrados) y el E2E corre solo en `gate-completo` de CI (T8.2). **Hueco hasta CI.** |
+| R25 | Sin test: es la comprobación del diff (abajo), como fija design §11 |
+
+**Huecos:**
+- R24 queda sin evidencia ejecutada para las integraciones de tránsito y los E2E: se cubre en CI (T8.2).
+- R23 y R25 son, por diseño, comprobaciones de diff y no tests.
+
+No se escribió ningún test nuevo en T8.1.
+
+### Comprobaciones de diff
+
+`origin/dev` = `c301fc87`. **Contexto:** la rama está montada sobre SLT-65 (PR #75, sin mergear todavía), que trae
+consigo SLT-44 y SLT-43 (`fe16f5d1`). Por eso `origin/dev...HEAD` incluye todo ese stack. Cada comprobación se da dos veces:
+- contra `origin/dev`, que es lo pedido;
+- solo con lo que hace SLT-71, `c26cd50a..HEAD` (`c26cd50a` es el merge de `origin/dev` = `c301fc87` sobre la base de
+  SLT-65).
+
+| check | contra `origin/dev` (`origin/dev...HEAD`) | solo SLT-71 (`c26cd50a..HEAD`) |
+|---|---|---|
+| R23 `-- db/` | **NO vacío**: `db/schema.prisma` y las 6 migraciones `20261104120000`–`20261104120500` (`geo_enums_nodo_geografico` … `indices_nodo_geografico`), todas de SLT-43, que llegan por la base de SLT-65 | **vacío** |
+| R6 `-- lib/analytics/` | **vacío** | **vacío** |
+| R25 `GestionOrdenRepository.ts`, `lib/whatsapp-envios/informes/transito/{pdf,calculo,tipos}.ts`, `components/`, `lib/api/` | **ausentes** | **ausentes** |
+| R25 `OrdenRepository.ts` (`condicionesSatelite`, `list`) | Diff grande, pero es de SLT-65 y SLT-44 (marcas, catálogo, resolución por nombres) | Solo la importación de `PROFUNDIDAD_DEL_NIVEL` desde `_shared/lugar-orden` y el borrado de su declaración (`:890–893`). `condicionesSatelite` y `list` no se tocan |
+| R25 SLT-65 (órdenes, cierres, zonas, dinero) | — | Ningún archivo de SLT-65 en el diff salvo `OrdenRepository.ts` (fila anterior), `scripts/geo-explain-consultas.ts` (solo importa y re-exporta la medición, T1.1) y `_shared/lugar-orden.ts` (gana `sqlLugarEn` y `PROFUNDIDAD_DEL_NIVEL`, design §3.1) |
+
+Fuera de R25, y sin ser de SLT-71, contra `origin/dev` aparece también
+`app/(app)/historico/acciones/_components/historial-acciones-filtros-def.ts`. Viene del stack de SLT-65 y no está en
+`c26cd50a..HEAD`.
+
+**Lectura:** lo que SLT-71 añade cumple R23, R6 y R25. Contra `origin/dev` literal, R23 solo saldrá vacío cuando SLT-65 (con
+SLT-43) entre en `dev` y se integre otra vez (F2.3). Hasta entonces no doy la comprobación por buena.
+
+### R24 — aserciones existentes cambiadas (`c26cd50a..HEAD`)
+
+Se barrieron todos los tests existentes modificados (`--diff-filter=M`), línea a línea. Los cambios de `expect`:
+
+| # | archivo:línea (antes → ahora) | cambio | en §11.1 |
+|---|---|---|---|
+| 1 | `tests/unit/analytics/conteo-por-status-sql.test.ts:105–107 → 110–113` | `IN (` para las 5 columnas → `IN (` solo zona y tienda + 3 `o."distrito_id" = ANY(` | sí (texto SQL) |
+| 2 | `conteo-por-status-sql.test.ts:114 → 122–123` | en el `toEqual` de parámetros, `"c1"` → `["c1","d1"], ["c1","d1"]` | sí (parámetros `:111–115`, decisión del 2026-11-04) |
+| 3 | `conteo-por-status-sql.test.ts:121–123 → 130–132` | `not.toContain` de las 4 columnas → `not.toContain` de `zona_id` + `not.toContain("= ANY(")` | sí (texto SQL) |
+| 4 | `tests/unit/analytics/conteo-devoluciones.test.ts:139–141 → 144–147` | como el #1 | sí |
+| 5 | `tests/unit/analytics/ciclo-vida.test.ts:94–96 → 99–102` | como el #1 | sí (§11.1 dice `:94–96`) |
+| 6 | `tests/unit/analytics/conteo-cargadas-servicio.test.ts:202–204 → 207–210` | como el #1 | sí (§11.1 dice `:202`) |
+| 7 | `conteo-cargadas-servicio.test.ts:206 → 212` | `arrayContaining(["z1","p1","c1","d1","t1"])` → `arrayContaining(["z1",["c1","d1","p1"],["c1","d1"],["d1"],"t1"])` | sí (parámetros `:205–207`) |
+| 8 | `tests/unit/analytics/cohorte-carga-sql.test.ts:143–145 → 148–152` | la columna esperada por faceta geográfica, `o."provincia_id"` etc. → `"FALSE"` (`x1` no está en el catálogo del doble) | sí (texto SQL) |
+| 9 | `cohorte-carga-sql.test.ts:152 → 159–160` | `toContain("x1")` → `not.toContain("x1")` si la columna es `FALSE`; si no, `toContain("x1")` | sí (parámetros `:152`, con `FALSE` sin parámetro) |
+| 10 | `tests/unit/analytics/alcance-dinero.guardia.test.ts:222 → 224` | `toContain("condicionesDeConsulta(consulta)")` → `toContain("condicionesDeConsulta(consulta, lugares)")` | **no está en §11.1**: es la guardia que el humano autorizó el 2026-11-04 (decisión 1 de la tanda 2) |
+
+Ningún otro `expect` existente cambió. El resto de archivos existentes tocados solo cambian **entrada** o **añaden** casos:
+- solo entrada (imports, envoltorios con `lugaresDe` o delegados del catálogo en el doble), sin `expect`:
+  - `conteo-hoy-gestion-servicio.test.ts`, `conteo-productos-sql.test.ts`, `dinero-productos-sql.test.ts`;
+  - `cohorte-consulta-unica.test.ts` (0 líneas borradas);
+  - `informe-transito-composicion.test.ts` (la fila del doble de `$queryRaw` pasa de `canton`/`distrito` a
+    `canton_id`/`distrito_id`; sus 3 `expect` igual).
+- solo añaden:
+  - `lugar-orden.test.ts` (solo cambia un import);
+  - `geo-lecturas-sin-backfill.test.ts`, `geografia-lecturas-sin-nodo-fk.guardia.test.ts` y
+    `catalogo-geografico-sin-instancia-de-modulo.guardia.test.ts` (0 líneas borradas).
+
+**Fuera de §11.1:**
+- Solo el #10 (`alcance-dinero.guardia.test.ts:222`), ya autorizado por el humano.
+- Dos tests cambian su doble fuera de la lista de archivos de design §11.1, sin tocar ningún `expect`:
+  `cohorte-consulta-unica.test.ts` e `informe-transito-composicion.test.ts`. Ya estaban anotados en la tanda 2.
