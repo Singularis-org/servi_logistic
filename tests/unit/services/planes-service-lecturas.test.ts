@@ -321,7 +321,7 @@ describe("SLT-58 — plan de una empresa (R19)", () => {
     ]);
     // Los valores crudos del historial no salen de la lectura.
     expect(r.estado === "ok" && Object.keys(r.vista.asignaciones[0]).sort()).toEqual(
-      ["actorNombre", "creadoAt", "planNombre", "tipo", "tipoCobro", "tipoCobroAnterior"],
+      ["actorNombre", "creadoAt", "desde", "planNombre", "tipo", "tipoCobro", "tipoCobroAnterior"],
     );
   });
 

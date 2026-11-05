@@ -399,6 +399,11 @@ export type AsignacionDePlan = {
   tipoCobro: TipoCobro | null;
   /** D10: el tipo que había antes de un `cambio_tipo_cobro`; `null` en una `asignacion`. */
   tipoCobroAnterior: TipoCobro | null;
+  /**
+   * SLT-86 (R30): la fecha que la fila lleva delante del tipo (`AAAA-MM-DD`): la de efecto de un cambio
+   * o la de inicio de SLT-58. `null` en las filas que no la guardaban.
+   */
+  desde: string | null;
 };
 
 /**

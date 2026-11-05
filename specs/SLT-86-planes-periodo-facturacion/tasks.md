@@ -62,7 +62,7 @@
 - **Hecho:** `tests/integration/db/plan-sin-tope-ordenes.test.ts` verde; `pnpm run typecheck` sin referencias
   al cupo.
 
-## T5 — Costo base, tramo, siguiente cobro e historial (R9, R10, R12, R27, R30) [P]
+## [x] T5 — Costo base, tramo, siguiente cobro e historial (R9, R10, R12, R27, R30) [P]
 
 - **Depende de:** T2, T3.
 - **Pasos:** `lib/planes/cobro.ts`.
