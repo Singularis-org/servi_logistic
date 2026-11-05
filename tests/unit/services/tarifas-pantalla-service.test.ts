@@ -123,7 +123,7 @@ describe("SLT-54 — los bordes de la lectura", () => {
     expect(repo.distritosDeZona).toHaveBeenCalledWith("z1", { conMarca: true });
     expect(repo.leerModeloViejo).toHaveBeenCalledTimes(1);
     expect(repo.leerModeloViejo.mock.calls[0][0]).toEqual({
-      pares: [{ tiendaId: "", zonaId: "z1", distritoId: null }],
+      pares: [{ tiendaId: "", zonaId: "z1" }],
       pagos: [
         { zonaId: "z1", vehiculoId: null },
         { zonaId: "z1", vehiculoId: "moto" },
@@ -135,9 +135,9 @@ describe("SLT-54 — los bordes de la lectura", () => {
     const repo = repoDoble();
     await servicio(repo).cargarZona({ zonaId: "z1", tiendaId: "t1" }, MAESTRO);
     expect(repo.leerModeloViejo.mock.calls[0][0].pares).toEqual([
-      { tiendaId: "", zonaId: "z1", distritoId: null },
-      { tiendaId: "t1", zonaId: "z1", distritoId: null },
-      { tiendaId: "t1", zonaId: null, distritoId: null },
+      { tiendaId: "", zonaId: "z1" },
+      { tiendaId: "t1", zonaId: "z1" },
+      { tiendaId: "t1", zonaId: null },
     ]);
   });
 

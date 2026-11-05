@@ -6,6 +6,7 @@ import { cargarPantallaTarifas, cargarZonaTarifas } from "@/lib/actions/tarifas"
 import type { Actor } from "@/lib/interfaces/services/ITarifasPantallaService";
 import { TarifasPantallaRepository } from "@/lib/repositories/TarifasPantallaRepository";
 import {
+  claveCobroViejo,
   clavePagoViejo,
   resolverCobrosCon,
   SIN_TIENDA,
@@ -496,12 +497,12 @@ describeSiHayBase("SLT-54 R12 — la empresa A no ve nada de B, leyendo como `se
       const como = <T,>(org: string, fn: () => Promise<T>) => comoEmpresa(tx, org, fn);
       const pedido = {
         pares: [
-          { tiendaId: SIN_TIENDA, zonaId: e.ZB, distritoId: null },
-          { tiendaId: e.tiendaB, zonaId: null, distritoId: null },
+          { tiendaId: SIN_TIENDA, zonaId: e.ZB },
+          { tiendaId: e.tiendaB, zonaId: null },
         ],
         pagos: [{ zonaId: e.ZB, vehiculoId: null }],
       };
-      const clavesCobro = pedido.pares.map(clavePar);
+      const clavesCobro = pedido.pares.map(claveCobroViejo);
       const clavePago = clavePagoViejo(e.ZB, null);
 
       const deA = await como(e.A, () => repo.leerModeloViejo(pedido));

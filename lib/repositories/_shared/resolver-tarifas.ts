@@ -333,17 +333,31 @@ function envolverViejas(
  */
 export const SIN_TIENDA = "";
 
+/**
+ * Sin distrito a proposito: la cascada vieja no lo mira (`nivelDeCascada`), y la referencia aplica la
+ * marca de cada distrito despues, sobre la fila elegida. Sigue sin ser un `ParTarifa`, cuyo distrito
+ * decide el grupo del modelo nuevo y no se puede omitir.
+ */
+export interface ParModeloViejo {
+  /** `SIN_TIENDA` para la tarifa general de la zona. */
+  tiendaId: string;
+  zonaId: string | null;
+}
+
 export interface PedidoModeloViejo {
-  /** Con `tiendaId: SIN_TIENDA` para la tarifa general de la zona. */
-  pares: readonly ParTarifa[];
+  pares: readonly ParModeloViejo[];
   pagos: readonly { zonaId: string; vehiculoId: string | null }[];
 }
 
 export interface LecturaModeloViejo {
-  /** Indexado por `clavePar`. `null` = ningun nivel de la cascada tiene fila. */
+  /** Indexado por `claveCobroViejo`. `null` = ningun nivel de la cascada tiene fila. */
   cobros: Map<string, TarifaVigenteResuelta | null>;
   /** Indexado por `clavePagoViejo`. `null` = la zona no tiene tarifa para ese vehiculo ni por defecto. */
   pagos: Map<string, PagoTarifa | null>;
+}
+
+export function claveCobroViejo(par: ParModeloViejo): string {
+  return clavePar({ ...par, distritoId: null });
 }
 
 export function clavePagoViejo(zonaId: string, vehiculoId: string | null): string {
@@ -362,7 +376,8 @@ export async function leerModeloViejoCon(
 ): Promise<LecturaModeloViejo> {
   const cobros = new Map<string, TarifaVigenteResuelta | null>();
   if (pedido.pares.length > 0) {
-    for (const [clave, cobro] of await cobrosViejos(db, pedido.pares)) {
+    const pares = pedido.pares.map((par) => ({ ...par, distritoId: null }));
+    for (const [clave, cobro] of await cobrosViejos(db, pares)) {
       cobros.set(clave, cobro !== null && cobro.modelo === "viejo" ? cobro.tarifa : null);
     }
   }

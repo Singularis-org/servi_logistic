@@ -93,10 +93,7 @@ export class TarifasPantallaRepository implements ITarifasPantallaRepository {
   }
 
   async listarVehiculos(): Promise<VehiculoDePantalla[]> {
-    const filas = await this.prisma.vehiculo.findMany({
-      select: { id: true, name: true, activo: true },
-      orderBy: { name: "asc" },
-    });
+    const filas = await this.prisma.vehiculo.findMany({ orderBy: { name: "asc" } });
     return filas.map((v) => ({ id: v.id, nombre: v.name, activo: v.activo }));
   }
 

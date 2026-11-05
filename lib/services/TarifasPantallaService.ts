@@ -15,11 +15,15 @@ import type {
   ITarifasPantallaService,
   ZonaResumen,
 } from "@/lib/interfaces/services/ITarifasPantallaService";
-import { clavePagoViejo, SIN_TIENDA } from "@/lib/repositories/_shared/resolver-tarifas";
+import {
+  claveCobroViejo,
+  clavePagoViejo,
+  SIN_TIENDA,
+  type ParModeloViejo,
+} from "@/lib/repositories/_shared/resolver-tarifas";
 import { faltantesDeZona } from "@/lib/tarifas/faltantes";
 import { referenciaDeZona, type ReferenciaDeZona } from "@/lib/tarifas/referencia-vigente";
 import type { GrupoDistritosDTO } from "@/lib/types/tarifa-flexible";
-import { clavePar, type ParTarifa } from "@/lib/utils/cascada-tarifa";
 
 // SLT-52 R13 y SLT-54 R55: maestro y admin leen; cualquier otro rol, incluido uno que no se reconozca,
 // `forbidden`. Solo el maestro escribe.
@@ -101,17 +105,15 @@ export class TarifasPantallaService implements ITarifasPantallaService, IFaltant
     tiendaId: string | null,
   ): Promise<ReferenciaDeZona> {
     const vehiculos = await this.repo.listarVehiculos();
-    const parZona: ParTarifa = { tiendaId: SIN_TIENDA, zonaId: zona.id, distritoId: null };
-    const parTiendaZona: ParTarifa | null =
-      tiendaId === null ? null : { tiendaId, zonaId: zona.id, distritoId: null };
-    const parTiendaGeneral: ParTarifa | null =
-      tiendaId === null ? null : { tiendaId, zonaId: null, distritoId: null };
+    const parZona: ParModeloViejo = { tiendaId: SIN_TIENDA, zonaId: zona.id };
+    const parTiendaZona: ParModeloViejo | null = tiendaId === null ? null : { tiendaId, zonaId: zona.id };
+    const parTiendaGeneral: ParModeloViejo | null = tiendaId === null ? null : { tiendaId, zonaId: null };
 
     const lectura = await this.repo.leerModeloViejo({
-      pares: [parZona, parTiendaZona, parTiendaGeneral].filter((p): p is ParTarifa => p !== null),
+      pares: [parZona, parTiendaZona, parTiendaGeneral].filter((p): p is ParModeloViejo => p !== null),
       pagos: [{ zonaId: zona.id, vehiculoId: null }, ...vehiculos.map((v) => ({ zonaId: zona.id, vehiculoId: v.id }))],
     });
-    const cobroDe = (par: ParTarifa) => lectura.cobros.get(clavePar(par)) ?? null;
+    const cobroDe = (par: ParModeloViejo) => lectura.cobros.get(claveCobroViejo(par)) ?? null;
 
     return referenciaDeZona({
       esCentral: zona.esCentral,
