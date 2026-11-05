@@ -234,3 +234,190 @@ Sobre la base desechable, corrido por este reviewer:
 - **Suite completa:** la corre CI.
 - **Producción:** que las migraciones de SLT-52 estén aplicadas solo se infiere de la medida del PR #80.
 - **Grafo de código:** no se consultó; la bitácora anota que este worktree no está indexado. Grep y Read.
+
+## Vuelta 2 (acotada a 393b5391..e57de8db)
+
+HEAD revisado `e57de8db`.
+
+### Veredicto: OK
+
+El bloqueante 1 está corregido y el diff no introduce ninguno nuevo. Quedan 3 menores: el segundo es una regresión estrecha de la
+guardia, que conviene arreglar y no impide el OK.
+
+### Hallazgos
+
+#### Menor V2-1 — La guardia dejó de ver `cd."columna"` fuera de una plantilla
+
+`tests/unit/guards/caja-173-alcance.guardia.test.ts:137`, `:175-179`. La regla vieja buscaba `cd."x"` en todo el código; `palabrasDeSql`
+solo lee entre backticks. El balance neto es a mejor (tabla del punto 3), pero estos tres casos caían y hoy no caen en
+`fugasDeLecturaDelModelo`, y los dos primeros tampoco en `escriturasCrudas`:
+
+- `Prisma.sql(['SELECT cd."tarifa_iva_flete" FROM "cierre_detail" cd'])`. Ejecutado: `Prisma.sql([cadena]).sql` devuelve ese SQL.
+- `new Prisma.Sql([...], [])`. Por las mismas razones; solo se probó contra la guardia.
+- `Prisma.raw('…cd."x"…')`: sigue cayendo, pero solo en `escriturasCrudas` (`:356`).
+
+No hay un caso así en el módulo real: es la red, no un fallo de hoy.
+
+**Qué falta:** que la regla lea también las cadenas normales, o conservar la regla vieja junto a la nueva, con una contraprueba de
+`Prisma.sql([...])` en `:530`.
+
+#### Menor V2-2 — Una frase falsa en la bitácora sobre ese hueco
+
+`progress/impl_deudas-2026-11-05.md`, tanda 5, «No verificado»: «Ejecutarlas exige `$queryRawUnsafe` o `Prisma.raw`, que caen en
+`fugasDeLecturaDelModelo` y en `escriturasCrudas`». `Prisma.sql([cadena])` y `new Prisma.Sql` también las ejecutan, y no caen. Además,
+`Prisma.raw` no cae en `fugasDeLecturaDelModelo`, solo en `escriturasCrudas`. Se corrige con V2-1.
+
+#### Menor V2-3 — D42 y el cierre de SLT-52: ciertos, con lagunas
+
+- `progress/deudas.md:252`: el título sigue diciendo `:81` y «clic crudo». Hoy es `:82` y ya no es crudo. La deuda sigue abierta por la causa.
+- `progress/deudas.md:254`: las 5 corridas «con él» son de `abrirCon`, no de `desplegar`, y lo dice. Las de `desplegar` (1 de `dinero` y 1 del
+  spec) solo están en la bitácora.
+- `progress/features/SLT-52.md:62`: **la frase de que ninguna pantalla escribe `tarifa_valor` no está en el archivo** (ni en `progress/` del diff).
+  Lo escrito es cierto, pero el lector no sabe por qué esas 0 filas se mantienen. El dato sí es cierto: ver el punto 1. Si se quiere dejar
+  constancia, se puede añadir tal cual.
+
+### Punto por punto
+
+#### 1. `progress/features/SLT-52.md` — [x] cierto contra git; bloqueante 1 cerrado
+
+| Afirmación | Comprobado | |
+|---|---|---|
+| PR #74, `42328714`, a `dev` | `gh`: MERGED, base `dev` | [x] |
+| Salió con el PR #73, `dev` -> `prod`, 2026-11-04 | `gh`: MERGED 2026-11-04 13:30 UTC; `fae6a5d3` tiene a `42328714` de padre | [x] |
+| Se activa con una fila, sin interruptor | `origin/prod:lib/repositories/_shared/resolver-tarifas.ts:80`: `tarifaValor.findFirst` sin `where`; sin `tarifaActivacion` en `lib/`, `app/` ni el esquema | [x] |
+| Producción, 0 filas, 2026-11-05 | Cuerpo del PR #80: «Re-medido por Carlos». **No se midió aquí** | [x] por cita |
+| SLT-54 trae el interruptor y no está en `prod` | `63bb2c89` (`feat(SLT-54)`) cambia `usaModeloNuevo`; `49f45a7e` no es ancestro de `origin/prod` | [x] |
+| «Deudas: ninguna propia» | `deudas.md` no nombra SLT-52 | [x] |
+
+**Nadie escribe `tarifa_valor` en `origin/prod`.** Por `git grep` sobre ese commit:
+
+- `serviciosDeTarifas`: solo se define (`lib/tarifas/servicios.ts:22`) y lo llaman dos tests.
+- `TarifaValorService` y `TarifaValorRepository`: fuera de tests, solo los construye `servicios.ts:24`; el resto son tipos y comentarios.
+- Las únicas escrituras por delegado están en `TarifaValorRepository.ts:175,176,211`.
+- Sin `INSERT INTO tarifa_valor` en código ni migraciones. `app/`, `lib/actions`, `components/` y `scripts/` no lo nombran, salvo un comentario de
+  `scripts/verificar-rls-despliegue.ts`.
+- `lib/actions/tarifas.ts` existe en `prod`, pero no llega a esos servicios. Importa `TarifaService` y `TarifaRepository`, los del modelo viejo. En `origin/dev` sí los llama: por eso SLT-54 es la frontera.
+
+Límite: esto dice que el código no escribe. No descarta una escritura a mano en esa base; solo la medida de 0 filas habla de eso.
+
+Sin regresión: ningún otro archivo de `progress/`, `docs/` o `specs/` sigue diciendo que SLT-52 no se promovió, salvo la cita de la vuelta 1.
+
+#### 2. `desplegar` — [x] mismo comportamiento en `wallet.spec.ts`; sin falso verde
+
+Comparados `desplegar` nuevo y el de `393b5391` con Playwright real, en Chromium, sobre 8 páginas sintéticas (16 de 16, exit 0). Plazo de
+8 s en vez de 30 s; el spec llama a la función real de `pulsar.ts`:
+
+| Caso | Nuevo y viejo |
+|---|---|
+| Abre al primer clic | Abierto, 1 clic |
+| Ya abierto | 0 clics |
+| Primer clic perdido, manejador a 1 s | Termina abierto |
+| Render lento, 2,5 s, con reintento que pliega | Termina abierto |
+| El control aparece a los 3 s | Termina abierto |
+| **Nunca abre** | **Cae** |
+| **Sin `aria-expanded`** | **Cae** |
+| **Control ausente** | **Cae** |
+
+- **`wallet.spec.ts`:** lo único que cambia es el plazo de 2 s de `getAttribute`. Sin `actionTimeout` en `playwright.config.ts`, antes esa lectura esperaba
+  dentro de una sola vuelta, hasta el plazo de `toPass`. Ahora lanza a los 2 s y `toPass` reintenta. El resultado es el mismo en todos los casos de la tabla, y el
+  plazo total sigue en 30 s. Cambia solo el mensaje con el que cae si el control no aparece: el último error, en lugar del tiempo agotado.
+- **Falso verde en `wallet-mensajeros.spec.ts:82`:** no. `pulsarHasta` solo termina si `toHaveAttribute("aria-expanded", "true")` pasa, y las aserciones de
+  `conCod` y `sinCod` siguen después. Quitar la espera de la región no pierde nada: la región se pinta en la misma rama de `abierta` (`DataTable.tsx:533,552`), y lo que se afirma es el destinatario.
+- **El localizador no se pierde al abrir:** `expandAriaLabel` recibe solo la fila (`EstadoCuenta.tsx:1091`), así que el nombre no cambia con el estado.
+- **Falso rojo:** sigue el de la vuelta 1. Si la fila se remonta después de `desplegar`, el panel se pliega. `abrirCon` tenía el mismo. D42 sigue abierta, con razón.
+- Comentarios de `pulsar.ts` ciertos; `abrirCon` y `desplegar` ya no se contradicen. `e2e/mi-wallet.spec.ts:71` sigue con clic crudo, como dice D42. Traza
+  `on-first-retry` en `:70`, como dice D42.
+
+#### 3. `VOCABULARIO_SQL_DE_LA_LECTURA` — [x] cae con lo pedido; [ ] una regla vieja se debilitó (V2-1)
+
+Funciones extraídas del propio archivo en `e57de8db` y `393b5391`, sin editarlo:
+
+| SQL añadido | Regla vieja | Regla nueva |
+|---|---|---|
+| Importe, alias `cd` | Cae | Cae |
+| Importe, alias `d` | **No cae** | Cae |
+| Importe, con el alias legítimo `w` | **No cae** | Cae |
+| Importe sin comillas | **No cae** | Cae |
+| `cd.*` | **No cae** | Cae |
+| `SUM(cd."cierre_id")` | **No cae** | Cae |
+| `${col}` interpolado | **No cae** | Cae |
+| `JOIN` a otra tabla | **No cae** | Cae |
+| En mayúsculas | **No cae** | Cae |
+| Cadena normal con `cd."col"` | Cae | **No cae** |
+| `Prisma.sql([cadena])` | Cae | **No cae** |
+| `new Prisma.Sql` | Cae | **No cae** |
+| El módulo real | Sin fugas | Sin fugas |
+
+- **Lista cerrada:** de las columnas de `cierre_detail` (leídas del esquema), solo `cierre_id`, `organizacion_id` y `tarifa_modelo` están en el vocabulario. `origen_id` y
+  `origen_tipo` no existen en esa tabla: no abren nada.
+- **La no vacuidad se conserva:** `arrayContaining` es menos estricta que el `toEqual` de 3 columnas, pero ese `toEqual` ya no hace falta con la lista cerrada, y falla si
+  desaparece el fragmento.
+- **Contrapruebas:** `monto_x` salió del test de `:360`; `monto` sigue en la regex de `:133`, y el caso «Importe, alias `cd`» cae.
+- **Comentarios:** `:102`, `:125-127`, `:301`, `:360` y `:170-174` son ciertos. `:171` ya avisa de que mira plantillas: V2-1 es el límite de la regla, no un comentario falso.
+
+#### 4. `lib/repositories/_shared/detalle-modelo-nuevo.ts` — [x] solo comentarios
+
+Fuera de las líneas `//` del diff, 0 líneas. Los dos tests que nombra existen. El comentario es cierto: `CierreDetail` entra en la extensión y el fragmento lleva la empresa en el texto (`:103`).
+
+#### 5. `specs/SLT-54-pantalla-tarifas/requirements.md` — [x] sin requisitos nuevos, cierto
+
+Ningún `R<n>` nuevo. El visto bueno del 2026-11-05 está en el cuerpo del PR #80 (puntos 1 y 2) y en `SLT-54.md:43`. D41 sigue abierta (`deudas.md:247`). Las 3 notas son
+`GANA_LA_TIENDA_NOTA_MODELO_NUEVO`, `PAGO_TIENDA_HOY_NOTA_MODELO_NUEVO` y `DESGLOSE_POR_TIENDA_NOTA_MODELO_NUEVO` (`cierre-labels.ts:389,396,552`), las que nombra el cierre de D40.
+
+#### 6. `progress/deudas.md` y la bitácora — [x] ciertos
+
+- **D39 y D40:** solo pierden «Qué falta» y «Dueño», y quedan con la forma de D38 (`:235-237`). El resto se revisó en la vuelta 1.
+- **D42:** cierto, con V2-3.
+- **D43:** sin cambios en este diff; `:292` usa `FLETE_DEV_CON_IVA_LABEL` (`cierre-labels.ts:182`), con ese texto.
+- **D44:** las cifras coinciden con la tabla de la vuelta 1 (266-376, unos 1.430, 58-155, 85-113). `cargar-kpis.ts:142` llama a `verResumenCajaAction`.
+- **`impl_deudas-2026-11-05.md:329`:** cierto contra `extension-empresa.ts`. `:202-206` rechaza el SQL a mano sin contexto; `:209-212` deja pasar `comoPlataforma`. `sinRlsSinEmpresa`
+  (`deudas-d39-d40-modelo-nuevo.test.ts:390`) usa el `tx` del dueño, fuera de la extensión. `extension-empresa.test.ts -t R11`: 7 en verde y 68 saltados, igual que la bitácora; `:304-307` existe.
+  `comoPlataforma` no aparece en `lib/actions/wallet.ts`, `wallet-filtros.ts`, `WalletService` ni `FiltrosWalletService`, y `ROLES_ACCESO_TOTAL` solo trae `maestro` y `admin`.
+
+#### 7. `caja-backfill` y `ciclo-vida-gestion-final` — el filtro de la rama no lo causa; fue por lectura, sin reproducir
+
+**El filtro no puede dar ese error:**
+
+- `referencia a otra empresa` (`SL017`) solo lo lanza `verificar_misma_empresa`, un trigger `BEFORE INSERT OR UPDATE` (`20261022130300_misma_empresa_en_fk/migration.sql:27`).
+- `FILA_DE_CAJA_CON_MODELO_NUEVO_SQL` es un `SELECT`, y solo llega a los dos `$queryRaw` de lectura de `FiltrosWalletRepository.ts:94` y `WalletMovimientoRepository.ts:383`.
+- Ninguno de los dos tests lo llama. En el camino del backfill, `RecolectorDeFilasDeCaja.categoriasConModeloNuevo` lanza.
+- La rama no trae migraciones (vuelta 1), ni toca `CicloVidaRepository` ni `CierresAdminRepository`. `CajaBackfillTesoreriaService` solo gana ese método.
+
+**`caja-backfill`: los datos lo explican del todo, y ya pasaba antes de esta rama.**
+
+- `sembrar` (`caja-backfill.test.ts:80-81`) toma dos usuarios y una zona cualesquiera, sin empresa, en una transacción con empresa nueva. Con datos de E2E, son de otra empresa.
+- `progress/impl_SLT-54.md:146` documenta el mismo error, `cierre_dia.destino_zona_id -> zona`, y el mismo rojo sobre el commit base `9124244a`, anterior a D39.
+- **Corrige la bitácora:** «dependen de que la base esté limpia» no es la explicación. Sin usuarios, `sembrar` da `null` y los casos hacen `return` (`:176`, `:215`, `:303`, `:334`, `:363`):
+  **en base limpia ese archivo sale verde sin comprobar nada.** Preexistente, fuera de este diff y de este alcance; se anota, no bloquea.
+
+**`ciclo-vida-gestion-final`: no se identificó la FK.** Siembra en su propia empresa (`sembrarBase`), y los catálogos que lee (`canton`, `order_status`, `rol`) no cuelgan de una empresa. No queda
+en ningún log la FK de esa caída, y en `gate-deudas.log` ese archivo salió verde. Lo más probable son las escrituras reales de R6 y R8 (`:415`, `:524`) con lecturas como dueño, pero no está demostrado.
+Que no es el filtro sí lo está, por los puntos de arriba.
+
+### Checkpoints de esta vuelta
+
+- [x] Bloqueante 1 cerrado.
+- [x] Sin dependencias, tablas ni migraciones en el diff. `tests/baseline-rojos.json` no se toca.
+- [x] Sin literales de país o moneda, ni Ordenex, en las líneas añadidas (grep sobre el diff: 0).
+- [ ] `gate-completo`: no hay PR aún; lo corre CI.
+
+### Salida real
+
+Sobre la desechable:
+
+- `pnpm run typecheck`: exit 0.
+- `eslint` de los 5 archivos de código y tests del diff: exit 0.
+- `vitest run` de `caja-173-alcance`, `e2e-sin-saltos`, `cierre-incluye-modelo-nuevo`, `deudas-d39-d40-modelo-nuevo`, `caja-backfill` y `ciclo-vida-gestion-final`: 6 archivos y 137 tests en verde, exit 0.
+- `extension-empresa.test.ts -t R11`: 7 en verde y 68 saltados, exit 0.
+- Playwright sintético de `desplegar`: 16 de 16, exit 0.
+- Sonda de la guardia sin editarla: tabla del punto 3.
+
+### No verificado
+
+- **E2E reales:** `wallet.spec.ts` y `wallet-mensajeros.spec.ts` no se corrieron contra la app; cuento con la bitácora (`dinero` 49/0/0, una corrida). Lo mío es la función contra páginas sintéticas.
+- **Producción:** las 0 filas son de la cita del PR #80. No se tocó esa base, ni se comprobó que el despliegue corra exactamente `origin/prod`.
+- **La FK de `ciclo-vida-gestion-final`** con datos de E2E: no se reprodujo.
+- **`caja-backfill` vacío en la desechable:** lo verde sin comprobar sale de leer el código y del «0 usuarios» de la bitácora; el recuento directo falló (sin el paquete `pg`).
+- **Mutaciones sobre el módulo real:** no se editó; la sonda usa las funciones de la guardia con el texto añadido a parte.
+- **Suite completa y guardias enteras:** las corre CI; solo se corrieron las relacionadas.
+- **Grafo de código:** no se consultó; Grep y Read.
