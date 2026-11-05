@@ -250,3 +250,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** review de SLT-54 (2026-11-05, `progress/review_SLT-54.md`, vuelta 2, menor 3). `ZonasModule.tsx:250` y `GeografiaSelector.tsx:266` escriben el nombre del nivel en vez de leer la configuración del país. Preexistente, sin dinero; R61 habla de la pantalla de Tarifas. Falso solo en un país con otro nombre de nivel.
 - **Qué falta:** leer la etiqueta del nivel, como `TarifasZonas.tsx` (SLT-54, T7.3).
 - **Dueño:** Carlos Restrepo (decidir si va a ficha).
+
+### D42 — `e2e/wallet-mensajeros.spec.ts:81`, clic crudo e inestable
+- **Origen:** tanda I2 y revisión de SLT-54, vuelta 3 (2026-11-05). `dinero` dio 44/0/0, 42/1/0 con 1 sin correr y 44/0/0; cayó `:58` por botón desmontado. El spec solo dio 45 de 45. El diff no lo explica, y ya había caído antes en CI. Causa sin medir. El clic de `:81` abre un panel sin `abrirCon` (`e2e/_escenarios/pulsar.ts`).
+- **Qué falta:** pasar el clic a `abrirCon` y medir si la inestabilidad desaparece.
+- **Dueño:** Carlos Restrepo.
