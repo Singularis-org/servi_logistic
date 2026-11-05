@@ -629,3 +629,41 @@ pnpm exec eslint CobroPorOrden.tsx tests/components/EmpresasModuleCobroPorcentua
 ```
 
 **Veredicto T13:** la columna «Cobro por orden» pinta el porcentual con «del plan» y el fijo como hoy.
+
+## T14
+
+**Archivos.**
+- `components/shared/ConsumoDelPlan.tsx` (design §6.4): rama por `costeo.modo`. La `"fijo"` es `CostoDelCiclo` de
+  SLT-66, sin cambio de texto. La `"porcentual"` (`CostoDelCicloPorcentual`) pinta «Costo base» (el mismo texto del
+  fijo, «por definir» sin forma «monto»), y de `lineasDelCosteoPorcentual`: el costo por orden con la nota
+  `NOTA_COBRO_PORCENTUAL`, lo cobrado, las órdenes sin estado final (conteo) y el total resaltado, que no sale con
+  la base por definir. La nota «El pago anual no cambia el costo por orden.» sale igual que en el fijo. El aviso
+  «Plan sin costo concreto» del superadmin sigue en `PlanEmpresa.tsx` con `costeo.sinCostoConcreto` (lo calcula el
+  servidor para los dos modos): sin cambio. Se quita el comentario provisional de T6.
+- **Decisión:** la rama porcentual NO pinta la nota «Estimado: el costo base no se cobra todavía; cada orden se
+  cobra al crearla y se descuenta si se anula.» del fijo: dice lo contrario de R6/R8 (la orden porcentual se cobra
+  al llegar a un estado final) y §4.4 no la lista para el porcentual. No se inventa otra.
+- Creado `tests/components/ConsumoDelPlanPorcentual.test.tsx` (8 casos).
+
+**Tests existentes tocados.** Ninguno (`ConsumoDelPlan.test.tsx` y `ConsumoDelPlanCosteo.test.tsx` sin cambios en
+esta tanda).
+
+**R → test.**
+- R23 → `ConsumoDelPlanPorcentual.test.tsx`: «base, porcentaje y mínimo con su nota, lo cobrado, las pendientes y el
+  total base + cobrado», «las órdenes sin estado final son solo un conteo…», «sin mínimo dice solo el porcentaje»,
+  «lo cobrado negativo se pinta como resta («−», U+2212), nunca «+ -»» (afirma `50000.00 − 500.00 = 49500.00`),
+  «con la base por definir dice «Costo base: por definir» y no hay total», «con anual…», y en el detalle de empresa
+  «muestra los mismos datos que «Mi plan»…» y «con la base por definir, el aviso «Plan sin costo concreto» igual que
+  hoy».
+- R26 → `ConsumoDelPlanCosteo.test.tsx` y `ConsumoDelPlan.test.tsx` en verde sin cambio de aserciones.
+
+**Salida.**
+```
+pnpm exec vitest run tests/components/ConsumoDelPlanPorcentual.test.tsx tests/components/ConsumoDelPlan.test.tsx tests/components/ConsumoDelPlanCosteo.test.tsx tests/components/MiPlanModule.test.tsx tests/components/PlanEmpresaSinCosto.test.tsx
+ Test Files  5 passed (5)
+      Tests  59 passed (59)
+NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck → tsc --noEmit, sin errores
+pnpm exec eslint components/shared/ConsumoDelPlan.tsx tests/components/ConsumoDelPlanPorcentual.test.tsx → No issues found
+```
+
+**Veredicto T14:** «Mi plan» y el detalle de empresa pintan el costeo porcentual con los textos de `mensajes.ts`; el fijo sigue igual.

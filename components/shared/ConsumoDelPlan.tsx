@@ -4,7 +4,12 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TEXTOS_TIPO_COBRO } from "@/components/shared/tipo-cobro";
-import { SIN_LINEAS_DE_CAMBIO, textoCambioProgramado, TITULO_LINEAS_DE_CAMBIO } from "@/lib/planes/mensajes";
+import {
+  lineasDelCosteoPorcentual,
+  SIN_LINEAS_DE_CAMBIO,
+  textoCambioProgramado,
+  TITULO_LINEAS_DE_CAMBIO,
+} from "@/lib/planes/mensajes";
 import type {
   CobroDelPlan,
   CosteoDelCiclo,
@@ -15,9 +20,10 @@ import type {
 } from "@/lib/types/consumo-plan";
 import { cn } from "@/lib/utils";
 
-// SLT-83 (T6): ajuste de tipo mínimo de backend_dev. `CosteoDelCiclo` pasó a unión por `modo`; esta
-// pieza pinta solo el modo fijo, sin cambio. La rama porcentual es de T14 (frontend_dev).
+// SLT-83 (design §6.4; R23, R26): `CosteoDelCiclo` es una unión por `modo`. La rama fija es la de
+// SLT-66 sin cambio de texto; la porcentual pinta las líneas de `lineasDelCosteoPorcentual`.
 type CosteoFijo = Extract<CosteoDelCiclo, { modo: "fijo" }>;
+type CosteoPorcentual = Extract<CosteoDelCiclo, { modo: "porcentual" }>;
 
 /** Textos de la pieza, en un solo sitio para cuando llegue la i18n (design §6.5). */
 const TEXTOS = {
@@ -109,7 +115,11 @@ export function ConsumoDelPlan({
           </CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
-          {plan.costeo.modo === "fijo" && <CostoDelCiclo costeo={plan.costeo} textoExcepcion={textoExcepcion} />}
+          {plan.costeo.modo === "fijo" ? (
+            <CostoDelCiclo costeo={plan.costeo} textoExcepcion={textoExcepcion} />
+          ) : (
+            <CostoDelCicloPorcentual costeo={plan.costeo} />
+          )}
           <CobroDelPlanVista cobro={plan.cobro} />
           <p className="text-sm font-medium">{TEXTOS.modulos}</p>
           {plan.modulos.length === 0 ? (
@@ -198,6 +208,39 @@ function CostoDelCiclo({ costeo, textoExcepcion }: { costeo: CosteoFijo; textoEx
         )}
       </ul>
       <p className="text-xs text-muted-foreground">{TEXTOS.estimado}</p>
+    </div>
+  );
+}
+
+/**
+ * SLT-83 (design §4.4, §6.4; R23) — el costo del ciclo con un plan porcentual: costo base, porcentaje y
+ * mínimo con su nota, lo cobrado en el ciclo, las órdenes sin estado final (solo el conteo) y el total
+ * hasta hoy. Todo llega calculado del servidor y los textos salen de `lib/planes/mensajes.ts`: aquí no se
+ * hace aritmética. Con la base por definir no hay total (SLT-66 R20). La nota «Estimado…» del modo fijo
+ * no va: dice que cada orden se cobra al crearla, y la porcentual se cobra al llegar a un estado final.
+ */
+function CostoDelCicloPorcentual({ costeo }: { costeo: CosteoPorcentual }) {
+  const lineas = lineasDelCosteoPorcentual(costeo);
+  return (
+    <div className="flex flex-col gap-2 pb-2">
+      <p className="text-sm font-medium">{TEXTOS.costoDelCiclo}</p>
+      <ul aria-label={TEXTOS.costoDelCiclo} className="flex flex-col gap-1 text-sm">
+        <li>{TEXTOS.costoBase(costeo.base)}</li>
+        <li className="flex flex-col">
+          <span>{lineas.costoPorOrden}</span>
+          <span className="text-xs text-muted-foreground">{lineas.nota}</span>
+          {costeo.anualNoAplicaAlCosto && (
+            <span className="text-xs text-muted-foreground">{TEXTOS.anualNoAplica}</span>
+          )}
+        </li>
+        <li>{lineas.cobrado}</li>
+        <li>{lineas.pendientes}</li>
+        {lineas.total !== null && (
+          <li>
+            <strong className="font-semibold">{lineas.total}</strong>
+          </li>
+        )}
+      </ul>
     </div>
   );
 }

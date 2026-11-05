@@ -81,7 +81,7 @@
 - [x] **T13. `CobroPorOrden.tsx` / `EmpresasModule.tsx`** (design §6.3, R22). Depende de T7 y T10. `[P]`
   *Hecho:* `tests/components/EmpresasModuleCobroPorcentual.test.tsx` en verde;
   `EmpresasModuleCobro.test.tsx` en verde.
-- [ ] **T14. `ConsumoDelPlan.tsx`** («Mi plan» y detalle de empresa; design §6.4, R23, R26). Depende de T7 y
+- [x] **T14. `ConsumoDelPlan.tsx`** («Mi plan» y detalle de empresa; design §6.4, R23, R26). Depende de T7 y
   T10. `[P]`
   *Hecho:* `tests/components/ConsumoDelPlanPorcentual.test.tsx` en verde; `ConsumoDelPlan.test.tsx` y
   `ConsumoDelPlanCosteo.test.tsx` en verde sin cambiar aserciones.
