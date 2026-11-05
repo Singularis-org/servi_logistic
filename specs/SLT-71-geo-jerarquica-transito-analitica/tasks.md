@@ -88,7 +88,7 @@
 - [x] **T6.1** `scripts/geo-explain-analitica.ts`: las seis lecturas de design §9.2, `veredicto`
   exportado y `pnpm geo:explain-analitica` en `package.json`. **Hecho:** corre contra la base local,
   y su salida no tiene SQL, nombres de lugar ni datos personales.
-- [ ] **T6.2** `tests/integration/db/geo-explain-analitica.test.ts` (R18–R22). **Hecho:** pasa con
+- [x] **T6.2** `tests/integration/db/geo-explain-analitica.test.ts` (R18–R22). **Hecho:** pasa con
   los casos de design §11 (R20, R21).
 
 ## T7 — Guardias [T3, T4]
