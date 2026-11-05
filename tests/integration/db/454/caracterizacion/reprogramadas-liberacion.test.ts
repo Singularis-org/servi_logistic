@@ -10,6 +10,7 @@ import { fechaRepartoComoTexto } from "@/lib/utils/dia-reparto";
 import { sinRetenidas } from "@/tests/fixtures/retenidas-doble";
 import { HAY_BASE_DE_DATOS } from "../../_postgres-real";
 import { conEscenario, diaCR, prepararMundo, type Mundo } from "../_escenario";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FEATURE 454 — FASE 0 · C19 (R48). LA LIBERACION DE LAS REPROGRAMADAS, sobre el codigo de HOY.
@@ -49,6 +50,9 @@ describeSiHayBase("454/C19 — liberacion de reprogramadas (Postgres real)", () 
         sinRetenidas(), // FICHA 462: 7.o argumento requerido; este caso no mide la marca
         undefined,
         liberarAlAprobarCierreCon(liberacion, () => ahora),
+        undefined,
+        undefined,
+        reglasPaisFijas(),
       );
       const confirmacion = await e.confirmacionDe(cierreId, {
         destinoTipo: "bodega_satelite",

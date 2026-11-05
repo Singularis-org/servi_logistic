@@ -11,6 +11,7 @@ import type { IZonaRepository } from "@/lib/interfaces/repositories/IZonaReposit
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { derivarPendienteCierre } from "@/lib/utils/pendiente-cierre";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 172 / T C.2 (R22, R26, R28) — `pendientePagoMensajero` viaja con el cierre.
 //
@@ -147,6 +148,11 @@ function newService(
     liquidacion,
     premios,
     sinRetenidas(), // FICHA 462: 7.o argumento requerido; la marca se mide en su propia suite
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    reglasPaisFijas(),
   );
   return { service, liquidacion, premios };
 }
@@ -372,6 +378,11 @@ describe("R26 — los tres listados traen el campo, con UNA sola consulta cada u
       liquidacion,
       fakePremios(),
       sinRetenidas(), // FICHA 462: 7.o argumento requerido
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      reglasPaisFijas(),
     );
 
     const r = await service.listarCierresAdmin({ usuarioId: "sat", rol: "adminSatelite" });

@@ -22,8 +22,8 @@ import { reintentosConfig } from "@/lib/config/reintentos";
 import type { IAsignabilidadCoordenadasService } from "@/lib/interfaces/services/IAsignabilidadCoordenadasService";
 import { esAsignable, motivoAsignabilidad } from "@/lib/services/AsignabilidadCoordenadasService";
 import { resolverFechaReparto } from "@/lib/utils/dia-reparto";
-
-import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 // Estado de ORIGEN de la asignacion satelite (feature 33) y destino tras asignar
 // (feature 17). Esta feature NO agrega estados ni `num_guia` (R8): usa exclusivamente
 // estos dos valores de catalogo, ya sembrados.
@@ -90,6 +90,8 @@ export class AsignacionSateliteService implements IAsignacionSateliteService {
      * en este mismo par de servicios.
      */
     private readonly historial: Pick<IOrdenHistorialService, "contarIntentosEnLote">,
+    /** SLT-42 (R22): la zona del pais de la empresa con la que se resuelve el dia de reparto. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
 
   /**
@@ -319,8 +321,9 @@ export class AsignacionSateliteService implements IAsignacionSateliteService {
     // Feature 246 (T3.2, R2/R3/R5/R7): la eleccion se resuelve AQUI, una vez, para el lote entero
     // —y con el MISMO helper que la bodega central, que es lo que hace que la regla no dependa de
     // desde que bodega te asignaron (D4)—. `?? "hoy"` = el comportamiento anterior (R4).
-    // SLT-42 pendiente T5.3: zona de la empresa
-    const fechaReparto = resolverFechaReparto(input.dia ?? "hoy", ZONA_CR, now);
+    // SLT-42 (R22, R28): con la zona del pais de la empresa; sin zona falla aqui, antes de escribir.
+    const zona = await zonaDeLaEmpresa(this.reglasPais, "AsignacionSateliteService.asignar");
+    const fechaReparto = resolverFechaReparto(input.dia ?? "hoy", zona, now);
 
     // Feature 368 (R1): escribe SOLO `asignables`, no `ordenIds` — el subconjunto que paso el
     // gate de coordenadas. `asignarSateliteLote` no cambia de firma: sigue siendo un unico

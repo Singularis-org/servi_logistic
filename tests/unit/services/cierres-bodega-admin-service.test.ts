@@ -18,6 +18,7 @@ import { conPagos } from "@/tests/fixtures/cierre-pagos";
 import { efectivoCubreDescuentos, paraLaCentral } from "@/lib/utils/ingreso-empresa";
 
 import { marcaPorEstado } from "@/tests/fixtures/marca-conciliacion";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Feature 40 — tests unit del CierresBodegaAdminService (lado maestro; dobles de
 // repo/signedUrls, sin DB/red). Cubre R2 (rol), R11 (detalle por cierre_dia con grupos
 // + totales), R12 (evidencia firmada), R13 (montos string, snapshot no recompute), R14
@@ -192,7 +193,7 @@ function fakeSignedUrls(overrides: Partial<ISignedUrlProvider> = {}): ISignedUrl
 function newService(opts: { repo?: Repo; signedUrls?: ISignedUrlProvider } = {}) {
   const repo = opts.repo ?? fakeRepo();
   const signedUrls = opts.signedUrls ?? fakeSignedUrls();
-  const service = new CierresBodegaAdminService(repo, signedUrls);
+  const service = new CierresBodegaAdminService(repo, signedUrls, reglasPaisFijas());
   return { service, repo, signedUrls };
 }
 

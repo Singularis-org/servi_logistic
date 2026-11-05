@@ -1,5 +1,6 @@
 "use server";
 
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import {
   asignarBodegaSchema,
   asignarRecoleccionSchema,
@@ -49,6 +50,8 @@ function buildGuiaService(): IGuiaAsignacionService {
       new OrdenDiaRepartoCambioRepository(prisma),
       new OrdenTraspasoRepository(prisma),
     ),
+    // SLT-42 (R22): la zona horaria del pais de la empresa.
+    construirReglasPaisEmpresa(prisma),
   );
 }
 

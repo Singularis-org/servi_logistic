@@ -1,5 +1,6 @@
 "use server";
 
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { GestionOrdenRepository } from "@/lib/repositories/GestionOrdenRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
@@ -38,7 +39,8 @@ import { normalizarPagos } from "@/lib/utils/pagos-recaudo";
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import type { AppErrorShape } from "@/lib/errors";
 
-import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDelBorde } from "@/lib/actions/_shared/zona-del-borde";
 // Feature 36 — Server Actions del flujo del mensajero (mutaciones internas del
 // mismo proyecto; van como Server Action, no como Route API, patron feature 21).
 // Resuelve el actor por sesion, valida en el borde con zod y delega en el
@@ -136,10 +138,14 @@ function buildService(): IMisAsignacionesService {
       new OrdenDiaRepartoCambioRepository(prisma),
       new OrdenTraspasoRepository(prisma),
     ),
+    // SLT-42 (R22): la zona horaria del pais de la empresa.
+    construirReglasPaisEmpresa(prisma),
   );
 }
 
 export interface MisAsignacionesDeps {
+  /** SLT-42 (R22): las reglas del pais de la empresa (su zona). Por defecto, la implementacion real. */
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
   service?: IMisAsignacionesService;
   getActor?: () => Promise<Actor | null>;
   /** SLT-59 (R27): reduccion de la ruta tras una gestion `ok`; inyectable en tests. */
@@ -245,8 +251,9 @@ export async function gestionar(
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const raw = rawFromFormData(formData);
-    // SLT-42 pendiente T5.3: zona de la empresa
-    const data = gestionarSchema(ZONA_CR).parse(raw); // ZodError -> VALIDATION_ERROR
+    // SLT-42 (R22, R28): «hoy» en la zona del pais de la empresa.
+    const zona = await zonaDelBorde(deps.reglasPais);
+    const data = gestionarSchema(zona).parse(raw); // ZodError -> VALIDATION_ERROR
     const input = await toGestionarInput(data);
     const service = deps.service ?? buildService();
     const resultado = await service.gestionar(input, actor);

@@ -8,6 +8,7 @@ import { EtiquetasLotePdfService } from "@/lib/services/EtiquetasLotePdfService"
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IFileStorage } from "@/lib/interfaces/external/IFileStorage";
 import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlProvider";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 177 — T22: test de "columna intacta" [R26, R35, R38].
 //
@@ -228,7 +229,7 @@ function montar(store: Store) {
   // REALES (parte del camino medido): arman el DTO y el PDF. `build` se sustituye por un
   // generador de bytes trivial porque es CPU pura sin base de datos.
   const lotePdf = new EtiquetasLotePdfService(
-    new EtiquetaGuiaService(repo),
+    new EtiquetaGuiaService(repo, reglasPaisFijas()),
     storage,
     signedUrls,
     TTL_SEG,

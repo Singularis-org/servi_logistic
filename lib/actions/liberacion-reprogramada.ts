@@ -9,7 +9,14 @@ import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { OrdenHistorialService } from "@/lib/services/OrdenHistorialService";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
-import { startOfDayCR } from "@/lib/utils/fecha-cr";
+import {
+  inicioDelDiaComoFecha,
+  inicioDelDiaEnUtc,
+  inicioDelDiaSiguienteEnUtc,
+} from "@/lib/utils/calendario-zona";
+import { fechaRepartoComoTexto } from "@/lib/utils/dia-reparto";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type {
   ILiberacionReprogramadaRepository,
@@ -55,8 +62,13 @@ export interface ListarLiberadasHoyDeps {
    */
   historial?: Pick<IOrdenHistorialService, "contarIntentosEnLote">;
   getActor?: () => Promise<Actor | null>;
-  /** Inyectable en tests para fijar "hoy" CR; por defecto `startOfDayCR()`. */
+  /**
+   * Inyectable en tests para fijar "hoy" (fecha local en la convencion `@db.Date`); por defecto,
+   * hoy en la zona del pais de la empresa.
+   */
   hoyCR?: Date;
+  /** SLT-42: las reglas del pais de la empresa (su zona horaria). Por defecto, la implementacion real. */
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
 }
 
 /** Wiring de produccion del derivador de intentos (feature 160). */
@@ -86,7 +98,12 @@ export async function listarLiberadasHoy(
       return { status: "forbidden" as const }; // R16: solo la bodega responsable
     }
 
-    const hoyCR = deps.hoyCR ?? startOfDayCR();
+    // SLT-42 (R22, R23, R28): el dia de hoy es el de la zona del pais de la empresa, y la ventana
+    // `[00:00, 00:00 del dia siguiente)` se calcula AQUI con esa zona (un dia de cambio de hora
+    // dura 23 o 25 h); el repositorio la recibe ya resuelta.
+    const zona = await (deps.reglasPais ?? construirReglasPaisEmpresa(getPrismaClient())).zonaHoraria();
+    const fecha = fechaRepartoComoTexto(deps.hoyCR ?? inicioDelDiaComoFecha(new Date(), zona));
+    const dia = { desde: inicioDelDiaEnUtc(fecha, zona), hasta: inicioDelDiaSiguienteEnUtc(fecha, zona) };
     const repo = deps.repo ?? new LiberacionReprogramadaRepository(getPrismaClient());
 
     // Feature 160 (R11/R14/R27): mergea el conteo de intentos sobre las filas YA acotadas por
@@ -104,7 +121,7 @@ export async function listarLiberadasHoy(
       if (centralZonaId === null) return { status: "ok" as const, liberadas: [] };
       const liberadas = await repo.findLiberadasHoy(
         { zonaId: centralZonaId, estatusValue: ESTATUS_BODEGA_CENTRAL },
-        hoyCR,
+        dia,
       );
       return { status: "ok" as const, liberadas: await conIntentos(liberadas) };
     }
@@ -115,7 +132,7 @@ export async function listarLiberadasHoy(
     if (zonaId === null) return { status: "ok" as const, liberadas: [] };
     const liberadas = await repo.findLiberadasHoy(
       { zonaId, estatusValue: ESTATUS_BODEGA_SATELITE },
-      hoyCR,
+      dia,
     );
     return { status: "ok" as const, liberadas: await conIntentos(liberadas) };
   });

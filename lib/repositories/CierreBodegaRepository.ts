@@ -7,11 +7,7 @@ import type {
   ResumenConsolidablesPendientes,
 } from "@/lib/interfaces/repositories/ICierreBodegaRepository";
 import type { PaginaRepositorio, RangoPagina } from "@/lib/utils/rango-pagina";
-import type { FiltrosCierresBodega } from "@/lib/types/filtros-cierres";
-import {
-  inicioDelDiaCREnUtc,
-  inicioDelDiaSiguienteCREnUtc,
-} from "@/lib/utils/fecha-cr";
+import type { FiltrosCierresBodegaRepo } from "@/lib/types/filtros-cierres";
 import { NOMBRE_USUARIO_SELECT, nombreCompletoUsuario } from "@/lib/utils/nombre-usuario";
 // ⭑ FICHA 431 (R7): el error que aborta una consolidacion que enlazaria menos cierres de los que
 // sus totales snapshot ya sumaron. Modulo puro, compartido con el servicio que lo traduce.
@@ -196,12 +192,15 @@ export async function aResumenRows(
  * cierres, escrito aqui porque las tablas son otras.
  */
 function rangoSolicitadoAt(
-  filtros: FiltrosCierresBodega | undefined,
+  filtros: FiltrosCierresBodegaRepo | undefined,
 ): { gte?: Date; lt?: Date } | undefined {
-  if (!filtros || (filtros.desde === undefined && filtros.hasta === undefined)) return undefined;
+  // SLT-42 (R22): los limites llegan ya resueltos en la zona del pais de la empresa.
+  if (!filtros || (filtros.solicitadoDesde === undefined && filtros.solicitadoHasta === undefined)) {
+    return undefined;
+  }
   return {
-    ...(filtros.desde !== undefined ? { gte: inicioDelDiaCREnUtc(filtros.desde) } : {}),
-    ...(filtros.hasta !== undefined ? { lt: inicioDelDiaSiguienteCREnUtc(filtros.hasta) } : {}),
+    ...(filtros.solicitadoDesde !== undefined ? { gte: filtros.solicitadoDesde } : {}),
+    ...(filtros.solicitadoHasta !== undefined ? { lt: filtros.solicitadoHasta } : {}),
   };
 }
 
@@ -217,7 +216,7 @@ function rangoSolicitadoAt(
  * dice. Ofrecer un control que no filtra es peor que no ofrecerlo.
  */
 function recorteZona<T extends { destinoZonaId?: unknown; zonaId?: unknown }>(
-  filtros: FiltrosCierresBodega | undefined,
+  filtros: FiltrosCierresBodegaRepo | undefined,
   clave: "destinoZonaId" | "zonaId",
 ): T[] {
   if (!filtros || filtros.destinoZonaIds === undefined) return [];
@@ -226,7 +225,7 @@ function recorteZona<T extends { destinoZonaId?: unknown; zonaId?: unknown }>(
 
 function consolidablesWhere(
   zonaId: string,
-  filtros?: FiltrosCierresBodega,
+  filtros?: FiltrosCierresBodegaRepo,
 ): Prisma.CierreDiaWhereInput {
   const rango = rangoSolicitadoAt(filtros);
   const zonas = recorteZona<Prisma.CierreDiaWhereInput>(filtros, "destinoZonaId");
@@ -262,7 +261,7 @@ const ORDEN_CONSOLIDABLES: Prisma.CierreDiaOrderByWithRelationInput = { solicita
  */
 function cierresBodegaDeZonaWhere(
   zonaId: string,
-  filtros?: FiltrosCierresBodega,
+  filtros?: FiltrosCierresBodegaRepo,
 ): Prisma.CierreBodegaWhereInput {
   const rango = rangoSolicitadoAt(filtros);
   const zonas = recorteZona<Prisma.CierreBodegaWhereInput>(filtros, "zonaId");
@@ -312,7 +311,7 @@ export class CierreBodegaRepository implements ICierreBodegaRepository {
    */
   async findCierresDiaConsolidables(
     zonaId: string,
-    filtros?: FiltrosCierresBodega,
+    filtros?: FiltrosCierresBodegaRepo,
   ): Promise<CierreDiaConsolidableRow[]> {
     const rows = await this.prisma.cierreDia.findMany({
       where: consolidablesWhere(zonaId, filtros),
@@ -340,7 +339,7 @@ export class CierreBodegaRepository implements ICierreBodegaRepository {
   async findCierresDiaConsolidablesPaginado(
     zonaId: string,
     rango: RangoPagina,
-    filtros?: FiltrosCierresBodega,
+    filtros?: FiltrosCierresBodegaRepo,
   ): Promise<PaginaRepositorio<CierreDiaConsolidableRow>> {
     const where = consolidablesWhere(zonaId, filtros);
     const [rows, total] = await Promise.all([
@@ -463,7 +462,7 @@ export class CierreBodegaRepository implements ICierreBodegaRepository {
    */
   async findCierresBodegaByZona(
     zonaId: string,
-    filtros?: FiltrosCierresBodega,
+    filtros?: FiltrosCierresBodegaRepo,
   ): Promise<CierreBodegaResumenRow[]> {
     const rows = await this.prisma.cierreBodega.findMany({
       where: cierresBodegaDeZonaWhere(zonaId, filtros),
@@ -485,7 +484,7 @@ export class CierreBodegaRepository implements ICierreBodegaRepository {
   async findCierresBodegaByZonaPaginado(
     zonaId: string,
     rango: RangoPagina,
-    filtros?: FiltrosCierresBodega,
+    filtros?: FiltrosCierresBodegaRepo,
   ): Promise<PaginaRepositorio<CierreBodegaResumenRow>> {
     // R3/R16: el MISMO alcance —y el mismo recorte— que el conjunto del archivo.
     const where = cierresBodegaDeZonaWhere(zonaId, filtros);

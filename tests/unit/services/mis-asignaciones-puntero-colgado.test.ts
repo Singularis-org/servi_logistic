@@ -13,6 +13,7 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { GestionarInput } from "@/lib/interfaces/services/IMisAsignacionesService";
 import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
 import { fakeIntentosEnLote } from "@/tests/fixtures/intentos-entrega";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FICHA 484 (T7b; R9, R10, R13, R14) — EL PUNTERO «ORDEN EN GESTION» COLGADO, en el SERVICIO.
@@ -140,6 +141,7 @@ function montar(repo: IGestionOrdenRepository) {
     ruta,
     fakeMetaRepo(),
     fakeIntentosEnLote(),
+    reglasPaisFijas(),
   );
   return { servicio, ruta };
 }

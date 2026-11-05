@@ -107,7 +107,7 @@ Orden sugerido. Cada task deja su grupo en verde con sus tests de hoy, inyectand
 - [x] **T5.2** Schemas zod con «hoy» de `lib/types/` (§4.3): la comparación con hoy pasa al servicio
   o a una fábrica `(zona) => schema`.
   *Hecho:* typecheck; sus tests en verde.
-- [ ] **T5.3** Servicios y repositorios de órdenes, reparto, cierres, corte y reprogramadas.
+- [x] **T5.3** Servicios y repositorios de órdenes, reparto, cierres, corte y reprogramadas.
   *Hecho:* verde.
 - [ ] **T5.4** `[P]` Wallet, liquidación, estado de cuenta, gastos fijos, aportes y caja.
   *Hecho:* verde.

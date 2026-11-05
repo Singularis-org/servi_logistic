@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { gestionar } from "@/lib/actions/mis-asignaciones";
 import type { IMisAsignacionesService } from "@/lib/interfaces/services/IMisAsignacionesService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 212 (T6 · R11/R12) — el BORDE lee el DESGLOSE del FormData como campos REPETIDOS
 // `pagoMetodo`/`pagoMonto` (mismo patron `getAll` que las evidencias de la 119) y los empareja
@@ -47,7 +48,7 @@ describe("R12: el FormData VIEJO (solo `metodoPago`) sigue produciendo una gesti
     const fd = fdEntrega("8000");
     fd.set("metodoPago", "efectivo");
 
-    const r = await gestionar(fd, { service, getActor: actorMensajero });
+    const r = await gestionar(fd, { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
 
     expect(r.status).toBe("ok");
     const input = inputRecibido(service);
@@ -60,7 +61,7 @@ describe("R12: el FormData VIEJO (solo `metodoPago`) sigue produciendo una gesti
     const fd = fdEntrega("0");
     fd.set("metodoPago", "efectivo");
 
-    const r = await gestionar(fd, { service, getActor: actorMensajero });
+    const r = await gestionar(fd, { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
 
     expect(r.status).toBe("ok");
     expect(inputRecibido(service).pagos).toEqual([]);
@@ -76,7 +77,7 @@ describe("R11: el FormData NUEVO trae el desglose como campos repetidos", () => 
     fd.append("pagoMetodo", "transferencia");
     fd.append("pagoMonto", "3000");
 
-    const r = await gestionar(fd, { service, getActor: actorMensajero });
+    const r = await gestionar(fd, { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
 
     expect(r.status).toBe("ok");
     const input = inputRecibido(service);
@@ -95,7 +96,7 @@ describe("R11: el FormData NUEVO trae el desglose como campos repetidos", () => 
     fd.append("pagoMonto", "5000");
     fd.append("pagoMetodo", "transferencia"); // sin su monto
 
-    const r = await gestionar(fd, { service, getActor: actorMensajero });
+    const r = await gestionar(fd, { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
 
     expect(r.status).toBe("validation_error");
     expect(service.gestionar).not.toHaveBeenCalled();
@@ -109,7 +110,7 @@ describe("R11: el FormData NUEVO trae el desglose como campos repetidos", () => 
     fd.append("pagoMetodo", "transferencia");
     fd.append("pagoMonto", "2000");
 
-    const r = await gestionar(fd, { service, getActor: actorMensajero });
+    const r = await gestionar(fd, { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
 
     expect(r.status).toBe("validation_error");
     if (r.status === "validation_error") expect(Object.keys(r.fieldErrors)).toContain("pagos");
@@ -123,7 +124,7 @@ describe("R11: el FormData NUEVO trae el desglose como campos repetidos", () => 
     fd.append("pagoMetodo", "efectivo");
     fd.append("pagoMonto", "5000");
 
-    const r = await gestionar(fd, { service, getActor: actorMensajero });
+    const r = await gestionar(fd, { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
 
     expect(r.status).toBe("validation_error");
     expect(service.gestionar).not.toHaveBeenCalled();
@@ -134,7 +135,7 @@ describe("la clave `pagos` no se inventa cuando el FormData no la trae", () => {
   it("R15: sin desglose y sin escalar con cobro > 0 -> validation_error en `metodoPago`", async () => {
     const service = buildService();
 
-    const r = await gestionar(fdEntrega("8000"), { service, getActor: actorMensajero });
+    const r = await gestionar(fdEntrega("8000"), { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
 
     expect(r.status).toBe("validation_error");
     if (r.status === "validation_error") {
@@ -155,7 +156,7 @@ describe("la clave `pagos` no se inventa cuando el FormData no la trae", () => {
     fd.append("pagoMetodo", "efectivo");
     fd.append("pagoMonto", "5000");
 
-    const r = await gestionar(fd, { service, getActor: actorMensajero });
+    const r = await gestionar(fd, { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
 
     expect(r.status).toBe("ok");
     expect(inputRecibido(service)).not.toHaveProperty("pagos");

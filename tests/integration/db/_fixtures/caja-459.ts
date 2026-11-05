@@ -73,6 +73,7 @@ import { clienteConSavepoint, serializarEscriturasReales, type TxDeTest } from "
 import { conEmpresa } from "@/lib/db/contexto-empresa";
 import { crearOrganizacion, fijarEmpresa } from "../../../fabricas/organizaciones";
 import { busquedaPorGuiaDe } from "./busqueda-469";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FICHA 459 / T0.1 — EL ESCENARIO QUE EJERCE TODOS LOS CAMINOS QUE ESCRIBEN EN LA CAJA O EN EL
@@ -258,6 +259,9 @@ export function montarServicios459(tx: TxDeTest) {
       ordenRepo,
       URLS_NO_USADAS,
       tarifaZonaRepo,
+      undefined,
+      undefined,
+      reglasPaisFijas(),
     ),
     cierresAdmin: new CierresAdminService(
       adminRepo,
@@ -267,6 +271,11 @@ export function montarServicios459(tx: TxDeTest) {
       new LiquidacionPagoRepository(c),
       mensajeroRepo,
       sinRetenidas(), // FICHA 462: 7.o argumento requerido; la caja no mide la marca
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      reglasPaisFijas(),
     ),
     liquidacion: new LiquidacionService(
       new LiquidacionPagoRepository(c),

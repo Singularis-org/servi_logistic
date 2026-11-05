@@ -50,7 +50,7 @@ import { NOMBRE_USUARIO_SELECT, nombreCompletoUsuario } from "@/lib/utils/nombre
 // pueda armar un `orderBy` de listado paginado sin el. Ver `DESEMPATE_UNICO` mas abajo.
 import { ordenTotal } from "@/lib/types/ordenamiento-listado";
 import { ESTADOS_USUARIO_NO_ASIGNABLES } from "@/lib/constants/estado-usuario-asignable";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendario } from "@/lib/utils/calendario-zona";
 // Feature 274 — LA REGLA de resolucion de tarifa vive en un modulo PURO, compartido con el
 // resolver del cierre de dia: el listado no puede tener una regla propia (R18/R21).
 import { clavePar } from "@/lib/utils/cascada-tarifa";
@@ -215,9 +215,6 @@ import {
   ESTADOS_CUSTODIA_SATELITE,
 } from "@/lib/utils/estados-bodega-satelite";
 import { fechaRepartoComoTexto } from "@/lib/utils/dia-reparto";
-// Feature 246 (T3.5, R8): la convencion `@db.Date` para las vias que reasignan SIN eleccion de
-// dia. `inicioDelDiaCREnUtc` (06:00Z) es la de las columnas `timestamp` y aqui desplazaria el dia.
-import { startOfDayCR } from "@/lib/utils/fecha-cr";
 import type { PaginaRepositorio, RangoPagina } from "@/lib/utils/rango-pagina";
 import type { OrdenAsignabilidadRow } from "@/lib/interfaces/services/IAsignabilidadCoordenadasService";
 import type {
@@ -1401,10 +1398,10 @@ type OrdenEtiquetaRow = Prisma.OrdenGetPayload<typeof WITH_ETIQUETA>;
 // R1/R4/R5/R6: serializa la fila de etiqueta a EtiquetaRow. Resuelve los nombres
 // legibles, mapea Decimal montoCobrar -> number|null (R5, sin moneda) y deja
 // distritoNombre null si la orden no tiene distrito (R4). NO expone deletedAt (R6).
-// Feature 295: `created_at` (timestamp UTC) sale como fecha CALENDARIO DE CR
-// `YYYY-MM-DD`, la misma convencion con la que el manifiesto escribe su columna
-// `fecha` y con la que el comprobante de cierre pinta las suyas.
-function toEtiquetaRow(row: OrdenEtiquetaRow): EtiquetaRow {
+// Feature 295: `created_at` (timestamp UTC) sale como fecha CALENDARIO `YYYY-MM-DD`, la misma
+// convencion con la que el manifiesto escribe su columna `fecha` y con la que el comprobante de
+// cierre pinta las suyas. SLT-42 (R22): en la `zona` del pais de la empresa, que llega del servicio.
+function toEtiquetaRow(row: OrdenEtiquetaRow, zona: string): EtiquetaRow {
   return {
     id: row.id,
     tiendaId: row.tiendaId,
@@ -1420,7 +1417,7 @@ function toEtiquetaRow(row: OrdenEtiquetaRow): EtiquetaRow {
     provinciaNombre: row.provincia.nombre,
     cantonNombre: row.canton.nombre,
     distritoNombre: row.distrito?.nombre ?? null,
-    fechaCreacion: fechaCalendarioCR(row.createdAt), // feature 295
+    fechaCreacion: fechaCalendario(row.createdAt, zona), // feature 295
   };
 }
 
@@ -3827,9 +3824,10 @@ export class OrdenRepository implements IOrdenRepository {
             // guardia `fecha-reparto-acompana-asignado-at` censa el arbol entero y ESTE sitio fue
             // el que encontro — el spec listaba cinco limpiezas y este estampado no estaba.
             //
-            // El dia es el de Costa Rica EN CURSO porque esta via NO ofrece la eleccion (R8).
+            // El dia es el EN CURSO porque esta via NO ofrece la eleccion (R8). SLT-42 (R22): llega
+            // en la decision, resuelto por el servicio en la zona del pais de la empresa.
             ...(d.mensajeroAsignadoId != null
-              ? { asignadoAt: new Date(), fechaReparto: startOfDayCR() }
+              ? { asignadoAt: new Date(), fechaReparto: d.fechaReparto }
               : {}),
           },
           select: { numGuia: true },
@@ -4091,14 +4089,18 @@ export class OrdenRepository implements IOrdenRepository {
    * SLT-49/R10: con `tiendaId` no nulo, la frontera de tienda va EN el `where`: la fila de otra
    * tienda no se lee de la base. `null` -> sin frontera de tienda (decidido por el service).
    */
-  async findEtiquetasByIds(ids: string[], tiendaId: string | null): Promise<EtiquetaRow[]> {
+  async findEtiquetasByIds(
+    ids: string[],
+    tiendaId: string | null,
+    zona: string,
+  ): Promise<EtiquetaRow[]> {
     if (ids.length === 0) return [];
     const rows = await this.prisma.orden.findMany({
       // R3 + SLT-49/R10 (dueño en el `where`, no en un `if` posterior)
       where: { id: { in: ids }, deletedAt: null, ...(tiendaId !== null ? { tiendaId } : {}) },
       ...WITH_ETIQUETA,
     });
-    return rows.map(toEtiquetaRow);
+    return rows.map((r) => toEtiquetaRow(r, zona));
   }
 
   /**
@@ -4109,6 +4111,7 @@ export class OrdenRepository implements IOrdenRepository {
   async findEtiquetaByNumGuia(
     numGuia: number,
     tiendaId: string | null,
+    zona: string,
   ): Promise<EtiquetaRow | null> {
     // `findFirst`: añadir `tiendaId` al `where` no choca con el UNIQUE de `num_guia`.
     const row = await this.prisma.orden.findFirst({
@@ -4116,7 +4119,7 @@ export class OrdenRepository implements IOrdenRepository {
       where: { numGuia, deletedAt: null, ...(tiendaId !== null ? { tiendaId } : {}) },
       ...WITH_ETIQUETA,
     });
-    return row ? toEtiquetaRow(row) : null;
+    return row ? toEtiquetaRow(row, zona) : null;
   }
 
   // --- Feature 148: manifiesto Excel por lote (READ derivado, R4/R6/R7/R12/R29) ---
@@ -4959,8 +4962,10 @@ export class OrdenRepository implements IOrdenRepository {
     ordenes: readonly TraspasoMensajeroItem[];
     actor: { usuarioId: string; rol: RolValue };
     motivo: string;
+    inicioDelDia: Date;
   }): Promise<TraspasoMensajeroAplicado> {
-    const { loteId, mensajeroOrigenId, mensajeroDestinoId, ordenes, actor, motivo } = input;
+    const { loteId, mensajeroOrigenId, mensajeroDestinoId, ordenes, actor, motivo, inicioDelDia } =
+      input;
     if (ordenes.length === 0) {
       return { loteId, movidas: 0, conversaciones: 0 };
     }
@@ -5094,7 +5099,6 @@ export class OrdenRepository implements IOrdenRepository {
       //    R64). Se evalua por separado para origen y destino, con UNA lectura para los dos (R67).
       const ahora = this.now();
       const debounceS = loadRouteOptimizationConfig().RUTA_DEBOUNCE_S;
-      const diaCR = fechaCalendarioCR(ahora);
       //    Review m7: la lectura filtra por la empresa de las ordenes del lote, ya bloqueadas en el
       //    paso 1 (la RLS solo deja ver las de la sesion). Segunda barrera que no depende del
       //    contexto: la ruta de otra empresa con el mismo `mensajero_id` no decide aqui.
@@ -5104,7 +5108,9 @@ export class OrdenRepository implements IOrdenRepository {
            AND "organizacion_id" = (SELECT "organizacion_id" FROM "orden" WHERE "id" = ${ids[0]})`;
       const calculadaPorMensajero = new Map(rutas.map((r) => [r.mensajero_id, r.calculada_at]));
       for (const mensajeroId of [mensajeroOrigenId, mensajeroDestinoId]) {
-        if (primeraRutaPendiente(calculadaPorMensajero.get(mensajeroId) ?? null, diaCR)) continue;
+        if (primeraRutaPendiente(calculadaPorMensajero.get(mensajeroId) ?? null, inicioDelDia)) {
+          continue;
+        }
         await encolarOptimizacionDebounce(this.jobRepo, tx as unknown as JobTxClient, mensajeroId, {
           ahora,
           debounceS,
@@ -5208,7 +5214,7 @@ export class OrdenRepository implements IOrdenRepository {
    * EL MISMO, y con solo el primero la pantalla le dice «espera a la bodega» y le esconde el boton
    * de reenviar el segundo, que `solicitarCierre` SI le permite (R16/R18). Ver `BloqueoDetalle`.
    */
-  async findBloqueoDetalle(mensajeroId: string): Promise<BloqueoDetalle> {
+  async findBloqueoDetalle(mensajeroId: string, zona: string): Promise<BloqueoDetalle> {
     const conteo =
       (await this.contarCierresAbiertosPorMensajero([mensajeroId])).get(mensajeroId) ??
       SIN_CIERRES_ABIERTOS;
@@ -5244,7 +5250,7 @@ export class OrdenRepository implements IOrdenRepository {
               select: SELECT_CIERRE_A_RESOLVER,
             });
 
-    const aResolverPrimero = await this.aCierreAResolver(masViejo);
+    const aResolverPrimero = await this.aCierreAResolver(masViejo, zona);
 
     return {
       bloqueado: estaBloqueadoPorCierres(conteo),
@@ -5258,7 +5264,7 @@ export class OrdenRepository implements IOrdenRepository {
             ? // Mismo cierre: se reusa el objeto YA derivado. Volver a derivarlo abriria la puerta
               // a que los dos campos nombraran jornadas distintas del MISMO cierre.
               aResolverPrimero
-            : await this.aCierreAResolver(reenviable),
+            : await this.aCierreAResolver(reenviable, zona),
     };
   }
 
@@ -5276,14 +5282,14 @@ export class OrdenRepository implements IOrdenRepository {
   /**
    * FICHA 412 (T5.1, R11) — la JORNADA de UN cierre concreto, para fechar el aviso de «tu cierre
    * fue rechazado». UNA sola consulta y el MISMO derivador que la pantalla y los avisos de la 271:
-   * `derivarJornada` (271/R61). Aqui solo se leen las fechas y se convierten a dia de Costa Rica.
+   * `derivarJornada` (271/R61). Aqui solo se leen las fechas y se convierten a dia de la zona del pais de la empresa (SLT-42).
    *
    * `anulada_at IS NULL` no es cosmetica: una gestion deshecha no es jornada trabajada que nombrar.
    * Es el mismo `where` que usa `aCierreAResolver`, de donde sale la fecha de los otros dos avisos.
    *
    * Cierre inexistente -> `null`, y el texto que lo consuma OMITE la fecha (R12). Nunca la inventa.
    */
-  async findJornadaDeCierre(cierreId: string): Promise<string | null> {
+  async findJornadaDeCierre(cierreId: string, zona: string): Promise<string | null> {
     const fila = await this.prisma.cierreDia.findUnique({
       where: { id: cierreId },
       select: {
@@ -5293,8 +5299,8 @@ export class OrdenRepository implements IOrdenRepository {
     });
     if (fila === null) return null;
     return derivarJornada({
-      diasCRDeGestiones: fila.gestiones.map((g) => fechaCalendarioCR(g.createdAt)),
-      diaCRDeCreacion: fechaCalendarioCR(fila.createdAt),
+      diasCRDeGestiones: fila.gestiones.map((g) => fechaCalendario(g.createdAt, zona)),
+      diaCRDeCreacion: fechaCalendario(fila.createdAt, zona),
     });
   }
 
@@ -5303,12 +5309,15 @@ export class OrdenRepository implements IOrdenRepository {
    * pantalla, con su JORNADA derivada. Existe para que `aResolverPrimero` y `aReenviarPrimero`
    * salgan del MISMO codigo: dos derivaciones de la misma jornada es como se desincronizan.
    */
-  private async aCierreAResolver(fila: {
-    id: string;
-    estado: CierreEstado;
-    solicitadoAt: Date;
-    createdAt: Date;
-  }): Promise<CierreAResolver> {
+  private async aCierreAResolver(
+    fila: {
+      id: string;
+      estado: CierreEstado;
+      solicitadoAt: Date;
+      createdAt: Date;
+    },
+    zona: string,
+  ): Promise<CierreAResolver> {
     // R57: las gestiones VINCULADAS y NO anuladas de ESE cierre. `anulada_at IS NULL` no es
     // cosmetica: una gestion deshecha no es jornada trabajada que nombrar.
     const gestiones = await this.prisma.gestionOrden.findMany({
@@ -5320,8 +5329,8 @@ export class OrdenRepository implements IOrdenRepository {
       estado: fila.estado,
       solicitadoAt: fila.solicitadoAt.toISOString(),
       jornadaCR: derivarJornada({
-        diasCRDeGestiones: gestiones.map((g) => fechaCalendarioCR(g.createdAt)),
-        diaCRDeCreacion: fechaCalendarioCR(fila.createdAt),
+        diasCRDeGestiones: gestiones.map((g) => fechaCalendario(g.createdAt, zona)),
+        diaCRDeCreacion: fechaCalendario(fila.createdAt, zona),
       }),
       resuelve: quienResuelve(fila.estado),
     };

@@ -1,5 +1,6 @@
 "use server";
 
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { z } from "zod";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { CorreccionFechaReprogramacionRepository } from "@/lib/repositories/CorreccionFechaReprogramacionRepository";
@@ -20,7 +21,8 @@ import type {
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import type { AppErrorShape } from "@/lib/errors";
 
-import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDelBorde } from "@/lib/actions/_shared/zona-del-borde";
 // FICHA 371 — Server Action que CORRIGE la fecha de una reprogramacion ya registrada. Mutacion
 // interna del mismo proyecto => Server Action, nunca ruta API (`docs/architecture.md`). Molde
 // literal de `lib/actions/corregir-dia-reparto.ts` (262): `withErrorHandler` +
@@ -44,14 +46,15 @@ import { ZONA_CR } from "@/lib/utils/fecha-cr";
  *
  * `.strict()`: una clave desconocida es `validation_error`, no un descarte mudo (leccion de la 352).
  */
-const corregirFechaReprogramacionSchema = z
-  .object({
-    ordenId: z.string().uuid(),
-    // SLT-42 pendiente T5.3: zona de la empresa
-    fecha: fechaCorreccionSchema(ZONA_CR),
-    motivo: motivoSchema,
-  })
-  .strict();
+const corregirFechaReprogramacionSchema = (zona: string) =>
+  z
+    .object({
+      ordenId: z.string().uuid(),
+      // SLT-42 (R22): «hoy» en la zona del pais de la empresa.
+      fecha: fechaCorreccionSchema(zona),
+      motivo: motivoSchema,
+    })
+    .strict();
 
 /** Estados del BORDE (los de dominio los devuelve el service). */
 type BorderError =
@@ -63,6 +66,8 @@ export type CorregirFechaReprogramacionActionResult =
   | BorderError;
 
 export interface CorregirFechaReprogramacionDeps {
+  /** SLT-42 (R22): las reglas del pais de la empresa (su zona). Por defecto, la implementacion real. */
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
   service?: ICorreccionFechaReprogramacionService;
   getActor?: () => Promise<Actor | null>;
 }
@@ -82,6 +87,8 @@ function buildService(): ICorreccionFechaReprogramacionService {
     new CorreccionFechaReprogramacionRepository(prisma),
     new OrdenRepository(prisma),
     liberarTrasCorregirFechaCon(buildLiberarReprogramadasService()),
+    // SLT-42 (R22): la zona horaria del pais de la empresa.
+    construirReglasPaisEmpresa(prisma),
   );
 }
 
@@ -125,7 +132,8 @@ export async function corregirFechaReprogramacion(
   const r = await withErrorHandler(async () => {
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // antes de leer o escribir nada
-    const data = corregirFechaReprogramacionSchema.parse(input); // ZodError -> VALIDATION_ERROR
+    const zona = await zonaDelBorde(deps.reglasPais); // SLT-42 (R22, R28)
+    const data = corregirFechaReprogramacionSchema(zona).parse(input); // ZodError -> VALIDATION_ERROR
     const service = deps.service ?? buildService();
     return service.corregir(
       { ordenId: data.ordenId, fecha: data.fecha, motivo: data.motivo },

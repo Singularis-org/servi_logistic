@@ -12,6 +12,7 @@ import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlPro
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { fakeIntentosEnLote } from "@/tests/fixtures/intentos-entrega";
 import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 115 — T6: reflejo de `marcarLuego` en el listado (R17) y privacidad por actor (R20).
 
@@ -94,6 +95,7 @@ function build(rows: MiAsignacionRow[], marcadas: Set<string>) {
     fakeRutaRepo,
     metaRepo,
     fakeIntentosEnLote(), // feature 160: dep requerida, no ejercitada aqui
+    reglasPaisFijas(),
   );
   return { service, metaRepo };
 }

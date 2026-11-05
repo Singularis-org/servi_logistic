@@ -7,6 +7,8 @@ import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteReposit
 import { TarifaZonaMensajeroRepository } from "@/lib/repositories/TarifaZonaMensajeroRepository";
 import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
 import { CierreDiaService } from "@/lib/services/CierreDiaService";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import { SupabaseSignedUrlProvider } from "@/lib/storage/SupabaseSignedUrlProvider";
 import { gestionConfig } from "@/lib/config/gestion";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
@@ -61,6 +63,8 @@ function buildService(): ICierreDiaService {
     notificarCierreDiaPorAprobarReal,
     // FEATURE 271 (T6.5, R40/R41): COMPOSITION ROOT del aviso «quedaste bloqueado por acumular».
     notificarMensajeroBloqueadoReal,
+    // SLT-42 (R22): la zona del pais de la empresa, con la que se calcula el dia en curso.
+    construirReglasPaisEmpresa(prisma),
   );
 }
 
@@ -73,6 +77,8 @@ export interface CierreDiaDeps {
 // bloqueo) y el actor en tests, sin tocar el service backend.
 export interface EstadoBloqueoMensajeroDeps {
   ordenRepo?: Pick<IOrdenRepository, "findBloqueoDetalle">;
+  /** SLT-42: las reglas del pais de la empresa (su zona). Por defecto, la implementacion real. */
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
   getActor?: () => Promise<Actor | null>;
 }
 
@@ -116,7 +122,9 @@ export async function estadoBloqueoMensajero(
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R1: antes de tocar el repo
     const repo = deps.ordenRepo ?? new OrdenRepository(getPrismaClient());
-    const bloqueo = await repo.findBloqueoDetalle(actor.usuarioId);
+    // SLT-42 (R22): la jornada que nombra el aviso se fecha en la zona del pais de la empresa.
+    const zona = await (deps.reglasPais ?? construirReglasPaisEmpresa(getPrismaClient())).zonaHoraria();
+    const bloqueo = await repo.findBloqueoDetalle(actor.usuarioId, zona);
     return { status: "ok" as const, bloqueo };
   });
   return isAppErrorShape(r) ? { status: "unauthenticated" as const } : r;

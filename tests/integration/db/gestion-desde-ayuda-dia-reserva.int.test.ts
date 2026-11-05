@@ -16,6 +16,7 @@ import {
   fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FEATURE 261 (B18, R30) — LA PUERTA B DE LA TIENDA: el `where` del `updateMany`, contra Postgres.
@@ -189,6 +190,7 @@ describeSiHayBase("261/B18 — el `where` del `updateMany` de la tienda, contra 
       fechaReparto: fechaRepartoQueVeElServicio,
     };
     const service = new GestionDesdeAyudaService({
+      reglasPais: reglasPaisFijas(),
       notaRepo: { findOrdenParaHilo: vi.fn(async () => orden) },
       ordenRepo: {
         findEstatusIdByValue: vi.fn(async (v: string) =>

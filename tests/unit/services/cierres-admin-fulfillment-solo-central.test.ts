@@ -14,6 +14,7 @@ import type {
   TarifaSnapshotDTO,
 } from "@/lib/interfaces/services/ICierreDiaService";
 import type { CierreGestionDescargaDTO } from "@/lib/interfaces/services/ICierresAdminService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FICHA 481 (2026-10-15, «solo lo debe ver la central») — el fulfillment congelado de la fila
@@ -212,6 +213,11 @@ function newService() {
       ),
     },
     sinRetenidas(),
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    reglasPaisFijas(),
   );
 }
 

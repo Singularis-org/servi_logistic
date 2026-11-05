@@ -208,7 +208,9 @@ describe("(a) R17 · la feature no usa `startOfDayCR`", () => {
     expect(codigoDe("lib/utils/fecha-cr.ts")).toContain("export function startOfDayCR");
     // Si mañana este archivo dejara de usarla, hay que buscar otro consumidor real, no
     // borrar la comprobacion: sin ella el detector podria ser un patron que ya no matchea.
-    expect(usaStartOfDayCR(codigoDe("lib/actions/liberacion-reprogramada.ts"))).toBe(true);
+    // SLT-42 (T5.3): `liberacion-reprogramada.ts` ya calcula el dia con la zona del pais de la
+    // empresa; el consumidor real que queda es `AvisosDiariosService` (pendiente de T5.5).
+    expect(usaStartOfDayCR(codigoDe("lib/services/AvisosDiariosService.ts"))).toBe(true);
   });
 
   it("la ventana propia SI existe y es la que se usa (si no, la clausula seria trivial)", () => {

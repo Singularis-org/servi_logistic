@@ -2,6 +2,7 @@ import { PaisSinZonaHoraria } from "@/lib/db/errores-pais";
 import type { IReglasPaisEmpresa, ReglasPais } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import type { PaisesDelAlta } from "@/lib/services/OrganizacionService";
 import type { PaisDTO, TipoDocumentoDTO } from "@/lib/types/pais";
+import { fechaCalendario, inicioDelDiaEnUtc, inicioDelDiaSiguienteEnUtc } from "@/lib/utils/calendario-zona";
 
 // SLT-42 (design §4.2) — doble de `IReglasPaisEmpresa` para los tests unitarios de los servicios que
 // lo reciben por constructor. Devuelve siempre el mismo país, sin base ni contexto de empresa, y
@@ -96,4 +97,25 @@ export function paisesDelAltaFijos(paises: readonly PaisDelAltaFijo[] = [paisDel
     tieneTipoDocumentoActivo: (paisId) =>
       Promise.resolve((de(paisId)?.tiposDocumento ?? []).some((t) => t.paisId === paisId && t.activo)),
   };
+}
+
+/**
+ * SLT-42 (design §4.3) — el INSTANTE en que empieza el dia de `now` en la zona de Costa Rica. Es el
+ * `inicioDelDia` que antes calculaba el repositorio por su cuenta con `fecha-cr`; ahora lo calcula
+ * el servicio con la zona de la empresa y los tests de repositorio lo pasan con esto.
+ */
+export function inicioDelDiaCR(now: Date = new Date()): Date {
+  const zona = CR.zonaHoraria as string;
+  return inicioDelDiaEnUtc(fechaCalendario(now, zona), zona);
+}
+
+/**
+ * SLT-42 — la ventana `[00:00, 00:00 del dia siguiente)` del dia `hoy` (convencion `@db.Date`,
+ * medianoche UTC de la fecha local) en la zona de Costa Rica: la que antes calculaba
+ * `findLiberadasHoy` por su cuenta y ahora le pasa quien llama.
+ */
+export function ventanaDelDiaCR(hoy: Date): { desde: Date; hasta: Date } {
+  const zona = CR.zonaHoraria as string;
+  const fecha = hoy.toISOString().slice(0, 10);
+  return { desde: inicioDelDiaEnUtc(fecha, zona), hasta: inicioDelDiaSiguienteEnUtc(fecha, zona) };
 }

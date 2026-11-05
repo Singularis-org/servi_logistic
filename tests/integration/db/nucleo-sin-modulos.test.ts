@@ -22,6 +22,7 @@ import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 import { crearOrganizacion, fijarEmpresa } from "../../fabricas/organizaciones";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, tomarLockDeEscrituraReal } from "./_postgres-real";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // SL-23 · T10 (design §3, §5.4; R31) — EL NÚCLEO DE CIERRES CORRE EN UNA EMPRESA SIN NINGÚN MÓDULO.
 //
@@ -176,6 +177,8 @@ function corteDiario(): CorteDiarioService {
     new OrdenRepository(prisma),
     new TarifaZonaMensajeroRepository(prisma),
     { warn: () => {} },
+    undefined,
+    reglasPaisFijas(),
   );
 }
 

@@ -1,6 +1,9 @@
 import { Prisma } from "@prisma/client";
 import type { FiltrosCierresBodega } from "@/lib/types/filtros-cierres";
 import type { ICierreBodegaRepository } from "@/lib/interfaces/repositories/ICierreBodegaRepository";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { filtrosParaRepo, zonaPerezosa } from "@/lib/services/zona-de-la-empresa";
+import type { RangoDeFechasCierres } from "@/lib/types/filtros-cierres";
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { CierreTotales } from "@/lib/interfaces/services/ICierreDiaService";
@@ -144,7 +147,17 @@ export class CierreBodegaService implements ICierreBodegaService {
   constructor(
     private readonly repo: ICierreBodegaRepository,
     private readonly ordenRepo: OrdenRepo,
+    /** SLT-42 (R22): la zona del pais de la empresa, con la que se resuelven los filtros de fecha. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
+
+  /**
+   * SLT-42 (R22, R23): los filtros con `desde`/`hasta` resueltos en la zona del pais de la empresa.
+   * La zona solo se lee si el filtro trae rango.
+   */
+  private filtrosRepo<F extends RangoDeFechasCierres>(filtros: F | undefined) {
+    return filtrosParaRepo(filtros, zonaPerezosa(this.reglasPais, "CierreBodegaService"));
+  }
 
   async listarConsolidacion(actor: Actor): Promise<ListarConsolidacionServiceResult> {
     if (actor.rol !== ROL_AUTORIZADO) return { status: "forbidden" }; // R1
@@ -258,7 +271,7 @@ export class CierreBodegaService implements ICierreBodegaService {
     const { items, total } = await this.repo.findCierresBodegaByZonaPaginado(
       zonaId,
       rangoDePagina(input),
-      input.filtros,
+      await this.filtrosRepo(input.filtros),
     );
 
     return {
@@ -307,7 +320,7 @@ export class CierreBodegaService implements ICierreBodegaService {
     const { items, total } = await this.repo.findCierresDiaConsolidablesPaginado(
       zonaId,
       rangoDePagina(input),
-      input.filtros, // recorte DENTRO de la zona (ver la nota del listado de solicitados)
+      await this.filtrosRepo(input.filtros), // recorte DENTRO de la zona (ver la nota del listado de solicitados)
     );
 
     return {
@@ -363,7 +376,7 @@ export class CierreBodegaService implements ICierreBodegaService {
     // El MISMO metodo del que la pagina saca su recorte: mismo where, mismo orden y —lo que en
     // una pantalla de dinero no es estilo— el MISMO mapper de totales.
     // Los MISMOS filtros que la pagina: el archivo es «esto que estoy viendo, entero».
-    const conjunto = await this.repo.findCierresBodegaByZona(zonaId, filtros);
+    const conjunto = await this.repo.findCierresBodegaByZona(zonaId, await this.filtrosRepo(filtros));
 
     const limite = descargaConfig.MAX_FILAS;
     // R6: o van TODAS las filas del conjunto, o van solo los conteos. Nunca un archivo truncado.
@@ -406,7 +419,7 @@ export class CierreBodegaService implements ICierreBodegaService {
     if (zonaId === null) return { status: "ok", items: [], total: 0 };
 
     // El MISMO metodo que alimenta la pagina y los agregados: un conjunto, no dos parecidos.
-    const conjunto = await this.repo.findCierresDiaConsolidables(zonaId, filtros); // idem
+    const conjunto = await this.repo.findCierresDiaConsolidables(zonaId, await this.filtrosRepo(filtros)); // idem
 
     const limite = descargaConfig.MAX_FILAS;
     if (conjunto.length > limite) {

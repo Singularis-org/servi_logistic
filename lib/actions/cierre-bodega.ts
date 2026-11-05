@@ -1,5 +1,6 @@
 "use server";
 
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { CierreBodegaRepository } from "@/lib/repositories/CierreBodegaRepository";
 import { CierresBodegaAdminRepository } from "@/lib/repositories/CierresBodegaAdminRepository";
@@ -72,7 +73,7 @@ function toCierreBodegaActionError(
 
 function buildCierreBodegaService(): ICierreBodegaService {
   const prisma = getPrismaClient();
-  return new CierreBodegaService(new CierreBodegaRepository(prisma), new OrdenRepository(prisma));
+  return new CierreBodegaService(new CierreBodegaRepository(prisma), new OrdenRepository(prisma), construirReglasPaisEmpresa(prisma));
 }
 
 function buildCierresBodegaAdminService(): ICierresBodegaAdminService {
@@ -81,6 +82,8 @@ function buildCierresBodegaAdminService(): ICierresBodegaAdminService {
     new CierresBodegaAdminRepository(prisma),
     // Evidencias: mismo bucket privado de gestion_orden (feature 36).
     new SupabaseSignedUrlProvider(undefined, gestionConfig.EVIDENCIA_BUCKET),
+    // SLT-42 (R22): la zona horaria del pais de la empresa.
+    construirReglasPaisEmpresa(prisma),
   );
 }
 

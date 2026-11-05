@@ -16,6 +16,7 @@ import type { CierreVencidoNotificador } from "@/lib/notificaciones/notificadore
 import type { CierreVencidoContexto } from "@/lib/notificaciones/emitir";
 import { notificarCierreDiaVencidoCon } from "@/lib/notificaciones/notificadores";
 import type { INotificacionRepository } from "@/lib/interfaces/repositories/INotificacionRepository";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FEATURE 271 (T6.4, R38/R39/R47) — **EL PRODUCTOR DEL AVISO DEL CORTE, EJERCITADO.**
@@ -106,6 +107,7 @@ function build(opts: {
     logger,
     // ⭑ EL SEPTIMO ARGUMENTO. Es lo unico que este archivo hace y los otros dos no.
     opts.notificar ?? notificar,
+    reglasPaisFijas(),
   );
   return { service, crearCierre, notificar, logger };
 }

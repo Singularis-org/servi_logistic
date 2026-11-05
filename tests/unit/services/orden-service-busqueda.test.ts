@@ -12,6 +12,7 @@ import {
   type OrdenListItemDTO,
 } from "@/lib/types/orden";
 import { fakeIntentosEnLote } from "@/tests/fixtures/intentos-entrega";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 169 / T2.3 + T2.4 — traduccion del TERMINO al `where` y fallback de la ruta
 // rapida (R2, R9, R10, R11, R12, R13, R14, R18, R20, R21).
@@ -49,7 +50,7 @@ function repoConGuia(totalPorGuia: number, totalPorBusqueda: number) {
 }
 
 function servicio(repo: IOrdenRepository) {
-  return new OrdenService(repo, fakeIntentosEnLote(), () => AHORA);
+  return new OrdenService(repo, fakeIntentosEnLote(), () => AHORA, reglasPaisFijas());
 }
 
 /** El `where` de la PRIMERA consulta que el service lanzo. */

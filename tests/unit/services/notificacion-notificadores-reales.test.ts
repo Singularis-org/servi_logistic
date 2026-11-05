@@ -451,6 +451,9 @@ describe("el DEFAULT de un service con notificador es inocuo POR CONSTRUCCION", 
       { findUsuarioZonaId: vi.fn(), findBloqueoDetalle: vi.fn() } as never,
       { createSignedUrls: vi.fn() } as never,
       { resolvePagoTarifa: vi.fn() } as never,
+      undefined,
+      undefined,
+      reglasPaisFijas(),
     );
 
     const r = await service.solicitarCierre({

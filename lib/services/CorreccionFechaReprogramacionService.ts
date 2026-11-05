@@ -27,8 +27,8 @@ import {
   MSG_YA_ES_ESA_FECHA,
   msgEstadoNoReprogramada,
 } from "@/lib/services/mensajes-correccion-fecha-reprogramacion";
-
-import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 // FICHA 371 — lógica de negocio de «corregir la fecha de una reprogramación ya registrada».
 //
 // SERVICIO PROPIO, igual que en el molde (262, `CorreccionDiaRepartoService`): la operación cruza
@@ -70,6 +70,8 @@ export class CorreccionFechaReprogramacionService
     private readonly repo: ICorreccionFechaReprogramacionRepository,
     private readonly ordenRepo: CorreccionFechaOrdenRepo,
     private readonly liberar: LiberarTrasCorregirFecha = liberarTrasCorregirFechaNoOp,
+    /** SLT-42 (R22): la zona del pais de la empresa; «hoy» se calcula en ella. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
 
   async corregir(
@@ -92,8 +94,10 @@ export class CorreccionFechaReprogramacionService
     if (motivo === "") {
       return { status: "validation_error", fieldErrors: { motivo: [MSG_MOTIVO_REQUERIDO] } };
     }
-    // SLT-42 pendiente T5.3: zona de la empresa
-    if (!esFechaCorreccionValida(input.fecha, ZONA_CR, now)) {
+    // SLT-42 (R22, R28): «hoy» en la zona del pais de la empresa, leida una vez para toda la
+    // correccion; sin zona falla aqui, antes de escribir nada.
+    const zona = await zonaDeLaEmpresa(this.reglasPais, "CorreccionFechaReprogramacionService.corregir");
+    if (!esFechaCorreccionValida(input.fecha, zona, now)) {
       return { status: "validation_error", fieldErrors: { fecha: [MSG_FECHA_INVALIDA] } };
     }
 
@@ -135,7 +139,7 @@ export class CorreccionFechaReprogramacionService
     //    LA FECHA VIAJA CON LA LLAMADA: sin ella, el camino de la liberación no puede distinguir
     //    «espera al calendario» de «no se pudo confirmar», y acabaría diciéndole al coordinador que
     //    la orden espera a un día que ya es hoy.
-    const liberacion = await this.liberar(input.ordenId, input.fecha);
+    const liberacion = await this.liberar(input.ordenId, input.fecha, zona);
 
     return {
       status: "ok",

@@ -5,6 +5,9 @@ import { descargaConfig } from "@/lib/config/descarga";
 import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlProvider";
 import type { CierreBodegaResumenRow } from "@/lib/interfaces/repositories/ICierreBodegaRepository";
 import type { ICierresBodegaAdminRepository } from "@/lib/interfaces/repositories/ICierresBodegaAdminRepository";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { filtrosParaRepo, zonaDeLaEmpresa, zonaPerezosa } from "@/lib/services/zona-de-la-empresa";
+import { filtrosConLimites, type RangoDeFechasCierres } from "@/lib/types/filtros-cierres";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { CierreGrupos } from "@/lib/interfaces/services/ICierreDiaService";
 import type {
@@ -59,7 +62,20 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
   constructor(
     private readonly repo: ICierresBodegaAdminRepository,
     private readonly signedUrls: ISignedUrlProvider,
+    /**
+     * SLT-42 (R22): la zona del pais de la empresa: los limites de los filtros de fecha y el dia de
+     * cada gestion en los DTO.
+     */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
+
+  /**
+   * SLT-42 (R22, R23): los filtros con `desde`/`hasta` resueltos en la zona del pais de la empresa.
+   * La zona solo se lee si el filtro trae rango.
+   */
+  private filtrosRepo<F extends RangoDeFechasCierres>(filtros: F | undefined) {
+    return filtrosParaRepo(filtros, zonaPerezosa(this.reglasPais, "CierresBodegaAdminService"));
+  }
 
   async listarCierresBodegaAdmin(
     actor: Actor,
@@ -100,7 +116,7 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
     // sustituye — se compone con `AND` en el repositorio.
     const { items, total } = await this.repo.findHistoricoPaginado(
       rangoDePagina(input),
-      input.filtros,
+      await this.filtrosRepo(input.filtros),
     );
 
     return {
@@ -130,7 +146,7 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
   ): Promise<ListarPendientesCierresBodegaServiceResult> {
     if (!esAccesoTotal(actor.rol)) return { status: "forbidden" }; // R2
 
-    const { items, total } = await this.repo.findColaPaginada(rangoDePagina(input), input.filtros);
+    const { items, total } = await this.repo.findColaPaginada(rangoDePagina(input), await this.filtrosRepo(input.filtros));
 
     return {
       status: "ok",
@@ -187,7 +203,7 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
     if (!esAccesoTotal(actor.rol)) return { status: "forbidden" }; // R4: antes del repo
 
     // Los MISMOS filtros que la pagina: el archivo es «esto que estoy viendo, entero».
-    const conjunto = await this.repo.findHistoricoCompleto(filtros);
+    const conjunto = await this.repo.findHistoricoCompleto(await this.filtrosRepo(filtros));
 
     const limite = descargaConfig.MAX_FILAS;
     // R6: o van TODAS las filas del conjunto, o van solo los conteos. Nunca un archivo truncado.
@@ -223,7 +239,7 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
   ): Promise<ListarPendientesCierresBodegaCompletoServiceResult> {
     if (!esAccesoTotal(actor.rol)) return { status: "forbidden" }; // R4: antes del repo
 
-    const conjunto = await this.repo.findColaCompleta(filtros); // idem
+    const conjunto = await this.repo.findColaCompleta(await this.filtrosRepo(filtros)); // idem
 
     const limite = descargaConfig.MAX_FILAS;
     if (conjunto.length > limite) {
@@ -256,7 +272,15 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
   ): Promise<ListarGestionesDescargaServiceResult> {
     if (!esAccesoTotal(actor.rol)) return { status: "forbidden" }; // R25: antes del repo
 
-    const conjunto = await this.repo.findGestionesDeCierresBodegaCompleto(filtros);
+    // SLT-42 (R22): la zona resuelve los limites del filtro y fecha cada gestion del archivo.
+    const zona = await zonaDeLaEmpresa(
+      this.reglasPais,
+      "CierresBodegaAdminService.listarGestionesCierresBodegaCompleto",
+    );
+    const conjunto = await this.repo.findGestionesDeCierresBodegaCompleto(
+      filtrosConLimites(filtros, zona),
+      zona,
+    );
 
     const limite = descargaConfig.MAX_FILAS;
     // R21: o van TODAS las filas del conjunto, o van solo los conteos. Nunca un archivo truncado.
@@ -273,7 +297,11 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
   ): Promise<CierreBodegaDetalleServiceResult> {
     if (!esAccesoTotal(actor.rol)) return { status: "forbidden" }; // R2
 
-    const found = await this.repo.findCierreBodegaConDetalle(cierreBodegaId);
+    // SLT-42 (R22): la zona fecha las gestiones del detalle.
+    const found = await this.repo.findCierreBodegaConDetalle(
+      cierreBodegaId,
+      await zonaDeLaEmpresa(this.reglasPais, "CierresBodegaAdminService.verCierreBodegaDetalle"),
+    );
     if (found === null) return { status: "no_encontrada" }; // R19
 
     // R12: firma en LOTE las evidencias de TODAS las gestiones de todos los cierre_dia

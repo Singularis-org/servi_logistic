@@ -272,6 +272,7 @@ export function disparoDe(motivo: MotivoOptimizacion): DisparoRuta {
  * (`calculada_at`, `origen_at`). Es `inicioDelDiaCREnUtc` y NO `startOfDayCR`, que es para
  * columnas `date` (ficha 166).
  */
+// SLT-42 pendiente (rutas; fuera de T5.3, sin task asignada): zona de la empresa
 function inicioDelDiaEnCurso(ahora: Date): Date {
   return inicioDelDiaCREnUtc(fechaCalendarioCR(ahora));
 }
@@ -289,7 +290,7 @@ export function primeraRutaPendiente(
   ruta: Pick<RutaOptimizadaDTO, "calculadaAt"> | null,
   ahora: Date,
 ): boolean {
-  return primeraRutaPendienteDelDia(ruta?.calculadaAt ?? null, fechaCalendarioCR(ahora));
+  return primeraRutaPendienteDelDia(ruta?.calculadaAt ?? null, inicioDelDiaEnCurso(ahora));
 }
 
 // SLT-79: aqui vivia `puntoDeRecogida` (SLT-59 R62/R63), el punto contra el que la pantalla y el
@@ -614,6 +615,7 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
     if (opts.motivo === "manual" && primeraRutaPendiente(ruta, ahora)) {
       const { asignadas, recogidas } = await this.paradasRepo.contarAsignadasDelDia(
         mensajeroId,
+        // SLT-42 pendiente (rutas; fuera de T5.3, sin task asignada): zona de la empresa
         startOfDayCR(ahora),
       );
       const minimo = minimoRecogida(asignadas, this.config.RUTA_PRIMERA_MIN_RECOGIDO_PCT);

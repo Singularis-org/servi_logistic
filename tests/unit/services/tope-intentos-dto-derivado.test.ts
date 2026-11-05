@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 import { MisAsignacionesService } from "@/lib/services/MisAsignacionesService";
 import { NovedadesService } from "@/lib/services/NovedadesService";
@@ -106,6 +107,7 @@ function panel(rows: MiAsignacionRow[], intentos: Record<string, number>) {
       findMarcarLuegoByMensajero: vi.fn(async () => new Set<string>()),
     } as Pick<IOrdenMensajeroMetaRepository, "findMarcarLuegoByMensajero">,
     fakeIntentosEnLote(intentos),
+    reglasPaisFijas(),
   );
   return service;
 }
@@ -182,6 +184,7 @@ describe("276/R8/R10 — `MiAsignacionDTO.enElTope` sale ya decidido del servido
           findMarcarLuegoByMensajero: vi.fn(async () => new Set<string>()),
         } as Pick<IOrdenMensajeroMetaRepository, "findMarcarLuegoByMensajero">,
         fakeIntentosEnLote({ o1: 2 }),
+        reglasPaisFijas(),
       );
 
       const r = await service.listarMisAsignaciones(MENSAJERO);

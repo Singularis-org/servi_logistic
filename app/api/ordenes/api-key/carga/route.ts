@@ -15,6 +15,7 @@
 //
 // SEGURIDAD (R6): la key viaja en cada request. NUNCA se loguea (ni la key ni su hash), ni
 // entra al cuerpo de una respuesta de error (`appErrorToResponse` no incluye headers).
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import {
@@ -189,7 +190,7 @@ function buildDescargaService(): IEtiquetasDescargaService {
   const prisma = getPrismaClient();
   const bucket = etiquetasConfig.ETIQUETAS_BUCKET;
   const pdfService = new EtiquetasLotePdfService(
-    new EtiquetaGuiaService(new OrdenRepository(prisma)),
+    new EtiquetaGuiaService(new OrdenRepository(prisma), construirReglasPaisEmpresa(prisma)),
     new SupabaseFileStorage(undefined, bucket),
     new SupabaseSignedUrlProvider(undefined, bucket),
     etiquetasConfig.SIGNED_URL_TTL_SECONDS,
@@ -213,6 +214,9 @@ function buildManifiestoService(): IManifiestoService {
       new OrdenDiaRepartoCambioRepository(prisma),
       new OrdenTraspasoRepository(prisma),
     ),
+    undefined, // el parametro opcional previo, con su valor por defecto
+    // SLT-42 (R22): la zona horaria del pais de la empresa.
+    construirReglasPaisEmpresa(prisma),
   );
 }
 

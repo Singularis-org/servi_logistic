@@ -3,6 +3,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { TraspasoMensajeroService } from "@/lib/services/TraspasoMensajeroService";
 import { HAY_BASE_DE_DATOS } from "../../_postgres-real";
 import { conEscenario, prepararMundo, type Mundo } from "../_escenario";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FEATURE 454 — FASE 0 · C14 (R54, R28). EL TRASPASO ENTRE MENSAJEROS, sobre el codigo de HOY.
@@ -30,7 +31,7 @@ describeSiHayBase("454/C14 — traspaso de ordenes entre mensajeros (Postgres re
       const ayuda = await e.pedirAyuda(a.ordenId);
       if (ayuda.status !== "ok") throw new Error(`pedirAyuda: ${JSON.stringify(ayuda)}`);
 
-      const svc = new TraspasoMensajeroService(e.s.ordenRepo);
+      const svc = new TraspasoMensajeroService(e.s.ordenRepo, undefined, undefined, reglasPaisFijas());
       const gestionada = await svc.traspasar(
         { ordenIds: [g.ordenId], mensajeroDestinoId: e.mensajero2Id, motivo: "reparto" },
         e.actorMaestro,

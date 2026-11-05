@@ -52,14 +52,10 @@ import type { CierreGestionDescargaDTO } from "@/lib/interfaces/services/ICierre
 import type { PaginaRepositorio, RangoPagina } from "@/lib/utils/rango-pagina";
 import type {
   CatalogoFiltrosCierresDTO,
-  FiltrosCierres,
-  FiltrosDescargaGestiones,
+  FiltrosCierresRepo,
+  FiltrosDescargaGestionesRepo,
 } from "@/lib/types/filtros-cierres";
-import {
-  fechaCalendarioCR,
-  inicioDelDiaCREnUtc,
-  inicioDelDiaSiguienteCREnUtc,
-} from "@/lib/utils/fecha-cr";
+import { fechaCalendario } from "@/lib/utils/calendario-zona";
 import { ESTADOS_COLA_CIERRE_DIA } from "@/lib/utils/colas-cierre";
 // Feature 238 (T1.3/T3.3): el PUNTO UNICO de «que paquete vuelve a bodega». Lo leen las DOS
 // consultas de esta feature —la del conjunto esperado y la de la marca— para que no puedan
@@ -496,14 +492,16 @@ function toIngresoEmpresa(
 export function toPendienteRowDesdeSnapshot(
   g: GestionAdminRow,
   d: DetalleAdminRow,
+  /** SLT-42 (R22): la zona del pais de la empresa, con la que se fecha `created_at`. */
+  zona: string,
 ): CierreGestionPendienteRow {
   return {
     gestionId: g.id,
     ordenId: g.ordenId,
-    // Dia calendario de CR del `created_at` de la gestion. `fechaCalendarioCR` y NO
+    // Dia calendario (zona del pais de la empresa) del `created_at` de la gestion. `fechaCalendario` y NO
     // `toISOString().slice(0, 10)`: esto es un `timestamp`, no un `@db.Date`, y recortar su ISO
-    // adelantaria un dia toda gestion registrada despues de las 18:00 de CR.
-    fechaGestion: fechaCalendarioCR(g.createdAt),
+    // adelantaria un dia toda gestion registrada por la noche al oeste de UTC.
+    fechaGestion: fechaCalendario(g.createdAt, zona),
     numGuia: d.numGuia,
     numRemision: d.numRemision,
     destinatario: d.destinatario,
@@ -664,26 +662,27 @@ function alcanceWhere(alcance: Alcance): { destinoTipo: Alcance["destinoTipo"]; 
  *     zona NO se escribe como clave hermana: va dentro de un `AND`, que es la unica forma de
  *     que las dos condiciones se exijan A LA VEZ. Un `adminSatelite` que pida la zona del
  *     vecino obtiene la interseccion —vacio—, nunca la zona del vecino.
- *  2. **Las fechas son de CALENDARIO DE COSTA RICA**, no instantes UTC. `solicitadoAt` es un
- *     instante; «del 1 al 3» significa desde el inicio del 1 en CR hasta el inicio del 4 en CR,
- *     y por eso el limite superior es `lt` del dia SIGUIENTE y no `lte` del mismo dia: con
+ *  2. **Las fechas son del CALENDARIO DEL PAIS DE LA EMPRESA**, no instantes UTC. `solicitadoAt`
+ *     es un instante; «del 1 al 3» significa desde el inicio del 1 hasta el inicio del 4 en esa
+ *     zona. SLT-42: el servicio ya convirtio las fechas en esos dos instantes
+ *     (`filtrosConLimites`); el limite superior es `lt` del dia SIGUIENTE y no `lte` del mismo dia: con
  *     `lte` se perderian los cierres solicitados entre las 00:00 y las 23:59:59.999 del ultimo
  *     dia del rango, que es justo el dia que el usuario acaba de pedir.
  *  3. **Se filtra por `solicitadoAt`**, la fecha por la que estos listados ya se ordenaban y la
  *     unica que TODOS los cierres tienen: filtrar la cola por `resueltoAt` la dejaria siempre
  *     vacia, porque un cierre sin resolver no tiene esa fecha.
  */
-export function filtrosWhere(filtros: FiltrosCierres | undefined): Prisma.CierreDiaWhereInput[] {
+export function filtrosWhere(filtros: FiltrosCierresRepo | undefined): Prisma.CierreDiaWhereInput[] {
   if (!filtros) return [];
   const condiciones: Prisma.CierreDiaWhereInput[] = [];
 
-  if (filtros.desde !== undefined || filtros.hasta !== undefined) {
+  // SLT-42 (R22): los limites llegan ya resueltos en la zona del pais de la empresa (los calcula
+  // el servicio con `filtrosConLimites`); aqui solo se comparan.
+  if (filtros.solicitadoDesde !== undefined || filtros.solicitadoHasta !== undefined) {
     condiciones.push({
       solicitadoAt: {
-        ...(filtros.desde !== undefined ? { gte: inicioDelDiaCREnUtc(filtros.desde) } : {}),
-        ...(filtros.hasta !== undefined
-          ? { lt: inicioDelDiaSiguienteCREnUtc(filtros.hasta) }
-          : {}),
+        ...(filtros.solicitadoDesde !== undefined ? { gte: filtros.solicitadoDesde } : {}),
+        ...(filtros.solicitadoHasta !== undefined ? { lt: filtros.solicitadoHasta } : {}),
       },
     });
   }
@@ -736,7 +735,7 @@ const ORDEN_CIERRES_ADMIN = { solicitadoAt: "desc" } as const satisfies Prisma.C
  */
 function historicoWhere(
   alcance: Alcance,
-  filtros?: FiltrosCierres,
+  filtros?: FiltrosCierresRepo,
 ): Prisma.CierreDiaWhereInput {
   const recortes = filtrosWhere(filtros);
   return {
@@ -758,7 +757,7 @@ function historicoWhere(
  * las dos — y en esta cola «caerse» significa que un cierre `vencido` deja de verse, con la
  * bodega de su mensajero bloqueada hasta que alguien lo note.
  */
-function colaWhere(alcance: Alcance, filtros?: FiltrosCierres): Prisma.CierreDiaWhereInput {
+function colaWhere(alcance: Alcance, filtros?: FiltrosCierresRepo): Prisma.CierreDiaWhereInput {
   const recortes = filtrosWhere(filtros);
   return {
     ...alcanceWhere(alcance),
@@ -863,6 +862,8 @@ export function toGestionDescargaDTO(
    * llamador y se olvide del lote.
    */
   intentosEntrega: number,
+  /** SLT-42 (R22): la zona del pais de la empresa, con la que se fechan los `created_at`. */
+  zona: string,
 ): CierreGestionDescargaDTO {
   // `cierre` es nullable en el modelo (una gestion del dia aun sin cerrar tiene `cierre_id`
   // NULL), pero los DOS caminos de esta feature exigen el cierre en su WHERE. Si llega null,
@@ -874,9 +875,9 @@ export function toGestionDescargaDTO(
   return {
     mensajeroNombre: nombreCompletoUsuario(g.cierre.mensajero),
     cierreSolicitadoAt: g.cierre.solicitadoAt.toISOString(),
-    // Dia calendario de CR del `created_at` de la gestion: `timestamp`, asi que `fechaCalendarioCR`
+    // Dia calendario (zona del pais de la empresa) del `created_at` de la gestion: `timestamp`, asi que `fechaCalendario`
     // y NUNCA `toISOString().slice(0, 10)` (ese daria el dia siguiente pasadas las 18:00 CR).
-    fechaGestion: fechaCalendarioCR(g.createdAt),
+    fechaGestion: fechaCalendario(g.createdAt, zona),
     // `orden.fecha_reparto` es `@db.Date` —Prisma la devuelve a MEDIANOCHE UTC del dia
     // calendario—, asi que aqui el recorte del ISO SI es correcto: es el mismo tratamiento que
     // recibe `fechaReprogramacion` unas lineas mas abajo. `null` se emite tal cual: la columna
@@ -884,10 +885,10 @@ export function toGestionDescargaDTO(
     // vacia es la lectura honesta de un dato que ya no existe.
     diaReparto: g.orden.fechaReparto ? g.orden.fechaReparto.toISOString().slice(0, 10) : null,
     // FICHA 385 — `orden.created_at` es un `timestamp`, NO un `@db.Date`: va por
-    // `fechaCalendarioCR` como `fechaGestion`, y no por el recorte del ISO como `diaReparto`.
+    // `fechaCalendario` como `fechaGestion`, y no por el recorte del ISO como `diaReparto`.
     // Las dos lineas de arriba tienen tratamientos DISTINTOS a proposito y esta se apunta a la
     // primera; copiar la segunda le adelantaria el dia a toda orden creada tras las 18:00 CR.
-    fechaCreacionOrden: fechaCalendarioCR(g.orden.createdAt),
+    fechaCreacionOrden: fechaCalendario(g.orden.createdAt, zona),
     numGuia: d.numGuia,
     numRemision: d.numRemision,
     destinatario: d.destinatario,
@@ -974,12 +975,14 @@ export function componerGestionesDescarga(
    * `?? 0` se resuelve aqui, que es el borde donde el DTO promete un numero y nunca `null`.
    */
   intentosPorOrden: ReadonlyMap<string, number>,
+  /** SLT-42 (R22): la zona del pais de la empresa, con la que se fechan los `created_at`. */
+  zona: string,
 ): CierreGestionDescargaDTO[] {
   const porCierreYOrden = new Map(detalle.map((d) => [`${d.cierreId}:${d.ordenId}`, d]));
   return gestiones.map((g) => {
     const d = porCierreYOrden.get(`${g.cierreId}:${g.ordenId}`);
     if (d === undefined) throw new CierreDetalleFaltanteError(g.cierreId ?? "", g.ordenId);
-    return toGestionDescargaDTO(g, d, intentosPorOrden.get(g.ordenId) ?? 0);
+    return toGestionDescargaDTO(g, d, intentosPorOrden.get(g.ordenId) ?? 0, zona);
   });
 }
 
@@ -1162,7 +1165,7 @@ export class CierresAdminRepository implements ICierresAdminRepository {
    */
   async findHistoricoCompleto(
     alcance: Alcance,
-    filtros?: FiltrosCierres,
+    filtros?: FiltrosCierresRepo,
   ): Promise<CierreAdminResumenRow[]> {
     const rows = await this.prisma.cierreDia.findMany({
       where: historicoWhere(alcance, filtros),
@@ -1187,7 +1190,7 @@ export class CierresAdminRepository implements ICierresAdminRepository {
    */
   async findColaCompleta(
     alcance: Alcance,
-    filtros?: FiltrosCierres,
+    filtros?: FiltrosCierresRepo,
   ): Promise<CierreAdminResumenRow[]> {
     const rows = await this.prisma.cierreDia.findMany({
       where: colaWhere(alcance, filtros),
@@ -1208,7 +1211,7 @@ export class CierresAdminRepository implements ICierresAdminRepository {
   async findHistoricoPaginado(
     alcance: Alcance,
     rango: RangoPagina,
-    filtros?: FiltrosCierres,
+    filtros?: FiltrosCierresRepo,
   ): Promise<PaginaRepositorio<CierreAdminResumenRow>> {
     // Feature 184/R16: el criterio sale de `historicoWhere`, la MISMA declaracion que usa el
     // conjunto completo del que sale el archivo. Estaba escrito aqui y habria que haberlo
@@ -1244,7 +1247,7 @@ export class CierresAdminRepository implements ICierresAdminRepository {
   async findColaPaginada(
     alcance: Alcance,
     rango: RangoPagina,
-    filtros?: FiltrosCierres,
+    filtros?: FiltrosCierresRepo,
   ): Promise<PaginaRepositorio<CierreAdminResumenRow>> {
     // Feature 184/R16: mismo criterio compartido que el conjunto completo de esta cola.
     const where = colaWhere(alcance, filtros);
@@ -1378,6 +1381,11 @@ export class CierresAdminRepository implements ICierresAdminRepository {
   async findCierreByIdEnAlcance(
     cierreId: string,
     alcance: Alcance,
+    /**
+     * SLT-42 (R22): la zona del pais de la empresa (la lee el servicio). Con ella se fecha cada
+     * instante del DTO (`fechaGestion`, ...); el repositorio no la lee ni la guarda.
+     */
+    zona: string,
   ): Promise<{
     cierre: CierreAdminResumenRow;
     gestiones: CierreGestionPendienteRow[];
@@ -1454,7 +1462,7 @@ export class CierresAdminRepository implements ICierresAdminRepository {
       gestiones: gestiones.map((g) => {
         const d = byOrden.get(g.ordenId);
         if (d === undefined) throw new CierreDetalleFaltanteError(cierreId, g.ordenId);
-        return toPendienteRowDesdeSnapshot(g, d);
+        return toPendienteRowDesdeSnapshot(g, d, zona);
       }),
     };
   }
@@ -1480,7 +1488,12 @@ export class CierresAdminRepository implements ICierresAdminRepository {
    */
   async findGestionesPorAlcanceCompleto(
     alcance: Alcance,
-    filtros: FiltrosDescargaGestiones,
+    filtros: FiltrosDescargaGestionesRepo,
+    /**
+     * SLT-42 (R22): la zona del pais de la empresa (la lee el servicio). Con ella se fecha cada
+     * instante del DTO (`fechaGestion`, ...); el repositorio no la lee ni la guarda.
+     */
+    zona: string,
   ): Promise<CierreGestionDescargaDTO[]> {
     const gestiones = await this.prisma.gestionOrden.findMany({
       where: {
@@ -1513,7 +1526,7 @@ export class CierresAdminRepository implements ICierresAdminRepository {
       // MISMO `Promise.all` que el snapshot, asi que la descarga paga un round-trip mas, no dos.
       contarIntentosVigentesEnLoteCon(this.prisma.gestionOrden, ordenIds),
     ]);
-    return componerGestionesDescarga(gestiones, detalle, intentosPorOrden);
+    return componerGestionesDescarga(gestiones, detalle, intentosPorOrden, zona);
   }
 
   /**

@@ -16,6 +16,7 @@ import {
   serializarEscriturasReales,
   type EventoSqlDeTest,
 } from "./_postgres-real";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 /**
  * FEATURE 486 — las proyecciones de cierre leen TODAS las evidencias de una gestion, EJECUTADO
@@ -317,7 +318,7 @@ describeSiHayBase("486 — evidencias de una gestion en los cierres, contra Post
 
   it("R1/R4/R5/R6: el detalle de cierre de mensajero (admin) trae las 3 rutas de A en orden, B=[portada], C=[]", async () => {
     await conCorpus(async (ctx) => {
-      const r = await ctx.admin.findCierreByIdEnAlcance(ctx.cierreId, ctx.alcance);
+      const r = await ctx.admin.findCierreByIdEnAlcance(ctx.cierreId, ctx.alcance, ZONA_CR);
       expect(r).not.toBeNull();
       afirmarConjunto(r!.gestiones, ctx.delCierre, "cierre");
     });
@@ -325,7 +326,7 @@ describeSiHayBase("486 — evidencias de una gestion en los cierres, contra Post
 
   it("R2/R4/R5/R6: el detalle de cierre de bodega trae las 3 rutas de A en orden", async () => {
     await conCorpus(async (ctx) => {
-      const r = await ctx.bodega.findCierreBodegaConDetalle(ctx.cierreBodegaId);
+      const r = await ctx.bodega.findCierreBodegaConDetalle(ctx.cierreBodegaId, ZONA_CR);
       expect(r).not.toBeNull();
       expect(r!.cierresDia).toHaveLength(1);
       afirmarConjunto(r!.cierresDia[0]!.gestiones, ctx.delCierre, "cierre");
@@ -334,7 +335,7 @@ describeSiHayBase("486 — evidencias de una gestion en los cierres, contra Post
 
   it("R3/R4/R5/R6: el cierre pasado del mensajero (y la correccion 477) trae las 3 rutas", async () => {
     await conCorpus(async (ctx) => {
-      const r = await ctx.mensajero.findCierrePropioConGestiones(ctx.cierreId, ctx.mensajeroId);
+      const r = await ctx.mensajero.findCierrePropioConGestiones(ctx.cierreId, ctx.mensajeroId, ZONA_CR);
       expect(r).not.toBeNull();
       afirmarConjunto(r!.gestiones, ctx.delCierre, "cierre");
     });
@@ -342,7 +343,7 @@ describeSiHayBase("486 — evidencias de una gestion en los cierres, contra Post
 
   it("R3/R4/R5/R6: la vista en vivo del mensajero trae las 3 rutas", async () => {
     await conCorpus(async (ctx) => {
-      const r = await ctx.mensajero.findGestionesPendientes(ctx.mensajeroId);
+      const r = await ctx.mensajero.findGestionesPendientes(ctx.mensajeroId, ZONA_CR);
       afirmarConjunto(r, ctx.enVivo, "vivo");
     });
   });
@@ -351,7 +352,7 @@ describeSiHayBase("486 — evidencias de una gestion en los cierres, contra Post
     await conCorpus(async (ctx) => {
       const medir = async (cierreId: string) => {
         const antes = eventos.length;
-        const r = await ctx.admin.findCierreByIdEnAlcance(cierreId, ctx.alcance);
+        const r = await ctx.admin.findCierreByIdEnAlcance(cierreId, ctx.alcance, ZONA_CR);
         const consultas = eventos.slice(antes).filter((e) => /gestion_orden_evidencia/.test(e.query));
         return { r, total: eventos.length - antes, deEvidencia: consultas.length };
       };

@@ -240,8 +240,10 @@ describe("427/T18 — el composition root INYECTA los dos notificadores REALES",
 
     expect(espias.argsDelConstructor).toHaveLength(1);
     const args = espias.argsDelConstructor[0];
-    // 0 = el repositorio; 1 = el aviso al DESTINO; 2 = el aviso al ORIGEN.
-    expect(args).toHaveLength(3);
+    // 0 = el repositorio; 1 = el aviso al DESTINO; 2 = el aviso al ORIGEN; 3 = las reglas del pais
+    // de la empresa (SLT-42: la zona con la que se calcula el «hoy» del traspaso).
+    expect(args).toHaveLength(4);
+    expect(args[3]).toEqual(expect.objectContaining({ zonaHoraria: expect.any(Function) }));
     expect(args[1]).toBe(notificarTraspasoRecibidoReal);
     expect(args[2]).toBe(notificarTraspasoCedidoReal);
   });

@@ -27,6 +27,7 @@ import {
   fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * ⭑ FEATURE 262 (B13, R25/R26/R30/R31/R32) — LAS AUSENCIAS Y LAS CONSECUENCIAS, contra Postgres
@@ -422,6 +423,7 @@ describeSiHayBase("262/B13 — las ausencias y las consecuencias, contra Postgre
       rutaRepo,
       metaRepo,
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
     return service.escogerParaGestion("o1", MENSAJERO_ACTOR, NOCHE_DEL_21);
   }
@@ -716,6 +718,7 @@ describeSiHayBase("262/B13 — las ausencias y las consecuencias, contra Postgre
       new RutaOptimizadaRepository(tx),
       new OrdenMensajeroMetaRepository(tx),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
     return service.listarMisAsignaciones({ usuarioId: mensajeroId, rol: "mensajero" }, NOCHE_DEL_21);
   }

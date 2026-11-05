@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -907,7 +908,7 @@ export async function crearEmpresaDemo(
     // coherente con `cierre_bodega_conciliacion_coherente` y la base lo rechaza.
     const cierreBodega = await llamar("CierreBodegaService.solicitarCierreBodega", () =>
       conEmpresa(org, () =>
-        new CierreBodegaService(new CierreBodegaRepository(app), new OrdenRepository(app)).solicitarCierreBodega(adminSatelite),
+        new CierreBodegaService(new CierreBodegaRepository(app), new OrdenRepository(app), construirReglasPaisEmpresa(app)).solicitarCierreBodega(adminSatelite),
       ),
     );
     if (cierreBodega.status !== "ok") throw new Error("inalcanzable");
@@ -955,6 +956,9 @@ export async function crearEmpresaDemo(
       new OrdenRepository(app),
       new GestionOrdenRepository(app),
       new OrdenHistorialRepository(app),
+      undefined, // el parametro opcional previo, con su valor por defecto
+      // SLT-42 (R22): la zona horaria del pais de la empresa.
+      construirReglasPaisEmpresa(app),
     );
     for (const o of porPantalla.slice(n)) {
       await llamar("RecoleccionTiendaService.recolectarEnTienda", () =>
@@ -1131,6 +1135,8 @@ export async function crearEmpresaDemo(
       new TarifaZonaMensajeroRepository(app),
       { warn: (m: string) => console.warn(m) },
       notificarCierreDiaVencidoReal,
+      // SLT-42 (R22): la zona horaria del pais de la empresa.
+      construirReglasPaisEmpresa(app),
     );
     const manana = new Date(ahora().getTime() + 24 * 60 * 60 * 1000);
     exigirUnVencido(await conEmpresa(org, () => corte.ejecutarCorte(manana)));
@@ -1168,6 +1174,9 @@ export async function crearEmpresaDemo(
       new GestionOrdenRepository(app),
       new TarifaVigenteRepository(app),
       new RechazoTiendaCobroRepository(app),
+      undefined, // el parametro opcional previo, con su valor por defecto
+      // SLT-42 (R22): la zona horaria del pais de la empresa.
+      construirReglasPaisEmpresa(app),
     );
     for (const o of novedades.slice(n)) {
       const r = rechazarNovedadSchema.parse({ ordenId: o.id, motivo: "La tienda no la reintenta" });

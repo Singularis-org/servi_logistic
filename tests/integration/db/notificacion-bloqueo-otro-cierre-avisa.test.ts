@@ -12,6 +12,7 @@ import {
   fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 /**
  * FEATURE 271 (T6.3, R44) — **LA SEGUNDA MITAD DE LA DEDUPE: OTRO CIERRE ES OTRO HECHO, Y AVISA.**
@@ -129,7 +130,7 @@ describeSiHayBase("271/T6.3 · R44 — otro cierre es otro hecho: DOS avisos, no
       // es lo que hace el productor en produccion.
       const bloqueo = await new OrdenRepository(
         tx as unknown as PrismaClient,
-      ).findBloqueoDetalle(mensajeroId);
+      ).findBloqueoDetalle(mensajeroId, ZONA_CR);
 
       const emitirPara = (cierreId: string) =>
         emitirMensajeroBloqueado(notifRepo, {

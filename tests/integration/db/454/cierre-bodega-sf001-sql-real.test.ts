@@ -5,6 +5,7 @@ import { CierresBodegaAdminRepository } from "@/lib/repositories/CierresBodegaAd
 import { CierreBodegaService } from "@/lib/services/CierreBodegaService";
 import { HAY_BASE_DE_DATOS } from "../_postgres-real";
 import { conEscenario, prepararMundo, type Mundo } from "./_escenario";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FICHA 454 (T1.22; R61, R64) — SF-001: EL CIERRE DE BODEGA (40/431) SOBRE CIERRES APROBADOS CON
@@ -52,7 +53,7 @@ describeSiHayBase("454/T1.22 — SF-001: cierre de bodega sobre aprobados del mo
       } as const;
       const delMensajero = totalesDe(await e.tx.cierreDia.findUniqueOrThrow({ where: { id: cierreId }, select: SEL }));
 
-      const solicitud = await new CierreBodegaService(new CierreBodegaRepository(e.cliente), e.s.ordenRepo).solicitarCierreBodega(
+      const solicitud = await new CierreBodegaService(new CierreBodegaRepository(e.cliente), e.s.ordenRepo, reglasPaisFijas()).solicitarCierreBodega(
         e.actorAdminSatelite,
       );
       const cb = await e.tx.cierreBodega.findFirstOrThrow({

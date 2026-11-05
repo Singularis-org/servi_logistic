@@ -15,7 +15,7 @@ import type { IRoutesClient } from "@/lib/interfaces/external/IRoutesClient";
 import type { ParadaRutaRow } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { RouteOptimizationConfig } from "@/lib/config/route-optimization";
 import { primeraRutaPendiente as primeraRutaPendienteDeLosWriters } from "@/lib/services/jobs/optimizacion-ruta-encolado";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { inicioDelDiaCR } from "@/tests/fabricas/reglas-pais";
 
 // SLT-59 revision 4 (D23, D25; design §12.1, §12.5, §12.6) — la primera ruta del dia.
 //   R59  con la primera pendiente se recalcula siempre (ni omitir ni reducir).
@@ -204,7 +204,7 @@ describe("SLT-59 — glosario: primera ruta pendiente (pura)", () => {
     for (const ahora of ahoras) {
       for (const calculadaAt of calculadas) {
         expect(primeraRutaPendiente({ calculadaAt }, ahora)).toBe(
-          primeraRutaPendienteDeLosWriters(calculadaAt, fechaCalendarioCR(ahora)),
+          primeraRutaPendienteDeLosWriters(calculadaAt, inicioDelDiaCR(ahora)),
         );
       }
     }

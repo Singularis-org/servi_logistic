@@ -488,3 +488,56 @@ Veredicto: decisiones 2, 4 y 6 implementadas con test. Typecheck limpio; en las 
 - `pnpm run test:guardias`: `Tests 4 failed | 4550 passed | 24 skipped`; los 4 son `dependencias-declaradas-presentes`, en el baseline.
 
 Veredicto: T5.1 y T5.2 hechas; zona obligatoria en utilidades y schemas, CR idéntico, R22/R23 con test; typecheck y guardias en verde salvo baseline.
+
+## Tanda 3 · T5.3: zona de la empresa en órdenes, reparto, cierres, corte y reprogramadas (2026-11-05)
+
+### Archivos de producción (67)
+- Nuevos: `lib/services/zona-de-la-empresa.ts` (`zonaDeLaEmpresa(reglasPais, operacion)`; `zonaPerezosa(reglasPais, operacion)` → `ZonaDeLaOperacion`, que lee la zona una vez y solo si hace falta; `filtrosParaRepo(filtros, zona)`, que pasa `desde`/`hasta` de fecha calendario a instantes) y `lib/actions/_shared/zona-del-borde.ts` (`zonaDelBorde(reglasPais?)`, para las actions de lectura).
+- Servicios: `ApiOrdenLecturaService`, `AsignacionSateliteService`, `AvisosDiariosService`, `CierreBodegaService`, `CierreDiaService`, `CierresAdminService`, `CierresBodegaAdminService`, `CorreccionDiaRepartoService`, `CorreccionFechaReprogramacionService`, `CorteDiarioService`, `EtiquetaGuiaService`, `GestionDesdeAyudaService`, `GuiaAsignacionService`, `ManifiestoService`, `MisAsignacionesService`, `OptimizacionRutaService`, `OrdenService`, `RecepcionSateliteService`, `RechazoTiendaService`, `RecoleccionTiendaService`, `ReprogramadasRetenidasService`, `TraspasoMensajeroService`, `jobs/optimizacion-ruta-encolado`, `liberacion-al-aprobar-cierre`, `liberacion-tras-corregir-fecha`, `mensajes-correccion-fecha-reprogramacion`.
+- Repositorios e interfaces: `CierreBodega`, `CierreDia`, `CierresAdmin`, `CierresBodegaAdmin`, `GestionOrden`, `LiberacionReprogramada`, `Orden` (y sus `I…Repository`), `IReprogramadasRetenidasService`; `lib/types/filtros-cierres.ts` (`FiltrosEnRepositorio<F>`, `FiltrosCierresRepo`, `FiltrosCierresBodegaRepo`, `FiltrosDescargaGestionesRepo`).
+- Bordes (composition roots): 17 actions de `lib/actions/` (cierre-bodega, cierre-dia, cierres-admin, corregir-dia-reparto, corregir-fecha-reprogramacion, etiquetas-guia, gestion-desde-ayuda, liberacion-reprogramada, manifiesto, mis-asignaciones, ordenes, ordenes-guia, recepcion-satelite, recoleccion-tienda, reprogramadas-retenidas, resolver-novedad, traspasar-mensajero), `app/api/cron/corte-diario/route.ts` y las 3 rutas de `app/api/ordenes/api-key/`; `scripts/bench-busqueda-ordenes.ts`, `scripts/demo-qa/receta.ts`.
+- Los 10 marcadores `SLT-42 pendiente T5.3` de la tanda anterior quedan resueltos.
+
+### Firmas nuevas (las que cambian contrato)
+- Servicios: `reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">` como último parámetro del constructor (desvío 1).
+- `ICierreDiaRepository`: `findGestionesPendientes(mensajeroId, zona)`, `findBloqueoDetalle(mensajeroId, zona)`, `findJornadaDeCierre(cierreId, zona)`. `ICierresAdminRepository` / `ICierresBodegaAdminRepository`: listados con `filtros?: Filtros…Repo` (instantes); detalle y descarga con `zona`. `ICierreBodegaRepository`: `filtros?: FiltrosCierresBodegaRepo`.
+- `IOrdenRepository`: `findEtiquetasByIds(ids, tiendaId, zona)`, `findEtiquetaByNumGuia(numGuia, tiendaId, zona)`; `GenerarGuiaDecisionData` exige `fechaReparto` cuando hay `mensajeroAsignadoId`.
+- `IGestionOrdenRepository` recibe `inicioDelDia: Date` calculado por el servicio; `ILiberacionReprogramadaRepository.findLiberadasHoy(filter, dia: { desde, hasta })`.
+- `IReprogramadasRetenidasService`: `resumen(hoyCR, zona)`, `contarPorCierre(hoyCR, zona, cierreIds)`.
+
+### Tests
+- Nuevo `tests/unit/services/hora-por-pais-servicios.test.ts`. ~180 tests existentes adaptados a las firmas (dobles con `reglasPaisFijas()` de CR: mismo resultado que antes). `tests/fabricas/reglas-pais.ts`: + `inicioDelDiaCR(now)` y `ventanaDelDiaCR(hoy)` para los tests de repositorio; las fábricas `escenarios/{reparto,cierres}.ts` pasan `reglasPaisFijas()`.
+
+### Mapa R → test (T5.3)
+| R | Test (`tests/unit/services/hora-por-pais-servicios.test.ts`) |
+|---|---|
+| R22 | «R22: el mismo instante cierra el 19 en Costa Rica y el 20 en Bogota» (CorteDiario); «R22: a las 04:30Z del 21, el dia de los KPIs…» y «R22: la jornada que nombra el bloqueo…» (MisAsignaciones); «R22: «el 20» empieza a las 06:00Z en Costa Rica y a las 05:00Z en Bogota» (OrdenService) |
+| R23 | «R23: la noche del cambio de hora de Nueva York el ancla sigue a la pared…» (CorteDiario); «R23: el dia que Madrid adelanta el reloj, la ventana de los KPIs dura 23 h» (MisAsignaciones) |
+| R28 | «R28: sin zona en el pais, la corrida falla con PaisSinZonaHoraria…» (CorteDiario); «R28: sin zona, recoger falla…»; «R28: con filtro de fecha y sin zona…» (OrdenService); bloque «SLT-42 (R28) — sin zona en el pais, las escrituras fallan sin escribir nada» (CierreDia.solicitarCierre, CorreccionDiaReparto.corregir) |
+| R30 | «R30: la misma instancia atiende a dos empresas seguidas sin recordar la zona de la primera» (CorteDiario) |
+
+### Desvíos y notas
+1. `reglasPais` es **opcional** en los constructores de servicio (obligatoria solo en `GestionDesdeAyudaService`); la real la pone cada composition root (`construirReglasPaisEmpresa`). Sin ella el servicio falla al primer uso que necesita la zona (`zonaDeLaEmpresa`), no al construirse.
+2. Los repositorios `CierreDia`, `CierresAdmin`, `CierresBodegaAdmin` y `Orden` reciben `zona` para **formatear** fechas (jornada, fecha de gestión, `fechaCreacion` de la etiqueta).
+3. Los filtros de cierres llegan al repositorio como **instantes** (`filtrosParaRepo`), no como fechas calendario; lo arrastran `CierreBodegaService` y `CierresBodegaAdminService`.
+4. También se tocaron `EtiquetaGuiaService`, `TraspasoMensajeroService` y `OptimizacionRutaService`. En `OptimizacionRutaService` quedan **2 marcadores** `SLT-42 pendiente (rutas; fuera de T5.3, sin task asignada)` (líneas 275 y 618): las rutas siguen en CR y falta asignarles task.
+5. `generarGuiaLote` exige `fechaReparto` cuando la guía lleva mensajero (`GenerarGuiaDecisionData` es una unión); antes el repositorio la derivaba en CR.
+6. Las actions de **lectura** leen la zona en el borde (`zonaDelBorde`) y la pasan hacia dentro.
+7. `lib/utils/jornada-cierre.ts` **sin cambios** (solo se adaptó su test).
+8. `lib/types/historial-accion-etiquetas.ts` **sigue en CR** (`fechaCalendarioCR`); queda para la tanda que cablee los repositorios del historial.
+
+### Salida
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: exit 0 (corrido antes de esta verificación).
+- `eslint` de los 67 archivos de producción, el test nuevo y `tests/fabricas/reglas-pais.ts`: 0 errores, 3 warnings (`no-unused-vars` en parámetros con `_`).
+- Integración, los 57 archivos de `tests/integration` tocados, contra `logistic_slt42_test` (solo catálogos): `Test Files 34 failed | 20 passed (54) · Tests 34 failed | 176 passed | 241 skipped (451)`. **Los 34 archivos rojos están en `tests/baseline-rojos.json`** y caen en el `beforeAll` por la base vacía («tabla `orden` vacía», «el catálogo local no tiene el estatus ayuda_tienda», FK de zona de otra empresa en `cierre-descarga-fechas`, `conCorpus` sin crear en `busqueda-comportamiento`). Ninguno nuevo. En verde, entre otros: `liberadas-hoy-ventana-cr-sl44`, `ruta-primera-pendiente-dos-empresas-sql-real` y `optimizacion-ruta-enqueue`. `cierres-filtro-estado-sql-real`, `traspaso-mensajero.int` y `484-puntero-traspaso` no llegan a ejecutarse: el fixture falla y están en el baseline.
+- `vitest related --run` sobre los 67 de producción, en lotes de 10, `NODE_OPTIONS=--max-old-space-size=8192`, misma base:
+  - lote 1: `Test Files 2 failed | 241 passed (243) · Tests 28 failed | 3457 passed`
+  - lote 2: `Test Files 235 passed (235) · Tests 3426 passed`
+  - lote 3: `Test Files 140 failed | 557 passed (697) · Tests 118 failed | 7504 passed | 872 skipped`
+  - lote 4: `Test Files 167 failed | 596 passed (763) · Tests 168 failed | 8171 passed | 995 skipped`
+  - lote 5: `Test Files 111 failed | 316 passed (427) · Tests 58 failed | 4556 passed | 641 skipped`
+  - lotes 6 y 7 (17 archivos: de `jobs/optimizacion-ruta-encolado` a `TraspasoMensajeroService`, `zona-de-la-empresa`, `filtros-cierres` y los 2 scripts): **no terminaron**; Claude Code paró la corrida en el lote 6 por falta de memoria del sistema. Para cubrirlos se corrieron aparte los 29 tests tocados que ningún lote había ejecutado: `Test Files 29 passed (29) · Tests 691 passed (691)`.
+  - Rojos fuera del baseline, solo 2 archivos. `carga-division.test.ts`: 1 caso («expected 5 to be 4» al contar `historial_accion`); rojo solo en el lote 4, verde en los lotes 3 y 5 y verde aislado, así que es carga. `demo-qa.test.ts`: 11 casos, **rojo real, pero no de T5.3**. El alta de la empresa demo falla con `{"estado":"invalida","campo":"maestro.documento"}`: la receta usa `documentoMaestro: "demo-qa-a-maestro"`, que la validación de documento por país de T4.2/T4.3 (070e6e96) ya no acepta. Se reprodujo aislado y no se tocó (fuera del alcance de T5.3).
+- `pnpm run test:guardias`: `Test Files 1 failed | 324 passed | 3 skipped · Tests 4 failed | 4550 passed | 24 skipped`; los 4 son `dependencias-declaradas-presentes`, en el baseline.
+
+Veredicto: T5.3 hecha; zona de la empresa en órdenes, reparto, cierres, corte y reprogramadas, con R22/R23/R28/R30 cubiertos por test. Sin rojos nuevos de T5.3; quedan `demo-qa` (rojo de T4.2/T4.3) y 17 archivos sin `vitest related` por memoria.

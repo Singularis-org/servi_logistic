@@ -12,6 +12,7 @@ import {
   fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 /**
  * 💰 FICHA 337 (2026-08-31) — LAS GESTIONES DE ESCRITORIO NO ENTRAN AL CIERRE DE NADIE,
@@ -209,7 +210,7 @@ describeSiHayBase("💰 337 — el cierre NO recoge las gestiones de escritorio 
       await serializarEscriturasReales(tx);
       const mensajeroId = await crearMensajero(tx);
       const ids = await sembrarEscenario(tx, mensajeroId);
-      const filas = await repoDe(tx).findGestionesPendientes(mensajeroId);
+      const filas = await repoDe(tx).findGestionesPendientes(mensajeroId, ZONA_CR);
       return { ids, vistas: filas.map((f) => f.gestionId).sort() };
     });
 
@@ -404,7 +405,7 @@ describeSiHayBase("💰 337 — el cierre NO recoge las gestiones de escritorio 
       const uno = await sembrarGestion(tx, mensajeroId, CALLE, "entregado");
       const dos = await sembrarGestion(tx, mensajeroId, CALLE, "entregado");
 
-      const vistas = (await repoDe(tx).findGestionesPendientes(mensajeroId)).map(
+      const vistas = (await repoDe(tx).findGestionesPendientes(mensajeroId, ZONA_CR)).map(
         (f) => f.gestionId,
       );
 

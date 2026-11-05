@@ -481,6 +481,11 @@ export interface IGestionOrdenRepository {
     ordenId: string;
     mensajeroId: string;
     gestion: GestionOrdenData;
+    /**
+     * SLT-42 (R22, R23): el INSTANTE en que empezo el dia en curso en la zona del pais de la
+     * empresa. Lo calcula el servicio; con el se mira si la primera ruta del dia sigue pendiente.
+     */
+    inicioDelDia: Date;
   }): Promise<{ gestionId: string; ordenEventoId: string } | null>;
 
   /**

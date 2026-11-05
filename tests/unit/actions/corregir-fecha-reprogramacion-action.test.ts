@@ -5,6 +5,7 @@ import { corregirFechaReprogramacion } from "@/lib/actions/corregir-fecha-reprog
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { ICorreccionFechaReprogramacionService } from "@/lib/interfaces/services/ICorreccionFechaReprogramacionService";
 import { fechaCalendarioCR, mananaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // FICHA 371 — EL BORDE de «corregir la fecha de una reprogramacion»: sesion + zod + delegacion.
 //
@@ -35,6 +36,7 @@ function deps(overrides: { actor?: Actor | null } = {}) {
   return {
     deps: {
       service: { corregir } as unknown as ICorreccionFechaReprogramacionService,
+      reglasPais: reglasPaisFijas(),
       getActor: async () => ("actor" in overrides ? (overrides.actor ?? null) : MAESTRO),
     },
     corregir,
@@ -170,6 +172,7 @@ describe("371 — el resto del borde", () => {
       { ordenId: ORDEN_ID, fecha: HOY, motivo: MOTIVO },
       {
         service: { corregir } as unknown as ICorreccionFechaReprogramacionService,
+        reglasPais: reglasPaisFijas(),
         getActor: async () => MAESTRO,
       },
     );

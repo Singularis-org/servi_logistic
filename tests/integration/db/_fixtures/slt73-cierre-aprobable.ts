@@ -26,6 +26,7 @@ import { sinRetenidas } from "@/tests/fixtures/retenidas-doble";
 
 import { clienteConSavepoint, type TxDeTest } from "../_postgres-real";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./orden-minima";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // SLT-73 · T3 — UN CIERRE DEL DIA LISTO PARA APROBAR, igual para la central y para la satelite.
 //
@@ -236,6 +237,11 @@ export async function sembrarCierreAprobable(
     new LiquidacionPagoRepository(c),
     mensajeroRepo,
     sinRetenidas(),
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    reglasPaisFijas(),
   );
 
   return {
@@ -336,6 +342,7 @@ export async function consolidar(tx: TxDeTest, adminSatelite: Actor): Promise<st
   const r = await new CierreBodegaService(
     new CierreBodegaRepository(c),
     new OrdenRepository(c),
+    reglasPaisFijas(),
   ).solicitarCierreBodega(adminSatelite);
   if (r.status !== "ok") throw new Error(`no se pudo consolidar: ${JSON.stringify(r)}`);
   return r.cierreBodegaId;

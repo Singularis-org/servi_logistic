@@ -10,6 +10,7 @@ import {
   fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 /**
  * FICHA 412 (T5.1, R11) — **LA FECHA DEL AVISO SALE DE LAS GESTIONES, NO DEL NACIMIENTO DEL
@@ -143,7 +144,7 @@ describeSiHayBase("412/R11 · la jornada del cierre rechazado, contra Postgres r
         where: { cierreId: cierre.id, anuladaAt: null },
       });
 
-      return { jornada: await repo.findJornadaDeCierre(cierre.id), vinculadas };
+      return { jornada: await repo.findJornadaDeCierre(cierre.id, ZONA_CR), vinculadas };
     });
 
     expect(medido.vinculadas).toBe(2);
@@ -162,7 +163,7 @@ describeSiHayBase("412/R11 · la jornada del cierre rechazado, contra Postgres r
       await sembrarGestion(tx, cierre.id, CR_20_1400, "D", true); // ANULADA, de otro dia
 
       const repo = new OrdenRepository(tx as unknown as PrismaClient);
-      return repo.findJornadaDeCierre(cierre.id);
+      return repo.findJornadaDeCierre(cierre.id, ZONA_CR);
     });
 
     expect(jornada).toBe("2026-08-21");
@@ -178,7 +179,7 @@ describeSiHayBase("412/R11 · la jornada del cierre rechazado, contra Postgres r
       await sembrarGestion(tx, cierre.id, CR_20_1400, "F");
 
       const repo = new OrdenRepository(tx as unknown as PrismaClient);
-      return repo.findJornadaDeCierre(cierre.id);
+      return repo.findJornadaDeCierre(cierre.id, ZONA_CR);
     });
 
     expect(jornada).toBeNull();
@@ -194,7 +195,7 @@ describeSiHayBase("412/R11 · la jornada del cierre rechazado, contra Postgres r
 
       const repo = new OrdenRepository(tx as unknown as PrismaClient);
       const vinculadas = await tx.gestionOrden.count({ where: { cierreId: cierre.id } });
-      return { jornada: await repo.findJornadaDeCierre(cierre.id), vinculadas };
+      return { jornada: await repo.findJornadaDeCierre(cierre.id, ZONA_CR), vinculadas };
     });
 
     expect(medido.vinculadas).toBe(0);
@@ -204,7 +205,7 @@ describeSiHayBase("412/R11 · la jornada del cierre rechazado, contra Postgres r
   it("cierre inexistente -> `null` (el aviso no se emite, no se inventa una fecha)", async () => {
     const repo = new OrdenRepository(prisma);
 
-    expect(await repo.findJornadaDeCierre("00000000-0000-0000-0000-000000000000")).toBeNull();
+    expect(await repo.findJornadaDeCierre("00000000-0000-0000-0000-000000000000", ZONA_CR)).toBeNull();
   });
 
   it("⭑ CONTROL de la conversion de huso: una gestion de las 23:30 CR sigue siendo del MISMO dia", async () => {
@@ -216,7 +217,7 @@ describeSiHayBase("412/R11 · la jornada del cierre rechazado, contra Postgres r
       await sembrarGestion(tx, cierre.id, new Date("2026-08-22T05:30:00.000Z"), "G");
 
       const repo = new OrdenRepository(tx as unknown as PrismaClient);
-      return repo.findJornadaDeCierre(cierre.id);
+      return repo.findJornadaDeCierre(cierre.id, ZONA_CR);
     });
 
     expect(jornada).toBe("2026-08-21");

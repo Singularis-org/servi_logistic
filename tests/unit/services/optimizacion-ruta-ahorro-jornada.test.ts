@@ -8,7 +8,6 @@ import {
   primeraRutaPendiente,
 } from "@/lib/services/jobs/optimizacion-ruta-encolado";
 import { codificarPolilinea, distanciaHaversineKm } from "@/lib/geo/polilinea";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 import type { RouteOptimizationConfig } from "@/lib/config/route-optimization";
 import type { JobsConfig } from "@/lib/config/jobs";
 import type {
@@ -46,6 +45,7 @@ import {
   type ContextoLlamadaRuta,
 } from "@/lib/clients/registro-llamada-google";
 import type { RegistroLlamadaLogger } from "@/lib/logging/google-api-log";
+import { inicioDelDiaCR } from "@/tests/fabricas/reglas-pais";
 
 // SLT-59 (R37, design §8.0) — JORNADA DE REFERENCIA: cuantas llamadas facturadas paga un mensajero
 // en un dia tipico. Cuenta llamadas, no dinero (D10).
@@ -584,7 +584,7 @@ async function gestionar(j: Jornada, ordenId: string, gps: Punto): Promise<void>
   j.paradas.gestionar(ordenId);
   const pendiente = primeraRutaPendiente(
     j.rutas.fila?.calculadaAt ?? null,
-    fechaCalendarioCR(j.ahora),
+    inicioDelDiaCR(j.ahora),
   );
   if (j.paradas.tieneCoordenadas(ordenId) && !pendiente) {
     await encolarOptimizacionDebounce(j.jobs, undefined, M, {

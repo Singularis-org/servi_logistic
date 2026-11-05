@@ -24,6 +24,7 @@ import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepos
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { WalletIndemnizacionFeedService } from "@/lib/services/WalletIndemnizacionFeedService";
 import { conPagos } from "@/tests/fixtures/cierre-pagos";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 38 — tests unit del CierresAdminService (dobles de repo/zona/orden/
 // signedUrls, sin DB/red). Cubre R1,R2,R3,R4,R5,R6,R7,R8,R9,R10,R11,R12,R13,R16.
@@ -209,6 +210,11 @@ function newService(
       ),
     },
     sinRetenidas(), // FICHA 462: 7.o argumento requerido; este archivo no mide la marca
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    reglasPaisFijas(),
   );
   return { service, repo, zonaRepo, ordenRepo, signedUrls, liquidacionRepo };
 }

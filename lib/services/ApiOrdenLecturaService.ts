@@ -183,6 +183,7 @@ export class ApiOrdenLecturaService implements IApiOrdenLecturaService {
     // superior EXCLUSIVA. OJO con la trampa del repo: el helper de medianoche UTC de la
     // convencion `@db.Date` (feature 46) NO sirve aqui —`created_at` es `timestamp`— y devolveria
     // la ventana 18:00-18:00 hora CR, que es el off-by-one de la ficha 166.
+    // SLT-42 pendiente T5.7: zona de la empresa de la key (API por key)
     const createdAtDesde = desde ? inicioDelDiaCREnUtc(desde) : undefined;
     const createdAtHasta = hasta ? inicioDelDiaSiguienteCREnUtc(hasta) : undefined;
     const { items, total } = await this.repo.listByOwner({

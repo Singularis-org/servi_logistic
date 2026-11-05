@@ -21,7 +21,9 @@ import type {
   ManifiestoInput,
   ManifiestoOmitidaDTO,
 } from "@/lib/types/manifiesto";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendario } from "@/lib/utils/calendario-zona";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 
 /**
  * Etiqueta de respaldo de la bodega central cuando NO hay zona `esCentral`
@@ -145,6 +147,8 @@ export class ManifiestoService implements IManifiestoService {
     // ANTES de `now`, que tiene default). `import type` + `Pick`: sin ciclo de modulos.
     private readonly historial: Pick<IOrdenHistorialService, "contarIntentosEnLote">,
     private readonly now: () => Date = () => new Date(),
+    /** SLT-42 (R22): la zona del pais de la empresa, con la que se fecha el manifiesto. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
 
   async armar(input: ManifiestoInput, actor: Actor): Promise<ManifiestoServiceResult> {
@@ -175,7 +179,8 @@ export class ManifiestoService implements IManifiestoService {
         (await this.ordenRepo.findUsuarioNombre(actor.usuarioId)) ??
         RESPONSABLE_FALLBACK,
     };
-    const fecha = fechaCalendarioCR(this.now()); // R10: calendario CR, NO toISOString
+    // R10: calendario del pais de la empresa (SLT-42, R22), NO toISOString.
+    const fecha = fechaCalendario(this.now(), await zonaDeLaEmpresa(this.reglasPais, "ManifiestoService.armar"));
 
     // Feature 160 (R12/R13/R15/R28a): UNA sola consulta al historial para TODO el lote, sobre
     // las ordenes que la propia query ya devolvio (y por tanto ya acotadas por el alcance del

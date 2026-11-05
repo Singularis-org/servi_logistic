@@ -13,6 +13,7 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IngresoEmpresaDTO } from "@/lib/interfaces/services/ICierreDiaService";
 import { conPagos } from "@/tests/fixtures/cierre-pagos";
 import { efectivoCubreDescuentos, paraLaCentral } from "@/lib/utils/ingreso-empresa";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * 💰 FICHA 396 (D4) — **LAS TRES SUPERFICIES PASAN DE VERDAD POR `partesPorTienda`.**
@@ -264,7 +265,12 @@ async function desgloseDelDetalleDeMensajero() {
     sumarPremiosVivosPorCierre: vi.fn(async (ids: string[]) =>
       Object.fromEntries(ids.map((id) => [id, "0.00"])),
     ),
-  }, sinRetenidas()); // FICHA 462: 7.o argumento requerido; este caso no mide la marca
+  }, sinRetenidas(),
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  reglasPaisFijas(),); // FICHA 462: 7.o argumento requerido; este caso no mide la marca
 
   const r = await service.verCierreDetalle("c1", MAESTRO);
   if (r.status !== "ok") throw new Error("esperaba ok en el detalle del mensajero");
@@ -317,7 +323,7 @@ async function desglosesDelDetalleDeBodega() {
     })),
   } as unknown as ICierresBodegaAdminRepository;
 
-  const service = new CierresBodegaAdminService(repo, fakeSignedUrls());
+  const service = new CierresBodegaAdminService(repo, fakeSignedUrls(), reglasPaisFijas());
   const r = await service.verCierreBodegaDetalle("cb1", MAESTRO);
   if (r.status !== "ok") throw new Error("esperaba ok en el detalle de bodega");
   return {

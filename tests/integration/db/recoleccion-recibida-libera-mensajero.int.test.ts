@@ -22,6 +22,7 @@ import {
 } from "./_postgres-real";
 
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 /**
  * SLT-63 — la recepcion en la bodega central de una orden RECOLECTADA en tienda la deja sin
  * asignacion, contra Postgres de verdad.
@@ -89,7 +90,7 @@ function repos(tx: Tx) {
   );
   return {
     repo,
-    ordenes: new OrdenService(repo, historial),
+    ordenes: new OrdenService(repo, historial, undefined, reglasPaisFijas()),
     recepcion: new RecepcionBodegaCentralService(repo),
     gestion: new GestionOrdenRepository(
       prisma as unknown as ConstructorParameters<typeof GestionOrdenRepository>[0],

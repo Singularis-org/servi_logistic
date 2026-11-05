@@ -19,6 +19,7 @@ import {
   sembrarCierreAprobable,
 } from "./_fixtures/slt73-cierre-aprobable";
 import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 // SLT-76 · T2 · R3/R4 — «DESMARCAR» SE OFRECE SOLO CUANDO REVERTIR NO DEVOLVERIA `con_asientos`.
 //
@@ -106,7 +107,7 @@ describeSiHayBase("SLT-76 R3/R4 — `desmarcable` en las dos superficies (Postgr
       const historicoMaestro = deLista((await admin.findHistoricoPaginado(PAGINA)).items);
       const historicoCompleto = deLista(await admin.findHistoricoCompleto());
       const detalleMaestro = await Promise.all(
-        ids.map(async (id) => (await admin.findCierreBodegaConDetalle(id))?.cierre.desmarcable ?? "ausente"),
+        ids.map(async (id) => (await admin.findCierreBodegaConDetalle(id, ZONA_CR))?.cierre.desmarcable ?? "ausente"),
       );
       const paginaSatelite = deLista(
         (await new CierreBodegaRepository(cliente).findCierresBodegaByZonaPaginado(k.zonaId, PAGINA)).items,
@@ -149,7 +150,7 @@ describeSiHayBase("SLT-76 R3/R4 — `desmarcable` en las dos superficies (Postgr
       const fila = (
         await new SaldosSatelitesRepository(cliente).findConsolidacionesPaginado(k.zonaId, PAGINA)
       ).items.find((f) => f.cierreBodegaId === id);
-      const cabecera = (await new CierresBodegaAdminRepository(cliente).findCierreBodegaConDetalle(id))?.cierre;
+      const cabecera = (await new CierresBodegaAdminRepository(cliente).findCierreBodegaConDetalle(id, ZONA_CR))?.cierre;
       return { fila, cabecera };
     });
     expect(r.fila?.conciliado).toBe(false);

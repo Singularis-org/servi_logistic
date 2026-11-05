@@ -20,6 +20,7 @@ import type {
 } from "@/lib/interfaces/services/IAsignabilidadCoordenadasService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { CierreEstado } from "@/lib/types/cierre";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FEATURE 271 (T4.6) — LA REGLA N/V CRUZADA CON **TODAS** SUS SUPERFICIES, EN UN SITIO.
@@ -170,6 +171,7 @@ describe("271 · familia A — GESTIONAR y COBRAR", () => {
         contarIntentosEnLote: vi.fn(async () => new Map<string, number>()),
         contarIntentos: vi.fn(async () => 0),
       },
+      reglasPaisFijas(),
     );
     return { service, repoGestion };
   }
@@ -212,6 +214,8 @@ describe("271 · familia A — GESTIONAR y COBRAR", () => {
       }),
       { findMisAsignaciones: vi.fn(async () => []), findMisAsignacionesByIds: vi.fn(async () => []) },
       { findRecoleccionesDeActor: vi.fn(async () => []) },
+      undefined,
+      reglasPaisFijas(),
     );
     return { service, findByNumGuiaForTransicion };
   }
@@ -249,6 +253,9 @@ describe("271 · familia A — GESTIONAR y COBRAR", () => {
       repoConCierres(cierres),
       { createSignedUrl: vi.fn(), createSignedUrls: vi.fn() } as never,
       {} as never,
+      undefined,
+      undefined,
+      reglasPaisFijas(),
     );
     return { service, findGestionParaDeshacer };
   }
@@ -329,6 +336,7 @@ describe("271 · familia B — RECIBIR TRABAJO NUEVO (las TRES escrituras)", () 
       { findCentralZonaId: vi.fn(async () => ZONA_CENTRAL) } as unknown as IZonaRepository,
       gateTodoAsignable,
       fakeIntentosEnLote() /* 276: la puerta del tope; 0 intentos = no interfiere */,
+      reglasPaisFijas(),
     );
   }
 
@@ -401,7 +409,7 @@ describe("271 · familia B — RECIBIR TRABAJO NUEVO (las TRES escrituras)", () 
       })),
       asignarSateliteLote,
     });
-    return new AsignacionSateliteService(repo, gateTodoAsignable, fakeIntentosEnLote() /* 276: la puerta del tope; 0 intentos = no interfiere */);
+    return new AsignacionSateliteService(repo, gateTodoAsignable, fakeIntentosEnLote() /* 276: la puerta del tope; 0 intentos = no interfiere */, reglasPaisFijas());
   }
 
   it.each(LIBRES.map((c) => [c.nombre, c.cierres] as const))(

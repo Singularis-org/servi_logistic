@@ -11,6 +11,8 @@ import {
   enTransaccionRevertida,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * SLT-49 — LA FRONTERA DE TIENDA DE LAS ETIQUETAS, EJECUTADA CONTRA POSTGRES (R7-R11).
@@ -169,17 +171,17 @@ describeSiHayBase("SLT-49 — una tienda NO lee las etiquetas de ordenes de otra
       ordenA: await sembrar("a", tiendaA, guiaA),
       ordenB: await sembrar("b", tiendaB, guiaB),
       repo,
-      service: new EtiquetaGuiaService(repo),
+      service: new EtiquetaGuiaService(repo, reglasPaisFijas()),
     };
   }
 
   it("R10 (a): el REPO, saltandose el service, con tiendaId = A devuelve solo la orden de A", async () => {
     const medido = await enTransaccionRevertida(prisma, async (tx) => {
       const esc = await sembrarEscenario(tx, "a", 0);
-      const filas = await esc.repo.findEtiquetasByIds([esc.ordenA, esc.ordenB], esc.tiendaA);
+      const filas = await esc.repo.findEtiquetasByIds([esc.ordenA, esc.ordenB], esc.tiendaA, ZONA_CR);
       // Control: sin frontera (null) las dos existen y se leen. Sin esto, un `[]` por otra causa
       // (fila no sembrada, empresa equivocada) pasaria por «filtro correcto».
-      const sinFrontera = await esc.repo.findEtiquetasByIds([esc.ordenA, esc.ordenB], null);
+      const sinFrontera = await esc.repo.findEtiquetasByIds([esc.ordenA, esc.ordenB], null, ZONA_CR);
       return {
         ordenA: esc.ordenA,
         ordenB: esc.ordenB,
@@ -196,10 +198,10 @@ describeSiHayBase("SLT-49 — una tienda NO lee las etiquetas de ordenes de otra
   it("R10 (b): el REPO, saltandose el service, por la guia de B con tiendaId = A devuelve null", async () => {
     const medido = await enTransaccionRevertida(prisma, async (tx) => {
       const esc = await sembrarEscenario(tx, "b", 1);
-      const ajena = await esc.repo.findEtiquetaByNumGuia(esc.guiaB, esc.tiendaA);
+      const ajena = await esc.repo.findEtiquetaByNumGuia(esc.guiaB, esc.tiendaA, ZONA_CR);
       // Controles: la guia de B existe (sin frontera) y la de A se lee con su propia frontera.
-      const sinFrontera = await esc.repo.findEtiquetaByNumGuia(esc.guiaB, null);
-      const propia = await esc.repo.findEtiquetaByNumGuia(esc.guiaA, esc.tiendaA);
+      const sinFrontera = await esc.repo.findEtiquetaByNumGuia(esc.guiaB, null, ZONA_CR);
+      const propia = await esc.repo.findEtiquetaByNumGuia(esc.guiaA, esc.tiendaA, ZONA_CR);
       return {
         ordenA: esc.ordenA,
         ordenB: esc.ordenB,

@@ -17,6 +17,7 @@ import type {
   OrdenAsignabilidadRow,
 } from "@/lib/interfaces/services/IAsignabilidadCoordenadasService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 92 (R8) — el gate de asignabilidad enganchado en los writers de
 // `mensajero_asignado_id` de `GuiaAsignacionService`.
@@ -110,7 +111,7 @@ describe("156/R12 — generarGuia YA NO pasa por el gate (dejo de asignar mensaj
   it.each(NO_ASIGNABLES)("motivo %s -> ok igualmente, la orden se numera", async (estado) => {
     const repo = fakeRepo();
     const g = gate({ o1: estado });
-    const service = new GuiaAsignacionService(repo, fakeZonaRepo(), g, fakeIntentosEnLote() /* 276: la puerta del tope; 0 intentos = no interfiere */);
+    const service = new GuiaAsignacionService(repo, fakeZonaRepo(), g, fakeIntentosEnLote() /* 276: la puerta del tope; 0 intentos = no interfiere */, reglasPaisFijas());
 
     const r = await service.generarGuia({ ordenIds: ["o1"] }, MAESTRO);
 
@@ -132,7 +133,7 @@ describe("156/R12 — generarGuia YA NO pasa por el gate (dejo de asignar mensaj
       ]),
     });
     const g = gate({ o2: "geocodificacion_agotada" });
-    const service = new GuiaAsignacionService(repo, fakeZonaRepo(), g, fakeIntentosEnLote() /* 276: la puerta del tope; 0 intentos = no interfiere */);
+    const service = new GuiaAsignacionService(repo, fakeZonaRepo(), g, fakeIntentosEnLote() /* 276: la puerta del tope; 0 intentos = no interfiere */, reglasPaisFijas());
 
     const r = await service.generarGuia({ ordenIds: ["o1", "o2", "o3"] }, MAESTRO);
 
@@ -144,7 +145,7 @@ describe("156/R12 — generarGuia YA NO pasa por el gate (dejo de asignar mensaj
 
   it("156/R2: ninguna decision del lote lleva mensajero (por eso el gate sobra)", async () => {
     const repo = fakeRepo();
-    const service = new GuiaAsignacionService(repo, fakeZonaRepo(), gate(), fakeIntentosEnLote() /* 276: la puerta del tope; 0 intentos = no interfiere */);
+    const service = new GuiaAsignacionService(repo, fakeZonaRepo(), gate(), fakeIntentosEnLote() /* 276: la puerta del tope; 0 intentos = no interfiere */, reglasPaisFijas());
 
     await service.generarGuia({ ordenIds: ["o1"] }, MAESTRO);
 
@@ -176,7 +177,7 @@ describe("R8 — asignarDesdeBodega (todo el lote recibe mensajero)", () => {
       findMensajeroIdsConVehiculo: vi.fn(async () => new Set<string>()),
       findMensajerosNoAsignablesPorEstado: vi.fn(async (): Promise<Set<string>> => new Set()),
     });
-    const service = new GuiaAsignacionService(repo, fakeZonaRepo(), gate(), fakeIntentosEnLote());
+    const service = new GuiaAsignacionService(repo, fakeZonaRepo(), gate(), fakeIntentosEnLote(), reglasPaisFijas());
 
     const r = await service.asignarDesdeBodega({ ordenIds: ["o1", "o2"], mensajeroId: "m1" }, MAESTRO);
 
@@ -192,7 +193,7 @@ describe("R8 — asignarDesdeBodega (todo el lote recibe mensajero)", () => {
   // se llama SOLO con la asignable.
   it.each(NO_ASIGNABLES)("motivo %s -> partial: asigna la asignable, reporta la bloqueada", async (estado) => {
     const repo = repoBodega();
-    const service = new GuiaAsignacionService(repo, fakeZonaRepo(), gate({ o1: estado }), fakeIntentosEnLote() /* 276: la puerta del tope; 0 intentos = no interfiere */);
+    const service = new GuiaAsignacionService(repo, fakeZonaRepo(), gate({ o1: estado }), fakeIntentosEnLote() /* 276: la puerta del tope; 0 intentos = no interfiere */, reglasPaisFijas());
 
     const r = await service.asignarDesdeBodega({ ordenIds: ["o1", "o2"], mensajeroId: "m1" }, MAESTRO);
 
@@ -221,6 +222,7 @@ describe("R8 — asignarDesdeBodega (todo el lote recibe mensajero)", () => {
       fakeZonaRepo(),
       gate({ o1: "geocodificacion_agotada", o2: "direccion_no_geocodificable" }),
       fakeIntentosEnLote() /* 276: la puerta del tope; 0 intentos = no interfiere */,
+      reglasPaisFijas(),
     );
 
     const r = await service.asignarDesdeBodega({ ordenIds: ["o1", "o2"], mensajeroId: "m1" }, MAESTRO);
@@ -251,6 +253,7 @@ describe("R8 — asignarDesdeBodega (todo el lote recibe mensajero)", () => {
       fakeZonaRepo(),
       gate({ o2: "geocodificacion_en_curso" }),
       fakeIntentosEnLote() /* 276: la puerta del tope; 0 intentos = no interfiere */,
+      reglasPaisFijas(),
     );
 
     const r = await service.asignarDesdeBodega(
@@ -278,7 +281,7 @@ describe("R8 — asignarDesdeBodega (todo el lote recibe mensajero)", () => {
   it("el gate evalua el LOTE ENTERO (aqui todas reciben mensajero)", async () => {
     const repo = repoBodega();
     const g = gate();
-    const service = new GuiaAsignacionService(repo, fakeZonaRepo(), g, fakeIntentosEnLote() /* 276: la puerta del tope; 0 intentos = no interfiere */);
+    const service = new GuiaAsignacionService(repo, fakeZonaRepo(), g, fakeIntentosEnLote() /* 276: la puerta del tope; 0 intentos = no interfiere */, reglasPaisFijas());
 
     await service.asignarDesdeBodega({ ordenIds: ["o1", "o2"], mensajeroId: "m1" }, MAESTRO);
 
@@ -287,7 +290,7 @@ describe("R8 — asignarDesdeBodega (todo el lote recibe mensajero)", () => {
 
   it("todas asignables -> persiste con normalidad", async () => {
     const repo = repoBodega();
-    const service = new GuiaAsignacionService(repo, fakeZonaRepo(), gate(), fakeIntentosEnLote() /* 276: la puerta del tope; 0 intentos = no interfiere */);
+    const service = new GuiaAsignacionService(repo, fakeZonaRepo(), gate(), fakeIntentosEnLote() /* 276: la puerta del tope; 0 intentos = no interfiere */, reglasPaisFijas());
 
     const r = await service.asignarDesdeBodega({ ordenIds: ["o1", "o2"], mensajeroId: "m1" }, MAESTRO);
 
@@ -318,6 +321,7 @@ describe("R8 — asignarDesdeBodega (todo el lote recibe mensajero)", () => {
       fakeZonaRepo(),
       gate({ o1: "direccion_no_geocodificable" }),
       fakeIntentosEnLote() /* 276: la puerta del tope; 0 intentos = no interfiere */,
+      reglasPaisFijas(),
     );
 
     await service.asignarDesdeBodega({ ordenIds: ["o1", "o2"], mensajeroId: "m1" }, MAESTRO);
@@ -355,6 +359,7 @@ describe("400/R6-R7, R31-R33, R35 — asignarDesdeBodega con ordenes `asignable_
       fakeZonaRepo(),
       gate({ o1: "asignable_sin_ubicacion" }),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
 
     const r = await service.asignarDesdeBodega(
@@ -399,6 +404,7 @@ describe("400/R6-R7, R31-R33, R35 — asignarDesdeBodega con ordenes `asignable_
       fakeZonaRepo(),
       gate({ o1: "asignable_sin_ubicacion", o2: "asignable_sin_ubicacion" }),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
 
     const r = await service.asignarDesdeBodega(
@@ -421,6 +427,7 @@ describe("400/R6-R7, R31-R33, R35 — asignarDesdeBodega con ordenes `asignable_
       fakeZonaRepo(),
       gate({ o1: "asignable_sin_ubicacion", o3: "asignable_sin_ubicacion" }),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
 
     const r = await service.asignarDesdeBodega(
@@ -440,6 +447,7 @@ describe("400/R6-R7, R31-R33, R35 — asignarDesdeBodega con ordenes `asignable_
       fakeZonaRepo(),
       gate({ o1: "asignable_sin_ubicacion", o2: "direccion_no_geocodificable" }),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
 
     const r = await service.asignarDesdeBodega(
@@ -461,6 +469,7 @@ describe("400/R6-R7, R31-R33, R35 — asignarDesdeBodega con ordenes `asignable_
       fakeZonaRepo(),
       gate({ o1: "asignable_sin_ubicacion", o3: "asignable_sin_ubicacion" }),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
 
     const r = await service.asignarDesdeBodega(
@@ -477,7 +486,7 @@ describe("400/R6-R7, R31-R33, R35 — asignarDesdeBodega con ordenes `asignable_
 
   it("400/R33: sin ninguna orden sin ubicacion, la clave NO EXISTE en el resultado", async () => {
     const repo = repoBodega3();
-    const service = new GuiaAsignacionService(repo, fakeZonaRepo(), gate(), fakeIntentosEnLote());
+    const service = new GuiaAsignacionService(repo, fakeZonaRepo(), gate(), fakeIntentosEnLote(), reglasPaisFijas());
 
     const r = await service.asignarDesdeBodega(
       { ordenIds: ["o1", "o2", "o3"], mensajeroId: "m1" },
@@ -504,6 +513,7 @@ describe("400/R6-R7, R31-R33, R35 — asignarDesdeBodega con ordenes `asignable_
       fakeZonaRepo(),
       gate({ o1: "asignable_sin_ubicacion", o2: "geocodificacion_agotada" }),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
 
     const r = await service.asignarDesdeBodega(
@@ -537,6 +547,7 @@ describe("400/R6-R7, R31-R33, R35 — asignarDesdeBodega con ordenes `asignable_
         o3: "geocodificacion_en_curso",
       }),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
 
     const r = await service.asignarDesdeBodega(
@@ -620,6 +631,7 @@ describe("407/R1, R6-R8, R10-R11 — asignarDesdeBodega con la marca", () => {
       fakeZonaRepo(),
       gateConMarca({ o1: "direccion_no_geocodificable" }),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
 
     const r = await service.asignarDesdeBodega(
@@ -664,6 +676,7 @@ describe("407/R1, R6-R8, R10-R11 — asignarDesdeBodega con la marca", () => {
       fakeZonaRepo(),
       new AsignabilidadCoordenadasService(colaVacia()),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
 
     const conMarca = await service.asignarDesdeBodega(
@@ -683,6 +696,7 @@ describe("407/R1, R6-R8, R10-R11 — asignarDesdeBodega con la marca", () => {
       fakeZonaRepo(),
       new AsignabilidadCoordenadasService(colaVacia()),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     ).asignarDesdeBodega({ ordenIds: ["o1", "o2", "o3"], mensajeroId: "m1" }, MAESTRO);
 
     expect(sinMarca.status).toBe("partial");
@@ -699,6 +713,7 @@ describe("407/R1, R6-R8, R10-R11 — asignarDesdeBodega con la marca", () => {
       fakeZonaRepo(),
       gateConMarca({ o1: "direccion_no_geocodificable", o2: "geocodificacion_en_curso" }),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
 
     const r = await service.asignarDesdeBodega(
@@ -729,6 +744,7 @@ describe("407/R1, R6-R8, R10-R11 — asignarDesdeBodega con la marca", () => {
       fakeZonaRepo(),
       gateConMarca({ o2: "geocodificacion_en_curso" }),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
 
     const r = await service.asignarDesdeBodega(
@@ -756,6 +772,7 @@ describe("407/R1, R6-R8, R10-R11 — asignarDesdeBodega con la marca", () => {
       fakeZonaRepo(),
       gateConMarca({ o1: "direccion_no_geocodificable" }),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
 
     const r = await service.asignarDesdeBodega(
@@ -787,6 +804,7 @@ describe("407/R1, R6-R8, R10-R11 — asignarDesdeBodega con la marca", () => {
       fakeZonaRepo(),
       gateConMarca({ o1: "asignable_sin_ubicacion", o2: "direccion_no_geocodificable" }),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
 
     const r = await service.asignarDesdeBodega(
@@ -810,6 +828,7 @@ describe("407/R1, R6-R8, R10-R11 — asignarDesdeBodega con la marca", () => {
       fakeZonaRepo(),
       gateConMarca(),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
 
     const r = await service.asignarDesdeBodega(
@@ -843,6 +862,7 @@ describe("407/R1, R6-R8, R10-R11 — asignarDesdeBodega con la marca", () => {
         o3: "geocodificacion_encolada",
       }),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
 
     const r = await service.asignarDesdeBodega(
@@ -880,7 +900,7 @@ describe("407/R6-R7 — la marca NO desactiva ninguna otra guarda", () => {
   it("un actor sin acceso total -> forbidden, y el gate ni se invoca", async () => {
     const repo = repoBodega2();
     const g = gateConMarca({ o1: "direccion_no_geocodificable" });
-    const service = new GuiaAsignacionService(repo, fakeZonaRepo(), g, fakeIntentosEnLote());
+    const service = new GuiaAsignacionService(repo, fakeZonaRepo(), g, fakeIntentosEnLote(), reglasPaisFijas());
 
     const r = await service.asignarDesdeBodega(CON_MARCA, {
       usuarioId: "u-sat",
@@ -897,7 +917,7 @@ describe("407/R6-R7 — la marca NO desactiva ninguna otra guarda", () => {
       findMensajerosBloqueadosPorCierres: vi.fn(async () => new Set<string>(["m1"])),
     });
     const g = gateConMarca({ o1: "direccion_no_geocodificable" });
-    const service = new GuiaAsignacionService(repo, fakeZonaRepo(), g, fakeIntentosEnLote());
+    const service = new GuiaAsignacionService(repo, fakeZonaRepo(), g, fakeIntentosEnLote(), reglasPaisFijas());
 
     const r = await service.asignarDesdeBodega(CON_MARCA, MAESTRO);
 
@@ -919,7 +939,7 @@ describe("407/R6-R7 — la marca NO desactiva ninguna otra guarda", () => {
       ]),
     });
     const g = gateConMarca({ o1: "direccion_no_geocodificable" });
-    const service = new GuiaAsignacionService(repo, fakeZonaRepo(), g, fakeIntentosEnLote());
+    const service = new GuiaAsignacionService(repo, fakeZonaRepo(), g, fakeIntentosEnLote(), reglasPaisFijas());
 
     const r = await service.asignarDesdeBodega(CON_MARCA, MAESTRO);
 
@@ -939,6 +959,7 @@ describe("407/R6-R7 — la marca NO desactiva ninguna otra guarda", () => {
       g,
       // 276: el umbral por defecto es 3 intentos vigentes.
       fakeIntentosEnLote({ o1: 3 }),
+      reglasPaisFijas(),
     );
 
     const r = await service.asignarDesdeBodega(CON_MARCA, MAESTRO);

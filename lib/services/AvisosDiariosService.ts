@@ -11,7 +11,7 @@ import type {
 } from "@/lib/interfaces/services/IReprogramadasRetenidasService";
 import { reintentosConfig } from "@/lib/config/reintentos";
 import { alcanzaElTope } from "@/lib/types/tope-intentos";
-import { fechaCalendarioCR, startOfDayCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendarioCR, startOfDayCR, ZONA_CR } from "@/lib/utils/fecha-cr";
 import type { PlazoNovedades } from "@/lib/notificaciones/emitir";
 import {
   emitirBestEffort,
@@ -133,7 +133,8 @@ export class AvisosDiariosService implements IAvisosDiariosService {
     diaCR: string,
     fallos: { total: number },
   ): Promise<{ total: number; ambitos: number; emitidos: number }> {
-    const resumen = await this.retenidas.resumen(startOfDayCR(now));
+    // SLT-42 pendiente T5.5: zona de la empresa
+    const resumen = await this.retenidas.resumen(startOfDayCR(now), ZONA_CR);
     if (resumen.total === 0) return { total: 0, ambitos: 0, emitidos: 0 }; // R10
 
     // Por ambito: clave `central` o el `zonaId`. Se suma lo de los cierres Y lo de «sin cierre».

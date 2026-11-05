@@ -21,6 +21,7 @@ import type {
 } from "@/lib/interfaces/services/IAsignabilidadCoordenadasService";
 
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Feature 34 — service de la asignacion satelite. Dobles de repo (sin DB/HTTP),
 // patron recepcion-satelite-service.test.ts. Cubre R3, R7, R8, R9, R10, R11, R12,
 // R13, R14.
@@ -115,7 +116,7 @@ function newService(
   repo: RepoMethods = fakeRepo(),
   gate: IAsignabilidadCoordenadasService = gateTodoAsignable(),
 ) {
-  return new AsignacionSateliteService(repo as unknown as IOrdenRepository, gate, fakeIntentosEnLote() /* 276: la puerta del tope; 0 intentos = no interfiere */);
+  return new AsignacionSateliteService(repo as unknown as IOrdenRepository, gate, fakeIntentosEnLote() /* 276: la puerta del tope; 0 intentos = no interfiere */, reglasPaisFijas());
 }
 
 describe("AsignacionSateliteService.asignar", () => {

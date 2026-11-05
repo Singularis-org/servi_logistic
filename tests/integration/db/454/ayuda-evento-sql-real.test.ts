@@ -8,6 +8,7 @@ import { OrdenNotaService } from "@/lib/services/OrdenNotaService";
 import { TraspasoMensajeroService } from "@/lib/services/TraspasoMensajeroService";
 import { HAY_BASE_DE_DATOS } from "../_postgres-real";
 import { conEscenario, prepararMundo, type Mundo } from "./_escenario";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FICHA 454 (T1.15, design §4.2; R21-R28) — LA AYUDA A LA TIENDA COMO HECHO, por los servicios
@@ -97,7 +98,7 @@ describeSiHayBase("454/T1.15 — la ayuda como evento (Postgres real)", () => {
       // El destino necesita vehiculo (regla del traspaso, como en C14).
       const vehiculo = await e.tx.vehiculo.findFirstOrThrow({ select: { id: true } });
       await e.tx.usuario.update({ where: { id: e.mensajero2Id }, data: { vehiculoId: vehiculo.id } });
-      const traspaso = await new TraspasoMensajeroService(e.s.ordenRepo).traspasar(
+      const traspaso = await new TraspasoMensajeroService(e.s.ordenRepo, undefined, undefined, reglasPaisFijas()).traspasar(
         { ordenIds: [eo.ordenId], mensajeroDestinoId: e.mensajero2Id, motivo: "reparto" },
         e.actorMaestro,
       );

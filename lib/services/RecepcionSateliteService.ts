@@ -31,8 +31,9 @@ import {
   salidaAReparto,
   terminoDeBusqueda,
 } from "@/lib/utils/filtros-listado-ordenes";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 
-import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Estado de ORIGEN de la recepcion (feature 30) y destino tras recibir (esta
 // feature). Un solo estado de destino; el nombre de zona se deriva de orden.zonaId
 // para el display (R9/R20).
@@ -99,7 +100,23 @@ export class RecepcionSateliteService implements IRecepcionSateliteService {
      * inyectarlo es lo que permite fijar ese rango en los tests sin congelar el reloj global.
      */
     private readonly ahora: () => Date = () => new Date(),
+    /**
+     * SLT-42 (R22): la zona del pais de la empresa, con la que se leen los filtros de fecha de
+     * creacion. Solo se consulta si el listado filtra por fecha.
+     */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
+
+  /**
+   * SLT-42 (R22, R28): la zona del pais de la empresa SOLO si el filtro trae un borde de fecha de
+   * creacion; sin el, `null` y no se consulta.
+   */
+  private async zonaSiFiltraPorCreacion(
+    input: ListarOrdenesBodegaCompletoInput,
+  ): Promise<string | null> {
+    if (!input.created_preset && !input.created_desde && !input.created_hasta) return null;
+    return zonaDeLaEmpresa(this.reglasPais, "RecepcionSateliteService");
+  }
 
   /**
    * Pedido humano (2026-08-19) — la entrada publica del listado traducida al criterio del
@@ -113,9 +130,10 @@ export class RecepcionSateliteService implements IRecepcionSateliteService {
   private filtroDeRepo(
     input: ListarOrdenesBodegaCompletoInput,
     zonaId: string,
+    zona: string | null,
   ): RecepcionSateliteFiltro {
-    // SLT-42 pendiente T5.3: zona de la empresa
-    const creacion = rangoCreacion(input, this.ahora(), ZONA_CR);
+    // SLT-42 (R22): en la zona del pais de la empresa; `null` = no hay filtro de fecha.
+    const creacion = zona === null ? undefined : rangoCreacion(input, this.ahora(), zona);
     const termino = input.q ? terminoDeBusqueda(input.q) : undefined;
     // FICHA 370: el criterio de «ya salio a reparto», traducido por el MISMO util que usa
     // `/ordenes`. Aqui esta el grueso del valor — 44 de las 48 ordenes «nuevas» medidas en
@@ -256,7 +274,7 @@ export class RecepcionSateliteService implements IRecepcionSateliteService {
     }
 
     const { items: rows, total } = await this.repo.findRecepcionSatelitePaginada(
-      this.filtroDeRepo(input, zonaId),
+      this.filtroDeRepo(input, zonaId, await this.zonaSiFiltraPorCreacion(input)),
       rangoDePagina(input),
     );
 
@@ -323,7 +341,7 @@ export class RecepcionSateliteService implements IRecepcionSateliteService {
     // El MISMO criterio que la pagina, del mismo traductor: el archivo no puede filtrar
     // distinto que la pantalla (R16).
     const conjunto = await this.repo.findRecepcionSateliteCompleta(
-      this.filtroDeRepo(input, zonaId),
+      this.filtroDeRepo(input, zonaId, await this.zonaSiFiltraPorCreacion(input)),
     );
 
     const limite = descargaConfig.MAX_FILAS;
@@ -374,7 +392,7 @@ export class RecepcionSateliteService implements IRecepcionSateliteService {
     if (zonaId === null) return { status: "ok", ids: [] };
 
     const ids = await this.repo.findIdsVigentesEnBodega(
-      this.filtroDeRepo(input, zonaId),
+      this.filtroDeRepo(input, zonaId, await this.zonaSiFiltraPorCreacion(input)),
       input.ids,
     );
     return { status: "ok", ids };

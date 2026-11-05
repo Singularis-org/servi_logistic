@@ -194,6 +194,8 @@ function cierreService(repo: ReturnType<typeof cierreRepo>, notificar: CierreNot
     { createSignedUrls: vi.fn().mockResolvedValue({}) } as never,
     conResolvePagosViejo({ resolvePagoTarifa: vi.fn().mockResolvedValue(null) }) as never,
     notificar,
+    undefined,
+    reglasPaisFijas(),
   );
 }
 
