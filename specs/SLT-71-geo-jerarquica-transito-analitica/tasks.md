@@ -93,7 +93,7 @@
 
 ## T7 — Guardias [T3, T4]
 
-- [ ] **T7.1** [P] Ampliar `tests/unit/guards/geografia-lecturas-sin-nodo-fk.guardia.test.ts`
+- [x] **T7.1** [P] Ampliar `tests/unit/guards/geografia-lecturas-sin-nodo-fk.guardia.test.ts`
   (design §6) y `tests/integration/db/geo-lecturas-sin-backfill.test.ts` (R14). **Hecho:** pasan,
   con la contraprueba de la guardia.
 - [ ] **T7.2** [P] Ampliar el antivacío de

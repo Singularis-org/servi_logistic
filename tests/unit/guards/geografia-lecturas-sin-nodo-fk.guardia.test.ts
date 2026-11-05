@@ -189,3 +189,71 @@ describe("SLT-65 R19 — las lecturas de SLT-65 no leen la columna nueva (archiv
     ).toEqual([]);
   });
 });
+
+// =============================================================================================
+// SLT-71 (T7.1; R14; design §6) — las lecturas de analitica y de transito que pasan al catalogo
+// =============================================================================================
+
+/**
+ * Los archivos de SLT-71, ENTEROS, con su ancla antivacio: la llamada que prueba que el archivo lee
+ * el catalogo de verdad (`lugaresDelFiltro(` en las lecturas con facetas, `deLaEmpresa()` en transito
+ * y en el modulo que resuelve las facetas). El lugar de la orden sale de `distrito_id`/`canton_id`
+ * (`sqlLugarEn`), nunca de `orden.nodo_geografico_id`: asi la lectura no depende del backfill de
+ * SLT-43 (decision «¿Lugar de una orden?»).
+ */
+const LECTURAS_SLT71: Record<string, string[]> = {
+  "lib/repositories/InformeTransitoRepository.ts": ["async filasEnAlerta(", "deLaEmpresa()"],
+  "lib/repositories/ConteoPorStatusRepository.ts": ["lugaresDelFiltro("],
+  "lib/repositories/ConteoDevolucionesRepository.ts": ["lugaresDelFiltro("],
+  "lib/repositories/ConteoCargadasPorDiaRepository.ts": ["lugaresDelFiltro("],
+  "lib/repositories/CicloVidaRepository.ts": ["lugaresDelFiltro("],
+  "lib/repositories/ConteoProductosRepository.ts": ["lugaresDelFiltro("],
+  "lib/repositories/DineroProductosRepository.ts": ["lugaresDelFiltro("],
+  "lib/repositories/CohorteCargaRepository.ts": ["lugaresDelFiltro("],
+  "lib/repositories/ConteoHoyGestionRepository.ts": ["lugaresDelFiltro("],
+  "lib/repositories/_shared/lugares-del-filtro.ts": ["export async function lugaresDelFiltro(", "deLaEmpresa()"],
+};
+
+/** Las anclas de `marcas` que no estan en `codigo`: un archivo sin su ancla no se esta mirando. */
+export function marcasQueFaltan(codigo: string, marcas: readonly string[]): string[] {
+  return marcas.filter((m) => !codigo.includes(m));
+}
+
+describe("SLT-71 R14 — el barrido de SLT-71 se prueba a si mismo", () => {
+  it("CONTRAPRUEBA: una lectura con faceta que filtra por la columna nueva se detecta", () => {
+    const repositorio = [
+      "async contarPorStatus(consulta) {",
+      "  const lugares = await lugaresDelFiltro(() => this.catalogoGeografico(), consulta.filtro);",
+      '  return this.prisma.$queryRaw`SELECT 1 FROM "orden" o WHERE o."nodo_geografico_id" = ANY(${ids})`;',
+      "}",
+    ].join("\n");
+    expect(marcasQueFaltan(repositorio, ["lugaresDelFiltro("])).toEqual([]);
+    expect(mencionesDelNodoEn(repositorio)).toEqual(["nodo_geografico_id"]);
+  });
+
+  it("CONTRAPRUEBA: un archivo que ya no carga el catalogo pierde su ancla y el antivacio lo dice", () => {
+    expect(marcasQueFaltan('SELECT 1 FROM "orden" o WHERE o."provincia_id" IN (...)', ["lugaresDelFiltro("])).toEqual([
+      "lugaresDelFiltro(",
+    ]);
+  });
+});
+
+describe("SLT-71 R14 — las lecturas de SLT-71 no leen la columna nueva (archivos enteros)", () => {
+  it("el barrido lee de verdad (anti-vacuidad): cada archivo existe, es largo y tiene su ancla", () => {
+    for (const [rel, marcas] of Object.entries(LECTURAS_SLT71)) {
+      const codigo = leer(rel);
+      expect(codigo.length, rel).toBeGreaterThan(300);
+      expect(marcasQueFaltan(codigo, marcas), rel).toEqual([]);
+    }
+    expect(Object.keys(LECTURAS_SLT71)).toHaveLength(10);
+  });
+
+  it("ni transito, ni los cuatro conteos y ciclo de vida, ni las cuatro que comparten el recorte, ni `lugares-del-filtro` nombran la columna", () => {
+    const hallazgos = Object.keys(LECTURAS_SLT71).flatMap((rel) => mencionesDelNodoEn(leer(rel)).map((m) => `${rel}: ${m}`));
+    expect(
+      hallazgos,
+      "el lugar de una orden sale de `COALESCE(distrito_id, canton_id)` (`sqlLugarEn`) y los nombres de " +
+        "transito de `canton_id`/`distrito_id` en el catalogo: asi la lectura no depende del backfill de SLT-43 (R14)",
+    ).toEqual([]);
+  });
+});

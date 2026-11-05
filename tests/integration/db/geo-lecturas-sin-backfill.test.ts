@@ -3,22 +3,37 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
+import { prepararConteoEntregas, type ConsultaConteoEntregas } from "@/lib/analytics/entregas-conteo";
+import { prepararConsultaProductos } from "@/lib/analytics/productos-consulta";
 import { comoPlataforma, conEmpresa } from "@/lib/db/contexto-empresa";
 import {
   CierreDiaRepository,
   SNAPSHOT_SELECT,
   leerDescriptivosDeOrdenes,
 } from "@/lib/repositories/CierreDiaRepository";
+import { CicloVidaRepository } from "@/lib/repositories/CicloVidaRepository";
 import { CoberturaRepository } from "@/lib/repositories/CoberturaRepository";
+import { CohorteCargaRepository } from "@/lib/repositories/CohorteCargaRepository";
+import { ConteoCargadasPorDiaRepository } from "@/lib/repositories/ConteoCargadasPorDiaRepository";
+import { ConteoDevolucionesRepository } from "@/lib/repositories/ConteoDevolucionesRepository";
+import { ConteoEntregasRepository } from "@/lib/repositories/ConteoEntregasRepository";
+import { ConteoHoyGestionRepository } from "@/lib/repositories/ConteoHoyGestionRepository";
+import { ConteoPorStatusRepository } from "@/lib/repositories/ConteoPorStatusRepository";
+import { ConteoProductosRepository } from "@/lib/repositories/ConteoProductosRepository";
+import { DineroProductosRepository } from "@/lib/repositories/DineroProductosRepository";
+import { InformeTransitoRepository } from "@/lib/repositories/InformeTransitoRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
 import { ZonaRepository, planificarReconciliacion } from "@/lib/repositories/ZonaRepository";
 import type { NivelGeografico } from "@/lib/types/geografia-nodo";
+import { estadosIncluidos, PARAMETROS_POR_DEFECTO } from "@/lib/whatsapp-envios/informes/transito/parametros";
+import type { ConsultaTransito } from "@/lib/whatsapp-envios/informes/transito/tipos";
 import { comoApp } from "@/tests/fabricas/organizaciones";
 import { crearBasePropia43, type BasePropia43 } from "./_fixtures/base-propia-43";
 import { TRIGGERS_DE_COLUMNAS_NUEVAS, vaciarColumnasNuevas } from "./_fixtures/geo-43";
 import { crearEscenarioGeo44, type EmpresaGeo44 } from "./_fixtures/geo-44";
 import { crearEscenarioGeo65, type EmpresaGeo65, type EscenarioGeo65 } from "./_fixtures/geo-65";
+import { crearEscenarioGeo71, type EmpresaGeo71, type EscenarioGeo71 } from "./_fixtures/geo-71";
 import { comoDueno, revertida } from "./_fixtures/pais-20";
 import { HAY_BASE_DE_DATOS, clienteConSavepoint, type TxDeTest } from "./_postgres-real";
 
@@ -209,6 +224,59 @@ describeSiHayBase("SLT-44 R12 — las lecturas no leen `nodo_geografico_id` (bas
       expect(r.desviada).toEqual(r.llena);
     }, 300_000);
   });
+
+  // SLT-71 (T7.1; R14; design §6, §11) — LAS LECTURAS DE ANALITICA (CON FACETA GEOGRAFICA), LAS QUE
+  // COMPARTEN SU RECORTE Y LAS FILAS EN ALERTA DE TRANSITO TAMPOCO DEPENDEN DEL BACKFILL. Mismo metodo,
+  // sobre el escenario de `geo-71.ts`: `orden.nodo_geografico_id` llena, en NULL (triggers apagados) y
+  // desviada al canton retirado.
+  describe("SLT-71 R14 — analitica con faceta y transito dan lo mismo con `nodo_geografico_id` en NULL o desviado", () => {
+    it("las nueve lecturas de analitica por provincia, canton, distrito y combinacion, y transito: llena = en NULL = desviada", async () => {
+      const base: PrismaClient = propia!.prisma;
+      const r = await revertida(base, async (tx) => {
+        const e = await crearEscenarioGeo71(tx);
+        const antes = await estadoDeLas3Columnas(tx);
+        const ahora = new Date();
+        const llena = await leerLasDe71(tx, e, ahora);
+
+        await vaciarColumnasNuevas(tx, {
+          orden: await idsDe65(tx, "orden"),
+          zonaDistrito: await idsDe65(tx, "zona_distrito"),
+          distritoZonaEspecial: await idsDe65(tx, "distrito_zona_especial"),
+        });
+        for (const { tabla, trigger } of TRIGGERS_DE_COLUMNAS_NUEVAS) {
+          await tx.$executeRawUnsafe(`ALTER TABLE ${tabla} DISABLE TRIGGER ${trigger}`);
+        }
+        const trasVaciar = await estadoDeLas3Columnas(tx);
+        const enNull = await leerLasDe71(tx, e, ahora);
+
+        // Desviada: cada orden de cada empresa apunta al canton retirado de su empresa. Si una lectura
+        // filtrara o nombrara por la columna, las facetas y los nombres de transito cambiarian.
+        for (const empresa of [e.cr, e.xa]) {
+          await tx.$executeRawUnsafe(
+            `UPDATE orden SET nodo_geografico_id = $1 WHERE organizacion_id = $2`,
+            empresa.base.base.geo.cantonRetiradoId,
+            empresa.base.base.empresaId,
+          );
+        }
+        const desviada = await leerLasDe71(tx, e, ahora);
+        return { antes, trasVaciar, llena, enNull, desviada };
+      });
+
+      // Anti-vacuidad: la columna de `orden` estaba llena y despues no; cada empresa lee algo.
+      expect(r.antes.orden.llenas).toBeGreaterThanOrEqual(30);
+      expect(r.trasVaciar.orden).toEqual({ llenas: 0, vacias: r.antes.orden.llenas + r.antes.orden.vacias });
+      for (const empresa of ["cr", "xa"] as const) {
+        const l = r.llena[empresa];
+        expect(l.transito, `${empresa}: transito`).toHaveLength(2);
+        expect(l.transito.every((f) => f.canton.length > 0)).toBe(true);
+        expect(l.analitica.length).toBeGreaterThan(40);
+        expect(l.totalPorStatus, `${empresa}: desglose por estado con faceta`).toBeGreaterThan(0);
+      }
+
+      expect(r.enNull).toEqual(r.llena);
+      expect(r.desviada).toEqual(r.llena);
+    }, 300_000);
+  });
 });
 
 /** Cuantas filas de cada tabla tienen la columna llena y cuantas en NULL. */
@@ -381,4 +449,79 @@ async function leerLas7DeUna(tx: TxDeTest, e: EmpresaGeo65) {
 
 async function leerLas7(tx: TxDeTest, e: EscenarioGeo65) {
   return { cr: await leerLas7DeUna(tx, e.cr), xa: await leerLas7DeUna(tx, e.xa) };
+}
+
+// ---------------------------------------------------------------------------------------------
+// SLT-71 — las lecturas de analitica y de transito, como la app
+// ---------------------------------------------------------------------------------------------
+
+const MAESTRO_71 = { usuarioId: "geo-lecturas-sin-backfill", rol: "maestro" } as const;
+
+function consulta71(raw: object): ConsultaConteoEntregas {
+  const p = prepararConteoEntregas(raw, MAESTRO_71);
+  if (p.status !== "ok") throw new Error(`consulta de prueba no concedida: ${p.status}`);
+  return p.consulta;
+}
+
+/** Las facetas de una empresa de `geo-71`: un nodo de cada nivel, otra provincia y una combinacion. */
+function facetasDe71(e: EmpresaGeo71): object[] {
+  const g = e.base.base.geo;
+  return [
+    { provincia_id: [g.provinciaId] },
+    { provincia_id: [e.segunda.provinciaId], rango: "mes" },
+    { canton_id: [g.cantonId] },
+    { canton_id: [g.cantonRetiradoId] },
+    { distrito_id: [g.distritoCentralId, g.distritoBajoCantonRetiradoId] },
+    { provincia_id: [g.provinciaId], canton_id: [g.cantonId], rango: "mes" },
+  ];
+}
+
+/** Las nueve lecturas con cada faceta y las filas en alerta de transito, de una empresa. */
+async function leerLasDe71DeUna(tx: TxDeTest, e: EmpresaGeo71, ahora: Date) {
+  await comoApp(tx, e.base.base.empresaId);
+  try {
+    return await conEmpresa(e.base.base.empresaId, async () => {
+      const c = clienteConSavepoint(tx);
+      // Repositorios nuevos en cada lectura: la memoria del catalogo es por instancia (R13, R16).
+      const analitica: unknown[] = [];
+      let totalPorStatus = 0;
+      for (const raw of facetasDe71(e)) {
+        const q = consulta71(raw);
+        const porStatus = await new ConteoPorStatusRepository(c).contarPorStatus(q);
+        totalPorStatus += porStatus.reduce((s, f) => s + f.conteo, 0);
+        analitica.push(
+          porStatus,
+          await new ConteoEntregasRepository(new ConteoPorStatusRepository(c)).contar(q),
+          await new ConteoCargadasPorDiaRepository(c).contarCargadasPorDia(q),
+          await new ConteoDevolucionesRepository(c).contarDevolucionesPorCausa(q),
+          await new CicloVidaRepository(c).acumularCiclos(q),
+        );
+        const productos = prepararConsultaProductos(raw, MAESTRO_71);
+        if (productos.status !== "ok") throw new Error(`consulta de productos no concedida: ${productos.status}`);
+        analitica.push(
+          await new ConteoProductosRepository(c).contarProductos(productos.consulta),
+          await new DineroProductosRepository(c).leerDineroPorOrden(productos.consulta),
+        );
+        if ("rango" in raw) analitica.push(await new CohorteCargaRepository(c).contarCohortes(q));
+        const dia = consulta71({ rango: "dia" }).rango;
+        if (dia !== null) analitica.push(await new ConteoHoyGestionRepository(c).contarDeHoy(q, dia));
+      }
+      const z = e.base.base.zonas;
+      const consulta: ConsultaTransito = {
+        hito: PARAMETROS_POR_DEFECTO.hito,
+        estados: estadosIncluidos(PARAMETROS_POR_DEFECTO),
+        cortes: [z.centralId, z.norteId, z.surId].map((zonaId) => ({ zonaId, corte: ahora })),
+      };
+      const transito = [...(await new InformeTransitoRepository(c).filasEnAlerta(consulta))].sort((a, b) =>
+        a.ordenId.localeCompare(b.ordenId),
+      );
+      return { analitica, totalPorStatus, transito };
+    });
+  } finally {
+    await comoDueno(tx);
+  }
+}
+
+async function leerLasDe71(tx: TxDeTest, e: EscenarioGeo71, ahora: Date) {
+  return { cr: await leerLasDe71DeUna(tx, e.cr, ahora), xa: await leerLasDe71DeUna(tx, e.xa, ahora) };
 }
