@@ -47,7 +47,7 @@ Reglas de todas las tandas:
 
 Se espera **cero código de producción**. Un rojo aquí es un defecto real: se para y se avisa, sin arreglarlo por encima.
 
-- [ ] **T2.1** `tests/integration/db/tarifas-valor-propio-caminos.test.ts`, con los moldes de `tarifas-flexibles-snapshot` y
+- [x] **T2.1** `tests/integration/db/tarifas-valor-propio-caminos.test.ts`, con los moldes de `tarifas-flexibles-snapshot` y
   `-base-congelada`. Escenario: empresa activada; mensajero M con vehículo y orden en un distrito de grupo; valores de los
   cinco niveles presentes (propio 501, grupo+vehículo 502, grupo 503, zona+vehículo 504, zona 505).
   - **R12:** en **vista previa, solicitud, corte, re-solicitud 477 y corrección 398**, paga 501 y congela nivel `mensajero`
