@@ -77,7 +77,7 @@
 
 ## T5 — Script de equivalencia [T3, T4]
 
-- [ ] **T5.1** `scripts/geo-equivalencia-analitica.ts` con los bloques de design §8, y
+- [x] **T5.1** `scripts/geo-equivalencia-analitica.ts` con los bloques de design §8, y
   `pnpm geo:equivalencia-analitica` en `package.json`. **Hecho:** corre contra la base de tests
   local y sale 0 con el fixture.
 - [ ] **T5.2** `tests/integration/db/geo-equivalencia-analitica.test.ts` (R17, R18), con la

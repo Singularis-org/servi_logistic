@@ -29,7 +29,8 @@
     "geo:backfill": "tsx scripts/geo-backfill-nodo.ts",
     "geo:equivalencia-dinero": "tsx scripts/geo-equivalencia-dinero.ts",
     "geo:equivalencia-consultas": "tsx scripts/geo-equivalencia-consultas.ts",
-    "geo:explain-consultas": "tsx scripts/geo-explain-consultas.ts"
+    "geo:explain-consultas": "tsx scripts/geo-explain-consultas.ts",
+    "geo:equivalencia-analitica": "tsx scripts/geo-equivalencia-analitica.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
