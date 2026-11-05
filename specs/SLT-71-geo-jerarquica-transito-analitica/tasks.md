@@ -45,7 +45,7 @@
 
 ## T3 — Analítica [T2]
 
-- [ ] **T3.1** [P] `ConteoPorStatusRepository` (sitio 2) y `ConteoDevolucionesRepository` (sitio 4):
+- [x] **T3.1** [P] `ConteoPorStatusRepository` (sitio 2) y `ConteoDevolucionesRepository` (sitio 4):
   `lugares` en el constructor de condiciones, el catálogo por instancia y `lugaresDelFiltro` en el
   método (design §3.3–3.4). **Hecho:** typecheck en verde. `conteo-por-status-sql.test.ts`,
   `conteo-devoluciones.test.ts` y `conteo-entregas-*.test.ts` pasan, cambiando solo lo de design
