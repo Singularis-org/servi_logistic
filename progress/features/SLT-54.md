@@ -24,6 +24,12 @@ Ninguna.
 - B (lecturas, referencia, retiro de vías viejas): f215c6aa. La pantalla vieja no lee ni guarda precios hasta T4.1 (`tarifas-retiradas.ts` provisional). Decisiones del dev por revisar: `cargarZonaTarifas` con `tiendaId?`; `cargarPantallaTarifas` con `preciosTienda`; «Toda la zona» con distritos marcados y sin marcar da «Varía».
 - C (huecos de servidor): addf8afb. Mirar en `gate-completo`: `detalle-movimiento-cierre-postgres` y `detalle-en-lote-464` (WHERE del viejo, en el baseline local). Para T5.3: el recorte de zona retira `item.fulfillment`, así que la satélite no lo recibe en «recibidas». R64 añade `conceptoCongeladoPorResultado`.
 - D (pantalla): 859ce94d; medida contra la maqueta en claro, oscuro y móvil; 42/42 mutaciones. A vigilar: en `next dev`, abrir la URL tras el login dio 500 de `useToast` en 6 de 7 intentos (se recupera en cliente); en `next start`, 3 de 3 en 200. Sin causa raíz.
+- E (huecos de pantalla): 9667bb15; 37/37 mutaciones. `useToast` no reproducido (0 de 20 en `next dev`). Gate sobre `servi_gate_slt54`: INIT_EXIT=0, 19.080 tests, 4.601 guardias. Abiertos: encabezado de la descarga y `PAGO_TIENDA_NOTA`; «1 grupo» difiere de la maqueta por R44. Incidente: un `-t` sin comillas lanzó parte de la suite con la RLS de `grupo_distritos` apagada ~150 s (restaurada, `rls=true` comprobado) y dejó filas de prueba en la base LOCAL (`organizacion` +3: `demo-qa-a`, `demo-qa-b`, `e2e-sl43-real-…`, en 20 tablas). No se borraron: no se pueden atribuir con certeza. Decide Carlos.
+- F (E2E y cierre): bcab441d. `dinero` 43/0/0, `reparto` 16/0/0, `aislamiento` 86/0/0 (1.ª corrida 85/1/0 por regresión en `zonas-crear-sin-costos`, arreglada). `e2e-sin-saltos` con `EXCEPCIONES` vacía. Destapó un defecto en R38 (lo digitado mientras guarda se perdía), arreglado con test. Abierto: rótulo «Ingreso de bodega por devoluciones a origen» con el modelo nuevo (el total incluye 120 de una entrega).
+
+## Medición T6.3 (R11)
+- Producción, 2026-11-04 (lectura ejecutada por Carlos con `!`): una empresa, `tarifa_valor`=0, `grupo_distritos`=0. Sin repetir: se re-mide antes del merge.
+- Base local, 2026-11-05: 11 empresas, 0 con `tarifa_valor`, 0 grupos, 0 activadas.
 
 ## Modelos (overrides)
 Subagentes en Opus.
