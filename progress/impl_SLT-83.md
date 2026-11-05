@@ -824,3 +824,140 @@ servidor no ve el correo como «no configurado»); queda para que lo confirme CI
 corrieron sin esa dependencia.
 
 **Veredicto T15:** el E2E de R28 pasa en local dos veces seguidas y los tres E2E vecinos siguen en verde.
+
+## T16 — Trazabilidad y cierre
+
+### Mapa R → test
+
+Comprobado con `test -f` y `grep` de `R<n>` en cada archivo (2026-11-04), no copiado del design. Todos los
+archivos existen en la rama.
+
+| R | Test(s) |
+|---|---|
+| R1 | `tests/unit/types/planes-schema-costo-porcentual.test.ts` (fijo y porcentual a la vez → `validation_error` en las tres entradas); `tests/unit/services/planes-service-costo-porcentual.test.ts` (sin llamar al repositorio); `tests/integration/db/plan-costo-porcentual-escritura.test.ts` («rechaza con 23514 un plan fijo y porcentual a la vez», «R1, R2: … no escriben nada») |
+| R2 | los mismos tres archivos: rangos del porcentaje (0, 0.01, 100, 100.01, 2.355, -1, vacío) y del mínimo en el esquema y el servicio; los `CHECK` (porcentaje fuera de rango, mínimo negativo, mínimo sin porcentaje) en `plan-costo-porcentual-escritura` |
+| R3 | `tests/unit/services/planes-service-costo-porcentual.test.ts` («%s: crear un plan porcentual → forbidden sin llamar al repositorio», «… editar de inmediato o programar …», «forbidden va antes que zod») |
+| R4 | `tests/unit/planes/rastro-costo-porcentual.test.ts` (canónico, líneas de «qué cambia», textos aprobados «cobra porcentual»); `tests/integration/db/plan-costo-porcentual-escritura.test.ts` (crear, edición inmediata, programada y aplicada, edición sin cambios); `tests/components/PlanEmpresaCostoPorcentual.test.tsx` («el historial del detalle pinta el alta porcentual y el paso de fijo a porcentual») |
+| R5 | `tests/unit/planes/costo-concreto-porcentual.test.ts`; `tests/unit/services/planes-service-costo-porcentual.test.ts` (`plan_sin_costo` con base «sin precio»; `ok` con base monto, con y sin mínimo; asignables; custom) |
+| R6 | `tests/integration/db/cobro-plataforma-porcentual.test.ts` («R6: un alta de tres órdenes…», §3.5); E2E `e2e/planes-costo-porcentual.spec.ts` (R28.4: condiciones congeladas, ningún movimiento) |
+| R7 | `cobro-plataforma-porcentual.test.ts` («R7: con excepción…», «R7: con plan fijo o vacío…»); SL-40/SLT-66 sin cambio de aserciones (`cobro-plataforma-cargos.test.ts`, `cobro-plataforma-plan.test.ts`) |
+| R8 | `cobro-plataforma-porcentual.test.ts` («R8: entrar a %s…» ×3, «R8: una orden que nace en %s…» ×3, nace anulada); E2E R28.5 |
+| R9 | `tests/integration/db/cobro-plataforma-porcentual-importe.test.ts` (9 casos sobre la función y 9 sobre cargos reales, con mitades exactas) |
+| R10 | `cobro-plataforma-porcentual.test.ts` («R10: el cargo porcentual no lleva el descuento anual…») |
+| R11 | `cobro-plataforma-porcentual.test.ts` («R11: cambie lo que cambie…», «R11: una orden creada con modo fijo…») |
+| R12 | `cobro-plataforma-porcentual.test.ts` («R12: salir de un estado final revierte por el mismo importe…», «R12: pasar de un estado final a otro…») |
+| R13 | `cobro-plataforma-porcentual.test.ts` («R13: cambiar el monto_cobrar…», último paso de §3.5) |
+| R14 | `cobro-plataforma-porcentual.test.ts` («R14: anular sin cargo vigente…», «R14: anular con cargo vigente…») |
+| R15 | `cobro-plataforma-porcentual.test.ts` («R15: el invariante se cumple tras cada paso…», «R15: una sentencia que cambia estado y anulación…») |
+| R16 | `cobro-plataforma-porcentual.test.ts` («R16: si la operación no se confirma…») |
+| R17 | `tests/integration/db/cobro-plataforma-porcentual-aislamiento.test.ts` (42501 al escribir condiciones y movimientos; lectura acotada; SL017 entre empresas); guardias `tests/unit/guards/{organizacion-en-modelos,rls-por-empresa,fk-misma-empresa}.guardia.test.ts` |
+| R18 | `cobro-plataforma-porcentual.test.ts` («R18: la deuda de la wallet sube…», deuda en cada paso de §3.5); E2E R28.4/R28.5 (deuda «₡0» → «₡2.000») |
+| R19 | `tests/integration/db/cobro-porcentual-estados-finales.test.ts` |
+| R20 | `tests/components/PlanFormCostoPorcentual.test.tsx` (10 casos) |
+| R21 | `tests/unit/planes/mensajes-costo-porcentual.test.ts`; `tests/components/PlanEmpresaCostoPorcentual.test.tsx` (primera asignación, cambio de plan, catálogo y detalle); E2E R28.1 (detalle) |
+| R22 | `tests/components/EmpresasModuleCobroPorcentual.test.tsx`; `tests/integration/db/empresas-plataforma-cobro-porcentual.test.ts`; textos en `mensajes-costo-porcentual.test.ts`; E2E R28.3 |
+| R23 | `tests/unit/planes/costeo-porcentual.test.ts`; `tests/components/ConsumoDelPlanPorcentual.test.tsx` (incl. la nota aprobada y el total con «−»); `mensajes-costo-porcentual.test.ts` (líneas, total con resta); `tests/integration/db/plan-de-la-empresa-porcentual.test.ts` (MiPlanRepository y superadmin); E2E R28.6 |
+| R24 | `tests/integration/db/plan-de-la-empresa-porcentual.test.ts` (cargo del ciclo anterior que termina en este, reverso dentro del ciclo, pendiente, cobrado negativo) |
+| R25 | `plan-de-la-empresa-porcentual.test.ts` («no escriben movimientos ni wallet», «pedir el de otra empresa da 42501…») |
+| R26 | `tests/components/ConsumoDelPlanCosteo.test.tsx`, `tests/components/ConsumoDelPlan.test.tsx` y `tests/unit/planes/costeo.test.ts`: solo cambio de tipo (`modo: "fijo"`, `costoPorOrdenPorcentual: null`, `cobroCiclo`) |
+| R27 | `tests/integration/db/migracion-slt83-ida-y-vuelta.test.ts` (5 casos: ida, cobro tras subir, bajadas negadas con datos porcentuales, bajada limpia con foto igual a la de antes de M1, cobro SLT-66 tras bajar) |
+| R28 | `e2e/planes-costo-porcentual.spec.ts` (5 pasos; commit `3a70cea6`) |
+| R29 | «ninguna dependencia nueva»: medido abajo, sin cambios. «Las suites siguen en verde»: `./init.sh` y `gate-completo` de CI (pendiente de CI) |
+
+**Huecos.** Ninguno: los 29 `R` tienen test. A R29 le falta solo la parte de «suites en verde», que por spec es
+`./init.sh` + CI (pendiente, no hueco).
+
+**R29 — dependencias.** `git merge-base origin/dev HEAD` → `86d299f4e545cbf29b8dceb6b711f64a326efa9e`.
+```
+git diff --stat origin/dev...HEAD -- package.json pnpm-lock.yaml docs/dependencias.md   → (sin salida)
+git diff origin/dev...HEAD -- package.json pnpm-lock.yaml | wc -l                         → 0
+```
+Ninguna dependencia entra ni cambia.
+
+### Tests existentes tocados (design §9.3), consolidado
+
+`git diff --name-status origin/dev...HEAD -- tests e2e scripts playwright.config.ts`: 57 archivos existentes
+modificados (y 20 nuevos). Por causa:
+
+1. **Tipo nuevo: `costoPorOrdenPorcentual: null`** en `PlanDTO`/`VersionPlan`/entradas de `crear`/`editar` (T6, T8):
+   - nombrados en §9.3: `tests/unit/services/planes-service{,-asignar-costo,-costeo,-crear-custom,-inicio-ciclo,-lecturas}.test.ts`,
+     `tests/unit/types/planes-schema-costeo.test.ts`, `tests/unit/planes/rastro-costeo.test.ts`,
+     `tests/integration/db/_fixtures/planes.ts`, `e2e/_planes-fixture.ts`;
+   - mismo cambio, no nombrados: `tests/unit/planes/rastro.test.ts` (el rastro de alta exacto gana
+     `costoPorOrdenPorcentual: { antes: null, despues: null }`), `tests/unit/types/planes-schema.test.ts`,
+     `tests/unit/services/mi-plan-service.test.ts`, `tests/components/{PlanForm,PlanFormCosteo,PlanDetalle,
+     PlanDetalleAsignar,PlanDetalleDesasignado,PlanEmpresa,PlanEmpresaSinCosto,PlanEmpresaTipoCobro,PlanesModule,
+     PlanVistaCosteo,MiPlanModule}.test.tsx` (`PlanForm`: el payload esperado gana la clave),
+     `tests/integration/{plataforma-empresa-detalle-page,plataforma-planes-page}.test.tsx`,
+     `tests/integration/db/{cobro-plataforma-plan,mi-plan-repository,planes-asignacion,planes-cambio-correos,
+     planes-cambio-programado,planes-costeo-escritura,planes-edicion-en-uso,planes-historial,
+     planes-lecturas-plataforma}.test.ts` (`planes-historial`: rastro de alta exacto, como `rastro.test.ts`).
+2. **Tipo nuevo: `modo: "fijo"` en `costoVigente`/`cobroVigente`/`CosteoDelCiclo` y `cobroCiclo` en `PlanConUsoLeido`** (T6, T7):
+   - nombrados en §9.3: `tests/unit/planes/costeo.test.ts`, `tests/components/ConsumoDelPlan.test.tsx`,
+     `ConsumoDelPlanCosteo.test.tsx`, `EmpresasModuleCobro.test.tsx`, `EmpresasModulePlan.test.tsx`;
+   - mismo cambio, no nombrados: `tests/components/empresas-module.test.tsx`, `tests/integration/empresas-page.test.tsx`,
+     `tests/integration/db/empresas-plataforma-plan.test.ts`, `tests/unit/services/empresas-plataforma-service.test.ts`
+     (más los de la lista 1 que también construyen costeo: `MiPlanModule`, `PlanEmpresa*`, `PlanVistaCosteo`,
+     `plataforma-empresa-detalle-page`, `mi-plan-service`, `planes-service-lecturas`).
+3. **Forma de `plan_de_la_empresa`** (T3, T7): `tests/integration/db/plan-de-la-empresa-costeo.test.ts` (nombrado:
+   `costo_vigente` gana `porcentaje`/`minimo`; lo leído por repositorio se compara con `{ modo: "fijo", … }`) y
+   `tests/integration/db/plan-de-la-empresa.test.ts` (no nombrado: la lista exacta de claves de SLT-58 R9 gana
+   `costo_por_orden_pct`, `costo_por_orden_minimo`, `cobro_ciclo`).
+4. **Contadores de tabla nueva** (T2; control positivo, no regla): `tests/unit/guards/rls-por-empresa.guardia.test.ts`
+   (85 → 86), `scripts/verificar-rls-despliegue.ts` (167 → 168), `tests/unit/scripts/verificar-rls-despliegue.test.ts`.
+5. **Invariante de SL-40 acotado** (T5): `tests/integration/db/demo-qa.test.ts` (órdenes sin condiciones congeladas).
+6. **Textos aprobados por el humano** (solo cambia el literal esperado o se añade un caso que lo fija):
+   - backend `80cbac76`: ningún test existente de SLT-66 cambió; solo los nuevos `rastro-costo-porcentual` y
+     `mensajes-costo-porcentual` ganan casos;
+   - frontend `b639a75c`: `tests/components/PlanesModule.test.tsx` y `PlanDetalle.test.tsx` (caso nuevo del texto
+     del panel), `WalletDeudaPlataformaSL40.test.tsx`, `WalletDeudaPlataformaSL45.test.tsx`,
+     `tests/unit/components/wallet-labels.test.ts`, `e2e/cobro-plataforma-sl40.spec.ts`, `e2e/pago-plataforma-sl45.spec.ts`;
+   - `061d97a8`: los mismos cuatro de la wallet (literal en tercera persona) y `tests/unit/asistente/contexto-sl45.test.ts`
+     (fija la ayuda `docs/ayuda/oficina/wallet-caja.md` alineada).
+7. **E2E** (T15): `playwright.config.ts` registra `planes-costo-porcentual.spec.ts` en el proyecto `dinero`.
+
+### Mutaciones de design §9.4, medidas
+
+Sobre `servi_logistic_slt83` (el script se niega con cualquier otra base), con un script fuera del repo
+(scratchpad): guarda `pg_get_functiondef` + `md5` + `proacl` de las cinco funciones, aplica la mutación con
+`CREATE OR REPLACE` sobre el cuerpo guardado, corre los tests y restaura siempre (`trap EXIT`), comprobando que
+`md5` y `proacl` vuelven a ser los guardados. Ninguna mutación tocó el repo.
+
+Línea base, antes de mutar: `cobro-plataforma-porcentual`, `-importe`, `cobro-porcentual-estados-finales`,
+`cobro-plataforma-plan`, `cobro-plataforma-cargos` → `Test Files 5 passed (5) · Tests 80 passed (80)`.
+
+| # | Mutación | Tests corridos | Resumen | La matan |
+|---|---|---|---|---|
+| 1a | quitar `devuelta_a_tienda` de `orden_estado_es_final` | `cobro-plataforma-porcentual`, `cobro-porcentual-estados-finales` | `Tests 6 failed \| 20 passed (26)` | R19 (estados finales), R8 «entrar a / nace en devuelta_a_tienda», R12 «de un final a otro», R15 invariante, §3.5 |
+| 1b | quitar `incidente` | ídem + `-importe` | `Tests 7 failed \| 37 passed (44)` | R19, R8 «entrar a / nace en incidente», R12 (×2), R15, §3.5 |
+| 2a | `GREATEST` → `LEAST` | ídem | `Tests 33 failed \| 11 passed (44)` | R9 (16 de 18 en `-importe`) y 17 de `cobro-plataforma-porcentual` |
+| 2b | `COALESCE(p_minimo, 0)` → el global (`COALESCE(p_minimo, <monto global>, 0)`) | `-importe`, `cobro-plataforma-porcentual` | `Tests 9 failed \| 32 passed (41)` | R9 «2 % de 0 sin mínimo → 0.00», «2,35 % de 12.345 sin mínimo», mitades exactas (función y cargo real), §3.5 |
+| 3 | reverso con el importe recalculado (`cobro_plataforma_importe_porcentual(monto_cobrar, …)`) en vez del del último cargo | `cobro-plataforma-porcentual`, `-importe`, `cobro-plataforma-plan`, `cobro-plataforma-cargos` | `Tests 2 failed \| 75 passed (77)` | R12 «salir de un estado final revierte por el mismo importe…», R15 invariante |
+| 4 | quitar la entrada de conciliación de `cobro_plataforma_al_cambiar_borrado` | ídem | `Tests 1 failed \| 76 passed (77)` | R14 «anular con cargo vigente revierte… recuperar en estado final cobra…» |
+| 5 | invertir excepción/plan en `cobro_plataforma_tarifa_de` (los dos escalones del plan antes de la excepción) | ídem | `Tests 15 failed \| 62 passed (77)` | R7 «con excepción…», §3.5, y 13 casos de SLT-66 en `cobro-plataforma-plan` |
+| 5b | variante estrecha: solo el escalón porcentual antes de la excepción | `cobro-plataforma-porcentual`, `cobro-plataforma-plan`, `cobro-plataforma-cargos` | `Tests 2 failed \| 57 passed (59)` | R7 «con excepción…», §3.5 |
+| 6 | `round` → `trunc` | `-importe`, `cobro-plataforma-porcentual` | `Tests 4 failed \| 37 passed (41)` | R9 «2,35 % de 12.345 sin mínimo → 290.11» y «0,5 % de 1.001 sube → 5.01» (función y cargo real) |
+
+**Las seis mutaciones (y la variante 5b) las mata al menos un test de la feature.** No hizo falta añadir casos.
+
+**Restauración.** Tras cada mutación, las cinco funciones con `md5` y `proacl` iguales a los guardados. Al final,
+el `prosrc` de las cinco es igual al cuerpo de `20261104150200…/migration.sql` (normalizando CRLF: la migración se
+aplicó desde el checkout de Windows) y:
+```
+pnpm exec vitest run tests/integration/db/cobro-plataforma-porcentual.test.ts tests/integration/db/cobro-plataforma-porcentual-importe.test.ts tests/integration/db/cobro-porcentual-estados-finales.test.ts tests/integration/db/cobro-plataforma-plan.test.ts tests/integration/db/cobro-plataforma-cargos.test.ts
+ Test Files  5 passed (5)
+      Tests  80 passed (80)
+git status --short → (vacío)
+```
+
+### Avisos
+
+- `e2e/superadmin-empresas.spec.ts:224` («2. crea A y B…») falla en local al arrastrar `plataforma-vacia`
+  (espera «El correo no está configurado en este entorno.»). Es ajeno a la feature (no toca ese spec ni
+  `lib/services/email`) y no se toca; lo confirma CI (ver T15).
+- T5 (suite de integración de `db` entera) y el `./init.sh` final quedan para CI. T5 y T16 siguen sin marcar en
+  `tasks.md`.
+- No se corrió `./init.sh` ni la suite completa (instrucción); solo los tests de integración de las mutaciones.
+
+**Veredicto T16:** los 29 `R` tienen test, las seis mutaciones de §9.4 mueren y no entra ninguna dependencia;
+pendiente solo de CI (`./init.sh` / `gate-completo`, que cierran T5 y T16).
