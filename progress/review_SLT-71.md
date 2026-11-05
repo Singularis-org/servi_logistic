@@ -117,3 +117,49 @@ Ninguno es BLOQUEANTE.
 ## Veredicto
 
 **OK.** 0 bloqueantes, 4 menores (m1–m4). Lo recomendable es corregir m1 antes de T8.3, porque es la evidencia que mira la persona sobre la copia de producción. El merge sigue condicionado a `gate-completo` en verde, a T8.3 y a repetir R23 contra `dev` en F2.3.
+
+## Vuelta 2 (acotada a d8db5a65..31ba4b13)
+
+> Reviewer, 2026-11-05. Solo las correcciones de m1–m4 y sus regresiones. No se rehace la trazabilidad.
+
+### Verificación
+
+| Qué | Resultado |
+|---|---|
+| `pnpm run typecheck` | exit 0 |
+| `eslint` sobre los 2 scripts y los 2 tests tocados | sin problemas |
+| Tests puros de `disculpable` y de la regla de `veredicto` | 11 en verde |
+| Integración contra `logistic_slt71` (localhost), 6 archivos SLT-71, **en paralelo** | 1.ª corrida: 3 rojos (`geo-analitica-lugar` «R1, R2, R4, R7» a 31 s y «R2» a 37 s; `geo-transito-nombres` «R10» a 61 s). 2.ª corrida (4 archivos): 36/36 en verde. Intermitente (ver m6) |
+| Integración en serie (vuelta 1, mismos tests) | en verde |
+
+### Estado de los hallazgos de la vuelta 1
+
+- **m1 — resuelto** (`0a0eb45b`).
+  - Ahora `disculpable` exige cuatro cosas:
+    - el sentido: `a − b ∈ [−soloLugar, soloHoy]`;
+    - un Δ distinto de 0;
+    - que cada cubo quepa: lo de más ≤ `soloHoy` y lo de menos ≤ `soloLugar`;
+    - que `fijos` coincidan: los segundos de ciclo y de cohorte, el importe y el límite.
+  - Cada par disculpado se imprime como `[solo-incoherentes]`, con bloque, filtro, lectura, `solo-hoy`/`solo-lugar` y las cifras. Solo lleva ids y números (R18).
+  - Lo prueban 4 `it` puros (sentido, tamaño, mismo total con otro reparto, `fijos`) y la integración: la línea de rastro de `canton=<id> por-status` con `solo-hoy=1`, y hoy − nuevo = 1.
+- **m2 — resuelto** (`62c61bab`). `sinCatalogo.consultas` se cuenta por lado. El test de R19 exige que todas las consultas de antes queden en «sin catálogo» y que después, sin el catálogo, queden tantas como antes. Si una consulta medida de la lectura leyera `"zona"`, la cuenta no cuadraría y saltaría. Los comentarios dan bien el sentido del error de cada regex.
+- **m3 — resuelto en parte** (`63d880f3`). Los 5 `it` señalados ganan 180 s de `testTimeout`. El residual es m6.
+- **m4 — resuelto** (`e86d02dc`). D37 en `progress/deudas.md`, con origen, qué falta (correr en `conEmpresa`/`comoLaEmpresa` al salir del baseline) y dueño.
+
+### Hallazgos nuevos
+
+Ninguno es BLOQUEANTE.
+
+- **m5 (menor) — La regla nueva puede dar salida 1 cuando solo difieren las incoherentes.**
+  - **Por qué.** Vuelve a la regla en sentido contrario. Si una orden incoherente aporta tiempo de ciclo, importe recibido o segundos de cohorte, `fijos` difiere y el par no se disculpa. Pasa lo mismo si aporta más de una fila a una lectura por gestión (devoluciones con dos gestiones, por ejemplo): Δ supera `soloHoy`. Y con un intercambio legítimo (una entra solo por hoy y otra solo por el lugar, Δ = 0) tampoco se disculpa.
+  - **Consecuencia.** En esos casos el script sale 1, aunque R17 pide 0 «si son la única diferencia». El error va del lado seguro: no esconde nada y bloquea hasta que una persona mire. En el fixture no pasa, porque la incoherente está `en_preparacion`, sin gestión ni dinero.
+  - **Qué falta.** Que la persona de T8.3 pueda reconocer el caso: añadir `solo-hoy=… solo-lugar=…` también a la línea de una diferencia **no** disculpada cuando el filtro tiene incoherentes, y anotar en el PR que un 1 con esa marca se revisa a mano.
+- **m6 (menor) — El residual de m3 es real: `revertida` corta la transacción a 30 s.**
+  - **Dónde.** `tests/integration/db/_fixtures/pais-20.ts:28`. La espera del cerrojo (`pg_advisory_xact_lock`) corre **dentro** de una transacción interactiva con `timeout: 30_000`. Así que los 180 s de vitest no son el límite: si el cerrojo lo tiene un test largo de SLT-71 (`revertidaLarga` 180 s, `conEscenario` 300 s), la transacción caduca antes.
+  - **Reproducido.** Los 3 rojos en paralelo, a 31–61 s, lo confirman. La segunda corrida pasó: es intermitente.
+  - **Por qué menor.** El helper es compartido (66 archivos), anterior a SLT-71 y fuera de su alcance. Que salga rojo depende del reparto de CI, y `gate-completo` lo decide.
+  - **Recomendado.** Si CI lo reproduce, que los `it` de SLT-71 con `revertida` usen una variante con timeout largo, como ya hace `revertidaLarga` en `geo-explain-analitica.test.ts`. Así no se toca el helper compartido. Si no lo reproduce, anotarlo junto a D37.
+
+### Veredicto vuelta 2
+
+**OK.** m1, m2 y m4 están resueltos y m3 en parte. Hay 2 menores nuevos (m5 y m6), ningún bloqueante y ninguna regresión funcional. Las condiciones de merge siguen igual: `gate-completo` en verde, T8.3 y R23 contra `dev` en F2.3.
