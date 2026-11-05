@@ -19,7 +19,8 @@ import {
  * 1. El setup corre `pnpm arranque:superadmin` de verdad, con credenciales ficticias de prueba.
  * 2. El superadmin entra por `/login` y pasa el OTP de dispositivo nuevo, leído del emisor de consola.
  * 3. Aterriza en `/plataforma/empresas`, y el menú tiene exactamente sus ítems de plataforma,
- *    «Empresas», «Planes» (SLT-58, R23) y «Geografía» (SL-20, R21), en ese orden.
+ *    «Empresas», «Planes» (SLT-58, R23), «Geografía» (SL-20, R21) y «Vehículos» (SL-42, R1), en ese
+ *    orden.
  * 4. `/configuracion` no le deja entrar: el aviso de permiso de la página y ningún enlace de
  *    configuración (desviación anotada junto a T9 en `tasks.md`).
  *
@@ -68,7 +69,7 @@ test("el comando de arranque deja un superadmin sin empresa y no imprime sus dat
   expect(fila).toEqual({ organizacionId: null, estado: "activo", rol: { value: "superadmin" } });
 });
 
-test("entra con OTP y aterriza en «Empresas», con «Empresas», «Planes» y «Geografía» como únicos ítems del menú (R18, R6; SL-20 R21; SLT-58 R23)", async ({ page }) => {
+test("entra con OTP y aterriza en «Empresas», con «Empresas», «Planes», «Geografía» y «Vehículos» como únicos ítems del menú (R18, R6; SL-20 R21; SLT-58 R23; SL-42 R1)", async ({ page }) => {
   test.setTimeout(180_000);
   await conCandadoDelSuperadmin(async () => {
     await olvidarDispositivos(dueno!, SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL);
@@ -79,7 +80,8 @@ test("entra con OTP y aterriza en «Empresas», con «Empresas», «Planes» y �
   await expect(page.getByRole("heading", { level: 1, name: "Empresas" })).toBeVisible();
   // SL-20 (R21): «Geografía» se suma justo después de «Empresas»; el aterrizaje no se mueve.
   // SLT-58 (R23): «Planes» entre «Empresas» y «Geografía», y el aterrizaje sigue en «Empresas».
-  expect(await enlacesDelMenu(page)).toEqual(["Empresas", "Planes", "Geografía"]);
+  // SL-42 (R1, R3): «Vehículos» después de «Geografía»; el aterrizaje sigue en «Empresas».
+  expect(await enlacesDelMenu(page)).toEqual(["Empresas", "Planes", "Geografía", "Vehículos"]);
   // El marco pinta su nombre en el pie sin fallar por no tener empresa (R6).
   await expect(page.getByText(SUPERADMIN_DE_PRUEBA.SUPERADMIN_NOMBRE).first()).toBeVisible();
   sesion = await page.context().cookies();

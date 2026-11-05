@@ -2093,12 +2093,45 @@ model Vehiculo {
   // El @unique impide dos tipos con el mismo nombre; el plegado/recorte lo hace el
   // servicio, NO la base (ver la migracion).
   name String @unique
+  // SL-42 (design §2.1, R23): `20261103120000_vehiculo_activo`. Toda fila previa quedo activa.
+  activo Boolean @default(true)
 
   usuarios             Usuario[] // feature 21: mensajeros que declararon este vehiculo
   tarifaZonaMensajeros TarifaZonaMensajero[] // feature 24
   tarifaValores        TarifaValor[] // SLT-52: valores de pago acotados a este tipo de vehiculo (FK RESTRICT)
 
   @@map("vehiculos")
+}
+
+// SL-42 (design §2.2, P2) — qué acción del superadmin sobre un vehículo deja una fila en
+// `vehiculo_rastro`.
+enum VehiculoRastroAccion {
+  vehiculo_creado
+  vehiculo_renombrado
+  vehiculo_activado
+  vehiculo_desactivado
+
+  @@map("vehiculo_rastro_accion")
+}
+
+// SL-42 (design §2.2, R21, R22) — el rastro de plataforma de las acciones del superadmin sobre el
+// catálogo de vehículos, calcado de `PlanRastro`. Solo se añade, y lo escribe solo
+// `lib/repositories/registrar-rastro-vehiculo.ts`. `vehiculoId` y `actorUsuarioId` son opacos y SIN
+// FK: el rastro sobrevive a su sujeto. La RLS sin políticas y el `REVOKE ALL … FROM servi_app` viven
+// solo en el SQL de 20261103120100.
+model VehiculoRastro {
+  id             String               @id @default(uuid())
+  vehiculoId     String               @map("vehiculo_id")
+  vehiculoNombre String               @map("vehiculo_nombre") @db.VarChar(40)
+  accion         VehiculoRastroAccion
+  valorAnterior  String?              @map("valor_anterior") @db.VarChar(40)
+  valorNuevo     String?              @map("valor_nuevo") @db.VarChar(40)
+  actorUsuarioId String               @map("actor_usuario_id")
+  actorNombre    String               @map("actor_nombre") @db.VarChar(120)
+  createdAt      DateTime             @default(now()) @map("created_at")
+
+  @@index([vehiculoId, createdAt])
+  @@map("vehiculo_rastro")
 }
 
 enum VehiculoValue {

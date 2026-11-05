@@ -418,6 +418,8 @@ describe("Feature 129 — ítem de sidebar de Analítica", () => {
     "gaugeCircle",
     // SLT-58 (R23): «Planes», el catálogo de planes del superadmin.
     "layers",
+    // SL-42 (R1): «Vehículos», el catálogo de tipos de vehículo del superadmin.
+    "car",
   ] as const satisfies readonly IconKey[];
   // Comprobación de exhaustividad tipada: si `IconKey` gana una clave que no está en
   // el array de arriba, `Exclude<IconKey, (typeof TODAS_LAS_CLAVES)[number]>` deja de

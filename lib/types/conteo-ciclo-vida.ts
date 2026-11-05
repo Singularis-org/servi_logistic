@@ -1,33 +1,43 @@
 // El DTO del CICLO DE VIDA de una orden y el resultado de su Server Action.
 //
-// Tipos PUROS: sin Prisma, sin zod, sin React.
+// Tipos PUROS y la lista de resultados que cierran una orden: sin Prisma, sin zod, sin React.
+
+import type { OrderStatusValue } from "@/lib/types/order-status";
+
+/**
+ * Los resultados de gestion que cierran una orden para el ciclo de vida (SLT-64, D1). Es el unico
+ * sitio donde se declaran (R10). `novedad` y `reprogramado` no estan porque la orden puede volver a
+ * reparto (Q1). Se tipa contra el catalogo: si cambia un nombre, deja de compilar.
+ */
+export const RESULTADOS_DE_CIERRE = [
+  "entregado",
+  "devolucion_a_origen_por_rechazo",
+  "incidente",
+] as const satisfies readonly OrderStatusValue[];
 
 /**
  * El tiempo de ciclo del recorte, con su denominador delante.
  *
  * ─── QUE MIDE, CON TODAS LAS LETRAS ─────────────────────────────────────────────────────
  *
- * Segundos entre la CREACION de la orden (`orden.created_at`) y su ULTIMA transicion a un
- * estado terminal (`entregada`, `devuelta_a_tienda`, `incidente`) registrada en
- * `orden_historial_estado`. Mide tiempo de ORDENES, no volumen de gestiones, y no lo alteran
- * las gestiones anuladas.
+ * Segundos entre la CREACION de la orden (`orden.created_at`) y el `created_at` de su GESTION
+ * FINAL: la ultima gestion vigente, si su resultado es uno de `RESULTADOS_DE_CIERRE`, este o no
+ * aprobado su cierre. Mide tiempo de ORDENES, no volumen de gestiones. Sigue a la ultima gestion
+ * vigente al consultar: una anulacion mueve la cifra, y una correccion no mueve el fin del reloj.
  *
- * NO es una definicion nueva: es la MISMA que ya usa el rollup diario para la metrica
- * `tiempo_ciclo` del catalogo (`lib/analytics/metrics.ts`, y la consulta Q5 de
- * `AnaliticaRollupRepository`). Escribir aqui una variante —empezar en la primera asignacion,
- * terminar en la primera transicion terminal en vez de la ultima— habria dado dos «tiempos de
- * ciclo» distintos en el mismo producto, y nadie sabria cual mirar.
+ * ⚠ NO es la metrica `tiempo_ciclo` del catalogo (`lib/analytics/metrics.ts`, consulta Q5 de
+ * `AnaliticaRollupRepository`): esa es contrato de API y para en la transicion terminal (Q3 de
+ * SLT-64). La cohorte de carga tampoco cambia (Q2).
  *
  * ⚠ SOLO ENTRAN LAS ORDENES CERRADAS, y esto sesga la cifra hacia arriba de forma conocida: una
  * orden que lleva tres semanas abierta no tiene fin de reloj, asi que NO cuenta — el promedio
  * habla de las que se cerraron, no de todas. Por eso `n` viaja y no es opcional: un promedio
  * sin su denominador no se puede juzgar.
  *
- * ⚠ LA VENTANA CAE SOBRE EL CIERRE, no sobre la creacion. Una orden creada en enero y cerrada
- * en agosto cuenta en AGOSTO. Es la misma atribucion del rollup («atribuida a la fecha del
- * EVENTO TERMINAL y nunca a la de su creacion»), y es la unica que permite comparar dos meses:
- * atribuyendo por creacion, el mes en curso saldria siempre artificialmente rapido porque solo
- * habrian cerrado las ordenes faciles.
+ * ⚠ LA VENTANA CAE SOBRE EL CIERRE (la gestion final), no sobre la creacion. Una orden creada en
+ * enero y cerrada en agosto cuenta en AGOSTO. Es la unica atribucion que permite comparar dos
+ * meses: atribuyendo por creacion, el mes en curso saldria siempre artificialmente rapido porque
+ * solo habrian cerrado las ordenes faciles.
  */
 export interface CicloVidaDTO {
   /**

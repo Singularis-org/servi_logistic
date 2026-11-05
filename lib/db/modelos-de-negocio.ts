@@ -147,6 +147,8 @@ export const MODELOS_DE_PLATAFORMA: readonly ModeloClasificado[] = [
   { modelo: "Distrito", tabla: "distrito" },
   // Catalogo de vehiculos (D12): solo lectura (R40)
   { modelo: "Vehiculo", tabla: "vehiculos" },
+  // Rastro del superadmin sobre vehiculos (SL-42, P2): sin acceso para `servi_app` (R22)
+  { modelo: "VehiculoRastro", tabla: "vehiculo_rastro" },
   // Autenticacion: «el dueno es usuario visible» (R22)
   { modelo: "Session", tabla: "Session" },
   { modelo: "TrustedDevice", tabla: "trusted_device" },

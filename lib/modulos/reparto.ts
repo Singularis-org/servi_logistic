@@ -41,7 +41,6 @@ export const MODULO_POR_RUTA: Readonly<Record<string, Destino>> = {
   // API e integraciones (núcleo desde el 2026-10-27).
   "/configuracion/api": "nucleo",
   "/configuracion/sinpe": "nucleo",
-  "/configuracion/vehiculos": "nucleo",
   "/plataforma/empresas": "nucleo",
   "/plataforma/empresas/[organizacionId]": "nucleo",
   // SLT-58: los planes son de plataforma (superadmin) y «Mi plan» lo ve cada empresa; sin puerta de módulo.
@@ -50,6 +49,8 @@ export const MODULO_POR_RUTA: Readonly<Record<string, Destino>> = {
   "/mi-plan": "nucleo",
   // SL-20: la geografía se gestiona desde la plataforma (superadmin), ya no desde `/configuracion`.
   "/plataforma/geografia": "nucleo",
+  // SL-42: el catálogo de vehículos lo gestiona la plataforma (superadmin); `/configuracion/vehiculos` se retiró.
+  "/plataforma/vehiculos": "nucleo",
   // Recolección y Bodegas satélite (núcleo desde el 2026-10-27).
   "/recoleccion": "nucleo",
   "/recepcion-satelite": "nucleo",
@@ -211,6 +212,8 @@ export const MODULO_POR_ACTION: Readonly<Record<string, Destino>> = {
   usuarios: "nucleo",
   "usuarios-por-rol": "nucleo",
   vehiculos: "nucleo",
+  // SL-42: la gestión del catálogo de vehículos del superadmin, de plataforma.
+  "vehiculos-plataforma": "nucleo",
   "vistas-filtro": "nucleo",
   zonas: "nucleo",
 };

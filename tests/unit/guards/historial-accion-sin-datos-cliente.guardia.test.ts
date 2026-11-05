@@ -74,7 +74,8 @@ const PUNTOS_DE_ESCRITURA = [
   "lib/repositories/UserRepository.ts",
   "lib/repositories/TarifaRepository.ts",
   "lib/repositories/ZonaRepository.ts",
-  "lib/repositories/VehiculoRepository.ts",
+  // SL-42 (P1) — `VehiculoRepository` estuvo aqui hasta que se retiro el borrado: sus escrituras van
+  // a `vehiculo_rastro` y ya no llama a `appendAccion` («sin escritor desde SL-42»).
   "lib/repositories/PlantillaMensajeRepository.ts",
   "lib/repositories/ApiKeyRepository.ts",
   "lib/repositories/AprobacionPostulacionRepository.ts",
@@ -154,10 +155,11 @@ describe("362/T7.4 — el detector se prueba a si mismo", () => {
   });
 
   it("CONTRAPRUEBA: el recortador encuentra los bloques y no el archivo entero", () => {
-    const codigo = fuente("lib/repositories/VehiculoRepository.ts");
+    // SL-42: era `VehiculoRepository`, que ya no llama a `appendAccion` (P1). Mismo molde: un solo bloque.
+    const codigo = fuente("lib/repositories/PlantillaMensajeRepository.ts");
     const bloques = bloquesDeAppend(codigo);
     expect(bloques).toHaveLength(1);
-    expect(bloques[0]).toContain("vehiculo_borrado");
+    expect(bloques[0]).toContain("plantilla_eliminada");
     expect(bloques[0].length).toBeLessThan(codigo.length / 2);
   });
 
