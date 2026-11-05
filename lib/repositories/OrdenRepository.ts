@@ -76,7 +76,7 @@ import { appendCambioEstado } from "@/lib/repositories/registrar-cambio-estado";
 // SL-38 (R22): la marca de zona especial es de la EMPRESA. Desde SLT-65 se calcula sobre el catalogo
 // (`marcasDeOrdenes`); de aqui solo queda el tipo del cliente de las marcas.
 import type { ClienteDeMarcas } from "@/lib/repositories/_shared/zona-especial";
-import { lugarDeLaOrden, whereLugarEn } from "@/lib/repositories/_shared/lugar-orden";
+import { lugarDeLaOrden, PROFUNDIDAD_DEL_NIVEL, whereLugarEn } from "@/lib/repositories/_shared/lugar-orden";
 import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograficoRepository";
 import {
   ancestros,
@@ -886,10 +886,6 @@ type OrdenPrismaClient = Pick<
   | "organizacion"
 > &
   ClienteDeMarcas;
-
-// SLT-65 (design §5, paso 2; design §13): la unica correspondencia entre el nivel de tres valores
-// (SL-20) y la profundidad del catalogo. Se retira con SLT-47/SLT-48, cuando el nivel deje de viajar.
-const PROFUNDIDAD_DEL_NIVEL: Record<NivelGeografico, number> = { provincia: 1, canton: 2, distrito: 3 };
 
 /**
  * FICHA 362 — lo que el `RETURNING` de los tres borrados por lote trae de vuelta: el id de la

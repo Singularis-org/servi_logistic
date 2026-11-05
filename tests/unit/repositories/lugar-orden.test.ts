@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { lugarDeLaOrden, whereLugarEn } from "@/lib/repositories/_shared/lugar-orden";
+import { Prisma } from "@prisma/client";
+
+import {
+  lugarDeLaOrden,
+  PROFUNDIDAD_DEL_NIVEL,
+  sqlLugarEn,
+  whereLugarEn,
+} from "@/lib/repositories/_shared/lugar-orden";
 
 // SLT-65 (T2.1; R1, R9, R13, R19; design §3) — el lugar de una orden y su `where`. El SQL que
 // produce `whereLugarEn` lo prueban contra Postgres `geo-consultas-ordenes.test.ts` y las suites de
@@ -43,5 +50,50 @@ describe("SLT-65 — whereLugarEn", () => {
 
   it("con la lista vacia no casa ninguna orden (in: [] en las dos ramas)", () => {
     expect(whereLugarEn([])).toEqual({ OR: [{ distritoId: { in: [] } }, { distritoId: null, cantonId: { in: [] } }] });
+  });
+});
+
+// SLT-71 (T2.1; R1, R5; design §3.1) — la misma regla en SQL crudo y la profundidad de cada nivel.
+// El resultado contra Postgres lo prueba `geo-analitica-lugar.test.ts`; aqui, la forma.
+
+describe("SLT-71 — sqlLugarEn", () => {
+  const texto = (s: Prisma.Sql) => s.text.replace(/\s+/g, " ").trim();
+
+  it("es el OR de `whereLugarEn` con `= ANY` sobre el alias `o`, sin COALESCE", () => {
+    const s = sqlLugarEn(["a", "b"]);
+    expect(texto(s)).toBe(
+      '(o."distrito_id" = ANY($1::text[]) OR (o."distrito_id" IS NULL AND o."canton_id" = ANY($2::text[])))',
+    );
+    expect(s.sql).not.toMatch(/COALESCE/i);
+    expect(s.sql).not.toContain("nodo_geografico_id");
+  });
+
+  it("los ids viajan como UN array por rama, no como un parametro por id", () => {
+    const s = sqlLugarEn(["a", "b", "c"]);
+    expect(s.values).toEqual([
+      ["a", "b", "c"],
+      ["a", "b", "c"],
+    ]);
+  });
+
+  it("copia la lista: mutar la de entrada despues no cambia los parametros", () => {
+    const ids = ["a"];
+    const s = sqlLugarEn(ids);
+    ids.push("b");
+    expect(s.values).toEqual([["a"], ["a"]]);
+  });
+
+  it("compuesto dentro de otro fragmento, sigue siendo un parametro por rama", () => {
+    const where = Prisma.join([Prisma.sql`TRUE`, sqlLugarEn(["x", "y"])], " AND ");
+    expect(where.values).toEqual([
+      ["x", "y"],
+      ["x", "y"],
+    ]);
+  });
+});
+
+describe("SLT-71 — PROFUNDIDAD_DEL_NIVEL", () => {
+  it("provincia 1, canton 2, distrito 3: la unica correspondencia entre nivel y profundidad", () => {
+    expect(PROFUNDIDAD_DEL_NIVEL).toEqual({ provincia: 1, canton: 2, distrito: 3 });
   });
 });
