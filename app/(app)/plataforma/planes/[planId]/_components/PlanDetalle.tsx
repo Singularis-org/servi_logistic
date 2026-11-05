@@ -75,7 +75,7 @@ const TEXTOS = {
   columnaAccion: "Acción",
   columnaCambios: "Qué cambió",
   tituloEditar: "Editar plan",
-  descripcionEditar: "Los topes vacíos no tienen límite. El costo base es informativo; el costo por orden se cobra en cada orden nueva.",
+  descripcionEditar: "Los topes vacíos no tienen límite. El costo base es informativo. El costo por orden fijo se cobra al crear cada orden; el porcentual, cuando la orden llega a un estado final.",
   confirmarArchivo: "¿Archivar este plan?",
   confirmarArchivoTexto:
     "Deja de ofrecerse para asignar y no se podrá editar. Las empresas que ya lo tienen lo conservan con sus topes.",

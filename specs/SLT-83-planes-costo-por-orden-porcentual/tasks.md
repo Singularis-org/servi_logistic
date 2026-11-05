@@ -138,6 +138,7 @@ Pantallas:
 - `app/(app)/plataforma/empresas/_components/CobroPorOrden.tsx`
 - `app/(app)/plataforma/empresas/_components/EmpresasModule.tsx`
 - `components/shared/ConsumoDelPlan.tsx`
+- `app/(app)/wallet/_components/wallet-labels.ts`
 
 Tests nuevos:
 

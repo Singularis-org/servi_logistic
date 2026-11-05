@@ -118,6 +118,16 @@ describe("SLT-83 R23 — «Mi plan» con un plan porcentual", () => {
     );
     expect(within(bloque()).getByText("El pago anual no cambia el costo por orden.")).toBeInTheDocument();
   });
+
+  it("R23 (texto aprobado 2026-11-04): la nota de cuándo se cobra cada orden, sin la nota «Estimado…» del modo fijo", () => {
+    pintar(leido(version(MONTO_50000, CON_MINIMO), { cobrado: "0.00", pendientes: 0 }));
+    const nota = screen.getByText(
+      "Cada orden se cobra al llegar a un estado final, con el % de su monto a cobrar (o el mínimo si es mayor).",
+    );
+    expect(nota.tagName).toBe("P");
+    expect(nota).toHaveClass("text-xs", "text-muted-foreground");
+    expect(screen.queryByText(/^Estimado:/)).toBeNull();
+  });
 });
 
 describe("SLT-83 R23 — detalle de empresa del superadmin", () => {

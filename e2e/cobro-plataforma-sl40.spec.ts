@@ -54,9 +54,9 @@ const TEXTO = {
   guardado: "Cobro guardado.",
   regionDeuda: `Lo que ${EMPRESA_EN_FRASE} debe a la plataforma`,
   pistaDeuda:
-    "Lo que la plataforma cobra por cada orden creada, menos las anuladas y lo ya pagado. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.",
+    "Lo que la plataforma cobra por tus órdenes (al crearlas o, con plan porcentual, al llegar a un estado final), menos las anuladas y lo ya pagado. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.",
   /** SL-45 R2: con deuda cero la región dice que la empresa está al día. */
-  pistaAlDia: "La empresa está al día con la plataforma. Cada orden nueva suma su cobro aquí.",
+  pistaAlDia: "La empresa está al día con la plataforma. Cada orden suma su cobro aquí cuando se cobra.",
 } as const;
 
 /** Lo que la tarifa vale en pantalla: `money("500.00")` y `money("750.00")`, escritos a mano. */

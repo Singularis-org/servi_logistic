@@ -297,6 +297,17 @@ describe("SLT-58 R15 — editar y los avisos de topes pasados", () => {
 
     expect(await screen.findByRole("status")).toHaveTextContent("Cambio programado desde 2030-02-01.");
   });
+
+  it("SLT-83 (texto aprobado 2026-11-04): el panel «Editar plan» explica cuándo se cobra el costo por orden fijo y el porcentual", async () => {
+    const user = userEvent.setup();
+    montar(DETALLE);
+
+    await user.click(screen.getByRole("button", { name: "Editar" }));
+    const panel = await screen.findByRole("dialog", { name: "Editar plan" });
+    expect(panel).toHaveAccessibleDescription(
+      "Los topes vacíos no tienen límite. El costo base es informativo. El costo por orden fijo se cobra al crear cada orden; el porcentual, cuando la orden llega a un estado final.",
+    );
+  });
 });
 
 describe("SLT-58 R18 — un rechazo se explica y no da el cambio por hecho", () => {

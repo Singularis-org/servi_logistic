@@ -667,3 +667,62 @@ pnpm exec eslint components/shared/ConsumoDelPlan.tsx tests/components/ConsumoDe
 ```
 
 **Veredicto T14:** «Mi plan» y el detalle de empresa pintan el costeo porcentual con los textos de `mensajes.ts`; el fijo sigue igual.
+
+## Textos aprobados de pantalla (2026-11-04)
+
+El humano aprobó el 2026-11-04 estos cuatro textos, literales:
+
+1. Descripción de los paneles «Nuevo plan» y «Editar plan» (`TEXTOS.descripcionNuevo` en
+   `app/(app)/plataforma/planes/_components/PlanesModule.tsx`, `TEXTOS.descripcionEditar` en
+   `app/(app)/plataforma/planes/[planId]/_components/PlanDetalle.tsx`):
+   «Los topes vacíos no tienen límite. El costo base es informativo. El costo por orden fijo se cobra al crear cada
+   orden; el porcentual, cuando la orden llega a un estado final.»
+2. `deudaPlataformaPista` (`app/(app)/wallet/_components/wallet-labels.ts`), solo la primera frase:
+   «Lo que la plataforma cobra por tus órdenes (al crearlas o, con plan porcentual, al llegar a un estado final),
+   menos las anuladas y lo ya pagado.» El resto (con `${EMPRESA.enFrase}`) igual.
+3. `deudaPlataformaAlDiaPista` (mismo archivo): «Cada orden nueva suma su cobro aquí.» → «Cada orden suma su cobro
+   aquí cuando se cobra.»; la primera frase igual.
+4. `components/shared/ConsumoDelPlan.tsx`, rama porcentual: `TEXTOS.notaPorcentual` = «Cada orden se cobra al
+   llegar a un estado final, con el % de su monto a cobrar (o el mínimo si es mayor).», en un
+   `<p className="text-xs text-muted-foreground">` al pie del bloque, mismo sitio y estilo que `TEXTOS.estimado`
+   de la rama fija (que no cambia).
+
+`specs/SLT-83-planes-costo-por-orden-porcentual/tasks.md > Archivos esperados > Pantallas`: añadido
+`app/(app)/wallet/_components/wallet-labels.ts`.
+
+**Tests nuevos que fijan cada literal.**
+- 1 → `tests/components/PlanesModule.test.tsx` «SLT-83 (texto aprobado 2026-11-04): el panel «Nuevo plan» explica
+  cuándo se cobra el costo por orden fijo y el porcentual» y `tests/components/PlanDetalle.test.tsx` «SLT-83 (texto
+  aprobado 2026-11-04): el panel «Editar plan» explica…» (`toHaveAccessibleDescription` del diálogo).
+- 2 y 3 → `tests/unit/components/wallet-labels.test.ts` «R1: «debe»…» y «R2: «al día»…» (literal esperado
+  actualizado; ya fijaban el texto entero) y `tests/components/WalletDeudaPlataformaSL45.test.tsx`
+  (`PISTA_DEBE`, `PISTA_AL_DIA`).
+- 4 → `tests/components/ConsumoDelPlanPorcentual.test.tsx` «R23 (texto aprobado 2026-11-04): la nota de cuándo se
+  cobra cada orden, sin la nota «Estimado…» del modo fijo».
+
+**Tests/E2E existentes ajustados** (causa: texto aprobado por el humano; solo cambia el literal esperado):
+- `tests/components/WalletDeudaPlataformaSL40.test.tsx` (`PISTA`, l. 207).
+- `tests/components/WalletDeudaPlataformaSL45.test.tsx` (`PISTA_DEBE`, `PISTA_AL_DIA`, l. 194-195).
+- `tests/unit/components/wallet-labels.test.ts` (l. 342, 462, 471).
+- `e2e/cobro-plataforma-sl40.spec.ts` (l. 57, 59) y `e2e/pago-plataforma-sl45.spec.ts` (l. 52-53). No corridos:
+  los corre la siguiente task.
+- `tests/unit/repositories/orden-repository.creacion-bifurcada.test.ts`: no contiene ninguno de los textos viejos;
+  sin cambio.
+
+**Aviso (sin tocar).** `tests/unit/asistente/contexto-sl45.test.ts` (l. 39-41) NO compara `wallet-labels.ts`: lee la
+ayuda `docs/ayuda/oficina/wallet-caja.md` (l. 183-184), que conserva los textos viejos. Cambiar solo el test lo
+pondría en rojo; cambiar la ayuda está fuera del alcance de esta task. Queda en verde con el texto viejo y la ayuda
+del asistente desalineada con la pantalla: decide el leader. Aviso 2: el texto viejo de la pista usaba «cada orden
+creada» (no `${EMPRESA.enFrase}`); el literal aprobado dice «tus órdenes» mientras el resto de la pista dice
+`${EMPRESA.enFrase}` («la empresa»): se respeta el literal del humano.
+
+**Salida.**
+```
+pnpm exec vitest run tests/components/ConsumoDelPlanPorcentual.test.tsx tests/components/PlanesModule.test.tsx tests/components/PlanDetalle.test.tsx tests/components/WalletDeudaPlataformaSL40.test.tsx tests/components/WalletDeudaPlataformaSL45.test.tsx tests/unit/components/wallet-labels.test.ts tests/components/ConsumoDelPlan.test.tsx tests/components/ConsumoDelPlanCosteo.test.tsx tests/unit/asistente/contexto-sl45.test.ts
+ Test Files  9 passed (9)
+      Tests  116 passed (116)
+NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck → tsc --noEmit, sin errores
+pnpm exec eslint <los 4 fuentes, 6 tests y 2 E2E tocados> → sin salida, exit 0
+```
+
+**Veredicto:** los cuatro textos aprobados quedan en pantalla y fijados por test; la ayuda del asistente queda pendiente de decisión.

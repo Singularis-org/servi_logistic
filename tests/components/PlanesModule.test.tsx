@@ -144,6 +144,17 @@ describe("SLT-58 R13 — el catálogo de planes", () => {
     expect(refreshMock).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
+
+  it("SLT-83 (texto aprobado 2026-11-04): el panel «Nuevo plan» explica cuándo se cobra el costo por orden fijo y el porcentual", async () => {
+    const user = userEvent.setup();
+    montar();
+
+    await user.click(screen.getByRole("button", { name: "Nuevo plan" }));
+    const panel = await screen.findByRole("dialog");
+    expect(panel).toHaveAccessibleDescription(
+      "Los topes vacíos no tienen límite. El costo base es informativo. El costo por orden fijo se cobra al crear cada orden; el porcentual, cuando la orden llega a un estado final.",
+    );
+  });
 });
 
 describe("SLT-58 — revisión de diseño del catálogo", () => {

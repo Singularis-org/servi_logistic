@@ -37,6 +37,9 @@ const TEXTOS = {
   excepcion: "precio acordado para tu empresa",
   anualNoAplica: "El pago anual no cambia el costo por orden.",
   estimado: "Estimado: el costo base no se cobra todavía; cada orden se cobra al crearla y se descuenta si se anula.",
+  /** SLT-83 (texto aprobado 2026-11-04): la nota de la rama porcentual, donde la fija pinta `estimado`. */
+  notaPorcentual:
+    "Cada orden se cobra al llegar a un estado final, con el % de su monto a cobrar (o el mínimo si es mayor).",
   /** Ajuste planes-custom (D9): cómo paga la empresa su plan. Solo informativo (D8). */
   cobro: "Cobro del plan",
   tipoCobro: (tipo: CobroDelPlan["tipo"]) => `${TEXTOS_TIPO_COBRO.campo}: ${TEXTOS_TIPO_COBRO.tipo[tipo]}`,
@@ -217,7 +220,8 @@ function CostoDelCiclo({ costeo, textoExcepcion }: { costeo: CosteoFijo; textoEx
  * mínimo con su nota, lo cobrado en el ciclo, las órdenes sin estado final (solo el conteo) y el total
  * hasta hoy. Todo llega calculado del servidor y los textos salen de `lib/planes/mensajes.ts`: aquí no se
  * hace aritmética. Con la base por definir no hay total (SLT-66 R20). La nota «Estimado…» del modo fijo
- * no va: dice que cada orden se cobra al crearla, y la porcentual se cobra al llegar a un estado final.
+ * no va: dice que cada orden se cobra al crearla, y la porcentual se cobra al llegar a un estado final; en
+ * su sitio va `notaPorcentual` (texto aprobado el 2026-11-04).
  */
 function CostoDelCicloPorcentual({ costeo }: { costeo: CosteoPorcentual }) {
   const lineas = lineasDelCosteoPorcentual(costeo);
@@ -241,6 +245,7 @@ function CostoDelCicloPorcentual({ costeo }: { costeo: CosteoPorcentual }) {
           </li>
         )}
       </ul>
+      <p className="text-xs text-muted-foreground">{TEXTOS.notaPorcentual}</p>
     </div>
   );
 }
