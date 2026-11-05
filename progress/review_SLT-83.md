@@ -130,3 +130,46 @@ Ninguna relajación sin causa.
 **RECHAZADO** — un bloqueante: B1 (R27, la bajada de M3 no se niega con datos porcentuales y rompe el
 cobro en el rollback real). El resto (reglas de cobro, sentencia combinada, RLS, trazabilidad, tests
 modificados) está bien.
+
+## Vuelta 2 (acotada a c9c4d240..HEAD, ampliada por tocar migraciones)
+
+Diff: `baa224bd` — `down.sql` de M3, `design.md §2.3`, `migracion-slt83-ida-y-vuelta.test.ts`, bitácora.
+
+### B1 — resuelto
+- [x] `20261104150200…/down.sql` abre con un `DO $$` que se niega (`P0001`) si hay planes con
+  `costo_por_orden_pct`, versiones pendientes con `costoPorOrdenPorcentual` no nulo o filas en
+  `cobro_plataforma_porcentual_orden`, **antes** de cualquier `DROP`/`CREATE`. Mismas consultas y mensajes
+  que M1 y M2. La cabecera ya no dice «no se niega solo».
+- [x] La bajada real es la de `scripts/db-rollback.ts`: toma la última carpeta por orden alfabético y aplica
+  su `down.sql` (una por llamada). Las tres de SLT-83 son las últimas (`…150000`, `…150100`, `…150200`), así
+  que el orden es M3 → M2 → M1 y la primera en correr ahora es la que se niega. Al ser la guarda la primera
+  sentencia, una negativa no deja nada a medias aunque `prisma db execute` no envuelva el archivo en una
+  transacción.
+- [x] Test: caso nuevo «el down.sql de M3 se niega antes de tocar nada…» (por planes y, con el plan fijo,
+  por órdenes congeladas), con `md5(pg_get_functiondef)` + `proacl` de todas las funciones de `public`
+  idénticos tras cada negativa, y el trigger de M3 sigue cobrando (reverso y recobro). El caso «M2/M1
+  sueltos» se conserva y además niega M3 por la versión pendiente. Un test estático comprueba que el
+  `RAISE EXCEPTION` va antes del primer `DROP`/`CREATE`.
+- [x] La ida y vuelta limpia (bajar M3, M2, M1 con datos limpiados → esquema, funciones y privilegios como
+  antes de M1, y orden nueva con la regla de SLT-66) sigue verde: la guarda no la rompe.
+- [x] `design.md §2.3 > Orden de bajada` cuadra con el código: M3 primero y se niega; M2 y M1 repiten su
+  parte por si se corren sueltos.
+
+### Verificación ejecutada (base `servi_logistic_slt83`, localhost:5432)
+- `migracion-slt83-ida-y-vuelta`, `cobro-plataforma-porcentual`, `-importe`, `-aislamiento`,
+  `cobro-porcentual-estados-finales` → `Test Files 5 passed · Tests 55 passed` (sin skipped).
+- Además `plan-de-la-empresa-porcentual`, `empresas-plataforma-cobro-porcentual`,
+  `plan-costo-porcentual-escritura`, `cobro-plataforma-plan`, `cobro-plataforma-cargos` →
+  `5 passed · 64 passed`. Con esto queda cubierto el m3 de la vuelta 1.
+
+### Regresiones
+Ninguna. El diff no toca código de la app ni las migraciones de subida.
+
+### Hallazgos que siguen abiertos
+- m1 (T5 y T16 sin marcar hasta que `gate-completo` esté verde) y m2 (deuda de zona horaria de
+  `ocurrido_at`, heredada de SL-40): siguen como en la vuelta 1. Ninguno bloquea.
+
+### Veredicto vuelta 2
+
+**OK** — B1 resuelto y verificado en base; sin bloqueantes. Antes del merge: `gate-completo` en verde y
+T5/T16 marcados (m1); registrar la deuda m2 en el Cierre.
