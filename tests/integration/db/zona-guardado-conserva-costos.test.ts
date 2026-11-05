@@ -6,6 +6,7 @@ import { actualizarZona, crearZona } from "@/lib/actions/zonas";
 import type { Actor } from "@/lib/interfaces/services/IZonaService";
 import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
 import { ZonaService } from "@/lib/services/ZonaService";
+import { actualizarZonaSchema } from "@/lib/types/zona";
 
 import {
   HAY_BASE_DE_DATOS,
@@ -276,22 +277,45 @@ describeSiHayBase("SLT-51/T3 — guardar una zona conserva sus costos (Postgres 
     });
   });
 
-  it("R9 (contraprueba): con los dos campos el reemplazo es REAL — cambian los `id` y hay fila 380", async () => {
-    // Sin este caso, el de R6 podria estar verde porque la foto no ve un reemplazo. Aqui se
-    // demuestra que si lo ve.
+  it("SLT-54 R27: con los dos campos la action rechaza, sin escribir, contra Postgres", async () => {
     await conEscenario(async (e) => {
       const z = await sembrarZonaConCostos(e);
       const antes = await foto(e.tx, z.zonaId);
+      expect(antes.pagos).toHaveLength(2);
 
       const r = await actualizarZona(
         z.zonaId,
         {
-          nombre: z.nombre,
-          distritoIds: [z.d1, z.d2],
+          nombre: `SLT54 no debe quedar ${unico()}`,
+          distritoIds: [z.d3],
           cobroVehiculo: false,
           tarifas: [{ cobroEntregado: 1000, cobroRechazado: 500 }],
         },
         e.deps,
+      );
+      expect(r.status).toBe("validation_error");
+      expect(await foto(e.tx, z.zonaId)).toEqual(antes);
+    });
+  });
+
+  it("R9 (contraprueba, por el service que queda para sembrar): con los dos campos el reemplazo es REAL — cambian los `id` y hay fila 380", async () => {
+    // Sin este caso, el de R6 podria estar verde porque la foto no ve un reemplazo. Aqui se
+    // demuestra que si lo ve. Va por el service: desde SLT-54 R27 la action ya no lo acepta.
+    await conEscenario(async (e) => {
+      const z = await sembrarZonaConCostos(e);
+      const antes = await foto(e.tx, z.zonaId);
+      const actor = await e.deps.getActor();
+      if (actor === null) throw new Error("el escenario no tiene actor");
+
+      const r = await e.deps.zonaService.actualizar(
+        z.zonaId,
+        actualizarZonaSchema.parse({
+          nombre: z.nombre,
+          distritoIds: [z.d1, z.d2],
+          cobroVehiculo: false,
+          tarifas: [{ cobroEntregado: 1000, cobroRechazado: 500 }],
+        }),
+        actor,
       );
       expect(r.status).toBe("ok");
 
