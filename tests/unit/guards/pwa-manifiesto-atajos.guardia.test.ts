@@ -311,9 +311,10 @@ describe("pwa · los atajos del manifiesto", () => {
     // ⭑ SL-42 (R1, R15) — `maestro` 25 -> 24 porque sale el subítem «Vehículos»
     // (`/configuracion/vehiculos`), y `superadmin` 3 -> 4 porque entra «Vehículos»
     // (`/plataforma/vehiculos`, `ROLES_PLATAFORMA`). Nadie más se mueve. CERO atajos.
+    // ⭑ SLT-54 (R56) — `admin` 15 -> 16 y NADIE más: entra su ítem «Tarifas». CERO atajos.
     expect(Object.fromEntries([...porRol].map(([rol, d]) => [rol, d.size]))).toEqual({
       maestro: 24,
-      admin: 15,
+      admin: 16,
       adminSatelite: 8,
       mensajero: 7,
       adminTienda: 5,

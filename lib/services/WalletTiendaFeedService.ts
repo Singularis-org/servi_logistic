@@ -14,9 +14,10 @@ import type { WalletTiendaMovimientoCategoria } from "@/lib/types/wallet-tienda"
 // Las 2 categorias de devolucion de la 42 que el interruptor Q3 puede descartar del ledger
 // de la tienda (R10/R28). NO tocan la 42.
 //
-// FICHA 301 (2026-08-28): estas dos categorias ya SOLO nacen de una gestion `rechazada`. El
-// nombre "devolucion" se conserva porque es el del concepto facturado (el retorno del
-// paquete a la tienda), no el del resultado de gestion: una `devuelta` no emite ninguna.
+// En el modelo viejo (FICHA 301) estas dos categorias solo nacen de un rechazo: una novedad no
+// emite ninguna. En el modelo nuevo (SLT-52, R29) recogen el flete de todo resultado que no sea
+// `entregado`, reprogramado y novedad incluidos, porque ese flete no sale de lo recaudado. El
+// nombre "devolucion" es el de la categoria, no el del resultado de la gestion.
 const CONCEPTOS_DEVOLUCION: readonly WalletIngresoConcepto[] = [
   "ingreso_flete_devolucion",
   "ingreso_iva_flete_devolucion",
@@ -152,8 +153,7 @@ export class WalletTiendaFeedService implements IWalletTiendaFeedService {
       for (const concepto of WALLET_INGRESO_CONCEPTO_SEED) {
         // R28/R10: interruptor Q3 — si esta en false, DESCARTA los 2 debitos de devolucion
         // del ledger de la tienda (sin tocar el credito COD, el resto de debitos ni la 42).
-        // Ficha 301: esos 2 debitos vienen de gestiones `rechazada`; una `devuelta` ya no los
-        // deriva, asi que aqui no hay nada suyo que descartar.
+        // De que resultados vienen esos 2 debitos depende del modelo: ver `CONCEPTOS_DEVOLUCION`.
         if (!debitaFleteDevolucion && CONCEPTOS_DEVOLUCION.includes(concepto)) continue;
         const aporte = derivado[concepto];
         if (aporte === undefined) continue; // el concepto no aplica a esta gestion

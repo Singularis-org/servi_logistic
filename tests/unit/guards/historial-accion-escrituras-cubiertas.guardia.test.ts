@@ -216,6 +216,14 @@ const CENSO: EntradaCenso[] = [
   },
   // SLT-52 (R14, T6.2) — el modelo nuevo de tarifas. Un metodo por escritura; `grupo_distritos_cambiado`
   // tiene DOS productores (renombrar y mover distritos), cada uno con su propia transaccion.
+  // SLT-54 (R4, T1.2): activar deja su rastro en la misma transaccion que la fila.
+  {
+    tipos: ["tarifas_activadas"],
+    archivo: "lib/repositories/TarifaActivacionRepository.ts",
+    metodo: "activar",
+    forma: "abre_tx",
+    mutacion: /tx\.tarifaActivacion\.create\(/,
+  },
   {
     tipos: ["tarifa_valor_fijado"],
     archivo: "lib/repositories/TarifaValorRepository.ts",
@@ -1208,7 +1216,8 @@ describe("362/R16 — cada tipo del catalogo tiene al menos un punto de escritur
     // 80 desde SLT-52 (`tarifa_valor_fijado`/`_quitado` y `grupo_distritos_creado`/`_cambiado`/
     // `_borrado`; sus productores, desde T6.2, en `TarifaValorRepository` y `GrupoDistritosRepository`).
         // 81 desde el ajuste planes-custom D16 (`plan_tipo_cobro_cambiado`, de `PlanesRepository.cambiarTipoCobro`).
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(81);
+    // 82 desde SLT-54 (`tarifas_activadas`, de `TarifaActivacionRepository.activar`).
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(82);
   });
 });
 

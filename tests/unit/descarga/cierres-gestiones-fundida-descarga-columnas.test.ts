@@ -45,12 +45,15 @@ import type {
   IngresoEmpresaDTO,
 } from "@/lib/interfaces/services/ICierreDiaService";
 import type { CierreGestionDescargaDTO } from "@/lib/interfaces/services/ICierresAdminService";
+import { totalesIngresoEmpresa } from "@/lib/utils/ingreso-empresa";
+import { Prisma } from "@prisma/client";
 
 // --- Fixtures -------------------------------------------------------------
 
 /** Ingreso de la empresa con los seis conceptos poblados y money-safe (STRING escala 2). */
 function ingreso(over: Partial<IngresoEmpresaDTO> = {}): IngresoEmpresaDTO {
   return {
+    tarifaModelo: "viejo",
     montoCobrar: "1000.10",
     cobraComision: true,
     esCentral: true,
@@ -915,5 +918,153 @@ describe("SLT-76 (R21) — la fecha del cierre en la hoja fundida es de Costa Ri
       gestion({ resultado: "entregado", cierreSolicitadoAt: "2026-11-01T05:03:00.000Z" }),
     );
     expect(fila.fechaCierre).toBe("2026-10-31");
+  });
+});
+
+describe("SLT-54 (T5.2, R62) — la celda de fulfillment, en los dos modelos", () => {
+  const TARIFA_VIEJA = {
+    tarifaId: "t1",
+    valorFlete: "1000.00",
+    valorFleteGam: "800.00",
+    valorFleteDevuelto: "500.00",
+    valorFleteDevueltoGam: "400.00",
+    comisionCod: "5.00",
+    ivaFlete: "13.00",
+    ivaComisionCod: "13.00",
+    fulfillment: "696.40",
+    tarifaEspecial: null,
+    tarifaEspecialDevuelta: null,
+  };
+  const celda = (ing: Partial<IngresoEmpresaDTO>) =>
+    filaDescargaGestionFundida(gestion({ resultado: "entregado", ingresoEmpresa: ingreso(ing) })).fulfillment;
+
+  it("nuevo: el fulfillment congelado, con `tarifa` en null", () => {
+    expect(celda({ tarifaModelo: "nuevo", tarifa: null, fulfillment: "900.00", ivaFulfillment: "117.00" })).toBe("900.00");
+  });
+
+  it("nuevo sin concepto: 0.00, que es lo que el cierre congeló", () => {
+    expect(celda({ tarifaModelo: "nuevo", tarifa: null, fulfillment: "0.00" })).toBe("0.00");
+  });
+
+  it("viejo: el de la tarifa congelada, igual que hoy", () => {
+    expect(celda({ tarifaModelo: "viejo", tarifa: TARIFA_VIEJA, fulfillment: "696.40" })).toBe("696.40");
+  });
+
+  it("viejo anterior a la columna: vacía, no 0.00, aunque el DTO diga 0.00", () => {
+    expect(celda({ tarifaModelo: "viejo", tarifa: { ...TARIFA_VIEJA, fulfillment: null }, fulfillment: "0.00" })).toBeNull();
+  });
+
+  it("sin tarifa congelada: vacía", () => {
+    expect(celda({ tarifaModelo: null, tarifa: null, fulfillment: "0.00" })).toBeNull();
+  });
+
+  it("anulado para quien no lo ve (ficha 481): vacía en los dos modelos", () => {
+    expect(celda({ tarifaModelo: "nuevo", tarifa: null, fulfillment: null, ivaFulfillment: null })).toBeNull();
+    expect(
+      celda({ tarifaModelo: "viejo", tarifa: { ...TARIFA_VIEJA, fulfillment: null }, fulfillment: null, ivaFulfillment: null }),
+    ).toBeNull();
+  });
+});
+
+describe("SLT-54 (R72) — lo que el modelo nuevo cobra y paga no se pierde en la descarga", () => {
+  const RESULTADOS: CierreResultado[] = [
+    "entregado",
+    "reprogramado",
+    "novedad",
+    "devolucion_a_origen_por_rechazo",
+    "incidente",
+  ];
+  const FLETE_NO_ENTREGA = {
+    flete: null,
+    ivaFlete: null,
+    fleteConIva: null,
+    comisionCod: null,
+    ivaComisionCod: null,
+    comisionConIva: null,
+    fleteDevolucion: "250.00",
+    ivaFleteDevolucion: "32.50",
+    fleteDevolucionConIva: "282.50",
+    total: "282.50",
+  };
+  const ENTREGA = {
+    fleteDevolucion: null,
+    ivaFleteDevolucion: null,
+    fleteDevolucionConIva: null,
+    flete: "1000.00",
+    ivaFlete: "130.00",
+    fleteConIva: "1130.00",
+    comisionCod: "100.00",
+    ivaComisionCod: "13.00",
+    comisionConIva: "113.00",
+    total: "1243.00",
+  };
+  const conModelo = (resultado: CierreResultado, tarifaModelo: "nuevo" | "viejo" | null) =>
+    gestion({
+      resultado,
+      pagoMensajero: "100.00",
+      ingresoBodegaRechazo: "120.00",
+      ingresoEmpresa: ingreso({ tarifaModelo, ...(resultado === "entregado" ? ENTREGA : FLETE_NO_ENTREGA) }),
+    });
+  const dinero = (fila: ReturnType<typeof filaDescargaGestionFundida>) => [
+    fila.fleteConIva,
+    fila.fleteDevolucionConIva,
+    fila.ingresoTotal,
+    fila.pagoMensajero,
+    fila.ingresoBodega,
+  ];
+
+  it.each<[CierreResultado, ReadonlyArray<string | null>]>([
+    ["entregado", ["1130.00", null, "1243.00", "100.00", "120.00"]],
+    ["reprogramado", [null, "282.50", "282.50", "100.00", "120.00"]],
+    ["novedad", [null, "282.50", "282.50", "100.00", "120.00"]],
+    ["devolucion_a_origen_por_rechazo", [null, "282.50", "282.50", "100.00", "120.00"]],
+    ["incidente", [null, "282.50", "282.50", "100.00", "120.00"]],
+  ])("nuevo, %s: flete, total, pago e ingreso de bodega", (resultado, esperado) => {
+    expect(dinero(filaDescargaGestionFundida(conModelo(resultado, "nuevo")))).toEqual(esperado);
+  });
+
+  // La tabla medida en la revisión: el modelo viejo es esto, celda por celda, y no se mueve.
+  it.each<[CierreResultado, ReadonlyArray<string | null>]>([
+    ["entregado", ["1130.00", null, "1243.00", "100.00", null]],
+    ["reprogramado", [null, null, null, "100.00", null]],
+    ["novedad", [null, "282.50", "282.50", "100.00", null]],
+    ["devolucion_a_origen_por_rechazo", [null, "282.50", "282.50", "100.00", "120.00"]],
+    ["incidente", [null, null, null, null, null]],
+  ])("viejo, %s: igual que antes", (resultado, esperado) => {
+    expect(dinero(filaDescargaGestionFundida(conModelo(resultado, "viejo")))).toEqual(esperado);
+    // Sin modelo congelado (cierre anterior a la columna) se lee como el viejo.
+    expect(dinero(filaDescargaGestionFundida(conModelo(resultado, null)))).toEqual(esperado);
+  });
+
+  it("las columnas del nuevo suman lo que da el comprobante", () => {
+    const gestiones = RESULTADOS.map((resultado) => conModelo(resultado, "nuevo"));
+    const filas = gestiones.map(filaDescargaGestionFundida);
+    const suma = (clave: keyof (typeof filas)[number]) =>
+      filas.reduce((acc, f) => acc.plus(f[clave] === null ? 0 : String(f[clave])), new Prisma.Decimal(0)).toFixed(2);
+
+    // El comprobante sale de la misma función que usa la pantalla, sobre los DTO, y no de esta hoja.
+    const comprobante = totalesIngresoEmpresa(gestiones);
+    expect(suma("fleteConIva")).toBe(comprobante.fleteConIva);
+    expect(suma("fleteDevolucionConIva")).toBe(comprobante.fleteDevolucionConIva);
+    expect(suma("ingresoTotal")).toBe(comprobante.total);
+
+    // Y a mano, para que un cambio de esa función no se lleve las dos partes a la vez.
+    expect(suma("fleteDevolucionConIva")).toBe("1130.00"); // 282,50 por cuatro
+    expect(suma("ingresoTotal")).toBe("2373.00"); // 1.243 + 1.130
+    expect(suma("pagoMensajero")).toBe("500.00");
+    expect(suma("ingresoBodega")).toBe("600.00");
+  });
+
+  it("el resto de la fila del incidente del nuevo sigue siendo la del incidente", () => {
+    const fila = filaDescargaGestionFundida({
+      ...conModelo("incidente", "nuevo"),
+      causaIncidente: "danado",
+      indemnizacion: "50.00",
+    });
+    expect(fila.indemnizacion).toBe("50.00");
+    expect(fila.causa).not.toBeNull();
+    expect(fila.recibido).toBeNull();
+    expect(fila.origenRechazo).toBeNull();
+    expect(fila.nuevaFecha).toBeNull();
   });
 });

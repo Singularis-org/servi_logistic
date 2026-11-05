@@ -1,3 +1,4 @@
+import type { TarifaConcepto } from "@prisma/client";
 import { z } from "zod";
 
 import type { ITarifaValorRepository } from "@/lib/interfaces/repositories/ITarifaValorRepository";
@@ -86,6 +87,7 @@ export class TarifaValorService implements ITarifaValorService {
    * zona y la tienda con rol tarifable. Sin esto, un id ajeno escaparia como error crudo de FK.
    */
   private async referenciasInvalidas(dato: {
+    concepto: TarifaConcepto;
     zonaId: string | null;
     grupoId: string | null;
     tiendaId: string | null;
@@ -100,8 +102,11 @@ export class TarifaValorService implements ITarifaValorService {
     if (dato.tiendaId !== null && !(await this.repo.esTiendaTarifable(dato.tiendaId))) {
       return errorEn("tiendaId", "El valor debe asignarse a un adminTienda o a una API key.");
     }
-    if (dato.vehiculoId !== null && !(await this.repo.existeVehiculo(dato.vehiculoId))) {
-      return errorEn("vehiculoId", "El vehículo indicado no existe.");
+    if (
+      dato.vehiculoId !== null &&
+      !(await this.repo.vehiculoEsElegibleONivelOcupado({ ...dato, vehiculoId: dato.vehiculoId }))
+    ) {
+      return errorEn("vehiculoId", "El vehículo no existe o está inactivo: no admite un valor nuevo.");
     }
     return null;
   }

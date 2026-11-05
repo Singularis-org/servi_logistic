@@ -72,6 +72,7 @@ function ingreso(campos: {
   total: string;
 }): IngresoEmpresaDTO {
   return {
+    tarifaModelo: "viejo",
     montoCobrar: null,
     cobraComision: true,
     esCentral: false,

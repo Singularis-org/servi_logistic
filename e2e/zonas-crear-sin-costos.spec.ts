@@ -61,7 +61,7 @@ test.beforeAll(async ({ browser }) => {
   userAgent = await (await ctx.newPage()).evaluate(() => navigator.userAgent);
   await ctx.close();
 
-  empresa = await sembrarEmpresa(dueno, "A", userAgent, distritos[0]);
+  empresa = await sembrarEmpresa(dueno, "A", userAgent, [distritos[0]]);
 
   const c = await browser.newContext({ userAgent });
   const p = await c.newPage();

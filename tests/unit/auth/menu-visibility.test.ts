@@ -181,9 +181,24 @@ describe("itemsVisibles por rol (mapeo real de SIDEBAR_ITEMS)", () => {
       "Incidentes", // feature 158 (Q-I)
       "Histórico", // feature 321 (R2/R9): para no mover el aterrizaje de nadie
       "Mi plan", // SLT-58 R10: tras «Histórico»; el aterrizaje sigue en «Inicio»
+      "Tarifas", // SLT-54 R56: ítem propio, tras lo suyo; el aterrizaje sigue en «Inicio»
       "Ayuda", // ⭑ ficha 433: LA ÚLTIMA, y por el mismo motivo — la ven los cinco roles
     ]);
     expect(visibles).not.toContain("Configuración");
+  });
+
+  it("SLT-54 R56: «Tarifas para admin» como ítem propio; ningún otro rol distinto del maestro la ve", () => {
+    const hrefs = (rol: RolValue) =>
+      itemsVisibles(SIDEBAR_ITEMS, actor(rol)).flatMap((i) => [i.href, ...(i.children ?? []).map((c) => c.href)]);
+
+    const delAdmin = itemsVisibles(SIDEBAR_ITEMS, actor("admin")).filter((i) => i.href === "/configuracion/tarifas");
+    expect(delAdmin.map((i) => i.label)).toEqual(["Tarifas"]);
+
+    // El maestro la conserva dentro de «Configuración», una sola vez.
+    expect(hrefs("maestro").filter((h) => h === "/configuracion/tarifas")).toHaveLength(1);
+    for (const rol of ["adminTienda", "adminSatelite", "mensajero", "superadmin"] as RolValue[]) {
+      expect(hrefs(rol)).not.toContain("/configuracion/tarifas");
+    }
   });
 
   it("adminTienda ve Analítica + Órdenes + Novedades + Mi wallet, NO Configuración ni Incidentes", () => {

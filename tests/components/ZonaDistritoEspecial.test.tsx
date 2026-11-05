@@ -9,13 +9,9 @@ import { tecleaSinpeDeLaZona } from "../fixtures/sinpe-en-formulario-zona";
 
 // SLT-51 (R4) — la marca de distrito especial es un costo de la EMPRESA y se configura desde
 // Tarifas (SL-38), no desde Zonas. El formulario de zona no pinta el botón «Especial» ni el
-// conteo, y guardar nunca llama a `actualizarDistritosEspeciales`: si lo hiciera, un guardado de
-// geografía podría desmarcar en silencio lo que Tarifas configuró. El selector conserva la
+// conteo: SLT-54 (R28) retiró además la action que escribía la marca. El selector conserva la
 // capacidad detrás de `permitirEspecial` para que SLT-54 la reutilice; eso también se prueba.
-const actualizarDistritosEspecialesMock = vi.fn();
 vi.mock("@/lib/actions/geografia", () => ({
-  actualizarDistritosEspeciales: (...a: unknown[]) =>
-    actualizarDistritosEspecialesMock(...a),
   listarArbolGeografico: vi.fn(),
 }));
 
@@ -97,10 +93,6 @@ async function abrirArbol(user: ReturnType<typeof userEvent.setup>) {
 beforeEach(() => {
   vi.clearAllMocks();
   crearZonaMock.mockResolvedValue({ status: "ok", zona: { id: "z1" } });
-  actualizarDistritosEspecialesMock.mockResolvedValue({
-    status: "ok",
-    actualizados: 1,
-  });
 });
 
 afterEach(cleanup);
@@ -125,7 +117,7 @@ describe("SLT-51/R4 — Zonas no marca distritos especiales", () => {
     expect(screen.queryByText(/Zonas especiales/)).toBeNull();
   });
 
-  it("guardar una zona nunca llama a actualizarDistritosEspeciales", async () => {
+  it("guardar una zona solo llama a crearZona", async () => {
     const user = userEvent.setup();
     renderForm();
     await abrirArbol(user);
@@ -135,8 +127,7 @@ describe("SLT-51/R4 — Zonas no marca distritos especiales", () => {
     await tecleaSinpeDeLaZona(user);
     await user.click(screen.getByRole("button", { name: "Guardar" }));
 
-    await waitFor(() => expect(crearZonaMock).toHaveBeenCalled());
-    expect(actualizarDistritosEspecialesMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(crearZonaMock).toHaveBeenCalledTimes(1));
   });
 });
 

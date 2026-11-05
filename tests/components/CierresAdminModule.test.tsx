@@ -530,6 +530,7 @@ describe("CierresAdminModule", () => {
         destinatario: "Ana Pérez",
         montoRecibido: "25000.00",
         ingresoEmpresa: {
+          tarifaModelo: "viejo",
           montoCobrar: "25000.00",
           cobraComision: true,
           esCentral: true,
