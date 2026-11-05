@@ -30,7 +30,7 @@
     entrada de todas las empresas a las 00:00 de hoy, negativas del `down` y cuerpos literales;
   - guardias `organizacion-en-modelos`, `unicos-por-empresa`, `fk-misma-empresa` y `rls` en verde.
 
-## T2 — Tipos y esquemas zod (R1, R8, R10, R11, R16, R22)
+## [x] T2 — Tipos y esquemas zod (R1, R8, R10, R11, R16, R22)
 
 - **Depende de:** T0. **[P]** con T1.
 - **Pasos:**

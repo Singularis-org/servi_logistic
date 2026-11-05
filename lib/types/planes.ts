@@ -19,18 +19,26 @@ import type { HistorialAccionTipo } from "@/lib/types/historial-accion";
 export const ROLES_CON_TOPE = ["admin", "mensajero", "adminTienda", "adminSatelite"] as const;
 export type RolConTope = (typeof ROLES_CON_TOPE)[number];
 
-// Ajuste planes-custom (D1, 2026-10-31): sin la forma «negociable». Un custom con costo negociado usa
-// «monto»; la migración 20261104130000 pasó los negociables a «sin precio».
+/**
+ * Ajuste planes-custom (D6, 2026-10-31): cómo paga la empresa el plan que se le asigna. Se elige en
+ * cada asignación y se guarda en `organizacion.plan_tipo_cobro`. SLT-86 (R1): cuatro períodos de
+ * calendario; el `CHECK` de la columna admite los mismos cuatro.
+ */
+export const TIPOS_COBRO = ["quincenal", "mensual", "bimestral", "anual"] as const;
+export type TipoCobro = (typeof TIPOS_COBRO)[number];
+export const tipoCobroSchema = z.enum(TIPOS_COBRO);
+
+/** SLT-86 (R10): el descuento de UN período, en porcentaje o en monto fijo; nunca los dos. */
+export type DescuentoPeriodo = { tipo: "porcentaje"; porcentaje: string } | { tipo: "monto"; monto: string };
+
+// Ajuste planes-custom (D1, 2026-10-31): sin la forma «negociable». SLT-86 (R10, R33): el anual fijo y
+// el descuento anual pasan a `descuentos`, uno opcional por período; sin clave = sin descuento.
 export type PrecioPlan =
   | { tipo: "sin_precio" }
-  | {
-      tipo: "monto";
-      mensual: string;
-      anual: null | { tipo: "fijo"; monto: string } | { tipo: "descuento"; porcentaje: string };
-    };
+  | { tipo: "monto"; mensual: string; descuentos: Partial<Record<TipoCobro, DescuentoPeriodo>> };
 
+// SLT-86 (R8): sin tope de órdenes por ciclo.
 export type TopesPlan = {
-  ordenesPorCiclo: number | null;
   porRol: Partial<Record<RolConTope, number>>;
   apiKeys: number | null;
 };
@@ -39,7 +47,7 @@ export type TopesPlan = {
 const tope = z.int().min(0).max(2_147_483_647);
 
 /**
- * Porcentaje de descuento sobre el anual: texto, hasta dos decimales, `> 0` y `≤ 100` (R3). Se
+ * Porcentaje de descuento de un período (SLT-86 R10; antes, sobre el anual): texto, hasta dos decimales, `> 0` y `≤ 100` (R3). Se
  * compara en centésimas enteras, así que no hay redondeo de coma flotante. SLT-83 (R2): el mismo rango
  * vale para el costo por orden porcentual, así que se exporta en vez de copiarlo.
  */
@@ -52,17 +60,39 @@ export const porcentajeSchema = z
     return centesimas > 0 && centesimas <= 10_000;
   });
 
-// Cada forma es `.strict()`: una clave de otra forma es una combinación prohibida (R3): «sin precio»
-// con un monto, un anual fijo con porcentaje, o un anual sin mensual. D1: «negociable» ya no existe.
-const anualSchema = z.union([
-  z.null(),
-  z.object({ tipo: z.literal("fijo"), monto: montoCobroSchema }).strict(),
-  z.object({ tipo: z.literal("descuento"), porcentaje: porcentajeSchema }).strict(),
+// SLT-86 (R10): la clave de la otra forma se declara `never` en vez de dejarla a `.strict()`, para que el
+// error de «las dos formas» caiga en `precio.descuentos.<periodo>.<campo>` y la pantalla lo ponga junto
+// a su campo, no en el descuento entero.
+const SOLO_UNA_FORMA = "Un descuento es porcentaje o monto fijo, no los dos.";
+export const descuentoPeriodoSchema = z.discriminatedUnion("tipo", [
+  z
+    .object({
+      tipo: z.literal("porcentaje"),
+      porcentaje: porcentajeSchema,
+      monto: z.never({ error: SOLO_UNA_FORMA }).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      tipo: z.literal("monto"),
+      monto: montoCobroSchema,
+      porcentaje: z.never({ error: SOLO_UNA_FORMA }).optional(),
+    })
+    .strict(),
 ]);
 
+// Cada forma es `.strict()`: una clave de otra forma es una combinación prohibida (R3). SLT-86 (R11):
+// por eso «sin precio» con `descuentos` da validation_error en `precio`. `descuentos` es obligatorio
+// para que un formulario que no lo mande no borre los descuentos sin avisar.
 export const precioPlanSchema = z.discriminatedUnion("tipo", [
   z.object({ tipo: z.literal("sin_precio") }).strict(),
-  z.object({ tipo: z.literal("monto"), mensual: montoCobroSchema, anual: anualSchema }).strict(),
+  z
+    .object({
+      tipo: z.literal("monto"),
+      mensual: montoCobroSchema,
+      descuentos: z.partialRecord(tipoCobroSchema, descuentoPeriodoSchema),
+    })
+    .strict(),
 ]);
 
 /**
@@ -86,9 +116,9 @@ function unSoloModo(p: { costoPorOrden: string | null; costoPorOrdenPorcentual: 
   return p.costoPorOrden === null || p.costoPorOrdenPorcentual === null;
 }
 
+// SLT-86 (R8): sin `ordenesPorCiclo`; por `.strict()`, traerlo es validation_error.
 export const topesPlanSchema = z
   .object({
-    ordenesPorCiclo: tope.nullable(),
     // `partialRecord` con las claves cerradas: `apiKey` o `superadmin` como clave es validation_error (R25).
     porRol: z.partialRecord(z.enum(ROLES_CON_TOPE), tope),
     apiKeys: tope.nullable(),
@@ -112,12 +142,13 @@ const fechaSchema = z
   });
 
 /**
- * Ajuste planes-custom (D6, 2026-10-31): cómo paga la empresa el plan que se le asigna. Se elige en
- * cada asignación y se guarda en `organizacion.plan_tipo_cobro`.
+ * SLT-86 (R2, R16): `inicioCiclo` es de la primera asignación y `vigenteDesde` de un cambio a una empresa
+ * con plan; las dos a la vez no tienen sentido. Cuál toca lo decide el servicio con la empresa en la mano.
  */
-export const TIPOS_COBRO = ["mensual", "anual"] as const;
-export type TipoCobro = (typeof TIPOS_COBRO)[number];
-export const tipoCobroSchema = z.enum(TIPOS_COBRO);
+const NO_INICIO_Y_EFECTO = {
+  path: ["vigenteDesde"],
+  error: "La fecha de inicio es de la primera asignación y la fecha de efecto de un cambio: no las dos.",
+};
 
 export const crearPlanSchema = z
   .object({
@@ -137,6 +168,9 @@ export const crearPlanSchema = z
     // empresa no tiene plan (eso y el rango los mira el servicio, como en `asignarPlanSchema`).
     tipoCobro: tipoCobroSchema.optional(),
     inicioCiclo: fechaSchema.optional(),
+    // SLT-86 (R16): la fecha de efecto de un custom para una empresa que ya tiene plan. Que la empresa
+    // tenga plan, que falte y el rango los mira el servicio, que tiene el reloj y la empresa.
+    vigenteDesde: fechaSchema.optional(),
   })
   .strict()
   // R2: un custom nombra exactamente una empresa y un público ninguna. Que exista lo mira el servicio.
@@ -152,6 +186,11 @@ export const crearPlanSchema = z
     path: ["inicioCiclo"],
     error: "Un plan público no se asigna al crearlo: no lleva inicio del ciclo.",
   })
+  .refine((p) => p.organizacionId !== null || p.vigenteDesde === undefined, {
+    path: ["vigenteDesde"],
+    error: "Un plan público no se asigna al crearlo: no lleva fecha de efecto.",
+  })
+  .refine((p) => p.inicioCiclo === undefined || p.vigenteDesde === undefined, NO_INICIO_Y_EFECTO)
   .refine(unSoloModo, UN_SOLO_MODO);
 
 // `.strict()`: traer `visibilidad` u `organizacionId` en una edición es validation_error (R2).
@@ -166,7 +205,9 @@ const edicionDelPlan = z
     precio: precioPlanSchema,
     costoPorOrden: montoCobroSchema.nullable(),
     costoPorOrdenPorcentual: costoPorOrdenPorcentualSchema.nullable(),
-    // null = de inmediato (R15); una fecha = programado (R37, T11).
+    // null = de inmediato (R15); una fecha = programado (R37, T11). SLT-86 (R22): si cambia el precio o
+    // un descuento es obligatoria y `≥ hoy`, y hoy se aplica en el acto; lo mira el servicio, que sabe
+    // qué cambió y qué día es.
     vigenteDesde: fechaSchema.nullable(),
   })
   .strict();
@@ -189,19 +230,33 @@ export const cancelarCambioPlanSchema = planIdSchema;
 // superadmin en la primera asignación. Ausente = SL-24 tal cual (el ancla es el instante de asignar).
 // El rango (R30) y «solo en la primera asignación» (R31) los mira el servicio, que tiene el reloj.
 // Ajuste planes-custom (D6): `tipoCobro` obligatorio, en la primera asignación y en un cambio.
+// SLT-86 (R16): `vigenteDesde`, la fecha de efecto de un cambio a una empresa con plan; obligatoria ahí,
+// cosa que mira el servicio (y revalida el repositorio bajo el cerrojo, como SLT-58 R31).
 export const asignarPlanSchema = z
-  .object({ organizacionId: z.uuid(), planId: z.uuid(), inicioCiclo: fechaSchema.optional(), tipoCobro: tipoCobroSchema })
-  .strict();
+  .object({
+    organizacionId: z.uuid(),
+    planId: z.uuid(),
+    inicioCiclo: fechaSchema.optional(),
+    vigenteDesde: fechaSchema.optional(),
+    tipoCobro: tipoCobroSchema,
+  })
+  .strict()
+  .refine((p) => p.inicioCiclo === undefined || p.vigenteDesde === undefined, NO_INICIO_Y_EFECTO);
 /** SLT-58 (R37): la vista previa del modal de primera asignación; la fecha es obligatoria. */
 export const previsualizarAsignacionSchema = z
   .object({ organizacionId: z.uuid(), planId: z.uuid(), inicioCiclo: fechaSchema })
   .strict();
 export const asignablesSchema = z.object({ organizacionId: z.uuid() }).strict();
 /**
- * Ajuste planes-custom (D10): cambiar SOLO el tipo de cobro del plan que la empresa ya tiene. Sin plan
- * ni fecha: el ancla y los módulos no se tocan.
+ * Ajuste planes-custom (D10): cambiar SOLO el tipo de cobro del plan que la empresa ya tiene. SLT-86
+ * (R16, R17): con fecha de efecto obligatoria; desde ella la entrada pasa a esa fecha. El rango lo mira
+ * el servicio.
  */
-export const cambiarTipoCobroSchema = z.object({ organizacionId: z.uuid(), tipoCobro: tipoCobroSchema }).strict();
+export const cambiarTipoCobroSchema = z
+  .object({ organizacionId: z.uuid(), tipoCobro: tipoCobroSchema, vigenteDesde: fechaSchema })
+  .strict();
+/** SLT-86 (R19, R26): «Cancelar cambio» del pendiente de una empresa. */
+export const cancelarCambioEmpresaSchema = z.object({ organizacionId: z.uuid() }).strict();
 /**
  * Ajuste planes-custom (D13): la vista previa de SLT-58 R37 en el form del custom, antes de que el plan
  * exista. Los topes son los que se están escribiendo en el form (la misma forma que `crearPlanSchema`).
@@ -218,6 +273,7 @@ export type AsignarPlanInput = z.infer<typeof asignarPlanSchema>;
 export type PrevisualizarAsignacionInput = z.infer<typeof previsualizarAsignacionSchema>;
 export type AsignablesInput = z.infer<typeof asignablesSchema>;
 export type CambiarTipoCobroInput = z.infer<typeof cambiarTipoCobroSchema>;
+export type CancelarCambioEmpresaInput = z.infer<typeof cancelarCambioEmpresaSchema>;
 export type PrevisualizarCustomInput = z.infer<typeof previsualizarCustomSchema>;
 
 /** Lo que define una versión del plan: lo editable (§16.1: `version` es esto mismo). */
@@ -245,7 +301,8 @@ export type PlanDTO = {
 export type TopeExcedido = {
   organizacionId: string;
   empresa: string;
-  tope: "ordenes" | "api_keys" | RolConTope;
+  // SLT-86 (R8): ya no hay tope de órdenes.
+  tope: "api_keys" | RolConTope;
   usados: number;
   maximo: number;
 };
@@ -354,6 +411,14 @@ export type CambiarTipoCobroResult =
   | { estado: "validation_error"; fieldErrors: Record<string, string[]> }
   | { estado: "not_found" }
   | { estado: "sin_plan" };
+
+/** SLT-86 (R19, R26): «Cancelar cambio». `sin_cambio_programado`: la empresa no tenía pendiente. */
+export type CancelarCambioEmpresaResult =
+  | { estado: "ok" }
+  | { estado: "forbidden" }
+  | { estado: "validation_error"; fieldErrors: Record<string, string[]> }
+  | { estado: "not_found" }
+  | { estado: "sin_cambio_programado" };
 
 /**
  * Ajuste planes-custom (D13): la vista previa de SLT-58 R37 para el form del custom, con los topes del
