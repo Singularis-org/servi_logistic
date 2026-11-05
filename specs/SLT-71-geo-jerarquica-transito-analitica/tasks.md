@@ -104,7 +104,7 @@
 
 ## T8 — Cierre de la implementación [T5, T6, T7]
 
-- [ ] **T8.1** Mapa `R<n> → test` completo en `progress/impl_SLT-71.md`, con las comprobaciones de
+- [x] **T8.1** Mapa `R<n> → test` completo en `progress/impl_SLT-71.md`, con las comprobaciones de
   diff anotadas:
   - `db/` vacío, o solo la migración de T9 (R23);
   - `lib/analytics/` vacío (R6);
@@ -112,7 +112,7 @@
   - la lista exacta de aserciones cambiadas, que debe coincidir con design §11.1 (R24).
 
   **Hecho:** cada R1–R25 tiene una fila.
-- [ ] **T8.2** `./init.sh` en verde. Si muere por memoria, typecheck y guardias en local, y la suite
+- [x] **T8.2** `./init.sh` en verde. Si muere por memoria, typecheck y guardias en local, y la suite
   completa en `gate-completo` de CI (regla del humano «gate en CI, no local»). **Hecho:** la salida
   está en `progress/impl_SLT-71.md`.
 - [ ] **T8.3** Puerta humana, sin agente. Una persona corre `pnpm geo:equivalencia-analitica` y

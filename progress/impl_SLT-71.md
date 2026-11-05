@@ -730,3 +730,15 @@ Ningún otro `expect` existente cambió. El resto de archivos existentes tocados
 - Solo el #10 (`alcance-dinero.guardia.test.ts:222`), ya autorizado por el humano.
 - Dos tests cambian su doble fuera de la lista de archivos de design §11.1, sin tocar ningún `expect`:
   `cohorte-consulta-unica.test.ts` e `informe-transito-composicion.test.ts`. Ya estaban anotados en la tanda 2.
+
+## T8.1 marcada (leader, 2026-11-05)
+- Decisión del humano (2026-11-05): R23 se da por cumplido sobre los commits propios de SLT-71 (`c26cd50a..HEAD`, `db/` vacío).
+  Cuando SLT-65 esté en `dev` y se integre (F2.3), se repite `git diff --name-only origin/dev...HEAD -- db/` antes de pedir el merge.
+- R24: la evidencia de E2E y de las suites `informe-transito-*` es la de CI (`gate-completo`), no local.
+
+## T8.2 (leader, 2026-11-05)
+- `./init.sh` completo no cabe en local con la rama apilada (`vitest related` > 15 min, corte por memoria/tiempo). Regla del humano
+  «gate en CI, no local»: en local typecheck y guardias; la suite completa en `gate-completo` de CI.
+- `pnpm run typecheck`: exit 0.
+- `pnpm run test:guardias`: `Test Files 1 failed | 330 passed | 3 skipped (334)`, `Tests 4 failed | 4616 passed | 24 skipped`.
+  Los 4 rojos son `dependencias-declaradas-presentes` (baseline).
