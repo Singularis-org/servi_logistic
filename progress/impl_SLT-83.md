@@ -1054,3 +1054,34 @@ $ npx vitest run (DATABASE_URL → servi_logistic_slt83)
 No se corrió `./init.sh` ni la suite completa (instrucción). Sin push.
 
 **Veredicto:** dev integrado sin conflictos ni ajustes; contadores RLS intactos y tests de SLT-83 en verde contra la base.
+
+## Rojos de CI (PR #79)
+
+Run 41957740857, `gate-completo`: 3 archivos en rojo fuera de `tests/baseline-rojos.json`.
+
+1. `tests/unit/actions/planes.composition-root.test.ts` — **test desfasado, de SLT-83** (commit `55030ea9`).
+   El cliente falso devolvía la fila de `plan` sin `costoPorOrdenPct`/`costoPorOrdenMinimo` (→ `undefined.toFixed`
+   en `aDTO`), y crear/editar no mandaban `costoPorOrdenPorcentual`, que R1/R2 hace obligatorio (`null` = no
+   porcentual): el `validation_error` venía de ahí y tapaba el de `vigenteDesde`. Se completan fila y entradas,
+   y el DTO esperado gana `costoPorOrdenPorcentual: null`. Las aserciones de comportamiento no cambian.
+2. `tests/unit/actions/empresas-plataforma.composition-root.test.ts` — **test desfasado, no bug de producción**
+   (commit `6bb95eab`). El mock de `$queryRaw` no traía `porcentaje`/`minimo` (columnas nuevas de M3); `undefined !==
+   null` hacía que `costoVigenteDeLaTarifa` lo tomara por porcentual con fuente `empresa` y lanzara. La función SQL
+   no mezcla fuentes: con excepción devuelve `porcentaje NULL` antes de mirar el plan (M3, paso 3), y ya lo cubre
+   contra la base real `empresas-plataforma-cobro-porcentual.test.ts` (empresa C: excepción + plan porcentual).
+   M3 no se toca. La fila del mock se completa y la expectativa gana `modo: "fijo"` (forma R22 de `CostoVigente`).
+3. `tests/integration/db/whatsapp-envio-ejecucion-admintienda.test.ts` — **ajeno a SLT-83**, no se arregla:
+   - `usuarioModelo` necesita un `usuario` ya existente en la base; la base de CI nace vacía. Ni el test ni
+     `_whatsapp-envios-474.ts` ni `_postgres-real.ts` cambian respecto de `origin/dev`, y SLT-83 no borra usuarios.
+   - Sus 7 hermanos de la ficha 474 (mismo helper, mismo error) ya están en el baseline con el motivo «La app nace
+     vacía (SL-11)». En el run verde de dev (41915918920) este archivo pasó por orden/temporización (otro archivo
+     del shard tenía un usuario visible), y en ese mismo run hay 13 fallos «no hay ningun usuario modelo» en los
+     hermanos. En el nuestro el shard 2 tiene 39 archivos más (los de SLT-83) y el orden cambió.
+   - En local, contra `servi_logistic_slt83`, falla igual. Va al baseline con el motivo de sus hermanos (lo hace el leader).
+
+Verificación (DATABASE_URL=servi_logistic_slt83):
+- `vitest run` de los 2 composition-root + whatsapp-admintienda + 7 de cobro porcentual en BD: 9 archivos verdes,
+  92 tests verdes; 1 rojo, el de whatsapp (ajeno, ver arriba).
+- `tsc --noEmit`: sin errores. `eslint` de los dos tests tocados: sin problemas.
+
+Veredicto: los dos rojos de SLT-83 eran tests desfasados con el contrato nuevo y ya están arreglados; el de whatsapp es ajeno y va al baseline.
