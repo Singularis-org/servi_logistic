@@ -50,7 +50,7 @@
   método (design §3.3–3.4). **Hecho:** typecheck en verde. `conteo-por-status-sql.test.ts`,
   `conteo-devoluciones.test.ts` y `conteo-entregas-*.test.ts` pasan, cambiando solo lo de design
   §11.1.
-- [ ] **T3.2** [P] `ConteoCargadasPorDiaRepository` (sitio 3) y `CicloVidaRepository` (sitio 5), con
+- [x] **T3.2** [P] `ConteoCargadasPorDiaRepository` (sitio 3) y `CicloVidaRepository` (sitio 5), con
   el mismo patrón. `CicloVidaRepository` se toca sobre la versión de SLT-64 ya integrada.
   **Hecho:** typecheck en verde. `ciclo-vida.test.ts` y `conteo-cargadas-servicio.test.ts` pasan,
   cambiando solo lo de §11.1.
