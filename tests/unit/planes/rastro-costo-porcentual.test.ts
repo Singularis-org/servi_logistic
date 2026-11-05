@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  COBRA_PORCENTUAL,
   lineasDeCambioDelPlan,
   SIN_COSTO_PORCENTUAL,
   type CambioDelPlanParaCorreo,
@@ -83,16 +84,40 @@ describe("SLT-83 R4 — las líneas de «qué cambia»", () => {
 
   it("pasar de fijo a porcentual da la línea del fijo y la del porcentual", () => {
     expect(lineas(FIJO, PLAN)).toEqual([
-      "Costo por orden: 100.00 por orden → se aplica el valor global",
+      `Costo por orden: 100.00 por orden → ${COBRA_PORCENTUAL}`,
       `Costo por orden porcentual: ${SIN_COSTO_PORCENTUAL} → 2.00 % del valor del paquete, mínimo 500.00`,
     ]);
   });
 
   it("pasar de porcentual a fijo da las dos líneas al revés", () => {
     expect(lineas(PLAN, FIJO)).toEqual([
-      "Costo por orden: se aplica el valor global → 100.00 por orden",
+      `Costo por orden: ${COBRA_PORCENTUAL} → 100.00 por orden`,
       `Costo por orden porcentual: 2.00 % del valor del paquete, mínimo 500.00 → ${SIN_COSTO_PORCENTUAL}`,
     ]);
+  });
+
+  // Textos aprobados por el humano el 2026-11-04: el fijo vacío por pasar a porcentual es «cobra
+  // porcentual», no «se aplica el valor global».
+  it("de fijo a porcentual, el lado vacío del fijo dice «cobra porcentual»", () => {
+    expect(lineas(FIJO, PLAN)[0]).toBe(`Costo por orden: 100.00 por orden → ${COBRA_PORCENTUAL}`);
+    expect(COBRA_PORCENTUAL).toBe("cobra porcentual");
+  });
+
+  it("de porcentual a fijo, el lado «antes» del fijo dice «cobra porcentual»", () => {
+    expect(lineas(PLAN, FIJO)[0]).toBe(`Costo por orden: ${COBRA_PORCENTUAL} → 100.00 por orden`);
+  });
+
+  it("de fijo a vacío sin porcentual sigue «se aplica el valor global» (SLT-66)", () => {
+    expect(lineas(FIJO, { ...FIJO, costoPorOrden: null })).toEqual([
+      "Costo por orden: 100.00 por orden → se aplica el valor global",
+    ]);
+    expect(lineasDeCambioDelPlan({ costoPorOrden: { antes: "100.00", despues: null } })).toEqual([
+      "Costo por orden: 100.00 por orden → se aplica el valor global",
+    ]);
+  });
+
+  it("SIN_COSTO_PORCENTUAL es el texto aprobado", () => {
+    expect(SIN_COSTO_PORCENTUAL).toBe("sin costo porcentual");
   });
 
   it("sin cambio del porcentual no hay línea, y un rastro anterior a la ficha no la pinta", () => {

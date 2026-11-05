@@ -487,3 +487,44 @@ El único rojo es `dependencias-declaradas-presentes.guardia.test.ts` (4), que e
 (igual que al cierre de la Tanda A). Los dos timeouts de la Tanda A no se repitieron.
 
 **Veredicto T10:** los textos del modo porcentual viven en un solo sitio, con test; quedan dos avisos de forma para el humano.
+
+## Textos aprobados (2026-11-04)
+
+Tres textos que decidió el humano el 2026-11-04.
+
+Archivos modificados:
+- `lib/planes/mensajes.ts`: `SIN_COSTO_PORCENTUAL` pierde el «ABIERTO ... provisional» y queda
+  aprobado; nueva `COBRA_PORCENTUAL = "cobra porcentual"` y `textoDelLadoFijo` (lado del fijo vacío con
+  el porcentual de ese mismo lado no nulo → «cobra porcentual»; sin porcentual sigue SLT-66);
+  `sumaDelCobrado` (cobrado negativo → `«− <abs>»` con U+2212, por el texto decimal, sin aritmética).
+- `tests/unit/planes/rastro-costo-porcentual.test.ts`: casos nuevos; los dos casos SLT-83 de fijo ↔
+  porcentual pasan a esperar «cobra porcentual» (no se tocó ninguna aserción de SLT-66).
+- `tests/unit/planes/mensajes-costo-porcentual.test.ts`: casos nuevos del total con resta.
+
+R → test:
+- R4 (rastro fijo → porcentual: «100.00 por orden → cobra porcentual»; porcentual → fijo: «cobra
+  porcentual → 100.00 por orden»; sin porcentual sigue «se aplica el valor global»; el texto aprobado
+  de `SIN_COSTO_PORCENTUAL`) → `tests/unit/planes/rastro-costo-porcentual.test.ts` > «las líneas de
+  "qué cambia"».
+- R23 (total con cobrado negativo: «50000.00 − 500.00 = 49500.00»; con 0 sigue «+») →
+  `tests/unit/planes/mensajes-costo-porcentual.test.ts` > «SLT-83 R23 — las líneas de "Mi plan"».
+
+Salida real:
+```
+pnpm exec vitest run tests/unit/planes/
+ Test Files  10 passed (10)
+      Tests  162 passed (162)
+pnpm exec vitest run tests/unit/services/email/plantilla-cambio-plan.test.ts tests/unit/services/mi-plan-service.test.ts
+ Test Files  2 passed (2)
+      Tests  28 passed (28)
+pnpm run typecheck   → tsc --noEmit, sin errores
+pnpm exec eslint lib/planes/mensajes.ts tests/unit/planes/rastro-costo-porcentual.test.ts tests/unit/planes/mensajes-costo-porcentual.test.ts → sin salida, exit 0
+```
+
+Avisos:
+- La dirección inversa (porcentual → fijo) se implementó: la línea se arma lado por lado con el
+  porcentual de ese mismo lado, así que es simétrica sin ambigüedad.
+- Hoy ninguna pantalla de `app/` llama a `lineasDelCosteoPorcentual`; el texto con resta llega a la UI
+  cuando la tanda de frontend la use.
+
+Veredicto: textos aprobados aplicados, con test y en verde.

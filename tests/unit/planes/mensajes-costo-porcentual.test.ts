@@ -83,6 +83,18 @@ describe("SLT-83 R23 — las líneas de «Mi plan» con un plan porcentual", () 
     expect(l.total).toBe("Total del ciclo hasta hoy: 50000.00 + 290.11 = 50290.11");
   });
 
+  // Texto aprobado por el humano el 2026-11-04: un cobrado negativo se resta, con U+2212.
+  it("un cobrado negativo se pinta como resta con su valor absoluto, nunca «+ -»", () => {
+    const l = lineasDelCosteoPorcentual({ ...COSTEO, cobrado: "-500.00", total: "49500.00" });
+    expect(l.total).toBe("Total del ciclo hasta hoy: 50000.00 − 500.00 = 49500.00");
+    expect(l.total).not.toContain("+ -");
+  });
+
+  it("con cobrado 0 sigue «base + c = t»", () => {
+    const l = lineasDelCosteoPorcentual({ ...COSTEO, cobrado: "0.00", total: "50000.00" });
+    expect(l.total).toBe("Total del ciclo hasta hoy: 50000.00 + 0.00 = 50000.00");
+  });
+
   it("con la base por definir no hay total (SLT-66 R20)", () => {
     const l = lineasDelCosteoPorcentual({ ...COSTEO, base: { tipo: "por_definir" }, total: null, sinCostoConcreto: true });
     expect(l.total).toBeNull();

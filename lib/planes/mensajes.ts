@@ -196,6 +196,21 @@ export function textoDelCostoPorOrden(c: string | null): string {
 }
 
 /**
+ * SLT-83 (R4; aprobado por el humano el 2026-11-04): el lado del costo fijo en la línea «Costo por
+ * orden» cuando ese lado está vacío porque el plan cobra porcentual, en lugar de «se aplica el valor
+ * global».
+ */
+export const COBRA_PORCENTUAL = "cobra porcentual";
+
+/**
+ * SLT-83 (R4): un lado de la línea «Costo por orden». Vacío con el porcentual de ese mismo lado no
+ * nulo es «cobra porcentual»; sin porcentual, o en un rastro anterior a la ficha, sigue SLT-66.
+ */
+function textoDelLadoFijo(c: string | null, porcentual: CostoPorOrdenPorcentual | null | undefined): string {
+  return c === null && porcentual ? COBRA_PORCENTUAL : textoDelCostoPorOrden(c);
+}
+
+/**
  * SLT-83 (design §4.4; R21): el costo por orden de un plan porcentual, sin símbolo de moneda y con dos
  * decimales aunque llegue «2» de una versión aún sin guardar.
  */
@@ -206,8 +221,7 @@ export function textoDelCostoPorOrdenPorcentual(c: CostoPorOrdenPorcentual): str
 
 /**
  * SLT-83 (R4): el lado vacío de la línea «Costo por orden porcentual» (el plan es fijo o vacío).
- * ABIERTO: el spec no fija este texto; es provisional hasta que el humano lo apruebe
- * (`progress/impl_SLT-83.md > T8`).
+ * Texto aprobado por el humano el 2026-11-04 (`progress/impl_SLT-83.md > Textos aprobados`).
  */
 export const SIN_COSTO_PORCENTUAL = "sin costo porcentual";
 
@@ -240,6 +254,15 @@ export interface LineasDelCosteoPorcentual {
 }
 
 /**
+ * SLT-83 (R23; aprobado por el humano el 2026-11-04): el término del cobrado en la línea del total. Un
+ * cobrado negativo se pinta como resta con su valor absoluto («− 500.00», U+2212), nunca «+ -500.00».
+ * El signo sale del texto decimal: la pantalla no hace aritmética con el dinero.
+ */
+function sumaDelCobrado(cobrado: string): string {
+  return cobrado.startsWith("-") ? `\u2212 ${cobrado.slice(1)}` : `+ ${cobrado}`;
+}
+
+/**
  * SLT-83 (design §4.4; R23): los textos de un costeo porcentual. Los importes llegan ya calculados del
  * servidor (`costeoDelCiclo`) y se pintan tal cual, sin moneda, como las líneas del modo fijo. Las
  * órdenes sin estado final son solo un conteo: no se estima su importe.
@@ -253,7 +276,7 @@ export function lineasDelCosteoPorcentual(c: Extract<CosteoDelCiclo, { modo: "po
     total:
       c.total === null || c.base.tipo !== "monto"
         ? null
-        : `Total del ciclo hasta hoy: ${c.base.mensual} + ${c.cobrado} = ${c.total}`,
+        : `Total del ciclo hasta hoy: ${c.base.mensual} ${sumaDelCobrado(c.cobrado)} = ${c.total}`,
   };
 }
 
@@ -288,7 +311,10 @@ export function lineasDeCambioDelPlan(c: CambioDelPlanParaCorreo): string[] {
   if (c.precio) lineas.push(`Costo base: ${textoDelPrecio(c.precio.antes)} → ${textoDelPrecio(c.precio.despues)}`);
   if (c.costoPorOrden) {
     const { antes, despues } = c.costoPorOrden;
-    lineas.push(`Costo por orden: ${textoDelCostoPorOrden(antes)} → ${textoDelCostoPorOrden(despues)}`);
+    const porcentual = c.costoPorOrdenPorcentual;
+    lineas.push(
+      `Costo por orden: ${textoDelLadoFijo(antes, porcentual?.antes)} → ${textoDelLadoFijo(despues, porcentual?.despues)}`,
+    );
   }
   if (c.costoPorOrdenPorcentual) {
     const { antes, despues } = c.costoPorOrdenPorcentual;
