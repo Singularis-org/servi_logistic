@@ -61,7 +61,7 @@ import {
   type ChipMensajero,
   type ChipTienda,
 } from "@/lib/utils/estado-cuenta-chips";
-import { fechaCalendarioCR, inicioDelDiaCREnUtc, inicioDelDiaSiguienteCREnUtc } from "@/lib/utils/fecha-cr";
+import { fechaCalendarioCR, inicioDelDiaCREnUtc, inicioDelDiaSiguienteCREnUtc, ZONA_CR } from "@/lib/utils/fecha-cr";
 import { derivarSaldoTienda } from "@/lib/utils/saldo-tienda";
 import { derivarDesgloseTienda } from "@/lib/utils/desglose-tienda";
 import { fechaDiaMovimientoCR } from "@/lib/utils/fecha-dia-iso";
@@ -430,7 +430,8 @@ export class EstadoCuentaService implements IEstadoCuentaService {
         ref: null,
         // SLT-73 (R32): una fila `sin_consolidar` nace de un `cierre_dia`, no de una consolidacion.
         consolidacionId: f.origenTipo === "cierre_bodega" ? f.origenId : null,
-        fecha: fechaDiaMovimientoCR(f.fechaMovimiento.toISOString()),
+        // SLT-42 pendiente T5.4: zona de la empresa
+        fecha: fechaDiaMovimientoCR(f.fechaMovimiento.toISOString(), ZONA_CR),
         categoria: f.categoria,
         origenTipo: f.origenTipo,
         origen: null,
@@ -558,7 +559,8 @@ export class EstadoCuentaService implements IEstadoCuentaService {
     return {
       ref: { libro: c.libro, movimientoId: f.id },
       consolidacionId: null,
-      fecha: fechaDiaMovimientoCR(f.fechaMovimiento.toISOString()),
+      // SLT-42 pendiente T5.4: zona de la empresa
+      fecha: fechaDiaMovimientoCR(f.fechaMovimiento.toISOString(), ZONA_CR),
       categoria: f.categoria,
       origenTipo: f.origenTipo,
       origen: null, // lo pone `leerCuenta` en lote, fuera de la transaccion

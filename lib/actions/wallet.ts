@@ -68,6 +68,7 @@ import { buildBusquedaPorGuia } from "@/lib/actions/_shared/busqueda-por-guia";
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import type { AppErrorShape } from "@/lib/errors";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 42 (T10) — Server Actions de la wallet (mutaciones/lecturas internas del mismo
 // proyecto -> Server Action, no Route API, patron cierres-admin). Resuelve el actor por
 // sesion, valida en el borde con zod y delega en el servicio bajo `withErrorHandler`.
@@ -279,7 +280,8 @@ export async function listarMovimientosAction(
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R19: antes de tocar el service
     // Ficha 463 (R24/R33/R40): el borde DEL LIBRO — el de las cifras + termino y orden.
-    const data = listarLibroCajaSchema.parse(input); // ZodError -> VALIDATION_ERROR
+    // SLT-42 pendiente T5.4: zona de la empresa
+    const data = listarLibroCajaSchema(ZONA_CR).parse(input); // ZodError -> VALIDATION_ERROR
     const service = deps.service ?? buildService();
     const r = await service.listarMovimientos(data, actor);
     return origenEnPagina(deps.origenes ?? buildOrigenes(), "caja", r, actor);
@@ -303,7 +305,8 @@ export async function listarMovimientosCompletoAction(
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R16: antes de tocar el service
     // Ficha 463 (R42): el borde de la descarga del libro, con termino y orden.
-    const data = listarLibroCajaCompletoSchema.parse(input ?? {}); // R18: ZodError -> VALIDATION_ERROR
+    // SLT-42 pendiente T5.4: zona de la empresa
+    const data = listarLibroCajaCompletoSchema(ZONA_CR).parse(input ?? {}); // R18: ZodError -> VALIDATION_ERROR
     const service = deps.service ?? buildService();
     const r = await service.listarMovimientosCompleto(data, actor);
     return origenEnItems(deps.origenes ?? buildOrigenes(), "caja", r, actor);
@@ -334,7 +337,8 @@ export async function libroCajaKardexAction(
   const r = await withErrorHandler(async () => {
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // antes de tocar el service
-    const data = listarLibroCajaCompletoSchema.parse(input ?? {}); // ZodError -> VALIDATION_ERROR
+    // SLT-42 pendiente T5.4: zona de la empresa
+    const data = listarLibroCajaCompletoSchema(ZONA_CR).parse(input ?? {}); // ZodError -> VALIDATION_ERROR
     const service = deps.service ?? buildCajaKardexService();
     const r = await service.kardex(data, actor);
     return origenEnItems(deps.origenes ?? buildOrigenes(), "caja", r, actor);
@@ -358,7 +362,8 @@ export async function libroCajaKardexConDetalleAction(
   const r = await withErrorHandler(async () => {
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
-    const data = listarLibroCajaCompletoSchema.parse(input ?? {});
+    // SLT-42 pendiente T5.4: zona de la empresa
+    const data = listarLibroCajaCompletoSchema(ZONA_CR).parse(input ?? {});
     const service = deps.service ?? buildCajaKardexService();
     const r = await service.kardexConDetalle(data, actor);
     return origenEnItems(deps.origenes ?? buildOrigenes(), "caja", r, actor);
@@ -388,7 +393,8 @@ export async function listarMovimientosDeFilaAction(
   const r = await withErrorHandler(async () => {
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // antes de tocar el service
-    const data = listarMovimientosDeFilaSchema.parse(input); // ZodError -> VALIDATION_ERROR
+    // SLT-42 pendiente T5.4: zona de la empresa
+    const data = listarMovimientosDeFilaSchema(ZONA_CR).parse(input); // ZodError -> VALIDATION_ERROR
     const service = deps.service ?? buildService();
     const r = await service.listarMovimientosDeFila(data, actor);
     return origenEnPagina(deps.origenes ?? buildOrigenes(), "caja", r, actor);
@@ -418,7 +424,8 @@ export async function verResumenCajaAction(
   const r = await withErrorHandler(async () => {
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
-    const data = listarMovimientosSchema.parse(input); // los filtros de la WALLET; `.strict()`: termino u orden => validation_error (463/R14)
+    // SLT-42 pendiente T5.4: zona de la empresa
+    const data = listarMovimientosSchema(ZONA_CR).parse(input); // los filtros de la WALLET; `.strict()`: termino u orden => validation_error (463/R14)
     const service = deps.service ?? buildService();
     return service.verResumenCaja(data, actor);
   });
@@ -512,7 +519,8 @@ export async function registrarMovimientoManualAction(
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const { crudo, comprobante } = separarComprobante(input);
-    const data = registrarMovimientoManualConLateralesSchema.parse(crudo); // ZodError -> VALIDATION_ERROR
+    // SLT-42 pendiente T5.4: zona de la empresa
+    const data = registrarMovimientoManualConLateralesSchema(ZONA_CR).parse(crudo); // ZodError -> VALIDATION_ERROR
     const archivo = await leerComprobanteOpcional(comprobante);
     const service = deps.service ?? buildService();
     return archivo === null

@@ -26,6 +26,7 @@ import {
 } from "@/lib/types/abono-tienda";
 import type { ArchivoComprobanteLike } from "@/lib/types/pago-por-cuenta-tienda";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // FICHA 457 (design §7) — el BORDE del pago de una tienda a la empresa. Archivo NUEVO a proposito:
 // `wallet-tienda.ts` y `liquidacion.ts` tienen tests de lista exacta de exportaciones.
 //
@@ -112,7 +113,8 @@ export async function registrarAbonoTiendaAction(
   const r = await withErrorHandler(async () => {
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R3: antes de mirar la entrada
-    const { comprobante, ...input } = registrarAbonoTiendaSchema.parse(crudoDelFormData(formData));
+    // SLT-42 pendiente T5.4: zona de la empresa
+    const { comprobante, ...input } = registrarAbonoTiendaSchema(ZONA_CR).parse(crudoDelFormData(formData));
     const archivo = await leerComprobante(comprobante);
     const service = deps.service ?? buildService();
     return service.registrar(input, archivo, actor);

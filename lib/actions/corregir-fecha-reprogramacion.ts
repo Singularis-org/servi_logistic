@@ -20,6 +20,7 @@ import type {
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import type { AppErrorShape } from "@/lib/errors";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // FICHA 371 — Server Action que CORRIGE la fecha de una reprogramacion ya registrada. Mutacion
 // interna del mismo proyecto => Server Action, nunca ruta API (`docs/architecture.md`). Molde
 // literal de `lib/actions/corregir-dia-reparto.ts` (262): `withErrorHandler` +
@@ -46,7 +47,8 @@ import type { AppErrorShape } from "@/lib/errors";
 const corregirFechaReprogramacionSchema = z
   .object({
     ordenId: z.string().uuid(),
-    fecha: fechaCorreccionSchema,
+    // SLT-42 pendiente T5.3: zona de la empresa
+    fecha: fechaCorreccionSchema(ZONA_CR),
     motivo: motivoSchema,
   })
   .strict();

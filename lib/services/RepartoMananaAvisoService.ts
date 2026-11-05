@@ -8,7 +8,7 @@ import type {
 import { emitirBestEffort, notificadorNoOp } from "@/lib/notificaciones/notificadores";
 import type { RepartoMananaNotificador } from "@/lib/notificaciones/notificadores";
 import { fechaRepartoComoTexto, resolverFechaReparto } from "@/lib/utils/dia-reparto";
-import { fechaCalendarioCR, startOfDayCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendarioCR, startOfDayCR, ZONA_CR } from "@/lib/utils/fecha-cr";
 
 // FICHA 413 (T5.1/T5.1b, design §6) — EL PROCESO DE LA TARDE que emite el aviso del reparto de
 // mañana.
@@ -73,7 +73,8 @@ export class RepartoMananaAvisoService implements IRepartoMananaAvisoService {
 
   async ejecutar(now: Date): Promise<RepartoMananaResumen> {
     const diaEnCurso = startOfDayCR(now);
-    const diaAnunciadoISO = fechaRepartoComoTexto(resolverFechaReparto("manana", now));
+    // SLT-42 pendiente T5.5: zona de la empresa
+    const diaAnunciadoISO = fechaRepartoComoTexto(resolverFechaReparto("manana", ZONA_CR, now));
 
     const resumen = await this.repo.resumenPorMensajero(diaEnCurso);
     const conReparto = resumen.filter((fila) => fila.total > 0); // R18

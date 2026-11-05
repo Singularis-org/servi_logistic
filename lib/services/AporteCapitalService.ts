@@ -30,7 +30,7 @@ import type {
 import { problemaDeComprobante, rutaDeComprobante } from "@/lib/utils/comprobante";
 import { medianocheUtcDelDia } from "@/lib/utils/descripcion-pago";
 import { fechaLegible } from "@/lib/utils/dia-reparto-textos";
-import { esFechaCalendarioValida, fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { esFechaCalendarioValida, fechaCalendarioCR, ZONA_CR } from "@/lib/utils/fecha-cr";
 import { instanteDelMovimientoManual } from "@/lib/utils/fecha-movimiento-manual";
 
 class ClaveRepetidaError extends Error {
@@ -142,7 +142,8 @@ export class AporteCapitalService implements IAporteCapitalService {
     }
 
     const id = randomUUID();
-    const fechaMovimiento = instanteDelMovimientoManual(input.fecha, this.ahora());
+    // SLT-42 pendiente T5.4: zona de la empresa
+    const fechaMovimiento = instanteDelMovimientoManual(input.fecha, ZONA_CR, this.ahora());
 
     let exito = false;
     try {

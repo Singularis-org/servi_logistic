@@ -21,6 +21,7 @@ import type {
 import { derivarCuentaPorPagar } from "@/lib/utils/cuenta-por-pagar";
 import { instanteDelMovimientoManual } from "@/lib/utils/fecha-movimiento-manual";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /**
  * SLT-68 (design §6.1/§6.2) — el INCENTIVO MANUAL A UN MENSAJERO: «un premio sin podio».
  *
@@ -61,7 +62,8 @@ export class IncentivoMensajeroService implements IIncentivoMensajeroService {
     // La identidad del incentivo: el egreso de caja la nombra antes de que exista el devengo.
     const id = this.nuevoId();
     const descripcion = `Incentivo · ${input.motivo}`;
-    const fechaMovimiento = instanteDelMovimientoManual(input.fecha);
+    // SLT-42 pendiente T5.4: zona de la empresa
+    const fechaMovimiento = instanteDelMovimientoManual(input.fecha, ZONA_CR);
 
     const escrito = await this.runTransaction(async (tx) => {
       // El mismo candado que el pago a mensajero: serializa contra un reparto simultaneo del cierre.

@@ -29,6 +29,7 @@ import { instanteDelMovimientoManual } from "@/lib/utils/fecha-movimiento-manual
 import { esAccesoTotal } from "@/lib/auth/acceso-total";
 import { CATEGORIA_LABEL } from "@/lib/constants/wallet-rotulos";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Roles autorizados (R17): acceso total (maestro/admin, dueños de la caja central), espejo de
 // WalletService.
 
@@ -96,7 +97,8 @@ export class WalletEgresoService implements IWalletEgresoService {
     // poder releer despues EXACTAMENTE esta fila. Sigue siendo UN SOLO INSERT.
     const id = randomUUID();
     // Ficha 334 (R22/R23): con «hoy» la clave NO viaja y manda el DEFAULT de la columna.
-    const fechaMovimiento = instanteDelMovimientoManual(input.fecha);
+    // SLT-42 pendiente T5.4: zona de la empresa
+    const fechaMovimiento = instanteDelMovimientoManual(input.fecha, ZONA_CR);
     // FICHA 362 (R6/R9) — `egreso_administrativo_registrado`, en la MISMA transaccion que el
     // asiento. La abre el repositorio: el servicio no conoce Prisma.
     const mov: CrearMovimientoInput & { id: string } = {

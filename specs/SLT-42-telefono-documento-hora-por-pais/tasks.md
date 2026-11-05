@@ -99,12 +99,12 @@
 
 Orden sugerido. Cada task deja su grupo en verde con sus tests de hoy, inyectando `reglasPaisFijas(CR)`.
 
-- [ ] **T5.1** Utilidades de `lib/utils/` y `lib/analytics/` que calculan días (`dia-reparto`,
+- [x] **T5.1** Utilidades de `lib/utils/` y `lib/analytics/` que calculan días (`dia-reparto`,
   `ventana-dia-cr`, `filtros-listado-ordenes`, `fecha-dia-iso`, `fecha-movimiento-manual`,
   `periodicidad`, `descarga-dataset`, `ranges`, `cubo-temporal`, `rollup-dia`, `backfill-rango`):
   reciben `zona`.
   *Hecho:* typecheck y sus tests en verde.
-- [ ] **T5.2** Schemas zod con «hoy» de `lib/types/` (§4.3): la comparación con hoy pasa al servicio
+- [x] **T5.2** Schemas zod con «hoy» de `lib/types/` (§4.3): la comparación con hoy pasa al servicio
   o a una fábrica `(zona) => schema`.
   *Hecho:* typecheck; sus tests en verde.
 - [ ] **T5.3** Servicios y repositorios de órdenes, reparto, cierres, corte y reprogramadas.

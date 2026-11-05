@@ -11,6 +11,7 @@ import { TableroDiaService } from "@/lib/services/TableroDiaService";
 import type { FilaTableroDia } from "@/lib/types/tablero-dia";
 import { ventanaDelDiaEnCursoCR } from "@/lib/utils/ventana-dia-cr";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /**
  * Feature 192 — utilidad de SIEMBRA de los tests de integracion del tablero del dia.
  *
@@ -62,7 +63,7 @@ export function diaReparto(fecha: string): Date {
 
 /** Las 19:00 hora de Costa Rica: el caso de R13, con la ventana ya bien entrada. */
 export const AHORA = instanteCR(FECHA_CR, "19:00");
-export const VENTANA = ventanaDelDiaEnCursoCR(AHORA);
+export const VENTANA = ventanaDelDiaEnCursoCR(AHORA, ZONA_CR);
 
 export interface BaseSembrada {
   readonly sufijo: string;

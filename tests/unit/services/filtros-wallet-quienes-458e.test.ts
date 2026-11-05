@@ -9,6 +9,7 @@ import { PAGO_POR_CUENTA_BENEFICIARIO_MAX } from "@/lib/types/pago-por-cuenta-ti
 import { listarMovimientosCompletoSchema, listarMovimientosDeFilaSchema, listarMovimientosSchema } from "@/lib/types/wallet";
 import { conceptosConMovimientosSchema, quienesDelLibroCajaSchema } from "@/lib/types/wallet-filtros";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Ficha 458-E (TE.2, R59) — el selector «A quién» del libro de la caja: rol ANTES de leer, busqueda
 // sin mayusculas ni tildes, orden alfabetico, tope con `hayMas`; y el borde `.strict()` con `.uuid()`.
 // El WHERE y las opciones contra Postgres: `tests/integration/db/libro-caja-filtro-a-quien.test.ts`.
@@ -127,16 +128,16 @@ describe("schemas del filtro «A quién» (design §6)", () => {
 
   it("el libro, la descarga, el detalle de fila, los conceptos de la caja y el selector son `.strict()` y aceptan `aQuien`", () => {
     const aQuien = { tipo: "tienda", id: UUID_A };
-    expect(listarMovimientosSchema.parse({ aQuien }).aQuien).toEqual(aQuien);
-    expect(listarMovimientosCompletoSchema.parse({ aQuien }).aQuien).toEqual(aQuien);
-    expect(listarMovimientosDeFilaSchema.parse({ aQuien, fila: "otros_egresos" }).aQuien).toEqual(aQuien);
-    const conceptos = conceptosConMovimientosSchema.parse({ libro: "caja", aQuien });
+    expect(listarMovimientosSchema(ZONA_CR).parse({ aQuien }).aQuien).toEqual(aQuien);
+    expect(listarMovimientosCompletoSchema(ZONA_CR).parse({ aQuien }).aQuien).toEqual(aQuien);
+    expect(listarMovimientosDeFilaSchema(ZONA_CR).parse({ aQuien, fila: "otros_egresos" }).aQuien).toEqual(aQuien);
+    const conceptos = conceptosConMovimientosSchema(ZONA_CR).parse({ libro: "caja", aQuien });
     expect(conceptos.libro === "caja" ? conceptos.aQuien : null).toEqual(aQuien);
-    expect(listarMovimientosSchema.safeParse({ quien: aQuien }).success).toBe(false);
-    expect(listarMovimientosCompletoSchema.safeParse({ quien: aQuien }).success).toBe(false);
-    expect(listarMovimientosDeFilaSchema.safeParse({ fila: "otros_egresos", quien: aQuien }).success).toBe(false);
-    expect(quienesDelLibroCajaSchema.safeParse({ aQuien }).success).toBe(false);
+    expect(listarMovimientosSchema(ZONA_CR).safeParse({ quien: aQuien }).success).toBe(false);
+    expect(listarMovimientosCompletoSchema(ZONA_CR).safeParse({ quien: aQuien }).success).toBe(false);
+    expect(listarMovimientosDeFilaSchema(ZONA_CR).safeParse({ fila: "otros_egresos", quien: aQuien }).success).toBe(false);
+    expect(quienesDelLibroCajaSchema(ZONA_CR).safeParse({ aQuien }).success).toBe(false);
     // La tienda y `mi_tienda` no admiten «A quién»: su cuenta ya es una.
-    expect(conceptosConMovimientosSchema.safeParse({ libro: "tienda", tiendaId: UUID_A, aQuien }).success).toBe(false);
+    expect(conceptosConMovimientosSchema(ZONA_CR).safeParse({ libro: "tienda", tiendaId: UUID_A, aQuien }).success).toBe(false);
   });
 });

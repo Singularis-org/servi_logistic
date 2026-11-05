@@ -17,7 +17,7 @@ import {
   notificadorNoOp,
   type GastoFijoCobroPendienteNotificador,
 } from "@/lib/notificaciones/notificadores";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendarioCR, ZONA_CR } from "@/lib/utils/fecha-cr";
 import { aplicaHoy, periodoDe } from "@/lib/utils/periodicidad";
 
 /**
@@ -89,14 +89,16 @@ export class GeneracionGastosFijosService implements IGeneracionGastosFijosServi
 
     // Feature 84: de las activas, solo las que disparan HOY segun su periodicidad. Una inactiva
     // nunca llega hasta aca (ni siquiera se evalua).
-    const aplican = plantillas.filter((p) => aplicaHoy(p, now));
+    // SLT-42 pendiente T5.4: zona de la empresa
+    const aplican = plantillas.filter((p) => aplicaHoy(p, now, ZONA_CR));
 
     // R5/R6/R7/R8/R11: LA PARTICION. La clave y el periodo se derivan UNA vez por plantilla, con
     // `periodoDe`, y el interruptor decide a cual de las dos colecciones va la fila.
     const movs: CrearMovimientoInput[] = [];
     const cobros: CrearCobroPendienteInput[] = [];
     for (const p of aplican) {
-      const periodo = periodoDe(p, now);
+      // SLT-42 pendiente T5.4: zona de la empresa
+      const periodo = periodoDe(p, now, ZONA_CR);
       const origenId = `${p.id}:${periodo}`; // LA CLAVE, resuelta una sola vez (R8)
       if (p.requiereAprobacion) {
         // R6/R7: nace un cobro PENDIENTE con la COPIA del concepto y del monto que la plantilla

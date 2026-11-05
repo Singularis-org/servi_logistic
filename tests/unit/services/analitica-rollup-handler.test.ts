@@ -19,6 +19,7 @@ import type {
 } from "@/lib/interfaces/services/IAnaliticaRollupService";
 import type { IJobRepository, JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 124 / T4.2-T4.3-T4.6 — el JOB: fecha objetivo, recurrencia, dedupe, resumen y
 // propagacion del fallo. Todo con dobles en memoria: aqui no hay base ni Prisma.
 //
@@ -284,18 +285,18 @@ describe("R39 — la invocacion manual admite SOLO hoy o ayer", () => {
   const AHORA = new Date("2026-08-02T18:00:00.000Z"); // 12:00 CR del 2 de agosto
 
   it("admite hoy y ayer en calendario CR", () => {
-    expect(validarFechaInvocacionManual("2026-08-02", AHORA).ok).toBe(true);
-    expect(validarFechaInvocacionManual("2026-08-01", AHORA).ok).toBe(true);
+    expect(validarFechaInvocacionManual("2026-08-02", AHORA, ZONA_CR).ok).toBe(true);
+    expect(validarFechaInvocacionManual("2026-08-01", AHORA, ZONA_CR).ok).toBe(true);
   });
 
   it("rechaza `hoy - 10 dias` remitiendo al backfill de la 125", () => {
-    const r = validarFechaInvocacionManual("2026-07-23", AHORA);
+    const r = validarFechaInvocacionManual("2026-07-23", AHORA, ZONA_CR);
     expect(r.ok).toBe(false);
     expect(r.ok === false ? r.motivo : "").toMatch(/125/);
   });
 
   it("rechaza incluso `ayer - 1`: la frontera es exacta, no aproximada", () => {
-    expect(validarFechaInvocacionManual("2026-07-31", AHORA).ok).toBe(false);
+    expect(validarFechaInvocacionManual("2026-07-31", AHORA, ZONA_CR).ok).toBe(false);
   });
 });
 

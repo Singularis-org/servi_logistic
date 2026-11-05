@@ -13,7 +13,7 @@ import type {
 import { EMPRESA } from "@/lib/config/marca";
 import { BUSQUEDA_MIN_CHARS } from "@/lib/types/orden";
 import { esquemaOrdenamiento } from "@/lib/types/ordenamiento-listado";
-import { esFechaCalendarioValida } from "@/lib/utils/fecha-cr";
+import { esFechaCalendarioValida } from "@/lib/utils/calendario-zona";
 
 // FICHA 362 (design §1.1, R14/R15/R17) — EL CATALOGO CERRADO del historial de acciones.
 //

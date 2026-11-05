@@ -20,6 +20,7 @@ import type {
   OrdenAsignabilidadRow,
 } from "@/lib/interfaces/services/IAsignabilidadCoordenadasService";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 34 — service de la asignacion satelite. Dobles de repo (sin DB/HTTP),
 // patron recepcion-satelite-service.test.ts. Cubre R3, R7, R8, R9, R10, R11, R12,
 // R13, R14.
@@ -544,7 +545,7 @@ describe("246/R2-R7 — asignarDesdeSatelite resuelve el dia de reparto", () => 
     );
     // `resolverFechaReparto` es el unico traductor del repo, y las dos superficies lo llaman.
     expect(fechaEscrita(repo).toISOString()).toBe(
-      resolverFechaReparto("manana", TARDE_DEL_20).toISOString(),
+      resolverFechaReparto("manana", ZONA_CR, TARDE_DEL_20).toISOString(),
     );
   });
 });

@@ -30,6 +30,7 @@ import {
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import type { AppErrorShape } from "@/lib/errors";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 44 (T13) — Server Actions del LIBRO del pago por mensajero (lecturas internas del
 // mismo proyecto -> Server Action, no Route API, patron wallet-tienda.ts). Resuelve el actor por
 // sesion, valida en el borde con zod y delega en el servicio bajo `withErrorHandler`.
@@ -172,7 +173,8 @@ export async function listarPagosDeMensajeroAction(
   const r = await withErrorHandler(async () => {
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
-    const data = listarPagosDeMensajeroSchema.parse(input); // mensajeroId REQUERIDO -> ZodError si falta
+    // SLT-42 pendiente T5.4: zona de la empresa
+    const data = listarPagosDeMensajeroSchema(ZONA_CR).parse(input); // mensajeroId REQUERIDO -> ZodError si falta
     const service = deps.service ?? buildService();
     const r = await service.listarPagosDeMensajero(data, actor);
     return origenEnPagina(deps.origenes ?? buildOrigenes(), "mensajero", r, actor);
@@ -195,7 +197,8 @@ export async function listarPagosDeMensajeroCompletoAction(
   const r = await withErrorHandler(async () => {
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R16: antes de tocar el service
-    const data = listarPagosDeMensajeroCompletoSchema.parse(input); // R18: mensajeroId REQUERIDO
+    // SLT-42 pendiente T5.4: zona de la empresa
+    const data = listarPagosDeMensajeroCompletoSchema(ZONA_CR).parse(input); // R18: mensajeroId REQUERIDO
     const service = deps.service ?? buildService();
     const r = await service.listarPagosDeMensajeroCompleto(data, actor);
     return origenEnItems(deps.origenes ?? buildOrigenes(), "mensajero", r, actor);

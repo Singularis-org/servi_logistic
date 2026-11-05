@@ -24,6 +24,7 @@ import {
   type GestionarDesdeAyudaResult,
 } from "@/lib/types/gestion-desde-ayuda";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 237 (design §11, T5.4) — Server Action de la gestion que la TIENDA registra desde la
 // pestaña de ayuda.
 //
@@ -118,7 +119,8 @@ export async function gestionarDesdeAyuda(
     // R13: el borde REVALIDA tipo, tamaño y numero de imagenes con el mismo schema que la
     // ventana, y no depende de la interfaz para hacerlos cumplir. Un `resultado` fuera de los dos
     // literales tampoco parsea (R1). ZodError -> VALIDATION_ERROR.
-    const data = gestionarDesdeAyudaSchema.parse(rawFromFormData(formData));
+    // SLT-42 pendiente T5.3: zona de la empresa
+    const data = gestionarDesdeAyudaSchema(ZONA_CR).parse(rawFromFormData(formData));
     const input = {
       ...data,
       evidencias: await leerEvidencias(data.evidencias as unknown as FileLike[]),

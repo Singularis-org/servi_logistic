@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { useState } from "react";
 import { render, screen, waitFor, cleanup } from "@testing-library/react";
@@ -149,7 +150,7 @@ describe("DataTable · descarga del dataset completo", () => {
       titulo: "Órdenes",
       columnas: COLUMNAS_EXPORT,
       filas: FILAS_EXPORT,
-    });
+    }, ZONA_CR);
     const [contenido, mime, nombreArchivo] = descargarBlobMock.mock.calls[0];
     expect(contenido).toBeInstanceOf(ArrayBuffer);
     expect(mime).toBe(XLSX_MIME);
@@ -364,7 +365,7 @@ describe("DataTable · descarga · ficha 470", () => {
     const real = await vi.importActual<typeof import("@/lib/utils/descarga-dataset")>(
       "@/lib/utils/descarga-dataset",
     );
-    construirDescargaMock.mockImplementationOnce((config) => real.construirDescarga(config));
+    construirDescargaMock.mockImplementationOnce((config, zona, fecha) => real.construirDescarga(config, zona, fecha));
     // 2026-10-02T18:00Z = 12:00 en Costa Rica. Literal: el contrato es el nombre, no la función.
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-10-02T18:00:00.000Z"));

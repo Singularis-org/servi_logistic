@@ -46,6 +46,7 @@ import type { AQuienFiltro } from "@/lib/types/libro-caja-a-quien";
 import type { IBusquedaPorGuiaService } from "@/lib/interfaces/services/IBusquedaPorGuiaService";
 import type { ModoBusquedaLibro, ParDeGuia } from "@/lib/types/busqueda-por-guia";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Roles autorizados (R19/R65): acceso total (maestro/admin, dueños de la caja central).
 // Cualquier otro rol -> forbidden SIN exponer movimientos ni cifras.
 
@@ -523,7 +524,8 @@ export class WalletService implements IWalletService {
     // ids generados y sigue habiendo UN SOLO INSERT (precedente: registrar-cambio-dia-reparto).
     const id = randomUUID();
     // Ficha 334 (R22/R23): con «hoy» la clave NO viaja y manda el DEFAULT de la columna.
-    const fechaMovimiento = instanteDelMovimientoManual(input.fecha);
+    // SLT-42 pendiente T5.4: zona de la empresa
+    const fechaMovimiento = instanteDelMovimientoManual(input.fecha, ZONA_CR);
     // FICHA 362 (R6/R9) — `wallet_movimiento_manual_registrado`. Se usa
     // `crearMovimientoRegistrado` y no `crearMovimientos`: el ajuste manual es una DECISION
     // humana sobre el dinero de la casa, y el registro tiene que ir en la misma transaccion que

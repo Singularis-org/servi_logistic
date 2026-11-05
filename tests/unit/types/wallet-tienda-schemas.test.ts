@@ -11,6 +11,7 @@ import {
 } from "@/lib/types/wallet-tienda";
 import { ORIGENES_FALSOS } from "@/tests/fixtures/origenes-falsos";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Ficha 458-A (TA.6, R36, m1 de la auditoria) — `/mi-wallet` se acota a la tienda de la SESION y el
 // listado PAGINADO rechaza, como el completo, cualquier clave que nombre una tienda: `validation_error`
 // sin leer nada. Antes el paginado no era `.strict()` y la clave se descartaba en silencio.
@@ -20,19 +21,19 @@ const TIENDA = { usuarioId: "t-sesion", rol: "adminTienda" as const };
 
 describe("458-A R36 — el listado de /mi-wallet no admite una clave que nombre una tienda", () => {
   it("el schema paginado rechaza `tiendaId` (y cualquier clave extra); sin ella, pasa", () => {
-    expect(listarMovimientosTiendaSchema.safeParse({ tiendaId: TIENDA_AJENA }).success).toBe(false);
-    expect(listarMovimientosTiendaSchema.safeParse({ page: 1, tienda: TIENDA_AJENA }).success).toBe(false);
-    expect(listarMovimientosTiendaSchema.safeParse({ page: 1, pageSize: 20 }).success).toBe(true);
+    expect(listarMovimientosTiendaSchema(ZONA_CR).safeParse({ tiendaId: TIENDA_AJENA }).success).toBe(false);
+    expect(listarMovimientosTiendaSchema(ZONA_CR).safeParse({ page: 1, tienda: TIENDA_AJENA }).success).toBe(false);
+    expect(listarMovimientosTiendaSchema(ZONA_CR).safeParse({ page: 1, pageSize: 20 }).success).toBe(true);
   });
 
   it("el completo sigue estricto (control: no se relajó al derivar)", () => {
-    expect(listarMovimientosTiendaCompletoSchema.safeParse({ tiendaId: TIENDA_AJENA }).success).toBe(false);
+    expect(listarMovimientosTiendaCompletoSchema(ZONA_CR).safeParse({ tiendaId: TIENDA_AJENA }).success).toBe(false);
   });
 
   it("el desglose del acceso total sigue aceptando SU `tiendaId` y rechaza cualquier otra clave", () => {
-    expect(listarMovimientosDeTiendaSchema.safeParse({ tiendaId: TIENDA_AJENA }).success).toBe(true);
+    expect(listarMovimientosDeTiendaSchema(ZONA_CR).safeParse({ tiendaId: TIENDA_AJENA }).success).toBe(true);
     expect(
-      listarMovimientosDeTiendaSchema.safeParse({ tiendaId: TIENDA_AJENA, todasLasTiendas: true }).success,
+      listarMovimientosDeTiendaSchema(ZONA_CR).safeParse({ tiendaId: TIENDA_AJENA, todasLasTiendas: true }).success,
     ).toBe(false);
   });
 

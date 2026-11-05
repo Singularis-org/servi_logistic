@@ -15,7 +15,7 @@ import { PrevisualizarMovimientoService } from "@/lib/services/PrevisualizarMovi
 import type { ConceptoRegistro, EfectoMovimientoDTO } from "@/lib/types/efecto-movimiento";
 import { listarMovimientosSchema } from "@/lib/types/wallet";
 import { derivarCuentaPorPagar } from "@/lib/utils/cuenta-por-pagar";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendarioCR, ZONA_CR } from "@/lib/utils/fecha-cr";
 import { derivarSaldoTienda } from "@/lib/utils/saldo-tienda";
 
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
@@ -69,7 +69,7 @@ describeSiHayBase("458-B/TB.12 — «Así queda» predice lo que queda (Postgres
         const m: Actor = esc.maestro;
         const hoy = fechaCalendarioCR(new Date());
         const resumen = async () => {
-          const r = await s.wallet.verResumenCaja(listarMovimientosSchema.parse({}), m);
+          const r = await s.wallet.verResumenCaja(listarMovimientosSchema(ZONA_CR).parse({}), m);
           if (r.status !== "ok") throw new Error("resumen");
           return r.resumen;
         };

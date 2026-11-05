@@ -17,6 +17,7 @@ import type { IAnaliticaCache } from "@/lib/interfaces/external/IAnaliticaCache"
 import type { IConteoHoyGestionRepository } from "@/lib/interfaces/repositories/IConteoHoyGestionRepository";
 import type { ConteoHoyGestionDTO } from "@/lib/types/conteo-hoy-gestion";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 export interface ConteoHoyGestionServiceOpts {
   /** Reloj inyectable: ningun `Date.now()` escondido, ningun test falseando el reloj global.
    *  Aqui pesa mas que en sus tres hermanos, porque de este reloj sale QUE DIA se cuenta. */
@@ -53,7 +54,8 @@ export class ConteoHoyGestionService {
    * a mano reintroduciria el off-by-one de seis horas del que avisa `lib/analytics/ranges.ts`.
    */
   async consultar(consulta: ConsultaConteoEntregas): Promise<ConteoHoyGestionDTO> {
-    const dia = resolverRango({ preset: "dia" }, this.now());
+    // SLT-42 pendiente T5.5: zona de la empresa
+    const dia = resolverRango({ preset: "dia" }, ZONA_CR, this.now());
     const clave = claveDeConteoHoyGestion(consulta, dia);
 
     return this.cache.envolver<ConteoHoyGestionDTO>(clave, [TAG_CONTEO_HOY_GESTION], async () => {

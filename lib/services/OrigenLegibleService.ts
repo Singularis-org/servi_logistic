@@ -30,6 +30,7 @@ import type {
 import { fechaDiaMovimientoCR } from "@/lib/utils/fecha-dia-iso";
 import { PARAM_TERMINO_DEFAULT } from "@/lib/utils/filtros-url";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /**
  * El diccionario de rotulos de cada libro (461 §7.3). `Record` TOTAL sobre `WalletOrigenTipo` en los
  * tres (R9): un origen nuevo no compila sin su nombre en cada uno.
@@ -181,7 +182,8 @@ export function componerOrigen(
     case "cierre_dia": {
       const c = id === null ? undefined : e.cierres.get(id);
       if (c === undefined) return solo(null);
-      const dia = fechaDiaMovimientoCR(c.solicitadoAt);
+      // SLT-42 pendiente T5.4: zona de la empresa
+      const dia = fechaDiaMovimientoCR(c.solicitadoAt, ZONA_CR);
       const mensajero = acceso.nombraMensajero ? c.mensajero : null;
       return solo(
         unir(rotulo, dia, mensajero),

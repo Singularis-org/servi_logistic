@@ -16,6 +16,7 @@ import {
 } from "@/lib/types/analitica-financiera";
 import { AHORA, armarServicio, consultaDe, type DatosFinancieros } from "./_dobles-analitica-financiera";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 180 (T4.1 / T4.3 / T3.5) — LA FRONTERA DEL DESGLOSE: R16, R17, R22, R24, R25.
 //
 // Lo que se mide aqui no es la cifra sino QUE se toca y QUE no:
@@ -79,7 +80,7 @@ describe("los cubos que el servicio pasa al repositorio son los del troceo de la
         // La consulta entra ENTERA y es LA MISMA instancia: ni reconstruida ni forjada.
         expect(consultaPasada, id).toBe(consulta);
         expect(comparable(cubosPasados), `${id} / ${raw.desde}`).toEqual(
-          comparable(trocear(consulta.rango)),
+          comparable(trocear(consulta.rango, ZONA_CR)),
         );
       }
     }
@@ -93,7 +94,7 @@ describe("los cubos que el servicio pasa al repositorio son los del troceo de la
     const [consultaPorCubo, cubosPasados] =
       cuentasPorPagar.cuentaPorPagarMensajerosPorCubo.mock.calls[0];
     expect(consultaPorCubo).toBe(consulta);
-    expect(comparable(cubosPasados)).toEqual(comparable(trocear(consulta.rango)));
+    expect(comparable(cubosPasados)).toEqual(comparable(trocear(consulta.rango, ZONA_CR)));
     // El arrastre y el corte reciben la consulta entera y NADA MAS: ni un `desde` suelto.
     expect(cuentasPorPagar.cuentaPorPagarMensajerosAntesDe.mock.calls[0]).toEqual([consulta]);
     expect(cuentasPorPagar.cuentaPorPagarMensajerosAlCorte.mock.calls[0]).toEqual([consulta]);
@@ -102,8 +103,8 @@ describe("los cubos que el servicio pasa al repositorio son los del troceo de la
   it("R22 · el detector discrimina: el troceo de OTRO rango no coincide", () => {
     // Sin esto, comparar dos veces lo mismo podria pasar por casualidad si `trocear` devolviera
     // siempre lo mismo. Aqui se demuestra que dos rangos dan cubos distintos.
-    const propios = trocear(consultaDe("egresos", RANGO_CINCO_DIAS).rango);
-    const ajenos = trocear(consultaDe("egresos", { rango: "dia" }).rango);
+    const propios = trocear(consultaDe("egresos", RANGO_CINCO_DIAS).rango, ZONA_CR);
+    const ajenos = trocear(consultaDe("egresos", { rango: "dia" }).rango, ZONA_CR);
     expect(comparable(propios)).not.toEqual(comparable(ajenos));
   });
 });

@@ -7,6 +7,7 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { ConteoPorMensajero, PremioRankingDTO } from "@/lib/types/ranking";
 import { resolverRango } from "@/lib/analytics/ranges";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 76 (design §5) — logica del ranking DIARIO con repos fake (sin DB). `now` inyectable.
 // Cubre R2 (pct), R3 (asignadas=0 -> indefinido, fuera de podio), R4/R5 (orden/desempate),
 // R6 (conteo crudo), R7 (umbral), R9 (null != 0), R12 (STRING), R16/R17/R18/R19 (autz) y LC1.
@@ -314,7 +315,7 @@ describe("RankingService.obtenerRanking — ventana del dia natural CR (166)", (
     // `resolverRango` en el TEST, no en el service (design §7, Alt. 2 descartada).
     const now = new Date("2026-07-16T12:00:00.000Z");
     const { desde, hasta } = await ventanaPara(now);
-    const rango = resolverRango({ preset: "dia" }, now);
+    const rango = resolverRango({ preset: "dia" }, ZONA_CR, now);
     expect(desde.getTime()).toBe(rango.desde.getTime());
     expect(hasta.getTime()).toBe(rango.hasta.getTime());
   });

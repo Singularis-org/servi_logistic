@@ -28,6 +28,7 @@ import {
   msgEstadoSinDiaVivo,
 } from "@/lib/services/mensajes-correccion-dia-reparto";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 262 — logica de negocio de «corregir el dia de reparto de un lote ya asignado». Servicio
 // PROPIO (design §3): `GuiaAsignacionService` es SOLO acceso total y SOLO zona GAM, y
 // `AsignacionSateliteService` es SOLO `adminSatelite` y SOLO su zona; la correccion cruza las dos,
@@ -132,7 +133,8 @@ export class CorreccionDiaRepartoService implements ICorreccionDiaRepartoService
     //    Y el PASADO no se prohibe con un `if`: no es expresable. El contrato solo admite dos
     //    tokens, «el dia en curso» y «el siguiente» (D3). Un `if (fecha < hoy)` seria exactamente
     //    la clase de linea que un dia alguien relaja «para un caso puntual».
-    const fecha = resolverFechaReparto(input.dia, now);
+    // SLT-42 pendiente T5.3: zona de la empresa
+    const fecha = resolverFechaReparto(input.dia, ZONA_CR, now);
     const fechaTexto = fechaRepartoComoTexto(fecha);
 
     // 4. R5/R6/R7 + R4: precarga del lote (INCLUYE borradas, para poder distinguir motivos).

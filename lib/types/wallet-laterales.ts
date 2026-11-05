@@ -49,15 +49,19 @@ export type CamposLateralesCaja = z.infer<typeof camposLateralesCaja>;
  * 458-C (D5): «a quién» es OBLIGATORIO en el sueldo y el gasto. SL-45 (design §6, R6): en el pago a
  * la plataforma es opcional, porque la contraparte es siempre la plataforma.
  */
-export const registrarEgresoConLateralesSchema = z
-  .intersection(registrarEgresoAdministrativoSchema, camposLateralesCaja)
-  .superRefine((valor, ctx) => {
-    if (valor.tipoEgreso !== "pago_plataforma" && valor.contraparteNombre === undefined) {
-      ctx.addIssue({ code: "custom", path: ["contraparteNombre"], message: CONTRAPARTE_OBLIGATORIA });
-    }
-  });
+export function registrarEgresoConLateralesSchema(zona: string) {
+  return z
+    .intersection(registrarEgresoAdministrativoSchema(zona), camposLateralesCaja)
+    .superRefine((valor, ctx) => {
+      if (valor.tipoEgreso !== "pago_plataforma" && valor.contraparteNombre === undefined) {
+        ctx.addIssue({ code: "custom", path: ["contraparteNombre"], message: CONTRAPARTE_OBLIGATORIA });
+      }
+    });
+}
 /** Corrección de caja CON sus laterales (su `refine` tipo↔categoría se conserva). */
-export const registrarMovimientoManualConLateralesSchema = z.intersection(registrarMovimientoManualSchema, camposLateralesCaja);
+export function registrarMovimientoManualConLateralesSchema(zona: string) {
+  return z.intersection(registrarMovimientoManualSchema(zona), camposLateralesCaja);
+}
 
 /** El comprobante opcional del registro (R74/R75): los tipos y el tope de la 459. */
 export const comprobanteOpcionalSchema = comprobanteSchema.optional();

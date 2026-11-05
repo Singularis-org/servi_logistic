@@ -5,6 +5,7 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { FiltrosWalletService } from "@/lib/services/FiltrosWalletService";
 import { cierresDeLaCuentaSchema, conceptosConMovimientosSchema } from "@/lib/types/wallet-filtros";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Ficha 458-A (TA.3/TA.4) — el servicio de los filtros: rol ANTES de leer, orden del catalogo,
 // busqueda por dia CR o por nombre, tope con `hayMas`; y el borde `.strict()` con `.uuid()` (R12).
 
@@ -109,17 +110,17 @@ describe("FiltrosWalletService.cierresDeLaCuenta (R10/R11)", () => {
 
 describe("bordes `.strict()` con `.uuid()` (R12)", () => {
   it("un id que no tiene forma de identificador muere en el borde", () => {
-    expect(conceptosConMovimientosSchema.safeParse({ libro: "tienda", tiendaId: "tienda-A" }).success).toBe(false);
+    expect(conceptosConMovimientosSchema(ZONA_CR).safeParse({ libro: "tienda", tiendaId: "tienda-A" }).success).toBe(false);
     expect(
-      conceptosConMovimientosSchema.safeParse({ libro: "tienda", tiendaId: UUID_A, cierreId: "' OR 1=1" }).success,
+      conceptosConMovimientosSchema(ZONA_CR).safeParse({ libro: "tienda", tiendaId: UUID_A, cierreId: "' OR 1=1" }).success,
     ).toBe(false);
     expect(cierresDeLaCuentaSchema.safeParse({ cuenta: "tienda", tiendaId: "x" }).success).toBe(false);
-    expect(conceptosConMovimientosSchema.safeParse({ libro: "tienda", tiendaId: UUID_A, cierreId: UUID_B }).success).toBe(true);
+    expect(conceptosConMovimientosSchema(ZONA_CR).safeParse({ libro: "tienda", tiendaId: UUID_A, cierreId: UUID_B }).success).toBe(true);
   });
 
   it("una clave extra (el concepto elegido, otra tienda) es validation_error", () => {
-    expect(conceptosConMovimientosSchema.safeParse({ libro: "caja", categoria: "egreso_sueldo" }).success).toBe(false);
-    expect(conceptosConMovimientosSchema.safeParse({ libro: "mi_tienda", tiendaId: UUID_A }).success).toBe(false);
+    expect(conceptosConMovimientosSchema(ZONA_CR).safeParse({ libro: "caja", categoria: "egreso_sueldo" }).success).toBe(false);
+    expect(conceptosConMovimientosSchema(ZONA_CR).safeParse({ libro: "mi_tienda", tiendaId: UUID_A }).success).toBe(false);
     expect(cierresDeLaCuentaSchema.safeParse({ cuenta: "mensajero", mensajeroId: UUID_A, tiendaId: UUID_B }).success).toBe(false);
   });
 });

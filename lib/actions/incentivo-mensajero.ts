@@ -19,6 +19,7 @@ import {
   type RegistrarIncentivoMensajeroActionResult,
 } from "@/lib/types/incentivo-mensajero";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // SLT-68 (design §6) — el BORDE del incentivo manual a un mensajero. Molde de las demas actions de
 // Wallet: sesion primero (R2: `unauthenticated` antes de mirar la entrada), zod `.strict()` despues
 // (R3), y el resto lo decide el dominio (R1, R4, R5, R10, R15). Wallet es nucleo
@@ -80,7 +81,8 @@ export async function registrarIncentivoMensajeroAction(
   const r = await withErrorHandler(async () => {
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R2: antes del schema
-    const data = registrarIncentivoMensajeroSchema.parse(crudoDelFormData(formData)); // R3
+    // SLT-42 pendiente T5.4: zona de la empresa
+    const data = registrarIncentivoMensajeroSchema(ZONA_CR).parse(crudoDelFormData(formData)); // R3
     const service = deps.service ?? buildService();
     return service.registrar(data, actor);
   });

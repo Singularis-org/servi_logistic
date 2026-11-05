@@ -7,6 +7,7 @@ import { proximaCorridaRollupCR } from "@/lib/services/jobs/analitica-rollup-dia
 import { dedupeKeyRollup } from "@/lib/services/jobs/analitica-rollup-diario-encolado";
 import { fechaObjetivo } from "@/lib/analytics/rollup-dia";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 124 (D4->C1, R36) — seed inicial IDEMPOTENTE de la PRIMERA fila
 // `analitica_rollup_diario`. Siembra la proxima corrida (proximas 00:30 CR = 06:30 UTC) con
 // el `dedupe_key` de la FECHA QUE ESA CORRIDA AGREGARA (D-1 respecto de la corrida, no la
@@ -24,7 +25,8 @@ export async function seedJobAnaliticaRollupDiario(
   return repo.enqueue(
     "analitica_rollup_diario",
     {},
-    { runAfter, dedupeKey: dedupeKeyRollup(fechaObjetivo(runAfter)) },
+    // SLT-42 pendiente T6: zona de la empresa
+    { runAfter, dedupeKey: dedupeKeyRollup(fechaObjetivo(runAfter, ZONA_CR)) },
   );
 }
 

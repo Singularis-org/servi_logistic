@@ -23,7 +23,7 @@ import type {
   QuienesDelLibroCajaInput,
 } from "@/lib/types/wallet-filtros";
 import { WALLET_TIENDA_MOVIMIENTO_CATEGORIA_SEED } from "@/lib/types/wallet-tienda";
-import { esFechaCalendarioValida, inicioDelDiaCREnUtc, inicioDelDiaSiguienteCREnUtc } from "@/lib/utils/fecha-cr";
+import { esFechaCalendarioValida, inicioDelDiaCREnUtc, inicioDelDiaSiguienteCREnUtc, ZONA_CR } from "@/lib/utils/fecha-cr";
 import { fechaDiaMovimientoCR } from "@/lib/utils/fecha-dia-iso";
 
 /** `/mi-wallet` es de la tienda de la sesion (`ROLES_MI_WALLET`); el alcance sale del actor. */
@@ -126,7 +126,8 @@ export class FiltrosWalletService implements IFiltrosWalletService {
       hayMas: filas.length > limite,
       opciones: filas.slice(0, limite).map((f) => ({
         cierreId: f.cierreId,
-        dia: fechaDiaMovimientoCR(f.solicitadoAt),
+        // SLT-42 pendiente T5.4: zona de la empresa
+        dia: fechaDiaMovimientoCR(f.solicitadoAt, ZONA_CR),
         hora: horaCostaRica(f.solicitadoAt),
         mensajero: f.mensajero,
         movimientos: f.movimientos,

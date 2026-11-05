@@ -34,6 +34,7 @@ import {
 } from "@/app/(app)/cierres-admin/_components/cierre-labels";
 import { desgloseDescarga } from "@/app/(app)/cierres-admin/_components/desglose-pago";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /**
  * Encabezado del pago al mensajero EN SU PANTALLA. Aquí se llama "Ganancia" (y no "Pago
  * mensajero", como en las pantallas de admin): es su palabra para el mismo dato, y el
@@ -253,6 +254,7 @@ export function filaDescargaDiaCierrePasado(cierre: CierrePasadoDTO): DescargaFi
     transferencia: cierre.totales.transferencia,
     general: cierre.totales.general,
     ganancia: cierre.totalPagoMensajero,
-    fecha: fechaDiaInstanteCR(cierre.solicitadoAt),
+    // SLT-81: la UI sigue en la zona de CR
+    fecha: fechaDiaInstanteCR(cierre.solicitadoAt, ZONA_CR),
   };
 }

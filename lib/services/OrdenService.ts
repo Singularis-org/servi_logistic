@@ -43,6 +43,7 @@ import {
 // `BulkOrdenService`, que es por donde se crean las ordenes de verdad.
 import { descargaConfig } from "@/lib/config/descarga";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Roles reconocidos por las lecturas (los demas -> forbidden, R24). maestro/admin ven todo
 // (R20); adminTienda/mensajero con acotamiento (R21/R23). Se llamaba "del CRUD" cuando este
 // servicio tambien escribia; desde el 2026-08-07 solo lee.
@@ -218,7 +219,8 @@ export class OrdenService implements IOrdenService {
     }
     // Feature 144/R41/R42/R43: los bordes temporales se calculan AQUI (server-side),
     // no llegan del cliente.
-    const createdAt = rangoCreacion(input.filter, this.ahora());
+    // SLT-42 pendiente T5.3: zona de la empresa
+    const createdAt = rangoCreacion(input.filter, this.ahora(), ZONA_CR);
     if (createdAt) where.createdAt = createdAt;
     // REASIGNABLES: predicado compuesto, no columna, asi que no pasa por
     // FILTER_TO_COLUMN; el repositorio lo traduce. Solo acota (nunca amplia), asi que

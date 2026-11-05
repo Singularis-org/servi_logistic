@@ -12,6 +12,7 @@ import {
   enTransaccionRevertida,
 } from "../db/_postgres-real";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 180 / T2.4 — LA PARTICION POR CUBO, CONTRA POSTGRES DE VERDAD.
 //
 // POR QUE ESTE ARCHIVO NO ES OPCIONAL. Los tests de `tests/unit/analytics/financiera-*-cubo-repo`
@@ -73,7 +74,7 @@ function consultaDe(
 
 /** Los cubos SALEN de `trocear`: ni una frontera se escribe a mano en este archivo (R11). */
 function cubosDe(consulta: ConsultaAnalitica): readonly CuboTemporal[] {
-  return trocear(consulta.rango);
+  return trocear(consulta.rango, ZONA_CR);
 }
 
 /** El cliente de la transaccion, con la superficie minima que los repositorios piden. */

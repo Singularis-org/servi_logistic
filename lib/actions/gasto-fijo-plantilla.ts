@@ -29,6 +29,7 @@ import {
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import type { AppErrorShape } from "@/lib/errors";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 45 (T19) — Server Actions del CRUD de PLANTILLAS de gasto fijo (patron
 // lib/actions/wallet.ts). Resuelve el actor por sesion, valida en el borde con zod y delega
 // en el servicio bajo `withErrorHandler`. `unauthenticated` (sin sesion, R18) y
@@ -128,7 +129,8 @@ export async function crearPlantillaAction(
   const r = await withErrorHandler(async () => {
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
-    const data = crearGastoFijoPlantillaSchema.parse(input); // ZodError -> VALIDATION_ERROR (R24)
+    // SLT-42 pendiente T5.4: zona de la empresa
+    const data = crearGastoFijoPlantillaSchema(ZONA_CR).parse(input); // ZodError -> VALIDATION_ERROR (R24)
     const service = deps.service ?? buildService();
     return service.crearPlantilla(data, actor);
   });

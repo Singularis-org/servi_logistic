@@ -22,6 +22,7 @@ import {
 } from "@/lib/types/aporte-capital";
 import type { ObtenerComprobanteResult } from "@/lib/types/pago-por-cuenta-tienda";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // FICHA 459 (design §7.2) — el BORDE del saldo inicial o aporte de capital. Mismo orden que el
 // pago por cuenta: sesion → zod `.strict()` → servicio. R27: ninguna action devuelve, propone ni
 // calcula un importe de saldo inicial; el monto solo lo teclea una persona.
@@ -82,7 +83,8 @@ export async function registrarAporteCapitalAction(
   const r = await withErrorHandler(async () => {
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R76
-    const { comprobante, ...input } = registrarAporteCapitalSchema.parse(
+    // SLT-42 pendiente T5.4: zona de la empresa
+    const { comprobante, ...input } = registrarAporteCapitalSchema(ZONA_CR).parse(
       crudoDelFormData(formData),
     );
     const archivo =

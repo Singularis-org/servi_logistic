@@ -26,6 +26,7 @@ import { cargarCatalogo459, enTransaccionRevertida459, montarServicios459, type 
 import { montarEstadoCuenta } from "./_fixtures/wallet-458";
 import { busquedaPorGuiaDe } from "./_fixtures/busqueda-469";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FICHA 464 / T4 + T6 — EL DETALLE POR ORDEN EN LOTE, CONTRA POSTGRES DE VERDAD.
 // ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -530,7 +531,7 @@ describeSiHayBase("464 — detalle por orden en lote (Postgres real)", () => {
 
   it("R14/R21/R22/R36 — caja: la hoja de movimientos es la de siempre y cada detalle = el de su fila", async () => {
     await conEscenario(async (e) => {
-      const entrada = listarLibroCajaCompletoSchema.parse({ desde: DIA_C1, hasta: DIA_C2, sortDir: "asc" });
+      const entrada = listarLibroCajaCompletoSchema(ZONA_CR).parse({ desde: DIA_C1, hasta: DIA_C2, sortDir: "asc" });
       const conDetalle = await cajaConDetalle(e, entrada);
       const sinDetalle = await e.s.wallet.listarMovimientosCompleto(entrada, MAESTRO);
       if (conDetalle.status !== "ok" || sinDetalle.status !== "ok") throw new Error("se esperaba ok en los dos");
@@ -654,7 +655,7 @@ describeSiHayBase("464 — detalle por orden en lote (Postgres real)", () => {
     try {
       await conEscenario(async (e) => {
         // Solo el flete: 2 movimientos (C1, C2) y 6 filas de detalle (4 + 2).
-        const entrada = listarLibroCajaCompletoSchema.parse({ desde: DIA_C1, hasta: DIA_C2, categoria: "ingreso_flete" });
+        const entrada = listarLibroCajaCompletoSchema(ZONA_CR).parse({ desde: DIA_C1, hasta: DIA_C2, categoria: "ingreso_flete" });
         const listar = vi.spyOn(e.aportes, "listarAportesDeCierres");
         const cabeceras = vi.spyOn(e.aportes, "cabecerasDeCierres");
         // 468: el orquestador de la 464 se retiró; el de hoy es `CajaKardexService` (mismo lote, mismos topes).

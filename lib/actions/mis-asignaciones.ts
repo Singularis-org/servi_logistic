@@ -38,6 +38,7 @@ import { normalizarPagos } from "@/lib/utils/pagos-recaudo";
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import type { AppErrorShape } from "@/lib/errors";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 36 — Server Actions del flujo del mensajero (mutaciones internas del
 // mismo proyecto; van como Server Action, no como Route API, patron feature 21).
 // Resuelve el actor por sesion, valida en el borde con zod y delega en el
@@ -244,7 +245,8 @@ export async function gestionar(
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const raw = rawFromFormData(formData);
-    const data = gestionarSchema.parse(raw); // ZodError -> VALIDATION_ERROR
+    // SLT-42 pendiente T5.3: zona de la empresa
+    const data = gestionarSchema(ZONA_CR).parse(raw); // ZodError -> VALIDATION_ERROR
     const input = await toGestionarInput(data);
     const service = deps.service ?? buildService();
     const resultado = await service.gestionar(input, actor);

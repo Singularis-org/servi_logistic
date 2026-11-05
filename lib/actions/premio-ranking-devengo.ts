@@ -25,6 +25,7 @@ import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/e
 import type { AppErrorShape } from "@/lib/errors";
 import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 293 (T4.3, design §7.3) — Server Actions del PREMIO DEL RANKING.
 //
 // Server Action y no route handler, por el mismo criterio que `lib/actions/wallet-mensajero.ts`:
@@ -123,7 +124,8 @@ export async function listarPremiosDelDiaAction(
     await exigirModuloActivo("ranking");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R2: antes de tocar el service
-    const data = listarPremiosDelDiaSchema.parse(input); // R8: ZodError -> VALIDATION_ERROR
+    // SLT-42 pendiente T5.5: zona de la empresa
+    const data = listarPremiosDelDiaSchema(ZONA_CR).parse(input); // R8: ZodError -> VALIDATION_ERROR
     const service = deps.service ?? buildService();
     return service.listarPremiosDelDia(data, actor);
   });

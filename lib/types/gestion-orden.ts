@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { GESTION_ALLOWED_MIME, gestionConfig } from "@/lib/config/gestion";
 import { METODO_PAGO_SEED } from "@/lib/types/metodo-pago";
-import { esFechaCalendarioValida, fechaCalendarioCR, mananaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { esFechaCalendarioValida, fechaCalendario, manana } from "@/lib/utils/calendario-zona";
 import { CAUSA_DEVOLUCION_SEED } from "@/lib/types/causa-devolucion";
 import { CAUSA_INCIDENTE_SEED } from "@/lib/types/causa-incidente";
 import { ubicacionSchema } from "@/lib/types/ruta-mensajero";
@@ -172,22 +172,22 @@ export const liberarSchema = z.object({
 export type LiberarActionInput = z.infer<typeof liberarSchema>;
 
 /**
- * True si `value` (YYYY-MM-DD) es MAÑANA o posterior en el calendario de Costa Rica
- * (R25: la reprogramacion mas temprana posible es mañana). El dia "de hoy" se resuelve
- * con `fecha-cr` (UTC-6 fijo), NO con los campos UTC de `new Date()`: entre las 18:00 y
- * la medianoche de CR el dia UTC ya es el siguiente, y comparar contra el rechazaba
+ * True si `value` (YYYY-MM-DD) es MAÑANA o posterior en el calendario de `zona`, la zona IANA del
+ * pais de la empresa (R25: la reprogramacion mas temprana posible es mañana; SLT-42). El dia "de
+ * hoy" se resuelve con `calendario-zona`, NO con los campos UTC de `new Date()`: en CR, entre las
+ * 18:00 y la medianoche el dia UTC ya es el siguiente, y comparar contra el rechazaba
  * mañana como si fuera hoy (off-by-one). Comparacion lexicografica: `YYYY-MM-DD` ordena
  * igual como texto que como fecha.
  *
  * Un dia INEXISTENTE (`2026-02-31`) tambien se rechaza (`esFechaCalendarioValida`).
  */
-export function esFechaFutura(value: string, now: Date = new Date()): boolean {
+export function esFechaFutura(value: string, zona: string, now: Date = new Date()): boolean {
   // Un dia inexistente se caza con el ROUND-TRIP, NO con `Invalid Date`: en V8 solo el MES
   // fuera de rango ("2026-13-01") invalida; el DIA desbordado RUEDA en silencio
   // ("2026-02-31T00:00:00.000Z" es el 3 de marzo) y la comparacion de abajo lo daba por
   // futuro. Se reprogramaba para un dia que el usuario nunca pidio.
   if (!esFechaCalendarioValida(value)) return false;
-  return value >= mananaCalendarioCR(now);
+  return value >= manana(now, zona);
 }
 
 /**
@@ -196,14 +196,19 @@ export function esFechaFutura(value: string, now: Date = new Date()): boolean {
  * posterior en el calendario de CR» seria una segunda verdad sobre una fecha: el off-by-one que
  * `esFechaFutura` explica ahi arriba (el dia UTC ya es el siguiente entre las 18:00 y la
  * medianoche de CR) se arreglo UNA vez y tiene que seguir arreglado en los dos caminos.
+ *
+ * SLT-42 (R22): FABRICA `(zona) => schema`. La forma (regex) no depende de la zona; el «mañana» si,
+ * y lo pone quien parsea con la zona del pais de la empresa.
  */
-export const fechaFuturaSchema = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, "fecha invalida")
-  .refine(
-    (v) => esFechaFutura(v),
-    "la fecha debe ser mañana o posterior",
-  );
+export function fechaFuturaSchema(zona: string) {
+  return z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "fecha invalida")
+    .refine(
+      (v) => esFechaFutura(v, zona),
+      "la fecha debe ser mañana o posterior",
+    );
+}
 
 /**
  * FICHA 371 — EL MINIMO DE LA CORRECCION: HOY EN ADELANTE, no mañana en adelante.
@@ -219,7 +224,7 @@ export const fechaFuturaSchema = z
  * `esFechaFutura` NO SE TOCA: sigue gobernando el registro original, y las dos reglas comparten la
  * misma maquinaria de fecha (`esFechaCalendarioValida` para el dia inexistente, el calendario de CR
  * para el «hoy») en vez de tener cada una su propio regex. La diferencia entre ambas es EXACTAMENTE
- * un dia: `mananaCalendarioCR(now)` es el minimo de aquella y `fechaCalendarioCR(now)` el de esta.
+ * un dia: `manana(now, zona)` es el minimo de aquella y `fechaCalendario(now, zona)` el de esta.
  *
  * SIN TOPE MAXIMO, igual que hoy: la reprogramacion no lo tiene y esta ficha no lo introduce.
  *
@@ -227,20 +232,27 @@ export const fechaFuturaSchema = z
  * `esFechaCalendarioValida`: en V8 solo el MES fuera de rango invalida; el DIA desbordado RUEDA en
  * silencio al mes siguiente y se guardaria una fecha que nadie pidio.
  */
-export function esFechaCorreccionValida(value: string, now: Date = new Date()): boolean {
+export function esFechaCorreccionValida(
+  value: string,
+  zona: string,
+  now: Date = new Date(),
+): boolean {
   if (!esFechaCalendarioValida(value)) return false;
   // Comparacion lexicografica: `YYYY-MM-DD` ordena igual como texto que como fecha.
-  return value >= fechaCalendarioCR(now);
+  return value >= fechaCalendario(now, zona);
 }
 
 /**
  * FICHA 371 — el mismo predicado como schema, para el borde de la correccion. Se declara aqui, al
  * lado de `fechaFuturaSchema`, para que quien lea una se encuentre la otra en la misma pantalla.
+ * SLT-42: fabrica `(zona) => schema`, como `fechaFuturaSchema`.
  */
-export const fechaCorreccionSchema = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, "fecha invalida")
-  .refine((v) => esFechaCorreccionValida(v), "la fecha debe ser hoy o posterior");
+export function fechaCorreccionSchema(zona: string) {
+  return z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "fecha invalida")
+    .refine((v) => esFechaCorreccionValida(v, zona), "la fecha debe ser hoy o posterior");
+}
 
 /**
  * Feature 237 (T5.2, D8) — SE EXPORTA, tal cual, para el borde de la gestion desde ayuda.
@@ -292,7 +304,7 @@ const pagosSchema = z.array(
  * no los consigue persistir (mismo blindaje que la causa de la 73).
  */
 function validarRecaudoEntrega(
-  valor: z.infer<typeof gestionarUnionSchema>,
+  valor: z.infer<ReturnType<typeof gestionarUnionSchema>>,
   ctx: z.RefinementCtx,
 ): void {
   if (valor.resultado !== "entregado") return;
@@ -359,75 +371,77 @@ function validarRecaudoEntrega(
 // R22/R25/R27/R29: entrada de gestion DISCRIMINADA por `resultado` con las
 // obligatoriedades por rama (decision F1.4-i). La evidencia (File) va en el mismo
 // schema como file-like (obligatoria en entrega/rechazo).
-const gestionarUnionSchema = z.discriminatedUnion("resultado", [
-  z.object({
-    ordenId: z.string().min(1),
-    resultado: z.literal("entregado"),
-    // >= 0: una entrega SIN cobro (montoCobrar 0/null) recauda 0 y es válida. El
-    // servicio revalida que el monto CUADRE con el `montoCobrar` de la orden (R22).
-    montoRecibido: z.number().nonnegative("monto invalido"),
-    // Feature 212 (R12) — FORMA A, ESCALAR e HISTORICA: un unico metodo para todo el monto.
-    // Pasa a OPCIONAL, no se retira: es la que sigue mandando el panel entre el merge de la
-    // 212 y el de la 215, y el panel valida con ESTE mismo schema en el navegador. Retirarla
-    // aqui deja la app rota en produccion durante esa ventana.
-    metodoPago: z.enum(METODO_PAGO_SEED).optional(),
-    // Feature 212 (R11) — FORMA B, el DESGLOSE: 0..N lineas (metodo, monto). Monto por linea
-    // ESTRICTAMENTE positivo: una fila vacia del editor de la 215 es un error de captura, no
-    // una linea de 0. Las reglas que RELACIONAN los tres campos viven en `validarRecaudoEntrega`.
-    pagos: pagosSchema.optional(),
-    // Feature 119 (R5): lista de 1..N fotos (antes una sola). Validacion por archivo (R8).
-    evidencias: evidenciasSchema,
-    ...camposUbicacion, // feature 92/R22 + feature 193/R14
-  }),
-  z.object({
-    ordenId: z.string().min(1),
-    resultado: z.literal("reprogramado"),
-    fechaReprogramacion: fechaFuturaSchema,
-    motivo: motivoSchema,
-    ...camposUbicacion, // feature 92/R22 + feature 193/R14
-  }),
-  z.object({
-    ordenId: z.string().min(1),
-    resultado: z.literal("novedad"),
-    // Feature 73/R10: la causa vive SOLO en esta variante. Al ser una discriminatedUnion, un
-    // cliente que la envie en `entregada`/`reprogramada`/`rechazada` no la consigue persistir:
-    // el campo no existe en el tipo parseado de esas ramas.
-    causaDevolucion: causaDevolucionSchema,
-    motivo: motivoSchema, // feature 36: se CONSERVA obligatorio (R7)
-    // Feature 75: la evidencia (foto) pasa a ser OBLIGATORIA en Devolver, igual que en
-    // entrega/rechazo. Feature 119 (R5): ahora es una LISTA de 1..N fotos.
-    evidencias: evidenciasSchema,
-    ...camposUbicacion, // feature 92/R22 + feature 193/R14
-  }),
-  z.object({
-    ordenId: z.string().min(1),
-    resultado: z.literal("devolucion_a_origen_por_rechazo"),
-    motivo: motivoSchema,
-    // Feature 119 (R5): lista de 1..N fotos (antes una sola).
-    evidencias: evidenciasSchema,
-    ...camposUbicacion, // feature 92/R22 + feature 193/R14
-  }),
-  // Feature 158 (R9/R10/R11, Q-B) — QUINTA variante: el paquete esta danado, perdido o
-  // robado. NO hay recaudo (`montoRecibido`/`metodoPago` no existen en esta rama), y al ser
-  // una `discriminatedUnion` un cliente que los envie NO los consigue persistir: el campo no
-  // existe en el tipo parseado de esta rama (mismo blindaje que la causa de la 73).
-  z.object({
-    ordenId: z.string().min(1),
-    resultado: z.literal("incidente"),
-    // R9: la causa vive SOLO en esta variante (los 3 valores en espanol, sin "Otro").
-    causaIncidente: causaIncidenteSchema,
-    // R11: el motivo en texto libre se CONSERVA obligatorio y APARTE de la causa, mismo
-    // contrato que la devolucion (73/R7).
-    motivo: motivoSchema,
-    // R10 (Q-B): evidencia 1..N OBLIGATORIA con independencia de la causa, incluidas
-    // `perdido` y `robado`. La objecion («no hay paquete que fotografiar; bloquea al mensajero
-    // en la calle») se le planteo al humano y eligio esto igual: es su decision, esta
-    // declarada en requirements.md y NO se re-litiga. Se reusa `evidenciasSchema` -> mismos
-    // limites por archivo y por lista que el resto de los resultados con foto.
-    evidencias: evidenciasSchema,
-    ...camposUbicacion, // feature 92/R22 + feature 193/R14
-  }),
-]);
+function gestionarUnionSchema(zona: string) {
+  return z.discriminatedUnion("resultado", [
+    z.object({
+      ordenId: z.string().min(1),
+      resultado: z.literal("entregado"),
+      // >= 0: una entrega SIN cobro (montoCobrar 0/null) recauda 0 y es válida. El
+      // servicio revalida que el monto CUADRE con el `montoCobrar` de la orden (R22).
+      montoRecibido: z.number().nonnegative("monto invalido"),
+      // Feature 212 (R12) — FORMA A, ESCALAR e HISTORICA: un unico metodo para todo el monto.
+      // Pasa a OPCIONAL, no se retira: es la que sigue mandando el panel entre el merge de la
+      // 212 y el de la 215, y el panel valida con ESTE mismo schema en el navegador. Retirarla
+      // aqui deja la app rota en produccion durante esa ventana.
+      metodoPago: z.enum(METODO_PAGO_SEED).optional(),
+      // Feature 212 (R11) — FORMA B, el DESGLOSE: 0..N lineas (metodo, monto). Monto por linea
+      // ESTRICTAMENTE positivo: una fila vacia del editor de la 215 es un error de captura, no
+      // una linea de 0. Las reglas que RELACIONAN los tres campos viven en `validarRecaudoEntrega`.
+      pagos: pagosSchema.optional(),
+      // Feature 119 (R5): lista de 1..N fotos (antes una sola). Validacion por archivo (R8).
+      evidencias: evidenciasSchema,
+      ...camposUbicacion, // feature 92/R22 + feature 193/R14
+    }),
+    z.object({
+      ordenId: z.string().min(1),
+      resultado: z.literal("reprogramado"),
+      fechaReprogramacion: fechaFuturaSchema(zona),
+      motivo: motivoSchema,
+      ...camposUbicacion, // feature 92/R22 + feature 193/R14
+    }),
+    z.object({
+      ordenId: z.string().min(1),
+      resultado: z.literal("novedad"),
+      // Feature 73/R10: la causa vive SOLO en esta variante. Al ser una discriminatedUnion, un
+      // cliente que la envie en `entregada`/`reprogramada`/`rechazada` no la consigue persistir:
+      // el campo no existe en el tipo parseado de esas ramas.
+      causaDevolucion: causaDevolucionSchema,
+      motivo: motivoSchema, // feature 36: se CONSERVA obligatorio (R7)
+      // Feature 75: la evidencia (foto) pasa a ser OBLIGATORIA en Devolver, igual que en
+      // entrega/rechazo. Feature 119 (R5): ahora es una LISTA de 1..N fotos.
+      evidencias: evidenciasSchema,
+      ...camposUbicacion, // feature 92/R22 + feature 193/R14
+    }),
+    z.object({
+      ordenId: z.string().min(1),
+      resultado: z.literal("devolucion_a_origen_por_rechazo"),
+      motivo: motivoSchema,
+      // Feature 119 (R5): lista de 1..N fotos (antes una sola).
+      evidencias: evidenciasSchema,
+      ...camposUbicacion, // feature 92/R22 + feature 193/R14
+    }),
+    // Feature 158 (R9/R10/R11, Q-B) — QUINTA variante: el paquete esta danado, perdido o
+    // robado. NO hay recaudo (`montoRecibido`/`metodoPago` no existen en esta rama), y al ser
+    // una `discriminatedUnion` un cliente que los envie NO los consigue persistir: el campo no
+    // existe en el tipo parseado de esta rama (mismo blindaje que la causa de la 73).
+    z.object({
+      ordenId: z.string().min(1),
+      resultado: z.literal("incidente"),
+      // R9: la causa vive SOLO en esta variante (los 3 valores en espanol, sin "Otro").
+      causaIncidente: causaIncidenteSchema,
+      // R11: el motivo en texto libre se CONSERVA obligatorio y APARTE de la causa, mismo
+      // contrato que la devolucion (73/R7).
+      motivo: motivoSchema,
+      // R10 (Q-B): evidencia 1..N OBLIGATORIA con independencia de la causa, incluidas
+      // `perdido` y `robado`. La objecion («no hay paquete que fotografiar; bloquea al mensajero
+      // en la calle») se le planteo al humano y eligio esto igual: es su decision, esta
+      // declarada en requirements.md y NO se re-litiga. Se reusa `evidenciasSchema` -> mismos
+      // limites por archivo y por lista que el resto de los resultados con foto.
+      evidencias: evidenciasSchema,
+      ...camposUbicacion, // feature 92/R22 + feature 193/R14
+    }),
+  ]);
+}
 
 // Feature 119: el contrato de gestion recibe la LISTA `evidencias` (1..N fotos). Cliente (panel)
 // y servidor (Server Action) usan el MISMO schema (R8): el panel envia `evidencias` en su
@@ -443,10 +457,12 @@ const gestionarUnionSchema = z.discriminatedUnion("resultado", [
 // el mismo motivo: una rama nueva con cobro las hereda sin que nadie tenga que acordarse. Los
 // dos corren siempre (ningun `addIssue` aborta al otro), asi que una gestion con dos problemas
 // —sin ubicacion y con el desglose descuadrado— reporta los DOS campos de una vez.
-export const gestionarSchema = gestionarUnionSchema
-  .superRefine(exigirUbicacionOAusencia)
-  .superRefine(validarRecaudoEntrega);
-export type GestionarActionInput = z.infer<typeof gestionarSchema>;
+export function gestionarSchema(zona: string) {
+  return gestionarUnionSchema(zona)
+    .superRefine(exigirUbicacionOAusencia)
+    .superRefine(validarRecaudoEntrega);
+}
+export type GestionarActionInput = z.infer<ReturnType<typeof gestionarSchema>>;
 
 // --- Resultados expuestos por la Server Action (agregan `unauthenticated`) ---
 

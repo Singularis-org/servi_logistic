@@ -3,6 +3,7 @@ import { getPrismaClient } from "@/lib/db/prisma-client";
 import { buildAnaliticaRollupService } from "@/lib/services/jobs/analitica-rollup-diario-handler";
 import { fechaObjetivo, validarFechaInvocacionManual } from "@/lib/analytics/rollup-dia";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 124 (R39, design §8) — INVOCACION MANUAL del rollup de UNA fecha.
 //
 // Uso:  node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/rollup-analitica-manual.ts [YYYY-MM-DD]
@@ -48,10 +49,12 @@ async function main(): Promise<void> {
   }
 
   const now = new Date();
-  const fecha = process.argv[2] ?? fechaObjetivo(now);
+  // SLT-42 pendiente T6: zona de la empresa
+  const fecha = process.argv[2] ?? fechaObjetivo(now, ZONA_CR);
 
   // Guarda 1 (R39) ANTES de cualquier conexion: un rechazo no debe ni abrir la base.
-  const admitida = validarFechaInvocacionManual(fecha, now);
+  // SLT-42 pendiente T6: zona de la empresa
+  const admitida = validarFechaInvocacionManual(fecha, now, ZONA_CR);
   if (!admitida.ok) {
     console.error(`RECHAZADO: ${admitida.motivo}`);
     console.error(

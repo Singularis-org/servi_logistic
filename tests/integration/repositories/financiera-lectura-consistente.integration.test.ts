@@ -7,6 +7,7 @@ import { IngresosAnaliticaRepository } from "@/lib/repositories/IngresosAnalitic
 import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, crearPrismaDeTest } from "../db/_postgres-real";
 import { crearOrganizacion } from "../../fabricas/organizaciones";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 187 / T6.1 y T6.2 — LA MITAD QUE SOLO POSTGRES PUEDE DEMOSTRAR.
 //
 // Los tests unitarios de `tests/unit/analytics/financiera-lectura-consistente.test.ts` miden la
@@ -70,7 +71,7 @@ function consultaDe(metricaId: string): ConsultaAnalitica {
 
 /** Los cubos SALEN de `trocear`: ni una frontera se escribe a mano aqui. */
 function cubosDe(consulta: ConsultaAnalitica): readonly CuboTemporal[] {
-  return trocear(consulta.rango);
+  return trocear(consulta.rango, ZONA_CR);
 }
 
 /** Σ de importes como decimal, nunca como `number`: es dinero. */

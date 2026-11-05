@@ -28,6 +28,7 @@ import {
   msgEstadoNoReprogramada,
 } from "@/lib/services/mensajes-correccion-fecha-reprogramacion";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // FICHA 371 — lógica de negocio de «corregir la fecha de una reprogramación ya registrada».
 //
 // SERVICIO PROPIO, igual que en el molde (262, `CorreccionDiaRepartoService`): la operación cruza
@@ -91,7 +92,8 @@ export class CorreccionFechaReprogramacionService
     if (motivo === "") {
       return { status: "validation_error", fieldErrors: { motivo: [MSG_MOTIVO_REQUERIDO] } };
     }
-    if (!esFechaCorreccionValida(input.fecha, now)) {
+    // SLT-42 pendiente T5.3: zona de la empresa
+    if (!esFechaCorreccionValida(input.fecha, ZONA_CR, now)) {
       return { status: "validation_error", fieldErrors: { fecha: [MSG_FECHA_INVALIDA] } };
     }
 

@@ -33,6 +33,7 @@ import {
 import { instanteDelMovimientoManual } from "@/lib/utils/fecha-movimiento-manual";
 import { derivarSaldoTienda } from "@/lib/utils/saldo-tienda";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /** El unico rol que puede ser destinataria de un cobro: una cuenta de tienda de verdad. */
 const ROL_TIENDA = "adminTienda";
 
@@ -162,7 +163,8 @@ export class CobroTiendaService implements ICobroTiendaService {
       const id = randomUUID();
       // R3: UN instante para el debito y la linea de caja.
       const ahora = this.ahora();
-      const fechaMovimiento = instanteDelMovimientoManual(input.fecha, ahora) ?? ahora;
+      // SLT-42 pendiente T5.4: zona de la empresa
+      const fechaMovimiento = instanteDelMovimientoManual(input.fecha, ZONA_CR, ahora) ?? ahora;
 
       try {
         await this.runTransaction(async (tx) => {

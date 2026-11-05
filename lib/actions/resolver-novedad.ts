@@ -34,6 +34,7 @@ import type {
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import type { AppErrorShape } from "@/lib/errors";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 100 — Server Actions que RESUELVEN una novedad (mutaciones internas del mismo proyecto ->
 // Server Actions, no Route API, patron devolucion-origen.ts). Cada una resuelve el actor por sesion,
 // valida en el borde con zod y delega en su servicio, TODO bajo `withErrorHandler`: un error
@@ -51,7 +52,8 @@ const reprogramarSchema = z.object({
   fechaReprogramacion: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "fecha invalida")
-    .refine((v) => esFechaFutura(v), "la fecha debe ser mañana o posterior"), // R4
+    // SLT-42 pendiente T5.3: zona de la empresa
+    .refine((v) => esFechaFutura(v, ZONA_CR), "la fecha debe ser mañana o posterior"), // R4
   motivo: z.string().trim().optional(),
 });
 

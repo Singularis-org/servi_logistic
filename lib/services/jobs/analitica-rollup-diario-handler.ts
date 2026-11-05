@@ -28,6 +28,7 @@ import { cacheNula } from "@/lib/cache/cache-nula";
 import { TAGS_OPERATIVA } from "@/lib/analytics/cache-tags";
 import type { IAnaliticaCache } from "@/lib/interfaces/external/IAnaliticaCache";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // CR es UTC-6 fijo (sin horario de verano): 00:30 CR == 06:30 UTC.
 const CR_OFFSET_MS = 6 * 60 * 60 * 1000;
 const CORRIDA_HORA_UTC = 6;
@@ -70,7 +71,8 @@ export function proximaCorridaRollupCR(now: Date): Date {
 export const recurrenciaAnaliticaRollupDiario: RecurrenciaSpec = {
   siguiente(now: Date) {
     const runAfter = proximaCorridaRollupCR(now);
-    return { runAfter, dedupeKey: dedupeKeyRollup(fechaObjetivo(runAfter)) };
+    // SLT-42 pendiente T6: zona de la empresa
+    return { runAfter, dedupeKey: dedupeKeyRollup(fechaObjetivo(runAfter, ZONA_CR)) };
   },
 };
 
@@ -109,7 +111,8 @@ export function crearAnaliticaRollupDiarioHandler(
   invalidador: IAnaliticaCache = cacheNula(),
 ): JobHandler {
   return async () => {
-    const fecha = fechaObjetivo(now());
+    // SLT-42 pendiente T6: zona de la empresa
+    const fecha = fechaObjetivo(now(), ZONA_CR);
     const resumen = await service.agregarFecha(fecha);
     // Feature 128 (R10/R11) — la invalidacion va DESPUES de que `agregarFecha` resuelva y
     // SIN `try/catch`. Si el agregado fallo no hay nada que invalidar; y si la invalidacion

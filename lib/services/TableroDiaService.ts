@@ -25,6 +25,7 @@ import type {
 import { recortarPorAlcance, sumarTotalesTablero } from "@/lib/types/tablero-dia";
 import { horaDeParedCR, ventanaDelDiaEnCursoCR } from "@/lib/utils/ventana-dia-cr";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 192 (B3.2/B7.4/B9.4/B9.5, design.md §3 y §5.quater) — EL SERVICIO DEL TABLERO.
 //
 // Aqui vive la FRONTERA MULTI-TENANT de esta pantalla. No hay policies RLS debajo (Prisma se
@@ -204,7 +205,8 @@ export class TableroDiaService implements ITableroDiaService {
     const auth = autorizar(actor);
     if (auth.estado === "denegado") return auth;
 
-    const ventana = ventanaDelDiaEnCursoCR(now);
+    // SLT-42 pendiente T5.5: zona de la empresa
+    const ventana = ventanaDelDiaEnCursoCR(now, ZONA_CR);
     const clave = claveDeTablero(auth.alcance, ventana.fecha);
     const alcance = auth.filtro.tipo;
 
@@ -233,7 +235,8 @@ export class TableroDiaService implements ITableroDiaService {
         // `generadoAt` de arriba. Una lectura del tablero no puede producir dos instantes de
         // generacion distintos: la cabecera diria "hace 4 s" y la linea vendria de otro
         // instante, que es la misma mentira de R34 partida en dos.
-        ritmoEntregas: acumularPorHora(porHora, horaDeParedCR(ventana, now)),
+        // SLT-42 pendiente T5.5: zona de la empresa
+        ritmoEntregas: acumularPorHora(porHora, horaDeParedCR(ventana, now, ZONA_CR)),
       };
     });
 
@@ -286,7 +289,8 @@ export class TableroDiaService implements ITableroDiaService {
     const auth = autorizar(actor);
     if (auth.estado === "denegado") return auth;
 
-    const ventana = ventanaDelDiaEnCursoCR(now);
+    // SLT-42 pendiente T5.5: zona de la empresa
+    const ventana = ventanaDelDiaEnCursoCR(now, ZONA_CR);
     const pageSize = ordenesConfig.DEFAULT_PAGE_SIZE;
     const alcance = auth.filtro.tipo;
     const paginaDelDia = await this.repositorio.listarOrdenesDelDia(

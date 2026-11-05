@@ -29,6 +29,7 @@ import { derivarFinanzasDiarias } from "@/lib/utils/finanzas-diarias";
 import type { IFinanzasDiarioRepository } from "@/lib/interfaces/repositories/IFinanzasDiarioRepository";
 import type { FinanzasDiarioDTO } from "@/lib/types/finanzas-diario";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 export interface FinanzasDiarioServiceOpts {
   /** Reloj inyectable: ningun `Date.now()` escondido. Aqui decide QUE 30 dias se suman. */
   readonly now?: () => Date;
@@ -52,7 +53,8 @@ export class FinanzasDiarioService {
    * movio dinero» o «la ventana empezaba el 13».
    */
   async consultar(): Promise<FinanzasDiarioDTO> {
-    const rango = resolverRango({ preset: "mes" }, this.now());
+    // SLT-42 pendiente T5.5: zona de la empresa
+    const rango = resolverRango({ preset: "mes" }, ZONA_CR, this.now());
     const filas = await this.repo.sumarPorDia(rango.desde, rango.hasta);
 
     return {

@@ -82,7 +82,7 @@ import { ORDER_STATUS_SEED } from "@/lib/types/order-status";
 import { rechazarNovedadSchema } from "@/lib/types/rechazo-tienda";
 import { crearTarifaSchema } from "@/lib/types/tarifa";
 import { registrarEgresoConLateralesSchema } from "@/lib/types/wallet-laterales";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendarioCR, ZONA_CR } from "@/lib/utils/fecha-cr";
 import { crearEmpresa, crearUsuario, type EmpresaCreada, type UsuarioCreado } from "@/tests/fabricas/empresa-y-usuarios";
 import { escenarioCierres, solicitarCierre } from "@/tests/fabricas/escenarios/cierres";
 import {
@@ -1012,7 +1012,8 @@ export async function crearEmpresaDemo(
     const comprobante = { contentType: "image/jpeg", bytes: bytesEvidencia };
 
     // Aporte de capital con su comprobante en Storage.
-    const aporte = registrarAporteCapitalSchema.parse({
+    // SLT-42 pendiente T6: zona de la empresa
+    const aporte = registrarAporteCapitalSchema(ZONA_CR).parse({
       claveIdempotencia: randomUUID(),
       clase: "aporte",
       monto: APORTE_CAPITAL,
@@ -1050,7 +1051,8 @@ export async function crearEmpresaDemo(
           undefined,
           buildComprobantes(app),
         ).registrarPagoMensajero(
-          registrarPagoMensajeroSchema.parse({
+          // SLT-42 pendiente T6: zona de la empresa
+          registrarPagoMensajeroSchema(ZONA_CR).parse({
             cierreId: cierreCentral,
             claveIdempotencia: randomUUID(),
             monto: PAGO_A_MENSAJERO,
@@ -1063,7 +1065,8 @@ export async function crearEmpresaDemo(
     );
 
     // Abono de la tienda con bodega.
-    const abono = registrarAbonoTiendaSchema.parse({
+    // SLT-42 pendiente T6: zona de la empresa
+    const abono = registrarAbonoTiendaSchema(ZONA_CR).parse({
       claveIdempotencia: randomUUID(),
       tiendaId: escenario.tienda.id,
       monto: ABONO_DE_TIENDA,
@@ -1099,7 +1102,8 @@ export async function crearEmpresaDemo(
           buildComprobantes(app),
           new TopePagoPlataformaService(new CobroPlataformaMovimientoRepository(app), new PagoPlataformaRepository(app)),
         ).registrarEgreso(
-          registrarEgresoConLateralesSchema.parse({
+          // SLT-42 pendiente T6: zona de la empresa
+          registrarEgresoConLateralesSchema(ZONA_CR).parse({
             tipoEgreso: "pago_plataforma",
             monto: PAGO_A_LA_PLATAFORMA,
             descripcion: "Pago a la plataforma de la demo",

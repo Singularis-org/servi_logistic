@@ -40,6 +40,7 @@ import { derivarCaja } from "@/lib/utils/caja-tesoreria";
 import { derivarCuentaPorPagar } from "@/lib/utils/cuenta-por-pagar";
 import { derivarSaldoTienda } from "@/lib/utils/saldo-tienda";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 127 (T D.1-D.9) — LA UNICA fachada de la analitica financiera.
 //
 // Que hace: valida el dominio, despacha por `metrica.id`, pide al repositorio que corresponda y
@@ -331,7 +332,8 @@ export class AnaliticaFinancieraService implements IAnaliticaFinancieraService {
     consulta: ConsultaAnalitica,
     forma: "solo_bruto" | "bruto_y_neto",
   ): Promise<ResultadoFinanciero> {
-    const cubos = trocear(consulta.rango);
+    // SLT-42 pendiente T5.5: zona de la empresa
+    const cubos = trocear(consulta.rango, ZONA_CR);
     const [filas, porCuboTemporal] = await this.ingresos.enLecturaConsistente(async (r) => [
       await r.sumarPorCategoria(consulta),
       // R22 — los cubos salen de `trocear(consulta.rango)` y de ningun otro sitio: no son un
@@ -403,7 +405,8 @@ export class AnaliticaFinancieraService implements IAnaliticaFinancieraService {
     consulta: ConsultaAnalitica,
     cifra: (resumen: CajaResumenDTO) => string,
   ): Promise<ResultadoFinanciero> {
-    const cubos = trocear(consulta.rango);
+    // SLT-42 pendiente T5.5: zona de la empresa
+    const cubos = trocear(consulta.rango, ZONA_CR);
     const [filas, porCuboTemporal] = await this.ingresos.enLecturaConsistente(async (r) => [
       await r.sumarPorCategoria(consulta),
       await r.sumarPorCuboYCategoria(consulta, cubos),
@@ -565,7 +568,8 @@ export class AnaliticaFinancieraService implements IAnaliticaFinancieraService {
    * (R13) — incluido el `bruto`, que por eso es el acumulado (`devengo + pago`) y no el del cubo.
    */
   private async deCuentaDeMensajeros(consulta: ConsultaAnalitica): Promise<ResultadoFinanciero> {
-    const cubos = trocear(consulta.rango);
+    // SLT-42 pendiente T5.5: zona de la empresa
+    const cubos = trocear(consulta.rango, ZONA_CR);
     const [filas, arrastre, porCuboTemporal] = await this.cuentasPorPagar.enLecturaConsistente(
       async (r) => [
         await r.cuentaPorPagarMensajerosAlCorte(consulta),

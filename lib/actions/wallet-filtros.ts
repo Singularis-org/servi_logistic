@@ -17,6 +17,7 @@ import {
   type QuienesDelLibroCajaResult,
 } from "@/lib/types/wallet-filtros";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Ficha 458-A (TA.3/TA.4, design §3.5, R10–R15) — Server Actions de los FILTROS de la wallet.
 // Lecturas internas del mismo proyecto → Server Action. Orden del borde (y es parte del contrato):
 // sesion → zod `.strict()` → servicio (que comprueba el rol ANTES de leer). Ninguna rama de error
@@ -70,7 +71,8 @@ export async function conceptosConMovimientosAction(
   const r = await withErrorHandler(async () => {
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
-    const data = conceptosConMovimientosSchema.parse(input);
+    // SLT-42 pendiente T5.4: zona de la empresa
+    const data = conceptosConMovimientosSchema(ZONA_CR).parse(input);
     return (deps.service ?? buildService()).conceptosConMovimientos(data, actor);
   });
   return isAppErrorShape(r) ? toError(r) : r;
@@ -112,7 +114,8 @@ export async function quienesDelLibroCajaAction(
   const r = await withErrorHandler(async () => {
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
-    const data = quienesDelLibroCajaSchema.parse(input ?? {});
+    // SLT-42 pendiente T5.4: zona de la empresa
+    const data = quienesDelLibroCajaSchema(ZONA_CR).parse(input ?? {});
     return (deps.service ?? buildService()).quienesDelLibroCaja(data, actor);
   });
   return isAppErrorShape(r) ? toError(r) : r;

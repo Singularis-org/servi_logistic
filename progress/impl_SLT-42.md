@@ -439,3 +439,52 @@ Mutación comprobada: con `buildService()` cableado a unas reglas fijas de CR en
 1. `logistic_slt42_test` está vacía de datos de negocio (0 empresas, órdenes, usuarios y zonas). ¿Se volvió a crear entre la tanda 2b y esta? Las suites que toman FKs de una orden existente (`corregir-datos-cliente.{chat,repo}` y otras) no pueden correr hasta que se siembre (`pnpm run db:seed` + zonas) o se pasen a sembrar sus datos, como `pais-real`.
 
 Veredicto: decisiones 2, 4 y 6 implementadas con test. Typecheck limpio; en las guardias solo queda el rojo del baseline.
+
+## Tanda 3 · T5.1 y T5.2: la zona como parámetro en utilidades y schemas (2026-11-04)
+
+### Archivos de producción
+- `lib/utils/calendario-zona.ts`: + `sumarDiasCalendario`, `diferenciaEnDiasCalendario`, `diaDeLaSemana` (aritmética de fechas calendario, sin zona). `lib/utils/fecha-cr.ts`: `ZONA_CR` pasa a `export`.
+- T5.1 (zona IANA obligatoria, sin default de CR; calculan con `calendario-zona.ts`):
+  - `dia-reparto.ts`: `resolverFechaReparto(dia, zona, now = new Date())` («mañana» = fecha calendario siguiente, no +24 h).
+  - `ventana-dia-cr.ts` (nombre conservado): `ventanaDelDiaEnCursoCR(now, zona)`, `horaDeParedCR(ventana, instante, zona)` (lee la pared; antes restaba horas desde `desde`, que se corre el día del cambio de hora).
+  - `filtros-listado-ordenes.ts`: `rangoCreacion(filtro, ahora, zona)`.
+  - `fecha-dia-iso.ts`: `fechaDiaMovimientoCR(valor, zona)`, `fechaDiaInstanteCR(valor, zona)` (`fechaDiaISO` sin cambios).
+  - `fecha-movimiento-manual.ts`: `instanteDelMovimientoManual(fecha, zona, now = new Date())`.
+  - `periodicidad.ts`: `aplicaHoy(p, now, zona)`, `periodoDe(p, now, zona)`, `proximoCobro(p, now, zona)`.
+  - `descarga-dataset.ts`: `nombreArchivoDescarga(titulo, tipo, fecha, zona)`, `construirDescarga(config, zona, fecha = new Date())`.
+  - `lib/analytics/ranges.ts`: `resolverRango(entrada, zona, now = new Date())`; sin `UN_DIA_MS` derivado: suma días de calendario.
+  - `lib/analytics/cubo-temporal.ts`: `trocear(rango, zona)`; `granularidadDe(rango)` sin cambios (cuenta fechas, no depende de la zona).
+  - `lib/analytics/rollup-dia.ts`: `fechaObjetivo(now, zona)` (fecha anterior, no `now - 24 h`), `ventanaDelDia(fecha, zona)`, `validarFechaInvocacionManual(fecha, now, zona)`.
+  - `lib/analytics/backfill-rango.ts`: `RangoPedido` gana `zona`; los motivos dicen «dia en curso» / «ayer» sin «CR».
+- T5.2 (fábricas `(zona) => schema`; forma con `esFechaCalendarioValida`, mensajes y contrato `validation_error` iguales):
+  - `filtro-dias-cr.ts`: `desdeDiaSchema(zona)`, `hastaDiaSchema(zona)` (antes `desdeDiaCRSchema`/`hastaDiaCRSchema`); `diaCalendarioSchema` sigue estático.
+  - `gestion-orden.ts`: `esFechaFutura(value, zona, now?)`, `esFechaCorreccionValida(value, zona, now?)`, `fechaFuturaSchema(zona)`, `fechaCorreccionSchema(zona)`, `gestionarSchema(zona)`. `gestion-desde-ayuda.ts`: `gestionarDesdeAyudaSchema(zona)`.
+  - `liquidacion.ts`: `esFechaPagoValida(value, zona, now?)`, `fechaPagoSchema(zona)`, `camposComunesDelPago(zona)`, `registrarPagoMensajeroSchema(zona)`, `registrarPagoTiendaSchema(zona)`; `liquidacion-reparto.ts`: `registrarRepartoMensajeroSchema(zona)`; `abono-tienda.ts`: `registrarAbonoTiendaSchema(zona)`.
+  - `aporte-capital.ts`: `fechaAporteCapitalSchema(zona)`, `registrarAporteCapitalSchema(zona)`. `gasto-fijo-plantilla.ts`: `crearGastoFijoPlantillaSchema(zona)` (default de `fechaCobro` = hoy en la zona); `actualizarGastoFijoPlantillaSchema` sigue estático (deriva de la parte sin zona). `premio-ranking-devengo.ts`: `listarPremiosDelDiaSchema(zona)`.
+  - `wallet.ts`: `primerDiaMovimientoAdmisible(zona, now?)`, `problemaDeFechaMovimiento(value, zona, now?)`, `esFechaMovimientoValida(value, zona, now?)` y fábricas `fechaMovimientoSchema`, `registrarMovimientoManualSchema`, `listarMovimientosSchema`, `listarMovimientosCompletoSchema`, `listarLibroCajaSchema`, `listarLibroCajaCompletoSchema`, `listarMovimientosDeFilaSchema`, `registrarEgresoAdministrativoSchema`. `wallet-tienda.ts`: `listarMovimientosTiendaSchema`, `…CompletoSchema`, `listarMovimientosDeTiendaSchema`, `…CompletoSchema`, `registrarCobroTiendaSchema`. `wallet-mensajero.ts`: `listarPagosMensajeroSchema`, `listarPagosDeMensajeroSchema`, `…CompletoSchema`. `wallet-filtros.ts`: `conceptosConMovimientosSchema`, `quienesDelLibroCajaSchema`. `wallet-laterales.ts`: `registrarEgresoConLateralesSchema`, `registrarMovimientoManualConLateralesSchema`. `incentivo-mensajero.ts`: `registrarIncentivoMensajeroSchema`. `pago-por-cuenta-tienda.ts`: `registrarPagoPorCuentaTiendaSchema`. Todas `(zona: string) => schema`; los tipos `…Input` pasan a `z.infer<ReturnType<typeof …>>`.
+- Llamadores (65 archivos): los de servidor pasan `ZONA_CR` con `// SLT-42 pendiente T5.<n>: zona de la empresa` justo encima (T5.3: 10, T5.4: 36, T5.5: 14, T6: 9; `grep -rn "SLT-42 pendiente T"`). Los de UI (`app/(app)/**/_components`, `components/shared/**`) pasan `ZONA_CR` con `// SLT-81: la UI sigue en la zona de CR`.
+
+### Tests
+- Nuevo `tests/unit/utils/utilidades-por-zona.test.ts` (R22, R23): Bogotá (UTC-5, sin horario de verano) frente a CR, y Nueva York / Madrid en sus días de cambio, para `dia-reparto`, `fecha-dia-iso`, `ranges`, `cubo-temporal`, `rollup-dia`, `ventana-dia-cr`, `periodicidad` y las fábricas `fechaFuturaSchema`, `fechaPagoSchema`, `desdeDiaSchema`/`hastaDiaSchema`.
+- ~100 tests existentes pasan `ZONA_CR` (mismo resultado que antes). Guardias de fuente adaptadas a la forma nueva: `ranges-reuso`, `rollup-guards`, `backfill-guards` (piden `calendario-zona` y las gemelas sin `CR`), `dia-reparto` (la trampa nombrada es `inicioDelDiaEnUtc`), aridades de `ventanaDelDiaEnCursoCR` (2) y `trocear` (2), `rutas-336-retiradas` y `GestionarOrdenPanelIncidente` (la fábrica se invoca antes de `.parse`).
+
+### Mapa R → test
+| R | Test |
+|---|---|
+| R22 | `utilidades-por-zona.test.ts`: «a la misma hora, Bogota ya esta en el 21…» (dia-reparto), «el mismo instante es del 21 en Bogota…» (fecha-dia-iso), «el preset `dia` de Bogota empieza a las 05:00Z…» (ranges), «el ancla del 21 ya cobra en Bogota…» (periodicidad), «fechaFuturaSchema: el 21 ya es «hoy» en Bogota…» (schema fábrica) |
+| R23 | `utilidades-por-zona.test.ts`: «R23: el dia del cambio de hora el limite sigue a la pared» (dia-reparto), «R23: alrededor del cambio de hora de Madrid…» (fecha-dia-iso), «R23: el dia que se adelanta el reloj dura 23 h y el que se atrasa 25 h» y «`semana` y `mes` cuentan dias de calendario…» (ranges), «trocear deja cubos contiguos y el del 8 de marzo mide 23 h», «fechaObjetivo es la fecha calendario anterior…», «horaDeParedCR lee la pared…», «R23: alrededor del cambio de hora el dia de cobro…» (periodicidad), «fechaPagoSchema: el 30 de marzo… (R23)», «desdeDiaSchema/hastaDiaSchema… dia de 23 h» |
+
+### Desvíos y notas
+- `fecha-dia-iso`, `ventana-dia-cr` y `dia-reparto` conservan los nombres de función con sufijo `CR` (`fechaDiaMovimientoCR`, `ventanaDelDiaEnCursoCR`, …) aunque ya reciben la zona: renombrar tocaba aún más llamadores de UI. Se documenta en cada archivo. Los dos schemas de `filtro-dias-cr` sí se renombran (solo los usaba `lib/types`).
+- `lib/types/historial-accion-etiquetas.ts` usa `fechaCalendarioCR` para una etiqueta (no es un schema con «hoy») y lo consumen repositorios: queda para la tanda que cablee esos repositorios.
+- `lib/analytics/consulta.ts`, `entregas-conteo.ts` y `productos-consulta.ts` llaman a `resolverRango`: pasan `ZONA_CR` con el marcador T5.5.
+- `filtros-cierres.ts`, `historial-accion.ts` y `historico-conversaciones.ts` solo usaban `esFechaCalendarioValida` (sin zona): importan de `calendario-zona` en vez de `fecha-cr`. `estado-cuenta.ts`: solo comentarios.
+
+### Salida
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: exit 0.
+- `eslint` sobre los 193 archivos tocados (en 4 tandas): 0 errores; 1 warning previo (`EnviarPlantillaWhatsappButton` sin usar en `GestionarOrdenPanel.tsx`, ya en HEAD).
+- `vitest run` de los 75 tests unitarios/componentes tocados: verde tras los ajustes (la primera corrida dio 5 rojos de aridad/fuente, corregidos y re-corridos: 76/76 y 83/83).
+- `vitest related --run` de los 16 archivos de `lib/utils` y `lib/analytics` (cubre los de `lib/types`, que importan `calendario-zona`): `Test Files 4 failed | 1297 passed | 358 skipped (1659) · Tests 4 failed | 20113 passed`. `DescargarDataset` y `GestionarOrdenPanelIncidente` eran míos y se corrigieron (re-corridos: 35/35 junto al siguiente). `premio-ranking-devengo-migration` está en el baseline. `organizaciones-action.composition-root` («$transaction 2 veces, se esperaba 1») no está en el baseline y no es de esta tanda: no toco organización, país ni sus repos; viene de la tanda 2b (13757c87).
+- `pnpm run test:guardias`: `Tests 4 failed | 4550 passed | 24 skipped`; los 4 son `dependencias-declaradas-presentes`, en el baseline.
+
+Veredicto: T5.1 y T5.2 hechas; zona obligatoria en utilidades y schemas, CR idéntico, R22/R23 con test; typecheck y guardias en verde salvo baseline.

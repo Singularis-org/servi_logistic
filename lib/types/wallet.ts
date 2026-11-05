@@ -9,7 +9,7 @@ import type {
 import type { ListarCompletoResult } from "@/lib/types/descarga-listado";
 import { composicionDetalleConfig } from "@/lib/config/composicion-detalle";
 import { walletMovimientoConfig } from "@/lib/config/wallet-movimiento";
-import { desdeDiaCRSchema, hastaDiaCRSchema } from "@/lib/types/filtro-dias-cr";
+import { desdeDiaSchema, hastaDiaSchema } from "@/lib/types/filtro-dias-cr";
 import { aQuienFiltroSchema } from "@/lib/types/libro-caja-a-quien";
 import {
   BUSQUEDA_LIBRO_MAX_CHARS,
@@ -17,11 +17,7 @@ import {
   CAMPOS_ORDEN_LIBRO,
 } from "@/lib/config/libro-wallet";
 import { esquemaOrdenamiento } from "@/lib/types/ordenamiento-listado";
-import {
-  esFechaCalendarioValida,
-  fechaCalendarioCR,
-  ultimosNDiasCalendarioCR,
-} from "@/lib/utils/fecha-cr";
+import { esFechaCalendarioValida, fechaCalendario, ultimosNDias } from "@/lib/utils/calendario-zona";
 
 // Feature 42 (design §1.1/§3) — fuente unica de verdad de tipos/categorias/origenes de
 // la wallet, respaldada por los enums Postgres nativos (patron METODO_PAGO_SEED). El
@@ -660,15 +656,16 @@ export const claveIdempotenciaSchema = z
 const FORMATO_FECHA_CALENDARIO = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
- * Ficha 334 — el dia calendario de Costa Rica MAS ANTIGUO que admite un movimiento manual.
+ * Ficha 334 — el dia calendario (de `zona`, la del pais de la empresa) MAS ANTIGUO que admite un
+ * movimiento manual.
  *
- * `ultimosNDiasCalendarioCR` cuenta N dias calendario INCLUIDO hoy, asi que la ventana de
+ * `ultimosNDias` cuenta N dias calendario INCLUIDO hoy, asi que la ventana de
  * `DIAS_HACIA_ATRAS` dias hacia atras son esos dias MAS el de hoy: de ahi el `+ 1`. Se deriva
  * de la config (`lib/config/wallet-movimiento.ts`) y no de un literal, porque es una cota de
  * negocio (docs/architecture.md).
  */
-export function primerDiaMovimientoAdmisible(now: Date = new Date()): string {
-  return ultimosNDiasCalendarioCR(walletMovimientoConfig.DIAS_HACIA_ATRAS + 1, now).desde;
+export function primerDiaMovimientoAdmisible(zona: string, now: Date = new Date()): string {
+  return ultimosNDias(walletMovimientoConfig.DIAS_HACIA_ATRAS + 1, now, zona).desde;
 }
 
 /**
@@ -676,57 +673,69 @@ export function primerDiaMovimientoAdmisible(now: Date = new Date()): string {
  *
  * Devuelve el MOTIVO y no un booleano porque los tres rechazos son distintos y el dialogo los
  * pinta bajo el mismo campo: «no existe», «es del futuro» y «se sale de la ventana» no se
- * arreglan igual. Las dos piezas comunes salen de `lib/utils/fecha-cr.ts` — el ROUND-TRIP, que
- * es lo unico que caza `2026-02-31` (un dia desbordado RUEDA al mes siguiente en vez de dar
- * `Invalid Date`), y el dia calendario CR sin off-by-one, que es lo unico que impide que a las
- * 20:00 de Costa Rica «hoy» sea ya el dia siguiente.
+ * arreglan igual. Las dos piezas comunes salen de `lib/utils/calendario-zona.ts` — el ROUND-TRIP,
+ * que es lo unico que caza `2026-02-31` (un dia desbordado RUEDA al mes siguiente en vez de dar
+ * `Invalid Date`), y el dia calendario de la zona sin off-by-one, que es lo unico que impide que a
+ * las 20:00 de Costa Rica «hoy» sea ya el dia siguiente.
  */
-export function problemaDeFechaMovimiento(value: string, now: Date = new Date()): string | null {
+export function problemaDeFechaMovimiento(
+  value: string,
+  zona: string,
+  now: Date = new Date(),
+): string | null {
   if (!esFechaCalendarioValida(value)) return "Esa fecha no existe en el calendario.";
-  if (value > fechaCalendarioCR(now)) return "La fecha no puede ser posterior a hoy."; // R20
-  const primerDia = primerDiaMovimientoAdmisible(now);
+  if (value > fechaCalendario(now, zona)) return "La fecha no puede ser posterior a hoy."; // R20
+  const primerDia = primerDiaMovimientoAdmisible(zona, now);
   if (value < primerDia) return `No se admiten movimientos anteriores al ${primerDia}.`;
   return null;
 }
 
 /** Dia calendario `YYYY-MM-DD` existente y dentro de la ventana admisible (R19/R20/R21). */
-export function esFechaMovimientoValida(value: string, now: Date = new Date()): boolean {
-  return problemaDeFechaMovimiento(value, now) === null;
+export function esFechaMovimientoValida(value: string, zona: string, now: Date = new Date()): boolean {
+  return problemaDeFechaMovimiento(value, zona, now) === null;
 }
 
-export const fechaMovimientoSchema = z
-  .string()
-  .regex(FORMATO_FECHA_CALENDARIO, "La fecha debe tener el formato YYYY-MM-DD.")
-  .superRefine((v, ctx) => {
-    // Zod v4 corre los refines AUNQUE el regex ya haya fallado (lo mismo que documenta
-    // `montoPositivoSchema` aqui arriba). Sin esta salida temprana, `29-08-2026` emitiria DOS
-    // mensajes bajo el mismo campo diciendo la misma cosa.
-    if (!FORMATO_FECHA_CALENDARIO.test(v)) return;
-    const problema = problemaDeFechaMovimiento(v);
-    if (problema !== null) ctx.addIssue({ code: "custom", message: problema });
-  });
+// SLT-42 (R22): `fechaMovimientoSchema` y los schemas que la usan, y los filtros por dias
+// (`desdeDiaSchema`/`hastaDiaSchema`), son FABRICAS `(zona) => schema`: «hoy» y el comienzo de un
+// dia dependen de la zona del pais de la empresa, que pone quien parsea.
+
+export function fechaMovimientoSchema(zona: string) {
+  return z
+    .string()
+    .regex(FORMATO_FECHA_CALENDARIO, "La fecha debe tener el formato YYYY-MM-DD.")
+    .superRefine((v, ctx) => {
+      // Zod v4 corre los refines AUNQUE el regex ya haya fallado (lo mismo que documenta
+      // `montoPositivoSchema` aqui arriba). Sin esta salida temprana, `29-08-2026` emitiria DOS
+      // mensajes bajo el mismo campo diciendo la misma cosa.
+      if (!FORMATO_FECHA_CALENDARIO.test(v)) return;
+      const problema = problemaDeFechaMovimiento(v, zona);
+      if (problema !== null) ctx.addIssue({ code: "custom", message: problema });
+    });
+}
 
 // Manual (R15/F1.4-Q6): ingreso/egreso de AJUSTE, descripcion obligatoria, monto > 0.
 // Solo las categorias de ajuste; el tipo debe casar con la categoria (ingreso<->ingreso_ajuste).
 // Ficha 334 (R19/R22/R23): + `fecha` OPCIONAL. Ausente ⇒ el movimiento se fecha con el instante
 // del registro, byte a byte como hasta hoy; ese es todo el coste de la ampliacion.
-export const registrarMovimientoManualSchema = z
-  .object({
-    tipo: z.enum(WALLET_MOVIMIENTO_TIPO_SEED),
-    categoria: z.enum(["ingreso_ajuste", "egreso_ajuste"] as const),
-    monto: montoPositivoSchema,
-    descripcion: z.string().trim().min(1, "La descripcion es obligatoria."),
-    fecha: fechaMovimientoSchema.optional(),
-    claveIdempotencia: claveIdempotenciaSchema, // ficha 461 (R66)
-  })
-  .refine(
-    (v) =>
-      (v.tipo === "ingreso" && v.categoria === "ingreso_ajuste") ||
-      (v.tipo === "egreso" && v.categoria === "egreso_ajuste"),
-    { message: "La categoria de ajuste no corresponde al tipo.", path: ["categoria"] },
-  );
+export function registrarMovimientoManualSchema(zona: string) {
+  return z
+    .object({
+      tipo: z.enum(WALLET_MOVIMIENTO_TIPO_SEED),
+      categoria: z.enum(["ingreso_ajuste", "egreso_ajuste"] as const),
+      monto: montoPositivoSchema,
+      descripcion: z.string().trim().min(1, "La descripcion es obligatoria."),
+      fecha: fechaMovimientoSchema(zona).optional(),
+      claveIdempotencia: claveIdempotenciaSchema, // ficha 461 (R66)
+    })
+    .refine(
+      (v) =>
+        (v.tipo === "ingreso" && v.categoria === "ingreso_ajuste") ||
+        (v.tipo === "egreso" && v.categoria === "egreso_ajuste"),
+      { message: "La categoria de ajuste no corresponde al tipo.", path: ["categoria"] },
+    );
+}
 
-export type RegistrarMovimientoManualInput = z.infer<typeof registrarMovimientoManualSchema>;
+export type RegistrarMovimientoManualInput = z.infer<ReturnType<typeof registrarMovimientoManualSchema>>;
 
 // ── FICHA 461 (R69–R71, auditoria D3) — ANULAR una correccion de caja ──
 
@@ -760,37 +769,41 @@ export type AnularAjusteCajaResult =
   | { status: "unauthenticated" };
 
 // Listado (R20): paginado acotado + filtros opcionales tipo/categoria/rango de fechas.
-export const listarMovimientosSchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(100).default(20),
-  tipo: z.enum(WALLET_MOVIMIENTO_TIPO_SEED).optional(),
-  categoria: z.enum(WALLET_MOVIMIENTO_CATEGORIA_SEED).optional(),
-  // Ficha 461 (R72, auditoria T1): dias de COSTA RICA. `desde` = inicio de ese dia (06:00Z); `hasta`
-  // = inicio del dia siguiente, cota EXCLUSIVA en el repositorio. Antes: `z.coerce.date()`, que es
-  // la medianoche UTC (18:00 CR del dia anterior) y dejaba «hoy» con 2 de 7 movimientos.
-  desde: desdeDiaCRSchema.optional(),
-  hasta: hastaDiaCRSchema.optional(),
-  // Ficha 458-E (TE.2, R59): «A quién» — una tienda, un mensajero o el nombre libre anotado. Lo
-  // resuelve el REPOSITORIO en el WHERE, igual para libro, tarjetas, composicion, desglose y descarga
-  // (todos derivan de este schema). Las opciones las da `quienesDelLibroCajaAction`.
-  aQuien: aQuienFiltroSchema.optional(),
-})
-  // Ficha 458-E: `.strict()` — una clave desconocida es `validation_error` sin leer nada. Los
-  // derivados (`…CompletoSchema`, `…DeFilaSchema`) lo heredan por `omit`/`extend`.
-  .strict();
+export function listarMovimientosSchema(zona: string) {
+  return z.object({
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(100).default(20),
+    tipo: z.enum(WALLET_MOVIMIENTO_TIPO_SEED).optional(),
+    categoria: z.enum(WALLET_MOVIMIENTO_CATEGORIA_SEED).optional(),
+    // Ficha 461 (R72, auditoria T1): dias de la ZONA de la empresa. `desde` = inicio de ese dia; `hasta`
+    // = inicio del dia siguiente, cota EXCLUSIVA en el repositorio. Antes: `z.coerce.date()`, que es
+    // la medianoche UTC (18:00 CR del dia anterior) y dejaba «hoy» con 2 de 7 movimientos.
+    desde: desdeDiaSchema(zona).optional(),
+    hasta: hastaDiaSchema(zona).optional(),
+    // Ficha 458-E (TE.2, R59): «A quién» — una tienda, un mensajero o el nombre libre anotado. Lo
+    // resuelve el REPOSITORIO en el WHERE, igual para libro, tarjetas, composicion, desglose y descarga
+    // (todos derivan de este schema). Las opciones las da `quienesDelLibroCajaAction`.
+    aQuien: aQuienFiltroSchema.optional(),
+  })
+    // Ficha 458-E: `.strict()` — una clave desconocida es `validation_error` sin leer nada. Los
+    // derivados (`…CompletoSchema`, `…DeFilaSchema`) lo heredan por `omit`/`extend`.
+    .strict();
+}
 
-export type ListarMovimientosInput = z.infer<typeof listarMovimientosSchema>;
+export type ListarMovimientosInput = z.infer<ReturnType<typeof listarMovimientosSchema>>;
 
 // Feature 170 (T C.1) — entrada del modo SIN paginacion del LIBRO DE CAJA (descarga del
 // dataset completo). Derivada del schema del listado quitando `page`/`pageSize` (molde: la
 // 151 con `listarOrdenesCompletoSchema`), para que el modo completo no pueda aceptar una
 // entrada que el listado paginado rechazaria y para que ambos resuelvan los MISMOS filtros.
 // `.strict()`: una clave desconocida es `validation_error` sin devolver fila alguna (R18).
-export const listarMovimientosCompletoSchema = listarMovimientosSchema
-  .omit({ page: true, pageSize: true })
-  .strict();
+export function listarMovimientosCompletoSchema(zona: string) {
+  return listarMovimientosSchema(zona)
+    .omit({ page: true, pageSize: true })
+    .strict();
+}
 
-export type ListarMovimientosCompletoInput = z.infer<typeof listarMovimientosCompletoSchema>;
+export type ListarMovimientosCompletoInput = z.infer<ReturnType<typeof listarMovimientosCompletoSchema>>;
 
 // ── FICHA 463 (design §2.1, R12/R14/R24/R33/R40) — el borde del LIBRO de la caja ──
 //
@@ -807,22 +820,26 @@ export type ListarMovimientosCompletoInput = z.infer<typeof listarMovimientosCom
 /** El termino del libro: recortado, entre el minimo y el maximo de `lib/config/libro-wallet`. */
 export const terminoLibroSchema = z.string().trim().min(BUSQUEDA_LIBRO_MIN_CHARS).max(BUSQUEDA_LIBRO_MAX_CHARS);
 
-export const listarLibroCajaSchema = listarMovimientosSchema
-  .extend({
-    q: terminoLibroSchema.optional(),
-    // R33/R34/R40: solo por fecha; por defecto lo mas nuevo primero (lo que el libro hacia hasta hoy).
-    ...esquemaOrdenamiento(CAMPOS_ORDEN_LIBRO, "fecha", "desc"),
-  })
-  .strict();
+export function listarLibroCajaSchema(zona: string) {
+  return listarMovimientosSchema(zona)
+    .extend({
+      q: terminoLibroSchema.optional(),
+      // R33/R34/R40: solo por fecha; por defecto lo mas nuevo primero (lo que el libro hacia hasta hoy).
+      ...esquemaOrdenamiento(CAMPOS_ORDEN_LIBRO, "fecha", "desc"),
+    })
+    .strict();
+}
 
-export type ListarLibroCajaInput = z.infer<typeof listarLibroCajaSchema>;
+export type ListarLibroCajaInput = z.infer<ReturnType<typeof listarLibroCajaSchema>>;
 
 /** La descarga del libro (R42): el mismo borde sin `page`/`pageSize`, `.strict()`. */
-export const listarLibroCajaCompletoSchema = listarLibroCajaSchema
-  .omit({ page: true, pageSize: true })
-  .strict();
+export function listarLibroCajaCompletoSchema(zona: string) {
+  return listarLibroCajaSchema(zona)
+    .omit({ page: true, pageSize: true })
+    .strict();
+}
 
-export type ListarLibroCajaCompletoInput = z.infer<typeof listarLibroCajaCompletoSchema>;
+export type ListarLibroCajaCompletoInput = z.infer<ReturnType<typeof listarLibroCajaCompletoSchema>>;
 
 /**
  * Lo que el SERVICIO acepta para el libro: la entrada de las cifras mas el termino y el orden, estos
@@ -848,20 +865,22 @@ export type ListarLibroCajaCompletoServicioInput = ListarMovimientosCompletoInpu
  * `fila` es un TOKEN del catalogo de filas, nunca una lista de categorias (design §10-A1): el
  * complemento de «Otros» lo resuelve el SERVIDOR con la misma definicion que deriva el importe.
  */
-export const listarMovimientosDeFilaSchema = listarMovimientosSchema
-  .omit({ page: true, pageSize: true })
-  .extend({
-    fila: z.enum(COMPOSICION_FILA_SEED),
-    page: z.coerce.number().int().min(1).default(1),
-    pageSize: z.coerce
-      .number()
-      .int()
-      .min(1)
-      .max(composicionDetalleConfig.MAX_PAGE_SIZE)
-      .default(composicionDetalleConfig.DEFAULT_PAGE_SIZE),
-  });
+export function listarMovimientosDeFilaSchema(zona: string) {
+  return listarMovimientosSchema(zona)
+    .omit({ page: true, pageSize: true })
+    .extend({
+      fila: z.enum(COMPOSICION_FILA_SEED),
+      page: z.coerce.number().int().min(1).default(1),
+      pageSize: z.coerce
+        .number()
+        .int()
+        .min(1)
+        .max(composicionDetalleConfig.MAX_PAGE_SIZE)
+        .default(composicionDetalleConfig.DEFAULT_PAGE_SIZE),
+    });
+}
 
-export type ListarMovimientosDeFilaInput = z.infer<typeof listarMovimientosDeFilaSchema>;
+export type ListarMovimientosDeFilaInput = z.infer<ReturnType<typeof listarMovimientosDeFilaSchema>>;
 
 // Feature 170 (T C.2): resultado del modo completo en el BORDE. `limite_excedido` lleva
 // SOLO conteos (R27) y ninguna rama de error viaja con filas (R16/R17/R18). Money-safe: los
@@ -894,16 +913,18 @@ export const TIPO_EGRESO_MANUAL_A_CATEGORIA = {
 // Ficha 334 (R19/R22/R23): + `fecha` OPCIONAL, la MISMA pieza que el ajuste manual. El
 // `z.enum(TIPO_EGRESO_MANUAL_SEED)` NO se toca: es el tercero de los cuatro sitios donde vive
 // la regla «el gasto FIJO no se registra a mano» (R11, heredada del R19 de la ficha 45).
-export const registrarEgresoAdministrativoSchema = z.object({
-  tipoEgreso: z.enum(TIPO_EGRESO_MANUAL_SEED),
-  monto: montoPositivoSchema,
-  descripcion: z.string().trim().min(1, "La descripcion es obligatoria."),
-  fecha: fechaMovimientoSchema.optional(),
-  claveIdempotencia: claveIdempotenciaSchema, // ficha 461 (R66)
-});
+export function registrarEgresoAdministrativoSchema(zona: string) {
+  return z.object({
+    tipoEgreso: z.enum(TIPO_EGRESO_MANUAL_SEED),
+    monto: montoPositivoSchema,
+    descripcion: z.string().trim().min(1, "La descripcion es obligatoria."),
+    fecha: fechaMovimientoSchema(zona).optional(),
+    claveIdempotencia: claveIdempotenciaSchema, // ficha 461 (R66)
+  });
+}
 
 export type RegistrarEgresoAdministrativoInput = z.infer<
-  typeof registrarEgresoAdministrativoSchema
+  ReturnType<typeof registrarEgresoAdministrativoSchema>
 >;
 
 // R13: reversa de un egreso administrativo por su id (el monto se lee server-side, no lo

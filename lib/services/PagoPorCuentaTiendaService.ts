@@ -37,7 +37,7 @@ import {
   descripcionPagoPorCuentaEnCaja,
   descripcionPagoPorCuentaEnTienda,
 } from "@/lib/utils/descripcion-pago-por-cuenta";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendarioCR, ZONA_CR } from "@/lib/utils/fecha-cr";
 import { instanteDelMovimientoManual } from "@/lib/utils/fecha-movimiento-manual";
 import { derivarSaldoTienda } from "@/lib/utils/saldo-tienda";
 
@@ -164,7 +164,8 @@ export class PagoPorCuentaTiendaService implements IPagoPorCuentaTiendaService {
     // Prisma rellena `@default(now())` en el CLIENTE, fila a fila — medido contra Postgres: 4 ms de
     // diferencia entre el cargo y la salida (`pago-por-cuenta-tienda.test.ts`).
     const ahora = this.ahora();
-    const fechaMovimiento = instanteDelMovimientoManual(input.fecha, ahora) ?? ahora;
+    // SLT-42 pendiente T5.4: zona de la empresa
+    const fechaMovimiento = instanteDelMovimientoManual(input.fecha, ZONA_CR, ahora) ?? ahora;
     const fechaPago = medianocheUtcDelDia(input.fecha ?? fechaCalendarioCR(ahora));
     const datosDescripcion = {
       beneficiario: input.beneficiario,

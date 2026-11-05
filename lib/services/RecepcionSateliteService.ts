@@ -32,6 +32,7 @@ import {
   terminoDeBusqueda,
 } from "@/lib/utils/filtros-listado-ordenes";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Estado de ORIGEN de la recepcion (feature 30) y destino tras recibir (esta
 // feature). Un solo estado de destino; el nombre de zona se deriva de orden.zonaId
 // para el display (R9/R20).
@@ -113,7 +114,8 @@ export class RecepcionSateliteService implements IRecepcionSateliteService {
     input: ListarOrdenesBodegaCompletoInput,
     zonaId: string,
   ): RecepcionSateliteFiltro {
-    const creacion = rangoCreacion(input, this.ahora());
+    // SLT-42 pendiente T5.3: zona de la empresa
+    const creacion = rangoCreacion(input, this.ahora(), ZONA_CR);
     const termino = input.q ? terminoDeBusqueda(input.q) : undefined;
     // FICHA 370: el criterio de «ya salio a reparto», traducido por el MISMO util que usa
     // `/ordenes`. Aqui esta el grueso del valor — 44 de las 48 ordenes «nuevas» medidas en

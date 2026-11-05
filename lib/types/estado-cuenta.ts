@@ -18,9 +18,9 @@ import { CHIPS_BODEGA, CHIPS_MENSAJERO, CHIPS_TIENDA, type ChipEstadoCuenta } fr
 // bodega satelite: contratos de borde.
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 //
-// Montos SIEMPRE STRING escala 2 (R90); fechas `YYYY-MM-DD` del calendario de Costa Rica (R16) con las
-// piezas de la 461 (`diaCalendarioSchema`; el servicio convierte con `inicioDelDiaCREnUtc` /
-// `inicioDelDiaSiguienteCREnUtc`: `desde` inclusivo, `hasta` cota exclusiva del dia siguiente).
+// Montos SIEMPRE STRING escala 2 (R90); fechas `YYYY-MM-DD` del calendario de la zona de la empresa
+// (R16; SLT-42) con las piezas de la 461 (`diaCalendarioSchema`; el servicio convierte con `inicioDelDiaEnUtc` /
+// `inicioDelDiaSiguienteEnUtc` y la zona: `desde` inclusivo, `hasta` cota exclusiva del dia siguiente).
 //
 // LOS IDENTIFICADORES VIAJAN Y NO SE PINTAN (H6/D1): `cuenta.id`, `ref` y `consolidacionId` son la
 // direccion del dato. El NOMBRE del concepto no va aqui: la fila lleva `categoria` y la pantalla la
@@ -166,7 +166,7 @@ export interface AnulacionDeFilaDTO {
   /** `null` = anulada por una via de antes de la 458 sin constancia («motivo no registrado», R72). */
   motivo: string | null;
   por: string | null;
-  /** Dia CR de la anulacion. */
+  /** Dia (en la zona de la empresa) de la anulacion. */
   fecha: string | null;
   /**
    * FICHA 458-D (revision m3, R25 en `/mi-wallet`) — la hora de pared de Costa Rica («HH:mm») de la
@@ -181,7 +181,7 @@ export interface FilaEstadoCuentaDTO {
   ref: DestinoMovimiento | null;
   /** Solo bodega: la consolidacion (marcar/desmarcar recibido). Viaja, no se pinta. */
   consolidacionId: string | null;
-  /** Dia CR del movimiento (R16). */
+  /** Dia (en la zona de la empresa) del movimiento (R16). */
   fecha: string;
   categoria: string;
   origenTipo: string;
@@ -224,7 +224,7 @@ export interface EstadoCuentaDTO {
   saldoActual: string;
   signo: "positivo" | "negativo" | "cero";
   sentido: SentidoDelSaldo;
-  /** R20 — el saldo al terminar el dia CR anterior a `desde` ("0.00" sin `desde`). */
+  /** R20 — el saldo al terminar el dia (de la zona) anterior a `desde` ("0.00" sin `desde`). */
   saldoInicial: string;
   /** D3 — abonos y cargos del periodo SIN los pares anulados dentro del periodo. */
   abonos: string;

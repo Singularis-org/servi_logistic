@@ -17,6 +17,7 @@ import { derivarSaldoTienda } from "@/lib/utils/saldo-tienda";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
 import { cargarCatalogo459, enTransaccionRevertida459, montarServicios459, sembrarEscenario459 } from "./_fixtures/caja-459";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
 vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
 
@@ -113,7 +114,7 @@ describeSiHayBase("458-B/TB.13 — «Cómo quedó» (Postgres real)", () => {
         // 1. La ULTIMA linea de la caja: «Cómo quedó» == el resumen sin filtros.
         const ultima = cajaEntera[cajaEntera.length - 1];
         r.ultima = await ver("caja", ultima.id);
-        const resumen = await s.wallet.verResumenCaja(listarMovimientosSchema.parse({}), maestro);
+        const resumen = await s.wallet.verResumenCaja(listarMovimientosSchema(ZONA_CR).parse({}), maestro);
         if (resumen.status !== "ok") throw new Error("resumen");
 
         // 2. Una linea del medio (el sueldo del escenario): el prefijo, derivado aparte.

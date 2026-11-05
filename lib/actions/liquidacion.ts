@@ -34,6 +34,7 @@ import { buildComprobantes, leerComprobanteOpcional } from "@/lib/actions/_share
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import type { AppErrorShape } from "@/lib/errors";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 172 (T B.7 + T C.1 + T F.4, design §3.1) — las CINCO Server Actions de la LIQUIDACION:
 // las dos de REGISTRO, las dos de LISTAR comprobantes y la de ANULAR.
 // Son operaciones INTERNAS del mismo proyecto, asi que van como Server Action y no como Route
@@ -135,7 +136,8 @@ export async function registrarPagoMensajeroAction(
   const r = await withErrorHandler(async () => {
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R3: antes de evaluar ningun otro dato
-    const data = registrarPagoMensajeroSchema.parse(input); // ZodError -> VALIDATION_ERROR
+    // SLT-42 pendiente T5.4: zona de la empresa
+    const data = registrarPagoMensajeroSchema(ZONA_CR).parse(input); // ZodError -> VALIDATION_ERROR
     const service = deps.service ?? buildService();
     return service.registrarPagoMensajero(data, actor);
   });
@@ -164,7 +166,8 @@ export async function registrarPagoTiendaAction(
     // FICHA 458-B (R74): el objeto de hoy o un FormData con `comprobante` (molde 459). El `.strict()`
     // se conserva: el archivo se separa ANTES y cualquier otra clave no prevista sigue muriendo aqui.
     const { crudo, comprobante } = separarComprobante(input);
-    const data = registrarPagoTiendaSchema.parse(crudo); // ZodError -> VALIDATION_ERROR
+    // SLT-42 pendiente T5.4: zona de la empresa
+    const data = registrarPagoTiendaSchema(ZONA_CR).parse(crudo); // ZodError -> VALIDATION_ERROR
     const archivo = await leerComprobanteOpcional(comprobante);
     const service = deps.service ?? buildService();
     return archivo === null
@@ -235,7 +238,8 @@ export async function registrarRepartoMensajeroAction(
     if (!actor) throw new UnauthenticatedError(); // R2: antes de evaluar ningun otro dato
     // FICHA 458-B (R74): el objeto de hoy o un FormData con `comprobante` (molde 459).
     const { crudo, comprobante } = separarComprobante(input);
-    const data = registrarRepartoMensajeroSchema.parse(crudo); // ZodError -> VALIDATION_ERROR
+    // SLT-42 pendiente T5.4: zona de la empresa
+    const data = registrarRepartoMensajeroSchema(ZONA_CR).parse(crudo); // ZodError -> VALIDATION_ERROR
     const archivo = await leerComprobanteOpcional(comprobante);
     const service = deps.service ?? buildService();
     return archivo === null

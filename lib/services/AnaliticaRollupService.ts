@@ -20,6 +20,7 @@ import type { IOrdenHistorialService } from "@/lib/interfaces/services/IOrdenHis
 import { ventanaDelDia, type VentanaDia } from "@/lib/analytics/rollup-dia";
 import { UMBRAL_AVISO_FILAS_CORRIDA } from "@/lib/config/analitica-rollup";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 124 (design §2/§4/§7) — composicion del rollup diario. Este servicio NO habla
 // Prisma y NO conoce Next.js: recibe el repositorio por constructor y funde en memoria los
 // cubos que devuelven las seis consultas. El bug caro de esta feature no es una consulta
@@ -128,7 +129,8 @@ export class AnaliticaRollupService implements IAnaliticaRollupService {
 
   async agregarFecha(fecha: string): Promise<ResumenCorrida> {
     const inicio = this.deps.now().getTime();
-    const ventana = ventanaDelDia(fecha);
+    // SLT-42 pendiente T5.5: zona de la empresa
+    const ventana = ventanaDelDia(fecha, ZONA_CR);
 
     const filas = await this.componerFilas(fecha, ventana);
     const totales = await this.enEtapa(fecha, "totales_de_control", () =>

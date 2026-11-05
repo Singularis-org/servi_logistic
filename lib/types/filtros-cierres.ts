@@ -23,7 +23,7 @@
 import { z } from "zod";
 
 import type { CierreEstado } from "@/lib/types/cierre";
-import { esFechaCalendarioValida } from "@/lib/utils/fecha-cr";
+import { esFechaCalendarioValida } from "@/lib/utils/calendario-zona";
 
 /** Tope de ids por lista. Un filtro es un recorte, no un canal para mandar un dataset. */
 export const MAX_IDS_POR_FILTRO = 200;
