@@ -30,7 +30,7 @@ import { lineasDeCosto, lineasDeTopes, TEXTOS_PLAN, textoDeVisibilidad } from ".
 const TEXTOS = {
   nuevo: "Nuevo plan",
   tituloNuevo: "Nuevo plan",
-  descripcionNuevo: "Los topes vacíos no tienen límite. El costo base es informativo; el costo por orden se cobra en cada orden nueva.",
+  descripcionNuevo: "Los topes vacíos no tienen límite. El costo base es informativo. El costo por orden fijo se cobra al crear cada orden; el porcentual, cuando la orden llega a un estado final.",
   mostrarArchivados: "Mostrar archivados",
   columnaNombre: "Nombre",
   columnaVisibilidad: "Visibilidad",

@@ -39,6 +39,7 @@ function plan(extra: Partial<PlanDTO> = {}): PlanDTO {
     modulos: ["ranking", "analitica"],
     precio: { tipo: "monto", mensual: "25000.00", anual: null },
     costoPorOrden: null, // SLT-66 R7: el plan lleva costo por orden; aquí, vacío.
+    costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
     archivado: false,
     ...extra,
   };
@@ -50,6 +51,7 @@ const PENDIENTE: VersionPlan = {
   modulos: ["ranking", "analitica"],
   precio: { tipo: "monto", mensual: "25000.00", anual: null },
   costoPorOrden: null, // SLT-66 R7: el plan lleva costo por orden; aquí, vacío.
+  costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
 };
 
 function catalogoLeido(): PlanDelCatalogoLeido[] {
@@ -96,14 +98,15 @@ function planDeEmpresaLeida(): PlanDeEmpresaLeida {
     plan: {
       dto,
       // SLT-66 R7: la versión vigente lleva el costo por orden del plan.
-      vigente: { nombre: dto.nombre, topes: dto.topes, modulos: dto.modulos, precio: dto.precio, costoPorOrden: dto.costoPorOrden },
+      vigente: { nombre: dto.nombre, topes: dto.topes, modulos: dto.modulos, precio: dto.precio, costoPorOrden: dto.costoPorOrden, costoPorOrdenPorcentual: null },
       // Ancla el 15 a las 12:00 UTC: el ciclo siguiente empieza el 2026-11-15 12:00 UTC.
       ancla: new Date("2026-09-15T12:00:00.000Z"),
       // SLT-66 R5: el uso ya no trae al maestro.
       uso: { ordenes: 85, apiKeys: 2, porRol: { admin: 0, mensajero: 5, adminTienda: 0, adminSatelite: 0 } },
       cambio: { vigenteDesde: RIGE, version: PENDIENTE },
       // SLT-66 R18: la lectura trae el costo vigente (el plan no fija costo por orden: el global).
-      costoVigente: { monto: "500.00", fuente: "global" },
+      costoVigente: { modo: "fijo", monto: "500.00", fuente: "global" },
+      cobroCiclo: { cobrado: "0.00", pendientes: 0 }, // SLT-83: campo nuevo de la lectura
       // Ajuste planes-custom (D6): la empresa paga en anual.
       tipoCobro: "anual",
     },

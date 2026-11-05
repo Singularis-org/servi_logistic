@@ -33,6 +33,7 @@ const PLAN: PlanDTO = {
   modulos: ["analitica"],
   precio: { tipo: "monto", mensual: "10.00", anual: null },
   costoPorOrden: null, // SLT-66 R8: campo nuevo del PlanDTO
+  costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
   archivado: false,
 };
 
@@ -96,6 +97,7 @@ describe("SLT-58 R14 — crear un plan", () => {
       modulos: ["monitoreo"],
       precio: { tipo: "monto", mensual: "25.50", anual: { tipo: "descuento", porcentaje: "10" } },
       costoPorOrden: null, // SLT-66 R8: campo nuevo; vacío = null
+      costoPorOrdenPorcentual: null, // SLT-83: campo nuevo; el modo no elegido viaja null
       // Ajuste planes-custom (D2, D4–D6): el custom se asigna al crearlo; la empresa no tiene plan.
       tipoCobro: "mensual",
       inicioCiclo: MANANA,
@@ -120,6 +122,7 @@ describe("SLT-58 R14 — crear un plan", () => {
       modulos: [],
       precio: { tipo: "sin_precio" },
       costoPorOrden: null, // SLT-66 R8: campo nuevo; vacío = null
+      costoPorOrdenPorcentual: null, // SLT-83: campo nuevo; el modo no elegido viaja null
     });
   });
 
@@ -183,6 +186,7 @@ describe("SLT-58 R15 — editar: de inmediato o a partir de una fecha", () => {
       modulos: ["analitica"],
       precio: { tipo: "monto", mensual: "10", anual: null },
       costoPorOrden: null, // SLT-66 R8: campo nuevo; vacío = null
+      costoPorOrdenPorcentual: null, // SLT-83: campo nuevo; el modo no elegido viaja null
       vigenteDesde: null,
     });
   });

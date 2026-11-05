@@ -968,6 +968,9 @@ model Orden {
   // SL-40: lo que la plataforma cobra a la empresa por ESTA orden (cargo, reverso, cargo…). Lo escribe
   // solo el trigger de la base; la FK es CASCADE (la app nunca borra una orden de verdad).
   cobrosPlataforma           CobroPlataformaMovimiento[]
+  // SLT-83 (design §2.2): las condiciones congeladas del cobro porcentual de ESTA orden. A lo sumo UNA
+  // (PK = orden_id); la escribe solo el trigger de alta. La FK es CASCADE, como la de SL-40.
+  cobroPorcentual            CobroPlataformaPorcentualOrden?
   // Ficha 419 (design §D3): enlace al comprobante del lote central que la paso a `devuelta_a_tienda`. A lo sumo UNO (PK = orden_id)
   devolucionTiendaEnlace     DevolucionTiendaOrden?             @relation("DevolucionTiendaOrdenOrden")
 
@@ -5812,6 +5815,7 @@ model Organizacion {
   rankingSnapshotDias RankingSnapshotDia[]
   rankingSnapshotFilas RankingSnapshotFila[]
   cobrosPlataforma CobroPlataformaMovimiento[] // SL-40
+  cobrosPorcentuales CobroPlataformaPorcentualOrden[] // SLT-83
   conciliacionBodegaAjustes ConciliacionBodegaAjuste[] // SLT-73
   integraciones Integracion[] // SL-36
   integracionPruebasMinuto IntegracionPruebaMinuto[] // SL-36
@@ -6031,6 +6035,12 @@ model Plan {
   // SLT-66 (R7, R8): NULL = el plan no lo fija y se cobra el global (R12). El CHECK
   // `plan_costo_por_orden_check` (`>= 0`) vive solo en el SQL de 20261031140000.
   costoPorOrden           Decimal?        @map("costo_por_orden") @db.Decimal(12, 2)
+  // SLT-83 (R1, R2): el costo por orden porcentual. NULL/NULL = el plan no es porcentual; el modo se
+  // deriva de qué columna tiene valor. Viven solo en el SQL de 20261104150000 los CHECK
+  // `plan_costo_por_orden_pct_check` (`> 0` y `<= 100`), `plan_costo_por_orden_minimo_check` (`>= 0` y
+  // solo con porcentaje) y `plan_costo_por_orden_un_modo` (nunca fijo y porcentual a la vez).
+  costoPorOrdenPct        Decimal?        @map("costo_por_orden_pct") @db.Decimal(5, 2)
+  costoPorOrdenMinimo     Decimal?        @map("costo_por_orden_minimo") @db.Decimal(12, 2)
   archivadoAt           DateTime?       @map("archivado_at")
   createdAt               DateTime        @default(now()) @map("created_at")
   updatedAt               DateTime        @default(now()) @updatedAt @map("updated_at")
@@ -6133,7 +6143,31 @@ model CobroPlataformaMovimiento {
   @@unique([organizacionId, ordenId, secuencia], map: "cobro_plataforma_movimiento_orden_secuencia_key")
   @@index([organizacionId])
   @@index([ordenId])
+  @@index([organizacionId, ocurridoAt]) // SLT-83 (R24): lo cobrado en el ciclo, por la fecha del cargo
   @@map("cobro_plataforma_movimiento")
+}
+
+// SLT-83 (design §2.2) — las condiciones congeladas de una orden porcentual: el porcentaje y el mínimo del
+// plan en el alta. Una fila por orden. De NEGOCIO. La escribe SOLO el trigger de alta de 20261104150200
+// (SECURITY DEFINER). Viven solo en el SQL de 20261104150100, porque Prisma no los expresa:
+//   · `CHECK ("porcentaje" > 0 AND "porcentaje" <= 100)` y `CHECK ("minimo" IS NULL OR "minimo" >= 0)`;
+//   · la política `cobro_plataforma_porcentual_orden_por_empresa`;
+//   · el `REVOKE INSERT, UPDATE, DELETE … FROM servi_app`: la empresa lee sus condiciones y no las toca (R17);
+//   · los triggers de misma empresa de SL-17.
+model CobroPlataformaPorcentualOrden {
+  ordenId    String   @id @map("orden_id")
+  porcentaje Decimal  @db.Decimal(5, 2)
+  minimo     Decimal? @db.Decimal(12, 2)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  orden Orden @relation(fields: [ordenId], references: [id], onDelete: Cascade)
+
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
+  @@unique([organizacionId, ordenId])
+  @@index([organizacionId])
+  @@map("cobro_plataforma_porcentual_orden")
 }
 
 // SL-36 (design §2.1) — los cuatro servicios que una empresa conecta con sus propias cuentas.

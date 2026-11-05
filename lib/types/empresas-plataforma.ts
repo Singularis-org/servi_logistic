@@ -1,7 +1,7 @@
 // SL-32 — tipos del listado de la pantalla «Empresas» del superadmin (R29, R35).
 
 import type { DeudaPlataformaDTO } from "@/lib/types/cobro-plataforma";
-import type { FuenteDelCosto } from "@/lib/types/consumo-plan";
+import type { CostoVigente } from "@/lib/types/consumo-plan";
 import type { EstadoVisibleIntegracion, ServicioIntegracion } from "@/lib/types/integraciones";
 import type { TipoCobro } from "@/lib/types/planes";
 
@@ -23,9 +23,10 @@ export type EmpresaListada = {
   cobroPorOrden: string | null;
   /**
    * SLT-66 (R31, design §6.4): lo que se cobraría hoy por una orden nueva y de dónde sale, con la misma
-   * `cobro_plataforma_tarifa_de` que usa el trigger del cargo (§3.2). Dos decimales.
+   * `cobro_plataforma_tarifa_de` que usa el trigger del cargo (§3.2). Dos decimales. SLT-83 (R22): fijo
+   * o porcentual (porcentaje y mínimo, solo del plan).
    */
-  cobroVigente: { monto: string; fuente: FuenteDelCosto };
+  cobroVigente: CostoVigente;
   /** SLT-66 (R32): el plan asignado, o `null` sin plan. Ajuste planes-custom (D9): con su tipo de cobro. */
   plan: { id: string; nombre: string; tipoCobro: TipoCobro } | null;
   /**

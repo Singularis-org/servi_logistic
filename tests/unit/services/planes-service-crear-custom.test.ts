@@ -30,6 +30,7 @@ const CUSTOM = {
   modulos: ["analitica"],
   precio: { tipo: "monto", mensual: "1000.00", anual: null },
   costoPorOrden: "100.00",
+  costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del esquema
   tipoCobro: "anual",
 } as const;
 
@@ -43,6 +44,7 @@ function plan(extra: Partial<PlanDTO> = {}): PlanDTO {
     modulos: [],
     precio: { tipo: "monto", mensual: "1000.00", anual: null },
     costoPorOrden: "100.00",
+    costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
     archivado: false,
     ...extra,
   };

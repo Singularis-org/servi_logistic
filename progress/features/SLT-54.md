@@ -33,6 +33,7 @@ Ninguna.
 ## Medición T6.3 (R11)
 - Producción, 2026-11-04 (lectura ejecutada por Carlos con `!`): una empresa, `tarifa_valor`=0, `grupo_distritos`=0. Sin repetir: se re-mide antes del merge.
 - Base local, 2026-11-05: 11 empresas, 0 con `tarifa_valor`, 0 grupos, 0 activadas.
+- Producción re-medida por Carlos el 2026-11-05: 1 empresa, `tarifa_valor`=0, `grupo_distritos`=0, `tarifa_activacion` aún no existe.
 
 ## Modelos (overrides)
 Subagentes en Opus.
