@@ -896,3 +896,12 @@ $ pnpm exec vitest run geo-71-fixture geo-analitica-lugar geo-transito-nombres g
 
 m5 y m6 corregidos: los 5 archivos de integración de SLT-71 pasan en verde corriendo en paralelo. El único rojo en paralelo es
 el de SLT-65 (`geo-explain-consultas` T6.1, timeout de 20 s), que queda fuera de alcance.
+
+## 2026-11-05 · CI del PR #81: dos rojos heredados de SLT-43
+
+- `gate-completo` rojo con dos archivos fuera del baseline: `tests/integration/db/migracion-slt43-ida-y-vuelta.test.ts`
+  y `tests/unit/db/slt43-migraciones-aditivas.test.ts`. Causa: elegian las migraciones de SLT-43 por el prefijo
+  `20261104`, que las migraciones de dev ya integradas en esta rama tambien usan.
+- El arreglo ya existia en la rama de SLT-43 (`0434a444`, sin subir). Se subio a `origin` y se trajo aqui con
+  `cherry-pick` (`147c7e1e`): un merge completo de SLT-43 arrastraba un dev mas nuevo con conflictos ajenos a esta ficha.
+- Local contra `logistic_slt71`: 2 archivos, 17 de 17 verdes, sin saltos.
