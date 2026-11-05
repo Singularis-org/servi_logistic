@@ -22,6 +22,9 @@ frontend / small. Causa probable, sin medir: Vercel rechaza a 4,5 MB, por debajo
 Ninguna.
 
 ## Tandas
+- 2026-11-05 · T1-T3 · 02962a72, 10df2d72, 9e81d351 · 38/38 mutaciones. `./init.sh` local no aplica: el `typecheck` da 12 errores, idénticos en `origin/prod` limpio, porque el cliente Prisma compartido viene de `dev`. El gate lo mide el CI.
+- T6, paso A, causa **sin medir**: el Preview tiene Vercel Authentication y responde 302 antes de la función, con peticiones de 3,9 a 5,1 MB. Se mide en el paso B, con Carlos.
+- Incidente: la primera corrida de `vitest related` llevó tests de integración a la base local del `.env`. Se repitió sobre la desechable.
 
 ## Modelos (overrides)
 Subagentes en Opus.
