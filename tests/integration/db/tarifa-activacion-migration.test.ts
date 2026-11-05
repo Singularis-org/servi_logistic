@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { HAY_BASE_DE_DATOS } from "./_postgres-real";
+import { HAY_BASE_DE_DATOS, SQL_ETIQUETAS_DE_ENUM } from "./_postgres-real";
 import {
   CREAR_TABLA_DE_CONTROL,
   MIGRACIONES,
@@ -187,11 +187,8 @@ async function filas(): Promise<Record<string, unknown[]>> {
 }
 
 async function etiquetas(tipo: string): Promise<string[]> {
-  const { rows } = await db.query(
-    `SELECT e.enumlabel AS l FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid WHERE t.typname = $1`,
-    [tipo],
-  );
-  return rows.map((r) => String(r.l));
+  const { rows } = await db.query(SQL_ETIQUETAS_DE_ENUM, [tipo]);
+  return rows.map((r) => String(r.etiqueta));
 }
 
 async function subir(): Promise<void> {
