@@ -528,3 +528,43 @@ Avisos:
   cuando la tanda de frontend la use.
 
 Veredicto: textos aprobados aplicados, con test y en verde.
+
+## T11
+
+**Archivos.**
+- `app/(app)/plataforma/planes/_components/PlanForm.tsx` (design §6.1): `RadioGroup` «Cobro por orden» con «Fijo» y
+  «Porcentual» (de `components/ui/radio-group`); con «Fijo», el «Costo por orden» de SLT-66 sin cambios; con
+  «Porcentual», «Porcentaje» (obligatorio, sufijo `%` visual `aria-hidden`) y «Mínimo» (opcional, `MontoInput`, el
+  mismo del costo por orden). El modo inicial sale de `costoPorOrdenPorcentual !== null`. `versionDe` envía solo el
+  modo elegido (el otro, `null`); el estado guarda los dos, así cambiar de modo no borra lo escrito.
+  `camposEnOrden` registra `costoPorOrdenPorcentual.porcentaje`/`.minimo` en modo porcentual (error junto al campo y
+  foco); `rechazoConCampo` no apunta a «Costo por orden» oculto en modo porcentual. Se quita el comentario
+  provisional de T6.
+- Etiquetas nuevas en `TEXTOS_PLAN_FORM` (las fija design §6.1 / R20: «Cobro por orden», «Fijo», «Porcentual»,
+  «Porcentaje», «%», «Mínimo»). Son etiquetas del formulario, no textos de dinero: siguen el patrón del resto del
+  formulario, no `lib/planes/mensajes.ts`.
+- Creado `tests/components/PlanFormCostoPorcentual.test.tsx` (10 casos).
+
+**Tests existentes tocados.** Ninguno.
+
+**R → test.**
+- R20 → `PlanFormCostoPorcentual.test.tsx`: «el selector ofrece «Fijo» y «Porcentual»…», «con «Porcentual» pide
+  «Porcentaje» (obligatorio, con sufijo %) y «Mínimo» (opcional)», «con «Porcentual» envía solo el porcentaje y el
+  mínimo; el fijo viaja null», «el mínimo vacío viaja como null», «con «Fijo» el porcentual viaja null aunque se haya
+  escrito», «cambiar de modo no borra lo escrito en el otro», «al editar un plan porcentual abre en «Porcentual»…»,
+  «al editar un plan fijo abre en «Fijo»», «un porcentaje inválido no llega a la action…», «el validation_error de la
+  action en .porcentaje y .minimo sale junto a cada campo y conserva lo escrito».
+
+**Salida.**
+```
+pnpm exec vitest run tests/components/PlanFormCostoPorcentual.test.tsx tests/components/PlanFormCosteo.test.tsx tests/components/PlanForm.test.tsx tests/components/PlanFormCustomAsigna.test.tsx
+ Test Files  4 passed (4)
+      Tests  55 passed (55)
+pnpm exec vitest run tests/components/PlanDetalle.test.tsx tests/components/PlanesModule.test.tsx
+ Test Files  2 passed (2)
+      Tests  26 passed (26)
+NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck → tsc --noEmit, sin errores
+pnpm exec eslint "app/(app)/plataforma/planes/_components/PlanForm.tsx" tests/components/PlanFormCostoPorcentual.test.tsx → No issues found
+```
+
+**Veredicto T11:** el formulario elige el modo, envía solo el elegido y pinta los errores junto a su campo.

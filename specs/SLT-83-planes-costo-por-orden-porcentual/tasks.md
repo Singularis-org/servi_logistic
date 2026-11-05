@@ -73,7 +73,7 @@
 
 ## Tanda D — pantallas (frontend_dev)
 
-- [ ] **T11. `PlanForm.tsx`** (design §6.1, R20). Depende de T6 y T10. `[P]`
+- [x] **T11. `PlanForm.tsx`** (design §6.1, R20). Depende de T6 y T10. `[P]`
   *Hecho:* `tests/components/PlanFormCostoPorcentual.test.tsx` en verde; `PlanFormCosteo.test.tsx` y
   `PlanForm.test.tsx` en verde.
 - [ ] **T12. `plan-vista.ts`** (catálogo, detalle, modal; design §6.2, R21). Depende de T10. `[P]`
