@@ -78,7 +78,7 @@
   `PlanForm.test.tsx` en verde.
 - [x] **T12. `plan-vista.ts`** (catálogo, detalle, modal; design §6.2, R21). Depende de T10. `[P]`
   *Hecho:* `tests/components/PlanEmpresaCostoPorcentual.test.tsx` en verde.
-- [ ] **T13. `CobroPorOrden.tsx` / `EmpresasModule.tsx`** (design §6.3, R22). Depende de T7 y T10. `[P]`
+- [x] **T13. `CobroPorOrden.tsx` / `EmpresasModule.tsx`** (design §6.3, R22). Depende de T7 y T10. `[P]`
   *Hecho:* `tests/components/EmpresasModuleCobroPorcentual.test.tsx` en verde;
   `EmpresasModuleCobro.test.tsx` en verde.
 - [ ] **T14. `ConsumoDelPlan.tsx`** («Mi plan» y detalle de empresa; design §6.4, R23, R26). Depende de T7 y

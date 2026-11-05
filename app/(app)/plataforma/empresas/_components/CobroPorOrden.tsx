@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { FormField } from "@/components/shared/FormField";
 import { money } from "@/lib/config/moneda";
+import { textoDelCobroVigente } from "@/lib/planes/mensajes";
 import type { CostoVigente, FuenteDelCosto } from "@/lib/types/consumo-plan";
 import {
   MENSAJE_MONTO_COBRO_INVALIDO,
@@ -247,8 +248,8 @@ export function CeldaCobroEmpresa({
   return (
     <div className="flex flex-col gap-2">
       <div>
-        {/* SLT-83 (T7): ajuste de tipo mínimo de backend_dev; el texto del modo porcentual es de T13. */}
-        {cobroVigente.modo === "fijo" ? <span className="tabular-nums">{money(cobroVigente.monto)}</span> : null}
+        {/* SLT-83 (R22): el fijo con `money`, como desde SL-40; el porcentual, «{p} % (mín. {m})» o «{p} %». */}
+        <span className="tabular-nums">{textoDelCobroVigente(cobroVigente)}</span>
         <span className="block text-xs text-muted-foreground">{ORIGEN[cobroVigente.fuente]}</span>
       </div>
 

@@ -602,3 +602,30 @@ pnpm exec eslint plan-vista.ts PlanDetalle.tsx tests/components/PlanEmpresaCosto
 ```
 
 **Veredicto T12:** catálogo, detalle y modal pintan el costo porcentual con el texto de `mensajes.ts`.
+
+## T13
+
+**Archivos.**
+- `app/(app)/plataforma/empresas/_components/CobroPorOrden.tsx` (design §6.3): la celda pinta
+  `textoDelCobroVigente(cobroVigente)` de `lib/planes/mensajes.ts` (fijo: `money` como desde SL-40; porcentual:
+  «{p} % (mín. {m})» o «{p} %») con la fuente de hoy («propio», «del plan», «global»). Se quita el ajuste
+  provisional de T7. La edición de la excepción no cambia. `EmpresasModule.tsx` no necesitó cambios: ya pasa
+  `empresa.cobroVigente`.
+- Creado `tests/components/EmpresasModuleCobroPorcentual.test.tsx` (3 casos).
+
+**Tests existentes tocados.** Ninguno.
+
+**R → test.**
+- R22 → `EmpresasModuleCobroPorcentual.test.tsx`: «con mínimo pinta «{p} % (mín. {m})» y «del plan», sin el importe
+  global», «sin mínimo pinta «{p} %» y «del plan»», «con excepción sigue el importe con «propio» (SLT-66 R31)».
+
+**Salida.**
+```
+pnpm exec vitest run tests/components/EmpresasModuleCobroPorcentual.test.tsx tests/components/EmpresasModuleCobro.test.tsx tests/components/EmpresasModulePlan.test.tsx tests/components/empresas-module.test.tsx
+ Test Files  4 passed (4)
+      Tests  82 passed (82)
+NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck → tsc --noEmit, sin errores
+pnpm exec eslint CobroPorOrden.tsx tests/components/EmpresasModuleCobroPorcentual.test.tsx → No issues found
+```
+
+**Veredicto T13:** la columna «Cobro por orden» pinta el porcentual con «del plan» y el fijo como hoy.
