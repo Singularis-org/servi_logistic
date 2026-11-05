@@ -34,6 +34,7 @@ Ninguna.
 
 ## Tandas
 - 2026-11-04 · A (T0–T5; T5 sin [x] hasta CI) · 2f1fda7d…f8577877 · integración 99/99, ida y vuelta 5/5, demo-qa 12/12 en servi_logistic_slt83; typecheck limpio; guardias: 6 rojos ajenos (4 baseline, 2 timeout). init.sh local cortado por falta de memoria: confirma CI. Avisos: estado final + anular en una sentencia no deja movimientos (neto igual, lo juzga el reviewer); zona horaria en el test de R24 (T7); textos de wallet y formulario a revisar en C/D.
+- 2026-11-04 · B y C (T6–T10; T8 antes que T7) · a1f9b962…7e68b71d · unit e integración de los archivos tocados en verde (planes-service* 281/281, tests/unit/planes 186/186); typecheck y eslint limpios; guardias: solo el rojo del baseline. Adelantado a D: ConsumoDelPlan y CobroPorOrden solo pintan modo fijo; PlanForm envía costoPorOrdenPorcentual null. Textos pendientes del humano: vacío del rastro («sin costo porcentual», provisional), «→ se aplica el valor global» al pasar a %, total con cobrado negativo.
 
 ## Modelos (overrides)
 
