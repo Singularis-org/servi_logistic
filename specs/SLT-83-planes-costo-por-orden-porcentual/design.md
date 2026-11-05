@@ -174,7 +174,10 @@ con sus cuerpos de origen, copiados literalmente; `DROP` y `CREATE` de `cobro_pl
 su firma de `20261031140200`; `DROP` de las funciones nuevas. El reviewer compara los cuerpos línea a
 línea con los de origen (precedente SLT-66 §2.3).
 
-**Orden de bajada:** M3 → M2 → M1. M2 y M1 se niegan si hay datos porcentuales (R27).
+**Orden de bajada:** M3 → M2 → M1. M3, el primero que corre, se niega antes de tocar nada si hay datos
+porcentuales (planes con porcentaje, versiones pendientes porcentuales o filas en
+`cobro_plataforma_porcentual_orden`), así las funciones nunca vuelven a la regla de SLT-66 con esos datos
+vivos; M2 y M1 repiten su parte de la guarda por si se corren sueltos (R27).
 
 ### 2.4 Datos que dependen del país
 

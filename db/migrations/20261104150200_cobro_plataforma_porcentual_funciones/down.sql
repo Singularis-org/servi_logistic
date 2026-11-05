@@ -5,8 +5,26 @@
 -- mismo byte a byte; `migracion-slt83-ida-y-vuelta.test.ts` compara el `md5` de `pg_get_functiondef`
 -- antes de subir y tras bajar). `CREATE OR REPLACE` conserva dueño, privilegios y triggers.
 --
--- Este down NO se niega solo: si quedan órdenes porcentuales, se niega el de 20261104150100, que va
--- justo después (R27). Bajado este, una orden nueva vuelve a cobrarse con la regla de SLT-66.
+-- SE NIEGA si hay datos porcentuales (R27), antes de tocar nada: planes con porcentaje, versiones
+-- pendientes que lo programan, u órdenes con condiciones porcentuales congeladas. Es el primer down que
+-- corre: si bajara las funciones y se negara después el de 20261104150100 o el de 20261104150000, esos
+-- planes y órdenes quedarían cobrándose con la regla de SLT-66 (el global) sin que nadie lo decidiera.
+-- Quien quiera bajar, antes devuelve esos planes a un costo fijo o vacío, cancela esas versiones y
+-- resuelve esas órdenes. Bajado este, una orden nueva vuelve a cobrarse con la regla de SLT-66.
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM "plan" WHERE "costo_por_orden_pct" IS NOT NULL)
+     OR EXISTS (SELECT 1 FROM "plan_cambio_programado"
+                 WHERE "version" -> 'costoPorOrdenPorcentual' IS NOT NULL
+                   AND jsonb_typeof("version" -> 'costoPorOrdenPorcentual') <> 'null') THEN
+    RAISE EXCEPTION 'SLT-83 down: hay planes porcentuales; bajar los dejaría sin costo por orden';
+  END IF;
+  IF EXISTS (SELECT 1 FROM "cobro_plataforma_porcentual_orden") THEN
+    RAISE EXCEPTION 'SLT-83 down: hay órdenes con condiciones porcentuales congeladas; bajar las dejaría sin su cobro';
+  END IF;
+END
+$$;
 
 DROP TRIGGER "cobro_plataforma_al_cambiar_estado" ON "orden";
 DROP FUNCTION cobro_plataforma_al_cambiar_estado();

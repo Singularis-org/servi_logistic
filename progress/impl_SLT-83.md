@@ -961,3 +961,64 @@ git status --short → (vacío)
 
 **Veredicto T16:** los 29 `R` tienen test, las seis mutaciones de §9.4 mueren y no entra ninguna dependencia;
 pendiente solo de CI (`./init.sh` / `gate-completo`, que cierran T5 y T16).
+
+## Arreglos F2.2 vuelta 1
+
+Hallazgo B1 de `progress/review_SLT-83.md` (R27): el `down.sql` de M3 no se negaba con datos porcentuales.
+
+**Archivos modificados**
+- `db/migrations/20261104150200_cobro_plataforma_porcentual_funciones/down.sql`: guarda `DO $$ … $$` al
+  principio, antes de cualquier `DROP`/`CREATE`, con las mismas consultas y mensajes que M1 (planes con
+  `costo_por_orden_pct`, versiones pendientes con `costoPorOrdenPorcentual` no nulo) y M2 (filas en
+  `cobro_plataforma_porcentual_orden`). Cabecera reescrita: ya no dice «Este down NO se niega solo».
+- `tests/integration/db/migracion-slt83-ida-y-vuelta.test.ts`:
+  - caso nuevo «el down.sql de M3 se niega antes de tocar nada y las funciones conservan md5 y proacl»: con
+    plan porcentual + orden congelada se niega por planes; con el plan fijo y la orden congelada, por
+    órdenes; tras cada negativa, `md5(pg_get_functiondef)` + `proacl` de todas las funciones de `public`
+    idénticos; y el trigger de cambio de estado de M3 sigue cobrando (salir de final revierte, volver
+    recobra 2.000,00);
+  - el caso de M2/M1 «corridos sueltos» se conserva y además baja M3 con solo la versión pendiente
+    porcentual (plan fijo): M3 se niega por planes;
+  - el test en disco comprueba que el `down.sql` de M3 lleva los dos mensajes y que el `RAISE EXCEPTION`
+    va antes del primer `DROP`/`CREATE` (sin comentarios);
+  - la bajada completa sigue en el orden real M3 → M2 → M1; cabecera del archivo actualizada.
+- `specs/SLT-83-planes-costo-por-orden-porcentual/design.md §2.3`: línea «Orden de bajada» corregida (M3
+  se niega primero; M2 y M1 repiten su parte por si se corren sueltos).
+
+**R → test**
+- R27 → `migracion-slt83-ida-y-vuelta.test.ts` › «con datos porcentuales, el down.sql de M3 se niega antes
+  de tocar nada y las funciones conservan md5 y proacl» (+ los cinco casos previos, conservados).
+
+**Salida real** (base `servi_logistic_slt83`, `DATABASE_URL` por entorno)
+
+```
+$ DATABASE_URL=…/servi_logistic_slt83 npx vitest run tests/integration/db/migracion-slt83-ida-y-vuelta.test.ts \
+    tests/integration/db/cobro-plataforma-porcentual.test.ts tests/integration/db/cobro-plataforma-porcentual-aislamiento.test.ts \
+    tests/integration/db/cobro-plataforma-porcentual-importe.test.ts tests/integration/db/cobro-porcentual-estados-finales.test.ts --reporter=verbose
+✓ migracion-slt83-ida-y-vuelta › R27: van detrás de la última de dev, en orden, cada una con su down.sql
+✓ … › R27: al subir, el plan sigue fijo y la versión pendiente gana el modo porcentual vacío
+✓ … › R27: con el plan al 2 % (mínimo 500), una orden de 100.000 congela sin cargo y se cobra al entregarse
+✓ … › R27: con datos porcentuales, el down.sql de M3 se niega antes de tocar nada y las funciones conservan md5 y proacl
+✓ … › R27: con datos porcentuales, los down.sql de M2 y de M1 corridos sueltos se niegan con un error claro y nada cambia
+✓ … › R27: limpios los datos porcentuales, bajar M3, M2 y M1 deja todo como antes y la orden nueva sigue la regla de SLT-66
+Test Files  5 passed (5)
+Tests  55 passed (55)     (0 omitidos)
+```
+
+Primera corrida: 1 rojo propio (la comprobación «RAISE antes de DROP/CREATE» contaba el `CREATE OR REPLACE`
+del comentario de cabecera); corregida quitando comentarios antes de buscar.
+
+```
+$ pnpm run typecheck            → tsc --noEmit, exit 0
+$ npx eslint tests/integration/db/migracion-slt83-ida-y-vuelta.test.ts → exit 0, sin salida
+$ pnpm run test:guardias        → exit 1: Test Files 1 failed | 324 passed | 3 skipped; Tests 4 failed | 4541 passed | 24 skipped
+```
+
+Los 4 rojos de guardias son todos de `tests/unit/guards/dependencias-declaradas-presentes.guardia.test.ts`
+(guardia 420: `init.sh` sin el marcador «>>> FIN PASO 2: DEPENDENCIAS (ficha 420) <<<» ni la llamada a
+`scripts/verificar-dependencias.mjs`). `init.sh` no se tocó en esta feature (último commit: el punto de
+partida), así que es previo y ajeno a este arreglo; no lo arreglo aquí.
+
+No se corrió `./init.sh` ni la suite completa (instrucción).
+
+**Veredicto:** B1 resuelto: M3 se niega primero con datos porcentuales y deja las funciones intactas; R27 cubierto en el orden real de bajada.

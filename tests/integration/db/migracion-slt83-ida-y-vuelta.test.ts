@@ -28,8 +28,10 @@ import {
  *   · el plan sigue fijo (columnas nuevas NULL) y la versión pendiente gana `costoPorOrdenPorcentual: null`;
  *   · con el plan al 2 % (mínimo 500), una orden de 100.000 congela sus condiciones sin cargo, y al entrar
  *     a `entregado` se carga 2.000,00 «plan»;
- *   · los `down.sql` de M2 y de M1 se niegan con un error claro mientras quedan datos porcentuales (la
- *     orden con condiciones, el plan porcentual, una versión pendiente porcentual), y no cambian nada;
+ *   · el `down.sql` de M3 —el primero de la bajada real, M3 → M2 → M1— se niega antes de tocar nada
+ *     mientras quedan datos porcentuales (el plan porcentual, la orden con condiciones, una versión
+ *     pendiente porcentual): las funciones conservan el md5 de su definición y su `proacl`;
+ *   · los `down.sql` de M2 y de M1, corridos sueltos, también se niegan y no cambian nada;
  *   · limpios esos datos como dueño, los tres `down.sql` en orden inverso dejan esquema, funciones (md5
  *     de su definición), triggers y privilegios como antes de M1, la versión pendiente como estaba, y una
  *     orden nueva se carga con la regla de SLT-66 (100.00 «plan»).
@@ -115,6 +117,18 @@ async function version(): Promise<unknown> {
   return rows[0]?.version;
 }
 
+/** Cada función de `public` con el md5 de su definición y su `proacl` (lo que un down a medias cambiaría). */
+async function funcionesConAcl(): Promise<string[]> {
+  const { rows } = await db.query(
+    `SELECT p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ') ' || md5(pg_get_functiondef(p.oid))
+            || ' ' || COALESCE(p.proacl::text, '-') AS l
+       FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public' AND p.prokind = 'f'
+      ORDER BY 1`,
+  );
+  return rows.map((r) => String(r.l));
+}
+
 /** Corre un `down.sql` que debe negarse: devuelve el error (o `null` si no se negó). */
 async function bajarYCapturar(m: string): Promise<ErrorDeScript | null> {
   try {
@@ -135,6 +149,12 @@ describe("SLT-83 — las migraciones en disco (R27)", () => {
     for (const m of [M1, M2, M3]) expect(sqlDe(m, "down.sql").length).toBeGreaterThan(0);
     expect(sqlDe(M1, "down.sql")).toMatch(/SLT-83 down: hay planes porcentuales/);
     expect(sqlDe(M2, "down.sql")).toMatch(/SLT-83 down: hay órdenes con condiciones porcentuales/);
+    // M3 baja primero: su guarda va antes de cualquier DROP o CREATE (sin contar los comentarios).
+    const m3 = sqlDe(M3, "down.sql").replace(/--[^\n]*/g, "");
+    expect(m3).toMatch(/SLT-83 down: hay planes porcentuales/);
+    expect(m3).toMatch(/SLT-83 down: hay órdenes con condiciones porcentuales/);
+    expect(m3.indexOf("RAISE EXCEPTION")).toBeGreaterThan(0);
+    expect(m3.indexOf("RAISE EXCEPTION")).toBeLessThan(m3.search(/\b(DROP|CREATE)\b/));
   });
 });
 
@@ -234,8 +254,49 @@ describeSiHayBase("SLT-83 R27 — M1–M3 de ida y vuelta: la orden porcentual, 
     expect(await movimientos(ordenPorcentual)).toEqual(["cargo 2000.00 plan"]);
   });
 
-  it("R27: con datos porcentuales, los down.sql de M2 y de M1 se niegan con un error claro y nada cambia", async () => {
+  it("R27: con datos porcentuales, el down.sql de M3 se niega antes de tocar nada y las funciones conservan md5 y proacl", async () => {
     const con = await fotoSinFilas();
+    const funcionesAntes = await funcionesConAcl();
+
+    // Plan porcentual y orden con condiciones congeladas.
+    const conPlan = await bajarYCapturar(M3);
+    expect(conPlan?.sqlstate).toBe("P0001");
+    expect(conPlan?.message).toMatch(/SLT-83 down: hay planes porcentuales/);
+    expect(await funcionesConAcl()).toEqual(funcionesAntes);
+
+    // Con el plan otra vez fijo, la orden con condiciones congeladas basta para negarse.
+    await db.query(
+      `UPDATE "plan" SET "costo_por_orden" = 100, "costo_por_orden_pct" = NULL, "costo_por_orden_minimo" = NULL WHERE "id" = $1`,
+      [planId],
+    );
+    const conOrden = await bajarYCapturar(M3);
+    expect(conOrden?.sqlstate).toBe("P0001");
+    expect(conOrden?.message).toMatch(/SLT-83 down: hay órdenes con condiciones porcentuales congeladas/);
+    expect(await funcionesConAcl()).toEqual(funcionesAntes);
+
+    // El cobro sigue vivo: sacar la orden del estado final la revierte con la función de M3.
+    await db.query(
+      `UPDATE "orden" SET "estatus_id" = (SELECT "id" FROM "order_status" WHERE "value" = 'en_preparacion') WHERE "id" = $1`,
+      [ordenPorcentual],
+    );
+    expect(await movimientos(ordenPorcentual)).toEqual(["cargo 2000.00 plan", "reverso 2000.00 plan"]);
+
+    // Vuelve al estado del caso anterior para el siguiente.
+    await db.query(
+      `UPDATE "plan" SET "costo_por_orden" = NULL, "costo_por_orden_pct" = 2, "costo_por_orden_minimo" = 500 WHERE "id" = $1`,
+      [planId],
+    );
+    await db.query(
+      `UPDATE "orden" SET "estatus_id" = (SELECT "id" FROM "order_status" WHERE "value" = 'entregado') WHERE "id" = $1`,
+      [ordenPorcentual],
+    );
+    expect(await movimientos(ordenPorcentual)).toEqual(["cargo 2000.00 plan", "reverso 2000.00 plan", "cargo 2000.00 plan"]);
+    expect(diferencias(await fotoSinFilas(), con)).toEqual([]);
+  });
+
+  it("R27: con datos porcentuales, los down.sql de M2 y de M1 corridos sueltos se niegan con un error claro y nada cambia", async () => {
+    const con = await fotoSinFilas();
+    const funcionesAntes = await funcionesConAcl();
 
     const m2 = await bajarYCapturar(M2);
     expect(m2?.sqlstate).toBe("P0001");
@@ -258,9 +319,14 @@ describeSiHayBase("SLT-83 R27 — M1–M3 de ida y vuelta: la orden porcentual, 
     const m1Version = await bajarYCapturar(M1);
     expect(m1Version?.sqlstate).toBe("P0001");
     expect(m1Version?.message).toMatch(/SLT-83 down: hay planes porcentuales/);
+    // Y M3, el primero de la bajada real, también se niega por esa versión.
+    const m3Version = await bajarYCapturar(M3);
+    expect(m3Version?.sqlstate).toBe("P0001");
+    expect(m3Version?.message).toMatch(/SLT-83 down: hay planes porcentuales/);
 
     expect(diferencias(await fotoSinFilas(), con)).toEqual([]);
-    expect(await movimientos(ordenPorcentual)).toEqual(["cargo 2000.00 plan"]);
+    expect(await funcionesConAcl()).toEqual(funcionesAntes);
+    expect(await movimientos(ordenPorcentual)).toEqual(["cargo 2000.00 plan", "reverso 2000.00 plan", "cargo 2000.00 plan"]);
   });
 
   it("R27: limpios los datos porcentuales, bajar M3, M2 y M1 deja todo como antes y la orden nueva sigue la regla de SLT-66", async () => {
