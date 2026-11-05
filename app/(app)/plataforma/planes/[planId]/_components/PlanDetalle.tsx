@@ -21,13 +21,13 @@ import {
   mensajeTopesPasados,
   SIN_LINEAS_DE_CAMBIO,
   textoCambioProgramado,
-  textoDelCostoPorOrden,
   textoDelPrecio,
   TITULO_LINEAS_DE_CAMBIO,
 } from "@/lib/planes/mensajes";
 import type {
   ArchivarPlanInput,
   CancelarCambioPlanInput,
+  CostoPorOrdenPorcentual,
   DetallePlan,
   EditarPlanInput,
   FilaRastro,
@@ -41,7 +41,12 @@ import { horaCostaRica } from "@/lib/utils/hora-cr";
 import { cn } from "@/lib/utils";
 
 import { mensajeDelRechazo, PlanForm, RECHAZO_GENERICO, TEXTOS_PLAN_FORM } from "../../_components/PlanForm";
-import { lineasDeTopes, TEXTOS_PLAN, textoDeVisibilidad } from "../../_components/plan-vista";
+import {
+  lineasDeTopes,
+  TEXTOS_PLAN,
+  textoDeVisibilidad,
+  textoDelCostoPorOrdenDelPlan,
+} from "../../_components/plan-vista";
 
 /** Textos de la pantalla, en un solo sitio para cuando llegue la i18n. */
 const TEXTOS = {
@@ -70,7 +75,7 @@ const TEXTOS = {
   columnaAccion: "Acción",
   columnaCambios: "Qué cambió",
   tituloEditar: "Editar plan",
-  descripcionEditar: "Los topes vacíos no tienen límite. El costo base es informativo; el costo por orden se cobra en cada orden nueva.",
+  descripcionEditar: "Los topes vacíos no tienen límite. El costo base es informativo. El costo por orden fijo se cobra al crear cada orden; el porcentual, cuando la orden llega a un estado final.",
   confirmarArchivo: "¿Archivar este plan?",
   confirmarArchivoTexto:
     "Deja de ofrecerse para asignar y no se podrá editar. Las empresas que ya lo tienen lo conservan con sus topes.",
@@ -258,7 +263,8 @@ export function PlanDetalle({
           <Dato termino={TEXTOS.visibilidad}>{textoDeVisibilidad(plan.visibilidad, detalle.empresaNombre)}</Dato>
           <Dato termino={TEXTOS.precio}>{textoDelPrecio(plan.precio)}</Dato>
           <Dato termino={TEXTOS.costoPorOrden}>
-            {textoDelCostoPorOrden(plan.costoPorOrden)}
+            {/* SLT-83 (R21): el porcentual si el plan lo tiene. */}
+            {textoDelCostoPorOrdenDelPlan(plan)}
             {/* R10: el anual (fijo o con descuento) no toca el costo por orden. */}
             {plan.precio.tipo === "monto" && plan.precio.anual !== null ? (
               <p className="text-xs text-muted-foreground">{TEXTOS_PLAN.anualNoAplica}</p>
@@ -550,8 +556,19 @@ function lineasDelRastro(fila: FilaRastro): string[] {
   // SLT-66 (R11): el costo por orden nace a menudo vacío, así que `antes: null` no distingue un alta de
   // una edición desde vacío: lo decide la acción de la fila.
   const costo = c.costoPorOrden;
+  // SLT-83 (R4, R21): el modo porcentual viaja en su propio campo del rastro; un rastro anterior no lo trae.
+  const porcentual = c.costoPorOrdenPorcentual;
   const esAlta = fila.accion === "creado";
-  if (costo && esAlta) lineas.push(TEXTOS_PLAN.costoPorOrden(textoDelCostoPorOrden(costo.despues as string | null)));
+  if (costo && esAlta) {
+    lineas.push(
+      TEXTOS_PLAN.costoPorOrden(
+        textoDelCostoPorOrdenDelPlan({
+          costoPorOrden: costo.despues as string | null,
+          costoPorOrdenPorcentual: (porcentual?.despues ?? null) as CostoPorOrdenPorcentual | null,
+        }),
+      ),
+    );
+  }
   if (topesAlta) lineas.push(...lineasDeTopes(topesAlta.despues as TopesPlan));
   if (modulosAlta) {
     const modulos = modulosAlta.despues as ModuloApagable[];
@@ -573,6 +590,13 @@ function lineasDelRastro(fila: FilaRastro): string[] {
       costoPorOrden:
         costo && !esAlta
           ? { antes: costo.antes as string | null, despues: costo.despues as string | null }
+          : undefined,
+      costoPorOrdenPorcentual:
+        porcentual && !esAlta
+          ? {
+              antes: porcentual.antes as CostoPorOrdenPorcentual | null,
+              despues: porcentual.despues as CostoPorOrdenPorcentual | null,
+            }
           : undefined,
     }),
   );

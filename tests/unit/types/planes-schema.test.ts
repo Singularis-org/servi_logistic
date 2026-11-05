@@ -22,6 +22,7 @@ function crear(extra: Record<string, unknown> = {}) {
     modulos: ["analitica", "ranking"],
     precio: { tipo: "sin_precio" },
     costoPorOrden: null, // SLT-66 R8: la clave es obligatoria; vacío = null.
+    costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del esquema
     ...extra,
   };
 }
@@ -35,6 +36,7 @@ function editar(extra: Record<string, unknown> = {}) {
     precio: { tipo: "sin_precio" },
     vigenteDesde: null,
     costoPorOrden: null, // SLT-66 R8: la clave es obligatoria; vacío = null.
+    costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del esquema
     ...extra,
   };
 }

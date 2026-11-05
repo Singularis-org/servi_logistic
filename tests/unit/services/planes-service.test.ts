@@ -31,6 +31,7 @@ function plan(extra: Partial<PlanDTO> = {}): PlanDTO {
     // SLT-66 R28: el plan que se asigna tiene costo concreto (design §9.3); lo que se afirma no cambia.
     precio: { tipo: "monto", mensual: "1000.00", anual: null },
     costoPorOrden: "100.00",
+    costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
     archivado: false,
     ...extra,
   };
@@ -42,6 +43,7 @@ const VERSION = {
   modulos: ["analitica"],
   precio: { tipo: "sin_precio" }, // D1 (ajuste planes-custom): «negociable» ya no existe.
   costoPorOrden: null, // SLT-66 R7: el plan lleva costo por orden; aquí, vacío.
+  costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del esquema
 };
 
 const CREAR = {
@@ -52,6 +54,7 @@ const CREAR = {
   modulos: [],
   precio: { tipo: "sin_precio" },
   costoPorOrden: null, // SLT-66 R7: el plan lleva costo por orden; aquí, vacío.
+  costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del esquema
 };
 
 function doble() {

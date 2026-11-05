@@ -124,8 +124,8 @@ export const CAJA_RESUMEN_LABEL = {
    * deuda, cómo se paga y se registra; al día, que no hay nada pendiente; a favor, de dónde sale.
    * La pista de SL-40 («Todavía no se cobra…») se retira: desde esta ficha el pago sí sale de la caja.
    */
-  deudaPlataformaPista: `Lo que la plataforma cobra por cada orden creada, menos las anuladas y lo ya pagado. Cuando ${EMPRESA.enFrase} le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.`,
-  deudaPlataformaAlDiaPista: `${EMPRESA.alInicio} está al día con la plataforma. Cada orden nueva suma su cobro aquí.`,
+  deudaPlataformaPista: `Lo que la plataforma cobra por las órdenes de ${EMPRESA.enFrase} (al crearlas o, con plan porcentual, al llegar a un estado final), menos las anuladas y lo ya pagado. Cuando ${EMPRESA.enFrase} le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.`,
+  deudaPlataformaAlDiaPista: `${EMPRESA.alInicio} está al día con la plataforma. Cada orden suma su cobro aquí cuando se cobra.`,
   deudaPlataformaAFavor: `Saldo a favor de ${EMPRESA.enFrase} con la plataforma`,
   deudaPlataformaAFavorPista: `${EMPRESA.alInicio} pagó más de lo que hoy debe, porque se anularon órdenes ya pagadas. Se descuenta de los próximos cobros.`,
   /** SL-45 (R1, R4): el botón de la región, que abre el registro con el concepto ya elegido. */

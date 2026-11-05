@@ -36,22 +36,22 @@ function empresa(
 
 const PROPIA = empresa("org-1", "Envíos Norte", {
   cobroPorOrden: "80.00",
-  cobroVigente: { monto: "80.00", fuente: "empresa" },
+  cobroVigente: { modo: "fijo", monto: "80.00", fuente: "empresa" },
   plan: { id: "plan-1", nombre: "Plan Crecer", tipoCobro: "mensual" },
 });
 const DEL_PLAN = empresa("org-2", "Reparto Sur", {
   cobroPorOrden: null,
-  cobroVigente: { monto: "100.00", fuente: "plan" },
+  cobroVigente: { modo: "fijo", monto: "100.00", fuente: "plan" },
   plan: { id: "plan-2", nombre: "Plan Custom Sur", tipoCobro: "anual" },
 });
 const GLOBAL = empresa("org-3", "Mensajería Este", {
   cobroPorOrden: null,
-  cobroVigente: { monto: "500.00", fuente: "global" },
+  cobroVigente: { modo: "fijo", monto: "500.00", fuente: "global" },
   plan: null,
 });
 const SIN_CONFIGURAR = empresa("org-4", "Correos Oeste", {
   cobroPorOrden: null,
-  cobroVigente: { monto: "0.00", fuente: "sin_configurar" },
+  cobroVigente: { modo: "fijo", monto: "0.00", fuente: "sin_configurar" },
   plan: null,
 });
 

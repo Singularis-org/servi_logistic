@@ -66,6 +66,13 @@ export const TEXTOS_PLAN_FORM = {
   porcentaje: "Porcentaje de descuento",
   costoPorOrden: "Costo por orden",
   costoPorOrdenAyuda: "Vacío: se aplica el valor global de la plataforma.",
+  /** SLT-83 (design §6.1; R20): el modo del costo por orden. */
+  cobroPorOrden: "Cobro por orden",
+  cobroFijo: "Fijo",
+  cobroPorcentual: "Porcentual",
+  porcentajePorOrden: "Porcentaje",
+  sufijoPorcentaje: "%",
+  minimoPorOrden: "Mínimo",
   aplicar: "Aplicar",
   inmediato: "De inmediato",
   programado: "A partir de",
@@ -134,6 +141,8 @@ export const RECHAZO_GENERICO = RECHAZOS.generico;
 
 type Accion = "inmediato" | "programado";
 type AnualForma = "ninguno" | "fijo" | "descuento";
+/** SLT-83 (R20): el modo del costo por orden; al abrir un plan sale de `costoPorOrdenPorcentual !== null`. */
+type ModoCostoPorOrden = "fijo" | "porcentual";
 
 type Formulario = {
   nombre: string;
@@ -150,6 +159,15 @@ type Formulario = {
   porcentaje: string;
   /** SLT-66 (R7, R23): vacío = sin costo por orden del plan (se aplica el global). */
   costoPorOrden: string;
+  /**
+   * SLT-83 (design §6.1; R20): el modo elegido. Los campos del otro modo se conservan mientras no se
+   * envía (cambiar de modo no borra lo escrito); al enviar, el modo no elegido viaja como `null`.
+   */
+  modoCosto: ModoCostoPorOrden;
+  /** SLT-83 (R20): obligatorio en modo porcentual; lo valida el esquema. */
+  porcentajePorOrden: string;
+  /** SLT-83 (R20): vacío = sin mínimo. */
+  minimoPorOrden: string;
   aplicar: Accion;
   vigenteDesde: string;
   /** Ajuste planes-custom (D6): solo viaja en un custom (se asigna a su empresa al crearlo). */
@@ -183,6 +201,10 @@ function inicial(plan: PlanDTO | null, inicioCiclo: string): Formulario {
     montoAnual: anual?.tipo === "fijo" ? montoParaCampo(anual.monto) : "",
     porcentaje: anual?.tipo === "descuento" ? anual.porcentaje : "",
     costoPorOrden: plan?.costoPorOrden == null ? "" : montoParaCampo(plan.costoPorOrden),
+    modoCosto: plan?.costoPorOrdenPorcentual == null ? "fijo" : "porcentual",
+    porcentajePorOrden: plan?.costoPorOrdenPorcentual?.porcentaje ?? "",
+    minimoPorOrden:
+      plan?.costoPorOrdenPorcentual?.minimo == null ? "" : montoParaCampo(plan.costoPorOrdenPorcentual.minimo),
     aplicar: "inmediato",
     vigenteDesde: "",
     tipoCobro: "mensual",
@@ -218,7 +240,15 @@ function versionDe(f: Formulario) {
     // En el orden de pantalla, sea cual sea el orden en que se marcaron.
     modulos: ORDEN_MODULOS.filter((m) => f.modulos.includes(m)),
     precio: precioDe(f),
-    costoPorOrden: f.costoPorOrden.trim() === "" ? null : f.costoPorOrden.trim(),
+    // SLT-83 (R20): solo viajan los datos del modo elegido; el otro, `null`.
+    costoPorOrden: f.modoCosto === "fijo" && f.costoPorOrden.trim() !== "" ? f.costoPorOrden.trim() : null,
+    costoPorOrdenPorcentual:
+      f.modoCosto === "porcentual"
+        ? {
+            porcentaje: f.porcentajePorOrden.trim(),
+            minimo: f.minimoPorOrden.trim() === "" ? null : f.minimoPorOrden.trim(),
+          }
+        : null,
   };
 }
 
@@ -730,15 +760,61 @@ export function PlanForm(props: PlanFormProps) {
         ) : null}
       </fieldset>
 
-      {/* SLT-66 (R7, R23): fuera del grupo «Costo base», porque no depende de su forma. */}
-      <FormField
-        id={idDe("costoPorOrden")}
-        label={TEXTOS_PLAN_FORM.costoPorOrden}
-        hint={TEXTOS_PLAN_FORM.costoPorOrdenAyuda}
-        error={errorDe("costoPorOrden")}
-      >
-        <MontoInput value={form.costoPorOrden} onChange={(v) => cambiar("costoPorOrden", v)} />
-      </FormField>
+      {/* SLT-66 (R7, R23): fuera del grupo «Costo base», porque no depende de su forma. SLT-83 (R20): con
+          su modo, «Fijo» o «Porcentual». */}
+      <fieldset className="flex flex-col gap-4">
+        <legend className="text-sm font-medium">{TEXTOS_PLAN_FORM.cobroPorOrden}</legend>
+        <RadioGroup
+          aria-label={TEXTOS_PLAN_FORM.cobroPorOrden}
+          value={form.modoCosto}
+          onValueChange={(v) => cambiar("modoCosto", v === "porcentual" ? "porcentual" : "fijo")}
+          options={[
+            { value: "fijo", label: TEXTOS_PLAN_FORM.cobroFijo },
+            { value: "porcentual", label: TEXTOS_PLAN_FORM.cobroPorcentual },
+          ]}
+        />
+        {form.modoCosto === "fijo" ? (
+          <FormField
+            id={idDe("costoPorOrden")}
+            label={TEXTOS_PLAN_FORM.costoPorOrden}
+            hint={TEXTOS_PLAN_FORM.costoPorOrdenAyuda}
+            error={errorDe("costoPorOrden")}
+          >
+            <MontoInput value={form.costoPorOrden} onChange={(v) => cambiar("costoPorOrden", v)} />
+          </FormField>
+        ) : (
+          <div className="flex flex-col gap-4">
+            <FormField
+              id={idDe("costoPorOrdenPorcentual.porcentaje")}
+              label={TEXTOS_PLAN_FORM.porcentajePorOrden}
+              error={errorDe("costoPorOrdenPorcentual.porcentaje")}
+              required
+            >
+              {(control) => (
+                <div className="flex items-center gap-2">
+                  <Input
+                    {...control}
+                    inputMode="decimal"
+                    value={form.porcentajePorOrden}
+                    onChange={(ev) => cambiar("porcentajePorOrden", ev.target.value)}
+                  />
+                  {/* El sufijo es visual: la etiqueta ya dice «Porcentaje». */}
+                  <span aria-hidden="true" className="text-sm text-muted-foreground">
+                    {TEXTOS_PLAN_FORM.sufijoPorcentaje}
+                  </span>
+                </div>
+              )}
+            </FormField>
+            <FormField
+              id={idDe("costoPorOrdenPorcentual.minimo")}
+              label={TEXTOS_PLAN_FORM.minimoPorOrden}
+              error={errorDe("costoPorOrdenPorcentual.minimo")}
+            >
+              <MontoInput value={form.minimoPorOrden} onChange={(v) => cambiar("minimoPorOrden", v)} />
+            </FormField>
+          </div>
+        )}
+      </fieldset>
 
       {/* Ajuste planes-custom (D2, D4–D6): el custom se asigna a su empresa al crearlo. */}
       {props.modo === "crear" && form.visibilidad === "custom" ? (
@@ -862,7 +938,8 @@ function camposEnOrden(modo: PlanFormProps["modo"], f: Formulario, pideInicioCic
   if (f.precio === "monto") claves.push("precio.mensual", "precio.anual");
   if (f.precio === "monto" && f.anual === "fijo") claves.push("precio.anual.monto");
   if (f.precio === "monto" && f.anual === "descuento") claves.push("precio.anual.porcentaje");
-  claves.push("costoPorOrden");
+  if (f.modoCosto === "fijo") claves.push("costoPorOrden");
+  else claves.push("costoPorOrdenPorcentual.porcentaje", "costoPorOrdenPorcentual.minimo");
   if (modo === "crear" && f.visibilidad === "custom") claves.push("tipoCobro");
   if (modo === "crear" && pideInicioCiclo) claves.push("inicioCiclo");
   if (modo === "editar" && f.aplicar === "programado") claves.push("vigenteDesde");
@@ -878,7 +955,13 @@ function rechazoConCampo(r: PlanResult, f: Formulario): Errores | null {
   if (f.visibilidad !== "custom") return null;
   if (r.estado === "not_found") return { organizacionId: [RECHAZOS.empresa_no_existe] };
   if (r.estado === "plan_sin_costo") {
-    const clave = f.precio !== "monto" ? "precio" : f.costoPorOrden.trim() === "" ? "costoPorOrden" : null;
+    // SLT-83: en modo porcentual el porcentaje es obligatorio, así que lo que falta es la base.
+    const clave =
+      f.precio !== "monto"
+        ? "precio"
+        : f.modoCosto === "fijo" && f.costoPorOrden.trim() === ""
+          ? "costoPorOrden"
+          : null;
     return clave === null ? null : { [clave]: [RECHAZOS.custom_sin_costo] };
   }
   return null;

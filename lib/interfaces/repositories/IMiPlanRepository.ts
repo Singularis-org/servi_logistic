@@ -1,4 +1,4 @@
-import type { FuenteDelCosto, UsoDelPlan } from "@/lib/types/consumo-plan";
+import type { CobroDelCiclo, CostoVigente, UsoDelPlan } from "@/lib/types/consumo-plan";
 import type { TipoCobro, VersionPlan } from "@/lib/types/planes";
 
 // SLT-58 (design §3.1) — el plan de la empresa del contexto, tal como lo devuelve
@@ -20,8 +20,10 @@ export interface PlanDeLaEmpresaLeido {
   cortoDesde?: Date | null;
   uso: UsoDelPlan;
   cambio: CambioProgramadoLeido | null;
-  /** SLT-66 (R18, §3.2): el costo por orden que cobrará la próxima orden y de dónde sale. */
-  costoVigente: { monto: string; fuente: FuenteDelCosto };
+  /** SLT-66 (R18, §3.2): el costo por orden que cobrará la próxima orden y de dónde sale. SLT-83: fijo o porcentual. */
+  costoVigente: CostoVigente;
+  /** SLT-83 (R24): lo cobrado en el ciclo en curso y las órdenes porcentuales sin estado final. */
+  cobroCiclo: CobroDelCiclo;
   /** Ajuste planes-custom (D6): cómo paga la empresa el plan (`plan_de_la_empresa.tipo_cobro`). */
   tipoCobro: TipoCobro;
 }

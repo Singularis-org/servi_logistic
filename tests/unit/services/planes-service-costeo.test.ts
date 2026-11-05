@@ -31,6 +31,7 @@ const PLAN_DTO: PlanDTO = {
   modulos: [],
   precio: { tipo: "sin_precio" },
   costoPorOrden: null,
+  costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
   archivado: false,
 };
 
@@ -42,6 +43,7 @@ const CREAR = {
   modulos: [],
   precio: { tipo: "monto", mensual: "50000", anual: null },
   costoPorOrden: "100",
+  costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del esquema
 };
 
 const VERSION = {
@@ -50,6 +52,7 @@ const VERSION = {
   modulos: [],
   precio: { tipo: "sin_precio" }, // D1 (ajuste planes-custom): «negociable» ya no existe.
   costoPorOrden: "150.50",
+  costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del esquema
 };
 
 function doble() {

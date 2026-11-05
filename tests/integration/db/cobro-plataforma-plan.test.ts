@@ -159,6 +159,7 @@ function entradaDePlan(nombre: string, costoPorOrden: string | null): CrearPlanI
     modulos: [],
     precio: { tipo: "monto", mensual: "50000.00", anual: null },
     costoPorOrden,
+    costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
   };
 }
 
@@ -166,7 +167,7 @@ function entradaDePlan(nombre: string, costoPorOrden: string | null): CrearPlanI
 async function versionDeP(cambio: Partial<VersionPlan>): Promise<VersionPlan> {
   const actual = await planes().plan(P);
   if (actual === null) throw new Error("P no existe");
-  return { nombre: actual.nombre, topes: actual.topes, modulos: actual.modulos, precio: actual.precio, costoPorOrden: actual.costoPorOrden, ...cambio };
+  return { nombre: actual.nombre, topes: actual.topes, modulos: actual.modulos, precio: actual.precio, costoPorOrden: actual.costoPorOrden, costoPorOrdenPorcentual: actual.costoPorOrdenPorcentual, ...cambio };
 }
 
 async function editarP(cambio: Partial<VersionPlan>): Promise<void> {

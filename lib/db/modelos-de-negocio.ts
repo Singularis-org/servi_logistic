@@ -110,6 +110,8 @@ export const MODELOS_DE_NEGOCIO: readonly ModeloClasificado[] = [
   { modelo: "GastoFijoCobro", tabla: "gasto_fijo_cobro" },
   // Cobro de la plataforma a la empresa por orden (SL-40): lo escribe solo el trigger de `orden`
   { modelo: "CobroPlataformaMovimiento", tabla: "cobro_plataforma_movimiento" },
+  // Condiciones congeladas del cobro porcentual de una orden (SLT-83): las escribe solo el trigger de alta
+  { modelo: "CobroPlataformaPorcentualOrden", tabla: "cobro_plataforma_porcentual_orden" },
   // Devoluciones
   { modelo: "DevolucionTiendaComprobante", tabla: "devolucion_tienda_comprobante" },
   { modelo: "DevolucionTiendaEvidencia", tabla: "devolucion_tienda_evidencia" },
