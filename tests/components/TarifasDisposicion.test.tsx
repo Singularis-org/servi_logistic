@@ -33,6 +33,8 @@ const PANTALLA: PantallaOk = {
   vehiculos: [{ id: "v1", nombre: "Tipo", activo: true }],
   tiendas: [],
   preciosTienda: [valor("tienda_flete_entregado", { tiendaId: "t", zonaId: null, nivel: "tienda_general" })],
+  mensajeros: [],
+  valoresMensajero: [],
   puedeEscribir: true,
 };
 

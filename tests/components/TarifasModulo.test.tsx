@@ -47,6 +47,8 @@ const PANTALLA: PantallaOk = {
   vehiculos: [],
   tiendas: [{ id: "t1", nombre: "Tienda Uno" }],
   preciosTienda: [],
+  mensajeros: [],
+  valoresMensajero: [],
   puedeEscribir: true,
 };
 

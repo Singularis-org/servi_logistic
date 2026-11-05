@@ -77,10 +77,10 @@ Se espera **cero código de producción**. Un rojo aquí es un defecto real: se 
 
 ## Tanda C — Lecturas de la pantalla (backend). Depende de A. [P] con B
 
-- [ ] **T3.1** `TarifasPantallaRepository`, `ITarifasPantallaRepository`, `TarifasPantallaService`,
+- [x] **T3.1** `TarifasPantallaRepository`, `ITarifasPantallaRepository`, `TarifasPantallaService`,
   `ITarifasPantallaService`: `mensajeros` y `valoresMensajero` (`design §7.1`). **Hecho:** `tarifas-pantalla-service.test.ts` y
   `tests/fixtures/tarifas-pantalla.ts` al día.
-- [ ] **T3.2** `tests/integration/db/tarifas-valor-propio-pantalla.test.ts`, con dos empresas:
+- [x] **T3.2** `tests/integration/db/tarifas-valor-propio-pantalla.test.ts`, con dos empresas:
   - **R23:** el recorrido entero. Con un propio del único mensajero y la zona sin `mensajero_entregado`, `cargarPantalla` da
     `faltan` y la misma lista; `activar` sin confirmar responde `confirmacion_requerida` con él dentro; una zona sin nada sigue
     `sin_empezar`.
@@ -88,7 +88,7 @@ Se espera **cero código de producción**. Un rojo aquí es un defecto real: se 
   - **R37:** A no lee mensajeros ni valores de B, ni B los de A, y los dos ven los suyos: el vacío no es que nadie vea nada.
   - **R10:** `admin` lee; otro rol, `forbidden`.
   **Hecho:** 0 saltos.
-- [ ] **T3.3** `tests/integration/actions/tarifas-action.test.ts`: `guardarValoresTarifa` con una entrada de valor propio. **Hecho:**
+- [x] **T3.3** `tests/integration/actions/tarifas-action.test.ts`: `guardarValoresTarifa` con una entrada de valor propio. **Hecho:**
   verde con R10.
 - **Mutaciones C:**
   1. Quitar `mensajeroId: null` de `valoresDeZonaOGrupo` → R23 (además de la prueba existente).

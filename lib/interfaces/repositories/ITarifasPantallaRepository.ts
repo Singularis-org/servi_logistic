@@ -31,6 +31,14 @@ export interface TiendaDePantalla {
   nombre: string;
 }
 
+/** SLT-55: quien tiene o puede tener valor propio. */
+export interface MensajeroDePantalla {
+  id: string;
+  nombre: string;
+  /** Rol `mensajero` y no dado de baja. Falso: no se ofrece al añadir y la sección lo marca inactivo (R31, R32). */
+  elegible: boolean;
+}
+
 export interface DistritoDeZona {
   id: string;
   nombre: string;
@@ -51,6 +59,10 @@ export interface ITarifasPantallaRepository {
   listarVehiculos(): Promise<VehiculoDePantalla[]>;
   /** Las cuentas de rol `adminTienda` o `apiKey`. */
   listarTiendas(): Promise<TiendaDePantalla[]>;
+  /** SLT-55: los de rol `mensajero` y, ademas, cualquier usuario con valor propio, aunque ya no tenga ese rol (R32). */
+  listarMensajeros(): Promise<MensajeroDePantalla[]>;
+  /** SLT-55: todos los valores de nivel `mensajero`. */
+  valoresDeMensajeros(): Promise<TarifaValorDTO[]>;
   /** `conMarca: false` no lee la marca: tras activar no decide nada y no se muestra (R45). */
   distritosDeZona(zonaId: string, opciones: { conMarca: boolean }): Promise<DistritoDeZona[]>;
   leerModeloViejo(pedido: PedidoModeloViejo): Promise<LecturaModeloViejo>;

@@ -26,7 +26,10 @@ function clienteDoble() {
     tarifaActivacion: { findFirst: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue({ id: "act", activadaAt: new Date("2026-11-04") }) },
     zona: { findMany: vi.fn().mockResolvedValue([{ id: "z1", nombre: "Norte", esCentral: false }]) },
     vehiculo: { findMany: vi.fn().mockResolvedValue([]) },
-    usuario: { findUnique: vi.fn().mockResolvedValue({ nombre: "Ana", primerApellido: "Mora", rol: { value: "maestro" } }) },
+    usuario: {
+      findUnique: vi.fn().mockResolvedValue({ nombre: "Ana", primerApellido: "Mora", rol: { value: "maestro" } }),
+      findMany: vi.fn().mockResolvedValue([]),
+    },
     historialAccion: { createMany: vi.fn().mockResolvedValue({ count: 1 }) },
     $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>): Promise<unknown> => fn(cliente)),
   };
@@ -122,6 +125,19 @@ describe("T6.3 — serviciosDeTarifas compone con instancias reales", () => {
     expect(prisma.historialAccion.createMany.mock.calls[0][0].data[0]).toMatchObject({
       accion: "tarifas_activadas",
       valorNuevo: "faltantes: 3",
+    });
+  });
+
+  it("SLT-55 T3.1 — la pantalla por la fabrica lee mensajeros y valores propios del cliente dado", async () => {
+    const prisma = clienteDoble();
+    const res = await serviciosDeTarifas(prisma as unknown as PrismaClient).tarifasPantalla.cargarPantalla(ADMIN);
+
+    expect(res).toMatchObject({ status: "ok", mensajeros: [], valoresMensajero: [] });
+    const lecturasDeValores = prisma.tarifaValor.findMany.mock.calls.map(([args]) => args.where);
+    expect(lecturasDeValores).toContainEqual({ mensajeroId: { not: null } });
+    const lecturasDeUsuarios = prisma.usuario.findMany.mock.calls.map(([args]) => args.where);
+    expect(lecturasDeUsuarios).toContainEqual({
+      OR: [{ rol: { value: "mensajero" } }, { tarifaValoresComoMensajero: { some: {} } }],
     });
   });
 

@@ -36,6 +36,8 @@ const PANTALLA = {
   vehiculos: [],
   tiendas: [],
   preciosTienda: [],
+  mensajeros: [],
+  valoresMensajero: [],
   puedeEscribir: true,
 };
 

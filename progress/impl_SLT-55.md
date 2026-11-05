@@ -184,3 +184,112 @@ vez, restauración y huella sha256 comparada tras cada una. Nada más corría a 
 - **Concurrencia real** entre dos caminos: todo corre en una sola transacción.
 
 **Veredicto Tanda B:** los cinco caminos pagan y congelan el valor propio sin código nuevo; 37 de 37 en Postgres y 8/8 mutaciones muertas.
+
+## Tanda C — Lecturas de la pantalla (backend)
+
+Fecha: 2026-11-05. Agente: `backend_dev`. Base: la desechable `servi_gate_slt55`, comprobada con `current_database()`. Sin
+migración y sin dependencias. No se tocan resolver ni precedencia.
+
+**Defectos hallados: ninguno.** El camino de producción (extensión + RLS + raíz de composición real) ya aislaba y ya
+escribía. Lo que sí se halló es un test débil: `faltantes.test.ts:72` no mide la barrera que `tasks.md` le atribuye (ver
+Desviaciones).
+
+### Archivos
+
+| Archivo | Cambio |
+|---|---|
+| `lib/interfaces/repositories/ITarifasPantallaRepository.ts` | `MensajeroDePantalla`, `listarMensajeros`, `valoresDeMensajeros` |
+| `lib/repositories/TarifasPantallaRepository.ts` | Las dos lecturas (`design §7.1`) |
+| `lib/interfaces/services/ITarifasPantallaService.ts` | `mensajeros` y `valoresMensajero` en `CargarPantallaResult` |
+| `lib/services/TarifasPantallaService.ts` | `cargarPantalla` las da |
+| `tests/integration/db/tarifas-valor-propio-pantalla.test.ts` | Nuevo, 19 casos contra Postgres |
+| `tests/integration/actions/tarifas-action.test.ts` | Bloque SLT-55, 5 casos; doble con `mensajeroEsElegibleONivelOcupado` |
+| `tests/unit/services/tarifas-pantalla-service.test.ts` | Bloque SLT-55, 3 casos; doble al día |
+| `tests/unit/tarifas/servicios-composicion.test.ts` | La pantalla por la fábrica llega al cliente |
+| `tests/unit/tarifas/faltantes.test.ts` | Caso nuevo de R23 que sí mide la barrera |
+| `tests/fixtures/tarifas-pantalla.ts` | `valorPropio` y `mensajeroPantalla` |
+| `tests/components/TarifasModulo.test.tsx`, `TarifasDisposicion.test.tsx`, `tests/unit/app/tarifas/TarifasPage.test.tsx` | `mensajeros: []` y `valoresMensajero: []` en sus literales: lo exige el tipo |
+| `specs/SLT-55-valor-propio-mensajero/tasks.md` | Casillas T3.1, T3.2 y T3.3 |
+
+### Mapa R → test
+
+`pantalla-db` = `tests/integration/db/tarifas-valor-propio-pantalla.test.ts`, `action` =
+`tests/integration/actions/tarifas-action.test.ts`.
+
+| R | Test |
+|---|---|
+| R10 | `pantalla-db` «el admin lee los mismos datos…», «el rol %s recibe forbidden» (5 roles), «R10: el admin, por la action y sin dobles…»; `action` «R10: el admin recibe forbidden…» |
+| R23 | `pantalla-db` «cargarPantalla y activar dan lo mismo…», «la lectura de los faltantes no trae el propio…», «control: el valor de la zona sí la completa…», «R23: `activar` por la action…»; `faltantes.test.ts` «SLT-55 R23: un valor con mensajero…» |
+| R31 | `pantalla-db` «R31: `elegible` solo para rol mensajero…». «Sin valor propio» y el mensaje de lista vacía los decide la pantalla: Tanda D |
+| R32 | `pantalla-db` «R32: el retirado y los dados de baja…», «R32: quitarle el último valor…». La marca «Inactivo» y las filas deshabilitadas: Tanda D |
+| R37 (lectura) | `pantalla-db` «A no lee mensajeros ni valores de B…» (RLS), «R37: cada empresa lee lo suyo…» (producción), «R37: las dos lecturas llevan el filtro…» (SQL) |
+| R37 (escritura) | `pantalla-db` «R37: A no escribe sobre un mensajero de B, ni le quita un valor a B» (producción). Cierra el pendiente de R7 de la Tanda A |
+| T3.3 | `action` bloque «SLT-55 — guardar un valor propio» (R1, R5, R6, R7, R8, R10); `pantalla-db` «T3.3: la action fija y quita de verdad…», sin ningún doble |
+
+**Raíz de composición.** Las actions se llaman sin `servicio`: montan `serviciosDeTarifas(getPrismaClient())`, el mismo
+camino de la petición, y solo la empresa viene de `conEmpresa`. La fila se comprueba con el cliente base. Lo atan las
+mutaciones X10 y X11, y `servicios-composicion.test.ts`.
+
+### Salida real
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: exit 0.
+- `pnpm lint`: exit 0, 0 errores y 234 avisos, la misma cifra que las Tandas A y B; ninguno en el archivo de test nuevo ni en `TarifasPantalla*`.
+- `pnpm exec vitest run` de 11 archivos (los tocados, `tarifa-activacion` y `tarifas-referencia` y `-escritura`):
+  `archivos 11, 231 total, 231 ok, 0 fail, 0 skip`.
+- `pnpm run test:guardias`: exit 1. 1 archivo rojo de 331; 4 failed, 4617 passed y 1 skipped de 4622. Es
+  `dependencias-declaradas-presentes.guardia.test.ts`, los mismos 4 tests de las Tandas A y B. En esta tanda no se volvió a
+  medir `origin/dev`.
+- Tras todo, en la base: 0 `tarifa_valor` con mensajero y 0 zonas `Delta`: la siembra commiteada se limpia.
+
+### Mutaciones C
+
+Arnés: autocomprobación previa (6 archivos, 150 tests, 150 verdes, 0 saltos), una a una, patrón con conteo exacto, cada
+corrida exige los 150 tests y un rojo cuyo nombre sea el del requisito. Restauración byte a byte y huella sha256 de cada
+archivo y de `git status` + `git diff`. Nada más corría a la vez.
+
+| Mutación | Req. | Rojos de 150 | Del req. |
+|---|---|---|---|
+| C1. Sin `mensajeroId: null` en `valoresDeZonaOGrupo` | R23 | 2 | 1 |
+| C2. Sin `v.mensajeroId === null` en `faltantesDeZona` | R23 | 1 | 1 |
+| C3. Sin la rama `tarifaValoresComoMensajero` | R32 | 3 | 1 |
+| C4. `elegible` sin mirar el estado | R31 | 1 | 1 |
+| X5. `elegible` sin mirar el rol | R31 | 1 | 1 |
+| X6. Sin la rama de rol: solo quien ya tiene valor | R31 | 2 | 1 |
+| X7. `valoresDeMensajeros` sin `where` | R32, R37 | 5 | 2 |
+| X8. La extensión sin filtro, con la RLS | R37 | 1 | 1 |
+| X9. La extensión sin filtro y sin bajar de rol | R37 | 3 | 1 |
+| X10. La raíz sin el repositorio de valores | T3.3 | 13 | 1 |
+| X11. La raíz sin el repositorio de la pantalla | R37 | 14 | 1 |
+| X12. `adminTienda` lee | R10 | 3 | 1 |
+| X13. El service no da los mensajeros | R31 | 8 | 1 |
+| X14. El service no da los valores propios | R23 | 9 | 1 |
+| X15. El propio SÍ cubre a la zona | R23 | 6 | 1 |
+
+**15/15 muertas** (las 4 de `tasks.md` y 11 extra). Corrida final: 150 de 150, árbol con la huella inicial.
+
+Lo que dicen X8 y X9: quitar solo el filtro no cambia ninguna fila, porque la RLS lo respalda; lo ve únicamente el test del
+SQL. Quitando las dos barreras, sí se cruzan las empresas y el test de dos empresas se pone rojo: no es un verde vacío.
+
+### Desviaciones del spec
+
+1. **Mutación 2:** `tasks.md` la asigna a `faltantes.test.ts:72`, y esa prueba NO la vería: su fila tiene la zona nula y la
+   descarta `v.zonaId === zona.id`. Medido: con C2 el único rojo es el caso nuevo, y `:72` sigue verde. El caso nuevo usa una
+   fila con zona y mensajero que el CHECK impide en la base: mide la barrera sola, que es de defensa en profundidad.
+2. **Mutación 1:** tampoco la vería el recorrido, por lo mismo: el propio se cae en memoria aunque la lectura lo traiga. Por
+   eso el R23 de `pantalla-db` afirma también la lectura directa, y X15 comprueba que el recorrido sí se pone rojo si el
+   propio llega a cubrir la zona.
+3. **Siembra commiteada** en el camino de producción, porque la extensión abre su propia transacción. Se limpia en `afterEach`.
+4. **Tres tests de componente tocados por el tipo:** es parte de T4.3 de la Tanda D, pero sin esto el typecheck queda rojo.
+   Solo llevan listas vacías.
+5. **Once mutaciones extra**, para el rol, la extensión y la raíz de composición, que `tasks.md` no apuntaba.
+
+### Sin verificar
+
+- **La pantalla no consume nada aún:** `TarifasModule` ignora los dos campos hasta la Tanda D. R27-R36 siguen sin test.
+- **`empresaDeLaPeticion`:** la empresa viene de `conEmpresa`, no de una cookie real. La sesión de punta a punta es del E2E.
+- **R39 y R40:** Tanda E.
+- **El orden de `valoresMensajero` entre filas del mismo concepto:** depende de `createdAt`, y en un mismo instante queda sin
+  definir. Los tests ordenan antes de comparar. La pantalla debe agrupar por `mensajeroId`, no fiarse del orden.
+- **`origin/dev` para la guardia roja:** no se volvió a medir en esta tanda.
+
+**Veredicto Tanda C:** la pantalla ya recibe mensajeros y valores propios, aislados por empresa en el cliente de producción; 15/15 mutaciones muertas y ningún rojo atribuible al cambio.
