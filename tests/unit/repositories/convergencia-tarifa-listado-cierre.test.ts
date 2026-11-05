@@ -4,7 +4,7 @@ import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { CierreDiaRepository } from "@/lib/repositories/CierreDiaRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
 import { idEstado, sembrarCatalogoEstados } from "@/tests/fixtures/catalogo-estados";
-import { sinValoresDelModeloNuevo } from "../../fixtures/tarifa-tienda";
+import { empresaSinActivar } from "../../fixtures/tarifa-tienda";
 import { clavePar } from "@/lib/utils/cascada-tarifa";
 import { costoEstimadoDe } from "@/lib/utils/api-orden-costo";
 import { montoFulfillmentDeTarifa } from "@/lib/utils/ingreso-empresa";
@@ -124,7 +124,7 @@ async function resolverPorListado(filas: readonly FilaTarifa[]): Promise<Resuelt
     },
     tarifa: { findMany: tarifaFindMany },
     // SLT-52 (T4.3): el listado tambien pasa por el resolver unico, que decide antes el modelo.
-    ...sinValoresDelModeloNuevo(),
+    ...empresaSinActivar(),
     // FICHA 454 (R29, 2026-09-24): las señales de la pagina (gestion pendiente, ayuda); aqui vacias.
     $queryRaw: vi.fn(async () => []),
   };
@@ -226,7 +226,7 @@ async function resolverPorCierre(filas: readonly FilaTarifa[]): Promise<Resuelto
     cierreDetail: { createMany: vi.fn(async () => ({ count: 1 })) },
     tarifa: { findMany: tarifaFindMany },
     // SLT-52: empresa sin valores del modelo nuevo -> el resolver unico usa la cascada vieja (R36).
-    ...sinValoresDelModeloNuevo(),
+    ...empresaSinActivar(),
     // FICHA 450: los catalogos del snapshot, leidos en serie dentro de esta misma tx.
     zona: catalogoDoble450(() => ({ nombre: "Limón", esCentral: false })),
     usuario: catalogoDoble450(() => ({ nombre: "Tienda X" })),
@@ -242,7 +242,7 @@ async function resolverPorCierre(filas: readonly FilaTarifa[]): Promise<Resuelto
       }),
     },
     // SLT-52: tambien el interruptor de modelo tiene que leerse DENTRO de la transaccion.
-    tarifaValor: {
+    tarifaActivacion: {
       findFirst: vi.fn(async () => {
         throw new Error("el cierre decidio el modelo de tarifas FUERA de su transaccion");
       }),
@@ -458,10 +458,8 @@ function prismaNuevo() {
         throw new Error("una empresa en el modelo nuevo leyo `tarifas`");
       }),
     },
-    tarifaValor: {
-      findFirst: vi.fn(async () => ({ id: "tf-zona" })),
-      findMany: vi.fn(async () => [...TABLA_NUEVA]),
-    },
+    tarifaActivacion: { findFirst: vi.fn(async () => ({ id: "activacion" })) },
+    tarifaValor: { findMany: vi.fn(async () => [...TABLA_NUEVA]) },
     grupoDistritosDistrito: {
       findMany: vi.fn(async () => [{ zonaId: ZONA, distritoId: DISTRITO, grupoId: GRUPO }]),
     },
@@ -485,7 +483,7 @@ describe("SLT-52 T4.4 — modelo nuevo: listado, cierre y costo API eligen el mi
   it("el CIERRE (resolveTarifas con el tx) elige tf-tienda-grupo, tc-zona y tff-general", async () => {
     const tx = prismaNuevo();
     const fuera = {
-      tarifaValor: {
+      tarifaActivacion: {
         findFirst: vi.fn(async () => {
           throw new Error("el cierre decidio el modelo FUERA de su transaccion");
         }),

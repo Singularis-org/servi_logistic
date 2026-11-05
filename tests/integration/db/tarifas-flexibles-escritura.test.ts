@@ -5,7 +5,7 @@ import type { PrismaClient } from "@prisma/client";
 import type { Actor } from "@/lib/interfaces/services/ITarifaValorService";
 import { resolverCobrosCon } from "@/lib/repositories/_shared/resolver-tarifas";
 import { serviciosDeTarifas, type ServiciosDeTarifas } from "@/lib/tarifas/servicios";
-import { comoApp, crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones";
+import { comoApp, crearOrganizacion, fijarEmpresa, sembrarActivacion } from "@/tests/fabricas/organizaciones";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import {
   HAY_BASE_DE_DATOS,
@@ -171,6 +171,8 @@ async function sembrar(tx: TxDeTest): Promise<Escenario> {
   await fijarEmpresa(tx, A);
   const fksA = await crearFksDeOrden(tx);
   const Z = fksA.zonaId;
+  // R9 cae al nivel siguiente del modelo nuevo: la empresa tiene que estar activada para resolverlo.
+  await sembrarActivacion(tx, A);
   await tx.zonaDistrito.createMany({
     data: [d1, d2, d3, d4].map((distritoId) => ({ zonaId: Z, distritoId })),
   });

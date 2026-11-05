@@ -4,6 +4,8 @@ import type { PrismaClient } from "@prisma/client";
 import { serviciosDeTarifas } from "@/lib/tarifas/servicios";
 import { TarifaValorService } from "@/lib/services/TarifaValorService";
 import { GrupoDistritosService } from "@/lib/services/GrupoDistritosService";
+import { TarifaActivacionService } from "@/lib/services/TarifaActivacionService";
+import { TarifaActivacionRepository } from "@/lib/repositories/TarifaActivacionRepository";
 import { TarifaValorRepository } from "@/lib/repositories/TarifaValorRepository";
 import { GrupoDistritosRepository } from "@/lib/repositories/GrupoDistritosRepository";
 import type { Actor } from "@/lib/interfaces/services/ITarifaValorService";
@@ -18,6 +20,8 @@ function clienteDoble() {
   return {
     tarifaValor: { findMany: vi.fn().mockResolvedValue([]) },
     grupoDistritos: { findMany: vi.fn().mockResolvedValue([]) },
+    tarifaActivacion: { findFirst: vi.fn().mockResolvedValue(null), create: vi.fn() },
+    $transaction: vi.fn(),
   };
 }
 
@@ -47,6 +51,31 @@ describe("T6.3 — serviciosDeTarifas compone con instancias reales", () => {
     expect(repo).toBeDefined();
     expect(repo).toBeInstanceOf(GrupoDistritosRepository);
     expect(dependencia(repo as object, "prisma")).toBe(prisma);
+  });
+
+  it("SLT-54 — TarifaActivacionService recibe su repositorio real con el cliente dado y una fuente de faltantes", () => {
+    const prisma = clienteDoble();
+    const { tarifaActivacion } = serviciosDeTarifas(prisma as unknown as PrismaClient);
+
+    expect(tarifaActivacion).toBeInstanceOf(TarifaActivacionService);
+    const repo = dependencia(tarifaActivacion, "repo");
+    expect(repo).toBeInstanceOf(TarifaActivacionRepository);
+    expect(dependencia(repo as object, "prisma")).toBe(prisma);
+    expect(dependencia(tarifaActivacion, "faltantes")).toBeDefined();
+  });
+
+  // T2.3 ata los faltantes reales y cambia ESTE caso. Mientras tanto, activar no puede escribir: con una
+  // lista vacia, una empresa con faltantes se activaria sin la confirmacion de R6.
+  it("SLT-54 T1.4 — sin los faltantes atados, activar lanza sin escribir, aun confirmando", async () => {
+    const prisma = clienteDoble();
+    const { tarifaActivacion } = serviciosDeTarifas(prisma as unknown as PrismaClient);
+
+    await expect(
+      tarifaActivacion.activar({ confirmaFaltantes: true }, { usuarioId: "u-maestro", rol: "maestro" }),
+    ).rejects.toThrow("T2.3");
+    expect(prisma.tarifaActivacion.findFirst).toHaveBeenCalledTimes(1);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.tarifaActivacion.create).not.toHaveBeenCalled();
   });
 
   it("listar valores llega al cliente a traves del repositorio inyectado", async () => {

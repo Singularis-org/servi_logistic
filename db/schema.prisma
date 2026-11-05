@@ -173,6 +173,7 @@ model Usuario {
   tarifaValoresComoTienda             TarifaValor[]                      @relation("TarifaValorTienda") // SLT-52: precios propios de ESTA tienda en el modelo nuevo
   tarifaValoresComoMensajero          TarifaValor[]                      @relation("TarifaValorMensajero") // SLT-52/SLT-55: valor propio de ESTE mensajero
   tarifaValoresActualizados           TarifaValor[]                      @relation("TarifaValorActualizadoPor") // SLT-52: valores que ESTE usuario fijo por ultima vez (SET NULL)
+  tarifaActivaciones                  TarifaActivacion[]                 @relation("TarifaActivacionActor") // SLT-54: la activacion que ESTE usuario hizo (SET NULL); el rastro con el nombre congelado vive en el historial
   traspasosCedidos                    OrdenTraspasoMensajero[]           @relation("OrdenTraspasoAnterior") // ficha 427/R25: ordenes que dejaron de ser de ESTE mensajero por un traspaso. FK RESTRICT: quien llevaba un paquete es evidencia y no se pierde al dar de baja al usuario
   traspasosRecibidos                  OrdenTraspasoMensajero[]           @relation("OrdenTraspasoNuevo") // ficha 427/R25: ordenes que ESTE mensajero recibio por un traspaso. FK RESTRICT por el mismo motivo
   traspasosEjecutados                 OrdenTraspasoMensajero[]           @relation("OrdenTraspasoActor") // ficha 427/R25/R26: traspasos que ESTE usuario ejecuto. `actor_rol` va CONGELADO en la fila, asi que esta relacion NO es la que pinta la linea de tiempo
@@ -1862,8 +1863,8 @@ model TarifaZonaMensajero {
 }
 
 // ─── SLT-52 — modelo nuevo de tarifas (design §2) ──────────────────────────────────────────────
-// Convive con `Tarifa` + `TarifaZonaMensajero` hasta SLT-57: una empresa sin ninguna fila en
-// `tarifa_valor` sigue en el modelo viejo (R36/R37). Los CHECK, el unico NULLS NOT DISTINCT y la
+// Convive con `Tarifa` + `TarifaZonaMensajero` hasta SLT-57: una empresa sin su fila en
+// `tarifa_activacion` sigue en el modelo viejo, tenga o no valores (SLT-54 R1). Los CHECK, el unico NULLS NOT DISTINCT y la
 // RLS viven en `20261103120100_tarifas_flexibles_tablas`; Prisma no los expresa.
 
 /// SLT-52 R1: quien paga o cobra un concepto. `tienda` solo aparece en los cobros.
@@ -2023,6 +2024,27 @@ model TarifaValor {
   @@index([grupoId])
   @@index([vehiculoId])
   @@map("tarifa_valor")
+}
+
+/// SLT-54 (design §2.1, R1-R12) — EL INTERRUPTOR de tarifas: una fila = empresa activada, y todo su cobro
+/// y su pago salen del modelo nuevo; sin fila, del viejo aunque tenga valores guardados. El unico por
+/// empresa es lo que resuelve dos activaciones a la vez (R7) y `servi_app` no tiene UPDATE ni DELETE,
+/// porque volver atras moveria dinero sin rastro (R8). `activadaPor` NULL = activada por la migracion.
+model TarifaActivacion {
+  id String @id @default(uuid())
+
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id")
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  activadaAt  DateTime @default(now()) @map("activada_at")
+  activadaPor String?  @map("activada_por")
+
+  activadaPorUsuario Usuario? @relation("TarifaActivacionActor", fields: [activadaPor], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@unique([organizacionId], map: "tarifa_activacion_organizacion_id_key")
+  @@index([organizacionId])
+  @@index([activadaPor])
+  @@map("tarifa_activacion")
 }
 
 /// SLT-52 R40/R43: el cobro a la tienda CONGELADO por orden del cierre, un concepto por fila. Sin
@@ -4986,6 +5008,9 @@ enum HistorialAccionTipo {
   grupo_distritos_creado
   grupo_distritos_cambiado
   grupo_distritos_borrado
+  /// SLT-54 (R4, design §2.2): el maestro hizo regir el modelo nuevo de tarifas. Mueve dinero; lo escribe
+  /// `TarifaActivacionRepository.activar`. Las activadas por migracion no llevan fila: no hay actor.
+  tarifas_activadas
   /// Ajuste planes-custom (D16, 20261104130100): el superadmin cambia SOLO el tipo de cobro del plan que
   /// la empresa ya tiene (D10). Entidad: `plan` (el de la empresa); etiqueta: `Plan «<nombre>»`;
   /// `valor_anterior` = el tipo de antes y `valor_nuevo` = el nuevo (`mensual` o `anual`).
@@ -5043,6 +5068,8 @@ enum HistorialAccionEntidad {
   /// SLT-52: el valor y el grupo del modelo nuevo de tarifas, 1:1 con sus tablas. `entidad_id` sin FK.
   tarifa_valor
   grupo_distritos
+  /// SLT-54: la activacion del modelo nuevo de tarifas, 1:1 con su tabla. `entidad_id` sin FK.
+  tarifa_activacion
 
   @@map("historial_accion_entidad")
 }
@@ -5739,6 +5766,7 @@ model Organizacion {
   grupoDistritos GrupoDistritos[] // SLT-52
   grupoDistritosDistritos GrupoDistritosDistrito[] // SLT-52
   tarifaValores TarifaValor[] // SLT-52
+  tarifaActivacion TarifaActivacion? // SLT-54: con fila, la empresa calcula con el modelo nuevo
   cierreDetailConceptos CierreDetailConcepto[] // SLT-52
   gestionPagosCongelados GestionPagoCongelado[] // SLT-52
   rutaOptimizadas RutaOptimizada[]

@@ -56,6 +56,8 @@ export const MODELOS_DE_NEGOCIO: readonly ModeloClasificado[] = [
   { modelo: "GrupoDistritos", tabla: "grupo_distritos" },
   { modelo: "GrupoDistritosDistrito", tabla: "grupo_distritos_distrito" },
   { modelo: "TarifaValor", tabla: "tarifa_valor" },
+  // SLT-54: que empresa calcula ya con el modelo nuevo
+  { modelo: "TarifaActivacion", tabla: "tarifa_activacion" },
   { modelo: "PremioRanking", tabla: "premio_ranking" },
   { modelo: "GastoFijoPlantilla", tabla: "gasto_fijo_plantilla" },
   // Ordenes

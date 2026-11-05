@@ -11,8 +11,13 @@ import {
   type ListarTarifasResult,
 } from "@/lib/types/tarifa";
 import type { Actor, ITarifaService } from "@/lib/interfaces/services/ITarifaService";
+import type {
+  ActivarTarifasResult,
+  ITarifaActivacionService,
+} from "@/lib/interfaces/services/ITarifaActivacionService";
 import { TarifaService } from "@/lib/services/TarifaService";
 import { TarifaRepository } from "@/lib/repositories/TarifaRepository";
+import { serviciosDeTarifas } from "@/lib/tarifas/servicios";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import {
@@ -115,4 +120,36 @@ export async function borrarTarifa(
     return service.borrar(parsedId.data, actor);
   });
   return isAppErrorShape(r) ? toTarifaActionError(r) : r;
+}
+
+export interface ActivarTarifasDeps {
+  servicio?: ITarifaActivacionService;
+  getActor?: () => Promise<Actor | null>;
+}
+
+export type ActivarTarifasNuevasResult =
+  | ActivarTarifasResult
+  | { status: "unauthenticated" }
+  | { status: "error" };
+
+/**
+ * SLT-54 (design §4, R4-R7): el maestro hace regir el modelo nuevo. La empresa sale de la sesion, nunca
+ * del input. Un fallo inesperado es `error` y no una excepcion: esta action cambia con que se cobra, y
+ * el dialogo tiene que poder decir que NO se activo.
+ *
+ * @sin-superficie SLT-54 (backend antes que pantalla): la llama `TarifasActivarDialog`, que llega en la tanda D de esta misma ficha (T4.2).
+ */
+export async function activarTarifasNuevas(
+  input: unknown,
+  deps: ActivarTarifasDeps = {},
+): Promise<ActivarTarifasNuevasResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError();
+    const servicio = deps.servicio ?? serviciosDeTarifas(getPrismaClient()).tarifaActivacion;
+    return servicio.activar(input, actor);
+  });
+  if (!isAppErrorShape(r)) return r;
+  if (r.code === "UNAUTHORIZED") return { status: "unauthenticated" };
+  return { status: "error" };
 }

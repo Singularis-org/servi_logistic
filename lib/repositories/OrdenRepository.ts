@@ -872,7 +872,8 @@ type OrdenPrismaClient = Pick<
   | "ordenHistorialEstado" // feature 236: fecha de la solicitud de ayuda, que ordena su pestaña (D7/R17)
   | "carga" // feature 141: lote de carga masiva asegurado en la tx de la insercion batch
   | "tarifa" // feature 274: la tarifa del listado, resuelta por cascada en UNA query (R18/R19)
-  | "tarifaValor" // SLT-52 (R38): el resolver unico del cobro decide el modelo y lee el nuevo
+  | "tarifaActivacion" // SLT-54 (R1/R2): el interruptor del resolver unico del cobro
+  | "tarifaValor" // SLT-52 (R38): el resolver unico del cobro lee el modelo nuevo
   | "grupoDistritosDistrito" // SLT-52 (R16): el grupo del distrito de cada orden del listado
   | "$transaction" // feature 17: generarGuiaLote necesita transaccion (R25)
   | "$executeRaw" // feature 41/R23: anti-TOCTOU (NOT EXISTS cierre bloqueante en el lote)

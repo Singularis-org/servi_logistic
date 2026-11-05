@@ -159,6 +159,8 @@ describeSiHayBase("SLT-56 — tabla de ajustes y tipo de historial, de ida y vue
       "grupo_distritos_cambiado",
       "grupo_distritos_borrado",
       "plan_tipo_cobro_cambiado",
+      // SLT-54: `tarifas_activadas`, de `20261104140000_historial_tarifa_activacion`.
+      "tarifas_activadas",
     ];
     expect([...enLaBase].sort()).toEqual(
       HISTORIAL_ACCION_TIPOS.filter((t) => !POSTERIORES.includes(t)).sort(),

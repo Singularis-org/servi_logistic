@@ -9,22 +9,22 @@
 
 ## Tanda A — Activación e interruptor (backend)
 
-- [ ] **T1.1 Migraciones** (R11, R8, R12). `..._historial_tarifa_activacion` y `..._tarifa_activacion`, con
+- [x] **T1.1 Migraciones** (R11, R8, R12). `..._historial_tarifa_activacion` y `..._tarifa_activacion`, con
   `down.sql` (design §2). Clasificación en `modelos-de-negocio.ts`; `TRIGGERS_MISMA_EMPRESA` a 168.
   *Hecho:* `tarifa-activacion-migration.test.ts` verde contra Postgres, con ida y vuelta; las guardias
   `organizacion-en-modelos`, `rls-por-empresa`, `fk-misma-empresa` y `unicos-por-empresa`, verdes.
-- [ ] **T1.2 Historial** (R4). `tarifas_activadas`, entidad y etiqueta. *Hecho:* guardias
+- [x] **T1.2 Historial** (R4). `tarifas_activadas`, entidad y etiqueta. *Hecho:* guardias
   `catalogo-y-choke-point` y `historial-accion-escrituras-cubiertas` verdes.
-- [ ] **T1.3 Interruptor** (R1, R2, R3). `usaModeloNuevo` lee `tarifa_activacion`; `TarifaTxClient` y
+- [x] **T1.3 Interruptor** (R1, R2, R3). `usaModeloNuevo` lee `tarifa_activacion`; `TarifaTxClient` y
   `PagoTarifaTxClient`; dobles y sembrados del modelo nuevo siembran la activación. Comentarios del resolver y
   de `asegurarMismoModelo`. *Hecho:* suite de tarifas y cierre verde; `tarifas-flexibles-respaldo` prueba valores
   sin activación con importes literales.
-- [ ] **T1.4 Activar** (R4-R7, R9). `TarifaActivacionService`, `TarifaActivacionRepository`, interfaces, fábrica y
+- [x] **T1.4 Activar** (R4-R7, R9). `TarifaActivacionService`, `TarifaActivacionRepository`, interfaces, fábrica y
   action `activarTarifasNuevas`. Depende de T2.1 para los faltantes: se puede inyectar un doble y atarlo en T2.3.
   *Hecho:* tests de service e integración verdes, con la carrera `P2002` probada contra Postgres.
-- [ ] **T1.5 Guardia de lectores** (R1). `tarifa-valor-lectores.guardia`. *Hecho:* mutación: un `tarifaValor.findMany`
+- [x] **T1.5 Guardia de lectores** (R1). `tarifa-valor-lectores.guardia`. *Hecho:* mutación: un `tarifaValor.findMany`
   en otro archivo la pone roja.
-- [ ] **T1.6 Contraprueba** (R1, R2, R12). Mutaciones a mano sobre `usaModeloNuevo` (volver a leer `tarifa_valor`) y
+- [x] **T1.6 Contraprueba** (R1, R2, R12). Mutaciones a mano sobre `usaModeloNuevo` (volver a leer `tarifa_valor`) y
   sobre la RLS de la tabla. Salida en rojo pegada en `progress/impl_SLT-54.md`.
 
 ## Tanda B — Lecturas, referencia y vías viejas (backend)
@@ -149,10 +149,10 @@
 
 **Esquema y datos**
 - `db/schema.prisma`
-- `db/migrations/20261104120000_historial_tarifa_activacion/migration.sql`
-- `db/migrations/20261104120000_historial_tarifa_activacion/down.sql`
-- `db/migrations/20261104120100_tarifa_activacion/migration.sql`
-- `db/migrations/20261104120100_tarifa_activacion/down.sql`
+- `db/migrations/20261104140000_historial_tarifa_activacion/migration.sql`
+- `db/migrations/20261104140000_historial_tarifa_activacion/down.sql`
+- `db/migrations/20261104140100_tarifa_activacion/migration.sql`
+- `db/migrations/20261104140100_tarifa_activacion/down.sql`
 - `lib/db/modelos-de-negocio.ts`
 - `scripts/verificar-rls-despliegue.ts`
 
@@ -253,6 +253,18 @@
 - `e2e/_tarifas-activacion-fixture.ts`
 
 **Tests y E2E que cambian o salen**
+- `tests/fabricas/organizaciones.ts`
+- `tests/fixtures/api-key-dependencias-usuario.ts`
+- `tests/integration/api/ordenes-api-key-listado.route.test.ts`
+- `tests/integration/api/ordenes-api-key-orden-consulta.route.test.ts`
+- `tests/integration/asimetria-sin-tarifa.test.ts`
+- `tests/integration/db/cierre-detail-congelado.test.ts`
+- `tests/unit/actions/corregir-datos-cliente.composition-root.test.ts`
+- `tests/unit/api/ordenes-api-key-composicion-415.test.ts`
+- `tests/unit/guards/costo-orden-forma-unica.guardia.test.ts`
+- `tests/unit/guards/historial-accion-escrituras-cubiertas.guardia.test.ts`
+- `tests/unit/guards/rls-por-empresa.guardia.test.ts`
+- `tests/unit/historial-accion/catalogo-y-choke-point.test.ts`
 - `e2e/zona-especial-dos-empresas.spec.ts`
 - `e2e/_zona-especial-fixture.ts`
 - `playwright.config.ts`

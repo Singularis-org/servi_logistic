@@ -42,10 +42,12 @@ import { fleteSinIvaDeGestion } from "@/lib/utils/ingreso-empresa";
  * como fachadas con el mismo constructor y delegan aqui, asi que ninguna raiz de composicion
  * cambia y ninguna superficie puede quedarse calculando con otra regla.
  *
- * EL INTERRUPTOR ES POR EMPRESA (R36/R37): una empresa con al menos un valor en `tarifa_valor`
- * calcula TODO con el modelo nuevo y no lee `tarifas` ni `tarifa_zona_mensajero`; sin valores, todo
- * con el viejo, por el mismo codigo de hoy. Se decide una vez por llamada, no por concepto: mezclar
- * los dos modelos en una orden podria cobrar con una regla y pagar con otra (design §10.5).
+ * EL INTERRUPTOR ES POR EMPRESA Y LO DECIDE LA ACTIVACION (SLT-54 R1/R2, enmienda R36/R37 de SLT-52):
+ * una empresa con su fila en `tarifa_activacion` calcula TODO con el modelo nuevo y no lee `tarifas`
+ * ni `tarifa_zona_mensajero`, aunque no tenga un solo valor; sin fila, todo con el viejo, por el mismo
+ * codigo de hoy, aunque tenga valores guardados: el maestro digita sin mover un centavo hasta activar.
+ * Se decide una vez por llamada, no por concepto: mezclar los dos modelos en una orden podria cobrar
+ * con una regla y pagar con otra (design §10.5).
  *
  * EMPRESA: ninguna consulta de aqui pone `organizacion_id` a mano. La pone la extension del cliente
  * (`lib/db/extension-empresa.ts`) y la respalda la RLS de las tablas (R15); con el cliente de una
@@ -73,13 +75,13 @@ export type ClientePagos = PagoTarifaTxClient;
 // ---------------------------------------------------------------------------------------------
 
 /**
- * R36/R37: ¿la empresa del contexto tiene al menos un valor del modelo nuevo? Un `findFirst` sin
- * `where`: el filtro por empresa lo inyecta la extension (y la RLS lo respalda), y `select: id` deja
- * la consulta en un indice.
+ * SLT-54 R1/R2: ¿la empresa del contexto esta activada? Tener valores NO cuenta: fijar o quitar uno no
+ * puede cambiar el modelo (R3). Un `findFirst` sin `where`: el filtro por empresa lo inyecta la
+ * extension (y la RLS lo respalda, R12), y el unico por empresa deja la consulta en un indice.
  */
-export async function usaModeloNuevo(db: Pick<PrismaClient, "tarifaValor">): Promise<boolean> {
-  const alguno = await db.tarifaValor.findFirst({ select: { id: true } });
-  return alguno !== null;
+export async function usaModeloNuevo(db: Pick<PrismaClient, "tarifaActivacion">): Promise<boolean> {
+  const fila = await db.tarifaActivacion.findFirst({ select: { id: true } });
+  return fila !== null;
 }
 
 // ---------------------------------------------------------------------------------------------

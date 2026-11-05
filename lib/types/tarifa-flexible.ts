@@ -257,6 +257,12 @@ export const fijarDistritosSchema = z.object({ distritoIds: distritoIdsSchema })
 
 export type CrearGrupoInput = z.input<typeof crearGrupoSchema>;
 
+/**
+ * SLT-54 (design §4, R6): activar lleva la decision expresa del maestro sobre los faltantes. Obligatoria:
+ * una peticion que no la dice no puede confundirse con una que confirma.
+ */
+export const activarTarifasSchema = z.object({ confirmaFaltantes: z.boolean() });
+
 export interface DistritoDelGrupo {
   id: string;
   nombre: string;

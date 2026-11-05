@@ -31,7 +31,8 @@ const ROL_APP = "servi_app";
 // y de `grupo_distritos_distrito`.
 // SLT-52 (20261103140100_rechazo_tienda_cobro_tarifa_valor_misma_empresa, T4.6) suma una: la FK de
 // `rechazo_tienda_cobro.tarifa_valor_id` a `tarifa_valor`.
-const TRIGGERS_MISMA_EMPRESA = 167;
+// SLT-54 (20261104140100_tarifa_activacion) suma una: la de `tarifa_activacion.activada_por` a `usuario`.
+const TRIGGERS_MISMA_EMPRESA = 168;
 
 /** Lo que el punto 6 espera encontrar en el catalogo de la base. */
 export interface ContratoRls {
