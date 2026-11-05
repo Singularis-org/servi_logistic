@@ -236,6 +236,10 @@ describe("SLT-65 R21 — ningun repositorio del catalogo geografico se crea a ni
         "CoberturaRepository",
         "ZonaRepository",
         "CierreDiaRepository",
+        // SLT-71 (T7.2; R16; design §6): transito y analitica tambien cargan el catalogo, una vez por
+        // instancia. Si el calculo dejara de verlas, la guardia no las vigilaria sin avisar.
+        "InformeTransitoRepository",
+        "ConteoPorStatusRepository",
       ]),
     );
   });

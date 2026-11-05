@@ -96,7 +96,7 @@
 - [x] **T7.1** [P] Ampliar `tests/unit/guards/geografia-lecturas-sin-nodo-fk.guardia.test.ts`
   (design §6) y `tests/integration/db/geo-lecturas-sin-backfill.test.ts` (R14). **Hecho:** pasan,
   con la contraprueba de la guardia.
-- [ ] **T7.2** [P] Ampliar el antivacío de
+- [x] **T7.2** [P] Ampliar el antivacío de
   `tests/unit/guards/catalogo-geografico-sin-instancia-de-modulo.guardia.test.ts` (R16). **Hecho:**
   verde sobre el repo.
 - [ ] **T7.3** `pnpm run test:guardias` completo. **Hecho:** en verde, incluidas
