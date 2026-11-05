@@ -25,7 +25,7 @@
   },
   "cupos_por_persona": {
     "frontend": 2,
-    "backend": 3,
+    "backend": 5,
     "fullstack": 3
   },
   "perfil": {
