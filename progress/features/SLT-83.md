@@ -7,7 +7,7 @@
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F1.3 (2026-11-04): spec en specs/SLT-83-planes-costo-por-orden-porcentual/ (R1-R29). Siguiente: F1.4, aprobación humana.
+F2.4 (2026-11-04): implementación revisada (OK vuelta 2) y sincronizada con dev. PR abierto; espera gate-completo en CI.
 
 ## Evaluación
 - zone fullstack: modelo del plan (modo + % + mínimo), congelado en la orden, cargo en wallet al
@@ -45,6 +45,9 @@ Ninguna.
 - 2026-11-04 · B y C (T6–T10; T8 antes que T7) · a1f9b962…7e68b71d · unit e integración de los archivos tocados en verde (planes-service* 281/281, tests/unit/planes 186/186); typecheck y eslint limpios; guardias: solo el rojo del baseline. Adelantado a D: ConsumoDelPlan y CobroPorOrden solo pintan modo fijo; PlanForm envía costoPorOrdenPorcentual null. Textos pendientes del humano: vacío del rastro («sin costo porcentual», provisional), «→ se aplica el valor global» al pasar a %, total con cobrado negativo.
 - 2026-11-04 · D (T11–T14 + textos aprobados) · 80cbac76…452eac15 · tests de lo tocado en verde (planes 162/162, PlanForm* 55/55, PlanVista/PlanEmpresa*/PlanDetalle* 130/130, EmpresasModule* 82/82, ConsumoDelPlan*/MiPlan 59/59); typecheck y eslint limpios. Sin cambiar aserciones de SLT-66.
 - 2026-11-04 · E parcial (textos aprobados + T15) · b639a75c, 3a70cea6 · vitest 116/116 de lo tocado; E2E planes-costo-porcentual 5/5 dos corridas seguidas sobre servi_logistic_slt83_e2e; planes-costeo 5, cobro-plataforma-sl40 2, pago-plataforma-sl45 6 (con --no-deps). Aviso: superadmin-empresas.spec.ts:224 (correo de bienvenida) falla en local sin --no-deps, ajeno a SLT-83 y fuera del baseline: lo decide CI.
+- 2026-11-04 · E cierre (pista en tercera persona + ayuda; T16 trazabilidad y 9 mutaciones medidas, todas muertas) · 061d97a8, 08eb8c78 · vitest 271/271 de lo tocado. T5 y T16 sin [x] hasta CI.
+- 2026-11-04 · F2.2 vuelta 1: RECHAZO por B1 (down.sql de M3 sin guarda) → arreglo baa224bd (55/55) → vuelta 2 ampliada: OK (119/119 integración). Menores: m1 (T5/T16 tras CI), m2 (zona horaria de ocurrido_at, deuda heredada de SL-40).
+- 2026-11-04 · F2.3 merge de dev (51 commits, sin conflictos) · 950dea37, 73a587d2 · migraciones de vehículos aplicadas; contadores RLS 87/168/86 sin cambio; guardias 4575 verdes (solo el rojo del baseline); 155/155 con base; typecheck limpio.
 
 ## Modelos (overrides)
 
