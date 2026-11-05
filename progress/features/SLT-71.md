@@ -35,6 +35,11 @@ Base sobre SLT-65 (PR #75) en `fe16f5d1`. La base local `logistic` tiene drift d
 - 2026-11-04 · merge dev (c301fc87, trae SLT-64 y SL-42) + T0.1, T0.2, T1.1, T1.2 · c26cd50a, 48246a90, 690dd1d0, 12b3d055, 0007d769 ·
   typecheck verde; guardias 333/334 (solo la baseline `dependencias-declaradas-presentes`); integración contra `logistic_slt71`
   sin saltos. `./init.sh` completo no cabe en local con la rama apilada (vitest related > 15 min): veredicto en CI.
+- 2026-11-05 · T2.1–T4.2 · e9854760…01ad14b2 · typecheck verde; unit 449 archivos verdes; integración nueva verde contra
+  `logistic_slt71`; guardias solo baseline. Decisiones del humano (2026-11-04): 3 asserts de parámetros (§11.1), guardia
+  `alcance-dinero:222` con `(consulta, lugares)`, T3.4 cerrada con `geo-analitica-lugar`.
+  RIESGO anotado: las 5 suites `informe-transito-*` (baseline, sin usuarios de seed) leen como dueño sin empresa; cuando
+  tengan datos, la carga del catálogo puede elegir una empresa de otro país y R12 las haría fallar.
 
 ## Modelos (overrides)
 
