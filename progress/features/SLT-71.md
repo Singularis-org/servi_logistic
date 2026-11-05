@@ -32,6 +32,9 @@ Base sobre SLT-65 (PR #75) en `fe16f5d1`. La base local `logistic` tiene drift d
 ## Preguntas abiertas
 
 ## Tandas
+- 2026-11-04 · merge dev (c301fc87, trae SLT-64 y SL-42) + T0.1, T0.2, T1.1, T1.2 · c26cd50a, 48246a90, 690dd1d0, 12b3d055, 0007d769 ·
+  typecheck verde; guardias 333/334 (solo la baseline `dependencias-declaradas-presentes`); integración contra `logistic_slt71`
+  sin saltos. `./init.sh` completo no cabe en local con la rama apilada (vitest related > 15 min): veredicto en CI.
 
 ## Modelos (overrides)
 
