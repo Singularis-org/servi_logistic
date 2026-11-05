@@ -226,3 +226,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** SLT-65 (2026-10-31, review F2.2 de 2026-11-03, menor 4). `CatalogoGeograficoRepository.enUnaFoto` (SLT-44) pasa la constante `OPCIONES_TRANSACCION` a `$transaction`. Prisma 7 escribe `newTxId` en ese objeto, y tras abrir un `tx` anidado la siguiente carga falla con «Transaction already closed». SLT-65 lo rodea con `lib/repositories/_shared/sin-transaccion-anidada.ts`.
 - **Qué falta:** el arreglo de raíz en SLT-44, una línea: `{ ...OPCIONES_TRANSACCION }`. Después, valorar si se retira el rodeo de SLT-65.
 - **Dueño:** Camilo (SLT-44, PR #55).
+
+### D37 — Las suites `informe-transito-*` leen sin empresa
+- **Origen:** SLT-71 (2026-11-05, review F2.2 vuelta 1, menor 4). Las cinco suites de integración `informe-transito-*` están en `tests/baseline-rojos.json` porque la base de test no tiene usuarios (ficha 475). Leen como dueño de la tabla y sin contexto de empresa. Con SLT-71, tránsito carga el catálogo del país de la empresa: cuando esas suites tengan datos, la carga puede tomar una empresa de otro país y R12 las haría fallar.
+- **Qué falta:** al retirarlas del baseline, correrlas dentro de `conEmpresa`/`comoLaEmpresa` con la empresa de su fixture.
+- **Dueño:** quien retire esas suites del baseline (ficha 475).
