@@ -7,7 +7,7 @@
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F2.0 desde el 2026-11-04: spec y maqueta aprobados por Carlos. Pendiente de que vea el tablero `Vehiculo` (R47-R54), dibujado después de su aprobación del diseño; se le señaló al aprobar el spec.
+F2.1 desde el 2026-11-04: spec y maqueta aprobados por Carlos, también el tablero `Vehiculo` («ya lo vi, está correcto»).
 
 ## Evaluación
 zone fullstack (era frontend; la activación pide backend) / complexity high. Sin `tasks.md` aún: repetir `archivos-en-vuelo.mjs --candidata SLT-54` tras el spec y en F2.0.
@@ -20,6 +20,7 @@ zone fullstack (era frontend; la activación pide backend) / complexity high. Si
 Ninguna.
 
 ## Tandas
+- A (activación e interruptor): c3929057, `backend_dev` directo (el implementer lo corta el hook). `activarTarifasNuevas` falla cerrado hasta T2.3.
 
 ## Modelos (overrides)
 Subagentes en Opus.
