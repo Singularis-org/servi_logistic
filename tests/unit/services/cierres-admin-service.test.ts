@@ -380,6 +380,7 @@ describe("CierresAdminService.verCierreDetalle — ingreso y ganancia", () => {
   /** Desglose por orden como lo emite el repo (ya derivado del snapshot). */
   function conIngreso(over: Partial<IngresoEmpresaDTO>): IngresoEmpresaDTO {
     return {
+      tarifaModelo: "viejo",
       montoCobrar: null,
       cobraComision: false,
       esCentral: false,
@@ -499,6 +500,7 @@ describe("395 — el detalle del cierre de MENSAJERO emite la linea puente y el 
   /** Desglose por orden como lo emite el repo. `total` = suma de los conceptos presentes. */
   function conIngreso(over: Partial<IngresoEmpresaDTO>): IngresoEmpresaDTO {
     return {
+      tarifaModelo: "viejo",
       montoCobrar: null,
       cobraComision: false,
       esCentral: false,
@@ -1863,6 +1865,7 @@ describe("Feature 158 · verCierreDetalle — el incidente es un grupo PROPIO (R
             // El repo deriva el desglose con `derivarIngresoOrden`, que para `incidente`
             // devuelve {} -> todos los conceptos en null y el total en 0.00.
             ingresoEmpresa: {
+              tarifaModelo: "viejo",
               montoCobrar: "50000.00",
               cobraComision: true,
               esCentral: true,
@@ -2220,6 +2223,7 @@ describe("396 — `verCierreDetalle` emite el desglose por tienda", () => {
   /** Desglose por orden como lo emite el repositorio (ya derivado del snapshot congelado). */
   function ingreso(over: Partial<IngresoEmpresaDTO>): IngresoEmpresaDTO {
     return {
+      tarifaModelo: "viejo",
       montoCobrar: null,
       cobraComision: false,
       esCentral: false,

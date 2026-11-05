@@ -48,13 +48,13 @@
 
 ## Tanda C — Huecos del lado servidor (backend)
 
-- [ ] **T3.1 [P] DTO del cierre** (R62, R63). `IngresoEmpresaDTO.tarifaModelo`. *Hecho:* test del DTO, viejo igual que hoy.
-- [ ] **T3.2 [P] Aporte** (R64). `buildWhere` y `satisfaceCriterio`. *Hecho:* integración en Postgres: orden sin el concepto
+- [x] **T3.1 [P] DTO del cierre** (R62, R63). `IngresoEmpresaDTO.tarifaModelo`. *Hecho:* test del DTO, viejo igual que hoy.
+- [x] **T3.2 [P] Aporte** (R64). `buildWhere` y `satisfaceCriterio`. *Hecho:* integración en Postgres: orden sin el concepto
   fuera de la lista y del `count`; orden con el concepto en 0 dentro; equivalencia verde; una mutación del `WHERE` la
   pone roja.
-- [ ] **T3.3 [P] Listado** (R66). `fulfillment` en el ítem. *Hecho:* `convergencia-tarifa-listado-cierre` da el mismo importe;
+- [x] **T3.3 [P] Listado** (R66). `fulfillment` en el ítem. *Hecho:* `convergencia-tarifa-listado-cierre` da el mismo importe;
   el viejo no cambia.
-- [ ] **T3.4 Empresa nueva** (R31, R32). *Hecho:* integración: empresa dada de alta sin activación ni tarifas, cierre 0 y 409
+- [x] **T3.4 Empresa nueva** (R31, R32). *Hecho:* integración: empresa dada de alta sin activación ni tarifas, cierre 0 y 409
   antes y después de activar.
 
 ## Tanda D — Pantalla (frontend). Depende de A y B
@@ -191,6 +191,10 @@
 - `lib/types/historial-accion-etiquetas.ts`
 - `lib/utils/aporte-por-orden.ts`
 - `lib/auth/menu-visibility.ts`
+- `lib/interfaces/services/IRecepcionSateliteService.ts`
+- `lib/types/orden.ts`
+- `lib/types/recorte-alcance-orden.ts`
+- `lib/utils/dinero-por-producto.ts`
 
 **Pantalla nueva**
 - `app/(app)/configuracion/tarifas/page.tsx`
@@ -315,3 +319,24 @@
 - `tests/components/ZonaBorradoMotivo.test.tsx`
 - `tests/components/ZonaCentralConfirmacion.test.tsx`
 - `tests/components/CrearZonaFormReconciliacion.test.tsx`
+- `tests/components/CierreCobrosDeLaGestion.test.tsx`
+- `tests/components/CierreDetalleIncidente.test.tsx`
+- `tests/components/CierreTarifaAplicada.test.tsx`
+- `tests/components/CierreTarifaEspecial.test.tsx`
+- `tests/components/CierresAdminModule.test.tsx`
+- `tests/components/descarga/CierresDescarga.test.tsx`
+- `tests/components/descarga/CierresDescargaColumnas.test.tsx`
+- `tests/fixtures/gestion-detalle-478.ts`
+- `tests/fixtures/orden-detalle-dia.ts`
+- `tests/unit/descarga/cierres-gestiones-fundida-descarga-columnas.test.ts`
+- `tests/unit/descarga/cierres-gestiones-paridad.test.ts`
+- `tests/unit/services/cierre-desglose-tres-superficies.test.ts`
+- `tests/unit/services/cierres-admin-fulfillment-solo-central.test.ts`
+- `tests/unit/services/cierres-admin-service.test.ts`
+- `tests/unit/services/cierres-bodega-admin-service.test.ts`
+- `tests/unit/tablero-dia/detalle-contrato.test.ts`
+- `tests/unit/tablero-dia/recorte-por-alcance.guardia.test.ts`
+- `tests/unit/tablero-dia/recorte-por-alcance.test.ts`
+- `tests/unit/utils/cascadas-cierre-bodega.test.ts`
+- `tests/unit/utils/ingreso-empresa-modelo-nuevo.test.ts`
+- `tests/unit/utils/partes-por-tienda.test.ts`

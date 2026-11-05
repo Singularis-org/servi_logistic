@@ -325,6 +325,7 @@ const BODEGA_SOLICITADOS = [cierreBodega({ cierreBodegaId: "b3", estado: "aproba
  */
 function ingreso(): IngresoEmpresaDTO {
   return {
+    tarifaModelo: "viejo",
     montoCobrar: "1000.10",
     cobraComision: true,
     esCentral: true,

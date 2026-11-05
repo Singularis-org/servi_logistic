@@ -145,7 +145,7 @@ describe("(a) R13/R46 · el dato — `recortarPorAlcance` sobre un DTO poblado",
     ).toEqual([]);
   });
 
-  it("alcance `global`: sobreviven LOS CINCO, o la clausula de arriba seria verde por vacio", () => {
+  it("alcance `global`: sobreviven LOS SEIS, o la clausula de arriba seria verde por vacio", () => {
     const intacta = recortarPorAlcance(ordenDelDetalle({ id: "o1" }), GLOBAL);
     expect(
       centinelasEn(comoJson(intacta)).sort(),
@@ -239,7 +239,7 @@ describe("(c) R14/R15/R16 · la columna — la pantalla sobre un DTO SIN recorta
 /* -------------------------------------------------------------------------- */
 
 describe("(d) R44 · los detectores NO son decorado", () => {
-  it("el detector de JSON encuentra los cinco centinelas cuando SI estan", () => {
+  it("el detector de JSON encuentra los seis centinelas cuando SI estan", () => {
     // Es la forma exacta que tendria la mutacion 1: `recortarPorAlcance` devuelve la orden sin
     // tocar. Si este `expect` no encontrara nada, las clausulas (a) y (b) estarian verdes por
     // que el detector es ciego, no porque el recorte funcione.
@@ -268,7 +268,7 @@ describe("(d) R44 · los detectores NO son decorado", () => {
   });
 
   it("el censo mira algo: hay columnas restringidas que quitar y centinelas que buscar", () => {
-    expect(TODOS_LOS_CENTINELAS.length).toBe(5);
+    expect(TODOS_LOS_CENTINELAS.length).toBe(6);
     expect(columnasDetalle(GLOBAL, ETIQUETAS_CR).length - columnasDetalle(ZONA, ETIQUETAS_CR).length).toBe(3);
   });
 });

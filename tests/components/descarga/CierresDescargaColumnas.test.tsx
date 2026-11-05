@@ -251,6 +251,7 @@ function consolidable(i: number): CierreBodegaResumenLite {
 
 function ingreso(): IngresoEmpresaDTO {
   return {
+    tarifaModelo: "viejo",
     montoCobrar: "1000.10",
     cobraComision: true,
     esCentral: true,

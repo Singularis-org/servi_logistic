@@ -112,6 +112,8 @@ interface ResueltoListado {
   tarifaId: string | null;
   valorFlete: number | null;
   fleteConIva: string | undefined;
+  fulfillment: string | undefined;
+  fulfillmentDeLaFila: number | null;
   where: unknown;
 }
 
@@ -142,6 +144,8 @@ async function resolverPorListado(filas: readonly FilaTarifa[]): Promise<Resuelt
     tarifaId: tarifa?.id ?? null,
     valorFlete: tarifa?.valorFlete ?? null,
     fleteConIva: res.items[0].fleteConIva,
+    fulfillment: res.items[0].fulfillment,
+    fulfillmentDeLaFila: tarifa?.fulfillment ?? null,
     where: (tarifaFindMany.mock.calls[0] as unknown as [{ where: unknown }])[0].where,
   };
 }
@@ -206,6 +210,7 @@ interface ResueltoCierre {
   cierreId: string | null;
   tarifaId: string | null;
   valorFleteCongelado: string | null;
+  fulfillmentCongelado: string | null;
   where: unknown;
 }
 
@@ -261,11 +266,13 @@ async function resolverPorCierre(filas: readonly FilaTarifa[]): Promise<Resuelto
     tx.cierreDetail.createMany.mock.calls[0] as unknown as [{ data: Record<string, unknown>[] }]
   )[0].data;
   const congelado = data[0].tarifaValorFlete as Prisma.Decimal | null;
+  const fulfillmentCongelado = data[0].tarifaFulfillment as Prisma.Decimal | null;
 
   return {
     cierreId,
     tarifaId: (data[0].tarifaId as string | null) ?? null,
     valorFleteCongelado: congelado === null ? null : congelado.toFixed(2),
+    fulfillmentCongelado: fulfillmentCongelado === null ? null : fulfillmentCongelado.toFixed(2),
     where: (tarifaFindMany.mock.calls[0] as unknown as [{ where: unknown }])[0].where,
   };
 }
@@ -385,6 +392,23 @@ describe("274/T8.4 — el listado y la liquidacion resuelven la MISMA fila (R8/R
         { tiendaId: null, zonaId: { in: [ZONA] } },
       ],
     });
+  });
+
+  it("SLT-54 R66: en el viejo, `fulfillment` es el de la fila que gana la cascada, igual que congela el cierre", async () => {
+    const conFila = filaTarifa({ id: "ta-z1", tiendaId: TIENDA, zonaId: ZONA, valorFlete: "1000.00" });
+    const filas = [{ ...conFila, fulfillment: new Prisma.Decimal("696.40") }];
+    const listado = await resolverPorListado(filas);
+    const cierre = await resolverPorCierre(filas);
+    expect(listado.fulfillment).toBe("696.40");
+    expect(cierre.fulfillmentCongelado).toBe("696.40");
+    // La columna de hoy lee la fila mostrada: el dato nuevo no cambia lo que se pinta.
+    expect(listado.fulfillmentDeLaFila).toBe(696.4);
+  });
+
+  it("SLT-54 R66: sin tarifa en el viejo, «0.00» como el resto de importes del listado", async () => {
+    const listado = await resolverPorListado([]);
+    expect(listado.tarifaId).toBeNull();
+    expect(listado.fulfillment).toBe("0.00");
   });
 
   it("autocomprobacion: el montaje DISTINGUE filas — con otra tabla, la fila elegida cambia", async () => {
@@ -528,6 +552,8 @@ describe("SLT-52 T4.4 — modelo nuevo: listado, cierre y costo API eligen el mi
     expect(res.items[0].comisionConIva).toBe("565.00");
     // En el nuevo no hay fila de `tarifas` que mostrar.
     expect(res.items[0].relaciones?.tienda?.tarifa).toBeNull();
+    // SLT-54 R66: y el fulfillment sale del resolver: tff-general, sin su IVA.
+    expect(res.items[0].fulfillment).toBe("100.00");
   });
 
   it("el COSTO de la API por key da los mismos importes, con el fulfillment de tff-general", async () => {
@@ -552,5 +578,32 @@ describe("SLT-52 T4.4 — modelo nuevo: listado, cierre y costo API eligen el mi
       // SLT-52 R46: tff-general 100.00 al 13 % = 13.00, por la misma tarifa que el resto.
       ivaFulfillment: "13.00",
     });
+  });
+
+  it("SLT-54 R66: el fulfillment en porcentaje es sobre el pedido, y sin el concepto da «0.00»", async () => {
+    const listar = async (tabla: unknown[]) => {
+      const prisma = {
+        ...prismaNuevo(),
+        tarifaValor: { findMany: vi.fn(async () => tabla) },
+        orden: {
+          findMany: vi.fn(async () => [{ ...ordenListRow(), distritoId: DISTRITO }]),
+          count: vi.fn(async () => 1),
+        },
+        $queryRaw: vi.fn(async () => []),
+      };
+      const res = await new OrdenRepository(prisma as unknown as PrismaClient).list({
+        where: {},
+        sortBy: "created_at",
+        sortDir: "desc",
+        skip: 0,
+        take: 50,
+      });
+      return res.items[0].fulfillment;
+    };
+    // 1,5 % de 25000.00 = 375.00.
+    expect(
+      await listar([valor({ id: "tff-pct", concepto: "tienda_fulfillment", modo: "porcentaje", valor: "1.50", tiendaId: TIENDA })]),
+    ).toBe("375.00");
+    expect(await listar([])).toBe("0.00");
   });
 });

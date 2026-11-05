@@ -598,10 +598,8 @@ describeSiHayBase("SLT-52 T5.4 — el cierre congela el modelo nuevo y lo lee co
     // La aprobacion escribe en la wallet de la empresa flete 3500.00 e IVA 455.00 (1500+2000;
     // 195+260); el fulfillment no entra (R31).
     expect(r.antes.walletEmpresa).toEqual(["ingreso_flete:3500.00", "ingreso_iva_flete:455.00"]);
-    // Aporte por orden: las tres ordenes del cierre nuevo tienen «tarifa congelada».
-    expect(r.antes.aporte.map((a) => a.ordenId).sort()).toEqual(
-      [e.o1.ordenId, e.o2.ordenId, e.o3.ordenId].sort(),
-    );
+    // Aporte por orden: o1 y o2 tienen su flete congelado; o3 no lo tiene y no aporta (SLT-54 R64).
+    expect(r.antes.aporte.map((a) => a.ordenId).sort()).toEqual([e.o1.ordenId, e.o2.ordenId].sort());
     // Analitica: el fulfillment de o1 sale del concepto congelado (R46).
     expect(r.antes.dinero.find((d) => d.ordenId === e.o1.ordenId)?.fulfillment).toBe("450.00");
     expect(r.antes.dinero.find((d) => d.ordenId === e.o2.ordenId)?.fulfillment).toBe("0.00");

@@ -329,3 +329,98 @@ Ninguno nuevo. Los 10 esperados, sobre la base local: `caja-backfill` (5), `noti
 **En el baseline:** `cobertura-repository.test.ts` (2, los de la ficha 465: `referencia a otra empresa: tarifas.tienda_id -> usuario`). Los tres casos nuevos de R30 de ese archivo pasan.
 
 **Sin correr aquí:** `vitest related`, `./init.sh` y E2E, por encargo.
+
+## Tanda C — Huecos del lado servidor
+
+T3.1 a T3.4 hechas. Sin migraciones ni dependencias.
+
+### Decisiones
+
+- **R64, `ingreso_flete_devolucion` en el nuevo.** El design pide exigir el concepto «por resultado de la gestión». En el nuevo ese movimiento suma rechazo, reprogramado, novedad e incidente (SLT-52 R29), cada uno con su concepto, y la lista `resultados` solo traía el rechazo: una orden con novedad cobrada entraba en el importe y no en el detalle. Por eso `CriterioDeAporte` gana `conceptoCongeladoPorResultado`, y la rama nueva del `WHERE` lleva una rama por resultado que ata gestión y concepto. `resultados` sigue siendo solo del viejo. La equivalencia contra `derivarIngresoOrden` en las 7680 celdas lo exige: con la lista vieja se pone roja.
+- **`fulfillment` en el listado es opcional y lo retira el recorte de zona.** Es el mismo dato que `relaciones.tienda.tarifa.fulfillment`, que ya se retiraba (feature 260). Si no entra en `CAMPOS_SOLO_ALCANCE_GLOBAL` viaja a un alcance de zona por el campo nuevo. Hay un centinela propio en `tests/fixtures/orden-detalle-dia.ts`. La bodega satélite no lo recibe: lo que diga R66 para «recibidas» solo aplica al alcance global.
+- **T3.4 no cambió código:** R31 y R32 ya se cumplían. La tanda deja el test con el alta real.
+
+### Para la Tanda E
+
+- `IngresoEmpresaDTO.tarifaModelo` e `item.fulfillment` ya están. Las columnas siguen leyendo `relaciones.tienda.tarifa.fulfillment` hasta T5.3; al cambiarlas, `recorte-por-alcance.guardia` buscará en el marcado `CENTINELAS.fulfillment` en vez de `CENTINELAS.tarifa`.
+
+### Archivos
+
+**Nuevos:** `tests/integration/db/cierre-aporte-modelo-nuevo.test.ts`, `tests/integration/db/tarifa-empresa-nueva.test.ts`
+
+**Código modificado:** `lib/interfaces/services/ICierreDiaService.ts`, `lib/repositories/CierresAdminRepository.ts` (T3.1); `lib/repositories/CierreAporteRepository.ts`, `lib/utils/aporte-por-orden.ts`, `lib/utils/dinero-por-producto.ts` (T3.2); `lib/repositories/OrdenRepository.ts`, `lib/types/orden.ts`, `lib/types/recorte-alcance-orden.ts`, `lib/interfaces/services/IRecepcionSateliteService.ts` (T3.3)
+
+**Tests con cambio de fondo:** `cierre-aporte-repository.test.ts`, `aporte-por-orden-equivalencia.test.ts`, `convergencia-tarifa-listado-cierre.test.ts`, `cierres-admin-repository.test.ts`, `tarifas-flexibles-snapshot.test.ts` (la orden sin flete sale del aporte, que es R64), `detalle-contrato.test.ts`, `recorte-por-alcance*.test.ts`, `tests/fixtures/orden-detalle-dia.ts`
+
+**Fixtures:** 16 dobles de `IngresoEmpresaDTO` ganan `tarifaModelo`, sin otro cambio. La lista completa está en `tasks.md > Archivos esperados`.
+
+### Mapa R → test (tanda C)
+
+| R | Test |
+|---|---|
+| R62 (DTO), R63 (DTO) | `cierres-admin-repository.test.ts` › «una fila del modelo viejo dice `viejo`…», «una fila del modelo nuevo dice `nuevo`…», «R9: sin tarifa congelada…». La pantalla es la tanda E |
+| R64 | `cierre-aporte-modelo-nuevo.test.ts` (Postgres, 6 casos): «una orden sin el concepto queda fuera…», «lo listado suma… lo que el feed real escribe», «los otros caminos del mismo `WHERE`», «otra tienda no ve ninguna», «R12: como `servi_app`», «en el modelo viejo no cambia nada»; `aporte-por-orden-equivalencia.test.ts` › «SLT-54 R64» (4 casos); `cierre-aporte-repository.test.ts` (forma) |
+| R66 (dato) | `convergencia-tarifa-listado-cierre.test.ts` › «SLT-54 R66» (viejo, sin tarifa, porcentaje) y «el LISTADO cobra con esos mismos valores»; `recorte-por-alcance.test.ts`. Las columnas son la tanda E |
+| R31 | `tarifa-empresa-nueva.test.ts` › «R31: el alta no le crea activación ni tarifas» |
+| R32 | `tarifa-empresa-nueva.test.ts` › «R32, sin activar…», «R32, activada…», «un valor que no cubre el cobro…», «CONTRAPRUEBA» |
+
+### Mutaciones
+
+Autocomprobación: sin mutar, los seis archivos de medida dieron 104 de 104, 0 saltados. Cada mutación se aplicó, corrió y revirtió por script, y `git diff --stat -- lib` quedó igual al final. Todas las matadas son rojo por aserción, sin `TypeError` ni error de compilación.
+
+| Mutación | Primer caso que la mató | Rojo |
+|---|---|---|
+| A1 `WHERE`: la rama nueva no exige el concepto (R64) | una orden sin el concepto queda fuera… | `expected [ …(2) ] to deeply equal [ Array(1) ]` |
+| A2 `WHERE`: cualquier flete vale, sin atarlo al resultado | ídem | `expected [ …(3) ] to deeply equal [ …(2) ]` |
+| A3 `WHERE`: la gestión acepta cualquier resultado del concepto | ídem | `expected [ …(3) ] to deeply equal [ …(2) ]` |
+| A4 `WHERE`: en el nuevo solo los `resultados` del viejo | ídem | `expected [ Array(1) ] to deeply equal [ …(2) ]` |
+| A5 `WHERE`: la rama vieja pierde `tarifaId` | ídem | `expected [ …(2) ] to deeply equal [ Array(1) ]` |
+| A6 `WHERE`: la rama vieja admite la novedad (el viejo cambiaría) | en el modelo viejo no cambia nada | `expected [ …(2) ] to deeply equal [ Array(1) ]` |
+| A7 `count` con otro `where` que la lista | una orden sin el concepto queda fuera… | `expected 6 to be 1` |
+| A8 conteo por cierre sin el `where` del lote | los otros caminos del mismo `WHERE` | `expected 6 to be 2` |
+| S1 `satisfaceCriterio` sin la rama del nuevo | las 7680 combinaciones | `celda ingreso_flete / entregado / cobraComision=true / : expected true to be false` |
+| S2 `satisfaceCriterio` no mira si está congelado | ídem | `celda ingreso_flete / entregado / cobraComision=true / : expected true to be false` |
+| S3 la tabla pierde el flete de novedad | ídem | `celda ingreso_flete_devolucion / novedad / … : expected false to be true` |
+| S4 la comisión se apoya en el flete | ídem | `celda ingreso_comision_cod / entregado / … : expected true to be false` |
+| S5 la rama nueva también en criterios sin tarifa | los criterios sin tarifa no miran los conceptos | `expected false to be true` |
+| D1 `tarifaModelo` siempre viejo en el DTO (R63) | una fila del modelo nuevo dice `nuevo` | `expected { montoCobrar: '25000.00', …(19) } to match object { tarifaModelo: 'nuevo', …(8) }` |
+| D2 sin tarifa dice viejo, no `null` (R63) | R9: sin tarifa congelada | `expected 'viejo' to be null` |
+| L1 fulfillment de la fila mostrada: en el nuevo, 0 (R66) | el LISTADO cobra con esos mismos valores | `expected '0.00' to be '100.00'` |
+| L2 fulfillment en % sin la base del pedido (R66) | el fulfillment en porcentaje | `expected '0.00' to be '375.00'` |
+| L3 fulfillment fuera del ítem (R66) | en el viejo, `fulfillment` es el de la fila | `expected undefined to be '696.40'` |
+| L4 el recorte de zona deja pasar el fulfillment | no deja NINGUNO de los seis centinelas | `el centinela 9999993 sobrevivio al recorte` |
+| N1 el alta crea la activación (R31) | R31: el alta no le crea activación | `expected { activacion: 1, … } to deeply equal { activacion: +0, … }` |
+| N2 activada sin flete ya no da 409 (R32) | R32, activada | `expected 200 to be 409` |
+| N3b la cotización sin fila no responde `sin_tarifa` (R32) | R32, sin activar | `expected 200 to be 409` |
+| N3c la carga sin fila no aparta la orden (R32) | R32, sin activar | `expected 200 to be 409` |
+| N4 la comisión sola deja cotizar (R32) | un valor que no cubre el cobro | `expected 200 to be 409` |
+| N5 la activación no enciende el modelo nuevo (R32) | R32, activada | `expected { activacion: 1, … } to deeply equal { activacion: 1, … }` |
+| RLS: `cierre_detail` apagada en la base local, leyendo como `servi_app` (R12) | R12: como `servi_app` | `expected 6 to be +0` |
+
+**Matadas: 26 de 27.** Superviviente, y qué se hizo:
+- **N3** (`fleteEntregadoSinTarifa(null)` da `false`): equivalente. Los dos llamadores que deciden el 409 ya tratan el `null` por su cuenta, así que no cambia la respuesta. Se sustituyó por N3b y N3c, que rompen la decisión donde se toma.
+- **RLS en primera pasada:** apagar `cierre_detail` sola no ponía rojo el caso R12, porque la lista también pasa por la RLS de `orden`, `gestion_orden` y `cierre_detail_concepto`. Se añadió `contarOrdenesDelCierre`, que solo lee `cierre_detail`; ya está contada arriba como matada. La RLS se restauró y comprobó, tabla por tabla (`cierre_detail`, `orden`, `gestion_orden`), y el archivo volvió a 6 de 6.
+
+### Salida de los comandos
+
+```
+$ NODE_OPTIONS=--max-old-space-size=8192 pnpm exec tsc --noEmit -p .   -> 0 errores
+$ pnpm exec eslint <archivos .ts y .tsx de la tanda>                    -> 0 errores, 3 avisos (los `_args` de un doble ya existente)
+$ pnpm run test:guardias
+  Test Files  1 failed | 330 passed (331)
+       Tests  4 failed | 4612 passed | 1 skipped (4617)
+  (los 4 rojos: dependencias-declaradas-presentes.guardia.test.ts, en el baseline)
+$ los seis archivos de medida de la tanda
+  Test Files  6 passed (6)
+       Tests  104 passed (104)
+$ los 288 archivos que importan lo tocado, en tandas de 15 (sin `vitest related`)
+  total 4049 | ok 3610 | ko 271 | skip 168
+```
+
+### Rojos fuera del baseline
+
+Ninguno: los 271 rojos caen en 50 archivos, los 50 en `tests/baseline-rojos.json`. Son de la siembra sobre la base local: `referencia a otra empresa`, y el catálogo sin `ayuda_tienda` o `devolucion_por_confirmar`. Solo un rojo es de aserción, y compara ese mismo error de siembra (`historial-accion-atomicidad`). Los 168 saltados caen en 16 de esos archivos, cuyo arranque falla por el catálogo; ninguno en los archivos de esta tanda.
+
+**Lo que eso deja sin medir aquí:** `detalle-movimiento-cierre-postgres` y `detalle-en-lote-464`, que prueban el `WHERE` del modelo viejo contra Postgres, están en rojo por su siembra. El viejo lo cubre aquí «en el modelo viejo no cambia nada» y la forma en `cierre-aporte-repository.test.ts`; esos dos hay que mirarlos en el `gate-completo` de CI.
+
+**Sin correr aquí:** `vitest related`, `./init.sh` y E2E, por encargo.

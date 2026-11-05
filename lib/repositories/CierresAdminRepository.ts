@@ -485,6 +485,7 @@ function toIngresoEmpresa(
     fulfillment,
     ivaFulfillment,
     tarifa: toTarifaSnapshot(d),
+    tarifaModelo: tarifa?.modelo ?? null,
   };
 }
 

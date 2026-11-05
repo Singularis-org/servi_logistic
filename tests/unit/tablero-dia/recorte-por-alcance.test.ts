@@ -34,7 +34,7 @@ function serializado(orden: OrdenDetalleDia): string {
 }
 
 describe("recortarPorAlcance — alcance `zona` (R13)", () => {
-  it("no deja NINGUNO de los cinco centinelas en el objeto serializado", () => {
+  it("no deja NINGUNO de los seis centinelas en el objeto serializado", () => {
     const recortada = recortarPorAlcance(ordenDelDetalle({ id: "o1" }), ZONA);
 
     for (const centinela of TODOS_LOS_CENTINELAS) {
@@ -124,7 +124,7 @@ describe("recortarPorAlcance — alcance `zona` (R13)", () => {
 });
 
 describe("recortarPorAlcance — alcance `global` (R46)", () => {
-  it("deja los CINCO centinelas: si no, la clausula de arriba seria verde por vacio", () => {
+  it("deja los SEIS centinelas: si no, la clausula de arriba seria verde por vacio", () => {
     const intacta = recortarPorAlcance(ordenDelDetalle({ id: "o1" }), GLOBAL);
 
     for (const centinela of TODOS_LOS_CENTINELAS) {

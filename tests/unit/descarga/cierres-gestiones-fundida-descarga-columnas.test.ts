@@ -51,6 +51,7 @@ import type { CierreGestionDescargaDTO } from "@/lib/interfaces/services/ICierre
 /** Ingreso de la empresa con los seis conceptos poblados y money-safe (STRING escala 2). */
 function ingreso(over: Partial<IngresoEmpresaDTO> = {}): IngresoEmpresaDTO {
   return {
+    tarifaModelo: "viejo",
     montoCobrar: "1000.10",
     cobraComision: true,
     esCentral: true,

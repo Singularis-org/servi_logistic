@@ -519,6 +519,90 @@ describe("CierresAdminRepository.findCierreByIdEnAlcance (R6/R13)", () => {
       total: "0.00",
       montoCobrar: "25000.00", // el COD congelado se sigue viendo
     });
+    // SLT-54 (R63): sin tarifa congelada no hay modelo que decir, y la tarjeta puede avisarlo.
+    expect(r?.gestiones[0].ingresoEmpresa?.tarifaModelo).toBeNull();
+  });
+
+  it("SLT-54 R63: una fila del modelo viejo dice `viejo`, con los importes y la tarifa de siempre", async () => {
+    const prisma = buildPrisma();
+    prisma.cierreDia.findFirst.mockResolvedValue(cierreResumenRow());
+    prisma.gestionOrden.findMany.mockResolvedValue([gestionRow()]);
+    prisma.cierreDetail.findMany.mockResolvedValue([
+      detalleRow({
+        montoCobrar: new Prisma.Decimal("25000.00"),
+        cobraComision: true,
+        tarifaId: "ta-1",
+        tarifaModelo: "viejo",
+        tarifaValorFlete: new Prisma.Decimal("1000.00"),
+        tarifaValorFleteGam: new Prisma.Decimal("1500.00"),
+        tarifaValorFleteDevuelto: new Prisma.Decimal("400.00"),
+        tarifaValorFleteDevueltoGam: new Prisma.Decimal("600.00"),
+        tarifaFulfillment: new Prisma.Decimal("300.00"),
+        tarifaComisionCod: new Prisma.Decimal("5.00"),
+        tarifaIvaFlete: new Prisma.Decimal("13.00"),
+        tarifaIvaComisionCod: new Prisma.Decimal("13.00"),
+      }),
+    ]);
+    const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
+
+    const r = await repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO);
+
+    // Flete 1000.00 + 13 % = 130.00; comision 5 % de 25000.00 = 1250.00 + 13 % = 162.50.
+    expect(r?.gestiones[0].ingresoEmpresa).toMatchObject({
+      tarifaModelo: "viejo",
+      flete: "1000.00",
+      ivaFlete: "130.00",
+      comisionCod: "1250.00",
+      ivaComisionCod: "162.50",
+      total: "2542.50",
+      fulfillment: "300.00",
+      ivaFulfillment: "0.00",
+      tarifa: { tarifaId: "ta-1", valorFlete: "1000.00", fulfillment: "300.00" },
+    });
+  });
+
+  it("SLT-54 R63: una fila del modelo nuevo dice `nuevo`, con `tarifa` nula y sus conceptos congelados", async () => {
+    const prisma = buildPrisma();
+    prisma.cierreDia.findFirst.mockResolvedValue(cierreResumenRow());
+    prisma.gestionOrden.findMany.mockResolvedValue([gestionRow()]);
+    const concepto = (nombre: string, valor: string, modo = "monto") => ({
+      concepto: nombre,
+      modo,
+      valor: new Prisma.Decimal(valor),
+      ivaPct: new Prisma.Decimal("13.00"),
+      nivel: "zona",
+      tarifaValorId: `tv-${nombre}`,
+    });
+    prisma.cierreDetail.findMany.mockResolvedValue([
+      detalleRow({
+        montoCobrar: new Prisma.Decimal("25000.00"),
+        cobraComision: true,
+        tarifaId: null,
+        tarifaModelo: "nuevo",
+        conceptos: [
+          concepto("tienda_flete_entregado", "1500.00"),
+          concepto("tienda_comision_cod", "2.00", "porcentaje"),
+          concepto("tienda_fulfillment", "450.00"),
+        ],
+      }),
+    ]);
+    const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
+
+    const r = await repo.findCierreByIdEnAlcance("c1", ALCANCE_MAESTRO);
+
+    // Flete 1500.00 + 13 % = 195.00; comision 2 % de 25000.00 = 500.00 + 13 % = 65.00.
+    // Fulfillment 450.00 + 13 % = 58.50, fuera del total (SLT-52 R31).
+    expect(r?.gestiones[0].ingresoEmpresa).toMatchObject({
+      tarifaModelo: "nuevo",
+      tarifa: null,
+      flete: "1500.00",
+      ivaFlete: "195.00",
+      comisionCod: "500.00",
+      ivaComisionCod: "65.00",
+      total: "2260.00",
+      fulfillment: "450.00",
+      ivaFulfillment: "58.50",
+    });
   });
 
   it("R15: los descriptivos salen del SNAPSHOT, no de la orden viva", async () => {
