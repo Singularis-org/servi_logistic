@@ -28,6 +28,12 @@ export interface LadoMedido {
   seqScanSobreOrden: number;
   /** Tiempo de pared medio del metodo (ms). Informativo. */
   paredMediaMs: number;
+  /**
+   * SLT-71 (design §9.3; R21): las mismas sumas sin las consultas de la carga del catalogo
+   * (`leeElCatalogo`). `medirLectura` lo rellena siempre; es opcional para los que construyen un lado
+   * a mano (los tests de SLT-65).
+   */
+  sinCatalogo?: { corridasMs: number[]; medianaMs: number };
 }
 
 export interface MedicionDeLectura<N extends string = string> {
@@ -97,6 +103,18 @@ export function consultasQueCompletanAntes(
   return completan;
 }
 
+// SLT-71 (design §9.3; R21) — las tablas de la CARGA DEL CATALOGO de SLT-44 (`deLaEmpresa`): los
+// nodos y sus tipos, las asignaciones de zona con su `zona` (Prisma la pide en una consulta aparte,
+// como arriba), las marcas y la `organizacion` de la que sale el pais. Sin `provincia`, `canton` ni
+// `distrito`: la union de la lectura de HOY con esas tablas va dentro de su consulta sobre `orden`, y
+// es tiempo de la lectura, no del catalogo (en antes, «total» y «sin catalogo» son iguales).
+const TABLAS_DEL_CATALOGO =
+  /"(nodo_geografico|tipo_nivel_geografico|zona_distrito|distrito_zona_especial|organizacion|zona)"/;
+
+export function leeElCatalogo(sql: string): boolean {
+  return TABLAS_DEL_CATALOGO.test(sql);
+}
+
 // ---------------------------------------------------------------------------------------------
 // La medicion
 // ---------------------------------------------------------------------------------------------
@@ -145,6 +163,7 @@ export async function medirLectura<N extends string>(
   const consultasAntes = [...antes.consultas, ...completadas];
 
   const sumas = { antes: [] as number[], despues: [] as number[] };
+  const sumasSinCatalogo = { antes: [] as number[], despues: [] as number[] };
   const seq = { antes: 0, despues: 0 };
   // Alternadas por corrida: ningun lado se lleva toda la cache caliente.
   for (let i = 0; i < corridas; i++) {
@@ -153,29 +172,33 @@ export async function medirLectura<N extends string>(
       ["despues", despues.consultas],
     ] as const) {
       let suma = 0;
+      let sumaSinCatalogo = 0;
       let seqDeLaCorrida = 0;
       for (const c of consultas) {
         const plan = await entorno.captura.explicar(c);
         suma += plan.tiempoMs;
+        if (!leeElCatalogo(c.consulta.sql)) sumaSinCatalogo += plan.tiempoMs;
         seqDeLaCorrida += plan.seqScanSobreOrden;
       }
       sumas[lado].push(suma);
+      sumasSinCatalogo[lado].push(sumaSinCatalogo);
       seq[lado] = Math.max(seq[lado], seqDeLaCorrida);
     }
   }
 
-  const lado = (n: number, corridasMs: number[], s: number, paredMediaMs: number): LadoMedido => ({
+  const lado = (n: number, corridasMs: number[], sinCat: number[], s: number, paredMediaMs: number): LadoMedido => ({
     consultas: n,
     corridasMs,
     medianaMs: mediana(corridasMs),
     seqScanSobreOrden: s,
     paredMediaMs,
+    sinCatalogo: { corridasMs: sinCat, medianaMs: mediana(sinCat) },
   });
   return {
     lectura: def.lectura,
     bloqueaPorPorcentaje: def.bloqueaPorPorcentaje,
-    antes: lado(consultasAntes.length, sumas.antes, seq.antes, antes.paredMediaMs),
-    despues: lado(despues.consultas.length, sumas.despues, seq.despues, despues.paredMediaMs),
+    antes: lado(consultasAntes.length, sumas.antes, sumasSinCatalogo.antes, seq.antes, antes.paredMediaMs),
+    despues: lado(despues.consultas.length, sumas.despues, sumasSinCatalogo.despues, seq.despues, despues.paredMediaMs),
     completadas: completadas.length,
   };
 }
