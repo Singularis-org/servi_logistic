@@ -581,7 +581,7 @@ const CIERRE_RESUMEN_SELECT = {
   _count: CONTEO_DETALLE_MODELO_NUEVO, // SLT-54 (R71): en la misma sentencia, sin consulta por fila
 } as const;
 
-type CierreResumenRow =Prisma.CierreDiaGetPayload<{ select: typeof CIERRE_RESUMEN_SELECT }>;
+type CierreResumenRow = Prisma.CierreDiaGetPayload<{ select: typeof CIERRE_RESUMEN_SELECT }>;
 
 function toResumenRow(r: CierreResumenRow): CierreAdminResumenRow {
   return {

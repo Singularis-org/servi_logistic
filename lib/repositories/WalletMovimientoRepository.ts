@@ -27,7 +27,7 @@ import { whereLibroCajaConTerminoSql, whereLibroCajaSql } from "@/lib/repositori
 import type { AQuienFiltro } from "@/lib/types/libro-caja-a-quien";
 import { ordenTotal, type DireccionOrden } from "@/lib/types/ordenamiento-listado";
 import { derivarBalance } from "@/lib/utils/wallet-balance";
-import { cierresConModeloNuevo } from "@/lib/repositories/_shared/detalle-modelo-nuevo";
+import { cierresConModeloNuevo, type LectorDeModeloDeDetalle } from "@/lib/repositories/_shared/detalle-modelo-nuevo";
 
 /** Ficha 459 — las categorias de capital, DERIVADAS de la clasificacion (nunca una lista a mano). */
 const CATEGORIAS_DE_CAPITAL: readonly WalletMovimientoCategoria[] =
@@ -39,8 +39,9 @@ const CATEGORIAS_DE_CAPITAL: readonly WalletMovimientoCategoria[] =
 // el `Pick` gana `$transaction`, `historialAccion` y `usuario`.
 type WalletPrismaClient = Pick<
   PrismaClient,
-  "walletMovimiento" | "$transaction" | "historialAccion" | "usuario" | "$queryRaw" | "cierreDetail"
->;
+  "walletMovimiento" | "$transaction" | "historialAccion" | "usuario" | "$queryRaw"
+> &
+  LectorDeModeloDeDetalle;
 
 // Money-safe: Decimal -> STRING escala 2 (nunca number/parseFloat).
 type MovimientoRow = Prisma.WalletMovimientoGetPayload<Record<string, never>>;
@@ -84,7 +85,7 @@ function toDTO(r: MovimientoRow): WalletMovimientoDTO {
  * consultan nada.
  */
 async function aPagina(
-  cliente: Pick<PrismaClient, "cierreDetail">,
+  cliente: LectorDeModeloDeDetalle,
   rows: readonly MovimientoRow[],
 ): Promise<WalletMovimientoDTO[]> {
   const deCierre = (r: MovimientoRow) => (r.origenTipo === "cierre_dia" ? r.origenId : null);

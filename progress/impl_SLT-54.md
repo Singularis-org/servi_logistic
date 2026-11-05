@@ -1185,3 +1185,115 @@ $ pnpm run test:guardias
 ```
 
 El related se corrió antes de añadir el caso móvil de `DetalleFilaComposicion`, que se volvió a correr en la línea de los 59. Como en H1, el criterio es el baseline por archivo, y por archivo no distingue un rojo nuevo dentro de un archivo que ya estaba rojo; no comparé esos 40 uno a uno contra la rama base. Los 233 avisos de lint son de todo el repo; `eslint` sobre los archivos de la tanda no dio ninguno antes del caso móvil.
+
+## Tanda I1 — El modelo de tarifa en la fila del estado de cuenta de la tienda (backend)
+
+**Veredicto:** la fila del estado de cuenta de una tienda ya dice si incluye el modelo nuevo, en las dos pantallas y en sus descargas, y la lectura de `cierre_detail` ya no puede tocar un importe. Sin esquema, sin migraciones, sin cambiar importes ni UI. D38 sigue abierto hasta que `frontend_dev` conecte el rótulo.
+
+### Campo
+
+**`incluyeModeloNuevo?: boolean`, en `FilaEstadoCuentaDTO` (`lib/types/estado-cuenta.ts`).** Aditivo.
+
+- **A qué fila llega de verdad:** `MiEstadoCuenta.tsx:55` y `EstadoCuentaTienda.tsx:40` reciben `FilaEstadoCuentaDTO`, la arma `EstadoCuentaService.leerTienda`. **`WalletTiendaMovimientoDTO` no la alimenta**: ninguna pantalla ni componente lo importa. Por eso no se tocó y el campo que nombraba D38 no habría servido.
+- **Por dónde pasa:** `leer` (`/wallet/tiendas`), `leerCompleto`, `leerMiTienda` (`/mi-wallet`) y `leerMiTiendaCompleto`. Las descargas del kardex (`LibroKardexService`) devuelven ese mismo `estado`, así que `f.incluyeModeloNuevo` también está en la descarga.
+- **Valor:** en el libro de una tienda es siempre booleano. En mensajero y bodega, ausente: no se rotula con este dato y así sus filas no cambian de forma.
+- **Criterio:** sale de `cierre_detail.tarifa_modelo`; no lee `tarifa_activacion`. Mixto cuenta como incluye nuevo. Solo la fila con origen `cierre_dia`: el cobro por rechazo (`gestion_orden`) sale falso porque esa devolución sí hubo.
+- **Por tienda, y no solo por cierre.** Es la diferencia con el libro de la caja: un cierre mezcla tiendas, y la fila de una no responde por las gestiones de otra. Se filtra por `cierre_detail.tienda_id`, la misma tienda congelada a la que el feed asentó la fila.
+- **Empresa:** la pone la RLS de `cierre_detail`.
+- **Lectura:** una sentencia por página, dentro de la lectura consistente del extracto, y ninguna si la página no tiene filas de un cierre. Método nuevo: `IEstadoCuentaRepository.cierresConModeloNuevoDeTienda(tiendaId, cierreIds)`.
+
+### Para `frontend_dev`
+
+- `ROTULOS_MI_WALLET.concepto` y `ROTULOS_TIENDA.concepto`: `f.incluyeModeloNuevo === true` y categoría `flete_devolucion` o `iva_flete_devolucion` → texto del modelo nuevo. `f` ya es la fila.
+- `PANEL_TIENDA.nombreParaAnular` pasa por `ROTULOS_TIENDA.concepto`, y no hace falta tocarlo.
+- **El filtro** de `/mi-wallet` que usa esa frase rotula una categoría, sin fila: este campo no le alcanza. Hay que decidirlo en esa tanda.
+- Faltan los tests del encargo de D38 en las dos superficies: literal del viejo y del nuevo. `progress/deudas.md > D38` se cierra con esa tanda.
+
+### Menores
+
+- **Comentario de `WalletTiendaFeedService.ts:18`:** corregido, dice qué emite cada modelo, comprobado en `derivarIngresoOrden` y `derivarIngresoModeloNuevo`. El comentario de dentro del bucle repetía el mismo error y ahora remite al primero. Sin cambio de código.
+- **Menor 7, `caja-173-alcance`:** cerrado en dos capas.
+  - **Tipo:** `LectorDeModeloDeDetalle` (`_shared/detalle-modelo-nuevo.ts`) sustituye al `Pick<PrismaClient, "cierreDetail">` en el módulo, en `WalletMovimientoRepository` y en `EstadoCuentaRepository`: un `findMany` cuyos argumentos solo admiten leer `cierre_id` donde `tarifa_modelo = nuevo`. `tsc` para `aggregate` y un `select` de importes con el cliente que el código ya tiene.
+  - **Guardia:** G4 y G5 declaran su propio `Pick`, y ahí `tsc` no puede pararlas. Regla nueva: ninguno de los dos repositorios nombra `cierreDetail` ni `cierre_detail`, y el módulo no nombra `PrismaClient`, SQL crudo, agregaciones, `monto`, sumas en JS, otro método del delegado ni una entrada de dinero del detalle. Esa lista sale del esquema (columnas `Decimal` y `conceptos`). Tiene control de no vacuidad y contrapruebas.
+- **Menor 8, B5:** test «el lote lee solo los cierres pedidos…», que cuenta las filas leídas con un lector que envuelve al `findMany` real.
+- **Menor 10:** espacio tras `=` en `CierresAdminRepository.ts:584`.
+
+### Decisiones
+
+- **Opcional en el tipo**, como en H1: obligatorio tocaba los fixtures de las filas y el DTO de mensajero y bodega. El compilador no obliga a poblarlo; lo obligan S1 y S6.
+- **Guardia, tocada a propósito:** `caja-173-alcance` amplía su alcance a `EstadoCuentaRepository`, que no es de la caja, porque abrió la misma tabla por el mismo módulo. Su `$queryRaw` antes no tenía esta regla y `cierre_detail` ya no se le puede colar por SQL (G14). El resto de sus sumas y tablas sigue sin guardia aquí: es anterior y no se tocó.
+- **Otra empresa, doble defensa:** como un cierre de otra empresa lleva una tienda de esa empresa, el filtro por tienda ya da falso aunque falle la RLS. Para que el test dependa de la RLS, pregunta por la tienda de B leyendo como A: vacío como `servi_app` y el cierre como dueño de las tablas (T1).
+
+### Archivos
+
+**Nuevos:** `tests/integration/db/estado-cuenta-tienda-modelo-nuevo.test.ts`
+
+**Modificados:** `lib/interfaces/repositories/IEstadoCuentaRepository.ts`, `lib/repositories/_shared/detalle-modelo-nuevo.ts`, `lib/repositories/CierresAdminRepository.ts`, `lib/repositories/EstadoCuentaRepository.ts`, `lib/repositories/WalletMovimientoRepository.ts`, `lib/services/EstadoCuentaService.ts`, `lib/services/WalletTiendaFeedService.ts`, `lib/types/estado-cuenta.ts`, `tests/unit/guards/caja-173-alcance.guardia.test.ts`; esta bitácora
+
+### Mapa R → test (tanda I1)
+
+Todo en `tests/integration/db/estado-cuenta-tienda-modelo-nuevo.test.ts`, 12 casos sobre `servi_gate_slt54`, leídos como `servi_app` por las cuatro entradas del servicio.
+
+| Caso del encargo | Test |
+|---|---|
+| R71/D38, solo viejo → falso | «solo viejo: falso…»; «un cierre sin ninguna fila de detalle…» |
+| R71/D38, reprogramado nuevo → verdadero | «reprogramado del modelo nuevo…», con `WalletTiendaFeedService` real: `flete_devolucion` 250,00 e `iva_flete_devolucion` 32,50 |
+| R71/D38, mixto → verdadero | «mixto dentro de un cierre»; «entre cierres, cada fila dice el suyo» |
+| R71/D38, cierre anterior a la activación → falso | «empresa activada…», con la solicitud real antes y después de activar |
+| R71/D38, otra tienda no contamina | «otra tienda del mismo cierre…» |
+| R71/D38, otra empresa no contamina | «otra empresa no contamina…» |
+| Solo el origen `cierre_dia` | «solo una fila con origen `cierre_dia`…» |
+| Campo aditivo | «la fila del mensajero no lleva el campo…»; importes literales en «solo viejo» y «reprogramado» |
+| Sin N+1 | «tres cierres cuestan una sentencia…» |
+| Menor 8, B5 | «el lote lee solo los cierres pedidos…» |
+| Menor 7, G4 y G5 | `caja-173-alcance`: «SLT-54: la lectura del modelo solo llega a `tarifa_modelo`…» y su contraprueba |
+
+### Mutaciones
+
+Script `i1-mut.cjs` en el scratchpad: corre primero la base de cada suite y aborta si no hay tests, hay rojos o hay saltos (`BASE total 12, fail 0, skip 0` y `BASE total 39, fail 0, skip 0`). Restaura cada archivo en `finally` y compara la huella del árbol al final (`ARBOL RESTAURADO true`). **24 de 24 matadas, todas por aserción, con todos los casos ejecutados en cada una.** Final: 0 rojos de 12 y 0 de 39.
+
+G4 y G5 son las líneas literales de `v2-mut.cjs` del reviewer. G4, G5, G9 y G11 se repitieron tras afinar el control de no vacuidad, que en la primera vuelta mataba G5 con un mensaje engañoso. Esa repetición es la que consta abajo.
+
+| Id | Mutación | Rojos |
+|---|---|---|
+| D1, D2 | Lote sin filtro de modelo; lote del viejo | 5 y 9 de 12 |
+| **B5** | Lote sin filtro de cierre (literal adaptado al `where` nuevo) | **1 de 12, cae** |
+| D3 | Lote sin filtro de tienda | 1 |
+| D4 | Lote sin `distinct` | 1 |
+| D5 | Consulta aunque no haya ids | 2 |
+| R1, R2 | El repositorio no pasa la tienda; una consulta por cierre | 1 y 1 («esperado 1, medido 3») |
+| S1, S2 | Fila siempre falso; siempre verdadero | 8 y 8 |
+| S3, S4 | Fila sin mirar `origen_tipo`; lote con ids que no son cierres | 1 y 1 |
+| S5 | El servicio no pasa la tienda | 1 |
+| S6 | `/mi-wallet` pierde el campo | 9 |
+| S7 | El campo se cuela en el mensajero | 1 |
+| T1 | El test lee sin el rol de la app, sin RLS | 1 |
+| **G4** | El repositorio suma `cierre_detail` por Prisma (literal) | **2 de 39, cae** |
+| **G5** | El módulo suma importes (literal) | **1 de 39, cae** |
+| G9, G10 | El módulo selecciona un importe; lee `conceptos` | 1 y 1 |
+| G11 | El módulo usa otro método del delegado | 1 |
+| G12, G13 | La caja o el estado de cuenta recuperan el delegado | 2 y 1 |
+| G14 | El estado de cuenta suma `cierre_detail` por SQL | 1 |
+
+Y `tsc`, con `i1-tsc.cjs`, con el cliente que cada archivo ya tiene: 4 de 4 en rojo, `TS2339` o `TS2353` (el módulo agrega, el módulo selecciona un importe, la caja agrega, el estado de cuenta agrega). Base y final, exit 0.
+
+### Salida de los comandos
+
+Sin `./init.sh` ni la suite completa. El grafo no se consultó: Grep y Read.
+
+```
+$ NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck        -> exit 0
+$ pnpm run lint                                                    -> exit 0, 0 errores, 233 avisos
+$ pnpm exec eslint <archivos de la tanda>                          -> exit 0, sin salida
+$ vitest estado-cuenta-tienda-modelo-nuevo, cierre-incluye-modelo-nuevo, caja-173-alcance
+  total 60 | passed 60 | failed 0 | skipped 0
+$ vitest related --run <7 archivos de lib>                         (DATABASE_URL = servi_gate_slt54)
+  total 5842 | passed 5019 | failed 92 | skipped 731 | archivos 483
+  - 134 archivos con rojos o sin arrancar: todos en tests/baseline-rojos.json; 0 fuera
+  - 0 rojos cuyo mensaje nombre el campo, el método nuevo o «is not a function»
+$ pnpm run test:guardias
+  total 4621 | passed 4616 | failed 4 | skipped 1 | archivos 331
+  - 4 rojos: dependencias-declaradas-presentes (baseline)
+```
+
+El criterio del related es el baseline por archivo, que no distingue un rojo nuevo dentro de un archivo que ya estaba rojo. Por eso busqué además los mensajes que delatarían este cambio, pero no comparé esos 92 uno a uno contra la rama base. Los 60 de la tercera línea son anteriores al ajuste del control de no vacuidad; el `FINAL` de la repetición dio 0 de 12 y 0 de 39. Los 233 avisos de lint son de todo el repo.

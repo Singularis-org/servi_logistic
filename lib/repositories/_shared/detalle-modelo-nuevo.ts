@@ -1,5 +1,3 @@
-import type { PrismaClient } from "@prisma/client";
-
 // SLT-54 (R71, menor 6 de la revision F2.2) — ¿ESTE CIERRE INCLUYE ALGUNA GESTION DEL MODELO NUEVO?
 //
 // Sale de `cierre_detail.tarifa_modelo`, lo congelado por orden al solicitar, y nunca del interruptor
@@ -22,16 +20,39 @@ export function incluyeModeloNuevoDe(fila: { _count: { detalle: number } }): boo
 }
 
 /**
- * Para las filas que solo conocen el id de su cierre, como el libro de la caja, cuyo `origen_id` es
- * polimorfico y no tiene relacion en Prisma. UNA consulta por lectura, y ninguna sin ids.
+ * Lo unico que un repositorio de un libro puede pedirle a `cierre_detail`. Esa tabla guarda las entradas
+ * del dinero, y los libros tienen prohibida una segunda fuente de importes (R33 de la 173): con el
+ * delegado entero, sumar sus columnas compilaria. Asi, ni el repositorio ni este modulo tienen por donde.
+ */
+export interface LectorDeModeloDeDetalle {
+  cierreDetail: {
+    findMany(args: {
+      where: { cierreId: { in: string[] }; tarifaModelo: "nuevo"; tiendaId?: string };
+      distinct: ["cierreId"];
+      select: { cierreId: true };
+    }): PromiseLike<{ cierreId: string }[]>;
+  };
+}
+
+/**
+ * Para las filas que solo conocen el id de su cierre, como los libros de la caja y de la tienda, cuyo
+ * `origen_id` es polimorfico y no tiene relacion en Prisma. UNA consulta por lectura, y ninguna sin ids.
+ *
+ * Con `tiendaId` solo cuenta el detalle de esa tienda: un cierre mezcla tiendas, y el movimiento de una no
+ * responde por las gestiones de otra. Es la misma tienda congelada a la que el feed le asento la fila.
  */
 export async function cierresConModeloNuevo(
-  cliente: Pick<PrismaClient, "cierreDetail">,
+  cliente: LectorDeModeloDeDetalle,
   cierreIds: readonly string[],
+  tiendaId?: string,
 ): Promise<ReadonlySet<string>> {
   if (cierreIds.length === 0) return new Set();
   const filas = await cliente.cierreDetail.findMany({
-    where: { cierreId: { in: [...cierreIds] }, tarifaModelo: "nuevo" },
+    where: {
+      cierreId: { in: [...cierreIds] },
+      tarifaModelo: "nuevo",
+      ...(tiendaId === undefined ? {} : { tiendaId }),
+    },
     distinct: ["cierreId"],
     select: { cierreId: true },
   });
