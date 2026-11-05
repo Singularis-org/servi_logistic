@@ -322,3 +322,85 @@ Veredicto: T4.4 terminada; typecheck limpio, tests de chat y envíos en verde, R
 7. **El navegador ya no comprueba que cédula y teléfono sean numéricos.** `postulacionSchema` lo comparte el cliente; esa comprobación queda solo en el servidor.
 
 - **Decisión 2026-11-04, humano: opción A.** `TOPE_MEMO` de `lib/utils/calendario-zona.ts` pasa de `20_000` a `16_384`: la guardia R47 (`tests/unit/analytics/rollup-guards.test.ts`) exige que la cifra de volumen 20000 viva solo en `lib/config/analitica-rollup.ts`, y el tope de la caché coincidía por casualidad. La guardia no se toca.
+
+## Tanda 2b · decisiones del humano tras la tanda 2 (2026-11-04)
+
+Commits: `a35d50f6` (decisiones en la ficha), `13757c87` (código y tests) y el de esta bitácora.
+
+### Archivos
+- Producción:
+  - `lib/services/WebhookWhatsappService.ts`
+  - `lib/services/CorregirDatosClienteService.ts`
+  - `lib/actions/corregir-datos-cliente.ts` (cablea `construirReglasPaisEmpresa(prisma)`)
+  - `lib/config/aprobacion-postulaciones.ts` (constante nueva)
+  - `lib/interfaces/repositories/IAprobacionPostulacionRepository.ts` y `lib/repositories/AprobacionPostulacionRepository.ts` (`createdAt` en `personaPendiente`)
+  - `lib/services/AprobacionPostulacionService.ts`
+  - `lib/types/organizacion.ts` (`AltaEmpresaRepeticion`)
+  - `lib/interfaces/repositories/IOrganizacionRepository.ts` y `lib/repositories/OrganizacionRepository.ts` (`repeticion`: solo lectura, reutiliza `decidirSobreExistente`)
+  - `lib/services/OrganizacionService.ts`
+- Test nuevo: `tests/unit/services/webhook-whatsapp-pais-incompleto.test.ts`.
+- Casos nuevos en `corregir-datos-cliente-service`, `postulacion-mensajero-service-pais`, `organizacion-service-pais` y `tests/integration/db/organizacion-alta`.
+- Guardia `corregir-datos-sin-rastro`: el control positivo exige `normalizarTelefono(` y el import de `@/lib/utils/telefono-pais`, en lugar de `normalizarTelefonoWa` y `whatsapp-telefono`. No cambia nada más.
+- Ajustados solo para inyectar `reglasPaisFijas()` o para dar `createdAt` o `repeticion` a los dobles:
+  - unitarios: `corregir-datos-cliente-{bodega-satelite,geo-retirada,texto-etiqueta}`, `corregir-ubicacion-importes`, `aprobacion-postulacion-{service,tope-plan}` y `organizacion-service`;
+  - integración: `corregir-datos-cliente.{chat,repo}` y `postulacion-documento-por-tipo`.
+
+### Decisión → test
+| Decisión | Test |
+|---|---|
+| 2 (webhook, R18) | `webhook-whatsapp-pais-incompleto`: «lote con dos empresas, una con país incompleto: la otra se procesa, responde 200 y queda en el log sin PII», «si la única empresa del lote tiene el país incompleto, igual responde 200 (Meta no reintenta)» y «un error que NO es de país incompleto no se traga: sigue propagándose» |
+| 4 (corregir datos, R18) | `corregir-datos-cliente-service`, bloque «SLT-42 (punto 4 tras la tanda 2)»: el prefijo de OTRO país; un teléfono sin dígitos; si el teléfono no cambia, no se lee el país; un país sin prefijo o sin dígitos da `PaisIncompleto` y no escribe |
+| 6 (postulación previa, R10/R14) | `postulacion-mensajero-service-pais`: «una postulación PREVIA a SLT-42 … se aprueba igual», «una postulación NUEVA … es `validation_error`» y «la frontera es exacta …» |
+| 7 (alta repetida, R6) | `organizacion-service-pais`, bloque «la repetición se decide antes que el país…» (4 its); `organizacion-alta`: «SLT-42 R6: repetir un alta en un país que quedó incompleto da `ya_existe`; un alta nueva allí es `invalida` `paisId`» |
+
+### Decisión del implementer: qué es una postulación «previa» (punto 6)
+- Una postulación es previa si `usuario.createdAt < POSTULACION_VALIDADA_POR_PAIS_DESDE`. La constante está en `lib/config/aprobacion-postulaciones.ts` y vale `2026-11-04T14:00:00.000Z`, el instante del nombre de la migración `20261104140000_slt42_pais_telefono_y_zona`.
+- Por qué: la postulación es una fila de `usuario` pendiente, y `created_at` es el único dato del modelo que separa las viejas de las nuevas. No hace falta migración ni leer `_prisma_migrations`, que no consta que el rol de la app pueda leer.
+- Riesgo: la constante tiene que ser **igual o posterior al deploy de SLT-42 en producción**.
+  - Si queda antes, las postulaciones que entraron entre esa fecha y el deploy, con las reglas viejas, darían `validation_error` al aprobarlas.
+  - Si queda después, no rompe nada: desde el deploy, la recepción ya valida (T4.2).
+  - Hay que revisarla junto con T1.0, antes del deploy.
+
+### Punto 9 · `historial-accion-atomicidad` con la base recreada
+- `logistic_slt42_test` se recreó como indica `docs/verification.md`:
+  - `DROP` y `CREATE`;
+  - `prisma migrate deploy`: 300 migraciones, 3 de ellas de slt42;
+  - `pnpm run db:seed`: «Seed de catalogos completado (rol, order_status, vehiculos)».
+- La base de desarrollo sigue intacta: 307 migraciones, ninguna de slt42.
+- Resultado: sigue rojo, ahora en el `beforeAll`: «hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar». Da `Test Files 1 failed · Tests 44 skipped`. El mensaje pide correr `scripts/seed-zonas.ts`, que no existe.
+- Causa:
+  - El test toma sus FKs de **cualquier** orden que ya exista (`fksDeOrden`, en `tests/integration/db/_postgres-real.ts:495`, no filtra por empresa).
+  - Cada caso corre en una empresa NUEVA, porque `enTransaccionRevertida` sin `organizacionId` crea una.
+  - Con la base vacía no hay ninguna orden. Con órdenes en la base, las FKs son de otra empresa y todo cae en «referencia a otra empresa»: eran los 17 rojos de antes.
+  - Es el motivo del baseline («la suite asume órdenes, usuarios y zonas sembrados … la retira SL-31»), anterior a SLT-42.
+- Ningún caso llega a ejercitar el ajuste de T4.1, tampoco los 3 de la ficha 379 que usan `UsuarioService`: todos dependen de `FKS`.
+- El ajuste de T4.1 en este archivo es solo el sexto argumento del constructor (`reglasPaisFijas(CR)`), y lo cubre el typecheck. Para ejercitarlo de verdad habría que sembrar las FKs en la empresa del test, como se hizo en T4.4 con `chat-entrante-telefono-cr` (pregunta 5).
+- `corregir-datos-cliente.repo.test.ts` da el mismo mensaje con la base recreada. También está en el baseline, por el mismo motivo.
+
+### Guardia `descargas-por-registro`
+- No es de SLT-42. Corriendo sola, con un timeout amplio, la rama tarda 17,1 s en frío y después 7,9 s; `dev` tarda 9,6 s y 8,8 s. La rama no es más lenta.
+- Solo recorre `app/`, `components/` y el registro de descargas. Ahí SLT-42 solo toca `app/api/webhooks/whatsapp/route.ts`, con 3 líneas.
+- El costo está en la guardia: `usosDe` vuelve a limpiar el archivo entero por cada símbolo. Con 33 símbolos y 722 archivos son unas 24.000 pasadas de regex sobre unos 6,3 MB, y con la CPU cargada pasa de 20 s.
+- No está en el baseline. Se podría arreglar fuera de SLT-42 limpiando cada archivo una sola vez al cargarlo.
+
+### Salida
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: exit 0.
+- `eslint --max-warnings=0` sobre los 27 archivos tocados: 0 errores y 12 warnings `no-unused-vars`, en dobles que ya estaban en los tests de corregir datos.
+- Unit (servicios tocados, sus actions, `webhook-whatsapp-*` y la guardia `corregir-datos-sin-rastro`): `Test Files 21 passed (21) · Tests 313 passed (313)`.
+- Unit, componentes y guardias relacionadas: `Test Files 9 passed (9) · Tests 203 passed (203)`.
+- Integración en `logistic_slt42_test`, antes de recrearla:
+  - en verde: `corregir-datos-cliente.chat`, `organizacion-alta`, `postulacion-documento-por-tipo` y `webhook-whatsapp.route`;
+  - en rojo en el `beforeAll`: `corregir-datos-cliente.repo` (en el baseline).
+- `pnpm run test:guardias` completo: `Test Files 1 failed | 324 passed | 3 skipped (328) · Tests 4 failed | 4550 passed | 24 skipped`.
+  - Los 4 rojos son de `dependencias-declaradas-presentes`, en el baseline.
+  - `rollup-guards` y `descargas-por-registro` salieron en verde en esta corrida.
+
+### Preguntas para el leader o el humano
+1. Fecha de corte de «previa» (`POSTULACION_VALIDADA_POR_PAIS_DESDE`): ¿se fija al instante real del deploy de SLT-42 o se confirma `2026-11-04T14:00Z`?
+2. Corregir datos con el país incompleto lanza `PaisIncompleto`, como el chat, y la Server Action lo devuelve como error genérico. ¿Vale así, o se prefiere un `fieldErrors.telefonoDest` con un texto propio?
+3. Webhook con el país incompleto: se saltan los mensajes, pero se siguen aplicando los estados de entrega de esa empresa y el «último contacto», que no dependen del teléfono. ¿Se deja así?
+4. Log del webhook: `ChatLogger` solo tiene `warn`, así que va por `console.warn` con el texto «ERROR: mensajes saltados…». ¿Vale?
+5. `historial-accion-atomicidad`: ¿se arregla dentro de SLT-42 (sembrar las FKs en la empresa del test, como en `chat-entrante-telefono-cr`) o se deja para SL-31?
+6. Ningún test recorre `construirReglasPaisEmpresa` dentro de `buildService()` de corregir datos: el composition root solo prueba el distrito. Lo cubre el typecheck.
+
+Veredicto: decisiones 2, 4, 6 y 7 implementadas con test. El punto 9 queda aclarado: es un rojo del fixture, está en el baseline y no es de SLT-42. Typecheck limpio; en las guardias solo queda el rojo del baseline.

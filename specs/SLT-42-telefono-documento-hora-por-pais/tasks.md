@@ -83,14 +83,17 @@
 - [x] **T4.2** `[P]` `PostulacionMensajeroService` y `AprobacionPostulacionService` +
   `tests/unit/services/postulacion-mensajero-service-pais.test.ts`.
   *Hecho:* verde.
+  *Tanda 2b:* aprobar una postulación previa a SLT-42 (`createdAt` < `POSTULACION_VALIDADA_POR_PAIS_DESDE`) no valida país (decisión 6).
 - [x] **T4.3** `[P]` `OrganizacionService.altaEmpresa` (R6, y R10/R14 del maestro con el país elegido) +
   `tests/unit/services/organizacion-service-pais.test.ts`.
   *Hecho:* verde; `validation_error` en `paisId` y en `maestro.*` sin escribir.
+  *Tanda 2b:* la repetición (`ya_existe`/`conflicto`) se decide antes de R6 y del maestro (decisión 7).
 - [x] **T4.4** `[P]` WhatsApp con el prefijo del país: `ChatConversacionRepository` y
   `busqueda-texto-sql.ts` con `sqlNormalizarTelefono` parametrizado; envío, webhook, bienvenida y
   rastreo con `normalizarTelefono`/`telefonoSirveParaEnvio`. Se retira `telefono-cr-sql.ts`.
   `chat-entrante-telefono-cr.test.ts` se parametriza (R19).
   *Hecho:* verde; los tests de chat y envíos que ya existían, en verde.
+  *Tanda 2b:* el webhook salta la empresa con `PaisIncompleto` y responde 200 (decisión 2); `CorregirDatosClienteService` usa el prefijo del país (decisión 4).
 
 ## Bloque 5 — Hora en el servidor (depende de T2.1, T3.2)
 
