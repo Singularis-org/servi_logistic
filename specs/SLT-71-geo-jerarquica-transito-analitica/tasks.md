@@ -13,13 +13,13 @@
 
 ## T0 — Preparación
 
-- [ ] **T0.1** Comprobar los contextos (design §3.5 y §4):
+- [x] **T0.1** Comprobar los contextos (design §3.5 y §4):
   - ningún camino genera el informe de tránsito en `comoPlataforma` ni sin contexto;
   - ninguna lectura de analítica ni de las que comparten el recorte corre en `comoPlataforma`.
 
   **Hecho:** la lista de llamadores, con su contexto, está en `progress/impl_SLT-71.md`. Si aparece
   uno en plataforma, se para y se pregunta.
-- [ ] **T0.2** Fixture `tests/integration/db/_fixtures/geo-71.ts` sobre `geo-65.ts` (design §11).
+- [x] **T0.2** Fixture `tests/integration/db/_fixtures/geo-71.ts` sobre `geo-65.ts` (design §11).
   **Hecho:** un test que cuenta sus filas por lectura (antivacío) pasa, con al menos una fila en
   cada lectura de analítica y en tránsito.
 
