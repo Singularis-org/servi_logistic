@@ -29,3 +29,21 @@ export function loadAprobacionPostulacionesConfig(): AprobacionPostulacionesConf
 
 export const aprobacionPostulacionesConfig: AprobacionPostulacionesConfig =
   loadAprobacionPostulacionesConfig();
+
+/**
+ * SLT-42 (decision del humano tras la tanda 2, punto 6) — desde que instante una postulacion es
+ * «nueva» y se valida con las reglas del pais al aprobarla. Una postulacion creada ANTES
+ * (`usuario.created_at` < este instante) se recibio con las reglas de Costa Rica de entonces y se
+ * aprueba igual aunque su documento o su telefono no cumplan la regla de hoy.
+ *
+ * EL VALOR: el instante del nombre de la primera migracion de SLT-42
+ * (`db/migrations/20261104140000_slt42_pais_telefono_y_zona`), en UTC.
+ *
+ * ⚠️ ABIERTO (antes del deploy, con T1.0): tiene que ser IGUAL O POSTERIOR al deploy de SLT-42 en
+ * produccion. Un valor anterior al deploy dejaria sin aprobar las postulaciones recibidas entre ese
+ * valor y el deploy, que entraron con las reglas viejas. Un valor posterior no rompe nada: desde el
+ * deploy, `PostulacionMensajeroService` ya valida cada postulacion al recibirla (T4.2).
+ *
+ * El UNICO sitio que lo define; lo lee `AprobacionPostulacionService`.
+ */
+export const POSTULACION_VALIDADA_POR_PAIS_DESDE = new Date("2026-11-04T14:00:00.000Z");

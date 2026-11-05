@@ -385,6 +385,33 @@ describeSiHayBase("SL-17 — alta de empresa contra Postgres", () => {
     expect(r.organizacionesEnElSegundo).toEqual([{ slug: slugVieja }]);
   });
 
+  // SLT-42 (punto 7 tras la tanda 2, decisión del humano): la repetición se decide ANTES de R6 y de
+  // los datos del maestro, como SL-20 §13. Un país que quedó incompleto no convierte la repetición
+  // en `invalida`, y una empresa nueva en ese país sigue rechazada.
+  it("SLT-42 R6: repetir un alta en un país que quedó incompleto da `ya_existe`; un alta nueva allí es `invalida` `paisId`", async () => {
+    const slugVieja = conSufijo("xa-incompleto-vieja");
+    const emailVieja = `xa-incompleto-vieja-${RUN}@ejemplo.test`;
+    const slugNueva = conSufijo("xa-incompleto-nueva");
+    const r = await revertida(base, async (tx) => {
+      await crearSegundoPais(tx);
+      const servicio = servicioSobre(clienteConTransaccionAnidada(tx));
+      const vieja = await servicio.altaEmpresa(entrada(slugVieja, emailVieja, `doc-xa-inc-vieja-${RUN}`, SEGUNDO));
+
+      await tx.pais.update({ where: { id: SEGUNDO }, data: { prefijoTelefonico: null } });
+
+      const repetida = await servicio.altaEmpresa(entrada(slugVieja, emailVieja, `doc-xa-inc-vieja-${RUN}`, SEGUNDO));
+      const nueva = await servicio.altaEmpresa(
+        entrada(slugNueva, `xa-incompleto-nueva-${RUN}@ejemplo.test`, `doc-xa-inc-nueva-${RUN}`, SEGUNDO),
+      );
+      return { vieja, repetida, nueva };
+    });
+
+    expect(r.vieja.estado).toBe("creada");
+    if (r.vieja.estado !== "creada") return;
+    expect(r.repetida).toEqual({ estado: "ya_existe", organizacionId: r.vieja.organizacionId });
+    expect(r.nueva).toEqual({ estado: "invalida", campo: "paisId" });
+  });
+
   it("R44: primer acceso — tras «recuperar contraseña» la nueva contraseña vale", async () => {
     const email = `primer-${RUN}@ejemplo.test`;
     const r = await alta(entrada(conSufijo("primer"), email, `doc-primer-${RUN}`));

@@ -87,7 +87,7 @@ export class AprobacionPostulacionRepository implements IAprobacionPostulacionRe
   async personaPendiente(id: string): Promise<PersonaDePostulacion | null> {
     return this.prisma.usuario.findFirst({
       where: { id, estado: ESTADO_PENDIENTE, rol: { value: ROL_MENSAJERO } },
-      select: { telefono: true, cedula: true, tipoIdentificacionId: true },
+      select: { telefono: true, cedula: true, tipoIdentificacionId: true, createdAt: true },
     });
   }
 

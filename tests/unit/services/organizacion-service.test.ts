@@ -40,7 +40,7 @@ function entradaValida() {
 
 function repoDoble(resultado: AltaEmpresaResultado = { estado: "creada", organizacionId: "org-1", maestroId: "u-1" }) {
   const altaEmpresa = vi.fn<(datos: AltaEmpresaDatos) => Promise<AltaEmpresaResultado>>(async () => resultado);
-  const repo: IOrganizacionRepository = { altaEmpresa };
+  const repo: IOrganizacionRepository = { altaEmpresa, repeticion: vi.fn(async () => null) };
   return { repo, altaEmpresa };
 }
 
@@ -189,6 +189,7 @@ describe("R44–R46 — los cinco desenlaces del repositorio se devuelven tal cu
       altaEmpresa: vi.fn(async () => {
         throw new Error("la base se cayó");
       }),
+      repeticion: vi.fn(async () => null),
     };
     await expect(new OrganizacionService(repo, paisesDelAltaFijos()).altaEmpresa(entradaValida())).rejects.toThrow("la base se cayó");
   });

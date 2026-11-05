@@ -5,6 +5,7 @@ import { ChatConversacionRepository } from "@/lib/repositories/ChatConversacionR
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
 import { CorregirDatosClienteService } from "@/lib/services/CorregirDatosClienteService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 
 import {
@@ -187,7 +188,7 @@ describeSiHayBase("⭑ 312/G1 — corregir el telefono y el hilo de WhatsApp", (
       // ANTI-VACUIDAD: antes de corregir, el numero viejo SI es el de esta orden.
       const antes = await ctx.chat.resolverOrdenActivaPorNumero(E164_VIEJO, TEL_CR);
 
-      const service = new CorregirDatosClienteService(ctx.repo, ctx.tarifas);
+      const service = new CorregirDatosClienteService(ctx.repo, ctx.tarifas, reglasPaisFijas());
       const resultado = await service.corregir(
         { ordenId: ctx.ordenId, telefonoDest: TELEFONO_NUEVO },
         MAESTRO,
@@ -218,7 +219,7 @@ describeSiHayBase("⭑ 312/G1 — corregir el telefono y el hilo de WhatsApp", (
 
   it("⭑ R19: la fila de `chat_conversacion` del numero viejo sigue INTACTA, con sus 2 mensajes", async () => {
     const r = await conOrdenYHilo(async (ctx) => {
-      const service = new CorregirDatosClienteService(ctx.repo, ctx.tarifas);
+      const service = new CorregirDatosClienteService(ctx.repo, ctx.tarifas, reglasPaisFijas());
       const resultado = await service.corregir(
         { ordenId: ctx.ordenId, telefonoDest: TELEFONO_NUEVO },
         MAESTRO,

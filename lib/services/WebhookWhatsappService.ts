@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 
 import { conEmpresa } from "@/lib/db/contexto-empresa";
+import { PaisIncompleto } from "@/lib/db/errores-pais";
 import type { IResumenSecreto } from "@/lib/interfaces/external/IResumenSecreto";
 import type {
   DestinoWebhook,
@@ -244,7 +245,19 @@ export class WebhookWhatsappService implements IWebhookWhatsappService {
     // Antes de ingerir: si la ingesta fallara, el motivo del `failed` ya quedo en el log.
     volcarStatusesFallidos(lote.cuerpo, this.deps.logger);
 
-    sumar(resumen, await this.deps.ingesta.ingerirEventos(eventos));
+    try {
+      sumar(resumen, await this.deps.ingesta.ingerirEventos(eventos));
+    } catch (error) {
+      // SLT-42 (decision del humano tras la tanda 2): un pais sin prefijo o sin digitos no puede
+      // normalizar el numero del cliente. La ingesta falla cerrado ANTES de escribir; aqui se
+      // saltan los mensajes de ESTA empresa, queda en el log y el lote sigue con las demas. La
+      // respuesta a Meta sigue siendo 200: reintentar no arregla el maestro de paises. Sin PII:
+      // solo la empresa y el pais.
+      if (!(error instanceof PaisIncompleto)) throw error;
+      this.deps.logger.warn(
+        `[webhook-whatsapp] ERROR: mensajes saltados, la empresa ${lote.destino.organizacionId} tiene el pais ${error.paisId} incompleto (sin prefijo o sin digitos)`,
+      );
+    }
     if (eventos.statuses.length > 0) await this.aplicarEntregas(eventos);
     await this.anotarSinRomper(lote.destino);
     return true;

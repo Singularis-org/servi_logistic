@@ -45,20 +45,50 @@ function entrada(maestro: Partial<{ telefono: string; documento: string; tipoDoc
   };
 }
 
-function montar(paises: readonly PaisDelAltaFijo[] = [paisDelAltaFijo(), PA]) {
+function montar(paises: readonly PaisDelAltaFijo[] = [paisDelAltaFijo(), PA], repetida: AltaEmpresaResultado | null = null) {
   const altaEmpresa = vi.fn<(datos: AltaEmpresaDatos) => Promise<AltaEmpresaResultado>>(async () => ({
     estado: "creada",
     organizacionId: "org-1",
     maestroId: "u-1",
   }));
-  const repo: IOrganizacionRepository = { altaEmpresa };
-  return { servicio: new OrganizacionService(repo, paisesDelAltaFijos(paises)), altaEmpresa };
+  const repeticion = vi.fn(async () => repetida);
+  const repo: IOrganizacionRepository = { altaEmpresa, repeticion };
+  return { servicio: new OrganizacionService(repo, paisesDelAltaFijos(paises)), altaEmpresa, repeticion };
 }
 
 /** Costa Rica con un dato de menos, para R6. */
 function crCon(datos: Partial<PaisDTO>, tipos?: readonly TipoDocumentoDTO[]): PaisDelAltaFijo {
   return paisDelAltaFijo(datos, tipos);
 }
+
+describe("SLT-42 (punto 7 tras la tanda 2) — la repetición se decide antes que el país, como SL-20 §13", () => {
+  it("repetir un alta en un país que quedó incompleto da `ya_existe`, sin validar el país ni escribir", async () => {
+    const { servicio, altaEmpresa, repeticion } = montar([crCon({ prefijoTelefonico: null })], {
+      estado: "ya_existe",
+      organizacionId: "org-1",
+    });
+    expect(await servicio.altaEmpresa(entrada())).toEqual({ estado: "ya_existe", organizacionId: "org-1" });
+    expect(repeticion).toHaveBeenCalledWith(expect.objectContaining({ slug: "envios-del-sur", paisId: "CR" }));
+    expect(altaEmpresa).not.toHaveBeenCalled();
+  });
+
+  it("repetir un alta cuyo maestro ya no cumple la regla del documento también da `ya_existe`", async () => {
+    const { servicio, altaEmpresa } = montar(undefined, { estado: "ya_existe", organizacionId: "org-1" });
+    expect(await servicio.altaEmpresa(entrada({ documento: "1" }))).toEqual({ estado: "ya_existe", organizacionId: "org-1" });
+    expect(altaEmpresa).not.toHaveBeenCalled();
+  });
+
+  it("el `conflicto` de una repetición también va antes del país", async () => {
+    const { servicio } = montar([crCon({ zonaHoraria: null })], { estado: "conflicto", campo: "slug" });
+    expect(await servicio.altaEmpresa(entrada())).toEqual({ estado: "conflicto", campo: "slug" });
+  });
+
+  it("la entrada mal formada sigue siendo `invalida` sin consultar la repetición", async () => {
+    const { servicio, repeticion } = montar(undefined, { estado: "ya_existe", organizacionId: "org-1" });
+    expect((await servicio.altaEmpresa({ ...entrada(), slug: "Mal Slug" })).estado).toBe("invalida");
+    expect(repeticion).not.toHaveBeenCalled();
+  });
+});
 
 describe("SLT-42 R6 — el país elegido tiene que estar completo", () => {
   const incompletos: [string, PaisDelAltaFijo][] = [

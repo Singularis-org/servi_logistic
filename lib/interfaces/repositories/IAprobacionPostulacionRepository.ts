@@ -26,6 +26,8 @@ export interface PersonaDePostulacion {
   telefono: string;
   cedula: string;
   tipoIdentificacionId: string;
+  /** SLT-42: cuando se recibio. Marca si la postulacion es previa a la validacion por pais. */
+  createdAt: Date;
 }
 
 export interface MensajeroEstado {

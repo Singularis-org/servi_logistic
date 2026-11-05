@@ -42,6 +42,12 @@ export class OrganizacionService implements IOrganizacionService {
     const validada = altaEmpresaInputSchema.safeParse(input);
     if (!validada.success) return { estado: "invalida", campo: campoRechazado(validada.error) };
 
+    // SLT-42 (punto 7 tras la tanda 2): la repetición se decide ANTES que el país y los datos del
+    // maestro, como SL-20 §13. Repetir un alta siempre da `ya_existe` (o su `conflicto`), aunque el
+    // país haya quedado incompleto o la regla del documento haya cambiado después.
+    const repetida = await this.repo.repeticion(validada.data);
+    if (repetida !== null) return repetida;
+
     // SLT-42: todo lo que depende del país se decide antes de hashear y de escribir nada.
     const conElPais = await this.validarConElPais(validada.data);
     if (!conElPais.ok) return { estado: "invalida", campo: conElPais.campo };

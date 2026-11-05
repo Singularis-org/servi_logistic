@@ -42,7 +42,7 @@ function buildRepo(overrides: Partial<IAprobacionPostulacionRepository> = {}): I
     listPendientes: vi.fn().mockResolvedValue({ items: [buildRow()], total: 1 }),
     findMensajeroById: vi.fn().mockResolvedValue({ id: "usr-1", estado: "pendiente" }),
     // SLT-42: una postulación pendiente con datos válidos de Costa Rica (R10, R11, R14).
-    personaPendiente: vi.fn().mockResolvedValue({ telefono: "88887777", cedula: "112223333", tipoIdentificacionId: "tipo-cr-cedula" }),
+    personaPendiente: vi.fn().mockResolvedValue({ telefono: "88887777", cedula: "112223333", tipoIdentificacionId: "tipo-cr-cedula", createdAt: new Date("2026-12-01T00:00:00.000Z") }),
     actualizarEstadoSiPendiente: vi.fn().mockResolvedValue(1),
     ...overrides,
   };

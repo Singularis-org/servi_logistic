@@ -114,7 +114,13 @@ describeSiHayBase("SLT-42 — postulación: documento por empresa y tipo, y la p
       return { m, pendiente, activo, noExiste, deOtraEmpresa };
     });
 
-    expect(r.pendiente).toEqual({ telefono: "88887777", cedula: DOCUMENTO, tipoIdentificacionId: r.m.cedula });
+    // SLT-42 (punto 6 tras la tanda 2): tambien `createdAt`, que marca si la postulacion es previa.
+    expect(r.pendiente).toEqual({
+      telefono: "88887777",
+      cedula: DOCUMENTO,
+      tipoIdentificacionId: r.m.cedula,
+      createdAt: expect.any(Date),
+    });
     expect(r.activo).toBeNull();
     expect(r.noExiste).toBeNull();
     expect(r.deOtraEmpresa).toBeNull();

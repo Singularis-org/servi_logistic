@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { POSTULACION_VALIDADA_POR_PAIS_DESDE } from "@/lib/config/aprobacion-postulaciones";
 import type { IFileStorage } from "@/lib/interfaces/external/IFileStorage";
 import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlProvider";
 import type {
@@ -218,13 +219,19 @@ describe("SLT-42 — PostulacionMensajeroService valida con las reglas del país
 // ---------------------------------------------------------------------------------------------
 
 const MAESTRO: Actor = { usuarioId: "maestro-1", rol: "maestro" };
+/** Una postulacion recibida desde SLT-42: se valida al aprobarla. */
+const NUEVA = new Date(POSTULACION_VALIDADA_POR_PAIS_DESDE.getTime() + 1);
+/** Una postulacion recibida antes de SLT-42 (punto 6 tras la tanda 2): se aprueba sin validar. */
+const PREVIA = new Date(POSTULACION_VALIDADA_POR_PAIS_DESDE.getTime() - 1);
 
 function aprobacion(persona: Partial<PersonaDePostulacion> | null = {}, pais: Partial<ReglasPaisFijas> = {}) {
   const repo: IAprobacionPostulacionRepository = {
     listPendientes: vi.fn(),
     findMensajeroById: vi.fn().mockResolvedValue({ id: "usr-1", estado: "pendiente" }),
     personaPendiente: vi.fn().mockResolvedValue(
-      persona === null ? null : { telefono: "88887777", cedula: "112223333", tipoIdentificacionId: "tipo-cr-cedula", ...persona },
+      persona === null
+        ? null
+        : { telefono: "88887777", cedula: "112223333", tipoIdentificacionId: "tipo-cr-cedula", createdAt: NUEVA, ...persona },
     ),
     actualizarEstadoSiPendiente: vi.fn().mockResolvedValue(1),
   };
@@ -279,6 +286,25 @@ describe("SLT-42 — AprobacionPostulacionService valida al aprobar con las regl
       status: "validation_error",
       fieldErrors: { telefono: ["El país de la empresa no tiene reglas de teléfono"] },
     });
+  });
+
+  it("punto 6 tras la tanda 2: una postulación PREVIA a SLT-42 con documento y teléfono fuera de regla se aprueba igual", async () => {
+    const { repo, service } = aprobacion({ cedula: "1710034065", telefono: "0991234567", createdAt: PREVIA });
+    expect(await service.aprobar("usr-1", MAESTRO)).toEqual({ status: "ok", usuarioId: "usr-1", estado: "activo" });
+    expect(repo.actualizarEstadoSiPendiente).toHaveBeenCalledWith("usr-1", "activo", "maestro-1");
+  });
+
+  it("punto 6 tras la tanda 2: una postulación NUEVA con documento y teléfono fuera de regla es `validation_error`", async () => {
+    const { repo, service } = aprobacion({ cedula: "1710034065", telefono: "0991234567", createdAt: NUEVA });
+    const r = await service.aprobar("usr-1", MAESTRO);
+    expect(r.status).toBe("validation_error");
+    if (r.status === "validation_error") expect(Object.keys(r.fieldErrors).sort()).toEqual(["cedula", "telefono"]);
+    expect(repo.actualizarEstadoSiPendiente).not.toHaveBeenCalled();
+  });
+
+  it("punto 6 tras la tanda 2: la frontera es exacta, una postulación creada EN el instante de corte ya es nueva", async () => {
+    const { service } = aprobacion({ cedula: "1710034065", createdAt: new Date(POSTULACION_VALIDADA_POR_PAIS_DESDE) });
+    expect((await service.aprobar("usr-1", MAESTRO)).status).toBe("validation_error");
   });
 
   it("R10: lo que no es una postulación pendiente no se valida: sigue siendo `not_found` o `conflict`", async () => {

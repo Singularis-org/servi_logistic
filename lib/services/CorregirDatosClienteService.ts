@@ -1,3 +1,4 @@
+import { PaisIncompleto } from "@/lib/db/errores-pais";
 import type {
   CorregirDatosClienteData,
   DistritoResueltoRow,
@@ -6,6 +7,7 @@ import type {
 } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { ITarifaVigenteRepository } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import type {
   AvisoCambioUbicacion,
   CorregirDatosClienteInput,
@@ -29,7 +31,7 @@ import {
   mensajeCorreccionSugerencia,
 } from "@/lib/utils/mensaje-caracter-no-imprimible";
 import { evaluarTextoDeEtiqueta } from "@/lib/utils/texto-imprimible-etiqueta";
-import { normalizarTelefonoWa } from "@/lib/utils/whatsapp-telefono";
+import { normalizarTelefono } from "@/lib/utils/telefono-pais";
 
 // FICHA 312, AMPLIADA POR LA 327 — logica de negocio de LA CORRECCION DE LOS DATOS DEL CLIENTE Y
 // DE SU UBICACION. No conoce HTTP, no conoce Prisma y no conoce Next: se instancia entero con
@@ -99,6 +101,13 @@ export type CorregirDatosClienteRepo = Pick<
  * root la PASA. Un servicio que recibe `undefined` compila igual y muere en produccion.
  */
 export type CorregirDatosClienteTarifas = Pick<ITarifaVigenteRepository, "resolveTarifa">;
+
+/**
+ * SLT-42 (decision del humano tras la tanda 2, punto 4) — el pais de la empresa EN CURSO, para
+ * normalizar el telefono con SU prefijo y SUS digitos, como el chat de WhatsApp (T4.4). Igual que
+ * las tarifas, lo PASA el composition root.
+ */
+export type CorregirDatosClienteReglasPais = Pick<IReglasPaisEmpresa, "deLaEmpresa">;
 
 /**
  * Los campos de texto obligatorio: la orden no puede quedarse sin ellos (312/design §10).
@@ -179,6 +188,7 @@ export class CorregirDatosClienteService implements ICorregirDatosClienteService
   constructor(
     private readonly repo: CorregirDatosClienteRepo,
     private readonly tarifas: CorregirDatosClienteTarifas,
+    private readonly reglasPais: CorregirDatosClienteReglasPais,
   ) {}
 
   /**
@@ -260,13 +270,17 @@ export class CorregirDatosClienteService implements ICorregirDatosClienteService
     // canonizado. Si al normalizarlo con la normalizacion de WhatsApp del sistema no queda ningun
     // digito utilizable, el numero no puede casar ningun entrante ni recibir ningun saliente (el
     // job de bienvenida ya lanza en ese caso). Se rechaza y NO se guarda.
+    //
+    // SLT-42: la normalizacion es la del PAIS de la empresa (`normalizarTelefono` con su prefijo y
+    // sus digitos), la misma que keyea el hilo del chat. Solo se lee el pais si el telefono cambia.
+    // Un pais sin prefijo o sin digitos falla cerrado con `PaisIncompleto`, como el chat.
     const telefono = valores.telefonoDest;
-    if (
-      cambios.includes("telefonoDest") &&
-      telefono !== undefined &&
-      normalizarTelefonoWa(telefono) === ""
-    ) {
-      fieldErrors.telefonoDest = ["Numero de telefono no utilizable"];
+    if (cambios.includes("telefonoDest") && telefono !== undefined) {
+      const pais = await this.reglasPais.deLaEmpresa();
+      if (pais.telefono === null) throw new PaisIncompleto(pais.paisId);
+      if (normalizarTelefono(telefono, pais.telefono) === "") {
+        fieldErrors.telefonoDest = ["Numero de telefono no utilizable"];
+      }
     }
     // 327/R9 — el peso, por si llega por un camino que no paso por el schema del borde. La
     // segunda puerta no puede DEPENDER de la primera (R28).

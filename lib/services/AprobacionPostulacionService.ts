@@ -14,7 +14,10 @@ import type {
   ListarPostulacionesInput,
   PostulacionPendienteDTO,
 } from "@/lib/types/aprobacion-postulacion";
-import { aprobacionPostulacionesConfig } from "@/lib/config/aprobacion-postulaciones";
+import {
+  aprobacionPostulacionesConfig,
+  POSTULACION_VALIDADA_POR_PAIS_DESDE,
+} from "@/lib/config/aprobacion-postulaciones";
 import { TopeDelPlanAlcanzado, traducirErrorDeTope } from "@/lib/planes/tope-error";
 import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import { validarPersonaDelPais } from "@/lib/services/validacion-documento-telefono";
@@ -111,9 +114,13 @@ export class AprobacionPostulacionService implements IAprobacionPostulacionServi
 
   /**
    * SLT-42 (R10, R11, R14, R16): aprobar es el alta del mensajero en la empresa, asi que su tipo,
-   * su documento y su telefono tienen que cumplir la regla del pais, tambien los de una postulacion
-   * recibida antes de esta ficha. Solo se valida: aprobar no reescribe datos (R15/R19 de la
-   * feature 22). `null` si vale o si no es una postulacion pendiente (eso lo resuelve `decidir`).
+   * su documento y su telefono tienen que cumplir la regla del pais. Solo se valida: aprobar no
+   * reescribe datos (R15/R19 de la feature 22). `null` si vale, si es previa a SLT-42 o si no es una
+   * postulacion pendiente (eso lo resuelve `decidir`).
+   *
+   * PREVIA A SLT-42 (decision del humano tras la tanda 2, punto 6): una postulacion recibida antes
+   * de `POSTULACION_VALIDADA_POR_PAIS_DESDE` entro con las reglas de entonces y se aprueba igual,
+   * aunque su documento o su telefono no cumplan la regla del pais de hoy.
    */
   private async rechazoDeLaPersona(
     usuarioId: string,
@@ -126,6 +133,7 @@ export class AprobacionPostulacionService implements IAprobacionPostulacionServi
     }
     const persona = await this.repo.personaPendiente(usuarioId);
     if (persona === null) return null;
+    if (persona.createdAt < POSTULACION_VALIDADA_POR_PAIS_DESDE) return null;
     const { paisId } = await this.reglasPais.deLaEmpresa();
     const tipo = await this.reglasPais.tipoDocumento(persona.tipoIdentificacionId);
     const r = validarPersonaDelPais(
