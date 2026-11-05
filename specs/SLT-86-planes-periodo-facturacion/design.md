@@ -168,7 +168,11 @@ Funciones gemelas: `inicioDelPeriodoCalendario(tipo, ahora)`, `finDelPeriodoCale
 - `fechaDeEfectoPorDefecto(tipo, ahora) = fechaCalendarioCR(finDelPeriodoCalendario(tipo, ahora))` (R25). Cae
   siempre dentro del rango de R16: el más lejano es el 1 de enero siguiente, a menos de 12 meses.
 - `inicioDelCiclo`, `inicioDelSiguienteCiclo`, `inicioDelCicloEnCurso` y `rangoDelInicioDelCiclo`: las tres
-  primeras se borran, porque ya no las usa nadie, y `rangoDelInicioDelCiclo` se queda (R2).
+  primeras se borran, porque ya no las usa nadie, y `rangoDelInicioDelCiclo` se queda (R2). T3 borró
+  `inicioDelCiclo` e `inicioDelCicloEnCurso`; `inicioDelSiguienteCiclo` sigue hasta que `consumo.ts` (T6) y la
+  vista previa de `PlanesRepository` (T9) dejen de usarla, y se borra con ellas.
+- La tabla de fechas que comparten la gemela TS y la base vive en
+  `tests/integration/db/_fixtures/periodo-calendario.ts`.
 
 ### 3.3 Quién usa `plan_inicio_ciclo_de`
 
@@ -186,6 +190,24 @@ Funciones gemelas: `inicioDelPeriodoCalendario(tipo, ahora)`, `finDelPeriodoCale
   `cobroCiclo` de `planDeEmpresa`, que hoy pasan `plan_inicio_ciclo_en_curso(...)`. `usoDe` ya no cuenta
   órdenes contra un tope: solo usuarios y API keys.
 - `plan_tope_ordenes` (trigger) y `plan_cupo_ordenes` **se borran** (R8, R34).
+
+**R26 sin plan (decisión del 2026-11-05, elegida en T3).** Una empresa sin plan con una primera asignación
+pendiente (P4 = a) ve «Sin límites» y «{Plan} empieza a regir el {fecha}» en «Mi plan» y en el detalle de
+empresa. Había dos formas: que `plan_de_la_empresa` devuelva el pendiente aunque no haya plan, o una lectura
+aparte en el repositorio. **Se elige `plan_de_la_empresa`**, porque R32 dice que la empresa lee su pendiente
+*solo* por su lectura acotada: una lectura aparte para «Mi plan» sería otra función `SECURITY DEFINER` con el
+mismo control de contexto, o una consulta de `organizacion` desde la app, que es justo lo que R32 cierra.
+- Va en una migración nueva, `20261106130000_plan_de_la_empresa_pendiente_sin_plan`, porque la de §8 ya estaba
+  aplicada. Su `down.sql` repone literalmente el cuerpo de §8.
+- Forma de la respuesta:
+  - con plan, la de siempre (con su `cambio_empresa`);
+  - sin plan y con pendiente, `{"sin_plan": true, "cambio_empresa": {plan_nombre, tipo_cobro, desde}}`, sin el
+    actor;
+  - sin plan y sin pendiente, `NULL` (SLT-58 R6).
+- El detalle de empresa del superadmin no pasa por la lectura acotada: `PlanesRepository.planDeEmpresa` lee las
+  columnas del pendiente de `organizacion` directamente, como el resto del detalle.
+- `MiPlanResult` gana el pendiente en el caso sin plan; lo hace T9 (`MiPlanRepository`, `MiPlanService`), y la
+  pantalla, T12.
 
 ### 3.4 Se retira el ciclo corto (P4 = a, decisión del 2026-11-05)
 
@@ -311,6 +333,8 @@ El repositorio trabaja en una transacción y bajo el cerrojo:
   - ayuda al editar el precio: «Cada empresa paga el precio nuevo desde su primer período que empiece en esa
     fecha o después.».
 - **Pendiente:** «Desde el {AAAA-MM-DD}: {plan} · {Tipo}», con el botón «Cancelar cambio».
+- **Pendiente sin plan (R26, decisión del 2026-11-05):** «Sin límites» y debajo «{Plan} empieza a regir el
+  {fecha}», en «Mi plan» y en el detalle de empresa (aquí, con «Cancelar cambio»).
 - **Modal de primera asignación con fecha futura:** «El plan empieza a regir el {fecha}.», que sustituye a
   «El ciclo de órdenes empieza el {fecha}.» de SLT-58 R38.
 - **Anual:** «Pago anual: {desde}» y «Siguiente pago: {1 de enero}».

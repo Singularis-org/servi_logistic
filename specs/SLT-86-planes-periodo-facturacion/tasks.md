@@ -39,10 +39,14 @@
   - `lib/types/consumo-plan.ts`.
 - **Hecho:** `tests/unit/types/planes-schema-periodo.test.ts` verde.
 
-## T3 — Período de calendario, SQL y TS (R4–R7)
+## [x] T3 — Período de calendario, SQL y TS (R4–R7, R26 sin plan)
 
 - **Depende de:** T1, T2.
-- **Pasos:** las funciones de `design.md > §3.1`, `lib/planes/ciclo.ts` (§3.2) y `plan_de_la_empresa` (§3.3).
+- **Pasos:**
+  - las funciones de `design.md > §3.1`, `lib/planes/ciclo.ts` (§3.2) y `plan_de_la_empresa` (§3.3);
+  - R26 sin plan (decisión del 2026-11-05): migración `20261106130000_plan_de_la_empresa_pendiente_sin_plan`
+    (§3.3);
+  - retirar `plan-ciclo`, `ciclo-plan`, `plan-ciclo-corto` y `_fixtures/ciclo-corto.ts` (§9).
 - **Hecho:** `tests/unit/planes/ciclo-periodo.test.ts` y `tests/integration/db/plan-ciclo-periodo.test.ts`
   (tabla base = TS) verdes.
 
@@ -95,6 +99,9 @@
   - `PlanesService`, `IPlanesService`;
   - `PlanesRepository.crear`/`editar`/`programarCambio`/`aplicarCambioProgramado` (§5.4);
   - `MiPlanRepository`, `IMiPlanRepository`, `MiPlanService`, `EmpresasPlataformaRepository`;
+  - R26 sin plan: `MiPlanRepository` lee la forma `{sin_plan, cambio_empresa}` de `plan_de_la_empresa` (T3) y
+    `MiPlanResult` gana el pendiente cuando no hay plan; `PlanesRepository.planDeEmpresa` devuelve el
+    pendiente también sin plan (§3.3);
   - `lib/actions/planes.ts`.
 - **Hecho:** `tests/integration/db/plan-precio-historial.test.ts`, `plan-descuento-periodo.test.ts`,
   `plan-de-la-empresa-periodo.test.ts`, `tests/unit/services/planes-service-periodo.test.ts` y
@@ -134,6 +141,9 @@
 - `db/schema.prisma`
 - `db/migrations/20261106120000_plan_periodo_facturacion/migration.sql`
 - `db/migrations/20261106120000_plan_periodo_facturacion/down.sql`
+- `db/migrations/20261106130000_plan_de_la_empresa_pendiente_sin_plan/migration.sql`
+- `db/migrations/20261106130000_plan_de_la_empresa_pendiente_sin_plan/down.sql`
+- `tests/integration/db/_fixtures/periodo-calendario.ts`
 - `lib/db/modelos-de-negocio.ts`
 - `lib/types/planes.ts`
 - `lib/types/consumo-plan.ts`

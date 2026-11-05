@@ -21,36 +21,6 @@ import { idDeRol, liberarHuecoDeSuperadmin } from "./superadmin-32";
 // la hora local de la sesión.
 
 /* -------------------------------------------------------------------------- */
-/* La tabla de fechas del ciclo (R20): la usan la gemela TS y la función SQL   */
-/* -------------------------------------------------------------------------- */
-
-export interface CasoCiclo {
-  caso: string;
-  /** `TIMESTAMP` sin zona, en ISO con `Z` (Prisma lo entrega así). */
-  ancla: string;
-  ahora: string;
-  inicio: string;
-}
-
-export const CASOS_CICLO: readonly CasoCiclo[] = [
-  { caso: "alta el 15: a mitad del tercer ciclo", ancla: "2026-01-15T10:00:00.000Z", ahora: "2026-03-20T00:00:00.000Z", inicio: "2026-03-15T10:00:00.000Z" },
-  { caso: "alta el 15: el 14 sigue en el ciclo que empezó el 15 anterior", ancla: "2026-01-15T10:00:00.000Z", ahora: "2026-03-14T23:59:59.999Z", inicio: "2026-02-15T10:00:00.000Z" },
-  { caso: "alta el 31 de enero, año normal: febrero empieza el 28", ancla: "2027-01-31T08:00:00.000Z", ahora: "2027-02-28T08:00:00.000Z", inicio: "2027-02-28T08:00:00.000Z" },
-  { caso: "alta el 31 de enero, año normal: el 1 de marzo sigue en el ciclo del 28", ancla: "2027-01-31T08:00:00.000Z", ahora: "2027-03-01T00:00:00.000Z", inicio: "2027-02-28T08:00:00.000Z" },
-  { caso: "alta el 31 de enero: marzo vuelve al 31", ancla: "2027-01-31T08:00:00.000Z", ahora: "2027-03-31T08:00:00.000Z", inicio: "2027-03-31T08:00:00.000Z" },
-  { caso: "alta el 31 de enero: el 30 de marzo aún es el ciclo de febrero", ancla: "2027-01-31T08:00:00.000Z", ahora: "2027-03-30T23:00:00.000Z", inicio: "2027-02-28T08:00:00.000Z" },
-  { caso: "alta el 31 de enero: abril empieza el 30", ancla: "2027-01-31T08:00:00.000Z", ahora: "2027-05-15T00:00:00.000Z", inicio: "2027-04-30T08:00:00.000Z" },
-  { caso: "alta el 31 de enero, año bisiesto: febrero empieza el 29", ancla: "2028-01-31T08:00:00.000Z", ahora: "2028-02-29T08:00:00.000Z", inicio: "2028-02-29T08:00:00.000Z" },
-  { caso: "alta el 31 de enero, año bisiesto: el 28 sigue en el primer ciclo", ancla: "2028-01-31T08:00:00.000Z", ahora: "2028-02-28T23:59:00.000Z", inicio: "2028-01-31T08:00:00.000Z" },
-  { caso: "la frontera exacta empieza el ciclo nuevo", ancla: "2026-10-15T12:00:00.000Z", ahora: "2026-11-15T12:00:00.000Z", inicio: "2026-11-15T12:00:00.000Z" },
-  { caso: "un milisegundo antes de la frontera es el ciclo anterior", ancla: "2026-10-15T12:00:00.000Z", ahora: "2026-11-15T11:59:59.999Z", inicio: "2026-10-15T12:00:00.000Z" },
-  { caso: "un ahora anterior al ancla da el ancla", ancla: "2026-10-15T12:00:00.000Z", ahora: "2026-09-01T00:00:00.000Z", inicio: "2026-10-15T12:00:00.000Z" },
-  { caso: "ahora igual al ancla da el ancla", ancla: "2026-10-15T12:00:00.000Z", ahora: "2026-10-15T12:00:00.000Z", inicio: "2026-10-15T12:00:00.000Z" },
-  { caso: "cruza de año desde un 31 de diciembre", ancla: "2025-12-31T00:00:00.000Z", ahora: "2026-02-28T00:00:00.000Z", inicio: "2026-02-28T00:00:00.000Z" },
-  { caso: "cruza de año: el 30 de enero sigue en el ciclo del 31 de diciembre", ancla: "2025-12-31T00:00:00.000Z", ahora: "2026-01-30T00:00:00.000Z", inicio: "2025-12-31T00:00:00.000Z" },
-];
-
-/* -------------------------------------------------------------------------- */
 /* Transacciones y errores                                                     */
 /* -------------------------------------------------------------------------- */
 

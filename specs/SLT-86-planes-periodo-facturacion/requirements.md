@@ -258,7 +258,12 @@
   *Test:* `tests/components/PlanEmpresaPeriodo.test.tsx`, `tests/components/PlanFormDescuentos.test.tsx`.
 - **R26** — MIENTRAS una empresa tenga un cambio pendiente, el detalle de empresa y «Mi plan» DEBEN mostrar
   «Desde el {fecha}: {plan} · {tipo}», y el detalle de empresa DEBE ofrecer «Cancelar cambio» (R19).
-  *Test:* `tests/components/PlanEmpresaPeriodo.test.tsx`, `tests/components/ConsumoDelPlanPeriodo.test.tsx`.
+  MIENTRAS una empresa **sin plan** tenga una primera asignación pendiente (P4 = a), «Mi plan» y el detalle de
+  empresa del superadmin DEBEN mostrar «Sin límites» y debajo «{Plan} empieza a regir el {fecha}» (decisión
+  del 2026-11-05); el detalle de empresa DEBE ofrecer también «Cancelar cambio».
+  *Test:* `tests/components/PlanEmpresaPeriodo.test.tsx`, `tests/components/ConsumoDelPlanPeriodo.test.tsx`,
+  `tests/integration/db/plan-ciclo-periodo.test.ts` (la lectura acotada devuelve el pendiente sin plan y sin
+  el actor).
 - **R27** — «Mi plan» y el detalle de empresa DEBEN mostrar:
   - el tipo vigente;
   - el período en curso (desde–hasta, marcado como tramo si lo es);
@@ -371,6 +376,7 @@
 | Propuestas del spec aprobadas: costo base en el modal | R25 |
 | Propuestas del spec aprobadas: actor de la migración | R34 |
 | Propuestas del spec aprobadas: textos de `design.md > §7.1` | R24, R27 |
+| R26 para una empresa sin plan con primera asignación pendiente | R26, R32 |
 
 ## Preguntas abiertas
 
@@ -416,3 +422,4 @@ Ninguna.
 | 2026-11-05 | Costo en el modal de asignación | El modal muestra el costo base del período con su descuento y, si es tramo, proporcional. |
 | 2026-11-05 | Actor del rastro de la migración | «Sistema (migración SLT-86)». |
 | 2026-11-05 | Textos de pantalla | Los de `design.md > §7.1`, aprobados con el spec. |
+| 2026-11-05 | ¿R26 aplica a una empresa SIN plan con una primera asignación pendiente (P4 = a)? | **Sí.** «Mi plan» muestra «Sin límites» y debajo «{Plan} empieza a regir el {fecha}»; el detalle de empresa del superadmin muestra lo mismo. |
