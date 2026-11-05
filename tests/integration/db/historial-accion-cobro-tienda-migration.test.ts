@@ -446,6 +446,8 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("381/B.7 (b) — el down recrea 50 tipos y 2
       // Ajuste planes-custom D16: `plan_tipo_cobro_cambiado`, de
       // `20261104130100_historial_accion_plan_tipo_cobro_cambiado`.
       "plan_tipo_cobro_cambiado",
+      // SLT-54: `tarifas_activadas`, de `20261104140000_historial_tarifa_activacion`.
+      "tarifas_activadas",
     ];
     expect([...tiposAntes].sort()).toEqual(
       [...HISTORIAL_ACCION_TIPOS]
@@ -469,6 +471,7 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("381/B.7 (b) — el down recrea 50 tipos y 2
               "tarifa_valor",
               "grupo_distritos",
               "nodo_geografico",
+              "tarifa_activacion",
             ].includes(e),
         )
         .sort(),

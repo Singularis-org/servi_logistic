@@ -1,7 +1,12 @@
 import { ROL_LABELS } from "@/lib/auth/rol-label";
 import { formatearConteo } from "@/lib/planes/consumo";
 import type { PlanParaCosto } from "@/lib/planes/costo-concreto";
-import { SIN_LIMITE, textoDelCostoPorOrden, textoDelPrecio } from "@/lib/planes/mensajes";
+import {
+  SIN_LIMITE,
+  textoDelCostoPorOrden,
+  textoDelCostoPorOrdenPorcentual,
+  textoDelPrecio,
+} from "@/lib/planes/mensajes";
 import { ROLES_CON_TOPE, type TopesPlan } from "@/lib/types/planes";
 
 // SLT-58 (design §6.3, §6.5) — cómo se pinta un plan en el catálogo y en su detalle. Puro: sin React.
@@ -48,6 +53,16 @@ export function lineasDeTopes(topes: TopesPlan, compacto = false): string[] {
 }
 
 /**
+ * SLT-83 (design §6.2; R21) — el costo por orden de un plan: el porcentual si lo tiene; si no, el fijo o
+ * «se aplica el valor global», como en SLT-66 R24.
+ */
+export function textoDelCostoPorOrdenDelPlan(plan: Pick<PlanParaCosto, "costoPorOrden" | "costoPorOrdenPorcentual">): string {
+  return plan.costoPorOrdenPorcentual !== null
+    ? textoDelCostoPorOrdenPorcentual(plan.costoPorOrdenPorcentual)
+    : textoDelCostoPorOrden(plan.costoPorOrden);
+}
+
+/**
  * SLT-66 (design §6.2; R24, R10) — el costo del plan: costo base y costo por orden (sin costo por orden,
  * «se aplica el valor global») y, con anual fijo o descuento, que el anual no toca el costo por orden.
  * El catálogo pinta solo las dos primeras.
@@ -55,7 +70,7 @@ export function lineasDeTopes(topes: TopesPlan, compacto = false): string[] {
 export function lineasDeCosto(plan: PlanParaCosto): string[] {
   const lineas = [
     TEXTOS_PLAN.costoBase(textoDelPrecio(plan.precio)),
-    TEXTOS_PLAN.costoPorOrden(textoDelCostoPorOrden(plan.costoPorOrden)),
+    TEXTOS_PLAN.costoPorOrden(textoDelCostoPorOrdenDelPlan(plan)),
   ];
   if (plan.precio.tipo === "monto" && plan.precio.anual !== null) lineas.push(TEXTOS_PLAN.anualNoAplica);
   return lineas;

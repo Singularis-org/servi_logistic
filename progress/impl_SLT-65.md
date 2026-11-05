@@ -1074,3 +1074,27 @@ Ninguno viene de SLT-52 ni de SLT-75 por sí solo. Los tests de SLT-52 y SLT-76 
   ni migraciones nuevas.
 - `logistic_slt65_r1104` (`migrate status` al día), `timeout 600`: `salida-a-reparto-sql-real.test.ts`
   `Test Files 1 passed (1)`, `Tests 7 passed (7)`. `pnpm run typecheck`: exit 0.
+
+## 2026-11-05 — merge de `feature/SLT-44-geo-jerarquica-dominio` `4175d1ef` (dev nuevo: SLT-54, SLT-83, SL-42)
+
+- SLT-44 trae SLT-43 `0434a444`, que ya contiene `origin/dev` `49f45a7e` (9 migraciones nuevas de dev,
+  `20261103120000_vehiculo_activo` … `20261104150200_cobro_plataforma_porcentual_funciones`).
+- 4 conflictos, resueltos conservando los dos lados:
+  - `lib/repositories/OrdenRepository.ts` (`toListItemDTO`): `esZonaEspecial` llega por parámetro, calculado
+    sobre el lugar (SLT-65), y `montoCobrar` usa la constante que dev subió para `montoFulfillmentDeTarifa` (SLT-54).
+  - `progress/deudas.md`: dev ya usa D36–D42 (review de SLT-54). La D36 de SLT-65 (`enUnaFoto` y
+    `OPCIONES_TRANSACCION`) pasa a ser la **D43**. Las menciones a «D36» en bitácoras viejas de SLT-65 quedan como
+    registro histórico.
+  - `tests/integration/db/tarifas-flexibles-base-congelada.test.ts` y `tarifas-flexibles-snapshot.test.ts`: solo
+    imports; quedan `conEmpresa` (SLT-65) y `sembrarActivacion` (SLT-54).
+- `docs/architecture.md`, `CoberturaRepository.ts` y `cobertura.composition-root.test.ts` entraron sin conflicto
+  (ya resueltos en SLT-44 `4175d1ef`). Verificación: tsc más guardias y unitarios de repositorios y cobertura, en el
+  commit del merge. Las migraciones nuevas no se aplicaron a `logistic_slt65_r1104`; CI da el veredicto.
+- Arreglo semántico (sin conflicto textual): el caso nuevo de dev «SLT-54 R66: el fulfillment en porcentaje…» de
+  `tests/unit/repositories/convergencia-tarifa-listado-cierre.test.ts` no traía los delegados del catálogo y
+  `marcasDeOrdenes` (SLT-65) caía en `zonaDistrito.findMany`. Suma `delegadosDelCatalogo({ nodos: [DISTRITO] })`,
+  como el caso hermano del listado. Queda 13/13.
+- Salida: `tsc --noEmit` exit 0. `tests/unit/guards` + `tests/unit/repositories` + `cobertura.composition-root`:
+  5464 pasan; fallan los 4 de `dependencias-declaradas-presentes` (preexistente: `init.sh` no tiene los marcadores de
+  la ficha 420 tampoco en `origin/dev`) y `filtros-url-r25` por carga (pasa solo). Los 156 unitarios que importan
+  `OrdenRepository`/`CoberturaRepository` fuera de esas carpetas: 3236/3236.

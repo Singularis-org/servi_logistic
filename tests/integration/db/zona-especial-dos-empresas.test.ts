@@ -4,7 +4,6 @@ import type { PrismaClient } from "@prisma/client";
 
 import { conEmpresa } from "@/lib/db/contexto-empresa";
 import { conAislamientoPorEmpresa } from "@/lib/db/extension-empresa";
-import { actualizarDistritosEspeciales } from "@/lib/actions/geografia";
 import {
   CierreDiaRepository,
   SNAPSHOT_SELECT,
@@ -131,13 +130,13 @@ async function sembrarGestion(tx: TxDeTest, ordenId: string, mensajeroId: string
   return g.id;
 }
 
-/** La accion real con el servicio real inyectado y un `maestro` de la empresa. */
+/**
+ * El servicio real con un `maestro` de la empresa. SLT-54 (R28) retiro la action: la marca solo la
+ * escriben los sembrados, por este servicio.
+ */
 function accionComoMaestro(maestroId: string, input: { marcar: string[]; desmarcar: string[] }) {
   const service = new DistritoZonaEspecialService(new DistritoZonaEspecialRepository(app));
-  return actualizarDistritosEspeciales(input, {
-    getActor: async () => ({ usuarioId: maestroId, rol: "maestro" }),
-    distritoZonaEspecialService: service,
-  });
+  return service.actualizar(input, { usuarioId: maestroId, rol: "maestro" });
 }
 
 /**

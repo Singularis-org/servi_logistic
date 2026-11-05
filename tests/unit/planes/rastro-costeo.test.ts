@@ -19,6 +19,7 @@ const PLAN: PlanDTO = {
   modulos: ["analitica"],
   precio: { tipo: "monto", mensual: "50000.00", anual: null },
   costoPorOrden: "100.00",
+  costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
   archivado: false,
 };
 

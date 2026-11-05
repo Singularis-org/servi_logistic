@@ -27,6 +27,7 @@ import { whereLibroCajaConTerminoSql, whereLibroCajaSql } from "@/lib/repositori
 import type { AQuienFiltro } from "@/lib/types/libro-caja-a-quien";
 import { ordenTotal, type DireccionOrden } from "@/lib/types/ordenamiento-listado";
 import { derivarBalance } from "@/lib/utils/wallet-balance";
+import { cierresConModeloNuevo, type LectorDeModeloDeDetalle } from "@/lib/repositories/_shared/detalle-modelo-nuevo";
 
 /** Ficha 459 — las categorias de capital, DERIVADAS de la clasificacion (nunca una lista a mano). */
 const CATEGORIAS_DE_CAPITAL: readonly WalletMovimientoCategoria[] =
@@ -39,7 +40,8 @@ const CATEGORIAS_DE_CAPITAL: readonly WalletMovimientoCategoria[] =
 type WalletPrismaClient = Pick<
   PrismaClient,
   "walletMovimiento" | "$transaction" | "historialAccion" | "usuario" | "$queryRaw"
->;
+> &
+  LectorDeModeloDeDetalle;
 
 // Money-safe: Decimal -> STRING escala 2 (nunca number/parseFloat).
 type MovimientoRow = Prisma.WalletMovimientoGetPayload<Record<string, never>>;
@@ -75,6 +77,24 @@ function toDTO(r: MovimientoRow): WalletMovimientoDTO {
     // (descarga, detalle de una fila) la fila no ofrece acciones y el campo queda en `null`.
     documento: null,
   };
+}
+
+/**
+ * SLT-54 (menor 6 de la revision F2.2) — las filas de `listar` con el modelo de su cierre, en lote.
+ * `origen_id` es polimorfico y no se puede unir en el `select`; las paginas sin filas de un cierre no
+ * consultan nada.
+ */
+async function aPagina(
+  cliente: LectorDeModeloDeDetalle,
+  rows: readonly MovimientoRow[],
+): Promise<WalletMovimientoDTO[]> {
+  const deCierre = (r: MovimientoRow) => (r.origenTipo === "cierre_dia" ? r.origenId : null);
+  const ids = new Set(rows.map(deCierre).filter((id) => id !== null));
+  const conNuevo = await cierresConModeloNuevo(cliente, [...ids]);
+  return rows.map((r) => {
+    const cierreId = deCierre(r);
+    return { ...toDTO(r), incluyeModeloNuevo: cierreId !== null && conNuevo.has(cierreId) };
+  });
 }
 
 // WHERE comun a listado y balance (R20): filtros opcionales tipo/categoria/rango fechas
@@ -304,7 +324,7 @@ export class WalletMovimientoRepository implements IWalletMovimientoRepository, 
         this.prisma.$queryRaw<{ total: number }[]>(Prisma.sql`
           SELECT COUNT(*)::int AS "total" FROM "wallet_movimiento" w WHERE ${where}`),
       ]);
-      return { movimientos: rows.map(toDTO), total: cuenta[0]?.total ?? 0 };
+      return { movimientos: await aPagina(this.prisma, rows), total: cuenta[0]?.total ?? 0 };
     }
     const where = buildWhere(filtros);
     const [rows, total] = await Promise.all([
@@ -319,7 +339,7 @@ export class WalletMovimientoRepository implements IWalletMovimientoRepository, 
       }),
       this.prisma.walletMovimiento.count({ where }),
     ]);
-    return { movimientos: rows.map(toDTO), total };
+    return { movimientos: await aPagina(this.prisma, rows), total };
   }
 
   /**
@@ -397,7 +417,10 @@ export class WalletMovimientoRepository implements IWalletMovimientoRepository, 
   /** Feature 45 (R13): lee un movimiento por id (para la reversa). null si no existe. */
   async obtenerPorId(id: string): Promise<WalletMovimientoDTO | null> {
     const row = await this.prisma.walletMovimiento.findUnique({ where: { id } });
-    return row === null ? null : toDTO(row);
+    if (row === null) return null;
+    // SLT-54: por `aPagina`, para decir exactamente lo mismo que el listado (R31).
+    const [movimiento] = await aPagina(this.prisma, [row]);
+    return movimiento;
   }
 
   /** Ficha 461 (R68): la fila que lleva ESA clave de idempotencia (columna UNIQUE), o null. */

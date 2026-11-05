@@ -10,7 +10,7 @@ import type { ContextoPagoGestion, TarifaPago } from "@/lib/types/tarifa-flexibl
 // de una transaccion ya lo cumplen.
 export type PagoTarifaTxClient = Pick<
   PrismaClient,
-  "tarifaZonaMensajero" | "tarifaValor" | "grupoDistritosDistrito"
+  "tarifaZonaMensajero" | "tarifaActivacion" | "tarifaValor" | "grupoDistritosDistrito"
 >;
 
 // Tarifa de pago de una zona (resuelta por vehiculo o por defecto). `cobroEntregado`

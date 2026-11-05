@@ -32,6 +32,7 @@ const VIGENTE: VersionPlan = {
   modulos: ["monitoreo"],
   precio: { tipo: "monto", mensual: "49.90", anual: null },
   costoPorOrden: null, // SLT-66 R7: el plan lleva costo por orden; aquí, vacío.
+  costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
 };
 
 function leido(cambio: PlanDeLaEmpresaLeido["cambio"] = null): PlanDeLaEmpresaLeido {
@@ -46,7 +47,8 @@ function leido(cambio: PlanDeLaEmpresaLeido["cambio"] = null): PlanDeLaEmpresaLe
     },
     cambio,
     // SLT-66 R18: la lectura trae el costo vigente (el plan no fija costo por orden: el global).
-    costoVigente: { monto: "500.00", fuente: "global" },
+    costoVigente: { modo: "fijo", monto: "500.00", fuente: "global" },
+    cobroCiclo: { cobrado: "0.00", pendientes: 0 }, // SLT-83: campo nuevo de la lectura
     // Ajuste planes-custom (D6): cómo paga la empresa.
     tipoCobro: "mensual",
   };
@@ -128,6 +130,7 @@ describe("SLT-58 — MiPlanService.ver: lo que devuelve (R1, R2, R5, R6, R7)", (
       modulos: ["monitoreo", "analitica"],
       precio: { tipo: "sin_precio" },
       costoPorOrden: null, // SLT-66 R7: el plan lleva costo por orden; aquí, vacío.
+      costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
     };
     // Las 00:00 del 1 de diciembre en la hora de la plataforma.
     const cambio = { vigenteDesde: new Date("2026-12-01T06:00:00.000Z"), version: pendiente };

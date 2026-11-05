@@ -209,6 +209,7 @@ export function entradaDePlan(p: Partial<CrearPlanInput> = {}): CrearPlanInput {
     modulos: [],
     precio: { tipo: "sin_precio" },
     costoPorOrden: null, // SLT-66 R7: sin costo por orden salvo que el caso lo pida.
+    costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
     ...p,
   };
 }

@@ -105,7 +105,7 @@ describe("CAMPOS_SOLO_ALCANCE_GLOBAL — una sola lista, atada al tipo (R43)", (
   });
 
   it("la lista no esta vacia ni se quedo en un solo campo", () => {
-    expect(CAMPOS_SOLO_ALCANCE_GLOBAL.orden.length).toBe(2);
+    expect(CAMPOS_SOLO_ALCANCE_GLOBAL.orden.length).toBe(3);
     expect(CAMPOS_SOLO_ALCANCE_GLOBAL.tienda.length).toBe(3);
   });
 });

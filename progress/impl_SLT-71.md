@@ -905,3 +905,24 @@ el de SLT-65 (`geo-explain-consultas` T6.1, timeout de 20 s), que queda fuera de
 - El arreglo ya existia en la rama de SLT-43 (`0434a444`, sin subir). Se subio a `origin` y se trajo aqui con
   `cherry-pick` (`147c7e1e`): un merge completo de SLT-43 arrastraba un dev mas nuevo con conflictos ajenos a esta ficha.
 - Local contra `logistic_slt71`: 2 archivos, 17 de 17 verdes, sin saltos.
+
+## 2026-11-05 — merge de `feature/SLT-65-geo-jerarquica-consultas` `a517fbe7` (cadena SLT-43 → 44 → 65 con dev nuevo)
+
+- Trae SLT-43 `0434a444` (con `origin/dev` `49f45a7e`: SLT-54, SLT-83, SL-42) por la cadena SLT-44 `4175d1ef` → SLT-65
+  `a517fbe7`. El cherry-pick `147c7e1e` del arreglo de SLT-43 casa sin conflicto.
+- 2 conflictos; los demás de la lista del intento directo con SLT-43 (`architecture.md`, `CoberturaRepository.ts`,
+  `OrdenRepository.ts`, `deudas.md`, `tarifas-flexibles-*`, `cobertura.composition-root`) ya llegaron resueltos en SLT-44 y
+  SLT-65. Se resolvieron con el lado de SLT-65, porque esta rama solo traía ahí el cambio de SLT-43 y ese lado ya lo incluye
+  junto con SLT-54:
+  - `tests/integration/db/caja-459-migration.test.ts`: tramos sobre `tiposPrevios`/`entidadesPrevias` (antes de la
+    migración de SLT-54), con `nodo_geografico` al final.
+  - `tests/unit/historial-accion/catalogo-y-choke-point.test.ts`: 82 tipos (`tarifas_activadas`) y 31 entidades
+    (`nodo_geografico` y `tarifa_activacion`).
+- `logistic_slt71`: `prisma migrate deploy` aplicó las 5 pendientes de dev (`20261104140000_historial_tarifa_activacion` …
+  `20261104150200_cobro_plataforma_porcentual_funciones`).
+- Salida (`NODE_OPTIONS=--max-old-space-size=8192`): `tsc --noEmit` exit 0. `tests/unit/guards`, `repositories`,
+  `historial-accion` y `cobertura.composition-root`: 5586 pasan y 4 fallan, todos de `dependencias-declaradas-presentes`
+  (preexistente: `init.sh` tampoco tiene los marcadores de la ficha 420 en `origin/dev`). Integración contra
+  `logistic_slt71`, un archivo por corrida: `caja-459-migration` 6/6, `tarifas-flexibles-base-congelada` 6/6,
+  `tarifas-flexibles-snapshot` 8/8, `migracion-slt43-ida-y-vuelta` 8/8.
+- Unitarios que importan `OrdenRepository`/`CoberturaRepository`/analítica fuera de esas carpetas: 366 archivos, 6094/6094.

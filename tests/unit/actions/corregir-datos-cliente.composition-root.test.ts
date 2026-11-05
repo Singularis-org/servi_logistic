@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { Prisma } from "@prisma/client";
-import { sinValoresDelModeloNuevo } from "../../fixtures/tarifa-tienda";
+import { empresaSinActivar } from "../../fixtures/tarifa-tienda";
 
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 
@@ -98,7 +98,7 @@ vi.mock("@/lib/db/prisma-client", () => ({
     distritoZonaEspecial: { findMany: vi.fn(async () => []) },
     tarifa: { findMany: tarifaFindMany },
     // SLT-52: empresa sin valores del modelo nuevo -> el resolver unico usa la cascada vieja (R36).
-    ...sinValoresDelModeloNuevo(),
+    ...empresaSinActivar(),
     // FICHA 454 (R64): `findParaCorreccion` deriva tambien la ayuda ABIERTA (`ayuda-abierta.ts`,
     // SQL crudo). Aqui la orden no tiene ninguna: la consulta devuelve cero filas.
     $queryRaw: vi.fn(async () => []),

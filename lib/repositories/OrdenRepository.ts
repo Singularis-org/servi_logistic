@@ -195,7 +195,7 @@ import {
 import { loadRouteOptimizationConfig } from "@/lib/config/route-optimization";
 import type { TarifaTienda } from "@/lib/types/tarifa-flexible";
 import { resolverCobrosYFilasViejasCon } from "@/lib/repositories/_shared/resolver-tarifas";
-import { costosListadoOrden } from "@/lib/utils/ingreso-empresa";
+import { costosListadoOrden, montoFulfillmentDeTarifa } from "@/lib/utils/ingreso-empresa";
 // ⏳ 2026-09-10 (feature 415, T3): la reconstruccion de la tarifa CONGELADA se importa de su fuente
 // UNICA y no se reescribe aqui. `TarifaCongeladaRow` es justo el subconjunto de columnas que
 // `tarifaDe` necesita, asi que el `select` de `cierreDetalles` y este tipo no pueden divergir.
@@ -872,7 +872,8 @@ type OrdenPrismaClient = Pick<
   | "ordenHistorialEstado" // feature 236: fecha de la solicitud de ayuda, que ordena su pestaña (D7/R17)
   | "carga" // feature 141: lote de carga masiva asegurado en la tx de la insercion batch
   | "tarifa" // feature 274: la tarifa del listado, resuelta por cascada en UNA query (R18/R19)
-  | "tarifaValor" // SLT-52 (R38): el resolver unico del cobro decide el modelo y lee el nuevo
+  | "tarifaActivacion" // SLT-54 (R1/R2): el interruptor del resolver unico del cobro
+  | "tarifaValor" // SLT-52 (R38): el resolver unico del cobro lee el modelo nuevo
   | "grupoDistritosDistrito" // SLT-52 (R16): el grupo del distrito de cada orden del listado
   | "$transaction" // feature 17: generarGuiaLote necesita transaccion (R25)
   | "$executeRaw" // feature 41/R23: anti-TOCTOU (NOT EXISTS cierre bloqueante en el lote)
@@ -1297,11 +1298,12 @@ function toListItemDTO(
   // tiene fila y los importes salen en "0.00" (R39: el listado NO bloquea, a diferencia de los
   // dos bordes de API por key, que devuelven 409 — la asimetria es deliberada).
   // SLT-52 (R38): el importe sale del `TarifaTienda` del resolver unico, nunca de la fila mostrada.
+  const montoCobrar = row.montoCobrar ? row.montoCobrar.toFixed(2) : null;
   const costos = costosListadoOrden(tarifa?.cobro ?? null, {
     esCentral: row.zona.esCentral,
     // SL-38: la marca de la EMPRESA de la orden, ya calculada sobre su lugar (SLT-65).
     esZonaEspecial,
-    montoCobrar: row.montoCobrar ? row.montoCobrar.toFixed(2) : null,
+    montoCobrar,
     cobraComision: row.cobraComision,
   });
   return {
@@ -1321,6 +1323,9 @@ function toListItemDTO(
     // los pinta; no vuelve a operar con ellos.
     fleteConIva: costos.fleteConIva,
     comisionConIva: costos.comisionConIva,
+    // SLT-54 (R66): del mismo `cobro` que los dos de arriba. La fila de `tarifas` mostrada no existe en
+    // el modelo nuevo, asi que la columna ya no puede salir de ella.
+    fulfillment: montoFulfillmentDeTarifa(tarifa?.cobro ?? null, montoCobrar).toFixed(2),
     // De donde salio ese flete. La fila lo pinta para senalar `especial_sin_pacto`: mismo
     // importe que una orden normal, pero por un hueco de configuracion.
     fleteOrigen: costos.fleteOrigen,

@@ -432,6 +432,11 @@ export type OrdenListItemDTO = OrdenDTO & {
   fleteConIva?: string;
   comisionConIva?: string;
   /**
+   * SLT-54 (R66) — fulfillment de la orden, sin IVA, del resolver unico. STRING escala 2; "0.00" sin
+   * tarifa. Opcional por el mismo motivo que los dos de arriba: el alcance `zona` lo retira.
+   */
+  fulfillment?: string;
+  /**
    * De donde salio el flete de `fleteConIva` (2026-08-25, tarifa especial por distrito).
    *
    * Existe para hacer VISIBLE el caso `especial_sin_pacto`: el distrito esta marcado como
@@ -572,7 +577,7 @@ export type OrdenListItemDTO = OrdenDTO & {
  *
  * ─── LO QUE ESTA FILA **NO** LLEVA, Y NO ES UN OLVIDO ────────────────────────────────────
  *
- * `fleteConIva`, `comisionConIva` y `relaciones.tienda.tarifa` (de donde sale el fulfillment),
+ * `fleteConIva`, `comisionConIva`, `fulfillment` y `relaciones.tienda.tarifa`,
  * mas el correo y el telefono de la tienda. La capa de datos los retira con
  * `recortarPorAlcance(fila, "zona")` ANTES de devolverla, de modo que no viajan al navegador ni
  * como `undefined`. Es la decision FIRMADA de la feature 260 (R13/R15/R17), y su motivo esta

@@ -26,6 +26,7 @@ const PUBLICO: PlanDelCatalogo = {
   modulos: ["analitica"],
   precio: { tipo: "monto", mensual: "10.00", anual: { tipo: "fijo", monto: "100.00" } },
   costoPorOrden: null, // SLT-66 R8: campo nuevo del PlanDTO
+  costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
   archivado: false,
   empresaNombre: null,
   empresas: 1200,
@@ -41,6 +42,7 @@ const CUSTOM: PlanDelCatalogo = {
   modulos: [],
   precio: { tipo: "sin_precio" }, // Ajuste planes-custom (D1): sin «negociable».
   costoPorOrden: null, // SLT-66 R8: campo nuevo del PlanDTO
+  costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
   archivado: false,
   empresaNombre: "Envíos Norte",
   empresas: 1,
@@ -141,6 +143,17 @@ describe("SLT-58 R13 — el catálogo de planes", () => {
     expect(await screen.findByRole("status")).toHaveTextContent("Plan «Libre» creado.");
     expect(refreshMock).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("SLT-83 (texto aprobado 2026-11-04): el panel «Nuevo plan» explica cuándo se cobra el costo por orden fijo y el porcentual", async () => {
+    const user = userEvent.setup();
+    montar();
+
+    await user.click(screen.getByRole("button", { name: "Nuevo plan" }));
+    const panel = await screen.findByRole("dialog");
+    expect(panel).toHaveAccessibleDescription(
+      "Los topes vacíos no tienen límite. El costo base es informativo. El costo por orden fijo se cobra al crear cada orden; el porcentual, cuando la orden llega a un estado final.",
+    );
   });
 });
 

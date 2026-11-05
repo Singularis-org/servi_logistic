@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Prisma } from "@prisma/client";
-import { sinValoresDelModeloNuevo } from "../../fixtures/tarifa-tienda";
+import { empresaSinActivar } from "../../fixtures/tarifa-tienda";
 
 import { delegadosDelCatalogo } from "@/tests/fixtures/doble-catalogo-geografico";
 
@@ -100,7 +100,7 @@ const prismaFalso = {
   // SLT-65: la marca de zona especial sale del catalogo de la empresa (sin marcas por defecto).
   ...delegadosDelCatalogo(),
   // SLT-52: empresa sin valores del modelo nuevo -> el resolver unico usa la cascada vieja (R36).
-  ...sinValoresDelModeloNuevo(),
+  ...empresaSinActivar(),
 };
 
 // La frontera con el exterior, y SOLO ella.

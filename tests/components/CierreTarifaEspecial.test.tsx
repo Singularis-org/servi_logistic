@@ -68,6 +68,7 @@ function tarifa(over: Partial<TarifaSnapshotDTO> = {}): TarifaSnapshotDTO {
 
 function ingreso(over: Partial<IngresoEmpresaDTO> = {}): IngresoEmpresaDTO {
   return {
+    tarifaModelo: "viejo",
     montoCobrar: "10000.00",
     cobraComision: true,
     esCentral: false,

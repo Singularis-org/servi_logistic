@@ -43,6 +43,8 @@ vi.mock("@/lib/db/prisma-client", () => ({
     nodoGeografico: { findMany: nodoGeograficoFindMany },
     zonaDistrito: { findMany: zonaDistritoFindMany },
     distritoZonaEspecial: { findMany: vi.fn(async () => []) },
+    // SLT-54 (R30): empresa sin activar, asi que la tarifa general sale de `tarifas`.
+    tarifaActivacion: { findFirst: async () => null },
   }),
   PRISMA_OMIT: {},
 }));

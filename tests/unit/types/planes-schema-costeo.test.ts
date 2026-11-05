@@ -23,6 +23,7 @@ function crear(extra: Record<string, unknown> = {}) {
     modulos: [],
     precio: { tipo: "sin_precio" },
     costoPorOrden: "100",
+    costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del esquema
     ...extra,
   };
 }
@@ -35,6 +36,7 @@ function editar(extra: Record<string, unknown> = {}) {
     modulos: [],
     precio: { tipo: "sin_precio" },
     costoPorOrden: null,
+    costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del esquema
     vigenteDesde: null,
     ...extra,
   };
@@ -54,7 +56,7 @@ describe("SLT-66 R1 — el maestro no admite tope", () => {
     for (const r of [
       crearPlanSchema.safeParse(crear({ topes })),
       editarPlanSchema.safeParse(editar({ topes, vigenteDesde: "2026-12-01" })),
-      versionPlanSchema.safeParse({ nombre: "X", topes, modulos: [], precio: { tipo: "sin_precio" }, costoPorOrden: null }),
+      versionPlanSchema.safeParse({ nombre: "X", topes, modulos: [], precio: { tipo: "sin_precio" }, costoPorOrden: null, costoPorOrdenPorcentual: null }),
     ]) {
       expect(r.success).toBe(false);
       expect(rutasDelError(r).some((p) => p.startsWith("topes.porRol"))).toBe(true);

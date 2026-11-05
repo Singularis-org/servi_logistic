@@ -92,6 +92,7 @@ describeSiHayBase("SL-24 — el rastro de los planes (R29, R40, R43)", () => {
         modulos: ["ranking"],
         precio: { tipo: "monto", mensual: "25000", anual: null },
         costoPorOrden: null, // SLT-66 R8: campo obligatorio nuevo; no cambia lo que se comprueba.
+        costoPorOrdenPorcentual: null, // SLT-83: campo obligatorio nuevo; no cambia lo que se comprueba.
       });
       if (creado.estado !== "ok") throw new Error(creado.estado);
       const planId = creado.planId;
@@ -102,6 +103,7 @@ describeSiHayBase("SL-24 — el rastro de los planes (R29, R40, R43)", () => {
         modulos: ["ranking"],
         precio: { tipo: "monto", mensual: "25000.00", anual: { tipo: "fijo", monto: "250000" } },
         costoPorOrden: null, // SLT-66 R8: campo obligatorio nuevo; no cambia lo que se comprueba.
+        costoPorOrdenPorcentual: null, // SLT-83: campo obligatorio nuevo; no cambia lo que se comprueba.
         vigenteDesde: null,
       });
       await servicio.archivar(actor, { planId });
@@ -123,6 +125,7 @@ describeSiHayBase("SL-24 — el rastro de los planes (R29, R40, R43)", () => {
           modulos: { antes: null, despues: ["ranking"] },
           precio: { antes: null, despues: { tipo: "monto", mensual: "25000.00", anual: null } },
           costoPorOrden: { antes: null, despues: null }, // SLT-66 R8: campo obligatorio nuevo; el alta lo registra como los demás.
+          costoPorOrdenPorcentual: { antes: null, despues: null }, // SLT-83: campo nuevo del rastro; el alta lo registra como los demás.
           archivado: { antes: null, despues: false },
         },
       },
@@ -313,6 +316,7 @@ describeSiHayBase("SL-24 — el rastro de los planes (R29, R40, R43)", () => {
         modulos: [],
         precio: { tipo: "sin_precio" },
         costoPorOrden: null, // SLT-66 R8: campo obligatorio nuevo; no cambia lo que se comprueba.
+        costoPorOrdenPorcentual: null, // SLT-83: campo obligatorio nuevo; no cambia lo que se comprueba.
         vigenteDesde,
       });
       // `created_at` lo pone Prisma en el cliente: una pausa entre operaciones evita que dos de ellas

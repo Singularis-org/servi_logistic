@@ -48,6 +48,7 @@ export interface CierreAdminResumenRow {
   };
   totalPagoMensajero: string; // feature 39/R17: snapshot total del pago al mensajero (STRING)
   totalIngresoBodegaRechazos: string; // feature 56/R16: snapshot total del ingreso de bodega por rechazos (STRING)
+  incluyeModeloNuevo?: boolean; // SLT-54 (R71): ver `CierreAdminResumen.incluyeModeloNuevo`
   solicitadoAt: string; // ISO
   resueltoAt: string | null; // ISO
   motivoRechazo: string | null;

@@ -13,6 +13,7 @@ import {
   nodosDeProfundidad,
   zonasCandidatas,
 } from "@/lib/services/geografia-dominio";
+import { usaModeloNuevo } from "@/lib/repositories/_shared/resolver-tarifas";
 
 // Ficha 465 (design §3.2) — las dos lecturas del Excel de cobertura. Solo lectura; la regla
 // (cobertura, motivo, colapso de zonas) vive en `lib/utils/cobertura-distrito.ts`.
@@ -25,7 +26,7 @@ import {
 
 type CoberturaPrismaClient = Pick<
   PrismaClient,
-  "tarifa" | "nodoGeografico" | "tipoNivelGeografico" | "zonaDistrito" | "organizacion"
+  "tarifa" | "tarifaActivacion" | "tarifaValor" | "nodoGeografico" | "tipoNivelGeografico" | "zonaDistrito" | "organizacion"
 > &
   ClienteDeMarcas;
 
@@ -68,6 +69,23 @@ export class CoberturaRepository implements ICoberturaRepository {
   }
 
   async listZonaIdsConTarifaGeneral(): Promise<string[]> {
+    // SLT-54 (R30): tras activar, `tarifas` ya no dice nada y todas las zonas saldrian sin tarifa. Marca
+    // el flete por entregado propio de la zona, coherente con `fleteEntregadoSinTarifa` (SLT-52 R51).
+    if (await usaModeloNuevo(this.prisma)) {
+      const valores = await this.prisma.tarifaValor.findMany({
+        where: {
+          concepto: "tienda_flete_entregado",
+          grupoId: null,
+          tiendaId: null,
+          mensajeroId: null,
+          vehiculoId: null,
+        },
+        select: { zonaId: true },
+        distinct: ["zonaId"],
+      });
+      // Sin tienda ni mensajero, el CHECK `tarifa_valor_niveles_*` obliga a que la fila tenga zona.
+      return valores.map((v) => v.zonaId as string);
+    }
     // Nivel 3 de la cascada (`lib/utils/cascada-tarifa.ts`): tienda NULL y zona con valor. La
     // fila global (NULL, NULL) NO es una tarifa general de ninguna zona (R14).
     const rows = await this.prisma.tarifa.findMany({

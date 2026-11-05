@@ -39,7 +39,10 @@ vi.mock("@/lib/db/prisma-client", () => ({
     cobroPlataformaMovimiento: { groupBy },
     walletMovimiento: { findMany: findManyLibro },
     // SLT-66 R31, R32: el plan y el cobro vigente salen de una consulta más; aquí, la excepción y sin plan.
-    $queryRaw: async () => [{ id: "org-1", monto: "300.00", fuente: "empresa", plan_id: null, plan_nombre: null }],
+    // SLT-83 (R22): la fila de `cobro_plataforma_tarifa_de` gana `porcentaje` y `minimo`; la excepción es fija (null).
+    $queryRaw: async () => [
+      { id: "org-1", monto: "300.00", fuente: "empresa", porcentaje: null, minimo: null, plan_id: null, plan_nombre: null },
+    ],
   }),
   PRISMA_OMIT: {},
 }));
@@ -69,7 +72,7 @@ describe("SL-32 — listarEmpresasPlataforma cablea el repositorio real y esPlat
           cobroPorOrden: "300.00",
           deudaPlataforma: { deuda: "300.00", estado: "debe", importe: "300.00" },
           pagadoPlataforma: "200.00",
-          cobroVigente: { monto: "300.00", fuente: "empresa" }, // SLT-66 R31
+          cobroVigente: { modo: "fijo", monto: "300.00", fuente: "empresa" }, // SLT-66 R31; SLT-83 R22: con su modo
           plan: null, // SLT-66 R32
         },
       ],
