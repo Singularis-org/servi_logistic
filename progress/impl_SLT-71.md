@@ -265,3 +265,212 @@ $ pnpm run test:guardias
 
 T2.1 y T2.2 cerradas y en verde. T3 parada por tres aserciones de parámetros que §11.1 no cubre;
 espera la decisión del humano.
+
+## F2.1 tanda 2 (continuación) — T3 implementada en el árbol, PARADA por `alcance-dinero.guardia` (backend_dev, 2026-11-04)
+
+El humano autorizó el 2026-11-04 las tres aserciones de parámetros del bloqueo anterior: el array de ids
+resueltos por faceta, y `FALSE` sin parámetro cuando el id no está en el catálogo. Con eso, T3.1–T3.3 se
+implementaron. **No hay commit:** el cambio deja en rojo una aserción existente que no está autorizada.
+
+### BLOQUEO 2 — `tests/unit/analytics/alcance-dinero.guardia.test.ts:222`
+
+```ts
+it("(2) el repositorio de dinero IMPORTA `condicionesDeConsulta` y la usa", () => {
+  const codigo = quitarComentarios(fs.readFileSync(FUENTE_DINERO, "utf8"));
+  expect(codigo).toContain("@/lib/repositories/ConteoPorStatusRepository");
+  expect(codigo).toContain("condicionesDeConsulta(consulta)");   // :222
+});
+```
+
+- Design §3.3 hace obligatorio el segundo parámetro, así que `DineroProductosRepository` llama a
+  `condicionesDeConsulta(consulta, lugares)`. El literal `condicionesDeConsulta(consulta)` desaparece del
+  código y la aserción `:222` cae.
+- La intención de la guardia, «usa el `where` compartido y no uno propio», se sigue cumpliendo: el
+  bloque (2 bis) de la misma guardia, que prohíbe recortes escritos a mano, sigue en verde.
+- Propuesta para el humano: `:222` pasa a `toContain("condicionesDeConsulta(consulta, lugares)")`, o a
+  una regex `condicionesDeConsulta\(consulta\b`. La línea sintética `:238` (autocomprobación de 2 ter) no
+  necesita cambiar: sigue detectando el recorte a mano.
+
+Es el único rojo nuevo. `pnpm run test:guardias` da `Tests 5 failed`: 4 del baseline
+`dependencias-declaradas-presentes` y este.
+
+### Lo que está en el árbol, sin commit
+
+- Repositorios (design §3.3–3.4): `ConteoPorStatusRepository`, `ConteoDevolucionesRepository`,
+  `ConteoCargadasPorDiaRepository`, `CicloVidaRepository` (sitios 2–5), y `ConteoProductosRepository`,
+  `DineroProductosRepository`, `CohorteCargaRepository` y `ConteoHoyGestionRepository` (comparten el
+  recorte).
+  - `lugares` es obligatorio en `condicionesDeConsulta`, `condicionesSinFecha`, `condicionesDeCargadas`,
+    `condicionesDeDevoluciones`, `condicionesDeCiclo`, `condicionesDeCohorte` y `condicionesDeHoy`.
+  - Las tres facetas geográficas salen de `facetas` y en su sitio va `...condicionesDeLugar(lugares)`,
+    entre zona y tienda.
+  - Cada repositorio tiene el catálogo por instancia (`catalogoGeografico()`) y llama a
+    `lugaresDelFiltro` en el método. El cliente pasa a `Pick<PrismaClient, "$queryRaw"> & CatalogoPrismaClient`.
+- Tests, cambios de **entrada**:
+  - nuevo `tests/unit/analytics/_catalogo-facetas.ts`, con el catálogo `p1 → c1 → d1`, `lugaresDe` y
+    `delegadosDelCatalogo`;
+  - un envoltorio con `lugaresDe(c.filtro)` en `conteo-por-status-sql`, `cohorte-carga-sql`,
+    `conteo-cargadas-servicio`, `ciclo-vida`, `conteo-devoluciones`, `conteo-hoy-gestion-servicio`,
+    `conteo-productos-sql` y `dinero-productos-sql`;
+  - delegados del catálogo en los dobles de `conteo-productos-sql`, `dinero-productos-sql` y
+    `cohorte-consulta-unica`. `cohorte-consulta-unica` no está en la lista de archivos del design, pero
+    solo cambia su doble (un caso con las seis facetas); ningún `expect`.
+- Tests, cambios de **aserción**, todos autorizados (§11.1 y la decisión del 2026-11-04):
+
+| archivo:línea (hoy) | cambio |
+|---|---|
+| `conteo-por-status-sql.test.ts:111–113` (antes 105–107) | zona/tienda `IN (`; tres condiciones `o."distrito_id" = ANY(` |
+| `conteo-por-status-sql.test.ts:117–125` (antes 111–115) | `["z1","z2",["c1","d1"],["c1","d1"]]` |
+| `conteo-por-status-sql.test.ts:~129–131` (antes 121–123) | zona sin `IN`, sin `= ANY(` |
+| `conteo-devoluciones.test.ts:145–147` (antes 139–141) | zona/tienda `IN`; tres `= ANY(` |
+| `ciclo-vida.test.ts:100–102` (antes 94–96; §11.1 decía 105) | ídem |
+| `conteo-cargadas-servicio.test.ts:208–213` (antes 202–207) | ídem, y parámetros con los arrays `["c1","d1","p1"]`, `["c1","d1"]`, `["d1"]` |
+| `cohorte-carga-sql.test.ts:143–147` y `:152–153` | las tres geográficas → `FALSE`; `x1` no viaja como parámetro en ellas |
+
+### Corridas (Postgres local `logistic_slt71`, `NODE_OPTIONS=--max-old-space-size=8192`)
+
+```
+$ pnpm exec tsc --noEmit
+rc=0
+$ pnpm exec eslint <archivos tocados>
+0 errores, 2 avisos ya existentes (`_c` sin usar en ciclo-vida.test.ts:302 y conteo-devoluciones.test.ts:326)
+$ pnpm exec vitest run tests/unit/analytics tests/unit/repositories tests/unit/actions
+ Test Files  1 failed | 429 passed (430)        # el rojo: alcance-dinero.guardia (2)
+$ pnpm exec vitest run <integración de T3.4: conteo-productos.int, dinero-productos.int,
+    ciclo-vida-gestion-final.int, cohorte-carga-*.int, conteo-por-status-cohorte.int,
+    efectividad-por-rol.int, 455/caracterizacion/sql-crudo-*, geo-71-fixture>
+ Test Files  5 failed | 14 passed (19)
+      Tests  80 passed | 38 skipped (118)
+$ pnpm run test:guardias
+ Tests  5 failed | 4634 passed | 1 skipped     # 4 baseline + alcance-dinero (2)
+```
+
+Los tests de integración **corrieron** contra `logistic_slt71`. Los 5 archivos en rojo son rojos de
+**entorno**, y están en `tests/baseline-rojos.json`: piden datos sembrados (geografía, zona, órdenes)
+que `db:seed` no crea, y fallan en su `beforeAll` antes de leer nada. Son
+`conteo-productos.int`, `dinero-productos.int`, `sql-crudo-avisos-y-corte`, `sql-crudo-cron-devoluciones`
+y `sql-crudo-tablero-dia`. T3.4 cita los dos primeros; contra esta base no se pueden dar por verdes.
+Los demás de T3.4 pasan: `conteo-por-status-cohorte`, `efectividad-por-rol`, `cohorte-carga-*`,
+`ciclo-vida-gestion-final`, `sql-crudo-analitica` y `sql-crudo-conteos`.
+
+### Pendiente
+
+- T3.1–T3.3: commit en cuanto el humano decida sobre `alcance-dinero.guardia.test.ts:222`.
+- T3.4 (`geo-analitica-lugar.test.ts`), T4.1 y T4.2: sin empezar.
+
+## F2.1 tanda 2 (cierre) — T3.1–T3.4, T4.1 y T4.2 cerradas (backend_dev, 2026-11-04)
+
+Decisiones del humano del 2026-11-04, aplicadas:
+1. `alcance-dinero.guardia.test.ts:222` exige ahora `condicionesDeConsulta(consulta, lugares)` (texto
+   exacto, con comentario). Va en su propio commit.
+2. T3.4 lo cierra `geo-analitica-lugar.test.ts` sobre `geo-71`. `conteo-productos.int` y
+   `dinero-productos.int` siguen como rojos de baseline y no se arreglan. Su «Hecho» se enmendó en una
+   línea de `tasks.md`.
+
+### Commits
+
+| commit | qué |
+|---|---|
+| `dfc4f9b1` | T3.1: `ConteoPorStatusRepository` y `ConteoDevolucionesRepository`, más `ConteoProductos` y `DineroProductos`, porque comparten `condicionesDeConsulta`; con sus tests y `_catalogo-facetas.ts` |
+| `3ff18057` | la guardia `alcance-dinero:222` (decisión 1) |
+| `fcf11237` | T3.3 con `ConteoCargadasPorDiaRepository`: `condicionesSinFecha` es el constructor que usan cohorte y contador de hoy, así que va con ellos. Marca T3.3 |
+| `eba8cfdf` | T3.2: `CicloVidaRepository`, sobre SLT-64. Marca T3.2; cargadas ya entró en `fcf11237` |
+| `0360a80d` | T3.4: `geo-analitica-lugar.test.ts`; `geo-71.ts` admite `{ incoherente: false }` |
+| `e751eed0` | T4.1: `InformeTransitoRepository` y el doble de `informe-transito-composicion.test.ts` |
+| `aac13ebd` | T4.2: `geo-transito-nombres.test.ts` |
+
+### T4.1 — `InformeTransitoRepository`
+
+- `filasEnAlerta`:
+  - proyecta `c."canton_id", c."distrito_id"`;
+  - ya no tiene los `JOIN` a `canton` ni a `distrito`;
+  - sin filas devuelve `[]` sin cargar el catálogo;
+  - con filas carga `deLaEmpresa()` una vez por instancia y nombra con `nodo(...)`.
+- Un nodo ausente:
+  - se recorren todas las filas, juntando los nodos y las órdenes afectadas, sin duplicados y
+    ordenados;
+  - se escribe una línea con `logger.logError("analitica - informe transito - error: nodos ausentes del catalogo=[…] ordenes=[…]")`;
+  - se lanza `CatalogoGeograficoInconsistente(primerNodo, …)`;
+  - `seleccionarTransito` la envuelve como `informe transito: filasEnAlerta falló`.
+- El logger es el segundo parámetro opcional del constructor (`defaultLogger`); el prefijo se exporta
+  como `PREFIJO_LOG_NODO_AUSENTE`.
+- `informe-transito-composicion.test.ts`: su doble de `$queryRaw` devuelve `canton_id`/`distrito_id` y
+  gana los delegados del catálogo. Es un cambio de **entrada**: sus tres `expect` siguen igual. El
+  archivo no está en la lista del design.
+
+### Tests de entrada fuera de la lista de archivos del design
+
+Solo cambia el doble o la entrada; ningún `expect`:
+
+- `cohorte-consulta-unica.test.ts`;
+- `informe-transito-composicion.test.ts`.
+
+### Notas
+
+- La copia congelada es de funciones libres, con un nivel menos de sangría. Por eso el texto de su SQL
+  difiere del de los repositorios en espacios en blanco. R5 se compara con los espacios normalizados
+  (`geo-analitica-lugar.test.ts`).
+- Las suites `informe-transito-{catalogo-real,hitos,parados,seleccion,zonas}` (integración) son rojos
+  de entorno, en `tests/baseline-rojos.json`: piden un distrito sembrado que `db:seed` no crea, y
+  fallan igual antes y después de este cambio.
+  - **Riesgo para el día que se siembren:** leen sin `conEmpresa` y como dueño, y `deLaEmpresa` toma
+    una empresa cualquiera (`findFirst` sin `where`). Si su país no es el del distrito sembrado,
+    `filasEnAlerta` fallaría por R12. Hoy no se puede ver.
+
+### Mapa R → test
+
+| R | test |
+|---|---|
+| R1 | `tests/unit/repositories/lugares-del-filtro.test.ts`; `tests/unit/repositories/lugar-orden.test.ts`; `tests/integration/db/geo-analitica-lugar.test.ts` (equivalencia por faceta y profundidad 4 por entrada) |
+| R2 | `geo-analitica-lugar.test.ts` (combinaciones de facetas y zona; el alcance es la condición 0 con faceta); `conteo-por-status-sql.test.ts` y demás de §11.1 |
+| R3 | `lugares-del-filtro.test.ts`; `geo-analitica-lugar.test.ts` (id de cantón como distrito, provincia de otro país, provincia como cantón → 0 en las cinco) |
+| R4 | `geo-analitica-lugar.test.ts` (CR, XA y alcance de tienda, sin y con rango `mes`, frente a la copia; y la incoherente como única diferencia) |
+| R5 | `lugares-del-filtro.test.ts` (sin faceta no se crea el catálogo); `geo-analitica-lugar.test.ts` (ninguna carga de nodos, SQL y parámetros de hoy); los unitarios de §11.1 sin faceta |
+| R6 | `tests/unit/analytics/conteo-entregas-contrato.test.ts` y `entregas-filtro-analitica.test.ts`, sin cambios; `git diff origin/dev...HEAD -- lib/analytics/` vacío (se anota en T8.1) |
+| R7 | `conteo-productos-sql.test.ts`, `dinero-productos-sql.test.ts` y `alcance-dinero.guardia.test.ts` (con `lugares`); `geo-analitica-lugar.test.ts` (productos, dinero, cohorte y hoy frente a la copia) |
+| R8, R9 | `tests/integration/db/geo-transito-nombres.test.ts` (filas y modelo de la selección iguales a hoy) |
+| R10 | `geo-transito-nombres.test.ts` (consultas con 1 y con 40 órdenes; sin `FROM/JOIN "canton"/"distrito"`); `informe-transito-repo-consultas.test.ts` sin cambios |
+| R11 | `geo-transito-nombres.test.ts` |
+| R12 | `geo-transito-nombres.test.ts` (prefijo, ids de nodo y de orden, sin `DATOS_PERSONALES_GEO65` ni nombres de nodo; contraprueba sin log) |
+| R13 | `lugares-del-filtro.test.ts`; `geo-analitica-lugar.test.ts` y `geo-transito-nombres.test.ts` (catálogo solo de XA, una carga por instancia, `EmpresaNoResuelta` en plataforma) |
+| R14–R25 | pendientes (T5–T8) |
+
+### Corridas (Postgres local `logistic_slt71`, `NODE_OPTIONS=--max-old-space-size=8192`, desde la raíz del worktree)
+
+Los tests de integración **corrieron** contra `logistic_slt71`; no se saltaron.
+
+```
+$ pnpm exec tsc --noEmit
+rc=0
+$ pnpm exec eslint <archivos tocados de T3/T4>
+0 errores (2 avisos `_c` ya existentes en ciclo-vida/conteo-devoluciones)
+$ pnpm exec vitest run tests/unit/analytics tests/unit/repositories tests/unit/actions tests/unit/whatsapp-envios
+ Test Files  449 passed (449)
+      Tests  6190 passed (6190)
+$ pnpm exec vitest run geo-analitica-lugar geo-transito-nombres geo-71-fixture
+ Test Files  3 passed (3)        Tests  14 passed (14)
+$ pnpm exec vitest run ciclo-vida-gestion-final.int conteo-por-status-cohorte.int efectividad-por-rol.int \
+    geo-65-fixture geo-consultas-conteo
+ Test Files  5 passed (5)        Tests  44 passed (44)
+$ pnpm exec vitest run cohorte-carga-*.int 455/caracterizacion/sql-crudo-{analitica,conteos}
+ Test Files  10 passed (10)      Tests  40 passed (40)
+$ pnpm exec vitest run tests/integration/db/informe-transito-
+ Test Files  5 failed (5)        Tests  11 failed (11)
+   # 11 × «475: no hay ningun usuario en la base de test»: rojo de entorno del baseline, igual que antes
+$ pnpm run test:guardias
+ Test Files  1 failed | 333 passed (334)
+      Tests  4 failed | 4635 passed | 1 skipped (4640)   # solo el baseline dependencias-declaradas-presentes
+```
+
+`conteo-productos.int` y `dinero-productos.int` siguen en rojo de baseline (decisión 2): piden
+geografía sembrada.
+
+Hubo una corrida conjunta de unidad e integración que quedó colgada de noche: la máquina se suspendió y
+los tiempos subieron a ~31.400 s. Dio muchos timeouts de 20 s por locks y conexiones caídas. Se
+descartó y se repitió por grupos con la máquina activa; esos grupos son los resultados de arriba.
+
+### Veredicto
+
+T3.1–T3.4, T4.1 y T4.2 cerradas. Solo cambiaron las aserciones autorizadas (§11.1, las tres de
+parámetros y la guardia `alcance-dinero:222`). Integración verde salvo los rojos de entorno del
+baseline. T5 sin empezar.
