@@ -29,7 +29,7 @@
   `scripts/geo-equivalencia/medicion.ts` (design §9.1). `bloqueaPorPorcentaje` pasa a la definición
   de la lectura, y `geo-explain-consultas.ts` re-exporta. **Hecho:**
   `tests/integration/db/geo-explain-consultas.test.ts` pasa sin cambios.
-- [ ] **T1.2** `scripts/geo-equivalencia/analitica-de-hoy.ts`: copia **literal** de la tabla de
+- [x] **T1.2** `scripts/geo-equivalencia/analitica-de-hoy.ts`: copia **literal** de la tabla de
   design §7, **antes** de tocar ningún repositorio, desde `origin/dev` con SLT-64 ya mergeada e
   integrada en la rama. **Hecho:** compila. El commit de la copia va solo, cita el SHA de `dev` y
   precede a los de T2–T4. El reviewer la compara con ese SHA.
