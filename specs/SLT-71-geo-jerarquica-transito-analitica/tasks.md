@@ -39,7 +39,7 @@
 - [x] **T2.1** `lib/repositories/_shared/lugar-orden.ts`: `sqlLugarEn` y `PROFUNDIDAD_DEL_NIVEL`
   movida desde `OrdenRepository.ts`, que pasa a importarla (design §3.1). **Hecho:** typecheck en
   verde. `tests/unit/repositories/lugar-orden.test.ts`, ampliado, pasa.
-- [ ] **T2.2** `lib/repositories/_shared/lugares-del-filtro.ts` (design §3.2) y
+- [x] **T2.2** `lib/repositories/_shared/lugares-del-filtro.ts` (design §3.2) y
   `tests/unit/repositories/lugares-del-filtro.test.ts`, con el catálogo de 4 niveles. **Hecho:** el
   test pasa (R1, R3, R5).
 
