@@ -443,8 +443,8 @@ function MarcaEspecialSinPacto() {
 }
 /**
  * Etiquetas de las dos filas del pacto especial. Se conservan TAL CUAL —incluido el «devuelta»
- * de la segunda— por la misma decisión de negocio que ya está escrita en
- * `configuracion/tarifas/_components/tarifas-labels.ts`: «Tarifa especial» es como ellos
+ * de la segunda— por la misma decisión de negocio que ya estaba escrita en la
+ * pantalla de tarifas anterior a SLT-54: «Tarifa especial» es como ellos
  * conocen esos dos campos, y son los que nombran las columnas `tarifa_especial` y
  * `tarifa_especial_devuelta`. La ficha 338 renombra el FLETE, no el pacto.
  */
@@ -473,7 +473,7 @@ export const IVA_COMISION_LABEL = "IVA comisión";
 /**
  * Los cuatro nombres de COLUMNA de la tabla de precios: la misma zona paga distinto dentro y
  * fuera del GAM, así que son cuatro cobros POSIBLES y no dos. Coinciden a propósito con los
- * rótulos de `/configuracion/tarifas` (`TARIFA_CAMPO_LABEL`): la misma cifra no puede llamarse
+ * rótulos que tenía `/configuracion/tarifas` antes de SLT-54: la misma cifra no puede llamarse
  * de dos maneras según por qué pantalla se entre.
  */
 export const VALOR_FLETE_LABEL = "Valor flete";

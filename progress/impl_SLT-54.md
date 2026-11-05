@@ -424,3 +424,140 @@ Ninguno: los 271 rojos caen en 50 archivos, los 50 en `tests/baseline-rojos.json
 **Lo que eso deja sin medir aquí:** `detalle-movimiento-cierre-postgres` y `detalle-en-lote-464`, que prueban el `WHERE` del modelo viejo contra Postgres, están en rojo por su siembra. El viejo lo cubre aquí «en el modelo viejo no cambia nada» y la forma en `cierre-aporte-repository.test.ts`; esos dos hay que mirarlos en el `gate-completo` de CI.
 
 **Sin correr aquí:** `vitest related`, `./init.sh` y E2E, por encargo.
+
+## Tanda D — Pantalla
+
+**Veredicto:** hecha. La pantalla nueva sirve `/configuracion/tarifas` con los 4 tableros de la maqueta, y la vieja salió entera. Mutaciones 42 de 42 por aserción. Lo que no se pudo ver y las diferencias con la maqueta están abajo, dichas.
+
+### Archivos
+
+**Nuevos**
+- `app/(app)/configuracion/tarifas/_components/`: `TarifasModule`, `TarifasEstado`, `TarifasZonas`, `TarifasValores`, `TarifasVehiculo`, `TarifasGrupos`, `TarifasTiendas`, `TarifasActivarDialog`, `tarifas-textos.ts`, `tarifas-borrador.ts` (fuera de la lista original: lo puro que decide el payload; añadido a `tasks.md`)
+- `tests/components/`: `TarifasModulo`, `TarifasActivar`, `TarifasValores`, `TarifasGrupos`, `TarifasTiendas`, `TarifasVehiculo`, `TarifasDisposicion`; `tests/fixtures/tarifas-pantalla.ts`
+
+**Modificados**
+- `app/(app)/configuracion/tarifas/page.tsx`, `lib/auth/menu-visibility.ts` (R56), `lib/actions/tarifas.ts` (salen los `@sin-superficie`), `app/globals.css` (salen las animaciones de `useDestinoAnimado`), comentarios de `cierre-detalle-shared.tsx` y `RegistrarPagoDialog.tsx`
+- Tests: `TarifasPage` (reescrito), `menu-visibility`, `menu-historial-acciones`, `Sidebar`, `rechazo-nombre-466-app`, guardias `rechazo-nombre-466`, `estado-con-info`, `pwa-manifiesto-atajos`, `cobertura-tablas` y `censo-tablas.ts` (la tabla de tiendas se censa `fuera`, con motivo)
+
+**Salen:** `TiendasModule`, `CrearTiendaForm`, `TarifaCampos`, `CobroVehiculoTarifas`, `tarifas-labels.ts`, `useDestinoAnimado.ts`, `tarifas-retiradas.ts`, y los tests `CrearTiendaForm`, `TarifasClaridadMontos`, `TarifasAlineacionRejilla`.
+
+### Decisiones de pantalla, por revisar
+
+- **Modo en la tabla por vehículo.** La maqueta `Vehiculo` no dibuja modo y R34 lo pide por concepto. Va un selector bajo el nombre del concepto, sin columna nueva (siguen 10 con 8 vehículos). Una celda guardada con otro modo lo conserva y lo dice («En %»): nada se convierte a escondidas.
+- **Comisión COD nace en %,** como la maqueta. Es fijo por concepto, no sale de «Hoy rige».
+- **IVA obligatorio, por fila.** La fila sin IVA no se envía y se marca; las demás se guardan.
+- **Cambiar de zona o de nivel con algo sin guardar pregunta antes.** R38 pide conservar lo digitado y el spec no decía nada de esto; perderlo en silencio era peor.
+- **Añadir y Editar precio de tienda usan el panel de valores,** nivel «Tienda con precio propio…»: no hay un segundo formulario. «Quitar» pide confirmación con cuántos valores caen.
+- **Apagar «Pagar distinto» con valores** los quita al confirmar, sin pasar por «Guardar»: el diálogo ya dijo cuántos.
+- **Nombres de grupo de otras zonas en la lista de tiendas:** `cargarPantallaTarifas` no los trae; `page.tsx` llama a `cargarZonaTarifas` solo por las zonas con precio de tienda en un grupo.
+- **`admin` sin CTA a Zonas:** no puede entrar; ve el vacío con su texto.
+- **Menú del `admin`:** «Tarifas» va tras «Mi plan» y antes de «Ayuda», que cierra la barra por contrato (`menu-ayuda`), no literalmente al final. Icono `settings`, ya existente.
+
+### Mapa R → test (tanda D)
+
+| R | Test |
+|---|---|
+| R8 | `TarifasModulo` › «sin desactivar» |
+| R17 | `TarifasModulo` › «Completa, Faltan N, Sin empezar y M de T» |
+| R18, R19 | `TarifasActivar` (casilla, sin casilla, «Completar», lista y aviso literales, `usaZona` sin aviso) |
+| R6, R7 | `TarifasActivar` › «otra lista», «una casilla marcada para otra lista», «`ya_activada`» |
+| R20 | `TarifasValores` › «la referencia no entra en el campo»; `TarifasVehiculo` › «una línea bajo cada campo» |
+| R24 | `TarifasValores` › «sin Hoy rige» |
+| R25, R55 | `tests/unit/app/tarifas/TarifasPage.test.tsx`; `TarifasModulo` › permisos; «solo lectura» en cada componente |
+| R33 | `TarifasModulo` › selector de nivel; `TarifasValores` › «las filas salen del catálogo» y «un concepto nuevo» |
+| R34-R36 | `TarifasValores` › guardar (payload espiado, sin `ivaPct`, vacío quita, 0 escrito, sin cambios) |
+| R37, R38 | `TarifasValores` › «la carrera se pinta en su fila», «fallo entero no borra» |
+| R39 | `TarifasValores` › «qué significa vacío» |
+| R40 | `TarifasModulo` › «en vigor»; `TarifasValores` › toast |
+| R41 | `TarifasTiendas`; `TarifasModulo` › «solo se ofrecen las cuentas que llegan» |
+| R42-R46 | `TarifasGrupos` |
+| R47-R51, R54 | `TarifasVehiculo` (1, 2 y 8; alta sin tocar nada; inactivo con y sin valor; apagar; catálogo vacío; `sticky`) |
+| R56 | `menu-visibility` › «Tarifas para admin»; `destino-post-login` sin cambios |
+| R57, R58 | `TarifasModulo` › estados de carga; `TarifasPage` › error; `TarifasValores` y `TarifasActivar` › segundo envío |
+| R59, R60, R70 | `TarifasDisposicion` (clases de §12, tokens, foco opaco, sin hex) |
+| R61 | `TarifasValores` › «el IVA nace vacío»; `TarifasGrupos` › etiquetas del país; `TarifasDisposicion` › sin símbolo de moneda ni IVA escrito; guardia `etiquetas-geograficas-sin-literal` |
+
+### Mutaciones
+
+Aplicadas, corridas y revertidas por script sobre los archivos reales; todas rojas por aserción, ninguna por `TypeError` o compilación. **Matadas: 42 de 42**, con una vuelta: A7 sobrevivió a la primera y se añadió el test «una casilla marcada para otra lista». Tras revertir, el árbol solo difería en `tasks.md`, editado aparte.
+
+| Grupo | Mutación | Primer rojo |
+|---|---|---|
+| Activar | A1 confirmar habilitado sin casilla | `expect(element).toBeDisabled()` |
+| | A2 confirma siempre / A3 nunca confirma | `expected "vi.fn()" to be called with…` |
+| | A4 casilla sin faltantes / A5 `usaZona` cuenta | `expected <span…> to be null` |
+| | A6 ignora la lista del servidor / A7 casilla sigue marcada | `Unable to find role="button"…` / `not.toBeChecked()` |
+| `admin` | P1-P9 Activar, Guardar, campos, interruptor, celdas de vehículo, Crear, borrar y renombrar grupo, editar y quitar tienda, Añadir | `expected <button…> to be null` y `Found multiple…` |
+| Hoy rige | H1 se copia al campo / H2 IVA prellenado / H3 sigue tras activar | `toHaveValue()`, `to be null` |
+| `ivaPct` | I1 `null` / I2 `"0"` / I3 el pago usa la rama de cobro | `to not have property "ivaPct"` |
+| Vacío | V1 guardado se fija en 0 / V2 sin guardar se fija en 0 / V3 el 0 no se manda / V4 sin IVA / V5 sin cambio escribe / V6 fallo borra lo digitado | `to deeply equal`, `toBeDisabled()`, `toHaveValue(700)` |
+| Nivel | N1 no filtra grupo / N2 tienda en todas lleva zona | `toHaveValue(1000)`, `to match object` |
+| Vehículo | W1-W7 apagar sin preguntar, otra pestaña, inactivo sin valor aparece, con valor no, celda vacía editable, sin marca, interruptor sin catálogo | `Unable to find…`, `to deeply equal`, `toBeDisabled()` |
+| Grupos | G1 marca tras activar / G2 borrar sin contar los de tienda | `Found multiple…`, `Unable to find…` |
+| Marco | Z1 carga vieja pisa / Z2 sin preguntar / Z3 error como vacío | `toHaveValue(333)`, `Unable to find…` |
+
+### Comparación con la maqueta, medida
+
+Con Playwright sobre `next build` + `next start`, en una empresa de prueba (borrada después), 1360 × 980 salvo donde se dice. Los campos son lo que da `boundingBox()`.
+
+| Elemento | Maqueta | Medido |
+|---|---|---|
+| Lista de zonas | 250-280 | 250 |
+| Separación lista-panel | 24 | 554 − (280 + 250) = 24 |
+| Fila de zona | ≥ 58 | 60 |
+| Panel | ≥ 560, misma `y` | 782, `y` 193 las dos |
+| Pestañas | 3, ≥ 44 | 3, 44 |
+| Filas por pestaña | 7, 5, 5 | 7, 5, 5 |
+| Columnas | Concepto, Modo, Valor, IVA, Hoy rige | Las mismas 5; 4 en pago; tras activar 4 en cobro, sin «Hoy rige» |
+| Orden de filas | Entregado, devolución, reprogramado, novedad, incidente, fulfillment, comisión | El mismo |
+| Campo valor | 110 × 40 | 110 × 40 |
+| Campo IVA | 70 × 40 | 70 × 40 |
+| Selector de modo | ≥ 40 | 40 |
+| Activar | ≥ 44, en la banda | 176 × 44, en la banda |
+| Guardar borrador | ≥ 44, al pie | 146 × 44, al pie |
+| Diálogo Activar | ≤ 640, padding 24 | 640, `24px` |
+| Casilla | 20 × 20, fila ≥ 44 | 20 × 20, fila 44 |
+| Tabla de tiendas | 5 columnas | 5 |
+| 8 vehículos + «Todos» | 10 columnas, campo 120, sin scroll de página | 10; campo 120 × 40; contenedor 1424 > 760; página 1360 = 1360; `x` de la primera columna 565 antes y 565 tras `scrollLeft = 400` |
+| 390 × 844 | Sin scroll, lista sobre panel, ≥ 44 | Página 390 = 390; lista `y` 402 < panel `y` 655; pestañas, botones, selectores y campos 44; interruptor 44. Único por debajo: «Toggle Sidebar» 28, del encabezado compartido |
+| Oscuro (contraste) | ≥ 4,5 | Banda 8,77; chip de estado 7,72; «Inactivo» 7,72; zona activa 11,13 |
+| Rótulos | Los de la maqueta | «Borrador: aún rigen las tarifas actuales», «Activar tarifas nuevas», «Activar con lo que falta», «Seguir digitando», «En vigor desde el 04-11-2026» |
+
+Recorrido visto: borrador con la referencia al lado y campo vacío (`valor ""`, `iva ""`); IVA obligatorio en la fila; guardar (con IVA 13) y la zona pasa a «Faltan 2»; «Hoy rige» con «Varía: ₡2.800 a ₡3.200», «No cobra», «No paga», «₡0», «₡1.500», «3,5 % + 13 % IVA»; grupo con los distritos marcados de solo lectura (6 distritos, 2 marcas); precio de tienda en la lista; vaciar un valor y la zona a «Faltan 1»; Activar sin faltantes (0 casillas, habilitado) y con faltantes (deshabilitado, se habilita al marcar); «Completar» lleva a la zona; vehículo inactivo con valor (marca, 1800 editable, 4 celdas vacías deshabilitadas); apagar con «Se quitará 1 valor», cancelar no cambia y confirmar quita; cambios sin guardar piden confirmación; `admin` con «Tarifas» en su menú, 7 filas y 0 campos ni botones de escritura; activar de verdad y En vigor, sin banda ni «Hoy rige»; guardar en vigor con su aviso. En claro, oscuro y móvil. **`next start`: 0 errores de consola** en el recorrido principal; el segundo (inactivo, apagar, `admin`, sin faltantes) se corrió en `next dev`.
+
+**Lo que no se vio en el navegador** (solo en tests de componente): esqueleto de carga, error de lectura con reintento, empresa sin zonas, catálogo sin vehículos, la carrera de R37, el rechazo de R42 por el servidor, «ya activada» por dos sesiones, y la tabla de 8 vehículos a 390 px (sí a 1360).
+
+**Diferencias con la maqueta**
+1. Selector de modo bajo el concepto en la tabla por vehículo (R34; la maqueta no lo dibuja).
+2. La lista de zonas no enseña «N grupos» ni «Zona especial: N distritos» de una zona sin abrir: `cargarPantallaTarifas` no trae el conteo y añadirlo es backend. Enseña «Bodega principal» y, de las ya abiertas, «N grupos» o «Sin grupos». Una línea en `TarifasPantallaService` lo arregla, si se quiere.
+3. Botones que el spec pide y la maqueta no dibuja: «Quitar» en tiendas (R41), «Renombrar» y «Borrar» en grupos (R42), y la línea «Hoy rige» bajo cada campo por vehículo (design §9).
+4. «M de T zonas completas» también tras activar (R17 no lo limita; `Vigente` no lo dibuja).
+5. La tabla de tiendas lleva el borde redondeado propio de `DataTable`; los campos muestran `2900`, sin miles, por `MontoInput` (design §2.4).
+
+### Un hallazgo sin causa raíz
+
+**En `next dev`, abrir `/configuracion/tarifas` por URL justo después del login da 500** («`useToast` debe usarse dentro de un `ToastProvider`», desde `LogoutButton`), y la página se recupera por render de cliente. Medido: 6 de 7 intentos en esa ruta exacta; 0 si se esperan 4 s, si se entra por el menú, con cookies en un contexto nuevo o en otras rutas (zonas, plantillas, órdenes, wallet, cierres, API). **Con `next build` + `next start`: 3 de 3 en 200 y ningún error en el log.** No encontré la causa. No es `searchParams` (descartado). Si en la Tanda F aparece un 500 en `next start`, empezar por aquí.
+
+### Salida de los comandos
+
+```
+$ NODE_OPTIONS=--max-old-space-size=8192 pnpm exec tsc --noEmit -p .  -> 0 errores
+$ pnpm exec eslint <archivos de la tanda>                             -> sin salida (0 errores, 0 avisos)
+$ pnpm exec next build                                                -> exit 0
+$ vitest: tests/components/Tarifas*, TarifasPage, rechazo-nombre-466-app, tests/unit/auth,
+  Sidebar, CierresAdminModule, CierreTarifaAplicada, tarifas-action
+  pass 524 | fail 0 | skip 0 | 32 archivos
+$ pnpm run test:guardias
+  Test Files  7 failed | 324 passed (331)
+       Tests  10 failed | 4603 passed | 4 skipped (4617)
+  - 4 rojos: dependencias-declaradas-presentes (baseline, como en las tandas anteriores)
+  - 6 rojos: timeouts de 20 s y 60 s, con la máquina cargada, en seis archivos sin relación
+$ esos seis archivos, más cobertura-tablas, pwa-manifiesto-atajos e impresion-sin-dark, a solas
+  pass 87 | fail 0 | skip 0 | 9 archivos
+```
+
+**Base local:** empresa, usuarios, zonas, valores, activación y vehículos de prueba borrados; comprobación booleana `base_limpia true`. Ninguna empresa real activada. Dev server y `next start` parados, puerto libre, `.next` borrada.
+
+**Sin correr aquí:** `vitest related`, `./init.sh`, la suite completa y E2E, por encargo.
+
+**Proceso:** las mutaciones y una tanda de guardias acabaron en segundo plano porque superan el tiempo de un comando en primer plano; se esperó a cada una antes de seguir, sin nada en paralelo.

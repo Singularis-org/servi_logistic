@@ -59,19 +59,19 @@
 
 ## Tanda D — Pantalla (frontend). Depende de A y B
 
-- [ ] **T4.1 Marco** (R25, R33, R40, R55, R57, R58, R61). `page.tsx` y `TarifasModule`; estado de borrador y en vigor;
+- [x] **T4.1 Marco** (R25, R33, R40, R55, R57, R58, R61). `page.tsx` y `TarifasModule`; estado de borrador y en vigor;
   lista de zonas. Salen los archivos viejos y sus tests; las guardias `rechazo-nombre-466` y `estado-con-info` pierden su
   entrada. *Hecho:* `TarifasPage.test.tsx` reescrito, `TarifasModulo.test.tsx`.
-- [ ] **T4.2 Faltantes y activar** (R17, R18, R19). *Hecho:* `TarifasActivar.test.tsx`: casilla, sin faltantes sin casilla,
+- [x] **T4.2 Faltantes y activar** (R17, R18, R19). *Hecho:* `TarifasActivar.test.tsx`: casilla, sin faltantes sin casilla,
   «Completar», `ya_activada`.
-- [ ] **T4.3 Rejilla de valores** (R20, R22, R23, R34-R39). *Hecho:* `TarifasValores.test.tsx`: la referencia nunca
+- [x] **T4.3 Rejilla de valores** (R20, R22, R23, R34-R39). *Hecho:* `TarifasValores.test.tsx`: la referencia nunca
   entra en el campo; `ivaPct` ausente en el payload espiado; vacío quita; fila en error; el IVA nace vacío y es obligatorio al digitar un cobro (R61).
-- [ ] **T4.4 Grupos y tiendas** (R41-R46). *Hecho:* `TarifasGrupos.test.tsx`, `TarifasTiendas.test.tsx`; marca de solo lectura y
+- [x] **T4.4 Grupos y tiendas** (R41-R46). *Hecho:* `TarifasGrupos.test.tsx`, `TarifasTiendas.test.tsx`; marca de solo lectura y
   sin llamada de escritura.
-- [ ] **T4.5 Por vehículo** (R47-R51, R54). *Hecho:* `TarifasVehiculo.test.tsx`: con 1, 2 y 8 vehículos; alta sin tocar nada;
+- [x] **T4.5 Por vehículo** (R47-R51, R54). *Hecho:* `TarifasVehiculo.test.tsx`: con 1, 2 y 8 vehículos; alta sin tocar nada;
   inactivo con valor marcado y sin valor ausente; apagar con confirmación; catálogo vacío.
-- [ ] **T4.6 Menú** (R56). *Hecho:* `destino-post-login.test.ts` sin cambios en lo que afirma, y `menu-visibility` por rol.
-- [ ] **T4.7 Disposición** (R59, R60, R70). `TarifasDisposicion.test.tsx`, según design §12.
+- [x] **T4.6 Menú** (R56). *Hecho:* `destino-post-login.test.ts` sin cambios en lo que afirma, y `menu-visibility` por rol.
+- [x] **T4.7 Disposición** (R59, R60, R70). `TarifasDisposicion.test.tsx`, según design §12.
 
 ## Tanda E — Huecos de pantalla (frontend). Depende de C
 
@@ -207,6 +207,7 @@
 - `app/(app)/configuracion/tarifas/_components/TarifasTiendas.tsx`
 - `app/(app)/configuracion/tarifas/_components/TarifasActivarDialog.tsx`
 - `app/(app)/configuracion/tarifas/_components/tarifas-textos.ts`
+- `app/(app)/configuracion/tarifas/_components/tarifas-borrador.ts`
 
 **Pantalla vieja, salen**
 - `app/(app)/configuracion/tarifas/_components/TiendasModule.tsx`
@@ -251,6 +252,7 @@
 - `tests/components/TarifasTiendas.test.tsx`
 - `tests/components/TarifasVehiculo.test.tsx`
 - `tests/components/TarifasDisposicion.test.tsx`
+- `tests/fixtures/tarifas-pantalla.ts`
 - `tests/components/CierreDesgloseModeloNuevo.test.tsx`
 - `tests/components/OrdenesColumnaFulfillment.test.tsx`
 - `e2e/tarifas-activacion.spec.ts`
@@ -284,6 +286,13 @@
 - `tests/unit/services/grupo-distritos-service.test.ts`
 - `tests/unit/auth/menu-visibility.test.ts`
 - `tests/unit/auth/destino-post-login.test.ts`
+- `tests/unit/auth/menu-historial-acciones.test.ts`
+- `tests/unit/descarga/censo-tablas.ts`
+- `tests/unit/descarga/cobertura-tablas.guardia.test.ts`
+- `tests/unit/guards/pwa-manifiesto-atajos.guardia.test.ts`
+- `tests/components/Sidebar.test.tsx`
+- `components/shared/liquidacion/RegistrarPagoDialog.tsx`
+- `app/globals.css`
 - `tests/unit/actions/geografia-action.test.ts`
 - `tests/unit/actions/distritos-especiales-action.test.ts`
 - `tests/unit/utils/tarifa-especial-por-distrito.test.ts`

@@ -72,8 +72,6 @@ export type ActivarTarifasNuevasResult = ActivarTarifasResult | SinSesion | Fall
 
 /**
  * SLT-54 (design §4, R4-R7): el maestro hace regir el modelo nuevo.
- *
- * @sin-superficie SLT-54 (backend antes que pantalla): la llama `TarifasActivarDialog`, que llega en la tanda D de esta misma ficha (T4.2).
  */
 export async function activarTarifasNuevas(
   input: unknown,
@@ -95,8 +93,6 @@ export type CargarPantallaTarifasResult = CargarPantallaResult | SinSesion | Fal
 
 /**
  * SLT-54 (design §7, R55): lo que `page.tsx` carga de entrada. Maestro y admin.
- *
- * @sin-superficie SLT-54 (backend antes que pantalla): la llama `page.tsx` en la tanda D de esta misma ficha (T4.1).
  */
 export async function cargarPantallaTarifas(deps: PantallaTarifasDeps = {}): Promise<CargarPantallaTarifasResult> {
   const r = await withErrorHandler(async () => {
@@ -111,8 +107,6 @@ export type CargarZonaTarifasResult = CargarZonaResult | EntradaInvalida | SinSe
 
 /**
  * SLT-54 (design §6, §7, R20-R24): grupos, distritos, valores y referencia de una zona. Se pide al abrirla.
- *
- * @sin-superficie SLT-54 (backend antes que pantalla): la llama `TarifasModule` en la tanda D de esta misma ficha (T4.3).
  */
 export async function cargarZonaTarifas(
   input: unknown,
@@ -149,8 +143,6 @@ export type GuardarValoresTarifaResult =
  * SLT-54 (design §7, R35, R38): fija o quita cada concepto, en serie, cada uno con su transaccion y su
  * historial. Sin transaccion comun a proposito: un fallo en una fila no debe tirar lo demas, y por eso
  * la excepcion de una fila se queda en su resultado y el guardado sigue.
- *
- * @sin-superficie SLT-54 (backend antes que pantalla): la llama `TarifasValores` en la tanda D de esta misma ficha (T4.3).
  */
 export async function guardarValoresTarifa(
   input: unknown,
@@ -195,8 +187,6 @@ function serviciosDeGrupos(deps: GruposDistritosDeps): IGrupoDistritosService {
 
 /**
  * SLT-54 (design §7, R42, R44): crear un grupo. La zona especial es un grupo mas.
- *
- * @sin-superficie SLT-54 (backend antes que pantalla): la llama `TarifasGrupos` en la tanda D de esta misma ficha (T4.4).
  */
 export async function crearGrupoDistritos(
   input: unknown,
@@ -213,8 +203,6 @@ export async function crearGrupoDistritos(
 
 /**
  * SLT-54 (design §7, R42).
- *
- * @sin-superficie SLT-54 (backend antes que pantalla): la llama `TarifasGrupos` en la tanda D de esta misma ficha (T4.4).
  */
 export async function renombrarGrupoDistritos(
   input: unknown,
@@ -231,8 +219,6 @@ export async function renombrarGrupoDistritos(
 
 /**
  * SLT-54 (design §7, R42): el rechazo de SLT-52 R11 llega con el nombre del distrito en `distritoIds`.
- *
- * @sin-superficie SLT-54 (backend antes que pantalla): la llama `TarifasGrupos` en la tanda D de esta misma ficha (T4.4).
  */
 export async function cambiarDistritosDeGrupo(
   input: unknown,
@@ -249,8 +235,6 @@ export async function cambiarDistritosDeGrupo(
 
 /**
  * SLT-54 (design §7, R43): la confirmacion la pide la pantalla; los valores del grupo caen con el.
- *
- * @sin-superficie SLT-54 (backend antes que pantalla): la llama `TarifasGrupos` en la tanda D de esta misma ficha (T4.4).
  */
 export async function borrarGrupoDistritos(
   input: unknown,
