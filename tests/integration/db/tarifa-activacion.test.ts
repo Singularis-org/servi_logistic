@@ -467,7 +467,8 @@ describeSiHayBase("SLT-54 R6, T2.3 — activar por la raíz de composición, con
         ),
       );
       // A solo tiene el flete por entregado de la zona: faltan los otros dos, y la lista es de A.
-      if (res.status !== "confirmacion_requerida") throw new Error(res.status);
+      expect(res.status).toBe("confirmacion_requerida");
+      if (res.status !== "confirmacion_requerida") return;
       expect(res.faltantes.map((z) => [z.zonaId, z.faltantes.map((f) => f.concepto)])).toEqual([
         [e.fksA.zonaId, ["tienda_flete_rechazo", "mensajero_entregado"]],
       ]);
@@ -522,7 +523,8 @@ describeSiHayBase("SLT-54 R6, T2.3 — activar por la raíz de composición, con
       );
       expect(fijado.status).toBe("ok");
       const res = await comoEmpresa(tx, e.A, () => s.tarifaActivacion.activar({ confirmaFaltantes: false }, maestro));
-      if (res.status !== "confirmacion_requerida") throw new Error(res.status);
+      expect(res.status).toBe("confirmacion_requerida");
+      if (res.status !== "confirmacion_requerida") return;
       expect(res.faltantes[0].faltantes.map((f) => f.concepto)).toEqual(["tienda_flete_rechazo", "mensajero_entregado"]);
     });
   });
