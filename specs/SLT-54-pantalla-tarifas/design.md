@@ -229,8 +229,8 @@ el cliente con la extensión de empresa; las que deciden qué se ve se prueban c
 
 | Action | Rol | Contrato |
 |---|---|---|
-| `cargarPantallaTarifas()` | maestro, admin | `{ activacion, zonas: ZonaResumen[], vehiculos, tiendas, puedeEscribir }` |
-| `cargarZonaTarifas({ zonaId })` | maestro, admin | `{ grupos, distritos, valores, referencia }` |
+| `cargarPantallaTarifas()` | maestro, admin | `{ activacion, zonas: ZonaResumen[], vehiculos, tiendas, preciosTienda, puedeEscribir }` |
+| `cargarZonaTarifas({ zonaId, tiendaId? })` | maestro, admin | `{ grupos, distritos, valores, referencia }`. `tiendaId` es la tienda elegida en el selector de nivel, para su referencia; validado con zod, una tienda de otra empresa no devuelve nada |
 | `guardarValoresTarifa({ cambios })` | maestro | `{ resultados: Array<{ clave, status, fieldErrors? }> }` |
 | `crearGrupoDistritos`, `renombrarGrupoDistritos`, `cambiarDistritosDeGrupo`, `borrarGrupoDistritos` | maestro | El resultado de `GrupoDistritosService` |
 | `activarTarifasNuevas` | maestro | §4 |

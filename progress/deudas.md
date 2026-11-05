@@ -221,3 +221,13 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** review de SLT-66 (2026-10-31, `progress/review_SLT-66.md`, m1). En el detalle y el catálogo del plan sale «Costo por orden: 100.00 por orden» (repite «por orden»), mientras «Mi plan» dice «Costo por orden: 100.00». Los montos de pantalla del plan muestran «.00» en enteros desde SL-24; SLT-67 solo lo quitó de los campos de entrada.
 - **Qué falta:** quitar el sufijo duplicado y decidir si los montos de pantalla siguen la regla de SLT-67 (entero sin decimales). Toca `PlanVistaCosteo`, `PlanEmpresa:517-523` y `PlanesModule`.
 - **Dueño:** Camilo (decidir si va a ficha).
+
+### D36 — `useToast` da 500 en `next dev` al abrir `/configuracion/tarifas` por URL tras el login
+- **Origen:** review de SLT-54 (2026-11-05, `progress/review_SLT-54.md`, menor 3). La tanda D lo midió en 6 de 7 intentos; la tanda E no lo reprodujo (0 de 20). En `next start`, 3 de 3 en 200 y 0 menciones en el log de la última corrida E2E. `ToastProvider` envuelve `app/(app)/layout.tsx` y `LogoutButton` cuelga de él; la página se recupera en cliente. Sin causa raíz: la idea de dos instancias del módulo no está medida.
+- **Qué falta:** buscar la causa si vuelve a aparecer. Si aparece en `next start`, deja de ser menor.
+- **Dueño:** Carlos Restrepo (decidir si va a ficha).
+
+### D37 — `detalle-movimiento-cierre-postgres` y `detalle-en-lote-464` ciegos, también en CI
+- **Origen:** review de SLT-54 (2026-11-05, `progress/review_SLT-54.md`, menor 4). Fallan por su siembra (14 fallan y 6 se saltan) y `tests/baseline-rojos.json` los tapa también en `gate-completo`. No hay regresión: con copias temporales que crean sus FK en la transacción, 20 de 20 en verde. Pero son un `WHERE` de dinero sin vigilancia en CI.
+- **Qué falta:** portar los dos a `crearFksDeOrden` (SL-31) y sacarlos del baseline.
+- **Dueño:** Carlos Restrepo (decidir si va a ficha).

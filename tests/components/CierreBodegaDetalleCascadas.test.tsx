@@ -963,4 +963,17 @@ describe("SLT-54 R65 — el rótulo del flete que no es de entrega, por nivel", 
     expect(screen.queryByText(FLETE_NO_ENTREGADAS_CON_IVA_LABEL)).toBeNull();
     expect(within(dueno()).getByText(FLETE_DEV_CON_IVA_LABEL)).toBeInTheDocument();
   });
+
+  it("R71: la nota de lo que gana la satélite no habla de devoluciones en el nuevo; en el viejo, literal", async () => {
+    const [ana, beto] = DETALLE_OK.cierres;
+    await abrirDetalle({ ...DETALLE_OK, cierres: [{ ...ana, ...conNuevo }, beto] });
+    const NOTA_NUEVA = "Lo que se le reconoce a la bodega satélite por sus gestiones. No es un movimiento de caja registrado.";
+    const NOTA_VIEJA = "Lo que se le reconoce a la bodega satélite por las devoluciones a origen. No es un movimiento de caja registrado.";
+    const deAna = screen.getByRole("region", { name: `${CASCADA_DUENO_TITULO} · Ana Mensajera` });
+    const deBeto = screen.getByRole("region", { name: `${CASCADA_DUENO_TITULO} · Beto Mensajero` });
+    expect(within(dueno()).getByText(NOTA_NUEVA)).toBeInTheDocument();
+    expect(within(central()).getByText(NOTA_NUEVA)).toBeInTheDocument();
+    expect(within(deAna).getByText(NOTA_NUEVA)).toBeInTheDocument();
+    expect(within(deBeto).getByText(NOTA_VIEJA)).toBeInTheDocument();
+  });
 });

@@ -69,6 +69,7 @@ import {
   PARA_LA_CENTRAL_NEGATIVO_NOTA,
   EFECTIVO_NO_CUBRE_NOTA,
   GANA_BODEGA_SATELITE_NOTA,
+  GANA_BODEGA_SATELITE_NOTA_MODELO_NUEVO,
   FLETE_RECHAZO_NO_DEDUCIBLE_NOTA,
   // FICHA 395 — los rotulos y las notas de las TRES cascadas del cierre de MENSAJERO. Mismo
   // camino y mismo motivo que los de la 393: el texto vive en el modulo PURO y las pantallas lo
@@ -79,6 +80,7 @@ import {
   PAGO_TIENDA_HOY_NOTA,
   COBRADO_SOBRE_RECAUDADO_NOTA,
   NETO_EMPRESA_NOTA,
+  NETO_EMPRESA_NOTA_MODELO_NUEVO,
   NETO_EMPRESA_NEGATIVO_NOTA,
   FLETE_RECHAZO_YA_COBRADO_NOTA,
   FLETE_RECHAZO_AUN_NO_COBRADO_NOTA,
@@ -158,6 +160,7 @@ export {
   PARA_LA_CENTRAL_NEGATIVO_NOTA,
   EFECTIVO_NO_CUBRE_NOTA,
   GANA_BODEGA_SATELITE_NOTA,
+  GANA_BODEGA_SATELITE_NOTA_MODELO_NUEVO,
   FLETE_RECHAZO_NO_DEDUCIBLE_NOTA,
   // FICHA 395 — las doce de las tres cascadas del cierre de MENSAJERO, por el mismo camino.
   GANA_LA_TIENDA_LABEL,
@@ -166,6 +169,7 @@ export {
   PAGO_TIENDA_HOY_NOTA,
   COBRADO_SOBRE_RECAUDADO_NOTA,
   NETO_EMPRESA_NOTA,
+  NETO_EMPRESA_NOTA_MODELO_NUEVO,
   NETO_EMPRESA_NEGATIVO_NOTA,
   FLETE_RECHAZO_YA_COBRADO_NOTA,
   FLETE_RECHAZO_AUN_NO_COBRADO_NOTA,
@@ -325,6 +329,12 @@ export function MensajeroBloqueadoBadge({
 export const PAGO_MENSAJERO_LABEL = "Pago al mensajero";
 // --- Feature 56: etiquetas del ingreso de bodega por rechazos (texto separado, i18n-ready) ---
 export const INGRESO_BODEGA_RECHAZOS_LABEL = "Ingreso de bodega por devoluciones a origen";
+// SLT-54 (R71): en el modelo nuevo la satélite cobra por cualquier resultado (SLT-52 R32), así que ese
+// total incluye entregas; nombrar la devolución diría que hubo una que no hubo.
+export const INGRESO_BODEGA_LABEL = "Ingreso de bodega";
+export function rotuloIngresoBodega(modeloNuevo: boolean): string {
+  return modeloNuevo ? INGRESO_BODEGA_LABEL : INGRESO_BODEGA_RECHAZOS_LABEL;
+}
 // --- Feature 102 (R8): subtotales del ingreso de bodega por rechazos, particionado por ORIGEN.
 // El total combinado sigue siendo el de la 56 (`INGRESO_BODEGA_RECHAZOS_LABEL`); estos dos son
 // las sublíneas del desglose (SLA del cron 99 vs manual del mensajero). Texto i18n-ready. ---

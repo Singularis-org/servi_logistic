@@ -2,7 +2,9 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
 import type { GrupoDeZonaResumen, ZonaResumen } from "@/lib/interfaces/services/ITarifasPantallaService";
+import type { EtiquetasGeograficas } from "@/lib/types/pais";
 import { cn } from "@/lib/utils";
 
 import { textoEstadoZona, TEXTOS } from "./tarifas-textos";
@@ -19,17 +21,27 @@ export interface TarifasZonasProps {
  * La maqueta enseña «Zona especial: 8 distritos» y «1 grupo». R44 prohíbe distinguir ese nombre, así que
  * la regla es la misma para todos: un grupo se nombra con sus distritos; un grupo vacío y varios, se cuentan.
  */
-function detalle(zona: ZonaResumen, grupos: readonly GrupoDeZonaResumen[]): string {
+function detalle(
+  zona: ZonaResumen,
+  grupos: readonly GrupoDeZonaResumen[],
+  distrito: EtiquetasGeograficas["distrito"],
+): string {
   if (zona.esCentral) return TEXTOS.bodegaPrincipal;
   if (grupos.length === 0) return TEXTOS.sinGrupos;
   const unico = grupos.length === 1 ? grupos[0] : undefined;
   return unico !== undefined && unico.distritos > 0
-    ? TEXTOS.grupoUnicoDeZona(unico.nombre, unico.distritos)
+    ? TEXTOS.grupoUnicoDeZona(
+        unico.nombre,
+        unico.distritos,
+        distrito.singular.toLowerCase(),
+        distrito.plural.toLowerCase(),
+      )
     : TEXTOS.gruposDeZona(grupos.length);
 }
 
 /** R17, R33: la lista de zonas con su estado. Bajo el ancho de dos columnas, va encima del panel (R59). */
 export function TarifasZonas({ zonas, seleccionada, gruposPorZona, onElegir }: Readonly<TarifasZonasProps>) {
+  const { distrito } = useEtiquetasGeograficas();
   return (
     <section
       aria-label={TEXTOS.zonas}
@@ -42,7 +54,7 @@ export function TarifasZonas({ zonas, seleccionada, gruposPorZona, onElegir }: R
       <ul>
         {zonas.map((zona) => {
           const activa = zona.id === seleccionada;
-          const texto = detalle(zona, gruposPorZona[zona.id] ?? zona.grupos);
+          const texto = detalle(zona, gruposPorZona[zona.id] ?? zona.grupos, distrito);
           return (
             <li key={zona.id} className="border-b border-border last:border-b-0">
               <Button

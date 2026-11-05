@@ -186,6 +186,10 @@ export const FLETE_NO_ENTREGADAS_LABEL = "Flete de gestiones no entregadas";
 export const FLETE_NO_ENTREGADAS_CON_IVA_LABEL = `${FLETE_NO_ENTREGADAS_LABEL} + IVA`;
 export const FLETE_NO_ENTREGADAS_NOTA =
   "Se le factura a la tienda, pero no sale de lo recaudado: una gestión no entregada no cobra contra entrega.";
+// Menor 2 de la revisión F2.2: en el nuevo tampoco se descuentan los fletes de reprogramado, novedad e
+// incidente. `PAGO_TIENDA_NOTA` es cierta y completa solo en el viejo, donde esos no se cobran.
+export const PAGO_TIENDA_NOTA_MODELO_NUEVO =
+  "Total general menos flete + IVA y comisión + IVA. No descuenta el flete de una gestión no entregada: no recauda contra entrega, así que ese dinero nunca entró en el total general.";
 /**
  * El flete que no es de entrega de UNA gestión del modelo nuevo, por el resultado que lo cobró. El nombre
  * sale de la fuente única (ficha 455) y coincide con las filas de Tarifas. El rechazo conserva el nombre
@@ -332,6 +336,9 @@ export const EFECTIVO_NO_CUBRE_NOTA =
  */
 export const GANA_BODEGA_SATELITE_NOTA =
   "Lo que se le reconoce a la bodega satélite por las devoluciones a origen. No es un movimiento de caja registrado.";
+/** SLT-54 (R71): en el nuevo se le reconoce por cualquier resultado (SLT-52 R32). */
+export const GANA_BODEGA_SATELITE_NOTA_MODELO_NUEVO =
+  "Lo que se le reconoce a la bodega satélite por sus gestiones. No es un movimiento de caja registrado.";
 
 /** R10 — por qué esa línea SUMA a lo facturado pero no se resta de lo recaudado. */
 export const FLETE_RECHAZO_NO_DEDUCIBLE_NOTA =
@@ -399,6 +406,9 @@ export const COBRADO_SOBRE_RECAUDADO_NOTA =
  */
 export const NETO_EMPRESA_NOTA =
   `Lo que ${EMPRESA.enFrase} facturó, sin el IVA, menos el pago al mensajero y menos el ingreso de bodega por devoluciones a origen.`;
+/** SLT-54 (R71): el mismo renglón en el modelo nuevo, donde ese ingreso no sale solo de devoluciones. */
+export const NETO_EMPRESA_NOTA_MODELO_NUEVO =
+  `Lo que ${EMPRESA.enFrase} facturó, sin el IVA, menos el pago al mensajero y menos el ingreso de bodega.`;
 
 /**
  * SL-39 (R24) — la línea propia del IVA en la cascada «Lo que le queda a la empresa», justo después
@@ -541,6 +551,9 @@ export const DESGLOSE_POR_TIENDA_NOTA =
  */
 export const DESGLOSE_NO_REPARTIDO_NOTA =
   "El pago al mensajero y el ingreso de bodega por devoluciones a origen son del cierre completo: no están repartidos entre las tiendas.";
+/** SLT-54 (R71): la misma frase en el modelo nuevo. */
+export const DESGLOSE_NO_REPARTIDO_NOTA_MODELO_NUEVO =
+  "El pago al mensajero y el ingreso de bodega son del cierre completo: no están repartidos entre las tiendas.";
 
 /**
  * FICHA 396 (D2) — EL NOMBRE ACCESIBLE de la cascada de UNA tienda, y tiene que ser ÚNICO.

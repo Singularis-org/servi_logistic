@@ -5,6 +5,8 @@ import { render, screen, cleanup, waitFor, within } from "@testing-library/react
 import userEvent from "@testing-library/user-event";
 
 import { TarifasErrorCarga, TarifasModule, type PantallaOk } from "@/app/(app)/configuracion/tarifas/_components/TarifasModule";
+import { ETIQUETAS_NEUTRAS } from "@/lib/types/pais";
+import { EtiquetasGeograficasProvider } from "@/providers/EtiquetasGeograficasProvider";
 
 import { referenciaUniforme, valor, zonaOk, zonaResumen } from "../fixtures/tarifas-pantalla";
 
@@ -248,8 +250,21 @@ describe("SLT-54 — el detalle de la lista de zonas, como la maqueta", () => {
     }),
   ];
 
+  const etiquetas = (singular: string, plural: string) => ({
+    ...ETIQUETAS_NEUTRAS,
+    distrito: { singular, plural },
+  });
+  const montarLista = (singular: string, plural: string) => {
+    const p = { ...PANTALLA, zonas: LISTA };
+    return render(
+      <EtiquetasGeograficasProvider etiquetas={etiquetas(singular, plural)}>
+        <TarifasModule pantalla={p} zonaInicialId={p.zonas[0]?.id ?? null} zonaInicial={null} nombresDeGrupo={{}} />
+      </EtiquetasGeograficasProvider>,
+    );
+  };
+
   it("sale del loader, sin abrir ninguna zona", () => {
-    montar({ zonas: LISTA });
+    montarLista("Distrito", "Distritos");
     expect(zonaBoton(/Principal/)).toHaveTextContent("Bodega principal");
     expect(zonaBoton(/Libre/)).toHaveTextContent("Sin grupos");
     expect(zonaBoton(/Uno/)).toHaveTextContent("Zona especial: 8 distritos");
@@ -257,6 +272,13 @@ describe("SLT-54 — el detalle de la lista de zonas, como la maqueta", () => {
     expect(zonaBoton(/Vacio/)).toHaveTextContent("1 grupo");
     expect(zonaBoton(/Varios/)).toHaveTextContent("2 grupos");
     expect(cargarZonaMock).not.toHaveBeenCalled();
+  });
+
+  it("R61: el nivel lo nombra el país, en singular y en plural", () => {
+    montarLista("Municipio", "Municipios");
+    expect(zonaBoton(/Uno/)).toHaveTextContent("Zona especial: 8 municipios");
+    expect(zonaBoton(/Singular/)).toHaveTextContent("Costa: 1 municipio");
+    expect(screen.getByRole("region", { name: "Zonas" }).textContent).not.toMatch(/distrito/i);
   });
 
   it("al abrir una zona, manda lo recién leído: un grupo nuevo se ve sin recargar", async () => {
@@ -277,7 +299,7 @@ describe("SLT-54 — el detalle de la lista de zonas, como la maqueta", () => {
       }),
     );
     const u = userEvent.setup();
-    montar({ zonas: LISTA });
+    montarLista("Distrito", "Distritos");
     await u.click(zonaBoton(/Libre/));
     await waitFor(() => expect(zonaBoton(/Libre/)).toHaveTextContent("Recien: 2 distritos"));
   });
@@ -296,13 +318,19 @@ describe("SLT-54 — selector de nivel", () => {
   });
   const nivel = () => screen.getByRole("combobox", { name: "Editando" });
   const flete = () => screen.getByRole("textbox", { name: "Valor de Flete por entregado" });
+  // El popup puede abrirse un instante después del clic: sin carga en la máquina, leerlo en seguida salía rojo
+  // según el orden de los tests, también sin los cambios de la Tanda G.
+  const abrirNivel = async (u: ReturnType<typeof userEvent.setup>) => {
+    await u.click(nivel());
+    await screen.findAllByRole("option");
+  };
 
   it("R33: zona, cada grupo y tienda, y cada nivel enseña SOLO sus valores", async () => {
     const u = userEvent.setup();
     montar({}, CON_GRUPO);
     expect(flete()).toHaveValue("1000");
 
-    await u.click(nivel());
+    await abrirNivel(u);
     expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
       "Toda la zona",
       expect.stringMatching(/^Grupo: Costa \(1 /),
@@ -317,12 +345,12 @@ describe("SLT-54 — selector de nivel", () => {
     const u = userEvent.setup();
     montar({ preciosTienda: CON_GRUPO.valores.filter((v) => v.tiendaId !== null) }, CON_GRUPO);
 
-    await u.click(nivel());
+    await abrirNivel(u);
     await u.click(screen.getByRole("option", { name: "Tienda con precio propio…" }));
     expect(screen.getByText("Elige la tienda para digitar su precio.")).toBeInTheDocument();
 
     await u.click(screen.getByRole("combobox", { name: "Tienda" }));
-    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual(["Tienda Uno"]);
+    expect((await screen.findAllByRole("option")).map((o) => o.textContent)).toEqual(["Tienda Uno"]);
     await u.click(screen.getByRole("option", { name: "Tienda Uno" }));
 
     await waitFor(() => expect(cargarZonaMock).toHaveBeenCalledWith({ zonaId: "z1", tiendaId: "t1" }));

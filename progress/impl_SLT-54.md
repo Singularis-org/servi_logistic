@@ -862,7 +862,7 @@ Comprobado por script contra el disco: toda fila de `tasks.md > Mapa R → test`
 | R56 | `menu-visibility.test.ts`, `destino-post-login.test.ts` |
 | R57, R58 | `TarifasModulo`, `TarifasPage.test.tsx`; R58 también `TarifasValores` y `TarifasActivar` |
 | R59, R60 | `tarifas-maqueta`, `TarifasDisposicion` |
-| R61 | `TarifasDisposicion`, `TarifasValores` › «el IVA nace vacío», `etiquetas-geograficas-sin-literal.guardia` |
+| R61 | `TarifasDisposicion`, `TarifasValores` › «el IVA nace vacío», `TarifasModulo` › «R61: el nivel lo nombra el país», `etiquetas-geograficas-sin-literal.guardia` |
 | R62, R63, R65 | `CierreDesgloseModeloNuevo`, `cierres-admin-repository.test.ts`, `cierres-gestiones-fundida-descarga-columnas.test.ts`; R63 también E2E caso 4; R65 también `CierreBodegaDetalleCascadas` y `CierreMensajeroDetalleCascadas` |
 | R64 | `cierre-aporte-modelo-nuevo.test.ts`, `aporte-por-orden-equivalencia.test.ts` |
 | R66 | `convergencia-tarifa-listado-cierre.test.ts`, `OrdenesColumnaFulfillment` |
@@ -870,6 +870,8 @@ Comprobado por script contra el disco: toda fila de `tasks.md > Mapa R → test`
 | R68 | `tarifas-activacion` › «dos empresas y permisos» |
 | R69 | `zona-especial-dos-empresas`, casos 1 a 4; `e2e-sin-saltos.guardia` |
 | R70 | `tarifas-maqueta`, `TarifasDisposicion` |
+| R71 (Tanda G) | `CierreIngresoBodegaModeloNuevo`, `CierreBodegaDetalleCascadas` › «R71»; E2E `tarifas-activacion` › «el siguiente cierre» |
+| R72 (Tanda G) | `cierres-gestiones-fundida-descarga-columnas` › «SLT-54 (R72)» |
 
 ### Lo que no se vio
 
@@ -897,4 +899,86 @@ $ vitest tests/unit/guards/e2e-sin-saltos.guardia.test.ts tests/unit/analytics/r
        Tests  59 passed (59)
 $ vitest tests/components/TarifasValores.test.tsx
        Tests  27 passed (27)
+```
+
+## Tanda G — Arreglos de la revisión F2.2
+
+**Veredicto:** M1 arreglado en el detalle del cierre, con un hueco abierto que exige dato del servidor (abajo). M2 y M3, arreglados. El modelo viejo queda fijado con tests literales.
+
+### M1, R71
+
+En un detalle con alguna gestión del nuevo: «Ingreso de bodega» en la tarjeta, su región, el par de abajo y las cascadas; sin las sublíneas de origen; la fila enseña el importe de satélite con cualquier resultado distinto de 0 (120 + 450 = 570). Las notas que repetían la misma falsedad también siguen al modelo: neto de la empresa, desglose por tienda y lo que gana la satélite. El distintivo Automático/Manual de la fila de un rechazo se queda: ahí sigue siendo cierto. Modelo por gestión en la fila, y «basta una» en el total, igual que R65.
+
+**Sin arreglar, exige backend: la tarjeta del listado (`cierre-factura.tsx`, `HojaResumen`) y el total y las tarjetas de la consolidación (`ConsolidacionBodegaModule`, `CierreConsolidableFacturaResumen`) siguen diciendo «por devoluciones a origen» en una empresa activada.** Sus DTO (`CierreAdminResumen`, `CierreBodegaResumenLite`) no traen el modelo, y la única lectura de la activación es `cargarPantallaTarifas`, que `adminSatelite` no puede llamar. Hace falta un campo aditivo en esos DTO. Queda escrito como abierto en R71. El importe es correcto; lo falso es el rótulo. La tarjeta del cierre de bodega ya dice «Gana la bodega satélite»: esa no miente.
+
+### M2, R72
+
+`ESPECIFICAS_EXTRA_MODELO_NUEVO` añade por resultado lo que el nuevo cobra y paga, encima de `ESPECIFICAS_POR_RESULTADO`, que no se toca. Filas del viejo y sin modelo congelado, iguales celda por celda (test literal con la tabla de la revisión). Comentario del incidente corregido.
+
+**Menor 1, sin hacer:** el encabezado «Flete por devolución a origen + IVA» sigue igual. Es de catálogo, se elige antes de leer las filas y no varía por fila; uno veraz para ambos cambiaría el archivo del viejo, y eso está prohibido. La fila lleva su resultado al lado.
+
+### M3, R61
+
+`grupoUnicoDeZona` recibe singular y plural de `useEtiquetasGeograficas`. La guardia gana un bloque para el conteo («8 distritos»), limitado a Tarifas. **Fuera de esta ficha, el mismo defecto:** `ZonasModule.tsx:250` y `GeografiaSelector.tsx:266` escriben «N distrito(s)» a mano; por eso el bloque no barre todo `app/`.
+
+### Menores
+
+- **2, hecho:** `PAGO_TIENDA_NOTA_MODELO_NUEVO`, solo en el nuevo. Va en `cierre-labels.ts`, en singular: la guardia `nombres-estado-retirados` declara exactamente un plural «entregadas» y es el del rótulo aprobado.
+- **6, sin hacer:** el movimiento de wallet no sabe su modelo. `CATEGORIA_LABEL` es un mapa por categoría y ningún DTO de wallet trae `tarifaModelo`. Exige backend. `wallet-rotulos.ts` no se tocó.
+- **7 y 8, hechos:** nota junto a R66; `preciosTienda` y `tiendaId` en design §7.
+- **3 y 4:** D36 y D37 en `progress/deudas.md`.
+- R71 y R72 en `requirements.md`, marcados pendientes del visto bueno de Carlos; filas en `tasks.md` y arriba.
+
+### Fuera de lo pedido, y necesario
+
+`TarifasModulo` › «R33, R41: al elegir la tienda» salía rojo sin carga en la máquina, también con los archivos de Tarifas revertidos a `8b922a10` (3 de 3): no es de esta tanda. El popup del selector se abre un instante después del clic y el test lo leía en seguida; bajo carga pasaba. Se espera con `findAllByRole`: 6 de 6 tras el cambio, y la lógica no cambia. Puede haber el mismo patrón en `TarifasValores.test.tsx:135`, que no falló en estas corridas y no se tocó.
+
+### Mutaciones
+
+Script `g-mut.cjs`: antes corre los 5 archivos sin mutar y aborta si no hay tests o hay fallos (`BASE total 124, fail 0`); restaura cada archivo en `finally`. Sobre el árbol final. **22 de 22 matadas, por aserción, con tests ejecutados en cada una.**
+
+| Id | Mutación | Rojo | Primer test |
+|---|---|---|---|
+| M1a, M1b | Rótulo siempre viejo; siempre nuevo | 5 y 3 de 17 | «la tarjeta y el par…»; «tarjeta, región, par y sublíneas, literales» |
+| M1c, M1d | Sublíneas en el nuevo; fuera también en el viejo | 2 y 1 de 17 | «sin las sublíneas…»; «…literales» |
+| M1e, M1f, M1g, M1h | La fila: solo en rechazo; también en el viejo; al mensajero; pinta el 0 | 4, 1, 1, 1 de 17 | «las filas enseñan 120 y 450…»; «otro resultado…»; «el mensajero…»; «un resultado en 0…» |
+| M1i, M1j, M1k, M1l | Cascada con rótulo viejo; notas de neto, desglose y satélite fijas | 1 de 17 (M1l: 1 de 24) | Sus casos |
+| Men2, Men2b | Nota del pago a la tienda siempre vieja; siempre nueva | 1 de 17 | Sus casos |
+| M2a, M2b | Extras nunca; también en el viejo | 5 y 6 de 55 | «nuevo, entregado…»; «la fila de una REPROGRAMADA…» |
+| M2c, M2d, M2e | Sin pago en incidente; sin flete en reprogramado; sin ingreso en entrega | 2 de 55 cada una | Su fila y «las columnas del nuevo suman…» |
+| M3a, M3b, M3c | Plural a mano; cruzados; conteo a mano | 1 y 3 de 22; 1 de 6 | «R61…»; «sale del loader…»; «el barrido…» |
+
+### E2E
+
+`servi_e2e_slt54`, host local comprobado, recreada, migrada y con catálogos, sobre `next build` + `next start` del código final, con `actionTimeout` en 30 s. Borrada al terminar (`existe: false`). No se tocó la base de `.env`; ninguna URL impresa.
+
+```
+$ playwright test --project=dinero
+  43 passed (2.4m) | 0 failed | 0 skipped | 0 flaky
+$ playwright test --project=aislamiento        (arrastra plataforma-vacia)
+  86 passed (3.0m) | 0 failed | 0 skipped | 0 flaky
+```
+
+`tarifas-activacion` afirma en pantalla «Ingreso de bodega» sobre 570, las filas 120 y 450, sin el rótulo viejo ni las sublíneas; y el cierre de antes de activar con su rótulo, 300 y sublíneas. 0 menciones de `useToast` o `ToastProvider` en el log del servidor. Tras el E2E solo cambió `TarifasModulo.test.tsx`, que no compila en la app.
+
+### Archivos
+
+**Nuevo:** `tests/components/CierreIngresoBodegaModeloNuevo.test.tsx`
+
+**Modificados:** `app/(app)/cierres-admin/_components/`: `CascadasCierreMensajero.tsx`, `CierresBodegaAdminModule.tsx`, `DesglosePorTienda.tsx`, `cierre-detalle-shared.tsx`, `cierre-factura.tsx`, `cierre-labels.ts`, `cierres-gestiones-fundida-descarga-columnas.ts`; `app/(app)/configuracion/tarifas/_components/`: `TarifasZonas.tsx`, `tarifas-textos.ts`; `e2e/tarifas-activacion.spec.ts`; `tests/components/CierreBodegaDetalleCascadas.test.tsx`, `tests/components/TarifasModulo.test.tsx`; `tests/unit/descarga/cierres-gestiones-fundida-descarga-columnas.test.ts`; `tests/unit/guards/etiquetas-geograficas-sin-literal.guardia.test.ts`; `specs/SLT-54-pantalla-tarifas/requirements.md`, `design.md`, `tasks.md`; `progress/deudas.md`; esta bitácora
+
+### Salida de los comandos
+
+Sin `./init.sh` ni la suite completa, por encargo. El grafo no tiene proyecto para este worktree: Grep y Read.
+
+```
+$ NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck   -> exit 0
+$ pnpm exec eslint <archivos de la tanda>                     -> exit 0, sin salida
+$ vitest tests/components/{Cierre,Cierres,DineroIdentidadesEnPantalla,Tarifas,descarga,textos-estado-455} tests/unit/descarga
+  Test Files  117 passed (117)
+       Tests  1564 passed (1564)
+$ pnpm run test:guardias
+  Test Files  1 failed | 330 passed (331)
+       Tests  4 failed | 4614 passed | 1 skipped (4619)
+  - 4 rojos: dependencias-declaradas-presentes (baseline)
 ```

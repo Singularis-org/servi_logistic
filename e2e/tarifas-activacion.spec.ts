@@ -267,6 +267,15 @@ test.describe.serial("Tarifas — digitar, activar y cierre (R67)", () => {
     const entregaNueva = await cobrosDeLaGestion(detalleNuevo, /Entregado/);
     await expect(renglon(entregaNueva, "Total cobrado")).toContainText(importe(3503));
     await expect(entregaNueva).not.toContainText("no tenía tarifa");
+    // R71: el total nombra lo que suma, sin partirlo por origen, y las filas llegan a él: 120 + 450 = 570.
+    await expect(detalleNuevo.getByText("Ingreso de bodega", { exact: true }).last().locator("..")).toContainText(importe(570));
+    await expect(detalleNuevo.getByText("Ingreso de bodega por devoluciones a origen", { exact: true })).toHaveCount(0);
+    await expect(detalleNuevo.getByText("Automático (por plazo vencido)", { exact: true })).toHaveCount(0);
+    await expect(detalleNuevo.getByText("Manual (mensajero)", { exact: true })).toHaveCount(0);
+    const ingresoDeFila = detalleNuevo.getByRole("region", { name: "Órdenes del cierre" }).getByText("Ingreso de bodega:", { exact: true }).locator("..");
+    await expect(ingresoDeFila).toContainText(importe(120));
+    await cobrosDeLaGestion(detalleNuevo, /Devoluci/);
+    await expect(ingresoDeFila).toContainText(importe(450));
     await detalleNuevo.getByRole("button", { name: "Cerrar", exact: true }).last().click();
     await expect(detalleNuevo).toHaveCount(0);
 
@@ -275,6 +284,11 @@ test.describe.serial("Tarifas — digitar, activar y cierre (R67)", () => {
     expect(await kpi(detalleViejo, "Total de la empresa")).toMatch(/^\D*4\.237,50$/);
     const entregaVieja = await cobrosDeLaGestion(detalleViejo, /Entregado/);
     await expect(renglon(entregaVieja, "Total cobrado")).toContainText(importe(2825));
+    // R71: el cierre de antes de activar se sigue leyendo con su rótulo y sus sublíneas.
+    await expect(detalleViejo.getByText("Ingreso de bodega por devoluciones a origen", { exact: true }).last().locator("..")).toContainText(importe(300));
+    await expect(detalleViejo.getByText("Ingreso de bodega", { exact: true })).toHaveCount(0);
+    await expect(detalleViejo.getByText("Manual (mensajero)", { exact: true })).toBeVisible();
+    await expect(detalleViejo.getByRole("region", { name: "Órdenes del cierre" }).getByText("Ingreso de bodega:", { exact: true })).toHaveCount(0);
     await satelite.context().close();
   });
 

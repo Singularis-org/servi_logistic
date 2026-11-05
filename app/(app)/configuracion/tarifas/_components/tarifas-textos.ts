@@ -163,8 +163,9 @@ export const TEXTOS = {
   bodegaPrincipal: "Bodega principal",
   sinGrupos: "Sin grupos",
   gruposDeZona: (n: number) => (n === 1 ? "1 grupo" : `${n} grupos`),
-  grupoUnicoDeZona: (nombre: string, distritos: number) =>
-    `${nombre}: ${distritos === 1 ? "1 distrito" : `${distritos} distritos`}`,
+  /** R61: el nivel lo nombra el país; `singular` y `plural` salen de `useEtiquetasGeograficas`. */
+  grupoUnicoDeZona: (nombre: string, distritos: number, singular: string, plural: string) =>
+    `${nombre}: ${distritos} ${distritos === 1 ? singular : plural}`,
 
   editando: "Editando",
   viendo: "Viendo",

@@ -29,12 +29,14 @@ import {
   GANA_LA_TIENDA_LABEL,
   GANA_LA_TIENDA_NEGATIVO_NOTA,
   GANA_LA_TIENDA_NOTA,
+  INGRESO_BODEGA_LABEL,
   INGRESO_BODEGA_RECHAZOS_LABEL,
   IVA_FACTURADO_LABEL,
   IVA_FACTURADO_NOTA,
   NETO_EMPRESA_LABEL,
   NETO_EMPRESA_NEGATIVO_NOTA,
   NETO_EMPRESA_NOTA,
+  NETO_EMPRESA_NOTA_MODELO_NUEVO,
   PAGO_MENSAJERO_LABEL,
   PAGO_TIENDA_HOY_NOTA,
   PAGO_TIENDA_LABEL,
@@ -311,7 +313,7 @@ function lineasFacturaTienda(
  * rótulo sería falso. Lo dejó escrito la propia 393 en `cierre-labels`.
  */
 function lineasNetoEmpresa(props: CascadasCierreMensajeroProps): LineaCascada[] {
-  const notas = [NETO_EMPRESA_NOTA];
+  const notas = [props.modeloNuevo ? NETO_EMPRESA_NOTA_MODELO_NUEVO : NETO_EMPRESA_NOTA];
   if (esMontoNegativo(props.netoEmpresa)) notas.push(NETO_EMPRESA_NEGATIVO_NOTA);
 
   return [
@@ -326,7 +328,7 @@ function lineasNetoEmpresa(props: CascadasCierreMensajeroProps): LineaCascada[] 
     },
     { label: PAGO_MENSAJERO_LABEL, monto: props.totalPagoMensajero, signo: "resta" },
     {
-      label: INGRESO_BODEGA_RECHAZOS_LABEL,
+      label: props.modeloNuevo ? INGRESO_BODEGA_LABEL : INGRESO_BODEGA_RECHAZOS_LABEL,
       monto: props.totalIngresoBodegaRechazos,
       signo: "resta",
     },
@@ -368,7 +370,9 @@ export function CascadasCierreMensajero(props: Readonly<CascadasCierreMensajeroP
       />
       {/* FICHA 396 — el desglose va AQUÍ: después de la cascada que termina en «Pago a tienda»,
           que es la cifra que parte, y antes de la de la empresa, que ya no habla de tiendas. */}
-      {marca !== null ? <DesglosePorTienda partes={props.partesPorTienda} de={de} /> : null}
+      {marca !== null ? (
+        <DesglosePorTienda partes={props.partesPorTienda} de={de} modeloNuevo={props.modeloNuevo} />
+      ) : null}
       <CascadaDinero
         titulo={CASCADA_NETO_EMPRESA_TITULO}
         ariaLabel={`${CASCADA_NETO_EMPRESA_TITULO} · ${de}`}

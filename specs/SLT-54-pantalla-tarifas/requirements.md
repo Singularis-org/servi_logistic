@@ -226,6 +226,8 @@ variantes de SLT-52 R5 y R6. *Referencia*: lo que rige hoy, mostrado junto a un 
   nombrar lo que suma: por gestión, su resultado; en totales, los fletes de gestiones no entregadas.
 - **R66.** MIENTRAS la empresa está activada, la columna «Fulfillment» de órdenes, monitoreo y recibidas
   DEBE mostrar el fulfillment del resolver único, sin depender de `relaciones.tienda.tarifa`.
+  *Nota (revisión F2.2):* «recibidas» no monta esa columna: solo la abre `adminSatelite`, y la columna está
+  excluida para él (decisión de la feature 260). El requisito se cumple allí por no enseñarla.
 
 ### E2E y verificación
 
@@ -238,6 +240,18 @@ variantes de SLT-52 R5 y R6. *Referencia*: lo que rige hoy, mostrado junto a un 
   su excepción en la guardia `e2e-sin-saltos` DEBE desaparecer antes de su vencimiento (2026-11-30).
 - **R70.** La pantalla DEBE cumplir las medidas de `design.md > §12`, comprobadas con el navegador a
   1360 y 390 px, y la disposición DEBE quedar atada por tests.
+
+### Añadidos en la revisión F2.2, pendientes de visto bueno de Carlos en el PR
+
+- **R71.** MIENTRAS el detalle de un cierre tiene alguna gestión del modelo nuevo, DEBE rotular su total
+  «Ingreso de bodega», sin «por devoluciones a origen» y sin las sublíneas «Automático (por plazo vencido)» y
+  «Manual (mensajero)», y la fila de cada gestión con importe de satélite DEBE enseñarlo, cualquiera que sea su
+  resultado, de modo que las filas sumen el total. Los cierres del modelo viejo NO DEBEN cambiar ni texto ni
+  importe. *Abierto:* la tarjeta del listado y el total de la consolidación no reciben el modelo del servidor y
+  siguen con el rótulo viejo.
+- **R72.** MIENTRAS una fila de la descarga de cierres es `tarifaModelo: "nuevo"`, DEBE poblar flete, total, pago
+  al mensajero e ingreso de bodega con cualquier resultado que los tenga, de modo que cada columna sume lo que da
+  el comprobante. Las filas del modelo viejo NO DEBEN cambiar.
 
 ### Cobertura de las decisiones cerradas
 

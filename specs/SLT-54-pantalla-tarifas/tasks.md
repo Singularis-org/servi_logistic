@@ -95,6 +95,13 @@
 - [ ] **T6.5 Salida.** No se despliega suelta: la épica sale completa. La migración va en el PR de esta ficha. *Hecho:* leader lo
   comprueba en F2.
 
+## Tanda G — Arreglos de la revisión F2.2 (frontend). Depende de F
+
+- [x] **T7.1 Rótulo y filas del cierre** (R71). `cierre-factura.tsx`, `cierre-detalle-shared.tsx`, `CascadasCierreMensajero.tsx`,
+  `DesglosePorTienda.tsx`, `CierresBodegaAdminModule.tsx`. *Hecho:* test del viejo y del nuevo con 120 + 450 = 570, y E2E.
+- [x] **T7.2 Descarga** (R72). `cierres-gestiones-fundida-descarga-columnas.ts`. *Hecho:* test por resultado y modelo que suma la columna.
+- [x] **T7.3 Etiquetas en la lista de zonas** (R61). `tarifas-textos.ts`, `TarifasZonas.tsx`. *Hecho:* test con «Municipio» y guardia del conteo.
+
 ## Mapa R → test
 
 | R | Test |
@@ -136,7 +143,7 @@
 | R56 | `tests/unit/auth/menu-visibility.test.ts` › «Tarifas para admin»; `tests/unit/auth/destino-post-login.test.ts` |
 | R57, R58 | `tests/components/TarifasModulo.test.tsx` |
 | R59, R60 | `e2e/tarifas-maqueta.spec.ts`; `tests/components/TarifasDisposicion.test.tsx` |
-| R61 | `tests/components/TarifasDisposicion.test.tsx`; `tests/components/TarifasValores.test.tsx` › «el IVA nace vacío»; `tests/unit/guards/etiquetas-geograficas-sin-literal.guardia.test.ts` |
+| R61 | `tests/components/TarifasDisposicion.test.tsx`; `tests/components/TarifasValores.test.tsx` › «el IVA nace vacío»; `tests/components/TarifasModulo.test.tsx` › «R61: el nivel lo nombra el país»; `tests/unit/guards/etiquetas-geograficas-sin-literal.guardia.test.ts` |
 | R62, R63, R65 | `tests/components/CierreDesgloseModeloNuevo.test.tsx`; `tests/unit/repositories/cierres-admin-repository.test.ts`; `tests/unit/descarga/cierres-gestiones-fundida-descarga-columnas.test.ts` › «SLT-54»; R65 también en `tests/components/CierreBodegaDetalleCascadas.test.tsx` y `tests/components/CierreMensajeroDetalleCascadas.test.tsx` |
 | R64 | `tests/integration/db/cierre-aporte-modelo-nuevo.test.ts`; `tests/unit/utils/aporte-por-orden-equivalencia.test.ts` |
 | R66 | `tests/unit/repositories/convergencia-tarifa-listado-cierre.test.ts`; `tests/components/OrdenesColumnaFulfillment.test.tsx`; en «recibidas» no hay columna: solo la ve la satélite, que no recibe el dato (ficha 260) |
@@ -144,6 +151,8 @@
 | R68 | `e2e/tarifas-activacion.spec.ts` › «dos empresas» |
 | R69 | `e2e/zona-especial-dos-empresas.spec.ts`; `tests/unit/guards/e2e-sin-saltos.guardia.test.ts` |
 | R70 | `e2e/tarifas-maqueta.spec.ts`; `tests/components/TarifasDisposicion.test.tsx` |
+| R71 | `tests/components/CierreIngresoBodegaModeloNuevo.test.tsx`; `tests/components/CierreBodegaDetalleCascadas.test.tsx` › «R71»; `e2e/tarifas-activacion.spec.ts` |
+| R72 | `tests/unit/descarga/cierres-gestiones-fundida-descarga-columnas.test.ts` › «SLT-54 (R72)» |
 
 ## Archivos esperados
 
