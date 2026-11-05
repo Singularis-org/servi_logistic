@@ -7,8 +7,8 @@ import { finDelPeriodoCalendario, inicioDelPeriodoCalendario, periodoEnCurso } f
 import type { TipoCobro } from "@/lib/types/planes";
 import { comoApp, crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones";
 
-import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
-import { crearFksDeOrden, type FksDeOrden } from "./_fixtures/orden-minima";
+import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type FksDeOrden, type TxDeTest } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 import { CASOS_ENTRADA, CASOS_PERIODO } from "./_fixtures/periodo-calendario";
 import { capturar, revertida, sqlstateDe } from "./_fixtures/planes";
 import { carpetasDeMigracion, sqlDe } from "./_fixtures/ida-y-vuelta-32";

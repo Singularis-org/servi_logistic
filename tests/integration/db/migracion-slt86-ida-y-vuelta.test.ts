@@ -386,8 +386,11 @@ describeSiHayBase("SLT-86 R33–R36 — plan_periodo_facturacion de ida y vuelta
       },
     ]);
     const restos = await db.query(
-      `SELECT tgname AS n FROM pg_trigger WHERE tgname = 'plan_tope_ordenes'
-       UNION ALL SELECT proname FROM pg_proc WHERE proname IN ('plan_tope_ordenes', 'plan_cupo_ordenes')`,
+      `SELECT t.tgname AS n FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+         JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE t.tgname = 'plan_tope_ordenes' AND n.nspname = 'public'
+       UNION ALL SELECT p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE p.proname IN ('plan_tope_ordenes', 'plan_cupo_ordenes') AND n.nspname = 'public'`,
     );
     expect(restos.rows).toEqual([]);
   });
@@ -403,7 +406,8 @@ describeSiHayBase("SLT-86 R33–R36 — plan_periodo_facturacion de ida y vuelta
     expect(porId[e2]).toMatchObject({ plan_id: planB, plan_tipo_cobro: "mensual", entrada: hoy });
     expect(porId[e3]).toMatchObject({ plan_id: null, entrada: null });
     const corto = await db.query(
-      `SELECT 1 FROM information_schema.columns WHERE table_name = 'organizacion' AND column_name = 'plan_ciclo_corto_desde_at'`,
+      `SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'organizacion' AND column_name = 'plan_ciclo_corto_desde_at'`,
     );
     expect(corto.rows).toEqual([]);
   });
