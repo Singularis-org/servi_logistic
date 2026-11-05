@@ -926,3 +926,15 @@ el de SLT-65 (`geo-explain-consultas` T6.1, timeout de 20 s), que queda fuera de
   `logistic_slt71`, un archivo por corrida: `caja-459-migration` 6/6, `tarifas-flexibles-base-congelada` 6/6,
   `tarifas-flexibles-snapshot` 8/8, `migracion-slt43-ida-y-vuelta` 8/8.
 - Unitarios que importan `OrdenRepository`/`CoberturaRepository`/analítica fuera de esas carpetas: 366 archivos, 6094/6094.
+
+## 2026-11-05 — Integra los arreglos de SLT-44 y SLT-65 a los rojos de CI tras dev (SLT-54)
+
+- Merge `--no-ff` de `feature/SLT-65-geo-jerarquica-consultas` (que trae 8f8ba908 de SLT-44 y 49f3296c
+  de SLT-65). Causa raíz en SLT-44/65 (`progress/impl_SLT-44.md`, `progress/impl_SLT-65.md`): el
+  `comoEmpresa` de los tests de SLT-54 fijaba la empresa solo en la base y no en el contexto
+  (`conEmpresa`), que es lo que lee el catálogo geográfico. Sin cambios propios de SLT-71.
+- Local (Postgres `logistic_slt71`, sin migraciones pendientes): `tarifa-empresa-nueva`,
+  `cierre-aporte-modelo-nuevo`, `cierre-incluye-modelo-nuevo`, `estado-cuenta-tienda-modelo-nuevo`
+  32/32 verde; `tsc --noEmit` 0; guardias 240/241, solo el rojo de baseline
+  `dependencias-declaradas-presentes`.
+- Veredicto: verde local.
