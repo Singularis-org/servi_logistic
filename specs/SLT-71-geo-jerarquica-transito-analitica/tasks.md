@@ -25,7 +25,7 @@
 
 ## T1 — La lectura de hoy y la medición compartida [T0]
 
-- [ ] **T1.1** Extraer la medición de `scripts/geo-explain-consultas.ts` a
+- [x] **T1.1** Extraer la medición de `scripts/geo-explain-consultas.ts` a
   `scripts/geo-equivalencia/medicion.ts` (design §9.1). `bloqueaPorPorcentaje` pasa a la definición
   de la lectura, y `geo-explain-consultas.ts` re-exporta. **Hecho:**
   `tests/integration/db/geo-explain-consultas.test.ts` pasa sin cambios.

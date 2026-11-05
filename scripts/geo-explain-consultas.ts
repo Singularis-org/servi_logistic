@@ -12,8 +12,23 @@ import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { planificarReconciliacion } from "@/lib/repositories/ZonaRepository";
 import { sinTransaccionAnidada } from "@/lib/repositories/_shared/sin-transaccion-anidada";
 
-import { crearCaptura, type Captura, type ConsultaCapturada } from "./geo-equivalencia/captura-consultas";
+import { crearCaptura, type Captura } from "./geo-equivalencia/captura-consultas";
 import * as hoy from "./geo-equivalencia/consultas-de-hoy";
+import {
+  CORRIDAS,
+  consultasQueCompletanAntes,
+  leeGeografia,
+  mediana,
+  medirOFallar as medirOFallarGenerico,
+  nombreDeError,
+  variacion,
+  type DefinicionDeLectura as DefinicionGenerica,
+  type EntornoDeMedicion,
+  type LadoDeLaRegla,
+  type LadoMedido,
+  type MedicionDeLectura as MedicionGenerica,
+  type ResultadoDeLectura as ResultadoGenerico,
+} from "./geo-equivalencia/medicion";
 
 // SLT-65 (design §10; R24, R25) — `pnpm geo:explain-consultas [--empresa <id>]`.
 //
@@ -43,8 +58,11 @@ import * as hoy from "./geo-equivalencia/consultas-de-hoy";
 
 const USO = "Uso: pnpm geo:explain-consultas [--empresa <organizacion_id>]";
 
-/** Corridas de `EXPLAIN ANALYZE` por lado (R25). */
-export const CORRIDAS = 5;
+// SLT-71 (T1.1; design §9.1): la medicion vive en `./geo-equivalencia/medicion.ts`, compartida con
+// `geo-explain-analitica.ts`. Se re-exporta aqui para que los importadores de este script no cambien.
+export { CORRIDAS, consultasQueCompletanAntes, leeGeografia, mediana, variacion };
+export type { EntornoDeMedicion, LadoMedido };
+
 /** «Mas de 20 %» (R25). */
 export const UMBRAL_DE_REGRESION = 0.2;
 /** La primera pagina de los dos listados (design §10). */
@@ -69,50 +87,13 @@ const BLOQUEAN_POR_PORCENTAJE: ReadonlySet<NombreDeLectura> = new Set([
   "cierre-descriptivos",
 ]);
 
+export type MedicionDeLectura = MedicionGenerica<NombreDeLectura>;
+export type ResultadoDeLectura = ResultadoGenerico<NombreDeLectura>;
+type DefinicionDeLectura = Omit<DefinicionGenerica<NombreDeLectura>, "bloqueaPorPorcentaje">;
+
 // ---------------------------------------------------------------------------------------------
 // La regla
 // ---------------------------------------------------------------------------------------------
-
-export interface LadoMedido {
-  /** Consultas de la lectura que se explican (en antes, con las completadas). */
-  consultas: number;
-  /** Por corrida, la suma de los `Execution Time` de todas sus consultas (ms). */
-  corridasMs: number[];
-  medianaMs: number;
-  /** Seq Scan sobre `orden` en los planes de este lado (la corrida con mas). */
-  seqScanSobreOrden: number;
-  /** Tiempo de pared medio del metodo (ms). Informativo. */
-  paredMediaMs: number;
-}
-
-export interface MedicionDeLectura {
-  lectura: NombreDeLectura;
-  bloqueaPorPorcentaje: boolean;
-  antes: LadoMedido;
-  despues: LadoMedido;
-  /** Las consultas de despues con las que se completo antes (solo listados). */
-  completadas: number;
-}
-
-export type ResultadoDeLectura =
-  | { estado: "medida"; medicion: MedicionDeLectura }
-  | { estado: "sin-muestra"; lectura: NombreDeLectura; motivo: string }
-  | { estado: "fallida"; lectura: NombreDeLectura; error: string };
-
-export function mediana(valores: readonly number[]): number {
-  if (valores.length === 0) return 0;
-  const orden = [...valores].sort((a, b) => a - b);
-  const medio = Math.floor(orden.length / 2);
-  return orden.length % 2 === 1 ? orden[medio] : (orden[medio - 1] + orden[medio]) / 2;
-}
-
-type LadoDeLaRegla = Pick<LadoMedido, "medianaMs" | "seqScanSobreOrden">;
-
-/** Cuanto sube la mediana de despues sobre la de antes (0,21 = +21 %). */
-export function variacion(antes: LadoDeLaRegla, despues: LadoDeLaRegla): number {
-  if (antes.medianaMs === 0) return despues.medianaMs === 0 ? 0 : Number.POSITIVE_INFINITY;
-  return (despues.medianaMs - antes.medianaMs) / antes.medianaMs;
-}
 
 /**
  * R25 — hay regresion si la mediana de despues supera en MAS de 20 % a la de antes (solo donde
@@ -133,133 +114,9 @@ export function codigoDeSalida(resultados: readonly ResultadoDeLectura[]): Codig
   return resultados.some((r) => r.estado === "medida" && hayRegresion(r.medicion)) ? 1 : 0;
 }
 
-// ---------------------------------------------------------------------------------------------
-// Las consultas de despues con las que se completa antes
-// ---------------------------------------------------------------------------------------------
-
-// Las tablas de la geografia vieja, de las asignaciones y del catalogo: con la `organizacion` de la
-// que el catalogo lee el pais y la `zona` que trae con cada fila de `zona_distrito` (medido: Prisma
-// la pide en una consulta aparte). Una consulta que nombra alguna es parte de la lectura que cambia.
-// Si una consulta comun leyera `zona`, antes se quedaria sin ella: el error va hacia marcar
-// regresion, nunca hacia esconderla.
-const TABLAS_DE_LA_GEOGRAFIA =
-  /"(provincia|canton|distrito|zona|zona_distrito|distrito_zona_especial|nodo_geografico|tipo_nivel_geografico|organizacion)"/;
-
-export function leeGeografia(sql: string): boolean {
-  return TABLAS_DE_LA_GEOGRAFIA.test(sql);
-}
-
-/**
- * Las consultas de `despues` que `antes` no tiene (por sentencia, contando repeticiones) y que no
- * leen geografia: lo que la lectura hace igual hoy y la copia no trae.
- */
-export function consultasQueCompletanAntes(
-  antes: readonly ConsultaCapturada[],
-  despues: readonly ConsultaCapturada[],
-): ConsultaCapturada[] {
-  const pendientes = new Map<string, number>();
-  for (const c of antes) pendientes.set(c.consulta.sql, (pendientes.get(c.consulta.sql) ?? 0) + 1);
-  const completan: ConsultaCapturada[] = [];
-  for (const c of despues) {
-    const quedan = pendientes.get(c.consulta.sql) ?? 0;
-    if (quedan > 0) {
-      pendientes.set(c.consulta.sql, quedan - 1);
-      continue;
-    }
-    if (!leeGeografia(c.consulta.sql)) completan.push(c);
-  }
-  return completan;
-}
-
-// ---------------------------------------------------------------------------------------------
-// La medicion
-// ---------------------------------------------------------------------------------------------
-
-export interface EntornoDeMedicion {
-  cliente: PrismaClient;
-  captura: Captura;
-  /** Por defecto `CORRIDAS`. */
-  corridas?: number;
-}
-
-interface DefinicionDeLectura {
-  lectura: NombreDeLectura;
-  antes: () => Promise<unknown>;
-  despues: () => Promise<unknown>;
-  completarAntes: boolean;
-}
-
-/** Corre el metodo `corridas` veces: las consultas de la primera y el tiempo de pared medio. */
-async function capturar(
-  captura: Captura,
-  leer: () => Promise<unknown>,
-  corridas: number,
-): Promise<{ consultas: ConsultaCapturada[]; paredMediaMs: number }> {
-  let consultas: ConsultaCapturada[] = [];
-  let pared = 0;
-  for (let i = 0; i < corridas; i++) {
-    const t0 = performance.now();
-    const r = await captura.grabar(leer);
-    pared += performance.now() - t0;
-    if (i === 0) consultas = r.consultas;
-  }
-  return { consultas, paredMediaMs: pared / corridas };
-}
-
-async function medirLectura(entorno: EntornoDeMedicion, def: DefinicionDeLectura): Promise<MedicionDeLectura> {
-  const corridas = entorno.corridas ?? CORRIDAS;
-  const antes = await capturar(entorno.captura, def.antes, corridas);
-  const despues = await capturar(entorno.captura, def.despues, corridas);
-  const completadas = def.completarAntes ? consultasQueCompletanAntes(antes.consultas, despues.consultas) : [];
-  const consultasAntes = [...antes.consultas, ...completadas];
-
-  const sumas = { antes: [] as number[], despues: [] as number[] };
-  const seq = { antes: 0, despues: 0 };
-  // Alternadas por corrida: ningun lado se lleva toda la cache caliente.
-  for (let i = 0; i < corridas; i++) {
-    for (const [lado, consultas] of [
-      ["antes", consultasAntes],
-      ["despues", despues.consultas],
-    ] as const) {
-      let suma = 0;
-      let seqDeLaCorrida = 0;
-      for (const c of consultas) {
-        const plan = await entorno.captura.explicar(c);
-        suma += plan.tiempoMs;
-        seqDeLaCorrida += plan.seqScanSobreOrden;
-      }
-      sumas[lado].push(suma);
-      seq[lado] = Math.max(seq[lado], seqDeLaCorrida);
-    }
-  }
-
-  const lado = (n: number, corridasMs: number[], s: number, paredMediaMs: number): LadoMedido => ({
-    consultas: n,
-    corridasMs,
-    medianaMs: mediana(corridasMs),
-    seqScanSobreOrden: s,
-    paredMediaMs,
-  });
-  return {
-    lectura: def.lectura,
-    bloqueaPorPorcentaje: BLOQUEAN_POR_PORCENTAJE.has(def.lectura),
-    antes: lado(consultasAntes.length, sumas.antes, seq.antes, antes.paredMediaMs),
-    despues: lado(despues.consultas.length, sumas.despues, seq.despues, despues.paredMediaMs),
-    completadas: completadas.length,
-  };
-}
-
-/** Solo el nombre del error: el mensaje de Prisma puede llevar SQL, parametros o la URL. */
-function nombreDeError(error: unknown): string {
-  return error instanceof Error ? error.name : "error";
-}
-
-async function medirOFallar(entorno: EntornoDeMedicion, def: DefinicionDeLectura): Promise<ResultadoDeLectura> {
-  try {
-    return { estado: "medida", medicion: await medirLectura(entorno, def) };
-  } catch (error) {
-    return { estado: "fallida", lectura: def.lectura, error: nombreDeError(error) };
-  }
+/** La medicion compartida, con el «bloquea por 20 %» de este script. */
+function medirOFallar(entorno: EntornoDeMedicion, def: DefinicionDeLectura): Promise<ResultadoDeLectura> {
+  return medirOFallarGenerico(entorno, { ...def, bloqueaPorPorcentaje: BLOQUEAN_POR_PORCENTAJE.has(def.lectura) });
 }
 
 // ---------------------------------------------------------------------------------------------
