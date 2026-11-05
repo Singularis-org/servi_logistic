@@ -5,7 +5,12 @@ import type { PrismaClient } from "@prisma/client";
 import { cargarPantallaTarifas, cargarZonaTarifas } from "@/lib/actions/tarifas";
 import type { Actor } from "@/lib/interfaces/services/ITarifasPantallaService";
 import { TarifasPantallaRepository } from "@/lib/repositories/TarifasPantallaRepository";
-import { resolverCobrosCon, SIN_TIENDA, usaModeloNuevo } from "@/lib/repositories/_shared/resolver-tarifas";
+import {
+  clavePagoViejo,
+  resolverCobrosCon,
+  SIN_TIENDA,
+  usaModeloNuevo,
+} from "@/lib/repositories/_shared/resolver-tarifas";
 import { TarifasPantallaService } from "@/lib/services/TarifasPantallaService";
 import { serviciosDeTarifas } from "@/lib/tarifas/servicios";
 import { clavePar } from "@/lib/utils/cascada-tarifa";
@@ -120,6 +125,7 @@ async function sembrar(tx: TxDeTest): Promise<Escenario> {
   const GB = (await tx.grupoDistritos.create({ data: { zonaId: ZB, nombre: "GB" }, select: { id: true } })).id;
   await tx.grupoDistritosDistrito.create({ data: { grupoId: GB, zonaId: ZB, distritoId: d2 } });
   await tx.tarifa.create({ data: { ...COLUMNAS, valorFlete: "7777.00", tiendaId: null, zonaId: ZB } });
+  await tx.tarifa.create({ data: { ...COLUMNAS, valorFlete: "8888.00", tiendaId: fksB.tiendaId, zonaId: null } });
   await tx.tarifaZonaMensajero.create({
     data: { zonaId: ZB, vehiculoId: null, cobroEntregado: "7777.00", cobroRechazado: "7777.00" },
   });
@@ -220,7 +226,7 @@ async function sembrar(tx: TxDeTest): Promise<Escenario> {
 /** Comprueba lo sembrado como dueño: un test que no ve datos no prueba nada. */
 async function afirmarSiembra(tx: TxDeTest, e: Escenario) {
   expect(await tx.tarifa.count({ where: { organizacionId: e.A } })).toBe(5);
-  expect(await tx.tarifa.count({ where: { organizacionId: e.B } })).toBe(1);
+  expect(await tx.tarifa.count({ where: { organizacionId: e.B } })).toBe(2);
   expect(await tx.tarifaZonaMensajero.count({ where: { organizacionId: e.A } })).toBe(2);
   expect(await tx.distritoZonaEspecial.count({ where: { organizacionId: e.A } })).toBe(2);
   expect(await tx.distritoZonaEspecial.count({ where: { organizacionId: e.B } })).toBe(1);
@@ -481,6 +487,39 @@ describeSiHayBase("SLT-54 R12 — la empresa A no ve nada de B, leyendo como `se
       const { referencia } = await referenciaDe(tx, e, e.Z, e.tiendaB);
       expect(referencia.tienda?.enZona.tienda_flete_entregado).toEqual(varia("2800.00", "4100.00"));
       expect(referencia.tienda?.enTodasSusZonas.tienda_flete_entregado).toEqual({ tipo: "sin_tarifa" });
+    });
+  });
+
+  it("el repositorio, pidiendo por los ids de B, no trae nada de B: lo impide la RLS, no el `WHERE`", async () => {
+    await conEscenario(async (tx, e) => {
+      const repo = new TarifasPantallaRepository(clienteConSavepoint(tx));
+      const como = <T,>(org: string, fn: () => Promise<T>) => comoEmpresa(tx, org, fn);
+      const pedido = {
+        pares: [
+          { tiendaId: SIN_TIENDA, zonaId: e.ZB, distritoId: null },
+          { tiendaId: e.tiendaB, zonaId: null, distritoId: null },
+        ],
+        pagos: [{ zonaId: e.ZB, vehiculoId: null }],
+      };
+      const clavesCobro = pedido.pares.map(clavePar);
+      const clavePago = clavePagoViejo(e.ZB, null);
+
+      const deA = await como(e.A, () => repo.leerModeloViejo(pedido));
+      expect(clavesCobro.map((k) => deA.cobros.get(k))).toEqual([null, null]);
+      expect(deA.pagos.get(clavePago)).toBeNull();
+      expect(await como(e.A, () => repo.buscarZona(e.ZB))).toBeNull();
+      expect(await como(e.A, () => repo.gruposConDistritos(e.ZB))).toEqual([]);
+      expect(await como(e.A, () => repo.valoresDeZona(e.ZB))).toEqual([]);
+      expect(await como(e.A, () => repo.distritosDeZona(e.ZB, { conMarca: true }))).toEqual([]);
+      const gruposDeA = await como(e.A, () => repo.listarGruposDeEmpresa());
+      expect(gruposDeA.map((g) => g.id).sort()).toEqual([e.G1, e.G2, e.Gmezcla].sort());
+
+      // Y B si lo ve: el vacio de arriba no es que la consulta no traiga nada.
+      const deB = await como(e.B, () => repo.leerModeloViejo(pedido));
+      expect(clavesCobro.map((k) => deB.cobros.get(k)?.valorFlete)).toEqual(["7777.00", "8888.00"]);
+      expect(deB.pagos.get(clavePago)?.cobroEntregado).toBe("7777.00");
+      expect((await como(e.B, () => repo.gruposConDistritos(e.ZB))).map((g) => g.id)).toEqual([e.GB]);
+      expect((await como(e.B, () => repo.valoresDeZona(e.ZB))).map((v) => v.id)).toEqual([e.valorB]);
     });
   });
 
