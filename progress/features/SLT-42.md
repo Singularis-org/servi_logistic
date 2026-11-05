@@ -55,6 +55,17 @@ Bloqueos de F2.0:
   4. Tipo de documento inactivo: la lectura lo devuelve con `activo: false` y el servicio lo rechaza (R11), con mensaje propio.
   5. Excepción de plataforma etiquetada `SL-20` en vez de `SLT-42` (deuda D29, criterio de SLT-58): aceptado por el leader.
 
+- 2026-11-04 (tras tanda 2, preguntas de `progress/impl_SLT-42.md > Tanda 2`):
+  1. Rojo de `rollup-guards` R47: `TOPE_MEMO` de `calendario-zona.ts` pasa de `20_000` a `16_384`; la guardia no se toca (opción A, humano). Hecho en `4e99808c`.
+  2. Webhook de WhatsApp con país incompleto (`PaisIncompleto`): se registra el error en el log, se saltan los mensajes de esa empresa y se responde 200 a Meta, sin tumbar el lote ni provocar reintentos (opción A, humano). Pendiente de implementar.
+  3. Rastreo público: sigue con `normalizarTelefonoCR` en esta tanda; se resuelve en T5.6, con el país de la empresa dueña de la orden (opción A, humano).
+  4. `CorregirDatosClienteService`: pasa ya al prefijo del país, como WhatsApp en T4.4, y se ajusta la guardia `corregir-datos-sin-rastro` para que acepte la función nueva (opción A, humano). Pendiente de implementar.
+  5. R15: aprobar una postulación NO reescribe el teléfono; solo cambia `estado` (feature 22). Los teléfonos viejos van con la pregunta abierta «normalizar teléfonos guardados» (humano).
+  6. Postulación previa a SLT-42 con documento o teléfono fuera de regla: se aprueba igual; la validación del país solo se aplica a las postulaciones nuevas. Aprobar ya no devuelve `validation_error` por esos datos (humano). Pendiente de implementar; falta fijar qué marca «previa» (p. ej. fecha de creación anterior a la migración).
+  7. Alta de empresa: la comprobación de repetición va ANTES de validar R6 y los datos del maestro, como en SL-20 §13; repetir un alta siempre da `ya_existe` (humano). Pendiente de implementar.
+  8. Los 9 desvíos menores del design de la tanda 2 (lista en `progress/impl_SLT-42.md > Tanda 2`) quedan aceptados (humano).
+  9. `historial-accion-atomicidad` (17 rojos por datos de `logistic_slt42_test`): se recrea esa base desde cero y se vuelve a correr el test para comprobar el ajuste de T4.1 (humano).
+
 ## Preguntas abiertas
 Las del `requirements.md` (normalizar teléfonos guardados, jobs por zona horaria, largos de documento).
 
