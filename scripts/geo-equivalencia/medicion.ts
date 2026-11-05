@@ -33,7 +33,12 @@ export interface LadoMedido {
    * (`leeElCatalogo`). `medirLectura` lo rellena siempre; es opcional para los que construyen un lado
    * a mano (los tests de SLT-65).
    */
-  sinCatalogo?: { corridasMs: number[]; medianaMs: number };
+  sinCatalogo?: {
+    corridasMs: number[];
+    medianaMs: number;
+    /** Review v1 (m2): las consultas del lado que NO casan con `leeElCatalogo` (las que suman). */
+    consultas: number;
+  };
 }
 
 export interface MedicionDeLectura<N extends string = string> {
@@ -72,8 +77,10 @@ export function variacion(antes: LadoDeLaRegla, despues: LadoDeLaRegla): number 
 // Las tablas de la geografia vieja, de las asignaciones y del catalogo: con la `organizacion` de la
 // que el catalogo lee el pais y la `zona` que trae con cada fila de `zona_distrito` (medido: Prisma
 // la pide en una consulta aparte). Una consulta que nombra alguna es parte de la lectura que cambia.
-// Si una consulta comun leyera `zona`, antes se quedaria sin ella: el error va hacia marcar
-// regresion, nunca hacia esconderla.
+// SOLO para completar `antes` (`consultasQueCompletanAntes`): si una consulta comun leyera `zona`,
+// antes se quedaria sin ella y su suma bajaria, asi que el error va hacia marcar regresion, nunca
+// hacia esconderla. Con `leeElCatalogo` (abajo), que tambien cuenta `zona`, el error va al reves
+// (review v1, m2): por eso un test lo fija.
 const TABLAS_DE_LA_GEOGRAFIA =
   /"(provincia|canton|distrito|zona|zona_distrito|distrito_zona_especial|nodo_geografico|tipo_nivel_geografico|organizacion)"/;
 
@@ -108,6 +115,13 @@ export function consultasQueCompletanAntes(
 // como arriba), las marcas y la `organizacion` de la que sale el pais. Sin `provincia`, `canton` ni
 // `distrito`: la union de la lectura de HOY con esas tablas va dentro de su consulta sobre `orden`, y
 // es tiempo de la lectura, no del catalogo (en antes, «total» y «sin catalogo» son iguales).
+//
+// SENTIDO DEL ERROR (review v1, m2): al reves que `TABLAS_DE_LA_GEOGRAFIA`. Si una consulta MEDIDA
+// de la lectura (no de la carga del catalogo) nombrara una de estas tablas —`"zona"` es la de
+// riesgo—, su tiempo saldria de «sin catalogo» y una regresion real se veria como
+// `costo-fijo-del-catalogo`. Lo fija `geo-explain-analitica.test.ts` (R19): en cada lectura medida,
+// ninguna consulta de antes casa con `leeElCatalogo`, y el SQL de las lecturas nuevas usa
+// `o."zona_id"`, que el patron no casa.
 const TABLAS_DEL_CATALOGO =
   /"(nodo_geografico|tipo_nivel_geografico|zona_distrito|distrito_zona_especial|organizacion|zona)"/;
 
@@ -186,19 +200,29 @@ export async function medirLectura<N extends string>(
     }
   }
 
-  const lado = (n: number, corridasMs: number[], sinCat: number[], s: number, paredMediaMs: number): LadoMedido => ({
-    consultas: n,
+  const lado = (
+    consultas: readonly ConsultaCapturada[],
+    corridasMs: number[],
+    sinCat: number[],
+    s: number,
+    paredMediaMs: number,
+  ): LadoMedido => ({
+    consultas: consultas.length,
     corridasMs,
     medianaMs: mediana(corridasMs),
     seqScanSobreOrden: s,
     paredMediaMs,
-    sinCatalogo: { corridasMs: sinCat, medianaMs: mediana(sinCat) },
+    sinCatalogo: {
+      corridasMs: sinCat,
+      medianaMs: mediana(sinCat),
+      consultas: consultas.filter((c) => !leeElCatalogo(c.consulta.sql)).length,
+    },
   });
   return {
     lectura: def.lectura,
     bloqueaPorPorcentaje: def.bloqueaPorPorcentaje,
-    antes: lado(consultasAntes.length, sumas.antes, sumasSinCatalogo.antes, seq.antes, antes.paredMediaMs),
-    despues: lado(despues.consultas.length, sumas.despues, sumasSinCatalogo.despues, seq.despues, despues.paredMediaMs),
+    antes: lado(consultasAntes, sumas.antes, sumasSinCatalogo.antes, seq.antes, antes.paredMediaMs),
+    despues: lado(despues.consultas, sumas.despues, sumasSinCatalogo.despues, seq.despues, despues.paredMediaMs),
     completadas: completadas.length,
   };
 }

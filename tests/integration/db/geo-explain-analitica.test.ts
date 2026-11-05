@@ -60,7 +60,7 @@ function lado(medianaMs: number, sinCatalogoMs = medianaMs, seqScanSobreOrden = 
     medianaMs,
     seqScanSobreOrden,
     paredMediaMs: 0,
-    sinCatalogo: { corridasMs: [sinCatalogoMs], medianaMs: sinCatalogoMs },
+    sinCatalogo: { corridasMs: [sinCatalogoMs], medianaMs: sinCatalogoMs, consultas: 1 },
   };
 }
 
@@ -234,6 +234,12 @@ describeSiHayBase("SLT-71 T6.2 — geo:explain-analitica (Postgres real)", () =>
       expect(m.despues.consultas).toBeGreaterThan(m.antes.consultas);
       // En antes, total y sin catalogo son lo mismo: la union con `canton` va dentro de la consulta.
       expect(m.antes.sinCatalogo?.medianaMs).toBe(m.antes.medianaMs);
+      // Review v1 (m2): lo que «sin catalogo» descuenta es solo la carga del catalogo. Ninguna
+      // consulta de antes casa con `leeElCatalogo` (si una consulta medida de la lectura nombrara
+      // `"zona"`, una regresion se veria como costo fijo); y despues, sin el catalogo, quedan tantas
+      // consultas como antes: las de la lectura.
+      expect(m.antes.sinCatalogo?.consultas, m.lectura).toBe(m.antes.consultas);
+      expect(m.despues.sinCatalogo?.consultas, m.lectura).toBe(m.antes.consultas);
       expect(m.despues.sinCatalogo?.medianaMs ?? Infinity).toBeLessThanOrEqual(m.despues.medianaMs);
       expect(Number.isFinite(m.antes.medianaMs) && Number.isFinite(m.despues.medianaMs)).toBe(true);
       expect(m.bloqueaPorPorcentaje).toBe(m.lectura !== "ciclo-vida");
