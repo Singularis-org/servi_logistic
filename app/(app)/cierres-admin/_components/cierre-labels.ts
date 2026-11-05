@@ -10,7 +10,11 @@
  * Que el archivo descargado y la pantalla digan lo mismo (R8/R24) es cierto porque leen del
  * MISMO sitio, no porque hoy coincidan dos literales escritos en dos archivos.
  */
-import type { CierreResultado } from "@/lib/interfaces/services/ICierreDiaService";
+import type {
+  CierreDetalleGestion,
+  CierreResultado,
+  IngresoEmpresaDTO,
+} from "@/lib/interfaces/services/ICierreDiaService";
 import type { CierreDestinoTipo, CierreEstado } from "@/lib/types/cierre";
 import { EMPRESA } from "@/lib/config/marca";
 // FICHA 408 — los dos módulos del vocabulario de la causa de devolución. Los DOS son PUROS
@@ -176,6 +180,63 @@ export const FULFILLMENT_COL = "Fulfillment";
 export const FLETE_CON_IVA_LABEL = "Flete + IVA";
 export const COMISION_CON_IVA_LABEL = "Comisión + IVA";
 export const FLETE_DEV_CON_IVA_LABEL = "Flete por devolución a origen + IVA";
+// SLT-54 (R65): en el modelo nuevo ese mismo concepto suma también reprogramado, novedad e incidente
+// (SLT-52 R29). Llamarlo «devolución a origen» diría que se cobró una que no hubo.
+export const FLETE_NO_ENTREGADAS_LABEL = "Flete de gestiones no entregadas";
+export const FLETE_NO_ENTREGADAS_CON_IVA_LABEL = `${FLETE_NO_ENTREGADAS_LABEL} + IVA`;
+export const FLETE_NO_ENTREGADAS_NOTA =
+  "Se le factura a la tienda, pero no sale de lo recaudado: una gestión no entregada no cobra contra entrega.";
+// Menor 2 de la revisión F2.2: en el nuevo tampoco se descuentan los fletes de reprogramado, novedad e
+// incidente. `PAGO_TIENDA_NOTA` es cierta y completa solo en el viejo, donde esos no se cobran.
+export const PAGO_TIENDA_NOTA_MODELO_NUEVO =
+  "Total general menos flete + IVA y comisión + IVA. No descuenta el flete de una gestión no entregada: no recauda contra entrega, así que ese dinero nunca entró en el total general.";
+/**
+ * El flete que no es de entrega de UNA gestión del modelo nuevo, por el resultado que lo cobró. El nombre
+ * sale de la fuente única (ficha 455) y coincide con las filas de Tarifas. El rechazo conserva el nombre
+ * de la ficha 466, el mismo del viejo.
+ */
+export function fleteNoEntregaLabel(resultado: CierreResultado): string {
+  if (resultado === "entregado") return FLETE_NO_ENTREGADAS_LABEL;
+  if (resultado === "devolucion_a_origen_por_rechazo") return "Flete por devolución a origen";
+  return `Flete por ${nombreDeResultado(resultado).toLowerCase()}`;
+}
+/** Su IVA, en la forma de `IVA_FLETE_RECHAZO_LABEL`. */
+export function ivaFleteNoEntregaLabel(resultado: CierreResultado): string {
+  const nombre = fleteNoEntregaLabel(resultado);
+  return `IVA del ${nombre.charAt(0).toLowerCase()}${nombre.slice(1)}`;
+}
+/** R65, la fila de una gestión. En el viejo, el rótulo de siempre. */
+export function fleteDevConIvaDeGestion(
+  g: Pick<CierreDetalleGestion, "resultado" | "ingresoEmpresa">,
+): string {
+  return g.ingresoEmpresa?.tarifaModelo === "nuevo"
+    ? `${fleteNoEntregaLabel(g.resultado)} + IVA`
+    : FLETE_DEV_CON_IVA_LABEL;
+}
+/**
+ * R65, los totales: los paneles no reciben el modelo, y lo dicen sus gestiones. Basta con una: un cierre
+ * de bodega puede agregar días a ambos lados de la activación, y «no entregadas» sigue siendo cierto
+ * para los rechazos del viejo. La otra frase no lo sería para una novedad del nuevo.
+ */
+export function hayGestionEnModeloNuevo(
+  grupos: Readonly<Record<string, readonly Pick<CierreDetalleGestion, "ingresoEmpresa">[]>>,
+): boolean {
+  return Object.values(grupos).some((lista) =>
+    lista.some((g) => g.ingresoEmpresa?.tarifaModelo === "nuevo"),
+  );
+}
+/**
+ * SLT-54 (R62) — el fulfillment que se enseña de una gestión. En el nuevo no hay fila de `tarifas`:
+ * sale de `ing.fulfillment`. En el viejo sigue saliendo de la tarifa congelada porque `ing.fulfillment`
+ * convierte en "0.00" el `null` de un cierre anterior a la columna, y esa celda hoy va vacía. `null`
+ * también para quien no lo ve: el servidor ya se lo anuló (ficha 481).
+ */
+export function fulfillmentDeIngreso(
+  ing: Pick<IngresoEmpresaDTO, "fulfillment" | "tarifa" | "tarifaModelo"> | null | undefined,
+): string | null {
+  if (!ing) return null;
+  return ing.tarifaModelo === "nuevo" ? ing.fulfillment : (ing.tarifa?.fulfillment ?? null);
+}
 export const INGRESO_TOTAL_COL = `Total de ${EMPRESA.enFrase}`;
 // --- Feature 158 (R34/R9/R19): columnas propias del grupo `incidente` (texto i18n-ready) ---
 export const CAUSA_INCIDENTE_COL = "Causa";
@@ -251,6 +312,9 @@ export const GANA_BODEGA_SATELITE_LABEL = "Gana la bodega satélite";
 /** R26 — de qué resta sale «Para la central», en el idioma de quien la hace. */
 export const PARA_LA_CENTRAL_NOTA =
   "Lo recaudado menos el pago a los mensajeros y menos lo que gana la bodega satélite por las devoluciones a origen.";
+/** SLT-54 (R71, menor 5): en el nuevo la satélite gana por cualquier resultado (SLT-52 R32). */
+export const PARA_LA_CENTRAL_NOTA_MODELO_NUEVO =
+  "Lo recaudado menos el pago a los mensajeros y menos lo que gana la bodega satélite por sus gestiones.";
 
 /**
  * R36 — qué significa que salga NEGATIVO. Sin esta nota, un «−₡3.400» en una pantalla de dinero
@@ -275,6 +339,9 @@ export const EFECTIVO_NO_CUBRE_NOTA =
  */
 export const GANA_BODEGA_SATELITE_NOTA =
   "Lo que se le reconoce a la bodega satélite por las devoluciones a origen. No es un movimiento de caja registrado.";
+/** SLT-54 (R71): en el nuevo se le reconoce por cualquier resultado (SLT-52 R32). */
+export const GANA_BODEGA_SATELITE_NOTA_MODELO_NUEVO =
+  "Lo que se le reconoce a la bodega satélite por sus gestiones. No es un movimiento de caja registrado.";
 
 /** R10 — por qué esa línea SUMA a lo facturado pero no se resta de lo recaudado. */
 export const FLETE_RECHAZO_NO_DEDUCIBLE_NOTA =
@@ -342,6 +409,9 @@ export const COBRADO_SOBRE_RECAUDADO_NOTA =
  */
 export const NETO_EMPRESA_NOTA =
   `Lo que ${EMPRESA.enFrase} facturó, sin el IVA, menos el pago al mensajero y menos el ingreso de bodega por devoluciones a origen.`;
+/** SLT-54 (R71): el mismo renglón en el modelo nuevo, donde ese ingreso no sale solo de devoluciones. */
+export const NETO_EMPRESA_NOTA_MODELO_NUEVO =
+  `Lo que ${EMPRESA.enFrase} facturó, sin el IVA, menos el pago al mensajero y menos el ingreso de bodega.`;
 
 /**
  * SL-39 (R24) — la línea propia del IVA en la cascada «Lo que le queda a la empresa», justo después
@@ -484,6 +554,9 @@ export const DESGLOSE_POR_TIENDA_NOTA =
  */
 export const DESGLOSE_NO_REPARTIDO_NOTA =
   "El pago al mensajero y el ingreso de bodega por devoluciones a origen son del cierre completo: no están repartidos entre las tiendas.";
+/** SLT-54 (R71): la misma frase en el modelo nuevo. */
+export const DESGLOSE_NO_REPARTIDO_NOTA_MODELO_NUEVO =
+  "El pago al mensajero y el ingreso de bodega son del cierre completo: no están repartidos entre las tiendas.";
 
 /**
  * FICHA 396 (D2) — EL NOMBRE ACCESIBLE de la cascada de UNA tienda, y tiene que ser ÚNICO.

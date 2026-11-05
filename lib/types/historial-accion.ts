@@ -69,8 +69,8 @@ export const HISTORIAL_ACCION_TIPOS = [
   "wallet_movimiento_manual_registrado", // wallet.registrarMovimientoManualAction
   "egreso_administrativo_registrado", // wallet-egresos.registrarEgresoAdministrativoAction
   "egreso_administrativo_reversado", // WalletEgresoService.reversarEgreso (su Server Action se retiro en la 458-E, M4; quedan las filas historicas)
-  "tarifa_creada", // tarifas.crearTarifa
-  "tarifa_actualizada", // tarifas.actualizarTarifa
+  "tarifa_creada", // TarifaService.crear (sembrados; sin action desde SLT-54)
+  "tarifa_actualizada", // TarifaService.actualizar (sembrados; sin action desde SLT-54)
   "incidente_aprobado", // incidentes.aprobarIncidente
   "incidente_rechazado", // incidentes.rechazarIncidente
   "cobro_gasto_fijo_aprobado", // gasto-fijo-cobro.aprobarCobroGastoFijoAction
@@ -271,6 +271,9 @@ export const HISTORIAL_ACCION_TIPOS = [
   "tarifa_valor_quitado", // TarifaValorService.quitarValor (R9)
   "grupo_distritos_creado", // GrupoDistritosService.crearGrupo
   "grupo_distritos_cambiado", // GrupoDistritosService.renombrarGrupo / fijarDistritos
+  // ⭑ SLT-54 (R4, design §2.2) — el maestro hizo regir el modelo nuevo. DINERO: desde ese instante
+  // la empresa cobra y paga con otro modelo. Las activadas por migracion no dejan fila: no hay actor.
+  "tarifas_activadas", // TarifaActivacionRepository.activar
 
   // --- A.2 · hace desaparecer algo (11) ---
   // ⭑ FICHA 371 — la fecha de una reprogramacion ya registrada, corregida por un coordinador.
@@ -294,7 +297,7 @@ export const HISTORIAL_ACCION_TIPOS = [
   // `tarifa_borrada` esta AQUI y no en «dinero» aunque mueva precio: R17 exige EXACTAMENTE una
   // categoria por tipo, y lo que la fila documenta es la desaparicion irreversible (`tarifas`
   // borra en FISICO, `db/schema.prisma`).
-  "tarifa_borrada", // tarifas.borrarTarifa
+  "tarifa_borrada", // TarifaService.borrar (sembrados; sin action desde SLT-54)
   "zona_borrada", // zonas.borrarZona — fisico, y arrastra sus tarifas en cascada
   // SLT-52: AQUI por el mismo motivo que `tarifa_borrada`: borrar un grupo es fisico y se lleva sus
   // valores por cascada (R12); lo que la fila documenta es esa desaparicion.
@@ -452,6 +455,8 @@ export const HISTORIAL_ACCION_ENTIDADES = [
   // la fila sobrevive al borrado fisico del valor o del grupo.
   "tarifa_valor",
   "grupo_distritos",
+  // ⭑ SLT-54 — la activacion del modelo nuevo de tarifas, 1:1 con su tabla.
+  "tarifa_activacion",
 ] as const satisfies readonly PrismaHistorialAccionEntidad[];
 
 export type HistorialAccionEntidad = (typeof HISTORIAL_ACCION_ENTIDADES)[number];
@@ -555,6 +560,8 @@ export const CATEGORIA_POR_ACCION: Record<HistorialAccionTipo, CategoriaAccion> 
   tarifa_valor_quitado: "mueve_dinero",
   grupo_distritos_creado: "mueve_dinero",
   grupo_distritos_cambiado: "mueve_dinero",
+  // SLT-54 (design §2.2): activar cambia el modelo con el que se cobra y se paga.
+  tarifas_activadas: "mueve_dinero",
   gestion_fecha_reprogramacion_corregida: "hace_desaparecer",
   orden_eliminada: "hace_desaparecer",
   orden_recuperada: "hace_desaparecer",
@@ -649,6 +656,7 @@ export const ACCION_LABELS: Record<HistorialAccionTipo, string> = {
   tarifa_valor_quitado: "Quitó un valor de tarifa",
   grupo_distritos_creado: "Creó un grupo de distritos",
   grupo_distritos_cambiado: "Cambió un grupo de distritos",
+  tarifas_activadas: "Activó las tarifas nuevas",
   gestion_fecha_reprogramacion_corregida: "Corrigió la fecha de una reprogramación",
   orden_eliminada: "Eliminó una orden",
   orden_recuperada: "Recuperó una orden",
@@ -726,6 +734,7 @@ export const ENTIDAD_LABELS: Record<HistorialAccionEntidad, string> = {
   plan: "Plan",
   tarifa_valor: "Valor de tarifa",
   grupo_distritos: "Grupo de distritos",
+  tarifa_activacion: "Activación de tarifas",
 };
 
 /** Los tipos de UNA categoria. Es la traduccion `categoria -> accion IN (…)` del borde (R17). */

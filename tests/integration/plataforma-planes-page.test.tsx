@@ -61,6 +61,7 @@ const PLAN = {
   modulos: [],
   precio: { tipo: "sin_precio" as const }, // Ajuste planes-custom (D1): sin «negociable».
   costoPorOrden: null, // SLT-66 R8: campo nuevo del PlanDTO
+  costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
   archivado: false,
 };
 

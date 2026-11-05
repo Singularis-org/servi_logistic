@@ -698,6 +698,16 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
     roles: ROLES_MI_PLAN,
   },
   {
+    // SLT-54 (R56) — «Tarifas» como ítem propio del `admin`, que lee sin escribir: abrirle
+    // «Configuración» le regalaría Usuarios y API. El `maestro` la sigue viendo dentro de
+    // «Configuración», y por eso `roles` no lo incluye. Va al final de lo que ve el `admin`, antes de
+    // «Mi bodega» y «Ayuda», que cierran la barra por contrato: su primer visible sigue siendo «Inicio».
+    label: "Tarifas",
+    href: "/configuracion/tarifas",
+    iconKey: "settings",
+    roles: ["admin"],
+  },
+  {
     // SL-32 (R6, R36) — «Empresas»: el primero de los dos ítems del superadmin (el otro es
     // «Geografía», SL-20), que no ve nada de empresa.
     //

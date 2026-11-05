@@ -30,6 +30,7 @@ const PLAN: PlanConConsumo = {
   cambioPendiente: null,
   // SLT-66 R18: campo nuevo del tipo; estos casos no lo comprueban.
   costeo: {
+    modo: "fijo", // SLT-83: el costeo pasó a unión por modo
     base: { tipo: "monto", mensual: "45000.00" },
     costoPorOrden: "100.00",
     fuente: "plan",

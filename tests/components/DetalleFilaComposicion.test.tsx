@@ -112,6 +112,7 @@ const ABRIR_MENSAJEROS = "Ver los movimientos de Pagos de la empresa a mensajero
 const ABRIR_AJUSTES = "Ver los movimientos de Correcciones de caja (resta)";
 const ABRIR_OTROS = "Ver los movimientos de Otros gastos de la empresa";
 const ABRIR_FLETE = "Ver los movimientos de Flete cobrado a la tienda";
+const PANEL_FLETE = "Movimientos de Flete cobrado a la tienda";
 
 /** Nombres accesibles de los paneles desplegados. */
 const PANEL_MENSAJEROS = "Movimientos de Pagos de la empresa a mensajeros";
@@ -624,6 +625,19 @@ describe("Ficha 339 — el detalle en un teléfono (arreglo móvil)", () => {
     window.matchMedia = matchMediaOriginal;
   });
 
+  it("SLT-54 (menor 6): en móvil, el concepto también sigue al modelo de su cierre, con el viejo literal", async () => {
+    fingirTelefono();
+    const cobro = (id: string, incluyeModeloNuevo?: boolean) =>
+      movimiento({ id, tipo: "ingreso", categoria: "ingreso_flete_devolucion", origenTipo: "cierre_dia", incluyeModeloNuevo });
+    detalleMock.mockResolvedValue(pagina([cobro("nuevo", true), cobro("viejo", false), cobro("ausente")], 3));
+    pintar();
+    await abrir(ABRIR_FLETE);
+    await screen.findAllByText("Flete de gestiones no entregadas cobrado a la tienda");
+    const texto = panel(PANEL_FLETE).textContent ?? "";
+    expect(texto.split("Flete de gestiones no entregadas cobrado a la tienda").length - 1).toBe(1);
+    expect(texto.split("Flete por devolución a origen cobrado a la tienda").length - 1).toBe(2);
+  });
+
   it("en móvil la tabla tiene DOS columnas: «Movimiento» e «Importe»", async () => {
     fingirTelefono();
     pintar();
@@ -769,5 +783,23 @@ describe("Ficha 339 — el detalle en un teléfono (arreglo móvil)", () => {
     expect(mutada).not.toContain("whitespace-nowrap");
     expect(mutada).toMatch(/\btruncate\b/);
     expect(celdaImporte).not.toMatch(/\btruncate\b/);
+  });
+});
+
+// SLT-54 (menor 6 de la revisión F2.2): la fila del panel lee el campo; el texto del viejo va literal.
+describe("SLT-54 — el concepto de la fila del panel sigue al modelo de su cierre", () => {
+  const cobroDelCierre = (id: string, incluyeModeloNuevo?: boolean) =>
+    movimiento({ id, tipo: "ingreso", categoria: "ingreso_flete_devolucion", origenTipo: "cierre_dia", incluyeModeloNuevo });
+
+  it("nuevo, viejo y ausente en el mismo panel, cada fila con el suyo", async () => {
+    detalleMock.mockResolvedValue(
+      pagina([cobroDelCierre("nuevo", true), cobroDelCierre("viejo", false), cobroDelCierre("ausente")], 3),
+    );
+    pintar();
+    await abrir(ABRIR_FLETE);
+    await screen.findAllByText("Flete de gestiones no entregadas cobrado a la tienda");
+    const texto = panel(PANEL_FLETE).textContent ?? "";
+    expect(texto.split("Flete de gestiones no entregadas cobrado a la tienda").length - 1).toBe(1);
+    expect(texto.split("Flete por devolución a origen cobrado a la tienda").length - 1).toBe(2);
   });
 });

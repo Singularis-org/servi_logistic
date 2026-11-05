@@ -2,6 +2,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, it, expect } from "vitest";
 import { Prisma, type PrismaClient } from "@prisma/client";
+import type { LectorDeModeloDeDetalle } from "@/lib/repositories/_shared/detalle-modelo-nuevo";
 import { WalletMovimientoRepository } from "@/lib/repositories/WalletMovimientoRepository";
 import { WalletMensajeroFeedService } from "@/lib/services/WalletMensajeroFeedService";
 import type { WalletMensajeroFeedTxClient } from "@/lib/interfaces/services/IWalletMensajeroFeedService";
@@ -98,7 +99,42 @@ const CRUCE_A_QUIEN = "lib/repositories/libro-caja-a-quien-sql.ts";
 const MODULOS_IMPORTADOS_DECLARADOS = [
   "lib/repositories/registrar-accion.ts", // auditoria (362): escribe por delegado, lo cuenta R31
   CRUCE_A_QUIEN, // el cruce «A quién» (458-E): SQL de solo lectura, sin montos
+  "lib/repositories/_shared/detalle-modelo-nuevo.ts", // SLT-54: el modelo del cierre de una fila, sin montos ni SQL crudo
 ];
+
+const REPO_ESTADO_CUENTA = "lib/repositories/EstadoCuentaRepository.ts";
+const LECTURA_DEL_MODELO = "lib/repositories/_shared/detalle-modelo-nuevo.ts";
+
+/**
+ * SLT-54 (menor 7 de la revision F2.2) — lo que guarda dinero en `cierre_detail`: sus columnas `Decimal` y
+ * la relacion `conceptos`, donde el modelo nuevo congela el cobro. Sale del ESQUEMA: una columna de
+ * importe que nazca manana entra sola, y una lista a mano se quedaria corta sin avisar.
+ */
+function entradasDeDineroDelDetalle(): string[] {
+  const schema = readFileSync(path.join(RAIZ, "db/schema.prisma"), "utf8");
+  const modelo = /model CierreDetail \{([\s\S]*?)\n\}/.exec(schema)?.[1] ?? "";
+  return [...[...modelo.matchAll(/^\s*(\w+)\s+Decimal\b/gm)].map((m) => m[1]), ...[...modelo.matchAll(/^\s*(conceptos)\s/gm)].map((m) => m[1])];
+}
+
+/** Los metodos del delegado `cierreDetail` que invoca un fuente. */
+function metodosDelDetalle(codigo: string): string[] {
+  return [...codigo.matchAll(/cierreDetail\s*\??\.\s*(\w+)/g)].map((m) => m[1]);
+}
+
+/**
+ * Lo que la lectura del modelo no puede nombrar: el cliente entero (con el que su tipo acotado no sirve de
+ * nada), SQL crudo, una agregacion, otro metodo del delegado o una entrada de dinero del detalle.
+ */
+function fugasDeLecturaDelModelo(codigo: string, columnas: readonly string[]): string[] {
+  const c = sinImports(codigo);
+  return [
+    ...[...codigo.matchAll(/\bPrismaClient\b/g)].map((m) => m[0]),
+    ...[...c.matchAll(/\$queryRaw(?:Unsafe)?\b|\$executeRaw(?:Unsafe)?\b|\baggregate\b|\bgroupBy\b|\b_(?:sum|avg|min|max)\b|monto/gi)].map((m) => m[0]),
+    ...metodosDelDetalle(c).filter((m) => m !== "findMany"),
+    ...columnas.filter((col) => new RegExp(`\\b${col}\\b`).test(c)),
+    ...sumasEnJs(c),
+  ];
+}
 
 /** El codigo sin las lineas de `import … from "…"` (su `from` no es SQL). */
 function sinImports(codigo: string): string {
@@ -217,6 +253,11 @@ describe("R33 — el repositorio que sirve las dos cifras NO puede leer los otro
       // CRITERIO de pertenencia: lo que se suma sigue siendo `wallet_movimiento.monto` y nada mas.
       // Eso lo afirma el caso «el filtro «A quién» solo SUMA la caja» de abajo.
       $queryRaw: {} as PrismaClient["$queryRaw"],
+      // SLT-54 (menor 6 de la revision F2.2): para decir con que modelo se congelo el cierre de una fila.
+      // `cierre_detail` no es un libro pero guarda las entradas del dinero, asi que no entra el delegado:
+      // entra `LectorDeModeloDeDetalle`, un `findMany` cuyo tipo solo admite leer `cierre_id`. Lo afirma
+      // «la lectura del modelo solo llega a `tarifa_modelo`», mas abajo.
+      cierreDetail: {} as LectorDeModeloDeDetalle["cierreDetail"],
     };
     const repo = new WalletMovimientoRepository(clienteDeUnaSolaTabla);
 
@@ -237,7 +278,7 @@ describe("R33 — el repositorio que sirve las dos cifras NO puede leer los otro
     // lo mide el bucle de abajo —que no se toca—. `historial_accion` no lleva el saldo de nadie y
     // `usuario` es de donde sale el actor congelado.
     expect(codigo).toMatch(/Pick<\s*PrismaClient,\s*\n?\s*"walletMovimiento"/);
-    for (const ajena of ["walletTiendaMovimiento", "pagoMensajeroMovimiento", "gestionOrden", "cierreDia"]) {
+    for (const ajena of ["walletTiendaMovimiento", "pagoMensajeroMovimiento", "gestionOrden", "cierreDia", "cierreDetail"]) {
       expect(codigo, `WalletMovimientoRepository nombra ${ajena}`).not.toContain(ajena);
     }
   });
@@ -271,6 +312,23 @@ describe("R33 — el repositorio que sirve las dos cifras NO puede leer los otro
     expect([...importados].sort()).toEqual([...MODULOS_IMPORTADOS_DECLARADOS].sort());
     for (const modulo of importados) {
       expect(escriturasCrudas(codigoSinComentarios(modulo)), `${modulo} escribe por SQL crudo`).toEqual([]);
+    }
+  });
+
+  it("SLT-54: la lectura del modelo solo llega a `tarifa_modelo`, y los libros no tocan `cierre_detail` por su cuenta", () => {
+    const columnas = entradasDeDineroDelDetalle();
+    // CONTROL DE NO-VACUIDAD: la lista sale del esquema y trae lo que tiene que traer.
+    expect(columnas).toEqual(expect.arrayContaining(["montoCobrar", "tarifaValorFlete", "tarifaIvaFlete", "conceptos"]));
+
+    const modulo = codigoSinComentarios(LECTURA_DEL_MODELO);
+    expect(metodosDelDetalle(modulo), "el modulo ya no lee el detalle: la regla mira el vacio").toContain("findMany");
+    expect(fugasDeLecturaDelModelo(modulo, columnas)).toEqual([]);
+
+    for (const repo of [REPO_CAJA, REPO_ESTADO_CUENTA]) {
+      const codigo = codigoSinComentarios(repo);
+      // CONTROL DE NO-VACUIDAD: este repositorio pasa de verdad por la lectura acotada.
+      expect(codigo, `${repo} no usa la lectura del modelo`).toContain("cierresConModeloNuevo");
+      expect(codigo, `${repo} abre \`cierre_detail\` por su cuenta`).not.toMatch(/cierreDetail|cierre_detail/);
     }
   });
 
@@ -404,6 +462,24 @@ describe("M1 (revision 458-E) — contrapruebas: cada regla del repositorio de l
     expect(escriturasCrudas("Prisma.raw(texto)")).toEqual(["Prisma.raw"]);
     // Un delegado (`.update(`) no es SQL crudo: lo mide R31.
     expect(escriturasCrudas("tx.walletMovimiento.update({})")).toEqual([]);
+  });
+
+  it("SLT-54: la lectura del modelo ve una suma, una columna de dinero, otro metodo y el cliente entero", () => {
+    const columnas = ["montoCobrar", "tarifaValorFlete", "conceptos"];
+    expect(metodosDelDetalle("c.cierreDetail.findMany({})")).toEqual(["findMany"]);
+    expect(metodosDelDetalle("c.cierreDetail?.count({})")).toEqual(["count"]);
+
+    expect(fugasDeLecturaDelModelo('c.cierreDetail.findMany({ select: { cierreId: true } })', columnas)).toEqual([]);
+    expect(fugasDeLecturaDelModelo('c.cierreDetail.aggregate({ _sum: { montoCobrar: true } })', columnas)).toEqual(
+      expect.arrayContaining(["aggregate", "_sum", "montoCobrar"]),
+    );
+    expect(fugasDeLecturaDelModelo('c.cierreDetail.findMany({ select: { tarifaValorFlete: true } })', columnas)).toEqual(["tarifaValorFlete"]);
+    expect(fugasDeLecturaDelModelo('c.cierreDetail.findMany({ select: { conceptos: true } })', columnas)).toEqual(["conceptos"]);
+    expect(fugasDeLecturaDelModelo("c.cierreDetail.count({})", columnas)).toEqual(["count"]);
+    expect(fugasDeLecturaDelModelo('c: Pick<PrismaClient, "cierreDetail">', columnas)).toEqual(["PrismaClient"]);
+    expect(fugasDeLecturaDelModelo('import type { PrismaClient } from "@prisma/client";', columnas)).toEqual(["PrismaClient"]);
+    expect(fugasDeLecturaDelModelo('c.$queryRaw`SELECT 1`', columnas)).toEqual(["$queryRaw"]);
+    expect(fugasDeLecturaDelModelo("filas.reduce((a, f) => a, 0)", columnas)).toEqual([".reduce("]);
   });
 
   it("el censo de imports ve un modulo de SQL nuevo", () => {

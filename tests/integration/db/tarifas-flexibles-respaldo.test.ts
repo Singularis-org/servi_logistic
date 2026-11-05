@@ -2,10 +2,16 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 
-import { resolverCobrosCon, resolverPagosCon } from "@/lib/repositories/_shared/resolver-tarifas";
+import {
+  resolverCobrosCon,
+  resolverCobrosYFilasViejasCon,
+  resolverPagosCon,
+} from "@/lib/repositories/_shared/resolver-tarifas";
+import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
+import { TarifaZonaMensajeroRepository } from "@/lib/repositories/TarifaZonaMensajeroRepository";
 import type { ContextoPagoGestion } from "@/lib/types/tarifa-flexible";
 import { clavePar, type ParTarifa } from "@/lib/utils/cascada-tarifa";
-import { comoApp, crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones";
+import { comoApp, crearOrganizacion, fijarEmpresa, sembrarActivacion } from "@/tests/fabricas/organizaciones";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import {
   HAY_BASE_DE_DATOS,
@@ -16,17 +22,20 @@ import {
   type TxDeTest,
 } from "./_postgres-real";
 
-// SLT-52 T3.5 (design §5, R36, R37) — EL INTERRUPTOR POR EMPRESA, CONTRA POSTGRES REAL.
+// SLT-52 T3.5 (design §5, R36, R37), SLT-54 T1.3 (R1, R2) — EL INTERRUPTOR POR EMPRESA, CONTRA POSTGRES
+// REAL. Lo decide la activacion, no que existan valores.
 //
-// Dos empresas en la misma base, las dos con filas del modelo viejo (`tarifas` y
+// Tres empresas en la misma base, las tres con filas del modelo viejo (`tarifas` y
 // `tarifa_zona_mensajero`):
-// - A no tiene ningun valor en `tarifa_valor` → el resolver devuelve `modelo: "viejo"` con los
-//   mismos datos que antes de la ficha, centavo a centavo (R36). Los esperados son LITERALES: los
+// - A, sin activar y sin ningun valor en `tarifa_valor` → el resolver devuelve `modelo: "viejo"` con
+//   los mismos datos que antes de la ficha, centavo a centavo (R36). Los esperados son LITERALES: los
 //   importes sembrados, escritos a mano, no lo que devuelva otra funcion del modelo viejo.
-// - B tiene UN solo valor nuevo → `modelo: "nuevo"`, sin leer `tarifas` ni `tarifa_zona_mensajero`
-//   (se mira el SQL que de verdad salio, no un doble) y todo concepto no puesto es «sin tarifa»
-//   (R37). Que B tenga valores no puede pasar a A al modelo nuevo: el interruptor es por empresa y
-//   lo acota la RLS (R15).
+// - C, sin activar, con los MISMOS importes viejos que A y con valores nuevos en todos los niveles
+//   (R1): el borrador del maestro. Da exactamente los mismos literales que A y no lee `tarifa_valor`.
+// - B, activada y con UN solo valor nuevo → `modelo: "nuevo"`, sin leer `tarifas` ni
+//   `tarifa_zona_mensajero` (se mira el SQL que de verdad salio, no un doble) y todo concepto no puesto
+//   es «sin tarifa» (R37). Que B este activada no puede pasar a A al modelo nuevo: el interruptor es
+//   por empresa y lo acota la RLS (R15).
 //
 // Todo en una transaccion que siempre se revierte; el resolver corre con `servi_app` y la empresa
 // fijada. Cada caso afirma primero lo que sembro.
@@ -60,6 +69,12 @@ interface Escenario {
   tarifaTiendaA: string;
   tarifaZonaA: string;
   valorB: string;
+  C: string;
+  TC: string;
+  ZC: string;
+  MC: string;
+  tarifaTiendaC: string;
+  tarifaZonaC: string;
 }
 
 /** Fila vieja de `tarifas`, con los importes de la tabla de T0.1 (respaldo-identico). */
@@ -117,9 +132,48 @@ async function sembrar(tx: TxDeTest): Promise<Escenario> {
     data: { zonaId: fa.zonaId, vehiculoId: V1, cobroEntregado: "1300.00", cobroRechazado: "700.00" },
   });
 
-  // ---- B: modelo viejo completo + UN valor nuevo -----------------------------------------
+  // ---- C: los mismos importes viejos que A + valores nuevos SIN activar (R1) ------------------
+  const C = (await crearOrganizacion(tx)).id;
+  await fijarEmpresa(tx, C);
+  const fc = await crearFksDeOrden(tx);
+  const MC = (await crearUsuarioDePrueba(tx, "mensajero")).id;
+  const tarifaTiendaC = await sembrarTarifaVieja(tx, {
+    tiendaId: fc.tiendaId,
+    zonaId: fc.zonaId,
+    valorFlete: "2750.55",
+    fulfillment: "450.25",
+  });
+  const tarifaZonaC = await sembrarTarifaVieja(tx, {
+    tiendaId: null,
+    zonaId: fc.zonaId,
+    valorFlete: "1999.99",
+    fulfillment: null,
+  });
+  await tx.tarifaZonaMensajero.create({
+    data: { zonaId: fc.zonaId, vehiculoId: null, cobroEntregado: "1250.50", cobroRechazado: "640.25" },
+  });
+  await tx.tarifaZonaMensajero.create({
+    data: { zonaId: fc.zonaId, vehiculoId: V1, cobroEntregado: "1300.00", cobroRechazado: "700.00" },
+  });
+  // El borrador: importes que nadie puede confundir, en cada nivel donde el cobro y el pago los verian.
+  await tx.tarifaValor.createMany({
+    data: [
+      { concepto: "tienda_flete_entregado", modo: "monto", valor: "11.11", ivaPct: "1.00", zonaId: fc.zonaId },
+      { concepto: "tienda_flete_entregado", modo: "monto", valor: "22.22", ivaPct: "2.00", tiendaId: fc.tiendaId, zonaId: fc.zonaId },
+      { concepto: "tienda_flete_rechazo", modo: "monto", valor: "33.33", ivaPct: "3.00", zonaId: fc.zonaId },
+      { concepto: "tienda_fulfillment", modo: "monto", valor: "44.44", ivaPct: "4.00", zonaId: fc.zonaId },
+      { concepto: "tienda_comision_cod", modo: "porcentaje", valor: "55.55", ivaPct: "5.00", zonaId: fc.zonaId },
+      { concepto: "mensajero_entregado", modo: "monto", valor: "66.66", zonaId: fc.zonaId },
+      { concepto: "mensajero_entregado", modo: "monto", valor: "77.77", zonaId: fc.zonaId, vehiculoId: V1 },
+      { concepto: "mensajero_entregado", modo: "monto", valor: "88.88", mensajeroId: MC },
+      { concepto: "satelite_entregado", modo: "monto", valor: "99.99", zonaId: fc.zonaId },
+    ],
+  });
+
+  // ---- B: modelo viejo completo + activada + UN valor nuevo -------------------------------
   await fijarEmpresa(tx, B);
   const fb = await crearFksDeOrden(tx);
+  await sembrarActivacion(tx, B);
   const MB = (await crearUsuarioDePrueba(tx, "mensajero")).id;
   await sembrarTarifaVieja(tx, { tiendaId: fb.tiendaId, zonaId: fb.zonaId, valorFlete: "7777.77", fulfillment: "999.99" });
   await tx.tarifaZonaMensajero.create({
@@ -133,7 +187,26 @@ async function sembrar(tx: TxDeTest): Promise<Escenario> {
   ).id;
 
   await fijarEmpresa(tx, A);
-  return { A, B, TA: fa.tiendaId, ZA: fa.zonaId, MA, TB: fb.tiendaId, ZB: fb.zonaId, MB, V1, tarifaTiendaA, tarifaZonaA, valorB };
+  return {
+    A,
+    B,
+    TA: fa.tiendaId,
+    ZA: fa.zonaId,
+    MA,
+    TB: fb.tiendaId,
+    ZB: fb.zonaId,
+    MB,
+    V1,
+    tarifaTiendaA,
+    tarifaZonaA,
+    valorB,
+    C,
+    TC: fc.tiendaId,
+    ZC: fc.zonaId,
+    MC,
+    tarifaTiendaC,
+    tarifaZonaC,
+  };
 }
 
 async function afirmarSiembra(tx: TxDeTest, e: Escenario) {
@@ -143,6 +216,12 @@ async function afirmarSiembra(tx: TxDeTest, e: Escenario) {
   expect(await tx.tarifa.count({ where: { organizacionId: e.B } })).toBe(1);
   expect(await tx.tarifaZonaMensajero.count({ where: { organizacionId: e.B } })).toBe(1);
   expect(await tx.tarifaValor.count({ where: { organizacionId: e.B } })).toBe(1);
+  expect(await tx.tarifa.count({ where: { organizacionId: e.C } })).toBe(2);
+  expect(await tx.tarifaZonaMensajero.count({ where: { organizacionId: e.C } })).toBe(2);
+  expect(await tx.tarifaValor.count({ where: { organizacionId: e.C } })).toBe(9);
+  // Solo B tiene activacion: es lo unico que distingue a C de una empresa activada.
+  expect(await tx.tarifaActivacion.count({ where: { organizacionId: { in: [e.A, e.C] } } })).toBe(0);
+  expect(await tx.tarifaActivacion.count({ where: { organizacionId: e.B } })).toBe(1);
 }
 
 async function comoEmpresa<T>(tx: TxDeTest, org: string, fn: () => Promise<T>): Promise<T> {
@@ -170,6 +249,7 @@ async function sqlDe<T>(fn: () => Promise<T>): Promise<{ salida: T; sql: string[
 }
 
 const TABLAS_VIEJAS = /"tarifas"|"tarifa_zona_mensajero"/;
+const TABLA_NUEVA = /"tarifa_valor"/;
 
 function ctx(e: { M: string; Z: string; T: string }, o: Partial<ContextoPagoGestion> = {}): ContextoPagoGestion {
   return {
@@ -187,27 +267,119 @@ function ctx(e: { M: string; Z: string; T: string }, o: Partial<ContextoPagoGest
   };
 }
 
+/** Los importes de la tarifa de tienda que sembraron A y C, escritos a mano. */
+function tarifaDeTiendaEsperada(tarifaId: string) {
+  return {
+    modelo: "viejo",
+    tarifa: {
+      tarifaId,
+      fulfillment: "450.25",
+      valorFlete: "2750.55",
+      valorFleteGam: "2300.15",
+      valorFleteDevuelto: "1650.35",
+      valorFleteDevueltoGam: "1380.45",
+      comisionCod: "3.50",
+      ivaFlete: "13.00",
+      ivaComisionCod: "13.00",
+      tarifaEspecial: "3995.50",
+      tarifaEspecialDevuelta: null,
+    },
+  };
+}
+
+describeSiHayBase("SLT-54 R1 · empresa sin activar con valores nuevos calcula con el viejo", () => {
+  it("cobro: los mismos literales que A, por el resolver y por la fachada del cierre, sin leer `tarifa_valor`", async () => {
+    await conEscenario(async (tx, e) => {
+      const parC: ParTarifa = { tiendaId: e.TC, zonaId: e.ZC, distritoId: null };
+      const { salida, sql } = await sqlDe(() =>
+        comoEmpresa(tx, e.C, async () => ({
+          resolver: await resolverCobrosCon(tx, [parC]),
+          fachada: await new TarifaVigenteRepository(tx as unknown as PrismaClient).resolveTarifas(
+            [parC],
+            tx as unknown as PrismaClient,
+          ),
+          aOtraTienda: await resolverCobrosCon(tx, [{ tiendaId: randomUUID(), zonaId: e.ZC, distritoId: null }]),
+        })),
+      );
+      expect(salida.resolver.get(clavePar(parC))).toEqual(tarifaDeTiendaEsperada(e.tarifaTiendaC));
+      expect(salida.fachada.get(clavePar(parC))).toEqual(tarifaDeTiendaEsperada(e.tarifaTiendaC));
+      const otra = [...salida.aOtraTienda.values()][0];
+      if (otra?.modelo !== "viejo") throw new Error("se esperaba el modelo viejo");
+      expect(otra.tarifa.tarifaId).toBe(e.tarifaZonaC);
+      expect(otra.tarifa.valorFlete).toBe("1999.99");
+      expect(otra.tarifa.fulfillment).toBe("0.00");
+      // El espia vio consultas y ninguna toco la tabla del borrador.
+      expect(sql.some((q) => TABLAS_VIEJAS.test(q))).toBe(true);
+      expect(sql.filter((q) => TABLA_NUEVA.test(q))).toEqual([]);
+    });
+  });
+
+  it("listado: la fila vieja que se enseña y su importe son los de hoy", async () => {
+    await conEscenario(async (tx, e) => {
+      const par: ParTarifa = { tiendaId: e.TC, zonaId: e.ZC, distritoId: null };
+      const { cobros, filasViejas } = await comoEmpresa(tx, e.C, () =>
+        resolverCobrosYFilasViejasCon(tx, [par], { isDefault: true }),
+      );
+      expect(cobros.get(clavePar(par))).toEqual(tarifaDeTiendaEsperada(e.tarifaTiendaC));
+      expect(filasViejas.get(clavePar(par))?.id).toBe(e.tarifaTiendaC);
+    });
+  });
+
+  it("pago: los mismos literales que A, con y sin vehiculo, por el resolver y por la fachada, sin leer `tarifa_valor`", async () => {
+    await conEscenario(async (tx, e) => {
+      const base = { M: e.MC, Z: e.ZC, T: e.TC };
+      const pedidos = [
+        ctx(base, { gestionId: "con-vehiculo", vehiculoId: e.V1 }),
+        ctx(base, { gestionId: "sin-vehiculo", vehiculoId: null }),
+        ctx(base, { gestionId: "rechazo", vehiculoId: null, resultado: "devolucion_a_origen_por_rechazo" }),
+      ];
+      const { salida, sql } = await sqlDe(() =>
+        comoEmpresa(tx, e.C, async () => ({
+          resolver: await resolverPagosCon(tx, pedidos),
+          fachada: await new TarifaZonaMensajeroRepository(tx as unknown as PrismaClient).resolvePagos(pedidos),
+        })),
+      );
+      const conVehiculo = { modelo: "viejo", tarifa: { cobroEntregado: "1300.00", cobroRechazado: "700.00" } };
+      const sinVehiculo = { modelo: "viejo", tarifa: { cobroEntregado: "1250.50", cobroRechazado: "640.25" } };
+      for (const r of [salida.resolver, salida.fachada]) {
+        expect(r.get("con-vehiculo")).toEqual(conVehiculo);
+        expect(r.get("sin-vehiculo")).toEqual(sinVehiculo);
+        expect(r.get("rechazo")).toEqual(sinVehiculo);
+      }
+      expect(sql.filter((q) => TABLA_NUEVA.test(q))).toEqual([]);
+    });
+  });
+
+  it("un par que el modelo viejo no cubre sigue en null: los valores nuevos no rellenan el hueco", async () => {
+    await conEscenario(async (tx, e) => {
+      await fijarEmpresa(tx, e.C);
+      const sinViejo = (
+        await tx.zona.create({
+          data: { nombre: `Sin viejo ${randomUUID().slice(0, 8)}`, sinpeNumero: "80000000", sinpeNombre: "Titular de Prueba" },
+          select: { id: true },
+        })
+      ).id;
+      await tx.tarifaValor.create({
+        data: { concepto: "tienda_flete_entregado", modo: "monto", valor: "12.34", ivaPct: "1.00", zonaId: sinViejo },
+      });
+      await tx.tarifaValor.create({ data: { concepto: "mensajero_entregado", modo: "monto", valor: "12.34", zonaId: sinViejo } });
+      const par: ParTarifa = { tiendaId: randomUUID(), zonaId: sinViejo, distritoId: null };
+      const cobro = await comoEmpresa(tx, e.C, () => resolverCobrosCon(tx, [par]));
+      const pago = await comoEmpresa(tx, e.C, () =>
+        resolverPagosCon(tx, [ctx({ M: e.MC, Z: sinViejo, T: par.tiendaId }, { gestionId: "g" })]),
+      );
+      expect(cobro.get(clavePar(par))).toBeNull();
+      expect(pago.get("g")).toBeNull();
+    });
+  });
+});
+
 describeSiHayBase("SLT-52 respaldo · empresa SIN valores nuevos → modelo viejo, igual que hoy (R36)", () => {
   it("cobro: la tarifa de la tienda en su zona, con los importes de hoy y su `tarifaId`", async () => {
     await conEscenario(async (tx, e) => {
       const par: ParTarifa = { tiendaId: e.TA, zonaId: e.ZA, distritoId: null };
       const r = await comoEmpresa(tx, e.A, () => resolverCobrosCon(tx, [par]));
-      expect(r.get(clavePar(par))).toEqual({
-        modelo: "viejo",
-        tarifa: {
-          tarifaId: e.tarifaTiendaA,
-          fulfillment: "450.25",
-          valorFlete: "2750.55",
-          valorFleteGam: "2300.15",
-          valorFleteDevuelto: "1650.35",
-          valorFleteDevueltoGam: "1380.45",
-          comisionCod: "3.50",
-          ivaFlete: "13.00",
-          ivaComisionCod: "13.00",
-          tarifaEspecial: "3995.50",
-          tarifaEspecialDevuelta: null,
-        },
-      });
+      expect(r.get(clavePar(par))).toEqual(tarifaDeTiendaEsperada(e.tarifaTiendaA));
     });
   });
 
@@ -255,7 +427,7 @@ describeSiHayBase("SLT-52 respaldo · empresa SIN valores nuevos → modelo viej
     });
   });
 
-  it("R15: que B tenga un valor nuevo no pasa a A al modelo nuevo", async () => {
+  it("R15: que B este activada no pasa a A al modelo nuevo", async () => {
     await conEscenario(async (tx, e) => {
       const par: ParTarifa = { tiendaId: e.TA, zonaId: e.ZA, distritoId: null };
       const { salida, sql } = await sqlDe(() =>
@@ -283,7 +455,7 @@ describeSiHayBase("SLT-52 respaldo · empresa SIN valores nuevos → modelo viej
   });
 });
 
-describeSiHayBase("SLT-52 respaldo · empresa con UN valor nuevo → todo en el nuevo, sin leer el viejo (R37)", () => {
+describeSiHayBase("SLT-54 R2 · empresa activada con UN valor nuevo → todo en el nuevo, sin leer el viejo", () => {
   it("cobro: `modelo: \"nuevo\"`, solo el concepto puesto, y ni una consulta a `tarifas`", async () => {
     await conEscenario(async (tx, e) => {
       const par: ParTarifa = { tiendaId: e.TB, zonaId: e.ZB, distritoId: null };

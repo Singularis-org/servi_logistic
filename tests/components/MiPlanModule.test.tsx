@@ -21,6 +21,7 @@ const VIGENTE: VersionPlan = {
   modulos: ["analitica", "ranking"],
   precio: { tipo: "monto", mensual: "45000", anual: null },
   costoPorOrden: null, // SLT-66 R8: campo nuevo del tipo.
+  costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
 };
 
 // Mitad de ciclo: ancla el 15 de enero a las 06:00 UTC, «ahora» el 1 de marzo a las 06:00 UTC.
@@ -38,7 +39,8 @@ function leido(extra: Partial<PlanConUsoLeido> = {}): PlanConUsoLeido {
       porRol: { admin: 2, mensajero: 8, adminTienda: 4, adminSatelite: 0 },
     },
     cambio: null,
-    costoVigente: { monto: "500.00", fuente: "global" }, // SLT-66 R18: campo nuevo de la lectura.
+    costoVigente: { modo: "fijo", monto: "500.00", fuente: "global" }, // SLT-66 R18: campo nuevo de la lectura.
+    cobroCiclo: { cobrado: "0.00", pendientes: 0 }, // SLT-83: campo nuevo de la lectura
     tipoCobro: "mensual", // Ajuste planes-custom (D6): campo nuevo de la lectura.
     ...extra,
   };

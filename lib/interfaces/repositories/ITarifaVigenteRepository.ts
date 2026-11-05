@@ -38,7 +38,10 @@ import type { TarifaTienda } from "@/lib/types/tarifa-flexible";
 // la resolucion del snapshot corre DENTRO de la `$transaction` de `crearCierre`.
 // SLT-52: mas los delegados del modelo nuevo (`tarifa_valor` y los grupos de distritos); el resolver
 // unico decide con ellos que modelo usa la empresa. El `prisma` de las raices ya los tiene.
-export type TarifaTxClient = Pick<PrismaClient, "tarifa" | "tarifaValor" | "grupoDistritosDistrito">;
+export type TarifaTxClient = Pick<
+  PrismaClient,
+  "tarifa" | "tarifaActivacion" | "tarifaValor" | "grupoDistritosDistrito"
+>;
 
 // Tarifa vigente resuelta para un par (tienda, zona). MONTOS: valorFlete[Gam],
 // valorFleteDevuelto[Gam], tarifaEspecial[Devuelta]. PORCENTAJES (0..100): comisionCod,

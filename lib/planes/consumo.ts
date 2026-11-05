@@ -7,9 +7,10 @@ import { lineasDeCambioDelPlan, SIN_LIMITE, textoDelPrecio, type CambioDelPlanPa
 import { diferenciasDelPlan } from "@/lib/planes/rastro";
 import type {
   CambioPendienteVista,
+  CobroDelCiclo,
+  CostoVigente,
   EstadoFila,
   FilaConsumo,
-  FuenteDelCosto,
   PlanConConsumo,
   ReinicioDelCiclo,
   UsoDelPlan,
@@ -79,8 +80,10 @@ export interface PlanConUsoLeido {
   cortoDesde?: Date | null;
   uso: UsoDelPlan;
   cambio: CambioDelPlanLeido | null;
-  /** SLT-66 (R18, §3.2): el de `cobro_plataforma_tarifa_de`, el mismo que usará el próximo cargo. */
-  costoVigente: { monto: string; fuente: FuenteDelCosto };
+  /** SLT-66 (R18, §3.2): el de `cobro_plataforma_tarifa_de`, el mismo que usará el próximo cargo. SLT-83: fijo o porcentual. */
+  costoVigente: CostoVigente;
+  /** SLT-83 (R24): el de `plan_cobro_del_ciclo` con el inicio del ciclo en curso. */
+  cobroCiclo: CobroDelCiclo;
   /** Ajuste planes-custom (D6): `organizacion.plan_tipo_cobro`. */
   tipoCobro: TipoCobro;
 }
@@ -118,7 +121,7 @@ export function planConConsumo(leido: PlanConUsoLeido, ahora: Date): PlanConCons
     reinicio: reinicioDelCiclo(leido.ancla, ahora),
     cambioPendiente: leido.cambio === null ? null : cambioPendienteDelPlan(vigente, leido.cambio),
     // SLT-66 (R18, R19): las órdenes del total son las mismas que cuenta la fila del tope.
-    costeo: costeoDelCiclo(vigente, leido.costoVigente, leido.uso.ordenes),
+    costeo: costeoDelCiclo(vigente, leido.costoVigente, leido.uso.ordenes, leido.cobroCiclo),
     // D7–D9: con el precio vigente; el siguiente cobro cuenta desde el ancla del ciclo.
     cobro: cobroDelPlan(vigente.precio, leido.tipoCobro, leido.ancla, ahora),
   };

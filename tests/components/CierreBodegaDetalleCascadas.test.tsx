@@ -1,4 +1,7 @@
 // @vitest-environment jsdom
+import { EMPRESA } from "@/lib/config/marca";
+import { gestion478, grupos478, ingreso478 } from "@/tests/fixtures/gestion-detalle-478";
+import { FLETE_NO_ENTREGADAS_CON_IVA_LABEL } from "@/app/(app)/cierres-admin/_components/cierre-labels";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -929,5 +932,62 @@ describe("SL-15 R4 — el nombre de la empresa sale del módulo de marca", () =>
       .join(" | ");
     expect(document.body.textContent).not.toMatch(/la empresa/i);
     expect(accesibles).not.toMatch(/la empresa/i);
+  });
+});
+
+describe("SLT-54 R65 — el rótulo del flete que no es de entrega, por nivel", () => {
+  const conNuevo = {
+    grupos: grupos478({
+      novedad: [gestion478({ gestionId: "g-slt54", resultado: "novedad", ingresoEmpresa: ingreso478({ tarifaModelo: "nuevo", tarifa: null }) })],
+    }),
+  };
+
+  it("un mensajero del nuevo: su cascada, su panel y el agregado lo dicen; el otro mensajero, no", async () => {
+    const [ana, beto] = DETALLE_OK.cierres;
+    await abrirDetalle({ ...DETALLE_OK, cierres: [{ ...ana, ...conNuevo }, beto] });
+    expect(within(dueno()).getByText(FLETE_NO_ENTREGADAS_CON_IVA_LABEL)).toBeInTheDocument();
+    expect(within(dueno()).queryByText(FLETE_DEV_CON_IVA_LABEL)).toBeNull();
+    const deAna = screen.getByRole("region", { name: `${CASCADA_DUENO_TITULO} · Ana Mensajera` });
+    const deBeto = screen.getByRole("region", { name: `${CASCADA_DUENO_TITULO} · Beto Mensajero` });
+    expect(within(deAna).getByText(FLETE_NO_ENTREGADAS_CON_IVA_LABEL)).toBeInTheDocument();
+    expect(within(deBeto).getByText(FLETE_DEV_CON_IVA_LABEL)).toBeInTheDocument();
+    expect(within(deBeto).queryByText(FLETE_NO_ENTREGADAS_CON_IVA_LABEL)).toBeNull();
+    const panelDeAna = screen.getByRole("region", { name: `Ingreso de ${EMPRESA.enFrase} · Ana Mensajera` });
+    expect(within(panelDeAna).getByText(FLETE_NO_ENTREGADAS_CON_IVA_LABEL)).toBeInTheDocument();
+    const panelAgregado = screen.getByRole("region", { name: `Ingreso de ${EMPRESA.enFrase} del cierre de bodega` });
+    expect(within(panelAgregado).getByText(FLETE_NO_ENTREGADAS_CON_IVA_LABEL)).toBeInTheDocument();
+  });
+
+  it("todo viejo: nada cambia", async () => {
+    await abrirDetalle();
+    expect(screen.queryByText(FLETE_NO_ENTREGADAS_CON_IVA_LABEL)).toBeNull();
+    expect(within(dueno()).getByText(FLETE_DEV_CON_IVA_LABEL)).toBeInTheDocument();
+  });
+
+  it("R71: la nota de lo que gana la satélite no habla de devoluciones en el nuevo; en el viejo, literal", async () => {
+    const [ana, beto] = DETALLE_OK.cierres;
+    await abrirDetalle({ ...DETALLE_OK, cierres: [{ ...ana, ...conNuevo }, beto] });
+    const NOTA_NUEVA = "Lo que se le reconoce a la bodega satélite por sus gestiones. No es un movimiento de caja registrado.";
+    const NOTA_VIEJA = "Lo que se le reconoce a la bodega satélite por las devoluciones a origen. No es un movimiento de caja registrado.";
+    const deAna = screen.getByRole("region", { name: `${CASCADA_DUENO_TITULO} · Ana Mensajera` });
+    const deBeto = screen.getByRole("region", { name: `${CASCADA_DUENO_TITULO} · Beto Mensajero` });
+    expect(within(dueno()).getByText(NOTA_NUEVA)).toBeInTheDocument();
+    expect(within(central()).getByText(NOTA_NUEVA)).toBeInTheDocument();
+    expect(within(deAna).getByText(NOTA_NUEVA)).toBeInTheDocument();
+    expect(within(deBeto).getByText(NOTA_VIEJA)).toBeInTheDocument();
+  });
+
+  it("R71 (menor 5): la nota de «Para la central» sigue al cierre: nuevo sin devoluciones; viejo, literal", async () => {
+    const [ana, beto] = DETALLE_OK.cierres;
+    await abrirDetalle({ ...DETALLE_OK, cierres: [{ ...ana, ...conNuevo }, beto] });
+    const NOTA_NUEVA = "Lo recaudado menos el pago a los mensajeros y menos lo que gana la bodega satélite por sus gestiones.";
+    const NOTA_VIEJA =
+      "Lo recaudado menos el pago a los mensajeros y menos lo que gana la bodega satélite por las devoluciones a origen.";
+    expect(within(central()).getByText(NOTA_NUEVA)).toBeInTheDocument();
+    expect(within(central()).queryByText(NOTA_VIEJA)).toBeNull();
+    cleanup();
+    await abrirDetalle();
+    expect(within(central()).getByText(NOTA_VIEJA)).toBeInTheDocument();
+    expect(within(central()).queryByText(NOTA_NUEVA)).toBeNull();
   });
 });

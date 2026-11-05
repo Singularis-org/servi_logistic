@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Pago por vehículo</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F7F7F5}
+button:focus-visible,input:focus-visible{outline:3px solid #111111;outline-offset:1px}
+</style>
+</helmet>
+<div style="font-family: Archivo, system-ui, sans-serif; color: #111111; background: #F7F7F5; min-height: 640px; box-sizing: border-box; padding: 24px">
+  <section aria-label="Pago al mensajero por vehículo" style="max-width: 952px; background: #ffffff; border: 1px solid #e7e5e4; border-radius: 12px; overflow: hidden">
+    <div style="padding: 16px 18px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; border-bottom: 1px solid #e7e5e4">
+      <div style="flex: 1 1 360px; min-width: 0">
+        <h2 style="margin: 0; font-size: 18px; font-weight: 700">Limón: pago al mensajero</h2>
+        <div style="font-size: 13px; color: #44403c; margin-top: 3px">Un vehículo sin valor propio usa el de «Todos los vehículos».</div>
+      </div>
+      <label style="display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 500; min-height: 44px">
+        <input type="checkbox" checked style="width: 20px; height: 20px; margin: 0; accent-color: #111111">
+        Pagar distinto por vehículo
+      </label>
+    </div>
+    <div style="overflow-x: auto; padding: 4px 10px">
+      <table style="width: 100%; min-width: 640px; border-collapse: collapse; font-size: 14px">
+        <thead>
+          <tr style="text-align: left; color: #44403c; font-size: 12px">
+            <th scope="col" style="padding: 10px 8px; font-weight: 600">Concepto</th>
+            <th scope="col" style="padding: 10px 8px; font-weight: 600; text-align: right">Todos los vehículos</th>
+            <th scope="col" style="padding: 10px 8px; font-weight: 600; text-align: right">Moto</th>
+            <th scope="col" style="padding: 10px 8px; font-weight: 600; text-align: right">Carro</th>
+          </tr>
+        </thead>
+        <tbody>
+          <sc-for list="{{filas}}" as="f" hint-placeholder-count="5">
+            <tr style="border-top: 1px solid #e7e5e4">
+              <td style="padding: 8px; font-weight: 500">{{f.concepto}}</td>
+              <td style="padding: 8px; text-align: right"><input aria-label="{{f.concepto}}, todos los vehículos" value="{{f.todos}}" placeholder="Sin definir" style="width: 120px; min-height: 40px; box-sizing: border-box; border: 1px solid #e7e5e4; border-radius: 8px; padding: 0 10px; font: 400 14px Archivo, system-ui, sans-serif; color: #111111; text-align: right"></td>
+              <td style="padding: 8px; text-align: right"><input aria-label="{{f.concepto}}, moto" value="{{f.moto}}" placeholder="Usa general" style="width: 120px; min-height: 40px; box-sizing: border-box; border: 1px solid #e7e5e4; border-radius: 8px; padding: 0 10px; font: 400 14px Archivo, system-ui, sans-serif; color: #111111; text-align: right"></td>
+              <td style="padding: 8px; text-align: right"><input aria-label="{{f.concepto}}, carro" value="{{f.carro}}" placeholder="Usa general" style="width: 120px; min-height: 40px; box-sizing: border-box; border: 1px solid #e7e5e4; border-radius: 8px; padding: 0 10px; font: 400 14px Archivo, system-ui, sans-serif; color: #111111; text-align: right"></td>
+            </tr>
+          </sc-for>
+        </tbody>
+      </table>
+    </div>
+    <div style="padding: 12px 18px 16px; display: flex; justify-content: flex-end">
+      <button type="button" style="min-height: 44px; padding: 0 16px; border: 0; border-radius: 10px; background: #111111; color: #ffffff; font: 600 14px Archivo, system-ui, sans-serif; cursor: pointer">Guardar borrador</button>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1000,"height":640}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      filas: [
+        { concepto: 'Por entregado', todos: '1.500', moto: '', carro: '1.800' },
+        { concepto: 'Por devolución a origen', todos: '', moto: '', carro: '' },
+        { concepto: 'Por reprogramado', todos: '', moto: '', carro: '' },
+        { concepto: 'Por novedad', todos: '', moto: '', carro: '' },
+        { concepto: 'Por incidente', todos: '', moto: '', carro: '' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

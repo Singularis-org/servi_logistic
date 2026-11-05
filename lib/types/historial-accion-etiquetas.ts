@@ -172,6 +172,8 @@ export interface FuentesEtiqueta {
   tarifa_valor: { concepto: string; nivel: string | null };
   /** SLT-52 (R14) — un grupo de distritos: su nombre y el de su zona, como `zona`. */
   grupo_distritos: { nombre: string; zonaNombre: string | null };
+  /** SLT-54 (R4) — la activacion es una por empresa: la etiqueta es la del hecho, sin dato variable. */
+  tarifa_activacion: Record<string, never>;
 }
 
 /**
@@ -260,6 +262,7 @@ const CONSTRUCTORES: {
   },
   tarifa_valor: (f) => unir(f?.concepto, f?.nivel),
   grupo_distritos: (f) => unir(f?.nombre, f?.zonaNombre),
+  tarifa_activacion: () => "Tarifas nuevas",
 };
 
 /**

@@ -78,6 +78,7 @@ function montar() {
         totalesAgregados={TOTALES}
         totalPagoMensajeroAgregado="1500.00"
         totalIngresoBodegaRechazosAgregado="0.00"
+        incluyeModeloNuevoAgregado={false}
         totalNetoAgregado="7500.00"
         totalCentralDebeAgregado="0.00"
         puedesSolicitar

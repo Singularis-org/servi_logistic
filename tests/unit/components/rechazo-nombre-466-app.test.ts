@@ -27,7 +27,7 @@ import {
   RECHAZO_MANUAL_BADGE_NOTA,
   RECHAZO_SLA_BADGE_NOTA,
 } from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
-import { PAGO_ZONA_TEXTO, TARIFA_CAMPO_LABEL } from "@/app/(app)/configuracion/tarifas/_components/tarifas-labels";
+import { etiquetaConcepto, nombreEsencial } from "@/app/(app)/configuracion/tarifas/_components/tarifas-textos";
 import { CATEGORIA_MI_WALLET_LABEL } from "@/app/(app)/mi-wallet/_components/mi-wallet-labels";
 import {
   GESTION_AYUDA_CONFIRMAR,
@@ -116,15 +116,11 @@ describe("466 · R1 — conceptos de dinero en la wallet (C5-C14, C16-C24)", () 
 });
 
 describe("466 · R4, R5 — cierres y tarifas (C29-C35, E8-E10)", () => {
-  it("tarifas: los dos fletes y el pago por zona junto a «Entregado» (C29-C32)", () => {
-    expect(TARIFA_CAMPO_LABEL.valorFleteDevuelto).toBe("Flete por devolución a origen");
-    expect(TARIFA_CAMPO_LABEL.valorFleteDevueltoGam).toBe("Flete por devolución a origen GAM");
-    expect(PAGO_ZONA_TEXTO.rechazado).toBe("Devolución a origen por rechazo");
-    expect(PAGO_ZONA_TEXTO.entregado).toBe("Entregado");
-    expect(PAGO_ZONA_TEXTO.seccionAyuda).toBe(
-      "Lo que la empresa paga por cada gestión en esta zona: la entrega se le paga al mensajero; " +
-        "una Devolución a origen por rechazo es ingreso de la bodega responsable del mensajero.",
-    );
+  it("tarifas: la devolución a origen se nombra igual en cobro, pago y faltantes (C29-C32, SLT-54)", () => {
+    expect(etiquetaConcepto("tienda_flete_rechazo")).toBe("Flete por devolución a origen");
+    expect(etiquetaConcepto("mensajero_rechazo")).toBe("Por devolución a origen");
+    expect(etiquetaConcepto("satelite_rechazo")).toBe("Por devolución a origen");
+    expect(nombreEsencial("tienda_flete_rechazo")).toBe("flete por devolución a origen");
   });
 
   it("cierres: flete, IVA, GAM y con IVA (C33)", () => {

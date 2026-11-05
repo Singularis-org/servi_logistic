@@ -32,7 +32,7 @@ function repoDoble(overrides: Partial<RepoDoble> = {}): RepoDoble {
     existeZona: vi.fn().mockResolvedValue(true),
     grupoEnZona: vi.fn().mockResolvedValue(true),
     esTiendaTarifable: vi.fn().mockResolvedValue(true),
-    existeVehiculo: vi.fn().mockResolvedValue(true),
+    vehiculoEsElegibleONivelOcupado: vi.fn().mockResolvedValue(true),
     fijar: vi.fn().mockResolvedValue({ id: "tv-1", reemplazo: false }),
     quitar: vi.fn().mockResolvedValue("ok" as const),
     listar: vi.fn().mockResolvedValue([]),
@@ -211,7 +211,7 @@ describe("R7 — nivel incompatible con el actor, sin escribir", () => {
 
   it.each([
     ["zona", { existeZona: vi.fn().mockResolvedValue(false) }, cobro(), "zonaId"],
-    ["vehiculo", { existeVehiculo: vi.fn().mockResolvedValue(false) }, pago({ vehiculoId: "v-x" }), "vehiculoId"],
+    ["vehiculo", { vehiculoEsElegibleONivelOcupado: vi.fn().mockResolvedValue(false) }, pago({ vehiculoId: "v-x" }), "vehiculoId"],
   ] as const)("una %s que no existe en la empresa se rechaza en %s", async (_q, over, input, campo) => {
     const repo = repoDoble(over);
     const res = await new TarifaValorService(repo).fijarValor(input, MAESTRO);
@@ -219,6 +219,46 @@ describe("R7 — nivel incompatible con el actor, sin escribir", () => {
     if (res.status !== "validation_error") throw new Error("inalcanzable");
     expect(Object.keys(res.fieldErrors)).toEqual([campo]);
     expect(repo.fijar).not.toHaveBeenCalled();
+  });
+});
+
+describe("SLT-54 R52 — vehículo inactivo", () => {
+  it("un valor nuevo se rechaza en vehiculoId, sin escribir, y la pregunta lleva el nivel exacto", async () => {
+    const repo = repoDoble({ vehiculoEsElegibleONivelOcupado: vi.fn().mockResolvedValue(false) });
+    const res = await new TarifaValorService(repo).fijarValor(pago({ grupoId: "g-1", vehiculoId: "v-inactivo" }), MAESTRO);
+    expect(res).toEqual({
+      status: "validation_error",
+      fieldErrors: { vehiculoId: ["El vehículo no existe o está inactivo: no admite un valor nuevo."] },
+    });
+    expect(repo.vehiculoEsElegibleONivelOcupado).toHaveBeenCalledWith({
+      concepto: "mensajero_entregado",
+      modo: "monto",
+      valor: "900",
+      zonaId: "zona-1",
+      grupoId: "g-1",
+      tiendaId: null,
+      vehiculoId: "v-inactivo",
+    });
+    expect(repo.fijar).not.toHaveBeenCalled();
+  });
+
+  it("si el repositorio dice que es elegible o el nivel está ocupado, se escribe", async () => {
+    const repo = repoDoble();
+    const res = await new TarifaValorService(repo).fijarValor(pago({ vehiculoId: "v-1" }), MAESTRO);
+    expect(res).toEqual({ status: "ok", id: "tv-1" });
+    expect(repo.fijar).toHaveBeenCalledTimes(1);
+  });
+
+  it("sin vehículo no se pregunta nada", async () => {
+    const repo = repoDoble();
+    await new TarifaValorService(repo).fijarValor(pago(), MAESTRO);
+    expect(repo.vehiculoEsElegibleONivelOcupado).not.toHaveBeenCalled();
+  });
+
+  it("quitar no mira el vehículo", async () => {
+    const repo = repoDoble({ vehiculoEsElegibleONivelOcupado: vi.fn().mockResolvedValue(false) });
+    expect(await new TarifaValorService(repo).quitarValor("tv-1", MAESTRO)).toEqual({ status: "ok" });
+    expect(repo.vehiculoEsElegibleONivelOcupado).not.toHaveBeenCalled();
   });
 });
 

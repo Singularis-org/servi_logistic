@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Prisma } from "@prisma/client";
-import { sinValoresDelModeloNuevo } from "../../fixtures/tarifa-tienda";
+import { empresaSinActivar } from "../../fixtures/tarifa-tienda";
 
 /**
  * ⏳ 2026-09-10 — FEATURE 415 (T5): LOS DOS COMPOSITION ROOTS INYECTAN DE VERDAD.
@@ -96,7 +96,7 @@ const prismaFalso = {
   },
   tarifa: { findMany: vi.fn(async () => [FILA_TARIFA]) },
   // SLT-52: empresa sin valores del modelo nuevo -> el resolver unico usa la cascada vieja (R36).
-  ...sinValoresDelModeloNuevo(),
+  ...empresaSinActivar(),
 };
 
 // La frontera con el exterior, y SOLO ella.

@@ -26,7 +26,6 @@ vi.mock("@/lib/actions/zonas", () => ({
 }));
 
 vi.mock("@/lib/actions/geografia", () => ({
-  actualizarDistritosEspeciales: vi.fn().mockResolvedValue({ status: "ok" }),
   listarArbolGeografico: vi.fn(),
 }));
 

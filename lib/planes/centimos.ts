@@ -17,8 +17,17 @@ export function aCentimos(importe: string): bigint {
   return BigInt(partes[1]) * CIEN + BigInt((partes[2] ?? "").padEnd(2, "0"));
 }
 
-/** Céntimos a texto con dos decimales (`"0.30"`, `"50300.00"`). */
+/**
+ * SLT-83 (R24): un importe con signo. Lo cobrado en el ciclo es Σ cargos − Σ reversos por la fecha del
+ * movimiento, así que un reverso de un cargo del ciclo anterior puede dejarlo negativo.
+ */
+export function aCentimosConSigno(importe: string): bigint {
+  return importe.startsWith("-") ? -aCentimos(importe.slice(1)) : aCentimos(importe);
+}
+
+/** Céntimos a texto con dos decimales (`"0.30"`, `"50300.00"`, `"-5.00"`). */
 export function aTexto(centimos: bigint): string {
-  const digitos = centimos.toString().padStart(3, "0");
-  return `${digitos.slice(0, -2)}.${digitos.slice(-2)}`;
+  const signo = centimos < BigInt(0) ? "-" : "";
+  const digitos = (centimos < BigInt(0) ? -centimos : centimos).toString().padStart(3, "0");
+  return `${signo}${digitos.slice(0, -2)}.${digitos.slice(-2)}`;
 }
