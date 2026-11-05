@@ -39,7 +39,7 @@ import {
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
-const M_ANTERIOR = "20261104130100_historial_accion_plan_tipo_cobro_cambiado";
+const M_ANTERIOR = "20261104140100_tarifa_activacion";
 const M1 = "20261104150000_plan_costo_por_orden_porcentual";
 const M2 = "20261104150100_cobro_plataforma_porcentual_orden";
 const M3 = "20261104150200_cobro_plataforma_porcentual_funciones";
