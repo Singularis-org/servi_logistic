@@ -43,10 +43,13 @@ import { revertida } from "./_fixtures/pais-20";
  *   las seis deja lo mismo que la primera vez, y el script vuelve a correr.
  * - R35: tras la vuelta, crear y editar geografía, órdenes y zonas funciona como antes de SLT-43.
  *
- * BASE PROPIA (prefijo `slt43_`), construida aplicando las migraciones anteriores, como
- * `migracion-sl20-ida-y-vuelta.test.ts`: los downs quitan columnas de `orden` y de las zonas, y en la
- * base compartida romperían a los archivos que corren a la vez. Los datos se siembran con el fixture
- * del feature (`sembrarEscenarioGeo43`) por un Prisma propio de esta base, ANTES de SLT-43.
+ * BASE PROPIA (prefijo `slt43_`), construida aplicando todas las migraciones SALVO las seis de SLT-43,
+ * como `migracion-sl20-ida-y-vuelta.test.ts`: los downs quitan columnas de `orden` y de las zonas, y en
+ * la base compartida romperían a los archivos que corren a la vez. Las de `dev` POSTERIORES a SLT-43
+ * (`20261104130000_plan_sin_negociable_y_tipo_cobro` y siguientes) se aplican ANTES de la ida y se
+ * quedan puestas durante todo el ciclo: el Prisma de las fábricas espera el esquema completo (p. ej.
+ * `organizacion.plan_tipo_cobro`), y ninguna de ellas toca lo que crean las seis. Los datos se siembran
+ * con el fixture del feature (`sembrarEscenarioGeo43`) por un Prisma propio de esta base, sin SLT-43.
  */
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
@@ -196,7 +199,8 @@ describeSiHayBase("SLT-43 — geografía jerárquica de ida y vuelta, con el scr
     await admin.query(`CREATE DATABASE "${BASE}"`);
     db = await conectar(urlDe(BASE));
     await db.query(CREAR_TABLA_DE_CONTROL);
-    await aplicarMigracionesHasta(db, M_ENUMS);
+    // Todas menos las seis: las de dev posteriores a SLT-43 quedan aplicadas (ver la cabecera).
+    await aplicarMigracionesHasta(db, "99999999999999", DE_SLT43);
     prisma = new PrismaClient({
       adapter: new PrismaPg({ connectionString: urlDe(BASE), max: 1 }),
     }) as unknown as PrismaClient;
