@@ -833,3 +833,66 @@ $ pnpm exec vitest run tests/integration/db/geo-71-fixture.test.ts tests/integra
 ### Veredicto
 
 m1, m2 y m3 corregidos, en verde y con un commit cada uno. m4 queda para el leader.
+
+## Review v2 fixes (backend_dev, 2026-11-05)
+
+Revisión: `progress/review_SLT-71.md` (`f8eafec1`). Se corrigen m5 y m6.
+
+| hallazgo | commit | qué |
+|---|---|---|
+| m6 | `60d32a13` | Los tests de SLT-71 usan una transacción larga en lugar de `revertida` (30 s). `pais-20.ts` no se toca |
+| m5 | `12d1a350` | Una diferencia no disculpada en un filtro con incoherentes lleva `(solo-hoy=… solo-lugar=…)`. La regla no se afloja |
+
+### m6
+
+- `revertidaLarga(base, fn, timeout = TIEMPO_DE_TEST_LARGO)`, con `TIEMPO_DE_TEST_LARGO = 300_000`, vive en el fixture de
+  SLT-71 (`tests/integration/db/_fixtures/geo-71.ts`). Es la misma forma que `revertida`, con el `timeout` de la transacción
+  interactiva largo; el cerrojo se sigue esperando dentro de ella.
+- La usan en lugar de `revertida`, y cada `it` gana `TIEMPO_DE_TEST_LARGO` (los 5 de m3 pasan de `180_000` a esa constante):
+  - `geo-71-fixture.test.ts`: 1 `it`;
+  - `geo-analitica-lugar.test.ts`: 8 `it`;
+  - `geo-transito-nombres.test.ts`: 5 `it`.
+- `geo-equivalencia-analitica.test.ts` y `geo-explain-analitica.test.ts` tenían su propia copia. Ahora delegan en la
+  compartida y conservan sus tiempos (240 s y 180 s), así que se quitan dos copias de la clase `Revertir`.
+- `pais-20.ts` no se toca.
+
+### m5
+
+- `marcaDeIncoherentes(inc)`, exportada, devuelve `" (solo-hoy=h solo-lugar=n)"` si el filtro tiene incoherentes y `""` si
+  no. La llevan:
+  - las líneas de las diferencias **no** disculpadas, incluida la de nivel equivocado;
+  - las disculpadas, igual que antes.
+- `disculpable` no cambia.
+- La cabecera del script dice que una salida 1 con solo diferencias marcadas se revisa a mano. **Para el PR:** anotarlo en las
+  instrucciones de T8.3.
+- Test nuevo en `geo-equivalencia-analitica.test.ts` › «R17 (review v2, m5): una diferencia NO disculpada en un filtro con
+  incoherentes lleva `(solo-hoy=… solo-lugar=…)`»:
+  - en CR, con el cantón retirado movido a la segunda provincia, `provincia=<primera>` › `por-status` sale como
+    `por-status (solo-hoy=1 solo-lugar=0)`, con `hoy − nuevo > 1`, en su línea exacta, y la salida es 1;
+  - el caso sin incoherentes (sin marca) ya lo fija la contraprueba de XA (`d.campo === "por-status"`).
+
+### `expect` existentes
+
+Ningún `expect` existente cambió. Cambian las llamadas (`revertida` → `revertidaLarga`), los timeouts de los `it`, y entra un
+`it` nuevo.
+
+### Corridas (Postgres local `logistic_slt71`, `NODE_OPTIONS=--max-old-space-size=8192`)
+
+```
+$ pnpm exec tsc --noEmit                       (sin salida, rc=0)
+$ pnpm exec eslint <archivos tocados>          (sin salida, rc=0)
+$ pnpm exec vitest run tests/integration/db/geo-equivalencia-analitica.test.ts
+ Test Files  1 passed (1)      Tests  13 passed (13)
+# En paralelo (m6), los 5 archivos de integracion de SLT-71:
+$ pnpm exec vitest run geo-71-fixture geo-analitica-lugar geo-transito-nombres geo-equivalencia-analitica geo-explain-analitica
+ Test Files  5 passed (5)      Tests  38 passed (38)
+# La primera corrida en paralelo de m6 incluia ademas geo-explain-consultas (SLT-65):
+ Test Files  1 failed | 5 passed (6)      Tests  1 failed | 47 passed (48)
+#   el rojo: geo-explain-consultas «T6.1 …» — Test timed out in 20000ms (archivo de SLT-65, sin timeout
+#   propio; fuera de alcance, ya visto por el reviewer). Los 5 de SLT-71, en verde.
+```
+
+### Veredicto
+
+m5 y m6 corregidos: los 5 archivos de integración de SLT-71 pasan en verde corriendo en paralelo. El único rojo en paralelo es
+el de SLT-65 (`geo-explain-consultas` T6.1, timeout de 20 s), que queda fuera de alcance.
