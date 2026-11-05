@@ -293,3 +293,135 @@ SQL. Quitando las dos barreras, sí se cruzan las empresas y el test de dos empr
 - **`origin/dev` para la guardia roja:** no se volvió a medir en esta tanda.
 
 **Veredicto Tanda C:** la pantalla ya recibe mensajeros y valores propios, aislados por empresa en el cliente de producción; 15/15 mutaciones muertas y ningún rojo atribuible al cambio.
+
+## Tanda D — Sección de la pantalla (frontend)
+
+Sin maqueta, por decisión de Carlos. Mismo lenguaje que `TarifasTiendas` y `TarifasValores`. Sin tocar backend, resolver ni
+precedencia, y sin dependencias.
+
+### Archivos
+
+| Archivo | Qué |
+|---|---|
+| `app/(app)/configuracion/tarifas/_components/TarifasMensajeros.tsx` | Nuevo: `filasDeMensajeros`, la sección, quitar con confirmación |
+| `app/(app)/configuracion/tarifas/_components/TarifaMensajeroDialogo.tsx` | Nuevo: añadir y editar |
+| `app/(app)/configuracion/tarifas/_components/TarifasModule.tsx` | Pinta la sección tras las tiendas |
+| `app/(app)/configuracion/tarifas/_components/tarifas-borrador.ts` | `mensajeroId` opcional en `ColumnasDelNivel` y en el plan |
+| `app/(app)/configuracion/tarifas/_components/tarifas-textos.ts` | Textos de la sección |
+| `tests/components/TarifasMensajeros.test.tsx` | Nuevo, 52 casos |
+| `tests/components/TarifasModulo.test.tsx`, `TarifasDisposicion.test.tsx`, `tests/unit/app/tarifas/TarifasPage.test.tsx` | Al día, con casos SLT-55 |
+| `tests/unit/descarga/censo-tablas.ts`, `cobertura-tablas.guardia.test.ts` | Tabla nueva `fuera`; contadores 36→37, 14→15, 37→38 y 15→16, tras verlos rojos |
+| `specs/SLT-55-valor-propio-mensajero/tasks.md` | Casillas T4.1, T4.2 y T4.3 |
+
+### Mapa R → test
+
+`componente` = `tests/components/TarifasMensajeros.test.tsx`, `módulo` = `tests/components/TarifasModulo.test.tsx`,
+`disposición` = `tests/components/TarifasDisposicion.test.tsx`.
+
+| R | Test |
+|---|---|
+| R27 | `componente` «R27: una columna por resultado…», «R27: agrupa por mensajero…», «R27: un mensajero sin valores no tiene fila…»; `módulo` «R27: enseña lo que da la lectura» |
+| R28 | `componente` bloque «R28 — el diálogo» |
+| R29 | `componente` bloque «R29 — qué se envía» y bloque «T4.1 — planDeGuardado»; `módulo` «R29: guarda con `mensajeroId`…» |
+| R30 | `componente` bloque «R30 — fallos al guardar», «R30: tras guardar parte, el mensajero queda fijo…» |
+| R31 | `componente` bloque «R31 — añadir» |
+| R32 | `componente` «R32: el inactivo sale marcado…», «R32: `elegible: false`…», bloque «R32 — el inactivo en el diálogo» |
+| R33 | `componente` bloque «R33 — quitar» |
+| R34 | `componente` los dos «R34:» de la lista y «R34: activada, el botón y el aviso…» |
+| R35 | `componente` bloque «R35 — el `admin` solo lee»; `módulo` «R35: con `puedeEscribir` falso…». Otro rol: `TarifasPage.test.tsx` «R55: otro rol o sin sesión…», que ya lo cubría |
+| R36 | `componente` «R36: sin ninguno…»; `módulo` «design §7.2: sin zonas no sale…» |
+| R38 | `disposición` «SLT-55 R38» (2 casos) y «lo que no puede estar escrito» sobre los 12 archivos; la medida real, en el E2E |
+| R23 (pantalla) | `módulo` «R23: un valor propio no mueve…» |
+
+### Estados
+
+- **Vacío:** R36, con y sin escritura.
+- **Cargando:** la sección no tiene lectura propia: sus datos llegan con la página, y no hay `loading.tsx` en la ruta. Lo único que
+  carga es el guardado: `aria-busy` y botones apagados (`componente` «Mientras guarda…»).
+- **Error:** la lectura de la página cae en `TarifasErrorCarga` (R57 de SLT-54, ya probado). Al guardar: toast y fila. Si falla la
+  zona, la sección sigue (`módulo` «Si la zona no carga…»).
+- **Móvil:** `overflow-hidden` en la sección y desplazamiento dentro de la tabla, como las tiendas; controles `min-h-11`. Solo por clases.
+
+### Lo que no prueban estos tests
+
+Las actions están dobladas: prueban lo que se pinta y el payload que se le da a la action, no que llegue al servidor, se guarde o
+se autorice. Lo del servidor está en las Tandas A y C; el recorrido real es la Tanda E.
+
+### Salida real
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: exit 0.
+- `pnpm lint`: exit 0, 0 errores y 234 avisos, la misma cifra que las Tandas A, B y C; ninguno en los dos componentes nuevos.
+- `pnpm exec vitest run` de 10 archivos (los de Tarifas y la guardia del censo): `Test Files 10 passed (10)`, `Tests 192 passed (192)`.
+- `TarifasMensajeros.test.tsx` solo: `Tests 52 passed (52)`.
+- `pnpm run test:guardias`: exit 1. 1 archivo rojo de 331; 4 failed, 4617 passed y 1 skipped de 4622. Es
+  `dependencias-declaradas-presentes.guardia.test.ts`, los mismos 4 tests de las Tandas A, B y C. No se volvió a medir `origin/dev`.
+
+### Mutaciones D
+
+Arnés: autocomprobación previa (exige > 50 tests, 0 rojos, 0 saltos y ninguna suite rota), una a una, patrón con exactamente una
+aparición, cada corrida con el mismo total de tests y un rojo cuyo nombre sea el del requisito. Restauración byte a byte y huella sha256
+de los archivos mutados y de `git status` + `git diff`. Nada más corría a la vez.
+
+| Mutación | Req. | Rojos | Del req. |
+|---|---|---|---|
+| D1. Mandar `ivaPct` en el plan | R29 | 5/76 | 3 |
+| D2. Vaciar no quita | R29 | 1/76 | 1 |
+| D3. Sin la marca «Inactivo» | R32 | 2/76 | 1 |
+| D4. Acciones con `puedeEscribir` falso | R35 | 1/76 | 1 |
+| X5. Añadir con `puedeEscribir` falso | R35 | 2/76 | 2 |
+| X6. El plan sin `mensajeroId` | R29 | 5/76 | 3 |
+| X7. La zona manda `mensajeroId: null` | T4.1 | 2/76 | 2 |
+| X8. Ofrece a quien ya tiene valor | R31 | 2/76 | 2 |
+| X9. Ofrece a los dados de baja | R31 | 2/76 | 2 |
+| X10. Selector vacío sin aviso | R31 | 2/76 | 2 |
+| X11. Filas vacías del inactivo habilitadas | R32 | 1/76 | 1 |
+| X12. Filas con valor del inactivo deshabilitadas | R32 | 2/76 | 2 |
+| X13. `elegible` no decide inactivo | R32 | 4/76 | 3 |
+| X14. Otro texto en lo vacío | R27 | 1/76 | 1 |
+| X15. Filas sin ordenar por nombre | R27 | 2/76 | 1 |
+| X16. Confirmación con cuenta falsa | R33 | 1/76 | 1 |
+| X17. Quitar con la lista de filas vieja | R33 | 1/76 | 1 |
+| X18. Un fallo pierde lo digitado | R30 | 4/76 | 4 |
+| X19. Lo guardado se reenvía | R30 | 1/77 | 1 |
+| X20. El error no sale en la fila | R30 | 2/76 | 2 |
+| X21. Un fallo parcial cierra | R30 | 4/76 | 4 |
+| X22. El selector sigue tras guardar parte | R30 | 1/76 | 1 |
+| X23. Sin activar dice lo de activada | R34 | 1/76 | 1 |
+| X24. Activada dice lo de sin activar | R34 | 1/76 | 1 |
+| X25. Toast sin mirar `activada` | R34 | 1/76 | 1 |
+| X26. Estado vacío sin acción | R36 | 3/76 | 1 |
+| X27. Guardar sin mensajero elegido | R31 | 1/76 | 1 |
+| X28. La nota del diálogo sin la base | R28 | 1/76 | 1 |
+| X29. Campos de 40 en el diálogo | R38 | 1/76 | 1 |
+| X30. El módulo no pasa los valores | R27 | 5/105 | 1 |
+| X31. La tabla nueva sin censar | T4.2 | 2/105 | 2 |
+| X32. El módulo no recarga tras guardar | R29 | 1/105 | 1 |
+| X33. El módulo da escritura a todos | R35 | 1/105 | 1 |
+
+**33/33 muertas** (las 4 de `tasks.md` y 29 extra), en tres corridas. Primera: 30 de 31, y **X19 sobrevivió**: un reintento antes de
+la recarga reenviaba lo ya guardado y nada lo veía. Se añadió el test «El reintento antes de que llegue la recarga…» y murió. Después
+se añadieron los casos del módulo, X32 y X33, y se repitieron X30 a X33. Entre corridas solo cambiaron tests y la lista de mutaciones,
+ningún código de producción, así que las 29 primeras no se repitieron. Las tres corridas terminaron con la huella inicial.
+
+### Desviaciones del spec
+
+1. **`cobertura-tablas.guardia.test.ts`** no está en «Archivos esperados», pero la guardia exige subir sus contadores con la tabla nueva.
+2. **`TarifasMensajeros.test.tsx` lleva el test de T4.1:** `planDeGuardado` no tenía archivo de test propio.
+3. **Tras un guardado parcial al añadir, el selector desaparece** y el mensajero queda fijo. El spec no lo pide: el elegido ya tiene
+   valores, sale de los disponibles, y cambiarlo dejaría atrás lo guardado sin decirlo.
+4. **Quitar busca la fila en cada render,** a diferencia de `TarifasTiendas`, que guarda la fila: con un fallo parcial, reintentar con
+   la lista vieja pediría quitar lo que ya no existe. `TarifasTiendas` tiene ese defecto, por lectura y sin medirlo; no se tocó.
+5. **R31:** «Añadir mensajero» sigue activo sin candidatos, y es el diálogo el que lo dice, en lugar del selector.
+6. **`mensajerosEnVigor` no reutiliza `enVigorNota`:** son dos frases casi iguales a propósito, porque la misma frase repetida en la
+   pantalla es ruido para quien lee y rompe un `getByText` existente.
+7. **Un mensajero sin nombre conocido** («Cuenta retirada») se trata como inactivo. No debería ocurrir: la lectura incluye a quien tiene valor.
+8. **Veintinueve mutaciones extra,** que `tasks.md` no apuntaba.
+
+### Sin verificar
+
+- **Nada se ha visto en un navegador:** ni 390 px real, ni modo oscuro, ni el `Select` dentro del `Modal` con foco y puntero reales. Es T5.4.
+- **La sesión y el servidor de punta a punta:** Tanda E.
+- **Tras un guardado parcial, hasta que llega `router.refresh()`,** la fila ya guardada se ve con el valor anterior, igual que en `TarifasValores`. No se mide cuánto dura.
+- **`origin/dev` para la guardia roja:** no se volvió a medir en esta tanda.
+
+**Veredicto Tanda D:** la sección «Mensajeros con valor propio» está montada y probada con las actions dobladas; 33/33 mutaciones muertas y ningún rojo atribuible al cambio.

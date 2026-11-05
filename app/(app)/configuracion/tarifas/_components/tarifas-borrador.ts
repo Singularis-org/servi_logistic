@@ -24,6 +24,8 @@ export interface ColumnasDelNivel {
   zonaId: string | null;
   grupoId: string | null;
   tiendaId: string | null;
+  /** SLT-55: solo la sección de valor propio la manda; la rejilla por zona no envía esta clave. */
+  mensajeroId?: string | null;
 }
 
 export function columnasDeNivel(nivel: Nivel, zonaId: string): ColumnasDelNivel {
@@ -123,7 +125,14 @@ export function planDeGuardado(editadas: readonly CeldaEditada[], columnas: Colu
       continue;
     }
 
-    const base = { concepto, modo: celda.modo, valor, zonaId: columnas.zonaId, grupoId: columnas.grupoId };
+    const base = {
+      concepto,
+      modo: celda.modo,
+      valor,
+      zonaId: columnas.zonaId,
+      grupoId: columnas.grupoId,
+      ...(columnas.mensajeroId === undefined ? {} : { mensajeroId: columnas.mensajeroId }),
+    };
     if (!esConceptoTienda(concepto)) {
       const sinCambio = guardado !== undefined && mismoDecimal(valor, guardado.valor) && celda.modo === guardado.modo;
       if (!sinCambio) cambios.push({ accion: "fijar", clave, datos: { ...base, tiendaId: null, vehiculoId } });

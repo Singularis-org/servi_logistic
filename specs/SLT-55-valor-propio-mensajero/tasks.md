@@ -98,11 +98,11 @@ Se espera **cero código de producción**. Un rojo aquí es un defecto real: se 
 
 ## Tanda D — Sección de la pantalla (frontend). Depende de C
 
-- [ ] **T4.1** `tarifas-borrador.ts` y `tarifas-textos.ts`: `mensajeroId` en `planDeGuardado` y textos (`design §7.2`, `§7.4`).
+- [x] **T4.1** `tarifas-borrador.ts` y `tarifas-textos.ts`: `mensajeroId` en `planDeGuardado` y textos (`design §7.2`, `§7.4`).
   **Hecho:** test de que el plan del propio lleva `mensajeroId` sin `ivaPct`, y el de zona no lleva `mensajeroId`.
-- [ ] **T4.2** `TarifasMensajeros.tsx`, `TarifaMensajeroDialogo.tsx` y su sitio en `TarifasModule.tsx`. Entrada `fuera` en
+- [x] **T4.2** `TarifasMensajeros.tsx`, `TarifaMensajeroDialogo.tsx` y su sitio en `TarifasModule.tsx`. Entrada `fuera` en
   `censo-tablas.ts`. **Hecho:** `tests/components/TarifasMensajeros.test.tsx` cubre R27-R36, con los textos a mano.
-- [ ] **T4.3** `TarifasModulo.test.tsx`, `TarifasDisposicion.test.tsx` y `TarifasPage.test.tsx` al día; R38 en la disposición
+- [x] **T4.3** `TarifasModulo.test.tsx`, `TarifasDisposicion.test.tsx` y `TarifasPage.test.tsx` al día; R38 en la disposición
   (clases `min-h-11`, sin hex). **Hecho:** `pnpm exec vitest related --run` verde.
 - **Mutaciones D:**
   1. Mandar `ivaPct` en el plan → R29.

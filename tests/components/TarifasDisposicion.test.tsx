@@ -10,7 +10,7 @@ import userEvent from "@testing-library/user-event";
 
 import { TarifasModule, type PantallaOk } from "@/app/(app)/configuracion/tarifas/_components/TarifasModule";
 import { TarifasActivarDialog } from "@/app/(app)/configuracion/tarifas/_components/TarifasActivarDialog";
-import { valor, zonaOk, zonaResumen, referenciaUniforme } from "../fixtures/tarifas-pantalla";
+import { mensajeroPantalla, valor, valorPropio, zonaOk, zonaResumen, referenciaUniforme } from "../fixtures/tarifas-pantalla";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@/lib/actions/tarifas", () => ({
@@ -132,6 +132,34 @@ describe("SLT-54 — disposición (design §12)", () => {
     expect(within(tiendas).getAllByRole("columnheader")).toHaveLength(5);
   });
 
+  it("SLT-55 R38: la sección de mensajeros va tras las tiendas, con acciones de 44 y sin desbordar la página", () => {
+    montar({
+      mensajeros: [mensajeroPantalla()],
+      valoresMensajero: [valorPropio("mensajero_entregado", "m1")],
+    });
+    const seccion = screen.getByRole("region", { name: "Mensajeros con valor propio" });
+    const tiendas = screen.getByRole("region", { name: "Tiendas con precio propio" });
+    expect(tiendas.compareDocumentPosition(seccion) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // jsdom no mide: lo que evita el scroll de página a 390 px es que la tabla se recorta aquí y desplaza por dentro.
+    expect(clases(seccion)).toContain("overflow-hidden");
+    expect(within(seccion).getAllByRole("columnheader")).toHaveLength(7);
+    for (const nombre of ["Añadir mensajero", "Editar valor propio de Ana Torres", "Quitar valor propio de Ana Torres"]) {
+      expect(clases(within(seccion).getByRole("button", { name: nombre }))).toContain("min-h-11");
+    }
+  });
+
+  it("SLT-55 R38: en el diálogo, selector y campos de 44 y botones de 44", async () => {
+    const u = userEvent.setup();
+    montar({ mensajeros: [mensajeroPantalla()] });
+    await u.click(screen.getByRole("button", { name: "Añadir mensajero" }));
+    const d = await screen.findByRole("dialog");
+    expect(clases(d)).toContain("[&_button[data-slot=button]]:min-h-11");
+    expect(clases(within(d).getByRole("combobox", { name: "Mensajero" }))).toContain("min-h-11");
+    const fila = within(d).getByRole("row", { name: /Por entregado/ });
+    expect(clases(within(fila).getByRole("textbox", { name: "Valor de Por entregado" }))).toContain("min-h-11");
+    expect(clases(within(fila).getByRole("combobox", { name: "Modo de Por entregado" }))).toContain("min-h-11");
+  });
+
   it("R70: el diálogo de 640 con padding de 24, casilla de 20 en fila de 44", () => {
     render(
       <TarifasActivarDialog
@@ -172,12 +200,14 @@ describe("SLT-54 — lo que no puede estar escrito en el código de la pantalla"
   const DIR = path.resolve(__dirname, "../../app/(app)/configuracion/tarifas/_components");
   const fuentes = readdirSync(DIR).map((f) => ({ f, t: readFileSync(path.join(DIR, f), "utf8") }));
 
-  it("Los 10 archivos de la pantalla nueva, y ninguno de la vieja", () => {
+  it("Los 12 archivos de la pantalla nueva, y ninguno de la vieja", () => {
     expect(fuentes.map((x) => x.f).sort()).toEqual(
       [
+        "TarifaMensajeroDialogo.tsx",
         "TarifasActivarDialog.tsx",
         "TarifasEstado.tsx",
         "TarifasGrupos.tsx",
+        "TarifasMensajeros.tsx",
         "TarifasModule.tsx",
         "TarifasTiendas.tsx",
         "TarifasValores.tsx",
