@@ -22,10 +22,9 @@ import {
 import { crearClienteDeSoloLectura } from "@/scripts/geo-equivalencia-dinero";
 import { comoApp } from "@/tests/fabricas/organizaciones";
 import { DATOS_PERSONALES_GEO65 } from "./_fixtures/geo-65";
-import { crearEscenarioGeo71, type EmpresaGeo71, type EscenarioGeo71 } from "./_fixtures/geo-71";
+import { crearEscenarioGeo71, type EmpresaGeo71, type EscenarioGeo71, revertidaLarga as revertidaLargaDe71 } from "./_fixtures/geo-71";
 import { comoDueno, sqlstateDe } from "./_fixtures/pais-20";
 import {
-  CLAVE_LOCK_ESCRITURA_REAL,
   HAY_BASE_DE_DATOS,
   clienteConSavepoint,
   crearPrismaDeTest,
@@ -50,27 +49,9 @@ const RAIZ = path.resolve(__dirname, "../../..");
 
 let base: PrismaClient;
 
-class Revertir extends Error {
-  constructor(readonly valor: unknown) {
-    super("rollback deliberado del test");
-  }
-}
-
 /** `revertida` de `pais-20.ts` con mas tiempo: nueve lecturas por filtro, decenas de filtros. */
-async function revertidaLarga<T>(fn: (tx: TxDeTest) => Promise<T>): Promise<T> {
-  try {
-    await base.$transaction(
-      async (tx) => {
-        await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${CLAVE_LOCK_ESCRITURA_REAL})`);
-        throw new Revertir(await fn(tx));
-      },
-      { timeout: 240_000, maxWait: 15_000 },
-    );
-  } catch (e) {
-    if (e instanceof Revertir) return e.valor as T;
-    throw e;
-  }
-  throw new Error("la transaccion termino sin revertirse: imposible");
+function revertidaLarga<T>(fn: (tx: TxDeTest) => Promise<T>): Promise<T> {
+  return revertidaLargaDe71(base, fn, 240_000);
 }
 
 function conEscenario<T>(fn: (tx: TxDeTest, e: EscenarioGeo71) => Promise<T>): Promise<T> {

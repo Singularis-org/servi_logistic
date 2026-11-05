@@ -18,9 +18,9 @@ import {
 import type { ConsultaTransito } from "@/lib/whatsapp-envios/informes/transito/tipos";
 import * as hoy from "@/scripts/geo-equivalencia/analitica-de-hoy";
 import { comoApp } from "@/tests/fabricas/organizaciones";
-import { crearEscenarioGeo71, type EmpresaGeo71 } from "./_fixtures/geo-71";
+import { crearEscenarioGeo71, type EmpresaGeo71, revertidaLarga, TIEMPO_DE_TEST_LARGO } from "./_fixtures/geo-71";
 import { DATOS_PERSONALES_GEO65 } from "./_fixtures/geo-65";
-import { comoDueno, revertida } from "./_fixtures/pais-20";
+import { comoDueno } from "./_fixtures/pais-20";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
 
 // SLT-71 (T4.2; R8–R13; design §4, §11) — EL INFORME DE TRANSITO NOMBRA CANTON Y DISTRITO CON EL
@@ -179,7 +179,7 @@ describeSiHayBase("SLT-71 T4.2 — transito nombra con el catalogo (Postgres rea
   });
 
   it("R8, R9: las filas en alerta y el modelo de la seleccion son los de hoy, fila a fila, en las dos empresas", async () => {
-    const r = await revertida(base, async (tx) => {
+    const r = await revertidaLarga(base, async (tx) => {
       const e = await crearEscenarioGeo71(tx);
       const cliente = tx as unknown as PrismaClient;
       const salida = [];
@@ -209,10 +209,10 @@ describeSiHayBase("SLT-71 T4.2 — transito nombra con el catalogo (Postgres rea
       expect(x.nuevas.filter((f) => f.distrito === null)).toHaveLength(1);
       expect(x.modeloNuevo).toEqual(x.modeloDeHoy);
     }
-  });
+  }, TIEMPO_DE_TEST_LARGO);
 
   it("R10: sin unir con canton ni distrito, y el numero de consultas no depende del de ordenes (1 y 40)", async () => {
-    const r = await revertida(base, async (tx) => {
+    const r = await revertidaLarga(base, async (tx) => {
       const e = await crearEscenarioGeo71(tx);
       const emp = e.xa;
       // Una sola orden en alerta: la otra de transito se borra (soft delete).
@@ -239,10 +239,10 @@ describeSiHayBase("SLT-71 T4.2 — transito nombra con el catalogo (Postgres rea
     const filasSql = r.con1.sql.find((s) => s.includes('"cand"') && s.includes('"hito_at"'));
     expect(filasSql).toBeDefined();
     expect(filasSql).not.toMatch(/(FROM|JOIN)\s+"(canton|distrito)"/);
-  }, 180_000);
+  }, TIEMPO_DE_TEST_LARGO);
 
   it("R11: sin ordenes en alerta, la generacion no carga el catalogo", async () => {
-    const r = await revertida(base, async (tx) => {
+    const r = await revertidaLarga(base, async (tx) => {
       const e = await crearEscenarioGeo71(tx);
       const { cliente, reg } = clienteEspia(tx);
       const filas = await comoLaEmpresa(tx, e.cr.base.base.empresaId, async () => {
@@ -254,10 +254,10 @@ describeSiHayBase("SLT-71 T4.2 — transito nombra con el catalogo (Postgres rea
     });
     expect(r.filas).toEqual([]);
     expect(r.catalogo).toEqual([]);
-  }, 180_000);
+  }, TIEMPO_DE_TEST_LARGO);
 
   it("R12: un canton y un distrito ausentes del catalogo hacen fallar la generacion con una sola linea de log, solo con ids", async () => {
-    const r = await revertida(base, async (tx) => {
+    const r = await revertidaLarga(base, async (tx) => {
       const e = await crearEscenarioGeo71(tx);
       const emp = e.cr;
       const sinCanton = emp.segunda.cantonId; // canton de `transitoSinDistrito`
@@ -309,10 +309,10 @@ describeSiHayBase("SLT-71 T4.2 — transito nombra con el catalogo (Postgres rea
     for (const nombre of r.nombres) expect(texto).not.toContain(nombre);
     expect(r.completo).toBe("contenido");
     expect(r.lineasCompleto).toEqual([]);
-  }, 180_000);
+  }, TIEMPO_DE_TEST_LARGO);
 
   it("R13: XA carga solo su catalogo, una vez por instancia; en plataforma falla con EmpresaNoResuelta", async () => {
-    const r = await revertida(base, async (tx) => {
+    const r = await revertidaLarga(base, async (tx) => {
       const e = await crearEscenarioGeo71(tx);
       const { cliente, reg } = clienteEspia(tx);
       const filas = await comoLaEmpresa(tx, e.xa.base.base.empresaId, async () => {
@@ -333,5 +333,5 @@ describeSiHayBase("SLT-71 T4.2 — transito nombra con el catalogo (Postgres rea
     expect(ids.has(r.xa.base.base.geo.cantonId)).toBe(true);
     expect(ids.has(r.cr.base.base.geo.cantonId)).toBe(false);
     expect(r.enPlataforma).toBeInstanceOf(EmpresaNoResuelta);
-  });
+  }, TIEMPO_DE_TEST_LARGO);
 });

@@ -25,8 +25,8 @@ import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograf
 import { lugaresDelFiltro } from "@/lib/repositories/_shared/lugares-del-filtro";
 import * as hoy from "@/scripts/geo-equivalencia/analitica-de-hoy";
 import { comoApp } from "@/tests/fabricas/organizaciones";
-import { crearEscenarioGeo71, type EmpresaGeo71 } from "./_fixtures/geo-71";
-import { comoDueno, revertida } from "./_fixtures/pais-20";
+import { crearEscenarioGeo71, type EmpresaGeo71, revertidaLarga, TIEMPO_DE_TEST_LARGO } from "./_fixtures/geo-71";
+import { comoDueno } from "./_fixtures/pais-20";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
 
 // SLT-71 (T3.4; R1–R5, R7, R13; design §3, §11) — LAS LECTURAS DE ANALITICA FILTRAN POR EL LUGAR DE LA
@@ -276,7 +276,7 @@ describeSiHayBase("SLT-71 T3.4 — analitica por el lugar de la orden (Postgres 
   });
 
   it("R1, R2, R4, R7: con la cadena coherente, cada lectura da lo mismo que hoy con cada faceta, combinacion y rango", async () => {
-    const r = await revertida(base, async (tx) => {
+    const r = await revertidaLarga(base, async (tx) => {
       const e = await crearEscenarioGeo71(tx, { incoherente: false });
       const antivacio = {
         cr: await totalesPorStatus(tx, e.cr, { provincia_id: [e.cr.segunda.provinciaId] }),
@@ -295,10 +295,10 @@ describeSiHayBase("SLT-71 T3.4 — analitica por el lugar de la orden (Postgres 
     // Antivacio: las comparaciones no son iguales por vacias.
     expect(r.antivacio.cr.nueva).toBe(3);
     expect(r.antivacio.xa.nueva).toBeGreaterThan(5);
-  }, 180_000);
+  }, TIEMPO_DE_TEST_LARGO);
 
   it("R2: con faceta geografica, el alcance sigue siendo la primera condicion de las cinco lecturas", async () => {
-    const r = await revertida(base, async (tx) => {
+    const r = await revertidaLarga(base, async (tx) => {
       const e = await crearEscenarioGeo71(tx, { incoherente: false });
       const tiendaId = e.cr.base.base.tiendaId;
       return comoLaEmpresa(tx, e.cr.base.base.empresaId, async () => {
@@ -323,10 +323,10 @@ describeSiHayBase("SLT-71 T3.4 — analitica por el lugar de la orden (Postgres 
       expect(p.sql).toContain('o."tienda_id"');
       expect(p.values).toEqual([r.tiendaId]);
     }
-  }, 180_000);
+  }, TIEMPO_DE_TEST_LARGO);
 
   it("R1 (profundidad 4): un nodo bajo el distrito pedido aporta sus ordenes, por el dominio y no por la columna", async () => {
-    const r = await revertida(base, async (tx) => {
+    const r = await revertidaLarga(base, async (tx) => {
       const e = await crearEscenarioGeo71(tx, { incoherente: false });
       const g = e.xa.base.base.geo;
       // El distrito «dos zonas» colgado, como nivel 4, del distrito central: pedir el central trae
@@ -338,10 +338,10 @@ describeSiHayBase("SLT-71 T3.4 — analitica por el lugar de la orden (Postgres 
     });
     expect(r.dosZonas.deHoy).toBeGreaterThan(0);
     expect(r.central.nueva).toBe(r.central.deHoy + r.dosZonas.deHoy);
-  });
+  }, TIEMPO_DE_TEST_LARGO);
 
   it("R3: un id de canton pedido como distrito, o uno de otro pais, da cero en las cinco lecturas", async () => {
-    const r = await revertida(base, async (tx) => {
+    const r = await revertidaLarga(base, async (tx) => {
       const e = await crearEscenarioGeo71(tx, { incoherente: false });
       const cliente = tx as unknown as PrismaClient;
       const casos = [
@@ -371,10 +371,10 @@ describeSiHayBase("SLT-71 T3.4 — analitica por el lugar de la orden (Postgres 
       expect(vacio(x.nueva)).toBe(true);
       expect(x.nueva).toEqual(x.deHoy);
     }
-  });
+  }, TIEMPO_DE_TEST_LARGO);
 
   it("R5: sin faceta geografica no se toca el catalogo y el SQL y los parametros son los de hoy", async () => {
-    const r = await revertida(base, async (tx) => {
+    const r = await revertidaLarga(base, async (tx) => {
       const e = await crearEscenarioGeo71(tx, { incoherente: false });
       const nuevo = clienteEspia(tx);
       const deHoy = clienteEspia(tx);
@@ -404,19 +404,19 @@ describeSiHayBase("SLT-71 T3.4 — analitica por el lugar de la orden (Postgres 
     expect(r.nuevo.length).toBeGreaterThan(20);
     expect(r.nuevo.every((s) => !s.text.includes("nodo_geografico"))).toBe(true);
     expect(r.nuevo).toEqual(r.deHoy);
-  });
+  }, TIEMPO_DE_TEST_LARGO);
 
   it("la orden de cadena incoherente es la unica diferencia: R4 vale solo con la cadena coherente", async () => {
-    const r = await revertida(base, async (tx) => {
+    const r = await revertidaLarga(base, async (tx) => {
       const e = await crearEscenarioGeo71(tx);
       return totalesPorStatus(tx, e.cr, { canton_id: [e.cr.base.base.geo.cantonId] });
     });
     // Hoy cuenta por `canton_id` (el canton activo); su lugar es un distrito del canton retirado.
     expect(r.deHoy - r.nueva).toBe(1);
-  });
+  }, TIEMPO_DE_TEST_LARGO);
 
   it("R13: la empresa XA carga solo su catalogo, una vez por instancia aunque se lea dos veces", async () => {
-    const r = await revertida(base, async (tx) => {
+    const r = await revertidaLarga(base, async (tx) => {
       const e = await crearEscenarioGeo71(tx, { incoherente: false });
       const { cliente, reg } = clienteEspia(tx);
       await comoLaEmpresa(tx, e.xa.base.base.empresaId, async () => {
@@ -433,10 +433,10 @@ describeSiHayBase("SLT-71 T3.4 — analitica por el lugar de la orden (Postgres 
     expect(ids.has(r.xa.segunda.distritoId)).toBe(true);
     expect(ids.has(r.cr.base.base.geo.provinciaId)).toBe(false);
     expect(ids.has(r.cr.segunda.provinciaId)).toBe(false);
-  });
+  }, TIEMPO_DE_TEST_LARGO);
 
   it("R13: en plataforma, con faceta, las cinco lecturas fallan con EmpresaNoResuelta sin devolver filas", async () => {
-    const r = await revertida(base, async (tx) => {
+    const r = await revertidaLarga(base, async (tx) => {
       const e = await crearEscenarioGeo71(tx, { incoherente: false });
       const cliente = tx as unknown as PrismaClient;
       const q = consultaEntregas({ canton_id: [e.cr.base.base.geo.cantonId] });
@@ -450,5 +450,5 @@ describeSiHayBase("SLT-71 T3.4 — analitica por el lugar de la orden (Postgres 
     });
     expect(r).toHaveLength(5);
     for (const err of r) expect(err).toBeInstanceOf(EmpresaNoResuelta);
-  });
+  }, TIEMPO_DE_TEST_LARGO);
 });

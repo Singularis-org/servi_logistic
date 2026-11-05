@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 
-import { Prisma } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 
 import { fijarEmpresa } from "@/tests/fabricas/organizaciones";
-import type { TxDeTest } from "../_postgres-real";
+import { CLAVE_LOCK_ESCRITURA_REAL, type TxDeTest } from "../_postgres-real";
 import {
   crearEscenarioGeo65,
   DATOS_PERSONALES_GEO65,
@@ -259,4 +259,39 @@ export async function crearEscenarioGeo71(
   const incoherenteId = opciones.incoherente === false ? null : await sembrarOrdenIncoherente(tx, geo65.cr.base);
   await comoDueno(tx);
   return { geo65, cr, xa, incoherenteId };
+}
+
+/** Lo que se tarda, como mucho, una transaccion de un test de SLT-71, cerrojo incluido. */
+export const TIEMPO_DE_TEST_LARGO = 300_000;
+
+class Revertir extends Error {
+  constructor(readonly valor: unknown) {
+    super("rollback deliberado del test");
+  }
+}
+
+/**
+ * `revertida` de `pais-20.ts` con la transaccion larga (review v1 m3, v2 m6). La espera del cerrojo
+ * (`pg_advisory_xact_lock`) corre DENTRO de la transaccion interactiva; con los 30 s del helper
+ * compartido, un test de SLT-71 que espera detras de otro largo caducaba antes que su `it`. El helper
+ * compartido no se toca: lo usan decenas de archivos.
+ */
+export async function revertidaLarga<T>(
+  base: PrismaClient,
+  fn: (tx: TxDeTest) => Promise<T>,
+  timeout: number = TIEMPO_DE_TEST_LARGO,
+): Promise<T> {
+  try {
+    await base.$transaction(
+      async (tx) => {
+        await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${CLAVE_LOCK_ESCRITURA_REAL})`);
+        throw new Revertir(await fn(tx as unknown as TxDeTest));
+      },
+      { timeout, maxWait: 15_000 },
+    );
+  } catch (e) {
+    if (e instanceof Revertir) return e.valor as T;
+    throw e;
+  }
+  throw new Error("la transaccion termino sin revertirse: imposible");
 }

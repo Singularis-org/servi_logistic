@@ -16,8 +16,8 @@ import { ConteoProductosRepository } from "@/lib/repositories/ConteoProductosRep
 import { DineroProductosRepository } from "@/lib/repositories/DineroProductosRepository";
 import { InformeTransitoRepository } from "@/lib/repositories/InformeTransitoRepository";
 import { comoApp } from "@/tests/fabricas/organizaciones";
-import { crearEscenarioGeo71, type EmpresaGeo71 } from "./_fixtures/geo-71";
-import { comoDueno, revertida } from "./_fixtures/pais-20";
+import { crearEscenarioGeo71, type EmpresaGeo71, revertidaLarga, TIEMPO_DE_TEST_LARGO } from "./_fixtures/geo-71";
+import { comoDueno } from "./_fixtures/pais-20";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
 
 // SLT-71 (T0.2; design §11) — ANTIVACIO del fixture `geo-71.ts`. Corre cada lectura del alcance con
@@ -97,7 +97,7 @@ describeSiHayBase("SLT-71 T0.2 — fixture geo-71 (antivacio)", () => {
   });
 
   it("cada lectura de analitica, las que comparten el recorte y transito tienen filas en cada empresa", async () => {
-    const r = await revertida(base, async (tx) => {
+    const r = await revertidaLarga(base, async (tx) => {
       const e = await crearEscenarioGeo71(tx);
       const segundas = await tx.orden.count({
         where: { id: { in: Object.values(e.cr.ordenes) }, provinciaId: e.cr.segunda.provinciaId },
@@ -127,5 +127,5 @@ describeSiHayBase("SLT-71 T0.2 — fixture geo-71 (antivacio)", () => {
     expect(r.xa.transitoIds).toEqual(r.transitoXa);
     // Tres ordenes en la segunda provincia (entregada, devuelta y la de transito sin distrito).
     expect(r.segundas).toBe(3);
-  }, 180_000);
+  }, TIEMPO_DE_TEST_LARGO);
 });
