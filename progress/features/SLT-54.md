@@ -20,7 +20,8 @@ zone fullstack (era frontend; la activación pide backend) / complexity high. Si
 Ninguna.
 
 ## Tandas
-- A (activación e interruptor): c3929057, `backend_dev` directo (el implementer lo corta el hook). `activarTarifasNuevas` falla cerrado hasta T2.3.
+- A (activación e interruptor): c3929057, `backend_dev` directo (el implementer lo corta el hook). Gate local rojo solo por estado de las bases: la local (5 archivos: job `done`, enum, datos de otra empresa) y la desechable `servi_gate_slt54` (1: exige usuario sembrado); cada archivo pasa en al menos una. Lo decide `gate-completo`.
+- B (lecturas, referencia, retiro de vías viejas): f215c6aa. La pantalla vieja no lee ni guarda precios hasta T4.1 (`tarifas-retiradas.ts` provisional). Decisiones del dev por revisar: `cargarZonaTarifas` con `tiendaId?`; `cargarPantallaTarifas` con `preciosTienda`; «Toda la zona» con distritos marcados y sin marcar da «Varía».
 
 ## Modelos (overrides)
 Subagentes en Opus.
