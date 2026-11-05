@@ -12,12 +12,12 @@ Rama `hotfix/SLT-88-adjuntos-chat-sin-aviso` desde `origin/prod` (`fae6a5d3`), e
 
 Dep.: —
 
-- [ ] `lib/config/chat-media-envio.ts`: `LIMITE_ADJUNTO_BYTES`, los cuatro tipos la referencian, fuera
+- [x] `lib/config/chat-media-envio.ts`: `LIMITE_ADJUNTO_BYTES`, los cuatro tipos la referencian, fuera
       `LIMITE_DOCUMENTO_BYTES`, comentarios al día (`design.md` §3).
-- [ ] `lib/clients/whatsapp-media-upload.ts:16`: el comentario deja de decir 25 MB.
-- [ ] `tests/unit/config/chat-media-envio.test.ts`: reescribir los casos de 5, 16 y 25 MB; añadir R11 con
+- [x] `lib/clients/whatsapp-media-upload.ts:16`: el comentario deja de decir 25 MB.
+- [x] `tests/unit/config/chat-media-envio.test.ts`: reescribir los casos de 5, 16 y 25 MB; añadir R11 con
       bytes reales y el `4_500_000` como literal.
-- [ ] `tests/unit/actions/chat-whatsapp-actions.test.ts` y `tests/unit/services/chat-whatsapp-service.test.ts`:
+- [x] `tests/unit/actions/chat-whatsapp-actions.test.ts` y `tests/unit/services/chat-whatsapp-service.test.ts`:
       4 MB en `limiteBytes`; casos de video y PDF de 5 MB.
 - **Hecho cuando:** esos tres tests están verdes, sus mutaciones quedaron medidas en rojo y `git diff`
   no toca `next.config.ts`, `lib/actions/chat-whatsapp.ts` ni `lib/services/ChatWhatsappService.ts`.
@@ -26,22 +26,22 @@ Dep.: —
 
 Dep.: T1
 
-- [ ] `ChatConversacion.tsx`: textos de `design.md` §6, `AVISO_LIMITE_VIDEO` derivado del límite, la tabla de
+- [x] `ChatConversacion.tsx`: textos de `design.md` §6, `AVISO_LIMITE_VIDEO` derivado del límite, la tabla de
       desenlaces de §4, el `catch` de `aceptarArchivo` y el origen `"grabacion"` desde `onGrabacion`.
-- [ ] Rama `demasiado_grande` de `enviarAdjunto` con el texto de R7 (R10).
-- [ ] `tests/components/ChatComposerAdjunto.test.tsx`: actualizar `:10`, `:147` y `:288-298`; añadir R1-R4,
+- [x] Rama `demasiado_grande` de `enviarAdjunto` con el texto de R7 (R10).
+- [x] `tests/components/ChatComposerAdjunto.test.tsx`: actualizar `:10`, `:147` y `:288-298`; añadir R1-R4,
       R7, R9, R10.
-- [ ] `tests/components/ChatNotaVoz.test.tsx`: R8, con un `Blob` real de 4 MB + 1 byte.
+- [x] `tests/components/ChatNotaVoz.test.tsx`: R8, con un `Blob` real de 4 MB + 1 byte.
 - **Hecho cuando:** están verdes, las mutaciones quedaron medidas en rojo y `comprimirImagen` no cambió.
 
 ## T3 · Fallo de envío (R12-R18)
 
 Dep.: T2
 
-- [ ] `ChatConversacion.tsx`: `AVISO_FALLO_ENVIO`, `respuestaDe` y su uso en `enviarAdjunto`,
+- [x] `ChatConversacion.tsx`: `AVISO_FALLO_ENVIO`, `respuestaDe` y su uso en `enviarAdjunto`,
       `enviarTextoLibre` y `enviarComoPlantilla`. `fallo_subida` pasa al texto nuevo. `await mutate()`
       queda fuera del `try`.
-- [ ] `ChatComposerAdjunto.test.tsx`: R12-R18. **El fallo se prueba con una acción que RECHAZA la promesa**
+- [x] `ChatComposerAdjunto.test.tsx`: R12-R18. **El fallo se prueba con una acción que RECHAZA la promesa**
       (`mockRejectedValue`), no solo con un `status` de fallo. R16 y R17 también terminan en rechazo.
 - **Hecho cuando:**
   - están verdes, y quitar el `catch` los pone rojos (medido);
@@ -53,9 +53,10 @@ Dep.: T2
 
 Dep.: T1-T3
 
-- [ ] Copiar `.env` al worktree antes del primer gate: sin él, la integración se salta y sale verde.
-- [ ] Correr `./init.sh` en verde, con `INIT_EXIT=$?` escrito dentro del log.
-- [ ] Mapa `R1..R18 → test` en `progress/impl_SLT-88.md`.
+- [x] Copiar `.env` al worktree antes del primer gate: sin él, la integración se salta y sale verde.
+- [ ] Correr `./init.sh` en verde, con `INIT_EXIT=$?` escrito dentro del log. **Pendiente del leader:
+      la tanda se corrió sin él por instrucción expresa (`progress/impl_SLT-88.md`).**
+- [x] Mapa `R1..R18 → test` en `progress/impl_SLT-88.md`.
 - **Hecho cuando:** el gate está verde y el mapa no deja ningún `R` sin test.
 
 ## T5 · Preparar la salida
