@@ -1022,3 +1022,35 @@ partida), así que es previo y ajeno a este arreglo; no lo arreglo aquí.
 No se corrió `./init.sh` ni la suite completa (instrucción).
 
 **Veredicto:** B1 resuelto: M3 se niega primero con datos porcentuales y deja las funciones intactas; R27 cubierto en el orden real de bajada.
+
+## F2.3 sync con dev
+
+- Merge: `git fetch origin dev` + `git merge origin/dev` (51 commits) → `950dea37`, sin conflictos.
+- Migraciones de dev (`20261103120000_vehiculo_activo`, `20261103120100_vehiculo_rastro`) aplicadas a
+  `servi_logistic_slt83` con `prisma migrate deploy`: las aceptó pese a tener timestamp anterior a las
+  de SLT-83 (deploy aplica las pendientes sin exigir orden). Sin tocar ninguna migración. `migrate status`
+  → «Database schema is up to date!» (302 migraciones), también tras correr la ida y vuelta de M3.
+- Contadores medidos en el catálogo de la base tras aplicar: triggers `sme_*` = 168, `*_sin_cambio_de_empresa`
+  = 86, políticas `*_por_empresa` = 87. Cuadran con el contrato 87/168/86 y la guardia RLS (86): no se
+  ajusta nada. Causa: `vehiculo_rastro` es de PLATAFORMA (sin `organizacion_id`, RLS sin políticas,
+  0 triggers, ya clasificada así en `lib/db/modelos-de-negocio.ts`) y `vehiculo_activo` solo añade columna.
+- Typecheck: el primer intento dio 1 error en `.next/types/validator.ts` (caché de Next ignorada por git,
+  de un build anterior, apuntaba a `app/(app)/configuracion/vehiculos/page.js`, que dev retiró en SL-42).
+  Borrado `.next/types` (artefacto generado) y repetido. También hizo falta `prisma generate` para el
+  modelo `VehiculoRastro` y `NODE_OPTIONS=--max-old-space-size=8192` (OOM con el heap por defecto).
+
+```
+$ NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck → tsc --noEmit, exit 0
+$ pnpm run test:guardias → Test Files 1 failed | 328 passed (329); Tests 4 failed | 4575 passed | 1 skipped
+   (los 4 rojos: dependencias-declaradas-presentes.guardia, baseline)
+$ npx vitest run (DATABASE_URL → servi_logistic_slt83)
+   migracion-slt83-ida-y-vuelta, cobro-plataforma-porcentual{,-aislamiento,-importe},
+   cobro-porcentual-estados-finales, empresas-plataforma-cobro-porcentual, plan-costo-porcentual-escritura,
+   cobro-plataforma-cargos, cobro-plataforma-plan, plan-de-la-empresa{,-costeo,-porcentual},
+   unit/scripts/verificar-rls-despliegue, integration/db/vehiculos-migration
+   → Test Files 14 passed (14); Tests 155 passed (155)
+```
+
+No se corrió `./init.sh` ni la suite completa (instrucción). Sin push.
+
+**Veredicto:** dev integrado sin conflictos ni ajustes; contadores RLS intactos y tests de SLT-83 en verde contra la base.
