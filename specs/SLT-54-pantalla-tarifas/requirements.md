@@ -241,7 +241,7 @@ variantes de SLT-52 R5 y R6. *Referencia*: lo que rige hoy, mostrado junto a un 
 - **R70.** La pantalla DEBE cumplir las medidas de `design.md > §12`, comprobadas con el navegador a
   1360 y 390 px, y la disposición DEBE quedar atada por tests.
 
-### Añadidos en la revisión F2.2, pendientes de visto bueno de Carlos en el PR
+### Añadidos en la revisión F2.2, con visto bueno de Carlos del 2026-11-05
 
 - **R71.** MIENTRAS el detalle de un cierre tiene alguna gestión del modelo nuevo, DEBE rotular su total
   «Ingreso de bodega», sin «por devoluciones a origen» y sin las sublíneas «Automático (por plazo vencido)» y
@@ -256,9 +256,9 @@ variantes de SLT-52 R5 y R6. *Referencia*: lo que rige hoy, mostrado junto a un 
   esos mismos textos en `/wallet/tiendas`, y en `/mi-wallet` con «La empresa te cobró el flete de gestiones no
   entregadas» y «La empresa te cobró el IVA del flete de gestiones no entregadas», en la tabla, el desplegable y las
   dos hojas de la descarga (D38). Las filas del modelo viejo y el cobro por rechazo NO DEBEN cambiar de texto.
-  *Nota:* ese dato llega del servidor y un conjunto mixto se lee como nuevo. Fuera: D39, D40 y D41 de
-  `progress/deudas.md`. Cláusula del libro de la caja y D38 redactadas en la tanda I2, pendientes de visto bueno de
-  Carlos en el PR.
+  *Nota:* ese dato llega del servidor y un conjunto mixto se lee como nuevo. D39 y D40 de `progress/deudas.md` las
+  cierra la rama `chore/deudas-2026-11-05`; D41 sigue fuera. Cláusula del libro de la caja y D38 redactadas en la tanda
+  I2, con el mismo visto bueno. Las 3 notas `_MODELO_NUEVO` de `cierre-labels.ts` salen de D40.
 - **R72.** MIENTRAS una fila de la descarga de cierres es `tarifaModelo: "nuevo"`, DEBE poblar flete, total, pago
   al mensajero e ingreso de bodega con cualquier resultado que los tenga, de modo que cada columna sume lo que da
   el comprobante. Las filas del modelo viejo NO DEBEN cambiar.

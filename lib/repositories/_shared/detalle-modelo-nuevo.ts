@@ -4,8 +4,10 @@
 // actual de la empresa: un cierre anterior a la activacion sigue siendo del modelo viejo. Basta una
 // fila `nuevo` para que cuente, porque un rotulo que nombra solo devoluciones es falso en cuanto hay una.
 //
-// La empresa la pone la RLS de `cierre_detail`, como en toda lectura de negocio. Sus tests viven en
-// `tests/integration/db/cierre-incluye-modelo-nuevo.test.ts`, contra Postgres.
+// En las lecturas por Prisma, la empresa la ponen la extension de `conAislamientoPorEmpresa` y la RLS de
+// `cierre_detail`, como en toda lectura de negocio; el fragmento SQL de D39 la lleva ademas en el texto (abajo).
+// Sus tests viven en `tests/integration/db/cierre-incluye-modelo-nuevo.test.ts` y
+// `tests/integration/db/deudas-d39-d40-modelo-nuevo.test.ts`, contra Postgres.
 
 import { Prisma } from "@prisma/client";
 

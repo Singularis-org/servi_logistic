@@ -251,8 +251,9 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 
 ### D42 — `e2e/wallet-mensajeros.spec.ts:81`, clic crudo e inestable
 - **Origen:** tanda I2 y revisión de SLT-54, vuelta 3 (2026-11-05). `dinero` dio 44/0/0, 42/1/0 con 1 sin correr y 44/0/0; cayó `:58` por botón desmontado. El spec solo dio 45 de 45. El diff no lo explica, y ya había caído antes en CI. Causa sin medir. El clic de `:81` abre un panel sin `abrirCon` (`e2e/_escenarios/pulsar.ts`).
-- **Medido (2026-11-05, rama `chore/deudas-2026-11-05`):** `:58` y `:81` son el mismo test: `:58` lo declara y `:81` es el paso que cayó. La caída anterior en CI fue en otro paso (`:63`). El clic pasó a `abrirCon`. `dinero` dio 49/0/0 en 3 corridas sin el cambio y en 5 con él: el fallo no se reprodujo, así que esto no demuestra causa ni arreglo.
-- **Qué falta:** si vuelve a caer en CI, buscar la causa. `playwright.config.ts:70` usa `on-first-retry`, así que el intento que cae no guarda traza. `pulsar.ts:15-16` prohíbe `abrirCon` en controles que alternan y `e2e/wallet.spec.ts:53` tiene `desplegar`: revisar si el clic debe pasar a ese patrón. `e2e/mi-wallet.spec.ts:71` tiene el mismo clic crudo.
+- **Medido (2026-11-05, rama `chore/deudas-2026-11-05`):** `:58` y `:81` son el mismo test: `:58` lo declara y `:81` es el paso que cayó. La caída anterior en CI fue en otro paso (`:63`). El clic pasó primero a `abrirCon` y `dinero` dio 49/0/0 en 3 corridas sin el cambio y en 5 con él: el fallo no se reprodujo, así que esto no demuestra causa ni arreglo.
+- **Qué clic quedó:** `desplegar` (`e2e/_escenarios/pulsar.ts`), que lee `aria-expanded` y solo pulsa si sigue cerrado. `abrirCon` prohíbe los controles que alternan. `desplegar` vivía en `e2e/wallet.spec.ts` y pasó a `pulsar.ts`, para los dos specs.
+- **Qué falta:** si vuelve a caer en CI, buscar la causa. `playwright.config.ts:70` usa `on-first-retry`, así que el intento que cae no guarda traza; solo la guarda el reintento. `e2e/mi-wallet.spec.ts:71` tiene el mismo clic crudo.
 - **Dueño:** Carlos Restrepo.
 
 ### D43 — Encabezado de la descarga «Flete por devolución a origen + IVA» con el modelo nuevo

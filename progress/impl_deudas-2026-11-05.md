@@ -326,7 +326,7 @@ Propuesta, sin aplicar: contar solo las filas de la empresa del caso. Es un camb
 - **El gate completo con estos arreglos:** lo corre el leader.
 - **Quién commitea en el gate la fila que rompió R4:** el mecanismo está reproducido, el archivo concreto no se identificó.
 - **Coste del `EXISTS`:** sigue sin medir con volumen real.
-- **Lectura sin empresa en la app real:** los llamadores que vi con Grep son las acciones de la caja y de los filtros; no se ejecutaron con un usuario de plataforma. Si ocurriera, saldría el rótulo de hoy, como fija `sinRlsSinEmpresa`.
+- **Lectura sin empresa en la app real:** los llamadores que vi con Grep son las acciones de la caja y de los filtros; no se ejecutaron con un usuario de plataforma. *Corregido en la tanda 5:* decía que saldría el rótulo de hoy, y es falso. Sin empresa, la extensión lanza `EmpresaNoResuelta` (`extension-empresa.ts:202-206`). `sinRlsSinEmpresa` mide el SQL como dueño, fuera de esa extensión.
 - **El grafo de código** no se consultó: Grep y Read.
 
 ### Estado de la desechable
@@ -336,3 +336,80 @@ Recreada, con 304 migraciones y `db:seed`; 0 empresas y 0 usuarios. La base del 
 ### Archivos
 
 **Modificados:** `lib/repositories/_shared/detalle-modelo-nuevo.ts`, `tests/integration/db/deudas-d39-d40-modelo-nuevo.test.ts`, `tests/unit/guards/{caja-173-alcance,nombres-estado-retirados}.guardia.test.ts`, esta bitácora
+
+## Tanda 5 — Menores 2, 3, 5, 6 y 7 de la revisión
+
+Veredicto: los cinco menores corregidos; los E2E pasan y la guardia cae con otro alias. D42 sigue abierta, con la causa sin medir.
+
+### Menor 5: D42
+
+- **Sirve `desplegar`:** el botón de `/wallet/mensajeros/<id>` es el de `DataTable.tsx:533`, con `aria-expanded`, el mismo que usa `wallet.spec.ts`.
+- **El cambio:** `wallet-mensajeros.spec.ts:82` pasa de `abrirCon` a `desplegar`. La función pasa de `wallet.spec.ts` a `_escenarios/pulsar.ts:52`, para no tener dos copias. Pulsa por `pulsarHasta`, y su lectura de `aria-expanded` tiene un plazo de 2 s por intento, como el clic; antes no lo tenía.
+- **Sin** `retries`, `waitForTimeout` ni plazos mayores. `playwright.config.ts` no se toca.
+
+| Corrida | Passed | Failed | Flaky | Skipped | Did not run | Exit |
+|---|---|---|---|---|---|---|
+| `wallet-mensajeros` solo | 3 | 0 | 0 | 0 | 0 | 0 |
+| `dinero`, 1 vez | 49 | 0 | 0 | 0 | 0 | 0 |
+
+- **La base:** en `dinero`, el servidor tenía 3 conexiones Postgres, las 3 en `servi_gate_deudas` (netstat y `pg_stat_activity`). En el spec solo, la sonda llegó tarde: el spec acabó en 15 s y ella mide a los 20. Lo respalda que usó el mismo entorno y que la base local no se movió: organizaciones 11, usuarios 44, movimientos de wallet 13 y cierres 6, antes y después de las dos corridas.
+- **Build nueva:** la de `.next` era anterior a `900407a6`; se rehízo con los comentarios ya editados.
+
+### Menor 2: la guardia de `caja-173-alcance`
+
+La regla mira ahora todas las palabras de todas las plantillas del módulo contra una lista cerrada (`VOCABULARIO_SQL_DE_LA_LECTURA`), más cada `*`. Las cadenas `'…'` se quitan antes. No depende del alias, de las comillas ni de la etiqueta. Un alias legítimo nuevo también cae: hay que declararlo.
+
+Mutaciones sobre el módulo real, añadiendo una línea `export const MUT = Prisma.sql\`…\`` y restaurándolo después (`cmp` igual):
+
+| SQL añadido | Regla vieja | Regla nueva | Fugas que nombra |
+|---|---|---|---|
+| ninguno | 39 de 39 | 40 de 40 | |
+| `SELECT d."tarifa_valor_flete" FROM "cierre_detail" d` | **39 de 39, no cae** | **39 de 40, cae** | `d`, `tarifa_valor_flete`, `d` |
+| `SELECT cd.tarifa_valor_flete FROM cierre_detail cd` | no se corrió | 39 de 40, cae | `tarifa_valor_flete` |
+| `SELECT cd.* FROM "cierre_detail" cd` | no se corrió | 39 de 40, cae | `*` |
+
+Contrapruebas permanentes: el caso nuevo «D39: el SQL de la lectura del modelo no se libra…» (`:530`), con 6 fragmentos.
+
+### Menor 3: comentarios
+
+- `caja-173-alcance.guardia.test.ts:102`: ya no dice «ni SQL crudo»; nombra el fragmento de D39, que no ejecuta. También `:125-127`, que decía lo mismo.
+- `:360`, título: «no llega a ninguna columna de dinero». Y `:301`, que lo citaba.
+- `detalle-modelo-nuevo.ts:7-10`: separa las lecturas por Prisma (la extensión y la RLS) del fragmento (además, en el texto), y añade el test de D39. Comprobado: `CierreDetail` es modelo de negocio (`modelos-de-negocio.ts:89`).
+
+### Menor 6: `specs/SLT-54-pantalla-tarifas/requirements.md`
+
+`:244` y `:259-261`: visto bueno de Carlos del 2026-11-05; D39 y D40 las cierra esta rama; D41 sigue fuera (abierta en `deudas.md:247`). Una línea para las 3 notas nuevas, que salen de D40. Ningún requisito nuevo.
+
+### Menor 7: `:329` de esta bitácora
+
+Corregido. Comprobado:
+
+- **Sin contexto,** `aplicar` rechaza (`extension-empresa.ts:202-206`). `tests/unit/db/extension-empresa.test.ts -t R11`: 7 en verde y 68 saltados por el filtro; incluye el resolutor que da `null` con `$queryRaw` (`:304-307`).
+- **Un superadmin no llega ahí:** `verResumenCaja` y `conceptosConMovimientos` devuelven `forbidden` antes de la base, porque `ROLES_ACCESO_TOTAL` solo trae `maestro` y `admin` (`acceso-total.ts`).
+- **Matiz:** dentro de `comoPlataforma` el SQL sí pasa tal cual (`extension-empresa.ts:209-212`), y ahí es donde el fragmento no daría filas y saldría el rótulo de hoy. Por Grep, `lib/actions/wallet*.ts`, `WalletService` y `FiltrosWalletService` no lo usan, y `resolve-actor.ts` lo usa solo para validar la sesión. Esa rama no se ejecutó.
+
+### Salida real
+
+- `pnpm typecheck`: exit 0.
+- `pnpm lint`: exit 0, 0 errores y 234 avisos, el mismo número que en la tanda 4.
+- `pnpm run test:guardias`: 330 archivos en verde y 1 en rojo; 4617 tests en verde, 4 rojos y 1 saltado. El rojo es `dependencias-declaradas-presentes`, en el baseline.
+- `vitest related` de los 5 archivos de código, sobre base recreada: 484 archivos, 349 en verde y 135 en rojo; 5870 tests, 5043 en verde, 90 rojos y 737 saltados. Exit 1. **Los 135 están en `tests/baseline-rojos.json`; fuera de él, 0.** Los motivos más frecuentes son de base sin usuarios ni órdenes.
+- **Una primera corrida de `related` se descarta:** fue sobre la base con los datos de los E2E y dio 124 archivos en rojo, 2 fuera del baseline (`caja-backfill`, `ciclo-vida-gestion-final`), con errores `referencia a otra empresa`. En la base recreada esos 2 no caen. Esos tests dependen de que la base esté limpia; no se investigó más.
+
+### No verificado
+
+- **La causa de D42:** el fallo no se reprodujo, y una corrida de `dinero` no distingue nada.
+- **Si `desplegar` reintentó algún clic:** no se midió. Si un clic tardara más de 2 s en cambiar `aria-expanded`, el reintento podría plegar el panel; `toPass` volvería a abrirlo. Es por lectura.
+- **El servidor del spec solo**, por la sonda tardía de arriba.
+- **El CI**, donde `retries: 1` y `failOnFlakyTests` cambian lo que se ve.
+- **`e2e/mi-wallet.spec.ts:71`:** sigue con el clic crudo, fuera de alcance.
+- **SQL fuera de una plantilla en el módulo:** la regla nueva no lee cadenas normales. Ejecutarlas exige `$queryRawUnsafe` o `Prisma.raw`, que caen en `fugasDeLecturaDelModelo` y en `escriturasCrudas`.
+- **El grafo de código** no se consultó: Grep y Read.
+
+### Estado de la desechable
+
+Recreada, con 304 migraciones y `db:seed`; 0 empresas y 0 usuarios.
+
+### Archivos
+
+**Modificados:** `e2e/_escenarios/pulsar.ts`, `e2e/wallet.spec.ts`, `e2e/wallet-mensajeros.spec.ts`, `lib/repositories/_shared/detalle-modelo-nuevo.ts`, `tests/unit/guards/caja-173-alcance.guardia.test.ts`, `specs/SLT-54-pantalla-tarifas/requirements.md`, `progress/deudas.md`, esta bitácora
