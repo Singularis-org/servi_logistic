@@ -44,8 +44,8 @@ function ciclosCumplidos(ancla: Date, ahora: Date): number {
  * SLT-58 (design §11.3, R40): con `ahora` anterior al ancla la empresa está en su ciclo corto, que
  * termina en el ancla; por eso el siguiente es el ancla misma y no un mes después.
  *
- * SLT-86 (design §3.2): sustituida por `finDelPeriodoCalendario`. Se queda solo mientras la usan
- * `lib/planes/consumo.ts` (T6) y la vista previa de `PlanesRepository` (T9); se borra con ellas.
+ * SLT-86 (design §3.2): sustituida por `finDelPeriodoCalendario`. `consumo.ts` ya no la usa (T6); se
+ * queda solo mientras la usa la vista previa de `PlanesRepository`, y se borra con ella (T9).
  * `inicioDelCiclo` e `inicioDelCicloEnCurso` ya se borraron en T3: no las usaba nadie.
  */
 export function inicioDelSiguienteCiclo(ancla: Date, ahora: Date): Date {

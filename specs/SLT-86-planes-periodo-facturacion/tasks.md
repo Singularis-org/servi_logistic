@@ -68,7 +68,7 @@
 - **Pasos:** `lib/planes/cobro.ts`.
 - **Hecho:** `tests/unit/planes/cobro-periodo.test.ts` verde; `cobro.test.ts` adaptado.
 
-## T6 — Costeo y consumo (R7, R28) [P]
+## [x] T6 — Costeo y consumo (R7, R28) [P]
 
 - **Depende de:** T2, T5.
 - **Pasos:** `lib/planes/costeo.ts`, `lib/planes/consumo.ts`.

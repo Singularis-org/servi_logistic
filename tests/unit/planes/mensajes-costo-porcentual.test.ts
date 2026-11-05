@@ -55,14 +55,13 @@ describe("SLT-83 R22 — textoDelCobroVigente (columna «Cobro por orden» de «
 describe("SLT-83 R23 — las líneas de «Mi plan» con un plan porcentual", () => {
   const COSTEO: Extract<CosteoDelCiclo, { modo: "porcentual" }> = {
     modo: "porcentual",
-    base: { tipo: "monto", mensual: "50000.00" },
+    base: { tipo: "monto", periodo: "50000.00" },
     porcentaje: "2.00",
     minimo: "500.00",
     cobrado: "2000.00",
     pendientes: 0,
     total: "52000.00",
     sinCostoConcreto: false,
-    anualNoAplicaAlCosto: false,
   };
 
   it("costo por orden con su nota, lo cobrado, las pendientes (solo el conteo) y el total base + cobrado", () => {
