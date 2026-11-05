@@ -742,3 +742,94 @@ Ningún otro `expect` existente cambió. El resto de archivos existentes tocados
 - `pnpm run typecheck`: exit 0.
 - `pnpm run test:guardias`: `Test Files 1 failed | 330 passed | 3 skipped (334)`, `Tests 4 failed | 4616 passed | 24 skipped`.
   Los 4 rojos son `dependencias-declaradas-presentes` (baseline).
+
+## Review v1 fixes (backend_dev, 2026-11-05)
+
+Revisión: `progress/review_SLT-71.md` (`d8db5a65`). Se corrigen m1, m2 y m3; m4 queda para el leader.
+
+| hallazgo | commit | qué |
+|---|---|---|
+| m1 | `0a0eb45b` | Disculpa de las incoherentes: por sentido y cubo a cubo, sin Δ = 0, sin mover segundos ni importe, y con rastro |
+| m2 | `62c61bab` | «Sin catálogo» solo descuenta la carga del catálogo: queda fijado en el test de R19, y se corrige el sentido del error en los comentarios |
+| m3 | `63d880f3` | Timeout explícito de 180 s en 5 `it` |
+
+### m1 — `scripts/geo-equivalencia-analitica.ts`
+
+- `incoherentesAfectadas` devuelve `{ soloHoy, soloLugar }`:
+  - `soloHoy`: órdenes incoherentes que entran por la columna y no por el lugar;
+  - `soloLugar`: las que entran por el lugar y no por la columna.
+- `Resumen` gana `cubos` (el reparto por estado, día, causa, desenlace, producto…; nunca se imprime) y `fijos` (lo que una
+  orden no puede mover):
+  - ciclo de vida: `segundos`;
+  - dinero: `importe` (y `limite` si se excede);
+  - productos y cohorte: la suma de `segundosAcum`.
+- `disculpable(a, b, inc)`, exportada, disculpa solo si se cumplen todas:
+  - hay alguna incoherente afectada;
+  - los `fijos` son iguales;
+  - `Δ = a − b ≠ 0` y `Δ ∈ [−soloLugar, soloHoy]`;
+  - cubo a cubo, lo que hoy tiene de más suma ≤ `soloHoy` y lo que tiene de menos ≤ `soloLugar`.
+
+  Δ = 0 con claves distintas no se disculpa.
+- **Rastro:** cada par disculpado va a `InformeDeEmpresa.disculpadas` y se imprime con solo cifras e ids (R18):
+  `  empresa <id> [solo-incoherentes] [<bloque>] <filtro> <lectura> (solo-hoy=<h> solo-lugar=<n>): hoy=<cifra> nuevo=<cifra>`.
+  `soloIncoherentes` es ahora `disculpadas.length`.
+- Tests, en `geo-equivalencia-analitica.test.ts`:
+  - describe nuevo «`disculpable`: …», con 4 `it`:
+    - disculpa con sentido;
+    - rechaza la disculpa de más (sentido y tamaño);
+    - rechaza el mismo total con otro reparto;
+    - rechaza si cambian los segundos o el importe.
+  - En el caso R17 del fixture: tantas líneas `[solo-incoherentes]` como disculpadas, y la del cantón activo en `por-status`
+    con `(solo-hoy=1 solo-lugar=0)` y `hoy − nuevo = 1`.
+  - En el literal `InformeDeEmpresa` del test de `codigoDeSalida` se añadió `disculpadas: []`. Es un cambio de entrada, que
+    exige el tipo.
+
+### m2 — `scripts/geo-equivalencia/medicion.ts`
+
+- `LadoMedido.sinCatalogo` gana `consultas`: las del lado que no casan con `leeElCatalogo`.
+- Test de R19 (`geo-explain-analitica.test.ts` › «R19, R18: mide las seis lecturas …»), en cada lectura medida:
+  - `antes.sinCatalogo.consultas === antes.consultas`: ninguna consulta de antes casa con `leeElCatalogo`;
+  - `despues.sinCatalogo.consultas === antes.consultas`: después solo descuenta la carga del catálogo.
+- El helper `lado()` de ese test gana `consultas: 1`. Es un cambio de entrada.
+- Comentarios:
+  - `TABLAS_DE_LA_GEOGRAFIA`: «el error va hacia marcar regresión» vale solo para completar `antes`;
+  - `TABLAS_DEL_CATALOGO`: con `leeElCatalogo` el error va al revés (una regresión se vería como costo fijo), y ese test es
+    el que lo fija.
+- `geo-explain-consultas.test.ts` (SLT-65) pasa sin cambios.
+
+### m3
+
+Se añadió `}, 180_000);` en:
+- `geo-71-fixture.test.ts` (antivacío);
+- `geo-analitica-lugar.test.ts` «R2»;
+- `geo-transito-nombres.test.ts` «R10», «R11» y «R12».
+
+`geo-explain-consultas` no se tocó.
+
+**Riesgo residual (no corregido, para el leader):** el cerrojo se espera dentro de `revertida` (`_fixtures/pais-20.ts`). Esa
+transacción tiene `timeout: 30_000` y es un helper compartido. Una espera de más de 30 s detrás de un test largo puede seguir
+fallando por timeout de transacción, aunque el `it` tenga ahora 180 s.
+
+### `expect` existentes
+
+Ningún `expect` existente cambió. Lo que se tocó en tests existentes es entrada (`disculpadas: []`, `consultas: 1`) o casos
+añadidos.
+
+### Corridas (Postgres local `logistic_slt71`, `NODE_OPTIONS=--max-old-space-size=8192`)
+
+Los tests de integración corrieron; ninguno se saltó.
+
+```
+$ pnpm exec tsc --noEmit                       (tras m1, m2 y m3: sin salida, rc=0)
+$ pnpm exec eslint <archivos tocados>          (sin salida, rc=0)
+$ pnpm exec vitest run tests/integration/db/geo-equivalencia-analitica.test.ts
+ Test Files  1 passed (1)      Tests  12 passed (12)
+$ pnpm exec vitest run tests/integration/db/geo-explain-analitica.test.ts tests/integration/db/geo-explain-consultas.test.ts
+ Test Files  2 passed (2)      Tests  22 passed (22)
+$ pnpm exec vitest run tests/integration/db/geo-71-fixture.test.ts tests/integration/db/geo-analitica-lugar.test.ts tests/integration/db/geo-transito-nombres.test.ts
+ Test Files  3 passed (3)      Tests  14 passed (14)
+```
+
+### Veredicto
+
+m1, m2 y m3 corregidos, en verde y con un commit cada uno. m4 queda para el leader.
