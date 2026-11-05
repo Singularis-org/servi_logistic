@@ -64,6 +64,12 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Resuelto en SL-38 (2026-10-23):** la marca de zona especial es de la empresa, en `distrito_zona_especial` con RLS; `actualizarDistritosEspeciales` vuelve al maestro por servicio y repositorio, y la columna `distrito.zona_especial` sale.
 - **Dueño:** Carlos Restrepo (decidir) y quien tome SL-26. **2026-10-26:** la parte de geografía pasa a SL-20 (`specs/SL-20-pais-geografia-configurable/requirements.md`); la de vehículos sigue aquí (SL-42).
 - **Parte de geografía cerrada en SL-20 (2026-10-27):** el alta, el renombre, el retiro y la reactivación de nodos salen de `lib/actions/geografia.ts` (el maestro solo conserva la lectura para Tarifas) y pasan al superadmin en `lib/actions/geografia-plataforma.ts`, con errores tipados (`conflict` solo por único; otra causa es `error`, R36, R51, R52). Queda abierta la parte de vehículos (SL-42).
+- **Parte de vehículos cerrada en SL-42 (2026-11-04):**
+  - Las escrituras salen de `lib/actions/vehiculos.ts`; al `maestro` le queda solo `listarVehiculos`.
+  - El superadmin las hace en `/plataforma/vehiculos` con `lib/actions/vehiculos-plataforma.ts` (`comoPlataforma`). El borrado se retira y desactivar lo sustituye.
+  - Errores tipados: `conflict` solo por el único; cualquier otra causa es `error` con log (R9–R14).
+  - `/configuracion/vehiculos` y su ayuda se retiran (R16, R19).
+- **Estado:** RESUELTA en SL-42 (2026-11-04): con la parte de vehículos, D12 queda cerrada entera.
 
 ### D13 — Coste medido de la envoltura y de los triggers
 - **Origen:** SL-17, T1.1, T2.7 y T4.1. En local, la envoltura suma ~1,1 ms por operación (mediana 0,62 → 1,76 ms) y los triggers de misma empresa ~1,1 ms por `INSERT` de `orden` (mediana 0,42 → 1,51 ms; ~0,27 ms por FK). Por el pooler de Supabase: ver `progress/impl_SL-17.md > T4.1`.

@@ -1,12 +1,13 @@
 import type { RolValue } from "@prisma/client";
 import type {
-  ActualizarVehiculoInput,
+  CambiarActivacionVehiculoInput,
   CrearVehiculoInput,
+  RenombrarVehiculoInput,
   VehiculoDTO,
 } from "@/lib/types/vehiculos";
 
 // Actor autenticado que ejecuta la operacion. El rol se resuelve desde la sesion
-// (resolveActorFromSession) y determina la autorizacion: solo `maestro` (R9/R10).
+// (resolveActorFromSession) y determina la autorizacion. Otros servicios importan este tipo.
 export interface Actor {
   usuarioId: string;
   rol: RolValue;
@@ -22,29 +23,28 @@ export type ListarVehiculosServiceResult =
 export type CrearVehiculoServiceResult =
   | { status: "ok"; vehiculo: VehiculoDTO }
   | { status: "forbidden" }
-  | { status: "conflict" } // ya existe un tipo con ese nombre (UNIQUE)
-  | { status: "validation_error"; fieldErrors: Record<string, string[]> };
+  | { status: "conflict" }; // ya existe un tipo con ese nombre (UNIQUE), activo o no (R10)
 
-export type ActualizarVehiculoServiceResult =
+export type RenombrarVehiculoServiceResult =
   | { status: "ok"; vehiculo: VehiculoDTO }
   | { status: "forbidden" }
   | { status: "not_found" }
-  | { status: "conflict" }
-  | { status: "validation_error"; fieldErrors: Record<string, string[]> };
+  | { status: "conflict" };
 
-export type BorrarVehiculoServiceResult =
-  | { status: "ok" }
+export type CambiarActivacionVehiculoServiceResult =
+  | { status: "ok"; vehiculo: VehiculoDTO }
   | { status: "forbidden" }
-  | { status: "not_found" }
-  | { status: "in_use" }; // lo referencia un mensajero o una tarifa de zona
+  | { status: "not_found" };
 
+// SL-42 (design §4.2): el catalogo es de la plataforma. Las empresas solo lo leen (`listar`, el
+// `maestro`, R17); el superadmin lo lista entero y lo gestiona. No hay borrado (P1, R8).
 export interface IVehiculoService {
   listar(actor: Actor): Promise<ListarVehiculosServiceResult>;
+  listarTodos(actor: Actor): Promise<ListarVehiculosServiceResult>;
   crear(input: CrearVehiculoInput, actor: Actor): Promise<CrearVehiculoServiceResult>;
-  actualizar(
-    id: string,
-    input: ActualizarVehiculoInput,
+  renombrar(input: RenombrarVehiculoInput, actor: Actor): Promise<RenombrarVehiculoServiceResult>;
+  cambiarActivacion(
+    input: CambiarActivacionVehiculoInput,
     actor: Actor,
-  ): Promise<ActualizarVehiculoServiceResult>;
-  borrar(id: string, actor: Actor): Promise<BorrarVehiculoServiceResult>;
+  ): Promise<CambiarActivacionVehiculoServiceResult>;
 }

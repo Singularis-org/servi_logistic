@@ -23,10 +23,10 @@ import {
  *
  * ESTE ES EL ERROR QUE LA FICHA EXISTE PARA NO COMETER, y el archivo que lo caza.
  *
- * En este repo ya vive una consulta casi identica —`CicloVidaRepository`— que tambien mide de
- * `orden.created_at` a la ultima transicion terminal. Copiarla es lo natural y su ventana esta
- * en el sitio CONTRARIO: alli acota la TRANSICION (`condicionDeVentanaTerminal`, sobre
- * `h."created_at"`), porque contesta «de lo que CERRO esta semana, cuanto tardo». Una cohorte es
+ * En este repo ya vive una consulta parecida —`CicloVidaRepository`— que tambien mide desde
+ * `orden.created_at`, hasta la gestion final. Copiarla es lo natural y su ventana esta
+ * en el sitio CONTRARIO: alli acota la GESTION FINAL (`condicionDeVentanaDeCierre`, sobre
+ * `g."created_at"`), porque contesta «de lo que CERRO esta semana, cuanto tardo». Una cohorte es
  * exactamente lo contrario: sigue el LOTE hasta su desenlace, caiga donde caiga en el tiempo.
  *
  * ⚠ POR QUE ES PELIGROSO Y NO SOLO INCORRECTO: poner la ventana sobre el cierre **no rompe nada
@@ -42,7 +42,7 @@ import {
  * | X     | DENTRO (D)     | DESPUES del hasta | cuenta, y en su cubo TERMINAL (no en `viva`)|
  * | Y     | FUERA (D-10)   | DENTRO (D)        | NO aparece en ninguna cohorte               |
  *
- * X mata la mutacion «anado `condicionDeVentanaTerminal` al CTE `cierre`»: su cierre se caeria y
+ * X mata la mutacion «anado una ventana sobre `h."created_at"` al CTE `cierre`»: su cierre se caeria y
  * la orden pasaria a `viva`. Y mata la inversa —mover la ventana a la transicion y quitarla de
  * la carga—: entraria una orden de un lote que no es de este rango.
  */

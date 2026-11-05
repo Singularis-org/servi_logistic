@@ -461,7 +461,7 @@ export type GestionarActionInput = z.infer<typeof gestionarSchema>;
 // `error` es ese desenlace faltante: «no se pudo, no es culpa tuya, volve a intentar». NO es un
 // error de dominio (no dice nada del estado de la orden) y por eso no reusa `conflict` ni
 // `forbidden`, que SI afirman algo y mandarian al mensajero a buscar un problema que no existe.
-// El nombre no se inventa aqui: es el que ya usan `VehiculoActionError`, `PostularMensajeroResult`
+// El nombre no se inventa aqui: es el que ya usan `lib/actions/vehiculos-plataforma.ts`, `PostularMensajeroResult`
 // y `PostulacionRecursoResult` para exactamente esto.
 //
 // ⚠️ NO CONFUNDIR con `AppErrorShape`, cuyo discriminante tambien es `status: "error"` pero que

@@ -180,7 +180,7 @@ describe("Los dos montos del pago — ayudas de uno y de dos renglones", () => {
     // mensajero.» dos; encima, sólo el rechazo está en cero y arrastra el aviso.
     render(
       <CobroVehiculoTarifas
-        vehiculos={[{ id: "v-moto", name: "Moto" }]}
+        vehiculos={[{ id: "v-moto", name: "Moto", activo: true }]}
         initial={{
           cobroVehiculo: false,
           tarifas: [{ cobroEntregado: 1700, cobroRechazado: 0 }],
