@@ -356,8 +356,12 @@ export interface LecturaModeloViejo {
   pagos: Map<string, PagoTarifa | null>;
 }
 
+function aParSinDistrito(par: ParModeloViejo) {
+  return { ...par, distritoId: null };
+}
+
 export function claveCobroViejo(par: ParModeloViejo): string {
-  return clavePar({ ...par, distritoId: null });
+  return clavePar(aParSinDistrito(par));
 }
 
 export function clavePagoViejo(zonaId: string, vehiculoId: string | null): string {
@@ -376,8 +380,7 @@ export async function leerModeloViejoCon(
 ): Promise<LecturaModeloViejo> {
   const cobros = new Map<string, TarifaVigenteResuelta | null>();
   if (pedido.pares.length > 0) {
-    const pares = pedido.pares.map((par) => ({ ...par, distritoId: null }));
-    for (const [clave, cobro] of await cobrosViejos(db, pares)) {
+    for (const [clave, cobro] of await cobrosViejos(db, pedido.pares.map(aParSinDistrito))) {
       cobros.set(clave, cobro !== null && cobro.modelo === "viejo" ? cobro.tarifa : null);
     }
   }
