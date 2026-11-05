@@ -148,7 +148,18 @@ describe("SL-17 — la action pasa un OrganizacionRepository real y corre en pla
 
     // Sin SMTP en el entorno del test, el correo pasa por el emisor y el estado es `sin_correo` (R24).
     expect(r).toEqual({ estado: "creada", organizacionId: "org-nueva", maestroId: "u-maestro", bienvenida: "sin_correo" });
-    expect($transaction).toHaveBeenCalledTimes(1);
+    // SLT-42 (punto 7 tras la tanda 2): dos transacciones. La primera es `repeticion`, una lectura
+    // previa sin cerrojo que decide `ya_existe` antes que el país (SL-20 §13); la segunda es el alta,
+    // que vuelve a mirar el slug BAJO el cerrojo y escribe todo junta. La atomicidad y la carrera
+    // entre dos altas iguales dependen solo de la segunda.
+    expect($transaction).toHaveBeenCalledTimes(2);
+    expect(tx.organizacion.findUnique).toHaveBeenCalledTimes(2);
+    const [cerrojo] = tx.$executeRaw.mock.invocationCallOrder;
+    const [lecturaPrevia, lecturaBajoCerrojo] = tx.organizacion.findUnique.mock.invocationCallOrder;
+    const [escritura] = tx.organizacion.create.mock.invocationCallOrder;
+    expect(lecturaPrevia).toBeLessThan(cerrojo);
+    expect(cerrojo).toBeLessThan(lecturaBajoCerrojo);
+    expect(lecturaBajoCerrojo).toBeLessThan(escritura);
     expect(creados).toHaveLength(2);
     // Cada SQL a mano del repositorio (cerrojo y set_config) corrió en el contexto de plataforma.
     expect(contextos.length).toBeGreaterThanOrEqual(2);
