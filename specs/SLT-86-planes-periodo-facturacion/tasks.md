@@ -16,7 +16,7 @@
   - fijar el timestamp de la migración y actualizar `## Archivos esperados`.
 - **Hecho:** rama al día; `./init.sh` en verde sin cambios propios; §9 y §12 al día.
 
-## T1 — Migración y esquema (R1, R10, R11, R32–R36)
+## [x] T1 — Migración y esquema (R1, R10, R11, R32–R36)
 
 - **Depende de:** T0.
 - **Pasos:**
