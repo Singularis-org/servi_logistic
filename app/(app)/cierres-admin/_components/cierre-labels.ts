@@ -10,7 +10,11 @@
  * Que el archivo descargado y la pantalla digan lo mismo (R8/R24) es cierto porque leen del
  * MISMO sitio, no porque hoy coincidan dos literales escritos en dos archivos.
  */
-import type { CierreResultado } from "@/lib/interfaces/services/ICierreDiaService";
+import type {
+  CierreDetalleGestion,
+  CierreResultado,
+  IngresoEmpresaDTO,
+} from "@/lib/interfaces/services/ICierreDiaService";
 import type { CierreDestinoTipo, CierreEstado } from "@/lib/types/cierre";
 import { EMPRESA } from "@/lib/config/marca";
 // FICHA 408 — los dos módulos del vocabulario de la causa de devolución. Los DOS son PUROS
@@ -176,6 +180,59 @@ export const FULFILLMENT_COL = "Fulfillment";
 export const FLETE_CON_IVA_LABEL = "Flete + IVA";
 export const COMISION_CON_IVA_LABEL = "Comisión + IVA";
 export const FLETE_DEV_CON_IVA_LABEL = "Flete por devolución a origen + IVA";
+// SLT-54 (R65): en el modelo nuevo ese mismo concepto suma también reprogramado, novedad e incidente
+// (SLT-52 R29). Llamarlo «devolución a origen» diría que se cobró una que no hubo.
+export const FLETE_NO_ENTREGADAS_LABEL = "Flete de gestiones no entregadas";
+export const FLETE_NO_ENTREGADAS_CON_IVA_LABEL = `${FLETE_NO_ENTREGADAS_LABEL} + IVA`;
+export const FLETE_NO_ENTREGADAS_NOTA =
+  "Se le factura a la tienda, pero no sale de lo recaudado: una gestión no entregada no cobra contra entrega.";
+/**
+ * El flete que no es de entrega de UNA gestión del modelo nuevo, por el resultado que lo cobró. El nombre
+ * sale de la fuente única (ficha 455) y coincide con las filas de Tarifas. El rechazo conserva el nombre
+ * de la ficha 466, el mismo del viejo.
+ */
+export function fleteNoEntregaLabel(resultado: CierreResultado): string {
+  if (resultado === "entregado") return FLETE_NO_ENTREGADAS_LABEL;
+  if (resultado === "devolucion_a_origen_por_rechazo") return "Flete por devolución a origen";
+  return `Flete por ${nombreDeResultado(resultado).toLowerCase()}`;
+}
+/** Su IVA, en la forma de `IVA_FLETE_RECHAZO_LABEL`. */
+export function ivaFleteNoEntregaLabel(resultado: CierreResultado): string {
+  const nombre = fleteNoEntregaLabel(resultado);
+  return `IVA del ${nombre.charAt(0).toLowerCase()}${nombre.slice(1)}`;
+}
+/** R65, la fila de una gestión. En el viejo, el rótulo de siempre. */
+export function fleteDevConIvaDeGestion(
+  g: Pick<CierreDetalleGestion, "resultado" | "ingresoEmpresa">,
+): string {
+  return g.ingresoEmpresa?.tarifaModelo === "nuevo"
+    ? `${fleteNoEntregaLabel(g.resultado)} + IVA`
+    : FLETE_DEV_CON_IVA_LABEL;
+}
+/**
+ * R65, los totales: los paneles no reciben el modelo, y lo dicen sus gestiones. Basta con una: un cierre
+ * de bodega puede agregar días a ambos lados de la activación, y «no entregadas» sigue siendo cierto
+ * para los rechazos del viejo. La otra frase no lo sería para una novedad del nuevo.
+ */
+export function hayGestionEnModeloNuevo(
+  grupos: Readonly<Record<string, readonly Pick<CierreDetalleGestion, "ingresoEmpresa">[]>>,
+): boolean {
+  return Object.values(grupos).some((lista) =>
+    lista.some((g) => g.ingresoEmpresa?.tarifaModelo === "nuevo"),
+  );
+}
+/**
+ * SLT-54 (R62) — el fulfillment que se enseña de una gestión. En el nuevo no hay fila de `tarifas`:
+ * sale de `ing.fulfillment`. En el viejo sigue saliendo de la tarifa congelada porque `ing.fulfillment`
+ * convierte en "0.00" el `null` de un cierre anterior a la columna, y esa celda hoy va vacía. `null`
+ * también para quien no lo ve: el servidor ya se lo anuló (ficha 481).
+ */
+export function fulfillmentDeIngreso(
+  ing: Pick<IngresoEmpresaDTO, "fulfillment" | "tarifa" | "tarifaModelo"> | null | undefined,
+): string | null {
+  if (!ing) return null;
+  return ing.tarifaModelo === "nuevo" ? ing.fulfillment : (ing.tarifa?.fulfillment ?? null);
+}
 export const INGRESO_TOTAL_COL = `Total de ${EMPRESA.enFrase}`;
 // --- Feature 158 (R34/R9/R19): columnas propias del grupo `incidente` (texto i18n-ready) ---
 export const CAUSA_INCIDENTE_COL = "Causa";

@@ -102,6 +102,10 @@ import {
   FLETE_CON_IVA_LABEL,
   COMISION_CON_IVA_LABEL,
   FLETE_DEV_CON_IVA_LABEL,
+  FLETE_NO_ENTREGADAS_CON_IVA_LABEL,
+  fleteDevConIvaDeGestion,
+  fulfillmentDeIngreso,
+  hayGestionEnModeloNuevo,
   INGRESO_TOTAL_LABEL,
   INGRESO_PANEL_LABEL,
   MensajeroBloqueadoBadge,
@@ -1717,6 +1721,7 @@ function FilaGestion({
 }>) {
   const [open, setOpen] = useState(false);
   const ing = g.ingresoEmpresa ?? null;
+  const fulfillmentVisible = verFulfillment ? fulfillmentDeIngreso(ing) : null;
   // Feature 213 (T7): un método -> su etiqueta, como siempre; dos o más -> cada uno con su
   // monto, en el orden del DTO. `null` cuando la entrega no tiene líneas de pago.
   const desglose = desglosePantalla(g.pagos);
@@ -1818,7 +1823,7 @@ function FilaGestion({
               value={ing?.comisionConIva ? money(ing.comisionConIva) : null}
             />
             <DatoFila
-              label={FLETE_DEV_CON_IVA_LABEL}
+              label={fleteDevConIvaDeGestion(g)}
               value={
                 ing?.fleteDevolucionConIva
                   ? conMarcaDeOrigen(
@@ -1868,11 +1873,7 @@ function FilaGestion({
             />
             <DatoFila
               label={FULFILLMENT_COL}
-              value={
-                verFulfillment && ing?.tarifa?.fulfillment
-                  ? money(ing.tarifa.fulfillment)
-                  : null
-              }
+              value={fulfillmentVisible ? money(fulfillmentVisible) : null}
             />
             {/* FICHA 414 (R7) — LA MARCA «La tienda», la misma que la tabla en vivo del mensajero
                 pinta desde la 237/R41. Dos detalles que parecen de forma y no lo son:
@@ -2006,7 +2007,7 @@ function FilaGestion({
               con qué fórmula. Es lo que antes vivía en la fila desplegable de la tabla. */}
           {ing ? (
             <div className="mt-3 border-t border-border pt-2.5">
-              <DesgloseIngresoEmpresa g={g} />
+              <DesgloseIngresoEmpresa g={g} verFulfillment={verFulfillment} />
             </div>
           ) : null}
         </div>
@@ -2703,7 +2704,11 @@ export function CierreFacturaDetalle({
           value={money(totalesIngreso.comisionConIva)}
         />
         <Renglon
-          label={FLETE_DEV_CON_IVA_LABEL}
+          label={
+            hayGestionEnModeloNuevo(grupos)
+              ? FLETE_NO_ENTREGADAS_CON_IVA_LABEL
+              : FLETE_DEV_CON_IVA_LABEL
+          }
           value={money(totalesIngreso.fleteDevolucionConIva)}
         />
         <Renglon

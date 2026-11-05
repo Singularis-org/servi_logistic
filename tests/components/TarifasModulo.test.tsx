@@ -231,6 +231,58 @@ describe("SLT-54 — estados de carga", () => {
   });
 });
 
+describe("SLT-54 — el detalle de la lista de zonas, como la maqueta", () => {
+  const LISTA: PantallaOk["zonas"] = [
+    zonaResumen({ id: "z0", nombre: "Principal", esCentral: true, grupos: [{ nombre: "Centro", distritos: 3 }] }),
+    zonaResumen({ id: "z1", nombre: "Libre", grupos: [] }),
+    zonaResumen({ id: "z2", nombre: "Uno", grupos: [{ nombre: "Zona especial", distritos: 8 }] }),
+    zonaResumen({ id: "z3", nombre: "Singular", grupos: [{ nombre: "Costa", distritos: 1 }] }),
+    zonaResumen({ id: "z4", nombre: "Vacio", grupos: [{ nombre: "Pendiente", distritos: 0 }] }),
+    zonaResumen({
+      id: "z5",
+      nombre: "Varios",
+      grupos: [
+        { nombre: "A", distritos: 2 },
+        { nombre: "B", distritos: 2 },
+      ],
+    }),
+  ];
+
+  it("sale del loader, sin abrir ninguna zona", () => {
+    montar({ zonas: LISTA });
+    expect(zonaBoton(/Principal/)).toHaveTextContent("Bodega principal");
+    expect(zonaBoton(/Libre/)).toHaveTextContent("Sin grupos");
+    expect(zonaBoton(/Uno/)).toHaveTextContent("Zona especial: 8 distritos");
+    expect(zonaBoton(/Singular/)).toHaveTextContent("Costa: 1 distrito");
+    expect(zonaBoton(/Vacio/)).toHaveTextContent("1 grupo");
+    expect(zonaBoton(/Varios/)).toHaveTextContent("2 grupos");
+    expect(cargarZonaMock).not.toHaveBeenCalled();
+  });
+
+  it("al abrir una zona, manda lo recién leído: un grupo nuevo se ve sin recargar", async () => {
+    cargarZonaMock.mockResolvedValue(
+      zonaOk({
+        referencia: REF,
+        grupos: [
+          {
+            id: "g9",
+            zonaId: "z1",
+            nombre: "Recien",
+            distritos: [
+              { id: "d1", nombre: "Alfa" },
+              { id: "d2", nombre: "Beta" },
+            ],
+          },
+        ],
+      }),
+    );
+    const u = userEvent.setup();
+    montar({ zonas: LISTA });
+    await u.click(zonaBoton(/Libre/));
+    await waitFor(() => expect(zonaBoton(/Libre/)).toHaveTextContent("Recien: 2 distritos"));
+  });
+});
+
 describe("SLT-54 — selector de nivel", () => {
   const CON_GRUPO = zonaOk({
     referencia: REF,

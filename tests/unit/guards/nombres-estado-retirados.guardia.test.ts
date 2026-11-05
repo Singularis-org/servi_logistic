@@ -97,6 +97,12 @@ const ABREVIATURA_BODEGA = /(?<![A-Za-zÁÉÍÓÚáéíóúÑñ])B\.\s/;
 // era «archivo + maximo N» y `NOTA_AYUDA_SOLICITADA = "Sin gestionar"` seguia verde (1 hallazgo = 1
 // permitido); ahora el hallazgo tiene que ser EXACTAMENTE uno de `textos`, y todos tienen que estar.
 const EXCEPCIONES: Record<string, { textos: readonly string[]; motivo: string }> = {
+  "app/(app)/cierres-admin/_components/cierre-labels.ts": {
+    textos: ["entregadas"],
+    motivo:
+      "SLT-54 (R65, design §11): «Flete de gestiones no entregadas» es el rótulo aprobado de un GRUPO de " +
+      "gestiones, en negativo; no nombra el estado (R6)",
+  },
   "lib/types/order-status.ts": {
     // FICHA 456 (2026-09-24, reconciliacion R-456-3 de `progress/impl_456.md`): «sin gestionar» es la
     // frase del texto APROBADO por el humano para explicar «Novedad interna» («El mensajero terminó el

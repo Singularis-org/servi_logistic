@@ -123,7 +123,7 @@ function marcadoDe(alcance: AlcanceTableroDia, fila: OrdenDetalleDia): string {
 const CENTINELAS_QUE_UNA_COLUMNA_PINTA: readonly string[] = [
   CENTINELAS.flete,
   CENTINELAS.comision,
-  String(CENTINELAS.tarifa),
+  CENTINELAS.fulfillment,
 ];
 
 /** Los que ninguna columna pinta: si aparecieran en el marcado, alguien monto una columna nueva. */

@@ -15,7 +15,11 @@ import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
 import { cargarZonaTarifas, type CargarZonaTarifasResult } from "@/lib/actions/tarifas";
-import type { CargarPantallaResult, CargarZonaResult } from "@/lib/interfaces/services/ITarifasPantallaService";
+import type {
+  CargarPantallaResult,
+  CargarZonaResult,
+  GrupoDeZonaResumen,
+} from "@/lib/interfaces/services/ITarifasPantallaService";
 import { zonasCompletas } from "@/lib/tarifas/faltantes";
 import { cn } from "@/lib/utils";
 
@@ -43,6 +47,13 @@ export interface TarifasModuleProps {
 
 const NIVEL_ZONA = "zona";
 const NIVEL_TIENDA = "tienda";
+
+function resumenDeGrupos(grupos: ZonaOk["grupos"]): GrupoDeZonaResumen[] {
+  return grupos.map(({ nombre, distritos }) => {
+    const cuantos = distritos.length;
+    return { nombre, distritos: cuantos };
+  });
+}
 
 function estadoDe(r: CargarZonaTarifasResult | null): EstadoZona {
   return r !== null && r.status === "ok" ? { tipo: "ok", datos: r } : { tipo: "error" };
@@ -73,8 +84,8 @@ export function TarifasModule({ pantalla, zonaInicialId, zonaInicial, nombresDeG
   const [actor, setActor] = useState<TarifaActor>("tienda");
   const [activarAbierto, setActivarAbierto] = useState(false);
   const [pendiente, setPendiente] = useState<(() => void) | null>(null);
-  const [gruposPorZona, setGruposPorZona] = useState<Readonly<Record<string, number>>>(() =>
-    zonaInicialId !== null && zonaInicial?.status === "ok" ? { [zonaInicialId]: zonaInicial.grupos.length } : {},
+  const [gruposPorZona, setGruposPorZona] = useState<Readonly<Record<string, readonly GrupoDeZonaResumen[]>>>(() =>
+    zonaInicialId !== null && zonaInicial?.status === "ok" ? { [zonaInicialId]: resumenDeGrupos(zonaInicial.grupos) } : {},
   );
 
   const sucio = useRef(false);
@@ -100,7 +111,7 @@ export function TarifasModule({ pantalla, zonaInicialId, zonaInicial, nombresDeG
       if (silencioso && (r === null || r.status !== "ok")) return;
       setEstado(estadoDe(r));
       if (r?.status === "ok") {
-        const grupos = r.grupos.length;
+        const grupos = resumenDeGrupos(r.grupos);
         setGruposPorZona((g) => ({ ...g, [id]: grupos }));
       }
     },

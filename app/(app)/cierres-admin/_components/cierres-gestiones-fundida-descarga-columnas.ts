@@ -127,6 +127,7 @@ import {
   FLETE_CON_IVA_LABEL,
   FLETE_DEV_CON_IVA_LABEL,
   FULFILLMENT_COL,
+  fulfillmentDeIngreso,
   INDEMNIZACION_COL,
   INGRESO_BODEGA_RECHAZOS_COL,
   INGRESO_TOTAL_COL,
@@ -475,7 +476,7 @@ function celdasEspecificas(
     montoCobrar: ingreso ? ingreso.montoCobrar : null,
     // Monto FIJO de la tarifa CONGELADA (2026-08-19). No es un concepto derivado: no lo calcula
     // `derivarIngresoOrden` y no entra en `ingresoTotal`. Vacío si el cierre no lo congeló.
-    fulfillment: ingreso?.tarifa?.fulfillment ?? null,
+    fulfillment: fulfillmentDeIngreso(ingreso),
     recibido: gestion.montoRecibido,
     // Una columna POR MEDIO DE PAGO, money-safe: el STRING del snapshot tal cual. El medio sin
     // linea queda en `null` —celda VACIA (R10)—, que no es un cero.

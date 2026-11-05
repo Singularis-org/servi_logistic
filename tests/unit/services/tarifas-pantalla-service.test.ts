@@ -215,6 +215,7 @@ describe("SLT-54 R6, R14 — los faltantes de la empresa", () => {
     expect(res.zonas).toEqual([
       {
         ...NORTE,
+        grupos: [],
         estado: "sin_empezar",
         faltantes: [
           { concepto: "tienda_flete_entregado" },
@@ -224,6 +225,30 @@ describe("SLT-54 R6, R14 — los faltantes de la empresa", () => {
         usaZona: [],
       },
     ]);
+  });
+
+  it("cada zona lleva sus grupos con el conteo, para la lista", async () => {
+    const repo = repoDoble({
+      listarZonas: vi.fn().mockResolvedValue([NORTE, COMPLETA]),
+      listarGruposDeEmpresa: vi.fn().mockResolvedValue([
+        { id: "g1", zonaId: "z2", nombre: "Especial", distritos: 8 },
+        { id: "g2", zonaId: "z2", nombre: "Costa", distritos: 2 },
+      ]),
+    });
+    const r = await servicio(repo).cargarPantalla(MAESTRO);
+    if (r.status !== "ok") throw new Error("lectura");
+    expect(r.zonas.map((z) => [z.id, z.grupos])).toEqual([
+      ["z1", []],
+      [
+        "z2",
+        [
+          { nombre: "Especial", distritos: 8 },
+          { nombre: "Costa", distritos: 2 },
+        ],
+      ],
+    ]);
+    expect(repo.listarGruposDeEmpresa).toHaveBeenCalledTimes(1);
+    expect(repo.gruposConDistritos).not.toHaveBeenCalled();
   });
 
   it("consultas fijas: no crecen con las zonas", async () => {

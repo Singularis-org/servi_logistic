@@ -75,11 +75,11 @@
 
 ## Tanda E — Huecos de pantalla (frontend). Depende de C
 
-- [ ] **T5.1 [P] Tarjeta** (R62, R63, R65). `DesgloseIngresoEmpresa`, totales. *Hecho:* `CierreDesgloseModeloNuevo.test.tsx`: sin
+- [x] **T5.1 [P] Tarjeta** (R62, R63, R65). `DesgloseIngresoEmpresa`, totales. *Hecho:* `CierreDesgloseModeloNuevo.test.tsx`: sin
   nota falsa, conceptos y total, fulfillment fuera del total y oculto a quien no lo ve; viejo igual; guardia
   `flete-por-rechazo-censo` verde.
-- [ ] **T5.2 [P] Factura y descarga** (R62). `cierre-factura.tsx` y la descarga leen `ing.fulfillment`. *Hecho:* test de columnas.
-- [ ] **T5.3 [P] Columnas del listado** (R66). Órdenes, monitoreo y recibidas. *Hecho:* test de columna con viejo y nuevo.
+- [x] **T5.2 [P] Factura y descarga** (R62). `cierre-factura.tsx` y la descarga leen `ing.fulfillment`. *Hecho:* test de columnas.
+- [x] **T5.3 [P] Columnas del listado** (R66). Órdenes, monitoreo y recibidas. *Hecho:* test de columna con viejo y nuevo.
 
 ## Tanda F — E2E, medición y cierre
 
@@ -137,9 +137,9 @@
 | R57, R58 | `tests/components/TarifasModulo.test.tsx` |
 | R59, R60 | `e2e/tarifas-maqueta.spec.ts`; `tests/components/TarifasDisposicion.test.tsx` |
 | R61 | `tests/components/TarifasDisposicion.test.tsx`; `tests/components/TarifasValores.test.tsx` › «el IVA nace vacío»; `tests/unit/guards/etiquetas-geograficas-sin-literal.guardia.test.ts` |
-| R62, R63, R65 | `tests/components/CierreDesgloseModeloNuevo.test.tsx`; `tests/unit/repositories/cierres-admin-repository.test.ts` |
+| R62, R63, R65 | `tests/components/CierreDesgloseModeloNuevo.test.tsx`; `tests/unit/repositories/cierres-admin-repository.test.ts`; `tests/unit/descarga/cierres-gestiones-fundida-descarga-columnas.test.ts` › «SLT-54»; R65 también en `tests/components/CierreBodegaDetalleCascadas.test.tsx` y `tests/components/CierreMensajeroDetalleCascadas.test.tsx` |
 | R64 | `tests/integration/db/cierre-aporte-modelo-nuevo.test.ts`; `tests/unit/utils/aporte-por-orden-equivalencia.test.ts` |
-| R66 | `tests/unit/repositories/convergencia-tarifa-listado-cierre.test.ts`; `tests/components/OrdenesColumnaFulfillment.test.tsx` |
+| R66 | `tests/unit/repositories/convergencia-tarifa-listado-cierre.test.ts`; `tests/components/OrdenesColumnaFulfillment.test.tsx`; en «recibidas» no hay columna: solo la ve la satélite, que no recibe el dato (ficha 260) |
 | R67 | `e2e/tarifas-activacion.spec.ts` › «digitar, activar y cierre» |
 | R68 | `e2e/tarifas-activacion.spec.ts` › «dos empresas» |
 | R69 | `e2e/zona-especial-dos-empresas.spec.ts`; `tests/unit/guards/e2e-sin-saltos.guardia.test.ts` |
@@ -221,6 +221,10 @@
 **Huecos en pantalla**
 - `app/(app)/cierres-admin/_components/cierre-detalle-shared.tsx`
 - `app/(app)/cierres-admin/_components/cierre-factura.tsx`
+- `app/(app)/cierres-admin/_components/cierre-labels.ts`
+- `app/(app)/cierres-admin/_components/CascadasCierreMensajero.tsx`
+- `app/(app)/cierres-admin/_components/CierresAdminModule.tsx`
+- `app/(app)/cierres-admin/_components/CierresBodegaAdminModule.tsx`
 - `app/(app)/cierres-admin/_components/cierres-gestiones-fundida-descarga-columnas.ts`
 - `app/(app)/ordenes/_components/ordenes-columns.tsx`
 - `app/(app)/monitoreo/_components/detalle-columnas.ts`
@@ -329,6 +333,10 @@
 - `tests/components/ZonaCentralConfirmacion.test.tsx`
 - `tests/components/CrearZonaFormReconciliacion.test.tsx`
 - `tests/components/CierreCobrosDeLaGestion.test.tsx`
+- `tests/components/CierreBodegaDetalleCascadas.test.tsx`
+- `tests/components/CierreMensajeroDetalleCascadas.test.tsx`
+- `tests/unit/components/ordenes-columns.test.tsx`
+- `tests/unit/tablero-dia/recorte-por-alcance.guardia.test.ts`
 - `tests/components/CierreDetalleIncidente.test.tsx`
 - `tests/components/CierreTarifaAplicada.test.tsx`
 - `tests/components/CierreTarifaEspecial.test.tsx`

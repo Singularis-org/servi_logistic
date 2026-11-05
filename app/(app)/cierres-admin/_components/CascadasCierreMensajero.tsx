@@ -20,6 +20,8 @@ import {
   COBRADO_SOBRE_RECAUDADO_NOTA,
   FACTURADO_EMPRESA_LABEL,
   FLETE_DEV_CON_IVA_LABEL,
+  FLETE_NO_ENTREGADAS_CON_IVA_LABEL,
+  FLETE_NO_ENTREGADAS_NOTA,
   FLETE_RECHAZO_AUN_NO_COBRADO_NOTA,
   FLETE_RECHAZO_NO_DEDUCIBLE_NOTA,
   FLETE_RECHAZO_NO_SE_COBRARA_NOTA,
@@ -175,6 +177,8 @@ export interface CascadasCierreMensajeroProps {
    * `.pagoTienda` es `pagoTienda`, y la de `.ganaLaTienda` es `ganaLaTienda`.
    */
   partesPorTienda: readonly ParteDeTienda[];
+  /** SLT-54 (R65): alguna gestión del cierre es del modelo nuevo. Sin ella, los rótulos de siempre. */
+  modeloNuevo?: boolean;
 }
 
 /**
@@ -252,7 +256,7 @@ function lineasFacturaTienda(
   marcaDeVariasTiendas: string | null,
 ): LineaCascada[] {
   const { totalesIngreso, general, pagoTienda, cobradoSobreRecaudado } = props;
-  const notasDelFlete = [FLETE_RECHAZO_NO_DEDUCIBLE_NOTA];
+  const notasDelFlete = [props.modeloNuevo ? FLETE_NO_ENTREGADAS_NOTA : FLETE_RECHAZO_NO_DEDUCIBLE_NOTA];
   const cargo = notaDelCargoAlSaldo(
     totalesIngreso.fleteDevolucionConIva,
     props.fleteRechazoYaCobradoATienda,
@@ -274,7 +278,7 @@ function lineasFacturaTienda(
       notas: [COBRADO_SOBRE_RECAUDADO_NOTA],
     },
     {
-      label: FLETE_DEV_CON_IVA_LABEL,
+      label: props.modeloNuevo ? FLETE_NO_ENTREGADAS_CON_IVA_LABEL : FLETE_DEV_CON_IVA_LABEL,
       monto: totalesIngreso.fleteDevolucionConIva,
       signo: "suma",
       notas: notasDelFlete,

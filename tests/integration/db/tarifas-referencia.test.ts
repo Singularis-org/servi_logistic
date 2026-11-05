@@ -524,6 +524,44 @@ describeSiHayBase("SLT-54 R12 — la empresa A no ve nada de B, leyendo como `se
     });
   });
 
+  it("la lista de zonas trae los grupos con su conteo, y no los de otra empresa", async () => {
+    await conEscenario(async (tx, e) => {
+      const repo = new TarifasPantallaRepository(clienteConSavepoint(tx));
+      const deA = await comoEmpresa(tx, e.A, () => repo.listarGruposDeEmpresa());
+      expect(deA.map((g) => [g.id, g.distritos]).sort()).toEqual(
+        [
+          [e.G1, 1],
+          [e.G2, 1],
+          [e.Gmezcla, 2],
+        ].sort(),
+      );
+      const deB = await comoEmpresa(tx, e.B, () => repo.listarGruposDeEmpresa());
+      expect(deB.map((g) => g.id)).toEqual([e.GB]);
+
+      for (const actor of [e.maestroA, e.adminA]) {
+        const pantalla = await comoEmpresa(tx, e.A, () => servicio(tx).cargarPantalla(actor));
+        if (pantalla.status !== "ok") throw new Error("lectura");
+        const deZona = (id: string) => pantalla.zonas.find((z) => z.id === id)?.grupos;
+        expect(deZona(e.Z)).toEqual([
+          { nombre: "G1", distritos: 1 },
+          { nombre: "G2", distritos: 1 },
+          { nombre: "Gmezcla", distritos: 2 },
+        ]);
+        expect(deZona(e.zVacia)).toEqual([]);
+        expect(pantalla.zonas.some((z) => z.id === e.ZB)).toBe(false);
+      }
+    });
+  });
+
+  it("otro rol no recibe la lista", async () => {
+    await conEscenario(async (tx, e) => {
+      const r = await comoEmpresa(tx, e.A, () =>
+        servicio(tx).cargarPantalla({ usuarioId: e.maestroA.usuarioId, rol: "adminSatelite" }),
+      );
+      expect(r).toEqual({ status: "forbidden" });
+    });
+  });
+
   it("admin lee lo mismo que maestro, sin poder escribir", async () => {
     await conEscenario(async (tx, e) => {
       const deMaestro = await comoEmpresa(tx, e.A, () => servicio(tx).cargarPantalla(e.maestroA));

@@ -2,7 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type { ZonaResumen } from "@/lib/interfaces/services/ITarifasPantallaService";
+import type { GrupoDeZonaResumen, ZonaResumen } from "@/lib/interfaces/services/ITarifasPantallaService";
 import { cn } from "@/lib/utils";
 
 import { textoEstadoZona, TEXTOS } from "./tarifas-textos";
@@ -10,15 +10,22 @@ import { textoEstadoZona, TEXTOS } from "./tarifas-textos";
 export interface TarifasZonasProps {
   zonas: readonly ZonaResumen[];
   seleccionada: string;
-  /** Lo que ya se sabe de cada zona: `cargarPantallaTarifas` no trae el conteo, y cada zona abierta lo da. */
-  gruposPorZona: Readonly<Record<string, number>>;
+  /** Lo de la zona ya abierta, más fresco que `zona.grupos`: un grupo recién creado se ve sin recargar. */
+  gruposPorZona: Readonly<Record<string, readonly GrupoDeZonaResumen[]>>;
   onElegir: (zonaId: string) => void;
 }
 
-function detalle(zona: ZonaResumen, grupos: number | undefined): string | null {
+/**
+ * La maqueta enseña «Zona especial: 8 distritos» y «1 grupo». R44 prohíbe distinguir ese nombre, así que
+ * la regla es la misma para todos: un grupo se nombra con sus distritos; un grupo vacío y varios, se cuentan.
+ */
+function detalle(zona: ZonaResumen, grupos: readonly GrupoDeZonaResumen[]): string {
   if (zona.esCentral) return TEXTOS.bodegaPrincipal;
-  if (grupos === undefined) return null;
-  return grupos === 0 ? TEXTOS.sinGrupos : TEXTOS.gruposDeZona(grupos);
+  if (grupos.length === 0) return TEXTOS.sinGrupos;
+  const unico = grupos.length === 1 ? grupos[0] : undefined;
+  return unico !== undefined && unico.distritos > 0
+    ? TEXTOS.grupoUnicoDeZona(unico.nombre, unico.distritos)
+    : TEXTOS.gruposDeZona(grupos.length);
 }
 
 /** R17, R33: la lista de zonas con su estado. Bajo el ancho de dos columnas, va encima del panel (R59). */
@@ -35,7 +42,7 @@ export function TarifasZonas({ zonas, seleccionada, gruposPorZona, onElegir }: R
       <ul>
         {zonas.map((zona) => {
           const activa = zona.id === seleccionada;
-          const texto = detalle(zona, gruposPorZona[zona.id]);
+          const texto = detalle(zona, gruposPorZona[zona.id] ?? zona.grupos);
           return (
             <li key={zona.id} className="border-b border-border last:border-b-0">
               <Button
@@ -50,7 +57,7 @@ export function TarifasZonas({ zonas, seleccionada, gruposPorZona, onElegir }: R
               >
                 <span className="flex min-w-0 flex-col gap-0.5">
                   <span className="text-sm font-semibold">{zona.nombre}</span>
-                  {texto === null ? null : <span className="text-xs opacity-80">{texto}</span>}
+                  <span className="text-xs opacity-80">{texto}</span>
                 </span>
                 <Badge variant={zona.estado === "completa" ? "success" : "warning"} className="flex-none">
                   {textoEstadoZona(zona.estado, zona.faltantes.length)}

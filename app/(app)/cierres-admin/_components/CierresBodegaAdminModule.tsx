@@ -65,6 +65,9 @@ import {
   FLETE_CON_IVA_LABEL,
   COMISION_CON_IVA_LABEL,
   FLETE_DEV_CON_IVA_LABEL,
+  FLETE_NO_ENTREGADAS_CON_IVA_LABEL,
+  FLETE_NO_ENTREGADAS_NOTA,
+  hayGestionEnModeloNuevo,
   PARA_LA_CENTRAL_NOTA,
   PARA_LA_CENTRAL_NEGATIVO_NOTA,
   EFECTIVO_NO_CUBRE_NOTA,
@@ -316,6 +319,8 @@ function lineasCascadaDueno(
   // Sale de `marcaDeVariasTiendas`, la MISMA funcion que decide si se pinta el desglose: las dos
   // cosas aparecen y desaparecen juntas, y ninguna de las dos se decide aqui.
   marcaDeVariasTiendasDelNivel: string | null,
+  // SLT-54 (R65): alguna gestión del nivel es del modelo nuevo.
+  modeloNuevo: boolean,
 ): LineaCascada[] {
   // ⚠️ LA MARCA VA EN «Para la tienda» Y NO EN OTRA LINEA, y es la unica de esta cascada que la
   // lleva: es la que nombra a «la tienda» EN SINGULAR y por tanto la unica que, sola, se lee como
@@ -344,10 +349,10 @@ function lineasCascadaDueno(
       signo: "neutro",
     },
     {
-      label: FLETE_DEV_CON_IVA_LABEL,
+      label: modeloNuevo ? FLETE_NO_ENTREGADAS_CON_IVA_LABEL : FLETE_DEV_CON_IVA_LABEL,
       monto: nivel.totalesIngreso.fleteDevolucionConIva,
       signo: "suma",
-      notas: [FLETE_RECHAZO_NO_DEDUCIBLE_NOTA],
+      notas: [modeloNuevo ? FLETE_NO_ENTREGADAS_NOTA : FLETE_RECHAZO_NO_DEDUCIBLE_NOTA],
     },
     { label: FACTURADO_EMPRESA_LABEL, monto: nivel.totalesIngreso.total, signo: "neutro" },
     // SL-39 (R24) — el IVA va JUSTO después de lo facturado: no es de la empresa.
@@ -559,6 +564,8 @@ export function CierresBodegaAdminModule({
    */
   const marcaAgregada =
     detalle === null ? null : marcaDeVariasTiendas(detalle.partesPorTienda);
+  const modeloNuevoAgregado =
+    detalle !== null && detalle.cierres.some((c) => hayGestionEnModeloNuevo(c.grupos));
 
   return (
     // `gap-4`: la barra de filtros y las pestañas son una cabecera, no dos secciones.
@@ -751,6 +758,7 @@ export function CierresBodegaAdminModule({
                   netoEmpresa: detalle.netoEmpresa,
                 },
                 marcaAgregada,
+                modeloNuevoAgregado,
               )}
             />
 
@@ -767,6 +775,7 @@ export function CierresBodegaAdminModule({
             <TotalesIngresoPanel
               totales={detalle.totalesIngreso}
               ariaLabel={`Ingreso de ${EMPRESA.enFrase} del cierre de bodega`}
+              modeloNuevo={modeloNuevoAgregado}
             />
 
             {/* Motivo de rechazo si el cierre de bodega del histórico fue rechazado. */}
@@ -850,6 +859,7 @@ export function CierresBodegaAdminModule({
                       netoEmpresa: cierreDia.netoEmpresa,
                     },
                     marcaDelMensajero,
+                    hayGestionEnModeloNuevo(cierreDia.grupos),
                   )}
                 />
                 {/* 💰 Ficha 396 (R19) — EL DESGLOSE DE ESTE MENSAJERO, con SUS gestiones. Mismo
@@ -867,6 +877,7 @@ export function CierresBodegaAdminModule({
                 <TotalesIngresoPanel
                   totales={cierreDia.totalesIngreso}
                   ariaLabel={`Ingreso de ${EMPRESA.enFrase} · ${cierreDia.mensajeroNombre}`}
+                  modeloNuevo={hayGestionEnModeloNuevo(cierreDia.grupos)}
                 />
                 {/* FICHA 478 (T3) — las gestiones de ESTE mensajero en pestañas con fila
                     desplegable: la MISMA lista que el comprobante del cierre de mensajero, con

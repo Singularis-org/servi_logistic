@@ -163,6 +163,8 @@ export const TEXTOS = {
   bodegaPrincipal: "Bodega principal",
   sinGrupos: "Sin grupos",
   gruposDeZona: (n: number) => (n === 1 ? "1 grupo" : `${n} grupos`),
+  grupoUnicoDeZona: (nombre: string, distritos: number) =>
+    `${nombre}: ${distritos === 1 ? "1 distrito" : `${distritos} distritos`}`,
 
   editando: "Editando",
   viendo: "Viendo",

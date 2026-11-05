@@ -561,3 +561,124 @@ $ esos seis archivos, más cobertura-tablas, pwa-manifiesto-atajos e impresion-s
 **Sin correr aquí:** `vitest related`, `./init.sh`, la suite completa y E2E, por encargo.
 
 **Proceso:** las mutaciones y una tanda de guardias acabaron en segundo plano porque superan el tiempo de un comando en primer plano; se esperó a cada una antes de seguir, sin nada en paralelo.
+
+## Tanda E — Huecos de pantalla
+
+T5.1, T5.2, T5.3 y el ajuste de la lista de zonas hechos. Sin migraciones ni dependencias. El único backend es el conteo de distritos del loader de Tarifas.
+
+### Decisiones, por revisar
+
+- **`ing.fulfillment` solo en el nuevo.** El design dice «pasan a `ing.fulfillment`». En el viejo, leerlo a secas convierte en `0.00` el `null` de un cierre anterior a la columna y de uno sin tarifa, y esa celda hoy va vacía: rompería «el viejo, igual». `fulfillmentDeIngreso` lee `ing.fulfillment` en el nuevo y la tarifa congelada en el viejo. Hay test y mutación de los dos lados.
+- **`DesgloseIngresoEmpresa` gana `verFulfillment`, cerrado por defecto.** El servidor ya anula el dato (ficha 481); esto es la segunda barrera, con la misma regla que la fila de la factura.
+- **Rótulos de R65.** Por gestión: «Flete por reprogramado», «Flete por novedad», «Flete por incidente», derivados de `nombreDeResultado` y iguales a las filas de Tarifas; el rechazo conserva «Flete por devolución a origen». Totales: «Flete de gestiones no entregadas + IVA» y su nota. La guardia `nombres-estado-retirados` gana una excepción por texto para ese rótulo aprobado (R65, design §11): es un grupo en negativo, no el nombre de un estado.
+- **El modelo de los totales se deduce de las gestiones** (`hayGestionEnModeloNuevo`), porque `TotalesIngresoEmpresa` no lo trae. Basta una: «no entregadas» es cierto también para un rechazo del viejo, y al revés no. Un cierre de bodega decide por nivel: el agregado y cada mensajero.
+- **«Recibidas» no tiene columna «Fulfillment».** Esa lista solo la abre la satélite, y el recorte de zona le retira el dato. R66 se cumple en órdenes y en monitoreo global; en recibidas y monitoreo de zona se prueba que no se monta ni se recibe. T5.3 cambió la columna compartida `ordenesColumnsDe`, de la que salen las tres.
+- **Detalle de la lista de zonas.** La maqueta enseña «1 grupo» y «Zona especial: 8 distritos». R44 prohíbe tratar ese nombre aparte, así que la regla es una: un grupo con distritos se escribe «Nombre: N distritos»; varios, «N grupos»; uno vacío, «1 grupo»; ninguno, «Sin grupos». **Diferencia con la maqueta:** la fila «Alajuela · 1 grupo» se vería «<nombre del grupo>: N distritos». La zona central sigue en «Bodega principal», como la maqueta.
+
+### Sin hacer, a decidir
+
+1. **Encabezado de la descarga.** La columna sigue diciendo «Flete por devolución a origen + IVA» aunque la fila sea del nuevo y de una novedad. Es un encabezado por hoja, que puede mezclar cierres de los dos modelos, y cambiarlo mueve el viejo. La fila lleva su resultado al lado. El design §11 no la lista en R65.
+2. **`PAGO_TIENDA_NOTA`.** La nota verde del comprobante sigue explicando solo el flete por devolución a origen. En el nuevo tampoco se descuentan los otros fletes no entregados: es incompleta, no falsa. Fuera de R65, que habla de la etiqueta.
+
+### Archivos
+
+**Nuevos:** `tests/components/CierreDesgloseModeloNuevo.test.tsx`, `tests/components/OrdenesColumnaFulfillment.test.tsx`
+
+**Código:** `cierre-labels.ts`, `cierre-detalle-shared.tsx`, `cierre-factura.tsx`, `cierres-gestiones-fundida-descarga-columnas.ts`, `CascadasCierreMensajero.tsx`, `CierresAdminModule.tsx`, `CierresBodegaAdminModule.tsx` (cierres); `ordenes-columns.tsx`, comentarios de `detalle-columnas.ts` y `recibidas-columns.tsx` (columnas); `TarifasZonas.tsx`, `TarifasModule.tsx`, `tarifas-textos.ts` (zonas); `lib/repositories/TarifasPantallaRepository.ts`, `lib/services/TarifasPantallaService.ts` y sus dos interfaces (loader)
+
+**Tests y guardias con cambio:** `tarifas-referencia.test.ts`, `tarifas-pantalla-service.test.ts`, `TarifasModulo.test.tsx`, `tests/fixtures/tarifas-pantalla.ts`, `cierres-gestiones-fundida-descarga-columnas.test.ts`, `ordenes-columns.test.tsx`, `CierreBodegaDetalleCascadas.test.tsx`, `CierreMensajeroDetalleCascadas.test.tsx`; `recorte-por-alcance.guardia.test.ts` (ya busca `CENTINELAS.fulfillment`, como avisó la tanda C), `nombres-estado-retirados.guardia.test.ts` (la excepción de arriba)
+
+### Mapa R → test (tanda E)
+
+| R | Test |
+|---|---|
+| R62 tarjeta | `CierreDesgloseModeloNuevo` › «fulfillment e IVA en su sección…», «anulado por el servidor», «un actor sin acceso…», «viejo: la tarjeta no gana la sección» |
+| R62 fila y descarga | `CierreDesgloseModeloNuevo` › «la fila desplegada de la factura» (6 casos); `cierres-gestiones-fundida-descarga-columnas` › «SLT-54 (T5.2, R62)» (6 casos) |
+| R63 | `CierreDesgloseModeloNuevo` › «la tarjeta del modelo nuevo» (5 casos), «el modelo viejo se ve como hoy» (2 casos, con importes literales) |
+| R65 | `CierreDesgloseModeloNuevo` › «el flete que no es de entrega…», «los totales del comprobante»; `CierreBodegaDetalleCascadas` y `CierreMensajeroDetalleCascadas` › «SLT-54 R65»; guardia `flete-por-rechazo-censo` |
+| R66 | `OrdenesColumnaFulfillment` (7 casos: viejo, nuevo sin fila de `tarifas`, sin tarifa, recorte, monitoreo por alcance, recibidas); `recorte-por-alcance.guardia` |
+| Ajuste de zonas | `TarifasModulo` › «el detalle de la lista de zonas»; `tarifas-pantalla-service` › «cada zona lleva sus grupos»; `tarifas-referencia` (Postgres, como `servi_app`, dos empresas) › «la lista de zonas trae…», «otro rol no recibe la lista» |
+
+### Mutaciones
+
+Arnés con autocomprobación: sin mutar, 221 de 221. Cada mutación se aplicó, corrió y revirtió por script, con huella de cada archivo al final (`revertido true`). **Matadas: 37 de 37, todas por aserción.** F2 y F4 dieron primero `TypeError` por un cast del test: se añadió la aserción y se repitieron. El arnés leyó mal el motivo de Z3 y Z4 (cogía un log de otro test) y también se repitieron, ya con la lectura corregida. E1 se repitió tras cambiar los rótulos a `nombreDeResultado`.
+
+| Grupo | Mutación | Primer rojo |
+|---|---|---|
+| Tarjeta | T1 sin la rama nueva: nota falsa | `expected <p role="note"…> to be null` |
+| | T2 el total suma el fulfillment | `expected '₡900' to be '₡2.486'` |
+| | T3 ignora quién lo ve / T5 por defecto lo ve | `expected <section…> to be null` |
+| | T4 anulado pinta ₡0 | `expected <section…> to be null` |
+| | T6 sin IVA de fulfillment / T7 fila GAM en el nuevo | `Unable to find…`, `expected <span…> to be null` |
+| Factura y descarga | F1 viejo lee `ing.fulfillment` | `expected <span></span> to be null` |
+| | F2 nuevo lee la tarifa / F4 no pasa la regla a la tarjeta | `expected null not to be null` |
+| | F3 ignora `verFulfillment` / F5 enseña a todos | `expected <span>…`, `<section…> to be null` |
+| | F6 descarga solo de la tarifa | `expected null to be '900.00'` |
+| | F7 descarga, `ing.fulfillment` a secas (el viejo cambia) | `expected {…} to deeply equal {…}` |
+| Columnas | C1 vuelve a la fila de `tarifas` | `toHaveTextContent()` |
+| | C2 el recorte deja pasar el ítem | `to not have property "fulfillment"` |
+| | C3 recibidas la monta / C4 monitoreo de zona la monta | `to include 'fulfillment'`, `expected true to be false` |
+| Rótulos | E1 todo se llama devolución / E2 el viejo cambia | `Unable to find…`, `expected 'Flete por novedad + IVA' to be…` |
+| | E3 nunca nuevo / E4 todo nuevo | `expected false to be true`, `expected true to be false` |
+| | E5-E10 cascadas y paneles fijados, cada mensajero toma el agregado | `Unable to find an element with the text…` |
+| Zonas | Z1 conteo 0 / Z2 cuenta valores | `expected [ … ] to deeply equal [ … ]` |
+| | Z3 grupos de otra zona | `expected [ Array(3) ] to deeply equal []` |
+| | Z4 N+1 | `expected "vi.fn()" to not be called at all, but actually been called 2` |
+| | Z5 lectura abierta a otro rol | `expected {…} to deeply equal { status: 'forbidden' }` |
+| | Z6-Z8 nombre, recién leído, loader | `toHaveTextContent()` |
+| | RLS de `grupo_distritos` apagada dentro de la transacción revertida del test | `expected [ …(4) ] to deeply equal [ …(3) ]` |
+
+### Lo que se vio en el navegador
+
+`next dev`, 1360 × 1400, con un cierre real de cada modelo creado por `solicitarCierre`, y 0 errores de consola en los dos recorridos.
+
+| Pantalla | Viejo | Nuevo |
+|---|---|---|
+| Tarjeta, entregado | Dos paneles, como hoy: Valor flete ₡2.800, GAM ₡0, IVA ₡364, Comisión ₡350, IVA ₡7, Total cobrado ₡3.521 | Monto ₡10.000, Flete ₡1.500, IVA ₡195, Comisión ₡200, IVA ₡26, Total cobrado ₡1.921. Sin nota, sin GAM. Fuera: Fulfillment ₡900, IVA ₡117 |
+| Tarjeta, novedad | Todo ₡0, Total ₡0 | Flete por novedad ₡250, IVA ₡32,50, Total ₡282,50 |
+| Tarjeta, rechazo | ₡1.400 + ₡182 = ₡1.582 | Flete por devolución a origen ₡300, IVA ₡39, Total ₡339 |
+| Fila de la factura | Fulfillment ₡696,40 | Fulfillment ₡900; «Flete por novedad + IVA ₡282,50» |
+| Totales y cascada | «Flete por devolución a origen + IVA» | «Flete de gestiones no entregadas + IVA» |
+| `/ordenes`, Fulfillment | ₡696,40 en las 4 | ₡900 en las 4 |
+| Lista de zonas | «Sin grupos» en las 2 | «Zona especial: 2 distritos» y «Sin grupos» |
+
+La tarjeta también se vio a 390 px, sin desborde de página.
+
+**Lo que no se vio** (solo en tests): modo oscuro (el contexto no activó la clase `dark`), la vista de `adminSatelite` y el anulado de la ficha 481, monitoreo, recibidas, el archivo descargado, el detalle de un cierre de bodega y la zona central en la lista.
+
+### El 500 de `useToast`
+
+**No se reprodujo: 0 de 20, y ni una mención en el log del servidor.** Con `next dev` en esta rama, entrando por `/login` e yendo a la URL en cuanto el login sale de `/login`, leyendo el estado de la respuesta: 4 en `/configuracion/tarifas` y 4 en `/configuracion/zonas` con el servidor recién arrancado; 7 en Tarifas tras volver a borrar `.next`; 5 con un precio de tienda en un grupo, por si dependía de `nombresDeGrupo`. Todos 200. Sin reproducción no se puede decir si es de la rama ni comparar con `origin/dev`, así que no se tocó y no hay test. `ToastProvider` envuelve `(app)/layout.tsx` y `LogoutButton` cuelga de él, así que por lectura no falta el proveedor. La idea de dos instancias del módulo en una compilación de `next dev` es una hipótesis sin medir. Sigue el aviso de la tanda D: si la Tanda F ve un 500 en `next start`, empezar por aquí.
+
+### La base local: lo que quedó y un error mío
+
+Mis dos empresas de prueba, sus usuarios y sus sesiones se borraron; la comparación por tabla con la foto previa dio `base_limpia true`. Luego la base volvió a cambiar y **al cerrar no está igual que la foto**. Ninguna empresa activada (`tarifa_activacion` 0), RLS de `grupo_distritos` en su estado original. Filas de más: `organizacion` +3, `usuario` +14, `orden` +2, `historial_accion` +18, `jobs` +3, y otras 15 tablas. Empresas nuevas: `demo-qa-a`, `demo-qa-b`, `e2e-sl43-real-…`.
+
+**Causas, y no las pude separar:**
+1. **Error mío.** Mi primer intento de la mutación de RLS pasó el filtro `-t` sin comillas por una shell. Vitest tomó las palabras como filtros de archivo y arrancó parte de la suite contra la base local, con la RLS de `grupo_distritos` **apagada de verdad** durante esos 150 s, hasta que el `timeout` lo cortó. Un segundo intento, ya con comillas, la apagó unos segundos más y su resultado no valía. La RLS se restauró las dos veces. La medida válida es la de la tabla de mutaciones, dentro de una transacción revertida.
+2. **Otra corrida en la misma base.** A la vez corría un `pnpm run test:json` (suite completa) que no lancé yo, desde las 00:29, y seguía en marcha cuando apagué la RLS. **Sus resultados de ese rato no son fiables**: pudo ver un rojo o un verde falso por mi culpa.
+
+No borré esas filas: no puedo atribuirlas, y parte pueden ser de esa otra corrida. El dev server está parado, el puerto libre y `.next` borrada.
+
+### Salida de los comandos
+
+```
+$ NODE_OPTIONS=--max-old-space-size=8192 pnpm exec tsc --noEmit -p .   -> 0 errores
+$ pnpm exec eslint <archivos de la tanda>                               -> 0 errores, 2 avisos (un import y un tipo sin usar, ya estaban)
+$ vitest, 16 archivos de cierres, columnas y descarga
+  Test Files  16 passed (16)
+       Tests  335 passed (335)
+$ vitest, 20 archivos de descarga, columnas, recorte, Tarifas y Postgres
+  Test Files  1 failed | 19 passed (20)
+       Tests  4 failed | 345 passed (349)
+  (los 4: satelite-bodega-alcance-real, en el baseline: «el catalogo local no tiene el estatus ayuda_tienda»)
+$ pnpm run test:guardias
+  Test Files  2 failed | 329 passed (331)
+       Tests  5 failed | 4611 passed | 1 skipped (4617)
+  - 4 rojos: dependencias-declaradas-presentes (baseline)
+  - 1 rojo: contadores-cabecera, por mi propio helper; arreglado después
+$ contadores-cabecera y TarifasModulo, tras el arreglo
+       Tests  26 passed (26)
+```
+
+**Sin correr aquí:** `vitest related`, `./init.sh`, la suite completa por encargo y E2E (Tanda F). La suite que arrancó por error no cuenta como medida.

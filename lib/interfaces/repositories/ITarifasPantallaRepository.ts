@@ -16,6 +16,8 @@ export interface GrupoDeEmpresa {
   id: string;
   zonaId: string;
   nombre: string;
+  /** Cuantos distritos tiene: el detalle de la lista de zonas, sin abrir cada zona. */
+  distritos: number;
 }
 
 export interface VehiculoDePantalla {

@@ -87,15 +87,14 @@ export class TarifasPantallaService implements ITarifasPantallaService, IFaltant
     const grupos = await this.repo.listarGruposDeEmpresa();
     const valores = await this.repo.valoresDeZonaOGrupo();
     const vehiculosActivos = vehiculos.filter((v) => v.activo);
-    return zonas.map((zona) => ({
-      ...zona,
-      ...faltantesDeZona({
-        zona,
-        grupos: grupos.filter((g) => g.zonaId === zona.id),
-        valores,
-        vehiculosActivos,
-      }),
-    }));
+    return zonas.map((zona) => {
+      const deLaZona = grupos.filter((g) => g.zonaId === zona.id);
+      return {
+        ...zona,
+        grupos: deLaZona.map(({ nombre, distritos }) => ({ nombre, distritos })),
+        ...faltantesDeZona({ zona, grupos: deLaZona, valores, vehiculosActivos }),
+      };
+    });
   }
 
   private async referencia(

@@ -11,7 +11,13 @@ import type { GrupoDistritosDTO, TarifaValorDTO } from "@/lib/types/tarifa-flexi
 
 export type { Actor } from "@/lib/interfaces/services/ITarifaService";
 
-export type ZonaResumen = ZonaDePantalla & EstadoZona;
+/** Lo que la lista de zonas dice de un grupo. */
+export interface GrupoDeZonaResumen {
+  nombre: string;
+  distritos: number;
+}
+
+export type ZonaResumen = ZonaDePantalla & EstadoZona & { grupos: GrupoDeZonaResumen[] };
 
 /** El distrito con su marca (de solo lectura, R45) y el grupo en el que ya esta (R42). */
 export interface DistritoDeSelector extends DistritoDeZona {

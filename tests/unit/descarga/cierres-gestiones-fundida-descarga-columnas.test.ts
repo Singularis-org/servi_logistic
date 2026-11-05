@@ -918,3 +918,48 @@ describe("SLT-76 (R21) — la fecha del cierre en la hoja fundida es de Costa Ri
     expect(fila.fechaCierre).toBe("2026-10-31");
   });
 });
+
+describe("SLT-54 (T5.2, R62) — la celda de fulfillment, en los dos modelos", () => {
+  const TARIFA_VIEJA = {
+    tarifaId: "t1",
+    valorFlete: "1000.00",
+    valorFleteGam: "800.00",
+    valorFleteDevuelto: "500.00",
+    valorFleteDevueltoGam: "400.00",
+    comisionCod: "5.00",
+    ivaFlete: "13.00",
+    ivaComisionCod: "13.00",
+    fulfillment: "696.40",
+    tarifaEspecial: null,
+    tarifaEspecialDevuelta: null,
+  };
+  const celda = (ing: Partial<IngresoEmpresaDTO>) =>
+    filaDescargaGestionFundida(gestion({ resultado: "entregado", ingresoEmpresa: ingreso(ing) })).fulfillment;
+
+  it("nuevo: el fulfillment congelado, con `tarifa` en null", () => {
+    expect(celda({ tarifaModelo: "nuevo", tarifa: null, fulfillment: "900.00", ivaFulfillment: "117.00" })).toBe("900.00");
+  });
+
+  it("nuevo sin concepto: 0.00, que es lo que el cierre congeló", () => {
+    expect(celda({ tarifaModelo: "nuevo", tarifa: null, fulfillment: "0.00" })).toBe("0.00");
+  });
+
+  it("viejo: el de la tarifa congelada, igual que hoy", () => {
+    expect(celda({ tarifaModelo: "viejo", tarifa: TARIFA_VIEJA, fulfillment: "696.40" })).toBe("696.40");
+  });
+
+  it("viejo anterior a la columna: vacía, no 0.00, aunque el DTO diga 0.00", () => {
+    expect(celda({ tarifaModelo: "viejo", tarifa: { ...TARIFA_VIEJA, fulfillment: null }, fulfillment: "0.00" })).toBeNull();
+  });
+
+  it("sin tarifa congelada: vacía", () => {
+    expect(celda({ tarifaModelo: null, tarifa: null, fulfillment: "0.00" })).toBeNull();
+  });
+
+  it("anulado para quien no lo ve (ficha 481): vacía en los dos modelos", () => {
+    expect(celda({ tarifaModelo: "nuevo", tarifa: null, fulfillment: null, ivaFulfillment: null })).toBeNull();
+    expect(
+      celda({ tarifaModelo: "viejo", tarifa: { ...TARIFA_VIEJA, fulfillment: null }, fulfillment: null, ivaFulfillment: null }),
+    ).toBeNull();
+  });
+});

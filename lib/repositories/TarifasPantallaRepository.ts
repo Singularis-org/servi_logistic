@@ -56,10 +56,11 @@ export class TarifasPantallaRepository implements ITarifasPantallaRepository {
   }
 
   async listarGruposDeEmpresa(): Promise<GrupoDeEmpresa[]> {
-    return this.prisma.grupoDistritos.findMany({
-      select: { id: true, zonaId: true, nombre: true },
+    const filas = await this.prisma.grupoDistritos.findMany({
+      select: { id: true, zonaId: true, nombre: true, _count: { select: { distritos: true } } },
       orderBy: { nombre: "asc" },
     });
+    return filas.map(({ _count, ...g }) => ({ ...g, distritos: _count.distritos }));
   }
 
   async gruposConDistritos(zonaId: string): Promise<GrupoDistritosDTO[]> {

@@ -26,7 +26,7 @@ export function valor(concepto: TarifaConcepto, extra: Partial<TarifaValorDTO> =
 }
 
 export function zonaResumen(extra: Partial<ZonaResumen> = {}): ZonaResumen {
-  return { id: "z1", nombre: "Norte", esCentral: false, estado: "completa", faltantes: [], usaZona: [], ...extra };
+  return { id: "z1", nombre: "Norte", esCentral: false, grupos: [], estado: "completa", faltantes: [], usaZona: [], ...extra };
 }
 
 /** Una referencia con el mismo resultado en todos los conceptos. */
