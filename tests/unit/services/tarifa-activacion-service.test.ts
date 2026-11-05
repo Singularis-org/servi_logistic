@@ -19,13 +19,15 @@ const ZONA_CON_FALTANTES: FaltantesPorZona = {
   zonaId: "z1",
   zonaNombre: "Norte",
   faltantes: [{ concepto: "tienda_flete_entregado" }, { concepto: "mensajero_entregado" }],
+  usaZona: [],
 };
 const OTRA_CON_FALTANTES: FaltantesPorZona = {
   zonaId: "z2",
   zonaNombre: "Sur",
   faltantes: [{ concepto: "tienda_flete_rechazo" }],
+  usaZona: [],
 };
-const ZONA_COMPLETA: FaltantesPorZona = { zonaId: "z3", zonaNombre: "Este", faltantes: [] };
+const ZONA_COMPLETA: FaltantesPorZona = { zonaId: "z3", zonaNombre: "Este", faltantes: [], usaZona: [] };
 
 function montar(zonas: readonly FaltantesPorZona[] = []) {
   const repo = {

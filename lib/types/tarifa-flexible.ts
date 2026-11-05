@@ -263,6 +263,32 @@ export type CrearGrupoInput = z.input<typeof crearGrupoSchema>;
  */
 export const activarTarifasSchema = z.object({ confirmaFaltantes: z.boolean() });
 
+/** SLT-54 (design §7): `tiendaId` pide ademas la referencia de esa tienda. */
+export const cargarZonaTarifasSchema = z.object({ zonaId: idSchema, tiendaId: idSchema.optional() });
+
+/** SLT-54 (design §7, R35): tope para que un payload inventado no abra 200+ transacciones. */
+export const MAX_CAMBIOS_DE_VALOR = 200;
+
+/**
+ * Una entrada por concepto modificado. `datos` se deja tal cual: lo valida `TarifaValorService`, que es
+ * quien devuelve el error en el campo que la fila tiene que pintar (R38) y rechaza un `ivaPct` en un
+ * pago (R36). Validarlo aqui tambien tiraria todo el guardado por una sola fila.
+ */
+export const guardarValoresTarifaSchema = z.object({
+  cambios: z
+    .array(
+      z.discriminatedUnion("accion", [
+        z.object({ accion: z.literal("fijar"), clave: idSchema, datos: z.record(z.string(), z.unknown()) }),
+        z.object({ accion: z.literal("quitar"), clave: idSchema, id: idSchema }),
+      ]),
+    )
+    .max(MAX_CAMBIOS_DE_VALOR),
+});
+
+export const renombrarGrupoDistritosSchema = z.object({ id: idSchema, nombre: z.string() });
+export const cambiarDistritosDeGrupoSchema = z.object({ id: idSchema, distritoIds: z.array(z.string()) });
+export const borrarGrupoDistritosSchema = z.object({ id: idSchema });
+
 export interface DistritoDelGrupo {
   id: string;
   nombre: string;

@@ -450,6 +450,93 @@ describeSiHayBase("SLT-52 T6.4 — escritura de valores y grupos (Postgres real,
     });
   });
 
+  describe("SLT-54 R52 — vehículo inactivo", () => {
+    const pagoEnVehiculo = (e: Escenario, nivel: { grupoId?: string; concepto?: "mensajero_entregado" | "satelite_rechazo" } = {}) => ({
+      concepto: nivel.concepto ?? ("mensajero_entregado" as const),
+      modo: "monto" as const,
+      valor: "800",
+      zonaId: e.Z,
+      grupoId: nivel.grupoId ?? null,
+      tiendaId: null,
+      vehiculoId: e.V,
+    });
+
+    const inactivar = async (e: Escenario) => {
+      await comoDueno(e.tx);
+      await e.tx.vehiculo.update({ where: { id: e.V }, data: { activo: false } });
+      await comoApp(e.tx, e.A);
+    };
+
+    const CAMPO = {
+      status: "validation_error",
+      fieldErrors: { vehiculoId: ["El vehículo no existe o está inactivo: no admite un valor nuevo."] },
+    };
+
+    it("inactivo: un valor nuevo se rechaza en vehiculoId, sin escribir", async () => {
+      await conEscenario(async (e) => {
+        await inactivar(e);
+        expect(await valoresDeLaZona(e.tx, e.Z)).toEqual([]);
+        expect(await e.s.tarifaValor.fijarValor(pagoEnVehiculo(e), e.maestro)).toEqual(CAMPO);
+        expect(await valoresDeLaZona(e.tx, e.Z)).toEqual([]);
+      });
+    });
+
+    it("inactivo: reemplazar el valor que ya tiene sigue valiendo y conserva la fila", async () => {
+      await conEscenario(async (e) => {
+        const primero = await e.s.tarifaValor.fijarValor(pagoEnVehiculo(e), e.maestro);
+        if (primero.status !== "ok") throw new Error(JSON.stringify(primero));
+        await inactivar(e);
+        const segundo = await e.s.tarifaValor.fijarValor({ ...pagoEnVehiculo(e), valor: "950" }, e.maestro);
+        expect(segundo).toEqual({ status: "ok", id: primero.id });
+        expect((await valoresDeLaZona(e.tx, e.Z)).map((v) => v.valor)).toEqual(["950.00"]);
+      });
+    });
+
+    it("inactivo: el nivel exacto cuenta: otro concepto u otro grupo del mismo vehículo no es reemplazar", async () => {
+      await conEscenario(async (e) => {
+        const grupo = await crearGrupoOk(e, "Con vehiculo", [e.d1]);
+        const primero = await e.s.tarifaValor.fijarValor(pagoEnVehiculo(e), e.maestro);
+        expect(primero.status).toBe("ok");
+        await inactivar(e);
+        expect(await e.s.tarifaValor.fijarValor(pagoEnVehiculo(e, { concepto: "satelite_rechazo" }), e.maestro)).toEqual(CAMPO);
+        expect(await e.s.tarifaValor.fijarValor(pagoEnVehiculo(e, { grupoId: grupo }), e.maestro)).toEqual(CAMPO);
+        expect(await valoresDeLaZona(e.tx, e.Z)).toHaveLength(1);
+      });
+    });
+
+    it("inactivo: quitar el valor sigue valiendo", async () => {
+      await conEscenario(async (e) => {
+        const primero = await e.s.tarifaValor.fijarValor(pagoEnVehiculo(e), e.maestro);
+        if (primero.status !== "ok") throw new Error(JSON.stringify(primero));
+        await inactivar(e);
+        expect(await e.s.tarifaValor.quitarValor(primero.id, e.maestro)).toEqual({ status: "ok" });
+        expect(await valoresDeLaZona(e.tx, e.Z)).toEqual([]);
+      });
+    });
+
+    it("activo: un valor nuevo se admite, y un vehículo que no existe se rechaza igual", async () => {
+      await conEscenario(async (e) => {
+        expect((await e.s.tarifaValor.fijarValor(pagoEnVehiculo(e), e.maestro)).status).toBe("ok");
+        expect(
+          await e.s.tarifaValor.fijarValor({ ...pagoEnVehiculo(e), vehiculoId: randomUUID() }, e.maestro),
+        ).toEqual(CAMPO);
+      });
+    });
+
+    it("inactivo: el valor de otra empresa para ese vehículo no le abre la puerta a esta", async () => {
+      await conEscenario(async (e) => {
+        await comoDueno(e.tx);
+        await fijarEmpresa(e.tx, e.B);
+        await e.tx.tarifaValor.create({
+          data: { concepto: "mensajero_entregado", modo: "monto", valor: "1.00", zonaId: e.ZB, vehiculoId: e.V },
+        });
+        await e.tx.vehiculo.update({ where: { id: e.V }, data: { activo: false } });
+        await comoApp(e.tx, e.A);
+        expect(await e.s.tarifaValor.fijarValor(pagoEnVehiculo(e), e.maestro)).toEqual(CAMPO);
+      });
+    });
+  });
+
   it("R15 — con la empresa A activa no se lee, ni se escribe, ni se borra nada de B (tampoco con SQL a mano)", async () => {
     await conEscenario(async (e) => {
       // PREMISA, como dueno: lo de B existe.

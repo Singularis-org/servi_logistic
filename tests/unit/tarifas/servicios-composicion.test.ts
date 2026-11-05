@@ -5,7 +5,9 @@ import { serviciosDeTarifas } from "@/lib/tarifas/servicios";
 import { TarifaValorService } from "@/lib/services/TarifaValorService";
 import { GrupoDistritosService } from "@/lib/services/GrupoDistritosService";
 import { TarifaActivacionService } from "@/lib/services/TarifaActivacionService";
+import { TarifasPantallaService } from "@/lib/services/TarifasPantallaService";
 import { TarifaActivacionRepository } from "@/lib/repositories/TarifaActivacionRepository";
+import { TarifasPantallaRepository } from "@/lib/repositories/TarifasPantallaRepository";
 import { TarifaValorRepository } from "@/lib/repositories/TarifaValorRepository";
 import { GrupoDistritosRepository } from "@/lib/repositories/GrupoDistritosRepository";
 import type { Actor } from "@/lib/interfaces/services/ITarifaValorService";
@@ -15,14 +17,20 @@ import type { Actor } from "@/lib/interfaces/services/ITarifaValorService";
 // que se le dio, y una llamada al service llega hasta el cliente a traves de el.
 
 const ADMIN: Actor = { usuarioId: "u-admin", rol: "admin" };
+const MAESTRO: Actor = { usuarioId: "u-maestro", rol: "maestro" };
 
 function clienteDoble() {
-  return {
+  const cliente = {
     tarifaValor: { findMany: vi.fn().mockResolvedValue([]) },
     grupoDistritos: { findMany: vi.fn().mockResolvedValue([]) },
-    tarifaActivacion: { findFirst: vi.fn().mockResolvedValue(null), create: vi.fn() },
-    $transaction: vi.fn(),
+    tarifaActivacion: { findFirst: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue({ id: "act", activadaAt: new Date("2026-11-04") }) },
+    zona: { findMany: vi.fn().mockResolvedValue([{ id: "z1", nombre: "Norte", esCentral: false }]) },
+    vehiculo: { findMany: vi.fn().mockResolvedValue([]) },
+    usuario: { findUnique: vi.fn().mockResolvedValue({ nombre: "Ana", primerApellido: "Mora", rol: { value: "maestro" } }) },
+    historialAccion: { createMany: vi.fn().mockResolvedValue({ count: 1 }) },
+    $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>): Promise<unknown> => fn(cliente)),
   };
+  return cliente;
 }
 
 /** Lee la dependencia privada que la fabrica inyecto: es justo lo que se quiere comprobar. */
@@ -53,29 +61,68 @@ describe("T6.3 — serviciosDeTarifas compone con instancias reales", () => {
     expect(dependencia(repo as object, "prisma")).toBe(prisma);
   });
 
-  it("SLT-54 — TarifaActivacionService recibe su repositorio real con el cliente dado y una fuente de faltantes", () => {
+  it("SLT-54 T2.3 — TarifasPantallaService recibe su repositorio real con el cliente dado", () => {
     const prisma = clienteDoble();
-    const { tarifaActivacion } = serviciosDeTarifas(prisma as unknown as PrismaClient);
+    const { tarifasPantalla } = serviciosDeTarifas(prisma as unknown as PrismaClient);
+
+    expect(tarifasPantalla).toBeInstanceOf(TarifasPantallaService);
+    const repo = dependencia(tarifasPantalla, "repo");
+    expect(repo).toBeInstanceOf(TarifasPantallaRepository);
+    expect(dependencia(repo as object, "prisma")).toBe(prisma);
+  });
+
+  it("SLT-54 T2.3 — TarifaActivacionService recibe su repositorio real y LA fuente de faltantes de la pantalla", () => {
+    const prisma = clienteDoble();
+    const { tarifaActivacion, tarifasPantalla } = serviciosDeTarifas(prisma as unknown as PrismaClient);
 
     expect(tarifaActivacion).toBeInstanceOf(TarifaActivacionService);
     const repo = dependencia(tarifaActivacion, "repo");
     expect(repo).toBeInstanceOf(TarifaActivacionRepository);
     expect(dependencia(repo as object, "prisma")).toBe(prisma);
-    expect(dependencia(tarifaActivacion, "faltantes")).toBeDefined();
+    expect(dependencia(tarifaActivacion, "faltantes")).toBe(tarifasPantalla);
   });
 
-  // T2.3 ata los faltantes reales y cambia ESTE caso. Mientras tanto, activar no puede escribir: con una
-  // lista vacia, una empresa con faltantes se activaria sin la confirmacion de R6.
-  it("SLT-54 T1.4 — sin los faltantes atados, activar lanza sin escribir, aun confirmando", async () => {
+  // No basta con que la fabrica importe los faltantes: aqui se comprueba que alguien los PASA. Sale de la
+  // fabrica, llega hasta el cliente, y la zona sin valores del doble es la que frena la activacion (R6).
+  it("SLT-54 T2.3 — activar por la fabrica pide confirmacion con los faltantes que lee del cliente, sin escribir", async () => {
     const prisma = clienteDoble();
     const { tarifaActivacion } = serviciosDeTarifas(prisma as unknown as PrismaClient);
 
-    await expect(
-      tarifaActivacion.activar({ confirmaFaltantes: true }, { usuarioId: "u-maestro", rol: "maestro" }),
-    ).rejects.toThrow("T2.3");
-    expect(prisma.tarifaActivacion.findFirst).toHaveBeenCalledTimes(1);
+    const res = await tarifaActivacion.activar({ confirmaFaltantes: false }, MAESTRO);
+
+    expect(res).toEqual({
+      status: "confirmacion_requerida",
+      faltantes: [
+        {
+          zonaId: "z1",
+          zonaNombre: "Norte",
+          faltantes: [
+            { concepto: "tienda_flete_entregado" },
+            { concepto: "tienda_flete_rechazo" },
+            { concepto: "mensajero_entregado" },
+          ],
+          usaZona: [],
+        },
+      ],
+    });
+    expect(prisma.zona.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.tarifaValor.findMany).toHaveBeenCalledTimes(1);
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(prisma.tarifaActivacion.create).not.toHaveBeenCalled();
+  });
+
+  it("SLT-54 T2.3 — activar por la fabrica, confirmando, ya no falla: escribe con el total que leyo", async () => {
+    const prisma = clienteDoble();
+    const { tarifaActivacion } = serviciosDeTarifas(prisma as unknown as PrismaClient);
+
+    const res = await tarifaActivacion.activar({ confirmaFaltantes: true }, MAESTRO);
+
+    expect(res.status).toBe("ok");
+    expect(prisma.tarifaActivacion.create).toHaveBeenCalledTimes(1);
+    expect(prisma.historialAccion.createMany.mock.calls[0][0].data[0]).toMatchObject({
+      accion: "tarifas_activadas",
+      valorNuevo: "faltantes: 3",
+    });
   });
 
   it("listar valores llega al cliente a traves del repositorio inyectado", async () => {

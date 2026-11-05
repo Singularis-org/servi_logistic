@@ -29,21 +29,21 @@
 
 ## Tanda B — Lecturas, referencia y vías viejas (backend)
 
-- [ ] **T2.1 [P] Faltantes** (R13-R17). `lib/tarifas/faltantes.ts`. *Hecho:* tabla de casos: 0 escrito, grupo cubierto
+- [x] **T2.1 [P] Faltantes** (R13-R17). `lib/tarifas/faltantes.ts`. *Hecho:* tabla de casos: 0 escrito, grupo cubierto
   por zona, zona con solo grupos, solo tienda, vehículos completos, vehículo inactivo.
-- [ ] **T2.2 [P] Referencia** (R20-R24). `leerModeloViejoCon` en el resolver y `lib/tarifas/referencia-vigente.ts`.
+- [x] **T2.2 [P] Referencia** (R20-R24). `leerModeloViejoCon` en el resolver y `lib/tarifas/referencia-vigente.ts`.
   *Hecho:* tabla con **literales** de cascada, bodega principal, pacto, especial sin pacto, «No paga» frente a ₡0
   y «Varía»; integración en Postgres con dos empresas; mutar la tarifa sonda la pone roja.
-- [ ] **T2.3 Lecturas** (R55, R12). `TarifasPantallaService` y su repositorio; `cargarPantallaTarifas` y
+- [x] **T2.3 Lecturas** (R55, R12). `TarifasPantallaService` y su repositorio; `cargarPantallaTarifas` y
   `cargarZonaTarifas`. *Hecho:* matriz de roles; integración con dos empresas (empresa A no ve lo de B); consulta de
   empresa activada sin leer `tarifas` (R24).
-- [ ] **T2.4 Escritura** (R35-R38, R52). `guardarValoresTarifa` y cuatro actions de grupos; `existeVehiculo` da paso a la
+- [x] **T2.4 Escritura** (R35-R38, R52). `guardarValoresTarifa` y cuatro actions de grupos; `existeVehiculo` da paso a la
   regla de inactivo; mensajes de grupos sin el nombre de nivel a mano. *Hecho:* tests de action y de service,
   con el `ivaPct` ausente y la carrera en `validation_error`.
-- [ ] **T2.5 Retiro de vías viejas** (R26, R27, R28, R29). Salen las cuatro actions de `tarifas` y
+- [x] **T2.5 Retiro de vías viejas** (R26, R27, R28, R29). Salen las cuatro actions de `tarifas` y
   `actualizarDistritosEspeciales`; guarda en `crearZona` y `actualizarZona`. *Hecho:* `zonas-action.test.ts` adaptado,
   `tarifas-action.test.ts` reescrito; guardia `superficie-de-uso` verde; nueva guardia `tarifas-sin-escritura-vieja`.
-- [ ] **T2.6 [P] Cobertura** (R30). `listZonaIdsConTarifaGeneral` por modelo. *Hecho:* `cobertura-repository.test.ts` con
+- [x] **T2.6 [P] Cobertura** (R30). `listZonaIdsConTarifaGeneral` por modelo. *Hecho:* `cobertura-repository.test.ts` con
   empresa activada y sin activar, y dos empresas; la columna de zona especial sigue leyendo la marca tras activar.
 
 ## Tanda C — Huecos del lado servidor (backend)
@@ -211,6 +211,7 @@
 - `app/(app)/configuracion/tarifas/_components/CobroVehiculoTarifas.tsx`
 - `app/(app)/configuracion/tarifas/_components/tarifas-labels.ts`
 - `app/(app)/configuracion/tarifas/_components/useDestinoAnimado.ts`
+- `app/(app)/configuracion/tarifas/_components/tarifas-retiradas.ts` (lo crea la tanda B para que la pantalla vieja compile; sale en T4.1)
 
 **Huecos en pantalla**
 - `app/(app)/cierres-admin/_components/cierre-detalle-shared.tsx`
@@ -300,6 +301,9 @@
 - `tests/integration/db/tarifas-flexibles-snapshot.test.ts`
 - `tests/integration/db/tarifas-flexibles-base-congelada.test.ts`
 - `tests/integration/db/tarifas-flexibles-escritura.test.ts`
+- `tests/integration/db/distrito-zona-especial-por-empresa.test.ts`
+- `tests/integration/db/zona-especial-dos-empresas.test.ts`
+- `tests/fabricas/escenarios/reparto.ts`
 - `tests/components/TarifasClaridadMontos.test.tsx`
 - `tests/components/TarifasAlineacionRejilla.test.tsx`
 - `tests/components/CrearTiendaForm.test.tsx`

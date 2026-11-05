@@ -224,7 +224,7 @@ export function servicios() {
   const ordenRepo = new OrdenRepository(prisma);
   return {
     zona: new ZonaService(new ZonaRepository(prisma)), // lib/actions/zonas.ts
-    tarifa: new TarifaService(new TarifaRepository(prisma)), // lib/actions/tarifas.ts
+    tarifa: new TarifaService(new TarifaRepository(prisma)), // sin action desde SLT-54: solo siembra
     sinpe: new SinpeBodegaService(new ZonaRepository(prisma)), // lib/actions/sinpe-bodega.ts
     // app/api/ordenes/carga-masiva/chunk/route.ts
     carga: new BulkOrdenService(ordenRepo, new TarifaVigenteRepository(prisma)),

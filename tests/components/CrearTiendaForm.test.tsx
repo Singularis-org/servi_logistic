@@ -13,7 +13,7 @@ import type { UsuarioPorRolDTO } from "@/lib/types/usuario-por-rol";
 // blanco. En EDICIÓN el filtro no aplica: el select está deshabilitado pero tiene que
 // poder mostrar al dueño actual, que por definición ya tiene tarifa.
 
-vi.mock("@/lib/actions/tarifas", () => ({
+vi.mock("@/app/(app)/configuracion/tarifas/_components/tarifas-retiradas", () => ({
   crearTarifa: vi.fn(),
   actualizarTarifa: vi.fn(),
 }));

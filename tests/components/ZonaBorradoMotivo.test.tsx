@@ -34,19 +34,6 @@ vi.mock("@/lib/actions/zonas", () => ({
   impactoZonaCentral: vi.fn().mockResolvedValue({ status: "ok", impacto: [] }),
 }));
 
-vi.mock("@/lib/actions/tarifas", () => ({
-  listarTarifas: vi.fn().mockResolvedValue({
-    status: "ok",
-    items: [],
-    page: 1,
-    pageSize: 100,
-    total: 0,
-  }),
-  borrarTarifa: vi.fn(),
-  crearTarifa: vi.fn(),
-  actualizarTarifa: vi.fn(),
-}));
-
 vi.mock("@/lib/actions/usuarios-por-rol", () => ({
   listarAdminTiendas: vi.fn().mockResolvedValue({ status: "ok", usuarios: [] }),
   listarUsuariosPorRol: vi.fn().mockResolvedValue({ status: "ok", usuarios: [] }),
@@ -54,7 +41,6 @@ vi.mock("@/lib/actions/usuarios-por-rol", () => ({
 
 vi.mock("@/lib/actions/geografia", () => ({
   listarArbolGeografico: vi.fn().mockResolvedValue({ status: "ok", provincias: [] }),
-  actualizarDistritosEspeciales: vi.fn(),
 }));
 
 const { successMock, errorMock } = vi.hoisted(() => ({

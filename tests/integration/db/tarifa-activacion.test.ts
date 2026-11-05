@@ -3,7 +3,12 @@ import { randomUUID } from "node:crypto";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
-import { activarTarifasNuevas } from "@/lib/actions/tarifas";
+import {
+  activarTarifasNuevas,
+  crearGrupoDistritos,
+  borrarGrupoDistritos,
+  guardarValoresTarifa,
+} from "@/lib/actions/tarifas";
 import { conEmpresa } from "@/lib/db/contexto-empresa";
 import { conAislamientoPorEmpresa } from "@/lib/db/extension-empresa";
 import { usaModeloNuevo } from "@/lib/repositories/_shared/resolver-tarifas";
@@ -11,6 +16,7 @@ import { GrupoDistritosRepository } from "@/lib/repositories/GrupoDistritosRepos
 import { TarifaActivacionRepository } from "@/lib/repositories/TarifaActivacionRepository";
 import { TarifaValorRepository } from "@/lib/repositories/TarifaValorRepository";
 import { TarifaActivacionService } from "@/lib/services/TarifaActivacionService";
+import { serviciosDeTarifas } from "@/lib/tarifas/servicios";
 import { comoApp, crearOrganizacion, fijarEmpresa, sembrarActivacion } from "@/tests/fabricas/organizaciones";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import { conCandado459, limpiar459, sembrarPersonas459, type Personas459 } from "./_fixtures/escrituras-459";
@@ -440,6 +446,157 @@ describeSiHayBase("SLT-54 R12 — activar A no cambia B", () => {
       const res = await comoEmpresa(tx, e.B, () => repo(tx).activar(maestroB, 0));
       expect(res.creada).toBe(true);
       expect(await tx.tarifaActivacion.count({ where: { organizacionId: { in: [e.A, e.B] } } })).toBe(2);
+    });
+  });
+});
+
+describeSiHayBase("SLT-54 R6, T2.3 — activar por la raíz de composición, con los faltantes de verdad", () => {
+  function servicios(tx: TxDeTest) {
+    return serviciosDeTarifas(clienteConSavepoint(tx));
+  }
+
+  const NIVEL_ZONA = (zonaId: string) => ({ zonaId, grupoId: null, tiendaId: null, vehiculoId: null });
+
+  it("con faltantes reales pide confirmación, con la lista leída de la base y sin escribir", async () => {
+    await conEscenario(async (tx, e) => {
+      const maestro = { usuarioId: e.maestroA, rol: "maestro" as const };
+      const res = await comoEmpresa(tx, e.A, () =>
+        activarTarifasNuevas(
+          { confirmaFaltantes: false },
+          { getActor: async () => maestro, servicio: servicios(tx).tarifaActivacion },
+        ),
+      );
+      // A solo tiene el flete por entregado de la zona: faltan los otros dos, y la lista es de A.
+      if (res.status !== "confirmacion_requerida") throw new Error(res.status);
+      expect(res.faltantes.map((z) => [z.zonaId, z.faltantes.map((f) => f.concepto)])).toEqual([
+        [e.fksA.zonaId, ["tienda_flete_rechazo", "mensajero_entregado"]],
+      ]);
+      expect(await tx.tarifaActivacion.count({ where: { organizacionId: e.A } })).toBe(0);
+    });
+  });
+
+  it("confirmando, activa y el historial cuenta los faltantes reales", async () => {
+    await conEscenario(async (tx, e) => {
+      const maestro = { usuarioId: e.maestroA, rol: "maestro" as const };
+      const res = await comoEmpresa(tx, e.A, () => servicios(tx).tarifaActivacion.activar({ confirmaFaltantes: true }, maestro));
+      expect(res.status).toBe("ok");
+      const rastro = await tx.historialAccion.findFirstOrThrow({
+        where: { organizacionId: e.A, accion: "tarifas_activadas" },
+        select: { valorNuevo: true },
+      });
+      expect(rastro.valorNuevo).toBe("faltantes: 2");
+    });
+  });
+
+  it("con los tres esenciales digitados activa sin confirmación, aunque el 0 sea uno de ellos", async () => {
+    await conEscenario(async (tx, e) => {
+      const maestro = { usuarioId: e.maestroA, rol: "maestro" as const };
+      const s = servicios(tx);
+      const fijados = await comoEmpresa(tx, e.A, async () => [
+        await s.tarifaValor.fijarValor(
+          { concepto: "tienda_flete_rechazo", modo: "monto", valor: "0", ivaPct: "13", ...NIVEL_ZONA(e.fksA.zonaId) },
+          maestro,
+        ),
+        await s.tarifaValor.fijarValor(
+          { concepto: "mensajero_entregado", modo: "monto", valor: "900", ...NIVEL_ZONA(e.fksA.zonaId) },
+          maestro,
+        ),
+      ]);
+      expect(fijados.map((f) => f.status)).toEqual(["ok", "ok"]);
+
+      const res = await comoEmpresa(tx, e.A, () => s.tarifaActivacion.activar({ confirmaFaltantes: false }, maestro));
+      expect(res.status).toBe("ok");
+      expect(await tx.tarifaActivacion.count({ where: { organizacionId: e.A } })).toBe(1);
+    });
+  });
+
+  it("el precio de una tienda y el valor de B no le cubren nada a A", async () => {
+    await conEscenario(async (tx, e) => {
+      const maestro = { usuarioId: e.maestroA, rol: "maestro" as const };
+      const s = servicios(tx);
+      const fijado = await comoEmpresa(tx, e.A, () =>
+        s.tarifaValor.fijarValor(
+          { concepto: "tienda_flete_rechazo", modo: "monto", valor: "700", ivaPct: "13", zonaId: e.fksA.zonaId, grupoId: null, tiendaId: e.fksA.tiendaId, vehiculoId: null },
+          maestro,
+        ),
+      );
+      expect(fijado.status).toBe("ok");
+      const res = await comoEmpresa(tx, e.A, () => s.tarifaActivacion.activar({ confirmaFaltantes: false }, maestro));
+      if (res.status !== "confirmacion_requerida") throw new Error(res.status);
+      expect(res.faltantes[0].faltantes.map((f) => f.concepto)).toEqual(["tienda_flete_rechazo", "mensajero_entregado"]);
+    });
+  });
+});
+
+describeSiHayBase("SLT-54 R29 — guardar no escribe en el viejo", () => {
+  async function fotoDelViejo(tx: TxDeTest, org: string): Promise<Record<string, unknown>> {
+    const salida: Record<string, unknown> = {};
+    for (const t of ["tarifas", "tarifa_zona_mensajero", "distrito_zona_especial", "zona"]) {
+      salida[t] = await tx.$queryRawUnsafe(
+        `SELECT row_to_json(x)::text AS f FROM "${t}" x WHERE x."organizacion_id" = $1 ORDER BY x."id"`,
+        org,
+      );
+    }
+    return salida;
+  }
+
+  async function recorrerPantalla(tx: TxDeTest, e: Escenario) {
+    const maestro = { usuarioId: e.maestroA, rol: "maestro" as const };
+    const s = serviciosDeTarifas(clienteConSavepoint(tx));
+    const nivel = { zonaId: e.fksA.zonaId, tiendaId: null, vehiculoId: null };
+    const clave = randomUUID().slice(0, 8);
+
+    await comoEmpresa(tx, e.A, async () => {
+      const grupoDeps = { getActor: async () => maestro, servicio: s.grupoDistritos };
+      const grupo = await crearGrupoDistritos(
+        { zonaId: e.fksA.zonaId, nombre: `G-${clave}`, distritoIds: [] },
+        grupoDeps,
+      );
+      if (grupo.status !== "ok") throw new Error(`grupo: ${grupo.status}`);
+
+      const guardado = await guardarValoresTarifa(
+        {
+          cambios: [
+            { accion: "fijar", clave: "a", datos: { concepto: "tienda_flete_rechazo", modo: "monto", valor: "700", ivaPct: "13", grupoId: null, ...nivel } },
+            { accion: "fijar", clave: "b", datos: { concepto: "mensajero_entregado", modo: "monto", valor: "800", grupoId: grupo.id, ...nivel } },
+            { accion: "fijar", clave: "c", datos: { concepto: "satelite_rechazo", modo: "porcentaje", valor: "10", grupoId: null, ...nivel } },
+          ],
+        },
+        { getActor: async () => maestro, servicio: s.tarifaValor },
+      );
+      if (guardado.status !== "ok") throw new Error(`guardar: ${guardado.status}`);
+      expect(guardado.resultados.map((r) => r.status)).toEqual(["ok", "ok", "ok"]);
+
+      const borrado = await borrarGrupoDistritos({ id: grupo.id }, grupoDeps);
+      expect(borrado).toEqual({ status: "ok" });
+
+      const fijados = await tx.tarifaValor.findMany({
+        where: { zonaId: e.fksA.zonaId, concepto: { in: ["tienda_flete_rechazo", "satelite_rechazo"] } },
+        select: { id: true },
+      });
+      const quitados = await guardarValoresTarifa(
+        { cambios: fijados.map((f, i) => ({ accion: "quitar", clave: `q${i}`, id: f.id })) },
+        { getActor: async () => maestro, servicio: s.tarifaValor },
+      );
+      if (quitados.status !== "ok") throw new Error(`quitar: ${quitados.status}`);
+      expect(quitados.resultados.map((r) => r.status)).toEqual(["ok", "ok"]);
+    });
+  }
+
+  it("guardar no escribe en el viejo, ni antes ni después de activar", async () => {
+    await conEscenario(async (tx, e) => {
+      const antes = await fotoDelViejo(tx, e.A);
+      // La foto vio filas: comparar vacio con vacio pasaria siempre.
+      for (const t of ["tarifas", "tarifa_zona_mensajero", "distrito_zona_especial", "zona"]) {
+        expect((antes[t] as unknown[]).length, t).toBeGreaterThan(0);
+      }
+
+      await recorrerPantalla(tx, e);
+      expect(await fotoDelViejo(tx, e.A)).toEqual(antes);
+
+      await sembrarActivacion(tx, e.A);
+      await recorrerPantalla(tx, e);
+      expect(await fotoDelViejo(tx, e.A)).toEqual(antes);
     });
   });
 });

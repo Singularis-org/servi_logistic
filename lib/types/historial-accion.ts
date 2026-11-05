@@ -69,8 +69,8 @@ export const HISTORIAL_ACCION_TIPOS = [
   "wallet_movimiento_manual_registrado", // wallet.registrarMovimientoManualAction
   "egreso_administrativo_registrado", // wallet-egresos.registrarEgresoAdministrativoAction
   "egreso_administrativo_reversado", // WalletEgresoService.reversarEgreso (su Server Action se retiro en la 458-E, M4; quedan las filas historicas)
-  "tarifa_creada", // tarifas.crearTarifa
-  "tarifa_actualizada", // tarifas.actualizarTarifa
+  "tarifa_creada", // TarifaService.crear (sembrados; sin action desde SLT-54)
+  "tarifa_actualizada", // TarifaService.actualizar (sembrados; sin action desde SLT-54)
   "incidente_aprobado", // incidentes.aprobarIncidente
   "incidente_rechazado", // incidentes.rechazarIncidente
   "cobro_gasto_fijo_aprobado", // gasto-fijo-cobro.aprobarCobroGastoFijoAction
@@ -297,7 +297,7 @@ export const HISTORIAL_ACCION_TIPOS = [
   // `tarifa_borrada` esta AQUI y no en «dinero» aunque mueva precio: R17 exige EXACTAMENTE una
   // categoria por tipo, y lo que la fila documenta es la desaparicion irreversible (`tarifas`
   // borra en FISICO, `db/schema.prisma`).
-  "tarifa_borrada", // tarifas.borrarTarifa
+  "tarifa_borrada", // TarifaService.borrar (sembrados; sin action desde SLT-54)
   "zona_borrada", // zonas.borrarZona — fisico, y arrastra sus tarifas en cascada
   // SLT-52: AQUI por el mismo motivo que `tarifa_borrada`: borrar un grupo es fisico y se lleva sus
   // valores por cascada (R12); lo que la fila documenta es esa desaparicion.

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/shared/Modal";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/useToast";
-import { listarTarifas, borrarTarifa } from "@/lib/actions/tarifas";
+import { listarTarifas, borrarTarifa } from "./tarifas-retiradas";
 import { listarAdminTiendas, listarUsuariosPorRol } from "@/lib/actions/usuarios-por-rol";
 import { GRUPO_TARIFABLE, type TarifaDTO } from "@/lib/types/tarifa";
 import type { UsuarioPorRolDTO } from "@/lib/types/usuario-por-rol";

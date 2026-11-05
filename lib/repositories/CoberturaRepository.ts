@@ -8,6 +8,7 @@ import {
   SELECT_FLAG_PROPIO,
   disponibleDesdeCadena,
 } from "@/lib/repositories/_shared/geografia-activa";
+import { usaModeloNuevo } from "@/lib/repositories/_shared/resolver-tarifas";
 import {
   esZonaEspecialDeLaEmpresa,
   SELECT_MARCA_ZONA_ESPECIAL,
@@ -19,7 +20,7 @@ import {
 // Repositorio DEDICADO y no un metodo mas de `GeoRepository`: mezclaria tarifas en el repositorio
 // del catalogo y creceria una interfaz con un composition root ya sensible (design §6.2).
 
-type CoberturaPrismaClient = Pick<PrismaClient, "distrito" | "tarifa">;
+type CoberturaPrismaClient = Pick<PrismaClient, "distrito" | "tarifa" | "tarifaActivacion" | "tarifaValor">;
 
 export class CoberturaRepository implements ICoberturaRepository {
   constructor(private readonly prisma: CoberturaPrismaClient) {}
@@ -61,6 +62,23 @@ export class CoberturaRepository implements ICoberturaRepository {
   }
 
   async listZonaIdsConTarifaGeneral(): Promise<string[]> {
+    // SLT-54 (R30): tras activar, `tarifas` ya no dice nada y todas las zonas saldrian sin tarifa. Marca
+    // el flete por entregado propio de la zona, coherente con `fleteEntregadoSinTarifa` (SLT-52 R51).
+    if (await usaModeloNuevo(this.prisma)) {
+      const valores = await this.prisma.tarifaValor.findMany({
+        where: {
+          concepto: "tienda_flete_entregado",
+          zonaId: { not: null },
+          grupoId: null,
+          tiendaId: null,
+          mensajeroId: null,
+          vehiculoId: null,
+        },
+        select: { zonaId: true },
+        distinct: ["zonaId"],
+      });
+      return valores.map((v) => v.zonaId as string);
+    }
     // Nivel 3 de la cascada (`lib/utils/cascada-tarifa.ts`): tienda NULL y zona con valor. La
     // fila global (NULL, NULL) NO es una tarifa general de ninguna zona (R14).
     const rows = await this.prisma.tarifa.findMany({

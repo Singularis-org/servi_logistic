@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Select, type SelectOption } from "@/components/ui/select";
 import { FormField } from "@/components/shared/FormField";
 import { useToast } from "@/hooks/useToast";
-import { crearTarifa, actualizarTarifa } from "@/lib/actions/tarifas";
+import { crearTarifa, actualizarTarifa } from "./tarifas-retiradas";
 import { GRUPO_TARIFABLE, type TarifaDTO } from "@/lib/types/tarifa";
 import type { UsuarioPorRolDTO } from "@/lib/types/usuario-por-rol";
 import type { ZonaDTO } from "@/lib/types/zona";

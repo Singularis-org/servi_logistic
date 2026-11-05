@@ -72,6 +72,19 @@ export interface ZonaActionDeps {
   getActor?: () => Promise<Actor | null>;
 }
 
+/**
+ * SLT-54 (R27, enmienda de SLT-51 R9 solo en el borde): los costos de zona son del modelo viejo y ninguna
+ * pantalla los edita ya. La guarda vive aqui y no en el esquema porque `ZonaService` y sus esquemas se
+ * quedan para sembrar en las fabricas de tests, hasta que SLT-57 retire el modelo.
+ */
+const ZONA_SIN_COSTOS = "Los costos de la zona ya no se editan aquí: se configuran en Tarifas.";
+
+function rechazoDeCostos(campos: string[]): ValidationError {
+  return new ValidationError(MSG.VALIDATION_ERROR, {
+    fieldErrors: Object.fromEntries(campos.map((c) => [c, [ZONA_SIN_COSTOS]])),
+  });
+}
+
 /** Crear zona (solo maestro). */
 export async function crearZona(
   input: unknown,
@@ -81,6 +94,11 @@ export async function crearZona(
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
     const data = crearZonaSchema.parse(input);
+    const costos = [
+      ...(data.cobroVehiculo ? ["cobroVehiculo"] : []),
+      ...(data.tarifas.length > 0 ? ["tarifas"] : []),
+    ];
+    if (costos.length > 0) throw rechazoDeCostos(costos);
     const service = deps.zonaService ?? buildZonaService();
     return service.crear(data, actor);
   });
@@ -134,6 +152,11 @@ export async function actualizarZona(
       throw new ValidationError(MSG.VALIDATION_ERROR, { fieldErrors: { id: ["id invalido"] } });
     }
     const data = actualizarZonaSchema.parse(input);
+    const costos = [
+      ...(data.cobroVehiculo !== undefined ? ["cobroVehiculo"] : []),
+      ...(data.tarifas !== undefined ? ["tarifas"] : []),
+    ];
+    if (costos.length > 0) throw rechazoDeCostos(costos);
     const service = deps.zonaService ?? buildZonaService();
     return service.actualizar(parsedId.data, data, actor);
   });

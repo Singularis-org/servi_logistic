@@ -326,6 +326,56 @@ function envolverViejas(
   return out;
 }
 
+/**
+ * SLT-54 (design §6) — un par sin tienda solo alcanza el nivel 3 de la cascada: `""` no es el id de
+ * nadie, el mismo recurso que `contextoCobroDe` usa para el par sin zona. Asi la tarifa general de una
+ * zona sale de la misma `nivelDeCascada`, sin una segunda regla.
+ */
+export const SIN_TIENDA = "";
+
+export interface PedidoModeloViejo {
+  /** Con `tiendaId: SIN_TIENDA` para la tarifa general de la zona. */
+  pares: readonly ParTarifa[];
+  pagos: readonly { zonaId: string; vehiculoId: string | null }[];
+}
+
+export interface LecturaModeloViejo {
+  /** Indexado por `clavePar`. `null` = ningun nivel de la cascada tiene fila. */
+  cobros: Map<string, TarifaVigenteResuelta | null>;
+  /** Indexado por `clavePagoViejo`. `null` = la zona no tiene tarifa para ese vehiculo ni por defecto. */
+  pagos: Map<string, PagoTarifa | null>;
+}
+
+export function clavePagoViejo(zonaId: string, vehiculoId: string | null): string {
+  return `${zonaId}|${vehiculoId ?? ""}`;
+}
+
+/**
+ * SLT-54 (design §6, R21) — lo que el modelo viejo daria HOY, para la referencia «Hoy rige». Salta el
+ * interruptor a proposito: la pantalla lo pide mientras la empresa digita valores que aun no rigen, y
+ * por eso solo se llama sin activar (R24). La fila sale de `cobrosViejos` y `resolvePagoTarifaCon`, las
+ * mismas del calculo: una segunda lectura podria ensenar un precio que el cierre no cobra.
+ */
+export async function leerModeloViejoCon(
+  db: Pick<PrismaClient, "tarifa" | "tarifaZonaMensajero">,
+  pedido: PedidoModeloViejo,
+): Promise<LecturaModeloViejo> {
+  const cobros = new Map<string, TarifaVigenteResuelta | null>();
+  if (pedido.pares.length > 0) {
+    for (const [clave, cobro] of await cobrosViejos(db, pedido.pares)) {
+      cobros.set(clave, cobro !== null && cobro.modelo === "viejo" ? cobro.tarifa : null);
+    }
+  }
+  // En serie: es el cuerpo de hoy y puede correr sobre el cliente de una transaccion.
+  const pagos = new Map<string, PagoTarifa | null>();
+  for (const { zonaId, vehiculoId } of pedido.pagos) {
+    const clave = clavePagoViejo(zonaId, vehiculoId);
+    if (pagos.has(clave)) continue;
+    pagos.set(clave, await resolvePagoTarifaCon(db.tarifaZonaMensajero, zonaId, vehiculoId));
+  }
+  return { cobros, pagos };
+}
+
 // ---------------------------------------------------------------------------------------------
 // Cobro a la tienda
 // ---------------------------------------------------------------------------------------------

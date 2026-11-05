@@ -24,6 +24,10 @@ const LECTORES: Readonly<Record<string, string>> = {
   "lib/repositories/_shared/resolver-tarifas.ts": "resuelve el importe, despues de `usaModeloNuevo`",
   // Lista y reemplaza lo digitado; no decide ningun importe.
   "lib/repositories/TarifaValorRepository.ts": "escritura y listado de lo digitado",
+  // SLT-54 T2.3: lo digitado, para pintarlo y para los faltantes; no decide ningun importe.
+  "lib/repositories/TarifasPantallaRepository.ts": "lecturas de la pantalla de Tarifas",
+  // SLT-54 T2.6 (R30): la columna «tarifa general» del Excel, despues de `usaModeloNuevo`; no decide un importe.
+  "lib/repositories/CoberturaRepository.ts": "marca de tarifa general del Excel de cobertura",
   // Mira si una cuenta tiene precios propios antes de eliminarla; no decide ningun importe.
   "lib/repositories/ApiKeyRepository.ts": "decide si una cuenta es eliminable",
 };

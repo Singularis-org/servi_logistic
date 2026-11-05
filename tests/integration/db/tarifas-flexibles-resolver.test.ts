@@ -465,6 +465,16 @@ describeSiHayBase("SLT-52 resolver · pago al mensajero y a la satelite en Postg
     });
   });
 
+  it("SLT-54 R53: vehículo inactivo sigue pagando el valor que tiene guardado", async () => {
+    await conEscenario(async (tx, e) => {
+      await tx.vehiculo.update({ where: { id: e.V1 }, data: { activo: false } });
+      await borrar(tx, [e.v.p1!]);
+      const pago = await pagoDe(tx, e, ctxPago(e));
+      expect(pago.mensajero?.valor).toBe("502.00");
+      expect(pago.mensajero?.nivel).toBe("grupo_vehiculo");
+    });
+  });
+
   it("R20: la satelite usa la misma zona, distrito y precedencia sin el nivel del mensajero", async () => {
     await conEscenario(async (tx, e) => {
       const pago = await pagoDe(tx, e, ctxPago(e));

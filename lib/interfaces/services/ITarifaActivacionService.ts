@@ -1,17 +1,17 @@
-import type { TarifaConcepto } from "@prisma/client";
-
+import type { AvisoGrupo, Faltante } from "@/lib/tarifas/faltantes";
 import type { Actor } from "@/lib/interfaces/services/ITarifaService";
 
 export type { Actor } from "@/lib/interfaces/services/ITarifaService";
 
 /**
- * SLT-54 (design §4, §5) — lo que le falta a una zona para activar. Es el minimo que necesita decidir
- * la confirmacion; `lib/tarifas/faltantes.ts` (T2.1) es quien aplica las reglas R13-R17 y puede ampliarlo.
+ * SLT-54 (design §4, §5) — lo que le falta a una zona para activar, segun `lib/tarifas/faltantes.ts`.
+ * `usaZona` no es un faltante: el dialogo lo informa sin avisar de cobro en 0 (R16, R19).
  */
 export interface FaltantesPorZona {
   zonaId: string;
   zonaNombre: string;
-  faltantes: readonly { concepto: TarifaConcepto }[];
+  faltantes: readonly Faltante[];
+  usaZona: readonly AvisoGrupo[];
 }
 
 /**

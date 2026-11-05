@@ -34,7 +34,7 @@ const NOMBRE_OCUPADO = errorEn("nombre", ["Ya hay un grupo con ese nombre en la 
 // La base rechazo el conjunto aunque la comprobacion previa lo diera por bueno (una carrera): no se
 // sabe cual fue, pero el campo y el hecho son los mismos que los de la comprobacion (R11).
 const DISTRITOS_RECHAZADOS = errorEn("distritoIds", [
-  "Algún distrito ya está en otro grupo de la zona o no pertenece a ella.",
+  "Alguno de los elegidos ya está en otro grupo de la zona o no pertenece a ella.",
 ]);
 
 /**
@@ -107,7 +107,8 @@ export class GrupoDistritosService implements IGrupoDistritosService {
 
   /**
    * R11 — un distrito fuera de la zona, o ya en OTRO grupo de ella, se rechaza NOMBRANDOLO. Se
-   * juntan todos los culpables en un solo error para que el maestro los corrija de una vez.
+   * juntan todos los culpables en un solo error para que el maestro los corrija de una vez. El mensaje
+   * lleva el nombre que sale de la base y no la palabra del nivel geografico, que depende del pais.
    */
   private async distritosInvalidos(
     zonaId: string,
@@ -122,7 +123,7 @@ export class GrupoDistritosService implements IGrupoDistritosService {
       const nombres = await this.repo.nombresDeDistritos(ajenos);
       return errorEn(
         "distritoIds",
-        ajenos.map((d) => `El distrito «${nombres.get(d) ?? d}» no pertenece a la zona.`),
+        ajenos.map((d) => `${nombres.get(d) ?? d} no pertenece a la zona.`),
       );
     }
 
@@ -130,7 +131,7 @@ export class GrupoDistritosService implements IGrupoDistritosService {
     if (enOtro.length > 0) {
       return errorEn(
         "distritoIds",
-        enOtro.map((d) => `El distrito «${d.distritoNombre}» ya está en el grupo «${d.grupoNombre}».`),
+        enOtro.map((d) => `${d.distritoNombre} ya está en el grupo ${d.grupoNombre}.`),
       );
     }
     return null;
