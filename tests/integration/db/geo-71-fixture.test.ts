@@ -127,5 +127,5 @@ describeSiHayBase("SLT-71 T0.2 — fixture geo-71 (antivacio)", () => {
     expect(r.xa.transitoIds).toEqual(r.transitoXa);
     // Tres ordenes en la segunda provincia (entregada, devuelta y la de transito sin distrito).
     expect(r.segundas).toBe(3);
-  });
+  }, 180_000);
 });

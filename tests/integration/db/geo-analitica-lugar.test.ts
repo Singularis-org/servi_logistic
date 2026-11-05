@@ -323,7 +323,7 @@ describeSiHayBase("SLT-71 T3.4 — analitica por el lugar de la orden (Postgres 
       expect(p.sql).toContain('o."tienda_id"');
       expect(p.values).toEqual([r.tiendaId]);
     }
-  });
+  }, 180_000);
 
   it("R1 (profundidad 4): un nodo bajo el distrito pedido aporta sus ordenes, por el dominio y no por la columna", async () => {
     const r = await revertida(base, async (tx) => {

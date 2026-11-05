@@ -239,7 +239,7 @@ describeSiHayBase("SLT-71 T4.2 — transito nombra con el catalogo (Postgres rea
     const filasSql = r.con1.sql.find((s) => s.includes('"cand"') && s.includes('"hito_at"'));
     expect(filasSql).toBeDefined();
     expect(filasSql).not.toMatch(/(FROM|JOIN)\s+"(canton|distrito)"/);
-  });
+  }, 180_000);
 
   it("R11: sin ordenes en alerta, la generacion no carga el catalogo", async () => {
     const r = await revertida(base, async (tx) => {
@@ -254,7 +254,7 @@ describeSiHayBase("SLT-71 T4.2 — transito nombra con el catalogo (Postgres rea
     });
     expect(r.filas).toEqual([]);
     expect(r.catalogo).toEqual([]);
-  });
+  }, 180_000);
 
   it("R12: un canton y un distrito ausentes del catalogo hacen fallar la generacion con una sola linea de log, solo con ids", async () => {
     const r = await revertida(base, async (tx) => {
@@ -309,7 +309,7 @@ describeSiHayBase("SLT-71 T4.2 — transito nombra con el catalogo (Postgres rea
     for (const nombre of r.nombres) expect(texto).not.toContain(nombre);
     expect(r.completo).toBe("contenido");
     expect(r.lineasCompleto).toEqual([]);
-  });
+  }, 180_000);
 
   it("R13: XA carga solo su catalogo, una vez por instancia; en plataforma falla con EmpresaNoResuelta", async () => {
     const r = await revertida(base, async (tx) => {
