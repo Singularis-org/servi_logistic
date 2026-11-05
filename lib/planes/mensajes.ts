@@ -1,8 +1,10 @@
 import type { ModuloApagable, RolValue } from "@prisma/client";
 
 import { ROL_LABELS } from "@/lib/auth/rol-label";
+import { money } from "@/lib/config/moneda";
 import { nombreDelModulo } from "@/lib/modulos/catalogo";
 import { importeCanonico } from "@/lib/planes/rastro";
+import type { CosteoDelCiclo, CostoVigente } from "@/lib/types/consumo-plan";
 import { ROLES_CON_TOPE, type CostoPorOrdenPorcentual, type PrecioPlan, type RolConTope } from "@/lib/types/planes";
 
 // SL-24 (design §6.4, §6.6) — los textos del tope del plan. Un solo sitio para las tres vías (carga
@@ -211,6 +213,48 @@ export const SIN_COSTO_PORCENTUAL = "sin costo porcentual";
 
 function textoDelPorcentualOVacio(c: CostoPorOrdenPorcentual | null): string {
   return c === null ? SIN_COSTO_PORCENTUAL : textoDelCostoPorOrdenPorcentual(c);
+}
+
+/**
+ * SLT-83 (design §4.4; R22): la columna «Cobro por orden» del listado de «Empresas». El modo fijo es el
+ * importe de hoy, con `money` como lo pinta la celda desde SL-40; el porcentual, `«{p} % (mín. {m})»` o
+ * `«{p} %»`, sin moneda como el resto de importes del plan (SLT-66 §2.5). La fuente va aparte.
+ */
+export function textoDelCobroVigente(c: CostoVigente): string {
+  if (c.modo === "fijo") return money(c.monto);
+  const porcentaje = `${importeCanonico(c.porcentaje)} %`;
+  return c.minimo === null ? porcentaje : `${porcentaje} (mín. ${importeCanonico(c.minimo)})`;
+}
+
+/** SLT-83 (design §4.4; R23): la nota bajo el costo por orden porcentual de «Mi plan». */
+export const NOTA_COBRO_PORCENTUAL = "se cobra cuando la orden llega a un estado final";
+
+/** Las líneas del costo del ciclo de «Mi plan» y del detalle de empresa con un plan porcentual. */
+export interface LineasDelCosteoPorcentual {
+  costoPorOrden: string;
+  nota: string;
+  cobrado: string;
+  pendientes: string;
+  /** `null` con la base por definir: sin total (SLT-66 R20). */
+  total: string | null;
+}
+
+/**
+ * SLT-83 (design §4.4; R23): los textos de un costeo porcentual. Los importes llegan ya calculados del
+ * servidor (`costeoDelCiclo`) y se pintan tal cual, sin moneda, como las líneas del modo fijo. Las
+ * órdenes sin estado final son solo un conteo: no se estima su importe.
+ */
+export function lineasDelCosteoPorcentual(c: Extract<CosteoDelCiclo, { modo: "porcentual" }>): LineasDelCosteoPorcentual {
+  return {
+    costoPorOrden: `Costo por orden: ${textoDelCostoPorOrdenPorcentual(c)}`,
+    nota: NOTA_COBRO_PORCENTUAL,
+    cobrado: `Cobrado en el ciclo: ${c.cobrado}`,
+    pendientes: `Órdenes del ciclo sin estado final: ${c.pendientes}`,
+    total:
+      c.total === null || c.base.tipo !== "monto"
+        ? null
+        : `Total del ciclo hasta hoy: ${c.base.mensual} + ${c.cobrado} = ${c.total}`,
+  };
 }
 
 /**

@@ -445,3 +445,45 @@ los `PlanConUsoLeido` ganan `cobroCiclo: { cobrado: "0.00", pendientes: 0 }` (el
 - `pnpm run typecheck` → sin errores. `eslint` del test nuevo y de `PlanesService.ts` → 0 problemas.
 
 **Veredicto T9:** el servicio aplica R3 y R5 al modo porcentual sin cambiar su orden.
+
+## T10
+
+**Archivos.**
+- `lib/planes/mensajes.ts` (design §4.4): `textoDelCostoPorOrdenPorcentual` (ya entró en T8 porque la usa la línea de
+  «qué cambia»; aquí gana su test); `textoDelCobroVigente(c: CostoVigente)` — fijo: el importe de hoy con `money`,
+  que es como la celda lo pinta desde SL-40; porcentual: `«{p} % (mín. {m})»` / `«{p} %»`, sin moneda;
+  `NOTA_COBRO_PORCENTUAL` y `lineasDelCosteoPorcentual(costeo)` con las cuatro líneas de «Mi plan»
+  (`Costo por orden: …`, `Cobrado en el ciclo: {c}`, `Órdenes del ciclo sin estado final: {n}`, `Total del ciclo
+  hasta hoy: {base} + {c} = {t}`, `null` sin total con base por definir). Las consumen T12–T14 (frontend_dev).
+- Creado `tests/unit/planes/mensajes-costo-porcentual.test.ts`.
+
+**Textos de la Tanda A marcados como inexactos.** Ninguno sale de `lib/planes/mensajes.ts`: son literales de su propio
+archivo de UI — `app/(app)/wallet/_components/wallet-labels.ts:127-128` (`deudaPlataformaPista`,
+`deudaPlataformaAlDiaPista`), `app/(app)/plataforma/planes/_components/PlanesModule.tsx:33` (`descripcionNuevo`) y
+`app/(app)/plataforma/planes/[planId]/_components/PlanDetalle.tsx:73` (`descripcionEditar`). No los toco.
+
+**Avisos para el humano / frontend_dev.**
+- Con lo cobrado negativo (R24) la línea del total queda `50000.00 + -500.00 = 49500.00`: es el literal de §4.4 con el
+  valor con signo; si se quiere otra forma, es un texto a decidir.
+- `{n}` de pendientes va sin separador de miles (`formatearConteo` vive en `consumo.ts`, que ya importa `mensajes.ts`:
+  usarlo aquí haría un ciclo). El componente puede formatearlo si hace falta.
+
+**R → test.**
+- R21 → `mensajes-costo-porcentual.test.ts`: con mínimo, sin mínimo, dos decimales desde «2»/«500», fijo y vacío como
+  SLT-66 R24.
+- R22 (textos) → mismo archivo: `«2.00 % (mín. 500.00)»`, `«2.35 %»`, fijo con `money` para las cuatro fuentes.
+- R23 (textos) → mismo archivo: las líneas con y sin mínimo, con pendientes, y sin total con base por definir.
+
+**Salida.**
+- `pnpm exec vitest run tests/unit/planes/mensajes-costo-porcentual.test.ts` → `Test Files 1 passed (1) · Tests 13 passed (13)`.
+- `tests/unit/planes/`, `plantilla-cambio-plan`, `ConsumoDelPlan`, `ConsumoDelPlanCosteo`, `EmpresasModuleCobro`,
+  `PlanEmpresa`, `PlanVistaCosteo` → `Test Files 16 passed (16) · Tests 277 passed (277)`.
+- `pnpm run typecheck` → sin errores. `eslint` de `mensajes.ts` y del test → 0 problemas.
+
+## Guardias al cierre de las Tandas B y C
+
+`pnpm run test:guardias` → `Test Files 1 failed | 324 passed | 3 skipped (328) · Tests 4 failed | 4541 passed | 24 skipped`.
+El único rojo es `dependencias-declaradas-presentes.guardia.test.ts` (4), que está en `tests/baseline-rojos.json`
+(igual que al cierre de la Tanda A). Los dos timeouts de la Tanda A no se repitieron.
+
+**Veredicto T10:** los textos del modo porcentual viven en un solo sitio, con test; quedan dos avisos de forma para el humano.

@@ -67,7 +67,7 @@
 
 ## Tanda C — textos (backend_dev)
 
-- [ ] **T10. Textos** (design §4.4): `textoDelCostoPorOrdenPorcentual`, `textoDelCobroVigente`, las líneas
+- [x] **T10. Textos** (design §4.4): `textoDelCostoPorOrdenPorcentual`, `textoDelCobroVigente`, las líneas
   de «Mi plan» porcentual. Depende de T6. `[P]` con T7–T9.
   *Hecho:* `tests/unit/planes/mensajes-costo-porcentual.test.ts` (R21, R22) en verde.
 
