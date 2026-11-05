@@ -352,7 +352,7 @@ T3.1 a T3.4 hechas. Sin migraciones ni dependencias.
 
 **Tests con cambio de fondo:** `cierre-aporte-repository.test.ts`, `aporte-por-orden-equivalencia.test.ts`, `convergencia-tarifa-listado-cierre.test.ts`, `cierres-admin-repository.test.ts`, `tarifas-flexibles-snapshot.test.ts` (la orden sin flete sale del aporte, que es R64), `detalle-contrato.test.ts`, `recorte-por-alcance*.test.ts`, `tests/fixtures/orden-detalle-dia.ts`
 
-**Fixtures:** 16 dobles de `IngresoEmpresaDTO` ganan `tarifaModelo`, sin otro cambio. La lista completa está en `tasks.md > Archivos esperados`.
+**Fixtures:** 17 archivos con dobles de `IngresoEmpresaDTO` ganan `tarifaModelo`, sin otro cambio. La lista completa está en `tasks.md > Archivos esperados`.
 
 ### Mapa R → test (tanda C)
 
