@@ -1098,3 +1098,20 @@ Ninguno viene de SLT-52 ni de SLT-75 por sí solo. Los tests de SLT-52 y SLT-76 
   5464 pasan; fallan los 4 de `dependencias-declaradas-presentes` (preexistente: `init.sh` no tiene los marcadores de
   la ficha 420 tampoco en `origin/dev`) y `filtros-url-r25` por carga (pasa solo). Los 156 unitarios que importan
   `OrdenRepository`/`CoberturaRepository` fuera de esas carpetas: 3236/3236.
+
+## 2026-11-05 — Rojos de CI tras integrar dev (SLT-54): tres tests del modelo nuevo
+
+- Archivos: `tests/integration/db/cierre-aporte-modelo-nuevo.test.ts`,
+  `cierre-incluye-modelo-nuevo.test.ts`, `estado-cuenta-tienda-modelo-nuevo.test.ts` (más
+  `tarifa-empresa-nueva.test.ts`, que llega arreglado por el merge de SLT-44, commit 8f8ba908).
+- Causa raíz (test, no producción): la misma que en SLT-44. Su `comoEmpresa` fijaba la empresa del
+  escenario solo en la base (`comoApp`), mientras el contexto (`conEmpresa`) seguía en la empresa
+  por defecto de `enTransaccionRevertida`. Los caminos que SLT-65 pasa por el catálogo geográfico
+  (`CatalogoGeograficoRepository.deLaEmpresa`) piden la organización del contexto, que la RLS de la
+  del escenario no deja ver → `EmpresaNoResuelta`. En producción contexto y GUC salen del mismo id.
+- Arreglo: `comoEmpresa` corre `fn` dentro de `conEmpresa(org, …)`, como `tarifa-empresa-nueva` y
+  los tests de aislamiento.
+- Local (Postgres `logistic_slt65_r1104`, migraciones de dev aplicadas): los 4 archivos 32/32 verde
+  (antes 8 rojos). `tsc --noEmit` 0; eslint de los 3 archivos sin issues; guardias 240/241, solo el
+  rojo de baseline `dependencias-declaradas-presentes`.
+- Veredicto: verde local; los rojos eran de montaje de los tests.
