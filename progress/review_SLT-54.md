@@ -390,3 +390,106 @@ mismas; solo se espera. No busqué por qué el orden de los tests cambia esos 5 
 **Sin correr, por encargo:** suite completa, E2E, `./init.sh`. El grafo no tiene proyecto para este worktree: Grep y Read. Tasks abiertas: T6.3 y T6.5, del leader, como en la vuelta 1.
 
 **Para volver a revisión:** arreglar D38 con test del viejo y del nuevo en las dos superficies, o que Carlos decida por escrito llevarlo a ficha aparte. La vuelta 3 se acota a ese diff.
+
+## Vuelta 3 (acotada a a736f544..ecacd68b)
+
+### Veredicto: OK, con 6 menores
+
+D38 está cerrado en las dos superficies, en pantalla y en descarga. Sin hallazgos mayores. Lo único que corrige lo que se afirmó: D40 llama «interna» a una
+audiencia que incluye al `adminSatelite` (menor 1), y el `:58` de `wallet-mensajeros` no se explica por la rama, pero su causa sigue sin medir (menor 3).
+
+### Menores
+
+1. **D40, audiencia mal escrita.** `cierre-factura.tsx:1073` no lo leen solo `maestro` y `admin`: `CierreBodegaFacturaResumen` también se pinta en
+   `CierresBodegaSolicitadosLista`, que `ConsolidacionBodegaModule.tsx:463,471` monta para el `adminSatelite`, sobre su propio cierre. `ConciliacionSatelite.tsx:167,174` sí es solo de
+   `maestro` y `admin` (`wallet/satelites/[zonaId]/page.tsx:20`, R81). Corregir el texto de D40. Si ese rol es un tercero, los docs no lo dicen: que lo tenga presente Carlos.
+2. **Dos menores de la vuelta 2 sin rastro.** El menor 2 (encabezado «Flete por devolución a origen + IVA») y el menor 6 (`GANA_LA_TIENDA_NOTA`, `PAGO_TIENDA_HOY_NOTA`,
+   `DESGLOSE_POR_TIENDA_NOTA`) no están en `progress/deudas.md`, ni en R71 *Fuera*, ni en las tablas de las tandas I1 e I2. Añadirlos a D40 o decir que se aceptan.
+3. **`e2e/wallet-mensajeros.spec.ts:81` es un clic crudo, y no hay deuda.** `e2e/_escenarios/pulsar.ts` se declara «única fuente para todo clic del E2E que abre algo»; este abre un panel sin
+   `abrirCon`. Ver el punto 6: anotar la deuda, con causa sin medir.
+4. **Comentarios que siguen diciendo lo que ya no es.** `mi-wallet-labels.ts:103` nombra «el filtro por concepto», que no existe, y `CONCEPTO_MI_WALLET_TODOS_OPTION` (`:164`) no tiene lector fuera de su test.
+   `lib/utils/mapeo-concepto-tienda.ts:14-15` y `lib/config/wallet-tienda.ts:38` repiten que esas categorías solo nacen de un rechazo, lo mismo que se corrigió en `WalletTiendaFeedService.ts`.
+5. **`₡` literal** en `EstadoCuentaTiendaModeloNuevo.test.tsx:197,198,204,205`. Solo en test, con precedente (106 de 455 archivos de `tests/components`), y no hay guardia que lo pare. `TarifasValores.test.tsx` usa `monedaConfig.simbolo`.
+6. **R71, redacción.** *Fuera* lista D41, que es de R61 y no de R71. La nota de «Para la central» (`PARA_LA_CENTRAL_NOTA_MODELO_NUEVO`) tiene test con la etiqueta «R71 (menor 5)», pero la cláusula no la pide.
+
+### Lo que pediste verificar
+
+**1. D38: cerrado.** Medido de punta a punta con un test temporal, ya borrado: `WalletTiendaFeedService` real, gestión `reprogramado` del modelo nuevo, flete 250 al 13 %, `EstadoCuentaService` real por sus cuatro entradas, como
+`servi_app`, y las funciones de rótulo reales.
+
+| Superficie, pantalla y descarga | Importe | Modelo nuevo | Sin activar (literal, importe de `crearFila`) |
+|---|---|---|---|
+| `/mi-wallet` | 250,00 | «La empresa te cobró el flete de gestiones no entregadas» | «La empresa te cobró el flete por devolución a origen» |
+| `/mi-wallet` | 32,50 | «La empresa te cobró el IVA del flete de gestiones no entregadas» | sin fila en este caso; literal en el test de componente |
+| `/wallet/tiendas` | 250,00 | «Flete de gestiones no entregadas cobrado a la tienda» | «Flete por devolución a origen cobrado a la tienda» |
+| `/wallet/tiendas` | 32,50 | «IVA del flete de gestiones no entregadas cobrado a la tienda» | sin fila en este caso; literal en el test de componente |
+
+- Tabla, desplegable y las dos hojas de la descarga pasan por `rotulos.concepto`. Los dos diccionarios por categoría ya solo los leen estas dos funciones, más «Registrar movimiento» (`wallet-conceptos-manuales.ts:452`), que nombra una categoría y no una fila.
+- Los otros textos con «devolución a origen» de estas pantallas son del cobro por rechazo (`gestion_orden`) y de su anulación, que sí fueron una devolución.
+- **El filtro de `/mi-wallet` ya no existe: confirmado.** Sin `conceptos` en `MiEstadoCuenta.tsx`; `useConceptosConMovimientos` y `opcionesDeConceptos` solo los usa `LibroCajaBarra`. Lo de «tabla, filtro y descarga» de mi vuelta 2 estaba mal: lo escribí fiándome del comentario del diccionario, sin mirar el lector.
+- `/wallet/tiendas` no tiene E2E de este rótulo; `/mi-wallet` sí. Lo cubren el componente y la medida de arriba.
+
+**2. `incluyeModeloNuevo`: bien.** `WHERE` por cierre, modelo y tienda; la empresa la pone la RLS, y el test depende de ella (T1). Una sentencia por página y ninguna sin cierres. Mixto dentro de un cierre, entre cierres y cierre anterior a activar, con la solicitud real, medidos. W1 a W7, S1 a S3, R1, R2 y T1: **13 de 13 matadas**. W6 (un cierre con alguna fila vieja deja de contar) y S1 (cualquier cierre nuevo de la página marca todas las filas) son las que miden mixto y activación.
+
+**3. Guardia `caja-173-alcance`: no se debilitó nada, y el hueco está cerrado.** En el rango solo salen dos comentarios, el doble `PrismaClient["cierreDetail"]`, que pasa a uno más estrecho, y la lista de tablas ajenas, que crece. **G4 y G5, con el texto literal de la vuelta 2, caen** (2 y 1 de 39). También caen las variantes nuevas (`EstadoCuentaRepository` por Prisma y por SQL, corchetes, filtro por importe, alias, suma en JS) y las regresiones G6, G7 y G8. La lista de columnas sale del esquema y tiene control de no vacuidad.
+Lo que no mide, sin ser hallazgo: un módulo nuevo importado por `EstadoCuentaRepository` no entra en el censo, que es solo de la caja, como antes de esta ficha. Y un alias a `.count()` escaparía, pero no lee importes.
+La excepción de `nombres-estado-retirados` para `mi-wallet-labels.ts` es por texto y con recuento: un tercero (GN1) y retirar la frase (GN2) salen rojos.
+
+**4. R71: vale; D39 y D40, declaradas con los menores 1 y 2.** El libro de la caja y D38 pasan a cláusula MIENTRAS…DEBE, comprobable, con «NO DEBEN» para el viejo y el cobro por rechazo. El mapa de `tasks.md:168` apunta a archivos y títulos presentes; T10.1 y T10.2 en `[x]`. D39 sigue siendo correcta: las líneas `ComposicionGananciaCard.tsx:219,267` y `LibroCajaBarra.tsx:114` están vivas y sin dato de fila. **Hay que pedirle a Carlos el visto bueno de R71 y R72 en el PR.**
+
+**5. D40: menor, se confirma, con la audiencia corregida.** La falta de dato es cierta: `CierreBodegaResumen` y `ConsolidacionSateliteDTO` no traen el campo, solo `CierreBodegaResumenLite`, y `CierreBodegaFacturaResumen` no pasa `modeloNuevo`. Una nota neutra cambiaría el literal del viejo, y eso R71 lo prohíbe. Rótulo («Gana la bodega satélite», `:1063`) e importe son ciertos; lo impreciso es el motivo en una nota. No es un cobro, y quien la lee además de la oficina es la satélite, sobre lo que ella gana. Por eso no sube, aunque el motivo «audiencia interna» no valga para `:1073` (menor 1). Queda como está en D40: antes de cerrar EP-8.
+
+**6. `wallet-mensajeros.spec.ts:58`: la rama no lo explica, y ya era frágil. La causa sigue sin medir.**
+
+- **Lo que la rama no toca.** Desde la base (`c301fc87`): `EstadoCuenta.tsx`, `app/(app)/wallet/mensajeros` y los layouts, 0 líneas. `EstadoCuentaService` solo cambia `leerTienda`; el campo no llega a la fila del mensajero, y lo afirma el test «la fila del mensajero no lleva el campo». De `wallet-rotulos.ts` la página solo lee `ORIGEN_PAGO_LABEL`, que no cambia: la rama añade `conceptoDeMovimientoCaja`, y esa función no se llama aquí. El DTO solo gana un opcional.
+- **Lo que la rama sí cambia alrededor:** `playwright.config.ts` añade `tarifas-maqueta` y `tarifas-activacion` al proyecto `dinero`, por delante de este spec, con `workers: 1`. Puede cambiar carga y orden; no lo medí. `menu-visibility.ts` añade la entrada de Tarifas y `globals.css` retira animaciones de la tarifa vieja; por lectura, ninguno de los dos desmonta una fila, sin medirlo.
+- **Ya era frágil:** este mismo test cayó en CI (run 40875969358, en la navegación) y `b0322828` solo arregló el enlace. El clic de la línea 81 sigue crudo. En CI hay `retries: 1`, que lo absorbería; en local, 0.
+- **Lo medido:** el spec solo, 15 repeticiones sobre una base desechable, con la misma build: **45 de 45 pasan**, y el `:58` tarda de 1,5 a 2,2 s. No lo reproduje. Corregido en la bitácora: el clic no «agotó los 30 s». Son 30 s de plazo de todo el test (`Test ended`), con un recorrido normal de 1,2 a 2,2 s, así que algo quedó parado casi todo el plazo. El registro acaba en `detached… retrying` y no vuelve a resolver el botón. El log de ese servidor no tiene errores. La traza de ese fallo se perdió con la corrida siguiente.
+- **Sin comparar contra la base:** haría falta otra build y varias corridas de `dinero` enteras, y eso es del CI. No bloquea; deuda en el menor 3. Si vuelve a caer, guardar `error-context.md` antes de repetir.
+
+### Mutaciones del reviewer
+
+`v3-mut.cjs`, en el scratchpad: corre antes la base y aborta si no hay tests, hay rojos o hay saltos (`BASE total 89, fail 0, skip 0`); restaura cada archivo en `finally`. Sobre `servi_gate_slt54`. **33 de 33 matadas por aserción**, con 0 saltos en todas. `FINAL total 89, fail 0`, y árbol limpio.
+
+| Id | Mutación | Rojos |
+|---|---|---|
+| W1, W2 | Lote sin filtro de modelo; lote del viejo | 5 y 9 de 12 |
+| W3, W4, W5 | Lote sin filtro de cierre; de tienda; sin `distinct` | 1, 1 y 1 |
+| W6 | Mixto: un cierre con fila vieja deja de contar | 4 |
+| W7 | Consulta aunque no haya ids | 2 |
+| S1, S2, S3 | Cualquier cierre nuevo marca la página; sin `origen_tipo`; toda fila de cierre es nueva | 2, 1 y 6 |
+| R1, R2 | No pasa la tienda; una consulta por cierre | 1 y 1 |
+| T1 | El test lee sin el rol de la app, sin RLS | 1 |
+| L1, L2 | `/mi-wallet` y oficina: ausente se lee como nuevo | 3 y 4 de 29 |
+| L3, L4 | La superficie no pasa el campo | 7 y 9 |
+| L5, L6, L7 | Cambia el literal del viejo; el IVA de la oficina se queda viejo; el nuevo vuelve a decir devolución | 6, 6 y 7 |
+| **G4, G5** | Literales de la vuelta 2 | **2 y 1 de 39** |
+| G4b, G4c, G4d | Estado de cuenta por Prisma; por SQL; caja por corchetes | 1, 1 y 2 |
+| G5b, G5c, G5d | Módulo: filtra por importe; selecciona por alias; suma en JS | 1, 1 y 1 |
+| G6, G7, G8 | Regresiones: SQL crudo; módulo sin declarar; nombra el ledger de la tienda | 2, 1 y 1 |
+| GN1, GN2 | `nombres-estado-retirados`: un tercer «entregadas»; la excepción caduca | 1 y 1 de 9 |
+
+### Lo que corrí
+
+| Comando | Resultado |
+|---|---|
+| `pnpm run typecheck` | exit 0 |
+| `eslint --quiet`, los `.ts` y `.tsx` del rango | exit 0 |
+| `pnpm run test:guardias` | 4616 pasan, 4 fallan, los de `dependencias-declaradas-presentes`, en el baseline; 1 salto |
+| `estado-cuenta-tienda-modelo-nuevo`, `EstadoCuentaTiendaModeloNuevo`, `caja-173-alcance`, `nombres-estado-retirados`, sobre `servi_gate_slt54` | 89 de 89 |
+| Test temporal de punta a punta, borrado | La tabla del punto 1 |
+| `playwright test e2e/wallet-mensajeros.spec.ts --project=dinero --no-deps --repeat-each=15`, base desechable, borrada al terminar | 45 de 45 |
+| Literales prohibidos en las líneas añadidas | Solo el `₡` del menor 5 |
+| Dependencias, esquema y migraciones en el rango | Sin cambios |
+
+**Sin correr, por encargo:** suite completa, E2E entero, `./init.sh`. No muté el E2E de `tarifas-activacion` ni lo repetí: es del implementer. El grafo no se consultó: Grep y Read. Tasks abiertas: T6.3 y T6.5, del leader.
+
+### Checklist
+
+- [x] D38 cerrado en las dos superficies, nuevo y viejo literal
+- [x] Trazabilidad de R71 y R72 en el mapa; T10 en `[x]`
+- [x] `WHERE`, N+1, mixto y activación, con mutación propia
+- [x] Guardias: sin debilitar; G4 y G5 cerradas
+- [x] Sin dependencias, esquema ni migraciones nuevas; sin el nombre del cliente
+- [ ] Visto bueno de Carlos a R71 y R72: pendiente, en el PR
+- [ ] T6.3 y T6.5: del leader, antes del PR y en la salida
