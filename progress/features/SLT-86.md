@@ -25,6 +25,7 @@ Ninguna.
 
 ## Tandas
 - 2026-11-05 · T0 (merge dev con SLT-83) + T1 (migración 20261106120000, esquema) · 229ddce1, 0999df40, e0362b2c, 77e62f60 · ida y vuelta 15/15 en servi_logistic_slt86; guardias de esquema 70/70; typecheck con 48 errores ESPERADOS (columnas retiradas, los cierran T4/T8/T9). T1 ya reescribe plan_de_la_empresa.
+- 2026-11-05 · T2 (tipos/zod) + T3 (período de calendario SQL y TS, migración 20261106130000, R26 sin plan en plan_de_la_empresa) + T4 (retira tope de órdenes) · d6879c14, 8beddc35, b3f9daea, 5b7361c7 · planes-schema-periodo 47/47, ciclo-periodo 117/117, plan-ciclo-periodo 108/108, T4 573/573; guardias: solo el rojo del baseline. Typecheck 277 errores ESPERADOS en 67 archivos, todos dentro de «Archivos esperados» (verificado por el leader): los cierran T5–T12. Aviso: docs/architecture.md:231 nombra funciones retiradas (inicioDelCicloEnCurso, _fixtures/ciclo-corto.ts) → ajustar antes del PR.
 
 ## Modelos (overrides)
 
