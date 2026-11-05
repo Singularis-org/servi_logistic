@@ -221,10 +221,9 @@ function construirOrdenesColumns(etiquetas: EtiquetasGeograficas): Column<OrdenL
     {
       id: "fulfillment",
       value: "Fulfillment",
-      // Monto fijo de fulfillment de la tarifa activa de la tienda (sin tarifa → ₡0).
-      render: (row) => (
-        <PriceLabel value={toValidNumber(row.relaciones?.tienda?.tarifa?.fulfillment)} />
-      ),
+      // SLT-54 (R66): del resolver único, sin IVA. No de `relaciones.tienda.tarifa`: en el modelo nuevo
+      // no hay esa fila. Sin tarifa, el servidor manda "0.00" (→ ₡0).
+      render: (row) => <PriceLabel value={toValidNumber(row.fulfillment)} />,
     },
     {
       id: "comision",

@@ -36,9 +36,9 @@ describe("SL-45 — la oficina puede preguntar cómo se paga y se registra la de
   it.each(OFICINA)("%s: R1–R3, la región en sus tres estados, con las pistas literales", (rol) => {
     const caja = cuerpoEnContexto(rol, "oficina/wallet-caja");
     expect(caja).toContain(
-      "Lo que la plataforma cobra por cada orden creada, menos las anuladas y lo ya pagado. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.",
+      "Lo que la plataforma cobra por las órdenes de la empresa (al crearlas o, con plan porcentual, al llegar a un estado final), menos las anuladas y lo ya pagado. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.",
     );
-    expect(caja).toContain("La empresa está al día con la plataforma. Cada orden nueva suma su cobro aquí.");
+    expect(caja).toContain("La empresa está al día con la plataforma. Cada orden suma su cobro aquí cuando se cobra.");
     expect(caja).toContain("**Saldo a favor de la empresa con la plataforma**");
     expect(caja).toContain(
       "La empresa pagó más de lo que hoy debe, porque se anularon órdenes ya pagadas. Se descuenta de los próximos cobros.",

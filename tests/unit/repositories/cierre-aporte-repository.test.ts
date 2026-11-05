@@ -71,6 +71,11 @@ function whereDe(fn: { mock: { calls: unknown[][] } }): Record<string, unknown> 
 
 const RANGO = { skip: 0, take: 25 };
 
+/** El EXISTS de una rama: la gestion de ESTE cierre, con los resultados dados. */
+function existeGestion(resultados: string[]) {
+  return { gestiones: { some: { cierreId: CIERRE, resultado: { in: resultados } } } };
+}
+
 describe("CierreAporteRepository — la forma de la consulta (R21/R22)", () => {
   it("el criterio del concepto viaja dentro del where", async () => {
     const { repo, findMany, count } = espia();
@@ -84,13 +89,18 @@ describe("CierreAporteRepository — la forma de la consulta (R21/R22)", () => {
     expect(where.cierreId).toBe(CIERRE);
     // Los tres hechos de `cierre_detail` que exige la comision COD, en el WHERE y no en memoria.
     // SLT-52 (R41/R42): «hay tarifa congelada» = tarifa vieja (`tarifa_id`) o cierre del nuevo.
-    expect(where.OR).toEqual([{ tarifaId: { not: null } }, { tarifaModelo: "nuevo" }]);
+    // SLT-54 (R64): en el nuevo, con el concepto de la comision congelado. El hecho de la GESTION va
+    // en cada rama, como un EXISTS acotado al MISMO cierre.
+    expect(where.OR).toEqual([
+      { tarifaId: { not: null }, orden: existeGestion(["entregado"]) },
+      {
+        tarifaModelo: "nuevo",
+        conceptos: { some: { concepto: "tienda_comision_cod" } },
+        orden: existeGestion(["entregado"]),
+      },
+    ]);
     expect(where.cobraComision).toBe(true);
     expect(where.montoCobrar).toEqual({ gt: 0 });
-    // Y el hecho de la GESTION, como un EXISTS acotado al MISMO cierre.
-    expect(where.orden).toEqual({
-      gestiones: { some: { cierreId: CIERRE, resultado: { in: ["entregado"] } } },
-    });
 
     // R28: el `count` va con el MISMO `where`, no con uno parecido.
     expect((count.mock.calls[0][0] as { where: unknown }).where).toEqual(where);
@@ -104,14 +114,39 @@ describe("CierreAporteRepository — la forma de la consulta (R21/R22)", () => {
       rango: RANGO,
     });
     const where = whereDe(findMany);
-    expect(where.OR).toEqual([{ tarifaId: { not: null } }, { tarifaModelo: "nuevo" }]);
+    expect(where.OR).toEqual([
+      { tarifaId: { not: null }, orden: existeGestion(["entregado"]) },
+      {
+        tarifaModelo: "nuevo",
+        conceptos: { some: { concepto: "tienda_flete_entregado" } },
+        orden: existeGestion(["entregado"]),
+      },
+    ]);
     // Las claves que NO exige sencillamente NO aparecen: un `false`/`undefined` explicito
     // cambiaria el SQL emitido.
     expect("cobraComision" in where).toBe(false);
     expect("montoCobrar" in where).toBe(false);
-    expect(where.orden).toEqual({
-      gestiones: { some: { cierreId: CIERRE, resultado: { in: ["entregado"] } } },
+  });
+
+  it("SLT-54 R64: el flete de lo que no es entrega: la rama vieja solo el rechazo, y una rama nueva por resultado", async () => {
+    const { repo, findMany } = espia();
+    await repo.listarOrdenesQueAportan({
+      cierreId: CIERRE,
+      criterio: CRITERIO_DE_APORTE.ingreso_flete_devolucion,
+      rango: RANGO,
     });
+    const nueva = (concepto: string, resultado: string) => ({
+      tarifaModelo: "nuevo",
+      conceptos: { some: { concepto } },
+      orden: existeGestion([resultado]),
+    });
+    expect(whereDe(findMany).OR).toEqual([
+      { tarifaId: { not: null }, orden: existeGestion(["devolucion_a_origen_por_rechazo"]) },
+      nueva("tienda_flete_rechazo", "devolucion_a_origen_por_rechazo"),
+      nueva("tienda_flete_reprogramado", "reprogramado"),
+      nueva("tienda_flete_novedad", "novedad"),
+      nueva("tienda_flete_incidente", "incidente"),
+    ]);
   });
 
   it("el COD recaudado admite los cinco resultados y exige recaudo dentro del EXISTS", async () => {
@@ -170,11 +205,13 @@ describe("CierreAporteRepository — la forma de la consulta (R21/R22)", () => {
       criterio: CRITERIO_DE_APORTE.ingreso_flete_devolucion,
       rango: RANGO,
     });
-    const some = (
-      whereDe(findMany).orden as { gestiones: { some: Record<string, unknown> } }
-    ).gestiones.some;
-    expect(Object.keys(some).sort()).toEqual(["cierreId", "resultado"]);
-    expect(some.resultado).toEqual({ in: ["devolucion_a_origen_por_rechazo"] });
+    // Todas las ramas: la del modelo viejo y las del nuevo.
+    const ramas = whereDe(findMany).OR as Array<{ orden: { gestiones: { some: Record<string, unknown> } } }>;
+    expect(ramas).toHaveLength(5);
+    for (const rama of ramas) {
+      expect(Object.keys(rama.orden.gestiones.some).sort()).toEqual(["cierreId", "resultado"]);
+    }
+    expect(ramas[0].orden.gestiones.some.resultado).toEqual({ in: ["devolucion_a_origen_por_rechazo"] });
   });
 
   it("R30: el orden es TOTAL — guia congelada con nulos al final, y `id` como desempate", async () => {

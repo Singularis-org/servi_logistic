@@ -1,11 +1,11 @@
 "use client";
 
-// El KPI del CICLO DE VIDA: cuanto tarda de media una orden desde que se crea hasta que llega
-// a un estado terminal.
+// El KPI del CICLO DE VIDA: cuanto tarda de media una orden desde que se crea hasta su gestion
+// final.
 //
 // ⚠ QUE MIDE Y QUE DEJA FUERA, porque una cifra sola no lo puede decir:
-//   - el reloj arranca en `orden.created_at` y para en la ULTIMA transicion a
-//     `entregada` / `devuelta_a_tienda` / `incidente`;
+//   - el reloj arranca en `orden.created_at` y para en la ultima gestion vigente, si es
+//     `entregado` / `devolucion_a_origen_por_rechazo` / `incidente`, este o no aprobado su cierre;
 //   - SOLO cuentan las ordenes CERRADAS. Una que lleva tres semanas abierta no tiene fin de
 //     reloj y no entra, asi que el promedio habla de las que se cerraron y no de todas — sesga
 //     hacia abajo mientras haya cola sin cerrar;

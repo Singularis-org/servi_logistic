@@ -31,7 +31,7 @@ async function preparar(tx: TxDeTest, plan: Partial<CrearPlanInput>, empresas = 
   const orgs: string[] = [];
   for (let i = 0; i < empresas; i++) {
     const { id } = await crearOrganizacion(tx, { nombre: `SL24 edición ${i} ${randomUUID().slice(0, 6)}` });
-    const r = await servicio.asignar(SUPERADMIN, { organizacionId: id, planId: creado.planId });
+    const r = await servicio.asignar(SUPERADMIN, { organizacionId: id, planId: creado.planId, tipoCobro: "mensual" });
     if (r.estado !== "ok") throw new Error(`no se asignó: ${JSON.stringify(r)}`);
     orgs.push(id);
   }
@@ -43,6 +43,7 @@ async function preparar(tx: TxDeTest, plan: Partial<CrearPlanInput>, empresas = 
       modulos: entrada.modulos,
       precio: entrada.precio,
       costoPorOrden: entrada.costoPorOrden, // SLT-66 R8: campo obligatorio nuevo; no cambia lo que se comprueba.
+      costoPorOrdenPorcentual: null, // SLT-83: campo obligatorio nuevo; no cambia lo que se comprueba.
       vigenteDesde: null,
       ...cambio,
     });

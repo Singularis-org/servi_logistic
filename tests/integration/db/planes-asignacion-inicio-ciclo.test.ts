@@ -83,7 +83,9 @@ async function caso(tx: TxDeTest): Promise<Caso> {
     asignar: (organizacionId, planId, inicioCiclo) =>
       servicio.asignar(
         SUPERADMIN,
-        inicioCiclo === undefined ? { organizacionId, planId } : { organizacionId, planId, inicioCiclo },
+        inicioCiclo === undefined
+          ? { organizacionId, planId, tipoCobro: "mensual" }
+          : { organizacionId, planId, inicioCiclo, tipoCobro: "mensual" },
       ),
     previa: (organizacionId, planId, inicioCiclo) =>
       servicio.previsualizarAsignacion(SUPERADMIN, { organizacionId, planId, inicioCiclo }),
@@ -248,11 +250,16 @@ describeSiHayBase("SLT-58 — primera asignación con fecha de inicio del ciclo 
     expect(r.pasada.planCicloCortoDesdeAt).toBeNull();
     expect(r.futura.planCicloAnclaAt?.toISOString()).toBe(inicioDelDiaPlataforma(futura).toISOString());
     expect(r.futura.cortoEsAhora).toBe(true);
-    // R39: la fecha elegida, AAAA-MM-DD, en la fila `plan_asignado` de la misma transacción.
-    expect(r.historial.map((h) => h.map((x) => x.valorNuevo))).toEqual([[hoy], [pasada], [futura]]);
+    // R39: la fecha elegida, AAAA-MM-DD, en la fila `plan_asignado` de la misma transacción; D6 (ajuste
+    // planes-custom): seguida del tipo de cobro.
+    expect(r.historial.map((h) => h.map((x) => x.valorNuevo))).toEqual([
+      [`${hoy} · mensual`],
+      [`${pasada} · mensual`],
+      [`${futura} · mensual`],
+    ]);
   });
 
-  it("R39: un cambio de plan posterior deja valor_nuevo en NULL y conserva el ancla elegida (P2a)", async () => {
+  it("R39: un cambio de plan posterior deja en valor_nuevo solo el tipo de cobro (D6) y conserva el ancla elegida (P2a)", async () => {
     const r = await revertida(base, async (tx) => {
       const c = await caso(tx);
       const [uno, dos] = [await c.plan(), await c.plan()];
@@ -263,7 +270,7 @@ describeSiHayBase("SLT-58 — primera asignación con fecha de inicio del ciclo 
       return { antes, cambio, despues: await organizacion(tx, org), historial: await asignaciones(tx, org), dos };
     });
     expect(r.cambio).toEqual({ estado: "ok", planId: r.dos, cambio: true, avisos: [], vigenteDesde: null });
-    expect(r.historial.map((h) => h.valorNuevo)).toEqual([dia(-10), null]);
+    expect(r.historial.map((h) => h.valorNuevo)).toEqual([`${dia(-10)} · mensual`, "mensual"]);
     expect(r.despues).toEqual({ ...r.antes, planId: r.dos });
   });
 

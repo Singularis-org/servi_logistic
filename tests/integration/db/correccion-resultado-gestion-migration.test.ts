@@ -478,6 +478,11 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("398/T1.5 (b) — el down recrea las listas 
       "grupo_distritos_creado",
       "grupo_distritos_cambiado",
       "grupo_distritos_borrado",
+      // Ajuste planes-custom D16: `plan_tipo_cobro_cambiado`, de
+      // `20261104130100_historial_accion_plan_tipo_cobro_cambiado`.
+      "plan_tipo_cobro_cambiado",
+      // SLT-54: `tarifas_activadas`, de `20261104140000_historial_tarifa_activacion`.
+      "tarifas_activadas",
     ];
     expect([...origenAntes].sort()).toEqual(
       ORDEN_HISTORIAL_ORIGEN_TIPO_SEED.filter(

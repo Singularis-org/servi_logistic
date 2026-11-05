@@ -11,8 +11,12 @@
  * (`ANALITICA_CACHE_TTL_SEGUNDOS`, 3600). La diferencia es la fuente: aquella cachea el
  * rollup diario, que tiene un job que la invalida por evento cuando reescribe una fecha;
  * esta cachea un conteo sobre las tablas VIVAS (`orden`, `gestion_orden`), que cambian con
- * cada gestion registrada y no tienen —ni van a tener— un invalidador por escritura. Lo unico
- * que acota la antiguedad de la cifra es este numero.
+ * cada gestion registrada y esa escritura no invalida nada. Lo unico que acota la antiguedad de
+ * la cifra frente a una gestion nueva es este numero.
+ *
+ * SLT-64: anular o corregir una gestion SI invalida (`deshacerGestion`,
+ * `corregirResultadoGestion`), porque una cifra que se contradice con lo que el usuario acaba de
+ * deshacer no se explica con un retraso. Si esa invalidacion falla, este TTL acota el daño.
  *
  * Consecuencia que la pantalla esta obligada a decir: **la cifra puede tener hasta 15 minutos
  * de retraso.** Por eso el DTO lleva `lastSync` y por eso el anillo lo pinta — sin ese sello,

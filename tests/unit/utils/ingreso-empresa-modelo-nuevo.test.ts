@@ -405,6 +405,7 @@ describe("SLT-52 R29 — las cuatro identidades de partesPorTienda con fletes de
       a === undefined && b === undefined ? null : new Prisma.Decimal(a ?? 0).plus(b ?? 0).toFixed(2);
     const total = Object.values(d).reduce<Prisma.Decimal>((acc, v) => acc.plus(v!), new Prisma.Decimal(0));
     return {
+      tarifaModelo: "nuevo",
       montoCobrar: input.montoCobrar,
       cobraComision: input.cobraComision,
       esCentral: input.esCentral,

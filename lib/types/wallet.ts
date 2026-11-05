@@ -382,6 +382,16 @@ export type WalletMovimientoDTO = {
    * Las descargas no incluyen este campo (R58).
    */
   documento: DocumentoCajaDTO | null;
+  /**
+   * SLT-54 (menor 6 de la revision F2.2) — ¿el cierre del que nace esta fila tiene alguna gestion
+   * congelada con el modelo nuevo? Sale de `cierre_detail.tarifa_modelo`, no del interruptor actual de
+   * la empresa, y solo puede ser `true` con origen `cierre_dia`.
+   *
+   * Lo puebla `WalletMovimientoRepository` en `listar` (el libro, su descarga y el detalle de una fila
+   * de la composicion) y en `obtenerPorId`, con UNA consulta por lectura. `obtenerPorClave` y
+   * `obtenerPorOrigen` son de los caminos de escritura y no lo traen. Ausente se lee como modelo viejo.
+   */
+  incluyeModeloNuevo?: boolean;
 };
 
 /**

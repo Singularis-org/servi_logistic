@@ -61,7 +61,7 @@ export type AlcanceOrden = "global" | "zona";
  * COMPILAR aqui, en vez de filtrar el campo en silencio.
  */
 export const CAMPOS_SOLO_ALCANCE_GLOBAL = {
-  orden: ["fleteConIva", "comisionConIva"],
+  orden: ["fleteConIva", "comisionConIva", "fulfillment"],
   tienda: ["email", "telefono", "tarifa"],
 } as const satisfies {
   orden: readonly (keyof OrdenListItemDTO)[];
@@ -72,7 +72,7 @@ export const CAMPOS_SOLO_ALCANCE_GLOBAL = {
  * R13/R46 — PURA. Con `global` devuelve la orden intacta (R46: no se recorta nada por debajo
  * del techo de R18); con `zona`, sin los campos de `CAMPOS_SOLO_ALCANCE_GLOBAL`.
  *
- * Como se retira cada uno: los cuatro opcionales (`fleteConIva`, `comisionConIva`,
+ * Como se retira cada uno: los cinco opcionales (`fleteConIva`, `comisionConIva`, `fulfillment`,
  * `tienda.email`, `tienda.telefono`) SE BORRAN —la clave deja de existir, asi que no viaja ni
  * como `undefined` en el JSON—; `tienda.tarifa` se pone a `null`, que es un valor legitimo del
  * tipo y el que ya tiene una tienda sin tarifa activa. Ninguna columna montada en `zona` los

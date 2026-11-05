@@ -30,14 +30,26 @@ export interface FijarValorResultado {
   reemplazo: boolean;
 }
 
+/** El nivel exacto de un valor con vehiculo: la clave natural de `fijar` (R8). */
+export interface NivelConVehiculo {
+  concepto: TarifaConcepto;
+  zonaId: string | null;
+  grupoId: string | null;
+  tiendaId: string | null;
+  vehiculoId: string;
+}
+
 export interface ITarifaValorRepository {
   existeZona(zonaId: string): Promise<boolean>;
   /** El grupo existe en la empresa Y es de esa zona. */
   grupoEnZona(grupoId: string, zonaId: string): Promise<boolean>;
   /** El usuario existe en la empresa con rol `adminTienda` o `apiKey` (regla de `TarifaService`). */
   esTiendaTarifable(tiendaId: string): Promise<boolean>;
-  /** `vehiculos` es catalogo de plataforma: solo se comprueba que exista. */
-  existeVehiculo(vehiculoId: string): Promise<boolean>;
+  /**
+   * SLT-54 R52: el vehiculo esta activo, o ya hay un valor de ese concepto en ese nivel exacto. `false`
+   * tambien si no existe: `vehiculos` es catalogo de plataforma y en los dos casos no se admite escribir.
+   */
+  vehiculoEsElegibleONivelOcupado(nivel: NivelConVehiculo): Promise<boolean>;
   /**
    * Upsert por la clave natural (R8) + `tarifa_valor_fijado` con antes/despues, en UNA transaccion.
    * `"nivel_ocupado"`: otra fijacion simultanea creo antes la fila de ese nivel (`tarifa_valor_nivel_key`).

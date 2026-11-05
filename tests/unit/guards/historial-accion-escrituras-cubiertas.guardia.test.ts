@@ -216,6 +216,14 @@ const CENSO: EntradaCenso[] = [
   },
   // SLT-52 (R14, T6.2) — el modelo nuevo de tarifas. Un metodo por escritura; `grupo_distritos_cambiado`
   // tiene DOS productores (renombrar y mover distritos), cada uno con su propia transaccion.
+  // SLT-54 (R4, T1.2): activar deja su rastro en la misma transaccion que la fila.
+  {
+    tipos: ["tarifas_activadas"],
+    archivo: "lib/repositories/TarifaActivacionRepository.ts",
+    metodo: "activar",
+    forma: "abre_tx",
+    mutacion: /tx\.tarifaActivacion\.create\(/,
+  },
   {
     tipos: ["tarifa_valor_fijado"],
     archivo: "lib/repositories/TarifaValorRepository.ts",
@@ -565,13 +573,8 @@ const CENSO: EntradaCenso[] = [
     forma: "abre_tx",
     mutacion: /tx\.zona\.delete\(/,
   },
-  {
-    tipos: ["vehiculo_borrado"],
-    archivo: "lib/repositories/VehiculoRepository.ts",
-    metodo: "delete",
-    forma: "abre_tx",
-    mutacion: /tx\.vehiculo\.deleteMany\(/,
-  },
+  // SL-42 (P1) — `VehiculoRepository.delete` estaba aqui como productor de `vehiculo_borrado`. El
+  // borrado se retiro y el catalogo es del superadmin: sale del censo, ver `SIN_ESCRITOR_DESDE`.
   {
     tipos: ["plantilla_eliminada"],
     archivo: "lib/repositories/PlantillaMensajeRepository.ts",
@@ -709,15 +712,27 @@ const CENSO: EntradaCenso[] = [
   },
   // --- SL-24 (design §5.2, §9; R29) · cambia el plan ---
   //
-  // La asignación corre en `comoPlataforma` y abre su `$transaction`; el `plan_asignado` y las filas
-  // de módulos de la sincronización van en la MISMA llamada (comparten `lote_id`). Lo prueba
-  // `tests/integration/db/planes-historial.test.ts`.
+  // La asignación corre en `comoPlataforma`; el `plan_asignado` y las filas de módulos de la
+  // sincronización van en la MISMA llamada (comparten `lote_id`). Lo prueba
+  // `tests/integration/db/planes-historial.test.ts`. Ajuste planes-custom (D2): el cuerpo vive en
+  // `asignarEnTx`, que recibe la `tx` de `asignar` o de `crearYAsignar` (crear y asignar un custom en
+  // una sola transacción, `tests/integration/db/planes-crear-custom-asigna.test.ts`).
   {
     tipos: ["plan_asignado"],
     archivo: "lib/repositories/PlanesRepository.ts",
-    metodo: "asignar",
-    forma: "abre_tx",
+    metodo: "asignarEnTx",
+    forma: "recibe_tx",
     mutacion: /tx\.\$executeRaw`UPDATE "organizacion" SET "plan_id"/,
+  },
+  // Ajuste planes-custom (D10, D16): cambiar solo el tipo de cobro del plan actual deja su fila con
+  // acción PROPIA, `plan_tipo_cobro_cambiado` (el tipo de antes y el nuevo), en la misma transacción que el
+  // UPDATE. Lo prueba `tests/integration/db/planes-cambiar-tipo-cobro.test.ts`.
+  {
+    tipos: ["plan_tipo_cobro_cambiado"],
+    archivo: "lib/repositories/PlanesRepository.ts",
+    metodo: "cambiarTipoCobro",
+    forma: "abre_tx",
+    mutacion: /tx\.\$executeRaw`UPDATE "organizacion" SET "plan_tipo_cobro"/,
   },
 ];
 
@@ -742,6 +757,13 @@ const SIN_ESCRITOR_DESDE: TiposSinEscritor[] = [
     motivo:
       "la geografia es del superadmin, que no tiene empresa: sus acciones van a " +
       "`historial_plataforma` por `appendAccionPlataforma` (D15)",
+  },
+  {
+    tipos: ["vehiculo_borrado"],
+    desde: "SL-42",
+    motivo:
+      "el borrado de vehiculos se retiro (P1: desactivar lo sustituye) y el catalogo es del " +
+      "superadmin, cuyas acciones van a `vehiculo_rastro` (R20, R21); el valor queda por las filas viejas",
   },
 ];
 
@@ -1106,18 +1128,19 @@ describe("362/T7.1 — el detector se prueba a si mismo", () => {
   });
 
   it("CONTRAPRUEBA: el recortador recorta EL METODO, no el archivo entero", () => {
-    const cuerpo = cuerpoDelMetodo("lib/repositories/VehiculoRepository.ts", "delete");
-    const archivo = codigoSinComentarios("lib/repositories/VehiculoRepository.ts");
+    // SL-42: era `VehiculoRepository.delete`, retirado. Mismo molde: un metodo con su `appendAccion`.
+    const cuerpo = cuerpoDelMetodo("lib/repositories/PlantillaMensajeRepository.ts", "softDelete");
+    const archivo = codigoSinComentarios("lib/repositories/PlantillaMensajeRepository.ts");
     expect(cuerpo.length).toBeGreaterThan(120);
     expect(cuerpo.length).toBeLessThan(archivo.length);
-    expect(cuerpo).toContain("vehiculo.deleteMany");
+    expect(cuerpo).toContain("plantillaMensaje.updateMany");
     // Y NO trae el metodo de al lado.
-    expect(cuerpo).not.toContain("contarUsos");
+    expect(cuerpo).not.toContain("setTemplate");
   });
 
   it("CONTRAPRUEBA: pedir un metodo inexistente LANZA en vez de medir vacio", () => {
     expect(() =>
-      cuerpoDelMetodo("lib/repositories/VehiculoRepository.ts", "metodoQueNoExiste"),
+      cuerpoDelMetodo("lib/repositories/PlantillaMensajeRepository.ts", "metodoQueNoExiste"),
     ).toThrow(/no se encontro/);
   });
 });
@@ -1192,7 +1215,9 @@ describe("362/R16 — cada tipo del catalogo tiene al menos un punto de escritur
     // 75 desde SLT-76 (`zona_distrito_cambiado`, en `ZonaRepository.update`).
     // 80 desde SLT-52 (`tarifa_valor_fijado`/`_quitado` y `grupo_distritos_creado`/`_cambiado`/
     // `_borrado`; sus productores, desde T6.2, en `TarifaValorRepository` y `GrupoDistritosRepository`).
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(80);
+        // 81 desde el ajuste planes-custom D16 (`plan_tipo_cobro_cambiado`, de `PlanesRepository.cambiarTipoCobro`).
+    // 82 desde SLT-54 (`tarifas_activadas`, de `TarifaActivacionRepository.activar`).
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(82);
   });
 });
 
@@ -1223,7 +1248,23 @@ describe("SL-20/R35 — los `nodo_geografico_*` quedan SIN escritor en `historia
   it("`GeoRepository` sigue escribiendo esas acciones, pero por `appendAccionPlataforma`", () => {
     const codigo = codigoSinComentarios("lib/repositories/GeoRepository.ts");
     expect(codigo).toMatch(/appendAccionPlataforma\s*\(\s*tx\b/);
-    for (const t of SIN_ESCRITOR) expect(codigo, `${t} sin productor de plataforma`).toContain(`"${t}"`);
+    const deSL20 = SIN_ESCRITOR_DESDE.filter((e) => e.desde === "SL-20").flatMap((e) => e.tipos);
+    expect(deSL20).toHaveLength(3);
+    for (const t of deSL20) expect(codigo, `${t} sin productor de plataforma`).toContain(`"${t}"`);
+  });
+
+  it("SL-42 (P1): `vehiculo_borrado` esta sin escritor y `VehiculoRepository` no llama a `appendAccion`", () => {
+    expect(SIN_ESCRITOR).toContain("vehiculo_borrado");
+    const codigo = codigoSinComentarios("lib/repositories/VehiculoRepository.ts");
+    expect(codigo).not.toMatch(/\bappendAccion\s*\(/);
+    expect(codigo).not.toContain("vehiculo_borrado");
+    // Sus escrituras van al rastro de plataforma (R21).
+    expect(codigo).toMatch(/appendRastroVehiculo\s*\(\s*tx\b/);
+  });
+
+  it("CONTRAPRUEBA: volver a escribir `vehiculo_borrado` por `appendAccion` se detecta", () => {
+    const mutado = `await appendAccion(tx, [{ accion: "vehiculo_borrado" }]);`;
+    expect(sinEscritorEscritos(mutado, SIN_ESCRITOR)).toEqual(["vehiculo_borrado"]);
   });
 
   it("CONTRAPRUEBA: volver a llamar a `appendAccion` con uno de ellos en `GeoRepository` se detecta", () => {

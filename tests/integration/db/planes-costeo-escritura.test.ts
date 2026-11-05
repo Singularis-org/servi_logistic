@@ -35,6 +35,7 @@ function entrada(costoPorOrden: string | null): CrearPlanInput {
     modulos: [],
     precio: { tipo: "monto", mensual: "50000", anual: null },
     costoPorOrden,
+    costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
   };
 }
 

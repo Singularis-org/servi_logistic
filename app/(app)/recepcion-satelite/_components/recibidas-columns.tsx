@@ -62,7 +62,7 @@ import type { EtiquetasGeograficas } from "@/lib/types/pais";
  *
  *   · `flete`       lee `fleteConIva`;
  *   · `comision`    lee `comisionConIva`;
- *   · `fulfillment` lee `relaciones.tienda.tarifa.fulfillment`.
+ *   · `fulfillment` lee `fulfillment`.
  *
  * Se retiran como COLUMNA y nunca como VALOR, por la razón que ya escribió la 260/R15: sin
  * esto `PriceLabel` convertiría el hueco en `₡0,00`, que se lee como «esta orden no paga

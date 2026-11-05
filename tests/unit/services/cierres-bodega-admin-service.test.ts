@@ -307,6 +307,7 @@ describe("CierresBodegaAdminService.verCierreBodegaDetalle — ingreso y gananci
   /** Desglose por orden como lo emite el repo (ya derivado del snapshot). */
   function conIngreso(over: Partial<IngresoEmpresaDTO>): IngresoEmpresaDTO {
     return {
+      tarifaModelo: "viejo",
       montoCobrar: null,
       cobraComision: false,
       esCentral: false,
@@ -869,6 +870,7 @@ describe("Feature 238 (R39) — aprobar un CierreBodega NO pide confirmacion fis
 describe("CierresBodegaAdminService.verCierreBodegaDetalle — las dos cascadas (feature 393)", () => {
   function conIngreso(over: Partial<IngresoEmpresaDTO>): IngresoEmpresaDTO {
     return {
+      tarifaModelo: "viejo",
       montoCobrar: null,
       cobraComision: false,
       esCentral: false,
@@ -1235,6 +1237,7 @@ describe("396/D1 — `verCierreBodegaDetalle` emite el desglose por tienda en lo
   /** Desglose por orden como lo emite el repositorio (ya derivado del snapshot congelado). */
   function ingreso(over: Partial<IngresoEmpresaDTO>): IngresoEmpresaDTO {
     return {
+      tarifaModelo: "viejo",
       montoCobrar: null,
       cobraComision: false,
       esCentral: false,

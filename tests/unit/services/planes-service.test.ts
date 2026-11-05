@@ -31,6 +31,7 @@ function plan(extra: Partial<PlanDTO> = {}): PlanDTO {
     // SLT-66 R28: el plan que se asigna tiene costo concreto (design §9.3); lo que se afirma no cambia.
     precio: { tipo: "monto", mensual: "1000.00", anual: null },
     costoPorOrden: "100.00",
+    costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
     archivado: false,
     ...extra,
   };
@@ -40,8 +41,9 @@ const VERSION = {
   nombre: "Básico 2",
   topes: { ordenesPorCiclo: 50, porRol: { adminTienda: 2 }, apiKeys: null },
   modulos: ["analitica"],
-  precio: { tipo: "negociable" },
+  precio: { tipo: "sin_precio" }, // D1 (ajuste planes-custom): «negociable» ya no existe.
   costoPorOrden: null, // SLT-66 R7: el plan lleva costo por orden; aquí, vacío.
+  costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del esquema
 };
 
 const CREAR = {
@@ -52,6 +54,7 @@ const CREAR = {
   modulos: [],
   precio: { tipo: "sin_precio" },
   costoPorOrden: null, // SLT-66 R7: el plan lleva costo por orden; aquí, vacío.
+  costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del esquema
 };
 
 function doble() {
@@ -59,6 +62,7 @@ function doble() {
     empresa: vi.fn<IPlanesRepository["empresa"]>(async (id) => ({ id, nombre: "Mensajería Uno", planId: null })),
     plan: vi.fn<IPlanesRepository["plan"]>(async () => plan()),
     crear: vi.fn<IPlanesRepository["crear"]>(async () => PLAN),
+    crearYAsignar: vi.fn<IPlanesRepository["crearYAsignar"]>(async () => ({ estado: "ok", planId: PLAN, avisos: [] })),
     editar: vi.fn<IPlanesRepository["editar"]>(async () => ({ estado: "ok", cambio: true, avisos: [] })),
     archivar: vi.fn<IPlanesRepository["archivar"]>(async () => ({ estado: "ok", cambio: true })),
     asignar: vi.fn<IPlanesRepository["asignar"]>(async () => ({ estado: "ok", cambio: true })),
@@ -79,6 +83,8 @@ function doble() {
     catalogo: vi.fn<IPlanesRepository["catalogo"]>(),
     detalle: vi.fn<IPlanesRepository["detalle"]>(),
     planDeEmpresa: vi.fn<IPlanesRepository["planDeEmpresa"]>(),
+    vistaPreviaConTopes: vi.fn<IPlanesRepository["vistaPreviaConTopes"]>(async () => null),
+    cambiarTipoCobro: vi.fn<IPlanesRepository["cambiarTipoCobro"]>(async () => ({ estado: "not_found" })),
     vistaPreviaAsignacion: vi.fn<IPlanesRepository["vistaPreviaAsignacion"]>(),
   };
 }
@@ -103,7 +109,7 @@ describe("SL-24 — R5: solo el superadmin, sin leer ni escribir nada", () => {
     ["editar de inmediato", (s, a) => s.editar(a, { planId: PLAN, ...VERSION, vigenteDesde: null })],
     ["editar programado", (s, a) => s.editar(a, { planId: PLAN, ...VERSION, vigenteDesde: "2026-12-01" })],
     ["archivar", (s, a) => s.archivar(a, { planId: PLAN })],
-    ["asignar", (s, a) => s.asignar(a, { organizacionId: EMPRESA, planId: PLAN })],
+    ["asignar", (s, a) => s.asignar(a, { organizacionId: EMPRESA, planId: PLAN, tipoCobro: "mensual" })],
     ["cancelar un cambio programado", (s, a) => s.cancelarCambio(a, { planId: PLAN })],
     ["listar asignables", (s, a) => s.asignables(a, { organizacionId: EMPRESA })],
   ];
@@ -138,10 +144,11 @@ describe("SL-24 — crear (R1, R2)", () => {
 
   it("R2: un custom de una empresa que no existe se rechaza sin escribir", async () => {
     repo.empresa.mockResolvedValueOnce(null);
-    expect(await servicio.crear(SUPERADMIN, { ...CREAR, visibilidad: "custom", organizacionId: EMPRESA })).toEqual({
-      estado: "not_found",
-    });
+    expect(
+      await servicio.crear(SUPERADMIN, { ...CREAR, visibilidad: "custom", organizacionId: EMPRESA, tipoCobro: "mensual" }),
+    ).toEqual({ estado: "not_found" });
     expect(repo.crear).not.toHaveBeenCalled();
+    expect(repo.crearYAsignar).not.toHaveBeenCalled();
   });
 
   it("R2/R3: validation_error con el campo, sin tocar el repositorio", async () => {
@@ -285,14 +292,14 @@ describe("SL-24 — archivar (R6)", () => {
 
 describe("SL-24 — asignar (R6, R12, R13)", () => {
   it("asigna por el repositorio", async () => {
-    expect(await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN })).toEqual({
+    expect(await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, tipoCobro: "mensual" })).toEqual({
       estado: "ok",
       planId: PLAN,
       cambio: true,
       avisos: [],
       vigenteDesde: null,
     });
-    expect(repo.asignar).toHaveBeenCalledWith(EMPRESA, PLAN, "u-sa");
+    expect(repo.asignar).toHaveBeenCalledWith(EMPRESA, PLAN, "u-sa", undefined, "mensual");
   });
 
   it.each([
@@ -306,19 +313,19 @@ describe("SL-24 — asignar (R6, R12, R13)", () => {
     ],
   ])("%s → se rechaza sin escribir", async (_caso, preparar, esperado) => {
     preparar();
-    expect(await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN })).toEqual(esperado);
+    expect(await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, tipoCobro: "mensual" })).toEqual(esperado);
     expect(repo.asignar).not.toHaveBeenCalled();
   });
 
   it("R13: el custom de la propia empresa sí se asigna", async () => {
     repo.plan.mockResolvedValueOnce(plan({ visibilidad: "custom", organizacionId: EMPRESA }));
-    expect((await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN })).estado).toBe("ok");
+    expect((await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, tipoCobro: "mensual" })).estado).toBe("ok");
     expect(repo.asignar).toHaveBeenCalledTimes(1);
   });
 
   it("R13: el plan que ya tiene responde ok sin cambio y sin escribir", async () => {
     repo.empresa.mockResolvedValueOnce({ id: EMPRESA, nombre: "Mensajería Uno", planId: PLAN });
-    expect(await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN })).toMatchObject({
+    expect(await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, tipoCobro: "mensual" })).toMatchObject({
       estado: "ok",
       cambio: false,
     });
@@ -331,7 +338,7 @@ describe("SL-24 — asignar (R6, R12, R13)", () => {
       { organizacionId: EMPRESA, empresa: "Mensajería Uno", tope: "api_keys", usados: 4, maximo: 1 },
     ];
     repo.asignar.mockResolvedValueOnce({ estado: "tope_excedido", excedidos });
-    expect(await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN })).toEqual({
+    expect(await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, tipoCobro: "mensual" })).toEqual({
       estado: "tope_excedido",
       excedidos,
       mensaje:

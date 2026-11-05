@@ -30,6 +30,7 @@ const PLAN: PlanConConsumo = {
   cambioPendiente: null,
   // SLT-66 R18: campo nuevo del tipo; estos casos no lo comprueban.
   costeo: {
+    modo: "fijo", // SLT-83: el costeo pasó a unión por modo
     base: { tipo: "monto", mensual: "45000.00" },
     costoPorOrden: "100.00",
     fuente: "plan",
@@ -39,6 +40,8 @@ const PLAN: PlanConConsumo = {
     sinCostoConcreto: false,
     anualNoAplicaAlCosto: false,
   },
+  // Ajuste planes-custom (D9): campo nuevo del tipo; estos casos no lo comprueban.
+  cobro: { tipo: "mensual", montoPeriodo: "45000.00", siguienteCobro: "2026-03-15" },
 };
 
 function relleno(nombre: string): HTMLElement {

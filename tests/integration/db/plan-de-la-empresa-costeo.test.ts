@@ -4,6 +4,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
 import { MiPlanRepository } from "@/lib/repositories/MiPlanRepository";
+import type { CostoVigente } from "@/lib/types/consumo-plan";
 import { comoApp, crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones";
 
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type FksDeOrden, type TxDeTest } from "./_postgres-real";
@@ -36,8 +37,9 @@ let tarifaGlobal: TarifaGlobalBajoLock | undefined;
 
 interface Lectura {
   empresa: { monto: string; fuente: string };
-  repositorio: { monto: string; fuente: string };
-  superadmin: { monto: string; fuente: string } | undefined;
+  // SLT-83 (design §4.3, §9.3): el costo vigente leído lleva su modo.
+  repositorio: CostoVigente;
+  superadmin: CostoVigente | undefined;
   costoDelPlan: unknown;
   usoKeys: string[];
   cargo: { monto: string; fuente: string }[];
@@ -130,9 +132,10 @@ describeSiHayBase("SLT-66 — plan_de_la_empresa: el costeo de la empresa (R18, 
       const r = await revertida(base, (tx) => leerYCargar(tx, plan, excepcion));
       const esperado = { monto, fuente };
       expect(r.cargo).toEqual([esperado]);
-      expect(r.empresa).toEqual(esperado);
-      expect(r.repositorio).toEqual(esperado);
-      expect(r.superadmin).toEqual(esperado);
+      // SLT-83 (design §2.3, §9.3): el `costo_vigente` crudo gana `porcentaje` y `minimo`, null fuera del modo porcentual.
+      expect(r.empresa).toEqual({ ...esperado, porcentaje: null, minimo: null });
+      expect(r.repositorio).toEqual({ modo: "fijo", ...esperado }); // SLT-83: el costo vigente lleva su modo
+      expect(r.superadmin).toEqual({ modo: "fijo", ...esperado });
       // El costo del plan sale aparte, tal cual (con excepción también: es el del plan, no el vigente).
       expect(r.costoDelPlan).toBe(plan);
     },
@@ -144,9 +147,10 @@ describeSiHayBase("SLT-66 — plan_de_la_empresa: el costeo de la empresa (R18, 
       const r = await revertida(base, (tx) => leerYCargar(tx, null, null));
       const esperado = { monto: "0.00", fuente: "sin_configurar" };
       expect(r.cargo).toEqual([esperado]);
-      expect(r.empresa).toEqual(esperado);
-      expect(r.repositorio).toEqual(esperado);
-      expect(r.superadmin).toEqual(esperado);
+      // SLT-83 (design §2.3, §9.3): el `costo_vigente` crudo gana `porcentaje` y `minimo`, null fuera del modo porcentual.
+      expect(r.empresa).toEqual({ ...esperado, porcentaje: null, minimo: null });
+      expect(r.repositorio).toEqual({ modo: "fijo", ...esperado }); // SLT-83: el costo vigente lleva su modo
+      expect(r.superadmin).toEqual({ modo: "fijo", ...esperado });
     } finally {
       await tarifaGlobal?.fijar(GLOBAL);
     }

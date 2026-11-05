@@ -66,13 +66,14 @@ function tarifaRow(overrides: Record<string, unknown> = {}) {
 }
 
 // SLT-52: el resolver unico pregunta primero si la empresa tiene valores del modelo nuevo
-// (`tarifaValor.findFirst`). Este doble es una empresa SIN valores: todo este archivo prueba la
+// (`tarifaActivacion.findFirst`). Este doble es una empresa SIN activar: todo este archivo prueba la
 // rama vieja, que es la cascada de la 274 sin cambios (R36). La rama nueva se prueba contra
 // Postgres en tests/integration/db/tarifas-flexibles-{resolver,respaldo}.test.ts.
 function buildPrisma() {
   return {
     tarifa: { findMany: vi.fn() },
-    tarifaValor: { findFirst: vi.fn().mockResolvedValue(null), findMany: vi.fn() },
+    tarifaActivacion: { findFirst: vi.fn().mockResolvedValue(null) },
+    tarifaValor: { findMany: vi.fn() },
     grupoDistritosDistrito: { findMany: vi.fn() },
   };
 }
@@ -189,7 +190,7 @@ describe("TarifaVigenteRepository.resolveTarifas — la query (R7)", () => {
     expect(out.size).toBe(0);
     expect(prisma.tarifa.findMany).not.toHaveBeenCalled();
     // SLT-52: ni siquiera el interruptor de modelo: nadie pidio nada.
-    expect(prisma.tarifaValor.findFirst).not.toHaveBeenCalled();
+    expect(prisma.tarifaActivacion.findFirst).not.toHaveBeenCalled();
   });
 
   it("usa el cliente de `tx` cuando se le pasa (segundo argumento, opcional)", async () => {
@@ -206,8 +207,8 @@ describe("TarifaVigenteRepository.resolveTarifas — la query (R7)", () => {
     expect(tx.tarifa.findMany).toHaveBeenCalledTimes(1);
     expect(prisma.tarifa.findMany).not.toHaveBeenCalled();
     // SLT-52: el interruptor de modelo tambien corre en la transaccion (lee lo que ella ve).
-    expect(tx.tarifaValor.findFirst).toHaveBeenCalledTimes(1);
-    expect(prisma.tarifaValor.findFirst).not.toHaveBeenCalled();
+    expect(tx.tarifaActivacion.findFirst).toHaveBeenCalledTimes(1);
+    expect(prisma.tarifaActivacion.findFirst).not.toHaveBeenCalled();
   });
 });
 

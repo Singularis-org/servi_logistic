@@ -43,7 +43,9 @@ export default async function PostulacionPage() {
   const vehiculoRepo = new VehiculoRepository(prisma);
 
   const [vehiculos, tipos] = await Promise.all([
-    vehiculoRepo.findMany(),
+    // SL-42 (R18): un tipo inactivo no se ofrece para una postulación nueva; el recorte vive en
+    // el repositorio (`WHERE_VEHICULO_ELEGIBLE`), no aquí.
+    vehiculoRepo.findMany({ soloActivos: true }),
     prisma.tipoIdentificacion.findMany({ orderBy: { value: "asc" } }),
   ]);
 

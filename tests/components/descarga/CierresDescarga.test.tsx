@@ -325,6 +325,7 @@ const BODEGA_SOLICITADOS = [cierreBodega({ cierreBodegaId: "b3", estado: "aproba
  */
 function ingreso(): IngresoEmpresaDTO {
   return {
+    tarifaModelo: "viejo",
     montoCobrar: "1000.10",
     cobraComision: true,
     esCentral: true,
@@ -530,6 +531,7 @@ function renderConsolidacion() {
     totalesAgregados: TOTALES,
     totalPagoMensajeroAgregado: "200.20",
     totalIngresoBodegaRechazosAgregado: "10.00",
+    incluyeModeloNuevoAgregado: false,
     totalNetoAgregado: "800.00",
     totalCentralDebeAgregado: "0.00",
     puedesSolicitar: true,
@@ -543,6 +545,7 @@ function renderConsolidacion() {
       totalesAgregados={TOTALES}
       totalPagoMensajeroAgregado="200.20"
       totalIngresoBodegaRechazosAgregado="10.00"
+      incluyeModeloNuevoAgregado={false}
       totalNetoAgregado="800.00"
       totalCentralDebeAgregado="0.00"
       puedesSolicitar

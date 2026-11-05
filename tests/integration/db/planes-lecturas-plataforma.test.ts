@@ -30,6 +30,7 @@ const VERSION: VersionPlan = {
   modulos: [],
   precio: { tipo: "sin_precio" },
   costoPorOrden: null, // SLT-66 R7: el plan lleva costo por orden; aquí, vacío.
+  costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
 };
 
 /** Las 00:00 de la plataforma del 2027-01-10 (−06:00). */
@@ -184,6 +185,10 @@ describeSiHayBase("SLT-58 — lecturas del superadmin en PlanesRepository (R13, 
       creadoAt: new Date("2026-10-20T10:00:00.000Z"),
       actorNombre: "Ana Pérez",
       planNombre: "Plan «Tercero»",
+      // D14: cada asignación trae su acción y el valor anterior/nuevo (null en una asignación sin tipo de cobro).
+      accion: "plan_asignado",
+      valorAnterior: null,
+      valorNuevo: null,
     });
     // El plan con su uso (R19, contado por las funciones de los triggers) y su pendiente.
     expect(a.plan).not.toBeNull();

@@ -58,8 +58,18 @@ async function cargoDeUnaOrdenNueva(tx: TxDeTest, organizacionId: string): Promi
   );
 }
 
-/** Un plan de base «monto» con el costo por orden pedido, asignado a la empresa. */
-async function conPlan(tx: TxDeTest, organizacionId: string, costoPorOrden: string | null): Promise<{ id: string; nombre: string }> {
+type PlanListado = NonNullable<EmpresaListada["plan"]>;
+
+/**
+ * Un plan de base «monto» con el costo por orden pedido, asignado a la empresa con el tipo de cobro
+ * pedido (ajuste planes-custom D6; la fábrica escribe como dueño y deja el DEFAULT `mensual`).
+ */
+async function conPlan(
+  tx: TxDeTest,
+  organizacionId: string,
+  costoPorOrden: string | null,
+  tipoCobro: PlanListado["tipoCobro"] = "mensual",
+): Promise<PlanListado> {
   const id = await crearPlan(tx, { custom: organizacionId });
   const plan = await tx.plan.update({
     where: { id },
@@ -67,7 +77,10 @@ async function conPlan(tx: TxDeTest, organizacionId: string, costoPorOrden: stri
     select: { id: true, nombre: true },
   });
   await asignarPlan(tx, organizacionId, id);
-  return plan;
+  if (tipoCobro !== "mensual") {
+    await tx.$executeRawUnsafe(`UPDATE "organizacion" SET "plan_tipo_cobro" = $1 WHERE "id" = $2`, tipoCobro, organizacionId);
+  }
+  return { ...plan, tipoCobro };
 }
 
 function fila(listado: EmpresaListada[], id: string): EmpresaListada {
@@ -78,7 +91,7 @@ function fila(listado: EmpresaListada[], id: string): EmpresaListada {
 
 interface Caso {
   listado: Pick<EmpresaListada, "plan" | "cobroVigente" | "cobroPorOrden">;
-  plan: { id: string; nombre: string } | null;
+  plan: PlanListado | null;
   cargo: { monto: string; fuente: string }[];
 }
 
@@ -108,7 +121,7 @@ describeSiHayBase("SLT-66 — el listado de «Empresas»: plan y cobro vigente (
     };
     const planes = {
       A: await conPlan(tx, ids.A, "100.00"),
-      B: await conPlan(tx, ids.B, "100.00"),
+      B: await conPlan(tx, ids.B, "100.00", "anual"),
       C: await conPlan(tx, ids.C, null),
       D: null,
     };
@@ -137,7 +150,7 @@ describeSiHayBase("SLT-66 — el listado de «Empresas»: plan y cobro vigente (
     } as const;
     for (const k of ["A", "B", "C", "D"] as const) {
       expect(r[k].cargo, `cargo de ${k}`).toEqual([esperado[k]]);
-      expect(r[k].listado.cobroVigente, `listado de ${k}`).toEqual(esperado[k]);
+      expect(r[k].listado.cobroVigente, `listado de ${k}`).toEqual({ modo: "fijo", ...esperado[k] }); // SLT-83: lleva su modo
     }
   });
 
@@ -148,13 +161,16 @@ describeSiHayBase("SLT-66 — el listado de «Empresas»: plan y cobro vigente (
     expect(r.D.listado.cobroPorOrden).toBeNull();
   });
 
-  it("R32: plan trae id y nombre del plan asignado, o null sin plan", async () => {
+  it("R32: plan trae id y nombre del plan asignado, o null sin plan; D9 (ajuste planes-custom): y su tipo de cobro", async () => {
     const r = await revertida(base, cuatroEmpresas);
     for (const k of ["A", "B", "C"] as const) {
       expect(r[k].plan).not.toBeNull();
       expect(r[k].listado.plan, `plan de ${k}`).toEqual(r[k].plan);
     }
     expect(r.D.listado.plan).toBeNull();
+    // No es una igualdad vacía: B paga en anual y las demás en el DEFAULT mensual.
+    expect(r.B.listado.plan?.tipoCobro).toBe("anual");
+    expect(r.A.listado.plan?.tipoCobro).toBe("mensual");
   });
 
   it("R31: sin valor global ni plan con costo, la fuente es sin_configurar con 0.00, como el cargo", async () => {
@@ -167,7 +183,7 @@ describeSiHayBase("SLT-66 — el listado de «Empresas»: plan y cobro vigente (
       });
       const esperado = { monto: "0.00", fuente: "sin_configurar" };
       expect(r.cargo).toEqual([esperado]);
-      expect(r.listado.cobroVigente).toEqual(esperado);
+      expect(r.listado.cobroVigente).toEqual({ modo: "fijo", ...esperado }); // SLT-83: lleva su modo
       expect(r.listado.plan).toBeNull();
     } finally {
       await tarifaGlobal?.fijar(GLOBAL);

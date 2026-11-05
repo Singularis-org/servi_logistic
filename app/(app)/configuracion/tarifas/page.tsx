@@ -1,36 +1,68 @@
 import { AppPage } from "@/components/shared/AppPage";
-import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
-import { listarZonas } from "@/lib/actions/zonas";
+import { cargarPantallaTarifas, cargarZonaTarifas } from "@/lib/actions/tarifas";
 
-import { TiendasModule } from "./_components/TiendasModule";
+import { TEXTOS } from "./_components/tarifas-textos";
+import { TarifasEncabezado } from "./_components/TarifasEstado";
+import { TarifasErrorCarga, TarifasModule, type PantallaOk } from "./_components/TarifasModule";
 
 /**
- * Página de Tarifas (Server Component). Autoriza server-side igual que
- * `/configuracion`: SOLO el rol `maestro`.
- *
- * SLT-51 (R12/R13): las zonas, su formulario y el bloque «Cobertura» se mudaron a
- * `/configuracion/zonas`. Aquí quedan las tarifas por tienda, que necesitan el listado de
- * zonas para su selector; antes se lo pasaba el módulo de zonas, ahora lo pre-carga la página.
+ * Los nombres de los grupos de otras zonas que tienen precio de tienda: `cargarPantallaTarifas` no los trae y
+ * la lista de tiendas los enseña. Solo esas zonas, en serie; suelen ser pocas.
  */
-export default async function TarifasPage() {
-  const actor = await resolveActorFromSession();
+async function nombresDeGrupo(pantalla: PantallaOk): Promise<Record<string, string>> {
+  const zonas = new Set(
+    pantalla.preciosTienda.flatMap((v) => (v.grupoId !== null && v.zonaId !== null ? [v.zonaId] : [])),
+  );
+  const nombres: Record<string, string> = {};
+  for (const zonaId of zonas) {
+    const r = await cargarZonaTarifas({ zonaId });
+    if (r.status === "ok") for (const g of r.grupos) nombres[g.id] = g.nombre;
+  }
+  return nombres;
+}
 
-  if (actor?.rol !== "maestro") {
+/**
+ * SLT-54 (R25, R55, R57): `/configuracion/tarifas`. El servidor decide que se pinta: otro rol o sin sesion ve
+ * solo el aviso, y `puedeEscribir` viaja a la pantalla sin que ella compare roles. Autorizan tambien cada
+ * action y cada service (R5).
+ */
+export default async function TarifasPage({
+  searchParams,
+}: Readonly<{ searchParams?: Promise<{ zona?: string | string[] }> }>) {
+  const pantalla = await cargarPantallaTarifas();
+
+  if (pantalla.status === "error") {
     return (
-      <AppPage title="Tarifas">
+      <AppPage title={TEXTOS.titulo}>
+        <TarifasErrorCarga />
+      </AppPage>
+    );
+  }
+  if (pantalla.status !== "ok") {
+    return (
+      <AppPage title={TEXTOS.titulo}>
         <p role="alert" className="text-sm text-muted-foreground">
-          No tienes permiso para acceder a esta sección.
+          {TEXTOS.sinPermiso}
         </p>
       </AppPage>
     );
   }
 
-  const zonasRes = await listarZonas({ page: 1, pageSize: 100 });
-  const zonas = zonasRes.status === "ok" ? zonasRes.items : [];
+  const pedida = (await searchParams)?.zona;
+  const zona = pantalla.zonas.find((z) => z.id === pedida) ?? pantalla.zonas[0] ?? null;
+  const zonaInicial = zona === null ? null : await cargarZonaTarifas({ zonaId: zona.id });
 
   return (
-    <AppPage title="Tarifas">
-      <TiendasModule zonas={zonas} />
+    <AppPage
+      title={TEXTOS.titulo}
+      actions={<TarifasEncabezado activadaAt={pantalla.activacion?.activadaAt ?? null} />}
+    >
+      <TarifasModule
+        pantalla={pantalla}
+        zonaInicialId={zona?.id ?? null}
+        zonaInicial={zonaInicial}
+        nombresDeGrupo={await nombresDeGrupo(pantalla)}
+      />
     </AppPage>
   );
 }

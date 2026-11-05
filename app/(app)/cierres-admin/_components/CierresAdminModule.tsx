@@ -70,7 +70,7 @@ import {
 } from "./cierre-confirmacion-fisica";
 // `moneyTope` lo usan los mensajes de la indemnizacion (feature 230 de `dev`); los tres
 // simbolos de tabla que `dev` importaba aqui se fueron con la tira de comprobantes.
-import { money, moneyTope } from "./cierre-detalle-shared";
+import { hayGestionEnModeloNuevo, money, moneyTope } from "./cierre-detalle-shared";
 // FICHA 395: las tres cascadas del detalle («de quién es el dinero», lo que la empresa le factura
 // a la tienda y lo que le queda a la empresa). Viven en su propio archivo para que la pantalla de
 // dinero tenga nombre en el censo de identidades (`DineroIdentidadesEnPantalla`).
@@ -1325,6 +1325,7 @@ export function CierresAdminModule({
               // FICHA 396: «Pago a tienda» y «Gana la tienda» son la SUMA de las tiendas del
               // cierre. Con dos o más, la cascada lo dice y las desglosa; con una, nada cambia.
               partesPorTienda={detalle.partesPorTienda}
+              modeloNuevo={hayGestionEnModeloNuevo(detalle.grupos)}
             />
 
             {/* El detalle es UNA sola lectura: el comprobante. Reemplazó a los paneles
