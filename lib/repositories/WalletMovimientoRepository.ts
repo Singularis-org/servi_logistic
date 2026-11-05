@@ -16,14 +16,19 @@ import type {
 import type { ISaldoCorridoCajaRepository } from "@/lib/interfaces/repositories/ISaldoCorridoCajaRepository";
 import type {
   AgregadoCajaRow,
+  WalletCategoriaRotuloPorModelo,
   WalletMovimientoCategoria,
   WalletMovimientoDTO,
   WalletOrigenTipo,
 } from "@/lib/types/wallet";
 import { NATURALEZA_POR_CATEGORIA } from "@/lib/utils/caja-tesoreria";
-import { WALLET_MOVIMIENTO_CATEGORIA_SEED } from "@/lib/types/wallet";
+import { WALLET_CATEGORIA_ROTULO_POR_MODELO_SEED, WALLET_MOVIMIENTO_CATEGORIA_SEED } from "@/lib/types/wallet";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
-import { whereLibroCajaConTerminoSql, whereLibroCajaSql } from "@/lib/repositories/libro-caja-a-quien-sql";
+import {
+  categoriasConModeloNuevoSql,
+  whereLibroCajaConTerminoSql,
+  whereLibroCajaSql,
+} from "@/lib/repositories/libro-caja-a-quien-sql";
 import type { AQuienFiltro } from "@/lib/types/libro-caja-a-quien";
 import { ordenTotal, type DireccionOrden } from "@/lib/types/ordenamiento-listado";
 import { derivarBalance } from "@/lib/utils/wallet-balance";
@@ -371,6 +376,12 @@ export class WalletMovimientoRepository implements IWalletMovimientoRepository, 
       tipo: g.tipo,
       total: (g._sum.monto ?? new Prisma.Decimal(0)).toFixed(2),
     }));
+  }
+
+  /** D39 — ver el contrato. El orden es el del catalogo: el resultado no depende de como lea el motor. */
+  async categoriasConModeloNuevo(filtros: BalanceFiltros): Promise<WalletCategoriaRotuloPorModelo[]> {
+    const filas = await this.prisma.$queryRaw<{ categoria: string }[]>(categoriasConModeloNuevoSql(filtros));
+    return WALLET_CATEGORIA_ROTULO_POR_MODELO_SEED.filter((c) => filas.some((f) => f.categoria === c));
   }
 
   /**

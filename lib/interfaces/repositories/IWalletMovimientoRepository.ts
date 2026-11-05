@@ -9,6 +9,7 @@ import type {
   WalletMovimientoTipo,
   WalletMovimientoCategoria,
   WalletOrigenTipo,
+  WalletCategoriaRotuloPorModelo,
 } from "@/lib/types/wallet";
 
 // Feature 42 (design §2.1) — contrato del repositorio del LIBRO de movimientos. Solo
@@ -222,6 +223,11 @@ export interface IWalletMovimientoRepository {
    * y las dos restas las hace `derivarCaja`, que es PURA y no conoce la base (R10).
    */
   agregarPorCategoriaYTipo(filtros: BalanceFiltros): Promise<readonly AgregadoCajaRow[]>;
+  /**
+   * D39 — las categorias del agregado de arriba cuyo rotulo depende del modelo y que, con ESOS filtros,
+   * tienen alguna fila de un cierre con el modelo nuevo. Sale de lo congelado, no del interruptor actual.
+   */
+  categoriasConModeloNuevo(filtros: BalanceFiltros): Promise<WalletCategoriaRotuloPorModelo[]>;
   /**
    * Feature 45 (R13): lee un movimiento por id para la reversa (monto server-side; evita
    * que el cliente falsee el monto). null si no existe.

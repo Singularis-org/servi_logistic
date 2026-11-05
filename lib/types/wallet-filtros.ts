@@ -61,7 +61,15 @@ export type ConceptosConMovimientosInput = z.infer<typeof conceptosConMovimiento
  * tienda); el rotulo lo pone la superficie con SU diccionario (desde la empresa o desde la tienda).
  * `movimientos` es un CARDINAL (cuantas filas), nunca un importe.
  */
-export type ConceptoConMovimientosDTO = { categoria: string; movimientos: number };
+export type ConceptoConMovimientosDTO = {
+  categoria: string;
+  movimientos: number;
+  /**
+   * D39 (solo el libro de la caja) — `true` si entre esas filas hay alguna de un cierre con el modelo
+   * nuevo. Sale de `cierre_detail.tarifa_modelo`, no del interruptor actual. Ausente: el rotulo de siempre.
+   */
+  incluyeModeloNuevo?: boolean;
+};
 
 /** Los cierres del selector: de la tienda o del mensajero cuyo estado de cuenta se mira. */
 export const cierresDeLaCuentaSchema = z.discriminatedUnion("cuenta", [

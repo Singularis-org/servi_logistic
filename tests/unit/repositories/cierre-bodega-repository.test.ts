@@ -310,6 +310,7 @@ describe("CierreBodegaRepository.findCierresBodegaByZona (F1.4-h)", () => {
       conciliadoAt: "2026-07-12T12:00:00.000Z",
       conciliadoPorNombre: "Ana Rojas",
       conciliadoNota: null,
+      incluyeModeloNuevo: false, // D40
     });
   });
 });

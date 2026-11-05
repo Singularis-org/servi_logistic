@@ -94,6 +94,7 @@ export interface CierreBodegaResumenRow {
    * conciliacion real de la RETROACTIVA del backfill (R30)— y NO baja a ninguna descarga.
    */
   conciliadoNota: string | null;
+  incluyeModeloNuevo?: boolean; // D40: ver `CierreBodegaResumen.incluyeModeloNuevo`
 }
 
 // Datos para crear la solicitud de cierre de bodega (R9/R10). Totales snapshot

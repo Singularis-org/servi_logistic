@@ -7,6 +7,8 @@
 // La empresa la pone la RLS de `cierre_detail`, como en toda lectura de negocio. Sus tests viven en
 // `tests/integration/db/cierre-incluye-modelo-nuevo.test.ts`, contra Postgres.
 
+import { Prisma } from "@prisma/client";
+
 /**
  * Para el `select` de una cabecera de `cierre_dia`: un conteo filtrado dentro de la MISMA sentencia,
  * sin una consulta por fila.
@@ -58,3 +60,41 @@ export async function cierresConModeloNuevo(
   });
   return new Set(filas.map((f) => f.cierreId));
 }
+
+/** Lo unico que la lectura de abajo le pide a `cierre_dia`: el id de la consolidacion. */
+export interface LectorDeModeloDeConsolidacion {
+  cierreDia: {
+    findMany(args: {
+      where: { cierreBodegaId: { in: string[] }; detalle: { some: { tarifaModelo: "nuevo" } } };
+      select: { cierreBodegaId: true };
+    }): PromiseLike<{ cierreBodegaId: string | null }[]>;
+  };
+}
+
+/**
+ * D40 — ¿alguna de esas consolidaciones lleva un `cierre_dia` con una gestion del modelo nuevo? UNA
+ * consulta por lectura, y ninguna sin ids. Mismo criterio que la tarjeta de cada cierre: basta una gestion.
+ */
+export async function consolidacionesConModeloNuevo(
+  cliente: LectorDeModeloDeConsolidacion,
+  cierreBodegaIds: readonly string[],
+): Promise<ReadonlySet<string>> {
+  if (cierreBodegaIds.length === 0) return new Set();
+  const filas = await cliente.cierreDia.findMany({
+    where: { cierreBodegaId: { in: [...cierreBodegaIds] }, detalle: { some: { tarifaModelo: "nuevo" } } },
+    select: { cierreBodegaId: true },
+  });
+  return new Set(filas.flatMap((f) => (f.cierreBodegaId === null ? [] : [f.cierreBodegaId])));
+}
+
+/**
+ * D39 — la condicion sobre la fila `w` de `wallet_movimiento`: nace de un cierre con alguna gestion del
+ * modelo nuevo. Es el criterio de `incluyeModeloNuevo` de cada fila del libro, en SQL, para los agregados
+ * que no tienen fila: sin periodo, la pantalla mira toda la historia, y una lista de ids en un `IN`
+ * creceria hasta el tope de parametros de Postgres. Solo nombra `cierre_id` y `tarifa_modelo` (guardia
+ * `caja-173-alcance`). La empresa la pone la RLS de las dos tablas.
+ */
+export const FILA_DE_CAJA_CON_MODELO_NUEVO_SQL = Prisma.sql`(w."origen_tipo"::text = 'cierre_dia' AND EXISTS (
+  SELECT 1 FROM "cierre_detail" cd
+  WHERE cd."cierre_id" = w."origen_id" AND cd."tarifa_modelo" = 'nuevo'
+))`;
