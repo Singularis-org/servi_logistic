@@ -194,8 +194,13 @@ export function TarifasValores({
       for (const resultado of r.resultados) {
         if (resultado.status !== "ok") fallos[resultado.clave] = erroresDeResultado(resultado);
       }
-      // R38: lo que fallo conserva lo digitado; lo demas vuelve a leerse de lo guardado.
-      setBorrador((b) => Object.fromEntries(Object.entries(b).filter(([clave]) => fallos[clave] !== undefined)));
+      // R38: lo que fallo conserva lo digitado; lo demas vuelve a leerse de lo guardado. Lo que se digito
+      // mientras guardaba no se envio: tampoco se pierde.
+      setBorrador((b) =>
+        Object.fromEntries(
+          Object.entries(b).filter(([clave, c]) => fallos[clave] !== undefined || c !== borrador[clave]),
+        ),
+      );
       setErrores(fallos);
       if (Object.keys(fallos).length > 0) toast.warning(TEXTOS.guardadoParcial);
       else toast.success(activada ? TEXTOS.guardadoEnVigor : TEXTOS.guardadoBorrador);

@@ -102,6 +102,8 @@ export default defineConfig({
         "planes-superadmin",
         // SLT-66 R26: costo por orden del plan; toca el global del cobro y lo devuelve al terminar.
         "planes-costeo",
+        // SLT-54 R54, R59, R60, R70: toca el catálogo de vehículos, global, y lo devuelve al terminar.
+        "tarifas-maqueta",
       ),
     },
     {
@@ -134,6 +136,8 @@ export default defineConfig({
         "ajuste-pago-mensajero-cierre",
         // SLT-68 · R22: el incentivo manual a un mensajero.
         "incentivo-mensajero-slt68",
+        // SLT-54 R67, R68: digitar no cambia nada; activar cambia el siguiente cierre, y solo en esa empresa.
+        "tarifas-activacion",
       ),
     },
   ],

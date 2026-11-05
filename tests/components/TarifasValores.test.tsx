@@ -342,6 +342,34 @@ describe("SLT-54 — guardar", () => {
     await waitFor(() => expect(toast.success).toHaveBeenCalled());
   });
 
+  it("R38: lo digitado mientras guarda no se envió y no se pierde (lo destapó el E2E)", async () => {
+    let soltar: (v: unknown) => void = () => undefined;
+    guardarMock.mockImplementation(() => new Promise((r) => (soltar = r)));
+    const u = userEvent.setup();
+    render(<TarifasValores {...props({ actor: "mensajero" })} />);
+
+    await u.type(screen.getByRole("textbox", { name: "Valor de Por entregado" }), "1500");
+    await u.click(guardarBoton());
+    const otra = screen.getByRole("textbox", { name: "Valor de Por novedad" });
+    await u.type(otra, "250");
+    soltar(okDe("mensajero_entregado:todos"));
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+
+    expect(otra).toHaveValue("250");
+    // Sigue pendiente: el botón se puede volver a pulsar, y solo lleva lo que faltó por enviar.
+    await waitFor(() => expect(guardarBoton()).toBeEnabled());
+    guardarMock.mockResolvedValue(okDe("mensajero_novedad:todos"));
+    await u.click(guardarBoton());
+    expect(guardarMock).toHaveBeenCalledTimes(2);
+    expect(guardarMock.mock.calls[1][0].cambios).toEqual([
+      {
+        accion: "fijar",
+        clave: "mensajero_novedad:todos",
+        datos: expect.objectContaining({ concepto: "mensajero_novedad", valor: "250" }),
+      },
+    ]);
+  });
+
   it("R40: en borrador dice que no rige; en vigor, que aplica desde el siguiente cierre", async () => {
     guardarMock.mockResolvedValue(okDe("mensajero_entregado:todos"));
     const u = userEvent.setup();

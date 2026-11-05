@@ -682,3 +682,219 @@ $ contadores-cabecera y TarifasModulo, tras el arreglo
 ```
 
 **Sin correr aquí:** `vitest related`, `./init.sh`, la suite completa por encargo y E2E (Tanda F). La suite que arrancó por error no cuenta como medida.
+
+## Tanda F — E2E, medición y cierre
+
+T6.1, T6.2 y T6.4 hechas. T6.3 y T6.5 son del leader. **Veredicto:** los E2E de Tarifas y los grupos `aislamiento`, `reparto` y `dinero` en verde sobre `next build` + `next start`, con cifras a mano. R1 a R70 con test. Los E2E destaparon un defecto de esta rama, arreglado con su test, y una regresión mía, también arreglada.
+
+**Base:** `servi_e2e_slt54`, desechable, host local comprobado, migrada y con catálogos. Borrada al terminar (`existe: false`). No se tocó la base de `.env` ni `servi_gate_slt54`, y la RLS no se apagó en ninguna parte.
+
+### Lo que cambió fuera de los E2E
+
+- **Defecto real, arreglado (R38).** En `TarifasValores`, al terminar un guardado, `setBorrador` tiraba todo lo que no hubiese fallado, también lo digitado mientras guardaba. Se perdía en silencio. Lo destapó el E2E al seguir digitando con el guardado en vuelo. Arreglo de una condición, con `TarifasValores` › «R38: lo digitado mientras guarda no se envió y no se pierde». Con la condición de antes, ese test cae por `toHaveValue(250)`.
+- **Regresión mía, arreglada.** `sembrarEmpresa` pasó a recibir una lista de distritos, y `zonas-crear-sin-costos` seguía pasando uno. Playwright no comprueba tipos: lo vio la primera corrida de `aislamiento` (`distritosDeLaZona.map is not a function`). El spec está añadido a `tasks.md`.
+- **Guardia `e2e-sin-saltos`.** `EXCEPCIONES` queda vacía y «la lista real» admite una lista vacía. `e2e/zona-especial-dos-empresas.spec.ts` no contiene ningún `fixme`.
+- **Guardia `rollup-guards`.** Mi `actionTimeout: 20_000` coincidía con el umbral de R47 y la puso roja. Pasó a `30_000`. Es el único cambio posterior a las corridas de abajo, y solo da más margen.
+
+### Decisiones, por revisar
+
+- **R69: el spec se reescribe sobre lo que sustituye a la marca.** Desde R28 ninguna pantalla la escribe, así que no se puede repetir «marcar y reabrir». La marca se siembra por `DistritoZonaEspecialService` y el spec prueba: se ve de solo lectura y solo la propia (R45); la zona especial es un grupo con su flete, y el mismo distrito está a la vez en el grupo y con marca (R44, R46); B no ve lo de A y puede usar el mismo nombre; al activar, la marca se oculta, no se borra, y B no cambia.
+- **`tarifas-activacion` va en `dinero`; `tarifas-maqueta`, en `aislamiento`.** El segundo toca el catálogo global de vehículos, a mano porque la app no tiene borrado, y lo devuelve en `afterAll`.
+- **El catálogo sembrado trae 3 vehículos, no 2.** La medida «con 2» apaga uno durante ese caso.
+- **Cifras animadas.** `cifraAsentada` exige dos lecturas iguales seguidas antes de afirmar. Se vio la razón: en una foto del diálogo, el KPI «Pago al mensajero» iba por ₡0,15 camino de ₡1.700.
+
+### Sin hacer, a decidir
+
+1. **Rótulo «Ingreso de bodega por devoluciones a origen» en el modelo nuevo.** En el nuevo, la satélite cobra por cualquier resultado (SLT-52 R32): el total congelado de un cierre con entrega y rechazo es 570, de los que 120 son de una entrega. El E2E afirma ese rótulo solo en el viejo, y no miré en pantalla qué enseña en el nuevo. R65 no lo cubre: habla del flete.
+2. **A 390 px, con 8 vehículos,** la columna fija de 200 px deja unos 120 de los 320 del contenedor para desplazar. Cumple R54 y la tabla de §12; es estrecho.
+
+### Salida de los E2E
+
+Sobre la misma base, recreada antes de la primera corrida. Los últimos dos bloques son la segunda vuelta.
+
+```
+$ playwright test --project=aislamiento        (arrastra plataforma-vacia; 1.ª corrida)
+  85 passed | 1 failed (3.3m): zonas-crear-sin-costos, la regresión mía de arriba
+$ playwright test e2e/zonas-crear-sin-costos.spec.ts --project=aislamiento --no-deps
+  1 passed (9.2s)
+$ playwright test --project=dinero
+  43 passed (1.8m) | 0 failed | 0 skipped | 0 flaky
+$ playwright test e2e/tarifas-activacion.spec.ts --project=dinero   (2.ª corrida)
+  8 passed (33.9s) | 0 failed | 0 skipped | 0 flaky
+$ playwright test --project=reparto
+  16 passed (42.6s) | 0 failed | 0 skipped | 0 flaky
+$ playwright test --project=aislamiento        (2.ª corrida)
+  86 passed (3.1m) | 0 failed | 0 skipped | 0 flaky
+```
+
+Por archivo, pasados/fallados:
+
+```
+dinero       ajuste-pago-mensajero-cierre 2/0; cierre-bodega-satelite 3/0; cierre-dia 2/0;
+             cierre-vencido-modelo 5/0; cierres-admin-rechazos-sla 1/0; cierres-admin 3/0;
+             incentivo-mensajero-slt68 4/0; mi-wallet 3/0; reglas-bloqueos-cierre 5/0;
+             tarifas-activacion 8/0; wallet-mensajeros 3/0; wallet 4/0
+aislamiento  superadmin-arranque 3/0; superadmin-empresas 7/0; analitica-roles 4/0; auth 12/0;
+             cobro-plataforma-sl40 2/0; dos-empresas-humo 8/0; integraciones-por-empresa 4/0;
+             login-varias-empresas 2/0; marca 7/0; pago-plataforma-sl45 6/0; planes-costeo 5/0;
+             planes-superadmin 7/0; rastreo-publico 2/0; tarifas-maqueta 8/0;
+             wallet-iva-aparte-sl39 4/0; zona-especial-dos-empresas 4/0; zonas-crear-sin-costos 1/0
+reparto      asignacion-satelite 1/0; devolucion-origen 2/0; etiquetas-lote-tienda 1/0;
+             historial-orden 2/0; mis-asignaciones 4/0; recepcion-satelite 1/0;
+             reintentos-escalado 2/0; reprogramacion-liberacion 3/0
+```
+
+El 500 de `useToast` (tandas D y E) no apareció en `next start`: 0 menciones de `useToast` o `ToastProvider` y 0 líneas de error 500 en el log del servidor de la última corrida.
+
+**CI:** los specs nuevos están en los proyectos `aislamiento` y `dinero`, y la matriz de `gate.yml` corre `--project=` de `aislamiento`, `reparto` y `dinero`. La guardia comprueba que cada spec está en exactamente un proyecto.
+
+### Mutaciones de los E2E
+
+Aplicadas a mano, corridas y revertidas; `git status` sin esos archivos al terminar. Las dos primeras no necesitan build: el cierre del E2E corre el servicio en el worker. Las otras se compilaron.
+
+| Mutación | E2E | Primer rojo |
+|---|---|---|
+| `usaModeloNuevo` siempre `false`: tras activar, sigue con el viejo | `tarifas-activacion`, caso 4 | `totalPagoMensajero` 1700 en vez de 2200; `totalIngresoBodegaRechazos` 300 en vez de 570 |
+| `usaModeloNuevo` siempre `true`: digitar ya rige | `tarifas-activacion`, caso 2 | `totalPagoMensajero` 2200 en vez de 1700; `totalIngresoBodegaRechazos` 570 en vez de 300 |
+| `admin` ve «Guardar» | `tarifas-activacion`, R68 | `getByRole('button', /^Guardar/)`: esperado 0, recibido 1 |
+| Campo valor a 90 px | `tarifas-maqueta`, 1360 claro | diferencia 20, tolerancia 2 |
+| Columna de conceptos sin `sticky` | `tarifas-maqueta`, 8 vehículos | la `x` cambia 400 |
+| «Inactivo» con color fijo | `tarifas-maqueta`, inactivo en oscuro | contraste 1,25; mínimo 4,5 |
+| Marca visible tras activar, solo en el cliente | `zona-especial` | **Sobrevive:** es equivalente, porque el servidor ya no la manda |
+| Marca visible tras activar, servidor y cliente | `zona-especial`, caso 4 | `Zona especial hoy`: esperado 0, recibido 1 |
+
+### Medido frente a la maqueta
+
+`e2e/tarifas-maqueta.spec.ts`, líneas `MEDIDA` de la última corrida, 1360 × 980. **Claro y oscuro dan los mismos números.** Cada fila es además una aserción, con ±2 px donde la medida es exacta.
+
+| Elemento | Maqueta (design §12) | Medido |
+|---|---|---|
+| Lista de zonas, ancho | 250 a 280 | 250,2 |
+| Separación lista-panel | 24 | 24 |
+| Panel de valores | ≥ 560; misma `y` | 781,8; `y` 192,5 los dos |
+| Fila de zona, alto | ≥ 58 | 80 |
+| Pestañas | 3, alto ≥ 44 | 3, 44 |
+| Filas por pestaña | 7, 5, 5 | 7, 5, 5 |
+| Columnas de cobro | Concepto, Modo, Valor, IVA, Hoy rige | Las mismas 5 |
+| Columnas de pago | 4 | Concepto, Modo, Valor, Hoy rige |
+| Columnas tras activar | Una menos | Concepto, Modo, Valor, IVA |
+| Campo valor | 110 × ≥ 40 | 110 × 40 |
+| Campo IVA | 70 × ≥ 40 | 70 × 40 |
+| Selector de modo, alto | ≥ 40 | 40 |
+| Activar | ≥ 44, en la banda | 44; `y` 106,8 en la banda 89-168,5 |
+| Guardar borrador | ≥ 44, al pie | 44; `y` 771, bajo la rejilla que acaba en 759 |
+| Diálogo Activar | ≤ 640; padding 24 | 640; `24px` |
+| Casilla | ≥ 20 × 20; fila ≥ 44 | 20 × 20; 44 |
+| Tabla de tiendas | 5 columnas | 5 |
+| Página | Sin scroll horizontal | 1360 = 1360 |
+
+| Con vehículos | Maqueta | 2, a 1360 | 8, a 1360 | 8, a 390 |
+|---|---|---|---|---|
+| Columnas | 4 con 2; 10 con 8 | 4 | 10 | 10 |
+| Campo | 120 × ≥ 40 | 120 × 40 | 120 × 40 | 120 × 44 |
+| Contenedor, `scrollWidth` y `clientWidth` | Sin scroll con 2; desplaza con 8 | 760 y 760 | 1424 y 760 | 1424 y 320 |
+| `x` de la columna de conceptos | No cambia | 565,2 y 565,2 (`scrollLeft` 0) | 565,2 y 565,2 (`scrollLeft` 400) | 35 y 35 (`scrollLeft` 400) |
+| Página | Sin scroll | 1360 = 1360 | 1360 = 1360 | 390 = 390 |
+
+| Móvil, 390 × 844 | Maqueta | Medido |
+|---|---|---|
+| Página | ≤ 390 | 390 = 390 |
+| Lista sobre panel | `y` lista < `y` panel | 402 < 595,5 |
+| Botones, pestañas y selectores del módulo | ≥ 44 | Mínimo 44, en 18 controles |
+| Fila del interruptor | ≥ 44 | 44 |
+
+| Oscuro, contraste sobre su fondo real | Mínimo | Medido |
+|---|---|---|
+| Título de la banda | 4,5 | 8,82 |
+| Detalle de la banda | 4,5 | 8,82 |
+| Chip de estado de zona | 4,5 | 5,44 |
+| Marca «Inactivo» | 4,5 | 7,80 |
+
+El contraste compone en un lienzo las capas de fondo de cada antepasado. El caso exige `[data-tema].dark`, así que no puede estar midiendo el claro. Es la primera vez que el oscuro se mide por cookie real: la tanda E no logró activarlo.
+
+### Mapa R → test, completo
+
+Comprobado por script contra el disco: toda fila de `tasks.md > Mapa R → test` cita archivos que existen y títulos que aparecen en ellos. **R sin test: ninguno.**
+
+| R | Test |
+|---|---|
+| R1 | `tarifas-flexibles-respaldo.test.ts`, `tarifas-flexibles-snapshot.test.ts`, `tarifa-valor-lectores.guardia`; E2E `tarifas-activacion` › caso 2 |
+| R2 | `tarifas-flexibles-resolver.test.ts`; E2E `tarifas-activacion` › caso 4 |
+| R3 | `tarifa-activacion.test.ts` › «fijar y quitar no cambian el modelo» |
+| R4 | `tarifa-activacion.test.ts` › «activación con actor e historial…» |
+| R5, R6 | `tarifa-activacion-service.test.ts`; R6 también `TarifasActivar` y E2E `tarifas-activacion` › caso 3 |
+| R7 | `tarifa-activacion.test.ts` › «dos activaciones simultáneas» |
+| R8 | `tarifa-activacion-migration.test.ts`, `TarifasModulo` › «sin desactivar»; E2E caso 3 |
+| R9 | `tarifa-activacion.test.ts` › «activar no toca…»; E2E `zona-especial` › caso 4 |
+| R10 | `cierre-pago-congelado.test.ts`, `tarifas-flexibles-snapshot.test.ts` |
+| R11 | `tarifa-activacion-migration.test.ts` › «relleno y bajada» |
+| R12 | `tarifa-activacion.test.ts` › «activar A no cambia B»; `tarifas-referencia.test.ts`; E2E `tarifas-activacion` › R68 |
+| R13-R16 | `faltantes.test.ts` |
+| R17 | `faltantes.test.ts`, `TarifasModulo`; E2E caso 1 |
+| R18, R19 | `TarifasActivar`; E2E caso 3 |
+| R20 | `TarifasValores` › «la referencia no entra en el campo»; E2E caso 1 |
+| R21-R23 | `referencia-vigente.test.ts`, `tarifas-referencia.test.ts`; E2E caso 1 |
+| R24 | `tarifas-referencia.test.ts` › «activada no lee el viejo», `TarifasValores`; E2E caso 3 |
+| R25 | `TarifasPage.test.tsx` |
+| R26 | `tarifas-action.test.ts`, `tarifas-sin-escritura-vieja.guardia` |
+| R27 | `zonas-action.test.ts` › «la action rechaza costos» |
+| R28 | `superficie-de-uso.guardia`, `tarifas-sin-escritura-vieja.guardia`; E2E `zona-especial` › caso 1 |
+| R29 | `tarifa-activacion.test.ts` › «guardar no escribe en el viejo» |
+| R30 | `cobertura-repository.test.ts` |
+| R31, R32 | `tarifa-empresa-nueva.test.ts` |
+| R33-R36 | `TarifasValores`; R36 también `tarifas-action.test.ts` |
+| R37 | `TarifasValores` › «la carrera se pinta en su fila»; `tarifas-action.test.ts` |
+| R38 | `TarifasValores` › «la carrera…», «un fallo del guardado entero…», «lo digitado mientras guarda…» |
+| R39 | `TarifasValores` › «qué significa vacío» |
+| R40 | `TarifasModulo` › «en vigor»; E2E casos 3 y 5 |
+| R41 | `TarifasTiendas`; E2E `tarifas-maqueta` (alta por pantalla) |
+| R42, R43 | `TarifasGrupos`, `tarifas-action.test.ts`; R42 también E2E `zona-especial` |
+| R44 | `TarifasGrupos`; E2E `zona-especial` › caso 2 |
+| R45 | `TarifasGrupos`, `tarifas-referencia.test.ts`; E2E `zona-especial` › casos 1 y 4 |
+| R46 | `tarifas-referencia.test.ts` › «marca y grupo por separado»; E2E `zona-especial` › caso 2 |
+| R47, R49, R50 | `TarifasVehiculo` |
+| R48 | `TarifasVehiculo`, `tarifas-referencia.test.ts` › «un vehículo dado de alta aparece» |
+| R51 | `TarifasVehiculo`; E2E `tarifas-maqueta` › inactivo |
+| R52 | `tarifa-valor-service.test.ts`, `tarifas-flexibles-escritura.test.ts` |
+| R53 | `tarifas-flexibles-resolver.test.ts` |
+| R54 | `tarifas-maqueta` › «8 vehículos», a 1360 y 390 |
+| R55 | `TarifasPage.test.tsx`, `tarifas-pantalla-service.test.ts`; E2E `tarifas-activacion` › R68 y «otro rol» |
+| R56 | `menu-visibility.test.ts`, `destino-post-login.test.ts` |
+| R57, R58 | `TarifasModulo`, `TarifasPage.test.tsx`; R58 también `TarifasValores` y `TarifasActivar` |
+| R59, R60 | `tarifas-maqueta`, `TarifasDisposicion` |
+| R61 | `TarifasDisposicion`, `TarifasValores` › «el IVA nace vacío», `etiquetas-geograficas-sin-literal.guardia` |
+| R62, R63, R65 | `CierreDesgloseModeloNuevo`, `cierres-admin-repository.test.ts`, `cierres-gestiones-fundida-descarga-columnas.test.ts`; R63 también E2E caso 4; R65 también `CierreBodegaDetalleCascadas` y `CierreMensajeroDetalleCascadas` |
+| R64 | `cierre-aporte-modelo-nuevo.test.ts`, `aporte-por-orden-equivalencia.test.ts` |
+| R66 | `convergencia-tarifa-listado-cierre.test.ts`, `OrdenesColumnaFulfillment` |
+| R67 | `tarifas-activacion` › «digitar, activar y cierre», casos 1 a 5 |
+| R68 | `tarifas-activacion` › «dos empresas y permisos» |
+| R69 | `zona-especial-dos-empresas`, casos 1 a 4; `e2e-sin-saltos.guardia` |
+| R70 | `tarifas-maqueta`, `TarifasDisposicion` |
+
+### Lo que no se vio
+
+Sigue solo en tests de componente: esqueleto de carga, error de lectura con reintento, empresa sin zonas, catálogo sin vehículos, la carrera de R37, el rechazo de R42 por el servidor, «ya activada» por dos sesiones. El detalle del cierre se recorrió como `adminSatelite`; el fulfillment de R62 solo lo ve la central, y en E2E no se afirma.
+
+### Archivos
+
+**Nuevos:** `e2e/tarifas-activacion.spec.ts`, `e2e/tarifas-maqueta.spec.ts`, `e2e/_tarifas-activacion-fixture.ts`
+
+**Modificados:** `e2e/zona-especial-dos-empresas.spec.ts`, `e2e/_zona-especial-fixture.ts`, `e2e/zonas-crear-sin-costos.spec.ts`, `playwright.config.ts`, `tests/unit/guards/e2e-sin-saltos.guardia.test.ts`, `app/(app)/configuracion/tarifas/_components/TarifasValores.tsx`, `tests/components/TarifasValores.test.tsx`, `docs/architecture.md`, `specs/SLT-54-pantalla-tarifas/tasks.md`, esta bitácora
+
+### Salida de los comandos
+
+Sin `./init.sh` ni la suite completa, por encargo.
+
+```
+$ NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck   -> exit 0, 0 errores
+$ pnpm exec eslint <archivos de la tanda>                     -> exit 0, sin salida
+$ pnpm run test:guardias          (árbol final)
+  Test Files  1 failed | 330 passed (331)
+       Tests  4 failed | 4612 passed | 1 skipped (4617)
+  - 4 rojos: dependencias-declaradas-presentes (baseline, como en las tandas anteriores)
+$ vitest tests/unit/guards/e2e-sin-saltos.guardia.test.ts tests/unit/analytics/rollup-guards.test.ts
+  Test Files  2 passed (2)
+       Tests  59 passed (59)
+$ vitest tests/components/TarifasValores.test.tsx
+       Tests  27 passed (27)
+```

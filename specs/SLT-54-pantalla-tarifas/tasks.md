@@ -83,14 +83,14 @@
 
 ## Tanda F — E2E, medición y cierre
 
-- [ ] **T6.1 E2E** (R67, R68, R69). `e2e/tarifas-activacion.spec.ts`, `e2e/zona-especial-dos-empresas.spec.ts` sin `fixme`, sus fixtures
+- [x] **T6.1 E2E** (R67, R68, R69). `e2e/tarifas-activacion.spec.ts`, `e2e/zona-especial-dos-empresas.spec.ts` sin `fixme`, sus fixtures
   y la excepción fuera de `e2e-sin-saltos`. Es la única: su test de línea 541 (`EXCEPCIONES.length > 0`) cambia para
   admitir una lista vacía. Registrar los nuevos en los proyectos de `playwright.config.ts`. *Hecho:* salida en la bitácora.
-- [ ] **T6.2 Medidas** (R54, R59, R60, R70). `e2e/tarifas-maqueta.spec.ts`. *Hecho:* tabla medida frente a maqueta en la bitácora, con
+- [x] **T6.2 Medidas** (R54, R59, R60, R70). `e2e/tarifas-maqueta.spec.ts`. *Hecho:* tabla medida frente a maqueta en la bitácora, con
   cada número de design §12, en claro y oscuro, y 8 vehículos.
 - [ ] **T6.3 Medición** (R11). Antes del PR, cuántas empresas tienen valores en `tarifa_valor` por entorno, sin imprimir URLs.
   Si hay alguna en producción, se dice a Carlos. Lo hace el leader. *Hecho:* cifra en `progress/features/SLT-54.md`.
-- [ ] **T6.4 Documentos.** `docs/architecture.md > Tarifas flexibles`: interruptor, consecuencia y SLT-53. *Hecho:* mapa `R<n> -> test`
+- [x] **T6.4 Documentos.** `docs/architecture.md > Tarifas flexibles`: interruptor, consecuencia y SLT-53. *Hecho:* mapa `R<n> -> test`
   en `progress/impl_SLT-54.md`, con los E2E `e2e/cierre-*`, `e2e/wallet-*`, `e2e/dos-empresas-humo.spec.ts` en verde.
 - [ ] **T6.5 Salida.** No se despliega suelta: la épica sale completa. La migración va en el PR de esta ficha. *Hecho:* leader lo
   comprueba en F2.
@@ -278,6 +278,7 @@
 - `tests/unit/historial-accion/catalogo-y-choke-point.test.ts`
 - `e2e/zona-especial-dos-empresas.spec.ts`
 - `e2e/_zona-especial-fixture.ts`
+- `e2e/zonas-crear-sin-costos.spec.ts` (la fixture pasa a recibir una lista de distritos)
 - `playwright.config.ts`
 - `tests/unit/guards/e2e-sin-saltos.guardia.test.ts`
 - `tests/unit/guards/rechazo-nombre-466.guardia.test.ts`
