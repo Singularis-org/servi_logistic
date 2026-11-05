@@ -296,6 +296,10 @@ export const CLASIFICACION_FK_USUARIO: Record<string, ClasificacionFk> = {
     categoria: "no_alcanzable",
     motivo: `Fijar un valor de tarifa es solo del maestro (SLT-52 R13): ${SOLO_OPERADOR}`,
   },
+  "TarifaActivacion.activadaPorUsuario": {
+    categoria: "no_alcanzable",
+    motivo: `Activar las tarifas nuevas es solo del maestro (SLT-54 R5): ${SOLO_OPERADOR}`,
+  },
   // ── FICHA 410 (2026-09-10): el canal de push web ─────────────────────────────────────────────
   // Las dos son CASCADE y las dos son INALCANZABLES para una cuenta dedicada. No se clasifican
   // como `se_borra_con_ella` —que es para lo que desaparece DENTRO de la transaccion del borrado

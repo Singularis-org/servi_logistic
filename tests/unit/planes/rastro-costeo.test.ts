@@ -19,6 +19,7 @@ const PLAN: PlanDTO = {
   modulos: ["analitica"],
   precio: { tipo: "monto", mensual: "50000.00", anual: null },
   costoPorOrden: "100.00",
+  costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
   archivado: false,
 };
 
@@ -71,8 +72,8 @@ describe("SLT-66 R9, R11 — las líneas de «qué cambia»", () => {
   });
 
   it("el precio mensual de SL-24 se llama «Costo base»", () => {
-    expect(lineas(PLAN, { ...PLAN, precio: { tipo: "negociable" } })).toEqual([
-      "Costo base: 50000.00 al mes → negociable",
+    expect(lineas(PLAN, { ...PLAN, precio: { tipo: "sin_precio" } })).toEqual([
+      "Costo base: 50000.00 al mes → sin precio",
     ]);
   });
 

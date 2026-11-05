@@ -252,6 +252,7 @@ describe("R21 — camino 2 (admin): `CierresAdminRepository.findCierreByIdEnAlca
           solicitadoAt: new Date("2026-08-12T10:00:00.000Z"),
           resueltoAt: null,
           motivoRechazo: null,
+          _count: { detalle: 0 }, // SLT-54 (R71)
           mensajero: { nombre: "Ana" },
           destinoZona: { nombre: "Cartago" },
           sinGestionRegistrado: true, // feature 264 (R27): la marca por cierre

@@ -5,6 +5,8 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { CoberturaRepository } from "@/lib/repositories/CoberturaRepository";
 import type { DistritoCoberturaRow } from "@/lib/interfaces/repositories/ICoberturaRepository";
 
+import { comoApp, crearOrganizacion, fijarEmpresa, sembrarActivacion } from "@/tests/fabricas/organizaciones";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
@@ -28,6 +30,9 @@ import {
 // MUTACIONES QUE ESTE ARCHIVO MATA (medidas al escribirlo, ver progress/impl_465.md):
 //   - quitar `tiendaId: null` del `where` -> la zona Z2 (solo tarifa de tienda) aparece;
 //   - quitar `zonaId: { not: null }`      -> aparece un `null` (filas (T,NULL) y (NULL,NULL)).
+//
+// SLT-54 (R30): la tarifa general ahora depende del modelo. Ese bloque va al final y lee como `servi_app`
+// con dos empresas: el `WHERE` nuevo tampoco lo ve un doble.
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
@@ -204,6 +209,132 @@ describeSiHayBase("465 — CoberturaRepository contra Postgres real", () => {
       distrito: { activo: true },
       canton: { nombre: "Cantón Retirado", activo: false },
       provincia: { activo: true },
+    });
+  });
+});
+
+describeSiHayBase("SLT-54 R30 — el Excel de cobertura por modelo, leyendo como `servi_app`", () => {
+  let prisma: PrismaClient;
+
+  beforeAll(() => {
+    prisma = crearPrismaDeTest();
+  });
+
+  afterAll(async () => {
+    await prisma?.$disconnect();
+  });
+
+  interface EscenarioR30 {
+    A: string;
+    B: string;
+    /** Tarifa general del viejo y nada en el nuevo. */
+    zVieja: string;
+    /** Flete por entregado de nivel zona. */
+    zNueva: string;
+    /** Con un 0 escrito: `tarifa general` no mira el importe. */
+    zCero: string;
+    /** Solo de grupo, de tienda, otro concepto: no son el flete propio de la zona. */
+    zGrupo: string;
+    zTienda: string;
+    zOtroConcepto: string;
+    zB: string;
+    distritoMarcado: { id: string; nombre: string };
+  }
+
+  const FLETE = { concepto: "tienda_flete_entregado", modo: "monto", valor: "1500.00", ivaPct: "13.00" } as const;
+
+  async function sembrarR30(tx: TxDeTest): Promise<EscenarioR30> {
+    await serializarEscriturasReales(tx);
+    const A = (await crearOrganizacion(tx)).id;
+    const B = (await crearOrganizacion(tx)).id;
+
+    const zona = async (marca: string) =>
+      (
+        await tx.zona.create({
+          data: { nombre: `${SUFIJO}-${marca}`, sinpeNumero: "80000000", sinpeNombre: "Titular de Prueba" },
+          select: { id: true },
+        })
+      ).id;
+
+    await fijarEmpresa(tx, B);
+    const zB = await zona("B");
+    await tx.tarifaValor.create({ data: { ...FLETE, zonaId: zB } });
+    await tx.tarifa.create({ data: datosDeTarifa(zB, null) });
+
+    await fijarEmpresa(tx, A);
+    const { tiendaId, cantonId } = await crearFksDeOrden(tx);
+    const zVieja = await zona("vieja");
+    const zNueva = await zona("nueva");
+    const zCero = await zona("cero");
+    const zGrupo = await zona("grupo");
+    const zTienda = await zona("tienda");
+    const zOtroConcepto = await zona("otro");
+    await tx.tarifa.create({ data: datosDeTarifa(zVieja, null) });
+    await tx.tarifaValor.create({ data: { ...FLETE, zonaId: zNueva } });
+    await tx.tarifaValor.create({ data: { ...FLETE, valor: "0.00", zonaId: zCero } });
+    const grupo = await tx.grupoDistritos.create({ data: { zonaId: zGrupo, nombre: "G" }, select: { id: true } });
+    await tx.tarifaValor.create({ data: { ...FLETE, zonaId: zGrupo, grupoId: grupo.id } });
+    await tx.tarifaValor.create({ data: { ...FLETE, zonaId: zTienda, tiendaId } });
+    await tx.tarifaValor.create({ data: { ...FLETE, concepto: "tienda_flete_rechazo", zonaId: zOtroConcepto } });
+    // Una fila de tienda sin zona: sin el `tiendaId: null` del `WHERE`, saldria un `null`.
+    await tx.tarifaValor.create({ data: { ...FLETE, tiendaId } });
+
+    const distritoMarcado = await tx.distrito.findFirstOrThrow({
+      where: { cantonId },
+      select: { id: true, nombre: true },
+    });
+    await tx.distritoZonaEspecial.create({ data: { distritoId: distritoMarcado.id } });
+
+    return { A, B, zVieja, zNueva, zCero, zGrupo, zTienda, zOtroConcepto, zB, distritoMarcado };
+  }
+
+  async function zonasComo(tx: TxDeTest, org: string): Promise<string[]> {
+    await comoApp(tx, org);
+    const ids = await new CoberturaRepository(tx as unknown as PrismaClient).listZonaIdsConTarifaGeneral();
+    await tx.$executeRawUnsafe("RESET ROLE");
+    return ids.sort();
+  }
+
+  it("tarifa general por modelo: sin activar la de `tarifas`, activada el flete propio de la zona", async () => {
+    await enTransaccionRevertida(prisma, async (tx) => {
+      const e = await sembrarR30(tx);
+      expect(await zonasComo(tx, e.A)).toEqual([e.zVieja]);
+
+      await sembrarActivacion(tx, e.A);
+      expect(await zonasComo(tx, e.A)).toEqual([e.zNueva, e.zCero].sort());
+    });
+  });
+
+  it("dos empresas: activar A no cambia lo que B ve, y ninguna ve las zonas de la otra", async () => {
+    await enTransaccionRevertida(prisma, async (tx) => {
+      const e = await sembrarR30(tx);
+      await sembrarActivacion(tx, e.A);
+      // B sin activar sigue en `tarifas`, aunque tambien tenga un flete de zona en el modelo nuevo.
+      expect(await zonasComo(tx, e.B)).toEqual([e.zB]);
+      expect(await zonasComo(tx, e.A)).not.toContain(e.zB);
+
+      await sembrarActivacion(tx, e.B);
+      expect(await zonasComo(tx, e.B)).toEqual([e.zB]);
+      expect(await zonasComo(tx, e.A)).toEqual([e.zNueva, e.zCero].sort());
+    });
+  });
+
+  it("la marca sigue en el Excel tras activar, y es la de la empresa", async () => {
+    await enTransaccionRevertida(prisma, async (tx) => {
+      const e = await sembrarR30(tx);
+      const marcaComo = async (org: string) => {
+        await comoApp(tx, org);
+        const filas = await new CoberturaRepository(tx as unknown as PrismaClient).listDistritos();
+        await tx.$executeRawUnsafe("RESET ROLE");
+        const fila = filas.find((r) => r.canton.nombre === "Cartago" && r.distrito.nombre === e.distritoMarcado.nombre);
+        if (fila === undefined) throw new Error("el distrito sembrado no aparece en el Excel");
+        return fila.distrito.zonaEspecial;
+      };
+
+      expect(await marcaComo(e.A)).toBe(true);
+      await sembrarActivacion(tx, e.A);
+      expect(await marcaComo(e.A)).toBe(true);
+      expect(await marcaComo(e.B)).toBe(false);
     });
   });
 });

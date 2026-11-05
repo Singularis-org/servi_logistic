@@ -12,6 +12,7 @@ import { CascadaDinero, type LineaCascada } from "./CascadaDinero";
 // de la descarga, y las descargas de cierres no se tocan en esta ficha (R27).
 import {
   DESGLOSE_NO_REPARTIDO_NOTA,
+  DESGLOSE_NO_REPARTIDO_NOTA_MODELO_NUEVO,
   DESGLOSE_POR_TIENDA_NOTA,
   DESGLOSE_POR_TIENDA_TITULO,
   TIENDA_GANA_TOTAL_LABEL,
@@ -120,6 +121,8 @@ export interface DesglosePorTiendaProps {
    * incluido más una para el agregado, y sin esto todas se anunciarían igual.
    */
   de: string;
+  /** SLT-54 (R71): alguna gestión es del modelo nuevo. Sin ella, la nota de siempre. */
+  modeloNuevo?: boolean;
 }
 
 /**
@@ -136,13 +139,15 @@ export interface DesglosePorTiendaProps {
  * Las dos notas de cabecera van UNA vez para todo el desglose: la que separa las dos cifras de
  * pago, y la que dice qué NO está repartido (R17).
  */
-export function DesglosePorTienda({ partes, de }: Readonly<DesglosePorTiendaProps>) {
+export function DesglosePorTienda({ partes, de, modeloNuevo = false }: Readonly<DesglosePorTiendaProps>) {
   return (
     <section aria-label={`${DESGLOSE_POR_TIENDA_TITULO} · ${de}`} className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
         <h3 className="text-base font-semibold">{DESGLOSE_POR_TIENDA_TITULO}</h3>
         <p className="text-xs text-muted-foreground">{DESGLOSE_POR_TIENDA_NOTA}</p>
-        <p className="text-xs text-muted-foreground">{DESGLOSE_NO_REPARTIDO_NOTA}</p>
+        <p className="text-xs text-muted-foreground">
+          {modeloNuevo ? DESGLOSE_NO_REPARTIDO_NOTA_MODELO_NUEVO : DESGLOSE_NO_REPARTIDO_NOTA}
+        </p>
       </div>
       {partes.map((parte, indice) => (
         <CascadaDinero

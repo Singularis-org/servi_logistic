@@ -13,7 +13,8 @@ import { GeografiaService } from "@/lib/services/GeografiaService";
 // SL-20 (design §4): el alta, el renombrado, el retiro y el conteo se mudaron a
 // `lib/actions/geografia-plataforma.ts` (su borde lo mide `geografia-plataforma-action.test.ts`).
 // Aqui se fija ademas que este modulo YA NO los exporta: una escritura de geografia que volviera a
-// salir sin `comoPlataforma` caeria en `EmpresaNoResuelta` con el superadmin (R32).
+// salir sin `comoPlataforma` caeria en `EmpresaNoResuelta` con el superadmin (R32). SLT-54 (R28) retira
+// tambien la de la marca de zona especial: ninguna pantalla la escribe.
 
 const SUPERADMIN: Actor = { usuarioId: "u-superadmin", rol: "superadmin" };
 const MAESTRO: Actor = { usuarioId: "u-maestro", rol: "maestro" };
@@ -48,17 +49,15 @@ describe("374 — la lectura delega en el service", () => {
 });
 
 describe("SL-20 (design §4) — las escrituras ya no salen de este modulo", () => {
-  it.each(["crearNodoGeografico", "cambiarActivacionGeografica", "renombrarNodoGeografico", "contarOrdenesSinEntregarDeNodo"])(
+  it.each(["crearNodoGeografico", "cambiarActivacionGeografica", "renombrarNodoGeografico", "contarOrdenesSinEntregarDeNodo", "actualizarDistritosEspeciales"])(
     "%s no se exporta",
     (nombre) => {
       expect(Object.keys(geografia)).not.toContain(nombre);
     },
   );
 
-  it("control positivo: la lectura y la marca de zona especial siguen exportadas", () => {
-    expect(Object.keys(geografia)).toEqual(
-      expect.arrayContaining(["listarArbolGeografico", "actualizarDistritosEspeciales"]),
-    );
+  it("control positivo: la lectura sigue exportada", () => {
+    expect(Object.keys(geografia)).toContain("listarArbolGeografico");
   });
 });
 

@@ -1,5 +1,5 @@
 import { ORDEN_MODULOS } from "@/lib/modulos/catalogo";
-import { ROLES_CON_TOPE, type PlanDTO, type PrecioPlan, type TopesPlan } from "@/lib/types/planes";
+import { ROLES_CON_TOPE, type CostoPorOrdenPorcentual, type PlanDTO, type PrecioPlan, type TopesPlan } from "@/lib/types/planes";
 
 // SL-24 (design §2.8, §5) — qué cambió entre dos versiones de un plan, para la columna `cambios` de
 // `plan_rastro`: `{ "<campo>": { antes, despues } }` solo con los campos que cambiaron. Pura.
@@ -8,10 +8,25 @@ import { ROLES_CON_TOPE, type PlanDTO, type PrecioPlan, type TopesPlan } from "@
 // base son el mismo precio, y el orden de los módulos o de las claves de `porRol` no es un cambio. Sin
 // eso, guardar sin tocar nada escribiría una fila falsa (§2.8: una edición sin cambios no escribe).
 
-export type CampoDelPlan = "nombre" | "topes" | "modulos" | "precio" | "costoPorOrden" | "archivado";
+export type CampoDelPlan =
+  | "nombre"
+  | "topes"
+  | "modulos"
+  | "precio"
+  | "costoPorOrden"
+  | "costoPorOrdenPorcentual"
+  | "archivado";
 export type CambiosDelPlan = Partial<Record<CampoDelPlan, { antes: unknown; despues: unknown }>>;
 
-const CAMPOS: readonly CampoDelPlan[] = ["nombre", "topes", "modulos", "precio", "costoPorOrden", "archivado"];
+const CAMPOS: readonly CampoDelPlan[] = [
+  "nombre",
+  "topes",
+  "modulos",
+  "precio",
+  "costoPorOrden",
+  "costoPorOrdenPorcentual",
+  "archivado",
+];
 
 /** Texto con dos decimales y sin ceros a la izquierda, sin pasar por `Number` («007.5» → «7.50»). */
 export function importeCanonico(texto: string): string {
@@ -28,6 +43,12 @@ function precioCanonico(p: PrecioPlan): PrecioPlan {
         ? { tipo: "fijo" as const, monto: importeCanonico(p.anual.monto) }
         : { tipo: "descuento" as const, porcentaje: importeCanonico(p.anual.porcentaje) };
   return { tipo: "monto", mensual: importeCanonico(p.mensual), anual };
+}
+
+/** SLT-83 (R4): «2» y el «2.00» de la base son el mismo porcentaje; un mínimo vacío sigue siendo `null`. */
+function porcentualCanonico(c: CostoPorOrdenPorcentual | null): CostoPorOrdenPorcentual | null {
+  if (c === null) return null;
+  return { porcentaje: importeCanonico(c.porcentaje), minimo: c.minimo === null ? null : importeCanonico(c.minimo) };
 }
 
 function topesCanonicos(t: TopesPlan): TopesPlan {
@@ -48,6 +69,7 @@ export function planCanonico(p: PlanDTO): PlanDTO {
     precio: precioCanonico(p.precio),
     // SLT-66 (R11): «100» y el «100.00» de la base son el mismo costo; vacío sigue siendo `null`.
     costoPorOrden: p.costoPorOrden === null ? null : importeCanonico(p.costoPorOrden),
+    costoPorOrdenPorcentual: porcentualCanonico(p.costoPorOrdenPorcentual),
   };
 }
 

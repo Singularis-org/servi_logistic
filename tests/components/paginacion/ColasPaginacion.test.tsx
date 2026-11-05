@@ -535,6 +535,7 @@ function montarConsolidacion() {
       totalesAgregados={AGREGADOS.totales}
       totalPagoMensajeroAgregado={AGREGADOS.pagoMensajero}
       totalIngresoBodegaRechazosAgregado={AGREGADOS.ingresoBodega}
+      incluyeModeloNuevoAgregado={false}
       totalNetoAgregado={AGREGADOS.neto}
       totalCentralDebeAgregado={AGREGADOS.centralDebe}
       puedesSolicitar={false}

@@ -301,6 +301,20 @@ export const CENSO_DATATABLE: ArchivoCensado[] = [
     tablas: [{ nombre: "Plantillas de mensaje", estado: "con_descarga" }],
   },
   {
+    // SLT-54 (R41) — SUMA de una tabla: los precios propios de las tiendas. Nace `fuera`.
+    ruta: "app/(app)/configuracion/tarifas/_components/TarifasTiendas.tsx",
+    tablas: [
+      {
+        nombre: "Tiendas con precio propio",
+        estado: "fuera",
+        nota:
+          "no es un libro: es una lista corta de configuracion que llega entera, sin paginacion " +
+          "ni filtros, y cada fila resume dos conceptos de varios: un archivo diria menos que la " +
+          "pantalla. Quien necesite auditar los cambios tiene el registro de acciones, que si descarga",
+      },
+    ],
+  },
+  {
     // ⭑ FICHA 429 (T21-B) — SUMA de una tabla: el SINPE de cada bodega. Nace `fuera`, que es
     // lo que la guardia obliga a DECIDIR, y aqui la decision tiene dos motivos y ninguno es
     // «no dio tiempo».

@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Tarifas · borrador</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F7F7F5}
+a{color:#111111}a:hover{color:#44403c}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #111111;outline-offset:1px}
+</style>
+</helmet>
+<div style="font-family: Archivo, system-ui, sans-serif; color: #111111; background: #F7F7F5; min-height: 980px; display: flex; flex-wrap: wrap">
+  <nav aria-label="Menú" style="flex: 1 1 200px; max-width: 220px; background: #1C1C1A; color: #F7F7F5; padding: 20px 14px; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px; font-size: 14px">
+    <div style="font-weight: 700; font-size: 15px; padding: 4px 10px 18px; letter-spacing: 0.02em">Servi Logistic</div>
+    <div style="padding: 8px 10px; color: #d6d3d1">Configuración</div>
+    <div style="padding: 8px 10px; color: #d6d3d1">Zonas</div>
+    <div style="padding: 8px 10px; background: #33332f; border-radius: 8px; font-weight: 600">Tarifas</div>
+    <div style="padding: 8px 10px; color: #d6d3d1">Plantillas</div>
+  </nav>
+  <main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column">
+    <header style="background: #ffffff; border-bottom: 1px solid #e7e5e4; padding: 18px 24px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between">
+      <h1 style="margin: 0; font-size: 22px; font-weight: 700">Tarifas</h1>
+      <span style="font-size: 13px; color: #44403c">Solo el maestro puede editar</span>
+    </header>
+    <div style="padding: 24px; display: flex; flex-direction: column; gap: 24px">
+      <section aria-label="Estado de las tarifas" style="background: #fef3c7; border: 1px solid #f59e0b; border-radius: 12px; padding: 16px 18px; display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: space-between">
+        <div style="flex: 1 1 420px; min-width: 0">
+          <div style="font-weight: 700; font-size: 15px; color: #92400e">Borrador: aún rigen las tarifas actuales</div>
+          <div style="font-size: 14px; color: #92400e; margin-top: 3px">Lo que digites aquí se guarda y no cambia ningún cobro ni pago hasta que lo actives.</div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap">
+          <span style="font-size: 14px; font-weight: 600; color: #92400e">5 de 7 zonas completas</span>
+          <button type="button" style="min-height: 44px; padding: 0 18px; border: 0; border-radius: 10px; background: #111111; color: #ffffff; font: 600 14px Archivo, system-ui, sans-serif; cursor: pointer">Activar tarifas nuevas</button>
+        </div>
+      </section>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start">
+        <section aria-label="Zonas" style="flex: 1 1 250px; max-width: 280px; background: #ffffff; border: 1px solid #e7e5e4; border-radius: 12px; overflow: hidden">
+          <div style="padding: 13px 16px; font-size: 13px; font-weight: 600; color: #44403c; border-bottom: 1px solid #e7e5e4">Zonas</div>
+          <sc-for list="{{zonas}}" as="z" hint-placeholder-count="7">
+            <button type="button" onClick="{{z.pick}}" style="{{z.estilo}}">
+              <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+                <span style="font-size: 14px; font-weight: 600">{{z.nombre}}</span>
+                <span style="font-size: 12px; color: #44403c">{{z.detalle}}</span>
+              </span>
+              <span style="{{z.chipEstilo}}">{{z.chip}}</span>
+            </button>
+          </sc-for>
+        </section>
+
+        <section aria-label="Valores de la zona" style="flex: 999 1 560px; min-width: 0; background: #ffffff; border: 1px solid #e7e5e4; border-radius: 12px; overflow: hidden">
+          <div style="padding: 16px 18px 0; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between">
+            <h2 style="margin: 0; font-size: 18px; font-weight: 700">{{zonaNombre}}</h2>
+            <div style="display: flex; align-items: center; gap: 8px; font-size: 14px">
+              <label for="nivel" style="color: #44403c">Editando</label>
+              <select id="nivel" style="min-height: 40px; border: 1px solid #e7e5e4; border-radius: 8px; padding: 0 10px; background: #ffffff; font: 500 14px Archivo, system-ui, sans-serif; color: #111111">
+                <option>Toda la zona</option>
+                <option>Grupo: Zona especial (4 distritos)</option>
+                <option>Tienda con precio propio…</option>
+              </select>
+              <button type="button" style="min-height: 40px; padding: 0 12px; border: 1px solid #e7e5e4; border-radius: 8px; background: #ffffff; font: 500 14px Archivo, system-ui, sans-serif; color: #111111; cursor: pointer">Grupos de distritos</button>
+            </div>
+          </div>
+          <div role="tablist" aria-label="Actor" style="display: flex; flex-wrap: wrap; gap: 4px; padding: 14px 18px 0; border-bottom: 1px solid #e7e5e4">
+            <sc-for list="{{tabs}}" as="t" hint-placeholder-count="3">
+              <button type="button" role="tab" aria-selected="{{t.activa}}" onClick="{{t.pick}}" style="{{t.estilo}}">{{t.nombre}}</button>
+            </sc-for>
+          </div>
+          <div style="padding: 8px 18px 4px; overflow-x: auto">
+            <table style="width: 100%; min-width: 620px; border-collapse: collapse; font-size: 14px">
+              <thead>
+                <tr style="text-align: left; color: #44403c; font-size: 12px">
+                  <th scope="col" style="padding: 10px 8px; font-weight: 600">Concepto</th>
+                  <th scope="col" style="padding: 10px 8px; font-weight: 600">Modo</th>
+                  <th scope="col" style="padding: 10px 8px; font-weight: 600">Valor</th>
+                  <sc-if value="{{conIva}}" hint-placeholder-val="{{true}}"><th scope="col" style="padding: 10px 8px; font-weight: 600">IVA</th></sc-if>
+                  <th scope="col" style="padding: 10px 8px; font-weight: 600">Hoy rige</th>
+                </tr>
+              </thead>
+              <tbody>
+                <sc-for list="{{filas}}" as="f" hint-placeholder-count="5">
+                  <tr style="border-top: 1px solid #e7e5e4">
+                    <td style="padding: 8px; font-weight: 500">{{f.concepto}}</td>
+                    <td style="padding: 8px">
+                      <select aria-label="Modo de {{f.concepto}}" style="min-height: 40px; border: 1px solid #e7e5e4; border-radius: 8px; padding: 0 8px; background: #ffffff; font: 400 14px Archivo, system-ui, sans-serif; color: #111111"><option>{{f.modo}}</option><option>{{f.otroModo}}</option></select>
+                    </td>
+                    <td style="padding: 8px"><input aria-label="Valor de {{f.concepto}}" value="{{f.valor}}" placeholder="Sin definir" style="width: 110px; min-height: 40px; box-sizing: border-box; border: 1px solid #e7e5e4; border-radius: 8px; padding: 0 10px; font: 400 14px Archivo, system-ui, sans-serif; color: #111111; text-align: right"></td>
+                    <sc-if value="{{conIva}}" hint-placeholder-val="{{true}}"><td style="padding: 8px"><input aria-label="IVA de {{f.concepto}}" value="{{f.iva}}" style="width: 70px; min-height: 40px; box-sizing: border-box; border: 1px solid #e7e5e4; border-radius: 8px; padding: 0 10px; font: 400 14px Archivo, system-ui, sans-serif; color: #111111; text-align: right"></td></sc-if>
+                    <td style="padding: 8px; color: #44403c">{{f.hoy}}</td>
+                  </tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </div>
+          <div style="padding: 12px 18px 16px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; font-size: 13px; color: #44403c">
+            <span>{{nota}}</span>
+            <button type="button" style="min-height: 44px; padding: 0 16px; border: 0; border-radius: 10px; background: #111111; color: #ffffff; font: 600 14px Archivo, system-ui, sans-serif; cursor: pointer">Guardar borrador</button>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1360,"height":980}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { zona: 'Limón', tab: 'tienda' }; }
+  renderVals() {
+    const zonas = [
+      ['GAM', 'Bodega principal', 'Completa', true],
+      ['Alajuela', '1 grupo', 'Completa', true],
+      ['Cartago', 'Sin grupos', 'Completa', true],
+      ['Guanacaste', 'Zona especial: 8 distritos', 'Completa', true],
+      ['Limón', 'Zona especial: 4 distritos', 'Faltan 1', false],
+      ['Puntarenas', 'Zona especial: 18 distritos', 'Completa', true],
+      ['Turrialba', 'Sin grupos', 'Sin empezar', false],
+    ].map(([nombre, detalle, chip, ok]) => {
+      const sel = this.state.zona === nombre;
+      return {
+        nombre, detalle, chip,
+        pick: () => this.setState({ zona: nombre }),
+        estilo: 'width:100%;min-height:58px;border:0;border-bottom:1px solid #e7e5e4;padding:10px 14px;display:flex;gap:10px;align-items:center;justify-content:space-between;text-align:left;cursor:pointer;color:#111111;font-family:Archivo,system-ui,sans-serif;background:' + (sel ? '#FFF8D9' : '#ffffff'),
+        chipEstilo: 'flex:none;font-size:12px;font-weight:600;border-radius:999px;padding:3px 9px;' + (ok ? 'background:#d1fae5;color:#065f46' : 'background:#fef3c7;color:#92400e'),
+      };
+    });
+    const tabs = [['tienda', 'Cobro a la tienda'], ['mensajero', 'Pago al mensajero'], ['satelite', 'Pago a la satélite']].map(([id, nombre]) => {
+      const a = this.state.tab === id;
+      return {
+        nombre, activa: a ? 'true' : 'false',
+        pick: () => this.setState({ tab: id }),
+        estilo: 'min-height:44px;padding:0 14px;border:0;border-bottom:3px solid ' + (a ? '#111111' : 'transparent') + ';background:transparent;color:#111111;cursor:pointer;font:' + (a ? '600' : '400') + ' 14px Archivo,system-ui,sans-serif',
+      };
+    });
+    const fila = (concepto, valor, iva, hoy, modo) => ({ concepto, valor, iva, hoy, modo: modo || 'Monto ₡', otroModo: modo === '%' ? 'Monto ₡' : '%' });
+    const datos = {
+      tienda: [
+        fila('Flete por entregado', '2.800', '13', '₡2.800'),
+        fila('Flete por devolución a origen', '', '13', '₡2.800'),
+        fila('Flete por reprogramado', '', '13', 'No cobra'),
+        fila('Flete por novedad', '', '13', 'No cobra'),
+        fila('Flete por incidente', '', '13', 'No cobra'),
+        fila('Fulfillment', '', '13', 'No cobra'),
+        fila('Comisión COD', '3,5', '13', '3,5 %', '%'),
+      ],
+      mensajero: [
+        fila('Por entregado', '1.500', '', '₡1.500'),
+        fila('Por devolución a origen', '', '', 'No paga'),
+        fila('Por reprogramado', '', '', 'No paga'),
+        fila('Por novedad', '', '', 'No paga'),
+        fila('Por incidente', '', '', 'No paga'),
+      ],
+      satelite: [
+        fila('Por entregado', '', '', 'No paga'),
+        fila('Por devolución a origen', '', '', '₡0'),
+        fila('Por reprogramado', '', '', 'No paga'),
+        fila('Por novedad', '', '', 'No paga'),
+        fila('Por incidente', '', '', 'No paga'),
+      ],
+    };
+    const notas = {
+      tienda: 'Un campo vacío usa el nivel siguiente. Un 0 escrito cobra 0.',
+      mensajero: 'Sin IVA. Por defecto vale para todos los vehículos; se puede fijar un valor por vehículo.',
+      satelite: 'Sin IVA. Pagas a la satélite solo por los resultados que definas.',
+    };
+    return { zonas, tabs, zonaNombre: this.state.zona, filas: datos[this.state.tab], conIva: this.state.tab === 'tienda', nota: notas[this.state.tab] };
+  }
+}
+</script>
+</body>
+</html>

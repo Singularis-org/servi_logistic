@@ -30,8 +30,8 @@ import type { ListarPaginadoServiceResult } from "@/lib/types/listado-paginado";
  *   · `fechaReprogramacion: string | null`        — «Liberada el» (`YYYY-MM-DD`, ya serializada)
  *   · `relaciones.{estatus,tienda,zona,provincia,canton,distrito}` — lo mismo que `/ordenes`
  *
- * Y NO trae, a proposito (feature 260/R13, decision firmada): `fleteConIva`, `comisionConIva`
- * ni `relaciones.tienda.tarifa` —de donde sale el fulfillment—, ni el correo/telefono de la
+ * Y NO trae, a proposito (feature 260/R13, decision firmada): `fleteConIva`, `comisionConIva`,
+ * `fulfillment` ni `relaciones.tienda.tarifa`, ni el correo/telefono de la
  * tienda. La capa de datos los retira con `recortarPorAlcance(..., "zona")` ANTES de devolver
  * la fila: no es que la pantalla no los pinte, es que no viajan. `montoCobrar` SI se conserva
  * (R17): el satelite ya lo ve en su propia pantalla de recepcion.

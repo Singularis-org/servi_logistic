@@ -77,7 +77,10 @@ export type IconKey =
   // SLT-58 (R10): «Mi plan», el consumo del plan de la empresa. Icono propio por el mismo criterio.
   | "gaugeCircle"
   // SLT-58 (R23): «Planes», el catálogo de planes del superadmin. Icono propio por el mismo criterio.
-  | "layers";
+  | "layers"
+  // SL-42 (R1): «Vehículos», el catálogo de tipos de vehículo del superadmin. Icono propio y NO el
+  // `truck` de «Entregas»: gestionar el catálogo no es repartir.
+  | "car";
 
 /** Subitem de navegacion (dentro de un item colapsable). Sin icono propio. */
 export interface MenuChild {
@@ -597,9 +600,9 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
         label: "Envíos automáticos",
         href: "/configuracion/envios-whatsapp",
       },
-      // CRUD del catálogo de tipos de vehículo. Misma visibilidad maestro-only
-      // del ítem padre: quien ve el catálogo es quien lo administra.
-      { label: "Vehículos", href: "/configuracion/vehiculos" },
+      // SL-42 (R15): aquí iba «Vehículos». El catálogo es de la plataforma y lo gestiona el
+      // superadmin en `/plataforma/vehiculos`; la ruta del `maestro` se retiró (R16). Era un hijo
+      // del final, así que quitarlo no mueve `primerDestino`.
       // SL-32 (R26): aquí iba «Geografía» (ficha 374). Gestionar la geografía es de la plataforma,
       // y la página responde `notFound()` al `maestro`. Era un hijo del final, así que quitarlo no
       // mueve `primerDestino`.
@@ -695,6 +698,16 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
     roles: ROLES_MI_PLAN,
   },
   {
+    // SLT-54 (R56) — «Tarifas» como ítem propio del `admin`, que lee sin escribir: abrirle
+    // «Configuración» le regalaría Usuarios y API. El `maestro` la sigue viendo dentro de
+    // «Configuración», y por eso `roles` no lo incluye. Va al final de lo que ve el `admin`, antes de
+    // «Mi bodega» y «Ayuda», que cierran la barra por contrato: su primer visible sigue siendo «Inicio».
+    label: "Tarifas",
+    href: "/configuracion/tarifas",
+    iconKey: "settings",
+    roles: ["admin"],
+  },
+  {
     // SL-32 (R6, R36) — «Empresas»: el primero de los dos ítems del superadmin (el otro es
     // «Geografía», SL-20), que no ve nada de empresa.
     //
@@ -733,6 +746,18 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
     label: "Geografía",
     href: "/plataforma/geografia",
     iconKey: "map",
+    roles: ROLES_PLATAFORMA,
+  },
+  {
+    // SL-42 (design §5; R1, R3) — «Vehículos»: el catálogo de tipos de vehículo, solo para el
+    // superadmin. Va después de «Geografía» y antes de «Mi bodega» y «Ayuda», que siguen cerrando
+    // la barra. Como solo lo ve el superadmin, ningún aterrizaje de empresa se mueve, y el del
+    // superadmin sigue siendo «Empresas», que va antes (R3). Sin subítems.
+    //
+    // `roles` ES `ROLES_PLATAFORMA`, por identidad: la guardia `superadmin-fuera-de-empresa` lo lee así.
+    label: "Vehículos",
+    href: "/plataforma/vehiculos",
+    iconKey: "car",
     roles: ROLES_PLATAFORMA,
   },
   {

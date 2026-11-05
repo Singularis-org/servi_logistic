@@ -48,7 +48,7 @@
 // habian cargado antes— y el desglose por status paso a preguntar por la fecha de CARGA. Las dos
 // lecturas comparten hoy `ventanaDeCarga`, que es una sola definicion importada por las dos. La
 // que sigue siendo distinta a proposito —y no debe converger jamas— es la de `CicloVidaRepository`,
-// que acota la transicion TERMINAL porque fecha el CIERRE y no la entrada del lote.
+// que acota la GESTION FINAL del mensajero (SLT-64) porque fecha el CIERRE y no la entrada del lote.
 
 import { Prisma } from "@prisma/client";
 import type { PrismaClient } from "@prisma/client";

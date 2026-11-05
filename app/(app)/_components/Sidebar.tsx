@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Building2,
+  Car,
   ChartColumn,
   ChevronLeft,
   ChevronRight,
@@ -205,6 +206,9 @@ export const ICON_BY_KEY: Record<IconKey, SidebarIcon> = {
   gaugeCircle: CircleGauge,
   // SLT-58 (R23): «Planes», el catálogo del superadmin. Icono PROPIO: un plan no es una empresa.
   layers: Layers,
+  // SL-42 (R1): «Vehículos», el catálogo de tipos de vehículo del superadmin. Icono PROPIO, distinto
+  // del `truck` de «Entregas»: un tipo de vehículo del catálogo no es el reparto.
+  car: Car,
 };
 
 // Entrada escalonada de los items al cargar (solo la primera vez). Cada item

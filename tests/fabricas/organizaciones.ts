@@ -40,6 +40,17 @@ export async function crearOrganizacion(
 }
 
 /**
+ * SLT-54 (R2) — la empresa `organizacionId` calcula con el modelo nuevo. Es un sembrado, como dueño: el
+ * camino de verdad, con su actor y su historial, es `TarifaActivacionRepository.activar`.
+ */
+export async function sembrarActivacion(
+  c: Pick<Prisma.TransactionClient, "tarifaActivacion">,
+  organizacionId: string,
+): Promise<void> {
+  await c.tarifaActivacion.create({ data: { organizacionId } });
+}
+
+/**
  * Fija la empresa para el resto de la transaccion (`is_local = true`): el `DEFAULT` de
  * `organizacion_id` y las politicas leen de aqui. Fuera de una transaccion no dura mas que la
  * sentencia, que es lo que se quiere: un ajuste de sesion sobreviviria en la conexion del pool.

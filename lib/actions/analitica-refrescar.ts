@@ -26,16 +26,7 @@
 // siendo asunto de cada panel, que releerá su propio `lastSync` del DTO recién producido.
 
 import { TAGS_OPERATIVA } from "@/lib/analytics/cache-tags";
-import {
-  TAG_CICLO_VIDA,
-  TAG_COHORTE_CARGA,
-  TAG_CONTEO_CARGADAS_POR_DIA,
-  TAG_CONTEO_DEVOLUCIONES,
-  TAG_CONTEO_ENTREGAS,
-  TAG_CONTEO_HOY_GESTION,
-  TAG_CONTEO_POR_STATUS,
-} from "@/lib/analytics/entregas-conteo";
-import { TAG_CONTEO_PRODUCTOS } from "@/lib/analytics/productos-consulta";
+import { TAGS_LECTURAS_ENTREGAS } from "@/lib/analytics/tags-entregas";
 import type { ActorAnalitica } from "@/lib/analytics/alcance";
 import { ROLES_ACCESO_ANALITICA } from "@/lib/auth/menu-visibility";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
@@ -53,25 +44,10 @@ import { rechazoDeModulo } from "@/lib/actions/_shared/to-action-error";
  * Se escriben importando las constantes y NUNCA a mano: un literal repetido es exactamente
  * como la invalidación deja de coincidir con la lectura, en silencio (R20 de la 128).
  *
- * FICHA 345 (2026-09-01) — la séptima es el análisis de productos. Sin su tag aquí, el botón
- * «Actualizar» seguiría sirviendo los productos cacheados durante 15 minutos mientras el resto
- * del tablero ya se hubiera refrescado: dos mitades de la misma pantalla con distinta edad.
- *
- * FICHA 411 (2026-09-10) — la octava es la cohorte de carga, y el argumento es idéntico: sin su
- * tag aquí, la tabla de cohortes seguiría sirviendo lo cacheado mientras el resto del tablero ya
- * se hubiera refrescado.
+ * SLT-64 (R17): las ocho salen de `TAGS_LECTURAS_ENTREGAS`, la misma lista que invalidan
+ * `deshacerGestion` y `corregirResultadoGestion`. El orden sigue siendo el de antes.
  */
-const TAGS_ANALITICA: readonly string[] = [
-  TAG_CONTEO_ENTREGAS,
-  TAG_CONTEO_POR_STATUS,
-  TAG_CONTEO_CARGADAS_POR_DIA,
-  TAG_CONTEO_HOY_GESTION,
-  TAG_CONTEO_DEVOLUCIONES,
-  TAG_CICLO_VIDA,
-  TAG_CONTEO_PRODUCTOS,
-  TAG_COHORTE_CARGA,
-  ...TAGS_OPERATIVA,
-];
+const TAGS_ANALITICA: readonly string[] = [...TAGS_LECTURAS_ENTREGAS, ...TAGS_OPERATIVA];
 
 export interface RefrescarAnaliticaDeps {
   readonly cache?: IAnaliticaCache;

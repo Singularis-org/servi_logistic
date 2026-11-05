@@ -55,6 +55,7 @@ const MAESTRO: Actor = { usuarioId: "adm-maestro", rol: "maestro" };
 
 function ingreso(over: Partial<IngresoEmpresaDTO>): IngresoEmpresaDTO {
   return {
+    tarifaModelo: "viejo",
     montoCobrar: null,
     cobraComision: false,
     esCentral: false,

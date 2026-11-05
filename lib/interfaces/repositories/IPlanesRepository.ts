@@ -3,7 +3,15 @@ import type { PlanRastroAccion } from "@prisma/client";
 import type { CambioDelPlanLeido, PlanConUsoLeido } from "@/lib/planes/consumo";
 import type { TipoCorreoCambioPlan, TopePasado } from "@/lib/planes/mensajes";
 import type { CambiosDelPlan } from "@/lib/planes/rastro";
-import type { CrearPlanInput, PlanDTO, TopeExcedido, VersionPlan } from "@/lib/types/planes";
+import type {
+  AccionDeAsignacion,
+  CrearPlanInput,
+  PlanDTO,
+  TipoCobro,
+  TopeExcedido,
+  TopesPlan,
+  VersionPlan,
+} from "@/lib/types/planes";
 
 // SL-24 (design §5, §16.5) — el catálogo de planes y su asignación, vistos y escritos por el
 // superadmin, que no tiene empresa: la empresa SÍ es un argumento. Las escrituras vuelven a comprobar
@@ -45,6 +53,24 @@ export type ResultadoAsignar =
   | { estado: "tope_excedido"; excedidos: TopeExcedido[] }
   /** R31 (carrera): con fecha, la empresa ya tenía plan bajo el cerrojo. Nada se escribió. */
   | { estado: "validation_error"; fieldErrors: Record<string, string[]> };
+
+/**
+ * Ajuste planes-custom (D2, D4, D6) — la asignación que acompaña a un custom al crearlo: el inicio del
+ * ciclo (solo si la empresa no tiene plan, como en `asignar`) y el tipo de cobro.
+ */
+export interface AsignacionAlCrear {
+  inicio?: InicioDelCicloElegido;
+  tipoCobro: TipoCobro;
+}
+
+/**
+ * Ajuste planes-custom (D2): crear y asignar un custom en una transacción. Si la asignación se rechaza,
+ * vuelve su rechazo y NO queda nada escrito (ni el plan ni su rastro). `avisos`: los de la primera
+ * asignación con fecha (R36, R42); `[]` en lo demás.
+ */
+export type ResultadoCrearYAsignar =
+  | { estado: "ok"; planId: string; avisos: TopeExcedido[] }
+  | Exclude<ResultadoAsignar, { estado: "ok" }>;
 
 /** SLT-58 (R37): lo que la asignación con esa fecha avisaría, sin escribir nada. */
 export interface VistaPreviaLeida {
@@ -138,14 +164,31 @@ export interface DetallePlanLeido {
   rastro: FilaRastroLeida[];
 }
 
-/** R21: una fila `plan_asignado` del historial de la empresa. */
+/** R21: una fila del historial de la empresa con una de `ACCIONES_DE_ASIGNACION` (D16). */
 export interface AsignacionLeida {
   creadoAt: Date;
   /** `null` si el actor no resolvió al congelarlo. */
   actorNombre: string | null;
   /** La `entidad_etiqueta` congelada. */
   planNombre: string;
+  /**
+   * Ajuste planes-custom (D16): la acción de la fila. `plan_tipo_cobro_cambiado` es el cambio de solo el
+   * tipo (D10); `plan_asignado`, una asignación.
+   */
+  accion: AccionDeAsignacion;
+  /** Ajuste planes-custom (D14): `valor_anterior` y `valor_nuevo` tal cual (los lee `tipoCobroDelHistorial`). */
+  valorAnterior: string | null;
+  valorNuevo: string | null;
 }
+
+/**
+ * Ajuste planes-custom (D10): cambiar solo el tipo de cobro. `cambio: false` = ya tenía ese tipo y no se
+ * escribió nada. `sin_plan`: la empresa no tiene plan bajo el cerrojo.
+ */
+export type ResultadoCambiarTipoCobro =
+  | { estado: "ok"; cambio: boolean }
+  | { estado: "not_found" }
+  | { estado: "sin_plan" };
 
 /** R19, R21: el plan de una empresa con su uso, o `plan: null` si no tiene. */
 export interface PlanDeEmpresaLeida {
@@ -184,7 +227,18 @@ export interface IPlanesRepository {
     planId: string,
     actorUsuarioId: string,
     inicio?: InicioDelCicloElegido,
+    /** Ajuste planes-custom (D6): se guarda junto al `plan_id`. Sin él, `mensual`. */
+    tipoCobro?: TipoCobro,
   ): Promise<ResultadoAsignar>;
+  /**
+   * Ajuste planes-custom (D2): crea el custom (como `crear`) y se lo asigna a su empresa (como
+   * `asignar`, con el mismo cerrojo, las mismas reglas y el mismo historial) en UNA transacción.
+   */
+  crearYAsignar(
+    input: CrearPlanInput & { organizacionId: string },
+    actorUsuarioId: string,
+    asignacion: AsignacionAlCrear,
+  ): Promise<ResultadoCrearYAsignar>;
   /**
    * SLT-58 (§11.4; R37): los topes del plan que la empresa pasaría con esa fecha, con el mismo uso que
    * `asignar`, y el siguiente inicio de ciclo. Solo lee. `null` si la empresa o el plan no existen.
@@ -194,6 +248,21 @@ export interface IPlanesRepository {
     planId: string,
     inicio: InicioDelCicloElegido,
   ): Promise<VistaPreviaLeida | null>;
+  /**
+   * Ajuste planes-custom (D13): como `vistaPreviaAsignacion`, pero con los topes que se están escribiendo
+   * en el form del custom (el plan aún no existe). Solo lee. `null` si la empresa no existe.
+   */
+  vistaPreviaConTopes(
+    organizacionId: string,
+    topes: TopesPlan,
+    inicio: InicioDelCicloElegido,
+  ): Promise<VistaPreviaLeida | null>;
+  /**
+   * Ajuste planes-custom (D10, D16): guarda el tipo de cobro del plan que la empresa YA tiene, con su fila
+   * `plan_tipo_cobro_cambiado` en el historial (el tipo de antes y el nuevo), en una transacción y bajo el
+   * cerrojo de la empresa. No toca `plan_id`, el ancla del ciclo ni los módulos. Mismo tipo: nada.
+   */
+  cambiarTipoCobro(organizacionId: string, tipoCobro: TipoCobro, actorUsuarioId: string): Promise<ResultadoCambiarTipoCobro>;
   /** Borra el cambio pendiente y deja su fila `cambio_cancelado` (R39, R43). */
   cancelarCambio(planId: string, actorUsuarioId: string): Promise<ResultadoCancelarCambio>;
   /**

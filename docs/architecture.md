@@ -167,6 +167,15 @@ esta bien hecha, no solo si "funciona".
     (`scripts/geo-backfill-nodo.ts`: por lotes, reanudable, `--aplicar` y `--validar` exigen
     `--base` y `--destino`, el project-ref de Supabase o el host); en producción lo corre una persona tras el ensayo sobre una copia, nunca un agente
     (design §6 de SLT-43). La app todavía no lee nada del modelo nuevo: las lecturas llegan con SLT-44.
+- **Catálogo de vehículos (SL-42, 2026-11-04).** `vehiculos` es uno solo para todas las empresas, que
+  solo lo leen: el `maestro` en el formulario de usuarios y la postulación pública, y solo los activos
+  para una elección nueva (`WHERE_VEHICULO_ELEGIBLE`, `lib/repositories/_shared/vehiculo-activo.ts`).
+  - **Edición:** es del superadmin (`GESTION_ROLES = ROLES_PLATAFORMA` en `VehiculoService`). Crea,
+    renombra, activa y desactiva desde `/plataforma/vehiculos`; no hay borrado. El borde
+    `lib/actions/vehiculos-plataforma.ts` corre el servicio dentro de `comoPlataforma` y está en
+    `EXCEPCIONES_DE_PLATAFORMA`. `/configuracion/vehiculos` ya no existe.
+  - **Rastro:** cada escritura deja una fila en `vehiculo_rastro`, en la misma transacción. Esa tabla
+    tiene `REVOKE ALL` para `servi_app`. Nada se escribe en `historial_accion`.
 - **Módulos por empresa (SL-23, 2026-10-26).** Cada empresa tiene un núcleo que nunca se apaga y 3
   módulos apagables (`lib/modulos/catalogo.ts`, enum `modulo_apagable`). Recolección, Bodegas
   satélite, API e integraciones y WhatsApp fueron apagables hasta el 2026-10-27, y Wallet hasta el
@@ -263,13 +272,22 @@ Decisión del humano (plan-saas, 2026-10-20/21): una sola base compartida, datos
   flete sin IVA que ese cierre le cobra a la tienda por esa gestión (lo congelado, no lo vivo).
   Todo `new CierreDiaRepository(`, `new CierreDiaService(` y `new CorteDiarioService(` recibe el
   repositorio de tarifas: lo vigila `tests/unit/guards/tarifas-resolver-inyectado.guardia.test.ts`.
-- **Interruptor por empresa.** Una empresa está en el modelo nuevo si tiene al menos una fila en
-  `tarifa_valor`; si no, se calcula exactamente como antes (`tarifas` y `tarifa_zona_mensajero`).
-  **Consecuencia:** el primer valor nuevo apaga el modelo viejo de la empresa entera, y lo que no
-  tenga valor queda «sin tarifa» (0 en el cierre, 409 en la API). La migración de datos de una
-  empresa (SLT-53) va antes de abrirle la pantalla de tarifas (SLT-54).
+- **Interruptor por empresa (SLT-54).** Una empresa está en el modelo nuevo si tiene su fila en
+  `tarifa_activacion`; si no, se calcula exactamente como antes (`tarifas` y
+  `tarifa_zona_mensajero`), aunque ya tenga valores en `tarifa_valor`. Decide la activación, no la
+  existencia de un valor: digitar no cambia ningún importe. El acto es único, del `maestro`
+  («Activar tarifas nuevas»), y la app no puede deshacerlo (`REVOKE UPDATE, DELETE` a `servi_app`).
+  **Consecuencia:** al activar, el modelo viejo se apaga para toda la empresa, y lo que no tenga
+  valor queda «sin tarifa» (0 en el cierre, 409 en la API); por eso el diálogo lista los faltantes y
+  pide confirmarlos. Desde el siguiente cierre: los cierres ya hechos no cambian. Una empresa con
+  valores al aplicar la migración queda activada, para que su cálculo no cambie.
+- **Sin migración de datos.** SLT-53 se canceló: nada copia las tarifas actuales al modelo nuevo.
+  Las digita la empresa en `/configuracion/tarifas`, con lo que rige hoy al lado como referencia
+  («Hoy rige»), calculada con las mismas funciones que el modelo viejo y sin copiarse al campo.
 - **Quién escribe.** Solo `TarifaValorService` y `GrupoDistritosService` (fábrica
-  `lib/tarifas/servicios.ts`), con historial; escribe el `maestro`, leen `maestro` y `admin`. Lo
+  `lib/tarifas/servicios.ts`), con historial; escribe el `maestro`, leen `maestro` y `admin`. Ninguna
+  Server Action escribe ya en `tarifas`, `tarifa_zona_mensajero` ni `distrito_zona_especial`
+  (`tarifas-sin-escritura-vieja.guardia`): el modelo viejo solo se lee, hasta que lo retire SLT-57. Lo
   congelado lo escribe solo el cierre (`CierreDiaRepository`) y nadie lo recalcula al leer
   (`tarifaDe` en `lib/utils/cierre-detalle.ts`).
 

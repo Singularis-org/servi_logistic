@@ -226,8 +226,8 @@ const ARBOLES_UI = ["app", "components"] as const;
 // 482 las borró. Dentro de alcance 23 -> 22; exclusiones intactas. Esta guardia se vio fallar
 // PRIMERO con «expected 35 to be 36», «expected 36 to be 37» y «length of 23 but got 22» antes de
 // tocar estos numeros. Censo total: 36 = 35 `<DataTable>` + 1 cruda.
-const TOTAL_ARCHIVOS_CON_DATATABLE = 35;
-const TOTAL_INSTANCIAS_DATATABLE = 35;
+const TOTAL_ARCHIVOS_CON_DATATABLE = 36;
+const TOTAL_INSTANCIAS_DATATABLE = 36;
 
 function listarTsx(dir: string, acc: string[] = []): string[] {
   for (const entrada of readdirSync(dir, { withFileTypes: true })) {
@@ -380,7 +380,7 @@ describe("guardia de cobertura del censo de tablas", () => {
     // porque no es un libro --ocho filas de configuracion, sin paginacion ni dataset completo--
     // y porque exportar las ocho cuentas de cobro a un archivo no le da a quien administra nada
     // que no vea en pantalla.
-    expect(excluidas.length).toBe(13);
+    expect(excluidas.length).toBe(14);
     for (const inst of excluidas) {
       const tabla = registro.get(inst.ruta)!.tablas[inst.indice];
       expect(inst.declaraDescarga, `${inst.ruta} :: ${tabla.nombre}`).toBe(false);
@@ -434,7 +434,7 @@ describe("guardia de cobertura del censo de tablas", () => {
     // (`DesgloseTiendaLedger`): la tienda ve el extracto compartido. Las 14 exclusiones NO se mueven.
     // ⭑ FICHA 482: 37 → 36. Salen las tablas del detalle de un cierre (`DetalleSecciones`), que la
     // 478 sustituyó por la lista en pestañas. Las 14 exclusiones NO se mueven.
-    expect(totalCensado).toBe(36);
+    expect(totalCensado).toBe(37);
   });
 
   it("la FASE 1 del export queda cerrada: ninguna tabla del censo sigue pendiente", () => {
@@ -549,7 +549,7 @@ describe("guardia de cobertura del censo de tablas", () => {
     // ⭑ FICHA 482: 23 → 22 —salen las tablas del detalle de un cierre (`DetalleSecciones`),
     // `con_descarga`; la 478 retiró su descarga por sección (P3) y la 482 las borró—.
     expect(censadas.filter((t) => t.estado === "con_descarga")).toHaveLength(22);
-    expect(censadas.filter((t) => t.estado === "fuera")).toHaveLength(14);
+    expect(censadas.filter((t) => t.estado === "fuera")).toHaveLength(15);
   });
 
   it("una tabla compartida declara TODAS las pantallas que la montan", () => {

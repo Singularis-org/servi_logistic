@@ -179,6 +179,8 @@ export interface FuentesEtiqueta {
    * Nadie escribe esta entidad hasta SLT-46.
    */
   nodo_geografico: { nombres: readonly string[] };
+  /** SLT-54 (R4) — la activacion es una por empresa: la etiqueta es la del hecho, sin dato variable. */
+  tarifa_activacion: Record<string, never>;
 }
 
 /**
@@ -269,6 +271,7 @@ const CONSTRUCTORES: {
   grupo_distritos: (f) => unir(f?.nombre, f?.zonaNombre),
   // SLT-43 — el criterio de la 374 (`distrito`), para una cadena de largo variable.
   nodo_geografico: (f) => unir(...(f?.nombres ?? [])),
+  tarifa_activacion: () => "Tarifas nuevas",
 };
 
 /**

@@ -32,7 +32,7 @@ import {
   FIJAS_DESCARGA_WALLET_CAJA,
 } from "./wallet-ledger-descarga-columnas";
 import {
-  CATEGORIA_LABEL,
+  conceptoDeMovimientoCaja,
   DUENO_LABEL,
   ORIGEN_LABEL,
   TIPO_LABEL,
@@ -196,7 +196,7 @@ function MovimientoCelda({ movimiento }: { movimiento: WalletMovimientoDTO }) {
   // La fila anulada DICE «Anulado» en la celda de «Ver» (`CeldaVer`, revisión B2 de la 458-C).
   return (
     <span className="flex flex-col gap-0.5">
-      <span className="font-medium">{CATEGORIA_LABEL[movimiento.categoria]}</span>
+      <span className="font-medium">{conceptoDeMovimientoCaja(movimiento)}</span>
       <span className="text-xs text-muted-foreground">
         <OrigenMovimiento fila={movimiento} rotulos={ORIGEN_LABEL} />
       </span>
@@ -412,7 +412,7 @@ export function WalletLedger({
           naceDeUnCierre(m) ? (
             <DetalleMovimientoCierre
               movimientoId={m.id}
-              concepto={CATEGORIA_LABEL[m.categoria]}
+              concepto={conceptoDeMovimientoCaja(m)}
               fecha={fechaDiaMovimientoCR(m.fechaMovimiento)}
               resaltar={resaltar}
             />
@@ -423,7 +423,7 @@ export function WalletLedger({
         // visible (sólo el chevron), así que éste es el único nombre que tiene.
         expandAriaLabel={(m) =>
           DETALLE_MOVIMIENTO_NOMBRE.abrir(
-            CATEGORIA_LABEL[m.categoria],
+            conceptoDeMovimientoCaja(m),
             fechaDiaMovimientoCR(m.fechaMovimiento),
           )
         }

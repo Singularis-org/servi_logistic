@@ -32,6 +32,7 @@ const VIGENTE: VersionPlan = {
   modulos: ["monitoreo"],
   precio: { tipo: "monto", mensual: "49.90", anual: null },
   costoPorOrden: null, // SLT-66 R7: el plan lleva costo por orden; aquí, vacío.
+  costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
 };
 
 function leido(cambio: PlanDeLaEmpresaLeido["cambio"] = null): PlanDeLaEmpresaLeido {
@@ -46,7 +47,10 @@ function leido(cambio: PlanDeLaEmpresaLeido["cambio"] = null): PlanDeLaEmpresaLe
     },
     cambio,
     // SLT-66 R18: la lectura trae el costo vigente (el plan no fija costo por orden: el global).
-    costoVigente: { monto: "500.00", fuente: "global" },
+    costoVigente: { modo: "fijo", monto: "500.00", fuente: "global" },
+    cobroCiclo: { cobrado: "0.00", pendientes: 0 }, // SLT-83: campo nuevo de la lectura
+    // Ajuste planes-custom (D6): cómo paga la empresa.
+    tipoCobro: "mensual",
   };
 }
 
@@ -106,13 +110,27 @@ describe("SLT-58 — MiPlanService.ver: lo que devuelve (R1, R2, R5, R6, R7)", (
     expect(r.plan.cambioPendiente).toBeNull();
   });
 
+  it("D9 (ajuste planes-custom) — «Mi plan» trae el tipo de cobro, el monto del período y el siguiente cobro", async () => {
+    const mensual = await servicio(new RepoEnMemoria(leido())).ver(actor("maestro"));
+    if (mensual.estado !== "ok" || mensual.plan === null) throw new Error("se esperaba un plan");
+    // Ancla el 2026-10-15 (03:30 en la plataforma); hoy 2026-10-29: el siguiente aniversario mensual es el 15/11.
+    expect(mensual.plan.cobro).toEqual({ tipo: "mensual", montoPeriodo: "49.90", siguienteCobro: "2026-11-15" });
+
+    const anual = await servicio(new RepoEnMemoria({ ...leido(), tipoCobro: "anual" })).ver(actor("admin"));
+    if (anual.estado !== "ok" || anual.plan === null) throw new Error("se esperaba un plan");
+    expect(anual.plan.cobro).toEqual({ tipo: "anual", montoPeriodo: "598.80", siguienteCobro: "2027-10-15" });
+    // El costo por orden y el total estimado de SLT-66 no cambian con el tipo de cobro.
+    expect(anual.plan.costeo).toEqual(mensual.plan.costeo);
+  });
+
   it("R7 — el pendiente trae la fecha en hora de la plataforma y las líneas de lineasDeCambioDelPlan entre vigente y pendiente", async () => {
     const pendiente: VersionPlan = {
       nombre: "Básico plus",
       topes: { ordenesPorCiclo: 5000, porRol: { mensajero: 10 }, apiKeys: 2 },
       modulos: ["monitoreo", "analitica"],
-      precio: { tipo: "negociable" },
+      precio: { tipo: "sin_precio" },
       costoPorOrden: null, // SLT-66 R7: el plan lleva costo por orden; aquí, vacío.
+      costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
     };
     // Las 00:00 del 1 de diciembre en la hora de la plataforma.
     const cambio = { vigenteDesde: new Date("2026-12-01T06:00:00.000Z"), version: pendiente };
@@ -123,7 +141,7 @@ describe("SLT-58 — MiPlanService.ver: lo que devuelve (R1, R2, R5, R6, R7)", (
       nombre: { antes: "Básico", despues: "Básico plus" },
       topes: { antes: VIGENTE.topes, despues: pendiente.topes },
       modulos: { antes: ["monitoreo"], despues: ["analitica", "monitoreo"] },
-      precio: { antes: VIGENTE.precio, despues: { tipo: "negociable" } },
+      precio: { antes: VIGENTE.precio, despues: { tipo: "sin_precio" } },
     });
     expect(r.plan.cambioPendiente).toEqual({ vigenteDesde: "2026-12-01", lineas: esperadas });
     // Y no es una igualdad vacía: cada cosa que cambia tiene su línea, y lo que no cambia no.
@@ -132,7 +150,7 @@ describe("SLT-58 — MiPlanService.ver: lo que devuelve (R1, R2, R5, R6, R7)", (
       "Órdenes por ciclo: 3000 → 5000",
       "Usuarios activos con el rol Admin de tienda: 5 → sin límite",
       "Se incluye el módulo Analítica.",
-      "Costo base: 49.90 al mes → negociable", // SLT-66 R9
+      "Costo base: 49.90 al mes → sin precio", // SLT-66 R9
     ]);
   });
 

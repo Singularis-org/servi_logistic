@@ -32,14 +32,15 @@ function plan(extra: Partial<PlanDTO> = {}): PlanDTO {
     modulos: ["analitica"],
     precio: MONTO,
     costoPorOrden: "100.00",
+    costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
     archivado: false,
     ...extra,
   };
 }
 
 function version(extra: Partial<VersionPlan> = {}): VersionPlan {
-  const { nombre, topes, modulos, precio, costoPorOrden } = plan();
-  return { nombre, topes, modulos, precio, costoPorOrden, ...extra };
+  const { nombre, topes, modulos, precio, costoPorOrden, costoPorOrdenPorcentual } = plan();
+  return { nombre, topes, modulos, precio, costoPorOrden, costoPorOrdenPorcentual, ...extra };
 }
 
 function doble() {
@@ -50,6 +51,9 @@ function doble() {
     editar: vi.fn<IPlanesRepository["editar"]>(async () => ({ estado: "ok", cambio: true, avisos: [] })),
     archivar: vi.fn<IPlanesRepository["archivar"]>(async () => ({ estado: "ok", cambio: true })),
     asignar: vi.fn<IPlanesRepository["asignar"]>(async () => ({ estado: "ok", cambio: true, avisos: [] })),
+    crearYAsignar: vi.fn<IPlanesRepository["crearYAsignar"]>(async () => ({ estado: "ok", planId: PLAN, avisos: [] })),
+    vistaPreviaConTopes: vi.fn<IPlanesRepository["vistaPreviaConTopes"]>(async () => null),
+    cambiarTipoCobro: vi.fn<IPlanesRepository["cambiarTipoCobro"]>(async () => ({ estado: "not_found" })),
     vistaPreviaAsignacion: vi.fn<IPlanesRepository["vistaPreviaAsignacion"]>(async () => ({
       avisos: [],
       siguienteCiclo: new Date("2026-11-29T18:00:00.000Z"),
@@ -100,17 +104,15 @@ function conPendiente(v: VersionPlan) {
 
 const SIN_COSTO: [string, Partial<PlanDTO>][] = [
   ["sin precio", { precio: { tipo: "sin_precio" } }],
-  ["negociable", { precio: { tipo: "negociable" } }],
   ["monto sin costo por orden", { precio: MONTO, costoPorOrden: null }],
   ["sin precio y con costo por orden", { precio: { tipo: "sin_precio" }, costoPorOrden: "100.00" }],
-  ["negociable y con costo por orden", { precio: { tipo: "negociable" }, costoPorOrden: "100.00" }],
 ];
 
 describe("SLT-66 — R28: asignar un plan sin costo concreto", () => {
   it.each(SIN_COSTO)("%s, sin fecha → plan_sin_costo y repo.asignar no se llama", async (_caso, extra) => {
     repo.empresa.mockResolvedValueOnce({ id: EMPRESA, nombre: "Mensajería Uno", planId: OTRO_PLAN });
     repo.plan.mockResolvedValueOnce(plan(extra));
-    expect(await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN })).toEqual({
+    expect(await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, tipoCobro: "mensual" })).toEqual({
       estado: "plan_sin_costo",
     });
     expect(repo.asignar).not.toHaveBeenCalled();
@@ -118,7 +120,7 @@ describe("SLT-66 — R28: asignar un plan sin costo concreto", () => {
 
   it.each(SIN_COSTO)("%s, con fecha (primera asignación) → plan_sin_costo y repo.asignar no se llama", async (_caso, extra) => {
     repo.plan.mockResolvedValueOnce(plan(extra));
-    expect(await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, inicioCiclo: HOY })).toEqual({
+    expect(await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, inicioCiclo: HOY, tipoCobro: "mensual" })).toEqual({
       estado: "plan_sin_costo",
     });
     expect(repo.asignar).not.toHaveBeenCalled();
@@ -126,30 +128,29 @@ describe("SLT-66 — R28: asignar un plan sin costo concreto", () => {
 
   it("base 0.00 y costo 0.00 son concretos: ok y se asigna, con fecha y sin ella", async () => {
     repo.plan.mockResolvedValue(plan({ precio: { tipo: "monto", mensual: "0.00", anual: null }, costoPorOrden: "0.00" }));
-    expect((await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, inicioCiclo: HOY })).estado).toBe("ok");
+    expect((await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, inicioCiclo: HOY, tipoCobro: "mensual" })).estado).toBe("ok");
     repo.empresa.mockResolvedValueOnce({ id: EMPRESA, nombre: "Mensajería Uno", planId: OTRO_PLAN });
-    expect((await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN })).estado).toBe("ok");
+    expect((await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, tipoCobro: "mensual" })).estado).toBe("ok");
     expect(repo.asignar).toHaveBeenCalledTimes(2);
   });
 
   it("plan concreto sin pendiente → ok y se asigna", async () => {
-    expect(await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN })).toMatchObject({
+    expect(await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, tipoCobro: "mensual" })).toMatchObject({
       estado: "ok",
       cambio: true,
     });
-    expect(repo.asignar).toHaveBeenCalledWith(EMPRESA, PLAN, "u-sa");
+    expect(repo.asignar).toHaveBeenCalledWith(EMPRESA, PLAN, "u-sa", undefined, "mensual");
   });
 
   it.each<[string, Partial<VersionPlan>]>([
-    ["negociable", { precio: { tipo: "negociable" } }],
     ["sin precio", { precio: { tipo: "sin_precio" } }],
     ["sin costo por orden", { costoPorOrden: null }],
   ])("plan concreto con pendiente %s → plan_sin_costo, con fecha y sin ella", async (_caso, extra) => {
     conPendiente(version(extra));
-    expect(await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN })).toEqual({
+    expect(await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, tipoCobro: "mensual" })).toEqual({
       estado: "plan_sin_costo",
     });
-    expect(await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, inicioCiclo: HOY })).toEqual({
+    expect(await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, inicioCiclo: HOY, tipoCobro: "mensual" })).toEqual({
       estado: "plan_sin_costo",
     });
     expect(repo.detalle).toHaveBeenCalledWith(PLAN);
@@ -158,14 +159,14 @@ describe("SLT-66 — R28: asignar un plan sin costo concreto", () => {
 
   it("plan concreto con pendiente concreto (base 0.00) → ok", async () => {
     conPendiente(version({ precio: { tipo: "monto", mensual: "0.00", anual: null }, costoPorOrden: "0.00" }));
-    expect((await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN })).estado).toBe("ok");
+    expect((await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, tipoCobro: "mensual" })).estado).toBe("ok");
     expect(repo.asignar).toHaveBeenCalledTimes(1);
   });
 
   it("SL-24 R13 sigue primero: el mismo plan ya asignado, aunque sin costo, responde ok sin cambio", async () => {
     repo.empresa.mockResolvedValueOnce({ id: EMPRESA, nombre: "Mensajería Uno", planId: PLAN });
-    repo.plan.mockResolvedValueOnce(plan({ precio: { tipo: "negociable" }, costoPorOrden: null }));
-    expect(await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN })).toEqual({
+    repo.plan.mockResolvedValueOnce(plan({ precio: { tipo: "sin_precio" }, costoPorOrden: null }));
+    expect(await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, tipoCobro: "mensual" })).toEqual({
       estado: "ok",
       planId: PLAN,
       cambio: false,
@@ -203,13 +204,12 @@ describe("SLT-66 — R28: la vista previa de la primera asignación", () => {
 });
 
 describe("SLT-66 — R29: asignables solo trae planes con costo concreto", () => {
-  it("filtra los sin precio, negociables y sin costo por orden; conserva los de base 0.00", async () => {
+  it("filtra los sin precio y sin costo por orden; conserva los de base 0.00", async () => {
     const concreto = plan({ id: "concreto" });
     const cero = plan({ id: "cero", precio: { tipo: "monto", mensual: "0.00", anual: null }, costoPorOrden: "0.00" });
     repo.asignables.mockResolvedValueOnce([
       plan({ id: "sin-precio", precio: { tipo: "sin_precio" }, costoPorOrden: "100.00" }),
       concreto,
-      plan({ id: "negociable", precio: { tipo: "negociable" }, costoPorOrden: "100.00" }),
       plan({ id: "sin-costo", costoPorOrden: null }),
       cero,
     ]);
@@ -220,14 +220,14 @@ describe("SLT-66 — R29: asignables solo trae planes con costo concreto", () =>
   });
 
   it("si ninguno tiene costo concreto, la lista queda vacía", async () => {
-    repo.asignables.mockResolvedValueOnce([plan({ precio: { tipo: "negociable" } })]);
+    repo.asignables.mockResolvedValueOnce([plan({ precio: { tipo: "sin_precio" } })]);
     expect(await servicio.asignables(SUPERADMIN, { organizacionId: EMPRESA })).toEqual({ estado: "ok", planes: [] });
   });
 });
 
 describe("SLT-66 — R30: editar, programar y archivar no se frenan", () => {
   const SIN_COSTO_VERSION: [string, Partial<VersionPlan>][] = [
-    ["a negociable", { precio: { tipo: "negociable" } }],
+    ["a sin precio", { precio: { tipo: "sin_precio" } }],
     ["vaciando el costo por orden", { costoPorOrden: null }],
   ];
 
@@ -247,7 +247,7 @@ describe("SLT-66 — R30: editar, programar y archivar no se frenan", () => {
   });
 
   it("archivar un plan sin costo concreto → ok y se llama al repositorio", async () => {
-    repo.plan.mockResolvedValueOnce(plan({ precio: { tipo: "negociable" }, costoPorOrden: null }));
+    repo.plan.mockResolvedValueOnce(plan({ precio: { tipo: "sin_precio" }, costoPorOrden: null }));
     expect((await servicio.archivar(SUPERADMIN, { planId: PLAN })).estado).toBe("ok");
     expect(repo.archivar).toHaveBeenCalledWith(PLAN, "u-sa");
   });

@@ -15,7 +15,7 @@ import { fuenteOrdenesDeFila } from "../../_components/ordenes-de-fila-cuenta";
 
 import { EstadoCuentaAcciones } from "./EstadoCuentaAcciones";
 import { PagosTiendaEstadoCuenta } from "./PagosTiendaEstadoCuenta";
-import { CATEGORIA_TIENDA_LABEL, ORIGEN_TIENDA_LABEL } from "./desglose-tienda-labels";
+import { ORIGEN_TIENDA_LABEL, conceptoDeFilaTienda } from "./desglose-tienda-labels";
 import { DETALLE_DESCARGA_WALLET_TIENDA } from "./estado-cuenta-tienda-descarga-columnas";
 
 // FICHA 458-D (T D.2, design §5; R17–R28, R30) — el estado de cuenta de UNA tienda, visto DESDE LA EMPRESA.
@@ -37,7 +37,7 @@ function esCobroPorRechazo(f: FilaEstadoCuentaDTO): boolean {
 const ADMITE_ADJUNTAR: ReadonlySet<WalletTiendaMovimientoCategoria> = new Set(["cobro_manual", "pago_tienda"]);
 
 export const ROTULOS_TIENDA: RotulosEstadoCuenta = {
-  concepto: (f) => CATEGORIA_TIENDA_LABEL[categoria(f)] ?? f.categoria,
+  concepto: conceptoDeFilaTienda,
   origen: (f) => ORIGEN_TIENDA_LABEL[f.origenTipo as WalletOrigenTipo] ?? null,
 };
 

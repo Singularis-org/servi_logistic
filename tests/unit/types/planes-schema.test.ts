@@ -22,6 +22,7 @@ function crear(extra: Record<string, unknown> = {}) {
     modulos: ["analitica", "ranking"],
     precio: { tipo: "sin_precio" },
     costoPorOrden: null, // SLT-66 R8: la clave es obligatoria; vacío = null.
+    costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del esquema
     ...extra,
   };
 }
@@ -32,17 +33,35 @@ function editar(extra: Record<string, unknown> = {}) {
     nombre: "Básico",
     topes: TOPES,
     modulos: [],
-    precio: { tipo: "negociable" },
+    precio: { tipo: "sin_precio" },
     vigenteDesde: null,
     costoPorOrden: null, // SLT-66 R8: la clave es obligatoria; vacío = null.
+    costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del esquema
     ...extra,
   };
 }
 
 describe("SL-24 — esquema de crear un plan", () => {
-  it("un público sin empresa y un custom con su empresa entran", () => {
+  it("un público sin empresa y un custom con su empresa (y su tipo de cobro, D6) entran", () => {
     expect(crearPlanSchema.safeParse(crear()).success).toBe(true);
-    expect(crearPlanSchema.safeParse(crear({ visibilidad: "custom", organizacionId: EMPRESA })).success).toBe(true);
+    expect(
+      crearPlanSchema.safeParse(crear({ visibilidad: "custom", organizacionId: EMPRESA, tipoCobro: "mensual" })).success,
+    ).toBe(true);
+    // Ajuste planes-custom (D2, D4): un custom se asigna al crearlo, con el inicio del ciclo si se elige.
+    expect(
+      crearPlanSchema.safeParse(
+        crear({ visibilidad: "custom", organizacionId: EMPRESA, tipoCobro: "anual", inicioCiclo: "2026-11-01" }),
+      ).success,
+    ).toBe(true);
+  });
+
+  it("D6 (ajuste planes-custom): un custom sin tipo de cobro, o un público con él, es validation_error en tipoCobro", () => {
+    const customSinTipo = crearPlanSchema.safeParse(crear({ visibilidad: "custom", organizacionId: EMPRESA }));
+    const publicoConTipo = crearPlanSchema.safeParse(crear({ tipoCobro: "mensual" }));
+    for (const r of [customSinTipo, publicoConTipo]) {
+      expect(r.success).toBe(false);
+      expect(r.error?.issues.map((i) => i.path.join("."))).toContain("tipoCobro");
+    }
   });
 
   it("R2: un custom sin empresa, o un público con empresa, es validation_error en organizacionId", () => {
@@ -97,7 +116,6 @@ describe("SL-24 — esquema de editar un plan", () => {
 describe("SL-24 — R3: las cinco formas del precio y nada más", () => {
   it.each([
     ["sin precio", { tipo: "sin_precio" }],
-    ["negociable", { tipo: "negociable" }],
     ["mensual solo", { tipo: "monto", mensual: "25000", anual: null }],
     ["mensual con anual fijo", { tipo: "monto", mensual: "25000.50", anual: { tipo: "fijo", monto: "250000" } }],
     ["mensual con descuento", { tipo: "monto", mensual: "0", anual: { tipo: "descuento", porcentaje: "15.5" } }],
@@ -108,7 +126,8 @@ describe("SL-24 — R3: las cinco formas del precio y nada más", () => {
   });
 
   it.each([
-    ["negociable con un monto", { tipo: "negociable", mensual: "10" }],
+    ["D1: negociable ya no es una forma", { tipo: "negociable" }],
+    ["D1: negociable con un monto", { tipo: "negociable", mensual: "10" }],
     ["sin precio con un anual", { tipo: "sin_precio", anual: { tipo: "fijo", monto: "1" } }],
     ["anual fijo con porcentaje", { tipo: "monto", mensual: "10", anual: { tipo: "fijo", monto: "100", porcentaje: "5" } }],
     ["anual sin mensual", { tipo: "monto", anual: { tipo: "fijo", monto: "100" } }],

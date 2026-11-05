@@ -18,17 +18,17 @@ export interface CicloCrudo {
 
 export interface ICicloVidaRepository {
   /**
-   * Acumula el tiempo de ciclo de las ordenes cuya ULTIMA transicion terminal cae en la
-   * ventana de la consulta.
+   * Acumula el tiempo de ciclo de las ordenes cuya GESTION FINAL (ultima gestion vigente con un
+   * resultado de `RESULTADOS_DE_CIERRE`) cae en la ventana de la consulta.
    *
    * Recibe la MISMA `ConsultaConteoEntregas` que el resto de la vertical —el filtro es
    * identico a proposito, para que la barra mueva todas las lecturas a la vez—. Dos
    * diferencias con las demas, las dos deliberadas:
    *
-   *   1. la VENTANA cae sobre la transicion terminal (`orden_historial_estado.created_at`), no
-   *      sobre la fecha efectiva de la orden ni sobre su creacion;
-   *   2. solo entran ordenes CERRADAS. Una orden sin transicion terminal no tiene fin de
-   *      reloj, y no hay forma honesta de asignarle una duracion.
+   *   1. la VENTANA cae sobre la gestion final (`gestion_orden.created_at`), no sobre la fecha
+   *      de carga de la orden;
+   *   2. solo entran ordenes CERRADAS. Una orden sin gestion final no tiene fin de reloj, y no
+   *      hay forma honesta de asignarle una duracion.
    */
   acumularCiclos(consulta: ConsultaConteoEntregas): Promise<CicloCrudo>;
 }

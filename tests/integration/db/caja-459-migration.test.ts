@@ -116,39 +116,49 @@ describeSiHayBase("459/B.5 — las migraciones de la 459 contra Postgres", () =>
     // (20261102090000) se aplica despues de la de SLT-56 (20261029120100).
     // SLT-52: CINCO tipos y DOS entidades detras de todo lo anterior (el modelo nuevo de tarifas,
     // 20261103120300): los cortes de arriba se corren cinco y dos posiciones.
-    expect(tipos.slice(-25, -21)).toEqual([
+    // Ajuste planes-custom D16: UN tipo mas detras de los de SLT-52 (`plan_tipo_cobro_cambiado`),
+    // ninguna entidad: su migracion (20261104130100) se aplica despues de la de SLT-52. Los cortes de
+    // tipos se corren una posicion mas; los de entidades no.
+    // SLT-54: UN tipo y UNA entidad detras de todo lo anterior (20261104140000). Los cortes de abajo se
+    // miden sin ellos, para no correrlos otra vez.
+    expect(tipos.at(-1)).toBe("tarifas_activadas");
+    expect(entidades.at(-1)).toBe("tarifa_activacion");
+    const tiposPrevios = tipos.slice(0, -1);
+    const entidadesPrevias = entidades.slice(0, -1);
+    expect(tiposPrevios.slice(-26, -22)).toEqual([
       "pago_por_cuenta_tienda_registrado",
       "pago_por_cuenta_tienda_anulado",
       "aporte_capital_registrado",
       "aporte_capital_anulado",
     ]);
-    expect(tipos.slice(-21, -19)).toEqual(["cobro_tienda_anulado", "wallet_movimiento_manual_anulado"]);
-    expect(tipos.slice(-19, -17)).toEqual(["abono_tienda_registrado", "abono_tienda_anulado"]);
-    expect(tipos.slice(-17, -15)).toEqual(["cobro_rechazo_tienda_anulado", "egreso_caja_anulado"]);
-    expect(tipos.slice(-15, -10)).toEqual([
+    expect(tiposPrevios.slice(-22, -20)).toEqual(["cobro_tienda_anulado", "wallet_movimiento_manual_anulado"]);
+    expect(tiposPrevios.slice(-20, -18)).toEqual(["abono_tienda_registrado", "abono_tienda_anulado"]);
+    expect(tiposPrevios.slice(-18, -16)).toEqual(["cobro_rechazo_tienda_anulado", "egreso_caja_anulado"]);
+    expect(tiposPrevios.slice(-16, -11)).toEqual([
       "integracion_conectada",
       "integracion_actualizada",
       "integracion_probada",
       "integracion_token_regenerado",
       "integracion_desconectada",
     ]);
-    expect(tipos.slice(-10, -8)).toEqual(["modulo_activado", "modulo_desactivado"]);
-    expect(tipos.slice(-8, -7)).toEqual(["plan_asignado"]);
-    expect(tipos.slice(-7, -6)).toEqual(["cierre_dia_pago_mensajero_ajustado"]);
-    expect(tipos.slice(-6, -5)).toEqual(["zona_distrito_cambiado"]);
-    expect(tipos.slice(-5)).toEqual([
+    expect(tiposPrevios.slice(-11, -9)).toEqual(["modulo_activado", "modulo_desactivado"]);
+    expect(tiposPrevios.slice(-9, -8)).toEqual(["plan_asignado"]);
+    expect(tiposPrevios.slice(-8, -7)).toEqual(["cierre_dia_pago_mensajero_ajustado"]);
+    expect(tiposPrevios.slice(-7, -6)).toEqual(["zona_distrito_cambiado"]);
+    expect(tiposPrevios.slice(-6, -1)).toEqual([
       "tarifa_valor_fijado",
       "tarifa_valor_quitado",
       "grupo_distritos_creado",
       "grupo_distritos_cambiado",
       "grupo_distritos_borrado",
     ]);
-    // SLT-43 (20261104120000, posterior a todo lo anterior) suma UNA entidad (`nodo_geografico`) al
-    // final y NINGUN tipo: los tramos de entidades se leen uno mas atras; los de tipos no cambian.
-    expect(entidades.slice(-9, -7)).toEqual(["pago_por_cuenta_tienda", "aporte_capital"]);
-    expect(entidades.slice(-7, -3)).toEqual(["abono_tienda", "integracion", "organizacion_modulo", "plan"]);
-    expect(entidades.slice(-3, -1)).toEqual(["tarifa_valor", "grupo_distritos"]);
-    expect(entidades.slice(-1)).toEqual(["nodo_geografico"]);
+    expect(tiposPrevios.slice(-1)).toEqual(["plan_tipo_cobro_cambiado"]);
+    // SLT-43 (20261104120000, antes de la de SLT-54) suma UNA entidad (`nodo_geografico`) y NINGUN tipo:
+    // sin la de SLT-54, los tramos de entidades se leen uno mas atras; los de tipos no cambian.
+    expect(entidadesPrevias.slice(-9, -7)).toEqual(["pago_por_cuenta_tienda", "aporte_capital"]);
+    expect(entidadesPrevias.slice(-7, -3)).toEqual(["abono_tienda", "integracion", "organizacion_modulo", "plan"]);
+    expect(entidadesPrevias.slice(-3, -1)).toEqual(["tarifa_valor", "grupo_distritos"]);
+    expect(entidadesPrevias.slice(-1)).toEqual(["nodo_geografico"]);
   });
 
   it("(b) los CHECK admiten los pares nuevos y RECHAZAN los invertidos", async () => {

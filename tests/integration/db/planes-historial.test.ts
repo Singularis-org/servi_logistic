@@ -92,6 +92,7 @@ describeSiHayBase("SL-24 — el rastro de los planes (R29, R40, R43)", () => {
         modulos: ["ranking"],
         precio: { tipo: "monto", mensual: "25000", anual: null },
         costoPorOrden: null, // SLT-66 R8: campo obligatorio nuevo; no cambia lo que se comprueba.
+        costoPorOrdenPorcentual: null, // SLT-83: campo obligatorio nuevo; no cambia lo que se comprueba.
       });
       if (creado.estado !== "ok") throw new Error(creado.estado);
       const planId = creado.planId;
@@ -102,6 +103,7 @@ describeSiHayBase("SL-24 — el rastro de los planes (R29, R40, R43)", () => {
         modulos: ["ranking"],
         precio: { tipo: "monto", mensual: "25000.00", anual: { tipo: "fijo", monto: "250000" } },
         costoPorOrden: null, // SLT-66 R8: campo obligatorio nuevo; no cambia lo que se comprueba.
+        costoPorOrdenPorcentual: null, // SLT-83: campo obligatorio nuevo; no cambia lo que se comprueba.
         vigenteDesde: null,
       });
       await servicio.archivar(actor, { planId });
@@ -123,6 +125,7 @@ describeSiHayBase("SL-24 — el rastro de los planes (R29, R40, R43)", () => {
           modulos: { antes: null, despues: ["ranking"] },
           precio: { antes: null, despues: { tipo: "monto", mensual: "25000.00", anual: null } },
           costoPorOrden: { antes: null, despues: null }, // SLT-66 R8: campo obligatorio nuevo; el alta lo registra como los demás.
+          costoPorOrdenPorcentual: { antes: null, despues: null }, // SLT-83: campo nuevo del rastro; el alta lo registra como los demás.
           archivado: { antes: null, despues: false },
         },
       },
@@ -154,7 +157,7 @@ describeSiHayBase("SL-24 — el rastro de los planes (R29, R40, R43)", () => {
       await tx.organizacionModulo.create({ data: { organizacionId: org, modulo: "ranking" } });
       const creado = await servicio.crear(actor, entradaAsignable({ nombre: "Pro con analítica", modulos: ["analitica"] }));
       if (creado.estado !== "ok") throw new Error(creado.estado);
-      await servicio.asignar(actor, { organizacionId: org, planId: creado.planId });
+      await servicio.asignar(actor, { organizacionId: org, planId: creado.planId, tipoCobro: "mensual" });
       const filas = await tx.historialAccion.findMany({
         where: { organizacionId: org },
         select: {
@@ -179,7 +182,8 @@ describeSiHayBase("SL-24 — el rastro de los planes (R29, R40, R43)", () => {
       entidadId: r.planId,
       entidadEtiqueta: "Plan «Pro con analítica»",
       valorAnterior: null,
-      valorNuevo: null,
+      // D6 (ajuste planes-custom): el tipo de cobro de la asignación; sin fecha, solo él.
+      valorNuevo: "mensual",
       ...actor,
     });
     expect(r.filas.filter((f) => f.accion !== "plan_asignado").map((f) => [f.accion, f.valorNuevo]).sort()).toEqual([
@@ -197,14 +201,14 @@ describeSiHayBase("SL-24 — el rastro de los planes (R29, R40, R43)", () => {
       const org = (await crearOrganizacion(tx)).id;
       const planId = await planesEnTx(tx).crear(entradaAsignable({ modulos: ["analitica"] }), actor.usuarioId);
       const roto = new PlanesService(planesEnTx(tx, "historial"));
-      const error = await roto.asignar(actor, { organizacionId: org, planId }).catch((e: unknown) => e);
+      const error = await roto.asignar(actor, { organizacionId: org, planId, tipoCobro: "mensual" }).catch((e: unknown) => e);
       const tras = {
         planId: (await tx.organizacion.findUniqueOrThrow({ where: { id: org }, select: { planId: true } })).planId,
         modulos: await tx.organizacionModulo.count({ where: { organizacionId: org } }),
         historial: await tx.historialAccion.count({ where: { organizacionId: org } }),
       };
       // Control: con el registro sano, la misma asignación sí se hace (el rojo no era otra cosa).
-      const sano = await new PlanesService(planesEnTx(tx)).asignar(actor, { organizacionId: org, planId });
+      const sano = await new PlanesService(planesEnTx(tx)).asignar(actor, { organizacionId: org, planId, tipoCobro: "mensual" });
       return { error, tras, sano };
     });
     expect(r.error).toBeInstanceOf(RegistroCaido);
@@ -312,6 +316,7 @@ describeSiHayBase("SL-24 — el rastro de los planes (R29, R40, R43)", () => {
         modulos: [],
         precio: { tipo: "sin_precio" },
         costoPorOrden: null, // SLT-66 R8: campo obligatorio nuevo; no cambia lo que se comprueba.
+        costoPorOrdenPorcentual: null, // SLT-83: campo obligatorio nuevo; no cambia lo que se comprueba.
         vigenteDesde,
       });
       // `created_at` lo pone Prisma en el cliente: una pausa entre operaciones evita que dos de ellas

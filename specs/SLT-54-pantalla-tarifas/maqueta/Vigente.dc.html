@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Tarifas en vigor</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F7F7F5}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #111111;outline-offset:1px}
+</style>
+</helmet>
+<div style="font-family: Archivo, system-ui, sans-serif; color: #111111; background: #F7F7F5; min-height: 980px; display: flex; flex-wrap: wrap">
+  <nav aria-label="Menú" style="flex: 1 1 200px; max-width: 220px; background: #1C1C1A; color: #F7F7F5; padding: 20px 14px; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px; font-size: 14px">
+    <div style="font-weight: 700; font-size: 15px; padding: 4px 10px 18px; letter-spacing: 0.02em">Servi Logistic</div>
+    <div style="padding: 8px 10px; color: #d6d3d1">Configuración</div>
+    <div style="padding: 8px 10px; color: #d6d3d1">Zonas</div>
+    <div style="padding: 8px 10px; background: #33332f; border-radius: 8px; font-weight: 600">Tarifas</div>
+    <div style="padding: 8px 10px; color: #d6d3d1">Plantillas</div>
+  </nav>
+  <main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column">
+    <header style="background: #ffffff; border-bottom: 1px solid #e7e5e4; padding: 18px 24px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between">
+      <h1 style="margin: 0; font-size: 22px; font-weight: 700">Tarifas</h1>
+      <span style="display: inline-flex; align-items: center; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 4px 10px; background: #d1fae5; color: #065f46">En vigor desde el 12-11-2026</span>
+    </header>
+    <div style="padding: 24px; display: flex; flex-direction: column; gap: 24px">
+      <p style="margin: 0; font-size: 14px; color: #44403c">Cada cambio aplica desde el siguiente cierre. Los cierres ya hechos no cambian.</p>
+
+      <section aria-label="Grupos de distritos de la zona" style="background: #ffffff; border: 1px solid #e7e5e4; border-radius: 12px; overflow: hidden">
+        <div style="padding: 16px 18px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; border-bottom: 1px solid #e7e5e4">
+          <div>
+            <h2 style="margin: 0; font-size: 18px; font-weight: 700">Limón: grupos de distritos</h2>
+            <div style="font-size: 13px; color: #44403c; margin-top: 3px">Un distrito está en un solo grupo por zona. Lo que no definas en el grupo usa el valor de la zona.</div>
+          </div>
+          <button type="button" style="min-height: 44px; padding: 0 16px; border: 1px solid #e7e5e4; border-radius: 10px; background: #ffffff; color: #111111; font: 600 14px Archivo, system-ui, sans-serif; cursor: pointer">Crear grupo</button>
+        </div>
+        <div style="padding: 16px 18px; display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start; justify-content: space-between">
+          <div style="flex: 1 1 320px; min-width: 0">
+            <div style="font-size: 15px; font-weight: 600">Zona especial</div>
+            <div style="font-size: 13px; color: #44403c; margin: 3px 0 10px">4 distritos: [DISTRITO], [DISTRITO], [DISTRITO], [DISTRITO]</div>
+            <button type="button" style="min-height: 40px; padding: 0 12px; border: 1px solid #e7e5e4; border-radius: 8px; background: #ffffff; color: #111111; font: 500 14px Archivo, system-ui, sans-serif; cursor: pointer">Cambiar distritos</button>
+          </div>
+          <dl style="flex: 1 1 320px; min-width: 0; margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; font-size: 14px">
+            <div><dt style="color: #44403c; font-size: 12px">Flete por entregado</dt><dd style="margin: 2px 0 0; font-weight: 600">₡3.200 + 13 % IVA</dd></div>
+            <div><dt style="color: #44403c; font-size: 12px">Flete por devolución a origen</dt><dd style="margin: 2px 0 0; font-weight: 600">₡3.200 + 13 % IVA</dd></div>
+            <div><dt style="color: #44403c; font-size: 12px">Pago al mensajero</dt><dd style="margin: 2px 0 0; font-weight: 600">Usa el de la zona</dd></div>
+            <div><dt style="color: #44403c; font-size: 12px">Pago a la satélite</dt><dd style="margin: 2px 0 0; font-weight: 600">Usa el de la zona</dd></div>
+          </dl>
+        </div>
+      </section>
+
+      <section aria-label="Tiendas con precio propio" style="background: #ffffff; border: 1px solid #e7e5e4; border-radius: 12px; overflow: hidden">
+        <div style="padding: 16px 18px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; border-bottom: 1px solid #e7e5e4">
+          <div>
+            <h2 style="margin: 0; font-size: 18px; font-weight: 700">Tiendas con precio propio</h2>
+            <div style="font-size: 13px; color: #44403c; margin-top: 3px">Gana sobre el grupo y la zona. Lo que no pacte la tienda usa el valor general.</div>
+          </div>
+          <button type="button" style="min-height: 44px; padding: 0 16px; border: 1px solid #e7e5e4; border-radius: 10px; background: #ffffff; color: #111111; font: 600 14px Archivo, system-ui, sans-serif; cursor: pointer">Añadir precio de tienda</button>
+        </div>
+        <div style="overflow-x: auto">
+          <table style="width: 100%; min-width: 620px; border-collapse: collapse; font-size: 14px">
+            <thead>
+              <tr style="text-align: left; color: #44403c; font-size: 12px">
+                <th scope="col" style="padding: 10px 18px; font-weight: 600">Tienda</th>
+                <th scope="col" style="padding: 10px 18px; font-weight: 600">Aplica en</th>
+                <th scope="col" style="padding: 10px 18px; font-weight: 600">Flete por entregado</th>
+                <th scope="col" style="padding: 10px 18px; font-weight: 600">Flete por devolución</th>
+                <th scope="col" style="padding: 10px 18px"><span style="position: absolute; width: 1px; height: 1px; overflow: hidden">Acciones</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              <sc-for list="{{tiendas}}" as="t" hint-placeholder-count="3">
+                <tr style="border-top: 1px solid #e7e5e4">
+                  <td style="padding: 10px 18px; font-weight: 500">{{t.nombre}}</td>
+                  <td style="padding: 10px 18px">{{t.aplica}}</td>
+                  <td style="padding: 10px 18px">{{t.flete}}</td>
+                  <td style="padding: 10px 18px">{{t.dev}}</td>
+                  <td style="padding: 10px 18px; text-align: right"><button type="button" aria-label="Editar precio de {{t.nombre}}" style="min-height: 40px; padding: 0 12px; border: 1px solid #e7e5e4; border-radius: 8px; background: #ffffff; color: #111111; font: 500 14px Archivo, system-ui, sans-serif; cursor: pointer">Editar</button></td>
+                </tr>
+              </sc-for>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1360,"height":980}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      tiendas: [
+        { nombre: '[TIENDA A]', aplica: 'Todas sus zonas', flete: '₡2.600', dev: '₡2.600' },
+        { nombre: '[TIENDA A]', aplica: 'GAM', flete: '₡2.200', dev: '₡2.200' },
+        { nombre: '[TIENDA B]', aplica: 'Limón · Zona especial', flete: '₡3.200', dev: '₡3.200' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

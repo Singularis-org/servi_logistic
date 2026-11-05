@@ -3,8 +3,15 @@ import { Ban, Infinity as InfinityIcon, TriangleAlert, type LucideIcon } from "l
 import { EmptyState } from "@/components/shared/EmptyState";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { SIN_LINEAS_DE_CAMBIO, textoCambioProgramado, TITULO_LINEAS_DE_CAMBIO } from "@/lib/planes/mensajes";
+import { TEXTOS_TIPO_COBRO } from "@/components/shared/tipo-cobro";
+import {
+  lineasDelCosteoPorcentual,
+  SIN_LINEAS_DE_CAMBIO,
+  textoCambioProgramado,
+  TITULO_LINEAS_DE_CAMBIO,
+} from "@/lib/planes/mensajes";
 import type {
+  CobroDelPlan,
   CosteoDelCiclo,
   EstadoFila,
   FilaConsumo,
@@ -13,18 +20,32 @@ import type {
 } from "@/lib/types/consumo-plan";
 import { cn } from "@/lib/utils";
 
+// SLT-83 (design §6.4; R23, R26): `CosteoDelCiclo` es una unión por `modo`. La rama fija es la de
+// SLT-66 sin cambio de texto; la porcentual pinta las líneas de `lineasDelCosteoPorcentual`.
+type CosteoFijo = Extract<CosteoDelCiclo, { modo: "fijo" }>;
+type CosteoPorcentual = Extract<CosteoDelCiclo, { modo: "porcentual" }>;
+
 /** Textos de la pieza, en un solo sitio para cuando llegue la i18n (design §6.5). */
 const TEXTOS = {
   costoDelCiclo: "Costo del ciclo",
   costoBase: (base: CosteoDelCiclo["base"]) =>
     `Costo base: ${base.tipo === "monto" ? `${base.mensual} al mes` : "por definir"}`,
   costoPorOrden: (c: string) => `Costo por orden: ${c}`,
-  ordenesDelCiclo: ({ ordenes, costoPorOrden, subtotalOrdenes }: CosteoDelCiclo) =>
+  ordenesDelCiclo: ({ ordenes, costoPorOrden, subtotalOrdenes }: CosteoFijo) =>
     `Órdenes del ciclo: ${ordenes} × ${costoPorOrden} = ${subtotalOrdenes}`,
   total: (t: string) => `Total estimado del ciclo: ${t}`,
   excepcion: "precio acordado para tu empresa",
   anualNoAplica: "El pago anual no cambia el costo por orden.",
   estimado: "Estimado: el costo base no se cobra todavía; cada orden se cobra al crearla y se descuenta si se anula.",
+  /** SLT-83 (texto aprobado 2026-11-04): la nota de la rama porcentual, donde la fija pinta `estimado`. */
+  notaPorcentual:
+    "Cada orden se cobra al llegar a un estado final, con el % de su monto a cobrar (o el mínimo si es mayor).",
+  /** Ajuste planes-custom (D9): cómo paga la empresa su plan. Solo informativo (D8). */
+  cobro: "Cobro del plan",
+  tipoCobro: (tipo: CobroDelPlan["tipo"]) => `${TEXTOS_TIPO_COBRO.campo}: ${TEXTOS_TIPO_COBRO.tipo[tipo]}`,
+  montoPeriodo: ({ tipo, montoPeriodo }: CobroDelPlan) =>
+    `Monto del período: ${montoPeriodo === null ? "por definir" : `${montoPeriodo} ${tipo === "anual" ? "al año" : "al mes"}`}`,
+  siguienteCobro: (fecha: string) => `Siguiente cobro: ${fecha}`,
   modulos: "Módulos incluidos",
   sinModulos: "Ninguno",
   consumo: "Consumo",
@@ -97,7 +118,12 @@ export function ConsumoDelPlan({
           </CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
-          <CostoDelCiclo costeo={plan.costeo} textoExcepcion={textoExcepcion} />
+          {plan.costeo.modo === "fijo" ? (
+            <CostoDelCiclo costeo={plan.costeo} textoExcepcion={textoExcepcion} />
+          ) : (
+            <CostoDelCicloPorcentual costeo={plan.costeo} />
+          )}
+          <CobroDelPlanVista cobro={plan.cobro} />
           <p className="text-sm font-medium">{TEXTOS.modulos}</p>
           {plan.modulos.length === 0 ? (
             <p className="text-sm text-muted-foreground">{TEXTOS.sinModulos}</p>
@@ -161,7 +187,7 @@ export function ConsumoDelPlan({
  * (`costeoDelCiclo`, en el servidor): aquí no se suma ni se convierte nada, para no perder exactitud.
  * La aritmética no se importa en este componente porque lo monta también una pantalla de cliente.
  */
-function CostoDelCiclo({ costeo, textoExcepcion }: { costeo: CosteoDelCiclo; textoExcepcion: string }) {
+function CostoDelCiclo({ costeo, textoExcepcion }: { costeo: CosteoFijo; textoExcepcion: string }) {
   // P1: solo la excepción lleva nota; el plan y el global se pintan con su importe y nada más.
   const nota = costeo.fuente === "empresa" ? textoExcepcion : null;
   return (
@@ -185,6 +211,61 @@ function CostoDelCiclo({ costeo, textoExcepcion }: { costeo: CosteoDelCiclo; tex
         )}
       </ul>
       <p className="text-xs text-muted-foreground">{TEXTOS.estimado}</p>
+    </div>
+  );
+}
+
+/**
+ * SLT-83 (design §4.4, §6.4; R23) — el costo del ciclo con un plan porcentual: costo base, porcentaje y
+ * mínimo con su nota, lo cobrado en el ciclo, las órdenes sin estado final (solo el conteo) y el total
+ * hasta hoy. Todo llega calculado del servidor y los textos salen de `lib/planes/mensajes.ts`: aquí no se
+ * hace aritmética. Con la base por definir no hay total (SLT-66 R20). La nota «Estimado…» del modo fijo
+ * no va: dice que cada orden se cobra al crearla, y la porcentual se cobra al llegar a un estado final; en
+ * su sitio va `notaPorcentual` (texto aprobado el 2026-11-04).
+ */
+function CostoDelCicloPorcentual({ costeo }: { costeo: CosteoPorcentual }) {
+  const lineas = lineasDelCosteoPorcentual(costeo);
+  return (
+    <div className="flex flex-col gap-2 pb-2">
+      <p className="text-sm font-medium">{TEXTOS.costoDelCiclo}</p>
+      <ul aria-label={TEXTOS.costoDelCiclo} className="flex flex-col gap-1 text-sm">
+        <li>{TEXTOS.costoBase(costeo.base)}</li>
+        <li className="flex flex-col">
+          <span>{lineas.costoPorOrden}</span>
+          <span className="text-xs text-muted-foreground">{lineas.nota}</span>
+          {costeo.anualNoAplicaAlCosto && (
+            <span className="text-xs text-muted-foreground">{TEXTOS.anualNoAplica}</span>
+          )}
+        </li>
+        <li>{lineas.cobrado}</li>
+        <li>{lineas.pendientes}</li>
+        {lineas.total !== null && (
+          <li>
+            <strong className="font-semibold">{lineas.total}</strong>
+          </li>
+        )}
+      </ul>
+      <p className="text-xs text-muted-foreground">{TEXTOS.notaPorcentual}</p>
+    </div>
+  );
+}
+
+/**
+ * Ajuste planes-custom (D9) — el tipo de cobro, el monto de UN período y la fecha del siguiente cobro.
+ * Llegan ya calculados del servidor (`cobroDelPlan`: decimal exacto, D7; aniversario, D8): aquí no se
+ * calcula nada. No cambia el costeo del ciclo de arriba.
+ */
+function CobroDelPlanVista({ cobro }: { cobro: CobroDelPlan }) {
+  return (
+    <div className="flex flex-col gap-2 pb-2">
+      <p className="text-sm font-medium">{TEXTOS.cobro}</p>
+      <ul aria-label={TEXTOS.cobro} className="flex flex-col gap-1 text-sm">
+        <li>{TEXTOS.tipoCobro(cobro.tipo)}</li>
+        <li>{TEXTOS.montoPeriodo(cobro)}</li>
+        <li>
+          {TEXTOS.siguienteCobro(cobro.siguienteCobro)}
+        </li>
+      </ul>
     </div>
   );
 }

@@ -16,6 +16,7 @@ const BASE: PlanDTO = {
   precio: { tipo: "monto", mensual: "25000", anual: { tipo: "descuento", porcentaje: "10" } },
   archivado: false,
   costoPorOrden: null, // SLT-66 R7: el plan lleva costo por orden; aquí, vacío.
+  costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
 };
 
 describe("SL-24 — diferenciasDelPlan", () => {
@@ -29,6 +30,7 @@ describe("SL-24 — diferenciasDelPlan", () => {
         despues: { tipo: "monto", mensual: "25000.00", anual: { tipo: "descuento", porcentaje: "10.00" } },
       },
       costoPorOrden: { antes: null, despues: null }, // SLT-66 R8: al crear también sale el costo por orden.
+      costoPorOrdenPorcentual: { antes: null, despues: null }, // SLT-83: campo nuevo del rastro; el alta lo registra como los demás.
       archivado: { antes: null, despues: false },
     });
   });
@@ -58,10 +60,10 @@ describe("SL-24 — diferenciasDelPlan", () => {
     ["modulos", { modulos: ["monitoreo"] }, { antes: ["analitica", "ranking"], despues: ["monitoreo"] }],
     [
       "precio",
-      { precio: { tipo: "negociable" } },
+      { precio: { tipo: "sin_precio" } },
       {
         antes: { tipo: "monto", mensual: "25000.00", anual: { tipo: "descuento", porcentaje: "10.00" } },
-        despues: { tipo: "negociable" },
+        despues: { tipo: "sin_precio" },
       },
     ],
     ["archivado", { archivado: true }, { antes: false, despues: true }],

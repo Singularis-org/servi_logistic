@@ -4,13 +4,12 @@ import { prepararConteoEntregas, type ConsultaConteoEntregas } from "@/lib/analy
 import { consultarCicloVida } from "@/lib/actions/ciclo-vida";
 import {
   CicloVidaRepository,
-  condicionDeVentanaTerminal,
+  condicionDeVentanaDeCierre,
   condicionesDeCiclo,
 } from "@/lib/repositories/CicloVidaRepository";
 import { CicloVidaService, promedioDeCiclo } from "@/lib/services/CicloVidaService";
 import type { IAnaliticaCache } from "@/lib/interfaces/external/IAnaliticaCache";
 import type { ICicloVidaRepository } from "@/lib/interfaces/repositories/ICicloVidaRepository";
-import { ESTADOS_TERMINALES } from "@/lib/types/order-status-transiciones";
 import type { CicloVidaDTO } from "@/lib/types/conteo-ciclo-vida";
 
 const AHORA = new Date("2026-08-18T12:00:00.000Z");
@@ -30,30 +29,20 @@ const sqlDe = (c: ConsultaConteoEntregas) =>
 /* La definición                                                               */
 /* -------------------------------------------------------------------------- */
 
-// ⚠ ESTA DEFINICIÓN NO ES NUEVA. Es la misma que ya usa el rollup diario para la métrica
-// `tiempo_ciclo` del catálogo (consulta Q5 de `AnaliticaRollupRepository`). Estos casos son lo
-// que impide que se separen: si alguien cambia una de las dos, el criterio deja de ser uno.
-describe("El reloj: de la creación al último terminal", () => {
-  it("los terminales salen del dominio, no de una lista escrita en el repositorio", () => {
-    // Los tres que el humano nombró son exactamente `ESTADOS_TERMINALES`.
-    expect([...ESTADOS_TERMINALES].sort()).toEqual(
-      ["devuelta_a_tienda", "entregado", "incidente"].sort(),
-    );
-  });
-});
-
-describe("La ventana cae sobre la TRANSICIÓN TERMINAL", () => {
+// La definición se mide contra Postgres en `tests/integration/db/ciclo-vida-gestion-final.int.test.ts`
+// y la lista de resultados en `ciclo-vida-resultados-de-cierre.guardia.test.ts`. Aquí, el esqueleto.
+describe("La ventana cae sobre la GESTIÓN FINAL", () => {
   // Una orden creada en enero y cerrada en agosto cuenta en AGOSTO. Atribuyendo por creación,
   // el mes en curso saldría siempre artificialmente rápido: sólo habrían cerrado las fáciles.
-  it("compara `h.created_at`, la fecha del cierre", () => {
-    const ventana = condicionDeVentanaTerminal(consultaDe({ rango: "dia" }));
+  it("compara `g.created_at`, la fecha de la gestión", () => {
+    const ventana = condicionDeVentanaDeCierre(consultaDe({ rango: "dia" }));
 
-    expect(ventana.sql).toContain(`h."created_at"`);
+    expect(ventana.sql).toContain(`g."created_at"`);
     expect(ventana.sql).not.toContain(`o."created_at"`);
   });
 
   it("es semiabierta: `>=` abajo y `<` arriba, nunca `<=`", () => {
-    const ventana = condicionDeVentanaTerminal(consultaDe({ rango: "dia" }));
+    const ventana = condicionDeVentanaDeCierre(consultaDe({ rango: "dia" }));
 
     expect(ventana.sql).toContain(">=");
     expect(ventana.sql).not.toContain("<=");
@@ -62,16 +51,16 @@ describe("La ventana cae sobre la TRANSICIÓN TERMINAL", () => {
   it("los bordes son los que resolvió el rango", () => {
     const consulta = consultaDe({ rango: "dia" });
 
-    expect(condicionDeVentanaTerminal(consulta).values).toEqual([
+    expect(condicionDeVentanaDeCierre(consulta).values).toEqual([
       consulta.rango?.desde,
       consulta.rango?.hasta,
     ]);
   });
 
-  // `TRUE` y no un fragmento vacío: va unido con `AND` dentro del CTE y un hueco rompería el
-  // SQL. Sin rango entran todos los cierres registrados.
+  // `TRUE` y no un fragmento vacío: va unido con `AND` y un hueco rompería el SQL. Sin rango entran
+  // todas las cerradas del recorte.
   it("SIN rango no filtra por fecha, pero deja el `AND` válido", () => {
-    const ventana = condicionDeVentanaTerminal(consultaDe());
+    const ventana = condicionDeVentanaDeCierre(consultaDe());
 
     expect(ventana.sql.trim()).toBe("TRUE");
     expect(ventana.values).toEqual([]);
@@ -131,40 +120,49 @@ describe("La consulta que se ejecuta", () => {
    * justamente lo que interesa: lo que se afirma es el esqueleto de la consulta.
    */
   function prismaQueDevuelve(filas: unknown[]) {
-    const capturado: { sql: string } = { sql: "" };
+    const capturado: { sql: string; valores: unknown[] } = { sql: "", valores: [] };
     const prisma = {
-      $queryRaw: (plantilla: readonly string[]) => {
+      $queryRaw: (plantilla: readonly string[], ...valores: unknown[]) => {
         capturado.sql = [...plantilla].join("?");
+        capturado.valores = valores;
         return Promise.resolve(filas);
       },
     };
     return { prisma, capturado };
   }
 
-  // ⚠ LAS TRES DECISIONES HEREDADAS DEL ROLLUP, en una sola aserción sobre el SQL.
-  //
-  // `DISTINCT ON` + `DESC`: la ÚLTIMA transición terminal, no la primera. El caso real que
-  // resuelve: una orden entra a terminal, alguien la revierte y vuelve a entrar — con la
-  // primera, el reloj pararía en un cierre que se deshizo. Y garantiza UNA contribución por
-  // orden, nunca dos.
-  //
-  // El desempate por `id` no sobra: dos transiciones pueden compartir `created_at`, y sin él
-  // Postgres podría elegir una u otra entre ejecuciones.
-  it("se queda con la ÚLTIMA transición terminal por orden, con desempate estable", async () => {
+  // La ÚLTIMA gestión vigente por orden, con el mismo orden que `ConteoPorStatusRepository`. El
+  // desempate por `id` no sobra: dos gestiones pueden compartir `created_at`.
+  it("se queda con la ÚLTIMA gestión vigente por orden, con desempate estable", async () => {
     const { prisma, capturado } = prismaQueDevuelve([{ seg: "0", n: 0 }]);
 
     await new CicloVidaRepository(prisma as never).acumularCiclos(consultaDe());
 
-    expect(capturado.sql).toContain(`DISTINCT ON (h."orden_id")`);
-    expect(capturado.sql).toContain(`ORDER BY h."orden_id", h."created_at" DESC, h."id" DESC`);
+    expect(capturado.sql).toContain("NOT EXISTS");
+    expect(capturado.sql).toContain(`(g2."created_at", g2."id") > (g."created_at", g."id")`);
+    expect(capturado.sql).not.toContain("DISTINCT ON");
+    expect(capturado.sql).not.toContain("orden_historial_estado");
   });
 
-  it("el reloj arranca en `orden.created_at` y para en el cierre", async () => {
+  it("el reloj arranca en `orden.created_at` y para en la gestión final", async () => {
     const { prisma, capturado } = prismaQueDevuelve([{ seg: "0", n: 0 }]);
 
     await new CicloVidaRepository(prisma as never).acumularCiclos(consultaDe());
 
-    expect(capturado.sql).toContain(`EXTRACT(EPOCH FROM (u.cerrado_at - o."created_at"))`);
+    expect(capturado.sql).toContain(`EXTRACT(EPOCH FROM (g."created_at" - o."created_at"))`);
+  });
+
+  it("los resultados de cierre viajan como parámetros, y la columna se compara como texto", async () => {
+    const { prisma, capturado } = prismaQueDevuelve([{ seg: "0", n: 0 }]);
+
+    await new CicloVidaRepository(prisma as never).acumularCiclos(consultaDe());
+
+    expect(capturado.sql).toContain(`g."resultado"::text IN (`);
+    expect((capturado.valores[0] as { values: unknown[] }).values).toEqual([
+      "entregado",
+      "devolucion_a_origen_por_rechazo",
+      "incidente",
+    ]);
   });
 
   // El driver devuelve los `bigint` como STRING. Sin la coerción, `segundosAcum` sería una
