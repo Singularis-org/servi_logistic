@@ -7,7 +7,7 @@
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F1.3 (2026-11-05): spec en specs/SLT-86-planes-periodo-facturacion/ (R1-R37, sin preguntas). Siguiente: F1.4, aprobación humana.
+F1.4 (2026-11-05): spec aprobado («Aprobado, espera a SLT-83»). F2.1 arranca cuando SLT-83 (PR #79) esté en dev; T0 integra dev.
 
 ## Evaluación
 - zone fullstack: modelo del plan y del ciclo (base y `lib/planes/ciclo.ts`), migración y pantallas de planes.
