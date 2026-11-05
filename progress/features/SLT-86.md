@@ -18,6 +18,10 @@ F1.4 (2026-11-05): spec aprobado («Aprobado, espera a SLT-83»). F2.1 arranca c
 ## Decisiones
 - 2026-11-05 · Alcance y decisiones → `specs/SLT-86-planes-periodo-facturacion/requirements.md`.
 - 2026-11-05 · spec_author bloqueó: ya existía el tipo de cobro por empresa (PR #72). Humano: el período vive en la empresa, descuento en el plan por período, migración sin perder nada. Requirements y tarjeta enmendados.
+- 2026-11-05 · (humano, tras T1) Empresa sin plan con primera asignación pendiente: «Mi plan» muestra «Sin límites» y debajo «{Plan} empieza a regir el {fecha}»; el detalle de empresa del superadmin igual. R26 aplica también sin plan.
+
+## Tandas
+- 2026-11-05 · T0 (merge dev con SLT-83) + T1 (migración 20261106120000, esquema) · 229ddce1, 0999df40, e0362b2c, 77e62f60 · ida y vuelta 15/15 en servi_logistic_slt86; guardias de esquema 70/70; typecheck con 48 errores ESPERADOS (columnas retiradas, los cierran T4/T8/T9). T1 ya reescribe plan_de_la_empresa.
 
 ## Preguntas abiertas
 Ninguna.
