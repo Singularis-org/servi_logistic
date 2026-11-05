@@ -15,19 +15,19 @@ Reglas de todas las tandas:
 
 ## Tanda 0 — Preparación
 
-- [ ] **T0.1** Copiar `.env` al worktree y comprobar, solo con booleanos, que `DATABASE_URL` existe y no es de Ordenex.
+- [x] **T0.1** Copiar `.env` al worktree y comprobar, solo con booleanos, que `DATABASE_URL` existe y no es de Ordenex.
   **Hecho:** `vitest` no reporta saltos por `HAY_BASE_DE_DATOS`.
 
 ## Tanda A — Escritura (backend). Depende de T0
 
-- [ ] **T1.1** `lib/types/tarifa-flexible.ts`: `mensajeroId` en `nivelSchema` y `FijarValorInput` (`design §3.1`).
+- [x] **T1.1** `lib/types/tarifa-flexible.ts`: `mensajeroId` en `nivelSchema` y `FijarValorInput` (`design §3.1`).
   **Hecho:** `tarifa-schemas.test.ts` cubre con y sin clave, y que un pago con `ivaPct` sigue rechazado (R5).
-- [ ] **T1.2** `TarifaValorService` y `ITarifaValorRepository`: nivel real, chequeo de R7 y R8, `fijar` con `mensajeroId`
+- [x] **T1.2** `TarifaValorService` y `ITarifaValorRepository`: nivel real, chequeo de R7 y R8, `fijar` con `mensajeroId`
   (`design §3.2`). **Hecho:** `tarifa-valor-service.test.ts` cubre R1, R5, R6 (mensajero + zona, + grupo, + vehículo, en
   concepto de tienda y de satélite), R7, R8 y R10.
-- [ ] **T1.3** `TarifaValorRepository`: `mensajeroEsElegibleONivelOcupado`, `fijar` y `etiquetaDelValor` (`design §3.3`,
+- [x] **T1.3** `TarifaValorRepository`: `mensajeroEsElegibleONivelOcupado`, `fijar` y `etiquetaDelValor` (`design §3.3`,
   `§3.4`); comentario en `historial-accion-etiquetas.ts`. **Hecho:** typecheck verde.
-- [ ] **T1.4** `tests/integration/db/tarifas-valor-propio-escritura.test.ts`, por el service y con dos empresas. Cubre:
+- [x] **T1.4** `tests/integration/db/tarifas-valor-propio-escritura.test.ts`, por el service y con dos empresas. Cubre:
   R1 con la fila real sin zona, grupo ni vehículo; R2 con los 5 conceptos; R3 reemplaza con el mismo id, y un `P2002` simulado
   por carrera sale `validation_error`; R4; R7 con rol `admin`, rol `Admin Tienda`, id inexistente y mensajero de B; R8 con
   `inactivo` y `bloqueado`, con y sin valor, y `pendiente` admitido; R9 con `INSERT` a mano y el trigger; R11 con la
