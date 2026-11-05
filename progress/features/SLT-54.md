@@ -23,6 +23,7 @@ Ninguna.
 - A (activación e interruptor): c3929057, `backend_dev` directo (el implementer lo corta el hook). Gate local rojo solo por estado de las bases: la local (5 archivos: job `done`, enum, datos de otra empresa) y la desechable `servi_gate_slt54` (1: exige usuario sembrado); cada archivo pasa en al menos una. Lo decide `gate-completo`.
 - B (lecturas, referencia, retiro de vías viejas): f215c6aa. La pantalla vieja no lee ni guarda precios hasta T4.1 (`tarifas-retiradas.ts` provisional). Decisiones del dev por revisar: `cargarZonaTarifas` con `tiendaId?`; `cargarPantallaTarifas` con `preciosTienda`; «Toda la zona» con distritos marcados y sin marcar da «Varía».
 - C (huecos de servidor): addf8afb. Mirar en `gate-completo`: `detalle-movimiento-cierre-postgres` y `detalle-en-lote-464` (WHERE del viejo, en el baseline local). Para T5.3: el recorte de zona retira `item.fulfillment`, así que la satélite no lo recibe en «recibidas». R64 añade `conceptoCongeladoPorResultado`.
+- D (pantalla): 859ce94d; medida contra la maqueta en claro, oscuro y móvil; 42/42 mutaciones. A vigilar: en `next dev`, abrir la URL tras el login dio 500 de `useToast` en 6 de 7 intentos (se recupera en cliente); en `next start`, 3 de 3 en 200. Sin causa raíz.
 
 ## Modelos (overrides)
 Subagentes en Opus.
