@@ -27,6 +27,9 @@ Ninguna.
 - E (huecos de pantalla): 9667bb15; 37/37 mutaciones. `useToast` no reproducido (0 de 20 en `next dev`). Gate sobre `servi_gate_slt54`: INIT_EXIT=0, 19.080 tests, 4.601 guardias. Abiertos: encabezado de la descarga y `PAGO_TIENDA_NOTA`; «1 grupo» difiere de la maqueta por R44. Incidente: un `-t` sin comillas lanzó parte de la suite con la RLS de `grupo_distritos` apagada ~150 s (restaurada, `rls=true` comprobado) y dejó filas de prueba en la base LOCAL (`organizacion` +3: `demo-qa-a`, `demo-qa-b`, `e2e-sl43-real-…`, en 20 tablas). No se borraron: no se pueden atribuir con certeza. Decide Carlos.
 - F (E2E y cierre): bcab441d. `dinero` 43/0/0, `reparto` 16/0/0, `aislamiento` 86/0/0 (1.ª corrida 85/1/0 por regresión en `zonas-crear-sin-costos`, arreglada). `e2e-sin-saltos` con `EXCEPCIONES` vacía. Destapó un defecto en R38 (lo digitado mientras guarda se perdía), arreglado con test. Abierto: rótulo «Ingreso de bodega por devoluciones a origen» con el modelo nuevo (el total incluye 120 de una entrega).
 
+- G (arreglos de revisión, vuelta 1): 6ca1fab5. H1: 445b1d52 (`incluyeModeloNuevo` en cierres, consolidación y wallet). H2: 7f8a77cb. I1: 3ae73178 (`FilaEstadoCuentaDTO`). I2: ecacd68b. Revisión en tres vueltas: M1, M2, M3 y D38 cerrados; vuelta 3 OK con 6 menores (0e43d804). Quedan D39, D40 y D42 en `progress/deudas.md`, antes de cerrar EP-8.
+- Decisión del leader, a validar por Carlos en el PR: rótulo «Ingreso de bodega» en el modelo nuevo; R71 y R72 añadidos en revisión.
+
 ## Medición T6.3 (R11)
 - Producción, 2026-11-04 (lectura ejecutada por Carlos con `!`): una empresa, `tarifa_valor`=0, `grupo_distritos`=0. Sin repetir: se re-mide antes del merge.
 - Base local, 2026-11-05: 11 empresas, 0 con `tarifa_valor`, 0 grupos, 0 activadas.

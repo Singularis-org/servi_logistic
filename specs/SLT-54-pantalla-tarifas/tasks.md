@@ -88,11 +88,11 @@
   admitir una lista vacía. Registrar los nuevos en los proyectos de `playwright.config.ts`. *Hecho:* salida en la bitácora.
 - [x] **T6.2 Medidas** (R54, R59, R60, R70). `e2e/tarifas-maqueta.spec.ts`. *Hecho:* tabla medida frente a maqueta en la bitácora, con
   cada número de design §12, en claro y oscuro, y 8 vehículos.
-- [ ] **T6.3 Medición** (R11). Antes del PR, cuántas empresas tienen valores en `tarifa_valor` por entorno, sin imprimir URLs.
+- [x] **T6.3 Medición** (R11). Antes del PR, cuántas empresas tienen valores en `tarifa_valor` por entorno, sin imprimir URLs.
   Si hay alguna en producción, se dice a Carlos. Lo hace el leader. *Hecho:* cifra en `progress/features/SLT-54.md`.
 - [x] **T6.4 Documentos.** `docs/architecture.md > Tarifas flexibles`: interruptor, consecuencia y SLT-53. *Hecho:* mapa `R<n> -> test`
   en `progress/impl_SLT-54.md`, con los E2E `e2e/cierre-*`, `e2e/wallet-*`, `e2e/dos-empresas-humo.spec.ts` en verde.
-- [ ] **T6.5 Salida.** No se despliega suelta: la épica sale completa. La migración va en el PR de esta ficha. *Hecho:* leader lo
+- [x] **T6.5 Salida.** No se despliega suelta: la épica sale completa. La migración va en el PR de esta ficha. *Hecho:* leader lo
   comprueba en F2.
 
 ## Tanda G — Arreglos de la revisión F2.2 (frontend). Depende de F
