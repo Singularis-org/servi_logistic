@@ -161,6 +161,8 @@ describeSiHayBase("SLT-56 — tabla de ajustes y tipo de historial, de ida y vue
       "plan_tipo_cobro_cambiado",
       // SLT-54: `tarifas_activadas`, de `20261104140000_historial_tarifa_activacion`.
       "tarifas_activadas",
+      // SLT-77: `tope_intentos_cambiado`, de `20261106120000_historial_tope_intentos`.
+      "tope_intentos_cambiado",
     ];
     expect([...enLaBase].sort()).toEqual(
       HISTORIAL_ACCION_TIPOS.filter((t) => !POSTERIORES.includes(t)).sort(),

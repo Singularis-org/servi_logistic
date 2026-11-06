@@ -121,10 +121,11 @@ describeSiHayBase("459/B.5 — las migraciones de la 459 contra Postgres", () =>
     // tipos se corren una posicion mas; los de entidades no.
     // SLT-54: UN tipo y UNA entidad detras de todo lo anterior (20261104140000). Los cortes de abajo se
     // miden sin ellos, para no correrlos otra vez.
-    expect(tipos.at(-1)).toBe("tarifas_activadas");
-    expect(entidades.at(-1)).toBe("tarifa_activacion");
-    const tiposPrevios = tipos.slice(0, -1);
-    const entidadesPrevias = entidades.slice(0, -1);
+    // SLT-77: UN tipo y UNA entidad mas detras (20261106120000), medidos igual.
+    expect(tipos.slice(-2)).toEqual(["tarifas_activadas", "tope_intentos_cambiado"]);
+    expect(entidades.slice(-2)).toEqual(["tarifa_activacion", "organizacion"]);
+    const tiposPrevios = tipos.slice(0, -2);
+    const entidadesPrevias = entidades.slice(0, -2);
     expect(tiposPrevios.slice(-26, -22)).toEqual([
       "pago_por_cuenta_tienda_registrado",
       "pago_por_cuenta_tienda_anulado",

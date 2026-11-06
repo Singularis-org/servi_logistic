@@ -105,10 +105,11 @@ describe("362/T0.1 (R14/R17) — el catalogo es cerrado y sus mapas son exhausti
     // `grupo_distritos` (29).
     // 81 desde el ajuste planes-custom D16: `plan_tipo_cobro_cambiado` (entidad `plan`, sin entidad nueva).
     // 82 desde SLT-54: `tarifas_activadas` (entidad `tarifa_activacion`, 30 entidades).
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(82);
-    expect(new Set(HISTORIAL_ACCION_TIPOS).size).toBe(82);
-    expect(HISTORIAL_ACCION_ENTIDADES).toHaveLength(30); // 30 desde SLT-54 (`tarifa_activacion`)
-    expect(new Set(HISTORIAL_ACCION_ENTIDADES).size).toBe(30);
+    // 83 desde SLT-77: `tope_intentos_cambiado` (entidad `organizacion`, 31 entidades).
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(83);
+    expect(new Set(HISTORIAL_ACCION_TIPOS).size).toBe(83);
+    expect(HISTORIAL_ACCION_ENTIDADES).toHaveLength(31); // 31 desde SLT-77 (`organizacion`)
+    expect(new Set(HISTORIAL_ACCION_ENTIDADES).size).toBe(31);
     expect(CATEGORIAS_ACCION).toHaveLength(6);
   });
 
@@ -264,7 +265,7 @@ describe("362/T0.1 (R14/R17) — el catalogo es cerrado y sus mapas son exhausti
     ).toBe(false);
     // La 375 NO amplia el enum de entidades: los tres niveles ya entraron con la 374. (El total es
     // 21 desde la 381, que si lo amplio con `wallet_tienda_movimiento`.)
-    expect(HISTORIAL_ACCION_ENTIDADES).toHaveLength(30); // 30 desde SLT-54 (`tarifa_activacion`)
+    expect(HISTORIAL_ACCION_ENTIDADES).toHaveLength(31); // 31 desde SLT-77 (`organizacion`)
   });
 
   it("⭑ FICHA 376: `zona_central_cambiada` es DINERO, y su entidad `zona` ya existia", () => {
@@ -290,7 +291,7 @@ describe("362/T0.1 (R14/R17) — el catalogo es cerrado y sus mapas son exhausti
     // La 376 NO amplia el enum de entidades: `zona` esta ahi desde los 17 originales de la 362.
     // (El total es 21 desde la 381, que si lo amplio con `wallet_tienda_movimiento`.)
     expect(HISTORIAL_ACCION_ENTIDADES).toContain("zona");
-    expect(HISTORIAL_ACCION_ENTIDADES).toHaveLength(30); // 30 desde SLT-54 (`tarifa_activacion`)
+    expect(HISTORIAL_ACCION_ENTIDADES).toHaveLength(31); // 31 desde SLT-77 (`organizacion`)
   });
 
   it("⭑ FICHA 380: `zona_pago_mensajero_cambiado` es DINERO, y NO se reutilizo ningun `tarifa_*`", () => {
@@ -328,7 +329,7 @@ describe("362/T0.1 (R14/R17) — el catalogo es cerrado y sus mapas son exhausti
     // La 380 NO amplia el enum de entidades: `zona` esta ahi desde los 17 originales de la 362.
     // (El total es 21 desde la 381, que si lo amplio con `wallet_tienda_movimiento`.)
     expect(HISTORIAL_ACCION_ENTIDADES).toContain("zona");
-    expect(HISTORIAL_ACCION_ENTIDADES).toHaveLength(30); // 30 desde SLT-54 (`tarifa_activacion`)
+    expect(HISTORIAL_ACCION_ENTIDADES).toHaveLength(31); // 31 desde SLT-77 (`organizacion`)
   });
 
   it("⭑ SLT-76 (R11): `zona_distrito_cambiado` es DINERO, con su etiqueta, y el filtro lo admite", () => {
@@ -383,7 +384,7 @@ describe("362/T0.1 (R14/R17) — el catalogo es cerrado y sus mapas son exhausti
     expect(HISTORIAL_ACCION_TIPOS).not.toContain("zona_sinpe_confirmado");
     // La 429 NO amplia el enum de entidades: `zona` esta ahi desde los 17 originales de la 362.
     expect(HISTORIAL_ACCION_ENTIDADES).toContain("zona");
-    expect(HISTORIAL_ACCION_ENTIDADES).toHaveLength(30); // 30 desde SLT-54 (`tarifa_activacion`)
+    expect(HISTORIAL_ACCION_ENTIDADES).toHaveLength(31); // 31 desde SLT-77 (`organizacion`)
   });
 
   it("⭑ FICHA 381: `cobro_tienda_registrado` es DINERO, con entidad NUEVA y sin reusar la caja", () => {
@@ -487,7 +488,8 @@ describe("362/T0.1 (R14/R17) — el catalogo es cerrado y sus mapas son exhausti
     // zona su flete y su pago al mensajero.
     // 49 desde SLT-52: fijar o quitar un valor de tarifa, y crear o cambiar un grupo de distritos.
     // 50 desde SLT-54: activar cambia el modelo con el que se cobra y se paga.
-    expect(accionesDeCategoria("mueve_dinero")).toHaveLength(50);
+    // 51 desde SLT-77: bajar el tope de intentos adelanta rechazos, y un rechazo genera cobro.
+    expect(accionesDeCategoria("mueve_dinero")).toHaveLength(51);
     expect(CATEGORIA_POR_ACCION.cierre_dia_pago_mensajero_ajustado).toBe("mueve_dinero");
     // 11 desde SLT-52: borrar un grupo de distritos se lleva sus valores por cascada.
     expect(accionesDeCategoria("hace_desaparecer")).toHaveLength(11);
@@ -572,7 +574,7 @@ describe("362/T0.1 (R14/R17) — el catalogo es cerrado y sus mapas son exhausti
     expect(filtroHistorialAccionSchema.safeParse({ accion: ["cobro_tienda_anulada"] }).success).toBe(false);
     // Sin entidad nueva: el cobro ES la fila del libro de la tienda (381/D2).
     expect(HISTORIAL_ACCION_ENTIDADES).not.toContain("cobro_tienda");
-    expect(HISTORIAL_ACCION_ENTIDADES).toHaveLength(30); // 30 desde SLT-54 (`tarifa_activacion`)
+    expect(HISTORIAL_ACCION_ENTIDADES).toHaveLength(31); // 31 desde SLT-77 (`organizacion`)
   });
 });
 

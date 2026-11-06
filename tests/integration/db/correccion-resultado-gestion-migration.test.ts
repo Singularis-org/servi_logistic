@@ -483,6 +483,8 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("398/T1.5 (b) — el down recrea las listas 
       "plan_tipo_cobro_cambiado",
       // SLT-54: `tarifas_activadas`, de `20261104140000_historial_tarifa_activacion`.
       "tarifas_activadas",
+      // SLT-77: `tope_intentos_cambiado`, de `20261106120000_historial_tope_intentos`.
+      "tope_intentos_cambiado",
     ];
     expect([...origenAntes].sort()).toEqual(
       ORDEN_HISTORIAL_ORIGEN_TIPO_SEED.filter(

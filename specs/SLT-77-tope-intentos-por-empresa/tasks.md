@@ -15,18 +15,18 @@ Reglas de todas las tandas:
 
 ## Tanda 0 — Preparación
 
-- [ ] **T0.1** Copiar `.env` al worktree y comprobar, solo con booleanos, que `DATABASE_URL` existe y no es de Ordenex.
+- [x] **T0.1** Copiar `.env` al worktree y comprobar, solo con booleanos, que `DATABASE_URL` existe y no es de Ordenex.
   **Hecho:** `vitest` no reporta saltos por `HAY_BASE_DE_DATOS`.
-- [ ] **T0.2** Mirar `origin/dev` y tomar timestamps de migración mayores que el último. **Hecho:** nombres en el informe.
+- [x] **T0.2** Mirar `origin/dev` y tomar timestamps de migración mayores que el último. **Hecho:** nombres en el informe.
 
 ## Tanda A — Base (backend). Depende de T0
 
-- [ ] **T1.1** Migración `..._historial_tope_intentos` y su `down.sql`; `lib/types/historial-accion.ts`, etiquetas y
+- [x] **T1.1** Migración `..._historial_tope_intentos` y su `down.sql`; `lib/types/historial-accion.ts`, etiquetas y
   categoría (`design §1.1`, `§2.3`). **Hecho:** catálogo y los tests de migración con la lista literal del enum al día.
-- [ ] **T1.2** Migración `..._organizacion_tope_intentos` y su `down.sql`; `db/schema.prisma`. **Hecho:** aplicada en la
+- [x] **T1.2** Migración `..._organizacion_tope_intentos` y su `down.sql`; `db/schema.prisma`. **Hecho:** aplicada en la
   desechable y `prisma generate`. No generar en paralelo con otro worktree.
-- [ ] **T1.3** `lib/repositories/_shared/tope-intentos-empresa.ts` (`design §2.1`). **Hecho:** typecheck verde.
-- [ ] **T1.4** `tests/integration/db/tope-intentos-migration.test.ts`. Cubre: R2 con empresa previa y empresa nueva por
+- [x] **T1.3** `lib/repositories/_shared/tope-intentos-empresa.ts` (`design §2.1`). **Hecho:** typecheck verde.
+- [x] **T1.4** `tests/integration/db/tope-intentos-migration.test.ts`. Cubre: R2 con empresa previa y empresa nueva por
   `altaEmpresa`; R6 con 0, 11 y -1 por SQL; R38 con ida y vuelta, y que el código anterior lee. **Hecho:** 0 saltos.
 - **Mutaciones A:**
   1. `DEFAULT 3` a `DEFAULT 4` → R2.

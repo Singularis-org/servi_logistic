@@ -781,8 +781,10 @@ interface TiposConEscritorPendiente {
   tarea: string;
 }
 
-// SLT-52 T6.2 ya escribe sus cinco tipos (ver el censo): la lista queda vacia.
-const ESCRITOR_PENDIENTE_EN_CURSO: TiposConEscritorPendiente[] = [];
+// SLT-52 T6.2 ya escribe sus cinco tipos (ver el censo). SLT-77 T2.2 escribira el suyo y quitara esta entrada.
+const ESCRITOR_PENDIENTE_EN_CURSO: TiposConEscritorPendiente[] = [
+  { tipos: ["tope_intentos_cambiado"], ficha: "SLT-77", tarea: "T2.2" },
+];
 
 /** Los archivos `.ts` de `lib/`, relativos a la raiz. */
 function archivosDeLib(dir = "lib"): string[] {
@@ -1217,7 +1219,8 @@ describe("362/R16 — cada tipo del catalogo tiene al menos un punto de escritur
     // `_borrado`; sus productores, desde T6.2, en `TarifaValorRepository` y `GrupoDistritosRepository`).
         // 81 desde el ajuste planes-custom D16 (`plan_tipo_cobro_cambiado`, de `PlanesRepository.cambiarTipoCobro`).
     // 82 desde SLT-54 (`tarifas_activadas`, de `TarifaActivacionRepository.activar`).
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(82);
+    // 83 desde SLT-77 (`tope_intentos_cambiado`, de `TopeIntentosRepository.guardar`).
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(83);
   });
 });
 

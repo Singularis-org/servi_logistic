@@ -164,6 +164,8 @@ describe("366/T1 — el `migration.sql` y el `down.sql`, como texto", () => {
       "plan_tipo_cobro_cambiado",
       // SLT-54: `tarifas_activadas`, de `20261104140000_historial_tarifa_activacion`.
       "tarifas_activadas",
+      // SLT-77: `tope_intentos_cambiado`, de `20261106120000_historial_tope_intentos`.
+      "tope_intentos_cambiado",
     ];
     expect([...HISTORIAL_ACCION_TIPOS].sort()).toEqual(
       [...previos, VALOR_NUEVO, ...POSTERIORES].sort(),

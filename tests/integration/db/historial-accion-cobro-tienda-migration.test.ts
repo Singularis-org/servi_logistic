@@ -448,6 +448,8 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("381/B.7 (b) — el down recrea 50 tipos y 2
       "plan_tipo_cobro_cambiado",
       // SLT-54: `tarifas_activadas`, de `20261104140000_historial_tarifa_activacion`.
       "tarifas_activadas",
+      // SLT-77: `tope_intentos_cambiado`, de `20261106120000_historial_tope_intentos`.
+      "tope_intentos_cambiado",
     ];
     expect([...tiposAntes].sort()).toEqual(
       [...HISTORIAL_ACCION_TIPOS]
@@ -461,7 +463,7 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("381/B.7 (b) — el down recrea 50 tipos y 2
           (e) =>
             e !== ENTIDAD_NUEVA &&
             !["pago_por_cuenta_tienda", "aporte_capital", "abono_tienda", "integracion", "organizacion_modulo", "plan",
-              "tarifa_valor", "grupo_distritos", "tarifa_activacion"].includes(e),
+              "tarifa_valor", "grupo_distritos", "tarifa_activacion", "organizacion"].includes(e),
         )
         .sort(),
     );

@@ -5018,6 +5018,10 @@ enum HistorialAccionTipo {
   /// la empresa ya tiene (D10). Entidad: `plan` (el de la empresa); etiqueta: `Plan «<nombre>»`;
   /// `valor_anterior` = el tipo de antes y `valor_nuevo` = el nuevo (`mensual` o `anual`).
   plan_tipo_cobro_cambiado
+  /// SLT-77 (R10, design §2.3): el maestro cambio el tope de intentos de entrega. Mueve dinero: bajarlo
+  /// adelanta rechazos, y un rechazo genera cobro. Entidad: `organizacion`; `valor_anterior` y `valor_nuevo`
+  /// son los dos numeros.
+  tope_intentos_cambiado
 
   @@map("historial_accion_tipo")
 }
@@ -5073,6 +5077,8 @@ enum HistorialAccionEntidad {
   grupo_distritos
   /// SLT-54: la activacion del modelo nuevo de tarifas, 1:1 con su tabla. `entidad_id` sin FK.
   tarifa_activacion
+  /// SLT-77: la empresa misma, 1:1 con su tabla, por el tope de intentos. `entidad_id` sin FK.
+  organizacion
 
   @@map("historial_accion_entidad")
 }
@@ -5732,6 +5738,9 @@ model Organizacion {
   slug      String   @unique
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  // SLT-77: intentos de entrega de la empresa, de 1 a 10. Lo edita su `maestro`. El rango es un CHECK que
+  // Prisma no sabe expresar: vive en `20261106120100_organizacion_tope_intentos`.
+  topeIntentosEntrega Int @default(3) @map("tope_intentos_entrega")
 
   usuarios Usuario[]
   mensajeroDocumentos MensajeroDocumento[]
