@@ -42,6 +42,7 @@ import { EtiquetaOrdenAccion } from "./EtiquetaOrdenAccion";
 import { ReportarIncidenteAccion } from "./ReportarIncidenteAccion";
 import { CorregirDatosClienteAccion } from "./CorregirDatosClienteAccion";
 import { descargarDatos } from "@/components/shared/descarga-datos";
+import type { ColumnaGeoDePlantilla } from "@/lib/utils/plantilla-geo";
 
 /**
  * Acción por lote ofrecida en la barra contextual cuando hay filas seleccionadas.
@@ -153,6 +154,7 @@ export function OrdenesModule({
   puedeVerComprobanteEntrega = false,
   filtros,
   resetSeleccion = 0,
+  columnasGeoCarga = null,
 }: {
   columns?: Column<OrdenListItemDTO>[];
   puedeCargarMasiva?: boolean;
@@ -272,6 +274,11 @@ export function OrdenesModule({
    * dejarlas marcadas invita a repetir la acción sobre órdenes que ya no la admiten.
    */
   resetSeleccion?: number;
+  /**
+   * SLT-45 (design §8; R29, R30): columnas de geografía de la plantilla de carga masiva de la
+   * empresa, calculadas en `page.tsx`. Solo las usa la carga masiva; sin ellas, las de hoy.
+   */
+  columnasGeoCarga?: ColumnaGeoDePlantilla[] | null;
 }) {
   // SL-20 (R19): sin `columns`, las del listado con los nombres de nivel del país de la empresa.
   // `ordenesColumnsDe` memoriza por objeto de etiquetas: el mismo arreglo en cada render.
@@ -642,7 +649,7 @@ export function OrdenesModule({
     <section className="flex flex-col gap-4">
       {puedeCargarMasiva && (
         <div className="flex justify-end">
-          <OrdenesCargaMasivaButton />
+          <OrdenesCargaMasivaButton columnasGeo={columnasGeoCarga} />
         </div>
       )}
 

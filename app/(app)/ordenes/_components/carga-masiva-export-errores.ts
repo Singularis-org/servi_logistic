@@ -22,13 +22,19 @@ export const COLUMNA_MOTIVO_ERROR = "motivo_error";
  * subir (R14). Añadir aquí una etiqueta o un sufijo es exactamente el bug de la
  * feature 58.
  */
-export const ERRORES_EXPORT_FIELDS: XlsxTemplateField[] = [
-  ...ORDENES_BULK_FIELDS.map((field) => ({ key: field.key })),
-  { key: COLUMNA_MOTIVO_ERROR },
-];
+export const ERRORES_EXPORT_FIELDS: XlsxTemplateField[] = camposExportErrores(ORDENES_BULK_FIELDS);
 
-/** Claves de las 10 columnas de la plantilla, en orden (R1, R4; feature 276). */
-const CLAVES_PLANTILLA = ORDENES_BULK_FIELDS.map((field) => field.key);
+/**
+ * SLT-45 (R30): las columnas del export para los campos de la plantilla de la empresa
+ * (`camposDePlantilla`), con la misma regla que `ERRORES_EXPORT_FIELDS`: cabecera = clave, sin
+ * ejemplo ni etiqueta, y `motivo_error` al final. Asi el archivo de errores de un pais que no es de
+ * forma CR lleva sus columnas de nivel y se puede volver a subir.
+ */
+export function camposExportErrores(
+  campos: readonly Pick<XlsxTemplateField, "key">[],
+): XlsxTemplateField[] {
+  return [...campos.map((field) => ({ key: field.key })), { key: COLUMNA_MOTIVO_ERROR }];
+}
 
 /** Separador entre el número de fila y el detalle del motivo (decisión G-2). */
 const SEPARADOR_PREFIJO = " — ";
@@ -61,7 +67,11 @@ export function motivoErrorDeFila(error: OrdenConError): string {
 export function construirFilasErrorExport(
   errores: OrdenConError[],
   filas: FilaParseada[],
+  // SLT-45 (R30): los campos de la plantilla de la empresa; por defecto, los de hoy.
+  campos: readonly Pick<XlsxTemplateField, "key">[] = ORDENES_BULK_FIELDS,
 ): Array<Record<string, string>> {
+  // Claves de las columnas de la plantilla, en orden (R1, R4; feature 276).
+  const clavesPlantilla = campos.map((field) => field.key);
   // Índice por línea original. Ante `linea` repetida gana la PRIMERA (mismo
   // criterio que `dedupPorRemision`).
   const porLinea = new Map<number, Record<string, string>>();
@@ -78,14 +88,14 @@ export function construirFilasErrorExport(
 
     if (cruda !== undefined) {
       // R4: valores CRUDOS del archivo original; vacío si la clave no está.
-      for (const clave of CLAVES_PLANTILLA) {
+      for (const clave of clavesPlantilla) {
         registro[clave] = cruda[clave] ?? "";
       }
     } else {
       // R5: sin correspondencia (fila `null` o línea inexistente) la fila se
       // emite igual, vacía salvo el num_remision conocido. Nunca se interrumpe
       // la generación del resto del archivo.
-      for (const clave of CLAVES_PLANTILLA) {
+      for (const clave of clavesPlantilla) {
         registro[clave] = "";
       }
       registro.num_remision = error.numRemision ?? "";

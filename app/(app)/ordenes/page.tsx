@@ -18,6 +18,12 @@ import { fechaCalendarioCR, mananaCalendarioCR } from "@/lib/utils/fecha-cr";
 import { resumenReprogramadasRetenidasCentral } from "@/lib/actions/reprogramadas-retenidas";
 import type { ResumenRetenidas } from "@/lib/interfaces/services/IReprogramadasRetenidasService";
 import { defaultLogger } from "@/lib/errors";
+// SLT-45 (design §8; R29, R30): la plantilla de carga masiva sale del catalogo geografico de la
+// empresa, leido con el MISMO repositorio y la MISMA funcion que usa el servidor al leer la fila
+// (`app/api/ordenes/carga-masiva/chunk/route.ts` -> `BulkOrdenService.cargarMasiva`).
+import { getPrismaClient } from "@/lib/db/prisma-client";
+import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograficoRepository";
+import { columnasGeoDePlantilla, type ColumnaGeoDePlantilla } from "@/lib/utils/plantilla-geo";
 
 import { OrdenesModule } from "./_components/OrdenesModule";
 import { OrdenesListado } from "./_components/OrdenesListado";
@@ -71,6 +77,30 @@ async function resolverRetenidasCentral(): Promise<ResumenRetenidas | null> {
   } catch (err) {
     defaultLogger.logError(
       new Error("ordenes/page: la franja de reprogramados retenidos no se pudo leer; la página sigue sin ella", {
+        cause: err,
+      }),
+    );
+    return null;
+  }
+}
+
+/**
+ * SLT-45 (design §8; R29, R30): las columnas de geografia de la plantilla de carga masiva, o `null`
+ * para la plantilla de hoy (pais de forma CR). La empresa sale de la sesion, como en el endpoint de
+ * los chunks: el repositorio se crea aqui, por peticion (lo exige
+ * `catalogo-geografico-sin-instancia-de-modulo.guardia`).
+ *
+ * NUNCA lanza: si la lectura falla, la pantalla sigue con la plantilla de hoy y el fallo se
+ * REGISTRA. Para una empresa de otro pais esa plantilla no casa con lo que lee el servidor, y el
+ * archivo se rechazara fila a fila con el error de geografia: se degrada la carga, no la pagina.
+ */
+async function resolverColumnasGeoCarga(): Promise<ColumnaGeoDePlantilla[] | null> {
+  try {
+    const { catalogo } = await new CatalogoGeograficoRepository(getPrismaClient()).deLaEmpresa();
+    return columnasGeoDePlantilla(catalogo);
+  } catch (err) {
+    defaultLogger.logError(
+      new Error("ordenes/page: el catalogo geografico no se pudo leer; la carga masiva usa la plantilla de hoy", {
         cause: err,
       }),
     );
@@ -223,6 +253,10 @@ export default async function OrdenesPage() {
   // `esAccesoTotal` de aquí pone rojo el test de la página («adminTienda no dispara la lectura»).
   const retenidasCentral = rol && esAccesoTotal(rol) ? await resolverRetenidasCentral() : null;
 
+  // SLT-45 (R29, R30): solo quien carga en masa necesita la plantilla; para el resto no se lee el
+  // catalogo.
+  const columnasGeoCarga = puedeCargarMasiva ? await resolverColumnasGeoCarga() : null;
+
   return (
     <AppPage title="Órdenes" description="Listado y gestión de órdenes">
       {/* FICHA 462 (S4): ANTES del listado. Con `null` o 0 retenidas no pinta nada (R35/R37). */}
@@ -247,11 +281,16 @@ export default async function OrdenesPage() {
           puedeVerEliminadas={puedeVerEliminadas}
           puedeImprimirEtiquetasPropias={puedeImprimirEtiquetasPropias}
           fechasDiaReparto={fechasDiaReparto}
+          columnasGeoCarga={columnasGeoCarga}
         />
       ) : (
         // adminSatelite / mensajero / sin sesión: listado plano previo, SIN
         // regresión (R20). Feature 49: "Ver historial" por fila.
-        <OrdenesModule puedeCargarMasiva={puedeCargarMasiva} mostrarHistorial />
+        <OrdenesModule
+          puedeCargarMasiva={puedeCargarMasiva}
+          mostrarHistorial
+          columnasGeoCarga={columnasGeoCarga}
+        />
       )}
     </AppPage>
   );

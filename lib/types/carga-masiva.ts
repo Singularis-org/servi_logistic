@@ -92,16 +92,40 @@ export const REQUIRED_HEADERS = [
   "direccion",
 ] as const;
 
+/** Las dos cabeceras de geografia de `REQUIRED_HEADERS` (plantilla de forma CR). */
+const CABECERAS_GEO_DE_FORMA_CR: readonly string[] = ["provincia", "canton_distrito"];
+
+/**
+ * Las cabeceras obligatorias con la geografia de la plantilla de la empresa. Sin `columnasGeo`
+ * (pais de forma CR) son `REQUIRED_HEADERS` tal cual. Con ellas (SLT-45, R30), todas las columnas
+ * de nivel ocupan el sitio de `provincia` + `canton_distrito`: la de nivel 1 porque toda fila la
+ * necesita, y las demas porque la plantilla que se descarga las trae y el servidor las lee por
+ * nombre; un archivo sin una de ellas no es esa plantilla.
+ */
+export function cabecerasObligatorias(columnasGeo?: readonly string[] | null): string[] {
+  if (columnasGeo == null) return [...REQUIRED_HEADERS];
+  return REQUIRED_HEADERS.flatMap((h) =>
+    h === CABECERAS_GEO_DE_FORMA_CR[0]
+      ? [...columnasGeo]
+      : CABECERAS_GEO_DE_FORMA_CR.includes(h)
+        ? []
+        : [h],
+  );
+}
+
 /**
  * R16: devuelve las columnas obligatorias ausentes en la cabecera detectada.
  *
  * ANCLA feature 143 (R14) — comprueba PRESENCIA, nunca una lista blanca: el
  * export de filas con error se re-sube con una columna extra `motivo_error` y
  * debe seguir pasando. Lo blinda `tests/integration/carga-masiva-errores-roundtrip.test.ts`.
+ *
+ * SLT-45 (R30): `columnasGeo` son las cabeceras de nivel de un pais que no es de forma CR; sin
+ * ellas se exige la geografia de hoy (`provincia`, `canton_distrito`).
  */
-export function findMissingHeaders(headers: string[]): string[] {
+export function findMissingHeaders(headers: string[], columnasGeo?: readonly string[] | null): string[] {
   const present = new Set(headers.map((h) => h.trim().toLowerCase()));
-  return REQUIRED_HEADERS.filter((h) => !present.has(h));
+  return cabecerasObligatorias(columnasGeo).filter((h) => !present.has(h));
 }
 
 function requiredNonEmpty(label: string) {
