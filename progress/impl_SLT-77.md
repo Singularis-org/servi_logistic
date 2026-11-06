@@ -358,3 +358,82 @@ Arnés fuera del repo: exige base verde con tests ejecutados y sin saltos, cuent
 ### Veredicto
 
 Tanda D hecha: las carreras de R34 a R37 yerran hacia no cobrar, con 0 saltos, las cuatro mutaciones y el control muertos, y la ventana residual declarada.
+
+## Tanda E (2026-11-06)
+
+Base: `servi_gate_slt77`, con `current_database()` comprobado antes de cada corrida. Solo categorías impresas; ninguna URL en la salida.
+
+### Archivos
+
+Creados: `app/(app)/configuracion/tarifas/_components/TarifasTopeIntentos.tsx`, `tests/components/TarifasTopeIntentos.test.tsx`.
+
+Modificados:
+
+- `app/(app)/configuracion/tarifas/_components/{TarifasModule.tsx,tarifas-textos.ts}`, `app/(app)/ordenes/_components/HistorialOrdenSheet.tsx`.
+- `lib/actions/tarifas.ts`: solo se borra la nota `@sin-superficie`.
+- `tests/components/{TarifasModulo,TarifasDisposicion,HistorialOrdenSheet}.test.tsx`, `tests/unit/app/tarifas/TarifasPage.test.tsx`.
+- `tasks.md`: T5.1 a T5.3 marcadas; `tests/components/HistorialOrdenSheet.test.tsx` añadido a `## Archivos esperados` antes de tocarlo.
+
+`tests/fixtures/tarifas-pantalla.ts` no cambia, aunque T5.2 lo nombra: no define la pantalla, y las fixtures tipadas ya llevaban `topeIntentos`.
+
+### Mapa R → test de esta tanda
+
+En `tests/components/TarifasTopeIntentos.test.tsx`, salvo que se diga otro:
+
+| R | Test |
+|---|---|
+| R12 | `R12 — el maestro` (título, ayuda, vigente, botón; opciones 1 a 10; guarda el número elegido); `TarifasModulo`: con zonas, sin zonas y con la zona abierta borrada; `TarifasDisposicion`: va tras los mensajeros; `TarifasPage`: llega al módulo |
+| R13 | `R13 — el admin`; `TarifasModulo`: `puedeEscribir` falso |
+| R14 | `TarifasPage`: `R14`. El servidor, ya en `tarifas-pantalla-service` (Tanda B) |
+| R15 | `R15: al elegir menos…ANTES de guardar` (sin llamada a guardar); `de 5 a 4 también avisa` |
+| R16 | `sin elegir nada`, `al elegir más`, `al volver al guardado`, `guardado el valor menor…`, `el admin no lo ve nunca` |
+| R17 | `R17 — si guardar falla` (5 causas, conserva el valor y el aviso; reintento); `R17 — lo que no pueden decir sus textos`; `TarifasDisposicion`: alto de 44, sin desbordar por clases, y sin hex por el barrido de archivos |
+| R25, R32 (componente) | `HistorialOrdenSheet.test.tsx`: `SLT-77 R25`, `SLT-77 R32` (T5.3) |
+
+### Salida real
+
+- `pnpm run typecheck`, con `--max-old-space-size=8192`: exit 0.
+- `eslint` de los 10 archivos TS tocados: exit 0.
+- Tests tocados: 6 archivos, **102 pasados, 0 fallados, 0 saltados**. `TarifasTopeIntentos`: 24. `TarifasModulo`: 32. `TarifasDisposicion`: 23. `TarifasPage`: 9. `HistorialOrdenSheet`: 11. `gestion-pendiente`: 3.
+- `vitest related` de los 4 archivos de presentación: 53 archivos, **745 pasados, 0 fallados, 0 saltados**. `lib/actions/tarifas.ts` no entra en esa lista: solo cambia un comentario.
+- `pnpm run test:guardias`: 332 archivos, 331 en verde y 1 en rojo; 4627 pasados, 4 fallados, 1 saltado. Rojo: `dependencias-declaradas-presentes`, el del baseline. `superficie-de-uso`, en verde sin la nota.
+- `./init.sh` no se corrió: lo exige T7.4.
+- Retornos de carro en los archivos cambiados: 0, contados por bytes.
+
+### Mutaciones
+
+Arnés fuera del repo: exige base verde con tests ejecutados y sin saltos, cuenta desde el JSON de vitest, exige el mismo total en cada corrida, restaura y compara la huella tras cada una, y compara `git status` al final. Corre `TarifasTopeIntentos`, `TarifasModulo` e `HistorialOrdenSheet`. Base y final: 67 pasados, 0 fallados, 0 saltados. `git status` igual. Sin gate en paralelo.
+
+| Mutación | Resultado | Fallados de 67 | Test nombrado |
+|---|---|---|---|
+| Control: opciones de 1 a 9 | Muere | 1 | R12, `elige de 1 a 10` |
+| M1: aviso siempre | Muere | 6 | R16: cae |
+| M2: sin aviso al bajar | Muere | 9 | R15: cae |
+| M3: control con `puedeEscribir` falso | Muere | 4 | R13: cae, también SLT-54 R55 |
+| M4a: limpia lo elegido si responde fallo | Muere | 5 | R17: cae |
+| M4b: limpia lo elegido si la llamada revienta | Muere | 1 | R17: cae |
+| Extra: aviso con `<=` | Muere | 4 | R16, `sin elegir nada` |
+| Extra: no actualiza lo guardado al responder ok | Muere | 1 | R16, `guardado el valor menor` |
+| Extra: sin la sección en empresa sin zonas | Muere | 1 | R12, `una empresa sin zonas` |
+| Extra: T5.3, texto con «de null» | Muere | 1 | `SLT-77 R32` |
+| Extra: T5.3, nombre accesible con «de null» | Muere | 1 | `SLT-77 R32` |
+
+M4 son dos porque la sección tiene dos caminos de fallo.
+
+### Decisiones técnicas sin dictado en el spec
+
+1. **La sección se monta también sin zonas y con la zona abierta borrada.** `TarifasModule` tiene dos retornos anticipados antes de su final. Poniéndola solo «al final», como dice `design §4.2`, una empresa recién creada no la vería, y R12 no lo admite.
+2. **Dos textos nuevos fuera de `design §4.2`:** el botón «Guardar» y la confirmación «Intentos de entrega guardados.». El spec no los fija y hacen falta. **Va a Carlos, que aprobó los de §4.2.**
+3. **Errores con textos ya existentes de la pantalla:** «No se pudo guardar. Lo digitado sigue aquí: vuelve a intentarlo.» y «No tienes permiso para cambiar este valor.». «Digitado» encaja regular con un selector; se prefirió no inventar otro.
+4. **Guardar se deshabilita si lo elegido es lo vigente,** como `TarifasValores`. R11 sigue en el servidor; la pantalla no lo alcanza.
+5. **Nombre accesible con `umbral` `null`: «Intento 2»,** como pide T5.3, y no «Intentos de entrega: 2».
+6. **La sección refresca con `useRouter` propio,** para quedarse con las props `tope` y `puedeEscribir` de `design §4.2`. Guarda en estado lo que respondió la action: el aviso no depende de que llegue la recarga.
+
+### Límites
+
+- jsdom no mide: los 390 px, los 44 px y el contraste del aviso en claro y oscuro solo quedan atados por clases. Los miden T6.1 y T6.3.
+- `TarifasPage`, R14: la página nunca ha pintado el número en esos casos, así que el test protege de que empiece a hacerlo, sin mutación propia. El corte real de R14 está en el servidor.
+
+### Veredicto
+
+Tanda E hecha: sección con sus textos y el badge sin «de null», con 0 saltos, las cuatro mutaciones y el control muertos. Dos textos fuera de §4.2 pendientes de que los vea Carlos.

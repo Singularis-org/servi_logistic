@@ -21,6 +21,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: refreshMock }) 
 vi.mock("@/lib/actions/tarifas", () => ({
   cargarZonaTarifas: (i: unknown) => cargarZonaMock(i),
   guardarValoresTarifa: (i: unknown) => guardarMock(i),
+  guardarTopeIntentos: vi.fn(),
   activarTarifasNuevas: (i: unknown) => activarMock(i),
   crearGrupoDistritos: vi.fn(),
   renombrarGrupoDistritos: vi.fn(),
@@ -67,6 +68,35 @@ beforeEach(() => {
   cargarZonaMock.mockResolvedValue(zonaOk({ referencia: REF }));
 });
 afterEach(() => cleanup());
+
+describe("SLT-77 — la sección del tope en el módulo", () => {
+  const seccion = () => screen.getByRole("region", { name: "Intentos de entrega" });
+
+  it("R12: la empresa con zonas ve el valor que da la pantalla", () => {
+    montar({ topeIntentos: 7 });
+    expect(within(seccion()).getByRole("combobox", { name: "Intentos de entrega" })).toHaveTextContent("7");
+  });
+
+  it("R12: una empresa sin zonas también la ve: el tope no depende de ellas", () => {
+    montar({ zonas: [], topeIntentos: 4 });
+    expect(screen.getByText("Aún no hay zonas")).toBeInTheDocument();
+    expect(within(seccion()).getByRole("combobox", { name: "Intentos de entrega" })).toHaveTextContent("4");
+  });
+
+  it("R12: con la zona abierta borrada en otra sesión, también", () => {
+    const zonas = [zonaResumen({ id: "z9", nombre: "Otra" })];
+    render(<TarifasModule pantalla={{ ...PANTALLA, zonas, topeIntentos: 5 }} zonaInicialId="borrada" zonaInicial={null} nombresDeGrupo={{}} />);
+    expect(screen.getByText("No se pudieron cargar los valores de esta zona.")).toBeInTheDocument();
+    expect(within(seccion()).getByRole("combobox", { name: "Intentos de entrega" })).toHaveTextContent("5");
+  });
+
+  it("R13: `puedeEscribir` falso llega a la sección: solo lectura, sin control ni botón", () => {
+    montar({ topeIntentos: 6, puedeEscribir: false });
+    expect(within(seccion()).getByText("6")).toBeInTheDocument();
+    expect(within(seccion()).queryByRole("combobox")).toBeNull();
+    expect(within(seccion()).queryByRole("button")).toBeNull();
+  });
+});
 
 describe("SLT-54 — estados de zona", () => {
   it("R17: «Completa», «Faltan N», «Sin empezar» y «M de T zonas completas» con esos mismos estados", () => {

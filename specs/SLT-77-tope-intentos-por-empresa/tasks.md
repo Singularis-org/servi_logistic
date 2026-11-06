@@ -110,11 +110,11 @@ Reglas de todas las tandas:
 
 ## Tanda E — Sección de la pantalla (frontend). Depende de B. [P] con C y D
 
-- [ ] **T5.1** `tarifas-textos.ts`, `TarifasTopeIntentos.tsx` y su sitio en `TarifasModule.tsx` (`design §4.2`). **Hecho:**
+- [x] **T5.1** `tarifas-textos.ts`, `TarifasTopeIntentos.tsx` y su sitio en `TarifasModule.tsx` (`design §4.2`). **Hecho:**
   `tests/components/TarifasTopeIntentos.test.tsx` cubre R12, R13, R15, R16 y R17, con los textos a mano.
-- [ ] **T5.2** `TarifasModulo.test.tsx`, `TarifasDisposicion.test.tsx`, `TarifasPage.test.tsx` y `tests/fixtures/tarifas-pantalla.ts`
+- [x] **T5.2** `TarifasModulo.test.tsx`, `TarifasDisposicion.test.tsx`, `TarifasPage.test.tsx` y `tests/fixtures/tarifas-pantalla.ts`
   al día. R17 en la disposición (`min-h-11`, sin hex). **Hecho:** `vitest related` verde.
-- [ ] **T5.3** `HistorialOrdenSheet.tsx`: con `umbral` `null`, «Intento X» en el texto y en el `aria-label` (`design §3.2`). Hoy pintaría
+- [x] **T5.3** `HistorialOrdenSheet.tsx`: con `umbral` `null`, «Intento X» en el texto y en el `aria-label` (`design §3.2`). Hoy pintaría
   «Intento 2 de null», y compila porque una plantilla admite `null`. El `mensajero` no monta esa pantalla. **Hecho:** test de componente
   con `null`.
 - **Mutaciones E:**
@@ -296,6 +296,7 @@ T0 → A → B ─┬→ C → D ─┬→ F → G
 - `tests/components/TarifasTopeIntentos.test.tsx`
 - `tests/components/TarifasModulo.test.tsx`
 - `tests/components/TarifasDisposicion.test.tsx`
+- `tests/components/HistorialOrdenSheet.test.tsx`
 - `tests/integration/db/devolucion-rechazadas-flow.test.ts`
 - `tests/unit/services/OrdenHistorialService.evento-orden.test.ts`
 - `tests/unit/services/devolucion-sla-service.test.ts`

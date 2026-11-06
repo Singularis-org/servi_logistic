@@ -96,8 +96,6 @@ export interface GuardarTopeIntentosDeps extends ConActor {
 /**
  * SLT-77 (design §4.1, R3-R5): el `maestro` fija los intentos de entrega de su empresa. El rol y la entrada
  * los decide el servicio, en ese orden; la empresa sale de la sesion.
- *
- * @sin-superficie SLT-77, solo mientras se hace la ficha: la sección de la pantalla la monta su tanda E (T5.1, `TarifasTopeIntentos.tsx`), que debe borrar esta nota.
  */
 export async function guardarTopeIntentos(
   input: unknown,

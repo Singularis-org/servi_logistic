@@ -320,6 +320,15 @@ export const TEXTOS = {
   mensajeroQuitado: "Valor propio quitado.",
   quitadoParcial: "Se quitó parte de los valores. Los que quedan no se pudieron quitar: vuelve a intentarlo.",
   errorQuitar: "No se pudo quitar el valor propio. Vuelve a intentarlo.",
+
+  topeTitulo: "Intentos de entrega",
+  topeAyuda: "Cuántos intentos se hacen antes de pasar una orden a rechazo. Rige al guardar, para todas las órdenes sin terminar.",
+  topeAvisoAlBajar:
+    "Guardar no rechaza ni cobra nada. Pero las novedades que ya alcancen este número se rechazan en la siguiente corrida automática, sin más clics, y ese rechazo genera cobro. Las órdenes en bodega que ya lo alcancen no se podrán asignar.",
+  topeSoloLectura: "Lo cambia el maestro.",
+  topeGuardar: "Guardar",
+  topeGuardado: "Intentos de entrega guardados.",
+
   anadirMensajeroTitulo: "Añadir mensajero con valor propio",
   editarMensajeroTitulo: (nombre: string) => `Valor propio de ${nombre}`,
   elegirMensajero: "Elige el mensajero",
