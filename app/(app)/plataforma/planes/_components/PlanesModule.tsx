@@ -105,7 +105,7 @@ export function PlanesModule({
   function alCrear(r: Extract<PlanResult, { estado: "ok" }>, nombre: string) {
     setAbierto(false);
     setCreado(nombre);
-    setAvisosCreado(textosDeLosAvisosDeTopes(r.avisos, null));
+    setAvisosCreado(textosDeLosAvisosDeTopes(r.avisos));
     router.refresh();
   }
 

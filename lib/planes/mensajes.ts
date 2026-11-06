@@ -66,10 +66,7 @@ export function mensajeTopesPasados(topes: readonly TopePasado[]): string {
 // Textos aprobados (P13, P15). Los conteos llegan YA pintados (`formatearConteo` de
 // `lib/planes/consumo.ts`, «3.200»): este módulo no formatea números (importar `consumo.ts`, que ya lo importa a él, haría un ciclo).
 
-/** Aviso de R36/R37: `fecha` es el día en que empieza el siguiente ciclo (P10), `AAAA-MM-DD`. */
-export function ordenesYaPasadas(usados: string, maximo: string, fecha: string): string {
-  return `La empresa ya lleva ${usados} de ${maximo} órdenes en este ciclo: no podrá crear más hasta ${fecha}.`;
-}
+// SLT-86 (R8): sin el aviso de órdenes de R36/R37 (`ordenesYaPasadas`): ya no hay tope de órdenes.
 
 /** Aviso de R37/R42 para un rol con tope; `{rol}` es su etiqueta de `ROL_LABELS`. */
 export function rolYaPasado(usados: string, maximo: string, rol: RolConTope): string {

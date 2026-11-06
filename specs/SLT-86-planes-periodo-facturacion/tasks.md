@@ -139,7 +139,7 @@
 - **Hecho:** `tests/components/PlanEmpresaPeriodo.test.tsx` verde; `PlanEmpresa*.test.tsx`, `PlanDetalle*.test.tsx`
   y `PlanesModule.test.tsx` adaptados.
 
-## T12 — «Mi plan», consumo y lista de empresas (R7, R8, R26–R29) [P]
+## [x] T12 — «Mi plan», consumo y lista de empresas (R7, R8, R26–R29) [P]
 
 - **Depende de:** T2, T5, T6.
 - **Pasos:** `ConsumoDelPlan.tsx`, `AvisosDeTopes.tsx`, `MiPlanModule.tsx`, `EmpresasModule.tsx`.

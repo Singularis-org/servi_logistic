@@ -518,3 +518,139 @@ Además, en «Archivos esperados»: las dos migraciones nuevas, `lib/types/histo
 
 **Veredicto:** T8b hecha; cancelar deja historial por los tres caminos, con todo en verde salvo los 121 errores de
 tipos de pantallas y E2E (T10–T13).
+
+## Tanda 6 — T10, T11 y T12 (2026-11-05, frontend_dev)
+
+### Commits
+- `ac39059b` feat(SLT-86): T10 formulario del plan con descuentos por período.
+- `dc3fa6fa` feat(SLT-86): T11 catálogo, detalle y detalle de empresa.
+- `feat(SLT-86): T12 Mi plan, consumo y lista de empresas` (hash en el informe al leader). Esta sección va en él.
+
+### Archivos
+- **T10**, modificados:
+  - `app/(app)/plataforma/planes/_components/PlanForm.tsx`: un descuento por período («Ninguno», «Porcentaje»,
+    «Monto fijo»), sin pago anual ni tope de órdenes; al editar, cambiar el precio cambia «Aplicar» por «Rige
+    desde» (mañana por defecto, `precioDesdePorDefecto`); el custom para una empresa con plan pide «Rige desde»
+    (el inicio de su siguiente período) y muestra el costo base del primer período o tramo; la vista previa sin
+    `siguienteCiclo` y `onGuardado(r, nombre)`;
+  - `plan-vista.ts` (topes sin órdenes; costo sin el aviso del anual), `PlanesModule.tsx` (`rangoFechaDeEfecto`
+    y `onGuardado` nuevo), `app/(app)/plataforma/planes/page.tsx` (`fechaDeEfectoPorDefecto` por empresa y el
+    rango), `app/(app)/plataforma/planes/[planId]/page.tsx` y `PlanDetalle.tsx` (`precioDesdePorDefecto`);
+  - `components/shared/tipo-cobro.ts` (las cuatro etiquetas, los textos de §7.1, `textoDelPeriodo` y
+    `primerPeriodoDelCambio`, que reusa `cobroDelPlan`) y `components/shared/TipoCobroCampo.tsx` (cuatro tipos);
+  - tests `PlanForm`, `PlanFormCosteo`, `PlanFormCostoPorcentual`, `PlanFormCustomAsigna`,
+    `PlanFormVistaPreviaCustom`. Creado: `tests/components/PlanFormDescuentos.test.tsx`.
+- **T11**, modificados:
+  - `app/(app)/plataforma/empresas/[organizacionId]/_components/PlanEmpresa.tsx`: «Cambiar plan» y «Cambiar tipo
+    de cobro» con los cuatro tipos, «Rige desde» (`fechaDeEfectoPorDefecto`, `rangoFechaDeEfecto`) y el costo base
+    del primer período o tramo; la primera asignación con su costo y «El plan empieza a regir el {fecha}.»; el
+    pendiente («Desde el …» con plan; «Sin límites» sin plan) con «Cancelar cambio»; la columna «Rige desde» y la
+    fila `cambio_cancelado` con `textoDelCambioCancelado`; los avisos del `ok` en todo cambio (R18);
+  - `app/(app)/plataforma/empresas/[organizacionId]/page.tsx` (la fecha por defecto, el rango y
+    `cancelarCambioEmpresaAction`), `lib/actions/planes.ts` (sin el `@sin-superficie`; el comentario ya no dice
+    «sin historial»);
+  - `PlanDetalle.tsx`: sin el aviso del anual; `lineasDelRastro` pinta los descuentos del alta, pasa cada
+    `descuento_*` y `tope_ordenes_ciclo` a `lineasDeCambioDelPlan` y sigue pintando el tope de órdenes de las
+    altas viejas;
+  - `components/shared/ConsumoDelPlan.tsx` (adelantado de T12 porque lo monta el detalle de empresa): «Costo base
+    {tipo}: …», «Período: … (tramo de d de D días)», «Órdenes en el período: n» sin barra con el reinicio debajo,
+    «Pago anual»/«Siguiente pago» en el anual, sin el aviso del anual y `pendienteSinPlan` («Sin límites» y
+    «{Plan} empieza a regir el {fecha}»);
+  - tests `PlanEmpresa`, `PlanEmpresaTipoCobro`, `PlanEmpresaSinCosto`, `PlanEmpresaCostoPorcentual`, `PlanDetalle`,
+    `PlanDetalleAsignar`, `PlanDetalleDesasignado`, `PlanesModule`, `tests/integration/plataforma-empresa-detalle-page`.
+    Creado: `tests/components/PlanEmpresaPeriodo.test.tsx`.
+- **T12**, modificados: `components/shared/AvisosDeTopes.tsx` (sin el aviso de órdenes ni el parámetro del
+  siguiente ciclo; sus tres usos), `lib/planes/mensajes.ts` (sin `ordenesYaPasadas`), `app/(app)/mi-plan/_components/
+  MiPlanModule.tsx` (el pendiente con plan y `pendienteSinPlan`) y `app/(app)/mi-plan/page.tsx`; tests
+  `ConsumoDelPlan`, `ConsumoDelPlanCosteo`, `ConsumoDelPlanPorcentual` (los textos de SLT-83), `MiPlanModule`,
+  `PlanVistaCosteo`, `tests/integration/mi-plan-page`. Creados: `tests/components/ConsumoDelPlanPeriodo.test.tsx` y
+  `tests/components/EmpresasModulePeriodo.test.tsx`. `EmpresasModule.tsx` no cambia: la etiqueta sale de
+  `TEXTOS_TIPO_COBRO.tipo`, que ya trae las cuatro.
+- `tasks.md`: T10, T11 y T12 marcadas.
+
+### Mapa R → test (de esta tanda)
+
+| R | Test |
+|---|---|
+| R7 | `ConsumoDelPlanPeriodo` («Órdenes en el período», reinicio debajo), `MiPlanModule`, `PlanEmpresa`, `plataforma-empresa-detalle-page` |
+| R8 | `ConsumoDelPlanPeriodo` (sin barra ni «cerca»/«lleno» de órdenes), `PlanFormDescuentos` (sin «Órdenes por ciclo»), `PlanFormVistaPreviaCustom` y `PlanEmpresa` (sin aviso de órdenes), `PlanDetalle`, `PlanesModule` |
+| R10 | `PlanFormDescuentos` (porcentaje fuera de rango junto a su campo; costo del tramo con descuento), `ConsumoDelPlanPeriodo` (anual con 10 %) |
+| R12 | `PlanFormDescuentos` y `PlanEmpresaPeriodo` (tramo 6/15 = 6200.00; anual 57/365 y 275/365), `ConsumoDelPlanPeriodo`, `MiPlanModule` (351/365) |
+| R13 | `ConsumoDelPlanCosteo` (un descuento no toca el costo por orden) |
+| R15 | `ConsumoDelPlanPeriodo` (el costo sale de `precioDelPeriodo`), `MiPlanModule` |
+| R16 | `PlanFormDescuentos` (custom para empresa con plan: fecha, rango, `vigenteDesde`), `PlanEmpresaPeriodo` («Cambiar plan» y «Cambiar tipo de cobro» mandan `vigenteDesde`; su `validation_error` junto al campo), `PlanEmpresa`, `PlanEmpresaTipoCobro`, `PlanFormCustomAsigna` |
+| R17, R18 | `PlanEmpresaPeriodo` (con fecha futura, «Cambio programado desde …» y los avisos de topes sin rechazo) |
+| R19 | `PlanEmpresaPeriodo` («Cancelar cambio» con y sin plan, rechazos y throw), `plataforma-empresa-detalle-page` (la página cablea la action) |
+| R22 | `PlanFormDescuentos` (cambiar el precio o un descuento pide «Rige desde»; «10» = «10.00» no lo pide; su `validation_error`) |
+| R23 | `PlanFormDescuentos` (cuatro descuentos con «Ninguno» por defecto, solo el dato de la forma elegida, errores junto a su campo y lo escrito conservado, mañana por defecto), `PlanForm` |
+| R24 | `PlanEmpresaPeriodo` (modal con «… / mes · Descuento anual: 10.00 %»), `PlanesModule`, `PlanDetalle`, `PlanVistaCosteo` |
+| R25 | `PlanEmpresaPeriodo` (cuatro tipos, «Rige desde» con el siguiente período y el costo del primer período o tramo en los tres modales), `PlanFormDescuentos`, `PlanFormCustomAsigna` |
+| R26 | `PlanEmpresaPeriodo` («Desde el …» con «Cancelar cambio»; «Sin límites» y «{Plan} empieza a regir el …»; fila «Cambio cancelado: …»), `ConsumoDelPlanPeriodo` («Mi plan» con y sin plan, sin botones), `plataforma-empresa-detalle-page`, `mi-plan-page` |
+| R27 | `ConsumoDelPlanPeriodo` (tramo quincenal, bimestral, anual con «Pago anual» y «Siguiente pago», siguiente cobro = pendiente), `MiPlanModule`, `plataforma-empresa-detalle-page` |
+| R28 | `ConsumoDelPlanPeriodo` (fijo: base del tramo + órdenes; porcentual: base + cobrado; sin precio), `ConsumoDelPlanPorcentual` («Cobrado en el período», «Total del período hasta hoy»), `ConsumoDelPlanCosteo`, `PlanVistaCosteo` |
+| R29 | `EmpresasModulePeriodo` (las cuatro etiquetas junto al plan; sin plan, ninguna) |
+| R30 | `PlanEmpresaPeriodo` y `PlanEmpresaTipoCobro` (columna «Rige desde»; filas viejas «—»), `PlanDetalle` (rastro viejo con órdenes y anual) |
+
+### Salida real
+- Tests por ruta (`pnpm exec vitest run <archivos>`): **27 archivos, 378/378**.
+  - `PlanFormDescuentos` 20, `PlanForm` 25, `PlanFormCosteo` 7, `PlanFormCostoPorcentual` 10, `PlanFormCustomAsigna` 13,
+    `PlanFormVistaPreviaCustom` 13;
+  - `PlanEmpresaPeriodo` 21, `PlanEmpresa` 50, `PlanEmpresaTipoCobro` 12, `PlanEmpresaSinCosto` 16,
+    `PlanEmpresaCostoPorcentual` 8, `PlanDetalle` 19, `PlanDetalleAsignar` 7, `PlanDetalleDesasignado` 1,
+    `PlanesModule` 9, `plataforma-empresa-detalle-page` 22;
+  - `ConsumoDelPlan` 7, `ConsumoDelPlanCosteo` 14, `ConsumoDelPlanPorcentual` 9, `ConsumoDelPlanPeriodo` 13,
+    `EmpresasModulePeriodo` 5, `MiPlanModule` 13, `PlanVistaCosteo` 10, `mi-plan-page` 9;
+  - `mensajes-periodo` 12 y `mensajes-costo-porcentual` 15 (por `mensajes.ts`), `superficie-de-uso` 18.
+  - Sin tocar y en verde: `plataforma-planes-page`, `EmpresasModulePlan` (41 casos con `mi-plan-page` antes de su caso nuevo).
+- `pnpm run test:guardias` (tras T11, por `lib/actions`): 331 archivos; 327 ok, 3 saltados y 1 rojo
+  (`dependencias-declaradas-presentes`, 4 casos, el del baseline); 4593 casos ok.
+- eslint de los archivos tocados (T10: 14; T11: 15; T12: 15): 0 errores y 0 avisos.
+- typecheck (`NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`): **8 errores**, todos de `e2e/` (T13):
+  `planes-superadmin.spec.ts` 6, `dos-empresas-humo.spec.ts` 1, `_planes-fixture.ts` 1. Antes de la tanda: 121.
+
+### Tests retirados o invertidos, con su motivo
+- R8 (sin tope de órdenes): la fila y la barra de órdenes de `ConsumoDelPlan`, `MiPlanModule`, `PlanEmpresa` y la
+  página del detalle; el aviso «La empresa ya lleva … órdenes en este ciclo …» de `PlanFormVistaPreviaCustom` y
+  `PlanEmpresa` (cambiado por el de un rol); el tope de órdenes de la edición en `PlanDetalle` (cambiado por API
+  keys); el campo «Órdenes por ciclo» de `PlanForm`. `ordenesYaPasadas` no tenía test propio.
+- R8 y P10: `siguienteCiclo` de la vista previa y el tercer argumento de `onGuardado` (`PlanForm`,
+  `PlanFormCustomAsigna`, `PlanFormVistaPreviaCustom`).
+- R23, R33: el grupo «Pago anual» (fijo o descuento) de `PlanForm`; lo sustituyen los cuatro descuentos.
+- R28: la nota «El pago anual no cambia el costo por orden.» (`ConsumoDelPlanCosteo` 3 casos,
+  `ConsumoDelPlanPorcentual` 1, `PlanVistaCosteo` 3), invertidos: un descuento de período no la pinta.
+- R27 y P4 = a: en `MiPlanModule`, el reinicio del ciclo corto (SLT-58 R40) y los tres casos de «Monto del período»
+  con aniversario del ancla (D8, D9); los sustituyen el reinicio quincenal y el período de calendario.
+- §7.1: «El ciclo de órdenes empieza el {fecha}.» (SLT-58 R38) pasa a «El plan empieza a regir el {fecha}.».
+
+### Avisos de la tanda
+- **Textos recortados (no nuevos), a confirmar:**
+  - «Cambiar plan»: quité «Sus topes y módulos cambian en cuanto confirmes.» de «La empresa pasa de «A» a «B».»;
+  - «Cambiar tipo de cobro»: «no cambian sus topes, sus módulos ni su ciclo de órdenes» pasa a «no cambian sus topes
+    ni sus módulos». Con R17 las dos frases eran falsas.
+- **Textos reutilizados donde §7.1 no da uno, a confirmar:**
+  - un cambio de empresa que queda pendiente avisa «Cambio programado desde {fecha}.» (el de SLT-58);
+  - «Cancelar cambio» avisa «Cambio programado cancelado.» (el del detalle del plan);
+  - `sin_cambio_programado` dice «El plan ya no tiene un cambio pendiente.» (dice «el plan», no «la empresa»);
+  - un fallo al cancelar, «No se pudo guardar. Inténtalo de nuevo.».
+- **Decisiones de forma, a confirmar:**
+  - el título de cada descuento es «Descuento {tipo}» en minúscula (como el rastro aprobado) y los campos se llaman
+    «Porcentaje» y «Monto fijo», como sus radios; «Costo base {tipo}: …» lleva el tipo en minúscula;
+  - el historial de asignaciones gana la columna «Rige desde» (R30); un cambio cancelado deja «—» porque su
+    fecha ya va en la celda del tipo;
+  - «Cancelar cambio» va sin modal de confirmación (design §7.1 solo pide el botón);
+  - al editar el precio el botón dice «Guardar» aunque la fecha sea futura (el formulario no conoce «hoy»);
+  - «Desde el …» lo pinta cada pantalla (`PlanEmpresa` bajo el consumo, `MiPlanModule` encima), no `ConsumoDelPlan`.
+- **Textos de «ciclo» que siguen igual** (la decisión del 2026-11-05 solo cambió dos de SLT-83): «Costo del ciclo»,
+  «Órdenes del ciclo: n × c = s», «Total estimado del ciclo: …» y «Órdenes del ciclo sin estado final: …». ¿Pasan a
+  «período»?
+- El costo del primer período en los modales usa el precio vigente del plan elegido; si ese plan tiene una edición de
+  precio programada antes de la fecha de efecto, el costo real será el nuevo (R15).
+- El modal de «Cambiar plan» ya no se cierra solo al confirmar (`closeOnConfirm={false}`), para dejar el error de
+  «Rige desde» junto al campo; con `ok` o un rechazo sin campo se cierra como antes.
+- **Para T13:** `e2e/planes-superadmin.spec.ts` espera «El ciclo de órdenes empieza el …» (líneas 328 y 330), que
+  ahora es «El plan empieza a regir el …»; `e2e/planes-costo-porcentual.spec.ts` (99, 101, 103) tiene los literales
+  viejos de SLT-83.
+- Grafo MCP: no lo consulté; trabajé con Grep/Read.
+
+**Veredicto:** T10, T11 y T12 hechas; 378/378 en los 27 archivos tocados y el typecheck solo con los 8 errores de
+`e2e/` que son de T13.

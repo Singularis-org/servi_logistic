@@ -21,13 +21,13 @@ const AHORA = new Date("2026-03-01T06:00:00.000Z");
 const ORG = "6f1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f60";
 const AVISO_R20 = "Plan sin costo concreto: complétalo en «Planes» o asígnale otro con costo base y costo por orden.";
 
-const MONTO_50000: PrecioPlan = { tipo: "monto", mensual: "50000.00", anual: null };
+const MONTO_50000: PrecioPlan = { tipo: "monto", mensual: "50000.00", descuentos: {} };
 const CON_MINIMO: CostoPorOrdenPorcentual = { porcentaje: "2.00", minimo: "500.00" };
 
 function version(precio: PrecioPlan, porcentual: CostoPorOrdenPorcentual): VersionPlan {
   return {
     nombre: "Plan Porcentual",
-    topes: { ordenesPorCiclo: 3000, porRol: { mensajero: 10 }, apiKeys: 2 },
+    topes: { porRol: { mensajero: 10 }, apiKeys: 2 },
     modulos: [],
     precio,
     costoPorOrden: null,
@@ -39,7 +39,10 @@ function leido(vigente: VersionPlan, cobroCiclo: CobroDelCiclo, ordenes = 7): Pl
   const p = vigente.costoPorOrdenPorcentual!;
   return {
     vigente,
-    ancla: new Date("2026-01-15T06:00:00.000Z"),
+    // SLT-86 (R5, R15): «ahora» es el 1 de marzo a las 00:00: el período de marzo completo, sin tramo.
+    entrada: new Date("2026-01-15T06:00:00.000Z"),
+    precioDelPeriodo: vigente.precio,
+    pendiente: null,
     uso: { ordenes, apiKeys: 0, porRol: { admin: 1, mensajero: 2, adminTienda: 0, adminSatelite: 0 } },
     cambio: null,
     costoVigente: { modo: "porcentual", porcentaje: p.porcentaje, minimo: p.minimo, fuente: "plan" },
@@ -64,14 +67,15 @@ describe("SLT-83 R23 — «Mi plan» con un plan porcentual", () => {
   it("R23: base, porcentaje y mínimo con su nota, lo cobrado, las pendientes y el total base + cobrado", () => {
     pintar(leido(version(MONTO_50000, CON_MINIMO), { cobrado: "2500.00", pendientes: 4 }));
 
+    // SLT-86 (R28; decisión del 2026-11-05): «período» en lugar de «ciclo» en lo cobrado y el total.
     expect(lineas()).toEqual([
-      "Costo base: 50000.00 al mes",
+      "Costo base mensual: 50000.00",
       "Costo por orden: 2.00 % del valor del paquete, mínimo 500.00se cobra cuando la orden llega a un estado final",
-      "Cobrado en el ciclo: 2500.00",
+      "Cobrado en el período: 2500.00",
       "Órdenes del ciclo sin estado final: 4",
-      "Total del ciclo hasta hoy: 50000.00 + 2500.00 = 52500.00",
+      "Total del período hasta hoy: 50000.00 + 2500.00 = 52500.00",
     ]);
-    const total = within(bloque()).getByText("Total del ciclo hasta hoy: 50000.00 + 2500.00 = 52500.00");
+    const total = within(bloque()).getByText("Total del período hasta hoy: 50000.00 + 2500.00 = 52500.00");
     expect(total.tagName).toBe("STRONG");
   });
 
@@ -82,7 +86,7 @@ describe("SLT-83 R23 — «Mi plan» con un plan porcentual", () => {
     // Ninguna línea del modo fijo (órdenes × costo) ni el texto del total estimado.
     expect(within(bloque()).queryByText(/×/)).toBeNull();
     expect(screen.queryByText(/Total estimado del ciclo/)).toBeNull();
-    expect(within(bloque()).getByText("Total del ciclo hasta hoy: 50000.00 + 0.00 = 50000.00")).toBeInTheDocument();
+    expect(within(bloque()).getByText("Total del período hasta hoy: 50000.00 + 0.00 = 50000.00")).toBeInTheDocument();
   });
 
   it("R23: sin mínimo dice solo el porcentaje", () => {
@@ -94,29 +98,33 @@ describe("SLT-83 R23 — «Mi plan» con un plan porcentual", () => {
   it("R23: lo cobrado negativo se pinta como resta («−», U+2212), nunca «+ -»", () => {
     pintar(leido(version(MONTO_50000, CON_MINIMO), { cobrado: "-500.00", pendientes: 0 }));
 
-    expect(within(bloque()).getByText("Cobrado en el ciclo: -500.00")).toBeInTheDocument();
-    const total = within(bloque()).getByText("Total del ciclo hasta hoy: 50000.00 − 500.00 = 49500.00");
+    expect(within(bloque()).getByText("Cobrado en el período: -500.00")).toBeInTheDocument();
+    const total = within(bloque()).getByText("Total del período hasta hoy: 50000.00 − 500.00 = 49500.00");
     expect(total.tagName).toBe("STRONG");
     expect(bloque().textContent).toContain("50000.00 − 500.00 = 49500.00");
     expect(bloque().textContent).not.toContain("+ -");
   });
 
-  it("R23: con la base por definir dice «Costo base: por definir» y no hay total", () => {
+  it("R23: con la base por definir dice «Costo base mensual: por definir» y no hay total", () => {
     pintar(leido(version({ tipo: "sin_precio" }, CON_MINIMO), { cobrado: "1000.00", pendientes: 2 }));
 
-    expect(within(bloque()).getByText("Costo base: por definir")).toBeInTheDocument();
-    expect(within(bloque()).getByText("Cobrado en el ciclo: 1000.00")).toBeInTheDocument();
-    expect(screen.queryByText(/Total del ciclo hasta hoy/)).toBeNull();
+    expect(within(bloque()).getByText("Costo base mensual: por definir")).toBeInTheDocument();
+    expect(within(bloque()).getByText("Cobrado en el período: 1000.00")).toBeInTheDocument();
+    expect(screen.queryByText(/Total del período hasta hoy/)).toBeNull();
   });
 
-  it("R23: con anual, la nota de que no toca el costo por orden también sale", () => {
+  it("SLT-86 R28: con un descuento anual ya no sale la nota del anual: ningún descuento toca el costo por orden", () => {
     pintar(
       leido(
-        version({ tipo: "monto", mensual: "50000.00", anual: { tipo: "descuento", porcentaje: "10" } }, CON_MINIMO),
+        version(
+          { tipo: "monto", mensual: "50000.00", descuentos: { anual: { tipo: "porcentaje", porcentaje: "10" } } },
+          CON_MINIMO,
+        ),
         { cobrado: "0.00", pendientes: 0 },
       ),
     );
-    expect(within(bloque()).getByText("El pago anual no cambia el costo por orden.")).toBeInTheDocument();
+    expect(screen.queryByText("El pago anual no cambia el costo por orden.")).toBeNull();
+    expect(within(bloque()).getByText("Costo base mensual: 50000.00")).toBeInTheDocument();
   });
 
   it("R23 (texto aprobado 2026-11-04): la nota de cuándo se cobra cada orden, sin la nota «Estimado…» del modo fijo", () => {
@@ -141,14 +149,18 @@ describe("SLT-83 R23 — detalle de empresa del superadmin", () => {
           vista={{
             organizacionId: ORG,
             plan: { ...consumo, planId: "11111111-1111-4111-8111-111111111111", archivado: false },
+            pendienteSinPlan: null,
             asignaciones: [],
           }}
           asignables={[]}
           asignarPlan={vi.fn()}
           rangoInicioCiclo={{ hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" }}
           inicioCicloPorDefecto="2026-10-30"
+          rangoFechaDeEfecto={{ hoy: "2026-03-01", min: "2026-03-01", max: "2027-03-01" }}
+          fechaDeEfectoPorDefecto="2026-04-01"
           previsualizarAsignacion={vi.fn()}
           cambiarTipoCobro={vi.fn()}
+          cancelarCambioEmpresa={vi.fn()}
         />
       </ToastProvider>,
     );
@@ -157,11 +169,11 @@ describe("SLT-83 R23 — detalle de empresa del superadmin", () => {
   it("R23: muestra los mismos datos que «Mi plan» y, con base monto, sin el aviso «Plan sin costo concreto»", () => {
     montarDetalle(leido(version(MONTO_50000, CON_MINIMO), { cobrado: "2500.00", pendientes: 4 }));
     expect(lineas()).toEqual([
-      "Costo base: 50000.00 al mes",
+      "Costo base mensual: 50000.00",
       "Costo por orden: 2.00 % del valor del paquete, mínimo 500.00se cobra cuando la orden llega a un estado final",
-      "Cobrado en el ciclo: 2500.00",
+      "Cobrado en el período: 2500.00",
       "Órdenes del ciclo sin estado final: 4",
-      "Total del ciclo hasta hoy: 50000.00 + 2500.00 = 52500.00",
+      "Total del período hasta hoy: 50000.00 + 2500.00 = 52500.00",
     ]);
     expect(screen.queryByText(AVISO_R20)).toBeNull();
   });
@@ -169,7 +181,7 @@ describe("SLT-83 R23 — detalle de empresa del superadmin", () => {
   it("R23: con la base por definir, el aviso «Plan sin costo concreto» igual que hoy", () => {
     montarDetalle(leido(version({ tipo: "sin_precio" }, CON_MINIMO), { cobrado: "0.00", pendientes: 1 }));
     expect(screen.getByText(AVISO_R20)).toBeInTheDocument();
-    expect(within(bloque()).getByText("Costo base: por definir")).toBeInTheDocument();
-    expect(screen.queryByText(/Total del ciclo hasta hoy/)).toBeNull();
+    expect(within(bloque()).getByText("Costo base mensual: por definir")).toBeInTheDocument();
+    expect(screen.queryByText(/Total del período hasta hoy/)).toBeNull();
   });
 });

@@ -903,7 +903,7 @@ export function PlanForm(props: PlanFormProps) {
           {pideInicioCiclo ? (
             <div aria-live="polite" aria-busy={vistaPreviaVigente?.fase === "cargando"}>
               {vistaPreviaVigente?.fase === "ok" && vistaPreviaVigente.avisos.length > 0 ? (
-                <AvisosDeTopes avisos={textosDeLosAvisosDeTopes(vistaPreviaVigente.avisos, null)} />
+                <AvisosDeTopes avisos={textosDeLosAvisosDeTopes(vistaPreviaVigente.avisos)} />
               ) : vistaPreviaVigente?.fase === "fallo" ? (
                 <Alert variant="destructive">
                   <AlertDescription>

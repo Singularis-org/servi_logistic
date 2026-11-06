@@ -3,7 +3,7 @@
 //
 // El estado de cada barra se lee sin depender del color: la marca lleva texto E icono, y cada estado
 // tiene su clase de token (normal = neutro, nunca el amarillo de marca; cerca = `warning-strong`;
-// lleno = `danger-strong`). El reinicio cuelga de la fila de órdenes, sin plan se pinta un
+// lleno = `danger-strong`). El reinicio cuelga de las órdenes del período (SLT-86 R8: sin tope ni barra), sin plan se pinta un
 // `EmptyState`. (`/mi-plan` ya no tiene `loading.tsx`: lo quitó R8 para que `notFound()` dé 404 real.)
 import { describe, it, expect, afterEach } from "vitest";
 import { render, screen, cleanup, within } from "@testing-library/react";
@@ -19,29 +19,36 @@ const PLAN: PlanConConsumo = {
   nombre: "Plan Crecer",
   precioTexto: "45000 al mes",
   modulos: [],
+  // SLT-86 (R8): las órdenes ya no son una fila con tope; van en `ordenesDelPeriodo`.
   filas: [
-    fila("ordenes", "órdenes del ciclo", 100, 3000, "normal"),
+    fila("adminTienda", "admins de tienda", 1, 5, "normal"),
     fila("mensajero", "mensajeros", 8, 10, "cerca"),
     fila("api_keys", "API keys", 2, 2, "lleno"),
     // SLT-66 R5: el maestro ya no tiene fila; la fila sin límite de prueba pasa a ser la de admin.
     fila("admin", "administradores", 1, null, "sin_limite"),
   ],
+  ordenesDelPeriodo: 100,
   reinicio: { dias: 12, fecha: "2026-03-15" },
   cambioPendiente: null,
   // SLT-66 R18: campo nuevo del tipo; estos casos no lo comprueban.
   costeo: {
     modo: "fijo", // SLT-83: el costeo pasó a unión por modo
-    base: { tipo: "monto", mensual: "45000.00" },
+    base: { tipo: "monto", periodo: "45000.00" },
     costoPorOrden: "100.00",
     fuente: "plan",
     ordenes: 100,
     subtotalOrdenes: "10000.00",
     total: "55000.00",
     sinCostoConcreto: false,
-    anualNoAplicaAlCosto: false,
   },
-  // Ajuste planes-custom (D9): campo nuevo del tipo; estos casos no lo comprueban.
-  cobro: { tipo: "mensual", montoPeriodo: "45000.00", siguienteCobro: "2026-03-15" },
+  // Ajuste planes-custom (D9) y SLT-86 (R27): estos casos no lo comprueban.
+  cobro: {
+    tipo: "mensual",
+    periodo: { desde: "2026-03-01", hasta: "2026-03-31", esTramo: false },
+    costo: "45000.00",
+    siguienteCobro: "2026-04-01",
+    pendiente: null,
+  },
 };
 
 function relleno(nombre: string): HTMLElement {
@@ -54,7 +61,7 @@ afterEach(() => cleanup());
 describe("SLT-58 R3/R4 — el estado de cada barra se distingue sin depender del color", () => {
   it("normal usa un tono neutro, nunca el amarillo de marca (`primary`)", () => {
     render(<ConsumoDelPlan plan={PLAN} textoSinPlan="x" />);
-    const r = relleno("órdenes del ciclo");
+    const r = relleno("admins de tienda");
     expect(r).toHaveClass("bg-muted-foreground");
     expect(r.className).not.toMatch(/\bbg-primary(?![\w-])/);
   });
@@ -89,16 +96,18 @@ describe("SLT-58 R3/R4 — el estado de cada barra se distingue sin depender del
   it("las filas normal y sin límite no llevan marca ni icono", () => {
     render(<ConsumoDelPlan plan={PLAN} textoSinPlan="x" />);
     const filas = within(screen.getByRole("list", { name: "Consumo" })).getAllByRole("listitem");
-    expect(filas[0].querySelector("svg")).toBeNull();
-    expect(filas[3].querySelector("svg")).toBeNull();
+    // La primera es la de las órdenes del período; luego la normal y, al final, la sin límite.
+    expect(filas[1].querySelector("svg")).toBeNull();
+    expect(filas[4].querySelector("svg")).toBeNull();
   });
 });
 
-describe("SLT-58 R5 — el reinicio va bajo la fila de órdenes", () => {
-  it("el texto «Se reinicia en N días (fecha)» está en la fila de órdenes y en ninguna otra", () => {
+describe("SLT-58 R5, SLT-86 R7 — el reinicio va bajo las órdenes del período", () => {
+  it("el texto «Se reinicia en N días (fecha)» está con las órdenes del período y en ninguna otra fila", () => {
     render(<ConsumoDelPlan plan={PLAN} textoSinPlan="x" />);
     const reinicio = screen.getByText("Se reinicia en 12 días (2026-03-15)");
     const filas = within(screen.getByRole("list", { name: "Consumo" })).getAllByRole("listitem");
+    expect(filas[0]).toHaveTextContent("Órdenes en el período: 100");
     expect(filas[0]).toContainElement(reinicio);
     for (const f of filas.slice(1)) expect(f).not.toContainElement(reinicio);
   });

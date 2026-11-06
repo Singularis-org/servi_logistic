@@ -21,7 +21,7 @@ export default async function MiPlanPage() {
 
   return (
     <AppPage title={MI_PLAN_TEXTOS.titulo}>
-      <MiPlanModule plan={r.plan} />
+      <MiPlanModule plan={r.plan} pendienteSinPlan={r.pendienteSinPlan} />
     </AppPage>
   );
 }

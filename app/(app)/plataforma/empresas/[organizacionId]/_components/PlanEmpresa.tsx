@@ -547,7 +547,7 @@ export function PlanEmpresa({
       if (r.estado === "ok") {
         setPlanId("");
         // §11.5 y SLT-86 (R18): los topes ya pasados que no rechazaron, con el texto del modal.
-        setAvisosAsignados(r.avisos.map((a) => textoDelAvisoDeTope(a, null)));
+        setAvisosAsignados(r.avisos.map((a) => textoDelAvisoDeTope(a)));
         // SLT-86 (R17): con fecha futura el cambio queda pendiente hasta su fecha.
         toast.success(r.vigenteDesde === null ? TEXTOS.asignado : TEXTOS.programado(r.vigenteDesde));
         router.refresh();
@@ -893,7 +893,7 @@ export function PlanEmpresa({
                   : `${TEXTOS.vistaPreviaNoCargo}\n${vistaPrevia.motivo}`}
               </AvisoDeError>
             ) : vistaPrevia.fase === "ok" && vistaPrevia.avisos.length > 0 ? (
-              <AvisosDeTopes avisos={vistaPrevia.avisos.map((a) => textoDelAvisoDeTope(a, null))} />
+              <AvisosDeTopes avisos={vistaPrevia.avisos.map((a) => textoDelAvisoDeTope(a))} />
             ) : null}
           </div>
         </Modal>
