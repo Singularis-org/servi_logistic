@@ -32,6 +32,10 @@ T9 (payloads reales desde la copia de producción) la hace una persona, no un ag
 - 2026-11-06 (humano): la guardia `geografia-lecturas-sin-nodo-fk` (SLT-65 R19) se acota a lecturas;
   las 2 escrituras de SLT-45 en `OrdenRepository.ts` (`toCreateManyInput`, `corregirDatosCliente`) quedan
   exentas por nombre, con el motivo en el test.
+- 2026-11-06 (humano): `OrdenesPage.test.tsx` y `OrdenesPageFiltros.test.tsx` ganan `vi.mock` del repositorio del
+  catálogo (sin cambiar aserciones), para no conectar a Postgres por accidente.
+- 2026-11-06 (humano): mensaje de T6.2 `{columna} es obligatoria` (todas las columnas de nivel vacías) se queda;
+  añadido a design §5.
 
 ## Preguntas abiertas
 - 2026-11-05 (implementer, T1): bug de v1 fuera de alcance. `POST /api/ordenes/api-key/carga` con un `name`
@@ -51,6 +55,10 @@ T9 (payloads reales desde la copia de producción) la hace una persona, no un ag
   archivos en lotes, único rojo `dependencias-declaradas-presentes` (baseline); contrato v1 22/22; suites v2
   62/62 contra Postgres. `buildDetallePorOrdenId` movido a `lib/api/api-orden-detalle.ts`. Huecos: R13
   «ambiguo» solo en unit (índice único lo impide en base); R17 cupo sin caso propio en `v2-ordenes`.
+- 2026-11-06 · T6.1–T6.3, T7.1–T7.2, T8.1–T8.2 + caso cupo R17 · `1ed838df`…`194eaa5a` · tsc 0; eslint 0;
+  contrato v1 22/22; openapi-v1-congelado verde; 164 pasan; guardias 323 archivos, único rojo el del
+  baseline. Script T8 probado solo contra `logistic_slt45`. Pendiente antes del PR: CHANGELOG con fecha
+  `2026-11-xx` (se fija al mergear).
 
 ## Modelos (overrides)
 

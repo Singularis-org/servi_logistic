@@ -253,6 +253,7 @@ nivel anterior tal como está en el catálogo.
 | Regla de guardado (R5, R15) | `ubicacion` | `pais aun no habilitado: solo se aceptan ubicaciones de nivel 2 o 3 en paises de 3 niveles` |
 | Sin zona (R16) | `ubicacion` | `la ubicacion '{nombre}' no tiene zona asignada` |
 | Sesión: valor tras columna vacía (R31) | la columna vacía | `{columna} es obligatoria si se indica {columna_siguiente}` |
+| Sesión: todas las columnas de nivel vacías (R31) | la primera columna de nivel | `{columna} es obligatoria` (añadido en T6.2; humano 2026-11-06) |
 
 En la cotización las claves y mensajes son los mismos, dentro de `errores[]` como en v1. Los mensajes
 de v1 (R3) son los de `geo-resolucion.ts` y no cambian.
