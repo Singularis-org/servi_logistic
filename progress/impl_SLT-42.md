@@ -736,3 +736,86 @@ Decisión del humano («tras tanda 2», punto 3): el rastreo usa el país de la 
 2. ¿Se acepta que un país sin zona dé un error de servidor a quien ya acertó el factor? La otra opción es responder `no_encontrado` también ahí, y la falta de zona no se vería.
 
 Veredicto: T5.6 hecha. El rastreo público toma el teléfono y la zona del país de la empresa dueña de la orden, y R27 está cubierto. Typecheck, lint, guardias (salvo el baseline) y tests del rastreo en verde.
+
+## Tanda 4d · T5.7: API por key, páginas de servidor y los agregados del humano (2026-11-05/06)
+
+Alcance: T5.7 (API por key y OpenAPI; páginas `ordenes`, `wallet/mensajeros` y `recepcion-satelite/en-bodega`) más las decisiones de la ficha «tras T5.5» (puntos 1, 2 y 4) y «tras T5.6» (puntos 1 y 2). Fuera: bloques 6–7 (jobs, crons, `scripts/rollup-analitica-manual.ts`, guardia de T7.1). Commit: `ac5a2eb4`.
+
+### Qué cambió (25 de producción, 30 de test, 3 de docs)
+- **API por key.**
+  - `ApiOrdenLecturaService` gana `reglasPais?` como último parámetro. `listar` mide `desde`/`hasta` con `inicioDelDiaEnUtc`/`inicioDelDiaSiguienteEnUtc` en la zona de la empresa de la key. Sin rango no lee la zona. Los dos composition roots (`app/api/ordenes/api-key/route.ts` y `orden/[id]/route.ts`) inyectan `construirReglasPaisEmpresa(prisma)`.
+  - Analítica: `lib/api/analitica-integrador.ts` gana `reglasPais` en sus deps y exporta `zonaDelIntegrador(deps)`. La usan el borde (para cada `prepararConsultaAnalitica`) y el cascarón HTTP (para el «hoy» de `resolverRangoApiKey(pedido, ahora, zona)`). Las dos lecturas van a la memoria del marco de `conEmpresa`.
+  - OpenAPI (`lib/api/openapi-spec.ts` y su espejo `docs/api/api-key-openapi.yaml`): «hora de Costa Rica (UTC-6)» pasa a «en la zona horaria del país de la empresa de la key», en los 5 textos. Entrada nueva en `docs/api/CHANGELOG.md` (2026-11-05, sin ruptura).
+  - Las dos rutas importan `esFechaCalendarioValida` de `calendario-zona` en vez de `fecha-cr`.
+- **Páginas de servidor.** `ordenes/page.tsx`, `recepcion-satelite/en-bodega/page.tsx` y `wallet/mensajeros/page.tsx` leen la zona con `zonaDelBorde()` y calculan ahí las fechas que bajan por props. Los componentes cliente no cambian. Para SLT-81 no falta nada del lado servidor de estas tres páginas.
+- **Planes (decisión 1 tras T5.5).**
+  - `plantillaCambioPlan` recibe `zona` (obligatoria) y pinta las tres fechas del correo en ella.
+  - `crearPlanAvisoCorreoHandler` lee la zona de la empresa destino (`DepsAvisoCorreo.reglasPais`; `buildDepsAvisoCorreo` inyecta la real). La lee antes de enviar: sin zona, el trabajo falla sin mandar nada (R28).
+  - `PlanesService.catalogo`: `vigenteDesdePendiente` en UTC con la etiqueta, `"AAAA-MM-DD UTC"`. No lee la zona de ninguna empresa.
+  - Salen los dos marcadores `SLT-42 pendiente T7.1`.
+- **Textos (decisión 2 tras T5.5).** «(hora de Costa Rica).» pasa a «(hora local).» en `aviso-interno`, `picking/informe`, `prueba-envio` y `transito/informe`. En `plantilla-datos.ts` («en hora de Costa Rica.» → «en hora local.»), en `fecha_asignacion` y `fecha_creacion`.
+- **Chat y asistente (decisión 4 tras T5.5).**
+  - `listarHiloChat` corta «hoy» con la zona de la empresa (`ChatWhatsappDeps.reglasPais`; sin él, la real). Solo la lee si hay hilo.
+  - `AsistenteService` gana `reglasPais` en sus deps y cuenta el tope por el día de esa zona. Sin el puerto, o sin zona, falla antes de contar. `app/api/asistente/route.ts` inyecta la real (`AsistenteRouteDeps.reglasPais` para los tests).
+- **Rastreo público (decisiones 1 y 2 tras T5.6).** El composition root (`lib/actions/rastreo-publico.ts`) construye el servicio por consulta, con el puerto vigilado.
+  - Si `deLaEmpresa()` trae `telefono: null`, el servicio sigue respondiendo `no_encontrado`, y la action deja el aviso.
+  - Si el servicio lanza `PaisSinZonaHoraria` (factor ya correcto), la action responde `no_encontrado`, igual que una guía inexistente, y deja el aviso.
+  - El aviso va por `ErrorLogger` (por defecto `console.error`): `{ evento: "rastreo_publico_pais_incompleto", organizacionId, paisId, falta }`. No lleva guía, factor ni teléfono.
+  - Cualquier otro error se relanza. `RastreoPublicoDeps.logger` es inyectable.
+- **Marcadores.** Salen todos los `SLT-42 pendiente T5.7`: `analitica-integrador.ts`, `ApiOrdenLecturaService.ts` y `wallet/mensajeros/page.tsx`. Salen también los dos `T7.1`. Quedan 9, todos `T6`: `analitica-rollup-diario-handler.ts` (2), `scripts/demo-qa/receta.ts` (4), `scripts/rollup-analitica-manual.ts` (2) y `scripts/seed-jobs-analitica-rollup-diario.ts` (1).
+
+### Desvíos y decisiones mías (a confirmar)
+1. **Etiqueta «UTC» del catálogo dentro del valor.** `vigenteDesdePendiente` pasa de `AAAA-MM-DD` a `AAAA-MM-DD UTC`, así la UI la muestra («Desde 2026-11-15 UTC») sin tocar `PlanesModule.tsx`. El campo solo se pinta: nadie lo compara ni lo ordena.
+2. **Guardia `asistente-sin-datos` (436/R3), lista blanca del borde.** Se añade `@/lib/services/ReglasPaisEmpresaService`, con su motivo. Del país solo sale una zona IANA, y nada viaja al proveedor. Por la misma guardia, `AsistenteService` no importa `zonaDeLaEmpresa` y repite su comprobación en línea.
+3. **El aviso del rastreo es un objeto, no un texto.** La guardia `rastreo-frontera` prohíbe `console.*` en los módulos del rastreo, así que se usa `ErrorLogger`. `ConsoleErrorLogger` lo escribe con `console.error("[AppError:INTERNAL]", objeto)`.
+4. **El servicio del rastreo sigue lanzando `PaisSinZonaHoraria`.** La traducción a `no_encontrado` vive en el composition root, que conoce la empresa.
+
+### Tests
+- Nuevos:
+  - `tests/unit/api/hora-por-pais-api-key.test.ts` (6).
+  - `tests/unit/whatsapp-envios/descripciones-hora-local.test.ts` (5).
+- Casos nuevos:
+  - `rastreo-publico-zona-pais.test.ts` (4, composition root).
+  - `procesar-jobs-plan-cambio.test.ts` (3), `plantilla-cambio-plan.test.ts` (1), `planes-service-lecturas.test.ts` (1).
+  - `chat-whatsapp-actions.test.ts` (2), `tope-diario.test.ts` (2), `analitica-api-key-rango.test.ts` (1).
+- Adaptados al contrato (`reglasPaisFijas()`/`ZONA_DE_CR`, que con CR dan lo de antes):
+  - Unitarios: `analitica-api-key-route`, `analitica-integrador-borde`, `api-orden-lectura-service.filtros-257`, `openapi-257-filtros-listado` (el texto nuevo), `plantilla-datos`, `acotamiento-por-rol`.
+  - 8 de `tests/components` de las páginas de órdenes y bodega satélite (`vi.mock` de `zona-del-borde`).
+  - Integración: `asistente-route`, `asistente-imagenes` y `planes-cambio-correos`.
+- La guardia `asistente-sin-datos` cambia (desvío 2).
+
+### Mapa R → test (T5.7)
+| R | Test |
+|---|---|
+| R22 | `hora-por-pais-api-key.test.ts`: «el mismo `desde=hasta=2026-08-10` empieza a las 06:00Z en Costa Rica y a las 05:00Z en Bogota»; «el limite inferior del dia pedido es las 00:00 de Bogota…»; «por HTTP, sin `hasta`, «hoy» es el 3 en Costa Rica y el 4 en Bogota…». `analitica-api-key-rango.test.ts`: «el mismo instante es el 3 en Costa Rica y el 4 en Bogota». `plantilla-cambio-plan.test.ts`: «SLT-42 R22: la fecha se pinta en la zona del país de la empresa que cambia de plan». `procesar-jobs-plan-cambio.test.ts`: «SLT-42 R22: la fecha del correo sale en la zona del país de la empresa destino». `chat-whatsapp-actions.test.ts`: «SLT-42 R22: «hoy» es el de la zona del pais de la empresa (CR: ayer; Bogota: hoy)». `tope-diario.test.ts`: «el mismo instante cuenta en el día 3 en Costa Rica y en el día 4 en Bogotá». `planes-service-lecturas.test.ts`: «un instante que en Costa Rica aún es el 14 sale como el 15 UTC…» (catálogo). `descripciones-hora-local.test.ts` (textos) |
+| R27 | `rastreo-publico-zona-pais.test.ts`: «pais sin prefijo o digitos de telefono: no_encontrado, como una guia inexistente, y console.error con la empresa»; «pais completo y factor errado: no_encontrado SIN aviso»; «otro error del servicio no se disfraza de no_encontrado» |
+| R28 | `hora-por-pais-api-key.test.ts`: «R28: con rango y sin zona en el pais, falla con PaisSinZonaHoraria sin consultar el repositorio»; «R28: sin zona en el pais de la key, el borde falla…»; «sin rango de fechas no se lee la zona…». `procesar-jobs-plan-cambio.test.ts`: «SLT-42 R28: sin zona … el trabajo falla sin enviar ningún correo». `chat-whatsapp-actions.test.ts`: «SLT-42 R28: sin zona … el hilo falla con PaisSinZonaHoraria». `tope-diario.test.ts`: «sin zona en el país, falla … sin contar la consulta ni llamar al proveedor». Rastreo (decisión tras T5.6, en lugar del error de servidor): «pais sin zona horaria y factor correcto: no_encontrado (no un error de servidor) y console.error con la empresa» |
+
+### Salida
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: exit 0, también tras el último arreglo.
+- `eslint` de los 51 `.ts/.tsx` tocados (un lote): exit 0, 0 errores y 0 warnings.
+- `pnpm test:guardias`: `Test Files 3 failed | 322 passed | 3 skipped (328) · Tests 6 failed | 4549 passed | 24 skipped (4579)`.
+  - 4 son de `dependencias-declaradas-presentes`, en el baseline.
+  - 1 es de `sin-estados-retirados`, por carga: aislada, en verde.
+  - 1 era REAL: `asistente-sin-datos`, por el import nuevo de `AsistenteService` y del borde. Se arregló (desvío 2) y, aislada, da verde, junto con `sin-estados-retirados` y `tope-diario`: `3 passed (36 tests)`.
+- Tests directos:
+  - `tests/unit/api` + `api-orden-lectura-service*`: `43 passed (526)`.
+  - Planes y correo: `4 passed (108)`.
+  - Asistente, chat, plantillas y composition root de integraciones: `17 passed (360)`.
+  - Rastreo y sus guardias: `9 passed (132)`.
+  - Las 8 de `tests/components` de las páginas y `wallet-mensajeros-page`: `9 passed (101)`.
+- `vitest related --run` sin `tests/components` ni `tests/integration`, en 5 lotes de 5:
+  - lote 0: `4 passed (67)`;
+  - lote 1: `11 passed (213)`;
+  - lote 2: `46 passed (636)`;
+  - lote 3: `115 passed (2052)`;
+  - lote 4: `94 passed (1329)`.
+- Integración contra base: la corre CI. Su typecheck pasa.
+- Grafo MCP: no se usó; bastaron Grep y Read.
+
+### Preguntas abiertas
+1. **`plantilla-datos.ts` sigue formateando los instantes en CR.** `fechaHora` resta `CR_OFFSET_MS`, aunque la descripción ya dice «hora local». Pasarle la zona toca `resolverValoresPlantilla`, que también usa la vista previa del cliente (SLT-81). ¿Va a la lista de excepciones de T7.1 o a una task propia?
+2. **Guía de integración** (`docs/api/guia-integracion/guia-integracion.html` §5, «hora de Costa Rica (UTC-6)») y la fila de 2026-08-31 del CHANGELOG: no se tocaron. La entrada nueva del CHANGELOG avisa de que la guía se actualiza con la release. ¿Quién la edita?
+3. **¿Se acepta la etiqueta «UTC» dentro de `vigenteDesdePendiente`** (desvío 1), o se prefiere un campo aparte y el texto en la UI (SLT-81)?
+
+Veredicto: T5.7 hecha, con los agregados a–e. La API por key, las páginas de servidor, los planes, el chat, el asistente y el rastreo usan la zona del país de la empresa, y R22, R27 y R28 tienen test. Typecheck, lint, guardias (salvo el baseline) y `vitest related` en verde.
