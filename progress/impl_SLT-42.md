@@ -617,3 +617,69 @@ Un agente anterior dejó el trabajo sin commitear porque murió antes del commit
    - La UI de wallet (`WalletLedger`, `GastoFijoPlantillaDialog`, las columnas de descarga): no es de backend.
 
 Veredicto: T5.4 hecha. Wallet, liquidación, caja, gastos fijos, aportes, estado de cuenta e historial usan la zona de la empresa, con R22/R23/R28 cubiertos. Typecheck, lint, guardias y `vitest related` (sin UI) en verde; falta la integración con base.
+
+## Tanda 4b · T5.5: zona de la empresa en analítica, tablero, ranking, notificaciones, avisos, informes de WhatsApp, rutas y fecha de planes (2026-11-05)
+
+Alcance: T5.5 más dos agregados del humano: las rutas (`OptimizacionRutaService`) y la fecha que **muestra** `PlanesService` (el ciclo de cobro sigue en UTC, sin tocar).
+
+### Qué cambió (78 archivos de producción, ~135 de test)
+- **Servicios con `reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">` como último parámetro** (patrón de T5.3): `AnaliticaFinanciera`, `AnaliticaOperativa`, `AnaliticaRollup`, `AvisosDiarios`, `ConteoHoyGestion`, `FinanzasDiario`, `GeocodeSalud`, `Notificacion`, `OptimizacionRuta`, `PremioRankingDevengo`, `Ranking`, `RankingSnapshot`, `RepartoMananaAviso`, `TableroDia` y `VigenciaAvisoAgregado`. `EjecucionEnvioService` y `WhatsappEnvioService` ya tenían `reglasPais` en `deps`: ahora también leen la zona.
+- **Composition roots** con `construirReglasPaisEmpresa(prisma)`: las actions de analítica (11), `tablero-dia`, `finanzas-diario`, `ranking`, `ranking-historico`, `premio-ranking-devengo`, `notificaciones`, `planes` y `_shared/planes-plataforma`; los crons `avisos-diarios`, `aviso-reparto-manana` y `snapshot-ranking` (dentro de `paraCadaEmpresa`: cada empresa con su zona, R24); los jobs `analitica-rollup-diario`, `geocodificacion`, `optimizacion-ruta`, `push-web` y los de envíos de WhatsApp (`whatsapp-envio-deps` expone `reglasPais`); `lib/api/analitica-integrador.ts` y `lib/notificaciones/notificadores.ts` (`repoReal` y el aviso de webhook pausado).
+- **Analítica.** `prepararConsultaAnalitica(raw, actor, metricaId, zona, now?, canal?)`, `prepararConteoEntregas(raw, actor, zona, now?)` y `prepararConsultaProductos(raw, actor, zona, now?)`. Los bordes leen la zona con `zonaDelBordeConActor` (nuevo en `_shared/zona-del-borde.ts`). La semana y las fechas del rango de `AnaliticaOperativaService` pasan a aritmética de calendario sin zona.
+- **Funciones puras que ahora reciben `zona`:** `snapshot-dia` (`fechaObjetivo`, `ventanaDelDia`), `tiempoRelativo`, `textoWebhookSuscripcionPausada`/`emitirWebhookSuscripcionPausada`, `proximaOcurrencia`/`instanteDe`/`encolarProximaOcurrencia`, `primeraRutaPendiente`/`decidirGuardaRuta`, picking (`nombreArchivoPicking`, `diasEnPreparacion`, `contarPorTienda`, `resumenTiendasPicking`, `construirModeloPicking`) y tránsito (`cortesPorZona`, `clasificar`, `seleccionarTransito`, `nombreArchivoTransito`). `ContextoInforme` gana `zona` y los modelos de picking y tránsito la llevan. El formato de los informes se renombra: `fechaLegibleEnZona`, `horaLegibleEnZona`, `fechaLargaEnZona` y `fechaCortaEnZona`.
+- **`lib/config/aviso-reparto-manana.ts`.** Se retira `OFFSET_CR_HORAS`. `horaUtcDeHoraCR` pasa a `horaUtcDeHoraLocal(hora, zona, instante)`, con `desfaseEnMs` (design §4.3).
+- **`calendario-zona.ts`** gana `instanteDeParedEnUtc(fecha, hh, mm, zona)`. **`zona-de-la-empresa.ts`** gana `zonaDeOrganizacionCon(repoPais)`, para el superadmin, que corre en plataforma sin empresa en el contexto.
+- **Marcadores.** No quedan `SLT-42 pendiente T5.5` ni los dos de rutas. Nuevos: `SLT-42 pendiente T5.7` en `analitica-integrador.ts` (rango de la API por key) y en `app/(app)/wallet/mensajeros/page.tsx`; `SLT-42 pendiente T7.1` en el catálogo de planes (`vigenteDesdePendiente`) y en `email/plantillas/cambio-plan.ts`.
+
+### Desvíos del design
+1. **`zonaDelBordeConActor`.** Los bordes de analítica preparan la consulta (con su rango) antes de saber si hay actor. Sin actor no hay empresa de la que leer la zona, así que la preparación usa una zona neutra (`"UTC"`) que nunca llega a un repositorio. Así, sin sesión, la respuesta sigue siendo `validation_error` o `unauthenticated`. Con actor y sin zona en el país, el borde falla con `PaisSinZonaHoraria` (R28) antes de parsear.
+2. **Los servicios de analítica leen la zona dos veces por petición** (el borde, para el rango, y el servicio, para los cubos o el día en curso). Las dos lecturas van a la misma memoria del marco (`memoriaDelMarco`), así que dan la misma zona sin otra consulta.
+3. **`PlanesService` no recibe `IReglasPaisEmpresa`, sino `zonaDeOrganizacion(organizacionId)`.** El superadmin corre en plataforma y la empresa llega como parámetro. Solo `siguienteCiclo` de las vistas previas usa la zona de la empresa. `vigenteDesdePendiente` del catálogo sigue en CR (`ZONA_CR`, marcador T7.1), porque un plan del catálogo no es de una sola empresa (pregunta 1).
+4. **Textos de PDF.** «· hora de Costa Rica» pasa a «· hora local» en los PDF de picking, tránsito y prueba. Las descripciones de las variables de los informes («hora de Costa Rica») no se tocaron, porque son textos del catálogo que ve la UI (pregunta 2).
+5. **El ejemplo del aviso de webhook pausado** (`lib/whatsapp-envios/eventos.ts`) se formatea en `"UTC"`. Es un texto de catálogo sin empresa, y a las 14:00Z es el mismo día en cualquier zona de América.
+6. **`app/(app)/ranking/historico/page.tsx`** lee la zona con `zonaDelBorde` para el D−1 por defecto (es del ranking). `wallet/mensajeros/page.tsx` queda para T5.7.
+7. **Fuera de T5.5 y sin cambios:** `lib/actions/chat-whatsapp.ts` (corte de «hoy» del chat), `HistoricoConversacionesRepository`, `AsistenteService` (tope diario), `lib/types/plantilla-datos.ts` (lo comparte la UI), los handlers `liberar-reprogramadas` y `analitica-rollup-diario` (fecha objetivo, T6), `scripts/rollup-analitica-manual.ts` y `lib/planes/{ciclo,cobro,consumo}.ts` (UTC, SL-24).
+
+### Tests
+- Nuevo: `tests/unit/services/hora-por-pais-analitica-avisos.test.ts` (18 casos). En `planes-service-inicio-ciclo.test.ts`, 2 casos nuevos.
+- Adaptados a las firmas, con dos codemods de AST sobre ~130 archivos (de `tests/unit` y `tests/integration`). Uno añade `ZONA_DE_CR` donde ahora se pide la zona. El otro añade `reglasPaisFijas()` a las construcciones de servicio y `reglasPais: reglasPaisFijas()` a los `deps` de las actions. Con CR, el resultado es el de antes.
+- Guardias actualizadas a los nombres nuevos:
+  - `ranking-ventana-dia`: `inicioDelDiaEnUtc`, `fechaComoDate(hoy)`.
+  - `tablero-dia/frontera`: el consumidor real de `startOfDayCR` que queda es `liberar-reprogramadas-handler`.
+  - `cron-hora-cr`: `horaUtcDeHoraLocal`, con un caso nuevo de horario de verano.
+  - `snapshot-dia`: importa `calendario-zona`.
+
+### Mapa R → test (T5.5)
+| R | Test |
+|---|---|
+| R22 | `hora-por-pais-analitica-avisos.test.ts`: «el preset «dia» es el 20 en Costa Rica y el 21 en Bogota…» (analítica); «el mismo instante es el tablero del 20 en Costa Rica y el del 21 en Bogota»; «el reparto de mañana anuncia el dia siguiente al de la pared de la empresa»; «un aviso de las 23:50 del 20 leido a las 00:10 es de «ayer» en Bogota…» (campana); «el corte del transito es el comienzo del dia local…»; «una ruta calculada a las 23:40 del 20 en CR ya es «de ayer»…»; «la zona sale del pais de la empresa nombrada…» (planes). `planes-service-inicio-ciclo.test.ts`: «SLT-42 R22: el siguiente ciclo se muestra en la zona del pais de la empresa nombrada» |
+| R23 | «el dia que Madrid adelanta el reloj, la ventana del ranking dura 23 h…»; «la hora UTC del aviso sigue al desfase del instante…»; «el envio de las 05:00 cae a las 05:00 de pared en Madrid, en verano y en invierno»; `cron-hora-cr.guardia.test.ts`: «SLT-42 (R23): con horario de verano la hora UTC sigue al desfase del instante» |
+| R24 | «el dia de la corrida y el de las retenidas salen de la zona del pais de la empresa» (avisos diarios); «la corrida del snapshot … congela …» (ranking) |
+| R28 | «en el borde, con actor y sin zona en el pais, falla con PaisSinZonaHoraria»; «sin zona en el pais, falla … y no consulta el repositorio» (tablero); «sin zona, el ranking falla sin contar nada»; «sin zona la corrida de esa empresa falla antes de leer o emitir nada» (avisos); «la zona sale del pais… sin zona, PaisSinZonaHoraria» (planes); `planes-service-inicio-ciclo.test.ts`: «SLT-42 R28: sin zona en el pais de la empresa, la vista previa falla…» |
+| R30 | «la misma instancia atiende a dos empresas seguidas sin recordar la zona de la primera» (tablero) |
+
+### Salida
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: exit 0, 0 errores.
+- `eslint` de los archivos tocados (en 4 trozos, por el largo de la línea de comandos de Windows): 0 errores y 33 warnings, todos `no-unused-vars` en parámetros con `_` de dobles y `_job`, como en las tandas anteriores.
+- `pnpm test:guardias`: `Test Files 2 failed | 323 passed | 3 skipped · Tests 6 failed | 4549 passed | 24 skipped`.
+  - Los 4 de `dependencias-declaradas-presentes` están en el baseline.
+  - Los otros 2 eran de `ranking-ventana-dia`, por los nombres viejos. Se actualizó la guardia y, corrida aislada, da `12 passed`.
+- Tests directos:
+  - `tests/unit/analytics`: `175 passed (2262 tests)`, tras adaptar.
+  - `whatsapp-envios`, `ranking`, `notificaciones`, `tablero-dia`, `pdf`, `utils` y `api`: `229 passed`.
+  - 62 archivos de servicios y jobs del alcance: `60 passed`, y los 9 que fallaron, adaptados: `9 passed`.
+  - 12 de actions: en verde.
+  - El test nuevo: `18 passed`.
+- `vitest related --run --exclude 'tests/components/**' --exclude 'tests/integration/**'` sobre los 78 de producción, en 16 lotes de 5:
+  - lotes 0–5 y 7–12 y 15: en verde (de `4 passed` a `842 passed / 14174 tests`);
+  - lote 6: `integraciones-consumidores-composition-root` en rojo (2 casos). Corre la fábrica real de rutas sin base y ahora se le inyectan las reglas reales. Se le añadió el mismo `vi.mock` de `ReglasPaisEmpresaService` que usa T5.4, y pasa: `14 passed`;
+  - lotes 13 y 14: `tests/unit/components/ordenes-listado-vistas.test.tsx` en rojo (1 caso, UI). Aislado da `10 passed`: es carga, no de T5.5.
+- Integración contra base: no se corre en local; la corre CI (decisión del humano tras T5.4).
+
+### Preguntas abiertas
+1. **Catálogo de planes (`vigenteDesdePendiente`).** Un plan del catálogo puede ser de varias empresas, de países distintos. ¿En qué zona se muestra la fecha del cambio pendiente? Hoy sigue en CR (marcador T7.1). Lo mismo pasa con la fecha del correo de cambio de plan (`email/plantillas/cambio-plan.ts`).
+2. **Textos «(hora de Costa Rica)».** Siguen en las descripciones de las variables de los informes de WhatsApp (`picking/informe.ts`, `transito/informe.ts`, `prueba-envio.ts`, `aviso-interno.ts`) y en `plantilla-datos.ts`. ¿Pasan a «hora local» aquí, o con la UI de SLT-81?
+3. **`scripts/rollup-analitica-manual.ts`** corre `AnaliticaRollupService` fuera de `conEmpresa`. Sin empresa en el contexto, la zona falla con `EmpresaNoResuelta`. Hay que ver si el script ya necesitaba contexto de empresa para el repositorio; si no lo necesitaba, toca abrirlo por empresa (T6).
+4. **El chat de WhatsApp** (`lib/actions/chat-whatsapp.ts`, corte de «hoy») y `AsistenteService` (tope diario) siguen en CR, y ninguna task los nombra. ¿Van en T7.1 o en una task propia?
+
+Veredicto: T5.5 hecha, con rutas y la fecha de planes. Analítica, tablero, ranking, notificaciones, avisos, informes y envíos de WhatsApp usan la zona de la empresa, con R22/R23/R24/R28/R30 cubiertos por test. Typecheck y guardias en verde (salvo el baseline); `vitest related` sin rojos de T5.5.
