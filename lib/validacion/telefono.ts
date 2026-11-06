@@ -4,11 +4,16 @@
 //
 // Variante `max`: valida por tipo de linea y rangos asignados, no solo por largo (`min`). En el
 // servidor el tamaño de los metadatos no importa.
+//
+// `core` + los metadatos a mano, y no `libphonenumber-js/max`: bajo `tsx` (la demo de QA del build,
+// los scripts) esa entrada se resuelve a su `.cjs`, cuyo `require` del JSON recibe `{ default: … }`
+// y revienta con un TypeError en cada validacion. Con este `import`, la interop deja el objeto bien.
 import {
   isSupportedCountry,
   parsePhoneNumberFromString,
   type CountryCode,
-} from "libphonenumber-js/max";
+} from "libphonenumber-js/core";
+import metadata from "libphonenumber-js/metadata.max.json";
 
 export type ResultadoTelefono =
   | { ok: true; nacional: string }
@@ -23,9 +28,9 @@ export type ResultadoTelefono =
  * validos de otra region, y uno de otro pais no debe guardarse como nacional de este.
  */
 export function validarTelefonoDelPais(raw: string, paisId: string): ResultadoTelefono {
-  if (!isSupportedCountry(paisId)) return { ok: false, motivo: "pais_sin_reglas" };
+  if (!isSupportedCountry(paisId as CountryCode, metadata)) return { ok: false, motivo: "pais_sin_reglas" };
   const region = paisId as CountryCode;
-  const numero = parsePhoneNumberFromString(raw, region);
+  const numero = parsePhoneNumberFromString(raw, region, metadata);
   if (!numero || !numero.isValid() || numero.country !== region) {
     return { ok: false, motivo: "invalido" };
   }
