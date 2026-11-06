@@ -152,7 +152,7 @@ Reglas de todas las tandas:
   **Hecho:** el reviewer lo compara con `design §8`.
 - [x] **T7.3** `progress/impl_SLT-77.md`: mapa `R<n> → test` con los 42, salida real y cada mutación. **Hecho:** coincide con la
   tabla de abajo.
-- [ ] **T7.4** `./init.sh` en verde tras revertir toda mutación, y `git status` sin ninguna. **Hecho:** salida pegada. El
+- [x] **T7.4** `./init.sh` en verde tras revertir toda mutación, y `git status` sin ninguna. **Hecho:** salida pegada. El
   `gate-completo` lo da el PR, que abre el leader tras el OK del reviewer.
 - [ ] **T7.5 (leader, antes del PR a `prod`)** T0 de `design §9`: `REINTENTOS_MIN_INTENTOS` en producción, solo si existe y si vale
   3. **Hecho:** resultado con fecha en `progress/features/SLT-77.md`; con otro valor, se para y se pregunta.
