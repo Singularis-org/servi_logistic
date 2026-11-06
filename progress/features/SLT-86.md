@@ -35,6 +35,7 @@ Ninguna.
 
 - 2026-11-05 · «Cancelar cambio» con historial + docs + T10–T12 (formulario, catálogo/detalle/empresa, Mi plan/consumo/lista) · 0d7550b5, 1c63f8ce, ac39059b, dc3fa6fa, 3033a6a1 · 378/378 en 27 archivos; typecheck 8 errores, todos en `e2e/` (T13). El agente se cortó antes de T13.
 - 2026-11-06 · Ajustes de textos (período, modal de «Cancelar cambio», aviso de empresa) + T13 · 983a3bf2, 782c82b3 · typecheck 0; vitest 225/225 UI + 27/27 mensajes; test:guardias solo el rojo del baseline; E2E de planes 35/35 en dos corridas sobre servi_logistic_slt86_e2e. `next build` necesita NODE_OPTIONS=--max-old-space-size=8192.
+- 2026-11-06 · «Inicio del período» + texto de validación + adapta 5 tests rezagados (esquemas, tipo-cobro, deuda-plataforma-plan) · c3ed2864, 03cf33d9, 9d37d387 · typecheck 0; E2E planes 27/27; barrido por lotes de plan/cobro/consumo (~480 archivos): solo rojos del baseline. F2.2 reviewer lanzado.
 
 ## Modelos (overrides)
 
