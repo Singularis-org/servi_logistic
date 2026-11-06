@@ -23,6 +23,8 @@ F1.4 (2026-11-05): spec aprobado («Aprobado, espera a SLT-83»). F2.1 arranca c
 
 - 2026-11-06 · (humano, tras T12) «Costo del ciclo», «Órdenes del ciclo: …», «Total estimado del ciclo: …» y «Órdenes del ciclo sin estado final: …» pasan a «período». Aprobados los recortes de los modales «Cambiar plan» y «Cambiar tipo de cobro». «Cancelar cambio» pide confirmación con modal («¿Cancelar el cambio a {plan} programado para el {fecha}?»). En el detalle de empresa, `sin_cambio_programado` dice «La empresa ya no tiene un cambio pendiente.». El resto de avisos de forma de T10–T12 los acepta el leader.
 
+- 2026-11-06 · (humano, tras T13) «Inicio del ciclo de órdenes» pasa a «Inicio del período». Botones del modal de «Cancelar cambio»: «Cancelar cambio» (destructive) / «Volver». El tramo proporcional no lleva E2E: basta con los tests unitarios y de base.
+
 ## Preguntas abiertas
 Ninguna.
 
@@ -32,6 +34,7 @@ Ninguna.
 - 2026-11-05 · T5–T9 (costo/tramo, costeo/consumo, rastro/mensajes, cambios de empresa con fecha + job, precio con fecha e historial, lecturas) · a226affb…51880c5b · 60 archivos en verde (221 + 919 casos), guardias de esquema 184/184, test:guardias solo el rojo del baseline; typecheck 121 errores, todos de T10–T13. Aviso: `plan-de-la-empresa-porcentual` R25 (SLT-83) inestable en corrida conjunta, fuera del baseline.
 
 - 2026-11-05 · «Cancelar cambio» con historial + docs + T10–T12 (formulario, catálogo/detalle/empresa, Mi plan/consumo/lista) · 0d7550b5, 1c63f8ce, ac39059b, dc3fa6fa, 3033a6a1 · 378/378 en 27 archivos; typecheck 8 errores, todos en `e2e/` (T13). El agente se cortó antes de T13.
+- 2026-11-06 · Ajustes de textos (período, modal de «Cancelar cambio», aviso de empresa) + T13 · 983a3bf2, 782c82b3 · typecheck 0; vitest 225/225 UI + 27/27 mensajes; test:guardias solo el rojo del baseline; E2E de planes 35/35 en dos corridas sobre servi_logistic_slt86_e2e. `next build` necesita NODE_OPTIONS=--max-old-space-size=8192.
 
 ## Modelos (overrides)
 
