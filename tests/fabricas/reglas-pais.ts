@@ -16,7 +16,7 @@ export interface ReglasPaisFijas {
   tiposDocumento: readonly TipoDocumentoDTO[];
 }
 
-/** Los cinco tipos de Costa Rica de la migración `20261104140100` (R3), con ids fijos de test. */
+/** Los cinco tipos de Costa Rica de la migración `20261106120100` (R3), con ids fijos de test. */
 const TIPOS_CR: readonly TipoDocumentoDTO[] = [
   { id: "tipo-cr-cedula", value: "cedula", paisId: "CR", clave: "cedula_fisica", nombre: "Cédula física", caracteres: "digitos", largoMin: 9, largoMax: 9, activo: true },
   { id: "tipo-cr-ruc", value: "ruc", paisId: "CR", clave: "cedula_juridica", nombre: "Cédula jurídica", caracteres: "digitos", largoMin: 10, largoMax: 10, activo: true },

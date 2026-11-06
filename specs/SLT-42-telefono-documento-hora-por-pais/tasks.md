@@ -21,26 +21,26 @@
   <> 'CR'` → 0. El resultado de las tres se anota en `progress/features/SLT-42.md`. Además, antes
   del deploy:
   1. **Índice concurrente:** si la tercera comprobación (`SELECT count(*) FROM usuario`) pasa de
-     100 000 filas, el `CREATE UNIQUE INDEX` de `20261104140200` se cambia a `CONCURRENTLY` fuera de
+     100 000 filas, el `CREATE UNIQUE INDEX` de `20261106120200` se cambia a `CONCURRENTLY` fuera de
      transacción (`design.md` §2.4) antes de aplicarla.
   2. **Ensayo:** las tres migraciones y sus `down.sql` se ensayan sobre una copia de producción, nunca
      sobre producción (`design.md` §2.5).
   3. **Corte de postulaciones:** `POSTULACION_VALIDADA_POR_PAIS_DESDE`
-     (`lib/config/aprobacion-postulaciones.ts`, hoy `2026-11-04T14:00Z`) se ajusta al instante real del
+     (`lib/config/aprobacion-postulaciones.ts`, hoy `2026-11-06T12:00Z`) se ajusta al instante real del
      deploy, igual o posterior a él: las postulaciones recibidas después ya se validaron con el país al
      recibirlas. Fijarlo exige un commit antes del deploy (decisión «tras tanda 2b» punto 1).
   *Hecho:* las tres comprobaciones dan lo esperado, el ensayo pasa y el corte está fijado en un commit.
   Si aparece una empresa fuera de CR, se para y decide el humano: T1.1–T1.3 no se aplican fuera de la
   base de test hasta entonces.
 
-- [x] **T1.1** Migración `20261104140000_slt42_pais_telefono_y_zona` + `down.sql` + `model Pais` en
+- [x] **T1.1** Migración `20261106120000_slt42_pais_telefono_y_zona` + `down.sql` + `model Pais` en
   `db/schema.prisma` (`design.md` §2.1).
   *Hecho:* sube, baja y vuelve a subir en la base de test; CR queda con 506 / 8 / `America/Costa_Rica`.
-- [x] **T1.2** Migración `20261104140100_slt42_tipo_documento_por_pais` + `down.sql` + `model
+- [x] **T1.2** Migración `20261106120100_slt42_tipo_documento_por_pais` + `down.sql` + `model
   TipoIdentificacion` (§2.2): precondición, columnas, filas de CR, índices y política restrictiva.
   *Hecho:* el `down` aborta si un usuario usa `dimex`/`nite`; sin usuarios, vuelve al esquema exacto
   de antes.
-- [x] **T1.3** Migración `20261104140200_slt42_usuario_documento_unico_por_tipo` + `down.sql` (§2.3).
+- [x] **T1.3** Migración `20261106120200_slt42_usuario_documento_unico_por_tipo` + `down.sql` (§2.3).
   *Hecho:* el `down` aborta con repetidos de `(organizacion_id, cedula)`; la guardia
   `unicos-por-empresa` en verde. Si para entonces existe la guardia de migraciones destructivas, el
   `DROP INDEX` figura en su lista de excepciones con la ficha SLT-42 (excepción P4, `design.md` §2.3).
@@ -169,12 +169,12 @@ Orden sugerido. Cada task deja su grupo en verde con sus tests de hoy, inyectand
 ## Archivos esperados
 
 Nuevos:
-- `db/migrations/20261104140000_slt42_pais_telefono_y_zona/migration.sql`
-- `db/migrations/20261104140000_slt42_pais_telefono_y_zona/down.sql`
-- `db/migrations/20261104140100_slt42_tipo_documento_por_pais/migration.sql`
-- `db/migrations/20261104140100_slt42_tipo_documento_por_pais/down.sql`
-- `db/migrations/20261104140200_slt42_usuario_documento_unico_por_tipo/migration.sql`
-- `db/migrations/20261104140200_slt42_usuario_documento_unico_por_tipo/down.sql`
+- `db/migrations/20261106120000_slt42_pais_telefono_y_zona/migration.sql`
+- `db/migrations/20261106120000_slt42_pais_telefono_y_zona/down.sql`
+- `db/migrations/20261106120100_slt42_tipo_documento_por_pais/migration.sql`
+- `db/migrations/20261106120100_slt42_tipo_documento_por_pais/down.sql`
+- `db/migrations/20261106120200_slt42_usuario_documento_unico_por_tipo/migration.sql`
+- `db/migrations/20261106120200_slt42_usuario_documento_unico_por_tipo/down.sql`
 - `lib/utils/calendario-zona.ts`
 - `lib/utils/telefono-pais.ts`
 - `lib/utils/documento.ts`

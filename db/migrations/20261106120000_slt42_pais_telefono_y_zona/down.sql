@@ -1,8 +1,8 @@
--- DOWN (SLT-42, design §2.4) — revierte 20261104140000_slt42_pais_telefono_y_zona.
+-- DOWN (SLT-42, design §2.4) — revierte 20261106120000_slt42_pais_telefono_y_zona.
 --
 -- Solo borra lo que creó la subida: los dos CHECK y las tres columnas. Ninguna fila de `pais` se
 -- pierde y sus columnas de antes no cambiaron nunca. Va DESPUÉS del down de
--- 20261104140100_slt42_tipo_documento_por_pais (orden inverso).
+-- 20261106120100_slt42_tipo_documento_por_pais (orden inverso).
 
 BEGIN;
 

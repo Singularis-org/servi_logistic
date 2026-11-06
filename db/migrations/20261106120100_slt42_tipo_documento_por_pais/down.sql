@@ -1,4 +1,4 @@
--- DOWN (SLT-42, design §2.4) — revierte 20261104140100_slt42_tipo_documento_por_pais.
+-- DOWN (SLT-42, design §2.4) — revierte 20261106120100_slt42_tipo_documento_por_pais.
 --
 -- ABORTA SI ALGÚN USUARIO USA DIMEX O NITE. Esas dos filas nacieron en la subida y el down las
 -- borra; con un usuario apuntándolas no hay a qué tipo de antes devolverlo sin cambiar su documento,
@@ -9,7 +9,7 @@
 -- subida pudo haber insertado «ruc» y «pasaporte»; tampoco se borran: el down no sabe si existían
 -- antes (las sembraba `db:seed` hasta SLT-42) y borrarlas podría llevarse una fila previa (R8).
 --
--- Va DESPUÉS del down de 20261104140200 y ANTES del de 20261104140000 (orden inverso).
+-- Va DESPUÉS del down de 20261106120200 y ANTES del de 20261106120000 (orden inverso).
 
 BEGIN;
 

@@ -39,11 +39,11 @@ import {
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
-/** La última de `origin/dev` al integrarla (merge bb2f9883): las de SLT-42 van detrás. */
-const ULTIMA_ANTERIOR = "20261104130100_historial_accion_plan_tipo_cobro_cambiado";
-const M_PAIS = "20261104140000_slt42_pais_telefono_y_zona";
-const M_TIPOS = "20261104140100_slt42_tipo_documento_por_pais";
-const M_UNICO = "20261104140200_slt42_usuario_documento_unico_por_tipo";
+/** La última de `origin/dev` al integrarla (F2.3, 2026-11-06): las de SLT-42 van detrás. */
+const ULTIMA_ANTERIOR = "20261104150200_cobro_plataforma_porcentual_funciones";
+const M_PAIS = "20261106120000_slt42_pais_telefono_y_zona";
+const M_TIPOS = "20261106120100_slt42_tipo_documento_por_pais";
+const M_UNICO = "20261106120200_slt42_usuario_documento_unico_por_tipo";
 const DE_SLT42 = [M_PAIS, M_TIPOS, M_UNICO];
 
 const BASE = `slt42_iv_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
