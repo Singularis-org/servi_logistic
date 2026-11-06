@@ -11,6 +11,7 @@ import type { IFileStorage } from "@/lib/interfaces/external/IFileStorage";
 import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlProvider";
 import type { AutenticadorApiKey } from "@/lib/api/api-key-request";
 import { ORDEN_MODULOS } from "@/lib/modulos/catalogo";
+import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograficoRepository";
 import { CupoPlanRepository } from "@/lib/repositories/CupoPlanRepository";
 import { OrdenDiaRepartoCambioRepository } from "@/lib/repositories/OrdenDiaRepartoCambioRepository";
 import { OrdenHistorialRepository } from "@/lib/repositories/OrdenHistorialRepository";
@@ -319,7 +320,15 @@ function depsDeCarga(cli: PrismaClient, autenticar: AutenticadorApiKey): CargaAp
   );
   return {
     autenticar,
-    bulkService: new BulkOrdenService(ordenRepo, new TarifaVigenteRepository(cli), undefined, new CupoPlanRepository(cli)),
+    // SLT-45 (T4.2): con el catalogo, como en produccion: la comprobacion de forma del pais (R5)
+    // corre y, para Costa Rica, no cambia ni un byte (R2).
+    bulkService: new BulkOrdenService(
+      ordenRepo,
+      new TarifaVigenteRepository(cli),
+      undefined,
+      new CupoPlanRepository(cli),
+      new CatalogoGeograficoRepository(cli),
+    ),
     descargaService: new EtiquetasDescargaService(pdf, ordenRepo),
     manifiestoService: new ManifiestoService(
       ordenRepo,
@@ -367,7 +376,11 @@ async function ejecutar(base: PrismaClient, p: Payload): Promise<RespuestaDePaso
             ? await handleCargaApi(peticion(paso), depsDeCarga(cli, autenticar))
             : await handleCotizacionApi(peticion(paso), {
                 autenticar,
-                cotizacionService: new CotizacionOrdenService(new OrdenRepository(cli), new TarifaVigenteRepository(cli)),
+                cotizacionService: new CotizacionOrdenService(
+                  new OrdenRepository(cli),
+                  new TarifaVigenteRepository(cli),
+                  new CatalogoGeograficoRepository(cli),
+                ),
               });
         salida.push({ ruta: paso.ruta, status: res.status, cuerpo: (await res.json()) as unknown });
       }

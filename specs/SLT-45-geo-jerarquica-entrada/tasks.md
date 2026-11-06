@@ -60,7 +60,7 @@
   `CotizacionOrdenService` (§2.3); cablearlo en los composition roots de `carga`, `cotizacion` y
   `carga-masiva/chunk`; test de composición.
   *Hecho:* el test de composición falla si se quita el parámetro de cualquiera de las rutas.
-- [ ] **T4.2** Comprobación de forma de país en v1 (R5) y rama del motor en `resolveFila` (§2.3).
+- [x] **T4.2** Comprobación de forma de país en v1 (R5) y rama del motor en `resolveFila` (§2.3).
   *Hecho:* contrato de T1.3 en verde sin regrabar.
 - [ ] **T4.3** `cargarViaApiV2` y `cotizarV2` + tipos y zod en `lib/types/api-v2.ts` (§4.2), con
   `ubicacion` en la salida (§4.3).

@@ -57,6 +57,11 @@ import {
 } from "@/lib/utils/ingreso-empresa";
 import { serializarMontoCotizacion } from "@/lib/utils/monto-cotizacion";
 import type { ICatalogoGeograficoRepository } from "@/lib/interfaces/repositories/ICatalogoGeograficoRepository";
+import {
+  CLAVE_UBICACION,
+  MSG_PAIS_NO_HABILITADO,
+  esPaisDeTresNiveles,
+} from "@/lib/services/geo-ubicacion";
 
 /**
  * R29 — la cotizacion asume que la orden que se crearia COBRA comision, que es el `default
@@ -216,6 +221,30 @@ export class CotizacionOrdenService implements ICotizacionOrdenService {
     // real si la key apunta a una. Es lo que hace que la cotizacion salga con LA tarifa de esa
     // tienda y no con la de una cuenta recien creada que no tiene ninguna.
     const tiendaId = actor.usuarioId;
+
+    // SLT-45 R5 (design §2.1) — LA FORMA DEL PAIS, antes de resolver ninguna fila. Si el pais de la
+    // empresa no es de 3 niveles, cada fila sale con el error de pais no habilitado bajo
+    // `ubicacion`, sin importes y sin pedir tarifa (no es el 409: ninguna fila llego a la tarifa,
+    // R36 de la 274). Para un pais de 3 niveles pasa y nada cambia (R2). Sin catalogo inyectado
+    // (dobles de tests anteriores) no se comprueba.
+    if (this.catalogoRepo !== undefined) {
+      const { catalogo } = await this.catalogoRepo.deLaEmpresa();
+      if (!esPaisDeTresNiveles(catalogo)) {
+        const errores: CotizacionFilaError[] = rows.map((raw, idx) => {
+          const numRemisionCrudo = (raw.num_remision ?? "").trim();
+          return {
+            fila: idx + 1,
+            numRemision: numRemisionCrudo === "" ? null : numRemisionCrudo,
+            resultado: "error",
+            errores: { [CLAVE_UBICACION]: [MSG_PAIS_NO_HABILITADO] },
+          };
+        });
+        return {
+          status: "ok",
+          resumen: { total: rows.length, cotizadas: 0, conError: errores.length, filas: [], errores },
+        };
+      }
+    }
 
     // Feature 274/R32 (design §4.4) — EL ORDEN SE INVIRTIO. Hasta la 273 la tarifa se resolvia
     // ANTES que la geografia, y se podia: era una sola tarifa por tienda, asi que no necesitaba

@@ -53,8 +53,7 @@ import {
   normalize,
   resolveGeo,
   type GeoInput,
-  type GeoInputExtractor,
-  type GeoResult,
+  type ResolvedGeo,
 } from "@/lib/services/geo-resolucion";
 import { parseCantonDistrito } from "@/lib/utils/canton-distrito";
 import {
@@ -69,7 +68,39 @@ import {
   type ICupoPlanRepository,
 } from "@/lib/interfaces/repositories/ICupoPlanRepository";
 import { TopeDelPlanAlcanzado, traducirErrorDeTope } from "@/lib/planes/tope-error";
-import type { ICatalogoGeograficoRepository } from "@/lib/interfaces/repositories/ICatalogoGeograficoRepository";
+import type {
+  CatalogoYAsignaciones,
+  ICatalogoGeograficoRepository,
+} from "@/lib/interfaces/repositories/ICatalogoGeograficoRepository";
+import {
+  CLAVE_UBICACION,
+  MSG_PAIS_NO_HABILITADO,
+  esPaisDeTresNiveles,
+  resolverUbicacion,
+  type EntradaUbicacion,
+} from "@/lib/services/geo-ubicacion";
+
+/**
+ * SLT-45 (design §2.3) — lo que devuelve el extractor de una via que resuelve con el motor de N
+ * niveles (v2 y la carga de sesion de un pais que no es de forma CR): la ubicacion por ruta o por
+ * codigo y la direccion literal. Las vias de `resolveGeo` siguen devolviendo la terna de hoy.
+ */
+export type EntradaDelMotor = { ok: true; entrada: EntradaUbicacion; direccion: string };
+
+/** El extractor de geografia de una via: la terna de `resolveGeo`, una entrada del motor o un error. */
+export type ExtractorDeFila = (raw: RawRow) => GeoInput | EntradaDelMotor;
+
+/**
+ * SLT-45 (design §2.3) — una via del motor sin catalogo es un error de CONFIGURACION del composition
+ * root, no de la fila: nunca se degrada en silencio a `resolveGeo`.
+ */
+export const MSG_MOTOR_SIN_CATALOGO =
+  "configuracion: la resolucion por ubicacion necesita el catalogo geografico de la empresa";
+
+/** La geografia de una fila ya resuelta, venga de `resolveGeo` o del motor. */
+type GeografiaDeFila =
+  | { ok: true; geo: ResolvedGeo; nodoGeograficoId: string; direccion: string }
+  | { ok: false; fieldErrors: Record<string, string[]> };
 
 /** SL-17 (D15): la tienda de la carga no existe para la empresa en curso. */
 export const MSG_TIENDA_NO_ENCONTRADA = "tienda no encontrada";
@@ -135,6 +166,9 @@ interface PreloadedContext {
   // Feature 27/R18/R19 + 155/R4/R16: `value` del estatus inicial resuelto UNA sola vez por
   // LOTE (nunca por fila), reportado por fila creada y en el dedup.
   estatusInicialValue: string;
+  // SLT-45 (design §2.3): el catalogo y las asignaciones de la empresa, leidos una vez por lote.
+  // Solo los usa la rama del motor de `resolveFila`; ausente si el servicio no tiene catalogo.
+  geografia?: CatalogoYAsignaciones;
 }
 
 /**
@@ -454,6 +488,26 @@ export class BulkOrdenService implements IBulkOrdenService {
     // duplicarse porque sus ordenes por API nacen con SU `tienda_id`, con su wallet y sus tarifas.
     const tiendaId = actor.usuarioId;
 
+    // SLT-45 R5 (design §2.1) — LA FORMA DEL PAIS, antes de resolver ninguna fila. v1 habla de
+    // provincia, canton y distrito: si el pais de la empresa no es de 3 niveles, cada fila sale con
+    // el error de pais no habilitado bajo `ubicacion` y no se crea nada (ni orden ni lote). Para un
+    // pais de 3 niveles la comprobacion pasa y la respuesta es la de siempre (R2). Sin catalogo
+    // inyectado (dobles de tests anteriores) no se comprueba.
+    const geografia = await this.catalogoRepo?.deLaEmpresa();
+    if (geografia !== undefined && !esPaisDeTresNiveles(geografia.catalogo)) {
+      const filas: CargaViaApiRow[] = rows.map((raw, idx) => ({
+        fila: idx + 1,
+        numRemision: (raw.num_remision ?? "").trim(),
+        resultado: "error",
+        errores: { [CLAVE_UBICACION]: [MSG_PAIS_NO_HABILITADO] },
+      }));
+      return {
+        status: "ok",
+        summary: this.buildViaApiSummary(rows.length, filas, [], null),
+        manifiestoOrdenIds: [],
+      };
+    }
+
     // FULFILLMENT (2026-08-25) — EL PREDICADO DE ESTA VIA ES LA TARIFA, NO EL FLAG DEL USUARIO.
     //
     // La feature 155 dejo escrito que la rama (a) de esta via era "defensiva y hoy inalcanzable",
@@ -475,7 +529,7 @@ export class BulkOrdenService implements IBulkOrdenService {
     const destinoConFulfillment = resolverDestinoCreacion(true);
 
     const [ctx, estatusIdConFulfillment] = await Promise.all([
-      this.precargar(rows, destinoSinFulfillment.estatus, tiendaId),
+      this.precargar(rows, destinoSinFulfillment.estatus, tiendaId, geografia),
       this.repo.findEstatusIdByValue(destinoConFulfillment.estatus),
     ]);
 
@@ -885,8 +939,9 @@ export class BulkOrdenService implements IBulkOrdenService {
     raw: RawRow,
     ctx: PreloadedContext,
     seen: Map<string, string>,
-    // Feature 142 (design.md §4): la via decide de donde sale la geografia.
-    geoInputOf: GeoInputExtractor,
+    // Feature 142 (design.md §4): la via decide de donde sale la geografia. SLT-45 (§2.3): la via
+    // tambien decide CON QUE se resuelve — la terna va a `resolveGeo`, una entrada al motor.
+    geoInputOf: ExtractorDeFila,
   ):
     | { status: "error"; numRemision: string; errores: Record<string, string[]> }
     | { status: "duplicada"; numRemision: string; estatus: string }
@@ -975,21 +1030,13 @@ export class BulkOrdenService implements IBulkOrdenService {
     // invalido de `canton_distrito`), la fila va a error con SU clave, sin llegar a
     // resolveGeo. Si tiene exito, resolveGeo recibe exactamente los mismos 3
     // nombres de siempre (R33-R36, mensajes intactos).
-    const geoInput = geoInputOf(raw);
-    const geoResult: GeoResult = geoInput.ok
-      ? resolveGeo(geoInput, ctx.provinciaIndex, ctx.cantonIndex, ctx.distritoIndex)
-      : { ok: false, fieldErrors: geoInput.fieldErrors };
-
-    const fieldErrors: Record<string, string[]> = {};
-    if (!geoResult.ok) Object.assign(fieldErrors, geoResult.fieldErrors);
-    if (Object.keys(fieldErrors).length > 0) {
-      return { status: "error", numRemision: data.num_remision, errores: fieldErrors };
+    // SLT-45 (design §2.3): con una entrada del motor, resuelve el motor de N niveles; con la terna,
+    // `resolveGeo` como siempre (mismos mensajes, R3).
+    const geografia = this.resolverGeografia(geoInputOf(raw), ctx);
+    if (!geografia.ok) {
+      return { status: "error", numRemision: data.num_remision, errores: { ...geografia.fieldErrors } };
     }
-    // Invariante: fieldErrors vacio implica que geoResult resolvio "ok" (su rama
-    // !ok es la unica que agrega claves a fieldErrors). Y un geoResult ok implica
-    // un geoInput ok (es su unica fuente).
-    const geo = (geoResult as Extract<GeoResult, { ok: true }>).geo;
-    const direccionLiteral = (geoInput as Extract<GeoInput, { ok: true }>).direccion;
+    const { geo, nodoGeograficoId, direccion: direccionLiteral } = geografia;
 
     // R26: dedup intra-archivo, primera ocurrencia gana; reporta el mismo
     // estatus que se reporto/reportara para la ganadora.
@@ -1025,8 +1072,9 @@ export class BulkOrdenService implements IBulkOrdenService {
         provinciaId: geo.provinciaId,
         cantonId: geo.cantonId,
         distritoId: geo.distritoId,
-        // SLT-45 (design §3.1, R25): la via de `resolveGeo` deriva el nodo de su terna.
-        nodoGeograficoId: geo.distritoId ?? geo.cantonId,
+        // SLT-45 (design §3.1, R25): `distritoId ?? cantonId` por `resolveGeo`; el nodo resuelto
+        // por el motor (con sus 3 FK de `fksDeNodo`).
+        nodoGeograficoId,
         producto: reparados.producto ?? data.producto,
         peso: null, // R4: la carga masiva no trae peso
         // Ficha 383/R16: `notas` NO se evalua y se guarda TAL CUAL, emoji incluido: no se
@@ -1047,6 +1095,7 @@ export class BulkOrdenService implements IBulkOrdenService {
     rows: RawRow[],
     estatusInicialValue: string,
     tiendaId: string,
+    geografia?: CatalogoYAsignaciones, // SLT-45: para la rama del motor de `resolveFila`
   ): Promise<PreloadedContext> {
     const numRemisiones = distinct(rows.map((r) => (r.num_remision ?? "").trim()).filter(Boolean));
 
@@ -1074,6 +1123,46 @@ export class BulkOrdenService implements IBulkOrdenService {
       distritoIndex,
       estatusId,
       estatusInicialValue,
+      ...(geografia !== undefined ? { geografia } : {}),
+    };
+  }
+
+  /**
+   * SLT-45 (design §2.3) — la geografia de una fila por la via que toque. Con la terna de hoy,
+   * `resolveGeo` y el nodo `distritoId ?? cantonId` (§2.1, R25). Con una entrada del motor, el motor
+   * de N niveles y el nodo resuelto, con las 3 FK de `fksDeNodo` (§3.1). Un extractor que falla
+   * deja la fila en error con SU clave, sin llegar a resolver (feature 142/R29).
+   */
+  private resolverGeografia(entrada: GeoInput | EntradaDelMotor, ctx: PreloadedContext): GeografiaDeFila {
+    if (!entrada.ok) return { ok: false, fieldErrors: entrada.fieldErrors };
+
+    if ("entrada" in entrada) {
+      if (ctx.geografia === undefined) throw new Error(MSG_MOTOR_SIN_CATALOGO);
+      const r = resolverUbicacion(entrada.entrada, ctx.geografia.catalogo, ctx.geografia.asignaciones);
+      if (!r.ok) return r;
+      const { u } = r;
+      return {
+        ok: true,
+        geo: {
+          provinciaId: u.fks.provinciaId,
+          cantonId: u.fks.cantonId,
+          distritoId: u.fks.distritoId,
+          zonaId: u.zona.id,
+          esCentral: u.zona.esCentral,
+          esZonaEspecial: u.esZonaEspecial,
+        },
+        nodoGeograficoId: u.nodo.id,
+        direccion: entrada.direccion,
+      };
+    }
+
+    const r = resolveGeo(entrada, ctx.provinciaIndex, ctx.cantonIndex, ctx.distritoIndex);
+    if (!r.ok) return r;
+    return {
+      ok: true,
+      geo: r.geo,
+      nodoGeograficoId: r.geo.distritoId ?? r.geo.cantonId,
+      direccion: entrada.direccion,
     };
   }
 }
