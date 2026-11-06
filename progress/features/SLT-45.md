@@ -47,6 +47,10 @@ T9 (payloads reales desde la copia de producción) la hace una persona, no un ag
 - 2026-11-06 · T3.2 cierre, T4.1–T4.4 · `78dca2e0`…`5074662c` · tsc 0; contrato v1 22/22, fixtures intactos;
   tests por nombre verdes. Rojo: guardia `geografia-lecturas-sin-nodo-fk` desde T3.1 (se arregla al
   empezar T5). 4 suites de integración paran por base sin `orden`/`usuario` (el seed solo crea catálogos).
+- 2026-11-06 · guardia SLT-65 acotada + T5.1–T5.8 · `9a946dd5`…`75bc0228` · tsc 0; eslint 0; guardias 237
+  archivos en lotes, único rojo `dependencias-declaradas-presentes` (baseline); contrato v1 22/22; suites v2
+  62/62 contra Postgres. `buildDetallePorOrdenId` movido a `lib/api/api-orden-detalle.ts`. Huecos: R13
+  «ambiguo» solo en unit (índice único lo impide en base); R17 cupo sin caso propio en `v2-ordenes`.
 
 ## Modelos (overrides)
 
