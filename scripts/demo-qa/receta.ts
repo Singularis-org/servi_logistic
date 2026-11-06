@@ -83,7 +83,7 @@ import { ORDER_STATUS_SEED } from "@/lib/types/order-status";
 import { rechazarNovedadSchema } from "@/lib/types/rechazo-tienda";
 import { crearTarifaSchema } from "@/lib/types/tarifa";
 import { registrarEgresoConLateralesSchema } from "@/lib/types/wallet-laterales";
-import { fechaCalendarioCR, ZONA_CR } from "@/lib/utils/fecha-cr";
+import { fechaCalendario } from "@/lib/utils/calendario-zona";
 import { crearEmpresa, crearUsuario, type EmpresaCreada, type UsuarioCreado } from "@/tests/fabricas/empresa-y-usuarios";
 import { escenarioCierres, solicitarCierre } from "@/tests/fabricas/escenarios/cierres";
 import {
@@ -1020,13 +1020,14 @@ export async function crearEmpresaDemo(
 
   async function registrarDinero(): Promise<void> {
     const caja = new WalletMovimientoRepository(app);
-    // El día calendario de la app: el de las fechas de pago y del aporte.
-    const hoy = fechaCalendarioCR(ahora());
+    // SLT-42 (R22): la zona horaria del pais de la empresa de la demo, leida una vez en su contexto.
+    const zona = await conEmpresa(org, () => construirReglasPaisEmpresa(app).zonaHoraria());
+    // El día calendario de la empresa: el de las fechas de pago y del aporte.
+    const hoy = fechaCalendario(ahora(), zona);
     const comprobante = { contentType: "image/jpeg", bytes: bytesEvidencia };
 
     // Aporte de capital con su comprobante en Storage.
-    // SLT-42 pendiente T6: zona de la empresa
-    const aporte = registrarAporteCapitalSchema(ZONA_CR).parse({
+    const aporte = registrarAporteCapitalSchema(zona).parse({
       claveIdempotencia: randomUUID(),
       clase: "aporte",
       monto: APORTE_CAPITAL,
@@ -1068,8 +1069,7 @@ export async function crearEmpresaDemo(
           buildComprobantes(app),
           construirReglasPaisEmpresa(app), // SLT-42 (R22): la zona horaria del pais de la empresa.
         ).registrarPagoMensajero(
-          // SLT-42 pendiente T6: zona de la empresa
-          registrarPagoMensajeroSchema(ZONA_CR).parse({
+          registrarPagoMensajeroSchema(zona).parse({
             cierreId: cierreCentral,
             claveIdempotencia: randomUUID(),
             monto: PAGO_A_MENSAJERO,
@@ -1082,8 +1082,7 @@ export async function crearEmpresaDemo(
     );
 
     // Abono de la tienda con bodega.
-    // SLT-42 pendiente T6: zona de la empresa
-    const abono = registrarAbonoTiendaSchema(ZONA_CR).parse({
+    const abono = registrarAbonoTiendaSchema(zona).parse({
       claveIdempotencia: randomUUID(),
       tiendaId: escenario.tienda.id,
       monto: ABONO_DE_TIENDA,
@@ -1123,8 +1122,7 @@ export async function crearEmpresaDemo(
           new TopePagoPlataformaService(new CobroPlataformaMovimientoRepository(app), new PagoPlataformaRepository(app)),
           construirReglasPaisEmpresa(app), // SLT-42 (R22): la zona horaria del pais de la empresa.
         ).registrarEgreso(
-          // SLT-42 pendiente T6: zona de la empresa
-          registrarEgresoConLateralesSchema(ZONA_CR).parse({
+          registrarEgresoConLateralesSchema(zona).parse({
             tipoEgreso: "pago_plataforma",
             monto: PAGO_A_LA_PLATAFORMA,
             descripcion: "Pago a la plataforma de la demo",

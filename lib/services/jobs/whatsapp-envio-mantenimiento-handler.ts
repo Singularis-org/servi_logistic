@@ -31,6 +31,8 @@ export function proximaCorridaMantenimiento(now: Date): Date {
   return hoy.getTime() > now.getTime() ? hoy : new Date(hoy.getTime() + UN_DIA_MS);
 }
 
+// SLT-42 (design §6.1): ignora las `zonas` de la cola. Corre a hora fija UTC, una vez para todas las
+// empresas; la hora de cada envio ya la lee el handler en la zona de su empresa.
 export const recurrenciaWhatsappEnvioMantenimiento: RecurrenciaSpec = {
   siguiente(now: Date) {
     const runAfter = proximaCorridaMantenimiento(now);

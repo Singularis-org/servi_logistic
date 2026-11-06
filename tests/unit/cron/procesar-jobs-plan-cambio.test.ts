@@ -101,12 +101,12 @@ describe("SL-24 — registro de los trabajos del cambio programado (R38, R44)", 
   });
 
   it("el barrido se re-agenda a la siguiente hora en punto, con la hora en la clave", () => {
-    expect(recurrenciaPlanCambiosVencidos.siguiente(new Date("2026-11-15T06:30:00.000Z"))).toEqual({
+    expect(recurrenciaPlanCambiosVencidos.siguiente(new Date("2026-11-15T06:30:00.000Z"), [])).toEqual({
       runAfter: new Date("2026-11-15T07:00:00.000Z"),
       dedupeKey: "plan_cambios_vencidos:2026-11-15T07",
     });
     // En la hora en punto exacta, la siguiente (estrictamente posterior).
-    expect(recurrenciaPlanCambiosVencidos.siguiente(new Date("2026-11-15T07:00:00.000Z")).runAfter).toEqual(
+    expect(recurrenciaPlanCambiosVencidos.siguiente(new Date("2026-11-15T07:00:00.000Z"), []).runAfter).toEqual(
       new Date("2026-11-15T08:00:00.000Z"),
     );
     expect(RECURRENTES_DE_PLATAFORMA.has("plan_cambios_vencidos")).toBe(true);

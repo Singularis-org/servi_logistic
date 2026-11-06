@@ -29,15 +29,25 @@ import { cacheNula } from "@/lib/cache/cache-nula";
 import { TAGS_OPERATIVA } from "@/lib/analytics/cache-tags";
 import type { IAnaliticaCache } from "@/lib/interfaces/external/IAnaliticaCache";
 
-import { ZONA_CR } from "@/lib/utils/fecha-cr";
-// CR es UTC-6 fijo (sin horario de verano): 00:30 CR == 06:30 UTC.
-const CR_OFFSET_MS = 6 * 60 * 60 * 1000;
-const CORRIDA_HORA_UTC = 6;
-const CORRIDA_MINUTO_UTC = 30;
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
+import { sumarDiasCalendario } from "@/lib/utils/calendario-zona";
+import {
+  instanteDeLaCorrida,
+  leerClaveConZona,
+  proximaCorridaPorZona,
+  zonaLlegaALaHora,
+  type HoraObjetivo,
+} from "@/lib/services/jobs/serie-diaria-por-zona";
+import { DEDUPE_PREFIX } from "@/lib/services/jobs/analitica-rollup-diario-encolado";
+
+/** 00:30 locales: la hora objetivo de la serie (D3). */
+export const HORA_ROLLUP: HoraObjetivo = { hora: 0, minuto: 30 };
 
 /**
- * D3 — proxima corrida = **00:30 America/Costa_Rica del dia siguiente** (06:30 UTC),
- * ESTRICTAMENTE posterior a `now`.
+ * D3 — proxima corrida = **00:30 locales del dia siguiente**, ESTRICTAMENTE posterior a `now`, de
+ * la zona que antes llega a esa hora entre las de los paises con empresas (SLT-42, R25). Con solo
+ * Costa Rica, las 06:30 UTC de siempre (R26).
  *
  * Por que 00:30 y no 00:00: `vercel.json` arranca `corte-diario` y `generar-gastos-fijos` a
  * las `0 6 * * *` (00:00 CR). Media hora de margen contra el ARRANQUE del corte —no contra su
@@ -45,35 +55,20 @@ const CORRIDA_MINUTO_UTC = 30;
  * transiciones `corte_sin_gestionar` caen en el corte exacto y la cota estricta las deja
  * fuera), pero si la deriva de las tres coordenadas que NO se congelan: cuanto antes corra,
  * menos deriva acumulan.
- *
- * `now` cae siempre dentro del dia CR que arranca a las `D 06:00 UTC`, asi que `D+1 06:30
- * UTC` es SIEMPRE posterior: no hace falta un bucle de avance.
  */
-export function proximaCorridaRollupCR(now: Date): Date {
-  const crWall = new Date(now.getTime() - CR_OFFSET_MS);
-  return new Date(
-    Date.UTC(
-      crWall.getUTCFullYear(),
-      crWall.getUTCMonth(),
-      crWall.getUTCDate() + 1,
-      CORRIDA_HORA_UTC,
-      CORRIDA_MINUTO_UTC,
-      0,
-      0,
-    ),
-  );
+export function proximaCorridaRollup(now: Date, zonas: readonly string[]): { runAfter: Date; zona: string } {
+  return proximaCorridaPorZona(now, zonas, HORA_ROLLUP);
 }
 
 /**
- * R36 — registro de recurrencia. El `dedupeKey` lleva la fecha que ESA corrida agregara
- * (D-1 respecto de la corrida), no la fecha de la corrida: ver
+ * R36 — registro de recurrencia. El `dedupeKey` lleva la zona de la corrida y la fecha que ESA
+ * corrida agregara en esa zona (D-1 respecto de la corrida), no la fecha de la corrida: ver
  * `analitica-rollup-diario-encolado.ts`.
  */
 export const recurrenciaAnaliticaRollupDiario: RecurrenciaSpec = {
-  siguiente(now: Date) {
-    const runAfter = proximaCorridaRollupCR(now);
-    // SLT-42 pendiente T6: zona de la empresa
-    return { runAfter, dedupeKey: dedupeKeyRollup(fechaObjetivo(runAfter, ZONA_CR)) };
+  siguiente(now: Date, zonas: readonly string[]) {
+    const { runAfter, zona } = proximaCorridaRollup(now, zonas);
+    return { runAfter, dedupeKey: dedupeKeyRollup(fechaObjetivo(runAfter, zona), zona) };
   },
 };
 
@@ -110,10 +105,20 @@ export function crearAnaliticaRollupDiarioHandler(
   now: () => Date = () => new Date(),
   logger: RollupJobLogger = defaultLogger,
   invalidador: IAnaliticaCache = cacheNula(),
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
 ): JobHandler {
-  return async () => {
-    // SLT-42 pendiente T6: zona de la empresa
-    const fecha = fechaObjetivo(now(), ZONA_CR);
+  return async (job) => {
+    // SLT-42 (design §6.1; R25, R26, R28): corre dentro de la empresa. Sin zona en su pais, falla
+    // esa empresa. Una corrida de otra zona (que no llega a las 00:30 en ese instante) no hace
+    // nada; una clave vieja, sin zona, corre para todas. La fecha objetivo, en la zona de la empresa.
+    const zona = await zonaDeLaEmpresa(reglasPais, "analitica_rollup_diario");
+    const corrida = leerClaveConZona(job.dedupeKey, DEDUPE_PREFIX);
+    if (corrida !== null) {
+      // La clave lleva la fecha OBJETIVO; la corrida es la del dia siguiente.
+      const instante = instanteDeLaCorrida(sumarDiasCalendario(corrida.fecha, 1), corrida.zona, HORA_ROLLUP);
+      if (!zonaLlegaALaHora(zona, instante, HORA_ROLLUP)) return;
+    }
+    const fecha = fechaObjetivo(now(), zona);
     const resumen = await service.agregarFecha(fecha);
     // Feature 128 (R10/R11) — la invalidacion va DESPUES de que `agregarFecha` resuelva y
     // SIN `try/catch`. Si el agregado fallo no hay nada que invalidar; y si la invalidacion

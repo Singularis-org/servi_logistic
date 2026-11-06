@@ -24,6 +24,9 @@ export interface JobsLogger {
 }
 const defaultLogger: JobsLogger = { warn: (m) => console.warn(m), info: (m) => console.info(m) };
 
+/** SLT-42 (design §6.1): las zonas con empresas de UNA corrida del drenador, leidas como mucho una vez. */
+type ZonasDeLaCorrida = () => Promise<readonly string[]>;
+
 // `last_error` acotado (R15): sin volcar stacks enormes. El mensaje del handler no
 // contiene el secreto (el secreto vive en el controller, no llega al service).
 const MAX_ERROR_LEN = 500;
@@ -75,10 +78,19 @@ export class JobQueueService implements IJobQueueService {
     private readonly config: JobsConfig,
     private readonly now: () => Date = () => new Date(),
     private readonly logger: JobsLogger = defaultLogger,
+    /**
+     * SLT-42 (design §6.1; R25): las zonas horarias de los paises con empresas
+     * (`IPaisRepository.zonasConEmpresas`). Sin el, ninguna zona: los diarios se agendan en la
+     * zona de reserva (`ZONA_SIN_EMPRESAS`). El composition root pasa el real.
+     */
+    private readonly zonasConEmpresas: () => Promise<readonly string[]> = async () => [],
   ) {}
 
   async drenar(limit: number): Promise<DrenarResult> {
     const now = this.now();
+    // SLT-42: las zonas se leen como mucho UNA vez por corrida, y solo si algo se re-agenda.
+    let leidas: Promise<readonly string[]> | undefined;
+    const zonas: ZonasDeLaCorrida = () => (leidas ??= this.zonasConEmpresas());
     // R13: `processing` con `locked_at` mas antiguo que el visibility timeout se rescata.
     const visibilityCutoff = new Date(now.getTime() - this.config.JOBS_VISIBILITY_TIMEOUT_MS);
     // R10: reclamo atomico del lote (SKIP LOCKED). `intentos` ya viene incrementado.
@@ -111,21 +123,21 @@ export class JobQueueService implements IJobQueueService {
       if (handler === undefined) {
         // Registro incompleto (config/despliegue): fallo CONTROLADO, no crash de la corrida.
         result.fallidos += 1;
-        await this.manejarFallo(job, "handler no registrado para el tipo de job", now, result);
+        await this.manejarFallo(job, "handler no registrado para el tipo de job", now, zonas, result);
         continue;
       }
       try {
         await handler(job);
         await this.repo.complete(job.id); // R14
         result.ok += 1;
-        await this.reagendarRecurrente(job, now); // R23: recurrencia tras exito
+        await this.reagendarRecurrente(job, now, zonas); // R23: recurrencia tras exito
       } catch (err) {
         if (err instanceof JobDescartado) {
           // SL-23 (R20): el módulo está apagado para la empresa del job. No es un fallo: sin backoff
           // ni dead-letter. Un recurrente agenda igual su siguiente ocurrencia, como tras un éxito.
           await this.repo.descartar(job.id, err.motivo);
           result.descartados += 1;
-          await this.reagendarRecurrente(job, now);
+          await this.reagendarRecurrente(job, now, zonas);
           continue;
         }
         if (err instanceof JobFallidoPermanente) {
@@ -135,7 +147,7 @@ export class JobQueueService implements IJobQueueService {
           result.fallidos += 1;
           await this.repo.fail(job.id, mensajeError(err), null);
           result.muertos += 1;
-          await this.reagendarRecurrente(job, now);
+          await this.reagendarRecurrente(job, now, zonas);
           continue;
         }
         // R14 (fallo): un fallo por job no aborta la corrida; se contabiliza y se continua.
@@ -143,7 +155,7 @@ export class JobQueueService implements IJobQueueService {
         // trae. Es el UNICO punto donde el error del handler llega entero; hasta hoy se convertia
         // a texto y se tiraba.
         result.fallidos += 1;
-        await this.manejarFallo(job, mensajeError(err), now, result, retryAfterHintMs(err));
+        await this.manejarFallo(job, mensajeError(err), now, zonas, result, retryAfterHintMs(err));
       }
     }
 
@@ -169,6 +181,7 @@ export class JobQueueService implements IJobQueueService {
     job: JobDTO,
     mensaje: string,
     now: Date,
+    zonas: ZonasDeLaCorrida,
     result: DrenarResult,
     hintMs?: number,
   ): Promise<void> {
@@ -177,7 +190,7 @@ export class JobQueueService implements IJobQueueService {
       // y `runAfter` de un dead-letter es `null` por contrato.
       await this.repo.fail(job.id, mensaje, null); // dead-letter
       result.muertos += 1;
-      await this.reagendarRecurrente(job, now); // R24
+      await this.reagendarRecurrente(job, now, zonas); // R24
       return;
     }
     // R15: backoff exponencial acotado por el cap. intentos=1 -> base; 2 -> base*2; ...
@@ -206,13 +219,16 @@ export class JobQueueService implements IJobQueueService {
   /**
    * R23/R24/R25: re-agenda la proxima ocurrencia de un tipo recurrente. `enqueue` hace
    * `ON CONFLICT DO NOTHING`, asi que reintentos o corridas solapadas NO duplican la proxima
-   * ocurrencia (idempotencia por `dedupeKey` de dia CR). Payload vacio `{}` (gate F1.4-3):
+   * ocurrencia (idempotencia por `dedupeKey`, con la zona de la corrida en los diarios, SLT-42).
+   * Payload vacio `{}` (gate F1.4-3):
    * el handler deriva la fecha de `now` al ejecutar.
    */
-  private async reagendarRecurrente(job: JobDTO, now: Date): Promise<void> {
+  private async reagendarRecurrente(job: JobDTO, now: Date, zonas: ZonasDeLaCorrida): Promise<void> {
     const spec = this.recurrencias.get(job.tipo);
     if (spec === undefined) return;
-    const { runAfter, dedupeKey } = spec.siguiente(now);
+    // SLT-42 (design §6.1): la cola lee las zonas antes de llamar a `siguiente`.
+    const lista = await zonas();
+    const { runAfter, dedupeKey } = spec.siguiente(now, lista);
     await this.repo.enqueue(job.tipo, {}, { runAfter, dedupeKey });
   }
 }

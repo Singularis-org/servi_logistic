@@ -7,12 +7,16 @@ import type { JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
 export type JobHandler = (job: JobDTO) => Promise<void>;
 
 /**
- * Metadatos de recurrencia por tipo (solo `liberar_reprogramadas` en v1). Calcula el
- * reencolado de la PROXIMA ocurrencia a partir del momento de la corrida. La idempotencia
- * la garantiza el `dedupeKey` por dia CR + `ON CONFLICT DO NOTHING` del `enqueue` (R25).
+ * Metadatos de recurrencia por tipo. Calcula el reencolado de la PROXIMA ocurrencia a partir del
+ * momento de la corrida. La idempotencia la garantiza el `dedupeKey` + `ON CONFLICT DO NOTHING`
+ * del `enqueue` (R25 de la 90).
+ *
+ * SLT-42 (design §6.1; R25, R26): `zonas` son las zonas horarias de los paises con empresas, que
+ * la cola lee antes de llamar. Los diarios agendan la zona que antes llega a su hora; las
+ * recurrencias que no son diarias la ignoran.
  */
 export interface RecurrenciaSpec {
-  siguiente(now: Date): { runAfter: Date; dedupeKey: string };
+  siguiente(now: Date, zonas: readonly string[]): { runAfter: Date; dedupeKey: string };
 }
 
 /**

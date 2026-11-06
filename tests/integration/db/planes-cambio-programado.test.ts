@@ -430,7 +430,7 @@ describeSiHayBase("SL-24 — el cambio programado de un plan (R37–R40)", () =>
       const antes = await contarJobs(tx);
       const primera = await sembrarPlanCambiosVencidos(repo, new Date("2026-11-01T10:05:00.000Z"));
       const segunda = await sembrarPlanCambiosVencidos(repo, new Date("2026-11-01T10:59:00.000Z"));
-      const { runAfter, dedupeKey } = recurrenciaPlanCambiosVencidos.siguiente(new Date("2026-11-01T10:30:00.000Z"));
+      const { runAfter, dedupeKey } = recurrenciaPlanCambiosVencidos.siguiente(new Date("2026-11-01T10:30:00.000Z"), []);
       const reencolada = await repo.enqueue("plan_cambios_vencidos", {}, { runAfter, dedupeKey });
       return { antes, despues: await contarJobs(tx), primera, segunda, reencolada };
     });

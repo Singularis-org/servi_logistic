@@ -1,75 +1,80 @@
 // Feature 90 (design §5, R22-R24) — handler DELGADO del job recurrente
 // `liberar_reprogramadas` + su registro de recurrencia. NO reescribe la logica de
 // liberacion: delega TODO en `LiberacionReprogramadaService.ejecutarLiberacion(...)`
-// (feature 46), que ya es idempotente por dia CR (seguro ante re-claim por visibility
-// timeout o reintento). El horario PRESERVA 00:00 America/Costa_Rica (= 06:00 UTC),
-// decision del gate F1.4-1.
+// (feature 46), que ya es idempotente por dia (seguro ante re-claim por visibility
+// timeout o reintento). El horario es las 00:00 locales (decision del gate F1.4-1).
+//
+// SLT-42 (design §6.1; R25, R26, R28): una serie para todas las zonas. Cada corrida es la de la
+// zona que antes llega a las 00:00 y procesa solo las empresas de esa zona, cada una con «hoy» en
+// su zona. Con una sola zona, los mismos instantes de antes (R26).
 import type { ILiberacionReprogramadaService } from "@/lib/interfaces/services/ILiberacionReprogramadaService";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import { LiberacionReprogramadaService } from "@/lib/services/LiberacionReprogramadaService";
 import { LiberacionReprogramadaRepository } from "@/lib/repositories/LiberacionReprogramadaRepository";
 import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { getPrismaClient } from "@/lib/db/prisma-client";
-import { startOfDayCR, fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendario, inicioDelDiaComoFecha } from "@/lib/utils/calendario-zona";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
+import {
+  claveConZona,
+  instanteDeLaCorrida,
+  leerClaveConZona,
+  proximaCorridaPorZona,
+  zonaLlegaALaHora,
+  type HoraObjetivo,
+} from "@/lib/services/jobs/serie-diaria-por-zona";
 import type { JobHandler, RecurrenciaSpec } from "@/lib/interfaces/services/IJobQueueService";
 
-/** Prefijo del `dedupe_key` de la recurrencia diaria: `liberar_reprogramadas:<YYYY-MM-DD CR>`. */
+/** Prefijo del `dedupe_key`: `liberar_reprogramadas:<zona>:<YYYY-MM-DD local de la corrida>`. */
 export const DEDUPE_PREFIX = "liberar_reprogramadas";
 
-// CR es UTC-6 fijo (sin horario de verano): 00:00 CR == 06:00 UTC.
-const CR_MEDIANOCHE_HORA_UTC = 6;
-const CR_OFFSET_MS = 6 * 60 * 60 * 1000;
+/** 00:00 locales (gate F1.4-1: se preserva la medianoche, no se mueve a 01:00). */
+export const HORA_LIBERAR: HoraObjetivo = { hora: 0, minuto: 0 };
 
 /**
- * `dedupe_key` de la corrida cuya fecha CALENDARIO de CR corresponde a `instante`.
- * Idempotencia por dia (R25/R26): dos siembras/reencolados del mismo dia CR colisionan.
+ * `dedupe_key` de la corrida de `zona` en `instante`: la fecha CALENDARIO local de ESE instante.
+ * Idempotencia por zona y dia (R25/R26 de la 90): dos siembras o reencolados colisionan.
  */
-export function dedupeKeyLiberar(instante: Date): string {
-  return `${DEDUPE_PREFIX}:${fechaCalendarioCR(instante)}`;
+export function dedupeKeyLiberar(instante: Date, zona: string): string {
+  return claveConZona(DEDUPE_PREFIX, zona, fechaCalendario(instante, zona));
 }
 
 /**
- * Proxima corrida = proximo 00:00 America/Costa_Rica ESTRICTAMENTE posterior a `now`
- * (gate F1.4-1: se preserva 00:00 CR, no se mueve a 01:00). 00:00 CR del dia D+1 es el
- * instante UTC `D+1 06:00`. Se deriva la fecha calendario CR de `now` y se avanza un dia.
+ * R25: proxima corrida = las proximas 00:00 locales ESTRICTAMENTE posteriores a `now` de la zona
+ * que antes llega, entre las de los paises con empresas.
  */
-export function proximaCorridaLiberarCR(now: Date): Date {
-  const crWall = new Date(now.getTime() - CR_OFFSET_MS);
-  return new Date(
-    Date.UTC(
-      crWall.getUTCFullYear(),
-      crWall.getUTCMonth(),
-      crWall.getUTCDate() + 1,
-      CR_MEDIANOCHE_HORA_UTC,
-      0,
-      0,
-      0,
-    ),
-  );
+export function proximaCorridaLiberar(now: Date, zonas: readonly string[]): { runAfter: Date; zona: string } {
+  return proximaCorridaPorZona(now, zonas, HORA_LIBERAR);
 }
 
-/**
- * R23/R24: registro de recurrencia del tipo `liberar_reprogramadas`. La proxima ocurrencia
- * se agenda a las 00:00 CR del dia siguiente con `dedupe_key` de ESA fecha CR.
- */
+/** R23/R24 de la 90 + R25 de SLT-42: la proxima ocurrencia, con la zona en la clave. */
 export const recurrenciaLiberarReprogramadas: RecurrenciaSpec = {
-  siguiente(now: Date) {
-    const runAfter = proximaCorridaLiberarCR(now);
-    return { runAfter, dedupeKey: dedupeKeyLiberar(runAfter) };
+  siguiente(now: Date, zonas: readonly string[]) {
+    const { runAfter, zona } = proximaCorridaLiberar(now, zonas);
+    return { runAfter, dedupeKey: dedupeKeyLiberar(runAfter, zona) };
   },
 };
 
 /**
- * R22: handler delgado. Ejecuta la liberacion para "hoy" en CR (`startOfDayCR(now)`);
- * descarta el resultado (los conteos ya los observa la propia corrida via el service). El
- * `now` es inyectable para tests deterministas.
+ * R22 de la 90: handler delgado, que corre dentro de la empresa (`conSuEmpresa`). Lee la zona de la
+ * empresa (sin zona, `PaisSinZonaHoraria`: falla esa empresa, R28). Si la corrida es de otra zona
+ * (que no llega a las 00:00 en ese instante), no hace nada (R25). Si no, libera con «hoy» en la
+ * zona de la empresa. Una clave vieja, sin zona, corre para todas (R26). `now` inyectable.
  */
 export function crearLiberarReprogramadasHandler(
   service: ILiberacionReprogramadaService,
   now: () => Date = () => new Date(),
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
 ): JobHandler {
-  return async () => {
-    await service.ejecutarLiberacion(startOfDayCR(now()));
+  return async (job) => {
+    const zona = await zonaDeLaEmpresa(reglasPais, "liberar_reprogramadas");
+    const corrida = leerClaveConZona(job.dedupeKey, DEDUPE_PREFIX);
+    if (corrida !== null) {
+      const instante = instanteDeLaCorrida(corrida.fecha, corrida.zona, HORA_LIBERAR);
+      if (!zonaLlegaALaHora(zona, instante, HORA_LIBERAR)) return;
+    }
+    await service.ejecutarLiberacion(inicioDelDiaComoFecha(now(), zona));
   };
 }
 

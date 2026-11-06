@@ -82,6 +82,7 @@ export function dedupeKeyCambiosVencidos(runAfter: Date): string {
   return `${DEDUPE_PREFIX_CAMBIOS_VENCIDOS}:${runAfter.toISOString().slice(0, 13)}`;
 }
 
+// SLT-42 (design §6.1): horaria y de plataforma, ignora las `zonas` de la cola.
 export const recurrenciaPlanCambiosVencidos: RecurrenciaSpec = {
   siguiente(now: Date) {
     const runAfter = proximaCorridaCambiosVencidos(now);
@@ -95,7 +96,7 @@ export const recurrenciaPlanCambiosVencidos: RecurrenciaSpec = {
  * La registra `scripts/siembra-jobs-recurrentes.ts > SIEMBRAS_RECURRENTES`.
  */
 export function sembrarPlanCambiosVencidos(repo: IJobRepository, now: Date = new Date()): Promise<JobDTO | null> {
-  const { runAfter, dedupeKey } = recurrenciaPlanCambiosVencidos.siguiente(now);
+  const { runAfter, dedupeKey } = recurrenciaPlanCambiosVencidos.siguiente(now, []);
   return repo.enqueue(DEDUPE_PREFIX_CAMBIOS_VENCIDOS, {}, { runAfter, dedupeKey });
 }
 

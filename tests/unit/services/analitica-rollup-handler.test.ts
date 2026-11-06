@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   crearAnaliticaRollupDiarioHandler,
-  proximaCorridaRollupCR,
+  proximaCorridaRollup,
   recurrenciaAnaliticaRollupDiario,
   type RollupJobLogger,
 } from "@/lib/services/jobs/analitica-rollup-diario-handler";
@@ -20,6 +20,7 @@ import type {
 import type { IJobRepository, JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
 
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { reglasPaisFijas, ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Feature 124 / T4.2-T4.3-T4.6 — el JOB: fecha objetivo, recurrencia, dedupe, resumen y
 // propagacion del fallo. Todo con dobles en memoria: aqui no hay base ni Prisma.
 //
@@ -73,7 +74,7 @@ describe("R8/D3 — el handler agrega la fecha que ACABA DE CERRAR (D-1)", () =>
     const handler = crearAnaliticaRollupDiarioHandler(
       service,
       () => new Date("2026-08-02T06:30:00.000Z"),
-      loggerEspia().logger,
+      loggerEspia().logger, undefined, reglasPaisFijas()
     );
 
     await handler(JOB_VACIO);
@@ -86,7 +87,7 @@ describe("R8/D3 — el handler agrega la fecha que ACABA DE CERRAR (D-1)", () =>
     const handler = crearAnaliticaRollupDiarioHandler(
       service,
       () => new Date("2026-08-02T06:30:00.000Z"),
-      loggerEspia().logger,
+      loggerEspia().logger, undefined, reglasPaisFijas()
     );
 
     await handler(JOB_VACIO);
@@ -102,12 +103,12 @@ describe("R8/D3 — el handler agrega la fecha que ACABA DE CERRAR (D-1)", () =>
     await crearAnaliticaRollupDiarioHandler(
       service,
       () => new Date("2026-08-02T06:30:00.000Z"),
-      logger,
+      logger, undefined, reglasPaisFijas()
     )(JOB_VACIO);
     await crearAnaliticaRollupDiarioHandler(
       service,
       () => new Date("2026-12-01T06:30:00.000Z"),
-      logger,
+      logger, undefined, reglasPaisFijas()
     )(JOB_VACIO);
 
     expect(fechasPedidas).toEqual(["2026-08-01", "2026-11-30"]);
@@ -124,7 +125,7 @@ describe("R37/R32 — el resumen que se registra son CONTEOS y nada mas", () => 
     await crearAnaliticaRollupDiarioHandler(
       service,
       () => new Date("2026-08-02T06:30:00.000Z"),
-      logger,
+      logger, undefined, reglasPaisFijas()
     )(JOB_VACIO);
 
     expect(lineas).toHaveLength(1);
@@ -152,7 +153,7 @@ describe("R37/R32 — el resumen que se registra son CONTEOS y nada mas", () => 
       crearAnaliticaRollupDiarioHandler(
         service,
         () => new Date("2026-08-02T06:30:00.000Z"),
-        logger,
+        logger, undefined, reglasPaisFijas()
       )(JOB_VACIO),
     ).resolves.toBeUndefined();
 
@@ -166,7 +167,7 @@ describe("R37/R32 — el resumen que se registra son CONTEOS y nada mas", () => 
     await crearAnaliticaRollupDiarioHandler(
       service,
       () => new Date("2026-08-02T06:30:00.000Z"),
-      logger,
+      logger, undefined, reglasPaisFijas()
     )(JOB_VACIO);
 
     for (const prohibido of ["destinatario", "telefono", "num_guia", "numGuia", "ordenId"]) {
@@ -188,7 +189,7 @@ describe("R38 — un fallo del servicio se PROPAGA (nada de `catch` vacio)", () 
       crearAnaliticaRollupDiarioHandler(
         service,
         () => new Date("2026-08-02T06:30:00.000Z"),
-        loggerEspia().logger,
+        loggerEspia().logger, undefined, reglasPaisFijas()
       )(JOB_VACIO),
     ).rejects.toBe(boom);
   });
@@ -202,7 +203,7 @@ describe("R38 — un fallo del servicio se PROPAGA (nada de `catch` vacio)", () 
     };
 
     await expect(
-      crearAnaliticaRollupDiarioHandler(service, () => new Date("2026-08-02T06:30:00.000Z"), logger)(
+      crearAnaliticaRollupDiarioHandler(service, () => new Date("2026-08-02T06:30:00.000Z"), logger, undefined, reglasPaisFijas())(
         JOB_VACIO,
       ),
     ).rejects.toThrow("repositorio caido");
@@ -213,14 +214,14 @@ describe("R38 — un fallo del servicio se PROPAGA (nada de `catch` vacio)", () 
 describe("D3/R36 — la recurrencia: 00:30 CR (06:30 UTC) del dia siguiente", () => {
   it("desde las 06:30 UTC del 2 de agosto, la siguiente es el 3 a las 06:30 UTC", () => {
     const now = new Date("2026-08-02T06:30:00.000Z");
-    expect(proximaCorridaRollupCR(now).toISOString()).toBe("2026-08-03T06:30:00.000Z");
+    expect(proximaCorridaRollup(now, [ZONA_DE_CR]).runAfter.toISOString()).toBe("2026-08-03T06:30:00.000Z");
   });
 
   it("desde justo ANTES del corte (05:59:59 UTC), la siguiente es HOY a las 06:30 UTC", () => {
     // 05:59:59 UTC del 2 de agosto es todavia el 1 de agosto en CR (23:59:59 CR), asi que
     // el dia CR siguiente empieza esa misma manana UTC.
     const now = new Date("2026-08-02T05:59:59.000Z");
-    expect(proximaCorridaRollupCR(now).toISOString()).toBe("2026-08-02T06:30:00.000Z");
+    expect(proximaCorridaRollup(now, [ZONA_DE_CR]).runAfter.toISOString()).toBe("2026-08-02T06:30:00.000Z");
   });
 
   it("es ESTRICTAMENTE posterior a `now` en instantes repartidos por todo el dia CR", () => {
@@ -232,15 +233,15 @@ describe("D3/R36 — la recurrencia: 00:30 CR (06:30 UTC) del dia siguiente", ()
       "2026-08-03T05:59:59.999Z", // 23:59:59.999 CR
     ]) {
       const now = new Date(iso);
-      expect(proximaCorridaRollupCR(now).getTime()).toBeGreaterThan(now.getTime());
+      expect(proximaCorridaRollup(now, [ZONA_DE_CR]).runAfter.getTime()).toBeGreaterThan(now.getTime());
     }
   });
 
   it("cruza fin de mes y fin de anio sin aritmetica propia", () => {
-    expect(proximaCorridaRollupCR(new Date("2026-09-01T05:00:00.000Z")).toISOString()).toBe(
+    expect(proximaCorridaRollup(new Date("2026-09-01T05:00:00.000Z"), [ZONA_DE_CR]).runAfter.toISOString()).toBe(
       "2026-09-01T06:30:00.000Z",
     );
-    expect(proximaCorridaRollupCR(new Date("2027-01-01T05:00:00.000Z")).toISOString()).toBe(
+    expect(proximaCorridaRollup(new Date("2027-01-01T05:00:00.000Z"), [ZONA_DE_CR]).runAfter.toISOString()).toBe(
       "2027-01-01T06:30:00.000Z",
     );
   });
@@ -249,9 +250,11 @@ describe("D3/R36 — la recurrencia: 00:30 CR (06:30 UTC) del dia siguiente", ()
     // La corrida del 3 de agosto a las 00:30 CR agrega el 2 de agosto.
     const { runAfter, dedupeKey } = recurrenciaAnaliticaRollupDiario.siguiente(
       new Date("2026-08-02T06:30:00.000Z"),
+      [ZONA_DE_CR],
     );
     expect(runAfter.toISOString()).toBe("2026-08-03T06:30:00.000Z");
-    expect(dedupeKey).toBe("analitica_rollup_diario:2026-08-02");
+    // SLT-42 (design §6.1): la clave lleva tambien la zona de la corrida.
+    expect(dedupeKey).toBe("analitica_rollup_diario:America/Costa_Rica:2026-08-02");
   });
 
   it("R36 — dos siembras del MISMO objetivo producen la MISMA clave (colisionan)", async () => {
@@ -265,19 +268,19 @@ describe("D3/R36 — la recurrencia: 00:30 CR (06:30 UTC) del dia siguiente", ()
       }),
     } as unknown as IJobRepository;
 
-    await seedJobAnaliticaRollupDiario(repo, new Date("2026-08-02T16:00:00.000Z"));
-    await seedJobAnaliticaRollupDiario(repo, new Date("2026-08-03T02:00:00.000Z"));
+    await seedJobAnaliticaRollupDiario(repo, new Date("2026-08-02T16:00:00.000Z"), [ZONA_DE_CR]);
+    await seedJobAnaliticaRollupDiario(repo, new Date("2026-08-03T02:00:00.000Z"), [ZONA_DE_CR]);
 
     expect(claves).toEqual([
-      "analitica_rollup_diario:2026-08-02",
-      "analitica_rollup_diario:2026-08-02",
+      "analitica_rollup_diario:America/Costa_Rica:2026-08-02",
+      "analitica_rollup_diario:America/Costa_Rica:2026-08-02",
     ]);
     expect(new Set(claves).size).toBe(1);
   });
 
   it("la clave del encolado usa el prefijo del tipo y la fecha objetivo", () => {
     expect(DEDUPE_PREFIX).toBe("analitica_rollup_diario");
-    expect(dedupeKeyRollup("2026-08-01")).toBe("analitica_rollup_diario:2026-08-01");
+    expect(dedupeKeyRollup("2026-08-01", ZONA_DE_CR)).toBe("analitica_rollup_diario:America/Costa_Rica:2026-08-01");
   });
 });
 

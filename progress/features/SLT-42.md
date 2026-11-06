@@ -97,6 +97,11 @@ Bloqueos de F2.0:
   2. Rastreo público con país sin zona horaria: se iguala al caso anterior, `no_encontrado` + `console.error` con la empresa, en vez del error de servidor de R28 (humano). Va en T5.7.
   3. Desvío aceptado: `PaisSinZonaHoraria` lo lanza `zonaHoraria()` de las reglas del país, no el servicio (R33 de la 229).
 
+- 2026-11-06 (tras T5.7, preguntas de `progress/impl_SLT-42.md > Tanda 4d · T5.7`):
+  1. Desvíos de T5.7 aceptados (humano): etiqueta «UTC» dentro del valor `vigenteDesdePendiente` («AAAA-MM-DD UTC»); `ReglasPaisEmpresaService` en la lista blanca del borde de `asistente-sin-datos`; aviso del rastreo por `ErrorLogger`; entrada sin ruptura en `docs/api/CHANGELOG.md`.
+  2. `lib/types/plantilla-datos.ts` (`fechaHora`): pasa a la zona de la empresa en T6, en SLT-42, incluida la vista previa (humano).
+  3. `docs/api/guia-integracion/guia-integracion.html` §5: el texto pasa a «zona horaria del país de la empresa (hoy Costa Rica, UTC-6)» en T6 (humano).
+
 ## Pendiente para el cierre
 - 2026-11-05, pedido del humano: al terminar la feature, resumen de TODOS los errores nuevos que puede lanzar SLT-42 (p. ej. `PaisIncompleto`, `PaisSinZonaHoraria`, `EmpresaNoResuelta`, documento/teléfono inválido por país, tipo de documento inactivo): dónde salen, qué ve el usuario y qué hay que completar o configurar (catálogo de país, zona, prefijo, tipos de documento, `POSTULACION_VALIDADA_POR_PAIS_DESDE`, T1.0) para que no se disparen. Va a `progress/impl_SLT-42.md > Errores nuevos y prevención` y se resume al humano.
 
