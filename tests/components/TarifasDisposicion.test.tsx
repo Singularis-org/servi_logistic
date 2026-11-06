@@ -160,6 +160,25 @@ describe("SLT-54 — disposición (design §12)", () => {
     expect(clases(within(fila).getByRole("combobox", { name: "Modo de Por entregado" }))).toContain("min-h-11");
   });
 
+  it("SLT-55 R38: en un teléfono la fila del diálogo se apila; desde `sm` sigue siendo una tabla de campos de 110", async () => {
+    const u = userEvent.setup();
+    montar({ mensajeros: [mensajeroPantalla()] });
+    await u.click(screen.getByRole("button", { name: "Añadir mensajero" }));
+    const d = await screen.findByRole("dialog");
+    // jsdom no mide: que un importe no se corte lo mira el E2E a 390 px. Aquí, que escritorio no cambia y que el apilado no quita la tabla.
+    const fila = within(d).getByRole("row", { name: /Por entregado/ });
+    expect(clases(fila)).toEqual(expect.arrayContaining(["max-sm:grid", "max-sm:grid-cols-2"]));
+    expect(clases(within(fila).getByRole("textbox", { name: "Valor de Por entregado" }))).toEqual(expect.arrayContaining(["w-[110px]", "max-sm:w-full"]));
+    expect(fila).toHaveAttribute("role", "row");
+    expect(within(d).getByRole("table")).toHaveAttribute("role", "table");
+    for (const celda of within(fila).getAllByRole("cell")) expect(celda).toHaveAttribute("role", "cell");
+    for (const rotulo of within(fila).getAllByText(/^(Modo|Valor)$/)) {
+      expect(rotulo).toHaveAttribute("aria-hidden", "true");
+      expect(clases(rotulo)).toContain("sm:hidden");
+    }
+    expect(within(fila).getAllByText(/^(Modo|Valor)$/)).toHaveLength(2);
+  });
+
   it("R70: el diálogo de 640 con padding de 24, casilla de 20 en fila de 44", () => {
     render(
       <TarifasActivarDialog

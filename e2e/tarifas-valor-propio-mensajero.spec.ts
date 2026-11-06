@@ -544,6 +544,42 @@ test.describe.serial("Valor propio — a 390 px (R38)", () => {
     });
   }
 
+  /**
+   * Cada campo «Valor» de `dialogo`, tal como queda sin desplazar nada: `derecha` debe ser ≤ `finDialogo`, y su texto debe
+   * caber. Sin esto, a 390 px un «2900» guardado se veía cortado aunque la página no diera scroll: el campo acababa en
+   * x=391 y el diálogo en x=374.
+   */
+  async function camposValor(dialogo: Locator): Promise<{ nombre: string; derecha: number; finDialogo: number; textoCabe: boolean; desplazado: boolean }[]> {
+    return dialogo.evaluate((raiz) => {
+      const finDialogo = raiz.getBoundingClientRect().right;
+      const campos = [...raiz.querySelectorAll<HTMLInputElement>("input[aria-label^='Valor de ']")];
+      return campos.map((c) => {
+        let desplazado = false;
+        for (let padre = c.parentElement; padre !== null && padre !== raiz.parentElement; padre = padre.parentElement) {
+          if (padre.scrollLeft !== 0 || padre.scrollWidth > padre.clientWidth) desplazado = true;
+        }
+        return {
+          nombre: c.getAttribute("aria-label") ?? "",
+          derecha: c.getBoundingClientRect().right,
+          finDialogo,
+          textoCabe: c.scrollWidth <= c.clientWidth,
+          desplazado,
+        };
+      });
+    });
+  }
+
+  function expectValorDentro(campos: Awaited<ReturnType<typeof camposValor>>): void {
+    expect(campos.map((c) => c.nombre)).toEqual([
+      "Valor de Por entregado",
+      "Valor de Por devolución a origen",
+      "Valor de Por reprogramado",
+      "Valor de Por novedad",
+      "Valor de Por incidente",
+    ]);
+    expect(campos.filter((c) => c.derecha > c.finDialogo || !c.textoCabe || c.desplazado)).toEqual([]);
+  }
+
   test("la sección y su diálogo caben sin scroll de página, con controles de 44, y el `Select` del `Modal` se puede usar", async ({ browser }) => {
     test.setTimeout(180_000);
     const page = await paginaDe(browser, r.empresa.maestro, MOVIL);
@@ -556,6 +592,7 @@ test.describe.serial("Valor propio — a 390 px (R38)", () => {
     await abrirCon(mensajerosDe(page).getByRole("button", { name: "Añadir mensajero", exact: true }), dialogo);
     expect(await anchoDePagina(page)).toBeLessThanOrEqual(390);
     expect(await controlesBajos(dialogo)).toEqual([]);
+    expectValorDentro(await camposValor(dialogo));
 
     // El selector de mensajero, en el `Modal`: su lista cabe en la pantalla y responde al puntero.
     const opcion = page.getByRole("option", { name: m.nombre, exact: true });
@@ -574,6 +611,7 @@ test.describe.serial("Valor propio — a 390 px (R38)", () => {
     await porcentaje.click();
     await expect(modo).toContainText("%");
     await dialogo.getByRole("textbox", { name: "Valor de Por incidente", exact: true }).fill("10");
+    await dialogo.getByRole("textbox", { name: "Valor de Por entregado", exact: true }).fill("2900");
 
     const guardar = dialogo.getByRole("button", { name: "Guardar borrador", exact: true });
     await guardar.scrollIntoViewIfNeeded();
@@ -588,6 +626,14 @@ test.describe.serial("Valor propio — a 390 px (R38)", () => {
     await expect(fila).toContainText("10 %");
     expect(await anchoDePagina(page)).toBeLessThanOrEqual(390);
     expect(await controlesBajos(mensajerosDe(page))).toEqual([]);
+
+    // El «2900» guardado se lee entero al volver a abrir, sin desplazar.
+    const edicion = page.getByRole("dialog", { name: `Valor propio de ${m.nombre}` });
+    await abrirCon(mensajerosDe(page).getByRole("button", { name: `Editar valor propio de ${m.nombre}`, exact: true }), edicion);
+    await expect(edicion.getByRole("textbox", { name: "Valor de Por entregado", exact: true })).toHaveValue("2900");
+    expectValorDentro(await camposValor(edicion));
+    expect(await anchoDePagina(page)).toBeLessThanOrEqual(390);
+    expect(await controlesBajos(edicion)).toEqual([]);
     await page.context().close();
   });
 });

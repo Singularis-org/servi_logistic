@@ -540,3 +540,168 @@ filas (estimado, no probado): es decisión de diseño, no un arreglo mínimo.
 - **Tanda F:** `./init.sh`, docs y el mapa de los 40 siguen pendientes.
 
 **Veredicto Tanda E:** el recorrido R40 pasa de punta a punta con sesión y aprobación reales (3 y 2 corridas, 0 failed), 11/11 casos muertos con servidor rehecho, y queda un hallazgo de usabilidad a 390 px por decidir.
+
+## Ajuste a 390 px y Tanda F
+
+Base: `servi_gate_slt55`, con DROP/CREATE, `migrate deploy` (304 de 304) y `db:seed` antes de las corridas finales. Servidor: `next start` del `.next` rehecho, en 3055,
+con doble de Storage en 54355. Sin `prisma generate`.
+
+### Archivos
+
+| Archivo | Qué |
+|---|---|
+| `app/(app)/configuracion/tarifas/_components/TarifaMensajeroDialogo.tsx` | `:37-38` campo a todo el ancho y rótulo apilado; `:175-176`, `:189` y `:203-225` la fila se apila bajo `sm`, con `role` explícitos |
+| `e2e/tarifas-valor-propio-mensajero.spec.ts` | `:552` `camposValor`, `:572` `expectValorDentro`; el caso de `:547` pasa a `:583` y mide en `:595` y en `:634`, con un «2900» guardado |
+| `tests/components/TarifasDisposicion.test.tsx` | `:163`: apilado bajo `sm`, 110 desde `sm`, tabla conservada |
+| `docs/architecture.md` | `:247` el nivel `mensajero`; `:270` el valor propio |
+| `docs/ayuda/oficina/configuracion-tarifas.md` | `actualizado`; `:47` sección de valor propio |
+| `specs/SLT-55-valor-propio-mensajero/tasks.md` | `:131-132` lo de 3.210; casillas T6.1 y T6.2. **T6.3 sigue abierta: `./init.sh` lo corre el leader** |
+| `specs/SLT-55-valor-propio-mensajero/requirements.md` | Trazabilidad de R38: el test de componente es `TarifasDisposicion`, no `TarifasMensajeros` |
+| `progress/capturas/SLT-55/` | `dialogo-*` a 390 y 1360 y `select-en-modal-390-*`, rehechas con el servidor final |
+
+### Medida del diálogo, editando un «2900» guardado
+
+`getBoundingClientRect`, en px. Vieja: `TarifaMensajeroDialogo.tsx` de `f14b0da7`, con su propio `next build`.
+
+| Ancho | Tabla | Diálogo acaba | Campo «Valor» x | Scroll interno (`scroll`/`cliente`) |
+|---|---|---|---|---|
+| 390, vieja | 358 | 374 | 281 a **391** | 358/308 |
+| 390, nueva, claro y oscuro | 308 | 374 | 199 a **345** | 308/308 |
+| 320, vieja | 358 | 310 | 275 a 385 | 358/250 |
+| 320, nueva | 250 | 310 | 164 a 281 | 250/250 |
+| 639, nueva | 557 | 623 | 323,5 a 594 | 557/557 |
+| 640, vieja y nueva | 558 | 624 | 437,9 a 547,9 | 558/558 |
+| 1360, vieja y nueva, claro y oscuro | 622 | 1016 | 810,5 a 920,5 | 622/622 |
+
+A 640 y a 1360, las dos medidas son **idénticas**, campo a campo, en cada control y en cada alto (comparadas como JSON): el escritorio no cambió. Los campos siguen en 44 de alto
+y la página sigue en 390. Vista en `dialogo-390-claro`, `dialogo-390-oscuro` y `dialogo-1360-claro`. Los rótulos «Modo» y «Valor» de cada fila apilada son visuales (`aria-hidden`):
+los dos campos ya llevan `aria-label`, y las cabeceras de la tabla siguen para el lector de pantalla (`sr-only`).
+
+### Mutación: la tabla vieja
+
+`TarifaMensajeroDialogo.tsx` de `f14b0da7`, con `next build` rehecho y restauración comprobada con sha256:
+
+| Test | Resultado | Qué vio |
+|---|---|---|
+| E2E `:583` | **Cae**, 1 failed, `INIT_EXIT=1` | `:595`, los 5 campos: `derecha` 390,875 con `finDialogo` 374 y `desplazado: true` |
+| `TarifasDisposicion` `:163` | **Cae**, 1 failed de 22 | sin `max-sm:grid` |
+
+Solo se demuestra la medida de `:595`: con la tabla vieja, el caso se para ahí y no llega a la de `:634`, que usa el mismo ayudante.
+
+### Corridas finales
+
+Código final, con el `.next` construido después de restaurar. Log sin `tail`, con `INIT_EXIT` dentro.
+
+| Corrida | passed | failed | flaky | did not run | skipped | INIT_EXIT |
+|---|---|---|---|---|---|---|
+| Spec, 1 | 11 | 0 | 0 | 0 | 0 | 0 |
+| Spec, 2 | 11 | 0 | 0 | 0 | 0 | 0 |
+| Spec, 3 | 11 | 0 | 0 | 0 | 0 | 0 |
+| `--project=dinero` | 60 | 0 | 0 | 0 | 0 | 0 |
+
+**Servidor y base:** el vigía cruzó el PID de 3055 con `pg_stat_activity` cada 5 s, en cada corrida. Todas las muestras con conexiones dicen `servi_gate_slt55`, y ninguna otra base.
+**Base local:** `organizacion` 11, `usuario` 44, `wallet_movimiento` 13, `cierre_dia` 6 y `chat_mensaje` 0, igual antes y después. **Puertos:** ninguno escuchando tras cada corrida.
+
+### Verificación
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: exit 0.
+- `pnpm lint`: exit 0, 0 errores y 234 avisos, la misma cifra que las tandas anteriores; ninguno en los archivos tocados.
+- `pnpm exec vitest run` de `TarifasMensajeros`, `TarifasDisposicion`, `TarifasModulo` y `TarifasPage`: `Test Files 4 passed (4)`, `Tests 109 passed (109)`.
+- `pnpm run test:guardias`: exit 1. 1 archivo rojo de 331; 4 failed, 4617 passed y 1 skipped de 4622. Es `dependencias-declaradas-presentes.guardia.test.ts`, los mismos 4 de las Tandas A a E.
+  Las guardias de ayuda, verdes. No se volvió a medir esa guardia en `origin/dev`: la última vez fue la Tanda A.
+
+### Reconciliación: los 3.210 del cierre tras cambiar a 3.000
+
+`tasks.md` decía «el siguiente de M1 paga 3.000». Era falso como total del cierre. Ese cierre lleva dos gestiones de M1, y el E2E las afirma una a una (`:320-321`): 3.000 de la entrega, que
+es el valor nuevo, y 210 de la devolución, el 15 % de un flete de 1.400, que no se cambió. **No hay ningún defecto ni dinero de otro cierre:** 3.000 + 210 = 3.210. Se corrigió `tasks.md`; el
+spec y su cabecera ya lo decían bien.
+
+### Ruido de `next build`: está en `origin/dev`
+
+`[AppError:INTERNAL] Error: Dynamic server usage: Route /configuracion/tarifas couldn't be rendered statically because it used 'cookies'`. Sale una vez en cada `next build` de esta rama, y
+también **una vez en `origin/dev` (`689cc9df`)**, construido aparte con una copia limpia, ya borrada. **No lo trae SLT-55.** Por lectura de `lib/errors/with-error-handler.ts`, sin aislarlo con una prueba: su `catch` general, en `cargarPantallaTarifas`, recoge el aviso con que Next
+marca la ruta como dinámica y lo registra como un error interno. La ruta sale `ƒ` en las dos, y el E2E la ve funcionar con su sesión. Es ruido en el log del build, sin efecto medido. No se tocó.
+
+### Deuda: SLT-54, sin tocar
+
+- **`TarifaMensajeroDialogo` no se comparte:** solo lo monta `TarifasMensajeros`. Las piezas comunes (`Table`, `MontoInput`, `Modal`, `Select`) no se cambiaron.
+- **`TarifasValores` tiene el mismo defecto, y mayor.** Medido a 390, en su pestaña de cobro: el contenedor acaba en x=347 y mide 620 de `scroll` en 304 de `cliente`. El campo «Valor» va de x=381,9 a x=491,9 e «IVA» de 510,9
+  a 580,9: **quedan enteros fuera de la vista hasta desplazar**. La página no da scroll. Su `min-w-[620px]` lo fija su maqueta y lo afirma `TarifasDisposicion` (R70), así que cambiarlo es decisión de diseño, no un arreglo de esta ficha.
+- **`TarifasVehiculo`** tiene también un `minWidth` con campos de 120. No se midió.
+- **`TarifasTiendas` al reintentar quitar,** la de la Tanda D, por lectura: sigue sin medir.
+
+### Mapa `R<n>` → test, los 40
+
+`escritura`, `caminos` y `pantalla-db` = `tests/integration/db/tarifas-valor-propio-{escritura,caminos,pantalla}.test.ts`. `service` = `tests/unit/services/tarifa-valor-service.test.ts`. `esquema` = `tests/unit/types/tarifa-schemas.test.ts`.
+`action` = `tests/integration/actions/tarifas-action.test.ts`. `migración` = `tests/integration/db/tarifas-flexibles-migration.test.ts`. `faltantes` = `tests/unit/tarifas/faltantes.test.ts`. `componente`, `módulo` y `disposición` =
+`tests/components/{TarifasMensajeros,TarifasModulo,TarifasDisposicion}.test.tsx`. `page` = `tests/unit/app/tarifas/TarifasPage.test.tsx`. `e2e` = `e2e/tarifas-valor-propio-mensajero.spec.ts`. El número es la línea del caso o de su bloque.
+
+| R | Test |
+|---|---|
+| R1 | `escritura:216`; `service:280`; `action:255`; `e2e:166` |
+| R2 | `escritura:251`; `service:298`; `e2e:166` |
+| R3 | `escritura:278`, `:291`; `service:307` |
+| R4 | `escritura:310`; `service:321`; `e2e:324` |
+| R5 | `escritura:328`; `service:333`; `esquema:281`; `action:323` |
+| R6 | `escritura:337`; `esquema:249`; `action:332`; la base, `migración:494` |
+| R7 | `escritura:359`; `service:359`; `action:305`; `e2e:479` |
+| R8 | `escritura:381`, `:402`, `:415`; `service:359`; `action:305` |
+| R9 | `escritura:423` |
+| R10 | `escritura:442`; `service:372`; `action:284`; `pantalla-db:332`, `:346`, `:420`; `e2e:501` |
+| R11 | `escritura:461`, `:482`; `e2e:324` |
+| R12 | `caminos:590`; `e2e:227` |
+| R13 | `caminos:628` |
+| R14 | `caminos:660` |
+| R15 | `caminos:692`; `componente:220` |
+| R16 | `caminos:709`; `e2e:264` |
+| R17 | `caminos:784`; `e2e:227` |
+| R18 | `caminos:845` |
+| R19 | `caminos:869` |
+| R20 | `caminos:991` |
+| R21 | `caminos:1027`; `e2e:209` |
+| R22 | `caminos:1060` |
+| R23 | `pantalla-db:177`, `:207`, `:222`, `:479`; `faltantes:83`; `módulo:407`; `e2e:166` |
+| R24 | `caminos:1086`; `e2e:283`, `:324` |
+| R25 | `caminos:1156` |
+| R26 | `escritura:495`, `:508` |
+| R27 | `componente:166`, `:182`, `:204`, `:225`; `módulo:402`; `e2e:166` |
+| R28 | `componente:289` |
+| R29 | `componente:102`, `:127`, `:346`; `módulo:412` |
+| R30 | `componente:457`, `:611` |
+| R31 | `componente:563`; `pantalla-db:263`; `e2e:443` |
+| R32 | `componente:186`, `:250`, `:256`, `:638`; `pantalla-db:279`, `:299` |
+| R33 | `componente:674`; `e2e:324` |
+| R34 | `componente:231`, `:237`, `:446`; `e2e:166` |
+| R35 | `componente:263`; `módulo:444`; `page:91`; `e2e:383`, `:501` |
+| R36 | `componente:243`; `e2e:166` |
+| R37 | `pantalla-db:432`, `:452`, `:507`; `e2e:443`, `:479` |
+| R38 | `e2e:583`; `disposición:135`, `:151`, `:163`, `:201`, `:249`; `componente:217` (la moneda) |
+| R39 | `e2e:227`, `:383` |
+| R40 | `e2e:146`, el bloque entero, y `e2e:418`, con `:443`, `:479` y `:501` |
+
+**40 de 40 con test.** La tabla de `requirements.md` y este mapa dicen lo mismo tras corregir R38; el mapa añade tests que aquella no pedía, sin quitar ninguno.
+
+### Mutaciones de toda la feature
+
+A 8/8, B 8/8, C 15/15, D 33/33 y E 11/11, en sus secciones de arriba. Esta tanda, 1/1: la tabla vieja, que tumba dos tests. **76 de 76 muertas**, con X19 de la Tanda D como única superviviente en su primera corrida, muerta al añadir su test.
+
+### Lo que no cubre el mapa
+
+Un requisito con test no es un requisito medido de todas las maneras. Lo que ya quedó dicho en cada tanda, junto:
+
+- **R25, cambio de rol:** con test, pero ninguna mutación lo quita a él en concreto (Tanda B).
+- **R13:** en la 477 y la 398 solo el cambio de vehículo llega al resolver (Tanda B).
+- **R38, modo oscuro:** sin colores fijos por `disposición:249` y, para el diálogo apilado, una captura mirada a ojo; sin medida de contraste.
+- **El valor propio en una zona satélite, hasta consolidar:** el cálculo está en `caminos`, sin E2E (Tanda E).
+
+### Sin verificar
+
+- **`./init.sh` y T6.3:** los corre el leader. El `gate-completo` lo da el PR.
+- **La semántica con un lector de pantalla real:** los `role` explícitos se afirman en `disposición:163`, pero no se probó con NVDA, VoiceOver ni el árbol de accesibilidad del navegador.
+- **Un teléfono real:** la medida es con la ventana de Chromium de Playwright a 320, 390 y 639, sin Safari.
+- **`TarifasVehiculo` a 390 y la pestaña de pago de `TarifasValores`.**
+- **Capturas sin abrir:** `dialogo-1360-oscuro`, `select-en-modal-390-*`. Se rehicieron, pero solo se abrieron las tres citadas.
+- **Producción:** no se tocó.
+- **La rama va por detrás de `origin/dev`:** su base es `cc63e547` y `origin/dev` está en `689cc9df`. Estas corridas no incluyen esos commits.
+
+**Veredicto:** el importe se lee entero a 390 px sin cambiar el escritorio, el E2E cae con la tabla vieja, y T6.1 y T6.2 están hechas; falta T6.3, del leader.

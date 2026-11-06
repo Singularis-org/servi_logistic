@@ -34,7 +34,8 @@ import {
 import { conceptosDeActor, etiquetaConcepto, etiquetaModo, modoPorDefecto, TEXTOS } from "./tarifas-textos";
 import type { FilaMensajero } from "./TarifasMensajeros";
 
-const CAMPO = "h-auto min-h-11 w-[110px] focus-visible:ring-3 focus-visible:ring-ring";
+const CAMPO = "h-auto min-h-11 w-[110px] max-sm:w-full focus-visible:ring-3 focus-visible:ring-ring";
+const ROTULO_APILADO = "mb-1 block text-xs font-semibold text-muted-foreground sm:hidden";
 
 export interface TarifaMensajeroDialogoProps {
   filas: readonly FilaMensajero[];
@@ -169,21 +170,23 @@ export function TarifaMensajeroDialogo({
           )}
           {inactivo ? <p className="text-[13px] text-muted-foreground">{TEXTOS.mensajeroInactivoNota}</p> : null}
 
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead scope="col" className="text-xs font-semibold text-muted-foreground">
+          {/* En un teléfono los dos campos no caben junto al concepto y un importe se vería cortado: cada fila se apila.
+              `display` le quita la semántica de tabla a la fila en algunos navegadores; los `role` la conservan. */}
+          <Table role="table" className="max-sm:block">
+            <TableHeader role="rowgroup" className="max-sm:sr-only">
+              <TableRow role="row" className="hover:bg-transparent">
+                <TableHead role="columnheader" scope="col" className="text-xs font-semibold text-muted-foreground">
                   {TEXTOS.colConcepto}
                 </TableHead>
-                <TableHead scope="col" className="text-xs font-semibold text-muted-foreground">
+                <TableHead role="columnheader" scope="col" className="text-xs font-semibold text-muted-foreground">
                   {TEXTOS.colModo}
                 </TableHead>
-                <TableHead scope="col" className="text-xs font-semibold text-muted-foreground">
+                <TableHead role="columnheader" scope="col" className="text-xs font-semibold text-muted-foreground">
                   {TEXTOS.colValor}
                 </TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody>
+            <TableBody role="rowgroup" className="max-sm:block">
               {conceptosDeActor("mensajero").map((concepto) => {
                 const etiqueta = etiquetaConcepto(concepto);
                 const clave = claveDeCelda(concepto, null);
@@ -193,12 +196,20 @@ export function TarifaMensajeroDialogo({
                 // R32: a un dado de baja se le puede cambiar lo que tiene, pero no sumarle un valor nuevo.
                 const deshabilitada = inactivo && !guardados.has(clave);
                 return (
-                  <TableRow key={concepto} className="hover:bg-transparent">
-                    <TableCell className="font-medium whitespace-normal">
+                  <TableRow
+                    key={concepto}
+                    role="row"
+                    // `px-1`: el contenedor recorta, y sin este margen se comería el anillo de foco de los campos.
+                    className="hover:bg-transparent max-sm:grid max-sm:grid-cols-2 max-sm:gap-x-2 max-sm:gap-y-1.5 max-sm:px-1 max-sm:py-3"
+                  >
+                    <TableCell role="cell" className="font-medium whitespace-normal max-sm:col-span-2 max-sm:p-0">
                       {etiqueta}
                       <FieldError id={idError} messages={fallos} />
                     </TableCell>
-                    <TableCell>
+                    <TableCell role="cell" className="max-sm:p-0">
+                      <span aria-hidden="true" className={ROTULO_APILADO}>
+                        {TEXTOS.colModo}
+                      </span>
                       <Select
                         aria-label={TEXTOS.modoDe(etiqueta)}
                         value={actual.modo}
@@ -211,7 +222,10 @@ export function TarifaMensajeroDialogo({
                         className={CAMPO}
                       />
                     </TableCell>
-                    <TableCell>
+                    <TableCell role="cell" className="max-sm:p-0">
+                      <span aria-hidden="true" className={ROTULO_APILADO}>
+                        {TEXTOS.colValor}
+                      </span>
                       <MontoInput
                         aria-label={TEXTOS.valorDe(etiqueta)}
                         aria-invalid={fallos === undefined ? undefined : true}

@@ -175,7 +175,7 @@ Rutas de `tasks.md`. El implementer la confirma con el test concreto en `progres
 | R27, R28, R30, R31, R32, R33, R34, R35, R36 | `componente` |
 | R29 | `componente`, `tests/components/TarifasModulo.test.tsx` |
 | R31, R32, R37 | `pantalla-db` |
-| R38 | `e2e`, `componente` |
+| R38 | `e2e`, `tests/components/TarifasDisposicion.test.tsx` |
 | R39 | `e2e` |
 | R40 | `e2e` |
 

@@ -128,7 +128,8 @@ Se espera **cero código de producción**. Un rojo aquí es un defecto real: se 
   3. Activa. Una entrega y una devolución de M1: en `/cierre-dia`, «Ganancia» dice 3.110 (R39). Aprobado: `totalPagoMensajero`
      3110, con nivel `mensajero` en los dos pagos congelados.
   4. M2, de la misma zona: 2.200 y 0 (R16).
-  5. Cambia el propio a 3.000: el cierre anterior no se mueve; el siguiente de M1 paga 3.000 (R24).
+  5. Cambia el propio de entregado a 3.000: el cierre anterior no se mueve; el siguiente de M1, otra entrega y otra devolución,
+     paga 3.210: 3.000 de la entrega y 210 de la devolución, el 15 % de 1.400, que no cambió (R24).
   6. Quita el propio: el siguiente paga 2.200 (R4). Historial con el nombre de M1, por detrás (R11).
   7. M1 no ve «valor propio» en `/cierre-dia`, ni entra a `/configuracion/tarifas` (R39).
   8. Dos empresas y `admin` (R37, R35). R38: a 390 px, `documentElement.scrollWidth` ≤ 390 y controles ≥ 44.
@@ -143,9 +144,9 @@ Se espera **cero código de producción**. Un rojo aquí es un defecto real: se 
 
 ## Tanda F — Documentación y cierre. Depende de E
 
-- [ ] **T6.1** `docs/architecture.md > Tarifas flexibles`: añade el nivel `mensajero` a la lista de niveles. `docs/ayuda/oficina/
+- [x] **T6.1** `docs/architecture.md > Tarifas flexibles`: añade el nivel `mensajero` a la lista de niveles. `docs/ayuda/oficina/
   configuracion-tarifas.md`: sección de valor propio y `actualizado`. **Hecho:** guardias de ayuda verdes.
-- [ ] **T6.2** `progress/impl_SLT-55.md`: mapa `R<n> → test` con los 40, salida real y resultado de cada mutación. **Hecho:** la
+- [x] **T6.2** `progress/impl_SLT-55.md`: mapa `R<n> → test` con los 40, salida real y resultado de cada mutación. **Hecho:** la
   tabla de `requirements.md` y este mapa dicen lo mismo.
 - [ ] **T6.3** `./init.sh` en verde, después de revertir toda mutación, y comprobar que `git status` no trae ninguna.
   **Hecho:** salida pegada; el `gate-completo` lo da el PR, que abre el leader tras el OK del reviewer.
