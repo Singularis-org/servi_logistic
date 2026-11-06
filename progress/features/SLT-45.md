@@ -21,6 +21,7 @@ Siguiente: F1.1 `/afinar-feature`, luego F1.2 (spec_author).
 
 ## Decisiones
 - 2026-11-05 (humano): «arranca 45 desde 71»: la rama nace sobre `feature/SLT-71-geo-jerarquica-transito-analitica`.
+- 2026-11-05 · Alcance y decisiones cerradas en `specs/SLT-45-geo-jerarquica-entrada/requirements.md` (`/afinar-feature`; tarjetas SLT-45 y SLT-80 actualizadas).
 
 ## Preguntas abiertas
 
