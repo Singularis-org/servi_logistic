@@ -12,6 +12,7 @@ import type { IWebhookSuscripcionRepository } from "@/lib/interfaces/repositorie
 import type { IWebhookSender, WebhookOutcome } from "@/lib/interfaces/external/IWebhookSender";
 import type { JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
+import { delegadosDelCatalogo } from "@/tests/fixtures/doble-catalogo-geografico";
 import { ApiOrdenLecturaService } from "@/lib/services/ApiOrdenLecturaService";
 import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlProvider";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
@@ -164,6 +165,8 @@ async function listadoYDetalle(mensajeroAsignado: typeof USUARIO | null) {
       count: vi.fn(async () => 1),
       findFirst: vi.fn(async () => fila),
     },
+    // SLT-65: la marca de zona especial sale del catalogo de la empresa (sin marcas por defecto).
+    ...delegadosDelCatalogo(),
   };
   const svc = new ApiOrdenLecturaService(
     new OrdenRepository(prisma as unknown as PrismaClient),

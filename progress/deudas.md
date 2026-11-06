@@ -295,3 +295,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** revisión de SLT-55, hallazgo 4. Ningún test pasa un propio en % con flete mayor que 0 en reprogramado, novedad o incidente, ni en el corte. Por lectura va bien: se congelan todos los conceptos de tienda y el corte usa el mismo `crearCierre` que la solicitud.
 - **Qué falta:** añadir esos casos a `tests/integration/db/tarifas-valor-propio-caminos.test.ts`.
 - **Dueño:** Carlos Restrepo.
+
+### D43 — `enUnaFoto` reutiliza la constante de opciones de `$transaction`
+- **Origen:** SLT-65 (2026-10-31, review F2.2 de 2026-11-03, menor 4). `CatalogoGeograficoRepository.enUnaFoto` (SLT-44) pasa la constante `OPCIONES_TRANSACCION` a `$transaction`. Prisma 7 escribe `newTxId` en ese objeto, y tras abrir un `tx` anidado la siguiente carga falla con «Transaction already closed». SLT-65 lo rodea con `lib/repositories/_shared/sin-transaccion-anidada.ts`.
+- **Qué falta:** el arreglo de raíz en SLT-44, una línea: `{ ...OPCIONES_TRANSACCION }`. Después, valorar si se retira el rodeo de SLT-65.
+- **Dueño:** Camilo (SLT-44, PR #55).
