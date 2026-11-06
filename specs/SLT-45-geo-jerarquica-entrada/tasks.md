@@ -84,10 +84,10 @@
   misma ubicación + `ubicacion`. (R19)
 - [x] **T5.5** [P] `tests/integration/api/v2-consulta.route.test.ts`: detalle igual que v1 + ruta con
   tipos; 404 uniforme. (R20, R21)
-- [ ] **T5.6** [P] `tests/integration/api/v2-geografia.route.test.ts`: país propio (CR), 422 sin `pais`
+- [x] **T5.6** [P] `tests/integration/api/v2-geografia.route.test.ts`: país propio (CR), 422 sin `pais`
   o mal formado, mismo 404 para país ajeno e inexistente. (R22, R23)
-- [ ] **T5.7** [P] `tests/integration/api/v2-aislamiento.route.test.ts` con dos empresas. (R24)
-- [ ] **T5.8** `tests/fixtures/paises-de-prueba-geo.ts` y
+- [x] **T5.7** [P] `tests/integration/api/v2-aislamiento.route.test.ts` con dos empresas. (R24)
+- [x] **T5.8** `tests/fixtures/paises-de-prueba-geo.ts` y
   `tests/integration/api/v2-paises-de-prueba.route.test.ts`: países de 2 y 4 niveles; catálogo
   completo; resolución por nombre y código a toda profundidad; crear, lote y cotizar → país no
   habilitado y cero órdenes nuevas; v1 con esos países → país no habilitado bajo `ubicacion`. (R5, R15,

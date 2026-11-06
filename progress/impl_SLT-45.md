@@ -340,3 +340,70 @@ lecturas, excluyendo las dos escrituras de SLT-45 con su justificación; (b) sac
 
 Veredicto T4.3/T4.4: firmas v2 de carga y cotización con `ubicacion`, catálogo v2 y lugar de la orden por dueño y
 empresa, probados con dobles y contra Postgres; contrato v1 22/22 sin regrabar; queda abierto un rojo de guardia heredado de T3.1.
+
+## T5 — Rutas v2 y middleware (implementer + backend_dev, 2026-11-06)
+
+### Commits
+- `e63da62b` T5.1 (verificado sin fix) · `6e4a1918` T5.2 (rutas v2, SELF_AUTH_ROUTES; `buildDetallePorOrdenId`
+  movido a `lib/api/api-orden-detalle.ts`, la ruta v1 lo importa y solo reexporta el tipo) · `890509f2` alta de las
+  5 rutas v2 en `MODULO_POR_API` (`nucleo`; la guardia `modulos-reparto` estaba roja desde 6e4a1918)
+- `edd6d82a` T5.3 · `b0c987d8` T5.4 · `0fb726c0` T5.5 · `8b6270bd` T5.6 · `31e7d2fb` T5.7 · `52fe6b59` T5.8
+
+### Archivos
+- Nuevos: `app/api/v2/{geografia,ordenes,ordenes/[id],ordenes/carga,ordenes/cotizacion}/route.ts`,
+  `lib/api/api-orden-detalle.ts`, `tests/integration/api/_v2-escenario.ts`, `tests/integration/api/v2-{ordenes,
+  cotizacion,consulta,geografia,aislamiento,paises-de-prueba}.route.test.ts`, `tests/fixtures/paises-de-prueba-geo.ts`.
+- Modificados: `app/api/ordenes/api-key/orden/[id]/route.ts`, `middleware.ts`, `lib/modulos/reparto.ts`,
+  `lib/services/GeografiaApiService.ts`, `lib/interfaces/services/IGeografiaApiService.ts`,
+  `tests/unit/auth/middleware.test.ts` (solo la lista SELF_AUTH_ROUTES, pedida por tasks.md),
+  `tests/unit/guards/rastreo-sin-ruta-nueva.guardia.test.ts`, `tests/unit/services/geografia-api-service.test.ts`.
+
+### Mapa R → test (T5)
+| R | Test |
+|---|---|
+| R4 | suites v1 existentes sin cambios (carga 33, carga-generate 14, tienda-destino 5, orden-consulta 31, …) |
+| R5 | `v2-paises-de-prueba` > «R5 (XN\|XP): la carga y la cotizacion de v1 rechazan cada fila con «pais no habilitado» bajo `ubicacion`…» |
+| R10 | `v2-ordenes` > «R10: bajo app/api/v2 solo hay crear, lote, cotizacion, consulta y catalogo…» |
+| R11 | `v2-ordenes` > «R11: sin Bearer o con una key desconocida…401», «R11: …no activos dan 403», «R11: la orden queda en la empresa y la tienda de la key…» |
+| R12 | `v2-ordenes` > «R12: sin ubicacion, con las dos, o con la terna de v1…» |
+| R13 | `v2-ordenes` > «R13: por nombre, normalizado nivel a nivel…» (ambiguo por nombre: solo unit `geo-ubicacion.test.ts`, la base lo impide por índice único) |
+| R14 | `v2-ordenes` > «R14: por codigo oficial del pais…» |
+| R15 | `v2-ordenes` > «R15: …provincia de CR da pais no habilitado…»; `v2-paises-de-prueba` > «R15/R33 (XN\|XP): crear, lote y cotizacion…» |
+| R16 | `v2-ordenes` > «R16: un canton de CR … y un distrito sin zona salen con «sin zona»…» |
+| R17 | `v2-ordenes` > «R17: el lote de v2 responde lo mismo que el de v1 … + `ordenes[].ubicacion`», «R17: la orden creada por v2 guarda su nodo y las FK…» |
+| R18 | `v2-ordenes` > «R18: crear una orden responde lo mismo que el lote…», «R18: crear una orden recibe UNA orden…422» |
+| R19 | `v2-cotizacion` > «R19: mismos importes y misma forma que v1…», tarifa propia, 409 sin tarifa, fila mala |
+| R20 | `v2-consulta` > «R20/R21: por guia y por remision…», «R20: inexistente, borrada y de otra tienda dan el MISMO 404…» |
+| R21 | `v2-consulta` > «R21: `ubicacion` trae el nombre ACTUAL del nodo…» |
+| R22 | `v2-geografia` > «R22: con el pais de la empresa (CR)…»; `v2-paises-de-prueba` > «R22/R33 (XN\|XP): el catalogo…» |
+| R23 | `v2-geografia` > «R23: sin `pais`, vacio o … mal formado responde 422», «R23: un pais ajeno … y uno inexistente dan el MISMO 404» |
+| R24 | `v2-aislamiento` > 5 casos «R24: …» (zonas, consulta 404, remisión duplicada, catálogo) |
+| R33 | `v2-paises-de-prueba` > «R33/R15 (XN\|XP): por nombre y por codigo se encuentran nodos de TODA profundidad…» |
+
+### Evidencia (`logistic_slt45` local, `--maxWorkers=1`, `NODE_OPTIONS=--max-old-space-size=8192`)
+- T5.1: contrato-v1 22 passed; suites v1 de carga/cotización (11 archivos) y 9 unit/guardias que importan los handlers
+  → todo verde (129 passed en los 9 unit).
+- T5.2: 13 unit (middleware, rastreo-sin-ruta-nueva, geografia-api-service, 7 guardias de rutas, composición) → 196
+  passed; contrato-v1 22; orden-consulta 31; 177-key-nunca-filtrada 9; eliminar 12; tienda-destino-aislamiento 8;
+  webhook-evidencias 5.
+- Una corrida conjunta de las 6 suites v2 + contrato-v1 (comparar) → `Test Files 7 passed (7)`, `Tests 62 passed (62)`
+  (13+5+4+3+5+10+22), sin saltos; `tests/fixtures` limpio.
+- Rojo comprobado por suite (roto a mano y restaurado): v2-ordenes 1/13 (texto de msgSinZona); v2-cotizacion 2/5
+  (esZonaEspecial forzado); v2-consulta 2/4 (ubicacion recortada); v2-geografia 2/3 (sin comprobación de paisId);
+  v2-aislamiento 3/5; v2-paises-de-prueba 5/10 (esPaisDeTresNiveles siempre true).
+- `tsc --noEmit` exit 0 y eslint de lo tocado exit 0 tras cada task.
+- Guardias tras T5.8 (antes del alta en reparto): 2 archivos rojos, `dependencias-declaradas-presentes` (baseline) y
+  `modulos-reparto` (rutas v2 sin alta) → corregido en `890509f2`. La corrida final de guardias por lotes tras
+  `890509f2` estaba EN CURSO al cerrar esta tanda (ver resumen al leader).
+
+### Decisiones para revisar
+- Las rutas v2 exportan además funciones `handle*` y tipos (`handleGeografiaApi`, `handleCrearOrdenV2`,
+  `handleConsultaOrdenV2`…), igual que hacen hoy todas las rutas v1; no se comprobó con `next build`.
+- `_v2-escenario.ts` replica la siembra privada de `contrato-v1.route.test.ts` (congelado, no importable).
+- Fixture de países de prueba: siembra en transacción revertida (no afterAll con borrado); el afterAll comprueba 0
+  residuos. La «key» del país de prueba es el autenticador inyectado, no una fila de `api_key`. El país de 2 niveles
+  tiene 3 tipos (la tabla `pais` exige tres nombres).
+- R17: el cupo del plan no tiene caso propio en v2-ordenes.
+
+Veredicto T5: rutas v2 y suites T5.3–T5.8 en verde contra Postgres; contrato v1 22/22; falta confirmar la corrida
+final de guardias tras el alta en reparto.
