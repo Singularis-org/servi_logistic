@@ -97,7 +97,7 @@
 | R48 | CUANDO el superadmin agrega un nivel a un país de P tipos, con P menor que 10, con nombre singular y plural, el sistema DEBE crear el tipo `nivel_<P+1>` como último nivel y, DONDE P+1 es 3, DEBE copiar sus nombres a `pais.nivel_3_singular`/`_plural`; todo en una sola transacción y sin cambiar los demás tipos ni ningún nodo. | P3 |
 | R49 | SI el país ya tiene 10 tipos o un nombre no cumple 2–40 caracteres, ENTONCES el sistema DEBE responder `validation_error`; SI el país no existe, ENTONCES `not_found`; SI el tipo `nivel_<P+1>` ya existe cuando se escribe (otra alta en paralelo), ENTONCES `conflict`; en ningún rechazo DEBE escribir nada. | P3 |
 | R50 | El sistema NO DEBE ofrecer quitar un nivel ni un tipo de un país: ninguna action ni control de la pantalla lo hace, y ningún archivo de `lib/`, `app/` ni `components/` borra filas de `tipo_nivel_geografico`. | P3; Retirar nodo |
-| R51 | MIENTRAS un país tiene 2 tipos, las pantallas de sus empresas DEBEN mostrar como etiqueta del nivel 3 la etiqueta neutra «Nivel 3» (singular y plural) y nunca un texto vacío. (P10) | P2 |
+| R51 | MIENTRAS un país tiene 2 tipos, las pantallas de sus empresas DEBEN mostrar como etiqueta del nivel 3 la del nivel 2 (singular y plural) y nunca un texto vacío. | P2; P10 |
 
 ### Disponibilidad del país
 
@@ -174,20 +174,9 @@
 Sembradas por `/afinar-feature`: ninguna. P1–P9 (spec_author, F1.2) respondidas por el humano el
 2026-11-06: pasan a `## Decisiones cerradas`.
 
-Nueva (spec_author, revisión F1.2, 2026-11-06), al aplicar P2:
+P10 (spec_author, revisión F1.2) respondida por el humano el 2026-11-06: pasa a `## Decisiones cerradas`.
 
-- **P10. Qué etiqueta de nivel 3 ven las empresas de un país de 2 niveles.** Para que un país de 2
-  niveles no tenga tipo `nivel_3` sin alterar columnas, su fila `pais` guarda vacío en
-  `nivel_3_singular`/`_plural` (`design.md §2.4`), y las pantallas de empresa (filtros, columnas y
-  exportes con la etiqueta de «distrito») necesitan algún texto. Esas empresas no pueden crear órdenes
-  («país aún no habilitado»), así que la columna siempre sale vacía. Opciones y coste:
-  (a) **propuesta**: la etiqueta neutra que ya existe para el superadmin, «Nivel 3»
-  (`ETIQUETAS_NEUTRAS`), con un respaldo en `etiquetasDePais`: una línea y un test;
-  (b) repetir la etiqueta del nivel 2: mismo coste, pero la pantalla muestra dos columnas con el mismo
-  nombre;
-  (c) ocultar las columnas y filtros del nivel 3: toca cada pantalla que usa la etiqueta (más de diez
-  archivos) y es presentación, que va en SLT-47.
-  R51 está escrito con (a).
+Ninguna.
 
 ## Decisiones cerradas (no reabrir)
 | Fecha | Pregunta | Decisión |
@@ -208,4 +197,5 @@ Nueva (spec_author, revisión F1.2, 2026-11-06), al aplicar P2:
 | 2026-11-06 | P6. ¿Caso de SL-20 «dos homónimos normalizados en la base»? | Se retira; SL-20 R49 queda superado por SLT-46 porque el único normalizado de SLT-43 ya no admite ese estado. |
 | 2026-11-06 | P7. ¿Historial al cambiar los dos nombres de un tipo? | Una fila por nombre cambiado, con el campo en `detalle`. |
 | 2026-11-06 | P8. ¿Dónde vive la comparación fila a fila? | Modo de solo lectura `--equivalencia-geografia` en el script de SLT-43. |
+| 2026-11-06 | P10. ¿Etiqueta del nivel 3 en las pantallas de empresa de un país de 2 niveles? | Repetir la del nivel 2 (singular y plural), no la neutra «Nivel 3» que proponía el spec. Ocultar esas columnas queda para SLT-47. |
 | 2026-11-06 | P9. ¿La pantalla pasa por diseño? | Sí: árbol de N niveles, lista de tipos, edición de tipos y agregar nivel pasan por una maqueta que aprueba el humano antes de implementarlos; el backend puede avanzar antes. |

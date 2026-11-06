@@ -5,9 +5,7 @@
 > `pnpm exec vitest related --run <archivos tocados>` en verde, y un commit propio
 > (`feat(SLT-46): …` / `test(SLT-46): …`). Referencias a `design.md` como §n.
 >
-> P1–P9 están cerradas (2026-11-06, `requirements.md > Decisiones cerradas`). La única tarea que
-> depende de una pregunta abierta es T1.4 (P10, etiqueta de nivel 3 de un país de 2 niveles): si el
-> humano elige otra opción, se rehace antes de empezarla.
+> P1–P10 están cerradas (2026-11-06, `requirements.md > Decisiones cerradas`).
 >
 > Regla de oro: **T2 (la base) va antes que cualquier escritura de la app.** El código nuevo escribe el
 > nodo y confía en el trigger de copia; sin él, la geografía vieja se queda atrás.
@@ -60,9 +58,8 @@ Montado por SLT-43/44/45/65/71 en esta rama. Se usa tal cual; ninguna task lo vu
   (traducción 1/2/3 ↔ provincia/canton/distrito); P = 2 y P = 4; hueco → error de línea; columnas de
   más → aviso.
 - [ ] **T1.4** [P] Respaldo del nivel 3 vacío en `etiquetasDePais` (`lib/types/pais.ts`, §2.4), con
-  JSDoc de la convención `''`. Sigue la propuesta (a) de **P10**; si el humano elige otra, se rehace
-  antes. (R51)
-  *Hecho:* `tests/unit/types/pais-etiquetas.test.ts`: nivel 3 vacío → «Nivel 3»; con nombre → el nombre.
+  JSDoc de la convención `''`. Con el nivel 3 vacío devuelve la etiqueta del nivel 2 (**P10**). (R51)
+  *Hecho:* `tests/unit/types/pais-etiquetas.test.ts`: nivel 3 vacío → etiqueta del nivel 2; con nombre → el nombre.
 
 ## T2 — Base de datos (depende de T0.1; va antes de T3)
 

@@ -3,8 +3,8 @@
 > Escrito por `spec_author` el 2026-11-06 sobre la rama apilada en SLT-45 (contiene SLT-43, SLT-44,
 > SLT-65 y SLT-71). Requisitos en `requirements.md` (R1–R52). El alcance y la tabla «Decisiones
 > cerradas» no se reabren aquí. Revisado el mismo día con las respuestas del humano a P1–P9 (filas
-> «P<n>» de `## Decisiones cerradas`); lo único que sigue abierto es P10 (etiqueta de nivel 3 de un país
-> de 2 niveles, §2.4), que lleva su marca.
+> «P<n>» de `## Decisiones cerradas`) y a P10 (etiqueta de nivel 3 de un país de 2 niveles, §2.4).
+> No queda nada abierto.
 >
 > El MCP del grafo responde, pero no tiene indexado este worktree (`list_projects` no lo lista): la
 > exploración se hizo con Grep/Read.
@@ -23,7 +23,7 @@ términos `tipo_nivel_geografico`, `nodo_geografico` (escritor), `pais_tipos_de_
 | Sincronía vieja → nodo (`geo_sincronizar_{provincia,canton,distrito}`) | `db/migrations/20261104120300` (SLT-43) | **No se toca**. Convive con la copia nueva (§2.2) |
 | Trigger `pais_tipos_de_nivel` (pais → tipos 1–3) | `db/migrations/20261104120100` | Se **reemplaza su función** con `CREATE OR REPLACE` (P2): mismo comportamiento salvo que no crea `nivel_3` si el país no lo tiene (§2.4). El trigger no se toca |
 | Valores `nodo_geografico_{creado,renombrado,desactivado,activado}` y entidad `nodo_geografico` en los enums de `historial_plataforma` | `db/schema.prisma`, `20261104120000` | Se usan por primera vez (P5) |
-| `etiquetasDePais`, `ETIQUETAS_NEUTRAS` | `lib/types/pais.ts` | `etiquetasDePais` gana un respaldo para el nivel 3 vacío (P10, R51) |
+| `etiquetasDePais` | `lib/types/pais.ts` | `etiquetasDePais` gana un respaldo para el nivel 3 vacío: la etiqueta del nivel 2 (P10, R51) |
 | `appendAccionPlataforma`, `resolverActorCongelado` | `lib/repositories/registrar-accion-plataforma.ts`, `registrar-accion.ts` | Único escritor del historial; sin cambios |
 | `CatalogoGeograficoRepository.dePais`, `geografia-dominio` (`ancestros`, `nodosBajo`, `tiposDelPais`) | SLT-44 | Lectura del árbol de N niveles (§4.3) |
 | `etiquetaDeEntidad("nodo_geografico", { nombres })` | `lib/types/historial-accion-etiquetas.ts` (SLT-43) | Etiqueta congelada de los nodos (R35) |
@@ -193,9 +193,9 @@ así que no hay bucle) → historial.
 **Etiquetas de las empresas (R27, R51).** Salen de `pais.nivel_N_*` (`etiquetasDePais` →
 `EtiquetasGeograficasProvider` en `app/(app)/layout.tsx`): con la copia, R27 sale sin tocarlas. Para
 un país de 2 niveles `nivel3Singular` es `''`: `etiquetasDePais` devuelve para `distrito` la etiqueta
-de `ETIQUETAS_NEUTRAS.distrito` («Nivel 3») cuando el nombre está vacío (**P10**, propuesta (a)). Esas
-empresas no crean órdenes («país aún no habilitado»), así que la etiqueta solo titula columnas y
-filtros vacíos. Si el humano elige otra opción de P10, cambia solo esta línea y R51.
+del nivel 2 (singular y plural) cuando el nombre del nivel 3 está vacío (**P10**, decisión del humano:
+repetir la del nivel 2). Esas empresas no crean órdenes («país aún no habilitado»), así que la etiqueta
+solo titula columnas y filtros vacíos; ocultarlos es de SLT-47.
 
 ### 2.5 Qué depende del país (`docs/perfil-agentes.md > spec_author`)
 
@@ -458,7 +458,7 @@ migraciones usa base propia (prefijo `slt46_`, molde `base-propia-43.ts`).
 | R47 | `tests/integration/db/slt46-pais-tipos-de-nivel.test.ts` (sobre CR y un país de 3 tipos: la misma escritura de `pais` con la función de SLT-43 y con la de SLT-46 deja los mismos tipos, comparados campo a campo) |
 | R48, R49 | `tests/integration/db/pais-agregar-nivel.test.ts` (2 → 3: tipo creado y `pais.nivel_3_*` copiado; 4 → 5: solo tipo; nodos y otros tipos intactos; 10 → `tope`; dos altas en paralelo → una `conflict`; sin país → `no_existe`) y `pais-service.test.ts` (desenlaces y `validation_error` por nombre) |
 | R50 | `tests/unit/guards/geografia-sin-borrado-fisico.guardia.test.ts` (incluye `tipoNivelGeografico`) y `geografia-plataforma-action.test.ts` (lista de exports sin action de quitar nivel) |
-| R51 | `tests/unit/types/pais-etiquetas.test.ts` (`etiquetasDePais` con nivel 3 vacío → «Nivel 3»; con nombre → el nombre) |
+| R51 | `tests/unit/types/pais-etiquetas.test.ts` (`etiquetasDePais` con nivel 3 vacío → la etiqueta del nivel 2; con nombre → el nombre) |
 | R52 | Revisión del reviewer: `progress/impl_SLT-46.md` anota la maqueta aprobada (fecha y referencia) con fecha anterior al primer commit de T6 |
 | R25, R26 | `tests/integration/db/pais-tipos-edicion.test.ts` (tipo 2 → tipo + `pais.nivel_2_*`; tipo 4 → solo tipo; igual → sin escribir; inexistente → `not_found`) y `pais-service.test.ts` |
 | R27 | `tests/components/etiquetas-geograficas.test.tsx` (las etiquetas salen de `pais.nivel_N_*` editado) + `pais-tipos-edicion.test.ts` (`PaisRepository.deLaEmpresa` devuelve el nombre nuevo) |
