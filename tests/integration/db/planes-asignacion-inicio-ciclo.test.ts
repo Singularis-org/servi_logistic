@@ -19,6 +19,10 @@ import { crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones
 import { HAY_BASE_DE_DATOS, clienteConSavepoint, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import { capturar, entradaDePlan, planesEnTx, revertida, sqlstateDe, triggerActivo } from "./_fixtures/planes";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
+
+// SLT-42: la fecha que muestra `siguienteCiclo` se calcula en la zona del pais de la empresa.
+const zonaDeCR = async (): Promise<string> => ZONA_DE_CR;
 
 // SLT-58 · T14 (design §11.4; R31–R34, R36, R37, R39, R42) — la primera asignación con fecha de inicio
 // del ciclo contra Postgres, con `PlanesService` y `PlanesRepository` REALES. El repositorio abre su
@@ -62,7 +66,7 @@ interface Caso {
 }
 
 async function caso(tx: TxDeTest): Promise<Caso> {
-  const servicio = new PlanesService(planesEnTx(tx));
+  const servicio = new PlanesService(planesEnTx(tx), undefined, zonaDeCR);
   return {
     tx,
     servicio,

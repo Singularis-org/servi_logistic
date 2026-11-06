@@ -14,6 +14,7 @@ import { CierreBodegaService } from "@/lib/services/CierreBodegaService";
 import { CierreDiaService } from "@/lib/services/CierreDiaService";
 import { CierresAdminService } from "@/lib/services/CierresAdminService";
 import { comoApp, crearOrganizacion, fijarEmpresa, sembrarActivacion } from "@/tests/fabricas/organizaciones";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import {
   HAY_BASE_DE_DATOS,
@@ -160,13 +161,18 @@ function servicioListado(cli: PrismaClient, zonaId: string) {
     { sumarVigentesPorCierre: async () => ({}), obtenerCierreParaPago: async () => null } as never,
     { sumarPremiosVivosPorCierre: async () => ({}) } as never,
     { contarPorCierre: async () => new Map() } as never,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    reglasPaisFijas(),
   );
 }
 
 function servicioConsolidacion(cli: PrismaClient, zonaId: string) {
   return new CierreBodegaService(new CierreBodegaRepository(cli), {
     findUsuarioZonaId: async () => zonaId,
-  } as never);
+  } as never, reglasPaisFijas());
 }
 
 interface Lectura {
@@ -311,6 +317,9 @@ describeSiHayBase("SLT-54 R71 — incluyeModeloNuevo, contra Postgres", () => {
           } as never,
           {} as never,
           new TarifaZonaMensajeroRepository(cli),
+          undefined,
+          undefined,
+          reglasPaisFijas(),
         ).solicitarCierre({ usuarioId: M, rol: "mensajero" });
       });
       if (r.status !== "ok" || r.cierreId === undefined) {

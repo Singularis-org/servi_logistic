@@ -12,6 +12,10 @@ import { crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
 import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import { entradaAsignable, planesEnTx, revertida } from "./_fixtures/planes";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
+
+// SLT-42: la fecha que muestra `siguienteCiclo` se calcula en la zona del pais de la empresa.
+const zonaDeCR = async (): Promise<string> => ZONA_DE_CR;
 
 // Ajuste planes-custom (D10, D12, D13, D14; 2026-11-03), contra Postgres, con `PlanesService` y
 // `PlanesRepository` REALES (el repositorio abre su transacción como SAVEPOINT de la del caso, que siempre
@@ -67,7 +71,7 @@ async function empresaConPlan(tx: TxDeTest, servicio: PlanesService) {
 describeSiHayBase("Ajuste planes-custom D10 — cambiar solo el tipo de cobro del plan actual", () => {
   it("guarda el tipo y deja su fila en el historial; plan, ancla, ciclo corto y módulos quedan igual", async () => {
     const r = await revertida(base, async (tx) => {
-      const servicio = new PlanesService(planesEnTx(tx));
+      const servicio = new PlanesService(planesEnTx(tx), undefined, zonaDeCR);
       const { org, planId } = await empresaConPlan(tx, servicio);
       const antes = await estadoDeLaEmpresa(tx, org);
       const res = await servicio.cambiarTipoCobro(SUPERADMIN, { organizacionId: org, tipoCobro: "anual" });
@@ -93,7 +97,7 @@ describeSiHayBase("Ajuste planes-custom D10 — cambiar solo el tipo de cobro de
 
   it("D16: de vuelta a mensual deja otra fila `plan_tipo_cobro_cambiado` (anual → mensual) y ninguna `plan_asignado` nueva", async () => {
     const r = await revertida(base, async (tx) => {
-      const servicio = new PlanesService(planesEnTx(tx));
+      const servicio = new PlanesService(planesEnTx(tx), undefined, zonaDeCR);
       const { org } = await empresaConPlan(tx, servicio);
       const antes = await estadoDeLaEmpresa(tx, org);
       await servicio.cambiarTipoCobro(SUPERADMIN, { organizacionId: org, tipoCobro: "anual" });
@@ -118,7 +122,7 @@ describeSiHayBase("Ajuste planes-custom D10 — cambiar solo el tipo de cobro de
 
   it("el mismo tipo → ok sin cambio, y no escribe nada (ni historial)", async () => {
     const r = await revertida(base, async (tx) => {
-      const servicio = new PlanesService(planesEnTx(tx));
+      const servicio = new PlanesService(planesEnTx(tx), undefined, zonaDeCR);
       const { org } = await empresaConPlan(tx, servicio);
       const antes = await estadoDeLaEmpresa(tx, org);
       const res = await servicio.cambiarTipoCobro(SUPERADMIN, { organizacionId: org, tipoCobro: "mensual" });
@@ -132,7 +136,7 @@ describeSiHayBase("Ajuste planes-custom D10 — cambiar solo el tipo de cobro de
     const r = await revertida(base, async (tx) => {
       const org = (await crearOrganizacion(tx)).id;
       const antes = await estadoDeLaEmpresa(tx, org);
-      const res = await new PlanesService(planesEnTx(tx)).cambiarTipoCobro(SUPERADMIN, { organizacionId: org, tipoCobro: "anual" });
+      const res = await new PlanesService(planesEnTx(tx), undefined, zonaDeCR).cambiarTipoCobro(SUPERADMIN, { organizacionId: org, tipoCobro: "anual" });
       const directo = await planesEnTx(tx).cambiarTipoCobro(org, "anual", SUPERADMIN.usuarioId);
       return { res, directo, antes, despues: await estadoDeLaEmpresa(tx, org) };
     });
@@ -148,9 +152,9 @@ describeSiHayBase("Ajuste planes-custom D10 — cambiar solo el tipo de cobro de
 
   it("si el historial falla, el tipo no se guarda (misma transacción)", async () => {
     const r = await revertida(base, async (tx) => {
-      const { org } = await empresaConPlan(tx, new PlanesService(planesEnTx(tx)));
+      const { org } = await empresaConPlan(tx, new PlanesService(planesEnTx(tx), undefined, zonaDeCR));
       const antes = await estadoDeLaEmpresa(tx, org);
-      const error = await new PlanesService(planesEnTx(tx, "historial"))
+      const error = await new PlanesService(planesEnTx(tx, "historial"), undefined, zonaDeCR)
         .cambiarTipoCobro(SUPERADMIN, { organizacionId: org, tipoCobro: "anual" })
         .catch((e: unknown) => e);
       return { error, antes, despues: await estadoDeLaEmpresa(tx, org) };
@@ -163,7 +167,7 @@ describeSiHayBase("Ajuste planes-custom D10 — cambiar solo el tipo de cobro de
 describeSiHayBase("Ajuste planes-custom D14 — el historial de asignaciones del detalle trae el tipo de cobro", () => {
   it("cada fila con su tipo; el cambio de solo el tipo (D10, D16: `plan_tipo_cobro_cambiado`) es una fila propia, distinguible", async () => {
     const r = await revertida(base, async (tx) => {
-      const servicio = new PlanesService(planesEnTx(tx));
+      const servicio = new PlanesService(planesEnTx(tx), undefined, zonaDeCR);
       const { org } = await empresaConPlan(tx, servicio);
       await servicio.cambiarTipoCobro(SUPERADMIN, { organizacionId: org, tipoCobro: "anual" });
       return servicio.planDeEmpresa(SUPERADMIN, { organizacionId: org });
@@ -212,7 +216,7 @@ describeSiHayBase("Ajuste planes-custom D12, D13 — avisos de topes ya pasados 
   it("D13: la vista previa con los topes del form avisa lo que D12 devuelve al crear con esa fecha; la vista previa no escribe", async () => {
     const manana = inicioDelCicloPorDefecto(new Date());
     const r = await revertida(base, async (tx) => {
-      const servicio = new PlanesService(planesEnTx(tx));
+      const servicio = new PlanesService(planesEnTx(tx), undefined, zonaDeCR);
       const org = await empresaQuePasaElTope(tx);
       const antes = await estadoDeLaEmpresa(tx, org);
       const vista = await servicio.previsualizarCustom(SUPERADMIN, { organizacionId: org, inicioCiclo: manana, topes: TOPES });
@@ -232,7 +236,7 @@ describeSiHayBase("Ajuste planes-custom D12, D13 — avisos de topes ya pasados 
     const manana = inicioDelCicloPorDefecto(new Date());
     const r = await revertida(base, async (tx) => {
       const org = await empresaQuePasaElTope(tx);
-      return new PlanesService(planesEnTx(tx)).previsualizarCustom(SUPERADMIN, {
+      return new PlanesService(planesEnTx(tx), undefined, zonaDeCR).previsualizarCustom(SUPERADMIN, {
         organizacionId: org,
         inicioCiclo: manana,
         topes: { ordenesPorCiclo: null, porRol: { adminTienda: 3 }, apiKeys: null },
@@ -244,7 +248,7 @@ describeSiHayBase("Ajuste planes-custom D12, D13 — avisos de topes ya pasados 
   it("D13: la empresa ya tiene plan → validation_error en inicioCiclo (SLT-58 R31)", async () => {
     const manana = inicioDelCicloPorDefecto(new Date());
     const r = await revertida(base, async (tx) => {
-      const servicio = new PlanesService(planesEnTx(tx));
+      const servicio = new PlanesService(planesEnTx(tx), undefined, zonaDeCR);
       const { org } = await empresaConPlan(tx, servicio);
       return servicio.previsualizarCustom(SUPERADMIN, { organizacionId: org, inicioCiclo: manana, topes: TOPES });
     });

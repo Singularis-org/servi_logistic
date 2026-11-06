@@ -18,7 +18,7 @@ import { WalletMensajeroFeedService } from "@/lib/services/WalletMensajeroFeedSe
 import { serviciosDeTarifas } from "@/lib/tarifas/servicios";
 import type { ContextoPagoGestion, FijarValorInput, TarifaPago } from "@/lib/types/tarifa-flexible";
 import { comoApp, crearOrganizacion, fijarEmpresa, sembrarActivacion } from "@/tests/fabricas/organizaciones";
-import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
+import { reglasPaisFijas, ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import {
   HAY_BASE_DE_DATOS,
@@ -261,6 +261,9 @@ function servicioCierre(cli: PrismaClient, e: Pick<Base, "Z">, pagos: Resolvedor
     new OrdenRepository(cli),
     { createSignedUrls: async () => ({}) } as never,
     pagos as never,
+    undefined,
+    undefined,
+    reglasPaisFijas(),
   );
 }
 
@@ -307,6 +310,8 @@ function corteReal(cli: PrismaClient, e: Pick<Base, "Z">) {
     new OrdenRepository(cli),
     new TarifaZonaMensajeroRepository(cli),
     { warn: () => undefined },
+    undefined,
+    reglasPaisFijas(),
   );
 }
 

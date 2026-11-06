@@ -916,6 +916,9 @@ describeSiHayBase("SLT-52 T5.4 — el cierre congela el modelo nuevo y lo lee co
         } as never,
         {} as never,
         pagosConActivacion,
+        undefined,
+        undefined,
+        reglasPaisFijas(),
       );
       const actor: Actor = { usuarioId: M, rol: "mensajero" };
       await expect(comoEmpresa(tx, A, () => servicio.solicitarCierre(actor))).rejects.toBeInstanceOf(
