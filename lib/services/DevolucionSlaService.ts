@@ -163,10 +163,11 @@ export class DevolucionSlaService implements IDevolucionSlaService {
         // contador. Por eso R33 congela el criterio de conteo en esta ficha.
         const esWrong = orden.causa !== "not_found";
         const escalaPorTope = esWrong && intentos >= umbral;
+        const vencida = venceVentana(orden.causa, orden.ancladaAt, now);
 
         // R14/R13/R17 (ventana viva): aun no vence -> la orden reposa en `devuelta`, no se actua.
         // R29: por DEBAJO del umbral la ventana de cinco dias se aplica exactamente como hoy.
-        if (!escalaPorTope && !venceVentana(orden.causa, orden.ancladaAt, now)) {
+        if (!escalaPorTope && !vencida) {
           evaluadas += 1;
           continue;
         }
@@ -199,8 +200,8 @@ export class DevolucionSlaService implements IDevolucionSlaService {
           // era. El dano pasa de dinero mal cobrado a mercaderia parada. La alerta operativa que
           // vigila esa poblacion (M3 del §7bis de la 215) sigue siendo ficha aparte.
           if (intentos >= umbral) {
-            // R16: alcanzo el umbral -> escala a `rechazada`.
-            const ok = await this.escalar(orden, estatusDevueltaId, estatusRechazadaId);
+            // R16: alcanzo el umbral -> escala a `rechazada`. SLT-77 (R35): rechazo por tope, con veto.
+            const ok = await this.escalar(orden, estatusDevueltaId, estatusRechazadaId, { intentos });
             if (ok) escaladas += 1;
             else omitidas += 1; // R24/R25: guarda de estado ya no vigente
           } else {
@@ -217,7 +218,9 @@ export class DevolucionSlaService implements IDevolucionSlaService {
           }
         } else {
           // R17: `wrong_number` / `wrong_address` -> escalado DIRECTO a `rechazada`, sin bucle.
-          const ok = await this.escalar(orden, estatusDevueltaId, estatusRechazadaId);
+          // SLT-77 (R35): con la ventana vencida escala igual, suba o no el tope; el veto es para el adelanto.
+          const veto = vencida ? undefined : { intentos };
+          const ok = await this.escalar(orden, estatusDevueltaId, estatusRechazadaId, veto);
           if (ok) escaladas += 1;
           else omitidas += 1;
         }
@@ -264,6 +267,7 @@ export class DevolucionSlaService implements IDevolucionSlaService {
     orden: DevueltaSlaRow,
     estatusDevueltaId: string,
     estatusRechazadaId: string,
+    vetoPorTope?: { intentos: number },
   ): Promise<boolean> {
     return this.repo.escalarDevueltaSla({
       ordenId: orden.ordenId,
@@ -271,6 +275,7 @@ export class DevolucionSlaService implements IDevolucionSlaService {
       estatusRechazadaId,
       mensajeroId: orden.mensajeroId, // R22: atribuye el ingreso de bodega a este mensajero
       motivo: `escalado SLA ${orden.causa}`,
+      ...(vetoPorTope ? { vetoPorTope } : {}),
     });
   }
 }

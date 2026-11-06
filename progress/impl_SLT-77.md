@@ -289,3 +289,72 @@ Guardia de T3.5, en arnés aparte con 6 tests por corrida: el código que nombra
 ### Veredicto
 
 Tanda C hecha en el servidor: cada punto decide con el tope de su empresa, con 0 saltos y las 12 mutaciones y el control muertos. M12 muere por R27, no por R26, y el componente del historial pasa a T5.3.
+
+## Tanda D (2026-11-06)
+
+Base: `servi_gate_slt77`, recreada con DROP/CREATE, `migrate deploy` (exit 0) y `db:seed` (exit 0) antes de la corrida final, con `current_database()` comprobado. Las mutaciones corrieron antes, sobre la misma lista de migraciones. Solo categorías impresas; ninguna URL en la salida.
+
+### Archivos
+
+Creado: `tests/integration/db/tope-intentos-carreras.test.ts`. Sus helpers son los de `tope-intentos-caminos`, recortados: se copiaron para no mover un archivo ya verificado con mutaciones.
+
+Modificados:
+
+- `lib/interfaces/repositories/IDevolucionSlaRepository.ts`, `lib/repositories/DevolucionSlaRepository.ts`, `lib/services/DevolucionSlaService.ts`: `vetoPorTope`.
+- `lib/repositories/CierresAdminRepository.ts`: `Math.max` junto al conteo.
+- `tests/unit/services/devolucion-sla-tope-wrong.test.ts`: quién lleva el veto, con literales.
+- `tests/unit/repositories/cierres-admin-repository.test.ts`, `tests/unit/services/cierres-admin-service.aprobar.sin-gestion.test.ts`: `$queryRaw` en el doble de la transacción. Añadidas a `## Archivos esperados` antes de tocarlas.
+
+### Mapa R → test de esta tanda
+
+En `tests/integration/db/tope-intentos-carreras.test.ts`. El tope cambia dentro de la lectura, por el `TopeIntentosService` real.
+
+| R | Test |
+|---|---|
+| R34 | `el tope baja tras la lectura…`, `el tope sube tras la lectura…`, con dos órdenes y una sola lectura de la corrida |
+| R35 | `wrong_number sin vencer`, `not_found vencida`, `wrong_number con la ventana vencida`, `si el tope sube pero la orden sigue agotada`, `aprobacion: las dos barridas`; `devolucion-sla-tope-wrong`: `SLT-77 R35` |
+| R36 | `proceso: no rechaza en esa corrida, y la siguiente si`, `aprobacion: va a bodega con el mayor…su siguiente paso ya la frena` |
+| R37 | `con 1 y con 50 candidatas`: 1; `con 3 rechazos`: 4; `ventana vencida`: 1; `la aprobacion`, con 1 y 3 barridas: 2 |
+
+**Dinero en R35 y R36.** Cada caso sin rechazo afirma: sin gestión sintética (`[]`), 0 filas de `escalado_devuelta_sla` o `rechazo_tope_intentos` en el historial de estados, y el importe del siguiente cierre pedido por el servicio. Ese importe es `0.00` en el proceso (la novedad entra al cierre, sin rechazo) y `sin cierre` en la aprobación. Los casos con rechazo dan `164.00`.
+
+**Las lecturas de R37** se cuentan en `leerTopeIntentosDeLaEmpresa`, envuelta sin cambiarla: son consultas de verdad, no llamadas a un doble.
+
+### Ventana residual, declarada y no probada
+
+Si el tope sube entre la relectura y el `COMMIT`, la orden se rechaza y cobra con el tope anterior (`design §6.2`). Dura lo que queda de la transacción. Cerrarla exige el cerrojo que `design §7.5` descarta, y no se usó.
+
+### Salida real
+
+- `pnpm run typecheck`: exit 0.
+- `eslint` de los 8 archivos TS tocados: exit 0.
+- Batería, sobre la base recreada: 16 archivos, **280 pasados, 0 fallados, 0 saltados**. `tope-intentos-carreras`: 13. `caminos`: 19. `escritura`: 38. `migration`: 12. `devolucion-sla-tope-wrong`: 17. `cierres-admin-repository`: 56. `cierres-admin-service.aprobar.sin-gestion`: 11.
+- `vitest related` de los 4 archivos de `lib/`: 432 archivos, 124 en rojo; 5031 tests, 4244 pasados, 49 fallados, 738 saltados.
+  - **Los 124 archivos rojos están en el baseline; 0 fuera.** Ninguno falla por `$queryRaw`.
+  - Saltos fuera de archivos rojos: `AnaliticaPage` y `AnaliticaShell`, que esta tanda no tocó.
+- `pnpm run test:guardias`: 332 archivos, 331 en verde y 1 en rojo; 4627 pasados, 4 fallados, 1 saltado. Rojo: `dependencias-declaradas-presentes`, el del baseline. Sin rojos nuevos.
+- `./init.sh` no se corrió: lo exige T7.4.
+- Retornos de carro en los archivos cambiados: 0, contados por bytes.
+
+### Mutaciones
+
+Arnés fuera del repo: exige base verde con tests ejecutados y sin saltos, cuenta desde el JSON de vitest, restaura y compara la huella tras cada una, y compara `git status` al final. Corre `tope-intentos-carreras`. Base y final: 13 pasados, 0 fallados, 0 saltados. `git status` igual. Sin gate en paralelo.
+
+| Mutación | Resultado | Fallados de 13 | Test nombrado |
+|---|---|---|---|
+| Control: lectura del tope + 1 | Muere | 10 | R34, R35, R36 |
+| M1: sin el veto | Muere | 3 | R35: cae. También R34, `sube` |
+| M2: `Math.min` | Muere | 2 | R35 y R36, los dos de aprobación |
+| M3: veto también al vencer la ventana | Muere | 2 | R35: cae. También R37, `ventana vencida` |
+| M4: el tope se lee en el bucle | Muere | 4 | R34, los dos, y R37: caen |
+
+### Hallazgos y límites
+
+1. **`Math.max` solo lee si hay barridas.** `design §6.1` lo escribe sin condición. Sin barridas no hay nada que decidir, y así no se añade una consulta a cada aprobación. Sigue «junto al conteo», que ya tenía la misma condición.
+2. **La relectura de la aprobación no corre aquí con el cliente real.** Todos los casos usan una sola conexión de test. La del proceso sí: el caso de R26 de `caminos` escala por `handleProcesarDevueltasSla` con `getPrismaClient()`. La de la aprobación la recorre el E2E de T6.1.
+3. **R36 con `not_found` vencida se libera, no se resuelve en un rechazo.** Si el tope baja tras la lectura, una orden por debajo del leído va a bodega y allí queda agotada con el nuevo: no cobra y queda parada, que es lo que acepta P1. Se sigue de `design §6.2` y no tiene caso propio en el proceso; el de aprobación mide ese mismo final.
+4. **Un fallo al releer en el proceso cuenta como omitida**, por el `catch` de cada orden: sin efectos, y la corrida sigue. R27 pide fallar sin efectos, y lo cumple por orden, no por corrida.
+
+### Veredicto
+
+Tanda D hecha: las carreras de R34 a R37 yerran hacia no cobrar, con 0 saltos, las cuatro mutaciones y el control muertos, y la ventana residual declarada.

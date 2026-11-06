@@ -2289,13 +2289,16 @@ export class CierresAdminRepository implements ICierresAdminRepository {
             for (const g of gruposIntentos) {
               intentosPorOrden.set(g.ordenId, (intentosPorOrden.get(g.ordenId) ?? 0) + 1);
             }
-            const enElTope = ordenes.filter(
-              (o) => (intentosPorOrden.get(o.id) ?? 0) >= umbralIntentos,
-            );
+            // SLT-77 (design §6.1, R35, R36): el mayor entre el leido al empezar y el vigente, asi la carrera yerra
+            // hacia no cobrar: si sube, va a bodega; si baja, se termina con el mayor. Queda abierto que suba entre
+            // esta lectura y el COMMIT (design §6.2). Sin barridas no hay nada que decidir ni que leer (R37).
+            const umbral =
+              idsBarridas.length > 0
+                ? Math.max(umbralIntentos, await leerTopeIntentosDeLaEmpresa(tx))
+                : umbralIntentos;
+            const enElTope = ordenes.filter((o) => (intentosPorOrden.get(o.id) ?? 0) >= umbral);
             // R25: por debajo del umbral, la rama de siempre, INTACTA.
-            const aBodega = ordenes.filter(
-              (o) => (intentosPorOrden.get(o.id) ?? 0) < umbralIntentos,
-            );
+            const aBodega = ordenes.filter((o) => (intentosPorOrden.get(o.id) ?? 0) < umbral);
 
             if (enElTope.length > 0) {
               const ids = enElTope.map((o) => o.id);

@@ -130,6 +130,34 @@ describe("276/T10 · R28 — `wrong_*` en el umbral escala en la PRIMERA corrida
 });
 
 /* -------------------------------------------------------------------------- */
+/* SLT-77 R35 — solo el rechazo que se debe al tope lleva el veto               */
+/* -------------------------------------------------------------------------- */
+
+describe("SLT-77 R35 — el servicio pide el veto solo si el rechazo se debe al tope", () => {
+  async function vetoDe(fila: Partial<DevueltaSlaRow>, intentos: number): Promise<unknown> {
+    const repo = fakeRepo({ findDevueltasSla: vi.fn(async () => [row(fila)]) });
+    const res = await newService(repo, fakeHistorial({ o1: intentos })).ejecutar(NOW);
+    expect(res.escaladas).toBe(1);
+    const arg = (repo.escalarDevueltaSla as ReturnType<typeof vi.fn>).mock.calls[0][0] as EscalarDevueltaSlaInput;
+    return arg.vetoPorTope;
+  }
+
+  it("`wrong_number` sin vencer, en el tope: lo lleva, con los intentos de la orden", async () => {
+    expect(await vetoDe({ causa: "wrong_number" }, 3)).toEqual({ intentos: 3 });
+  });
+
+  it("`not_found` vencida, en el tope: lo lleva, con los intentos de la orden", async () => {
+    expect(await vetoDe({ causa: "not_found", ancladaAt: new Date(NOW.getTime() - 25 * HORA) }, 4)).toEqual({ intentos: 4 });
+  });
+
+  it("`wrong_number` con la ventana vencida no lo lleva, este o no en el tope", async () => {
+    const vencida = new Date(NOW.getTime() - 6 * DIA);
+    expect(await vetoDe({ causa: "wrong_number", ancladaAt: vencida }, 0)).toBeUndefined();
+    expect(await vetoDe({ causa: "wrong_number", ancladaAt: vencida }, 3)).toBeUndefined();
+  });
+});
+
+/* -------------------------------------------------------------------------- */
 /* 2 · R29 — por debajo del umbral, la ventana INTACTA                         */
 /* -------------------------------------------------------------------------- */
 

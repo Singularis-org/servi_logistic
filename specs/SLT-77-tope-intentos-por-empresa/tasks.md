@@ -92,9 +92,9 @@ Reglas de todas las tandas:
 
 ## Tanda D — Carreras (backend). Depende de C
 
-- [ ] **T4.1** `vetoPorTope` en `IDevolucionSlaRepository`, `DevolucionSlaRepository` y el servicio; `Math.max` en
+- [x] **T4.1** `vetoPorTope` en `IDevolucionSlaRepository`, `DevolucionSlaRepository` y el servicio; `Math.max` en
   `CierresAdminRepository` (`design §6.1`). **Hecho:** typecheck verde.
-- [ ] **T4.2** `tests/integration/db/tope-intentos-carreras.test.ts`, con un doble del historial o del reloj que cambie el tope
+- [x] **T4.2** `tests/integration/db/tope-intentos-carreras.test.ts`, con un doble del historial o del reloj que cambie el tope
   a mitad de la ejecución y Postgres real:
   - **R34:** el tope cambia tras la lectura: todas las órdenes deciden con el mismo.
   - **R35:** sube tras la lectura: la orden sigue en `devuelta`, sin gestión sintética, con `omitidas` 1; en la aprobación
@@ -314,3 +314,5 @@ T0 → A → B ─┬→ C → D ─┬→ F → G
 - `tests/unit/services/devolucion-sla-plazo-unica-fuente.test.ts`
 - `tests/unit/services/indemnizacion-tope-negocio-cierre.test.ts`
 - `tests/unit/services/liberacion-al-aprobar-cierre.test.ts`
+- `tests/unit/services/cierres-admin-service.aprobar.sin-gestion.test.ts`
+- `tests/unit/repositories/cierres-admin-repository.test.ts`

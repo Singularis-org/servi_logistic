@@ -111,6 +111,8 @@ function buildTx(
     [0, 1, 2].map((i) => ({ ordenId, cierreId: `c-viejo-${ordenId}-${i}` })),
   );
   const tx = {
+    // SLT-77 (R35): la relectura del tope en la tx. El mismo 3 de `umbralIntentos`; la carrera se mide en `tope-intentos-carreras`.
+    $queryRaw: vi.fn(async () => [{ tope: 3 }]),
     cierreDia: {
       updateMany: vi.fn(async () => ({ count: 1 })),
       findUnique: vi.fn(async () => ({
