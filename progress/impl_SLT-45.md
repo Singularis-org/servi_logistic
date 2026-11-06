@@ -234,3 +234,109 @@ Sin migraciones, sin dependencias, trigger de SLT-43 sin tocar, sin literales de
 - No se corrió `vitest related` amplio ni la suite completa (memoria).
 
 Veredicto T3.2/T4.1/T4.2: nodo en la corrección, catálogo cableado y vigilado en las 3 rutas, R5 en v1 y rama del motor listas; contrato v1 22/22 sin regrabar.
+
+## T4.3–T4.4 (backend_dev, 2026-11-06)
+
+Sin migraciones, sin dependencias, trigger de SLT-43 sin tocar, sin literales de país/moneda en código nuevo,
+sin rutas `app/api/v2` (eso es T5). Commits: `898499a0` (T4.3), `8f636cb7` (T4.4).
+
+### Archivos
+- `lib/types/api-v2.ts` (nuevo) — T4.3: `filaV2Schema` (claves de texto como v1 + `ubicacion` 1–10 nombres de
+  1–200 / `ubicacion_codigo` 1–64), `cargaV2BodySchema`, `crearOrdenV2BodySchema`, `cotizacionV2BodySchema`,
+  `filaCotizacionV2Schema` (= `filaCotizacionSchema` sin la terna), `FilaV2`, `FilaV2Interna`, `ErrorDeEntrada`,
+  `aFilaInterna` (R12), `extraerUbicacionV2`, `geoDeUbicacion`, `CargaViaApiOrdenV2`, `CargaViaApiSummaryV2`,
+  `CotizacionFilaCotizadaV2`, `CotizacionResumenV2`; reexporta `UbicacionDTO`. T4.4: `geografiaQuerySchema`,
+  `GeografiaResponse`, `GeografiaTipoDTO`, `GeografiaNodoDTO`.
+- `lib/services/BulkOrdenService.ts` — el pipeline de la carga por API pasa a `cargarFilasPorApi` (privado, común a
+  v1 y v2; recibe el extractor por índice y devuelve además `nodoPorRemision`); `cargarViaApi` conserva rol, R5 y
+  el extractor de columnas separadas; `cargarViaApiV2` nuevo. `resolverGeografia` usa `geoDeUbicacion`.
+- `lib/services/CotizacionOrdenService.ts` — `cotizarPreparadas` (privado, común), `cotizarV2` y `prepararFilaV2`.
+- `lib/services/geo-ubicacion.ts` — `MSG_MOTOR_SIN_CATALOGO` se mueve aquí (lo usan los dos servicios);
+  `BulkOrdenService` lo reexporta, así que el test de T4.2 no cambia.
+- `lib/interfaces/services/IBulkOrdenService.ts` — `CargaViaApiResultV2` y `cargarViaApiV2`.
+- `lib/interfaces/services/ICotizacionOrdenService.ts` — `CotizacionOrdenResultV2` y `cotizarV2`.
+- `lib/services/GeografiaApiService.ts` y `lib/interfaces/services/IGeografiaApiService.ts` (nuevos, T4.4).
+- `lib/interfaces/repositories/IOrdenRepository.ts`, `lib/repositories/OrdenRepository.ts` —
+  `findLugarDeOrdenForOwner(ordenId, ownerId)` (T4.4).
+- Dobles que implementan la interfaz entera ganan el método nuevo (`vi.fn()`); ninguna aserción cambia:
+  T4.3 → `ordenes-api-key-carga.route`, `ordenes-carga-masiva-chunk.route`, `carga-api-etiquetas`,
+  `cotizacion-api-key`, `unit/api/api-key-empresa`; T4.4 → `orden-service`, `rol-admin-satelite-authz`,
+  `bulk-orden-service`, `bulk-orden-service.carga-api`.
+- Tests nuevos: `tests/unit/services/api-v2-servicios.test.ts` (T4.3), `tests/unit/services/geografia-api-service.test.ts`
+  y `tests/integration/db/orden-lugar-owner.test.ts` (T4.4).
+
+### Decisiones de implementación (dentro del spec)
+- v1 no cambia de salida: `cargarViaApi` y `cotizar` llaman al núcleo común con el mismo extractor y la misma
+  comprobación de R5; el núcleo devuelve el resultado de v1 tal cual y v2 añade `ubicacion` encima. Lo prueban el
+  contrato congelado (22/22 sin regrabar) y la comparación v1↔v2 de `api-v2-servicios.test.ts`.
+- `ubicacion` va al final de cada orden/fila (orden de claves = v1 + `ubicacion`), con `rutaPublica` sobre el
+  catálogo de la empresa leído una vez por petición.
+- v2 no comprueba la forma del país por adelantado: la regla de guardado del motor (R15) lo dice fila a fila, con
+  la precedencia de §2.2 (un nombre no encontrado sale antes que «país no habilitado»).
+- Sin catálogo inyectado, `cargarViaApiV2` y `cotizarV2` lanzan `MSG_MOTOR_SIN_CATALOGO` (§2.3), tras el rol.
+- R12 se aplica al pasar la fila validada a interna (`aFilaInterna`): «las dos o ninguna» es error de fila. Los
+  campos de v1 se validan antes que la ubicación (misma precedencia que v1 en `resolveFila`).
+- `FilaV2` se declara a mano: el tipo que infiere zod de un `catchall` no admite literales; la salida del schema
+  es asignable (lo ejerce un test).
+- Si `nodoPorRemision`/`nodoPorFila` no tuviera el nodo (inalcanzable), la ruta sale `[]` en vez de lanzar: en la
+  carga las órdenes ya están confirmadas.
+- T4.4: `findLugarDeOrdenForOwner(ordenId, ownerId)` sigue la convención de parámetros de su gemelo
+  `findDetalleByOrdenIdForOwner` (design §4.3 escribe `(actor, ordenId)`). El WHERE es el mismo (`id`, `tiendaId`,
+  `deletedAt: null`); `organizacion_id` lo inyecta la extensión de empresa y lo respalda la RLS de `orden`, como en
+  el resto de `OrdenRepository` (no se escribe a mano). El test de integración lo prueba con dos empresas.
+- `GeografiaApiService` compara el país con `catalogo.paisId` ANTES de leer `pais` (un país ajeno no consulta nada
+  más); si `PaisRepository.porId` no devuelve la fila, también `not_found`.
+
+### Mapa R → test (esta tanda)
+| Requisito | Test |
+|---|---|
+| R11 (autorización en el servicio) | `api-v2-servicios.test.ts` > «R11 — otro rol…» (carga y cotización); `geografia-api-service.test.ts` > «R11…» |
+| R12 | `api-v2-servicios.test.ts` > «R12 — `aFilaInterna`…» y «R12–R16 — cada fila mala…» (carga y cotización) |
+| R13, R14, R15, R16 (por los servicios v2) | `api-v2-servicios.test.ts` > «R12–R16…», «R14 — por codigo…», «R15 — pais de 2 niveles…» |
+| R17 | `api-v2-servicios.test.ts` > «R17/R21 — misma respuesta que v1…», «R17 — los campos de v1 se validan igual…» |
+| R19 | `api-v2-servicios.test.ts` > «R19/R21 — mismos importes y forma que v1…», «R19 — sin tarifa…» |
+| R20 (parte de repositorio) | `orden-lugar-owner.test.ts` (lugar de profundidad 3 y 2; otra tienda, borrada, inexistente → `null`) |
+| R21 | `api-v2-servicios.test.ts` (ruta `RUTA_D1` en carga y cotización) |
+| R22 | `geografia-api-service.test.ts` > «R22…» (3 niveles con retirado en cascada; 2 y 4 niveles) |
+| R23 | `geografia-api-service.test.ts` > «R23…» (ajeno = inexistente = `not_found`; query mal formada no pasa el schema) |
+| R24 (parte de repositorio) | `orden-lugar-owner.test.ts` > desde la empresa B, la orden de A → `null` |
+| §4.2 cuerpos | `api-v2-servicios.test.ts` > «§4.2 — cuerpos zod de v2» |
+| R2 con el núcleo común | `contrato-v1.route.test.ts`, 22/22 sin regrabar |
+
+R10, R18 y los extremo a extremo de R11–R24 son de las suites de rutas de T5.
+
+### Evidencia (`NODE_OPTIONS=--max-old-space-size=8192`, `--maxWorkers=1`; base `logistic_slt45` en localhost)
+- `pnpm exec tsc --noEmit` → exit 0 (tras T4.3 y tras T4.4).
+- `pnpm exec eslint` sobre los archivos tocados → T4.3 «No issues found»; T4.4 0 errores, 1 warning previo
+  (`IOrdenRepository.ts:11`).
+- T4.3: `api-v2-servicios.test.ts` → `Test Files 1 passed (1)`, `Tests 27 passed (27)`. Rojo comprobado cambiando
+  `ubicacion` por `[]` en los dos servicios → `Tests 3 failed | 24 passed (27)`; restaurado.
+- T4.3 relacionados (`api-v2-servicios`, `bulk-orden-service*` (7), `cotizacion-orden-service`, `v2-composicion`,
+  `api-key-empresa`, `geografia-dominio-puro.guardia`, `geo-ubicacion`, `ordenes-api-key-carga.route`,
+  `ordenes-carga-masiva-chunk.route`, `carga-api-etiquetas`, `cotizacion-api-key`) → `Test Files 17 passed (17)`,
+  `Tests 447 passed (447)`.
+- T4.4: `geografia-api-service.test.ts` + `orden-lugar-owner.test.ts` → `Test Files 2 passed (2)`,
+  `Tests 18 passed (18)` (17 unit + 1 de integración, que corre, no salta). Rojo comprobado quitando `tiendaId`
+  del WHERE y la comprobación de rol → `Tests 4 failed | 14 passed (18)`; restaurado.
+- T4.4 dobles (`orden-service`, `rol-admin-satelite-authz`, `bulk-orden-service`, `bulk-orden-service.carga-api`,
+  `api-v2-servicios`) → `Test Files 5 passed (5)`, `Tests 179 passed (179)`.
+- Contrato v1 (modo comparar, sin `CONTRATO_V1_GRABAR`): tras T4.3, con `orden-nodo-escritura` →
+  `Test Files 2 passed (2)`, `Tests 27 passed (27)`; tras T4.4, solo → `Test Files 1 passed (1)`,
+  `Tests 22 passed (22)`. `git status tests/fixtures` limpio.
+- Guardias (`vitest run guard --maxWorkers=1`), antes y después de T4.4 → `Test Files 2 failed | 331 passed |
+  3 skipped (336)`, `Tests 5 failed | 4660 passed | 25 skipped (4690)`. Ninguno de los dos rojos es de esta tanda:
+  - `dependencias-declaradas-presentes.guardia` (4): en `tests/baseline-rojos.json`; ya anotado en T2.
+  - `geografia-lecturas-sin-nodo-fk.guardia` (1): ver ABIERTO abajo.
+
+### ABIERTO — rojo de guardia desde T3.1 (para el leader; no se tocó)
+`tests/unit/guards/geografia-lecturas-sin-nodo-fk.guardia.test.ts` > «SLT-65 R19 — … ni `OrdenRepository` … nombran
+la columna» barre `lib/repositories/OrdenRepository.ts` ENTERO y exige cero menciones de `nodoGeograficoId`. Las
+escrituras que pide design §3.2 (T3.1 `toCreateManyInput`, l. ~3271; T3.2 `corregirDatosCliente`, l. ~2468) lo
+nombran, así que la guardia está roja desde `adbb2a26` (T3.1); los logs de T3 y T4.1–T4.2 no corrieron todas las
+guardias. No está en `tests/baseline-rojos.json`. Es una contradicción entre el spec (escribir el nodo desde
+`OrdenRepository`) y una guardia de SLT-65 pensada para LECTURAS. Opciones a decidir: (a) acotar la guardia a las
+lecturas, excluyendo las dos escrituras de SLT-45 con su justificación; (b) sacar las escrituras de
+`OrdenRepository`. T4.3 y T4.4 no añaden menciones.
+
+Veredicto T4.3/T4.4: firmas v2 de carga y cotización con `ubicacion`, catálogo v2 y lugar de la orden por dueño y
+empresa, probados con dobles y contra Postgres; contrato v1 22/22 sin regrabar; queda abierto un rojo de guardia heredado de T3.1.
