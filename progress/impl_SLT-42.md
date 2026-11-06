@@ -1033,3 +1033,92 @@ Alcance: los tres ajustes pendientes de la ficha «tras bloque 6» (puntos 2, 3 
 4. ¿Se aceptan los desvíos 1–3?
 
 Veredicto: los ajustes del bloque 6 y el bloque 7 (T7.1–T7.3) están hechos. La guardia R29 y la de los composition roots están en verde y se ponen en rojo con un caso real. Las 31 R tienen test. Quedan sin marcar solo T1.0 (la hace una persona) y 5 archivos pendientes de decisión (preguntas 1 y 2).
+
+## Tanda 7 · decisiones bloque 7 (2026-11-06)
+
+Alcance: las decisiones del humano «tras bloque 7» (`progress/features/SLT-42.md > Decisiones`, puntos 1–4) y la sección «Errores nuevos y prevención» de «Pendiente para el cierre». Commits: 94f8a5dc (`AT TIME ZONE` parametrizado, incluye las decisiones en la ficha), b06000e7 (planes a SLT-86, borra `whatsapp-telefono`, retira los pendientes) y el de registro.
+
+### Archivos
+- `AT TIME ZONE`: `lib/analytics/entregas-conteo.ts` (`ConsultaConteoEntregas.zona`), `lib/repositories/ConteoCargadasPorDiaRepository.ts` (`DIA_CR` → `diaDeCargaEnZona(zona)`), `lib/repositories/CohorteCargaRepository.ts`, `lib/repositories/FinanzasDiarioRepository.ts` (`diaDelMovimientoEnZona(zona)`; `sumarPorDia(desde, hasta, zona)`), `lib/interfaces/repositories/IFinanzasDiarioRepository.ts`, `lib/services/FinanzasDiarioService.ts`, `docs/architecture.md`. Tests: `tests/unit/analytics/conteo-cargadas-servicio.test.ts`, `tests/unit/analytics/finanzas-diario.test.ts`, `tests/integration/db/dia-en-zona-sql.test.ts` (nuevo), `tests/integration/db/liquidacion-fechas-cr-461.test.ts` y `wallet-fecha-elegida.test.ts` (pasan `ZONA_DE_CR`).
+- Planes, `whatsapp-telefono` y pendientes: `tests/unit/guards/_pais-sin-literales-excepciones.ts`, `tests/unit/guards/pais-sin-literales.guardia.test.ts`, `tests/unit/utils/telefono-pais.test.ts`; borrados `lib/utils/whatsapp-telefono.ts` y `tests/unit/utils/whatsapp-telefono.test.ts`; `specs/SLT-42-…/requirements.md` (R29), `design.md` (§8 y desvíos 5–7), `tasks.md` (nota de la tanda 7 en T7.1).
+
+### Qué cambió
+- **a · Planes.** `lib/planes/ciclo.ts`, `cobro.ts` y `consumo.ts` pasan a `EXCEPCIONES_PAIS_SIN_LITERALES` con la ficha `SLT-86` y su motivo; su código no cambia. `FichaQueLoRetira` y la guardia admiten `SLT-86`. R29 los nombra con la fecha y «decisión del humano».
+- **b · Día por zona en SQL.** Los tres repositorios agrupan con `to_char(((col AT TIME ZONE 'UTC') AT TIME ZONE $n::text)::date, 'YYYY-MM-DD')`. `$n` es la zona del país de la empresa, como parámetro y nunca interpolada. La columna es `timestamp` sin zona con el reloj de pared UTC: el primer `AT TIME ZONE` la vuelve instante y el segundo da la hora local con su horario de verano (R23). La zona llega en `ConsultaConteoEntregas.zona` (la misma con la que `prepararConteoEntregas` resuelve el rango) y como tercer argumento de `sumarPorDia`. La cache no cambia: ya es por empresa. La regla de esos archivos ahora dice «no se escribe ninguna zona ni desfase» en vez de «no hay `AT TIME ZONE`», y los tests que la vigilan exigen `AT TIME ZONE $n::text` con la zona entre los valores, sin `America|Costa_Rica` ni `interval` en el texto.
+- **c · `whatsapp-telefono.ts` borrado.** Grep sobre `lib`, `app`, `components`, `scripts`, `e2e` y `tests`: solo lo importaban su test y `telefono-pais.test.ts` (quitado de ahí). Sale de la lista de excepciones.
+- **d · `PENDIENTES_DE_DECISION_SLT42` retirada.** Quedó vacía tras a–c; se borraron la lista, su tope y sus aserciones en la guardia.
+
+### Desvíos y decisiones mías (a confirmar)
+1. **El tope de excepciones sube de 6 a 8.** «La lista solo baja», pero la decisión del humano mete 3 archivos y saca 1. Queda anotado en la cabecera del archivo de excepciones.
+2. **La zona viaja dentro de `ConsultaConteoEntregas`**, no como argumento aparte de `contarCargadasPorDia`/`contarCohortes`: es la zona con la que ya se resolvió el rango de la misma consulta, y así las dos lecturas no pueden recibir zonas distintas.
+3. **`'UTC'` escrito en el SQL.** Es el reloj de pared guardado, no la zona de un país (como `now() AT TIME ZONE 'UTC'` en `docs/architecture.md`).
+
+### Tests
+- `conteo-cargadas-servicio.test.ts`: «el SQL agrupa con `AT TIME ZONE` parametrizado y no escribe ninguna zona ni desfase» (sustituye al de «no nombra ninguna zona») y «con una empresa en otra zona, la zona que viaja es la suya (R22)».
+- `finanzas-diario.test.ts`: «agrupa por día con `AT TIME ZONE` parametrizado, sin escribir ninguna zona», la zona en «pide los últimos 30 días de Costa Rica» y «con una empresa en otra zona, la ventana y la zona del agrupamiento son las suyas (R22, R23)» (Nueva York el 2026-03-08, día de 23 h).
+- `dia-en-zona-sql.test.ts` (integración, Postgres real): los dos fragmentos sobre filas `VALUES` en Nueva York los días de 23 h (2026-03-08) y 25 h (2026-11-01) y en CR; coincide con `fechaCalendario`; el día de 25 h agrupa en una fila; una zona inventada con comilla la rechaza Postgres. Un caso sin base comprueba que los casos marcados fallan con un desfase fijo.
+
+### Mapa R → test (esta tanda)
+| R | Test |
+|---|---|
+| R22 | `conteo-cargadas-servicio.test.ts` «con una empresa en otra zona, la zona que viaja es la suya (R22)»; `finanzas-diario.test.ts` «con una empresa en otra zona…» |
+| R23 | `dia-en-zona-sql.test.ts` (días de 23 y 25 h de Nueva York); `finanzas-diario.test.ts` «… (R22, R23)» |
+| R29 | `pais-sin-literales.guardia.test.ts` (excepciones con SLT-86, sin pendientes) |
+| R18, R21 | `telefono-pais.test.ts` «el envoltorio de la UI sigue dando la tabla congelada» |
+
+### Salida
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: exit 0 (no hizo falta regenerar Prisma).
+- `eslint` de los 14 archivos tocados: sin salida, exit 0.
+- Tests tocados (5 archivos): `Test Files 5 passed (5) · Tests 153 passed | 22 skipped (175)`. Los 22 omitidos son los de `dia-en-zona-sql.test.ts` con base: sin `DATABASE_URL` local, los corre CI.
+- `pnpm test:guardias` entera: `Test Files 1 failed | 325 passed | 3 skipped (329) · Tests 4 failed | 4586 passed | 24 skipped (4614)`. Los 4 son de `dependencias-declaradas-presentes`, en el baseline.
+- `vitest related --run` sin `tests/components` ni `tests/integration`:
+  - lote 1 (`entregas-conteo`, `ConteoCargadasPorDiaRepository`, `CohorteCargaRepository`): `33 passed (616)`;
+  - lote 2 (`FinanzasDiarioRepository`, su interfaz y servicio, `telefono-pais`, `telefono-cr`): `61 passed (1001)`.
+- Grafo MCP: no se usó; bastaron Grep y Read.
+
+### Preguntas abiertas
+1. ¿Se acepta subir `TOPE_EXCEPCIONES` de 6 a 8 (desvío 1)?
+
+## Errores nuevos y prevención (cierre, 2026-11-06)
+
+Fuente: `git diff origin/dev...HEAD` y el spec. «Qué ve» es lo que devuelve el borde. `withErrorHandler` no mapea `PaisSinZonaHoraria`, `PaisIncompleto` ni `EmpresaNoResuelta` (`lib/errors/normalize.ts`): salen como `{ status: "error", code: "INTERNAL", message: "Error interno del servidor." }`, HTTP 500 en las rutas, y el error real queda en el log (`logger.logError`).
+
+| Error / código | Dónde se dispara | Qué ve el usuario o la API | ¿Log? | Qué completar o configurar para que no salga |
+|---|---|---|---|---|
+| `PaisSinZonaHoraria` (R28) | `lib/services/ReglasPaisEmpresaService.ts > zonaHoraria`, `lib/services/zona-de-la-empresa.ts > zonaDeOrganizacionCon`; lo propagan `zonaDelBorde`, `zonaDeLaEmpresa` y cada servicio con `reglasPais` | En una acción o API: `INTERNAL`, «Error interno del servidor.» (500). En un cron: la empresa entra en `empresas.fallidas` y las demás siguen. En un job recurrente: `procesar-jobs` lanza «fallo en N empresa(s)» y la cola reintenta con backoff hasta dead-letter | Sí: `normalizeError` y `[paraCadaEmpresa] fallo en la empresa <id>` | `pais.zona_horaria` con una zona IANA válida para el país de la empresa |
+| `PaisIncompleto` (R6, R18) | `ChatWhatsappService`, `EjecucionEnvioService`, `WhatsappEnvioService` (`reglasTelefono`) | Chat de WhatsApp: `INTERNAL`. Envío por job: el job falla y se reintenta (backoff y dead-letter). Webhook: ver la fila del webhook | Sí | `pais.prefijo_telefonico` (CHECK `^[1-9][0-9]{0,2}$`) y `pais.telefono_digitos_nacionales` (CHECK 4–14) |
+| Webhook de WhatsApp con país incompleto (se traga el error) | `lib/services/WebhookWhatsappService.ts` (captura `PaisIncompleto`) | Meta recibe 200; los mensajes entrantes de esa empresa se saltan y no se guardan; el lote sigue con las demás | Sí, nivel `error`: «[webhook-whatsapp] mensajes saltados, la empresa X tiene el pais Y incompleto…» | Igual que `PaisIncompleto`. Los mensajes saltados no se recuperan solos (a confirmar si Meta permite reenviarlos) |
+| Rastreo público con país incompleto (se traga el error) | `lib/actions/rastreo-publico.ts > buildService` | `{ estado: "no_encontrado" }`, igual que una guía inexistente | Sí: `{ evento: "rastreo_publico_pais_incompleto", organizacionId, paisId, falta: "telefono" \| "zona_horaria" }` | Prefijo, dígitos y zona del país de la empresa dueña de la orden |
+| `EmpresaNoResuelta("Pais", <operación>)` | `ReglasPaisEmpresaService.empresaEnCurso` / `paisDeLaEmpresa` (contexto de plataforma, sin sesión de empresa, o la empresa no es visible) | `INTERNAL` | Sí | Llamar desde el contexto de una empresa (`conEmpresa`, sesión con empresa). En plataforma, usar `zonaDeOrganizacionCon` con el id de la empresa. No es un dato del catálogo |
+| `Error` «zonaDeOrganizacion: la empresa X no existe» | `zona-de-la-empresa.ts > zonaDeOrganizacionCon` (planes del superadmin) | `INTERNAL` | Sí | Que la empresa exista; ninguna configuración |
+| `Error` «… requiere las reglas del pais de la empresa…» | `zonaDeLaEmpresa` sin `reglasPais`, `AprobacionPostulacionService` sin `reglasPais`, `HistoricoConversacionesRepository` con rango y sin zona | `INTERNAL` | Sí | Error de programación: pasar `construirReglasPaisEmpresa(prisma)` en el composition root. Lo vigila `pais-sin-literales.guardia` |
+| Alta de empresa con país incompleto (R6) | `lib/services/OrganizacionService.ts > validarConElPais` | `{ estado: "invalida", campo: "paisId" }`, sin escribir nada | No | Prefijo, dígitos, zona y al menos un tipo de documento activo del país elegido |
+| Tipo de documento inexistente o de otro país (R11) | `lib/services/validacion-documento-telefono.ts > rechazoDeTipo` (alta de usuario, postulación, aprobación, maestro del alta) | `validation_error` en el campo del tipo: «El tipo de documento indicado no existe». En el alta de empresa, `invalida` con ese campo | No | Filas en `tipo_identificacion` del país de la empresa; el formulario debe mandar un tipo de ese país |
+| Tipo de documento inactivo (R11, desvío 2) | `rechazoDeTipo` | `validation_error` en el tipo: «El tipo de documento indicado ya no está activo» | No | `tipo_identificacion.activo = true` en los tipos que se ofrecen; la lista de R5 ya solo trae los activos |
+| Documento inválido para su tipo (R10, R12) | `lib/utils/documento.ts > validarDocumento`, vía `validarTipoYDocumento` | `validation_error` en el documento (o en el tipo, si cambió el tipo, R12): «Solo se admiten dígitos, sin espacios ni guiones.», «Solo se admiten letras y dígitos…», «Debe tener N dígitos.» o «Debe tener entre N y M …» | No | `caracteres`, `largo_min` y `largo_max` correctos en el tipo |
+| Teléfono inválido para el país (R14) | `lib/validacion/telefono.ts > validarTelefonoDelPais`, vía `validarTelefonoDePersona` | `validation_error` en el teléfono: «El teléfono no es válido para el país de la empresa» (también si es válido pero de otro país) | No | Nada del catálogo: es el dato del usuario. Ojo: valida con `pais.id` como región ISO de libphonenumber, no con el prefijo del catálogo |
+| País sin reglas de teléfono (R16) | `validarTelefonoDelPais` (`isSupportedCountry(paisId)` falso) | `validation_error` en el teléfono: «El país de la empresa no tiene reglas de teléfono» | No | Que `pais.id` sea un código ISO alfa-2 que libphonenumber conozca. No se arregla con prefijo ni dígitos |
+| Documento duplicado por empresa y tipo (R13) | `UsuarioService` (`UsuarioDuplicadoError("cedula")` → `{ status: "conflict", campo: "cedula" }`), `PostulacionMensajeroService` (`cedulaExiste(cedula, tipo.id)` → `{ status: "conflict", field: "cedula" }`); en carrera, el índice `usuario_cedula_key` | `conflict` en el documento. Mismo documento con otro tipo, o en otra empresa: se acepta | No | Nada que configurar: es una regla. La migración `20261104140200` debe estar aplicada (índice sobre `(organizacion_id, tipo_identificacion_id, cedula)`) |
+| Escritura de una empresa en `pais` o `tipo_identificacion` (R4) | RLS y permisos de la base | `42501` (permiso denegado) → `INTERNAL` en el borde | Sí | Solo el superadmin escribe el catálogo (pantalla de SLT-81) |
+| Postulación previa al corte `POSTULACION_VALIDADA_POR_PAIS_DESDE` | `lib/services/AprobacionPostulacionService.ts > rechazoDeLaPersona`, `lib/config/aprobacion-postulaciones.ts` | No es error: las creadas antes del corte se aprueban sin validar con el país. Las de después pueden dar `validation_error` (filas de tipo, documento y teléfono) al aprobarlas | No | Fijar el valor IGUAL O POSTERIOR al deploy de SLT-42 en producción (hoy `2026-11-04T14:00:00Z`, ABIERTO con T1.0). Si es anterior, las postulaciones entre ese valor y el deploy no se pueden aprobar |
+| Jobs diarios sin zonas → UTC (`ZONA_SIN_EMPRESAS`) | `lib/services/jobs/serie-diaria-por-zona.ts`; aviso en `JobQueueService` y `scripts/siembra-jobs-recurrentes.ts` | Nadie lo ve: la serie se agenda a la hora objetivo en UTC y no procesa empresas con zona; una empresa sin zona falla sola (R28) | Sí, `error`: «[jobs diarios] ningun pais con empresas tiene zona horaria: las series diarias se agendan en UTC. Completar la zona horaria en el catalogo de paises.» | `pais.zona_horaria` en al menos un país con empresas |
+| Zona IANA mal escrita | `Intl` en `lib/utils/calendario-zona.ts` (`RangeError`) y, desde esta tanda, Postgres en `AT TIME ZONE` (zona no reconocida) | `INTERNAL` en la operación | Sí | `pais.zona_horaria` válida. La columna no tiene CHECK a propósito (tzdata distinta en Postgres y Node, migración `20261104140000`): se valida a mano. Qué códigos exactos dan `Intl` y Postgres: a confirmar |
+| Migración `20261104140100` abortada | `RAISE EXCEPTION` de la migración | El deploy (`migrate deploy`) falla sin cambiar nada: «no existe el país CR» o «tipo_identificacion tiene filas que no son cedula, ruc ni pasaporte» | Sí (salida de la migración) | Pasos 1 y 2 de T1.0 (design §2.5) antes del deploy |
+
+### Checklist para dar de alta un país sin errores
+1. `pais.id` = código ISO alfa-2 que libphonenumber conozca (si no, R16 rechaza todo teléfono).
+2. `pais.prefijo_telefonico` (1 a 3 cifras, sin `+`) y `pais.telefono_digitos_nacionales` (4–14).
+3. `pais.zona_horaria` = zona IANA válida (sin CHECK en la base: revisarla a mano, p. ej. con `SELECT now() AT TIME ZONE '<zona>'` y con `Intl`).
+4. Al menos un `tipo_identificacion` del país con `activo = true`, `clave` única en el país, `nombre`, `caracteres` (`digitos` o `alfanumerico`), `largo_min`/`largo_max` y `orden`.
+5. Lo carga el superadmin (SLT-81). Hasta que exista esa pantalla, por migración: una empresa no puede escribir el catálogo (42501).
+6. Con el país completo, el alta de empresa deja de dar `invalida` en `paisId`; los crons y jobs de sus empresas dejan de fallar con `PaisSinZonaHoraria`.
+
+### Checklist antes del deploy
+1. T1.0 (persona, solo lectura en producción; design §2.5): `organizacion` fuera de CR = 0; `tipo_identificacion` solo `cedula`, `ruc` y `pasaporte`; `count(*)` de `usuario` (si pasa de 100 000, el índice va `CONCURRENTLY`). Anotar el resultado en la ficha.
+2. Ensayar las tres migraciones `20261104140000`–`140200` y sus `down.sql` sobre una copia de producción.
+3. Fijar `POSTULACION_VALIDADA_POR_PAIS_DESDE` igual o posterior al instante del deploy en producción.
+4. Tras migrar: CR con `506` / 8 / `America/Costa_Rica` y sus cinco tipos activos (R3).
+5. Variables de entorno: SLT-42 no agrega ninguna. `RASTREO_PUBLICO_ZONA_HORARIA` ya no se lee y puede salir del entorno (a confirmar si sigue cargada en Vercel).
+6. Horario de los crons de Vercel: sigue a hora fija UTC (P6, deuda para cuando entre un país con otra zona).
+
+Veredicto: las decisiones del bloque 7 están aplicadas: los planes pasan a SLT-86, el día se agrupa con `AT TIME ZONE` parametrizado y `whatsapp-telefono` se borró. La lista de pendientes quedó vacía y se retiró. Los errores nuevos están documentados con su prevención. Solo queda T1.0, que la hace una persona.
