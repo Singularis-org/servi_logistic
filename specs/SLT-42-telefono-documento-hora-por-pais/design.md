@@ -262,7 +262,7 @@ tampoco se aceptan.
 
 ### 4.2 Servidor
 
-**`lib/validacion/telefono.ts`** (`import "server-only"`; el único que importa libphonenumber-js):
+**`lib/validacion/telefono.ts`** (solo servidor; sin `import "server-only"`, ver desvío 8; el único que importa libphonenumber-js):
 
 ```ts
 export type ResultadoTelefono =
@@ -416,7 +416,7 @@ deuda para cuando entre el primer país con otra zona. La anota el leader en `pr
 ## 7. Dependencia nueva: `libphonenumber-js`
 
 Se aprueba con este spec (regla 7 de `CLAUDE.md`). Va en `dependencies` y se usa **solo en el
-servidor** en esta ficha (`lib/validacion/telefono.ts`, con `server-only`). SLT-81 decidirá si la
+servidor** en esta ficha (`lib/validacion/telefono.ts`, solo lo importan servicios; sin `server-only`, desvío 8). SLT-81 decidirá si la
 lleva al cliente.
 
 - **Qué código nos ahorra.** Las reglas de numeración por país: prefijos, largos, tipos de línea
@@ -477,6 +477,14 @@ Decididos por el humano tras el bloque 7 (`progress/features/SLT-42.md > Decisio
 6. **Planes fuera de SLT-42:** `lib/planes/ciclo.ts`, `cobro.ts` y `consumo.ts` pasan a la lista de
    excepciones de R29 con la ficha `SLT-86` (§8).
 7. **`lib/utils/whatsapp-telefono.ts` se borra** con sus tests: no tenía consumidores de producción.
+
+Registrado tras la revisión (`progress/review_SLT-42.md > m1`, 2026-11-06):
+
+8. **`lib/validacion/telefono.ts` sin `import "server-only"`** (§4.2, §7, T2.4). El paquete `server-only`
+   no es dependencia del proyecto (no está en `package.json` ni en `docs/dependencias.md`) y ningún
+   archivo del repo lo importa; añadirlo exigiría una dependencia nueva con aprobación humana. Hoy solo lo
+   importa `lib/services/validacion-documento-telefono.ts`: ningún componente ni página lo importa, así que
+   no hay fuga de libphonenumber-js al cliente.
 
 ## 9. Alternativas descartadas
 

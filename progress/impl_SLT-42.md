@@ -1116,9 +1116,11 @@ Fuente: `git diff origin/dev...HEAD` y el spec. «Qué ve» es lo que devuelve e
 ### Checklist antes del deploy
 1. T1.0 (persona, solo lectura en producción; design §2.5): `organizacion` fuera de CR = 0; `tipo_identificacion` solo `cedula`, `ruc` y `pasaporte`; `count(*)` de `usuario` (si pasa de 100 000, el índice va `CONCURRENTLY`). Anotar el resultado en la ficha.
 2. Ensayar las tres migraciones `20261104140000`–`140200` y sus `down.sql` sobre una copia de producción.
-3. Fijar `POSTULACION_VALIDADA_POR_PAIS_DESDE` igual o posterior al instante del deploy en producción.
+3. Fijar `POSTULACION_VALIDADA_POR_PAIS_DESDE` igual o posterior al instante del deploy en producción, en un commit antes del deploy.
 4. Tras migrar: CR con `506` / 8 / `America/Costa_Rica` y sus cinco tipos activos (R3).
 5. Variables de entorno: SLT-42 no agrega ninguna. `RASTREO_PUBLICO_ZONA_HORARIA` ya no se lee y puede salir del entorno (a confirmar si sigue cargada en Vercel).
 6. Horario de los crons de Vercel: sigue a hora fija UTC (P6, deuda para cuando entre un país con otra zona).
 
 Veredicto: las decisiones del bloque 7 están aplicadas: los planes pasan a SLT-86, el día se agrupa con `AT TIME ZONE` parametrizado y `whatsapp-telefono` se borró. La lista de pendientes quedó vacía y se retiró. Los errores nuevos están documentados con su prevención. Solo queda T1.0, que la hace una persona.
+
+- 2026-11-06 · Correcciones m1–m3 del review: m3 `ON CONFLICT ("value") DO NOTHING` en el INSERT de dimex/nite (la rama no llegó a dev; solo bases locales/de prueba la tienen aplicada) · bf5a0a82; m1 desvío (no se añade `server-only`: el paquete no es dependencia del proyecto y ningún archivo lo importa; solo lo importa `lib/services/validacion-documento-telefono.ts`, nada del cliente) → `design.md > Desvíos` 8 y T2.4; m2 T1.0 ampliado con índice `CONCURRENTLY`, ensayo en copia y corte de postulaciones. typecheck exit 0; telefono.test 5/5; migracion-slt42 1 passed, 5 skipped (sin base); test:guardias solo los 4 rojos del baseline. Ojo: `origin/dev` ya tiene otra migración con el mismo prefijo `20261104140100_tarifa_activacion`: revisar el orden al integrar dev.

@@ -205,3 +205,18 @@ vacíos); su ejecución queda para CI.
 ## Qué falta para OK
 1. B1: correr los E2E tocados (y los recomendados) en local y dejar la salida en `progress/impl_SLT-42.md`.
 2. m1 y m2: ajustes de texto en `design.md` y `tasks.md`, en la misma vuelta (no bloquean).
+
+## Correcciones (2026-11-06)
+- **m1** · No se añade `import "server-only"`: el paquete no es dependencia del proyecto (ni en
+  `package.json` ni en `docs/dependencias.md`) y ningún archivo del repo lo importa. Solo importa
+  `lib/validacion/telefono.ts` el servicio `lib/services/validacion-documento-telefono.ts`; nada de
+  `components/` ni `app/`. Registrado como desvío 8 en `design.md`, y ajustados §4.2, §7 y T2.4.
+  Commit `docs(SLT-42): correcciones m1 y m2 del review`.
+- **m2** · T1.0 de `tasks.md` ampliado: índice `CONCURRENTLY` si `usuario` > 100 000, ensayo de las tres
+  migraciones y sus `down.sql` en una copia de producción, y `POSTULACION_VALIDADA_POR_PAIS_DESDE`
+  igual o posterior al deploy, fijado en un commit previo. El checklist de `impl_SLT-42.md` ya lo
+  tenía; se precisó el commit. Mismo commit que m1.
+- **m3** · `ON CONFLICT ("value") DO NOTHING` en el INSERT de `dimex` y `nite` de
+  `20261104140100_slt42_tipo_documento_por_pais`. Se editó la migración porque la rama nunca llegó a
+  `dev` (`git ls-tree origin/dev` no la tiene): solo la tienen aplicada bases locales o de prueba de
+  esta feature, que deben rehacerse (`migrate reset`) por el cambio de checksum. Commit `bf5a0a82`.

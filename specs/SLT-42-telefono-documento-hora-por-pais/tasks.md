@@ -18,9 +18,20 @@
 
 - [ ] **T1.0** («pendiente: la hace una persona antes del deploy») Comprobaciones previas en producción, en solo lectura, hechas por una persona y no por
   un agente (`design.md` §2.5; P7). La primera es `SELECT count(*) FROM organizacion WHERE pais_id
-  <> 'CR'` → 0. El resultado de las tres se anota en `progress/features/SLT-42.md`.
-  *Hecho:* las tres dan lo esperado. Si aparece una empresa fuera de CR, se para y decide el humano:
-  T1.1–T1.3 no se aplican fuera de la base de test hasta entonces.
+  <> 'CR'` → 0. El resultado de las tres se anota en `progress/features/SLT-42.md`. Además, antes
+  del deploy:
+  1. **Índice concurrente:** si la tercera comprobación (`SELECT count(*) FROM usuario`) pasa de
+     100 000 filas, el `CREATE UNIQUE INDEX` de `20261104140200` se cambia a `CONCURRENTLY` fuera de
+     transacción (`design.md` §2.4) antes de aplicarla.
+  2. **Ensayo:** las tres migraciones y sus `down.sql` se ensayan sobre una copia de producción, nunca
+     sobre producción (`design.md` §2.5).
+  3. **Corte de postulaciones:** `POSTULACION_VALIDADA_POR_PAIS_DESDE`
+     (`lib/config/aprobacion-postulaciones.ts`, hoy `2026-11-04T14:00Z`) se ajusta al instante real del
+     deploy, igual o posterior a él: las postulaciones recibidas después ya se validaron con el país al
+     recibirlas. Fijarlo exige un commit antes del deploy (decisión «tras tanda 2b» punto 1).
+  *Hecho:* las tres comprobaciones dan lo esperado, el ensayo pasa y el corte está fijado en un commit.
+  Si aparece una empresa fuera de CR, se para y decide el humano: T1.1–T1.3 no se aplican fuera de la
+  base de test hasta entonces.
 
 - [x] **T1.1** Migración `20261104140000_slt42_pais_telefono_y_zona` + `down.sql` + `model Pais` en
   `db/schema.prisma` (`design.md` §2.1).
@@ -56,7 +67,8 @@
 - [x] **T2.3** `[P]` `lib/utils/documento.ts` + `tests/unit/utils/documento.test.ts` (R10, regla de
   P5).
   *Hecho:* verde.
-- [x] **T2.4** `[P]` `lib/validacion/telefono.ts` (`server-only`, `libphonenumber-js/max`) +
+- [x] **T2.4** `[P]` `lib/validacion/telefono.ts` (solo servidor, sin `server-only`: no es dependencia del proyecto,
+  desvío 8 de `design.md`; `libphonenumber-js/max`) +
   `tests/unit/validacion/telefono.test.ts` (R14, R15, R16).
   *Hecho:* verde: CR válido e inválido, número de Panamá con región CR rechazado, `XA` da
   `pais_sin_reglas`.
