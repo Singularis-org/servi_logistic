@@ -3,8 +3,6 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IPlanesService } from "@/lib/interfaces/services/IPlanesService";
 import { PlanesRepository, type PlanesPrismaClient } from "@/lib/repositories/PlanesRepository";
 import { PlanesService } from "@/lib/services/PlanesService";
-import { PaisRepository } from "@/lib/repositories/PaisRepository";
-import { zonaDeOrganizacionCon } from "@/lib/services/zona-de-la-empresa";
 import type { CatalogoResult, DetallePlanResult, PlanDeEmpresaResult, PreciosQueRigenResult } from "@/lib/types/planes";
 
 // SLT-58 (design §3.2) — el composition root de las lecturas de planes del superadmin. No es una
@@ -14,12 +12,7 @@ import type { CatalogoResult, DetallePlanResult, PlanDeEmpresaResult, PreciosQue
 
 /** El servicio con su repositorio real. */
 export function construirPlanesPlataformaService(prisma: PlanesPrismaClient = getPrismaClient()): IPlanesService {
-  return new PlanesService(
-    new PlanesRepository(prisma),
-    undefined,
-    // SLT-42 (R22, R28): la fecha que se muestra, en la zona del país de la empresa.
-    zonaDeOrganizacionCon(new PaisRepository(getPrismaClient())),
-  );
+  return new PlanesService(new PlanesRepository(prisma));
 }
 
 /** R13: el catálogo entero, también los archivados. */
