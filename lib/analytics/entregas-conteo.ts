@@ -332,6 +332,13 @@ export interface ConsultaConteoEntregas {
    */
   readonly rango: RangoResuelto | null;
   readonly alcance: AlcanceDatos;
+  /**
+   * SLT-42 (R22, R23): la zona IANA del pais de la empresa, la MISMA con la que se resolvio
+   * `rango`. Los repositorios que agrupan por dia en SQL la mandan como parametro de
+   * `AT TIME ZONE` (decision del humano del 2026-11-06). No entra en la clave de cache: la
+   * cache ya es por empresa y la zona sale de la empresa.
+   */
+  readonly zona: string;
 }
 
 export type PreparacionConteoEntregas =
@@ -391,7 +398,7 @@ export function prepararConteoEntregas(
   // `prepararConsultaAnalitica`.
   return {
     status: "ok",
-    consulta: { filtro, rango, alcance: resolucion.alcance } as ConsultaConteoEntregas,
+    consulta: { filtro, rango, alcance: resolucion.alcance, zona } as ConsultaConteoEntregas,
   };
 }
 

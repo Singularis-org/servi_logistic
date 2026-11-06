@@ -1,4 +1,5 @@
-// La serie de ORDENES CARGADAS POR DIA: una fila por dia calendario CR con al menos una orden.
+// La serie de ORDENES CARGADAS POR DIA: una fila por dia calendario de la zona de la empresa con
+// al menos una orden.
 //
 // ─── POR QUE ESTE NO PUEDE SER UN `groupBy` DE PRISMA ───────────────────────────────────
 //
@@ -15,23 +16,21 @@
 //
 // ─── LA FRONTERA DEL DIA: UNA SOLA DEFINICION, Y VIAJA COMO PARAMETRO ───────────────────
 //
-// Regla heredada de la 180 y NO negociable: en este SQL no hay ni una zona horaria. No hay
-// `AT TIME ZONE`, no hay `America/Costa_Rica`, no hay `date_trunc` con zona y no hay
-// `interval '6 hours'`. Cualquiera de esas seria una SEGUNDA definicion del dia operativo
-// fuera del alcance de `lib/utils/fecha-cr.ts` — el off-by-one de seis horas del que avisa
-// `lib/analytics/ranges.ts`.
+// Regla heredada de la 180: en este SQL no se ESCRIBE ninguna zona horaria. No hay
+// `America/Costa_Rica`, no hay `date_trunc` con zona escrita y no hay `interval '6 hours'`.
 //
-// Lo que si hay es un DESFASE en segundos que se DERIVA de `fecha-cr.ts` en TypeScript y entra
-// como PARAMETRO (`$n`). No es una constante escondida en el SQL: es la misma y unica
-// definicion del dia CR, escrita donde vive, cruzando la frontera como dato. Si algun dia
-// Costa Rica adoptase horario de verano, este archivo no se toca.
+// SLT-42 (R22, R23; decision del humano del 2026-11-06): el dia se calcula con
+// `AT TIME ZONE $n`, donde `$n` es la zona IANA del pais de la empresa (`consulta.zona`, la MISMA
+// con la que `resolverRango` calculo las cotas). La zona viaja como PARAMETRO, nunca interpolada.
+// Hasta SLT-42 viajaba un desfase fijo en segundos derivado de `fecha-cr.ts`; un desfase fijo
+// rompe R23 en una zona con horario de verano (los dias de 23 y 25 horas), y `AT TIME ZONE` no.
 //
 // ⚠ Y AUN ASI ESTA CONSULTA NO PODIA SALIR DE `trocear()` (`lib/analytics/cubo-temporal.ts`),
 // que es como se resolvio la 180: aquel calcula las fronteras de cada cubo en TypeScript y las
 // manda como array, lo que exige conocer la ventana. Aqui la ventana puede ser `null` —«sin
 // filtro de fecha», decision del 2026-08-18—, y entonces no existe la lista de dias que
 // mandar: el conjunto de dias es justo lo que la consulta viene a descubrir. Por eso el
-// agrupamiento se hace en la base y el desfase viaja como escalar.
+// agrupamiento se hace en la base y la zona viaja como escalar.
 //
 // ─── COSTE DECLARADO ────────────────────────────────────────────────────────────────────
 //
@@ -55,7 +54,6 @@ import type { PrismaClient } from "@prisma/client";
 
 import { ventanaDeCarga } from "@/lib/repositories/ventana-de-carga";
 import { condicionDeAlcance } from "@/lib/repositories/ConteoPorStatusRepository";
-import { inicioDelDiaCREnUtc } from "@/lib/utils/fecha-cr";
 import type { ConsultaConteoEntregas } from "@/lib/analytics/entregas-conteo";
 import type { IConteoCargadasPorDiaRepository } from "@/lib/interfaces/repositories/IConteoCargadasPorDiaRepository";
 import type { ConteoDeDia } from "@/lib/types/conteo-cargadas";
@@ -66,43 +64,34 @@ import type { ConteoDeDia } from "@/lib/types/conteo-cargadas";
 type ConteoCargadasPrismaClient = Pick<PrismaClient, "$queryRaw">;
 
 /**
- * Segundos que hay que RESTAR a un instante UTC para leer el reloj de pared de Costa Rica.
+ * El dia calendario de `orden.created_at` en la zona `zona`, como texto `YYYY-MM-DD`.
  *
- * DERIVADO, no escrito: `inicioDelDiaCREnUtc("2000-01-01")` es, por definicion, el instante en
- * que empieza ese dia CR; la distancia a la medianoche UTC de la MISMA fecha calendario es el
- * desfase. Misma tecnica que `UN_DIA_MS` en `ranges.ts` y `cubo-temporal.ts`, y por la misma
- * razon: que este archivo no contenga ninguna constante temporal propia.
- */
-const FECHA_ANCLA = "2000-01-01";
-const DESFASE_CR_SEGUNDOS =
-  (inicioDelDiaCREnUtc(FECHA_ANCLA).getTime() - Date.parse(`${FECHA_ANCLA}T00:00:00.000Z`)) / 1000;
-
-/**
- * El dia calendario CR de `orden.created_at`, como texto `YYYY-MM-DD`.
+ * TRES DECISIONES QUE NO SON DE ESTILO:
  *
- * DOS DECISIONES QUE NO SON DE ESTILO:
+ * 1. **La zona entra como PARAMETRO** (`$n::text`), nunca interpolada (SLT-42, decision del
+ *    humano del 2026-11-06). El cast a `text` evita el `42P18` de un parametro sin tipo.
  *
- * 1. **El desfase entra como parametro** con cast explicito a `double precision`, multiplicado
- *    por `interval '1 second'`, que es una UNIDAD y no un offset. Sin el cast, Postgres no
- *    puede inferir el tipo del parametro dentro de la multiplicacion y responde `42P18`.
- *    `o."created_at"` es `timestamp` SIN zona y guarda el reloj de pared UTC, asi que restarle
- *    el desfase da el reloj de pared CR y `::date` su fecha de calendario.
+ * 2. **Dos `AT TIME ZONE`, en este orden.** `o."created_at"` es `timestamp` SIN zona y guarda el
+ *    reloj de pared UTC: `AT TIME ZONE 'UTC'` lo vuelve el INSTANTE (`timestamptz`), y
+ *    `AT TIME ZONE $zona` da el reloj de pared de esa zona en ese instante, con su horario de
+ *    verano (R23). No depende del huso de la sesion de Postgres.
  *
- * 2. **Sale como TEXTO (`to_char`), no como `date`.** Una columna `date` vuelve del driver como
+ * 3. **Sale como TEXTO (`to_char`), no como `date`.** Una columna `date` vuelve del driver como
  *    un `Date` de JavaScript, y a partir de ahi cada consumidor tendria que decidir en que huso
- *    lo lee — que es exactamente como se reintroduce el off-by-one de seis horas. El contrato
+ *    lo lee — que es exactamente como se reintroduce el off-by-one. El contrato
  *    (`ConteoDeDia.fecha`) es una fecha CALENDARIO, y una cadena `YYYY-MM-DD` no admite dos
  *    lecturas.
  *
- * EXPORTADO desde la ficha 411 (cohorte de carga), y **solo el `export`**: aquella lectura
- * agrupa por el MISMO dia CR sobre la MISMA columna, asi que copiar el fragmento seria una
- * SEGUNDA definicion del dia operativo — el off-by-one de seis horas volviendo por la puerta de
- * atras. Sigue esperando el alias `o` para `orden`, que es el que usan las dos consultas.
+ * EXPORTADO desde la ficha 411 (cohorte de carga): aquella lectura agrupa por el MISMO dia sobre
+ * la MISMA columna, asi que copiar el fragmento seria una SEGUNDA definicion del dia operativo.
+ * Espera el alias `o` para `orden`, que es el que usan las dos consultas.
  */
-export const DIA_CR = Prisma.sql`to_char(
-  (o."created_at" - ${DESFASE_CR_SEGUNDOS}::double precision * interval '1 second')::date,
+export function diaDeCargaEnZona(zona: string): Prisma.Sql {
+  return Prisma.sql`to_char(
+  ((o."created_at" AT TIME ZONE 'UTC') AT TIME ZONE ${zona}::text)::date,
   'YYYY-MM-DD'
 )`;
+}
 
 interface FilaCargadas {
   readonly dia: string;
@@ -216,7 +205,7 @@ export class ConteoCargadasPorDiaRepository implements IConteoCargadasPorDiaRepo
     // consumidor lo rehaga. Como la clave es `YYYY-MM-DD`, el orden lexicografico ES el
     // cronologico.
     const filas = await this.prisma.$queryRaw<FilaCargadas[]>`
-      SELECT ${DIA_CR}     AS dia,
+      SELECT ${diaDeCargaEnZona(consulta.zona)} AS dia,
              COUNT(*)::int AS n
       FROM "orden" o
       WHERE ${where}

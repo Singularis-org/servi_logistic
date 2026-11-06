@@ -13,7 +13,7 @@ import {
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { AgregadoDiarioCajaRow } from "@/lib/interfaces/repositories/IFinanzasDiarioRepository";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, enTransaccionRevertida } from "./_postgres-real";
-import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { reglasPaisFijas, ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 /**
  * Ficha 334 — la fecha elegida, contra **Postgres de verdad**.
@@ -148,7 +148,7 @@ describeSiHayBase("ficha 334 — la fecha elegida contra Postgres (R22/R24/R25/R
 
       // Se mide el DELTA y no el total: la base de desarrollo puede traer filas propias en esa
       // ventana, y un total absoluto seria una asercion sobre datos ajenos.
-      const antes = await diario.sumarPorDia(desde, hasta);
+      const antes = await diario.sumarPorDia(desde, hasta, ZONA_DE_CR);
 
       const r = await new WalletEgresoService(
         repoDe(tx),
@@ -168,7 +168,7 @@ describeSiHayBase("ficha 334 — la fecha elegida contra Postgres (R22/R24/R25/R
       );
       expect(r.status).toBe("ok");
 
-      const despues = await diario.sumarPorDia(desde, hasta);
+      const despues = await diario.sumarPorDia(desde, hasta, ZONA_DE_CR);
       const delta = (fecha: string) =>
         new Prisma.Decimal(totalDelDia(despues, fecha, "egreso_gasto_variable"))
           .minus(totalDelDia(antes, fecha, "egreso_gasto_variable"))

@@ -58,7 +58,7 @@ export class FinanzasDiarioService {
   async consultar(): Promise<FinanzasDiarioDTO> {
     const zona = await zonaDeLaEmpresa(this.reglasPais, "FinanzasDiarioService"); // SLT-42 (R22, R28)
     const rango = resolverRango({ preset: "mes" }, zona, this.now());
-    const filas = await this.repo.sumarPorDia(rango.desde, rango.hasta);
+    const filas = await this.repo.sumarPorDia(rango.desde, rango.hasta, zona);
 
     return {
       porDia: derivarFinanzasDiarias(filas),

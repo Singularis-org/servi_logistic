@@ -110,6 +110,12 @@ Bloqueos de F2.0:
   5. Rollup sembrado entre 00:00 y 00:30 CR: corre ese mismo día (humano).
   6. Guía de integración §4.5: las dos menciones restantes a «UTC-6» pasan al mismo texto que la línea principal (humano). Pendiente.
 
+- 2026-11-06 (tras bloque 7, preguntas de `progress/impl_SLT-42.md > Tanda 6`):
+  1. `lib/planes/ciclo.ts`, `cobro.ts`, `consumo.ts`: excepción de R29 a cargo de SLT-86, que los pasa a la zona de cada empresa; SLT-42 no los toca (humano).
+  2. `ConteoCargadasPorDiaRepository`, `FinanzasDiarioRepository`, `CohorteCarga`: agrupar por día con `AT TIME ZONE` y la zona de la empresa como parámetro; se ajusta la regla de esos repositorios que prohibía funciones de zona en SQL (humano).
+  3. `lib/utils/whatsapp-telefono.ts`: se borra con sus tests (humano).
+  4. Desvíos de T7 aceptados: lista `PENDIENTES_DE_DECISION_SLT42` (debe quedar vacía y retirarse tras aplicar 1–3) y corrida original desde la clave del job (humano).
+
 ## Pendiente para el cierre
 - 2026-11-05, pedido del humano: al terminar la feature, resumen de TODOS los errores nuevos que puede lanzar SLT-42 (p. ej. `PaisIncompleto`, `PaisSinZonaHoraria`, `EmpresaNoResuelta`, documento/teléfono inválido por país, tipo de documento inactivo): dónde salen, qué ve el usuario y qué hay que completar o configurar (catálogo de país, zona, prefijo, tipos de documento, `POSTULACION_VALIDADA_POR_PAIS_DESDE`, T1.0) para que no se disparen. Va a `progress/impl_SLT-42.md > Errores nuevos y prevención` y se resume al humano.
 

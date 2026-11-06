@@ -161,7 +161,9 @@ esta bien hecha, no solo si "funciona".
     `construirReglasPaisEmpresa(prisma)`. Un país sin zona falla con `PaisSinZonaHoraria` en la
     operación que la necesita, y uno sin prefijo o dígitos falla con `PaisIncompleto`. Todo cálculo de
     días del servidor pasa por `lib/utils/calendario-zona.ts` con la zona como parámetro; los
-    repositorios reciben los límites o la zona ya resueltos. Los jobs diarios agendan una corrida por
+    repositorios reciben los límites o la zona ya resueltos. Los que agrupan por día en SQL
+    (`ConteoCargadasPorDia`, `CohorteCarga`, `FinanzasDiario`) usan `AT TIME ZONE` con la zona como
+    parámetro (`$n`), nunca escrita ni interpolada (decisión del humano del 2026-11-06). Los jobs diarios agendan una corrida por
     zona (`lib/services/jobs/serie-diaria-por-zona.ts`). `pais-sin-literales.guardia` impide escribir en
     el servidor la zona de CR, un desfase fijo o el `506`, y exige el real en cada composition root. Los
     envoltorios `*-cr.ts` quedan solo para la UI, en su lista de excepciones (SLT-81; SINPE, SL-22).
