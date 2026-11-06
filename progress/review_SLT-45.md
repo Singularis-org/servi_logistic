@@ -196,3 +196,48 @@ del contrato a propósito. Decide el humano si abre ficha.
 | R34 | `openapi-v2.test.ts` + `openapi-canal-rutas-reales.guardia.test.ts` + censo `openapi-177` (14) |
 | R35 | `tests/unit/api/postman-changelog-v2.test.ts` |
 | R36 | sin test por diseño: gate completo de CI (T9.2); `git diff -- e2e` vacío |
+
+## Re-review 2026-11-06 (acotada a 2f4ef70b..HEAD)
+
+Commits: `5bdcc60d` (decisiones), `1d1c66f0` (B1), `3dfc71c1` (m1), `7863a29f` (m2), `bd299417` (bitácora).
+
+### Verificación ejecutada
+- `tsc --noEmit`: verde. `eslint` sobre los 8 archivos tocados: verde.
+- Base local `logistic_slt45` (helper `env45.sh`, URL comprobada `localhost:5432/logistic_slt45`), `--maxWorkers=1`:
+  - FranjaRetenidas, RutearSatelite, notificadores-reales, `geo-payloads-contrato-v1`, `ordenes-api-key-carga`,
+    `ordenes-api-key-carga-generate`, `contrato-v1`, `v2-aislamiento`: 8 archivos, 145 tests verdes.
+  - `v2-ordenes`, `v2-paises-de-prueba`, `v2-aislamiento`, `ordenes-api-key-tienda-destino`: 4 archivos, 34 verdes.
+  - `tests/guards`: 17 archivos, 164 verdes (incluye `lib-no-importa-app`).
+
+### Checklist
+- [x] **B1 resuelto.** `PAIS_DEL_CONTRATO = PAIS_DE_OPERACION.codigo` (`lib/config/pais.ts`); sin literal `"CR"` en
+  el script. Coincide con la decisión humana del 2026-11-06. El test del script sigue verde sin cambios.
+- [x] **m1, extracción literal.** `diff` de la `route.ts` en `2f4ef70b` contra `lib/api/api-carga.ts`: solo salen el
+  borde HTTP (`runtime`, `maxDuration`, `extraerBearer`, `cargaApiBodySchema`, `handleCargaApi`, `POST`) y sus
+  imports, y cambia la cabecera. El cuerpo de `procesarCargaApi`, `CargaApiDeps`, `VersionCargaApi` y los
+  composition roots es idéntico. La `route.ts` v1 conserva el borde byte a byte, importa el pipeline y re-exporta
+  los tipos (los tests de integración que importan `CargaApiDeps` desde la ruta siguen compilando). El test de
+  no-regresión «la ruta exporta solo POST + `handleCargaApi`» sigue verde. `app/api/v2/ordenes/route.ts` importa
+  de `lib/api/api-carga`. v1 sin cambio de comportamiento: `contrato-v1` y las suites v1 de carga, verdes.
+- [x] **m1, aserción movida en `notificacion-notificadores-reales.test.ts`.** Es consecuencia aceptable del
+  movimiento, **no es hallazgo**. Lo que el test verifica es dónde se cablea el notificador real: en el composition
+  root, no en el default del servicio. El composition root se movió literalmente a `lib/api/api-carga.ts`. La
+  aserción es la misma (`toContain("notificarCargaMasivaTerminadaReal")`) y ahora apunta al archivo donde vive
+  el cableado. Mantenerla en `route.ts` la dejaría roja sin que el comportamiento haya cambiado. El
+  comentario de `BulkOrdenService.ts` se actualizó en coherencia.
+- [x] **m2.** Los dos archivos solo ganan el `vi.mock` de `CatalogoGeograficoRepository` (el mismo doble de los
+  otros tests de página) y un comentario. `git diff` sin líneas `-`: ninguna aserción cambia. Cubierto por la
+  decisión humana del 2026-11-06.
+- [x] **Sin dependencias nuevas.** `package.json` y el lockfile no están en el diff.
+- [ ] m3 (fecha del CHANGELOG) y m4 (T9/T10): siguen **pendientes de cierre** y no bloquean esta vuelta.
+
+### Hallazgos nuevos
+- **n1 — nota (no introducida aquí).** `app/api/cron/purga-pdf-cargas/route.ts:26` cita
+  `app/api/ordenes/api-key/carga/route.ts:75` como precedente de `maxDuration`. La línea ya estaba desfasada antes
+  de este diff (en `2f4ef70b` era la 87; ahora es la 52). Si se toca, conviene citar el símbolo y no el número de línea.
+- **n2 — nota (no introducida aquí).** `extraerBearer` sigue duplicado entre la `route.ts` v1 y
+  `lib/api/api-key-request.ts`. La extracción literal lo deja como estaba, y es lo correcto para m1.
+
+### Veredicto: **APROBADO**
+B1 está resuelto y m1 y m2 están cerrados sin regresiones. No hay hallazgos bloqueantes nuevos. Antes de `done`
+quedan m3 y m4 (`CHECKPOINTS.md` exige todas las tasks `[x]`).
