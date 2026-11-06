@@ -78,7 +78,8 @@ UPDATE "tipo_identificacion"
 
 INSERT INTO "tipo_identificacion" ("id", "value", "pais_id", "clave", "nombre", "caracteres", "largo_min", "largo_max", "orden")
 VALUES (gen_random_uuid()::text, 'dimex', 'CR', 'dimex', 'DIMEX', 'digitos', 11, 12, 3),
-       (gen_random_uuid()::text, 'nite',  'CR', 'nite',  'NITE',  'digitos', 10, 10, 4);
+       (gen_random_uuid()::text, 'nite',  'CR', 'nite',  'NITE',  'digitos', 10, 10, 4)
+ON CONFLICT ("value") DO NOTHING;
 
 -- Con todas las filas rellenas, las columnas nuevas se cierran.
 ALTER TABLE "tipo_identificacion"
