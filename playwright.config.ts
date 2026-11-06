@@ -143,6 +143,8 @@ export default defineConfig({
         // SLT-83 R28: costo por orden porcentual; la orden llega a entregado por el cierre real.
         // Usa el superadmin de prueba y no toca el global del cobro.
         "planes-costo-porcentual",
+        // SLT-77 T6.1: el tope de intentos de cada empresa, de la sección de Tarifas al cierre aprobado.
+        "tope-intentos-por-empresa",
       ),
     },
   ],

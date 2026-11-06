@@ -125,7 +125,7 @@ Reglas de todas las tandas:
 
 ## Tanda F — E2E y medida. Depende de C, D y E
 
-- [ ] **T6.1** `e2e/tope-intentos-por-empresa.spec.ts`, en el proyecto `dinero`. Empresas nuevas por los servicios reales,
+- [x] **T6.1** `e2e/tope-intentos-por-empresa.spec.ts`, en el proyecto `dinero`. Empresas nuevas por los servicios reales,
   con cifras a mano en la cabecera. Recorre:
   1. Las dos empresas ven 3 en `/configuracion/tarifas`.
   2. El `maestro` de A elige 2: ve el aviso, guarda. Nada cambia en la orden al guardar (R8).
@@ -137,9 +137,9 @@ Reglas de todas las tandas:
   7. A 390 px, `documentElement.scrollWidth` ≤ 390 y controles ≥ 44 (R17).
   **Hecho:** `--project=dinero`, dos corridas seguidas sobre la misma base, 0 failed, 0 skipped, 0 flaky. Log sin `tail`, con
   `INIT_EXIT=$?` dentro.
-- [ ] **T6.2** `e2e/reintentos-escalado.spec.ts`: corregir el comentario de «umbral legal»; sigue verde con 3.
+- [x] **T6.2** `e2e/reintentos-escalado.spec.ts`: corregir el comentario de «umbral legal»; sigue verde con 3.
   `e2e/dos-empresas-humo.spec.ts`, porque toca `organizacion` y datos de negocio. **Hecho:** verdes.
-- [ ] **T6.3** Mirar la sección con el navegador, a 1360 y 390 px, claro y oscuro, con un solo dev server. **Hecho:** capturas en
+- [x] **T6.3** Mirar la sección con el navegador, a 1360 y 390 px, claro y oscuro, con un solo dev server. **Hecho:** capturas en
   `progress/impl_SLT-77.md`.
 
 ## Tanda G — Documentación y cierre. Depende de F
@@ -244,6 +244,14 @@ T0 → A → B ─┬→ C → D ─┬→ F → G
 - `app/(app)/configuracion/tarifas/_components/tarifas-textos.ts`
 - `e2e/tope-intentos-por-empresa.spec.ts`
 - `e2e/reintentos-escalado.spec.ts`
+- `progress/capturas/SLT-77/seccion-1360-claro.png`
+- `progress/capturas/SLT-77/seccion-1360-oscuro.png`
+- `progress/capturas/SLT-77/seccion-390-claro.png`
+- `progress/capturas/SLT-77/seccion-390-oscuro.png`
+- `progress/capturas/SLT-77/solo-lectura-1360-claro.png`
+- `progress/capturas/SLT-77/solo-lectura-1360-oscuro.png`
+- `progress/capturas/SLT-77/solo-lectura-390-claro.png`
+- `progress/capturas/SLT-77/solo-lectura-390-oscuro.png`
 - `playwright.config.ts`
 - `tests/integration/db/tope-intentos-migration.test.ts`
 - `tests/integration/db/tope-intentos-escritura.test.ts`

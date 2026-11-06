@@ -437,3 +437,87 @@ M4 son dos porque la sección tiene dos caminos de fallo.
 ### Veredicto
 
 Tanda E hecha: sección con sus textos y el badge sin «de null», con 0 saltos, las cuatro mutaciones y el control muertos. Dos textos fuera de §4.2 pendientes de que los vea Carlos.
+
+## Tanda F (2026-11-06)
+
+Base: `servi_gate_slt77`, recreada con DROP/CREATE, `migrate deploy` (exit 0) y `db:seed` (exit 0) antes de la primera corrida de `dinero` y otra vez antes de T6.2, con `current_database()` dentro de cada log. App por `next start`, con el `next build` del código de `daecf7b3`, que el E2E no cambia. Un solo servidor. Solo categorías impresas; ninguna URL en la salida.
+
+### Archivos
+
+Creados: `e2e/tope-intentos-por-empresa.spec.ts`, `progress/capturas/SLT-77/*.png` (8, añadidas a `## Archivos esperados` antes de escribirlas).
+
+Modificados: `playwright.config.ts` (el spec en `dinero`), `tasks.md`.
+
+`e2e/reintentos-escalado.spec.ts` no cambia: el comentario de «umbral legal» se corrigió en la Tanda C. Quedan 0 archivos de `e2e/` con «umbral legal», «por ley» o «cota legal».
+
+### Mapa R → test de esta tanda
+
+En `e2e/tope-intentos-por-empresa.spec.ts`. Empresas A y B idénticas; tarifa del mensajero 1.500 y 900, a mano en la cabecera.
+
+| R | Caso |
+|---|---|
+| R2, R12 | `paso 1`: las dos ven 3, en pantalla y en la base |
+| R8, R15, R16 | `paso 2`: el aviso antes de guardar, con el 3 aún en la base; se va con 4; foto de órdenes y conteos iguales en A y en B |
+| R10 | `paso 5`: dos filas en `/historico/acciones`, 3→2 y 2→3, con el nombre del maestro; ninguna en B |
+| R13, R14, R4 | `paso 6`: el admin lee sin control ni botón; la acción del maestro con su sesión da `forbidden`; el mensajero recibe el aviso de permiso y no ve la sección |
+| R17 | `paso 7`, por ancho y tema |
+| R20 | `paso 4`: en A el modal no asigna y la orden no se mueve; en B se asigna |
+| R21, R35, R36 | `aprobar por la app relee el tope`: A rechaza, B va a bodega, las dos por `/cierres-admin` |
+| R22, R26 | `paso 3`: la misma corrida escala A y no B; 900 en el siguiente cierre, en pantalla y en la base |
+| R24, R25, R32 | `la línea de tiempo…`: «Intento 2 de 2» y «2 de 3»; panel de A sin «Reprogramar» ni «Devolver», y B los ofrece; respuestas sin el número |
+| R29 | `paso 5`: subido a 3, la misma orden se asigna |
+
+**El hueco de la Tanda D, cubierto a medias.** La aprobación corre por la pantalla, con la sesión del maestro y el cliente real de la app. Las barridas de A y B entran en la rama que relee (`idsBarridas.length > 0`), la aprobación responde bien y cada una llega a su desenlace. **Límite:** el tope no cambia durante esa aprobación. Queda probado que la relectura funciona con el cliente real, no la carrera, que sigue medida solo en `tope-intentos-carreras`.
+
+**R32, sin lector ciego.** Dentro de un documento, el JSON va escapado, y la primera versión del lector habría pasado aunque viajara `umbral`. Se quitan las barras antes de buscar, y el caso exige ver `"enElTope":true` en A y `false` en B.
+
+### Salida real
+
+Log completo a archivo, con `INIT_EXIT=$?` dentro.
+
+| Corrida | Base | passed | failed | skipped | flaky | exit |
+|---|---|---|---|---|---|---|
+| `--project=dinero`, 1.ª | recreada | 72 | 0 | 0 | 0 | 0 |
+| `--project=dinero`, 2.ª | la misma | 72 | 0 | 0 | 0 | 0 |
+| `--project=reparto`, `reintentos-escalado` | recreada | 2 | 0 | 0 | 0 | 0 |
+| `--project=aislamiento`, `dos-empresas-humo`, con `plataforma-vacia` | la misma | 18 | 0 | 0 | 0 | 0 |
+
+De los 72, 12 son de este spec.
+
+- `pnpm run typecheck`, con `--max-old-space-size=8192`: exit 0. `eslint` del spec y de `playwright.config.ts`: exit 0.
+- `pnpm run test:guardias`: 332 archivos, 331 en verde y 1 en rojo; 4627 pasados, 4 fallados, 1 saltado. Rojo: `dependencias-declaradas-presentes`, el del baseline. `e2e-sin-saltos`, en verde con el spec nuevo.
+- Retornos de carro en lo escrito: 0, contados por bytes.
+- `./init.sh` no se corrió: lo exige T7.4.
+
+### T6.3: medidas
+
+Por el navegador, con `next start` como en SLT-55, y `paso 7` las afirma. El aviso se mide elegido sin guardar. Iguales en las dos corridas.
+
+| Ancho y tema | `scrollWidth` | Selector y Guardar | Aviso | Ayuda | Título | Valor | Solo lectura: valor y nota |
+|---|---|---|---|---|---|---|---|
+| 1360 claro | 1360 | 44 y 44 | 6,37 | 10,27 | 18,88 | 18,88 | 18,88 y 10,27 |
+| 1360 oscuro | 1360 | 44 y 44 | 7,80 | 8,04 | 15,91 | 14,67 | 15,91 y 8,04 |
+| 390 claro | 390 | 44 y 44 | 6,37 | 10,27 | 18,88 | 18,88 | 18,88 y 10,27 |
+| 390 oscuro | 390 | 44 y 44 | 7,80 | 8,04 | 15,91 | 14,67 | 15,91 y 8,04 |
+
+Contraste WCAG, con los colores resueltos en un canvas y el fondo compuesto desde la raíz, porque el aviso oscuro es transparente sobre la tarjeta. El `scrollWidth` de solo lectura coincide con el del ancho.
+
+Capturas, de la 2.ª corrida, solo con datos de prueba: `progress/capturas/SLT-77/seccion-{1360,390}-{claro,oscuro}.png` y `solo-lectura-{1360,390}-{claro,oscuro}.png`.
+
+### Hallazgos
+
+1. **Quien asigna no ve el motivo.** El servidor responde «esta orden ya agoto sus intentos de entrega: no puede volver a salir a reparto», pero `asignacion-satelite-error-messages.ts` no tiene ese fragmento y la pantalla dice «Alguna orden de la selección ya no se puede asignar. Actualiza la lista y vuelve a intentarlo.». `guia-decision-error-messages.ts`, el de la bodega central, tampoco lo reconoce (leído, no ejercitado). Viene de la 276 y R20 se cumple, pero con esta feature pesa más: tras bajar el tope, actualizar la lista no arregla nada y la salida es volver a subirlo. El E2E afirma las dos cosas, el mensaje general en pantalla y el motivo en la respuesta, y no se tocó código de producción. Para quien decide.
+2. **El corte no barre lo reservado para hoy.** Una orden asignada hoy lleva `fecha_reparto` de hoy, y el corte cierra el día anterior; solicitar el cierre también se niega con ella pendiente. No hay camino sin reloj falso: `repartoDeDiasAtras` mueve al pasado esa fecha, y la excepción está en la cabecera, como `anclarDevolucionHaceDias`.
+3. **Fuera de esta feature, a 390 px en `Mensajeros con valor propio`:** la tabla vacía corta su texto a la derecha («Ningún mensajero tiene valor…»), y en oscuro tiene un borde blanco muy marcado. Es de SLT-55 y se ve en las capturas. Sin tocar.
+4. **Comentario atrasado:** `lib/services/AsignacionSateliteService.ts:20` aún dice que el umbral sale de la configuración. La guardia no lo ve porque no nombra la constante. No se tocó, por la regla de esta tanda.
+
+### Desviaciones
+
+- El panel del mensajero se mira antes del paso 3, no en el 6: el corte le barrería la orden. La parte de «no entra» sí está en el 6.
+- El paso 4 corre en la bodega satélite, con su pantalla. La central queda en `tope-intentos-caminos` (R20), sin E2E.
+- `paso 7` también cubre T6.3: 4 casos en vez de uno, para que las cifras queden afirmadas y no solo apuntadas aquí.
+- Sin mutaciones: `tasks.md` no pide ninguna para esta tanda, y exigirían recompilar y tocar código de producción. Lo que separa los casos es A contra B y el paso 1, con 3 sin escalar.
+
+### Veredicto
+
+Tanda F hecha: el recorrido de la pantalla al cierre aprobado sale verde dos veces sin saltos, y queda un motivo sin mostrar para que lo decida un humano.
