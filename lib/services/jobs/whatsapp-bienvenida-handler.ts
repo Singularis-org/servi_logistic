@@ -14,6 +14,8 @@ import type { JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
 import type { JobHandler } from "@/lib/interfaces/services/IJobQueueService";
 import { ChatWhatsappService } from "@/lib/services/ChatWhatsappService";
 import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 import { ChatConversacionRepository } from "@/lib/repositories/ChatConversacionRepository";
 import { ChatMensajeRepository } from "@/lib/repositories/ChatMensajeRepository";
 import { PlantillaMensajeRepository } from "@/lib/repositories/PlantillaMensajeRepository";
@@ -25,7 +27,7 @@ import { whatsappDeLaEmpresa } from "@/lib/services/whatsapp/whatsapp-de-la-empr
 import { consoleLogger } from "@/lib/services/whatsapp/chat-logger";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { construirComponentsEnvio } from "@/lib/utils/whatsapp-template";
-import { resolverValoresPlantilla } from "@/lib/types/plantilla-datos";
+import { necesitaZona, resolverValoresPlantilla } from "@/lib/types/plantilla-datos";
 import { renderPlantilla } from "@/lib/utils/plantilla-mensaje";
 import type { IPlantillaMensajeRepository } from "@/lib/interfaces/repositories/IPlantillaMensajeRepository";
 import type { IOrdenEnvioReader } from "@/lib/repositories/OrdenEnvioReader";
@@ -45,6 +47,11 @@ export interface WhatsappBienvenidaDeps {
   /** Idioma del template si la plantilla no trae el suyo sincronizado desde Meta. */
   idiomaPorDefecto?: string;
   logger?: ChatLogger;
+  /**
+   * SLT-42 (R22, R28): la zona del pais de la empresa del job, para las fechas con hora de la
+   * plantilla. Solo se lee si la plantilla pinta alguna; sin el puerto, falla en ese caso.
+   */
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
 }
 
 /**
@@ -81,6 +88,7 @@ export async function buildWhatsappBienvenidaDeps(): Promise<WhatsappBienvenidaD
     plantillaRepo: new PlantillaMensajeRepository(prisma),
     ordenReader: new OrdenEnvioReader(prisma),
     idiomaPorDefecto: config.templateIdioma,
+    reglasPais: construirReglasPaisEmpresa(prisma), // SLT-42 (R22): la zona del pais de la empresa.
     logger: consoleLogger,
   };
 }
@@ -165,7 +173,11 @@ export function crearWhatsappBienvenidaHandler(
     }
 
     // Misma cadena que `enviarPlantillaChat` (`lib/actions/chat-whatsapp.ts:159-163`).
-    const valores = resolverValoresPlantilla(plantilla.variables, datos);
+    // SLT-42 (R22, R28): las fechas con hora, en la zona del pais de la empresa del job.
+    const zona = necesitaZona(plantilla.variables)
+      ? await zonaDeLaEmpresa(deps.reglasPais, "whatsapp_bienvenida")
+      : undefined;
+    const valores = resolverValoresPlantilla(plantilla.variables, datos, zona);
     const componentes = construirComponentsEnvio(plantilla.variables, valores);
     const cuerpoRenderizado = renderPlantilla(plantilla.cuerpo, valores);
     const idioma = plantilla.templateIdioma || deps.idiomaPorDefecto || "es";

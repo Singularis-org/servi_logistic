@@ -21,7 +21,7 @@ import { idiomaPlantillasWhatsapp } from "@/lib/config/whatsapp";
 import { whatsappDeLaEmpresaOpcional } from "@/lib/services/whatsapp/whatsapp-de-la-empresa";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { construirComponentsEnvio } from "@/lib/utils/whatsapp-template";
-import { resolverValoresPlantilla } from "@/lib/types/plantilla-datos";
+import { necesitaZona, resolverValoresPlantilla } from "@/lib/types/plantilla-datos";
 import { renderPlantilla } from "@/lib/utils/plantilla-mensaje";
 import { fechaCalendario, inicioDelDiaEnUtc } from "@/lib/utils/calendario-zona";
 import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
@@ -285,7 +285,12 @@ export async function enviarPlantillaChat(
 
   // Mapeo variables->orden y construccion de componentes: MISMA logica que el envio server-side
   // de la feature 107 (no se reinventa). El cuerpo renderizado se persiste para el historial.
-  const valores = resolverValoresPlantilla(plantilla.variables, datos);
+  // SLT-42 (R22, R28): las fechas con hora, en la zona del pais de la empresa. Solo se lee si la
+  // plantilla pinta alguna; sin zona en el pais, falla antes de enviar nada.
+  const zona = necesitaZona(plantilla.variables)
+    ? await (deps.reglasPais ?? construirReglasPaisEmpresa(prisma)).zonaHoraria()
+    : undefined;
+  const valores = resolverValoresPlantilla(plantilla.variables, datos, zona);
   const componentes = construirComponentsEnvio(plantilla.variables, valores);
   const cuerpoRenderizado = renderPlantilla(plantilla.cuerpo, valores);
   const idioma =

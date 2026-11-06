@@ -250,6 +250,61 @@ describe("enviarPlantillaChat (envio de plantilla por el chat)", () => {
     });
     expect(res).toEqual({ status: "no_configurado" });
   });
+
+  // SLT-42 (R22, R28; decision del humano tras T5.7): `fechaHora` de `plantilla-datos.ts`, en la
+  // zona del pais de la empresa.
+  const CON_FECHA: PlantillaEnviable = {
+    ...PLANTILLA,
+    cuerpo: "Asignada el {{fecha_asignacion}}",
+    variables: ["fecha_asignacion"],
+  };
+  const DATOS_CON_FECHA = datosPlantillaFixture({ orden: { ...ORDEN_DATA.orden, asignadoAt: new Date("2026-08-26T05:30:00.000Z") } });
+
+  it("SLT-42 R22: la fecha con hora sale en la zona del pais de la empresa (CR: el 25; Bogota: el 26)", async () => {
+    const enviar = async (zonaHoraria: string) => {
+      const service = {
+        enviarPlantilla: vi.fn(async () => ({ status: "ok", mensajeId: "w", mensajeChatId: "m" })),
+      } as unknown as ChatWhatsappService;
+      await enviarPlantillaChat("orden-1", "plt-1", {
+        getActor: getActor(MENSAJERO),
+        ordenReader: ordenReader(DATOS_CON_FECHA),
+        plantillaRepo: plantillaRepo(CON_FECHA),
+        service,
+        reglasPais: reglasPaisFijas({ zonaHoraria }),
+      });
+      return (service.enviarPlantilla as ReturnType<typeof vi.fn>).mock.calls[0][0].cuerpoRenderizado as string;
+    };
+    expect(await enviar("America/Costa_Rica")).toBe("Asignada el 25/08/2026 23:30");
+    expect(await enviar("America/Bogota")).toBe("Asignada el 26/08/2026 00:30");
+  });
+
+  it("SLT-42 R28: sin zona en el pais y con una fecha con hora, falla sin enviar; sin fechas, no lee la zona", async () => {
+    const service = {
+      enviarPlantilla: vi.fn(async () => ({ status: "ok", mensajeId: "w", mensajeChatId: "m" })),
+    } as unknown as ChatWhatsappService;
+    const sinZona = reglasPaisFijas({ zonaHoraria: null });
+    await expect(
+      enviarPlantillaChat("orden-1", "plt-1", {
+        getActor: getActor(MENSAJERO),
+        ordenReader: ordenReader(DATOS_CON_FECHA),
+        plantillaRepo: plantillaRepo(CON_FECHA),
+        service,
+        reglasPais: sinZona,
+      }),
+    ).rejects.toBeInstanceOf(PaisSinZonaHoraria);
+    expect(service.enviarPlantilla).not.toHaveBeenCalled();
+
+    const zona = vi.spyOn(sinZona, "zonaHoraria");
+    const res = await enviarPlantillaChat("orden-1", "plt-1", {
+      getActor: getActor(MENSAJERO),
+      ordenReader: ordenReader(ORDEN_DATA),
+      plantillaRepo: plantillaRepo(PLANTILLA),
+      service,
+      reglasPais: sinZona,
+    });
+    expect(res.status).toBe("ok");
+    expect(zona).not.toHaveBeenCalled();
+  });
 });
 
 describe("listarHiloChat (R16/R22)", () => {

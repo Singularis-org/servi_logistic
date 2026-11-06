@@ -18,7 +18,7 @@ import { normalizarTelefono, type ReglasTelefono } from "@/lib/utils/telefono-pa
 import { esErrorTransitorio } from "@/lib/services/whatsapp/errores-meta";
 import { decidirEnrutadoPorCita, type DecisionCita } from "@/lib/services/whatsapp/enrutado-por-cita";
 import { construirComponentsEnvio } from "@/lib/utils/whatsapp-template";
-import { resolverValoresPlantilla } from "@/lib/types/plantilla-datos";
+import { necesitaZona, resolverValoresPlantilla } from "@/lib/types/plantilla-datos";
 
 /**
  * Cliente minimo consumido: el envio de texto libre (saliente del chat) y el envio de una
@@ -755,7 +755,10 @@ export class ChatWhatsappService {
       throw new Error("reintento de plantilla: la orden ya no esta asignada a ese mensajero");
     }
 
-    const valores = resolverValoresPlantilla(plantilla.variables, datos);
+    // SLT-42 (R22, R28): las fechas con hora, en la zona del pais de la empresa del hilo; solo se
+    // lee si la plantilla pinta alguna.
+    const zona = necesitaZona(plantilla.variables) ? await this.deps.reglasPais.zonaHoraria() : undefined;
+    const valores = resolverValoresPlantilla(plantilla.variables, datos, zona);
     const componentes = construirComponentsEnvio(plantilla.variables, valores);
     return client.enviarPlantilla(
       hilo.telefonoE164,
