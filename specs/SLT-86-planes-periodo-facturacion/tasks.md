@@ -92,6 +92,25 @@
     verdes;
   - los tests de asignación y tipo de cobro de §9, adaptados.
 
+## [x] T8b — Cancelar un cambio de empresa deja historial (R19, R21, R26)
+
+> Lo pidió el humano el 2026-11-05, tras T9: sustituye a «cancelar no deja historial» (`requirements.md >
+> Decisiones cerradas`).
+
+- **Depende de:** T8, T9.
+- **Pasos:**
+  - migración `20261106150000_historial_accion_plan_cambio_empresa_cancelado` (valor nuevo de
+    `historial_accion_tipo`, sola por 55P04) con su `down.sql`; `db/schema.prisma`;
+  - `lib/types/historial-accion.ts` (tipo, categoría `cambia_plan` y etiqueta);
+  - `PlanesRepository.cancelarPendienteDeEmpresaEnTx`, el único punto que cancela un pendiente de empresa:
+    «Cancelar cambio», la petición igual a lo vigente y el archivado (design §5.3);
+  - `cancelarCambioEmpresa` recibe el actor (repositorio, interfaz y servicio);
+  - la lectura del historial de asignaciones (`ACCIONES_DE_ASIGNACION`, `tipoCobroDelHistorial`) y el texto
+    `textoDelCambioCancelado` en `lib/planes/mensajes.ts`;
+  - el censo de `historial-accion-escrituras-cubiertas` y los tests que fijan la lista del enum.
+- **Hecho:** `tests/integration/db/planes-cancelar-cambio-historial.test.ts`,
+  `tests/integration/db/planes-cambio-empresa.test.ts` y `tests/unit/planes/mensajes-periodo.test.ts` verdes.
+
 ## [x] T9 — Ediciones de precio con fecha e historial; lecturas y servicios (R3, R13, R15, R22, R26, R27, R29, R32)
 
 - **Depende de:** T7, T8.
@@ -143,6 +162,11 @@
 - `db/migrations/20261106120000_plan_periodo_facturacion/down.sql`
 - `db/migrations/20261106130000_plan_de_la_empresa_pendiente_sin_plan/migration.sql`
 - `db/migrations/20261106130000_plan_de_la_empresa_pendiente_sin_plan/down.sql`
+- `db/migrations/20261106140000_plan_aplicar_cambio_empresa_enum/migration.sql`
+- `db/migrations/20261106140000_plan_aplicar_cambio_empresa_enum/down.sql`
+- `db/migrations/20261106150000_historial_accion_plan_cambio_empresa_cancelado/migration.sql`
+- `db/migrations/20261106150000_historial_accion_plan_cambio_empresa_cancelado/down.sql`
+- `lib/types/historial-accion.ts`
 - `tests/integration/db/_fixtures/periodo-calendario.ts`
 - `lib/db/modelos-de-negocio.ts`
 - `lib/types/planes.ts`
@@ -178,6 +202,7 @@
 - `components/shared/tipo-cobro.ts`
 - `app/(app)/plataforma/planes/_components/PlanForm.tsx`
 - `app/(app)/plataforma/planes/_components/PlanesModule.tsx`
+- `app/(app)/plataforma/planes/_components/plan-vista.ts`
 - `app/(app)/plataforma/planes/[planId]/_components/PlanDetalle.tsx`
 - `app/(app)/plataforma/empresas/[organizacionId]/_components/PlanEmpresa.tsx`
 - `app/(app)/plataforma/empresas/_components/EmpresasModule.tsx`
@@ -206,6 +231,7 @@
 - `tests/integration/db/plan-ciclo-periodo.test.ts`
 - `tests/integration/db/plan-sin-tope-ordenes.test.ts`
 - `tests/integration/db/planes-cambio-empresa.test.ts`
+- `tests/integration/db/planes-cancelar-cambio-historial.test.ts`
 - `tests/integration/db/plan-descuento-periodo.test.ts`
 - `tests/integration/db/plan-precio-historial.test.ts`
 - `tests/integration/db/plan-de-la-empresa-periodo.test.ts`

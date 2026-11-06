@@ -405,3 +405,25 @@ Todos los casos están en `tests/integration/db/migracion-slt86-ida-y-vuelta.tes
 - `tests/integration/plataforma-empresa-detalle-page.test.tsx` es el test de la página del detalle de empresa: lo adapta
   T11.
 - Grafo MCP: no lo consulté; trabajé con Grep/Read.
+
+## Decisiones del humano tras T9 (2026-11-05)
+
+Anotadas en `requirements.md > Decisiones cerradas` (y en el mapa decisiones → requisitos):
+
+1. Se acepta la migración extra `20261106140000_plan_aplicar_cambio_empresa_enum`; va en «Archivos esperados».
+2. Se acepta el cambio del censo de `historial-accion-escrituras-cubiertas` (productor `aplicarEnTx`).
+3. Rastro: una línea por dato. Se confirman las claves `descuento_<periodo>`, «Descuento anual: 10.00 %», el
+   separador « · », «sin descuento» del lado vacío y las filas viejas «15000.00 / mes · 150000.00 al año».
+   Revisado: `lineasDeCambioDelPlan` ya pinta el costo base y cada descuento en líneas aparte, porque
+   `diferenciasDelPlan` guarda en `precio` solo el mensual (`rastro-periodo`, «un descuento por línea»). Sin
+   cambio de código.
+4. Textos de SLT-83: «Cobrado en el período» y «Total del período hasta hoy» (`lib/planes/mensajes.ts`).
+5. Asignar el mismo plan con otro tipo solo cambia el tipo, sin revisar topes: confirmado, sin cambios.
+6. **Cancelar un cambio de empresa SÍ deja historial** (sustituye a «sin historial»): T8b en `tasks.md`,
+   `design.md > §5.3` y R19, R21 y R26.
+7. `docs/architecture.md`: retiradas las menciones a `plan_cupo_ordenes`, `CupoPlanRepository` y
+   `plan_inicio_ciclo_en_curso` como vigentes.
+
+Además, en «Archivos esperados»: las dos migraciones nuevas, `lib/types/historial-accion.ts`,
+`app/(app)/plataforma/planes/_components/plan-vista.ts` (la ruta real; no hay `plan-vista.tsx`) y
+`tests/integration/db/planes-cancelar-cambio-historial.test.ts`. `e2e/dos-empresas-humo.spec.ts` ya estaba.

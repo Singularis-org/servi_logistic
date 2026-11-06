@@ -255,8 +255,9 @@ El servicio valida el rol (R3), el esquema y el rango (R16) y calcula `desde = i
 El repositorio trabaja en una transacción y bajo el cerrojo:
 
 1. Revalida la empresa, que el plan no esté archivado y que sea asignable.
-2. Si el resultado es igual a lo vigente (mismo plan y tipo), cancela el pendiente si lo hay; si no lo hay,
-   devuelve `ok` sin cambio. En ningún caso escribe historial (R19).
+2. Si el resultado es igual a lo vigente (mismo plan y tipo), cancela el pendiente si lo hay, con su fila
+   «cambio cancelado» (§5.3); si no lo hay, devuelve `ok` sin cambio y no escribe nada (R19). Reemplazar un
+   pendiente por otro no escribe historial.
 3. **Fecha de hoy:** llama a `aplicarCambioDeEmpresa` en la misma transacción. Con un tope de usuarios o de API
    keys ya pasado, devuelve `tope_excedido` y no escribe (SL-24 R12; R18). En una primera asignación con fecha
    pasada o de hoy, el camino es el de SLT-58: entrada = 00:00 de la fecha y avisos de R36.
@@ -289,9 +290,29 @@ El repositorio trabaja en una transacción y bajo el cerrojo:
 
 ### 5.3 Cancelar (R19, R21, R26)
 
-- `cancelarCambioEmpresa(org)` limpia el pendiente; si no hay ninguno, devuelve `sin_cambio_programado`.
+- `cancelarCambioEmpresa(org, actor)` limpia el pendiente; si no hay ninguno, devuelve `sin_cambio_programado`.
 - `archivar(planId)` también limpia los pendientes que apuntan a ese plan, incluidas las primeras asignaciones
   pendientes (R21).
+- **Historial de la cancelación (decisión del humano del 2026-11-05, tras T9; sustituye a «sin historial»).**
+  Cancelar un pendiente deja una fila en `historial_accion` de la empresa, en la misma transacción que limpia
+  el pendiente. Un solo punto, `cancelarPendienteDeEmpresaEnTx(tx, empresa, actor)`, sirve a los tres
+  caminos:
+  - «Cancelar cambio» (`cancelarCambioEmpresa`), con quien cancela como actor;
+  - la petición igual a lo vigente (§5.1, paso 2), con quien la pide;
+  - el archivado (R21), con quien archiva, una fila por empresa con un pendiente hacia el plan.
+
+  La fila:
+  - `accion = plan_cambio_empresa_cancelado` (valor nuevo de `historial_accion_tipo`, migración
+    `20261106150000_historial_accion_plan_cambio_empresa_cancelado`, sola por 55P04; categoría `cambia_plan`);
+  - `entidad = plan`, el del pendiente, con su etiqueta `Plan «<nombre>»`;
+  - `valor_anterior = NULL` y `valor_nuevo = «AAAA-MM-DD · tipo»`, la fecha de efecto y el tipo del cambio
+    cancelado, con el formato de `valorDelHistorialDeAsignacion`.
+
+  El historial de asignaciones del detalle de empresa la lee con `plan_asignado` y
+  `plan_tipo_cobro_cambiado` (`ACCIONES_DE_ASIGNACION`) y la devuelve con `tipo: "cambio_cancelado"`,
+  `tipoCobro` y `desde` del cambio cancelado. El texto de la celda es `textoDelCambioCancelado` de
+  `lib/planes/mensajes.ts` (§7.1). Su `down.sql` borra esas filas (el código anterior no sabe leerlas) y quita
+  el valor.
 
 ### 5.4 Ediciones del plan (R15, R22, R31)
 
@@ -333,6 +354,10 @@ El repositorio trabaja en una transacción y bajo el cerrojo:
   - ayuda al editar el precio: «Cada empresa paga el precio nuevo desde su primer período que empiece en esa
     fecha o después.».
 - **Pendiente:** «Desde el {AAAA-MM-DD}: {plan} · {Tipo}», con el botón «Cancelar cambio».
+- **Cambio cancelado, en el historial de asignaciones (decisión del 2026-11-05, tras T9; texto a confirmar):**
+  la celda del tipo de cobro dice «Cambio cancelado: {Tipo} desde el {AAAA-MM-DD}»; el plan va en su columna.
+- **Costeo porcentual (SLT-83, decisión del 2026-11-05, tras T9):** «Cobrado en el período: {monto}» y
+  «Total del período hasta hoy: …».
 - **Pendiente sin plan (R26, decisión del 2026-11-05):** «Sin límites» y debajo «{Plan} empieza a regir el
   {fecha}», en «Mi plan» y en el detalle de empresa (aquí, con «Cancelar cambio»).
 - **Modal de primera asignación con fecha futura:** «El plan empieza a regir el {fecha}.», que sustituye a

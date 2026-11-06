@@ -199,8 +199,13 @@
   *Test:* `tests/integration/db/planes-cambio-empresa.test.ts`.
 - **R19** — Una empresa DEBE tener como mucho un cambio pendiente, y una petición nueva DEBE reemplazarlo. SI la
   petición deja el mismo plan y el mismo tipo que rigen hoy, ENTONCES el sistema DEBE cancelar el pendiente si
-  lo hay, o responder `ok` sin cambio si no lo hay. En ninguno de los dos casos DEBE escribir historial.
-  *Test:* `tests/integration/db/planes-cambio-empresa.test.ts`.
+  lo hay, o responder `ok` sin cambio si no lo hay. Reemplazar un pendiente por otro NO DEBE escribir
+  historial. CUANDO se cancela un pendiente, con «Cancelar cambio» o con una petición igual a lo vigente, el
+  sistema DEBE escribir en la misma transacción una fila `plan_cambio_empresa_cancelado` en el historial de la
+  empresa, con quién canceló, cuándo y cuál era el cambio: plan, tipo y fecha de efecto (decisión del humano
+  del 2026-11-05, que sustituye a «sin historial»). Sin pendiente no escribe nada.
+  *Test:* `tests/integration/db/planes-cambio-empresa.test.ts`,
+  `tests/integration/db/planes-cancelar-cambio-historial.test.ts`.
 - **R20** — CUANDO llegan las 00:00 de la fecha de un cambio pendiente, el sistema DEBE aplicarlo una sola vez,
   con un trabajo programado a esa hora, y el barrido horario de SLT-58 DEBE recoger el que se pierda. Al
   aplicarlo, en una transacción y bajo el cerrojo de la empresa, el sistema DEBE:
@@ -213,8 +218,10 @@
   *Test:* `tests/integration/db/planes-cambio-empresa.test.ts`, `tests/unit/planes/jobs-cambio-empresa.test.ts`.
 - **R21** — CUANDO se archiva un plan, el sistema DEBE cancelar en la misma transacción los cambios de empresa
   pendientes hacia ese plan, y esas empresas DEBEN seguir como estaban. Una primera asignación pendiente hacia ese plan
-  DEBE cancelarse igual, y la empresa sigue sin plan.
-  *Test:* `tests/integration/db/planes-cambio-empresa.test.ts`.
+  DEBE cancelarse igual, y la empresa sigue sin plan. Cada pendiente cancelado DEBE dejar la fila de R19, con
+  quien archivó como actor (decisión del 2026-11-05).
+  *Test:* `tests/integration/db/planes-cambio-empresa.test.ts`,
+  `tests/integration/db/planes-cancelar-cambio-historial.test.ts`.
 
 ### Cambios del plan con fecha de efecto (costo base mensual o descuentos)
 
@@ -260,10 +267,12 @@
   «Desde el {fecha}: {plan} · {tipo}», y el detalle de empresa DEBE ofrecer «Cancelar cambio» (R19).
   MIENTRAS una empresa **sin plan** tenga una primera asignación pendiente (P4 = a), «Mi plan» y el detalle de
   empresa del superadmin DEBEN mostrar «Sin límites» y debajo «{Plan} empieza a regir el {fecha}» (decisión
-  del 2026-11-05); el detalle de empresa DEBE ofrecer también «Cancelar cambio».
+  del 2026-11-05); el detalle de empresa DEBE ofrecer también «Cancelar cambio». El historial de asignaciones
+  del detalle de empresa DEBE mostrar la fila de cancelación de R19 con el texto de `design.md > §7.1`
+  (decisión del 2026-11-05).
   *Test:* `tests/components/PlanEmpresaPeriodo.test.tsx`, `tests/components/ConsumoDelPlanPeriodo.test.tsx`,
   `tests/integration/db/plan-ciclo-periodo.test.ts` (la lectura acotada devuelve el pendiente sin plan y sin
-  el actor).
+  el actor), `tests/unit/planes/mensajes-periodo.test.ts` (el texto de la fila de cancelación).
 - **R27** — «Mi plan» y el detalle de empresa DEBEN mostrar:
   - el tipo vigente;
   - el período en curso (desde–hasta, marcado como tramo si lo es);
@@ -377,6 +386,10 @@
 | Propuestas del spec aprobadas: actor de la migración | R34 |
 | Propuestas del spec aprobadas: textos de `design.md > §7.1` | R24, R27 |
 | R26 para una empresa sin plan con primera asignación pendiente | R26, R32 |
+| Textos del rastro del plan (tras T9) | R24, R31 |
+| Textos de SLT-83 en el período (tras T9) | R28 |
+| Asignar el mismo plan con otro tipo (tras T9) | R19, R20 |
+| ¿Cancelar un cambio pendiente deja historial? (tras T9) | R19, R21, R26 |
 
 ## Preguntas abiertas
 
@@ -423,3 +436,9 @@ Ninguna.
 | 2026-11-05 | Actor del rastro de la migración | «Sistema (migración SLT-86)». |
 | 2026-11-05 | Textos de pantalla | Los de `design.md > §7.1`, aprobados con el spec. |
 | 2026-11-05 | ¿R26 aplica a una empresa SIN plan con una primera asignación pendiente (P4 = a)? | **Sí.** «Mi plan» muestra «Sin límites» y debajo «{Plan} empieza a regir el {fecha}»; el detalle de empresa del superadmin muestra lo mismo. |
+| 2026-11-05 | Migración extra del trabajo que aplica un cambio de empresa (tras T9) | Se acepta `20261106140000_plan_aplicar_cambio_empresa_enum` (el valor `plan_aplicar_cambio_empresa` de `job_tipo`), con su `down.sql`. |
+| 2026-11-05 | Censo de la guardia `historial-accion-escrituras-cubiertas` (tras T9) | Se acepta el cambio: el productor de `plan_asignado` y `plan_tipo_cobro_cambiado` es `PlanesRepository.aplicarEnTx`. |
+| 2026-11-05 | Textos del rastro del plan (tras T9) | Una línea por dato: el costo base mensual y cada descuento van en líneas aparte, y el lado vacío de un descuento dice «sin descuento». Se confirman las claves `descuento_<periodo>`, el texto «Descuento anual: 10.00 %», el separador « · » y las filas viejas como «15000.00 / mes · 150000.00 al año». |
+| 2026-11-05 | Textos de SLT-83 en el período (tras T9) | «Cobrado en el ciclo» pasa a «Cobrado en el período» y «Total del ciclo hasta hoy» a «Total del período hasta hoy». |
+| 2026-11-05 | Asignar el mismo plan con otro tipo (tras T9) | Confirmado: es un cambio de solo el tipo (`plan_tipo_cobro_cambiado`), sin revisar topes ni resincronizar módulos. |
+| 2026-11-05 | ¿Cancelar un cambio pendiente deja historial? (tras T9) | **Sí. Sustituye, en lo del historial, a «Cancelar un cambio pendiente».** Cancelar un pendiente deja en el historial de la empresa una fila nueva «cambio cancelado» (`plan_cambio_empresa_cancelado`) con quién, cuándo y cuál era el cambio (plan, tipo y fecha de efecto), en la misma transacción. Vale para «Cancelar cambio», para la petición igual a lo vigente que cancela el pendiente y para el archivado de un plan que cancela los pendientes hacia él (R19, R21). Reemplazar un pendiente por otro no deja fila. |
