@@ -7,6 +7,7 @@ import type {
   TransicionRastreoFila,
 } from "@/lib/interfaces/repositories/IRastreoPublicoRepository";
 import { RastreoPublicoService } from "@/lib/services/RastreoPublicoService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 import {
   CODIGO_VIGENTE_DE_ANTERIOR,
   NOMBRE_ESTADO,
@@ -67,6 +68,7 @@ async function proyectar(
   const service = new RastreoPublicoService(
     new RepositorioDeLosVeinte(transiciones),
     loadRastreoPublicoConfig(),
+    reglasPaisFijas(),
   );
   const resultado = await service.consultar(NUM_GUIA, FACTOR);
   expect(resultado.estado, "el escenario base tiene que identificar el envio").toBe("ok");

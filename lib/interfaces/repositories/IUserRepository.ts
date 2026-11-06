@@ -185,10 +185,13 @@ export interface UpdateUsuarioData {
   vehiculoId?: string | null;
 }
 
-// Feature 25/R29: catalogo de tipos de identificacion para poblar el select.
+// Feature 25/R29: catalogo de tipos de identificacion para poblar el select. SLT-42 (R5): `nombre` es
+// la etiqueta del catalogo del pais y `clave` la que la identifica dentro de el.
 export interface TipoIdentificacionItem {
   id: string;
   value: string;
+  nombre: string;
+  clave: string;
 }
 
 // Feature 25: catalogo de roles para poblar el select (par id/value que la UI
@@ -332,8 +335,12 @@ export interface IUserRepository {
     estado: EstadoUsuario,
     actorUsuarioId: string | null,
   ): Promise<UsuarioPublico | null>;
-  /** Feature 25/R29: catalogo `tipo_identificacion` proyectado a id/value. */
-  listTiposIdentificacion(): Promise<TipoIdentificacionItem[]>;
+  /**
+   * SLT-42 (R5): con `paisId`, solo los tipos activos de ese pais, en el orden del catalogo. Sin el,
+   * el catalogo entero ordenado por `value`: solo lo pide la pantalla de plataforma del alta de
+   * empresa, que no tiene empresa de la que sacar el pais (su selector por pais es de SLT-81).
+   */
+  listTiposIdentificacion(paisId?: string): Promise<TipoIdentificacionItem[]>;
   /** Feature 25: catalogo `rol` proyectado a id/value, ordenado por `value`. */
   listRoles(): Promise<RolItem[]>;
 }

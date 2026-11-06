@@ -10,6 +10,7 @@ import type { IZonaRepository } from "@/lib/interfaces/repositories/IZonaReposit
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { INDEMNIZACION_MONTO_MAX } from "@/lib/types/cierres-admin";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Fix «tope de negocio de la indemnizacion» (2026-08-04) — EMISOR 1 de 2: la aprobacion del
 // CIERRE (`lib/actions/cierres-admin.ts` -> `CierresAdminService.aprobarCierre`).
@@ -91,7 +92,12 @@ function newService(repo: ICierresAdminRepository) {
     sumarPremiosVivosPorCierre: vi.fn(async (ids: string[]) =>
       Object.fromEntries(ids.map((id) => [id, "0.00"])),
     ),
-  }, sinRetenidas()); // FICHA 462: 7.o argumento requerido; este archivo no mide la marca
+  }, sinRetenidas(),
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  reglasPaisFijas(),); // FICHA 462: 7.o argumento requerido; este archivo no mide la marca
 }
 
 describe("EMISOR 1 (cierre) — el monto no puede superar el valor de la orden", () => {

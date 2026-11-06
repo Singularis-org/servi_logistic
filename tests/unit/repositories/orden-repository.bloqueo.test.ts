@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 // Feature 41/D1 (R12/R16/R17) — consultas del bloqueo derivado. Mockea Prisma (sin DB real).
 //
@@ -217,7 +218,7 @@ describe("OrdenRepository.findBloqueoDetalle (feature 271/R11/R57)", () => {
   it("N=0 -> LIBRE y `aResolverPrimero` nulo, sin releer nada", async () => {
     const prisma = buildPrisma([]);
 
-    const d = await repoCon(prisma).findBloqueoDetalle("m1");
+    const d = await repoCon(prisma).findBloqueoDetalle("m1", ZONA_CR);
 
     expect(d).toEqual({
       bloqueado: false,
@@ -244,7 +245,7 @@ describe("OrdenRepository.findBloqueoDetalle (feature 271/R11/R57)", () => {
       createdAt: new Date("2026-08-21T18:00:00.000Z"),
     });
 
-    const d = await repoCon(prisma).findBloqueoDetalle("m1");
+    const d = await repoCon(prisma).findBloqueoDetalle("m1", ZONA_CR);
 
     const arg = (prisma.cierreDia.findFirst.mock.calls as unknown as Record<string, unknown>[][])[0][0];
     expect(arg.orderBy).toEqual([{ solicitadoAt: "asc" }, { id: "asc" }]);
@@ -276,7 +277,7 @@ describe("OrdenRepository.findBloqueoDetalle (feature 271/R11/R57)", () => {
       { createdAt: new Date("2026-08-21T23:10:00.000Z") },
     ]);
 
-    const d = await repoCon(prisma).findBloqueoDetalle("m1");
+    const d = await repoCon(prisma).findBloqueoDetalle("m1", ZONA_CR);
 
     expect(d.aResolverPrimero?.jornadaCR).toBe("2026-08-21");
     expect(d.aResolverPrimero?.jornadaCR).not.toBe("2026-08-22");
@@ -302,7 +303,7 @@ describe("OrdenRepository.findBloqueoDetalle (feature 271/R11/R57)", () => {
     });
     prisma.gestionOrden.findMany.mockResolvedValue([]);
 
-    const d = await repoCon(prisma).findBloqueoDetalle("m1");
+    const d = await repoCon(prisma).findBloqueoDetalle("m1", ZONA_CR);
 
     expect(d.aResolverPrimero?.jornadaCR).toBe("2026-08-21");
   });
@@ -320,7 +321,7 @@ describe("OrdenRepository.findBloqueoDetalle (feature 271/R11/R57)", () => {
       { createdAt: new Date("2026-08-21T22:00:00.000Z") },
     ]);
 
-    const d = await repoCon(prisma).findBloqueoDetalle("m1");
+    const d = await repoCon(prisma).findBloqueoDetalle("m1", ZONA_CR);
 
     expect(d.aResolverPrimero?.jornadaCR).toBeNull();
   });

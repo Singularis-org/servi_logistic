@@ -16,6 +16,7 @@ import type {
   PagoTarifa,
 } from "@/lib/interfaces/repositories/ITarifaZonaMensajeroRepository";
 import { conPagos } from "@/tests/fixtures/cierre-pagos";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 41/C3 (R6/R7/R9/R10/P2 + R4) — logica del corte diario con dobles (sin DB).
 // Crea un `vencido` por mensajero que "debia cerrar", omite el sin zona (P2), no duplica
@@ -117,6 +118,8 @@ function build(opts: {
     ordenRepo as IOrdenRepository,
     tarifaZonaRepo,
     logger,
+    undefined,
+    reglasPaisFijas(),
   );
   return { service, corteRepo, cierreRepo, crearCierre, findEstatusIdByValue, logger };
 }

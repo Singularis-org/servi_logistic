@@ -38,6 +38,11 @@ import {
 // Feature 170 — FASE 2 (T K.3): el listado de la bodega pide su página al servidor. El doble
 // devuelve las órdenes del caso sin recortar: aquí no se pagina nada.
 const { paginadoBodegaMock } = vi.hoisted(() => ({ paginadoBodegaMock: vi.fn() }));
+// SLT-42 (T5.7): la página lee la zona del país de la empresa de la sesión; aquí, la de Costa Rica.
+vi.mock("@/lib/actions/_shared/zona-del-borde", async () => {
+  const { ZONA_DE_CR } = await import("@/tests/fabricas/reglas-pais");
+  return { zonaDelBorde: async () => ZONA_DE_CR };
+});
 vi.mock("@/lib/actions/recepcion-satelite", () => ({
   recibirPorQr: vi.fn(),
   listarRecepcionSatelite: vi.fn(),

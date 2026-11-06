@@ -16,6 +16,7 @@ import { RESERVA_MOTIVO_SERVIDOR } from "@/lib/utils/dia-reparto-textos";
 import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
 import { bloqueoConRechazado } from "@/tests/fixtures/bloqueo-cierre";
 import { fakeIntentosEnLote } from "@/tests/fixtures/intentos-entrega";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FICHA 477 (T3.3; R12, R13) — VOLVER A GESTIONAR CON EL BLOQUEO PUESTO, con dobles.
@@ -91,6 +92,7 @@ function montar(opts: {
     { findByMensajero: vi.fn(async () => null), upsertOrigen: vi.fn(async () => {}) },
     { findMarcarLuegoByMensajero: vi.fn(async () => new Set<string>()) },
     fakeIntentosEnLote({ o1: opts.intentos ?? 0 }),
+    reglasPaisFijas(),
   );
   return { service, repo, ordenRepo, storage };
 }

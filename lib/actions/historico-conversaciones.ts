@@ -27,6 +27,7 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IHistoricoConversacionesService } from "@/lib/interfaces/services/IHistoricoConversacionesService";
 import { HistoricoConversacionesRepository } from "@/lib/repositories/HistoricoConversacionesRepository";
 import { HistoricoConversacionesService } from "@/lib/services/HistoricoConversacionesService";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import {
   listarHilosHistoricoSchema,
   listarMensajesHistoricoSchema,
@@ -44,8 +45,10 @@ export interface HistoricoConversacionesActionDeps {
 }
 
 function construirService(): IHistoricoConversacionesService {
+  const prisma = getPrismaClient();
   return new HistoricoConversacionesService(
-    new HistoricoConversacionesRepository(getPrismaClient()),
+    new HistoricoConversacionesRepository(prisma),
+    construirReglasPaisEmpresa(prisma), // SLT-42 (R22, R28): el rango de fechas en la zona de la empresa.
   );
 }
 

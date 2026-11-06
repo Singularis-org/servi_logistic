@@ -20,12 +20,12 @@ import { puedeLiberarse } from "@/lib/services/LiberacionReprogramadaService";
 import { resolverDestinoCierre } from "@/lib/utils/bodega-responsable";
 // ⚠️ DOS conversiones distintas para DOS convenciones distintas, y confundirlas es el off-by-one de
 // seis horas que este repo ya pago (166/413): `hoyCR` llega en convencion `@db.Date` (medianoche UTC
-// de la fecha CR) y su texto sale con los getters UTC (`fechaRepartoComoTexto`); los `created_at` de
-// cierres y gestiones son INSTANTES y su dia CR sale de `fechaCalendarioCR`. El test unitario del
-// servicio afirma el primero con un `hoyCR` a las 00:00Z, que `fechaCalendarioCR` leeria como el dia
-// ANTERIOR.
+// de la fecha local) y su texto sale con los getters UTC (`fechaRepartoComoTexto`); los `created_at`
+// de cierres y gestiones son INSTANTES y su dia local sale de `fechaCalendario(instante, zona)`, con
+// la zona del pais de la empresa (SLT-42). El test unitario del servicio afirma el primero con un
+// `hoyCR` a las 00:00Z, que `fechaCalendario` leeria como el dia ANTERIOR en una zona al oeste de UTC.
 import { fechaRepartoComoTexto } from "@/lib/utils/dia-reparto";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendario } from "@/lib/utils/calendario-zona";
 // FEATURE 271 — el derivador UNICO de la jornada de un cierre (R61): ninguna superficie la calcula
 // por su cuenta.
 import { derivarJornada } from "@/lib/utils/jornada-cierre";
@@ -40,8 +40,8 @@ type ZonaRepo = Pick<IZonaRepository, "findCentralZonaId">;
  * FICHA 462 (T1.4, design §2.3) — EL PUNTO UNICO DEL CONTEO de las reprogramadas retenidas. Las
  * cuatro superficies (campana, push, marca por cierre, franja de `/ordenes`) leen de aqui (R7).
  *
- * No conoce Prisma, HTTP ni el reloj: `hoyCR` entra como argumento (`startOfDayCR(now)` lo pone el
- * borde, igual que los tres disparadores de la liberacion), y los repositorios entran por
+ * No conoce Prisma, HTTP ni el reloj: `hoyCR` y la `zona` del pais de la empresa entran como
+ * argumento (los calcula quien llama, una vez por operacion; SLT-42), y los repositorios entran por
  * constructor. SOLO LECTURA (R8): este archivo no escribe nada, y una guardia lo afirma.
  *
  * COSTE, medido con `log: query` sobre la siembra de `review_462.md` §3 (2026-09-25):
@@ -61,7 +61,7 @@ export class ReprogramadasRetenidasService implements IReprogramadasRetenidasSer
     private readonly zonaRepo: ZonaRepo,
   ) {}
 
-  async resumen(hoyCR: Date): Promise<ResumenRetenidas> {
+  async resumen(hoyCR: Date, zona: string): Promise<ResumenRetenidas> {
     const filas = await this.retenidas(hoyCR);
 
     // Los cierres, EN LOTE: una consulta para todos los ids distintos.
@@ -100,7 +100,7 @@ export class ReprogramadasRetenidasService implements IReprogramadasRetenidasSer
       mensajeroId: cierre.mensajeroId,
       mensajeroNombre: cierre.mensajeroNombre,
       estado: cierre.estado,
-      jornadaCR: jornadaDe(cierre),
+      jornadaCR: jornadaDe(cierre, zona),
       ambito: ambitoDelCierre(cierre),
       cuantas,
     }));
@@ -139,11 +139,15 @@ export class ReprogramadasRetenidasService implements IReprogramadasRetenidasSer
     return total;
   }
 
-  async contarPorCierre(hoyCR: Date, cierreIds: readonly string[]): Promise<Map<string, number>> {
+  async contarPorCierre(
+    hoyCR: Date,
+    zona: string,
+    cierreIds: readonly string[],
+  ): Promise<Map<string, number>> {
     const pedidos = new Set(cierreIds);
     const marca = new Map<string, number>();
     if (pedidos.size === 0) return marca;
-    for (const c of (await this.resumen(hoyCR)).cierres) {
+    for (const c of (await this.resumen(hoyCR, zona)).cierres) {
       if (pedidos.has(c.cierreId) && c.cuantas > 0) marca.set(c.cierreId, c.cuantas);
     }
     return marca;
@@ -259,10 +263,10 @@ function ambitoDelCierre(c: DestinoDeCierre): AmbitoRetenidas {
 }
 
 /** La jornada del cierre con el derivador unico de la 271, a partir de fechas ya cargadas. */
-function jornadaDe(c: CierreParaRetenidas): string | null {
+function jornadaDe(c: CierreParaRetenidas, zona: string): string | null {
   return derivarJornada({
-    diasCRDeGestiones: c.gestionesCreatedAt.map((d) => fechaCalendarioCR(d)),
-    diaCRDeCreacion: fechaCalendarioCR(c.createdAt),
+    diasCRDeGestiones: c.gestionesCreatedAt.map((d) => fechaCalendario(d, zona)),
+    diaCRDeCreacion: fechaCalendario(c.createdAt, zona),
   });
 }
 

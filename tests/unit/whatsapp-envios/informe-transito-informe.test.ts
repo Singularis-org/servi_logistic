@@ -4,6 +4,7 @@ import { catalogoDeVariables, INFORMES_WHATSAPP } from "@/lib/whatsapp-envios/in
 import { PARAMETROS_POR_DEFECTO, type ParametrosTransito } from "@/lib/whatsapp-envios/informes/transito/parametros";
 import type { IInformeTransitoRepository } from "@/lib/interfaces/repositories/IInformeTransitoRepository";
 import type { FilaTransito, ZonaInforme } from "@/lib/whatsapp-envios/informes/transito/tipos";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // Ficha 475 (T5.2) — R1, R2, R18-R22, R33 sobre el informe con un doble del repositorio.
 
@@ -52,7 +53,7 @@ function repo(filas: FilaTransito[], opts: { falla?: keyof IInformeTransitoRepos
 }
 
 function ctx(parametros: ParametrosTransito = PARAMETROS_POR_DEFECTO, conDocumento = true, ahora = AHORA) {
-  return { parametros, ahora, conDocumento };
+  return { parametros, ahora, zona: ZONA_DE_CR, conDocumento };
 }
 
 describe("475/R1 — metadatos del catalogo", () => {

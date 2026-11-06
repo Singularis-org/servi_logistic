@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import type { DescargaColumna, DescargaHoja, DescargaTipo } from "@/lib/types/descarga";
 import type { DataTableDescarga, DataTableDescargaDetalle } from "@/components/shared/DataTable";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /**
  * Feature 151 (design.md §5) — control de descarga del dataset completo de un
  * `DataTable`.
@@ -250,6 +251,7 @@ export function DescargarDatasetButton({
         if (resultado.filasDetalle === undefined) {
           throw new Error("faltan las filas de la hoja de detalle");
         }
+        // SLT-81: la UI sigue en la zona de CR
         const archivo = await construirDescarga({
           tipo: FORMATO_POR_DEFECTO,
           titulo,
@@ -259,10 +261,11 @@ export function DescargarDatasetButton({
           hojasAdicionales: [
             hojaDeDetalle(detalle, visiblesDetalle, resultado.filasDetalle, resultado.filasDestacadasDetalle),
           ],
-        });
+        }, ZONA_CR);
         descargarBlob(archivo.contenido, archivo.mime, archivo.nombreArchivo);
         return;
       }
+      // SLT-81: la UI sigue en la zona de CR
       const archivo = await construirDescarga({
         tipo,
         titulo,
@@ -272,7 +275,7 @@ export function DescargarDatasetButton({
         columnas: visibles,
         filas: resultado.filas,
         ...destacadas(resultado.filasDestacadas),
-      });
+      }, ZONA_CR);
       // R32: el archivo nace y muere en el navegador; ni subida ni almacenamiento.
       descargarBlob(archivo.contenido, archivo.mime, archivo.nombreArchivo);
     } catch (error) {

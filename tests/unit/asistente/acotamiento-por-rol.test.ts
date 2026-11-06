@@ -10,6 +10,7 @@ import { contextoPara } from "@/lib/asistente/contexto";
 import { AsistenteService } from "@/lib/services/AsistenteService";
 import type { IAsistenteUsoRepository } from "@/lib/interfaces/repositories/IAsistenteUsoRepository";
 import { DobleProveedor } from "./_doble-proveedor";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * ⭑ FICHA 436 · R9, R10, R11 — EL CORAZÓN DE LA FICHA: EL CONTEXTO SE ACOTA POR ROL.
@@ -44,6 +45,7 @@ async function loQueSeEnvia(rol: RolValue) {
     usoRepo: usoRepoMudo,
     leerCatalogo: leerCatalogoAyuda,
     maxConsultasDia: 30,
+    reglasPais: reglasPaisFijas(),
   });
   const resultado = await servicio.responder({
     actor: { usuarioId: "u-1", rol },

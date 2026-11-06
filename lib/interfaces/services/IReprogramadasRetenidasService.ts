@@ -70,8 +70,12 @@ export interface ResumenRetenidas {
 }
 
 export interface IReprogramadasRetenidasService {
-  /** El conjunto ENTERO, agrupado. Base de las otras dos. Solo lectura. */
-  resumen(hoyCR: Date): Promise<ResumenRetenidas>;
+  /**
+   * El conjunto ENTERO, agrupado. Base de las otras dos. Solo lectura. SLT-42: `zona` es la del
+   * pais de la empresa (la lee quien llama, una vez por operacion); con ella se fecha la jornada
+   * de cada cierre. `hoyCR` es la fecha local de hoy en esa zona, en la convencion `@db.Date`.
+   */
+  resumen(hoyCR: Date, zona: string): Promise<ResumenRetenidas>;
   /**
    * Cifra viva acotada a un ambito (campana y push, R14). Aplica LA MISMA regla de atribucion y
    * ambito que `resumen` (misma funcion, no una copia), pero por el camino LIGERO: no carga nombres
@@ -83,7 +87,7 @@ export interface IReprogramadasRetenidasService {
    * Marca por cierre (S3): `Map<cierreId, cuantas>` SOLO para los ids pedidos; los que no retienen
    * no aparecen. UNA lectura por pagina, nunca una por fila (R26/R51).
    */
-  contarPorCierre(hoyCR: Date, cierreIds: readonly string[]): Promise<Map<string, number>>;
+  contarPorCierre(hoyCR: Date, zona: string, cierreIds: readonly string[]): Promise<Map<string, number>>;
 }
 
 /** `true` si los dos ambitos son el mismo. */

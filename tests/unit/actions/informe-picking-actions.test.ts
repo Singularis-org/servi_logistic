@@ -3,6 +3,7 @@ import type { RolValue } from "@prisma/client";
 import { listarTiendasPicking } from "@/lib/actions/informe-picking";
 import type { IPickingRepository } from "@/lib/interfaces/repositories/IPickingRepository";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Ficha 476 (T4.4) — R3/R4: la lista de tiendas del panel del picking. Solo maestro, y un no-maestro
 // no llega ni a CONSTRUIR el repositorio (no lee ninguna orden).
 
@@ -30,13 +31,13 @@ const actor = (rol: RolValue) => async () => ({ usuarioId: "u1", rol });
 describe("476/R4 — solo maestro, sin leer nada", () => {
   it("sin sesion → unauthenticated, sin construir el repositorio", async () => {
     const fabrica = vi.fn(repo);
-    expect(await listarTiendasPicking({ diasAtraso: 2 }, { getActor: async () => null, repo: fabrica })).toEqual({ status: "unauthenticated" });
+    expect(await listarTiendasPicking({ diasAtraso: 2 }, { reglasPais: reglasPaisFijas(), getActor: async () => null, repo: fabrica })).toEqual({ status: "unauthenticated" });
     expect(fabrica).not.toHaveBeenCalled();
   });
 
   it.each<RolValue>(["admin", "adminTienda", "mensajero", "adminSatelite", "apiKey"])("%s → forbidden, sin construir el repositorio", async (rol) => {
     const fabrica = vi.fn(repo);
-    expect(await listarTiendasPicking({ diasAtraso: 2 }, { getActor: actor(rol), repo: fabrica })).toEqual({ status: "forbidden" });
+    expect(await listarTiendasPicking({ diasAtraso: 2 }, { reglasPais: reglasPaisFijas(), getActor: actor(rol), repo: fabrica })).toEqual({ status: "forbidden" });
     expect(fabrica).not.toHaveBeenCalled();
   });
 });
@@ -44,7 +45,7 @@ describe("476/R4 — solo maestro, sin leer nada", () => {
 describe("476/R3 — maestro recibe las tiendas con sus conteos", () => {
   it("por nombre, con ordenes y atrasadas segun el N pedido", async () => {
     const r = repo();
-    const res = await listarTiendasPicking({ diasAtraso: 2 }, { getActor: actor("maestro"), repo: () => r, now: () => AHORA });
+    const res = await listarTiendasPicking({ diasAtraso: 2 }, { reglasPais: reglasPaisFijas(), getActor: actor("maestro"), repo: () => r, now: () => AHORA });
     expect(res).toEqual({
       status: "ok",
       tiendas: [
@@ -52,7 +53,7 @@ describe("476/R3 — maestro recibe las tiendas con sus conteos", () => {
         { tiendaId: "t2", nombre: "Mercadito", ordenes: 1, atrasadas: 1 },
       ],
     });
-    const conN5 = await listarTiendasPicking({ diasAtraso: 5 }, { getActor: actor("maestro"), repo: () => r, now: () => AHORA });
+    const conN5 = await listarTiendasPicking({ diasAtraso: 5 }, { reglasPais: reglasPaisFijas(), getActor: actor("maestro"), repo: () => r, now: () => AHORA });
     expect(conN5).toMatchObject({ status: "ok", tiendas: [{ atrasadas: 0 }, { atrasadas: 1 }] });
   });
 
@@ -60,7 +61,7 @@ describe("476/R3 — maestro recibe las tiendas con sus conteos", () => {
     "entrada invalida %j → validation_error, sin leer",
     async (input) => {
       const fabrica = vi.fn(repo);
-      const res = await listarTiendasPicking(input, { getActor: actor("maestro"), repo: fabrica });
+      const res = await listarTiendasPicking(input, { reglasPais: reglasPaisFijas(), getActor: actor("maestro"), repo: fabrica });
       expect(res.status).toBe("validation_error");
       expect(fabrica).not.toHaveBeenCalled();
     },

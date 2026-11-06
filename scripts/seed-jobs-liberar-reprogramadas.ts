@@ -3,27 +3,26 @@ import type { IJobRepository, JobDTO } from "@/lib/interfaces/repositories/IJobR
 import { JobRepository } from "@/lib/repositories/JobRepository";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { comoPlataforma } from "@/lib/db/contexto-empresa";
-import {
-  dedupeKeyLiberar,
-  proximaCorridaLiberarCR,
-} from "@/lib/services/jobs/liberar-reprogramadas-handler";
+import { PaisRepository } from "@/lib/repositories/PaisRepository";
+import { recurrenciaLiberarReprogramadas } from "@/lib/services/jobs/liberar-reprogramadas-handler";
 
 // Feature 90 (R26) — seed inicial IDEMPOTENTE de la PRIMERA fila `liberar_reprogramadas`.
-// Siembra la proxima corrida (proximo 00:00 CR) con su `dedupe_key` de dia CR; `enqueue`
+// Siembra la proxima corrida (proximas 00:00 locales de la zona que antes llega, SLT-42) con la
+// MISMA `dedupe_key` que la recurrencia (zona + dia local); `enqueue`
 // hace `ON CONFLICT DO NOTHING`, asi que re-ejecutarlo NO duplica (R26). Payload vacio `{}`
 // (gate F1.4-3): el handler deriva la fecha de `now` al ejecutar. A partir de ahi la cola se
 // auto-perpetua (la recurrencia re-agenda cada corrida, R23/R24). Recibe el repo por
 // parametro para testear sin conexion real.
+//
+// SLT-42 (design §6.1; R25): `zonas` son las de los paises con empresas
+// (`IPaisRepository.zonasConEmpresas`), las mismas que la cola le pasa a la recurrencia.
 export async function seedJobLiberarReprogramadas(
   repo: IJobRepository,
-  now: Date = new Date(),
+  now: Date,
+  zonas: readonly string[],
 ): Promise<JobDTO | null> {
-  const runAfter = proximaCorridaLiberarCR(now);
-  return repo.enqueue(
-    "liberar_reprogramadas",
-    {},
-    { runAfter, dedupeKey: dedupeKeyLiberar(runAfter) },
-  );
+  const { runAfter, dedupeKey } = recurrenciaLiberarReprogramadas.siguiente(now, zonas);
+  return repo.enqueue("liberar_reprogramadas", {}, { runAfter, dedupeKey });
 }
 
 async function main(): Promise<void> {
@@ -37,8 +36,9 @@ async function main(): Promise<void> {
   try {
     // SL-17: script de consola, sin sesion: la siembra va en plataforma y la fila nace sin
     // empresa, como la del build (`scripts/siembra-jobs-recurrentes.ts`).
+    const zonas = await new PaisRepository(prisma).zonasConEmpresas();
     const fila = await comoPlataforma("SL-17", "siembra manual de un job recurrente", () =>
-      seedJobLiberarReprogramadas(new JobRepository(prisma)),
+      seedJobLiberarReprogramadas(new JobRepository(prisma), new Date(), zonas),
     );
     console.log(
       fila === null

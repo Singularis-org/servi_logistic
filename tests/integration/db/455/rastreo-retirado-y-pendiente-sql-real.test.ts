@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 
 import { RastreoPublicoRepository } from "@/lib/repositories/RastreoPublicoRepository";
 import { RastreoPublicoService } from "@/lib/services/RastreoPublicoService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 import type { EntradaLineaPublica } from "@/lib/types/rastreo-publico";
 import { HAY_BASE_DE_DATOS } from "../_postgres-real";
 import { conEscenario, prepararMundo, type Mundo } from "../454/_escenario";
@@ -42,8 +43,7 @@ describeSiHayBase("455/F9 — rastreo: tramo retirado y gestion pendiente del mi
         RATE_MAX: 100,
         RATE_WINDOW_MINUTES: 10,
         DIGITOS_SEGUNDO_FACTOR: 4,
-        ZONA_HORARIA: "America/Costa_Rica",
-      });
+      }, reglasPaisFijas());
       const consultar = async (numGuia: number) => {
         const c = await rastreo.consultar(numGuia, TELEFONO);
         if (c.estado !== "ok") throw new Error(`rastreo no encontro la guia ${numGuia}`);

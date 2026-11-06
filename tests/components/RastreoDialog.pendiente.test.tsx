@@ -22,6 +22,7 @@ import { LandingNav } from "@/app/_landing/LandingNav";
 import { consultarRastreoPublico } from "@/lib/actions/rastreo-publico";
 import type { TransicionRastreoFila } from "@/lib/interfaces/repositories/IRastreoPublicoRepository";
 import { RastreoPublicoService } from "@/lib/services/RastreoPublicoService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 import { ORDER_STATUS_SEED } from "@/lib/types/order-status";
 import type { ResultadoRastreoPublico } from "@/lib/types/rastreo-publico";
 
@@ -113,7 +114,8 @@ async function proyectarConElServicio(
       listarTransiciones: async () => transiciones,
       buscarGestionPendiente: async () => null,
     },
-    { RATE_MAX: 100, RATE_WINDOW_MINUTES: 10, DIGITOS_SEGUNDO_FACTOR: 4, ZONA_HORARIA: "UTC" },
+    { RATE_MAX: 100, RATE_WINDOW_MINUTES: 10, DIGITOS_SEGUNDO_FACTOR: 4 },
+    reglasPaisFijas({ zonaHoraria: "UTC" }),
   );
   return servicio.consultar(4321, "8899");
 }

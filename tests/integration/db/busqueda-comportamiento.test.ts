@@ -14,6 +14,7 @@ import {
   fksDeOrden,
   type FksDeOrden,
 } from "./_postgres-real";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 169 / T2.6 (+ la mitad de COMPORTAMIENTO de T2.5) — que la busqueda ENCUENTRE lo
 // que tiene que encontrar, contra Postgres real: R5, R6, R7, R8, R13, R15, R16, R17, y la
@@ -169,7 +170,7 @@ describeSiHayBase("comportamiento de la busqueda contra Postgres", () => {
           idPorClave.set(semilla.clave, creada.id);
         }
         const repo = new OrdenRepository(tx as unknown as PrismaClient);
-        const service = new OrdenService(repo, fakeIntentosEnLote());
+        const service = new OrdenService(repo, fakeIntentosEnLote(), undefined, reglasPaisFijas());
         return fn({ repo, service, idPorClave, marca });
       });
   });

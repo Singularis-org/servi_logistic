@@ -7,10 +7,13 @@
 
 import type { ChatLogger } from "@/lib/services/ChatWhatsappService";
 
-/** Implementacion real: `console.warn`. En Vercel aparece en los logs de la funcion. */
+/** Implementacion real: `console.warn` y `console.error`. En Vercel aparecen en los logs de la funcion. */
 export const consoleLogger: ChatLogger = {
   warn: (message: string) => {
     console.warn(message);
+  },
+  error: (message: string) => {
+    console.error(message);
   },
 };
 

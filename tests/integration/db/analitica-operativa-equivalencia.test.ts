@@ -28,6 +28,8 @@ import { OrdenHistorialService } from "@/lib/services/OrdenHistorialService";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import type { CuboRollup } from "@/lib/interfaces/repositories/IAnaliticaOperativaRollupRepository";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Feature 126 / T6.4 — R33. LA CONTENCION DE D13, y no es opcional.
 //
 // D13 decidio que el camino intradia declara CONSULTAS PROPIAS en vez de reusar el repositorio
@@ -60,7 +62,7 @@ function consultaGlobal(metricaId: string): ConsultaAnalitica {
     { rango: "personalizado", desde: FECHA_D, hasta: FECHA_D },
     MAESTRO,
     metricaId,
-    AHORA,
+    ZONA_DE_CR, AHORA,
   );
   if (r.status !== "ok") throw new Error(`preparacion no concedida: ${JSON.stringify(r)}`);
   return r.consulta;
@@ -138,7 +140,7 @@ async function caminoIntradia(
   fecha: string,
 ): Promise<readonly CuboRollup[]> {
   const repo = new AnaliticaOperativaVivaRepository(cliente);
-  const crudos = await repo.cubosDelDiaEnCurso(consultaGlobal("entregas"), ventanaDelDia(fecha));
+  const crudos = await repo.cubosDelDiaEnCurso(consultaGlobal("entregas"), ventanaDelDia(fecha, ZONA_CR));
   const historial = new OrdenHistorialService(
     new OrdenRepository(prismaDelHistorial),
     new OrdenHistorialRepository(prismaDelHistorial),

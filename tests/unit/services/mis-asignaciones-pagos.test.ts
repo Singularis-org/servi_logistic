@@ -14,6 +14,7 @@ import type { GestionarInput } from "@/lib/interfaces/services/IMisAsignacionesS
 import type { LineaPago } from "@/lib/utils/pagos-recaudo";
 import { fakeIntentosEnLote } from "@/tests/fixtures/intentos-entrega";
 import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 212 (T7 · R18/R19) — el SERVICE es la SEGUNDA barrera del desglose, independiente del
 // borde zod y con aritmetica `Prisma.Decimal`. Dobles del repo/storage (nada de DB): lo que se
@@ -97,6 +98,7 @@ function newService(repo: IGestionOrdenRepository) {
     rutaRepo,
     metaRepo,
     fakeIntentosEnLote(),
+    reglasPaisFijas(),
   );
   return { service, storage };
 }

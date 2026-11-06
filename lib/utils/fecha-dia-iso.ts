@@ -1,4 +1,4 @@
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendario } from "@/lib/utils/calendario-zona";
 
 /**
  * Feature 170 (T C.3) — día calendario (`YYYY-MM-DD`) de un instante ISO que YA viene como
@@ -29,23 +29,24 @@ export function fechaDiaISO(valor: string): string {
 }
 
 /**
- * Ficha 459 (recorrido F1) — el DIA de Costa Rica de un `fechaMovimiento` de la wallet, para la
- * tabla Y para la descarga (`YYYY-MM-DD`, el mismo formato que ya pintaban).
+ * Ficha 459 (recorrido F1) — el DIA en `zona` de un `fechaMovimiento` de la wallet, para la
+ * tabla Y para la descarga (`YYYY-MM-DD`, el mismo formato que ya pintaban). SLT-42: la zona es la
+ * del pais de la empresa (el sufijo `CR` del nombre es historico); la UI pasa la de CR hasta SLT-81.
  *
  * `fechaDiaISO` recorta el texto, y el texto es un ISO en UTC: un movimiento registrado a las
  * 22:00 del 24 de septiembre en Costa Rica es `2026-09-25T04:00:00Z` y se leia «2026-09-25». El
- * calculo del dia CR NO se reescribe aqui: es `fechaCalendarioCR` (`lib/utils/fecha-cr.ts`).
+ * calculo del dia NO se reescribe aqui: es `fechaCalendario` (`lib/utils/calendario-zona.ts`).
  * Esta funcion solo decide QUE hacer con el valor antes de dárselo:
  *
  * - **Medianoche UTC exacta** (`00:00:00.000Z`): es una FECHA guardada con la convencion
  *   `@db.Date` de la ficha 172 (`medianocheUtcDelDia`: pagos y anulaciones de la liquidacion, y
- *   su backfill), que YA es el dia calendario de Costa Rica. Pasarla por el desfase de −6 h la
- *   pintaria el dia ANTERIOR. Se devuelve su dia tal cual.
+ *   su backfill), que YA es el dia calendario local. Pasarla por el desfase de la zona la
+ *   pintaria en otro dia (el ANTERIOR en una zona al oeste de UTC). Se devuelve su dia tal cual.
  * - **Lo que no es un instante** (texto vacio o la SONDA de la guardia de datos sensibles, un
  *   proxy que responde a cualquier lectura): cae a `fechaDiaISO`, que lo devuelve TAL CUAL.
- * - **Cualquier otro instante**: `fechaCalendarioCR`.
+ * - **Cualquier otro instante**: `fechaCalendario(instante, zona)`.
  */
-export function fechaDiaMovimientoCR(valor: string): string {
+export function fechaDiaMovimientoCR(valor: string, zona: string): string {
   const texto = String(valor);
   const instante = new Date(texto);
   if (!DIA_ISO.test(texto) || Number.isNaN(instante.getTime())) return fechaDiaISO(texto);
@@ -54,27 +55,27 @@ export function fechaDiaMovimientoCR(valor: string): string {
     instante.getUTCMinutes() === 0 &&
     instante.getUTCSeconds() === 0 &&
     instante.getUTCMilliseconds() === 0;
-  return esMedianocheUtc ? fechaDiaISO(texto) : fechaCalendarioCR(instante);
+  return esMedianocheUtc ? fechaDiaISO(texto) : fechaCalendario(instante, zona);
 }
 
 /**
- * SLT-76 (R21) — el DIA de Costa Rica de un INSTANTE (`solicitadoAt`, `resueltoAt`,
+ * SLT-76 (R21) — el DIA en `zona` de un INSTANTE (`solicitadoAt`, `resueltoAt`,
  * `cierreSolicitadoAt`), para las descargas de cierres. Vivia copiado como `diaCR` privado en
  * cuatro modulos de columnas; aqui queda uno solo.
  *
  * Hermana de `fechaDiaMovimientoCR`, pero NO la misma: alli la medianoche UTC exacta es una
  * fecha `@db.Date` y se respeta su dia; aqui todo valor es un instante `*At`, y un cierre
- * solicitado a las `00:00:00.000Z` son las 18:00 del dia ANTERIOR en Costa Rica. Por eso no hay
+ * solicitado a las `00:00:00.000Z` son las 18:00 del dia ANTERIOR en una zona UTC-6. Por eso no hay
  * excepcion de medianoche:
  *
  * - **Lo que no es un instante** (texto vacio o la SONDA de la guardia de datos sensibles): cae a
  *   `fechaDiaISO`, que lo devuelve TAL CUAL y conserva su rastro. Por eso `String(valor)` y una
  *   expresion regular, sin llamar metodos sobre el valor recibido.
- * - **Cualquier instante valido**, medianoche UTC incluida: `fechaCalendarioCR`.
+ * - **Cualquier instante valido**, medianoche UTC incluida: `fechaCalendario(instante, zona)`.
  */
-export function fechaDiaInstanteCR(valor: string): string {
+export function fechaDiaInstanteCR(valor: string, zona: string): string {
   const texto = String(valor);
   const instante = new Date(texto);
   if (!DIA_ISO.test(texto) || Number.isNaN(instante.getTime())) return fechaDiaISO(texto);
-  return fechaCalendarioCR(instante);
+  return fechaCalendario(instante, zona);
 }

@@ -325,3 +325,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** SLT-88 (2026-11-05).
 - **Qué falta:** quitarlo de los logs o enmascararlo. PR pequeño, a la espera de la decisión de Carlos.
 - **Dueño:** Carlos Restrepo.
+
+### D57 — Crons de Vercel a hora fija en UTC, calculada para Costa Rica
+- **Origen:** F1.4 de SLT-42 (2026-11-03, P6 en `specs/SLT-42-telefono-documento-hora-por-pais/requirements.md`). Los crons de `vercel.json` (corte diario, snapshot de ranking, etc.) corren a una hora UTC pensada para la medianoche de CR. SLT-42 hace que cada corrida calcule la fecha de cada empresa con la zona de su país, pero no mueve la hora del cron.
+- **Qué falta:** cuando entre el primer país con otra zona horaria, que esos crons corran por zona (p. ej. cada hora, procesando solo las empresas cuya medianoche local acaba de pasar). Con solo CR no hay efecto.
+- **Dueño:** Camilo (decidir si va a ficha cuando entre otro país).

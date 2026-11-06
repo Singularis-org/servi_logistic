@@ -11,6 +11,7 @@ import type { ActorAnalitica } from "@/lib/analytics/alcance";
 import type { ErrorLogger } from "@/lib/errors/logger";
 import type { IAnaliticaOperativaService } from "@/lib/interfaces/services/IAnaliticaOperativaService";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Feature 267 (T10, R6/R7/R43) — ABRIR EL CANAL POR API KEY NO ABRIO EL CANAL DE COOKIE.
 //
 // ESTA ES LA RAZON DE SER DEL PARAMETRO `canal`, y por eso este archivo existe.
@@ -61,7 +62,7 @@ function montar() {
   const logError = vi.fn();
   const logger: ErrorLogger = { logError };
   const { service, consultar, consultarAgregado } = servicioQueNoDebeUsarse();
-  const deps: AnaliticaOperativaDeps = {
+  const deps: AnaliticaOperativaDeps = { reglasPais: reglasPaisFijas(),
     getActor: async () => INTEGRADOR,
     service,
     logger,

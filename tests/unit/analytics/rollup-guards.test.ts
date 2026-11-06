@@ -629,12 +629,13 @@ describe("R6 — el escritor no reimplementa la zona horaria de Costa Rica", () 
     ).toEqual([]);
   });
 
-  it("el dia CR y sus cotas salen de `lib/utils/fecha-cr.ts` (la contracara en verde)", () => {
+  it("el dia y sus cotas salen de `lib/utils/calendario-zona.ts` (la contracara en verde)", () => {
     // La ausencia de infracciones no demuestra que la fecha salga del sitio bueno: podria no
-    // salir de ningun sitio. Este caso afirma el positivo.
+    // salir de ningun sitio. Este caso afirma el positivo. SLT-42: las gemelas con zona de
+    // `fecha-cr`, con la zona del pais de la empresa.
     const rollupDia = leer("lib/analytics/rollup-dia.ts");
-    expect(rollupDia).toMatch(/from\s+["']@\/lib\/utils\/fecha-cr["']/);
-    for (const helper of ["fechaCalendarioCR", "inicioDelDiaCREnUtc", "inicioDelDiaSiguienteCREnUtc"]) {
+    expect(rollupDia).toMatch(/from\s+["']@\/lib\/utils\/calendario-zona["']/);
+    for (const helper of ["fechaCalendario", "inicioDelDiaEnUtc", "inicioDelDiaSiguienteEnUtc"]) {
       expect(rollupDia, `rollup-dia.ts no usa ${helper}`).toContain(helper);
     }
   });

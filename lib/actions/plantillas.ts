@@ -26,6 +26,7 @@ import type {
 } from "@/lib/interfaces/services/IPlantillaMensajeService";
 import { PlantillaMensajeService } from "@/lib/services/PlantillaMensajeService";
 import { PlantillaMensajeRepository } from "@/lib/repositories/PlantillaMensajeRepository";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { JobRepository } from "@/lib/repositories/JobRepository";
 import { construirWhatsappTemplatePort } from "@/lib/services/whatsapp/construir-template-port";
 import { WhatsappEnvioRepository } from "@/lib/repositories/WhatsappEnvioRepository";
@@ -80,6 +81,7 @@ async function buildPlantillaService(): Promise<IPlantillaMensajeService> {
   return new PlantillaMensajeService(repo, buildWhatsappPropagator(wa, prisma, repo), {
     envios: new WhatsappEnvioRepository(prisma),
     resolutorAppId: new ResolutorAppIdMeta({ leerWhatsapp: async () => wa ?? whatsappDeLaEmpresa() }),
+    reglasPais: construirReglasPaisEmpresa(prisma), // SLT-42 (R22): la zona de la vista previa.
   });
 }
 

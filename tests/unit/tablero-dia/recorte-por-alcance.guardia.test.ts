@@ -22,6 +22,7 @@ import {
 import { HistorialDoble, OrdenesDoble, RepositorioDoble } from "../services/_doble-tablero-dia";
 import { ETIQUETAS_CR } from "../../fabricas/etiquetas-geograficas";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // FEATURE 260 (V1) — LA GUARDIA QUE ATA LAS DOS MITADES DEL RECORTE POR ALCANCE. R44.
 //
 // ─── QUE PROBLEMA RESUELVE, Y POR QUE HACIA FALTA UNA GUARDIA APARTE ───────────────────────
@@ -169,7 +170,7 @@ function servicioConUnaOrden() {
     () => pagina,
   );
   const ordenes = new OrdenesDoble(new Map([["o1", ordenDeListado({ id: "o1" })]]));
-  return new TableroDiaService(repo, ordenes, new HistorialDoble());
+  return new TableroDiaService(repo, ordenes, new HistorialDoble(), undefined, reglasPaisFijas());
 }
 
 async function payloadDelServicio(actor: {

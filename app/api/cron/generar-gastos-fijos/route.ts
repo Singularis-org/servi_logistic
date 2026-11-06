@@ -16,6 +16,7 @@ import { getPrismaClient } from "@/lib/db/prisma-client";
 import { paraCadaEmpresa, type ClienteDeOrganizaciones } from "@/lib/db/para-cada-empresa";
 import { loadCronConfig } from "@/lib/config/cron";
 import { notificarGastoFijoCobroPendienteReal } from "@/lib/notificaciones/notificadores";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 
 export interface GenerarGastosFijosDeps {
   // Secreto esperado (inyectable en tests). Por defecto, `CRON_SECRET` del entorno.
@@ -82,6 +83,8 @@ function buildService(): IGeneracionGastosFijosService {
     // `tests/unit/services/notificacion-notificadores-reales.test.ts` afirma sobre el USO
     // EFECTIVO (fuente sin imports ni comentarios) y no sobre el fichero entero.
     notificarGastoFijoCobroPendienteReal,
+    // SLT-42 (R22, R24): la zona horaria del pais de la empresa de cada corrida.
+    construirReglasPaisEmpresa(prisma),
   );
 }
 

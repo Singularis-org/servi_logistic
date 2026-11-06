@@ -26,6 +26,7 @@ import {
 } from "@/lib/services/AnaliticaRollupService";
 import { UMBRAL_AVISO_FILAS_CORRIDA } from "@/lib/config/analitica-rollup";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Feature 124 / T3 — composicion de los cubos, invariantes y reconciliacion, con TABLAS EN
 // MEMORIA y sin base de datos (design §2): el bug caro de esta feature no es una consulta
 // lenta, es un cubo mal fundido o una coordenada tomada del sitio equivocado.
@@ -203,7 +204,7 @@ function construir(guion: Guion, intentos: Record<string, number> = {}) {
   const service = new AnaliticaRollupService(repo, contador, {
     now: relojQueAvanza(),
     logger: { warn: (m) => avisos.push(m) },
-  });
+  }, reglasPaisFijas());
   return { repo, contador, service, avisos };
 }
 
@@ -809,7 +810,7 @@ describe("R47 — la corrida SIEMPRE reporta filas escritas, retiradas y miliseg
     });
     const service = new AnaliticaRollupService(repo, new ContadorIntentosFake(), {
       now: relojQueAvanza(),
-    });
+    }, reglasPaisFijas());
     await service.agregarFecha(FECHA);
 
     // Segunda corrida: la gestion se anulo, el cubo ya no se produce.
@@ -819,7 +820,7 @@ describe("R47 — la corrida SIEMPRE reporta filas escritas, retiradas y miliseg
     for (const [k, v] of repo.tabla) repoVacio.tabla.set(k, { ...v, updatedAt: 0 });
     const service2 = new AnaliticaRollupService(repoVacio, new ContadorIntentosFake(), {
       now: relojQueAvanza(),
-    });
+    }, reglasPaisFijas());
 
     const resumen = await service2.agregarFecha(FECHA);
 
@@ -872,7 +873,7 @@ describe("R38 — el error se propaga con fecha y etapa, y NO se traga", () => {
     repo.escribirFecha = () => Promise.reject(new Error("deadlock simulado"));
     const service = new AnaliticaRollupService(repo, new ContadorIntentosFake(), {
       now: relojQueAvanza(),
-    });
+    }, reglasPaisFijas());
 
     const error = await service.agregarFecha(FECHA).catch((e: unknown) => e);
 

@@ -23,6 +23,7 @@ import {
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * ⭑ FICHA 371 — LA CORRECCION DE LA FECHA, EJECUTADA CONTRA POSTGRES.
@@ -255,6 +256,7 @@ describeSiHayBase("371 — corregir la fecha de una reprogramacion, contra Postg
           // EL CAMINO REAL de la liberacion, no un doble: es lo unico que demuestra que corregir a
           // hoy dispara la MISMA liberacion que el cron, con su puerta 276 puesta.
           liberarTrasCorregirFechaCon(liberacion, () => NOW, { warn: () => {} }),
+          reglasPaisFijas(),
         );
 
         return fn({
@@ -692,6 +694,7 @@ describeSiHayBase("371 — corregir la fecha de una reprogramacion, contra Postg
           () => NOW,
           { warn: (m) => avisos.push(m) },
         ),
+        reglasPaisFijas(),
       );
 
       const r = await service.corregir(

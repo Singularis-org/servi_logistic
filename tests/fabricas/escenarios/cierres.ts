@@ -32,6 +32,7 @@ import { SupabaseSignedUrlProvider } from "../../../lib/storage/SupabaseSignedUr
 import { RESULTADOS_QUE_VUELVEN } from "../../../lib/types/gestion-retorno";
 
 import type { EscenarioReparto, MensajeroEscenario } from "./reparto";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * SL-43 T5 (design D1.2; R11, R17) — EL NÚCLEO DEL CIERRE DEL DÍA, sacado de
@@ -66,6 +67,7 @@ export function cierreDia(): CierreDiaService {
     new TarifaZonaMensajeroRepository(prisma),
     notificarCierreDiaPorAprobarReal,
     notificarMensajeroBloqueadoReal,
+    reglasPaisFijas(),
   );
 }
 
@@ -91,6 +93,8 @@ export function cierresAdmin(): CierresAdminService {
     notificarMensajeroBloqueadoReal,
     liberarAlAprobarCierreCon(buildLiberarReprogramadasService()),
     notificarCierreDiaRechazadoReal,
+    undefined,
+    reglasPaisFijas(),
   );
 }
 

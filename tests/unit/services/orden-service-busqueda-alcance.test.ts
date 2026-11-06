@@ -14,6 +14,7 @@ import {
 } from "@/lib/types/orden";
 import { normalizarTerminoBusqueda } from "@/lib/utils/busqueda-orden";
 import { fakeIntentosEnLote } from "@/tests/fixtures/intentos-entrega";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 169 / T2.7 — ALCANCE POR ROL del buscador (R21, R22, R23, R24, R25).
 //
@@ -109,7 +110,7 @@ function repoEnMemoria(filas: FilaFake[]) {
 }
 
 function servicio(repo: IOrdenRepository) {
-  return new OrdenService(repo, fakeIntentosEnLote(), () => AHORA);
+  return new OrdenService(repo, fakeIntentosEnLote(), () => AHORA, reglasPaisFijas());
 }
 
 const CATALOGO: FilaFake[] = [

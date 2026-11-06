@@ -16,6 +16,7 @@ import { MSG_TOPE_INTENTOS_GESTION } from "@/lib/services/mensajes-bloqueo";
 import { reintentosConfig } from "@/lib/config/reintentos";
 import { fakeIntentosEnLote } from "@/tests/fixtures/intentos-entrega";
 import { SIN_BLOQUEO, type BloqueoDetalle } from "@/lib/utils/bloqueo-cierre";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FEATURE 276 (T4) — LA PUERTA DEL TOPE EN EL PANEL DEL MENSAJERO. R1, R2, R5, R6, R7, R11.
@@ -126,6 +127,7 @@ function montar(intentos: number, repoOver: Partial<IGestionOrdenRepository> = {
     fakeRutaRepo(),
     fakeMetaRepo(),
     historial,
+    reglasPaisFijas(),
   );
   return { service, repo, storage, historial };
 }
@@ -337,6 +339,7 @@ describe("276/T4 · R7 — el umbral es configurable de verdad", () => {
       fakeRutaRepo(),
       fakeMetaRepo(),
       fakeIntentosEnLote({ o1: intentos }),
+      reglasPaisFijas(),
     );
     return { service, repo };
   }
@@ -416,6 +419,7 @@ describe("276/T4 · R11 — la decision no depende de lo que mande el cliente", 
       fakeRutaRepo(),
       fakeMetaRepo(),
       fakeIntentosEnLote({ o1: UMBRAL - 1 }),
+      reglasPaisFijas(),
     );
 
     const r = await service.gestionar(ENTRADA.reprogramado(), MENSAJERO);

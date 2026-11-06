@@ -3,6 +3,7 @@ import type { ErrorLogger } from "@/lib/errors/logger";
 import { consultarAgregadoOperativo } from "@/lib/actions/analitica-operativa";
 import { AHORA, MAESTRO, TIENDA, cubo, rollupFalso, servicioCon } from "./_fake-operativa";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Feature 176 / T4.8 (segunda mitad) — R14, EN EL BORDE DEL AGREGADO.
 //
 // ⚠ ESTE TEST ESPIA EL LOGGER, NO EL STATUS, y el motivo esta verificado en el codigo de la
@@ -22,7 +23,7 @@ function bordeCon(actor = MAESTRO) {
   return {
     rollup,
     logError,
-    opciones: {
+    opciones: { reglasPais: reglasPaisFijas(),
       service: servicioCon(rollup),
       logger,
       now: () => AHORA,
@@ -62,7 +63,7 @@ describe("R14 · el denegado del agregado se audita ANTES de responder", () => {
     const rollup = rollupFalso([]);
     const r = await consultarAgregadoOperativo(
       { metricaId: "tasa_entrega", raw: { rango: "dia" } },
-      {
+      { reglasPais: reglasPaisFijas(),
         service: servicioCon(rollup),
         logger: { logError },
         now: () => AHORA,

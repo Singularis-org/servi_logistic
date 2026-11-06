@@ -12,6 +12,7 @@ import { ESTADOS_COLA_SOLICITADO } from "@/lib/utils/colas-cierre";
 import { listarCierresBodegaPaginadoSchema } from "@/lib/types/cierre-bodega";
 
 import { marcaPorEstado } from "@/tests/fixtures/marca-conciliacion";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Feature 170 — FASE 2, T J.1 (R40/R41/R44/R49/R51/R54) — «Cierres de bodega pendientes», la
 // COLA paginada del maestro.
 //
@@ -125,7 +126,7 @@ function servicio(repo: ICierresBodegaAdminRepository) {
   const signedUrls = {
     createSignedUrls: vi.fn(async () => ({})),
   } as unknown as ISignedUrlProvider;
-  return new CierresBodegaAdminService(repo, signedUrls);
+  return new CierresBodegaAdminService(repo, signedUrls, reglasPaisFijas());
 }
 
 function input(extra: Record<string, unknown> = {}) {

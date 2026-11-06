@@ -25,6 +25,7 @@ import type {
   LiquidacionTxRunner,
 } from "@/lib/interfaces/services/ILiquidacionService";
 import { quitarComentarios } from "../../fixtures/money-safe";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * Feature 205 / T3.4 — LA GUARDIA DE LOS CANDADOS Y DEL ALCANCE (R21, R22, R26, R52, R55).
@@ -244,6 +245,8 @@ function montar(
     repartoRepo,
     () => new Date("2026-07-30T15:04:05.000Z"),
     opciones.tope ?? 50,
+    undefined,
+    reglasPaisFijas(),
   );
 
   return { service, log, bloqueos, pagos, movimientos, tx, pagoRepo };

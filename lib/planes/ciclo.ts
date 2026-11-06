@@ -189,3 +189,18 @@ export function rangoDeLaFechaDeEfecto(ahora: Date): RangoDelInicioDelCiclo {
 export function inicioDelDiaPlataforma(fecha: string): Date {
   return inicioDelDiaCREnUtc(fecha);
 }
+
+// SLT-42 (R29, integración de SLT-86): la fecha de calendario de la plataforma vive aquí, junto a su
+// inversa `inicioDelDiaPlataforma`, para que el servicio, el repositorio y la página de planes no importen
+// el envoltorio de CR. Este archivo es excepción de R29 a cargo de SLT-86, que lo pasa a la zona de cada
+// empresa; al hacerlo, estas dos cambian con él.
+
+/** El `AAAA-MM-DD` de `instante` en la hora de la plataforma (la inversa de `inicioDelDiaPlataforma`). */
+export function fechaCalendarioPlataforma(instante: Date): string {
+  return fechaCalendarioCR(instante);
+}
+
+/** El `AAAA-MM-DD` de mañana en la hora de la plataforma. */
+export function mananaCalendarioPlataforma(ahora: Date): string {
+  return mananaCalendarioCR(ahora);
+}

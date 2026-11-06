@@ -6,7 +6,7 @@ import {
   type RegistrarCobroTiendaInput,
 } from "@/lib/types/wallet-tienda";
 import { primerDiaMovimientoAdmisible } from "@/lib/types/wallet";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendarioCR, ZONA_CR } from "@/lib/utils/fecha-cr";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // ⭑ FICHA 381 / T A.2 — el BORDE del cobro manual a una tienda (R14/R15/R16/R18).
@@ -38,7 +38,7 @@ function base(over: Partial<Record<string, unknown>> = {}) {
 
 describe("381/A.2 — lo que el borde ACEPTA", () => {
   it("un cobro minimo valido pasa, y el monto sigue siendo el MISMO STRING (R18)", () => {
-    const r = registrarCobroTiendaSchema.safeParse(base());
+    const r = registrarCobroTiendaSchema(ZONA_CR).safeParse(base());
     expect(r.success).toBe(true);
     const datos = r.data as RegistrarCobroTiendaInput;
     // ⚠️ SIGUE SIENDO UN STRING: si alguien metiera un `z.coerce.number()` o un `transform` con
@@ -50,7 +50,7 @@ describe("381/A.2 — lo que el borde ACEPTA", () => {
   });
 
   it("recorta los espacios de la descripcion pero conserva su texto (R15)", () => {
-    const r = registrarCobroTiendaSchema.safeParse(base({ descripcion: "  Caja de cintas  " }));
+    const r = registrarCobroTiendaSchema(ZONA_CR).safeParse(base({ descripcion: "  Caja de cintas  " }));
     expect(r.success).toBe(true);
     expect((r.data as RegistrarCobroTiendaInput).descripcion).toBe("Caja de cintas");
   });
@@ -58,20 +58,20 @@ describe("381/A.2 — lo que el borde ACEPTA", () => {
   it.each(["1", "0.01", "1500", "1500.5", "1500.50", "99999999.99"])(
     "acepta el monto %s",
     (monto) => {
-      expect(registrarCobroTiendaSchema.safeParse(base({ monto })).success).toBe(true);
+      expect(registrarCobroTiendaSchema(ZONA_CR).safeParse(base({ monto })).success).toBe(true);
     },
   );
 
   it("acepta HOY como fecha del cobro (R16)", () => {
     const hoy = fechaCalendarioCR(new Date());
-    expect(registrarCobroTiendaSchema.safeParse(base({ fecha: hoy })).success).toBe(true);
+    expect(registrarCobroTiendaSchema(ZONA_CR).safeParse(base({ fecha: hoy })).success).toBe(true);
   });
 });
 
 describe("381/A.2 — lo que el borde RECHAZA (R14/R15/R16)", () => {
   /** Los mensajes bajo un campo concreto del resultado. */
   function erroresDe(entrada: unknown, campo: string): string[] {
-    const r = registrarCobroTiendaSchema.safeParse(entrada);
+    const r = registrarCobroTiendaSchema(ZONA_CR).safeParse(entrada);
     expect(r.success).toBe(false);
     if (r.success) return [];
     const porCampo = z.flattenError(r.error).fieldErrors as Record<string, string[] | undefined>;
@@ -119,7 +119,7 @@ describe("381/A.2 — lo que el borde RECHAZA (R14/R15/R16)", () => {
   });
 
   it("rechaza una fecha anterior a la ventana admisible, nombrando el primer dia (R16)", () => {
-    const primero = primerDiaMovimientoAdmisible();
+    const primero = primerDiaMovimientoAdmisible(ZONA_CR);
     const anterior = new Date(`${primero}T12:00:00.000Z`);
     anterior.setUTCDate(anterior.getUTCDate() - 1);
     const fuera = anterior.toISOString().slice(0, 10);
@@ -136,7 +136,7 @@ describe("381/A.2 — lo que el borde RECHAZA (R14/R15/R16)", () => {
   });
 
   it("rechaza la peticion SIN tienda: no hay cobro sin destinataria (R7/R17)", () => {
-    const r = registrarCobroTiendaSchema.safeParse({
+    const r = registrarCobroTiendaSchema(ZONA_CR).safeParse({
       monto: "100.00",
       descripcion: "algo",
     });
@@ -148,7 +148,7 @@ describe("381/A.2 — `.strict()`: el cliente NO elige donde cae su propio cobro
   it.each(["tipo", "categoria", "registradoPor", "origenTipo", "origenId"])(
     "una clave `%s` colada muere en el borde",
     (clave) => {
-      const r = registrarCobroTiendaSchema.safeParse(base({ [clave]: "loQueSea" }));
+      const r = registrarCobroTiendaSchema(ZONA_CR).safeParse(base({ [clave]: "loQueSea" }));
       // Es la barrera que impide que la peticion dicte la categoria del asiento: sin `.strict()`,
       // zod ignoraria la clave en silencio y quedaria a merced de que nadie la lea nunca.
       expect(r.success).toBe(false);

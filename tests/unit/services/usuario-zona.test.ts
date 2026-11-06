@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { UsuarioService } from "@/lib/services/UsuarioService";
+import { CR, reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 import {
   type IUserRepository,
   type UsuarioPublico,
@@ -30,10 +31,10 @@ function usuario(over: Partial<UsuarioPublico> = {}): UsuarioPublico {
     id: "usr-1",
     nombre: "Ana",
     email: "ana@example.com",
-    telefono: "099",
+    telefono: "88880000",
     estado: "activo",
-    cedula: "1710034065",
-    tipoIdentificacionId: "tipo-1",
+    cedula: "171003406",
+    tipoIdentificacionId: "tipo-cr-cedula",
     rolId: "rol-msg",
     fulfillment: false,
     zonaId: null,
@@ -99,9 +100,9 @@ function buildZonaRepo(exists: boolean): IZonaRepository {
 const baseCrear = {
   nombre: "Ana",
   email: "ana@example.com",
-  telefono: "099",
-  tipoIdentificacionId: "tipo-1",
-  cedula: "1710034065",
+  telefono: "88880000",
+  tipoIdentificacionId: "tipo-cr-cedula",
+  cedula: "171003406",
   passwordMode: "manual" as const,
   password: "Abcdef1!",
 };
@@ -114,7 +115,7 @@ beforeEach(() => {
 
 describe("crear — zona por rol (R27/R28)", () => {
   it("mensajero con zonaId existente lo persiste (R27)", async () => {
-    const svc = new UsuarioService(repo, buildZonaRepo(true));
+    const svc = new UsuarioService(repo, buildZonaRepo(true), undefined, undefined, undefined, reglasPaisFijas(CR));
     // feature 21: el mensajero tambien exige vehiculo; se pasa para aislar la
     // aserción a la zona (sin `vehiculoRepo` inyectado no se valida su existencia).
     const r = await svc.crear(
@@ -126,7 +127,7 @@ describe("crear — zona por rol (R27/R28)", () => {
   });
 
   it("adminSatelite con zonaId existente lo persiste (R27)", async () => {
-    const svc = new UsuarioService(repo, buildZonaRepo(true));
+    const svc = new UsuarioService(repo, buildZonaRepo(true), undefined, undefined, undefined, reglasPaisFijas(CR));
     await svc.crear({ ...baseCrear, rolId: "rol-sat", zonaId: "z1" }, MAESTRO);
     expect((repo.create as ReturnType<typeof vi.fn>).mock.calls[0][0].zonaId).toBe("z1");
   });
@@ -136,9 +137,9 @@ describe("crear — zona por rol (R27/R28)", () => {
     // bodega ven y editan el MISMO par, asi que el alta del segundo no vuelve a pedirlo — y, sobre
     // todo, NO escribe nada en la zona. Se afirma sobre el argumento que recibe el repositorio de
     // usuarios: si alguien colara el par en el alta, aparecerian aqui.
-    const svc = new UsuarioService(repo, buildZonaRepo(true));
+    const svc = new UsuarioService(repo, buildZonaRepo(true), undefined, undefined, undefined, reglasPaisFijas(CR));
     const r = await svc.crear(
-      { ...baseCrear, email: "segundo@example.com", cedula: "1710034066", rolId: "rol-sat", zonaId: "z1" },
+      { ...baseCrear, email: "segundo@example.com", cedula: "171003407", rolId: "rol-sat", zonaId: "z1" },
       MAESTRO,
     );
     expect(r.status).toBe("ok");
@@ -152,13 +153,13 @@ describe("crear — zona por rol (R27/R28)", () => {
   });
 
   it("rol no aplicable (admin) fuerza zonaId=null aunque se envie (R27)", async () => {
-    const svc = new UsuarioService(repo, buildZonaRepo(true));
+    const svc = new UsuarioService(repo, buildZonaRepo(true), undefined, undefined, undefined, reglasPaisFijas(CR));
     await svc.crear({ ...baseCrear, rolId: "rol-admin", zonaId: "z1" }, MAESTRO);
     expect((repo.create as ReturnType<typeof vi.fn>).mock.calls[0][0].zonaId).toBeNull();
   });
 
   it("zonaId inexistente para un rol aplicable -> validation_error (R28)", async () => {
-    const svc = new UsuarioService(repo, buildZonaRepo(false));
+    const svc = new UsuarioService(repo, buildZonaRepo(false), undefined, undefined, undefined, reglasPaisFijas(CR));
     const r = await svc.crear({ ...baseCrear, rolId: "rol-msg", zonaId: "no-existe" }, MAESTRO);
     expect(r.status).toBe("validation_error");
     if (r.status === "validation_error") expect(r.fieldErrors).toHaveProperty("zonaId");
@@ -166,7 +167,7 @@ describe("crear — zona por rol (R27/R28)", () => {
   });
 
   it("mensajero sin zonaId -> validation_error (zona obligatoria, R27)", async () => {
-    const svc = new UsuarioService(repo, buildZonaRepo(true));
+    const svc = new UsuarioService(repo, buildZonaRepo(true), undefined, undefined, undefined, reglasPaisFijas(CR));
     const r = await svc.crear({ ...baseCrear, rolId: "rol-msg" }, MAESTRO);
     expect(r.status).toBe("validation_error");
     if (r.status === "validation_error") expect(r.fieldErrors).toHaveProperty("zonaId");
@@ -177,7 +178,7 @@ describe("crear — zona por rol (R27/R28)", () => {
 describe("actualizar — zona por rol (R27/R28)", () => {
   it("editar zonaId de un mensajero valido lo aplica", async () => {
     repo = buildRepo({ findById: vi.fn().mockResolvedValue(usuario({ rolId: "rol-msg" })) });
-    const svc = new UsuarioService(repo, buildZonaRepo(true));
+    const svc = new UsuarioService(repo, buildZonaRepo(true), undefined, undefined, undefined, reglasPaisFijas(CR));
     const r = await svc.actualizar("usr-1", { zonaId: "z1" }, MAESTRO);
     expect(r.status).toBe("ok");
     expect((repo.update as ReturnType<typeof vi.fn>).mock.calls[0][1].zonaId).toBe("z1");
@@ -185,7 +186,7 @@ describe("actualizar — zona por rol (R27/R28)", () => {
 
   it("editar zonaId inexistente -> validation_error (R28)", async () => {
     repo = buildRepo({ findById: vi.fn().mockResolvedValue(usuario({ rolId: "rol-msg" })) });
-    const svc = new UsuarioService(repo, buildZonaRepo(false));
+    const svc = new UsuarioService(repo, buildZonaRepo(false), undefined, undefined, undefined, reglasPaisFijas(CR));
     const r = await svc.actualizar("usr-1", { zonaId: "no-existe" }, MAESTRO);
     expect(r.status).toBe("validation_error");
     expect(repo.update).not.toHaveBeenCalled();
@@ -193,7 +194,7 @@ describe("actualizar — zona por rol (R27/R28)", () => {
 
   it("no enviar zonaId no toca la zona (preserva el campo)", async () => {
     repo = buildRepo({ findById: vi.fn().mockResolvedValue(usuario({ rolId: "rol-msg" })) });
-    const svc = new UsuarioService(repo, buildZonaRepo(true));
+    const svc = new UsuarioService(repo, buildZonaRepo(true), undefined, undefined, undefined, reglasPaisFijas(CR));
     await svc.actualizar("usr-1", { nombre: "Otro" }, MAESTRO);
     expect((repo.update as ReturnType<typeof vi.fn>).mock.calls[0][1]).not.toHaveProperty("zonaId");
   });
@@ -213,7 +214,7 @@ describe("actualizar — zona por rol (R27/R28)", () => {
     repo = buildRepo({
       findById: vi.fn().mockResolvedValue(usuario({ rolId: "rol-sat", zonaId: "z1" })),
     });
-    const svc = new UsuarioService(repo, buildZonaRepo(true));
+    const svc = new UsuarioService(repo, buildZonaRepo(true), undefined, undefined, undefined, reglasPaisFijas(CR));
 
     // La peticion NO lleva `zonaId`: es exactamente lo que manda el formulario al pasar a un
     // rol sin zona (spread condicional `...(esRolConZona ? { zonaId } : {})`).
@@ -230,7 +231,7 @@ describe("actualizar — zona por rol (R27/R28)", () => {
     repo = buildRepo({
       findById: vi.fn().mockResolvedValue(usuario({ rolId: "rol-msg", zonaId: "z1" })),
     });
-    const svc = new UsuarioService(repo, buildZonaRepo(true));
+    const svc = new UsuarioService(repo, buildZonaRepo(true), undefined, undefined, undefined, reglasPaisFijas(CR));
 
     const r = await svc.actualizar("usr-1", { rolId: "rol-sat" }, MAESTRO);
 
@@ -244,7 +245,7 @@ describe("actualizar — zona por rol (R27/R28)", () => {
     repo = buildRepo({
       findById: vi.fn().mockResolvedValue(usuario({ rolId: "rol-admin", zonaId: null })),
     });
-    const svc = new UsuarioService(repo, buildZonaRepo(true));
+    const svc = new UsuarioService(repo, buildZonaRepo(true), undefined, undefined, undefined, reglasPaisFijas(CR));
 
     const r = await svc.actualizar("usr-1", { rolId: "rol-sat" }, MAESTRO);
 
@@ -264,7 +265,7 @@ describe("actualizar — zona por rol (R27/R28)", () => {
     // SIN zona, para que «no se pidio zona» signifique lo mismo en el alta y en la edicion.
     async function zonaEfectivaDeAlta(rolId: string, zonaId: string | null | undefined) {
       const local = buildRepo();
-      const svc = new UsuarioService(local, buildZonaRepo(true));
+      const svc = new UsuarioService(local, buildZonaRepo(true), undefined, undefined, undefined, reglasPaisFijas(CR));
       const r = await svc.crear({ ...baseCrear, rolId, zonaId, vehiculoId: "v1" }, MAESTRO);
       if (r.status !== "ok") return { estado: r.status };
       return {
@@ -277,7 +278,7 @@ describe("actualizar — zona por rol (R27/R28)", () => {
       const local = buildRepo({
         findById: vi.fn().mockResolvedValue(usuario({ rolId: "rol-admin", zonaId: null })),
       });
-      const svc = new UsuarioService(local, buildZonaRepo(true));
+      const svc = new UsuarioService(local, buildZonaRepo(true), undefined, undefined, undefined, reglasPaisFijas(CR));
       const r = await svc.actualizar("usr-1", { rolId, zonaId, vehiculoId: "v1" }, MAESTRO);
       if (r.status !== "ok") return { estado: r.status };
       return {

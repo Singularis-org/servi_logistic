@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { ListarCompletoResult } from "@/lib/types/descarga-listado";
 import { montoPositivoSchema } from "@/lib/types/wallet";
-import { esFechaCalendarioValida, fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { esFechaCalendarioValida, fechaCalendario } from "@/lib/utils/calendario-zona";
 import { gastoFijoConfig } from "@/lib/config/gasto-fijo";
 import type { PeriodicidadUnidad } from "@/lib/utils/periodicidad";
 
@@ -35,7 +35,7 @@ export type GastoFijoPlantillaDTO = {
 // campo y DOS aplicaciones de ellas, para que crear y actualizar no puedan divergir en la regla
 // aunque difieran —a proposito— en la OBLIGATORIEDAD.
 //
-// CREAR conserva los defaults `meses`/`1`/hoy-CR (R4): una creacion no pisa ningun valor previo,
+// CREAR conserva los defaults `meses`/`1`/hoy en la zona de la empresa (R4): una creacion no pisa ningun valor previo,
 // asi que el default es el PRIMER valor del ciclo y no el borrado de otro. Es el comportamiento
 // documentado desde antes de la 84 y el que uso el backfill de su migracion.
 //
@@ -61,14 +61,17 @@ const fechaCobroSchema = z
   .regex(/^\d{4}-\d{2}-\d{2}$/, "La fecha de cobro debe tener el formato YYYY-MM-DD.")
   .refine(esFechaCalendarioValida, "La fecha de cobro no existe en el calendario.");
 
-// CREAR: los tres opcionales con default (R4).
-const periodicidadConDefault = {
-  periodicidadUnidad: periodicidadUnidadSchema.default("meses"),
-  periodicidadCantidad: periodicidadCantidadSchema.default(1),
-  // Default = hoy en hora CR (no `new Date()`: `fechaCalendarioCR` evita el off-by-one de UTC).
-  // Se evalua por parseo, asi que no se congela al cargar el modulo.
-  fechaCobro: fechaCobroSchema.default(() => fechaCalendarioCR()),
-};
+// CREAR: los tres opcionales con default (R4). SLT-42: el «hoy» del default depende de la zona del
+// pais de la empresa, asi que es una FABRICA `(zona) => campos`.
+function periodicidadConDefault(zona: string) {
+  return {
+    periodicidadUnidad: periodicidadUnidadSchema.default("meses"),
+    periodicidadCantidad: periodicidadCantidadSchema.default(1),
+    // Default = hoy en la zona (no `new Date()` en UTC: `fechaCalendario` evita el off-by-one).
+    // Se evalua por parseo, asi que no se congela al cargar el modulo.
+    fechaCobro: fechaCobroSchema.default(() => fechaCalendario(new Date(), zona)),
+  };
+}
 
 // ACTUALIZAR: los tres OBLIGATORIOS (R1). Mismas reglas, cero defaults.
 const periodicidadRequerida = {
@@ -79,10 +82,11 @@ const periodicidadRequerida = {
 
 // R24: crear plantilla = concepto no vacio + monto STRING > 0 (hasta 2 decimales). `activa`
 // no se envia (arranca en true por default en la DB/repo).
-export const crearGastoFijoPlantillaSchema = z.object({
+// SLT-42: `camposDePlantilla` es la parte que no depende de la zona; crear la extiende con los
+// defaults de la zona y actualizar con los campos obligatorios (que no la necesitan).
+const camposDePlantilla = z.object({
   concepto: z.string().trim().min(1, "El concepto es obligatorio."),
   monto: montoPositivoSchema,
-  ...periodicidadConDefault,
   // Ficha 333 (R2, design §8) — EL INTERRUPTOR, CON DEFAULT `true`, exactamente el patrón con
   // el que la 84 introdujo la periodicidad: una plantilla creada sin indicarlo nace en «requiere
   // aprobación», que es la norma que pide la ficha («cobra sola» es la excepción), y la UI que
@@ -97,12 +101,16 @@ export const crearGastoFijoPlantillaSchema = z.object({
   requiereAprobacion: z.boolean().default(true),
 });
 
-export type CrearGastoFijoPlantillaInput = z.infer<typeof crearGastoFijoPlantillaSchema>;
+export function crearGastoFijoPlantillaSchema(zona: string) {
+  return camposDePlantilla.extend(periodicidadConDefault(zona));
+}
 
-// R25: editar una plantilla existente (identificada por id uuid). Se DERIVA del schema de crear
+export type CrearGastoFijoPlantillaInput = z.infer<ReturnType<typeof crearGastoFijoPlantillaSchema>>;
+
+// R25: editar una plantilla existente (identificada por id uuid). Se DERIVA de los campos de crear
 // para que `concepto` y `monto` se declaren una sola vez, y redeclara SOLO lo que tiene que
-// diferir: los tres campos del ciclo, en su variante sin default (R1).
-export const actualizarGastoFijoPlantillaSchema = crearGastoFijoPlantillaSchema.extend({
+// diferir: los tres campos del ciclo, en su variante sin default (R1). No depende de la zona.
+export const actualizarGastoFijoPlantillaSchema = camposDePlantilla.extend({
   id: z.string().uuid(),
   ...periodicidadRequerida,
 });

@@ -10,7 +10,7 @@ import { walletTiendaConfig } from "@/lib/config/wallet-tienda";
 import { claveIdempotenciaSchema, fechaMovimientoSchema, montoPositivoSchema } from "@/lib/types/wallet";
 import type { WalletOrigenTipo } from "@/lib/types/wallet";
 import type { ConOrigen } from "@/lib/types/wallet-origen";
-import { desdeDiaCRSchema, hastaDiaCRSchema } from "@/lib/types/filtro-dias-cr";
+import { desdeDiaSchema, hastaDiaSchema } from "@/lib/types/filtro-dias-cr";
 
 // Feature 43 (design §1.1/§3) — fuente unica de verdad de tipos/categorias del ledger POR
 // TIENDA, respaldada por los enums Postgres nativos (patron lib/types/wallet.ts). El
@@ -198,19 +198,21 @@ export type ListarSaldosTiendasCompletoResult = ListarCompletoResult<SaldoTienda
 // rechazarse. El servicio acota igual por el actor, pero una peticion con una clave ajena es un
 // intento de ampliar el alcance y se responde `validation_error` sin leer nada. Las derivadas
 // (`.extend` del desglose, `.omit` del completo) heredan la misma politica.
-export const listarMovimientosTiendaSchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(100).default(20),
-  // Ficha 458-A (TA.4, R12): el cierre se elige en un selector y viaja su id; el borde rechaza todo
-  // valor que no tenga forma de identificador (antes `min(1)`: cualquier texto pegado).
-  cierreId: z.string().uuid().optional(),
-  categoria: z.enum(WALLET_TIENDA_MOVIMIENTO_CATEGORIA_SEED).optional(),
-  // Ficha 461 (R72, auditoria T1): dias de Costa Rica; `hasta` exclusivo en el repositorio.
-  desde: desdeDiaCRSchema.optional(),
-  hasta: hastaDiaCRSchema.optional(),
-}).strict();
+export function listarMovimientosTiendaSchema(zona: string) {
+  return z.object({
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(100).default(20),
+    // Ficha 458-A (TA.4, R12): el cierre se elige en un selector y viaja su id; el borde rechaza todo
+    // valor que no tenga forma de identificador (antes `min(1)`: cualquier texto pegado).
+    cierreId: z.string().uuid().optional(),
+    categoria: z.enum(WALLET_TIENDA_MOVIMIENTO_CATEGORIA_SEED).optional(),
+    // Ficha 461 (R72, auditoria T1): dias de Costa Rica; `hasta` exclusivo en el repositorio.
+    desde: desdeDiaSchema(zona).optional(),
+    hasta: hastaDiaSchema(zona).optional(),
+  }).strict();
+}
 
-export type ListarMovimientosTiendaInput = z.infer<typeof listarMovimientosTiendaSchema>;
+export type ListarMovimientosTiendaInput = z.infer<ReturnType<typeof listarMovimientosTiendaSchema>>;
 
 // Feature 170 (T C.1) — entrada del modo SIN paginacion del ledger de la tienda (descarga
 // del dataset completo). Derivada del schema del listado quitando `page`/`pageSize`, de modo
@@ -221,12 +223,14 @@ export type ListarMovimientosTiendaInput = z.infer<typeof listarMovimientosTiend
 // un cliente que intente colar `tiendaId` en la peticion recibe `validation_error` en el
 // BORDE, sin llegar al service (R18) — y si llegara, el service lo ignoraria igual (R15),
 // porque nunca lee esa clave. Dos cierres independientes para la misma fuga.
-export const listarMovimientosTiendaCompletoSchema = listarMovimientosTiendaSchema
-  .omit({ page: true, pageSize: true })
-  .strict();
+export function listarMovimientosTiendaCompletoSchema(zona: string) {
+  return listarMovimientosTiendaSchema(zona)
+    .omit({ page: true, pageSize: true })
+    .strict();
+}
 
 export type ListarMovimientosTiendaCompletoInput = z.infer<
-  typeof listarMovimientosTiendaCompletoSchema
+  ReturnType<typeof listarMovimientosTiendaCompletoSchema>
 >;
 
 // Feature 170 (T C.2): resultado del modo completo en el BORDE. `limite_excedido` lleva SOLO
@@ -289,11 +293,13 @@ export type ListarMovimientosDeTiendaResult = {
  *
  * Espejo exacto de `listarPagosDeMensajeroSchema`.
  */
-export const listarMovimientosDeTiendaSchema = listarMovimientosTiendaSchema.extend({
-  tiendaId: z.string().min(1),
-});
+export function listarMovimientosDeTiendaSchema(zona: string) {
+  return listarMovimientosTiendaSchema(zona).extend({
+    tiendaId: z.string().min(1),
+  });
+}
 
-export type ListarMovimientosDeTiendaInput = z.infer<typeof listarMovimientosDeTiendaSchema>;
+export type ListarMovimientosDeTiendaInput = z.infer<ReturnType<typeof listarMovimientosDeTiendaSchema>>;
 
 /**
  * R37 — el MISMO desglose sin recorte por pagina, para la descarga: los mismos filtros y el
@@ -301,12 +307,14 @@ export type ListarMovimientosDeTiendaInput = z.infer<typeof listarMovimientosDeT
  * de modo que ninguna clave extra de la peticion pueda ampliar el alcance a otra tienda o a
  * todas (R24, primera de las tres barreras; las otras dos viven en el servicio).
  */
-export const listarMovimientosDeTiendaCompletoSchema = listarMovimientosDeTiendaSchema
-  .omit({ page: true, pageSize: true })
-  .strict();
+export function listarMovimientosDeTiendaCompletoSchema(zona: string) {
+  return listarMovimientosDeTiendaSchema(zona)
+    .omit({ page: true, pageSize: true })
+    .strict();
+}
 
 export type ListarMovimientosDeTiendaCompletoInput = z.infer<
-  typeof listarMovimientosDeTiendaCompletoSchema
+  ReturnType<typeof listarMovimientosDeTiendaCompletoSchema>
 >;
 
 // Resultado del modo completo en el BORDE. `limite_excedido` lleva SOLO conteos y ninguna
@@ -362,17 +370,19 @@ export type CierreTiendaOpcionDTO = {
  * fija el servidor (R19), que es lo unico que impide que el cliente elija en que cubeta cae su
  * propio cobro.
  */
-export const registrarCobroTiendaSchema = z
-  .object({
-    tiendaId: z.string().uuid(),
-    monto: montoPositivoSchema, // STRING, > 0, <= 2 decimales (R14/R18)
-    descripcion: z.string().trim().min(1, "La descripcion es obligatoria."), // R15
-    fecha: fechaMovimientoSchema.optional(), // R16/R21
-    claveIdempotencia: claveIdempotenciaSchema, // ficha 461 (R66): un doble envio es UN cobro
-  })
-  .strict();
+export function registrarCobroTiendaSchema(zona: string) {
+  return z
+    .object({
+      tiendaId: z.string().uuid(),
+      monto: montoPositivoSchema, // STRING, > 0, <= 2 decimales (R14/R18)
+      descripcion: z.string().trim().min(1, "La descripcion es obligatoria."), // R15
+      fecha: fechaMovimientoSchema(zona).optional(), // R16/R21
+      claveIdempotencia: claveIdempotenciaSchema, // ficha 461 (R66): un doble envio es UN cobro
+    })
+    .strict();
+}
 
-export type RegistrarCobroTiendaInput = z.infer<typeof registrarCobroTiendaSchema>;
+export type RegistrarCobroTiendaInput = z.infer<ReturnType<typeof registrarCobroTiendaSchema>>;
 
 // ── FICHA 461 — ANULAR UN COBRO de la empresa a una tienda (R10–R19) ──
 

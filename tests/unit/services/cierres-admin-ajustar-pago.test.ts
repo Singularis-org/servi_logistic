@@ -11,6 +11,7 @@ import type { IZonaRepository } from "@/lib/interfaces/repositories/IZonaReposit
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { CierreResultado } from "@/lib/interfaces/services/ICierreDiaService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // SLT-56 (T6) — LAS GUARDIAS del AJUSTE del pago al mensajero (design §4.3), con dobles del
 // repositorio. Lo que se afirma en cada rechazo es que NO SE LLEGA A ESCRIBIR: cero llamadas a
@@ -113,6 +114,11 @@ function newService(repo: ICierresAdminRepository, ordenRepo = fakeOrdenRepo()) 
       ),
     },
     sinRetenidas(),
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    reglasPaisFijas(),
   );
 }
 

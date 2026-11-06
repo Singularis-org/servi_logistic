@@ -11,6 +11,7 @@ import type { CohorteCuboCrudo } from "@/lib/interfaces/repositories/ICohorteCar
 import { HAY_BASE_DE_DATOS } from "./_postgres-real";
 import type { TxDeTest } from "./_semilla-rollup";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 /**
  * Ficha 411 — utilidades COMPARTIDAS de los siete archivos de integracion de la cohorte.
  *
@@ -52,7 +53,7 @@ export function consultaDe(
   raw: object,
   actor: { usuarioId: string; rol: string; zonaId?: string },
 ): ConsultaConteoEntregas {
-  const preparada = prepararConteoEntregas(raw, actor as never, AHORA);
+  const preparada = prepararConteoEntregas(raw, actor as never, ZONA_DE_CR, AHORA);
   if (preparada.status !== "ok") {
     throw new Error(`consulta de prueba no concedida: ${JSON.stringify(preparada)}`);
   }

@@ -9,7 +9,7 @@ import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { tieneCostoConcreto } from "@/lib/planes/costo-concreto";
 import type { PlanDTO } from "@/lib/types/planes";
-import { mananaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { mananaCalendarioPlataforma } from "@/lib/planes/ciclo";
 
 import { PlanDetalle } from "./_components/PlanDetalle";
 
@@ -59,7 +59,7 @@ export default async function PlanDetallePage({ params }: { params: Promise<{ pl
         cancelarCambio={cancelarCambioPlanAction}
         empresasCandidatas={empresasCandidatas}
         // SLT-86 (R23): «Rige desde» de un cambio de precio propone mañana, con el reloj del servidor.
-        precioDesdePorDefecto={mananaCalendarioCR(new Date())}
+        precioDesdePorDefecto={mananaCalendarioPlataforma(new Date())}
       />
     </AppPage>
   );

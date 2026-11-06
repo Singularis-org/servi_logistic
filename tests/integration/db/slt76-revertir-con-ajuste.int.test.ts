@@ -12,6 +12,7 @@ import {
 } from "./_postgres-real";
 import { marcarRecibido } from "./_fixtures/slt73-cierre-aprobable";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // SLT-76 · T3 · R5 — REVERTIR UNA CONCILIACION CON AJUSTE DE DIFERENCIA Y SIN ASIENTOS `cierre_dia`
 // RESPONDE `con_asientos` Y NO TOCA NADA (m4 de SLT-73).
@@ -93,7 +94,7 @@ describeSiHayBase("SLT-76 R5 — revertir con ajuste y sin asientos (Postgres re
       const { id, maestroId } = await sembrarConAjusteSinAsientos(tx);
       const antes = await foto(tx, id);
       const repo = new CierresBodegaAdminRepository(tx as unknown as PrismaClient);
-      const res = await repo.revertirConciliacion({ id, actorUsuarioId: maestroId });
+      const res = await repo.revertirConciliacion({ zonaHoraria: ZONA_DE_CR, id, actorUsuarioId: maestroId });
       return { res, antes, despues: await foto(tx, id) };
     });
 

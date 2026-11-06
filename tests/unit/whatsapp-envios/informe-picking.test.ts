@@ -13,6 +13,7 @@ import { parametrosPickingSchema, type ParametrosPicking } from "@/lib/whatsapp-
 import type { IPickingRepository } from "@/lib/interfaces/repositories/IPickingRepository";
 import type { FilaPicking, TiendaPicking } from "@/lib/whatsapp-envios/informes/picking/tipos";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Ficha 476 (T4.1) — el informe con un doble del repositorio: R1, R2 (schema), R7, R8, R24, R25,
 // R27, R28. La lectura real contra Postgres: tests/integration/db/picking-*.test.ts.
 
@@ -44,7 +45,7 @@ function repo(o: { tienda?: TiendaPicking | null; filas?: FilaPicking[]; falla?:
 }
 
 const P: ParametrosPicking = { tiendaId: "t-abarrotes", diasAtraso: 2 };
-const ctx = (conDocumento = true, parametros: ParametrosPicking = P, ahora = AHORA) => ({ parametros, ahora, conDocumento });
+const ctx = (conDocumento = true, parametros: ParametrosPicking = P, ahora = AHORA) => ({ parametros, ahora, zona: ZONA_DE_CR, conDocumento });
 
 describe("476/R1 — registro en el catalogo", () => {
   it("clave «picking», nombre «Picking», genera documento, NO apto para adminTienda, sin eventos", () => {
@@ -237,11 +238,11 @@ describe("476/R3 — resumen de tiendas del selector", () => {
         { tiendaId: "otra", entrada: new Date(AHORA.getTime() - 9 * UN_DIA) },
       ]),
     };
-    expect(await resumenTiendasPicking(r, AHORA, 2)).toEqual([
+    expect(await resumenTiendasPicking(r, AHORA, ZONA_DE_CR, 2)).toEqual([
       { tiendaId: "t1", nombre: "Abarrotes", ordenes: 2, atrasadas: 1 },
       { tiendaId: "t2", nombre: "Mercadito", ordenes: 0, atrasadas: 0 },
       { tiendaId: "t3", nombre: "Surtidora", ordenes: 1, atrasadas: 1 },
     ]);
-    expect((await resumenTiendasPicking(r, AHORA, 5)).map((t) => t.atrasadas)).toEqual([0, 0, 1]);
+    expect((await resumenTiendasPicking(r, AHORA, ZONA_DE_CR, 5)).map((t) => t.atrasadas)).toEqual([0, 0, 1]);
   });
 });

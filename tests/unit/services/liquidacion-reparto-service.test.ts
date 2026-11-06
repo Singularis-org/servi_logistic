@@ -26,6 +26,7 @@ import type {
   LiquidacionTxRunner,
 } from "@/lib/interfaces/services/ILiquidacionService";
 import type { RegistrarRepartoMensajeroInput } from "@/lib/types/liquidacion-reparto";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 205 / T3.3 — `LiquidacionService.previsualizarRepartoMensajero` y
 // `registrarRepartoMensajero`. Cubre R1, R4, R5, R6, R7, R14, R15, R18, R19, R20, R23, R24, R25,
@@ -367,8 +368,8 @@ function buildDobles(opciones: Opciones = {}) {
   // `lib/config/reparto-mensajero.ts` puesto a 7, este archivo seguia en verde (61/61).
   const service =
     opciones.tope === undefined
-      ? new LiquidacionService(...comunes)
-      : new LiquidacionService(...comunes, opciones.tope);
+      ? new LiquidacionService(...comunes, undefined, undefined, reglasPaisFijas())
+      : new LiquidacionService(...comunes, opciones.tope, undefined, reglasPaisFijas());
 
   return {
     service,

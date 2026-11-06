@@ -20,6 +20,7 @@ import type {
 import { IDS_FINANCIERAS_SERVIDAS } from "@/lib/types/analitica-financiera";
 import { armarServicio, AHORA } from "../services/_dobles-analitica-financiera";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Feature 127 / T E.3 y E.4 — GUARDIA DE SEGURIDAD DEL BORDE. Es lo unico de la feature que ve
 // un usuario real, y es por donde se filtran las cosas.
 //
@@ -120,7 +121,7 @@ export function motivoFiltrado(serializada: string): string | null {
 async function ejecutarDenegado(caso: CasoDenegado) {
   const logError = vi.fn();
   const logger: ErrorLogger = { logError };
-  const respuesta = await consultarMetricaFinanciera(caso.metricaId, caso.raw, {
+  const respuesta = await consultarMetricaFinanciera(caso.metricaId, caso.raw, { reglasPais: reglasPaisFijas(),
     now: AHORA,
     logger,
     getActor: async () => caso.actor,
@@ -272,7 +273,7 @@ async function respuestaDe(metricaId: string) {
     respuesta: await consultarMetricaFinanciera(
       metricaId,
       { rango: "dia" },
-      {
+      { reglasPais: reglasPaisFijas(),
         now: AHORA,
         logger: { logError },
         getActor: async () => MAESTRO,

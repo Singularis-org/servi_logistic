@@ -11,6 +11,7 @@ import {
   fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 /**
  * FICHA 394 (2026-09-08) — LOS INTENTOS DE ENTREGA DE LA DESCARGA DETALLADA DE CIERRES,
@@ -334,7 +335,7 @@ describeSiHayBase("descarga detallada — los intentos de entrega vigentes (fich
         {} as never,
         {} as never,
         {} as never,
-      ).findGestionesPorAlcanceCompleto(ALCANCE, { mensajeroIds: [mensajeroHoja] });
+      ).findGestionesPorAlcanceCompleto(ALCANCE, { mensajeroIds: [mensajeroHoja] }, ZONA_CR);
 
       return { filas, remisionPorClave };
     });

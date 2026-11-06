@@ -102,10 +102,10 @@ import { CIERRE_ESTADOS_RESOLICITABLES } from "@/lib/utils/bloqueo-cierre";
 import type { CierreEstado } from "@/lib/types/cierre";
 import { NOMBRE_USUARIO_SELECT, nombreCompletoUsuario } from "@/lib/utils/nombre-usuario";
 // Pedido humano del 2026-09-05: serializar `gestion_orden.created_at` (un `timestamp`) al DIA
-// calendario de Costa Rica. Nada que ver con el `startOfDayCR` que la 261 desterro de aqui: esto
-// no decide ningun dia de reparto ni lee el reloj del proceso — convierte un instante que ya
-// existe en la fila. `now` no se usa nunca sin argumento.
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+// calendario del pais de la empresa. Nada que ver con el `startOfDayCR` que la 261 desterro de
+// aqui: esto no decide ningun dia de reparto ni lee el reloj del proceso — convierte un instante
+// que ya existe en la fila. SLT-42 (R22): la zona LLEGA del servicio; este repositorio no la lee.
+import { fechaCalendario } from "@/lib/utils/calendario-zona";
 import { rutasEvidenciaGestion } from "@/lib/utils/evidencias-gestion";
 
 // El estado que representa una solicitud viva de cierre (R12) y el que crea la 37 por
@@ -559,14 +559,17 @@ function decimalToString(d: Prisma.Decimal | null): string | null {
 export function toPendienteRow(
   row: DetalleRow,
   desdeAyudaTienda: boolean,
+  /** SLT-42 (R22): la zona del pais de la empresa, con la que se fecha `created_at`. */
+  zona: string,
 ): CierreGestionPendienteRow {
   return {
     gestionId: row.id,
     ordenId: row.ordenId,
-    // Dia calendario de CR del `created_at`. `fechaCalendarioCR` y NO el recorte del ISO que se
-    // usa dos lineas mas abajo para `fechaReprogramacion`: aquella es `@db.Date` (medianoche
-    // UTC) y esta es un `timestamp`, donde recortar adelanta un dia a partir de las 18:00 CR.
-    fechaGestion: fechaCalendarioCR(row.createdAt),
+    // Dia calendario (zona del pais de la empresa) del `created_at`. `fechaCalendario` y NO el
+    // recorte del ISO que se usa dos lineas mas abajo para `fechaReprogramacion`: aquella es
+    // `@db.Date` (medianoche UTC) y esta es un `timestamp`, donde recortar adelanta un dia por la
+    // noche al oeste de UTC.
+    fechaGestion: fechaCalendario(row.createdAt, zona),
     numGuia: row.orden.numGuia,
     numRemision: row.orden.numRemision,
     destinatario: row.orden.destinatario,
@@ -643,9 +646,10 @@ type DetallePendienteRow = Prisma.GestionOrdenGetPayload<typeof WITH_DETALLE_PEN
 function toPendienteDeCierreRow(
   row: DetallePendienteRow,
   desdeAyudaTienda: boolean,
+  zona: string,
 ): GestionPendienteDeCierreRow {
   return {
-    ...toPendienteRow(row, desdeAyudaTienda),
+    ...toPendienteRow(row, desdeAyudaTienda, zona),
     distritoId: row.orden.distritoId,
     zonaOrdenId: row.orden.zonaId,
     montoCobrar: decimalToString(row.orden.montoCobrar),
@@ -1028,7 +1032,10 @@ export class CierreDiaRepository implements ICierreDiaRepository {
    * `crearCierre` que es quien escribe. Las tres primeras usan el indice parcial
    * `gestion_orden_mensajero_pendiente_idx`.
    */
-  async findGestionesPendientes(mensajeroId: string): Promise<GestionPendienteDeCierreRow[]> {
+  async findGestionesPendientes(
+    mensajeroId: string,
+    zona: string,
+  ): Promise<GestionPendienteDeCierreRow[]> {
     const rows = await this.prisma.gestionOrden.findMany({
       where: gestionesDelCierreWhere(mensajeroId),
       orderBy: { createdAt: "desc" },
@@ -1036,7 +1043,7 @@ export class CierreDiaRepository implements ICierreDiaRepository {
       ...WITH_DETALLE_PENDIENTE,
     });
     const deLaTienda = await this.marcarDesdeAyudaTienda(rows);
-    return rows.map((r) => toPendienteDeCierreRow(r, deLaTienda.has(r.id)));
+    return rows.map((r) => toPendienteDeCierreRow(r, deLaTienda.has(r.id), zona));
   }
 
   /**
@@ -1730,6 +1737,8 @@ export class CierreDiaRepository implements ICierreDiaRepository {
   async findCierrePropioConGestiones(
     cierreId: string,
     mensajeroId: string,
+    /** SLT-42 (R22): la zona del pais de la empresa, con la que se fecha cada gestion. */
+    zona: string,
   ): Promise<{
     cierre: CierrePasadoDTO;
     gestiones: CierreGestionPendienteRow[];
@@ -1785,7 +1794,7 @@ export class CierreDiaRepository implements ICierreDiaRepository {
     const deLaTienda = await this.marcarDesdeAyudaTienda(rows);
     return {
       cierre: toCierrePasadoDTO(cierre),
-      gestiones: rows.map((r) => toPendienteRow(r, deLaTienda.has(r.id))),
+      gestiones: rows.map((r) => toPendienteRow(r, deLaTienda.has(r.id), zona)),
       sinGestion: sinGestion.map(toSinGestionRow),
       sinGestionRegistrado: cierre.sinGestionRegistrado, // R27/R28
       rechazosDeTienda: rechazosDeTienda.map(toRechazoDeTienda), // FICHA 425: lista vacia, nunca null

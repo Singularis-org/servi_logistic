@@ -15,6 +15,7 @@ import type {
 } from "@/lib/interfaces/services/IConciliacionSatelitesService";
 import { CierresBodegaAdminRepository } from "@/lib/repositories/CierresBodegaAdminRepository";
 import { SaldosSatelitesRepository } from "@/lib/repositories/SaldosSatelitesRepository";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { ConciliacionSatelitesService } from "@/lib/services/ConciliacionSatelitesService";
 import {
   listarConsolidacionesSateliteCompletoSchema,
@@ -60,6 +61,8 @@ function buildService(): IConciliacionSatelitesService {
     // Las DOS escrituras salen de donde ya viven TODAS las escrituras de `cierre_bodega`. Un
     // segundo escritor de la misma tabla es como aparecen dos guardas que divergen.
     new CierresBodegaAdminRepository(prisma),
+    // SLT-42 (R22, R28): la zona horaria del pais de la empresa.
+    construirReglasPaisEmpresa(prisma),
   );
 }
 

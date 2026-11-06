@@ -10,6 +10,7 @@ import { filasDeSerie } from "@/app/(app)/analitica/_components/operativo/export
 import { PENUMBRA, type SerieOperativa } from "@/lib/types/analitica-operativa";
 import { construirDescarga, nombreArchivoDescarga } from "@/lib/utils/descarga-dataset";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 134 — R7 (ninguna columna inventada), R12 (la unidad viaja) y R20 (el nombre del
 // archivo lo produce el patron comun).
 //
@@ -93,7 +94,7 @@ async function csvDe(fuentes: Parameters<typeof filasDeSerie>[0], titulo = "Tasa
     titulo,
     columnas: COLUMNAS_DESCARGA_ANALITICA_OPERATIVA,
     filas: filasDeSerie(fuentes),
-  });
+  }, ZONA_CR);
   return archivo;
 }
 
@@ -195,11 +196,11 @@ describe("Feature 134 (R20) — el nombre del archivo es el del patron comun", (
         columnas: COLUMNAS_DESCARGA_ANALITICA_OPERATIVA,
         filas: filasDeSerie([{ etiqueta: "Tasa de entrega", serie: serie() }]),
       },
-      fecha,
+      ZONA_CR, fecha,
     );
 
     expect(archivo.nombreArchivo).toBe(
-      nombreArchivoDescarga("Tasa de entrega", "csv", fecha),
+      nombreArchivoDescarga("Tasa de entrega", "csv", fecha, ZONA_CR),
     );
     expect(archivo.nombreArchivo).toBe("tasa-de-entrega-2026-08-04.csv");
 

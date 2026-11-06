@@ -11,6 +11,7 @@ import {
   type ResumenRetenidas,
 } from "@/lib/interfaces/services/IReprogramadasRetenidasService";
 import { ReprogramadasRetenidasService } from "@/lib/services/ReprogramadasRetenidasService";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 // FICHA 462 (T1.4, design §2.3) — EL PUNTO UNICO DEL CONTEO, con dobles. Lo que aqui se mide es
 // MEMORIA PURA: agrupacion por cierre, ambito por destino persistido / zona de la orden, el grupo
@@ -112,7 +113,7 @@ describe("462/R1-R3 — la Forma A es `!puedeLiberarse` sobre las candidatas del
       cierres: [cierre()],
     });
 
-    const r = await service.resumen(HOY);
+    const r = await service.resumen(HOY, ZONA_CR);
 
     expect(r.total).toBe(1);
     expect(r.porForma).toEqual({ reprogramado: 1, enReparto: 0 });
@@ -132,7 +133,7 @@ describe("462/R1-R3 — la Forma A es `!puedeLiberarse` sobre las candidatas del
       ],
     });
 
-    const r = await service.resumen(HOY);
+    const r = await service.resumen(HOY, ZONA_CR);
 
     expect(r.total).toBe(2);
     expect(r.cierres.map((c) => [c.cierreId, c.estado])).toEqual(
@@ -153,7 +154,7 @@ describe("462/R5 — atribucion: al cierre de la gestion vigente, o al grupo «s
       mensajeros: [{ id: "m-9", nombre: "Beto" }],
     });
 
-    const r = await service.resumen(HOY);
+    const r = await service.resumen(HOY, ZONA_CR);
 
     expect(r.total).toBe(4);
     expect(r.porForma).toEqual({ reprogramado: 2, enReparto: 2 });
@@ -174,7 +175,7 @@ describe("462/R5 — atribucion: al cierre de la gestion vigente, o al grupo «s
   it("sin retenidas «sin cierre» NO se consulta ni la zona central ni los mensajeros (cero consultas de mas)", async () => {
     const { service, retenidas, zona } = montar({ a: [filaA()], cierres: [cierre()] });
 
-    await service.resumen(HOY);
+    await service.resumen(HOY, ZONA_CR);
 
     expect(zona.findCentralZonaId).not.toHaveBeenCalled();
     expect(retenidas.findMensajeros).not.toHaveBeenCalled();
@@ -186,7 +187,7 @@ describe("462/R5 — atribucion: al cierre de la gestion vigente, o al grupo «s
       cierres: [cierre({ estado: "aprobado" })],
     });
 
-    const r = await service.resumen(HOY);
+    const r = await service.resumen(HOY, ZONA_CR);
 
     expect(r.total).toBe(0);
     expect(r.cierres).toEqual([]);
@@ -198,7 +199,7 @@ describe("462/R5 — atribucion: al cierre de la gestion vigente, o al grupo «s
   it("una gestion que apunta a un cierre inexistente (dato imposible) FALLA con causa, sin contar a ojo (los dos caminos)", async () => {
     const { service } = montar({ a: [filaA({ gestionCierreId: "c-fantasma" })], cierres: [] });
 
-    await expect(service.resumen(HOY)).rejects.toThrow(/cierre que la base no devuelve/);
+    await expect(service.resumen(HOY, ZONA_CR)).rejects.toThrow(/cierre que la base no devuelve/);
     await expect(service.contar(HOY, { tipo: "central" })).rejects.toThrow(/cierre que la base no devuelve/);
   });
 });
@@ -230,12 +231,12 @@ describe("462/R6/R44 — el ambito: por el destino PERSISTIDO del cierre; sin ci
     expect(await service.contar(HOY, { tipo: "zona", zonaId: ZONA_SAT })).toBe(2); // o-s1 (cierre satelite) + o-s2 (sin cierre, zona sat)
     expect(await service.contar(HOY, { tipo: "zona", zonaId: OTRA_ZONA })).toBe(0);
     // Y el total del sistema es la suma de los ambitos, ni mas ni menos.
-    expect((await service.resumen(HOY)).total).toBe(5);
+    expect((await service.resumen(HOY, ZONA_CR)).total).toBe(5);
   });
 
   it("⭑ R7 (462/H2): `contar(a)` ES `recortarPorAmbito(resumen, a).total` para los tres ambitos", async () => {
     const { service } = montarDosAmbitos();
-    const resumen = await service.resumen(HOY);
+    const resumen = await service.resumen(HOY, ZONA_CR);
 
     for (const ambito of [{ tipo: "central" }, { tipo: "zona", zonaId: ZONA_SAT }, { tipo: "zona", zonaId: OTRA_ZONA }] as const) {
       expect(await service.contar(HOY, ambito), JSON.stringify(ambito)).toBe(recortarPorAmbito(resumen, ambito).total);
@@ -307,7 +308,7 @@ describe("462/R6/R44 — el ambito: por el destino PERSISTIDO del cierre; sin ci
       mensajeros: [{ id: "m-1", nombre: "Ana" }],
     });
 
-    const r = await service.resumen(HOY);
+    const r = await service.resumen(HOY, ZONA_CR);
 
     expect(r.sinCierre).toEqual([
       { mensajeroId: "m-1", mensajeroNombre: "Ana", ambito: { tipo: "zona", zonaId: CENTRAL }, cuantas: 1 },
@@ -323,7 +324,7 @@ describe("462/R7 — `contarPorCierre` y `contar` derivan del MISMO resumen", ()
       cierres: [cierre(), cierre({ cierreId: "c-ven", estado: "vencido" })],
     });
 
-    const marca = await service.contarPorCierre(HOY, ["c-sol", "c-ven", "c-apr", "c-ajeno"]);
+    const marca = await service.contarPorCierre(HOY, ZONA_CR, ["c-sol", "c-ven", "c-apr", "c-ajeno"]);
 
     expect([...marca.entries()].sort()).toEqual([
       ["c-sol", 2],
@@ -340,7 +341,7 @@ describe("462/R7 — `contarPorCierre` y `contar` derivan del MISMO resumen", ()
   it("con una lista vacia de ids no consulta nada y devuelve un mapa vacio", async () => {
     const { service, liberacion, retenidas } = montar({ a: [filaA()], cierres: [cierre()] });
 
-    const marca = await service.contarPorCierre(HOY, []);
+    const marca = await service.contarPorCierre(HOY, ZONA_CR, []);
 
     expect(marca.size).toBe(0);
     expect(liberacion.findOrdenesLiberables).not.toHaveBeenCalled();
@@ -355,8 +356,8 @@ describe("462/R7 — `contarPorCierre` y `contar` derivan del MISMO resumen", ()
       mensajeros: [{ id: "m-1", nombre: "Ana" }],
     });
 
-    const r = await service.resumen(HOY);
-    const marca = await service.contarPorCierre(HOY, ["c-sol"]);
+    const r = await service.resumen(HOY, ZONA_CR);
+    const marca = await service.contarPorCierre(HOY, ZONA_CR, ["c-sol"]);
     const cifra = await service.contar(HOY, { tipo: "central" });
 
     expect(cifra).toBe(3);
@@ -388,7 +389,7 @@ describe("462 — orden de la lista y jornada derivada (271/R61)", () => {
       ],
     });
 
-    const r = await service.resumen(HOY);
+    const r = await service.resumen(HOY, ZONA_CR);
 
     expect(r.cierres.map((c) => [c.cierreId, c.cuantas, c.jornadaCR])).toEqual([
       ["c-dos", 2, "2026-09-24"],
@@ -405,13 +406,13 @@ describe("462 — orden de la lista y jornada derivada (271/R61)", () => {
       cierres: [cierre({ gestionesCreatedAt: [], createdAt: new Date("2026-09-25T06:30:00.000Z") })],
     });
 
-    const r = await service.resumen(HOY);
+    const r = await service.resumen(HOY, ZONA_CR);
 
     expect(r.cierres[0]?.jornadaCR).toBe("2026-09-24");
   });
 
   it("`diaCR` del resumen es la fecha calendario CR del `hoyCR` recibido", async () => {
     const { service } = montar({});
-    expect((await service.resumen(HOY)).diaCR).toBe("2026-09-25");
+    expect((await service.resumen(HOY, ZONA_CR)).diaCR).toBe("2026-09-25");
   });
 });

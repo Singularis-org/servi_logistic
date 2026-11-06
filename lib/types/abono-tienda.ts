@@ -25,40 +25,42 @@ export const ABONO_TIENDA_MOTIVO_MAX = 200;
  * criterio y el mismo texto que el pago de un gasto de la 459. El comprobante es el compartido de la
  * wallet (R26), opcional (R30).
  */
-export const registrarAbonoTiendaSchema = z
-  .object({
-    claveIdempotencia: claveIdempotenciaSchema,
-    tiendaId: z.string().uuid("Elegí la tienda que paga."),
-    monto: montoLiquidacionSchema,
-    metodo: z.enum(METODO_PAGO_SEED),
-    referencia: z
-      .string()
-      .trim()
-      .max(
-        LIQUIDACION_REFERENCIA_MAX,
-        `La referencia no puede superar ${LIQUIDACION_REFERENCIA_MAX} caracteres.`,
-      )
-      .optional(),
-    motivo: z
-      .string()
-      .trim()
-      .min(1, "El motivo es obligatorio.")
-      .max(ABONO_TIENDA_MOTIVO_MAX, `El motivo no puede superar ${ABONO_TIENDA_MOTIVO_MAX} caracteres.`),
-    fechaPago: fechaPagoSchema,
-    comprobante: comprobanteSchema.optional(),
-  })
-  .strict()
-  .superRefine((valor, ctx) => {
-    if (valor.metodo !== "efectivo" && !valor.referencia) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["referencia"],
-        message: "La referencia es obligatoria en SINPE y transferencia.",
-      });
-    }
-  });
+export function registrarAbonoTiendaSchema(zona: string) {
+  return z
+    .object({
+      claveIdempotencia: claveIdempotenciaSchema,
+      tiendaId: z.string().uuid("Elegí la tienda que paga."),
+      monto: montoLiquidacionSchema,
+      metodo: z.enum(METODO_PAGO_SEED),
+      referencia: z
+        .string()
+        .trim()
+        .max(
+          LIQUIDACION_REFERENCIA_MAX,
+          `La referencia no puede superar ${LIQUIDACION_REFERENCIA_MAX} caracteres.`,
+        )
+        .optional(),
+      motivo: z
+        .string()
+        .trim()
+        .min(1, "El motivo es obligatorio.")
+        .max(ABONO_TIENDA_MOTIVO_MAX, `El motivo no puede superar ${ABONO_TIENDA_MOTIVO_MAX} caracteres.`),
+      fechaPago: fechaPagoSchema(zona),
+      comprobante: comprobanteSchema.optional(),
+    })
+    .strict()
+    .superRefine((valor, ctx) => {
+      if (valor.metodo !== "efectivo" && !valor.referencia) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["referencia"],
+          message: "La referencia es obligatoria en SINPE y transferencia.",
+        });
+      }
+    });
+}
 
-export type RegistrarAbonoTiendaInput = Omit<z.infer<typeof registrarAbonoTiendaSchema>, "comprobante">;
+export type RegistrarAbonoTiendaInput = Omit<z.infer<ReturnType<typeof registrarAbonoTiendaSchema>>, "comprobante">;
 
 /** R34/R35 — la anulacion: el pago y un motivo. SIN monto (R34): el del documento manda. */
 export const anularAbonoTiendaSchema = z

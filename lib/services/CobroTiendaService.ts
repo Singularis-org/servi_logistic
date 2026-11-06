@@ -32,7 +32,8 @@ import {
 } from "@/lib/utils/descripcion-cobro-tienda";
 import { instanteDelMovimientoManual } from "@/lib/utils/fecha-movimiento-manual";
 import { derivarSaldoTienda } from "@/lib/utils/saldo-tienda";
-
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 /** El unico rol que puede ser destinataria de un cobro: una cuenta de tienda de verdad. */
 const ROL_TIENDA = "adminTienda";
 
@@ -117,6 +118,8 @@ export class CobroTiendaService implements ICobroTiendaService {
      * registrar CON comprobante lanza; sin comprobante, el cobro es byte a byte el de antes.
      */
     private readonly comprobantes?: IWalletComprobanteService,
+    /** SLT-42 (R22, R28): la zona del pais de la empresa, para el instante de un cobro con fecha elegida. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
 
   /**
@@ -144,6 +147,10 @@ export class CobroTiendaService implements ICobroTiendaService {
     comprobante: ComprobanteRecibido | null = null,
   ): Promise<RegistrarCobroTiendaServiceResult | FalloDeComprobante> {
     if (!esAccesoTotal(actor.rol)) return { status: "forbidden" }; // R8: antes de tocar la base
+    // SLT-42 (R22, R28): con fecha elegida, su dia empieza en la zona del pais. Se lee ANTES del
+    // comprobante y de escribir; sin fecha la operacion no la necesita.
+    const zona =
+      input.fecha === undefined ? null : await zonaDeLaEmpresa(this.reglasPais, "CobroTiendaService.registrarCobro");
     // FICHA 458-B (R74–R76): el comprobante se sube ANTES y se escribe en la transaccion del cobro.
     // La escritura, como closure y no como metodo: la superficie del servicio no crece (lista cerrada).
     const escribirCobro = async (guardado: ComprobanteGuardado | null): Promise<RegistrarCobroTiendaServiceResult> => {
@@ -162,7 +169,7 @@ export class CobroTiendaService implements ICobroTiendaService {
       const id = randomUUID();
       // R3: UN instante para el debito y la linea de caja.
       const ahora = this.ahora();
-      const fechaMovimiento = instanteDelMovimientoManual(input.fecha, ahora) ?? ahora;
+      const fechaMovimiento = (zona === null ? undefined : instanteDelMovimientoManual(input.fecha, zona, ahora)) ?? ahora;
 
       try {
         await this.runTransaction(async (tx) => {

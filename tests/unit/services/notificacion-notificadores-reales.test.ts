@@ -22,6 +22,7 @@ import type { IPostulacionRepository } from "@/lib/interfaces/repositories/IPost
 import type { IFileStorage } from "@/lib/interfaces/external/IFileStorage";
 import type { PostularMensajeroCommand } from "@/lib/interfaces/services/IPostulacionMensajeroService";
 import { DOCUMENTO_TIPOS } from "@/lib/types/postulacion-mensajero";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 146 — camino REAL de los notificadores best-effort (R22, R23, R24, R25).
 //
@@ -323,9 +324,10 @@ describe("el notificador real, cableado en un service, emite de punta a punta", 
       primerApellido: "Perez",
       segundoApellido: undefined,
       email: "ana@example.com",
-      telefono: "0991234567",
-      tipoIdentificacionId: "tipo-1",
-      cedula: "1710034065",
+      // SLT-42: datos válidos del país de `reglasPaisFijas()` (Costa Rica).
+      telefono: "88887777",
+      tipoIdentificacionId: "tipo-cr-cedula",
+      cedula: "112223333",
       vehiculoId: "veh-1",
       placa: "ABC123",
       password: "Abcdef1!",
@@ -339,6 +341,7 @@ describe("el notificador real, cableado en un service, emite de punta a punta", 
       repoPostulacion(),
       storageFake(),
       notificarPostulacionPendienteCon(notificaciones),
+      reglasPaisFijas(),
     );
 
     expect(await service.postular(comando())).toEqual({ status: "ok" });
@@ -381,8 +384,14 @@ describe("el DEFAULT de un service con notificador es inocuo POR CONSTRUCCION", 
   });
 
   it("un service construido sin cablear el notificador no puede emitir nada", async () => {
-    // Se construye tal y como lo hacen los dobles de las suites ajenas: sin tercer argumento.
-    const service = new PostulacionMensajeroService(repoPostulacionSinCablear(), storageSinCablear());
+    // Se construye tal y como lo hacen los dobles de las suites ajenas: sin tercer argumento
+    // (`undefined` = el default). SLT-42: las reglas del país sí, porque sin ellas `postular` lanza.
+    const service = new PostulacionMensajeroService(
+      repoPostulacionSinCablear(),
+      storageSinCablear(),
+      undefined,
+      reglasPaisFijas(),
+    );
     // No hay forma de observar una emision porque el default NO tiene repositorio detras.
     // Lo que se fija aqui es que el camino termina en `ok` sin tocar nada externo.
     expect(await service.postular(comandoMinimo())).toEqual({ status: "ok" });
@@ -413,9 +422,10 @@ describe("el DEFAULT de un service con notificador es inocuo POR CONSTRUCCION", 
       primerApellido: "Perez",
       segundoApellido: undefined,
       email: "ana@example.com",
-      telefono: "0991234567",
-      tipoIdentificacionId: "tipo-1",
-      cedula: "1710034065",
+      // SLT-42: datos válidos del país de `reglasPaisFijas()` (Costa Rica).
+      telefono: "88887777",
+      tipoIdentificacionId: "tipo-cr-cedula",
+      cedula: "112223333",
       vehiculoId: "veh-1",
       placa: "ABC123",
       password: "Abcdef1!",
@@ -441,6 +451,9 @@ describe("el DEFAULT de un service con notificador es inocuo POR CONSTRUCCION", 
       { findUsuarioZonaId: vi.fn(), findBloqueoDetalle: vi.fn() } as never,
       { createSignedUrls: vi.fn() } as never,
       { resolvePagoTarifa: vi.fn() } as never,
+      undefined,
+      undefined,
+      reglasPaisFijas(),
     );
 
     const r = await service.solicitarCierre({

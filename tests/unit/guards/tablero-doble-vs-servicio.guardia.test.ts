@@ -25,6 +25,7 @@ import {
 
 import { armarServicio, consultaDe, type DatosFinancieros } from "../services/_dobles-analitica-financiera";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // GUARDIA DE ARNES (2026-08-07, sin ficha) — EL DOBLE DEL TABLERO CONTRA LA SALIDA REAL.
 //
 // ┌─ QUE INCIDENTE PAGA ESTA GUARDIA ──────────────────────────────────────────────────────┐
@@ -73,7 +74,7 @@ const FILTRO_TABLERO = {
 } as const;
 
 /** Los cubos que el troceo produce para esa ventana. Treinta dias, y se afirma abajo. */
-const CUBOS = trocear(rangoResuelto(RANGO_TABLERO)).map((cubo) => cubo.clave);
+const CUBOS = trocear(rangoResuelto(RANGO_TABLERO), ZONA_CR).map((cubo) => cubo.clave);
 
 /**
  * Material de repositorio NO VACIO.

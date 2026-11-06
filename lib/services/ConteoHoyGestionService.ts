@@ -17,6 +17,9 @@ import type { IAnaliticaCache } from "@/lib/interfaces/external/IAnaliticaCache"
 import type { IConteoHoyGestionRepository } from "@/lib/interfaces/repositories/IConteoHoyGestionRepository";
 import type { ConteoHoyGestionDTO } from "@/lib/types/conteo-hoy-gestion";
 
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
+
 export interface ConteoHoyGestionServiceOpts {
   /** Reloj inyectable: ningun `Date.now()` escondido, ningun test falseando el reloj global.
    *  Aqui pesa mas que en sus tres hermanos, porque de este reloj sale QUE DIA se cuenta. */
@@ -30,6 +33,8 @@ export class ConteoHoyGestionService {
     private readonly repo: IConteoHoyGestionRepository,
     private readonly cache: IAnaliticaCache,
     opts: ConteoHoyGestionServiceOpts = {},
+    /** SLT-42 (R22, R28): la zona del pais de la empresa, de la que sale QUE DIA se cuenta. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {
     this.now = opts.now ?? (() => new Date());
   }
@@ -49,11 +54,13 @@ export class ConteoHoyGestionService {
    * pantalla juraria que la cifra es de este segundo llevando hasta 15 minutos de retraso.
    *
    * El dia sale de `resolverRango({ preset: "dia" }, now)` y no de aritmetica propia: es la
-   * UNICA definicion del dia operativo del repo (00:00-24:00 de Costa Rica), y calcularlo aqui
+   * UNICA definicion del dia operativo del repo (00:00-24:00 de la zona del pais de la empresa,
+   * SLT-42), y calcularlo aqui
    * a mano reintroduciria el off-by-one de seis horas del que avisa `lib/analytics/ranges.ts`.
    */
   async consultar(consulta: ConsultaConteoEntregas): Promise<ConteoHoyGestionDTO> {
-    const dia = resolverRango({ preset: "dia" }, this.now());
+    const zona = await zonaDeLaEmpresa(this.reglasPais, "ConteoHoyGestionService"); // SLT-42 (R22, R28)
+    const dia = resolverRango({ preset: "dia" }, zona, this.now());
     const clave = claveDeConteoHoyGestion(consulta, dia);
 
     return this.cache.envolver<ConteoHoyGestionDTO>(clave, [TAG_CONTEO_HOY_GESTION], async () => {

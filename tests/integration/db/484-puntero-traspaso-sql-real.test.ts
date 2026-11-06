@@ -6,6 +6,7 @@ import { TraspasoMensajeroConflictoError } from "@/lib/interfaces/repositories/I
 import { HAY_BASE_DE_DATOS, clienteConSavepoint } from "./_postgres-real";
 import { conEscenario, prepararMundo, type Escenario, type Mundo } from "./454/_escenario";
 import { filaUsuario, plantarPuntero, punteroDe } from "./_puntero-484";
+import { inicioDelDiaCR } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FICHA 484 (T3; R6, R7) — EL TRASPASO SUELTA EL PUNTERO DEL MENSAJERO DE ORIGEN, contra Postgres
@@ -34,6 +35,7 @@ function lote(e: Escenario, ordenIds: string[]) {
     ordenes: ordenIds.map((ordenId) => ({ ordenId, estatusIdEsperado: enReparto })),
     actor: { usuarioId: e.maestroId, rol: "maestro" as const },
     motivo: "Traspaso de prueba 484",
+    inicioDelDia: inicioDelDiaCR(),
   };
 }
 

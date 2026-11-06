@@ -19,6 +19,7 @@ import type { AQuienFiltro } from "@/lib/types/libro-caja-a-quien";
 import type { ComposicionGananciaDTO, WalletMovimientoCategoria } from "@/lib/types/wallet";
 import type { ConceptoConMovimientosDTO } from "@/lib/types/wallet-filtros";
 import { comoApp, crearOrganizacion, fijarEmpresa, sembrarActivacion } from "@/tests/fabricas/organizaciones";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import {
   HAY_BASE_DE_DATOS,
@@ -189,6 +190,9 @@ function servicioCaja(cli: PrismaClient) {
     cli as never,
     { haySaldoInicialVigente: async () => false } as never,
     {} as never,
+    undefined,
+    undefined,
+    reglasPaisFijas(),
   );
 }
 
@@ -198,7 +202,7 @@ async function leerCaja(tx: TxDeTest, org: string, filtros: FiltrosCaja = {}): P
     const r = await servicioCaja(cli).verResumenCaja({ ...PAGINA, ...filtros } as never, MAESTRO);
     if (r.status !== "ok") throw new Error("el resumen no devolvio ok");
     const { categoria: _soloDelLibro, ...filtrosDeConcepto } = filtros;
-    const c = await new FiltrosWalletService(new FiltrosWalletRepository(cli)).conceptosConMovimientos(
+    const c = await new FiltrosWalletService(new FiltrosWalletRepository(cli), undefined, reglasPaisFijas()).conceptosConMovimientos(
       { libro: "caja", ...filtrosDeConcepto },
       MAESTRO,
     );
@@ -458,7 +462,7 @@ interface LecturaBodega {
 function servicioZona(cli: PrismaClient, zonaId: string) {
   return new CierreBodegaService(new CierreBodegaRepository(cli), {
     findUsuarioZonaId: async () => zonaId,
-  } as never);
+  } as never, reglasPaisFijas());
 }
 
 async function leerBodega(tx: TxDeTest, e: Empresa): Promise<LecturaBodega> {
@@ -466,8 +470,8 @@ async function leerBodega(tx: TxDeTest, e: Empresa): Promise<LecturaBodega> {
   return comoEmpresa(tx, e.org, async () => {
     const cli = clienteConSavepoint(tx);
     const zona = servicioZona(cli, e.fks.zonaId);
-    const admin = new CierresBodegaAdminService(new CierresBodegaAdminRepository(cli), {} as never);
-    const saldos = new ConciliacionSatelitesService(new SaldosSatelitesRepository(cli), {} as never);
+    const admin = new CierresBodegaAdminService(new CierresBodegaAdminRepository(cli), {} as never, reglasPaisFijas());
+    const saldos = new ConciliacionSatelitesService(new SaldosSatelitesRepository(cli), {} as never, reglasPaisFijas());
     const zonaId = e.fks.zonaId;
 
     const pagina = await zona.listarCierresBodegaSolicitadosPaginado(PAGINA, satelite);
@@ -570,7 +574,7 @@ describeSiHayBase("D40 — incluyeModeloNuevo en las cabeceras de la consolidaci
       const vieja = await crearConsolidacion(tx, e, [await crearCierre(tx, e, ["viejo"])]);
       const nueva = await crearConsolidacion(tx, e, [await crearCierre(tx, e, ["nuevo"])]);
       return comoEmpresa(tx, e.org, async () => {
-        const admin = new CierresBodegaAdminService(new CierresBodegaAdminRepository(clienteConSavepoint(tx)), {} as never);
+        const admin = new CierresBodegaAdminService(new CierresBodegaAdminRepository(clienteConSavepoint(tx)), {} as never, reglasPaisFijas());
         return {
           vieja: await admin.verCierreBodegaDetalle(vieja, MAESTRO),
           nueva: await admin.verCierreBodegaDetalle(nueva, MAESTRO),
@@ -655,14 +659,14 @@ describeSiHayBase("D39 y D40 — sin una consulta por fila", () => {
           vacia,
           zona: await sentencias(() => servicioZona(cli, e.fks.zonaId).listarCierresBodegaSolicitadosCompleto(satelite)),
           saldos: await sentencias(() =>
-            new ConciliacionSatelitesService(new SaldosSatelitesRepository(cli), {} as never).listarConsolidacionesSatelite(
+            new ConciliacionSatelitesService(new SaldosSatelitesRepository(cli), {} as never, reglasPaisFijas()).listarConsolidacionesSatelite(
               { zonaId: e.fks.zonaId, ...PAGINA },
               MAESTRO,
             ),
           ),
           categorias: await sentencias(() => new WalletMovimientoRepository(cli).categoriasConModeloNuevo({})),
           conceptos: await sentencias(() =>
-            new FiltrosWalletService(new FiltrosWalletRepository(cli)).conceptosConMovimientos({ libro: "caja" }, MAESTRO),
+            new FiltrosWalletService(new FiltrosWalletRepository(cli), undefined, reglasPaisFijas()).conceptosConMovimientos({ libro: "caja" }, MAESTRO),
           ),
         };
       });

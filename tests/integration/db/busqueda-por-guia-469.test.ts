@@ -21,6 +21,7 @@ import { DIA_C1, DIA_C3, sembrar468, type Escenario468 } from "./_fixtures/libro
 import { montarEstadoCuenta } from "./_fixtures/wallet-458";
 import { busquedaPorGuiaDe } from "./_fixtures/busqueda-469";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FICHA 469 / T3, T4, T6, T7, T9, T10, T14 — LA BUSQUEDA POR GUIA, CONTRA POSTGRES DE VERDAD.
 // ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -183,7 +184,7 @@ async function sembrar469(tx: TxDeTest, cat: Catalogo459): Promise<Escenario469>
 
 /** El libro de la caja en la ventana, todas las paginas (pageSize 100 basta: el escenario trae ~25). */
 async function libroCaja(e: Escenario469, extra: Record<string, unknown> = {}) {
-  const r = await e.s.wallet.listarMovimientos(listarLibroCajaSchema.parse({ ...VENTANA, pageSize: 100, ...extra }), MAESTRO);
+  const r = await e.s.wallet.listarMovimientos(listarLibroCajaSchema(ZONA_CR).parse({ ...VENTANA, pageSize: 100, ...extra }), MAESTRO);
   if (r.status !== "ok") throw new Error(r.status);
   expect(r.data.movimientos.length, "el libro no cabe en una pagina: subir pageSize").toBe(r.data.total);
   return r.data;
@@ -353,7 +354,7 @@ describeSiHayBase("469 — buscar una guia en el libro de la wallet (Postgres re
       const paginas = async (sortDir: "asc" | "desc") => {
         const filas: WalletMovimientoDTO[] = [];
         for (let page = 1; ; page += 1) {
-          const p = await e.s.wallet.listarMovimientos(listarLibroCajaSchema.parse({ ...VENTANA, q: g1, sortDir, page, pageSize: 2 }), MAESTRO);
+          const p = await e.s.wallet.listarMovimientos(listarLibroCajaSchema(ZONA_CR).parse({ ...VENTANA, q: g1, sortDir, page, pageSize: 2 }), MAESTRO);
           if (p.status !== "ok") throw new Error(p.status);
           expect(p.data.total).toBe(r.total);
           filas.push(...p.data.movimientos);
@@ -507,7 +508,7 @@ describeSiHayBase("469 — buscar una guia en el libro de la wallet (Postgres re
       const g1 = e.guia("o1");
       // Caja.
       const pantalla = await libroCaja(e, { q: g1 });
-      const caja = await e.caja.kardexConDetalle(listarLibroCajaCompletoSchema.parse({ ...VENTANA, q: g1 }), MAESTRO);
+      const caja = await e.caja.kardexConDetalle(listarLibroCajaCompletoSchema(ZONA_CR).parse({ ...VENTANA, q: g1 }), MAESTRO);
       if (caja.status !== "ok") throw new Error(caja.status);
       expect(caja.items.length).toBeGreaterThan(0);
       expect(caja.items.map((m) => m.id).sort()).toEqual(pantalla.movimientos.map((m) => m.id).sort()); // R30

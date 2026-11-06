@@ -13,6 +13,7 @@ import {
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { inicioDelDiaCR } from "@/tests/fabricas/reglas-pais";
 
 /**
  * ⭑⭑ FICHA 427 (T9) — EL TEST QUE SOSTIENE LA FICHA ENTERA: el caso real de las 31 ordenes, medido
@@ -397,6 +398,7 @@ describeSiHayBase("427/T9 — el traspaso entre mensajeros, contra Postgres real
       })),
       actor: { usuarioId: ctx.actorId, rol: "maestro" as const },
       motivo: MOTIVO,
+      inicioDelDia: inicioDelDiaCR(AHORA),
     };
   }
 
@@ -817,6 +819,7 @@ describeSiHayBase("427/T9 — el traspaso entre mensajeros, contra Postgres real
       });
       // Segundo acto: del destino al tercero.
       await ctx.repo.traspasarMensajeroLote({
+        inicioDelDia: inicioDelDiaCR(AHORA),
         loteId: randomUUID(),
         mensajeroOrigenId: ctx.destinoId,
         mensajeroDestinoId: ctx.terceroId,

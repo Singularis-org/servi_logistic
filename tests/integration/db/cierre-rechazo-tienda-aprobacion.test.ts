@@ -36,6 +36,7 @@ import {
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FICHA 425 (B7, R2/R8/R10/R11/R12/R13/R14/R20) — APROBAR UN CIERRE QUE INCORPORA RECHAZOS DE TIENDA,
@@ -245,7 +246,7 @@ describeSiHayBase("425/B7 — aprobar un cierre con rechazos de tienda, contra P
     return {
       gestionRepo: new GestionOrdenRepository(cliente),
       adminRepo,
-      mensajero: new CierreDiaService(cierreDiaRepo, zonaRepo, ordenRepo, URLS_NO_USADAS, tarifaZonaRepo),
+      mensajero: new CierreDiaService(cierreDiaRepo, zonaRepo, ordenRepo, URLS_NO_USADAS, tarifaZonaRepo, undefined, undefined, reglasPaisFijas()),
       admin: new CierresAdminService(
         adminRepo,
         zonaRepo,
@@ -254,6 +255,11 @@ describeSiHayBase("425/B7 — aprobar un cierre con rechazos de tienda, contra P
         new LiquidacionPagoRepository(cliente),
         new PagoMensajeroMovimientoRepository(cliente),
         sinRetenidas(), // FICHA 462: 7.o argumento requerido; este caso no mide la marca
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        reglasPaisFijas(),
       ),
       corteDe: (mensajeroId: string) =>
         new CorteDiarioService(
@@ -269,6 +275,8 @@ describeSiHayBase("425/B7 — aprobar un cierre con rechazos de tienda, contra P
           ordenRepo,
           tarifaZonaRepo,
           { warn: () => {} },
+          undefined,
+          reglasPaisFijas(),
         ),
     };
   }

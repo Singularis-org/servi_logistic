@@ -19,6 +19,18 @@ import { fechaCalendarioCR, inicioDelDiaCREnUtc, inicioDelDiaSiguienteCREnUtc } 
 
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
 import { cargarCatalogo459, enTransaccionRevertida459, montarServicios459, sembrarEscenario459 } from "./_fixtures/caja-459";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+
+// SLT-42 (T5.4): la zona del pais de la empresa es la de CR, como antes. Las reglas reales leen el pais
+// de la empresa en curso con el cliente global, que no ve la empresa de una transaccion revertida ni
+// tiene empresa fuera de `conEmpresa`; la zona por pais la miden `hora-por-pais-wallet` y `demo-qa`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
 
 // SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
 vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
@@ -210,7 +222,7 @@ describeSiHayBase("458-E/TE.2 — filtro «A quién» del libro de la caja (Post
 
         // ── El oraculo: la columna «A quién» de cada fila nueva ───────────────────────────────
         const nuevas = (await tx.walletMovimiento.findMany({ select: { id: true } })).filter((x) => !previos.has(x.id)).map((x) => x.id);
-        const autoriaSrv = new LibroCajaAutoriaService(new LibroCajaAutoriaRepository(s.cliente));
+        const autoriaSrv = new LibroCajaAutoriaService(new LibroCajaAutoriaRepository(s.cliente), reglasPaisFijas());
         const cuentaDeAutoria = new Map<string, AutoriaDeFilaDTO>();
         for (let i = 0; i < nuevas.length; i += 100) {
           const r = await autoriaSrv.resolver({ movimientoIds: nuevas.slice(i, i + 100) }, actor);
@@ -231,11 +243,11 @@ describeSiHayBase("458-E/TE.2 — filtro «A quién» del libro de la caja (Post
         };
 
         // ── Los bordes, con el cliente de la transaccion ──────────────────────────────────────
-        const origenes = new OrigenLegibleService(new OrigenLegibleRepository(s.cliente));
-        const deps = { getActor: async () => actor, service: s.wallet, origenes };
-        const depsEgresos = { getActor: async () => actor, service: s.egresos };
-        const filtrosSrv = new FiltrosWalletService(new FiltrosWalletRepository(s.cliente));
-        const depsFiltros = { getActor: async () => actor, service: filtrosSrv };
+        const origenes = new OrigenLegibleService(new OrigenLegibleRepository(s.cliente), reglasPaisFijas());
+        const deps = { reglasPais: reglasPaisFijas(), getActor: async () => actor, service: s.wallet, origenes };
+        const depsEgresos = { reglasPais: reglasPaisFijas(), getActor: async () => actor, service: s.egresos };
+        const filtrosSrv = new FiltrosWalletService(new FiltrosWalletRepository(s.cliente), undefined, reglasPaisFijas());
+        const depsFiltros = { reglasPais: reglasPaisFijas(), getActor: async () => actor, service: filtrosSrv };
 
         async function leer(aQuien: AQuienFiltro): Promise<Lectura> {
           const libro = await listarMovimientosAction({ aQuien, page: 1, pageSize: 100 }, deps);
@@ -378,7 +390,7 @@ describeSiHayBase("458-E/TE.2 — filtro «A quién» del libro de la caja (Post
         const busqueda = await quienesDelLibroCajaAction({ busqueda: "CARTONERÁ" }, depsFiltros);
         const conTope = await quienesDelLibroCajaAction(
           {},
-          { getActor: async () => actor, service: new FiltrosWalletService(new FiltrosWalletRepository(s.cliente), { quienes: 1 }) },
+          { getActor: async () => actor, service: new FiltrosWalletService(new FiltrosWalletRepository(s.cliente), { quienes: 1 }, reglasPaisFijas()) },
         );
         if (todo.status !== "ok" || deHoy.status !== "ok" || busqueda.status !== "ok" || conTope.status !== "ok") {
           throw new Error(`selector: ${JSON.stringify([todo.status, deHoy.status, busqueda.status, conTope.status])}`);
@@ -387,8 +399,8 @@ describeSiHayBase("458-E/TE.2 — filtro «A quién» del libro de la caja (Post
         // ── Bordes: sesion, rol y forma ───────────────────────────────────────────────────────
         const tienda = { usuarioId: esc.tiendaA, rol: "adminTienda" as const };
         const bordes = {
-          selectorSinSesion: await quienesDelLibroCajaAction({}, { getActor: async () => null, service: filtrosSrv }),
-          selectorComoTienda: await quienesDelLibroCajaAction({}, { getActor: async () => tienda, service: filtrosSrv }),
+          selectorSinSesion: await quienesDelLibroCajaAction({}, { reglasPais: reglasPaisFijas(), getActor: async () => null, service: filtrosSrv }),
+          selectorComoTienda: await quienesDelLibroCajaAction({}, { reglasPais: reglasPaisFijas(), getActor: async () => tienda, service: filtrosSrv }),
           libroComoTienda: await listarMovimientosAction({ aQuien: tiendaA }, { ...deps, getActor: async () => tienda }),
           resumenComoTienda: await verResumenCajaAction({ aQuien: tiendaA }, { ...deps, getActor: async () => tienda }),
           aQuienConClaveDeMas: await listarMovimientosAction({ aQuien: { ...tiendaA, extra: 1 } }, deps),

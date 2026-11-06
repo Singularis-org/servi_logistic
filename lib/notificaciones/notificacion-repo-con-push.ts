@@ -46,7 +46,9 @@ import type { IJobRepository } from "@/lib/interfaces/repositories/IJobRepositor
 import { emitirBestEffort } from "@/lib/notificaciones/best-effort";
 import { esElegiblePush, eventoPuedeEmpujar } from "@/lib/notificaciones/push-elegibles";
 import type { NotificacionEvento } from "@/lib/types/notificacion";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendario } from "@/lib/utils/calendario-zona";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 
 /** Nombre de la operacion en el log del best-effort. Sin PII, sin endpoint, sin claves (R23). */
 const OPERACION = "push_web";
@@ -72,6 +74,8 @@ export interface ConPushWebDeps {
   hayCanal: () => boolean;
   now?: () => Date;
   logger?: ErrorLogger;
+  /** SLT-42 (R22, R28): la zona del pais de la empresa, de la que sale el dia del cupo. */
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
 }
 
 /**
@@ -128,7 +132,8 @@ export class NotificacionRepositoryConPush implements INotificacionRepository {
     const elegibles = destinatarios.filter((d) => esElegiblePush(evento, d.rol));
     if (elegibles.length === 0) return;
 
-    const diaCr = fechaCalendarioCR(this.now());
+    const zona = await zonaDeLaEmpresa(this.deps.reglasPais, "NotificacionRepositoryConPush.encolar");
+    const diaCr = fechaCalendario(this.now(), zona); // SLT-42 (R22)
     let alguienGanoElCupo = false;
     for (const destinatario of elegibles) {
       // R6/R7: INSERTANDO. El que gana es el que consigue insertar; el resto es un no-op.

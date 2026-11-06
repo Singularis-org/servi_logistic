@@ -26,6 +26,7 @@ import {
 } from "@/lib/types/historial-accion-etiquetas";
 
 import { contieneNombreHeredado } from "../../fixtures/nombre-heredado";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // FICHA 362 / T0 — LOS CIMIENTOS: el catalogo, el punto unico de escritura, la etiqueta congelada
 // y el actor congelado.
@@ -785,9 +786,9 @@ describe("362/T0.5 (R4/R5) — `etiquetaDeEntidad`, un caso por entidad", () => 
     // el 2, no el 3. Es la trampa de las seis horas que cerro la feature 166.
     const instante = new Date("2026-09-03T04:00:00.000Z");
     expect(
-      etiquetaDeEntidad("cierre_dia", { mensajeroNombre: "Ana Torres", fecha: instante }),
+      etiquetaDeEntidad("cierre_dia", { zonaHoraria: ZONA_DE_CR, mensajeroNombre: "Ana Torres", fecha: instante }),
     ).toBe("Ana Torres · 2026-09-02");
-    expect(etiquetaDeEntidad("cierre_bodega", { zonaNombre: "Central", fecha: instante })).toBe(
+    expect(etiquetaDeEntidad("cierre_bodega", { zonaHoraria: ZONA_DE_CR, zonaNombre: "Central", fecha: instante })).toBe(
       "Central · 2026-09-02",
     );
   });

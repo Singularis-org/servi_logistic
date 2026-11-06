@@ -8,6 +8,7 @@ import {
   ORIGENES_GESTION_DE_LA_TIENDA,
 } from "@/lib/utils/gestion-de-la-tienda-flag";
 import { ORIGEN_TIPO_RECHAZO_SLA } from "@/lib/utils/rechazo-sla-flag";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 // 💰 Feature 237 (D6 firmada por el HUMANO el 2026-08-20, R41) — QUE EL DATO LLEGUE HASTA LA FILA.
 //
@@ -153,6 +154,7 @@ describe("R41 — el camino de ADMIN deriva las DOS banderas sin una consulta de
     const gestion = (origenTipos: string[]) =>
       ({
         id: "g1",
+        createdAt: new Date("2026-07-15T18:00:00.000Z"),
         ordenId: "o1",
         resultado: "devolucion_a_origen_por_rechazo",
         montoRecibido: null,
@@ -191,8 +193,9 @@ describe("R41 — el camino de ADMIN deriva las DOS banderas sin una consulta de
     const deLaTienda = toPendienteRowDesdeSnapshot(
       gestion(["gestion_tienda_ayuda"]),
       snapshot,
+      ZONA_CR,
     );
-    const delCron = toPendienteRowDesdeSnapshot(gestion([ORIGEN_TIPO_RECHAZO_SLA]), snapshot);
+    const delCron = toPendienteRowDesdeSnapshot(gestion([ORIGEN_TIPO_RECHAZO_SLA]), snapshot, ZONA_CR);
 
     expect([deLaTienda.desdeAyudaTienda, deLaTienda.esRechazoSla]).toEqual([true, false]);
     expect([delCron.desdeAyudaTienda, delCron.esRechazoSla]).toEqual([false, true]);

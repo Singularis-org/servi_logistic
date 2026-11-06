@@ -3,6 +3,7 @@ import type { PrismaClient } from "@prisma/client";
 import { LiberacionReprogramadaRepository } from "@/lib/repositories/LiberacionReprogramadaRepository";
 import { idEstado, sembrarCatalogoEstados } from "@/tests/fixtures/catalogo-estados";
 import { ORIGEN_TIPOS_VISITA_REAL } from "@/lib/types/orden-historial";
+import { ventanaDelDiaCR } from "@/tests/fabricas/reglas-pais";
 
 // Feature 140: la guardia del choke point es de FALLO CERRADO. Los ids de estatus son los del
 // catalogo (`idEstado`) y el catalogo se siembra antes de cada test, asi el append valida de
@@ -366,7 +367,7 @@ describe("findLiberadasHoy (R15/R16)", () => {
 
     const rows = await repoWith(prisma).findLiberadasHoy(
       { zonaId: "z-central", estatusValue: "en_bodega_central" },
-      HOY,
+      ventanaDelDiaCR(HOY),
     );
 
     const arg = prisma.orden.findMany.mock.calls[0][0];
@@ -395,7 +396,7 @@ describe("findLiberadasHoy (R15/R16)", () => {
 
     await repoWith(prisma).findLiberadasHoy(
       { zonaId: "z-limon", estatusValue: "en_bodega_satelite" },
-      HOY,
+      ventanaDelDiaCR(HOY),
     );
 
     const arg = prisma.orden.findMany.mock.calls[0][0];

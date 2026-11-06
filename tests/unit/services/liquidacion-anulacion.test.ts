@@ -25,6 +25,7 @@ import type {
   LiquidacionTxRunner,
 } from "@/lib/interfaces/services/ILiquidacionService";
 import type { AnularPagoInput } from "@/lib/types/liquidacion";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 172 / T F.2 — `LiquidacionService.anularPago`. Cubre R69, R70, R71, R76, R77, R81,
 // R82, R84 (+ R85 en el conteo de candados, R39/R41 en la atomicidad y R40 en la caja).
@@ -330,6 +331,9 @@ function buildDobles(opciones: {
     caja,
     repartoRepo, // feature 205 (T3.2): va ANTES del reloj y sin default
     () => opciones.ahora ?? AHORA,
+    undefined,
+    undefined,
+    reglasPaisFijas(),
   );
   return { service, pagoRepo, tiendaRepo, mensajeroRepo, caja, llamadasTx, log, tx, txsVistos };
 }

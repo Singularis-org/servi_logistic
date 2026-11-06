@@ -10,6 +10,7 @@ import type { IWalletTiendaMovimientoRepository } from "@/lib/interfaces/reposit
 import type { IWalletTiendaFeedService } from "@/lib/interfaces/services/IWalletTiendaFeedService";
 import { APLICACION_GESTIONES } from "@/tests/fixtures/anclaje-devolucion";
 import { idEstado, sembrarCatalogoEstados } from "@/tests/fixtures/catalogo-estados";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // FICHA 454 (T1.7, design §7; R7-R14) — LA APLICACION DE GESTIONES dentro de `resolverCierre`.
 //
@@ -285,7 +286,7 @@ function makeRepo(prisma: Record<string, unknown>) {
 }
 
 function aprobar(repo: CierresAdminRepository, cierreId = "c1") {
-  return repo.resolverCierre({
+  return repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
     cierreId,
     alcance: ALCANCE_MAESTRO,
     nuevoEstado: "aprobado",
@@ -539,7 +540,7 @@ describe("resolverCierre — la aplicacion NO ocurre cuando no debe (454/R9/R12/
     const repo = makeRepo(prisma as unknown as Record<string, unknown>);
 
     // El tipo del input ni siquiera admite `aplicacionGestiones` en la rama de rechazo.
-    const r = await repo.resolverCierre({
+    const r = await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_MAESTRO,
       nuevoEstado: "rechazado",

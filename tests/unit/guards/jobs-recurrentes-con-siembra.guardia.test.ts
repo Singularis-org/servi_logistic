@@ -20,6 +20,7 @@ import type {
   JobDTO,
 } from "@/lib/interfaces/repositories/IJobRepository";
 import type { JobTipo } from "@prisma/client";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // GUARDIA DE LA FICHA 313 — TODO JOB RECURRENTE TIENE SIEMBRA, Y LA SIEMBRA CUELGA DEL DESPLIEGUE.
 //
@@ -203,7 +204,7 @@ describe("313 · frente 2 — la siembra encola lo mismo que re-agendaria la rec
   for (const siembra of SIEMBRAS_RECURRENTES) {
     it(`${siembra.tipo}: mismo run_after y misma dedupe_key que su recurrencia`, async () => {
       const encolados: Encolado[] = [];
-      await siembra.sembrar(repoQueRegistra(encolados), AHORA);
+      await siembra.sembrar(repoQueRegistra(encolados), AHORA, [ZONA_DE_CR]);
 
       expect(encolados).toHaveLength(1);
       expect(encolados[0].tipo).toBe(siembra.tipo);
@@ -212,7 +213,7 @@ describe("313 · frente 2 — la siembra encola lo mismo que re-agendaria la rec
 
       const recurrencia = buildRecurrencias().get(siembra.tipo);
       expect(recurrencia, `${siembra.tipo} sin recurrencia registrada`).toBeDefined();
-      const siguiente = recurrencia!.siguiente(AHORA);
+      const siguiente = recurrencia!.siguiente(AHORA, [ZONA_DE_CR]);
 
       expect(
         encolados[0].opts.dedupeKey,
@@ -229,8 +230,8 @@ describe("313 · frente 2 — la siembra encola lo mismo que re-agendaria la rec
       // el `ON CONFLICT` no saltaria y cada despliegue encolaria otra corrida.
       const primera: Encolado[] = [];
       const segunda: Encolado[] = [];
-      await siembra.sembrar(repoQueRegistra(primera), AHORA);
-      await siembra.sembrar(repoQueRegistra(segunda), MAS_TARDE_POR_TIPO[siembra.tipo] ?? MAS_TARDE);
+      await siembra.sembrar(repoQueRegistra(primera), AHORA, [ZONA_DE_CR]);
+      await siembra.sembrar(repoQueRegistra(segunda), MAS_TARDE_POR_TIPO[siembra.tipo] ?? MAS_TARDE, [ZONA_DE_CR]);
 
       expect(segunda[0].opts.dedupeKey).toBe(primera[0].opts.dedupeKey);
       expect(segunda[0].opts.runAfter?.toISOString()).toBe(

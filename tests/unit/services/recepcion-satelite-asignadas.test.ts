@@ -7,6 +7,7 @@ import type {
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { fakeIntentosEnLote, type IntentosSvcDoble } from "@/tests/fixtures/intentos-entrega";
 import { CAMPOS_BASE_ORDEN } from "@/tests/fixtures/fila-bodega-satelite";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 149 — T6.3 (R35/R36): bucket `asignadas` del modulo de la bodega satelite.
 //
@@ -72,7 +73,7 @@ function newService(
   // intentos), pero el doble tiene que estar para construir el service.
   intentos: IntentosSvcDoble = fakeIntentosEnLote(),
 ) {
-  return new RecepcionSateliteService(repo as unknown as IOrdenRepository, intentos);
+  return new RecepcionSateliteService(repo as unknown as IOrdenRepository, intentos, undefined, reglasPaisFijas());
 }
 
 describe("T6.3/R35 — el modulo satelite lista las `mensajero_recogiendo_en_bodega` de SU zona", () => {

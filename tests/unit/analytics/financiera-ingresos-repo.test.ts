@@ -6,6 +6,7 @@ import { getMetrica } from "@/lib/analytics/metrics";
 import { IngresosAnaliticaRepository } from "@/lib/repositories/IngresosAnaliticaRepository";
 import { fakePrismaDinero, type FilaCaja } from "./_fake-prisma-dinero";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Feature 127 / T C.1 — `IngresosAnaliticaRepository`: R16, R17, R26, R28, R37 (material).
 //
 // Los dos "hecho cuando" de la tarea estan escritos como MUTACIONES, y asi se prueban:
@@ -25,7 +26,7 @@ const DESDE = new Date("2026-08-02T06:00:00.000Z");
 const HASTA = new Date("2026-08-03T06:00:00.000Z");
 
 function consultaDe(metricaId: string): ConsultaAnalitica {
-  const r = prepararConsultaAnalitica({ rango: "dia" }, MAESTRO, metricaId, AHORA);
+  const r = prepararConsultaAnalitica({ rango: "dia" }, MAESTRO, metricaId, ZONA_DE_CR, AHORA);
   if (r.status !== "ok") throw new Error(`no se pudo preparar la consulta de ${metricaId}`);
   return r.consulta;
 }

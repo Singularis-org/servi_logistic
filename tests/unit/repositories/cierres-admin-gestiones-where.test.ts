@@ -6,7 +6,9 @@ import {
   GESTION_DESCARGA_SELECT,
 } from "@/lib/repositories/CierresAdminRepository";
 import type { Alcance } from "@/lib/interfaces/repositories/ICierresAdminRepository";
-import type { FiltrosDescargaGestiones } from "@/lib/types/filtros-cierres";
+import type { FiltrosDescargaGestionesRepo } from "@/lib/types/filtros-cierres";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { filtrosConLimites } from "@/lib/types/filtros-cierres";
 
 // Feature 230 — Tanda 2 (T2.1, R11/R14/R15/R22/R37/R41) — el WHERE, el ORDEN y la PROYECCION de
 // la lectura de gestiones de «Cierres del día».
@@ -32,7 +34,7 @@ const M1 = "11111111-1111-4111-8111-111111111111";
 const M2 = "22222222-2222-4222-8222-222222222222";
 const AJENO = "99999999-9999-4999-8999-999999999999";
 
-const FILTROS: FiltrosDescargaGestiones = { mensajeroIds: [M1, M2] };
+const FILTROS: FiltrosDescargaGestionesRepo = { mensajeroIds: [M1, M2] };
 
 interface Consulta {
   where?: Record<string, unknown>;
@@ -68,7 +70,7 @@ describe("WHERE/orden/proyección de las gestiones de «Cierres del día» (feat
   it("pone el alcance del satélite DENTRO de la relación cierre, junto a los recortes (R14/R15)", async () => {
     const prisma = prismaFalso();
 
-    await repositorio(prisma).findGestionesPorAlcanceCompleto(SATELITE, FILTROS);
+    await repositorio(prisma).findGestionesPorAlcanceCompleto(SATELITE, FILTROS, ZONA_CR);
 
     const consulta = prisma.gestionOrden.findMany.mock.calls[0]![0]!;
     // El alcance y el recorte son claves HERMANAS del mismo objeto: eso es un AND. Un `OR`, o un
@@ -89,7 +91,7 @@ describe("WHERE/orden/proyección de las gestiones de «Cierres del día» (feat
   it("el acceso total no acota por zona, pero SÍ por tipo de destino (design §2.6)", async () => {
     const prisma = prismaFalso();
 
-    await repositorio(prisma).findGestionesPorAlcanceCompleto(MAESTRO, FILTROS);
+    await repositorio(prisma).findGestionesPorAlcanceCompleto(MAESTRO, FILTROS, ZONA_CR);
 
     // `destinoZonaId` AUSENTE, no `null`: el maestro ve todos los cierres con destino central.
     // Y `destinoTipo` SIEMPRE presente: es lo que hace que este listado y el de bodega sean
@@ -104,7 +106,7 @@ describe("WHERE/orden/proyección de las gestiones de «Cierres del día» (feat
 
     await repositorio(prisma).findGestionesPorAlcanceCompleto(SATELITE, {
       mensajeroIds: [AJENO],
-    });
+    }, ZONA_CR);
 
     const where = prisma.gestionOrden.findMany.mock.calls[0]![0]!.where as {
       cierre: { destinoZonaId: string; AND: unknown[] };
@@ -119,11 +121,11 @@ describe("WHERE/orden/proyección de las gestiones de «Cierres del día» (feat
   it("el rango de fechas recorta por la fecha de solicitud del CIERRE, con `hasta` inclusivo (R31)", async () => {
     const prisma = prismaFalso();
 
-    await repositorio(prisma).findGestionesPorAlcanceCompleto(MAESTRO, {
+    await repositorio(prisma).findGestionesPorAlcanceCompleto(MAESTRO, filtrosConLimites({
       mensajeroIds: [M1],
       desde: "2026-02-01",
       hasta: "2026-02-28",
-    });
+    }, ZONA_CR), ZONA_CR);
 
     const where = prisma.gestionOrden.findMany.mock.calls[0]![0]!.where as {
       cierre: { AND: { solicitadoAt: { gte: Date; lt: Date } }[] };
@@ -139,7 +141,7 @@ describe("WHERE/orden/proyección de las gestiones de «Cierres del día» (feat
   it("sin fechas no aparece ningún predicado temporal (no se inventa un rango por defecto)", async () => {
     const prisma = prismaFalso();
 
-    await repositorio(prisma).findGestionesPorAlcanceCompleto(MAESTRO, FILTROS);
+    await repositorio(prisma).findGestionesPorAlcanceCompleto(MAESTRO, FILTROS, ZONA_CR);
 
     expect(JSON.stringify(prisma.gestionOrden.findMany.mock.calls[0]![0]!.where)).not.toContain(
       "solicitadoAt",
@@ -149,7 +151,7 @@ describe("WHERE/orden/proyección de las gestiones de «Cierres del día» (feat
   it("ordena por fecha de solicitud del cierre y luego por la gestión (R11)", async () => {
     const prisma = prismaFalso();
 
-    await repositorio(prisma).findGestionesPorAlcanceCompleto(MAESTRO, FILTROS);
+    await repositorio(prisma).findGestionesPorAlcanceCompleto(MAESTRO, FILTROS, ZONA_CR);
 
     // El valor ABSOLUTO, no una referencia a la constante: si alguien cambia el orden, este caso
     // se pone rojo aunque las dos mitades sigan leyendo la misma declaración.
@@ -162,7 +164,7 @@ describe("WHERE/orden/proyección de las gestiones de «Cierres del día» (feat
   it("la proyección NO lee evidencia_storage_path (R22/R41)", async () => {
     const prisma = prismaFalso();
 
-    await repositorio(prisma).findGestionesPorAlcanceCompleto(MAESTRO, FILTROS);
+    await repositorio(prisma).findGestionesPorAlcanceCompleto(MAESTRO, FILTROS, ZONA_CR);
 
     const select = prisma.gestionOrden.findMany.mock.calls[0]![0]!.select!;
     expect(Object.keys(select)).not.toContain("evidenciaStoragePath");
@@ -181,7 +183,7 @@ describe("WHERE/orden/proyección de las gestiones de «Cierres del día» (feat
     // fila y los intentos de un cero fijo — las dos, mentiras con formato de dato.
     const prisma = prismaFalso();
 
-    await repositorio(prisma).findGestionesPorAlcanceCompleto(MAESTRO, FILTROS);
+    await repositorio(prisma).findGestionesPorAlcanceCompleto(MAESTRO, FILTROS, ZONA_CR);
 
     const select = prisma.gestionOrden.findMany.mock.calls[0]![0]!.select!;
     expect(select.orden).toEqual({
@@ -241,7 +243,7 @@ describe("WHERE/orden/proyección de las gestiones de «Cierres del día» (feat
   it("sin gestiones no se consulta el snapshot: cero filas es un desenlace normal (R38)", async () => {
     const prisma = prismaFalso([]);
 
-    const filas = await repositorio(prisma).findGestionesPorAlcanceCompleto(SATELITE, FILTROS);
+    const filas = await repositorio(prisma).findGestionesPorAlcanceCompleto(SATELITE, FILTROS, ZONA_CR);
 
     expect(filas).toEqual([]);
     expect(prisma.cierreDetail.findMany).not.toHaveBeenCalled();

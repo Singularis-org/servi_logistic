@@ -169,6 +169,14 @@ vi.mock("@/lib/crypto/boveda-integraciones", async (original) => ({
 }));
 
 vi.mock("@/lib/db/prisma-client", () => ({ getPrismaClient: () => ({}) }));
+// SLT-42 (T5.5): los composition roots inyectan las reglas del pais; sin base, las de CR (como antes).
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
 
 const ORDEN = { id: "orden-1", direccion: "Calle 1", distritoNombre: "D", cantonNombre: "C", provinciaNombre: "P" };
 vi.mock("@/lib/repositories/OrdenGeocodeRepository", () => ({

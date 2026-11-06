@@ -12,6 +12,7 @@ import { listarMovimientosTiendaSchema } from "@/lib/types/wallet-tienda";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, enTransaccionRevertida, serializarEscriturasReales, type TxDeTest } from "./_postgres-real";
 import { sembrarPersonas461, type Personas461 } from "./_fixtures/personas-461";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FICHA 461 / R72 (auditoria de la wallet, T1) — EL FILTRO POR DIA, contra Postgres, en los tres libros.
 // ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -83,7 +84,7 @@ describeSiHayBase("461/R72 — el filtro por dia de Costa Rica en los tres libro
     const m = await conFilas(async (tx, p, ids) => {
       const repo = new WalletMovimientoRepository(tx as unknown as PrismaClient);
       const leer = async (desde: string, hasta: string) => {
-        const f = listarMovimientosSchema.parse({ desde, hasta, pageSize: 100 });
+        const f = listarMovimientosSchema(ZONA_CR).parse({ desde, hasta, pageSize: 100 });
         const pagina = await repo.listar({ ...f, page: 1, pageSize: 5000 });
         const mios = new Set(Object.values(ids.caja));
         return pagina.movimientos.filter((x) => mios.has(x.id)).map((x) => x.id).sort();
@@ -94,7 +95,7 @@ describeSiHayBase("461/R72 — el filtro por dia de Costa Rica en los tres libro
         siguiente: await leer("2026-09-11", "2026-09-11"),
         rango: await leer("2026-09-09", "2026-09-11"),
         ids: ids.caja,
-        agregadoD: await repo.agregarPorCategoriaYTipo({ ...listarMovimientosSchema.parse({ desde: D, hasta: D }), categoria: "ingreso_ajuste" }),
+        agregadoD: await repo.agregarPorCategoriaYTipo({ ...listarMovimientosSchema(ZONA_CR).parse({ desde: D, hasta: D }), categoria: "ingreso_ajuste" }),
         agregadoDConMios: (
           await tx.walletMovimiento.findMany({
             where: { id: { in: Object.values(ids.caja) }, fechaMovimiento: { gte: INSTANTES.inicio, lt: INSTANTES.siguiente0000 } },
@@ -113,10 +114,10 @@ describeSiHayBase("461/R72 — el filtro por dia de Costa Rica en los tres libro
   it("tienda: el desglose y el saldo filtrados por D cuentan EXACTAMENTE las tres filas de D", async () => {
     const m = await conFilas(async (tx, p, ids) => {
       const repo = new WalletTiendaMovimientoRepository(tx as unknown as PrismaClient);
-      const f = listarMovimientosTiendaSchema.parse({ desde: D, hasta: D });
+      const f = listarMovimientosTiendaSchema(ZONA_CR).parse({ desde: D, hasta: D });
       const pagina = await repo.listarPorTienda({ tiendaId: p.tiendaId, page: 1, pageSize: 100, desde: f.desde, hasta: f.hasta });
       const saldo = await repo.agregarSaldoPorTienda(p.tiendaId, { desde: f.desde, hasta: f.hasta });
-      const vispera = listarMovimientosTiendaSchema.parse({ desde: "2026-09-09", hasta: "2026-09-09" });
+      const vispera = listarMovimientosTiendaSchema(ZONA_CR).parse({ desde: "2026-09-09", hasta: "2026-09-09" });
       const paginaVispera = await repo.listarPorTienda({ tiendaId: p.tiendaId, page: 1, pageSize: 100, desde: vispera.desde, hasta: vispera.hasta });
       return { ids: pagina.movimientos.map((x) => x.id).sort(), total: pagina.total, saldo, vispera: paginaVispera.movimientos.map((x) => x.id), esperados: ids.tienda };
     });
@@ -129,10 +130,10 @@ describeSiHayBase("461/R72 — el filtro por dia de Costa Rica en los tres libro
   it("mensajero: el desglose y la cuenta por pagar filtrados por D cuentan EXACTAMENTE las tres filas de D", async () => {
     const m = await conFilas(async (tx, p, ids) => {
       const repo = new PagoMensajeroMovimientoRepository(tx as unknown as PrismaClient);
-      const f = listarPagosDeMensajeroSchema.parse({ mensajeroId: p.mensajeroId, desde: D, hasta: D });
+      const f = listarPagosDeMensajeroSchema(ZONA_CR).parse({ mensajeroId: p.mensajeroId, desde: D, hasta: D });
       const pagina = await repo.listarPorMensajero({ mensajeroId: p.mensajeroId, page: 1, pageSize: 100, desde: f.desde, hasta: f.hasta });
       const cuenta = await repo.agregarCuentaPorPagar(p.mensajeroId, { desde: f.desde, hasta: f.hasta });
-      const siguiente = listarPagosDeMensajeroSchema.parse({ mensajeroId: p.mensajeroId, desde: "2026-09-11", hasta: "2026-09-11" });
+      const siguiente = listarPagosDeMensajeroSchema(ZONA_CR).parse({ mensajeroId: p.mensajeroId, desde: "2026-09-11", hasta: "2026-09-11" });
       const paginaSiguiente = await repo.listarPorMensajero({ mensajeroId: p.mensajeroId, page: 1, pageSize: 100, desde: siguiente.desde, hasta: siguiente.hasta });
       return { ids: pagina.movimientos.map((x) => x.id).sort(), total: pagina.total, cuenta, siguiente: paginaSiguiente.movimientos.map((x) => x.id), esperados: ids.mensajero };
     });

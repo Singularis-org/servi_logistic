@@ -3,7 +3,7 @@
 // `desde` y `hasta` dejaron de ser obligatorios en `GET /api/ordenes/api-key/analitica`. Lo que
 // significa cada ausencia es una decision de contrato, no un default tecnico, y vive aqui:
 //
-//   - sin `hasta`  ->  HOY (fecha calendario de Costa Rica). El limite superior es abierto:
+//   - sin `hasta`  ->  HOY (fecha calendario de la zona del pais de la empresa de la key, SLT-42). El limite superior es abierto:
 //     «hasta donde llegue». No se recorta al ultimo dia cerrado, porque el `rango` que publica
 //     la respuesta es el ECO de lo pedido y el dia en curso ya se OMITE de `data` mas abajo
 //     (ver la cabecera de `analitica-api-key-dto.ts`): recortarlo aqui contaria dos veces la
@@ -24,7 +24,7 @@
 // reloj INYECTADO (nunca un `new Date()` escondido): mismo instante => mismo rango.
 
 import { HORIZONTE_HISTORIAL_CR } from "@/lib/analytics/backfill-rango";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendario } from "@/lib/utils/calendario-zona";
 
 /** Lo que llego en la query, ya validado como fecha calendario cuando viene. */
 export interface RangoPedidoApiKey {
@@ -53,8 +53,10 @@ export interface RangoResueltoApiKey {
 export function resolverRangoApiKey(
   pedido: RangoPedidoApiKey,
   ahora: Date,
+  /** SLT-42 (R22): la zona horaria del pais de la empresa de la key. */
+  zona: string,
 ): RangoResueltoApiKey {
-  const hasta = pedido.hasta ?? fechaCalendarioCR(ahora);
+  const hasta = pedido.hasta ?? fechaCalendario(ahora, zona);
   if (pedido.desde !== undefined) return { desde: pedido.desde, hasta };
   // Comparacion lexicografica: `YYYY-MM-DD` es de ancho fijo y de mayor a menor unidad, asi que
   // el orden de las cadenas ES el cronologico.
