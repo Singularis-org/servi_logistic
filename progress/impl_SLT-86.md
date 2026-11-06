@@ -244,3 +244,164 @@ Todos los casos están en `tests/integration/db/migracion-slt86-ida-y-vuelta.tes
 - `ordenesYaPasadas` (aviso de órdenes de SLT-58) sigue en `mensajes.ts` porque lo importa
   `AvisosDeTopes.tsx`; se borra cuando T12 quite ese aviso (R8).
 - Grafo MCP: no lo consulté; trabajé con Grep/Read.
+
+## Tanda 4 — T8 y T9 (2026-11-05)
+
+### Commits
+- `01c6d01f` feat(SLT-86): T8 cambios de empresa con fecha de efecto y trabajos.
+- T9: el commit `feat(SLT-86): T9 ediciones de precio con fecha, lecturas y servicios` (hash en el informe al leader).
+  Esta bitácora va en él.
+
+### Archivos
+- **T8**, creados:
+  - `db/migrations/20261106140000_plan_aplicar_cambio_empresa_enum/{migration,down}.sql`: el valor
+    `plan_aplicar_cambio_empresa` de `job_tipo`;
+  - `tests/integration/db/planes-cambio-empresa.test.ts`, `tests/unit/planes/jobs-cambio-empresa.test.ts`.
+- **T8**, modificados:
+  - `db/schema.prisma` (el valor del enum), `lib/repositories/PlanesRepository.ts`,
+    `lib/interfaces/repositories/IPlanesRepository.ts`;
+  - `lib/services/PlanesService.ts`, `lib/interfaces/services/IPlanesService.ts`, `lib/types/planes.ts`;
+  - `lib/planes/jobs-cambio-plan.ts`, `app/api/cron/procesar-jobs/route.ts`, `lib/modulos/reparto.ts`;
+  - `lib/planes/ciclo.ts` (sin `inicioDelSiguienteCiclo` ni `anclaDeLaFechaElegida`; con `rangoDeLaFechaDeEfecto`) y
+    `lib/planes/mensajes.ts` (dos textos);
+  - `docs/architecture.md` (la línea del ciclo, ahora el período de facturación) y `tasks.md` (T8 marcada);
+  - tests: `planes-asignacion`, `planes-asignacion-inicio-ciclo`, `planes-cambiar-tipo-cobro`,
+    `planes-crear-custom-asigna`, `planes-service-tipo-cobro`, `planes-service-inicio-ciclo`,
+    `planes-service-crear-custom`, `planes-service-asignar-costo`, `planes-repository-tipo-cobro`, `ciclo-periodo`,
+    `procesar-jobs-plan-cambio`, `procesar-jobs-registro`, `procesar-jobs-geocodificacion`, `procesar-jobs-webhook-estado`.
+- **T9**, creados: `lib/repositories/_shared/precio-del-periodo.ts`; tests `plan-precio-historial`,
+  `plan-descuento-periodo`, `plan-de-la-empresa-periodo` (integración) y `planes-service-periodo` (unit).
+- **T9**, modificados:
+  - `lib/repositories/PlanesRepository.ts` (historial de precio en `crear`, `editar` y `aplicarCambioProgramado`;
+    `planDeEmpresa` con entrada, precio del período y pendiente), `lib/repositories/MiPlanRepository.ts`,
+    `lib/interfaces/repositories/IMiPlanRepository.ts`, `lib/services/MiPlanService.ts`, `lib/services/PlanesService.ts`
+    (`editar` con R22), `lib/repositories/EmpresasPlataformaRepository.ts`, `lib/actions/planes.ts`
+    (`cancelarCambioEmpresaAction`), `lib/types/consumo-plan.ts`, `lib/types/planes.ts`, `lib/planes/rastro.ts`
+    (`cambiaElPrecio`), `lib/planes/mensajes.ts`, `lib/interfaces/services/IPlanesService.ts`;
+  - fixtures `_fixtures/planes.ts` (`crearPlan` siembra su fila «desde siempre») y `_fixtures/cobro-porcentual.ts`;
+  - tests de integración: `mi-plan-repository`, `plan-de-la-empresa`, `plan-de-la-empresa-costeo`,
+    `plan-de-la-empresa-porcentual`, `planes-acceso-servi-app`, `planes-cambio-correos`, `planes-cambio-programado`,
+    `planes-catalogo`, `planes-costeo-escritura`, `planes-edicion-en-uso`, `planes-historial`,
+    `planes-lecturas-plataforma`, `cobro-plataforma-plan`, `plan-costo-porcentual-escritura`,
+    `cobro-plataforma-porcentual`, `planes-cambio-empresa` (el conteo de R14, por empresa);
+  - unit: `planes-service`, `planes-service-costeo`, `planes-service-costo-porcentual`, `planes-service-lecturas`,
+    `planes-service-asignar-costo`, `mi-plan-service`, `planes.composition-root`, `planes-repository-tipo-cobro`;
+  - guardia `historial-accion-escrituras-cubiertas` (el censo: el productor de `plan_asignado` y
+    `plan_tipo_cobro_cambiado` es ahora `aplicarEnTx`);
+  - `tasks.md` (T9 marcada) y esta bitácora.
+
+### Mapa R → test (de esta tanda)
+
+| R | Test |
+|---|---|
+| R1 | `planes-cambio-empresa` (tipo fuera de los cuatro o ausente = `validation_error` en `tipoCobro`; 23514 en la columna y en el pendiente), `planes-crear-custom-asigna` (el CHECK admite los cuatro) |
+| R2 | `planes-cambio-empresa` (primera asignación quincenal pasada, hoy y futura; antes de la fecha, altas sin tope y módulos de antes; al aplicar, plan, módulos, topes y entrada), `planes-asignacion-inicio-ciclo`, `planes-service-inicio-ciclo` |
+| R3 | `planes-service-periodo` (asignar con fecha, primera asignación futura, cambiar tipo, cancelar cambio, crear custom, editar y programar precio: `forbidden` sin llamadas) |
+| R7 | `plan-de-la-empresa-periodo` (desde la entrada; el período anterior no cuenta; borde exacto), `plan-de-la-empresa` |
+| R13 | `plan-descuento-periodo` (cuatro descuentos y cuatro tipos: cargo 100.00 «plan»), `cobro-plataforma-porcentual` (R10 de SLT-83 con un descuento de período) |
+| R14 | `planes-cambio-empresa` (asignar, pendiente y aplicar), `plan-descuento-periodo` (crear, asignar y editar descuentos) |
+| R15 | `plan-precio-historial` (caso base del 5: quincenal desde el 16, anual desde el 1 de enero; borde exacto; hoy; futura aplicada por el trabajo; programada y cancelada; nadie se reancla), `mi-plan-repository` (precio del período ≠ vigente) |
+| R16 | `planes-service-periodo` (rango hoy…hoy + 12 meses, obligatoria con plan, no sin plan), `planes-service-tipo-cobro`, `planes-service-crear-custom`, `planes-cambio-empresa`, `ciclo-periodo` (`rangoDeLaFechaDeEfecto`) |
+| R17 | `planes-cambio-empresa` (mensual → quincenal con plan nuevo el 10: antes lo viejo; al aplicar, tramo 10–15 con 6/15 = 6 200.00 y luego quincenas, en la base y en TS) |
+| R18 | `planes-cambio-empresa` (hoy con tope pasado = `tope_excedido`; futura con aviso; al aplicarse rige y la siguiente alta da SL024; hoy sin topes se aplica en el acto), `planes-asignacion` |
+| R19 | `planes-cambio-empresa` (reemplazo con id nuevo y trabajo viejo inerte; idéntico cancela sin historial; sin pendiente `cambio: false`; «Cancelar cambio»), `planes-service-periodo`, `planes-repository-tipo-cobro` |
+| R20 | `planes-cambio-empresa` (una sola vez, `aun_no_rige`, actor del que programó, `plan_tipo_cobro_cambiado` con `fecha · tipo`, barrido), `jobs-cambio-empresa` (registro, núcleo, en su empresa, handler, segunda pasada del barrido) |
+| R21 | `planes-cambio-empresa` (archivar cancela los pendientes hacia el plan, también una primera asignación; los demás siguen) |
+| R22 | `planes-service-periodo` (sin fecha, pasada, hoy en el acto, futura programada; «10» = «10.00»; edición sin precio con la regla de SLT-58), `plan-precio-historial` (sin fecha y pasada no escriben) |
+| R26 | `plan-de-la-empresa-periodo` (pendiente con plan en «Mi plan»; sin plan: `plan: null` y `pendienteSinPlan`, también en el detalle), `mi-plan-service`, `planes-service-lecturas` |
+| R27 | `plan-de-la-empresa-periodo` (período y tramo, `ciclo_inicio`/`ciclo_fin`, reinicio, siguiente cobro = fecha del pendiente), `mi-plan-service`, `planes-service-lecturas` |
+| R28 | `plan-de-la-empresa-periodo` (fijo: 50 000.00 + 2 × 100), `plan-de-la-empresa-porcentual` (base del período + cobrado) |
+| R29 | Solo el repositorio: `EmpresasPlataformaRepository` valida el tipo con los cuatro valores (`empresas-plataforma-plan` sigue en verde). El test de R29 es de componente (T12). |
+| R31 | `plan-descuento-periodo` (alta con las cuatro claves; antes y después por descuento; sin cambios no escribe), `planes-historial` |
+| R32 | `plan-de-la-empresa-periodo` (sin actor; otra empresa = 42501), `plan-descuento-periodo` y `planes-acceso-servi-app` (`servi_app` no lee ni escribe las dos tablas nuevas) |
+
+### Salida real
+- Base `servi_logistic_slt86`: `migrate deploy` de `20261106140000` ok; `db:rollback` ok (un trabajo de prueba de ese tipo
+  se borra, el valor sale de `job_tipo` y `plan_cambios_vencidos` sigue); otro `deploy` la deja aplicada.
+  `prisma generate` ok.
+- Tests por ruta (`pnpm exec vitest run <archivos>`, integración con `DATABASE_URL`): 46 archivos, 919 casos, 0 saltados.
+  - Integración: `plan-precio-historial` 8, `plan-descuento-periodo` 7, `plan-de-la-empresa-periodo` 6,
+    `planes-cambio-empresa` 12, `mi-plan-repository` 5, `plan-de-la-empresa` 7, `plan-de-la-empresa-costeo` 7,
+    `plan-de-la-empresa-porcentual` 7, `planes-acceso-servi-app` 6, `planes-cambio-correos` 9,
+    `planes-cambio-programado` 10, `planes-catalogo` 14, `planes-costeo-escritura` 4, `planes-edicion-en-uso` 7,
+    `planes-historial` 7, `planes-lecturas-plataforma` 3, `cobro-plataforma-plan` 16, `plan-costo-porcentual-escritura` 16,
+    `cobro-plataforma-porcentual` 23, `cobro-plataforma-porcentual-importe` 18, `empresas-plataforma-cobro-porcentual` 5,
+    `empresas-plataforma-plan` 4, `planes-cambiar-tipo-cobro` 11, `planes-asignacion` 11,
+    `planes-asignacion-inicio-ciclo` 8, `planes-crear-custom-asigna` 8, `plan-ciclo-periodo` 108,
+    `migracion-slt86-ida-y-vuelta` 15, `procesar-jobs-geocodificacion` 5, `procesar-jobs-webhook-estado` 4.
+  - Unit: `planes-service-periodo` 69, `planes-service` 80, `planes-service-costeo` 39,
+    `planes-service-costo-porcentual` 26, `planes-service-lecturas` 34, `planes-service-tipo-cobro` 29,
+    `planes-service-inicio-ciclo` 30, `planes-service-crear-custom` 26, `planes-service-asignar-costo` 24,
+    `mi-plan-service` 15, `planes.composition-root` 8, `planes-repository-tipo-cobro` 5, `jobs-cambio-empresa` 11,
+    `procesar-jobs-plan-cambio` 26, `procesar-jobs-registro` 7, `ciclo-periodo` 119.
+  - En la corrida conjunta cayeron dos casos que cuentan la tabla ENTERA de movimientos (`plan-de-la-empresa-porcentual`
+    R25, de SLT-83, y mi R14 de `plan-descuento-periodo`): otro archivo confirmó filas a la vez. Mi R14 y el de
+    `planes-cambio-empresa` cuentan ahora por empresa; el de SLT-83 pasa solo (7/7) y queda como aviso.
+- `test:guardias`: 331 archivos; 327 ok, 3 saltados y 1 rojo (`dependencias-declaradas-presentes`, en el baseline);
+  4592 casos ok. Antes de cerrar dieron rojo tres guardias, ya en verde: `historial-accion-escrituras-cubiertas` (el
+  censo), `superficie-de-uso` (`@sin-superficie` en `cancelarCambioEmpresaAction` hasta T11) y
+  `consultas-concurrentes-en-transaccion` (dos relaciones hermanas en `planDeEmpresa`: el nombre del plan que entra va en
+  otra consulta).
+- Guardias de esquema, tras la migración de T8 (`organizacion-en-modelos`, `unicos-por-empresa`, `fk-misma-empresa`,
+  `rls-por-empresa`, `planes-sin-borrado`, `planes-sin-seed`, `catalogo-postgres-acota-esquema`,
+  `historico-sin-migracion`, `jobs-handler-por-tipo`, `jobs-recurrentes-con-siembra`, `modulos-reparto`,
+  `plataforma-solo-en-lista`, `sql-a-mano-por-empresa`): 13 archivos, 184/184.
+- eslint de los archivos tocados (T8: 26 TS; T9: 45 TS): 0 errores y 0 avisos.
+- typecheck (`NODE_OPTIONS=--max-old-space-size=8192`): **121 errores** (antes de la tanda: 230), todos en pantallas,
+  componentes, sus tests y E2E:
+  - `app/`: `PlanEmpresa.tsx` 3, `EmpresasModule.tsx` 1, `PlanDetalle.tsx` 1, `PlanForm.tsx` 5, `plan-vista.tsx` 2;
+  - `components/shared/`: `ConsumoDelPlan.tsx` 6, `TipoCobroCampo.tsx` 1, `tipo-cobro.ts` 1, `AvisosDeTopes.tsx` 1;
+  - `tests/components/`: `PlanEmpresa` 18, `PlanEmpresaSinCosto` 12, `PlanVistaCosteo` 8, `PlanEmpresaTipoCobro` 7,
+    `PlanEmpresaCostoPorcentual` 6, `ConsumoDelPlanPorcentual` 5, `ConsumoDelPlanCosteo` 5, `MiPlanModule` 4,
+    `PlanForm` 3, `PlanesModule` 3, `PlanDetalleAsignar` 3, `PlanDetalle` 3, `ConsumoDelPlan` 3,
+    `PlanFormVistaPreviaCustom` 2, `PlanFormCostoPorcentual` 2, `PlanFormCosteo` 2, `PlanFormCustomAsigna` 1,
+    `PlanDetalleDesasignado` 1;
+  - `tests/integration/plataforma-empresa-detalle-page.test.tsx` 4 (el test de la página);
+  - `e2e/`: `planes-superadmin.spec.ts` 6, `dos-empresas-humo.spec.ts` 1, `_planes-fixture.ts` 1.
+
+### Tests retirados
+- `ciclo-periodo`: el bloque de `anclaDeLaFechaElegida` (SLT-58 R32, «hoy» ancla en el instante): R2 hace que «hoy»
+  entre a las 00:00. Lo sustituye el bloque de `rangoDeLaFechaDeEfecto` (R16).
+- `planes-asignacion`: «R12 (órdenes)» (R8: sin tope de órdenes).
+- `planes-asignacion-inicio-ciclo`: R33 (órdenes contadas desde la fecha elegida, con el trigger de órdenes), R34 (ciclo
+  corto) y R36 de órdenes (R8, P4 = a), y el siguiente ciclo de la vista previa (P10, solo servía al aviso de órdenes).
+  El conteo del período lo miden `plan-ciclo-periodo` y `plan-de-la-empresa-periodo`; la fecha futura,
+  `planes-cambio-empresa`.
+- `planes-crear-custom-asigna`: «sin tipo, el repositorio asigna en mensual»: `asignar` ya no tiene la firma de SL-24
+  sin tipo ni fecha.
+- `planes-catalogo`: las formas del precio con anual y `plan_precio_forma` (R33), y el tope de órdenes negativo (R34).
+- `planes-service-inicio-ciclo` y `planes-service-crear-custom`: cambiar de plan sin fecha «como SL-24 (P2a)» es ahora
+  `validation_error` en `vigenteDesde` (R16), y así se prueba.
+
+### Avisos de la tanda
+- **Migración nueva** `20261106140000_plan_aplicar_cambio_empresa_enum`: el trabajo de §5.2 necesita su valor en
+  `job_tipo` y §8 no lo listaba. Va sola (55P04). Su `down.sql` borra los trabajos de ese tipo y quita el valor con la
+  función de `20261028130400`, renombrada.
+- **Decisiones donde el spec no dice nada** (a confirmar):
+  - la primera asignación sin fecha rige desde las 00:00 de hoy y conserva el rechazo por topes de SLT-58 P14; su fila
+    del historial lleva ahora `hoy · tipo`;
+  - asignar el mismo plan con otro tipo es un cambio de solo el tipo (`plan_tipo_cobro_cambiado`), sin mirar topes y sin
+    resincronizar módulos, para no borrar las excepciones de SL-23;
+  - pedir lo vigente con un pendiente lo cancela y responde `cambio: true`; «Cancelar cambio» no escribe historial;
+  - una edición que no toca el precio sigue con SLT-58 R37: con la fecha de hoy es `validation_error` («posterior a hoy»);
+  - textos nuevos: «Elige desde qué fecha rige el cambio.», «La fecha de efecto es de un cambio a una empresa con plan;
+    la primera asignación lleva fecha de inicio.» y «La fecha de efecto no puede ser anterior a hoy.». El rango usa el
+    texto de SLT-58 («Elige una fecha entre el … y el …»).
+- **Contratos para el frontend (T10–T12):**
+  - `VistaPreviaAsignacionResult` y `VistaPreviaCustomResult` ya no traen `siguienteCiclo`; `asignar` y `crear` responden
+    `vigenteDesde` con la fecha cuando el cambio queda pendiente;
+  - `MiPlanResult` y `PlanDeEmpresaVista` ganan `pendienteSinPlan` (R26 sin plan); con plan, el pendiente va en
+    `plan.cobro.pendiente`;
+  - entra `cancelarCambioEmpresaAction`, con `@sin-superficie` hasta que T11 cablee el botón;
+  - `cambiarTipoCobroAction` pide `vigenteDesde`.
+- Para que `asignar` corriera, T8 ya lee y escribe los descuentos (`plan_descuento_periodo`) en `PlanesRepository`; el
+  historial de precio entra con T9.
+- `archivar` pide ahora las empresas con un pendiente hacia el plan ANTES que el plan (orden empresa → plan, el de
+  `asignar`).
+- `docs/architecture.md`: solo cambié la línea del ciclo (231). Las líneas 202, 227 y 229 aún nombran
+  `plan_cupo_ordenes`, `CupoPlanRepository` y `plan_inicio_ciclo_en_curso`, que T4 retiró o dejó sin uso.
+- `plan-de-la-empresa-porcentual` R25 (SLT-83) cuenta la tabla entera de movimientos y puede caer en paralelo con otros
+  archivos que confirman filas; solo pasa en verde. No está en el baseline.
+- `tests/integration/plataforma-empresa-detalle-page.test.tsx` es el test de la página del detalle de empresa: lo adapta
+  T11.
+- Grafo MCP: no lo consulté; trabajé con Grep/Read.

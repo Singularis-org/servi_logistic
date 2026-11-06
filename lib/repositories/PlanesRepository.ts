@@ -32,8 +32,9 @@ import { valorDelHistorialDeAsignacion } from "@/lib/planes/cobro";
 import type { CambioDelPlanLeido } from "@/lib/planes/consumo";
 import { costoVigenteDeLaTarifa, type TarifaLeida } from "@/lib/planes/costeo";
 import { FECHA_DE_EFECTO_OBLIGATORIA, SOLO_CON_PLAN, SOLO_PRIMERA_ASIGNACION } from "@/lib/planes/mensajes";
-import { diferenciasDelPlan, hayCambios, type CambiosDelPlan } from "@/lib/planes/rastro";
+import { cambiaElPrecio, diferenciasDelPlan, hayCambios, importeCanonico, type CambiosDelPlan } from "@/lib/planes/rastro";
 import { apagarEnTx, encenderEnTx, entradaDelCambio } from "@/lib/repositories/_shared/modulos-en-tx";
+import { pendienteDeEmpresa, precioDelHistorial } from "@/lib/repositories/_shared/precio-del-periodo";
 import { JobRepository } from "@/lib/repositories/JobRepository";
 import { ACTOR_SISTEMA, appendAccion, resolverActorCongelado } from "@/lib/repositories/registrar-accion";
 import { etiquetaDeEntidad } from "@/lib/types/historial-accion-etiquetas";
@@ -175,6 +176,34 @@ async function guardarDescuentos(tx: Tx, planId: string, precio: PrecioPlan): Pr
     ];
   });
   if (filas.length > 0) await tx.planDescuentoPeriodo.createMany({ data: filas });
+}
+
+/**
+ * SLT-86 (design §1.2; R15): el precio que rige desde `desde` (las 00:00 de la fecha de efecto) o desde
+ * siempre (`-infinity`, al crear). Dos ediciones del mismo día dejan la última. `descuentos` con la forma
+ * de `PrecioPlan.descuentos`, que es la que lee `precio_del_periodo`.
+ */
+async function escribirPrecioDelHistorial(tx: Tx, planId: string, desde: Date | "siempre", precio: PrecioPlan): Promise<void> {
+  const mensual = precio.tipo === "monto" ? precio.mensual : null;
+  // Con dos decimales, como los lee `plan_descuento_periodo`: «10» y «10.00» son el mismo descuento.
+  const canonicos: Partial<Record<TipoCobro, DescuentoPeriodo>> = {};
+  if (precio.tipo === "monto") {
+    for (const periodo of TIPOS_COBRO) {
+      const d = precio.descuentos[periodo];
+      if (d === undefined) continue;
+      canonicos[periodo] =
+        d.tipo === "porcentaje"
+          ? { tipo: "porcentaje", porcentaje: importeCanonico(d.porcentaje) }
+          : { tipo: "monto", monto: importeCanonico(d.monto) };
+    }
+  }
+  const descuentos = JSON.stringify(canonicos);
+  const desdeAt = desde === "siempre" ? Prisma.sql`'-infinity'::timestamp` : Prisma.sql`${comoTimestamp(desde)}::timestamp`;
+  await tx.$executeRaw`
+    INSERT INTO "plan_precio_historial" ("plan_id", "desde_at", "precio_mensual", "descuentos")
+    VALUES (${planId}, ${desdeAt}, ${mensual}::numeric, ${descuentos}::jsonb)
+    ON CONFLICT ("plan_id", "desde_at")
+    DO UPDATE SET "precio_mensual" = EXCLUDED."precio_mensual", "descuentos" = EXCLUDED."descuentos"`;
 }
 
 /** SLT-83 (R1, R4): las dos columnas del modo porcentual; `null` las vacía (el plan pasa a fijo o vacío). */
@@ -348,9 +377,17 @@ async function escribirRastro(
  * diferencia de módulos en cada empresa que tiene el plan EN ESTE MOMENTO (R17). Solo enciende lo
  * añadido y apaga lo quitado: las excepciones de cada empresa en los demás módulos no se tocan (P3).
  * La comparten la edición inmediata y el aplicador del cambio programado (T11). El ciclo de las
- * empresas no se toca (R38): no escribe `plan_ciclo_ancla_at`.
+ * empresas no se toca (R38): no escribe `plan_ciclo_ancla_at`. SLT-86 (R15): tampoco su entrada, tipo ni
+ * período; el precio nuevo les llega por el historial, desde su primer período que empiece en `precioDesde`.
  */
-async function aplicarVersion(tx: Tx, antes: PlanDTO, version: VersionPlan, actor: ActorCongelado): Promise<void> {
+async function aplicarVersion(
+  tx: Tx,
+  antes: PlanDTO,
+  version: VersionPlan,
+  actor: ActorCongelado,
+  /** SLT-86 (§1.2; R15): desde cuándo rige el precio nuevo, si la versión lo cambia. */
+  precioDesde: Date,
+): Promise<void> {
   await tx.plan.update({
     where: { id: antes.id },
     data: {
@@ -362,6 +399,11 @@ async function aplicarVersion(tx: Tx, antes: PlanDTO, version: VersionPlan, acto
     },
   });
   await guardarDescuentos(tx, antes.id, version.precio);
+  // R15: el precio vigente y su fila del historial cambian juntos; sin cambio de precio, ninguna fila.
+  if (cambiaElPrecio(diferenciasDelPlan(antes, { ...antes, ...version }))) {
+    const vigente = (await leerPlan(tx, antes.id)) as PlanDTO;
+    await escribirPrecioDelHistorial(tx, antes.id, precioDesde, vigente.precio);
+  }
   await tx.planTopeRol.deleteMany({ where: { planId: antes.id } });
   await tx.planTopeRol.createMany({ data: filasDeTopes(version.topes).map((t) => ({ planId: antes.id, ...t })) });
   await tx.planModulo.deleteMany({ where: { planId: antes.id } });
@@ -568,6 +610,8 @@ async function crearEnTx(tx: Tx, input: CrearPlanInput, actorUsuarioId: string):
     select: { id: true },
   });
   await guardarDescuentos(tx, id, input.precio);
+  // SLT-86 (§1.2; R15): el precio de alta rige desde siempre, como la fila que sembró la migración.
+  await escribirPrecioDelHistorial(tx, id, "siempre", input.precio);
   const creado: PlanDTO = {
     id,
     nombre: input.nombre,
@@ -684,81 +728,8 @@ function claseQueNoCasa(efecto: EfectoElegido, planActual: string | null): Extra
   return null;
 }
 
-/**
- * Aplica un cambio de empresa (§5.2, pasos 2–4): plan, tipo y entrada a las 00:00 de la fecha, sin
- * pendiente; los módulos del plan si cambió el plan (con el mismo plan no se tocan: borraría las
- * excepciones de SL-23, R11); y la fila del historial con `actor`. `plan_asignado` si cambió el plan;
- * si no, `plan_tipo_cobro_cambiado` (D16). El `valor_nuevo` lleva la fecha delante del tipo (R30).
- */
-async function aplicarEnTx(
-  tx: Tx,
-  empresa: Pick<EmpresaBloqueada, "id" | "plan_id" | "plan_tipo_cobro">,
-  plan: Pick<PlanDTO, "id" | "nombre" | "modulos">,
-  tipoCobro: TipoCobro,
-  desde: Date,
-  actor: ActorCongelado,
-): Promise<void> {
-  await tx.$executeRaw`
-    UPDATE "organizacion"
-       SET "plan_id" = ${plan.id}, "plan_tipo_cobro" = ${tipoCobro}, "plan_ciclo_ancla_at" = ${comoTimestamp(desde)}::timestamp,
-           ${SIN_PENDIENTE}
-     WHERE "id" = ${empresa.id}`;
-  const comun = {
-    entidadTipo: "plan",
-    entidadId: plan.id,
-    entidadEtiqueta: etiquetaDeEntidad("plan", { nombre: plan.nombre }),
-    valorNuevo: valorDelHistorialDeAsignacion(fechaCalendarioCR(desde), tipoCobro),
-    organizacionId: empresa.id,
-    ...actor,
-  } as const;
-  if (empresa.plan_id === plan.id) {
-    await appendAccion(tx, [
-      { ...comun, accion: "plan_tipo_cobro_cambiado", valorAnterior: tipoCobroSchema.parse(empresa.plan_tipo_cobro) },
-    ]);
-    return;
-  }
-  const modulos = await sincronizarModulos(tx, empresa.id, plan.modulos);
-  // Una sola llamada: el `plan_asignado` y las filas de módulos comparten `lote_id` (§9).
-  await appendAccion(tx, [
-    { ...comun, accion: "plan_asignado", valorAnterior: null },
-    ...modulos.map((e): EntradaAccion => ({ ...e, ...actor })),
-  ]);
-}
-
 type ResultadoDelCambio = Extract<ResultadoAsignar, { estado: "ok" | "tope_excedido" }>;
 
-/**
- * §5.1, pasos 2–4, con la empresa ya bajo el cerrojo y el plan revalidado.
- *   · R19: mismo plan y mismo tipo que rigen → cancela el pendiente o no hace nada; nunca historial.
- *   · Fecha futura → pendiente y avisos, sin rechazar (R18).
- *   · Fecha de hoy o pasada → se aplica. Un tope ya pasado rechaza un cambio de plan (R18, SL-24 R12) y
- *     la primera asignación sin fecha (SLT-58 P14); la primera asignación con fecha se asigna y avisa
- *     (SLT-58 R36, R42). Cambiar solo el tipo no mira topes: el plan es el mismo.
- */
-async function cambiarEmpresaEnTx(
-  tx: Tx,
-  empresa: EmpresaBloqueada,
-  plan: PlanDTO,
-  tipoCobro: TipoCobro,
-  efecto: EfectoElegido,
-  actorUsuarioId: string,
-  ahora: Date,
-): Promise<ResultadoDelCambio> {
-  if (empresa.plan_id === plan.id && empresa.plan_tipo_cobro === tipoCobro) {
-    if (empresa.plan_cambio_id === null) return { estado: "ok", cambio: false, avisos: [], pendiente: false };
-    await limpiarPendiente(tx, empresa.id);
-    return { estado: "ok", cambio: true, avisos: [], pendiente: false };
-  }
-  const excedidos = empresa.plan_id === plan.id ? [] : await excedidosDe(tx, [empresa], plan.topes);
-  if (efecto.desde.getTime() > ahora.getTime()) {
-    await escribirPendiente(tx, empresa.id, plan.id, tipoCobro, efecto.desde, actorUsuarioId);
-    return { estado: "ok", cambio: true, avisos: excedidos, pendiente: true };
-  }
-  const avisa = efecto.clase === "inicio" && efecto.elegida;
-  if (!avisa && excedidos.length > 0) return { estado: "tope_excedido", excedidos };
-  await aplicarEnTx(tx, empresa, plan, tipoCobro, efecto.desde, await resolverActorCongelado(tx, actorUsuarioId));
-  return { estado: "ok", cambio: true, avisos: avisa ? excedidos : [], pendiente: false };
-}
 
 /** Ajuste planes-custom (D2): revierte la transacción de `crearYAsignar` llevando el rechazo afuera. */
 class AsignacionRechazada extends Error {
@@ -796,7 +767,7 @@ export class PlanesRepository implements IPlanesRepository {
     );
   }
 
-  editar(planId: string, version: VersionPlan, actorUsuarioId: string): Promise<ResultadoEdicion> {
+  editar(planId: string, version: VersionPlan, actorUsuarioId: string, precioDesde: Date): Promise<ResultadoEdicion> {
     return comoPlataforma("SL-24", "editar un plan del catálogo de inmediato (superadmin)", () =>
       this.prisma.$transaction(async (tx): Promise<ResultadoEdicion> => {
         if (!(await bloquearPlanParaEscribir(tx, planId))) return { estado: "not_found" };
@@ -810,7 +781,7 @@ export class PlanesRepository implements IPlanesRepository {
         const empresas = await empresasDelPlan(tx, planId);
         const avisos = await excedidosDe(tx, empresas, version.topes);
         const actor = await resolverActorCongelado(tx, actorUsuarioId);
-        await aplicarVersion(tx, antes, version, actor);
+        await aplicarVersion(tx, antes, version, actor, precioDesde);
         const editId = await escribirRastro(tx, { id: planId, nombre: version.nombre }, "editado", cambios, actorUsuarioId, actor);
         // R41 (§16.4): un correo de guardado por empresa del plan, en esta transacción. La clave lleva
         // el id de la fila `editado` de `plan_rastro` (no hay programación).
@@ -933,7 +904,7 @@ export class PlanesRepository implements IPlanesRepository {
     }
     const noCasa = claseQueNoCasa(efecto, empresa.plan_id);
     if (noCasa !== null) return noCasa;
-    return cambiarEmpresaEnTx(tx, empresa, plan, tipoCobro, efecto, actorUsuarioId, ahora);
+    return this.cambiarEmpresaEnTx(tx, empresa, plan, tipoCobro, efecto, actorUsuarioId, ahora);
   }
 
   vistaPreviaAsignacion(organizacionId: string, planId: string): Promise<VistaPreviaLeida | null> {
@@ -974,12 +945,86 @@ export class PlanesRepository implements IPlanesRepository {
         // La FK de `organizacion.plan_id` impide que el plan no exista.
         const plan = await leerPlan(tx, empresa.plan_id);
         if (plan === null) throw new Error(`cambiarTipoCobro: el plan de ${organizacionId} no existe`);
-        const r = await cambiarEmpresaEnTx(tx, empresa, plan, tipoCobro, efecto, actorUsuarioId, ahora);
+        const r = await this.cambiarEmpresaEnTx(tx, empresa, plan, tipoCobro, efecto, actorUsuarioId, ahora);
         // Con el mismo plan no se miran topes, así que no puede rechazarse por uno.
         if (r.estado !== "ok") throw new Error(`cambiarTipoCobro: rechazo imposible (${r.estado}) para ${organizacionId}`);
         return { estado: "ok", cambio: r.cambio, pendiente: r.pendiente };
       }),
     );
+  }
+
+  /**
+   * §5.1, pasos 2–4, con la empresa ya bajo el cerrojo y el plan revalidado.
+   *   · R19: mismo plan y mismo tipo que rigen → cancela el pendiente o no hace nada; nunca historial.
+   *   · Fecha futura → pendiente y avisos, sin rechazar (R18).
+   *   · Fecha de hoy o pasada → se aplica. Un tope ya pasado rechaza un cambio de plan (R18, SL-24 R12) y
+   *     la primera asignación sin fecha (SLT-58 P14); la primera asignación con fecha se asigna y avisa
+   *     (SLT-58 R36, R42). Cambiar solo el tipo no mira topes: el plan es el mismo.
+   */
+  private async cambiarEmpresaEnTx(
+    tx: Tx,
+    empresa: EmpresaBloqueada,
+    plan: PlanDTO,
+    tipoCobro: TipoCobro,
+    efecto: EfectoElegido,
+    actorUsuarioId: string,
+    ahora: Date,
+  ): Promise<ResultadoDelCambio> {
+    if (empresa.plan_id === plan.id && empresa.plan_tipo_cobro === tipoCobro) {
+      if (empresa.plan_cambio_id === null) return { estado: "ok", cambio: false, avisos: [], pendiente: false };
+      await limpiarPendiente(tx, empresa.id);
+      return { estado: "ok", cambio: true, avisos: [], pendiente: false };
+    }
+    const excedidos = empresa.plan_id === plan.id ? [] : await excedidosDe(tx, [empresa], plan.topes);
+    if (efecto.desde.getTime() > ahora.getTime()) {
+      await escribirPendiente(tx, empresa.id, plan.id, tipoCobro, efecto.desde, actorUsuarioId);
+      return { estado: "ok", cambio: true, avisos: excedidos, pendiente: true };
+    }
+    const avisa = efecto.clase === "inicio" && efecto.elegida;
+    if (!avisa && excedidos.length > 0) return { estado: "tope_excedido", excedidos };
+    await this.aplicarEnTx(tx, empresa, plan, tipoCobro, efecto.desde, await resolverActorCongelado(tx, actorUsuarioId));
+    return { estado: "ok", cambio: true, avisos: avisa ? excedidos : [], pendiente: false };
+  }
+
+  /**
+   * Aplica un cambio de empresa (§5.2, pasos 2–4): plan, tipo y entrada a las 00:00 de la fecha, sin
+   * pendiente; los módulos del plan si cambió el plan (con el mismo plan no se tocan: borraría las
+   * excepciones de SL-23, R11); y la fila del historial con `actor`. `plan_asignado` si cambió el plan;
+   * si no, `plan_tipo_cobro_cambiado` (D16). El `valor_nuevo` lleva la fecha delante del tipo (R30).
+   */
+  private async aplicarEnTx(
+    tx: Tx,
+    empresa: Pick<EmpresaBloqueada, "id" | "plan_id" | "plan_tipo_cobro">,
+    plan: Pick<PlanDTO, "id" | "nombre" | "modulos">,
+    tipoCobro: TipoCobro,
+    desde: Date,
+    actor: ActorCongelado,
+  ): Promise<void> {
+    await tx.$executeRaw`
+      UPDATE "organizacion"
+         SET "plan_id" = ${plan.id}, "plan_tipo_cobro" = ${tipoCobro}, "plan_ciclo_ancla_at" = ${comoTimestamp(desde)}::timestamp,
+             ${SIN_PENDIENTE}
+       WHERE "id" = ${empresa.id}`;
+    const comun = {
+      entidadTipo: "plan",
+      entidadId: plan.id,
+      entidadEtiqueta: etiquetaDeEntidad("plan", { nombre: plan.nombre }),
+      valorNuevo: valorDelHistorialDeAsignacion(fechaCalendarioCR(desde), tipoCobro),
+      organizacionId: empresa.id,
+      ...actor,
+    } as const;
+    if (empresa.plan_id === plan.id) {
+      await appendAccion(tx, [
+        { ...comun, accion: "plan_tipo_cobro_cambiado", valorAnterior: tipoCobroSchema.parse(empresa.plan_tipo_cobro) },
+      ]);
+      return;
+    }
+    const modulos = await sincronizarModulos(tx, empresa.id, plan.modulos);
+    // Una sola llamada: el `plan_asignado` y las filas de módulos comparten `lote_id` (§9).
+    await appendAccion(tx, [
+      { ...comun, accion: "plan_asignado", valorAnterior: null },
+      ...modulos.map((e): EntradaAccion => ({ ...e, ...actor })),
+    ]);
   }
 
   cancelarCambioEmpresa(organizacionId: string): Promise<ResultadoCancelarCambio> {
@@ -1011,7 +1056,7 @@ export class PlanesRepository implements IPlanesRepository {
         if (plan === null) throw new Error(`aplicarCambioDeEmpresa: el plan ${planId} del pendiente no existe`);
         // R18: un tope ya pasado no lo impide (SLT-58 R36). R20: el historial lo firma quien lo programó.
         const actor = await resolverActorCongelado(tx, empresa.plan_cambio_actor_id);
-        await aplicarEnTx(tx, empresa, plan, tipoCobroSchema.parse(empresa.plan_cambio_tipo_cobro), desde, actor);
+        await this.aplicarEnTx(tx, empresa, plan, tipoCobroSchema.parse(empresa.plan_cambio_tipo_cobro), desde, actor);
         return { estado: "aplicado" };
       }),
     );
@@ -1164,7 +1209,8 @@ export class PlanesRepository implements IPlanesRepository {
         const cambios = diferenciasDelPlan(antes, { ...antes, ...version });
         // 3. La misma función que la edición inmediata (R17 en las empresas que lo tienen AHORA).
         // El historial de SL-23 de cada empresa lo firma el sistema; el ciclo no se toca (R38).
-        if (hayCambios(cambios)) await aplicarVersion(tx, antes, version, ACTOR_SISTEMA);
+        // SLT-86 (§1.2; R15): un precio programado rige desde las 00:00 de su `vigente_desde`.
+        if (hayCambios(cambios)) await aplicarVersion(tx, antes, version, ACTOR_SISTEMA, pendiente.vigenteDesde);
         // 4. R43: la fila del sistema, con quien lo programó.
         await escribirRastro(
           tx,
@@ -1335,11 +1381,15 @@ export class PlanesRepository implements IPlanesRepository {
           where: { id: organizacionId },
           select: {
             planCicloAnclaAt: true,
-            planCicloCortoDesdeAt: true,
             planTipoCobro: true,
             plan: {
               include: { ...INCLUIR, cambioProgramado: { select: { vigenteDesde: true, version: true } } },
             },
+            // SLT-86 (§3.3; R26): el pendiente de la empresa. El superadmin no pasa por la lectura acotada:
+            // lee las columnas directamente, como el resto del detalle. El actor no sale de aquí.
+            planCambioTipoCobro: true,
+            planCambioDesdeAt: true,
+            planCambioPlanId: true,
           },
         });
         if (empresa === null) return null;
@@ -1368,11 +1418,23 @@ export class PlanesRepository implements IPlanesRepository {
           valorNuevo: a.valorNuevo,
         }));
         const { plan } = empresa;
-        if (plan === null) return { organizacionId, plan: null, asignaciones: lista };
+        // El CHECK `organizacion_plan_cambio_completo` deja las columnas juntas, o ninguna. El nombre del plan
+        // que entra va en otra consulta, después: dos relaciones hermanas serían dos consultas a la vez sobre
+        // la conexión de la transacción (ficha 450).
+        const planQueEntra =
+          empresa.planCambioPlanId === null
+            ? null
+            : await tx.plan.findUnique({ where: { id: empresa.planCambioPlanId }, select: { nombre: true } });
+        const pendiente =
+          planQueEntra === null || empresa.planCambioTipoCobro === null || empresa.planCambioDesdeAt === null
+            ? null
+            : pendienteDeEmpresa(planQueEntra.nombre, empresa.planCambioTipoCobro, empresa.planCambioDesdeAt);
+        // R26 sin plan: la primera asignación pendiente, para «Sin límites» y «{Plan} empieza a regir el {fecha}».
+        if (plan === null) return { organizacionId, plan: null, pendienteSinPlan: pendiente, asignaciones: lista };
 
-        // El CHECK de 20261028130000 impide un plan sin ancla.
-        const ancla = empresa.planCicloAnclaAt;
-        if (ancla === null) throw new Error(`planDeEmpresa: la empresa ${organizacionId} tiene plan y no ancla`);
+        // El CHECK de 20261028130000 impide un plan sin entrada.
+        const entrada = empresa.planCicloAnclaAt;
+        if (entrada === null) throw new Error(`planDeEmpresa: la empresa ${organizacionId} tiene plan y no entrada`);
         const dto = aDTO(plan);
         const uso = await usoDe(tx, organizacionId);
         // SLT-66 (R18, §3.2): la misma función que el trigger del cargo, para que el detalle diga lo que
@@ -1384,15 +1446,27 @@ export class PlanesRepository implements IPlanesRepository {
           FROM cobro_plataforma_tarifa_de(${organizacionId})`;
         if (tarifa === undefined) throw new Error(`planDeEmpresa: sin tarifa vigente para ${organizacionId}`);
         // SLT-83 (R24): la misma función y el mismo inicio de ciclo que `plan_de_la_empresa` («Mi plan»).
-        // SLT-86 (§3.3; R7, R28): el inicio es el del período en curso de calendario, y las órdenes del
-        // período se cuentan aquí con el mismo inicio, porque `usoDe` ya no las cuenta (R8).
-        const [periodo] = await tx.$queryRaw<{ cobrado: string; pendientes: number; ordenes: number }[]>`
-          SELECT c."cobrado"::text AS "cobrado", c."pendientes", plan_uso_ordenes(o."id", ci."inicio") AS "ordenes"
+        // SLT-86 (§3.3; R7, R15, R28): el inicio es el del período en curso de calendario; con él se cuentan
+        // las órdenes del período (`usoDe` ya no las cuenta, R8) y se elige el precio del período: la fila del
+        // historial con el mayor `desde_at` que no pase de ese inicio. `desde_at` no sale de la consulta:
+        // `-infinity` no cabe en un `DateTime`.
+        const [periodo] = await tx.$queryRaw<
+          { cobrado: string; pendientes: number; ordenes: number; precio_mensual: string | null; descuentos: unknown }[]
+        >`
+          SELECT c."cobrado"::text AS "cobrado", c."pendientes", plan_uso_ordenes(o."id", ci."inicio") AS "ordenes",
+                 h."precio_mensual"::text AS "precio_mensual", h."descuentos"
             FROM "organizacion" o
            CROSS JOIN LATERAL (SELECT plan_inicio_ciclo_de(o."plan_ciclo_ancla_at", o."plan_tipo_cobro", (now() AT TIME ZONE 'UTC')) AS "inicio") ci
            CROSS JOIN LATERAL plan_cobro_del_ciclo(o."id", ci."inicio") c
+            LEFT JOIN LATERAL (SELECT ph."precio_mensual", ph."descuentos" FROM "plan_precio_historial" ph
+                                WHERE ph."plan_id" = o."plan_id" AND ph."desde_at" <= ci."inicio"
+                                ORDER BY ph."desde_at" DESC LIMIT 1) h ON true
            WHERE o."id" = ${organizacionId}`;
         if (periodo === undefined) throw new Error(`planDeEmpresa: sin cobro del ciclo para ${organizacionId}`);
+        // La migración y `crear` siembran una fila `-infinity` por plan: sin ella el dato está roto.
+        if (periodo.descuentos === null || periodo.descuentos === undefined) {
+          throw new Error(`planDeEmpresa: el plan ${plan.id} no tiene precio en su historial`);
+        }
         const cobroCiclo = { cobrado: periodo.cobrado, pendientes: periodo.pendientes };
         return {
           organizacionId,
@@ -1406,8 +1480,9 @@ export class PlanesRepository implements IPlanesRepository {
               costoPorOrden: dto.costoPorOrden,
               costoPorOrdenPorcentual: dto.costoPorOrdenPorcentual,
             },
-            ancla,
-            cortoDesde: empresa.planCicloCortoDesdeAt,
+            entrada,
+            precioDelPeriodo: precioDelHistorial(periodo.precio_mensual, periodo.descuentos),
+            pendiente,
             uso: {
               ordenes: periodo.ordenes,
               apiKeys: uso.api_keys,
@@ -1419,9 +1494,10 @@ export class PlanesRepository implements IPlanesRepository {
             cambio: pendienteDe(plan.cambioProgramado),
             costoVigente: costoVigenteDeLaTarifa(tarifa),
             cobroCiclo,
-            // El CHECK de 20261104130000 deja solo `mensual` | `anual`.
+            // SLT-86 (R1): el CHECK de 20261106120000 deja los cuatro tipos.
             tipoCobro: tipoCobroSchema.parse(empresa.planTipoCobro),
           },
+          pendienteSinPlan: null,
           asignaciones: lista,
         };
       }),

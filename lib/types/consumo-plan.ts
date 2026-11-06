@@ -125,5 +125,14 @@ export type PlanConConsumo = {
 };
 
 export type MiPlanResult =
-  | { estado: "ok"; plan: PlanConConsumo | null } // null = sin plan (R6)
+  | {
+      estado: "ok";
+      /** `null` = sin plan: sin límites (SLT-58 R6). */
+      plan: PlanConConsumo | null;
+      /**
+       * SLT-86 (R26, decisión del 2026-11-05): sin plan, la primera asignación pendiente, para «{Plan} empieza
+       * a regir el {fecha}»; `null` si no hay. Con plan, el pendiente va en `plan.cobro.pendiente`.
+       */
+      pendienteSinPlan: PendienteDeEmpresa | null;
+    }
   | { estado: "forbidden" };

@@ -106,6 +106,12 @@ export async function crearPlan(c: ClienteDePlanes, p: PlanDePrueba = {}): Promi
     },
     select: { id: true },
   });
+  // SLT-86 (design §1.2): como `crear`, el precio de alta (aquí «sin precio») rige desde siempre. Sin esa
+  // fila, `plan_de_la_empresa` no tiene precio del período.
+  await c.$executeRawUnsafe(
+    `INSERT INTO "plan_precio_historial" ("plan_id", "desde_at", "precio_mensual", "descuentos") VALUES ($1, '-infinity', NULL, '{}')`,
+    id,
+  );
   return id;
 }
 

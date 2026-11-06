@@ -92,6 +92,9 @@ export const SOLO_PRIMERA_ASIGNACION = "La fecha de inicio solo se elige en la p
 /** SLT-86 (R16): error del campo `vigenteDesde` cuando falta en un cambio a una empresa con plan. */
 export const FECHA_DE_EFECTO_OBLIGATORIA = "Elige desde qué fecha rige el cambio.";
 
+/** SLT-86 (R22): error del campo `vigenteDesde` con una fecha anterior a hoy. */
+export const FECHA_DE_EFECTO_PASADA = "La fecha de efecto no puede ser anterior a hoy.";
+
 /** SLT-86 (R2, R16): error del campo `vigenteDesde` en una empresa sin plan, que lleva fecha de inicio. */
 export const SOLO_CON_PLAN = "La fecha de efecto es de un cambio a una empresa con plan; la primera asignación lleva fecha de inicio.";
 

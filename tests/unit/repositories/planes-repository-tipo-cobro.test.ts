@@ -81,6 +81,10 @@ function txDeLectura(filas: unknown[]) {
         planCicloAnclaAt: null,
         planTipoCobro: "mensual",
         plan: null,
+        // SLT-86 (R26): sin pendiente de empresa.
+        planCambioTipoCobro: null,
+        planCambioDesdeAt: null,
+        planCambioPlanId: null,
       })),
     },
     historialAccion: { findMany },
@@ -152,6 +156,7 @@ describe("D14, D16 — planDeEmpresa lee las dos acciones del historial de asign
     expect(r).toEqual({
       organizacionId: ORG,
       plan: null,
+      pendienteSinPlan: null,
       asignaciones: [
         { creadoAt, actorNombre: "Ana", planNombre: "Plan «Norte»", accion: "plan_tipo_cobro_cambiado", valorAnterior: "mensual", valorNuevo: "anual" },
         { creadoAt, actorNombre: "Ana", planNombre: "Plan «Norte»", accion: "plan_asignado", valorAnterior: null, valorNuevo: "mensual" },

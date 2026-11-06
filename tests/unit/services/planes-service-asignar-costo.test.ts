@@ -242,8 +242,11 @@ describe("SLT-66 — R30: editar, programar y archivar no se frenan", () => {
 
   it.each(SIN_COSTO_VERSION)("editar de inmediato %s un plan con empresas → ok y se llama al repositorio", async (_caso, extra) => {
     const v = version(extra);
-    expect(await servicio.editar(SUPERADMIN, { planId: PLAN, ...v, vigenteDesde: null })).toMatchObject({ estado: "ok" });
-    expect(repo.editar).toHaveBeenCalledWith(PLAN, v, "u-sa");
+    // SLT-86 (R22): pasar a «sin precio» cambia el precio, así que lleva fecha de efecto: la de hoy es inmediata.
+    // Vaciar el costo por orden no toca el precio: sigue siendo inmediata sin fecha.
+    const vigenteDesde = "precio" in extra ? HOY : null;
+    expect(await servicio.editar(SUPERADMIN, { planId: PLAN, ...v, vigenteDesde })).toMatchObject({ estado: "ok" });
+    expect(repo.editar).toHaveBeenCalledWith(PLAN, v, "u-sa", new Date(`${HOY}T06:00:00.000Z`));
   });
 
   it.each(SIN_COSTO_VERSION)("programar %s un plan con empresas → ok y se llama al repositorio", async (_caso, extra) => {

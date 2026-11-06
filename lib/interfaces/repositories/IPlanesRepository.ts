@@ -1,6 +1,7 @@
 import type { PlanRastroAccion } from "@prisma/client";
 
 import type { CambioDelPlanLeido, PlanConUsoLeido } from "@/lib/planes/consumo";
+import type { PendienteDeEmpresa } from "@/lib/types/consumo-plan";
 import type { TipoCorreoCambioPlan, TopePasado } from "@/lib/planes/mensajes";
 import type { CambiosDelPlan } from "@/lib/planes/rastro";
 import type {
@@ -214,6 +215,11 @@ export type ResultadoCambiarTipoCobro =
 export interface PlanDeEmpresaLeida {
   organizacionId: string;
   plan: (PlanConUsoLeido & { dto: PlanDTO }) | null;
+  /**
+   * SLT-86 (R26, decisión del 2026-11-05): sin plan, la primera asignación pendiente (P4 = a), o `null`.
+   * Con plan, el pendiente va en `plan.pendiente`.
+   */
+  pendienteSinPlan: PendienteDeEmpresa | null;
   /** Del más reciente al más antiguo, como mucho 50. */
   asignaciones: AsignacionLeida[];
 }
@@ -231,9 +237,11 @@ export interface IPlanesRepository {
   crear(input: CrearPlanInput, actorUsuarioId: string): Promise<string>;
   /**
    * Edición inmediata (§5.3): aplica la versión a todas las empresas del plan y devuelve las que ya
-   * pasan algún tope nuevo, sin rechazar (R15–R17). Sin cambios reales no escribe nada.
+   * pasan algún tope nuevo, sin rechazar (R15–R17). Sin cambios reales no escribe nada. SLT-86 (§5.4;
+   * R15, R22): si cambia el costo base o un descuento, añade la fila del historial de precio desde
+   * `precioDesde` (las 00:00 de hoy) y no toca a ninguna empresa.
    */
-  editar(planId: string, version: VersionPlan, actorUsuarioId: string): Promise<ResultadoEdicion>;
+  editar(planId: string, version: VersionPlan, actorUsuarioId: string, precioDesde: Date): Promise<ResultadoEdicion>;
   /**
    * Archiva y cancela el cambio pendiente en la misma transacción (R6, R40). SLT-86 (R21): también los
    * cambios de empresa pendientes hacia ese plan, primeras asignaciones incluidas. Repetido no escribe.

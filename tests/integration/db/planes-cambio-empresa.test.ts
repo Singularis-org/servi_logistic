@@ -416,7 +416,10 @@ describeSiHayBase("SLT-86 — cambios de empresa con fecha de efecto (R1, R2, R1
     expect(r.viejo).toEqual({ estado: "sin_pendiente" });
     expect(r.trasViejo).toEqual(r.segundo);
     // Un trabajo por pendiente: el del reemplazado sigue en la cola y no encuentra su `cambioId`.
-    expect(r.jobs.map((j) => j.payload.cambioId)).toEqual([r.primero.empresa.planCambioId, r.segundo.empresa.planCambioId]);
+    // Sin depender del orden: los dos nacen en la transacción del caso y comparten `created_at`.
+    expect(r.jobs.map((j) => j.payload.cambioId).sort()).toEqual(
+      [r.primero.empresa.planCambioId as string, r.segundo.empresa.planCambioId as string].sort(),
+    );
     expect(r.identico).toEqual({ estado: "ok", planId: r.uno, cambio: true, avisos: [], vigenteDesde: null });
     expect(r.cancelado).toEqual(r.vigente);
     expect(r.otraVez).toEqual({ estado: "ok", planId: r.uno, cambio: false, avisos: [], vigenteDesde: null });
@@ -538,7 +541,11 @@ describeSiHayBase("SLT-86 — cambios de empresa con fecha de efecto (R1, R2, R1
       const c = await caso(tx);
       const [uno, dos] = [await c.plan({ precio: MENSUAL_31000 }), await c.plan({ precio: MENSUAL_31000 })];
       const org = await c.empresa();
-      const contar = async () => ({ wallet: await tx.walletMovimiento.count(), cobro: await tx.cobroPlataformaMovimiento.count() });
+      // Por empresa y no el total de la tabla: otros archivos que corren a la vez pueden confirmar filas.
+      const contar = async () => ({
+        wallet: await tx.walletMovimiento.count({ where: { organizacionId: org } }),
+        cobro: await tx.cobroPlataformaMovimiento.count({ where: { organizacionId: org } }),
+      });
       const antes = await contar();
       await c.servicio.asignar(c.actor, { organizacionId: org, planId: uno, tipoCobro: "anual", inicioCiclo: dia(-3) });
       await c.servicio.asignar(c.actor, { organizacionId: org, planId: dos, tipoCobro: "quincenal", vigenteDesde: dia(2) });

@@ -123,3 +123,11 @@ export function diferenciasDelPlan(antes: PlanDTO | null, despues: PlanDTO): Cam
 export function hayCambios(c: CambiosDelPlan): boolean {
   return Object.keys(c).length > 0;
 }
+
+/**
+ * SLT-86 (R15, R22): la edición cambia el costo base mensual o algún descuento. Entonces lleva fecha de
+ * efecto y deja su fila en el historial de precio; el resto de campos sigue la regla de SLT-58.
+ */
+export function cambiaElPrecio(c: CambiosDelPlan): boolean {
+  return Object.keys(c).some((campo) => campo === "precio" || campo.startsWith("descuento_"));
+}

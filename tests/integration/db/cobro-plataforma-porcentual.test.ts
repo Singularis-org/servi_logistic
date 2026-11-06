@@ -244,10 +244,15 @@ describeSiHayBase("SLT-83 — el cobro porcentual de una orden (Postgres, R6–R
 
   /* -------------------------------- R10 ---------------------------------- */
 
-  it("R10: el cargo porcentual no lleva el descuento anual del plan ni impuestos", async () => {
+  // SLT-86 (R13, §12): el descuento anual de SLT-83 R10 es ahora un descuento de período en
+  // `plan_descuento_periodo`; ni ese ni el tipo de cobro tocan el cargo de la orden.
+  it("R10, SLT-86 R13: el cargo porcentual no lleva el descuento del período ni impuestos", async () => {
     const r = await revertida(base, async (tx) => {
       const { e, plan } = await empresaPorcentual(tx, "2", null);
-      await tx.$executeRawUnsafe(`UPDATE "plan" SET "descuento_anual_pct" = 20 WHERE "id" = $1`, plan);
+      await tx.$executeRawUnsafe(
+        `INSERT INTO "plan_descuento_periodo" ("plan_id", "periodo", "porcentaje") VALUES ($1, 'anual', 20)`,
+        plan,
+      );
       await tx.$executeRawUnsafe(`UPDATE "organizacion" SET "plan_tipo_cobro" = 'anual' WHERE "id" = $1`, e.id);
       const id = await crearOrden(tx, e, { montoCobrar: "100000" });
       await cambiarEstado(tx, id, "entregado");

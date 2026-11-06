@@ -13,8 +13,10 @@ import { inicioDelDiaPlataforma, rangoDeLaFechaDeEfecto, rangoDelInicioDelCiclo 
 import { tipoCobroDelHistorial } from "@/lib/planes/cobro";
 import { cambioPendienteDelPlan, planConConsumo } from "@/lib/planes/consumo";
 import { tieneCostoConcreto } from "@/lib/planes/costo-concreto";
+import { cambiaElPrecio, diferenciasDelPlan } from "@/lib/planes/rastro";
 import {
   FECHA_DE_EFECTO_OBLIGATORIA,
+  FECHA_DE_EFECTO_PASADA,
   mensajeTopesPasados,
   rangoInicioCiclo,
   SOLO_CON_PLAN,
@@ -43,6 +45,7 @@ import {
   type PlanDeEmpresaResult,
   type PlanDTO,
   type PlanResult,
+  type VersionPlan,
 } from "@/lib/types/planes";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 
@@ -187,16 +190,24 @@ export class PlanesService implements IPlanesService {
     const parsed = editarPlanSchema.safeParse(input);
     if (!parsed.success) return { estado: "validation_error", fieldErrors: erroresDeCampo(parsed.error) };
     const { planId, vigenteDesde, ...version } = parsed.data;
-    // R37: la fecha rige a las 00:00 de la plataforma y tiene que caer después de ahora.
-    if (vigenteDesde !== null && inicioDelDiaPlataforma(vigenteDesde).getTime() <= this.ahora().getTime()) {
-      return {
-        estado: "validation_error",
-        fieldErrors: { vigenteDesde: ["La fecha de vigencia tiene que ser posterior a hoy."] },
-      };
-    }
+    const ahora = this.ahora();
+    const hoy = fechaCalendarioCR(ahora);
+    // SLT-86 (R22): ninguna fecha anterior a hoy, cambie o no el precio; se mira antes de leer nada.
+    if (vigenteDesde !== null && vigenteDesde < hoy) return errorEn("vigenteDesde", FECHA_DE_EFECTO_PASADA);
     const plan = await this.repo.plan(planId);
     if (plan === null) return { estado: "not_found" };
     if (plan.archivado) return { estado: "archivado" };
+
+    // SLT-86 (R15, R22): el costo base o un descuento cambian con fecha de efecto `≥ hoy`, sin edición
+    // inmediata: hoy se aplica en la misma transacción y desde sus 00:00 rige el precio nuevo; una fecha
+    // futura es el cambio programado de SLT-58. Lo demás sigue la regla de SLT-58 (R37).
+    if (cambiaElPrecio(diferenciasDelPlan(plan, { ...plan, ...version }))) {
+      if (vigenteDesde === null) return errorEn("vigenteDesde", FECHA_DE_EFECTO_OBLIGATORIA);
+      if (vigenteDesde === hoy) return this.editarYa(planId, version, actor.usuarioId, inicioDelDiaPlataforma(hoy));
+    } else if (vigenteDesde !== null && inicioDelDiaPlataforma(vigenteDesde).getTime() <= ahora.getTime()) {
+      // R37: la fecha rige a las 00:00 de la plataforma y tiene que caer después de ahora.
+      return errorEn("vigenteDesde", "La fecha de vigencia tiene que ser posterior a hoy.");
+    }
 
     if (vigenteDesde !== null) {
       // §16.2: programar o reemplazar el pendiente, sin tocar la versión vigente (R37, R39). R16: se
@@ -207,13 +218,18 @@ export class PlanesService implements IPlanesService {
         version,
         inicioDelDiaPlataforma(vigenteDesde),
         actor.usuarioId,
-        this.ahora(),
+        ahora,
       );
       if (p.estado !== "ok") return p;
       // `vigenteDesde` vuelve como la fecha elegida (`AAAA-MM-DD`, P8); null si no se programó nada.
       return ok(planId, p.cambio, { avisos: p.avisos, vigenteDesde: p.cambio ? vigenteDesde : null });
     }
-    const r = await this.repo.editar(planId, version, actor.usuarioId);
+    return this.editarYa(planId, version, actor.usuarioId, inicioDelDiaPlataforma(hoy));
+  }
+
+  /** La edición inmediata; `precioDesde` (las 00:00 de hoy) es desde cuándo rige un precio nuevo (R15). */
+  private async editarYa(planId: string, version: VersionPlan, actorUsuarioId: string, precioDesde: Date): Promise<PlanResult> {
+    const r = await this.repo.editar(planId, version, actorUsuarioId, precioDesde);
     if (r.estado !== "ok") return r;
     return ok(planId, r.cambio, { avisos: r.avisos });
   }
@@ -426,6 +442,8 @@ export class PlanesService implements IPlanesService {
       estado: "ok",
       vista: {
         organizacionId: leida.organizacionId,
+        // SLT-86 (R26): la primera asignación pendiente de una empresa sin plan.
+        pendienteSinPlan: leida.pendienteSinPlan,
         // R19: las mismas filas, marcas y reinicio que «Mi plan».
         plan:
           plan === null

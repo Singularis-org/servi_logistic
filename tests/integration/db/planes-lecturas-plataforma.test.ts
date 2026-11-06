@@ -26,7 +26,7 @@ let base: PrismaClient;
 
 const VERSION: VersionPlan = {
   nombre: "Pendiente",
-  topes: { ordenesPorCiclo: 10, porRol: {}, apiKeys: null },
+  topes: { porRol: {}, apiKeys: null },
   modulos: [],
   precio: { tipo: "sin_precio" },
   costoPorOrden: null, // SLT-66 R7: el plan lleva costo por orden; aquí, vacío.
@@ -94,7 +94,8 @@ describeSiHayBase("SLT-58 — lecturas del superadmin en PlanesRepository (R13, 
       const a = (await crearOrganizacion(tx, { nombre: "Empresa A slt58" })).id;
       const b = (await crearOrganizacion(tx)).id;
       const archivado = await crearPlan(tx, { archivado: true });
-      const enUso = await crearPlan(tx, { ordenes: 100 });
+      // SLT-86 (R8): el tope que distingue al plan es el de API keys.
+      const enUso = await crearPlan(tx, { apiKeys: 100 });
       const custom = await crearPlan(tx, { custom: a });
       await asignarPlan(tx, a, enUso);
       await asignarPlan(tx, b, enUso);
@@ -110,7 +111,7 @@ describeSiHayBase("SLT-58 — lecturas del superadmin en PlanesRepository (R13, 
       vigenteDesdePendiente: null,
     });
     expect(de(r.enUso)).toMatchObject({
-      plan: { archivado: false, topes: { ordenesPorCiclo: 100 } },
+      plan: { archivado: false, topes: { apiKeys: 100 } },
       empresas: 2,
       vigenteDesdePendiente: RIGE,
     });
@@ -126,7 +127,7 @@ describeSiHayBase("SLT-58 — lecturas del superadmin en PlanesRepository (R13, 
     const r = await revertida(base, async (tx) => {
       const a = (await crearOrganizacion(tx, { nombre: "B empresa slt58" })).id;
       const b = (await crearOrganizacion(tx, { nombre: "A empresa slt58" })).id;
-      const planId = await crearPlan(tx, { ordenes: 50 });
+      const planId = await crearPlan(tx, { apiKeys: 50 });
       const otro = await crearPlan(tx);
       await asignarPlan(tx, a, planId);
       await asignarPlan(tx, b, planId);
@@ -143,7 +144,7 @@ describeSiHayBase("SLT-58 — lecturas del superadmin en PlanesRepository (R13, 
     expect(r.inexistente).toBeNull();
     expect(r.detalle).not.toBeNull();
     const d = r.detalle!;
-    expect(d.plan).toMatchObject({ id: r.planId, topes: { ordenesPorCiclo: 50 } });
+    expect(d.plan).toMatchObject({ id: r.planId, topes: { apiKeys: 50 } });
     expect(d.empresaNombre).toBeNull();
     expect(d.pendiente).toEqual({ vigenteDesde: RIGE, version: VERSION });
     expect(d.empresas).toEqual([
@@ -160,7 +161,7 @@ describeSiHayBase("SLT-58 — lecturas del superadmin en PlanesRepository (R13, 
       const a = (await crearOrganizacion(tx)).id;
       const b = (await crearOrganizacion(tx)).id;
       const sinPlan = (await crearOrganizacion(tx)).id;
-      const planId = await crearPlan(tx, { ordenes: 100, porRol: { mensajero: 3 } });
+      const planId = await crearPlan(tx, { apiKeys: 100, porRol: { mensajero: 3 } });
       await asignarPlan(tx, a, planId);
       await programar(tx, planId);
       await asignacion(tx, a, "Primero", "2026-09-01T10:00:00.000Z");
@@ -192,14 +193,17 @@ describeSiHayBase("SLT-58 — lecturas del superadmin en PlanesRepository (R13, 
     });
     // El plan con su uso (R19, contado por las funciones de los triggers) y su pendiente.
     expect(a.plan).not.toBeNull();
-    expect(a.plan!.dto).toMatchObject({ id: r.planId, topes: { ordenesPorCiclo: 100, porRol: { mensajero: 3 } } });
+    expect(a.plan!.dto).toMatchObject({ id: r.planId, topes: { porRol: { mensajero: 3 } } });
     expect(a.plan!.uso).toEqual({
       ordenes: 0,
       apiKeys: 0,
       porRol: { admin: 0, mensajero: 0, adminTienda: 0, adminSatelite: 0 }, // SLT-66 R5: sin uso de maestro
     });
-    expect(a.plan!.ancla).toBeInstanceOf(Date);
+    // SLT-86 (R5, R15): la entrada, el precio del período (la fila «desde siempre» del plan) y sin pendiente.
+    expect(a.plan!.entrada).toBeInstanceOf(Date);
+    expect(a.plan!.precioDelPeriodo).toEqual({ tipo: "sin_precio" });
+    expect(a.plan!.pendiente).toBeNull();
     expect(a.plan!.cambio).toEqual({ vigenteDesde: RIGE, version: VERSION });
-    expect(r.deSinPlan).toEqual({ organizacionId: expect.any(String), plan: null, asignaciones: [] });
+    expect(r.deSinPlan).toEqual({ organizacionId: expect.any(String), plan: null, pendienteSinPlan: null, asignaciones: [] });
   });
 });

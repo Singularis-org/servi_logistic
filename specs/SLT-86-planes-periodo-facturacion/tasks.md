@@ -92,7 +92,7 @@
     verdes;
   - los tests de asignación y tipo de cobro de §9, adaptados.
 
-## T9 — Ediciones de precio con fecha e historial; lecturas y servicios (R3, R13, R15, R22, R26, R27, R29, R32)
+## [x] T9 — Ediciones de precio con fecha e historial; lecturas y servicios (R3, R13, R15, R22, R26, R27, R29, R32)
 
 - **Depende de:** T7, T8.
 - **Pasos:**

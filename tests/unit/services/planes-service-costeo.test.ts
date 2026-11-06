@@ -27,7 +27,7 @@ const PLAN_DTO: PlanDTO = {
   nombre: "Básico",
   visibilidad: "publico",
   organizacionId: null,
-  topes: { ordenesPorCiclo: 100, porRol: { admin: 2 }, apiKeys: null },
+  topes: { porRol: { admin: 2 }, apiKeys: null },
   modulos: [],
   precio: { tipo: "sin_precio" },
   costoPorOrden: null,
@@ -39,16 +39,16 @@ const CREAR = {
   nombre: "Básico",
   visibilidad: "publico",
   organizacionId: null,
-  topes: { ordenesPorCiclo: 100, porRol: {}, apiKeys: null },
+  topes: { porRol: {}, apiKeys: null },
   modulos: [],
-  precio: { tipo: "monto", mensual: "50000", anual: null },
+  precio: { tipo: "monto", mensual: "50000", descuentos: {} },
   costoPorOrden: "100",
   costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del esquema
 };
 
 const VERSION = {
   nombre: "Básico",
-  topes: { ordenesPorCiclo: 100, porRol: { admin: 2 }, apiKeys: null },
+  topes: { porRol: { admin: 2 }, apiKeys: null },
   modulos: [],
   precio: { tipo: "sin_precio" }, // D1 (ajuste planes-custom): «negociable» ya no existe.
   costoPorOrden: "150.50",
@@ -82,6 +82,9 @@ function doble() {
     planDeEmpresa: vi.fn<IPlanesRepository["planDeEmpresa"]>(),
     vistaPreviaConTopes: vi.fn<IPlanesRepository["vistaPreviaConTopes"]>(async () => null),
     cambiarTipoCobro: vi.fn<IPlanesRepository["cambiarTipoCobro"]>(async () => ({ estado: "not_found" })),
+    cancelarCambioEmpresa: vi.fn<IPlanesRepository["cancelarCambioEmpresa"]>(),
+    aplicarCambioDeEmpresa: vi.fn<IPlanesRepository["aplicarCambioDeEmpresa"]>(),
+    cambiosDeEmpresaVencidos: vi.fn<IPlanesRepository["cambiosDeEmpresaVencidos"]>(),
     vistaPreviaAsignacion: vi.fn<IPlanesRepository["vistaPreviaAsignacion"]>(),
   };
 }
@@ -125,7 +128,7 @@ describe("SLT-66 R11 — solo el superadmin escribe el costo por orden", () => {
 describe("SLT-66 R1, R8 — la entrada inválida es validation_error sin llamar al repositorio", () => {
   for (const [nombre, op] of OPERACIONES) {
     it(`${nombre}: un tope de maestro (R1)`, async () => {
-      const r = await op(servicio, SUPERADMIN, { topes: { ordenesPorCiclo: 10, porRol: { maestro: 3 }, apiKeys: null } });
+      const r = await op(servicio, SUPERADMIN, { topes: { porRol: { maestro: 3 }, apiKeys: null } });
       expect(r).toMatchObject({ estado: "validation_error" });
       expect(Object.keys((r as { fieldErrors: Record<string, string[]> }).fieldErrors).join(" ")).toMatch(/topes/);
       expect(llamadasAlRepositorio()).toBe(0);

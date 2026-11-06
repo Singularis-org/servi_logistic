@@ -151,12 +151,13 @@ describeSiHayBase("SL-24 — los correos del cambio de un plan (R41, R42, R45)",
 
   it("R41: la edición inmediata avisa a los maestros activos de cada empresa del plan, con los topes que ya pasa cada una", async () => {
     const r = await revertida(base, async (tx) => {
-      const p = await preparar(tx, { topes: { ordenesPorCiclo: null, porRol: { admin: 5 }, apiKeys: null } });
+      const p = await preparar(tx, { topes: { porRol: { admin: 5 }, apiKeys: null } });
       // Otra empresa con maestro, sin el plan: no recibe.
       const { id: ajena } = await crearOrganizacion(tx);
       await maestro(tx, ajena);
       await fijarEmpresa(tx, "");
-      const resultado = await p.editar(null, { topes: { ordenesPorCiclo: 40, porRol: { admin: 0 }, apiKeys: null } });
+      // SLT-86 (R8): el tope que cambia junto al de admin es el de API keys (ya no hay tope de órdenes).
+      const resultado = await p.editar(null, { topes: { porRol: { admin: 0 }, apiKeys: 40 } });
       const avisos = await trabajos(tx, "plan_aviso_correo", p.planId);
       const rastro = await tx.planRastro.findFirstOrThrow({ where: { planId: p.planId, accion: "editado" }, select: { id: true } });
       const sender = emisor();
@@ -174,7 +175,8 @@ describeSiHayBase("SL-24 — los correos del cambio de un plan (R41, R42, R45)",
     for (const m of r.enviados) {
       expect(m.subject).toBe(`Cambios en el plan ${r.p.entrada.nombre}`);
       expect(m.text).toContain("cambió y los cambios ya rigen.");
-      expect(m.text).toContain("Órdenes por ciclo: sin límite → 40");
+      expect(m.text).toContain("API keys activas: sin límite → 40");
+      expect(m.text).not.toContain("Órdenes por ciclo");
       expect(m.text).toContain("Usuarios activos con el rol Administrador: 5 → 0");
     }
     // La primera empresa tiene un admin activo: pasa el tope nuevo (1 > 0). La segunda no.
@@ -232,8 +234,8 @@ describeSiHayBase("SL-24 — los correos del cambio de un plan (R41, R42, R45)",
 
   it("R42: el recordatorio va a las empresas que tienen el plan AL SALIR, con sus topes de ese momento, una vez por empresa aunque corra dos veces", async () => {
     const r = await revertida(base, async (tx) => {
-      const p = await preparar(tx, { topes: { ordenesPorCiclo: null, porRol: { admin: 5 }, apiKeys: null } }, 1);
-      await p.editar("2026-11-07", { topes: { ordenesPorCiclo: null, porRol: { admin: 1 }, apiKeys: null } });
+      const p = await preparar(tx, { topes: { porRol: { admin: 5 }, apiKeys: null } }, 1);
+      await p.editar("2026-11-07", { topes: { porRol: { admin: 1 }, apiKeys: null } });
       // Después de programar: una empresa nueva con el plan y dos admins (pasa el tope 1).
       const nueva = await crearOrganizacion(tx, { nombre: `SL24 nueva ${randomUUID().slice(0, 6)}` });
       const asignada = await p.servicio.asignar(SUPERADMIN, { organizacionId: nueva.id, planId: p.planId, tipoCobro: "mensual" });
@@ -385,15 +387,15 @@ describeSiHayBase("SL-24 — los correos del cambio de un plan (R41, R42, R45)",
 
   it("R41/R45: un fallo del emisor falla el trabajo, pero la edición y la cancelación persisten", async () => {
     const r = await revertida(base, async (tx) => {
-      const p = await preparar(tx, { topes: { ordenesPorCiclo: 100, porRol: {}, apiKeys: null } }, 1);
-      await p.editar(null, { topes: { ordenesPorCiclo: 7, porRol: {}, apiKeys: null } });
+      const p = await preparar(tx, { topes: { porRol: {}, apiKeys: 100 } }, 1);
+      await p.editar(null, { topes: { porRol: {}, apiKeys: 7 } });
       let errorEdicion: unknown = null;
       try {
         await drenarAvisos(tx, p.planId, emisor(true));
       } catch (e) {
         errorEdicion = e;
       }
-      const tope = (await tx.plan.findUniqueOrThrow({ where: { id: p.planId }, select: { topeOrdenesCiclo: true } })).topeOrdenesCiclo;
+      const tope = (await tx.plan.findUniqueOrThrow({ where: { id: p.planId }, select: { topeApiKeys: true } })).topeApiKeys;
 
       await p.editar("2026-11-07", { nombre: "Se cancela" });
       await fijarEmpresa(tx, "");

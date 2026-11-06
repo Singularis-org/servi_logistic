@@ -18,6 +18,9 @@ import type { PlanDTO, VersionPlan } from "@/lib/types/planes";
 // fechas de calendario en la hora de la plataforma, instantes en ISO, las líneas de «qué cambia» y el
 // consumo con las mismas filas que «Mi plan». El SQL se mide en
 // `tests/integration/db/planes-lecturas-plataforma.test.ts`.
+//
+// SLT-86 (R5, R7, R8, R12, R15, R26, R27): la lectura trae la entrada, el precio del período y el
+// pendiente de la empresa; sin fila de órdenes con tope, y el período de calendario con su tramo.
 
 const SUPERADMIN: Actor = { usuarioId: "u-sa", rol: "superadmin", organizacionId: null };
 const EMPRESA = randomUUID();
@@ -35,9 +38,9 @@ function plan(extra: Partial<PlanDTO> = {}): PlanDTO {
     nombre: "Básico",
     visibilidad: "publico",
     organizacionId: null,
-    topes: { ordenesPorCiclo: 100, porRol: { mensajero: 5 }, apiKeys: null },
+    topes: { porRol: { mensajero: 5 }, apiKeys: null },
     modulos: ["ranking", "analitica"],
-    precio: { tipo: "monto", mensual: "25000.00", anual: null },
+    precio: { tipo: "monto", mensual: "25000.00", descuentos: {} },
     costoPorOrden: null, // SLT-66 R7: el plan lleva costo por orden; aquí, vacío.
     costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
     archivado: false,
@@ -46,10 +49,11 @@ function plan(extra: Partial<PlanDTO> = {}): PlanDTO {
 }
 
 const PENDIENTE: VersionPlan = {
-  nombre: "Básico",
-  topes: { ordenesPorCiclo: 200, porRol: { mensajero: 5 }, apiKeys: null },
+  // SLT-86 (R8): el pendiente cambiaba el tope de órdenes; ahora cambia el nombre.
+  nombre: "Básico plus",
+  topes: { porRol: { mensajero: 5 }, apiKeys: null },
   modulos: ["ranking", "analitica"],
-  precio: { tipo: "monto", mensual: "25000.00", anual: null },
+  precio: { tipo: "monto", mensual: "25000.00", descuentos: {} },
   costoPorOrden: null, // SLT-66 R7: el plan lleva costo por orden; aquí, vacío.
   costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
 };
@@ -99,8 +103,11 @@ function planDeEmpresaLeida(): PlanDeEmpresaLeida {
       dto,
       // SLT-66 R7: la versión vigente lleva el costo por orden del plan.
       vigente: { nombre: dto.nombre, topes: dto.topes, modulos: dto.modulos, precio: dto.precio, costoPorOrden: dto.costoPorOrden, costoPorOrdenPorcentual: null },
-      // Ancla el 15 a las 12:00 UTC: el ciclo siguiente empieza el 2026-11-15 12:00 UTC.
-      ancla: new Date("2026-09-15T12:00:00.000Z"),
+      // SLT-86 (R5): la entrada, las 00:00 de la plataforma del 15 de septiembre.
+      entrada: new Date("2026-09-15T06:00:00.000Z"),
+      // SLT-86 (R15): el precio al empezar el período en curso; aquí, el vigente.
+      precioDelPeriodo: dto.precio,
+      pendiente: null,
       // SLT-66 R5: el uso ya no trae al maestro.
       uso: { ordenes: 85, apiKeys: 2, porRol: { admin: 0, mensajero: 5, adminTienda: 0, adminSatelite: 0 } },
       cambio: { vigenteDesde: RIGE, version: PENDIENTE },
@@ -110,6 +117,7 @@ function planDeEmpresaLeida(): PlanDeEmpresaLeida {
       // Ajuste planes-custom (D6): la empresa paga en anual.
       tipoCobro: "anual",
     },
+    pendienteSinPlan: null,
     asignaciones: [
       // Ajuste planes-custom (D14, D16): un cambio de solo el tipo (D10, con su acción propia), una
       // asignación con fecha y una fila anterior al ajuste (sin tipo).
@@ -163,6 +171,9 @@ function doble() {
     publicos: vi.fn<IPlanesRepository["publicos"]>(async () => []),
     vistaPreviaConTopes: vi.fn<IPlanesRepository["vistaPreviaConTopes"]>(async () => null),
     cambiarTipoCobro: vi.fn<IPlanesRepository["cambiarTipoCobro"]>(async () => ({ estado: "not_found" })),
+    cancelarCambioEmpresa: vi.fn<IPlanesRepository["cancelarCambioEmpresa"]>(),
+    aplicarCambioDeEmpresa: vi.fn<IPlanesRepository["aplicarCambioDeEmpresa"]>(),
+    cambiosDeEmpresaVencidos: vi.fn<IPlanesRepository["cambiosDeEmpresaVencidos"]>(),
     vistaPreviaAsignacion: vi.fn<IPlanesRepository["vistaPreviaAsignacion"]>(async () => null),
   } satisfies IPlanesRepository;
 }
@@ -248,7 +259,7 @@ describe("SLT-58 — detalle de un plan (R16)", () => {
     if (r.estado !== "ok") return;
     expect(r.detalle.plan).toEqual(plan());
     expect(r.detalle.empresaNombre).toBeNull();
-    expect(r.detalle.pendiente).toEqual({ vigenteDesde: "2026-11-15", lineas: ["Órdenes por ciclo: 100 → 200"] });
+    expect(r.detalle.pendiente).toEqual({ vigenteDesde: "2026-11-15", lineas: ["Nombre del plan: Básico → Básico plus"] });
     expect(r.detalle.empresas).toEqual([{ id: EMPRESA, nombre: "Mensajería Uno" }]);
     expect(r.detalle.rastro).toEqual([
       { id: "r2", accion: "editado", cambios: { nombre: { antes: "Inicial", despues: "Básico" } }, actorNombre: "Ana Pérez", creadoAt: "2026-10-20T10:00:00.000Z" },
@@ -275,30 +286,45 @@ describe("SLT-58 — plan de una empresa (R19)", () => {
     expect(p.planId).toBe(PLAN);
     expect(p.archivado).toBe(false);
     expect(p.nombre).toBe("Básico");
-    expect(p.precioTexto).toBe("25000.00 al mes");
+    expect(p.precioTexto).toBe("25000.00 / mes");
     expect(p.modulos.map((m) => m.clave)).toEqual(["analitica", "ranking"]);
     const porClave = Object.fromEntries(p.filas.map((f) => [f.clave, f]));
-    expect(porClave.ordenes).toMatchObject({ usados: 85, maximo: 100, estado: "cerca", texto: "85 de 100 órdenes del ciclo" });
+    // SLT-86 (R7, R8): las órdenes del período, sin fila ni tope.
+    expect(p.ordenesDelPeriodo).toBe(85);
     expect(porClave.mensajero).toMatchObject({ usados: 5, maximo: 5, estado: "lleno" });
     expect(porClave.api_keys).toMatchObject({ usados: 2, maximo: null, estado: "sin_limite" });
     // SLT-66 R5: ninguna fila de maestro.
-    expect(p.filas.map((f) => f.clave)).toEqual(["ordenes", "admin", "mensajero", "adminTienda", "adminSatelite", "api_keys"]);
-    // Del 2026-10-28 12:00 al 2026-11-15 12:00 UTC: 18 días; la fecha, en la hora de la plataforma.
-    expect(p.reinicio).toEqual({ dias: 18, fecha: "2026-11-15" });
-    expect(p.cambioPendiente).toEqual({ vigenteDesde: "2026-11-15", lineas: ["Órdenes por ciclo: 100 → 200"] });
+    expect(p.filas.map((f) => f.clave)).toEqual(["admin", "mensajero", "adminTienda", "adminSatelite", "api_keys"]);
+    // SLT-86 (R27): anual; del 2026-10-28 12:00 UTC al 2027-01-01 06:00 UTC: 64,75 días → 65.
+    expect(p.reinicio).toEqual({ dias: 65, fecha: "2027-01-01" });
+    expect(p.cambioPendiente).toEqual({ vigenteDesde: "2026-11-15", lineas: ["Nombre del plan: Básico → Básico plus"] });
   });
 
-  it("D9 (ajuste planes-custom): el detalle trae el tipo de cobro, el monto del período y el siguiente cobro", async () => {
+  it("D9, SLT-86 R12/R27: el detalle trae el tipo, el tramo desde la entrada, su costo y el siguiente cobro", async () => {
     const r = await servicio.planDeEmpresa(SUPERADMIN, { organizacionId: EMPRESA });
     if (r.estado !== "ok" || r.vista.plan === null) throw new Error("se esperaba un plan");
-    // Anual sin anual en el plan: 25000.00 × 12. Ancla el 2026-09-15: el aniversario anual es el 2027-09-15.
-    expect(r.vista.plan.cobro).toEqual({ tipo: "anual", montoPeriodo: "300000.00", siguienteCobro: "2027-09-15" });
+    // Anual sin descuento: 25000.00 × 12 = 300000.00. Entrada el 15 de septiembre: tramo hasta el 31 de
+    // diciembre, 108 de 365 días → 30000000 × 108 ÷ 365 = 8876712,33 céntimos → 88767.12.
+    expect(r.vista.plan.cobro).toEqual({
+      tipo: "anual",
+      periodo: { desde: "2026-09-15", hasta: "2026-12-31", esTramo: true },
+      costo: "88767.12",
+      siguienteCobro: "2027-01-01",
+      pendiente: null,
+    });
   });
 
   it("R19: sin plan, plan es null (la pantalla dice «Sin plan: sin límites»)", async () => {
-    repo.planDeEmpresa.mockResolvedValueOnce({ organizacionId: EMPRESA, plan: null, asignaciones: [] });
+    repo.planDeEmpresa.mockResolvedValueOnce({ organizacionId: EMPRESA, plan: null, pendienteSinPlan: null, asignaciones: [] });
     const r = await servicio.planDeEmpresa(SUPERADMIN, { organizacionId: EMPRESA });
-    expect(r).toEqual({ estado: "ok", vista: { organizacionId: EMPRESA, plan: null, asignaciones: [] } });
+    expect(r).toEqual({ estado: "ok", vista: { organizacionId: EMPRESA, plan: null, pendienteSinPlan: null, asignaciones: [] } });
+  });
+
+  it("SLT-86 R26: sin plan y con su primera asignación pendiente, la vista la trae para «Cancelar cambio»", async () => {
+    const pendiente = { planNombre: "Pro", tipo: "bimestral" as const, desde: "2026-11-20" };
+    repo.planDeEmpresa.mockResolvedValueOnce({ organizacionId: EMPRESA, plan: null, pendienteSinPlan: pendiente, asignaciones: [] });
+    const r = await servicio.planDeEmpresa(SUPERADMIN, { organizacionId: EMPRESA });
+    expect(r).toEqual({ estado: "ok", vista: { organizacionId: EMPRESA, plan: null, pendienteSinPlan: pendiente, asignaciones: [] } });
   });
 
   it("R21: las asignaciones llegan en el orden del repositorio, con el instante en ISO y el actor no resuelto como ''", async () => {
@@ -330,6 +356,7 @@ describe("SLT-58 — plan de una empresa (R19)", () => {
     repo.planDeEmpresa.mockResolvedValueOnce({
       organizacionId: EMPRESA,
       plan: null,
+      pendienteSinPlan: null,
       asignaciones: [
         { ...fila, accion: "plan_tipo_cobro_cambiado" },
         { ...fila, accion: "plan_asignado" },

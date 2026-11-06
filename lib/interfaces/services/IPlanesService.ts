@@ -22,7 +22,10 @@ import type {
 
 export interface IPlanesService {
   crear(actor: Actor | null, input: unknown): Promise<PlanResult>;
-  /** De inmediato (`vigenteDesde: null`) o programada (R37, T11). */
+  /**
+   * De inmediato (`vigenteDesde: null`) o programada (R37, T11). SLT-86 (R22): un cambio de costo base o de
+   * descuento lleva fecha `≥ hoy`; la de hoy se aplica en el acto.
+   */
   editar(actor: Actor | null, input: unknown): Promise<PlanResult>;
   archivar(actor: Actor | null, input: unknown): Promise<PlanResult>;
   /**

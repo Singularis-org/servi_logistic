@@ -4,7 +4,7 @@ import { z } from "zod";
 import { ORDEN_MODULOS } from "@/lib/modulos/catalogo";
 import type { CambiosDelPlan } from "@/lib/planes/rastro";
 import { montoCobroSchema } from "@/lib/types/cobro-plataforma";
-import type { CambioPendienteVista, PlanConConsumo } from "@/lib/types/consumo-plan";
+import type { CambioPendienteVista, PendienteDeEmpresa, PlanConConsumo } from "@/lib/types/consumo-plan";
 import type { HistorialAccionTipo } from "@/lib/types/historial-accion";
 
 // SL-24 (design §5.1; R1–R3, R25, R37) — el borde de la gestión de planes por el superadmin. Todo
@@ -440,6 +440,11 @@ export type PlanDeEmpresaVista = {
   organizacionId: string;
   /** `null` = sin plan: sin límites (R19). */
   plan: (PlanConConsumo & { planId: string; archivado: boolean }) | null;
+  /**
+   * SLT-86 (R26, decisión del 2026-11-05): sin plan, la primera asignación pendiente, con «Cancelar
+   * cambio»; `null` si no hay. Con plan, el pendiente va en `plan.cobro.pendiente`.
+   */
+  pendienteSinPlan: PendienteDeEmpresa | null;
   /** Del más reciente al más antiguo. */
   asignaciones: AsignacionDePlan[];
 };
