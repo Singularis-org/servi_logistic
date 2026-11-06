@@ -46,23 +46,16 @@ import {
   ConflictError,
   MSG,
 } from "@/lib/errors";
-import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IApiOrdenResolucionService } from "@/lib/interfaces/services/IApiOrdenResolucionService";
 import type { IApiOrdenEliminacionService } from "@/lib/interfaces/services/IApiOrdenEliminacionService";
-import type { ApiOrdenDetalleDTO } from "@/lib/types/api-orden";
 import { ApiOrdenResolucionService } from "@/lib/services/ApiOrdenResolucionService";
-import { ApiOrdenLecturaService } from "@/lib/services/ApiOrdenLecturaService";
 import { ApiOrdenEliminacionService } from "@/lib/services/ApiOrdenEliminacionService";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
-// ⏳ 2026-09-10 (feature 415, T5): la tarifa VIGENTE que alimenta `costoEstimado`.
-import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
 import { OrdenHistorialRepository } from "@/lib/repositories/OrdenHistorialRepository";
 import { OrdenDiaRepartoCambioRepository } from "@/lib/repositories/OrdenDiaRepartoCambioRepository";
 import { OrdenTraspasoRepository } from "@/lib/repositories/OrdenTraspasoRepository";
 import { OrdenHistorialService } from "@/lib/services/OrdenHistorialService";
-import { SupabaseSignedUrlProvider } from "@/lib/storage/SupabaseSignedUrlProvider";
 import { getPrismaClient } from "@/lib/db/prisma-client";
-import { gestionConfig } from "@/lib/config/gestion";
 import {
   extraerBearer,
   buildAutenticar,
@@ -70,12 +63,11 @@ import {
   type AutenticadorApiKey,
 } from "@/lib/api/api-key-request";
 import { idOrdenApiSchema } from "@/lib/api/api-orden-identificador";
+import { buildDetallePorOrdenId, type DetallePorOrdenId } from "@/lib/api/api-orden-detalle";
 
-/** Lee el detalle publico (DTO de la feature 106) de una orden YA resuelta a `orden.id`. */
-export type DetallePorOrdenId = (
-  actor: Actor,
-  ordenId: string,
-) => Promise<ApiOrdenDetalleDTO | null>;
+// SLT-45: el lector del detalle vive en `lib/api/api-orden-detalle.ts`, compartido con
+// `GET /api/v2/ordenes/{id}` (un route.ts solo exporta handlers HTTP y config).
+export type { DetallePorOrdenId };
 
 export interface ConsultaOrdenApiDeps {
   autenticar?: AutenticadorApiKey;
@@ -85,27 +77,6 @@ export interface ConsultaOrdenApiDeps {
 
 function buildResolucionService(): IApiOrdenResolucionService {
   return new ApiOrdenResolucionService(new OrdenRepository(getPrismaClient()));
-}
-
-/**
- * R16/R17 — el DTO de detalle lo produce el `ApiOrdenLecturaService` YA EXISTENTE de la 106:
- * mismo mapeo, mismas evidencias firmadas a 5 min, mismo `[]` cuando no hay. Como su
- * `detalle(actor, numGuia)` opera por `num_guia` (que puede ser NULL) y aqui la resolucion
- * entrega un `orden.id`, se usa su metodo hermano `detallePorOrdenId(actor, ordenId)`, que
- * comparte el mapeo/firmado y lee por `findDetalleByOrdenIdForOwner` (MISMA proyeccion,
- * `IOrdenRepository:617-622`). `detalle` de la 106 no se toca (R17).
- */
-function buildDetallePorOrdenId(): DetallePorOrdenId {
-  const prisma = getPrismaClient();
-  const signedUrls = new SupabaseSignedUrlProvider(undefined, gestionConfig.EVIDENCIA_BUCKET);
-  // ⏳ 2026-09-10 (feature 415, T5): el MISMO resolutor que el listado, construido y **PASADO**.
-  // Si no se pasara, el detalle publicaria `costoEstimado` muerto y nada mas se enteraria.
-  const lectura = new ApiOrdenLecturaService(
-    new OrdenRepository(prisma),
-    signedUrls,
-    new TarifaVigenteRepository(prisma),
-  );
-  return (actor, ordenId) => lectura.detallePorOrdenId(actor, ordenId);
 }
 
 /** Logica del endpoint, con `{id}` crudo y `deps` inyectables para tests (sin DB). */

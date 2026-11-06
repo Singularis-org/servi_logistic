@@ -265,3 +265,31 @@ describe("middleware — rutas de la feature 177 bajo SELF_AUTH_ROUTE (R40)", ()
     expect(res.headers.get("location")).toBeNull();
   });
 });
+
+// --- SLT-45 (R11, design §4.4): `/api/v2` en SELF_AUTH_ROUTES ---
+//
+// Todo v2 es canal de integrador por API key: el middleware deja pasar las cinco rutas sin cookie
+// (su Bearer lo valida el handler) y un vecino que solo comparte el texto del prefijo sigue
+// guardado por sesion.
+describe("middleware — rutas de la API v2 bajo SELF_AUTH_ROUTE (SLT-45 R11)", () => {
+  it.each([
+    "/api/v2/ordenes",
+    "/api/v2/ordenes/carga",
+    "/api/v2/ordenes/cotizacion",
+    "/api/v2/ordenes/ABC-123",
+    "/api/v2/geografia",
+  ])("%s sin cookie de sesion pasa al handler (200, sin consultar sesiones)", async (ruta) => {
+    const res = await middleware(buildRequest(ruta));
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("location")).toBeNull();
+    expect(isSessionActive).not.toHaveBeenCalled();
+  });
+
+  it("control: /api/v2x/ordenes (no cuelga de /api/v2/) sigue guardada por sesion (401 JSON)", async () => {
+    const res = await middleware(buildRequest("/api/v2x/ordenes"));
+
+    expect(res.status).toBe(401);
+    expect(res.headers.get("content-type")).toMatch(/^application\/json/);
+  });
+});

@@ -5,7 +5,13 @@
 // tienen que responder igual para no revelar cuales existen.
 import type { ICatalogoGeograficoRepository } from "@/lib/interfaces/repositories/ICatalogoGeograficoRepository";
 import type { IPaisRepository } from "@/lib/interfaces/repositories/IPaisRepository";
-import type { CatalogoV2Result, IGeografiaApiService } from "@/lib/interfaces/services/IGeografiaApiService";
+import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
+import type {
+  CatalogoV2Result,
+  IGeografiaApiService,
+  UbicacionDeOrdenResult,
+} from "@/lib/interfaces/services/IGeografiaApiService";
+import { rutaPublica } from "@/lib/services/geo-ubicacion";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import {
   CatalogoGeograficoInconsistente,
@@ -18,11 +24,27 @@ import type { GeografiaNodoDTO } from "@/lib/types/api-v2";
 /** Lo unico que el servicio lee de `pais`: su nombre. */
 export type GeografiaPaisRepository = Pick<IPaisRepository, "porId">;
 
+/** Lo unico que el servicio lee de `orden`: su lugar, con el dueño forzado (§4.3). */
+export type GeografiaOrdenRepository = Pick<IOrdenRepository, "findLugarDeOrdenForOwner">;
+
 export class GeografiaApiService implements IGeografiaApiService {
   constructor(
     private readonly catalogoRepo: ICatalogoGeograficoRepository,
     private readonly paisRepo: GeografiaPaisRepository,
+    // Opcional: el catalogo de `GET /api/v2/geografia` no lee ordenes.
+    private readonly ordenRepo?: GeografiaOrdenRepository,
   ) {}
+
+  async ubicacionDeOrden(actor: Actor, ordenId: string): Promise<UbicacionDeOrdenResult> {
+    if (actor.rol !== "apiKey") return { status: "forbidden" };
+    if (this.ordenRepo === undefined) throw new Error("GeografiaApiService: falta el repositorio de ordenes");
+
+    const lugar = await this.ordenRepo.findLugarDeOrdenForOwner(ordenId, actor.usuarioId);
+    if (lugar === null) return { status: "not_found" };
+
+    const { catalogo } = await this.catalogoRepo.deLaEmpresa();
+    return { status: "ok", ubicacion: rutaPublica(catalogo, lugar) };
+  }
 
   async catalogo(actor: Actor, paisId: string): Promise<CatalogoV2Result> {
     if (actor.rol !== "apiKey") return { status: "forbidden" };

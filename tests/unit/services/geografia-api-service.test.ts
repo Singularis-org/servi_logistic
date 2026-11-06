@@ -135,3 +135,40 @@ describe("R23 — pais ajeno, inexistente o mal formado", () => {
     expect(geografiaQuerySchema.safeParse({ pais }).success).toBe(true);
   });
 });
+
+// SLT-45 (T5.2, design §4.3) — la `ubicacion` del detalle de `GET /api/v2/ordenes/{id}` (R20, R21).
+describe("R20/R21 — `ubicacionDeOrden`: la ruta del lugar de una orden propia", () => {
+  function ordenRepo(lugar: string | null) {
+    return { findLugarDeOrdenForOwner: vi.fn(async () => lugar) };
+  }
+
+  it("orden propia → la ruta de la raiz al lugar, con el dueño de la key forzado", async () => {
+    const ordenes = ordenRepo("d1");
+    const r = await new GeografiaApiService(catalogoRepo(TRES), paisRepo(), ordenes).ubicacionDeOrden(APIKEY, "orden-1");
+    expect(ordenes.findLugarDeOrdenForOwner).toHaveBeenCalledWith("orden-1", APIKEY.usuarioId);
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(r.ubicacion.map((u) => [u.profundidad, u.id, u.nombre, u.codigoOficial])).toEqual([
+      [1, "p1", "Alta", "1"],
+      [2, "c1", "Media", "101"],
+      [3, "d1", "Baja", "10101"],
+    ]);
+  });
+
+  it("orden ajena, borrada o inexistente (el repo da `null`) → `not_found`, sin leer el catalogo", async () => {
+    const cat = catalogoRepo(TRES);
+    const r = await new GeografiaApiService(cat, paisRepo(), ordenRepo(null)).ubicacionDeOrden(APIKEY, "otra");
+    expect(r).toEqual({ status: "not_found" });
+    expect(cat.deLaEmpresa).not.toHaveBeenCalled();
+  });
+
+  it.each(["adminTienda", "admin", "mensajero"] as const)("rol %s → `forbidden`, sin leer la orden", async (rol) => {
+    const ordenes = ordenRepo("d1");
+    const r = await new GeografiaApiService(catalogoRepo(TRES), paisRepo(), ordenes).ubicacionDeOrden(
+      { usuarioId: "u1", rol },
+      "orden-1",
+    );
+    expect(r).toEqual({ status: "forbidden" });
+    expect(ordenes.findLugarDeOrdenForOwner).not.toHaveBeenCalled();
+  });
+});
