@@ -39,6 +39,8 @@ Ninguna.
 - 2026-11-06 · Ajustes de textos (período, modal de «Cancelar cambio», aviso de empresa) + T13 · 983a3bf2, 782c82b3 · typecheck 0; vitest 225/225 UI + 27/27 mensajes; test:guardias solo el rojo del baseline; E2E de planes 35/35 en dos corridas sobre servi_logistic_slt86_e2e. `next build` necesita NODE_OPTIONS=--max-old-space-size=8192.
 - 2026-11-06 · «Inicio del período» + texto de validación + adapta 5 tests rezagados (esquemas, tipo-cobro, deuda-plataforma-plan) · c3ed2864, 03cf33d9, 9d37d387 · typecheck 0; E2E planes 27/27; barrido por lotes de plan/cobro/consumo (~480 archivos): solo rojos del baseline. F2.2 reviewer lanzado.
 
+- 2026-11-06 · m1–m4 de la revisión (0cb9a47d, 539a9622, af875b61) + merge de origin/dev (a7c04dde, sin conflictos) · PR #88 abierto; `gate-completo` VERDE en CI (vitest 3/3, e2e aislamiento/dinero/reparto, estático). Espera merge humano.
+
 ## Modelos (overrides)
 
 ## Cierre
