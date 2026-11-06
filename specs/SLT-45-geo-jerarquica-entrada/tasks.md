@@ -47,7 +47,7 @@
 - [ ] **T3.2** `CorregirDatosClienteData.nodoGeograficoId`, puesto por `CorregirDatosClienteService` y
   escrito en el mismo `updateMany` (§3.2). (R26)
   *Hecho:* tests existentes de la corrección pasan sin cambiar aserciones.
-- [ ] **T3.3** `tests/integration/db/orden-nodo-escritura.test.ts`: crear (profundidad 3 por v1 y v2;
+- [x] **T3.3** `tests/integration/db/orden-nodo-escritura.test.ts`: crear (profundidad 3 por v1 y v2;
   profundidad 2 por el repositorio con el `CreateOrdenData` que arma `fksDeNodo` de un cantón, porque
   hasta SLT-46 ningún cantón tiene zona y la ruta no llega a escribir) y corregir; comprobar las 3 FK,
   `nodo_geografico_id` = nodo resuelto = `COALESCE(distrito_id, canton_id)`, y que
