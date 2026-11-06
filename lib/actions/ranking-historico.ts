@@ -4,7 +4,7 @@ import { z } from "zod";
 import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
-import { esFechaCalendarioValida } from "@/lib/utils/fecha-cr";
+import { esFechaCalendarioValida } from "@/lib/utils/calendario-zona";
 import { PremioRankingRepository } from "@/lib/repositories/PremioRankingRepository";
 import { RankingRepository } from "@/lib/repositories/RankingRepository";
 import { RankingSnapshotRepository } from "@/lib/repositories/RankingSnapshotRepository";

@@ -141,9 +141,10 @@ Orden sugerido. Cada task deja su grupo en verde con sus tests de hoy, inyectand
 
 ## Bloque 7 — Cierre
 
-- [ ] **T7.1** Guardia `tests/unit/guards/pais-sin-literales.guardia.test.ts` + lista
+- [x] **T7.1** Guardia `tests/unit/guards/pais-sin-literales.guardia.test.ts` + lista
   `_pais-sin-literales-excepciones.ts` con la UI (SLT-81) y SINPE (SL-22) (R29).
   *Hecho:* verde; un literal nuevo de prueba en `lib/` la pone en rojo (comprobado y revertido).
+  *Tanda 6:* la misma guardia exige `construirReglasPaisEmpresa` en cada composition root de los servicios con `reglasPais?` (decisión del humano tras T5.3). Cinco archivos quedan en `PENDIENTES_DE_DECISION_SLT42` a la espera del humano (`progress/impl_SLT-42.md > Tanda 6`).
 - [ ] **T7.2** `docs/architecture.md > País por empresa (SL-20)`: un párrafo sobre los datos de
   teléfono, documento y zona, `IReglasPaisEmpresa`, `calendario-zona.ts` y la guardia.
   `.env.example` sin `RASTREO_PUBLICO_ZONA_HORARIA`. La deuda de P6 la anota el leader en
