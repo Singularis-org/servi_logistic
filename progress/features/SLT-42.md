@@ -116,6 +116,8 @@ Bloqueos de F2.0:
   3. `lib/utils/whatsapp-telefono.ts`: se borra con sus tests (humano).
   4. Desvíos de T7 aceptados: lista `PENDIENTES_DE_DECISION_SLT42` (debe quedar vacía y retirarse tras aplicar 1–3) y corrida original desde la clave del job (humano).
 
+- 2026-11-06 (tras tanda 7): el tope de excepciones de `pais-sin-literales` sube de 6 a 8 (entran los 3 de planes a cargo de SLT-86, sale `whatsapp-telefono`); SLT-86 debe bajarlo a 5 al pasar los planes a la zona de cada empresa (humano). Aceptado también `'UTC'` escrito en el SQL de agrupación por día (reloj de pared guardado, no zona de país).
+
 ## Pendiente para el cierre
 **Hecho el 2026-11-06** (tanda 7): `progress/impl_SLT-42.md > Errores nuevos y prevención`.
 - 2026-11-05, pedido del humano: al terminar la feature, resumen de TODOS los errores nuevos que puede lanzar SLT-42 (p. ej. `PaisIncompleto`, `PaisSinZonaHoraria`, `EmpresaNoResuelta`, documento/teléfono inválido por país, tipo de documento inactivo): dónde salen, qué ve el usuario y qué hay que completar o configurar (catálogo de país, zona, prefijo, tipos de documento, `POSTULACION_VALIDADA_POR_PAIS_DESDE`, T1.0) para que no se disparen. Va a `progress/impl_SLT-42.md > Errores nuevos y prevención` y se resume al humano.
