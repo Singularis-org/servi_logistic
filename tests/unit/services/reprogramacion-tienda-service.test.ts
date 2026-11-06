@@ -2,7 +2,6 @@ import { describe, it, expect, vi } from "vitest";
 import { ReprogramacionTiendaService } from "@/lib/services/ReprogramacionTiendaService";
 import { fakeIntentosEnLote } from "@/tests/fixtures/intentos-entrega";
 import { MSG_TOPE_INTENTOS_ASIGNACION } from "@/lib/services/mensajes-bloqueo";
-import { reintentosConfig } from "@/lib/config/reintentos";
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { IGestionOrdenRepository } from "@/lib/interfaces/repositories/IGestionOrdenRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
@@ -176,7 +175,7 @@ describe("ReprogramacionTiendaService · bordes de dominio", () => {
 /* -------------------------------------------------------------------------- */
 
 describe("276/Q2 — la tienda no reprograma una orden que ya agoto sus intentos", () => {
-  const UMBRAL = reintentosConfig.MIN_INTENTOS_ENTREGA;
+  const UMBRAL = 3;
 
   /** Monta el servicio con el conteo de intentos que se le quiera dar a `o1`. */
   function montar(intentos: number) {

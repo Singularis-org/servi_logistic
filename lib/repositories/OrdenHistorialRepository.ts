@@ -1,4 +1,5 @@
 import { whereTieneRegistroDeCalle } from "@/lib/repositories/gestion-pendiente";
+import { leerTopeIntentosDeLaEmpresa } from "@/lib/repositories/_shared/tope-intentos-empresa";
 import { senalesGestionDe, SIN_SENALES_GESTION } from "@/lib/repositories/ayuda-abierta";
 import type { SenalesGestionDTO } from "@/lib/types/orden";
 import { Prisma, type PrismaClient } from "@prisma/client";
@@ -336,6 +337,10 @@ export class OrdenHistorialRepository implements IOrdenHistorialRepository {
    * FICHA 454 (R29): las señales del detalle, con la MISMA consulta que anota los listados
    * (`senalesGestionDe`), aqui con un solo id. `registradaAt` sale ya en ISO, como en el listado.
    */
+  leerTopeIntentos(): Promise<number> {
+    return leerTopeIntentosDeLaEmpresa(this.prisma);
+  }
+
   async findSenalesGestion(ordenId: string): Promise<SenalesGestionDTO> {
     const s = (await senalesGestionDe(this.prisma, [ordenId])).get(ordenId) ?? SIN_SENALES_GESTION;
     return {

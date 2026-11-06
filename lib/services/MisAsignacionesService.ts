@@ -33,9 +33,8 @@ import {
 } from "@/lib/services/evidencias-compensadas";
 // FEATURE 276 (T4/T11, R1/R3/R7): la regla del tope vive en UN modulo puro, importable tambien
 // desde el navegador, para que la guarda del servidor y el filtro de botones de la pantalla no
-// puedan divergir. El umbral NO viaja con el: sale de `reintentosConfig`, aqui, en el servidor.
+// puedan divergir. El tope NO viaja con el: sale de la empresa (SLT-77), aqui, en el servidor.
 import { alcanzaElTope, permitidoEnElTope } from "@/lib/types/tope-intentos";
-import { reintentosConfig } from "@/lib/config/reintentos";
 import { MSG_TOPE_INTENTOS_GESTION } from "@/lib/services/mensajes-bloqueo";
 import type { MetodoPago } from "@/lib/types/metodo-pago";
 import type { LineaPago } from "@/lib/utils/pagos-recaudo";
@@ -184,7 +183,7 @@ export class MisAsignacionesService implements IMisAsignacionesService {
     // olvidado: es el MISMO servicio que ya estaba, con un metodo mas del mismo criterio unico.
     private readonly historial: Pick<
       IOrdenHistorialService,
-      "contarIntentosEnLote" | "contarIntentos"
+      "contarIntentosEnLote" | "contarIntentos" | "topeIntentos"
     >,
   ) {}
 
@@ -307,6 +306,8 @@ export class MisAsignacionesService implements IMisAsignacionesService {
     // las ordenes YA acotadas al mensajero actor (`findMisAsignaciones(actor.usuarioId, ...)`).
     // Sin asignaciones -> 0 consultas al historial (R13).
     const intentos = await this.historial.contarIntentosEnLote(rows.map((r) => r.id));
+    // SLT-77 (R24, R34): un solo valor para toda la lista, fuera del bucle.
+    const topeIntentos = await this.historial.topeIntentos();
     // FICHA 454 (T1.12; R6, R22): de las ordenes `en_reparto`, cuales tienen una gestion PENDIENTE
     // de confirmar (ya gestionadas: NO se listan, ni en el mapa ni como parada) y cuales tienen una
     // ayuda ABIERTA (grupo «con ayuda», sin posicion de ruta). Una consulta, sobre las ya acotadas al
@@ -340,10 +341,7 @@ export class MisAsignacionesService implements IMisAsignacionesService {
         // servidor y NO viaja: al navegador solo baja este booleano. Se deriva del MISMO numero
         // que la card ya pinta (`intentosEntrega`), asi que la pantalla no puede ensenar «intento
         // 2 de 3» y a la vez ofrecer un desenlace que el servidor va a rechazar.
-        enElTope: alcanzaElTope(
-          intentos.get(row.id) ?? 0,
-          reintentosConfig.MIN_INTENTOS_ENTREGA,
-        ),
+        enElTope: alcanzaElTope(intentos.get(row.id) ?? 0, topeIntentos),
         // Feature 246 (T5.1, R22/R25/R26): «para mañana» = reservada para un dia ESTRICTAMENTE
         // posterior al de Costa Rica en curso. `>` y no `>=`: una orden reservada para HOY no es
         // «para mañana», es de hoy. Y por eso la etiqueta caduca sola (R25): al llegar el dia
@@ -656,7 +654,7 @@ export class MisAsignacionesService implements IMisAsignacionesService {
     // cortesia; esta linea es la seguridad. Una peticion que pida un resultado prohibido se rechaza
     // igual, venga de donde venga.
     //
-    // R7: el umbral sale de `reintentosConfig`, JAMAS de un `3` escrito aqui. La lista de
+    // SLT-77 (R18): el tope sale de la empresa, JAMAS de un `3` escrito aqui. La lista de
     // permitidos sale del modulo puro `lib/types/tope-intentos.ts` —el MISMO que filtra los botones
     // en el navegador— para que la pantalla y la guarda no puedan divergir.
     //
@@ -666,7 +664,7 @@ export class MisAsignacionesService implements IMisAsignacionesService {
     // comportamiento de hoy y no cobra nada de mas.
     if (!permitidoEnElTope(input.resultado)) {
       const intentos = await this.historial.contarIntentos(input.ordenId);
-      if (alcanzaElTope(intentos, reintentosConfig.MIN_INTENTOS_ENTREGA)) {
+      if (alcanzaElTope(intentos, await this.historial.topeIntentos())) {
         // `conflict` y no `validation_error`: no es un campo mal escrito, es el estado del mundo.
         // Mismo molde que `RESERVA_MOTIVO_SERVIDOR`. Motivo SIN PII y sin el valor del umbral.
         return { status: "conflict", motivo: MSG_TOPE_INTENTOS_GESTION };

@@ -34,6 +34,7 @@ function fakeService(overrides: Partial<IOrdenHistorialService> = {}): IOrdenHis
       ayudaAbierta: false,
     })),
     contarIntentos: vi.fn(async () => 0),
+    topeIntentos: vi.fn(async () => 3),
     // Pedido humano 2026-08-27: el contrato gano ademas el conjunto de «ya gestionadas»
     // (insumo de «eliminar orden»). Tampoco lo usa este borde.
     idsConGestionPosteriorEnLote: vi.fn(async () => new Set<string>()),

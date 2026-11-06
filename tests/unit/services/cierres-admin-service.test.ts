@@ -2,7 +2,6 @@ import { describe, it, expect, vi } from "vitest";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { CierresAdminService } from "@/lib/services/CierresAdminService";
 import { sinRetenidas } from "@/tests/fixtures/retenidas-doble";
-import { reintentosConfig } from "@/lib/config/reintentos";
 import { CierresAdminRepository } from "@/lib/repositories/CierresAdminRepository";
 import { WalletMovimientoRepository } from "@/lib/repositories/WalletMovimientoRepository";
 import { WalletFeedService } from "@/lib/services/WalletFeedService";
@@ -98,6 +97,7 @@ type Repo = ICierresAdminRepository;
 
 function fakeRepo(overrides: Partial<Repo> = {}): Repo {
   return {
+    leerTopeIntentos: vi.fn(async () => 3),
     findCierresByAlcance: vi.fn(async () => [] as CierreAdminResumenRow[]),
     // Feature 170 (T I.1): el historico paginado vive en su propia suite (*-paginado).
     findHistoricoPaginado: vi.fn(async () => ({ items: [] as CierreAdminResumenRow[], total: 0 })),
@@ -1160,10 +1160,10 @@ describe("Feature 109 · aprobarCierre — config de liberación de `novedad_int
       enBodegaEstatusId: "s-en-bodega",
       enBodegaSateliteEstatusId: "s-en-bodega-sat",
       centralZonaId: "z-central",
-      // FEATURE 276 (T9, R7/R21): la config gana el destino del rechazo por tope y el UMBRAL,
-      // resuelto AQUI, en el servicio. El repositorio no lee configuracion.
+      // FEATURE 276 (T9, R7/R21): la config gana el destino del rechazo por tope y el UMBRAL, el
+      // que el servicio lee de la empresa (SLT-77).
       rechazadaEstatusId: "s-rechazada",
-      umbralIntentos: reintentosConfig.MIN_INTENTOS_ENTREGA,
+      umbralIntentos: 3,
     });
     expect(ordenRepo.findEstatusIdByValue).toHaveBeenCalledWith("novedad_interna");
   });
@@ -1469,7 +1469,7 @@ describe("CierresAdminService.aprobarCierre — alimenta el ledger por tienda (f
         }),
       },
     };
-    const withTx = { ...prisma, $transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb(prisma)) };
+    const withTx = { ...prisma, $queryRaw: vi.fn(async () => [{ tope: 3 }]), $transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb(prisma)) };
     const repo = new CierresAdminRepository(
       withTx as unknown as PrismaClient,
       new WalletMovimientoRepository(withTx as unknown as PrismaClient),
@@ -1616,7 +1616,7 @@ describe("CierresAdminService.aprobarCierre — alimenta el pago al mensajero (f
         }),
       },
     };
-    const withTx = { ...prisma, $transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb(prisma)) };
+    const withTx = { ...prisma, $queryRaw: vi.fn(async () => [{ tope: 3 }]), $transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb(prisma)) };
     const repo = new CierresAdminRepository(
       withTx as unknown as PrismaClient,
       new WalletMovimientoRepository(withTx as unknown as PrismaClient),

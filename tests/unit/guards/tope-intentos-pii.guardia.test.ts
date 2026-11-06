@@ -6,7 +6,6 @@ import {
 } from "@/lib/services/mensajes-bloqueo";
 import { MOTIVO_RECHAZO_TOPE_INTENTOS } from "@/lib/repositories/CierresAdminRepository";
 import { LiberacionReprogramadaService } from "@/lib/services/LiberacionReprogramadaService";
-import { reintentosConfig } from "@/lib/config/reintentos";
 import { ACCION_LABELS, ENTIDAD_LABELS } from "@/lib/types/historial-accion";
 import { etiquetaDeEntidad } from "@/lib/types/historial-accion-etiquetas";
 import type { ILiberacionReprogramadaRepository } from "@/lib/interfaces/repositories/ILiberacionReprogramadaRepository";
@@ -47,9 +46,9 @@ const PROHIBIDO: { que: string; re: RegExp }[] = [
 
 /**
  * El VALOR del umbral tampoco viaja en ningun texto (R10): la decision cruza como booleano, no
- * como numero. Se comprueba contra el umbral REAL, no contra un `3` escrito aqui.
+ * como numero. Se comprueba con el de toda empresa nueva.
  */
-const UMBRAL = String(reintentosConfig.MIN_INTENTOS_ENTREGA);
+const UMBRAL = "3";
 
 const TEXTOS_FIJOS: { nombre: string; texto: string }[] = [
   { nombre: "MSG_TOPE_INTENTOS_GESTION", texto: MSG_TOPE_INTENTOS_GESTION },

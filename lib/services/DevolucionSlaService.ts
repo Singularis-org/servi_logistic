@@ -1,5 +1,4 @@
 import type { GestionCausaDevolucion } from "@prisma/client";
-import { reintentosConfig } from "@/lib/config/reintentos";
 import { devolucionSlaConfig } from "@/lib/config/devolucion-sla";
 import type {
   DevueltaSlaRow,
@@ -49,7 +48,7 @@ type OrdenRepo = Pick<IOrdenRepository, "findEstatusIdByValue">;
  *      divergencia que 215/R4 («una sola definicion de intento») existe para impedir;
  *  (b) de paso desaparece el N+1: una consulta por corrida en vez de una por orden.
  */
-type HistorialSvc = Pick<IOrdenHistorialService, "contarIntentosEnLote">;
+type HistorialSvc = Pick<IOrdenHistorialService, "contarIntentosEnLote" | "topeIntentos">;
 
 // Log de aviso inyectable: por defecto console.warn. NUNCA registra PII/secretos (R11): solo
 // conteos agregados.
@@ -102,7 +101,9 @@ export class DevolucionSlaService implements IDevolucionSlaService {
     // R12: la clasificacion a central usa la zona central (o null: todo cae a satelite, fallback
     // seguro de `resolverDestinoCierre`).
     const centralZonaId = await this.zonaRepo.findCentralZonaId();
-    const umbral = reintentosConfig.MIN_INTENTOS_ENTREGA; // R15/R16
+    // SLT-77 (R22, R26, R34): el de la empresa que se procesa, y uno solo por corrida. Fuera del `try` de
+    // cada orden: sin tope (R27) la corrida de ESTA empresa falla entera, y `paraCadaEmpresa` sigue con las demas.
+    const umbral = await this.historial.topeIntentos(); // R15/R16
 
     const candidatas = await this.repo.findDevueltasSla();
 

@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 
-import { reintentosConfig } from "@/lib/config/reintentos";
 import { MOTIVO_RECHAZO_TOPE_INTENTOS } from "@/lib/repositories/CierresAdminRepository";
 import { HAY_BASE_DE_DATOS } from "../../_postgres-real";
 import { conEscenario, prepararMundo, type Mundo } from "../_escenario";
@@ -15,7 +14,7 @@ import { conEscenario, prepararMundo, type Mundo } from "../_escenario";
  */
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
-const UMBRAL = reintentosConfig.MIN_INTENTOS_ENTREGA;
+const UMBRAL = 3; // el de toda empresa nueva (SLT-77 R2)
 
 describeSiHayBase("454/C04 — tope de intentos al aprobar (Postgres real)", () => {
   let mundo: Mundo;

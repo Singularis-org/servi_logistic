@@ -304,9 +304,11 @@ function makeDb() {
 
   // `tx === client`: el doble no simula rollback (ningun caso de este recorrido lo ejercita; la
   // atomicidad de la aprobacion la cubre el unit test del repo). SIN `$queryRaw`: el emisor de
-  // webhooks del choke point es no-op y la guardia 140 resuelve por la cache del catalogo.
+  // webhooks del choke point es no-op y la guardia 140 resuelve por la cache del catalogo. El cliente de
+  // fuera si lo lleva: es la lectura del tope de la empresa (SLT-77), y aqui toda empresa esta en 3.
   const prisma = {
     ...client,
+    $queryRaw: async () => [{ tope: 3 }],
     $transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb(client),
   };
 

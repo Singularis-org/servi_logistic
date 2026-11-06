@@ -57,13 +57,14 @@ Reglas de todas las tandas:
 
 ## Tanda C — Cada punto usa su empresa (backend). Depende de B
 
-- [ ] **T3.1** `leerTopeIntentos()` en `IOrdenHistorialRepository`, `OrdenHistorialRepository` y el repositorio de cierres;
+- [x] **T3.1** `leerTopeIntentos()` en `IOrdenHistorialRepository`, `OrdenHistorialRepository` y el repositorio de cierres;
   `topeIntentos()` en `IOrdenHistorialService` y `OrdenHistorialService` (`design §3`). **Hecho:** typecheck verde.
-- [ ] **T3.2** Los 10 servicios de la tabla de `design §3`, con los `Pick` ensanchados. `umbral: number | null` para
-  `mensajero` y `HistorialOrdenSheet` (`design §3.2`). **Hecho:** unit al día, sin importar la configuración.
-- [ ] **T3.3** Borrar `lib/config/reintentos.ts` y `tests/unit/config/reintentos.test.ts`. Corregir los comentarios que citan
+- [x] **T3.2** Los 10 servicios de la tabla de `design §3`, con los `Pick` ensanchados. `umbral: number | null` para
+  `mensajero` y `HistorialOrdenSheet` (`design §3.2`). **Hecho:** unit al día, sin importar la configuración. El tipo y el
+  servidor están; el componente no se tocó: pasa a T5.3.
+- [x] **T3.3** Borrar `lib/config/reintentos.ts` y `tests/unit/config/reintentos.test.ts`. Corregir los comentarios que citan
   ley o `reintentosConfig`, sin más cambios. **Hecho:** la guardia de T3.5 en verde.
-- [ ] **T3.4** `tests/integration/db/tope-intentos-caminos.test.ts`, moldes `cierre-sin-gestion-tope-sql-real` e
+- [x] **T3.4** `tests/integration/db/tope-intentos-caminos.test.ts`, moldes `cierre-sin-gestion-tope-sql-real` e
   `intentos-y-tope`. Empresas A (tope 2) y B (tope 4), órdenes con 2 intentos reales. Cada caso afirma los dos lados:
   - **R18:** `gestionar` del mensajero y de la ayuda: A `conflict`, sin fila; B acepta.
   - **R19:** reprogramar desde devolución.
@@ -79,11 +80,11 @@ Reglas de todas las tandas:
   - **R29:** sube, y A vuelve a admitir.
   - **R30:** conteos antes y después de cambiar el tope, iguales, en literales.
   **Hecho:** 0 saltos.
-- [ ] **T3.5** `tests/unit/guards/tope-intentos-sin-valor-global.guardia.test.ts`: en `lib/` y `app/` nadie nombra
+- [x] **T3.5** `tests/unit/guards/tope-intentos-sin-valor-global.guardia.test.ts`: en `lib/` y `app/` nadie nombra
   `reintentosConfig` en código, ni `REINTENTOS_MIN_INTENTOS` (R31); `tope_intentos_entrega` solo en los dos archivos de
   §2; sin «por ley», «cota legal» ni «umbral legal» en `lib/`, `app/`, `components/`, `e2e/` ni `tests/` (R40). Control
   positivo con un texto de muestra. **Hecho:** verde, y rojo con la mutación.
-- [ ] **T3.6** `intentos-entrega.test.tsx` y `tope-intentos.test.ts` siguen pasando sin cambiar su contrato (R32, R33).
+- [x] **T3.6** `intentos-entrega.test.tsx` y `tope-intentos.test.ts` siguen pasando sin cambiar su contrato (R32, R33).
 - **Mutaciones C:**
   1. Cada uno de los 10 servicios, por separado, vuelve a un `3` literal (10 mutaciones) → su caso de R18 a R25.
   2. `umbral` también para `mensajero` → R32.
@@ -113,6 +114,9 @@ Reglas de todas las tandas:
   `tests/components/TarifasTopeIntentos.test.tsx` cubre R12, R13, R15, R16 y R17, con los textos a mano.
 - [ ] **T5.2** `TarifasModulo.test.tsx`, `TarifasDisposicion.test.tsx`, `TarifasPage.test.tsx` y `tests/fixtures/tarifas-pantalla.ts`
   al día. R17 en la disposición (`min-h-11`, sin hex). **Hecho:** `vitest related` verde.
+- [ ] **T5.3** `HistorialOrdenSheet.tsx`: con `umbral` `null`, «Intento X» en el texto y en el `aria-label` (`design §3.2`). Hoy pintaría
+  «Intento 2 de null», y compila porque una plantilla admite `null`. El `mensajero` no monta esa pantalla. **Hecho:** test de componente
+  con `null`.
 - **Mutaciones E:**
   1. Mostrar el aviso siempre → R16.
   2. No mostrarlo al bajar → R15.
@@ -197,6 +201,10 @@ T0 → A → B ─┬→ C → D ─┬→ F → G
 - `db/migrations/20261106120100_organizacion_tope_intentos/migration.sql`
 - `db/migrations/20261106120100_organizacion_tope_intentos/down.sql`
 - `lib/config/reintentos.ts`
+- `lib/config/devolucion-sla.ts`
+- `lib/config/jobs.ts`
+- `lib/config/ranking.ts`
+- `lib/types/order-status.ts`
 - `lib/types/tope-intentos.ts`
 - `lib/types/tarifa-flexible.ts`
 - `lib/types/historial-accion.ts`
@@ -258,6 +266,7 @@ T0 → A → B ─┬→ C → D ─┬→ F → G
 - `tests/integration/db/caja-459-migration.test.ts`
 - `tests/integration/actions/tarifas-action.test.ts`
 - `tests/unit/config/reintentos.test.ts`
+- `tests/unit/config/ranking.test.ts`
 - `tests/unit/components/intentos-entrega.test.tsx`
 - `tests/unit/guards/tope-intentos-sin-valor-global.guardia.test.ts`
 - `tests/unit/guards/tope-intentos-pii.guardia.test.ts`
@@ -287,3 +296,21 @@ T0 → A → B ─┬→ C → D ─┬→ F → G
 - `tests/components/TarifasTopeIntentos.test.tsx`
 - `tests/components/TarifasModulo.test.tsx`
 - `tests/components/TarifasDisposicion.test.tsx`
+- `tests/integration/db/devolucion-rechazadas-flow.test.ts`
+- `tests/unit/services/OrdenHistorialService.evento-orden.test.ts`
+- `tests/unit/services/devolucion-sla-service.test.ts`
+- `tests/unit/services/orden-historial-fusion.test.ts`
+- `tests/fixtures/intentos-entrega.ts`
+- `tests/unit/actions/orden-historial-action.test.ts`
+- `tests/unit/services/CierresAdminService.aprobar.devolucion.test.ts`
+- `tests/unit/services/cierre-bloqueo-superficies.test.ts`
+- `tests/unit/services/cierres-admin-ajustar-pago.test.ts`
+- `tests/unit/services/cierres-admin-aviso-rechazo.test.ts`
+- `tests/unit/services/cierres-admin-confirmacion-fisica.test.ts`
+- `tests/unit/services/cierres-admin-corregir-pagos.test.ts`
+- `tests/unit/services/cierres-admin-corregir-resultado.test.ts`
+- `tests/unit/services/cierres-admin-indemnizacion.test.ts`
+- `tests/unit/services/cierres-admin-pendiente.test.ts`
+- `tests/unit/services/devolucion-sla-plazo-unica-fuente.test.ts`
+- `tests/unit/services/indemnizacion-tope-negocio-cierre.test.ts`
+- `tests/unit/services/liberacion-al-aprobar-cierre.test.ts`

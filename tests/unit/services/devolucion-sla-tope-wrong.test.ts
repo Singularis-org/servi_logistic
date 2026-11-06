@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 
 import { DevolucionSlaService } from "@/lib/services/DevolucionSlaService";
-import { reintentosConfig } from "@/lib/config/reintentos";
 import type {
   DevueltaSlaRow,
   EscalarDevueltaSlaInput,
@@ -31,7 +30,7 @@ const NOW = new Date("2026-07-20T12:00:00.000Z");
 const HORA = 60 * 60 * 1000;
 const DIA = 24 * HORA;
 
-const UMBRAL = reintentosConfig.MIN_INTENTOS_ENTREGA;
+const UMBRAL = 3; // el de toda empresa nueva (SLT-77 R2)
 
 const ESTATUS: Record<string, string> = {
   novedad: "os-devuelta",
@@ -64,17 +63,18 @@ function fakeRepo(overrides: Partial<IDevolucionSlaRepository> = {}): IDevolucio
 /** Doble del derivador EN LOTE. Devuelve `porOrden[id] ?? 0`, y registra sus llamadas (R30). */
 function fakeHistorial(
   porOrden: Record<string, number> = {},
-): Pick<IOrdenHistorialService, "contarIntentosEnLote"> {
+): Pick<IOrdenHistorialService, "contarIntentosEnLote" | "topeIntentos"> {
   return {
     contarIntentosEnLote: vi.fn(
       async (ids: string[]) => new Map(ids.map((id) => [id, porOrden[id] ?? 0])),
     ),
+    topeIntentos: vi.fn(async () => UMBRAL),
   };
 }
 
 function newService(
   repo: IDevolucionSlaRepository,
-  historial: Pick<IOrdenHistorialService, "contarIntentosEnLote">,
+  historial: Pick<IOrdenHistorialService, "contarIntentosEnLote" | "topeIntentos">,
 ) {
   return new DevolucionSlaService(
     repo,

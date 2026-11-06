@@ -179,3 +179,113 @@ M2 y M3 no editan el archivo de migración: aplican ese SQL en una copia de la b
 ### Veredicto
 
 Tanda B hecha: guardar y leer el tope con su rastro, por el composition root real, con 0 saltos en lo que toca, y las seis mutaciones y el control mueren.
+
+## Tanda C (2026-11-06)
+
+Base: `servi_gate_slt77`, recreada con DROP/CREATE, `migrate deploy` (exit 0, 306 migraciones) y `db:seed` (exit 0) antes de la corrida final, con
+`current_database()` comprobado. Las mutaciones corrieron antes de recrearla, sobre la misma lista de migraciones.
+
+### Archivos
+
+Creados: `tests/integration/db/tope-intentos-caminos.test.ts`, `tests/unit/guards/tope-intentos-sin-valor-global.guardia.test.ts`.
+
+Borrados: `lib/config/reintentos.ts`, `tests/unit/config/reintentos.test.ts`.
+
+Modificados:
+
+- Lectura: `I/OrdenHistorialRepository`, `I/CierresAdminRepository` (`leerTopeIntentos`), `I/OrdenHistorialService` (`topeIntentos`, `umbral: number | null`).
+- Los 10 servicios de `design §3`. `MisAsignacionesService` tiene dos puntos: lista y gestión.
+- Comentarios que citaban la configuración o una ley: `lib/config/{devolucion-sla,jobs,ranking}.ts`, `lib/types/{order-status,tope-intentos}.ts`, `IMisAsignacionesService`, `e2e/reintentos-escalado.spec.ts`.
+  En `tope-intentos.ts` también las líneas 16 a 18, además de la 57 que dice `design §3`: nombraban lo retirado.
+- Tests: el doble compartido `tests/fixtures/intentos-entrega.ts` (tope por parámetro, 3 por defecto), los dobles de los repositorios y los literales a mano. Los casos que movían la variable de entorno
+  ahora miden un tope 5 del doble.
+
+### Composition root
+
+`handleProcesarDevueltasSla` corre sin `service` en las deps: `buildService` real, `getPrismaClient()` y `paraCadaEmpresa` real. Lo único inyectado es el secreto, el reloj y `empresas`, que envuelve el
+`findMany` real para acotarlo a las empresas del caso (la base es compartida, como en `dos-empresas-entradas`) y añade una empresa sin fila para R27. Ningún constructor cambió: un doble sin `topeIntentos` no compila.
+
+### Mapa R → test de esta tanda
+
+En `tests/integration/db/tope-intentos-caminos.test.ts`, salvo que se diga otro. Empresas A (tope 2) y B (tope 4), con 2 intentos por `gestionar`, `solicitarCierre` y `aprobar` reales.
+
+| R | Test |
+|---|---|
+| R18 | `el panel del mensajero`, `la ayuda de la tienda`: motivo de tope en A, sin fila; B acepta |
+| R19 | `A responde conflict y la orden no se mueve; B la reprograma` |
+| R20 | `bodega central`, `bodega satelite`, con lote mixto |
+| R21 | `en A, rechazo con gestion sintetica y cobro en el siguiente cierre; en B, a bodega sin cobro` |
+| R22 | `wrong_number sin vencer`, `not_found vencida`, `bajar el tope escala la orden en la corrida siguiente` |
+| R23 | `con la misma novedad, A habla sin plazo y B promete sus cinco dias` |
+| R24 | `MisAsignaciones`, `Novedades` |
+| R25 | `maestro, admin, adminTienda y adminSatelite reciben 2 en A y 4 en B`; `orden-historial-service`: `R25` |
+| R26 | `A escala y B espera en la misma corrida` |
+| R27 | `la empresa cuyo tope no se lee no frena a las demas`; `una gestion que dependeria del tope no se registra` |
+| R28 | `su primera gestion no puede ser reprogramado ni novedad` |
+| R29 | `con 2 intentos: en 2 nada; en 3 ya se asigna; en 4 ya admite la gestion` |
+| R30 | `los mismos conteos, en literales, antes y despues de moverlo dos veces` |
+| R31, R40 | `tope-intentos-sin-valor-global.guardia` |
+| R32 | `al mensajero le llega null`; `orden-historial-service`: `R32`; `intentos-entrega.test.tsx` |
+| R33 | `tests/unit/types/tope-intentos.test.ts`, sin cambios |
+
+**Dinero.** `cobroRechazado` se mide en el siguiente cierre del mensajero, pedido por el servicio: `total_ingreso_bodega_rechazos` y el `ingreso_bodega_rechazo` de la gestión sintética valen `164.00`, a mano, la tarifa
+sembrada en la zona. En B no hay gestión sintética. **Límite:** no se aprueba ese siguiente cierre, y no se mide nada aguas abajo del importe congelado. El E2E de T6.1 lo recorre.
+
+**Dos fixtures en vez de flujo real.** `colocar` mueve la orden entre intentos y al estado de partida, lo que harían la liberación y la asignación. El caso del cron siembra sus 2 intentos con cierres `aprobado` escritos a mano,
+porque commitea.
+
+### Salida real
+
+- `pnpm run typecheck`: exit 0.
+- `eslint` de los archivos TS tocados: exit 0.
+- Batería de la tanda, sobre la base recreada: 10 archivos, **159 pasados, 0 fallados, 0 saltados**. `tope-intentos-caminos`: 19 pasados, 0 saltados. `tope-intentos-escritura`: 38. `tope-intentos-migration`: 12.
+  `tope-intentos-sin-valor-global`: 6. `tope-intentos-pii`: 8. `tope-intentos.test.ts`: 6. `intentos-entrega.test.tsx`: 21. `orden-historial-service`: 30. `procesar-devueltas-sla-route`: 7. `dos-empresas-entradas`: 12.
+- `vitest related` de los archivos de `lib/` tocados: 1501 archivos, 182 en rojo; 20335 tests, 19089 pasados, 139 fallados, 1107 saltados.
+  - **Los 182 archivos rojos están en el baseline; 0 fuera.**
+  - 1081 saltos son de archivos del baseline y 26 de `AnaliticaPage` y `AnaliticaShell`, que esta tanda no tocó.
+  - **No verificados en esta base:** `484-puntero-aprobacion-sql-real`, `454/caracterizacion/tope-276` y `455/caracterizacion/intentos-y-tope`. Se les cambió `reintentosConfig` por un `3` a mano, y siguen en rojo y saltados por el baseline.
+- `pnpm run test:guardias`, con el borrado ya en el índice: 332 archivos, 331 en verde y 1 en rojo; 4627 pasados, 4 fallados, 1 saltado. Rojo: `dependencias-declaradas-presentes`, el del baseline. Saltado: `recursos-origen-fuera`, R18.
+  - Con el borrado sin añadir al índice, `catalogo-postgres-acota-esquema` cae con ENOENT: recorre los archivos que git sigue. Un `git add` lo resuelve.
+- `./init.sh` no se corrió: lo exige T7.4.
+- Retornos de carro en los archivos cambiados: 0.
+
+### Mutaciones
+
+Arnés fuera del repo: exige base verde con tests ejecutados y sin saltos, cuenta desde el JSON de vitest, restaura y compara la huella tras cada una, y compara `git status` al final. Corre 3 archivos (`caminos`, `escritura`,
+`orden-historial-service`). Base y final: 87 pasados, 0 fallados, 0 saltados. `git status` igual. Sin gate en paralelo.
+
+| Mutación | Resultado | Fallados de 87 | Test nombrado |
+|---|---|---|---|
+| Control: lectura del tope + 1 | Muere | 15 | R18 a R29 |
+| M1a: `MisAsignaciones`, lista, a 3 | Muere | 2 | R24, `MisAsignaciones`: cae |
+| M1b: `MisAsignaciones`, gestión, a 3 | Muere | 4 | R18, panel: cae |
+| M2: `GestionDesdeAyuda` a 3 | Muere | 1 | R18, ayuda: cae |
+| M3: `Novedades` a 3 | Muere | 1 | R24, `Novedades`: cae |
+| M4: `ReprogramacionTienda` a 3 | Muere | 1 | R19: cae |
+| M5: `GuiaAsignacion` a 3 | Muere | 2 | R20, central: cae |
+| M6: `AsignacionSatelite` a 3 | Muere | 1 | R20, satélite: cae |
+| M7: `AvisosDiarios` a 3 | Muere | 1 | R23: cae |
+| M8: `DevolucionSla` a 3 | Muere | 4 | R22 y R26: cae |
+| M9: `OrdenHistorial` a 3 | Muere | 4 | R25: cae |
+| M10: `CierresAdmin` a 3 | Muere | 1 | R21: cae |
+| M11: `umbral` también para `mensajero` | Muere | 2 | R32: cae |
+| M12: `LIMIT 1` sin `WHERE` | Muere | 3 | **R26: NO cae.** Caen R27 (la gestión sin empresa, la lectura y la pantalla en plataforma) |
+
+Guardia de T3.5, en arnés aparte con 6 tests por corrida: el código que nombra la configuración, la lectura de la variable, la columna en un tercer archivo, y «por ley» o «cota legal» en `lib/` y en `tests/`. Las 5 mueren.
+
+### Hallazgos
+
+1. **La mutación 3 de `tasks.md` no puede morir en R26.** Dentro de `paraCadaEmpresa` la consulta corre como `servi_app`, y la RLS de `organizacion` solo le deja ver su fila: con o sin `WHERE` da lo mismo. La diferencia solo existe como dueño, sin empresa, y ahí la mata R27.
+   Se añadió ese caso a `caminos`. El `WHERE` sigue siendo necesario, pero no es lo que separa a A de B.
+2. **T3.2 queda a medias en el navegador.** `HistorialOrdenSheet` no se tocó, y no rompe el typecheck porque una plantilla admite `null`. A un `mensajero` le pintaría «Intento 2 de null», aunque hoy no monta esa pantalla. El servidor ya cumple R32. Queda como T5.3.
+3. **Un `conflict` no prueba el tope.** `tienes otra orden activa` da el mismo estado, y pasó en R28 al primer intento. Los casos afirman el motivo, no solo el estado.
+4. **`prepararMundo` de la 454 no corre en una base recién migrada:** pide una orden ya sembrada. Cada empresa monta su `Mundo` y reutiliza `crearEscenario`. Los intentos usan `reprogramado`, que no pide los estados retirados.
+
+### Desviaciones del proceso
+
+- **Se imprimió una URL.** El primer script auxiliar falló al parsear `DATABASE_URL`, y el error de Node mostró la URL local con su contraseña en la salida de la herramienta. No está en el repo. Se corrigió para que solo imprima categorías. Va al leader, que decide si la rota.
+- **18 rutas de tests se añadieron a `## Archivos esperados` después de tocarlas**, no antes: las destapó el typecheck y la corrida de `related`. Las de `lib/config/` y `order-status` sí fueron antes.
+
+### Veredicto
+
+Tanda C hecha en el servidor: cada punto decide con el tope de su empresa, con 0 saltos y las 12 mutaciones y el control muertos. M12 muere por R27, no por R26, y el componente del historial pasa a T5.3.

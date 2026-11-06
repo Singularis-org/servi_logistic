@@ -3,7 +3,6 @@ import { esAccesoTotal } from "@/lib/auth/acceso-total";
 // FEATURE 276 (T9, R7): el umbral de intentos se resuelve AQUI, en el servicio, y viaja al
 // repositorio como un numero dentro de `liberacionSinGestionar`. La capa de datos no lee
 // configuracion: si lo hiciera, habria dos fuentes del mismo umbral.
-import { reintentosConfig } from "@/lib/config/reintentos";
 import type {
   CatalogoFiltrosCierresDTO,
   FiltrosCierres,
@@ -1073,7 +1072,8 @@ export class CierresAdminService implements ICierresAdminService {
             enBodegaSateliteEstatusId,
             centralZonaId,
             rechazadaEstatusId: rechazadaId,
-            umbralIntentos: reintentosConfig.MIN_INTENTOS_ENTREGA,
+            // SLT-77 (R21, R27): el de la empresa. Sin empresa falla, antes de abrir la transaccion.
+            umbralIntentos: await this.repo.leerTopeIntentos(),
           }
         : undefined;
     const devolucionRechazadas =

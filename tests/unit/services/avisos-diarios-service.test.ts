@@ -69,7 +69,7 @@ function repoDoble(opts: RepoOpts = {}): IAvisoAgregadoRepository & { llamadas: 
 }
 
 /** Historial doble: sin intentos, para que la homogeneidad la decidan las causas. */
-const historialSinIntentos = { contarIntentosEnLote: async () => new Map<string, number>() };
+const historialSinIntentos = { contarIntentosEnLote: async () => new Map<string, number>(), topeIntentos: async () => 3 };
 
 /**
  * FICHA 462 (T2.7): el conteo de retenidas es una dependencia REQUERIDA del servicio. Este doble
@@ -323,6 +323,7 @@ describe("R39/R40 — la homogeneidad del plazo la decide el servicio", () => {
     const notificar = vi.fn();
     const historial = {
       contarIntentosEnLote: async () => new Map(Object.entries(intentos)),
+      topeIntentos: async () => 3,
     };
     const service = new AvisosDiariosService(
       repoDoble({ novedades: [novedadesDe("t-1", 3, causas)] }),
@@ -352,7 +353,7 @@ describe("R39/R40 — la homogeneidad del plazo la decide el servicio", () => {
   });
 
   it("⚠️ todas de cinco dias pero UNA en el tope -> mezclado (mutacion: ignorar el tope)", async () => {
-    // El umbral por defecto es 3 (`REINTENTOS_MIN_INTENTOS`), y `alcanzaElTope` compara
+    // El tope de la empresa aqui es 3, y `alcanzaElTope` compara
     // `intentos >= umbral - 1`, o sea 2. Con 2 intentos esa orden escala en la corrida SIGUIENTE
     // sin esperar sus cinco dias: prometerle cinco dias a la tienda seria darle mas tiempo del
     // que tiene.
@@ -374,7 +375,7 @@ describe("R39/R40 — la homogeneidad del plazo la decide el servicio", () => {
           novedadesDe("t-2", 3, ["not_found"]),
         ],
       }),
-      { contarIntentosEnLote },
+      { contarIntentosEnLote, topeIntentos: async () => 3 },
       sinRetenidas,
       3,
     );

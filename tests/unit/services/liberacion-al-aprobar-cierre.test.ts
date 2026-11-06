@@ -74,6 +74,7 @@ function fakeRepo(
   resolver: "updated" | "conflict" | "fuera_de_alcance" = "updated",
 ): ICierresAdminRepository {
   return {
+    leerTopeIntentos: vi.fn(async () => 3),
     findCierresByAlcance: vi.fn(async () => []),
     findHistoricoPaginado: vi.fn(async () => ({ items: [], total: 0 })),
     findColaPaginada: vi.fn(async () => ({ items: [], total: 0 })),

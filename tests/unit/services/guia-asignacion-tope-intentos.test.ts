@@ -1,8 +1,7 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
 import { GuiaAsignacionService } from "@/lib/services/GuiaAsignacionService";
 import { MSG_ORDEN_REPROGRAMADA_BLOQUEADA, MSG_TOPE_INTENTOS_ASIGNACION } from "@/lib/services/mensajes-bloqueo";
-import { reintentosConfig } from "@/lib/config/reintentos";
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { IZonaRepository } from "@/lib/interfaces/repositories/IZonaRepository";
 import type {
@@ -27,7 +26,7 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 
 const MAESTRO: Actor = { usuarioId: "u-maestro", rol: "maestro" };
 const GAM = "z-gam";
-const UMBRAL = reintentosConfig.MIN_INTENTOS_ENTREGA;
+const UMBRAL = 3; // el de toda empresa nueva (SLT-77 R2)
 
 const ESTATUS: Record<string, string> = {
   mensajero_recogiendo_en_bodega: "os-espera",
@@ -96,9 +95,11 @@ function gateOk(): IAsignabilidadCoordenadasService {
 /** Doble del derivador de intentos que registra las llamadas (R18: una sola, sin N+1). */
 function historialCon(
   porOrden: Record<string, number>,
-): Pick<IOrdenHistorialService, "contarIntentosEnLote"> {
+  tope = 3,
+): Pick<IOrdenHistorialService, "contarIntentosEnLote" | "topeIntentos"> {
   return {
     contarIntentosEnLote: vi.fn(async () => new Map(Object.entries(porOrden))),
+    topeIntentos: vi.fn(async () => tope),
   };
 }
 
@@ -217,38 +218,25 @@ describe("276/T7 · el orden de guardas se conserva", () => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* 4 · R7 — el umbral sale de la configuracion                                 */
+/* 4 · SLT-77 R20 — el tope sale de la empresa                                 */
 /* -------------------------------------------------------------------------- */
 
-describe("276/T7 · R7 — con `REINTENTOS_MIN_INTENTOS = 5` la puerta se mueve", () => {
-  const ANTES = process.env.REINTENTOS_MIN_INTENTOS;
-
-  afterEach(() => {
-    if (ANTES === undefined) delete process.env.REINTENTOS_MIN_INTENTOS;
-    else process.env.REINTENTOS_MIN_INTENTOS = ANTES;
-    vi.resetModules();
-  });
-
-  async function conUmbral5(intentos: number) {
-    process.env.REINTENTOS_MIN_INTENTOS = "5";
-    vi.resetModules();
-    const { GuiaAsignacionService: Fresco } = await import(
-      "@/lib/services/GuiaAsignacionService"
-    );
+describe("SLT-77 R20 — con tope 5 de la empresa la puerta se mueve", () => {
+  function conUmbral5(intentos: number) {
     const repo = fakeRepo();
-    const service = new Fresco(
+    const service = new GuiaAsignacionService(
       repo,
       fakeZonaRepo(),
       gateOk(),
-      historialCon({ o1: intentos, o2: intentos, o3: intentos }),
+      historialCon({ o1: intentos, o2: intentos, o3: intentos }, 5),
     );
     return { service, repo };
   }
 
   it("4a. con 4 intentos deja asignar (4 < 5)", async () => {
-    // Con el umbral por defecto (3) esto estaria bloqueado. Que pase demuestra que el numero sale
-    // de la configuracion y no de un `3` escrito a mano.
-    const { service, repo } = await conUmbral5(4);
+    // Con el tope inicial (3) esto estaria bloqueado. Que pase demuestra que el numero sale de la
+    // empresa y no de un `3` escrito a mano.
+    const { service, repo } = conUmbral5(4);
 
     const r = await service.asignarDesdeBodega(LOTE, MAESTRO);
 
@@ -257,7 +245,7 @@ describe("276/T7 · R7 — con `REINTENTOS_MIN_INTENTOS = 5` la puerta se mueve"
   });
 
   it("4b. con 5 intentos NO deja asignar", async () => {
-    const { service, repo } = await conUmbral5(5);
+    const { service, repo } = conUmbral5(5);
 
     const r = await service.asignarDesdeBodega(LOTE, MAESTRO);
 

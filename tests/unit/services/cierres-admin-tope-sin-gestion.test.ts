@@ -1,11 +1,10 @@
 import fs from "fs";
 import path from "path";
 
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
 import { CierresAdminService } from "@/lib/services/CierresAdminService";
 import { sinRetenidas } from "@/tests/fixtures/retenidas-doble";
-import { reintentosConfig } from "@/lib/config/reintentos";
 import type { ICierresAdminRepository } from "@/lib/interfaces/repositories/ICierresAdminRepository";
 import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlProvider";
 import type { IZonaRepository } from "@/lib/interfaces/repositories/IZonaRepository";
@@ -16,8 +15,7 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
  * FEATURE 276 (T9) — EL UMBRAL VIAJA INYECTADO DESDE EL SERVICIO. R7, R21.
  *
  * ⚠️ QUE PRUEBA ESTE ARCHIVO Y QUE NO. Prueba EL CABLEADO: que `CierresAdminService.aprobarCierre`
- * resuelva el umbral de `reintentosConfig` y lo meta en `liberacionSinGestionar`, y que el
- * repositorio no tenga que leer configuracion (R7). Lo que hace la transaccion con ese numero
+ * lea el tope de la empresa y lo meta en `liberacionSinGestionar`. Lo que hace la transaccion con ese numero
  * —partir las barridas en dos destinos, crear la gestion sintetica, escribir el historial— se mide
  * contra Postgres real en `tests/integration/db/cierre-sin-gestion-tope-sql-real.test.ts`, porque
  * aqui el repositorio es un doble y no ejecuta ni una linea de ese bloque.
@@ -43,6 +41,7 @@ const ESTATUS_IDS: Record<string, string | null> = {
 
 function fakeRepo(): ICierresAdminRepository {
   return {
+    leerTopeIntentos: vi.fn(async () => 3),
     findCierresByAlcance: vi.fn(async () => []),
     findHistoricoPaginado: vi.fn(async () => ({ items: [], total: 0 })),
     findColaPaginada: vi.fn(async () => ({ items: [], total: 0 })),
@@ -119,7 +118,7 @@ describe("276/T9 · R7 — el umbral lo resuelve el SERVICIO, no el repositorio"
       enBodegaSateliteEstatusId: "s-en-bodega-sat",
       centralZonaId: "z-central",
       rechazadaEstatusId: "s-rechazada",
-      umbralIntentos: reintentosConfig.MIN_INTENTOS_ENTREGA,
+      umbralIntentos: 3,
     });
   });
 
@@ -182,20 +181,10 @@ describe("276/T9 · el bloque falla CERRADO cuando el catalogo no resuelve", () 
   });
 });
 
-describe("276/T9 · R7 — con `REINTENTOS_MIN_INTENTOS = 5` viaja un 5", () => {
-  const ANTES = process.env.REINTENTOS_MIN_INTENTOS;
-
-  afterEach(() => {
-    if (ANTES === undefined) delete process.env.REINTENTOS_MIN_INTENTOS;
-    else process.env.REINTENTOS_MIN_INTENTOS = ANTES;
-    vi.resetModules();
-  });
-
-  it("el numero que llega al repositorio sale de la configuracion, no de un `3` a mano", async () => {
-    process.env.REINTENTOS_MIN_INTENTOS = "5";
-    vi.resetModules();
-    const { CierresAdminService: Fresco } = await import("@/lib/services/CierresAdminService");
-    const { service, repo } = newService(Fresco as typeof CierresAdminService);
+describe("SLT-77 R21 — con tope 5 de la empresa viaja un 5", () => {
+  it("el numero que llega al repositorio sale de la empresa, no de un `3` a mano", async () => {
+    const { service, repo } = newService(CierresAdminService);
+    (repo.leerTopeIntentos as ReturnType<typeof vi.fn>).mockResolvedValue(5);
 
     await service.aprobarCierre("c1", MAESTRO);
 

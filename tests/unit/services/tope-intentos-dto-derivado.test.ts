@@ -1,8 +1,7 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
 import { MisAsignacionesService } from "@/lib/services/MisAsignacionesService";
 import { NovedadesService } from "@/lib/services/NovedadesService";
-import { reintentosConfig } from "@/lib/config/reintentos";
 import type {
   IGestionOrdenRepository,
   MiAsignacionRow,
@@ -35,7 +34,7 @@ import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
 
 const MENSAJERO: Actor = { usuarioId: "m1", rol: "mensajero" };
 const TIENDA: Actor = { usuarioId: "t1", rol: "adminTienda" };
-const UMBRAL = reintentosConfig.MIN_INTENTOS_ENTREGA;
+const UMBRAL = 3; // el de toda empresa nueva (SLT-77 R2)
 
 /* -------------------------------------------------------------------------- */
 /* El panel del mensajero                                                      */
@@ -155,44 +154,33 @@ describe("276/R8/R10 — `MiAsignacionDTO.enElTope` sale ya decidido del servido
     expect(Object.keys(r.porGestionar[0])).not.toContain("umbral");
   });
 
-  it("R7 — con `REINTENTOS_MIN_INTENTOS = 5` la MISMA orden deja de estar en el tope", async () => {
-    // Prueba de que el booleano se DERIVA de la configuracion y no de un `3` escrito a mano: con
-    // umbral 3 una orden con 2 intentos esta en el tope; con umbral 5, no.
-    const ANTES = process.env.REINTENTOS_MIN_INTENTOS;
-    try {
-      process.env.REINTENTOS_MIN_INTENTOS = "5";
-      vi.resetModules();
-      const { MisAsignacionesService: Fresco } = await import(
-        "@/lib/services/MisAsignacionesService"
-      );
-      const service = new Fresco(
-        repoAsignaciones([filaAsignacion({ id: "o1" })]),
-        {
-          findEstatusIdByValue: vi.fn(async () => "x"),
-          findOrdenesEnCorreccion: vi.fn(async () => new Set<string>()), // ficha 477
-          findBloqueoDetalle: vi.fn(async () => SIN_BLOQUEO),
-        } as unknown as Pick<IOrdenRepository, "findEstatusIdByValue" | "findBloqueoDetalle" | "findOrdenesEnCorreccion">,
-        {} as IFileStorage,
-        {} as ISignedUrlProvider,
-        {
-          findByMensajero: vi.fn(async () => null),
-          upsertOrigen: vi.fn(async () => {}),
-        } as unknown as Pick<IRutaOptimizadaRepository, "findByMensajero" | "upsertOrigen">,
-        {
-          findMarcarLuegoByMensajero: vi.fn(async () => new Set<string>()),
-        } as Pick<IOrdenMensajeroMetaRepository, "findMarcarLuegoByMensajero">,
-        fakeIntentosEnLote({ o1: 2 }),
-      );
+  it("con tope 5 de la empresa, la MISMA orden deja de estar en el tope", async () => {
+    // Prueba de que el booleano se DERIVA del tope de la empresa y no de un `3` escrito a mano: con
+    // tope 3 una orden con 2 intentos esta en el tope; con tope 5, no.
+    const service = new MisAsignacionesService(
+      repoAsignaciones([filaAsignacion({ id: "o1" })]),
+      {
+        findEstatusIdByValue: vi.fn(async () => "x"),
+        findOrdenesEnCorreccion: vi.fn(async () => new Set<string>()), // ficha 477
+        findBloqueoDetalle: vi.fn(async () => SIN_BLOQUEO),
+      } as unknown as Pick<IOrdenRepository, "findEstatusIdByValue" | "findBloqueoDetalle" | "findOrdenesEnCorreccion">,
+      {} as IFileStorage,
+      {} as ISignedUrlProvider,
+      {
+        findByMensajero: vi.fn(async () => null),
+        upsertOrigen: vi.fn(async () => {}),
+      } as unknown as Pick<IRutaOptimizadaRepository, "findByMensajero" | "upsertOrigen">,
+      {
+        findMarcarLuegoByMensajero: vi.fn(async () => new Set<string>()),
+      } as Pick<IOrdenMensajeroMetaRepository, "findMarcarLuegoByMensajero">,
+      fakeIntentosEnLote({ o1: 2 }, 5),
+    );
 
-      const r = await service.listarMisAsignaciones(MENSAJERO);
+    const r = await service.listarMisAsignaciones(MENSAJERO);
 
-      if (r.status !== "ok") return;
-      expect(r.porGestionar[0].enElTope).toBe(false); // 2 < 5 - 1
-    } finally {
-      if (ANTES === undefined) delete process.env.REINTENTOS_MIN_INTENTOS;
-      else process.env.REINTENTOS_MIN_INTENTOS = ANTES;
-      vi.resetModules();
-    }
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(r.porGestionar[0].enElTope).toBe(false); // 2 < 5 - 1
   });
 });
 
