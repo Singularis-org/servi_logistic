@@ -281,6 +281,12 @@ export const MODULO_POR_API: Readonly<Record<string, Destino>> = {
   "ordenes/api-key/habilitar": "nucleo",
   "ordenes/api-key/orden/[id]": "nucleo",
   "ordenes/api-key/orden/[id]/generate": "nucleo",
+  // API v2 (SLT-45, design §4.4): mismo módulo que su par de v1.
+  "v2/geografia": "nucleo",
+  "v2/ordenes": "nucleo",
+  "v2/ordenes/[id]": "nucleo",
+  "v2/ordenes/carga": "nucleo",
+  "v2/ordenes/cotizacion": "nucleo",
 };
 
 /**
