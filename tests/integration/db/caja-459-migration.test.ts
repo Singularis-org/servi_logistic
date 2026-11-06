@@ -153,9 +153,12 @@ describeSiHayBase("459/B.5 — las migraciones de la 459 contra Postgres", () =>
       "grupo_distritos_borrado",
     ]);
     expect(tiposPrevios.slice(-1)).toEqual(["plan_tipo_cobro_cambiado"]);
-    expect(entidadesPrevias.slice(-8, -6)).toEqual(["pago_por_cuenta_tienda", "aporte_capital"]);
-    expect(entidadesPrevias.slice(-6, -2)).toEqual(["abono_tienda", "integracion", "organizacion_modulo", "plan"]);
-    expect(entidadesPrevias.slice(-2)).toEqual(["tarifa_valor", "grupo_distritos"]);
+    // SLT-43 (20261104120000, antes de la de SLT-54) suma UNA entidad (`nodo_geografico`) y NINGUN tipo:
+    // sin la de SLT-54, los tramos de entidades se leen uno mas atras; los de tipos no cambian.
+    expect(entidadesPrevias.slice(-9, -7)).toEqual(["pago_por_cuenta_tienda", "aporte_capital"]);
+    expect(entidadesPrevias.slice(-7, -3)).toEqual(["abono_tienda", "integracion", "organizacion_modulo", "plan"]);
+    expect(entidadesPrevias.slice(-3, -1)).toEqual(["tarifa_valor", "grupo_distritos"]);
+    expect(entidadesPrevias.slice(-1)).toEqual(["nodo_geografico"]);
   });
 
   it("(b) los CHECK admiten los pares nuevos y RECHAZAN los invertidos", async () => {

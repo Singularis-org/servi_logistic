@@ -694,7 +694,7 @@ describeSiHayBase("FICHA 370 · «ya salio a reparto» decide sobre filas reales
       // Una geografia de un pais de prueba con ids que ordenan ANTES que cualquier uuid de la base.
       await crearPaisDePrueba(tx, "XR");
       const provinciaAjena = await tx.provincia.create({
-        data: { id: "00000000-0000-0000-0000-000000000000", nombre: "Provincia ajena SLT-76", paisId: "XR" },
+        data: { id: "00000000-0000-0000-0000-000000000001", nombre: "Provincia ajena SLT-76", paisId: "XR" },
         select: { id: true },
       });
       const cantonAjeno = await tx.canton.create({
