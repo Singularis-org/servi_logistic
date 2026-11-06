@@ -352,9 +352,10 @@ export function lineasDelCosteoPorcentual(c: Extract<CosteoDelCiclo, { modo: "po
   return {
     costoPorOrden: `Costo por orden: ${textoDelCostoPorOrdenPorcentual(c)}`,
     nota: NOTA_COBRO_PORCENTUAL,
-    // SLT-86 (R28; decisión del 2026-11-05): «período» en lugar de «ciclo».
+    // SLT-86 (R28; decisiones del 2026-11-05 y del 2026-11-06): «período» en lugar de «ciclo»,
+    // también en las órdenes sin estado final.
     cobrado: `Cobrado en el período: ${c.cobrado}`,
-    pendientes: `Órdenes del ciclo sin estado final: ${c.pendientes}`,
+    pendientes: `Órdenes del período sin estado final: ${c.pendientes}`,
     total:
       c.total === null || c.base.tipo !== "monto"
         ? null

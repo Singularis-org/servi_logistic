@@ -30,14 +30,15 @@ type CosteoPorcentual = Extract<CosteoDelCiclo, { modo: "porcentual" }>;
 
 /** Textos de la pieza, en un solo sitio para cuando llegue la i18n (design §6.5). */
 const TEXTOS = {
-  costoDelCiclo: "Costo del ciclo",
+  // Decisión del 2026-11-06 (R28): «período» en vez de «ciclo» en los textos; las claves no cambian.
+  costoDelCiclo: "Costo del período",
   // SLT-86 (R12, R28; design §7.1): el costo base del período en curso (o de su tramo), con su tipo.
   costoBase: (tipo: TipoCobro, base: CosteoDelCiclo["base"]) =>
     TEXTOS_TIPO_COBRO.costoBase(tipo, base.tipo === "monto" ? base.periodo : null),
   costoPorOrden: (c: string) => `Costo por orden: ${c}`,
   ordenesDelCiclo: ({ ordenes, costoPorOrden, subtotalOrdenes }: CosteoFijo) =>
-    `Órdenes del ciclo: ${ordenes} × ${costoPorOrden} = ${subtotalOrdenes}`,
-  total: (t: string) => `Total estimado del ciclo: ${t}`,
+    `Órdenes del período: ${ordenes} × ${costoPorOrden} = ${subtotalOrdenes}`,
+  total: (t: string) => `Total estimado del período: ${t}`,
   excepcion: "precio acordado para tu empresa",
   estimado: "Estimado: el costo base no se cobra todavía; cada orden se cobra al crearla y se descuenta si se anula.",
   /** SLT-83 (texto aprobado 2026-11-04): la nota de la rama porcentual, donde la fija pinta `estimado`. */

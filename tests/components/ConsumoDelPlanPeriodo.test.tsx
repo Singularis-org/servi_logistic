@@ -56,7 +56,7 @@ const cobro = () =>
   within(screen.getByRole("list", { name: "Cobro del plan" }))
     .getAllByRole("listitem")
     .map((li) => li.textContent);
-const costo = () => screen.getByRole("list", { name: "Costo del ciclo" });
+const costo = () => screen.getByRole("list", { name: "Costo del período" });
 
 afterEach(() => cleanup());
 
@@ -126,8 +126,8 @@ describe("SLT-86 R28 — el total del período", () => {
 
     const b = costo();
     expect(within(b).getByText("Costo base quincenal: 6200.00")).toBeInTheDocument();
-    expect(within(b).getByText("Órdenes del ciclo: 3 × 100.00 = 300.00")).toBeInTheDocument();
-    expect(within(b).getByText("Total estimado del ciclo: 6500.00")).toBeInTheDocument();
+    expect(within(b).getByText("Órdenes del período: 3 × 100.00 = 300.00")).toBeInTheDocument();
+    expect(within(b).getByText("Total estimado del período: 6500.00")).toBeInTheDocument();
     expect(screen.queryByText("El pago anual no cambia el costo por orden.")).toBeNull();
   });
 

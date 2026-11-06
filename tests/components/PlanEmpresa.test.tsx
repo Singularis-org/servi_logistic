@@ -336,7 +336,7 @@ describe("SLT-58 R18 — un rechazo se explica y no se da por hecho", () => {
     [{ estado: "not_found" }, "El plan o la empresa ya no existe."],
     [{ estado: "archivado" }, "El plan está archivado."],
     [{ estado: "custom_de_otra_empresa" }, "Ese plan es de otra empresa."],
-    [{ estado: "sin_cambio_programado" }, "El plan ya no tiene un cambio pendiente."],
+    [{ estado: "sin_cambio_programado" }, "La empresa ya no tiene un cambio pendiente."],
   ])("R18: %o → mensaje y sin releer", async (respuesta, texto) => {
     const user = userEvent.setup();
     montar({ asignar: vi.fn().mockResolvedValue(respuesta) });

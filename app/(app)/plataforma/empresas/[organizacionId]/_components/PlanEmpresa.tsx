@@ -126,6 +126,8 @@ const TEXTOS = {
   tipoCobroFallo: "No se pudo cambiar el tipo de cobro. Inténtalo de nuevo.",
   /** SLT-86 (R19, R26): «Cancelar cambio» del pendiente; el mismo texto que el detalle del plan. */
   cambioCancelado: "Cambio programado cancelado.",
+  /** Decisión del 2026-11-06: «Cancelar cambio» pide confirmación con el plan y la fecha de efecto. */
+  confirmarCancelar: (plan: string, fecha: string) => `¿Cancelar el cambio a ${plan} programado para el ${fecha}?`,
 } as const;
 
 /** Ajuste planes-custom (D10): el texto de cada rechazo de `cambiarTipoCobroAction`. */
@@ -174,7 +176,7 @@ function lineasDelPrimerPeriodo(precio: PrecioPlan | undefined, tipo: TipoCobro,
 const RECHAZOS_CANCELAR: Record<Exclude<CancelarCambioEmpresaResult["estado"], "ok">, string> = {
   forbidden: "No tienes permiso para esto.",
   not_found: "Esa empresa ya no existe.",
-  sin_cambio_programado: "El plan ya no tiene un cambio pendiente.",
+  sin_cambio_programado: "La empresa ya no tiene un cambio pendiente.",
   validation_error: RECHAZO_GENERICO,
 };
 
@@ -184,7 +186,7 @@ const RECHAZOS: Record<Exclude<PlanResult["estado"], "ok" | "tope_excedido" | "v
   not_found: "El plan o la empresa ya no existe.",
   archivado: "El plan está archivado.",
   custom_de_otra_empresa: "Ese plan es de otra empresa.",
-  sin_cambio_programado: "El plan ya no tiene un cambio pendiente.",
+  sin_cambio_programado: "La empresa ya no tiene un cambio pendiente.",
   plan_sin_costo: "Ese plan no tiene costo base y costo por orden concretos: crea un custom con sus precios para asignarlo.",
 };
 
@@ -338,6 +340,8 @@ export function PlanEmpresa({
   const [vigenteDesde, setVigenteDesde] = useState(fechaDeEfectoPorDefecto ?? "");
   const [errorDeEfecto, setErrorDeEfecto] = useState<string[] | undefined>(undefined);
   const [cancelando, setCancelando] = useState(false);
+  /** Decisión del 2026-11-06: el modal que confirma «Cancelar cambio». */
+  const [confirmandoCancelar, setConfirmandoCancelar] = useState(false);
   /** Los avisos del `ok` de la primera asignación (§11.5), bajo la sección y con el texto del modal. */
   const [avisosAsignados, setAvisosAsignados] = useState<string[]>([]);
   // Cada lectura de la vista previa lleva su número: si el superadmin cambia la fecha antes de que
@@ -612,7 +616,15 @@ export function PlanEmpresa({
             // el estado vacío de arriba); en los dos casos se puede cancelar.
             <div className="flex flex-wrap items-center gap-3">
               {vista.plan !== null && <p className="text-sm font-medium">{TEXTOS_TIPO_COBRO.pendiente(pendiente)}</p>}
-              <Button type="button" variant="outline" loading={cancelando} onClick={() => void cancelarCambio()}>
+              <Button
+                type="button"
+                variant="outline"
+                loading={cancelando}
+                onClick={() => {
+                  setRechazo(null);
+                  setConfirmandoCancelar(true);
+                }}
+              >
                 {TEXTOS_TIPO_COBRO.cancelarCambio}
               </Button>
             </div>
@@ -794,6 +806,21 @@ export function PlanEmpresa({
             </div>
           </Modal>
         )
+      ) : null}
+
+      {pendiente !== null ? (
+        // Decisión del 2026-11-06: la action solo se llama desde este modal; cerrarlo no cancela nada.
+        // Botones como en el detalle del plan: «Cancelar cambio» (destructivo) y «Volver».
+        <Modal
+          open={confirmandoCancelar}
+          onOpenChange={setConfirmandoCancelar}
+          title={TEXTOS.confirmarCancelar(pendiente.planNombre, pendiente.desde)}
+          confirmLabel={TEXTOS_TIPO_COBRO.cancelarCambio}
+          cancelLabel={TEXTOS.volver}
+          confirmVariant="destructive"
+          size="md"
+          onConfirm={() => cancelarCambio()}
+        />
       ) : null}
 
       {vista?.plan ? (

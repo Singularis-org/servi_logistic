@@ -69,7 +69,7 @@ describe("SLT-83 R23 — las líneas de «Mi plan» con un plan porcentual", () 
       costoPorOrden: "Costo por orden: 2.00 % del valor del paquete, mínimo 500.00",
       nota: "se cobra cuando la orden llega a un estado final",
       cobrado: "Cobrado en el período: 2000.00",
-      pendientes: "Órdenes del ciclo sin estado final: 0",
+      pendientes: "Órdenes del período sin estado final: 0",
       total: "Total del período hasta hoy: 50000.00 + 2000.00 = 52000.00",
     });
     expect(NOTA_COBRO_PORCENTUAL).toBe("se cobra cuando la orden llega a un estado final");
@@ -78,7 +78,7 @@ describe("SLT-83 R23 — las líneas de «Mi plan» con un plan porcentual", () 
   it("sin mínimo y con órdenes pendientes", () => {
     const l = lineasDelCosteoPorcentual({ ...COSTEO, minimo: null, cobrado: "290.11", pendientes: 3, total: "50290.11" });
     expect(l.costoPorOrden).toBe("Costo por orden: 2.00 % del valor del paquete");
-    expect(l.pendientes).toBe("Órdenes del ciclo sin estado final: 3");
+    expect(l.pendientes).toBe("Órdenes del período sin estado final: 3");
     expect(l.total).toBe("Total del período hasta hoy: 50000.00 + 290.11 = 50290.11");
   });
 

@@ -348,31 +348,63 @@ describe("SLT-86 R19, R26 — el cambio pendiente con «Cancelar cambio»", () =
     expect(within(seccion).getByRole("button", { name: "Cancelar cambio" })).toBeInTheDocument();
   });
 
-  it("R19: «Cancelar cambio» llama a la action con la empresa, avisa y relee la página", async () => {
+  /** Decisión del 2026-11-06: «Cancelar cambio» abre la confirmación; la action sale de su botón. */
+  const TITULO_CONFIRMAR = "¿Cancelar el cambio a Pro programado para el 2026-04-01?";
+  async function cancelarYConfirmar(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole("button", { name: "Cancelar cambio" }));
+    const modal = await screen.findByRole("dialog", { name: TITULO_CONFIRMAR });
+    await user.click(within(modal).getByRole("button", { name: "Cancelar cambio" }));
+  }
+
+  it("R19 (decisión 2026-11-06): «Cancelar cambio» pide confirmación con el plan y la fecha, sin llamar aún a la action", async () => {
     const user = userEvent.setup();
     const { cancelar } = montar({ v: conPlan(PENDIENTE) });
     await user.click(screen.getByRole("button", { name: "Cancelar cambio" }));
 
+    const modal = await screen.findByRole("dialog", { name: TITULO_CONFIRMAR });
+    expect(within(modal).getByRole("button", { name: "Cancelar cambio" })).toBeInTheDocument();
+    expect(within(modal).getByRole("button", { name: "Volver" })).toBeInTheDocument();
+    expect(cancelar).not.toHaveBeenCalled();
+  });
+
+  it("R19 (decisión 2026-11-06): cerrar la confirmación con «Volver» no llama a la action", async () => {
+    const user = userEvent.setup();
+    const { cancelar } = montar({ v: conPlan(PENDIENTE) });
+    await user.click(screen.getByRole("button", { name: "Cancelar cambio" }));
+    const modal = await screen.findByRole("dialog", { name: TITULO_CONFIRMAR });
+    await user.click(within(modal).getByRole("button", { name: "Volver" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(cancelar).not.toHaveBeenCalled();
+    expect(refreshMock).not.toHaveBeenCalled();
+  });
+
+  it("R19: confirmar llama a la action con la empresa, avisa, cierra el modal y relee la página", async () => {
+    const user = userEvent.setup();
+    const { cancelar } = montar({ v: conPlan(PENDIENTE) });
+    await cancelarYConfirmar(user);
+
     await waitFor(() => expect(cancelar).toHaveBeenCalledWith({ organizacionId: ORG }));
     expect(await screen.findByText("Cambio programado cancelado.")).toBeInTheDocument();
     expect(refreshMock).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: TITULO_CONFIRMAR })).toBeNull());
   });
 
-  it("R19: también sin plan cancela la primera asignación pendiente", async () => {
+  it("R19, R26: también sin plan pide confirmación y cancela la primera asignación pendiente", async () => {
     const user = userEvent.setup();
     const { cancelar } = montar({ v: sinPlan(PENDIENTE) });
-    await user.click(screen.getByRole("button", { name: "Cancelar cambio" }));
+    await cancelarYConfirmar(user);
     await waitFor(() => expect(cancelar).toHaveBeenCalledWith({ organizacionId: ORG }));
   });
 
   it.each<[CancelarCambioEmpresaResult, string]>([
-    [{ estado: "sin_cambio_programado" }, "El plan ya no tiene un cambio pendiente."],
+    [{ estado: "sin_cambio_programado" }, "La empresa ya no tiene un cambio pendiente."],
     [{ estado: "not_found" }, "Esa empresa ya no existe."],
     [{ estado: "forbidden" }, "No tienes permiso para esto."],
   ])("R19: el rechazo %j se explica y no relee", async (resultado, texto) => {
     const user = userEvent.setup();
     montar({ v: conPlan(PENDIENTE), cancelar: vi.fn<Cancelar>().mockResolvedValue(resultado) });
-    await user.click(screen.getByRole("button", { name: "Cancelar cambio" }));
+    await cancelarYConfirmar(user);
 
     expect(await screen.findByText(texto)).toBeInTheDocument();
     expect(refreshMock).not.toHaveBeenCalled();
@@ -382,7 +414,7 @@ describe("SLT-86 R19, R26 — el cambio pendiente con «Cancelar cambio»", () =
     const user = userEvent.setup();
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     montar({ v: conPlan(PENDIENTE), cancelar: vi.fn<Cancelar>().mockRejectedValue(new Error("red")) });
-    await user.click(screen.getByRole("button", { name: "Cancelar cambio" }));
+    await cancelarYConfirmar(user);
 
     expect(await screen.findByText("No se pudo guardar. Inténtalo de nuevo.")).toBeInTheDocument();
     expect(refreshMock).not.toHaveBeenCalled();

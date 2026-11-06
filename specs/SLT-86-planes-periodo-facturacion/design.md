@@ -358,6 +358,14 @@ El repositorio trabaja en una transacción y bajo el cerrojo:
   la celda del tipo de cobro dice «Cambio cancelado: {Tipo} desde el {AAAA-MM-DD}»; el plan va en su columna.
 - **Costeo porcentual (SLT-83, decisión del 2026-11-05, tras T9):** «Cobrado en el período: {monto}» y
   «Total del período hasta hoy: …».
+- **Costeo en «período» (decisión del 2026-11-06, tras T12):** «Costo del período» (título y nombre de la
+  lista), «Órdenes del período: {n} × {c} = {s}», «Total estimado del período: {t}» y «Órdenes del período sin
+  estado final: {n}».
+- **Cancelar un cambio de empresa (decisión del 2026-11-06, tras T12):** «Cancelar cambio» pide confirmación con
+  el modal de confirmación de la app: «¿Cancelar el cambio a {plan} programado para el {AAAA-MM-DD}?». El rechazo
+  `sin_cambio_programado` en el detalle de empresa dice «La empresa ya no tiene un cambio pendiente.».
+- **Modales «Cambiar plan» y «Cambiar tipo de cobro» (decisión del 2026-11-06):** se aprueban los recortes de
+  T11: sin «Sus topes y módulos cambian en cuanto confirmes.», y «no cambian sus topes ni sus módulos».
 - **Pendiente sin plan (R26, decisión del 2026-11-05):** «Sin límites» y debajo «{Plan} empieza a regir el
   {fecha}», en «Mi plan» y en el detalle de empresa (aquí, con «Cancelar cambio»).
 - **Modal de primera asignación con fecha futura:** «El plan empieza a regir el {fecha}.», que sustituye a

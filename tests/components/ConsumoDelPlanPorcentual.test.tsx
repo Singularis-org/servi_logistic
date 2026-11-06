@@ -55,7 +55,7 @@ function pintar(l: PlanConUsoLeido) {
   return render(<ConsumoDelPlan plan={planConConsumo(l, AHORA)} textoSinPlan="sin plan" />);
 }
 
-const bloque = () => screen.getByRole("list", { name: "Costo del ciclo" });
+const bloque = () => screen.getByRole("list", { name: "Costo del período" });
 const lineas = () =>
   within(bloque())
     .getAllByRole("listitem")
@@ -72,7 +72,7 @@ describe("SLT-83 R23 — «Mi plan» con un plan porcentual", () => {
       "Costo base mensual: 50000.00",
       "Costo por orden: 2.00 % del valor del paquete, mínimo 500.00se cobra cuando la orden llega a un estado final",
       "Cobrado en el período: 2500.00",
-      "Órdenes del ciclo sin estado final: 4",
+      "Órdenes del período sin estado final: 4",
       "Total del período hasta hoy: 50000.00 + 2500.00 = 52500.00",
     ]);
     const total = within(bloque()).getByText("Total del período hasta hoy: 50000.00 + 2500.00 = 52500.00");
@@ -82,10 +82,10 @@ describe("SLT-83 R23 — «Mi plan» con un plan porcentual", () => {
   it("R23: las órdenes sin estado final son solo un conteo; no multiplican ni se estiman", () => {
     pintar(leido(version(MONTO_50000, CON_MINIMO), { cobrado: "0.00", pendientes: 3 }, 9));
 
-    expect(within(bloque()).getByText("Órdenes del ciclo sin estado final: 3")).toBeInTheDocument();
+    expect(within(bloque()).getByText("Órdenes del período sin estado final: 3")).toBeInTheDocument();
     // Ninguna línea del modo fijo (órdenes × costo) ni el texto del total estimado.
     expect(within(bloque()).queryByText(/×/)).toBeNull();
-    expect(screen.queryByText(/Total estimado del ciclo/)).toBeNull();
+    expect(screen.queryByText(/Total estimado del período/)).toBeNull();
     expect(within(bloque()).getByText("Total del período hasta hoy: 50000.00 + 0.00 = 50000.00")).toBeInTheDocument();
   });
 
@@ -172,7 +172,7 @@ describe("SLT-83 R23 — detalle de empresa del superadmin", () => {
       "Costo base mensual: 50000.00",
       "Costo por orden: 2.00 % del valor del paquete, mínimo 500.00se cobra cuando la orden llega a un estado final",
       "Cobrado en el período: 2500.00",
-      "Órdenes del ciclo sin estado final: 4",
+      "Órdenes del período sin estado final: 4",
       "Total del período hasta hoy: 50000.00 + 2500.00 = 52500.00",
     ]);
     expect(screen.queryByText(AVISO_R20)).toBeNull();

@@ -6,7 +6,7 @@
 // `ModulosEmpresa` REAL con lo que baja por props, y se lee lo que pinta: 8 interruptores y el núcleo,
 // con sus 8 nombres y sin control.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup, within } from "@testing-library/react";
+import { render, screen, cleanup, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { RolValue } from "@prisma/client";
 
@@ -369,7 +369,13 @@ describe("SLT-58 (R19) — el plan de la empresa en su detalle", () => {
     expect(within(plan).getByText("Sin límites")).toBeInTheDocument();
     expect(within(plan).getByText("Plan Crecer empieza a regir el 2026-12-01")).toBeInTheDocument();
     await user.click(within(plan).getByRole("button", { name: "Cancelar cambio" }));
-    expect(cancelarMock).toHaveBeenCalledWith({ organizacionId: ORG });
+    // Decisión del 2026-11-06: la action sale de la confirmación, no del botón de la sección.
+    expect(cancelarMock).not.toHaveBeenCalled();
+    const modal = await screen.findByRole("dialog", {
+      name: "¿Cancelar el cambio a Plan Crecer programado para el 2026-12-01?",
+    });
+    await user.click(within(modal).getByRole("button", { name: "Cancelar cambio" }));
+    await waitFor(() => expect(cancelarMock).toHaveBeenCalledWith({ organizacionId: ORG }));
   });
 
   it("R19: un rol de empresa no lee el plan (notFound antes de leer)", async () => {

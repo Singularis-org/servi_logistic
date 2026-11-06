@@ -654,3 +654,40 @@ tipos de pantallas y E2E (T10–T13).
 
 **Veredicto:** T10, T11 y T12 hechas; 378/378 en los 27 archivos tocados y el typecheck solo con los 8 errores de
 `e2e/` que son de T13.
+
+## Tanda 7 — decisiones del humano del 2026-11-06 en la UI (frontend_dev)
+
+**Archivos modificados**
+- `components/shared/ConsumoDelPlan.tsx`: «Costo del período», «Órdenes del período: …», «Total estimado del
+  período: …» (las claves `costoDelCiclo`/`ordenesDelCiclo` no cambian: diff mínimo).
+- `app/(app)/plataforma/empresas/[organizacionId]/_components/PlanEmpresa.tsx`: «Cancelar cambio» abre un `Modal`
+  (el de `components/shared/Modal`, como en `PlanDetalle`) titulado «¿Cancelar el cambio a {plan} programado para el
+  {fecha}?»; confirmar llama a `cancelarCambioEmpresa`, «Volver» cierra sin llamar. Con y sin plan actual.
+  `sin_cambio_programado` → «La empresa ya no tiene un cambio pendiente.» en `RECHAZOS_CANCELAR` y `RECHAZOS`.
+- Tests: `tests/components/ConsumoDelPlanCosteo.test.tsx`, `ConsumoDelPlanPeriodo.test.tsx`,
+  `ConsumoDelPlanPorcentual.test.tsx`, `MiPlanModule.test.tsx`, `PlanEmpresa.test.tsx`, `PlanEmpresaPeriodo.test.tsx`,
+  `tests/integration/plataforma-empresa-detalle-page.test.tsx`.
+
+**R → test**
+- R28 (textos «período») → `ConsumoDelPlanCosteo.test.tsx`, `ConsumoDelPlanPeriodo.test.tsx` (costo del período),
+  `ConsumoDelPlanPorcentual.test.tsx` (incl. «Órdenes del período sin estado final»), `MiPlanModule.test.tsx`.
+- R19 (modal de confirmación) → `PlanEmpresaPeriodo.test.tsx` «R19 (decisión 2026-11-06): pide confirmación…»,
+  «…cerrar la confirmación con «Volver» no llama a la action», «R19: confirmar llama a la action…».
+- R19, R26 (sin plan, por el modal) → `PlanEmpresaPeriodo.test.tsx` «también sin plan pide confirmación…» y
+  `plataforma-empresa-detalle-page.test.tsx` «SLT-86 R26: sin plan y con una primera asignación pendiente…».
+- R19, R26 (rechazo) → `PlanEmpresaPeriodo.test.tsx` it.each `sin_cambio_programado`; `PlanEmpresa.test.tsx:339`.
+
+**Salida de los comandos**
+- `pnpm exec vitest run` (14 archivos: los 7 tocados + los que importan `ConsumoDelPlan`/`PlanEmpresa`/`MiPlanModule`):
+  `Test Files 14 passed (14) · Tests 225 passed (225)`.
+- `pnpm exec eslint <9 archivos tocados>`: `No issues found`.
+- Typecheck no corrido (lo corre el leader). `e2e/` no tocado (siguiente tanda).
+
+**Notas / propuestas**
+- (propuesta) Botones del modal: «Cancelar cambio» (variante `destructive`) y «Volver», copiados de `PlanDetalle`; el
+  modal no lleva `description` (la decisión solo fija el título).
+- `ConsumoDelPlanPeriodo.test.tsx:74` sigue con `queryByText(/órdenes del ciclo/)` a propósito: guarda que no vuelva
+  el rótulo viejo.
+- Grafo MCP: no lo consulté; trabajé con Grep/Read.
+
+**Veredicto:** decisiones a, b y c del 2026-11-06 hechas en la UI; 225/225 en los 14 archivos y eslint limpio.

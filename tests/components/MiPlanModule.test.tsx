@@ -196,12 +196,12 @@ describe("Ajuste planes-custom D9, SLT-86 R27 — «Mi plan» muestra el tipo, e
       "Siguiente pago: 2027-01-01",
     ]);
     // R12, R15: 45 000 × 12 × 351 / 365, con el precio de cuando empezó el período.
-    expect(screen.getByRole("list", { name: "Costo del ciclo" })).toHaveTextContent("Costo base anual: 519287.67");
+    expect(screen.getByRole("list", { name: "Costo del período" })).toHaveTextContent("Costo base anual: 519287.67");
   });
 
-  it("sin costo base: «Costo base mensual: por definir» en el costo del ciclo", () => {
+  it("sin costo base: «Costo base mensual: por definir» en el costo del período", () => {
     const sinPrecio = { ...VIGENTE, precio: { tipo: "sin_precio" } as const };
     render(<MiPlanModule plan={plan({ vigente: sinPrecio, precioDelPeriodo: sinPrecio.precio })} />);
-    expect(screen.getByRole("list", { name: "Costo del ciclo" })).toHaveTextContent("Costo base mensual: por definir");
+    expect(screen.getByRole("list", { name: "Costo del período" })).toHaveTextContent("Costo base mensual: por definir");
   });
 });
