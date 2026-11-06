@@ -191,22 +191,8 @@
 
 ## Preguntas abiertas
 
-Cada una lleva la propuesta del spec, que ya está escrita en los requisitos. El humano la confirma o
-la cambia en la aprobación (F1.4).
-
-1. **¿El catálogo de v2 sirve otros países?** La RLS de SLT-43 (R12) solo deja leer a una empresa los
-   nodos de su país. Propuesta: `GET /api/v2/geografia?pais=` solo responde el país de la empresa de la
-   key; otro país o uno inexistente dan el mismo 404 (R23). Si el humano quiere servir cualquier país,
-   hace falta una lectura de plataforma fuera del contexto de la empresa y R23 cambia.
-2. **¿`GeoRepository.leerDivisionDePais` es de SLT-45?** El design de SLT-44 (§7) mandó a SLT-45 «la
-   carga CSV de división de SL-20». El alcance sembrado no la nombra y es una lectura que prepara una
-   escritura de administración. Propuesta: va a SLT-46, con las escrituras en el nodo; SLT-45 no la toca.
-3. **Respuesta de «crear una orden» en v2.** Propuesta: la misma forma que la carga por lote con una
-   sola orden (R18), para no publicar una segunda semántica de errores. La alternativa (201/409/422 por
-   orden) está descartada en `design.md > §11`.
-4. **Cabeceras de la plantilla de un país que no es de forma CR.** Propuesta (R30, `design.md > §8`): una
-   columna por profundidad con el nombre singular de su tipo normalizado (`departamento`, `municipio`…),
-   y `nivel_<n>` si esa profundidad mezcla tipos o el nombre choca con otra columna.
+Ninguna. Las cuatro que dejó `spec_author` las cerró el humano en F1.4 (2026-11-05), todas con la
+propuesta del spec: filas del 2026-11-05 (F1.4) en la tabla de abajo.
 
 ## Decisiones cerradas (no reabrir)
 
@@ -219,3 +205,7 @@ la cambia en la aprobación (F1.4).
 | 2026-11-05 | ¿Hace falta E2E nuevo? | No. Contrato de v1 congelado, integración de v2 contra Postgres real y carga masiva de CR con su plantilla. Los E2E existentes deben seguir verdes. Motivo: no hay pantalla nueva. |
 | 2026-11-05 | Autenticación y empresa | Heredado: la misma API key de v1; la empresa sale de la key (SL-18). La autorización se valida en el service. |
 | 2026-11-05 | Migraciones | Heredado de la épica: solo aditivas, cada una con `down.sql`. |
+| 2026-11-05 (F1.4) | ¿El catálogo de v2 sirve otros países? | Solo el país de la empresa de la key; otro país o uno inexistente dan el mismo 404 (R23). Precisa la primera fila: «funciona para cualquier país» se refiere a cualquier forma (2, 3 o 4 niveles), no a leer países ajenos. La RLS de SLT-43 R12 no cambia. |
+| 2026-11-05 (F1.4) | ¿`GeoRepository.leerDivisionDePais` (CSV de división de SL-20) es de SLT-45? | No: pasa a SLT-46, con la pantalla del superadmin. SLT-45 no la toca. |
+| 2026-11-05 (F1.4) | ¿Qué responde «crear una orden» en v2? | La misma forma que la carga por lote de v2 con una sola orden (R18). |
+| 2026-11-05 (F1.4) | Cabeceras de la plantilla de un país que no es de forma CR | Una columna por profundidad con el nombre singular de su tipo normalizado (`departamento`, `municipio`…); `nivel_<n>` si la profundidad mezcla tipos o el nombre choca con otra columna (R30). CR no cambia. |
