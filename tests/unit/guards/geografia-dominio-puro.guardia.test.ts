@@ -112,3 +112,41 @@ describe("SLT-44 R1 — `geografia-dominio.ts` no toca la base", () => {
     }
   });
 });
+
+// SLT-45 (T2.1; design §2.2) — el motor de N niveles es puro como el dominio sobre el que corre.
+// Solo importa el dominio y el normalizador; NO `geo-resolucion.ts`, cuyo modulo arrastra los
+// tipos de `IOrdenRepository` y, con ellos, `@prisma/client`.
+const MOTOR = "lib/services/geo-ubicacion.ts";
+const PERMITIDOS_DEL_MOTOR = new Set(["@/lib/services/geografia-dominio", "@/lib/utils/normalize"]);
+const NORMALIZADOR = "lib/utils/normalize.ts";
+
+function importsProhibidosDelMotor(codigo: string): string[] {
+  return modulosImportados(codigo).filter((m) => !PERMITIDOS_DEL_MOTOR.has(m));
+}
+
+describe("SLT-45 — `geo-ubicacion.ts` no toca la base", () => {
+  it("CONTRAPRUEBA: importar `geo-resolucion` o Prisma desde el motor se detecta", () => {
+    const mutado = `
+      import { ancestros } from "@/lib/services/geografia-dominio";
+      import { normalizeName } from "@/lib/utils/normalize";
+      import { normalize } from "@/lib/services/geo-resolucion";
+      import type { PrismaClient } from "@prisma/client";`;
+    expect(importsProhibidosDelMotor(mutado)).toEqual(["@/lib/services/geo-resolucion", "@prisma/client"]);
+  });
+
+  it("el modulo existe y el barrido ve sus imports (anti-vacuidad)", () => {
+    expect(existsSync(path.join(RAIZ, MOTOR))).toBe(true);
+    expect(modulosImportados(codigoSinComentarios(MOTOR)).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("solo importa el dominio de la geografia y el normalizador", () => {
+    expect(
+      importsProhibidosDelMotor(codigoSinComentarios(MOTOR)),
+      "el motor de N niveles es puro (SLT-45 §2.2): recibe catalogo y asignaciones como argumentos",
+    ).toEqual([]);
+  });
+
+  it("el normalizador no importa nada", () => {
+    expect(modulosImportados(codigoSinComentarios(NORMALIZADOR))).toEqual([]);
+  });
+});

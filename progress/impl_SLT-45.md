@@ -53,3 +53,55 @@ Sin tocar código de producción (`lib/`, `app/`, `middleware.ts`). Grabado sobr
 - `pnpm exec tsc --noEmit` → exit 0. `pnpm exec eslint <los dos tests>` → exit 0.
 
 Veredicto T1: contrato de v1 y OpenAPI de v1 congelados sobre `BASE`, verdes y con rojo comprobado.
+
+## T2 — Motor de N niveles (backend_dev, 2026-11-05)
+
+Sin tocar `lib/services/geo-resolucion.ts` ni ningún camino de v1. Sin dependencias ni migraciones.
+
+### Archivos
+- `lib/services/geo-ubicacion.ts` (nuevo, puro) — `resolverUbicacion`, `esPaisDeTresNiveles`, `admiteGuardado`,
+  `fksDeNodo`, `rutaPublica`; tipos `EntradaUbicacion`, `UbicacionResuelta`, `ResultadoUbicacion`, `FksDeNodo`,
+  `UbicacionDTO`; mensajes de §5 (constantes y `msg*`), clave `ubicacion` (T2.1).
+- `tests/unit/guards/geografia-dominio-puro.guardia.test.ts` — bloque nuevo para `geo-ubicacion.ts`
+  (solo puede importar `geografia-dominio` y `utils/normalize`), con su contraprueba.
+- `tests/fixtures/doble-catalogo-geografico.ts` — `catalogoEnMemoria(nodos)`: el catálogo ya en memoria para
+  el motor (antes solo tenía los delegados de Prisma). Lo existente no cambia.
+- `tests/unit/services/geo-ubicacion.test.ts` (nuevo, T2.1).
+- `tests/unit/services/geo-resolucion-v1-mensajes.test.ts` (nuevo, T2.2).
+
+### Decisiones de implementación (dentro del spec)
+- Normaliza con `normalizeName` (`lib/utils/normalize`) y no con `normalize` de `geo-resolucion.ts`: aquel es
+  un envoltorio sin cambios de este (§2.2 dice que es «el mismo»), y importar `geo-resolucion.ts` arrastraría
+  los tipos de `IOrdenRepository` (`@prisma/client`) al módulo puro.
+- `{nombre}` de ruta = el nombre recibido con `trim()` (como `resolveGeo`); `{padre}` = nombre del catálogo.
+  `{nombre}` de «sin zona» = nombre del nodo en el catálogo, porque por código no hay nombre recibido.
+- Defensivo, inalcanzable desde el borde (zod pide 1–10 nombres y 1–64 caracteres): una ruta vacía o un
+  código en blanco tras `trim()` devuelven el mensaje de R12 («indica ubicacion o ubicacion_codigo…»).
+- Las R12 «las dos o ninguna» se comprueban al extraer la fila (T4); el motor exporta
+  `MSG_UBICACION_UNA_DE_LAS_DOS` para eso.
+- `UbicacionDTO` vive en `geo-ubicacion.ts` hasta que T4.3 cree `lib/types/api-v2.ts` (puede re-exportarlo).
+
+### Mapa R → test (T2)
+| Requisito | Test |
+|---|---|
+| R3 | `tests/unit/services/geo-resolucion-v1-mensajes.test.ts` (11 mensajes con clave + 8 casos de precedencia) |
+| R13 | `geo-ubicacion.test.ts` > «R13 — una ruta de nombres se resuelve nivel a nivel» |
+| R14 | `geo-ubicacion.test.ts` > «R14 — un codigo oficial se resuelve…» |
+| R15 | `geo-ubicacion.test.ts` > «R15/R33 — forma del pais y regla de guardado» |
+| R16 | `geo-ubicacion.test.ts` > «R16 — la zona que cubre la ubicacion» |
+| R21 | `geo-ubicacion.test.ts` > «R21 — `rutaPublica`…» |
+| R25 (parte pura) | `geo-ubicacion.test.ts` > «R25 — las tres FK se derivan de la ruta del nodo» |
+| R33 (parte pura) | `geo-ubicacion.test.ts` > «R15/R33» (países de 2 y 4 niveles) |
+
+### Evidencia (NODE_OPTIONS=--max-old-space-size=8192, sin base)
+- `pnpm exec tsc --noEmit` → exit 0.
+- `pnpm exec eslint` sobre los 5 archivos tocados → exit 0.
+- `pnpm exec vitest run tests/unit/services/geo-ubicacion.test.ts tests/unit/services/geo-resolucion-v1-mensajes.test.ts tests/unit/guards/geografia-dominio-puro.guardia.test.ts`
+  → `Test Files 3 passed (3)`, `Tests 72 passed (72)`.
+- `pnpm exec vitest related --run tests/fixtures/doble-catalogo-geografico.ts lib/services/geo-ubicacion.ts`
+  → `Test Files 21 passed (21)`, `Tests 529 passed (529)`.
+- `pnpm run test:guardias` → `1 failed | 332 passed | 3 skipped (336)`, `4 failed | 4661 passed`. El rojo es
+  `dependencias-declaradas-presentes.guardia.test.ts` (init.sh sin el marcador «FIN PASO 2: DEPENDENCIAS
+  (ficha 420)» ni `scripts/verificar-dependencias.mjs`): ajeno a T2, que no toca `init.sh`. Para el leader.
+
+Veredicto T2: motor de N niveles puro y probado; v1 sin tocar y sus 11 mensajes fijados en tabla.

@@ -27,14 +27,14 @@
 
 ## T2 — Motor de N niveles (depende de T1)
 
-- [ ] **T2.1** `lib/services/geo-ubicacion.ts` (§2.2): `resolverUbicacion`, `esPaisDeTresNiveles`,
+- [x] **T2.1** `lib/services/geo-ubicacion.ts` (§2.2): `resolverUbicacion`, `esPaisDeTresNiveles`,
   `admiteGuardado`, `fksDeNodo`, `rutaPublica`, con los mensajes de §5. Añadirlo a la guardia de pureza
   de `geografia-dominio`.
   *Hecho:* `tests/unit/services/geo-ubicacion.test.ts` cubre ruta (vacío, no encontrado, ambiguo,
   retirado, raíz y n>1), código (0, 1, >1, retirado), regla de guardado (2, 3 y 4 niveles; profundidades
   1–4), zona (0/1/>1 heredada), FKs de profundidad 2 y 3 y `rutaPublica`, con
   `tests/fixtures/doble-catalogo-geografico.ts`. (R13–R16, R21, R25 parte pura, R33 parte pura)
-- [ ] **T2.2** [P] `tests/unit/services/geo-resolucion-v1-mensajes.test.ts`: tabla de los 11 mensajes de
+- [x] **T2.2** [P] `tests/unit/services/geo-resolucion-v1-mensajes.test.ts`: tabla de los 11 mensajes de
   v1 con su clave y precedencia sobre `resolveGeo` sin cambios. (R3)
   *Hecho:* verde sin tocar `geo-resolucion.ts`.
 
