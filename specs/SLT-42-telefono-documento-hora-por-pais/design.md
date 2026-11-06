@@ -157,7 +157,7 @@ CREATE UNIQUE INDEX "usuario_cedula_key" ON "usuario" ("organizacion_id","tipo_i
   cedula)`. Si hay alguno, `RAISE EXCEPTION` que nombra el índice y no cambia nada (patrón de SL-18).
 - Empieza por `organizacion_id`: la guardia `unicos-por-empresa` lo acepta sin tocar su lista.
 - **Excepción declarada a la regla de la épica GEO (P4, cerrada el 2026-11-03).** El
-  `DROP INDEX "usuario_cedula_key"` de `20261106120200_slt42_usuario_documento_unico_por_tipo` es la
+  `DROP INDEX "usuario_cedula_key"` de `20261107120200_slt42_usuario_documento_unico_por_tipo` es la
   única sentencia destructiva de la ficha. El humano la aceptó porque solo afecta a un índice, no
   toca datos y el `down.sql` lo restaura. Hoy no existe la guardia de migraciones destructivas: la
   regla de la épica dice que se definirá con `/afinar-regla`, y en `tests/` no hay ninguna. Cuando
@@ -168,9 +168,9 @@ CREATE UNIQUE INDEX "usuario_cedula_key" ON "usuario" ("organizacion_id","tipo_i
 
 | Migración | Qué hace | `down.sql` |
 |---|---|---|
-| `20261106120000_slt42_pais_telefono_y_zona` | §2.1 | `DROP CONSTRAINT` de los dos `CHECK` y `DROP COLUMN` de las tres columnas. Solo borra lo que creó la subida. |
-| `20261106120100_slt42_tipo_documento_por_pais` | §2.2 (columnas, filas de CR, índices, política) | `DROP POLICY "tipo_identificacion_del_pais"`, índices y `CHECK`. Borra las filas `dimex` y `nite` **solo si ningún usuario las usa**: si alguno las usa, `RAISE EXCEPTION` y no cambia nada (son personas). Al final, `DROP COLUMN` de las ocho columnas nuevas. Las tres filas de antes vuelven a su forma porque sus columnas viejas nunca cambiaron. |
-| `20261106120200_slt42_usuario_documento_unico_por_tipo` | §2.3 | Comprueba los repetidos y vuelve al índice de SL-18 (§2.3). |
+| `20261107120000_slt42_pais_telefono_y_zona` | §2.1 | `DROP CONSTRAINT` de los dos `CHECK` y `DROP COLUMN` de las tres columnas. Solo borra lo que creó la subida. |
+| `20261107120100_slt42_tipo_documento_por_pais` | §2.2 (columnas, filas de CR, índices, política) | `DROP POLICY "tipo_identificacion_del_pais"`, índices y `CHECK`. Borra las filas `dimex` y `nite` **solo si ningún usuario las usa**: si alguno las usa, `RAISE EXCEPTION` y no cambia nada (son personas). Al final, `DROP COLUMN` de las ocho columnas nuevas. Las tres filas de antes vuelven a su forma porque sus columnas viejas nunca cambiaron. |
+| `20261107120200_slt42_usuario_documento_unico_por_tipo` | §2.3 | Comprueba los repetidos y vuelve al índice de SL-18 (§2.3). |
 
 Las tres van en una transacción cada una. Ninguna hace `UPDATE` de una columna que existía antes (P1), y
 ninguna toma bloqueos largos sobre `usuario`: el `CREATE UNIQUE INDEX` sobre `usuario` es de una
@@ -456,7 +456,7 @@ envoltorios `*-cr.ts` están en la lista: sí contienen el literal, porque la UI
 
 Decididos por el humano tras la tanda 1 (`progress/features/SLT-42.md > Decisiones`, 2026-11-04):
 
-1. **Migración `20261106120100`: inserta «ruc» y «pasaporte» si faltan**, en vez de abortar (§2). Ninguna
+1. **Migración `20261107120100`: inserta «ruc» y «pasaporte» si faltan**, en vez de abortar (§2). Ninguna
    migración los creaba antes (los sembraba `db:seed`, que corre después de `migrate deploy`), así que en una
    base nueva o en CI la precondición fallaba. Inserta filas completas con `ON CONFLICT DO NOTHING` y, si ya
    existen, solo rellena las columnas nuevas. En producción el resultado es el del design.

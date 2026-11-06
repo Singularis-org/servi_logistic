@@ -6,7 +6,7 @@ import { VEHICULOS_SEED } from "@/lib/types/vehiculos";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 
 // SLT-42 (decision humana 2026-11-04): los tipos de documento NO se siembran aqui. Son por pais y
-// los crea solo la migracion 20261106120100_slt42_tipo_documento_por_pais (los cinco de CR, con su
+// los crea solo la migracion 20261107120100_slt42_tipo_documento_por_pais (los cinco de CR, con su
 // regla). Una segunda fuente de filas podria divergir de la migracion.
 
 // Siembra idempotente de los roles. Itera `ROLES_SEED` (fuente unica de verdad

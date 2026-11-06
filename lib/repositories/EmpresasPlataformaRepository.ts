@@ -5,7 +5,7 @@ import type { SumaCobroPlataformaPorTipo } from "@/lib/interfaces/repositories/I
 import type { IEmpresasPlataformaRepository } from "@/lib/interfaces/repositories/IEmpresasPlataformaRepository";
 import { costoVigenteDeLaTarifa, type TarifaLeida } from "@/lib/planes/costeo";
 import type { EmpresaListada, EstadoIntegracionDeEmpresa } from "@/lib/types/empresas-plataforma";
-import type { TipoCobro } from "@/lib/types/planes";
+import { tipoCobroSchema, type TipoCobro } from "@/lib/types/planes";
 import { SERVICIOS_INTEGRACION } from "@/lib/types/integraciones";
 import { derivarDeudaPlataforma } from "@/lib/utils/deuda-plataforma";
 
@@ -138,8 +138,8 @@ export class EmpresasPlataformaRepository implements IEmpresasPlataformaReposito
         plan:
           f.plan_id === null || f.plan_nombre === null
             ? null
-            : // El CHECK de 20261104130000 deja solo `mensual` | `anual`; con plan la empresa existe.
-              { id: f.plan_id, nombre: f.plan_nombre, tipoCobro: f.plan_tipo_cobro ?? "mensual" },
+            : // SLT-86 (R1, R29): el CHECK de 20261106120000 deja los cuatro tipos; con plan la empresa existe.
+              { id: f.plan_id, nombre: f.plan_nombre, tipoCobro: tipoCobroSchema.parse(f.plan_tipo_cobro) },
       };
     };
   }

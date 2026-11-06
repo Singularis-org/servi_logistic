@@ -49,7 +49,7 @@ const MIGRACION = path.join(RAIZ, "db", "migrations", "20261026090000_usuario_un
 const sqlDe = (archivo: "migration.sql" | "down.sql") => readFileSync(path.join(MIGRACION, archivo), "utf8");
 // SLT-42 (R13): la migracion que vino despues rehace `usuario_cedula_key` por empresa Y TIPO. La ida y
 // vuelta de SL-18 se mide pasando antes por su down, que deja el indice como lo dejo SL-18.
-const MIGRACION_SLT42 = path.join(RAIZ, "db", "migrations", "20261106120200_slt42_usuario_documento_unico_por_tipo");
+const MIGRACION_SLT42 = path.join(RAIZ, "db", "migrations", "20261107120200_slt42_usuario_documento_unico_por_tipo");
 const sqlDeSlt42 = (archivo: "migration.sql" | "down.sql") =>
   readFileSync(path.join(MIGRACION_SLT42, archivo), "utf8");
 

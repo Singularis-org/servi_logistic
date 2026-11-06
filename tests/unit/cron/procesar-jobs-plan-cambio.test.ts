@@ -17,8 +17,17 @@ import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 const llamadas: { metodo: string; contexto: ContextoDatos | undefined; args: unknown[] }[] = [];
 const dobleCableado: Pick<
   IPlanesRepository,
-  "aplicarCambioProgramado" | "cambiosVencidos" | "repartirRecordatorio" | "destinatariosDelAviso"
+  | "aplicarCambioProgramado"
+  | "cambiosVencidos"
+  | "repartirRecordatorio"
+  | "destinatariosDelAviso"
+  | "cambiosDeEmpresaVencidos"
+  | "aplicarCambioDeEmpresa"
 > = {
+  // SLT-86 (R20): la segunda pasada del barrido; sin pendientes de empresa aquí (los prueba
+  // `tests/unit/planes/jobs-cambio-empresa.test.ts`).
+  cambiosDeEmpresaVencidos: async () => [],
+  aplicarCambioDeEmpresa: async () => ({ estado: "sin_pendiente" }),
   aplicarCambioProgramado: async (...args) => {
     llamadas.push({ metodo: "aplicar", contexto: contextoActual(), args });
     return { estado: "aplicado" };
@@ -183,6 +192,12 @@ describe("SL-24 — registro de los trabajos del cambio programado (R38, R44)", 
   });
 });
 
+/** SLT-86 (R20): el barrido también pasa por los cambios de empresa; aquí no hay ninguno. */
+const sinPendientesDeEmpresa = {
+  cambiosDeEmpresaVencidos: async () => [],
+  aplicarCambioDeEmpresa: vi.fn<IPlanesRepository["aplicarCambioDeEmpresa"]>(),
+};
+
 describe("SL-24 — handlers delgados", () => {
   it("plan_aplicar_cambio pasa ESA programación y el reloj al repositorio", async () => {
     const aplicar = vi.fn<IPlanesRepository["aplicarCambioProgramado"]>(async () => ({ estado: "sin_pendiente" }));
@@ -213,7 +228,7 @@ describe("SL-24 — handlers delgados", () => {
       return { estado: "aplicado" };
     });
     const handler = crearPlanCambiosVencidosHandler(
-      { cambiosVencidos: async () => vencidos, aplicarCambioProgramado: aplicar },
+      { cambiosVencidos: async () => vencidos, aplicarCambioProgramado: aplicar, ...sinPendientesDeEmpresa },
       () => AHORA,
     );
     await expect(handler(job({}))).rejects.toThrow(/1 cambio\(s\): c2/);
@@ -222,7 +237,10 @@ describe("SL-24 — handlers delgados", () => {
 
   it("el barrido sin vencidos no aplica nada ni falla", async () => {
     const aplicar = vi.fn<IPlanesRepository["aplicarCambioProgramado"]>();
-    await crearPlanCambiosVencidosHandler({ cambiosVencidos: async () => [], aplicarCambioProgramado: aplicar }, () => AHORA)(job({}));
+    await crearPlanCambiosVencidosHandler(
+      { cambiosVencidos: async () => [], aplicarCambioProgramado: aplicar, ...sinPendientesDeEmpresa },
+      () => AHORA,
+    )(job({}));
     expect(aplicar).not.toHaveBeenCalled();
   });
 });

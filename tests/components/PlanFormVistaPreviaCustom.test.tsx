@@ -5,7 +5,7 @@
 // D13: se monta el `PlanForm` REAL con `previsualizarCustomAction` como doble; se mide con qué entrada se
 // llama (empresa sin plan, fecha y los topes que se escriben) y qué pinta (los mismos avisos que el modal
 // de primera asignación, SLT-58 R37). D12: se monta el `PlanesModule` REAL y, tras un `ok` con `avisos`,
-// se leen esos avisos con el día del siguiente ciclo de la vista previa.
+// se leen esos avisos. SLT-86 (R8): sin tope de órdenes, ni su aviso, ni el día del siguiente ciclo.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -27,13 +27,13 @@ import type {
 const SIN_PLAN = "6f1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f60";
 const CON_PLAN = "7a1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f61";
 const EMPRESAS: EmpresaParaCustom[] = [
-  { id: SIN_PLAN, nombre: "Envíos Norte", tienePlan: false },
-  { id: CON_PLAN, nombre: "Reparto Sur", tienePlan: true },
+  { id: SIN_PLAN, nombre: "Envíos Norte", tienePlan: false, fechaDeEfectoPorDefecto: null },
+  { id: CON_PLAN, nombre: "Reparto Sur", tienePlan: true, fechaDeEfectoPorDefecto: "2026-11-01" },
 ];
 const MANANA = "2026-10-30";
 const RANGO = { hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" };
-const SIGUIENTE = "2026-11-30";
-const SIN_TOPES = { ordenesPorCiclo: null, porRol: {}, apiKeys: null };
+const RANGO_EFECTO = { hoy: "2026-10-29", min: "2026-10-29", max: "2027-10-29" };
+const SIN_TOPES = { porRol: {}, apiKeys: null };
 
 type Enviar = (input: CrearPlanInput) => Promise<PlanResult>;
 type Previsualizar = (input: PrevisualizarCustomInput) => Promise<VistaPreviaCustomResult>;
@@ -45,16 +45,11 @@ const OK: PlanResult = {
   avisos: [],
   vigenteDesde: null,
 };
-const PREVIA_SIN_AVISOS: VistaPreviaCustomResult = { estado: "ok", avisos: [], siguienteCiclo: SIGUIENTE };
+const PREVIA_SIN_AVISOS: VistaPreviaCustomResult = { estado: "ok", avisos: [] };
 const PREVIA_CON_AVISOS: VistaPreviaCustomResult = {
   estado: "ok",
-  avisos: [
-    { organizacionId: SIN_PLAN, empresa: "Envíos Norte", tope: "ordenes", usados: 3200, maximo: 3000 },
-    { organizacionId: SIN_PLAN, empresa: "Envíos Norte", tope: "mensajero", usados: 12, maximo: 10 },
-  ],
-  siguienteCiclo: SIGUIENTE,
+  avisos: [{ organizacionId: SIN_PLAN, empresa: "Envíos Norte", tope: "mensajero", usados: 12, maximo: 10 }],
 };
-const AVISO_ORDENES = `La empresa ya lleva 3.200 de 3.000 órdenes en este ciclo: no podrá crear más hasta ${SIGUIENTE}.`;
 const AVISO_MENSAJEROS = /ya tiene 12 de 10 .*no podrá activar ni crear más hasta bajar del tope\./;
 
 beforeEach(() => vi.clearAllMocks());
@@ -69,6 +64,7 @@ function montarForm(previsualizar: Previsualizar = vi.fn<Previsualizar>().mockRe
       empresas={EMPRESAS}
       inicioCicloPorDefecto={MANANA}
       rangoInicioCiclo={RANGO}
+      rangoFechaDeEfecto={RANGO_EFECTO}
       enviar={enviar}
       previsualizar={previsualizar}
       onGuardado={onGuardado}
@@ -102,12 +98,12 @@ describe("Ajuste planes-custom D13 — vista previa de topes en el form del cust
       expect(previsualizar).toHaveBeenLastCalledWith({ organizacionId: SIN_PLAN, inicioCiclo: MANANA, topes: SIN_TOPES }),
     );
 
-    await user.type(screen.getByLabelText("Órdenes por ciclo"), "3000");
+    await user.type(screen.getByLabelText("API keys activas"), "2");
     await waitFor(() =>
       expect(previsualizar).toHaveBeenLastCalledWith({
         organizacionId: SIN_PLAN,
         inicioCiclo: MANANA,
-        topes: { ordenesPorCiclo: 3000, porRol: {}, apiKeys: null },
+        topes: { porRol: {}, apiKeys: 2 },
       }),
     );
   });
@@ -116,7 +112,7 @@ describe("Ajuste planes-custom D13 — vista previa de topes en el form del cust
     const user = userEvent.setup();
     const { previsualizar } = montarForm();
     await custom(user, "Envíos Norte");
-    const campo = screen.getByLabelText("Inicio del ciclo de órdenes");
+    const campo = screen.getByLabelText("Inicio del período");
     await user.clear(campo);
     await user.type(campo, "2026-11-05");
 
@@ -134,8 +130,9 @@ describe("Ajuste planes-custom D13 — vista previa de topes en el form del cust
     montarForm(vi.fn<Previsualizar>().mockResolvedValue(PREVIA_CON_AVISOS));
     await custom(user, "Envíos Norte");
 
-    expect(await screen.findByText(AVISO_ORDENES)).toBeInTheDocument();
-    expect(screen.getByText(AVISO_MENSAJEROS)).toBeInTheDocument();
+    expect(await screen.findByText(AVISO_MENSAJEROS)).toBeInTheDocument();
+    // SLT-86 (R8): ningún aviso de órdenes.
+    expect(screen.queryByText(/órdenes en este ciclo/)).toBeNull();
   });
 
   it("D13: sin topes pasados no hay aviso", async () => {
@@ -207,7 +204,7 @@ describe("Ajuste planes-custom D13 — vista previa de topes en el form del cust
 
     await user.click(screen.getByRole("button", { name: "Crear plan" }));
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
-    expect(onGuardado).toHaveBeenCalledWith(OK, "Norte a medida", SIGUIENTE);
+    expect(onGuardado).toHaveBeenCalledWith(OK, "Norte a medida");
     error.mockRestore();
   });
 
@@ -223,7 +220,7 @@ describe("Ajuste planes-custom D13 — vista previa de topes en el form del cust
     await conCosto(user);
     await waitFor(() => expect(previsualizar).toHaveBeenCalledTimes(1));
     // Un tope nuevo abre la pausa; se guarda antes de que termine: la lectura se hace al guardar.
-    await user.type(screen.getByLabelText("Órdenes por ciclo"), "3000");
+    await user.type(screen.getByLabelText("API keys activas"), "2");
     await user.click(screen.getByRole("button", { name: "Crear plan" }));
 
     expect(await screen.findByRole("button", { name: "Reintentar" })).toBeInTheDocument();
@@ -251,7 +248,7 @@ describe("Ajuste planes-custom D13 — vista previa de topes en el form del cust
     expect(publico.previsualizar).not.toHaveBeenCalled();
   });
 
-  it("D12, D13, D17: con la lectura en vuelo «Crear plan» espera deshabilitado; al llegar se crea con su `siguienteCiclo`", async () => {
+  it("D12, D13, D17: con la lectura en vuelo «Crear plan» espera deshabilitado; al llegar se crea", async () => {
     const user = userEvent.setup();
     let resolver: (r: VistaPreviaCustomResult) => void = () => {};
     const previsualizar = vi.fn<Previsualizar>().mockImplementation(
@@ -272,7 +269,7 @@ describe("Ajuste planes-custom D13 — vista previa de topes en el form del cust
     await waitFor(() => expect(screen.getByRole("button", { name: "Crear plan" })).toBeEnabled());
     await user.click(screen.getByRole("button", { name: "Crear plan" }));
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
-    expect(onGuardado).toHaveBeenCalledWith(OK, "Norte a medida", SIGUIENTE);
+    expect(onGuardado).toHaveBeenCalledWith(OK, "Norte a medida");
   });
 });
 
@@ -284,13 +281,14 @@ describe("Ajuste planes-custom D12 — los avisos del `ok` al crear un custom co
         empresas={EMPRESAS}
         inicioCicloPorDefecto={MANANA}
         rangoInicioCiclo={RANGO}
+        rangoFechaDeEfecto={RANGO_EFECTO}
         crearPlan={crearPlan}
         previsualizarCustom={previsualizar}
       />,
     );
   }
 
-  it("D12: tras crear, junto a «Plan creado» salen los topes ya pasados con el día del siguiente ciclo", async () => {
+  it("D12: tras crear, junto a «Plan creado» salen los topes ya pasados", async () => {
     const user = userEvent.setup();
     const crearPlan = vi.fn<Enviar>().mockResolvedValue({ ...OK, avisos: PREVIA_CON_AVISOS.estado === "ok" ? PREVIA_CON_AVISOS.avisos : [] } as PlanResult);
     montarModulo(crearPlan, vi.fn<Previsualizar>().mockResolvedValue(PREVIA_CON_AVISOS));
@@ -301,7 +299,6 @@ describe("Ajuste planes-custom D12 — los avisos del `ok` al crear un custom co
 
     expect(await screen.findByRole("status")).toHaveTextContent("Plan «Norte a medida» creado.");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(screen.getByText(AVISO_ORDENES)).toBeInTheDocument();
     expect(screen.getByText(AVISO_MENSAJEROS)).toBeInTheDocument();
     expect(refreshMock).toHaveBeenCalled();
   });

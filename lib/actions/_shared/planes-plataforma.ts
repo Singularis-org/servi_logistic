@@ -5,7 +5,7 @@ import { PlanesRepository, type PlanesPrismaClient } from "@/lib/repositories/Pl
 import { PlanesService } from "@/lib/services/PlanesService";
 import { PaisRepository } from "@/lib/repositories/PaisRepository";
 import { zonaDeOrganizacionCon } from "@/lib/services/zona-de-la-empresa";
-import type { CatalogoResult, DetallePlanResult, PlanDeEmpresaResult } from "@/lib/types/planes";
+import type { CatalogoResult, DetallePlanResult, PlanDeEmpresaResult, PreciosQueRigenResult } from "@/lib/types/planes";
 
 // SLT-58 (design §3.2) — el composition root de las lecturas de planes del superadmin. No es una
 // Server Action (sin "use server"), como `modulos-empresa.ts`: las llaman las páginas de servidor, que
@@ -46,4 +46,16 @@ export async function verPlanDeEmpresa(
   servicio: IPlanesService = construirPlanesPlataformaService(),
 ): Promise<PlanDeEmpresaResult> {
   return servicio.planDeEmpresa(actor, input);
+}
+
+/**
+ * SLT-86 (R15, R25; review m4): `{ planIds }` de los asignables y del plan actual de la empresa. Por plan,
+ * los precios que pueden regir de hoy en adelante; el modal elige el de la fecha con `precioQueRigeEn`.
+ */
+export async function verPreciosQueRigen(
+  actor: Actor | null,
+  input: unknown,
+  servicio: IPlanesService = construirPlanesPlataformaService(),
+): Promise<PreciosQueRigenResult> {
+  return servicio.preciosQueRigen(actor, input);
 }

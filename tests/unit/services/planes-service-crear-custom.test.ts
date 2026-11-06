@@ -14,6 +14,9 @@ import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // contrato (quién → zod → reglas → repositorio) y que ningún rechazo llegue a `crearYAsignar`. La
 // atomicidad (un rechazo bajo cerrojo no deja nada) se mide contra Postgres en
 // `tests/integration/db/planes-crear-custom-asigna.test.ts`.
+//
+// SLT-86 (R2, R16): a `crearYAsignar` llega el `EfectoElegido` (fecha y sus 00:00) y el reloj; «hoy» entra
+// a las 00:00. Un custom para una empresa con plan lleva fecha de efecto (`vigenteDesde`).
 
 const SUPERADMIN: Actor = { usuarioId: "u-sa", rol: "superadmin", organizacionId: null };
 const EMPRESA = randomUUID();
@@ -27,9 +30,9 @@ const CUSTOM = {
   nombre: "Custom Uno",
   visibilidad: "custom",
   organizacionId: EMPRESA,
-  topes: { ordenesPorCiclo: 100, porRol: {}, apiKeys: null },
+  topes: { porRol: {}, apiKeys: null },
   modulos: ["analitica"],
-  precio: { tipo: "monto", mensual: "1000.00", anual: null },
+  precio: { tipo: "monto", mensual: "1000.00", descuentos: {} },
   costoPorOrden: "100.00",
   costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del esquema
   tipoCobro: "anual",
@@ -41,9 +44,9 @@ function plan(extra: Partial<PlanDTO> = {}): PlanDTO {
     nombre: "Básico",
     visibilidad: "publico",
     organizacionId: null,
-    topes: { ordenesPorCiclo: null, porRol: {}, apiKeys: null },
+    topes: { porRol: {}, apiKeys: null },
     modulos: [],
-    precio: { tipo: "monto", mensual: "1000.00", anual: null },
+    precio: { tipo: "monto", mensual: "1000.00", descuentos: {} },
     costoPorOrden: "100.00",
     costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
     archivado: false,
@@ -56,10 +59,13 @@ function doble() {
     empresa: vi.fn<IPlanesRepository["empresa"]>(async (id) => ({ id, nombre: "Mensajería Uno", planId: null })),
     plan: vi.fn<IPlanesRepository["plan"]>(async () => plan()),
     crear: vi.fn<IPlanesRepository["crear"]>(async () => PLAN),
-    crearYAsignar: vi.fn<IPlanesRepository["crearYAsignar"]>(async () => ({ estado: "ok", planId: PLAN, avisos: [] })),
+    crearYAsignar: vi.fn<IPlanesRepository["crearYAsignar"]>(async () => ({ estado: "ok", planId: PLAN, avisos: [], pendiente: false })),
     editar: vi.fn<IPlanesRepository["editar"]>(),
     archivar: vi.fn<IPlanesRepository["archivar"]>(),
-    asignar: vi.fn<IPlanesRepository["asignar"]>(async () => ({ estado: "ok", cambio: true })),
+    asignar: vi.fn<IPlanesRepository["asignar"]>(async () => ({ estado: "ok", cambio: true, avisos: [], pendiente: false })),
+    cancelarCambioEmpresa: vi.fn<IPlanesRepository["cancelarCambioEmpresa"]>(),
+    aplicarCambioDeEmpresa: vi.fn<IPlanesRepository["aplicarCambioDeEmpresa"]>(),
+    cambiosDeEmpresaVencidos: vi.fn<IPlanesRepository["cambiosDeEmpresaVencidos"]>(),
     vistaPreviaConTopes: vi.fn<IPlanesRepository["vistaPreviaConTopes"]>(async () => null),
     cambiarTipoCobro: vi.fn<IPlanesRepository["cambiarTipoCobro"]>(async () => ({ estado: "not_found" })),
     vistaPreviaAsignacion: vi.fn<IPlanesRepository["vistaPreviaAsignacion"]>(),
@@ -70,6 +76,7 @@ function doble() {
     repartirRecordatorio: vi.fn<IPlanesRepository["repartirRecordatorio"]>(),
     destinatariosDelAviso: vi.fn<IPlanesRepository["destinatariosDelAviso"]>(),
     asignables: vi.fn<IPlanesRepository["asignables"]>(),
+    preciosQueRigenDesde: vi.fn<IPlanesRepository["preciosQueRigenDesde"]>(async () => []),
     publicos: vi.fn<IPlanesRepository["publicos"]>(),
     catalogo: vi.fn<IPlanesRepository["catalogo"]>(),
     detalle: vi.fn<IPlanesRepository["detalle"]>(async () => null),
@@ -82,6 +89,11 @@ let servicio: PlanesService;
 
 function llamadasAlRepositorio(): number {
   return Object.values(repo).reduce((n, f) => n + f.mock.calls.length, 0);
+}
+
+/** SLT-86: el `EfectoElegido` que el servicio pasa al repositorio. */
+function efecto(clase: "inicio" | "cambio", fecha: string, elegida = true) {
+  return { clase, fecha, desde: new Date(`${fecha}T06:00:00.000Z`), elegida };
 }
 
 beforeEach(() => {
@@ -99,29 +111,34 @@ describe("D2 — crear un custom con empresa lo asigna en la misma operación", 
       vigenteDesde: null,
     });
     expect(repo.crearYAsignar).toHaveBeenCalledTimes(1);
-    expect(repo.crearYAsignar).toHaveBeenCalledWith(expect.objectContaining({ nombre: "Custom Uno", organizacionId: EMPRESA }), "u-sa", {
-      tipoCobro: "anual",
-    });
+    expect(repo.crearYAsignar).toHaveBeenCalledWith(
+      expect.objectContaining({ nombre: "Custom Uno", organizacionId: EMPRESA }),
+      "u-sa",
+      { tipoCobro: "anual", efecto: efecto("inicio", "2026-10-31", false) },
+      AHORA,
+    );
     expect(repo.crear).not.toHaveBeenCalled();
     expect(repo.asignar).not.toHaveBeenCalled();
   });
 
   it("D4: empresa sin plan + inicio del ciclo → el ancla de la fecha elegida (las 00:00 de la plataforma)", async () => {
     await servicio.crear(SUPERADMIN, { ...CUSTOM, inicioCiclo: "2026-11-01" });
-    expect(repo.crearYAsignar).toHaveBeenCalledWith(expect.anything(), "u-sa", {
-      tipoCobro: "anual",
-      inicio: { fecha: "2026-11-01", ancla: new Date("2026-11-01T06:00:00.000Z") },
-    });
+    expect(repo.crearYAsignar).toHaveBeenCalledWith(expect.anything(), "u-sa", { tipoCobro: "anual", efecto: efecto("inicio", "2026-11-01") }, AHORA);
   });
 
-  it("D4: con «hoy», el ancla es el instante de la asignación, como en asignar", async () => {
+  it("SLT-86 R2: con «hoy», también las 00:00 de la plataforma, como en asignar", async () => {
     await servicio.crear(SUPERADMIN, { ...CUSTOM, inicioCiclo: "2026-10-31" });
-    expect(repo.crearYAsignar.mock.calls[0]?.[2]).toEqual({ tipoCobro: "anual", inicio: { fecha: "2026-10-31", ancla: "ahora" } });
+    expect(repo.crearYAsignar.mock.calls[0]?.[2]).toEqual({ tipoCobro: "anual", efecto: efecto("inicio", "2026-10-31") });
+  });
+
+  it("SLT-86 R17: si el repositorio lo deja pendiente, `vigenteDesde` vuelve con la fecha", async () => {
+    repo.crearYAsignar.mockResolvedValueOnce({ estado: "ok", planId: PLAN, avisos: [], pendiente: true });
+    expect(await servicio.crear(SUPERADMIN, { ...CUSTOM, inicioCiclo: "2026-11-01" })).toMatchObject({ estado: "ok", vigenteDesde: "2026-11-01" });
   });
 
   it("los avisos de la primera asignación con fecha (topes ya pasados) vuelven en el ok", async () => {
-    const aviso: TopeExcedido = { organizacionId: EMPRESA, empresa: "Mensajería Uno", tope: "ordenes", usados: 120, maximo: 100 };
-    repo.crearYAsignar.mockResolvedValueOnce({ estado: "ok", planId: PLAN, avisos: [aviso] });
+    const aviso: TopeExcedido = { organizacionId: EMPRESA, empresa: "Mensajería Uno", tope: "adminTienda", usados: 3, maximo: 2 };
+    repo.crearYAsignar.mockResolvedValueOnce({ estado: "ok", planId: PLAN, avisos: [aviso], pendiente: false });
     expect(await servicio.crear(SUPERADMIN, { ...CUSTOM, inicioCiclo: "2026-11-01" })).toMatchObject({
       estado: "ok",
       avisos: [aviso],
@@ -173,10 +190,29 @@ describe("D2 — un rechazo de la asignación no crea nada (no llega a crearYAsi
     expect(repo.crearYAsignar).not.toHaveBeenCalled();
   });
 
-  it("D4: la empresa ya tiene plan y no se manda fecha → se crea y asigna conservando su ancla (como un cambio)", async () => {
+  it("SLT-86 R16: la empresa ya tiene plan y no se manda fecha de efecto → validation_error en vigenteDesde, sin crear", async () => {
     repo.empresa.mockResolvedValueOnce({ id: EMPRESA, nombre: "Mensajería Uno", planId: randomUUID() });
-    expect((await servicio.crear(SUPERADMIN, CUSTOM)).estado).toBe("ok");
-    expect(repo.crearYAsignar.mock.calls[0]?.[2]).toEqual({ tipoCobro: "anual" });
+    expect(await servicio.crear(SUPERADMIN, CUSTOM)).toEqual({
+      estado: "validation_error",
+      fieldErrors: { vigenteDesde: ["Elige desde qué fecha rige el cambio."] },
+    });
+    expect(repo.crearYAsignar).not.toHaveBeenCalled();
+  });
+
+  it("SLT-86 R16: la empresa ya tiene plan y trae fecha de efecto → se crea y se cambia como un cambio de empresa", async () => {
+    repo.empresa.mockResolvedValueOnce({ id: EMPRESA, nombre: "Mensajería Uno", planId: randomUUID() });
+    expect((await servicio.crear(SUPERADMIN, { ...CUSTOM, vigenteDesde: "2026-11-16" })).estado).toBe("ok");
+    expect(repo.crearYAsignar.mock.calls[0]?.[2]).toEqual({ tipoCobro: "anual", efecto: efecto("cambio", "2026-11-16") });
+  });
+
+  it("SLT-86 R16: fecha de efecto pasada o a más de 12 meses → validation_error en vigenteDesde antes de leer nada", async () => {
+    for (const vigenteDesde of ["2026-10-30", "2027-11-01"]) {
+      expect(await servicio.crear(SUPERADMIN, { ...CUSTOM, vigenteDesde })).toEqual({
+        estado: "validation_error",
+        fieldErrors: { vigenteDesde: ["Elige una fecha entre el 2026-10-31 y el 2027-10-31."] },
+      });
+    }
+    expect(llamadasAlRepositorio()).toBe(0);
   });
 
   it("SLT-58 R30: la fecha fuera de hoy ±1 mes → validation_error antes de leer nada", async () => {
@@ -244,15 +280,9 @@ describe("D6 — el tipo de cobro en el borde", () => {
 
   it("asignar pasa el tipo elegido al repositorio: primera asignación con fecha y cambio de plan", async () => {
     await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, inicioCiclo: "2026-11-01", tipoCobro: "anual" });
-    expect(repo.asignar).toHaveBeenLastCalledWith(
-      EMPRESA,
-      PLAN,
-      "u-sa",
-      { fecha: "2026-11-01", ancla: new Date("2026-11-01T06:00:00.000Z") },
-      "anual",
-    );
+    expect(repo.asignar).toHaveBeenLastCalledWith(EMPRESA, PLAN, "u-sa", efecto("inicio", "2026-11-01"), "anual", AHORA);
     repo.empresa.mockResolvedValueOnce({ id: EMPRESA, nombre: "Mensajería Uno", planId: randomUUID() });
-    await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, tipoCobro: "mensual" });
-    expect(repo.asignar).toHaveBeenLastCalledWith(EMPRESA, PLAN, "u-sa", undefined, "mensual");
+    await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, tipoCobro: "quincenal", vigenteDesde: "2026-11-16" });
+    expect(repo.asignar).toHaveBeenLastCalledWith(EMPRESA, PLAN, "u-sa", efecto("cambio", "2026-11-16"), "quincenal", AHORA);
   });
 });

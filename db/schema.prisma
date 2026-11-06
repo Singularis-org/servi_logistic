@@ -13,7 +13,7 @@ model Session {
   createdAt DateTime @default(now())
 }
 
-// SLT-42 (design §2.2; 20261106120100): catálogo de tipos de documento POR PAÍS. Las filas «cedula»,
+// SLT-42 (design §2.2; 20261107120100): catálogo de tipos de documento POR PAÍS. Las filas «cedula»,
 // «ruc» y «pasaporte» de antes son ahora tipos de CR (mismo `id`, el usuario no se tocó). La empresa
 // solo lee los de su país (política restrictiva `tipo_identificacion_del_pais`); escribe la plataforma.
 model TipoIdentificacion {
@@ -233,7 +233,7 @@ model Usuario {
   // no expresa: vive en la migracion 20261026090000_usuario_unico_por_empresa.
   @@unique([organizacionId, email], map: "usuario_email_key")
   // SLT-42/R13 (P4): el documento es único por empresa Y TIPO, con el mismo nombre de índice
-  // (20261106120200_slt42_usuario_documento_unico_por_tipo; NULLS NOT DISTINCT también vive ahí).
+  // (20261107120200_slt42_usuario_documento_unico_por_tipo; NULLS NOT DISTINCT también vive ahí).
   @@unique([organizacionId, tipoIdentificacionId, cedula], map: "usuario_cedula_key")
   @@index([email]) // SL-18/R25: el login y la recuperacion buscan por email sin empresa
   @@map("usuario")
@@ -3734,6 +3734,8 @@ enum JobTipo {
   plan_aviso_correo
   /// SL-24 (design §16.3): RECURRENTE, sin empresa; barrido de seguridad de los cambios vencidos. Núcleo
   plan_cambios_vencidos
+  /// SLT-86 (design §5.2): aplica UN cambio de empresa pendiente a sus 00:00; CON empresa, payload { cambioId }. Núcleo
+  plan_aplicar_cambio_empresa
 
   @@map("job_tipo")
 }
@@ -5038,6 +5040,11 @@ enum HistorialAccionTipo {
   /// la empresa ya tiene (D10). Entidad: `plan` (el de la empresa); etiqueta: `Plan «<nombre>»`;
   /// `valor_anterior` = el tipo de antes y `valor_nuevo` = el nuevo (`mensual` o `anual`).
   plan_tipo_cobro_cambiado
+  /// SLT-86 (design §5.3, 20261106150000; decisión del 2026-11-05): el superadmin cancela el cambio de plan
+  /// o de tipo pendiente de una empresa («Cancelar cambio», la petición igual a lo vigente o el archivado
+  /// del plan). Entidad: `plan` (el del pendiente); `valor_anterior` NULL y `valor_nuevo` = «AAAA-MM-DD ·
+  /// tipo», la fecha de efecto y el tipo del cambio cancelado.
+  plan_cambio_empresa_cancelado
 
   @@map("historial_accion_tipo")
 }
@@ -5851,26 +5858,34 @@ model Organizacion {
   // para no borrar nunca una empresa real con un slug parecido. Solo la pone la demo, como dueño.
   esDemo Boolean @default(false) @map("es_demo")
 
-  // SL-24 (design §2.4): el plan asignado y el ancla de sus ciclos. NULL = sin plan, sin límites (R14).
-  // Solo los escribe el superadmin: `organizacion` es de solo lectura para `servi_app`. El
+  // SL-24 (design §2.4): el plan asignado. NULL = sin plan, sin límites (R14). Solo lo escribe el
+  // superadmin: `organizacion` es de solo lectura para `servi_app`. El
   // `CHECK ("plan_id" IS NULL OR "plan_ciclo_ancla_at" IS NOT NULL)` vive solo en el SQL de
   // 20261028130000 (Prisma no expresa CHECK). FK NO ACTION y no RESTRICT: ver esa migración.
+  // SLT-86 (design §1.3, R35): `planCicloAnclaAt` es la ENTRADA de la empresa a su plan y tipo vigentes,
+  // siempre las 00:00 de un día de la plataforma y nunca futura. El período en curso empieza en
+  // `max(entrada, inicio del período de calendario)` (`plan_inicio_ciclo_de`).
   planId           String?   @map("plan_id")
   plan             Plan?     @relation("PlanAsignado", fields: [planId], references: [id], onDelete: NoAction, onUpdate: Cascade)
   planCicloAnclaAt DateTime? @map("plan_ciclo_ancla_at")
   planesExclusivos Plan[]    @relation("PlanExclusivo") // SL-24: los custom de esta empresa
 
-  // SLT-58 (design §11.2, R34): dónde empieza el ciclo corto, el instante de la primera asignación
-  // cuando la fecha elegida es futura. NULL en todo lo demás (R41). El
-  // `CHECK (… IS NULL OR (ancla IS NOT NULL AND … < ancla))` vive solo en el SQL de 20261029150000.
-  // Lo lee `plan_inicio_ciclo_en_curso`; solo lo escribe el superadmin, como el ancla.
-  planCicloCortoDesdeAt DateTime? @map("plan_ciclo_corto_desde_at") @db.Timestamp(3)
-
-  // Ajuste planes-custom (D6, 2026-10-31): cómo paga la empresa su plan, `mensual` o `anual`. Se elige
-  // en cada asignación y lo escribe solo el superadmin, junto al `plan_id`. El
-  // `CHECK ("plan_tipo_cobro" IN ('mensual', 'anual'))` vive solo en el SQL de 20261104130000. Sin plan
-  // conserva el último valor y no se lee. La empresa lo ve por `plan_de_la_empresa`.
+  // Ajuste planes-custom (D6) y SLT-86 (R1): cómo paga la empresa su plan, `quincenal`, `mensual`,
+  // `bimestral` o `anual`. Lo escribe solo el superadmin, junto al `plan_id`. El CHECK de los cuatro
+  // valores vive solo en el SQL de 20261106120000. Sin plan conserva el último valor y no se lee. La
+  // empresa lo ve por `plan_de_la_empresa`.
   planTipoCobro String @default("mensual") @map("plan_tipo_cobro")
+
+  // SLT-86 (design §1.3, R16–R21): el cambio pendiente de la empresa, a aplicar a las 00:00 de
+  // `planCambioDesdeAt`. Puede existir sin `planId` (primera asignación con fecha futura, P4 = a). Viven
+  // solo en el SQL de 20261106120000 el CHECK «las cinco o ninguna» y el de los cuatro tipos. Lo escribe
+  // solo `PlanesRepository`, bajo el cerrojo de la empresa. El actor no sale en `plan_de_la_empresa` (R32).
+  planCambioId        String?   @map("plan_cambio_id")
+  planCambioPlanId    String?   @map("plan_cambio_plan_id")
+  planCambioPlan      Plan?     @relation("PlanCambioEmpresa", fields: [planCambioPlanId], references: [id], onDelete: NoAction, onUpdate: Cascade)
+  planCambioTipoCobro String?   @map("plan_cambio_tipo_cobro")
+  planCambioDesdeAt   DateTime? @map("plan_cambio_desde_at") @db.Timestamp(3)
+  planCambioActorId   String?   @map("plan_cambio_actor_id")
 
   // SL-20 (design §2.2): el país de la empresa, fijado en el alta. No cambia nunca: lo impide el
   // trigger `organizacion_pais_inmutable` (SQLSTATE SL020, R7). El `DEFAULT 'CR'` es solo para los
@@ -5903,7 +5918,7 @@ model Pais {
   /// SL-20 (enmienda 2026-10-26, decisión 6; 20261026130500): hay cobertura en el país (R44). Con
   /// `false` no se acepta en un alta NUEVA de empresa (R45); las que ya están siguen igual (R46).
   disponible          Boolean  @default(true)
-  /// SLT-42 (R1; 20261106120000): datos de teléfono y hora. NULL = el país aún no los tiene (R6, R28).
+  /// SLT-42 (R1; 20261107120000): datos de teléfono y hora. NULL = el país aún no los tiene (R6, R28).
   /// Prefijo internacional en dígitos, sin '+'.
   prefijoTelefonico         String? @map("prefijo_telefonico")
   telefonoDigitosNacionales Int?    @map("telefono_digitos_nacionales") @db.SmallInt
@@ -6044,21 +6059,19 @@ enum PlanRastroAccion {
 // `organizacion_exclusiva_id`, que no aísla nada: dice de quién es el plan). Los topes `NULL` son «sin
 // tope». No se borra: se archiva (R6). Viven solo en el SQL de 20261028130000, porque Prisma no los
 // expresa:
-//   · los CHECK `plan_nombre_check`, `plan_custom_con_empresa`, `plan_precio_forma` (las formas del
-//     precio, R3; sin «negociable» desde 20261104130000) y los de rango de topes, montos y porcentaje;
+//   · los CHECK `plan_nombre_check`, `plan_custom_con_empresa` y los de rango de topes y montos;
 //   · la RLS sin políticas y el `REVOKE ALL … FROM servi_app` (R8).
 // CASCADE con la empresa del custom: un custom no tiene sentido sin ella (design §2.1).
+// SLT-86 (R8, R33, R34): sin tope de órdenes ni precio anual. `precioMensual` es el costo base mensual
+// vigente; los descuentos por período viven en `PlanDescuentoPeriodo`.
 model Plan {
   id                      String          @id @default(uuid())
   nombre                  String          @db.VarChar(80)
   visibilidad             PlanVisibilidad
   organizacionExclusivaId String?         @map("organizacion_exclusiva_id")
   organizacionExclusiva   Organizacion?   @relation("PlanExclusivo", fields: [organizacionExclusivaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  topeOrdenesCiclo        Int?            @map("tope_ordenes_ciclo")
   topeApiKeys             Int?            @map("tope_api_keys")
   precioMensual           Decimal?        @map("precio_mensual") @db.Decimal(12, 2)
-  precioAnual             Decimal?        @map("precio_anual") @db.Decimal(12, 2)
-  descuentoAnualPct       Decimal?        @map("descuento_anual_pct") @db.Decimal(5, 2)
   // SLT-66 (R7, R8): NULL = el plan no lo fija y se cobra el global (R12). El CHECK
   // `plan_costo_por_orden_check` (`>= 0`) vive solo en el SQL de 20261031140000.
   costoPorOrden           Decimal?        @map("costo_por_orden") @db.Decimal(12, 2)
@@ -6074,10 +6087,44 @@ model Plan {
 
   topesPorRol      PlanTopeRol[]
   modulos          PlanModulo[]
-  empresas         Organizacion[]        @relation("PlanAsignado")
+  empresas         Organizacion[]         @relation("PlanAsignado")
   cambioProgramado PlanCambioProgramado?
+  cambiosDeEmpresa Organizacion[]         @relation("PlanCambioEmpresa") // SLT-86: pendientes hacia este plan
+  descuentos       PlanDescuentoPeriodo[] // SLT-86
+  historialPrecio  PlanPrecioHistorial[] // SLT-86
 
   @@map("plan")
+}
+
+// SLT-86 (design §1.1, R10, R11) — el descuento vigente de un plan en un período. Sin fila = sin
+// descuento. De PLATAFORMA. Viven solo en el SQL de 20261106120000: el CHECK del período, los de rango
+// (`porcentaje > 0 AND <= 100`, `monto >= 0`), `plan_descuento_periodo_una_forma` (una forma o la otra),
+// la RLS sin políticas y el `REVOKE ALL … FROM servi_app` (R32).
+model PlanDescuentoPeriodo {
+  planId     String   @map("plan_id")
+  plan       Plan     @relation(fields: [planId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  periodo    String
+  porcentaje Decimal? @db.Decimal(5, 2)
+  monto      Decimal? @db.Decimal(12, 2)
+
+  @@id([planId, periodo])
+  @@map("plan_descuento_periodo")
+}
+
+// SLT-86 (design §1.2, R15) — el precio de un plan desde un instante: 00:00 de la fecha de efecto en UTC,
+// o `-infinity` (desde siempre) en la fila que siembran la migración y `crear`. Solo se añade. El costo de
+// un período que empieza en S usa la fila con el mayor `desdeAt ≤ S`. `descuentos` tiene la forma de
+// `PrecioPlan.descuentos`. De PLATAFORMA: la RLS sin políticas y el `REVOKE ALL … FROM servi_app` viven
+// solo en el SQL de 20261106120000.
+model PlanPrecioHistorial {
+  planId        String   @map("plan_id")
+  plan          Plan     @relation(fields: [planId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  desdeAt       DateTime @map("desde_at") @db.Timestamp(3)
+  precioMensual Decimal? @map("precio_mensual") @db.Decimal(12, 2)
+  descuentos    Json     @default("{}")
+
+  @@id([planId, desdeAt])
+  @@map("plan_precio_historial")
 }
 
 // SL-24 (design §2.2) — el tope de un rol en un plan. Sin fila = ese rol no tiene tope. De PLATAFORMA.

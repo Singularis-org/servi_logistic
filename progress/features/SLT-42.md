@@ -122,7 +122,7 @@ Bloqueos de F2.0:
 
 - 2026-11-06 (tras correcciones e integración de dev):
   1. m1: `lib/validacion/telefono.ts` queda sin `import "server-only"` (el paquete no está y sería dependencia nueva); desvío 8 del design aceptado (humano).
-  2. `POSTULACION_VALIDADA_POR_PAIS_DESDE` queda en `2026-11-06T12:00Z` (primera migración renombrada); se reemplaza por el instante real del deploy en T1.0 (humano).
+  2. `POSTULACION_VALIDADA_POR_PAIS_DESDE` queda en `2026-11-07T12:00Z` (primera migración renombrada; era `2026-11-06T12:00Z` antes de integrar SLT-86); se reemplaza por el instante real del deploy en T1.0 (humano).
 
 ## Pendiente para el cierre
 **Hecho el 2026-11-06** (tanda 7): `progress/impl_SLT-42.md > Errores nuevos y prevención`.
@@ -145,6 +145,7 @@ Las del `requirements.md` (normalizar teléfonos guardados, jobs por zona horari
 - 2026-11-06 · Tanda 6 · ajustes tras bloque 6 (sin zonas → UTC + error en el log; `siguiente` desde la corrida original; guía §4.5) + bloque 7 (T7.1 guardia R29 y de composition roots; T7.2 architecture.md; T7.3 mapa de las 31 R) · 34c92716, c851c550, 71ec7844, ac7fb762 · typecheck exit 0; lint limpio; test:guardias solo con los 4 rojos del baseline; tests de las R en verde (368); `vitest related` sin UI ni integración, 3 lotes en verde (61 archivos, 945 tests); check-perfil verde. Integración: la corre CI. tasks.md: solo T1.0 sin marcar. 5 archivos con CR fijo (planes y 2 repositorios de SQL por día) en `PENDIENTES_DE_DECISION_SLT42`: preguntas en impl_SLT-42.md > Tanda 6.
 - 2026-11-06 · Tanda 7 · decisiones bloque 7 (planes a excepción SLT-86; `AT TIME ZONE` parametrizado en ConteoCargadasPorDia, CohorteCarga y FinanzasDiario; `whatsapp-telefono` borrado; `PENDIENTES_DE_DECISION_SLT42` retirada) + «Errores nuevos y prevención» · 94f8a5dc, b06000e7 y el de registro · typecheck exit 0; lint 0; test:guardias solo con los 4 rojos del baseline; tests tocados 153/153 (22 de integración omitidos sin base: los corre CI); `vitest related` sin UI ni integración, 2 lotes en verde (94 archivos, 1617 tests). Pregunta: tope de excepciones de 6 a 8 (impl_SLT-42.md > Tanda 7).
 - 2026-11-06 · F2.3 integración de dev (175 commits) · bf4ddb54 + chore de migraciones (slt42 → 20261106120000–120200) · typecheck exit 0; test:guardias 4 rojos (baseline `dependencias-declaradas-presentes`); vitest related verde; 8 tests de dev adaptados a reglasPais/zona; ver impl_SLT-42.md > Integración de dev (F2.3).
+- 2026-11-06 · F2.3 segunda integración de dev (44 commits, SLT-86) · `Merge origin/dev en SLT-42 (SLT-86)` (incluye migraciones slt42 → 20261107120000–120200 y corte de postulaciones a 2026-11-07T12:00Z) · typecheck exit 0; test:guardias 4 rojos (baseline); unitarios de planes 1016 verdes; vitest related verde; excepciones de planes (SLT-86) se quedan, tope 8; `zonaDeOrganizacion` de PlanesService sin lector (abierta); ver impl_SLT-42.md > Integración de dev (F2.3).
 
 ## Modelos (overrides)
 

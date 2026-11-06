@@ -10,8 +10,9 @@ export type UsoDelPlan = { ordenes: number; apiKeys: number; porRol: Record<RolC
 
 export type EstadoFila = "sin_limite" | "normal" | "cerca" | "lleno";
 
+// SLT-86 (R8): sin fila de órdenes: ya no tienen tope. Su conteo va en `PlanConConsumo.ordenesDelPeriodo`.
 export type FilaConsumo = {
-  clave: "ordenes" | "api_keys" | RolConTope;
+  clave: "api_keys" | RolConTope;
   etiqueta: string;
   usados: number;
   /** `null` = sin límite. */
@@ -36,17 +37,21 @@ export type CostoVigente =
   | { modo: "fijo"; monto: string; fuente: FuenteDelCosto }
   | { modo: "porcentual"; porcentaje: string; minimo: string | null; fuente: "plan" };
 
-/** SLT-83 (R24): lo cobrado en el ciclo en curso (por fecha del movimiento) y las órdenes porcentuales sin estado final. */
+/**
+ * SLT-83 (R24): lo cobrado en el ciclo en curso (por fecha del movimiento) y las órdenes porcentuales sin
+ * estado final. SLT-86 (R28): el ciclo es el período en curso de calendario, con su tramo.
+ */
 export type CobroDelCiclo = { cobrado: string; pendientes: number };
 
 /** Lo que comparten los dos modos del costeo. */
 type CosteoComun = {
-  /** `"0.00"` es un monto (R20). */
-  base: { tipo: "monto"; mensual: string } | { tipo: "por_definir" };
+  /**
+   * `"0.00"` es un monto (R20). SLT-86 (R28): el costo base del período en curso, o de su tramo, con el
+   * descuento del período; ya no el mensual.
+   */
+  base: { tipo: "monto"; periodo: string } | { tipo: "por_definir" };
   /** Base no «monto» o plan sin costo por orden: el aviso del superadmin (R20). */
   sinCostoConcreto: boolean;
-  /** R10: el plan tiene anual fijo o descuento, que no se aplican al costo por orden. */
-  anualNoAplicaAlCosto: boolean;
 };
 
 /**
@@ -60,7 +65,7 @@ export type CosteoDelCiclo =
       /** Siempre el vigente (R12, P1): excepción > plan > global > 0. */
       costoPorOrden: string;
       fuente: FuenteDelCosto;
-      /** Las órdenes del ciclo: el mismo `uso.ordenes` que cuenta el tope. */
+      /** SLT-86 (R7): las órdenes del período en curso, el mismo `uso.ordenes` de `plan_de_la_empresa`. */
       ordenes: number;
       /** `ordenes × costoPorOrden`. */
       subtotalOrdenes: string;
@@ -81,14 +86,26 @@ export type CosteoDelCiclo =
     });
 
 /**
- * Ajuste planes-custom (D7–D9): cómo paga la empresa su plan. Solo informativo: no mueve dinero.
+ * SLT-86 (R26, R32): el cambio pendiente de una empresa, sin el actor. `desde` es `AAAA-MM-DD` en la hora
+ * de la plataforma: rige desde sus 00:00. `planNombre` es el plan que entra (el mismo si solo cambia el tipo).
+ */
+export type PendienteDeEmpresa = { planNombre: string; tipo: TipoCobro; desde: string };
+
+/** SLT-86 (R5, R27): el período en curso; `desde` y `hasta` en `AAAA-MM-DD`, `hasta` = su último día. */
+export type PeriodoDelCobro = { desde: string; hasta: string; esTramo: boolean };
+
+/**
+ * Ajuste planes-custom (D7–D9): cómo paga la empresa su plan. Solo informativo: no mueve dinero. SLT-86
+ * (R9–R12, R15, R27): el período en curso de calendario, su costo y el siguiente cobro.
  */
 export type CobroDelPlan = {
   tipo: TipoCobro;
-  /** D7: lo de UN período (mes o año), dos decimales; `null` si el plan no tiene costo base. */
-  montoPeriodo: string | null;
-  /** D8: `AAAA-MM-DD` en la hora de la plataforma; hoy si hoy es el aniversario. */
+  periodo: PeriodoDelCobro;
+  /** El costo base del período en curso o de su tramo, dos decimales; `null` si el plan no tiene costo base. */
+  costo: string | null;
+  /** `AAAA-MM-DD`: el inicio del siguiente período de calendario o, con un pendiente, su fecha (R27). */
   siguienteCobro: string;
+  pendiente: PendienteDeEmpresa | null;
 };
 
 export type PlanConConsumo = {
@@ -97,6 +114,8 @@ export type PlanConConsumo = {
   precioTexto: string;
   modulos: { clave: ModuloApagable; nombre: string }[];
   filas: FilaConsumo[];
+  /** SLT-86 (R7, R8): las órdenes vivas del período en curso, sin tope. */
+  ordenesDelPeriodo: number;
   reinicio: ReinicioDelCiclo;
   cambioPendiente: CambioPendienteVista | null;
   /** SLT-66 (R18–R20). */
@@ -106,5 +125,14 @@ export type PlanConConsumo = {
 };
 
 export type MiPlanResult =
-  | { estado: "ok"; plan: PlanConConsumo | null } // null = sin plan (R6)
+  | {
+      estado: "ok";
+      /** `null` = sin plan: sin límites (SLT-58 R6). */
+      plan: PlanConConsumo | null;
+      /**
+       * SLT-86 (R26, decisión del 2026-11-05): sin plan, la primera asignación pendiente, para «{Plan} empieza
+       * a regir el {fecha}»; `null` si no hay. Con plan, el pendiente va en `plan.cobro.pendiente`.
+       */
+      pendienteSinPlan: PendienteDeEmpresa | null;
+    }
   | { estado: "forbidden" };

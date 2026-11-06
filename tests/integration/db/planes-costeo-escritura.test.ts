@@ -31,9 +31,9 @@ function entrada(costoPorOrden: string | null): CrearPlanInput {
     nombre: `slt66 ${randomUUID().slice(0, 8)}`,
     visibilidad: "publico",
     organizacionId: null,
-    topes: { ordenesPorCiclo: 100, porRol: { admin: 2 }, apiKeys: null },
+    topes: { porRol: { admin: 2 }, apiKeys: null },
     modulos: [],
-    precio: { tipo: "monto", mensual: "50000", anual: null },
+    precio: { tipo: "monto", mensual: "50000", descuentos: {} },
     costoPorOrden,
     costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
   };

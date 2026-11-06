@@ -6,6 +6,7 @@ import type { PrismaClient } from "@prisma/client";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { crearPlanAplicarCambioHandler } from "@/lib/planes/jobs-cambio-plan";
 import { PlanesService } from "@/lib/services/PlanesService";
+import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 import { crearOrganizacion } from "@/tests/fabricas/organizaciones";
 
 import { HAY_BASE_DE_DATOS, RegistroCaido, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
@@ -29,6 +30,17 @@ import { tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
 let base: PrismaClient;
+
+/** SLT-86 (R22, R30): hoy en la plataforma, la fecha de un precio que rige ya y la del historial. */
+const HOY = fechaCalendarioCR(new Date());
+
+/** SLT-86 (R31): el alta deja las cuatro claves de descuento, vacías si no hay. */
+const ALTA_SIN_DESCUENTOS = {
+  descuento_quincenal: { antes: null, despues: null },
+  descuento_mensual: { antes: null, despues: null },
+  descuento_bimestral: { antes: null, despues: null },
+  descuento_anual: { antes: null, despues: null },
+};
 let soltarSuperadmin: () => Promise<void> = async () => {};
 
 async function conSuperadmin(tx: TxDeTest) {
@@ -88,23 +100,24 @@ describeSiHayBase("SL-24 — el rastro de los planes (R29, R40, R43)", () => {
         nombre: "Básico",
         visibilidad: "publico",
         organizacionId: null,
-        topes: { ordenesPorCiclo: 100, porRol: { adminTienda: 3 }, apiKeys: null },
+        topes: { porRol: { adminTienda: 3 }, apiKeys: null },
         modulos: ["ranking"],
-        precio: { tipo: "monto", mensual: "25000", anual: null },
+        precio: { tipo: "monto", mensual: "25000", descuentos: {} },
         costoPorOrden: null, // SLT-66 R8: campo obligatorio nuevo; no cambia lo que se comprueba.
         costoPorOrdenPorcentual: null, // SLT-83: campo obligatorio nuevo; no cambia lo que se comprueba.
       });
       if (creado.estado !== "ok") throw new Error(creado.estado);
       const planId = creado.planId;
+      // SLT-86 (R22, R33): un descuento anual de 50 000 (el anual fijo de 250 000 de antes) con la fecha de hoy.
       await servicio.editar(actor, {
         planId,
         nombre: "Básico plus",
-        topes: { ordenesPorCiclo: 150, porRol: { adminTienda: 3 }, apiKeys: null },
+        topes: { porRol: { adminTienda: 3 }, apiKeys: null },
         modulos: ["ranking"],
-        precio: { tipo: "monto", mensual: "25000.00", anual: { tipo: "fijo", monto: "250000" } },
+        precio: { tipo: "monto", mensual: "25000.00", descuentos: { anual: { tipo: "monto", monto: "50000" } } },
         costoPorOrden: null, // SLT-66 R8: campo obligatorio nuevo; no cambia lo que se comprueba.
         costoPorOrdenPorcentual: null, // SLT-83: campo obligatorio nuevo; no cambia lo que se comprueba.
-        vigenteDesde: null,
+        vigenteDesde: HOY,
       });
       await servicio.archivar(actor, { planId });
       const repetido = await servicio.archivar(actor, { planId });
@@ -121,9 +134,11 @@ describeSiHayBase("SL-24 — el rastro de los planes (R29, R40, R43)", () => {
         accion: "creado",
         cambios: {
           nombre: { antes: null, despues: "Básico" },
-          topes: { antes: null, despues: { ordenesPorCiclo: 100, porRol: { adminTienda: 3 }, apiKeys: null } },
+          topes: { antes: null, despues: { porRol: { adminTienda: 3 }, apiKeys: null } },
           modulos: { antes: null, despues: ["ranking"] },
-          precio: { antes: null, despues: { tipo: "monto", mensual: "25000.00", anual: null } },
+          // SLT-86 (R31): `precio` guarda solo el mensual; cada descuento, en su clave.
+          precio: { antes: null, despues: { tipo: "monto", mensual: "25000.00" } },
+          ...ALTA_SIN_DESCUENTOS,
           costoPorOrden: { antes: null, despues: null }, // SLT-66 R8: campo obligatorio nuevo; el alta lo registra como los demás.
           costoPorOrdenPorcentual: { antes: null, despues: null }, // SLT-83: campo nuevo del rastro; el alta lo registra como los demás.
           archivado: { antes: null, despues: false },
@@ -135,14 +150,8 @@ describeSiHayBase("SL-24 — el rastro de los planes (R29, R40, R43)", () => {
         accion: "editado",
         cambios: {
           nombre: { antes: "Básico", despues: "Básico plus" },
-          topes: {
-            antes: { ordenesPorCiclo: 100, porRol: { adminTienda: 3 }, apiKeys: null },
-            despues: { ordenesPorCiclo: 150, porRol: { adminTienda: 3 }, apiKeys: null },
-          },
-          precio: {
-            antes: { tipo: "monto", mensual: "25000.00", anual: null },
-            despues: { tipo: "monto", mensual: "25000.00", anual: { tipo: "fijo", monto: "250000.00" } },
-          },
+          // SLT-86 (R31): solo lo que cambió, el descuento anual; el mensual sigue igual y no sale.
+          descuento_anual: { antes: null, despues: { tipo: "monto", monto: "50000.00" } },
         },
       },
       { ...quien, planNombre: "Básico plus", accion: "archivado", cambios: { archivado: { antes: false, despues: true } } },
@@ -182,8 +191,8 @@ describeSiHayBase("SL-24 — el rastro de los planes (R29, R40, R43)", () => {
       entidadId: r.planId,
       entidadEtiqueta: "Plan «Pro con analítica»",
       valorAnterior: null,
-      // D6 (ajuste planes-custom): el tipo de cobro de la asignación; sin fecha, solo él.
-      valorNuevo: "mensual",
+      // D6 (ajuste planes-custom) y SLT-86 (R2, R30): sin fecha rige desde hoy, que va delante del tipo.
+      valorNuevo: `${HOY} · mensual`,
       ...actor,
     });
     expect(r.filas.filter((f) => f.accion !== "plan_asignado").map((f) => [f.accion, f.valorNuevo]).sort()).toEqual([
@@ -226,7 +235,7 @@ describeSiHayBase("SL-24 — el rastro de los planes (R29, R40, R43)", () => {
       const creados = await tx.plan.count({ where: { nombre } });
       const planId = await sano.crear(entradaDePlan({ nombre }), actor.usuarioId);
       const entrada = entradaDePlan({ nombre: "Editado" });
-      const alEditar = await roto.editar(planId, entrada, actor.usuarioId).catch((e: unknown) => e);
+      const alEditar = await roto.editar(planId, entrada, actor.usuarioId, new Date()).catch((e: unknown) => e);
       const alArchivar = await roto.archivar(planId, actor.usuarioId).catch((e: unknown) => e);
       const plan = await tx.plan.findUniqueOrThrow({ where: { id: planId }, select: { nombre: true, archivadoAt: true } });
       return { alCrear, creados, alEditar, alArchivar, plan, nombre, rastro: await tx.planRastro.count({ where: { planId } }) };
@@ -305,14 +314,15 @@ describeSiHayBase("SL-24 — el rastro de los planes (R29, R40, R43)", () => {
     const r = await revertida(base, async (tx) => {
       const { actor, nombre } = await conSuperadmin(tx);
       const servicio = new PlanesService(planesEnTx(tx), () => new Date("2026-10-28T12:00:00.000Z"));
-      const entrada = entradaDePlan({ nombre: "Rastro programado", topes: { ordenesPorCiclo: 100, porRol: {}, apiKeys: null } });
+      // SLT-86 (R8): el tope que cambia en cada versión es el de API keys (antes, el de órdenes).
+      const entrada = entradaDePlan({ nombre: "Rastro programado", topes: { porRol: {}, apiKeys: 100 } });
       const creado = await servicio.crear(actor, entrada);
       if (creado.estado !== "ok") throw new Error(creado.estado);
       const planId = creado.planId;
-      const version = (nombrePlan: string, ordenes: number, vigenteDesde: string) => ({
+      const version = (nombrePlan: string, apiKeys: number, vigenteDesde: string) => ({
         planId,
         nombre: nombrePlan,
-        topes: { ordenesPorCiclo: ordenes, porRol: {}, apiKeys: null },
+        topes: { porRol: {}, apiKeys },
         modulos: [],
         precio: { tipo: "sin_precio" },
         costoPorOrden: null, // SLT-66 R8: campo obligatorio nuevo; no cambia lo que se comprueba.
@@ -340,7 +350,7 @@ describeSiHayBase("SL-24 — el rastro de los planes (R29, R40, R43)", () => {
       return { planId, actor, nombre, rastro: await rastroDe(tx, planId) };
     });
     const quien = { planId: r.planId, actorUsuarioId: r.actor.usuarioId, actorNombre: r.nombre };
-    const topes = (n: number) => ({ ordenesPorCiclo: n, porRol: {}, apiKeys: null });
+    const topes = (n: number) => ({ porRol: {}, apiKeys: n });
     expect(r.rastro.map((f) => f.accion)).toEqual([
       "creado",
       "cambio_programado",

@@ -170,6 +170,9 @@ export const MODELOS_DE_PLATAFORMA: readonly ModeloClasificado[] = [
   { modelo: "PlanRastro", tabla: "plan_rastro" },
   // El cambio pendiente de un plan (SL-24, enmienda del 2026-10-28): igual que el catalogo
   { modelo: "PlanCambioProgramado", tabla: "plan_cambio_programado" },
+  // Descuentos por periodo y historial de precio de un plan (SLT-86): igual que el catalogo
+  { modelo: "PlanDescuentoPeriodo", tabla: "plan_descuento_periodo" },
+  { modelo: "PlanPrecioHistorial", tabla: "plan_precio_historial" },
   // Paises (SL-20): solo lectura para `servi_app` (R3); los da de alta el superadmin
   { modelo: "Pais", tabla: "pais" },
   // Historial del superadmin (SL-20, D15): sin acceso para `servi_app` (R34)

@@ -243,6 +243,8 @@ export const MODULO_POR_JOB: Readonly<Record<JobTipo, Destino>> = {
   plan_recordatorio_cambio: "nucleo",
   plan_aviso_correo: "nucleo",
   plan_cambios_vencidos: "nucleo",
+  // SLT-86 (design §5.2): aplicar el cambio de empresa con fecha; de plataforma, sin módulo.
+  plan_aplicar_cambio_empresa: "nucleo",
 };
 
 /** §3.4 — carpetas de `app/api/cron/`. */

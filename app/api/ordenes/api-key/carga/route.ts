@@ -57,7 +57,6 @@ import { OrdenDiaRepartoCambioRepository } from "@/lib/repositories/OrdenDiaRepa
 import { OrdenTraspasoRepository } from "@/lib/repositories/OrdenTraspasoRepository";
 import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
-import { CupoPlanRepository } from "@/lib/repositories/CupoPlanRepository";
 import { SupabaseFileStorage } from "@/lib/storage/SupabaseFileStorage";
 import { SupabaseSignedUrlProvider } from "@/lib/storage/SupabaseSignedUrlProvider";
 import { getPrismaClient } from "@/lib/db/prisma-client";
@@ -176,9 +175,7 @@ function buildBulkService(): IBulkOrdenService {
     // Feature 146/R22: COMPOSITION ROOT del aviso "carga masiva terminada". Esta via SI tiene
     // fin de lote real (una peticion = un lote), asi que es la unica que lo cablea server-side.
     notificarCargaMasivaTerminadaReal,
-    // SL-24 (R21, R23): la lectura previa del cupo del plan. Si no cabe, el servicio lanza
-    // `TopeDelPlanAlcanzado` y `withErrorHandler` lo saca como 409.
-    new CupoPlanRepository(prisma),
+    // SLT-86 (R8): ya no se lee el cupo de órdenes del plan antes de cargar; no hay tope de órdenes.
   );
 }
 

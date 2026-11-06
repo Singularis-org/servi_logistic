@@ -49,6 +49,7 @@ describe("R21 — registro en el drenador", () => {
       // SL-24 (design §16.3): aplicar un cambio programado (PUNTUAL) y el barrido horario de los
       // vencidos (RECURRENTE).
       "plan_aplicar_cambio",
+      "plan_aplicar_cambio_empresa", // SLT-86 (design §5.2): aplica un cambio de empresa con fecha (PUNTUAL)
       // SL-24 · T12 (design §16.4): los correos del cambio, PUNTUALES: el aviso a una empresa y
       // el recordatorio que los reparte.
       "plan_aviso_correo",

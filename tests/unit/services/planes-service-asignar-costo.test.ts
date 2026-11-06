@@ -21,7 +21,7 @@ const OTRO_PLAN = randomUUID();
 const AHORA = new Date("2026-10-29T18:00:00.000Z");
 const HOY = "2026-10-29";
 
-const MONTO: PrecioPlan = { tipo: "monto", mensual: "1000.00", anual: null };
+const MONTO: PrecioPlan = { tipo: "monto", mensual: "1000.00", descuentos: {} };
 
 function plan(extra: Partial<PlanDTO> = {}): PlanDTO {
   return {
@@ -29,7 +29,7 @@ function plan(extra: Partial<PlanDTO> = {}): PlanDTO {
     nombre: "Básico",
     visibilidad: "publico",
     organizacionId: null,
-    topes: { ordenesPorCiclo: 100, porRol: { adminTienda: 2 }, apiKeys: null },
+    topes: { porRol: { adminTienda: 2 }, apiKeys: null },
     modulos: ["analitica"],
     precio: MONTO,
     costoPorOrden: "100.00",
@@ -51,14 +51,14 @@ function doble() {
     crear: vi.fn<IPlanesRepository["crear"]>(async () => PLAN),
     editar: vi.fn<IPlanesRepository["editar"]>(async () => ({ estado: "ok", cambio: true, avisos: [] })),
     archivar: vi.fn<IPlanesRepository["archivar"]>(async () => ({ estado: "ok", cambio: true })),
-    asignar: vi.fn<IPlanesRepository["asignar"]>(async () => ({ estado: "ok", cambio: true, avisos: [] })),
-    crearYAsignar: vi.fn<IPlanesRepository["crearYAsignar"]>(async () => ({ estado: "ok", planId: PLAN, avisos: [] })),
+    asignar: vi.fn<IPlanesRepository["asignar"]>(async () => ({ estado: "ok", cambio: true, avisos: [], pendiente: false })),
+    cancelarCambioEmpresa: vi.fn<IPlanesRepository["cancelarCambioEmpresa"]>(async () => ({ estado: "ok" })),
+    aplicarCambioDeEmpresa: vi.fn<IPlanesRepository["aplicarCambioDeEmpresa"]>(async () => ({ estado: "sin_pendiente" })),
+    cambiosDeEmpresaVencidos: vi.fn<IPlanesRepository["cambiosDeEmpresaVencidos"]>(async () => []),
+    crearYAsignar: vi.fn<IPlanesRepository["crearYAsignar"]>(async () => ({ estado: "ok", planId: PLAN, avisos: [], pendiente: false })),
     vistaPreviaConTopes: vi.fn<IPlanesRepository["vistaPreviaConTopes"]>(async () => null),
     cambiarTipoCobro: vi.fn<IPlanesRepository["cambiarTipoCobro"]>(async () => ({ estado: "not_found" })),
-    vistaPreviaAsignacion: vi.fn<IPlanesRepository["vistaPreviaAsignacion"]>(async () => ({
-      avisos: [],
-      siguienteCiclo: new Date("2026-11-29T18:00:00.000Z"),
-    })),
+    vistaPreviaAsignacion: vi.fn<IPlanesRepository["vistaPreviaAsignacion"]>(async () => ({ avisos: [] })),
     cancelarCambio: vi.fn<IPlanesRepository["cancelarCambio"]>(async () => ({ estado: "ok" })),
     programarCambio: vi.fn<IPlanesRepository["programarCambio"]>(async () => ({
       estado: "ok",
@@ -71,6 +71,7 @@ function doble() {
     repartirRecordatorio: vi.fn<IPlanesRepository["repartirRecordatorio"]>(async () => ({ estado: "sin_pendiente" })),
     destinatariosDelAviso: vi.fn<IPlanesRepository["destinatariosDelAviso"]>(async () => null),
     asignables: vi.fn<IPlanesRepository["asignables"]>(async () => []),
+    preciosQueRigenDesde: vi.fn<IPlanesRepository["preciosQueRigenDesde"]>(async () => []),
     publicos: vi.fn<IPlanesRepository["publicos"]>(async () => []),
     catalogo: vi.fn<IPlanesRepository["catalogo"]>(async () => []),
     // Sin pendiente por defecto; cada caso de pendiente lo cambia.
@@ -110,10 +111,10 @@ const SIN_COSTO: [string, Partial<PlanDTO>][] = [
 ];
 
 describe("SLT-66 — R28: asignar un plan sin costo concreto", () => {
-  it.each(SIN_COSTO)("%s, sin fecha → plan_sin_costo y repo.asignar no se llama", async (_caso, extra) => {
+  it.each(SIN_COSTO)("%s, cambio de plan con fecha de efecto → plan_sin_costo y repo.asignar no se llama", async (_caso, extra) => {
     repo.empresa.mockResolvedValueOnce({ id: EMPRESA, nombre: "Mensajería Uno", planId: OTRO_PLAN });
     repo.plan.mockResolvedValueOnce(plan(extra));
-    expect(await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, tipoCobro: "mensual" })).toEqual({
+    expect(await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, tipoCobro: "mensual", vigenteDesde: HOY })).toEqual({
       estado: "plan_sin_costo",
     });
     expect(repo.asignar).not.toHaveBeenCalled();
@@ -128,10 +129,10 @@ describe("SLT-66 — R28: asignar un plan sin costo concreto", () => {
   });
 
   it("base 0.00 y costo 0.00 son concretos: ok y se asigna, con fecha y sin ella", async () => {
-    repo.plan.mockResolvedValue(plan({ precio: { tipo: "monto", mensual: "0.00", anual: null }, costoPorOrden: "0.00" }));
+    repo.plan.mockResolvedValue(plan({ precio: { tipo: "monto", mensual: "0.00", descuentos: {} }, costoPorOrden: "0.00" }));
     expect((await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, inicioCiclo: HOY, tipoCobro: "mensual" })).estado).toBe("ok");
     repo.empresa.mockResolvedValueOnce({ id: EMPRESA, nombre: "Mensajería Uno", planId: OTRO_PLAN });
-    expect((await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, tipoCobro: "mensual" })).estado).toBe("ok");
+    expect((await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, tipoCobro: "mensual", vigenteDesde: HOY })).estado).toBe("ok");
     expect(repo.asignar).toHaveBeenCalledTimes(2);
   });
 
@@ -140,7 +141,15 @@ describe("SLT-66 — R28: asignar un plan sin costo concreto", () => {
       estado: "ok",
       cambio: true,
     });
-    expect(repo.asignar).toHaveBeenCalledWith(EMPRESA, PLAN, "u-sa", undefined, "mensual");
+    // SLT-86 (R2): sin fecha, la primera asignación rige desde hoy a las 00:00 de la plataforma.
+    expect(repo.asignar).toHaveBeenCalledWith(
+      EMPRESA,
+      PLAN,
+      "u-sa",
+      { clase: "inicio", fecha: HOY, desde: new Date(`${HOY}T06:00:00.000Z`), elegida: false },
+      "mensual",
+      AHORA,
+    );
   });
 
   it.each<[string, Partial<VersionPlan>]>([
@@ -159,22 +168,23 @@ describe("SLT-66 — R28: asignar un plan sin costo concreto", () => {
   });
 
   it("plan concreto con pendiente concreto (base 0.00) → ok", async () => {
-    conPendiente(version({ precio: { tipo: "monto", mensual: "0.00", anual: null }, costoPorOrden: "0.00" }));
+    conPendiente(version({ precio: { tipo: "monto", mensual: "0.00", descuentos: {} }, costoPorOrden: "0.00" }));
     expect((await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, tipoCobro: "mensual" })).estado).toBe("ok");
     expect(repo.asignar).toHaveBeenCalledTimes(1);
   });
 
-  it("SL-24 R13 sigue primero: el mismo plan ya asignado, aunque sin costo, responde ok sin cambio", async () => {
+  it("SL-24 R13, SLT-86 R19: el mismo plan ya asignado, aunque sin costo, no se frena: el repositorio decide sin cambio", async () => {
     repo.empresa.mockResolvedValueOnce({ id: EMPRESA, nombre: "Mensajería Uno", planId: PLAN });
     repo.plan.mockResolvedValueOnce(plan({ precio: { tipo: "sin_precio" }, costoPorOrden: null }));
-    expect(await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, tipoCobro: "mensual" })).toEqual({
+    repo.asignar.mockResolvedValueOnce({ estado: "ok", cambio: false, avisos: [], pendiente: false });
+    expect(await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, tipoCobro: "mensual", vigenteDesde: HOY })).toEqual({
       estado: "ok",
       planId: PLAN,
       cambio: false,
       avisos: [],
       vigenteDesde: null,
     });
-    expect(repo.asignar).not.toHaveBeenCalled();
+    expect(repo.detalle).not.toHaveBeenCalled();
   });
 });
 
@@ -196,7 +206,7 @@ describe("SLT-66 — R28: la vista previa de la primera asignación", () => {
   });
 
   it("plan concreto (base 0.00) → ok por el repositorio", async () => {
-    repo.plan.mockResolvedValueOnce(plan({ precio: { tipo: "monto", mensual: "0.00", anual: null }, costoPorOrden: "0.00" }));
+    repo.plan.mockResolvedValueOnce(plan({ precio: { tipo: "monto", mensual: "0.00", descuentos: {} }, costoPorOrden: "0.00" }));
     expect(
       (await servicio.previsualizarAsignacion(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, inicioCiclo: HOY })).estado,
     ).toBe("ok");
@@ -207,7 +217,7 @@ describe("SLT-66 — R28: la vista previa de la primera asignación", () => {
 describe("SLT-66 — R29: asignables solo trae planes con costo concreto", () => {
   it("filtra los sin precio y sin costo por orden; conserva los de base 0.00", async () => {
     const concreto = plan({ id: "concreto" });
-    const cero = plan({ id: "cero", precio: { tipo: "monto", mensual: "0.00", anual: null }, costoPorOrden: "0.00" });
+    const cero = plan({ id: "cero", precio: { tipo: "monto", mensual: "0.00", descuentos: {} }, costoPorOrden: "0.00" });
     repo.asignables.mockResolvedValueOnce([
       plan({ id: "sin-precio", precio: { tipo: "sin_precio" }, costoPorOrden: "100.00" }),
       concreto,
@@ -234,8 +244,11 @@ describe("SLT-66 — R30: editar, programar y archivar no se frenan", () => {
 
   it.each(SIN_COSTO_VERSION)("editar de inmediato %s un plan con empresas → ok y se llama al repositorio", async (_caso, extra) => {
     const v = version(extra);
-    expect(await servicio.editar(SUPERADMIN, { planId: PLAN, ...v, vigenteDesde: null })).toMatchObject({ estado: "ok" });
-    expect(repo.editar).toHaveBeenCalledWith(PLAN, v, "u-sa");
+    // SLT-86 (R22): pasar a «sin precio» cambia el precio, así que lleva fecha de efecto: la de hoy es inmediata.
+    // Vaciar el costo por orden no toca el precio: sigue siendo inmediata sin fecha.
+    const vigenteDesde = "precio" in extra ? HOY : null;
+    expect(await servicio.editar(SUPERADMIN, { planId: PLAN, ...v, vigenteDesde })).toMatchObject({ estado: "ok" });
+    expect(repo.editar).toHaveBeenCalledWith(PLAN, v, "u-sa", new Date(`${HOY}T06:00:00.000Z`));
   });
 
   it.each(SIN_COSTO_VERSION)("programar %s un plan con empresas → ok y se llama al repositorio", async (_caso, extra) => {
