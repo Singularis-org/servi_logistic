@@ -33,7 +33,8 @@
 // unidad de comparación aquí es la OPERACIÓN (`VERBO path`), nunca el path suelto.
 //
 // **QUÉ COMPRUEBA.** Para el árbol `app/api/ordenes/api-key/**` (el prefijo que `middleware.ts`
-// declara como auto-autenticado, y de ahí sale la raíz del escaneo, no de un literal suelto):
+// declara como auto-autenticado, y de ahí sale la raíz del escaneo, no de un literal suelto), y desde
+// SLT-45 también para `app/api/v2/**` (la API v2, con la misma key y el mismo contrato publicado):
 //   - R1 · toda operación REAL (cada `export … GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS` de un
 //     `route.ts`) tiene su operación en `openApiSpec.paths`.
 //   - R2 · y al revés: toda operación PUBLICADA existe como ruta real. Un path documentado que ya
@@ -95,6 +96,12 @@ const RAIZ = path.resolve(__dirname, "../../..");
 const PREFIJO_CANAL = "/api/ordenes/api-key";
 
 const DIR_CANAL = path.join(RAIZ, "app", ...PREFIJO_CANAL.split("/").filter(Boolean));
+
+/** SLT-45 (design §4.4, §9; R34) — el canal tiene un SEGUNDO árbol: la API v2, con la misma API key.
+ *  `middleware.ts` lo declara en `SELF_AUTH_ROUTES` como `/api/v2` (todo v2 es por API key), y se
+ *  escanea igual que v1: toda ruta real de v2 publicada, y toda operación publicada de v2 real. */
+const PREFIJO_V2 = "/api/v2";
+const DIR_V2 = path.join(RAIZ, "app", ...PREFIJO_V2.split("/").filter(Boolean));
 const YAML_PATH = path.join(RAIZ, "docs", "api", "api-key-openapi.yaml");
 
 /** Los verbos que Next.js reconoce como handlers en un `route.ts`. */
@@ -287,7 +294,7 @@ interface RutaReal {
 }
 
 function censarCanal(): RutaReal[] {
-  return listarRouteHandlers(DIR_CANAL)
+  return [...listarRouteHandlers(DIR_CANAL), ...listarRouteHandlers(DIR_V2)]
     .map((archivo) => {
       const relativa = rutaRelativa(archivo);
       const bruto = readFileSync(archivo, "utf8");
@@ -497,6 +504,31 @@ describe("322 · el censo del filesystem no puede salir vacío ni a medias", () 
       `el canal se autentica solo bajo ${PREFIJO_CANAL}; si el prefijo se movió, mueve también la raíz de esta guardia`,
     ).toContain(`"${PREFIJO_CANAL}"`);
     expect(existsSync(DIR_CANAL), `no existe ${rutaRelativa(DIR_CANAL)}`).toBe(true);
+  });
+
+  it("SLT-45: el prefijo de v2 también está declarado en `middleware.ts` y su directorio existe", () => {
+    const middleware = readFileSync(path.join(RAIZ, "middleware.ts"), "utf8");
+    const declaracion = /const SELF_AUTH_ROUTES\s*=\s*\[([^\]]*)\]/.exec(middleware);
+    expect(declaracion?.[1], `v2 se autentica sola bajo ${PREFIJO_V2}; si el prefijo se movió, mueve también esta guardia`).toContain(
+      `"${PREFIJO_V2}"`,
+    );
+    expect(existsSync(DIR_V2), `no existe ${rutaRelativa(DIR_V2)}`).toBe(true);
+  });
+
+  it("SLT-45 (R10): el censo ve las cinco operaciones de v2, y ninguna más bajo `app/api/v2`", () => {
+    const deV2 = operacionesReales
+      .filter((op) => op.origen.startsWith("app/api/v2/"))
+      .map(formatear)
+      .sort();
+    expect(deV2).toEqual(
+      [
+        "GET /api/v2/geografia",
+        "GET /api/v2/ordenes/{id}",
+        "POST /api/v2/ordenes",
+        "POST /api/v2/ordenes/carga",
+        "POST /api/v2/ordenes/cotizacion",
+      ].sort(),
+    );
   });
 
   it("encuentra al menos las rutas y operaciones firmadas: si el escaneo se rompe, esto se pone rojo", () => {

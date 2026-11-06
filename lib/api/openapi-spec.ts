@@ -16,6 +16,10 @@ import { CAUSA_DEVOLUCION_SEED } from "@/lib/types/causa-devolucion";
 import { CAUSA_INCIDENTE_SEED } from "@/lib/types/causa-incidente";
 // FICHA 454 (R33/R36): el nombre publico de cada evento de ORDEN, fuente unica.
 import { EVENTO_PUBLICO_POR_TIPO } from "@/lib/types/orden-evento";
+// SLT-45 (design §4, §9): los topes y mensajes de v2 salen de su codigo, no se reescriben aqui.
+import { MSG_COTIZACION_SIN_TARIFA } from "@/lib/services/mensajes-cotizacion";
+import { MAX_NIVELES_UBICACION } from "@/lib/types/api-v2";
+import { MSG_UBICACION_UNA_DE_LAS_DOS } from "@/lib/services/geo-ubicacion";
 
 // Feature 106 — Fuente de verdad del contrato OpenAPI 3.1 del canal integrador por API key.
 // Este objeto es lo que sirve `GET /api/docs/openapi` (como JSON) y lo que renderiza Swagger UI
@@ -121,6 +125,44 @@ const DESC_IVA_FULFILLMENT =
 // Tope duro de filas por lote de carga (cargaMasivaConfig.MAX_CHUNK_ROWS, default 5000).
 const MAX_CARGA_ROWS = 5000;
 
+// ── SLT-45 (design §4, §9) — piezas de v2 que se repiten entre operaciones. ──────────────────────
+
+/** Una fila de v2 de ejemplo, sin la ubicacion: la de v1 sin la terna. */
+const EJEMPLO_FILA_V2_SIN_UBICACION = {
+  num_remision: "REM-0001",
+  destinatario: "Juan Pérez",
+  telefono: "88887777",
+  direccion: "Av. Central, 200m norte del parque",
+  producto: "Camiseta talla M",
+  peso: "1.5",
+  monto_cobrar: "25900",
+} as const;
+
+const EJEMPLO_FILA_V2 = { ...EJEMPLO_FILA_V2_SIN_UBICACION, ubicacion: ["Cartago", "Cartago", "Occidental"] } as const;
+
+const DESC_V2_LOTE_DE_UNA =
+  "Crea UNA orden con la fila de v2. Se procesa como un lote de una fila: crea su lote (`cargaId`), emite su etiqueta y su manifiesto igual que `POST /api/v2/ordenes/carga`, y responde con la misma forma. Una fila con error no es un 4xx: sale en `errores`, como en el lote.";
+
+/** El 409 de la carga de v2 (lote y una orden): los mismos dos motivos que la carga de v1. */
+const RESPUESTA_409_CARGA_V2 = {
+  description:
+    "Ninguna de las filas que llegaron a la resolución de tarifa la resolvió, o el `name` del lote ya lo usaste: no se creó ninguna orden ni fila de carga.",
+  content: {
+    "application/json": {
+      schema: { $ref: "#/components/schemas/Error" },
+      example: { status: "error", code: "CONFLICT", message: MSG_CARGA_SIN_TARIFA },
+    },
+  },
+} as const;
+
+/** La ruta de nodos de una orden o una fila, de la raiz hacia abajo (R21). */
+const PROPIEDAD_UBICACION = {
+  type: "array",
+  description:
+    "La ruta del lugar, de la raíz hacia abajo: un elemento por nivel, con el nombre ACTUAL de cada nodo en el catálogo.",
+  items: { $ref: "#/components/schemas/Ubicacion" },
+} as const;
+
 export const openApiSpec = {
   openapi: "3.1.0",
   info: {
@@ -153,6 +195,11 @@ export const openApiSpec = {
   security: [{ bearerAuth: [] }],
   tags: [
     { name: "Órdenes", description: "Carga, listado, detalle y cancelación de órdenes propias." },
+    {
+      name: "v2",
+      description:
+        "API v2, aditiva: la ubicación por nodo del catálogo geográfico (`ubicacion` o `ubicacion_codigo`) en vez de `provincia`/`canton`/`distrito`. v1 no cambia.",
+    },
   ],
   paths: {
     "/api/ordenes/api-key/carga": {
@@ -909,6 +956,186 @@ export const openApiSpec = {
           },
           "401": { $ref: "#/components/responses/Unauthorized" },
           "403": { $ref: "#/components/responses/Forbidden" },
+          "422": { $ref: "#/components/responses/ValidationError" },
+        },
+      },
+    },
+    // SLT-45 (design §4, §9; R10, R34) — API v2, ADITIVA: la ubicacion por nodo. Cinco operaciones
+    // y ninguna mas (R10). Van DESPUES de las de v1 y sus schemas son propios: los que extienden uno
+    // de v1 lo hacen con `allOf` + `$ref`, asi que ningun path ni schema de v1 cambia (R1, lo
+    // congela `tests/unit/api/openapi-v1-congelado.test.ts`). Misma API key, mismos 401/403.
+    "/api/v2/ordenes": {
+      post: {
+        tags: ["v2"],
+        summary: "Crear una orden (v2, ubicación por nodo)",
+        operationId: "crearOrdenV2",
+        description: DESC_V2_LOTE_DE_UNA,
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/CrearOrdenRequestV2" },
+              examples: {
+                porNombres: {
+                  summary: "Ubicación por ruta de nombres, de la raíz hacia abajo",
+                  value: { orden: EJEMPLO_FILA_V2 },
+                },
+                porCodigo: {
+                  summary: "Ubicación por código oficial",
+                  value: { orden: { ...EJEMPLO_FILA_V2_SIN_UBICACION, ubicacion_codigo: "30101" } },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "La orden se procesó como un lote de una fila (creada, duplicada o con error de fila).",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/CargaResponseV2" } } },
+          },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "409": RESPUESTA_409_CARGA_V2,
+          "422": { $ref: "#/components/responses/ValidationError" },
+        },
+      },
+    },
+    "/api/v2/ordenes/carga": {
+      post: {
+        tags: ["v2"],
+        summary: "Carga de órdenes por lote (v2, ubicación por nodo)",
+        operationId: "cargarOrdenesV2",
+        description:
+          "La carga de `POST /api/ordenes/api-key/carga` con la fila de v2: `ubicacion` o `ubicacion_codigo` en vez de `provincia`/`canton`/`distrito`. Mismo tope de lote, mismo `name` y `download_type`, mismas etiquetas y manifiesto. Una fila con la ubicación mal no tumba el lote: sale en `errores` con la clave `ubicacion`.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/CargaRequestV2" },
+              examples: {
+                dosFilas: {
+                  summary: "Una fila por nombres y una por código oficial",
+                  value: {
+                    ordenes: [EJEMPLO_FILA_V2, { ...EJEMPLO_FILA_V2_SIN_UBICACION, num_remision: "REM-0002", ubicacion_codigo: "30101" }],
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Lote procesado (puede incluir filas con error).",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/CargaResponseV2" } } },
+          },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "409": RESPUESTA_409_CARGA_V2,
+          "422": { $ref: "#/components/responses/ValidationError" },
+        },
+      },
+    },
+    "/api/v2/ordenes/cotizacion": {
+      post: {
+        tags: ["v2"],
+        summary: "Cotización de un lote (v2, no crea nada)",
+        operationId: "cotizarOrdenesV2",
+        description:
+          "La cotización de `POST /api/ordenes/api-key/cotizacion` con la fila de v2. Los importes salen del mismo cálculo y la misma tarifa que en v1; cada fila cotizada trae además `ubicacion`. Una fila con la ubicación mal sale en `errores` con la clave `ubicacion`.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/CotizacionRequestV2" },
+              examples: {
+                unaFila: {
+                  summary: "Una fila por ruta de nombres",
+                  value: { ordenes: [{ ubicacion: ["Cartago", "Cartago", "Occidental"], monto_cobrar: "25900", num_remision: "REM-0001" }] },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Lote cotizado (puede incluir filas con error).",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/CotizacionResponseV2" } } },
+          },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "409": {
+            description:
+              "Ninguna de las filas que llegaron a la resolución de tarifa la resolvió: no se cotiza ninguna fila.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/Error" },
+                example: { status: "error", code: "CONFLICT", message: MSG_COTIZACION_SIN_TARIFA },
+              },
+            },
+          },
+          "422": { $ref: "#/components/responses/ValidationError" },
+        },
+      },
+    },
+    "/api/v2/ordenes/{id}": {
+      parameters: [
+        {
+          name: "id",
+          in: "path",
+          required: true,
+          description:
+            "Identificador de la orden: su `num_guia` o su `num_remision`. Si el valor casa con la guía de una orden y con la remisión de otra, gana la de la guía.",
+          schema: { type: "string", minLength: 1, maxLength: 128 },
+        },
+      ],
+      get: {
+        tags: ["v2"],
+        summary: "Detalle de una orden propia, con su ubicación (v2)",
+        operationId: "detalleOrdenV2",
+        responses: {
+          "200": {
+            description: "El detalle de `GET /api/ordenes/api-key/orden/{id}` más `ubicacion`.",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/OrdenDetalleV2" } } },
+          },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "422": { $ref: "#/components/responses/ValidationError" },
+        },
+      },
+    },
+    "/api/v2/geografia": {
+      get: {
+        tags: ["v2"],
+        summary: "Catálogo geográfico del país de tu empresa (v2)",
+        operationId: "catalogoGeograficoV2",
+        description:
+          "Los tipos de nivel y todos los nodos del catálogo geográfico del país de la empresa de tu key: con esto armás `ubicacion` o `ubicacion_codigo`. Sin paginación. Un país que no es el de tu empresa, o que no existe, da el mismo 404.",
+        parameters: [
+          {
+            name: "pais",
+            in: "query",
+            required: true,
+            description: "Código del país de tu empresa: 2 o 3 letras mayúsculas. Si falta o no encaja, 422 con `fieldErrors.pais`.",
+            schema: { type: "string", pattern: "^[A-Z]{2,3}$" },
+          },
+        ],
+        responses: {
+          "200": {
+            description: "El catálogo del país.",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/GeografiaResponse" } } },
+          },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": {
+            description: "El país no es el de la empresa de tu key, o no existe (el mismo 404).",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/Error" },
+                example: { status: "error", code: "NOT_FOUND", message: "El recurso solicitado no existe." },
+              },
+            },
+          },
           "422": { $ref: "#/components/responses/ValidationError" },
         },
       },
@@ -2384,6 +2611,222 @@ export const openApiSpec = {
                   "`fila_invalida`: `num_guia`/`nota` no cumplen. `duplicada_en_lote`: la guía ya apareció antes en el mismo lote. `no_encontrada`: no hay orden viva con esa guía para esta key (no distingue «no existe» de «es de otro dueño»). `estado_no_habilitable`: la orden no tiene una ayuda abierta ni está en `novedad` —incluye `reprogramado` y la segunda habilitación de una orden cuya ayuda ya se cerró—.",
               },
               mensaje: { type: "string" },
+            },
+          },
+        },
+      },
+      // ── SLT-45 (design §4.2, §4.3, §6, §9; R34) — los schemas de v2. Van al FINAL y ninguno
+      // toca uno de v1: los que lo extienden lo hacen con `allOf` + `$ref` (R1). Espejo del codigo:
+      // `lib/types/api-v2.ts` (cuerpos y `GeografiaResponse`) y `lib/services/geo-ubicacion.ts`
+      // (`UbicacionDTO`).
+      FilaV2: {
+        type: "object",
+        description: [
+          "Una fila de v2: la de v1 SIN `provincia`, `canton` ni `distrito`, y con UNA de estas dos:",
+          "",
+          "- `ubicacion`: la ruta de nombres, de la raíz hacia abajo (los nombres se comparan sin tildes, sin mayúsculas y sin espacios de más);",
+          "- `ubicacion_codigo`: el código oficial del nodo.",
+          "",
+          "Las demás claves son las de la fila de v1 y son texto. Ninguna clave está en `required`, y es",
+          "deliberado: traer las dos formas de ubicación, ninguna, o que falte un campo que la carga",
+          "necesita, es un error DE FILA (sale en `errores`, el lote sigue), no un 422 del lote.",
+          `Sin ninguna de las dos, o con las dos, el error es \`ubicacion: ["${MSG_UBICACION_UNA_DE_LAS_DOS}"]\`.`,
+          "",
+          "Cuándo recibís 422: si `ubicacion` no es una lista de textos, está vacía, pasa de",
+          `${MAX_NIVELES_UBICACION} niveles o trae un nombre vacío o de más de 200 caracteres; si`,
+          "`ubicacion_codigo` está vacío o pasa de 64 caracteres; o si otra clave no es texto.",
+        ].join("\n"),
+        properties: {
+          ubicacion: {
+            type: "array",
+            minItems: 1,
+            maxItems: MAX_NIVELES_UBICACION,
+            description: "Ruta de nombres de la raíz hacia abajo. Excluyente con `ubicacion_codigo`.",
+            items: { type: "string", minLength: 1, maxLength: 200 },
+          },
+          ubicacion_codigo: {
+            type: "string",
+            minLength: 1,
+            maxLength: 64,
+            description: "Código oficial del nodo. Excluyente con `ubicacion`.",
+          },
+          num_remision: { type: "string", description: "Identificador de remisión (dedup por este valor). En la cotización, opcional y solo correlaciona." },
+          destinatario: { type: "string" },
+          telefono: { type: "string" },
+          direccion: { type: "string" },
+          producto: { type: "string" },
+          peso: { type: "string", description: "Peso en kg como texto (p. ej. \"1.5\")." },
+          monto_cobrar: { type: "string", description: "Monto COD como texto (p. ej. \"25900\")." },
+          notas: { type: "string" },
+        },
+        additionalProperties: { type: "string" },
+      },
+      CargaRequestV2: {
+        type: "object",
+        required: ["ordenes"],
+        properties: {
+          ordenes: {
+            type: "array",
+            minItems: 1,
+            maxItems: MAX_CARGA_ROWS,
+            description: `Filas a cargar (1..${MAX_CARGA_ROWS}, el mismo tope que v1).`,
+            items: { $ref: "#/components/schemas/FilaV2" },
+          },
+          name: {
+            type: "string",
+            minLength: 1,
+            maxLength: 120,
+            description: "Nombre OPCIONAL del lote. Repetir uno tuyo es 409.",
+          },
+          download_type: {
+            type: "string",
+            enum: ["consolidate", "individual"],
+            default: "consolidate",
+            description: "Etiquetas en un PDF del lote (`consolidate`) o una por orden (`individual`), como en v1.",
+          },
+        },
+      },
+      CrearOrdenRequestV2: {
+        type: "object",
+        required: ["orden"],
+        properties: {
+          orden: { $ref: "#/components/schemas/FilaV2" },
+          name: {
+            type: "string",
+            minLength: 1,
+            maxLength: 120,
+            description: "Nombre OPCIONAL del lote de una orden que se crea. Repetir uno tuyo es 409.",
+          },
+          download_type: {
+            type: "string",
+            enum: ["consolidate", "individual"],
+            default: "consolidate",
+            description: "Como en la carga por lote.",
+          },
+        },
+      },
+      CargaOrdenV2: {
+        description: "Una orden creada: la de v1 (`CargaOrden`) más `ubicacion`.",
+        allOf: [
+          { $ref: "#/components/schemas/CargaOrden" },
+          { type: "object", required: ["ubicacion"], properties: { ubicacion: PROPIEDAD_UBICACION } },
+        ],
+      },
+      CargaResponseV2: {
+        description:
+          "La respuesta de la carga de v1 (`CargaResponse`) con `ordenes[].ubicacion`. Los errores de ubicación de una fila van en `errores[].errores.ubicacion`, no en `provincia`/`canton`/`distrito`.",
+        allOf: [
+          { $ref: "#/components/schemas/CargaResponse" },
+          {
+            type: "object",
+            properties: {
+              ordenes: { type: "array", items: { $ref: "#/components/schemas/CargaOrdenV2" } },
+            },
+          },
+        ],
+      },
+      CotizacionRequestV2: {
+        type: "object",
+        required: ["ordenes"],
+        properties: {
+          ordenes: {
+            type: "array",
+            minItems: 1,
+            maxItems: MAX_CARGA_ROWS,
+            description: `Filas a cotizar (1..${MAX_CARGA_ROWS}, el mismo tope que v1). Podés mandar la fila de la carga sin recortarla: las claves que la cotización no usa se ignoran.`,
+            items: { $ref: "#/components/schemas/FilaV2" },
+          },
+        },
+      },
+      CotizacionRowResultV2: {
+        description: "Una fila cotizada: la de v1 (`CotizacionRowResult`) más `ubicacion`.",
+        allOf: [
+          { $ref: "#/components/schemas/CotizacionRowResult" },
+          { type: "object", required: ["ubicacion"], properties: { ubicacion: PROPIEDAD_UBICACION } },
+        ],
+      },
+      CotizacionResponseV2: {
+        description:
+          "La respuesta de la cotización de v1 (`CotizacionResponse`) con `filas[].ubicacion`. Los errores de ubicación de una fila van en `errores[].errores.ubicacion`.",
+        allOf: [
+          { $ref: "#/components/schemas/CotizacionResponse" },
+          {
+            type: "object",
+            properties: {
+              filas: { type: "array", items: { $ref: "#/components/schemas/CotizacionRowResultV2" } },
+            },
+          },
+        ],
+      },
+      OrdenDetalleV2: {
+        description: "El detalle de v1 (`OrdenDetalle`) más `ubicacion`, el lugar de la orden.",
+        allOf: [
+          { $ref: "#/components/schemas/OrdenDetalle" },
+          { type: "object", required: ["ubicacion"], properties: { ubicacion: PROPIEDAD_UBICACION } },
+        ],
+      },
+      Ubicacion: {
+        type: "object",
+        description: "Un nivel de la ruta de un lugar.",
+        required: ["profundidad", "id", "nombre", "codigoOficial", "tipo"],
+        properties: {
+          profundidad: { type: "integer", minimum: 1, description: "Nivel del nodo, 1 en la raíz." },
+          id: { type: "string", description: "Id del nodo en el catálogo." },
+          nombre: { type: "string", description: "Nombre ACTUAL del nodo (no una foto del momento de la carga)." },
+          codigoOficial: { type: ["string", "null"], description: "Código oficial del nodo; `null` si no tiene." },
+          tipo: {
+            type: "object",
+            required: ["clave", "nombre"],
+            properties: {
+              // Sin ejemplo de clave a proposito: las claves neutras de nivel no se escriben en el
+              // contrato (SL-20 R18, `openapi-geografia-sin-cambios.test.ts`). Salen del catalogo.
+              clave: { type: "string", description: "Clave del tipo de nivel, la misma que `tipos[].clave` de `GET /api/v2/geografia`." },
+              nombre: { type: "string", description: "Nombre del tipo de nivel en singular (p. ej. `Distrito`)." },
+            },
+          },
+        },
+      },
+      GeografiaResponse: {
+        type: "object",
+        required: ["pais", "tipos", "nodos"],
+        properties: {
+          pais: {
+            type: "object",
+            required: ["id", "nombre"],
+            properties: { id: { type: "string" }, nombre: { type: "string" } },
+          },
+          tipos: {
+            type: "array",
+            description: "Los tipos de nivel del país.",
+            items: {
+              type: "object",
+              required: ["clave", "nombreSingular", "nombrePlural"],
+              properties: {
+                clave: { type: "string" },
+                nombreSingular: { type: "string" },
+                nombrePlural: { type: "string" },
+              },
+            },
+          },
+          nodos: {
+            type: "array",
+            description:
+              "Todos los nodos del país, ordenados por nombre e id. Los retirados del catálogo también se listan, con `activo` en `false`.",
+            items: {
+              type: "object",
+              required: ["id", "padreId", "profundidad", "tipo", "nombre", "codigoOficial", "activo"],
+              properties: {
+                id: { type: "string" },
+                padreId: { type: ["string", "null"], description: "`null` en la raíz." },
+                profundidad: { type: "integer", minimum: 1 },
+                tipo: { type: "string", description: "La `clave` de su tipo de nivel." },
+                nombre: { type: "string" },
+                codigoOficial: { type: ["string", "null"] },
+                activo: {
+                  type: "boolean",
+                  description: "`false` si el nodo o alguno de sus ancestros está retirado del catálogo: no se acepta en cargas ni cotizaciones nuevas.",
+                },
+              },
             },
           },
         },

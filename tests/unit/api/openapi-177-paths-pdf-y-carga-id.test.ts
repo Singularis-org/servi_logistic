@@ -121,6 +121,20 @@ const PATH_HABILITAR = "/api/ordenes/api-key/habilitar";
  * camino estrictamente más pobre al mismo recurso. El censo baja de diez a nueve a propósito y
  * en el mismo commit que retira la ruta.
  */
+// ALTA de SLT-45 (design §9; R10, R34) — la API v2, ADITIVA: de NUEVE a CATORCE paths, a mano y en
+// el mismo commit que los publica en el objeto TS y en el `.yaml`. Qué se añadió y por qué: las
+// cinco operaciones de v2 (crear una orden, carga por lote, cotización, consulta de una orden y el
+// catálogo geográfico), que cambian SOLO la ubicación —una ruta de nodos o un código oficial en vez
+// de `provincia`/`canton`/`distrito`—, para que una empresa de un país que no es de tres niveles
+// pueda integrarse. Van DESPUÉS de los nueve de v1, que no se mueven ni cambian (R1).
+const PATHS_V2 = [
+  "/api/v2/ordenes",
+  "/api/v2/ordenes/carga",
+  "/api/v2/ordenes/cotizacion",
+  "/api/v2/ordenes/{id}",
+  "/api/v2/geografia",
+];
+
 const PATHS_ESPERADOS = [
   "/api/ordenes/api-key/carga",
   "/api/ordenes/api-key",
@@ -131,13 +145,14 @@ const PATHS_ESPERADOS = [
   PATH_COTIZACION,
   PATH_ANALITICA,
   PATH_HABILITAR,
+  ...PATHS_V2,
 ];
 
 describe("177/R41 + 255/R47 + 267/R39 + 266/R28 — el OpenAPI publica los nueve endpoints del canal", () => {
   const clavesTs = Object.keys(openApiSpec.paths);
 
   it("el objeto TS declara exactamente nueve paths, uno por endpoint, y ninguno más", () => {
-    expect(clavesTs).toHaveLength(9);
+    expect(clavesTs).toHaveLength(14);
     expect(clavesTs).toEqual(PATHS_ESPERADOS);
   });
 
@@ -600,8 +615,8 @@ describe("266/R28 — el canal por API key publica NUEVE endpoints, en el objeto
   it("los dos artefactos declaran nueve paths, el mismo noveno y en la misma posición", () => {
     const clavesTs = Object.keys(openApiSpec.paths);
     const clavesYaml = pathsDelYaml();
-    expect(clavesTs).toHaveLength(9);
-    expect(clavesYaml).toHaveLength(9);
+    expect(clavesTs).toHaveLength(14);
+    expect(clavesYaml).toHaveLength(14);
     expect(clavesTs[8]).toBe(PATH_HABILITAR);
     expect(clavesYaml[8]).toBe(PATH_HABILITAR);
     // Espejo exacto: el .yaml es un archivo de texto y nada más lo mantiene sincronizado.
