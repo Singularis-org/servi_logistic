@@ -2,7 +2,7 @@
 
 | key | nombre | zone | complexity | rama | assignee | estado |
 |---|---|---|---|---|---|---|
-| SLT-88 | adjuntos-chat-sin-aviso | frontend | small | hotfix/SLT-88-adjuntos-chat-sin-aviso | Carlos Restrepo | in_progress |
+| SLT-88 | adjuntos-chat-sin-aviso | frontend | small | hotfix/SLT-88-adjuntos-chat-sin-aviso | Carlos Restrepo | done |
 
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
@@ -38,3 +38,6 @@ Ninguna.
 Subagentes en Opus.
 
 ## Cierre
+2026-11-05: PR #84 mergeado a `prod` por Carlos (57e545e9) y sincronizado a `dev` con #86 (2198df22). Comprime fotos de más de 4 MB, avisa de todo fallo de envío y baja a 4 MB los límites de video, audio y documentos.
+**Sin verificar en un teléfono:** T6 paso B sigue pendiente (Carlos, 2026-11-06: «no he probado»). La causa de los 4,5 MB de Vercel sigue sin medir; falta probar en producción con una foto de ~4,7 MB.
+Deudas: D51 a D56 en `progress/deudas.md`.

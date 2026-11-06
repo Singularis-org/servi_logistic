@@ -295,3 +295,33 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** revisión de SLT-55, hallazgo 4. Ningún test pasa un propio en % con flete mayor que 0 en reprogramado, novedad o incidente, ni en el corte. Por lectura va bien: se congelan todos los conceptos de tienda y el corte usa el mismo `crearCierre` que la solicitud.
 - **Qué falta:** añadir esos casos a `tests/integration/db/tarifas-valor-propio-caminos.test.ts`.
 - **Dueño:** Carlos Restrepo.
+
+### D51 — Reintento de adjunto del chat puede salir duplicado
+- **Origen:** SLT-88 (2026-11-05). Si Meta acepta y `insertarSaliente` lanza, o la función agota su tiempo tras enviar, el aviso invita a reintentar y el adjunto sale otra vez (`lib/services/ChatWhatsappService.ts:568-589`).
+- **Qué falta:** idempotencia en el envío de adjuntos.
+- **Dueño:** Carlos Restrepo.
+
+### D52 — Texto libre y plantilla avisan «Tu sesión expiró» ante un error permanente
+- **Origen:** SLT-88 (2026-11-05). En texto libre y plantilla, `permanente` cae en `default` y el mensajero lee ese aviso (`app/(app)/mis-asignaciones/_components/chat/ChatConversacion.tsx:609,640`).
+- **Qué falta:** darle a `permanente` su propio aviso en esos dos envíos, como ya lo tiene el de adjuntos.
+- **Dueño:** Carlos Restrepo.
+
+### D53 — `respuestaDe` descarta el rechazo sin dejar rastro
+- **Origen:** SLT-88 (2026-11-05). `ChatConversacion.tsx:171` convierte el rechazo en `null`: en producción no se sabrá con qué frecuencia ocurre.
+- **Qué falta:** registrar el rechazo en algún lado que se pueda medir.
+- **Dueño:** Carlos Restrepo.
+
+### D54 — Envío del chat sin tiempo máximo en el cliente
+- **Origen:** SLT-88 (2026-11-05). Con la red colgada el botón se queda en «enviando».
+- **Qué falta:** un tiempo máximo que termine en el aviso de fallo.
+- **Dueño:** Carlos Restrepo.
+
+### D55 — Gestión y postulación sin auditar en el hueco de 4,5 a 5 MB
+- **Origen:** SLT-88 (2026-11-05). Vercel limita el cuerpo a 4,5 MB y el chat ya quedó en 4 MB. Gestión y postulación pueden tener el mismo hueco.
+- **Qué falta:** auditar sus límites y sus avisos de fallo.
+- **Dueño:** Carlos Restrepo.
+
+### D56 — `wamid` en logs lleva el teléfono en base64
+- **Origen:** SLT-88 (2026-11-05).
+- **Qué falta:** quitarlo de los logs o enmascararlo. PR pequeño, a la espera de la decisión de Carlos.
+- **Dueño:** Carlos Restrepo.
