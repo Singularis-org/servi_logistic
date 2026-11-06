@@ -68,6 +68,8 @@ export interface PlanesModuleProps {
   inicioCicloPorDefecto: string;
   /** SLT-58 (R30): el `min`/`max` de «Inicio del ciclo», del reloj del servidor. */
   rangoInicioCiclo: RangoDelInicioDelCiclo;
+  /** SLT-86 (R16): el `min`/`max` de «Rige desde» de un custom para una empresa con plan. */
+  rangoFechaDeEfecto: RangoDelInicioDelCiclo;
   /** `crearPlanAction`, inyectada desde la página para poder probarla. */
   crearPlan: (input: CrearPlanInput) => Promise<PlanResult>;
   /** Ajuste planes-custom (D13): `previsualizarCustomAction`, inyectada desde la página. */
@@ -86,6 +88,7 @@ export function PlanesModule({
   empresas,
   inicioCicloPorDefecto,
   rangoInicioCiclo,
+  rangoFechaDeEfecto,
   crearPlan,
   previsualizarCustom,
 }: PlanesModuleProps) {
@@ -94,15 +97,15 @@ export function PlanesModule({
   const [mostrarArchivados, setMostrarArchivados] = useState(false);
   const [abierto, setAbierto] = useState(false);
   const [creado, setCreado] = useState<string | null>(null);
-  /** Ajuste planes-custom (D12): los topes ya pasados del `ok` de un custom con fecha, con el texto del modal. */
+  /** Ajuste planes-custom (D12): los topes ya pasados del `ok` de un custom, con el texto del modal. */
   const [avisosCreado, setAvisosCreado] = useState<string[]>([]);
 
   const visibles = mostrarArchivados ? planes : planes.filter((p) => !p.archivado);
 
-  function alCrear(r: Extract<PlanResult, { estado: "ok" }>, nombre: string, siguienteCiclo: string | null) {
+  function alCrear(r: Extract<PlanResult, { estado: "ok" }>, nombre: string) {
     setAbierto(false);
     setCreado(nombre);
-    setAvisosCreado(textosDeLosAvisosDeTopes(r.avisos, siguienteCiclo));
+    setAvisosCreado(textosDeLosAvisosDeTopes(r.avisos, null));
     router.refresh();
   }
 
@@ -166,6 +169,7 @@ export function PlanesModule({
               empresas={empresas}
               inicioCicloPorDefecto={inicioCicloPorDefecto}
               rangoInicioCiclo={rangoInicioCiclo}
+              rangoFechaDeEfecto={rangoFechaDeEfecto}
               enviar={crearPlan}
               previsualizar={previsualizarCustom}
               onGuardado={alCrear}

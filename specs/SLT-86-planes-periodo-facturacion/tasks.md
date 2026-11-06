@@ -126,7 +126,7 @@
   `plan-de-la-empresa-periodo.test.ts`, `tests/unit/services/planes-service-periodo.test.ts` y
   `tests/unit/actions/planes.composition-root.test.ts` verdes.
 
-## T10 — Formulario del plan (R23, R25) [P]
+## [x] T10 — Formulario del plan (R23, R25) [P]
 
 - **Depende de:** T2.
 - **Pasos:** `PlanForm.tsx`.

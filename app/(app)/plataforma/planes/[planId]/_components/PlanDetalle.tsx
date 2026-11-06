@@ -136,6 +136,8 @@ export interface PlanDetalleProps {
    * pudieron leer.
    */
   empresasCandidatas?: { id: string; nombre: string }[] | null;
+  /** SLT-86 (R23): «Rige desde» por defecto al editar el precio (mañana), del reloj del servidor. */
+  precioDesdePorDefecto?: string;
 }
 
 /** Lo último que pasó en la pantalla: un aviso de éxito (con los topes pasados, R15) o un rechazo (R18). */
@@ -156,6 +158,7 @@ export function PlanDetalle({
   archivarPlan,
   cancelarCambio,
   empresasCandidatas = [],
+  precioDesdePorDefecto,
 }: PlanDetalleProps) {
   const router = useRouter();
   const { plan, pendiente } = detalle;
@@ -367,7 +370,13 @@ export function PlanDetalle({
                 <SheetDescription>{TEXTOS.descripcionEditar}</SheetDescription>
               </SheetHeader>
               <div className="px-4 pb-4">
-                <PlanForm modo="editar" plan={plan} enviar={editarPlan} onGuardado={(r) => alEditar(r)} />
+                <PlanForm
+                  modo="editar"
+                  plan={plan}
+                  precioDesdePorDefecto={precioDesdePorDefecto}
+                  enviar={editarPlan}
+                  onGuardado={(r) => alEditar(r)}
+                />
               </div>
             </SheetContent>
           </Sheet>

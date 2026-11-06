@@ -15,12 +15,15 @@ import type { CrearPlanInput, PlanResult, PrevisualizarCustomInput, VistaPreviaC
 const SIN_PLAN = "6f1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f60";
 const CON_PLAN = "7a1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f61";
 const EMPRESAS: EmpresaParaCustom[] = [
-  { id: SIN_PLAN, nombre: "Envíos Norte", tienePlan: false },
-  { id: CON_PLAN, nombre: "Reparto Sur", tienePlan: true },
+  { id: SIN_PLAN, nombre: "Envíos Norte", tienePlan: false, fechaDeEfectoPorDefecto: null },
+  // SLT-86 (R25): el primer día de su siguiente período de calendario, como lo calcula la página.
+  { id: CON_PLAN, nombre: "Reparto Sur", tienePlan: true, fechaDeEfectoPorDefecto: "2026-11-01" },
 ];
 /** D5: mañana en la hora de la plataforma, como lo calcula la página con `inicioDelCicloPorDefecto`. */
 const MANANA = "2026-10-30";
 const RANGO = { hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" };
+/** SLT-86 (R16): de hoy a hoy + 12 meses. */
+const RANGO_EFECTO = { hoy: "2026-10-29", min: "2026-10-29", max: "2027-10-29" };
 const OK: PlanResult = {
   estado: "ok",
   planId: "0b6f3a2e-1c4d-4e5f-8a9b-0c1d2e3f4a5b",
@@ -34,7 +37,7 @@ type Enviar = (input: CrearPlanInput) => Promise<PlanResult>;
 afterEach(() => cleanup());
 
 /** D13: la vista previa del custom; por defecto, sin topes pasados. */
-const VISTA_PREVIA_OK: VistaPreviaCustomResult = { estado: "ok", avisos: [], siguienteCiclo: "2026-11-30" };
+const VISTA_PREVIA_OK: VistaPreviaCustomResult = { estado: "ok", avisos: [] };
 type Previsualizar = (input: PrevisualizarCustomInput) => Promise<VistaPreviaCustomResult>;
 
 function montar(
@@ -48,6 +51,7 @@ function montar(
       empresas={EMPRESAS}
       inicioCicloPorDefecto={MANANA}
       rangoInicioCiclo={RANGO}
+      rangoFechaDeEfecto={RANGO_EFECTO}
       enviar={enviar}
       previsualizar={previsualizar}
       onGuardado={onGuardado}
@@ -100,7 +104,7 @@ describe("D4, D5 — «Inicio del ciclo» en el custom", () => {
     expect(campo).toHaveAttribute("max", RANGO.max);
   });
 
-  it("D4: empresa con plan → el campo no aparece y la action no recibe `inicioCiclo`", async () => {
+  it("D4, SLT-86 R16: empresa con plan → no pide el inicio; la action recibe «Rige desde» y no `inicioCiclo`", async () => {
     const user = userEvent.setup();
     const { enviar } = montar();
     await custom(user, "Reparto Sur");
@@ -111,7 +115,11 @@ describe("D4, D5 — «Inicio del ciclo» en el custom", () => {
 
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
     expect(enviar.mock.calls[0]![0]).not.toHaveProperty("inicioCiclo");
-    expect(enviar.mock.calls[0]![0]).toMatchObject({ organizacionId: CON_PLAN, tipoCobro: "mensual" });
+    expect(enviar.mock.calls[0]![0]).toMatchObject({
+      organizacionId: CON_PLAN,
+      tipoCobro: "mensual",
+      vigenteDesde: "2026-11-01",
+    });
   });
 
   it("D4: sin empresa elegida, ni público, no se pide la fecha", async () => {
@@ -138,7 +146,7 @@ describe("D4, D5 — «Inicio del ciclo» en el custom", () => {
 });
 
 describe("D6 — el tipo de cobro en el custom", () => {
-  it("D6: un custom ofrece «Mensual» y «Anual», con «Mensual» por defecto", async () => {
+  it("D6, SLT-86 R1: un custom ofrece los cuatro tipos, con «Mensual» por defecto", async () => {
     const user = userEvent.setup();
     montar();
     expect(screen.queryByRole("radiogroup", { name: "Tipo de cobro" })).toBeNull(); // público: no aplica
@@ -146,7 +154,9 @@ describe("D6 — el tipo de cobro en el custom", () => {
 
     const grupo = screen.getByRole("radiogroup", { name: "Tipo de cobro" });
     expect(within(grupo).getAllByRole("radio").map((r) => r.closest("label")?.textContent)).toEqual([
+      "Quincenal",
       "Mensual",
+      "Bimestral",
       "Anual",
     ]);
     expect(within(grupo).getByRole("radio", { name: "Mensual" })).toBeChecked();
@@ -166,10 +176,10 @@ describe("D6 — el tipo de cobro en el custom", () => {
       organizacionId: SIN_PLAN,
       tipoCobro: "anual",
       inicioCiclo: MANANA,
-      precio: { tipo: "monto", mensual: "50000", anual: null },
+      precio: { tipo: "monto", mensual: "50000", descuentos: {} },
       costoPorOrden: "100",
     });
-    expect(onGuardado).toHaveBeenCalledWith(OK, "Norte a medida", "2026-11-30");
+    expect(onGuardado).toHaveBeenCalledWith(OK, "Norte a medida");
   });
 
   it("D6: un plan público no manda tipo de cobro ni inicio del ciclo", async () => {
