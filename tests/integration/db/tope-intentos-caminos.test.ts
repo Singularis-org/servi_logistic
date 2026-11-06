@@ -24,6 +24,7 @@ import { NovedadesService } from "@/lib/services/NovedadesService";
 import { ReprogramacionTiendaService } from "@/lib/services/ReprogramacionTiendaService";
 import { buildReprogramadasRetenidasService } from "@/lib/services/reprogramadas-retenidas-composicion";
 import { TopeIntentosService } from "@/lib/services/TopeIntentosService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 import { comoApp, crearOrganizacion, datosDeOrganizacionDePrueba, fijarEmpresa } from "@/tests/fabricas/organizaciones";
 import { crearEscenario, diaCR, type Escenario, type Mundo } from "./454/_escenario";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
@@ -371,6 +372,7 @@ describeSiHayBase("SLT-77 R20 — una orden agotada para su empresa frena el lot
           em.e.s.zonaRepo,
           new AsignabilidadCoordenadasService(new JobRepository(em.cliente)),
           em.e.s.historialService,
+          reglasPaisFijas(),
         );
 
       const loteA = await mixtoDe(A, deA[0]);
@@ -416,6 +418,7 @@ describeSiHayBase("SLT-77 R20 — una orden agotada para su empresa frena el lot
           em.e.s.ordenRepo,
           new AsignabilidadCoordenadasService(new JobRepository(em.cliente)),
           em.e.s.historialService,
+          reglasPaisFijas(),
         );
 
       const loteA = await mixtoDe(A, deA[0]);
@@ -554,6 +557,10 @@ describeSiHayBase("SLT-77 R23 — el aviso diario evalua «en el tope» con el t
           buildReprogramadasRetenidasService(em.cliente),
           3,
           notificar as never,
+          undefined,
+          undefined,
+          undefined,
+          reglasPaisFijas(),
         );
         await como(em, () => servicio.ejecutar(new Date()));
         expect(notificar).toHaveBeenCalledTimes(1);
@@ -727,6 +734,7 @@ describeSiHayBase("SLT-77 R29 — subir el tope le devuelve a la orden lo que le
             A.e.s.zonaRepo,
             new AsignabilidadCoordenadasService(new JobRepository(A.cliente)),
             A.e.s.historialService,
+            reglasPaisFijas(),
           ).asignarDesdeBodega(
             { ordenIds: [bodega], mensajeroId: m.mensajeroId },
             A.e.actorMaestro,
