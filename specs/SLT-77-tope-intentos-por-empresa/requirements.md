@@ -58,7 +58,7 @@ un plazo.
 - **R15.** MIENTRAS el valor elegido es menor que el guardado, la sección DEBE mostrar un aviso visible,
   antes de guardar, que diga que: guardar no rechaza ni cobra nada; las novedades que ya alcancen el
   nuevo tope se rechazan en la siguiente corrida automática, sin más clics, y ese rechazo genera cobro;
-  y las órdenes en bodega que ya lo alcancen no se podrán asignar (ver `P1`).
+  y las órdenes en bodega que ya lo alcancen no se podrán asignar (decisión P1).
 - **R16.** MIENTRAS el valor elegido es igual o mayor que el guardado, la sección NO DEBE mostrar ese
   aviso.
 - **R17.** SI guardar falla, ENTONCES la sección DEBE decirlo y conservar el valor elegido; sus textos NO
@@ -146,16 +146,7 @@ un plazo.
 
 ## Preguntas abiertas
 
-- **P1 · Una orden en bodega que queda agotada al bajar el tope no tiene «siguiente paso» que la resuelva.**
-  La decisión cerrada dice que se resuelve en su siguiente paso normal. En `devuelta`, `sin_gestionar` y
-  con el mensajero, sí. En `en_bodega_central` y `en_bodega_satelite` el siguiente paso es asignarla, y
-  R20 lo rechaza; de ahí solo salen el ruteo, un incidente o la cancelación por API
-  (`lib/types/order-status-transiciones.ts`). Lo mismo una `reprogramada`: el proceso de liberación no mira
-  el tope (276 lo hacía innecesario) y la deja en bodega. Es el callejón que 276 Q2 y Q6 quisieron
-  evitar; aquí puede aparecer con cualquier empresa que baje el tope. No cobra: es mercadería parada.
-  **Recomendación, y es lo que este spec describe:** se acepta, sin cambiar la regla de 276, y el aviso
-  de R15 lo dice. La salida es volver a subir el tope o un incidente. **Si Carlos decide otra cosa**
-  (por ejemplo, una salida a rechazo desde bodega), cambia transiciones y dinero, y es otra ficha.
+Ninguna.
 
 ## Decisiones cerradas (no reabrir)
 
@@ -169,3 +160,4 @@ un plazo.
 | 2026-11-06 | ¿Depende de «Activar tarifas nuevas»? | No: rige al guardar, con o sin activación (SLT-54). |
 | 2026-11-06 | ¿Criterio de conteo? | Sin cambios. Heredado de 276 R31/R32. |
 | 2026-11-06 | ¿El número llega al navegador del mensajero? | No: solo el booleano ya decidido. Heredado de 276 R10. |
+| 2026-11-06 | P1 · ¿Qué pasa con una orden en bodega que queda agotada al bajar el tope? | Se acepta, sin cambiar la regla de 276: no cobra, queda parada y el aviso de R15 lo dice. La salida es volver a subir el tope o un incidente. Una salida a rechazo desde bodega sería otra ficha. Carlos, «apruebo». |
