@@ -21,6 +21,36 @@
 
 ---
 
+## 2026-11-xx — API v2 (aditiva): ubicación por nodo
+
+> **Aditivo.** Se añaden cinco operaciones nuevas bajo `/api/v2`; **v1 no cambia**: ni sus rutas,
+> ni sus cuerpos, ni sus respuestas, ni sus mensajes. Un integrador que no adopta v2 no tiene que
+> tocar nada. La fecha es la de la release.
+
+**Qué cambia, en una frase:** v2 indica el lugar de una orden con un nodo del catálogo geográfico
+del país de tu empresa —`ubicacion` (la ruta de nombres, de la raíz hacia abajo) o
+`ubicacion_codigo` (el código oficial del nodo), una de las dos— en vez de `provincia`, `canton` y
+`distrito`, y devuelve la ruta del lugar en `ubicacion`. Todo lo demás es v1: la misma API key, los
+mismos 401/403, el mismo tope de lote, los mismos importes y la misma tarifa.
+
+| Operación | v2 | Equivale en v1 a | Qué añade |
+|---|---|---|---|
+| Crear una orden | `POST /api/v2/ordenes` | la carga con un lote de una fila | `ordenes[].ubicacion` |
+| Carga por lote | `POST /api/v2/ordenes/carga` | `POST /api/ordenes/api-key/carga` | `ordenes[].ubicacion` |
+| Cotización | `POST /api/v2/ordenes/cotizacion` | `POST /api/ordenes/api-key/cotizacion` | `filas[].ubicacion` |
+| Consulta de una orden | `GET /api/v2/ordenes/{id}` | `GET /api/ordenes/api-key/orden/{id}` | `ubicacion` |
+| Catálogo geográfico | `GET /api/v2/geografia?pais=` | — (nuevo) | los tipos de nivel y los nodos de tu país |
+
+Una fila de v2 con la ubicación mal (ninguna de las dos formas, las dos, un nombre que no está en el
+catálogo, un nodo retirado o sin zona) no tumba el lote: sale en `errores` con la clave `ubicacion`,
+como los errores de fila de v1. El listado, el borrado, la cancelación, la habilitación, la
+analítica y los PDF siguen solo en v1.
+
+Contrato: `lib/api/openapi-spec.ts` y su espejo `docs/api/api-key-openapi.yaml` (etiqueta `v2`);
+colección de Postman: carpeta «v2».
+
+---
+
 ## 2026-11-03 — Campo NUEVO `ivaFulfillment`: el IVA del fulfillment, en la carga, la cotización y el costo de la orden
 
 > **Aditivo.** Se añade una clave; ninguna se quita ni cambia de forma. Un cliente que ignora las

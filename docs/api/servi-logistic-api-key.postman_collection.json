@@ -2,7 +2,7 @@
   "info": {
     "name": "Servi Logistic — API key (canal integradores)",
     "_postman_id": "b7d1f0a2-1770-4f2e-9a55-0177ea51ordx",
-    "description": "Los 10 endpoints accesibles con API key (`Authorization: Bearer svl_...`), **una petición por endpoint**.\n\nGenerada desde el contrato publicado del repo (`lib/api/openapi-spec.ts`, espejo en `docs/api/api-key-openapi.yaml`).\n\n## Antes de empezar\n\n1. Edita las variables de la colección: `baseUrl` y `apiKey`.\n2. Corre la colección en orden. **Cargar órdenes** guarda `cargaId`, `numGuia`, `numRemision` y un segundo par desechable en las variables, así que el resto de peticiones funciona sin tocar nada.\n\n## Qué NO es esta colección\n\nNo es una batería de casos. Hay **una petición por endpoint** y cada una es el camino feliz: sirve para comprobar que el canal responde y para tenerlo a mano, no para cubrir los bordes. Los 401/404/409/422 están descritos en el contrato.\n\n## Reglas que aplican a los 10\n\n- El **dueño va forzado a la key**: una orden o un lote de otro integrador responde `404`, idéntico a inexistente. No hay forma de leer ni generar nada ajeno.\n- Los errores tienen forma uniforme: `{ status, code, message }`, con `code` en `VALIDATION_ERROR | UNAUTHORIZED | FORBIDDEN | NOT_FOUND | CONFLICT | INTERNAL`.\n- Sin header `Authorization`, o con esquema distinto de `Bearer`, responde `401` sin tocar base de datos ni storage.\n- El orden de la colección importa: las dos últimas (cancelar y eliminar) consumen las órdenes que creó la carga.",
+    "description": "Los 10 endpoints de v1 accesibles con API key (`Authorization: Bearer svl_...`) y, en la carpeta «v2», las 5 operaciones de la API v2 (ubicación por nodo): **una petición por endpoint**.\n\nGenerada desde el contrato publicado del repo (`lib/api/openapi-spec.ts`, espejo en `docs/api/api-key-openapi.yaml`).\n\n## Antes de empezar\n\n1. Edita las variables de la colección: `baseUrl` y `apiKey`.\n2. Corre la colección en orden. **Cargar órdenes** guarda `cargaId`, `numGuia`, `numRemision` y un segundo par desechable en las variables, así que el resto de peticiones funciona sin tocar nada.\n\n## Qué NO es esta colección\n\nNo es una batería de casos. Hay **una petición por endpoint** y cada una es el camino feliz: sirve para comprobar que el canal responde y para tenerlo a mano, no para cubrir los bordes. Los 401/404/409/422 están descritos en el contrato.\n\n## Reglas que aplican a todas\n\n- El **dueño va forzado a la key**: una orden o un lote de otro integrador responde `404`, idéntico a inexistente. No hay forma de leer ni generar nada ajeno.\n- Los errores tienen forma uniforme: `{ status, code, message }`, con `code` en `VALIDATION_ERROR | UNAUTHORIZED | FORBIDDEN | NOT_FOUND | CONFLICT | INTERNAL`.\n- Sin header `Authorization`, o con esquema distinto de `Bearer`, responde `401` sin tocar base de datos ni storage.\n- El orden de la colección importa: las dos últimas de v1 (cancelar y eliminar) consumen las órdenes que creó la carga.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -409,6 +409,167 @@
         },
         "description": "Borrado definitivo. Usa a propósito `{{numRemisionDesechable}}` —la SEGUNDA orden de la carga— para no dejar sin sujeto a las peticiones anteriores.\n\nSolo se puede borrar mientras la orden no se haya gestionado; si ya se movió, responde `409`."
       }
+    },
+    {
+      "name": "v2",
+      "description": "API v2, aditiva: la ubicación por nodo del catálogo geográfico. Una petición por operación (cinco). La fila de v2 lleva `ubicacion` (la ruta de nombres, de la raíz hacia abajo) o `ubicacion_codigo` (el código oficial), una de las dos, en vez de `provincia`/`canton`/`distrito`. Misma API key que v1; v1 no cambia.",
+      "item": [
+        {
+          "name": "v2 · 1 · Catálogo geográfico de tu país",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('trae el país, sus tipos de nivel y sus nodos', () => {",
+                  "  pm.expect(b).to.have.all.keys('pais', 'tipos', 'nodos');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/geografia?pais=CR",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v2", "geografia"],
+              "query": [{ "key": "pais", "value": "CR", "description": "El código del país de tu empresa. Otro país responde 404." }]
+            },
+            "description": "Los tipos de nivel y todos los nodos del país de tu empresa: con esto armás `ubicacion` o `ubicacion_codigo`. Los nodos retirados se listan con `activo: false`."
+          }
+        },
+        {
+          "name": "v2 · 2 · Cotizar un lote (no crea nada)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('cada fila cotizada trae su ubicacion', () => {",
+                  "  for (const f of b.filas) pm.expect(f.ubicacion).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/ordenes/cotizacion",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v2", "ordenes", "cotizacion"]
+            },
+            "description": "La cotización de v1 con la fila de v2: mismos importes y misma tarifa, más `filas[].ubicacion`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ordenes\": [\n    {\n      \"num_remision\": \"REM-V2-0001\",\n      \"ubicacion\": [\"San José\", \"San José\", \"Carmen\"],\n      \"direccion\": \"Av. Central, 200m norte del parque\",\n      \"monto_cobrar\": \"25900\"\n    }\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "v2 · 3 · Cargar órdenes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('los contadores cuadran: creadas + duplicadas + conError === total', () => {",
+                  "  pm.expect(b.creadas + b.duplicadas + b.conError).to.eql(b.total);",
+                  "});",
+                  "pm.test('cada orden creada trae su ubicacion', () => {",
+                  "  for (const o of b.ordenes) pm.expect(o.ubicacion).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/ordenes/carga",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v2", "ordenes", "carga"]
+            },
+            "description": "La carga de v1 con la fila de v2. Una fila con la ubicación mal sale en `errores` con la clave `ubicacion` y el lote sigue.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ordenes\": [\n    {\n      \"num_remision\": \"REM-V2-0001\",\n      \"destinatario\": \"Juan Pérez\",\n      \"telefono\": \"88887777\",\n      \"ubicacion\": [\"San José\", \"San José\", \"Carmen\"],\n      \"direccion\": \"Av. Central, 200m norte del parque\",\n      \"producto\": \"Camiseta talla M\",\n      \"peso\": \"1.5\",\n      \"monto_cobrar\": \"25900\"\n    }\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "v2 · 4 · Crear una orden",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('es un lote de una fila', () => pm.expect(b.total).to.eql(1));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/ordenes",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v2", "ordenes"]
+            },
+            "description": "UNA orden, procesada como un lote de una fila: crea su lote, su etiqueta y su manifiesto, y responde como la carga.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orden\": {\n    \"num_remision\": \"REM-V2-0002\",\n    \"destinatario\": \"María Solís\",\n    \"telefono\": \"71234567\",\n    \"ubicacion\": [\"San José\", \"San José\", \"Carmen\"],\n    \"direccion\": \"Multiplaza, local 12\",\n    \"producto\": \"Zapatos talla 38\",\n    \"peso\": \"0.8\",\n    \"monto_cobrar\": \"40000\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "v2 · 5 · Detalle de una orden, con su ubicación",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('responde la orden pedida, con su ubicacion', () => {",
+                  "  pm.expect(b.numRemision).to.eql(pm.collectionVariables.get('numRemision'));",
+                  "  pm.expect(b.ubicacion).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v2/ordenes/{{numRemision}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v2", "ordenes", "{{numRemision}}"]
+            },
+            "description": "El detalle de v1 más `ubicacion`. Acepta guía o remisión, como en v1. Una orden de otro integrador responde `404`, igual que una inexistente."
+          }
+        }
+      ]
     }
   ]
 }
