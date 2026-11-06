@@ -14,7 +14,7 @@ import { CierresAdminRepository } from "@/lib/repositories/CierresAdminRepositor
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { OrganizacionRepository } from "@/lib/repositories/OrganizacionRepository";
 import { PaisRepository } from "@/lib/repositories/PaisRepository";
-import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
+import { reglasPaisFijas, ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 import { TarifaActivacionRepository } from "@/lib/repositories/TarifaActivacionRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
 import { TarifaZonaMensajeroRepository } from "@/lib/repositories/TarifaZonaMensajeroRepository";
@@ -84,7 +84,8 @@ async function altaDeEmpresa(tx: TxDeTest): Promise<Empresa> {
       nombre: "Maestra de prueba",
       email: `nueva-${sufijo}@example.test`,
       telefono: "88887777",
-      documento: `doc-${sufijo}`,
+      // SLT-42 (R11): la cedula fisica de CR son 9 digitos; la empresa es nueva, asi que no choca.
+      documento: String(100_000_000 + Math.floor(Math.random() * 900_000_000)),
       tipoDocumento: "cedula",
     },
   });
@@ -160,6 +161,9 @@ function servicioCierre(cli: PrismaClient, e: Empresa) {
     } as never,
     {} as never,
     new TarifaZonaMensajeroRepository(cli),
+    undefined,
+    undefined,
+    reglasPaisFijas(),
   );
 }
 
