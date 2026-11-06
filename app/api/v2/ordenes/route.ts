@@ -23,7 +23,7 @@ import {
 } from "@/lib/errors";
 import { extraerBearer, buildAutenticar, conEmpresaDeLaKey } from "@/lib/api/api-key-request";
 import { crearOrdenV2BodySchema } from "@/lib/types/api-v2";
-import { procesarCargaApi, type CargaApiDeps } from "@/app/api/ordenes/api-key/carga/route";
+import { procesarCargaApi, type CargaApiDeps } from "@/lib/api/api-carga";
 
 // Prisma, el hash de la API key y el render del PDF no corren en edge.
 export const runtime = "nodejs";

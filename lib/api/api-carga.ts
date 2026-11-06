@@ -1,0 +1,350 @@
+// Feature 88/136/141/155 + SLT-45 (design §4.1, R18) — el pipeline de la carga por API desde el
+// cuerpo YA validado: carga, etiquetas y manifiesto, con sus composition roots. Lo comparten
+// `POST /api/ordenes/api-key/carga` (v1), `POST /api/v2/ordenes/carga` y `POST /api/v2/ordenes`.
+//
+// Vive en `lib/` (no en el module de la ruta v1) por el mismo motivo que `api-orden-detalle.ts`:
+// un `route.ts` de Next solo exporta handlers HTTP y campos de config (review SLT-45, m1). Se
+// extrajo literal de `app/api/ordenes/api-key/carga/route.ts`: v1 no cambia de comportamiento.
+//
+// SEGURIDAD (R6 de la 88): la key nunca llega aqui; el actor ya viene autenticado.
+import { ConflictError, ForbiddenError } from "@/lib/errors";
+import type { IBulkOrdenService } from "@/lib/interfaces/services/IBulkOrdenService";
+import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import type { AutenticadorApiKey } from "@/lib/api/api-key-request";
+import type {
+  DownloadType,
+  IEtiquetasDescargaService,
+} from "@/lib/interfaces/services/IEtiquetasDescargaService";
+import type { IManifiestoService } from "@/lib/interfaces/services/IManifiestoService";
+import type { ManifiestoFilaDTO, ManifiestoOmitidaDTO } from "@/lib/types/manifiesto";
+import { BulkOrdenService } from "@/lib/services/BulkOrdenService";
+import { ManifiestoService } from "@/lib/services/ManifiestoService";
+import { OrdenHistorialService } from "@/lib/services/OrdenHistorialService";
+import { EtiquetaGuiaService } from "@/lib/services/EtiquetaGuiaService";
+import {
+  EtiquetasLotePdfService,
+  EtiquetasLoteExcedeTopeError,
+} from "@/lib/services/EtiquetasLotePdfService";
+import { EtiquetasDescargaService } from "@/lib/services/EtiquetasDescargaService";
+import { CargaNombreDuplicadoError } from "@/lib/interfaces/repositories/IOrdenRepository";
+import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
+import { OrdenHistorialRepository } from "@/lib/repositories/OrdenHistorialRepository";
+import { OrdenDiaRepartoCambioRepository } from "@/lib/repositories/OrdenDiaRepartoCambioRepository";
+import { OrdenTraspasoRepository } from "@/lib/repositories/OrdenTraspasoRepository";
+import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
+import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
+import { CupoPlanRepository } from "@/lib/repositories/CupoPlanRepository";
+import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograficoRepository";
+import { SupabaseFileStorage } from "@/lib/storage/SupabaseFileStorage";
+import { SupabaseSignedUrlProvider } from "@/lib/storage/SupabaseSignedUrlProvider";
+import { getPrismaClient } from "@/lib/db/prisma-client";
+import type { RawRow } from "@/lib/parsers/spreadsheet";
+import { etiquetasConfig } from "@/lib/config/etiquetas";
+import { ErrorEtiquetaNoCabe } from "@/lib/pdf/etiquetas-ajuste";
+import { notificarCargaMasivaTerminadaReal } from "@/lib/notificaciones/notificadores";
+import { aFilaInterna, type FilaV2 } from "@/lib/types/api-v2";
+
+/**
+ * SLT-45 (design §4.1): la version del contrato que atiende el borde. `"v1"` es el codigo de
+ * siempre; `"v2"` cambia solo el schema del cuerpo y el servicio que resuelve la ubicacion (el
+ * resto del pipeline —etiquetas, manifiesto, forma de la respuesta— es el mismo).
+ */
+export type VersionCargaApi = "v1" | "v2";
+
+export interface CargaApiDeps {
+  autenticar?: AutenticadorApiKey;
+  bulkService?: IBulkOrdenService;
+  // Feature 141: orquestador de la descarga de etiquetas segun `download_type` (genera los
+  // PDFs y persiste las URLs). Sustituye a la inyeccion directa del servicio de PDF de la 136.
+  descargaService?: IEtiquetasDescargaService;
+  // Feature 155/R24: SERVICIO UNICO de manifiesto (inyectable en tests). Este borde NO arma
+  // filas: se las pide al mismo service que las 6 vias de sesion (R24 prohibe que otro modulo
+  // construya columnas de manifiesto).
+  manifiestoService?: IManifiestoService;
+}
+
+// Feature 136 (T3.1) — bloque `etiquetasPdf` de la respuesta. El fallo se hace
+// VISIBLE con `{ error }` (no se oculta con `null`, R12); `null` significa que no
+// habia nada que generar (sin ordenes creadas o sin etiqueta imprimible, R13/R14).
+type EtiquetasPdf =
+  | { url: string; expiraEnSegundos: number } // exito (R10)
+  | { error: string } // fallo best-effort (R12), HTTP 200, carga NO revertida
+  | null; // nada que generar (R13/R14)
+
+/**
+ * Feature 155/R24/R25/R26 — bloque `manifiesto` de la respuesta, espejo EXACTO de la
+ * disciplina de `etiquetasPdf`:
+ *   - filas + omitidas -> el manifiesto del lote, INLINE (el `.xlsx` se arma en el cliente,
+ *     igual que en la via de sesion: el servidor no genera binarios de manifiesto);
+ *   - `{ error }`      -> fallo best-effort VISIBLE. HTTP 200, carga NO revertida (R25);
+ *   - `null`           -> no habia nada que emitir: sin ordenes creadas, o el lote nacio por
+ *     la rama (a), que no produce movimiento fisico y por tanto no emite manifiesto (R26).
+ */
+type ManifiestoBloque =
+  | { filas: ManifiestoFilaDTO[]; omitidas: ManifiestoOmitidaDTO[] }
+  | { error: string }
+  | null;
+
+/** Mensaje generico al cliente ante un fallo de generacion/almacenamiento (R12). */
+const MSG_ETIQUETAS_FALLO = "no se pudo generar el PDF de etiquetas del lote";
+
+/** Feature 155/R25: mensaje generico ante un fallo del manifiesto. Sin PII ni internals. */
+const MSG_MANIFIESTO_FALLO = "no se pudo armar el manifiesto del lote";
+
+/**
+ * Mensaje del lote que excede el tope (R12, BLOQ-1): explica el motivo y que hacer,
+ * sin PII ni secretos. Se afirma explicitamente que las ordenes SI se crearon,
+ * porque es justo lo que el integrador perdia cuando la function moria por OOM.
+ */
+function msgLoteExcedeTope(tope: number): string {
+  return (
+    `el lote supera el tope de ${tope} etiquetas por PDF: las ordenes se crearon ` +
+    `y conservan su num_guia, pero el PDF consolidado no se genero (divide el lote ` +
+    `o imprime las etiquetas por guia)`
+  );
+}
+
+/**
+ * Describe un error para el log SIN arrastrar datos de la orden. El mensaje crudo
+ * puede venir del render del PDF (jspdf/qrcode/bwip-js reciben destinatario,
+ * direccion, telefono...) y acabar en los logs, contra lo prometido en design §8.
+ * Solo se conserva el mensaje de los errores que construye ESTA feature (numeros).
+ */
+function describirErrorSeguro(err: unknown): string {
+  if (err instanceof EtiquetasLoteExcedeTopeError) return err.message;
+  // Feature 350 (R7): el mensaje de «no cabe» es seguro POR CONSTRUCCION —solo
+  // lleva el num_guia, el id de la hoja, el nombre del bloque y milimetros— y es
+  // el unico dato con el que alguien puede arreglar la orden que lo provoco.
+  // Sin el, el log diria «ErrorEtiquetaNoCabe» y nadie sabria de que guia.
+  if (err instanceof ErrorEtiquetaNoCabe) return err.message;
+  if (err instanceof Error) return err.name;
+  return typeof err;
+}
+
+/**
+ * Feature 350 (R7) — Mensaje de la respuesta cuando una etiqueta del lote no
+ * cabe en la hoja ni con el cuerpo minimo de legibilidad.
+ *
+ * NOMBRA LA GUIA, igual que el del modal y por el mismo motivo: la causa es un
+ * dato desmesurado de ESA orden (una direccion de 286 caracteres es un problema
+ * de datos, no de maqueta) y el integrador puede corregirlo. Se dice ademas que
+ * la carga NO se revirtio, que es la pregunta inmediata de quien recibe un
+ * `error` dentro de un 200.
+ */
+function msgEtiquetaNoCabe(err: ErrorEtiquetaNoCabe): string {
+  return (
+    `la etiqueta de la guia ${err.numGuia} no cabe en la hoja sin recortar datos, ` +
+    `asi que el PDF de etiquetas del lote no se genero: las ordenes SI se crearon ` +
+    `y conservan su num_guia (revisa la direccion o el producto de esa orden)`
+  );
+}
+
+function buildBulkService(): IBulkOrdenService {
+  const prisma = getPrismaClient();
+  // Feature 98/T8: se inyecta tambien el resolver de tarifa vigente por tienda, para que
+  // `cargarViaApi` devuelva el `costoEnvio` (flete + IVA) por orden creada.
+  return new BulkOrdenService(
+    new OrdenRepository(prisma),
+    new TarifaVigenteRepository(prisma),
+    // Feature 146/R22: COMPOSITION ROOT del aviso "carga masiva terminada". Esta via SI tiene
+    // fin de lote real (una peticion = un lote), asi que es la unica que lo cablea server-side.
+    notificarCargaMasivaTerminadaReal,
+    // SL-24 (R21, R23): la lectura previa del cupo del plan. Si no cabe, el servicio lanza
+    // `TopeDelPlanAlcanzado` y `withErrorHandler` lo saca como 409.
+    new CupoPlanRepository(prisma),
+    // SLT-45 (design §2.3): el catalogo de la empresa, para la forma del pais (R5).
+    new CatalogoGeograficoRepository(prisma),
+  );
+}
+
+// Feature 136 + 141 — arma el orquestador de la DESCARGA de etiquetas con sus dependencias
+// reales: generador de PDFs de la 136 (servicio de etiquetas de la 32 + Storage + firma de
+// URLs sobre el bucket privado de config) y el repositorio de ordenes, que es quien persiste
+// las URLs (`carga.download_url` / `orden.download_url`). El cliente Supabase es perezoso.
+function buildDescargaService(): IEtiquetasDescargaService {
+  const prisma = getPrismaClient();
+  const bucket = etiquetasConfig.ETIQUETAS_BUCKET;
+  const pdfService = new EtiquetasLotePdfService(
+    new EtiquetaGuiaService(new OrdenRepository(prisma)),
+    new SupabaseFileStorage(undefined, bucket),
+    new SupabaseSignedUrlProvider(undefined, bucket),
+    etiquetasConfig.SIGNED_URL_TTL_SECONDS,
+    etiquetasConfig.MAX_ETIQUETAS_POR_PDF,
+  );
+  return new EtiquetasDescargaService(pdfService, new OrdenRepository(prisma));
+}
+
+// Feature 155/R24 — composition root del SERVICIO UNICO de manifiesto para este borde. Mismo
+// cableado que `lib/actions/manifiesto.ts` (repos reales + derivador de intentos de la 160);
+// lo unico que cambia es quien resuelve el actor: alli la cookie de sesion, aqui la API key.
+function buildManifiestoService(): IManifiestoService {
+  const prisma = getPrismaClient();
+  const ordenRepo = new OrdenRepository(prisma);
+  return new ManifiestoService(
+    ordenRepo,
+    new ZonaRepository(prisma),
+    new OrdenHistorialService(
+      ordenRepo,
+      new OrdenHistorialRepository(prisma),
+      new OrdenDiaRepartoCambioRepository(prisma),
+      new OrdenTraspasoRepository(prisma),
+    ),
+  );
+}
+
+/**
+ * Feature 141 (R24): un `name` repetido del mismo usuario es un error de dominio del
+ * repositorio; el borde lo traduce a 409 nombrando el duplicado. La transacción ya revirtió,
+ * así que la petición no dejó ni lote ni órdenes.
+ */
+async function ejecutarCargaApi(
+  service: IBulkOrdenService,
+  body: { ordenes: unknown[]; name?: string; download_type: DownloadType },
+  actor: Actor,
+  version: VersionCargaApi,
+) {
+  try {
+    if (version === "v2") {
+      // SLT-45 (§4.2): la fila validada viaja como `{ campos, ubicacion }`; R12 es error de fila.
+      const filas = (body.ordenes as FilaV2[]).map(aFilaInterna);
+      return await service.cargarViaApiV2(filas, actor, { name: body.name });
+    }
+    return await service.cargarViaApi(body.ordenes as RawRow[], actor, { name: body.name });
+  } catch (err) {
+    if (err instanceof CargaNombreDuplicadoError) throw new ConflictError(err.message);
+    throw err;
+  }
+}
+
+/**
+ * SLT-45 (design §4.1, R18): el pipeline de la carga por API desde el cuerpo YA validado: carga,
+ * etiquetas y manifiesto. Lo comparten el lote (`handleCargaApi`) y `POST /api/v2/ordenes`, que
+ * pasa su orden como lote de una fila. Se llama dentro de `withErrorHandler` y de
+ * `conEmpresaDeLaKey`, con el actor ya autenticado.
+ */
+export async function procesarCargaApi(
+  body: { ordenes: unknown[]; name?: string; download_type: DownloadType },
+  actor: Actor,
+  deps: CargaApiDeps,
+  version: VersionCargaApi,
+) {
+  // 4. R7-R11: carga vía API (reusa BulkOrdenService). El actor es el usuario dedicado.
+  // Feature 141 (R20/R21): `name` opcional del lote; un nombre repetido del mismo usuario
+  // aborta la carga con 409 (R24) — la transacción del repositorio ya revirtió.
+  const service = deps.bulkService ?? buildBulkService();
+  const cargaResult = await ejecutarCargaApi(service, body, actor, version);
+  if (cargaResult.status === "forbidden") throw new ForbiddenError(); // R15 (defensa en profundidad)
+
+  // Feature 136 (R1/R10/R12-R17): tras la carga OK (ya commiteada), genera el PDF
+  // consolidado de etiquetas del lote y devuelve su URL firmada. Best-effort: la
+  // carga NUNCA se revierte por un fallo aqui; el fallo se hace VISIBLE en la
+  // respuesta con `{ error }` (R12). Sin ordenes creadas -> `null`, sin tocar
+  // Storage (R13). Solo se alcanza con auth OK y carga OK (R16).
+  //
+  // INVARIANTE (BLOQ-1 del review): la carga por API NUNCA puede romperse por la
+  // generacion del PDF. El try/catch de abajo solo cubre EXCEPCIONES JS; un OOM o
+  // un timeout de plataforma no lo son, matan el proceso y devuelven 500/504 con
+  // los `num_guia` ya commiteados PERDIDOS para el integrador (que al reintentar
+  // los ve como `duplicada`). Por eso la proteccion real es el TOPE de abajo, que
+  // decide ANTES de empezar: el trabajo que no se arranca no puede desbordar.
+  // `summary.ordenes.length` es cota superior de las etiquetas del lote (las
+  // imprimibles son un subconjunto), asi que basta con mirarlo aqui, sin tocar la
+  // DB ni Storage.
+  const summary = cargaResult.summary;
+  const downloadType = body.download_type; // R43: `consolidate` por defecto
+  const topeEtiquetas = etiquetasConfig.MAX_ETIQUETAS_POR_PDF;
+  let etiquetasPdf: EtiquetasPdf = null;
+  // Feature 141 (R48/R54): URL del PDF individual por orden; vacío en modo `consolidate`.
+  let urlPorOrden = new Map<string, string>();
+  if (summary.ordenes.length > topeEtiquetas) {
+    // Degradacion explicita (R12/R52): 200 con el summary intacto y el motivo visible, en
+    // AMBOS modos y sin tocar Storage.
+    etiquetasPdf = { error: msgLoteExcedeTope(topeEtiquetas) };
+  } else if (summary.ordenes.length > 0) {
+    try {
+      // Feature 141 (R47/R48): el servicio de descarga genera según el modo y PERSISTE la
+      // URL donde corresponde (`carga.download_url` o `orden.download_url`). El borde no
+      // habla con el repositorio (regla de capas).
+      const descargaSvc = deps.descargaService ?? buildDescargaService();
+      const out = await descargaSvc.generarYPersistir({
+        modo: downloadType,
+        cargaId: summary.cargaId,
+        ordenIds: summary.ordenes.map((o) => o.id),
+        actor,
+      });
+      urlPorOrden = out.porOrden;
+      // R53: en `consolidate` el bloque `etiquetasPdf` conserva la forma de la 136
+      // (`null` si no había etiqueta imprimible, R14/R49). En `individual` vale `null`
+      // salvo fallo global: cada URL viaja en su orden (R54).
+      etiquetasPdf = out.consolidado
+        ? { url: out.consolidado.url, expiraEnSegundos: out.consolidado.expiraEnSegundos }
+        : null;
+    } catch (err) {
+      // Best-effort (R12/R51): la carga ya esta commiteada; NO se revierte, y los
+      // `download_url` afectados quedan NULL. Se registra el TIPO del error (nunca su
+      // mensaje crudo: puede venir del render y traer datos de la orden) y se expone al
+      // cliente un mensaje generico.
+      console.error("etiquetas-pdf-lote: fallo best-effort en carga por API", {
+        error: describirErrorSeguro(err),
+        ordenes: summary.ordenes.length,
+        modo: downloadType,
+      });
+      etiquetasPdf = {
+        error:
+          err instanceof ErrorEtiquetaNoCabe
+            ? msgEtiquetaNoCabe(err)
+            : MSG_ETIQUETAS_FALLO,
+      };
+      urlPorOrden = new Map();
+    }
+  }
+
+  // Feature 155/R24/R25/R26 — manifiesto del lote de la rama (b). Va DESPUÉS de la carga
+  // (ya commiteada) y absorbe su propio fallo: un manifiesto que no se arma no revierte ni
+  // altera el estado, la guía o el historial de ninguna orden (R25). No se emite cuando el
+  // lote nació por la rama (a) —no hubo movimiento físico— ni cuando no se creó nada (R26).
+  //
+  // La selección va por `ordenIds`: este canal SÍ tiene los ids en la mano, y es la
+  // selección más precisa. El service acota por sí mismo lo que una API key puede ver
+  // (`esVisiblePara`: solo su propia tienda).
+  //
+  // FULFILLMENT (2026-08-25): los ids ya no son «todas las creadas» sino los que el service
+  // seleccionó (`manifiestoOrdenIds`). En un lote mixto las órdenes que nacieron en nuestra
+  // bodega no documentan ningún movimiento físico y quedan fuera del papel que se firma.
+  let manifiesto: ManifiestoBloque = null;
+  if (cargaResult.manifiestoOrdenIds.length > 0) {
+    try {
+      const manifiestoSvc = deps.manifiestoService ?? buildManifiestoService();
+      const out = await manifiestoSvc.armar(
+        { flujo: "recoleccion_tienda", ordenIds: cargaResult.manifiestoOrdenIds },
+        actor,
+      );
+      // `forbidden` es un resultado de dominio, no una excepción: se degrada a `{ error }`
+      // igual que un fallo, sin filtrar por qué.
+      manifiesto =
+        out.status === "ok"
+          ? { filas: out.filas, omitidas: out.omitidas }
+          : { error: MSG_MANIFIESTO_FALLO };
+    } catch (err) {
+      // Best-effort (R25). Se registra el TIPO del error, nunca su mensaje crudo: la
+      // consulta del manifiesto toca datos de la orden y podrían acabar en los logs.
+      console.error("manifiesto-lote: fallo best-effort en carga por API", {
+        error: describirErrorSeguro(err),
+        ordenes: cargaResult.manifiestoOrdenIds.length,
+      });
+      manifiesto = { error: MSG_MANIFIESTO_FALLO };
+    }
+  }
+
+  // R17 + 155/R23 + feature 141 (R39/R54/R55): preserva TODOS los campos del summary
+  // (`total`/`creadas`/`duplicadas`/`conError`/`filas`/`ordenes` con su `costoEnvio`, mas el
+  // `cargaId` del lote) y añade `etiquetasPdf`, `manifiesto`, el modo de descarga aplicado y
+  // la URL del PDF individual de cada orden.
+  return {
+    ...summary,
+    ordenes: summary.ordenes.map((o) => ({ ...o, downloadUrl: urlPorOrden.get(o.id) ?? null })),
+    downloadType,
+    etiquetasPdf,
+    manifiesto,
+  };
+}

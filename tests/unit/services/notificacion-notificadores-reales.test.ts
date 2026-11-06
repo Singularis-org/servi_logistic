@@ -479,8 +479,10 @@ describe("el camino real esta CABLEADO en el composition root, no en el default"
     expect(uso).toContain("notificarMensajeroBloqueadoReal");
   });
 
-  it("app/api/ordenes/api-key/carga/route.ts inyecta el notificador real", () => {
-    expect(leer("app", "api", "ordenes", "api-key", "carga", "route.ts")).toContain(
+  // SLT-45 (review m1): el composition root de la carga por API key se movio, literal, de
+  // `app/api/ordenes/api-key/carga/route.ts` a `lib/api/api-carga.ts`.
+  it("lib/api/api-carga.ts (carga por API key) inyecta el notificador real", () => {
+    expect(leer("lib", "api", "api-carga.ts")).toContain(
       "notificarCargaMasivaTerminadaReal",
     );
   });
