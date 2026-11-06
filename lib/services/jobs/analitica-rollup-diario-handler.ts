@@ -33,6 +33,7 @@ import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEm
 import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 import { sumarDiasCalendario } from "@/lib/utils/calendario-zona";
 import {
+  corridaOriginalDeLaClave,
   instanteDeLaCorrida,
   leerClaveConZona,
   proximaCorridaPorZona,
@@ -66,10 +67,12 @@ export function proximaCorridaRollup(now: Date, zonas: readonly string[]): { run
  * `analitica-rollup-diario-encolado.ts`.
  */
 export const recurrenciaAnaliticaRollupDiario: RecurrenciaSpec = {
-  siguiente(now: Date, zonas: readonly string[]) {
-    const { runAfter, zona } = proximaCorridaRollup(now, zonas);
+  siguiente(desde: Date, zonas: readonly string[]) {
+    const { runAfter, zona } = proximaCorridaRollup(desde, zonas);
     return { runAfter, dedupeKey: dedupeKeyRollup(fechaObjetivo(runAfter, zona), zona) };
   },
+  // La clave lleva la fecha OBJETIVO: la corrida es el dia siguiente a las 00:30 de su zona.
+  corridaOriginal: (job) => corridaOriginalDeLaClave(job, DEDUPE_PREFIX, HORA_ROLLUP, 1),
 };
 
 /** Sumidero del resumen de la corrida, inyectable para test. NUNCA registra PII (R37). */

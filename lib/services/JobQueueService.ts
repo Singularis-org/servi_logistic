@@ -9,6 +9,7 @@ import type { JobsConfig } from "@/lib/config/jobs";
 import type { JobTipo } from "@prisma/client";
 import { JobDescartado } from "@/lib/services/jobs/job-descartado";
 import { JobFallidoPermanente } from "@/lib/services/jobs/job-fallido-permanente";
+import { AVISO_SIN_ZONAS } from "@/lib/services/jobs/serie-diaria-por-zona";
 
 // Log de aviso inyectable (patron `LiberacionLogger`): por defecto console.warn. NUNCA
 // registra PII ni secretos (R18/R19): solo mensajes agregados sin datos de dominio.
@@ -21,8 +22,17 @@ export interface JobsLogger {
    * tenga que ver con esta ficha. Se invoca con `this.logger.info?.(...)`.
    */
   info?(message: string): void;
+  /**
+   * SLT-42 (decision del humano tras el bloque 6): error para soporte, p. ej. ninguna zona con
+   * empresas. OPCIONAL por la misma razon que `info`.
+   */
+  error?(message: string): void;
 }
-const defaultLogger: JobsLogger = { warn: (m) => console.warn(m), info: (m) => console.info(m) };
+const defaultLogger: JobsLogger = {
+  warn: (m) => console.warn(m),
+  info: (m) => console.info(m),
+  error: (m) => console.error(m),
+};
 
 /** SLT-42 (design §6.1): las zonas con empresas de UNA corrida del drenador, leidas como mucho una vez. */
 type ZonasDeLaCorrida = () => Promise<readonly string[]>;
@@ -86,8 +96,12 @@ export class JobQueueService implements IJobQueueService {
     private readonly zonasConEmpresas: () => Promise<readonly string[]> = async () => [],
   ) {}
 
+  /** SLT-42: el error de «sin zonas» sale una sola vez por corrida de `drenar`. */
+  private avisoSinZonasDado = false;
+
   async drenar(limit: number): Promise<DrenarResult> {
     const now = this.now();
+    this.avisoSinZonasDado = false;
     // SLT-42: las zonas se leen como mucho UNA vez por corrida, y solo si algo se re-agenda.
     let leidas: Promise<readonly string[]> | undefined;
     const zonas: ZonasDeLaCorrida = () => (leidas ??= this.zonasConEmpresas());
@@ -228,7 +242,15 @@ export class JobQueueService implements IJobQueueService {
     if (spec === undefined) return;
     // SLT-42 (design §6.1): la cola lee las zonas antes de llamar a `siguiente`.
     const lista = await zonas();
-    const { runAfter, dedupeKey } = spec.siguiente(now, lista);
+    // Decision del humano tras el bloque 6: una serie diaria por zona cuenta desde su corrida
+    // ORIGINAL (una retrasada por reintentos no salta la zona siguiente) y, sin zonas, se agenda
+    // en UTC con un error en el log, una vez por corrida del drenador.
+    const desde = spec.corridaOriginal?.(job) ?? now;
+    if (spec.corridaOriginal !== undefined && lista.length === 0 && !this.avisoSinZonasDado) {
+      this.avisoSinZonasDado = true;
+      this.logger.error?.(AVISO_SIN_ZONAS);
+    }
+    const { runAfter, dedupeKey } = spec.siguiente(desde, lista);
     await this.repo.enqueue(job.tipo, {}, { runAfter, dedupeKey });
   }
 }

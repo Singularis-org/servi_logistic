@@ -14,9 +14,20 @@ export type JobHandler = (job: JobDTO) => Promise<void>;
  * SLT-42 (design §6.1; R25, R26): `zonas` son las zonas horarias de los paises con empresas, que
  * la cola lee antes de llamar. Los diarios agendan la zona que antes llega a su hora; las
  * recurrencias que no son diarias la ignoran.
+ *
+ * Decision del humano tras el bloque 6: las series diarias por zona cuentan desde el instante
+ * ORIGINAL de la corrida (`corridaOriginal`), no desde el drenado. Asi una corrida retrasada por
+ * reintentos no salta la zona siguiente. Las demas cuentan desde el drenado, como siempre.
  */
 export interface RecurrenciaSpec {
-  siguiente(now: Date, zonas: readonly string[]): { runAfter: Date; dedupeKey: string };
+  /** `desde`: el instante original de la corrida si la serie tiene `corridaOriginal`; si no, el del drenado. */
+  siguiente(desde: Date, zonas: readonly string[]): { runAfter: Date; dedupeKey: string };
+  /**
+   * Solo las series diarias por zona: el instante con que se agendo esta corrida. No es
+   * `job.runAfter`, que un reintento con backoff pisa. Si existe, la cola avisa de un error cuando
+   * no hay zonas con empresas.
+   */
+  corridaOriginal?(job: JobDTO): Date;
 }
 
 /**

@@ -18,6 +18,7 @@ import { fechaCalendario, inicioDelDiaComoFecha } from "@/lib/utils/calendario-z
 import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 import {
   claveConZona,
+  corridaOriginalDeLaClave,
   instanteDeLaCorrida,
   leerClaveConZona,
   proximaCorridaPorZona,
@@ -50,10 +51,12 @@ export function proximaCorridaLiberar(now: Date, zonas: readonly string[]): { ru
 
 /** R23/R24 de la 90 + R25 de SLT-42: la proxima ocurrencia, con la zona en la clave. */
 export const recurrenciaLiberarReprogramadas: RecurrenciaSpec = {
-  siguiente(now: Date, zonas: readonly string[]) {
-    const { runAfter, zona } = proximaCorridaLiberar(now, zonas);
+  siguiente(desde: Date, zonas: readonly string[]) {
+    const { runAfter, zona } = proximaCorridaLiberar(desde, zonas);
     return { runAfter, dedupeKey: dedupeKeyLiberar(runAfter, zona) };
   },
+  // La clave lleva la fecha de la corrida: 00:00 de esa fecha en su zona.
+  corridaOriginal: (job) => corridaOriginalDeLaClave(job, DEDUPE_PREFIX, HORA_LIBERAR),
 };
 
 /**

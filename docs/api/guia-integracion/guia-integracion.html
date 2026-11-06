@@ -420,7 +420,7 @@
     <li><strong>Fechas de calendario:</strong> <code>YYYY-MM-DD</code>, medidas en la <strong>zona horaria del país de la empresa (hoy Costa Rica, UTC-6)</strong>. Deben ser fechas reales: <code>2026-02-31</code> es <code>422</code>.</li>
     <li><strong>Timestamps:</strong> ISO 8601 en UTC (<code>2026-09-22T14:03:11.000Z</code>).</li>
   </ul>
-  <div class="warn">Mezclar los dos sistemas es el error más común: si convierte un timestamp UTC a fecha de calendario sin pasar a UTC-6, las órdenes de la noche caen en el día siguiente y sus filtros <code>desde</code>/<code>hasta</code> no cuadran con lo que ve en la aplicación.</div>
+  <div class="warn">Mezclar los dos sistemas es el error más común: si convierte un timestamp UTC a fecha de calendario sin pasar a la zona horaria del país de la empresa (hoy Costa Rica, UTC-6), las órdenes de la noche caen en el día siguiente y sus filtros <code>desde</code>/<code>hasta</code> no cuadran con lo que ve en la aplicación.</div>
   <h2>4.6 Paginación</h2>
   <p>Solo el listado (§5.3) pagina, con <code>limit</code> (1..100, default 50) y <code>offset</code> (≥0, default 0). La respuesta trae:</p>
 <pre>"pagination": { "limit": 50, "offset": 0, "total": 1 }</pre>
@@ -978,7 +978,7 @@
       <tr><td>☐</td><td>Sabe que el estado final de una gestión en calle llega <strong>al aprobar el cierre</strong>; usa <code>orden.gestion_registrada</code> si necesita el instante</td><td>§6.5, §6.7</td></tr>
       <tr><td>☐</td><td>No rellena huecos de analítica con ceros, descarta los puntos <code>parcial</code> al sumar, y distingue <code>null</code> de <code>0</code></td><td>§5.8</td></tr>
       <tr><td>☐</td><td>Valida los ids de métricas antes de llamar (el lote es todo o nada)</td><td>§5.8</td></tr>
-      <tr><td>☐</td><td>Maneja fechas de calendario en <strong>UTC-6</strong> y timestamps en <strong>UTC</strong></td><td>§4.5</td></tr>
+      <tr><td>☐</td><td>Maneja fechas de calendario en la <strong>zona horaria del país de la empresa (hoy Costa Rica, UTC-6)</strong> y timestamps en <strong>UTC</strong></td><td>§4.5</td></tr>
       <tr><td>☐</td><td>Si valida el esquema en estricto, su modelo está regenerado contra el contrato vigente</td><td>Cambios</td></tr>
     </tbody>
   </table>

@@ -9,6 +9,7 @@ import { seedJobLiberarReprogramadas } from "./seed-jobs-liberar-reprogramadas";
 import { seedJobAnaliticaRollupDiario } from "./seed-jobs-analitica-rollup-diario";
 import { seedJobWhatsappEnvioMantenimiento } from "./seed-jobs-whatsapp-envio-mantenimiento";
 import { sembrarPlanCambiosVencidos } from "@/lib/planes/jobs-cambio-plan";
+import { AVISO_SIN_ZONAS } from "@/lib/services/jobs/serie-diaria-por-zona";
 
 // Ficha 313 — REGISTRO UNICO DE LAS SIEMBRAS DE LOS JOBS RECURRENTES, y lo que las corre.
 //
@@ -225,6 +226,8 @@ export async function sembrarJobsRecurrentesEnBase(
   try {
     // SLT-42 (design §6.1; R25): las zonas con empresas, como las lee la cola al re-agendar.
     const zonas = await new PaisRepository(prisma).zonasConEmpresas();
+    // Decision del humano tras el bloque 6: sin zonas, los diarios se siembran en UTC con un error.
+    if (zonas.length === 0) console.error(AVISO_SIN_ZONAS);
     return await comoPlataforma("SL-17", "siembra de jobs recurrentes en el build", () =>
       sembrarJobsRecurrentes(new JobRepository(prisma), now, zonas),
     );

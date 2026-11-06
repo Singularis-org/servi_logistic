@@ -7,7 +7,13 @@
 //   empresas cuya zona llega a la hora objetivo en ese mismo instante (R25).
 // - Una clave vieja, sin zona (`<prefijo>:<fecha>`), es la de antes del despliegue: corre para todas
 //   las empresas, cada una con su zona (R26).
-import { fechaCalendario, instanteDeParedEnUtc, proximaHoraLocal } from "@/lib/utils/calendario-zona";
+import type { JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
+import {
+  fechaCalendario,
+  instanteDeParedEnUtc,
+  proximaHoraLocal,
+  sumarDiasCalendario,
+} from "@/lib/utils/calendario-zona";
 
 /**
  * Zona de la corrida cuando ningun pais con empresas tiene zona. La serie no puede morir (nadie la
@@ -15,6 +21,14 @@ import { fechaCalendario, instanteDeParedEnUtc, proximaHoraLocal } from "@/lib/u
  * ninguna empresa con zona y una empresa sin zona falla sola (R28).
  */
 export const ZONA_SIN_EMPRESAS = "UTC";
+
+/**
+ * Error para soporte cuando ningun pais con empresas tiene zona (decision del humano, tras el
+ * bloque 6): la serie sigue en `ZONA_SIN_EMPRESAS`, pero alguien tiene que completar el catalogo.
+ * Sin datos de clientes: ni empresas ni paises.
+ */
+export const AVISO_SIN_ZONAS =
+  "[jobs diarios] ningun pais con empresas tiene zona horaria: las series diarias se agendan en UTC. Completar la zona horaria en el catalogo de paises.";
 
 /** Hora de pared objetivo de una serie diaria. */
 export interface HoraObjetivo {
@@ -61,6 +75,23 @@ export function leerClaveConZona(
   const [zona, fecha] = resto;
   if (zona === "" || fecha === "") return null;
   return { zona, fecha };
+}
+
+/**
+ * El instante ORIGINAL de la corrida de `job`, leido de su clave con zona (`<prefijo>:<zona>:<fecha>`).
+ * No sale de `job.runAfter`: un reintento con backoff lo pisa. `desplazamientoDias` traduce la
+ * fecha de la clave al dia de la corrida (rollup: la clave lleva el objetivo D-1, la corrida es D).
+ * Clave vieja, sin zona: `job.runAfter`, lo mas cercano que queda.
+ */
+export function corridaOriginalDeLaClave(
+  job: Pick<JobDTO, "dedupeKey" | "runAfter">,
+  prefijo: string,
+  objetivo: HoraObjetivo,
+  desplazamientoDias = 0,
+): Date {
+  const corrida = leerClaveConZona(job.dedupeKey, prefijo);
+  if (corrida === null) return job.runAfter;
+  return instanteDeLaCorrida(sumarDiasCalendario(corrida.fecha, desplazamientoDias), corrida.zona, objetivo);
 }
 
 /** Instante de la corrida del dia `fecha` (local de `zona`) a la hora objetivo. */

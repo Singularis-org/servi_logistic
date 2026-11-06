@@ -18,7 +18,7 @@ import {
   crearAnaliticaRollupDiarioHandler,
   recurrenciaAnaliticaRollupDiario,
 } from "@/lib/services/jobs/analitica-rollup-diario-handler";
-import { leerClaveConZona, ZONA_SIN_EMPRESAS } from "@/lib/services/jobs/serie-diaria-por-zona";
+import { AVISO_SIN_ZONAS, leerClaveConZona, ZONA_SIN_EMPRESAS } from "@/lib/services/jobs/serie-diaria-por-zona";
 import { recurrenciaWhatsappEnvioMantenimiento } from "@/lib/services/jobs/whatsapp-envio-mantenimiento-handler";
 import { recurrenciaPlanCambiosVencidos } from "@/lib/planes/jobs-cambio-plan";
 import { conSuEmpresa } from "@/app/api/cron/procesar-jobs/route";
@@ -411,7 +411,10 @@ describe("T6.1 — la cola lee las zonas con empresas antes de llamar a `siguien
   });
 
   it("con las zonas reales en la cola, el diario se encola con la zona que antes llega", async () => {
-    const { repo, encolados } = repoCon([job("liberar_reprogramadas", null)]);
+    // Sin clave con zona, la corrida original es `runAfter`.
+    const { repo, encolados } = repoCon([
+      { ...job("liberar_reprogramadas", null), runAfter: new Date("2026-07-19T18:00:00.000Z") },
+    ]);
     const s = new JobQueueService(
       repo,
       new Map<JobTipo, JobHandler>([["liberar_reprogramadas", async () => undefined]]),
@@ -431,6 +434,143 @@ describe("T6.1 — la cola lee las zonas con empresas antes de llamar a `siguien
         },
       },
     ]);
+  });
+
+  // Decision del humano tras el bloque 6 (punto 3): `siguiente` cuenta desde la corrida ORIGINAL.
+  it("corrida retrasada por reintentos: cuenta desde su instante original y no salta la zona siguiente", async () => {
+    // Bogota 00:00 (05:00 UTC) reintentada hasta las 06:10 UTC: `runAfter` ya es el del backoff.
+    // Desde el drenado, la siguiente seria Bogota de manana y CR se saltaria su dia.
+    const retrasado: JobDTO = {
+      ...job("liberar_reprogramadas", "liberar_reprogramadas:America/Bogota:2026-07-20"),
+      intentos: 3,
+      runAfter: new Date("2026-07-20T06:05:00.000Z"),
+    };
+    const { repo, encolados } = repoCon([retrasado]);
+    const s = new JobQueueService(
+      repo,
+      new Map<JobTipo, JobHandler>([["liberar_reprogramadas", async () => undefined]]),
+      new Map<JobTipo, RecurrenciaSpec>([["liberar_reprogramadas", recurrenciaLiberarReprogramadas]]),
+      config,
+      () => new Date("2026-07-20T06:10:00.000Z"),
+      { warn: () => undefined },
+      async () => [CR, BOGOTA],
+    );
+    await s.drenar(10);
+    expect(encolados).toEqual([
+      {
+        tipo: "liberar_reprogramadas",
+        opts: {
+          runAfter: new Date("2026-07-20T06:00:00.000Z"),
+          dedupeKey: "liberar_reprogramadas:America/Costa_Rica:2026-07-20",
+        },
+      },
+    ]);
+  });
+
+  it("rollup retrasado: la corrida original sale de la clave (objetivo D-1 → corrida D a las 00:30)", () => {
+    const retrasado: JobDTO = {
+      ...job("analitica_rollup_diario", "analitica_rollup_diario:America/Bogota:2026-07-19"),
+      runAfter: new Date("2026-07-20T06:35:00.000Z"),
+    };
+    const desde = recurrenciaAnaliticaRollupDiario.corridaOriginal?.(retrasado);
+    expect(desde?.toISOString()).toBe("2026-07-20T05:30:00.000Z");
+    expect(recurrenciaAnaliticaRollupDiario.siguiente(desde as Date, [CR, BOGOTA])).toEqual({
+      runAfter: new Date("2026-07-20T06:30:00.000Z"),
+      dedupeKey: "analitica_rollup_diario:America/Costa_Rica:2026-07-19",
+    });
+  });
+
+  it("clave vieja, sin zona: la corrida original es `runAfter`; las series que no son por zona cuentan desde el drenado", async () => {
+    const viejo = { ...job("liberar_reprogramadas", "liberar_reprogramadas:2026-07-20"), runAfter: new Date("2026-07-20T06:00:00.000Z") };
+    expect(recurrenciaLiberarReprogramadas.corridaOriginal?.(viejo)).toEqual(viejo.runAfter);
+    expect(recurrenciaWhatsappEnvioMantenimiento.corridaOriginal).toBeUndefined();
+    expect(recurrenciaPlanCambiosVencidos.corridaOriginal).toBeUndefined();
+
+    const recibidos: Date[] = [];
+    const espia: RecurrenciaSpec = {
+      siguiente(desde) {
+        recibidos.push(desde);
+        return { runAfter: desde, dedupeKey: "x" };
+      },
+    };
+    const { repo } = repoCon([{ ...job("geocodificacion", null), runAfter: new Date("2026-07-19T00:00:00.000Z") }]);
+    const ahora = new Date("2026-07-19T18:00:00.000Z");
+    const s = new JobQueueService(
+      repo,
+      new Map<JobTipo, JobHandler>([["geocodificacion", async () => undefined]]),
+      new Map<JobTipo, RecurrenciaSpec>([["geocodificacion", espia]]),
+      config,
+      () => ahora,
+      { warn: () => undefined },
+      async () => [CR],
+    );
+    await s.drenar(10);
+    expect(recibidos).toEqual([ahora]);
+  });
+
+  // Decision del humano tras el bloque 6 (punto 2): sin zonas, UTC + un error en el log.
+  it("sin zonas con empresas: la serie diaria se agenda en UTC y deja UN error en el log por corrida, sin datos de clientes", async () => {
+    const { repo, encolados } = repoCon([
+      job("liberar_reprogramadas", null),
+      { ...job("analitica_rollup_diario", null), id: "j2" },
+      { ...job("whatsapp_envio_mantenimiento", null), id: "j3" },
+    ]);
+    const errores: string[] = [];
+    const ok: JobHandler = async () => undefined;
+    const s = new JobQueueService(
+      repo,
+      new Map<JobTipo, JobHandler>([
+        ["liberar_reprogramadas", ok],
+        ["analitica_rollup_diario", ok],
+        ["whatsapp_envio_mantenimiento", ok],
+      ]),
+      new Map<JobTipo, RecurrenciaSpec>([
+        ["liberar_reprogramadas", recurrenciaLiberarReprogramadas],
+        ["analitica_rollup_diario", recurrenciaAnaliticaRollupDiario],
+        ["whatsapp_envio_mantenimiento", recurrenciaWhatsappEnvioMantenimiento],
+      ]),
+      config,
+      () => new Date("2026-07-19T18:00:00.000Z"),
+      { warn: () => undefined, error: (m) => errores.push(m) },
+      async () => [],
+    );
+    await s.drenar(10);
+    expect(errores).toEqual([AVISO_SIN_ZONAS]);
+    // Desde la corrida original (`runAfter` 2026-07-20T06:00Z, sin clave): las 00:00 UTC siguientes.
+    expect(encolados[0]?.opts?.dedupeKey).toBe(`liberar_reprogramadas:${ZONA_SIN_EMPRESAS}:2026-07-21`);
+
+    // Otra corrida del mismo servicio vuelve a avisar.
+    await s.drenar(10);
+    expect(errores).toHaveLength(2);
+  });
+
+  it("con zonas, la cola no deja error; una serie que no es por zona no avisa aunque no haya zonas", async () => {
+    const errores: string[] = [];
+    const { repo } = repoCon([job("whatsapp_envio_mantenimiento", null)]);
+    const s = new JobQueueService(
+      repo,
+      new Map<JobTipo, JobHandler>([["whatsapp_envio_mantenimiento", async () => undefined]]),
+      new Map<JobTipo, RecurrenciaSpec>([["whatsapp_envio_mantenimiento", recurrenciaWhatsappEnvioMantenimiento]]),
+      config,
+      () => new Date("2026-07-19T18:00:00.000Z"),
+      { warn: () => undefined, error: (m) => errores.push(m) },
+      async () => [],
+    );
+    await s.drenar(10);
+    expect(errores).toEqual([]);
+
+    const otro = repoCon([job("liberar_reprogramadas", null)]);
+    const conZonas = new JobQueueService(
+      otro.repo,
+      new Map<JobTipo, JobHandler>([["liberar_reprogramadas", async () => undefined]]),
+      new Map<JobTipo, RecurrenciaSpec>([["liberar_reprogramadas", recurrenciaLiberarReprogramadas]]),
+      config,
+      () => new Date("2026-07-19T18:00:00.000Z"),
+      { warn: () => undefined, error: (m) => errores.push(m) },
+      async () => [CR],
+    );
+    await conZonas.drenar(10);
+    expect(errores).toEqual([]);
   });
 
   it("las recurrencias que no son diarias por zona ignoran `zonas`", () => {
