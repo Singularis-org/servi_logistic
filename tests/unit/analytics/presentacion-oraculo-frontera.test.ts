@@ -12,6 +12,7 @@ import type { IAnaliticaOperativaService } from "@/lib/interfaces/services/IAnal
 import type { ErrorLogger } from "@/lib/errors/logger";
 import { AHORA, MAESTRO, TIENDA, consultaDe, cubo, rollupFalso, servicioCon } from "./_fake-operativa";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Feature 133 (T6.6) — R27: LA FRONTERA DEL ORACULO. Quien decide es el BORDE, no la UI.
 //
 // ┌──────────────────────────────────────────────────────────────────────────────────────┐
@@ -86,7 +87,7 @@ describe("Feature 133 (R27) — ocultar el selector no cambia la respuesta del b
   it("con el selector oculto, el `mensajero_id` inyectado por la URL sigue siendo cosa del borde", async () => {
     const r = await consultarAnaliticaOperativa(
       { metricaId: "entregas", raw: RAW_DESDE_URL },
-      {
+      { reglasPais: reglasPaisFijas(),
         service: SERVICIO_MUDO,
         logger: loggerMudo(),
         now: () => AHORA,
@@ -101,11 +102,11 @@ describe("Feature 133 (R27) — ocultar el selector no cambia la respuesta del b
   it("y la respuesta es la MISMA por las dos vias: URL o argumento de la Server Action", async () => {
     const porUrl = await consultarAnaliticaOperativa(
       { metricaId: "entregas", raw: RAW_DESDE_URL },
-      { service: SERVICIO_MUDO, logger: loggerMudo(), now: () => AHORA, getActor: async () => TIENDA },
+      { reglasPais: reglasPaisFijas(), service: SERVICIO_MUDO, logger: loggerMudo(), now: () => AHORA, getActor: async () => TIENDA },
     );
     const porArgumento = await consultarAnaliticaOperativa(
       { metricaId: "entregas", raw: RAW_A_MANO },
-      { service: SERVICIO_MUDO, logger: loggerMudo(), now: () => AHORA, getActor: async () => TIENDA },
+      { reglasPais: reglasPaisFijas(), service: SERVICIO_MUDO, logger: loggerMudo(), now: () => AHORA, getActor: async () => TIENDA },
     );
     // Quitar el control quita la comodidad, no el canal: las dos puertas dan lo mismo.
     expect(porUrl).toEqual(porArgumento);
@@ -133,7 +134,7 @@ describe("Feature 133 (R27) — ocultar el selector no cambia la respuesta del b
     };
     const r = await consultarAnaliticaOperativa(
       { metricaId: "entregas", raw: RAW_DESDE_URL },
-      { service, logger: loggerMudo(), now: () => AHORA, getActor: async () => MAESTRO },
+      { reglasPais: reglasPaisFijas(), service, logger: loggerMudo(), now: () => AHORA, getActor: async () => MAESTRO },
     );
     expect(r.status).toBe("ok");
     expect(llego).toBe(true);

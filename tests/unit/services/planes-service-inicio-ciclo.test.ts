@@ -7,8 +7,10 @@ import type { IPlanesRepository } from "@/lib/interfaces/repositories/IPlanesRep
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { apiKeysYaPasadas, ordenesYaPasadas, rolYaPasado } from "@/lib/planes/mensajes";
 import { PlanesService } from "@/lib/services/PlanesService";
+import { PaisSinZonaHoraria } from "@/lib/db/errores-pais";
 import type { PlanDTO, TopeExcedido } from "@/lib/types/planes";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // SLT-58 (design §11.4; R29, R30, R31, R36, R37, R42) — la fecha de inicio del ciclo en la primera
 // asignación y su vista previa, con un repositorio doble y el reloj fijo. Lo que se mide aquí es el
 // borde: el rango con el reloj del servicio, «solo en la primera asignación» y que ningún rechazo
@@ -79,7 +81,7 @@ function doble() {
 let repo: ReturnType<typeof doble>;
 
 function servicioA(ahora: Date): PlanesService {
-  return new PlanesService(repo, () => ahora);
+  return new PlanesService(repo, () => ahora, async () => ZONA_DE_CR);
 }
 
 function llamadasAlRepositorio(): number {
@@ -258,6 +260,35 @@ describe("SLT-58 — R37: vista previa de la primera asignación", () => {
       fecha: "2026-10-14",
       ancla: new Date("2026-10-14T06:00:00.000Z"),
     });
+    expect(repo.asignar).not.toHaveBeenCalled();
+  });
+
+  // SLT-42 (T5.5; decision del humano tras T5.4): la fecha que se MUESTRA es la del pais de la
+  // empresa; el ciclo de cobro sigue en UTC y no se toca.
+  it("SLT-42 R22: el siguiente ciclo se muestra en la zona del pais de la empresa nombrada", async () => {
+    const zonaDe = vi.fn(async (_org: string) => "Asia/Tokyo");
+    repo.vistaPreviaAsignacion.mockResolvedValueOnce({ avisos: AVISOS, siguienteCiclo: new Date("2026-11-14T18:00:00.000Z") });
+    const r = await new PlanesService(repo, () => AHORA, zonaDe).previsualizarAsignacion(SUPERADMIN, {
+      organizacionId: EMPRESA,
+      planId: PLAN,
+      inicioCiclo: "2026-10-14",
+    });
+    // 18:00Z del 14 son las 03:00 del 15 en Tokio (y las 12:00 del 14 en Costa Rica).
+    expect(r).toEqual({ estado: "ok", avisos: AVISOS, siguienteCiclo: "2026-11-15" });
+    expect(zonaDe).toHaveBeenCalledWith(EMPRESA);
+  });
+
+  it("SLT-42 R28: sin zona en el pais de la empresa, la vista previa falla con PaisSinZonaHoraria", async () => {
+    const sinZona = async () => {
+      throw new PaisSinZonaHoraria("XX");
+    };
+    await expect(
+      new PlanesService(repo, () => AHORA, sinZona).previsualizarAsignacion(SUPERADMIN, {
+        organizacionId: EMPRESA,
+        planId: PLAN,
+        inicioCiclo: "2026-10-14",
+      }),
+    ).rejects.toBeInstanceOf(PaisSinZonaHoraria);
     expect(repo.asignar).not.toHaveBeenCalled();
   });
 

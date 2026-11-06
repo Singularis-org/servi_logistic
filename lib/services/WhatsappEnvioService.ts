@@ -341,7 +341,12 @@ export class WhatsappEnvioService implements IWhatsappEnvioService {
   /** R20/R22: encola la proxima ocurrencia de un envio encendido a hora fija. */
   private async encolar(envio: EnvioDetalle): Promise<void> {
     if (envio.disparo !== "hora_fija" || envio.hora === null) return;
-    await encolarProximaOcurrencia(this.deps.cola, { id: envio.id, diasSemana: envio.diasSemana, hora: envio.hora }, this.now());
+    await encolarProximaOcurrencia(
+      this.deps.cola,
+      { id: envio.id, diasSemana: envio.diasSemana, hora: envio.hora },
+      this.now(),
+      await this.deps.reglasPais.zonaHoraria(), // SLT-42 (R22, R28)
+    );
   }
 
   private async aDetalle(envio: EnvioDetalle): Promise<EnvioDetalleDTO> {

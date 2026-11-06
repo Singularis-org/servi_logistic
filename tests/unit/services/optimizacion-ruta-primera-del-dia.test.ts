@@ -15,7 +15,7 @@ import type { IRoutesClient } from "@/lib/interfaces/external/IRoutesClient";
 import type { ParadaRutaRow } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { RouteOptimizationConfig } from "@/lib/config/route-optimization";
 import { primeraRutaPendiente as primeraRutaPendienteDeLosWriters } from "@/lib/services/jobs/optimizacion-ruta-encolado";
-import { inicioDelDiaCR } from "@/tests/fabricas/reglas-pais";
+import { inicioDelDiaCR, ZONA_DE_CR, reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // SLT-59 revision 4 (D23, D25; design §12.1, §12.5, §12.6) — la primera ruta del dia.
 //   R59  con la primera pendiente se recalcula siempre (ni omitir ni reducir).
@@ -162,7 +162,7 @@ function build(opts: {
     CONFIG,
     () => T0,
     undefined,
-    routes as unknown as IRoutesClient,
+    routes as unknown as IRoutesClient, reglasPaisFijas(),
   );
   const escrituras = () =>
     rutas.upsertOrigen.mock.calls.length +
@@ -176,12 +176,12 @@ function build(opts: {
 
 describe("SLT-59 — glosario: primera ruta pendiente (pura)", () => {
   it("primera pendiente: sin ruta, `calculadaAt` nula o anterior al inicio del dia de CR", () => {
-    expect(primeraRutaPendiente(null, T0)).toBe(true);
-    expect(primeraRutaPendiente({ calculadaAt: null }, T0)).toBe(true);
-    expect(primeraRutaPendiente({ calculadaAt: AYER }, T0)).toBe(true);
+    expect(primeraRutaPendiente(null, T0, ZONA_DE_CR)).toBe(true);
+    expect(primeraRutaPendiente({ calculadaAt: null }, T0, ZONA_DE_CR)).toBe(true);
+    expect(primeraRutaPendiente({ calculadaAt: AYER }, T0, ZONA_DE_CR)).toBe(true);
     // 05:59 de CR del 29 es todavia el 28; 06:00 UTC es la medianoche de CR (timestamp, no `date`).
-    expect(primeraRutaPendiente({ calculadaAt: new Date("2026-10-29T05:59:59.999Z") }, T0)).toBe(true);
-    expect(primeraRutaPendiente({ calculadaAt: new Date("2026-10-29T06:00:00.000Z") }, T0)).toBe(false);
+    expect(primeraRutaPendiente({ calculadaAt: new Date("2026-10-29T05:59:59.999Z") }, T0, ZONA_DE_CR)).toBe(true);
+    expect(primeraRutaPendiente({ calculadaAt: new Date("2026-10-29T06:00:00.000Z") }, T0, ZONA_DE_CR)).toBe(false);
   });
 
   it("m8: el predicado del servicio y el de los writers dan lo mismo en los bordes del dia de CR", () => {
@@ -203,7 +203,7 @@ describe("SLT-59 — glosario: primera ruta pendiente (pura)", () => {
     ];
     for (const ahora of ahoras) {
       for (const calculadaAt of calculadas) {
-        expect(primeraRutaPendiente({ calculadaAt }, ahora)).toBe(
+        expect(primeraRutaPendiente({ calculadaAt }, ahora, ZONA_DE_CR)).toBe(
           primeraRutaPendienteDeLosWriters(calculadaAt, inicioDelDiaCR(ahora)),
         );
       }
@@ -445,7 +445,7 @@ describe("SLT-79 — el boton con la primera pendiente: minimo O 5 min desde la 
       paradasRepo,
       { optimizar: vi.fn() } as unknown as IRouteOptimizationClient,
       { ...CONFIG, RUTA_PRIMERA_DEBOUNCE_MIN: 10 },
-      () => T0,
+      () => T0, undefined, undefined, reglasPaisFijas(),
     );
     const r = await service.ejecutar(MENSAJERO, { motivo: "manual" });
     expect(r).toMatchObject({ razon: "recogida_insuficiente", esperaMs: 9 * MIN });

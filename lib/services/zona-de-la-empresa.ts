@@ -1,3 +1,5 @@
+import { PaisSinZonaHoraria } from "@/lib/db/errores-pais";
+import type { IPaisRepository } from "@/lib/interfaces/repositories/IPaisRepository";
 import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import {
   filtrosConLimites,
@@ -52,4 +54,20 @@ export async function filtrosParaRepo<F extends RangoDeFechasCierres>(
 ): Promise<FiltrosEnRepositorio<F> | undefined> {
   if (filtros === undefined) return undefined;
   return filtrosConLimites(filtros, tieneRangoDeFechas(filtros) ? await zona() : null);
+}
+
+/**
+ * SLT-42 (R22, R28) — la zona horaria del pais de UNA empresa nombrada por id, para quien no corre
+ * en el contexto de esa empresa (el superadmin, en plataforma, que muestra fechas de una empresa).
+ * Empresa inexistente: error; sin zona en su pais, `PaisSinZonaHoraria` (R28).
+ */
+export type ZonaDeOrganizacion = (organizacionId: string) => Promise<string>;
+
+export function zonaDeOrganizacionCon(repo: Pick<IPaisRepository, "deLaEmpresa">): ZonaDeOrganizacion {
+  return async (organizacionId) => {
+    const pais = await repo.deLaEmpresa(organizacionId);
+    if (pais === null) throw new Error(`zonaDeOrganizacion: la empresa ${organizacionId} no existe`);
+    if (pais.zonaHoraria === null) throw new PaisSinZonaHoraria(pais.id);
+    return pais.zonaHoraria;
+  };
 }

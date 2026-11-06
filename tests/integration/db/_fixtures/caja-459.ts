@@ -329,7 +329,7 @@ export function montarServicios459(tx: TxDeTest) {
       new CierreDelDiaRepository(c),
       mensajeroRepo,
       new CajaPremioRankingFeedService(cajaRepo),
-      (fn) => c.$transaction((t) => fn(t as never)),
+      (fn) => c.$transaction((t) => fn(t as never)), reglasPaisFijas(),
     ),
     egresos: new WalletEgresoService(cajaRepo, c, undefined, undefined, reglasPaisFijas()),
     wallet: new WalletService(cajaRepo, c, new AporteCapitalRepository(c), {

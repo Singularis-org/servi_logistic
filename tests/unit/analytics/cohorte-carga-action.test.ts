@@ -4,6 +4,7 @@ import { consultarCohorteCarga } from "@/lib/actions/cohorte-carga";
 import type { ConsultaConteoEntregas } from "@/lib/analytics/entregas-conteo";
 import type { CohorteCargaDTO } from "@/lib/types/cohorte-carga";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Ficha 411 / T5.2 — EL BORDE de la cohorte (R5, R21, R22, R23, R25, R26).
 //
 // ─── EL ORDEN DEL BORDE, QUE ES LO QUE ESTE ARCHIVO EXISTE PARA ATORNILLAR ──────────────
@@ -45,7 +46,7 @@ function deps(actor: unknown) {
   const service = { consultar: vi.fn(async (_c: ConsultaConteoEntregas) => DATOS) };
   const logger = { logError: vi.fn() };
   return {
-    deps: { service, logger, getActor: async () => actor as never, now: () => AHORA },
+    deps: { reglasPais: reglasPaisFijas(), service, logger, getActor: async () => actor as never, now: () => AHORA },
     service,
     logger,
   };

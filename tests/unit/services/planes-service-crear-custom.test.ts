@@ -8,6 +8,7 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { PlanesService } from "@/lib/services/PlanesService";
 import type { PlanDTO, TopeExcedido } from "@/lib/types/planes";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Ajuste planes-custom (D2, D4, D6; 2026-10-31) — crear un custom con empresa es crear Y asignar en una
 // sola operación, y cada asignación elige el tipo de cobro. Aquí, con un repositorio doble, el ORDEN del
 // contrato (quién → zod → reglas → repositorio) y que ningún rechazo llegue a `crearYAsignar`. La
@@ -83,7 +84,7 @@ function llamadasAlRepositorio(): number {
 
 beforeEach(() => {
   repo = doble();
-  servicio = new PlanesService(repo, () => AHORA);
+  servicio = new PlanesService(repo, () => AHORA, async () => ZONA_DE_CR);
 });
 
 describe("D2 — crear un custom con empresa lo asigna en la misma operación", () => {

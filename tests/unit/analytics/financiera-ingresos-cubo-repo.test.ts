@@ -13,6 +13,7 @@ import {
 } from "./_fake-prisma-dinero";
 
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Feature 180 / T2.5 — `IngresosAnaliticaRepository.sumarPorCuboYCategoria`.
 //
 // QUE MIDE ESTE ARCHIVO Y QUE NO, dicho antes de la primera asercion para que nadie lo confunda
@@ -50,7 +51,7 @@ const DESDE = new Date("2026-03-09T06:00:00.000Z");
 const HASTA = new Date("2026-03-12T06:00:00.000Z");
 
 function consultaDe(metricaId: string): ConsultaAnalitica {
-  const r = prepararConsultaAnalitica(RANGO_CRUDO, MAESTRO, metricaId, AHORA);
+  const r = prepararConsultaAnalitica(RANGO_CRUDO, MAESTRO, metricaId, ZONA_DE_CR, AHORA);
   if (r.status !== "ok") throw new Error(`no se pudo preparar la consulta de ${metricaId}`);
   return r.consulta;
 }

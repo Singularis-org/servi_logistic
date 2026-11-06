@@ -22,7 +22,9 @@ import {
   notificadorNoOp,
   type GeocodificacionCaidaNotificador,
 } from "@/lib/notificaciones/notificadores";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendario } from "@/lib/utils/calendario-zona";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 
 /** Logger inyectable, mismo molde que `GeocodeLogger` de la 91. NUNCA recibe PII ni secretos. */
 export interface GeocodeSaludLogger {
@@ -51,6 +53,8 @@ export class GeocodeSaludService implements IGeocodeSaludService {
     private readonly notificar: GeocodificacionCaidaNotificador = notificadorNoOp,
     private readonly logger: GeocodeSaludLogger = defaultLogger,
     private readonly now: () => Date = () => new Date(),
+    /** SLT-42 (R22, R28): la zona del pais de la empresa, de la que sale la jornada del aviso. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
 
   /**
@@ -85,7 +89,10 @@ export class GeocodeSaludService implements IGeocodeSaludService {
       // cubre tambien «falta la credencial», que aparece de forma legitima en un despliegue.
       if (!hayCaida(otros + 1, this.config)) return;
 
-      await this.notificar({ afectados: otros + 1, diaCR: fechaCalendarioCR(ahora) });
+      // SLT-42 (R22, R28): la jornada del aviso es la del calendario del pais de la empresa. Sin zona
+      // falla aqui y lo absorbe el `catch` de abajo (R11: el job no depende del aviso).
+      const zona = await zonaDeLaEmpresa(this.reglasPais, "GeocodeSaludService.registrarFalloConfig");
+      await this.notificar({ afectados: otros + 1, diaCR: fechaCalendario(ahora, zona) });
       // Cifra AGREGADA y sin PII: cuantas direcciones, nunca cuales.
       this.logger.warn(
         `[geocodificacion] caida por configuracion detectada: ${otros + 1} job(s) afectado(s)`,

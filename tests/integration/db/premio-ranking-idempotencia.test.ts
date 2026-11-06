@@ -253,7 +253,7 @@ describeSiHayBase("293/T4.4 — el premio del ranking, contra Postgres", () => {
           await tx.$executeRawUnsafe(`ROLLBACK TO SAVEPOINT ${punto}`);
           throw e;
         }
-      },
+      }, reglasPaisFijas(),
     );
   }
 
@@ -516,7 +516,7 @@ describeSiHayBase("293/T4.4 — el premio del ranking, contra Postgres", () => {
             await tx.$executeRawUnsafe(`ROLLBACK TO SAVEPOINT ${punto}`);
             throw e;
           }
-        },
+        }, reglasPaisFijas(),
       );
 
       let exploto = false;

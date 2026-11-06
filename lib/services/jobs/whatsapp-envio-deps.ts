@@ -11,6 +11,7 @@
 // ahi la lee `whatsappDeLaEmpresa`. Por eso `buildEnviosWhatsappDeps` sigue siendo sincrono y los
 // cinco handlers de envios no cambian.
 import type { PrismaClient } from "@prisma/client";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { WhatsappEnvioRepository } from "@/lib/repositories/WhatsappEnvioRepository";
 import { WhatsappEjecucionRepository } from "@/lib/repositories/WhatsappEjecucionRepository";
@@ -33,6 +34,8 @@ export interface EnviosWhatsappDeps {
   almacen: SupabaseAlmacenEnviosWhatsapp;
   ejecutor: EjecucionEnvioService;
   configuracion: WhatsappEnvioService;
+  /** SLT-42 (R18, R22): las reglas del pais de la empresa (telefono y zona horaria). */
+  reglasPais: IReglasPaisEmpresa;
 }
 
 /**
@@ -59,5 +62,5 @@ export function buildEnviosWhatsappDeps(now: () => Date = () => new Date()): Env
   const reglasPais = construirReglasPaisEmpresa(prisma);
   const ejecutor = new EjecucionEnvioService({ envios, ejecuciones, plantillas, almacen, cola, meta: metaReal, reglasPais, now });
   const configuracion = new WhatsappEnvioService({ envios, ejecuciones, plantillas, cola, reglasPais, now });
-  return { prisma, envios, ejecuciones, cola, almacen, ejecutor, configuracion };
+  return { prisma, envios, ejecuciones, cola, almacen, ejecutor, configuracion, reglasPais };
 }

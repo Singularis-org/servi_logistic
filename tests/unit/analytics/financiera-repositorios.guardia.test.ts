@@ -13,6 +13,7 @@ import { trocear } from "@/lib/analytics/cubo-temporal";
 import { fakePrismaQueFalla } from "./_fake-prisma-dinero";
 
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Feature 127 / T C.5 — GUARDIA TRANSVERSAL DE LOS REPOSITORIOS: R30 y R32.
 //
 // Dos cosas que un repositorio de dinero no puede hacer, y que ninguna de las dos se ve en el
@@ -214,7 +215,7 @@ const MAESTRO: ActorAnalitica = { usuarioId: "u-maestro", rol: "maestro" };
 const AHORA = new Date("2026-08-02T15:00:00.000Z");
 
 function consultaDe(metricaId: string): ConsultaAnalitica {
-  const r = prepararConsultaAnalitica({ rango: "dia" }, MAESTRO, metricaId, AHORA);
+  const r = prepararConsultaAnalitica({ rango: "dia" }, MAESTRO, metricaId, ZONA_DE_CR, AHORA);
   if (r.status !== "ok") throw new Error(`no se pudo preparar la consulta de ${metricaId}`);
   return r.consulta;
 }

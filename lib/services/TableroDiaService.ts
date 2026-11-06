@@ -24,8 +24,8 @@ import type {
 } from "@/lib/types/tablero-dia";
 import { recortarPorAlcance, sumarTotalesTablero } from "@/lib/types/tablero-dia";
 import { horaDeParedCR, ventanaDelDiaEnCursoCR } from "@/lib/utils/ventana-dia-cr";
-
-import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 // Feature 192 (B3.2/B7.4/B9.4/B9.5, design.md §3 y §5.quater) — EL SERVICIO DEL TABLERO.
 //
 // Aqui vive la FRONTERA MULTI-TENANT de esta pantalla. No hay policies RLS debajo (Prisma se
@@ -186,6 +186,8 @@ export class TableroDiaService implements ITableroDiaService {
     private readonly ordenes: Pick<IOrdenRepository, "findListItemsByIds">,
     private readonly historial: Pick<IOrdenHistorialService, "contarIntentosEnLote">,
     private readonly cache: ITableroDiaCache = tableroDiaCacheNula(),
+    /** SLT-42 (R22, R28): la zona del pais de la empresa, de la que sale el dia en curso. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
 
   /**
@@ -205,8 +207,10 @@ export class TableroDiaService implements ITableroDiaService {
     const auth = autorizar(actor);
     if (auth.estado === "denegado") return auth;
 
-    // SLT-42 pendiente T5.5: zona de la empresa
-    const ventana = ventanaDelDiaEnCursoCR(now, ZONA_CR);
+    // SLT-42 (R22, R28): el dia en curso de la zona del pais de la empresa, leida DESPUES de
+    // autorizar (un denegado no la necesita).
+    const zona = await zonaDeLaEmpresa(this.reglasPais, "TableroDiaService.obtener");
+    const ventana = ventanaDelDiaEnCursoCR(now, zona);
     const clave = claveDeTablero(auth.alcance, ventana.fecha);
     const alcance = auth.filtro.tipo;
 
@@ -235,8 +239,7 @@ export class TableroDiaService implements ITableroDiaService {
         // `generadoAt` de arriba. Una lectura del tablero no puede producir dos instantes de
         // generacion distintos: la cabecera diria "hace 4 s" y la linea vendria de otro
         // instante, que es la misma mentira de R34 partida en dos.
-        // SLT-42 pendiente T5.5: zona de la empresa
-        ritmoEntregas: acumularPorHora(porHora, horaDeParedCR(ventana, now, ZONA_CR)),
+        ritmoEntregas: acumularPorHora(porHora, horaDeParedCR(ventana, now, zona)),
       };
     });
 
@@ -289,8 +292,8 @@ export class TableroDiaService implements ITableroDiaService {
     const auth = autorizar(actor);
     if (auth.estado === "denegado") return auth;
 
-    // SLT-42 pendiente T5.5: zona de la empresa
-    const ventana = ventanaDelDiaEnCursoCR(now, ZONA_CR);
+    const zona = await zonaDeLaEmpresa(this.reglasPais, "TableroDiaService.detalle"); // SLT-42 (R22, R28)
+    const ventana = ventanaDelDiaEnCursoCR(now, zona);
     const pageSize = ordenesConfig.DEFAULT_PAGE_SIZE;
     const alcance = auth.filtro.tipo;
     const paginaDelDia = await this.repositorio.listarOrdenesDelDia(

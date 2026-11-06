@@ -8,6 +8,7 @@ import type { ConteoPorMensajero, PremioRankingDTO } from "@/lib/types/ranking";
 import { resolverRango } from "@/lib/analytics/ranges";
 
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Feature 76 (design §5) — logica del ranking DIARIO con repos fake (sin DB). `now` inyectable.
 // Cubre R2 (pct), R3 (asignadas=0 -> indefinido, fuera de podio), R4/R5 (orden/desempate),
 // R6 (conteo crudo), R7 (umbral), R9 (null != 0), R12 (STRING), R16/R17/R18/R19 (autz) y LC1.
@@ -35,7 +36,7 @@ function buildDeps(opts: {
   const premioRepo = { listar, upsertPremio } as IPremioRankingRepository;
   const service = new RankingService(rankingRepo, userRepo, premioRepo, {
     MIN_ASIGNADAS_PODIO: opts.minPodio ?? 1,
-  });
+  }, reglasPaisFijas());
   return { service, listMensajeros, upsertPremio, contarAsignadasPorMensajero, contarEntregadasPorMensajero };
 }
 

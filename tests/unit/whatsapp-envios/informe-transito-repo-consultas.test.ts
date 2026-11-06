@@ -4,6 +4,7 @@ import { PARAMETROS_POR_DEFECTO } from "@/lib/whatsapp-envios/informes/transito/
 import type { IInformeTransitoRepository } from "@/lib/interfaces/repositories/IInformeTransitoRepository";
 import type { FilaTransito } from "@/lib/whatsapp-envios/informes/transito/tipos";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Ficha 475 (T2.7, R40) — el numero de consultas por generacion no depende del numero de ordenes.
 
 const AHORA = new Date("2026-10-05T11:00:00.000Z");
@@ -44,7 +45,7 @@ async function llamadasCon(n: number): Promise<string[]> {
       return 0;
     },
   };
-  const r = await crearInformeTransito({ repo }).generar({
+  const r = await crearInformeTransito({ repo }).generar({ zona: ZONA_DE_CR,
     parametros: PARAMETROS_POR_DEFECTO,
     ahora: AHORA,
     conDocumento: true,

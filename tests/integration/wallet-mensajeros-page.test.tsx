@@ -104,6 +104,7 @@ import { listarPremiosDelDiaAction } from "@/lib/actions/premio-ranking-devengo"
 // fechas que la página pinta se afirman contra su literal (ver el caso de R8 más abajo).
 import { fechaObjetivo } from "@/lib/ranking/snapshot-dia";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // SLT-42 (T5.4): la zona del pais de la empresa es la de CR, como antes. Las reglas reales leen el pais
 // de la empresa en curso con el cliente global, que no ve la empresa de una transaccion revertida ni
 // tiene empresa fuera de `conEmpresa`; la zona por pais la miden `hora-por-pais-wallet` y `demo-qa`.
@@ -202,7 +203,7 @@ beforeEach(() => {
   // dentro (eso es `PremiosRankingPanel.test.tsx`).
   premiosMock.mockResolvedValue({
     status: "ok",
-    fecha: fechaObjetivo(new Date()),
+    fecha: fechaObjetivo(new Date(), ZONA_DE_CR),
     hayPodio: false,
     filas: [],
   });

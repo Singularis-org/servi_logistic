@@ -45,7 +45,7 @@ import {
   type ContextoLlamadaRuta,
 } from "@/lib/clients/registro-llamada-google";
 import type { RegistroLlamadaLogger } from "@/lib/logging/google-api-log";
-import { inicioDelDiaCR } from "@/tests/fabricas/reglas-pais";
+import { inicioDelDiaCR, reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // SLT-59 (R37, design §8.0) — JORNADA DE REFERENCIA: cuantas llamadas facturadas paga un mensajero
 // en un dia tipico. Cuenta llamadas, no dinero (D10).
@@ -494,7 +494,7 @@ function montarJornada() {
     CONFIG,
     reloj,
     undefined,
-    { trazar },
+    { trazar }, reglasPaisFijas(),
   );
   const cola = new JobQueueService(
     jobs,

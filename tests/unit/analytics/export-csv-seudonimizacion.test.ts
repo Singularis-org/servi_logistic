@@ -10,6 +10,7 @@ import { construirDescarga } from "@/lib/utils/descarga-dataset";
 import { AHORA, TIENDA, cubo, rollupFalso, servicioCon } from "./_fake-operativa";
 
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Feature 134 — R8 y R9. EL TEST DE FUGA (T3.1, task BLINDADA).
 //
 // Es la razon de ser de esta feature. Una columna de uuids reales dentro de un `.csv`
@@ -54,7 +55,7 @@ const FORMA_UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-/i;
 async function csvDeAdminTienda(): Promise<string> {
   const resultado = await consultarAnaliticaOperativa(
     { metricaId: "entregas", raw: { rango: "dia" }, desagregacion: "mensajero" },
-    {
+    { reglasPais: reglasPaisFijas(),
       service: servicioCon(rollupFalso(CUBOS)),
       getActor: async () => TIENDA,
       now: () => AHORA,
@@ -108,7 +109,7 @@ describe("Feature 134 (R8) — el archivo de un adminTienda no lleva identidades
     const rollup = rollupFalso(CUBOS);
     const resultado = await consultarAnaliticaOperativa(
       { metricaId: "entregas", raw: { rango: "dia" }, desagregacion: "mensajero" },
-      { service: servicioCon(rollup), getActor: async () => TIENDA, now: () => AHORA },
+      { reglasPais: reglasPaisFijas(), service: servicioCon(rollup), getActor: async () => TIENDA, now: () => AHORA },
     );
     expect(resultado.status).toBe("ok");
     expect(rollup.llamadasAgregar.length).toBeGreaterThan(0);

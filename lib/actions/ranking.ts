@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { z } from "zod";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
@@ -62,6 +63,8 @@ function buildService(): IRankingService {
     new RankingRepository(prisma),
     new UserRepository(prisma),
     new PremioRankingRepository(prisma),
+    undefined,
+    construirReglasPaisEmpresa(prisma), // SLT-42 (R22, R28): la zona horaria del pais de la empresa.
   );
 }
 

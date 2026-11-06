@@ -70,13 +70,15 @@ export function motivoSinOrdenes(nombre: string): string {
 export async function resumenTiendasPicking(
   repo: IPickingRepository,
   ahora: Date,
+  /** SLT-42 (R22): la zona del pais de la empresa, de la que salen los dias en preparacion. */
+  zona: string,
   diasAtraso: number,
 ): Promise<TiendaPickingDTO[]> {
   const [tiendas, entradas] = await Promise.all([
     leer("tiendasFulfillment", () => repo.tiendasFulfillment()),
     leer("entradasEnPreparacion", () => repo.entradasEnPreparacion()),
   ]);
-  const conteo = contarPorTienda(entradas, ahora, diasAtraso);
+  const conteo = contarPorTienda(entradas, ahora, zona, diasAtraso);
   return [...tiendas]
     .sort((a, b) => compararCodigo(a.nombre, b.nombre) || compararCodigo(a.id, b.id))
     .map((t) => ({
@@ -161,7 +163,12 @@ export function crearInformePicking(deps?: DepsInformePicking): InformeWhatsapp<
       }
       const filas = await leer("ordenesEnPreparacion", () => repo.ordenesEnPreparacion(tiendaId));
       if (filas.length === 0) return { tipo: "vacio", motivo: motivoSinOrdenes(tienda.nombre) };
-      const modelo = construirModeloPicking(filas, { ahora: ctx.ahora, diasAtraso, tienda: tienda.nombre });
+      const modelo = construirModeloPicking(filas, {
+        ahora: ctx.ahora,
+        zona: ctx.zona,
+        diasAtraso,
+        tienda: tienda.nombre,
+      });
       return {
         tipo: "contenido",
         valores: { ...modelo.valores },

@@ -10,6 +10,7 @@ import { OrdenHistorialService } from "@/lib/services/OrdenHistorialService";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import type { IAnaliticaRollupService } from "@/lib/interfaces/services/IAnaliticaRollupService";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 /**
  * Feature 124 / T6.1 — utilidad de SIEMBRA del rollup diario contra el Postgres local.
  *
@@ -381,7 +382,7 @@ export function crearServicio(tx: TxDeTest): IAnaliticaRollupService {
       new OrdenDiaRepartoCambioRepository(prismaDelHistorial),
       new OrdenTraspasoRepository(prismaDelHistorial),
     ),
-    { now: () => new Date(), logger: { warn: () => {} } },
+    { now: () => new Date(), logger: { warn: () => {} } }, reglasPaisFijas(),
   );
 }
 

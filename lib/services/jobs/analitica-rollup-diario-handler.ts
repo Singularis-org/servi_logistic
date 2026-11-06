@@ -19,6 +19,7 @@ import { OrdenDiaRepartoCambioRepository } from "@/lib/repositories/OrdenDiaRepa
 import { OrdenTraspasoRepository } from "@/lib/repositories/OrdenTraspasoRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { getPrismaClient } from "@/lib/db/prisma-client";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { fechaObjetivo } from "@/lib/analytics/rollup-dia";
 import { dedupeKeyRollup } from "@/lib/services/jobs/analitica-rollup-diario-encolado";
 // Feature 128 (R10/R11): la invalidacion de la cache de analitica cuelga de aqui. Entra por
@@ -147,5 +148,6 @@ export function buildAnaliticaRollupService(now: () => Date): IAnaliticaRollupSe
       new OrdenTraspasoRepository(prisma),
     ),
     { now },
+    construirReglasPaisEmpresa(prisma), // SLT-42 (R22, R28): la zona horaria del pais de la empresa.
   );
 }

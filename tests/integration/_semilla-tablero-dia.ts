@@ -12,6 +12,7 @@ import type { FilaTableroDia } from "@/lib/types/tablero-dia";
 import { ventanaDelDiaEnCursoCR } from "@/lib/utils/ventana-dia-cr";
 
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 /**
  * Feature 192 — utilidad de SIEMBRA de los tests de integracion del tablero del dia.
  *
@@ -319,7 +320,7 @@ export function servicioReal(tx: TxDeTest): TableroDiaService {
       new OrdenHistorialRepository(prisma),
       new OrdenDiaRepartoCambioRepository(prisma),
       new OrdenTraspasoRepository(prisma),
-    ),
+    ), undefined, reglasPaisFijas(),
   );
 }
 

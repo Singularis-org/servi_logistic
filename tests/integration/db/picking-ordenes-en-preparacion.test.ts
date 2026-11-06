@@ -5,6 +5,7 @@ import { UN_DIA, crearOrden, crearTienda, estatusId, repoDeTest, sembrarEscenari
 import { INFORMES_WHATSAPP } from "@/lib/whatsapp-envios/informes/catalogo";
 import type { ParametrosPicking } from "@/lib/whatsapp-envios/informes/picking/parametros";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Ficha 476 (T3.2/T4.2, design §7) — la SELECCION del picking contra Postgres: R6, R9, R14, R26, R30.
 //
 // Conjuntos EXACTOS de ids (no `> 0`). Las cuatro mutaciones del `WHERE` de
@@ -104,13 +105,13 @@ describeSiHayBase("476 — seleccion del picking contra Postgres", () => {
       const historial = () => tx.ordenHistorialEstado.count({ where: { ordenId: { in: ids } } });
 
       const antes = { orden: await foto(), historial: await historial() };
-      const primera = await informe.generar({ parametros, ahora: AHORA, conDocumento: true });
+      const primera = await informe.generar({ zona: ZONA_DE_CR, parametros, ahora: AHORA, conDocumento: true });
       const despues = { orden: await foto(), historial: await historial() };
-      const manana = await informe.generar({ parametros, ahora: new Date(AHORA.getTime() + UN_DIA), conDocumento: false });
+      const manana = await informe.generar({ zona: ZONA_DE_CR, parametros, ahora: new Date(AHORA.getTime() + UN_DIA), conDocumento: false });
 
       // a1 avanza de estado: ya no sale.
       await tx.orden.update({ where: { id: e.ordenes.a1 }, data: { estatusId: estatusId(e.base, "en_bodega_central") } });
-      const trasMover = await informe.generar({ parametros, ahora: AHORA, conDocumento: false });
+      const trasMover = await informe.generar({ zona: ZONA_DE_CR, parametros, ahora: AHORA, conDocumento: false });
       return { antes, despues, primera, manana, trasMover };
     });
     cliente.actual = null;
@@ -135,7 +136,7 @@ describeSiHayBase("476 — seleccion del picking contra Postgres", () => {
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       cliente.actual = tx;
       const e = await sembrarEscenario(tx, AHORA);
-      const gen = (tiendaId: string) => informe.generar({ parametros: { tiendaId, diasAtraso: 2 }, ahora: AHORA, conDocumento: true });
+      const gen = (tiendaId: string) => informe.generar({ zona: ZONA_DE_CR, parametros: { tiendaId, diasAtraso: 2 }, ahora: AHORA, conDocumento: true });
       return { e, sinFulfillment: await gen(e.tiendas.C), noTienda: await gen(e.tiendas.E), vacia: await gen(e.tiendas.D), noExiste: await gen("no-existe") };
     });
     cliente.actual = null;
@@ -154,7 +155,7 @@ describeSiHayBase("476 — seleccion del picking contra Postgres", () => {
       for (const estado of ["inactivo", "bloqueado", "pendiente"] as const) {
         const F = await crearTienda(tx, e.base, `Zeta ${estado}`, { fulfillment: true, estado });
         await crearOrden(tx, e.base, { tiendaId: F, remision: `ZZ-${estado}`, estado: "en_preparacion", createdAt: e.hace(1) });
-        res[estado] = await informe.generar({ parametros: { tiendaId: F, diasAtraso: 2 }, ahora: AHORA, conDocumento: true });
+        res[estado] = await informe.generar({ zona: ZONA_DE_CR, parametros: { tiendaId: F, diasAtraso: 2 }, ahora: AHORA, conDocumento: true });
       }
       return { e, res };
     });

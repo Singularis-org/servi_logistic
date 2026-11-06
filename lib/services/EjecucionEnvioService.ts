@@ -193,6 +193,7 @@ export class EjecucionEnvioService implements IEjecucionEnvioService {
       const r = await informe.generar({
         parametros: params.data,
         ahora: this.now(),
+        zona: await this.deps.reglasPais.zonaHoraria(), // SLT-42 (R22, R28)
         conDocumento: plantilla.llevaDocumento,
         ...(e.origen === "evento" && e.eventoClave !== null && e.eventoDatos !== null
           ? {

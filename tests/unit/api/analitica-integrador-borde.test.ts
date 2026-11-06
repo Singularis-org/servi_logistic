@@ -8,6 +8,7 @@ import type { ErrorLogger } from "@/lib/errors/logger";
 import type { IAnaliticaOperativaService } from "@/lib/interfaces/services/IAnaliticaOperativaService";
 import type { SerieOperativa } from "@/lib/types/analitica-operativa";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Feature 267 (T5) — EL BORDE DEL CANAL INTEGRADOR, probado por donde duele.
 //
 // ⚠ R32 ESPIA EL LOGGER, NO EL STATUS, y el motivo esta verificado en el codigo (design §4.4):
@@ -113,7 +114,8 @@ describe("267/R14 · una llamada al punto de entrada POR METRICA, con el canal e
       deps,
     );
 
-    const [rawPasado, actorPasado, metricaPasada, nowPasado, canalPasado] =
+    // SLT-42: el cuarto argumento es la zona (T5.7 la toma de la empresa de la key).
+    const [rawPasado, actorPasado, metricaPasada, , nowPasado, canalPasado] =
       prepararEspia.mock.calls[0]!;
     expect(canalPasado).toBe("api_key");
     expect(actorPasado).toEqual(INTEGRADOR);
@@ -126,7 +128,7 @@ describe("267/R14 · una llamada al punto de entrada POR METRICA, con el canal e
     // No se llama al borde: se comprueba la propiedad de la que depende, sobre el mismo
     // actor y la misma metrica. Si `prepararConsultaAnalitica` se invocara sin `"api_key"`,
     // este es el resultado que recibiria el integrador.
-    const sinCanal = consultas.prepararConsultaAnalitica(raw(), INTEGRADOR, "entregas", AHORA);
+    const sinCanal = consultas.prepararConsultaAnalitica(raw(), INTEGRADOR, "entregas", ZONA_DE_CR, AHORA);
     expect(sinCanal.status).toBe("forbidden");
   });
 });
@@ -362,7 +364,7 @@ describe("267/R45 · el lote prepara y consulta UNA vez por metrica, en el orden
       { service, logger: { logError: vi.fn() }, now: () => AHORA },
     );
 
-    for (const call of prepararEspia.mock.calls) expect(call[4]).toBe("api_key");
+    for (const call of prepararEspia.mock.calls) expect(call[5]).toBe("api_key");
     for (const call of consultar.mock.calls) {
       expect(call[0].alcance).toEqual({ tipo: "tienda", tiendaId: "u-integrador" });
       expect(call[0].politicaIdentidad).toBe("seudonima");

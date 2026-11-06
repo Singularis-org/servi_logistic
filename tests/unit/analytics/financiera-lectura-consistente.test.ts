@@ -17,6 +17,7 @@ import { IngresosAnaliticaRepository } from "@/lib/repositories/IngresosAnalitic
 import { fakePrismaDinero, type LlamadaFake } from "./_fake-prisma-dinero";
 
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Feature 187 (T2.5) — EL ALCANCE DE LECTURA CONSISTENTE EN LOS DOS REPOSITORIOS: R2 (mitad
 // unitaria), R3 y R10.
 //
@@ -43,7 +44,7 @@ const AHORA = new Date("2026-03-12T15:00:00.000Z");
 const RANGO_CRUDO = { rango: "personalizado", desde: "2026-03-09", hasta: "2026-03-11" } as const;
 
 function consultaDe(metricaId: string): ConsultaAnalitica {
-  const r = prepararConsultaAnalitica(RANGO_CRUDO, MAESTRO, metricaId, AHORA);
+  const r = prepararConsultaAnalitica(RANGO_CRUDO, MAESTRO, metricaId, ZONA_DE_CR, AHORA);
   if (r.status !== "ok") throw new Error(`no se pudo preparar la consulta de ${metricaId}`);
   return r.consulta;
 }

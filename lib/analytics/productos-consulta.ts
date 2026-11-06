@@ -40,7 +40,6 @@ import { ALCANCE_PRODUCTOS, ALCANCE_PRODUCTOS_DINERO } from "@/lib/analytics/met
 import { resolverRango } from "@/lib/analytics/ranges";
 import type { RolAnalitica } from "@/lib/analytics/types";
 
-import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /* -------------------------------------------------------------------------- */
 /* 1. El alcance                                                               */
 /* -------------------------------------------------------------------------- */
@@ -225,6 +224,8 @@ export type PreparacionConsultaProductos =
 export function prepararConsultaProductos(
   raw: unknown,
   actor: ActorAnalitica | null,
+  /** SLT-42 (R22): la zona IANA del pais de la empresa, con la que se resuelve el rango. */
+  zona: string,
   now?: Date,
 ): PreparacionConsultaProductos {
   const parseado = parseFiltroConteoEntregas(raw);
@@ -233,8 +234,7 @@ export function prepararConsultaProductos(
   }
 
   const entrada = entradaDeRango(parseado.filtro);
-  // SLT-42 pendiente T5.5: zona de la empresa
-  const rango = entrada === null ? null : resolverRango(entrada, ZONA_CR, now);
+  const rango = entrada === null ? null : resolverRango(entrada, zona, now);
 
   const resolucion = resolverAlcanceProductos(actor);
   if (resolucion.estado === "denegado") return { status: "forbidden", motivo: resolucion.motivo };

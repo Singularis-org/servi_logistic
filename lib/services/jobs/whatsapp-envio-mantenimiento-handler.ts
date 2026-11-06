@@ -7,6 +7,8 @@
 // La primera fila la siembra la migracion `20261005120200_seed_whatsapp_envio_mantenimiento`; la
 // `RecurrenciaSpec` de abajo re-encola la siguiente con la MISMA forma de `dedupe_key`.
 import type { JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaPerezosa } from "@/lib/services/zona-de-la-empresa";
 import type { JobHandler, RecurrenciaSpec } from "@/lib/interfaces/services/IJobQueueService";
 import type { IWhatsappEnvioRepository } from "@/lib/interfaces/repositories/IWhatsappEnvioRepository";
 import type { IWhatsappEjecucionRepository } from "@/lib/interfaces/repositories/IWhatsappEjecucionRepository";
@@ -43,12 +45,21 @@ export interface MantenimientoDeps {
   cola: Pick<IJobRepository, "enqueue">;
   now: () => Date;
   logger?: { info(m: string): void };
+  /** SLT-42 (R22, R28): la zona del pais de la empresa, en la que se lee la hora de cada envio. */
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
 }
 
 export function crearWhatsappEnvioMantenimientoHandler(
   buildDeps: () => MantenimientoDeps = () => {
     const d = buildEnviosWhatsappDeps();
-    return { envios: d.envios, ejecuciones: d.ejecuciones, almacen: d.almacen, cola: d.cola, now: () => new Date() };
+    return {
+      envios: d.envios,
+      ejecuciones: d.ejecuciones,
+      almacen: d.almacen,
+      cola: d.cola,
+      now: () => new Date(),
+      reglasPais: d.reglasPais,
+    };
   },
 ): JobHandler {
   return async (_job: JobDTO) => {
@@ -57,7 +68,9 @@ export function crearWhatsappEnvioMantenimientoHandler(
 
     // R25 primero: la re-siembra no puede quedar bloqueada por un fallo de Storage.
     const rotos = await deps.envios.encendidosHoraFijaSinJobPendiente();
-    for (const e of rotos) await encolarProximaOcurrencia(deps.cola, e, now);
+    // SLT-42 (R22, R28): la zona se lee solo si hay algo que re-sembrar.
+    const zona = zonaPerezosa(deps.reglasPais, "whatsapp_envio_mantenimiento");
+    for (const e of rotos) await encolarProximaOcurrencia(deps.cola, e, now, await zona());
 
     // R44: purga por base. Un fallo de Storage LANZA (la cola lo registra y reintenta): una purga
     // muda dejaria crecer el bucket sin ninguna señal.

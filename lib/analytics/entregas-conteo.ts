@@ -41,7 +41,6 @@ import { resolverRango } from "@/lib/analytics/ranges";
 import { RANGO_PRESETS, RANGO_TOPE_DIAS } from "@/lib/analytics/types";
 import type { EntradaRango, RangoResuelto } from "@/lib/analytics/types";
 
-import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /* -------------------------------------------------------------------------- */
 /* 1. El filtro                                                                */
 /* -------------------------------------------------------------------------- */
@@ -369,6 +368,8 @@ export function entradaDeRango(filtro: FiltroConteoEntregas): EntradaRango | nul
 export function prepararConteoEntregas(
   raw: unknown,
   actor: ActorAnalitica | null,
+  /** SLT-42 (R22): la zona IANA del pais de la empresa, con la que se resuelve el rango. */
+  zona: string,
   now?: Date,
 ): PreparacionConteoEntregas {
   const parseado = parseFiltroConteoEntregas(raw);
@@ -377,8 +378,7 @@ export function prepararConteoEntregas(
   }
 
   const entrada = entradaDeRango(parseado.filtro);
-  // SLT-42 pendiente T5.5: zona de la empresa
-  const rango = entrada === null ? null : resolverRango(entrada, ZONA_CR, now);
+  const rango = entrada === null ? null : resolverRango(entrada, zona, now);
 
   const resolucion = resolverAlcanceConteoEntregas(actor);
   if (resolucion.estado === "denegado") return { status: "forbidden", motivo: resolucion.motivo };

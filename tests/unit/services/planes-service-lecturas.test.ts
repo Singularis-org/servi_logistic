@@ -13,6 +13,7 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { PlanesService } from "@/lib/services/PlanesService";
 import type { PlanDTO, VersionPlan } from "@/lib/types/planes";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // SLT-58 · T4 (design §3.2; R13, R16, R19, R22) — las lecturas del superadmin con un repositorio doble.
 // Se mide el contrato (quién → zod → existe → repositorio) y la forma de lo que llega a la pantalla:
 // fechas de calendario en la hora de la plataforma, instantes en ISO, las líneas de «qué cambia» y el
@@ -173,7 +174,7 @@ function llamadasAlRepositorio(): number {
 
 beforeEach(() => {
   repo = doble();
-  servicio = new PlanesService(repo, () => AHORA);
+  servicio = new PlanesService(repo, () => AHORA, async () => ZONA_DE_CR);
 });
 
 describe("SLT-58 — lecturas del superadmin: autorización (R22)", () => {

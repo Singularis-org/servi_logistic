@@ -30,7 +30,7 @@ import {
   type TxDeTest,
 } from "./_postgres-real";
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
-import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { reglasPaisFijas, ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // SLT-52 T5.4 (design §2.5, §7, §12.1) — EL CONGELADO DEL CIERRE Y SU LECTURA, CONTRA POSTGRES REAL.
 //
@@ -344,7 +344,7 @@ async function lecturas(tx: TxDeTest, e: Escenario, cierreId: string) {
 function consultaDeLaTienda(tiendaId: string) {
   const preparada = prepararConsultaProductos(
     { tienda_id: [tiendaId] },
-    { usuarioId: "maestro-del-test", rol: "maestro" } as never,
+    { usuarioId: "maestro-del-test", rol: "maestro" } as never, ZONA_DE_CR,
   );
   if (preparada.status !== "ok") throw new Error(`la consulta de prueba salio ${preparada.status}`);
   return preparada.consulta;

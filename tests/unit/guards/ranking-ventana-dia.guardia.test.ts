@@ -96,10 +96,11 @@ describe("RankingService · ventana del dia natural CR (166)", () => {
     }
   });
 
-  it("la fuente del service cita inicioDelDiaCREnUtc y la ficha 166 (R15)", () => {
+  it("la fuente del service cita inicioDelDiaEnUtc y la ficha 166 (R15)", () => {
+    // SLT-42 (T5.5, R22): las gemelas por zona de `calendario-zona`, con la zona del pais.
     const fuente = fs.readFileSync(SERVICE_PATH, "utf8");
-    expect(fuente).toContain("inicioDelDiaCREnUtc");
-    expect(fuente).toContain("inicioDelDiaSiguienteCREnUtc");
+    expect(fuente).toContain("inicioDelDiaEnUtc");
+    expect(fuente).toContain("inicioDelDiaSiguienteEnUtc");
     expect(fuente).toMatch(/166/);
   });
 
@@ -262,7 +263,7 @@ describe("RankingRepository · las DOS convenciones de fecha, cada una en su sit
     const fuente = fs.readFileSync(SERVICE_PATH, "utf8");
     expect(fuente).toContain("fechaComoDate");
     expect(fuente).toContain("@/lib/ranking/snapshot-dia");
-    expect(codigoService()).toContain("fechaComoDate(hoyCR)");
+    expect(codigoService()).toContain("fechaComoDate(hoy)");
   });
 
   it("y el service SIGUE sin usar `startOfDayCR`: la prohibicion de la 166 no se relaja", () => {

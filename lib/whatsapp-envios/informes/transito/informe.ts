@@ -51,18 +51,20 @@ export async function seleccionarTransito(
   repo: IInformeTransitoRepository,
   parametros: ParametrosTransito,
   ahora: Date,
+  /** SLT-42 (R22): la zona del pais de la empresa (la zona horaria, no una `ZonaInforme`). */
+  zonaHoraria: string,
 ): Promise<{ zonas: ZonaInforme[]; modelo: ModeloInformeTransito }> {
   const zonas = await leer("zonas", () => repo.zonas());
   const consulta = {
     hito: parametros.hito,
     estados: estadosIncluidos(parametros),
-    cortes: cortesPorZona(zonas, parametros, ahora),
+    cortes: cortesPorZona(zonas, parametros, ahora, zonaHoraria),
   };
   const [filas, sinHito] = await Promise.all([
     leer("filasEnAlerta", () => repo.filasEnAlerta(consulta)),
     leer("contarSinHito", () => repo.contarSinHito(consulta)),
   ]);
-  return { zonas, modelo: clasificar(filas, zonas, parametros, ahora, sinHito) };
+  return { zonas, modelo: clasificar(filas, zonas, parametros, ahora, zonaHoraria, sinHito) };
 }
 
 /**
@@ -141,7 +143,7 @@ export function crearInformeTransito(deps?: DepsInformeTransito): InformeWhatsap
     eventos: [],
     soloPorEvento: false,
     async generar(ctx): Promise<ResultadoInforme> {
-      const { modelo } = await seleccionarTransito(resolver().repo, ctx.parametros, ctx.ahora);
+      const { modelo } = await seleccionarTransito(resolver().repo, ctx.parametros, ctx.ahora, ctx.zona);
       if (modelo.totales.enAlerta === 0 && !ctx.parametros.enviarSiVacio) {
         return { tipo: "vacio", motivo: MOTIVO_SIN_ALERTAS };
       }
@@ -149,7 +151,7 @@ export function crearInformeTransito(deps?: DepsInformeTransito): InformeWhatsap
         tipo: "contenido",
         valores: variables(modelo),
         ...(ctx.conDocumento
-          ? { documento: { bytes: pdfInformeTransito(modelo), nombreArchivo: nombreArchivoTransito(ctx.ahora) } }
+          ? { documento: { bytes: pdfInformeTransito(modelo), nombreArchivo: nombreArchivoTransito(ctx.ahora, ctx.zona) } }
           : {}),
       };
     },

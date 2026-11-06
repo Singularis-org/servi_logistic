@@ -6,8 +6,8 @@
 import { jsPDF } from "jspdf";
 import { z } from "zod";
 import type { InformeWhatsapp } from "@/lib/whatsapp-envios/informes/tipos";
-import { fechaCRLegible, horaCRLegible } from "@/lib/whatsapp-envios/informes/formato";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaLegibleEnZona, horaLegibleEnZona } from "@/lib/whatsapp-envios/informes/formato";
+import { fechaCalendario } from "@/lib/utils/calendario-zona";
 
 const parametrosSchema = z
   .object({
@@ -23,7 +23,7 @@ export function pdfDePrueba(fecha: string, hora: string): Uint8Array {
   doc.setFontSize(16);
   doc.text("Prueba de envío automático", 20, 30);
   doc.setFontSize(12);
-  doc.text(`${fecha} ${hora} (hora de Costa Rica)`, 20, 42);
+  doc.text(`${fecha} ${hora} (hora local)`, 20, 42);
   doc.text("Si recibiste este documento, el envío automático funciona.", 20, 54);
   return new Uint8Array(doc.output("arraybuffer"));
 }
@@ -56,8 +56,8 @@ export const informePruebaEnvio: InformeWhatsapp<ParametrosPruebaEnvio> = {
     if (ctx.parametros.simularVacio) {
       return { tipo: "vacio", motivo: "Prueba con «simular vacío» activado." };
     }
-    const fecha = fechaCRLegible(ctx.ahora);
-    const hora = horaCRLegible(ctx.ahora);
+    const fecha = fechaLegibleEnZona(ctx.ahora, ctx.zona);
+    const hora = horaLegibleEnZona(ctx.ahora, ctx.zona);
     return {
       tipo: "contenido",
       valores: { fecha, hora },
@@ -65,7 +65,7 @@ export const informePruebaEnvio: InformeWhatsapp<ParametrosPruebaEnvio> = {
         ? {
             documento: {
               bytes: pdfDePrueba(fecha, hora),
-              nombreArchivo: `prueba-${fechaCalendarioCR(ctx.ahora)}.pdf`,
+              nombreArchivo: `prueba-${fechaCalendario(ctx.ahora, ctx.zona)}.pdf`,
             },
           }
         : {}),

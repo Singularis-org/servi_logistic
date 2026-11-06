@@ -17,6 +17,7 @@ import {
 import { AHORA, armarServicio, consultaDe, type DatosFinancieros } from "./_dobles-analitica-financiera";
 
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Feature 180 (T4.1 / T4.3 / T3.5) — LA FRONTERA DEL DESGLOSE: R16, R17, R22, R24, R25.
 //
 // Lo que se mide aqui no es la cifra sino QUE se toca y QUE no:
@@ -126,7 +127,7 @@ describe("un rol prohibido no llega a los metodos del desglose", () => {
       const respuesta = await consultarMetricaFinanciera(
         id,
         { rango: "dia" },
-        { now: AHORA, logger, getActor: async () => TIENDA, service: armado.servicio },
+        { reglasPais: reglasPaisFijas(), now: AHORA, logger, getActor: async () => TIENDA, service: armado.servicio },
       );
 
       expect(respuesta, id).toEqual({ status: "forbidden", code: "FORBIDDEN" });
@@ -144,7 +145,7 @@ describe("un rol prohibido no llega a los metodos del desglose", () => {
     const respuesta = await consultarMetricaFinanciera(
       "egresos",
       { rango: "dia" },
-      { now: AHORA, logger: { logError: vi.fn() }, getActor: async () => MAESTRO, service: armado.servicio },
+      { reglasPais: reglasPaisFijas(), now: AHORA, logger: { logError: vi.fn() }, getActor: async () => MAESTRO, service: armado.servicio },
     );
     expect(respuesta.status).toBe("ok");
     expect(armado.ingresos.sumarPorCuboYCategoria).toHaveBeenCalledTimes(1);

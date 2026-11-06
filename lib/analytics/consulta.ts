@@ -42,7 +42,6 @@ import { politicaIdentidadMensajero } from "@/lib/analytics/identidad";
 import type { PoliticaIdentidad } from "@/lib/analytics/identidad";
 import type { EntradaRango, RangoResuelto } from "@/lib/analytics/types";
 
-import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /**
  * La marca. NO se exporta y no hay forma de nombrarla desde fuera de este archivo, que es
  * justo lo que impide construir una `ConsultaAnalitica` a mano.
@@ -85,11 +84,15 @@ export type PreparacionAnalitica =
  *
  * `now` es inyectable (patron de `resolverRango`) y no hay ningun `Date.now()` escondido:
  * misma entrada, mismo resultado (R32).
+ *
+ * SLT-42 (R22) — `zona` es la zona IANA del pais de la empresa; el borde la lee con
+ * `zonaDelBorde` y el rango se resuelve con ella.
  */
 export function prepararConsultaAnalitica(
   raw: unknown,
   actor: ActorAnalitica | null,
   metricaId: string,
+  zona: string,
   now?: Date,
   canal: CanalAnalitica = "interno",
 ): PreparacionAnalitica {
@@ -110,8 +113,7 @@ export function prepararConsultaAnalitica(
   }
 
   // (2) RANGO.
-  // SLT-42 pendiente T5.5: zona de la empresa
-  const rango = resolverRango(entradaDeRango(parseado.filtro), ZONA_CR, now);
+  const rango = resolverRango(entradaDeRango(parseado.filtro), zona, now);
 
   // (3) ALCANCE. Feature 267 — `canal` se REENVIA tal cual, sin interpretarlo aqui: el
   // unico sitio que decide que puede ver un canal es `resolverAlcance`. Su default

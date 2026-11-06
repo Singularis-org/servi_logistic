@@ -6,7 +6,7 @@ import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { esAccesoTotal } from "@/lib/auth/acceso-total";
 import { listarCuentasPorPagarPaginadoAction } from "@/lib/actions/wallet-mensajero";
 import { fechaObjetivo } from "@/lib/ranking/snapshot-dia";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendarioCR, ZONA_CR } from "@/lib/utils/fecha-cr";
 
 import { WalletMensajerosTabs } from "./_components/WalletMensajerosTabs";
 
@@ -47,7 +47,8 @@ export default async function WalletMensajerosPage() {
   // R8). No se calculan en el cliente porque el reloj del navegador no es el de Costa Rica y
   // porque el render del servidor y el de la hidratación tienen que dar el mismo día.
   const ahora = new Date();
-  const fechaInicialPremios = fechaObjetivo(ahora);
+  // SLT-42 pendiente T5.7: zona de la empresa
+  const fechaInicialPremios = fechaObjetivo(ahora, ZONA_CR);
   const fechaMaximaPremios = fechaCalendarioCR(ahora);
 
   // SL-23 (design §6.3): los premios del ranking exigen Ranking (Wallet es núcleo desde el

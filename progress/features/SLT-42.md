@@ -80,6 +80,11 @@ Bloqueos de F2.0:
   3. `lib/types/historial-accion-etiquetas.ts` (fecha en CR para cierres, bodega y órdenes) pasa a T5.4 (humano).
   4. Desvíos menores aceptados: repositorios con `zona` para formatear fechas; filtros de cierres como instantes (toca 2 servicios de bodega); `generarGuiaLote` exige `fechaReparto` con mensajero; 3 actions de lectura leen la zona en el borde; `jornada-cierre.ts` sin cambios (humano).
 
+- 2026-11-05 (tras T5.4, preguntas de `progress/impl_SLT-42.md > Tanda 4a · T5.4`):
+  1. `CajaBackfillTesoreriaService` es código muerto (nada lo construye fuera de los tests): se deja como está, con la zona en `deps` (humano).
+  2. `PlanesService`: la fecha que se muestra pasa a la zona de la empresa en T5.5; el ciclo de cobro sigue en UTC (humano).
+  3. Integración de T5.4 contra la base: la corre CI (`gate-completo`) en el PR; no se corre en local (humano).
+
 ## Preguntas abiertas
 Las del `requirements.md` (normalizar teléfonos guardados, jobs por zona horaria, largos de documento).
 
@@ -90,6 +95,7 @@ Las del `requirements.md` (normalizar teléfonos guardados, jobs por zona horari
 - 2026-11-04 · Tanda 2c (decisiones 2, 4 y 6 de «tras tanda 2b») · commit de esta tanda · typecheck exit 0; test:guardias solo con los 4 rojos de `dependencias-declaradas-presentes` (baseline); 11 archivos de test tocados en verde; `corregir-datos-cliente.{chat,repo}` rojos en `beforeAll` porque `logistic_slt42_test` está sin datos (pregunta en impl_SLT-42.md > Tanda 2c).
 - 2026-11-05 · T5.3 (zona de la empresa en órdenes, reparto, cierres, corte y reprogramadas) · commit de esta tanda · typecheck exit 0; test:guardias solo con los 4 rojos de `dependencias-declaradas-presentes` (baseline); integración tocada: 34 rojos, todos en el baseline (base sin datos); `vitest related` en 5 de 7 lotes (los 2 últimos los paró Claude Code por falta de memoria; se cubrieron con los 29 tests tocados que faltaban, en verde). Fuera del baseline: `carga-division` (carga, verde aislado) y `demo-qa`, rojo real de T4.2/T4.3 (documento del maestro demo inválido), sin tocar. Detalle en impl_SLT-42.md > Tanda 3 · T5.3.
 - 2026-11-05 · Tanda 4a · T5.4 (zona de la empresa en wallet, liquidación, caja e historial; la dejó sin commitear un agente anterior, revisada y cerrada) · a6109cff · typecheck exit 0; lint limpio; test:guardias solo con los 4 rojos de `dependencias-declaradas-presentes` (baseline); 58 tests unitarios tocados en verde; `vitest related` en 11 lotes: rojos de UI por carga en los lotes 1–2 (verdes aislados); los lotes 3–11, sin UI, en verde. Integración con base no corrida (sin `DATABASE_URL`). Preguntas en impl_SLT-42.md > Tanda 4a · T5.4.
+
 
 ## Modelos (overrides)
 

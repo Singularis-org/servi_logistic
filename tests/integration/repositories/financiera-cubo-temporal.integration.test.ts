@@ -13,6 +13,7 @@ import {
 } from "../db/_postgres-real";
 
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Feature 180 / T2.4 — LA PARTICION POR CUBO, CONTRA POSTGRES DE VERDAD.
 //
 // POR QUE ESTE ARCHIVO NO ES OPCIONAL. Los tests de `tests/unit/analytics/financiera-*-cubo-repo`
@@ -67,7 +68,7 @@ function consultaDe(
   metricaId: string,
   crudo: Record<string, unknown> = { ...RANGO_CORTO },
 ): ConsultaAnalitica {
-  const r = prepararConsultaAnalitica(crudo, MAESTRO, metricaId, AHORA);
+  const r = prepararConsultaAnalitica(crudo, MAESTRO, metricaId, ZONA_DE_CR, AHORA);
   if (r.status !== "ok") throw new Error(`no se pudo preparar la consulta de ${metricaId}`);
   return r.consulta;
 }

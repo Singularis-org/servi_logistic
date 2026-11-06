@@ -36,7 +36,9 @@ import {
   type PlanDTO,
   type PlanResult,
 } from "@/lib/types/planes";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { fechaCalendario } from "@/lib/utils/calendario-zona";
+import type { ZonaDeOrganizacion } from "@/lib/services/zona-de-la-empresa";
 
 // SL-24 (design §5, §16.2; R2, R5, R6, R12, R13, R16, R37, R39) — el orden es fijo y es parte del contrato,
 // copiado de `ModulosEmpresaService` (SL-23): primero quién (R5), luego qué (zod: R2, R3), luego si
@@ -103,7 +105,21 @@ export class PlanesService implements IPlanesService {
     private readonly repo: IPlanesRepository,
     /** El reloj, inyectable para R37 («posterior al momento de guardar»). */
     private readonly ahora: () => Date = () => new Date(),
+    /**
+     * SLT-42 (R22, R28; decisión del humano tras T5.4) — la zona del país de una empresa, solo para
+     * la fecha que se MUESTRA (`siguienteCiclo`). El ciclo de cobro sigue en UTC (SL-24): no la usa.
+     * El superadmin corre en plataforma, sin empresa en contexto, así que no es `IReglasPaisEmpresa`.
+     */
+    private readonly zonaDeOrganizacion?: ZonaDeOrganizacion,
   ) {}
+
+  /** SLT-42 (R22): la fecha calendario de `instante` en la zona del país de la empresa. */
+  private async fechaDeLaEmpresa(organizacionId: string, instante: Date): Promise<string> {
+    if (!this.zonaDeOrganizacion) {
+      throw new Error("PlanesService requiere la zona del país de la empresa para mostrar la fecha (SLT-42)");
+    }
+    return fechaCalendario(instante, await this.zonaDeOrganizacion(organizacionId));
+  }
 
   async crear(actor: Actor | null, input: unknown): Promise<PlanResult> {
     if (!esSuperadmin(actor)) return FORBIDDEN;
@@ -228,7 +244,8 @@ export class PlanesService implements IPlanesService {
 
     const leida = await this.repo.vistaPreviaAsignacion(organizacionId, planId, inicioElegido(inicioCiclo, ahora));
     if (leida === null) return { estado: "not_found" };
-    return { estado: "ok", avisos: leida.avisos, siguienteCiclo: fechaCalendarioCR(leida.siguienteCiclo) };
+    const siguienteCiclo = await this.fechaDeLaEmpresa(organizacionId, leida.siguienteCiclo); // SLT-42 (R22)
+    return { estado: "ok", avisos: leida.avisos, siguienteCiclo };
   }
 
   /**
@@ -251,7 +268,8 @@ export class PlanesService implements IPlanesService {
     }
     const leida = await this.repo.vistaPreviaConTopes(organizacionId, topes, inicioElegido(inicioCiclo, ahora));
     if (leida === null) return { estado: "not_found" };
-    return { estado: "ok", avisos: leida.avisos, siguienteCiclo: fechaCalendarioCR(leida.siguienteCiclo) };
+    const siguienteCiclo = await this.fechaDeLaEmpresa(organizacionId, leida.siguienteCiclo); // SLT-42 (R22)
+    return { estado: "ok", avisos: leida.avisos, siguienteCiclo };
   }
 
   /**
@@ -341,7 +359,10 @@ export class PlanesService implements IPlanesService {
           ...f.plan,
           empresaNombre: f.empresaNombre,
           empresas: f.empresas,
-          vigenteDesdePendiente: f.vigenteDesdePendiente === null ? null : fechaCalendarioCR(f.vigenteDesdePendiente),
+          // SLT-42 pendiente T7.1: un plan del catálogo no es de UNA empresa (sin zona de país que
+          // aplicar); sigue en el día de la plataforma hasta que se decida (pregunta abierta).
+          vigenteDesdePendiente:
+            f.vigenteDesdePendiente === null ? null : fechaCalendario(f.vigenteDesdePendiente, ZONA_CR),
         }),
       ),
     };

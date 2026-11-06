@@ -7,6 +7,7 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { PlanesService } from "@/lib/services/PlanesService";
 import type { PlanDTO, PrecioPlan, VersionPlan } from "@/lib/types/planes";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // SLT-66 (design §4.2.1; R28, R29, R30) — solo se asignan planes con costo concreto: base de forma
 // «monto» y costo por orden no nulo. La regla vive en el servicio, así que se mide con un repositorio
 // doble: lo que importa es que un rechazo no llegue a `repo.asignar` ni a `repo.vistaPreviaAsignacion`.
@@ -88,7 +89,7 @@ let servicio: PlanesService;
 
 beforeEach(() => {
   repo = doble();
-  servicio = new PlanesService(repo, () => AHORA);
+  servicio = new PlanesService(repo, () => AHORA, async () => ZONA_DE_CR);
 });
 
 function conPendiente(v: VersionPlan) {

@@ -13,6 +13,7 @@ import type { IRepartoMananaRepository } from "@/lib/interfaces/repositories/IRe
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { AmbitoRetenidas } from "@/lib/interfaces/services/IReprogramadasRetenidasService";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // FICHA 409 (T5.2, R57) — LA CIFRA VIVA SE PIDE ACOTADA AL AMBITO DEL ACTOR.
 //
 // Es lo que hace que el numero del panel sea EL MISMO que el de su pantalla. Leerlo del
@@ -42,7 +43,7 @@ function repoEspia() {
 }
 
 function servicio(repo: IAvisoAgregadoRepository, dias = 3) {
-  return new VigenciaAvisoAgregadoService(repo, dias, () => AHORA);
+  return new VigenciaAvisoAgregadoService(repo, dias, () => AHORA, undefined, undefined, reglasPaisFijas());
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -72,7 +73,7 @@ function servicioConReparto(
   ahora: Date = AHORA,
   repo: IAvisoAgregadoRepository = repoEspia(),
 ) {
-  return new VigenciaAvisoAgregadoService(repo, 3, () => ahora, reparto);
+  return new VigenciaAvisoAgregadoService(repo, 3, () => ahora, reparto, undefined, reglasPaisFijas());
 }
 
 const MENSAJERO: Actor = { usuarioId: "u-mensajero-413", rol: "mensajero", zonaId: null };
@@ -459,7 +460,7 @@ describe("413/R17 - el rol que NO puede tener reparto asignado hace FALLAR la re
   it("⭑ si NADIE inyecto el repositorio, LANZA en vez de devolver un numero (R36)", async () => {
     // La familia «el composition root que no inyecta»: sin esta rama, un `buildService` que se
     // olvidara del repositorio dejaria el aviso apagado para TODOS los mensajeros, en silencio.
-    const servicioSinCablear = new VigenciaAvisoAgregadoService(repoEspia(), 3, () => AHORA);
+    const servicioSinCablear = new VigenciaAvisoAgregadoService(repoEspia(), 3, () => AHORA, undefined, undefined, reglasPaisFijas());
 
     await expect(servicioSinCablear.cifra("reparto_manana", MENSAJERO)).rejects.toThrow(
       /necesita el repositorio de reparto y nadie lo inyecto/,
@@ -563,7 +564,7 @@ function servicioConRetenidas(
   ahora: Date = AHORA,
   repo: IAvisoAgregadoRepository = repoEspia(),
 ) {
-  return new VigenciaAvisoAgregadoService(repo, 3, () => ahora, undefined, retenidas);
+  return new VigenciaAvisoAgregadoService(repo, 3, () => ahora, undefined, retenidas, reglasPaisFijas());
 }
 
 describe("462/R6/R14 — el ambito sale del ACTOR: central para maestro/admin, la zona para el satelite", () => {
@@ -638,7 +639,7 @@ describe("462/R14 — si el ambito del actor no existe, se FALLA; no se inventa 
   it("⭑ si NADIE inyecto el servicio de retenidas, LANZA en vez de devolver un numero", async () => {
     // La familia «el composition root que no inyecta»: un `buildService` que se olvidara del
     // servicio dejaria el aviso sin numero para todos, en silencio.
-    const sinCablear = new VigenciaAvisoAgregadoService(repoEspia(), 3, () => AHORA);
+    const sinCablear = new VigenciaAvisoAgregadoService(repoEspia(), 3, () => AHORA, undefined, undefined, reglasPaisFijas());
     await expect(sinCablear.cifra("reprogramadas_esperan_cierre", ADMIN)).rejects.toThrow(
       /necesita el servicio de retenidas y nadie lo inyecto/,
     );
@@ -646,7 +647,7 @@ describe("462/R14 — si el ambito del actor no existe, se FALLA; no se inventa 
 
   it("y los otros tres agregados siguen resolviendo igual con el servicio de retenidas inyectado (R50)", async () => {
     const repo = repoEspia();
-    const servicio = new VigenciaAvisoAgregadoService(repo, 3, () => AHORA, repartoEspia(6), retenidasEspia());
+    const servicio = new VigenciaAvisoAgregadoService(repo, 3, () => AHORA, repartoEspia(6), retenidasEspia(), reglasPaisFijas());
     expect(await servicio.cifra("novedades_sin_gestionar", TIENDA)).toBe(5);
     expect(await servicio.cifra("devoluciones_represadas", MAESTRO)).toBe(7);
     expect(await servicio.cifra("reparto_manana", MENSAJERO)).toBe(6);

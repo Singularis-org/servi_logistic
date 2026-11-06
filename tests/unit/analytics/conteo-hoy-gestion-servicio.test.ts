@@ -16,12 +16,13 @@ import {
 import { ConteoHoyGestionService } from "@/lib/services/ConteoHoyGestionService";
 
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { ZONA_DE_CR, reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 /** Mediodía CR del 17 (18:00Z sería otro día; 12:00Z son las 06:00 de Costa Rica). */
 const AHORA = new Date("2026-08-17T12:00:00.000Z");
 const HOY = resolverRango({ preset: "dia" }, ZONA_CR, AHORA);
 
 function consultaDe(raw: object = {}, rol = "maestro", extra: object = {}): ConsultaConteoEntregas {
-  const preparada = prepararConteoEntregas(raw, { usuarioId: "u1", rol, ...extra } as never, AHORA);
+  const preparada = prepararConteoEntregas(raw, { usuarioId: "u1", rol, ...extra } as never, ZONA_DE_CR, AHORA);
   if (preparada.status !== "ok") throw new Error(`filtro de prueba inválido: ${preparada.status}`);
   return preparada.consulta;
 }
@@ -51,7 +52,7 @@ describe("Contador de hoy — las dos cifras y su total", () => {
   it("`total` es exactamente `sinGestion + conGestion`", async () => {
     const service = new ConteoHoyGestionService(repoQueDevuelve(14, 6), cacheConMemoria().cache, {
       now: () => AHORA,
-    });
+    }, reglasPaisFijas());
 
     const datos = await service.consultar(consultaDe());
 
@@ -63,7 +64,7 @@ describe("Contador de hoy — las dos cifras y su total", () => {
   it("un día sin cargas son dos ceros y total 0", async () => {
     const service = new ConteoHoyGestionService(repoQueDevuelve(0, 0), cacheConMemoria().cache, {
       now: () => AHORA,
-    });
+    }, reglasPaisFijas());
 
     expect(await service.consultar(consultaDe())).toMatchObject({
       sinGestion: 0,
@@ -77,7 +78,7 @@ describe("Contador de hoy — las dos cifras y su total", () => {
   it("devuelve el día CR que contó", async () => {
     const service = new ConteoHoyGestionService(repoQueDevuelve(1, 1), cacheConMemoria().cache, {
       now: () => AHORA,
-    });
+    }, reglasPaisFijas());
 
     expect((await service.consultar(consultaDe())).fecha).toBe("2026-08-17");
   });
@@ -88,7 +89,7 @@ describe("Contador de hoy — no recibe filtro de fecha", () => {
   // fechas dejaría de ser el contador de hoy sin cambiar de rótulo.
   it("ignora el rango del filtro y cuenta SIEMPRE el día en curso", async () => {
     const repo = repoQueDevuelve(1, 1);
-    const service = new ConteoHoyGestionService(repo, cacheConMemoria().cache, { now: () => AHORA });
+    const service = new ConteoHoyGestionService(repo, cacheConMemoria().cache, { now: () => AHORA }, reglasPaisFijas());
 
     await service.consultar(
       consultaDe({ rango: "personalizado", desde: "2026-01-01", hasta: "2026-01-31" }),
@@ -105,7 +106,7 @@ describe("Contador de hoy — no recibe filtro de fecha", () => {
     const repo = repoQueDevuelve(1, 1);
     const service = new ConteoHoyGestionService(repo, cacheConMemoria().cache, {
       now: () => new Date("2026-12-31T23:00:00.000Z"), // 17:00 en Costa Rica
-    });
+    }, reglasPaisFijas());
 
     expect((await service.consultar(consultaDe())).fecha).toBe("2026-12-31");
   });
@@ -115,7 +116,7 @@ describe("Contador de hoy — la caché y el sello", () => {
   it("`lastSync` sale del reloj inyectado", async () => {
     const service = new ConteoHoyGestionService(repoQueDevuelve(1, 1), cacheConMemoria().cache, {
       now: () => AHORA,
-    });
+    }, reglasPaisFijas());
 
     expect((await service.consultar(consultaDe())).lastSync).toBe("2026-08-17T12:00:00.000Z");
   });
@@ -124,7 +125,7 @@ describe("Contador de hoy — la caché y el sello", () => {
     const { cache } = cacheConMemoria();
     let reloj = new Date("2026-08-17T12:00:00.000Z");
     const repo = repoQueDevuelve(3, 4);
-    const service = new ConteoHoyGestionService(repo, cache, { now: () => reloj });
+    const service = new ConteoHoyGestionService(repo, cache, { now: () => reloj }, reglasPaisFijas());
 
     const primera = await service.consultar(consultaDe());
     reloj = new Date("2026-08-17T12:10:00.000Z");
@@ -142,7 +143,7 @@ describe("Contador de hoy — la caché y el sello", () => {
     const { cache } = cacheConMemoria();
     let reloj = new Date("2026-08-18T05:55:00.000Z"); // 23:55 del 17 en Costa Rica
     const repo = repoQueDevuelve(9, 1);
-    const service = new ConteoHoyGestionService(repo, cache, { now: () => reloj });
+    const service = new ConteoHoyGestionService(repo, cache, { now: () => reloj }, reglasPaisFijas());
 
     const ayer = await service.consultar(consultaDe());
     reloj = new Date("2026-08-18T06:05:00.000Z"); // 00:05 del 18 en Costa Rica

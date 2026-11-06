@@ -14,7 +14,12 @@ import {
   type TopePasado,
 } from "@/lib/planes/mensajes";
 import { componerCorreo, type Bloque } from "@/lib/services/email/plantillas/plantilla-marca";
-import { fechaCortaCR } from "@/lib/whatsapp-envios/informes/formato";
+import { fechaCortaEnZona } from "@/lib/whatsapp-envios/informes/formato";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
+
+// SLT-42 pendiente T7.1: el dia del ciclo de planes es el de la plataforma (SL-24), no el de una
+// empresa; decidir si entra en la lista de excepciones de la guardia.
+const fechaCortaCR = (instante: Date): string => fechaCortaEnZona(instante, ZONA_CR);
 
 export interface CambioPlanParams {
   /** Email de un maestro activo de la empresa (P7). */

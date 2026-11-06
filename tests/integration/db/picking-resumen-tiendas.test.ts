@@ -5,6 +5,7 @@ import { crearOrden, crearTienda, repoDeTest, sembrarEscenario } from "./_pickin
 import { listarTiendasPicking } from "@/lib/actions/informe-picking";
 import { crearInformePicking } from "@/lib/whatsapp-envios/informes/picking/informe";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
 vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
 
@@ -67,7 +68,7 @@ describeSiHayBase("476/R3 — tiendas del selector contra Postgres", () => {
       const e = await sembrarEscenario(tx, AHORA);
       const repo = repoDeTest(tx);
       const lista = await listarTiendasPicking({ diasAtraso: 2 }, { getActor: MAESTRO, repo: () => repo, now: () => AHORA });
-      const gen = await crearInformePicking({ repo }).generar({
+      const gen = await crearInformePicking({ repo }).generar({ zona: ZONA_DE_CR,
         parametros: { tiendaId: e.tiendas.A, diasAtraso: 2 },
         ahora: AHORA,
         conDocumento: false,

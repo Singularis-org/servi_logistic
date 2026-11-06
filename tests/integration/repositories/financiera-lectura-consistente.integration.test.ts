@@ -8,6 +8,7 @@ import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, crearPrismaDeTest } from ".
 import { crearOrganizacion } from "../../fabricas/organizaciones";
 
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Feature 187 / T6.1 y T6.2 — LA MITAD QUE SOLO POSTGRES PUEDE DEMOSTRAR.
 //
 // Los tests unitarios de `tests/unit/analytics/financiera-lectura-consistente.test.ts` miden la
@@ -64,7 +65,7 @@ type ClienteDeIngresos = ConstructorParameters<typeof IngresosAnaliticaRepositor
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
 function consultaDe(metricaId: string): ConsultaAnalitica {
-  const r = prepararConsultaAnalitica({ ...RANGO }, MAESTRO, metricaId, AHORA);
+  const r = prepararConsultaAnalitica({ ...RANGO }, MAESTRO, metricaId, ZONA_DE_CR, AHORA);
   if (r.status !== "ok") throw new Error(`no se pudo preparar la consulta de ${metricaId}`);
   return r.consulta;
 }

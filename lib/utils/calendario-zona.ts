@@ -269,6 +269,14 @@ export function horaDePared(instante: Date, zona: string): string {
 }
 
 /**
+ * INSTANTE en que la pared de `zona` marca `hh:mm` el dia `fecha` (`YYYY-MM-DD`). Si esa hora no
+ * existe ese dia (salto del cambio de hora), el primer instante tras el salto (R23).
+ */
+export function instanteDeParedEnUtc(fecha: string, hh: number, mm: number, zona: string): Date {
+  return instanteDePared(fechaAUtcMs(fecha) + (hh * 60 + mm) * 60 * 1000, zona);
+}
+
+/**
  * Proximo instante ESTRICTAMENTE posterior a `now` en que la pared de `zona` marca `hh:mm`. Si esa
  * hora no existe un dia (salto del cambio de hora), ese dia vale el primer instante tras el salto.
  */

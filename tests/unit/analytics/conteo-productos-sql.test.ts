@@ -6,6 +6,7 @@ import type { ConsultaProductos } from "@/lib/analytics/productos-consulta";
 import { condicionesDeConsulta } from "@/lib/repositories/ConteoPorStatusRepository";
 import { ConteoProductosRepository } from "@/lib/repositories/ConteoProductosRepository";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Ficha 345 / T3.2 — EL `WHERE` Y LA FORMA DEL SQL (R55, R56, R27).
 //
 // ⚠ QUE PRUEBA ESTE ARCHIVO Y QUE NO. Prueba que el recorte que el repositorio de productos manda
@@ -18,7 +19,7 @@ import { ConteoProductosRepository } from "@/lib/repositories/ConteoProductosRep
 const AHORA = new Date("2026-09-01T12:00:00.000Z");
 
 function consultaDe(raw: object, rol = "maestro", usuarioId = "u1"): ConsultaProductos {
-  const preparada = prepararConsultaProductos(raw, { usuarioId, rol } as never, AHORA);
+  const preparada = prepararConsultaProductos(raw, { usuarioId, rol } as never, ZONA_DE_CR, AHORA);
   if (preparada.status !== "ok") throw new Error(`filtro de prueba invalido: ${preparada.status}`);
   return preparada.consulta;
 }

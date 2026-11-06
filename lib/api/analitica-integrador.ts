@@ -1,5 +1,7 @@
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { prepararConsultaAnalitica } from "@/lib/analytics/consulta";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { describirDenegado } from "@/lib/analytics/auditoria";
 import { sondeaIdentidadDeMensajero } from "@/lib/analytics/oraculo-mensajero";
 import type { ActorAnalitica } from "@/lib/analytics/alcance";
@@ -137,6 +139,7 @@ function construirServicio(now: () => Date): IAnaliticaOperativaService {
       new OrdenTraspasoRepository(prisma),
     ),
     { now },
+    construirReglasPaisEmpresa(prisma), // SLT-42 (R22, R28): la zona horaria del pais de la empresa.
   );
 }
 
@@ -173,6 +176,8 @@ export async function consultarAnaliticaIntegrador(
       entrada.raw,
       entrada.actor,
       metricaId,
+      // SLT-42 pendiente T5.7: zona de la empresa de la key
+      ZONA_CR,
       instante,
       "api_key",
     );

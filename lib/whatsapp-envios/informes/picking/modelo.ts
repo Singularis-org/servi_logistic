@@ -10,8 +10,8 @@
 // (R18 de la 345)— se REPLICAN aqui (alternativa E del design: no se toca un servicio de analitica
 // con dinero por una ficha que no lo necesita).
 import { parsearProducto, type ItemProducto } from "@/lib/analytics/producto-parse";
-import { diasNaturalesCRDesde, fechaCalendarioCR } from "@/lib/utils/fecha-cr";
-import { fechaCRLegible, horaCRLegible } from "@/lib/whatsapp-envios/informes/formato";
+import { diasNaturalesDesde, fechaCalendario } from "@/lib/utils/calendario-zona";
+import { fechaLegibleEnZona, horaLegibleEnZona } from "@/lib/whatsapp-envios/informes/formato";
 import type { FilaPicking } from "@/lib/whatsapp-envios/informes/picking/tipos";
 
 export const NOMBRE_SIN_PRODUCTO = "Sin producto indicado";
@@ -61,6 +61,8 @@ export interface OrdenAtrasada {
 export interface ModeloPicking {
   tienda: string;
   ahora: Date;
+  /** SLT-42 (R22): la zona del pais de la empresa, para los dias, la fecha y la hora. */
+  zona: string;
   diasAtraso: number;
   /** Productos (unidades desc, nombre asc) y, al final si existe, «Sin producto indicado». */
   grupos: GrupoPicking[];
@@ -114,21 +116,21 @@ function formaVisible(variantes: Map<string, number>): string {
 
 /**
  * R23 — `picking-<tienda>-<AAAA-MM-DD>.pdf`: tienda en minusculas ASCII separadas por guiones (sin
- * diacriticos), fecha calendario de Costa Rica. Una tienda sin ningun caracter util → `tienda`.
+ * diacriticos), fecha calendario de `zona` (SLT-42). Una tienda sin ningun caracter util → `tienda`.
  */
-export function nombreArchivoPicking(tienda: string, ahora: Date): string {
+export function nombreArchivoPicking(tienda: string, ahora: Date, zona: string): string {
   const slug = tienda
     .normalize("NFD")
     .replace(/\p{M}+/gu, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-  return `picking-${slug === "" ? "tienda" : slug}-${fechaCalendarioCR(ahora)}.pdf`;
+  return `picking-${slug === "" ? "tienda" : slug}-${fechaCalendario(ahora, zona)}.pdf`;
 }
 
-/** R14 — dias calendario CR entre la entrada a `en_preparacion` y `ahora` (nunca negativo). */
-export function diasEnPreparacion(entrada: Date, ahora: Date): number {
-  return diasNaturalesCRDesde(entrada, ahora);
+/** R14 — dias calendario de `zona` entre la entrada a `en_preparacion` y `ahora` (nunca negativo). */
+export function diasEnPreparacion(entrada: Date, ahora: Date, zona: string): number {
+  return diasNaturalesDesde(entrada, ahora, zona);
 }
 
 /** R15 — atrasada = ESTRICTAMENTE mas de `diasAtraso` dias. */
@@ -149,15 +151,15 @@ interface Acumulado {
  */
 export function construirModeloPicking(
   filas: readonly FilaPicking[],
-  opciones: { ahora: Date; diasAtraso: number; tienda: string },
+  opciones: { ahora: Date; zona: string; diasAtraso: number; tienda: string },
 ): ModeloPicking {
-  const { ahora, diasAtraso, tienda } = opciones;
+  const { ahora, zona, diasAtraso, tienda } = opciones;
   const porClave = new Map<string, Acumulado>();
   const sinProducto: OrdenDelProducto[] = [];
   const atrasadas: (OrdenAtrasada & { posicion: number })[] = [];
 
   filas.forEach((f, posicion) => {
-    const dias = diasEnPreparacion(f.entrada, ahora);
+    const dias = diasEnPreparacion(f.entrada, ahora, zona);
     const atrasada = estaAtrasada(dias, diasAtraso);
     const identificador = identificadorDeOrden(f.numRemision, f.numGuia);
     if (atrasada) atrasadas.push({ ordenId: f.ordenId, identificador, dias, posicion });
@@ -204,6 +206,7 @@ export function construirModeloPicking(
   return {
     tienda,
     ahora,
+    zona,
     diasAtraso,
     grupos,
     totales,
@@ -219,10 +222,10 @@ export function construirModeloPicking(
       dias_atraso: String(diasAtraso),
       remision_desde: remisionDesde,
       remision_hasta: remisionHasta,
-      fecha: fechaCRLegible(ahora),
-      hora: horaCRLegible(ahora),
+      fecha: fechaLegibleEnZona(ahora, zona),
+      hora: horaLegibleEnZona(ahora, zona),
     },
-    nombreArchivo: nombreArchivoPicking(tienda, ahora),
+    nombreArchivo: nombreArchivoPicking(tienda, ahora, zona),
   };
 }
 
@@ -234,13 +237,14 @@ export function construirModeloPicking(
 export function contarPorTienda(
   entradas: readonly { tiendaId: string; entrada: Date }[],
   ahora: Date,
+  zona: string,
   diasAtraso: number,
 ): Map<string, { ordenes: number; atrasadas: number }> {
   const conteo = new Map<string, { ordenes: number; atrasadas: number }>();
   for (const e of entradas) {
     const c = conteo.get(e.tiendaId) ?? { ordenes: 0, atrasadas: 0 };
     c.ordenes += 1;
-    if (estaAtrasada(diasEnPreparacion(e.entrada, ahora), diasAtraso)) c.atrasadas += 1;
+    if (estaAtrasada(diasEnPreparacion(e.entrada, ahora, zona), diasAtraso)) c.atrasadas += 1;
     conteo.set(e.tiendaId, c);
   }
   return conteo;

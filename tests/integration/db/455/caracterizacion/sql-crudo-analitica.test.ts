@@ -38,6 +38,7 @@ import {
 import { consultaDe, rangoDe } from "../../_cohorte-carga";
 
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 /**
  * FEATURE 455 — FASE 0 · C05 (R46, R52). LOS NUMEROS DE LA ANALITICA, sobre el codigo de HOY.
  *
@@ -67,7 +68,7 @@ function consultaGlobal(metricaId: string): ConsultaAnalitica {
     { rango: "personalizado", desde: FECHA_D, hasta: FECHA_D },
     MAESTRO,
     metricaId,
-    AHORA,
+    ZONA_DE_CR, AHORA,
   );
   if (r.status !== "ok") throw new Error(`preparacion no concedida: ${JSON.stringify(r)}`);
   return r.consulta;

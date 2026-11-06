@@ -8,6 +8,7 @@ import { derivarFinanzasDiarias } from "@/lib/utils/finanzas-diarias";
 import { derivarCaja } from "@/lib/utils/caja-tesoreria";
 import type { AgregadoDiarioCajaRow } from "@/lib/interfaces/repositories/IFinanzasDiarioRepository";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 const AHORA = new Date("2026-08-17T12:00:00.000Z");
 
 /** Atajo para escribir filas del agregado sin repetir la forma. */
@@ -266,7 +267,7 @@ describe("La derivación del dinero por día", () => {
 describe("El servicio: la ventana la pone el reloj", () => {
   function servicio(now: Date) {
     const repo = { sumarPorDia: vi.fn().mockResolvedValue([]) };
-    return { repo, service: new FinanzasDiarioService(repo, { now: () => now }) };
+    return { repo, service: new FinanzasDiarioService(repo, { now: () => now }, reglasPaisFijas()) };
   }
 
   // Últimos 30 días CR resueltos por `resolverRango`, no por aritmética propia: es el mismo
