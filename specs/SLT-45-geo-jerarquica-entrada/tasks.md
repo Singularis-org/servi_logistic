@@ -77,12 +77,12 @@
   firmada de `rastreo-sin-ruta-nueva.guardia.test.ts` y `tests/unit/auth/middleware.test.ts` al día.
   *Hecho:* las guardias de middleware en verde; `GET /api/v2/ordenes/carga` → 405 y
   `/api/v2/ordenes/analitica` no existe.
-- [ ] **T5.3** [P] `tests/integration/api/v2-ordenes.route.test.ts` (crear y lote: auth 401/403, empresa de
+- [x] **T5.3** [P] `tests/integration/api/v2-ordenes.route.test.ts` (crear y lote: auth 401/403, empresa de
   la key, R12, R13–R16 extremo a extremo, forma de respuesta igual a v1 + `ubicacion`, cantón de CR → sin
   zona). (R10, R11, R12, R17, R18)
-- [ ] **T5.4** [P] `tests/integration/api/v2-cotizacion.route.test.ts`: mismos importes que v1 para la
+- [x] **T5.4** [P] `tests/integration/api/v2-cotizacion.route.test.ts`: mismos importes que v1 para la
   misma ubicación + `ubicacion`. (R19)
-- [ ] **T5.5** [P] `tests/integration/api/v2-consulta.route.test.ts`: detalle igual que v1 + ruta con
+- [x] **T5.5** [P] `tests/integration/api/v2-consulta.route.test.ts`: detalle igual que v1 + ruta con
   tipos; 404 uniforme. (R20, R21)
 - [ ] **T5.6** [P] `tests/integration/api/v2-geografia.route.test.ts`: país propio (CR), 422 sin `pais`
   o mal formado, mismo 404 para país ajeno e inexistente. (R22, R23)
