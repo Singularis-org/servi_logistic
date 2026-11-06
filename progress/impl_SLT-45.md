@@ -105,3 +105,55 @@ Sin tocar `lib/services/geo-resolucion.ts` ni ningún camino de v1. Sin dependen
   (ficha 420)» ni `scripts/verificar-dependencias.mjs`): ajeno a T2, que no toca `init.sh`. Para el leader.
 
 Veredicto T2: motor de N niveles puro y probado; v1 sin tocar y sus 11 mensajes fijados en tabla.
+
+## T3 — Escritura del nodo (backend_dev, 2026-11-05)
+
+Sin migraciones, sin dependencias, trigger de SLT-43 sin tocar. Commits: `adbb2a26` (T3.1),
+`1086396b` (T3.2 parcial), `331bb839` (T3.3).
+
+### Archivos
+- `lib/interfaces/repositories/IOrdenRepository.ts` — `CreateOrdenData.nodoGeograficoId: string` (T3.1);
+  `CorregirDatosClienteData.nodoGeograficoId?: string` (T3.2).
+- `lib/repositories/OrdenRepository.ts` — `toCreateManyInput` lo manda en el INSERT (T3.1);
+  `corregirDatosCliente` lo incluye en el mismo `updateMany` (T3.2).
+- `lib/services/BulkOrdenService.ts` — `resolveFila`: `nodoGeograficoId = geo.distritoId ?? geo.cantonId` (vía `resolveGeo`).
+  La rama del motor aún no existe en `resolveFila` (es T4.2); allí será `nodo.id` con `fksDeNodo`.
+- 17 tests que arman un `CreateOrdenData` literal ganan `nodoGeograficoId` (el campo es obligatorio y `tsc`
+  incluye `tests/`). Solo el fixture cambia; ninguna aserción.
+- `tests/integration/db/orden-nodo-escritura.test.ts` (nuevo, T3.3).
+
+### ABIERTO — T3.2 queda `[ ]`: contradicción en el spec (decisión del leader/humano)
+design §3.2 y tasks T3.2 dicen que `CorregirDatosClienteService` pone `nodoGeograficoId`, y el «Hecho» de T3.2
+dice que los tests existentes pasan sin cambiar aserciones. No se cumplen las dos cosas a la vez:
+`tests/unit/services/corregir-datos-cliente-service.test.ts` (líneas ~627 y ~669) usan
+`toHaveBeenCalledWith(ORDEN_ID, { distritoId: "d-2", zonaId: "z-2" }, …)` y
+`{ provinciaId, cantonId, distritoId, zonaId }`, que son igualdad exacta: una clave nueva con valor las pone en rojo.
+Opciones: (a) el servicio la pone (`data.nodoGeograficoId = distrito.id` junto a `data.zonaId`) y se añade
+`nodoGeograficoId: "d-2"` a esas dos aserciones; (b) el servicio no la pone y el repositorio la deriva
+(`data.nodoGeograficoId ?? data.distritoId`) sin tocar tests. Hoy la base ya cumple R26/R27 por el trigger.
+
+### Mapa R → test (T3)
+| Requisito | Test |
+|---|---|
+| R25 | `orden-nodo-escritura.test.ts` > «v1 (`cargarViaApi`), profundidad 3…», «v2 (motor + repositorio), profundidad 3…», «profundidad 2 (canton, por el repositorio)…» |
+| R26 | `orden-nodo-escritura.test.ts` > «corregir la ubicacion escribe el distrito nuevo…» (por el repositorio; la parte del servicio está abierta) |
+| R27 | los cuatro casos de arriba: `nodo_geografico_id` = nodo resuelto = `COALESCE(distrito_id, canton_id)` |
+| R28 | `orden-nodo-escritura.test.ts` > «el trigger `orden_nodo_geografico` de SLT-43 sigue derivando el nodo de las FK» |
+
+### Evidencia (base `logistic_slt45`)
+- `pnpm exec tsc --noEmit` → exit 0 (después de T3.1 y otra vez con todo T3).
+- `pnpm exec eslint` sobre los archivos de prod tocados y el test nuevo → 0 errores (1 warning previo, `IOrdenRepository.ts:11`).
+- `vitest related --run` sobre los 3 archivos de prod: **lo mató Claude Code por poca memoria del sistema**; no se relanzó.
+  En su lugar, con `--maxWorkers=1`:
+  - `tests/unit/services/bulk-orden-service*`, `orden-repository.{carga-api,bulk,carga-lote,creacion-bifurcada}`,
+    `orden-historial-atomicidad`, `tests/unit/services/corregir*`, `corregir-datos-sin-rastro.guardia` →
+    `Test Files 17 passed (17)`, `Tests 347 passed (347)`.
+  - `tests/integration/db/orden-nodo-escritura.test.ts` → `Tests 5 passed (5)` (corre, no salta).
+  - `tests/integration/api/contrato-v1.route.test.ts` en modo comparar, sin regrabar → `Tests 22 passed (22)`; `tests/fixtures` sin cambios.
+  - Los 12 de integración con fixture tocado → `11 passed | 1 failed` archivos, `106 passed | 9 skipped`. El fallo es
+    `orden-remision-borrada-libera-numero.test.ts`: su `beforeAll` exige filas en `orden` y la base desechable no
+    tiene. `corregir-datos-cliente.repo.test.ts` y `corregir-ubicacion-geocode.test.ts` caen por lo mismo. Es del entorno, no de T3.
+  - Correcciones con T3.2 puesto: `tests/unit/services/corregir*` + guardias de corrección + `orden-nodo-escritura` →
+    146 passed (los 2 rojos son la misma precondición de `orden` vacía).
+
+Veredicto T3: crear escribe nodo + 3 FK y está probado contra Postgres. T3.2 queda abierta en la parte del servicio, a la espera de la decisión (a)/(b).
