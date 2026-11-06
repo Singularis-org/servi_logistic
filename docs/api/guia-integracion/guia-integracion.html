@@ -417,7 +417,7 @@
   <p>Consecuencia práctica: un <code>401</code> es problema de su cliente HTTP o de su secreto; un <code>403</code> requiere hablar con la empresa (salvo el de analítica).</p>
   <h2>4.5 Fechas y horas</h2>
   <ul>
-    <li><strong>Fechas de calendario:</strong> <code>YYYY-MM-DD</code>, medidas en <strong>hora de Costa Rica (UTC-6)</strong>. Deben ser fechas reales: <code>2026-02-31</code> es <code>422</code>.</li>
+    <li><strong>Fechas de calendario:</strong> <code>YYYY-MM-DD</code>, medidas en la <strong>zona horaria del país de la empresa (hoy Costa Rica, UTC-6)</strong>. Deben ser fechas reales: <code>2026-02-31</code> es <code>422</code>.</li>
     <li><strong>Timestamps:</strong> ISO 8601 en UTC (<code>2026-09-22T14:03:11.000Z</code>).</li>
   </ul>
   <div class="warn">Mezclar los dos sistemas es el error más común: si convierte un timestamp UTC a fecha de calendario sin pasar a UTC-6, las órdenes de la noche caen en el día siguiente y sus filtros <code>desde</code>/<code>hasta</code> no cuadran con lo que ve en la aplicación.</div>
