@@ -204,6 +204,7 @@ export const TEXTOS = {
   guardadoBorrador: "Borrador guardado. No cambia ningún cobro ni pago hasta que actives.",
   guardadoEnVigor: "Guardado. El cambio aplica desde el siguiente cierre; los cierres ya hechos no cambian.",
   guardadoParcial: "Lo demás se guardó. Revisa las filas marcadas: conservan lo que digitaste.",
+  guardadoNinguno: "No se pudo guardar. Revisa las filas marcadas: conservan lo que digitaste.",
   errorGuardar: "No se pudo guardar. Lo digitado sigue aquí: vuelve a intentarlo.",
   ivaObligatorio: "Digita el IVA de este cobro. Si no lleva, escribe 0.",
   filaNoExiste: "Este valor ya no existe. Recarga la pantalla.",
@@ -317,6 +318,8 @@ export const TEXTOS = {
       ? "Se quita 1 valor. El mensajero pasa a usar el valor de la zona."
       : `Se quitan ${n} valores. El mensajero pasa a usar el valor de la zona.`,
   mensajeroQuitado: "Valor propio quitado.",
+  quitadoParcial: "Se quitó parte de los valores. Los que quedan no se pudieron quitar: vuelve a intentarlo.",
+  errorQuitar: "No se pudo quitar el valor propio. Vuelve a intentarlo.",
   anadirMensajeroTitulo: "Añadir mensajero con valor propio",
   editarMensajeroTitulo: (nombre: string) => `Valor propio de ${nombre}`,
   elegirMensajero: "Elige el mensajero",

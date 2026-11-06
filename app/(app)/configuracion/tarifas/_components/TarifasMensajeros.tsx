@@ -128,8 +128,11 @@ export function TarifasMensajeros({ filas, mensajeros, activada, puedeEscribir, 
       const r = await guardarValoresTarifa({
         cambios: aQuitar.valores.map((v) => ({ accion: "quitar", clave: claveDeCelda(v.concepto, null), id: v.id })),
       });
-      if (r.status !== "ok" || r.resultados.some((x) => x.status !== "ok")) {
-        toast.error(TEXTOS.errorGuardar);
+      const fallidos = r.status === "ok" ? r.resultados.filter((x) => x.status !== "ok").length : 0;
+      if (r.status !== "ok" || fallidos > 0) {
+        // Sin cifras: la recarga deja en el modal los que de verdad quedan.
+        if (r.status === "ok" && fallidos < r.resultados.length) toast.warning(TEXTOS.quitadoParcial);
+        else toast.error(TEXTOS.errorQuitar);
         await onCambio();
         return;
       }
@@ -137,7 +140,7 @@ export function TarifasMensajeros({ filas, mensajeros, activada, puedeEscribir, 
       setAQuitarId(null);
       await onCambio();
     } catch {
-      toast.error(TEXTOS.errorGuardar);
+      toast.error(TEXTOS.errorQuitar);
     }
   }
 

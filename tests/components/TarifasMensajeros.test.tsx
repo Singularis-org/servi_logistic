@@ -633,6 +633,112 @@ describe("SLT-55 R31 — añadir", () => {
     expect(campo(d, "Por incidente")).toHaveValue("700");
     expect(within(d).getByText("Este valor ya no existe. Recarga la pantalla.")).toBeInTheDocument();
   });
+
+  describe("R30: cuando no se guardó nada", () => {
+    const RECHAZADA = {
+      status: "ok",
+      resultados: [
+        { clave: "mensajero_entregado:todos", status: "validation_error", fieldErrors: { valor: ["Un porcentaje no puede pasar de 100."] } },
+      ],
+    };
+
+    async function anadirRechazado(u: UserEvent): Promise<HTMLElement> {
+      guardarMock.mockResolvedValueOnce(RECHAZADA);
+      const d = await abrirAnadirYElegir(u, "Caro Mena");
+      await u.click(within(d).getByRole("combobox", { name: "Modo de Por entregado" }));
+      await u.click(await screen.findByRole("option", { name: "%" }));
+      await u.type(campo(d, "Por entregado"), "150");
+      await guardarYEsperarEnvio(u, d);
+      await waitFor(() => expect(toast.error).toHaveBeenCalled());
+      return d;
+    }
+
+    it("El selector sigue, no afirma que algo se guardó, y la fila conserva lo digitado con su error", async () => {
+      const u = userEvent.setup();
+      const { p } = montar();
+      const d = await anadirRechazado(u);
+
+      expect(toast.error).toHaveBeenCalledWith("No se pudo guardar. Revisa las filas marcadas: conservan lo que digitaste.");
+      expect(toast.warning).not.toHaveBeenCalled();
+      expect(toast.success).not.toHaveBeenCalled();
+      expect(within(d).getByRole("combobox", { name: "Mensajero" })).toHaveTextContent("Caro Mena");
+      expect(campo(d, "Por entregado")).toHaveValue("150");
+      expect(campo(d, "Por entregado")).toHaveAttribute("aria-invalid", "true");
+      expect(within(d).getByText("Un porcentaje no puede pasar de 100.")).toBeInTheDocument();
+      expect(p.onCambio).toHaveBeenCalledTimes(1);
+    });
+
+    it("Se puede corregir y reintentar con el mismo mensajero", async () => {
+      const u = userEvent.setup();
+      montar();
+      const d = await anadirRechazado(u);
+
+      await u.clear(campo(d, "Por entregado"));
+      await u.type(campo(d, "Por entregado"), "15");
+      guardarMock.mockResolvedValueOnce({ status: "ok", resultados: [{ clave: "mensajero_entregado:todos", status: "ok" }] });
+      await u.click(within(d).getByRole("button", { name: "Guardar borrador" }));
+      await waitFor(() => expect(guardarMock).toHaveBeenCalledTimes(2));
+      expect(guardarMock.mock.calls[1]?.[0].cambios).toEqual([
+        expect.objectContaining({ datos: expect.objectContaining({ modo: "porcentaje", valor: "15", mensajeroId: "m3" }) }),
+      ]);
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    });
+
+    it("Al elegir otro mensajero, el error del anterior ya no se le atribuye; lo digitado sigue y va con el nuevo", async () => {
+      const u = userEvent.setup();
+      montar();
+      const d = await anadirRechazado(u);
+
+      await elegirMensajero(u, d, "Beto Rojas");
+      expect(within(d).queryByText("Un porcentaje no puede pasar de 100.")).toBeNull();
+      expect(campo(d, "Por entregado")).not.toHaveAttribute("aria-invalid");
+      expect(campo(d, "Por entregado")).toHaveValue("150");
+
+      await u.click(within(d).getByRole("button", { name: "Guardar borrador" }));
+      await waitFor(() => expect(guardarMock).toHaveBeenCalledTimes(2));
+      expect(guardarMock.mock.calls[1]?.[0].cambios).toEqual([
+        expect.objectContaining({ datos: expect.objectContaining({ mensajeroId: "m2" }) }),
+      ]);
+    });
+
+    it("Editando, si todas las filas fallan tampoco afirma que algo se guardó", async () => {
+      guardarMock.mockResolvedValueOnce({ status: "ok", resultados: [{ clave: "mensajero_novedad:todos", status: "error" }] });
+      const u = userEvent.setup();
+      montar();
+      const d = await abrirEdicion(u, "Ana Torres");
+      await u.type(campo(d, "Por novedad"), "500");
+      await guardarYEsperarEnvio(u, d);
+      await waitFor(() => expect(toast.error).toHaveBeenCalledWith("No se pudo guardar. Revisa las filas marcadas: conservan lo que digitaste."));
+      expect(toast.warning).not.toHaveBeenCalled();
+      expect(within(d).queryByRole("combobox", { name: "Mensajero" })).toBeNull();
+      expect(campo(d, "Por novedad")).toHaveValue("500");
+    });
+
+    it("Si el reintento falla entero tras un guardado parcial, el mensajero sigue fijo: ya tiene algo guardado", async () => {
+      guardarMock.mockResolvedValueOnce({
+        status: "ok",
+        resultados: [
+          { clave: "mensajero_entregado:todos", status: "ok" },
+          { clave: "mensajero_incidente:todos", status: "error" },
+        ],
+      });
+      const u = userEvent.setup();
+      montar();
+      const d = await abrirAnadirYElegir(u, "Caro Mena");
+      await u.type(campo(d, "Por entregado"), "2900");
+      await u.type(campo(d, "Por incidente"), "700");
+      await guardarYEsperarEnvio(u, d);
+      await waitFor(() => expect(toast.warning).toHaveBeenCalledWith("Lo demás se guardó. Revisa las filas marcadas: conservan lo que digitaste."));
+      expect(toast.error).not.toHaveBeenCalled();
+      expect(within(d).queryByRole("combobox", { name: "Mensajero" })).toBeNull();
+
+      guardarMock.mockResolvedValueOnce({ status: "ok", resultados: [{ clave: "mensajero_incidente:todos", status: "error" }] });
+      await u.click(within(d).getByRole("button", { name: "Guardar borrador" }));
+      await waitFor(() => expect(toast.error).toHaveBeenCalledWith("No se pudo guardar. Revisa las filas marcadas: conservan lo que digitaste."));
+      expect(toast.warning).toHaveBeenCalledTimes(1);
+      expect(within(d).queryByRole("combobox", { name: "Mensajero" })).toBeNull();
+    });
+  });
 });
 
 describe("SLT-55 R32 — el inactivo en el diálogo", () => {
@@ -710,7 +816,7 @@ describe("SLT-55 R33 — quitar", () => {
     expect(guardarMock).not.toHaveBeenCalled();
   });
 
-  it("Si falla uno lo dice, sigue abierto, y el reintento pide solo lo que queda", async () => {
+  it("Si se quitó uno y falló otro dice las dos cosas, sigue abierto, y el reintento pide solo lo que queda", async () => {
     guardarMock.mockResolvedValueOnce({
       status: "ok",
       resultados: [
@@ -723,7 +829,8 @@ describe("SLT-55 R33 — quitar", () => {
     await u.click(screen.getByRole("button", { name: "Quitar valor propio de Ana Torres" }));
     const d = await screen.findByRole("dialog");
     await guardarYEsperarEnvio(u, d, "Quitar");
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("No se pudo guardar. Lo digitado sigue aquí: vuelve a intentarlo."));
+    await waitFor(() => expect(toast.warning).toHaveBeenCalledWith("Se quitó parte de los valores. Los que quedan no se pudieron quitar: vuelve a intentarlo."));
+    expect(toast.error).not.toHaveBeenCalled();
     expect(toast.success).not.toHaveBeenCalled();
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(p.onCambio).toHaveBeenCalled();
@@ -736,6 +843,43 @@ describe("SLT-55 R33 — quitar", () => {
     expect(guardarMock.mock.calls[1]?.[0].cambios.map((c: { id: string }) => c.id)).toEqual(["v-rec"]);
   });
 
+  it("Si fallan todos no dice que se quitó parte, sigue abierto y el reintento los pide todos", async () => {
+    guardarMock.mockResolvedValueOnce({
+      status: "ok",
+      resultados: [
+        { clave: "mensajero_entregado:todos", status: "error" },
+        { clave: "mensajero_rechazo:todos", status: "forbidden" },
+      ],
+    });
+    const u = userEvent.setup();
+    const { p } = montar();
+    await u.click(screen.getByRole("button", { name: "Quitar valor propio de Ana Torres" }));
+    const d = await screen.findByRole("dialog");
+    await guardarYEsperarEnvio(u, d, "Quitar");
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("No se pudo quitar el valor propio. Vuelve a intentarlo."));
+    expect(toast.warning).not.toHaveBeenCalled();
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(p.onCambio).toHaveBeenCalledTimes(1);
+
+    guardarMock.mockResolvedValueOnce({ status: "error" });
+    await u.click(within(d).getByRole("button", { name: "Quitar" }));
+    await waitFor(() => expect(guardarMock).toHaveBeenCalledTimes(2));
+    expect(guardarMock.mock.calls[1]?.[0].cambios.map((c: { id: string }) => c.id).sort()).toEqual(["v-ent", "v-rec"]);
+  });
+
+  it("Un error de la petición entera dice que no se pudo quitar, sin hablar de nada digitado", async () => {
+    guardarMock.mockResolvedValueOnce({ status: "error" });
+    const u = userEvent.setup();
+    montar();
+    await u.click(screen.getByRole("button", { name: "Quitar valor propio de Ana Torres" }));
+    const d = await screen.findByRole("dialog");
+    await guardarYEsperarEnvio(u, d, "Quitar");
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("No se pudo quitar el valor propio. Vuelve a intentarlo."));
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
   it("Si la action lanza lo dice y no da nada por hecho", async () => {
     guardarMock.mockRejectedValue(new Error("red"));
     const u = userEvent.setup();
@@ -743,7 +887,7 @@ describe("SLT-55 R33 — quitar", () => {
     await u.click(screen.getByRole("button", { name: "Quitar valor propio de Ana Torres" }));
     const d = await screen.findByRole("dialog");
     await guardarYEsperarEnvio(u, d, "Quitar");
-    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("No se pudo quitar el valor propio. Vuelve a intentarlo."));
     expect(toast.success).not.toHaveBeenCalled();
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });

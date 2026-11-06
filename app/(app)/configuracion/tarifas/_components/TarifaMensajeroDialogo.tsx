@@ -118,9 +118,20 @@ export function TarifaMensajeroDialogo({
     // R30: lo que falló conserva lo digitado; lo demás vuelve a leerse de lo guardado.
     setBorrador((b) => Object.fromEntries(Object.entries(b).filter(([clave]) => fallos[clave] !== undefined)));
     setErrores(fallos);
-    setFijado(true);
-    toast.warning(TEXTOS.guardadoParcial);
+    if (r.resultados.some((resultado) => resultado.status === "ok")) {
+      setFijado(true);
+      toast.warning(TEXTOS.guardadoParcial);
+    } else {
+      // Nada de este intento se guardó. No se llama a `setFijado(false)`: si un intento anterior guardó algo, sigue fijo.
+      toast.error(TEXTOS.guardadoNinguno);
+    }
     await onCambio();
+  }
+
+  function elegir(mensajeroId: string) {
+    setElegido(mensajeroId);
+    // Un error puede venir del mensajero anterior (p. ej. dado de baja): no se le atribuye al nuevo.
+    setErrores({});
   }
 
   const sinOpciones = !fijado && disponibles.length === 0;
@@ -162,7 +173,7 @@ export function TarifaMensajeroDialogo({
                 id="tarifa-mensajero"
                 value={elegido}
                 placeholder={TEXTOS.elegirMensajero}
-                onValueChange={setElegido}
+                onValueChange={elegir}
                 options={disponibles.map((m) => ({ value: m.id, label: m.nombre }))}
                 className="h-auto min-h-11 w-auto min-w-[200px] focus-visible:ring-3 focus-visible:ring-ring"
               />

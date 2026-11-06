@@ -667,10 +667,10 @@ marca la ruta como dinámica y lo registra como un error interno. La ruta sale `
 | R27 | `componente:166`, `:182`, `:204`, `:225`; `módulo:402`; `e2e:166` |
 | R28 | `componente:289` |
 | R29 | `componente:102`, `:127`, `:346`; `módulo:412` |
-| R30 | `componente:457`, `:611` |
+| R30 | `componente:457`, `:611`, `:637` |
 | R31 | `componente:563`; `pantalla-db:263`; `e2e:443` |
-| R32 | `componente:186`, `:250`, `:256`, `:638`; `pantalla-db:279`, `:299` |
-| R33 | `componente:674`; `e2e:324` |
+| R32 | `componente:186`, `:250`, `:256`, `:744`; `pantalla-db:279`, `:299` |
+| R33 | `componente:780`; `e2e:324` |
 | R34 | `componente:231`, `:237`, `:446`; `e2e:166` |
 | R35 | `componente:263`; `módulo:444`; `page:91`; `e2e:383`, `:501` |
 | R36 | `componente:243`; `e2e:166` |
@@ -705,3 +705,89 @@ Un requisito con test no es un requisito medido de todas las maneras. Lo que ya 
 - **La rama va por detrás de `origin/dev`:** su base es `cc63e547` y `origin/dev` está en `689cc9df`. Estas corridas no incluyen esos commits.
 
 **Veredicto:** el importe se lee entero a 390 px sin cambiar el escritorio, el E2E cae con la tabla vieja, y T6.1 y T6.2 están hechas; falta T6.3, del leader.
+
+## Hallazgos 1 y 2 de la revisión (frontend)
+
+`progress/review_SLT-55.md`. Sin dinero ni servidor de por medio: solo lo que la pantalla afirma tras un fallo.
+
+### Archivos
+
+| Archivo | Qué |
+|---|---|
+| `app/(app)/configuracion/tarifas/_components/TarifaMensajeroDialogo.tsx` | `:121-127`: con algo guardado, fija y dice `guardadoParcial`; sin nada, `guardadoNinguno` y no toca `fijado`. `:131-135` y `:176`: elegir otro mensajero limpia los errores |
+| `app/(app)/configuracion/tarifas/_components/TarifasMensajeros.tsx` | `:131-135`: parcial, aviso con `quitadoParcial`; todos fallan o falla la petición, `errorQuitar`. `:143`: si la action lanza, `errorQuitar` |
+| `app/(app)/configuracion/tarifas/_components/tarifas-textos.ts` | `:207`, `:321`, `:322`: los tres textos nuevos. Ninguno existente cambia |
+| `tests/components/TarifasMensajeros.test.tsx` | `:637`, bloque de 5 casos; `:819` reescrito (afirmaba el texto falso); `:846` y `:871` nuevos; `:883` con el literal |
+
+Un cambio que la revisión no pedía, y que sale del arreglo: ahora el selector sigue tras un fallo, así que se puede elegir a otro mensajero con la fila aún marcada. Ese error puede ser del anterior: `elegir` lo limpia.
+
+### Textos
+
+- `guardadoNinguno`: «No se pudo guardar. Revisa las filas marcadas: conservan lo que digitaste.»
+- `quitadoParcial`: «Se quitó parte de los valores. Los que quedan no se pudieron quitar: vuelve a intentarlo.»
+- `errorQuitar`: «No se pudo quitar el valor propio. Vuelve a intentarlo.»
+
+`quitadoParcial` no lleva cifras: la recarga deja en el modal la cuenta real.
+
+### Reproducción
+
+Con los tests nuevos y el código sin arreglar: `failed 9, passed 50, total 59`. Los 9 son los 5 de `:637` y los 4 de quitar (`:819`, `:846`, `:871`, `:883`). Los dos hallazgos eran por lectura; con esto quedan reproducidos en test de componente, con la action doblada.
+
+### Mapa
+
+| R | Test |
+|---|---|
+| R30 | `componente:637`: `:656` selector y texto; `:671` reintento; `:687` elegir otro; `:704` editando; `:717` reintento tras un parcial |
+| R33 | `componente:819` parcial; `:846` fallan todos; `:871` falla la petición; `:883` la action lanza |
+
+### Mutaciones: 22 de 22 muertas
+
+`scratchpad/slt55m/mutar.cjs`, sobre `TarifasMensajeros.test.tsx`. **Autocomprobación:** base verde (59/59) y final verde (59/59); un control inocuo (un comentario) da 0 failed de 59, así que el arnés sabe reportar una viva; cada patrón aparece exactamente una vez y el archivo debe cambiar; para contar como muerta debe ejecutar los 59 (lo contrario sería `INVALIDA`: 0); tras cada una se restaura y se compara sha256. Al final, el sha256 de `git diff` es igual al de antes.
+
+| Id | Mutación | failed/59 |
+|---|---|---|
+| D1 | Hallazgo 1: siempre la rama de guardado parcial | 5 |
+| D2 | Nunca la rama parcial | 5 |
+| D3 | `some` → `every` | 5 |
+| D4 | La rama parcial no fija | 2 |
+| D5 | `setFijado` incondicional, con el toast bien | 2 |
+| D6 | Sin guardar nada, el toast viejo | 5 |
+| D7 | Fallo total desfija | 2 |
+| D8 | Elegir otro no limpia errores | 1 |
+| D9 | Elegir otro no cambia el mensajero | 11 |
+| D10 | Texto de `guardadoNinguno` | 3 |
+| Q1 | Hallazgo 2: el parcial con el texto viejo | 1 |
+| Q2 | Parcial aunque fallen todos | 1 |
+| Q3 | Nunca parcial | 1 |
+| Q4 | Parcial también con error de la petición | 1 |
+| Q5 | Fallo total con el texto viejo | 2 |
+| Q6 | Si la action lanza, el texto viejo | 1 |
+| Q7 | Un fallo cierra el modal | 3 |
+| Q8 | Un fallo no recarga | 2 |
+| Q9 | Un parcial se da por bueno | 2 |
+| Q10 | Un error de la petición se da por bueno | 1 |
+| Q11 | Texto de `quitadoParcial` | 1 |
+| Q12 | Texto de `errorQuitar` | 3 |
+
+Sin servidor rehecho para estas: son del test de componente. El E2E no recorre ningún fallo de estos.
+
+### Verificación
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: exit 0.
+- `pnpm lint`: exit 0, 0 errores y 234 avisos, la misma cifra que las tandas anteriores.
+- `pnpm exec vitest run` de `TarifasMensajeros`, `TarifasDisposicion`, `TarifasModulo` y `TarifasPage`: `Test Files 4 passed (4)`, `Tests 116 passed (116)`.
+- `pnpm run test:guardias`: exit 1. 1 archivo rojo de 331; 4 failed, 4617 passed y 1 skipped de 4622. Es `dependencias-declaradas-presentes.guardia.test.ts`, los mismos 4 de las tandas anteriores, en `tests/baseline-rojos.json`.
+- E2E, `--project=dinero e2e/tarifas-valor-propio-mensajero.spec.ts`, con `.next` rehecho: **11 passed, 0 failed, `INIT_EXIT=0`**.
+  - Primer intento sin ejecutar ningún test: `next build` falló con `Failed to fetch Archivo / JetBrains Mono from Google Fonts` (`BUILD_EXIT=1`) y el servidor no arrancó. Un `curl` a Google Fonts justo después dio 200 y el segundo build, `BUILD_EXIT=0`. Corrida del spec, solo esa.
+  - Vigía sobre el PID de 3055: 7 muestras; 6 con 3 conexiones, todas a `servi_gate_slt55`, y 1 aún sin conexiones. Ninguna otra base.
+  - Base sin recrear: `organizacion` 6 → 10, `usuario` 30 → 49, `tarifa_activacion` 1 → 2, por los datos del spec. Migraciones 304/304. Puertos 3055 y 54355 libres al terminar.
+
+### Sin verificar
+
+- **En un navegador, contra el servidor real, ningún fallo de estos:** los toasts, el selector y el reintento solo se prueban con la action doblada. El E2E pasó, pero solo dice que el camino feliz sigue. Que un 150 en % llegue como `validation_error` por fila sale de leer `porcentajeHasta100` y de la action; no lo ejecuté de punta a punta.
+- **`errorQuitar` cuando la action lanza:** dice «No se pudo quitar», pero si se cortó la respuesta el servidor pudo haber quitado algo. Sin recarga en esa rama, como antes; el reintento pediría ids ya quitados, y por lectura volverían como `not_found`.
+- **Un `not_found` al quitar** cuenta como fallo: si otra sesión ya lo quitó, el aviso dice que no se pudo aunque ya no esté, y la recarga cierra el modal si no queda ninguno. Por lectura.
+- **El mismo texto falso sigue fuera de esta ficha:** `TarifasValores.tsx:205` y `:264` usan `guardadoParcial` sin mirar si algo salió bien (la revisión ya lo citó), y `TarifasTiendas.tsx:127` y `:135` dicen «Lo digitado sigue aquí» al quitar. Por lectura; sin tocar. Sin anotar aún en `progress/deudas.md`.
+- `./init.sh`, T6.3 y `gate-completo`: del leader.
+
+**Veredicto:** el diálogo y el quitar dicen lo que pasó y permiten reintentar, con 22/22 mutaciones muertas y el E2E en 11/11.
