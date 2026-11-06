@@ -204,8 +204,13 @@ describeSiHayBase("SL-20/R32 — el superadmin sin empresa gestiona un país ent
 
   it("CONTRAPRUEBA: el mismo conteo FUERA de `comoPlataforma` cae en EmpresaNoResuelta (el contexto es lo que lo salva)", async () => {
     const servicio = new GeografiaService(new GeoRepository(app), new OrdenRepository(app));
+    // Un distrito QUE EXISTE: desde SLT-65 (R10) un id inexistente devuelve 0 antes de llegar a
+    // `orden`, y la contraprueba no mediria nada. Con un nodo real el conteo llega al modelo de
+    // negocio, que es donde se exige la empresa.
+    const distrito = await base.nodoGeografico.findFirst({ where: { profundidad: 3 }, select: { id: true } });
+    if (distrito === null) throw new Error("la base no tiene ningun distrito para la contraprueba");
     await expect(
-      servicio.contarOrdenesSinEntregar({ nivel: "distrito", id: randomUUID() }, { usuarioId: superadminId ?? "", rol: "superadmin" }),
+      servicio.contarOrdenesSinEntregar({ nivel: "distrito", id: distrito.id }, { usuarioId: superadminId ?? "", rol: "superadmin" }),
     ).rejects.toBeInstanceOf(EmpresaNoResuelta);
   });
 });

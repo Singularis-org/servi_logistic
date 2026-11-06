@@ -51,7 +51,8 @@ describeSiHayBase("454/T1.14 — correccion #69: rama nueva y rama legada (Postg
         where: { cierreId, ordenId: n.ordenId },
       });
       void _idDetalle;
-      await e.tx.cierreDetail.create({ data: { ...detalleN, ordenId: l.ordenId } });
+      // SLT-43: un Json leído (`null`) no es una entrada válida de Prisma; la columna nace NULL igual.
+      await e.tx.cierreDetail.create({ data: { ...detalleN, ordenId: l.ordenId, ubicacionSnapshot: undefined } });
       await e.tx.ordenHistorialEstado.create({
         data: {
           ordenId: l.ordenId,

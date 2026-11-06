@@ -4,9 +4,14 @@ import { Prisma } from "@prisma/client";
 import { prepararConsultaProductos } from "@/lib/analytics/productos-consulta";
 import type { ConsultaProductos } from "@/lib/analytics/productos-consulta";
 import { descargaConfig } from "@/lib/config/descarga";
-import { condicionesDeConsulta } from "@/lib/repositories/ConteoPorStatusRepository";
+import { condicionesDeConsulta as condicionesDeConsultaCon } from "@/lib/repositories/ConteoPorStatusRepository";
+import { delegadosDelCatalogo, lugaresDe } from "./_catalogo-facetas";
 import { DineroProductosRepository } from "@/lib/repositories/DineroProductosRepository";
 import { RESULTADOS_QUE_APORTAN } from "@/lib/utils/dinero-por-producto";
+
+// SLT-71 (design §11.1): `lugares` es obligatorio. La entrada de los casos son los lugares de su filtro,
+// resueltos sobre el catalogo de prueba (`p1` → `c1` → `d1`); las aserciones no cambian por esto.
+const condicionesDeConsulta = (c: ConsultaProductos) => condicionesDeConsultaCon(c, lugaresDe(c.filtro));
 
 // FICHA 347 / B3.2 — EL `WHERE` Y LA FORMA DEL SQL DEL DINERO. Cubre R7, R24, R74, R75, R76.
 //
@@ -30,6 +35,8 @@ function consultaDe(raw: object, rol = "maestro", usuarioId = "u1"): ConsultaPro
 function prismaFalso(filas: unknown[] = []) {
   const capturado = { sql: "", valores: [] as unknown[] };
   const prisma = {
+    // SLT-71 (design §11.1): los delegados del catalogo, que el repositorio lee solo con faceta.
+    ...delegadosDelCatalogo(),
     $queryRaw: (plantilla: TemplateStringsArray, ...valores: unknown[]) => {
       const consulta = Prisma.sql(plantilla, ...valores);
       capturado.sql = consulta.sql;

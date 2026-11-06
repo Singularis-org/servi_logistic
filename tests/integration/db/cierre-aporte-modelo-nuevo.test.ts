@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { randomUUID } from "node:crypto";
 import { Prisma, type GestionResultado, type PrismaClient, type TarifaConcepto } from "@prisma/client";
 
+import { conEmpresa } from "@/lib/db/contexto-empresa";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { CierreAporteRepository } from "@/lib/repositories/CierreAporteRepository";
 import { CierreDiaRepository } from "@/lib/repositories/CierreDiaRepository";
@@ -162,10 +163,14 @@ async function sembrar(tx: TxDeTest): Promise<Escenario> {
   return { A, Z, M, T: fks.tiendaId, o };
 }
 
+// La empresa en la base (RLS) y en el contexto (`contextoActual`), como en produccion, donde la
+// extension fija una desde la otra. `enTransaccionRevertida` deja en el contexto su empresa por
+// defecto: sin el `conEmpresa`, lo que pregunta por la empresa del contexto (el catalogo geografico,
+// SLT-44) buscaria una que la RLS de esta no deja ver.
 async function comoEmpresa<T>(tx: TxDeTest, org: string, fn: () => Promise<T>): Promise<T> {
   await comoApp(tx, org);
   try {
-    return await fn();
+    return await conEmpresa(org, fn);
   } finally {
     await tx.$executeRawUnsafe("RESET ROLE");
   }

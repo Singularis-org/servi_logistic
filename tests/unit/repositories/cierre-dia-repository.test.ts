@@ -9,6 +9,7 @@ import { idEstado, sembrarCatalogoEstados } from "@/tests/fixtures/catalogo-esta
 import { clavePar, elegirPorCascada, type ParTarifa } from "@/lib/utils/cascada-tarifa";
 import { mapaViejo, tarifaVieja } from "../../fixtures/tarifa-tienda";
 import { ORIGENES_GESTION_FUERA_DEL_CIERRE } from "@/lib/types/orden-historial";
+import { delegadosDelCatalogo } from "@/tests/fixtures/doble-catalogo-geografico";
 
 // 💰 FICHA 337 (2026-08-31) — LA CUARTA CONDICION DEL PREDICADO DE PERTENENCIA AL CIERRE.
 //
@@ -1690,9 +1691,15 @@ function buildSnapshotTx(
     // FICHA 450: mismos valores que antes traia la relacion anidada.
     zona: catalogoDoble(() => ({ nombre: "Cartago", esCentral: false })),
     usuario: catalogoDoble(() => ({ nombre: "Tienda X" })),
-    provincia: catalogoDoble(() => ({ nombre: "Cartago" })),
-    canton: catalogoDoble(() => ({ nombre: "Central" })),
-    distrito: catalogoDoble(() => ({ nombre: "Oriental", zonasEspeciales: [] })),
+    // SLT-65 (design §14.1): la geografia del snapshot sale del catalogo de la empresa. Mismos
+    // nombres para los FK de `snapshotRow`, y sin marcas, como el `zonasEspeciales: []` de antes.
+    ...delegadosDelCatalogo({
+      nodos: [
+        { id: "p1", nombre: "Cartago" },
+        { id: "ct1", nombre: "Central" },
+        { id: "d1", nombre: "Oriental" },
+      ],
+    }),
     ...overrides,
   };
 }

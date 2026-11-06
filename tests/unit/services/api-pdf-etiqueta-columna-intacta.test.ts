@@ -89,6 +89,9 @@ function crearPrismaEspia(store: Store) {
   const llamadas: Llamada[] = [];
 
   function responder(modelo: string, metodo: string, args: Record<string, unknown>): unknown {
+    // SLT-65: la marca de la orden sale del catalogo de la empresa, que empieza por el pais de la
+    // organizacion. Los nodos, las zonas y las marcas responden `[]` por la rama general.
+    if (modelo === "organizacion" && metodo === "findFirst") return { paisId: "XX" };
     const fila = modelo === "orden" ? store.orden : modelo === "carga" ? store.carga : null;
     switch (metodo) {
       case "findMany":
@@ -122,6 +125,10 @@ function crearPrismaEspia(store: Store) {
         if (prop.startsWith("$")) {
           return (...args: unknown[]) => {
             llamadas.push({ modelo: "$client", metodo: prop, args: { args } });
+            // SLT-65: la carga del catalogo es una transaccion interactiva; corre sobre este doble.
+            if (prop === "$transaction" && typeof args[0] === "function") {
+              return (args[0] as (tx: unknown) => Promise<unknown>)(prisma);
+            }
             return Promise.resolve([]);
           };
         }

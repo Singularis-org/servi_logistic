@@ -5,10 +5,23 @@ import type {
   CreateZonaResult,
   UpdateZonaResult,
 } from "@/lib/interfaces/repositories/IZonaRepository";
+import { delegadosDelCatalogo } from "@/tests/fixtures/doble-catalogo-geografico";
+
+// SLT-65 (design §14.1): los distritos que usan los casos, como nodos del catalogo del doble. Es la
+// ENTRADA de la reconciliacion, que desde SLT-65 resuelve la zona con el catalogo de SLT-44.
+const NODOS_DEL_DOBLE = ["d1", "d2", "dViejo", "dQueSigue", "dNuevo"];
+
+/** La fila de `zona_distrito` tal como la lee la carga del catalogo (`deLaEmpresa`). */
+function filaDeZona(f: { distritoId: string; zonaId: string }) {
+  return { distritoId: f.distritoId, zona: { id: f.zonaId, nombre: f.zonaId, esCentral: false } };
+}
 
 // tx mock que reciben las operaciones dentro de $transaction.
 function buildTx() {
   return {
+    // SLT-65: los delegados del catalogo. Su `zonaDistrito` lo pisa el de abajo, que ya simula
+    // este doble (la carga del catalogo lee la segunda llamada a `findMany`).
+    ...delegadosDelCatalogo({ nodos: NODOS_DEL_DOBLE }),
     zona: {
       create: vi.fn(),
       update: vi.fn(),
@@ -51,14 +64,16 @@ function buildPrisma(tx: ReturnType<typeof buildTx>, overrides: Record<string, u
 }
 
 /**
- * SLT-75: `zonaDistrito.findMany` lo usan DOS lecturas distintas de `update`: la de conflictos
- * (R6, la unica que pide `select.zona`) y las de la reconciliacion de la 366. Este helper responde
- * `[]` (sin conflictos) a la primera y sirve `respuestas` EN ORDEN a las demas, para que los casos
- * de la 366 no dependan de la posicion de la lectura nueva.
+ * SLT-75: `zonaDistrito.findMany` lo usan VARIAS lecturas distintas de `update`: la de conflictos
+ * (R6, `leerDistritosEnOtraZona`, la unica que pide `select.distrito`) y las de la reconciliacion
+ * de la 366 — incluida la carga del catalogo de SLT-65 (`CatalogoGeograficoRepository.deLaEmpresa`),
+ * que tambien pide `select.zona`, por eso NO sirve para distinguir. Este helper responde `[]`
+ * (sin conflictos) a la primera y sirve `respuestas` EN ORDEN a las demas, para que los casos de
+ * la 366 no dependan de la posicion de la lectura nueva.
  */
 function esLecturaDeConflictos(args: unknown): boolean {
-  const a = args as { select?: { zona?: unknown } } | undefined;
-  return a?.select?.zona !== undefined;
+  const a = args as { select?: { distrito?: unknown } } | undefined;
+  return a?.select?.distrito !== undefined;
 }
 
 function nmEnOrden(tx: ReturnType<typeof buildTx>, respuestas: unknown[][]): void {
@@ -535,7 +550,7 @@ function txConNM(
   finales: { distritoId: string; zonaId: string }[],
 ): ReturnType<typeof buildTx> {
   const tx = buildTx();
-  nmEnOrden(tx, [previos.map((distritoId) => ({ distritoId })), finales]);
+  nmEnOrden(tx, [previos.map((distritoId) => ({ distritoId })), finales.map(filaDeZona)]);
   tx.zona.findUnique.mockResolvedValue({ id: "zA", esCentral: false });
   tx.zona.update.mockResolvedValue({
     id: "zA",
@@ -667,7 +682,20 @@ describe("366/T4 — ZonaRepository.update reconcilia la zona de las ordenes", (
     // `dViejo` se QUITA en este guardado y `dNuevo` entra. Los DOS tienen que re-evaluarse: si el
     // flujo mirara solo la lista final, las ordenes de `dViejo` se quedarian apuntando a esta zona
     // para siempre.
-    const tx = txConNM(["dViejo", "dQueSigue"], []);
+    //
+    // SLT-65 (design §6.1; decision humana 2026-11-03): la segunda `zonaDistrito.findMany` es ahora
+    // la carga del catalogo (`deLaEmpresa`, sin `where`), asi que la union ya no viaja en ella. La
+    // llamada que la lleva es la lectura de ordenes del plan: un `orden.count` por zona resuelta
+    // (R8: sale SIEMPRE), con los lugares en `whereLugarEn`. Para que salgan, cada nodo afectado
+    // resuelve una zona en la N:M final (`dViejo` paso a `zB`; los otros dos son de `zA`).
+    const tx = txConNM(
+      ["dViejo", "dQueSigue"],
+      [
+        { distritoId: "dViejo", zonaId: "zB" },
+        { distritoId: "dQueSigue", zonaId: "zA" },
+        { distritoId: "dNuevo", zonaId: "zA" },
+      ],
+    );
     const prisma = buildPrisma(tx);
 
     await repoOf(prisma).update(
@@ -676,14 +704,14 @@ describe("366/T4 — ZonaRepository.update reconcilia la zona de las ordenes", (
       null,
     );
 
-    const segunda = llamadasNMDeReconciliacion(tx)[1] as {
-      where: { distritoId: { in: string[] } };
-    };
-    expect(new Set(segunda.where.distritoId.in)).toEqual(
-      new Set(["dViejo", "dQueSigue", "dNuevo"]),
+    const lugaresLeidos = tx.orden.count.mock.calls.flatMap(
+      (c) =>
+        (c[0] as { where: { OR: [{ distritoId: { in: string[] } }, unknown] } }).where.OR[0]
+          .distritoId.in,
     );
+    expect(new Set(lugaresLeidos)).toEqual(new Set(["dViejo", "dQueSigue", "dNuevo"]));
     // Y sin repetidos: `dQueSigue` esta en las dos listas y entra UNA vez.
-    expect(segunda.where.distritoId.in).toHaveLength(3);
+    expect(lugaresLeidos).toHaveLength(3);
   });
 
   it("R7/R14: sin ordenes elegibles no se escribe historial y el conteo es 0", async () => {
@@ -744,8 +772,10 @@ describe("366/T4 — ZonaRepository.update reconcilia la zona de las ordenes", (
 
 describe("377/T4 — el corte por estado y el conteo de retenidas", () => {
   /** El `where` base de elegibilidad (366), tal cual, sin nada de estado. */
+  // SLT-65 (design §6.1, decision humana 2026-11-03): la orden entra por su LUGAR (`whereLugarEn`),
+  // escrito LITERAL aqui por el mismo motivo que el resto: el distrito, o el canton sin distrito.
   const BASE_D1_ZA = {
-    distritoId: { in: ["d1"] },
+    OR: [{ distritoId: { in: ["d1"] } }, { distritoId: null, cantonId: { in: ["d1"] } }],
     zonaId: { not: "zA" },
     deletedAt: null,
     cierreDetalles: { none: {} },
@@ -1098,7 +1128,7 @@ describe("376/T6 — el rastro de `update` (R12/R13/R15)", () => {
     // Dos hechos de naturaleza distinta en el MISMO guardado. Compartir lote haria que filtrar por
     // lote devolviera una mezcla que nadie pidio.
     const tx = txDeTraslado();
-    nmEnOrden(tx, [[{ distritoId: "d1" }], [{ distritoId: "d1", zonaId: "zB" }]]);
+    nmEnOrden(tx, [[{ distritoId: "d1" }], [filaDeZona({ distritoId: "d1", zonaId: "zB" })]]);
     tx.orden.findMany.mockResolvedValue([{ id: "o1", numGuia: 7, numRemision: "R-7" }]);
 
     await repoOf(buildPrisma(tx)).update("zB", { ...DATOS_BASE, esCentral: true }, "u-maestro");

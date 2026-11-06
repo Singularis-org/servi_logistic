@@ -4,6 +4,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 
 import { handleCargaApi } from "@/app/api/ordenes/api-key/carga/route";
 import { handleCotizacionApi } from "@/app/api/ordenes/api-key/cotizacion/route";
+import { conEmpresa } from "@/lib/db/contexto-empresa";
 import type { ApiKeyAuthResult } from "@/lib/interfaces/services/IApiKeyAuthService";
 import type { IEtiquetasDescargaService } from "@/lib/interfaces/services/IEtiquetasDescargaService";
 import type { IManifiestoService } from "@/lib/interfaces/services/IManifiestoService";
@@ -108,10 +109,14 @@ async function altaDeEmpresa(tx: TxDeTest): Promise<Empresa> {
   };
 }
 
+// La empresa nueva en la base (RLS) y en el contexto (`contextoActual`), como en produccion, donde la
+// extension fija una desde la otra. `enTransaccionRevertida` deja en el contexto su empresa por
+// defecto: sin el `conEmpresa`, lo que pregunta por la empresa del contexto (el catalogo geografico,
+// SLT-44) buscaria una que la RLS de esta no deja ver.
 async function comoEmpresa<T>(tx: TxDeTest, org: string, fn: () => Promise<T>): Promise<T> {
   await comoApp(tx, org);
   try {
-    return await fn();
+    return await conEmpresa(org, fn);
   } finally {
     await tx.$executeRawUnsafe("RESET ROLE");
   }

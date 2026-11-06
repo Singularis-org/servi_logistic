@@ -10,10 +10,15 @@ import {
 import type { IAnaliticaCache } from "@/lib/interfaces/external/IAnaliticaCache";
 import type { IConteoCargadasPorDiaRepository } from "@/lib/interfaces/repositories/IConteoCargadasPorDiaRepository";
 import {
-  condicionesDeCargadas,
+  condicionesDeCargadas as condicionesDeCargadasCon,
   ConteoCargadasPorDiaRepository,
 } from "@/lib/repositories/ConteoCargadasPorDiaRepository";
+import { lugaresDe } from "./_catalogo-facetas";
 import { ConteoCargadasPorDiaService } from "@/lib/services/ConteoCargadasPorDiaService";
+
+// SLT-71 (design §11.1): `lugares` es obligatorio. La entrada de los casos son los lugares de su filtro,
+// resueltos sobre el catalogo de prueba (`p1` → `c1` → `d1`); las aserciones no cambian por esto.
+const condicionesDeCargadas = (c: ConsultaConteoEntregas) => condicionesDeCargadasCon(c, lugaresDe(c.filtro));
 
 const AHORA = new Date("2026-08-17T12:00:00.000Z");
 
@@ -199,11 +204,12 @@ describe("Las seis facetas y el soft delete, idénticos a las otras dos lecturas
     });
     const sql = sqlDe(consulta);
 
-    for (const columna of ["zona_id", "provincia_id", "canton_id", "distrito_id", "tienda_id"]) {
-      expect(sql).toContain(`o."${columna}" IN (`);
-    }
+    // SLT-71 (design §11.1): zona y tienda con `IN`; cada faceta geografica, una condicion de lugar
+    // con `= ANY` cuyo parametro es el array de ids resueltos (decision del humano, 2026-11-04).
+    for (const columna of ["zona_id", "tienda_id"]) expect(sql).toContain(`o."${columna}" IN (`);
+    expect(sql.match(/o\."distrito_id" = ANY\(/g)).toHaveLength(3);
     expect(parametrosDe(consulta)).toEqual(
-      expect.arrayContaining(["z1", "p1", "c1", "d1", "t1"]),
+      expect.arrayContaining(["z1", ["c1", "d1", "p1"], ["c1", "d1"], ["d1"], "t1"]),
     );
   });
 

@@ -12,6 +12,7 @@ import { TarifaZonaMensajeroRepository } from "@/lib/repositories/TarifaZonaMens
 import { CierreDiaService } from "@/lib/services/CierreDiaService";
 import { CorteDiarioService } from "@/lib/services/CorteDiarioService";
 import { WalletFeedService } from "@/lib/services/WalletFeedService";
+import { conEmpresa } from "@/lib/db/contexto-empresa";
 import { comoApp, crearOrganizacion, fijarEmpresa, sembrarActivacion } from "@/tests/fabricas/organizaciones";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import {
@@ -195,7 +196,9 @@ async function afirmarSembrado(tx: TxDeTest, e: Escenario, valores: number) {
 async function comoEmpresa<T>(tx: TxDeTest, org: string, fn: () => Promise<T>): Promise<T> {
   await comoApp(tx, org);
   try {
-    return await fn();
+    // `enTransaccionRevertida` deja en `contextoActual` su empresa por defecto, no `org`: el catalogo
+    // (SLT-44/SLT-65) pide `organizacion` por el id del contexto, y con la RLS de `org` no la hallaria.
+    return await conEmpresa(org, fn);
   } finally {
     await tx.$executeRawUnsafe("RESET ROLE");
   }
