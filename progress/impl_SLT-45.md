@@ -491,3 +491,27 @@ Veredicto T6–T8: tareas cerradas y verdes en local; T9 y T10 pendientes (fuera
 - `tests/components/OrdenesPage.test.tsx` y `OrdenesPageFiltros.test.tsx`: `vi.mock("@/lib/repositories/CatalogoGeograficoRepository")` con `deLaEmpresa()` → catálogo de forma CR (Provincia/Cantón/Distrito, `crearCatalogo`), así `columnasGeoDePlantilla` da `null` (plantilla de hoy). Ninguna aserción tocada; `getPrismaClient` sin doblar (es perezoso y el repositorio doblado no lo usa).
 - `DATABASE_URL=postgresql://x:x@127.0.0.1:1/x npx vitest run <2 archivos> --maxWorkers=1 --reporter=verbose --silent=false`: 2 files / 26 tests verdes. Log «el catalogo geografico no se pudo leer»: 6 apariciones en HEAD 066be8f0, 0 tras el cambio; el resto del stderr es idéntico (`EmpresaNoResuelta` de Notificacion/Zona y los avisos `act(...)`, ya presentes antes).
 - `tsc --noEmit` exit 0; `eslint` de los 2 archivos: sin problemas.
+
+## Arreglos de review (vuelta 1, `progress/review_SLT-45.md`; decisiones humanas 2026-11-06)
+- **B1** (`1d1c66f0`): `scripts/geo-payloads-contrato-v1.ts` → `PAIS_DEL_CONTRATO = PAIS_DE_OPERACION.codigo`
+  (`lib/config/pais.ts`); sin literal. El test del script no referencia la constante: sin cambios.
+  `geo-payloads-contrato-v1` + `config/pais` + `etiquetas-geograficas-sin-literal`: 3 files / 26 tests verdes.
+- **m1** (`3dfc71c1`): `procesarCargaApi`, `ejecutarCargaApi`, `CargaApiDeps`, `VersionCargaApi`, los tipos de
+  bloque, mensajes, `describirErrorSeguro` y los 3 composition roots pasan, copiados literal, a `lib/api/api-carga.ts`
+  (toda línea quitada de la ruta está en el módulo nuevo salvo imports). La ruta v1 conserva borde (bearer, schema,
+  `handleCargaApi`, `POST`, `runtime`, `maxDuration`) y re-exporta los tipos; `app/api/v2/ordenes/route.ts` importa
+  de `lib/api/api-carga`. `notificacion-notificadores-reales.test.ts`: misma aserción, ahora sobre
+  `lib/api/api-carga.ts` (donde vive el cableado). Comentario de `BulkOrdenService` actualizado.
+- **m2** (`7863a29f`): `OrdenesPageFranjaRetenidas.test.tsx` y `OrdenesRutearSatelite.test.tsx` ganan el mismo
+  `vi.mock` del catálogo; ninguna aserción tocada. URL muerta, `--reporter=verbose --silent=false`: log «el catalogo
+  geografico no se pudo leer» **2 → 0**; 15/15 antes y después.
+- Verificación (base `logistic_slt45`, `--maxWorkers=1`, 8 GB):
+  - `pnpm exec tsc --noEmit`: exit 0. `eslint` de los 8 archivos tocados: sin problemas.
+  - contrato-v1 (modo comparar): 22/22. Con v2-* (6), `ordenes-api-key-carga*` (2), `tienda-destino` (2),
+    `orden-nodo-escritura`, `orden-lugar-owner`: 12 files / 121 tests verdes.
+  - Carga v1 y composición (URL muerta): `v2-composicion`, `carga-composition-root-cupo`, `api-key-modulo-inactivo`,
+    `api-key-empresa`, `notificacion-notificadores-reales`, `carga-api-etiquetas`, `carga-api-key-sin-tarifa`,
+    `asimetria-sin-tarifa`: 8 files / 106 tests verdes.
+  - Guardias (336 archivos, 4 lotes): 335 verdes; único rojo `dependencias-declaradas-presentes` (4 tests, en baseline).
+
+Veredicto: B1, m1 y m2 cerrados; verde en local salvo el rojo de baseline aceptado.
