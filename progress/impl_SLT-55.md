@@ -425,3 +425,118 @@ ningún código de producción, así que las 29 primeras no se repitieron. Las t
 - **`origin/dev` para la guardia roja:** no se volvió a medir en esta tanda.
 
 **Veredicto Tanda D:** la sección «Mensajeros con valor propio» está montada y probada con las actions dobladas; 33/33 mutaciones muertas y ningún rojo atribuible al cambio.
+
+## Tanda E — E2E y medida
+
+Base: `servi_gate_slt55`, desechable, con DROP/CREATE, `migrate deploy` (304 de 304) y `db:seed` antes de las corridas finales. Servidor: `next start`
+del `.next` construido con `NEXT_PUBLIC_APP_URL` local, puerto 3055 y doble de Storage en 54355. Sin código de producción tocado. Cero `retries`,
+`waitForTimeout` o plazos mayores que los de `tarifas-activacion`; los clics que abren algo van por `abrirCon` y `navegarCon`.
+
+### Archivos
+
+| Archivo | Qué |
+|---|---|
+| `e2e/tarifas-valor-propio-mensajero.spec.ts` | Nuevo, 11 casos en 3 bloques |
+| `e2e/_tarifas-activacion-fixture.ts` | `digitarValorPropio`, `editarValorPropio`, `mensajerosDe`, `movimientosDelCierre`; `modo`, `nivel` y `base` en `pagosCongelados`; `irAZona`, `irAPestana` y `activarConFaltantes` por `abrirCon` |
+| `playwright.config.ts` | El spec, en el proyecto `dinero` |
+| `progress/capturas/SLT-55/*.png` | 13 capturas de T5.4 |
+| `specs/SLT-55-valor-propio-mensajero/tasks.md` | Casillas T5.1 a T5.4 |
+
+### Mapa R → test
+
+`e2e/tarifas-valor-propio-mensajero.spec.ts`:
+
+| Línea | Caso | R |
+|---|---|---|
+| 166 | Añadir el propio no mueve la cobertura | R1, R2, R23, R27, R34, R36 |
+| 209 | Sin activar, 1.700 | R21 |
+| 227 | Activa; M1 ve 3.110; solicitud y aprobación reales; nivel `mensajero`; wallet | R12, R17, R22, R23, R39, R40 |
+| 264 | M2 cobra 2.200 y 0 | R16 |
+| 283 | Cambiar: lo aprobado no se mueve, lo congelado se aprueba a 3.110, el siguiente paga 3.000 de entregado | R24 |
+| 324 | Quitar: 2.200, confirmación, libro en pantalla, historial | R4, R11, R24, R33 |
+| 383 | M1 sin «valor propio» en `/cierre-dia`, y sin entrar a Tarifas | R35, R39 |
+| 443 | B no ve ni le ofrecen nada de A, y lo suyo queda en B | R31, R37 |
+| 479 | La sesión de B manda el mensajero de A: `validation_error` en `mensajeroId`, sin escribir | R7, R37 |
+| 501 | El `admin` lee sin controles; su sesión recibe `forbidden` | R10, R35 |
+| 547 | 390 px: sin scroll de página, controles de 44, `Select` dentro de `Modal` | R38 |
+
+**`empresaDeLaPeticion`:** los casos 443 y 479 pasan por la cookie real de `/login`. El 479 reenvía la Server Action capturada, primero con el mensajero
+de B (se guarda: prueba que la acción responde) y luego con el de A (se rechaza). No hay `conEmpresa` en ese camino.
+
+### Corridas reales
+
+Cada una sobre la misma base, después de recrearla una vez, con el árbol limpio en `98eb1def`. Log sin `tail`, con `INIT_EXIT` dentro.
+
+| Corrida | passed | failed | flaky | did not run | skipped | INIT_EXIT |
+|---|---|---|---|---|---|---|
+| Spec, 1 | 11 | 0 | 0 | 0 | 0 | 0 |
+| Spec, 2 | 11 | 0 | 0 | 0 | 0 | 0 |
+| Spec, 3 | 11 | 0 | 0 | 0 | 0 | 0 |
+| `--project=dinero`, 1 | 60 | 0 | 0 | 0 | 0 | 0 |
+| `--project=dinero`, 2 | 60 | 0 | 0 | 0 | 0 | 0 |
+| `dos-empresas-humo` (`aislamiento --no-deps`) | 8 | 0 | 0 | 0 | 0 | 0 |
+
+`dinero` incluye `tarifas-activacion`, que usa la fixture tocada (T5.2). Antes de estas corridas hubo tres de puesta a punto con rojos del propio spec,
+ninguno de producción: un toast repetido, el `input` oculto de cada `Select` medido como control, y los libros de una satélite, que no se escriben hasta
+consolidar.
+
+**Servidor y base:** un vigía cruzó cada 5 s el PID que escucha en 3055 (`netstat`) con `pg_stat_activity` por `client_port`. Todas las muestras con
+conexiones dicen `servi_gate_slt55`, y ninguna otra base. **Base local:** `organizacion` 11, `usuario` 44, `wallet_movimiento` 13, `cierre_dia` 6 y
+`chat_mensaje` 0, igual antes y después. **Puertos:** ninguno escuchando tras cada corrida.
+
+### Verificación
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: exit 0.
+- `pnpm lint`: exit 0, 0 errores y 234 avisos, la misma cifra que las tandas anteriores.
+- `pnpm run test:guardias`: exit 1. 1 archivo rojo de 331; 4 failed, 4617 passed y 1 skipped de 4622. Es `dependencias-declaradas-presentes.guardia.test.ts`,
+  los mismos 4 de las Tandas A a D. No se volvió a medir `origin/dev`.
+
+### Mutaciones E
+
+Cada tanda en producción, con `next build` rehecho y `git checkout` después, comprobando el árbol limpio. Todas cambian lo que el usuario ve o lo que el dinero dice.
+
+| Tanda | Mutación | Cae | Dónde y qué vio |
+|---|---|---|---|
+| B1 | El propio cuenta como cobertura (`faltantes.ts` y `valoresDeZonaOGrupo`) | :166 | `:191`, «Faltan 2» en lugar de «Sin empezar» |
+| B1 | El service no mira la elegibilidad del mensajero | :479 | `:494`, la respuesta ya no trae `validation_error` |
+| B1 | «Añadir mensajero» sin `min-h-11` | :547 | `:553`, controles bajos |
+| B2 | `usaModeloNuevo` siempre cierto | :209 | `:213`, Ganancia 3.110 en lugar de 1.700 |
+| B2 | `listarMensajeros` con `comoPlataforma` | :443 | `:467`, el selector de B ofrece mensajeros de otras empresas |
+| B3 | Sin la rama `mensajeros` de `whereValores` | :227 | `:242`, Ganancia 2.200 en lugar de 3.110 |
+| B3 | `puedeEscribir` siempre cierto | :501 | `:506`, el `admin` ve «Añadir mensajero» |
+| B4 | El propio vale para cualquier mensajero | :264 | `:268`, M2 ve 3.110 en lugar de 2.200 |
+| B5 | Fijar reescribe `gestion_pago_congelado` | :283 | `:302`, el congelado se mueve |
+| B6 | Quitar solo borra el primer valor | :324 | `:333`, la sección no vuelve a su estado vacío |
+| B7 | «Total de ganancia con tu valor propio» en `/cierre-dia` | :383 | `:386`, el texto aparece |
+
+**11/11 casos muertos, con 11 mutaciones en 7 construcciones.** B2 tumbó además `:547`: con todas las empresas, la lista crece y la opción queda fuera de la pantalla. Su muerte limpia es la de B1.
+
+### T5.4 — Lo que se ve
+
+Con `next start`, no un dev server, por instrucción de esta tanda. Capturas en `progress/capturas/SLT-55/`: `seccion-`, `dialogo-` y `select-en-modal-`, a
+1360 y 390, claro y oscuro, y `vacio-1360-claro.png`. Mirados `seccion-1360-oscuro`, `seccion-390-claro`, `select-en-modal-390-oscuro` y `dialogo-1360-claro`.
+Los otros nueve se generaron y no se abrieron.
+
+**Hallazgo a 390 px, sin arreglar:** R38 se cumple (la página no da scroll y los controles miden 44), pero la tabla del diálogo mide 358 de ancho en 308 de
+hueco, y el campo «Valor» va de x=281 a x=391, con el diálogo acabando en x=374. El importe va alineado a la derecha, así que un «2900» guardado se ve cortado
+hasta desplazar la tabla. Es desplazamiento dentro de la tabla, como anotó la Tanda D. Por el ancho de los dos controles, cuadrarlo parece exigir apilar las
+filas (estimado, no probado): es decisión de diseño, no un arreglo mínimo.
+
+### Desviaciones del spec
+
+1. **Recorrido en la zona central, no en la satélite.** El cierre de una satélite no escribe en las wallets hasta consolidar, y R24 las mira. Sigue siendo «1 de 2 zonas completas». Lo aprueba el maestro.
+2. **El cierre tras cambiar a 3.000 suma 3.210:** 3.000 de entregado y los 210 del 15 %, que no cambió. `tasks.md` dice «paga 3.000»: es lo de entregado, y el spec afirma los dos.
+3. **Un cierre de más:** congelado a 3.110, se cambia el propio y se aprueba después. Mide que la aprobación no recalcula (R24).
+4. **Dos casos reenvían la Server Action con `fetch`,** con el id y el cuerpo capturados en la misma corrida. No se ata al id de ningún build.
+5. **Tres ayudantes de la fixture pasan por `abrirCon`,** para que un clic perdido en hidratación no los haga fallar. `tarifas-activacion` sigue verde.
+6. **`editarValorPropio`, `mensajerosDe` y `movimientosDelCierre`,** que `tasks.md` no apuntaba.
+
+### Sin verificar
+
+- **Producción:** `tasks.md` no pide medirla en la Tanda E; no se tocó.
+- **Modo oscuro de R38:** solo a ojo, en dos capturas. Sin medida de contraste.
+- **El valor propio en una zona satélite, hasta la consolidación:** el cálculo está en `caminos`; no hay E2E.
+- **`origin/dev` para la guardia roja:** no se volvió a medir.
+- **Tanda F:** `./init.sh`, docs y el mapa de los 40 siguen pendientes.
+
+**Veredicto Tanda E:** el recorrido R40 pasa de punta a punta con sesión y aprobación reales (3 y 2 corridas, 0 failed), 11/11 casos muertos con servidor rehecho, y queda un hallazgo de usabilidad a 390 px por decidir.

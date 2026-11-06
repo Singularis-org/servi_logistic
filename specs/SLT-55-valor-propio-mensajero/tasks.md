@@ -112,7 +112,7 @@ Se espera **cero código de producción**. Un rojo aquí es un defecto real: se 
 
 ## Tanda E — E2E y medida. Depende de D
 
-- [ ] **T5.1** `e2e/tarifas-valor-propio-mensajero.spec.ts`, en el proyecto `dinero` de `playwright.config.ts`. Empresa nueva por
+- [x] **T5.1** `e2e/tarifas-valor-propio-mensajero.spec.ts`, en el proyecto `dinero` de `playwright.config.ts`. Empresa nueva por
   los servicios reales. Cifras a mano en la cabecera:
 
   | | Modelo viejo | Zona digitada | Propio de M1 |
@@ -135,10 +135,10 @@ Se espera **cero código de producción**. Un rojo aquí es un defecto real: se 
 
   **Hecho:** `--project=dinero` dos corridas seguidas sobre la misma base, 0 failed, 0 skipped, 0 flaky. Log sin `tail`, con
   `INIT_EXIT=$?` dentro.
-- [ ] **T5.2** `e2e/_tarifas-activacion-fixture.ts`: `nivel` en `pagosCongelados` y un `digitarValorPropio`. **Hecho:**
+- [x] **T5.2** `e2e/_tarifas-activacion-fixture.ts`: `nivel` en `pagosCongelados` y un `digitarValorPropio`. **Hecho:**
   `tarifas-activacion` sigue verde.
-- [ ] **T5.3** `e2e/dos-empresas-humo.spec.ts`, porque toca datos de negocio (`docs/checkpoints-proyecto.md`). **Hecho:** verde.
-- [ ] **T5.4** Mirar la sección con el navegador, a 1360 y 390 px, claro y oscuro, con un solo dev server. **Hecho:** capturas
+- [x] **T5.3** `e2e/dos-empresas-humo.spec.ts`, porque toca datos de negocio (`docs/checkpoints-proyecto.md`). **Hecho:** verde.
+- [x] **T5.4** Mirar la sección con el navegador, a 1360 y 390 px, claro y oscuro, con un solo dev server. **Hecho:** capturas
   en `progress/impl_SLT-55.md`. Es lo que el humano verá: el backend sin pantalla no es entrega.
 
 ## Tanda F — Documentación y cierre. Depende de E
