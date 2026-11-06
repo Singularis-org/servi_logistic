@@ -25,6 +25,8 @@ F1.4 (2026-11-05): spec aprobado («Aprobado, espera a SLT-83»). F2.1 arranca c
 
 - 2026-11-06 · (humano, tras T13) «Inicio del ciclo de órdenes» pasa a «Inicio del período». Botones del modal de «Cancelar cambio»: «Cancelar cambio» (destructive) / «Volver». El tramo proporcional no lleva E2E: basta con los tests unitarios y de base.
 
+- 2026-11-06 · F2.2 vuelta 1 (9783b759): OK, 0 bloqueantes, 5 menores. Humano: m4 → la vista previa del costo usa el precio a la fecha de efecto (plan_precio_historial); m5 → se deja (R27, el aviso «empieza a regir» ya muestra la fecha). Leader: m2 y m3 se corrigen; m1 se anota como deuda (−06:00 fijo hasta SL-21).
+
 ## Preguntas abiertas
 Ninguna.
 
