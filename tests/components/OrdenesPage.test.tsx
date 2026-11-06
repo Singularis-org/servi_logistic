@@ -75,6 +75,44 @@ vi.mock("@/lib/actions/filtros-ordenes", () => ({
   })),
 }));
 
+// SLT-45 (T6.3; R29, R32): la página lee el catálogo geográfico de la empresa para la plantilla de
+// carga masiva. Se dobla a un catálogo de forma CR (Provincia/Cantón/Distrito) para seguir herméticos
+// (sin DB): la página usa la plantilla de hoy sin pasar por el camino de error. El cableado se cubre
+// en `OrdenesCargaColumnasGeoCableado.test.tsx`. Cambio del ARNÉS: ninguna aserción se toca.
+vi.mock("@/lib/repositories/CatalogoGeograficoRepository", async () => {
+  const { crearCatalogo } = await import("@/lib/services/geografia-dominio");
+  const { normalizeName } = await import("@/lib/utils/normalize");
+  const singulares = ["Provincia", "Cantón", "Distrito"];
+  const catalogo = crearCatalogo(
+    "XX",
+    singulares.map((nombreSingular, i) => ({
+      id: `t${i + 1}`,
+      clave: `nivel_${i + 1}`,
+      nombreSingular,
+      nombrePlural: `${nombreSingular}s`,
+      digitosCodigo: null,
+      codigoHeredaPrefijo: false,
+    })),
+    singulares.map((_, i) => ({
+      id: `n${i + 1}`,
+      padreId: i === 0 ? null : `n${i}`,
+      profundidad: i + 1,
+      tipoId: `t${i + 1}`,
+      nombre: `Lugar ${i + 1}`,
+      nombreNormalizado: normalizeName(`Lugar ${i + 1}`),
+      codigoOficial: null,
+      activo: true,
+    })),
+  );
+  return {
+    CatalogoGeograficoRepository: class {
+      async deLaEmpresa() {
+        return { catalogo, asignaciones: {} };
+      }
+    },
+  };
+});
+
 // Feature 57: el PageHeader del topbar monta el LogoutButton (client:
 // useRouter/useToast). Se stubbea para aislar la página; su comportamiento se
 // cubre en LogoutButton.test.tsx.

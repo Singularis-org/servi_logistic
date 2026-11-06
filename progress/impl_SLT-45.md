@@ -486,3 +486,8 @@ Sin test en esta tanda (por diseño): R36 (gate de CI, T9.2) y los payloads real
   Postman ajustada a «10 endpoints de v1 + 5 de v2»; CHANGELOG con fecha literal `2026-11-xx`.
 
 Veredicto T6–T8: tareas cerradas y verdes en local; T9 y T10 pendientes (fuera de esta tanda).
+
+### Tests de la página de órdenes, herméticos frente al catálogo (decisión humana 2026-11-06)
+- `tests/components/OrdenesPage.test.tsx` y `OrdenesPageFiltros.test.tsx`: `vi.mock("@/lib/repositories/CatalogoGeograficoRepository")` con `deLaEmpresa()` → catálogo de forma CR (Provincia/Cantón/Distrito, `crearCatalogo`), así `columnasGeoDePlantilla` da `null` (plantilla de hoy). Ninguna aserción tocada; `getPrismaClient` sin doblar (es perezoso y el repositorio doblado no lo usa).
+- `DATABASE_URL=postgresql://x:x@127.0.0.1:1/x npx vitest run <2 archivos> --maxWorkers=1 --reporter=verbose --silent=false`: 2 files / 26 tests verdes. Log «el catalogo geografico no se pudo leer»: 6 apariciones en HEAD 066be8f0, 0 tras el cambio; el resto del stderr es idéntico (`EmpresaNoResuelta` de Notificacion/Zona y los avisos `act(...)`, ya presentes antes).
+- `tsc --noEmit` exit 0; `eslint` de los 2 archivos: sin problemas.
