@@ -103,10 +103,8 @@ export async function cambiarTipoCobroAction(input: unknown, deps: PlanesDeps = 
 }
 
 /**
- * SLT-86 (R19, R26): «Cancelar cambio». `{ organizacionId }`: borra el cambio pendiente de la empresa, sin
- * historial; sin pendiente, `sin_cambio_programado`.
- *
- * @sin-superficie SLT-86 T9 (deuda con fecha de tarea): el botón «Cancelar cambio» del detalle de empresa llega con T11 (`PlanEmpresa.tsx`), en esta misma ficha; hasta entonces la usan `tests/unit/actions/planes.composition-root.test.ts` y el servicio que mide `tests/integration/db/planes-cambio-empresa.test.ts`. T11 retira esta anotación al cablear el botón.
+ * SLT-86 (R19, R26): «Cancelar cambio» del detalle de empresa. `{ organizacionId }`: borra el cambio
+ * pendiente de la empresa y deja su fila en el historial; sin pendiente, `sin_cambio_programado`.
  */
 export async function cancelarCambioEmpresaAction(
   input: unknown,

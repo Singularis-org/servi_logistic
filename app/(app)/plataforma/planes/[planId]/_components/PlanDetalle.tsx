@@ -16,25 +16,31 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { nombreDelModulo } from "@/lib/modulos/catalogo";
 import { tieneCostoConcreto } from "@/lib/planes/costo-concreto";
+import { formatearConteo } from "@/lib/planes/consumo";
 import {
   lineasDeCambioDelPlan,
   mensajeTopesPasados,
+  SIN_LIMITE,
   SIN_LINEAS_DE_CAMBIO,
   textoCambioProgramado,
   textoDelPrecio,
   TITULO_LINEAS_DE_CAMBIO,
+  type CambioDelPlanParaCorreo,
 } from "@/lib/planes/mensajes";
-import type {
-  ArchivarPlanInput,
-  CancelarCambioPlanInput,
-  CostoPorOrdenPorcentual,
-  DetallePlan,
-  EditarPlanInput,
-  FilaRastro,
-  PlanResult,
-  PrecioPlan,
-  TopeExcedido,
-  TopesPlan,
+import {
+  TIPOS_COBRO,
+  type ArchivarPlanInput,
+  type CancelarCambioPlanInput,
+  type CostoPorOrdenPorcentual,
+  type DescuentoPeriodo,
+  type DetallePlan,
+  type EditarPlanInput,
+  type FilaRastro,
+  type PlanResult,
+  type PrecioPlan,
+  type TipoCobro,
+  type TopeExcedido,
+  type TopesPlan,
 } from "@/lib/types/planes";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 import { horaCostaRica } from "@/lib/utils/hora-cr";
@@ -100,6 +106,8 @@ const TEXTOS = {
   cancelaPrevisto: (fecha: string) => `Se cancela el previsto para ${fecha}`,
   nombreDelPlan: (nombre: string) => `Nombre del plan: ${nombre}`,
   modulosDelPlan: (modulos: string) => `Módulos: ${modulos}`,
+  /** SLT-86 (R30): el tope de órdenes de un alta anterior a la ficha, con el texto de entonces. */
+  ordenesPorCiclo: (limite: string) => `Órdenes por ciclo: ${limite}`,
   // SLT-66 (design §6.6; R33).
   empresaAsignar: "Empresa",
   empresaPlaceholder: TEXTOS_PLAN_FORM.empresaPlaceholder,
@@ -268,10 +276,6 @@ export function PlanDetalle({
           <Dato termino={TEXTOS.costoPorOrden}>
             {/* SLT-83 (R21): el porcentual si el plan lo tiene. */}
             {textoDelCostoPorOrdenDelPlan(plan)}
-            {/* R10: el anual (fijo o con descuento) no toca el costo por orden. */}
-            {plan.precio.tipo === "monto" && plan.precio.anual !== null ? (
-              <p className="text-xs text-muted-foreground">{TEXTOS_PLAN.anualNoAplica}</p>
-            ) : null}
           </Dato>
           <Dato termino={TEXTOS.topes}>
             <ul className="flex flex-col gap-0.5">
@@ -559,15 +563,20 @@ function lineasDelRastro(fila: FilaRastro): string[] {
   const precioAlta = deAlta(c.precio);
   const topesAlta = deAlta(c.topes);
   const modulosAlta = deAlta(c.modulos);
-  if (nombreAlta) lineas.push(TEXTOS.nombreDelPlan(String(nombreAlta.despues)));
-  // SLT-66 (R9): la línea de alta dice «Costo base», como el resto de pantallas.
-  if (precioAlta) lineas.push(TEXTOS_PLAN.costoBase(textoDelPrecio(precioAlta.despues as PrecioPlan)));
   // SLT-66 (R11): el costo por orden nace a menudo vacío, así que `antes: null` no distingue un alta de
-  // una edición desde vacío: lo decide la acción de la fila.
+  // una edición desde vacío: lo decide la acción de la fila. SLT-86 (R31): igual los descuentos.
+  const esAlta = fila.accion === "creado";
+  if (nombreAlta) lineas.push(TEXTOS.nombreDelPlan(String(nombreAlta.despues)));
+  // SLT-66 (R9): la línea de alta dice «Costo base», como el resto de pantallas. SLT-86 (R24, R31): con los
+  // descuentos del alta, que el rastro guarda cada uno en su clave.
+  if (precioAlta) {
+    const precio = precioAlta.despues as PrecioPlan;
+    const descuentos = esAlta ? descuentosDelAlta(c) : {};
+    lineas.push(TEXTOS_PLAN.costoBase(textoDelPrecio(precio.tipo === "monto" ? { ...precio, descuentos } : precio)));
+  }
   const costo = c.costoPorOrden;
   // SLT-83 (R4, R21): el modo porcentual viaja en su propio campo del rastro; un rastro anterior no lo trae.
   const porcentual = c.costoPorOrdenPorcentual;
-  const esAlta = fila.accion === "creado";
   if (costo && esAlta) {
     lineas.push(
       TEXTOS_PLAN.costoPorOrden(
@@ -578,7 +587,14 @@ function lineasDelRastro(fila: FilaRastro): string[] {
       ),
     );
   }
-  if (topesAlta) lineas.push(...lineasDeTopes(topesAlta.despues as TopesPlan));
+  if (topesAlta) {
+    // SLT-86 (R30): un alta anterior a la ficha trae también el tope de órdenes; se sigue pintando.
+    const topes = topesAlta.despues as TopesPlan & { ordenesPorCiclo?: number | null };
+    if ("ordenesPorCiclo" in topes) {
+      lineas.push(TEXTOS.ordenesPorCiclo(topes.ordenesPorCiclo == null ? SIN_LIMITE : formatearConteo(topes.ordenesPorCiclo)));
+    }
+    lineas.push(...lineasDeTopes(topes));
+  }
   if (modulosAlta) {
     const modulos = modulosAlta.despues as ModuloApagable[];
     lineas.push(TEXTOS.modulosDelPlan(modulos.length === 0 ? TEXTOS.sinModulos : modulos.map(nombreDelModulo).join(", ")));
@@ -607,6 +623,9 @@ function lineasDelRastro(fila: FilaRastro): string[] {
               despues: porcentual.despues as CostoPorOrdenPorcentual | null,
             }
           : undefined,
+      // SLT-86 (R30, R31): cada descuento en su línea, y la fila de la migración que retiró el tope de órdenes.
+      ...(esAlta ? {} : descuentosDeLaEdicion(c)),
+      tope_ordenes_ciclo: c.tope_ordenes_ciclo as CambioDelPlanParaCorreo["tope_ordenes_ciclo"],
     }),
   );
 
@@ -619,6 +638,30 @@ function lineasDelRastro(fila: FilaRastro): string[] {
     else if (antes !== null) lineas.push(TEXTOS.cancelaPrevisto(antes));
   }
   return lineas;
+}
+
+/** SLT-86 (R31): los descuentos con que nació un plan, leídos de sus claves `descuento_<periodo>`. */
+function descuentosDelAlta(c: Record<string, Par | undefined>): Partial<Record<TipoCobro, DescuentoPeriodo>> {
+  const descuentos: Partial<Record<TipoCobro, DescuentoPeriodo>> = {};
+  for (const tipo of TIPOS_COBRO) {
+    const d = c[`descuento_${tipo}`]?.despues as DescuentoPeriodo | null | undefined;
+    if (d) descuentos[tipo] = d;
+  }
+  return descuentos;
+}
+
+/** SLT-86 (R31): los descuentos que cambió una edición, con su antes y su después. */
+function descuentosDeLaEdicion(c: Record<string, Par | undefined>): Partial<CambioDelPlanParaCorreo> {
+  const cambios: Partial<CambioDelPlanParaCorreo> = {};
+  for (const tipo of TIPOS_COBRO) {
+    const par = c[`descuento_${tipo}`];
+    if (par === undefined) continue;
+    cambios[`descuento_${tipo}`] = {
+      antes: (par.antes ?? null) as DescuentoPeriodo | null,
+      despues: (par.despues ?? null) as DescuentoPeriodo | null,
+    };
+  }
+  return cambios;
 }
 
 function Rastro({ filas }: { filas: FilaRastro[] }) {

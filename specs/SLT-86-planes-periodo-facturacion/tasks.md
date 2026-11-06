@@ -132,7 +132,7 @@
 - **Pasos:** `PlanForm.tsx`.
 - **Hecho:** `tests/components/PlanFormDescuentos.test.tsx` verde; `PlanForm*.test.tsx` adaptados.
 
-## T11 — Catálogo, detalle y detalle de empresa (R24–R26) [P]
+## [x] T11 — Catálogo, detalle y detalle de empresa (R24–R26) [P]
 
 - **Depende de:** T2, T7.
 - **Pasos:** `PlanesModule.tsx`, `PlanDetalle.tsx`, `PlanEmpresa.tsx`, `TipoCobroCampo.tsx`, `tipo-cobro.ts`.

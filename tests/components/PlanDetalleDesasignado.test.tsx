@@ -20,7 +20,7 @@ const DETALLE: DetallePlan = {
     nombre: "Básico",
     visibilidad: "publico",
     organizacionId: null,
-    topes: { ordenesPorCiclo: null, porRol: {}, apiKeys: null },
+    topes: { porRol: {}, apiKeys: null },
     modulos: [],
     precio: { tipo: "sin_precio" },
     costoPorOrden: null,

@@ -25,20 +25,24 @@ const ORG = "6f1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f60";
 const PLAN_ACTUAL = "11111111-1111-4111-8111-111111111111";
 const AHORA = new Date("2026-03-01T06:00:00.000Z");
 
-type EntradaTipo = { organizacionId: string; tipoCobro: TipoCobro };
+type EntradaTipo = { organizacionId: string; tipoCobro: TipoCobro; vigenteDesde: string };
+/** SLT-86 (R25): «Rige desde» por defecto, el inicio del siguiente período de la empresa. */
+const FECHA_EFECTO = "2026-04-01";
 type CambiarTipo = (i: EntradaTipo) => Promise<CambiarTipoCobroResult>;
 
 function leido(tipoCobro: TipoCobro): PlanConUsoLeido {
   return {
     vigente: {
       nombre: "Plan Crecer",
-      topes: { ordenesPorCiclo: 3000, porRol: { mensajero: 10 }, apiKeys: 2 },
+      topes: { porRol: { mensajero: 10 }, apiKeys: 2 },
       modulos: ["analitica"],
-      precio: { tipo: "monto", mensual: "45000", anual: null },
+      precio: { tipo: "monto", mensual: "45000", descuentos: {} },
       costoPorOrden: null,
       costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
     },
-    ancla: new Date("2026-01-15T06:00:00.000Z"),
+    entrada: new Date("2026-01-15T06:00:00.000Z"),
+    precioDelPeriodo: { tipo: "monto", mensual: "45000", descuentos: {} },
+    pendiente: null,
     uso: { ordenes: 1000, apiKeys: 2, porRol: { admin: 0, mensajero: 8, adminTienda: 0, adminSatelite: 0 } },
     cambio: null,
     costoVigente: { modo: "fijo", monto: "500.00", fuente: "global" },
@@ -51,6 +55,7 @@ function vista(tipoCobro: TipoCobro = "mensual", asignaciones: AsignacionDePlan[
   return {
     organizacionId: ORG,
     plan: { ...planConConsumo(leido(tipoCobro), AHORA), planId: PLAN_ACTUAL, archivado: false },
+    pendienteSinPlan: null,
     asignaciones,
   };
 }
@@ -70,8 +75,11 @@ function montar({
         asignarPlan={asignar}
         rangoInicioCiclo={{ hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" }}
         inicioCicloPorDefecto="2026-10-30"
+        rangoFechaDeEfecto={{ hoy: "2026-03-01", min: "2026-03-01", max: "2027-03-01" }}
+        fechaDeEfectoPorDefecto={FECHA_EFECTO}
         previsualizarAsignacion={vi.fn()}
         cambiarTipoCobro={cambiar}
+        cancelarCambioEmpresa={vi.fn()}
       />
     </ToastProvider>,
   );
@@ -94,7 +102,7 @@ afterEach(() => cleanup());
 
 describe("Ajuste planes-custom D10 — «Cambiar tipo de cobro» en el detalle de empresa", () => {
   it("D10: solo se ofrece si la empresa tiene plan", () => {
-    montar({ v: { organizacionId: ORG, plan: null, asignaciones: [] } });
+    montar({ v: { organizacionId: ORG, plan: null, pendienteSinPlan: null, asignaciones: [] } });
     expect(screen.queryByRole("button", { name: "Cambiar tipo de cobro" })).toBeNull();
   });
 
@@ -117,7 +125,7 @@ describe("Ajuste planes-custom D10 — «Cambiar tipo de cobro» en el detalle d
     await confirmar(user, modal);
 
     await waitFor(() => expect(cambiar).toHaveBeenCalledTimes(1));
-    expect(cambiar).toHaveBeenCalledWith({ organizacionId: ORG, tipoCobro: "anual" });
+    expect(cambiar).toHaveBeenCalledWith({ organizacionId: ORG, tipoCobro: "anual", vigenteDesde: FECHA_EFECTO });
     expect(asignar).not.toHaveBeenCalled();
     expect(await screen.findByText("Tipo de cobro cambiado.")).toBeInTheDocument();
     expect(refreshMock).toHaveBeenCalledTimes(1);
@@ -132,7 +140,9 @@ describe("Ajuste planes-custom D10 — «Cambiar tipo de cobro» en el detalle d
     const modal = await abrir(user);
     await confirmar(user, modal);
 
-    await waitFor(() => expect(cambiar).toHaveBeenCalledWith({ organizacionId: ORG, tipoCobro: "mensual" }));
+    await waitFor(() =>
+      expect(cambiar).toHaveBeenCalledWith({ organizacionId: ORG, tipoCobro: "mensual", vigenteDesde: FECHA_EFECTO }),
+    );
     expect(await screen.findByText("La empresa ya tenía ese tipo de cobro.")).toBeInTheDocument();
     expect(refreshMock).not.toHaveBeenCalled();
   });
@@ -200,6 +210,7 @@ describe("Ajuste planes-custom D14 — el historial de asignaciones muestra el t
       tipo: "cambio_tipo_cobro",
       tipoCobro: "anual",
       tipoCobroAnterior: "mensual",
+      desde: null,
     },
     {
       creadoAt: "2026-02-01T18:30:00.000Z",
@@ -208,6 +219,7 @@ describe("Ajuste planes-custom D14 — el historial de asignaciones muestra el t
       tipo: "asignacion",
       tipoCobro: "mensual",
       tipoCobroAnterior: null,
+      desde: null,
     },
     {
       creadoAt: "2026-01-15T06:00:00.000Z",
@@ -216,6 +228,7 @@ describe("Ajuste planes-custom D14 — el historial de asignaciones muestra el t
       tipo: "asignacion",
       tipoCobro: null,
       tipoCobroAnterior: null,
+      desde: null,
     },
   ];
 
@@ -227,12 +240,14 @@ describe("Ajuste planes-custom D14 — el historial de asignaciones muestra el t
       "Quién",
       "Plan asignado",
       "Tipo de cobro",
+      "Rige desde",
     ]);
     const filas = within(tabla).getAllByRole("row").slice(1);
+    // SLT-86 (R30): las filas de antes de la ficha no guardaban fecha («—»).
     expect(filas.map((f) => within(f).getAllByRole("cell").map((c) => c.textContent))).toEqual([
-      ["2026-03-01 12:30", "Sara Admin", "Plan «Plan Crecer»", "Cambió de Mensual a Anual"],
-      ["2026-02-01 12:30", "Sara Admin", "Plan «Plan Crecer»", "Mensual"],
-      ["2026-01-15 00:00", "Pedro Plataforma", "Plan «Básico»", "—"],
+      ["2026-03-01 12:30", "Sara Admin", "Plan «Plan Crecer»", "Cambió de Mensual a Anual", "—"],
+      ["2026-02-01 12:30", "Sara Admin", "Plan «Plan Crecer»", "Mensual", "—"],
+      ["2026-01-15 00:00", "Pedro Plataforma", "Plan «Básico»", "—", "—"],
     ]);
   });
 });

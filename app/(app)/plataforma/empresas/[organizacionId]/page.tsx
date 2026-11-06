@@ -8,6 +8,7 @@ import { fijarModuloEmpresaAction } from "@/lib/actions/modulos-empresa";
 import {
   asignarPlanAction,
   cambiarTipoCobroAction,
+  cancelarCambioEmpresaAction,
   listarPlanesAsignablesAction,
   previsualizarAsignacionPlanAction,
 } from "@/lib/actions/planes";
@@ -15,7 +16,12 @@ import { esPlataforma } from "@/lib/auth/plataforma";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { NUCLEO } from "@/lib/modulos/catalogo";
-import { inicioDelCicloPorDefecto, rangoDelInicioDelCiclo } from "@/lib/planes/ciclo";
+import {
+  fechaDeEfectoPorDefecto,
+  inicioDelCicloPorDefecto,
+  rangoDeLaFechaDeEfecto,
+  rangoDelInicioDelCiclo,
+} from "@/lib/planes/ciclo";
 import type { PlanDeEmpresaVista, PlanDTO } from "@/lib/types/planes";
 
 import { ModulosEmpresa } from "./_components/ModulosEmpresa";
@@ -134,9 +140,13 @@ export default async function EmpresaDetallePage({
           rangoInicioCiclo={rangoDelInicioDelCiclo(ahora)}
           // Ajuste planes-custom (D5): la primera asignación propone MAÑANA, del mismo reloj.
           inicioCicloPorDefecto={inicioDelCicloPorDefecto(ahora)}
+          // SLT-86 (R16, R25): «Rige desde» de un cambio, con su rango y el inicio del siguiente período.
+          rangoFechaDeEfecto={rangoDeLaFechaDeEfecto(ahora)}
+          fechaDeEfectoPorDefecto={plan?.plan ? fechaDeEfectoPorDefecto(plan.plan.cobro.tipo, ahora) : null}
           previsualizarAsignacion={previsualizarAsignacionPlanAction}
           planPreseleccionado={planPreseleccionado}
           cambiarTipoCobro={cambiarTipoCobroAction}
+          cancelarCambioEmpresa={cancelarCambioEmpresaAction}
         />
 
         <section aria-labelledby="nucleo-titulo" className="flex flex-col gap-3">
