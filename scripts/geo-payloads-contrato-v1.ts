@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
+import { PAIS_DE_OPERACION } from "@/lib/config/pais";
 import { conConsultasEnSeriePorTransaccion } from "@/lib/db/consultas-en-serie";
 import { conEmpresa } from "@/lib/db/contexto-empresa";
 import { conAislamientoPorEmpresa } from "@/lib/db/extension-empresa";
@@ -43,9 +44,10 @@ export const SALIDA_POR_DEFECTO = "tests/fixtures/contrato-v1/payloads-reales.js
 
 /**
  * El contrato congelado de v1 es el de las empresas de 3 niveles de hoy, y su suite siembra ese pais
- * (`PAIS` en `contrato-v1.route.test.ts`): una orden de otro pais no se podria reproducir alli.
+ * (`PAIS` en `contrato-v1.route.test.ts`): una orden de otro pais no se podria reproducir alli. Sale
+ * de la configuracion del pais de operacion, no de un literal (review B1).
  */
-export const PAIS_DEL_CONTRATO = "CR";
+export const PAIS_DEL_CONTRATO = PAIS_DE_OPERACION.codigo;
 
 /** Cada conexion del script nace de solo lectura: cualquier escritura falla con `25006`. */
 export const OPCION_SOLO_LECTURA = "-c default_transaction_read_only=on";
