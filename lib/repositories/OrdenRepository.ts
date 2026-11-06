@@ -2465,6 +2465,7 @@ export class OrdenRepository implements IOrdenRepository {
           provinciaId: data.provinciaId,
           cantonId: data.cantonId,
           distritoId: data.distritoId,
+          nodoGeograficoId: data.nodoGeograficoId, // SLT-45 (R26)
           zonaId: data.zonaId,
           // `peso` es `Decimal(10,3)` en la columna: se convierte igual que en `toUpdateData`.
           peso: data.peso !== undefined ? new Prisma.Decimal(data.peso) : undefined,
