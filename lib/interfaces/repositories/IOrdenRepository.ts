@@ -1401,6 +1401,12 @@ export interface IOrdenRepository {
    */
   findDetalleByOrdenIdForOwner(ordenId: string, ownerId: string): Promise<ApiOrdenDetalleRow | null>;
   /**
+   * SLT-45 (design §4.3, R20) — el lugar (`lugarDeLaOrden`: distrito o, si no hay, canton) de UNA
+   * orden, con el mismo alcance que `findDetalleByOrdenIdForOwner`: dueño forzado, viva y de la
+   * empresa del contexto. `null` en cualquier otro caso (el servicio → 404 uniforme). Solo LEE.
+   */
+  findLugarDeOrdenForOwner(ordenId: string, ownerId: string): Promise<string | null>;
+  /**
    * Feature 177/R20/R21/R37/R38: lee la referencia persistida del PDF individual
    * (`orden.download_storage_path`) de una orden del owner. `null` = no hay PDF que reusar,
    * incluidas las filas heredadas de la 136/141 que tienen `download_url` poblada y esta

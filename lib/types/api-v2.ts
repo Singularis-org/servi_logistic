@@ -155,3 +155,38 @@ export type CotizacionFilaCotizadaV2 = CotizacionFilaCotizada & { ubicacion: Ubi
 
 /** El resumen de la cotizacion v2: el de v1 con `filas[].ubicacion`. */
 export type CotizacionResumenV2 = Omit<CotizacionResumen, "filas"> & { filas: CotizacionFilaCotizadaV2[] };
+
+// ── Catalogo `GET /api/v2/geografia?pais=` (§6) ──────────────────────────────────────────────────
+
+/** Los ids de `pais` son codigos en mayusculas de 2 o 3 letras. Falta o no encaja → 422 (R23). */
+export const geografiaQuerySchema = z.object({
+  pais: z
+    .string({ error: "pais es obligatorio" })
+    .regex(/^[A-Z]{2,3}$/, "pais debe ser un codigo de 2 o 3 letras mayusculas"),
+});
+export type GeografiaQuery = z.infer<typeof geografiaQuerySchema>;
+
+export interface GeografiaTipoDTO {
+  clave: string;
+  nombreSingular: string;
+  nombrePlural: string;
+}
+
+export interface GeografiaNodoDTO {
+  id: string;
+  padreId: string | null;
+  profundidad: number;
+  /** La `clave` de su tipo de nivel. */
+  tipo: string;
+  nombre: string;
+  codigoOficial: string | null;
+  /** Activo en cascada (SLT-44 R5): un retirado se lista con `false`, no se recorta. */
+  activo: boolean;
+}
+
+/** La respuesta 200 del catalogo (R22). */
+export interface GeografiaResponse {
+  pais: { id: string; nombre: string };
+  tipos: GeografiaTipoDTO[];
+  nodos: GeografiaNodoDTO[];
+}

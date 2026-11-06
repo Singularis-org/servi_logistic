@@ -175,6 +175,7 @@ function buildRepo(overrides: Partial<IOrdenRepository> = {}): IOrdenRepository 
     // Feature 177: consulta por identificador libre + PDF de etiquetas, no ejercitada aqui.
     findByGuiaORemisionForOwner: vi.fn().mockResolvedValue([]),
     findDetalleByOrdenIdForOwner: vi.fn().mockResolvedValue(null),
+    findLugarDeOrdenForOwner: vi.fn().mockResolvedValue(null),
     findDownloadStoragePathByOrdenForOwner: vi.fn().mockResolvedValue(null),
     setOrdenDownloadStoragePath: vi.fn(async () => {}),
     findCargaConOrdenesForOwner: vi.fn().mockResolvedValue(null),

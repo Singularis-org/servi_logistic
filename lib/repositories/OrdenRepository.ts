@@ -3639,6 +3639,19 @@ export class OrdenRepository implements IOrdenRepository {
   }
 
   /**
+   * SLT-45 (design §4.3) — el lugar de la orden para la consulta v2. Mismo WHERE que
+   * `findDetalleByOrdenIdForOwner`; `organizacion_id` lo inyecta la extension del cliente (y lo
+   * respalda la RLS de `orden`), asi que la orden de otra empresa no se ve aunque el id coincida.
+   */
+  async findLugarDeOrdenForOwner(ordenId: string, ownerId: string): Promise<string | null> {
+    const row = await this.prisma.orden.findFirst({
+      where: { id: ordenId, tiendaId: ownerId, deletedAt: null },
+      select: { distritoId: true, cantonId: true },
+    });
+    return row === null ? null : lugarDeLaOrden(row);
+  }
+
+  /**
    * Feature 177/R20/R21/R38: referencia persistida del PDF individual. Solo lee
    * `download_storage_path`; `download_url` no entra en la proyeccion, de modo que una fila
    * heredada de la 136/141 (URL caducada, path NULL) devuelve `null` = "no hay PDF".

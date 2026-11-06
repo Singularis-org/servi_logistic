@@ -274,6 +274,7 @@ function buildRepo(overrides: Partial<IOrdenRepository> = {}): IOrdenRepository 
       async (): Promise<Array<{ id: string; numGuia: number | null; numRemision: string }>> => [],
     ),
     findDetalleByOrdenIdForOwner: vi.fn(async () => null),
+    findLugarDeOrdenForOwner: vi.fn(async () => null),
     findDownloadStoragePathByOrdenForOwner: vi.fn(async () => null),
     setOrdenDownloadStoragePath: vi.fn(async () => {}),
     findCargaConOrdenesForOwner: vi.fn(async () => null),

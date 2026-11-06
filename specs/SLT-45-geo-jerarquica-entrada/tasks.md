@@ -65,7 +65,7 @@
 - [x] **T4.3** `cargarViaApiV2` y `cotizarV2` + tipos y zod en `lib/types/api-v2.ts` (§4.2), con
   `ubicacion` en la salida (§4.3).
   *Hecho:* unit tests con dobles de las dos firmas nuevas en verde.
-- [ ] **T4.4** [P] `GeografiaApiService` + `IGeografiaApiService` (§6) y
+- [x] **T4.4** [P] `GeografiaApiService` + `IGeografiaApiService` (§6) y
   `OrdenRepository.findLugarDeOrdenForOwner` (§4.3).
   *Hecho:* unit test del servicio: `apiKey` sí, otro rol `forbidden`, país ajeno `not_found`.
 
