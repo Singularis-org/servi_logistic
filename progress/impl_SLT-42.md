@@ -819,3 +819,112 @@ Alcance: T5.7 (API por key y OpenAPI; páginas `ordenes`, `wallet/mensajeros` y 
 3. **¿Se acepta la etiqueta «UTC» dentro de `vigenteDesdePendiente`** (desvío 1), o se prefiere un campo aparte y el texto en la UI (SLT-81)?
 
 Veredicto: T5.7 hecha, con los agregados a–e. La API por key, las páginas de servidor, los planes, el chat, el asistente y el rastreo usan la zona del país de la empresa, y R22, R27 y R28 tienen test. Typecheck, lint, guardias (salvo el baseline) y `vitest related` en verde.
+
+## Tanda 5 · bloque 6: jobs y crons por zona (T6.1, T6.2, T6.3) y agregados del humano (2026-11-06)
+
+Alcance: T6.1–T6.3 más las decisiones de la ficha «tras T5.7» (puntos 2 y 3) y los 9 marcadores `SLT-42 pendiente T6`. Fuera: bloque 7 (guardias T7.x) y «Pendiente para el cierre». Commits: 8bc4aca5 (T6.1, T6.2), 31ac7e78 (T6.3), 27b0388e (agregado b), 19f8f5bd (agregado c).
+
+### Qué cambió
+- **T6.1 · la cola agenda con las zonas.**
+  - `RecurrenciaSpec.siguiente(now, zonas: readonly string[])` (`IJobQueueService`).
+  - `JobQueueService` gana un último parámetro opcional, `zonasConEmpresas: () => Promise<readonly string[]>`. Lo lee como mucho una vez por `drenar`, y solo si algo se re-agenda. Sin él, `[]`.
+  - Los composition roots (`procesar-jobs/route.ts > buildService` y `scripts/drenar-jobs.ts`) pasan `new PaisRepository(prisma).zonasConEmpresas()`.
+  - `whatsapp_envio_mantenimiento` y `plan_cambios_vencidos` ignoran `zonas`, con un comentario.
+- **T6.2 · series diarias por zona.** Módulo puro nuevo: `lib/services/jobs/serie-diaria-por-zona.ts`.
+  - `proximaCorridaPorZona(now, zonas, {hora, minuto})` da el mínimo de `proximaHoraLocal` entre las zonas. Con empate gana la primera por orden alfabético.
+  - Clave `<prefijo>:<zona>:<fecha>`, con `claveConZona` y `leerClaveConZona` (`null` = clave vieja).
+  - `zonaLlegaALaHora(zona, instante, hora)` decide qué empresas entran en la corrida.
+  - `liberar-reprogramadas-handler.ts`:
+    - `HORA_LIBERAR` 00:00 y `proximaCorridaLiberar(now, zonas)` (sustituye a `proximaCorridaLiberarCR`).
+    - `dedupeKeyLiberar(instante, zona)`.
+    - El handler recibe `reglasPais?` como último parámetro. Lee la zona de la empresa y, si la corrida es de otra zona, no hace nada. Libera con `inicioDelDiaComoFecha(now, zona)`.
+  - `analitica-rollup-diario-handler.ts`:
+    - `HORA_ROLLUP` 00:30 y `proximaCorridaRollup(now, zonas)` (sustituye a `proximaCorridaRollupCR`).
+    - El handler recibe `reglasPais?` como 5.º parámetro. `fechaObjetivo(now, zona)` usa la zona de la empresa. La clave lleva la fecha OBJETIVO, y el instante de la corrida es el día siguiente a las 00:30.
+  - `analitica-rollup-diario-encolado.ts`: `dedupeKeyRollup(fecha, zona)`.
+  - `procesar-jobs/route.ts` inyecta `construirReglasPaisEmpresa(getPrismaClient())` a los dos handlers.
+  - Siembras:
+    - `seedJobLiberarReprogramadas` y `seedJobAnaliticaRollupDiario` piden `(repo, now, zonas)` y encolan con la recurrencia: misma clave y mismo instante, sin duplicar la fórmula.
+    - `Sembrador` gana `zonas`.
+    - `sembrarJobsRecurrentesEnBase` y los `main` de los seeds leen `zonasConEmpresas()`.
+- **T6.3 · crons.** De los crons de `vercel.json`, solo `liberar-reprogramadas` calculaba «hoy» fuera de la empresa (`startOfDayCR` una vez para todas). Ahora lo calcula dentro de `paraCadaEmpresa`, con la zona de cada una:
+  - `LiberarReprogramadasDeps.reglasPais`; sin él, el real.
+  - Sin zona, `PaisSinZonaHoraria` antes de liberar: esa empresa falla sola.
+  - `corte-diario`, `generar-gastos-fijos`, `avisos-diarios`, `aviso-reparto-manana` y `snapshot-ranking` ya lo hacían desde T5.3–T5.5.
+  - `procesar-devueltas-sla` y las purgas usan ventanas en ms, no días.
+- **Marcadores (los 9).**
+  - `analitica-rollup-diario-handler.ts` (2) y `seed-jobs-analitica-rollup-diario.ts` (1): arriba.
+  - `scripts/demo-qa/receta.ts` (4): lee una vez la zona de la empresa de la demo (`conEmpresa(org, …zonaHoraria())`) y la usa para «hoy» y las cuatro fábricas de schema.
+  - `scripts/rollup-analitica-manual.ts` (2): recorre las empresas con `paraCadaEmpresa`, como el job diario. Cada una usa la zona de su país. La lógica, `correrRollupManual(deps)`, se exporta y es inyectable.
+- **Agregado b (`plantilla-datos.ts`).**
+  - `fechaHora(v, zona)` usa `fechaCalendario` + `horaDePared` de `calendario-zona` (sin dependencias, vale en el navegador). Sale `CR_OFFSET_MS`.
+  - `CampoPlantilla` gana `usaZona?` (en `fecha_asignacion` y `fecha_creacion`) y `transform(valor, zona?)`.
+  - `valorDeCampo(clave, datos, zona?)` y `resolverValoresPlantilla(variables, datos, zona?)`.
+  - `necesitaZona(variables)` nuevo: la zona solo se lee si la plantilla pinta una fecha con hora. Si hace falta y no llega, lanza; sin instante devuelve `""`.
+  - Los llamadores:
+    - `enviarPlantillaChat` (`deps.reglasPais` o el real) y el reintento de plantilla de `ChatWhatsappService` (`deps.reglasPais`).
+    - `whatsapp-bienvenida-handler` (`WhatsappBienvenidaDeps.reglasPais`, real en `buildWhatsappBienvenidaDeps`).
+    - La vista previa «así lo verá el cliente»: `previewConEjemplos(cuerpo, zona?)` y `PlantillaMensajeService.preview`, con `PlantillaInformeDeps.reglasPais`; `lib/actions/plantillas.ts` inyecta el real.
+  - El composer del chat en el dispositivo (`ChatConversacion` → `datosPlantillaDesdeAsignacion`) no cambia: el DTO no trae fechas, así que no hay nada que pintar con hora.
+- **Agregado c.** En `guia-integracion.html` §4.5 «Fechas y horas» (la cita era «§5»; la línea está en §4.5), «hora de Costa Rica (UTC-6)» pasa a «zona horaria del país de la empresa (hoy Costa Rica, UTC-6)». La advertencia de abajo y la lista de comprobación (§4.5, «UTC-6») no se tocaron (pregunta 4).
+
+### Desvíos y decisiones mías (a confirmar)
+1. **Empate de zonas** (dos zonas que llegan a la hora en el mismo instante, p. ej. CR y Guatemala). El design dice que el handler compara la zona de la empresa con la de la corrida. Si fuera igualdad literal, la segunda zona no correría nunca: la siguiente corrida ya es la de mañana. La regla queda así: entra la empresa cuya zona marca la hora objetivo en el instante de la corrida (`zonaLlegaALaHora`). Una zona igual siempre cumple. Test «empate…».
+2. **Sin zonas** (ningún país con empresas tiene zona). El design no lo cubre. La serie no puede morir (nadie la re-sembraría hasta el siguiente despliegue), así que se agenda en `"UTC"` (`ZONA_SIN_EMPRESAS`): esa corrida no procesa ninguna empresa con zona, y una sin zona falla sola (R28).
+3. **Rollup sembrado entre las 00:00 y las 00:30 CR.** La fórmula vieja saltaba a la corrida de mañana, y el D−1 de ese día no se agregaba. `proximaHoraLocal` da la de hoy. Con la serie en marcha nada cambia: re-agenda siempre después de las 00:30. Test «rollup entre las 00:00 y las 00:30 CR…».
+4. **`rollup-analitica-manual.ts`.** El tope de R39 depende de la zona, así que ahora se comprueba dentro de cada empresa, antes de escribir. Antes de conectar solo se rechaza una fecha mal formada. Una empresa rechazada o fallida no frena a las demás, y el script sale con código 1.
+5. **Plantillas: zona perezosa.** Solo se lee si una variable la usa (`necesitaZona`). Así un país sin zona no rompe el envío de plantillas sin fechas (R28: «la operación que la necesite»).
+
+### Tests
+- Nuevos:
+  - `tests/unit/services/jobs/recurrencia-por-zona.test.ts` (31 casos).
+  - `tests/unit/plantillas/preview-fecha-hora-zona.test.ts` (3).
+  - `tests/integration/db/hora-por-pais-dos-empresas.test.ts` (2; lo corre CI).
+- Casos nuevos: `plantilla-datos.test.ts` (4) y `chat-whatsapp-actions.test.ts` (2).
+- Adaptados a la firma o a la clave con zona (con CR dan los mismos instantes):
+  - Unitarios: `liberar-reprogramadas-handler`, `analitica-rollup-handler`, `cache-invalidacion-job`, `procesar-jobs-registro(-envios)`, `procesar-jobs-plan-cambio`, `crons-sin-empresas` (`reglasPais` en los deps), `campos-ocultos-siguen-resolviendo`, `preview-mismo-motor` y las guardias `jobs-recurrentes-con-siembra` y `tablero-dia/frontera` (ver Salida).
+  - Integración: `liberar-reprogramadas-route`, `job-tipo-analitica-rollup-migration`, `siembra-liberar-reprogramadas-idempotente`, `siembra-whatsapp-envio-mantenimiento-idempotente` y `planes-cambio-programado`.
+
+### Mapa R → test (bloque 6 y agregados)
+| R | Test |
+|---|---|
+| R22 | `plantilla-datos.test.ts`: «SLT-42 R22: el `timestamp` se pinta en la zona del pais de la empresa…», «…con horario de verano… (Madrid)». `chat-whatsapp-actions.test.ts`: «SLT-42 R22: la fecha con hora sale en la zona del pais de la empresa (CR: el 25; Bogota: el 26)». `preview-fecha-hora-zona.test.ts`: «R22: el mismo ejemplo (14:15 UTC) es 08:15 en Costa Rica y 09:15 en Bogota» |
+| R23 | `recurrencia-por-zona.test.ts`: «con horario de verano (Madrid), la corrida es a las 00:00 locales reales en invierno y en verano» |
+| R24 | `hora-por-pais-dos-empresas.test.ts` (integración): «R24/R28: el cron calcula «hoy» con la zona del pais de cada empresa; la que no tiene zona falla sola». `recurrencia-por-zona.test.ts`: «la clave vieja corre para TODAS las empresas, cada una con su «hoy» local» |
+| R25 | `recurrencia-por-zona.test.ts`: «la serie alterna Bogota (05:00 UTC) y CR (06:00 UTC), cada dia»; «la corrida de Bogota no toca la empresa de CR…»; «rollup: la corrida de Bogota agrega el D-1 de Bogota y no toca CR»; «empate (CR y Guatemala…)»; «sin zonas…»; los 4 de «T6.1 — la cola lee las zonas…». Integración: «R25: las zonas con empresas salen de la base, la serie agenda Bogota primero…» |
+| R26 | `recurrencia-por-zona.test.ts`: «liberar desde %s: las 00:00 CR de antes (06:00 UTC)» (7 instantes), «rollup desde %s: las 00:30 CR de antes» (5), «la clave nueva lleva la zona…», «cada empresa se procesa una sola vez por dia local: tres dias…», «la vieja y la nueva en el mismo instante…», «rollup con la clave vieja…» |
+| R28 | `recurrencia-por-zona.test.ts`: «el handler falla con PaisSinZonaHoraria antes de llamar al servicio»; «dentro de la serie (conSuEmpresa), la empresa sin zona falla y las demas corren; el job falla despues». `plantilla-datos.test.ts`: «SLT-42 R28: una fecha con hora sin zona lanza…». `chat-whatsapp-actions.test.ts`: «SLT-42 R28: sin zona en el pais y con una fecha con hora, falla sin enviar; sin fechas, no lee la zona». `preview-fecha-hora-zona.test.ts`: «R28: sin zona en el pais…». Integración (R24/R28, arriba) |
+| R31 | `hora-por-pais-dos-empresas.test.ts`: dos empresas en dos países (XA Bogotá y CR) y una tercera sin zona, con `PaisRepository` y `ReglasPaisEmpresaService` reales |
+
+### Salida
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: exit 0, también tras el último cambio.
+- `eslint` de los 43 `.ts` tocados (un lote): 0 errores. Queda 1 warning `no-unused-vars` (`_job`) que ya estaba en `whatsapp-envio-mantenimiento-handler.ts`.
+- `pnpm test:guardias`, primera corrida: `Test Files 3 failed | 322 passed | 3 skipped · Tests 6 failed | 4549 passed`.
+  - 4 son de `dependencias-declaradas-presentes`, en el baseline.
+  - 2 eran REALES:
+    - `tablero-dia/frontera` (a): su comprobación de que el detector no es vacío apuntaba a `startOfDayCR` en `liberar-reprogramadas-handler.ts`, el último consumidor, que T6.2 retira. Ahora apunta a la declaración de `fecha-cr.ts` y afirma que el handler ya no la usa.
+    - `impresion-flujo` R32: el helper `reglasDe` del test de integración nuevo coincidía con la firma del parser CSS. Se renombró a `reglasDelPaisEn`.
+- `pnpm test:guardias`, corrida final: `Test Files 1 failed | 324 passed | 3 skipped (328) · Tests 4 failed | 4551 passed | 24 skipped (4579)`. Solo quedan los 4 del baseline.
+- Tests directos:
+  - Nuevo y tocados de jobs: `recurrencia-por-zona` + `procesar-jobs-registro(-envios)` + `crons-sin-empresas` + `procesar-jobs-plan-cambio` + `jobs-recurrentes-con-siembra` + los 3 de `job-queue-service*` + `jobs-registro`: `10 passed (168)`.
+  - Handlers y plantillas: `liberar-reprogramadas-handler`, `analitica-rollup-handler`, `cache-invalidacion-job`, `plantilla-datos`, `tests/unit/plantillas`: `17 passed (384)`.
+  - Chat y vista previa: `chat-whatsapp-actions` + `preview-fecha-hora-zona`: `2 passed (58)`.
+- `vitest related --run` sin `tests/components` ni `tests/integration`, en 5 lotes de ≤5 archivos de producción:
+  - lote 1 (`serie-diaria-por-zona`, `IJobQueueService`, `JobQueueService`, `jobs-cambio-plan`, mantenimiento): `59 passed (895)`;
+  - lote 2 (encolado y handlers del rollup y de liberar, `procesar-jobs/route`, `liberar-reprogramadas/route`): `51 passed (773)`;
+  - lote 3 (`plantilla-datos`, `plantilla-mensaje`, `PlantillaMensajeService`, `actions/plantillas`, `actions/chat-whatsapp`): `90 passed (1330)`;
+  - lote 4 (`ChatWhatsappService`, bienvenida, rollup manual, los dos seeds): `20 passed (344)`;
+  - lote 5 (`siembra-jobs-recurrentes`, `drenar-jobs`, `demo-qa/receta`): `4 passed (108)`.
+- Integración contra base: la corre CI. Su typecheck pasa, también la del test nuevo y las 5 adaptadas.
+- Grafo MCP: no se usó; bastaron Grep y Read.
+
+### Marcadores
+Quedan 0 `SLT-42 pendiente` en `lib/`, `app/` y `scripts/` (T6: 0; T5.x: 0; T7.x: 0).
+
+### Preguntas abiertas
+1. **Corrida retrasada con varias zonas.** `siguiente(now, zonas)` cuenta desde el `now` del drenado, no desde el instante de la corrida. Si la corrida de una zona se retrasa por backoff hasta pasar la hora de la siguiente zona, esa zona se salta un día. Con una sola zona no pasa. ¿Se acepta mientras haya un solo país, o se pasa el `runAfter` original a `siguiente` (cambio de firma respecto del design)?
+2. **¿Se acepta el empate por «hora de pared en el instante»** (desvío 1) y la serie en `"UTC"` sin zonas (desvío 2)?
+3. **`rollup-analitica-manual.ts`.** ¿Se acepta que el tope de R39 se compruebe por empresa, después de conectar (desvío 4)?
+4. **Guía de integración.** Quedan dos menciones a «UTC-6» en §4.5 (la advertencia sobre mezclar sistemas y la fila de la lista de comprobación). ¿Pasan también a «la zona del país de la empresa»?
+
+Veredicto: bloque 6 hecho (T6.1–T6.3) con los agregados b y c y sin marcadores `SLT-42 pendiente`. Los jobs diarios se agendan por zona y procesan solo las empresas de su zona; con CR, en los mismos instantes. Los crons y las plantillas usan la zona del país de cada empresa. R22–R26, R28 y R31 tienen test. Typecheck, lint, guardias (salvo el baseline) y `vitest related` en verde; la integración la corre CI.
