@@ -410,6 +410,9 @@ export class CorregirDatosClienteService implements ICorregirDatosClienteService
       // R5 — LA ZONA LA ESCRIBE EL SERVIDOR. Nunca sale del input: el schema del borde ni siquiera
       // la admite.
       data.zonaId = distrito.zonaId;
+      // SLT-45 R26 — el nodo va en la MISMA escritura que las 3 FK. La correccion siempre llega
+      // con distrito (R3 de arriba), asi que el nodo es ese distrito (design §3.2).
+      data.nodoGeograficoId = distritoId;
       distritoPropuesto = distrito;
     }
 

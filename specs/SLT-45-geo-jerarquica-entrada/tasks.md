@@ -44,7 +44,7 @@
   `nodoGeograficoId = distritoId ?? cantonId` para la vía de `resolveGeo` y `fksDeNodo` para el motor.
   *Hecho:* typecheck verde; tests existentes de `bulk-orden-service*` y `orden-repository.carga-api`
   pasan sin cambiar aserciones.
-- [ ] **T3.2** `CorregirDatosClienteData.nodoGeograficoId`, puesto por `CorregirDatosClienteService` y
+- [x] **T3.2** `CorregirDatosClienteData.nodoGeograficoId`, puesto por `CorregirDatosClienteService` y
   escrito en el mismo `updateMany` (§3.2). (R26)
   *Hecho:* tests existentes de la corrección pasan sin cambiar aserciones.
 - [x] **T3.3** `tests/integration/db/orden-nodo-escritura.test.ts`: crear (profundidad 3 por v1 y v2;

@@ -627,7 +627,7 @@ describe("327/C2 — R11: EL GATE DEL DINERO", () => {
     expect(corregirDatosCliente).toHaveBeenCalledWith(
       ORDEN_ID,
       // `z-2` sale del DISTRITO resuelto; `p-1`/`c-1` no viajan porque no cambian.
-      { distritoId: "d-2", zonaId: "z-2" },
+      { distritoId: "d-2", zonaId: "z-2", nodoGeograficoId: "d-2" },
       ESTADOS_SIN_CORRECCION,
       // ⭑ FICHA 362 / Q1 — el RASTRO. `ubicacionCorregida` decide si se escribe la fila del
       // registro; el actor es QUIEN la escribe. Ni la direccion ni el distrito viajan aqui.
@@ -668,7 +668,7 @@ describe("327/C2 — R11: EL GATE DEL DINERO", () => {
     expect(r).toEqual({ status: "ok", cambios: ["provinciaId", "cantonId", "distritoId"] });
     expect(corregirDatosCliente).toHaveBeenCalledWith(
       ORDEN_ID,
-      { provinciaId: "p-1", cantonId: "c-1", distritoId: "d-2", zonaId: "z-2" },
+      { provinciaId: "p-1", cantonId: "c-1", distritoId: "d-2", zonaId: "z-2", nodoGeograficoId: "d-2" },
       ESTADOS_SIN_CORRECCION,
       // ⭑ FICHA 362 / Q1 — el RASTRO. `ubicacionCorregida` decide si se escribe la fila del
       // registro; el actor es QUIEN la escribe. Ni la direccion ni el distrito viajan aqui.
