@@ -62,7 +62,7 @@
   *Hecho:* el test de composición falla si se quita el parámetro de cualquiera de las rutas.
 - [x] **T4.2** Comprobación de forma de país en v1 (R5) y rama del motor en `resolveFila` (§2.3).
   *Hecho:* contrato de T1.3 en verde sin regrabar.
-- [ ] **T4.3** `cargarViaApiV2` y `cotizarV2` + tipos y zod en `lib/types/api-v2.ts` (§4.2), con
+- [x] **T4.3** `cargarViaApiV2` y `cotizarV2` + tipos y zod en `lib/types/api-v2.ts` (§4.2), con
   `ubicacion` en la salida (§4.3).
   *Hecho:* unit tests con dobles de las dos firmas nuevas en verde.
 - [ ] **T4.4** [P] `GeografiaApiService` + `IGeografiaApiService` (§6) y

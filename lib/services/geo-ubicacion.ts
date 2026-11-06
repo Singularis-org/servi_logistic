@@ -64,6 +64,13 @@ export const MSG_UBICACION_UNA_DE_LAS_DOS = "indica ubicacion o ubicacion_codigo
 export const MSG_PAIS_NO_HABILITADO =
   "pais aun no habilitado: solo se aceptan ubicaciones de nivel 2 o 3 en paises de 3 niveles";
 
+/**
+ * Design §2.3: una via del motor sin catalogo es un error de CONFIGURACION del composition root, no
+ * de la fila; nunca se degrada en silencio a `resolveGeo`. Lo lanzan la carga y la cotizacion.
+ */
+export const MSG_MOTOR_SIN_CATALOGO =
+  "configuracion: la resolucion por ubicacion necesita el catalogo geografico de la empresa";
+
 export function msgNivelVacio(n: number): string {
   return `nivel ${n}: el nombre esta vacio`;
 }

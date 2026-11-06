@@ -28,6 +28,7 @@ import type { TarifaTienda } from "@/lib/types/tarifa-flexible";
 import type {
   CotizacionGeoRepository,
   CotizacionOrdenResult,
+  CotizacionOrdenResultV2,
   ICotizacionOrdenService,
 } from "@/lib/interfaces/services/ICotizacionOrdenService";
 import type { RawRow } from "@/lib/parsers/spreadsheet";
@@ -56,12 +57,24 @@ import {
   montoFulfillmentDeTarifa,
 } from "@/lib/utils/ingreso-empresa";
 import { serializarMontoCotizacion } from "@/lib/utils/monto-cotizacion";
-import type { ICatalogoGeograficoRepository } from "@/lib/interfaces/repositories/ICatalogoGeograficoRepository";
+import type {
+  CatalogoYAsignaciones,
+  ICatalogoGeograficoRepository,
+} from "@/lib/interfaces/repositories/ICatalogoGeograficoRepository";
 import {
   CLAVE_UBICACION,
+  MSG_MOTOR_SIN_CATALOGO,
   MSG_PAIS_NO_HABILITADO,
   esPaisDeTresNiveles,
+  resolverUbicacion,
+  rutaPublica,
 } from "@/lib/services/geo-ubicacion";
+import {
+  extraerUbicacionV2,
+  filaCotizacionV2Schema,
+  geoDeUbicacion,
+  type FilaV2Interna,
+} from "@/lib/types/api-v2";
 
 /**
  * R29 — la cotizacion asume que la orden que se crearia COBRA comision, que es el `default
@@ -258,6 +271,42 @@ export class CotizacionOrdenService implements ICotizacionOrdenService {
     // el denominador `C` del criterio de lote (design §3.6).
     // R46: indice 1-based dentro del array recibido.
     const preparadas = rows.map((raw, idx) => this.prepararFila(raw, idx + 1, indices));
+    return this.cotizarPreparadas(tiendaId, rows.length, preparadas);
+  }
+
+  /**
+   * SLT-45 (design §4.2, §4.3) — la cotizacion de v2: la misma tarifa, el mismo criterio del 409 y
+   * los mismos importes que `cotizar` (R19), con la ubicacion resuelta por el motor de N niveles y
+   * la ruta de su nodo en `filas[].ubicacion`. La forma del pais la dice el motor fila a fila (R15).
+   */
+  async cotizarV2(filasV2: FilaV2Interna[], actor: Actor): Promise<CotizacionOrdenResultV2> {
+    if (actor.rol !== "apiKey") return { status: "forbidden" };
+    if (this.catalogoRepo === undefined) throw new Error(MSG_MOTOR_SIN_CATALOGO);
+    const geografia = await this.catalogoRepo.deLaEmpresa();
+
+    const nodoPorFila = new Map<number, string>();
+    const preparadas = filasV2.map((f, idx) => this.prepararFilaV2(f, idx + 1, geografia, nodoPorFila));
+    const r = await this.cotizarPreparadas(actor.usuarioId, filasV2.length, preparadas);
+    if (r.status !== "ok") return r;
+    return {
+      status: "ok",
+      resumen: {
+        ...r.resumen,
+        // Toda fila cotizada fue `pendiente`, y `prepararFilaV2` anoto su nodo.
+        filas: r.resumen.filas.map((f) => ({
+          ...f,
+          ubicacion: rutaPublica(geografia.catalogo, nodoPorFila.get(f.fila) ?? ""),
+        })),
+      },
+    };
+  }
+
+  /** Tarifa y escenarios de las filas ya preparadas; comun a v1 y v2. */
+  private async cotizarPreparadas(
+    tiendaId: string,
+    total: number,
+    preparadas: FilaPreparada[],
+  ): Promise<CotizacionOrdenResult> {
     const pendientes = preparadas.filter(
       (p): p is FilaPendiente => p.estado === "pendiente",
     );
@@ -347,7 +396,7 @@ export class CotizacionOrdenService implements ICotizacionOrdenService {
     return {
       status: "ok",
       resumen: {
-        total: rows.length,
+        total,
         cotizadas: filas.length,
         conError: errores.length,
         filas,
@@ -400,6 +449,41 @@ export class CotizacionOrdenService implements ICotizacionOrdenService {
       fila,
       numRemision,
       geo: geoResult.geo,
+      montoCobrar: parsed.data.monto_cobrar,
+    };
+  }
+
+  /**
+   * La primera pasada de una fila de v2: los campos de v1 sin la terna, luego la ubicacion por el
+   * motor (R12–R16, mismos mensajes que la carga v2). Anota el nodo de la fila que queda pendiente.
+   */
+  private prepararFilaV2(
+    filaV2: FilaV2Interna,
+    fila: number,
+    geografia: CatalogoYAsignaciones,
+    nodoPorFila: Map<number, string>,
+  ): FilaPreparada {
+    const numRemisionCrudo = (filaV2.campos.num_remision ?? "").trim();
+    const numRemision = numRemisionCrudo === "" ? null : numRemisionCrudo;
+    const error = (errores: Record<string, string[]>): FilaPreparada => ({
+      estado: "error",
+      resultado: { fila, numRemision, resultado: "error", errores },
+    });
+
+    const parsed = filaCotizacionV2Schema.safeParse(filaV2.campos);
+    if (!parsed.success) return error(z.flattenError(parsed.error).fieldErrors as Record<string, string[]>);
+
+    const extraida = extraerUbicacionV2(filaV2);
+    if (!extraida.ok) return error(extraida.fieldErrors);
+    const r = resolverUbicacion(extraida.entrada, geografia.catalogo, geografia.asignaciones);
+    if (!r.ok) return error(r.fieldErrors);
+
+    nodoPorFila.set(fila, r.u.nodo.id);
+    return {
+      estado: "pendiente",
+      fila,
+      numRemision,
+      geo: geoDeUbicacion(r.u),
       montoCobrar: parsed.data.monto_cobrar,
     };
   }

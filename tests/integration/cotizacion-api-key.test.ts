@@ -246,7 +246,7 @@ function buildTarifaRepo(
 
 /** El service ESPIA: para los caminos que ni siquiera deben llegar a cotizar. */
 function espiaService(): ICotizacionOrdenService {
-  return { cotizar: vi.fn() };
+  return { cotizar: vi.fn(), cotizarV2: vi.fn() };
 }
 
 function reqConBearer(body: unknown, bearer?: string): Request {

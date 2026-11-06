@@ -44,6 +44,8 @@ function fakeService(overrides: Partial<IBulkOrdenService> = {}): IBulkOrdenServ
         summary: okSummary(),
         manifiestoOrdenIds: ["ord-1"],
       } satisfies CargaViaApiResult),
+    // SLT-45: exigido por IBulkOrdenService; no ejercitado por v1.
+    cargarViaApiV2: vi.fn(),
     ...overrides,
   };
 }

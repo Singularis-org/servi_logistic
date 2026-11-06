@@ -32,6 +32,7 @@ import type {
   BulkOrdenResult,
   CargaViaApiOrden,
   CargaViaApiResult,
+  CargaViaApiResultV2,
   CargaViaApiFila,
   CargaViaApiRow,
   CargaViaApiSummary,
@@ -74,11 +75,19 @@ import type {
 } from "@/lib/interfaces/repositories/ICatalogoGeograficoRepository";
 import {
   CLAVE_UBICACION,
+  MSG_MOTOR_SIN_CATALOGO,
   MSG_PAIS_NO_HABILITADO,
   esPaisDeTresNiveles,
   resolverUbicacion,
+  rutaPublica,
   type EntradaUbicacion,
 } from "@/lib/services/geo-ubicacion";
+import {
+  extraerUbicacionV2,
+  geoDeUbicacion,
+  type CargaViaApiSummaryV2,
+  type FilaV2Interna,
+} from "@/lib/types/api-v2";
 
 /**
  * SLT-45 (design §2.3) — lo que devuelve el extractor de una via que resuelve con el motor de N
@@ -90,12 +99,7 @@ export type EntradaDelMotor = { ok: true; entrada: EntradaUbicacion; direccion: 
 /** El extractor de geografia de una via: la terna de `resolveGeo`, una entrada del motor o un error. */
 export type ExtractorDeFila = (raw: RawRow) => GeoInput | EntradaDelMotor;
 
-/**
- * SLT-45 (design §2.3) — una via del motor sin catalogo es un error de CONFIGURACION del composition
- * root, no de la fila: nunca se degrada en silencio a `resolveGeo`.
- */
-export const MSG_MOTOR_SIN_CATALOGO =
-  "configuracion: la resolucion por ubicacion necesita el catalogo geografico de la empresa";
+export { MSG_MOTOR_SIN_CATALOGO };
 
 /** La geografia de una fila ya resuelta, venga de `resolveGeo` o del motor. */
 type GeografiaDeFila =
@@ -508,6 +512,69 @@ export class BulkOrdenService implements IBulkOrdenService {
       };
     }
 
+    // R7: mismas reglas que la carga masiva, pero con la geografia en columnas separadas (feature
+    // 142/R38: el contrato publico de la 88 no cambia).
+    const { resultado } = await this.cargarFilasPorApi(
+      rows,
+      tiendaId,
+      options,
+      geografia,
+      () => geoInputDesdeColumnasSeparadas,
+    );
+    return resultado;
+  }
+
+  /**
+   * SLT-45 (design §4.2, §4.3) — la carga por lote de v2: el MISMO pipeline que `cargarViaApi`
+   * (duplicados, tarifa, cupo, lote, manifiesto, aviso), con la ubicacion resuelta por el motor de
+   * N niveles y `ordenes[].ubicacion` en la salida. No comprueba la forma del pais por adelantado:
+   * la regla de guardado del motor (R15) lo dice fila a fila.
+   */
+  async cargarViaApiV2(
+    filasV2: FilaV2Interna[],
+    actor: Actor,
+    options: { name?: string } = {},
+  ): Promise<CargaViaApiResultV2> {
+    if (actor.rol !== "apiKey") return { status: "forbidden" };
+    if (this.catalogoRepo === undefined) throw new Error(MSG_MOTOR_SIN_CATALOGO);
+    const geografia = await this.catalogoRepo.deLaEmpresa();
+
+    const { resultado, nodoPorRemision } = await this.cargarFilasPorApi(
+      filasV2.map((f) => f.campos),
+      actor.usuarioId,
+      options,
+      geografia,
+      (idx) => () => extraerUbicacionV2(filasV2[idx]),
+    );
+    const summary: CargaViaApiSummaryV2 = {
+      ...resultado.summary,
+      ordenes: resultado.summary.ordenes.map((o) => ({
+        ...o,
+        // Toda orden creada paso por `resolveFila`, que anoto su nodo: el `?? ""` (ruta vacia) es
+        // solo para el tipo. Se prefiere a lanzar: aqui las ordenes ya estan confirmadas.
+        ubicacion: rutaPublica(geografia.catalogo, nodoPorRemision.get(o.numRemision) ?? ""),
+      })),
+    };
+    return { status: "ok", summary, manifiestoOrdenIds: resultado.manifiestoOrdenIds };
+  }
+
+  /**
+   * El pipeline de la carga por API, comun a v1 y v2. La via elige el extractor de cada fila
+   * (`extractorDe(indice)`); devuelve ademas el nodo de cada remision creada, que v2 publica como
+   * ruta. La autorizacion y la forma del pais se comprueban antes, en cada via.
+   */
+  private async cargarFilasPorApi(
+    rows: RawRow[],
+    tiendaId: string,
+    options: { name?: string },
+    geografia: CatalogoYAsignaciones | undefined,
+    extractorDe: (idx: number) => ExtractorDeFila,
+  ): Promise<{
+    resultado: Extract<CargaViaApiResult, { status: "ok" }>;
+    nodoPorRemision: Map<string, string>;
+  }> {
+    const nodoPorRemision = new Map<string, string>();
+
     // FULFILLMENT (2026-08-25) — EL PREDICADO DE ESTA VIA ES LA TARIFA, NO EL FLAG DEL USUARIO.
     //
     // La feature 155 dejo escrito que la rama (a) de esta via era "defensiva y hoy inalcanzable",
@@ -551,9 +618,12 @@ export class BulkOrdenService implements IBulkOrdenService {
       }));
       // Feature 141/R33: sin ordenes creadas no hay lote.
       return {
-        status: "ok",
-        summary: this.buildViaApiSummary(rows.length, filas, [], null),
-        manifiestoOrdenIds: [],
+        resultado: {
+          status: "ok",
+          summary: this.buildViaApiSummary(rows.length, filas, [], null),
+          manifiestoOrdenIds: [],
+        },
+        nodoPorRemision,
       };
     }
     const estatusId = ctx.estatusId;
@@ -583,9 +653,8 @@ export class BulkOrdenService implements IBulkOrdenService {
 
     rows.forEach((raw, idx) => {
       const fila = idx + 1;
-      // R7: mismas reglas que la carga masiva, pero con la geografia en columnas
-      // separadas (feature 142/R38: el contrato publico de la 88 no cambia).
-      const result = this.resolveFila(raw, ctx, seen, geoInputDesdeColumnasSeparadas);
+      // R7: mismas reglas que la carga masiva; la geografia, del extractor de la via.
+      const result = this.resolveFila(raw, ctx, seen, extractorDe(idx));
       if (result.status === "error") {
         filas.push({ fila, numRemision: result.numRemision, resultado: "error", errores: result.errores });
         return;
@@ -595,6 +664,7 @@ export class BulkOrdenService implements IBulkOrdenService {
         return;
       }
       toCreate.push({ ...result.createData, estatusId, tiendaId });
+      nodoPorRemision.set(result.createData.numRemision, result.createData.nodoGeograficoId);
       esCentralPorRemision.set(result.createData.numRemision, result.esCentral); // R2
       esZonaEspecialPorRemision.set(result.createData.numRemision, result.esZonaEspecial);
       zonaPorRemision.set(result.createData.numRemision, result.createData.zonaId); // 274/R25
@@ -869,7 +939,7 @@ export class BulkOrdenService implements IBulkOrdenService {
     // summary JSON. El borde (route handler) la necesita para saber que ordenes de este lote
     // van al manifiesto, y esa es una decision interna: el contrato publico solo gana el bloque
     // `manifiesto` cuando lo hay.
-    return { status: "ok", summary, manifiestoOrdenIds };
+    return { resultado: { status: "ok", summary, manifiestoOrdenIds }, nodoPorRemision };
   }
 
   /**
@@ -1140,20 +1210,7 @@ export class BulkOrdenService implements IBulkOrdenService {
       if (ctx.geografia === undefined) throw new Error(MSG_MOTOR_SIN_CATALOGO);
       const r = resolverUbicacion(entrada.entrada, ctx.geografia.catalogo, ctx.geografia.asignaciones);
       if (!r.ok) return r;
-      const { u } = r;
-      return {
-        ok: true,
-        geo: {
-          provinciaId: u.fks.provinciaId,
-          cantonId: u.fks.cantonId,
-          distritoId: u.fks.distritoId,
-          zonaId: u.zona.id,
-          esCentral: u.zona.esCentral,
-          esZonaEspecial: u.esZonaEspecial,
-        },
-        nodoGeograficoId: u.nodo.id,
-        direccion: entrada.direccion,
-      };
+      return { ok: true, geo: geoDeUbicacion(r.u), nodoGeograficoId: r.u.nodo.id, direccion: entrada.direccion };
     }
 
     const r = resolveGeo(entrada, ctx.provinciaIndex, ctx.cantonIndex, ctx.distritoIndex);

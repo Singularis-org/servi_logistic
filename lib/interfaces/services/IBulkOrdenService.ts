@@ -1,6 +1,7 @@
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { RawRow } from "@/lib/parsers/spreadsheet";
 import type { BulkSummary, RowResult } from "@/lib/types/carga-masiva";
+import type { CargaViaApiSummaryV2, FilaV2Interna } from "@/lib/types/api-v2";
 
 // R11: resultado discriminado. La autorizacion NO lanza; el borde (Route
 // Handler) traduce "forbidden" a un AppErrorShape (feature 10).
@@ -120,6 +121,11 @@ export type CargaViaApiResult =
   | { status: "ok"; summary: CargaViaApiSummary; manifiestoOrdenIds: string[] }
   | { status: "forbidden" };
 
+/** SLT-45 (design §4.3): el de v1 con `ordenes[].ubicacion`. */
+export type CargaViaApiResultV2 =
+  | { status: "ok"; summary: CargaViaApiSummaryV2; manifiestoOrdenIds: string[] }
+  | { status: "forbidden" };
+
 export interface IBulkOrdenService {
   /**
    * Procesa las filas ya parseadas de un archivo de carga masiva: autoriza
@@ -173,4 +179,16 @@ export interface IBulkOrdenService {
     actor: Actor,
     options?: { name?: string },
   ): Promise<CargaViaApiResult>;
+
+  /**
+   * SLT-45 (design §4.2, §4.3) — la carga por lote de v2: mismo pipeline y mismas reglas que
+   * `cargarViaApi` (R17), con la ubicacion de cada fila resuelta por el motor de N niveles y la
+   * ruta de su nodo en `ordenes[].ubicacion`. Solo el rol `apiKey`. Sin catalogo geografico
+   * inyectado lanza un error de configuracion (nunca resuelve como v1).
+   */
+  cargarViaApiV2(
+    filas: FilaV2Interna[],
+    actor: Actor,
+    options?: { name?: string },
+  ): Promise<CargaViaApiResultV2>;
 }
