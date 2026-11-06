@@ -306,6 +306,11 @@ export async function conEscenario<T>(
   });
 }
 
+/** El autenticador de una key de `organizacionId` cuyo dueño es `tiendaId`. */
+export function autenticadorDe(organizacionId: string, tiendaId: string, apiKeyId = "slt45-v2"): AutenticadorApiKey {
+  return async () => ({ status: "ok", actor: { usuarioId: tiendaId, rol: "apiKey" }, apiKeyId, organizacionId });
+}
+
 // ── peticiones y comparacion ───────────────────────────────────────────────────────────────────
 
 export const BEARER = "svl_slt45v2000000000000000";
