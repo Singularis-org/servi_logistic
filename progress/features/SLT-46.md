@@ -2,13 +2,13 @@
 
 | key | nombre | zone | complexity | rama | assignee | estado |
 |---|---|---|---|---|---|---|
-| SLT-46 | geo-jerarquica-admin | fullstack | high | feature/SLT-46-geo-jerarquica-admin | Camilo (6ace53aa94bfd46ee6a600a5) | pending (tomada) |
+| SLT-46 | geo-jerarquica-admin | fullstack | high | feature/SLT-46-geo-jerarquica-admin | Camilo (6ace53aa94bfd46ee6a600a5) | in_progress (tomada) |
 
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F1.0 2026-11-06: tomada y worktree montado. Rama sobre SLT-45 (PR #89), que trae 43, 44, 65 y 71.
-Siguiente: acotar (`/afinar-feature`) y spec (F1.2).
+F2.1 2026-11-06: spec aprobado (F1.4, «si», por escrito) y tarjeta en in_progress. Implementer lanzado
+con el backend (T0.1, T1–T5; la UI espera la maqueta T0.2). Spec R1–R52, T0–T9. Rama sobre SLT-45 (PR #89).
 
 ## Evaluación
 - zone fullstack: pantalla de geografía del superadmin a N niveles, alta de país con catálogo de tipos,
@@ -18,7 +18,9 @@ Siguiente: acotar (`/afinar-feature`) y spec (F1.2).
   herencia de zona al asignar nodos intermedios.
 - Cupo fullstack: 2 de 3 con esta (SLT-86, SLT-46). Zonas de la empresa separadas a SLT-89 (2026-11-06).
 - Dependencias: SLT-44, SLT-65, SLT-71 sin mergear (PRs #55, #75, #81); rama apilada sobre SLT-45 (#89).
-- Cruce de archivos: pendiente hasta tener `tasks.md` (`archivos-en-vuelo.mjs --candidata SLT-46`, F2.0).
+- Cruce de archivos (F2.0, 2026-11-06): choques propios con SLT-43/44/45/65/71 (vienen en la rama apilada).
+  Con otra persona: SLT-77 (Carlos Restrepo), solo `db/schema.prisma`, zonas distintas; **choque aceptado por
+  el humano** y avisado en la tarjeta de SLT-77. SLT-88 (Carlos) solo aviso, sin rama publicada.
 
 ## Decisiones
 - 2026-11-06 (humano): «comienza 46 partiendo de 45»: la rama nace sobre `feature/SLT-45-geo-jerarquica-entrada`.
