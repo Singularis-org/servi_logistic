@@ -31,7 +31,8 @@
     "geo:equivalencia-consultas": "tsx scripts/geo-equivalencia-consultas.ts",
     "geo:explain-consultas": "tsx scripts/geo-explain-consultas.ts",
     "geo:equivalencia-analitica": "tsx scripts/geo-equivalencia-analitica.ts",
-    "geo:explain-analitica": "tsx scripts/geo-explain-analitica.ts"
+    "geo:explain-analitica": "tsx scripts/geo-explain-analitica.ts",
+    "geo:payloads-contrato": "tsx scripts/geo-payloads-contrato-v1.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
