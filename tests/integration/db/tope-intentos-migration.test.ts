@@ -359,7 +359,8 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("SLT-77 — una empresa dada de alta (Postgr
           nombre: "Maestra de prueba",
           email: `tope-${sufijo}@example.test`,
           telefono: "88887777",
-          documento: `doc-${sufijo}`,
+          // SLT-42 (R11): la cedula fisica de CR son 9 digitos; la empresa es nueva, asi que no choca.
+          documento: String(100_000_000 + Math.floor(Math.random() * 900_000_000)),
           tipoDocumento: "cedula",
         },
       });

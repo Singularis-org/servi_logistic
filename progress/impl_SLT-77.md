@@ -576,7 +576,7 @@ Comprobado con un script: los 42 de `requirements.md` están aquí, y cada test 
 | R36 | `tope-intentos-carreras`: `proceso: no rechaza en esa corrida`, `aprobacion: va a bodega con el mayor` |
 | R37 | `tope-intentos-carreras`: `con 1 y con 50 candidatas`, `con 3 rechazos por tope`, `la aprobacion lee 2 veces` |
 | R38 | `tope-intentos-migration`: `existen, traen down.sql`, `el down deja la base` |
-| R39 | Sin test: es un documento, y la excepción está declarada en `tasks.md`. D57 en `progress/deudas.md`, para que el reviewer lo compare con `design §8` |
+| R39 | Sin test: es un documento, y la excepción está declarada en `tasks.md`. D60 en `progress/deudas.md`, para que el reviewer lo compare con `design §8` |
 | R40 | `tope-intentos-sin-valor-global.guardia`: `ni en lib/, app/, components/`, `control: el detector ve las tres` |
 | R41 | `tope-intentos-escritura`: `deja quien, el anterior y el nuevo`; `tope-intentos-pii.guardia`: `SLT-77/R41` |
 | R42 | `guia-decision-error-messages`: `R42: bodega central`, `R42: bodega satélite`; E2E `paso 4`, solo la satélite |
@@ -615,9 +615,11 @@ Las de las Tandas A a E están en su sección. La Tanda F no pide. Las de R42, c
 
 - `orden-service.test.ts` no estaba en el encargo: se tocó para cerrar la regresión, añadido antes a `## Archivos esperados`.
 - T7.0 es una línea nueva en `tasks.md`, para que R42 tenga tarea.
-- D57 y D58 van junto a D49 y D47, como pide el encargo, y por eso rompen el orden numérico del archivo; D59 va al final.
+- D60 y D58 van junto a D49 y D47, como pide el encargo, y por eso rompen el orden numérico del archivo; D59 va al final.
 - El título de `paso 4` no nombra R42; el mapa sí.
 
 ### Veredicto
 
 Tanda G hecha salvo T7.4: R42 con sus mutaciones y el E2E en verde, pero `./init.sh` da exit 1 por el assignee de SLT-77 en la copia local del board, y hay que repetirlo tras corregirlo.
+
+**Arreglo tras integrar SLT-42:** el alta de `tope-intentos-migration` usa una cédula de 9 dígitos, que es lo que exige CR; 12 pasados, 0 saltados, y M1 repetida muere igual (9 pasados, 3 fallados, sin el caso de alta, que corre en la base del gate).
