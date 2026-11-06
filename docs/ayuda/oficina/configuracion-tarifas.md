@@ -3,7 +3,7 @@ titulo: Configuración · Tarifas
 modulo: configuracion
 pantalla: /configuracion/tarifas
 roles: [maestro, admin]
-actualizado: 2026-10-29
+actualizado: 2026-11-05
 fuentes:
   - app/(app)/configuracion/tarifas/page.tsx
   - app/(app)/configuracion/tarifas/_components/
@@ -43,6 +43,30 @@ conservan la tarifa con la que se calcularon, y eso es lo correcto: una factura 
 porque hoy suban los precios.
 
 Conviene avisar a las tiendas afectadas antes, no después de que vean la diferencia.
+
+## Mensajeros con valor propio
+
+En esta sección se fija lo que se le paga a **un mensajero** por cada resultado: entregado, devolución a
+origen, reprogramado, novedad e incidente. Solo el **maestro** la edita; el **admin** la ve sin poder
+cambiarla.
+
+- **Gana sobre el grupo y la zona,** en cualquier zona donde trabaje ese mensajero.
+- **Un campo vacío usa el valor de la zona.** Se puede fijar un solo resultado y dejar los demás como están.
+- **Un 0 escrito paga 0.** No es lo mismo que dejar el campo vacío.
+- **Va en monto o en porcentaje, sin IVA.** El porcentaje se calcula sobre el flete sin IVA que se le cobra a
+  la tienda por esa gestión. Si a la tienda no se le cobra nada por ese resultado, paga 0.
+
+**Antes de activar las tarifas nuevas,** lo digitado no cambia ningún pago. **Ya activadas,** el cambio aplica
+desde el siguiente cierre, y los cierres ya hechos no cambian.
+
+**No cubre a la zona.** Una zona sin pago al mensajero sigue saliendo como faltante aunque todos sus mensajeros
+tengan valor propio.
+
+**Si el mensajero se da de baja,** sale marcado como *Inactivo*: su valor se conserva y se sigue pagando en lo que
+le quede por cerrar. Se puede cambiar o quitar lo que tiene, pero no sumarle un resultado nuevo.
+
+**Quitarlo** devuelve al mensajero al valor de la zona. El mensajero no ve nada de esto en su portal: ve sus pagos
+como siempre, con el importe correcto.
 
 ## Lo que esta pantalla NO hace
 

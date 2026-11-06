@@ -30,6 +30,7 @@ function repoValores(overrides: Partial<Record<keyof ITarifaValorRepository, Moc
     grupoEnZona: vi.fn().mockResolvedValue(true),
     esTiendaTarifable: vi.fn().mockResolvedValue(true),
     vehiculoEsElegibleONivelOcupado: vi.fn().mockResolvedValue(true),
+    mensajeroEsElegibleONivelOcupado: vi.fn().mockResolvedValue(true),
     fijar: vi.fn().mockResolvedValue({ id: "tv-1", reemplazo: false }),
     quitar: vi.fn().mockResolvedValue("ok"),
     listar: vi.fn().mockResolvedValue([]),
@@ -233,6 +234,107 @@ describe("SLT-54 R37 — dos cambios del mismo concepto y nivel", () => {
         },
       ],
     });
+  });
+});
+
+// SLT-55 T3.3 (design §8). Lo mismo por el cliente de produccion, sin ningun doble, esta en
+// `tests/integration/db/tarifas-valor-propio-pantalla.test.ts`.
+describe("SLT-55 — guardar un valor propio del mensajero", () => {
+  const PROPIO = {
+    concepto: "mensajero_entregado",
+    modo: "monto",
+    valor: "2900",
+    zonaId: null,
+    grupoId: null,
+    tiendaId: null,
+    vehiculoId: null,
+    mensajeroId: "m-1",
+  };
+  const NO_ELEGIBLE = "El mensajero no existe, no es de la empresa o está dado de baja: no admite un valor nuevo.";
+
+  it("R1: la entrada del contrato llega al repositorio con su mensajero, en el nivel `mensajero` y sin IVA", async () => {
+    const repo = repoValores();
+    const res = await guardar(repo, [
+      { accion: "fijar", clave: "mensajero_entregado:todos", datos: PROPIO },
+      { accion: "quitar", clave: "mensajero_novedad:todos", id: "tv-9" },
+    ]);
+    expect(res).toEqual({
+      status: "ok",
+      resultados: [
+        { clave: "mensajero_entregado:todos", status: "ok" },
+        { clave: "mensajero_novedad:todos", status: "ok" },
+      ],
+    });
+    expect(repo.mensajeroEsElegibleONivelOcupado).toHaveBeenCalledWith({ concepto: "mensajero_entregado", mensajeroId: "m-1" });
+    expect(repo.fijar.mock.calls[0][0]).toMatchObject({
+      concepto: "mensajero_entregado",
+      modo: "monto",
+      ivaPct: null,
+      nivel: "mensajero",
+      mensajeroId: "m-1",
+      zonaId: null,
+      grupoId: null,
+      tiendaId: null,
+      vehiculoId: null,
+    });
+    expect(repo.fijar.mock.calls[0][1]).toBe("u-m");
+    expect(repo.quitar).toHaveBeenCalledWith("tv-9", "u-m");
+  });
+
+  it("R10: el admin recibe forbidden al fijar y al quitar, sin escribir", async () => {
+    const repo = repoValores();
+    const res = await guardar(
+      repo,
+      [
+        { accion: "fijar", clave: "a", datos: PROPIO },
+        { accion: "quitar", clave: "b", id: "tv-9" },
+      ],
+      ADMIN,
+    );
+    expect(res).toEqual({
+      status: "ok",
+      resultados: [
+        { clave: "a", status: "forbidden" },
+        { clave: "b", status: "forbidden" },
+      ],
+    });
+    expect(repo.fijar).not.toHaveBeenCalled();
+    expect(repo.quitar).not.toHaveBeenCalled();
+  });
+
+  it("R7, R8: un mensajero no elegible se dice en `mensajeroId`, en su fila, y las demás se guardan", async () => {
+    const repo = repoValores({
+      mensajeroEsElegibleONivelOcupado: vi.fn().mockResolvedValueOnce(false).mockResolvedValue(true),
+    });
+    const res = await guardar(repo, [
+      { accion: "fijar", clave: "a", datos: PROPIO },
+      { accion: "fijar", clave: "b", datos: { ...PROPIO, concepto: "mensajero_rechazo" } },
+    ]);
+    expect(res).toEqual({
+      status: "ok",
+      resultados: [
+        { clave: "a", status: "validation_error", fieldErrors: { mensajeroId: [NO_ELEGIBLE] } },
+        { clave: "b", status: "ok" },
+      ],
+    });
+    expect(repo.fijar).toHaveBeenCalledTimes(1);
+  });
+
+  it("R5: con la clave `ivaPct`, aunque valga 0, se rechaza sin escribir", async () => {
+    const repo = repoValores();
+    const res = await guardar(repo, [{ accion: "fijar", clave: "a", datos: { ...PROPIO, ivaPct: "0" } }]);
+    if (res.status !== "ok") throw new Error(res.status);
+    expect(res.resultados[0].status).toBe("validation_error");
+    expect(Object.keys(res.resultados[0].fieldErrors ?? {})).toEqual(["ivaPct"]);
+    expect(repo.fijar).not.toHaveBeenCalled();
+  });
+
+  it("R6: mensajero con zona se rechaza: nunca se guarda como valor de la zona", async () => {
+    const repo = repoValores();
+    const res = await guardar(repo, [{ accion: "fijar", clave: "a", datos: { ...PROPIO, zonaId: "z1" } }]);
+    if (res.status !== "ok") throw new Error(res.status);
+    expect(res.resultados[0].status).toBe("validation_error");
+    expect(repo.fijar).not.toHaveBeenCalled();
   });
 });
 

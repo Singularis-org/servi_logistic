@@ -78,6 +78,17 @@ describe("SLT-54 R14 — qué resuelve a una zona", () => {
     expect(nombres(r)).toEqual(["mensajero_entregado"]);
   });
 
+  // SLT-55 R23: el caso de arriba tiene la zona nula y lo descarta el `zonaId`: no mide esta barrera. La
+  // fila de aqui no puede existir (CHECK `tarifa_valor_niveles_mensajero`); se usa para medir la barrera sola.
+  it("SLT-55 R23: un valor con mensajero no cubre a la zona ni con la zona puesta", () => {
+    const r = juzgar([
+      valor("tienda_flete_entregado"),
+      valor("tienda_flete_rechazo"),
+      valor("mensajero_entregado", { mensajeroId: "m1" }),
+    ]);
+    expect(nombres(r)).toEqual(["mensajero_entregado"]);
+  });
+
   it("los valores de otra zona no cuentan", () => {
     const r = juzgar(ZONA_COMPLETA.map((v) => ({ ...v, zonaId: "otra" })));
     expect(r.faltantes).toHaveLength(3);

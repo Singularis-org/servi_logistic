@@ -33,6 +33,7 @@ function repoDoble(overrides: Partial<RepoDoble> = {}): RepoDoble {
     grupoEnZona: vi.fn().mockResolvedValue(true),
     esTiendaTarifable: vi.fn().mockResolvedValue(true),
     vehiculoEsElegibleONivelOcupado: vi.fn().mockResolvedValue(true),
+    mensajeroEsElegibleONivelOcupado: vi.fn().mockResolvedValue(true),
     fijar: vi.fn().mockResolvedValue({ id: "tv-1", reemplazo: false }),
     quitar: vi.fn().mockResolvedValue("ok" as const),
     listar: vi.fn().mockResolvedValue([]),
@@ -237,6 +238,7 @@ describe("SLT-54 R52 — vehículo inactivo", () => {
       zonaId: "zona-1",
       grupoId: "g-1",
       tiendaId: null,
+      mensajeroId: null,
       vehiculoId: "v-inactivo",
     });
     expect(repo.fijar).not.toHaveBeenCalled();
@@ -259,6 +261,119 @@ describe("SLT-54 R52 — vehículo inactivo", () => {
     const repo = repoDoble({ vehiculoEsElegibleONivelOcupado: vi.fn().mockResolvedValue(false) });
     expect(await new TarifaValorService(repo).quitarValor("tv-1", MAESTRO)).toEqual({ status: "ok" });
     expect(repo.vehiculoEsElegibleONivelOcupado).not.toHaveBeenCalled();
+  });
+});
+
+// SLT-55 (design §3.2). El rol, el estado y el reemplazo viven en el `WHERE`: se miden en Postgres en
+// `tarifas-valor-propio-escritura.test.ts`. Aqui, solo lo que decide el service.
+describe("SLT-55 — valor propio del mensajero", () => {
+  function propio(overrides: Partial<FijarValorInput> = {}): FijarValorInput {
+    return pago({ zonaId: null, mensajeroId: "m-1", ...overrides });
+  }
+  const NO_ELEGIBLE = {
+    status: "validation_error",
+    fieldErrors: {
+      mensajeroId: ["El mensajero no existe, no es de la empresa o está dado de baja: no admite un valor nuevo."],
+    },
+  };
+
+  it("R1: llega al repositorio con el mensajero, nivel `mensajero`, sin zona, grupo, tienda ni vehículo", async () => {
+    const repo = repoDoble();
+    const res = await new TarifaValorService(repo).fijarValor(propio({ modo: "porcentaje", valor: "20" }), MAESTRO);
+    expect(res).toEqual({ status: "ok", id: "tv-1" });
+    expect(repo.fijar.mock.calls[0][0]).toEqual({
+      concepto: "mensajero_entregado",
+      modo: "porcentaje",
+      valor: "20",
+      ivaPct: null,
+      nivel: "mensajero",
+      zonaId: null,
+      grupoId: null,
+      tiendaId: null,
+      mensajeroId: "m-1",
+      vehiculoId: null,
+    });
+  });
+
+  it.each(["mensajero_entregado", "mensajero_reprogramado", "mensajero_novedad", "mensajero_rechazo", "mensajero_incidente"] as const)(
+    "R2: %s admite su valor propio",
+    async (concepto) => {
+      const repo = repoDoble();
+      expect(await new TarifaValorService(repo).fijarValor(propio({ concepto }), MAESTRO)).toEqual({ status: "ok", id: "tv-1" });
+      expect(repo.mensajeroEsElegibleONivelOcupado).toHaveBeenCalledWith({ concepto, mensajeroId: "m-1" });
+    },
+  );
+
+  it("R3: el resultado de un reemplazo también es ok; una carrera perdida sale en concepto", async () => {
+    const reemplazo = repoDoble({ fijar: vi.fn().mockResolvedValue({ id: "tv-1", reemplazo: true }) });
+    expect(await new TarifaValorService(reemplazo).fijarValor(propio(), MAESTRO)).toEqual({ status: "ok", id: "tv-1" });
+
+    const carrera = repoDoble({ fijar: vi.fn().mockResolvedValue("nivel_ocupado") });
+    const res = await new TarifaValorService(carrera).fijarValor(propio(), MAESTRO);
+    expect(res).toEqual({
+      status: "validation_error",
+      fieldErrors: {
+        concepto: ["Otro cambio fijó este concepto en el mismo nivel al mismo tiempo. Recarga y vuelve a intentarlo."],
+      },
+    });
+  });
+
+  it("R4: quitar no pregunta por el mensajero: un dado de baja se puede quitar", async () => {
+    const repo = repoDoble({ mensajeroEsElegibleONivelOcupado: vi.fn().mockResolvedValue(false) });
+    expect(await new TarifaValorService(repo).quitarValor("tv-1", MAESTRO)).toEqual({ status: "ok" });
+    expect(repo.mensajeroEsElegibleONivelOcupado).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["IVA 0", propio({ ivaPct: "0" }), "ivaPct"],
+    ["IVA 13", propio({ ivaPct: "13" }), "ivaPct"],
+    ["IVA null", propio({ ivaPct: null }), "ivaPct"],
+    ["negativo", propio({ valor: "-1" }), "valor"],
+    ["porcentaje mayor que 100", propio({ modo: "porcentaje", valor: "100.01" }), "valor"],
+  ] as const)("R5: %s → validation_error en %s, sin consultar ni escribir", async (_caso, input, campo) => {
+    const repo = repoDoble();
+    const res = await new TarifaValorService(repo).fijarValor(input, MAESTRO);
+    if (res.status !== "validation_error") throw new Error(`se esperaba rechazo: ${res.status}`);
+    expect(Object.keys(res.fieldErrors)).toEqual([campo]);
+    expect(repo.mensajeroEsElegibleONivelOcupado).not.toHaveBeenCalled();
+    expect(repo.fijar).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["mensajero + zona", propio({ zonaId: "zona-1" }), "mensajeroId"],
+    ["mensajero + grupo", propio({ zonaId: "zona-1", grupoId: "g-1" }), "mensajeroId"],
+    ["mensajero + grupo sin zona", propio({ grupoId: "g-1" }), "mensajeroId"],
+    ["mensajero + vehículo", propio({ vehiculoId: "v-1" }), "mensajeroId"],
+    ["mensajero + tienda", propio({ tiendaId: "t-1" }), "tiendaId"],
+    ["concepto de la satélite", propio({ concepto: "satelite_entregado" }), "mensajeroId"],
+    ["concepto de la satélite con zona", propio({ concepto: "satelite_entregado", zonaId: "zona-1" }), "mensajeroId"],
+    ["concepto de la tienda", propio({ concepto: "tienda_flete_entregado", ivaPct: "13", zonaId: "zona-1" }), "mensajeroId"],
+  ] as const)("R6: %s → validation_error en %s y no se guarda como otro nivel", async (_caso, input, campo) => {
+    const repo = repoDoble();
+    const res = await new TarifaValorService(repo).fijarValor(input, MAESTRO);
+    if (res.status !== "validation_error") throw new Error(`se esperaba rechazo: ${res.status}`);
+    expect(Object.keys(res.fieldErrors)).toEqual([campo]);
+    expect(repo.fijar).not.toHaveBeenCalled();
+  });
+
+  it("R7/R8: si el repositorio dice que no es elegible, responde en mensajeroId y no escribe", async () => {
+    const repo = repoDoble({ mensajeroEsElegibleONivelOcupado: vi.fn().mockResolvedValue(false) });
+    expect(await new TarifaValorService(repo).fijarValor(propio(), MAESTRO)).toEqual(NO_ELEGIBLE);
+    expect(repo.fijar).not.toHaveBeenCalled();
+  });
+
+  it("un valor de la zona, sin la clave `mensajeroId`, no pregunta por el mensajero y escribe null", async () => {
+    const repo = repoDoble();
+    await new TarifaValorService(repo).fijarValor(pago(), MAESTRO);
+    expect(repo.mensajeroEsElegibleONivelOcupado).not.toHaveBeenCalled();
+    expect(repo.fijar.mock.calls[0][0]).toMatchObject({ nivel: "zona", mensajeroId: null });
+  });
+
+  it.each(NO_ESCRIBEN)("R10: $rol recibe forbidden al fijar un valor propio, sin consultar ni escribir", async (actor) => {
+    const repo = repoDoble();
+    expect(await new TarifaValorService(repo).fijarValor(propio(), actor)).toEqual({ status: "forbidden" });
+    expect(repo.mensajeroEsElegibleONivelOcupado).not.toHaveBeenCalled();
+    expect(repo.fijar).not.toHaveBeenCalled();
   });
 });
 

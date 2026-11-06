@@ -138,6 +138,8 @@ export default defineConfig({
         "incentivo-mensajero-slt68",
         // SLT-54 R67, R68: digitar no cambia nada; activar cambia el siguiente cierre, y solo en esa empresa.
         "tarifas-activacion",
+        // SLT-55 R40: el valor propio del mensajero, de la sección al cierre aprobado.
+        "tarifas-valor-propio-mensajero",
         // SLT-83 R28: costo por orden porcentual; la orden llega a entregado por el cierre real.
         // Usa el superadmin de prueba y no toca el global del cobro.
         "planes-costo-porcentual",

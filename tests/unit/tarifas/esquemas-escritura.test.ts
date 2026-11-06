@@ -37,6 +37,7 @@ describe("R3 · un cobro a la tienda guarda modo, valor y su IVA", () => {
       modo: "monto",
       valor: "1500.00",
       ivaPct: "13.00",
+      mensajeroId: null,
       ...NIVEL,
     });
   });
