@@ -8,6 +8,7 @@ import { describe, it, expect, vi } from "vitest";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { ApiOrdenLecturaService } from "@/lib/services/ApiOrdenLecturaService";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
+import { delegadosDelCatalogo } from "@/tests/fixtures/doble-catalogo-geografico";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type {
   ApiOrdenRow,
@@ -287,6 +288,8 @@ function servicioSobrePrisma(detalle: Record<string, unknown>, urls: Record<stri
       findMany: vi.fn().mockResolvedValue([]),
       count: vi.fn().mockResolvedValue(0),
     },
+    // SLT-65: la marca de zona especial sale del catalogo de la empresa (sin marcas por defecto).
+    ...delegadosDelCatalogo(),
   };
   const provider = fakeSignedUrls(urls);
   const repo = new OrdenRepository(prisma as unknown as PrismaClient);

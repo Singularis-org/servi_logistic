@@ -13,6 +13,7 @@ import {
   derivarPagos,
 } from "@/lib/utils/cierre-totales";
 import { idEstado, sembrarCatalogoEstados } from "@/tests/fixtures/catalogo-estados";
+import { delegadosDelCatalogo } from "@/tests/fixtures/doble-catalogo-geografico";
 
 // 💰 Feature 237 (T6.1/T6.2/T6.6, R29/R30/R36) — LA MITAD DEL DINERO: la gestion que registra LA
 // TIENDA entra en el cierre DEL MENSAJERO por el MISMO mecanismo que las suyas, y mueve
@@ -257,9 +258,15 @@ function buildStore(filas: FilaGestion[]) {
     // sobre la unica conexion de la transaccion: 5 consultas en vuelo y el aviso de `pg`). Mismos
     // valores que traia la relacion anidada; ninguna asercion de este archivo cambia.
     zona: catalogoDoble450(() => ({ nombre: "Zona", esCentral: true })),
-    provincia: catalogoDoble450(() => ({ nombre: "Provincia" })),
-    canton: catalogoDoble450(() => ({ nombre: "Canton" })),
-    distrito: catalogoDoble450(() => ({ nombre: "Distrito", zonasEspeciales: [] })),
+    // SLT-65 (design §14.1): la geografia del snapshot sale del catalogo de la empresa, con los
+    // mismos nombres para los FK de las gestiones y sin marcas.
+    ...delegadosDelCatalogo({
+      nodos: [
+        { id: "p1", nombre: "Provincia" },
+        { id: "ct1", nombre: "Canton" },
+        { id: "d1", nombre: "Distrito" },
+      ],
+    }),
     cierreDetail: {
       createMany: vi.fn(async (args: { data: Record<string, unknown>[] }) => {
         detalles.push(...args.data);

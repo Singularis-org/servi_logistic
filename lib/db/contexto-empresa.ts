@@ -7,7 +7,9 @@ import { llevaSqlstate } from "./sqlstate";
 // ejecuta dentro de `conEmpresa`/`comoPlataforma` sin pasarlo de mano en mano por las capas.
 // Sin contexto explicito, la extension (`extension-empresa.ts`) lo resuelve desde la sesion.
 
-export type FichaJira = `SL-${number}`;
+// El board pasó de `SL-<n>` a `SLT-<n>` (SLT-43): las fichas viejas siguen valiendo y las nuevas
+// también, para que una excepción nueva no tenga que citar una ficha que no la justifica.
+export type FichaJira = `SL-${number}` | `SLT-${number}`;
 
 export type ContextoDatos =
   | { tipo: "empresa"; organizacionId: string; enTransaccion?: boolean }
@@ -51,8 +53,8 @@ export function comoPlataforma<T>(
 ): Promise<T> {
   // La ficha y el motivo son el rastro de por que un camino opera sin filtro (R15, R27): sin
   // ellos la excepcion no se puede auditar.
-  if (!/^SL-\d+$/.test(ficha) || motivo.trim() === "") {
-    return Promise.reject(new TypeError("comoPlataforma: hace falta una ficha SL-<n> y un motivo"));
+  if (!/^SLT?-\d+$/.test(ficha) || motivo.trim() === "") {
+    return Promise.reject(new TypeError("comoPlataforma: hace falta una ficha SL-<n> o SLT-<n> y un motivo"));
   }
   return almacen.run({ tipo: "plataforma", ficha, motivo }, () => esperarDentro(fn));
 }

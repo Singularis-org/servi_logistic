@@ -8,66 +8,107 @@ import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
 //
 // Prisma mockeado: se afirma el `select`/`where`/`orderBy` emitido (que es donde vive el
 // contrato de "campos minimos" y "orden determinista") y la forma de la fila devuelta.
+//
+// SLT-44 (design §10, «cambian de entrada, no de salida»): las listas de `GeoRepository` dejan de
+// leer `provincia`/`canton`/`distrito` y salen del catalogo (`nodo_geografico`) y de las
+// asignaciones de la empresa. Se reescribe EL DOBLE: devuelve los nodos y las asignaciones que
+// equivalen a las filas que simulaba. Las salidas esperadas no cambian. Los casos que miraban la
+// consulta emitida la miran ahora sobre el modelo nuevo.
+
+/** Un nodo del catalogo tal como lo devuelve el `select` de `CatalogoGeograficoRepository`. */
+function nodo(id: string, nombre: string, profundidad: number, padreId: string | null, activo = true) {
+  return {
+    id,
+    nombre,
+    nombreNormalizado: nombre.toLowerCase(),
+    profundidad,
+    padreId,
+    tipoId: `t${profundidad}`,
+    codigoOficial: null,
+    activo,
+  };
+}
+
+/**
+ * El cliente que lee el catalogo: los nodos de un pais, las asignaciones de zona por distrito y
+ * ninguna marca. `$transaction` pasa el mismo doble como cliente de la transaccion. Las tablas
+ * viejas siguen en el doble para afirmar que NO se consultan.
+ */
+function prismaConCatalogo(nodos: unknown[], zonas: { distritoId: string; zonaId: string }[] = []) {
+  const prisma = {
+    provincia: { findMany: vi.fn() },
+    canton: { findMany: vi.fn() },
+    distrito: { findMany: vi.fn() },
+    organizacion: { findFirst: vi.fn().mockResolvedValue({ paisId: "CR" }) },
+    tipoNivelGeografico: { findMany: vi.fn().mockResolvedValue([]) },
+    nodoGeografico: { findMany: vi.fn().mockResolvedValue(nodos) },
+    zonaDistrito: {
+      findMany: vi.fn().mockResolvedValue(
+        zonas.map((z) => ({ distritoId: z.distritoId, zona: { id: z.zonaId, nombre: z.zonaId, esCentral: false } })),
+      ),
+    },
+    distritoZonaEspecial: { findMany: vi.fn().mockResolvedValue([]) },
+    $transaction: vi.fn((fn: (tx: unknown) => unknown) => fn(prisma)),
+  };
+  return prisma;
+}
+
+/** La consulta de nodos que emite el catalogo: solo por pais (sin recorte por `activo`), por nombre. */
+const CONSULTA_DE_NODOS = {
+  where: { paisId: "CR" },
+  select: {
+    id: true,
+    padreId: true,
+    profundidad: true,
+    tipoId: true,
+    nombre: true,
+    nombreNormalizado: true,
+    codigoOficial: true,
+    activo: true,
+  },
+  orderBy: [{ nombre: "asc" }, { id: "asc" }],
+};
 
 describe("GeoRepository — la geografia de UNA zona", () => {
   // Pedido humano (2026-08-19): el adminSatelite filtra por provincia/canton/distrito, pero
   // solo por los de SU zona. La asociacion se lee de la N:M `zona_distrito` (feature 24),
   // unica fuente de verdad desde que `distrito.zona_id` se elimino.
-  function prismaConDistritos(rows: unknown[]) {
-    return {
-      provincia: { findMany: vi.fn() },
-      canton: { findMany: vi.fn() },
-      distrito: { findMany: vi.fn().mockResolvedValue(rows) },
-    };
-  }
-
-  /** Una fila de distrito tal como la devuelve el `select` anidado. */
-  function fila(
-    id: string,
-    nombre: string,
-    canton: { id: string; nombre: string },
-    provincia: { id: string; nombre: string },
-  ) {
-    return {
-      id,
-      nombre,
-      cantonId: canton.id,
-      // FICHA 374: la lectura proyecta la cadena de flags en los tres niveles. Aqui todo activo:
-      // lo que este archivo mide es el recorte por zona, no la retirada de un nodo.
-      activo: true,
-      canton: {
-        ...canton,
-        provinciaId: provincia.id,
-        activo: true,
-        provincia: { ...provincia, activo: true },
-      },
-    };
-  }
-
-  const LIMON = { id: "p9", nombre: "Limon" };
-  const POCOCI = { id: "c9", nombre: "Pococi" };
-  const GUACIMO = { id: "c8", nombre: "Guacimo" };
+  const LIMON = nodo("p9", "Limon", 1, null);
+  const POCOCI = nodo("c9", "Pococi", 2, "p9");
+  const GUACIMO = nodo("c8", "Guacimo", 2, "p9");
 
   it("filtra por la N:M y DERIVA cantones y provincias de los distritos de la zona", async () => {
-    const prisma = prismaConDistritos([
-      fila("d2", "Guapiles", POCOCI, LIMON),
-      fila("d1", "Cariari", POCOCI, LIMON),
-      fila("d3", "Rio Jimenez", GUACIMO, LIMON),
-    ]);
+    // FICHA 374: todo activo. Lo que este archivo mide es el recorte por zona, no la retirada de
+    // un nodo. Un distrito de otra zona, con su canton y su provincia, NO debe salir.
+    const prisma = prismaConCatalogo(
+      [
+        LIMON,
+        nodo("p8", "Heredia", 1, null),
+        POCOCI,
+        GUACIMO,
+        nodo("c7", "Barva", 2, "p8"),
+        nodo("d2", "Guapiles", 3, "c9"),
+        nodo("d1", "Cariari", 3, "c9"),
+        nodo("d3", "Rio Jimenez", 3, "c8"),
+        nodo("d4", "San Pablo", 3, "c7"),
+      ],
+      [
+        { distritoId: "d2", zonaId: "z-1" },
+        { distritoId: "d1", zonaId: "z-1" },
+        { distritoId: "d3", zonaId: "z-1" },
+        { distritoId: "d4", zonaId: "z-2" },
+      ],
+    );
     const repo = new GeoRepository(prisma as unknown as PrismaClient);
 
     const r = await repo.listGeografiaLitePorZona("z-1");
 
-    // La zona entra por la puente, no por una columna del distrito (que ya no existe).
-    const args = prisma.distrito.findMany.mock.calls[0]![0] as {
-      where: unknown;
-      orderBy: unknown;
-    };
-    expect(args.where).toEqual({ zonas: { some: { zonaId: "z-1" } } });
-    expect(args.orderBy).toEqual({ nombre: "asc" });
-
-    // Los otros dos niveles NO se consultan aparte: «los cantones de la zona» son
-    // exactamente los de sus distritos, y dos consultas mas podrian dar otro conjunto.
+    // La zona entra por la puente (`zona_distrito`), no por una columna del distrito, y la
+    // geografia sale de UNA consulta de nodos: las tablas viejas no se consultan.
+    expect(prisma.zonaDistrito.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.nodoGeografico.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.nodoGeografico.findMany).toHaveBeenCalledWith(CONSULTA_DE_NODOS);
+    expect(prisma.distrito.findMany).not.toHaveBeenCalled();
     expect(prisma.canton.findMany).not.toHaveBeenCalled();
     expect(prisma.provincia.findMany).not.toHaveBeenCalled();
 
@@ -85,7 +126,7 @@ describe("GeoRepository — la geografia de UNA zona", () => {
   });
 
   it("zona sin distritos asociados -> las tres listas vacias, no un error", async () => {
-    const prisma = prismaConDistritos([]);
+    const prisma = prismaConCatalogo([LIMON, POCOCI, nodo("d1", "Cariari", 3, "c9")]);
     const repo = new GeoRepository(prisma as unknown as PrismaClient);
 
     expect(await repo.listGeografiaLitePorZona("z-vacia")).toEqual({
@@ -97,32 +138,20 @@ describe("GeoRepository — la geografia de UNA zona", () => {
 });
 
 describe("GeoRepository — catalogo plano (R48/R49)", () => {
-  function buildPrisma() {
-    return {
-      provincia: { findMany: vi.fn().mockResolvedValue([]) },
-      canton: { findMany: vi.fn().mockResolvedValue([]) },
-      distrito: { findMany: vi.fn().mockResolvedValue([]) },
-    };
-  }
-
-  // ⚠️ FICHA 374: los tres `select` ganan la CADENA de flags (`activo`, y el de los ascendientes)
-  // y las tres filas ganan `disponible`. El `WHERE` NO cambia y eso se sigue afirmando aqui: la
-  // ausencia de `where` en los tres literales ES el contrato de R28 —estas lecturas PROYECTAN la
-  // disponibilidad, no recortan por ella—.
+  // ⚠️ FICHA 374: las tres filas ganan `disponible`. La consulta NO recorta por `activo` y eso se
+  // sigue afirmando aqui: el `where` de la consulta de nodos es SOLO el pais —estas lecturas
+  // PROYECTAN la disponibilidad, no recortan por ella—.
   it("R49: las provincias se piden con su flag, ordenadas por nombre asc y SIN `where`", async () => {
-    const prisma = buildPrisma();
-    prisma.provincia.findMany.mockResolvedValue([
-      { id: "p1", nombre: "Alajuela", activo: true },
-      { id: "p2", nombre: "San Jose", activo: false },
+    const prisma = prismaConCatalogo([
+      nodo("p1", "Alajuela", 1, null, true),
+      nodo("p2", "San Jose", 1, null, false),
     ]);
     const repo = new GeoRepository(prisma as unknown as PrismaClient);
 
     const r = await repo.listProvinciasLite();
 
-    expect(prisma.provincia.findMany).toHaveBeenCalledWith({
-      select: { id: true, nombre: true, activo: true },
-      orderBy: { nombre: "asc" },
-    });
+    expect(prisma.nodoGeografico.findMany).toHaveBeenCalledWith(CONSULTA_DE_NODOS);
+    expect(prisma.provincia.findMany).not.toHaveBeenCalled();
     // La provincia retirada SIGUE SALIENDO, con `disponible: false`.
     expect(r).toEqual([
       { id: "p1", nombre: "Alajuela", disponible: true },
@@ -131,26 +160,20 @@ describe("GeoRepository — catalogo plano (R48/R49)", () => {
   });
 
   it("R48: cada canton trae su PADRE (provincia) como `padreId` y su disponibilidad", async () => {
-    const prisma = buildPrisma();
-    prisma.canton.findMany.mockResolvedValue([
-      { id: "c1", nombre: "Central", provinciaId: "p1", activo: true, provincia: { activo: true } },
-      // Canton ACTIVO bajo provincia RETIRADA: sale igual, y NO disponible.
-      { id: "c2", nombre: "Escazu", provinciaId: "p1", activo: true, provincia: { activo: false } },
+    // Un canton RETIRADO bajo una provincia activa: sale igual, y NO disponible. (El canton activo
+    // bajo una provincia retirada no cabe en este doble con un solo `p1`: lo cubren la cascada de
+    // `geografia-dominio.test.ts` y `tests/integration/db/geografia-catalogo-activo.test.ts`.)
+    const prisma = prismaConCatalogo([
+      nodo("p1", "Alajuela", 1, null),
+      nodo("c1", "Central", 2, "p1"),
+      nodo("c2", "Escazu", 2, "p1", false),
     ]);
     const repo = new GeoRepository(prisma as unknown as PrismaClient);
 
     const r = await repo.listCantonesLite();
 
-    expect(prisma.canton.findMany).toHaveBeenCalledWith({
-      select: {
-        id: true,
-        nombre: true,
-        provinciaId: true,
-        activo: true,
-        provincia: { select: { activo: true } },
-      },
-      orderBy: { nombre: "asc" },
-    });
+    expect(prisma.nodoGeografico.findMany).toHaveBeenCalledWith(CONSULTA_DE_NODOS);
+    expect(prisma.canton.findMany).not.toHaveBeenCalled();
     expect(r).toEqual([
       { id: "c1", nombre: "Central", padreId: "p1", disponible: true },
       { id: "c2", nombre: "Escazu", padreId: "p1", disponible: false },
@@ -158,42 +181,29 @@ describe("GeoRepository — catalogo plano (R48/R49)", () => {
   });
 
   it("R48: cada distrito trae su PADRE (canton) como `padreId`, sin la zona", async () => {
-    const prisma = buildPrisma();
-    prisma.distrito.findMany.mockResolvedValue([
-      {
-        id: "d1",
-        nombre: "Carmen",
-        cantonId: "c1",
-        activo: true,
-        canton: { activo: true, provincia: { activo: true } },
-      },
+    const prisma = prismaConCatalogo([
+      nodo("p1", "Alajuela", 1, null),
+      nodo("c1", "Central", 2, "p1"),
+      nodo("d1", "Carmen", 3, "c1"),
     ]);
     const repo = new GeoRepository(prisma as unknown as PrismaClient);
 
     const r = await repo.listDistritosLite();
 
     // Sin `zonas`: la zona de la ORDEN esta congelada en `orden.zona_id`.
-    expect(prisma.distrito.findMany).toHaveBeenCalledWith({
-      select: {
-        id: true,
-        nombre: true,
-        cantonId: true,
-        activo: true,
-        canton: { select: { activo: true, provincia: { select: { activo: true } } } },
-      },
-      orderBy: { nombre: "asc" },
-    });
+    expect(prisma.nodoGeografico.findMany).toHaveBeenCalledWith(CONSULTA_DE_NODOS);
+    expect(prisma.distrito.findMany).not.toHaveBeenCalled();
     expect(r).toEqual([{ id: "d1", nombre: "Carmen", padreId: "c1", disponible: true }]);
     expect(Object.keys(r[0]).sort()).toEqual(["disponible", "id", "nombre", "padreId"]);
   });
 
   it("R49: la misma entrada produce el mismo orden (determinista)", async () => {
-    const prisma = buildPrisma();
-    const filas = [
-      { id: "c1", nombre: "Alajuelita", provinciaId: "p1", activo: true, provincia: { activo: true } },
-      { id: "c2", nombre: "Belen", provinciaId: "p2", activo: true, provincia: { activo: true } },
-    ];
-    prisma.canton.findMany.mockResolvedValue(filas);
+    const prisma = prismaConCatalogo([
+      nodo("p1", "Alajuela", 1, null),
+      nodo("p2", "Heredia", 1, null),
+      nodo("c1", "Alajuelita", 2, "p1"),
+      nodo("c2", "Belen", 2, "p2"),
+    ]);
     const repo = new GeoRepository(prisma as unknown as PrismaClient);
     expect(await repo.listCantonesLite()).toEqual(await repo.listCantonesLite());
   });

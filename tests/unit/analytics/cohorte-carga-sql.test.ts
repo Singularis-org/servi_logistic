@@ -4,7 +4,12 @@ import {
   prepararConteoEntregas,
   type ConsultaConteoEntregas,
 } from "@/lib/analytics/entregas-conteo";
-import { condicionesDeCohorte } from "@/lib/repositories/CohorteCargaRepository";
+import { condicionesDeCohorte as condicionesDeCohorteCon } from "@/lib/repositories/CohorteCargaRepository";
+import { lugaresDe } from "./_catalogo-facetas";
+
+// SLT-71 (design §11.1): `lugares` es obligatorio. La entrada de los casos son los lugares de su filtro,
+// resueltos sobre el catalogo de prueba (`p1` → `c1` → `d1`); las aserciones no cambian por esto.
+const condicionesDeCohorte = (c: ConsultaConteoEntregas) => condicionesDeCohorteCon(c, lugaresDe(c.filtro));
 
 // Ficha 411 / T2.3 — el `where` de la cohorte, sobre los fragmentos que produce
 // `condicionesDeCohorte`: su TEXTO y sus PARAMETROS. Sin base de datos.
@@ -140,16 +145,19 @@ describe("R24 · la faceta de mensajero NO recorta esta lectura", () => {
   it("las otras cinco facetas SI recortan", () => {
     const facetas: [string, string][] = [
       ["zona_id", 'o."zona_id"'],
-      ["provincia_id", 'o."provincia_id"'],
-      ["canton_id", 'o."canton_id"'],
-      ["distrito_id", 'o."distrito_id"'],
+      // SLT-71 (design §11.1): `x1` no esta en el catalogo, asi que las tres geograficas recortan
+      // a `FALSE` (cero ordenes), sin parametro.
+      ["provincia_id", "FALSE"],
+      ["canton_id", "FALSE"],
+      ["distrito_id", "FALSE"],
       ["tienda_id", 'o."tienda_id"'],
     ];
 
     for (const [faceta, columna] of facetas) {
       const consulta = consultaDe({ [faceta]: ["x1"] });
       expect(sqlDe(consulta), `la faceta ${faceta} no recorta`).toContain(columna);
-      expect(parametrosDe(consulta)).toContain("x1");
+      if (columna === "FALSE") expect(parametrosDe(consulta)).not.toContain("x1");
+      else expect(parametrosDe(consulta)).toContain("x1");
     }
   });
 });

@@ -36,6 +36,11 @@ import { Prisma } from "@prisma/client";
 import type { PrismaClient } from "@prisma/client";
 
 import { condicionesSinFecha } from "@/lib/repositories/ConteoCargadasPorDiaRepository";
+import {
+  CatalogoGeograficoRepository,
+  type CatalogoPrismaClient,
+} from "@/lib/repositories/CatalogoGeograficoRepository";
+import { lugaresDelFiltro, type LugaresDelFiltro } from "@/lib/repositories/_shared/lugares-del-filtro";
 import type { ConsultaConteoEntregas } from "@/lib/analytics/entregas-conteo";
 import type { RangoResuelto } from "@/lib/analytics/types";
 import type {
@@ -45,7 +50,7 @@ import type {
 
 /** Cliente MINIMO consumido: una sola consulta cruda. `$queryRawUnsafe` NO esta y no puede
  *  estar — el tipo del cliente es la primera barrera contra la interpolacion de strings. */
-type ConteoHoyPrismaClient = Pick<PrismaClient, "$queryRaw">;
+type ConteoHoyPrismaClient = Pick<PrismaClient, "$queryRaw"> & CatalogoPrismaClient; // SLT-71: mas el catalogo, solo con faceta geografica
 
 interface FilaHoy {
   readonly sin_gestion: number;
@@ -68,22 +73,31 @@ interface FilaHoy {
 export function condicionesDeHoy(
   consulta: ConsultaConteoEntregas,
   dia: RangoResuelto,
+  lugares: LugaresDelFiltro,
 ): Prisma.Sql[] {
   return [
-    ...condicionesSinFecha(consulta),
+    ...condicionesSinFecha(consulta, lugares),
     Prisma.sql`o."created_at" >= ${dia.desde}`,
     Prisma.sql`o."created_at" <  ${dia.hasta}`,
   ];
 }
 
 export class ConteoHoyGestionRepository implements IConteoHoyGestionRepository {
+  // SLT-71 (R7, R13, R16): el catalogo, uno por instancia y creado al primer uso.
+  private catalogoRepo: CatalogoGeograficoRepository | null = null;
+
   constructor(private readonly prisma: ConteoHoyPrismaClient) {}
+
+  private catalogoGeografico(): CatalogoGeograficoRepository {
+    return (this.catalogoRepo ??= new CatalogoGeograficoRepository(this.prisma));
+  }
 
   async contarDeHoy(
     consulta: ConsultaConteoEntregas,
     dia: RangoResuelto,
   ): Promise<ConteoHoyCrudo> {
-    const where = Prisma.join(condicionesDeHoy(consulta, dia), " AND ");
+    const lugares = await lugaresDelFiltro(() => this.catalogoGeografico(), consulta.filtro);
+    const where = Prisma.join(condicionesDeHoy(consulta, dia, lugares), " AND ");
 
     // `LIMIT 1` en el lateral: no interesa CUANTAS gestiones tiene la orden ni cual es la
     // ultima —eso es la pregunta del desglose por status—, solo si hay alguna. En cuanto

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
+import { delegadosDelCatalogo } from "@/tests/fixtures/doble-catalogo-geografico";
 import { CierreDiaRepository } from "@/lib/repositories/CierreDiaRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
 import { idEstado, sembrarCatalogoEstados } from "@/tests/fixtures/catalogo-estados";
@@ -129,6 +130,8 @@ async function resolverPorListado(filas: readonly FilaTarifa[]): Promise<Resuelt
     ...empresaSinActivar(),
     // FICHA 454 (R29, 2026-09-24): las señales de la pagina (gestion pendiente, ayuda); aqui vacias.
     $queryRaw: vi.fn(async () => []),
+    // SLT-65: la marca de zona especial sale del catalogo de la empresa (sin marcas por defecto).
+    ...delegadosDelCatalogo(),
   };
 
   const res = await new OrdenRepository(prisma as unknown as PrismaClient).list({
@@ -235,9 +238,14 @@ async function resolverPorCierre(filas: readonly FilaTarifa[]): Promise<Resuelto
     // FICHA 450: los catalogos del snapshot, leidos en serie dentro de esta misma tx.
     zona: catalogoDoble450(() => ({ nombre: "Limón", esCentral: false })),
     usuario: catalogoDoble450(() => ({ nombre: "Tienda X" })),
-    provincia: catalogoDoble450(() => ({ nombre: "Limón" })),
-    canton: catalogoDoble450(() => ({ nombre: "Central" })),
-    distrito: catalogoDoble450(() => ({ nombre: "Oriental", zonasEspeciales: [] })),
+    // SLT-65 (design §14.1): la geografia del snapshot sale del catalogo de la empresa, con los
+    // mismos nombres para los FK de `snapshotRow` (sin distrito) y sin marcas.
+    ...delegadosDelCatalogo({
+      nodos: [
+        { id: "p1", nombre: "Limón" },
+        { id: "c1", nombre: "Central" },
+      ],
+    }),
   };
   const prisma = {
     $transaction: vi.fn(async (cb: (t: typeof tx) => unknown) => cb(tx)),
@@ -534,6 +542,9 @@ describe("SLT-52 T4.4 — modelo nuevo: listado, cierre y costo API eligen el mi
   it("el LISTADO cobra con esos mismos valores: 1500.00 + 195.00 y 2 % de 25000.00 = 500.00 + 65.00", async () => {
     const prisma = {
       ...prismaNuevo(),
+      // SLT-65 (design §14.1): la marca de zona especial sale del catalogo de la empresa
+      // (`marcasDeOrdenes`); el distrito de la fila es un nodo sin marca.
+      ...delegadosDelCatalogo({ nodos: [DISTRITO] }),
       orden: {
         findMany: vi.fn(async () => [{ ...ordenListRow(), distritoId: DISTRITO }]),
         count: vi.fn(async () => 1),
@@ -584,6 +595,8 @@ describe("SLT-52 T4.4 — modelo nuevo: listado, cierre y costo API eligen el mi
     const listar = async (tabla: unknown[]) => {
       const prisma = {
         ...prismaNuevo(),
+        // SLT-65 (design §14.1): la marca de zona especial sale del catalogo de la empresa.
+        ...delegadosDelCatalogo({ nodos: [DISTRITO] }),
         tarifaValor: { findMany: vi.fn(async () => tabla) },
         orden: {
           findMany: vi.fn(async () => [{ ...ordenListRow(), distritoId: DISTRITO }]),

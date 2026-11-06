@@ -94,28 +94,73 @@ describe("OrdenRepository.findExistingRemisiones (R25)", () => {
   });
 });
 
+// SLT-44 (design §10, «cambian de entrada, no de salida»): las tres lecturas de la resolucion por
+// nombres dejan de leer `provincia`/`canton`/`distrito` y salen del catalogo (`nodo_geografico`) y
+// de las asignaciones de la empresa (`zona_distrito`, marcas). Se reescribe EL DOBLE: devuelve los
+// nodos y las asignaciones que equivalen a las filas que simulaba. Las filas esperadas no cambian.
+// Los casos que miraban la consulta emitida la miran ahora sobre el modelo nuevo.
+
+/** Un nodo del catalogo tal como lo devuelve el `select` de `CatalogoGeograficoRepository`. */
+function nodo(id: string, nombre: string, profundidad: number, padreId: string | null, activo = true) {
+  return {
+    id,
+    nombre,
+    nombreNormalizado: nombre.toLowerCase(),
+    profundidad,
+    padreId,
+    tipoId: `t${profundidad}`,
+    codigoOficial: null,
+    activo,
+  };
+}
+
+interface ZonaDelDoble {
+  distritoId: string;
+  zonaId: string;
+  esCentral: boolean;
+}
+
+/** Los delegados que lee el catalogo: un pais con estos nodos, estas zonas y ninguna marca. */
+function catalogoDelDoble(nodos: unknown[], zonas: ZonaDelDoble[] = []) {
+  return {
+    organizacion: { findFirst: vi.fn().mockResolvedValue({ paisId: "EC" }) },
+    tipoNivelGeografico: { findMany: vi.fn().mockResolvedValue([]) },
+    nodoGeografico: { findMany: vi.fn().mockResolvedValue(nodos) },
+    zonaDistrito: {
+      findMany: vi.fn().mockResolvedValue(
+        zonas.map((z) => ({ distritoId: z.distritoId, zona: { id: z.zonaId, nombre: z.zonaId, esCentral: z.esCentral } })),
+      ),
+    },
+    distritoZonaEspecial: { findMany: vi.fn().mockResolvedValue([]) },
+  };
+}
+
+const PICHINCHA = nodo("p1", "Pichincha", 1, null);
+const QUITO = nodo("c1", "Quito", 2, "p1");
+
 describe("OrdenRepository — resolucion geografica batch (R19)", () => {
   it("findAllProvincias trae TODAS (sin filtrar por nombre; el match normalizado lo hace el service)", async () => {
-    const prisma = buildPrisma();
-    prisma.provincia.findMany.mockResolvedValue([{ id: "p1", nombre: "Pichincha", activo: true }]);
+    const cat = catalogoDelDoble([PICHINCHA, QUITO]);
+    const prisma = buildPrisma(cat);
     const repo = new OrdenRepository(prisma as unknown as PrismaClient);
 
     const rows = await repo.findAllProvincias();
 
-    // FICHA 374: la fila gana `disponible` (la EFECTIVA). El `WHERE` NO cambia, y eso lo
-    // afirma el aserto de abajo: sigue sin haber `where` (R31).
+    // FICHA 374: la fila gana `disponible` (la EFECTIVA). La consulta NO recorta, y eso lo
+    // afirma el aserto de abajo: el `where` de los nodos es solo el pais (R31).
     expect(rows).toEqual([{ id: "p1", nombre: "Pichincha", disponible: true }]);
-    // No hay `where`: se traen todas y el service resuelve el match normalizando
+    // No hay filtro por nombre: se traen todas y el service resuelve el match normalizando
     // (insensible a acentos), evitando descartar "Bogotá" cuando llega "Bogota".
-    const arg = prisma.provincia.findMany.mock.calls[0][0];
-    expect(arg.where).toBeUndefined();
+    const arg = cat.nodoGeografico.findMany.mock.calls[0][0];
+    expect(arg.where).toEqual({ paisId: "EC" });
+    expect(prisma.provincia.findMany).not.toHaveBeenCalled();
   });
 
   it("findCantonesByProvinciaIds filtra por provinciaId in", async () => {
-    const prisma = buildPrisma();
-    prisma.canton.findMany.mockResolvedValue([
-      { id: "c1", nombre: "Quito", provinciaId: "p1", activo: true, provincia: { activo: true } },
-    ]);
+    // Un canton de otra provincia NO debe salir.
+    const prisma = buildPrisma(
+      catalogoDelDoble([PICHINCHA, nodo("p2", "Guayas", 1, null), QUITO, nodo("c2", "Guayaquil", 2, "p2")]),
+    );
     const repo = new OrdenRepository(prisma as unknown as PrismaClient);
 
     const rows = await repo.findCantonesByProvinciaIds(["p1"]);
@@ -123,18 +168,21 @@ describe("OrdenRepository — resolucion geografica batch (R19)", () => {
     expect(rows).toEqual([
       { id: "c1", nombre: "Quito", provinciaId: "p1", disponible: true },
     ]);
-    const arg = prisma.canton.findMany.mock.calls[0][0];
-    expect(arg.where).toMatchObject({ provinciaId: { in: ["p1"] } });
+    expect(prisma.canton.findMany).not.toHaveBeenCalled();
   });
 
   // Feature 24: la zona del distrito vive en la N:M `zona_distrito`, NO en la columna
-  // escalar distrito.zona_id (que quedo sin poblar). El repo lee la relacion `zonas` y
-  // aplana a `zonaId` solo cuando es inequivoca.
+  // escalar distrito.zona_id (que quedo sin poblar). El repo lee la relacion y aplana a
+  // `zonaId` solo cuando es inequivoca.
   it("findDistritosByCantonIds filtra por cantonId in y deriva zonaId de la N:M zona_distrito", async () => {
-    const prisma = buildPrisma();
-    prisma.distrito.findMany.mockResolvedValue([
-      { id: "d1", nombre: "San Rafael", cantonId: "c1", zonasEspeciales: [], activo: true, canton: { activo: true, provincia: { activo: true } }, zonas: [{ zonaId: "z1", zona: { esCentral: false } }] },
-    ]);
+    const cat = catalogoDelDoble(
+      [PICHINCHA, QUITO, nodo("c2", "Cayambe", 2, "p1"), nodo("d1", "San Rafael", 3, "c1"), nodo("d2", "Ayora", 3, "c2")],
+      [
+        { distritoId: "d1", zonaId: "z1", esCentral: false },
+        { distritoId: "d2", zonaId: "z2", esCentral: false },
+      ],
+    );
+    const prisma = buildPrisma(cat);
     const repo = new OrdenRepository(prisma as unknown as PrismaClient);
 
     const rows = await repo.findDistritosByCantonIds(["c1"]);
@@ -142,21 +190,18 @@ describe("OrdenRepository — resolucion geografica batch (R19)", () => {
     expect(rows).toEqual([
       { id: "d1", nombre: "San Rafael", cantonId: "c1", zonaId: "z1", esCentral: false, esZonaEspecial: false, disponible: true },
     ]);
-    const arg = prisma.distrito.findMany.mock.calls[0][0];
-    expect(arg.where).toMatchObject({ cantonId: { in: ["c1"] } });
-    // La zona (y su flag esCentral, feature 98/R2) se piden por la relacion, no por la columna
-    // escalar zona_id.
+    // La zona (y su flag esCentral, feature 98/R2) se piden por la N:M, no por la columna
+    // escalar zona_id; el nodo de la asignacion es su `distritoId` (SLT-44 R12).
+    const arg = cat.zonaDistrito.findMany.mock.calls[0][0];
     expect(arg.select).toMatchObject({
-      zonas: { select: { zonaId: true, zona: { select: { esCentral: true } } } },
+      distritoId: true,
+      zona: { select: { id: true, esCentral: true } },
     });
-    expect(arg.select.zonaId).toBeUndefined();
+    expect(prisma.distrito.findMany).not.toHaveBeenCalled();
   });
 
   it("findDistritosByCantonIds: distrito sin zonas -> zonaId null (no se inventa zona)", async () => {
-    const prisma = buildPrisma();
-    prisma.distrito.findMany.mockResolvedValue([
-      { id: "d1", nombre: "San Rafael", cantonId: "c1", zonasEspeciales: [], activo: true, canton: { activo: true, provincia: { activo: true } }, zonas: [] },
-    ]);
+    const prisma = buildPrisma(catalogoDelDoble([PICHINCHA, QUITO, nodo("d1", "San Rafael", 3, "c1")]));
     const repo = new OrdenRepository(prisma as unknown as PrismaClient);
 
     const rows = await repo.findDistritosByCantonIds(["c1"]);
@@ -168,21 +213,15 @@ describe("OrdenRepository — resolucion geografica batch (R19)", () => {
   });
 
   it("findDistritosByCantonIds: distrito con >1 zonas -> zonaId null (ambiguo, no elige una)", async () => {
-    const prisma = buildPrisma();
-    prisma.distrito.findMany.mockResolvedValue([
-      {
-        id: "d1",
-        nombre: "San Rafael",
-        cantonId: "c1",
-        zonasEspeciales: [],
-        activo: true,
-        canton: { activo: true, provincia: { activo: true } },
-        zonas: [
-          { zonaId: "z1", zona: { esCentral: true } },
-          { zonaId: "z2", zona: { esCentral: false } },
+    const prisma = buildPrisma(
+      catalogoDelDoble(
+        [PICHINCHA, QUITO, nodo("d1", "San Rafael", 3, "c1")],
+        [
+          { distritoId: "d1", zonaId: "z1", esCentral: true },
+          { distritoId: "d1", zonaId: "z2", esCentral: false },
         ],
-      },
-    ]);
+      ),
+    );
     const repo = new OrdenRepository(prisma as unknown as PrismaClient);
 
     const rows = await repo.findDistritosByCantonIds(["c1"]);
@@ -195,10 +234,11 @@ describe("OrdenRepository — resolucion geografica batch (R19)", () => {
 
   // Feature 98 (T4) — proyeccion de esCentral de la zona del distrito. Mapea R2.
   it("findDistritosByCantonIds: distrito en zona CENTRAL -> esCentral true", async () => {
-    const prisma = buildPrisma();
-    prisma.distrito.findMany.mockResolvedValue([
-      { id: "d1", nombre: "Centro", cantonId: "c1", zonasEspeciales: [], activo: true, canton: { activo: true, provincia: { activo: true } }, zonas: [{ zonaId: "z1", zona: { esCentral: true } }] },
-    ]);
+    const prisma = buildPrisma(
+      catalogoDelDoble([PICHINCHA, QUITO, nodo("d1", "Centro", 3, "c1")], [
+        { distritoId: "d1", zonaId: "z1", esCentral: true },
+      ]),
+    );
     const repo = new OrdenRepository(prisma as unknown as PrismaClient);
 
     const rows = await repo.findDistritosByCantonIds(["c1"]);

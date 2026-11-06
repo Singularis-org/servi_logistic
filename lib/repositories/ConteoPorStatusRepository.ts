@@ -53,12 +53,24 @@ import type { PrismaClient } from "@prisma/client";
 
 import type { ConsultaConteoEntregas, RecorteDeOrdenes } from "@/lib/analytics/entregas-conteo";
 import { ventanaDeCarga } from "@/lib/repositories/ventana-de-carga";
+import {
+  CatalogoGeograficoRepository,
+  type CatalogoPrismaClient,
+} from "@/lib/repositories/CatalogoGeograficoRepository";
+import {
+  condicionesDeLugar,
+  lugaresDelFiltro,
+  type LugaresDelFiltro,
+} from "@/lib/repositories/_shared/lugares-del-filtro";
 import type { AlcanceDatos } from "@/lib/analytics/alcance";
 import type { IConteoPorStatusRepository } from "@/lib/interfaces/repositories/IConteoPorStatusRepository";
 import type { ConteoDeStatus } from "@/lib/types/conteo-por-status";
 
-/** Cliente MINIMO consumido (patron `AnaliticaRollupRepository`): una sola consulta cruda. */
-type ConteoPorStatusPrismaClient = Pick<PrismaClient, "$queryRaw">;
+/**
+ * Cliente MINIMO consumido (patron `AnaliticaRollupRepository`): una sola consulta cruda. SLT-71: mas
+ * los modelos del catalogo, que solo se leen si el filtro trae una faceta geografica.
+ */
+type ConteoPorStatusPrismaClient = Pick<PrismaClient, "$queryRaw"> & CatalogoPrismaClient;
 
 interface FilaConteo {
   readonly status: string;
@@ -122,7 +134,7 @@ function enLista(columna: Prisma.Sql, ids: readonly string[] | undefined): Prism
  * estas condiciones. `RecorteDeOrdenes` es el tipo estructural que las dos consultas preparadas
  * cumplen; la opacidad se sigue exigiendo en la firma de cada metodo de repositorio.
  */
-export function condicionesDeConsulta(consulta: RecorteDeOrdenes): Prisma.Sql[] {
+export function condicionesDeConsulta(consulta: RecorteDeOrdenes, lugares: LugaresDelFiltro): Prisma.Sql[] {
   const { filtro, rango, alcance } = consulta;
 
   const condiciones: Prisma.Sql[] = [
@@ -131,17 +143,15 @@ export function condicionesDeConsulta(consulta: RecorteDeOrdenes): Prisma.Sql[] 
     Prisma.sql`o."deleted_at" IS NULL`,
   ];
 
-  const facetas: [Prisma.Sql, readonly string[] | undefined][] = [
-    [Prisma.sql`o."zona_id"`, filtro.zona_id],
-    [Prisma.sql`o."provincia_id"`, filtro.provincia_id],
-    [Prisma.sql`o."canton_id"`, filtro.canton_id],
-    [Prisma.sql`o."distrito_id"`, filtro.distrito_id],
-    [Prisma.sql`o."tienda_id"`, filtro.tienda_id],
-  ];
-  for (const [columna, ids] of facetas) {
-    const fragmento = enLista(columna, ids);
-    if (fragmento) condiciones.push(fragmento);
-  }
+  // SLT-71 (design §3.3; R1, R2, R7): las tres facetas geograficas ya no filtran por su columna sino
+  // por el LUGAR de la orden, con los ids que resolvio el dominio (`lugares`). Van en el mismo sitio
+  // que antes, entre la zona y la tienda. `lugares` es obligatorio: un llamador que lo olvide no
+  // compila, asi que ninguna lectura puede seguir filtrando por columna en silencio.
+  const zona = enLista(Prisma.sql`o."zona_id"`, filtro.zona_id);
+  if (zona) condiciones.push(zona);
+  condiciones.push(...condicionesDeLugar(lugares));
+  const tienda = enLista(Prisma.sql`o."tienda_id"`, filtro.tienda_id);
+  if (tienda) condiciones.push(tienda);
 
   // Mensajero: quien REGISTRO la gestion, no `orden.mensajero_asignado_id`. Mismo criterio
   // que el otro endpoint —el asignado es el actual y pudo cambiar tras la entrega— y misma
@@ -173,10 +183,19 @@ export function condicionesDeConsulta(consulta: RecorteDeOrdenes): Prisma.Sql[] 
 }
 
 export class ConteoPorStatusRepository implements IConteoPorStatusRepository {
+  // SLT-71 (R13, R16): el catalogo, uno por instancia y creado al primer uso; las composiciones
+  // crean el repositorio en cada llamada.
+  private catalogoRepo: CatalogoGeograficoRepository | null = null;
+
   constructor(private readonly prisma: ConteoPorStatusPrismaClient) {}
 
+  private catalogoGeografico(): CatalogoGeograficoRepository {
+    return (this.catalogoRepo ??= new CatalogoGeograficoRepository(this.prisma));
+  }
+
   async contarPorStatus(consulta: ConsultaConteoEntregas): Promise<readonly ConteoDeStatus[]> {
-    const where = Prisma.join(condicionesDeConsulta(consulta), " AND ");
+    const lugares = await lugaresDelFiltro(() => this.catalogoGeografico(), consulta.filtro);
+    const where = Prisma.join(condicionesDeConsulta(consulta, lugares), " AND ");
 
     // `LEFT JOIN LATERAL` y no un `DISTINCT ON` sobre toda `gestion_orden`: el lateral se
     // evalua por orden YA filtrada y usa el indice `gestion_orden(orden_id)`, en vez de

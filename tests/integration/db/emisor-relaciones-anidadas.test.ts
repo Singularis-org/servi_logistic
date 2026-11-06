@@ -250,8 +250,12 @@ describeSiHayBase("FICHA 450 · el emisor de la tercera consulta", () => {
       // Y las SEIS consultas salieron por la MISMA conexion: la de la transaccion.
       expect(contado.sonda.conexionesUsadas()).toBe(1);
       expect(contado.sonda.cuantasConteniendo("gestion_orden")).toBe(1);
-      expect(contado.sonda.cuantasConteniendo("FROM \"public\".\"zona\"")).toBe(1);
-      expect(contado.sonda.cuantasConteniendo("FROM \"public\".\"provincia\"")).toBe(1);
+      // SLT-65 (design §4; decision humana 2026-11-03): los nombres de provincia salen del catalogo
+      // geografico, asi que `provincia` ya no se lee (0). `zona` da 2: la de los descriptivos y la
+      // que suma la carga del catalogo (`deLaEmpresa` lee `zona_distrito` con su `zona` anidada,
+      // que Prisma emite como otra consulta sobre `"zona"`).
+      expect(contado.sonda.cuantasConteniendo("FROM \"public\".\"zona\"")).toBe(2);
+      expect(contado.sonda.cuantasConteniendo("FROM \"public\".\"provincia\"")).toBe(0);
 
       // ═══ EL NUMERO QUE CAMBIA: 5 -> 1 ═══
       expect(contado.sonda.maximoEnVuelo()).toBe(1);

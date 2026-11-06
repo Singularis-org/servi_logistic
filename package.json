@@ -25,7 +25,13 @@
     "db:seed": "tsx scripts/seed-catalogos.ts",
     "arranque:superadmin": "tsx scripts/arranque-superadmin.ts",
     "integraciones:recifrar": "tsx scripts/recifrar-integraciones.ts",
-    "storage:migrar-a-carpetas": "tsx scripts/migrar-storage-a-carpetas.ts"
+    "storage:migrar-a-carpetas": "tsx scripts/migrar-storage-a-carpetas.ts",
+    "geo:backfill": "tsx scripts/geo-backfill-nodo.ts",
+    "geo:equivalencia-dinero": "tsx scripts/geo-equivalencia-dinero.ts",
+    "geo:equivalencia-consultas": "tsx scripts/geo-equivalencia-consultas.ts",
+    "geo:explain-consultas": "tsx scripts/geo-explain-consultas.ts",
+    "geo:equivalencia-analitica": "tsx scripts/geo-equivalencia-analitica.ts",
+    "geo:explain-analitica": "tsx scripts/geo-explain-analitica.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

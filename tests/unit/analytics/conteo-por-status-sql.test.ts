@@ -4,9 +4,14 @@ import { prepararConteoEntregas, type ConsultaConteoEntregas } from "@/lib/analy
 import { ventanaDeCarga } from "@/lib/repositories/ventana-de-carga";
 import {
   condicionDeAlcance,
-  condicionesDeConsulta,
+  condicionesDeConsulta as condicionesDeConsultaCon,
   ConteoPorStatusRepository,
 } from "@/lib/repositories/ConteoPorStatusRepository";
+import { lugaresDe } from "./_catalogo-facetas";
+
+// SLT-71 (design §11.1): `lugares` es obligatorio. La entrada de los casos son los lugares de su filtro,
+// resueltos sobre el catalogo de prueba (`p1` → `c1` → `d1`); las aserciones no cambian por esto.
+const condicionesDeConsulta = (c: ConsultaConteoEntregas) => condicionesDeConsultaCon(c, lugaresDe(c.filtro));
 
 // El `where` del desglose por status va en SQL, así que se comprueba sobre los fragmentos que
 // `condicionesDeConsulta` produce: su texto y sus PARÁMETROS. Sin base de datos.
@@ -102,25 +107,29 @@ describe("Las seis dimensiones de recorte", () => {
       }),
     );
 
-    for (const columna of ["zona_id", "provincia_id", "canton_id", "distrito_id", "tienda_id"]) {
-      expect(sql, columna).toContain(`o."${columna}" IN (`);
-    }
+    // SLT-71 (design §11.1): zona y tienda siguen con `IN`; cada faceta geografica es una
+    // condicion de lugar con `= ANY` (dos ramas por faceta: provincia, canton y distrito).
+    for (const columna of ["zona_id", "tienda_id"]) expect(sql, columna).toContain(`o."${columna}" IN (`);
+    expect(sql.match(/o\."distrito_id" = ANY\(/g)).toHaveLength(3);
   });
 
   it("todos los ids viajan como parámetros, en orden", () => {
+    // SLT-71 (decision del humano, 2026-11-04): una faceta geografica viaja como el array de ids
+    // resueltos (el canton y sus distritos), una vez por rama del lugar.
     expect(parametrosDe(consultaDe({ zona_id: ["z1", "z2"], canton_id: ["c1"] }))).toEqual([
       "z1",
       "z2",
-      "c1",
+      ["c1", "d1"],
+      ["c1", "d1"],
     ]);
   });
 
   it("una faceta no pedida NO escribe su condición", () => {
     const sql = sqlDe(consultaDe({}));
 
-    for (const columna of ["zona_id", "provincia_id", "canton_id", "distrito_id"]) {
-      expect(sql, columna).not.toContain(`o."${columna}" IN (`);
-    }
+    // SLT-71 (design §11.1): sin faceta geografica no hay condicion de lugar.
+    expect(sql, "zona_id").not.toContain(`o."zona_id" IN (`);
+    expect(sql).not.toContain("= ANY(");
   });
 
   // Mismo criterio que el otro endpoint: quien REGISTRÓ la gestión, no el asignado actual de

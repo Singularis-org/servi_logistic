@@ -3,9 +3,10 @@ import { describe, it, expect, vi } from "vitest";
 import { prepararConteoEntregas, type ConsultaConteoEntregas } from "@/lib/analytics/entregas-conteo";
 import { consultarConteoDevoluciones } from "@/lib/actions/conteo-devoluciones";
 import {
-  condicionesDeDevoluciones,
+  condicionesDeDevoluciones as condicionesDeDevolucionesCon,
   ConteoDevolucionesRepository,
 } from "@/lib/repositories/ConteoDevolucionesRepository";
+import { lugaresDe } from "./_catalogo-facetas";
 import {
   ConteoDevolucionesService,
   traducirCausa,
@@ -17,6 +18,10 @@ import {
   MOTIVO_DE_CAUSA,
   type ConteoDevolucionesDTO,
 } from "@/lib/types/conteo-devoluciones";
+
+// SLT-71 (design §11.1): `lugares` es obligatorio. La entrada de los casos son los lugares de su filtro,
+// resueltos sobre el catalogo de prueba (`p1` → `c1` → `d1`); las aserciones no cambian por esto.
+const condicionesDeDevoluciones = (c: ConsultaConteoEntregas) => condicionesDeDevolucionesCon(c, lugaresDe(c.filtro));
 
 const AHORA = new Date("2026-08-18T12:00:00.000Z");
 
@@ -136,9 +141,10 @@ describe("Las siete facetas", () => {
       }),
     );
 
-    for (const col of ["zona_id", "provincia_id", "canton_id", "distrito_id", "tienda_id"]) {
-      expect(sql, col).toContain(`o."${col}" IN (`);
-    }
+    // SLT-71 (design §11.1): zona y tienda con `IN`; cada faceta geografica, una condicion de lugar
+    // con `= ANY`.
+    for (const col of ["zona_id", "tienda_id"]) expect(sql, col).toContain(`o."${col}" IN (`);
+    expect(sql.match(/o\."distrito_id" = ANY\(/g)).toHaveLength(3);
     // El mensajero SÍ es columna propia de la gestión, y aquí es además la lectura natural:
     // quien registró ESTA devolución. Sin `EXISTS` correlacionado, al revés que en las
     // lecturas cuyo universo es la orden.
