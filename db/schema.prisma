@@ -6004,6 +6004,10 @@ enum HistorialPlataformaAccion {
   // Enmienda 2026-10-26, decisión 6 (R47; 20261026130500): el superadmin enciende o apaga un país.
   pais_disponibilidad_activada
   pais_disponibilidad_desactivada
+  /// SLT-46 (design §2.3, §7; 20261106120000): alta de país (`detalle.origen = "alta_de_pais"`) y
+  /// agregar un nivel (`"nivel_agregado"`); edición de un nombre de tipo (`detalle.campo`).
+  tipo_nivel_geografico_creado
+  tipo_nivel_geografico_renombrado
 
   @@map("historial_plataforma_accion")
 }
@@ -6015,6 +6019,8 @@ enum HistorialPlataformaEntidad {
   distrito
   /// SLT-43 (design §2.5): sin escritor hasta SLT-46.
   nodo_geografico
+  /// SLT-46 (design §2.3; 20261106120000).
+  tipo_nivel_geografico
 
   @@map("historial_plataforma_entidad")
 }

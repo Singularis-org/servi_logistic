@@ -63,7 +63,7 @@ Montado por SLT-43/44/45/65/71 en esta rama. Se usa tal cual; ninguna task lo vu
 
 ## T2 — Base de datos (depende de T0.1; va antes de T3)
 
-- [ ] **T2.1** Migración `20261106120000_slt46_historial_tipos_de_nivel` con su `down.sql` (§2.3, §3) y
+- [x] **T2.1** Migración `20261106120000_slt46_historial_tipos_de_nivel` con su `down.sql` (§2.3, §3) y
   los tres valores en `db/schema.prisma`.
   *Hecho:* `prisma migrate diff` vacío; `prisma generate` ve los valores.
 - [ ] **T2.2** Migración `20261106120100_slt46_nodo_copia_a_geografia_vieja` con su `down.sql` (§2.2),
