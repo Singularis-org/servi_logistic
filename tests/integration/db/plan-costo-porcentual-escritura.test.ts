@@ -178,9 +178,9 @@ function entrada(modo: Modo): CrearPlanInput {
     nombre: `slt83 ${randomUUID().slice(0, 8)}`,
     visibilidad: "publico",
     organizacionId: null,
-    topes: { ordenesPorCiclo: 100, porRol: {}, apiKeys: null },
+    topes: { porRol: {}, apiKeys: null },
     modulos: [],
-    precio: { tipo: "monto", mensual: "50000", anual: null },
+    precio: { tipo: "monto", mensual: "50000", descuentos: {} },
     ...modo,
   };
 }

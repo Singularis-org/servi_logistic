@@ -48,6 +48,7 @@ describe("R26 — el drenador resuelve el handler de webhook_estado y no lo re-a
       "optimizacion_ruta",
       // SL-24 (design §16.3): aplicar un cambio de plan programado (PUNTUAL) y su barrido horario.
       "plan_aplicar_cambio",
+      "plan_aplicar_cambio_empresa", // SLT-86 (design §5.2): aplica un cambio de empresa con fecha (PUNTUAL)
       // SL-24 · T12 (design §16.4): los correos del cambio, PUNTUALES: el aviso a una empresa y
       // el recordatorio que los reparte.
       "plan_aviso_correo",

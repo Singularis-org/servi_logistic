@@ -20,7 +20,7 @@ const OTRO_PLAN = randomUUID();
 const AHORA = new Date("2026-10-29T18:00:00.000Z");
 const HOY = "2026-10-29";
 
-const MONTO: PrecioPlan = { tipo: "monto", mensual: "1000.00", anual: null };
+const MONTO: PrecioPlan = { tipo: "monto", mensual: "1000.00", descuentos: {} };
 const PORCENTUAL = { porcentaje: "2.00", minimo: "500.00" };
 const SIN_MINIMO = { porcentaje: "2.00", minimo: null };
 
@@ -32,7 +32,7 @@ function plan(extra: Partial<PlanDTO> = {}): PlanDTO {
     nombre: "Porcentual",
     visibilidad: "publico",
     organizacionId: null,
-    topes: { ordenesPorCiclo: 100, porRol: {}, apiKeys: null },
+    topes: { porRol: {}, apiKeys: null },
     modulos: [],
     precio: MONTO,
     costoPorOrden: null,
@@ -51,7 +51,7 @@ const CREAR = {
   nombre: "Porcentual",
   visibilidad: "publico",
   organizacionId: null,
-  topes: { ordenesPorCiclo: 100, porRol: {}, apiKeys: null },
+  topes: { porRol: {}, apiKeys: null },
   modulos: [],
   precio: MONTO,
   costoPorOrden: null,
@@ -67,14 +67,14 @@ function doble() {
     crear: vi.fn<IPlanesRepository["crear"]>(async () => PLAN),
     editar: vi.fn<IPlanesRepository["editar"]>(async () => ({ estado: "ok", cambio: true, avisos: [] })),
     archivar: vi.fn<IPlanesRepository["archivar"]>(async () => ({ estado: "ok", cambio: true })),
-    asignar: vi.fn<IPlanesRepository["asignar"]>(async () => ({ estado: "ok", cambio: true, avisos: [] })),
-    crearYAsignar: vi.fn<IPlanesRepository["crearYAsignar"]>(async () => ({ estado: "ok", planId: PLAN, avisos: [] })),
+    asignar: vi.fn<IPlanesRepository["asignar"]>(async () => ({ estado: "ok", cambio: true, avisos: [], pendiente: false })),
+    crearYAsignar: vi.fn<IPlanesRepository["crearYAsignar"]>(async () => ({ estado: "ok", planId: PLAN, avisos: [], pendiente: false })),
     vistaPreviaConTopes: vi.fn<IPlanesRepository["vistaPreviaConTopes"]>(async () => null),
     cambiarTipoCobro: vi.fn<IPlanesRepository["cambiarTipoCobro"]>(async () => ({ estado: "not_found" })),
-    vistaPreviaAsignacion: vi.fn<IPlanesRepository["vistaPreviaAsignacion"]>(async () => ({
-      avisos: [],
-      siguienteCiclo: new Date("2026-11-29T18:00:00.000Z"),
-    })),
+    cancelarCambioEmpresa: vi.fn<IPlanesRepository["cancelarCambioEmpresa"]>(),
+    aplicarCambioDeEmpresa: vi.fn<IPlanesRepository["aplicarCambioDeEmpresa"]>(),
+    cambiosDeEmpresaVencidos: vi.fn<IPlanesRepository["cambiosDeEmpresaVencidos"]>(),
+    vistaPreviaAsignacion: vi.fn<IPlanesRepository["vistaPreviaAsignacion"]>(async () => ({ avisos: [] })),
     cancelarCambio: vi.fn<IPlanesRepository["cancelarCambio"]>(async () => ({ estado: "ok" })),
     programarCambio: vi.fn<IPlanesRepository["programarCambio"]>(async () => ({
       estado: "ok",
@@ -87,6 +87,7 @@ function doble() {
     repartirRecordatorio: vi.fn<IPlanesRepository["repartirRecordatorio"]>(async () => ({ estado: "sin_pendiente" })),
     destinatariosDelAviso: vi.fn<IPlanesRepository["destinatariosDelAviso"]>(async () => null),
     asignables: vi.fn<IPlanesRepository["asignables"]>(async () => []),
+    preciosQueRigenDesde: vi.fn<IPlanesRepository["preciosQueRigenDesde"]>(async () => []),
     publicos: vi.fn<IPlanesRepository["publicos"]>(async () => []),
     catalogo: vi.fn<IPlanesRepository["catalogo"]>(async () => []),
     detalle: vi.fn<IPlanesRepository["detalle"]>(async () => ({
@@ -147,7 +148,7 @@ describe("SLT-83 R3 — solo el superadmin configura el modo porcentual", () => 
     );
     const v = version({ costoPorOrdenPorcentual: { porcentaje: "5", minimo: null } });
     expect((await servicio.editar(SUPERADMIN, { planId: PLAN, ...v, vigenteDesde: null })).estado).toBe("ok");
-    expect(repo.editar).toHaveBeenCalledWith(PLAN, v, "u-sa");
+    expect(repo.editar).toHaveBeenCalledWith(PLAN, v, "u-sa", new Date("2026-10-29T06:00:00.000Z"));
     expect((await servicio.editar(SUPERADMIN, { planId: PLAN, ...v, vigenteDesde: "2026-12-01" })).estado).toBe("ok");
     expect(repo.programarCambio.mock.calls[0]?.[1]).toEqual(v);
   });
@@ -179,7 +180,8 @@ describe("SLT-83 R5 — costo concreto con el modo porcentual (asignar, vista pr
       "ok",
     );
     repo.empresa.mockResolvedValueOnce({ id: EMPRESA, nombre: "Mensajería Uno", planId: OTRO_PLAN });
-    expect((await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, tipoCobro: "mensual" })).estado).toBe("ok");
+    // SLT-86 (R16): un cambio de plan lleva fecha de efecto.
+    expect((await servicio.asignar(SUPERADMIN, { organizacionId: EMPRESA, planId: PLAN, tipoCobro: "mensual", vigenteDesde: HOY })).estado).toBe("ok");
     expect(repo.asignar).toHaveBeenCalledTimes(2);
   });
 

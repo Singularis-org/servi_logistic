@@ -14,8 +14,9 @@ import {
 // en (0, 100] con dos decimales y mínimo opcional con la forma de `DECIMAL(12,2)`.
 
 const PLAN = randomUUID();
-const TOPES = { ordenesPorCiclo: 100, porRol: {}, apiKeys: null };
-const PRECIO = { tipo: "monto", mensual: "50000.00", anual: null };
+// SLT-86 (R8, R10): sin `ordenesPorCiclo` y con `descuentos` en vez de `anual`.
+const TOPES = { porRol: {}, apiKeys: null };
+const PRECIO = { tipo: "monto", mensual: "50000.00", descuentos: {} };
 
 function crear(extra: Record<string, unknown> = {}) {
   return {
@@ -125,13 +126,17 @@ describe("SLT-83 R2 — el porcentaje: texto con hasta dos decimales, > 0 y ≤ 
     }
   });
 
-  it("el porcentaje es el mismo esquema que el descuento anual (una sola definición del rango)", () => {
+  it("el porcentaje es el mismo esquema que el descuento por período (una sola definición del rango)", () => {
     expect(porcentajeSchema.safeParse("100").success).toBe(true);
     expect(porcentajeSchema.safeParse("100.01").success).toBe(false);
+    // SLT-86 (R10): el descuento anual de antes es ahora uno de `descuentos`.
     const anual = crearPlanSchema.safeParse(
-      crear({ precio: { tipo: "monto", mensual: "1.00", anual: { tipo: "descuento", porcentaje: "100.01" } } }),
+      crear({
+        precio: { tipo: "monto", mensual: "1.00", descuentos: { anual: { tipo: "porcentaje", porcentaje: "100.01" } } },
+      }),
     );
     expect(anual.success).toBe(false);
+    expect(rutasDelError(anual)).toContain("precio.descuentos.anual.porcentaje");
   });
 });
 

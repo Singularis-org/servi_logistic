@@ -62,6 +62,7 @@ import {
 import {
   buildDepsAvisoCorreo,
   buildPlanesRepositoryDeJobs,
+  crearPlanAplicarCambioEmpresaHandler,
   crearPlanAplicarCambioHandler,
   crearPlanAvisoCorreoHandler,
   crearPlanCambiosVencidosHandler,
@@ -260,6 +261,9 @@ export function buildHandlers(
   handlers.set("plan_cambios_vencidos", crearPlanCambiosVencidosHandler(planes, now));
   handlers.set("plan_recordatorio_cambio", crearPlanRecordatorioCambioHandler(planes));
   handlers.set("plan_aviso_correo", crearPlanAvisoCorreoHandler(planes, buildDepsAvisoCorreo));
+  // SLT-86 (design §5.2; R17, R20): el cambio de empresa con fecha. PUNTUAL y CON empresa (`conSuEmpresa`
+  // lo corre en su contexto); el repositorio aplica en plataforma, bajo el cerrojo de la empresa.
+  handlers.set("plan_aplicar_cambio_empresa", crearPlanAplicarCambioEmpresaHandler(planes, now));
   return new Map(
     [...handlers].map(([tipo, h]) => [
       tipo,

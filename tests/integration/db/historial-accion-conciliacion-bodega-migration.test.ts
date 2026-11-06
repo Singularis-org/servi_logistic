@@ -418,6 +418,8 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("431/T1 (b) — el down recrea la lista PREV
       "plan_tipo_cobro_cambiado",
       // SLT-54: `tarifas_activadas`, de `20261104140000_historial_tarifa_activacion`.
       "tarifas_activadas",
+      // SLT-86: `plan_cambio_empresa_cancelado`, de `20261106150000_historial_accion_plan_cambio_empresa_cancelado`.
+      "plan_cambio_empresa_cancelado",
     ];
     const catalogoPrevio = HISTORIAL_ACCION_TIPOS.filter(
       (t) => !VALORES_NUEVOS.includes(t as (typeof VALORES_NUEVOS)[number]) &&

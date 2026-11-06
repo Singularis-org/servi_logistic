@@ -11,7 +11,7 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { FormField } from "@/components/shared/FormField";
 import { Modal } from "@/components/shared/Modal";
 import { TipoCobroCampo } from "@/components/shared/TipoCobroCampo";
-import { TEXTOS_TIPO_COBRO } from "@/components/shared/tipo-cobro";
+import { primerPeriodoDelCambio, TEXTOS_TIPO_COBRO, textoDelPeriodo } from "@/components/shared/tipo-cobro";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,22 +24,31 @@ import {
   lineasDeCambioDelPlan,
   rangoInicioCiclo as textoRangoInicioCiclo,
   SIN_LINEAS_DE_CAMBIO,
+  textoCambioProgramado,
+  textoDelCambioCancelado,
   TITULO_LINEAS_DE_CAMBIO,
   type CambioDelPlanParaCorreo,
 } from "@/lib/planes/mensajes";
+import { precioQueRigeEn } from "@/lib/planes/precio-que-rige";
 import { diferenciasDelPlan } from "@/lib/planes/rastro";
 import { nombreDelModulo } from "@/lib/modulos/catalogo";
-import type {
-  AsignacionDePlan,
-  CambiarTipoCobroResult,
-  PlanDeEmpresaVista,
-  PlanDTO,
-  PlanResult,
-  TipoCobro,
-  TopeExcedido,
-  VistaPreviaAsignacionResult,
+import {
+  precioPlanSchema,
+  type AsignacionDePlan,
+  type CambiarTipoCobroResult,
+  type CancelarCambioEmpresaResult,
+  type PlanDeEmpresaVista,
+  type PlanDTO,
+  type PlanResult,
+  type PrecioDesde,
+  type PrecioPlan,
+  type PreciosQueRigen,
+  type TipoCobro,
+  type TopeExcedido,
+  type VistaPreviaAsignacionResult,
 } from "@/lib/types/planes";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { esFechaCalendarioValida, fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { RECHAZO_GENERICO } from "@/app/(app)/plataforma/planes/_components/PlanForm";
 import { horaCostaRica } from "@/lib/utils/hora-cr";
 import { lineasDeCosto, lineasDeTopes } from "@/app/(app)/plataforma/planes/_components/plan-vista";
 
@@ -72,11 +81,13 @@ const TEXTOS = {
   asignar: "Asignar plan",
   cambiar: "Cambiar plan",
   asignado: "Plan asignado.",
+  /** SLT-86 (R17): un cambio con fecha futura queda pendiente; el texto único del cambio programado. */
+  programado: (fecha: string) => `${textoCambioProgramado(fecha)}.`,
   validacion: "Revisa el plan elegido.",
   fallo: "No se pudo asignar el plan. Inténtalo de nuevo.",
   confirmarTitulo: "¿Cambiar el plan de esta empresa?",
-  confirmarTexto: (actual: string, nuevo: string) =>
-    `La empresa pasa de «${actual}» a «${nuevo}». Sus topes y módulos cambian en cuanto confirmes.`,
+  // SLT-86 (R17): sin «Sus topes y módulos cambian en cuanto confirmes»: cambian desde «Rige desde».
+  confirmarTexto: (actual: string, nuevo: string) => `La empresa pasa de «${actual}» a «${nuevo}».`,
   /** Decisión del 2026-10-29: sin el plan actual no hay resumen, y sin resumen no se confirma. */
   actualNoSeCargo: "No se pudo cargar el plan actual",
   reintentar: "Reintentar",
@@ -86,10 +97,10 @@ const TEXTOS = {
   primeraLista: "Lo que tendrá la empresa",
   modulosIncluidos: (modulos: string) => `Módulos incluidos: ${modulos}`,
   sinModulos: "Ninguno",
-  /** R38 (aprobado el 2026-10-29): sustituye a «El ciclo de órdenes empieza hoy.». */
-  cicloEmpiezaEl: (fecha: string) => `El ciclo de órdenes empieza el ${fecha}.`,
+  /** SLT-86 (design §7.1): sustituye a «El ciclo de órdenes empieza el {fecha}.» de SLT-58 R38. */
+  empiezaARegir: (fecha: string) => `El plan empieza a regir el ${fecha}.`,
   /** P13 (aprobado el 2026-10-29). */
-  inicioCiclo: "Inicio del ciclo de órdenes",
+  inicioCiclo: "Inicio del período",
   /** P11 (aprobada el 2026-10-29): sin la vista previa no se confirma. */
   vistaPreviaNoCargo: "No se pudo comprobar el consumo de la empresa",
   volver: "Volver",
@@ -103,17 +114,23 @@ const TEXTOS = {
   /** Ajuste planes-custom (D14): el tipo de cobro de cada fila del historial. */
   tipoCobro: TEXTOS_TIPO_COBRO.campo,
   sinTipoCobro: "—",
+  /** SLT-86 (R30): la fecha de efecto de cada fila, con el rótulo del campo. */
+  rigeDesde: TEXTOS_TIPO_COBRO.rigeDesde,
   cambioDeTipoCobro: (antes: string | null, despues: string) =>
     antes === null ? `Cambió a ${despues}` : `Cambió de ${antes} a ${despues}`,
   /** Ajuste planes-custom (D10): cambiar solo el tipo de cobro del plan actual. */
   cambiarTipoCobro: "Cambiar tipo de cobro",
   cambiarTipoCobroTitulo: "¿Cambiar el tipo de cobro?",
-  cambiarTipoCobroTexto: (plan: string) =>
-    `La empresa sigue con «${plan}»: no cambian sus topes, sus módulos ni su ciclo de órdenes.`,
+  // SLT-86 (R17): sin «ni su ciclo de órdenes»: el período sí cambia desde «Rige desde».
+  cambiarTipoCobroTexto: (plan: string) => `La empresa sigue con «${plan}»: no cambian sus topes ni sus módulos.`,
   tipoCobroCambiado: "Tipo de cobro cambiado.",
   tipoCobroSinCambio: "La empresa ya tenía ese tipo de cobro.",
   tipoCobroValidacion: "Revisa el tipo de cobro elegido.",
   tipoCobroFallo: "No se pudo cambiar el tipo de cobro. Inténtalo de nuevo.",
+  /** SLT-86 (R19, R26): «Cancelar cambio» del pendiente; el mismo texto que el detalle del plan. */
+  cambioCancelado: "Cambio programado cancelado.",
+  /** Decisión del 2026-11-06: «Cancelar cambio» pide confirmación con el plan y la fecha de efecto. */
+  confirmarCancelar: (plan: string, fecha: string) => `¿Cancelar el cambio a ${plan} programado para el ${fecha}?`,
 } as const;
 
 /** Ajuste planes-custom (D10): el texto de cada rechazo de `cambiarTipoCobroAction`. */
@@ -123,10 +140,14 @@ const RECHAZOS_TIPO_COBRO: Record<Exclude<CambiarTipoCobroResult["estado"], "ok"
   sin_plan: "La empresa ya no tiene plan: el tipo de cobro se elige al asignarle uno.",
 };
 
-/** D14: la celda «Tipo de cobro» de una fila del historial de asignaciones. */
+/**
+ * D14: la celda «Tipo de cobro» de una fila del historial de asignaciones. SLT-86 (R19, R26): un cambio
+ * cancelado dice cuál era, con su fecha; el plan va en su columna.
+ */
 function textoDelTipoCobroDeLaFila(a: AsignacionDePlan): string {
   if (a.tipoCobro === null) return TEXTOS.sinTipoCobro;
   const despues = TEXTOS_TIPO_COBRO.tipo[a.tipoCobro];
+  if (a.tipo === "cambio_cancelado") return textoDelCambioCancelado(despues, a.desde);
   if (a.tipo === "asignacion") return despues;
   return TEXTOS.cambioDeTipoCobro(
     a.tipoCobroAnterior === null ? null : TEXTOS_TIPO_COBRO.tipo[a.tipoCobroAnterior],
@@ -134,13 +155,49 @@ function textoDelTipoCobroDeLaFila(a: AsignacionDePlan): string {
   );
 }
 
+/**
+ * SLT-86 (R30): la celda «Rige desde» de una fila: la fecha de efecto o de inicio que guardó. Un cambio
+ * cancelado no llegó a regir; su fecha va en el texto de la celda del tipo.
+ */
+function rigeDesdeDeLaFila(a: AsignacionDePlan): string {
+  return a.tipo === "cambio_cancelado" || a.desde === null ? TEXTOS.sinTipoCobro : a.desde;
+}
+
+/**
+ * SLT-86 (R25): el costo base del primer período o tramo que abriría el cambio, con el precio, el tipo y
+ * la fecha elegidos. `null` sin precio legible o sin fecha válida: no se muestra.
+ *
+ * Review m4: el precio es el que regirá en `fecha` según el historial del plan (`precioQueRigeEn`), que
+ * puede traer una edición programada antes de esa fecha; sin historial, el vigente (`precio`).
+ */
+function lineasDelPrimerPeriodo(
+  precio: PrecioPlan | undefined,
+  historial: readonly PrecioDesde[],
+  tipo: TipoCobro,
+  fecha: string,
+): string[] | null {
+  if (precio === undefined || !esFechaCalendarioValida(fecha)) return null;
+  const valido = precioPlanSchema.safeParse(precioQueRigeEn(historial, fecha) ?? precio);
+  if (!valido.success) return null;
+  const { periodo, costo } = primerPeriodoDelCambio(valido.data, tipo, fecha);
+  return [TEXTOS_TIPO_COBRO.costoBase(tipo, costo), textoDelPeriodo(tipo, periodo)];
+}
+
+/** SLT-86 (R19, R26): el texto de cada rechazo de `cancelarCambioEmpresaAction`. */
+const RECHAZOS_CANCELAR: Record<Exclude<CancelarCambioEmpresaResult["estado"], "ok">, string> = {
+  forbidden: "No tienes permiso para esto.",
+  not_found: "Esa empresa ya no existe.",
+  sin_cambio_programado: "La empresa ya no tiene un cambio pendiente.",
+  validation_error: RECHAZO_GENERICO,
+};
+
 /** design §6.5: el texto de cada rechazo de `asignarPlanAction` (R18). `tope_excedido` trae el suyo. */
 const RECHAZOS: Record<Exclude<PlanResult["estado"], "ok" | "tope_excedido" | "validation_error">, string> = {
   forbidden: "No tienes permiso para esto.",
   not_found: "El plan o la empresa ya no existe.",
   archivado: "El plan está archivado.",
   custom_de_otra_empresa: "Ese plan es de otra empresa.",
-  sin_cambio_programado: "El plan ya no tiene un cambio pendiente.",
+  sin_cambio_programado: "La empresa ya no tiene un cambio pendiente.",
   plan_sin_costo: "Ese plan no tiene costo base y costo por orden concretos: crea un custom con sus precios para asignarlo.",
 };
 
@@ -160,12 +217,14 @@ export interface PlanEmpresaProps {
   planActual?: PlanDTO | null;
   /**
    * `asignarPlanAction`, inyectada desde la página para poder probarla. `inicioCiclo` solo viaja en la
-   * primera asignación (R29); «Cambiar plan» nunca lo manda (R31). `tipoCobro` viaja siempre (D6).
+   * primera asignación (R29); «Cambiar plan» nunca lo manda (R31) y lleva `vigenteDesde` (SLT-86 R16).
+   * `tipoCobro` viaja siempre (D6).
    */
   asignarPlan: (input: {
     organizacionId: string;
     planId: string;
     inicioCiclo?: string;
+    vigenteDesde?: string;
     tipoCobro: TipoCobro;
   }) => Promise<PlanResult>;
   /**
@@ -178,6 +237,19 @@ export interface PlanEmpresaProps {
    * MAÑANA en la hora de la plataforma (`inicioDelCicloPorDefecto`, del reloj del servidor).
    */
   inicioCicloPorDefecto: string;
+  /** SLT-86 (R16): el `min`/`max` de «Rige desde» de un cambio, del reloj del servidor. */
+  rangoFechaDeEfecto: RangoDelInicioDelCiclo;
+  /**
+   * SLT-86 (R25): «Rige desde» por defecto de un cambio: el primer día del siguiente período de calendario
+   * con el tipo vigente (`fechaDeEfectoPorDefecto`, del reloj del servidor). `null` sin plan.
+   */
+  fechaDeEfectoPorDefecto: string | null;
+  /**
+   * SLT-86 (R25; review m4): por plan, los precios que pueden regir de hoy en adelante
+   * (`verPreciosQueRigen`), para que el costo del primer período use el que regirá en la fecha elegida.
+   * Sin él (o sin el plan) se usa el precio vigente.
+   */
+  preciosQueRigen?: PreciosQueRigen | null;
   /** `previsualizarAsignacionPlanAction` (R37), inyectada desde la página para poder probarla. */
   previsualizarAsignacion: (input: {
     organizacionId: string;
@@ -193,9 +265,16 @@ export interface PlanEmpresaProps {
   planPreseleccionado?: string;
   /**
    * Ajuste planes-custom (D10): `cambiarTipoCobroAction`, inyectada desde la página para poder probarla.
-   * Solo se ofrece si la empresa tiene plan; no toca el plan, el ancla ni los módulos.
+   * Solo se ofrece si la empresa tiene plan; no toca el plan ni los módulos. SLT-86 (R16, R17): con su
+   * fecha de efecto, desde la que cambia el período.
    */
-  cambiarTipoCobro: (input: { organizacionId: string; tipoCobro: TipoCobro }) => Promise<CambiarTipoCobroResult>;
+  cambiarTipoCobro: (input: {
+    organizacionId: string;
+    tipoCobro: TipoCobro;
+    vigenteDesde: string;
+  }) => Promise<CambiarTipoCobroResult>;
+  /** SLT-86 (R19, R26): `cancelarCambioEmpresaAction`, inyectada desde la página para poder probarla. */
+  cancelarCambioEmpresa: (input: { organizacionId: string }) => Promise<CancelarCambioEmpresaResult>;
 }
 
 /**
@@ -204,7 +283,7 @@ export interface PlanEmpresaProps {
  */
 type VistaPrevia =
   | { fase: "cargando" }
-  | { fase: "ok"; avisos: TopeExcedido[]; siguienteCiclo: string }
+  | { fase: "ok"; avisos: TopeExcedido[] }
   | { fase: "invalida" }
   | { fase: "fallo"; motivo: string | null };
 
@@ -240,9 +319,13 @@ export function PlanEmpresa({
   asignarPlan,
   rangoInicioCiclo,
   inicioCicloPorDefecto,
+  rangoFechaDeEfecto,
+  fechaDeEfectoPorDefecto,
+  preciosQueRigen,
   previsualizarAsignacion,
   planPreseleccionado,
   cambiarTipoCobro,
+  cancelarCambioEmpresa,
 }: PlanEmpresaProps) {
   const tituloId = useId();
   const historialId = useId();
@@ -250,6 +333,8 @@ export function PlanEmpresa({
   const fechaId = useId();
   const tipoCobroId = useId();
   const nuevoTipoCobroId = useId();
+  const efectoId = useId();
+  const efectoTipoId = useId();
   const router = useRouter();
   const toast = useToast();
   const planActualId = vista?.plan?.planId ?? null;
@@ -269,6 +354,12 @@ export function PlanEmpresa({
   const [errorDeTipoCobro, setErrorDeTipoCobro] = useState<string[] | undefined>(undefined);
   const [vistaPrevia, setVistaPrevia] = useState<VistaPrevia>({ fase: "cargando" });
   const [errorDeFecha, setErrorDeFecha] = useState<string[] | undefined>(undefined);
+  /** SLT-86 (R16, R25): «Rige desde» de «Cambiar plan» y de «Cambiar tipo de cobro». */
+  const [vigenteDesde, setVigenteDesde] = useState(fechaDeEfectoPorDefecto ?? "");
+  const [errorDeEfecto, setErrorDeEfecto] = useState<string[] | undefined>(undefined);
+  const [cancelando, setCancelando] = useState(false);
+  /** Decisión del 2026-11-06: el modal que confirma «Cancelar cambio». */
+  const [confirmandoCancelar, setConfirmandoCancelar] = useState(false);
   /** Los avisos del `ok` de la primera asignación (§11.5), bajo la sección y con el texto del modal. */
   const [avisosAsignados, setAvisosAsignados] = useState<string[]>([]);
   // Cada lectura de la vista previa lleva su número: si el superadmin cambia la fecha antes de que
@@ -326,6 +417,8 @@ export function PlanEmpresa({
     setAvisosAsignados([]);
     setTipoCobro("mensual");
     setErrorDeTipoCobro(undefined);
+    setVigenteDesde(fechaDeEfectoPorDefecto ?? "");
+    setErrorDeEfecto(undefined);
     if (vista?.plan === null) {
       // D5: cada apertura empieza en «mañana» (antes, R29: «hoy»); R37: y lee la vista previa de esa fecha.
       setInicioCiclo(inicioCicloPorDefecto);
@@ -349,7 +442,7 @@ export function PlanEmpresa({
       const r = await previsualizarAsignacion({ organizacionId, planId, inicioCiclo: fecha });
       if (lectura !== lecturaRef.current) return;
       if (r.estado === "ok") {
-        setVistaPrevia({ fase: "ok", avisos: r.avisos, siguienteCiclo: r.siguienteCiclo });
+        setVistaPrevia({ fase: "ok", avisos: r.avisos });
       } else if (r.estado === "validation_error" && r.fieldErrors.inicioCiclo) {
         setVistaPrevia({ fase: "invalida" });
         setErrorDeFecha(r.fieldErrors.inicioCiclo);
@@ -375,6 +468,8 @@ export function PlanEmpresa({
     setAvisosAsignados([]);
     setErrorDeNuevoTipo(undefined);
     setNuevoTipoCobro(vista.plan.cobro.tipo);
+    setVigenteDesde(fechaDeEfectoPorDefecto ?? "");
+    setErrorDeEfecto(undefined);
     setCambiandoTipo(true);
   }
 
@@ -388,9 +483,10 @@ export function PlanEmpresa({
     setTipoEnVuelo(true);
     setRechazo(null);
     setErrorDeNuevoTipo(undefined);
+    setErrorDeEfecto(undefined);
     let seguirAbierto = false;
     try {
-      const r = await cambiarTipoCobro({ organizacionId, tipoCobro: nuevoTipoCobro });
+      const r = await cambiarTipoCobro({ organizacionId, tipoCobro: nuevoTipoCobro, vigenteDesde });
       if (r.estado === "ok") {
         if (r.cambio) {
           toast.success(TEXTOS.tipoCobroCambiado);
@@ -402,6 +498,10 @@ export function PlanEmpresa({
         // El error del tipo junto a su campo, con el modal abierto para elegir otro.
         seguirAbierto = true;
         setErrorDeNuevoTipo(r.fieldErrors.tipoCobro);
+      } else if (r.estado === "validation_error" && r.fieldErrors.vigenteDesde) {
+        // SLT-86 (R16): la fecha de efecto junto a su campo, con el modal abierto para elegir otra.
+        seguirAbierto = true;
+        setErrorDeEfecto(r.fieldErrors.vigenteDesde);
       } else if (r.estado === "validation_error") {
         setRechazo(TEXTOS.tipoCobroValidacion);
       } else {
@@ -415,6 +515,50 @@ export function PlanEmpresa({
       if (!seguirAbierto) setCambiandoTipo(false);
     }
   }
+
+  /**
+   * SLT-86 (R19, R26): «Cancelar cambio» del pendiente de la empresa, con o sin plan. Tras un `ok` relee la
+   * página (el pendiente desaparece y el historial gana su fila); un rechazo se explica.
+   */
+  async function cancelarCambio() {
+    if (cancelando) return;
+    setCancelando(true);
+    setRechazo(null);
+    setAvisosAsignados([]);
+    try {
+      const r = await cancelarCambioEmpresa({ organizacionId });
+      if (r.estado === "ok") {
+        toast.success(TEXTOS.cambioCancelado);
+        router.refresh();
+      } else {
+        setRechazo(RECHAZOS_CANCELAR[r.estado]);
+      }
+    } catch (error) {
+      console.error("[PlanEmpresa] cancelarCambioEmpresa lanzó", error);
+      setRechazo(RECHAZO_GENERICO);
+    } finally {
+      setCancelando(false);
+    }
+  }
+
+  /** SLT-86 (R26): el pendiente de la empresa: con plan, en su cobro; sin plan, la primera asignación. */
+  const pendiente = vista?.plan ? vista.plan.cobro.pendiente : (vista?.pendienteSinPlan ?? null);
+  /**
+   * SLT-86 (R25): el costo del primer período de cada modal, con lo elegido en él y el precio que regirá
+   * en esa fecha (review m4): el del plan elegido o, al cambiar solo el tipo, el del plan actual.
+   */
+  const historialDe = (id: string | undefined): readonly PrecioDesde[] =>
+    id === undefined ? [] : (preciosQueRigen?.[id] ?? []);
+  const primerPeriodoDelCambioDePlan =
+    elegido === null ? null : lineasDelPrimerPeriodo(elegido.precio, historialDe(elegido.id), tipoCobro, vigenteDesde);
+  const primerPeriodoDeLaPrimera =
+    elegido === null ? null : lineasDelPrimerPeriodo(elegido.precio, historialDe(elegido.id), tipoCobro, inicioCiclo);
+  const primerPeriodoDelCambioDeTipo = lineasDelPrimerPeriodo(
+    actual?.precio,
+    historialDe(actual?.id),
+    nuevoTipoCobro,
+    vigenteDesde,
+  );
 
   /** Con el plan actual ilegible no hay resumen: se ofrece releer la página, nunca confirmar. */
   const sinResumen = Boolean(vista?.plan) && lineasDeCambio === null;
@@ -430,21 +574,27 @@ export function PlanEmpresa({
     let seguirAbierto = false;
     try {
       const r = await asignarPlan(
-        primera ? { organizacionId, planId, inicioCiclo, tipoCobro } : { organizacionId, planId, tipoCobro },
+        primera
+          ? { organizacionId, planId, inicioCiclo, tipoCobro }
+          : { organizacionId, planId, vigenteDesde, tipoCobro },
       );
       if (r.estado === "ok") {
         setPlanId("");
-        if (primera && vistaPrevia.fase === "ok") {
-          setAvisosAsignados(r.avisos.map((a) => textoDelAvisoDeTope(a, vistaPrevia.siguienteCiclo)));
-        }
-        toast.success(TEXTOS.asignado);
+        // §11.5 y SLT-86 (R18): los topes ya pasados que no rechazaron, con el texto del modal.
+        setAvisosAsignados(r.avisos.map((a) => textoDelAvisoDeTope(a)));
+        // SLT-86 (R17): con fecha futura el cambio queda pendiente hasta su fecha.
+        toast.success(r.vigenteDesde === null ? TEXTOS.asignado : TEXTOS.programado(r.vigenteDesde));
         router.refresh();
       } else if (primera && r.estado === "validation_error" && r.fieldErrors.inicioCiclo) {
         // §11.5: el error de la fecha junto a su campo, con el modal abierto para elegir otra.
         seguirAbierto = true;
         setVistaPrevia({ fase: "invalida" });
         setErrorDeFecha(r.fieldErrors.inicioCiclo);
-      } else if (primera && r.estado === "validation_error" && r.fieldErrors.tipoCobro) {
+      } else if (!primera && r.estado === "validation_error" && r.fieldErrors.vigenteDesde) {
+        // SLT-86 (R16): la fecha de efecto junto a su campo, con el modal abierto.
+        seguirAbierto = true;
+        setErrorDeEfecto(r.fieldErrors.vigenteDesde);
+      } else if (r.estado === "validation_error" && r.fieldErrors.tipoCobro) {
         // D6: el error del tipo de cobro junto a su campo, con el modal abierto.
         seguirAbierto = true;
         setErrorDeTipoCobro(r.fieldErrors.tipoCobro);
@@ -487,9 +637,28 @@ export function PlanEmpresa({
           <ConsumoDelPlan
             plan={vista.plan}
             textoSinPlan={TEXTOS.sinPlan}
+            pendienteSinPlan={vista.pendienteSinPlan}
             nivelDeTitulo={3}
             textoExcepcion={TEXTOS.excepcion}
           />
+          {pendiente !== null && (
+            // SLT-86 (R19, R26): el pendiente con plan dice qué entra y desde cuándo (sin plan ya lo dice
+            // el estado vacío de arriba); en los dos casos se puede cancelar.
+            <div className="flex flex-wrap items-center gap-3">
+              {vista.plan !== null && <p className="text-sm font-medium">{TEXTOS_TIPO_COBRO.pendiente(pendiente)}</p>}
+              <Button
+                type="button"
+                variant="outline"
+                loading={cancelando}
+                onClick={() => {
+                  setRechazo(null);
+                  setConfirmandoCancelar(true);
+                }}
+              >
+                {TEXTOS_TIPO_COBRO.cancelarCambio}
+              </Button>
+            </div>
+          )}
           {vista.plan !== null && (
             // D10: cambia solo el tipo de cobro del plan que la empresa ya tiene.
             <div>
@@ -567,6 +736,7 @@ export function PlanEmpresa({
                     <TableHead>{TEXTOS.quien}</TableHead>
                     <TableHead>{TEXTOS.planAsignado}</TableHead>
                     <TableHead>{TEXTOS.tipoCobro}</TableHead>
+                    <TableHead>{TEXTOS.rigeDesde}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -580,6 +750,7 @@ export function PlanEmpresa({
                       <TableCell>{a.planNombre}</TableCell>
                       {/* D14: el tipo de cobro de la fila; un cambio de solo el tipo (D10) dice de cuál a cuál. */}
                       <TableCell>{textoDelTipoCobroDeLaFila(a)}</TableCell>
+                      <TableCell className="tabular-nums">{rigeDesdeDeLaFila(a)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -612,7 +783,10 @@ export function PlanEmpresa({
             title={TEXTOS.confirmarTitulo}
             description={TEXTOS.confirmarTexto(vista.plan.nombre, elegido.nombre)}
             confirmLabel={TEXTOS.cambiar}
+            confirmDisabled={enVuelo}
             cancelLabel={TEXTOS.volver}
+            // SLT-86 (R16): un error de «Rige desde» deja el modal abierto con el error junto al campo.
+            closeOnConfirm={false}
             size="md"
             onConfirm={() => asignar()}
           >
@@ -634,18 +808,49 @@ export function PlanEmpresa({
                 <li key={linea}>{linea}</li>
               ))}
             </ul>
-            {/* D6: el tipo de cobro se elige también en un cambio de plan. */}
-            <div className="mt-3">
+            {/* D6: el tipo de cobro se elige también en un cambio de plan. SLT-86 (R16, R25): con su fecha
+                de efecto y el costo del primer período o tramo que abrirá. */}
+            <div className="mt-3 flex flex-col gap-3">
               <TipoCobroCampo
                 id={tipoCobroId}
                 value={tipoCobro}
-                onValueChange={setTipoCobro}
+                onValueChange={(t) => {
+                  setTipoCobro(t);
+                  setErrorDeTipoCobro(undefined);
+                }}
                 error={errorDeTipoCobro}
                 disabled={enVuelo}
               />
+              <CampoRigeDesde
+                id={efectoId}
+                valor={vigenteDesde}
+                rango={rangoFechaDeEfecto}
+                error={errorDeEfecto}
+                disabled={enVuelo}
+                onCambio={(f) => {
+                  setVigenteDesde(f);
+                  setErrorDeEfecto(undefined);
+                }}
+              />
+              {primerPeriodoDelCambioDePlan !== null && <LineasDelPrimerPeriodo lineas={primerPeriodoDelCambioDePlan} />}
             </div>
           </Modal>
         )
+      ) : null}
+
+      {pendiente !== null ? (
+        // Decisión del 2026-11-06: la action solo se llama desde este modal; cerrarlo no cancela nada.
+        // Botones como en el detalle del plan: «Cancelar cambio» (destructivo) y «Volver».
+        <Modal
+          open={confirmandoCancelar}
+          onOpenChange={setConfirmandoCancelar}
+          title={TEXTOS.confirmarCancelar(pendiente.planNombre, pendiente.desde)}
+          confirmLabel={TEXTOS_TIPO_COBRO.cancelarCambio}
+          cancelLabel={TEXTOS.volver}
+          confirmVariant="destructive"
+          size="md"
+          onConfirm={() => cancelarCambio()}
+        />
       ) : null}
 
       {vista?.plan ? (
@@ -662,16 +867,31 @@ export function PlanEmpresa({
           size="md"
           onConfirm={() => guardarTipoCobro()}
         >
-          <TipoCobroCampo
-            id={nuevoTipoCobroId}
-            value={nuevoTipoCobro}
-            onValueChange={(t) => {
-              setNuevoTipoCobro(t);
-              setErrorDeNuevoTipo(undefined);
-            }}
-            error={errorDeNuevoTipo}
-            disabled={tipoEnVuelo}
-          />
+          <div className="flex flex-col gap-3">
+            <TipoCobroCampo
+              id={nuevoTipoCobroId}
+              value={nuevoTipoCobro}
+              onValueChange={(t) => {
+                setNuevoTipoCobro(t);
+                setErrorDeNuevoTipo(undefined);
+              }}
+              error={errorDeNuevoTipo}
+              disabled={tipoEnVuelo}
+            />
+            {/* SLT-86 (R16, R25): desde cuándo y cuánto cuesta el primer período o tramo con el tipo nuevo. */}
+            <CampoRigeDesde
+              id={efectoTipoId}
+              valor={vigenteDesde}
+              rango={rangoFechaDeEfecto}
+              error={errorDeEfecto}
+              disabled={tipoEnVuelo}
+              onCambio={(f) => {
+                setVigenteDesde(f);
+                setErrorDeEfecto(undefined);
+              }}
+            />
+            {primerPeriodoDelCambioDeTipo !== null && <LineasDelPrimerPeriodo lineas={primerPeriodoDelCambioDeTipo} />}
+          </div>
         </Modal>
       ) : null}
 
@@ -709,7 +929,7 @@ export function PlanEmpresa({
                 />
               )}
             </FormField>
-            {inicioCiclo !== "" && <p>{TEXTOS.cicloEmpiezaEl(inicioCiclo)}</p>}
+            {inicioCiclo !== "" && <p>{TEXTOS.empiezaARegir(inicioCiclo)}</p>}
             {/* D6: el tipo de cobro de la primera asignación. */}
             <TipoCobroCampo
               id={tipoCobroId}
@@ -721,6 +941,8 @@ export function PlanEmpresa({
               error={errorDeTipoCobro}
               disabled={enVuelo}
             />
+            {/* SLT-86 (R25): el costo base del primer período o tramo, con el tipo y la fecha elegidos. */}
+            {primerPeriodoDeLaPrimera !== null && <LineasDelPrimerPeriodo lineas={primerPeriodoDeLaPrimera} />}
             {vistaPrevia.fase === "fallo" ? (
               <AvisoDeError>
                 {vistaPrevia.motivo === null
@@ -728,12 +950,51 @@ export function PlanEmpresa({
                   : `${TEXTOS.vistaPreviaNoCargo}\n${vistaPrevia.motivo}`}
               </AvisoDeError>
             ) : vistaPrevia.fase === "ok" && vistaPrevia.avisos.length > 0 ? (
-              <AvisosDeTopes avisos={vistaPrevia.avisos.map((a) => textoDelAvisoDeTope(a, vistaPrevia.siguienteCiclo))} />
+              <AvisosDeTopes avisos={vistaPrevia.avisos.map((a) => textoDelAvisoDeTope(a))} />
             ) : null}
           </div>
         </Modal>
       ) : null}
     </section>
+  );
+}
+
+interface CampoRigeDesdeProps {
+  id: string;
+  valor: string;
+  rango: RangoDelInicioDelCiclo;
+  error: string[] | undefined;
+  disabled: boolean;
+  onCambio: (fecha: string) => void;
+}
+
+/** SLT-86 (R16, R25; design §7.1): la fecha de efecto de un cambio de empresa, con su rango y su ayuda. */
+function CampoRigeDesde({ id, valor, rango, error, disabled, onCambio }: CampoRigeDesdeProps) {
+  return (
+    <FormField id={id} label={TEXTOS_TIPO_COBRO.rigeDesde} hint={TEXTOS_TIPO_COBRO.ayudaCambioDeEmpresa} error={error}>
+      {(control) => (
+        <Input
+          {...control}
+          type="date"
+          value={valor}
+          min={rango.min}
+          max={rango.max}
+          disabled={disabled}
+          onChange={(ev) => onCambio(ev.target.value)}
+        />
+      )}
+    </FormField>
+  );
+}
+
+/** SLT-86 (R25): «Costo base {tipo}: …» y «Período: … (tramo de d de D días)». */
+function LineasDelPrimerPeriodo({ lineas }: { lineas: string[] }) {
+  return (
+    <ul className="flex flex-col gap-1 text-sm">
+      {lineas.map((linea) => (
+        <li key={linea}>{linea}</li>
+      ))}
+    </ul>
   );
 }
 

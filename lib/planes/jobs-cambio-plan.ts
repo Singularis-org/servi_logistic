@@ -3,7 +3,12 @@ import { z } from "zod";
 import { emailContacto } from "@/lib/config/email";
 import type { IEmailSender } from "@/lib/interfaces/external/IEmailSender";
 import { empresaDelJob, type IJobRepository, type JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
-import type { AvisoCorreoPlan, CambioPendiente, IPlanesRepository } from "@/lib/interfaces/repositories/IPlanesRepository";
+import type {
+  AvisoCorreoPlan,
+  CambioDeEmpresaPendiente,
+  CambioPendiente,
+  IPlanesRepository,
+} from "@/lib/interfaces/repositories/IPlanesRepository";
 import type { JobHandler, RecurrenciaSpec } from "@/lib/interfaces/services/IJobQueueService";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import type { CambioDelPlanParaCorreo } from "@/lib/planes/mensajes";
@@ -22,9 +27,12 @@ import { plantillaCambioPlan } from "@/lib/services/email/plantillas/cambio-plan
 //   · `plan_recordatorio_cambio` (T12): puntual, sin empresa, 7×24 h y 24 h antes de la fecha.
 //     Reparte un `plan_aviso_correo` por empresa con el plan en ese momento.
 //   · `plan_aviso_correo` (T12): puntual, con la empresa destino. Un correo por maestro activo.
+//   · `plan_aplicar_cambio_empresa` (SLT-86 §5.2; R17, R20): puntual, CON la empresa. Lo encola el
+//     cambio de empresa con fecha futura, en su transacción, con `run_after` = sus 00:00. Payload
+//     `{ cambioId }`; la empresa es la del trabajo.
 //
-// Todo lo que aplica pasa por `PlanesRepository.aplicarCambioProgramado`, que es idempotente: el
-// trabajo y el barrido pueden coincidir sin aplicar dos veces.
+// Todo lo que aplica pasa por `PlanesRepository.aplicarCambioProgramado` o `aplicarCambioDeEmpresa`, que
+// son idempotentes: el trabajo y el barrido pueden coincidir sin aplicar dos veces.
 
 /* -------------------------------------------------------------------------- */
 /* Composition root                                                           */
@@ -58,6 +66,37 @@ export function crearPlanAplicarCambioHandler(
 ): JobHandler {
   return async (job) => {
     await repo.aplicarCambioProgramado(cambioDelPayload(job), now());
+  };
+}
+
+/* -------------------------------------------------------------------------- */
+/* plan_aplicar_cambio_empresa (SLT-86)                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * ESE pendiente de empresa: la empresa del trabajo y el `cambioId` del payload. Un trabajo sin empresa o
+ * con el payload malformado falla con su motivo en `last_error`.
+ */
+export function cambioDeEmpresaDelJob(job: JobDTO): CambioDeEmpresaPendiente {
+  const organizacionId = empresaDelJob(job);
+  const { cambioId } = job.payload;
+  if (organizacionId === null) throw new Error("plan_aplicar_cambio_empresa: el trabajo no tiene empresa");
+  if (typeof cambioId !== "string" || cambioId === "") {
+    throw new Error("plan_aplicar_cambio_empresa: el payload no trae cambioId");
+  }
+  return { organizacionId, cambioId };
+}
+
+/**
+ * R17, R20: aplica ESE pendiente de la empresa cuando rige. Reemplazado, cancelado o ya aplicado →
+ * termina sin hacer nada; con el reloj por detrás de la fecha también, y lo recoge el barrido.
+ */
+export function crearPlanAplicarCambioEmpresaHandler(
+  repo: Pick<IPlanesRepository, "aplicarCambioDeEmpresa">,
+  now: () => Date = () => new Date(),
+): JobHandler {
+  return async (job) => {
+    await repo.aplicarCambioDeEmpresa(cambioDeEmpresaDelJob(job), now());
   };
 }
 
@@ -102,9 +141,16 @@ export function sembrarPlanCambiosVencidos(repo: IJobRepository, now: Date = new
  *
  * Corre UNA vez, en plataforma, no una por empresa: el cambio es del plan, no de una empresa
  * (`RECURRENTES_DE_PLATAFORMA` en `procesar-jobs/route.ts`).
+ *
+ * SLT-86 (R20): una segunda pasada, la de los cambios de empresa vencidos. Va después de la de los
+ * planes, para que un cambio de empresa que rige a la vez que una edición del plan se aplique con el
+ * plan ya editado.
  */
 export function crearPlanCambiosVencidosHandler(
-  repo: Pick<IPlanesRepository, "cambiosVencidos" | "aplicarCambioProgramado">,
+  repo: Pick<
+    IPlanesRepository,
+    "cambiosVencidos" | "aplicarCambioProgramado" | "cambiosDeEmpresaVencidos" | "aplicarCambioDeEmpresa"
+  >,
   now: () => Date = () => new Date(),
 ): JobHandler {
   return async () => {
@@ -113,6 +159,13 @@ export function crearPlanCambiosVencidosHandler(
     for (const cambio of await repo.cambiosVencidos(ahora)) {
       try {
         await repo.aplicarCambioProgramado(cambio, ahora);
+      } catch {
+        fallidos.push(cambio.cambioId);
+      }
+    }
+    for (const cambio of await repo.cambiosDeEmpresaVencidos(ahora)) {
+      try {
+        await repo.aplicarCambioDeEmpresa(cambio, ahora);
       } catch {
         fallidos.push(cambio.cambioId);
       }

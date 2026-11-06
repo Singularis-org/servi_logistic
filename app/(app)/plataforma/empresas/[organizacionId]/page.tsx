@@ -3,11 +3,12 @@ import { notFound } from "next/navigation";
 
 import { AppPage } from "@/components/shared/AppPage";
 import { verModulosEmpresa } from "@/lib/actions/_shared/modulos-empresa";
-import { verDetalleDePlan, verPlanDeEmpresa } from "@/lib/actions/_shared/planes-plataforma";
+import { verDetalleDePlan, verPlanDeEmpresa, verPreciosQueRigen } from "@/lib/actions/_shared/planes-plataforma";
 import { fijarModuloEmpresaAction } from "@/lib/actions/modulos-empresa";
 import {
   asignarPlanAction,
   cambiarTipoCobroAction,
+  cancelarCambioEmpresaAction,
   listarPlanesAsignablesAction,
   previsualizarAsignacionPlanAction,
 } from "@/lib/actions/planes";
@@ -15,8 +16,13 @@ import { esPlataforma } from "@/lib/auth/plataforma";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { NUCLEO } from "@/lib/modulos/catalogo";
-import { inicioDelCicloPorDefecto, rangoDelInicioDelCiclo } from "@/lib/planes/ciclo";
-import type { PlanDeEmpresaVista, PlanDTO } from "@/lib/types/planes";
+import {
+  fechaDeEfectoPorDefecto,
+  inicioDelCicloPorDefecto,
+  rangoDeLaFechaDeEfecto,
+  rangoDelInicioDelCiclo,
+} from "@/lib/planes/ciclo";
+import type { PlanDeEmpresaVista, PlanDTO, PreciosQueRigen } from "@/lib/types/planes";
 
 import { ModulosEmpresa } from "./_components/ModulosEmpresa";
 import { PlanEmpresa } from "./_components/PlanEmpresa";
@@ -77,6 +83,26 @@ async function leerPlanActual(
 }
 
 /**
+ * SLT-86 (R25; review m4) — por plan, los precios que pueden regir de hoy en adelante: los asignables y el
+ * actual. El costo del primer período de cada modal usa el que regirá en la fecha elegida. Aislada como
+ * las demás: si falla, `{}` y el modal usa el precio vigente.
+ */
+async function leerPreciosQueRigen(
+  actor: Actor,
+  asignables: PlanDTO[] | null,
+  planActual: PlanDTO | null,
+): Promise<PreciosQueRigen> {
+  const planIds = [...new Set([...(asignables ?? []).map((p) => p.id), ...(planActual ? [planActual.id] : [])])];
+  try {
+    const r = await verPreciosQueRigen(actor, { planIds });
+    return r.estado === "ok" ? r.precios : {};
+  } catch (error) {
+    console.error("[EmpresaDetallePage] verPreciosQueRigen lanzó", error);
+    return {};
+  }
+}
+
+/**
  * SL-23 (design §7; R8, R14) — el detalle de una empresa para el superadmin: qué módulos tiene
  * encendidos. Server Component.
  *
@@ -106,6 +132,7 @@ export default async function EmpresaDetallePage({
   ]);
   if (r.estado !== "ok") notFound();
   const planActual = await leerPlanActual(actor, plan, asignables);
+  const preciosQueRigen = await leerPreciosQueRigen(actor, asignables, planActual);
   // R33: solo un plan de la lista de asignables; cualquier otro valor se ignora.
   const planPedido = (await searchParams)?.plan;
   const planPreseleccionado =
@@ -134,9 +161,15 @@ export default async function EmpresaDetallePage({
           rangoInicioCiclo={rangoDelInicioDelCiclo(ahora)}
           // Ajuste planes-custom (D5): la primera asignación propone MAÑANA, del mismo reloj.
           inicioCicloPorDefecto={inicioDelCicloPorDefecto(ahora)}
+          // SLT-86 (R16, R25): «Rige desde» de un cambio, con su rango y el inicio del siguiente período.
+          rangoFechaDeEfecto={rangoDeLaFechaDeEfecto(ahora)}
+          fechaDeEfectoPorDefecto={plan?.plan ? fechaDeEfectoPorDefecto(plan.plan.cobro.tipo, ahora) : null}
+          // Review m4: el costo del primer período, con el precio que regirá en la fecha elegida.
+          preciosQueRigen={preciosQueRigen}
           previsualizarAsignacion={previsualizarAsignacionPlanAction}
           planPreseleccionado={planPreseleccionado}
           cambiarTipoCobro={cambiarTipoCobroAction}
+          cancelarCambioEmpresa={cancelarCambioEmpresaAction}
         />
 
         <section aria-labelledby="nucleo-titulo" className="flex flex-col gap-3">

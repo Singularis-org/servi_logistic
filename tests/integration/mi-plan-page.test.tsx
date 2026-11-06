@@ -66,4 +66,18 @@ describe("SLT-58 R8 — `/mi-plan` solo para maestro y admin", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Mi plan" })).toBeInTheDocument();
     expect(screen.getByText("Tu empresa no tiene plan asignado: sin límites")).toBeInTheDocument();
   });
+
+  it("SLT-86 R26: sin plan y con una primera asignación pendiente, la página baja el pendiente a la pantalla", async () => {
+    actorMock.mockResolvedValue({ usuarioId: "u-1", rol: "maestro" });
+    planDeLaEmpresaMock.mockResolvedValue({
+      sinPlan: true,
+      pendiente: { planNombre: "Pro", tipo: "quincenal", desde: "2026-12-01" },
+    });
+
+    render(<ToastProvider>{await MiPlanPage()}</ToastProvider>);
+
+    expect(screen.getByText("Sin límites")).toBeInTheDocument();
+    expect(screen.getByText("Pro empieza a regir el 2026-12-01")).toBeInTheDocument();
+    expect(screen.queryByText("Tu empresa no tiene plan asignado: sin límites")).toBeNull();
+  });
 });
