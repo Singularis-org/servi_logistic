@@ -683,3 +683,56 @@ Alcance: T5.5 más dos agregados del humano: las rutas (`OptimizacionRutaService
 4. **El chat de WhatsApp** (`lib/actions/chat-whatsapp.ts`, corte de «hoy») y `AsistenteService` (tope diario) siguen en CR, y ninguna task los nombra. ¿Van en T7.1 o en una task propia?
 
 Veredicto: T5.5 hecha, con rutas y la fecha de planes. Analítica, tablero, ranking, notificaciones, avisos, informes y envíos de WhatsApp usan la zona de la empresa, con R22/R23/R24/R28/R30 cubiertos por test. Typecheck y guardias en verde (salvo el baseline); `vitest related` sin rojos de T5.5.
+
+## Tanda 4c · T5.6: rastreo público con el país de la empresa dueña de la orden (2026-11-05)
+
+Decisión del humano («tras tanda 2», punto 3): el rastreo usa el país de la empresa dueña de la orden para el teléfono y la zona horaria. Se deja `normalizarTelefonoCR` y se retira `RASTREO_PUBLICO_ZONA_HORARIA`. No había marcadores `SLT-42 pendiente T5.6` en el código.
+
+### Archivos
+- **Producción (4).**
+  - `lib/services/RastreoPublicoService.ts`: gana `reglasPais?: Pick<IReglasPaisEmpresa, "deLaEmpresa" | "zonaHoraria">` como último parámetro.
+    - Lee el país una vez, siempre, después de `buscarPorGuia` y antes de comparar.
+    - Normaliza los dos lados del factor con `normalizarTelefono(raw, pais.telefono)`.
+    - Con el factor ya aceptado, lee la zona con `zonaHoraria()`. Es la misma memoria del marco, sin otra consulta.
+    - Fecha las transiciones y la entrada pendiente en esa zona. El formato del desfase de SL-37 no cambia.
+    - No importa `lib/db`, porque R33 de la 229 lo prohíbe: `PaisSinZonaHoraria` lo lanza el puerto.
+  - `lib/actions/rastreo-publico.ts`: el composition root inyecta `construirReglasPaisEmpresa(prisma)`. El puerto lee la empresa del `conEmpresa(orden.organizacionId)` que ya abría SL-17.
+  - `lib/config/rastreo-publico.ts`: sale `ZONA_HORARIA` (y `readNonEmpty`, que quedaba sin uso).
+  - `app/(app)/analitica/_components/entregas/ActualizarAnalitica.tsx`: solo un comentario que nombraba la variable retirada.
+  - `.env.example` y `docs/` no nombraban la variable: no hubo que tocarlos.
+- **Tests.**
+  - Nuevo: `tests/unit/services/rastreo-publico-zona-pais.test.ts` (13 casos).
+  - Adaptados al contrato: sin `ZONA_HORARIA` y con `reglasPaisFijas()`, que con CR da el resultado de antes.
+    - `rastreo-publico-service.test.ts`: el caso «la zona sale de la configuración» pasa a «la zona sale del país».
+    - `rastreo-publico.nombre-resultado.test.ts`.
+    - Las guardias `rastreo-dto-lista-blanca` y `rastreo-sin-estatus-crudo`.
+    - `tests/components/RastreoDialog.pendiente.test.tsx` (zona `UTC`, como antes).
+    - 5 de integración: 454/455 y `rastreo-publico.int`.
+
+### Mapa R → test
+| R | Test (`tests/unit/services/rastreo-publico-zona-pais.test.ts`) |
+|---|---|
+| R27 | «el mismo instante se publica a las 21:30 -06:00 en Costa Rica y a las 22:30 -05:00 en Bogota»; «la entrada pendiente de confirmar tambien se fecha en la zona del pais»; «la misma instancia atiende dos ordenes de paises distintos sin recordar la zona de la primera»; «en Colombia, el factor tecleado con el prefijo 57 identifica el envio»; «guia existente: el pais se lee dentro de la empresa DUEÑA de la orden» (composition root); «el servicio ya no lee la zona de la configuracion ni de RASTREO_PUBLICO_ZONA_HORARIA»; «el servicio ya no usa el normalizador de Costa Rica» |
+| R28 | «sin zona en el pais y con el factor correcto, falla con PaisSinZonaHoraria antes de leer el historial» |
+| R7/R8 de la 229 (no regresión) | «guia inexistente: no_encontrado, como hoy, sin abrir empresa ni leer pais»; «sin zona en el pais y con el factor ERRADO, responde no_encontrado»; «pais sin reglas de telefono: no_encontrado, con el mismo trabajo que un factor errado»; «R8 intacto: orden no visible y factor errado leen el pais igual y responden igual» |
+
+### Desvíos y decisiones mías (a confirmar)
+1. **País sin prefijo o sin dígitos nacionales (`telefono: null`).** La orden queda no consultable: responde `no_encontrado`, igual que un teléfono corto (G2). No lanza `PaisIncompleto`, porque un error distinto de `no_encontrado` delataría que la guía existe.
+2. **País sin zona.** Lanza `PaisSinZonaHoraria` (R28), pero solo después de aceptar el factor. Con un factor errado responde `no_encontrado`, así que no filtra si la guía existe. La action no lo captura: es una configuración rota del país, y sale como cualquier error de servidor.
+3. **Guía inexistente.** La respuesta es la misma de hoy. El composition root corta antes del servicio (SL-17), así que no abre empresa ni lee el país. El test lo fija.
+
+### Salida
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: exit 0.
+- `eslint` de los 15 archivos tocados y del test nuevo: 0 errores. Hay 3 warnings `no-unused-vars` (`_numGuia`, `_ordenId`) que ya estaban en `rastreo-publico-service.test.ts`.
+- `pnpm test:guardias`: `Test Files 2 failed | 323 passed | 3 skipped (328) · Tests 5 failed | 4550 passed | 24 skipped (4579)`.
+  - 4 son de `dependencias-declaradas-presentes`, en el baseline.
+  - 1 es de `sin-estados-retirados`, por carga. Corrida aislada: `Tests 6 passed (6)`. No toca nada de T5.6.
+- Tests del rastreo: los 4 unitarios, las 5 guardias `rastreo-*`, `RastreoDialog.pendiente` y `rastreo-publico.int`. Resultado: `Test Files 12 passed (12) · Tests 150 passed (150)`.
+- `vitest related --run` sobre los 4 de producción (un lote, sin `tests/components` ni `tests/integration`): `Test Files 9 passed (9) · Tests 113 passed (113)`.
+- Integración 454/455 contra base: la corre CI. Su typecheck pasa.
+
+### Preguntas abiertas
+1. ¿Se acepta que un país sin reglas de teléfono deje sus órdenes no consultables (`no_encontrado`) en el rastreo, en vez de usar otro país o lanzar?
+2. ¿Se acepta que un país sin zona dé un error de servidor a quien ya acertó el factor? La otra opción es responder `no_encontrado` también ahí, y la falta de zona no se vería.
+
+Veredicto: T5.6 hecha. El rastreo público toma el teléfono y la zona del país de la empresa dueña de la orden, y R27 está cubierto. Typecheck, lint, guardias (salvo el baseline) y tests del rastreo en verde.
