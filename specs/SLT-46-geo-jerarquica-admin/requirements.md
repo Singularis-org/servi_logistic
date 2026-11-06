@@ -28,8 +28,8 @@
 > tablas `provincia`, `canton` y `distrito`. «Tipo» es una fila de `tipo_nivel_geografico`; el tipo
 > de clave `nivel_<k>` es «el tipo de la profundidad k». «P» es el número de tipos de un país. La
 > columna «Decisión» dice qué fila de `## Decisiones cerradas` cubre; «Alcance» es el bloque de arriba.
-> Los requisitos que dependen de una pregunta abierta lo dicen con «(P<n>)»: se escriben con la
-> propuesta y cambian si el humano responde otra cosa.
+> Las preguntas P1–P9 las respondió el humano el 2026-11-06 (filas «P<n>» de `## Decisiones
+> cerradas`); P2 y P3 cambiaron la propuesta y de ahí salen R46–R50.
 
 ### Fuente de las escrituras y sincronía invertida
 
@@ -47,8 +47,8 @@
 
 | R | Requisito | Decisión |
 |---|---|---|
-| R8 | Las migraciones de SLT-46 DEBEN ser solo aditivas: sin `DROP`, `TRUNCATE`, `RENAME` ni `ALTER COLUMN`; sin `INSERT`, `UPDATE` ni `DELETE` que la migración ejecute sobre una tabla existente (sí dentro del cuerpo de una función de trigger); `ALTER TYPE` solo como `ADD VALUE IF NOT EXISTS`; y cada una DEBE traer su `down.sql`. | Migraciones |
-| R9 | CUANDO se aplican los `down.sql` de SLT-46 en orden inverso, el esquema y los datos DEBEN volver a los de SLT-45 (salvo los valores de enum añadidos), la sincronía vieja → nodo de SLT-43 DEBE seguir funcionando, y volver a aplicar las migraciones DEBE dejar lo mismo que la primera vez. | Migraciones |
+| R8 | Las migraciones de SLT-46 DEBEN ser solo aditivas: sin `DROP`, `TRUNCATE`, `RENAME` ni `ALTER COLUMN`; sin `INSERT`, `UPDATE` ni `DELETE` que la migración ejecute sobre una tabla existente (sí dentro del cuerpo de una función de trigger); `ALTER TYPE` solo como `ADD VALUE IF NOT EXISTS`; `CREATE OR REPLACE FUNCTION` solo sobre la función de trigger `pais_tipos_de_nivel`; y cada una DEBE traer su `down.sql`. | Migraciones; P2 |
+| R9 | CUANDO se aplican los `down.sql` de SLT-46 en orden inverso, el esquema y los datos que existían antes de SLT-46 DEBEN volver a los de SLT-45 (salvo los valores de enum añadidos), `pais_tipos_de_nivel` DEBE volver a su cuerpo de SLT-43, la sincronía vieja → nodo de SLT-43 DEBE seguir funcionando, y volver a aplicar las migraciones DEBE dejar lo mismo que la primera vez. | Migraciones |
 | R10 | Las migraciones de SLT-46 NO DEBEN alterar, indexar ni escribir la tabla `orden`. | Migraciones; Alcance (épica: sin bloqueos largos sobre `orden`) |
 
 ### Equivalencia para Costa Rica
@@ -57,13 +57,13 @@
 |---|---|---|
 | R11 | DESPUÉS DE cualquier secuencia de altas, renombres, retiros, reactivaciones y cargas CSV hechas desde la pantalla, el sistema DEBE dejar, para cada país, los nodos de profundidad 1–3 y las filas de `provincia`/`canton`/`distrito` iguales en id, nombre, código, `activo` y padre. | Alcance |
 | R12 | CUANDO el superadmin hace en Costa Rica una alta, un renombre, un retiro, una reactivación o una carga CSV con una entrada dada, el sistema DEBE responder el mismo desenlace (status, campos de error y mensajes) que en SLT-45 con esa entrada, y DEBE dejar las mismas filas en la geografía vieja (salvo los ids de las altas). | Alcance |
-| R13 | El script de datos de la épica DEBE ofrecer un modo de solo lectura que compare fila a fila la geografía vieja con los nodos de profundidad 1–3 de cada país y termine con código distinto de 0 si alguna fila difiere o falta. (P8) | Alcance (mitigación: equivalencia) |
+| R13 | El script de datos de la épica DEBE ofrecer un modo de solo lectura que compare fila a fila la geografía vieja con los nodos de profundidad 1–3 de cada país y termine con código distinto de 0 si alguna fila difiere o falta. | Alcance (mitigación: equivalencia); P8 |
 
 ### Tipos y nodos de cualquier profundidad
 
 | R | Requisito | Decisión |
 |---|---|---|
-| R14 | CUANDO el superadmin da de alta un nodo, el sistema DEBE darle el tipo de su profundidad (el tipo `nivel_<profundidad>` de su país). (P1) | Alcance |
+| R14 | CUANDO el superadmin da de alta un nodo, el sistema DEBE darle el tipo de su profundidad (el tipo `nivel_<profundidad>` de su país), sin ofrecer elegirlo. | Alcance; P1 |
 | R15 | SI el país no tiene tipo para la profundidad del nodo que se da de alta, ENTONCES el sistema DEBE responder `validation_error` sin escribir nada. | Alcance |
 | R16 | CUANDO el superadmin da de alta un nodo como raíz de un país o como hijo de cualquier nodo, con código opcional, el sistema DEBE crearlo activo (también bajo un padre retirado); SI el nombre normalizado ya lo usa un hermano (o, en una raíz, otra raíz del país) o el código ya lo usa otro nodo del mismo tipo y país, ENTONCES DEBE responder `conflict`; SI el padre o el país no existen, ENTONCES DEBE responder `not_found`; en ningún rechazo DEBE escribir nada. | Alcance; Retirar nodo |
 | R17 | DONDE el tipo del nodo fija dígitos de código, el sistema DEBE exigir ese número de dígitos y, si el tipo hereda prefijo, que el código empiece por el de su padre; DONDE el tipo no fija dígitos, DEBE aceptar como código cualquier texto de 1 a 20 caracteres sin espacios. Para Costa Rica el resultado DEBE ser el mismo que con la regla de SL-20 (R17 de SL-20). | Alcance |
@@ -77,8 +77,8 @@
 
 | R | Requisito | Decisión |
 |---|---|---|
-| R23 | CUANDO el superadmin da de alta un país del catálogo ISO con una lista ordenada de entre 3 y 10 tipos (nombre singular y plural de cada uno), el sistema DEBE crear el país y sus tipos con las claves `nivel_1`…`nivel_P` en ese orden, con los tres primeros también en `pais.nivel_{1,2,3}_{singular,plural}`, en una sola transacción. (P2) | Alcance |
-| R24 | SI el alta de país trae menos de 3 o más de 10 tipos, o un nombre de tipo fuera de 2–40 caracteres, ENTONCES el sistema DEBE responder `validation_error` sin crear nada; los demás rechazos del alta (código fuera del catálogo, país o nombre repetidos) DEBEN responder igual que en SL-20. (P2) | Alcance |
+| R23 | CUANDO el superadmin da de alta un país del catálogo ISO con una lista ordenada de entre 2 y 10 tipos (nombre singular y plural de cada uno), el sistema DEBE crear el país y exactamente esos tipos, con las claves `nivel_1`…`nivel_P` en ese orden, con los de clave `nivel_1`–`nivel_3` que existan también en `pais.nivel_N_{singular,plural}`, en una sola transacción. | Alcance; P2 |
+| R24 | SI el alta de país trae menos de 2 o más de 10 tipos, o un nombre de tipo fuera de 2–40 caracteres, ENTONCES el sistema DEBE responder `validation_error` sin crear nada; los demás rechazos del alta (código fuera del catálogo, país o nombre repetidos) DEBEN responder igual que en SL-20. | Alcance; P2 |
 
 ### Edición de los nombres de un tipo
 
@@ -87,6 +87,17 @@
 | R25 | CUANDO el superadmin cambia el nombre singular o el plural de un tipo de un país ya creado, el sistema DEBE guardarlo en el tipo y, DONDE la clave del tipo es `nivel_1`, `nivel_2` o `nivel_3`, DEBE copiarlo a la columna `pais.nivel_N_singular`/`_plural` correspondiente en la misma transacción. | ¿El nombre de tipo corregido se copia a `pais.nivel_N_*`? |
 | R26 | SI la edición de un tipo pide los nombres que ya tiene, ENTONCES el sistema DEBE responder éxito sin escribir; SI el tipo no existe, ENTONCES DEBE responder `not_found`; SI un nombre no cumple 2–40 caracteres, ENTONCES DEBE responder `validation_error`; en ningún rechazo DEBE escribir nada. | Alcance |
 | R27 | CUANDO se cambió el nombre de un tipo `nivel_1`–`nivel_3`, las pantallas de las empresas de ese país DEBEN mostrar el nombre nuevo de ese nivel en su siguiente carga. | ¿El nombre de tipo corregido se copia a `pais.nivel_N_*`? |
+
+### Países de 2 niveles y agregar un nivel
+
+| R | Requisito | Decisión |
+|---|---|---|
+| R46 | MIENTRAS un país tiene 2 tipos, el sistema NO DEBE tener para él ningún tipo de clave `nivel_3`: ni tras el alta, ni tras editar sus tipos 1 y 2, ni tras cualquier otra escritura de su fila `pais`. | P2 |
+| R47 | CUANDO se escribe la fila `pais` de un país que tiene tipo `nivel_3` (Costa Rica y todo país creado antes de SLT-46), el sistema DEBE dejar sus tipos `nivel_1`–`nivel_3` exactamente como los dejaba SLT-43 con esa misma escritura. | P2; Migraciones |
+| R48 | CUANDO el superadmin agrega un nivel a un país de P tipos, con P menor que 10, con nombre singular y plural, el sistema DEBE crear el tipo `nivel_<P+1>` como último nivel y, DONDE P+1 es 3, DEBE copiar sus nombres a `pais.nivel_3_singular`/`_plural`; todo en una sola transacción y sin cambiar los demás tipos ni ningún nodo. | P3 |
+| R49 | SI el país ya tiene 10 tipos o un nombre no cumple 2–40 caracteres, ENTONCES el sistema DEBE responder `validation_error`; SI el país no existe, ENTONCES `not_found`; SI el tipo `nivel_<P+1>` ya existe cuando se escribe (otra alta en paralelo), ENTONCES `conflict`; en ningún rechazo DEBE escribir nada. | P3 |
+| R50 | El sistema NO DEBE ofrecer quitar un nivel ni un tipo de un país: ninguna action ni control de la pantalla lo hace, y ningún archivo de `lib/`, `app/` ni `components/` borra filas de `tipo_nivel_geografico`. | P3; Retirar nodo |
+| R51 | MIENTRAS un país tiene 2 tipos, las pantallas de sus empresas DEBEN mostrar como etiqueta del nivel 3 la etiqueta neutra «Nivel 3» (singular y plural) y nunca un texto vacío. (P10) | P2 |
 
 ### Disponibilidad del país
 
@@ -99,8 +110,8 @@
 
 | R | Requisito | Decisión |
 |---|---|---|
-| R30 | CUANDO el superadmin carga un CSV para un país, el sistema DEBE exigir en la cabecera las columnas `nivel_<k>` y `codigo_nivel_<k>` para cada k de 1 a P; SI falta una, ENTONCES DEBE rechazar el archivo entero sin escribir nada. (P4) | Alcance |
-| R31 | CUANDO se carga para Costa Rica un CSV con el formato de SL-20, el sistema DEBE aceptarlo y devolver el mismo resultado (resumen, errores por línea y avisos) que en SLT-45 con el mismo archivo y la misma base. | Alcance |
+| R30 | CUANDO el superadmin carga un CSV para un país, el sistema DEBE exigir en la cabecera las columnas `nivel_<k>` y `codigo_nivel_<k>` para cada k de 1 a P (columnas neutras, sin el nombre del tipo); SI falta una, ENTONCES DEBE rechazar el archivo entero sin escribir nada. | Alcance; P4 |
+| R31 | CUANDO se carga para Costa Rica un CSV con el formato de SL-20, el sistema DEBE aceptarlo y devolver el mismo resultado (resumen, errores por línea y avisos) que en SLT-45 con el mismo archivo y la misma base; la única excepción es el caso de SL-20 R49 (dos homónimos normalizados ya en la base), que SLT-46 supera porque la base ya no admite ese estado. | Alcance; P4; P6 |
 | R32 | SI una fila del CSV deja vacío un nivel y llena uno más profundo, o deja vacío `nivel_1` o `nivel_2`, ENTONCES el sistema DEBE tratarla como inválida con su número de línea y su motivo, y NO DEBE escribir nada. | Alcance |
 | R33 | CUANDO un CSV válido se carga, el sistema DEBE cruzarlo con los nodos del país leídos de `nodo_geografico`, DEBE crear como nodos (con el tipo de su profundidad) los que falten y completar los códigos vacíos, todo en una sola transacción, y DEBE devolver cuántos creó por profundidad, cuántos ya existían y cuántos códigos completó. | Alcance |
 | R34 | Los límites de la carga (5 MB, 10 000 filas de datos, 200 errores devueltos, UTF-8, `.csv`) y el aviso por cada columna que no es del formato DEBEN seguir como en SL-20. | Alcance |
@@ -109,16 +120,16 @@
 
 | R | Requisito | Decisión |
 |---|---|---|
-| R35 | CUANDO el superadmin da de alta, renombra, retira o reactiva un nodo, el sistema DEBE guardar en la misma transacción una fila en `historial_plataforma` con la acción `nodo_geografico_*`, la entidad `nodo_geografico`, la cadena de nombres de la raíz al nodo, el país y el actor (id y nombre congelado), y en el renombre el nombre anterior y el nuevo. (P5) | Historial |
+| R35 | CUANDO el superadmin da de alta, renombra, retira o reactiva un nodo, el sistema DEBE guardar en la misma transacción una fila en `historial_plataforma` con la acción `nodo_geografico_*`, la entidad `nodo_geografico`, la cadena de nombres de la raíz al nodo, el país y el actor (id y nombre congelado), y en el renombre el nombre anterior y el nuevo; la entidad es `nodo_geografico` a cualquier profundidad, también en 1–3. | Historial; P5 |
 | R36 | CUANDO una carga CSV escribe algo, el sistema DEBE guardar en la misma transacción una fila `division_cargada` con las cifras por profundidad; SI no escribe nada, ENTONCES NO DEBE guardar ninguna. | Historial |
-| R37 | CUANDO se da de alta un país, el sistema DEBE guardar la fila `pais_creado` y una fila `tipo_nivel_geografico_creado` por tipo; CUANDO se cambia un nombre de tipo, DEBE guardar una fila `tipo_nivel_geografico_renombrado` por cada nombre que cambió, con el anterior y el nuevo; todo en la misma transacción del cambio. (P7) | Historial |
+| R37 | CUANDO se da de alta un país, el sistema DEBE guardar la fila `pais_creado` y una fila `tipo_nivel_geografico_creado` por tipo; CUANDO se agrega un nivel a un país, DEBE guardar una fila `tipo_nivel_geografico_creado` del tipo nuevo; CUANDO se cambia un nombre de tipo, DEBE guardar una fila `tipo_nivel_geografico_renombrado` por cada nombre que cambió, con el anterior, el nuevo y el campo (`singular` o `plural`) en `detalle`; todo en la misma transacción del cambio. | Historial; P3; P7 |
 | R38 | Las escrituras de geografía y de tipos del superadmin NO DEBEN escribir en `historial_accion`. | Historial |
 
 ### Autorización y contexto
 
 | R | Requisito | Decisión |
 |---|---|---|
-| R39 | SI un rol que no es de plataforma invoca cualquier operación de esta pantalla (árbol del país, alta de país, edición de tipo, alta, renombre, retiro y reactivación de nodo, conteo de órdenes, carga CSV, disponibilidad), ENTONCES el service DEBE responder `forbidden` sin leer ni escribir la base. | E2E (el rol se prueba en el service) |
+| R39 | SI un rol que no es de plataforma invoca cualquier operación de esta pantalla (árbol del país, alta de país, edición de tipo, agregar nivel, alta, renombre, retiro y reactivación de nodo, conteo de órdenes, carga CSV, disponibilidad), ENTONCES el service DEBE responder `forbidden` sin leer ni escribir la base. | E2E (el rol se prueba en el service) |
 | R40 | Las operaciones de R39 DEBEN completarse con un superadmin que no pertenece a ninguna empresa, sin fallar con `EmpresaNoResuelta`. | Historial |
 | R41 | SI una operación en el contexto de una empresa intenta escribir `nodo_geografico` o `tipo_nivel_geografico`, ENTONCES la base DEBE rechazarla (`42501`) sin escribir nada. | Alcance |
 
@@ -131,6 +142,12 @@
 | R44 | SLT-46 NO DEBE cambiar las zonas de la empresa: el trigger `orden_nodo_geografico` DEBE seguir derivando el nodo de las FK de la orden, y `zona_distrito` y `distrito_zona_especial` DEBEN seguir admitiendo solo distritos. | ¿Una tarjeta o dos? |
 | R45 | La verificación de SLT-46 DEBE hacerse con unit e integración contra Postgres real, sin E2E nuevo, y los E2E existentes DEBEN seguir en verde en el gate completo. | E2E |
 
+### Proceso de la parte visual
+
+| R | Requisito | Decisión |
+|---|---|---|
+| R52 | La pantalla (árbol de N niveles, lista de tipos del alta, edición de tipos y agregar nivel) NO DEBE implementarse hasta que exista una maqueta aprobada por el humano, con su fecha y su referencia anotadas en `progress/impl_SLT-46.md`, y lo implementado DEBE seguir esa maqueta. | P9 |
+
 ### Cobertura de las decisiones cerradas
 
 | Decisión | Requisitos |
@@ -139,47 +156,38 @@
 | ¿Mover nodos? | R6, R22 |
 | ¿El nombre de tipo corregido se copia a `pais.nivel_N_*`? | R25, R27 |
 | ¿País disponible sin 3 niveles antes de SLT-48? | R28, R29 |
-| Retirar nodo (baja lógica) | R7, R16, R19, R20, R42 |
+| Retirar nodo (baja lógica) | R7, R16, R19, R20, R42, R50 |
 | E2E | R39, R45 |
 | Historial | R35–R38, R40 |
-| Migraciones | R4, R8, R9, R10 |
+| Migraciones | R4, R8, R9, R10, R47 |
+| P1 Tipo de un nodo nuevo | R14 |
+| P2 De 2 a 10 niveles | R8, R23, R24, R46, R47, R51 |
+| P3 Agregar un nivel al final | R37, R48, R49, R50 |
+| P4 Cabeceras neutras del CSV | R30, R31 |
+| P5 Entidad `nodo_geografico` | R35 |
+| P6 SL-20 R49 superado | R31 |
+| P7 Una fila por nombre de tipo cambiado | R37 |
+| P8 `--equivalencia-geografia` | R13 |
+| P9 Maqueta aprobada antes de la UI | R52 |
 
 ## Preguntas abiertas
-Sembradas por `/afinar-feature`: ninguna.
+Sembradas por `/afinar-feature`: ninguna. P1–P9 (spec_author, F1.2) respondidas por el humano el
+2026-11-06: pasan a `## Decisiones cerradas`.
 
-Nuevas (spec_author, F1.2, 2026-11-06). Cada una lleva la propuesta con la que está escrito el spec;
-el humano la confirma o la cambia en F1.4.
+Nueva (spec_author, revisión F1.2, 2026-11-06), al aplicar P2:
 
-- **P1. Tipo de un nodo nuevo.** La decisión 2 de la épica dice que el tipo no ata la profundidad.
-  Propuesta: en SLT-46 el tipo de un nodo es siempre el de su profundidad (`nivel_<k>`), sin elegirlo.
-  Motivo: con esa regla la sincronía vieja → nodo de SLT-43 ve el nodo igual que lo dejó la app y no lo
-  pisa, sin tocar sus funciones (`design.md §2.2`). Mezclar tipos en una profundidad queda para después
-  de SLT-48. Afecta a R14, R21, R33.
-- **P2. Cuántos tipos en el alta de país.** Propuesta: entre 3 y 10. El mínimo es 3 porque `pais`
-  exige los seis nombres de nivel y el trigger `pais_tipos_de_nivel` crea siempre tres tipos; un país
-  que use solo 2 niveles lleva un tercer tipo sin nodos. El tope de 10 es una propuesta, no un dato del
-  repo. Afecta a R23, R24.
-- **P3. Añadir tipos a un país ya creado.** La tarjeta solo pide editar los nombres. Propuesta: no se
-  añaden ni se quitan tipos después del alta en SLT-46.
-- **P4. Cabeceras del CSV.** «Una columna por tipo y profundidad»: propuesta, columnas neutras
-  `nivel_<k>`/`codigo_nivel_<k>` (las de SL-20, ya que el tipo de la profundidad k es `nivel_<k>`), con
-  la equivalencia «`nivel_k` = <tipo>» en la pantalla como hoy. La alternativa (cabecera con el nombre
-  del tipo, como la plantilla de órdenes de SLT-45) está en `design.md §12`. Afecta a R30.
-- **P5. Entidad del historial de un nodo.** Propuesta: `nodo_geografico` a cualquier profundidad (hoy
-  se guarda `provincia`/`canton`/`distrito`). Ninguna pantalla lee `historial_plataforma` todavía.
-  Afecta a R35.
-- **P6. Caso de test de SL-20 R49 (homónimos normalizados en la base).** Con la carga leída del nodo
-  ese estado no puede existir (el único normalizado de SLT-43 lo impide). Propuesta: se retira el caso
-  «decision 4: dos homónimos normalizados» de `tests/integration/db/carga-division.test.ts` y SL-20 R49
-  queda superado por SLT-46. Sin esta aprobación el reviewer lo vería como una aserción cambiada.
-- **P7. Historial al cambiar los dos nombres de un tipo.** Propuesta: una fila por nombre cambiado,
-  con `detalle = {"campo": "singular" | "plural"}`; las columnas `valor_anterior`/`valor_nuevo` (80)
-  caben de sobra (40). Afecta a R37.
-- **P8. Dónde vive la comparación fila a fila.** Propuesta: un modo nuevo `--equivalencia-geografia`
-  en `scripts/geo-backfill-nodo.ts`, de solo lectura, sin tocar los modos de SLT-43. Afecta a R13.
-- **P9. Pantalla y `/design`.** La pantalla de SL-20 cambia de forma (árbol de N niveles, lista de
-  tipos en el alta, edición de tipos). Propuesta: pasa por `/design` antes de T6 (`docs/perfil-agentes.md
-  > frontend_dev`), aunque no es una pantalla nueva.
+- **P10. Qué etiqueta de nivel 3 ven las empresas de un país de 2 niveles.** Para que un país de 2
+  niveles no tenga tipo `nivel_3` sin alterar columnas, su fila `pais` guarda vacío en
+  `nivel_3_singular`/`_plural` (`design.md §2.4`), y las pantallas de empresa (filtros, columnas y
+  exportes con la etiqueta de «distrito») necesitan algún texto. Esas empresas no pueden crear órdenes
+  («país aún no habilitado»), así que la columna siempre sale vacía. Opciones y coste:
+  (a) **propuesta**: la etiqueta neutra que ya existe para el superadmin, «Nivel 3»
+  (`ETIQUETAS_NEUTRAS`), con un respaldo en `etiquetasDePais`: una línea y un test;
+  (b) repetir la etiqueta del nivel 2: mismo coste, pero la pantalla muestra dos columnas con el mismo
+  nombre;
+  (c) ocultar las columnas y filtros del nivel 3: toca cada pantalla que usa la etiqueta (más de diez
+  archivos) y es presentación, que va en SLT-47.
+  R51 está escrito con (a).
 
 ## Decisiones cerradas (no reabrir)
 | Fecha | Pregunta | Decisión |
@@ -192,3 +200,12 @@ el humano la confirma o la cambia en F1.4.
 | heredada SL-20 | E2E | Sin E2E nuevo; el rol se prueba en el service. |
 | heredada SL-20 | Historial | Toda acción sobre nodos y tipos va a `historial_plataforma`. |
 | heredada SLT-43 | Migraciones | Solo aditivas hasta SLT-48, cada una con `down.sql`. |
+| 2026-11-06 | P1. ¿El tipo de un nodo nuevo se elige? | No: es el de su profundidad (`nivel_<k>`). |
+| 2026-11-06 | P2. ¿Cuántos niveles tiene un país? | De 2 a 10 (cambia la propuesta de 3–10). Un país de 2 niveles queda con exactamente 2 tipos, con migraciones solo aditivas; `CREATE OR REPLACE FUNCTION` de una función de trigger está permitido, como en SLT-45. |
+| 2026-11-06 | P3. ¿Se agregan o quitan niveles a un país ya creado? | Se agrega un nivel al final (p. ej. Barrio debajo de Distrito), hasta 10, con historial; quitar niveles no (cambia la propuesta de «ni añadir ni quitar»). |
+| 2026-11-06 | P4. ¿Cabeceras del CSV? | Neutras, `nivel_<k>` y `codigo_nivel_<k>`; el CSV de CR no cambia. |
+| 2026-11-06 | P5. ¿Entidad del historial de un nodo? | `nodo_geografico` a cualquier profundidad. |
+| 2026-11-06 | P6. ¿Caso de SL-20 «dos homónimos normalizados en la base»? | Se retira; SL-20 R49 queda superado por SLT-46 porque el único normalizado de SLT-43 ya no admite ese estado. |
+| 2026-11-06 | P7. ¿Historial al cambiar los dos nombres de un tipo? | Una fila por nombre cambiado, con el campo en `detalle`. |
+| 2026-11-06 | P8. ¿Dónde vive la comparación fila a fila? | Modo de solo lectura `--equivalencia-geografia` en el script de SLT-43. |
+| 2026-11-06 | P9. ¿La pantalla pasa por diseño? | Sí: árbol de N niveles, lista de tipos, edición de tipos y agregar nivel pasan por una maqueta que aprueba el humano antes de implementarlos; el backend puede avanzar antes. |

@@ -1,8 +1,10 @@
 # SLT-46 — geo-jerarquica-admin · design.md
 
 > Escrito por `spec_author` el 2026-11-06 sobre la rama apilada en SLT-45 (contiene SLT-43, SLT-44,
-> SLT-65 y SLT-71). Requisitos en `requirements.md` (R1–R45). El alcance y la tabla «Decisiones
-> cerradas» no se reabren aquí. Lo que depende de una pregunta abierta lleva «(P<n>)».
+> SLT-65 y SLT-71). Requisitos en `requirements.md` (R1–R52). El alcance y la tabla «Decisiones
+> cerradas» no se reabren aquí. Revisado el mismo día con las respuestas del humano a P1–P9 (filas
+> «P<n>» de `## Decisiones cerradas`); lo único que sigue abierto es P10 (etiqueta de nivel 3 de un país
+> de 2 niveles, §2.4), que lleva su marca.
 >
 > El MCP del grafo responde, pero no tiene indexado este worktree (`list_projects` no lo lista): la
 > exploración se hizo con Grep/Read.
@@ -19,15 +21,16 @@ términos `tipo_nivel_geografico`, `nodo_geografico` (escritor), `pais_tipos_de_
 | SL-20 (`done`): pantalla `/plataforma/geografia`, alta de país, CSV de división, historial de plataforma | `specs/SL-20-…`, `app/(app)/plataforma/geografia/**`, `lib/actions/geografia-plataforma.ts` | Se **extiende**: mismo borde (sesión → `exigirSuperadmin` → zod → service en `comoPlataforma`), mismas pantallas |
 | `nodo_geografico`, `tipo_nivel_geografico`, invariantes, únicos, RLS + `REVOKE` | `db/migrations/20261104120100`, `…120200` (SLT-43) | Se reutilizan sin cambios: son la regla de nombre, profundidad y código |
 | Sincronía vieja → nodo (`geo_sincronizar_{provincia,canton,distrito}`) | `db/migrations/20261104120300` (SLT-43) | **No se toca**. Convive con la copia nueva (§2.2) |
-| Trigger `pais_tipos_de_nivel` (pais → tipos 1–3) | `db/migrations/20261104120100` | **No se toca**: hace de copia de vuelta al editar un tipo (§2.4) |
+| Trigger `pais_tipos_de_nivel` (pais → tipos 1–3) | `db/migrations/20261104120100` | Se **reemplaza su función** con `CREATE OR REPLACE` (P2): mismo comportamiento salvo que no crea `nivel_3` si el país no lo tiene (§2.4). El trigger no se toca |
 | Valores `nodo_geografico_{creado,renombrado,desactivado,activado}` y entidad `nodo_geografico` en los enums de `historial_plataforma` | `db/schema.prisma`, `20261104120000` | Se usan por primera vez (P5) |
+| `etiquetasDePais`, `ETIQUETAS_NEUTRAS` | `lib/types/pais.ts` | `etiquetasDePais` gana un respaldo para el nivel 3 vacío (P10, R51) |
 | `appendAccionPlataforma`, `resolverActorCongelado` | `lib/repositories/registrar-accion-plataforma.ts`, `registrar-accion.ts` | Único escritor del historial; sin cambios |
 | `CatalogoGeograficoRepository.dePais`, `geografia-dominio` (`ancestros`, `nodosBajo`, `tiposDelPais`) | SLT-44 | Lectura del árbol de N niveles (§4.3) |
 | `etiquetaDeEntidad("nodo_geografico", { nombres })` | `lib/types/historial-accion-etiquetas.ts` (SLT-43) | Etiqueta congelada de los nodos (R35) |
 | `planificarDivision`, `CargaDivisionService`, cotas del CSV | `lib/utils/division-csv.ts`, `lib/types/division-csv.ts` | Se generalizan de 3 niveles a P (§5) |
 | `validarCodigo` (regla por país, 3 niveles) y `tipo.digitos_codigo` + `codigo_hereda_prefijo` | `lib/utils/codigo-geografico.ts`, SLT-43 §2.1 | La regla pasa a leerse del tipo (§4.5) |
 | Regla «país aún no habilitado» de SLT-45 | `lib/services/geo-ubicacion.ts` (`esPaisDeTresNiveles`, `MSG_PAIS_NO_HABILITADO`) | No se toca; R29 lo prueba |
-| `equivalencia` del script de SLT-43 (conteos por profundidad) | `scripts/geo-backfill-nodo.ts` | Se añade un modo fila a fila (P8) |
+| `equivalencia` del script de SLT-43 (conteos por profundidad) | `scripts/geo-backfill-nodo.ts` | Se añade un modo fila a fila, `--equivalencia-geografia` (P8) |
 | Guardias `nodo-geografico-sin-escritor`, `geografia-renombrado-punto-unico`, `geografia-sin-borrado-fisico`, `slt43-migraciones-aditivas` | `tests/unit/guards/`, `tests/unit/db/` | La primera se retira (lo anunciaba); las otras se ajustan (§9) |
 | Fixture de países de 2 y 4 niveles | `tests/fixtures/paises-de-prueba-geo.ts` (SLT-45) | Se reutiliza para los tests de N niveles |
 | Base propia para bajar migraciones | `tests/integration/db/_fixtures/base-propia-43.ts` | Molde de la ida y vuelta de SLT-46 |
@@ -41,9 +44,10 @@ trigger nuevo `AFTER` en `nodo_geografico` copia cada nodo de profundidad 1–3 
 `provincia`/`canton`/`distrito` con el mismo id. La sincronía vieja → nodo de SLT-43 se queda: cuando
 recibe el eco de la copia nueva, encuentra el nodo idéntico y no escribe nada (su `WHERE … IS DISTINCT
 FROM`). Para que el eco sea siempre idéntico, el tipo de un nodo es el de su profundidad (P1). La
-pantalla del superadmin pasa a un árbol de N niveles; el alta de país recibe la lista de tipos; los
-nombres de un tipo se editan y, en los niveles 1–3, se copian a `pais.nivel_N_*`. El CSV de división
-admite P niveles y se cruza con los nodos. Dos migraciones, las dos aditivas; ninguna toca `orden`.
+pantalla del superadmin pasa a un árbol de N niveles; el alta de país recibe la lista de 2 a 10 tipos
+(P2); a un país ya creado se le agrega un nivel al final (P3); los nombres de un tipo se editan y, en
+los niveles 1–3, se copian a `pais.nivel_N_*`. El CSV de división admite P niveles y se cruza con los
+nodos. Tres migraciones, todas aditivas; ninguna toca `orden`.
 
 ## 2. Modelo de datos
 
@@ -51,14 +55,15 @@ Sin tablas ni columnas nuevas. `nodo_geografico` y `tipo_nivel_geografico` son d
 (sin `organizacion_id`, RLS de lectura por país, `REVOKE` de escritura a `servi_app`, SLT-43 R12):
 no cambia nada de eso. La app las escribe como dueño, dentro de `comoPlataforma` (§8).
 
-### 2.1 El tipo de un nodo (R14, R15) — P1
+### 2.1 El tipo de un nodo (R14, R15) — decisión P1
 
 - El tipo de un nodo de profundidad k es el tipo de clave `nivel_<k>` de su país. El service lo busca
   al dar de alta; si no existe, `validation_error` en `padreId` («Este país no tiene un nivel por debajo
   de <tipo del padre>») y no se escribe (R15).
 - Las claves `nivel_1..nivel_P` ya son la convención de SLT-43 (migración, sincronía y el fixture de 4
   niveles de SLT-45). La profundidad máxima de un país es P.
-- Por qué la regla (y no elegir el tipo): §2.2, «Convivencia». Alternativa en §12.
+- Por qué la regla (y no elegir el tipo): §2.2, «Convivencia». Alternativa en §12. La pantalla no
+  ofrece elegir tipo.
 
 ### 2.2 Copia nodo → geografía vieja (R2–R7)
 
@@ -118,19 +123,79 @@ EXISTS 'tipo_nivel_geografico'`. En su propia migración (un valor añadido no s
 transacción). `schema.prisma` gana los tres valores. No hay mapas exhaustivos sobre estos enums en
 `lib/` (Grep 2026-11-06: solo `registrar-accion-plataforma.ts` los importa como tipo).
 
-### 2.4 Tipos y `pais.nivel_N_*` (R23, R25, R27)
+Agregar un nivel (P3) **no necesita valor nuevo**: es la creación de un tipo y usa
+`tipo_nivel_geografico_creado`, con `detalle = {"origen": "nivel_agregado", "profundidad": k}` para
+distinguirla del alta de país (que va junto a `pais_creado` y lleva `"origen": "alta_de_pais"`).
 
-- **Alta de país.** `PaisRepository.crear` en una transacción: `pais.create` con los tres primeros
-  tipos en `nivel_{1,2,3}_*` → el trigger `pais_tipos_de_nivel` crea `nivel_1..3` (con la regla de
-  código de `pais`, que en un país nuevo es «sin dígitos») → `tipoNivelGeografico.createMany` de
-  `nivel_4..nivel_P` (`digitos_codigo` NULL, `codigo_hereda_prefijo` false) → historial (R37).
-- **Edición de un tipo.** `PaisRepository.renombrarTipo` en una transacción: lee el tipo con su país;
-  si los dos nombres son iguales → `sin_cambio`; `tipoNivelGeografico.update`; si la clave es
-  `nivel_1..3`, `pais.update` de las dos columnas de ese nivel → `pais_tipos_de_nivel` vuelve a hacer el
-  upsert de los tres tipos desde `pais` con los mismos valores (no hay trigger en
-  `tipo_nivel_geografico`, así que no hay bucle) → historial.
-- Las etiquetas de las empresas salen de `pais.nivel_N_*` (`etiquetasDePais` →
-  `EtiquetasGeograficasProvider` en `app/(app)/layout.tsx`): con la copia, R27 sale sin tocarlas.
+### 2.4 Tipos y `pais.nivel_N_*` (R23, R25, R27, R46–R51) — decisiones P2 y P3
+
+**El problema (P2).** `pais.nivel_{1,2,3}_{singular,plural}` son `NOT NULL` (SL-20) y la función
+`pais_tipos_de_nivel` (SLT-43, `20261104120100`) hace en cada `INSERT` y en cada `UPDATE OF` esas
+columnas un upsert de los tres tipos `nivel_1..3`. Un país de 2 niveles terminaría con un tipo
+`nivel_3`. No se puede quitar el `NOT NULL` (sería `ALTER COLUMN`) ni cambiar el trigger (sería
+`DROP`/`CREATE TRIGGER`).
+
+**La solución, aditiva.** Dos piezas:
+
+1. *Convención de dato*: un país sin nivel 3 guarda **texto vacío** (`''`) en `nivel_3_singular` y
+   `nivel_3_plural`. Cumple el `NOT NULL`; `pais` no tiene `CHECK` sobre esas columnas (Grep de
+   `db/migrations` el 2026-11-06: solo `pais_id_check` y `pais_digitos_codigo_check`, y un país nuevo no
+   lleva dígitos, así que `digitos_codigo_nivel_3` sigue `NULL` como los otros dos). Ningún país
+   existente tiene `''`: todos nacieron con los seis nombres (zod de SL-20, 2–40) o por la migración de
+   CR.
+2. *Función nueva*: migración `20261106120200_slt46_pais_tipos_de_nivel_opcional` con
+   `CREATE OR REPLACE FUNCTION pais_tipos_de_nivel()` (mismo nombre, `SECURITY DEFINER SET search_path
+   = public`, mismo `RETURNS trigger`). El cuerpo es el de SLT-43 con una sola diferencia: la fila de
+   `nivel_3` del `VALUES` solo entra si `NEW.nivel_3_singular <> ''`. Se escribe como
+   `INSERT … SELECT … FROM (VALUES …) v WHERE v.clave <> 'nivel_3' OR NEW.nivel_3_singular <> ''` con
+   el mismo `ON CONFLICT (pais_id, clave) DO UPDATE`. El trigger `pais_tipos_de_nivel` y sus columnas no
+   se tocan. La función no borra nunca un tipo (R50).
+
+Qué deja:
+
+| País | Efecto |
+|---|---|
+| CR y todo país anterior a SLT-46 (`nivel_3_singular` lleno) | Idéntico a SLT-43: el `WHERE` deja pasar las tres filas (R47). Se prueba comparando los tipos tras la misma escritura con la función vieja y la nueva |
+| País nuevo de 2 tipos (`''`) | `INSERT`: solo `nivel_1` y `nivel_2`. Un `UPDATE` posterior (editar el tipo 1 o 2): upsert de esos dos; ningún `nivel_3` (R46) |
+| País nuevo de 3–10 tipos | Como hoy: `nivel_1..3` por el trigger y `nivel_4..P` por el repositorio |
+| Fixture de SLT-45 «2 niveles» (`Aldea` en `nivel_3`) | Sigue con 3 tipos y sin nodos de profundidad 3: es un país de P = 3 que aún no se cargó hasta abajo. No se cambia |
+
+**Alta de país (R23, R24).** `PaisRepository.crear` en una transacción: `pais.create` con los tipos
+1–3 en `nivel_{1,2,3}_*` y, si P = 2, `''` en los de nivel 3 → la función crea `nivel_1..min(P,3)`
+(con la regla de código de `pais`, que en un país nuevo es «sin dígitos») →
+`tipoNivelGeografico.createMany` de `nivel_4..nivel_P` (`digitos_codigo` NULL, `codigo_hereda_prefijo`
+false) → historial (R37). El `''` lo pone solo el repositorio; zod nunca lo acepta como nombre (2–40).
+
+**Agregar un nivel (R48–R50).** `PaisRepository.agregarNivel(paisId, singular, plural, actor) →
+"no_existe" | "tope" | TipoNivelDTO`, en una transacción:
+
+1. Lee el país y cuenta sus tipos (P). Sin país → `no_existe`; P = 10 → `tope`.
+2. `tipoNivelGeografico.create` de `nivel_<P+1>` con los nombres (`digitos_codigo` NULL,
+   `codigo_hereda_prefijo` false). Si otra alta en paralelo ya lo creó, salta el único
+   `(pais_id, clave)` → `P2002` → `conflict` (R49). Se crea **siempre** explícitamente, también cuando
+   P+1 = 3, para que la carrera dé un único y no un upsert silencioso.
+3. Si P+1 = 3: `pais.update` de `nivel_3_singular`/`_plural` con los mismos nombres (decisión «se copia
+   a `pais.nivel_N_*`») → la función hace su upsert de `nivel_1..3`, que encuentra los tres con los
+   mismos valores.
+4. Historial `tipo_nivel_geografico_creado` (`origen: "nivel_agregado"`).
+
+No toca nodos ni otros tipos. Desde ese momento P crece en uno: «agregar hijo» aparece en los nodos de
+la profundidad P anterior (R21) y el CSV exige las dos columnas nuevas (R30). Un país de 2 niveles
+que pasa a 3 no se habilita solo para órdenes: la regla de SLT-45 mira la profundidad de sus nodos
+(`esPaisDeTresNiveles`), no sus tipos (R29).
+
+**Edición de un tipo (R25, R26).** `PaisRepository.renombrarTipo` en una transacción: lee el tipo con
+su país; si los dos nombres son iguales → `sin_cambio`; `tipoNivelGeografico.update`; si la clave es
+`nivel_1..3`, `pais.update` de las dos columnas de ese nivel → la función vuelve a hacer el upsert de
+los tipos 1–3 que el país tenga, con los mismos valores (no hay trigger en `tipo_nivel_geografico`,
+así que no hay bucle) → historial.
+
+**Etiquetas de las empresas (R27, R51).** Salen de `pais.nivel_N_*` (`etiquetasDePais` →
+`EtiquetasGeograficasProvider` en `app/(app)/layout.tsx`): con la copia, R27 sale sin tocarlas. Para
+un país de 2 niveles `nivel3Singular` es `''`: `etiquetasDePais` devuelve para `distrito` la etiqueta
+de `ETIQUETAS_NEUTRAS.distrito` («Nivel 3») cuando el nombre está vacío (**P10**, propuesta (a)). Esas
+empresas no crean órdenes («país aún no habilitado»), así que la etiqueta solo titula columnas y
+filtros vacíos. Si el humano elige otra opción de P10, cambia solo esta línea y R51.
 
 ### 2.5 Qué depende del país (`docs/perfil-agentes.md > spec_author`)
 
@@ -148,10 +213,12 @@ transacción). `schema.prisma` gana los tres valores. No hay mapas exhaustivos s
 |---|---|---|
 | `20261106120000_slt46_historial_tipos_de_nivel` | Los tres `ADD VALUE IF NOT EXISTS` de §2.3. | No hace nada y lo explica (como `20261104120000`): Postgres no quita un valor de enum sin recrear el tipo, y el valor sin usar es inocuo. |
 | `20261106120100_slt46_nodo_copia_a_geografia_vieja` | La función y el trigger de §2.2, con el comentario de convivencia. | `DROP TRIGGER` y `DROP FUNCTION` de lo que creó (el `down.sql` deshace; la regla de solo aditivas es de la ida). |
+| `20261106120200_slt46_pais_tipos_de_nivel_opcional` | `CREATE OR REPLACE FUNCTION pais_tipos_de_nivel()` de §2.4 (P2), con el comentario de la convención `''`. | `CREATE OR REPLACE FUNCTION pais_tipos_de_nivel()` con el cuerpo de SLT-43 copiado literal de `20261104120100`. Comentario: un país de 2 niveles creado con SLT-46 puesta conserva sus dos tipos tras la vuelta, pero un `UPDATE` de su fila `pais` con la función vieja le crearía un `nivel_3` de nombre vacío; el ensayo (§10) lo anota y no se crean países de 2 niveles hasta confirmar que no hay vuelta. |
 
 - Ninguna toca `orden` (R10), ni crea índices, ni escribe datos: no hay bloqueo largo que medir sobre
   `orden`. El `CREATE TRIGGER` toma `SHARE ROW EXCLUSIVE` sobre `nodo_geografico` (unos 600 nodos por
-  país, solo la escribe el superadmin): se anota en el ensayo.
+  país, solo la escribe el superadmin): se anota en el ensayo. El `CREATE OR REPLACE FUNCTION` no
+  bloquea `pais` más allá del catálogo.
 - Fechas: `20261106…`, después de la última del worktree (`20261104150200`). Si `dev` trae otra
   posterior antes del merge, se renombra la carpeta antes de mergear (no está aplicada en ningún sitio).
 - Se escriben a mano (`db:migrate:create` falla con P3006 en este repo, ver `20261022130000`).
@@ -161,7 +228,10 @@ transacción). `schema.prisma` gana los tres valores. No hay mapas exhaustivos s
   `slt43-migraciones-aditivas.test.ts`) y ganan una opción: el `INSERT`/`UPDATE`/`DELETE` **dentro del
   cuerpo `$$ … $$` de un `CREATE FUNCTION`** es la escritura del trigger en tiempo de ejecución y no
   cuenta; `DROP`, `TRUNCATE`, `RENAME`, `ALTER COLUMN` y `EXECUTE` siguen contando también ahí.
-  Contraprueba con texto inventado (un `UPDATE provincia` suelto en la migración sale rojo).
+  Segunda opción: `CREATE OR REPLACE FUNCTION` se admite solo con el nombre `pais_tipos_de_nivel`
+  (P2); con cualquier otro nombre (p. ej. `geo_sincronizar_canton`) es falta.
+  Contraprueba con texto inventado (un `UPDATE provincia` suelto en la migración sale rojo; un
+  `CREATE OR REPLACE FUNCTION geo_sincronizar_canton()` sale rojo).
 
 ## 4. Capas y contratos
 
@@ -176,8 +246,11 @@ Borde → service → repositorio, como SL-20. Todas las actions en `lib/actions
 | `renombrarNodoGeograficoSchema` | `{ id, nombre }` | Sin `nivel` |
 | `cambiarActivacionGeograficaSchema` | `{ id, activo }` | Sin `nivel` |
 | `nodoGeograficoSchema` (conteo) | `{ id }` | Sin `nivel` |
-| `crearPaisSchema` | `{ id, tipos: { singular, plural }[] }` con 3–10 tipos (P2) y `nombrePaisSchema` (2–40) | Antes, seis campos `nivelNSingular/Plural` |
+| `crearPaisSchema` | `{ id, tipos: { singular, plural }[] }` con 2–10 tipos (P2) y `nombrePaisSchema` (2–40) | Antes, seis campos `nivelNSingular/Plural` |
 | `renombrarTipoNivelSchema` (nuevo) | `{ tipoId, nombreSingular, nombrePlural }` | — |
+| `agregarNivelPaisSchema` (nuevo, P3) | `{ paisId, nombreSingular, nombrePlural }` (2–40). Sin campo de posición: siempre al final | — |
+
+No hay esquema ni action para quitar un tipo o un nivel (R50).
 
 Ninguno acepta `padreId` en el renombre ni en el cambio de estado (R22): `.strict()` lo rechaza.
 
@@ -187,8 +260,9 @@ Se quedan `listarPaisesAction`, `crearPaisAction`, `cambiarDisponibilidadPaisAct
 `arbolDePaisAction`, `crearNodoAction`, `renombrarNodoAction`, `cambiarActivacionNodoAction`,
 `contarOrdenesSinEntregarAction` y `cargarDivisionAction`, con los esquemas nuevos y los mismos
 desenlaces (`unauthenticated`, `forbidden`, `validation_error`, `not_found`, `conflict`, `error` con
-log sin datos). Nueva: `renombrarTipoNivelAction(input)` → `PaisService.renombrarTipo`. El `catch` de
-`esViolacionDeUnico` → `conflict` sigue en altas y renombres (R5).
+log sin datos). Nuevas: `renombrarTipoNivelAction(input)` → `PaisService.renombrarTipo` y
+`agregarNivelPaisAction(input)` → `PaisService.agregarNivel`. El `catch` de `esViolacionDeUnico` →
+`conflict` sigue en altas y renombres (R5) y cubre la carrera de agregar nivel (R49).
 
 ### 4.3 Services
 
@@ -203,6 +277,7 @@ log sin datos). Nueva: `renombrarTipoNivelAction(input)` → `PaisService.renomb
 | `CargaDivisionService` | `cargar(paisId, archivo, actor)` | rol → archivo (sin cambios) → `repo.leerDivisionDePais(paisId)` (`null` → `not_found`) → columnas obligatorias según P (R30) → `planificarDivision` → `repo.importarDivision` |
 | `PaisService` | `crear(input, actor)` | rol → `crearPaisSchema` → nombre del catálogo → `repo.crear(datos con tipos)` |
 | | `renombrarTipo(input, actor)` (nuevo) | rol → `renombrarTipoNivelSchema` → `repo.renombrarTipo` → `no_existe` → `not_found`; `sin_cambio`/`renombrado` → `ok` (R25, R26) |
+| | `agregarNivel(input, actor)` (nuevo, P3) | rol → `agregarNivelPaisSchema` → `repo.agregarNivel` → `no_existe` → `not_found`; `tope` → `validation_error` en `paisId` («Este país ya tiene 10 niveles»); tipo → `{ status: "ok", tipo }` (R48, R49) |
 | | `cambiarDisponible` | Sin cambios: no mira los niveles (R28) |
 
 Todos los métodos comprueban `GESTION_ROLES` (`ROLES_PLATAFORMA`) **antes** de tocar el repositorio
@@ -229,8 +304,11 @@ pasa a leer el nodo:
 `GeoPrismaClient` pierde `provincia`, `canton` y `distrito` del `Pick` en las escrituras (R1).
 
 `PaisRepository` (escritor único de `tipo_nivel_geografico`, R43): `crear(datos con tipos, actor)` y
-`renombrarTipo(tipoId, singular, plural, actor) → "no_existe" | "sin_cambio" | "renombrado"` (§2.4).
-`PaisPrismaClient` gana `tipoNivelGeografico`, `historialPlataforma` y `usuario`.
+`renombrarTipo(tipoId, singular, plural, actor) → "no_existe" | "sin_cambio" | "renombrado"` y
+`agregarNivel(paisId, singular, plural, actor) → "no_existe" | "tope" | TipoNivelDTO` (§2.4). Ninguno
+borra tipos (R50). `PaisPrismaClient` gana `tipoNivelGeografico`, `historialPlataforma` y `usuario`.
+Donde la pantalla del superadmin pintaba los nombres de nivel de `pais`, pasa a pintar los tipos del
+país (`TipoNivelDTO[]`), así el `''` de un país de 2 niveles no se pinta nunca.
 
 ### 4.5 Regla de código (R17)
 
@@ -251,10 +329,12 @@ interface NodoArbolPlataformaDTO { id: string; nombre: string; codigo: string | 
 `ProvinciaPlataformaDTO`/`CantonPlataformaDTO` se retiran si no queda consumidor (el árbol de la
 empresa, `ProvinciaArbolDTO`, no cambia).
 
-## 5. CSV de división (R30–R34) — P4
+## 5. CSV de división (R30–R34) — decisiones P4 y P6
 
 - **Cabecera.** Obligatorias `nivel_<k>` y `codigo_nivel_<k>` para k = 1..P (para CR, P = 3: las seis
-  de SL-20). Las demás columnas se ignoran con aviso (también `nivel_4` en CR).
+  de SL-20; el CSV de CR no cambia). Las demás columnas se ignoran con aviso (también `nivel_4` en CR).
+  Para un país de 2 niveles, P = 2: cuatro columnas. Tras agregar un nivel, P crece y el CSV exige
+  las dos columnas nuevas.
 - **Fila.** Camino contiguo desde `nivel_1`: `nivel_1` y `nivel_2` obligatorios (como SL-20); a partir
   de ahí, opcionales, pero un nivel vacío seguido de uno lleno es error de línea (R32). Código sin
   nombre, error (como hoy).
@@ -265,22 +345,32 @@ empresa, `ProvinciaArbolDTO`, no cambia).
 - **Respuesta.** `creados` pasa a `Record<number, number>`; la pantalla lo pinta con el plural de cada
   tipo. Para CR (R31) el test compara el resultado con el de SLT-45 traduciendo 1/2/3 ↔
   provincia/canton/distrito.
-- **SL-20 R49** (homónimos normalizados en la base) deja de poder darse con la lectura del nodo (P6).
+- **SL-20 R49** (homónimos normalizados en la base) deja de poder darse con la lectura del nodo: el
+  caso «decision 4: dos homónimos normalizados» se retira de `tests/integration/db/carga-division.test.ts`
+  y SL-20 R49 queda **superado por SLT-46** (decisión P6). El implementer deja en el test, donde
+  estaba el caso, un comentario con el motivo y la referencia a P6; el reviewer no lo cuenta como
+  aserción cambiada.
 - Cotas sin cambios (R34).
 
-## 6. Pantalla (`app/(app)/plataforma/geografia/**`) — P9
+## 6. Pantalla (`app/(app)/plataforma/geografia/**`) — decisión P9
+
+**Maqueta antes de implementar (R52).** El árbol de N niveles, la lista de tipos del alta, la edición
+de tipos y «agregar nivel» pasan por una maqueta que hace una persona y aprueba el humano antes de
+escribir los componentes. Lo que sigue es el contrato funcional (qué datos y qué acciones hay), no la
+forma visual; la forma la fija la maqueta. El backend (T1–T5, T7, T8) no espera a la maqueta.
 
 - `page.tsx`: igual (404 a quien no es de plataforma antes de leer; `?pais=`), pasa `tipos` y `raices`.
 - `GeografiaAdminModule.tsx`: árbol recursivo de `NodoArbolPlataformaDTO`, con el singular del tipo de
   cada nodo; acciones por fila: renombrar, retirar/reactivar (con el conteo de R20), «Agregar
   <singular del tipo siguiente>» solo si existe tipo para profundidad + 1 (R21). Sin mover (R22).
 - `GeografiaPlataformaModule.tsx`: el alta de país pide una lista ordenada de tipos (añadir/quitar
-  filas, 3–10); la carga CSV muestra la equivalencia `nivel_k = <tipo>` para k = 1..P.
-- Nuevo `_components/TiposDeNivelPais.tsx`: lista de tipos del país con editar singular/plural.
+  filas, 2–10); la carga CSV muestra la equivalencia `nivel_k = <tipo>` para k = 1..P.
+- Nuevo `_components/TiposDeNivelPais.tsx`: lista de tipos del país con editar singular/plural y
+  «Agregar nivel» al final (oculto con 10 tipos); sin quitar (R50).
 - Para CR el árbol tiene los mismos tres niveles, nombres, acciones y mensajes que hoy (R12).
 - Componentes de `components/ui/` existentes; nada nuevo de shadcn.
 
-## 7. Historial de plataforma (R35–R38) — P5, P7
+## 7. Historial de plataforma (R35–R38) — decisiones P3, P5, P7
 
 | Acción | `accion` | `entidad_tipo` | `entidad_etiqueta` | Otros |
 |---|---|---|---|---|
@@ -288,7 +378,8 @@ empresa, `ProvinciaArbolDTO`, no cambia).
 | Renombre | `nodo_geografico_renombrado` | `nodo_geografico` | Cadena con el nombre nuevo | `valor_anterior`, `valor_nuevo` |
 | Retiro / reactivación | `nodo_geografico_desactivado` / `_activado` | `nodo_geografico` | Cadena | — |
 | Carga CSV | `division_cargada` | `pais` | Nombre del país | `detalle.creados` por profundidad |
-| Alta de país | `pais_creado` + `tipo_nivel_geografico_creado` × P | `pais` / `tipo_nivel_geografico` | País / singular del tipo | — |
+| Alta de país | `pais_creado` + `tipo_nivel_geografico_creado` × P | `pais` / `tipo_nivel_geografico` | País / singular del tipo | `detalle = {origen: "alta_de_pais", profundidad}` en cada tipo |
+| Agregar nivel | `tipo_nivel_geografico_creado` | `tipo_nivel_geografico` | Singular del tipo nuevo | `detalle = {origen: "nivel_agregado", profundidad}` |
 | Edición de tipo | `tipo_nivel_geografico_renombrado` × nombres cambiados | `tipo_nivel_geografico` | Singular nuevo | `valor_anterior`, `valor_nuevo`, `detalle.campo` |
 
 Todo con `appendAccionPlataforma(tx, …)` dentro de la transacción del cambio. Nada en
@@ -321,7 +412,8 @@ negocio nueva; el conteo de órdenes (de negocio) es el de SLT-65, en plataforma
 
 ## 10. Ensayo y despliegue (fuera del código; puerta humana)
 
-1. Ensayo sobre una **copia** de producción: aplicar las dos migraciones; desde la app apuntada a la
+1. Ensayo sobre una **copia** de producción: aplicar las tres migraciones; comprobar que los tipos de
+   todos los países son los mismos que antes (R47); desde la app apuntada a la
    copia, en CR, una alta, un renombre, un retiro, una reactivación y una carga CSV pequeña; correr
    `pnpm geo:backfill --equivalencia-geografia` (P8) y `--equivalencia` de SLT-43 → código 0; aplicar
    los `down.sql` en orden inverso; repetir la edición (debe seguir sincronizando viejo → nodo por SQL);
@@ -348,9 +440,9 @@ migraciones usa base propia (prefijo `slt46_`, molde `base-propia-43.ts`).
 | R4 | `slt46-nodo-copia-vieja.test.ts` (tras cada escritura, `count(*)` por id = 1 a cada lado y el nodo con su `tipo_id`, nombre y `activo` intactos; `UPDATE provincia` por SQL → nodo actualizado y la fila vieja igual a lo escrito; ninguna sentencia supera `pg_trigger_depth` 3, medido con un trigger de prueba en la transacción revertida) |
 | R5 | `slt46-nodo-copia-vieja.test.ts` (provocar el único literal de `provincia` con una fila vieja creada por SQL con el trigger viejo desactivado en la tx → `23505`, sin nodo, sin fila vieja nueva, sin historial) y `tests/unit/actions/geografia-plataforma-action.test.ts` (`P2002` → `conflict`; otro error → `error` con log) |
 | R6 | `slt46-nodo-copia-vieja.test.ts` (cambiar la profundidad de una hoja 3 → `SLT46`) |
-| R8 | `tests/unit/db/slt46-migraciones-aditivas.test.ts` (verde sobre las dos carpetas; `down.sql` presente; contraprueba: DML suelto sobre tabla existente rojo, DML en cuerpo de función verde, `EXECUTE 'DROP …'` en cuerpo rojo) |
-| R9 | `tests/integration/db/migracion-slt46-ida-y-vuelta.test.ts` (base propia: ida, datos, vuelta; esquema = SLT-45 salvo enums; `UPDATE provincia` tras la vuelta llega al nodo; escribir el nodo tras la vuelta no toca la vieja; reaplicar deja lo mismo) |
-| R10 | `slt46-migraciones-aditivas.test.ts` (ninguna de las dos menciona `orden`) |
+| R8 | `tests/unit/db/slt46-migraciones-aditivas.test.ts` (verde sobre las tres carpetas; `down.sql` presente; contraprueba: DML suelto sobre tabla existente rojo, DML en cuerpo de función verde, `EXECUTE 'DROP …'` en cuerpo rojo, `CREATE OR REPLACE FUNCTION` de otra función rojo) |
+| R9 | `tests/integration/db/migracion-slt46-ida-y-vuelta.test.ts` (base propia: ida, datos, vuelta; esquema = SLT-45 salvo enums; `pg_get_functiondef('pais_tipos_de_nivel')` tras la vuelta = el de SLT-43; `UPDATE provincia` tras la vuelta llega al nodo; escribir el nodo tras la vuelta no toca la vieja; reaplicar deja lo mismo) |
+| R10 | `slt46-migraciones-aditivas.test.ts` (ninguna de las tres menciona `orden`) |
 | R11 | `tests/integration/db/slt46-equivalencia-geografia.test.ts` (secuencia por el service sobre CR de prueba y sobre el país de 4 niveles → comparación fila a fila = 0 diferencias) |
 | R12 | `tests/unit/services/geografia-service.test.ts` y `carga-division-service.test.ts` (los casos de SL-20 con nivel CR, mismos desenlaces y mensajes) + `slt46-equivalencia-geografia.test.ts` (filas viejas tras cada operación) + suites existentes `geografia-*.test.ts` sin cambiar aserciones salvo la forma de la entrada (`{id}` en vez de `{nivel,id}`) |
 | R13 | `tests/integration/db/geo-equivalencia-geografia.test.ts` (iguales → 0; una fila vieja con otro nombre o sin nodo → ≠ 0) |
@@ -361,16 +453,22 @@ migraciones usa base propia (prefijo `slt46_`, molde `base-propia-43.ts`).
 | R20 | `geografia-service.test.ts` (1/2/3 → nivel correcto al repo de órdenes; 4 → 0 sin llamarlo) |
 | R21 | `tests/components/geografia-arbol-n-niveles.test.tsx` (árbol de 4 niveles; «Agregar» ausente en la profundidad máxima; tipo visible) |
 | R22 | `tests/unit/types/geografia-nodo.test.ts` (`padreId` en renombre/estado → error) y `geografia-plataforma-action.test.ts` (no hay action de mover: lista de exports) |
-| R23, R24 | `tests/unit/services/pais-service.test.ts` y `tests/integration/db/pais-alta-tipos.test.ts` (3 y 4 tipos; 2 y 11 → `validation_error`; `pais.nivel_N_*` = tipos 1–3) |
+| R23, R24 | `tests/unit/services/pais-service.test.ts` y `tests/integration/db/pais-alta-tipos.test.ts` (2, 3 y 4 tipos → exactamente P tipos; 1 y 11 → `validation_error`; `pais.nivel_N_*` = tipos 1–3 que existan) |
+| R46 | `pais-alta-tipos.test.ts` (país de 2 tipos: sin `nivel_3` tras el alta, tras editar el tipo 1 y el 2 y tras un `UPDATE pais SET nombre`) |
+| R47 | `tests/integration/db/slt46-pais-tipos-de-nivel.test.ts` (sobre CR y un país de 3 tipos: la misma escritura de `pais` con la función de SLT-43 y con la de SLT-46 deja los mismos tipos, comparados campo a campo) |
+| R48, R49 | `tests/integration/db/pais-agregar-nivel.test.ts` (2 → 3: tipo creado y `pais.nivel_3_*` copiado; 4 → 5: solo tipo; nodos y otros tipos intactos; 10 → `tope`; dos altas en paralelo → una `conflict`; sin país → `no_existe`) y `pais-service.test.ts` (desenlaces y `validation_error` por nombre) |
+| R50 | `tests/unit/guards/geografia-sin-borrado-fisico.guardia.test.ts` (incluye `tipoNivelGeografico`) y `geografia-plataforma-action.test.ts` (lista de exports sin action de quitar nivel) |
+| R51 | `tests/unit/types/pais-etiquetas.test.ts` (`etiquetasDePais` con nivel 3 vacío → «Nivel 3»; con nombre → el nombre) |
+| R52 | Revisión del reviewer: `progress/impl_SLT-46.md` anota la maqueta aprobada (fecha y referencia) con fecha anterior al primer commit de T6 |
 | R25, R26 | `tests/integration/db/pais-tipos-edicion.test.ts` (tipo 2 → tipo + `pais.nivel_2_*`; tipo 4 → solo tipo; igual → sin escribir; inexistente → `not_found`) y `pais-service.test.ts` |
 | R27 | `tests/components/etiquetas-geograficas.test.tsx` (las etiquetas salen de `pais.nivel_N_*` editado) + `pais-tipos-edicion.test.ts` (`PaisRepository.deLaEmpresa` devuelve el nombre nuevo) |
 | R28 | `tests/integration/db/pais-disponible.test.ts` (país de 4 niveles → disponible `ok`) |
 | R29 | `tests/integration/api/v2-paises-de-prueba.route.test.ts` (existente de SLT-45, sin cambios) |
 | R30, R32, R34 | `tests/unit/utils/division-csv.test.ts` y `carga-division-service.test.ts` (P = 4; falta `codigo_nivel_4` → rechazo; hueco → error de línea; cotas) |
-| R31 | `tests/integration/db/carga-division.test.ts` (casos de SL-20 con su resultado, salvo P6) |
+| R31 | `tests/integration/db/carga-division.test.ts` (casos de SL-20 con su resultado; el de homónimos en base retirado por P6, con comentario) |
 | R33 | `tests/integration/db/carga-division-n-niveles.test.ts` (país de 4 niveles; tipos por profundidad; completar código; todo o nada) |
 | R35, R36 | `tests/integration/db/geografia-registro-accion.test.ts` (filas, entidad `nodo_geografico`, etiqueta, en la misma tx: si el historial falla no queda el nodo) |
-| R37 | `pais-alta-tipos.test.ts` y `pais-tipos-edicion.test.ts` |
+| R37 | `pais-alta-tipos.test.ts`, `pais-agregar-nivel.test.ts` y `pais-tipos-edicion.test.ts` (los dos nombres cambiados → dos filas con `detalle.campo`) |
 | R38 | `geografia-registro-accion.test.ts` (`historial_accion` sin filas nuevas) |
 | R39 | `geografia-service.test.ts`, `carga-division-service.test.ts`, `pais-service.test.ts` (rol `maestro` → `forbidden`, doble de repo que falla si se le llama) y `geografia-plataforma-action.test.ts` |
 | R40 | `tests/integration/db/geografia-superadmin-sin-empresa.test.ts` (ampliado a tipos y profundidad 4) |
@@ -386,7 +484,7 @@ migraciones usa base propia (prefijo `slt46_`, molde `base-propia-43.ts`).
    profundidad ≤ 3 con un tipo distinto de `nivel_<k>` hace que la sincronía vieja → nodo, al recibir el
    eco, le pise el tipo. Evitarlo exige cambiar las tres funciones de SLT-43 (`CREATE OR REPLACE` con un
    `IF pg_trigger_depth() > 1 THEN RETURN NULL`) o desactivar sus triggers, y la épica solo admite
-   `CREATE`/`ADD COLUMN`. Con P1 no se toca nada de SLT-43. Si el humano prefiere elegir el tipo,
+   `CREATE`/`ADD COLUMN`. Con P1 (cerrada: el tipo sale de la profundidad) no se toca la sincronía de SLT-43. Si algún día se quiere elegir el tipo,
    esta es la vía y la migración deja de ser solo de `CREATE`.
 2. **Quitar la sincronía vieja → nodo.** Es un `DROP TRIGGER` (prohibido hasta SLT-48) y dejaría sin
    nodo a quien escriba la vieja por SQL (tests de SLT-43, scripts).
@@ -398,10 +496,23 @@ migraciones usa base propia (prefijo `slt46_`, molde `base-propia-43.ts`).
    repositorio, en la misma transacción (§2.4).
 5. **Cabeceras del CSV con el nombre del tipo** (`departamento`, `codigo_departamento`), como la
    plantilla de órdenes de SLT-45. Para CR cambiaría el CSV de SL-20 (o exigiría aceptar las dos), y un
-   renombre de tipo invalidaría los archivos preparados. Se proponen las neutras (P4).
+   renombre de tipo invalidaría los archivos preparados. Se eligieron las neutras (P4).
 6. **Leer los descendientes y la cadena de nombres con `WITH RECURSIVE`.** La guardia
    `geografia-sin-cte-recursiva` lo prohíbe en `lib/`; el catálogo en memoria (SLT-44) o subir por
    `padre_id` (≤ P lecturas) bastan.
+7. **País de 2 niveles con una columna nueva `pais.numero_niveles`** (`ADD COLUMN`, aditiva) que la
+   función mire para no crear `nivel_3`. Funciona, pero es un segundo dato con la misma verdad que el
+   número de tipos: agregar un nivel tendría que escribir los dos, y nada impide que se separen. El
+   `''` en `nivel_3_*` no añade dato: dice lo mismo que la ausencia del tipo, y desaparece con las
+   columnas en SLT-48.
+8. **País de 2 niveles con los nombres del nivel 2 repetidos en `nivel_3_*`** como marca. Ambigua: un
+   país real podría llamar igual a dos niveles, y la función no sabría si crear `nivel_3`.
+9. **Que la función cree `nivel_3` solo si el tipo ya existe** (un `UPDATE … WHERE` en vez del upsert).
+   No resuelve el `INSERT` del país, donde ningún tipo existe todavía: haría falta otra señal igual.
+10. **Mínimo de 3 niveles** (propuesta inicial). El humano la cambió a 2 (P2).
+11. **Insertar un nivel en medio o quitar el último** (P3). Insertar en medio cambia la profundidad de
+    nodos ya escritos (prohibido hasta SLT-48, R6); quitar choca con la baja lógica y con los nodos que
+    ya usan el tipo. El humano lo descartó.
 
 ## 13. Riesgos
 
@@ -412,6 +523,11 @@ migraciones usa base propia (prefijo `slt46_`, molde `base-propia-43.ts`).
   humano (subir el timeout o partir la carga) antes de la release.
 - **Ventana del deploy** (§10.2): el código nuevo servido sin la migración `…120100` escribiría nodos
   sin copia vieja; se verifica en el ensayo que el build lo impide.
+- **La convención `''` en `pais.nivel_3_*`**: cualquier lector nuevo de esas columnas tiene que saber
+  que vacío es «sin nivel 3». Hoy el único lector de empresa es `etiquetasDePais` (con respaldo, R51);
+  el superadmin lee los tipos. Se documenta en el comentario de la migración `…120200` y en el
+  JSDoc de `etiquetasDePais`. Tras un `down.sql` de `…120200`, un país de 2 niveles ya creado ganaría
+  un `nivel_3` vacío en su siguiente escritura de `pais` (§3).
 - **Tests existentes que cambian de forma de entrada** (`{nivel, id}` → `{id}`; seis nombres → lista de
   tipos): las aserciones de resultado se conservan; el reviewer lo comprueba (R12).
 
