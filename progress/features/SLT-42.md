@@ -85,6 +85,13 @@ Bloqueos de F2.0:
   2. `PlanesService`: la fecha que se muestra pasa a la zona de la empresa en T5.5; el ciclo de cobro sigue en UTC (humano).
   3. Integración de T5.4 contra la base: la corre CI (`gate-completo`) en el PR; no se corre en local (humano).
 
+- 2026-11-05 (tras T5.5, preguntas de `progress/impl_SLT-42.md > Tanda 4b · T5.5`):
+  1. Catálogo de planes y correo de cambio de plan: el correo muestra la fecha en la zona de la empresa que cambia de plan; el catálogo sin empresa (superadmin) la muestra en UTC con la etiqueta «UTC». Va en T5.7 (humano).
+  2. Descripciones de variables de informes y `plantilla-datos.ts`: «(hora de Costa Rica)» pasa a «(hora local)» en SLT-42, en T5.7 (humano).
+  3. `scripts/rollup-analitica-manual.ts`: se arregla en T6; recorre las empresas y usa la zona de cada una, como el job diario (humano).
+  4. Corte de «hoy» del chat de WhatsApp (`lib/actions/chat-whatsapp.ts`) y tope diario de `AsistenteService`: pasan a la zona de la empresa en T5.7 (humano).
+  5. Desvíos de T5.5 aceptados (humano): zona `"UTC"` sin actor en los bordes de analítica (`zonaDelBordeConActor`), `PlanesService` con `zonaDeOrganizacionCon`, «hora local» en los PDF.
+
 ## Preguntas abiertas
 Las del `requirements.md` (normalizar teléfonos guardados, jobs por zona horaria, largos de documento).
 

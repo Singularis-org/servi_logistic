@@ -117,7 +117,7 @@ Orden sugerido. Cada task deja su grupo en verde con sus tests de hoy, inyectand
 - [x] **T5.5** `[P]` Analítica, tablero, ranking, notificaciones, avisos e informes de WhatsApp.
   - [x] Rutas (`OptimizacionRutaService`) y la fecha que muestra `PlanesService` (`siguienteCiclo`); el ciclo de cobro sigue en UTC (decisión del humano, 2026-11-05, tras T5.4).
   *Hecho:* verde.
-- [ ] **T5.6** `[P]` Rastreo público (R27; se retira `RASTREO_PUBLICO_ZONA_HORARIA`) +
+- [x] **T5.6** `[P]` Rastreo público (R27; se retira `RASTREO_PUBLICO_ZONA_HORARIA`) +
   `tests/unit/services/rastreo-publico-zona-pais.test.ts`.
   *Hecho:* verde.
 - [ ] **T5.7** `[P]` API por key y OpenAPI; páginas de servidor (`ordenes`, `wallet/mensajeros`,

@@ -8,6 +8,7 @@ import { getPrismaClient } from "@/lib/db/prisma-client";
 import type { IRastreoPublicoService } from "@/lib/interfaces/services/IRastreoPublicoService";
 import { RastreoPublicoRepository } from "@/lib/repositories/RastreoPublicoRepository";
 import { RastreoPublicoService } from "@/lib/services/RastreoPublicoService";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import {
   consultaRastreoSchema,
   type ResultadoRastreoPublico,
@@ -70,10 +71,17 @@ async function requestContextFromHeaders(): Promise<RequestContext> {
  * Una guia inexistente responde `no_encontrado` sin pasar por el service: es el mismo resultado de
  * hoy y no hay empresa en la que leer. Cuesta una consulta menos que una guia existente con el
  * factor errado; el limite por IP sigue siendo la defensa contra el barrido (G4).
+ *
+ * SLT-42 (R27): el pais —prefijo del telefono y zona horaria— es el de esa misma empresa. El puerto
+ * lo lee del contexto `conEmpresa`, asi que una guia inexistente sigue sin tocarlo.
  */
 function buildService(): IRastreoPublicoService {
   const prisma = getPrismaClient();
-  const real = new RastreoPublicoService(new RastreoPublicoRepository(prisma));
+  const real = new RastreoPublicoService(
+    new RastreoPublicoRepository(prisma),
+    loadRastreoPublicoConfig(),
+    construirReglasPaisEmpresa(prisma),
+  );
   return {
     async consultar(numGuia, factor) {
       const orden = await comoPlataforma(

@@ -1,5 +1,6 @@
 import { ESTATUS_POR_RESULTADO } from "@/lib/types/gestion-destino";
 import { loadRastreoPublicoConfig, type RastreoPublicoConfig } from "@/lib/config/rastreo-publico";
+import type { IReglasPaisEmpresa, ReglasPais } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import type {
   IRastreoPublicoRepository,
   TransicionRastreoFila,
@@ -11,7 +12,7 @@ import type {
 import { nombreDeResultado } from "@/lib/types/gestion-resultado";
 import { nombrePublicoDeEstado, type ESTADO_RETIRADO } from "@/lib/types/order-status";
 import type { EntradaLineaPublica } from "@/lib/types/rastreo-publico";
-import { normalizarTelefonoCR } from "@/lib/utils/telefono-cr";
+import { normalizarTelefono, type ReglasTelefono } from "@/lib/utils/telefono-pais";
 
 // Feature 229 (design §2.1/§3.3/§3.4) — proyeccion publica de un envio.
 //
@@ -63,7 +64,17 @@ function ultimos(texto: string, n: number): string {
 }
 
 /**
- * R19 — dia Y hora (G12) en la zona horaria del NEGOCIO, que llega por configuracion. Este
+ * SLT-42 (R27) — el telefono normalizado con las reglas del pais de la empresa de la orden. Si al
+ * pais le falta el prefijo o los digitos nacionales no hay forma canonica: se devuelve el centinela
+ * normalizado (cero digitos), y la orden queda NO consultable igual que con un telefono corto (G2).
+ * Asi un pais incompleto responde `no_encontrado`, sin lanzar ni distinguirse de un factor errado.
+ */
+function normalizarConPais(raw: string, reglas: ReglasTelefono | null): string {
+  return reglas === null ? TELEFONO_CENTINELA : normalizarTelefono(raw, reglas);
+}
+
+/**
+ * R19 / SLT-42 (R27) — dia Y hora (G12) en la zona horaria del pais de la empresa de la orden. Este
  * modulo no contiene ningun literal de zona ni de pais, y una guardia lo comprueba.
  *
  * El locale se fija con extensiones (`u-ca-gregory-nu-latn`) y no con un pais: asi el
@@ -120,10 +131,18 @@ export class RastreoPublicoService implements IRastreoPublicoService {
   constructor(
     private readonly repo: IRastreoPublicoRepository,
     private readonly config: RastreoPublicoConfig = loadRastreoPublicoConfig(),
+    // SLT-42 (R27): el pais de la empresa de la orden. Quien rastrea no tiene sesion: el composition
+    // root (`lib/actions/rastreo-publico.ts`) abre `conEmpresa` con la empresa dueña de la guia, y de
+    // ese contexto lee el puerto. Opcional como en T5.3; la real la inyecta el composition root.
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "deLaEmpresa" | "zonaHoraria">,
   ) {}
 
   async consultar(numGuia: number, factor: string): Promise<ResultadoConsultaRastreo> {
     const fila = await this.repo.buscarPorGuia(numGuia);
+    // SLT-42 (R27) — el pais se lee SIEMPRE, antes de comparar y con independencia de la fila: los
+    // cuatro casos malos siguen haciendo el mismo trabajo (R7/R8). La zona solo se exige mas abajo,
+    // cuando el factor ya coincidio: un pais sin zona no puede delatar si una guia existe.
+    const pais: ReglasPais = await this.reglasDelPais().deLaEmpresa();
 
     // R7/R8 — a partir de aqui NO hay retorno temprano por "no existe": los cuatro casos
     // malos recorren exactamente el mismo camino, con el mismo numero de llamadas a datos.
@@ -131,8 +150,9 @@ export class RastreoPublicoService implements IRastreoPublicoService {
     // R11 — se normalizan a digitos LOS DOS lados antes de comparar, con el normalizador
     // ya testeado del repo: separadores, espacios y prefijo internacional no cambian el
     // resultado.
-    const almacenado = normalizarTelefonoCR(fila?.telefonoDest ?? TELEFONO_CENTINELA);
-    const tecleado = normalizarTelefonoCR(factor);
+    // SLT-42 (R27): con el prefijo y los digitos nacionales del pais de la empresa de la orden.
+    const almacenado = normalizarConPais(fila?.telefonoDest ?? TELEFONO_CENTINELA, pais.telefono);
+    const tecleado = normalizarConPais(factor, pais.telefono);
 
     // G2 — un telefono de menos de `digitos` digitos deja la orden NO consultable: comparar
     // contra dos digitos seria un factor de 100 combinaciones, es decir ninguno.
@@ -143,6 +163,11 @@ export class RastreoPublicoService implements IRastreoPublicoService {
     if (!consultable || !coincide || !vigente || fila === null) {
       return { estado: "no_encontrado" };
     }
+
+    // SLT-42 (R27, R28) — la zona del pais de la empresa de la orden. Sin zona no se inventa una:
+    // el puerto falla con `PaisSinZonaHoraria`, y solo quien ya acerto el segundo factor llega aqui.
+    // Es la misma lectura del pais (memoria del marco de `conEmpresa`), no otra consulta.
+    const zona = await this.reglasDelPais().zonaHoraria();
 
     // R21 — UNA sola lectura del historial por consulta.
     const transiciones = await this.repo.listarTransiciones(fila.id);
@@ -161,12 +186,13 @@ export class RastreoPublicoService implements IRastreoPublicoService {
       pendiente !== null && esResultadoDeGestion(pendiente.resultado)
         ? {
             nombre: nombreDeResultado(pendiente.resultado),
-            fecha: formatearEnZona(pendiente.createdAt, this.config.ZONA_HORARIA),
+            fecha: formatearEnZona(pendiente.createdAt, zona),
             pendiente: true,
           }
         : null;
     const linea = this.proyectarLinea(
       transiciones,
+      zona,
       entradaPendiente !== null && pendiente !== null ? pendiente.createdAt : null,
     );
     if (entradaPendiente !== null) linea.push(entradaPendiente);
@@ -199,6 +225,7 @@ export class RastreoPublicoService implements IRastreoPublicoService {
    */
   private proyectarLinea(
     transiciones: readonly TransicionRastreoFila[],
+    zona: string,
     instantePendiente: Date | null,
   ): EntradaLineaPublica[] {
     const ascendente = [...transiciones].sort(
@@ -206,7 +233,7 @@ export class RastreoPublicoService implements IRastreoPublicoService {
     );
     const entradas: EntradaLineaPublica[] = [];
     for (const transicion of ascendente) {
-      const fecha = formatearEnZona(transicion.createdAt, this.config.ZONA_HORARIA);
+      const fecha = formatearEnZona(transicion.createdAt, zona);
       // FICHA 455 (2026-09-24, recorrido F9): antes de la 454, registrar una gestion movia la orden a
       // `devolucion_por_confirmar`; esa fila es la MISMA gestion que hoy se lee como pendiente, del
       // mismo instante. Plegada a «Novedad» (R34) se publicaba dos veces —una confirmada y otra
@@ -226,5 +253,15 @@ export class RastreoPublicoService implements IRastreoPublicoService {
       entradas.push({ nombre: nombrePublicoDeEstado(transicion.estatusValue), fecha });
     }
     return colapsarRachas(entradas);
+  }
+
+  /** SLT-42 (R27): sin el puerto no hay pais del que leer; se falla nombrandolo, sin inventar uno. */
+  private reglasDelPais(): Pick<IReglasPaisEmpresa, "deLaEmpresa" | "zonaHoraria"> {
+    if (!this.reglasPais) {
+      throw new Error(
+        "RastreoPublicoService.consultar requiere las reglas del pais de la empresa de la orden (SLT-42)",
+      );
+    }
+    return this.reglasPais;
   }
 }
