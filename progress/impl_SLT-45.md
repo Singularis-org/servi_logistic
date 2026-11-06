@@ -157,3 +157,80 @@ Opciones: (a) el servicio la pone (`data.nodoGeograficoId = distrito.id` junto a
     146 passed (los 2 rojos son la misma precondición de `orden` vacía).
 
 Veredicto T3: crear escribe nodo + 3 FK y está probado contra Postgres. T3.2 queda abierta en la parte del servicio, a la espera de la decisión (a)/(b).
+
+## T3.2 (cierre) y T4.1–T4.2 (backend_dev, 2026-11-06)
+
+Sin migraciones, sin dependencias, trigger de SLT-43 sin tocar, sin literales de país/moneda. Commits:
+`78dca2e0` (T3.2), `d06b6350` (T4.1), `7336f219` (T4.2).
+
+### Archivos
+- `lib/services/CorregirDatosClienteService.ts` — al cambiar la ubicación, `data.nodoGeograficoId = distritoId`
+  junto a `data.zonaId` (T3.2, R26).
+- `tests/unit/services/corregir-datos-cliente-service.test.ts` — las 2 aserciones `toHaveBeenCalledWith`
+  (l. 630 y 671) ganan `nodoGeograficoId: "d-2"`. Única excepción aceptada (decisión humana 2026-11-05);
+  ninguna otra aserción cambia.
+- `lib/services/BulkOrdenService.ts` — último parámetro opcional `catalogoRepo?: ICatalogoGeograficoRepository`
+  (T4.1); R5 en `cargarViaApi`; tipos `EntradaDelMotor`, `ExtractorDeFila`, `MSG_MOTOR_SIN_CATALOGO`;
+  `resolveFila` delega en `resolverGeografia` (terna → `resolveGeo`, entrada → motor); `PreloadedContext.geografia`.
+- `lib/services/CotizacionOrdenService.ts` — último parámetro opcional `catalogoRepo?` (T4.1) y R5 en `cotizar` (T4.2).
+- `app/api/ordenes/api-key/carga/route.ts`, `app/api/ordenes/api-key/cotizacion/route.ts`,
+  `app/api/ordenes/carga-masiva/chunk/route.ts` — pasan `new CatalogoGeograficoRepository(prisma)` (T4.1).
+- `tests/unit/api/v2-composicion.test.ts` (nuevo, T4.1).
+- `tests/unit/services/bulk-orden-service.forma-pais.test.ts` (nuevo, T4.2).
+- `tests/integration/api/contrato-v1.route.test.ts` — los dos servicios se construyen CON el catálogo, como en
+  producción, para que el contrato pruebe que la comprobación de R5 no cambia nada en CR. Ninguna aserción
+  ni fixture cambia; `tests/fixtures/contrato-v1/` intacto.
+
+### Decisiones de implementación (dentro del spec)
+- T3.2: la corrección siempre llega con distrito (el servicio exige los tres ids), así que el nodo es el
+  distrito; la rama «si no, el cantón» de §3.2 no es alcanzable desde la corrección de hoy.
+- T4.1, test de composición: subclase de cada servicio real que anota los argumentos del constructor (el
+  método de negocio devuelve `forbidden`), route handler SIN `deps.bulkService`/`deps.cotizacionService` y
+  `getPrismaClient` sustituido. Comprueba que el último argumento es una `CatalogoGeograficoRepository`.
+- R5 se comprueba con `esPaisDeTresNiveles` (max profundidad = 3), antes de leer estatus, geografía de v1 o
+  tarifa. Carga: summary con todas las filas en `errores` (`ubicacion: [MSG_PAIS_NO_HABILITADO]`),
+  `cargaId: null`, sin manifiesto ni aviso de fin de lote (mismo patrón que el corte por seed ausente).
+  Cotización: `status: "ok"` con todas las filas en `errores` — no el 409, porque ninguna fila llegó a la
+  tarifa (R36 de la 274). Sin catálogo inyectado no se comprueba (design §2.3).
+- Solo en `cargarViaApi` y `cotizar` (R5 nombra la carga y la cotización de v1). `cargarMasiva` (sesión) no
+  cambia: su rama de país no-CR es T6.2.
+- Rama del motor: `zonaId`/`esCentral` de `u.zona`, `esZonaEspecial` del motor, FK de `u.fks` (= `fksDeNodo`)
+  y `nodoGeograficoId = u.nodo.id`. Sin `ctx.geografia` lanza `Error(MSG_MOTOR_SIN_CATALOGO)` (→ 500), nunca
+  `resolveGeo`. Hoy ningún camino de producción llega a esa rama (lo cablean T4.3 y T6.2); se prueba
+  llamando a `resolveFila` por `service["resolveFila"]`.
+
+### Mapa R → test (esta tanda)
+| Requisito | Test |
+|---|---|
+| R5 (unit) | `bulk-orden-service.forma-pais.test.ts` > «R5 — carga v1…» (2 y 4 niveles; 3 niveles pasa; sin catálogo no comprueba) y «R5 — cotizacion v1…» |
+| R5 (extremo a extremo) | pendiente de `v2-paises-de-prueba.route.test.ts` (T5.8, no es de esta tanda) |
+| R2 con R5 activo | `contrato-v1.route.test.ts` con el catálogo inyectado, 22/22 sin regrabar |
+| R25 (rama del motor) | `bulk-orden-service.forma-pais.test.ts` > «§2.3 / R25 — la rama del motor…» (profundidad 3 por ruta, 2 por código, fallo, sin catálogo) |
+| R26 (servicio) | `corregir-datos-cliente-service.test.ts` (l. 627 y 669) + `orden-nodo-escritura.test.ts` > «corregir la ubicacion…» |
+| §2.3 composición | `tests/unit/api/v2-composicion.test.ts` (3 rutas) |
+
+### Evidencia (`NODE_OPTIONS=--max-old-space-size=8192`, `--maxWorkers=1`; base `logistic_slt45` en localhost)
+- T3.2: `tests/unit/services/corregir*` → `Test Files 5 passed (5)`, `Tests 92 passed (92)`.
+  `corregir-datos-sin-rastro.guardia` + `orden-nodo-escritura` → `Test Files 2 passed (2)`, `Tests 27 passed (27)`.
+- T4.1: `v2-composicion.test.ts` → `Tests 3 passed (3)`. Rojo comprobado quitando el parámetro de cada ruta
+  (una a la vez, revertido): carga → `Tests 1 failed | 2 passed (3)`; cotizacion → `1 failed | 2 passed (3)`;
+  chunk → `1 failed | 2 passed (3)`. Relacionados (`v2-composicion`, `carga-composition-root-cupo`,
+  `api-key-carga-tope-plan`, `api-key-empresa`, `api-key-modulo-inactivo`, `bulk-orden-service*`,
+  `cotizacion-orden-service`) → `Test Files 12 passed (12)`, `Tests 278 passed (278)`.
+- T4.2: `bulk-orden-service.forma-pais.test.ts` → `Tests 12 passed (12)`. Rojo comprobado anulando la
+  comprobación de R5 en los dos servicios → `Tests 4 failed | 8 passed (12)`; revertido.
+  `bulk-orden-service*`, `cotizacion-orden-service`, `v2-composicion`, `carga-composition-root-cupo`,
+  `api-key-carga-tope-plan`, `geografia-dominio-puro.guardia` → `Test Files 12 passed (12)`, `Tests 270 passed (270)`.
+  `contrato-v1.route.test.ts` (modo comparar, sin `CONTRATO_V1_GRABAR`) + `orden-nodo-escritura.test.ts` →
+  `Test Files 2 passed (2)`, `Tests 27 passed (27)` (22 del contrato + 5); `git status tests/fixtures` limpio.
+- `pnpm exec tsc --noEmit` → «No errors found», exit 0 (tras T4.1 y tras T4.2).
+- `pnpm exec eslint` sobre los archivos tocados → exit 0 (la de T3.2 deja 3 warnings previos en
+  `corregir-datos-cliente-service.test.ts:121-123`, sin errores).
+- Suites que no corren en esta base (entorno, no código): `corregir-datos-cliente.chat.test.ts` (y las 3 de T3)
+  paran en `beforeAll` por `orden` vacía; `corregir-conciliacion.int.test.ts` (en `tests/baseline-rojos.json`) por
+  `usuario` con < 2 filas. **No se sembró**: `pnpm run db:seed` (`scripts/seed-catalogos.ts`) solo siembra
+  `tipo_identificacion`, `rol`, `order_status` y `vehiculos` (no crea órdenes ni usuarios) y no hay script de
+  semillas de zonas en el repo, así que sembrar no levantaría la precondición.
+- No se corrió `vitest related` amplio ni la suite completa (memoria).
+
+Veredicto T3.2/T4.1/T4.2: nodo en la corrección, catálogo cableado y vigilado en las 3 rutas, R5 en v1 y rama del motor listas; contrato v1 22/22 sin regrabar.
