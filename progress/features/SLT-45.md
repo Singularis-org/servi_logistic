@@ -36,6 +36,10 @@ T9 (payloads reales desde la copia de producción) la hace una persona, no un ag
   catálogo (sin cambiar aserciones), para no conectar a Postgres por accidente.
 - 2026-11-06 (humano): mensaje de T6.2 `{columna} es obligatoria` (todas las columnas de nivel vacías) se queda;
   añadido a design §5.
+- 2026-11-06 (humano, review B1): el script `geo-payloads-contrato-v1.ts` toma el país de
+  `PAIS_DE_OPERACION.codigo` (`lib/config/pais.ts`), sin literal «CR».
+- 2026-11-06 (humano, review m2): `OrdenesPageFranjaRetenidas` y `OrdenesRutearSatelite` ganan el mismo
+  `vi.mock` del catálogo, sin cambiar aserciones.
 
 ## Preguntas abiertas
 - 2026-11-05 (implementer, T1): bug de v1 fuera de alcance. `POST /api/ordenes/api-key/carga` con un `name`
