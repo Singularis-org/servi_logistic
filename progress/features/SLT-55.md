@@ -2,7 +2,7 @@
 
 | key | nombre | zone | complexity | rama | assignee | estado |
 |---|---|---|---|---|---|---|
-| SLT-55 | valor-propio-mensajero | fullstack | small | feature/SLT-55-valor-propio-mensajero | Carlos Restrepo | in_progress |
+| SLT-55 | valor-propio-mensajero | fullstack | small | feature/SLT-55-valor-propio-mensajero | Carlos Restrepo | done |
 
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
@@ -25,3 +25,5 @@ Ninguna.
 Subagentes en Opus.
 
 ## Cierre
+2026-11-05: PR #85 mergeado a `dev` por Carlos (99dc8c99). No promovido a producción: la épica EP-8 sale completa.
+Deudas: D47 a D50 en `progress/deudas.md`.
