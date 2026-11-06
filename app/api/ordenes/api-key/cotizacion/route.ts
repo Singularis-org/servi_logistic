@@ -52,6 +52,13 @@ import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograf
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import type { RawRow } from "@/lib/parsers/spreadsheet";
 import { cotizacionBodySchema } from "@/lib/types/cotizacion";
+import { aFilaInterna, cotizacionV2BodySchema, type FilaV2 } from "@/lib/types/api-v2";
+
+/**
+ * SLT-45 (design §4.1): la version del contrato. `"v1"` es el codigo de siempre; `"v2"` cambia solo
+ * el schema del cuerpo y el metodo del service (`cotizarV2`, que añade `filas[].ubicacion`).
+ */
+export type VersionCotizacionApi = "v1" | "v2";
 
 // El runtime de Node es OBLIGATORIO: Prisma y el hash de la API key no corren en edge.
 export const runtime = "nodejs";
@@ -101,6 +108,7 @@ function extraerBearer(req: Request): string | null {
 export async function handleCotizacionApi(
   req: Request,
   deps: CotizacionApiDeps = {},
+  version: VersionCotizacionApi = "v1",
 ): Promise<NextResponse> {
   const result = await withErrorHandler(async () => {
     // 1. R1-R3: autenticacion por API key ANTES de tocar el cuerpo. Una key ausente y una key
@@ -125,7 +133,11 @@ export async function handleCotizacionApi(
           fieldErrors: { ordenes: ["cuerpo JSON inválido"] },
         });
       }
-      const parsed = cotizacionBodySchema.safeParse(json);
+      // SLT-45 (§4.1): v2 valida con su propio schema (sin la terna, con `ubicacion`).
+      const parsed =
+        version === "v2"
+          ? cotizacionV2BodySchema.safeParse(json)
+          : cotizacionBodySchema.safeParse(json);
       if (!parsed.success) {
         const fieldErrors = z.flattenError(parsed.error).fieldErrors as Record<string, string[]>;
         throw new ValidationError(MSG.VALIDATION_ERROR, { fieldErrors });
@@ -134,7 +146,10 @@ export async function handleCotizacionApi(
       // 3. R4: el dueño de la cotizacion sale SIEMPRE del actor de la key. Ningun identificador
       // de tienda, dueño o tarifa del cuerpo llega al service: solo viajan las filas.
       const service = deps.cotizacionService ?? buildCotizacionService();
-      const cotizacion = await service.cotizar(parsed.data.ordenes as RawRow[], auth.actor);
+      const cotizacion =
+        version === "v2"
+          ? await service.cotizarV2((parsed.data.ordenes as FilaV2[]).map(aFilaInterna), auth.actor)
+          : await service.cotizar(parsed.data.ordenes as RawRow[], auth.actor);
 
       // R13/R15: sin tarifa cotizable NO se emite ningun importe — ni siquiera un cero. Es la
       // inversion deliberada del gap D1/R8 de la feature 98: en una carga el `0.00` es tolerable
