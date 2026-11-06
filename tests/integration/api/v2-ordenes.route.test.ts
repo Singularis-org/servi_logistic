@@ -10,6 +10,7 @@ import type { AutenticadorApiKey } from "@/lib/api/api-key-request";
 import { MSG_PAIS_NO_HABILITADO, MSG_UBICACION_UNA_DE_LAS_DOS } from "@/lib/services/geo-ubicacion";
 
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "../db/_postgres-real";
+import { asignarPlan, crearPlan } from "../db/_fixtures/planes";
 import {
   conEscenario,
   crearTienda,
@@ -425,6 +426,56 @@ describeSiHayBase("SLT-45 — crear una orden y carga por lote de v2 (Postgres r
         nodoGeograficoId: ruta[2].id,
       });
     });
+  }, 120_000);
+
+  /**
+   * El mismo lote de dos ordenes validas, en v1 (terna) o v2 (ruta), con la empresa sembrada en un
+   * plan de tope 1 orden por ciclo y ninguna usada: la carga trae 2 y pasa el tope.
+   */
+  async function loteAlTopeDelPlan(version: "v1" | "v2"): Promise<Respuesta & { ordenes: number }> {
+    return conEscenario(
+      base,
+      {},
+      async (c) => {
+        const ubic = (ruta: string[]): Fila =>
+          version === "v1" ? { provincia: ruta[0], canton: ruta[1], distrito: ruta[2] } : { ubicacion: ruta };
+        const filas = [1, 2].map((n) => ({
+          num_remision: `CUPO-${n}`,
+          destinatario: `Destinatario ${n}`,
+          telefono: "80000001",
+          direccion: `Direccion ${n}`,
+          producto: `Producto ${n}`,
+          peso: "1",
+          monto_cobrar: "25900",
+          ...ubic(OCCIDENTAL),
+        }));
+        const res = await handleCargaApi(post(URL_LOTE, { ordenes: filas }), depsDeCarga(c.cli, c.autenticar), version);
+        const cuerpo = (await res.json()) as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+        return { status: res.status, cuerpo, ordenes: await ordenesDeLaTienda(c.tx, c.tiendaId) };
+      },
+      async (tx, s) => {
+        const plan = await crearPlan(tx, { ordenes: 1 });
+        await asignarPlan(tx, s.organizacionId, plan);
+      },
+    );
+  }
+
+  it("R17: con la empresa al tope de su plan, el lote de v2 responde el mismo 409 `tope_plan` que v1 y no crea ninguna orden", async () => {
+    const v1 = await loteAlTopeDelPlan("v1");
+    const v2 = await loteAlTopeDelPlan("v2");
+
+    expect(v2.status).toBe(409);
+    expect(v2.cuerpo).toMatchObject({
+      status: "error",
+      code: "CONFLICT",
+      details: { codigo: "tope_plan", tope: "ordenes", maximo: 1, usados: 0, pedidas: 2 },
+    });
+    expect(v2.ordenes).toBe(0);
+
+    // Y es lo mismo que responde v1 en el mismo escenario.
+    expect(v1.status).toBe(409);
+    expect(v1.ordenes).toBe(0);
+    expect(v2.cuerpo).toEqual(v1.cuerpo);
   }, 120_000);
 
   // ── R18: crear una orden = lote de v2 con esa unica orden ──────────────────────────────────
