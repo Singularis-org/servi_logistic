@@ -26,10 +26,21 @@ T9 (payloads reales desde la copia de producción) la hace una persona, no un ag
 ## Decisiones
 - 2026-11-05 (humano): «arranca 45 desde 71»: la rama nace sobre `feature/SLT-71-geo-jerarquica-transito-analitica`.
 - 2026-11-05 · Alcance y decisiones cerradas en `specs/SLT-45-geo-jerarquica-entrada/requirements.md` (`/afinar-feature`; tarjetas SLT-45 y SLT-80 actualizadas).
+- 2026-11-05 (humano, T3.2): `CorregirDatosClienteService` pone `nodoGeograficoId` él mismo (design §3.2).
+  Las 2 aserciones de `corregir-datos-cliente-service.test.ts` (~627, ~669) ganan `nodoGeograficoId`;
+  es la única excepción aceptada a «sin cambiar aserciones» de T3.2.
 
 ## Preguntas abiertas
+- 2026-11-05 (implementer, T1): bug de v1 fuera de alcance. `POST /api/ordenes/api-key/carga` con un `name`
+  ya usado por la misma key responde 500 INTERNAL, no el 409 de la feature 141/R24: con `@prisma/adapter-pg`
+  el P2002 llega con `meta.target` «(not available)» y `esNombreDuplicado` (`lib/repositories/carga-lote.ts:32`)
+  devuelve false. El paso de nombre repetido se quitó del payload `lote-con-nombre-e-individual` para no
+  congelar el 500. ¿Ficha propia? Decide el humano.
 
 ## Tandas
+- 2026-11-05 · T1–T3 (T3.2 parcial) · `4107a48f`, `d5ae4cc8`, `adbb2a26`…`3f3428cb` · tsc 0; contrato v1 22/22;
+  347/347 por nombre; `orden-nodo-escritura` 5/5. `vitest related` cortado por memoria (veredicto en CI).
+  3 suites de integración paran en `beforeAll` por base `logistic_slt45` sin órdenes (falta seed).
 
 ## Modelos (overrides)
 
