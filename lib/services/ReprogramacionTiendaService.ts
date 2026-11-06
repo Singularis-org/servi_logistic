@@ -3,7 +3,7 @@ import type { IGestionOrdenRepository } from "@/lib/interfaces/repositories/IGes
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IOrdenHistorialService } from "@/lib/interfaces/services/IOrdenHistorialService";
 // FEATURE 276 (Q2, FIRMADA el 2026-08-24) — la TERCERA via hacia la circulacion se bloquea aqui,
-// con el MISMO motivo unico de R20 y el MISMO umbral de configuracion.
+// con el MISMO motivo unico de R20 y el MISMO tope de la empresa (SLT-77).
 import { MSG_TOPE_INTENTOS_ASIGNACION } from "@/lib/services/mensajes-bloqueo";
 import type {
   IReprogramacionTiendaService,

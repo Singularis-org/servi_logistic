@@ -333,14 +333,14 @@ export class OrdenHistorialRepository implements IOrdenHistorialRepository {
     }));
   }
 
-  /**
-   * FICHA 454 (R29): las señales del detalle, con la MISMA consulta que anota los listados
-   * (`senalesGestionDe`), aqui con un solo id. `registradaAt` sale ya en ISO, como en el listado.
-   */
   leerTopeIntentos(): Promise<number> {
     return leerTopeIntentosDeLaEmpresa(this.prisma);
   }
 
+  /**
+   * FICHA 454 (R29): las señales del detalle, con la MISMA consulta que anota los listados
+   * (`senalesGestionDe`), aqui con un solo id. `registradaAt` sale ya en ISO, como en el listado.
+   */
   async findSenalesGestion(ordenId: string): Promise<SenalesGestionDTO> {
     const s = (await senalesGestionDe(this.prisma, [ordenId])).get(ordenId) ?? SIN_SENALES_GESTION;
     return {

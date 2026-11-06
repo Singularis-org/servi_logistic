@@ -19,7 +19,7 @@ vi.mock("@/hooks/useToast", () => ({ useToast: () => toast }));
 const AYUDA =
   "Cuántos intentos se hacen antes de pasar una orden a rechazo. Rige al guardar, para todas las órdenes sin terminar.";
 const AVISO =
-  "Guardar no rechaza ni cobra nada. Pero las novedades que ya alcancen este número se rechazan en la siguiente corrida automática, sin más clics, y ese rechazo genera cobro. Las órdenes en bodega que ya lo alcancen no se podrán asignar.";
+  "Guardar no rechaza ni cobra nada. Pero las novedades que ya alcancen este número se rechazan solas, sin más clics, unas en la siguiente corrida automática y otras al vencer su plazo, y ese rechazo genera cobro. Las órdenes en bodega que ya lo alcancen no se podrán asignar.";
 const ERROR = "No se pudo guardar. Lo digitado sigue aquí: vuelve a intentarlo.";
 
 const seccion = () => screen.getByRole("region", { name: "Intentos de entrega" });

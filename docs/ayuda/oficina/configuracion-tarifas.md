@@ -78,8 +78,8 @@ orden que ya no podía seguir vuelve a admitir intentos.
 
 **Bajarlo tiene consecuencias.** Guardar no rechaza ni cobra nada. Pero:
 
-- Las novedades que ya alcancen el número nuevo se rechazan en la siguiente corrida automática, sin más clics, y ese
-  rechazo genera cobro.
+- Las novedades que ya alcancen el número nuevo se rechazan solas, sin más clics, unas en la siguiente corrida automática
+  y otras al vencer su plazo, y ese rechazo genera cobro.
 - Las órdenes en bodega que ya lo alcancen no se podrán asignar: la pantalla de asignación pide quitarlas de la selección.
   Para que vuelvan a salir hay que subir otra vez el número o reportar un incidente.
 

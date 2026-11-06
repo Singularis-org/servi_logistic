@@ -41,7 +41,9 @@ model Organizacion {
 
 A mano: `db:migrate:create` falla con P3006 en este repo. Dos, porque Postgres prohíbe usar un valor de enum
 en la transacción que lo añade (mismo motivo que `20261104140000`). Antes de crearlas, mirar `origin/dev` y
-tomar un timestamp mayor que el último. Ninguna edita una migración aplicada.
+tomar un timestamp mayor que el último. Ninguna edita una migración aplicada. Al sincronizar con `dev` (2026-11-06) se
+renombraron a `20261106160000` y `20261106160100`, detrás de `20261106150000` de SLT-86; no se habían aplicado en
+ningún entorno compartido.
 
 **`20261106160000_historial_tope_intentos`**
 
@@ -199,8 +201,8 @@ Textos en `tarifas-textos.ts`. Borrador, que el humano ajusta al aprobar el spec
 - Ayuda: «Cuántos intentos se hacen antes de pasar una orden a rechazo. Rige al guardar, para todas las órdenes
   sin terminar.»
 - Aviso al bajar (R15): «Guardar no rechaza ni cobra nada. Pero las novedades que ya alcancen este número se
-  rechazan en la siguiente corrida automática, sin más clics, y ese rechazo genera cobro. Las órdenes en bodega
-  que ya lo alcancen no se podrán asignar.»
+  rechazan solas, sin más clics, unas en la siguiente corrida automática y otras al vencer su plazo, y ese rechazo
+  genera cobro. Las órdenes en bodega que ya lo alcancen no se podrán asignar.»
 - Solo lectura (R13): «Lo cambia el maestro.»
 
 ## 5. `REINTENTOS_MIN_INTENTOS`: se retira
@@ -294,6 +296,9 @@ D49, con el mismo dueño, para que se escriba al promover la épica.
   que contar esas órdenes.
 - **Una empresa que tenía 1 o 2:** sus órdenes vuelven a admitir intentos. Lo ya rechazado y cobrado no se revierte.
 - Se suma a D49: volver atrás también exige revisar `tarifa_valor`.
+- **Las filas del historial:** una empresa que haya cambiado el tope deja filas con `tope_intentos_cambiado` y
+  `organizacion`, valores que el cliente Prisma anterior no conoce. `/historico/acciones` podría fallar al leerlas.
+  Es por lectura, sin ejecutar: hay que comprobarlo al escribir el plan.
 
 **Con `down.sql`:** se pierden los valores y el historial de esos cambios. Solo si se abandona la feature.
 

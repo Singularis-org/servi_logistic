@@ -199,6 +199,7 @@ T0 → A → B ─┬→ C → D ─┬→ F → G
 - `docs/architecture.md`
 - `docs/ayuda/oficina/configuracion-tarifas.md`
 - `db/schema.prisma`
+- `lib/actions/orden-historial.ts`
 - `db/migrations/20261106160000_historial_tope_intentos/migration.sql`
 - `db/migrations/20261106160000_historial_tope_intentos/down.sql`
 - `db/migrations/20261106160100_organizacion_tope_intentos/migration.sql`

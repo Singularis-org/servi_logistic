@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
+import { guiaDecisionErrorMessage } from "@/app/(app)/ordenes/_components/guia-decision-error-messages";
 import { handleProcesarDevueltasSla } from "@/app/api/cron/procesar-devueltas-sla/route";
 import { conEmpresa, EmpresaNoResuelta } from "@/lib/db/contexto-empresa";
 import { MODELOS_DE_NEGOCIO } from "@/lib/db/modelos-de-negocio";
@@ -18,6 +19,7 @@ import { AsignacionSateliteService } from "@/lib/services/AsignacionSateliteServ
 import { AvisosDiariosService } from "@/lib/services/AvisosDiariosService";
 import { DevolucionSlaService } from "@/lib/services/DevolucionSlaService";
 import { GuiaAsignacionService } from "@/lib/services/GuiaAsignacionService";
+import { MSG_TOPE_INTENTOS_ASIGNACION } from "@/lib/services/mensajes-bloqueo";
 import { NovedadesService } from "@/lib/services/NovedadesService";
 import { ReprogramacionTiendaService } from "@/lib/services/ReprogramacionTiendaService";
 import { buildReprogramadasRetenidasService } from "@/lib/services/reprogramadas-retenidas-composicion";
@@ -66,7 +68,8 @@ function rechazadaPorTope(r: { status: string; motivo?: string }, caso: string):
 function loteRechazadoPorTope(r: { status: string; detalle?: { ordenId: string; motivo: string }[] }, lote: string[]): void {
   expect(r.status).toBe("conflict");
   expect(r.detalle?.map((d) => d.ordenId).sort()).toEqual([...lote].sort());
-  for (const d of r.detalle ?? []) expect(d.motivo).toContain(POR_TOPE);
+  // El motivo exacto: el de gestion tambien lleva `POR_TOPE`, y el mapper de las pantallas de asignacion no lo reconoce.
+  for (const d of r.detalle ?? []) expect(d.motivo).toBe(MSG_TOPE_INTENTOS_ASIGNACION);
 }
 
 const COBRO_RECHAZO = "164.00";
@@ -380,6 +383,10 @@ describeSiHayBase("SLT-77 R20 — una orden agotada para su empresa frena el lot
         ),
       );
       loteRechazadoPorTope(enA as never, loteA);
+      // R42: lo que emite el servicio real, por el mapper de la central, hasta el texto de pantalla.
+      expect(guiaDecisionErrorMessage(enA)).toBe(
+        "Alguna orden de la selección ya agotó sus intentos de entrega y no puede volver a salir a reparto. Quítala de la selección.",
+      );
       for (const id of loteA) expect(await A.e.estadoDe(id)).toBe("en_bodega_central");
 
       const loteB = await mixtoDe(B, deB[0]);

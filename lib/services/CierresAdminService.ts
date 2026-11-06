@@ -1,8 +1,5 @@
 import { Prisma } from "@prisma/client";
 import { esAccesoTotal } from "@/lib/auth/acceso-total";
-// FEATURE 276 (T9, R7): el umbral de intentos se resuelve AQUI, en el servicio, y viaja al
-// repositorio como un numero dentro de `liberacionSinGestionar`. La capa de datos no lee
-// configuracion: si lo hiciera, habria dos fuentes del mismo umbral.
 import type {
   CatalogoFiltrosCierresDTO,
   FiltrosCierres,

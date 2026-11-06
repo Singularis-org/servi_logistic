@@ -304,7 +304,7 @@ export class MisAsignacionesService implements IMisAsignacionesService {
 
     // Feature 160 (R12/R13/R15): UN solo lote con la union de los ids de los DOS grupos, sobre
     // las ordenes YA acotadas al mensajero actor (`findMisAsignaciones(actor.usuarioId, ...)`).
-    // Sin asignaciones -> 0 consultas al historial (R13).
+    // Sin asignaciones -> 0 consultas de conteo al historial (R13); el tope de abajo se lee igual.
     const intentos = await this.historial.contarIntentosEnLote(rows.map((r) => r.id));
     // SLT-77 (R24, R34): un solo valor para toda la lista, fuera del bucle.
     const topeIntentos = await this.historial.topeIntentos();

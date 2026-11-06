@@ -63,7 +63,6 @@ const COLUMNAS_DEL_CODIGO_ANTERIOR = [
   "pais_id",
   "plan_id",
   "plan_ciclo_ancla_at",
-  "plan_ciclo_corto_desde_at",
   "plan_tipo_cobro",
   "plan_cambio_id",
   "plan_cambio_plan_id",

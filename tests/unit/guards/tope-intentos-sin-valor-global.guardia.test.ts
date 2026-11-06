@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -32,6 +33,8 @@ function sinComentarios(fuente: string): string {
 
 const relativa = (ruta: string) => path.relative(RAIZ, ruta).split(path.sep).join("/");
 
+const archivosDeCodigo = () => ["lib", "app", "components", "hooks"].flatMap(archivosDe);
+
 /** Rutas en cuyo codigo aparece alguno de los nombres. */
 function queNombran(archivos: string[], nombres: RegExp): string[] {
   return archivos.filter((a) => nombres.test(sinComentarios(fs.readFileSync(a, "utf8")))).map(relativa);
@@ -44,8 +47,8 @@ const COLUMNA = /tope_intentos_entrega/;
 const ATRIBUCION_LEGAL = new RegExp(["por le" + "y", "cota le" + "gal", "umbral le" + "gal"].join("|"), "i");
 
 describe("SLT-77 R31 — ningun punto lee un tope global", () => {
-  it("en `lib/` y `app/` nadie nombra la configuracion retirada, en codigo", () => {
-    expect(queNombran([...archivosDe("lib"), ...archivosDe("app")], VALOR_GLOBAL)).toEqual([]);
+  it("en `lib/`, `app/`, `components/` y `hooks/` nadie nombra la configuracion retirada, en codigo", () => {
+    expect(queNombran(archivosDeCodigo(), VALOR_GLOBAL)).toEqual([]);
   });
 
   it("el modulo de la configuracion ya no existe", () => {
@@ -53,10 +56,30 @@ describe("SLT-77 R31 — ningun punto lee un tope global", () => {
   });
 
   it("la columna solo se nombra en los dos archivos de la lectura y la escritura", () => {
-    expect(queNombran([...archivosDe("lib"), ...archivosDe("app")], COLUMNA).sort()).toEqual([
+    expect(queNombran(archivosDeCodigo(), COLUMNA).sort()).toEqual([
       "lib/repositories/TopeIntentosRepository.ts",
       "lib/repositories/_shared/tope-intentos-empresa.ts",
     ]);
+  });
+
+  it("control: el recorrido entra en las cuatro carpetas y el detector ve un archivo real con el nombre", () => {
+    const vistos = archivosDeCodigo().map(relativa);
+    for (const conocido of [
+      "lib/services/mensajes-bloqueo.ts",
+      "app/(app)/ordenes/_components/guia-decision-error-messages.ts",
+      "components/ui/button.tsx",
+      "hooks/use-mobile.ts",
+    ]) {
+      expect(vistos).toContain(conocido);
+    }
+    const carpeta = fs.mkdtempSync(path.join(os.tmpdir(), "slt77-r31-"));
+    try {
+      const muestra = path.join(carpeta, "muestra.ts");
+      fs.writeFileSync(muestra, "export const u = reintentosConfig.MIN_INTENTOS_ENTREGA;\n");
+      expect(queNombran([muestra], VALOR_GLOBAL)).toHaveLength(1);
+    } finally {
+      fs.rmSync(carpeta, { recursive: true, force: true });
+    }
   });
 
   it("control: el detector ve una lectura de muestra, y no la misma en un comentario", () => {

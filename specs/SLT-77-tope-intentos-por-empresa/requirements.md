@@ -57,7 +57,8 @@ un plazo.
   por esta pantalla.
 - **R15.** MIENTRAS el valor elegido es menor que el guardado, la sección DEBE mostrar un aviso visible,
   antes de guardar, que diga que: guardar no rechaza ni cobra nada; las novedades que ya alcancen el
-  nuevo tope se rechazan en la siguiente corrida automática, sin más clics, y ese rechazo genera cobro;
+  nuevo tope se rechazan solas, sin más clics, unas en la siguiente corrida automática y otras al vencer
+  su plazo, y ese rechazo genera cobro;
   y las órdenes en bodega que ya lo alcancen no se podrán asignar (decisión P1).
 - **R16.** MIENTRAS el valor elegido es igual o mayor que el guardado, la sección NO DEBE mostrar ese
   aviso.
@@ -164,3 +165,4 @@ Ninguna.
 | 2026-11-06 | ¿Criterio de conteo? | Sin cambios. Heredado de 276 R31/R32. |
 | 2026-11-06 | ¿El número llega al navegador del mensajero? | No: solo el booleano ya decidido. Heredado de 276 R10. |
 | 2026-11-06 | P1 · ¿Qué pasa con una orden en bodega que queda agotada al bajar el tope? | Se acepta, sin cambiar la regla de 276: no cobra, queda parada y el aviso de R15 lo dice. La salida es volver a subir el tope o un incidente. Una salida a rechazo desde bodega sería otra ficha. Carlos, «apruebo». |
+| 2026-11-06 | Texto del aviso de R15 | Corregido por el menor 3 de la revisión: una `not_found` agotada espera su ventana, así que no todas se rechazan en la siguiente corrida. Carlos, «cambialo si lo ves mal». |

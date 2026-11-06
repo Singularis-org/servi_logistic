@@ -61,7 +61,7 @@ const RECHAZO = "devolucion_a_origen_por_rechazo";
 const DIA_MS = 24 * 60 * 60 * 1000;
 
 const AVISO_AL_BAJAR =
-  "Guardar no rechaza ni cobra nada. Pero las novedades que ya alcancen este número se rechazan en la siguiente corrida automática, sin más clics, y ese rechazo genera cobro. Las órdenes en bodega que ya lo alcancen no se podrán asignar.";
+  "Guardar no rechaza ni cobra nada. Pero las novedades que ya alcancen este número se rechazan solas, sin más clics, unas en la siguiente corrida automática y otras al vencer su plazo, y ese rechazo genera cobro. Las órdenes en bodega que ya lo alcancen no se podrán asignar.";
 const MOTIVO_TOPE_EN_LA_RESPUESTA = "esta orden ya agoto sus intentos de entrega: no puede volver a salir a reparto";
 const MOTIVO_RECHAZO_AL_APROBAR = "sin intentos de entrega disponibles";
 

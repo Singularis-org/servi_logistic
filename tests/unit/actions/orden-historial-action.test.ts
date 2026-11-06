@@ -75,4 +75,15 @@ describe("obtenerHistorialOrden (R28)", () => {
     const r = await obtenerHistorialOrden("o1", { service, getActor: async () => MAESTRO });
     expect(r).toEqual({ status: "not_found" });
   });
+
+  it("SLT-77 R27: si falla leer el tope se propaga el fallo, no responde sesion expirada", async () => {
+    const service = fakeService({
+      obtenerHistorial: vi.fn(async () => {
+        throw new Error("sin empresa");
+      }),
+    });
+    await expect(obtenerHistorialOrden("o1", { service, getActor: async () => MAESTRO })).rejects.toThrow(
+      "orden-historial: AppErrorCode inesperado INTERNAL",
+    );
+  });
 });

@@ -208,6 +208,10 @@ export class OrdenHistorialService implements IOrdenHistorialService {
     };
   }
 
+  async topeIntentos(): Promise<number> {
+    return this.historialRepo.leerTopeIntentos();
+  }
+
   /**
    * Feature 215 (R1/R6/R9) — PUNTO UNICO del conteo de intentos. Delega directo en el
    * repositorio: ya no hay traduccion `value -> id` que hacer.
@@ -223,10 +227,6 @@ export class OrdenHistorialService implements IOrdenHistorialService {
    * `DevolucionSlaService.ejecutar`) y la linea de tiempo (`obtenerHistorial().intentos`): por
    * construccion no pueden divergir (R6).
    */
-  async topeIntentos(): Promise<number> {
-    return this.historialRepo.leerTopeIntentos();
-  }
-
   async contarIntentos(ordenId: string): Promise<number> {
     return this.historialRepo.contarIntentosVigentes(ordenId);
   }

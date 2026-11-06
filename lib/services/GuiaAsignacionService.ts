@@ -52,7 +52,6 @@ import {
 } from "@/lib/services/mensajes-bloqueo";
 import type { IAsignabilidadCoordenadasService } from "@/lib/interfaces/services/IAsignabilidadCoordenadasService";
 import type { IOrdenHistorialService } from "@/lib/interfaces/services/IOrdenHistorialService";
-// FEATURE 276 (T7, R7): el umbral sale de la configuracion, nunca de un `3` escrito a mano.
 import { esAsignable, motivoAsignabilidad } from "@/lib/services/AsignabilidadCoordenadasService";
 import { esAccesoTotal } from "@/lib/auth/acceso-total";
 import { resolverFechaReparto } from "@/lib/utils/dia-reparto";

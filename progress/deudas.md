@@ -304,6 +304,7 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
     - **Una empresa que tenía 4 o más:** sus órdenes con 3 o más intentos se escalan en la siguiente corrida de devoluciones, y **generan cobro** sin que nadie lo decida. Quedan agotadas también en asignación. Antes de revertir hay que contar esas órdenes.
     - **Una empresa que tenía 1 o 2:** sus órdenes vuelven a admitir intentos. Lo ya rechazado y cobrado no se revierte.
     - Se suma a D49: volver atrás también exige revisar `tarifa_valor`.
+    - **Las filas del historial:** una empresa que haya cambiado el tope deja filas con `tope_intentos_cambiado` y `organizacion`, valores que el cliente Prisma anterior no conoce. `/historico/acciones` podría fallar al leerlas. Es por lectura, sin ejecutar: hay que comprobarlo al escribir el plan.
   - **Con `down.sql`:** se pierden los valores y el historial de esos cambios. Solo si se abandona la feature.
 - **Dueño:** Carlos Restrepo.
 
