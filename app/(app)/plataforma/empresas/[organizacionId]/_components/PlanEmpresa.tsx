@@ -97,7 +97,7 @@ const TEXTOS = {
   /** SLT-86 (design §7.1): sustituye a «El ciclo de órdenes empieza el {fecha}.» de SLT-58 R38. */
   empiezaARegir: (fecha: string) => `El plan empieza a regir el ${fecha}.`,
   /** P13 (aprobado el 2026-10-29). */
-  inicioCiclo: "Inicio del ciclo de órdenes",
+  inicioCiclo: "Inicio del período",
   /** P11 (aprobada el 2026-10-29): sin la vista previa no se confirma. */
   vistaPreviaNoCargo: "No se pudo comprobar el consumo de la empresa",
   volver: "Volver",

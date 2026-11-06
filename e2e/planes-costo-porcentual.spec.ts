@@ -88,7 +88,7 @@ const TEXTO = {
   planAAsignar: "Plan a asignar",
   asignarPlan: "Asignar plan",
   modal: "¿Asignar este plan a la empresa?",
-  inicioCiclo: "Inicio del ciclo de órdenes",
+  inicioCiclo: "Inicio del período",
   tipoCobro: "Tipo de cobro",
   mensual: "Mensual",
   // `textoDelCobroVigente` (R22) y la fuente de `CobroPorOrden.tsx`.

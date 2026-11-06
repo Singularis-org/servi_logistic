@@ -112,7 +112,7 @@ describe("Ajuste planes-custom D13 — vista previa de topes en el form del cust
     const user = userEvent.setup();
     const { previsualizar } = montarForm();
     await custom(user, "Envíos Norte");
-    const campo = screen.getByLabelText("Inicio del ciclo de órdenes");
+    const campo = screen.getByLabelText("Inicio del período");
     await user.clear(campo);
     await user.type(campo, "2026-11-05");
 

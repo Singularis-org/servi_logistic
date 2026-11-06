@@ -363,7 +363,10 @@ El repositorio trabaja en una transacción y bajo el cerrojo:
   estado final: {n}».
 - **Cancelar un cambio de empresa (decisión del 2026-11-06, tras T12):** «Cancelar cambio» pide confirmación con
   el modal de confirmación de la app: «¿Cancelar el cambio a {plan} programado para el {AAAA-MM-DD}?». El rechazo
-  `sin_cambio_programado` en el detalle de empresa dice «La empresa ya no tiene un cambio pendiente.».
+  `sin_cambio_programado` en el detalle de empresa dice «La empresa ya no tiene un cambio pendiente.». Botones
+  (aprobados el 2026-11-06, tras T13): «Cancelar cambio» (destructive) y «Volver».
+- **Inicio de la primera asignación (decisión del 2026-11-06, tras T13):** el campo se llama «Inicio del período»
+  (antes «Inicio del ciclo de órdenes»), en el formulario del plan y en el detalle de empresa.
 - **Modales «Cambiar plan» y «Cambiar tipo de cobro» (decisión del 2026-11-06):** se aprueban los recortes de
   T11: sin «Sus topes y módulos cambian en cuanto confirmes.», y «no cambian sus topes ni sus módulos».
 - **Pendiente sin plan (R26, decisión del 2026-11-05):** «Sin límites» y debajo «{Plan} empieza a regir el

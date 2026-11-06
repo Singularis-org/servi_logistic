@@ -75,7 +75,7 @@ async function conCosto(user: Usuario) {
   await user.type(screen.getByLabelText("Costo por orden"), "100");
 }
 
-const campoInicio = () => screen.queryByLabelText("Inicio del ciclo de órdenes");
+const campoInicio = () => screen.queryByLabelText("Inicio del período");
 
 describe("D1 — el costo base ya no ofrece «Negociable»", () => {
   it("solo «Sin precio» y «Con monto»", () => {

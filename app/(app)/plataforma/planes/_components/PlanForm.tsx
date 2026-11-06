@@ -86,8 +86,8 @@ export const TEXTOS_PLAN_FORM = {
   programar: "Programar cambio",
   crear: "Crear plan",
   /** Ajuste planes-custom (D4): solo si la empresa elegida todavía no tiene plan. */
-  inicioCiclo: "Inicio del ciclo de órdenes",
-  inicioCicloAyuda: "El ciclo de órdenes de la empresa empieza ese día, hora de la plataforma.",
+  inicioCiclo: "Inicio del período",
+  inicioCicloAyuda: "El período de la empresa empieza ese día, hora de la plataforma.",
   revisa: "Revisa los campos marcados.",
   /** Ajuste planes-custom (D13): el mismo texto que el modal de primera asignación (SLT-58 P11). */
   vistaPreviaNoCargo: "No se pudo comprobar el consumo de la empresa",

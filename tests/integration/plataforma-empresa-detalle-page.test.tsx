@@ -335,7 +335,7 @@ describe("SLT-58 (R19) — el plan de la empresa en su detalle", () => {
       await user.click(within(await screen.findByRole("listbox")).getByRole("option", { name: "Básico (Público)" }));
       await user.click(screen.getByRole("button", { name: "Asignar plan" }));
 
-      const campo = within(await screen.findByRole("dialog")).getByLabelText("Inicio del ciclo de órdenes");
+      const campo = within(await screen.findByRole("dialog")).getByLabelText("Inicio del período");
       // Ajuste planes-custom (D5): por defecto mañana en la hora de la plataforma, no hoy.
       expect(campo).toHaveValue("2026-10-30");
       expect(campo).toHaveAttribute("min", "2026-09-29");

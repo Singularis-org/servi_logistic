@@ -188,14 +188,14 @@ describe("SLT-58 R13, R16 — con el superadmin, las páginas pintan", () => {
 
       await user.click(within(panel).getByRole("combobox", { name: "Empresa" }));
       await user.click(within(await screen.findByRole("listbox")).getByRole("option", { name: "Envíos Norte" }));
-      const campo = within(panel).getByLabelText("Inicio del ciclo de órdenes");
+      const campo = within(panel).getByLabelText("Inicio del período");
       expect(campo).toHaveValue("2026-10-30");
       expect(campo).toHaveAttribute("min", "2026-09-29");
       expect(campo).toHaveAttribute("max", "2026-11-29");
 
       await user.click(within(panel).getByRole("combobox", { name: "Empresa" }));
       await user.click(within(await screen.findByRole("listbox")).getByRole("option", { name: "Reparto Sur" }));
-      expect(within(panel).queryByLabelText("Inicio del ciclo de órdenes")).toBeNull();
+      expect(within(panel).queryByLabelText("Inicio del período")).toBeNull();
     } finally {
       vi.useRealTimers();
     }

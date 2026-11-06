@@ -267,7 +267,7 @@ test("el superadmin crea un custom de A «Con monto» con costo por orden 100, q
   await expect(mensual).toBeChecked();
   // D4/D5: abre en mañana. SLT-86: se pone el día 1 del mes en curso (antes, hoy), para que la orden del
   // paso 4 caiga dentro del período y el período sea completo (`primerDiaDelMes`).
-  const inicio = form.getByLabel("Inicio del ciclo de órdenes", { exact: true });
+  const inicio = form.getByLabel("Inicio del período", { exact: true });
   await expect(inicio).toHaveValue(mananaCalendarioCR(new Date()));
   await inicio.fill(primerDiaDelMes());
 
@@ -338,7 +338,7 @@ test("«Asignar plan» del listado lleva a B al bloque «Plan» y le asigna un p
   // el tipo de cobro se cambia a «Anual» (D6).
   const modal = page.getByRole("dialog", { name: TEXTO.modal });
   await expect(modal).toBeVisible({ timeout: 30_000 });
-  const inicio = modal.getByLabel("Inicio del ciclo de órdenes");
+  const inicio = modal.getByLabel("Inicio del período");
   await expect(inicio).toHaveValue(mananaCalendarioCR(new Date()));
   await inicio.fill(fechaCalendarioCR(new Date()));
   const anual = modal.getByRole("radiogroup", { name: "Tipo de cobro" }).getByRole("radio", { name: "Anual", exact: true });

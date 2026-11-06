@@ -298,7 +298,7 @@ describe("SLT-86 R16, R25 — el custom para una empresa que ya tiene plan", () 
     expect(fecha).toHaveAttribute("min", RANGO_EFECTO.min);
     expect(fecha).toHaveAttribute("max", RANGO_EFECTO.max);
     expect(fecha).toHaveAccessibleDescription("Hasta esa fecha la empresa sigue con su plan y su período actuales.");
-    expect(screen.queryByLabelText("Inicio del ciclo de órdenes")).toBeNull();
+    expect(screen.queryByLabelText("Inicio del período")).toBeNull();
   });
 
   it("R25: muestra el costo base del primer período completo con el tipo elegido", async () => {

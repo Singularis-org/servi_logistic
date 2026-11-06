@@ -625,7 +625,7 @@ describe("SLT-58 R20 — la primera asignación también pide confirmación (dec
 describe("SLT-58 §11.5 — la fecha de inicio del ciclo en la primera asignación", () => {
   const SIN_PLAN = () => vista({ plan: null });
   const campoFecha = (modal: HTMLElement) =>
-    within(modal).getByLabelText("Inicio del ciclo de órdenes") as HTMLInputElement;
+    within(modal).getByLabelText("Inicio del período") as HTMLInputElement;
   const vistaPreviaCon = (avisos: Extract<VistaPreviaAsignacionResult, { estado: "ok" }>["avisos"]) =>
     ({ estado: "ok", avisos }) satisfies VistaPreviaAsignacionResult;
   const MENSAJEROS = { organizacionId: ORG, empresa: "Envíos Norte", tope: "mensajero" as const, usados: 12, maximo: 10 };
@@ -857,7 +857,7 @@ describe("SLT-58 §11.5 — la fecha de inicio del ciclo en la primera asignaci�
     await elegir(user, "Básico (Público)");
     await user.click(screen.getByRole("button", { name: "Cambiar plan" }));
     const modal = await screen.findByRole("dialog", { name: "¿Cambiar el plan de esta empresa?" });
-    expect(within(modal).queryByLabelText("Inicio del ciclo de órdenes")).toBeNull();
+    expect(within(modal).queryByLabelText("Inicio del período")).toBeNull();
     await user.click(within(modal).getByRole("button", { name: "Cambiar plan" }));
 
     expect(asignar).toHaveBeenCalledTimes(1);

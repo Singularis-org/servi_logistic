@@ -768,3 +768,29 @@ tipos de pantallas y E2E (T10–T13).
   en `tests/baseline-rojos.json`); 4593 casos ok. 159 s.
 - Base E2E: `servi_logistic_slt86_e2e` (DROP/CREATE, `prisma migrate deploy`, `db:seed`), no la compartida.
 - No se corrió la suite completa ni `./init.sh` (memoria de la máquina).
+
+## Tanda 9 — «Inicio del período» y botones de «Cancelar cambio» (2026-11-06)
+
+Decisiones del humano tras T13: «Inicio del ciclo de órdenes» → «Inicio del período» en toda la UI; botones del modal
+de «Cancelar cambio» aprobados («Cancelar cambio» destructive, «Volver»); el tramo proporcional no lleva E2E.
+
+**Archivos** (frontend_dev; specs, implementer)
+- `PlanForm.tsx` (etiqueta y su ayuda: «El período de la empresa empieza ese día, hora de la plataforma.») y
+  `PlanEmpresa.tsx` (etiqueta). Claves `inicioCiclo` sin cambiar.
+- Tests: `PlanEmpresa`, `PlanFormCustomAsigna`, `PlanFormDescuentos`, `PlanFormVistaPreviaCustom`,
+  `plataforma-empresa-detalle-page`, `plataforma-planes-page`. E2E: `planes-costeo`, `planes-costo-porcentual`,
+  `planes-superadmin`.
+- `requirements.md` (fila 2026-11-06 «Etiqueta del inicio y botones de «Cancelar cambio»») y `design.md §7.1`.
+
+**R → test:** R25/R16 (campo de inicio de la primera asignación) → los mismos tests de antes con la etiqueta nueva;
+R19 (botones del modal) → `PlanEmpresaPeriodo.test.tsx` (sin cambios, ya los usaba).
+
+**Salida real (verificada por el implementer)**
+- vitest de los 6 archivos de test: 6/6, 138/138.
+- eslint de los 11 archivos de código y test: exit 0.
+- typecheck (`NODE_OPTIONS=--max-old-space-size=8192`): 0 errores.
+- E2E sobre `servi_logistic_slt86_e2e`, puerto 3044, build posterior al cambio: `planes-costeo`, `planes-costo-porcentual`
+  y `planes-superadmin` → 27 passed, 0 failed, 0 skipped, 0 flaky (2.0 min).
+
+**Propuesta:** `lib/types/planes.ts:187` dice «Un plan público no se asigna al crearlo: no lleva inicio del ciclo.»
+(error de validación que puede verse en pantalla). La decisión no lo nombra; no se tocó.

@@ -29,14 +29,14 @@ import {
  * 2. El superadmin entra con OTP, abre «Planes» y crea desde «Nuevo plan» un custom de A con tope de
  *    mensajeros (los demás topes vacíos = sin límite; SLT-86 R8: ya no hay tope de órdenes, ni su
  *    campo), todos los módulos, tipo de cobro
- *    «Anual» (D6) y el «Inicio del ciclo de órdenes» que el form pide porque A no tiene plan (D4; abre en
+ *    «Anual» (D6) y el «Inicio del período» que el form pide porque A no tiene plan (D4; abre en
  *    mañana, D5, y se pone en hoy). Crearlo lo deja asignado a A (D2).
  * 3. El detalle de A pinta el plan, su consumo, «Tipo de cobro: Anual» (D9) y la fila del historial.
  * 4. El superadmin crea por pantalla un plan PÚBLICO con costo concreto (R28): no pide empresa, tipo de
  *    cobro ni inicio del ciclo, y no se asigna a nadie.
  * 5. En el detalle de C (sin plan) elige el público y pulsa «Asignar plan»: es la PRIMERA asignación, así
  *    que se abre el modal de confirmación (decisión del 2026-10-29) con lo que tendrá la empresa, el
- *    «Inicio del ciclo de órdenes» en mañana (D5; antes, hoy), «El plan empieza a regir el {fecha}.»
+ *    «Inicio del período» en mañana (D5; antes, hoy), «El plan empieza a regir el {fecha}.»
  *    (SLT-86 §7.1; antes, «El ciclo de órdenes empieza…») y el tipo de cobro (D6). Se pone hoy, se
  *    espera a la vista previa y se confirma.
  * 6. El maestro de A abre `/mi-plan`: el nombre, «Órdenes en el período: 0» (SLT-86 R7, R8: sin tope;
@@ -214,7 +214,7 @@ test("el superadmin crea por pantalla un custom de A, que queda asignado con su 
 
   // D4/D5: A no tiene plan, así que el form pide el inicio del ciclo, que abre en mañana. Se pone hoy:
   // el ancla queda en el instante de la creación y el consumo de «Mi plan» empieza en 0.
-  const inicio = form.getByLabel("Inicio del ciclo de órdenes", { exact: true });
+  const inicio = form.getByLabel("Inicio del período", { exact: true });
   await expect(inicio).toHaveValue(mananaCalendarioCR(new Date()));
   const hoy = fechaCalendarioCR(new Date());
   await inicio.fill(hoy);
@@ -281,7 +281,7 @@ test("el superadmin crea por pantalla un plan público con costo concreto, que n
   // Un público no nombra empresa, ni lleva tipo de cobro ni inicio del ciclo (D2: no se asigna al crearlo).
   await expect(form.getByRole("combobox", { name: "Empresa" })).toHaveCount(0);
   await expect(form.getByRole("radiogroup", { name: "Tipo de cobro" })).toHaveCount(0);
-  await expect(form.getByLabel("Inicio del ciclo de órdenes", { exact: true })).toHaveCount(0);
+  await expect(form.getByLabel("Inicio del período", { exact: true })).toHaveCount(0);
   await form.getByRole("button", { name: "Crear plan" }).click();
 
   await expect(page.getByRole("status").filter({ hasText: `Plan «${nombreDelPublico}» creado.` })).toBeVisible({
@@ -331,7 +331,7 @@ test("el superadmin asigna el público desde el detalle de C, pasando el modal d
   // ciclo de órdenes empieza el {fecha}.» a «El plan empieza a regir el {fecha}.».
   const manana = mananaCalendarioCR(new Date());
   const hoy = fechaCalendarioCR(new Date());
-  const inicio = modal.getByLabel("Inicio del ciclo de órdenes");
+  const inicio = modal.getByLabel("Inicio del período");
   await expect(inicio).toHaveValue(manana);
   await expect(modal).toContainText(`El plan empieza a regir el ${manana}.`);
   await inicio.fill(hoy);
