@@ -56,6 +56,7 @@ import {
   montoFulfillmentDeTarifa,
 } from "@/lib/utils/ingreso-empresa";
 import { serializarMontoCotizacion } from "@/lib/utils/monto-cotizacion";
+import type { ICatalogoGeograficoRepository } from "@/lib/interfaces/repositories/ICatalogoGeograficoRepository";
 
 /**
  * R29 — la cotizacion asume que la orden que se crearia COBRA comision, que es el `default
@@ -196,6 +197,12 @@ export class CotizacionOrdenService implements ICotizacionOrdenService {
   constructor(
     private readonly repo: CotizacionGeoRepository,
     private readonly tarifaRepo: CotizacionTarifaRepository,
+    /**
+     * SLT-45 (design §2.3): el catalogo geografico de la empresa, para la forma del pais (R5) y el
+     * motor de N niveles. OPCIONAL para que los dobles de los tests existentes compilen sin
+     * cambios (R32); el composition root lo pasa siempre (`tests/unit/api/v2-composicion.test.ts`).
+     */
+    private readonly catalogoRepo?: ICatalogoGeograficoRepository,
   ) {}
 
   async cotizar(rows: RawRow[], actor: Actor): Promise<CotizacionOrdenResult> {

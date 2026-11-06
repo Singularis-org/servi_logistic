@@ -56,7 +56,7 @@
 
 ## T4 — Servicios: catálogo inyectado, v1 con forma de país, v2 (depende de T3)
 
-- [ ] **T4.1** `ICatalogoGeograficoRepository` como último parámetro opcional de `BulkOrdenService` y
+- [x] **T4.1** `ICatalogoGeograficoRepository` como último parámetro opcional de `BulkOrdenService` y
   `CotizacionOrdenService` (§2.3); cablearlo en los composition roots de `carga`, `cotizacion` y
   `carga-masiva/chunk`; test de composición.
   *Hecho:* el test de composición falla si se quita el parámetro de cualquiera de las rutas.

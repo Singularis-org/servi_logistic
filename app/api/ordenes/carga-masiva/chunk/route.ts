@@ -25,6 +25,7 @@ import { BulkOrdenService } from "@/lib/services/BulkOrdenService";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
 import { CupoPlanRepository } from "@/lib/repositories/CupoPlanRepository";
+import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograficoRepository";
 import { notificadorNoOp } from "@/lib/notificaciones/notificadores";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
@@ -48,6 +49,9 @@ function buildBulkService(): IBulkOrdenService {
     notificadorNoOp,
     // SL-24 (R21, R22): la lectura previa del cupo del plan, tambien en la vista previa.
     new CupoPlanRepository(prisma),
+    // SLT-45 (design §2.3, §8): el catalogo de la empresa, para elegir el extractor por la forma
+    // del pais.
+    new CatalogoGeograficoRepository(prisma),
   );
 }
 

@@ -48,6 +48,7 @@ import { CotizacionOrdenService } from "@/lib/services/CotizacionOrdenService";
 import { MSG_COTIZACION_SIN_TARIFA } from "@/lib/services/mensajes-cotizacion";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
+import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograficoRepository";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import type { RawRow } from "@/lib/parsers/spreadsheet";
 import { cotizacionBodySchema } from "@/lib/types/cotizacion";
@@ -72,6 +73,8 @@ function buildCotizacionService(): ICotizacionOrdenService {
   return new CotizacionOrdenService(
     new OrdenRepository(prisma),
     new TarifaVigenteRepository(prisma),
+    // SLT-45 (design §2.3): el catalogo de la empresa, para la forma del pais (R5).
+    new CatalogoGeograficoRepository(prisma),
   );
 }
 

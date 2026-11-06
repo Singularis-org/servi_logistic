@@ -57,6 +57,7 @@ import { OrdenTraspasoRepository } from "@/lib/repositories/OrdenTraspasoReposit
 import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
 import { CupoPlanRepository } from "@/lib/repositories/CupoPlanRepository";
+import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograficoRepository";
 import { SupabaseFileStorage } from "@/lib/storage/SupabaseFileStorage";
 import { SupabaseSignedUrlProvider } from "@/lib/storage/SupabaseSignedUrlProvider";
 import { getPrismaClient } from "@/lib/db/prisma-client";
@@ -178,6 +179,8 @@ function buildBulkService(): IBulkOrdenService {
     // SL-24 (R21, R23): la lectura previa del cupo del plan. Si no cabe, el servicio lanza
     // `TopeDelPlanAlcanzado` y `withErrorHandler` lo saca como 409.
     new CupoPlanRepository(prisma),
+    // SLT-45 (design §2.3): el catalogo de la empresa, para la forma del pais (R5).
+    new CatalogoGeograficoRepository(prisma),
   );
 }
 

@@ -69,6 +69,7 @@ import {
   type ICupoPlanRepository,
 } from "@/lib/interfaces/repositories/ICupoPlanRepository";
 import { TopeDelPlanAlcanzado, traducirErrorDeTope } from "@/lib/planes/tope-error";
+import type { ICatalogoGeograficoRepository } from "@/lib/interfaces/repositories/ICatalogoGeograficoRepository";
 
 /** SL-17 (D15): la tienda de la carga no existe para la empresa en curso. */
 export const MSG_TIENDA_NO_ENCONTRADA = "tienda no encontrada";
@@ -171,6 +172,13 @@ export class BulkOrdenService implements IBulkOrdenService {
      * y el trigger sigue siendo la autoridad. Los dos routes de carga inyectan el real.
      */
     private readonly cupoPlan: ICupoPlanRepository = SIN_CUPO,
+    /**
+     * SLT-45 (design §2.3): el catalogo geografico de la empresa, para la forma del pais (R5) y el
+     * motor de N niveles. OPCIONAL para que los dobles de los tests existentes compilen sin
+     * cambios (R32): sin el, la via v1 corre como antes y sin la comprobacion de R5. Los composition
+     * roots lo pasan siempre (`tests/unit/api/v2-composicion.test.ts`).
+     */
+    private readonly catalogoRepo?: ICatalogoGeograficoRepository,
   ) {}
 
   /**
