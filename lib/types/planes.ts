@@ -184,7 +184,7 @@ export const crearPlanSchema = z
   })
   .refine((p) => p.organizacionId !== null || p.inicioCiclo === undefined, {
     path: ["inicioCiclo"],
-    error: "Un plan público no se asigna al crearlo: no lleva inicio del ciclo.",
+    error: "Un plan público no se asigna al crearlo: no lleva inicio del período.",
   })
   .refine((p) => p.organizacionId !== null || p.vigenteDesde === undefined, {
     path: ["vigenteDesde"],

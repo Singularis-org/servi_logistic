@@ -794,3 +794,16 @@ R19 (botones del modal) → `PlanEmpresaPeriodo.test.tsx` (sin cambios, ya los u
 
 **Propuesta:** `lib/types/planes.ts:187` dice «Un plan público no se asigna al crearlo: no lleva inicio del ciclo.»
 (error de validación que puede verse en pantalla). La decisión no lo nombra; no se tocó.
+
+## Tanda 10 — «inicio del período» en el error de validación (2026-11-06)
+
+- Propuesta aprobada por el humano: `lib/types/planes.ts:187` → «Un plan público no se asigna al crearlo: no lleva inicio
+  del período.». Búsqueda de literales (no comentarios ni identificadores) con «inicio del ciclo» o «ciclo de órdenes» en
+  `app/`, `components/` y `lib/`: era el único. Ningún test esperaba ese texto.
+- vitest: `planes-schema-periodo`, `planes-service-crear-custom`, `PlanFormCustomAsigna`, `plataforma-planes-page` → 4/4,
+  106/106. eslint: exit 0. typecheck: 0 errores.
+- **Aviso (no causado por esta tanda):** `tests/unit/types/planes-schema.test.ts` (12), `planes-schema-costeo.test.ts` (3)
+  y `planes-schema-costo-porcentual.test.ts` (15) fallan ya en `c3ed2864`, con el cambio revertido: 30 casos. Fallan
+  porque sus fixtures traen el tope de órdenes y el `anual` que retiró SLT-86 (p. ej. «expected ['topes'] to include
+  'organizacionId'»). Están en la lista «se adaptan» de design §9 y no están en `tests/baseline-rojos.json`. Hay que
+  adaptarlos antes del PR o el `gate-completo` saldrá en rojo.
