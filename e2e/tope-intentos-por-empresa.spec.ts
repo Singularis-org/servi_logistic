@@ -491,8 +491,9 @@ test.describe.serial("Tope de intentos por empresa (SLT-77)", () => {
     const page = await paginaDe(browser, a.r.adminSatelite);
     const leer = escucharRespuestas(page);
     const modal = await intentarAsignar(page, a.bodega, a.mBodega);
-    // Lo que ve quien asigna: la pantalla no tiene mensaje propio para este motivo y cae en el general.
-    await expect(page.getByText("Alguna orden de la selección ya no se puede asignar. Actualiza la lista y vuelve a intentarlo.").first()).toBeVisible();
+    // Lo que ve quien asigna (R42): la causa, porque actualizar la lista no arregla una orden agotada.
+    await expect(page.getByText("Alguna orden de la selección ya agotó sus intentos de entrega y no puede volver a salir a reparto. Quítala de la selección.").first()).toBeVisible();
+    await expect(page.getByText("Alguna orden de la selección ya no se puede asignar. Actualiza la lista y vuelve a intentarlo.")).toHaveCount(0);
     await expect(modal.getByText("Mensajero asignado a 1 orden(es).")).toHaveCount(0);
     expect(await leer()).toContain(MOTIVO_TOPE_EN_LA_RESPUESTA);
     await page.context().close();

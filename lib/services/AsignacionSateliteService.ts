@@ -17,7 +17,7 @@ import {
   MSG_TOPE_INTENTOS_ASIGNACION,
 } from "@/lib/services/mensajes-bloqueo";
 import type { IOrdenHistorialService } from "@/lib/interfaces/services/IOrdenHistorialService";
-// FEATURE 276 (T8, R7): el umbral sale de la configuracion, nunca de un `3` escrito a mano.
+// SLT-77 (R20): el umbral es el tope de la empresa (`topeIntentos()`), nunca un `3` escrito a mano.
 import type { IAsignabilidadCoordenadasService } from "@/lib/interfaces/services/IAsignabilidadCoordenadasService";
 import { esAsignable, motivoAsignabilidad } from "@/lib/services/AsignabilidadCoordenadasService";
 import { resolverFechaReparto } from "@/lib/utils/dia-reparto";

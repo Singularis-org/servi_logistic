@@ -144,11 +144,13 @@ Reglas de todas las tandas:
 
 ## Tanda G — Documentación y cierre. Depende de F
 
-- [ ] **T7.1** `docs/architecture.md`: el tope en `> Tarifas flexibles`, y en `> Multi-empresa` la excepción de la columna a «solo
+- [x] **T7.0** R42: el motivo de la orden agotada en los dos mappers de asignación; test desde `MSG_TOPE_INTENTOS_ASIGNACION` contra el
+  texto a mano; E2E al día en la satélite. **Hecho:** quitar cada entrada pone en rojo su test.
+- [x] **T7.1** `docs/architecture.md`: el tope en `> Tarifas flexibles`, y en `> Multi-empresa` la excepción de la columna a «solo
   lectura». `docs/ayuda/oficina/configuracion-tarifas.md`: sección y `actualizado`. **Hecho:** guardias de ayuda verdes.
-- [ ] **T7.2** `progress/deudas.md`: deuda nueva junto a D49, con `design §8` entero (R39). Número libre; D57 si sigue libre.
+- [x] **T7.2** `progress/deudas.md`: deuda nueva junto a D49, con `design §8` entero (R39). Número libre; D57 si sigue libre.
   **Hecho:** el reviewer lo compara con `design §8`.
-- [ ] **T7.3** `progress/impl_SLT-77.md`: mapa `R<n> → test` con los 41, salida real y cada mutación. **Hecho:** coincide con la
+- [x] **T7.3** `progress/impl_SLT-77.md`: mapa `R<n> → test` con los 42, salida real y cada mutación. **Hecho:** coincide con la
   tabla de abajo.
 - [ ] **T7.4** `./init.sh` en verde tras revertir toda mutación, y `git status` sin ninguna. **Hecho:** salida pegada. El
   `gate-completo` lo da el PR, que abre el leader tras el OK del reviewer.
@@ -184,6 +186,7 @@ T0 → A → B ─┬→ C → D ─┬→ F → G
 | R38 | `tope-intentos-migration.test.ts` |
 | R39 | Sin test ejecutable: es un documento. Lo comprueba el reviewer sobre `progress/deudas.md`; se declara aquí como excepción para que la decida el humano al aprobar. |
 | R41 | `tope-intentos-escritura.test.ts`, `tests/unit/guards/tope-intentos-pii.guardia.test.ts` |
+| R42 | `tests/unit/components/guia-decision-error-messages.test.ts`; la satélite también el E2E |
 
 ## Archivos esperados
 
@@ -325,3 +328,7 @@ T0 → A → B ─┬→ C → D ─┬→ F → G
 - `tests/unit/services/liberacion-al-aprobar-cierre.test.ts`
 - `tests/unit/services/cierres-admin-service.aprobar.sin-gestion.test.ts`
 - `tests/unit/repositories/cierres-admin-repository.test.ts`
+- `app/(app)/recepcion-satelite/_components/asignacion-satelite-error-messages.ts`
+- `app/(app)/ordenes/_components/guia-decision-error-messages.ts`
+- `tests/unit/components/guia-decision-error-messages.test.ts`
+- `tests/unit/services/orden-service.test.ts`

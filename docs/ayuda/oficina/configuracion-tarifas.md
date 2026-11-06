@@ -3,7 +3,7 @@ titulo: Configuración · Tarifas
 modulo: configuracion
 pantalla: /configuracion/tarifas
 roles: [maestro, admin]
-actualizado: 2026-11-05
+actualizado: 2026-11-06
 fuentes:
   - app/(app)/configuracion/tarifas/page.tsx
   - app/(app)/configuracion/tarifas/_components/
@@ -67,6 +67,23 @@ le quede por cerrar. Se puede cambiar o quitar lo que tiene, pero no sumarle un 
 
 **Quitarlo** devuelve al mensajero al valor de la zona. El mensajero no ve nada de esto en su portal: ve sus pagos
 como siempre, con el importe correcto.
+
+## Intentos de entrega
+
+Acá se fija **cuántos intentos se hacen antes de pasar una orden a rechazo**, de 1 a 10. Toda empresa arranca en 3.
+Solo el **maestro** lo cambia; el **admin** ve el número sin poder cambiarlo.
+
+**Rige al guardar, para todas las órdenes sin terminar,** tengan o no activadas las tarifas nuevas. Si lo subís, una
+orden que ya no podía seguir vuelve a admitir intentos.
+
+**Bajarlo tiene consecuencias.** Guardar no rechaza ni cobra nada. Pero:
+
+- Las novedades que ya alcancen el número nuevo se rechazan en la siguiente corrida automática, sin más clics, y ese
+  rechazo genera cobro.
+- Las órdenes en bodega que ya lo alcancen no se podrán asignar: la pantalla de asignación pide quitarlas de la selección.
+  Para que vuelvan a salir hay que subir otra vez el número o reportar un incidente.
+
+Lo ya rechazado y cobrado no se deshace al subirlo después. El mensajero no ve este número.
 
 ## Lo que esta pantalla NO hace
 

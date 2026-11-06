@@ -130,6 +130,9 @@ un plazo.
   legal»), salvo en specs históricos y migraciones ya aplicadas.
 - **R41.** Ningún registro, motivo o aviso de esta feature DEBE contener datos personales, números de guía
   ni secretos. El historial de R10 solo lleva el actor de siempre y los dos números.
+- **R42.** SI una asignación se rechaza porque una orden está agotada, ENTONCES la pantalla de asignación
+  central y satélite DEBE decirlo con este texto: «Alguna orden de la selección ya agotó sus intentos de
+  entrega y no puede volver a salir a reparto. Quítala de la selección.»
 
 ### Cobertura de las decisiones cerradas
 

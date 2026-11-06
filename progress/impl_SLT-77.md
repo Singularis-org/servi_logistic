@@ -521,3 +521,103 @@ Capturas, de la 2.ª corrida, solo con datos de prueba: `progress/capturas/SLT-7
 ### Veredicto
 
 Tanda F hecha: el recorrido de la pantalla al cierre aprobado sale verde dos veces sin saltos, y queda un motivo sin mostrar para que lo decida un humano.
+
+## Tanda G (2026-11-06)
+
+Base: `servi_gate_slt77`, recreada con DROP/CREATE, `migrate deploy` (exit 0) y `db:seed` (exit 0) antes del E2E, del mapa y del gate, con `current_database()` comprobado cada vez. Solo categorías impresas; 0 URLs en los logs, contadas.
+
+### Archivos
+
+Modificados: `app/(app)/recepcion-satelite/_components/asignacion-satelite-error-messages.ts`, `app/(app)/ordenes/_components/guia-decision-error-messages.ts`, `lib/services/AsignacionSateliteService.ts` (solo el comentario de la línea 20), `tests/unit/components/guia-decision-error-messages.test.ts`, `tests/unit/services/orden-service.test.ts`, `e2e/tope-intentos-por-empresa.spec.ts`, `docs/architecture.md`, `docs/ayuda/oficina/configuracion-tarifas.md`, `progress/deudas.md`, `requirements.md` (R42), `tasks.md`.
+
+Las rutas nuevas entraron en `## Archivos esperados` antes de tocarlas.
+
+### Mapa R → test, los 42
+
+Comprobado con un script: los 42 de `requirements.md` están aquí, y cada test de vitest nombrado sale `passed` en el JSON de una corrida sobre base recreada (20 archivos, 457 pasados, 0 fallados, 0 saltados). Los del E2E se buscaron por título en el spec, y esa corrida dio 0 fallados. El nombre es un fragmento del título.
+
+| R | Tests |
+|---|---|
+| R1 | `tope-intentos-escritura`: `la columna es entera`, `el maestro guarda el extremo 1`, `11 no llega a la base` |
+| R2 | `tope-intentos-migration`: `toda empresa que ya existia`, `una empresa creada despues`, `altaEmpresa no conoce`; E2E `paso 1` |
+| R3 | `tope-intentos-escritura`: `guarda en la empresa del contexto`, `una entrada que nombra la otra empresa`; `tarifas-action`: `R3: una entrada que nombra otra empresa` |
+| R4 | `tope-intentos-service`: `el rol se comprueba sin leer la entrada`; `tarifas-action`: `R4: el admin recibe forbidden`; `tope-intentos-escritura`: `R4: el admin de la empresa`; E2E `paso 6` |
+| R5 | `tarifa-schemas`: `SLT-77 R5 — guardarTopeIntentosSchema`; `tope-intentos-service`: `2,5 da validation_error`; `tarifas-action`: `R5: 0 es validation_error` |
+| R6 | `tope-intentos-migration`: `la base rechaza 0`, `la base rechaza 11`, `el extremo 10` |
+| R7 | `tope-intentos-escritura`: `guardar en A no cambia B`, `UPDATE de la fila de B`, `es_demo de A, desde A: 42501`, `lo que la app puede escribir` |
+| R8 | `tope-intentos-escritura`: `una orden con 2 intentos ya agotada`; E2E `paso 2` |
+| R9 | `tope-intentos-escritura`: `sin tarifa_activacion`, `con tarifa_activacion` |
+| R10 | `tope-intentos-escritura`: `deja quien, el anterior y el nuevo`, `si el historial falla, el tope no cambia`, `dos guardados a la vez`; E2E `paso 5` |
+| R11 | `tope-intentos-escritura`: `responde ok, sin historial`; `tope-intentos-service`: `el repositorio dice que no cambio` |
+| R12 | `TarifasTopeIntentos`: `el maestro ve el título`, `el maestro elige de 1 a 10`; `TarifasModulo`: `una empresa sin zonas`; `TarifasPage`: `SLT-77 R12, R13`; E2E `paso 1` |
+| R13 | `TarifasTopeIntentos`: `el admin ve el vigente`; `TarifasModulo`: `R13: puedeEscribir falso`; E2E `paso 6` |
+| R14 | `tarifas-pantalla-service`: `R14: 'mensajero' no lo recibe`, `R14: sin sesión la action`; `TarifasPage`: `SLT-77 R14`; E2E `paso 6` |
+| R15 | `TarifasTopeIntentos`: `R15: al elegir menos`, `R15: compara contra lo guardado`; E2E `paso 2` |
+| R16 | `TarifasTopeIntentos`: `R16: sin elegir nada`, `R16: al elegir más`, `R16: al volver al guardado`; E2E `paso 5` |
+| R17 | `TarifasTopeIntentos`: `el servidor responde error`, `sin siglas, sin nombres de columna`; `TarifasDisposicion`: `SLT-77 R12, R17`; E2E `paso 7` |
+| R18 | `tope-intentos-caminos`: `el panel del mensajero`, `la ayuda de la tienda` |
+| R19 | `tope-intentos-caminos`: `A responde conflict y la orden no se mueve` |
+| R20 | `tope-intentos-caminos`: `bodega central, con un lote mixto`, `bodega satelite, con un lote mixto`; E2E `paso 4` |
+| R21 | `tope-intentos-caminos`: `en A, rechazo con gestion sintetica`; E2E `aprobar por la app relee el tope` |
+| R22 | `tope-intentos-caminos`: `wrong_number sin vencer`, `not_found vencida`, `bajar el tope escala la orden`; E2E `paso 3` |
+| R23 | `tope-intentos-caminos`: `con la misma novedad, A habla sin plazo` |
+| R24 | `tope-intentos-caminos`: `MisAsignaciones`, `Novedades`; E2E `la línea de tiempo da a cada empresa` |
+| R25 | `tope-intentos-caminos`: `maestro, admin, adminTienda y adminSatelite`; `orden-historial-service`: `R25: a maestro, admin`; `HistorialOrdenSheet`: `SLT-77 R25`; E2E `la línea de tiempo` |
+| R26 | `tope-intentos-caminos`: `A escala y B espera en la misma corrida`; E2E `paso 3` |
+| R27 | `tope-intentos-escritura`: `la lectura sin contexto`, `la lectura en plataforma`, `guardar en plataforma`; `tope-intentos-caminos`: `una gestion que dependeria del tope`, `A escala y B espera`; `tarifas-pantalla-service`: `R27: si el tope no se puede leer` |
+| R28 | `tope-intentos-caminos`: `su primera gestion no puede ser` |
+| R29 | `tope-intentos-caminos`: `con 2 intentos: en 2 nada`; E2E `paso 5` |
+| R30 | `tope-intentos-caminos`: `los mismos conteos, en literales` |
+| R31 | `tope-intentos-sin-valor-global.guardia`: `nadie nombra`, `el modulo de la configuracion ya no existe`, `la columna solo se nombra` |
+| R32 | `tope-intentos-caminos`: `al mensajero le llega null`; `orden-historial-service`: `R32: al mensajero le llega umbral null`; `HistorialOrdenSheet`: `SLT-77 R32`; `intentos-entrega`: `276/R10 — el umbral no cruza`; E2E `la línea de tiempo` |
+| R33 | `tests/unit/types/tope-intentos.test.ts`: `5. el fichero no nombra`, `4b. con umbral 5` |
+| R34 | `tope-intentos-carreras`: `el tope baja tras la lectura`, `el tope sube tras la lectura` |
+| R35 | `tope-intentos-carreras`: `proceso, wrong_number sin vencer`, `proceso, not_found vencida`, `wrong_number con la ventana vencida: escala`, `aprobacion: las dos barridas`; `devolucion-sla-tope-wrong`: `SLT-77 R35`; E2E `aprobar por la app` |
+| R36 | `tope-intentos-carreras`: `proceso: no rechaza en esa corrida`, `aprobacion: va a bodega con el mayor` |
+| R37 | `tope-intentos-carreras`: `con 1 y con 50 candidatas`, `con 3 rechazos por tope`, `la aprobacion lee 2 veces` |
+| R38 | `tope-intentos-migration`: `existen, traen down.sql`, `el down deja la base` |
+| R39 | Sin test: es un documento, y la excepción está declarada en `tasks.md`. D57 en `progress/deudas.md`, para que el reviewer lo compare con `design §8` |
+| R40 | `tope-intentos-sin-valor-global.guardia`: `ni en lib/, app/, components/`, `control: el detector ve las tres` |
+| R41 | `tope-intentos-escritura`: `deja quien, el anterior y el nuevo`; `tope-intentos-pii.guardia`: `SLT-77/R41` |
+| R42 | `guia-decision-error-messages`: `R42: bodega central`, `R42: bodega satélite`; E2E `paso 4`, solo la satélite |
+
+### Mutaciones
+
+Las de las Tandas A a E están en su sección. La Tanda F no pide. Las de R42, con arnés fuera del repo, que exige base verde con tests ejecutados, cuenta desde el JSON de vitest, restaura y compara la huella:
+
+| Mutación | Resultado | Fallados de 23 | Test |
+|---|---|---|---|
+| Base | Verde | 0 | 23 pasados, 0 saltados |
+| Sin la entrada, satélite | Muere | 1 | `R42: bodega satélite` |
+| Sin la entrada, central | Muere | 1 | `R42: bodega central` |
+
+`git status` igual antes y después. Sin gate en paralelo.
+
+**El fragmento es `no puede volver a salir a reparto`,** y no `agoto sus intentos de entrega`: ese también está en `MSG_TOPE_INTENTOS_GESTION`.
+
+### Salida real
+
+- `--project=dinero`, una vez, con `next build` del código con R42 y base recreada: **72 pasados**, 0 fallados, 0 saltados, 0 flaky, `INIT_EXIT=0`.
+- `./init.sh`, con `NODE_OPTIONS=--max-old-space-size=8192`: **`INIT_EXIT=1`**. Para en el paso 3: `feature_list.json invalido: features en vuelo sin assignee en el tracker: SLT-77`. Esa copia está en el checkout principal, fuera de este worktree y sin versionar, y no se tocó. **T7.4 sigue abierta.**
+- Los pasos siguientes, a mano y uno a uno, para tener su evidencia. **No equivalen a un `init.sh` verde:** perfil exit 0, `gate-proyecto` sin fallos, typecheck exit 0, lint exit 0 (0 errores, 233 avisos), 0 migraciones sin `down.sql`.
+- `test:rapido`: 1491 archivos, **1 fallado**, 21982 pasados, 26 saltados: `tests/unit/services/orden-service.test.ts`, fuera del baseline. Es regresión de esta rama y queda arreglada abajo. Tras el arreglo se corrieron ese archivo y el de R42 (56 pasados, 0 fallados), typecheck exit 0 y eslint de lo tocado exit 0. **`test:rapido` entero no se repitió.** Las guardias de ayuda, en verde dentro de esa corrida.
+- Avisos: `node_modules` compartido con `pnpm-lock.yaml` más nuevo; 27 tests de árbol que el gate rápido no corre (entre ellos `TarifasDisposicion`, corrido aparte para el mapa); dos PR del arnés pendientes en la plantilla.
+- Retornos de carro en lo escrito: 0, contados por bytes.
+
+### Hallazgos
+
+1. **Regresión que nadie había visto.** El doble compartido `tests/fixtures/intentos-entrega.ts` ganó `topeIntentos` en la Tanda C, y `orden-service.test.ts` fijaba con un literal las claves de ese doble. Se cambió el literal y se añadió que el listado no llama a `topeIntentos` ni a `contarIntentos`, porque el contrato del test es que el listado no consulte de más. `OrdenService` no está entre los 10 servicios y no lee el tope.
+2. **El mismo fallo que R42, con el mensajero bloqueado.** `MSG_MENSAJERO_BLOQUEADO_POR_CIERRES` dice «el mensajero tiene cierres sin resolver…», pero los mappers buscan `mensajero_bloqueado_por_cierre` y `mensajero bloqueado por cierre pendiente`, y sus tests usan esos textos inventados. Por lectura, sin ejercitar: esa causa cae en el mensaje general. El modal ya deshabilita a ese mensajero, así que quedaría para una carrera. Sin tocar.
+3. **D59 es más ancha que Tarifas.** El borde viene de `DataTable`, no de SLT-55: toda tabla hecha con él lo llevaría en oscuro. Por lectura; solo se vio en las dos de Tarifas.
+4. **`next build`** escribe una línea `[AppError:INTERNAL] Dynamic server usage` para `/configuracion/tarifas`, la única ruta que sale. Termina en exit 0 y la pantalla responde en el E2E. Sin atribuir: no se comparó con `dev`.
+
+### Desviaciones
+
+- `orden-service.test.ts` no estaba en el encargo: se tocó para cerrar la regresión, añadido antes a `## Archivos esperados`.
+- T7.0 es una línea nueva en `tasks.md`, para que R42 tenga tarea.
+- D57 y D58 van junto a D49 y D47, como pide el encargo, y por eso rompen el orden numérico del archivo; D59 va al final.
+- El título de `paso 4` no nombra R42; el mapa sí.
+
+### Veredicto
+
+Tanda G hecha salvo T7.4: R42 con sus mutaciones y el E2E en verde, pero `./init.sh` da exit 1 por el assignee de SLT-77 en la copia local del board, y hay que repetirlo tras corregirlo.

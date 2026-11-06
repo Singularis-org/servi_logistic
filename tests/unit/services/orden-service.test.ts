@@ -739,6 +739,9 @@ describe("listar / eliminable (eliminar orden)", () => {
     await service.listar(PAGINA, MAESTRO);
 
     expect(historial.contarIntentosEnLote).toHaveBeenCalledTimes(1);
-    expect(Object.keys(historial)).toEqual(["contarIntentosEnLote", "contarIntentos"]);
+    expect(Object.keys(historial)).toEqual(["contarIntentosEnLote", "contarIntentos", "topeIntentos"]);
+    // SLT-77: el doble compartido ya trae el tope, y el listado no decide con él.
+    expect(historial.topeIntentos).not.toHaveBeenCalled();
+    expect(historial.contarIntentos).not.toHaveBeenCalled();
   });
 });
