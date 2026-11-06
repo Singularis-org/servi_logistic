@@ -928,3 +928,43 @@ Quedan 0 `SLT-42 pendiente` en `lib/`, `app/` y `scripts/` (T6: 0; T5.x: 0; T7.x
 4. **Guía de integración.** Quedan dos menciones a «UTC-6» en §4.5 (la advertencia sobre mezclar sistemas y la fila de la lista de comprobación). ¿Pasan también a «la zona del país de la empresa»?
 
 Veredicto: bloque 6 hecho (T6.1–T6.3) con los agregados b y c y sin marcadores `SLT-42 pendiente`. Los jobs diarios se agendan por zona y procesan solo las empresas de su zona; con CR, en los mismos instantes. Los crons y las plantillas usan la zona del país de cada empresa. R22–R26, R28 y R31 tienen test. Typecheck, lint, guardias (salvo el baseline) y `vitest related` en verde; la integración la corre CI.
+
+## Mapa R → test completo (T7.3, 2026-11-06)
+
+Las 31 R de `requirements.md`. Rutas bajo `tests/`. «(int)» = integración contra Postgres, la corre CI. El detalle de cada caso está en el mapa de su tanda (arriba).
+
+| R | Test |
+|---|---|
+| R1 | `integration/db/migracion-slt42-ida-y-vuelta.test.ts` (CR con 506 / 8 / `America/Costa_Rica`) (int); `integration/db/pais-repositorio.test.ts` «SLT-42 (R1, R3)» (int) |
+| R2 | `integration/db/tipo-documento-por-pais.test.ts` «R2: la regla del tipo se valida en la base…» (int) |
+| R3 | `integration/db/migracion-slt42-ida-y-vuelta.test.ts` (5 tipos de CR) (int); `pais-repositorio.test.ts` «SLT-42 (R1, R3)» (int) |
+| R4 | `integration/db/tipo-documento-por-pais.test.ts` «R4: sin empresa…», «R4: una empresa recibe 42501…» (int) |
+| R5 | `unit/services/usuario-service-pais.test.ts` «R5: …»; `integration/db/tipos-identificacion-por-pais.test.ts` «R5: el WHERE…», «R5, R31: por el servicio…» (int) |
+| R6 | `unit/services/organizacion-service-pais.test.ts` «R6: un país %s rechaza…», «R6: un país que no existe…», «R6: el país incompleto se rechaza antes…» |
+| R7 | `integration/db/migracion-slt42-ida-y-vuelta.test.ts`: filas viejas idénticas; el down aborta con DIMEX y con un repetido (int) |
+| R8 | `integration/db/migracion-slt42-ida-y-vuelta.test.ts`: foto de `usuario` antes y después idéntica; bajar y volver a subir da la misma foto (int) |
+| R9 | `unit/services/usuario-service-pais.test.ts`: los tres «R9: …» |
+| R10 | `unit/utils/documento.test.ts`; `unit/services/usuario-service-pais.test.ts` «R10: …» (5); `unit/services/postulacion-mensajero-service-pais.test.ts` «R10: …»; `unit/services/organizacion-service-pais.test.ts` «R10: …» |
+| R11 | `unit/services/usuario-service-pais.test.ts` «R11: …» (5); `postulacion-mensajero-service-pais.test.ts` «R11: …»; `organizacion-service-pais.test.ts` «R11: …»; `integration/db/tipo-documento-por-pais.test.ts` (int) |
+| R12 | `unit/services/usuario-service-pais.test.ts`: los dos «R12: …» |
+| R13 | `integration/db/tipo-documento-por-pais.test.ts` «R13, R31: único por empresa y tipo…» (int); `integration/db/postulacion-documento-por-tipo.test.ts` «R13: …» (int); `postulacion-mensajero-service-pais.test.ts` «R13: …» |
+| R14 | `unit/validacion/telefono.test.ts`; `usuario-service-pais.test.ts` «R14…» (4); `postulacion-mensajero-service-pais.test.ts` y `organizacion-service-pais.test.ts` «R14: …» |
+| R15 | `usuario-service-pais.test.ts` «R15: …» (2); `postulacion-mensajero-service-pais.test.ts` y `organizacion-service-pais.test.ts` «R15: …» |
+| R16 | `unit/validacion/telefono.test.ts` (`XA` → `pais_sin_reglas`); un «R16: …» en usuario, postulación (recibir y aprobar) y alta de empresa |
+| R17 | `unit/services/usuario-service-superadmin.test.ts`: los cuatro «R17: …» |
+| R18 | `unit/utils/telefono-pais.test.ts` (tabla de CR congelada); `unit/services/chat-whatsapp-telefono-por-pais.test.ts` (país `999`/7) |
+| R19 | `integration/db/chat-entrante-telefono-cr.test.ts` «R19: `sqlNormalizarTelefono` y `normalizarTelefono` producen EL MISMO texto…» (int) |
+| R20 | `unit/utils/telefono-pais.test.ts`; `unit/services/ejecucion-envio-prueba.test.ts` «SLT-42 R18/R20…»; `unit/whatsapp-envios/telefono.test.ts` |
+| R21 | `unit/utils/telefono-pais.test.ts`; `chat-whatsapp-telefono-por-pais.test.ts` «R21: con Costa Rica…» |
+| R22 | `unit/utils/calendario-zona.test.ts`; `unit/utils/utilidades-por-zona.test.ts`; `unit/services/hora-por-pais-analitica-avisos.test.ts`; `unit/api/hora-por-pais-api-key.test.ts`; `unit/services/historico-conversaciones-service.test.ts` «R22: con fechas, la zona del pais llega al repositorio…» (tanda 6) |
+| R23 | `unit/utils/calendario-zona.test.ts` (Madrid en sus dos cambios); `utilidades-por-zona.test.ts` «R23: …»; `recurrencia-por-zona.test.ts` «con horario de verano (Madrid)…»; `historico-conversaciones-service.test.ts` «R22/R23: las cotas del SQL…» |
+| R24 | `integration/db/hora-por-pais-dos-empresas.test.ts` «R24/R28: el cron calcula «hoy» con la zona del pais de cada empresa…» (int); `hora-por-pais-analitica-avisos.test.ts` (avisos diarios, snapshot del ranking) |
+| R25 | `unit/services/jobs/recurrencia-por-zona.test.ts` «la serie alterna Bogota y CR…», «la corrida de Bogota no toca la empresa de CR…», «corrida retrasada por reintentos: cuenta desde su instante original…» (tanda 6) |
+| R26 | `recurrencia-por-zona.test.ts` «liberar desde %s: las 00:00 CR de antes» (7), «rollup desde %s…» (5), «la clave vieja corre para TODAS las empresas…» |
+| R27 | `unit/services/rastreo-publico-zona-pais.test.ts` «el mismo instante se publica a las 21:30 -06:00 en Costa Rica y a las 22:30 -05:00 en Bogota» |
+| R28 | `reglas-pais-empresa-service.test.ts` «zonaHoraria() lanza PaisSinZonaHoraria…»; `recurrencia-por-zona.test.ts` «el handler falla con PaisSinZonaHoraria…»; `historico-conversaciones-service.test.ts` «R28: sin zona en el pais…»; los «R28» de T5.3–T5.7 |
+| R29 | `unit/guards/pais-sin-literales.guardia.test.ts` «ningun archivo de servidor fuera de la lista tiene un literal del pais» y su autocomprobación (11 casos que fallan, 6 que no) |
+| R30 | `unit/services/reglas-pais-empresa-service.test.ts` «dos contextos seguidos…», «dos contextos a la vez…»; «R30: la misma instancia atiende a dos empresas seguidas…» (CorteDiario, tablero) |
+| R31 | `integration/db/tipo-documento-por-pais.test.ts`, `tipos-identificacion-por-pais.test.ts` y `hora-por-pais-dos-empresas.test.ts` (CR y `XA`, con `PaisRepository` y `ReglasPaisEmpresaService` reales) (int) |
+
+Ninguna R sin test. Las de integración están escritas y compilan; las corre CI (`gate-completo`).

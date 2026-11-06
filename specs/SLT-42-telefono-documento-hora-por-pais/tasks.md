@@ -120,22 +120,22 @@ Orden sugerido. Cada task deja su grupo en verde con sus tests de hoy, inyectand
 - [x] **T5.6** `[P]` Rastreo público (R27; se retira `RASTREO_PUBLICO_ZONA_HORARIA`) +
   `tests/unit/services/rastreo-publico-zona-pais.test.ts`.
   *Hecho:* verde.
-- [ ] **T5.7** `[P]` API por key y OpenAPI; páginas de servidor (`ordenes`, `wallet/mensajeros`,
+- [x] **T5.7** `[P]` API por key y OpenAPI; páginas de servidor (`ordenes`, `wallet/mensajeros`,
   `recepcion-satelite/en-bodega`).
   *Hecho:* typecheck; los tests de la API, en verde.
 
 ## Bloque 6 — Jobs y crons (depende de T3.1, T5.3, T5.5)
 
-- [ ] **T6.1** `RecurrenciaSpec.siguiente(now, zonas)` en `IJobQueueService`/`JobQueueService`, y las
+- [x] **T6.1** `RecurrenciaSpec.siguiente(now, zonas)` en `IJobQueueService`/`JobQueueService`, y las
   recurrencias no diarias adaptadas a la firma (`jobs-cambio-plan.ts`,
   `whatsapp-envio-mantenimiento-handler.ts`).
   *Hecho:* typecheck; los tests de `JobQueueService`, en verde.
-- [ ] **T6.2** `liberar-reprogramadas-handler.ts` y `analitica-rollup-diario-handler.ts` (y
+- [x] **T6.2** `liberar-reprogramadas-handler.ts` y `analitica-rollup-diario-handler.ts` (y
   `analitica-rollup-diario-encolado.ts`): clave con la zona, filtro por la zona de la corrida y
   compatibilidad con la clave vieja. `tests/unit/services/jobs/recurrencia-por-zona.test.ts` (R25,
   R26).
   *Hecho:* verde; con una sola zona, mismos `runAfter` que hoy.
-- [ ] **T6.3** Crons (`app/api/cron/**`): cada empresa calcula con su zona, y una sin zona falla
+- [x] **T6.3** Crons (`app/api/cron/**`): cada empresa calcula con su zona, y una sin zona falla
   sola. `tests/integration/db/hora-por-pais-dos-empresas.test.ts` (R24, R28, R31).
   *Hecho:* verde.
 
@@ -150,7 +150,7 @@ Orden sugerido. Cada task deja su grupo en verde con sus tests de hoy, inyectand
   `.env.example` sin `RASTREO_PUBLICO_ZONA_HORARIA`. La deuda de P6 la anota el leader en
   `progress/deudas.md`; esta task no la escribe.
   *Hecho:* el gate de perfil en verde.
-- [ ] **T7.3** Mapa `R<n> -> test` en `progress/impl_SLT-42.md` (las 31 R). `./init.sh` en verde.
+- [x] **T7.3** Mapa `R<n> -> test` en `progress/impl_SLT-42.md` (las 31 R). `./init.sh` en verde.
   *Hecho:* ninguna R sin test.
 
 ## Archivos esperados
