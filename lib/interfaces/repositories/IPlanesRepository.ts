@@ -8,6 +8,7 @@ import type {
   AccionDeAsignacion,
   CrearPlanInput,
   PlanDTO,
+  PrecioPlan,
   TipoCobro,
   TopeExcedido,
   TopesPlan,
@@ -31,6 +32,17 @@ export type ResultadoEdicion =
   | { estado: "archivado" };
 
 export type ResultadoArchivar = { estado: "ok"; cambio: boolean } | { estado: "not_found" };
+
+/**
+ * SLT-86 (R15, R25; review m4): un precio que puede regir a un plan desde `desde` (`null` = desde siempre).
+ * `programado` = el precio de su cambio programado, que aún no está en el historial.
+ */
+export interface PrecioDesdeLeido {
+  planId: string;
+  desde: Date | null;
+  precio: PrecioPlan;
+  programado: boolean;
+}
 
 /**
  * SLT-86 (design §5.1; R2, R16–R18) — la fecha elegida para un cambio de empresa y desde cuándo rige.
@@ -344,6 +356,12 @@ export interface IPlanesRepository {
   cambiosVencidos(ahora: Date): Promise<CambioPendiente[]>;
   /** Públicos y custom de esa empresa, no archivados (R7). */
   asignables(organizacionId: string): Promise<PlanDTO[]>;
+  /**
+   * SLT-86 (R15, R25; review m4): de esos planes, los precios que pueden regir desde `desde` en adelante: la
+   * fila del historial vigente en `desde`, las posteriores y el precio de su cambio programado. De
+   * plataforma: sin empresa.
+   */
+  preciosQueRigenDesde(planIds: readonly string[], desde: Date): Promise<PrecioDesdeLeido[]>;
   /** Solo públicos no archivados (R7; la lectura de SL-25). */
   publicos(): Promise<PlanDTO[]>;
 }

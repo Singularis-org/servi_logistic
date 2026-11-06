@@ -32,6 +32,7 @@ import {
   crearPlanSchema,
   editarPlanSchema,
   planIdSchema,
+  preciosQueRigenSchema,
   previsualizarAsignacionSchema,
   previsualizarCustomSchema,
   type CambiarTipoCobroResult,
@@ -45,6 +46,8 @@ import {
   type PlanDeEmpresaResult,
   type PlanDTO,
   type PlanResult,
+  type PrecioDesde,
+  type PreciosQueRigenResult,
   type VersionPlan,
 } from "@/lib/types/planes";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
@@ -387,6 +390,29 @@ export class PlanesService implements IPlanesService {
     // SLT-66 R29: solo los planes con costo concreto; la regla es de la asignación, no del dato (§4.2.1).
     const planes = await this.repo.asignables(organizacionId);
     return { estado: "ok", planes: planes.filter(tieneCostoConcreto) };
+  }
+
+  /**
+   * SLT-86 (R15, R25; review m4): los precios que pueden regir de hoy en adelante, para que la vista previa
+   * de un cambio de empresa cueste el primer período con el precio de su fecha (`precioQueRigeEn`). «Hoy»
+   * son las 00:00 de la plataforma: el rango de la fecha de efecto empieza ahí.
+   */
+  async preciosQueRigen(actor: Actor | null, input: unknown): Promise<PreciosQueRigenResult> {
+    if (!esSuperadmin(actor)) return FORBIDDEN;
+    const parsed = preciosQueRigenSchema.safeParse(input);
+    if (!parsed.success) return { estado: "validation_error", fieldErrors: erroresDeCampo(parsed.error) };
+    const hoy = inicioDelDiaPlataforma(fechaCalendarioCR(this.ahora()));
+    const leidos = await this.repo.preciosQueRigenDesde([...new Set(parsed.data.planIds)], hoy);
+    // De menor a mayor `desde` (desde siempre primero); en un empate, el programado detrás del historial.
+    const orden = (d: Date | null) => (d === null ? Number.NEGATIVE_INFINITY : d.getTime());
+    const ordenados = [...leidos].sort(
+      (a, b) => orden(a.desde) - orden(b.desde) || Number(a.programado) - Number(b.programado),
+    );
+    const precios: Record<string, PrecioDesde[]> = {};
+    for (const l of ordenados) {
+      (precios[l.planId] ??= []).push({ desde: l.desde === null ? null : l.desde.toISOString(), precio: l.precio });
+    }
+    return { estado: "ok", precios };
   }
 
   /** R7: la lectura de servidor que expondrá SL-25. Sin actor y fuera de toda action. */

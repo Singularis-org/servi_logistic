@@ -75,6 +75,7 @@ function doble() {
     repartirRecordatorio: vi.fn<IPlanesRepository["repartirRecordatorio"]>(),
     destinatariosDelAviso: vi.fn<IPlanesRepository["destinatariosDelAviso"]>(),
     asignables: vi.fn<IPlanesRepository["asignables"]>(),
+    preciosQueRigenDesde: vi.fn<IPlanesRepository["preciosQueRigenDesde"]>(async () => []),
     publicos: vi.fn<IPlanesRepository["publicos"]>(),
     catalogo: vi.fn<IPlanesRepository["catalogo"]>(),
     detalle: vi.fn<IPlanesRepository["detalle"]>(async () => null),

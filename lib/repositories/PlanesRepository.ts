@@ -15,6 +15,7 @@ import type {
   EmpresaDePlanes,
   IPlanesRepository,
   PlanDeEmpresaLeida,
+  PrecioDesdeLeido,
   PlanDelCatalogoLeido,
   AsignacionAlCrear,
   ResultadoAplicar,
@@ -48,6 +49,7 @@ import {
   type DescuentoPeriodo,
   type PlanDTO,
   type PrecioPlan,
+  precioPlanSchema,
   type RolConTope,
   type TipoCobro,
   type TopeExcedido,
@@ -1342,6 +1344,48 @@ export class PlanesRepository implements IPlanesRepository {
       });
       return filas.map(aDTO);
     });
+  }
+
+  preciosQueRigenDesde(planIds: readonly string[], desde: Date): Promise<PrecioDesdeLeido[]> {
+    if (planIds.length === 0) return Promise.resolve([]);
+    return comoPlataforma("SL-24", "leer los precios que regirán a los planes asignables (superadmin, SLT-86)", () =>
+      this.prisma.$transaction(async (tx): Promise<PrecioDesdeLeido[]> => {
+        const ids = [...planIds];
+        // R15 (§1.2): la fila con el mayor `desde_at <= desde` (la que rige a esa hora) y las posteriores. El
+        // `-infinity` del alta sale como NULL: no cabe en un `Date`.
+        const filas = await tx.$queryRaw<
+          { plan_id: string; desde: Date | null; precio_mensual: string | null; descuentos: unknown }[]
+        >`
+          SELECT h."plan_id", CASE WHEN isfinite(h."desde_at") THEN h."desde_at" END AS "desde",
+                 h."precio_mensual"::text AS "precio_mensual", h."descuentos"
+            FROM "plan_precio_historial" h
+           WHERE h."plan_id" = ANY(${ids}::text[])
+             AND h."desde_at" >= COALESCE((SELECT max(v."desde_at") FROM "plan_precio_historial" v
+                                            WHERE v."plan_id" = h."plan_id" AND v."desde_at" <= ${comoTimestamp(desde)}::timestamp),
+                                          '-infinity'::timestamp)
+           ORDER BY h."plan_id", h."desde_at"`;
+        // §1.2: un precio programado entra en el historial al aplicarse, desde las 00:00 de su `vigente_desde`.
+        // Hasta entonces solo está en la versión pendiente; se suma detrás, como lo dejará el aplicador.
+        const pendientes = await tx.planCambioProgramado.findMany({
+          where: { planId: { in: ids } },
+          select: { planId: true, vigenteDesde: true, version: true },
+        });
+        return [
+          ...filas.map((f) => ({
+            planId: f.plan_id,
+            desde: f.desde,
+            precio: precioDelHistorial(f.precio_mensual, f.descuentos),
+            programado: false,
+          })),
+          ...pendientes.map((p) => ({
+            planId: p.planId,
+            desde: p.vigenteDesde,
+            precio: precioPlanSchema.parse((p.version as { precio?: unknown } | null)?.precio),
+            programado: true,
+          })),
+        ];
+      }),
+    );
   }
 
   /* ------------------------------------------------------------------------ */

@@ -8,6 +8,7 @@ import type {
   PlanDTO,
   PlanDeEmpresaResult,
   PlanResult,
+  PreciosQueRigenResult,
   VistaPreviaAsignacionResult,
   VistaPreviaCustomResult,
 } from "@/lib/types/planes";
@@ -46,6 +47,11 @@ export interface IPlanesService {
   cancelarCambioEmpresa(actor: Actor | null, input: unknown): Promise<CancelarCambioEmpresaResult>;
   cancelarCambio(actor: Actor | null, input: unknown): Promise<PlanResult>;
   asignables(actor: Actor | null, input: unknown): Promise<ListarPlanesAsignablesResult>;
+  /**
+   * SLT-86 (R15, R25; review m4): `{ planIds }`; por plan, los precios que pueden regir de hoy en adelante
+   * (`PreciosQueRigen`). Solo lee; un id que no existe no tiene clave.
+   */
+  preciosQueRigen(actor: Actor | null, input: unknown): Promise<PreciosQueRigenResult>;
   planesPublicos(): Promise<PlanDTO[]>;
   /** SLT-58 R13: todos los planes, también los archivados. */
   catalogo(actor: Actor | null): Promise<CatalogoResult>;

@@ -264,6 +264,11 @@ export const cancelarCambioEmpresaSchema = z.object({ organizacionId: z.uuid() }
 export const previsualizarCustomSchema = z
   .object({ organizacionId: z.uuid(), inicioCiclo: fechaSchema, topes: topesPlanSchema })
   .strict();
+/**
+ * SLT-86 (R15, R25; review m4): los planes de los que el detalle de empresa quiere los precios que regirán:
+ * los asignables y el actual. El tope solo acota la lectura; ningún catálogo real se le acerca.
+ */
+export const preciosQueRigenSchema = z.object({ planIds: z.array(z.uuid()).max(500) }).strict();
 
 export type CrearPlanInput = z.infer<typeof crearPlanSchema>;
 export type EditarPlanInput = z.infer<typeof editarPlanSchema>;
@@ -340,6 +345,24 @@ export type ListarPlanesAsignablesResult =
   | { estado: "forbidden" }
   | { estado: "validation_error"; fieldErrors: Record<string, string[]> }
   | { estado: "not_found" };
+
+/**
+ * SLT-86 (R15, R25; review m4): un precio del plan y el instante desde el que rige (ISO, las 00:00 de la
+ * plataforma de su fecha de efecto); `null` = desde siempre (la fila `-infinity` del alta).
+ */
+export type PrecioDesde = { desde: string | null; precio: PrecioPlan };
+
+/**
+ * Por plan, los precios que pueden regir de hoy en adelante, de menor a mayor `desde`: el vigente a las
+ * 00:00 de hoy, las filas posteriores del historial y el precio de su cambio programado, si lo tiene. Un
+ * plan pedido que no existe no tiene clave.
+ */
+export type PreciosQueRigen = Record<string, PrecioDesde[]>;
+
+export type PreciosQueRigenResult =
+  | { estado: "ok"; precios: PreciosQueRigen }
+  | { estado: "forbidden" }
+  | { estado: "validation_error"; fieldErrors: Record<string, string[]> };
 
 /* -------------------------------------------------------------------------- */
 /* SLT-58 (design §5) — las lecturas del superadmin                            */

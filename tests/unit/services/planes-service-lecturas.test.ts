@@ -168,6 +168,7 @@ function doble() {
     repartirRecordatorio: vi.fn<IPlanesRepository["repartirRecordatorio"]>(async () => ({ estado: "sin_pendiente" })),
     destinatariosDelAviso: vi.fn<IPlanesRepository["destinatariosDelAviso"]>(async () => null),
     asignables: vi.fn<IPlanesRepository["asignables"]>(async () => []),
+    preciosQueRigenDesde: vi.fn<IPlanesRepository["preciosQueRigenDesde"]>(async () => []),
     publicos: vi.fn<IPlanesRepository["publicos"]>(async () => []),
     vistaPreviaConTopes: vi.fn<IPlanesRepository["vistaPreviaConTopes"]>(async () => null),
     cambiarTipoCobro: vi.fn<IPlanesRepository["cambiarTipoCobro"]>(async () => ({ estado: "not_found" })),
@@ -195,6 +196,8 @@ describe("SLT-58 — lecturas del superadmin: autorización (R22)", () => {
     ["catalogo", (a) => servicio.catalogo(a)],
     ["detallePlan", (a) => servicio.detallePlan(a, { planId: PLAN })],
     ["planDeEmpresa", (a) => servicio.planDeEmpresa(a, { organizacionId: EMPRESA })],
+    // SLT-86 (R15, R25; review m4): los precios que regirán, para la vista previa del cambio.
+    ["preciosQueRigen", (a) => servicio.preciosQueRigen(a, { planIds: [PLAN] })],
   ];
 
   for (const [nombre, leer] of LECTURAS) {
@@ -367,5 +370,48 @@ describe("SLT-58 — plan de una empresa (R19)", () => {
       { tipo: "cambio_tipo_cobro", tipoCobro: "anual" },
       { tipo: "asignacion", tipoCobro: "anual" },
     ]);
+  });
+});
+
+describe("SLT-86 — los precios que regirán a los planes de un cambio (R15, R25; review m4)", () => {
+  const OTRO = randomUUID();
+  const P31 = { tipo: "monto", mensual: "31000.00", descuentos: {} } as const;
+  const P35 = { tipo: "monto", mensual: "35000.00", descuentos: {} } as const;
+
+  it("R25: un id que no es uuid es validation_error sin llamar al repositorio", async () => {
+    const r = await servicio.preciosQueRigen(SUPERADMIN, { planIds: ["no-es-uuid"] });
+    expect(r.estado).toBe("validation_error");
+    expect(llamadasAlRepositorio()).toBe(0);
+  });
+
+  it("R15: lee desde las 00:00 de HOY en la plataforma, sin ids repetidos", async () => {
+    await servicio.preciosQueRigen(SUPERADMIN, { planIds: [PLAN, OTRO, PLAN] });
+    // AHORA = 2026-10-28 06:00 en la plataforma → las 00:00 de ese día son las 06:00 UTC.
+    expect(repo.preciosQueRigenDesde).toHaveBeenCalledWith([PLAN, OTRO], new Date("2026-10-28T06:00:00.000Z"));
+  });
+
+  it("R15: agrupa por plan, de menor a mayor `desde` (siempre primero), en ISO; en un empate el programado va detrás", async () => {
+    repo.preciosQueRigenDesde.mockResolvedValue([
+      { planId: PLAN, desde: RIGE, precio: P35, programado: true },
+      { planId: OTRO, desde: null, precio: P35, programado: false },
+      { planId: PLAN, desde: RIGE, precio: P31, programado: false },
+      { planId: PLAN, desde: null, precio: P31, programado: false },
+    ]);
+    const r = await servicio.preciosQueRigen(SUPERADMIN, { planIds: [PLAN, OTRO] });
+    expect(r).toEqual({
+      estado: "ok",
+      precios: {
+        [PLAN]: [
+          { desde: null, precio: P31 },
+          { desde: "2026-11-15T06:00:00.000Z", precio: P31 },
+          { desde: "2026-11-15T06:00:00.000Z", precio: P35 },
+        ],
+        [OTRO]: [{ desde: null, precio: P35 }],
+      },
+    });
+  });
+
+  it("R15: sin planes pedidos, ok y vacío", async () => {
+    expect(await servicio.preciosQueRigen(SUPERADMIN, { planIds: [] })).toEqual({ estado: "ok", precios: {} });
   });
 });

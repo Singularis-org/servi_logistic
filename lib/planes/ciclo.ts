@@ -145,8 +145,9 @@ export interface RangoDelInicioDelCiclo {
 }
 
 /**
- * `AAAA-MM-DD` + `meses`, con el mismo recorte al último día del mes que `sumarMeses`. La usa también el
- * siguiente cobro (`lib/planes/cobro.ts`, ajuste planes-custom D8).
+ * `AAAA-MM-DD` + `meses`, con el mismo recorte al último día del mes que `sumarMeses`. La usan aquí el paso
+ * al período siguiente (`primerDiaDelSiguiente`) y los rangos de fechas (`rangoDelInicioDelCiclo`,
+ * `rangoDeLaFechaDeEfecto`); se exporta para que el test compare contra el mismo tope.
  */
 export function fechaMasMeses(fecha: string, meses: number): string {
   return sumarMeses(new Date(`${fecha}T00:00:00.000Z`), meses).toISOString().slice(0, 10);
