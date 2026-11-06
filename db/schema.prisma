@@ -5020,6 +5020,11 @@ enum HistorialAccionTipo {
   /// la empresa ya tiene (D10). Entidad: `plan` (el de la empresa); etiqueta: `Plan «<nombre>»`;
   /// `valor_anterior` = el tipo de antes y `valor_nuevo` = el nuevo (`mensual` o `anual`).
   plan_tipo_cobro_cambiado
+  /// SLT-86 (design §5.3, 20261106150000; decisión del 2026-11-05): el superadmin cancela el cambio de plan
+  /// o de tipo pendiente de una empresa («Cancelar cambio», la petición igual a lo vigente o el archivado
+  /// del plan). Entidad: `plan` (el del pendiente); `valor_anterior` NULL y `valor_nuevo` = «AAAA-MM-DD ·
+  /// tipo», la fecha de efecto y el tipo del cambio cancelado.
+  plan_cambio_empresa_cancelado
 
   @@map("historial_accion_tipo")
 }

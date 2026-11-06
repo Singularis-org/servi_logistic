@@ -68,9 +68,9 @@ describe("SLT-83 R23 — las líneas de «Mi plan» con un plan porcentual", () 
     expect(lineasDelCosteoPorcentual(COSTEO)).toEqual({
       costoPorOrden: "Costo por orden: 2.00 % del valor del paquete, mínimo 500.00",
       nota: "se cobra cuando la orden llega a un estado final",
-      cobrado: "Cobrado en el ciclo: 2000.00",
+      cobrado: "Cobrado en el período: 2000.00",
       pendientes: "Órdenes del ciclo sin estado final: 0",
-      total: "Total del ciclo hasta hoy: 50000.00 + 2000.00 = 52000.00",
+      total: "Total del período hasta hoy: 50000.00 + 2000.00 = 52000.00",
     });
     expect(NOTA_COBRO_PORCENTUAL).toBe("se cobra cuando la orden llega a un estado final");
   });
@@ -79,24 +79,24 @@ describe("SLT-83 R23 — las líneas de «Mi plan» con un plan porcentual", () 
     const l = lineasDelCosteoPorcentual({ ...COSTEO, minimo: null, cobrado: "290.11", pendientes: 3, total: "50290.11" });
     expect(l.costoPorOrden).toBe("Costo por orden: 2.00 % del valor del paquete");
     expect(l.pendientes).toBe("Órdenes del ciclo sin estado final: 3");
-    expect(l.total).toBe("Total del ciclo hasta hoy: 50000.00 + 290.11 = 50290.11");
+    expect(l.total).toBe("Total del período hasta hoy: 50000.00 + 290.11 = 50290.11");
   });
 
   // Texto aprobado por el humano el 2026-11-04: un cobrado negativo se resta, con U+2212.
   it("un cobrado negativo se pinta como resta con su valor absoluto, nunca «+ -»", () => {
     const l = lineasDelCosteoPorcentual({ ...COSTEO, cobrado: "-500.00", total: "49500.00" });
-    expect(l.total).toBe("Total del ciclo hasta hoy: 50000.00 − 500.00 = 49500.00");
+    expect(l.total).toBe("Total del período hasta hoy: 50000.00 − 500.00 = 49500.00");
     expect(l.total).not.toContain("+ -");
   });
 
   it("con cobrado 0 sigue «base + c = t»", () => {
     const l = lineasDelCosteoPorcentual({ ...COSTEO, cobrado: "0.00", total: "50000.00" });
-    expect(l.total).toBe("Total del ciclo hasta hoy: 50000.00 + 0.00 = 50000.00");
+    expect(l.total).toBe("Total del período hasta hoy: 50000.00 + 0.00 = 50000.00");
   });
 
   it("con la base por definir no hay total (SLT-66 R20)", () => {
     const l = lineasDelCosteoPorcentual({ ...COSTEO, base: { tipo: "por_definir" }, total: null, sinCostoConcreto: true });
     expect(l.total).toBeNull();
-    expect(l.cobrado).toBe("Cobrado en el ciclo: 2000.00");
+    expect(l.cobrado).toBe("Cobrado en el período: 2000.00");
   });
 });

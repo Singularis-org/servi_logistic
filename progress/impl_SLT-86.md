@@ -427,3 +427,94 @@ Anotadas en `requirements.md > Decisiones cerradas` (y en el mapa decisiones →
 Además, en «Archivos esperados»: las dos migraciones nuevas, `lib/types/historial-accion.ts`,
 `app/(app)/plataforma/planes/_components/plan-vista.ts` (la ruta real; no hay `plan-vista.tsx`) y
 `tests/integration/db/planes-cancelar-cambio-historial.test.ts`. `e2e/dos-empresas-humo.spec.ts` ya estaba.
+
+## Tanda 5 — T8b: cancelar un cambio de empresa deja historial; textos de SLT-83 (2026-11-05)
+
+### Commits
+- `1c63f8ce` docs(SLT-86): decisiones del humano tras T9 y architecture.md al día.
+- `feat(SLT-86): cancelar un cambio de empresa deja historial` (hash en el informe al leader). Esta parte de la
+  bitácora va en él.
+
+### Archivos
+- Creados: `db/migrations/20261106150000_historial_accion_plan_cambio_empresa_cancelado/{migration,down}.sql`,
+  `tests/integration/db/planes-cancelar-cambio-historial.test.ts`.
+- Modificados:
+  - `db/schema.prisma` (el valor del enum), `lib/types/historial-accion.ts` (tipo, categoría `cambia_plan`,
+    etiqueta «Canceló el cambio de plan pendiente de una empresa»);
+  - `lib/repositories/PlanesRepository.ts` (`cancelarPendienteDeEmpresaEnTx`, el único punto; lo llaman
+    `cancelarCambioEmpresa`, `cambiarEmpresaEnTx` con la petición igual a lo vigente y `archivar`; sale
+    `limpiarPendiente`), `lib/interfaces/repositories/IPlanesRepository.ts` (`cancelarCambioEmpresa` recibe el
+    actor), `lib/services/PlanesService.ts`;
+  - `lib/types/planes.ts` (`ACCIONES_DE_ASIGNACION` y `TipoDeAsignacion` con `cambio_cancelado`), `lib/planes/cobro.ts`
+    (`tipoCobroDelHistorial`), `lib/planes/mensajes.ts` (`textoDelCambioCancelado` y los dos textos de SLT-83);
+  - tests: `planes-cambio-empresa` (nombres de R19/R26 y la firma nueva), `planes-service-periodo`, `cobro-periodo`,
+    `mensajes-periodo`, `mensajes-costo-porcentual`, `catalogo-y-choke-point`, la guardia
+    `historial-accion-escrituras-cubiertas` (censo y conteo 83), los siete tests de migraciones del historial que
+    listan los tipos posteriores (`correccion-resultado-gestion`, `historial-accion-cobro-tienda`,
+    `-conciliacion-bodega`, `-orden-zona-reconciliada`, `-pago-mensajero-ajustado`, `-zona-pago-mensajero`,
+    `-zona-sinpe`) y `caja-459` (la cola del enum).
+
+### Cómo queda
+- **La fila:** `accion = plan_cambio_empresa_cancelado`, `entidad = plan` (el del pendiente, `Plan «<nombre>»`),
+  `valor_anterior = NULL`, `valor_nuevo = «AAAA-MM-DD · tipo»` del cambio cancelado, el actor congelado de quien
+  cancela y el `organizacion_id` de la empresa, en la misma transacción que limpia el pendiente.
+- **Quién la deja:**
+  - «Cancelar cambio», con quien cancela;
+  - pedir lo vigente con un pendiente, con quien lo pide y no con quien lo programó. Lo decidí así porque es la
+    misma cancelación por otra vía: sin la fila, el historial no explicaría por qué desapareció el pendiente;
+  - archivar un plan: una fila por empresa con un pendiente hacia él, con quien archiva. R21 estaba en la lista
+    que dio el humano, y sin la fila esas empresas perderían su pendiente sin rastro.
+  - No la dejan: reemplazar un pendiente por otro, pedir lo vigente sin pendiente ni «Cancelar cambio» sin
+    pendiente (`sin_cambio_programado`).
+- **Lectura (T11):** `planDeEmpresa` devuelve la fila en `asignaciones` con `tipo: "cambio_cancelado"`,
+  `tipoCobro` y `desde` del cambio cancelado y `tipoCobroAnterior: null`. La celda la escribe
+  `textoDelCambioCancelado(etiqueta del tipo, desde)`: «Cambio cancelado: Quincenal desde el 2026-12-01».
+
+### Mapa R → test (de esta tanda)
+
+| R | Test |
+|---|---|
+| R19 | `planes-cancelar-cambio-historial` («Cancelar cambio» deja una fila; primera asignación pendiente; sin pendiente y reemplazo no escriben; pedir lo vigente con la firma de quien pide; misma transacción con el registro roto), `planes-cambio-empresa`, `planes-service-periodo` (pasa el actor), `cobro-periodo` (`cambio_cancelado`) |
+| R21 | `planes-cancelar-cambio-historial` (archivar: una fila por empresa, con quien archiva; el pendiente hacia otro plan, ninguna) |
+| R26 | `planes-cancelar-cambio-historial` (la lectura del detalle devuelve `cambio_cancelado`), `mensajes-periodo` (`textoDelCambioCancelado`) |
+| R28 | `mensajes-costo-porcentual` («Cobrado en el período», «Total del período hasta hoy») |
+
+### Salida real
+- Base `servi_logistic_slt86`: `migrate deploy` de `20261106150000` ok. Con una fila de la acción nueva, `db:rollback`
+  ok: la fila se borra, el valor sale del enum y la migración sale de `_prisma_migrations`. Otro `deploy` la deja
+  aplicada. `prisma generate` ok.
+- Tests por ruta (`pnpm exec vitest run <archivos>`; integración con `DATABASE_URL`): 17 archivos, 432 casos, 0 fallos,
+  0 saltados.
+  - Unit: `mensajes-periodo` 12, `mensajes-costo-porcentual` 15, `cobro-periodo` 35, `rastro-periodo` 12,
+    `planes-service-periodo` 69, `catalogo-y-choke-point` 54, `historial-accion-escrituras-cubiertas` 94.
+  - Integración: `planes-cancelar-cambio-historial` 6, `planes-cambio-empresa` 12, `caja-459-migration` 6,
+    `correccion-resultado-gestion-migration` 17, `historial-accion-cobro-tienda-migration` 17,
+    `historial-accion-conciliacion-bodega-migration` 18, `historial-accion-orden-zona-reconciliada-migration` 5,
+    `historial-accion-pago-mensajero-ajustado-migration` 5, `historial-accion-zona-pago-mensajero-migration` 17,
+    `historial-accion-zona-sinpe-migration` 17.
+- Guardias de esquema y del historial (`organizacion-en-modelos`, `unicos-por-empresa`, `fk-misma-empresa`,
+  `rls-por-empresa`, `planes-sin-borrado`, `planes-sin-seed`, `catalogo-postgres-acota-esquema`, los siete
+  `historial-accion*`/`historial-acciones*`, `historico-sin-migracion`, `consultas-concurrentes-en-transaccion`,
+  `sql-a-mano-por-empresa`, `superficie-de-uso`): 18 archivos, 337/337.
+- eslint de los 23 archivos TS tocados: 0 errores y 0 avisos.
+- typecheck (`NODE_OPTIONS=--max-old-space-size=8192`): **121 errores**, el mismo total de la tanda 4; ninguno fuera
+  de `app/`, `components/`, `tests/components/`, `tests/integration/plataforma-empresa-detalle-page.test.tsx` y `e2e/`.
+
+### Avisos de la tanda
+- **Texto a confirmar:** «Cambio cancelado: {Tipo} desde el {AAAA-MM-DD}» (`design.md > §7.1`). La etiqueta del tipo
+  la pone la pantalla (`TEXTOS_TIPO_COBRO`, en `components/shared/tipo-cobro.ts`).
+- **Decisiones mías, a confirmar:** pedir lo vigente y archivar también dejan la fila (el porqué, arriba).
+- **Para frontend_dev (T11–T13):**
+  - `PlanEmpresa.tsx > textoDelTipoCobroDeLaFila` trata hoy toda fila que no es `asignacion` como un cambio de tipo:
+    tiene que pintar `cambio_cancelado` con `textoDelCambioCancelado`;
+  - los literales viejos de SLT-83 siguen en `tests/components/ConsumoDelPlanPorcentual.test.tsx` (líneas 70, 72, 74,
+    85, 97, 98, 108, 109, 162, 164 y 173) y en `e2e/planes-costo-porcentual.spec.ts` (99, 101 y 103). Ningún
+    componente tiene el literal: lo toman de `lineasDelCosteoPorcentual`.
+- «Órdenes del ciclo sin estado final» (SLT-83) no estaba en la decisión y sigue igual.
+- Otros ocho tests de migraciones comparan el enum con el catálogo: `abono-tienda-457`, `api-key-eliminada`,
+  `correccion-fecha-reprogramacion`, `geografia-registro`, `geografia-renombrado`, `historial-accion-zona-central`,
+  `wallet-458` y `wallet-461`. Leen la base ya migrada y no fijan la cola: no los toqué ni los corrí.
+- Grafo MCP: no lo consulté; trabajé con Grep/Read.
+
+**Veredicto:** T8b hecha; cancelar deja historial por los tres caminos, con todo en verde salvo los 121 errores de
+tipos de pantallas y E2E (T10–T13).

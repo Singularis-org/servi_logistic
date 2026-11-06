@@ -154,6 +154,15 @@ export function mensajeCambioCancelado(planNombre: string, fecha: string): strin
 }
 
 /**
+ * SLT-86 (design §5.3, §7.1; R19, R26; decisión del 2026-11-05): la celda del tipo de cobro de una fila
+ * `cambio_cancelado` del historial de asignaciones. `tipo` llega ya con su etiqueta («Quincenal»), que vive
+ * con las del selector; el plan va en su propia columna. Sin fecha (no debería pasar) solo dice el tipo.
+ */
+export function textoDelCambioCancelado(tipo: string, desde: string | null): string {
+  return desde === null ? `Cambio cancelado: ${tipo}` : `Cambio cancelado: ${tipo} desde el ${desde}`;
+}
+
+/**
  * Decisiones cerradas («Texto del cambio programado») y design §6.5: el mismo texto para el cambio
  * pendiente en todas las pantallas (la empresa, el detalle de la empresa y el detalle del plan).
  */
@@ -346,12 +355,13 @@ export function lineasDelCosteoPorcentual(c: Extract<CosteoDelCiclo, { modo: "po
   return {
     costoPorOrden: `Costo por orden: ${textoDelCostoPorOrdenPorcentual(c)}`,
     nota: NOTA_COBRO_PORCENTUAL,
-    cobrado: `Cobrado en el ciclo: ${c.cobrado}`,
+    // SLT-86 (R28; decisión del 2026-11-05): «período» en lugar de «ciclo».
+    cobrado: `Cobrado en el período: ${c.cobrado}`,
     pendientes: `Órdenes del ciclo sin estado final: ${c.pendientes}`,
     total:
       c.total === null || c.base.tipo !== "monto"
         ? null
-        : `Total del ciclo hasta hoy: ${c.base.periodo} ${sumaDelCobrado(c.cobrado)} = ${c.total}`,
+        : `Total del período hasta hoy: ${c.base.periodo} ${sumaDelCobrado(c.cobrado)} = ${c.total}`,
   };
 }
 

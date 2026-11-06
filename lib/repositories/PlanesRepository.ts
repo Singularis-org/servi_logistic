@@ -76,7 +76,8 @@ import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 //
 // Cada cambio deja su rastro en la misma transacción: `plan_rastro` (plataforma, P5) al crear, editar,
 // archivar, y al programar, reemplazar, cancelar o aplicar un cambio (R43); `historial_accion` de la empresa al asignar y por cada módulo que se
-// enciende o apaga (R29). Si el rastro falla, nada persiste.
+// enciende o apaga (R29), y, desde SLT-86, al cancelar el cambio pendiente de una empresa. Si el rastro falla,
+// nada persiste.
 //
 // SLT-58 (design §3.2) suma tres lecturas para las pantallas del superadmin (catálogo, detalle de un
 // plan, plan de una empresa), también en `comoPlataforma` y sin escribir nada. Su enmienda (§11) suma
@@ -676,10 +677,6 @@ export function dedupeCambioEmpresa(cambioId: string): string {
 const SIN_PENDIENTE = Prisma.sql`"plan_cambio_id" = NULL, "plan_cambio_plan_id" = NULL, "plan_cambio_tipo_cobro" = NULL,
        "plan_cambio_desde_at" = NULL, "plan_cambio_actor_id" = NULL`;
 
-function limpiarPendiente(tx: Tx, organizacionId: string): Promise<number> {
-  return tx.$executeRaw`UPDATE "organizacion" SET ${SIN_PENDIENTE} WHERE "id" = ${organizacionId}`;
-}
-
 /**
  * Guarda el pendiente (reemplaza el que hubiera) y encola, en esta transacción, el trabajo que lo
  * aplicará a sus 00:00 (outbox). El trabajo va CON la empresa (`jobs.organizacion_id`), así que el
@@ -813,7 +810,10 @@ export class PlanesRepository implements IPlanesRepository {
         // SLT-86 (R21): las empresas con un pendiente hacia el plan, ANTES que el plan (empresa → plan,
         // el orden de `asignar`). Un pendiente que llegue después de este cerrojo espera al del plan y
         // encuentra el plan archivado.
-        await tx.$queryRaw`SELECT "id" FROM "organizacion" WHERE "plan_cambio_plan_id" = ${planId} ORDER BY "id" FOR UPDATE`;
+        const conPendiente = await tx.$queryRaw<EmpresaBloqueada[]>`
+          SELECT "id", "nombre", "plan_id", "plan_tipo_cobro", "plan_cambio_id", "plan_cambio_plan_id",
+                 "plan_cambio_tipo_cobro", "plan_cambio_desde_at", "plan_cambio_actor_id"
+            FROM "organizacion" WHERE "plan_cambio_plan_id" = ${planId} ORDER BY "id" FOR UPDATE`;
         if (!(await bloquearPlanParaEscribir(tx, planId))) return { estado: "not_found" };
         const plan = (await leerPlan(tx, planId)) as PlanDTO;
         if (plan.archivado) return { estado: "ok", cambio: false };
@@ -824,8 +824,9 @@ export class PlanesRepository implements IPlanesRepository {
         await escribirRastro(tx, plan, "archivado", cambios, actorUsuarioId, actor);
         await cancelarPendienteEnTx(tx, plan, actorUsuarioId, actor);
         // SLT-86 (R21): esas empresas siguen como estaban; una primera asignación pendiente, sin plan. Sus
-        // trabajos ya encolados no encuentran su `cambioId` al correr.
-        await tx.$executeRaw`UPDATE "organizacion" SET ${SIN_PENDIENTE} WHERE "plan_cambio_plan_id" = ${planId}`;
+        // trabajos ya encolados no encuentran su `cambioId` al correr. Cada una deja su fila de cancelación
+        // con quien archiva (decisión del 2026-11-05).
+        for (const empresa of conPendiente) await this.cancelarPendienteDeEmpresaEnTx(tx, empresa, actor);
         return { estado: "ok", cambio: true };
       }),
     );
@@ -955,7 +956,8 @@ export class PlanesRepository implements IPlanesRepository {
 
   /**
    * §5.1, pasos 2–4, con la empresa ya bajo el cerrojo y el plan revalidado.
-   *   · R19: mismo plan y mismo tipo que rigen → cancela el pendiente o no hace nada; nunca historial.
+   *   · R19: mismo plan y mismo tipo que rigen → cancela el pendiente, con su fila de cancelación
+   *     (decisión del 2026-11-05), o no hace nada si no lo hay.
    *   · Fecha futura → pendiente y avisos, sin rechazar (R18).
    *   · Fecha de hoy o pasada → se aplica. Un tope ya pasado rechaza un cambio de plan (R18, SL-24 R12) y
    *     la primera asignación sin fecha (SLT-58 P14); la primera asignación con fecha se asigna y avisa
@@ -972,7 +974,7 @@ export class PlanesRepository implements IPlanesRepository {
   ): Promise<ResultadoDelCambio> {
     if (empresa.plan_id === plan.id && empresa.plan_tipo_cobro === tipoCobro) {
       if (empresa.plan_cambio_id === null) return { estado: "ok", cambio: false, avisos: [], pendiente: false };
-      await limpiarPendiente(tx, empresa.id);
+      await this.cancelarPendienteDeEmpresaEnTx(tx, empresa, await resolverActorCongelado(tx, actorUsuarioId));
       return { estado: "ok", cambio: true, avisos: [], pendiente: false };
     }
     const excedidos = empresa.plan_id === plan.id ? [] : await excedidosDe(tx, [empresa], plan.topes);
@@ -1027,17 +1029,46 @@ export class PlanesRepository implements IPlanesRepository {
     ]);
   }
 
-  cancelarCambioEmpresa(organizacionId: string): Promise<ResultadoCancelarCambio> {
+  cancelarCambioEmpresa(organizacionId: string, actorUsuarioId: string): Promise<ResultadoCancelarCambio> {
     return comoPlataforma("SL-24", "cancelar el cambio pendiente de una empresa (superadmin, SLT-86)", () =>
       this.prisma.$transaction(async (tx): Promise<ResultadoCancelarCambio> => {
         const empresa = await bloquearEmpresa(tx, organizacionId);
         if (empresa === undefined) return { estado: "not_found" };
         if (empresa.plan_cambio_id === null) return { estado: "sin_cambio_programado" };
-        // R19: cancelar no deja historial; el trabajo encolado no encuentra su `cambioId` al correr.
-        await limpiarPendiente(tx, organizacionId);
+        // El trabajo encolado no encuentra su `cambioId` al correr.
+        await this.cancelarPendienteDeEmpresaEnTx(tx, empresa, await resolverActorCongelado(tx, actorUsuarioId));
         return { estado: "ok" };
       }),
     );
+  }
+
+  /**
+   * SLT-86 (design §5.3; R19, R21; decisión del humano del 2026-11-05): el único punto que cancela el
+   * pendiente de una empresa, ya bajo su cerrojo y con un pendiente. Lo limpia y deja en su historial la
+   * fila `plan_cambio_empresa_cancelado` con `actor`: el plan del pendiente y, en `valor_nuevo`, la fecha de
+   * efecto y el tipo que no llegaron a regir, con el formato de las asignaciones. Recibe la `tx` de quien
+   * abrió la transacción («Cancelar cambio», la petición igual a lo vigente o el archivado del plan).
+   */
+  private async cancelarPendienteDeEmpresaEnTx(tx: Tx, empresa: EmpresaBloqueada, actor: ActorCongelado): Promise<void> {
+    // El CHECK `organizacion_plan_cambio_completo` garantiza las cinco columnas con el id.
+    const planId = empresa.plan_cambio_plan_id as string;
+    const desde = empresa.plan_cambio_desde_at as Date;
+    const tipoCobro = tipoCobroSchema.parse(empresa.plan_cambio_tipo_cobro);
+    const plan = await tx.plan.findUnique({ where: { id: planId }, select: { nombre: true } });
+    if (plan === null) throw new Error(`cancelarPendienteDeEmpresaEnTx: el plan ${planId} del pendiente no existe`);
+    await tx.$executeRaw`UPDATE "organizacion" SET ${SIN_PENDIENTE} WHERE "id" = ${empresa.id}`;
+    await appendAccion(tx, [
+      {
+        accion: "plan_cambio_empresa_cancelado",
+        entidadTipo: "plan",
+        entidadId: planId,
+        entidadEtiqueta: etiquetaDeEntidad("plan", { nombre: plan.nombre }),
+        valorAnterior: null,
+        valorNuevo: valorDelHistorialDeAsignacion(fechaCalendarioCR(desde), tipoCobro),
+        organizacionId: empresa.id,
+        ...actor,
+      },
+    ]);
   }
 
   aplicarCambioDeEmpresa(cambio: CambioDeEmpresaPendiente, ahora: Date): Promise<ResultadoAplicar> {

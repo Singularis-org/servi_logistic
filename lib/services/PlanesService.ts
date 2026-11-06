@@ -331,12 +331,15 @@ export class PlanesService implements IPlanesService {
     return r.estado === "ok" ? { estado: "ok", cambio: r.cambio } : r;
   }
 
-  /** SLT-86 (R19, R26): «Cancelar cambio» del pendiente de una empresa. Sin historial. */
+  /**
+   * SLT-86 (R19, R26): «Cancelar cambio» del pendiente de una empresa. Deja la fila de cancelación en su
+   * historial, firmada por quien cancela (decisión del 2026-11-05).
+   */
   async cancelarCambioEmpresa(actor: Actor | null, input: unknown): Promise<CancelarCambioEmpresaResult> {
     if (!esSuperadmin(actor)) return FORBIDDEN;
     const parsed = cancelarCambioEmpresaSchema.safeParse(input);
     if (!parsed.success) return { estado: "validation_error", fieldErrors: erroresDeCampo(parsed.error) };
-    return this.repo.cancelarCambioEmpresa(parsed.data.organizacionId);
+    return this.repo.cancelarCambioEmpresa(parsed.data.organizacionId, actor.usuarioId);
   }
 
   /**

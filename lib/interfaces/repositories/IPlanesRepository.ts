@@ -244,14 +244,16 @@ export interface IPlanesRepository {
   editar(planId: string, version: VersionPlan, actorUsuarioId: string, precioDesde: Date): Promise<ResultadoEdicion>;
   /**
    * Archiva y cancela el cambio pendiente en la misma transacción (R6, R40). SLT-86 (R21): también los
-   * cambios de empresa pendientes hacia ese plan, primeras asignaciones incluidas. Repetido no escribe.
+   * cambios de empresa pendientes hacia ese plan, primeras asignaciones incluidas, cada uno con su fila de
+   * cancelación en el historial de la empresa (decisión del 2026-11-05). Repetido no escribe.
    */
   archivar(planId: string, actorUsuarioId: string): Promise<ResultadoArchivar>;
   /**
    * Asigna o cambia el plan de una empresa (§5.2; R9–R13). SLT-86 (§5.1; R2, R16–R19): con la fecha de
    * hoy o pasada se aplica en el acto (entrada = 00:00 de la fecha, módulos e historial); con fecha
    * futura se guarda como el pendiente de la empresa, que reemplaza al que hubiera, y se encola el trabajo
-   * que lo aplica. Mismo plan y mismo tipo que rigen: cancela el pendiente o no hace nada, sin historial.
+   * que lo aplica. Mismo plan y mismo tipo que rigen: cancela el pendiente, con su fila de cancelación
+   * (decisión del 2026-11-05), o no hace nada si no lo hay.
    * `ahora` decide si la fecha ya rige; la clase de fecha se revalida bajo el cerrojo (R31).
    */
   asignar(
@@ -293,8 +295,11 @@ export interface IPlanesRepository {
     actorUsuarioId: string,
     ahora: Date,
   ): Promise<ResultadoCambiarTipoCobro>;
-  /** SLT-86 (R19, R26): «Cancelar cambio». Sin pendiente, `sin_cambio_programado`. No escribe historial. */
-  cancelarCambioEmpresa(organizacionId: string): Promise<ResultadoCancelarCambio>;
+  /**
+   * SLT-86 (R19, R26): «Cancelar cambio». Sin pendiente, `sin_cambio_programado`. Deja en el historial de la
+   * empresa la fila `plan_cambio_empresa_cancelado` con `actorUsuarioId` (decisión del 2026-11-05).
+   */
+  cancelarCambioEmpresa(organizacionId: string, actorUsuarioId: string): Promise<ResultadoCancelarCambio>;
   /**
    * SLT-86 (§5.2; R17, R20): aplica ESE pendiente de la empresa si sigue ahí y ya rige en `ahora`: plan,
    * tipo, entrada, módulos y la fila de historial con el actor que lo programó. Un tope ya pasado no lo

@@ -377,14 +377,21 @@ export type DetallePlan = {
 /**
  * Ajuste planes-custom (D14): qué fue cada fila del historial de asignaciones. `asignacion` = asignar o
  * cambiar el plan (SL-24, SLT-58, D2); `cambio_tipo_cobro` = solo el tipo de cobro del mismo plan (D10).
+ * SLT-86 (design §5.3; decisión del 2026-11-05): `cambio_cancelado` = se canceló un cambio pendiente que no
+ * llegó a regir; `tipoCobro` y `desde` son los de ese cambio.
  */
-export type TipoDeAsignacion = "asignacion" | "cambio_tipo_cobro";
+export type TipoDeAsignacion = "asignacion" | "cambio_tipo_cobro" | "cambio_cancelado";
 
 /**
  * Ajuste planes-custom (D16): las acciones del historial general que forman el historial de asignaciones
  * del detalle (R21, D14). `plan_tipo_cobro_cambiado` es el cambio de solo el tipo de cobro (D10).
+ * SLT-86 (R19, R26): `plan_cambio_empresa_cancelado`, la cancelación de un cambio pendiente.
  */
-export const ACCIONES_DE_ASIGNACION = ["plan_asignado", "plan_tipo_cobro_cambiado"] as const satisfies readonly HistorialAccionTipo[];
+export const ACCIONES_DE_ASIGNACION = [
+  "plan_asignado",
+  "plan_tipo_cobro_cambiado",
+  "plan_cambio_empresa_cancelado",
+] as const satisfies readonly HistorialAccionTipo[];
 export type AccionDeAsignacion = (typeof ACCIONES_DE_ASIGNACION)[number];
 
 /** R21: una fila del historial de la empresa con una de `ACCIONES_DE_ASIGNACION`. */
@@ -393,7 +400,7 @@ export type AsignacionDePlan = {
   actorNombre: string;
   /** La `entidad_etiqueta` congelada al asignar (`Plan «<nombre>»`). */
   planNombre: string;
-  /** D14: asignación del plan o cambio de solo el tipo de cobro (D10). */
+  /** D14: asignación del plan, cambio de solo el tipo de cobro (D10) o cambio cancelado (SLT-86). */
   tipo: TipoDeAsignacion;
   /** D14: el tipo de cobro que dejó la fila; `null` en las filas anteriores al ajuste (no lo guardaban). */
   tipoCobro: TipoCobro | null;
@@ -401,7 +408,7 @@ export type AsignacionDePlan = {
   tipoCobroAnterior: TipoCobro | null;
   /**
    * SLT-86 (R30): la fecha que la fila lleva delante del tipo (`AAAA-MM-DD`): la de efecto de un cambio
-   * o la de inicio de SLT-58. `null` en las filas que no la guardaban.
+   * (también la del cambio cancelado) o la de inicio de SLT-58. `null` en las filas que no la guardaban.
    */
   desde: string | null;
 };

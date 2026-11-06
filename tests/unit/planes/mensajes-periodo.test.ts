@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { SIN_DESCUENTO, textoDelDescuento, textoDelPrecio } from "@/lib/planes/mensajes";
+import { SIN_DESCUENTO, textoDelCambioCancelado, textoDelDescuento, textoDelPrecio } from "@/lib/planes/mensajes";
 import { TIPOS_COBRO, type PrecioPlan } from "@/lib/types/planes";
 
 // SLT-86 (design §7.1; R24, R30) — el precio del plan como lo pintan el catálogo, el detalle del plan, el
@@ -62,5 +62,15 @@ describe("R30 — un precio de antes de SLT-86 (con el anual) se pinta tal cual"
     [{ tipo: "monto", mensual: "15000.00" }, "15000.00 / mes"],
   ] as const)("%j → %s", (precio, texto) => {
     expect(textoDelPrecio(precio)).toBe(texto);
+  });
+});
+
+describe("R19, R26 — la fila «cambio cancelado» del historial de asignaciones (decisión del 2026-11-05)", () => {
+  it("dice el tipo y la fecha de efecto del cambio que no llegó a regir; el plan va en su columna", () => {
+    expect(textoDelCambioCancelado("Quincenal", "2026-12-01")).toBe("Cambio cancelado: Quincenal desde el 2026-12-01");
+  });
+
+  it("sin fecha guardada solo dice el tipo", () => {
+    expect(textoDelCambioCancelado("Anual", null)).toBe("Cambio cancelado: Anual");
   });
 });

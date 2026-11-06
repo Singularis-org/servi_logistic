@@ -388,7 +388,7 @@ describeSiHayBase("SLT-86 — cambios de empresa con fecha de efecto (R1, R2, R1
     expect(r.jobs).toEqual([]);
   });
 
-  it("R19: una petición nueva reemplaza el pendiente y el trabajo del viejo no escribe; pedir lo vigente lo cancela sin historial; sin pendiente, ok sin cambio", async () => {
+  it("R19: una petición nueva reemplaza el pendiente y el trabajo del viejo no escribe; pedir lo vigente lo cancela sin tocar lo vigente (su fila de cancelación: `planes-cancelar-cambio-historial`); sin pendiente, ok sin cambio", async () => {
     const r = await revertida(base, async (tx) => {
       const c = await caso(tx);
       const [uno, dos, tres] = [await c.plan(), await c.plan(), await c.plan()];
@@ -482,7 +482,7 @@ describeSiHayBase("SLT-86 — cambios de empresa con fecha de efecto (R1, R2, R1
     expect(r.despues).toEqual(r.antes);
   });
 
-  it("R19, R26: «Cancelar cambio» limpia el pendiente sin historial y su trabajo ya no escribe; sin pendiente, sin_cambio_programado; empresa que no existe, not_found", async () => {
+  it("R19, R26: «Cancelar cambio» limpia el pendiente sin tocar lo vigente (su fila: `planes-cancelar-cambio-historial`) y su trabajo ya no escribe; sin pendiente, sin_cambio_programado; empresa que no existe, not_found", async () => {
     const r = await revertida(base, async (tx) => {
       const c = await caso(tx);
       const plan = await c.plan();
@@ -502,7 +502,7 @@ describeSiHayBase("SLT-86 — cambios de empresa con fecha de efecto (R1, R2, R1
         trasCancelar,
         trabajo,
         otraVez: await c.servicio.cancelarCambioEmpresa(c.actor, { organizacionId: org }),
-        noExiste: await planesEnTx(tx).cancelarCambioEmpresa("00000000-0000-4000-8000-000000000000"),
+        noExiste: await planesEnTx(tx).cancelarCambioEmpresa("00000000-0000-4000-8000-000000000000", c.actor.usuarioId),
         final: await estado(tx, org),
       };
     });

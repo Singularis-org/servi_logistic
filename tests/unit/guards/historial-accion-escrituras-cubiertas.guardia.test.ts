@@ -741,6 +741,18 @@ const CENSO: EntradaCenso[] = [
     forma: "recibe_tx",
     mutacion: /tx\.\$executeRaw`\s*UPDATE "organizacion"\s+SET "plan_id"[^`]*"plan_tipo_cobro"/,
   },
+  // SLT-86 (design §5.3; R19, R21; decisión del humano del 2026-11-05): cancelar el cambio pendiente de una
+  // empresa deja su fila `plan_cambio_empresa_cancelado`. Un solo punto, `cancelarPendienteDeEmpresaEnTx`, que
+  // recibe la `tx` de «Cancelar cambio» (`cancelarCambioEmpresa`), de la petición igual a lo vigente
+  // (`cambiarEmpresaEnTx`) y del archivado (`archivar`). El UPDATE que limpia el pendiente y la fila van
+  // juntos. Lo prueba `tests/integration/db/planes-cancelar-cambio-historial.test.ts`.
+  {
+    tipos: ["plan_cambio_empresa_cancelado"],
+    archivo: "lib/repositories/PlanesRepository.ts",
+    metodo: "cancelarPendienteDeEmpresaEnTx",
+    forma: "recibe_tx",
+    mutacion: /tx\.\$executeRaw`UPDATE "organizacion" SET \$\{SIN_PENDIENTE\} WHERE "id"/,
+  },
 ];
 
 /**
@@ -1224,7 +1236,8 @@ describe("362/R16 — cada tipo del catalogo tiene al menos un punto de escritur
     // `_borrado`; sus productores, desde T6.2, en `TarifaValorRepository` y `GrupoDistritosRepository`).
         // 81 desde el ajuste planes-custom D16 (`plan_tipo_cobro_cambiado`, de `PlanesRepository.cambiarTipoCobro`).
     // 82 desde SLT-54 (`tarifas_activadas`, de `TarifaActivacionRepository.activar`).
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(82);
+    // 83 desde SLT-86 (`plan_cambio_empresa_cancelado`, de `PlanesRepository.cancelarPendienteDeEmpresaEnTx`).
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(83);
   });
 });
 

@@ -181,6 +181,15 @@ describe("R27, D9 — cobroDelPlan: tipo, período, costo, siguiente cobro y pen
 });
 
 describe("R30 — el historial muestra las filas viejas tal cual y las nuevas con su tipo y su fecha", () => {
+  it("R19 (decisión del 2026-11-05): una fila `plan_cambio_empresa_cancelado` es `cambio_cancelado` con el tipo y la fecha del cambio cancelado", () => {
+    expect(tipoCobroDelHistorial("plan_cambio_empresa_cancelado", null, "2026-12-01 · bimestral")).toEqual({
+      tipo: "cambio_cancelado",
+      tipoCobro: "bimestral",
+      tipoCobroAnterior: null,
+      desde: "2026-12-01",
+    });
+  });
+
   it("las filas nuevas llevan la fecha de efecto delante del tipo, también quincenal y bimestral", () => {
     expect(valorDelHistorialDeAsignacion("2026-11-16", "quincenal")).toBe("2026-11-16 · quincenal");
     expect(tipoCobroDelHistorial("plan_asignado", null, "2026-11-16 · quincenal")).toEqual({

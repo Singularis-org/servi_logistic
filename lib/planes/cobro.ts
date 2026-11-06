@@ -162,6 +162,9 @@ function partesDelValor(valor: string | null): { tipoCobro: TipoCobro | null; de
  * - `plan_asignado` CON un tipo en `valor_anterior` es un cambio de solo el tipo escrito antes de D16: así
  *   lo deja el `down.sql` de 20261104130100. Se sigue leyendo como cambio.
  *
+ * - `plan_cambio_empresa_cancelado` (SLT-86 R19) es un cambio pendiente que se canceló: `valor_nuevo` lleva la
+ *   fecha de efecto y el tipo de ese cambio, que no llegó a regir.
+ *
  * Las filas viejas (`mensual`, `anual`, sin fecha) se leen igual (R30).
  */
 export function tipoCobroDelHistorial(
@@ -171,6 +174,9 @@ export function tipoCobroDelHistorial(
 ): TipoCobroDelHistorial {
   const anterior = comoTipoCobro(valorAnterior);
   const { tipoCobro, desde } = partesDelValor(valorNuevo);
+  if (accion === "plan_cambio_empresa_cancelado") {
+    return { tipo: "cambio_cancelado", tipoCobro, tipoCobroAnterior: null, desde };
+  }
   if (accion === "plan_tipo_cobro_cambiado" || anterior !== null) {
     return { tipo: "cambio_tipo_cobro", tipoCobro, tipoCobroAnterior: anterior, desde };
   }

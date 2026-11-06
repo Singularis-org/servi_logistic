@@ -200,14 +200,14 @@ describe("SLT-86 — R16: la fecha de efecto de un cambio de empresa, de hoy a h
     });
   });
 
-  it("R19, R26: «Cancelar cambio» valida la empresa y devuelve lo que decide el repositorio", async () => {
+  it("R19, R26: «Cancelar cambio» valida la empresa, pasa quién cancela (firma la fila del historial) y devuelve lo que decide el repositorio", async () => {
     const malo = await servicio.cancelarCambioEmpresa(SUPERADMIN, { organizacionId: "no-uuid" });
     expect(malo).toMatchObject({ estado: "validation_error", fieldErrors: { organizacionId: expect.any(Array) } });
     expect(llamadasAlRepositorio()).toBe(0);
     expect(await servicio.cancelarCambioEmpresa(SUPERADMIN, { organizacionId: EMPRESA })).toEqual({ estado: "ok" });
     repo.cancelarCambioEmpresa.mockResolvedValueOnce({ estado: "sin_cambio_programado" });
     expect(await servicio.cancelarCambioEmpresa(SUPERADMIN, { organizacionId: EMPRESA })).toEqual({ estado: "sin_cambio_programado" });
-    expect(repo.cancelarCambioEmpresa).toHaveBeenCalledWith(EMPRESA);
+    expect(repo.cancelarCambioEmpresa).toHaveBeenCalledWith(EMPRESA, SUPERADMIN.usuarioId);
   });
 });
 
