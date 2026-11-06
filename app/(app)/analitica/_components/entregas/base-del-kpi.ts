@@ -51,7 +51,7 @@ export const ORDENES: SustantivoContado = { singular: "orden", plural: "órdenes
 
 /**
  * Las que además CERRARON. `CicloVidaKpi` no mide sobre el universo entero sino sobre las que
- * llegaron a un estado terminal, y el adjetivo es la mitad del dato: sin él, su promedio se
+ * tienen una gestión final de cierre, y el adjetivo es la mitad del dato: sin él, su promedio se
  * leería como si hablara de todas.
  */
 export const ORDENES_CERRADAS: SustantivoContado = {
@@ -88,7 +88,7 @@ export const ORDENES_CARGADAS: SustantivoContado = {
  *   | lectura                         | qué cuenta                                   | sustantivo          |
  *   | ------------------------------- | -------------------------------------------- | ------------------- |
  *   | héroe (`calcularEfectividad`)   | tiene DESENLACE DE GESTIÓN                   | `órdenes con desenlace` |
- *   | `CicloVidaKpi`                  | llegó a estado TERMINAL, fechado en el cierre| `órdenes cerradas`  |
+ *   | `CicloVidaKpi`                  | tiene GESTIÓN FINAL, fechada en esa gestión  | `órdenes cerradas`  |
  *   | `CohorteCargaTabla`             | llegó a estado TERMINAL, dentro de la cohorte| `órdenes cerradas`  |
  *
  * Las tres son preguntas legítimas y **no se unifican**: el héroe necesita separar «rechazada»

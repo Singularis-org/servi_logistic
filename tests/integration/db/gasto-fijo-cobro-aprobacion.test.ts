@@ -254,6 +254,7 @@ describeSiHayBase("333/D7 — R15: aprobar deja estado, decisor, instante y enla
         obtenerPorClave: libroReal.obtenerPorClave.bind(libroReal), // ficha 461
         listar: libroReal.listar.bind(libroReal),
         agregarPorCategoriaYTipo: libroReal.agregarPorCategoriaYTipo.bind(libroReal),
+        categoriasConModeloNuevo: libroReal.categoriasConModeloNuevo.bind(libroReal),
         obtenerPorId: libroReal.obtenerPorId.bind(libroReal),
         agregarPorCategoria: libroReal.agregarPorCategoria.bind(libroReal),
         // FICHA 362: el escritor de los movimientos que nacen de una decision humana. Este camino

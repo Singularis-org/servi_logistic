@@ -70,6 +70,7 @@ function buildWalletDeps() {
     crearMovimientos: vi.fn().mockResolvedValue(0),
     listar: vi.fn(),
     agregarPorCategoriaYTipo: vi.fn(),
+    categoriasConModeloNuevo: vi.fn(),
     obtenerPorId: vi.fn(),
     agregarPorCategoria: vi.fn(),
     obtenerPorOrigen: vi.fn(),

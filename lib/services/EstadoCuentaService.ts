@@ -351,6 +351,10 @@ export class EstadoCuentaService implements IEstadoCuentaService {
     const documentos = pagina.filas.map(documentoDeTienda);
     const estados = await this.estadosDeDocumentos(repo, documentos, null, zona);
     const aprobadores = await repo.quienAproboLosCierres(cierresDe(pagina.filas));
+    // SLT-54 (D38): filtra por la tienda de esta cuenta, y no solo por el cierre, porque un cierre mezcla tiendas.
+    const cierresNuevos = await repo.cierresConModeloNuevoDeTienda(tiendaId, [
+      ...new Set(pagina.filas.flatMap((f) => (f.origenTipo === "cierre_dia" && f.origenId !== null ? [f.origenId] : []))),
+    ]);
     // 172 R55 — la cuenta ENTERA por concepto, en la MISMA foto que `actual`, clasificada por la MISMA
     // funcion que la cabecera del maestro (171): aqui no se decide en que importe cae nada.
     const resumen = v.conResumen ? derivarDesgloseTienda(await repo.desgloseDeTienda(tiendaId)) : null;
@@ -362,8 +366,8 @@ export class EstadoCuentaService implements IEstadoCuentaService {
       saldoInicial: antes === null ? "0.00" : derivarSaldoTienda(antes.creditos, antes.debitos).saldo,
       ...totales,
       total: pagina.total,
-      filas: pagina.filas.map((f, i) =>
-        this.fila(f, {
+      filas: pagina.filas.map((f, i) => ({
+        ...this.fila(f, {
           libro: "tienda",
           esAbono: f.tipo === "credito",
           chip: chipDeTienda(f.categoria as WalletTiendaMovimientoCategoria, f.origenTipo as WalletOrigenTipo),
@@ -373,7 +377,9 @@ export class EstadoCuentaService implements IEstadoCuentaService {
           aprobadores,
           zona,
         }),
-      ),
+        // Solo la fila que nace de un cierre: el cobro por rechazo (`gestion_orden`) nombra una devolucion que si hubo.
+        incluyeModeloNuevo: f.origenTipo === "cierre_dia" && f.origenId !== null && cierresNuevos.has(f.origenId),
+      })),
     };
   }
 

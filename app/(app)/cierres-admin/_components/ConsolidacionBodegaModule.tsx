@@ -27,6 +27,7 @@ import type { CierreTotales } from "@/lib/interfaces/services/ICierreDiaService"
 import {
   PagoMensajeroTotal,
   IngresoBodegaRechazosTotal,
+  rotuloIngresoBodega,
   CentralDebeTotal,
   TotalesPanel,
 } from "./cierre-detalle-shared";
@@ -136,6 +137,12 @@ export interface ConsolidacionBodegaModuleProps {
   /** Feature 56/R17: suma snapshot del ingreso de bodega por rechazos (STRING), separado. */
   totalIngresoBodegaRechazosAgregado: string;
   /**
+   * SLT-54 (R71): alguno de los consolidables del CONJUNTO COMPLETO incluye el modelo nuevo. Nombra el
+   * total de arriba, así que tampoco se deriva de la página (R49). Obligatorio para que el compilador
+   * no deje a la página sin pasarlo.
+   */
+  incluyeModeloNuevoAgregado: boolean;
+  /**
    * Neto DERIVADO server-side (STRING): `totalesAgregados.general` menos lo que el efectivo
    * alcanzó a pagarle a los mensajeros. Llega ya calculado (money-safe): acá no se resta.
    */
@@ -190,6 +197,7 @@ export function ConsolidacionBodegaModule({
   totalesAgregados,
   totalPagoMensajeroAgregado,
   totalIngresoBodegaRechazosAgregado,
+  incluyeModeloNuevoAgregado,
   totalNetoAgregado,
   totalCentralDebeAgregado,
   puedesSolicitar,
@@ -360,7 +368,8 @@ export function ConsolidacionBodegaModule({
           {/* Feature 56/R17: agregado del ingreso de bodega por rechazos, separado. */}
           <IngresoBodegaRechazosTotal
             value={totalIngresoBodegaRechazosAgregado}
-            ariaLabel="Ingreso de bodega por devoluciones a origen a consolidar"
+            label={rotuloIngresoBodega(incluyeModeloNuevoAgregado)}
+            ariaLabel={`${rotuloIngresoBodega(incluyeModeloNuevoAgregado)} a consolidar`}
           />
 
           {/* El efectivo no cubrió todos los pagos: el resto lo debe la central. Solo se

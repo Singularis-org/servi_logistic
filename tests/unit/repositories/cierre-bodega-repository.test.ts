@@ -26,6 +26,7 @@ function consolidableDbRow(overrides: Record<string, unknown> = {}) {
     totalGeneral: new Prisma.Decimal("15.5"),
     totalPagoMensajero: new Prisma.Decimal("5"), // feature 39/R18: snapshot del pago
     totalIngresoBodegaRechazos: new Prisma.Decimal("3"), // feature 56/R17: snapshot del ingreso
+    _count: { detalle: 0 }, // SLT-54 (R71): sin filas del modelo nuevo
     mensajero: { nombre: "Ana Mensajera" },
     ...overrides,
   };
@@ -74,6 +75,7 @@ describe("CierreBodegaRepository.findCierresDiaConsolidables (R5/R10)", () => {
       totales: { efectivo: "10.00", simpe: "5.50", transferencia: "0.00", general: "15.50" },
       totalPagoMensajero: "5.00", // feature 39/R18: snapshot money-safe STRING
       totalIngresoBodegaRechazos: "3.00", // feature 56/R17: snapshot money-safe STRING
+      incluyeModeloNuevo: false, // SLT-54 (R71)
     });
     expect(typeof rows[0].totales.general).toBe("string");
     expect(typeof rows[0].totalPagoMensajero).toBe("string");
@@ -309,6 +311,7 @@ describe("CierreBodegaRepository.findCierresBodegaByZona (F1.4-h)", () => {
       conciliadoAt: "2026-07-12T12:00:00.000Z",
       conciliadoPorNombre: "Ana Rojas",
       conciliadoNota: null,
+      incluyeModeloNuevo: false, // D40
     });
   });
 });

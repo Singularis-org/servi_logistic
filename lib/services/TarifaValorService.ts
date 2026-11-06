@@ -1,3 +1,4 @@
+import type { TarifaConcepto } from "@prisma/client";
 import { z } from "zod";
 
 import type { ITarifaValorRepository } from "@/lib/interfaces/repositories/ITarifaValorRepository";
@@ -45,7 +46,7 @@ export class TarifaValorService implements ITarifaValorService {
     const dato = parseado.data;
 
     // R7: el nivel tiene que ser de los que admite el actor del concepto.
-    const nivel = nivelDeValor(dato.concepto, { ...dato, mensajeroId: null });
+    const nivel = nivelDeValor(dato.concepto, dato);
     if (!nivel.ok) return errorEn(nivel.campo, nivel.mensaje);
 
     const referencias = await this.referenciasInvalidas(dato);
@@ -61,6 +62,7 @@ export class TarifaValorService implements ITarifaValorService {
         zonaId: dato.zonaId,
         grupoId: dato.grupoId,
         tiendaId: dato.tiendaId,
+        mensajeroId: dato.mensajeroId,
         vehiculoId: dato.vehiculoId,
       },
       actor.usuarioId,
@@ -86,9 +88,11 @@ export class TarifaValorService implements ITarifaValorService {
    * zona y la tienda con rol tarifable. Sin esto, un id ajeno escaparia como error crudo de FK.
    */
   private async referenciasInvalidas(dato: {
+    concepto: TarifaConcepto;
     zonaId: string | null;
     grupoId: string | null;
     tiendaId: string | null;
+    mensajeroId: string | null;
     vehiculoId: string | null;
   }): Promise<ValidationError | null> {
     if (dato.zonaId !== null && !(await this.repo.existeZona(dato.zonaId))) {
@@ -100,8 +104,20 @@ export class TarifaValorService implements ITarifaValorService {
     if (dato.tiendaId !== null && !(await this.repo.esTiendaTarifable(dato.tiendaId))) {
       return errorEn("tiendaId", "El valor debe asignarse a un adminTienda o a una API key.");
     }
-    if (dato.vehiculoId !== null && !(await this.repo.existeVehiculo(dato.vehiculoId))) {
-      return errorEn("vehiculoId", "El vehículo indicado no existe.");
+    if (
+      dato.mensajeroId !== null &&
+      !(await this.repo.mensajeroEsElegibleONivelOcupado({ concepto: dato.concepto, mensajeroId: dato.mensajeroId }))
+    ) {
+      return errorEn(
+        "mensajeroId",
+        "El mensajero no existe, no es de la empresa o está dado de baja: no admite un valor nuevo.",
+      );
+    }
+    if (
+      dato.vehiculoId !== null &&
+      !(await this.repo.vehiculoEsElegibleONivelOcupado({ ...dato, vehiculoId: dato.vehiculoId }))
+    ) {
+      return errorEn("vehiculoId", "El vehículo no existe o está inactivo: no admite un valor nuevo.");
     }
     return null;
   }

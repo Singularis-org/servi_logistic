@@ -206,6 +206,7 @@ describeSiHayBase("SL-24 — asignar un plan a una empresa (R4, R6, R9–R13)", 
         modulos: ["analitica"],
         precio: { tipo: "sin_precio" },
         costoPorOrden: null, // SLT-66 R8: campo obligatorio nuevo; no cambia lo que se comprueba.
+        costoPorOrdenPorcentual: null, // SLT-83: campo obligatorio nuevo; no cambia lo que se comprueba.
         vigenteDesde: null,
       });
       const trasEditar = await modulos(tx, org);

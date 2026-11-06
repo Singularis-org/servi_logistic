@@ -28,17 +28,18 @@ import type {
 import { inicioDelSiguienteCiclo } from "@/lib/planes/ciclo";
 import { valorDelHistorialDeAsignacion } from "@/lib/planes/cobro";
 import type { CambioDelPlanLeido } from "@/lib/planes/consumo";
+import { costoVigenteDeLaTarifa, type TarifaLeida } from "@/lib/planes/costeo";
 import { SOLO_PRIMERA_ASIGNACION } from "@/lib/planes/mensajes";
 import { diferenciasDelPlan, hayCambios, type CambiosDelPlan } from "@/lib/planes/rastro";
 import { apagarEnTx, encenderEnTx, entradaDelCambio } from "@/lib/repositories/_shared/modulos-en-tx";
 import { JobRepository } from "@/lib/repositories/JobRepository";
 import { ACTOR_SISTEMA, appendAccion, resolverActorCongelado } from "@/lib/repositories/registrar-accion";
-import type { FuenteDelCosto } from "@/lib/types/consumo-plan";
 import { etiquetaDeEntidad } from "@/lib/types/historial-accion-etiquetas";
 import {
   ACCIONES_DE_ASIGNACION,
   ROLES_CON_TOPE,
   type AccionDeAsignacion,
+  type CostoPorOrdenPorcentual,
   type CrearPlanInput,
   type PlanDTO,
   type PrecioPlan,
@@ -122,6 +123,14 @@ function aDTO(f: FilaPlan): PlanDTO {
     modulos: f.modulos.map((m) => m.modulo),
     precio: precioDe(f),
     costoPorOrden: f.costoPorOrden === null ? null : f.costoPorOrden.toFixed(2),
+    // SLT-83 (R1): el modo se deriva de qué columna tiene valor; el `CHECK` impide los dos a la vez.
+    costoPorOrdenPorcentual:
+      f.costoPorOrdenPct === null
+        ? null
+        : {
+            porcentaje: f.costoPorOrdenPct.toFixed(2),
+            minimo: f.costoPorOrdenMinimo === null ? null : f.costoPorOrdenMinimo.toFixed(2),
+          },
     archivado: f.archivadoAt !== null,
   };
 }
@@ -134,6 +143,11 @@ function columnasDelPrecio(p: PrecioPlan) {
     precioAnual: p.anual?.tipo === "fijo" ? p.anual.monto : null,
     descuentoAnualPct: p.anual?.tipo === "descuento" ? p.anual.porcentaje : null,
   };
+}
+
+/** SLT-83 (R1, R4): las dos columnas del modo porcentual; `null` las vacía (el plan pasa a fijo o vacío). */
+function columnasDelPorcentual(c: CostoPorOrdenPorcentual | null) {
+  return { costoPorOrdenPct: c?.porcentaje ?? null, costoPorOrdenMinimo: c?.minimo ?? null };
 }
 
 function filasDeTopes(t: TopesPlan): { rol: RolValue; maximo: number }[] {
@@ -340,6 +354,7 @@ async function aplicarVersion(tx: Tx, antes: PlanDTO, version: VersionPlan, acto
       topeApiKeys: version.topes.apiKeys,
       ...columnasDelPrecio(version.precio),
       costoPorOrden: version.costoPorOrden,
+      ...columnasDelPorcentual(version.costoPorOrdenPorcentual),
     },
   });
   await tx.planTopeRol.deleteMany({ where: { planId: antes.id } });
@@ -524,6 +539,7 @@ async function crearEnTx(tx: Tx, input: CrearPlanInput, actorUsuarioId: string):
       topeApiKeys: input.topes.apiKeys,
       ...columnasDelPrecio(input.precio),
       costoPorOrden: input.costoPorOrden,
+      ...columnasDelPorcentual(input.costoPorOrdenPorcentual),
       topesPorRol: { create: filasDeTopes(input.topes) },
       modulos: { create: input.modulos.map((modulo) => ({ modulo })) },
     },
@@ -538,6 +554,7 @@ async function crearEnTx(tx: Tx, input: CrearPlanInput, actorUsuarioId: string):
     modulos: input.modulos,
     precio: input.precio,
     costoPorOrden: input.costoPorOrden,
+    costoPorOrdenPorcentual: input.costoPorOrdenPorcentual,
     archivado: false,
   };
   const actor = await resolverActorCongelado(tx, actorUsuarioId);
@@ -1191,10 +1208,22 @@ export class PlanesRepository implements IPlanesRepository {
         const uso = await usoDe(tx, organizacionId);
         // SLT-66 (R18, §3.2): la misma función que el trigger del cargo, para que el detalle diga lo que
         // cobrará la próxima orden. El enum va como texto: el driver no conoce el tipo de Postgres.
-        const [costoVigente] = await tx.$queryRaw<{ monto: string; fuente: FuenteDelCosto }[]>`
-          SELECT "monto"::text AS "monto", "fuente"::text AS "fuente"
+        // SLT-83 (R22, R23): con su modo (porcentaje y mínimo).
+        const [tarifa] = await tx.$queryRaw<TarifaLeida[]>`
+          SELECT "monto"::text AS "monto", "fuente"::text AS "fuente",
+                 "porcentaje"::text AS "porcentaje", "minimo"::text AS "minimo"
           FROM cobro_plataforma_tarifa_de(${organizacionId})`;
-        if (costoVigente === undefined) throw new Error(`planDeEmpresa: sin tarifa vigente para ${organizacionId}`);
+        if (tarifa === undefined) throw new Error(`planDeEmpresa: sin tarifa vigente para ${organizacionId}`);
+        // SLT-83 (R24): la misma función y el mismo inicio de ciclo que `plan_de_la_empresa` («Mi plan»).
+        const [cobroCiclo] = await tx.$queryRaw<{ cobrado: string; pendientes: number }[]>`
+          SELECT c."cobrado"::text AS "cobrado", c."pendientes"
+            FROM "organizacion" o
+           CROSS JOIN LATERAL plan_cobro_del_ciclo(
+                   o."id",
+                   plan_inicio_ciclo_en_curso(o."plan_ciclo_corto_desde_at", o."plan_ciclo_ancla_at", (now() AT TIME ZONE 'UTC'))
+                 ) c
+           WHERE o."id" = ${organizacionId}`;
+        if (cobroCiclo === undefined) throw new Error(`planDeEmpresa: sin cobro del ciclo para ${organizacionId}`);
         return {
           organizacionId,
           plan: {
@@ -1205,6 +1234,7 @@ export class PlanesRepository implements IPlanesRepository {
               modulos: dto.modulos,
               precio: dto.precio,
               costoPorOrden: dto.costoPorOrden,
+              costoPorOrdenPorcentual: dto.costoPorOrdenPorcentual,
             },
             ancla,
             cortoDesde: empresa.planCicloCortoDesdeAt,
@@ -1217,7 +1247,8 @@ export class PlanesRepository implements IPlanesRepository {
               >,
             },
             cambio: pendienteDe(plan.cambioProgramado),
-            costoVigente,
+            costoVigente: costoVigenteDeLaTarifa(tarifa),
+            cobroCiclo,
             // El CHECK de 20261104130000 deja solo `mensual` | `anual`.
             tipoCobro: tipoCobroSchema.parse(empresa.planTipoCobro),
           },

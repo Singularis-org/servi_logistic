@@ -28,6 +28,7 @@ const PENDIENTE: VersionPlan = {
   modulos: ["monitoreo", "analitica"],
   precio: { tipo: "sin_precio" }, // D1 (ajuste planes-custom): «negociable» ya no existe.
   costoPorOrden: null, // SLT-66 R7: el plan lleva costo por orden; aquí, vacío.
+  costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
 };
 
 let base: PrismaClient;
@@ -86,6 +87,7 @@ describeSiHayBase("SLT-58 — MiPlanRepository: el plan de la empresa del contex
       modulos: ["analitica"],
       precio: { tipo: "monto", mensual: "49.90", anual: { tipo: "fijo", monto: "499.00" } },
       costoPorOrden: null, // SLT-66 R8: el plan lleva costo por orden; aquí, vacío.
+      costoPorOrdenPorcentual: null, // SLT-83: campo nuevo de la versión
     });
     expect(leido.ancla.toISOString()).toBe(ANCLA);
     expect(leido.uso).toEqual({

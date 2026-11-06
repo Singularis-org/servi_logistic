@@ -163,6 +163,7 @@ describe("CierresBodegaAdminRepository.findCierresBodega (R15)", () => {
   it("R15: todos, orderBy solicitadoAt desc, totales STRING + cantidadCierres del _count", async () => {
     const prisma = buildPrisma();
     prisma.cierreBodega.findMany.mockResolvedValue([bodegaDbRow()]);
+    prisma.cierreDia.findMany.mockResolvedValue([]); // D40: ningun cierre del modelo nuevo
     const repo = new CierresBodegaAdminRepository(prisma as unknown as PrismaClient);
 
     const rows = await repo.findCierresBodega();
@@ -198,6 +199,7 @@ describe("CierresBodegaAdminRepository.findCierresBodega (R15)", () => {
       conciliadoAt: null,
       conciliadoPorNombre: null,
       conciliadoNota: null,
+      incluyeModeloNuevo: false, // D40
     });
     expect(typeof rows[0].totales.general).toBe("string");
   });

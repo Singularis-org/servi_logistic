@@ -712,10 +712,11 @@ function tarifasDePagoSinBase(
 }
 
 /**
- * SLT-52 (R37) — un cierre no mezcla modelos: el cobro (resuelto DENTRO de la tx) y el pago (que el
- * servicio resolvio justo antes) tienen que ser del mismo. Solo pueden divergir si la empresa
- * escribe o borra su primer/ultimo `tarifa_valor` entre las dos lecturas; entonces se aborta la tx
- * entera (nada escrito) en vez de cobrar con una regla y pagar con otra.
+ * SLT-52 (R37), SLT-54 (R10) — un cierre no mezcla modelos: el cobro (resuelto DENTRO de la tx) y el
+ * pago (que el servicio resolvio justo antes) tienen que ser del mismo. Solo pueden divergir si la
+ * empresa se activa entre las dos lecturas, cosa que ocurre una sola vez por empresa; entonces se
+ * aborta la tx entera (nada escrito) en vez de cobrar con una regla y pagar con otra, y el cierre se
+ * reintenta.
  */
 export class ModelosDeTarifaMezclados extends Error {
   constructor(detalle: string) {

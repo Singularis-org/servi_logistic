@@ -148,6 +148,7 @@ function buildRepo(cliente: ReturnType<typeof buildPrisma>["cliente"]) {
     }),
     listar: vi.fn(),
     agregarPorCategoriaYTipo: vi.fn(),
+    categoriasConModeloNuevo: vi.fn(),
     obtenerPorId: vi.fn(),
     agregarPorCategoria: vi.fn(),
     obtenerPorOrigen: vi.fn(),

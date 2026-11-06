@@ -40,9 +40,10 @@ const tope = z.int().min(0).max(2_147_483_647);
 
 /**
  * Porcentaje de descuento sobre el anual: texto, hasta dos decimales, `> 0` y `≤ 100` (R3). Se
- * compara en centésimas enteras, así que no hay redondeo de coma flotante.
+ * compara en centésimas enteras, así que no hay redondeo de coma flotante. SLT-83 (R2): el mismo rango
+ * vale para el costo por orden porcentual, así que se exporta en vez de copiarlo.
  */
-const porcentajeSchema = z
+export const porcentajeSchema = z
   .string()
   .regex(/^\d{1,3}(\.\d{1,2})?$/)
   .refine((s) => {
@@ -63,6 +64,27 @@ export const precioPlanSchema = z.discriminatedUnion("tipo", [
   z.object({ tipo: z.literal("sin_precio") }).strict(),
   z.object({ tipo: z.literal("monto"), mensual: montoCobroSchema, anual: anualSchema }).strict(),
 ]);
+
+/**
+ * SLT-83 (design §4.1; R1, R2): el costo por orden porcentual. `minimo` es el piso del cargo; `null` =
+ * sin piso. `.strict()`: un `monto` aquí sería mezclar los dos modos.
+ */
+export const costoPorOrdenPorcentualSchema = z
+  .object({ porcentaje: porcentajeSchema, minimo: montoCobroSchema.nullable() })
+  .strict();
+export type CostoPorOrdenPorcentual = z.infer<typeof costoPorOrdenPorcentualSchema>;
+
+/**
+ * SLT-83 (R1): fijo y porcentual a la vez es validation_error, como lo rechaza el `CHECK`
+ * `plan_costo_por_orden_un_modo`. El error va en el campo porcentual: es el que el formulario añade.
+ */
+const UN_SOLO_MODO = {
+  path: ["costoPorOrdenPorcentual"],
+  error: "El costo por orden es fijo o porcentual, no los dos.",
+};
+function unSoloModo(p: { costoPorOrden: string | null; costoPorOrdenPorcentual: CostoPorOrdenPorcentual | null }): boolean {
+  return p.costoPorOrden === null || p.costoPorOrdenPorcentual === null;
+}
 
 export const topesPlanSchema = z
   .object({
@@ -108,6 +130,8 @@ export const crearPlanSchema = z
     // SLT-66 (R7, R8): obligatorio y `null` para vacío, para que un formulario que no lo mande dé
     // validation_error en vez de borrarlo sin avisar.
     costoPorOrden: montoCobroSchema.nullable(),
+    // SLT-83 (R1, R2): obligatorio y `null` para «no es porcentual», por la misma razón.
+    costoPorOrdenPorcentual: costoPorOrdenPorcentualSchema.nullable(),
     // Ajuste planes-custom (D2, D4, D6): un custom se asigna a su empresa al crearlo. `tipoCobro` es
     // obligatorio en un custom y no va en un público; `inicioCiclo` solo en un custom, y solo si la
     // empresa no tiene plan (eso y el rango los mira el servicio, como en `asignarPlanSchema`).
@@ -127,10 +151,13 @@ export const crearPlanSchema = z
   .refine((p) => p.organizacionId !== null || p.inicioCiclo === undefined, {
     path: ["inicioCiclo"],
     error: "Un plan público no se asigna al crearlo: no lleva inicio del ciclo.",
-  });
+  })
+  .refine(unSoloModo, UN_SOLO_MODO);
 
 // `.strict()`: traer `visibilidad` u `organizacionId` en una edición es validation_error (R2).
-export const editarPlanSchema = z
+// SLT-83: el refine de «un solo modo» va en los esquemas finales y no aquí, porque zod no deja hacer
+// `.omit()` sobre un objeto con refinamientos y `versionPlanSchema` sale de este.
+const edicionDelPlan = z
   .object({
     planId: z.uuid(),
     nombre: nombreSchema,
@@ -138,17 +165,22 @@ export const editarPlanSchema = z
     modulos: modulosSchema,
     precio: precioPlanSchema,
     costoPorOrden: montoCobroSchema.nullable(),
+    costoPorOrdenPorcentual: costoPorOrdenPorcentualSchema.nullable(),
     // null = de inmediato (R15); una fecha = programado (R37, T11).
     vigenteDesde: fechaSchema.nullable(),
   })
   .strict();
+
+export const editarPlanSchema = edicionDelPlan.refine(unSoloModo, UN_SOLO_MODO);
 
 /**
  * La versión de un cambio programado (§16.1): la edición sin `planId` ni `vigenteDesde`. Es lo que
  * se guarda en `plan_cambio_programado.version`, y al aplicarla se vuelve a validar con este mismo
  * esquema antes de escribir (T11).
  */
-export const versionPlanSchema = editarPlanSchema.omit({ planId: true, vigenteDesde: true });
+export const versionPlanSchema = edicionDelPlan
+  .omit({ planId: true, vigenteDesde: true })
+  .refine(unSoloModo, UN_SOLO_MODO);
 
 export const planIdSchema = z.object({ planId: z.uuid() }).strict();
 export const archivarPlanSchema = planIdSchema;
@@ -189,7 +221,10 @@ export type CambiarTipoCobroInput = z.infer<typeof cambiarTipoCobroSchema>;
 export type PrevisualizarCustomInput = z.infer<typeof previsualizarCustomSchema>;
 
 /** Lo que define una versión del plan: lo editable (§16.1: `version` es esto mismo). */
-export type VersionPlan = Pick<EditarPlanInput, "nombre" | "topes" | "modulos" | "precio" | "costoPorOrden">;
+export type VersionPlan = Pick<
+  EditarPlanInput,
+  "nombre" | "topes" | "modulos" | "precio" | "costoPorOrden" | "costoPorOrdenPorcentual"
+>;
 
 export type PlanDTO = {
   id: string;
@@ -201,6 +236,8 @@ export type PlanDTO = {
   precio: PrecioPlan;
   /** SLT-66 (R7): importe con dos decimales; `null` = el plan no lo fija (se cobra el global, R12). */
   costoPorOrden: string | null;
+  /** SLT-83 (R1): porcentaje y mínimo con dos decimales; `null` = el plan no es porcentual. */
+  costoPorOrdenPorcentual: CostoPorOrdenPorcentual | null;
   archivado: boolean;
 };
 

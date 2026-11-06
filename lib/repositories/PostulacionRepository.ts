@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { textoConstraintP2002 } from "@/lib/repositories/_shared/prisma-unique";
+import { WHERE_VEHICULO_ELEGIBLE } from "@/lib/repositories/_shared/vehiculo-activo";
 import {
   UsuarioDuplicadoError,
   type CreateUsuarioInput,
@@ -50,7 +51,12 @@ export class PostulacionRepository implements IPostulacionRepository {
   }
 
   async vehiculoExiste(id: string): Promise<boolean> {
-    const row = await this.prisma.vehiculo.findUnique({ where: { id }, select: { id: true } });
+    // SL-42 (R18): la postulacion siempre es una eleccion NUEVA, asi que un tipo desactivado por la
+    // plataforma cuenta como no valido, igual que uno que no existe.
+    const row = await this.prisma.vehiculo.findFirst({
+      where: { id, ...WHERE_VEHICULO_ELEGIBLE },
+      select: { id: true },
+    });
     return row !== null;
   }
 

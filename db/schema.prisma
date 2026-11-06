@@ -191,6 +191,7 @@ model Usuario {
   tarifaValoresComoTienda             TarifaValor[]                      @relation("TarifaValorTienda") // SLT-52: precios propios de ESTA tienda en el modelo nuevo
   tarifaValoresComoMensajero          TarifaValor[]                      @relation("TarifaValorMensajero") // SLT-52/SLT-55: valor propio de ESTE mensajero
   tarifaValoresActualizados           TarifaValor[]                      @relation("TarifaValorActualizadoPor") // SLT-52: valores que ESTE usuario fijo por ultima vez (SET NULL)
+  tarifaActivaciones                  TarifaActivacion[]                 @relation("TarifaActivacionActor") // SLT-54: la activacion que ESTE usuario hizo (SET NULL); el rastro con el nombre congelado vive en el historial
   traspasosCedidos                    OrdenTraspasoMensajero[]           @relation("OrdenTraspasoAnterior") // ficha 427/R25: ordenes que dejaron de ser de ESTE mensajero por un traspaso. FK RESTRICT: quien llevaba un paquete es evidencia y no se pierde al dar de baja al usuario
   traspasosRecibidos                  OrdenTraspasoMensajero[]           @relation("OrdenTraspasoNuevo") // ficha 427/R25: ordenes que ESTE mensajero recibio por un traspaso. FK RESTRICT por el mismo motivo
   traspasosEjecutados                 OrdenTraspasoMensajero[]           @relation("OrdenTraspasoActor") // ficha 427/R25/R26: traspasos que ESTE usuario ejecuto. `actor_rol` va CONGELADO en la fila, asi que esta relacion NO es la que pinta la linea de tiempo
@@ -987,6 +988,9 @@ model Orden {
   // SL-40: lo que la plataforma cobra a la empresa por ESTA orden (cargo, reverso, cargo…). Lo escribe
   // solo el trigger de la base; la FK es CASCADE (la app nunca borra una orden de verdad).
   cobrosPlataforma           CobroPlataformaMovimiento[]
+  // SLT-83 (design §2.2): las condiciones congeladas del cobro porcentual de ESTA orden. A lo sumo UNA
+  // (PK = orden_id); la escribe solo el trigger de alta. La FK es CASCADE, como la de SL-40.
+  cobroPorcentual            CobroPlataformaPorcentualOrden?
   // Ficha 419 (design §D3): enlace al comprobante del lote central que la paso a `devuelta_a_tienda`. A lo sumo UNO (PK = orden_id)
   devolucionTiendaEnlace     DevolucionTiendaOrden?             @relation("DevolucionTiendaOrdenOrden")
 
@@ -1882,8 +1886,8 @@ model TarifaZonaMensajero {
 }
 
 // ─── SLT-52 — modelo nuevo de tarifas (design §2) ──────────────────────────────────────────────
-// Convive con `Tarifa` + `TarifaZonaMensajero` hasta SLT-57: una empresa sin ninguna fila en
-// `tarifa_valor` sigue en el modelo viejo (R36/R37). Los CHECK, el unico NULLS NOT DISTINCT y la
+// Convive con `Tarifa` + `TarifaZonaMensajero` hasta SLT-57: una empresa sin su fila en
+// `tarifa_activacion` sigue en el modelo viejo, tenga o no valores (SLT-54 R1). Los CHECK, el unico NULLS NOT DISTINCT y la
 // RLS viven en `20261103120100_tarifas_flexibles_tablas`; Prisma no los expresa.
 
 /// SLT-52 R1: quien paga o cobra un concepto. `tienda` solo aparece en los cobros.
@@ -2045,6 +2049,27 @@ model TarifaValor {
   @@map("tarifa_valor")
 }
 
+/// SLT-54 (design §2.1, R1-R12) — EL INTERRUPTOR de tarifas: una fila = empresa activada, y todo su cobro
+/// y su pago salen del modelo nuevo; sin fila, del viejo aunque tenga valores guardados. El unico por
+/// empresa es lo que resuelve dos activaciones a la vez (R7) y `servi_app` no tiene UPDATE ni DELETE,
+/// porque volver atras moveria dinero sin rastro (R8). `activadaPor` NULL = activada por la migracion.
+model TarifaActivacion {
+  id String @id @default(uuid())
+
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id")
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  activadaAt  DateTime @default(now()) @map("activada_at")
+  activadaPor String?  @map("activada_por")
+
+  activadaPorUsuario Usuario? @relation("TarifaActivacionActor", fields: [activadaPor], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@unique([organizacionId], map: "tarifa_activacion_organizacion_id_key")
+  @@index([organizacionId])
+  @@index([activadaPor])
+  @@map("tarifa_activacion")
+}
+
 /// SLT-52 R40/R43: el cobro a la tienda CONGELADO por orden del cierre, un concepto por fila. Sin
 /// fila = sin tarifa. Inmutable para `servi_app` (REVOKE UPDATE, DELETE).
 model CierreDetailConcepto {
@@ -2110,12 +2135,45 @@ model Vehiculo {
   // El @unique impide dos tipos con el mismo nombre; el plegado/recorte lo hace el
   // servicio, NO la base (ver la migracion).
   name String @unique
+  // SL-42 (design §2.1, R23): `20261103120000_vehiculo_activo`. Toda fila previa quedo activa.
+  activo Boolean @default(true)
 
   usuarios             Usuario[] // feature 21: mensajeros que declararon este vehiculo
   tarifaZonaMensajeros TarifaZonaMensajero[] // feature 24
   tarifaValores        TarifaValor[] // SLT-52: valores de pago acotados a este tipo de vehiculo (FK RESTRICT)
 
   @@map("vehiculos")
+}
+
+// SL-42 (design §2.2, P2) — qué acción del superadmin sobre un vehículo deja una fila en
+// `vehiculo_rastro`.
+enum VehiculoRastroAccion {
+  vehiculo_creado
+  vehiculo_renombrado
+  vehiculo_activado
+  vehiculo_desactivado
+
+  @@map("vehiculo_rastro_accion")
+}
+
+// SL-42 (design §2.2, R21, R22) — el rastro de plataforma de las acciones del superadmin sobre el
+// catálogo de vehículos, calcado de `PlanRastro`. Solo se añade, y lo escribe solo
+// `lib/repositories/registrar-rastro-vehiculo.ts`. `vehiculoId` y `actorUsuarioId` son opacos y SIN
+// FK: el rastro sobrevive a su sujeto. La RLS sin políticas y el `REVOKE ALL … FROM servi_app` viven
+// solo en el SQL de 20261103120100.
+model VehiculoRastro {
+  id             String               @id @default(uuid())
+  vehiculoId     String               @map("vehiculo_id")
+  vehiculoNombre String               @map("vehiculo_nombre") @db.VarChar(40)
+  accion         VehiculoRastroAccion
+  valorAnterior  String?              @map("valor_anterior") @db.VarChar(40)
+  valorNuevo     String?              @map("valor_nuevo") @db.VarChar(40)
+  actorUsuarioId String               @map("actor_usuario_id")
+  actorNombre    String               @map("actor_nombre") @db.VarChar(120)
+  createdAt      DateTime             @default(now()) @map("created_at")
+
+  @@index([vehiculoId, createdAt])
+  @@map("vehiculo_rastro")
 }
 
 enum VehiculoValue {
@@ -4973,6 +5031,9 @@ enum HistorialAccionTipo {
   grupo_distritos_creado
   grupo_distritos_cambiado
   grupo_distritos_borrado
+  /// SLT-54 (R4, design §2.2): el maestro hizo regir el modelo nuevo de tarifas. Mueve dinero; lo escribe
+  /// `TarifaActivacionRepository.activar`. Las activadas por migracion no llevan fila: no hay actor.
+  tarifas_activadas
   /// Ajuste planes-custom (D16, 20261104130100): el superadmin cambia SOLO el tipo de cobro del plan que
   /// la empresa ya tiene (D10). Entidad: `plan` (el de la empresa); etiqueta: `Plan «<nombre>»`;
   /// `valor_anterior` = el tipo de antes y `valor_nuevo` = el nuevo (`mensual` o `anual`).
@@ -5030,6 +5091,8 @@ enum HistorialAccionEntidad {
   /// SLT-52: el valor y el grupo del modelo nuevo de tarifas, 1:1 con sus tablas. `entidad_id` sin FK.
   tarifa_valor
   grupo_distritos
+  /// SLT-54: la activacion del modelo nuevo de tarifas, 1:1 con su tabla. `entidad_id` sin FK.
+  tarifa_activacion
 
   @@map("historial_accion_entidad")
 }
@@ -5726,6 +5789,7 @@ model Organizacion {
   grupoDistritos GrupoDistritos[] // SLT-52
   grupoDistritosDistritos GrupoDistritosDistrito[] // SLT-52
   tarifaValores TarifaValor[] // SLT-52
+  tarifaActivacion TarifaActivacion? // SLT-54: con fila, la empresa calcula con el modelo nuevo
   cierreDetailConceptos CierreDetailConcepto[] // SLT-52
   gestionPagosCongelados GestionPagoCongelado[] // SLT-52
   rutaOptimizadas RutaOptimizada[]
@@ -5771,6 +5835,7 @@ model Organizacion {
   rankingSnapshotDias RankingSnapshotDia[]
   rankingSnapshotFilas RankingSnapshotFila[]
   cobrosPlataforma CobroPlataformaMovimiento[] // SL-40
+  cobrosPorcentuales CobroPlataformaPorcentualOrden[] // SLT-83
   conciliacionBodegaAjustes ConciliacionBodegaAjuste[] // SLT-73
   integraciones Integracion[] // SL-36
   integracionPruebasMinuto IntegracionPruebaMinuto[] // SL-36
@@ -5997,6 +6062,12 @@ model Plan {
   // SLT-66 (R7, R8): NULL = el plan no lo fija y se cobra el global (R12). El CHECK
   // `plan_costo_por_orden_check` (`>= 0`) vive solo en el SQL de 20261031140000.
   costoPorOrden           Decimal?        @map("costo_por_orden") @db.Decimal(12, 2)
+  // SLT-83 (R1, R2): el costo por orden porcentual. NULL/NULL = el plan no es porcentual; el modo se
+  // deriva de qué columna tiene valor. Viven solo en el SQL de 20261104150000 los CHECK
+  // `plan_costo_por_orden_pct_check` (`> 0` y `<= 100`), `plan_costo_por_orden_minimo_check` (`>= 0` y
+  // solo con porcentaje) y `plan_costo_por_orden_un_modo` (nunca fijo y porcentual a la vez).
+  costoPorOrdenPct        Decimal?        @map("costo_por_orden_pct") @db.Decimal(5, 2)
+  costoPorOrdenMinimo     Decimal?        @map("costo_por_orden_minimo") @db.Decimal(12, 2)
   archivadoAt           DateTime?       @map("archivado_at")
   createdAt               DateTime        @default(now()) @map("created_at")
   updatedAt               DateTime        @default(now()) @updatedAt @map("updated_at")
@@ -6099,7 +6170,31 @@ model CobroPlataformaMovimiento {
   @@unique([organizacionId, ordenId, secuencia], map: "cobro_plataforma_movimiento_orden_secuencia_key")
   @@index([organizacionId])
   @@index([ordenId])
+  @@index([organizacionId, ocurridoAt]) // SLT-83 (R24): lo cobrado en el ciclo, por la fecha del cargo
   @@map("cobro_plataforma_movimiento")
+}
+
+// SLT-83 (design §2.2) — las condiciones congeladas de una orden porcentual: el porcentaje y el mínimo del
+// plan en el alta. Una fila por orden. De NEGOCIO. La escribe SOLO el trigger de alta de 20261104150200
+// (SECURITY DEFINER). Viven solo en el SQL de 20261104150100, porque Prisma no los expresa:
+//   · `CHECK ("porcentaje" > 0 AND "porcentaje" <= 100)` y `CHECK ("minimo" IS NULL OR "minimo" >= 0)`;
+//   · la política `cobro_plataforma_porcentual_orden_por_empresa`;
+//   · el `REVOKE INSERT, UPDATE, DELETE … FROM servi_app`: la empresa lee sus condiciones y no las toca (R17);
+//   · los triggers de misma empresa de SL-17.
+model CobroPlataformaPorcentualOrden {
+  ordenId    String   @id @map("orden_id")
+  porcentaje Decimal  @db.Decimal(5, 2)
+  minimo     Decimal? @db.Decimal(12, 2)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  orden Orden @relation(fields: [ordenId], references: [id], onDelete: Cascade)
+
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
+  @@unique([organizacionId, ordenId])
+  @@index([organizacionId])
+  @@map("cobro_plataforma_porcentual_orden")
 }
 
 // SL-36 (design §2.1) — los cuatro servicios que una empresa conecta con sus propias cuentas.

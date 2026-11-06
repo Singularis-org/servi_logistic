@@ -565,5 +565,6 @@ function toResumen(row: CierreBodegaResumenRow): CierreBodegaResumen {
     conciliadoAt: row.conciliadoAt,
     conciliadoPorNombre: row.conciliadoPorNombre,
     conciliadoNota: row.conciliadoNota,
+    incluyeModeloNuevo: row.incluyeModeloNuevo, // D40
   };
 }

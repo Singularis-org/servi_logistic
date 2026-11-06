@@ -127,6 +127,7 @@ import {
   FLETE_CON_IVA_LABEL,
   FLETE_DEV_CON_IVA_LABEL,
   FULFILLMENT_COL,
+  fulfillmentDeIngreso,
   INDEMNIZACION_COL,
   INGRESO_BODEGA_RECHAZOS_COL,
   INGRESO_TOTAL_COL,
@@ -397,8 +398,24 @@ const ESPECIFICAS_POR_RESULTADO: Record<CierreResultado, readonly ClaveEspecific
     "pagoMensajero",
     "ingresoBodega",
   ],
-  // Un incidente no paga al mensajero y no genera ingreso de bodega: esas dos quedan vacías.
+  // Solo modelo viejo: un incidente no paga al mensajero y no genera ingreso de bodega, y esas dos
+  // quedan vacías. En el nuevo sí, y las añade `ESPECIFICAS_EXTRA_MODELO_NUEVO`.
   incidente: ["montoCobrar", "fulfillment", "causa", "motivo", "indemnizacion"],
+};
+
+/**
+ * SLT-54 (R72) — lo que el modelo nuevo cobra y paga además, por resultado. En esa hoja una celda vacía
+ * significa «no aplica»: sin estas, un flete por reprogramado cobrado en el comprobante saldría como no
+ * cobrado, y la columna no llegaría al total. Se suman a la tabla del viejo, que no se toca.
+ *
+ * El flete de la entrega va en `fleteConIva`; los demás fletes, en `fleteDevolucionConIva`.
+ */
+const ESPECIFICAS_EXTRA_MODELO_NUEVO: Record<CierreResultado, readonly ClaveEspecifica[]> = {
+  entregado: ["ingresoBodega"],
+  reprogramado: ["fleteDevolucionConIva", "ingresoTotal", "ingresoBodega"],
+  novedad: ["ingresoBodega"],
+  devolucion_a_origen_por_rechazo: [],
+  incidente: ["fleteDevolucionConIva", "ingresoTotal", "pagoMensajero", "ingresoBodega"],
 };
 
 /**
@@ -477,7 +494,7 @@ function celdasEspecificas(
     montoCobrar: ingreso ? ingreso.montoCobrar : null,
     // Monto FIJO de la tarifa CONGELADA (2026-08-19). No es un concepto derivado: no lo calcula
     // `derivarIngresoOrden` y no entra en `ingresoTotal`. Vacío si el cierre no lo congeló.
-    fulfillment: ingreso?.tarifa?.fulfillment ?? null,
+    fulfillment: fulfillmentDeIngreso(ingreso),
     recibido: gestion.montoRecibido,
     // Una columna POR MEDIO DE PAGO, money-safe: el STRING del snapshot tal cual. El medio sin
     // linea queda en `null` —celda VACIA (R10)—, que no es un cero.
@@ -519,10 +536,15 @@ function celdasEspecificas(
  */
 export function filaDescargaGestionFundida(gestion: CierreGestionDescargaDTO): DescargaFila {
   const especificas = celdasEspecificas(gestion);
-  const pobladas = ESPECIFICAS_POR_RESULTADO[gestion.resultado] ?? CLAVES_ESPECIFICAS;
+  const pobladas: readonly ClaveEspecifica[] =
+    ESPECIFICAS_POR_RESULTADO[gestion.resultado] ?? CLAVES_ESPECIFICAS;
+  const extra: readonly ClaveEspecifica[] =
+    gestion.ingresoEmpresa?.tarifaModelo === "nuevo"
+      ? (ESPECIFICAS_EXTRA_MODELO_NUEVO[gestion.resultado] ?? [])
+      : [];
   const fila: DescargaFila = { ...celdasComunes(gestion) };
   for (const clave of CLAVES_ESPECIFICAS) {
-    fila[clave] = pobladas.includes(clave) ? especificas[clave] : null;
+    fila[clave] = pobladas.includes(clave) || extra.includes(clave) ? especificas[clave] : null;
   }
   return fila;
 }

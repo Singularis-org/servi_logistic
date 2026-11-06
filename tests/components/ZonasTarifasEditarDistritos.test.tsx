@@ -36,7 +36,6 @@ vi.mock("@/lib/actions/zonas", () => ({
 const listarArbolMock = vi.fn();
 vi.mock("@/lib/actions/geografia", () => ({
   listarArbolGeografico: (...a: unknown[]) => listarArbolMock(...a),
-  actualizarDistritosEspeciales: vi.fn().mockResolvedValue({ status: "ok" }),
 }));
 
 const { successMock, errorMock } = vi.hoisted(() => ({

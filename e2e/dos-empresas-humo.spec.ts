@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomBytes } from "node:crypto";
 
 import { test, expect, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import type { ModuloApagable, PrismaClient } from "@prisma/client";
@@ -67,8 +67,9 @@ import {
  *    de B. Cada maestro recorre solo las rutas de SU menú (`rutasDelMenuDelMaestro(apagados)`): A
  *    las recorre todas, como antes de SL-23 (R23). Y B no ve «Ranking» en el menú y recibe «No
  *    encontramos esta página» en `/ranking` y `/ranking/historico`, mientras A lo ve y lo abre.
- * 7. Vehículos (R40): carga, y crear un vehículo desde la pantalla falla cerrado: sin pantalla de
- *    error ni 5xx, y la base no cambia. Geografía ya no es del maestro: desde SL-32 (R24, R26) su
+ * 7. Vehículos y geografía ya no son del maestro. SL-42 (R16) retiró `/configuracion/vehiculos`: el
+ *    catálogo es de la plataforma, así que el humo comprueba el 404 y que la base no cambia (antes,
+ *    SL-17 R40, comprobaba que escribir desde esa pantalla fallaba cerrado). Desde SL-32 (R24, R26) su
  *    página le da 404, así que el humo comprueba el 404 y que no queda ninguna provincia nueva. Lo
  *    ajustó SL-32 el 2026-10-23, al mergear después de SL-17.
  * 8. Planes (SL-24, design §11.1; R33): va el último, para no cambiar lo que recorren los casos de
@@ -387,43 +388,22 @@ test("SL-23: el superadmin dejó A con los 3 módulos y B sin «Ranking»; B no 
   }
 });
 
-/**
- * Pulsa «Guardar» y espera la Server Action (un POST a la página): sin ella, «la base no cambió»
- * pasaría aunque el clic no hubiera enviado nada. Devuelve el texto de la página después y anota
- * las líneas nuevas (el aviso que ve el maestro).
- */
-async function guardarYLeer(page: Page, boton: Locator, que: string): Promise<string> {
-  const antes = new Set((await page.locator("body").innerText()).split("\n"));
-  const [accion] = await Promise.all([
-    page.waitForResponse((r) => r.request().method() === "POST" && new URL(r.url()).pathname.startsWith("/configuracion"), { timeout: 60_000 }),
-    boton.click(),
-  ]);
-  await page.waitForTimeout(1500);
-  const despues = await page.locator("body").innerText();
-  const nuevas = despues.split("\n").filter((l) => l.trim() !== "" && !antes.has(l)).slice(0, 3);
-  console.log(`[humo R40] ${que}: Server Action ${accion.status()}; aviso en pantalla: ${JSON.stringify(nuevas)}`);
-  expect.soft(accion.status(), `${que}: la Server Action respondió 5xx`).toBeLessThan(500);
-  return despues;
-}
-
-test("vehículos carga y escribir desde la pantalla falla cerrado (R40); geografía le da 404 al maestro (SL-32 R26)", async ({ page }) => {
+test("vehículos (SL-42 R16) y geografía (SL-32 R26) le dan 404 al maestro, y sus catálogos no cambian", async ({ page }) => {
   test.setTimeout(10 * 60_000);
   const db = dueno;
   if (!db) throw new Error("sin cliente de base: falló el beforeAll");
   const errores5xx = await abrirComo("A", page);
-  const nombre = `A-${randomUUID()}`;
 
-  const vehiculosAntes = await db.vehiculo.count();
+  // SL-42 R16: la ruta ya no existe; el 404 vale para todo rol. Se compara el catálogo entero
+  // (ids y estado), no solo el recuento: ni una fila nueva ni un cambio de nombre o de estado.
+  const catalogo = () =>
+    db.vehiculo.findMany({ select: { id: true, name: true, activo: true }, orderBy: { id: "asc" } });
+  const vehiculosAntes = await catalogo();
   const v = await visitar(page, "/configuracion/vehiculos");
-  expect(v.texto.includes(PANTALLA_DE_ERROR), "vehículos: pantalla de error al cargar").toBe(false);
-  expect(v.texto, "vehículos: no carga el listado").toContain("Tipos de vehículo");
-  await page.getByRole("button", { name: "Crear vehículo" }).click();
-  await page.getByPlaceholder("Moto, carro, camión…").fill(nombre);
-  const trasVehiculo = await guardarYLeer(page, page.getByRole("button", { name: "Guardar" }), "vehículo");
-  expect.soft(trasVehiculo.includes(PANTALLA_DE_ERROR), "vehículos: pantalla de error al guardar").toBe(false);
-  expect.soft(trasVehiculo.includes("Vehículo creado"), "vehículos: la pantalla dice que creó").toBe(false);
-  expect.soft(await db.vehiculo.count(), "vehículos: cambió el catálogo").toBe(vehiculosAntes);
-  expect.soft(await db.vehiculo.count({ where: { name: nombre } }), "vehículos: quedó la fila").toBe(0);
+  expect.soft(v.estado, "vehículos: el maestro no recibe 404").toBe(404);
+  expect.soft(v.texto.includes(NO_ENCONTRADO), "vehículos: el maestro no ve «no encontrado»").toBe(true);
+  expect.soft(v.texto.includes("Tipos de vehículo"), "vehículos: el maestro ve el catálogo").toBe(false);
+  expect.soft(await catalogo(), "vehículos: cambió el catálogo").toEqual(vehiculosAntes);
 
   const provinciasAntes = await db.provincia.count();
   // SL-32 R26: la página no tiene formulario para el maestro, así que no hay provincia que intentar crear.

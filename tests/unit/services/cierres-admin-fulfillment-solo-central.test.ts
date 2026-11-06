@@ -46,6 +46,7 @@ const TARIFA: TarifaSnapshotDTO = {
 };
 
 const INGRESO: IngresoEmpresaDTO = {
+  tarifaModelo: "viejo",
   montoCobrar: "10000.00",
   cobraComision: false,
   esCentral: false,
@@ -77,6 +78,7 @@ const INGRESO_NUEVO: IngresoEmpresaDTO = {
   fulfillment: "450.00",
   ivaFulfillment: "58.50",
   tarifa: null,
+  tarifaModelo: "nuevo",
 };
 
 /** Que fila entrega el doble del repositorio; la cambia solo el bloque del modelo nuevo. */

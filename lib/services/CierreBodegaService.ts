@@ -172,6 +172,7 @@ export class CierreBodegaService implements ICierreBodegaService {
         totalesAgregados: ZERO_TOTALES,
         totalPagoMensajeroAgregado: "0.00", // R18: sin zona, nada que agregar
         totalIngresoBodegaRechazosAgregado: "0.00", // feature 56/R17: sin zona, nada que agregar
+        incluyeModeloNuevoAgregado: false, // SLT-54 (R71): sin zona, nada que agregar
         totalNetoAgregado: "0.00", // sin zona: 0.00 - 0.00
         totalCentralDebeAgregado: "0.00", // sin zona: nada que pagar, nada que deber
         puedesSolicitar: false,
@@ -229,6 +230,8 @@ export class CierreBodegaService implements ICierreBodegaService {
       totalesAgregados,
       totalPagoMensajeroAgregado, // R18
       totalIngresoBodegaRechazosAgregado, // feature 56/R17
+      // SLT-54 (R71): sobre el conjunto COMPLETO, como los agregados de dinero (R49); no sobre la pagina.
+      incluyeModeloNuevoAgregado: consolidables.some((c) => c.incluyeModeloNuevo === true),
       totalNetoAgregado,
       totalCentralDebeAgregado,
       puedesSolicitar,

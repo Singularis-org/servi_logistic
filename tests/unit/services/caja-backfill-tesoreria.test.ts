@@ -306,6 +306,7 @@ function repoDeCaja() {
     }),
     listar: vi.fn(),
     agregarPorCategoriaYTipo: vi.fn(),
+    categoriasConModeloNuevo: vi.fn(),
     obtenerPorId: vi.fn(),
     agregarPorCategoria: vi.fn(),
   };
@@ -833,6 +834,7 @@ describe("el recolector no lee la base, y lo dice en alto", () => {
 
     expect(() => recolector.listar()).toThrow(/no lee la base/);
     expect(() => recolector.agregarPorCategoriaYTipo()).toThrow(/no lee la base/);
+    expect(() => recolector.categoriasConModeloNuevo()).toThrow(/no lee la base/);
     expect(() => recolector.obtenerPorId()).toThrow(/no lee la base/);
     expect(() => recolector.agregarPorCategoria()).toThrow(/no lee la base/);
   });

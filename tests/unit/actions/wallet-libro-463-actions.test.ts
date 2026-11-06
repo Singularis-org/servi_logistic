@@ -158,7 +158,8 @@ describe("463 — WalletService: el termino y el orden SOLO van al libro", () =>
     const listar = vi.fn<(f: ListarMovimientosFiltros) => Promise<{ movimientos: never[]; total: number }>>(async () => ({ movimientos: [], total }));
     const agregarPorCategoriaYTipo = vi.fn(async () => []);
     const primerDiaDeLaCaja = vi.fn(async () => null);
-    const repo = { listar, agregarPorCategoriaYTipo, primerDiaDeLaCaja } as unknown as IWalletMovimientoRepository;
+    const categoriasConModeloNuevo = vi.fn(async () => []);
+    const repo = { listar, agregarPorCategoriaYTipo, primerDiaDeLaCaja, categoriasConModeloNuevo } as unknown as IWalletMovimientoRepository;
     return { repo, listar, agregarPorCategoriaYTipo };
   }
 

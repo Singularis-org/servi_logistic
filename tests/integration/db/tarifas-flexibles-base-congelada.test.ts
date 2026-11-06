@@ -12,7 +12,7 @@ import { TarifaZonaMensajeroRepository } from "@/lib/repositories/TarifaZonaMens
 import { CierreDiaService } from "@/lib/services/CierreDiaService";
 import { CorteDiarioService } from "@/lib/services/CorteDiarioService";
 import { WalletFeedService } from "@/lib/services/WalletFeedService";
-import { comoApp, crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones";
+import { comoApp, crearOrganizacion, fijarEmpresa, sembrarActivacion } from "@/tests/fabricas/organizaciones";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import {
   HAY_BASE_DE_DATOS,
@@ -171,6 +171,7 @@ async function sembrarNuevo(tx: TxDeTest, opciones: { conRechazo: boolean }): Pr
   const g = await tx.grupoDistritos.create({ data: { zonaId: b.Z, nombre: "G1" }, select: { id: true } });
   await tx.grupoDistritosDistrito.create({ data: { grupoId: g.id, zonaId: b.Z, distritoId: b.d1 } });
   const G1 = g.id;
+  await sembrarActivacion(tx, b.A);
   await valor(tx, b, "FE", { concepto: "tienda_flete_entregado", modo: "monto", valor: "1500.00", grupoId: G1 });
   if (opciones.conRechazo) {
     await valor(tx, b, "FR", { concepto: "tienda_flete_rechazo", modo: "porcentaje", valor: "10.00", grupoId: G1 });
@@ -513,8 +514,9 @@ describeSiHayBase("SLT-52 T5.5 — la base del % del pago sale del cobro congela
         where: { cierreId, ordenId },
         select: { tarifaModelo: true, tarifaId: true },
       });
-      // DESPUES la empresa escribe sus valores nuevos (de la zona): el pago pasa al nuevo. El flete
-      // por rechazo nuevo (10 % del pedido = 2000.00) NO es lo que este cierre le cobra a la tienda.
+      // DESPUES la empresa se activa y escribe sus valores nuevos (de la zona): el pago pasa al nuevo. El
+      // flete por rechazo nuevo (10 % del pedido = 2000.00) NO es lo que este cierre le cobra a la tienda.
+      await sembrarActivacion(tx, e.A);
       await valor(tx, e, "FR", { concepto: "tienda_flete_rechazo", modo: "porcentaje", valor: "10.00" });
       await valor(tx, e, "MR", { concepto: "mensajero_rechazo", modo: "porcentaje", valor: "50.00" });
       await valor(tx, e, "SR", { concepto: "satelite_rechazo", modo: "porcentaje", valor: "25.00" });
@@ -552,6 +554,7 @@ describeSiHayBase("SLT-52 T5.5 — la base del % del pago sale del cobro congela
    */
   async function sembrarR55(tx: TxDeTest) {
     const b = await sembrarBase(tx);
+    await sembrarActivacion(tx, b.A);
     await valor(tx, b, "FE", { concepto: "tienda_flete_entregado", modo: "monto", valor: "1500.00" });
     await valor(tx, b, "ME", { concepto: "mensajero_entregado", modo: "porcentaje", valor: "10.00" });
     await valor(tx, b, "SE", { concepto: "satelite_entregado", modo: "porcentaje", valor: "5.00" });

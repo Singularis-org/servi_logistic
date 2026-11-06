@@ -216,6 +216,13 @@ export interface FilaEstadoCuentaDTO {
   /** R65 — se ofrece «Anular…» (original, vigente y no nacida de un cierre). */
   anulable: boolean;
   naceDeUnCierre: boolean;
+  /**
+   * SLT-54 (D38) — solo en el libro de una tienda: la fila nace de un cierre con alguna gestion de ESA
+   * tienda del modelo nuevo. Sale de `cierre_detail.tarifa_modelo`, lo congelado, nunca del interruptor
+   * actual; mixto cuenta como incluye. Decide si el concepto puede decir «devolucion a origen»: en el
+   * nuevo, esa categoria tambien recoge un reprogramado. Ausente (mensajero, bodega) se lee como viejo.
+   */
+  incluyeModeloNuevo?: boolean;
 }
 
 export interface EstadoCuentaDTO {

@@ -24,6 +24,7 @@ const DETALLE: DetallePlan = {
     modulos: [],
     precio: { tipo: "sin_precio" },
     costoPorOrden: null,
+    costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
     archivado: false,
   },
   empresaNombre: null,

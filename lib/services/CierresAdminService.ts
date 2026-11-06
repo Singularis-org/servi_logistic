@@ -1839,6 +1839,7 @@ function toResumen(row: CierreAdminResumenRow): CierreAdminResumen {
     totales: row.totales,
     totalPagoMensajero: row.totalPagoMensajero, // R17: snapshot, sin recomputar
     totalIngresoBodegaRechazos: row.totalIngresoBodegaRechazos, // feature 56/R16: snapshot, sin recomputar
+    incluyeModeloNuevo: row.incluyeModeloNuevo, // SLT-54 (R71)
     // Feature 172 (T C.2): el mapper NO deriva dinero. Emite `null` —el valor de un cierre no
     // aprobado (R28)— y el servicio lo rellena en `conPendiente` para los aprobados, con UNA
     // agregacion por pagina. Si la derivacion viviera aqui, seria una consulta por fila.

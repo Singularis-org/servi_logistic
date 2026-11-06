@@ -1,126 +1,134 @@
 // @vitest-environment jsdom
-// SLT-51 (T6) — la página Tarifas sin zonas. Sustituye a `TarifasPage.cobertura.test.tsx` (ficha
-// 465): el bloque «Cobertura» se mudó a `/configuracion/zonas` y su montaje lo prueba
-// `tests/unit/app/zonas/ZonasPage.test.tsx`.
-//
-// R12: Tarifas no muestra «Cobertura». R13: ni «Costos por zona» ni «Crear zona», y sigue
-// montando las tarifas por tienda con las zonas pre-cargadas. El `page.tsx` (Server Component
-// real) se ejercita sin mockear; se doblan la sesión, la pre-carga y `TiendasModule`.
+// SLT-54 (R25, R55, R57) — la página de Tarifas es un Server Component: se ejercita de verdad y se doblan
+// las actions y el módulo. Quién puede qué lo decide el servidor; aquí se mira qué monta con cada respuesta.
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
-import type { RolValue } from "@prisma/client";
 
-import type { ZonaDTO } from "@/lib/types/zona";
+import { mensajeroPantalla, valor, valorPropio, zonaOk, zonaResumen } from "../../../fixtures/tarifas-pantalla";
 
 vi.mock("@/app/_components/LogoutButton", () => ({
   LogoutButton: () => <button data-testid="logout-stub">Salir</button>,
 }));
+vi.mock("@/components/shared/NotificationsBell", () => ({ NotificationsBell: () => null }));
 
-const { resolveActorMock, listarZonasMock, listarArbolMock, tiendasModuleMock } = vi.hoisted(
-  () => ({
-    resolveActorMock: vi.fn(),
-    listarZonasMock: vi.fn(),
-    listarArbolMock: vi.fn(),
-    tiendasModuleMock: vi.fn(),
-  }),
-);
-vi.mock("@/lib/auth/resolve-actor", () => ({
-  resolveActorFromSession: () => resolveActorMock(),
+const { cargarPantallaMock, cargarZonaMock, moduloMock } = vi.hoisted(() => ({
+  cargarPantallaMock: vi.fn(),
+  cargarZonaMock: vi.fn(),
+  moduloMock: vi.fn(),
 }));
-vi.mock("@/lib/actions/zonas", () => ({
-  listarZonas: (...a: unknown[]) => listarZonasMock(...a),
+
+vi.mock("@/lib/actions/tarifas", () => ({
+  cargarPantallaTarifas: () => cargarPantallaMock(),
+  cargarZonaTarifas: (i: unknown) => cargarZonaMock(i),
 }));
-vi.mock("@/lib/actions/geografia", () => ({
-  listarArbolGeografico: (...a: unknown[]) => listarArbolMock(...a),
-}));
-vi.mock("@/app/(app)/configuracion/tarifas/_components/TiendasModule", () => ({
-  TiendasModule: (props: { zonas?: ZonaDTO[] }) => {
-    tiendasModuleMock(props);
-    return <div data-testid="tiendas-module-stub" />;
+vi.mock("@/app/(app)/configuracion/tarifas/_components/TarifasModule", () => ({
+  TarifasModule: (props: unknown) => {
+    moduloMock(props);
+    return <div data-testid="modulo-stub" />;
   },
-}));
-vi.mock("@/hooks/useToast", () => ({
-  useToast: () => ({
-    success: vi.fn(),
-    error: vi.fn(),
-    warning: vi.fn(),
-    info: vi.fn(),
-    show: vi.fn(),
-    dismiss: vi.fn(),
-  }),
+  TarifasErrorCarga: () => <div role="alert">error-con-reintento</div>,
 }));
 
-const ZONAS: ZonaDTO[] = [
-  { id: "z1", nombre: "Norte", cobroVehiculo: false, distritosCount: 2, esCentral: true },
-  { id: "z2", nombre: "Sur", cobroVehiculo: true, distritosCount: 1, esCentral: false },
-];
+const PANTALLA = {
+  status: "ok" as const,
+  activacion: null,
+  zonas: [zonaResumen({ id: "z1", nombre: "Norte" }), zonaResumen({ id: "z2", nombre: "Sur" })],
+  vehiculos: [],
+  tiendas: [],
+  preciosTienda: [],
+  mensajeros: [],
+  valoresMensajero: [],
+  puedeEscribir: true,
+};
 
-async function importPage() {
-  const mod = await import("@/app/(app)/configuracion/tarifas/page");
-  return mod.default;
+async function pagina(zona?: string) {
+  const { default: TarifasPage } = await import("@/app/(app)/configuracion/tarifas/page");
+  return TarifasPage({ searchParams: Promise.resolve(zona === undefined ? {} : { zona }) });
 }
 
-// La primera importación del árbol de la página tarda más que el timeout de un caso en frío.
 beforeAll(async () => {
-  await importPage();
+  await import("@/app/(app)/configuracion/tarifas/page");
 }, 120_000);
 
 beforeEach(() => {
   vi.clearAllMocks();
-  listarZonasMock.mockResolvedValue({ status: "ok", items: ZONAS, total: 2 });
+  cargarPantallaMock.mockResolvedValue(PANTALLA);
+  cargarZonaMock.mockResolvedValue(zonaOk());
 });
 
-afterEach(() => {
-  cleanup();
-});
+afterEach(() => cleanup());
 
-describe("SLT-51 — Tarifas solo con las tarifas por tienda", () => {
-  it("R12/R13: sin «Cobertura», sin «Costos por zona» y sin «Crear zona»", async () => {
-    resolveActorMock.mockResolvedValue({ usuarioId: "m1", rol: "maestro" });
-    const TarifasPage = await importPage();
-    render(await TarifasPage());
+describe("SLT-54 — /configuracion/tarifas", () => {
+  it("R25: monta la pantalla nueva con la primera zona ya leída", async () => {
+    render(await pagina());
 
     expect(screen.getByRole("heading", { level: 1, name: "Tarifas" })).toBeInTheDocument();
-    expect(screen.queryByText("Cobertura")).toBeNull();
-    expect(screen.queryByRole("button", { name: /Descargar cobertura/ })).toBeNull();
-    expect(screen.queryByText(/Costos por zona/i)).toBeNull();
-    expect(screen.queryByRole("button", { name: "Crear zona" })).toBeNull();
-    // Ya no carga el catálogo geográfico: solo lo usaba el formulario de zona.
-    expect(listarArbolMock).not.toHaveBeenCalled();
+    expect(screen.getByTestId("modulo-stub")).toBeInTheDocument();
+    expect(cargarZonaMock).toHaveBeenCalledTimes(1);
+    expect(cargarZonaMock).toHaveBeenCalledWith({ zonaId: "z1" });
+    expect(moduloMock.mock.calls[0][0]).toMatchObject({ pantalla: PANTALLA, zonaInicialId: "z1" });
   });
 
-  it("R13: monta TiendasModule con las zonas pre-cargadas", async () => {
-    resolveActorMock.mockResolvedValue({ usuarioId: "m1", rol: "maestro" });
-    const TarifasPage = await importPage();
-    render(await TarifasPage());
-
-    expect(screen.getByTestId("tiendas-module-stub")).toBeInTheDocument();
-    expect(listarZonasMock).toHaveBeenCalledWith({ page: 1, pageSize: 100 });
-    expect(tiendasModuleMock).toHaveBeenCalledTimes(1);
-    expect(tiendasModuleMock.mock.calls[0][0]).toEqual({ zonas: ZONAS });
+  it("R18: ?zona= abre esa zona; una ajena cae en la primera", async () => {
+    render(await pagina("z2"));
+    expect(moduloMock.mock.lastCall?.[0]).toMatchObject({ zonaInicialId: "z2" });
+    cleanup();
+    render(await pagina("de-otra-empresa"));
+    expect(moduloMock.mock.lastCall?.[0]).toMatchObject({ zonaInicialId: "z1" });
   });
 
-  it("si las zonas no cargan, TiendasModule recibe una lista vacía", async () => {
-    resolveActorMock.mockResolvedValue({ usuarioId: "m1", rol: "maestro" });
-    listarZonasMock.mockResolvedValue({ status: "forbidden" });
-    const TarifasPage = await importPage();
-    render(await TarifasPage());
+  it("R40: antes de activar dice quién edita; después, desde cuándo rige", async () => {
+    render(await pagina());
+    expect(screen.getByText("Solo el maestro puede editar")).toBeInTheDocument();
+    cleanup();
 
-    expect(tiendasModuleMock.mock.calls[0][0]).toEqual({ zonas: [] });
+    cargarPantallaMock.mockResolvedValue({ ...PANTALLA, activacion: { activadaAt: new Date("2026-11-12T18:00:00Z") } });
+    render(await pagina());
+    expect(screen.getByText("En vigor desde el 12-11-2026")).toBeInTheDocument();
+    expect(screen.queryByText("Solo el maestro puede editar")).toBeNull();
   });
 
-  it("otro rol o sin sesión: solo el aviso de permiso", async () => {
-    const otros: (RolValue | null)[] = ["admin", "adminTienda", "adminSatelite", "mensajero", null];
-    for (const rol of otros) {
-      resolveActorMock.mockResolvedValue(rol ? { usuarioId: "x", rol } : null);
-      const TarifasPage = await importPage();
-      render(await TarifasPage());
-      expect(screen.getByRole("alert")).toHaveTextContent(
-        "No tienes permiso para acceder a esta sección.",
-      );
-      expect(screen.queryByTestId("tiendas-module-stub")).toBeNull();
+  it("R55: otro rol o sin sesión ve solo el aviso, sin módulo ni lectura de zona", async () => {
+    for (const status of ["forbidden", "unauthenticated"]) {
+      cargarPantallaMock.mockResolvedValue({ status });
+      render(await pagina());
+      expect(screen.getByRole("alert")).toHaveTextContent("No tienes permiso para acceder a esta sección.");
+      expect(screen.queryByTestId("modulo-stub")).toBeNull();
       cleanup();
     }
-    expect(listarZonasMock).not.toHaveBeenCalled();
+    expect(cargarZonaMock).not.toHaveBeenCalled();
+  });
+
+  it("R57: si la lectura falla hay error con reintento y no un estado vacío", async () => {
+    cargarPantallaMock.mockResolvedValue({ status: "error" });
+    render(await pagina());
+    expect(screen.getByRole("alert")).toHaveTextContent("error-con-reintento");
+    expect(screen.queryByTestId("modulo-stub")).toBeNull();
+    expect(screen.queryByText("No tienes permiso para acceder a esta sección.")).toBeNull();
+  });
+
+  it("SLT-55: los mensajeros y sus valores propios llegan al módulo tal como los da la lectura", async () => {
+    const mensajeros = [mensajeroPantalla()];
+    const valoresMensajero = [valorPropio("mensajero_entregado", "m1")];
+    cargarPantallaMock.mockResolvedValue({ ...PANTALLA, mensajeros, valoresMensajero });
+    render(await pagina());
+    expect(moduloMock.mock.lastCall?.[0]).toMatchObject({ pantalla: { mensajeros, valoresMensajero } });
+    // Un valor propio no tiene zona ni grupo: no dispara ninguna lectura de zona de más.
+    expect(cargarZonaMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("R41: pide los nombres de grupo solo de las zonas con precio de tienda en un grupo", async () => {
+    cargarPantallaMock.mockResolvedValue({
+      ...PANTALLA,
+      preciosTienda: [
+        valor("tienda_flete_entregado", { id: "a", tiendaId: "t1", zonaId: "z2", grupoId: "g9", nivel: "tienda_grupo" }),
+        valor("tienda_flete_entregado", { id: "b", tiendaId: "t1", zonaId: null, nivel: "tienda_general" }),
+      ],
+    });
+    cargarZonaMock.mockResolvedValue(zonaOk({ grupos: [{ id: "g9", zonaId: "z2", nombre: "Costa", distritos: [] }] }));
+    render(await pagina());
+
+    expect(cargarZonaMock.mock.calls.map((c) => c[0])).toEqual([{ zonaId: "z1" }, { zonaId: "z2" }]);
+    expect(moduloMock.mock.lastCall?.[0]).toMatchObject({ nombresDeGrupo: { g9: "Costa" } });
   });
 });

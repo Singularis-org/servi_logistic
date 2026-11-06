@@ -35,6 +35,10 @@ import {
 } from "@/lib/notificaciones/notificadores";
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import type { AppErrorShape } from "@/lib/errors";
+import { defaultLogger } from "@/lib/errors/logger";
+import { TAGS_LECTURAS_ENTREGAS } from "@/lib/analytics/tags-entregas";
+import { crearAnaliticaCacheDeNext } from "@/lib/cache/next-analitica-cache";
+import type { IAnaliticaCache } from "@/lib/interfaces/external/IAnaliticaCache";
 
 // Feature 37 — Server Actions del "Cierre del dia" del mensajero (mutaciones y
 // lecturas internas del mismo proyecto; van como Server Action, no como Route API,
@@ -71,6 +75,8 @@ function buildService(): ICierreDiaService {
 export interface CierreDiaDeps {
   service?: ICierreDiaService;
   getActor?: () => Promise<Actor | null>;
+  /** SLT-64: el puerto con el que `deshacerGestion` invalida. Por defecto, el de produccion. */
+  cache?: IAnaliticaCache;
 }
 
 // Feature 41 (R21): deps del bloqueo derivado del mensajero. Inyecta el repo (solo el metodo de
@@ -254,6 +260,9 @@ function toCierreDiaActionError(
  * (`docs/architecture.md`). `unauthenticated` (R7, sin sesion) y `validation_error` (R10,
  * gestionId no-uuid) se resuelven en el borde; `forbidden` (R8/R9) y `conflict` (R2-R6) los
  * devuelve el service como resultado de dominio.
+ *
+ * SLT-64 (R12, R14): las tres vias del servicio devuelven `ok` por aqui, asi que este es el unico
+ * punto donde invalidar las lecturas de entregas, y solo tras un `ok`.
  */
 export async function deshacerGestion(
   input: unknown,
@@ -266,5 +275,22 @@ export async function deshacerGestion(
     const service = deps.service ?? buildService();
     return service.deshacerGestion(data.gestionId, actor);
   });
-  return isAppErrorShape(r) ? toCierreDiaActionError(r) : r;
+  if (isAppErrorShape(r)) return toCierreDiaActionError(r);
+  if (r.status === "ok") await invalidarLecturasDeEntregas(deps.cache);
+  return r;
+}
+
+/**
+ * SLT-64 (R15, R16): la escritura ya esta confirmada. Si respondiera error, el usuario reintentaria
+ * y recibiria `conflict` por algo que si hizo, asi que el fallo se registra y el TTL acota la cifra
+ * vieja. Del error solo se registra la clase: su mensaje puede traer la etiqueta con la empresa.
+ */
+async function invalidarLecturasDeEntregas(cache: IAnaliticaCache | undefined): Promise<void> {
+  try {
+    const puerto = cache ?? crearAnaliticaCacheDeNext();
+    await puerto.invalidar("correccion_gestion", TAGS_LECTURAS_ENTREGAS);
+  } catch (error) {
+    const clase = error instanceof Error ? error.name : "desconocido";
+    defaultLogger.logError(new Error(`deshacerGestion: fallo la invalidacion de cache (${clase})`));
+  }
 }

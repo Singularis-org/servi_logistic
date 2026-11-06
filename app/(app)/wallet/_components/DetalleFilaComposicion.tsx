@@ -18,7 +18,7 @@ import {
   DETALLE_FILA_NOMBRE,
 } from "./composicion-detalle-labels";
 import { inputDeFiltros, type WalletFiltrosValue } from "./wallet-filtros-input";
-import { CATEGORIA_LABEL, ORIGEN_LABEL, money } from "./wallet-labels";
+import { ORIGEN_LABEL, conceptoDeMovimientoCaja, money } from "./wallet-labels";
 import { fechaDiaMovimientoCR } from "@/lib/utils/fecha-dia-iso";
 
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
@@ -146,7 +146,7 @@ const COLUMNS: Column<WalletMovimientoDTO>[] = [
     id: "concepto",
     value: COMPOSICION_DETALLE_COLUMNAS.concepto,
     // R5: la etiqueta legible del catalogo, nunca el valor del enum.
-    render: (m) => CATEGORIA_LABEL[m.categoria],
+    render: (m) => conceptoDeMovimientoCaja(m),
   },
   {
     id: "detalle",
@@ -210,7 +210,7 @@ const COLUMNS_MOVIL: Column<WalletMovimientoDTO>[] = [
           {fechaDiaMovimientoCR(m.fechaMovimiento, ZONA_CR)}
         </span>
         {/* R5: la etiqueta legible del catalogo, nunca el valor del enum. */}
-        <span className="font-medium">{CATEGORIA_LABEL[m.categoria]}</span>
+        <span className="font-medium">{conceptoDeMovimientoCaja(m)}</span>
         {/* R17: el origen legible y, cuando la hay, la descripcion. Ninguna celda muda. */}
         <span className="text-xs text-muted-foreground">
           <OrigenMovimiento fila={m} rotulos={ORIGEN_LABEL} />

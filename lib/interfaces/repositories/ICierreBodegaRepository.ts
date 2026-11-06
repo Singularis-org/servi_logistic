@@ -18,6 +18,7 @@ export interface CierreDiaConsolidableRow {
   totales: CierreTotales; // snapshot del cierre_dia (STRING escala 2)
   totalPagoMensajero: string; // feature 39/R18: snapshot del pago al mensajero del cierre_dia (STRING)
   totalIngresoBodegaRechazos: string; // feature 56/R17: snapshot del ingreso de bodega por rechazos del cierre_dia (STRING)
+  incluyeModeloNuevo?: boolean; // SLT-54 (R71): ver `CierreBodegaResumenLite.incluyeModeloNuevo`
 }
 
 // Fila cruda de un cierre de bodega (cabecera). Totales ya como STRING (money-safe);
@@ -93,6 +94,7 @@ export interface CierreBodegaResumenRow {
    * conciliacion real de la RETROACTIVA del backfill (R30)— y NO baja a ninguna descarga.
    */
   conciliadoNota: string | null;
+  incluyeModeloNuevo?: boolean; // D40: ver `CierreBodegaResumen.incluyeModeloNuevo`
 }
 
 // Datos para crear la solicitud de cierre de bodega (R9/R10). Totales snapshot

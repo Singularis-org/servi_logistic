@@ -229,6 +229,9 @@ describeSiHayBase("SLT-58 — plan_de_la_empresa: la empresa lee su plan y su co
         "cambio",
         "costo_por_orden", // SLT-66 R18 (M3)
         "costo_vigente", // SLT-66 R18 (M3)
+        "costo_por_orden_pct", // SLT-83 (20261104150200)
+        "costo_por_orden_minimo", // SLT-83 (20261104150200)
+        "cobro_ciclo", // SLT-83 R24 (20261104150200)
       ].sort(),
     );
     expect(Object.keys(plan.cambio as object).sort()).toEqual(["version", "vigente_desde"]);

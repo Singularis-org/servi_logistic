@@ -425,7 +425,7 @@ export function RegistrarPagoDialog({
           error={errores.metodo}
         >
           {/* El `Select` no acepta `aria-required`, así que la accesibilidad se cablea
-              campo a campo en vez de por spread (molde: `CrearTiendaForm`). */}
+              campo a campo en vez de por spread. */}
           {({ id, "aria-invalid": ariaInvalid, "aria-describedby": ariaDescribedBy }) => (
             <Select
               id={id}

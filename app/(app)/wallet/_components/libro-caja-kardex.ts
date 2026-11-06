@@ -13,12 +13,12 @@ import { textoDetalle, textoGuias } from "@/components/shared/wallet/libro-karde
 import type { WalletMovimientoDTO } from "@/lib/types/wallet";
 import { fechaDiaMovimientoCR } from "@/lib/utils/fecha-dia-iso";
 
-import { CATEGORIA_LABEL, ORIGEN_LABEL } from "./wallet-labels";
+import { ORIGEN_LABEL, conceptoDeMovimientoCaja } from "./wallet-labels";
 
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /** R17 — el Concepto: la MISMA etiqueta que pinta la tabla (el valor del enum si no tuviera etiqueta). */
 export function conceptoDeCaja(movimiento: WalletMovimientoDTO): string {
-  return CATEGORIA_LABEL[movimiento.categoria] ?? movimiento.categoria;
+  return conceptoDeMovimientoCaja(movimiento) ?? movimiento.categoria;
 }
 
 /** La fecha del movimiento como la pinta la tabla: el día de Costa Rica. */

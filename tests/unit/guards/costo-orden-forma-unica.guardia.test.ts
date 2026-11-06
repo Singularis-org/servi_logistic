@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { Prisma, type PrismaClient } from "@prisma/client";
-import { sinValoresDelModeloNuevo } from "../../fixtures/tarifa-tienda";
+import { empresaSinActivar } from "../../fixtures/tarifa-tienda";
 
 import { quitarComentarios } from "@/tests/fixtures/sin-comentarios";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
@@ -195,7 +195,7 @@ async function listadoYDetalle() {
     },
     tarifa: { findMany: vi.fn(async () => [TARIFA]) },
     // SLT-52: empresa sin valores del modelo nuevo -> el resolver unico usa la cascada vieja (R36).
-    ...sinValoresDelModeloNuevo(),
+    ...empresaSinActivar(),
   };
   const svc = new ApiOrdenLecturaService(
     new OrdenRepository(prisma as unknown as PrismaClient),

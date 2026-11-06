@@ -9,13 +9,14 @@ import { useConceptosConMovimientos } from "@/components/shared/wallet/use-conce
 import { ORDEN_LIBRO, ZONA_LIBRO_TEXTO } from "@/components/shared/wallet/zonas-filtros-labels";
 import { BUSQUEDA_LIBRO_MIN_CHARS } from "@/lib/config/libro-wallet";
 import type { DireccionOrden } from "@/lib/types/ordenamiento-listado";
-import type { WalletMovimientoTipo } from "@/lib/types/wallet";
+import type { WalletMovimientoCategoria, WalletMovimientoTipo } from "@/lib/types/wallet";
+import type { ConceptoConMovimientosDTO } from "@/lib/types/wallet-filtros";
 
 import { A_QUIEN_FILTRO, A_QUIEN_SELECTOR_TEXTOS, valorDeAQuien } from "./a-quien-selector";
 import { BUSCADOR_LIBRO_CAJA_PLACEHOLDER } from "./libro-caja-labels";
 import { CASILLA, CASILLAS_CAJA, DECLARACION_PERIODO, declaracionesCaja, seleccionDeCaja } from "./libro-caja-filtros";
 import { useQuienesDelLibroCaja } from "./use-quienes-del-libro-caja";
-import { CATEGORIA_LABEL } from "./wallet-labels";
+import { CATEGORIA_LABEL, conceptoDeMovimientoCaja } from "./wallet-labels";
 import type { FiltrosLibro, FiltrosWallet } from "./wallet-filtros-input";
 
 // FICHA 467 (T5, design §2/§3.2; R1–R11, R17–R20, R23–R26, R29, R30, R32) — la BARRA ÚNICA del libro de
@@ -78,6 +79,23 @@ function soloClaves(seleccion: FilterSelection, claves: ReadonlySet<string>): Fi
   return Object.fromEntries(Object.entries(seleccion).filter(([k]) => claves.has(k)));
 }
 
+/**
+ * D39 — el rótulo de cada concepto según las filas que abre. El elegido con 0 movimientos no viene en
+ * la lista y se queda con el de `CATEGORIA_LABEL`: sin filas, no hay ninguna a la que le mienta.
+ */
+function rotulosDeConceptos(conceptos: readonly ConceptoConMovimientosDTO[] | undefined): Record<string, string> {
+  const rotulos: Record<string, string> = { ...CATEGORIA_LABEL };
+  for (const c of conceptos ?? []) {
+    rotulos[c.categoria] = conceptoDeMovimientoCaja({
+      // El DTO lo tipa `string` porque sirve a dos libros. Un valor ajeno a la caja sale sin rótulo y
+      // `opcionesDeConceptos` no lo ofrece, igual que antes.
+      categoria: c.categoria as WalletMovimientoCategoria,
+      incluyeModeloNuevo: c.incluyeModeloNuevo,
+    });
+  }
+  return rotulos;
+}
+
 export function LibroCajaBarra({
   filtrosWallet,
   libroAplicado,
@@ -111,7 +129,9 @@ export function LibroCajaBarra({
 
   // Sin la opción «Todas»: en el `single` la ausencia de valor ya es «todos» (lo dice el placeholder).
   // El elegido sigue ofrecido aunque su número pase a 0 (R20).
-  const declaraciones = declaracionesCaja(opcionesDeConceptos(conceptos.conceptos, CATEGORIA_LABEL, pedido.libro.categoria));
+  const declaraciones = declaracionesCaja(
+    opcionesDeConceptos(conceptos.conceptos, rotulosDeConceptos(conceptos.conceptos), pedido.libro.categoria),
+  );
   const montadasLibro = declaraciones.filter((d) => CLAVES_LIBRO.has(d.key) && marcadas.has(d.key));
   // R28 — lo que reponen los orquestadores al subir la señal (y con lo que arrancan si se montan de nuevo):
   // a cada uno, SOLO sus claves (el orquestador no descarta las ajenas de una siembra).

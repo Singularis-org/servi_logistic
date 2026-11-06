@@ -52,11 +52,19 @@ import { codigoSinComentarios } from "../../fixtures/sin-comentarios";
 //     en implementacion», punto 4): la guardia se acota a geografia y deja pasar `activo: true`
 //     en las demas tablas.
 //
+// SL-42 — `vehiculos.activo` (R18). No es geografia: un vehiculo no tiene ascendientes y su
+// disponibilidad es su propio flag, asi que no pasa por `_shared/geografia-activa.ts`. Sigue la
+// MISMA disciplina con su propia fuente unica, `_shared/vehiculo-activo.ts`, que queda fuera del
+// barrido y acotada abajo: un solo literal, `activo: true`, y nada mas. La regla de la geografia
+// no cambia.
+//
 // La selecciona `pnpm exec vitest run guard` por el nombre del archivo.
 
 const RAIZ = path.resolve(__dirname, "../../..");
 const ARBOL = path.join(RAIZ, "lib");
 const FUENTE_UNICA = "lib/repositories/_shared/geografia-activa.ts";
+/** SL-42: la fuente unica del flag de `vehiculos`, otro modelo. Ver la cabecera. */
+const FUENTE_UNICA_VEHICULOS = "lib/repositories/_shared/vehiculo-activo.ts";
 
 /**
  * EL DETECTOR DEL LITERAL. Devuelve cada `activo: <booleano>` (forma Prisma) y cada
@@ -212,6 +220,14 @@ describe("374/G2 — el barrido lee de verdad", () => {
     expect(propios.length).toBeGreaterThanOrEqual(8);
   });
 
+  it("SL-42: la fuente de vehiculos existe y lleva EXACTAMENTE un `activo: true` (la excepcion no crece)", () => {
+    // Si alguien metiera aqui un `activo: false` o una segunda forma del predicado, la excepcion
+    // dejaria de ser la de un recorte y pasaria a esconder una regla: sale rojo.
+    expect(literalesDeActivoEn(codigoSinComentarios(FUENTE_UNICA_VEHICULOS))).toEqual(["activo: true"]);
+    // Y no se cuela geografia: el archivo no nombra ningun nivel geografico.
+    expect(codigoSinComentarios(FUENTE_UNICA_VEHICULOS)).not.toMatch(/provincia|canton|distrito/i);
+  });
+
   it("`lib/` tiene un numero razonable de fuentes", () => {
     expect(fuentes(ARBOL).length).toBeGreaterThan(200);
   });
@@ -252,7 +268,7 @@ describe("374/R11 — toda referencia al flag geografico pasa por `_shared/geogr
     const hallazgos: string[] = [];
     for (const archivo of fuentes(ARBOL)) {
       const rel = relativo(archivo);
-      if (rel === FUENTE_UNICA) continue;
+      if (rel === FUENTE_UNICA || rel === FUENTE_UNICA_VEHICULOS) continue;
       for (const literal of hallazgosGeograficosEn(codigoSinComentarios(rel))) {
         hallazgos.push(`${rel}: ${literal}`);
       }

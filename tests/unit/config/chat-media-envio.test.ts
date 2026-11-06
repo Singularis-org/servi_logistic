@@ -3,8 +3,8 @@ import {
   CALIDAD_JPEG_ENVIO,
   clasificarAdjunto,
   FORMATOS_NOTA_VOZ,
+  LIMITE_ADJUNTO_BYTES,
   LIMITE_BYTES,
-  LIMITE_DOCUMENTO_BYTES,
   MAX_CAPTION,
   MAX_LADO_LARGO_ENVIO,
   MIMES_ENVIO,
@@ -56,15 +56,6 @@ describe("chat-media-envio: clasificarAdjunto (R8)", () => {
 });
 
 describe("chat-media-envio: validarAdjunto (R9/R10)", () => {
-  it("(c) el limite de imagen es exclusivo: 5 MB exactos pasan, un byte mas no", () => {
-    expect(validarAdjunto("image/jpeg", 5 * 1024 * 1024 + 1)).toEqual({
-      ok: false,
-      motivo: "demasiado_grande",
-      limiteBytes: 5 * 1024 * 1024,
-    });
-    expect(validarAdjunto("image/jpeg", 5 * 1024 * 1024)).toEqual({ ok: true, tipo: "imagen" });
-  });
-
   it("(d) un MIME fuera de la lista blanca se rechaza por tipo, no por tamano", () => {
     expect(validarAdjunto("application/x-msdownload", 10)).toEqual({
       ok: false,
@@ -72,12 +63,17 @@ describe("chat-media-envio: validarAdjunto (R9/R10)", () => {
     });
   });
 
-  it("audio y video comparten los 16 MB de Meta", () => {
-    expect(validarAdjunto("audio/mpeg", 16 * 1024 * 1024)).toEqual({ ok: true, tipo: "audio" });
-    expect(validarAdjunto("video/mp4", 16 * 1024 * 1024 + 1)).toEqual({
+  it.each([
+    ["imagen", "image/jpeg"],
+    ["video", "video/mp4"],
+    ["audio", "audio/mpeg"],
+    ["documento", "application/pdf"],
+  ])("SLT-88 R5: %s acepta 4 MB exactos y rechaza un byte mas", (tipo, mime) => {
+    expect(validarAdjunto(mime, 4_194_304)).toEqual({ ok: true, tipo });
+    expect(validarAdjunto(mime, 4_194_305)).toEqual({
       ok: false,
       motivo: "demasiado_grande",
-      limiteBytes: 16 * 1024 * 1024,
+      limiteBytes: 4_194_304,
     });
   });
 });
@@ -96,22 +92,38 @@ describe("chat-media-envio: nota de voz (R14/R15)", () => {
   });
 });
 
-describe("chat-media-envio: tope propio de documentos (D6/P3)", () => {
-  it("(f) LIMITE_BYTES.documento REFERENCIA la constante, no repite el numero", () => {
-    expect(LIMITE_DOCUMENTO_BYTES).toBe(25 * 1024 * 1024);
-    expect(LIMITE_BYTES.documento).toBe(LIMITE_DOCUMENTO_BYTES);
-    // Y es MAS restrictivo que los 100 MB de Meta a proposito: quien sube es un repartidor por
-    // red movil. Un PDF de 26 MB, que Meta aceptaria, aqui se rechaza.
-    expect(LIMITE_BYTES.documento).toBeLessThan(100 * 1024 * 1024);
-    expect(validarAdjunto("application/pdf", 26 * 1024 * 1024)).toEqual({
-      ok: false,
-      motivo: "demasiado_grande",
-      limiteBytes: 25 * 1024 * 1024,
+describe("chat-media-envio: tope del transporte (SLT-88)", () => {
+  it("R5: el limite unico son 4 MB y los cuatro tipos lo referencian", () => {
+    expect(LIMITE_ADJUNTO_BYTES).toBe(4_194_304);
+    expect(LIMITE_BYTES).toEqual({
+      imagen: 4_194_304,
+      video: 4_194_304,
+      audio: 4_194_304,
+      documento: 4_194_304,
     });
-    expect(validarAdjunto("application/pdf", LIMITE_DOCUMENTO_BYTES)).toEqual({
-      ok: true,
-      tipo: "documento",
-    });
+  });
+
+  it("R11: el multipart de un adjunto en el limite, con el peor pie y nombre, cabe bajo el corte", async () => {
+    // Aqui SI se parte de la constante: lo que se mide es si el limite vigente cabe en el corte de
+    // la plataforma. El corte es el literal. Bytes de verdad: un `size` falso no pesa en el cuerpo.
+    const bytesArchivo = Math.max(...Object.values(LIMITE_BYTES));
+    const archivo = new File(
+      [new Uint8Array(bytesArchivo)],
+      `${"n".repeat(251)}.pdf`,
+      { type: "application/pdf" },
+    );
+    const pie = "€".repeat(MAX_CAPTION); // 3 bytes en UTF-8: el peor caso de una unidad UTF-16.
+    const formData = new FormData();
+    formData.set("ordenId", "0d9f6c2a-3b1e-4c7d-9a55-1f2e3d4c5b6a");
+    formData.set("archivo", archivo);
+    formData.set("caption", pie);
+
+    const cuerpo = await new Response(formData).blob();
+
+    // Autocomprobacion: el archivo y el pie entraron enteros en el cuerpo medido.
+    expect(archivo.size).toBe(bytesArchivo);
+    expect(cuerpo.size).toBeGreaterThan(bytesArchivo + 3 * MAX_CAPTION);
+    expect(cuerpo.size).toBeLessThan(4_500_000);
   });
 });
 

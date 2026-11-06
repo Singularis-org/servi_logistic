@@ -71,11 +71,14 @@ const ROL_ADMIN_SATELITE = "adminSatelite";
 // vehiculo no puede recibir ordenes, asi que no se le deja nacer ni quedarse sin uno.
 const VEHICULO_ROLES = new Set<string>(["mensajero"]);
 
-// Mensaje de error de vehiculo segun el motivo (obligatorio para el rol vs inexistente).
-function vehiculoErrorMessage(reason: "required" | "not_found"): string {
-  return reason === "required"
-    ? "El vehiculo es obligatorio para el rol mensajero"
-    : "El vehiculo indicado no existe";
+// Mensaje de error de vehiculo segun el motivo: obligatorio para el rol, inexistente o, desde
+// SL-42 (R18), desactivado por la plataforma para elecciones nuevas.
+type VehiculoMotivo = "required" | "not_found" | "inactive";
+
+function vehiculoErrorMessage(reason: VehiculoMotivo): string {
+  if (reason === "required") return "El vehiculo es obligatorio para el rol mensajero";
+  if (reason === "inactive") return "Ese tipo de vehiculo ya no esta disponible; elige otro";
+  return "El vehiculo indicado no existe";
 }
 
 // Mensaje de error de zona segun el motivo (obligatoria para el rol vs inexistente).
@@ -425,7 +428,7 @@ export class UsuarioService implements IUsuarioService {
     if (input.vehiculoId !== undefined || input.rolId !== undefined) {
       const rolIdResultante = input.rolId ?? actual.rolId;
       const deseado = input.vehiculoId !== undefined ? input.vehiculoId : actual.vehiculoId;
-      const vehiculo = await this.resolverVehiculo(rolIdResultante, deseado);
+      const vehiculo = await this.resolverVehiculo(rolIdResultante, deseado, actual.vehiculoId);
       if (!vehiculo.ok) {
         return {
           status: "validation_error",
@@ -922,12 +925,17 @@ export class UsuarioService implements IUsuarioService {
   // zona). Para `mensajero` es OBLIGATORIO, por el mismo motivo que la zona: la
   // asignacion exige un mensajero con vehiculo, asi que dejarlo vacio crea un usuario
   // que no puede trabajar. Cuando se provee, se valida contra el catalogo.
+  //
+  // SL-42 (design §4.5; R18): un tipo inactivo no se ofrece para una eleccion NUEVA. `actual` es
+  // el vehiculo que el usuario ya tiene (solo en la edicion): conservarlo sigue siendo valido aunque
+  // el tipo se haya desactivado despues, porque el mensajero lo conserva.
   private async resolverVehiculo(
     rolId: string,
     deseado: string | null | undefined,
+    actual: string | null = null,
   ): Promise<
     | { ok: true; vehiculoId: string | null }
-    | { ok: false; reason: "required" | "not_found" }
+    | { ok: false; reason: VehiculoMotivo }
   > {
     const roles = await this.repo.listRoles();
     const rolValue = roles.find((r) => r.id === rolId)?.value;
@@ -941,6 +949,7 @@ export class UsuarioService implements IUsuarioService {
     if (this.vehiculoRepo) {
       const vehiculo = await this.vehiculoRepo.findById(deseado);
       if (!vehiculo) return { ok: false, reason: "not_found" };
+      if (!vehiculo.activo && deseado !== actual) return { ok: false, reason: "inactive" };
     }
     return { ok: true, vehiculoId: deseado };
   }

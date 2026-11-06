@@ -27,6 +27,9 @@ const filaPlan = {
   precioAnual: null,
   descuentoAnualPct: null,
   costoPorOrden: new Prisma.Decimal("100.00"),
+  // SLT-83 (R1): la fila de un plan de costo fijo trae las dos columnas del porcentual en null.
+  costoPorOrdenPct: null,
+  costoPorOrdenMinimo: null,
   archivadoAt: null,
   topesPorRol: [{ rol: "adminTienda", maximo: 3 }],
   modulos: [{ modulo: "ranking" }],
@@ -73,6 +76,7 @@ describe("SL-24 — el composition root de planes pasa PlanesRepository", () => 
         modulos: ["ranking"],
         precio: { tipo: "monto", mensual: "1000.00", anual: null }, // SLT-66 R28
         costoPorOrden: "100.00", // SLT-66 R28
+        costoPorOrdenPorcentual: null, // SLT-83 R1: plan de costo fijo
         archivado: false,
       },
     ]);
@@ -96,6 +100,7 @@ describe("SL-24 — el composition root de planes pasa PlanesRepository", () => 
         modulos: ["ranking"],
         precio: { tipo: "sin_precio" },
         costoPorOrden: null, // SLT-66 R8: costo por orden obligatorio; aquí, vacío.
+        costoPorOrdenPorcentual: null, // SLT-83 R1, R2: también obligatorio; null = no es porcentual.
       },
       { getActor: async () => SUPERADMIN },
     );
@@ -177,6 +182,7 @@ describe("SL-24 — el composition root de planes pasa PlanesRepository", () => 
         modulos: [],
         precio: { tipo: "sin_precio" },
         costoPorOrden: null, // SLT-66 R8: costo por orden obligatorio; aquí, vacío.
+        costoPorOrdenPorcentual: null, // SLT-83 R1, R2: también obligatorio; null = no es porcentual.
         vigenteDesde: "2020-01-01",
       },
       { getActor: async () => SUPERADMIN },

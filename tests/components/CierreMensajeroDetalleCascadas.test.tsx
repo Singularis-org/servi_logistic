@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { gestion478, grupos478, ingreso478 } from "@/tests/fixtures/gestion-detalle-478";
+import { FLETE_NO_ENTREGADAS_CON_IVA_LABEL } from "@/app/(app)/cierres-admin/_components/cierre-labels";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -1049,5 +1051,24 @@ describe("SL-39 — «Liquidación» pinta el IVA facturado entre el bruto y el 
 
   it("el rótulo sale de `IMPUESTO_ROTULO`: es el mismo que pinta la línea de la cascada", () => {
     expect(IVA_FACTURADO_LABEL).toBe(`${IMPUESTO_ROTULO} facturado`);
+  });
+});
+
+describe("SLT-54 R65 — la cascada del cierre de mensajero sigue al modelo", () => {
+  it("una gestión del nuevo", async () => {
+    await abrirDetalle({
+      ...CON_RECHAZO,
+      grupos: grupos478({
+        novedad: [gestion478({ gestionId: "g-slt54", resultado: "novedad", ingresoEmpresa: ingreso478({ tarifaModelo: "nuevo", tarifa: null }) })],
+      }),
+    });
+    expect(within(factura()).getByText(FLETE_NO_ENTREGADAS_CON_IVA_LABEL)).toBeInTheDocument();
+    expect(within(factura()).queryByText(FLETE_DEV_CON_IVA_LABEL)).toBeNull();
+  });
+
+  it("todo viejo: el rótulo de siempre", async () => {
+    await abrirDetalle();
+    expect(within(factura()).getByText(FLETE_DEV_CON_IVA_LABEL)).toBeInTheDocument();
+    expect(screen.queryByText(FLETE_NO_ENTREGADAS_CON_IVA_LABEL)).toBeNull();
   });
 });

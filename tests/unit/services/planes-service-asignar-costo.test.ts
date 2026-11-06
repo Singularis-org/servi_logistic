@@ -33,14 +33,15 @@ function plan(extra: Partial<PlanDTO> = {}): PlanDTO {
     modulos: ["analitica"],
     precio: MONTO,
     costoPorOrden: "100.00",
+    costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
     archivado: false,
     ...extra,
   };
 }
 
 function version(extra: Partial<VersionPlan> = {}): VersionPlan {
-  const { nombre, topes, modulos, precio, costoPorOrden } = plan();
-  return { nombre, topes, modulos, precio, costoPorOrden, ...extra };
+  const { nombre, topes, modulos, precio, costoPorOrden, costoPorOrdenPorcentual } = plan();
+  return { nombre, topes, modulos, precio, costoPorOrden, costoPorOrdenPorcentual, ...extra };
 }
 
 function doble() {

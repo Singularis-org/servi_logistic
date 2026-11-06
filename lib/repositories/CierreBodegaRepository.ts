@@ -19,6 +19,11 @@ import { saldoDe } from "@/lib/utils/conciliacion-satelite";
 // Feature 393 (design §2.3): las dos derivaciones de la cascada «lo que va a la central».
 // La resta vive en la funcion pura; el repositorio solo la llama.
 import { efectivoCubreDescuentos, paraLaCentral } from "@/lib/utils/ingreso-empresa";
+import {
+  CONTEO_DETALLE_MODELO_NUEVO,
+  consolidacionesConModeloNuevo,
+  incluyeModeloNuevoDe,
+} from "@/lib/repositories/_shared/detalle-modelo-nuevo";
 // SLT-76 (R3/R4): el MISMO predicado con el que `revertirConciliacion` rechaza (`con_asientos`).
 import {
   consolidacionesConDinero,
@@ -63,6 +68,7 @@ const CONSOLIDABLE_SELECT = {
   totalPagoMensajero: true, // feature 39/R18: snapshot del pago al mensajero del cierre_dia
   totalIngresoBodegaRechazos: true, // feature 56/R17: snapshot del ingreso de bodega por rechazos del cierre_dia
   mensajero: { select: NOMBRE_USUARIO_SELECT },
+  _count: CONTEO_DETALLE_MODELO_NUEVO, // SLT-54 (R71): en la misma sentencia, sin consulta por fila
 } as const;
 
 // Proyeccion de la cabecera de un cierre de bodega (join a zona/usuario + _count).
@@ -114,6 +120,7 @@ type BodegaResumenRow = Prisma.CierreBodegaGetPayload<{ select: typeof BODEGA_RE
 export function toBodegaResumenRow(
   r: BodegaResumenRow,
   conDinero: ReadonlySet<string>,
+  conModeloNuevo: ReadonlySet<string>,
 ): CierreBodegaResumenRow {
   const totales = totalesToString(r);
   const pagoMensajero = r.totalPagoMensajero.toFixed(2);
@@ -152,6 +159,7 @@ export function toBodegaResumenRow(
     conciliadoPorNombre:
       r.conciliadoPorUsuario === null ? null : nombreCompletoUsuario(r.conciliadoPorUsuario),
     conciliadoNota: r.conciliadoNota,
+    incluyeModeloNuevo: conModeloNuevo.has(r.id), // D40
   };
 }
 
@@ -166,7 +174,9 @@ export async function aResumenRows(
 ): Promise<CierreBodegaResumenRow[]> {
   const conciliadas = rows.filter((r) => r.conciliadoAt !== null).map((r) => r.id);
   const conDinero = await consolidacionesConDinero(cliente, conciliadas);
-  return rows.map((r) => toBodegaResumenRow(r, conDinero));
+  // D40: una consulta por lectura, como la de arriba. Las ocho lecturas de esta cabecera pasan por aqui.
+  const conModeloNuevo = await consolidacionesConModeloNuevo(cliente, rows.map((r) => r.id));
+  return rows.map((r) => toBodegaResumenRow(r, conDinero, conModeloNuevo));
 }
 
 /**
@@ -288,6 +298,7 @@ function toConsolidableRow(r: ConsolidableRow): CierreDiaConsolidableRow {
     totales: totalesToString(r),
     totalPagoMensajero: r.totalPagoMensajero.toFixed(2), // R18: snapshot money-safe STRING
     totalIngresoBodegaRechazos: r.totalIngresoBodegaRechazos.toFixed(2), // feature 56/R17: snapshot money-safe STRING
+    incluyeModeloNuevo: incluyeModeloNuevoDe(r), // SLT-54 (R71)
   };
 }
 

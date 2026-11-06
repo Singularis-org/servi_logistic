@@ -45,6 +45,7 @@ function buildRepo(original: WalletMovimientoDTO | null): IWalletMovimientoRepos
     crearMovimientos: vi.fn(async () => 1),
     listar: vi.fn(async () => ({ movimientos: [], total: 0 })),
     agregarPorCategoriaYTipo: vi.fn(async () => []),
+    categoriasConModeloNuevo: vi.fn(async () => []),
     obtenerPorId: vi.fn(async () => original),
     agregarPorCategoria: vi.fn(async () => ({
       gastoFijo: "0.00",

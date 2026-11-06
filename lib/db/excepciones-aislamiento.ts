@@ -195,6 +195,12 @@ export const EXCEPCIONES_DE_PLATAFORMA: readonly ExcepcionDeAislamiento[] = [
       "SLT-42: `zonasConEmpresas`, las zonas horarias de los países con al menos una empresa, para que la cola agende los jobs diarios por zona (R25); la lee la cola, que no tiene empresa",
   },
   {
+    archivo: "lib/actions/vehiculos-plataforma.ts",
+    ficha: "SL-42",
+    motivo:
+      "gestión del catálogo de vehículos por el superadmin, que no tiene empresa; congelar el nombre del actor en el rastro (R21)",
+  },
+  {
     archivo: "lib/repositories/PushEndpointPlataformaRepository.ts",
     ficha: "SL-18",
     motivo: "push, el último gana: borrar la suscripción de ese endpoint exacto si es de otra empresa (R26, R28)",

@@ -102,6 +102,7 @@ function buildRepo(): IWalletMovimientoRepository {
     }),
     listar: vi.fn().mockResolvedValue({ movimientos: [mov()], total: 1 }),
     agregarPorCategoriaYTipo: vi.fn().mockResolvedValue(AGREGADO),
+    categoriasConModeloNuevo: vi.fn().mockResolvedValue([]),
     obtenerPorId: vi.fn(async (id: string) => creados.get(id) ?? null),
     agregarPorCategoria: vi
       .fn()

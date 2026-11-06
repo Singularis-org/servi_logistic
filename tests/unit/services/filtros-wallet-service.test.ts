@@ -22,6 +22,7 @@ function repo(): IFiltrosWalletRepository & { [k: string]: ReturnType<typeof vi.
       { categoria: "egreso_sueldo", movimientos: 2 },
       { categoria: "ingreso_flete", movimientos: 1 },
     ]),
+    categoriasConModeloNuevoCaja: vi.fn(async () => []),
     contarConceptosTienda: vi.fn(async () => [
       { categoria: "flete", movimientos: 1 },
       { categoria: "cod_recaudado", movimientos: 3 },

@@ -13,6 +13,7 @@ import type {
   CierreDetalleGestion,
   CierreResultado,
   CierreTotales,
+  IngresoEmpresaDTO,
   TotalesIngresoEmpresa,
 } from "@/lib/interfaces/services/ICierreDiaService";
 import type { CierreEstado } from "@/lib/types/cierre";
@@ -41,6 +42,14 @@ import {
   FLETE_CON_IVA_LABEL,
   COMISION_CON_IVA_LABEL,
   FLETE_DEV_CON_IVA_LABEL,
+  FLETE_NO_ENTREGADAS_CON_IVA_LABEL,
+  FLETE_NO_ENTREGADAS_NOTA,
+  fleteDevConIvaDeGestion,
+  fleteNoEntregaLabel,
+  fulfillmentDeIngreso,
+  FULFILLMENT_COL,
+  hayGestionEnModeloNuevo,
+  ivaFleteNoEntregaLabel,
   INGRESO_TOTAL_COL,
   CAUSA_INCIDENTE_COL,
   INDEMNIZACION_COL,
@@ -57,19 +66,24 @@ import {
   FACTURADO_EMPRESA_LABEL,
   GANA_BODEGA_SATELITE_LABEL,
   PARA_LA_CENTRAL_NOTA,
+  PARA_LA_CENTRAL_NOTA_MODELO_NUEVO,
   PARA_LA_CENTRAL_NEGATIVO_NOTA,
   EFECTIVO_NO_CUBRE_NOTA,
   GANA_BODEGA_SATELITE_NOTA,
+  GANA_BODEGA_SATELITE_NOTA_MODELO_NUEVO,
   FLETE_RECHAZO_NO_DEDUCIBLE_NOTA,
   // FICHA 395 — los rotulos y las notas de las TRES cascadas del cierre de MENSAJERO. Mismo
   // camino y mismo motivo que los de la 393: el texto vive en el modulo PURO y las pantallas lo
   // piden por esta puerta, que es donde ya piden el resto.
   GANA_LA_TIENDA_LABEL,
   GANA_LA_TIENDA_NOTA,
+  GANA_LA_TIENDA_NOTA_MODELO_NUEVO,
   GANA_LA_TIENDA_NEGATIVO_NOTA,
   PAGO_TIENDA_HOY_NOTA,
+  PAGO_TIENDA_HOY_NOTA_MODELO_NUEVO,
   COBRADO_SOBRE_RECAUDADO_NOTA,
   NETO_EMPRESA_NOTA,
+  NETO_EMPRESA_NOTA_MODELO_NUEVO,
   NETO_EMPRESA_NEGATIVO_NOTA,
   FLETE_RECHAZO_YA_COBRADO_NOTA,
   FLETE_RECHAZO_AUN_NO_COBRADO_NOTA,
@@ -125,6 +139,12 @@ export {
   FLETE_CON_IVA_LABEL,
   COMISION_CON_IVA_LABEL,
   FLETE_DEV_CON_IVA_LABEL,
+  FLETE_NO_ENTREGADAS_CON_IVA_LABEL,
+  FLETE_NO_ENTREGADAS_NOTA,
+  fleteDevConIvaDeGestion,
+  fleteNoEntregaLabel,
+  fulfillmentDeIngreso,
+  hayGestionEnModeloNuevo,
   INGRESO_TOTAL_COL,
   CAUSA_INCIDENTE_COL,
   INDEMNIZACION_COL,
@@ -140,17 +160,22 @@ export {
   FACTURADO_EMPRESA_LABEL,
   GANA_BODEGA_SATELITE_LABEL,
   PARA_LA_CENTRAL_NOTA,
+  PARA_LA_CENTRAL_NOTA_MODELO_NUEVO,
   PARA_LA_CENTRAL_NEGATIVO_NOTA,
   EFECTIVO_NO_CUBRE_NOTA,
   GANA_BODEGA_SATELITE_NOTA,
+  GANA_BODEGA_SATELITE_NOTA_MODELO_NUEVO,
   FLETE_RECHAZO_NO_DEDUCIBLE_NOTA,
   // FICHA 395 — las doce de las tres cascadas del cierre de MENSAJERO, por el mismo camino.
   GANA_LA_TIENDA_LABEL,
   GANA_LA_TIENDA_NOTA,
+  GANA_LA_TIENDA_NOTA_MODELO_NUEVO,
   GANA_LA_TIENDA_NEGATIVO_NOTA,
   PAGO_TIENDA_HOY_NOTA,
+  PAGO_TIENDA_HOY_NOTA_MODELO_NUEVO,
   COBRADO_SOBRE_RECAUDADO_NOTA,
   NETO_EMPRESA_NOTA,
+  NETO_EMPRESA_NOTA_MODELO_NUEVO,
   NETO_EMPRESA_NEGATIVO_NOTA,
   FLETE_RECHAZO_YA_COBRADO_NOTA,
   FLETE_RECHAZO_AUN_NO_COBRADO_NOTA,
@@ -310,6 +335,12 @@ export function MensajeroBloqueadoBadge({
 export const PAGO_MENSAJERO_LABEL = "Pago al mensajero";
 // --- Feature 56: etiquetas del ingreso de bodega por rechazos (texto separado, i18n-ready) ---
 export const INGRESO_BODEGA_RECHAZOS_LABEL = "Ingreso de bodega por devoluciones a origen";
+// SLT-54 (R71): en el modelo nuevo la satélite cobra por cualquier resultado (SLT-52 R32), así que ese
+// total incluye entregas; nombrar la devolución diría que hubo una que no hubo.
+export const INGRESO_BODEGA_LABEL = "Ingreso de bodega";
+export function rotuloIngresoBodega(modeloNuevo: boolean): string {
+  return modeloNuevo ? INGRESO_BODEGA_LABEL : INGRESO_BODEGA_RECHAZOS_LABEL;
+}
 // --- Feature 102 (R8): subtotales del ingreso de bodega por rechazos, particionado por ORIGEN.
 // El total combinado sigue siendo el de la 56 (`INGRESO_BODEGA_RECHAZOS_LABEL`); estos dos son
 // las sublíneas del desglose (SLA del cron 99 vs manual del mensajero). Texto i18n-ready. ---
@@ -410,6 +441,9 @@ export const COBROS_NOTA = `Lo que se le cobró a la tienda por esta gestión, c
 /** El cierre SUMABLE del panel: sale del DTO (`ingresoEmpresa.total`), no se suma acá. */
 export const COBROS_TOTAL_LABEL = "Total cobrado";
 export const SIN_COMISION_NOTA = "Esta orden no cobra comisión COD.";
+// SLT-54 (R62): el título nombra el total del que queda fuera, para que no se lea dentro.
+export const IVA_FULFILLMENT_LABEL = "IVA de fulfillment";
+export const FULFILLMENT_FUERA_DEL_TOTAL_TITULO = `Fuera de «${COBROS_TOTAL_LABEL}»`;
 // --- Tarifa especial por distrito (texto separado, i18n-ready) ---
 /**
  * El flete SALIÓ del monto pactado para el distrito especial. Se resalta porque ese importe
@@ -443,8 +477,8 @@ function MarcaEspecialSinPacto() {
 }
 /**
  * Etiquetas de las dos filas del pacto especial. Se conservan TAL CUAL —incluido el «devuelta»
- * de la segunda— por la misma decisión de negocio que ya está escrita en
- * `configuracion/tarifas/_components/tarifas-labels.ts`: «Tarifa especial» es como ellos
+ * de la segunda— por la misma decisión de negocio que ya estaba escrita en la
+ * pantalla de tarifas anterior a SLT-54: «Tarifa especial» es como ellos
  * conocen esos dos campos, y son los que nombran las columnas `tarifa_especial` y
  * `tarifa_especial_devuelta`. La ficha 338 renombra el FLETE, no el pacto.
  */
@@ -473,7 +507,7 @@ export const IVA_COMISION_LABEL = "IVA comisión";
 /**
  * Los cuatro nombres de COLUMNA de la tabla de precios: la misma zona paga distinto dentro y
  * fuera del GAM, así que son cuatro cobros POSIBLES y no dos. Coinciden a propósito con los
- * rótulos de `/configuracion/tarifas` (`TARIFA_CAMPO_LABEL`): la misma cifra no puede llamarse
+ * rótulos que tenía `/configuracion/tarifas` antes de SLT-54: la misma cifra no puede llamarse
  * de dos maneras según por qué pantalla se entre.
  */
 export const VALOR_FLETE_LABEL = "Valor flete";
@@ -915,6 +949,65 @@ function pct(value: string): string {
 }
 
 /**
+ * SLT-54 (R62, R63, R65) — la tarjeta de una gestión del modelo nuevo. Lo congelado son conceptos, no
+ * una fila de `tarifas`: no hay columnas GAM ni pacto de los que explicar el importe, así que solo se
+ * pinta lo que cobró. Un concepto `null` no se cobró en este resultado y no lleva fila.
+ *
+ * El fulfillment va en su propia sección porque no suma en «Total cobrado» (SLT-52 R31). Con `null` el
+ * servidor se lo anuló a este actor (ficha 481) y la sección no existe: un 0 afirmaría que no se cobró.
+ */
+function DesgloseModeloNuevo({
+  ing,
+  resultado,
+  verFulfillment,
+}: Readonly<{
+  ing: IngresoEmpresaDTO;
+  resultado: CierreDetalleGestion["resultado"];
+  verFulfillment: boolean;
+}>) {
+  const fleteNoEntrega = fleteNoEntregaLabel(resultado);
+  return (
+    <div className="grid gap-6 sm:grid-cols-2">
+      <section className="flex flex-col" aria-label={COBROS_TITULO}>
+        <h4 className="mb-1 text-sm font-semibold">{COBROS_TITULO}</h4>
+        <DesgloseFila label={MONTO_COBRAR_LABEL} value={money(ing.montoCobrar)} />
+        {ing.flete === null ? null : <DesgloseFila label={FLETE_LABEL} value={money(ing.flete)} />}
+        {ing.ivaFlete === null ? null : (
+          <DesgloseFila label={IVA_FLETE_LABEL} value={money(ing.ivaFlete)} />
+        )}
+        {ing.fleteDevolucion === null ? null : (
+          <DesgloseFila label={fleteNoEntrega} value={money(ing.fleteDevolucion)} />
+        )}
+        {ing.ivaFleteDevolucion === null ? null : (
+          <DesgloseFila label={ivaFleteNoEntregaLabel(resultado)} value={money(ing.ivaFleteDevolucion)} />
+        )}
+        {ing.comisionCod === null ? null : (
+          <DesgloseFila label={COMISION_COD_LABEL} value={money(ing.comisionCod)} />
+        )}
+        {ing.ivaComisionCod === null ? null : (
+          <DesgloseFila label={IVA_COMISION_LABEL} value={money(ing.ivaComisionCod)} />
+        )}
+        {ing.cobraComision ? null : (
+          <p className="pt-1 text-xs text-muted-foreground">{SIN_COMISION_NOTA}</p>
+        )}
+        <div className="mt-1 border-t pt-1">
+          <DesgloseFila label={COBROS_TOTAL_LABEL} value={money(ing.total)} emphasis />
+        </div>
+      </section>
+      {!verFulfillment || ing.fulfillment === null ? null : (
+        <section className="flex flex-col" aria-label={FULFILLMENT_FUERA_DEL_TOTAL_TITULO}>
+          <h4 className="mb-1 text-sm font-semibold">{FULFILLMENT_FUERA_DEL_TOTAL_TITULO}</h4>
+          <DesgloseFila label={FULFILLMENT_COL} value={money(ing.fulfillment)} />
+          {ing.ivaFulfillment === null ? null : (
+            <DesgloseFila label={IVA_FULFILLMENT_LABEL} value={money(ing.ivaFulfillment)} />
+          )}
+        </section>
+      )}
+    </div>
+  );
+}
+
+/**
  * Desglose completo del dinero de UNA orden: los conceptos derivados (flete, IVA, comisión)
  * con la fórmula que los produjo, y la tarifa CONGELADA de la que salieron — incluida la
  * variante que NO se aplicó, para que se vea por qué se eligió una u otra.
@@ -922,11 +1015,23 @@ function pct(value: string): string {
  * Todos los montos llegan como STRING desde el server (money-safe): acá no se hace ninguna
  * aritmética de dinero, solo se muestran y se etiquetan.
  */
-export function DesgloseIngresoEmpresa({ g }: { g: CierreDetalleGestion }) {
+export function DesgloseIngresoEmpresa({
+  g,
+  verFulfillment = false,
+}: {
+  g: CierreDetalleGestion;
+  /** R62, la misma regla que la fila de la factura. Falla cerrado: el servidor ya lo anula (ficha 481). */
+  verFulfillment?: boolean;
+}) {
   // SL-20 (R19): la nota de «especial sin pacto» nombra el nivel con el nombre del país.
   const etiquetas = useEtiquetasGeograficas();
   const ing = g.ingresoEmpresa;
   if (!ing) return null;
+
+  // Antes que el gap de abajo: en el nuevo `tarifa` también es `null`, y la nota sería falsa (R63).
+  if (ing.tarifaModelo === "nuevo") {
+    return <DesgloseModeloNuevo ing={ing} resultado={g.resultado} verFulfillment={verFulfillment} />;
+  }
 
   // Gap conocido (feature 69/R9): la tienda no tenía tarifa vigente al solicitar el cierre,
   // así que NO se derivó ningún concepto. Es un aviso real, no un error: el cierre es válido.
@@ -1167,9 +1272,12 @@ export const COLUMNA_CAUSA_INCIDENTE: Column<CierreDetalleGestion> = {
 export function TotalesIngresoPanel({
   totales,
   ariaLabel = INGRESO_PANEL_LABEL,
+  modeloNuevo = false,
 }: Readonly<{
   totales: TotalesIngresoEmpresa;
   ariaLabel?: string;
+  /** R65: alguna gestión del cierre es del modelo nuevo. */
+  modeloNuevo?: boolean;
 }>) {
   return (
     <section aria-label={ariaLabel} className="flex flex-col gap-3">
@@ -1181,7 +1289,7 @@ export function TotalesIngresoPanel({
           <TotalItem label={FLETE_CON_IVA_LABEL} value={money(totales.fleteConIva)} />
           <TotalItem label={COMISION_CON_IVA_LABEL} value={money(totales.comisionConIva)} />
           <TotalItem
-            label={FLETE_DEV_CON_IVA_LABEL}
+            label={modeloNuevo ? FLETE_NO_ENTREGADAS_CON_IVA_LABEL : FLETE_DEV_CON_IVA_LABEL}
             value={money(totales.fleteDevolucionConIva)}
           />
           <TotalItem label={INGRESO_TOTAL_LABEL} value={money(totales.total)} emphasis />

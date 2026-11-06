@@ -966,7 +966,22 @@ describe("enviarMediaChat (R11/R12/R26/R27)", () => {
       { getActor: getActor(MENSAJERO), ordenReader: ordenReader(ORDEN_DATA), service },
     );
 
-    expect(res).toEqual({ status: "demasiado_grande", limiteBytes: 5 * 1024 * 1024 });
+    expect(res).toEqual({ status: "demasiado_grande", limiteBytes: 4_194_304 });
+    expect(service.enviarMedia).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["video de 5 MB", "clip.mp4", "video/mp4"],
+    ["PDF de 5 MB", "factura.pdf", "application/pdf"],
+  ])("SLT-88 R6: %s responde demasiado_grande con 4 MB, sin llamar al service", async (_c, nombre, mime) => {
+    const service = serviceFake();
+
+    const res = await enviarMediaChat(
+      formData({ archivo: archivo({ nombre, mime, bytes: 5 * 1024 * 1024 }) }),
+      { getActor: getActor(MENSAJERO), ordenReader: ordenReader(ORDEN_DATA), service },
+    );
+
+    expect(res).toEqual({ status: "demasiado_grande", limiteBytes: 4_194_304 });
     expect(service.enviarMedia).not.toHaveBeenCalled();
   });
 

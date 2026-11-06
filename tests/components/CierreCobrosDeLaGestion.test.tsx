@@ -75,6 +75,7 @@ function tarifa(over: Partial<TarifaSnapshotDTO> = {}): TarifaSnapshotDTO {
 /** Base NEUTRA: ningún concepto derivado, total en cero. Es una REPROGRAMADA. */
 function ingreso(over: Partial<IngresoEmpresaDTO> = {}): IngresoEmpresaDTO {
   return {
+    tarifaModelo: "viejo",
     montoCobrar: "10000.00",
     cobraComision: true,
     esCentral: false,

@@ -170,12 +170,15 @@ export interface FuentesEtiqueta {
   plan: { nombre: string };
   /**
    * SLT-52 (R14) — un valor del modelo nuevo de tarifas: la etiqueta legible de su concepto y del
-   * nivel donde vive (zona, grupo, tienda). Vocabulario del catalogo y nombres de configuracion;
-   * nunca un dato de cliente. El importe va en `monto`/`valor_*`, no aqui.
+   * nivel donde vive (zona, grupo, tienda, y desde SLT-55 el mensajero con su valor propio). Vocabulario
+   * del catalogo y nombres de configuracion o de operadores; nunca un dato de cliente. El importe va en
+   * `monto`/`valor_*`, no aqui.
    */
   tarifa_valor: { concepto: string; nivel: string | null };
   /** SLT-52 (R14) — un grupo de distritos: su nombre y el de su zona, como `zona`. */
   grupo_distritos: { nombre: string; zonaNombre: string | null };
+  /** SLT-54 (R4) — la activacion es una por empresa: la etiqueta es la del hecho, sin dato variable. */
+  tarifa_activacion: Record<string, never>;
 }
 
 /**
@@ -264,6 +267,7 @@ const CONSTRUCTORES: {
   },
   tarifa_valor: (f) => unir(f?.concepto, f?.nivel),
   grupo_distritos: (f) => unir(f?.nombre, f?.zonaNombre),
+  tarifa_activacion: () => "Tarifas nuevas",
 };
 
 /**

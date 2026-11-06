@@ -1185,7 +1185,23 @@ describe("Feature 316 · enviarMedia (R3/R11/R17/R18/R19/R20)", () => {
       adjunto: adjuntoFake({ bytes: 6 * 1024 * 1024 }),
     });
 
-    expect(res).toEqual({ status: "demasiado_grande", limiteBytes: 5 * 1024 * 1024 });
+    expect(res).toEqual({ status: "demasiado_grande", limiteBytes: 4_194_304 });
+    expect(subidor.subir).not.toHaveBeenCalled();
+    expect(msg.insertarSaliente).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["video de 5 MB", "clip.mp4", "video/mp4"],
+    ["PDF de 5 MB", "factura.pdf", "application/pdf"],
+  ])("SLT-88 R6: %s es demasiado_grande con 4 MB, sin subir", async (_c, nombre, mime) => {
+    const { service, msg, subidor } = servicio();
+
+    const res = await service.enviarMedia({
+      ...INPUT_BASE,
+      adjunto: adjuntoFake({ mime, nombre, bytes: 5 * 1024 * 1024 }),
+    });
+
+    expect(res).toEqual({ status: "demasiado_grande", limiteBytes: 4_194_304 });
     expect(subidor.subir).not.toHaveBeenCalled();
     expect(msg.insertarSaliente).not.toHaveBeenCalled();
   });

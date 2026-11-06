@@ -37,7 +37,8 @@ describe("469 — WalletService (caja)", () => {
     const listar = vi.fn<(f: ListarMovimientosFiltros) => Promise<{ movimientos: never[]; total: number }>>(async () => ({ movimientos: [], total: 0 }));
     const agregarPorCategoriaYTipo = vi.fn(async () => []);
     const primerDiaDeLaCaja = vi.fn(async () => null);
-    const repo = { listar, agregarPorCategoriaYTipo, primerDiaDeLaCaja } as unknown as IWalletMovimientoRepository;
+    const categoriasConModeloNuevo = vi.fn(async () => []);
+    const repo = { listar, agregarPorCategoriaYTipo, primerDiaDeLaCaja, categoriasConModeloNuevo } as unknown as IWalletMovimientoRepository;
     const svc = new WalletService(repo, {} as WalletTxClient, SIN_SALDO, SIN_DOCUMENTOS, undefined, busqueda, reglasPaisFijas());
     return { svc, listar, agregarPorCategoriaYTipo };
   }

@@ -157,3 +157,21 @@ describe("app/postulacion/page.tsx — salida a la landing", () => {
     expect(bloqueCentrado).toContainElement(screen.getByTestId("postulacion-form-stub"));
   });
 });
+
+// SL-42 (R17, R18): la postulación pública sigue ofreciendo el catálogo (R17), pero solo los tipos
+// activos (R18). El recorte lo hace el repositorio con `WHERE_VEHICULO_ELEGIBLE`; aquí se fija que
+// la página lo pide y que no le añade nada.
+describe("app/postulacion/page.tsx — solo vehículos activos (SL-42, R17/R18)", () => {
+  it("pide al repositorio solo los activos y ofrece exactamente lo que devuelve", async () => {
+    findManyVehiculosMock.mockResolvedValue([{ id: "veh-moto", name: "moto", activo: true }]);
+    tipoFindManyMock.mockResolvedValue([{ id: "tipo-cedula", value: "cedula" }]);
+
+    const { default: PostulacionPage } = await import("@/app/postulacion/page");
+    const element = await PostulacionPage();
+    render(element);
+
+    expect(findManyVehiculosMock).toHaveBeenCalledTimes(1);
+    expect(findManyVehiculosMock).toHaveBeenCalledWith({ soloActivos: true });
+    expect(screen.getByTestId("postulacion-form-stub")).toHaveAttribute("data-vehiculos", "Moto");
+  });
+});

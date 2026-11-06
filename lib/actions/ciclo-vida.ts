@@ -11,8 +11,8 @@
 // mueve la MISMA barra; duplicar aqui el parseo o —peor— el resolutor de alcance seria abrir
 // una sexta puerta a la misma frontera multi-tenant.
 //
-// ⚠ ESTA LECTURA MIDE TIEMPO, NO VOLUMEN, y su ventana cae sobre la TRANSICION TERMINAL, no
-// sobre la fecha efectiva de la orden. Las dos cosas las decide el REPOSITORIO y estan
+// ⚠ ESTA LECTURA MIDE TIEMPO, NO VOLUMEN, y su ventana cae sobre la GESTION FINAL, no sobre la
+// fecha de carga de la orden. Las dos cosas las decide el REPOSITORIO y estan
 // declaradas alli; aqui no se recorta ni se reinterpreta nada del filtro: se pasa entero y cada
 // capa toma lo suyo, que es lo que mantiene el contrato identico para las seis.
 

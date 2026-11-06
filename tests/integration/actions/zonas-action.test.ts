@@ -77,10 +77,8 @@ const validCrear = {
  */
 const validActualizar = {
   nombre: "Zona Sur",
-  cobroVehiculo: false,
   esCentral: false,
   distritoIds: ["d1"],
-  tarifas: [],
 };
 
 describe("sin sesion -> unauthenticated sin tocar el service", () => {
@@ -330,7 +328,7 @@ function repoConGuarda(): IZonaRepository {
 }
 
 describe("376/R7 — la Server Action rechaza sola, sin formulario de por medio", () => {
-  const sinMarca = { nombre: "GAM", cobroVehiculo: false, distritoIds: ["d1"], tarifas: [] };
+  const sinMarca = { nombre: "GAM", distritoIds: ["d1"] };
 
   it("⭑ R5/R6/R7: `esCentral: false` sobre la zona central -> validation_error en `esCentral`", async () => {
     const repo = repoConGuarda();
@@ -497,5 +495,59 @@ describe("SLT-51/R7/R8 — actualizar sin costos, o con solo uno de los dos", ()
     expect(r.status).toBe("validation_error");
     if (r.status === "validation_error") expect(Object.keys(r.fieldErrors)).toEqual(["tarifas"]);
     expect(llamadasAlRepo(repo)).toBe(0);
+  });
+});
+
+// SLT-54 (R27, enmienda de SLT-51 R9 solo en la action): los esquemas y `ZonaService` se quedan para los
+// sembrados; lo que deja de aceptar costos es este borde. Se usa el service REAL: un doble no veria que el
+// repositorio, que es quien escribe `tarifa_zona_mensajero` y `zona.cobro_vehiculo`, no llega a llamarse.
+describe("SLT-54 R27 — la action rechaza costos", () => {
+  const TARIFA = { cobroEntregado: 900, cobroRechazado: 450 };
+  const zonaSinCostos = { nombre: "Zona Sur", distritoIds: ["d1"] };
+  const MENSAJE = ["Los costos de la zona ya no se editan aquí: se configuran en Tarifas."];
+
+  async function rechazo(
+    llamar: (deps: { zonaService: ZonaService; getActor: ReturnType<typeof getActor> }) => Promise<{ status: string }>,
+  ) {
+    const repo = repoConGuarda();
+    const r = await llamar({ zonaService: new ZonaService(repo), getActor: getActor(MAESTRO) });
+    expect(llamadasAlRepo(repo)).toBe(0);
+    return r;
+  }
+
+  it("crearZona con cobroVehiculo verdadero", async () => {
+    const r = await rechazo((deps) =>
+      crearZona({ ...validCrear, cobroVehiculo: true, tarifas: [{ ...TARIFA, vehiculoId: "v1" }] }, deps),
+    );
+    expect(r).toEqual({
+      status: "validation_error",
+      fieldErrors: { cobroVehiculo: MENSAJE, tarifas: MENSAJE },
+    });
+  });
+
+  it("crearZona con una tarifa, sin cobroVehiculo", async () => {
+    const r = await rechazo((deps) => crearZona({ ...validCrear, tarifas: [TARIFA] }, deps));
+    expect(r).toEqual({ status: "validation_error", fieldErrors: { tarifas: MENSAJE } });
+  });
+
+  it("crearZona sin costos, o con los valores por defecto escritos, sigue creando", async () => {
+    for (const payload of [validCrear, { ...validCrear, cobroVehiculo: false, tarifas: [] }]) {
+      const repo = repoConGuarda();
+      const r = await crearZona(payload, { zonaService: new ZonaService(repo), getActor: getActor(MAESTRO) });
+      expect(r.status).toBe("ok");
+      expect((repo.create as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(1);
+    }
+  });
+
+  it.each([
+    ["en falso y sin filas", { cobroVehiculo: false, tarifas: [] }],
+    ["en verdadero y con filas", { cobroVehiculo: true, tarifas: [{ ...TARIFA, vehiculoId: "v1" }] }],
+    ["en falso y con una fila", { cobroVehiculo: false, tarifas: [TARIFA] }],
+  ])("actualizarZona con los dos, %s", async (_caso, costos) => {
+    const r = await rechazo((deps) => actualizarZona("z1", { ...zonaSinCostos, ...costos }, deps));
+    expect(r).toEqual({
+      status: "validation_error",
+      fieldErrors: { cobroVehiculo: MENSAJE, tarifas: MENSAJE },
+    });
   });
 });

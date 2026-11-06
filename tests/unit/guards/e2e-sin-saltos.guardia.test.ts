@@ -131,13 +131,8 @@ export interface Excepcion {
   vence: string;
 }
 
-export const EXCEPCIONES: readonly Excepcion[] = [
-  {
-    ruta: "e2e/zona-especial-dos-empresas.spec.ts",
-    motivo: "SLT-51 retiró Editar zona → Especial; SLT-54 lo reescribe contra su pantalla nueva",
-    vence: "2026-11-30",
-  },
-];
+// Vacía desde SLT-54 (R69), que reescribió `e2e/zona-especial-dos-empresas.spec.ts`, la última que había.
+export const EXCEPCIONES: readonly Excepcion[] = [];
 
 const FECHA_ISO = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -537,8 +532,7 @@ describe("SL-44 R9, R13, R19, D3 — el E2E sale verde de verdad", () => {
         ]);
       });
 
-      it("la lista real: cada entrada con ruta en e2e/, motivo y fecha ISO", () => {
-        expect(EXCEPCIONES.length).toBeGreaterThan(0);
+      it("la lista real: vacía, o cada entrada con ruta en e2e/, motivo y fecha ISO", () => {
         for (const ex of EXCEPCIONES) {
           expect(ex.ruta).toMatch(/^e2e\/.+\.spec\.ts$/);
           expect(ex.motivo.length).toBeGreaterThan(0);

@@ -616,10 +616,6 @@
       "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
       "desde": "2026-10-22"
     },
-    "tests/integration/db/saldo-satelites.int.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
     "tests/integration/db/saldos-tiendas-busqueda-463.test.ts": {
       "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
       "desde": "2026-10-22"
@@ -713,8 +709,8 @@
       "desde": "2026-10-22"
     },
     "tests/integration/db/whatsapp-envio-ejecucion-admintienda.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
+      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada). Nota (SLT-83, PR #79): mismo helper `usuarioModelo` que sus hermanos de la 474; en dev pasaba solo por el orden de los archivos entre shards (otro archivo dejaba un usuario visible). Evidencia en progress/impl_SLT-83.md > Rojos de CI (PR #79).",
+      "desde": "2026-11-05"
     },
     "tests/integration/db/whatsapp-envio-entrega-estado-webhook.test.ts": {
       "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",

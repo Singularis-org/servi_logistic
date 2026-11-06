@@ -214,6 +214,17 @@ export const WALLET_IVA_SEED = [
 
 export type WalletCategoriaIva = (typeof WALLET_IVA_SEED)[number];
 
+/**
+ * D39 — las categorias cuyo rotulo cambia con el modelo de tarifa del cierre. Solo estas dicen
+ * «devolución a origen» de un cobro que, en el modelo nuevo, suma también reprogramado, novedad e incidente.
+ */
+export const WALLET_CATEGORIA_ROTULO_POR_MODELO_SEED = [
+  "ingreso_flete_devolucion",
+  "ingreso_iva_flete_devolucion",
+] as const satisfies readonly WalletMovimientoCategoria[];
+
+export type WalletCategoriaRotuloPorModelo = (typeof WALLET_CATEGORIA_ROTULO_POR_MODELO_SEED)[number];
+
 // SL-39 (design §2.1, R8) — los ingresos propios que SI son ganancia: la columna «Ingresos» de la
 // tarjeta de la composicion. `WALLET_INGRESO_PROPIO_SEED` no cambia (sigue siendo «todos los ingresos
 // propios», y la guardia de composicion lo exige). Se escribe como lista y no como filtro para que
@@ -378,6 +389,16 @@ export type WalletMovimientoDTO = {
    * Las descargas no incluyen este campo (R58).
    */
   documento: DocumentoCajaDTO | null;
+  /**
+   * SLT-54 (menor 6 de la revision F2.2) — ¿el cierre del que nace esta fila tiene alguna gestion
+   * congelada con el modelo nuevo? Sale de `cierre_detail.tarifa_modelo`, no del interruptor actual de
+   * la empresa, y solo puede ser `true` con origen `cierre_dia`.
+   *
+   * Lo puebla `WalletMovimientoRepository` en `listar` (el libro, su descarga y el detalle de una fila
+   * de la composicion) y en `obtenerPorId`, con UNA consulta por lectura. `obtenerPorClave` y
+   * `obtenerPorOrigen` son de los caminos de escritura y no lo traen. Ausente se lee como modelo viejo.
+   */
+  incluyeModeloNuevo?: boolean;
 };
 
 /**
@@ -600,6 +621,12 @@ export type ComposicionGananciaDTO = {
   iva: Record<WalletCategoriaIva, string>;
   /** SL-39 (R8) — ingresos de IVA menos su reverso. Identico a `CajaResumenDTO.iva`. */
   totalIva: string;
+  /**
+   * D39 — las filas de la tarjeta que, en el conjunto consultado, incluyen algun cobro congelado con el
+   * modelo nuevo: las pide `conceptoDeMovimientoCaja`. Sale de `cierre_detail.tarifa_modelo`, no del
+   * interruptor actual de la empresa. Vacia o ausente: el texto de siempre.
+   */
+  categoriasConModeloNuevo?: WalletCategoriaRotuloPorModelo[];
 };
 
 // Feature 45 (R11) — desglose de egresos administrativos por tipo para el conjunto

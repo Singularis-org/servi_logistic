@@ -167,6 +167,15 @@ esta bien hecha, no solo si "funciona".
     zona (`lib/services/jobs/serie-diaria-por-zona.ts`). `pais-sin-literales.guardia` impide escribir en
     el servidor la zona de CR, un desfase fijo o el `506`, y exige el real en cada composition root. Los
     envoltorios `*-cr.ts` quedan solo para la UI, en su lista de excepciones (SLT-81; SINPE, SL-22).
+- **Catálogo de vehículos (SL-42, 2026-11-04).** `vehiculos` es uno solo para todas las empresas, que
+  solo lo leen: el `maestro` en el formulario de usuarios y la postulación pública, y solo los activos
+  para una elección nueva (`WHERE_VEHICULO_ELEGIBLE`, `lib/repositories/_shared/vehiculo-activo.ts`).
+  - **Edición:** es del superadmin (`GESTION_ROLES = ROLES_PLATAFORMA` en `VehiculoService`). Crea,
+    renombra, activa y desactiva desde `/plataforma/vehiculos`; no hay borrado. El borde
+    `lib/actions/vehiculos-plataforma.ts` corre el servicio dentro de `comoPlataforma` y está en
+    `EXCEPCIONES_DE_PLATAFORMA`. `/configuracion/vehiculos` ya no existe.
+  - **Rastro:** cada escritura deja una fila en `vehiculo_rastro`, en la misma transacción. Esa tabla
+    tiene `REVOKE ALL` para `servi_app`. Nada se escribe en `historial_accion`.
 - **Módulos por empresa (SL-23, 2026-10-26).** Cada empresa tiene un núcleo que nunca se apaga y 3
   módulos apagables (`lib/modulos/catalogo.ts`, enum `modulo_apagable`). Recolección, Bodegas
   satélite, API e integraciones y WhatsApp fueron apagables hasta el 2026-10-27, y Wallet hasta el
@@ -250,7 +259,7 @@ Decisión del humano (plan-saas, 2026-10-20/21): una sola base compartida, datos
 
 - **Tablas.** `tarifa_valor` (un valor por concepto del catálogo fijo `lib/tarifas/catalogo.ts`,
   en modo `monto` o `porcentaje`, con su nivel: tienda+grupo, tienda+zona, tienda general, grupo,
-  zona, grupo+vehículo, zona+vehículo), `grupo_distritos` y `grupo_distritos_distrito` (un distrito
+  zona, grupo+vehículo, zona+vehículo y `mensajero`), `grupo_distritos` y `grupo_distritos_distrito` (un distrito
   en un solo grupo por zona). Lo congelado al cerrar: `cierre_detail.tarifa_modelo`,
   `cierre_detail_concepto` (cobro a la tienda por orden) y `gestion_pago_congelado` (pago por
   gestión). Las cinco llevan `organizacion_id` y RLS como el resto.
@@ -263,13 +272,28 @@ Decisión del humano (plan-saas, 2026-10-20/21): una sola base compartida, datos
   flete sin IVA que ese cierre le cobra a la tienda por esa gestión (lo congelado, no lo vivo).
   Todo `new CierreDiaRepository(`, `new CierreDiaService(` y `new CorteDiarioService(` recibe el
   repositorio de tarifas: lo vigila `tests/unit/guards/tarifas-resolver-inyectado.guardia.test.ts`.
-- **Interruptor por empresa.** Una empresa está en el modelo nuevo si tiene al menos una fila en
-  `tarifa_valor`; si no, se calcula exactamente como antes (`tarifas` y `tarifa_zona_mensajero`).
-  **Consecuencia:** el primer valor nuevo apaga el modelo viejo de la empresa entera, y lo que no
-  tenga valor queda «sin tarifa» (0 en el cierre, 409 en la API). La migración de datos de una
-  empresa (SLT-53) va antes de abrirle la pantalla de tarifas (SLT-54).
+- **Interruptor por empresa (SLT-54).** Una empresa está en el modelo nuevo si tiene su fila en
+  `tarifa_activacion`; si no, se calcula exactamente como antes (`tarifas` y
+  `tarifa_zona_mensajero`), aunque ya tenga valores en `tarifa_valor`. Decide la activación, no la
+  existencia de un valor: digitar no cambia ningún importe. El acto es único, del `maestro`
+  («Activar tarifas nuevas»), y la app no puede deshacerlo (`REVOKE UPDATE, DELETE` a `servi_app`).
+  **Consecuencia:** al activar, el modelo viejo se apaga para toda la empresa, y lo que no tenga
+  valor queda «sin tarifa» (0 en el cierre, 409 en la API); por eso el diálogo lista los faltantes y
+  pide confirmarlos. Desde el siguiente cierre: los cierres ya hechos no cambian. Una empresa con
+  valores al aplicar la migración queda activada, para que su cálculo no cambie.
+- **Valor propio del mensajero (SLT-55).** El nivel `mensajero` es el pago de UN mensajero por UN
+  resultado, sin zona, grupo, tienda, vehículo ni IVA. Gana sobre grupo y zona en cualquier zona donde
+  trabaje, y lo que no tenga digitado usa la precedencia de siempre. Un 0 escrito paga 0. En porcentaje,
+  la base es el flete sin IVA de la orden, tenga o no valor de pago la zona del mensajero. No cuenta
+  como cobertura: los faltantes de una zona no lo miran. Se conserva si el mensajero se da de baja, y
+  se sigue pagando en las gestiones suyas que se cierren.
+- **Sin migración de datos.** SLT-53 se canceló: nada copia las tarifas actuales al modelo nuevo.
+  Las digita la empresa en `/configuracion/tarifas`, con lo que rige hoy al lado como referencia
+  («Hoy rige»), calculada con las mismas funciones que el modelo viejo y sin copiarse al campo.
 - **Quién escribe.** Solo `TarifaValorService` y `GrupoDistritosService` (fábrica
-  `lib/tarifas/servicios.ts`), con historial; escribe el `maestro`, leen `maestro` y `admin`. Lo
+  `lib/tarifas/servicios.ts`), con historial; escribe el `maestro`, leen `maestro` y `admin`. Ninguna
+  Server Action escribe ya en `tarifas`, `tarifa_zona_mensajero` ni `distrito_zona_especial`
+  (`tarifas-sin-escritura-vieja.guardia`): el modelo viejo solo se lee, hasta que lo retire SLT-57. Lo
   congelado lo escribe solo el cierre (`CierreDiaRepository`) y nadie lo recalcula al leer
   (`tarifaDe` en `lib/utils/cierre-detalle.ts`).
 

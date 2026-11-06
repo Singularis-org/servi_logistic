@@ -150,7 +150,7 @@ describeSiHayBase("SLT-66 — el listado de «Empresas»: plan y cobro vigente (
     } as const;
     for (const k of ["A", "B", "C", "D"] as const) {
       expect(r[k].cargo, `cargo de ${k}`).toEqual([esperado[k]]);
-      expect(r[k].listado.cobroVigente, `listado de ${k}`).toEqual(esperado[k]);
+      expect(r[k].listado.cobroVigente, `listado de ${k}`).toEqual({ modo: "fijo", ...esperado[k] }); // SLT-83: lleva su modo
     }
   });
 
@@ -183,7 +183,7 @@ describeSiHayBase("SLT-66 — el listado de «Empresas»: plan y cobro vigente (
       });
       const esperado = { monto: "0.00", fuente: "sin_configurar" };
       expect(r.cargo).toEqual([esperado]);
-      expect(r.listado.cobroVigente).toEqual(esperado);
+      expect(r.listado.cobroVigente).toEqual({ modo: "fijo", ...esperado }); // SLT-83: lleva su modo
       expect(r.listado.plan).toBeNull();
     } finally {
       await tarifaGlobal?.fijar(GLOBAL);
