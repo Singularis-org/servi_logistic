@@ -407,3 +407,82 @@ empresa, probados con dobles y contra Postgres; contrato v1 22/22 sin regrabar; 
 
 Veredicto T5: rutas v2 y suites T5.3–T5.8 en verde contra Postgres; contrato v1 22/22; falta confirmar la corrida
 final de guardias tras el alta en reparto.
+
+## T6–T8 + caso de cupo R17 (implementer + backend_dev ×3 + frontend_dev, 2026-11-06)
+
+### Commits
+- `1ed838df` T6.1 · `f0efb433` T6.2 · `d5eb61e7` T8.1 · `f018ede0` T8.2 · `5b28d1f9` T7.1 · `121b40a1` T7.2 ·
+  `1bbfea1e` T6.3 · `214249b3` R17 cupo · cierre de tanda (este archivo y tasks.md).
+
+### Archivos
+- T6.1: `lib/utils/plantilla-geo.ts` (nuevo), `tests/unit/utils/plantilla-geo.test.ts` (nuevo),
+  `tests/unit/guards/geografia-dominio-puro.guardia.test.ts` (bloque nuevo para plantilla-geo).
+- T6.2: `lib/services/geo-resolucion.ts` (`geoInputDesdeColumnasDeNivel`, `EntradaDeNiveles`, 2 mensajes),
+  `lib/services/BulkOrdenService.ts` (`cargarMasiva` elige extractor por forma de país),
+  `tests/unit/services/bulk-orden-service.n-niveles.test.ts` (nuevo).
+- T6.3: `app/(app)/ordenes/page.tsx`, `_components/{OrdenesListado,OrdenesModule,OrdenesCargaMasivaButton,
+  OrdenesCargaUpload,OrdenesCargaPreview}.tsx`, `_components/carga-masiva-fields.ts` (`camposDePlantilla`),
+  `_components/carga-masiva-export-errores.ts` (`camposExportErrores`), `lib/types/carga-masiva.ts`
+  (`cabecerasObligatorias`, `findMissingHeaders` con 2º arg opcional), tests nuevos
+  `tests/components/CargaMasivaColumnasGeo.test.tsx` y `tests/components/OrdenesCargaColumnasGeoCableado.test.tsx`.
+- T7.1: `lib/api/openapi-spec.ts`, `docs/api/api-key-openapi.yaml`, `tests/unit/api/openapi-v2.test.ts` (nuevo),
+  `tests/unit/guards/openapi-canal-rutas-reales.guardia.test.ts` (escanea `app/api/v2`),
+  `tests/unit/api/openapi-177-paths-pdf-y-carga-id.test.ts` (censo 9→14, autorizado por tasks).
+- T7.2: `docs/api/servi-logistic-api-key.postman_collection.json` (carpeta v2, 5 peticiones), `docs/api/CHANGELOG.md`
+  (entrada `2026-11-xx`), `tests/unit/api/postman-changelog-v2.test.ts` (nuevo).
+- T8.1: `scripts/geo-payloads-contrato-v1.ts` (nuevo), `package.json` (`geo:payloads-contrato`).
+- T8.2: `tests/unit/scripts/geo-payloads-contrato-v1.test.ts` (nuevo, 17 tests).
+- R17: `tests/integration/api/v2-ordenes.route.test.ts` (caso nuevo de cupo; solo añadido).
+
+### Mapa R → test (esta tanda)
+| R | Test |
+|---|---|
+| R6, R7, R8 | `tests/unit/scripts/geo-payloads-contrato-v1.test.ts` |
+| R17 (cupo) | `tests/integration/api/v2-ordenes.route.test.ts` › «R17: con la empresa al tope de su plan… mismo 409 `tope_plan` que v1» |
+| R29 | `plantilla-geo.test.ts` (CR → null) + `bulk-orden-service.n-niveles.test.ts` + `CargaMasivaColumnasGeo.test.tsx` / `OrdenesCargaColumnasGeoCableado.test.tsx` (sin prop / CR) |
+| R30 | `plantilla-geo.test.ts` (2 y 4 niveles, mezcla y choque → `nivel_{n}`) + casos no-CR de los 2 tests de componente |
+| R31 (+R13, R15, R16 en sesión) | `tests/unit/services/bulk-orden-service.n-niveles.test.ts` |
+| R32 | existentes sin cambio de aserciones: `bulk-orden-service*` (7), `carga-masiva-plantilla-roundtrip`, `carga-masiva-errores-roundtrip`, tests de componente de carga masiva y de página |
+| R34 | `tests/unit/api/openapi-v2.test.ts` + `openapi-canal-rutas-reales.guardia.test.ts` + `openapi-177-paths-pdf-y-carga-id.test.ts` |
+| R35 | `tests/unit/api/postman-changelog-v2.test.ts` |
+| R1 | `openapi-v1-congelado.test.ts` sigue verde, fixture intacto |
+
+Sin test en esta tanda (por diseño): R36 (gate de CI, T9.2) y los payloads reales de R2/R9 (T9.1, persona).
+
+### Evidencia (`logistic_slt45` local, `--maxWorkers=1`, `NODE_OPTIONS=--max-old-space-size=8192`)
+- `pnpm exec tsc --noEmit -p .` → exit 0. `pnpm exec eslint` de todos los .ts/.tsx tocados desde `162ff381` → exit 0.
+- contrato-v1 + openapi-v1-congelado + openapi-v2 + postman-changelog-v2 + openapi-177 + script + plantilla-geo +
+  n-niveles + 2 tests de componente + v2-ordenes: **11 archivos, 164 pasados, 1 skipped** (el skip es el caso de
+  grabación). contrato-v1 en modo comparar: **22/22**. `git diff 162ff381 HEAD -- tests/fixtures/contrato-v1` vacío.
+- v2-ordenes: 14/14 (13 + cupo).
+- Guardias (323 archivos `*guardia*`/`tests/unit/guards`/`tests/guards`, 5 lotes): 322 verdes; único rojo
+  `dependencias-declaradas-presentes` (4 tests, `init.sh` sin el marcador del paso 2 / `verificar-dependencias.mjs`;
+  baseline aceptado, no tocado).
+- Reportado por subagentes: bulk-orden-service* + roundtrips 261/261; componentes de carga masiva 160/160; página y
+  listado 77/77; tests nuevos de componente 21/21.
+- Script T8: NO se ejecutó contra ninguna base remota ni copia. Humo opcional solo contra `logistic_slt45`: sin
+  `--copia` y con host distinto → «Rechazado…», exit 1; con `--copia localhost` → 0 empresas/0 órdenes (base vacía).
+  `payloads-reales.json` y `respuestas/` sin tocar.
+
+### Decisiones para revisar
+- T6.2: mensaje fuera de §5 `{columna} es obligatoria` (todas las columnas de nivel vacías), calcado de
+  `provincia es obligatoria` de CR. Catálogo sin nodos → sin columnas → `ubicacion: ["nivel 1: el nombre esta vacio"]`.
+- T6.1: `COLUMNAS_NO_GEO_DE_PLANTILLA` es copia de `ORDENES_BULK_FIELDS` menos las 2 geo (la guardia
+  `lib-no-importa-app` impide importar de `app/`); un test exige igualdad. Regla de choque ampliada a: cabecera vacía,
+  dos profundidades con la misma cabecera, o igual a otro `nivel_{n}`. Un país de 2 niveles con tipos de nombre CR
+  da columnas `provincia`, `canton` (no es forma CR).
+- T6.3: `page.tsx` lee el catálogo con `new CatalogoGeograficoRepository(getPrismaClient()).deLaEmpresa()` por
+  petición, solo si `puedeCargarMasiva`; si falla, registra y usa la plantilla de hoy. **No hermético:**
+  `OrdenesPage.test.tsx` y `OrdenesPageFiltros.test.tsx` (existentes) no doblan el repositorio y en los casos de
+  adminTienda intentan conectar a Postgres; caen al respaldo y pasan, pero el arreglo (un `vi.mock` del repositorio
+  en esos archivos, sin tocar aserciones) queda para que lo autorice el leader. Todas las columnas de nivel son
+  obligatorias en la cabecera del navegador. `COLUMNAS_GEO_DE_HOY` copia `COLUMNAS_GEO_DE_FORMA_CR` (no llevar
+  `geografia-dominio` al bundle de cliente); test de igualdad.
+- T8: `--copia` reutiliza `destinoDeUrl` de `geo-backfill-nodo.ts` (host o project-ref). Solo lectura doble: pool con
+  `default_transaction_read_only=on` + `exigirSoloLectura` por transacción. Filtra empresas con el literal
+  `PAIS_DEL_CONTRATO = "CR"`. `--muestra` tope 9999 (teléfono sintético de 8 dígitos).
+- T7: tag `v2` de nivel superior; `FilaV2` sin `required` (R12 es error de fila); sin ejemplo en `Ubicacion` por la
+  guardia `openapi-geografia-sin-cambios`; los títulos del censo 177 siguen diciendo «nueve»; descripción global de
+  Postman ajustada a «10 endpoints de v1 + 5 de v2»; CHANGELOG con fecha literal `2026-11-xx`.
+
+Veredicto T6–T8: tareas cerradas y verdes en local; T9 y T10 pendientes (fuera de esta tanda).

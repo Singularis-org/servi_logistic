@@ -96,30 +96,30 @@
 
 ## T6 — Carga masiva por sesión (depende de T4) [P con T5]
 
-- [ ] **T6.1** `lib/utils/plantilla-geo.ts` (`columnasGeoDePlantilla`, §8) y
+- [x] **T6.1** `lib/utils/plantilla-geo.ts` (`columnasGeoDePlantilla`, §8) y
   `tests/unit/utils/plantilla-geo.test.ts`: CR → `null` (plantilla de hoy); 2 y 4 niveles → una columna
   por profundidad; tipos mezclados y choque → `nivel_{n}`. (R29, R30)
-- [ ] **T6.2** `geoInputDesdeColumnasDeNivel` y elección de extractor por forma de país en
+- [x] **T6.2** `geoInputDesdeColumnasDeNivel` y elección de extractor por forma de país en
   `BulkOrdenService`; `tests/unit/services/bulk-orden-service.n-niveles.test.ts` (ruta hasta la primera
   vacía, hueco → error de columna, R15/R16). (R31)
-- [ ] **T6.3** Columnas por props desde `app/(app)/ordenes/page.tsx` hasta `OrdenesCargaUpload` y el
+- [x] **T6.3** Columnas por props desde `app/(app)/ordenes/page.tsx` hasta `OrdenesCargaUpload` y el
   exportador de errores, con los campos de hoy por defecto (§8).
   *Hecho:* tests existentes de componentes y de ida y vuelta de la plantilla pasan sin cambiar
   aserciones. (R29, R32)
 
 ## T7 — Documentación del canal (depende de T5)
 
-- [ ] **T7.1** OpenAPI v2 en `lib/api/openapi-spec.ts` (con `allOf` sobre los schemas de v1) y su espejo
+- [x] **T7.1** OpenAPI v2 en `lib/api/openapi-spec.ts` (con `allOf` sobre los schemas de v1) y su espejo
   `.yaml` (§9); `openapi-canal-rutas-reales` escanea `app/api/v2/**`; censo `PATHS_ESPERADOS` a 14;
   `tests/unit/api/openapi-v2.test.ts`. (R34)
   *Hecho:* `openapi-v1-congelado` (T1.4) sigue verde.
-- [ ] **T7.2** [P] Carpeta «v2» en la colección Postman y entrada en `docs/api/CHANGELOG.md`;
+- [x] **T7.2** [P] Carpeta «v2» en la colección Postman y entrada en `docs/api/CHANGELOG.md`;
   `tests/unit/api/postman-changelog-v2.test.ts`. (R35)
 
 ## T8 — Script de payloads reales (depende de T1) [P con T2–T7]
 
-- [ ] **T8.1** `scripts/geo-payloads-contrato-v1.ts` y `geo:payloads-contrato` en `package.json` (§7.1).
-- [ ] **T8.2** `tests/unit/scripts/geo-payloads-contrato-v1.test.ts`: con filas falsas que llevan PII
+- [x] **T8.1** `scripts/geo-payloads-contrato-v1.ts` y `geo:payloads-contrato` en `package.json` (§7.1).
+- [x] **T8.2** `tests/unit/scripts/geo-payloads-contrato-v1.test.ts`: con filas falsas que llevan PII
   conocida, la salida no contiene ninguno de esos valores ni ids de origen; conserva importes, peso y
   nombres de geografía; sin `--copia` o con host distinto se niega antes de leer órdenes; abre las
   transacciones en solo lectura. (R6, R7, R8)
