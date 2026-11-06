@@ -1,0 +1,135 @@
+{
+  "payload": "cuerpo-con-forma-invalida",
+  "pasos": [
+    {
+      "ruta": "cotizacion",
+      "status": 422,
+      "cuerpo": {
+        "status": "error",
+        "code": "VALIDATION_ERROR",
+        "message": "Los datos enviados no son validos.",
+        "details": {
+          "fieldErrors": {
+            "ordenes": [
+              "Este campo es obligatorio"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "ruta": "carga",
+      "status": 422,
+      "cuerpo": {
+        "status": "error",
+        "code": "VALIDATION_ERROR",
+        "message": "Los datos enviados no son validos.",
+        "details": {
+          "fieldErrors": {
+            "ordenes": [
+              "Este campo es obligatorio"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "ruta": "cotizacion",
+      "status": 422,
+      "cuerpo": {
+        "status": "error",
+        "code": "VALIDATION_ERROR",
+        "message": "Los datos enviados no son validos.",
+        "details": {
+          "fieldErrors": {
+            "ordenes": [
+              "El valor no es válido",
+              "El valor no es válido"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "ruta": "carga",
+      "status": 422,
+      "cuerpo": {
+        "status": "error",
+        "code": "VALIDATION_ERROR",
+        "message": "Los datos enviados no son validos.",
+        "details": {
+          "fieldErrors": {
+            "ordenes": [
+              "El valor no es válido",
+              "El valor no es válido"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "ruta": "cotizacion",
+      "status": 422,
+      "cuerpo": {
+        "status": "error",
+        "code": "VALIDATION_ERROR",
+        "message": "Los datos enviados no son validos.",
+        "details": {
+          "fieldErrors": {
+            "ordenes": [
+              "El valor no es válido"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "ruta": "carga",
+      "status": 422,
+      "cuerpo": {
+        "status": "error",
+        "code": "VALIDATION_ERROR",
+        "message": "Los datos enviados no son validos.",
+        "details": {
+          "fieldErrors": {
+            "ordenes": [
+              "El valor no es válido"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "ruta": "carga",
+      "status": 422,
+      "cuerpo": {
+        "status": "error",
+        "code": "VALIDATION_ERROR",
+        "message": "Los datos enviados no son validos.",
+        "details": {
+          "fieldErrors": {
+            "name": [
+              "Este campo es obligatorio"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "ruta": "carga",
+      "status": 422,
+      "cuerpo": {
+        "status": "error",
+        "code": "VALIDATION_ERROR",
+        "message": "Los datos enviados no son validos.",
+        "details": {
+          "fieldErrors": {
+            "download_type": [
+              "Elige una opción válida"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

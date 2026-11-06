@@ -1,0 +1,232 @@
+{
+  "payload": "geo-precedencia",
+  "pasos": [
+    {
+      "ruta": "cotizacion",
+      "status": 200,
+      "cuerpo": {
+        "total": 6,
+        "cotizadas": 2,
+        "conError": 4,
+        "filas": [
+          {
+            "fila": 5,
+            "numRemision": "R-505",
+            "montoCobrar": "13.00",
+            "resultado": "cotizada",
+            "costos": {
+              "entregado": {
+                "flete": "2000.00",
+                "iva": "260.00",
+                "comision": "0.26",
+                "ivaComision": "0.03",
+                "fulfillment": "0.00",
+                "ivaFulfillment": "0.00",
+                "total": "-2247.29"
+              },
+              "devuelto": {
+                "flete": "1000.00",
+                "iva": "130.00",
+                "comision": "0.00",
+                "fulfillment": "0.00",
+                "ivaFulfillment": "0.00",
+                "total": "-1130.00"
+              }
+            }
+          },
+          {
+            "fila": 6,
+            "numRemision": null,
+            "montoCobrar": "100.00",
+            "resultado": "cotizada",
+            "costos": {
+              "entregado": {
+                "flete": "2000.00",
+                "iva": "260.00",
+                "comision": "2.00",
+                "ivaComision": "0.26",
+                "fulfillment": "0.00",
+                "ivaFulfillment": "0.00",
+                "total": "-2162.26"
+              },
+              "devuelto": {
+                "flete": "1000.00",
+                "iva": "130.00",
+                "comision": "0.00",
+                "fulfillment": "0.00",
+                "ivaFulfillment": "0.00",
+                "total": "-1130.00"
+              }
+            }
+          }
+        ],
+        "errores": [
+          {
+            "fila": 1,
+            "numRemision": "R-501",
+            "resultado": "error",
+            "errores": {
+              "distrito": [
+                "distrito es obligatorio"
+              ]
+            }
+          },
+          {
+            "fila": 2,
+            "numRemision": "R-502",
+            "resultado": "error",
+            "errores": {
+              "distrito": [
+                "distrito es obligatorio"
+              ]
+            }
+          },
+          {
+            "fila": 3,
+            "numRemision": "R-503",
+            "resultado": "error",
+            "errores": {
+              "distrito": [
+                "el distrito 'Carmen' esta retirado del catalogo"
+              ]
+            }
+          },
+          {
+            "fila": 4,
+            "numRemision": "R-504",
+            "resultado": "error",
+            "errores": {
+              "monto_cobrar": [
+                "monto_cobrar debe ser numerico y no negativo"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "ruta": "carga",
+      "status": 200,
+      "cuerpo": {
+        "total": 6,
+        "creadas": 1,
+        "duplicadas": 0,
+        "conError": 5,
+        "filas": [
+          {
+            "fila": 5,
+            "numRemision": "R-505",
+            "resultado": "creada",
+            "estado": "por_recolectar_en_tienda",
+            "estadoNombre": "Por recolectar en tienda",
+            "montoAjustado": {
+              "original": 12.5,
+              "aplicado": 13
+            },
+            "numGuia": "<numGuia#1>"
+          }
+        ],
+        "errores": [
+          {
+            "fila": 1,
+            "numRemision": "R-501",
+            "resultado": "error",
+            "errores": {
+              "provincia": [
+                "provincia no encontrada"
+              ]
+            }
+          },
+          {
+            "fila": 2,
+            "numRemision": "R-502",
+            "resultado": "error",
+            "errores": {
+              "canton": [
+                "canton no encontrado en la provincia"
+              ]
+            }
+          },
+          {
+            "fila": 3,
+            "numRemision": "R-503",
+            "resultado": "error",
+            "errores": {
+              "distrito": [
+                "el distrito 'Carmen' esta retirado del catalogo"
+              ]
+            }
+          },
+          {
+            "fila": 4,
+            "numRemision": "R-504",
+            "resultado": "error",
+            "errores": {
+              "destinatario": [
+                "destinatario es obligatorio"
+              ],
+              "telefono": [
+                "telefono es obligatorio"
+              ],
+              "producto": [
+                "producto es obligatorio"
+              ],
+              "monto_cobrar": [
+                "monto_cobrar debe ser numerico y no negativo"
+              ]
+            }
+          },
+          {
+            "fila": 6,
+            "numRemision": "",
+            "resultado": "error",
+            "errores": {
+              "num_remision": [
+                "num_remision es obligatorio"
+              ]
+            }
+          }
+        ],
+        "ordenes": [
+          {
+            "id": "<uuid#1>",
+            "numRemision": "R-505",
+            "numGuia": "<numGuia#1>",
+            "estado": "por_recolectar_en_tienda",
+            "estadoNombre": "Por recolectar en tienda",
+            "costoEnvio": "2260.00",
+            "fulfillment": "0.00",
+            "ivaFulfillment": "0.00",
+            "downloadUrl": null
+          }
+        ],
+        "cargaId": "<cargaId#1>",
+        "downloadType": "consolidate",
+        "etiquetasPdf": {
+          "url": "<url#1>",
+          "expiraEnSegundos": 3600
+        },
+        "manifiesto": {
+          "filas": [
+            {
+              "numGuia": "<numGuia#1>",
+              "numRemision": "R-505",
+              "destinatario": "Destinatario 5",
+              "telefono": "80000005",
+              "direccion": "Direccion 5",
+              "zona": "zona_1",
+              "producto": "Producto 5",
+              "monto": 13,
+              "intentos": 0,
+              "origen": "Tienda Contrato",
+              "destino": "zona_1",
+              "responsable": "Tienda Contrato V1",
+              "fecha": "<fecha#1>"
+            }
+          ],
+          "omitidas": []
+        }
+      }
+    }
+  ]
+}

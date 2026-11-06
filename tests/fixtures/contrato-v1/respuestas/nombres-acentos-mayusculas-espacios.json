@@ -1,0 +1,338 @@
+{
+  "payload": "nombres-acentos-mayusculas-espacios",
+  "pasos": [
+    {
+      "ruta": "cotizacion",
+      "status": 200,
+      "cuerpo": {
+        "total": 5,
+        "cotizadas": 5,
+        "conError": 0,
+        "filas": [
+          {
+            "fila": 1,
+            "numRemision": "R-301",
+            "montoCobrar": "100.00",
+            "resultado": "cotizada",
+            "costos": {
+              "entregado": {
+                "flete": "2000.00",
+                "iva": "260.00",
+                "comision": "2.00",
+                "ivaComision": "0.26",
+                "fulfillment": "0.00",
+                "ivaFulfillment": "0.00",
+                "total": "-2162.26"
+              },
+              "devuelto": {
+                "flete": "1000.00",
+                "iva": "130.00",
+                "comision": "0.00",
+                "fulfillment": "0.00",
+                "ivaFulfillment": "0.00",
+                "total": "-1130.00"
+              }
+            }
+          },
+          {
+            "fila": 2,
+            "numRemision": "R-302",
+            "montoCobrar": "100.00",
+            "resultado": "cotizada",
+            "costos": {
+              "entregado": {
+                "flete": "2000.00",
+                "iva": "260.00",
+                "comision": "2.00",
+                "ivaComision": "0.26",
+                "fulfillment": "0.00",
+                "ivaFulfillment": "0.00",
+                "total": "-2162.26"
+              },
+              "devuelto": {
+                "flete": "1000.00",
+                "iva": "130.00",
+                "comision": "0.00",
+                "fulfillment": "0.00",
+                "ivaFulfillment": "0.00",
+                "total": "-1130.00"
+              }
+            }
+          },
+          {
+            "fila": 3,
+            "numRemision": "R-303",
+            "montoCobrar": "100.00",
+            "resultado": "cotizada",
+            "costos": {
+              "entregado": {
+                "flete": "4000.00",
+                "iva": "520.00",
+                "comision": "2.00",
+                "ivaComision": "0.26",
+                "fulfillment": "0.00",
+                "ivaFulfillment": "0.00",
+                "total": "-4422.26"
+              },
+              "devuelto": {
+                "flete": "1500.00",
+                "iva": "195.00",
+                "comision": "0.00",
+                "fulfillment": "0.00",
+                "ivaFulfillment": "0.00",
+                "total": "-1695.00"
+              }
+            }
+          },
+          {
+            "fila": 4,
+            "numRemision": "R-304",
+            "montoCobrar": "100.00",
+            "resultado": "cotizada",
+            "costos": {
+              "entregado": {
+                "flete": "2500.00",
+                "iva": "325.00",
+                "comision": "2.00",
+                "ivaComision": "0.26",
+                "fulfillment": "0.00",
+                "ivaFulfillment": "0.00",
+                "total": "-2727.26"
+              },
+              "devuelto": {
+                "flete": "1250.00",
+                "iva": "162.50",
+                "comision": "0.00",
+                "fulfillment": "0.00",
+                "ivaFulfillment": "0.00",
+                "total": "-1412.50"
+              }
+            }
+          },
+          {
+            "fila": 5,
+            "numRemision": "R-305",
+            "montoCobrar": "100.00",
+            "resultado": "cotizada",
+            "costos": {
+              "entregado": {
+                "flete": "2500.00",
+                "iva": "325.00",
+                "comision": "2.00",
+                "ivaComision": "0.26",
+                "fulfillment": "0.00",
+                "ivaFulfillment": "0.00",
+                "total": "-2727.26"
+              },
+              "devuelto": {
+                "flete": "1250.00",
+                "iva": "162.50",
+                "comision": "0.00",
+                "fulfillment": "0.00",
+                "ivaFulfillment": "0.00",
+                "total": "-1412.50"
+              }
+            }
+          }
+        ],
+        "errores": []
+      }
+    },
+    {
+      "ruta": "carga",
+      "status": 200,
+      "cuerpo": {
+        "total": 5,
+        "creadas": 5,
+        "duplicadas": 0,
+        "conError": 0,
+        "filas": [
+          {
+            "fila": 1,
+            "numRemision": "R-301",
+            "resultado": "creada",
+            "estado": "por_recolectar_en_tienda",
+            "estadoNombre": "Por recolectar en tienda",
+            "numGuia": "<numGuia#1>"
+          },
+          {
+            "fila": 2,
+            "numRemision": "R-302",
+            "resultado": "creada",
+            "estado": "por_recolectar_en_tienda",
+            "estadoNombre": "Por recolectar en tienda",
+            "numGuia": "<numGuia#2>"
+          },
+          {
+            "fila": 3,
+            "numRemision": "R-303",
+            "resultado": "creada",
+            "estado": "por_recolectar_en_tienda",
+            "estadoNombre": "Por recolectar en tienda",
+            "numGuia": "<numGuia#3>"
+          },
+          {
+            "fila": 4,
+            "numRemision": "R-304",
+            "resultado": "creada",
+            "estado": "por_recolectar_en_tienda",
+            "estadoNombre": "Por recolectar en tienda",
+            "numGuia": "<numGuia#4>"
+          },
+          {
+            "fila": 5,
+            "numRemision": "R-305",
+            "resultado": "creada",
+            "estado": "por_recolectar_en_tienda",
+            "estadoNombre": "Por recolectar en tienda",
+            "numGuia": "<numGuia#5>"
+          }
+        ],
+        "errores": [],
+        "ordenes": [
+          {
+            "id": "<uuid#1>",
+            "numRemision": "R-301",
+            "numGuia": "<numGuia#1>",
+            "estado": "por_recolectar_en_tienda",
+            "estadoNombre": "Por recolectar en tienda",
+            "costoEnvio": "2260.00",
+            "fulfillment": "0.00",
+            "ivaFulfillment": "0.00",
+            "downloadUrl": null
+          },
+          {
+            "id": "<uuid#2>",
+            "numRemision": "R-302",
+            "numGuia": "<numGuia#2>",
+            "estado": "por_recolectar_en_tienda",
+            "estadoNombre": "Por recolectar en tienda",
+            "costoEnvio": "2260.00",
+            "fulfillment": "0.00",
+            "ivaFulfillment": "0.00",
+            "downloadUrl": null
+          },
+          {
+            "id": "<uuid#3>",
+            "numRemision": "R-303",
+            "numGuia": "<numGuia#3>",
+            "estado": "por_recolectar_en_tienda",
+            "estadoNombre": "Por recolectar en tienda",
+            "costoEnvio": "4520.00",
+            "fulfillment": "0.00",
+            "ivaFulfillment": "0.00",
+            "downloadUrl": null
+          },
+          {
+            "id": "<uuid#4>",
+            "numRemision": "R-304",
+            "numGuia": "<numGuia#4>",
+            "estado": "por_recolectar_en_tienda",
+            "estadoNombre": "Por recolectar en tienda",
+            "costoEnvio": "2825.00",
+            "fulfillment": "0.00",
+            "ivaFulfillment": "0.00",
+            "downloadUrl": null
+          },
+          {
+            "id": "<uuid#5>",
+            "numRemision": "R-305",
+            "numGuia": "<numGuia#5>",
+            "estado": "por_recolectar_en_tienda",
+            "estadoNombre": "Por recolectar en tienda",
+            "costoEnvio": "2825.00",
+            "fulfillment": "0.00",
+            "ivaFulfillment": "0.00",
+            "downloadUrl": null
+          }
+        ],
+        "cargaId": "<cargaId#1>",
+        "downloadType": "consolidate",
+        "etiquetasPdf": {
+          "url": "<url#1>",
+          "expiraEnSegundos": 3600
+        },
+        "manifiesto": {
+          "filas": [
+            {
+              "numGuia": "<numGuia#1>",
+              "numRemision": "R-301",
+              "destinatario": "Destinatario 1",
+              "telefono": "80000001",
+              "direccion": "Direccion 1",
+              "zona": "zona_1",
+              "producto": "Producto 1",
+              "monto": 100,
+              "intentos": 0,
+              "origen": "Tienda Contrato",
+              "destino": "zona_1",
+              "responsable": "Tienda Contrato V1",
+              "fecha": "<fecha#1>"
+            },
+            {
+              "numGuia": "<numGuia#2>",
+              "numRemision": "R-302",
+              "destinatario": "Destinatario 2",
+              "telefono": "80000002",
+              "direccion": "Direccion 2",
+              "zona": "zona_1",
+              "producto": "Producto 2",
+              "monto": 100,
+              "intentos": 0,
+              "origen": "Tienda Contrato",
+              "destino": "zona_1",
+              "responsable": "Tienda Contrato V1",
+              "fecha": "<fecha#1>"
+            },
+            {
+              "numGuia": "<numGuia#3>",
+              "numRemision": "R-303",
+              "destinatario": "Destinatario 3",
+              "telefono": "80000003",
+              "direccion": "Direccion 3",
+              "zona": "zona_2",
+              "producto": "Producto 3",
+              "monto": 100,
+              "intentos": 0,
+              "origen": "Tienda Contrato",
+              "destino": "zona_1",
+              "responsable": "Tienda Contrato V1",
+              "fecha": "<fecha#1>"
+            },
+            {
+              "numGuia": "<numGuia#4>",
+              "numRemision": "R-304",
+              "destinatario": "Destinatario 4",
+              "telefono": "80000004",
+              "direccion": "Direccion 4",
+              "zona": "zona_2",
+              "producto": "Producto 4",
+              "monto": 100,
+              "intentos": 0,
+              "origen": "Tienda Contrato",
+              "destino": "zona_1",
+              "responsable": "Tienda Contrato V1",
+              "fecha": "<fecha#1>"
+            },
+            {
+              "numGuia": "<numGuia#5>",
+              "numRemision": "R-305",
+              "destinatario": "Destinatario 5",
+              "telefono": "80000005",
+              "direccion": "Direccion 5",
+              "zona": "zona_2",
+              "producto": "Producto 5",
+              "monto": 100,
+              "intentos": 0,
+              "origen": "Tienda Contrato",
+              "destino": "zona_1",
+              "responsable": "Tienda Contrato V1",
+              "fecha": "<fecha#1>"
+            }
+          ],
+          "omitidas": []
+        }
+      }
+    }
+  ]
+}

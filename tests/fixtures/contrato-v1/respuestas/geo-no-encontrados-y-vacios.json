@@ -1,0 +1,299 @@
+{
+  "payload": "geo-no-encontrados-y-vacios",
+  "pasos": [
+    {
+      "ruta": "cotizacion",
+      "status": 200,
+      "cuerpo": {
+        "total": 10,
+        "cotizadas": 2,
+        "conError": 8,
+        "filas": [
+          {
+            "fila": 9,
+            "numRemision": "R-409",
+            "montoCobrar": "100.00",
+            "resultado": "cotizada",
+            "costos": {
+              "entregado": {
+                "flete": "2000.00",
+                "iva": "260.00",
+                "comision": "2.00",
+                "ivaComision": "0.26",
+                "fulfillment": "0.00",
+                "ivaFulfillment": "0.00",
+                "total": "-2162.26"
+              },
+              "devuelto": {
+                "flete": "1000.00",
+                "iva": "130.00",
+                "comision": "0.00",
+                "fulfillment": "0.00",
+                "ivaFulfillment": "0.00",
+                "total": "-1130.00"
+              }
+            }
+          },
+          {
+            "fila": 10,
+            "numRemision": "R-410",
+            "montoCobrar": "0.00",
+            "resultado": "cotizada",
+            "costos": {
+              "entregado": {
+                "flete": "2000.00",
+                "iva": "260.00",
+                "comision": "0.00",
+                "ivaComision": "0.00",
+                "fulfillment": "0.00",
+                "ivaFulfillment": "0.00",
+                "total": "-2260.00"
+              },
+              "devuelto": {
+                "flete": "1000.00",
+                "iva": "130.00",
+                "comision": "0.00",
+                "fulfillment": "0.00",
+                "ivaFulfillment": "0.00",
+                "total": "-1130.00"
+              }
+            }
+          }
+        ],
+        "errores": [
+          {
+            "fila": 1,
+            "numRemision": "R-401",
+            "resultado": "error",
+            "errores": {
+              "provincia": [
+                "provincia no encontrada"
+              ]
+            }
+          },
+          {
+            "fila": 2,
+            "numRemision": "R-402",
+            "resultado": "error",
+            "errores": {
+              "provincia": [
+                "provincia es obligatorio"
+              ]
+            }
+          },
+          {
+            "fila": 3,
+            "numRemision": "R-403",
+            "resultado": "error",
+            "errores": {
+              "canton": [
+                "canton no encontrado en la provincia"
+              ]
+            }
+          },
+          {
+            "fila": 4,
+            "numRemision": "R-404",
+            "resultado": "error",
+            "errores": {
+              "canton": [
+                "canton es obligatorio"
+              ]
+            }
+          },
+          {
+            "fila": 5,
+            "numRemision": "R-405",
+            "resultado": "error",
+            "errores": {
+              "distrito": [
+                "distrito es obligatorio"
+              ]
+            }
+          },
+          {
+            "fila": 6,
+            "numRemision": "R-406",
+            "resultado": "error",
+            "errores": {
+              "distrito": [
+                "distrito es obligatorio"
+              ]
+            }
+          },
+          {
+            "fila": 7,
+            "numRemision": "R-407",
+            "resultado": "error",
+            "errores": {
+              "distrito": [
+                "distrito no encontrado en el canton"
+              ]
+            }
+          },
+          {
+            "fila": 8,
+            "numRemision": "R-408",
+            "resultado": "error",
+            "errores": {
+              "distrito": [
+                "el distrito 'Carmen' no tiene zona asignada"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "ruta": "carga",
+      "status": 200,
+      "cuerpo": {
+        "total": 10,
+        "creadas": 1,
+        "duplicadas": 0,
+        "conError": 9,
+        "filas": [
+          {
+            "fila": 9,
+            "numRemision": "R-409",
+            "resultado": "creada",
+            "estado": "por_recolectar_en_tienda",
+            "estadoNombre": "Por recolectar en tienda",
+            "numGuia": "<numGuia#1>"
+          }
+        ],
+        "errores": [
+          {
+            "fila": 1,
+            "numRemision": "R-401",
+            "resultado": "error",
+            "errores": {
+              "provincia": [
+                "provincia no encontrada"
+              ]
+            }
+          },
+          {
+            "fila": 2,
+            "numRemision": "R-402",
+            "resultado": "error",
+            "errores": {
+              "provincia": [
+                "provincia no encontrada"
+              ]
+            }
+          },
+          {
+            "fila": 3,
+            "numRemision": "R-403",
+            "resultado": "error",
+            "errores": {
+              "canton": [
+                "canton no encontrado en la provincia"
+              ]
+            }
+          },
+          {
+            "fila": 4,
+            "numRemision": "R-404",
+            "resultado": "error",
+            "errores": {
+              "canton": [
+                "canton no encontrado en la provincia"
+              ]
+            }
+          },
+          {
+            "fila": 5,
+            "numRemision": "R-405",
+            "resultado": "error",
+            "errores": {
+              "distrito": [
+                "distrito requerido: la zona de la orden se deriva del distrito"
+              ]
+            }
+          },
+          {
+            "fila": 6,
+            "numRemision": "R-406",
+            "resultado": "error",
+            "errores": {
+              "distrito": [
+                "distrito requerido: la zona de la orden se deriva del distrito"
+              ]
+            }
+          },
+          {
+            "fila": 7,
+            "numRemision": "R-407",
+            "resultado": "error",
+            "errores": {
+              "distrito": [
+                "distrito no encontrado en el canton"
+              ]
+            }
+          },
+          {
+            "fila": 8,
+            "numRemision": "R-408",
+            "resultado": "error",
+            "errores": {
+              "distrito": [
+                "el distrito 'Carmen' no tiene zona asignada"
+              ]
+            }
+          },
+          {
+            "fila": 10,
+            "numRemision": "R-410",
+            "resultado": "error",
+            "errores": {
+              "producto": [
+                "Este campo es obligatorio"
+              ]
+            }
+          }
+        ],
+        "ordenes": [
+          {
+            "id": "<uuid#1>",
+            "numRemision": "R-409",
+            "numGuia": "<numGuia#1>",
+            "estado": "por_recolectar_en_tienda",
+            "estadoNombre": "Por recolectar en tienda",
+            "costoEnvio": "2260.00",
+            "fulfillment": "0.00",
+            "ivaFulfillment": "0.00",
+            "downloadUrl": null
+          }
+        ],
+        "cargaId": "<cargaId#1>",
+        "downloadType": "consolidate",
+        "etiquetasPdf": {
+          "url": "<url#1>",
+          "expiraEnSegundos": 3600
+        },
+        "manifiesto": {
+          "filas": [
+            {
+              "numGuia": "<numGuia#1>",
+              "numRemision": "R-409",
+              "destinatario": "Destinatario 9",
+              "telefono": "80000009",
+              "direccion": "Direccion 9",
+              "zona": "zona_1",
+              "producto": "Producto 9",
+              "monto": 100,
+              "intentos": 0,
+              "origen": "Tienda Contrato",
+              "destino": "zona_1",
+              "responsable": "Tienda Contrato V1",
+              "fecha": "<fecha#1>"
+            }
+          ],
+          "omitidas": []
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,2543 @@
+{
+  "objeto": {
+    "paths": {
+      "/api/ordenes/api-key/carga": {
+        "post": {
+          "tags": [
+            "Órdenes"
+          ],
+          "summary": "Carga de órdenes",
+          "operationId": "cargarOrdenes",
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CargaRequest"
+                },
+                "examples": {
+                  "dosFilas": {
+                    "summary": "Dos filas (una válida, una con teléfono faltante)",
+                    "value": {
+                      "ordenes": [
+                        {
+                          "num_remision": "REM-0001",
+                          "destinatario": "Juan Pérez",
+                          "telefono": "88887777",
+                          "provincia": "San José",
+                          "canton": "San José",
+                          "distrito": "Carmen",
+                          "direccion": "Av. Central, 200m norte del parque",
+                          "producto": "Camiseta talla M",
+                          "peso": "1.5",
+                          "monto_cobrar": "25.90",
+                          "notas": "Entregar en la tarde"
+                        },
+                        {
+                          "num_remision": "REM-0002",
+                          "destinatario": "María Solís",
+                          "telefono": "",
+                          "provincia": "San José",
+                          "canton": "Escazú",
+                          "distrito": "San Rafael",
+                          "direccion": "Multiplaza, local 12",
+                          "producto": "Zapatos talla 38",
+                          "peso": "0.8",
+                          "monto_cobrar": "40.00",
+                          "notas": ""
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Lote procesado (puede incluir filas con error).",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CargaResponse"
+                  },
+                  "examples": {
+                    "resumen": {
+                      "summary": "Una creada, una con error",
+                      "value": {
+                        "cargaId": "9c2b7f10-5d3a-4e21-9a4b-77c8e0f1a2b3",
+                        "total": 2,
+                        "creadas": 1,
+                        "duplicadas": 0,
+                        "conError": 1,
+                        "filas": [
+                          {
+                            "fila": 1,
+                            "numRemision": "REM-0001",
+                            "resultado": "creada",
+                            "estado": "por_recolectar_en_tienda",
+                            "estadoNombre": "Por recolectar en tienda",
+                            "numGuia": 100234
+                          }
+                        ],
+                        "errores": [
+                          {
+                            "fila": 2,
+                            "numRemision": "REM-0002",
+                            "resultado": "error",
+                            "errores": {
+                              "telefono": [
+                                "requerido"
+                              ]
+                            }
+                          }
+                        ],
+                        "ordenes": [
+                          {
+                            "id": "6f1c2d3e-4a5b-6c7d-8e9f-0a1b2c3d4e5f",
+                            "numRemision": "REM-0001",
+                            "numGuia": 100234,
+                            "estado": "por_recolectar_en_tienda",
+                            "estadoNombre": "Por recolectar en tienda",
+                            "costoEnvio": "3.39",
+                            "fulfillment": "0.00",
+                            "ivaFulfillment": "0.00"
+                          }
+                        ]
+                      }
+                    },
+                    "filaSinTarifa": {
+                      "summary": "Una creada y una degradada por falta de tarifa",
+                      "value": {
+                        "cargaId": "9c2b7f10-5d3a-4e21-9a4b-77c8e0f1a2b3",
+                        "total": 2,
+                        "creadas": 1,
+                        "duplicadas": 0,
+                        "conError": 1,
+                        "filas": [
+                          {
+                            "fila": 1,
+                            "numRemision": "REM-0001",
+                            "resultado": "creada",
+                            "estado": "por_recolectar_en_tienda",
+                            "estadoNombre": "Por recolectar en tienda",
+                            "numGuia": 100234
+                          }
+                        ],
+                        "errores": [
+                          {
+                            "fila": 2,
+                            "numRemision": "REM-0002",
+                            "resultado": "error",
+                            "errores": {
+                              "tarifa": [
+                                "no hay tarifa vigente para la zona de esta fila"
+                              ]
+                            }
+                          }
+                        ],
+                        "ordenes": [
+                          {
+                            "id": "6f1c2d3e-4a5b-6c7d-8e9f-0a1b2c3d4e5f",
+                            "numRemision": "REM-0001",
+                            "numGuia": 100234,
+                            "estado": "por_recolectar_en_tienda",
+                            "estadoNombre": "Por recolectar en tienda",
+                            "costoEnvio": "3.39",
+                            "fulfillment": "0.00",
+                            "ivaFulfillment": "0.00"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "401": {
+              "$ref": "#/components/responses/Unauthorized"
+            },
+            "403": {
+              "$ref": "#/components/responses/Forbidden"
+            },
+            "409": {
+              "description": "Ninguna de las filas que llegaron a la resolución de tarifa la resolvió: no se creó ninguna orden ni fila de carga.",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Error"
+                  },
+                  "example": {
+                    "status": "error",
+                    "code": "CONFLICT",
+                    "message": "la tienda no tiene una tarifa vigente asociada: no se pueden crear órdenes"
+                  }
+                }
+              }
+            },
+            "422": {
+              "$ref": "#/components/responses/ValidationError"
+            }
+          }
+        }
+      },
+      "/api/ordenes/api-key": {
+        "get": {
+          "tags": [
+            "Órdenes"
+          ],
+          "summary": "Listado paginado de órdenes propias",
+          "operationId": "listarOrdenes",
+          "parameters": [
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "description": "Cantidad de items por página (1..100).",
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100,
+                "default": 50
+              }
+            },
+            {
+              "name": "offset",
+              "in": "query",
+              "required": false,
+              "description": "Cantidad de items a saltar (>= 0).",
+              "schema": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 0
+              }
+            },
+            {
+              "name": "estado",
+              "in": "query",
+              "required": false,
+              "description": "Filtra por estado exacto del catálogo (uno de los 20 códigos vigentes). Un código anterior al cambio de nombres de estados (ver CHANGELOG) responde `422` con un mensaje que nombra el código que lo sustituye.",
+              "schema": {
+                "type": "string",
+                "enum": [
+                  "entregado",
+                  "novedad",
+                  "devolviendo_a_tienda",
+                  "reprogramado",
+                  "en_ruta_bodega_central",
+                  "en_bodega_central",
+                  "en_preparacion",
+                  "mensajero_recogiendo_en_bodega",
+                  "en_ruta_bodega_satelite",
+                  "en_reparto",
+                  "devolucion_a_origen_por_rechazo",
+                  "en_bodega_satelite",
+                  "devuelta_a_tienda",
+                  "novedad_interna",
+                  "por_devolver_a_bodega_central",
+                  "devolviendo_a_bodega_central",
+                  "por_devolver_a_tienda",
+                  "por_recolectar_en_tienda",
+                  "incidente",
+                  "recolectando"
+                ]
+              }
+            },
+            {
+              "name": "desde",
+              "in": "query",
+              "required": false,
+              "description": "Fecha calendario mínima de creación (`YYYY-MM-DD`), inclusiva; el día se mide en hora de Costa Rica (UTC-6).",
+              "schema": {
+                "type": "string",
+                "format": "date",
+                "example": "2026-08-01"
+              }
+            },
+            {
+              "name": "hasta",
+              "in": "query",
+              "required": false,
+              "description": "Fecha calendario máxima de creación (`YYYY-MM-DD`), inclusiva; el día se mide en hora de Costa Rica (UTC-6), así que cubre las 24 horas completas de ese día.",
+              "schema": {
+                "type": "string",
+                "format": "date",
+                "example": "2026-08-21"
+              }
+            },
+            {
+              "name": "num_guia",
+              "in": "query",
+              "required": false,
+              "description": "Filtra por número de guía exacto. Excluye las órdenes que aún no tienen guía asignada.",
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "example": 100234
+              }
+            },
+            {
+              "name": "num_remision",
+              "in": "query",
+              "required": false,
+              "description": "Filtra por número de remisión exacto (sin prefijo, sin subcadena, distingue mayúsculas).",
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "example": "REM-0001"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Página de órdenes.",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Listado"
+                  },
+                  "examples": {
+                    "pagina": {
+                      "summary": "Primera página con un item",
+                      "value": {
+                        "items": [
+                          {
+                            "numGuia": 100234,
+                            "numRemision": "REM-0001",
+                            "estado": "en_ruta_bodega_central",
+                            "estadoNombre": "En ruta a bodega central",
+                            "destinatario": "Juan Pérez",
+                            "telefonoDest": "88887777",
+                            "producto": "Camiseta talla M",
+                            "direccion": "Av. Central, 200m norte del parque",
+                            "montoCobrar": 25.9,
+                            "createdAt": "2026-07-22T14:03:11.000Z"
+                          }
+                        ],
+                        "pagination": {
+                          "limit": 50,
+                          "offset": 0,
+                          "total": 1
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "401": {
+              "$ref": "#/components/responses/Unauthorized"
+            },
+            "403": {
+              "$ref": "#/components/responses/Forbidden"
+            },
+            "422": {
+              "$ref": "#/components/responses/ValidationError"
+            }
+          }
+        }
+      },
+      "/api/ordenes/api-key/{numGuia}/cancelar": {
+        "parameters": [
+          {
+            "name": "numGuia",
+            "in": "path",
+            "required": true,
+            "description": "Número de guía de la orden a cancelar (entero positivo).",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "put": {
+          "tags": [
+            "Órdenes"
+          ],
+          "summary": "Cancelar una orden propia",
+          "operationId": "cancelarOrden",
+          "responses": {
+            "200": {
+              "description": "Orden cancelada.",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CancelacionResponse"
+                  },
+                  "examples": {
+                    "cancelada": {
+                      "summary": "Cancelación desde en_ruta_bodega_central",
+                      "value": {
+                        "numGuia": 100234,
+                        "estadoAnterior": "en_ruta_bodega_central",
+                        "estadoAnteriorNombre": "En ruta a bodega central",
+                        "estado": "devolviendo_a_tienda",
+                        "estadoNombre": "Devolviendo a tienda"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "401": {
+              "$ref": "#/components/responses/Unauthorized"
+            },
+            "403": {
+              "$ref": "#/components/responses/Forbidden"
+            },
+            "404": {
+              "$ref": "#/components/responses/NotFound"
+            },
+            "409": {
+              "$ref": "#/components/responses/Conflict"
+            },
+            "422": {
+              "$ref": "#/components/responses/ValidationError"
+            }
+          }
+        }
+      },
+      "/api/ordenes/api-key/orden/{id}": {
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador de la orden: su `num_guia` o su `num_remision`. Si el valor casa con la guía de una orden y con la remisión de otra, gana la de la guía.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        ],
+        "get": {
+          "tags": [
+            "Órdenes"
+          ],
+          "summary": "Detalle de una orden propia por guía o remisión",
+          "operationId": "detalleOrdenPorIdentificador",
+          "responses": {
+            "200": {
+              "description": "Detalle de la orden.",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OrdenDetalle"
+                  },
+                  "examples": {
+                    "detalle": {
+                      "summary": "Orden resuelta por su número de remisión",
+                      "value": {
+                        "numGuia": 100234,
+                        "numRemision": "REM-0001",
+                        "estado": "entregado",
+                        "estadoNombre": "Entregado",
+                        "destinatario": "Juan Pérez",
+                        "telefonoDest": "88887777",
+                        "producto": "Camiseta talla M",
+                        "direccion": "Av. Central, 200m norte del parque",
+                        "montoCobrar": 25.9,
+                        "createdAt": "2026-07-22T14:03:11.000Z",
+                        "evidencias": [
+                          {
+                            "resultado": "entregado",
+                            "resultadoNombre": "Entregado",
+                            "contentType": "image/jpeg",
+                            "url": "https://<proyecto>.supabase.co/storage/v1/object/sign/gestion-evidencias/...",
+                            "expiraEnSegundos": 300
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "401": {
+              "$ref": "#/components/responses/Unauthorized"
+            },
+            "403": {
+              "$ref": "#/components/responses/Forbidden"
+            },
+            "404": {
+              "$ref": "#/components/responses/NotFound"
+            },
+            "422": {
+              "$ref": "#/components/responses/ValidationError"
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "Órdenes"
+          ],
+          "summary": "Eliminar una orden propia",
+          "operationId": "eliminarOrden",
+          "responses": {
+            "200": {
+              "description": "Orden eliminada.",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EliminacionResponse"
+                  },
+                  "examples": {
+                    "conGuia": {
+                      "summary": "Orden ya numerada, eliminada desde en_bodega_central",
+                      "value": {
+                        "numGuia": 100234,
+                        "numRemision": "REM-0001",
+                        "estado": "en_bodega_central",
+                        "estadoNombre": "En bodega central"
+                      }
+                    },
+                    "sinGuia": {
+                      "summary": "Orden recién cargada, todavía sin guía",
+                      "value": {
+                        "numGuia": null,
+                        "numRemision": "REM-0002",
+                        "estado": "en_preparacion",
+                        "estadoNombre": "En preparación"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "401": {
+              "$ref": "#/components/responses/Unauthorized"
+            },
+            "403": {
+              "$ref": "#/components/responses/Forbidden"
+            },
+            "404": {
+              "$ref": "#/components/responses/NotFound"
+            },
+            "409": {
+              "$ref": "#/components/responses/Conflict"
+            },
+            "422": {
+              "$ref": "#/components/responses/ValidationError"
+            }
+          }
+        }
+      },
+      "/api/ordenes/api-key/orden/{id}/generate": {
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador de la orden: su `num_guia` o su `num_remision` (misma resolución que el endpoint de detalle).",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        ],
+        "post": {
+          "tags": [
+            "Órdenes"
+          ],
+          "summary": "PDF de etiqueta de una orden propia",
+          "operationId": "generarPdfOrden",
+          "responses": {
+            "200": {
+              "description": "URL firmada del PDF de la etiqueta.",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PdfGenerateResponse"
+                  },
+                  "examples": {
+                    "primeraLlamada": {
+                      "summary": "Primera llamada: el PDF se construye",
+                      "value": {
+                        "url": "https://<proyecto>.supabase.co/storage/v1/object/sign/etiquetas/...",
+                        "expiraEnSegundos": 300
+                      }
+                    },
+                    "reuso": {
+                      "summary": "Llamada posterior: solo se vuelve a firmar (misma forma)",
+                      "value": {
+                        "url": "https://<proyecto>.supabase.co/storage/v1/object/sign/etiquetas/...",
+                        "expiraEnSegundos": 300
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "401": {
+              "$ref": "#/components/responses/Unauthorized"
+            },
+            "403": {
+              "$ref": "#/components/responses/Forbidden"
+            },
+            "404": {
+              "$ref": "#/components/responses/NotFound"
+            },
+            "409": {
+              "$ref": "#/components/responses/Conflict"
+            },
+            "422": {
+              "$ref": "#/components/responses/ValidationError"
+            }
+          }
+        }
+      },
+      "/api/ordenes/api-key/carga/{cargaId}/generate": {
+        "parameters": [
+          {
+            "name": "cargaId",
+            "in": "path",
+            "required": true,
+            "description": "Id del lote, tal como lo devuelve `cargaId` en la respuesta de `POST /api/ordenes/api-key/carga`.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "post": {
+          "tags": [
+            "Órdenes"
+          ],
+          "summary": "PDF consolidado de etiquetas de un lote propio",
+          "operationId": "generarPdfCarga",
+          "responses": {
+            "200": {
+              "description": "URL firmada del PDF consolidado del lote.",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PdfGenerateResponse"
+                  },
+                  "examples": {
+                    "consolidado": {
+                      "summary": "Consolidado del lote recién construido",
+                      "value": {
+                        "url": "https://<proyecto>.supabase.co/storage/v1/object/sign/etiquetas/...",
+                        "expiraEnSegundos": 300
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "401": {
+              "$ref": "#/components/responses/Unauthorized"
+            },
+            "403": {
+              "$ref": "#/components/responses/Forbidden"
+            },
+            "404": {
+              "$ref": "#/components/responses/NotFound"
+            },
+            "409": {
+              "$ref": "#/components/responses/Conflict"
+            },
+            "422": {
+              "$ref": "#/components/responses/ValidationError"
+            }
+          }
+        }
+      },
+      "/api/ordenes/api-key/cotizacion": {
+        "post": {
+          "tags": [
+            "Órdenes"
+          ],
+          "summary": "Cotización de un lote (no crea nada)",
+          "operationId": "cotizarOrdenes",
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CotizacionRequest"
+                },
+                "examples": {
+                  "dosFilas": {
+                    "summary": "Tres filas (una con cobertura, una con distrito inexistente, una con distrito retirado)",
+                    "value": {
+                      "ordenes": [
+                        {
+                          "provincia": "San José",
+                          "canton": "Escazú",
+                          "distrito": "San Rafael",
+                          "direccion": "Multiplaza, local 12",
+                          "monto_cobrar": "25900",
+                          "num_remision": "REM-0001"
+                        },
+                        {
+                          "provincia": "San José",
+                          "canton": "Escazú",
+                          "distrito": "Distrito que no existe",
+                          "direccion": "Sin referencia",
+                          "monto_cobrar": "18000"
+                        },
+                        {
+                          "provincia": "Puntarenas",
+                          "canton": "Buenos Aires",
+                          "distrito": "Cabagra",
+                          "direccion": "Sin referencia",
+                          "monto_cobrar": "12000"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Lote cotizado (puede incluir filas con error).",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CotizacionResponse"
+                  },
+                  "examples": {
+                    "resumen": {
+                      "summary": "Una cotizada (con sus dos escenarios) y dos con error",
+                      "value": {
+                        "total": 3,
+                        "cotizadas": 1,
+                        "conError": 2,
+                        "filas": [
+                          {
+                            "fila": 1,
+                            "numRemision": "REM-0001",
+                            "montoCobrar": "25900.00",
+                            "resultado": "cotizada",
+                            "costos": {
+                              "entregado": {
+                                "flete": "2500.00",
+                                "iva": "325.00",
+                                "comision": "906.50",
+                                "ivaComision": "117.85",
+                                "fulfillment": "0.00",
+                                "ivaFulfillment": "0.00",
+                                "total": "22050.65"
+                              },
+                              "devuelto": {
+                                "flete": "1396.46",
+                                "iva": "181.54",
+                                "comision": "0.00",
+                                "fulfillment": "0.00",
+                                "ivaFulfillment": "0.00",
+                                "total": "-1578.00"
+                              }
+                            }
+                          }
+                        ],
+                        "errores": [
+                          {
+                            "fila": 2,
+                            "numRemision": null,
+                            "resultado": "error",
+                            "errores": {
+                              "distrito": [
+                                "distrito no encontrado en el canton"
+                              ]
+                            }
+                          },
+                          {
+                            "fila": 3,
+                            "numRemision": null,
+                            "resultado": "error",
+                            "errores": {
+                              "distrito": [
+                                "el distrito 'Cabagra' esta retirado del catalogo"
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "401": {
+              "$ref": "#/components/responses/Unauthorized"
+            },
+            "403": {
+              "$ref": "#/components/responses/Forbidden"
+            },
+            "409": {
+              "description": "Ninguna de las filas que llegaron a la resolución de tarifa la resolvió: no se cotiza ninguna fila.",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Error"
+                  },
+                  "example": {
+                    "status": "error",
+                    "code": "CONFLICT",
+                    "message": "la tienda no tiene una tarifa vigente asociada: no se puede cotizar"
+                  }
+                }
+              }
+            },
+            "422": {
+              "$ref": "#/components/responses/ValidationError"
+            }
+          }
+        }
+      },
+      "/api/ordenes/api-key/analitica": {
+        "get": {
+          "tags": [
+            "Órdenes"
+          ],
+          "summary": "Series diarias de tus métricas sobre tus órdenes",
+          "operationId": "consultarAnalitica",
+          "parameters": [
+            {
+              "name": "metricas",
+              "in": "query",
+              "required": false,
+              "description": "Ids separados por comas, o `all` para todas las publicables. Si se omite (o se manda vacío) equivale a `all`. Solo los valores del enum se publican por este canal; `all` no se combina con ids.",
+              "schema": {
+                "type": "string",
+                "enum": [
+                  "ordenes_creadas",
+                  "ordenes_por_estado",
+                  "entregas",
+                  "devoluciones",
+                  "rechazos",
+                  "reprogramaciones",
+                  "tasa_entrega",
+                  "tasa_devolucion",
+                  "tasa_rechazo",
+                  "tiempo_ciclo",
+                  "all"
+                ]
+              },
+              "example": "entregas,devoluciones"
+            },
+            {
+              "name": "desde",
+              "in": "query",
+              "required": false,
+              "description": "Fecha calendario de Costa Rica (UTC-6), INCLUSIVA (`>=`). Formato `YYYY-MM-DD`. Si se omite, la serie arranca en el primer día del que hay datos.",
+              "schema": {
+                "type": "string",
+                "format": "date"
+              },
+              "example": "2026-08-01"
+            },
+            {
+              "name": "hasta",
+              "in": "query",
+              "required": false,
+              "description": "Fecha calendario de Costa Rica (UTC-6), INCLUSIVA (`<=`). Formato `YYYY-MM-DD`. Si se omite, la serie llega hasta hoy. No hay tope de tamaño de ventana.",
+              "schema": {
+                "type": "string",
+                "format": "date"
+              },
+              "example": "2026-08-21"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Series diarias de las métricas pedidas, sobre tus órdenes.",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AnaliticaRespuesta"
+                  },
+                  "examples": {
+                    "serie": {
+                      "summary": "Dos métricas; se pidieron tres días y el tercero (hoy) no viene: no está cerrado",
+                      "value": {
+                        "rango": {
+                          "desde": "2026-08-19",
+                          "hasta": "2026-08-21"
+                        },
+                        "metricas": [
+                          {
+                            "metrica": "entregas",
+                            "unidad": "conteo",
+                            "data": [
+                              {
+                                "fecha": "2026-08-19",
+                                "valor": 41
+                              },
+                              {
+                                "fecha": "2026-08-20",
+                                "valor": 37
+                              }
+                            ]
+                          },
+                          {
+                            "metrica": "tasa_entrega",
+                            "unidad": "porcentaje",
+                            "data": [
+                              {
+                                "fecha": "2026-08-19",
+                                "valor": 0.93
+                              },
+                              {
+                                "fecha": "2026-08-20",
+                                "valor": null
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "401": {
+              "$ref": "#/components/responses/Unauthorized"
+            },
+            "403": {
+              "$ref": "#/components/responses/Forbidden"
+            },
+            "422": {
+              "$ref": "#/components/responses/ValidationError"
+            }
+          }
+        }
+      },
+      "/api/ordenes/api-key/habilitar": {
+        "post": {
+          "tags": [
+            "Órdenes"
+          ],
+          "summary": "Habilitar pedidos con novedad (lote)",
+          "operationId": "habilitarOrdenes",
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HabilitacionRequest"
+                },
+                "examples": {
+                  "dosFilas": {
+                    "summary": "Dos filas: una en ayuda con mensajero y una en novedad",
+                    "value": {
+                      "ordenes": [
+                        {
+                          "num_guia": 100234,
+                          "nota": "el cliente pidió reintento mañana"
+                        },
+                        {
+                          "num_guia": 100235,
+                          "nota": "dirección corregida por el call center"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Lote procesado (puede incluir filas con error).",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HabilitacionResponse"
+                  },
+                  "examples": {
+                    "resumen": {
+                      "summary": "Una habilitada, una sin cambio de estado y una con error",
+                      "value": {
+                        "resumen": {
+                          "total": 3,
+                          "habilitadas": 1,
+                          "habilitadasSinCambioDeEstado": 1,
+                          "conError": 1
+                        },
+                        "resultados": [
+                          {
+                            "numGuia": 100234,
+                            "resultado": "habilitada",
+                            "estado": "en_reparto",
+                            "estadoNombre": "En reparto",
+                            "ayudaCerrada": true,
+                            "error": null
+                          },
+                          {
+                            "numGuia": 100235,
+                            "resultado": "habilitada_sin_cambio_de_estado",
+                            "estado": "novedad",
+                            "estadoNombre": "Novedad",
+                            "ayudaCerrada": false,
+                            "error": null
+                          },
+                          {
+                            "numGuia": 999999,
+                            "resultado": "error",
+                            "estado": null,
+                            "estadoNombre": null,
+                            "ayudaCerrada": false,
+                            "error": {
+                              "codigo": "no_encontrada",
+                              "mensaje": "no existe una orden viva con esa guia"
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "401": {
+              "$ref": "#/components/responses/Unauthorized"
+            },
+            "403": {
+              "$ref": "#/components/responses/Forbidden"
+            },
+            "422": {
+              "$ref": "#/components/responses/ValidationError"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "AnaliticaRespuesta": {
+        "type": "object",
+        "required": [
+          "rango",
+          "metricas"
+        ],
+        "properties": {
+          "rango": {
+            "type": "object",
+            "description": "Eco del rango efectivo, común a todas las series y en el mismo formato que la petición.",
+            "required": [
+              "desde",
+              "hasta"
+            ],
+            "properties": {
+              "desde": {
+                "type": "string",
+                "format": "date",
+                "example": "2026-08-19"
+              },
+              "hasta": {
+                "type": "string",
+                "format": "date",
+                "description": "Inclusivo, hora de Costa Rica.",
+                "example": "2026-08-21"
+              }
+            }
+          },
+          "metricas": {
+            "type": "array",
+            "description": "Una entrada por métrica pedida, en el orden pedido. Nunca vacío.",
+            "items": {
+              "$ref": "#/components/schemas/AnaliticaSerie"
+            }
+          }
+        }
+      },
+      "AnaliticaSerie": {
+        "type": "object",
+        "required": [
+          "metrica",
+          "unidad",
+          "data",
+          "cobertura"
+        ],
+        "properties": {
+          "metrica": {
+            "type": "string",
+            "description": "Id de la métrica pedida.",
+            "example": "entregas"
+          },
+          "unidad": {
+            "type": "string",
+            "description": "Unidad de la cifra (p. ej. `conteo`, `porcentaje`, `dias`)."
+          },
+          "data": {
+            "type": "array",
+            "description": "Los días del rango con dato, en orden, INCLUIDO el día en curso. Antes del 2026-09-04 el día en curso se omitía; ahora viene marcado `parcial: true`. ⚠️ Si sumas `data` para obtener un total del periodo, DESCARTA primero los puntos con `parcial: true` y los días listados en `cobertura.fechasNoComparables`: no son comparables con un día cerrado. Puede venir vacío, y eso es un 200 correcto. No rellenes los huecos con ceros.",
+            "items": {
+              "type": "object",
+              "required": [
+                "fecha",
+                "valor"
+              ],
+              "properties": {
+                "fecha": {
+                  "type": "string",
+                  "format": "date",
+                  "example": "2026-08-20"
+                },
+                "valor": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "description": "`null` significa «no se sabe» (por ejemplo, denominador cero). NUNCA se sustituye por 0. Un día con `valor: null` SÍ está en `data`: está cerrado, pero su resultado es indefinido."
+                },
+                "parcial": {
+                  "type": "boolean",
+                  "enum": [
+                    true
+                  ],
+                  "description": "Presente y `true` SOLO en el día en curso, que aún no está cerrado: su cifra se lee más baja que la de un día completo y NO es comparable. Ausente en cualquier otro día (nunca llega como `false`)."
+                },
+                "corteAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "Instante ISO-8601 usado como cota superior del día parcial. Solo acompaña a `parcial: true`.",
+                  "example": "2026-08-21T18:40:00.000Z"
+                }
+              }
+            }
+          },
+          "cobertura": {
+            "type": "object",
+            "description": "Qué días de esta serie no son comparables, y por qué. Siempre presente.",
+            "required": [
+              "fechasNoComparables",
+              "penumbra"
+            ],
+            "properties": {
+              "fechasNoComparables": {
+                "type": "array",
+                "description": "Días del rango por debajo del horizonte del histórico: ahí un cero es falta de DATOS, no falta de operación. Normalmente vacío.",
+                "items": {
+                  "type": "string",
+                  "format": "date"
+                }
+              },
+              "penumbra": {
+                "type": "string",
+                "enum": [
+                  "ordenes_vivas_al_horizonte_sin_transicion_posterior"
+                ],
+                "description": "Limitación permanente del histórico, nunca estimada: las órdenes que ya estaban vivas cuando nació el historial y nunca volvieron a cambiar de estado no entran en ningún día."
+              }
+            }
+          }
+        }
+      },
+      "CancelacionResponse": {
+        "type": "object",
+        "required": [
+          "numGuia",
+          "estadoAnterior",
+          "estadoAnteriorNombre",
+          "estado",
+          "estadoNombre"
+        ],
+        "properties": {
+          "numGuia": {
+            "type": "integer"
+          },
+          "estadoAnterior": {
+            "type": "string",
+            "enum": [
+              "entregado",
+              "novedad",
+              "devolviendo_a_tienda",
+              "reprogramado",
+              "en_ruta_bodega_central",
+              "en_bodega_central",
+              "en_preparacion",
+              "mensajero_recogiendo_en_bodega",
+              "en_ruta_bodega_satelite",
+              "en_reparto",
+              "devolucion_a_origen_por_rechazo",
+              "en_bodega_satelite",
+              "devuelta_a_tienda",
+              "novedad_interna",
+              "por_devolver_a_bodega_central",
+              "devolviendo_a_bodega_central",
+              "por_devolver_a_tienda",
+              "por_recolectar_en_tienda",
+              "incidente",
+              "recolectando"
+            ]
+          },
+          "estadoAnteriorNombre": {
+            "type": "string",
+            "description": "Nombre visible de `estadoAnterior`: la MISMA cadena que muestra la aplicación (p. ej. `Novedad`)."
+          },
+          "estado": {
+            "type": "string",
+            "const": "devolviendo_a_tienda"
+          },
+          "estadoNombre": {
+            "type": "string",
+            "description": "Nombre visible de `estado`: la MISMA cadena que muestra la aplicación (p. ej. `Novedad`)."
+          }
+        }
+      },
+      "CargaFilaError": {
+        "type": "object",
+        "description": "Una fila que no se creó, con el detalle de por qué.",
+        "required": [
+          "fila",
+          "numRemision",
+          "resultado",
+          "errores"
+        ],
+        "properties": {
+          "fila": {
+            "type": "integer",
+            "description": "Índice 1-based dentro de `ordenes`."
+          },
+          "numRemision": {
+            "type": "string",
+            "description": "Tu número de remisión tal como llegó (vacío si la fila no lo traía)."
+          },
+          "resultado": {
+            "type": "string",
+            "const": "error"
+          },
+          "errores": {
+            "type": "object",
+            "description": "Errores por campo. Las claves suelen ser columnas de la fila, pero no siempre: la clave `tarifa` señala que el par (tienda, zona) de esa fila no resuelve tarifa vigente y por eso la orden no se creó.",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "CargaOrden": {
+        "type": "object",
+        "description": "Una orden efectivamente creada (bloque plano listo para consumir).",
+        "required": [
+          "id",
+          "numRemision",
+          "numGuia",
+          "estado",
+          "estadoNombre",
+          "costoEnvio",
+          "fulfillment",
+          "ivaFulfillment"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Id interno de la orden creada."
+          },
+          "numRemision": {
+            "type": "string"
+          },
+          "numGuia": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Número de guía asignado en el acto. Es `null` —y solo entonces— cuando la orden nació en `en_preparacion` por fulfillment: la guía se emite más tarde y nunca se fabrica un número."
+          },
+          "estado": {
+            "type": "string",
+            "enum": [
+              "entregado",
+              "novedad",
+              "devolviendo_a_tienda",
+              "reprogramado",
+              "en_ruta_bodega_central",
+              "en_bodega_central",
+              "en_preparacion",
+              "mensajero_recogiendo_en_bodega",
+              "en_ruta_bodega_satelite",
+              "en_reparto",
+              "devolucion_a_origen_por_rechazo",
+              "en_bodega_satelite",
+              "devuelta_a_tienda",
+              "novedad_interna",
+              "por_devolver_a_bodega_central",
+              "devolviendo_a_bodega_central",
+              "por_devolver_a_tienda",
+              "por_recolectar_en_tienda",
+              "incidente",
+              "recolectando"
+            ]
+          },
+          "estadoNombre": {
+            "type": "string",
+            "description": "Nombre visible de `estado`: la MISMA cadena que muestra la aplicación (p. ej. `Novedad`)."
+          },
+          "costoEnvio": {
+            "type": "string",
+            "description": "Costo total del envío (flete + IVA de la tarifa vigente del par (tienda, zona), MÁS el fulfillment y su IVA si los hay), string escala 2. Toda orden creada lo trae con un importe real: una fila sin tarifa no llega a crearse. Distinto de `monto_cobrar`/COD."
+          },
+          "fulfillment": {
+            "type": "string",
+            "description": "Cuánto de `costoEnvio` es el servicio de bodega, string escala 2. `\"0.00\"` si tu tarifa no tiene fulfillment — y entonces `costoEnvio` es solo flete + IVA. Nunca `null`."
+          },
+          "ivaFulfillment": {
+            "type": "string",
+            "description": "IVA del fulfillment, string escala 2: el % de IVA de tu tarifa aplicado al fulfillment ya redondeado. `\"0.00\"` si tu tarifa no tiene fulfillment o no le aplica IVA. Nunca `null`."
+          }
+        }
+      },
+      "CargaRequest": {
+        "type": "object",
+        "required": [
+          "ordenes"
+        ],
+        "properties": {
+          "ordenes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 5000,
+            "description": "Filas a cargar (1..5000). Todos los valores son texto.",
+            "items": {
+              "$ref": "#/components/schemas/CargaRow"
+            }
+          }
+        }
+      },
+      "CargaResponse": {
+        "type": "object",
+        "required": [
+          "total",
+          "creadas",
+          "duplicadas",
+          "conError",
+          "filas",
+          "errores",
+          "ordenes"
+        ],
+        "properties": {
+          "cargaId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Id del lote creado, para pedir después el PDF consolidado. `null` si el lote no creó ninguna orden."
+          },
+          "total": {
+            "type": "integer",
+            "description": "Filas recibidas."
+          },
+          "creadas": {
+            "type": "integer"
+          },
+          "duplicadas": {
+            "type": "integer"
+          },
+          "conError": {
+            "type": "integer"
+          },
+          "filas": {
+            "type": "array",
+            "description": "Las filas que entraron: `creada` y `duplicada`. Nunca contiene una fila en `error`.",
+            "items": {
+              "$ref": "#/components/schemas/CargaRowResult"
+            }
+          },
+          "errores": {
+            "type": "array",
+            "description": "Las filas que NO se crearon, con su detalle por campo. Lista vacía cuando el lote entero entró; su longitud es siempre `conError`.",
+            "items": {
+              "$ref": "#/components/schemas/CargaFilaError"
+            }
+          },
+          "ordenes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CargaOrden"
+            }
+          }
+        }
+      },
+      "CargaRow": {
+        "type": "object",
+        "description": "Una fila de carga. Todas las claves son strings. Las requeridas se validan en el servidor; una fila inválida no aborta el lote (se reporta como `error`).",
+        "required": [
+          "num_remision",
+          "destinatario",
+          "telefono",
+          "provincia",
+          "canton",
+          "distrito",
+          "direccion",
+          "producto",
+          "peso",
+          "monto_cobrar"
+        ],
+        "properties": {
+          "num_remision": {
+            "type": "string",
+            "description": "Identificador de remisión (dedup por este valor)."
+          },
+          "destinatario": {
+            "type": "string"
+          },
+          "telefono": {
+            "type": "string"
+          },
+          "provincia": {
+            "type": "string",
+            "description": "Si no se encuentra, es ambigua o está RETIRADA del catálogo, la fila sale en `errores` y el lote sigue (200 con éxito parcial)."
+          },
+          "canton": {
+            "type": "string",
+            "description": "Si no se encuentra, es ambiguo o está RETIRADO del catálogo, la fila sale en `errores` y el lote sigue (200 con éxito parcial)."
+          },
+          "distrito": {
+            "type": "string",
+            "description": "Su zona decide la tarifa. Si no se encuentra, es ambiguo, no tiene zona o está RETIRADO del catálogo, la fila sale en `errores` y el lote sigue (200 con éxito parcial)."
+          },
+          "direccion": {
+            "type": "string"
+          },
+          "producto": {
+            "type": "string"
+          },
+          "peso": {
+            "type": "string",
+            "description": "Peso en kg como texto (p. ej. \"1.5\")."
+          },
+          "monto_cobrar": {
+            "type": "string",
+            "description": "Monto COD como texto (p. ej. \"25.90\")."
+          },
+          "notas": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": {
+          "type": "string"
+        }
+      },
+      "CargaRowResult": {
+        "type": "object",
+        "description": "Resultado de una fila que SÍ entró al sistema. Desde 2026-08-31 esta lista no contiene filas en `error`: ésas viajan en `errores` (`CargaFilaError`).",
+        "required": [
+          "fila",
+          "numRemision",
+          "resultado"
+        ],
+        "properties": {
+          "fila": {
+            "type": "integer",
+            "description": "Índice 1-based dentro de `ordenes`."
+          },
+          "numRemision": {
+            "type": "string"
+          },
+          "resultado": {
+            "type": "string",
+            "enum": [
+              "creada",
+              "duplicada"
+            ]
+          },
+          "estado": {
+            "type": "string",
+            "description": "Estado de la orden, con un código del catálogo de `OrdenListItem.estado` (en creada/duplicada; en `duplicada`, el de la orden que ya ocupa esa remisión). Hasta el cambio de la ficha 455 se llamaba `estatus`."
+          },
+          "estadoNombre": {
+            "type": "string",
+            "description": "Nombre visible de `estado`: la MISMA cadena que muestra la aplicación (p. ej. `Novedad`)."
+          },
+          "numGuia": {
+            "type": "integer",
+            "description": "Número de guía asignado (solo en `creada`)."
+          }
+        }
+      },
+      "CotizacionCostos": {
+        "type": "object",
+        "description": "Los DOS escenarios de una fila con cobertura. Siempre presente en `filas`; las filas sin precio no lo traen porque no están en esa lista, están en `errores`.",
+        "required": [
+          "entregado",
+          "devuelto"
+        ],
+        "properties": {
+          "entregado": {
+            "$ref": "#/components/schemas/CotizacionEscenarioEntregado"
+          },
+          "devuelto": {
+            "$ref": "#/components/schemas/CotizacionEscenarioDevuelto"
+          }
+        }
+      },
+      "CotizacionEscenarioDevuelto": {
+        "type": "object",
+        "description": "Costo si la orden se DEVUELVE, es decir si el paquete vuelve a tu tienda: seis conceptos, SIN `ivaComision` (no hay comisión que gravar). `comision` es un cero EXPLÍCITO — la afirmación de que una devolución no cobra comisión COD, no un dato ausente. `fulfillment` y su IVA en cambio SÍ se cobran: el servicio de bodega ya se prestó. `total` es la DEUDA de la tienda = −(flete + iva + fulfillment + ivaFulfillment), y por eso es negativo. **Cuándo se cobra este escenario:** al cerrarse la orden en Devolución a origen por rechazo (`devolucion_a_origen_por_rechazo`), que es el resultado con el que el paquete regresa. Un intento de entrega fallido que aún se puede reprogramar o recuperar NO cobra nada por sí solo; los importes de aquí aparecen cuando el retorno se consuma.",
+        "required": [
+          "flete",
+          "iva",
+          "comision",
+          "fulfillment",
+          "ivaFulfillment",
+          "total"
+        ],
+        "properties": {
+          "flete": {
+            "type": "string",
+            "description": "Flete por devolución a origen. String money-safe de escala 2, crudo. En pantalla, en la wallet y en las descargas este concepto se llama exactamente así desde el 2026-10-01: sólo lo cobra una gestión con resultado `devolucion_a_origen_por_rechazo` (ver `CotizacionEscenarioDevuelto`), nunca una devolución que siga viva. Sus nombres anteriores están en el CHANGELOG."
+          },
+          "iva": {
+            "type": "string",
+            "description": "IVA del flete por devolución a origen. String money-safe de escala 2, crudo. Sus nombres anteriores están en el CHANGELOG."
+          },
+          "comision": {
+            "type": "string",
+            "description": "Siempre `\"0.00\"`: una devolución no cobra comisión COD."
+          },
+          "fulfillment": {
+            "type": "string",
+            "description": "El MISMO monto que en el escenario entregado: preparar y despachar el paquete ya costó, lo reciba el destinatario o no. Cero si tu tarifa no tiene fulfillment."
+          },
+          "ivaFulfillment": {
+            "type": "string",
+            "description": "IVA del fulfillment, string escala 2: el % de IVA de tu tarifa aplicado al fulfillment ya redondeado. `\"0.00\"` si tu tarifa no tiene fulfillment o no le aplica IVA. Nunca `null`."
+          },
+          "total": {
+            "type": "string",
+            "description": "Deuda de la tienda. String money-safe de escala 2, crudo y negativo."
+          }
+        }
+      },
+      "CotizacionEscenarioEntregado": {
+        "type": "object",
+        "description": "Costo si la orden se ENTREGA: siete conceptos. `total` es lo que RECIBE la tienda = monto a cobrar − (flete + iva + comision + ivaComision + fulfillment + ivaFulfillment), y es negativo si no hay COD que cubra lo facturado.",
+        "required": [
+          "flete",
+          "iva",
+          "comision",
+          "ivaComision",
+          "fulfillment",
+          "ivaFulfillment",
+          "total"
+        ],
+        "properties": {
+          "flete": {
+            "type": "string",
+            "description": "Flete de la zona del distrito. String money-safe de escala 2, crudo."
+          },
+          "iva": {
+            "type": "string",
+            "description": "IVA del flete. String money-safe de escala 2, crudo."
+          },
+          "comision": {
+            "type": "string",
+            "description": "Comisión COD. String money-safe de escala 2, crudo."
+          },
+          "ivaComision": {
+            "type": "string",
+            "description": "IVA de la comisión. String money-safe de escala 2, crudo."
+          },
+          "fulfillment": {
+            "type": "string",
+            "description": "Monto fijo del servicio de bodega por orden, crudo. Cero si tu tarifa no tiene fulfillment; nunca ausente."
+          },
+          "ivaFulfillment": {
+            "type": "string",
+            "description": "IVA del fulfillment, string escala 2: el % de IVA de tu tarifa aplicado al fulfillment ya redondeado. `\"0.00\"` si tu tarifa no tiene fulfillment o no le aplica IVA. Nunca `null`."
+          },
+          "total": {
+            "type": "string",
+            "description": "Lo que recibe la tienda. String money-safe de escala 2, crudo; negativo si el COD no cubre lo facturado."
+          }
+        }
+      },
+      "CotizacionFilaError": {
+        "type": "object",
+        "description": "Una fila que no se pudo cotizar, con el detalle de por qué.",
+        "required": [
+          "fila",
+          "numRemision",
+          "resultado",
+          "errores"
+        ],
+        "properties": {
+          "fila": {
+            "type": "integer",
+            "description": "Índice 1-based dentro de `ordenes`."
+          },
+          "numRemision": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "El `num_remision` que mandaste, tal cual; `null` si la fila no lo trajo."
+          },
+          "resultado": {
+            "type": "string",
+            "const": "error"
+          },
+          "errores": {
+            "type": "object",
+            "description": "Errores por campo. Las claves suelen ser columnas de la fila, pero no siempre: la clave `tarifa` señala que el par (tienda, zona) de esa fila no resuelve tarifa vigente y por eso no se cotizó.",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "CotizacionRequest": {
+        "type": "object",
+        "required": [
+          "ordenes"
+        ],
+        "properties": {
+          "ordenes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 5000,
+            "description": "Filas a cotizar (1..5000, el mismo tope que la carga). Todos los valores son texto.",
+            "items": {
+              "$ref": "#/components/schemas/CotizacionRow"
+            }
+          }
+        }
+      },
+      "CotizacionResponse": {
+        "type": "object",
+        "required": [
+          "total",
+          "cotizadas",
+          "conError",
+          "filas",
+          "errores"
+        ],
+        "properties": {
+          "total": {
+            "type": "integer",
+            "description": "Filas recibidas."
+          },
+          "cotizadas": {
+            "type": "integer"
+          },
+          "conError": {
+            "type": "integer"
+          },
+          "filas": {
+            "type": "array",
+            "description": "Las filas con precio. Nunca contiene una fila en `error`; su longitud es siempre `cotizadas`.",
+            "items": {
+              "$ref": "#/components/schemas/CotizacionRowResult"
+            }
+          },
+          "errores": {
+            "type": "array",
+            "description": "Las filas que NO se cotizaron, con su detalle por campo. Lista vacía cuando el lote entero se cotizó; su longitud es siempre `conError`.",
+            "items": {
+              "$ref": "#/components/schemas/CotizacionFilaError"
+            }
+          }
+        }
+      },
+      "CotizacionRow": {
+        "type": "object",
+        "description": "Una fila a cotizar. Es la MISMA fila cruda que acepta `POST /api/ordenes/api-key/carga`:\npodés mandar el cuerpo de la carga sin recortarlo y las claves que la cotización no usa\nse ignoran. `num_remision` es opcional y solo correlaciona.\n\nNINGUNA clave de la fila está en `required`, y es deliberado: el servidor NO rechaza el\nlote por una fila incompleta. La terna geográfica (`provincia`, `canton`, `distrito`) es\nNECESARIA para poder cotizar la fila, pero su ausencia NO es un 422 del lote: esa fila\nvuelve en la lista `errores` con `resultado: \"error\"` y el detalle bajo la clave del\ncampo que falta, y las\ndemás filas se cotizan igual (éxito parcial). Declararla `required` haría que un cliente\ngenerado con validación estricta rechazara EN LOCAL un cuerpo que el servidor acepta y\nresponde 200.\n\nCuándo recibís 422: solo por el lote entero — `ordenes` vacío o por encima del tope\n(o un valor que no sea texto). Cuándo recibís 200 con entradas en `errores`: por cualquier\nproblema de una fila concreta — terna ausente o vacía, distrito no encontrado, distrito\nambiguo, distrito sin zona asignada, algún nivel de la terna RETIRADO del catálogo, o\n`monto_cobrar` con formato inválido.\n\nRETIRADO DEL CATÁLOGO (desde 2026-09-06). Servi Logistic puede retirar una provincia, un cantón\no un distrito sin borrarlo: deja de admitirse en cargas y cotizaciones nuevas, y las\nórdenes que ya lo referencian no se tocan. La fila sale con `resultado: \"error\"` y un\nmensaje PROPIO, distinto de «no encontrado» y de «ambiguo», para que no lo confundas con\nuna errata en la dirección. Los tres mensajes son:\n\n- `la provincia esta retirada del catalogo`\n- `el canton esta retirado del catalogo`\n- `el distrito '<nombre>' esta retirado del catalogo`\n\nSi hay más de un nivel retirado se informa del más alto, con esta PRECEDENCIA fija:\nprimero provincia, luego cantón, luego distrito. Sigue siendo 200 con éxito parcial:\nninguna otra fila del lote se ve afectada.",
+        "properties": {
+          "provincia": {
+            "type": "string",
+            "description": "Necesaria para cotizar la fila. Si falta, no se encuentra, es ambigua o está RETIRADA del catálogo, la fila sale con `resultado: \"error\"` (no un 422 del lote)."
+          },
+          "canton": {
+            "type": "string",
+            "description": "Necesario para cotizar la fila. Si falta, no se encuentra, es ambiguo o está RETIRADO del catálogo, la fila sale con `resultado: \"error\"` (no un 422 del lote)."
+          },
+          "distrito": {
+            "type": "string",
+            "description": "Su zona decide la columna de flete. Necesario para cotizar la fila: si falta, no se encuentra, es ambiguo, no tiene zona o está RETIRADO del catálogo, la fila sale con `resultado: \"error\"` (no un 422 del lote)."
+          },
+          "direccion": {
+            "type": "string",
+            "description": "Se acepta; no participa del precio."
+          },
+          "monto_cobrar": {
+            "type": "string",
+            "description": "Monto COD como texto (p. ej. \"25900\"). Base de la comisión; vacío o ausente se trata como cero."
+          },
+          "num_remision": {
+            "type": "string",
+            "description": "OPCIONAL: solo correlación. No se deduplica ni contra el lote ni contra las órdenes existentes."
+          }
+        },
+        "additionalProperties": {
+          "type": "string"
+        }
+      },
+      "CotizacionRowResult": {
+        "type": "object",
+        "description": "Una fila CON precio. No existe `duplicada`: sin persistencia no significa nada. Desde 2026-08-31 esta lista no contiene filas en `error`: ésas viajan en `errores` (`CotizacionFilaError`), y por eso `costos` dejó de ser opcional aquí.",
+        "required": [
+          "fila",
+          "numRemision",
+          "montoCobrar",
+          "resultado",
+          "costos"
+        ],
+        "properties": {
+          "fila": {
+            "type": "integer",
+            "description": "Índice 1-based dentro de `ordenes`."
+          },
+          "numRemision": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "El `num_remision` que mandaste, tal cual; `null` si la fila no lo trajo."
+          },
+          "montoCobrar": {
+            "type": "string",
+            "description": "EL VALOR SOBRE EL QUE SE COTIZÓ: el `monto_cobrar` que entró al cálculo, ya redondeado al colón igual que lo redondea la carga, y `\"0.00\"` si la fila no traía monto (la base que usó la comisión COD). String money-safe de escala 2, crudo, como el resto de los importes."
+          },
+          "resultado": {
+            "type": "string",
+            "const": "cotizada"
+          },
+          "costos": {
+            "$ref": "#/components/schemas/CotizacionCostos"
+          }
+        }
+      },
+      "EliminacionResponse": {
+        "type": "object",
+        "required": [
+          "numGuia",
+          "numRemision",
+          "estado",
+          "estadoNombre"
+        ],
+        "properties": {
+          "numGuia": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Guía de la orden eliminada; `null` si aún no tenía."
+          },
+          "numRemision": {
+            "type": "string",
+            "description": "Tu número de remisión. Vuelve a quedar libre para reutilizarlo."
+          },
+          "estado": {
+            "type": "string",
+            "description": "Estado que la orden tenía al eliminarla (eliminar no cambia el estado).",
+            "enum": [
+              "en_preparacion",
+              "por_recolectar_en_tienda",
+              "recolectando",
+              "en_bodega_central",
+              "en_ruta_bodega_central",
+              "en_ruta_bodega_satelite",
+              "mensajero_recogiendo_en_bodega"
+            ]
+          },
+          "estadoNombre": {
+            "type": "string",
+            "description": "Nombre visible de `estado`: la MISMA cadena que muestra la aplicación (p. ej. `Novedad`)."
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "description": "Shape uniforme de error del manejador global. `status` siempre `\"error\"`.",
+        "required": [
+          "status",
+          "code",
+          "message"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "error"
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "VALIDATION_ERROR",
+              "UNAUTHORIZED",
+              "FORBIDDEN",
+              "NOT_FOUND",
+              "CONFLICT",
+              "INTERNAL"
+            ],
+            "description": "Código estable (independiente del status HTTP)."
+          },
+          "message": {
+            "type": "string",
+            "description": "Mensaje fijo en español."
+          },
+          "details": {
+            "type": "object",
+            "description": "Detalle opcional. En 422 lleva `fieldErrors` (campo -> lista de errores).",
+            "additionalProperties": true
+          }
+        }
+      },
+      "Evidencia": {
+        "type": "object",
+        "description": "Evidencia de entrega, rechazo o incidente, con URL firmada de corta duración. Las de incidente llegan con `resultado: \"incidente\"` y son las que enlaza el campo `evidenciasUrl` del webhook.",
+        "required": [
+          "resultado",
+          "resultadoNombre",
+          "contentType",
+          "url",
+          "expiraEnSegundos"
+        ],
+        "properties": {
+          "resultado": {
+            "type": "string",
+            "enum": [
+              "entregado",
+              "devolucion_a_origen_por_rechazo",
+              "incidente"
+            ]
+          },
+          "resultadoNombre": {
+            "type": "string",
+            "description": "Nombre visible de `resultado`: la MISMA cadena que muestra la aplicación (p. ej. `Novedad`)."
+          },
+          "contentType": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "MIME del archivo (p. ej. image/jpeg)."
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL firmada (vence a los 5 min)."
+          },
+          "expiraEnSegundos": {
+            "type": "integer",
+            "description": "TTL de la URL firmada en segundos (300)."
+          }
+        }
+      },
+      "HabilitacionRequest": {
+        "type": "object",
+        "required": [
+          "ordenes"
+        ],
+        "properties": {
+          "ordenes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "description": "Entre 1 y 100 filas. Fuera de ese rango: 422 y ninguna fila procesada.",
+            "items": {
+              "$ref": "#/components/schemas/HabilitacionRow"
+            }
+          }
+        }
+      },
+      "HabilitacionResponse": {
+        "type": "object",
+        "required": [
+          "resumen",
+          "resultados"
+        ],
+        "properties": {
+          "resumen": {
+            "$ref": "#/components/schemas/HabilitacionResumen"
+          },
+          "resultados": {
+            "type": "array",
+            "description": "MISMO orden y MISMA cantidad que las filas enviadas: se puede casar por índice.",
+            "items": {
+              "$ref": "#/components/schemas/HabilitacionRowResult"
+            }
+          }
+        }
+      },
+      "HabilitacionResumen": {
+        "type": "object",
+        "description": "`total` = `habilitadas` + `habilitadasSinCambioDeEstado` + `conError`.",
+        "required": [
+          "total",
+          "habilitadas",
+          "habilitadasSinCambioDeEstado",
+          "conError"
+        ],
+        "properties": {
+          "total": {
+            "type": "integer",
+            "description": "Filas recibidas."
+          },
+          "habilitadas": {
+            "type": "integer",
+            "description": "Órdenes con la ayuda abierta cuya ayuda quedó cerrada (`ayudaCerrada: true`)."
+          },
+          "habilitadasSinCambioDeEstado": {
+            "type": "integer",
+            "description": "Se registró la habilitación y el estado NO cambió."
+          },
+          "conError": {
+            "type": "integer"
+          }
+        }
+      },
+      "HabilitacionRow": {
+        "type": "object",
+        "description": "Una fila del lote. Si `num_guia` o `nota` no cumplen, la fila responde `error`/`fila_invalida` y el resto del lote se procesa igual: NO es un 422 del lote.",
+        "required": [
+          "num_guia",
+          "nota"
+        ],
+        "properties": {
+          "num_guia": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Número de guía de una orden propia. No se acepta como texto."
+          },
+          "nota": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Motivo de la habilitación, OBLIGATORIO. Se recorta y se guarda en la bitácora de la orden; no viaja en el historial de estados."
+          }
+        }
+      },
+      "HabilitacionRowResult": {
+        "type": "object",
+        "required": [
+          "numGuia",
+          "resultado",
+          "estado",
+          "estadoNombre",
+          "ayudaCerrada",
+          "error"
+        ],
+        "properties": {
+          "numGuia": {
+            "description": "La guía tal como se envió (si la fila era inválida, puede no ser entero)."
+          },
+          "resultado": {
+            "type": "string",
+            "enum": [
+              "habilitada",
+              "habilitada_sin_cambio_de_estado",
+              "error"
+            ],
+            "description": "`habilitada`: la orden tenía la ayuda abierta y la ayuda quedó CERRADA; la orden sigue `en_reparto` con su mensajero y vuelve a ser gestionable (desde el 2026-09-23 no hay cambio de estado: mirá `ayudaCerrada`). `habilitada_sin_cambio_de_estado`: se registró y el estado NO cambió (SIEMPRE el caso de una `novedad`). `error`: la fila no se procesó."
+          },
+          "estado": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Estado en el que la orden quedó; `null` cuando la fila falló."
+          },
+          "estadoNombre": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Nombre visible de `estado`: la MISMA cadena que muestra la aplicación. `null` cuando `estado` es `null`."
+          },
+          "ayudaCerrada": {
+            "type": "boolean",
+            "description": "`true` si esta fila CERRÓ una ayuda abierta (el mensajero puede volver a gestionar la orden). `false` en cualquier otro caso, incluidas las filas con error."
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "required": [
+              "codigo",
+              "mensaje"
+            ],
+            "properties": {
+              "codigo": {
+                "type": "string",
+                "enum": [
+                  "fila_invalida",
+                  "duplicada_en_lote",
+                  "no_encontrada",
+                  "estado_no_habilitable"
+                ],
+                "description": "`fila_invalida`: `num_guia`/`nota` no cumplen. `duplicada_en_lote`: la guía ya apareció antes en el mismo lote. `no_encontrada`: no hay orden viva con esa guía para esta key (no distingue «no existe» de «es de otro dueño»). `estado_no_habilitable`: la orden no tiene una ayuda abierta ni está en `novedad` —incluye `reprogramado` y la segunda habilitación de una orden cuya ayuda ya se cerró—."
+              },
+              "mensaje": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "Listado": {
+        "type": "object",
+        "required": [
+          "items",
+          "pagination"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrdenListItem"
+            }
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/Pagination"
+          }
+        }
+      },
+      "Mensajero": {
+        "type": "object",
+        "required": [
+          "id",
+          "nombre"
+        ],
+        "additionalProperties": false,
+        "description": "Una persona mensajera, con lo minimo para identificarla y mostrarla. Es la MISMA forma que publica el campo `mensajero` de `OrdenListItem` y del evento `orden.estado_actualizado`.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Identificador ESTABLE del mensajero: un UUID en TEXTO, no un entero. El mismo mensajero produce el mismo `id` aquí, en el listado, en el detalle y en el webhook, y nunca se reasigna a otra persona: agrupá por este valor."
+          },
+          "nombre": {
+            "type": "string",
+            "description": "Nombre completo de la persona (nombre + apellidos). Texto para mostrar; PUEDE cambiar si se corrigen sus datos, así que no lo uses como clave."
+          }
+        }
+      },
+      "OrdenCosto": {
+        "type": "object",
+        "required": [
+          "flete",
+          "iva",
+          "comision",
+          "ivaComision",
+          "fulfillment",
+          "ivaFulfillment"
+        ],
+        "additionalProperties": false,
+        "description": "Los SEIS conceptos que la empresa factura por una orden, en el escenario de ENTREGA («cuánto cuesta este paquete si se entrega»). Importes en texto crudo con dos decimales y punto decimal, sin símbolo de moneda y sin separador de miles (`\"2500.00\"`) — el mismo dialecto que la cotización y el `costoEnvio` de la carga. Un `\"0.00\"` es un CERO AFIRMADO (por ejemplo, una orden que no cobra comisión), nunca un dato faltante: dentro de este objeto ningún concepto es `null` y ninguno se omite. **NO hay ningún campo que sume los seis, ni `total` ni equivalente**: sumalos vos, que sabés qué estás sumando.",
+        "properties": {
+          "flete": {
+            "type": "string",
+            "description": "Flete del envío."
+          },
+          "iva": {
+            "type": "string",
+            "description": "IVA del flete."
+          },
+          "comision": {
+            "type": "string",
+            "description": "Comisión por el recaudo contra entrega (COD)."
+          },
+          "ivaComision": {
+            "type": "string",
+            "description": "IVA de la comisión COD."
+          },
+          "fulfillment": {
+            "type": "string",
+            "description": "Monto fijo de fulfillment por orden cuando el paquete sale de nuestra bodega. `\"0.00\"` si tu tienda no hace fulfillment."
+          },
+          "ivaFulfillment": {
+            "type": "string",
+            "description": "IVA del fulfillment, string escala 2: el % de IVA de tu tarifa aplicado al fulfillment ya redondeado. `\"0.00\"` si tu tarifa no tiene fulfillment o no le aplica IVA. Nunca `null`."
+          }
+        }
+      },
+      "OrdenDetalle": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/OrdenListItem"
+          },
+          {
+            "type": "object",
+            "required": [
+              "evidencias",
+              "gestiones"
+            ],
+            "properties": {
+              "evidencias": {
+                "type": "array",
+                "description": "Evidencias de la orden ([] si no hay).",
+                "items": {
+                  "$ref": "#/components/schemas/Evidencia"
+                }
+              },
+              "gestiones": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/OrdenGestion"
+                },
+                "description": "Historial de gestiones VIGENTES de la orden, de la más antigua a la más\nreciente. `[]` cuando la orden todavía no se ha gestionado: la clave viaja\nSIEMPRE y nunca es `null`.\n\nLlega **completo y sin paginar**. No incluye las gestiones anuladas (una\nanulación deshace el registro, y contarla inflaría tus métricas) ni los\nincidentes que reporta nuestro personal de bodega, que no son gestiones y no\ntienen mensajero atribuido —sus fotos sí siguen en `evidencias[]`—.\n\n⚠️ **`gestiones.length` no es nuestro contador interno de reintento.** Ese cuenta\ncierres aprobados distintos con visita real, así que varias gestiones del mismo\ncierre valen 1. Este array es la lista cruda, sin agrupar."
+              }
+            }
+          }
+        ],
+        "examples": [
+          {
+            "numGuia": 100234,
+            "numRemision": "REM-0001",
+            "estado": "devolviendo_a_tienda",
+            "estadoNombre": "Devolviendo a tienda",
+            "destinatario": "Jimena Porras",
+            "telefonoDest": "88887777",
+            "producto": "Audífonos inalámbricos",
+            "direccion": "Cartago, de la iglesia 200m sur",
+            "montoCobrar": 48750,
+            "createdAt": "2026-09-01T14:20:00.000Z",
+            "mensajero": null,
+            "evidencias": [],
+            "gestiones": [
+              {
+                "createdAt": "2026-09-02T15:41:07.000Z",
+                "resultado": "reprogramado",
+                "resultadoNombre": "Reprogramado",
+                "estadoResultante": "reprogramado",
+                "estadoResultanteNombre": "Reprogramado",
+                "motivo": null,
+                "mensajero": {
+                  "id": "018f2c31-0000-4000-8000-0000000000aa",
+                  "nombre": "Carlos Jiménez Mora"
+                }
+              },
+              {
+                "createdAt": "2026-09-04T18:02:55.000Z",
+                "resultado": "novedad",
+                "resultadoNombre": "Novedad",
+                "estadoResultante": "novedad",
+                "estadoResultanteNombre": "Novedad",
+                "motivo": "wrong_address",
+                "mensajero": {
+                  "id": "018f2c31-0000-4000-8000-0000000000bb",
+                  "nombre": "Ana Solís Vargas"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "OrdenGestion": {
+        "type": "object",
+        "description": "Un desenlace registrado sobre la orden: quién lo registró, cuándo y en qué dejó la orden. El array completo permite medir cuántas veces se visitó la orden y cuánto pasó entre una vez y la siguiente.",
+        "required": [
+          "createdAt",
+          "resultado",
+          "resultadoNombre",
+          "estadoResultante",
+          "estadoResultanteNombre",
+          "motivo",
+          "mensajero",
+          "pendienteConfirmacion"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Instante en que la gestión quedó REGISTRADA (ISO 8601, UTC). Mismo tipo y misma serialización que el `createdAt` de la orden. NO es la fecha de reprogramación ni la de aprobación de un cierre."
+          },
+          "resultado": {
+            "type": "string",
+            "enum": [
+              "devolucion_a_origen_por_rechazo",
+              "entregado",
+              "incidente",
+              "novedad",
+              "reprogramado"
+            ],
+            "description": "Desenlace de la gestión, con el value CRUDO del catálogo interno y sin traducir. La lista de arriba es EXACTA y COMPLETA. Ojo: `resultado` NO es el estado en que quedó la orden — para eso está `estadoResultante`, y los dos NO siempre coinciden."
+          },
+          "resultadoNombre": {
+            "type": "string",
+            "description": "Nombre visible de `resultado`: la MISMA cadena que muestra la aplicación (p. ej. `Novedad`)."
+          },
+          "estadoResultante": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "El `value` del estado al que ESTA gestión llevó la orden: el destino de la primera\ntransición que originó. Es un value del mismo catálogo que publica\n`OrdenListItem.estado`; **se publica sin lista cerrada a propósito**: en gestiones\nantiguas puede traer un estado RETIRADO del catálogo (ver abajo). Tratá un value\ndesconocido como texto, no como error.\n\n⚠️ **No lo deduzcas del `resultado`**: una gestión se REGISTRA sin mover la orden; el\nestado se aplica cuando se APRUEBA el cierre del mensajero. Mientras tanto la gestión\nestá `pendienteConfirmacion: true` y este campo es `null`. En gestiones anteriores al\n2026-09-23, una `novedad` puede mostrar `devolucion_por_confirmar` (estado retirado).\n\nEs `null` en gestiones ANTIGUAS, anteriores a que existiera la línea de tiempo de\nestados: no hay ninguna transición registrada que las respalde. No es un fallo del\ncanal, y la clave NUNCA se omite."
+          },
+          "estadoResultanteNombre": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Nombre visible de `estadoResultante`: la MISMA cadena que muestra la aplicación. `null` cuando `estadoResultante` es `null`."
+          },
+          "motivo": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "not_found",
+              "wrong_number",
+              "wrong_address",
+              "danado",
+              "perdido",
+              "robado",
+              null
+            ],
+            "description": "Causa TIPIFICADA del desenlace, con el value crudo del enum y sin traducir. Son los\nMISMOS valores que ya recibís en `data.motivo` del webhook `orden.estado_actualizado`.\nEl campo transporta DOS enums distintos y cuál aplica lo decide `resultado`:\n\n- **`resultado: \"novedad\"`** → causa de la devolución: `not_found` (destinatario no\n  encontrado), `wrong_number` (teléfono equivocado), `wrong_address` (dirección\n  equivocada).\n- **`resultado: \"incidente\"`** → causa del incidente: `danado`, `perdido`, `robado`.\n- **cualquier otro `resultado`** → siempre `null`.\n\n⚠️ **La asimetría de idioma es DELIBERADA, no un error que corregir.** Las causas de\ndevolución van en INGLÉS y las de incidente en ESPAÑOL (`danado` sin eñe, `perdido`,\n`robado`) porque cada enum se publicó con el value crudo de su catálogo interno y\nrenombrar cualquiera de los dos rompería a los integradores que ya lo consumen.\nDecisión consciente y firmada (73/F1.4-g y 158/Q-B): no se «armoniza» en el futuro.\n\nEs `null` **también** en una `novedad` (o un `incidente`) sin causa registrada —\ngestiones anteriores a que la causa se pidiera; ese histórico no se rellenó—. El\ncontrato no distingue «no hubo causa» de «no se registró»: en los dos casos viaja\n`null` y el campo NUNCA se omite.\n\n⚠️ Transporta EXCLUSIVAMENTE la causa tipificada. **NO es el comentario en texto libre\nque el mensajero escribe al gestionar la orden** —que comparte el nombre `motivo` en\nnuestra base de datos y NO sale del sistema por decisión de privacidad—, ni ningún\notro dato del destinatario."
+          },
+          "mensajero": {
+            "$ref": "#/components/schemas/Mensajero",
+            "description": "Mensajero ATRIBUIDO a esta gestión. **Nunca es `null`**: a diferencia del\n`mensajero` de la orden —que es quien la lleva AHORA y puede no ser nadie—, una\ngestión siempre tiene una persona detrás.\n\n⚠️ **Atribuido no siempre significa «quien la registró».** Algunas gestiones las crea\nel sistema o la propia tienda (una reprogramación desde el escritorio, el escalado\nautomático por vencimiento de plazo, un rechazo manual de la tienda, el desenlace de\nuna solicitud de ayuda, o el corte por llegar al tope de reintento) y quedan\natribuidas al mensajero de la última devolución. En este array se ven idénticas a una\nvisita de calle."
+          },
+          "pendienteConfirmacion": {
+            "type": "boolean",
+            "description": "`true` mientras la gestión está PENDIENTE de confirmar: se registró, pero el estado que produce todavía no se aplicó (se aplica al aprobar el cierre del mensajero; hasta entonces `estadoResultante` es `null`). `false` en las gestiones ya aplicadas y en las anteriores al 2026-09-23."
+          }
+        }
+      },
+      "OrdenListItem": {
+        "type": "object",
+        "description": "Item público de una orden propia: sin ids internos de la orden ni de la tienda. La única excepción a «sin datos personales de terceros» es el campo `mensajero`, que lleva el `id` y el NOMBRE del mensajero ASIGNADO —y nada más— hacia el dueño de la orden, que ya ve ese mismo nombre en la aplicación. El resto de los datos personales del mensajero (teléfono, email, cédula, foto, zona, vehículo) sigue excluido, y también el mensajero que GESTIONÓ la orden y el texto libre que escribe al gestionarla. Desde el 2026-09-10 el ítem publica además la ZONA DE LA ORDEN (a dónde va el paquete) y lo que ese paquete le cuesta a tu tienda, en dos campos: `costoEstimado` y `costoReal`.",
+        "required": [
+          "numGuia",
+          "numRemision",
+          "estado",
+          "estadoNombre",
+          "destinatario",
+          "telefonoDest",
+          "producto",
+          "direccion",
+          "montoCobrar",
+          "createdAt",
+          "mensajero",
+          "zona",
+          "costoEstimado",
+          "costoReal"
+        ],
+        "properties": {
+          "numGuia": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Número de guía (null si aún no asignado)."
+          },
+          "numRemision": {
+            "type": "string"
+          },
+          "estado": {
+            "type": "string",
+            "enum": [
+              "entregado",
+              "novedad",
+              "devolviendo_a_tienda",
+              "reprogramado",
+              "en_ruta_bodega_central",
+              "en_bodega_central",
+              "en_preparacion",
+              "mensajero_recogiendo_en_bodega",
+              "en_ruta_bodega_satelite",
+              "en_reparto",
+              "devolucion_a_origen_por_rechazo",
+              "en_bodega_satelite",
+              "devuelta_a_tienda",
+              "novedad_interna",
+              "por_devolver_a_bodega_central",
+              "devolviendo_a_bodega_central",
+              "por_devolver_a_tienda",
+              "por_recolectar_en_tienda",
+              "incidente",
+              "recolectando"
+            ]
+          },
+          "estadoNombre": {
+            "type": "string",
+            "description": "Nombre visible de `estado`: la MISMA cadena que muestra la aplicación (p. ej. `Novedad`)."
+          },
+          "destinatario": {
+            "type": "string"
+          },
+          "telefonoDest": {
+            "type": "string"
+          },
+          "producto": {
+            "type": "string"
+          },
+          "direccion": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "montoCobrar": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Monto a cobrar (COD)."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "mensajero": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "required": [
+              "id",
+              "nombre"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Identificador ESTABLE del mensajero: un UUID en TEXTO, no un entero. El mismo mensajero produce el mismo `id` aquí, en el detalle y en el webhook, y nunca se reasigna a otra persona: agrupá por este valor."
+              },
+              "nombre": {
+                "type": "string",
+                "description": "Nombre completo de la persona (nombre + apellidos). Texto para mostrar; PUEDE cambiar si se corrigen sus datos, así que no lo uses como clave."
+              }
+            },
+            "description": "Mensajero ASIGNADO a la orden, o `null` si no la lleva nadie.\n\n**La clave está SIEMPRE presente**: `null` significa «todavía nadie la lleva», no «no\nse sabe» y no una omisión.\n\n⚠️ **Es QUIÉN LA LLEVA en el momento de la lectura, no quién la gestionó.** Varios\nflujos limpian la asignación (generación de guía, quitar mensajero, devolución o\nrecuperación a bodega, liberación de una orden en `reprogramado`, el barrido del cierre diario),\nasí que una orden que alguien llevó puede devolver `null` más tarde. Para «quién\ngestionó cada intento» hace falta el historial de gestiones, que este recurso NO\nexpone.\n\nNo se puede filtrar ni ordenar el listado por este campo: un parámetro de query que lo\nintente se ignora, como cualquier otra clave desconocida.\n\n⏳ **2026-09-10 — la palabra «zona» de la lista de exclusiones de arriba se refiere a\nla zona DEL MENSAJERO** (en qué zona trabaja esa persona), que es un dato personal\nsuyo y sigue SIN publicarse. **No la confundas con el campo `zona` de la orden**, que\nsí se publica desde esa fecha y es otra cosa: el DESTINO del paquete."
+          },
+          "zona": {
+            "$ref": "#/components/schemas/Zona"
+          },
+          "costoEstimado": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/OrdenCosto"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lo que costaría este paquete con la tarifa VIGENTE HOY para tu tienda en la zona de\nla orden, en el escenario de ENTREGA.\n\n⚠️ **Mientras `costoReal` sea `null`, este importe PUEDE CAMBIAR entre dos lecturas de\nla misma orden: se calcula con la tarifa de hoy**, y las tarifas se editan en sitio\n(no guardamos su histórico). Si lo archivás sin leer esto, construirás una serie que\ncambia sola. Cuando llega `costoReal`, ése ya no se mueve: es lo que se congeló al\ncerrar.\n\n`null` significa **«no hay ninguna tarifa configurada para tu tienda en esa zona»**, y\n**NO significa que el envío sea gratis**. Deliberadamente NO devolvemos cinco ceros:\nun `0.00` sería una cifra falsa servida como precio.\n\nNo se puede filtrar ni ordenar el listado por este campo ni por ninguno de sus cinco\nconceptos: un parámetro de query que lo intente se ignora."
+          },
+          "costoReal": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/OrdenCosto"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lo que se CONGELÓ al cerrar: la tarifa y los datos de la orden tal y como estaban\ncuando entró en un cierre aprobado. Ya no se mueve con los cambios de tarifa.\n\n⚠️ **Es lo que se congeló al cerrar, NO «la línea que entró en tu wallet».** Como\n`costoEstimado`, es el escenario de **ENTREGA**. Si la orden terminó en Devolución a origen\npor rechazo (`devolucion_a_origen_por_rechazo`), lo que se te factura es el flete por\ndevolución a origen y su IVA, que son conceptos distintos y que\npodés consultar en el escenario `devuelto` de la cotización.\n\n`null` significa **«esta orden todavía no ha entrado en ningún cierre aprobado»**.\n\nPuede moverse UNA vez más en un caso concreto: si la orden vuelve a entrar en un\nsegundo cierre aprobado (una orden en `novedad` sigue viva y puede recorrerse otra vez),\npublicamos la fila del cierre MÁS RECIENTE."
+          }
+        }
+      },
+      "Pagination": {
+        "type": "object",
+        "required": [
+          "limit",
+          "offset",
+          "total"
+        ],
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Total de órdenes que cumplen el filtro."
+          }
+        }
+      },
+      "PdfGenerateResponse": {
+        "type": "object",
+        "description": "URL firmada de corta duración con el PDF de etiqueta (de una orden o de un lote). La URL se firma en cada llamada: nunca es una URL persistida.",
+        "required": [
+          "url",
+          "expiraEnSegundos"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL firmada del PDF."
+          },
+          "expiraEnSegundos": {
+            "type": "integer",
+            "description": "TTL de la URL firmada en segundos (300 por defecto)."
+          }
+        }
+      },
+      "Zona": {
+        "type": "object",
+        "required": [
+          "id",
+          "nombre"
+        ],
+        "additionalProperties": false,
+        "description": "La ZONA DE LA ORDEN: a dónde va el paquete. ⚠️ NO es la zona del mensajero (en qué zona trabaja esa persona), que es un dato personal suyo y no se publica por ningún endpoint. Este campo NUNCA es `null`: toda orden tiene zona.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Identificador ESTABLE de la zona: un UUID en TEXTO. La misma zona produce el mismo `id` en el listado, en el detalle y en todas las lecturas, y nunca se reasigna a otra zona: **agrupá por este valor, nunca por `nombre`**."
+          },
+          "nombre": {
+            "type": "string",
+            "description": "Nombre de la zona tal y como está en el catálogo (p. ej. `GAM`, `FGAM Zona Sur`). Texto para MOSTRAR; PUEDE cambiar si se corrige o se renombra, así que no lo uses como clave de agrupación: el día que «FGAM El Coco» pase a «FGAM Coco», una serie agrupada por el nombre se parte en dos sin avisar."
+          }
+        }
+      }
+    },
+    "responses": {
+      "Conflict": {
+        "description": "El estado actual de la orden no permite la operación.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "status": "error",
+              "code": "CONFLICT",
+              "message": "La operacion entra en conflicto con el estado actual."
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "El usuario dueño de la key no está activo.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "status": "error",
+              "code": "FORBIDDEN",
+              "message": "No tienes permiso para realizar esta accion."
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "La orden no existe o pertenece a otro dueño (mismo 404).",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "status": "error",
+              "code": "NOT_FOUND",
+              "message": "El recurso solicitado no existe."
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "API key ausente, mal formada o desconocida.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "status": "error",
+              "code": "UNAUTHORIZED",
+              "message": "No hay una sesion valida."
+            }
+          }
+        }
+      },
+      "ValidationError": {
+        "description": "Entrada inválida (query, path o cuerpo).",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "status": "error",
+              "code": "VALIDATION_ERROR",
+              "message": "Los datos enviados no son validos.",
+              "details": {
+                "fieldErrors": {
+                  "limit": [
+                    "Number must be less than or equal to 100"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "yaml": {
+    "paths": {
+      "/api/ordenes/api-key/carga": "  \"/api/ordenes/api-key/carga\":\n    post:\n      tags:\n        - Órdenes\n      summary: Carga de órdenes\n      operationId: cargarOrdenes\n      requestBody:\n        required: true\n        content:\n          application/json:\n            schema:\n              $ref: \"#/components/schemas/CargaRequest\"\n            examples:\n              dosFilas:\n                summary: \"Dos filas (una válida, una con teléfono faltante)\"\n                value:\n                  ordenes:\n                    - num_remision: \"REM-0001\"\n                      destinatario: Juan Pérez\n                      telefono: \"88887777\"\n                      provincia: San José\n                      canton: San José\n                      distrito: Carmen\n                      direccion: \"Av. Central, 200m norte del parque\"\n                      producto: Camiseta talla M\n                      peso: \"1.5\"\n                      monto_cobrar: \"25.90\"\n                      notas: Entregar en la tarde\n                    - num_remision: \"REM-0002\"\n                      destinatario: María Solís\n                      telefono: \"\"\n                      provincia: San José\n                      canton: Escazú\n                      distrito: San Rafael\n                      direccion: \"Multiplaza, local 12\"\n                      producto: Zapatos talla 38\n                      peso: \"0.8\"\n                      monto_cobrar: \"40.00\"\n                      notas: \"\"\n      responses:\n        \"200\":\n          description: Lote procesado (puede incluir filas con error).\n          content:\n            application/json:\n              schema:\n                $ref: \"#/components/schemas/CargaResponse\"\n              examples:\n                resumen:\n                  summary: \"Una creada, una con error\"\n                  value:\n                    cargaId: \"9c2b7f10-5d3a-4e21-9a4b-77c8e0f1a2b3\"\n                    total: 2\n                    creadas: 1\n                    duplicadas: 0\n                    conError: 1\n                    filas:\n                      - fila: 1\n                        numRemision: \"REM-0001\"\n                        resultado: creada\n                        estado: por_recolectar_en_tienda\n                        estadoNombre: \"Por recolectar en tienda\"\n                        numGuia: 100234\n                    errores:\n                      - fila: 2\n                        numRemision: \"REM-0002\"\n                        resultado: error\n                        errores:\n                          telefono:\n                            - requerido\n                    ordenes:\n                      - id: \"6f1c2d3e-4a5b-6c7d-8e9f-0a1b2c3d4e5f\"\n                        numRemision: \"REM-0001\"\n                        numGuia: 100234\n                        estado: por_recolectar_en_tienda\n                        estadoNombre: \"Por recolectar en tienda\"\n                        costoEnvio: \"3.39\"\n                        fulfillment: \"0.00\"\n                        ivaFulfillment: \"0.00\"\n                filaSinTarifa:\n                  summary: \"Una creada y una degradada por falta de tarifa\"\n                  value:\n                    cargaId: \"9c2b7f10-5d3a-4e21-9a4b-77c8e0f1a2b3\"\n                    total: 2\n                    creadas: 1\n                    duplicadas: 0\n                    conError: 1\n                    filas:\n                      - fila: 1\n                        numRemision: \"REM-0001\"\n                        resultado: creada\n                        estado: por_recolectar_en_tienda\n                        estadoNombre: \"Por recolectar en tienda\"\n                        numGuia: 100234\n                    errores:\n                      - fila: 2\n                        numRemision: \"REM-0002\"\n                        resultado: error\n                        errores:\n                          tarifa:\n                            - \"no hay tarifa vigente para la zona de esta fila\"\n                    ordenes:\n                      - id: \"6f1c2d3e-4a5b-6c7d-8e9f-0a1b2c3d4e5f\"\n                        numRemision: \"REM-0001\"\n                        numGuia: 100234\n                        estado: por_recolectar_en_tienda\n                        estadoNombre: \"Por recolectar en tienda\"\n                        costoEnvio: \"3.39\"\n                        fulfillment: \"0.00\"\n                        ivaFulfillment: \"0.00\"\n        \"401\":\n          $ref: \"#/components/responses/Unauthorized\"\n        \"403\":\n          $ref: \"#/components/responses/Forbidden\"\n        # Feature 274 (R29/R31) — el 409 NUEVO de la carga. No es `$ref: Conflict` a secas\n        # porque el ejemplo publicado tiene que ser la MISMA cadena que el service emite\n        # (`lib/services/mensajes-tarifa.ts`, `MSG_CARGA_SIN_TARIFA`).\n        \"409\":\n          description: \"Ninguna de las filas que llegaron a la resolución de tarifa la resolvió: no se creó ninguna orden ni fila de carga.\"\n          content:\n            application/json:\n              schema:\n                $ref: \"#/components/schemas/Error\"\n              example:\n                status: error\n                code: CONFLICT\n                message: \"la tienda no tiene una tarifa vigente asociada: no se pueden crear órdenes\"\n        \"422\":\n          $ref: \"#/components/responses/ValidationError\"",
+      "/api/ordenes/api-key": "  \"/api/ordenes/api-key\":\n    get:\n      tags:\n        - Órdenes\n      summary: Listado paginado de órdenes propias\n      operationId: listarOrdenes\n      parameters:\n        - name: limit\n          in: query\n          required: false\n          description: Cantidad de items por página (1..100).\n          schema:\n            type: integer\n            minimum: 1\n            maximum: 100\n            default: 50\n        - name: offset\n          in: query\n          required: false\n          description: \"Cantidad de items a saltar (>= 0).\"\n          schema:\n            type: integer\n            minimum: 0\n            default: 0\n        - name: estado\n          in: query\n          required: false\n          description: \"Filtra por estado exacto del catálogo (uno de los 20 códigos vigentes). Un código anterior al cambio de nombres de estados (ver CHANGELOG) responde `422` con un mensaje que nombra el código que lo sustituye.\"\n          schema:\n            type: string\n            enum:\n              - entregado\n              - novedad\n              - devolviendo_a_tienda\n              - reprogramado\n              - en_ruta_bodega_central\n              - en_bodega_central\n              - en_preparacion\n              - mensajero_recogiendo_en_bodega\n              - en_ruta_bodega_satelite\n              - en_reparto\n              - devolucion_a_origen_por_rechazo\n              - en_bodega_satelite\n              - devuelta_a_tienda\n              - novedad_interna\n              - por_devolver_a_bodega_central\n              - devolviendo_a_bodega_central\n              - por_devolver_a_tienda\n              - por_recolectar_en_tienda\n              - incidente\n              - recolectando\n        - name: desde\n          in: query\n          required: false\n          description: \"Fecha calendario mínima de creación (`YYYY-MM-DD`), inclusiva; el día se mide en hora de Costa Rica (UTC-6).\"\n          schema:\n            type: string\n            format: date\n            example: \"2026-08-01\"\n        - name: hasta\n          in: query\n          required: false\n          description: \"Fecha calendario máxima de creación (`YYYY-MM-DD`), inclusiva; el día se mide en hora de Costa Rica (UTC-6), así que cubre las 24 horas completas de ese día.\"\n          schema:\n            type: string\n            format: date\n            example: \"2026-08-21\"\n        - name: num_guia\n          in: query\n          required: false\n          description: Filtra por número de guía exacto. Excluye las órdenes que aún no tienen guía asignada.\n          schema:\n            type: integer\n            minimum: 1\n            example: 100234\n        - name: num_remision\n          in: query\n          required: false\n          description: \"Filtra por número de remisión exacto (sin prefijo, sin subcadena, distingue mayúsculas).\"\n          schema:\n            type: string\n            minLength: 1\n            example: \"REM-0001\"\n      responses:\n        \"200\":\n          description: Página de órdenes.\n          content:\n            application/json:\n              schema:\n                $ref: \"#/components/schemas/Listado\"\n              examples:\n                pagina:\n                  summary: Primera página con un item\n                  value:\n                    items:\n                      - numGuia: 100234\n                        numRemision: \"REM-0001\"\n                        estado: en_ruta_bodega_central\n                        estadoNombre: \"En ruta a bodega central\"\n                        destinatario: Juan Pérez\n                        telefonoDest: \"88887777\"\n                        producto: Camiseta talla M\n                        direccion: \"Av. Central, 200m norte del parque\"\n                        montoCobrar: 25.9\n                        createdAt: \"2026-07-22T14:03:11.000Z\"\n                    pagination:\n                      limit: 50\n                      offset: 0\n                      total: 1\n        \"401\":\n          $ref: \"#/components/responses/Unauthorized\"\n        \"403\":\n          $ref: \"#/components/responses/Forbidden\"\n        \"422\":\n          $ref: \"#/components/responses/ValidationError\"",
+      "/api/ordenes/api-key/{numGuia}/cancelar": "  \"/api/ordenes/api-key/{numGuia}/cancelar\":\n    parameters:\n      - name: numGuia\n        in: path\n        required: true\n        description: Número de guía de la orden a cancelar (entero positivo).\n        schema:\n          type: integer\n          minimum: 1\n    put:\n      tags:\n        - Órdenes\n      summary: Cancelar una orden propia\n      operationId: cancelarOrden\n      responses:\n        \"200\":\n          description: Orden cancelada.\n          content:\n            application/json:\n              schema:\n                $ref: \"#/components/schemas/CancelacionResponse\"\n              examples:\n                cancelada:\n                  summary: Cancelación desde en_ruta_bodega_central\n                  value:\n                    numGuia: 100234\n                    estadoAnterior: en_ruta_bodega_central\n                    estadoAnteriorNombre: \"En ruta a bodega central\"\n                    estado: devolviendo_a_tienda\n                    estadoNombre: \"Devolviendo a tienda\"\n        \"401\":\n          $ref: \"#/components/responses/Unauthorized\"\n        \"403\":\n          $ref: \"#/components/responses/Forbidden\"\n        \"404\":\n          $ref: \"#/components/responses/NotFound\"\n        \"409\":\n          $ref: \"#/components/responses/Conflict\"\n        \"422\":\n          $ref: \"#/components/responses/ValidationError\"",
+      "/api/ordenes/api-key/orden/{id}": "  \"/api/ordenes/api-key/orden/{id}\":\n    parameters:\n      - name: id\n        in: path\n        required: true\n        description: \"Identificador de la orden: su `num_guia` o su `num_remision`. Si el valor casa con la guía de una orden y con la remisión de otra, gana la de la guía.\"\n        schema:\n          type: string\n          minLength: 1\n          maxLength: 128\n    get:\n      tags:\n        - Órdenes\n      summary: Detalle de una orden propia por guía o remisión\n      operationId: detalleOrdenPorIdentificador\n      responses:\n        \"200\":\n          description: Detalle de la orden.\n          content:\n            application/json:\n              schema:\n                $ref: \"#/components/schemas/OrdenDetalle\"\n              examples:\n                detalle:\n                  summary: Orden resuelta por su número de remisión\n                  value:\n                    numGuia: 100234\n                    numRemision: \"REM-0001\"\n                    estado: entregado\n                    estadoNombre: \"Entregado\"\n                    destinatario: Juan Pérez\n                    telefonoDest: \"88887777\"\n                    producto: Camiseta talla M\n                    direccion: \"Av. Central, 200m norte del parque\"\n                    montoCobrar: 25.9\n                    createdAt: \"2026-07-22T14:03:11.000Z\"\n                    evidencias:\n                      - resultado: entregado\n                        resultadoNombre: \"Entregado\"\n                        contentType: image/jpeg\n                        url: \"https://<proyecto>.supabase.co/storage/v1/object/sign/gestion-evidencias/...\"\n                        expiraEnSegundos: 300\n        \"401\":\n          $ref: \"#/components/responses/Unauthorized\"\n        \"403\":\n          $ref: \"#/components/responses/Forbidden\"\n        \"404\":\n          $ref: \"#/components/responses/NotFound\"\n        \"422\":\n          $ref: \"#/components/responses/ValidationError\"\n    delete:\n      tags:\n        - Órdenes\n      summary: Eliminar una orden propia\n      operationId: eliminarOrden\n      responses:\n        \"200\":\n          description: Orden eliminada.\n          content:\n            application/json:\n              schema:\n                $ref: \"#/components/schemas/EliminacionResponse\"\n              examples:\n                conGuia:\n                  summary: Orden ya numerada, eliminada desde en_bodega_central\n                  value:\n                    numGuia: 100234\n                    numRemision: \"REM-0001\"\n                    estado: en_bodega_central\n                    estadoNombre: \"En bodega central\"\n                sinGuia:\n                  summary: Orden recién cargada, todavía sin guía\n                  value:\n                    numGuia: null\n                    numRemision: \"REM-0002\"\n                    estado: en_preparacion\n                    estadoNombre: \"En preparación\"\n        \"401\":\n          $ref: \"#/components/responses/Unauthorized\"\n        \"403\":\n          $ref: \"#/components/responses/Forbidden\"\n        \"404\":\n          $ref: \"#/components/responses/NotFound\"\n        \"409\":\n          $ref: \"#/components/responses/Conflict\"\n        \"422\":\n          $ref: \"#/components/responses/ValidationError\"",
+      "/api/ordenes/api-key/orden/{id}/generate": "  \"/api/ordenes/api-key/orden/{id}/generate\":\n    parameters:\n      - name: id\n        in: path\n        required: true\n        description: \"Identificador de la orden: su `num_guia` o su `num_remision` (misma resolución que el endpoint de detalle).\"\n        schema:\n          type: string\n          minLength: 1\n          maxLength: 128\n    post:\n      tags:\n        - Órdenes\n      summary: PDF de etiqueta de una orden propia\n      operationId: generarPdfOrden\n      responses:\n        \"200\":\n          description: URL firmada del PDF de la etiqueta.\n          content:\n            application/json:\n              schema:\n                $ref: \"#/components/schemas/PdfGenerateResponse\"\n              examples:\n                primeraLlamada:\n                  summary: \"Primera llamada: el PDF se construye\"\n                  value:\n                    url: \"https://<proyecto>.supabase.co/storage/v1/object/sign/etiquetas/...\"\n                    expiraEnSegundos: 300\n                reuso:\n                  summary: \"Llamada posterior: solo se vuelve a firmar (misma forma)\"\n                  value:\n                    url: \"https://<proyecto>.supabase.co/storage/v1/object/sign/etiquetas/...\"\n                    expiraEnSegundos: 300\n        \"401\":\n          $ref: \"#/components/responses/Unauthorized\"\n        \"403\":\n          $ref: \"#/components/responses/Forbidden\"\n        \"404\":\n          $ref: \"#/components/responses/NotFound\"\n        \"409\":\n          $ref: \"#/components/responses/Conflict\"\n        \"422\":\n          $ref: \"#/components/responses/ValidationError\"",
+      "/api/ordenes/api-key/carga/{cargaId}/generate": "  \"/api/ordenes/api-key/carga/{cargaId}/generate\":\n    parameters:\n      - name: cargaId\n        in: path\n        required: true\n        description: \"Id del lote, tal como lo devuelve `cargaId` en la respuesta de `POST /api/ordenes/api-key/carga`.\"\n        schema:\n          type: string\n          format: uuid\n    post:\n      tags:\n        - Órdenes\n      summary: PDF consolidado de etiquetas de un lote propio\n      operationId: generarPdfCarga\n      responses:\n        \"200\":\n          description: URL firmada del PDF consolidado del lote.\n          content:\n            application/json:\n              schema:\n                $ref: \"#/components/schemas/PdfGenerateResponse\"\n              examples:\n                consolidado:\n                  summary: Consolidado del lote recién construido\n                  value:\n                    url: \"https://<proyecto>.supabase.co/storage/v1/object/sign/etiquetas/...\"\n                    expiraEnSegundos: 300\n        \"401\":\n          $ref: \"#/components/responses/Unauthorized\"\n        \"403\":\n          $ref: \"#/components/responses/Forbidden\"\n        \"404\":\n          $ref: \"#/components/responses/NotFound\"\n        \"409\":\n          $ref: \"#/components/responses/Conflict\"\n        \"422\":\n          $ref: \"#/components/responses/ValidationError\"",
+      "/api/ordenes/api-key/cotizacion": "  \"/api/ordenes/api-key/cotizacion\":\n    post:\n      tags:\n        - Órdenes\n      summary: \"Cotización de un lote (no crea nada)\"\n      operationId: cotizarOrdenes\n      requestBody:\n        required: true\n        content:\n          application/json:\n            schema:\n              $ref: \"#/components/schemas/CotizacionRequest\"\n            examples:\n              dosFilas:\n                summary: \"Tres filas (una con cobertura, una con distrito inexistente, una con distrito retirado)\"\n                value:\n                  ordenes:\n                    - provincia: San José\n                      canton: Escazú\n                      distrito: San Rafael\n                      direccion: \"Multiplaza, local 12\"\n                      monto_cobrar: \"25900\"\n                      num_remision: \"REM-0001\"\n                    - provincia: San José\n                      canton: Escazú\n                      distrito: Distrito que no existe\n                      direccion: Sin referencia\n                      monto_cobrar: \"18000\"\n                    - provincia: Puntarenas\n                      canton: Buenos Aires\n                      distrito: Cabagra\n                      direccion: Sin referencia\n                      monto_cobrar: \"12000\"\n      responses:\n        \"200\":\n          description: Lote cotizado (puede incluir filas con error).\n          content:\n            application/json:\n              schema:\n                $ref: \"#/components/schemas/CotizacionResponse\"\n              examples:\n                resumen:\n                  summary: \"Una cotizada (con sus dos escenarios) y dos con error\"\n                  value:\n                    total: 3\n                    cotizadas: 1\n                    conError: 2\n                    filas:\n                      - fila: 1\n                        numRemision: \"REM-0001\"\n                        montoCobrar: \"25900.00\"\n                        resultado: cotizada\n                        costos:\n                          entregado:\n                            flete: \"2500.00\"\n                            iva: \"325.00\"\n                            comision: \"906.50\"\n                            ivaComision: \"117.85\"\n                            fulfillment: \"0.00\"\n                            ivaFulfillment: \"0.00\"\n                            total: \"22050.65\"\n                          devuelto:\n                            flete: \"1396.46\"\n                            iva: \"181.54\"\n                            comision: \"0.00\"\n                            fulfillment: \"0.00\"\n                            ivaFulfillment: \"0.00\"\n                            total: \"-1578.00\"\n                    errores:\n                      - fila: 2\n                        numRemision: null\n                        resultado: error\n                        errores:\n                          distrito:\n                            - distrito no encontrado en el canton\n                      - fila: 3\n                        numRemision: null\n                        resultado: error\n                        errores:\n                          distrito:\n                            - el distrito 'Cabagra' esta retirado del catalogo\n        \"401\":\n          $ref: \"#/components/responses/Unauthorized\"\n        \"403\":\n          $ref: \"#/components/responses/Forbidden\"\n        \"409\":\n          description: \"Ninguna de las filas que llegaron a la resolución de tarifa la resolvió: no se cotiza ninguna fila.\"\n          content:\n            application/json:\n              schema:\n                $ref: \"#/components/schemas/Error\"\n              example:\n                status: error\n                code: CONFLICT\n                message: \"la tienda no tiene una tarifa vigente asociada: no se puede cotizar\"\n        \"422\":\n          $ref: \"#/components/responses/ValidationError\"",
+      "/api/ordenes/api-key/analitica": "  \"/api/ordenes/api-key/analitica\":\n    get:\n      tags:\n        - Órdenes\n      summary: Series diarias de tus métricas sobre tus órdenes\n      operationId: consultarAnalitica\n      parameters:\n        - name: metricas\n          in: query\n          required: false\n          description: \"Ids separados por comas, o `all` para todas las publicables. Si se omite (o se manda vacío) equivale a `all`. Solo los valores del enum se publican por este canal; `all` no se combina con ids.\"\n          schema:\n            type: string\n            enum:\n              - ordenes_creadas\n              - ordenes_por_estado\n              - entregas\n              - devoluciones\n              - rechazos\n              - reprogramaciones\n              - tasa_entrega\n              - tasa_devolucion\n              - tasa_rechazo\n              - tiempo_ciclo\n              - all\n          example: entregas,devoluciones\n        - name: desde\n          in: query\n          required: false\n          description: \"Fecha calendario de Costa Rica (UTC-6), INCLUSIVA (`>=`). Formato `YYYY-MM-DD`. Si se omite, la serie arranca en el primer día del que hay datos.\"\n          schema:\n            type: string\n            format: date\n          example: \"2026-08-01\"\n        - name: hasta\n          in: query\n          required: false\n          description: \"Fecha calendario de Costa Rica (UTC-6), INCLUSIVA (`<=`). Formato `YYYY-MM-DD`. Si se omite, la serie llega hasta hoy. No hay tope de tamaño de ventana.\"\n          schema:\n            type: string\n            format: date\n          example: \"2026-08-21\"\n      responses:\n        \"200\":\n          description: \"Series diarias de las métricas pedidas, sobre tus órdenes.\"\n          content:\n            application/json:\n              schema:\n                $ref: \"#/components/schemas/AnaliticaRespuesta\"\n              examples:\n                serie:\n                  summary: \"Dos métricas; se pidieron tres días y el tercero (hoy) no viene: no está cerrado\"\n                  value:\n                    rango:\n                      desde: \"2026-08-19\"\n                      hasta: \"2026-08-21\"\n                    metricas:\n                      - metrica: entregas\n                        unidad: conteo\n                        data:\n                          - fecha: \"2026-08-19\"\n                            valor: 41\n                          - fecha: \"2026-08-20\"\n                            valor: 37\n                      - metrica: tasa_entrega\n                        unidad: porcentaje\n                        data:\n                          - fecha: \"2026-08-19\"\n                            valor: 0.93\n                          - fecha: \"2026-08-20\"\n                            valor: null\n        \"401\":\n          $ref: \"#/components/responses/Unauthorized\"\n        \"403\":\n          $ref: \"#/components/responses/Forbidden\"\n        \"422\":\n          $ref: \"#/components/responses/ValidationError\"",
+      "/api/ordenes/api-key/habilitar": "  \"/api/ordenes/api-key/habilitar\":\n    post:\n      tags:\n        - Órdenes\n      summary: \"Habilitar pedidos con novedad (lote)\"\n      operationId: habilitarOrdenes\n      requestBody:\n        required: true\n        content:\n          application/json:\n            schema:\n              $ref: \"#/components/schemas/HabilitacionRequest\"\n            examples:\n              dosFilas:\n                summary: \"Dos filas: una en ayuda con mensajero y una en novedad\"\n                value:\n                  ordenes:\n                    - num_guia: 100234\n                      nota: \"el cliente pidió reintento mañana\"\n                    - num_guia: 100235\n                      nota: \"dirección corregida por el call center\"\n      responses:\n        \"200\":\n          description: \"Lote procesado (puede incluir filas con error).\"\n          content:\n            application/json:\n              schema:\n                $ref: \"#/components/schemas/HabilitacionResponse\"\n              examples:\n                resumen:\n                  summary: \"Una habilitada, una sin cambio de estado y una con error\"\n                  value:\n                    resumen:\n                      total: 3\n                      habilitadas: 1\n                      habilitadasSinCambioDeEstado: 1\n                      conError: 1\n                    resultados:\n                      - numGuia: 100234\n                        resultado: habilitada\n                        estado: en_reparto\n                        estadoNombre: \"En reparto\"\n                        ayudaCerrada: true\n                        error: null\n                      - numGuia: 100235\n                        resultado: habilitada_sin_cambio_de_estado\n                        estado: novedad\n                        estadoNombre: \"Novedad\"\n                        ayudaCerrada: false\n                        error: null\n                      - numGuia: 999999\n                        resultado: error\n                        estado: null\n                        estadoNombre: null\n                        ayudaCerrada: false\n                        error:\n                          codigo: no_encontrada\n                          mensaje: \"no existe una orden viva con esa guia\"\n        \"401\":\n          $ref: \"#/components/responses/Unauthorized\"\n        \"403\":\n          $ref: \"#/components/responses/Forbidden\"\n        \"422\":\n          $ref: \"#/components/responses/ValidationError\""
+    },
+    "schemas": {
+      "AnaliticaRespuesta": "    AnaliticaRespuesta:\n      type: object\n      required:\n        - rango\n        - metricas\n      properties:\n        rango:\n          type: object\n          description: \"Eco del rango efectivo, común a todas las series y en el mismo formato que la petición.\"\n          required:\n            - desde\n            - hasta\n          properties:\n            desde:\n              type: string\n              format: date\n              example: \"2026-08-19\"\n            hasta:\n              type: string\n              format: date\n              description: \"Inclusivo, hora de Costa Rica.\"\n              example: \"2026-08-21\"\n        metricas:\n          type: array\n          description: \"Una entrada por métrica pedida, en el orden pedido. Nunca vacío.\"\n          items:\n            $ref: \"#/components/schemas/AnaliticaSerie\"",
+      "AnaliticaSerie": "    AnaliticaSerie:\n      type: object\n      required:\n        - metrica\n        - unidad\n        - data\n        - cobertura\n      properties:\n        metrica:\n          type: string\n          description: Id de la métrica pedida.\n          example: entregas\n        unidad:\n          type: string\n          description: \"Unidad de la cifra (p. ej. `conteo`, `porcentaje`, `dias`).\"\n        data:\n          type: array\n          description: \"Los días del rango con dato, en orden, INCLUIDO el día en curso. Antes del 2026-09-04 el día en curso se omitía; ahora viene marcado `parcial: true`. ⚠️ Si sumas `data` para obtener un total del periodo, DESCARTA primero los puntos con `parcial: true` y los días listados en `cobertura.fechasNoComparables`: no son comparables con un día cerrado. Puede venir vacío, y eso es un 200 correcto. No rellenes los huecos con ceros.\"\n          items:\n            type: object\n            required:\n              - fecha\n              - valor\n            properties:\n              fecha:\n                type: string\n                format: date\n                example: \"2026-08-20\"\n              valor:\n                type:\n                  - number\n                  - \"null\"\n                description: \"`null` significa «no se sabe» (por ejemplo, denominador cero). NUNCA se sustituye por 0. Un día con `valor: null` SÍ está en `data`: está cerrado, pero su resultado es indefinido.\"\n              parcial:\n                type: boolean\n                enum:\n                  - true\n                description: \"Presente y `true` SOLO en el día en curso, que aún no está cerrado: su cifra se lee más baja que la de un día completo y NO es comparable. Ausente en cualquier otro día (nunca llega como `false`).\"\n              corteAt:\n                type: string\n                format: date-time\n                description: \"Instante ISO-8601 usado como cota superior del día parcial. Solo acompaña a `parcial: true`.\"\n                example: \"2026-08-21T18:40:00.000Z\"\n        cobertura:\n          type: object\n          description: \"Qué días de esta serie no son comparables, y por qué. Siempre presente.\"\n          required:\n            - fechasNoComparables\n            - penumbra\n          properties:\n            fechasNoComparables:\n              type: array\n              description: \"Días del rango por debajo del horizonte del histórico: ahí un cero es falta de DATOS, no falta de operación. Normalmente vacío.\"\n              items:\n                type: string\n                format: date\n            penumbra:\n              type: string\n              enum:\n                - ordenes_vivas_al_horizonte_sin_transicion_posterior\n              description: \"Limitación permanente del histórico, nunca estimada: las órdenes que ya estaban vivas cuando nació el historial y nunca volvieron a cambiar de estado no entran en ningún día.\"",
+      "CancelacionResponse": "    CancelacionResponse:\n      type: object\n      required:\n        - numGuia\n        - estadoAnterior\n        - estadoAnteriorNombre\n        - estado\n        - estadoNombre\n      properties:\n        numGuia:\n          type: integer\n        estadoAnterior:\n          type: string\n          enum:\n            - entregado\n            - novedad\n            - devolviendo_a_tienda\n            - reprogramado\n            - en_ruta_bodega_central\n            - en_bodega_central\n            - en_preparacion\n            - mensajero_recogiendo_en_bodega\n            - en_ruta_bodega_satelite\n            - en_reparto\n            - devolucion_a_origen_por_rechazo\n            - en_bodega_satelite\n            - devuelta_a_tienda\n            - novedad_interna\n            - por_devolver_a_bodega_central\n            - devolviendo_a_bodega_central\n            - por_devolver_a_tienda\n            - por_recolectar_en_tienda\n            - incidente\n            - recolectando\n        estadoAnteriorNombre:\n          type: string\n          description: \"Nombre visible de `estadoAnterior`: la MISMA cadena que muestra la aplicación (p. ej. `Novedad`).\"\n        estado:\n          type: string\n          const: devolviendo_a_tienda\n        estadoNombre:\n          type: string\n          description: \"Nombre visible de `estado`: la MISMA cadena que muestra la aplicación (p. ej. `Novedad`).\"",
+      "CargaFilaError": "    CargaFilaError:\n      type: object\n      description: Una fila que no se creó, con el detalle de por qué.\n      required:\n        - fila\n        - numRemision\n        - resultado\n        - errores\n      properties:\n        fila:\n          type: integer\n          description: \"Índice 1-based dentro de `ordenes`.\"\n        numRemision:\n          type: string\n          description: Tu número de remisión tal como llegó (vacío si la fila no lo traía).\n        resultado:\n          type: string\n          const: error\n        errores:\n          type: object\n          description: \"Errores por campo. Las claves suelen ser columnas de la fila, pero no siempre: la clave `tarifa` señala que el par (tienda, zona) de esa fila no resuelve tarifa vigente y por eso la orden no se creó.\"\n          additionalProperties:\n            type: array\n            items:\n              type: string",
+      "CargaOrden": "    CargaOrden:\n      type: object\n      description: Una orden efectivamente creada (bloque plano listo para consumir).\n      required:\n        - id\n        - numRemision\n        - numGuia\n        - estado\n        - estadoNombre\n        - costoEnvio\n        - fulfillment\n        - ivaFulfillment\n      properties:\n        id:\n          type: string\n          format: uuid\n          description: Id interno de la orden creada.\n        numRemision:\n          type: string\n        numGuia:\n          type:\n            - integer\n            - \"null\"\n          description: \"Número de guía asignado en el acto. Es `null` —y solo entonces— cuando la orden nació en `en_preparacion` por fulfillment: la guía se emite más tarde y nunca se fabrica un número.\"\n        estado:\n          type: string\n          enum:\n            - entregado\n            - novedad\n            - devolviendo_a_tienda\n            - reprogramado\n            - en_ruta_bodega_central\n            - en_bodega_central\n            - en_preparacion\n            - mensajero_recogiendo_en_bodega\n            - en_ruta_bodega_satelite\n            - en_reparto\n            - devolucion_a_origen_por_rechazo\n            - en_bodega_satelite\n            - devuelta_a_tienda\n            - novedad_interna\n            - por_devolver_a_bodega_central\n            - devolviendo_a_bodega_central\n            - por_devolver_a_tienda\n            - por_recolectar_en_tienda\n            - incidente\n            - recolectando\n        estadoNombre:\n          type: string\n          description: \"Nombre visible de `estado`: la MISMA cadena que muestra la aplicación (p. ej. `Novedad`).\"\n        costoEnvio:\n          type: string\n          description: \"Costo total del envío (flete + IVA de la tarifa vigente del par (tienda, zona), MÁS el fulfillment y su IVA si los hay), string escala 2. Toda orden creada lo trae con un importe real: una fila sin tarifa no llega a crearse. Distinto de `monto_cobrar`/COD.\"\n        fulfillment:\n          type: string\n          description: \"Cuánto de `costoEnvio` es el servicio de bodega, string escala 2. `\\\"0.00\\\"` si tu tarifa no tiene fulfillment — y entonces `costoEnvio` es solo flete + IVA. Nunca `null`.\"\n        ivaFulfillment:\n          type: string\n          description: \"IVA del fulfillment, string escala 2: el % de IVA de tu tarifa aplicado al fulfillment ya redondeado. `\\\"0.00\\\"` si tu tarifa no tiene fulfillment o no le aplica IVA. Nunca `null`.\"",
+      "CargaRequest": "    CargaRequest:\n      type: object\n      required:\n        - ordenes\n      properties:\n        ordenes:\n          type: array\n          minItems: 1\n          maxItems: 5000\n          description: Filas a cargar (1..5000). Todos los valores son texto.\n          items:\n            $ref: \"#/components/schemas/CargaRow\"",
+      "CargaResponse": "    CargaResponse:\n      type: object\n      required:\n        - total\n        - creadas\n        - duplicadas\n        - conError\n        - filas\n        - errores\n        - ordenes\n      properties:\n        cargaId:\n          type:\n            - string\n            - \"null\"\n          format: uuid\n          description: \"Id del lote creado, para pedir después el PDF consolidado. `null` si el lote no creó ninguna orden.\"\n        total:\n          type: integer\n          description: Filas recibidas.\n        creadas:\n          type: integer\n        duplicadas:\n          type: integer\n        conError:\n          type: integer\n        filas:\n          type: array\n          description: \"Las filas que entraron: `creada` y `duplicada`. Nunca contiene una fila en `error`.\"\n          items:\n            $ref: \"#/components/schemas/CargaRowResult\"\n        errores:\n          type: array\n          description: \"Las filas que NO se crearon, con su detalle por campo. Lista vacía cuando el lote entero entró; su longitud es siempre `conError`.\"\n          items:\n            $ref: \"#/components/schemas/CargaFilaError\"\n        ordenes:\n          type: array\n          items:\n            $ref: \"#/components/schemas/CargaOrden\"",
+      "CargaRow": "    CargaRow:\n      type: object\n      description: \"Una fila de carga. Todas las claves son strings. Las requeridas se validan en el servidor; una fila inválida no aborta el lote (se reporta como `error`).\"\n      required:\n        - num_remision\n        - destinatario\n        - telefono\n        - provincia\n        - canton\n        - distrito\n        - direccion\n        - producto\n        - peso\n        - monto_cobrar\n      properties:\n        num_remision:\n          type: string\n          description: Identificador de remisión (dedup por este valor).\n        destinatario:\n          type: string\n        telefono:\n          type: string\n        provincia:\n          type: string\n          description: \"Si no se encuentra, es ambigua o está RETIRADA del catálogo, la fila sale en `errores` y el lote sigue (200 con éxito parcial).\"\n        canton:\n          type: string\n          description: \"Si no se encuentra, es ambiguo o está RETIRADO del catálogo, la fila sale en `errores` y el lote sigue (200 con éxito parcial).\"\n        distrito:\n          type: string\n          description: \"Su zona decide la tarifa. Si no se encuentra, es ambiguo, no tiene zona o está RETIRADO del catálogo, la fila sale en `errores` y el lote sigue (200 con éxito parcial).\"\n        direccion:\n          type: string\n        producto:\n          type: string\n        peso:\n          type: string\n          description: \"Peso en kg como texto (p. ej. \\\"1.5\\\").\"\n        monto_cobrar:\n          type: string\n          description: \"Monto COD como texto (p. ej. \\\"25.90\\\").\"\n        notas:\n          type: string\n      additionalProperties:\n        type: string",
+      "CargaRowResult": "    CargaRowResult:\n      type: object\n      description: \"Resultado de una fila que SÍ entró al sistema. Desde 2026-08-31 esta lista no contiene filas en `error`: ésas viajan en `errores` (`CargaFilaError`).\"\n      required:\n        - fila\n        - numRemision\n        - resultado\n      properties:\n        fila:\n          type: integer\n          description: \"Índice 1-based dentro de `ordenes`.\"\n        numRemision:\n          type: string\n        resultado:\n          type: string\n          enum:\n            - creada\n            - duplicada\n        # FICHA 455 (R27): aqui estaba `estatus`; ahora `estado` + `estadoNombre`.\n        estado:\n          type: string\n          description: \"Estado de la orden, con un código del catálogo de `OrdenListItem.estado` (en creada/duplicada; en `duplicada`, el de la orden que ya ocupa esa remisión). Hasta el cambio de la ficha 455 se llamaba `estatus`.\"\n        estadoNombre:\n          type: string\n          description: \"Nombre visible de `estado`: la MISMA cadena que muestra la aplicación (p. ej. `Novedad`).\"\n        numGuia:\n          type: integer\n          description: \"Número de guía asignado (solo en `creada`).\"",
+      "CotizacionCostos": "    CotizacionCostos:\n      type: object\n      description: \"Los DOS escenarios de una fila con cobertura. Siempre presente en `filas`; las filas sin precio no lo traen porque no están en esa lista, están en `errores`.\"\n      required:\n        - entregado\n        - devuelto\n      properties:\n        entregado:\n          $ref: \"#/components/schemas/CotizacionEscenarioEntregado\"\n        devuelto:\n          $ref: \"#/components/schemas/CotizacionEscenarioDevuelto\"",
+      "CotizacionEscenarioDevuelto": "    CotizacionEscenarioDevuelto:\n      type: object\n      description: \"Costo si la orden se DEVUELVE, es decir si el paquete vuelve a tu tienda: seis conceptos, SIN `ivaComision` (no hay comisión que gravar). `comision` es un cero EXPLÍCITO — la afirmación de que una devolución no cobra comisión COD, no un dato ausente. `fulfillment` y su IVA en cambio SÍ se cobran: el servicio de bodega ya se prestó. `total` es la DEUDA de la tienda = −(flete + iva + fulfillment + ivaFulfillment), y por eso es negativo. **Cuándo se cobra este escenario:** al cerrarse la orden en Devolución a origen por rechazo (`devolucion_a_origen_por_rechazo`), que es el resultado con el que el paquete regresa. Un intento de entrega fallido que aún se puede reprogramar o recuperar NO cobra nada por sí solo; los importes de aquí aparecen cuando el retorno se consuma.\"\n      required:\n        - flete\n        - iva\n        - comision\n        - fulfillment\n        - ivaFulfillment\n        - total\n      properties:\n        flete:\n          type: string\n          description: \"Flete por devolución a origen. String money-safe de escala 2, crudo. En pantalla, en la wallet y en las descargas este concepto se llama exactamente así desde el 2026-10-01: sólo lo cobra una gestión con resultado `devolucion_a_origen_por_rechazo` (ver `CotizacionEscenarioDevuelto`), nunca una devolución que siga viva. Sus nombres anteriores están en el CHANGELOG.\"\n        iva:\n          type: string\n          description: \"IVA del flete por devolución a origen. String money-safe de escala 2, crudo. Sus nombres anteriores están en el CHANGELOG.\"\n        comision:\n          type: string\n          description: 'Siempre \"0.00\": una devolución no cobra comisión COD.'\n        fulfillment:\n          type: string\n          description: \"El MISMO monto que en el escenario entregado: preparar y despachar el paquete ya costó, lo reciba el destinatario o no. Cero si tu tarifa no tiene fulfillment.\"\n        ivaFulfillment:\n          type: string\n          description: \"IVA del fulfillment, string escala 2: el % de IVA de tu tarifa aplicado al fulfillment ya redondeado. `\\\"0.00\\\"` si tu tarifa no tiene fulfillment o no le aplica IVA. Nunca `null`.\"\n        total:\n          type: string\n          description: \"Deuda de la tienda. String money-safe de escala 2, crudo y negativo.\"",
+      "CotizacionEscenarioEntregado": "    CotizacionEscenarioEntregado:\n      type: object\n      description: \"Costo si la orden se ENTREGA: siete conceptos. `total` es lo que RECIBE la tienda = monto a cobrar − (flete + iva + comision + ivaComision + fulfillment + ivaFulfillment), y es negativo si no hay COD que cubra lo facturado.\"\n      required:\n        - flete\n        - iva\n        - comision\n        - ivaComision\n        - fulfillment\n        - ivaFulfillment\n        - total\n      properties:\n        flete:\n          type: string\n          description: \"Flete de la zona del distrito. String money-safe de escala 2, crudo.\"\n        iva:\n          type: string\n          description: \"IVA del flete. String money-safe de escala 2, crudo.\"\n        comision:\n          type: string\n          description: \"Comisión COD. String money-safe de escala 2, crudo.\"\n        ivaComision:\n          type: string\n          description: \"IVA de la comisión. String money-safe de escala 2, crudo.\"\n        fulfillment:\n          type: string\n          description: \"Monto fijo del servicio de bodega por orden, crudo. Cero si tu tarifa no tiene fulfillment; nunca ausente.\"\n        ivaFulfillment:\n          type: string\n          description: \"IVA del fulfillment, string escala 2: el % de IVA de tu tarifa aplicado al fulfillment ya redondeado. `\\\"0.00\\\"` si tu tarifa no tiene fulfillment o no le aplica IVA. Nunca `null`.\"\n        total:\n          type: string\n          description: \"Lo que recibe la tienda. String money-safe de escala 2, crudo; negativo si el COD no cubre lo facturado.\"",
+      "CotizacionFilaError": "    CotizacionFilaError:\n      type: object\n      description: \"Una fila que no se pudo cotizar, con el detalle de por qué.\"\n      required:\n        - fila\n        - numRemision\n        - resultado\n        - errores\n      properties:\n        fila:\n          type: integer\n          description: \"Índice 1-based dentro de `ordenes`.\"\n        numRemision:\n          type:\n            - string\n            - \"null\"\n          description: \"El `num_remision` que mandaste, tal cual; `null` si la fila no lo trajo.\"\n        resultado:\n          type: string\n          const: error\n        errores:\n          type: object\n          description: \"Errores por campo. Las claves suelen ser columnas de la fila, pero no siempre: la clave `tarifa` señala que el par (tienda, zona) de esa fila no resuelve tarifa vigente y por eso no se cotizó.\"\n          additionalProperties:\n            type: array\n            items:\n              type: string",
+      "CotizacionRequest": "    CotizacionRequest:\n      type: object\n      required:\n        - ordenes\n      properties:\n        ordenes:\n          type: array\n          minItems: 1\n          maxItems: 5000\n          description: \"Filas a cotizar (1..5000, el mismo tope que la carga). Todos los valores son texto.\"\n          items:\n            $ref: \"#/components/schemas/CotizacionRow\"",
+      "CotizacionResponse": "    CotizacionResponse:\n      type: object\n      required:\n        - total\n        - cotizadas\n        - conError\n        - filas\n        - errores\n      properties:\n        total:\n          type: integer\n          description: Filas recibidas.\n        cotizadas:\n          type: integer\n        conError:\n          type: integer\n        filas:\n          type: array\n          description: \"Las filas con precio. Nunca contiene una fila en `error`; su longitud es siempre `cotizadas`.\"\n          items:\n            $ref: \"#/components/schemas/CotizacionRowResult\"\n        errores:\n          type: array\n          description: \"Las filas que NO se cotizaron, con su detalle por campo. Lista vacía cuando el lote entero se cotizó; su longitud es siempre `conError`.\"\n          items:\n            $ref: \"#/components/schemas/CotizacionFilaError\"",
+      "CotizacionRow": "    CotizacionRow:\n      type: object\n      description: |-\n        Una fila a cotizar. Es la MISMA fila cruda que acepta `POST /api/ordenes/api-key/carga`:\n        podés mandar el cuerpo de la carga sin recortarlo y las claves que la cotización no usa\n        se ignoran. `num_remision` es opcional y solo correlaciona.\n\n        NINGUNA clave de la fila está en `required`, y es deliberado: el servidor NO rechaza el\n        lote por una fila incompleta. La terna geográfica (`provincia`, `canton`, `distrito`) es\n        NECESARIA para poder cotizar la fila, pero su ausencia NO es un 422 del lote: esa fila\n        vuelve en la lista `errores` con `resultado: \"error\"` y el detalle bajo la clave del\n        campo que falta, y las\n        demás filas se cotizan igual (éxito parcial). Declararla `required` haría que un cliente\n        generado con validación estricta rechazara EN LOCAL un cuerpo que el servidor acepta y\n        responde 200.\n\n        Cuándo recibís 422: solo por el lote entero — `ordenes` vacío o por encima del tope\n        (o un valor que no sea texto). Cuándo recibís 200 con entradas en `errores`: por cualquier\n        problema de una fila concreta — terna ausente o vacía, distrito no encontrado, distrito\n        ambiguo, distrito sin zona asignada, algún nivel de la terna RETIRADO del catálogo, o\n        `monto_cobrar` con formato inválido.\n\n        RETIRADO DEL CATÁLOGO (desde 2026-09-06). Servi Logistic puede retirar una provincia, un cantón\n        o un distrito sin borrarlo: deja de admitirse en cargas y cotizaciones nuevas, y las\n        órdenes que ya lo referencian no se tocan. La fila sale con `resultado: \"error\"` y un\n        mensaje PROPIO, distinto de «no encontrado» y de «ambiguo», para que no lo confundas con\n        una errata en la dirección. Los tres mensajes son:\n\n        - `la provincia esta retirada del catalogo`\n        - `el canton esta retirado del catalogo`\n        - `el distrito '<nombre>' esta retirado del catalogo`\n\n        Si hay más de un nivel retirado se informa del más alto, con esta PRECEDENCIA fija:\n        primero provincia, luego cantón, luego distrito. Sigue siendo 200 con éxito parcial:\n        ninguna otra fila del lote se ve afectada.\n      properties:\n        provincia:\n          type: string\n          description: \"Necesaria para cotizar la fila. Si falta, no se encuentra, es ambigua o está RETIRADA del catálogo, la fila sale con `resultado: \\\"error\\\"` (no un 422 del lote).\"\n        canton:\n          type: string\n          description: \"Necesario para cotizar la fila. Si falta, no se encuentra, es ambiguo o está RETIRADO del catálogo, la fila sale con `resultado: \\\"error\\\"` (no un 422 del lote).\"\n        distrito:\n          type: string\n          description: \"Su zona decide la columna de flete. Necesario para cotizar la fila: si falta, no se encuentra, es ambiguo, no tiene zona o está RETIRADO del catálogo, la fila sale con `resultado: \\\"error\\\"` (no un 422 del lote).\"\n        direccion:\n          type: string\n          description: Se acepta; no participa del precio.\n        monto_cobrar:\n          type: string\n          description: \"Monto COD como texto (p. ej. \\\"25900\\\"). Base de la comisión; vacío o ausente se trata como cero.\"\n        num_remision:\n          type: string\n          description: \"OPCIONAL: solo correlación. No se deduplica ni contra el lote ni contra las órdenes existentes.\"\n      additionalProperties:\n        type: string",
+      "CotizacionRowResult": "    CotizacionRowResult:\n      type: object\n      description: \"Una fila CON precio. No existe `duplicada`: sin persistencia no significa nada. Desde 2026-08-31 esta lista no contiene filas en `error`: ésas viajan en `errores` (`CotizacionFilaError`), y por eso `costos` dejó de ser opcional aquí.\"\n      required:\n        - fila\n        - numRemision\n        - montoCobrar\n        - resultado\n        - costos\n      properties:\n        fila:\n          type: integer\n          description: \"Índice 1-based dentro de `ordenes`.\"\n        numRemision:\n          type:\n            - string\n            - \"null\"\n          description: \"El `num_remision` que mandaste, tal cual; `null` si la fila no lo trajo.\"\n        montoCobrar:\n          type: string\n          description: \"EL VALOR SOBRE EL QUE SE COTIZÓ: el `monto_cobrar` que entró al cálculo, ya redondeado al colón igual que lo redondea la carga, y `\\\"0.00\\\"` si la fila no traía monto (la base que usó la comisión COD). String money-safe de escala 2, crudo, como el resto de los importes.\"\n        resultado:\n          type: string\n          const: cotizada\n        costos:\n          $ref: \"#/components/schemas/CotizacionCostos\"",
+      "EliminacionResponse": "    EliminacionResponse:\n      type: object\n      required:\n        - numGuia\n        - numRemision\n        - estado\n        - estadoNombre\n      properties:\n        numGuia:\n          type:\n            - integer\n            - \"null\"\n          description: \"Guía de la orden eliminada; `null` si aún no tenía.\"\n        numRemision:\n          type: string\n          description: \"Tu número de remisión. Vuelve a quedar libre para reutilizarlo.\"\n        estado:\n          type: string\n          description: \"Estado que la orden tenía al eliminarla (eliminar no cambia el estado).\"\n          enum:\n            - en_preparacion\n            - por_recolectar_en_tienda\n            - recolectando\n            - en_bodega_central\n            - en_ruta_bodega_central\n            - en_ruta_bodega_satelite\n            - mensajero_recogiendo_en_bodega\n        estadoNombre:\n          type: string\n          description: \"Nombre visible de `estado`: la MISMA cadena que muestra la aplicación (p. ej. `Novedad`).\"",
+      "Error": "    Error:\n      type: object\n      description: \"Shape uniforme de error del manejador global. `status` siempre `\\\"error\\\"`.\"\n      required:\n        - status\n        - code\n        - message\n      properties:\n        status:\n          type: string\n          const: error\n        code:\n          type: string\n          enum:\n            - VALIDATION_ERROR\n            - UNAUTHORIZED\n            - FORBIDDEN\n            - NOT_FOUND\n            - CONFLICT\n            - INTERNAL\n          description: Código estable (independiente del status HTTP).\n        message:\n          type: string\n          description: Mensaje fijo en español.\n        details:\n          type: object\n          description: \"Detalle opcional. En 422 lleva `fieldErrors` (campo -> lista de errores).\"\n          additionalProperties: true",
+      "Evidencia": "    Evidencia:\n      type: object\n      # feature 268/R31: espejo del objeto TS — las evidencias del INCIDENTE (mensajero y admin)\n      # se exponen con la MISMA forma, y por eso `resultado` gana un tercer value.\n      description: \"Evidencia de entrega, rechazo o incidente, con URL firmada de corta duración. Las de incidente llegan con `resultado: \\\"incidente\\\"` y son las que enlaza el campo `evidenciasUrl` del webhook.\"\n      required:\n        - resultado\n        - resultadoNombre\n        - contentType\n        - url\n        - expiraEnSegundos\n      properties:\n        resultado:\n          type: string\n          enum:\n            - entregado\n            - devolucion_a_origen_por_rechazo\n            - incidente\n        resultadoNombre:\n          type: string\n          description: \"Nombre visible de `resultado`: la MISMA cadena que muestra la aplicación (p. ej. `Novedad`).\"\n        contentType:\n          type:\n            - string\n            - \"null\"\n          description: MIME del archivo (p. ej. image/jpeg).\n        url:\n          type: string\n          format: uri\n          description: URL firmada (vence a los 5 min).\n        expiraEnSegundos:\n          type: integer\n          description: TTL de la URL firmada en segundos (300).",
+      "HabilitacionRequest": "    HabilitacionRequest:\n      type: object\n      required:\n        - ordenes\n      properties:\n        ordenes:\n          type: array\n          minItems: 1\n          maxItems: 100\n          description: \"Entre 1 y 100 filas. Fuera de ese rango: 422 y ninguna fila procesada.\"\n          items:\n            $ref: \"#/components/schemas/HabilitacionRow\"",
+      "HabilitacionResponse": "    HabilitacionResponse:\n      type: object\n      required:\n        - resumen\n        - resultados\n      properties:\n        resumen:\n          $ref: \"#/components/schemas/HabilitacionResumen\"\n        resultados:\n          type: array\n          description: \"MISMO orden y MISMA cantidad que las filas enviadas: se puede casar por índice.\"\n          items:\n            $ref: \"#/components/schemas/HabilitacionRowResult\"",
+      "HabilitacionResumen": "    HabilitacionResumen:\n      type: object\n      description: \"`total` = `habilitadas` + `habilitadasSinCambioDeEstado` + `conError`.\"\n      required:\n        - total\n        - habilitadas\n        - habilitadasSinCambioDeEstado\n        - conError\n      properties:\n        total:\n          type: integer\n          description: Filas recibidas.\n        habilitadas:\n          type: integer\n          description: \"Órdenes con la ayuda abierta cuya ayuda quedó cerrada (`ayudaCerrada: true`).\"\n        habilitadasSinCambioDeEstado:\n          type: integer\n          description: \"Se registró la habilitación y el estado NO cambió.\"\n        conError:\n          type: integer",
+      "HabilitacionRow": "    HabilitacionRow:\n      type: object\n      description: \"Una fila del lote. Si `num_guia` o `nota` no cumplen, la fila responde `error`/`fila_invalida` y el resto del lote se procesa igual: NO es un 422 del lote.\"\n      required:\n        - num_guia\n        - nota\n      properties:\n        num_guia:\n          type: integer\n          minimum: 1\n          description: \"Número de guía de una orden propia. No se acepta como texto.\"\n        nota:\n          type: string\n          minLength: 1\n          maxLength: 200\n          description: \"Motivo de la habilitación, OBLIGATORIO. Se recorta y se guarda en la bitácora de la orden; no viaja en el historial de estados.\"",
+      "HabilitacionRowResult": "    HabilitacionRowResult:\n      type: object\n      required:\n        - numGuia\n        - resultado\n        - estado\n        - estadoNombre\n        - ayudaCerrada\n        - error\n      properties:\n        numGuia:\n          description: \"La guía tal como se envió (si la fila era inválida, puede no ser entero).\"\n        resultado:\n          type: string\n          enum:\n            - habilitada\n            - habilitada_sin_cambio_de_estado\n            - error\n          description: \"`habilitada`: la orden tenía la ayuda abierta y la ayuda quedó CERRADA; la orden sigue `en_reparto` con su mensajero y vuelve a ser gestionable (desde el 2026-09-23 no hay cambio de estado: mirá `ayudaCerrada`). `habilitada_sin_cambio_de_estado`: se registró y el estado NO cambió (SIEMPRE el caso de una `novedad`). `error`: la fila no se procesó.\"\n        estado:\n          type:\n            - string\n            - \"null\"\n          description: \"Estado en el que la orden quedó; `null` cuando la fila falló.\"\n        estadoNombre:\n          type:\n            - string\n            - \"null\"\n          description: \"Nombre visible de `estado`: la MISMA cadena que muestra la aplicación. `null` cuando `estado` es `null`.\"\n        # FICHA 454 (R24/R36) — la clave NUEVA.\n        ayudaCerrada:\n          type: boolean\n          description: \"`true` si esta fila CERRÓ una ayuda abierta (el mensajero puede volver a gestionar la orden). `false` en cualquier otro caso, incluidas las filas con error.\"\n        error:\n          type:\n            - object\n            - \"null\"\n          required:\n            - codigo\n            - mensaje\n          properties:\n            codigo:\n              type: string\n              enum:\n                - fila_invalida\n                - duplicada_en_lote\n                - no_encontrada\n                - estado_no_habilitable\n              description: \"`fila_invalida`: `num_guia`/`nota` no cumplen. `duplicada_en_lote`: la guía ya apareció antes en el mismo lote. `no_encontrada`: no hay orden viva con esa guía para esta key (no distingue «no existe» de «es de otro dueño»). `estado_no_habilitable`: la orden no tiene una ayuda abierta ni está en `novedad` —incluye `reprogramado` y la segunda habilitación de una orden cuya ayuda ya se cerró—.\"\n            mensaje:\n              type: string",
+      "Listado": "    Listado:\n      type: object\n      required:\n        - items\n        - pagination\n      properties:\n        items:\n          type: array\n          items:\n            $ref: \"#/components/schemas/OrdenListItem\"\n        pagination:\n          $ref: \"#/components/schemas/Pagination\"",
+      "Mensajero": "    Mensajero:\n      type: object\n      required:\n        - id\n        - nombre\n      additionalProperties: false\n      description: \"Una persona mensajera, con lo minimo para identificarla y mostrarla. Es la MISMA forma que publica el campo `mensajero` de `OrdenListItem` y del evento `orden.estado_actualizado`.\"\n      properties:\n        id:\n          type: string\n          description: \"Identificador ESTABLE del mensajero: un UUID en TEXTO, no un entero. El mismo mensajero produce el mismo `id` aquí, en el listado, en el detalle y en el webhook, y nunca se reasigna a otra persona: agrupá por este valor.\"\n        nombre:\n          type: string\n          description: \"Nombre completo de la persona (nombre + apellidos). Texto para mostrar; PUEDE cambiar si se corrigen sus datos, así que no lo uses como clave.\"",
+      "OrdenCosto": "    OrdenCosto:\n      type: object\n      required:\n        - flete\n        - iva\n        - comision\n        - ivaComision\n        - fulfillment\n        - ivaFulfillment\n      additionalProperties: false\n      description: \"Los SEIS conceptos que la empresa factura por una orden, en el escenario de ENTREGA («cuánto cuesta este paquete si se entrega»). Importes en texto crudo con dos decimales y punto decimal, sin símbolo de moneda y sin separador de miles (`\\\"2500.00\\\"`) — el mismo dialecto que la cotización y el `costoEnvio` de la carga. Un `\\\"0.00\\\"` es un CERO AFIRMADO (por ejemplo, una orden que no cobra comisión), nunca un dato faltante: dentro de este objeto ningún concepto es `null` y ninguno se omite. **NO hay ningún campo que sume los seis, ni `total` ni equivalente**: sumalos vos, que sabés qué estás sumando.\"\n      properties:\n        flete:\n          type: string\n          description: Flete del envío.\n        iva:\n          type: string\n          description: IVA del flete.\n        comision:\n          type: string\n          description: Comisión por el recaudo contra entrega (COD).\n        ivaComision:\n          type: string\n          description: IVA de la comisión COD.\n        fulfillment:\n          type: string\n          description: \"Monto fijo de fulfillment por orden cuando el paquete sale de nuestra bodega. `\\\"0.00\\\"` si tu tienda no hace fulfillment.\"\n        ivaFulfillment:\n          type: string\n          description: \"IVA del fulfillment, string escala 2: el % de IVA de tu tarifa aplicado al fulfillment ya redondeado. `\\\"0.00\\\"` si tu tarifa no tiene fulfillment o no le aplica IVA. Nunca `null`.\"",
+      "OrdenDetalle": "    OrdenDetalle:\n      allOf:\n        - $ref: \"#/components/schemas/OrdenListItem\"\n        - type: object\n          required:\n            - evidencias\n            # feature 405/R1: REQUERIDA, como `evidencias`. Un array vacio es un hecho, no una\n            # ausencia.\n            - gestiones\n          properties:\n            evidencias:\n              type: array\n              description: \"Evidencias de la orden ([] si no hay).\"\n              items:\n                $ref: \"#/components/schemas/Evidencia\"\n            gestiones:\n              type: array\n              items:\n                $ref: \"#/components/schemas/OrdenGestion\"\n              description: |-\n                Historial de gestiones VIGENTES de la orden, de la más antigua a la más\n                reciente. `[]` cuando la orden todavía no se ha gestionado: la clave viaja\n                SIEMPRE y nunca es `null`.\n\n                Llega **completo y sin paginar**. No incluye las gestiones anuladas (una\n                anulación deshace el registro, y contarla inflaría tus métricas) ni los\n                incidentes que reporta nuestro personal de bodega, que no son gestiones y no\n                tienen mensajero atribuido —sus fotos sí siguen en `evidencias[]`—.\n\n                ⚠️ **`gestiones.length` no es nuestro contador interno de reintento.** Ese cuenta\n                cierres aprobados distintos con visita real, así que varias gestiones del mismo\n                cierre valen 1. Este array es la lista cruda, sin agrupar.\n      # feature 405/R20: ejemplo con DOS gestiones —una `reprogramado` con `motivo: null` y una\n      # `novedad` con causa—, para que el consumidor vea la convencion de ausencia y la forma del\n      # mensajero sin tener que deducirlas.\n      examples:\n        - numGuia: 100234\n          numRemision: \"REM-0001\"\n          estado: devolviendo_a_tienda\n          estadoNombre: \"Devolviendo a tienda\"\n          destinatario: Jimena Porras\n          telefonoDest: \"88887777\"\n          producto: Audífonos inalámbricos\n          direccion: \"Cartago, de la iglesia 200m sur\"\n          montoCobrar: 48750\n          createdAt: \"2026-09-01T14:20:00.000Z\"\n          mensajero: null\n          evidencias: []\n          gestiones:\n            - createdAt: \"2026-09-02T15:41:07.000Z\"\n              resultado: reprogramado\n              resultadoNombre: \"Reprogramado\"\n              estadoResultante: reprogramado\n              estadoResultanteNombre: \"Reprogramado\"\n              motivo: null\n              mensajero:\n                id: \"018f2c31-0000-4000-8000-0000000000aa\"\n                nombre: Carlos Jiménez Mora\n            - createdAt: \"2026-09-04T18:02:55.000Z\"\n              resultado: novedad\n              resultadoNombre: \"Novedad\"\n              estadoResultante: novedad\n              estadoResultanteNombre: \"Novedad\"\n              motivo: wrong_address\n              mensajero:\n                id: \"018f2c31-0000-4000-8000-0000000000bb\"\n                nombre: Ana Solís Vargas",
+      "OrdenGestion": "    OrdenGestion:\n      type: object\n      description: \"Un desenlace registrado sobre la orden: quién lo registró, cuándo y en qué dejó la orden. El array completo permite medir cuántas veces se visitó la orden y cuánto pasó entre una vez y la siguiente.\"\n      required:\n        - createdAt\n        - resultado\n        - resultadoNombre\n        - estadoResultante\n        - estadoResultanteNombre\n        - motivo\n        - mensajero\n        - pendienteConfirmacion\n      additionalProperties: false\n      properties:\n        createdAt:\n          type: string\n          format: \"date-time\"\n          description: \"Instante en que la gestión quedó REGISTRADA (ISO 8601, UTC). Mismo tipo y misma serialización que el `createdAt` de la orden. NO es la fecha de reprogramación ni la de aprobación de un cierre.\"\n        resultado:\n          type: string\n          # feature 405/R5: DERIVADO de `ESTATUS_POR_RESULTADO`, nunca copiado a mano. Contiene\n          # `entregado` pero NO el estado interno de recogida, asi que `esEnumDeEstado` de\n          # `openapi-contrato-en-reparto.test.ts` NO lo cuenta: los bloques de catalogo siguen\n          # siendo CUATRO.\n          enum:\n            - devolucion_a_origen_por_rechazo\n            - entregado\n            - incidente\n            - novedad\n            - reprogramado\n          description: \"Desenlace de la gestión, con el value CRUDO del catálogo interno y sin traducir. La lista de arriba es EXACTA y COMPLETA. Ojo: `resultado` NO es el estado en que quedó la orden — para eso está `estadoResultante`, y los dos NO siempre coinciden.\"\n        resultadoNombre:\n          type: string\n          description: \"Nombre visible de `resultado`: la MISMA cadena que muestra la aplicación (p. ej. `Novedad`).\"\n        estadoResultante:\n          type:\n            - string\n            - \"null\"\n          description: |-\n            El `value` del estado al que ESTA gestión llevó la orden: el destino de la primera\n            transición que originó. Es un value del mismo catálogo que publica\n            `OrdenListItem.estado`; **se publica sin lista cerrada a propósito**: en gestiones\n            antiguas puede traer un estado RETIRADO del catálogo (ver abajo). Tratá un value\n            desconocido como texto, no como error.\n\n            ⚠️ **No lo deduzcas del `resultado`**: una gestión se REGISTRA sin mover la orden; el\n            estado se aplica cuando se APRUEBA el cierre del mensajero. Mientras tanto la gestión\n            está `pendienteConfirmacion: true` y este campo es `null`. En gestiones anteriores al\n            2026-09-23, una `novedad` puede mostrar `devolucion_por_confirmar` (estado retirado).\n\n            Es `null` en gestiones ANTIGUAS, anteriores a que existiera la línea de tiempo de\n            estados: no hay ninguna transición registrada que las respalde. No es un fallo del\n            canal, y la clave NUNCA se omite.\n        estadoResultanteNombre:\n          type:\n            - string\n            - \"null\"\n          description: \"Nombre visible de `estadoResultante`: la MISMA cadena que muestra la aplicación. `null` cuando `estadoResultante` es `null`.\"\n        motivo:\n          type:\n            - string\n            - \"null\"\n          # feature 405/R21: DERIVADO de CAUSA_DEVOLUCION_SEED + CAUSA_INCIDENTE_SEED + null, las\n          # MISMAS fuentes de las que sale la lista de `data.motivo` del webhook. Los valores\n          # coinciden uno a uno con aquella, y un test lo compara.\n          enum:\n            - not_found\n            - wrong_number\n            - wrong_address\n            - danado\n            - perdido\n            - robado\n            - null\n          description: |-\n            Causa TIPIFICADA del desenlace, con el value crudo del enum y sin traducir. Son los\n            MISMOS valores que ya recibís en `data.motivo` del webhook `orden.estado_actualizado`.\n            El campo transporta DOS enums distintos y cuál aplica lo decide `resultado`:\n\n            - **`resultado: \"novedad\"`** → causa de la devolución: `not_found` (destinatario no\n              encontrado), `wrong_number` (teléfono equivocado), `wrong_address` (dirección\n              equivocada).\n            - **`resultado: \"incidente\"`** → causa del incidente: `danado`, `perdido`, `robado`.\n            - **cualquier otro `resultado`** → siempre `null`.\n\n            ⚠️ **La asimetría de idioma es DELIBERADA, no un error que corregir.** Las causas de\n            devolución van en INGLÉS y las de incidente en ESPAÑOL (`danado` sin eñe, `perdido`,\n            `robado`) porque cada enum se publicó con el value crudo de su catálogo interno y\n            renombrar cualquiera de los dos rompería a los integradores que ya lo consumen.\n            Decisión consciente y firmada (73/F1.4-g y 158/Q-B): no se «armoniza» en el futuro.\n\n            Es `null` **también** en una `novedad` (o un `incidente`) sin causa registrada —\n            gestiones anteriores a que la causa se pidiera; ese histórico no se rellenó—. El\n            contrato no distingue «no hubo causa» de «no se registró»: en los dos casos viaja\n            `null` y el campo NUNCA se omite.\n\n            ⚠️ Transporta EXCLUSIVAMENTE la causa tipificada. **NO es el comentario en texto libre\n            que el mensajero escribe al gestionar la orden** —que comparte el nombre `motivo` en\n            nuestra base de datos y NO sale del sistema por decisión de privacidad—, ni ningún\n            otro dato del destinatario.\n        mensajero:\n          $ref: \"#/components/schemas/Mensajero\"\n          description: |-\n            Mensajero ATRIBUIDO a esta gestión. **Nunca es `null`**: a diferencia del\n            `mensajero` de la orden —que es quien la lleva AHORA y puede no ser nadie—, una\n            gestión siempre tiene una persona detrás.\n\n            ⚠️ **Atribuido no siempre significa «quien la registró».** Algunas gestiones las crea\n            el sistema o la propia tienda (una reprogramación desde el escritorio, el escalado\n            automático por vencimiento de plazo, un rechazo manual de la tienda, el desenlace de\n            una solicitud de ayuda, o el corte por llegar al tope de reintento) y quedan\n            atribuidas al mensajero de la última devolución. En este array se ven idénticas a una\n            visita de calle.\n        # FICHA 454 (R32) — la clave NUEVA, al final.\n        pendienteConfirmacion:\n          type: boolean\n          description: \"`true` mientras la gestión está PENDIENTE de confirmar: se registró, pero el estado que produce todavía no se aplicó (se aplica al aprobar el cierre del mensajero; hasta entonces `estadoResultante` es `null`). `false` en las gestiones ya aplicadas y en las anteriores al 2026-09-23.\"",
+      "OrdenListItem": "    OrdenListItem:\n      type: object\n      # ⏳ 2026-09-09 (feature 404/R25) — la description decía «sin ids internos ni PII de\n      # terceros» a secas, y eso ya no describe el item: publica el NOMBRE del mensajero asignado.\n      # La exclusión queda ACOTADA, no derogada, y se dice con su alcance.\n      description: \"Item público de una orden propia: sin ids internos de la orden ni de la tienda. La única excepción a «sin datos personales de terceros» es el campo `mensajero`, que lleva el `id` y el NOMBRE del mensajero ASIGNADO —y nada más— hacia el dueño de la orden, que ya ve ese mismo nombre en la aplicación. El resto de los datos personales del mensajero (teléfono, email, cédula, foto, zona, vehículo) sigue excluido, y también el mensajero que GESTIONÓ la orden y el texto libre que escribe al gestionarla. Desde el 2026-09-10 el ítem publica además la ZONA DE LA ORDEN (a dónde va el paquete) y lo que ese paquete le cuesta a tu tienda, en dos campos: `costoEstimado` y `costoReal`.\"\n      required:\n        - numGuia\n        - numRemision\n        - estado\n        - estadoNombre\n        - destinatario\n        - telefonoDest\n        - producto\n        - direccion\n        - montoCobrar\n        - createdAt\n        # ⏳ 2026-09-09 (feature 404/R2/R24): SIEMPRE presente; `null` cuando no hay asignado.\n        - mensajero\n        # ⏳ 2026-09-10 (feature 415/R9/R37): las TRES SIEMPRE presentes. `zona` nunca es `null`;\n        # los dos costos pueden serlo, y su `null` significa algo concreto (ver sus descriptions).\n        - zona\n        - costoEstimado\n        - costoReal\n      properties:\n        numGuia:\n          type:\n            - integer\n            - \"null\"\n          description: Número de guía (null si aún no asignado).\n        numRemision:\n          type: string\n        estado:\n          type: string\n          enum:\n            - entregado\n            - novedad\n            - devolviendo_a_tienda\n            - reprogramado\n            - en_ruta_bodega_central\n            - en_bodega_central\n            - en_preparacion\n            - mensajero_recogiendo_en_bodega\n            - en_ruta_bodega_satelite\n            - en_reparto\n            - devolucion_a_origen_por_rechazo\n            - en_bodega_satelite\n            - devuelta_a_tienda\n            - novedad_interna\n            - por_devolver_a_bodega_central\n            - devolviendo_a_bodega_central\n            - por_devolver_a_tienda\n            - por_recolectar_en_tienda\n            - incidente\n            - recolectando\n        estadoNombre:\n          type: string\n          description: \"Nombre visible de `estado`: la MISMA cadena que muestra la aplicación (p. ej. `Novedad`).\"\n        destinatario:\n          type: string\n        telefonoDest:\n          type: string\n        producto:\n          type: string\n        direccion:\n          type:\n            - string\n            - \"null\"\n        montoCobrar:\n          type:\n            - number\n            - \"null\"\n          description: Monto a cobrar (COD).\n        createdAt:\n          type: string\n          format: \"date-time\"\n        mensajero:\n          type:\n            - object\n            - \"null\"\n          required:\n            - id\n            - nombre\n          additionalProperties: false\n          properties:\n            id:\n              type: string\n              description: \"Identificador ESTABLE del mensajero: un UUID en TEXTO, no un entero. El mismo mensajero produce el mismo `id` aquí, en el detalle y en el webhook, y nunca se reasigna a otra persona: agrupá por este valor.\"\n            nombre:\n              type: string\n              description: \"Nombre completo de la persona (nombre + apellidos). Texto para mostrar; PUEDE cambiar si se corrigen sus datos, así que no lo uses como clave.\"\n          description: |-\n            Mensajero ASIGNADO a la orden, o `null` si no la lleva nadie.\n\n            **La clave está SIEMPRE presente**: `null` significa «todavía nadie la lleva», no «no\n            se sabe» y no una omisión.\n\n            ⚠️ **Es QUIÉN LA LLEVA en el momento de la lectura, no quién la gestionó.** Varios\n            flujos limpian la asignación (generación de guía, quitar mensajero, devolución o\n            recuperación a bodega, liberación de una orden en `reprogramado`, el barrido del cierre diario),\n            así que una orden que alguien llevó puede devolver `null` más tarde. Para «quién\n            gestionó cada intento» hace falta el historial de gestiones, que este recurso NO\n            expone.\n\n            No se puede filtrar ni ordenar el listado por este campo: un parámetro de query que lo\n            intente se ignora, como cualquier otra clave desconocida.\n\n            ⏳ **2026-09-10 — la palabra «zona» de la lista de exclusiones de arriba se refiere a\n            la zona DEL MENSAJERO** (en qué zona trabaja esa persona), que es un dato personal\n            suyo y sigue SIN publicarse. **No la confundas con el campo `zona` de la orden**, que\n            sí se publica desde esa fecha y es otra cosa: el DESTINO del paquete.\n        # ⏳ 2026-09-10 (feature 415/R1/R2/R37): la zona DE LA ORDEN. `$ref` y NO nullable:\n        # `orden.zona_id` es NOT NULL, y esa es la única diferencia con `mensajero`.\n        zona:\n          $ref: \"#/components/schemas/Zona\"\n        costoEstimado:\n          oneOf:\n            - $ref: \"#/components/schemas/OrdenCosto\"\n            - type: \"null\"\n          description: |-\n            Lo que costaría este paquete con la tarifa VIGENTE HOY para tu tienda en la zona de\n            la orden, en el escenario de ENTREGA.\n\n            ⚠️ **Mientras `costoReal` sea `null`, este importe PUEDE CAMBIAR entre dos lecturas de\n            la misma orden: se calcula con la tarifa de hoy**, y las tarifas se editan en sitio\n            (no guardamos su histórico). Si lo archivás sin leer esto, construirás una serie que\n            cambia sola. Cuando llega `costoReal`, ése ya no se mueve: es lo que se congeló al\n            cerrar.\n\n            `null` significa **«no hay ninguna tarifa configurada para tu tienda en esa zona»**, y\n            **NO significa que el envío sea gratis**. Deliberadamente NO devolvemos cinco ceros:\n            un `0.00` sería una cifra falsa servida como precio.\n\n            No se puede filtrar ni ordenar el listado por este campo ni por ninguno de sus cinco\n            conceptos: un parámetro de query que lo intente se ignora.\n        costoReal:\n          oneOf:\n            - $ref: \"#/components/schemas/OrdenCosto\"\n            - type: \"null\"\n          description: |-\n            Lo que se CONGELÓ al cerrar: la tarifa y los datos de la orden tal y como estaban\n            cuando entró en un cierre aprobado. Ya no se mueve con los cambios de tarifa.\n\n            ⚠️ **Es lo que se congeló al cerrar, NO «la línea que entró en tu wallet».** Como\n            `costoEstimado`, es el escenario de **ENTREGA**. Si la orden terminó en Devolución a origen\n            por rechazo (`devolucion_a_origen_por_rechazo`), lo que se te factura es el flete por\n            devolución a origen y su IVA, que son conceptos distintos y que\n            podés consultar en el escenario `devuelto` de la cotización.\n\n            `null` significa **«esta orden todavía no ha entrado en ningún cierre aprobado»**.\n\n            Puede moverse UNA vez más en un caso concreto: si la orden vuelve a entrar en un\n            segundo cierre aprobado (una orden en `novedad` sigue viva y puede recorrerse otra vez),\n            publicamos la fila del cierre MÁS RECIENTE.",
+      "Pagination": "    Pagination:\n      type: object\n      required:\n        - limit\n        - offset\n        - total\n      properties:\n        limit:\n          type: integer\n          minimum: 1\n          maximum: 100\n        offset:\n          type: integer\n          minimum: 0\n        total:\n          type: integer\n          minimum: 0\n          description: Total de órdenes que cumplen el filtro.",
+      "PdfGenerateResponse": "    PdfGenerateResponse:\n      type: object\n      description: \"URL firmada de corta duración con el PDF de etiqueta (de una orden o de un lote). La URL se firma en cada llamada: nunca es una URL persistida.\"\n      required:\n        - url\n        - expiraEnSegundos\n      properties:\n        url:\n          type: string\n          format: uri\n          description: URL firmada del PDF.\n        expiraEnSegundos:\n          type: integer\n          description: \"TTL de la URL firmada en segundos (300 por defecto).\"",
+      "Zona": "    Zona:\n      type: object\n      required:\n        - id\n        - nombre\n      additionalProperties: false\n      description: \"La ZONA DE LA ORDEN: a dónde va el paquete. ⚠️ NO es la zona del mensajero (en qué zona trabaja esa persona), que es un dato personal suyo y no se publica por ningún endpoint. Este campo NUNCA es `null`: toda orden tiene zona.\"\n      properties:\n        id:\n          type: string\n          description: \"Identificador ESTABLE de la zona: un UUID en TEXTO. La misma zona produce el mismo `id` en el listado, en el detalle y en todas las lecturas, y nunca se reasigna a otra zona: **agrupá por este valor, nunca por `nombre`**.\"\n        nombre:\n          type: string\n          description: \"Nombre de la zona tal y como está en el catálogo (p. ej. `GAM`, `FGAM Zona Sur`). Texto para MOSTRAR; PUEDE cambiar si se corrige o se renombra, así que no lo uses como clave de agrupación: el día que «FGAM El Coco» pase a «FGAM Coco», una serie agrupada por el nombre se parte en dos sin avisar.\""
+    },
+    "responses": {
+      "Conflict": "    Conflict:\n      description: El estado actual de la orden no permite la operación.\n      content:\n        application/json:\n          schema:\n            $ref: \"#/components/schemas/Error\"\n          example:\n            status: error\n            code: CONFLICT\n            message: La operacion entra en conflicto con el estado actual.",
+      "Forbidden": "    Forbidden:\n      description: El usuario dueño de la key no está activo.\n      content:\n        application/json:\n          schema:\n            $ref: \"#/components/schemas/Error\"\n          example:\n            status: error\n            code: FORBIDDEN\n            message: No tienes permiso para realizar esta accion.",
+      "NotFound": "    NotFound:\n      description: La orden no existe o pertenece a otro dueño (mismo 404).\n      content:\n        application/json:\n          schema:\n            $ref: \"#/components/schemas/Error\"\n          example:\n            status: error\n            code: NOT_FOUND\n            message: El recurso solicitado no existe.",
+      "Unauthorized": "    Unauthorized:\n      description: \"API key ausente, mal formada o desconocida.\"\n      content:\n        application/json:\n          schema:\n            $ref: \"#/components/schemas/Error\"\n          example:\n            status: error\n            code: UNAUTHORIZED\n            message: No hay una sesion valida.",
+      "ValidationError": "    ValidationError:\n      description: \"Entrada inválida (query, path o cuerpo).\"\n      content:\n        application/json:\n          schema:\n            $ref: \"#/components/schemas/Error\"\n          example:\n            status: error\n            code: VALIDATION_ERROR\n            message: Los datos enviados no son validos.\n            details:\n              fieldErrors:\n                limit:\n                  - Number must be less than or equal to 100"
+    }
+  }
+}

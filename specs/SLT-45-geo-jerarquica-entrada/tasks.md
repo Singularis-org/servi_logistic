@@ -10,18 +10,18 @@
 
 ## T1 — Congelar v1 (antes de tocar código)
 
-- [ ] **T1.1** Anotar en `tests/fixtures/contrato-v1/BASE` el sha de la punta de la rama antes de
+- [x] **T1.1** Anotar en `tests/fixtures/contrato-v1/BASE` el sha de la punta de la rama antes de
   cualquier cambio de código de SLT-45.
   *Hecho:* el archivo existe con un sha que `git cat-file -t` reconoce como commit.
-- [ ] **T1.2** Escribir `tests/fixtures/contrato-v1/payloads-sinteticos.json` (§7.2): los 11 mensajes de
+- [x] **T1.2** Escribir `tests/fixtures/contrato-v1/payloads-sinteticos.json` (§7.2): los 11 mensajes de
   `resolveGeo` y su precedencia, acentos/mayúsculas/espacios, retirados, sin zona, zona especial, sin
   tarifa (409), lote vacío, cuerpo inválido, duplicados y tope. `payloads-reales.json` nace como `[]`.
   *Hecho:* cada mensaje de `geo-resolucion.ts` aparece en al menos un payload.
-- [ ] **T1.3** Suite `tests/integration/api/contrato-v1.route.test.ts` con siembra, normalización de la
+- [x] **T1.3** Suite `tests/integration/api/contrato-v1.route.test.ts` con siembra, normalización de la
   lista cerrada de volátiles y modo `CONTRATO_V1_GRABAR=1` (§7.3). Grabar `respuestas/` con el código de
   `BASE`. (R2, R9)
   *Hecho:* en modo comparación pasa en verde; borrar una respuesta grabada la pone roja.
-- [ ] **T1.4** Grabar `tests/fixtures/contrato-v1/openapi-v1.json` y escribir
+- [x] **T1.4** Grabar `tests/fixtures/contrato-v1/openapi-v1.json` y escribir
   `tests/unit/api/openapi-v1-congelado.test.ts` (§7.4). (R1)
   *Hecho:* verde; cambiar una descripción de v1 lo pone rojo.
 

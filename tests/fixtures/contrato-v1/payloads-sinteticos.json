@@ -1,0 +1,413 @@
+[
+  {
+    "id": "una-fila-central",
+    "descripcion": "Una fila valida en un distrito de la zona central: cotiza y crea.",
+    "pasos": [
+      {
+        "ruta": "cotizacion",
+        "cuerpo": {
+          "ordenes": [
+            { "num_remision": "R-001", "destinatario": "Destinatario 1", "telefono": "80000001", "provincia": "Cartago", "canton": "Cartago", "distrito": "Occidental", "direccion": "Direccion 1", "producto": "Producto 1", "peso": "1.5", "monto_cobrar": "25900" }
+          ]
+        }
+      },
+      {
+        "ruta": "carga",
+        "cuerpo": {
+          "ordenes": [
+            { "num_remision": "R-001", "destinatario": "Destinatario 1", "telefono": "80000001", "provincia": "Cartago", "canton": "Cartago", "distrito": "Occidental", "direccion": "Direccion 1", "producto": "Producto 1", "peso": "1.5", "monto_cobrar": "25900" }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "varias-zonas-y-especial",
+    "descripcion": "Zona central, zona no central y distrito con marca de zona especial; con y sin cobro, con y sin notas.",
+    "pasos": [
+      {
+        "ruta": "cotizacion",
+        "cuerpo": {
+          "ordenes": [
+            { "num_remision": "R-101", "destinatario": "Destinatario 1", "telefono": "80000001", "provincia": "Cartago", "canton": "Cartago", "distrito": "Oriental", "direccion": "Direccion 1", "producto": "Producto 1", "peso": "0.5", "monto_cobrar": "0" },
+            { "num_remision": "R-102", "destinatario": "Destinatario 2", "telefono": "80000002", "provincia": "Cartago", "canton": "Paraíso", "distrito": "Paraíso", "direccion": "Direccion 2", "producto": "Producto 2", "peso": "3", "monto_cobrar": "12500", "notas": "Nota 2" },
+            { "num_remision": "R-103", "destinatario": "Destinatario 3", "telefono": "80000003", "provincia": "Cartago", "canton": "Paraíso", "distrito": "Orosi", "direccion": "Direccion 3", "producto": "Producto 3", "peso": "2.25", "monto_cobrar": "40000" },
+            { "num_remision": "R-104", "destinatario": "Destinatario 4", "telefono": "80000004", "provincia": "San José", "canton": "San José", "distrito": "Carmen", "direccion": "Direccion 4", "producto": "Producto 4", "peso": "1", "monto_cobrar": "9999" }
+          ]
+        }
+      },
+      {
+        "ruta": "carga",
+        "cuerpo": {
+          "ordenes": [
+            { "num_remision": "R-101", "destinatario": "Destinatario 1", "telefono": "80000001", "provincia": "Cartago", "canton": "Cartago", "distrito": "Oriental", "direccion": "Direccion 1", "producto": "Producto 1", "peso": "0.5", "monto_cobrar": "0" },
+            { "num_remision": "R-102", "destinatario": "Destinatario 2", "telefono": "80000002", "provincia": "Cartago", "canton": "Paraíso", "distrito": "Paraíso", "direccion": "Direccion 2", "producto": "Producto 2", "peso": "3", "monto_cobrar": "12500", "notas": "Nota 2" },
+            { "num_remision": "R-103", "destinatario": "Destinatario 3", "telefono": "80000003", "provincia": "Cartago", "canton": "Paraíso", "distrito": "Orosi", "direccion": "Direccion 3", "producto": "Producto 3", "peso": "2.25", "monto_cobrar": "40000" },
+            { "num_remision": "R-104", "destinatario": "Destinatario 4", "telefono": "80000004", "provincia": "San José", "canton": "San José", "distrito": "Carmen", "direccion": "Direccion 4", "producto": "Producto 4", "peso": "1", "monto_cobrar": "9999" }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "lote-con-nombre-e-individual",
+    "descripcion": "Lote con nombre y descarga individual: cada orden lleva su downloadUrl.",
+    "pasos": [
+      {
+        "ruta": "carga",
+        "cuerpo": {
+          "name": "Lote contrato",
+          "download_type": "individual",
+          "ordenes": [
+            { "num_remision": "R-201", "destinatario": "Destinatario 1", "telefono": "80000001", "provincia": "Cartago", "canton": "Cartago", "distrito": "Occidental", "direccion": "Direccion 1", "producto": "Producto 1", "peso": "1", "monto_cobrar": "1000" },
+            { "num_remision": "R-202", "destinatario": "Destinatario 2", "telefono": "80000002", "provincia": "Limón", "canton": "Limón", "distrito": "Río Blanco", "direccion": "Direccion 2", "producto": "Producto 2", "peso": "2", "monto_cobrar": "2000" }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "nombres-acentos-mayusculas-espacios",
+    "descripcion": "La geografia se compara normalizada: sin tildes, en mayusculas, con espacios de mas o dobles.",
+    "pasos": [
+      {
+        "ruta": "cotizacion",
+        "cuerpo": {
+          "ordenes": [
+            { "num_remision": "R-301", "destinatario": "Destinatario 1", "telefono": "80000001", "provincia": "CARTAGO", "canton": "cartago", "distrito": "  OCCIDENTAL ", "direccion": "Direccion 1", "producto": "Producto 1", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-302", "destinatario": "Destinatario 2", "telefono": "80000002", "provincia": "san jose", "canton": "SAN  JOSÉ", "distrito": "carmen", "direccion": "Direccion 2", "producto": "Producto 2", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-303", "destinatario": "Destinatario 3", "telefono": "80000003", "provincia": " Cartago", "canton": "PARAISO", "distrito": "orosí", "direccion": "Direccion 3", "producto": "Producto 3", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-304", "destinatario": "Destinatario 4", "telefono": "80000004", "provincia": "LIMON", "canton": "limon", "distrito": "rio   blanco", "direccion": "Direccion 4", "producto": "Producto 4", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-305", "destinatario": "Destinatario 5", "telefono": "80000005", "provincia": "Cartago", "canton": "Cartago", "distrito": "SAN NICOLAS", "direccion": "Direccion 5", "producto": "Producto 5", "peso": "1", "monto_cobrar": "100" }
+          ]
+        }
+      },
+      {
+        "ruta": "carga",
+        "cuerpo": {
+          "ordenes": [
+            { "num_remision": "R-301", "destinatario": "Destinatario 1", "telefono": "80000001", "provincia": "CARTAGO", "canton": "cartago", "distrito": "  OCCIDENTAL ", "direccion": "Direccion 1", "producto": "Producto 1", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-302", "destinatario": "Destinatario 2", "telefono": "80000002", "provincia": "san jose", "canton": "SAN  JOSÉ", "distrito": "carmen", "direccion": "Direccion 2", "producto": "Producto 2", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-303", "destinatario": "Destinatario 3", "telefono": "80000003", "provincia": " Cartago", "canton": "PARAISO", "distrito": "orosí", "direccion": "Direccion 3", "producto": "Producto 3", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-304", "destinatario": "Destinatario 4", "telefono": "80000004", "provincia": "LIMON", "canton": "limon", "distrito": "rio   blanco", "direccion": "Direccion 4", "producto": "Producto 4", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-305", "destinatario": "Destinatario 5", "telefono": "80000005", "provincia": "Cartago", "canton": "Cartago", "distrito": "SAN NICOLAS", "direccion": "Direccion 5", "producto": "Producto 5", "peso": "1", "monto_cobrar": "100" }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "geo-no-encontrados-y-vacios",
+    "descripcion": "provincia no encontrada (tambien vacia), canton no encontrado en la provincia (tambien vacio), distrito requerido (vacio o solo espacios), distrito no encontrado en el canton y distrito sin zona; una fila buena para el exito parcial.",
+    "pasos": [
+      {
+        "ruta": "cotizacion",
+        "cuerpo": {
+          "ordenes": [
+            { "num_remision": "R-401", "destinatario": "Destinatario 1", "telefono": "80000001", "provincia": "Atlantida", "canton": "Cartago", "distrito": "Occidental", "direccion": "Direccion 1", "producto": "Producto 1", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-402", "destinatario": "Destinatario 2", "telefono": "80000002", "provincia": "", "canton": "Cartago", "distrito": "Occidental", "direccion": "Direccion 2", "producto": "Producto 2", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-403", "destinatario": "Destinatario 3", "telefono": "80000003", "provincia": "San José", "canton": "Paraíso", "distrito": "Orosi", "direccion": "Direccion 3", "producto": "Producto 3", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-404", "destinatario": "Destinatario 4", "telefono": "80000004", "provincia": "Cartago", "canton": "", "distrito": "Occidental", "direccion": "Direccion 4", "producto": "Producto 4", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-405", "destinatario": "Destinatario 5", "telefono": "80000005", "provincia": "Cartago", "canton": "Cartago", "distrito": "", "direccion": "Direccion 5", "producto": "Producto 5", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-406", "destinatario": "Destinatario 6", "telefono": "80000006", "provincia": "Cartago", "canton": "Cartago", "distrito": "   ", "direccion": "Direccion 6", "producto": "Producto 6", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-407", "destinatario": "Destinatario 7", "telefono": "80000007", "provincia": "Cartago", "canton": "Cartago", "distrito": "Orosi", "direccion": "Direccion 7", "producto": "Producto 7", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-408", "destinatario": "Destinatario 8", "telefono": "80000008", "provincia": "Cartago", "canton": "Cartago", "distrito": "Carmen", "direccion": "Direccion 8", "producto": "Producto 8", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-409", "destinatario": "Destinatario 9", "telefono": "80000009", "provincia": "Cartago", "canton": "Cartago", "distrito": "Occidental", "direccion": "Direccion 9", "producto": "Producto 9", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-410", "destinatario": "Destinatario 10", "telefono": "80000010", "provincia": "Cartago", "canton": "Cartago", "distrito": "Occidental" }
+          ]
+        }
+      },
+      {
+        "ruta": "carga",
+        "cuerpo": {
+          "ordenes": [
+            { "num_remision": "R-401", "destinatario": "Destinatario 1", "telefono": "80000001", "provincia": "Atlantida", "canton": "Cartago", "distrito": "Occidental", "direccion": "Direccion 1", "producto": "Producto 1", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-402", "destinatario": "Destinatario 2", "telefono": "80000002", "provincia": "", "canton": "Cartago", "distrito": "Occidental", "direccion": "Direccion 2", "producto": "Producto 2", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-403", "destinatario": "Destinatario 3", "telefono": "80000003", "provincia": "San José", "canton": "Paraíso", "distrito": "Orosi", "direccion": "Direccion 3", "producto": "Producto 3", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-404", "destinatario": "Destinatario 4", "telefono": "80000004", "provincia": "Cartago", "canton": "", "distrito": "Occidental", "direccion": "Direccion 4", "producto": "Producto 4", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-405", "destinatario": "Destinatario 5", "telefono": "80000005", "provincia": "Cartago", "canton": "Cartago", "distrito": "", "direccion": "Direccion 5", "producto": "Producto 5", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-406", "destinatario": "Destinatario 6", "telefono": "80000006", "provincia": "Cartago", "canton": "Cartago", "distrito": "   ", "direccion": "Direccion 6", "producto": "Producto 6", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-407", "destinatario": "Destinatario 7", "telefono": "80000007", "provincia": "Cartago", "canton": "Cartago", "distrito": "Orosi", "direccion": "Direccion 7", "producto": "Producto 7", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-408", "destinatario": "Destinatario 8", "telefono": "80000008", "provincia": "Cartago", "canton": "Cartago", "distrito": "Carmen", "direccion": "Direccion 8", "producto": "Producto 8", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-409", "destinatario": "Destinatario 9", "telefono": "80000009", "provincia": "Cartago", "canton": "Cartago", "distrito": "Occidental", "direccion": "Direccion 9", "producto": "Producto 9", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-410", "destinatario": "Destinatario 10", "telefono": "80000010", "provincia": "Cartago", "canton": "Cartago", "distrito": "Occidental" }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "geo-precedencia",
+    "descripcion": "Con varios fallos en la misma fila gana el primero de provincia, canton, distrito vacio, distrito, retirado, zona; y los errores de campos conviven con los de geografia.",
+    "escenario": {
+      "retirados": [["Cartago", "Cartago", "Carmen"]]
+    },
+    "pasos": [
+      {
+        "ruta": "cotizacion",
+        "cuerpo": {
+          "ordenes": [
+            { "num_remision": "R-501", "destinatario": "Destinatario 1", "telefono": "80000001", "provincia": "Atlantida", "canton": "Inexistente", "distrito": "", "direccion": "Direccion 1", "producto": "Producto 1", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-502", "destinatario": "Destinatario 2", "telefono": "80000002", "provincia": "Cartago", "canton": "Inexistente", "distrito": "", "direccion": "Direccion 2", "producto": "Producto 2", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-503", "destinatario": "Destinatario 3", "telefono": "80000003", "provincia": "Cartago", "canton": "Cartago", "distrito": "Carmen", "direccion": "Direccion 3", "producto": "Producto 3", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-504", "destinatario": "", "telefono": "", "provincia": "Atlantida", "canton": "Cartago", "distrito": "Occidental", "direccion": "", "producto": "", "peso": "abc", "monto_cobrar": "-5" },
+            { "num_remision": "R-505", "destinatario": "Destinatario 5", "telefono": "80000005", "provincia": "Cartago", "canton": "Cartago", "distrito": "Occidental", "direccion": "Direccion 5", "producto": "Producto 5", "peso": "-1", "monto_cobrar": "12.5" },
+            { "num_remision": "", "destinatario": "Destinatario 6", "telefono": "80000006", "provincia": "Cartago", "canton": "Cartago", "distrito": "Occidental", "direccion": "Direccion 6", "producto": "Producto 6", "peso": "1", "monto_cobrar": "100" }
+          ]
+        }
+      },
+      {
+        "ruta": "carga",
+        "cuerpo": {
+          "ordenes": [
+            { "num_remision": "R-501", "destinatario": "Destinatario 1", "telefono": "80000001", "provincia": "Atlantida", "canton": "Inexistente", "distrito": "", "direccion": "Direccion 1", "producto": "Producto 1", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-502", "destinatario": "Destinatario 2", "telefono": "80000002", "provincia": "Cartago", "canton": "Inexistente", "distrito": "", "direccion": "Direccion 2", "producto": "Producto 2", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-503", "destinatario": "Destinatario 3", "telefono": "80000003", "provincia": "Cartago", "canton": "Cartago", "distrito": "Carmen", "direccion": "Direccion 3", "producto": "Producto 3", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-504", "destinatario": "", "telefono": "", "provincia": "Atlantida", "canton": "Cartago", "distrito": "Occidental", "direccion": "", "producto": "", "peso": "abc", "monto_cobrar": "-5" },
+            { "num_remision": "R-505", "destinatario": "Destinatario 5", "telefono": "80000005", "provincia": "Cartago", "canton": "Cartago", "distrito": "Occidental", "direccion": "Direccion 5", "producto": "Producto 5", "peso": "-1", "monto_cobrar": "12.5" },
+            { "num_remision": "", "destinatario": "Destinatario 6", "telefono": "80000006", "provincia": "Cartago", "canton": "Cartago", "distrito": "Occidental", "direccion": "Direccion 6", "producto": "Producto 6", "peso": "1", "monto_cobrar": "100" }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "geo-retirados",
+    "descripcion": "provincia, canton y distrito retirados del catalogo; el distrito retirado con zona dice retirado y no otra cosa; un distrito activo bajo un canton retirado dice canton retirado.",
+    "escenario": {
+      "retirados": [["Limón"], ["Cartago", "Paraíso"], ["Cartago", "Cartago", "Oriental"]]
+    },
+    "pasos": [
+      {
+        "ruta": "cotizacion",
+        "cuerpo": {
+          "ordenes": [
+            { "num_remision": "R-601", "destinatario": "Destinatario 1", "telefono": "80000001", "provincia": "Limón", "canton": "Limón", "distrito": "Río Blanco", "direccion": "Direccion 1", "producto": "Producto 1", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-602", "destinatario": "Destinatario 2", "telefono": "80000002", "provincia": "Cartago", "canton": "Paraíso", "distrito": "Orosi", "direccion": "Direccion 2", "producto": "Producto 2", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-603", "destinatario": "Destinatario 3", "telefono": "80000003", "provincia": "Cartago", "canton": "Cartago", "distrito": "oriental", "direccion": "Direccion 3", "producto": "Producto 3", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-604", "destinatario": "Destinatario 4", "telefono": "80000004", "provincia": "Cartago", "canton": "Cartago", "distrito": "Occidental", "direccion": "Direccion 4", "producto": "Producto 4", "peso": "1", "monto_cobrar": "100" }
+          ]
+        }
+      },
+      {
+        "ruta": "carga",
+        "cuerpo": {
+          "ordenes": [
+            { "num_remision": "R-601", "destinatario": "Destinatario 1", "telefono": "80000001", "provincia": "Limón", "canton": "Limón", "distrito": "Río Blanco", "direccion": "Direccion 1", "producto": "Producto 1", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-602", "destinatario": "Destinatario 2", "telefono": "80000002", "provincia": "Cartago", "canton": "Paraíso", "distrito": "Orosi", "direccion": "Direccion 2", "producto": "Producto 2", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-603", "destinatario": "Destinatario 3", "telefono": "80000003", "provincia": "Cartago", "canton": "Cartago", "distrito": "oriental", "direccion": "Direccion 3", "producto": "Producto 3", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-604", "destinatario": "Destinatario 4", "telefono": "80000004", "provincia": "Cartago", "canton": "Cartago", "distrito": "Occidental", "direccion": "Direccion 4", "producto": "Producto 4", "peso": "1", "monto_cobrar": "100" }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "geo-retirados-precedencia",
+    "descripcion": "Con provincia, canton y distrito retirados a la vez gana la provincia, tambien frente a un distrito vacio o un canton inexistente.",
+    "escenario": {
+      "retirados": [["Cartago"], ["Cartago", "Paraíso"], ["Cartago", "Paraíso", "Orosi"]]
+    },
+    "pasos": [
+      {
+        "ruta": "cotizacion",
+        "cuerpo": {
+          "ordenes": [
+            { "num_remision": "R-701", "destinatario": "Destinatario 1", "telefono": "80000001", "provincia": "Cartago", "canton": "Paraíso", "distrito": "Orosi", "direccion": "Direccion 1", "producto": "Producto 1", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-702", "destinatario": "Destinatario 2", "telefono": "80000002", "provincia": "Cartago", "canton": "Paraíso", "distrito": "", "direccion": "Direccion 2", "producto": "Producto 2", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-703", "destinatario": "Destinatario 3", "telefono": "80000003", "provincia": "Cartago", "canton": "Inexistente", "distrito": "Orosi", "direccion": "Direccion 3", "producto": "Producto 3", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-704", "destinatario": "Destinatario 4", "telefono": "80000004", "provincia": "San José", "canton": "San José", "distrito": "Carmen", "direccion": "Direccion 4", "producto": "Producto 4", "peso": "1", "monto_cobrar": "100" }
+          ]
+        }
+      },
+      {
+        "ruta": "carga",
+        "cuerpo": {
+          "ordenes": [
+            { "num_remision": "R-701", "destinatario": "Destinatario 1", "telefono": "80000001", "provincia": "Cartago", "canton": "Paraíso", "distrito": "Orosi", "direccion": "Direccion 1", "producto": "Producto 1", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-702", "destinatario": "Destinatario 2", "telefono": "80000002", "provincia": "Cartago", "canton": "Paraíso", "distrito": "", "direccion": "Direccion 2", "producto": "Producto 2", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-703", "destinatario": "Destinatario 3", "telefono": "80000003", "provincia": "Cartago", "canton": "Inexistente", "distrito": "Orosi", "direccion": "Direccion 3", "producto": "Producto 3", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-704", "destinatario": "Destinatario 4", "telefono": "80000004", "provincia": "San José", "canton": "San José", "distrito": "Carmen", "direccion": "Direccion 4", "producto": "Producto 4", "peso": "1", "monto_cobrar": "100" }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "geo-provincia-ambigua",
+    "descripcion": "Dos raices del pais que coinciden al normalizar con normalizeName: provincia ambigua.",
+    "escenario": {
+      "nodosNuevos": [{ "padre": [], "nombre": "Cartago⃐", "activo": true }]
+    },
+    "pasos": [
+      {
+        "ruta": "cotizacion",
+        "cuerpo": {
+          "ordenes": [
+            { "num_remision": "R-801", "destinatario": "Destinatario 1", "telefono": "80000001", "provincia": "Cartago", "canton": "Cartago", "distrito": "Occidental", "direccion": "Direccion 1", "producto": "Producto 1", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-802", "destinatario": "Destinatario 2", "telefono": "80000002", "provincia": "San José", "canton": "San José", "distrito": "Carmen", "direccion": "Direccion 2", "producto": "Producto 2", "peso": "1", "monto_cobrar": "100" }
+          ]
+        }
+      },
+      {
+        "ruta": "carga",
+        "cuerpo": {
+          "ordenes": [
+            { "num_remision": "R-801", "destinatario": "Destinatario 1", "telefono": "80000001", "provincia": "Cartago", "canton": "Cartago", "distrito": "Occidental", "direccion": "Direccion 1", "producto": "Producto 1", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-802", "destinatario": "Destinatario 2", "telefono": "80000002", "provincia": "San José", "canton": "San José", "distrito": "Carmen", "direccion": "Direccion 2", "producto": "Producto 2", "peso": "1", "monto_cobrar": "100" }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "geo-canton-ambiguo",
+    "descripcion": "Dos cantones de la misma provincia que coinciden al normalizar: canton ambiguo en la provincia.",
+    "escenario": {
+      "nodosNuevos": [{ "padre": ["Cartago"], "nombre": "Paraíso⃐", "activo": true }]
+    },
+    "pasos": [
+      {
+        "ruta": "cotizacion",
+        "cuerpo": {
+          "ordenes": [
+            { "num_remision": "R-811", "destinatario": "Destinatario 1", "telefono": "80000001", "provincia": "Cartago", "canton": "Paraíso", "distrito": "Orosi", "direccion": "Direccion 1", "producto": "Producto 1", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-812", "destinatario": "Destinatario 2", "telefono": "80000002", "provincia": "Cartago", "canton": "Cartago", "distrito": "Occidental", "direccion": "Direccion 2", "producto": "Producto 2", "peso": "1", "monto_cobrar": "100" }
+          ]
+        }
+      },
+      {
+        "ruta": "carga",
+        "cuerpo": {
+          "ordenes": [
+            { "num_remision": "R-811", "destinatario": "Destinatario 1", "telefono": "80000001", "provincia": "Cartago", "canton": "Paraíso", "distrito": "Orosi", "direccion": "Direccion 1", "producto": "Producto 1", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-812", "destinatario": "Destinatario 2", "telefono": "80000002", "provincia": "Cartago", "canton": "Cartago", "distrito": "Occidental", "direccion": "Direccion 2", "producto": "Producto 2", "peso": "1", "monto_cobrar": "100" }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "geo-distrito-ambiguo",
+    "descripcion": "Dos distritos del mismo canton que coinciden al normalizar: distrito ambiguo en el canton.",
+    "escenario": {
+      "nodosNuevos": [{ "padre": ["Cartago", "Cartago"], "nombre": "Occidental⃐", "activo": true }]
+    },
+    "pasos": [
+      {
+        "ruta": "cotizacion",
+        "cuerpo": {
+          "ordenes": [
+            { "num_remision": "R-821", "destinatario": "Destinatario 1", "telefono": "80000001", "provincia": "Cartago", "canton": "Cartago", "distrito": "Occidental", "direccion": "Direccion 1", "producto": "Producto 1", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-822", "destinatario": "Destinatario 2", "telefono": "80000002", "provincia": "Cartago", "canton": "Cartago", "distrito": "Oriental", "direccion": "Direccion 2", "producto": "Producto 2", "peso": "1", "monto_cobrar": "100" }
+          ]
+        }
+      },
+      {
+        "ruta": "carga",
+        "cuerpo": {
+          "ordenes": [
+            { "num_remision": "R-821", "destinatario": "Destinatario 1", "telefono": "80000001", "provincia": "Cartago", "canton": "Cartago", "distrito": "Occidental", "direccion": "Direccion 1", "producto": "Producto 1", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-822", "destinatario": "Destinatario 2", "telefono": "80000002", "provincia": "Cartago", "canton": "Cartago", "distrito": "Oriental", "direccion": "Direccion 2", "producto": "Producto 2", "peso": "1", "monto_cobrar": "100" }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "sin-tarifa",
+    "descripcion": "La empresa no tiene ninguna tarifa: cotizacion y carga responden 409 sin crear nada.",
+    "escenario": { "sinTarifas": true },
+    "pasos": [
+      {
+        "ruta": "cotizacion",
+        "cuerpo": {
+          "ordenes": [
+            { "num_remision": "R-901", "destinatario": "Destinatario 1", "telefono": "80000001", "provincia": "Cartago", "canton": "Cartago", "distrito": "Occidental", "direccion": "Direccion 1", "producto": "Producto 1", "peso": "1", "monto_cobrar": "100" }
+          ]
+        }
+      },
+      {
+        "ruta": "carga",
+        "cuerpo": {
+          "ordenes": [
+            { "num_remision": "R-901", "destinatario": "Destinatario 1", "telefono": "80000001", "provincia": "Cartago", "canton": "Cartago", "distrito": "Occidental", "direccion": "Direccion 1", "producto": "Producto 1", "peso": "1", "monto_cobrar": "100" }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "lote-vacio",
+    "descripcion": "Un lote sin filas es 422 en las dos rutas.",
+    "pasos": [
+      { "ruta": "cotizacion", "cuerpo": { "ordenes": [] } },
+      { "ruta": "carga", "cuerpo": { "ordenes": [] } }
+    ]
+  },
+  {
+    "id": "cuerpo-json-invalido",
+    "descripcion": "Un cuerpo que no es JSON es 422 en las dos rutas.",
+    "pasos": [
+      { "ruta": "cotizacion", "cuerpoTexto": "{ no-json" },
+      { "ruta": "carga", "cuerpoTexto": "{ no-json" }
+    ]
+  },
+  {
+    "id": "cuerpo-con-forma-invalida",
+    "descripcion": "Cuerpo sin ordenes, valores que no son texto, ordenes que no es lista, nombre vacio y download_type fuera del enum: 422.",
+    "pasos": [
+      { "ruta": "cotizacion", "cuerpo": {} },
+      { "ruta": "carga", "cuerpo": {} },
+      { "ruta": "cotizacion", "cuerpo": { "ordenes": [{ "num_remision": 123, "peso": 1.5 }] } },
+      { "ruta": "carga", "cuerpo": { "ordenes": [{ "num_remision": 123, "peso": 1.5 }] } },
+      { "ruta": "cotizacion", "cuerpo": { "ordenes": { "num_remision": "R-1" } } },
+      { "ruta": "carga", "cuerpo": { "ordenes": "R-1" } },
+      { "ruta": "carga", "cuerpo": { "name": "", "ordenes": [{ "num_remision": "R-1" }] } },
+      { "ruta": "carga", "cuerpo": { "download_type": "zip", "ordenes": [{ "num_remision": "R-1" }] } }
+    ]
+  },
+  {
+    "id": "duplicados",
+    "descripcion": "Remision repetida dentro del lote y el mismo lote enviado dos veces: la segunda vez son duplicadas; la cotizacion no mira duplicados.",
+    "pasos": [
+      {
+        "ruta": "carga",
+        "cuerpo": {
+          "ordenes": [
+            { "num_remision": "R-1001", "destinatario": "Destinatario 1", "telefono": "80000001", "provincia": "Cartago", "canton": "Cartago", "distrito": "Occidental", "direccion": "Direccion 1", "producto": "Producto 1", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-1001", "destinatario": "Destinatario 2", "telefono": "80000002", "provincia": "Cartago", "canton": "Cartago", "distrito": "Occidental", "direccion": "Direccion 2", "producto": "Producto 2", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-1002", "destinatario": "Destinatario 3", "telefono": "80000003", "provincia": "Cartago", "canton": "Paraíso", "distrito": "Orosi", "direccion": "Direccion 3", "producto": "Producto 3", "peso": "1", "monto_cobrar": "100" }
+          ]
+        }
+      },
+      {
+        "ruta": "carga",
+        "cuerpo": {
+          "ordenes": [
+            { "num_remision": "R-1001", "destinatario": "Destinatario 1", "telefono": "80000001", "provincia": "Cartago", "canton": "Cartago", "distrito": "Occidental", "direccion": "Direccion 1", "producto": "Producto 1", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-1002", "destinatario": "Destinatario 3", "telefono": "80000003", "provincia": "Cartago", "canton": "Paraíso", "distrito": "Orosi", "direccion": "Direccion 3", "producto": "Producto 3", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-1003", "destinatario": "Destinatario 4", "telefono": "80000004", "provincia": "Cartago", "canton": "Cartago", "distrito": "Oriental", "direccion": "Direccion 4", "producto": "Producto 4", "peso": "1", "monto_cobrar": "100" }
+          ]
+        }
+      },
+      {
+        "ruta": "cotizacion",
+        "cuerpo": {
+          "ordenes": [
+            { "num_remision": "R-1001", "destinatario": "Destinatario 1", "telefono": "80000001", "provincia": "Cartago", "canton": "Cartago", "distrito": "Occidental", "direccion": "Direccion 1", "producto": "Producto 1", "peso": "1", "monto_cobrar": "100" },
+            { "num_remision": "R-1001", "destinatario": "Destinatario 2", "telefono": "80000002", "provincia": "Cartago", "canton": "Cartago", "distrito": "Occidental", "direccion": "Direccion 2", "producto": "Producto 2", "peso": "1", "monto_cobrar": "100" }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "tope-del-lote",
+    "descripcion": "Un lote de MAX_CHUNK_ROWS + 1 filas (5001 con la configuracion por defecto) es 422 en las dos rutas; uno de 5000 filas no se envia aqui.",
+    "pasos": [
+      { "ruta": "cotizacion", "ordenesRepetidas": { "veces": 5001, "fila": { "num_remision": "R-1" } } },
+      { "ruta": "carga", "ordenesRepetidas": { "veces": 5001, "fila": { "num_remision": "R-1" } } }
+    ]
+  }
+]
