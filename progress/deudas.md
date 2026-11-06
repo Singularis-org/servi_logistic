@@ -275,3 +275,23 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** misma revisión, por lectura, sin ejecutar. `tests/integration/db/caja-backfill.test.ts:176,215,303,334,363` hacen `return` sin usuarios. Con datos de E2E en la base falla con `referencia a otra empresa`, porque `:80-81` toma usuarios y zona de cualquier empresa. Preexistente.
 - **Qué falta:** sembrar una empresa propia en el test y quitar los `return`.
 - **Dueño:** Carlos Restrepo.
+
+### D47 — `TarifasValores` esconde importes a 390 px
+- **Origen:** Tanda F de SLT-55 (2026-11-05, `progress/impl_SLT-55.md`). A 390 el contenedor acaba en x=347, «Valor» va de 381,9 a 491,9 e «IVA» de 510,9 a 580,9: fuera de vista hasta desplazar. Su `min-w-[620px]` lo afirma el test R70 de SLT-54. `TarifasVehiculo` y la pestaña de pago, sin medir.
+- **Qué falta:** decidir el diseño móvil de esa tabla. El diálogo de SLT-55 apila las filas: sirve de precedente.
+- **Dueño:** Carlos Restrepo.
+
+### D48 — Textos de guardado de SLT-54 que afirman lo que no pasó
+- **Origen:** revisión de SLT-55, hallazgos 1 y 2, arreglados solo en su sección. `TarifasValores.tsx:205,264` dice `guardadoParcial` sin mirar si algo se guardó. `TarifasTiendas.tsx:127,135` dice «Lo digitado sigue aquí» al quitar, y busca la fila una sola vez, así que un reintento puede pedir quitar lo que ya no existe (por lectura).
+- **Qué falta:** llevar ahí la distinción de `guardadoNinguno`, `quitadoParcial` y `errorQuitar`.
+- **Dueño:** Carlos Restrepo.
+
+### D49 — Revertir tras promover EP-8 reactiva el modelo por existencia de fila
+- **Origen:** revisión de SLT-55, hallazgo 3, por lectura. `usaModeloNuevo` en `origin/prod` decide por existencia de una fila en `tarifa_valor`, y SLT-54 lo cambia por `tarifa_activacion`. Si tras promover se vuelve a ese despliegue, una empresa sin activar con un solo valor propio de 2.900 pasa entera al modelo nuevo, y otro mensajero de su zona sin valores cobra 0 en vez de 1.700.
+- **Qué falta:** decirlo en el plan de reversión de EP-8: volver atrás exige revisar `tarifa_valor`.
+- **Dueño:** Carlos Restrepo.
+
+### D50 — Valor propio en % sin probar con flete en otros resultados
+- **Origen:** revisión de SLT-55, hallazgo 4. Ningún test pasa un propio en % con flete mayor que 0 en reprogramado, novedad o incidente, ni en el corte. Por lectura va bien: se congelan todos los conceptos de tienda y el corte usa el mismo `crearCierre` que la solicitud.
+- **Qué falta:** añadir esos casos a `tests/integration/db/tarifas-valor-propio-caminos.test.ts`.
+- **Dueño:** Carlos Restrepo.
