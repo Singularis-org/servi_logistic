@@ -29,6 +29,9 @@ T9 (payloads reales desde la copia de producción) la hace una persona, no un ag
 - 2026-11-05 (humano, T3.2): `CorregirDatosClienteService` pone `nodoGeograficoId` él mismo (design §3.2).
   Las 2 aserciones de `corregir-datos-cliente-service.test.ts` (~627, ~669) ganan `nodoGeograficoId`;
   es la única excepción aceptada a «sin cambiar aserciones» de T3.2.
+- 2026-11-06 (humano): la guardia `geografia-lecturas-sin-nodo-fk` (SLT-65 R19) se acota a lecturas;
+  las 2 escrituras de SLT-45 en `OrdenRepository.ts` (`toCreateManyInput`, `corregirDatosCliente`) quedan
+  exentas por nombre, con el motivo en el test.
 
 ## Preguntas abiertas
 - 2026-11-05 (implementer, T1): bug de v1 fuera de alcance. `POST /api/ordenes/api-key/carga` con un `name`
@@ -41,6 +44,9 @@ T9 (payloads reales desde la copia de producción) la hace una persona, no un ag
 - 2026-11-05 · T1–T3 (T3.2 parcial) · `4107a48f`, `d5ae4cc8`, `adbb2a26`…`3f3428cb` · tsc 0; contrato v1 22/22;
   347/347 por nombre; `orden-nodo-escritura` 5/5. `vitest related` cortado por memoria (veredicto en CI).
   3 suites de integración paran en `beforeAll` por base `logistic_slt45` sin órdenes (falta seed).
+- 2026-11-06 · T3.2 cierre, T4.1–T4.4 · `78dca2e0`…`5074662c` · tsc 0; contrato v1 22/22, fixtures intactos;
+  tests por nombre verdes. Rojo: guardia `geografia-lecturas-sin-nodo-fk` desde T3.1 (se arregla al
+  empezar T5). 4 suites de integración paran por base sin `orden`/`usuario` (el seed solo crea catálogos).
 
 ## Modelos (overrides)
 
