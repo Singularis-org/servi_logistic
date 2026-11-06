@@ -5,6 +5,7 @@ import type {
   IDevolucionSlaRepository,
   LiberarDevueltaSlaInput,
 } from "@/lib/interfaces/repositories/IDevolucionSlaRepository";
+import { leerTopeIntentosDeLaEmpresa } from "@/lib/repositories/_shared/tope-intentos-empresa";
 import { appendCambioEstado } from "@/lib/repositories/registrar-cambio-estado";
 
 // Estatus de ORIGEN del cron (una orden en `devuelta`) y `resultado` de la gestion que ancla la
@@ -198,6 +199,12 @@ export class DevolucionSlaRepository implements IDevolucionSlaRepository {
    */
   async escalarDevueltaSla(input: EscalarDevueltaSlaInput): Promise<boolean> {
     return this.prisma.$transaction(async (tx) => {
+      // SLT-77 (design §6.1, R35): la carrera yerra hacia no cobrar. Si el tope subio tras la lectura de la
+      // corrida, no se rechaza. Lo que queda abierto es que suba entre esta lectura y el COMMIT (design §6.2).
+      if (input.vetoPorTope) {
+        const vigente = await leerTopeIntentosDeLaEmpresa(tx);
+        if (input.vetoPorTope.intentos < vigente) return false;
+      }
       const result = await tx.orden.updateMany({
         where: {
           id: input.ordenId,

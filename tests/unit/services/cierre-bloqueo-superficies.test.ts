@@ -170,6 +170,7 @@ describe("271 · familia A — GESTIONAR y COBRAR", () => {
       {
         contarIntentosEnLote: vi.fn(async () => new Map<string, number>()),
         contarIntentos: vi.fn(async () => 0),
+        topeIntentos: vi.fn(async () => 3),
       },
       reglasPaisFijas(),
     );

@@ -9,7 +9,6 @@ import type {
   AmbitoRetenidas,
   IReprogramadasRetenidasService,
 } from "@/lib/interfaces/services/IReprogramadasRetenidasService";
-import { reintentosConfig } from "@/lib/config/reintentos";
 import { alcanzaElTope } from "@/lib/types/tope-intentos";
 import { fechaCalendario, inicioDelDiaComoFecha } from "@/lib/utils/calendario-zona";
 import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
@@ -39,8 +38,8 @@ import {
 
 const MS_POR_DIA = 24 * 60 * 60 * 1000;
 
-/** Lo unico que este servicio necesita del historial: el conteo de intentos EN LOTE (215/R4). */
-type HistorialSvc = Pick<IOrdenHistorialService, "contarIntentosEnLote">;
+/** Lo unico que este servicio necesita del historial: el conteo EN LOTE (215/R4) y el tope de la empresa. */
+type HistorialSvc = Pick<IOrdenHistorialService, "contarIntentosEnLote" | "topeIntentos">;
 /** Lo unico que este servicio necesita del conteo de retenidas: el resumen entero, agrupado. */
 type RetenidasSvc = Pick<IReprogramadasRetenidasService, "resumen">;
 
@@ -188,6 +187,8 @@ export class AvisosDiariosService implements IAvisosDiariosService {
     const intentos = await this.historial.contarIntentosEnLote(
       conNovedades.flatMap((tienda) => tienda.ordenes.map((o) => o.ordenId)),
     );
+    // SLT-77 (R23, R34): un solo valor por corrida, y esta corre dentro de la empresa que procesa.
+    const tope = await this.historial.topeIntentos();
 
     let emitidos = 0;
     for (const tienda of conNovedades) {
@@ -197,7 +198,7 @@ export class AvisosDiariosService implements IAvisosDiariosService {
           this.notificarNovedades({
             tiendaId: tienda.tiendaId,
             diasMasAntigua: diasEnteros(tienda.masAntiguaAt, now),
-            plazo: plazoDelLote(tienda.ordenes, intentos),
+            plazo: plazoDelLote(tienda.ordenes, intentos, tope),
             diaCR,
           }),
         fallos,
@@ -309,17 +310,17 @@ function diasEnteros(desde: Date, ahora: Date): number {
  *
  * Una causa `null` (gestion vigente sin causa) cuenta como MEZCLA: no se adivina una ventana.
  *
- * El tope se decide con `alcanzaElTope` y `reintentosConfig.MIN_INTENTOS_ENTREGA` — EL MISMO
- * modulo puro y el MISMO umbral que usa `NovedadesService` para pintar `enElTope` y que usa el
+ * El tope se decide con `alcanzaElTope` y el tope de la empresa — EL MISMO
+ * modulo puro y el MISMO valor que usa `NovedadesService` para pintar `enElTope` y que usa el
  * cron para escalar. Ignorar el tope aqui es una de las nueve mutaciones obligatorias del design.
  */
 function plazoDelLote(
   ordenes: ReadonlyArray<{ ordenId: string; causa: string | null }>,
   intentos: ReadonlyMap<string, number>,
+  tope: number,
 ): PlazoNovedades {
-  const umbral = reintentosConfig.MIN_INTENTOS_ENTREGA;
   const algunaEnElTope = ordenes.some((orden) =>
-    alcanzaElTope(intentos.get(orden.ordenId) ?? 0, umbral),
+    alcanzaElTope(intentos.get(orden.ordenId) ?? 0, tope),
   );
   if (algunaEnElTope) return "mezclado";
 

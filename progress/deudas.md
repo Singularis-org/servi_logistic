@@ -281,6 +281,11 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Qué falta:** decidir el diseño móvil de esa tabla. El diálogo de SLT-55 apila las filas: sirve de precedente.
 - **Dueño:** Carlos Restrepo.
 
+### D58 — La tabla vacía de «Mensajeros con valor propio» corta su texto a 390 px
+- **Origen:** SLT-55, visto en la Tanda F de SLT-77 (2026-11-06, `progress/capturas/SLT-77/seccion-390-claro.png`). «Ningún mensajero tiene valor…» y «Añade un mensaje…» quedan cortados a la derecha, y el botón también llega al borde. Por lectura: el vacío se centra en una celda de todo el ancho de la tabla (`colSpan`, `components/shared/DataTable.tsx:506`), más ancha que la vista, que desplaza en horizontal. Sin medir en la de tiendas.
+- **Qué falta:** decidir el diseño de ese vacío en móvil, junto con D47.
+- **Dueño:** Carlos Restrepo.
+
 ### D48 — Textos de guardado de SLT-54 que afirman lo que no pasó
 - **Origen:** revisión de SLT-55, hallazgos 1 y 2, arreglados solo en su sección. `TarifasValores.tsx:205,264` dice `guardadoParcial` sin mirar si algo se guardó. `TarifasTiendas.tsx:127,135` dice «Lo digitado sigue aquí» al quitar, y busca la fila una sola vez, así que un reintento puede pedir quitar lo que ya no existe (por lectura).
 - **Qué falta:** llevar ahí la distinción de `guardadoNinguno`, `quitadoParcial` y `errorQuitar`.
@@ -289,6 +294,18 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 ### D49 — Revertir tras promover EP-8 reactiva el modelo por existencia de fila
 - **Origen:** revisión de SLT-55, hallazgo 3, por lectura. `usaModeloNuevo` en `origin/prod` decide por existencia de una fila en `tarifa_valor`, y SLT-54 lo cambia por `tarifa_activacion`. Si tras promover se vuelve a ese despliegue, una empresa sin activar con un solo valor propio de 2.900 pasa entera al modelo nuevo, y otro mensajero de su zona sin valores cobra 0 en vez de 1.700.
 - **Qué falta:** decirlo en el plan de reversión de EP-8: volver atrás exige revisar `tarifa_valor`.
+- **Dueño:** Carlos Restrepo.
+
+### D60 — Revertir tras promover EP-8 devuelve toda empresa a un tope de 3
+- **Origen:** SLT-77, R39 y `design §8` (2026-11-06). El plan de reversión de EP-8 no existe aún como documento: D49 solo lo cita.
+- **Qué falta:** escribirlo al promover la épica, con esto:
+  - **Volver a un despliegue anterior sin `down.sql`:**
+    - Toda empresa vuelve a 3 al instante, leyendo la variable (o su defecto). La base no se toca, y los valores se conservan para un redespliegue. Requiere que la T0 siga válida.
+    - **Una empresa que tenía 4 o más:** sus órdenes con 3 o más intentos se escalan en la siguiente corrida de devoluciones, y **generan cobro** sin que nadie lo decida. Quedan agotadas también en asignación. Antes de revertir hay que contar esas órdenes.
+    - **Una empresa que tenía 1 o 2:** sus órdenes vuelven a admitir intentos. Lo ya rechazado y cobrado no se revierte.
+    - Se suma a D49: volver atrás también exige revisar `tarifa_valor`.
+    - **Las filas del historial:** una empresa que haya cambiado el tope deja filas con `tope_intentos_cambiado` y `organizacion`, valores que el cliente Prisma anterior no conoce. `/historico/acciones` podría fallar al leerlas. Es por lectura, sin ejecutar: hay que comprobarlo al escribir el plan.
+  - **Con `down.sql`:** se pierden los valores y el historial de esos cambios. Solo si se abandona la feature.
 - **Dueño:** Carlos Restrepo.
 
 ### D50 — Valor propio en % sin probar con flete en otros resultados
@@ -324,6 +341,11 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 ### D56 — `wamid` en logs lleva el teléfono en base64
 - **Origen:** SLT-88 (2026-11-05).
 - **Qué falta:** quitarlo de los logs o enmascararlo. PR pequeño, a la espera de la decisión de Carlos.
+- **Dueño:** Carlos Restrepo.
+
+### D59 — `DataTable` lleva un borde casi blanco en tema oscuro
+- **Origen:** visto en la Tanda F de SLT-77 (2026-11-06, `progress/capturas/SLT-77/seccion-1360-oscuro.png`), en las tablas de tiendas con precio propio y de mensajeros con valor propio. No es de Tarifas ni de SLT-55: `components/shared/DataTable.tsx:648` pone `border-asfalto-2`, y `--color-asfalto-2` es `#e7e5e4` fijo, sin valor oscuro (`app/globals.css:185`); `--border` en oscuro vale `#2D2D2C`. Esa línea viene del punto de partida (`86d70bf0`). Por lectura afecta a toda tabla hecha con `DataTable`; solo se vio en esas dos.
+- **Qué falta:** decidir si el marco usa `border-border`, y mirarlo en las demás pantallas con `DataTable`. Hay `border-asfalto-2` en otros archivos: revisarlos a la vez.
 - **Dueño:** Carlos Restrepo.
 
 ### D57 — Crons de Vercel a hora fija en UTC, calculada para Costa Rica

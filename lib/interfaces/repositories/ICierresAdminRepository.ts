@@ -128,10 +128,8 @@ export interface LiberacionSinGestionarConfig {
   /**
    * 💰 FEATURE 276 (T9, R7/R21) — el UMBRAL de intentos, INYECTADO DESDE EL SERVICIO.
    *
-   * La configuracion NO se lee en el repositorio: la regla de negocio y la config viven en
-   * `CierresAdminService`, que es quien resuelve `reintentosConfig.MIN_INTENTOS_ENTREGA`. Aqui
-   * llega como un numero y nada mas — un `import { reintentosConfig }` en este repositorio seria
-   * la segunda fuente del umbral, y la ficha 276 tiene un requisito entero (R7) para impedir eso.
+   * `CierresAdminService` lo lee con `leerTopeIntentos()` una vez por aprobacion (SLT-77, R34), y aqui
+   * llega como un numero y nada mas.
    */
   umbralIntentos: number;
 }
@@ -408,6 +406,8 @@ export type ResolverCierreInput =
 export type ResolverCierreResult = "updated" | "conflict" | "fuera_de_alcance";
 
 export interface ICierresAdminRepository {
+  /** SLT-77 (design §3, R27): el tope de la empresa en contexto. Este servicio no recibe el historial. */
+  leerTopeIntentos(): Promise<number>;
   /**
    * R2/R4/R5/R8/R9: cierres del alcance (WHERE destino_tipo + destino_zona_id si !=
    * null), join a usuario/zona para nombres, orderBy solicitadoAt desc. Totales

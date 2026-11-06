@@ -16,6 +16,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@/lib/actions/tarifas", () => ({
   cargarZonaTarifas: vi.fn(),
   guardarValoresTarifa: vi.fn(),
+  guardarTopeIntentos: vi.fn(),
   activarTarifasNuevas: vi.fn(),
   crearGrupoDistritos: vi.fn(),
   renombrarGrupoDistritos: vi.fn(),
@@ -35,6 +36,7 @@ const PANTALLA: PantallaOk = {
   preciosTienda: [valor("tienda_flete_entregado", { tiendaId: "t", zonaId: null, nivel: "tienda_general" })],
   mensajeros: [],
   valoresMensajero: [],
+  topeIntentos: 3,
   puedeEscribir: true,
 };
 
@@ -148,6 +150,21 @@ describe("SLT-54 — disposición (design §12)", () => {
     }
   });
 
+  it("SLT-77 R12, R17: la sección del tope va al final, con selector y botón de 44, y a 390 px no desborda la página", () => {
+    montar();
+    const seccion = screen.getByRole("region", { name: "Intentos de entrega" });
+    const mensajeros = screen.getByRole("region", { name: "Mensajeros con valor propio" });
+    expect(mensajeros.compareDocumentPosition(seccion) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(clases(within(seccion).getByRole("combobox", { name: "Intentos de entrega" }))).toEqual(
+      expect.arrayContaining(["min-h-11", "w-[110px]", "focus-visible:ring-ring"]),
+    );
+    const guardar = within(seccion).getByRole("button", { name: "Guardar" });
+    expect(clases(guardar)).toContain("min-h-11");
+    // jsdom no mide, y T6.1 mide a 390 px: aquí, lo que lo evita. La fila parte en vez de empujar la página.
+    expect(clases(seccion)).toContain("overflow-hidden");
+    expect(clases(guardar.parentElement)).toEqual(expect.arrayContaining(["flex", "flex-wrap"]));
+  });
+
   it("SLT-55 R38: en el diálogo, selector y campos de 44 y botones de 44", async () => {
     const u = userEvent.setup();
     montar({ mensajeros: [mensajeroPantalla()] });
@@ -219,7 +236,7 @@ describe("SLT-54 — lo que no puede estar escrito en el código de la pantalla"
   const DIR = path.resolve(__dirname, "../../app/(app)/configuracion/tarifas/_components");
   const fuentes = readdirSync(DIR).map((f) => ({ f, t: readFileSync(path.join(DIR, f), "utf8") }));
 
-  it("Los 12 archivos de la pantalla nueva, y ninguno de la vieja", () => {
+  it("Los 13 archivos de la pantalla nueva, y ninguno de la vieja", () => {
     expect(fuentes.map((x) => x.f).sort()).toEqual(
       [
         "TarifaMensajeroDialogo.tsx",
@@ -229,6 +246,7 @@ describe("SLT-54 — lo que no puede estar escrito en el código de la pantalla"
         "TarifasMensajeros.tsx",
         "TarifasModule.tsx",
         "TarifasTiendas.tsx",
+        "TarifasTopeIntentos.tsx",
         "TarifasValores.tsx",
         "TarifasVehiculo.tsx",
         "TarifasZonas.tsx",

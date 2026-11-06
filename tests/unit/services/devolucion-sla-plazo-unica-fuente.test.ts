@@ -62,8 +62,9 @@ function correrCron(fila: DevueltaSlaRow) {
   };
   // Cero intentos: la rama del TOPE (276) no interviene, asi que lo unico que puede escalar una
   // `wrong_*` es la VENTANA — que es lo que este archivo mide.
-  const historial: Pick<IOrdenHistorialService, "contarIntentosEnLote"> = {
+  const historial: Pick<IOrdenHistorialService, "contarIntentosEnLote" | "topeIntentos"> = {
     contarIntentosEnLote: vi.fn(async () => new Map<string, number>()),
+    topeIntentos: vi.fn(async () => 3),
   };
   const service = new DevolucionSlaService(repo, zonaRepo, ordenRepo, historial, { warn: () => {} });
   return { service, escalar, liberar };

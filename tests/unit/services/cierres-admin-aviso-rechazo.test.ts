@@ -85,6 +85,7 @@ type Traza = string[];
 
 function fakeRepo(traza: Traza, overrides: Partial<Repo> = {}): Repo {
   return {
+    leerTopeIntentos: vi.fn(async () => 3),
     findCierresByAlcance: vi.fn(async () => []),
     findHistoricoPaginado: vi.fn(async () => ({ items: [], total: 0 })),
     findColaPaginada: vi.fn(async () => ({ items: [], total: 0 })),

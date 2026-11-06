@@ -224,6 +224,15 @@ const CENSO: EntradaCenso[] = [
     forma: "abre_tx",
     mutacion: /tx\.tarifaActivacion\.create\(/,
   },
+  // SLT-77 (R10, T2.2): el cambio del tope, con su rastro en la misma transaccion. Mueve dinero: bajarlo adelanta
+  // rechazos, y un rechazo genera cobro.
+  {
+    tipos: ["tope_intentos_cambiado"],
+    archivo: "lib/repositories/TopeIntentosRepository.ts",
+    metodo: "guardar",
+    forma: "abre_tx",
+    mutacion: /tx\.\$executeRaw`\s*UPDATE "organizacion"/,
+  },
   {
     tipos: ["tarifa_valor_fijado"],
     archivo: "lib/repositories/TarifaValorRepository.ts",
@@ -800,7 +809,7 @@ interface TiposConEscritorPendiente {
   tarea: string;
 }
 
-// SLT-52 T6.2 ya escribe sus cinco tipos (ver el censo): la lista queda vacia.
+// SLT-52 T6.2 y SLT-77 T2.2 ya escriben sus tipos (ver el censo).
 const ESCRITOR_PENDIENTE_EN_CURSO: TiposConEscritorPendiente[] = [];
 
 /** Los archivos `.ts` de `lib/`, relativos a la raiz. */
@@ -1237,7 +1246,8 @@ describe("362/R16 — cada tipo del catalogo tiene al menos un punto de escritur
         // 81 desde el ajuste planes-custom D16 (`plan_tipo_cobro_cambiado`, de `PlanesRepository.cambiarTipoCobro`).
     // 82 desde SLT-54 (`tarifas_activadas`, de `TarifaActivacionRepository.activar`).
     // 83 desde SLT-86 (`plan_cambio_empresa_cancelado`, de `PlanesRepository.cancelarPendienteDeEmpresaEnTx`).
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(83);
+    // 84 desde SLT-77 (`tope_intentos_cambiado`, de `TopeIntentosRepository.guardar`).
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(84);
   });
 });
 

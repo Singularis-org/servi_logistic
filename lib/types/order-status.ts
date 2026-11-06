@@ -259,8 +259,7 @@ export function mensajeCodigoAnterior(anterior: CodigoAnterior): string {
 // Los textos son LITERALES de la tabla aprobada por el humano
 // (`specs/456-tooltip-estados/textos-aprobados.md`), salvo «Novedad», cuyos dos plazos se LEEN de
 // `lib/config/devolucion-sla.ts` (R4/R5): un numero repetido a mano es el fallo de la 407/409. El tope
-// de intentos (`lib/config/reintentos.ts`) NO se importa: es configurable por entorno y el texto no
-// da el numero (R6). Los ancla `tests/unit/types/descripcion-estado.test.ts` contra el `.md` leido
+// de intentos NO se importa: cada empresa elige el suyo (SLT-77) y el texto no da el numero (R6). Los ancla `tests/unit/types/descripcion-estado.test.ts` contra el `.md` leido
 // del disco.
 // =================================================================================================
 

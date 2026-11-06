@@ -1,6 +1,7 @@
 import { appendAccion, resolverActorCongelado } from "@/lib/repositories/registrar-accion";
 import { etiquetaDeEntidad, etiquetaDePersona } from "@/lib/types/historial-accion-etiquetas";
 import { Prisma, type EstadoUsuario, type PrismaClient, type RolValue } from "@prisma/client";
+import { leerTopeIntentosDeLaEmpresa } from "@/lib/repositories/_shared/tope-intentos-empresa";
 import type { JobTxClient } from "@/lib/interfaces/repositories/IJobRepository";
 import { encolarWebhookEvento } from "@/lib/services/jobs/webhook-evento-encolado";
 import { ESTADOS_USUARIO_NO_ASIGNABLES } from "@/lib/constants/estado-usuario-asignable";
@@ -217,6 +218,8 @@ type CierresAdminPrismaClient = Pick<
   | "zona"
   | "usuario"
   | "$transaction"
+  // SLT-77 (design §2.1): la lectura del tope de la empresa.
+  | "$queryRaw"
   // Ficha 362 (R9): el registro de la accion, en la MISMA tx que la resolucion del cierre.
   | "historialAccion"
 >;
@@ -1042,6 +1045,10 @@ export class CierresAdminRepository implements ICierresAdminRepository {
     // tx acaba de escribir, y el repo de la 42 lo inserta idempotentemente.
     private readonly walletIndemnizacionFeedService: IWalletIndemnizacionFeedService,
   ) {}
+
+  leerTopeIntentos(): Promise<number> {
+    return leerTopeIntentosDeLaEmpresa(this.prisma);
+  }
 
   /**
    * SLT-73 (T2, design §2.2): las dependencias que este repositorio YA recibe por constructor, mas
@@ -2295,13 +2302,16 @@ export class CierresAdminRepository implements ICierresAdminRepository {
             for (const g of gruposIntentos) {
               intentosPorOrden.set(g.ordenId, (intentosPorOrden.get(g.ordenId) ?? 0) + 1);
             }
-            const enElTope = ordenes.filter(
-              (o) => (intentosPorOrden.get(o.id) ?? 0) >= umbralIntentos,
-            );
+            // SLT-77 (design §6.1, R35, R36): el mayor entre el leido al empezar y el vigente, asi la carrera yerra
+            // hacia no cobrar: si sube, va a bodega; si baja, se termina con el mayor. Queda abierto que suba entre
+            // esta lectura y el COMMIT (design §6.2). Sin barridas no hay nada que decidir ni que leer (R37).
+            const umbral =
+              idsBarridas.length > 0
+                ? Math.max(umbralIntentos, await leerTopeIntentosDeLaEmpresa(tx))
+                : umbralIntentos;
+            const enElTope = ordenes.filter((o) => (intentosPorOrden.get(o.id) ?? 0) >= umbral);
             // R25: por debajo del umbral, la rama de siempre, INTACTA.
-            const aBodega = ordenes.filter(
-              (o) => (intentosPorOrden.get(o.id) ?? 0) < umbralIntentos,
-            );
+            const aBodega = ordenes.filter((o) => (intentosPorOrden.get(o.id) ?? 0) < umbral);
 
             if (enElTope.length > 0) {
               const ids = enElTope.map((o) => o.id);

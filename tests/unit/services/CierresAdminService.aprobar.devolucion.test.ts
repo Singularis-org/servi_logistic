@@ -37,6 +37,7 @@ const ESTATUS_IDS: Record<string, string | null> = {
 
 function fakeRepo(): ICierresAdminRepository {
   return {
+    leerTopeIntentos: vi.fn(async () => 3),
     findCierresByAlcance: vi.fn(async () => []),
     // Feature 170 (T I.1): doble no-op; esta suite solo aprueba cierres.
     findHistoricoPaginado: vi.fn(async () => ({ items: [], total: 0 })),

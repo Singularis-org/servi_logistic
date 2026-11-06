@@ -92,7 +92,7 @@ export interface MiAsignacionDTO {
    *
    * ⚠️ ES UNA DECISION YA TOMADA EN EL SERVIDOR, y ese es el requisito (R10): el UMBRAL NO CRUZA
    * AL CLIENTE. Lo calcula `MisAsignacionesService.listarMisAsignaciones` con
-   * `alcanzaElTope(intentosEntrega, reintentosConfig.MIN_INTENTOS_ENTREGA)`. La pantalla no compara
+   * `alcanzaElTope(intentosEntrega, topeDeLaEmpresa)`. La pantalla no compara
    * numeros: lee este booleano y filtra los desenlaces con `permitidoEnElTope` — el MISMO modulo
    * puro que usa la guarda del servidor, para que no puedan divergir.
    *

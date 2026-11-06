@@ -47,6 +47,8 @@ export interface DistritoDeZona {
 
 export interface ITarifasPantallaRepository {
   leerActivacion(): Promise<{ activadaAt: Date } | null>;
+  /** SLT-77 (design §4.1): sin empresa en contexto, lanza; no hay valor por defecto (R27). */
+  leerTopeIntentos(): Promise<number>;
   listarZonas(): Promise<ZonaDePantalla[]>;
   buscarZona(zonaId: string): Promise<ZonaDePantalla | null>;
   listarGruposDeEmpresa(): Promise<GrupoDeEmpresa[]>;
