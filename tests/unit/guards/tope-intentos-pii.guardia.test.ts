@@ -7,6 +7,8 @@ import {
 import { MOTIVO_RECHAZO_TOPE_INTENTOS } from "@/lib/repositories/CierresAdminRepository";
 import { LiberacionReprogramadaService } from "@/lib/services/LiberacionReprogramadaService";
 import { reintentosConfig } from "@/lib/config/reintentos";
+import { ACCION_LABELS, ENTIDAD_LABELS } from "@/lib/types/historial-accion";
+import { etiquetaDeEntidad } from "@/lib/types/historial-accion-etiquetas";
 import type { ILiberacionReprogramadaRepository } from "@/lib/interfaces/repositories/ILiberacionReprogramadaRepository";
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { IZonaRepository } from "@/lib/interfaces/repositories/IZonaRepository";
@@ -81,6 +83,20 @@ describe("276/R38 — los textos fijos de la ficha no llevan PII", () => {
         "Devolución a origen por rechazo o Incidente",
     );
     expect(MSG_TOPE_INTENTOS_GESTION).not.toMatch(/rechazada/);
+  });
+});
+
+describe("SLT-77/R41 — los textos fijos del rastro del tope no llevan PII", () => {
+  it.each([
+    ["la etiqueta de la entidad", etiquetaDeEntidad("organizacion", {}), "Intentos de entrega"],
+    ["la etiqueta de la accion", ACCION_LABELS.tope_intentos_cambiado, "Cambió el tope de intentos de entrega"],
+    ["la etiqueta del tipo de entidad", ENTIDAD_LABELS.organizacion, "Empresa"],
+  ])("%s es el texto fijo, sin digitos, ids ni columnas", (nombre, texto, literal) => {
+    expect(texto).toBe(literal);
+    expect(texto).not.toMatch(/\d/);
+    for (const { que, re } of PROHIBIDO) {
+      expect(re.test(texto), `${nombre} contiene ${que}: «${texto}»`).toBe(false);
+    }
   });
 });
 

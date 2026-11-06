@@ -5,6 +5,7 @@ import {
   borrarGrupoDistritos,
   cambiarDistritosDeGrupo,
   crearGrupoDistritos,
+  guardarTopeIntentos,
   guardarValoresTarifa,
   renombrarGrupoDistritos,
 } from "@/lib/actions/tarifas";
@@ -13,6 +14,7 @@ import type { ITarifaValorRepository } from "@/lib/interfaces/repositories/ITari
 import type { Actor } from "@/lib/interfaces/services/ITarifaValorService";
 import { GrupoDistritosService } from "@/lib/services/GrupoDistritosService";
 import { TarifaValorService } from "@/lib/services/TarifaValorService";
+import { TopeIntentosService } from "@/lib/services/TopeIntentosService";
 import { MAX_CAMBIOS_DE_VALOR } from "@/lib/types/tarifa-flexible";
 
 // SLT-54 T2.4, T2.5 (design §7, §8; R26, R35-R38) — el borde de Tarifas. Reescrito: lo que aqui se probaba
@@ -62,6 +64,7 @@ describe("SLT-54 R26, R28 — las acciones viejas ya no existen", () => {
         "cargarPantallaTarifas",
         "cargarZonaTarifas",
         "guardarValoresTarifa",
+        "guardarTopeIntentos",
         "crearGrupoDistritos",
         "renombrarGrupoDistritos",
         "cambiarDistritosDeGrupo",
@@ -432,5 +435,59 @@ describe("SLT-54 R42 — las cuatro actions de grupos", () => {
   it("un fallo inesperado es `error`", async () => {
     const repo = repoGrupos({ borrar: vi.fn().mockRejectedValue(new Error("base caida")) });
     expect(await borrarGrupoDistritos({ id: "g1" }, depsDeGrupos(repo))).toEqual({ status: "error" });
+  });
+});
+
+describe("SLT-77 R3-R5, R27 — guardar el tope de intentos", () => {
+  function montar(guardar = vi.fn().mockResolvedValue({ cambio: true })) {
+    return { guardar, servicio: new TopeIntentosService({ guardar }) };
+  }
+
+  it("el maestro guarda, y la empresa no viaja en ningun argumento: solo el valor y su actor", async () => {
+    const { guardar, servicio } = montar();
+    const res = await guardarTopeIntentos({ tope: 5 }, { getActor: conActor(MAESTRO), servicio });
+    expect(res).toEqual({ status: "ok", tope: 5 });
+    expect(guardar).toHaveBeenCalledExactlyOnceWith(5, "u-m");
+  });
+
+  it("R3: una entrada que nombra otra empresa se rechaza, sin escribir", async () => {
+    const { guardar, servicio } = montar();
+    const res = await guardarTopeIntentos(
+      { tope: 5, organizacionId: "otra-empresa" },
+      { getActor: conActor(MAESTRO), servicio },
+    );
+    expect(res).toMatchObject({ status: "validation_error" });
+    expect(guardar).not.toHaveBeenCalled();
+  });
+
+  it("R4: el admin recibe forbidden, tambien con una entrada invalida", async () => {
+    const { guardar, servicio } = montar();
+    const deps = { getActor: conActor(ADMIN), servicio };
+    expect(await guardarTopeIntentos({ tope: 5 }, deps)).toEqual({ status: "forbidden" });
+    expect(await guardarTopeIntentos({ tope: 99 }, deps)).toEqual({ status: "forbidden" });
+    expect(guardar).not.toHaveBeenCalled();
+  });
+
+  it.each([0, 11, 2.5])("R5: %s es validation_error, en el campo tope y sin escribir", async (tope) => {
+    const { guardar, servicio } = montar();
+    const res = await guardarTopeIntentos({ tope }, { getActor: conActor(MAESTRO), servicio });
+    if (res.status !== "validation_error") throw new Error(res.status);
+    expect(Object.keys(res.fieldErrors)).toEqual(["tope"]);
+    expect(guardar).not.toHaveBeenCalled();
+  });
+
+  it("sin sesión responde unauthenticated sin tocar el servicio", async () => {
+    const { guardar, servicio } = montar();
+    expect(await guardarTopeIntentos({ tope: 5 }, { getActor: async () => null, servicio })).toEqual({
+      status: "unauthenticated",
+    });
+    expect(guardar).not.toHaveBeenCalled();
+  });
+
+  it("R27: un fallo es `error`, no un ok", async () => {
+    const { servicio } = montar(vi.fn().mockRejectedValue(new Error("sin empresa")));
+    expect(await guardarTopeIntentos({ tope: 5 }, { getActor: conActor(MAESTRO), servicio })).toEqual({
+      status: "error",
+    });
   });
 });

@@ -49,6 +49,7 @@ const PANTALLA: PantallaOk = {
   preciosTienda: [],
   mensajeros: [],
   valoresMensajero: [],
+  topeIntentos: 3,
   puedeEscribir: true,
 };
 

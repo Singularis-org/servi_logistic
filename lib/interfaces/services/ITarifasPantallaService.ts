@@ -39,6 +39,8 @@ export type CargarPantallaResult =
       mensajeros: MensajeroDePantalla[];
       /** SLT-55 R27: todos los valores propios de la empresa. */
       valoresMensajero: TarifaValorDTO[];
+      /** SLT-77 R12-R14: los intentos de entrega de la empresa. Solo tras la comprobacion de rol. */
+      topeIntentos: number;
       /** R55: lo decide el servidor; la pantalla no compara roles. */
       puedeEscribir: boolean;
     }

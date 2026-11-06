@@ -271,6 +271,18 @@ export type CrearGrupoInput = z.input<typeof crearGrupoSchema>;
  */
 export const activarTarifasSchema = z.object({ confirmaFaltantes: z.boolean() });
 
+/**
+ * SLT-77 (design §3, §4.1, R5): el rango que la empresa puede elegir. Aqui y no en `lib/types/tope-intentos.ts`:
+ * ese modulo lo importa el panel del mensajero, y el numero no le llega (R32, R33).
+ */
+export const TOPE_INTENTOS_MINIMO = 1;
+export const TOPE_INTENTOS_MAXIMO = 10;
+
+/** `strict`: la empresa sale de la sesion (R3), y una clave de mas se rechaza en vez de ignorarse. */
+export const guardarTopeIntentosSchema = z
+  .object({ tope: z.number().int().min(TOPE_INTENTOS_MINIMO).max(TOPE_INTENTOS_MAXIMO) })
+  .strict();
+
 /** SLT-54 (design §7): `tiendaId` pide ademas la referencia de esa tienda. */
 export const cargarZonaTarifasSchema = z.object({ zonaId: idSchema, tiendaId: idSchema.optional() });
 

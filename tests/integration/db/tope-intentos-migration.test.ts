@@ -275,7 +275,10 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("SLT-77 — la columna del tope (Postgres re
         WHERE table_schema = 'public' AND table_name = 'organizacion' ORDER BY ordinal_position`,
     );
     expect(columnas.map((r) => r.c)).toEqual(COLUMNAS_DEL_CODIGO_ANTERIOR);
-    const { rows: checks } = await db.query(`SELECT 1 FROM pg_constraint WHERE conname = $1`, [CHECK]);
+    const { rows: checks } = await db.query(
+      `SELECT 1 FROM pg_constraint WHERE conname = $1 AND connamespace = 'public'::regnamespace`,
+      [CHECK],
+    );
     expect(checks).toEqual([]);
     const tipos = await etiquetas("historial_accion_tipo");
     expect(tipos).not.toContain("tope_intentos_cambiado");

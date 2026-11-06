@@ -35,6 +35,7 @@ const PANTALLA: PantallaOk = {
   preciosTienda: [valor("tienda_flete_entregado", { tiendaId: "t", zonaId: null, nivel: "tienda_general" })],
   mensajeros: [],
   valoresMensajero: [],
+  topeIntentos: 3,
   puedeEscribir: true,
 };
 

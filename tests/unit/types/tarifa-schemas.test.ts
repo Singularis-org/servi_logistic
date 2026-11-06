@@ -7,7 +7,12 @@ import {
   listarTarifasSchema,
   type TarifaDTO,
 } from "@/lib/types/tarifa";
-import { escrituraValorSchema } from "@/lib/types/tarifa-flexible";
+import {
+  escrituraValorSchema,
+  guardarTopeIntentosSchema,
+  TOPE_INTENTOS_MAXIMO,
+  TOPE_INTENTOS_MINIMO,
+} from "@/lib/types/tarifa-flexible";
 import { tarifasConfig } from "@/lib/config/tarifas";
 
 // Quita comentarios de linea y de bloque. Sin esto, un assert de "esta cadena ya no
@@ -282,5 +287,35 @@ describe("escrituraValorSchema — mensajeroId del valor propio (SLT-55 R5, R6)"
     const r = escrituraValorSchema.safeParse({ ...PROPIO, ...cambio });
     expect(r.success).toBe(false);
     if (!r.success) expect(r.error.issues.map((i) => i.path.join("."))).toEqual(["ivaPct"]);
+  });
+});
+
+describe("SLT-77 R5 — guardarTopeIntentosSchema", () => {
+  it("el rango es de 1 a 10", () => {
+    expect([TOPE_INTENTOS_MINIMO, TOPE_INTENTOS_MAXIMO]).toEqual([1, 10]);
+  });
+
+  it.each([1, 2, 10])("admite %i", (tope) => {
+    expect(guardarTopeIntentosSchema.safeParse({ tope })).toEqual({ success: true, data: { tope } });
+  });
+
+  it.each([
+    ["0", { tope: 0 }, "tope"],
+    ["11", { tope: 11 }, "tope"],
+    ["-1", { tope: -1 }, "tope"],
+    ["2,5", { tope: 2.5 }, "tope"],
+    ["texto", { tope: "3" }, "tope"],
+    ["null", { tope: null }, "tope"],
+    ["ausente", {}, "tope"],
+  ])("rechaza %s en el campo tope", (_caso, input, campo) => {
+    const r = guardarTopeIntentosSchema.safeParse(input);
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.issues.map((i) => i.path.join("."))).toEqual([campo]);
+  });
+
+  it("R3: rechaza una clave de mas: la empresa no sale de la entrada", () => {
+    const r = guardarTopeIntentosSchema.safeParse({ tope: 3, organizacionId: "otra" });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.issues[0].code).toBe("unrecognized_keys");
   });
 });

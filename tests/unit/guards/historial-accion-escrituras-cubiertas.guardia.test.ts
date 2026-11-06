@@ -224,6 +224,15 @@ const CENSO: EntradaCenso[] = [
     forma: "abre_tx",
     mutacion: /tx\.tarifaActivacion\.create\(/,
   },
+  // SLT-77 (R10, T2.2): el cambio del tope, con su rastro en la misma transaccion. Mueve dinero: bajarlo adelanta
+  // rechazos, y un rechazo genera cobro.
+  {
+    tipos: ["tope_intentos_cambiado"],
+    archivo: "lib/repositories/TopeIntentosRepository.ts",
+    metodo: "guardar",
+    forma: "abre_tx",
+    mutacion: /tx\.\$executeRaw`\s*UPDATE "organizacion"/,
+  },
   {
     tipos: ["tarifa_valor_fijado"],
     archivo: "lib/repositories/TarifaValorRepository.ts",
@@ -781,10 +790,8 @@ interface TiposConEscritorPendiente {
   tarea: string;
 }
 
-// SLT-52 T6.2 ya escribe sus cinco tipos (ver el censo). SLT-77 T2.2 escribira el suyo y quitara esta entrada.
-const ESCRITOR_PENDIENTE_EN_CURSO: TiposConEscritorPendiente[] = [
-  { tipos: ["tope_intentos_cambiado"], ficha: "SLT-77", tarea: "T2.2" },
-];
+// SLT-52 T6.2 y SLT-77 T2.2 ya escriben sus tipos (ver el censo).
+const ESCRITOR_PENDIENTE_EN_CURSO: TiposConEscritorPendiente[] = [];
 
 /** Los archivos `.ts` de `lib/`, relativos a la raiz. */
 function archivosDeLib(dir = "lib"): string[] {

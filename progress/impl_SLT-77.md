@@ -85,3 +85,97 @@ base propia. El caso de alta protege otra cosa: que el alta real no fije un tope
 ### Veredicto
 
 Tanda 0 y Tanda A hechas: migraciones, lectura y sus tests en verde sin saltos, y las tres mutaciones mueren.
+
+## Tanda B (2026-11-06)
+
+Base: `servi_gate_slt77`, recreada con DROP/CREATE, `migrate deploy` (exit 0) y `db:seed` (exit 0) antes de la corrida final.
+`current_database()` comprobado antes de cada corrida. Local, no Supabase; solo categorías impresas.
+
+### Archivos
+
+Creados:
+
+- `lib/interfaces/repositories/ITopeIntentosRepository.ts`, `lib/interfaces/services/ITopeIntentosService.ts`
+- `lib/repositories/TopeIntentosRepository.ts`, `lib/services/TopeIntentosService.ts`
+- `tests/integration/db/tope-intentos-escritura.test.ts`, `tests/unit/services/tope-intentos-service.test.ts`
+
+Modificados:
+
+- `lib/types/tarifa-flexible.ts`, `lib/tarifas/servicios.ts`, `lib/actions/tarifas.ts`
+- `lib/repositories/TarifasPantallaRepository.ts`, `lib/services/TarifasPantallaService.ts`, `lib/interfaces/{repositories/ITarifasPantallaRepository,services/ITarifasPantallaService}.ts`
+- `tests/unit/guards/historial-accion-escrituras-cubiertas.guardia.test.ts`: censo con `TopeIntentosRepository.guardar`; `ESCRITOR_PENDIENTE_EN_CURSO` queda vacío.
+- `tests/unit/guards/tope-intentos-pii.guardia.test.ts`, `tests/unit/types/tarifa-schemas.test.ts`, `tests/integration/actions/tarifas-action.test.ts`, `tests/unit/services/tarifas-pantalla-service.test.ts`, `tests/unit/tarifas/servicios-composicion.test.ts`
+- `tests/components/{TarifasModulo,TarifasDisposicion}.test.tsx`: solo `topeIntentos: 3` en su fixture tipada, porque el typecheck la exige. El resto de T5.2 sigue pendiente.
+- `tests/integration/db/tope-intentos-migration.test.ts`: `pg_constraint` acotado al esquema (hallazgo 3).
+
+### Composition root
+
+`serviciosDeTarifas` construye `TopeIntentosService` con `TopeIntentosRepository(prisma)`, y `TarifasPantallaService` lee del repositorio que ya recibe.
+Lo comprueban `servicios-composicion` (instancia, cliente y llamada que llega al cliente) y, sin dobles, dos casos de `tope-intentos-escritura` que
+llaman a `guardarTopeIntentos` y `cargarPantallaTarifas` sin `servicio` en las deps: montan su fábrica con `getPrismaClient()` y commitean.
+
+### Mapa R → test de esta tanda
+
+En `tests/integration/db/tope-intentos-escritura.test.ts`, salvo que se diga otro:
+
+| R | Test |
+|---|---|
+| R1 | `la columna es entera…`; `el maestro guarda el extremo 1` y `10`; `0`, `11`, `2.5 no llega a la base` |
+| R3 | `guarda en la empresa del contexto`; `una entrada que nombra la otra empresa se rechaza`; `la action, por su fabrica real`; `tarifas-action`: `R3: una entrada que nombra otra empresa` |
+| R4 | `tope-intentos-service`: `solo el maestro guarda` (con entrada inválida y con el getter trampa: el rol antes que el input); `tarifas-action`: `R4`; aquí `R4: el admin de la empresa` |
+| R5 | `tarifa-schemas`: `guardarTopeIntentosSchema` (1, 2, 10, 0, 11, -1, 2,5, texto, null, ausente, clave de más); `tope-intentos-service`: `el valor se valida`; `tarifas-action`: `R5` |
+| R7 | `guardar en A no cambia B`; `UPDATE de la fila de B…no afecta filas`; `UPDATE sin WHERE…solo la fila de A`; `nombre`, `es_demo`, `plan_id`, `slug`, `cobro_plataforma_por_orden`: 42501; `no crea ni borra empresas`; `lo que la app puede escribir` |
+| R8 | `una orden con 2 intentos ya agotada…`: 2 intentos reales por `contarIntentosVigentes`, conteos literales y foto de filas iguales en las 6 tablas |
+| R9 | `sin tarifa_activacion`, `con tarifa_activacion`: 3, 2 y 1 seguidos, cada uno leído y aplicado por `alcanzaElTope` |
+| R10 | `deja quien, el anterior y el nuevo`; `cada cambio toma como anterior…`; `si el historial falla, el tope no cambia`; `dos guardados a la vez` |
+| R11 | `responde ok, sin historial y sin tocar la fila` |
+| R12, R13, R14 (servidor) | `la pantalla, por su fabrica real`; `tarifas-pantalla-service`: `el tope en la pantalla`. La parte de componentes es de la Tanda E |
+| R27 | `la lectura sin contexto`, `la lectura en plataforma`, `la pantalla en plataforma`, `guardar sin contexto`, `guardar en plataforma`, `la action en plataforma`. La parte de procesos automáticos es de la Tanda C |
+| R41 | `deja quien…` (fila literal); `tope-intentos-pii.guardia`: `los textos fijos del rastro` |
+
+### Salida real
+
+- `pnpm run typecheck`: exit 0.
+- `eslint` de los archivos de código tocados y de los 12 de test de abajo: exit 0.
+- Los 12 archivos de test de la tanda, sobre la base recreada: **432 pasados, 0 fallados, 0 saltados**. `tope-intentos-escritura`: 38 pasados, 0 saltados.
+- `vitest related` de los 7 archivos de código con lógica: 25 archivos, **726 pasados, 0 fallados, 0 saltados**.
+- `pnpm run test:guardias`: 331 archivos, 330 en verde y 1 en rojo; 4621 pasados, 4 fallados, 1 saltado.
+  - Rojo: `dependencias-declaradas-presentes`, el mismo del baseline, ya descrito en la Tanda A.
+  - Saltado: `recursos-origen-fuera`, R18, sin `RECURSOS_ORIGEN_REF`.
+- `./init.sh` no se corrió: lo exige T7.4.
+- Retornos de carro en los archivos cambiados: 0.
+
+### Mutaciones
+
+Arnés fuera del repo: exige base verde sin saltos, cuenta tests desde el JSON de vitest, restaura y compara la huella tras cada una, y compara `git status` al final.
+Corre 7 archivos: base 309 pasados, 0 fallados, 0 saltados; igual al terminar. Árbol y huellas iguales. Sin gate en paralelo.
+
+M2 y M3 no editan el archivo de migración: aplican ese SQL en una copia de la base (`CREATE DATABASE … TEMPLATE`), que se suelta después. La base del gate no se muta.
+
+| Mutación | Resultado | Fallados de 309 | Test nombrado que cae |
+|---|---|---|---|
+| Control: máximo 11 en el schema | Muere | 6 | `rechaza 11 en el campo tope` |
+| M1: sin comprobación de rol | Muere | 17 | R4, en servicio, action y Postgres |
+| M2a: `USING (true)`, `WITH CHECK` intacto | Muere | 1 | R7, `UPDATE sin WHERE` |
+| M2b: `USING (true) WITH CHECK (true)` | Muere | 1 | R7, `UPDATE sin WHERE` |
+| M3: `GRANT UPDATE` sobre toda la tabla | Muere | 6 | R7, las 5 columnas en 42501 y la lista de privilegios |
+| M4: sin `appendAccion` | Muere | 8 | R10; también la guardia del censo y la composición |
+| M5: sin la rama de «igual al vigente» | Muere | 1 | R11 |
+| M6: `organizacion.findFirst()` | Muere | 5 | R27, `la lectura en plataforma`, en caso propio; también sin contexto y la pantalla |
+
+### Hallazgos
+
+1. **T2.4 tal como está escrita no mata la mutación 2.** Con un `WHERE` que nombra columnas, Postgres suma la política de SELECT como filtro, y `UPDATE … WHERE id = B` da 0 filas aunque la de UPDATE sea
+   `USING (true)`. Se añadió `UPDATE sin WHERE`, con un literal en el `SET`, que es el único caso que la mata. El caso de T2.4 se conserva.
+2. **`superficie-de-uso` se pone roja al exportar la action sin pantalla.** `guardarTopeIntentos` lleva `@sin-superficie` hasta la Tanda E. **T5.1 debe borrar esa nota**: la misma guardia se pone roja si sobrevive.
+3. **`catalogo-postgres-acota-esquema` se puso roja por la Tanda A:** `tope-intentos-migration.test.ts:278` ya tenía el `pg_constraint` sin acotar en `ad372c0e`, aunque el informe de A no lo recoge. Corregido aquí.
+4. **El molde `cierre-sin-gestion-tope-sql-real` no ejecuta nada en esta base:** 0 pasados, 9 saltados, y está en el baseline. Pide el estado `devolucion_por_confirmar`, que no existe en el catálogo. **Para T3.4 no sirve copiarlo tal cual.**
+
+### Decisiones técnicas sin dictado en el spec
+
+- `guardarTopeIntentos` también responde `unauthenticated`, que `design §4.1` no enumera: es el contrato de todas las actions del módulo, y R14 pide no responder sin sesión.
+- Un caso extra de R10, `dos guardados a la vez`, mide el cerrojo de `design §2.3`. Afirma los dos órdenes posibles. No tiene mutación propia: sin cerrojo fallaría solo si los dos guardados se solapan.
+
+### Veredicto
+
+Tanda B hecha: guardar y leer el tope con su rastro, por el composition root real, con 0 saltos en lo que toca, y las seis mutaciones y el control mueren.

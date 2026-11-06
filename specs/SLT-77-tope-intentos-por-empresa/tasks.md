@@ -35,14 +35,14 @@ Reglas de todas las tandas:
 
 ## Tanda B — Escritura y lectura de la pantalla (backend). Depende de A
 
-- [ ] **T2.1** `lib/types/tarifa-flexible.ts`: constantes y `guardarTopeIntentosSchema`. **Hecho:** `tarifa-schemas.test.ts`
+- [x] **T2.1** `lib/types/tarifa-flexible.ts`: constantes y `guardarTopeIntentosSchema`. **Hecho:** `tarifa-schemas.test.ts`
   cubre 1, 10, 0, 11, 2,5, texto y claves de más (R5).
-- [ ] **T2.2** `ITopeIntentosRepository`, `TopeIntentosRepository.guardar`, `ITopeIntentosService`, `TopeIntentosService`,
+- [x] **T2.2** `ITopeIntentosRepository`, `TopeIntentosRepository.guardar`, `ITopeIntentosService`, `TopeIntentosService`,
   fábrica y entrada en `historial-accion-escrituras-cubiertas.guardia` (`design §2.3`, `§4.1`). **Hecho:**
   `tope-intentos-service.test.ts` cubre R4 y R5, con el rol comprobado antes que el input.
-- [ ] **T2.3** `guardarTopeIntentos` en `lib/actions/tarifas.ts`; `cargarPantalla` con `topeIntentos`. **Hecho:**
+- [x] **T2.3** `guardarTopeIntentos` en `lib/actions/tarifas.ts`; `cargarPantalla` con `topeIntentos`. **Hecho:**
   `tarifas-action.test.ts` y `tarifas-pantalla-service.test.ts` cubren R3, R4 y R14; `servicios-composicion.test.ts` al día.
-- [ ] **T2.4** `tests/integration/db/tope-intentos-escritura.test.ts`, por el servicio y con dos empresas. Cubre: R1; R3; R7
+- [x] **T2.4** `tests/integration/db/tope-intentos-escritura.test.ts`, por el servicio y con dos empresas. Cubre: R1; R3; R7
   guardar en A no cambia B, y con `servi_app` por SQL: `UPDATE` de la fila de B no afecta filas, y `nombre`, `es_demo` y
   `plan_id` de A dan `42501`; R8 con una orden que ya alcanza el valor nuevo y conteos iguales en `orden`, `gestion_orden`,
   `orden_historial_estado`, `cierre_dia`, `cierre_detail`, `wallet_movimiento`; R9 con y sin `tarifa_activacion`; R10 con
