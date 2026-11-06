@@ -29,6 +29,7 @@ import { GeografiaApiService } from "@/lib/services/GeografiaApiService";
 import { ManifiestoService } from "@/lib/services/ManifiestoService";
 import { OrdenHistorialService } from "@/lib/services/OrdenHistorialService";
 import { comoApp, datosDeOrganizacionDePrueba, fijarEmpresa } from "@/tests/fabricas/organizaciones";
+import { sembrarPaisDePruebaGeo, type PaisDePruebaGeo, type PaisSembrado } from "@/tests/fixtures/paises-de-prueba-geo";
 
 import {
   clienteConSavepoint,
@@ -309,6 +310,40 @@ export async function conEscenario<T>(
 /** El autenticador de una key de `organizacionId` cuyo dueño es `tiendaId`. */
 export function autenticadorDe(organizacionId: string, tiendaId: string, apiKeyId = "slt45-v2"): AutenticadorApiKey {
   return async () => ({ status: "ok", actor: { usuarioId: tiendaId, rol: "apiKey" }, apiKeyId, organizacionId });
+}
+
+export interface ContextoDePaisDePrueba extends Contexto {
+  pais: PaisSembrado;
+}
+
+/**
+ * Como `conEscenario`, pero la empresa de la key es de un pais de prueba de 2 o 4 niveles
+ * (`tests/fixtures/paises-de-prueba-geo.ts`), sin zonas ni tarifas: la regla de guardado y la forma
+ * del pais paran antes de llegar a ellas (R5, R15, R33).
+ */
+export async function conPaisDePrueba<T>(
+  base: PrismaClient,
+  def: PaisDePruebaGeo,
+  fn: (c: ContextoDePaisDePrueba) => Promise<T>,
+): Promise<T> {
+  return enTransaccionRevertida(base, async (tx) => {
+    await serializarEscriturasReales(tx);
+    const pais = await sembrarPaisDePruebaGeo(tx, def);
+    const tiendaId = await crearTienda(tx);
+    await comoApp(tx, pais.organizacionId);
+    try {
+      return await fn({
+        organizacionId: pais.organizacionId,
+        tiendaId,
+        pais,
+        tx,
+        cli: clienteConSavepoint(tx),
+        autenticar: autenticadorDe(pais.organizacionId, tiendaId),
+      });
+    } finally {
+      await tx.$executeRawUnsafe("RESET ROLE");
+    }
+  });
 }
 
 // ── peticiones y comparacion ───────────────────────────────────────────────────────────────────
