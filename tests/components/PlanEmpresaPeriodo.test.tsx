@@ -24,6 +24,7 @@ import type {
   PlanDeEmpresaVista,
   PlanDTO,
   PlanResult,
+  PreciosQueRigen,
   TipoCobro,
 } from "@/lib/types/planes";
 import type { PendienteDeEmpresa } from "@/lib/types/consumo-plan";
@@ -111,7 +112,14 @@ function montar({
   asignar = vi.fn<Asignar>().mockResolvedValue({ estado: "ok", planId: PRO.id, cambio: true, avisos: [], vigenteDesde: null }),
   cambiar = vi.fn<CambiarTipo>().mockResolvedValue({ estado: "ok", cambio: true }),
   cancelar = vi.fn<Cancelar>().mockResolvedValue({ estado: "ok" }),
-}: { v?: PlanDeEmpresaVista; asignar?: Asignar; cambiar?: CambiarTipo; cancelar?: Cancelar } = {}) {
+  precios,
+}: {
+  v?: PlanDeEmpresaVista;
+  asignar?: Asignar;
+  cambiar?: CambiarTipo;
+  cancelar?: Cancelar;
+  precios?: PreciosQueRigen;
+} = {}) {
   render(
     <ToastProvider>
       <PlanEmpresa
@@ -125,6 +133,7 @@ function montar({
         inicioCicloPorDefecto={MANANA}
         rangoFechaDeEfecto={RANGO_EFECTO}
         fechaDeEfectoPorDefecto={v.plan === null ? null : FECHA_EFECTO}
+        preciosQueRigen={precios}
         previsualizarAsignacion={vi.fn().mockResolvedValue({ estado: "ok", avisos: [] })}
         cambiarTipoCobro={cambiar}
         cancelarCambioEmpresa={cancelar}
@@ -302,6 +311,85 @@ describe("SLT-86 R16, R25 — «Cambiar tipo de cobro» con fecha de efecto", ()
     await waitFor(() => expect(fecha).toHaveAttribute("aria-invalid", "true"));
     expect(within(modal).getByText("Elige desde qué fecha rige el cambio.")).toBeInTheDocument();
     expect(screen.getByRole("dialog", { name: "¿Cambiar el tipo de cobro?" })).toBeInTheDocument();
+  });
+});
+
+describe("SLT-86 R15, R25 (review m4) — el costo del primer período con el precio que regirá en la fecha elegida", () => {
+  /** Las 00:00 de la plataforma (UTC−6) de una fecha, como las entrega `verPreciosQueRigen`. */
+  const desde = (fecha: string) => `${fecha}T06:00:00.000Z`;
+  const monto = (mensual: string) => ({ tipo: "monto" as const, mensual, descuentos: {} });
+
+  it("R15, R25: «Cambiar plan» con una edición programada antes de «Rige desde» muestra el costo nuevo", async () => {
+    const user = userEvent.setup();
+    montar({
+      precios: { [PRO.id]: [{ desde: null, precio: PRO.precio }, { desde: desde("2026-03-20"), precio: monto("62000.00") }] },
+    });
+    const modal = await abrirCambioDePlan(user);
+
+    expect(within(modal).getByText("Costo base mensual: 62000.00")).toBeInTheDocument();
+    expect(within(modal).getByText("Período: 2026-04-01 – 2026-04-30")).toBeInTheDocument();
+  });
+
+  it("R15, R25: «Cambiar plan» con la edición después de «Rige desde» muestra el costo de hoy, y el nuevo al mover la fecha", async () => {
+    const user = userEvent.setup();
+    montar({
+      precios: { [PRO.id]: [{ desde: null, precio: PRO.precio }, { desde: desde("2026-05-01"), precio: monto("62000.00") }] },
+    });
+    const modal = await abrirCambioDePlan(user);
+
+    expect(within(modal).getByText("Costo base mensual: 31000.00")).toBeInTheDocument();
+    fireEvent.change(within(modal).getByLabelText("Rige desde"), { target: { value: "2026-05-01" } });
+    expect(within(modal).getByText("Costo base mensual: 62000.00")).toBeInTheDocument();
+  });
+
+  it("R25: «Cambiar plan» sin edición programada muestra el mismo costo que hoy", async () => {
+    const user = userEvent.setup();
+    montar({ precios: {} });
+    const modal = await abrirCambioDePlan(user);
+
+    expect(within(modal).getByText("Costo base mensual: 31000.00")).toBeInTheDocument();
+  });
+
+  it("R15, R25: «Cambiar tipo de cobro» usa la edición programada del plan actual antes de «Rige desde»", async () => {
+    const user = userEvent.setup();
+    montar({
+      precios: {
+        [ACTUAL.id]: [{ desde: null, precio: ACTUAL.precio }, { desde: desde("2026-04-01"), precio: monto("50000.00") }],
+        // La del plan elegido en otro modal no cuenta aquí.
+        [PRO.id]: [{ desde: desde("2026-03-11"), precio: monto("99000.00") }],
+      },
+    });
+    const modal = await abrirCambioDeTipo(user);
+    await user.click(within(modal).getByRole("radio", { name: "Quincenal" }));
+
+    expect(within(modal).getByText("Costo base quincenal: 25000.00")).toBeInTheDocument();
+    expect(within(modal).getByText("Período: 2026-04-01 – 2026-04-15")).toBeInTheDocument();
+  });
+
+  it("R25: «Cambiar tipo de cobro» con la edición después de «Rige desde» muestra el mismo costo que hoy", async () => {
+    const user = userEvent.setup();
+    montar({
+      precios: { [ACTUAL.id]: [{ desde: null, precio: ACTUAL.precio }, { desde: desde("2026-04-02"), precio: monto("50000.00") }] },
+    });
+    const modal = await abrirCambioDeTipo(user);
+    await user.click(within(modal).getByRole("radio", { name: "Quincenal" }));
+
+    expect(within(modal).getByText("Costo base quincenal: 22500.00")).toBeInTheDocument();
+  });
+
+  it("R15, R25: la primera asignación usa la edición programada antes de su inicio", async () => {
+    const user = userEvent.setup();
+    montar({
+      v: sinPlan(),
+      precios: { [PRO.id]: [{ desde: null, precio: PRO.precio }, { desde: desde(MANANA), precio: monto("62000.00") }] },
+    });
+    await user.click(screen.getByRole("combobox", { name: "Plan a asignar" }));
+    await user.click(within(await screen.findByRole("listbox")).getByRole("option", { name: "Pro (Público)" }));
+    await user.click(screen.getByRole("button", { name: "Asignar plan" }));
+    const modal = await screen.findByRole("dialog", { name: "¿Asignar este plan a la empresa?" });
+
+    // Del 30 al 31 de octubre: 2 de 31 días de 62 000.
+    expect(within(modal).getByText("Costo base mensual: 4000.00")).toBeInTheDocument();
   });
 });
 

@@ -336,6 +336,14 @@ El repositorio trabaja en una transacción y bajo el cerrojo:
 - `PlanesService` hace lo mismo en el detalle de empresa, con `forbidden` antes del repositorio.
 - `EmpresasPlataformaRepository` devuelve el tipo (R29).
 - La autorización no cambia (SL-24 R5; SLT-58 R8). «Mi plan» y los trabajos son núcleo.
+- **El precio que regirá en una fecha (revisión m4, decisión del 2026-11-06):** `verPreciosQueRigen`
+  (`lib/actions/_shared/planes-plataforma.ts`, solo superadmin) → `PlanesService.preciosQueRigen` →
+  `PlanesRepository.preciosQueRigenDesde`. Por plan devuelve `PrecioDesde[]`: la fila de `plan_precio_historial`
+  vigente a las 00:00 de hoy, las posteriores y el precio del cambio programado con su `vigente_desde` (un cambio
+  programado no escribe su fila de historial hasta aplicarse). `lib/planes/precio-que-rige.ts > precioQueRigeEn
+  (historial, fecha)` elige la de mayor `desde` ≤ las 00:00 de la plataforma de esa fecha (la regla de R15); el
+  detalle de empresa la usa en la vista previa del primer período de «Cambiar plan», la primera asignación y
+  «Cambiar tipo de cobro». Si la lectura falla, la vista previa usa el precio vigente.
 
 ## 7. Pantallas
 

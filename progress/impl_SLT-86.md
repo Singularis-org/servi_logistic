@@ -839,3 +839,41 @@ R19 (botones del modal) → `PlanEmpresaPeriodo.test.tsx` (sin cambios, ya los u
   `gasto-fijo-cobro-idempotencia` (2), `gasto-fijo-cobro-migration` (2) (piden usuarios en la base, SL-31),
   `rechazo-tienda-cobro.int`, `wallet-tienda-cobro`.
 - eslint de los 6 archivos tocados: exit 0. typecheck: 0 errores.
+
+## Tanda 12 — menores de la revisión: m1–m4 (2026-11-06)
+
+**Commits:** `0cb9a47d` (m1, m2: docs), `539a9622` (m4 backend + m3), y el de m4 frontend + specs (hash en el informe).
+
+- **m1:** `design.md > §13 Deuda conocida`: el −06:00 como `interval '6 hours'` (cinco sitios de `20261106120000`), a
+  revisar con SL-21. Código sin tocar.
+- **m2:** `docs/architecture.md` («Ciclo en UTC») nombra `plan_inicio_ciclo_de(entrada, tipo, ahora)` y su gemela
+  `periodoEnCurso` de `lib/planes/ciclo.ts`.
+- **m3:** el comentario de `fechaMasMeses` dice quién la usa hoy (`primerDiaDelSiguiente`, `rangoDelInicioDelCiclo`,
+  `rangoDeLaFechaDeEfecto`).
+- **m4 (decisión del humano):** la vista previa del primer período en «Cambiar plan», la primera asignación y «Cambiar
+  tipo de cobro» usa el precio que regirá en la fecha de efecto.
+  - backend_dev: `verPreciosQueRigen` → `PlanesService.preciosQueRigen` → `PlanesRepository.preciosQueRigenDesde`
+    (solo superadmin) y `lib/planes/precio-que-rige.ts > precioQueRigeEn`. **Aviso:** un cambio de precio programado
+    no escribe su fila en `plan_precio_historial` hasta aplicarse, así que la lectura junta la fila vigente hoy, las
+    posteriores del historial y el precio del cambio programado con su `vigente_desde`. Anotado en requirements
+    (Decisiones cerradas) y design §6.
+  - frontend_dev: `page.tsx` lee los precios (try/catch; si falla, `{}` y el precio vigente) y `PlanEmpresa.tsx` los usa.
+
+**R → test (nuevos)**
+- R15: `tests/unit/planes/precio-que-rige.test.ts` (8: edición antes/después/en la fecha, sin edición, varias, empates)
+  y `tests/integration/db/planes-precios-que-rigen.test.ts` (6, Postgres real).
+- R15, R25: `PlanEmpresaPeriodo.test.tsx` «SLT-86 R15, R25 (review m4)» (6: «Cambiar plan» con edición antes →
+  62000.00 en vez de 31000.00; edición después → igual que hoy; sin edición → igual; «Cambiar tipo de cobro»; primera
+  asignación); `plataforma-empresa-detalle-page.test.tsx` «SLT-86 R25 (review m4)» (4: la página la cablea, el modal
+  real, y si la lectura lanza o es `forbidden` usa el vigente).
+- Autorización: `planes-service-lecturas.test.ts` (bucle de R22 + 4 casos).
+
+**Salida real**
+- backend_dev: 33 archivos, 804/804 (con `servi_logistic_slt86`). Su `vitest related` se cortó a los 10 min; hasta ahí,
+  rojos ajenos: `historial-accion-atomicidad` (la base slt86 no tiene seed de órdenes) y
+  `ControlDescargaTransversal` (1, pasa solo).
+- Verificado por el implementer: `PlanEmpresa*`, `plataforma-empresa-detalle-page`, `precio-que-rige`,
+  `planes-precios-que-rigen`, `planes-service-lecturas` → 9 archivos, 200/200. eslint de lo tocado: exit 0. typecheck: 0.
+- E2E (frontend_dev, `servi_logistic_slt86_e2e`, build nuevo): `planes-superadmin`, `planes-costeo`,
+  `planes-costo-porcentual` → 27 passed, 0 failed, 0 skipped, 0 flaky (54.8 s).
+- m5: sin cambios (decisión del humano).

@@ -13,7 +13,7 @@ import type { RolValue } from "@prisma/client";
 import { MODULOS_APAGABLES, NUCLEO, ORDEN_MODULOS } from "@/lib/modulos/catalogo";
 import { planConConsumo } from "@/lib/planes/consumo";
 import type { VerModulosEmpresaResult } from "@/lib/types/modulos-empresa";
-import type { PlanDeEmpresaResult, PlanDTO } from "@/lib/types/planes";
+import type { PlanDeEmpresaResult, PlanDTO, PreciosQueRigenResult } from "@/lib/types/planes";
 
 vi.mock("next/navigation", () => ({
   notFound: () => {
@@ -33,19 +33,21 @@ vi.mock("@/lib/actions/modulos-empresa", () => ({
 }));
 
 // SLT-58 (design §6.3; R19): la lectura del plan de la empresa y las actions de planes, como dobles.
-const { verPlanMock, verDetalleMock, asignablesMock, asignarMock, previsualizarMock, cancelarMock } = vi.hoisted(
-  () => ({
+const { verPlanMock, verDetalleMock, verPreciosMock, asignablesMock, asignarMock, previsualizarMock, cancelarMock } =
+  vi.hoisted(() => ({
     verPlanMock: vi.fn(),
     verDetalleMock: vi.fn(),
+    verPreciosMock: vi.fn(),
     asignablesMock: vi.fn(),
     asignarMock: vi.fn(),
     previsualizarMock: vi.fn(),
     cancelarMock: vi.fn(),
-  }),
-);
+  }));
 vi.mock("@/lib/actions/_shared/planes-plataforma", () => ({
   verPlanDeEmpresa: (...a: unknown[]) => verPlanMock(...a),
   verDetalleDePlan: (...a: unknown[]) => verDetalleMock(...a),
+  // SLT-86 (R25; review m4): los precios que regirán, para el costo del primer período de los modales.
+  verPreciosQueRigen: (...a: unknown[]) => verPreciosMock(...a),
 }));
 vi.mock("@/lib/actions/planes", () => ({
   listarPlanesAsignablesAction: (...a: unknown[]) => asignablesMock(...a),
@@ -96,6 +98,7 @@ beforeEach(() => {
   } satisfies PlanDeEmpresaResult);
   asignablesMock.mockResolvedValue({ estado: "ok", planes: [] });
   verDetalleMock.mockResolvedValue({ estado: "not_found" });
+  verPreciosMock.mockResolvedValue({ estado: "ok", precios: {} } satisfies PreciosQueRigenResult);
   previsualizarMock.mockResolvedValue({ estado: "ok", avisos: [] });
   cancelarMock.mockResolvedValue({ estado: "ok" });
 });
@@ -348,6 +351,85 @@ describe("SLT-58 (R19) — el plan de la empresa en su detalle", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  describe("SLT-86 R25 (review m4) — la página cablea los precios que regirán", () => {
+    const BASICO: PlanDTO = {
+      ...ACTUAL_DTO,
+      id: "33333333-3333-4333-8333-333333333333",
+      nombre: "Básico",
+      precio: { tipo: "monto", mensual: "31000.00", descuentos: {} },
+      costoPorOrden: "100.00",
+    };
+
+    async function abrirPrimeraAsignacion() {
+      const user = userEvent.setup();
+      render(<ToastProvider>{await EmpresaDetallePage({ params: params() })}</ToastProvider>);
+      await user.click(screen.getByRole("combobox", { name: "Plan a asignar" }));
+      await user.click(within(await screen.findByRole("listbox")).getByRole("option", { name: "Básico (Público)" }));
+      await user.click(screen.getByRole("button", { name: "Asignar plan" }));
+      return screen.findByRole("dialog");
+    }
+
+    it("lee los precios de los asignables y del plan actual con su actor", async () => {
+      actorMock.mockResolvedValue(superadmin);
+      verPlanMock.mockResolvedValue(CON_PLAN);
+      asignablesMock.mockResolvedValue({ estado: "ok", planes: [ACTUAL_DTO, BASICO] });
+
+      render(<ToastProvider>{await EmpresaDetallePage({ params: params() })}</ToastProvider>);
+
+      expect(verPreciosMock).toHaveBeenCalledWith(superadmin, { planIds: [ACTUAL_DTO.id, BASICO.id] });
+    });
+
+    it("el modal usa el precio programado que regirá en la fecha elegida", async () => {
+      // 2026-10-29 12:00 en la hora de la plataforma: la primera asignación propone el 2026-10-30.
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-10-29T18:00:00.000Z"));
+      try {
+        actorMock.mockResolvedValue(superadmin);
+        asignablesMock.mockResolvedValue({ estado: "ok", planes: [BASICO] });
+        verPreciosMock.mockResolvedValue({
+          estado: "ok",
+          precios: {
+            [BASICO.id]: [
+              { desde: null, precio: BASICO.precio },
+              // Edición programada que rige desde las 00:00 del 2026-10-30 en la hora de la plataforma.
+              {
+                desde: "2026-10-30T06:00:00.000Z",
+                precio: { tipo: "monto", mensual: "62000.00", descuentos: {} },
+              },
+            ],
+          },
+        } satisfies PreciosQueRigenResult);
+
+        const modal = await abrirPrimeraAsignacion();
+
+        // Del 30 al 31 de octubre: 2 de 31 días de 62 000 (no de 31 000).
+        expect(within(modal).getByText("Costo base mensual: 4000.00")).toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it.each<[string, () => void]>([
+      ["la lectura lanza", () => verPreciosMock.mockRejectedValue(new Error("db caída"))],
+      ["la lectura no es ok", () => verPreciosMock.mockResolvedValue({ estado: "forbidden" })],
+    ])("si %s, el modal usa el precio vigente", async (_caso, preparar) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-10-29T18:00:00.000Z"));
+      try {
+        actorMock.mockResolvedValue(superadmin);
+        vi.spyOn(console, "error").mockImplementation(() => {});
+        asignablesMock.mockResolvedValue({ estado: "ok", planes: [BASICO] });
+        preparar();
+
+        const modal = await abrirPrimeraAsignacion();
+
+        expect(within(modal).getByText("Costo base mensual: 2000.00")).toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   it("SLT-86 R26: sin plan y con una primera asignación pendiente, «Sin límites», qué plan entra y «Cancelar cambio» con la action", async () => {

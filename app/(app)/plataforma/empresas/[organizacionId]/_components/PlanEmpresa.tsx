@@ -29,6 +29,7 @@ import {
   TITULO_LINEAS_DE_CAMBIO,
   type CambioDelPlanParaCorreo,
 } from "@/lib/planes/mensajes";
+import { precioQueRigeEn } from "@/lib/planes/precio-que-rige";
 import { diferenciasDelPlan } from "@/lib/planes/rastro";
 import { nombreDelModulo } from "@/lib/modulos/catalogo";
 import {
@@ -39,7 +40,9 @@ import {
   type PlanDeEmpresaVista,
   type PlanDTO,
   type PlanResult,
+  type PrecioDesde,
   type PrecioPlan,
+  type PreciosQueRigen,
   type TipoCobro,
   type TopeExcedido,
   type VistaPreviaAsignacionResult,
@@ -163,10 +166,18 @@ function rigeDesdeDeLaFila(a: AsignacionDePlan): string {
 /**
  * SLT-86 (R25): el costo base del primer período o tramo que abriría el cambio, con el precio, el tipo y
  * la fecha elegidos. `null` sin precio legible o sin fecha válida: no se muestra.
+ *
+ * Review m4: el precio es el que regirá en `fecha` según el historial del plan (`precioQueRigeEn`), que
+ * puede traer una edición programada antes de esa fecha; sin historial, el vigente (`precio`).
  */
-function lineasDelPrimerPeriodo(precio: PrecioPlan | undefined, tipo: TipoCobro, fecha: string): string[] | null {
+function lineasDelPrimerPeriodo(
+  precio: PrecioPlan | undefined,
+  historial: readonly PrecioDesde[],
+  tipo: TipoCobro,
+  fecha: string,
+): string[] | null {
   if (precio === undefined || !esFechaCalendarioValida(fecha)) return null;
-  const valido = precioPlanSchema.safeParse(precio);
+  const valido = precioPlanSchema.safeParse(precioQueRigeEn(historial, fecha) ?? precio);
   if (!valido.success) return null;
   const { periodo, costo } = primerPeriodoDelCambio(valido.data, tipo, fecha);
   return [TEXTOS_TIPO_COBRO.costoBase(tipo, costo), textoDelPeriodo(tipo, periodo)];
@@ -233,6 +244,12 @@ export interface PlanEmpresaProps {
    * con el tipo vigente (`fechaDeEfectoPorDefecto`, del reloj del servidor). `null` sin plan.
    */
   fechaDeEfectoPorDefecto: string | null;
+  /**
+   * SLT-86 (R25; review m4): por plan, los precios que pueden regir de hoy en adelante
+   * (`verPreciosQueRigen`), para que el costo del primer período use el que regirá en la fecha elegida.
+   * Sin él (o sin el plan) se usa el precio vigente.
+   */
+  preciosQueRigen?: PreciosQueRigen | null;
   /** `previsualizarAsignacionPlanAction` (R37), inyectada desde la página para poder probarla. */
   previsualizarAsignacion: (input: {
     organizacionId: string;
@@ -304,6 +321,7 @@ export function PlanEmpresa({
   inicioCicloPorDefecto,
   rangoFechaDeEfecto,
   fechaDeEfectoPorDefecto,
+  preciosQueRigen,
   previsualizarAsignacion,
   planPreseleccionado,
   cambiarTipoCobro,
@@ -525,10 +543,22 @@ export function PlanEmpresa({
 
   /** SLT-86 (R26): el pendiente de la empresa: con plan, en su cobro; sin plan, la primera asignación. */
   const pendiente = vista?.plan ? vista.plan.cobro.pendiente : (vista?.pendienteSinPlan ?? null);
-  /** SLT-86 (R25): el costo del primer período de cada modal, con lo elegido en él. */
-  const primerPeriodoDelCambioDePlan = elegido === null ? null : lineasDelPrimerPeriodo(elegido.precio, tipoCobro, vigenteDesde);
-  const primerPeriodoDeLaPrimera = elegido === null ? null : lineasDelPrimerPeriodo(elegido.precio, tipoCobro, inicioCiclo);
-  const primerPeriodoDelCambioDeTipo = lineasDelPrimerPeriodo(actual?.precio, nuevoTipoCobro, vigenteDesde);
+  /**
+   * SLT-86 (R25): el costo del primer período de cada modal, con lo elegido en él y el precio que regirá
+   * en esa fecha (review m4): el del plan elegido o, al cambiar solo el tipo, el del plan actual.
+   */
+  const historialDe = (id: string | undefined): readonly PrecioDesde[] =>
+    id === undefined ? [] : (preciosQueRigen?.[id] ?? []);
+  const primerPeriodoDelCambioDePlan =
+    elegido === null ? null : lineasDelPrimerPeriodo(elegido.precio, historialDe(elegido.id), tipoCobro, vigenteDesde);
+  const primerPeriodoDeLaPrimera =
+    elegido === null ? null : lineasDelPrimerPeriodo(elegido.precio, historialDe(elegido.id), tipoCobro, inicioCiclo);
+  const primerPeriodoDelCambioDeTipo = lineasDelPrimerPeriodo(
+    actual?.precio,
+    historialDe(actual?.id),
+    nuevoTipoCobro,
+    vigenteDesde,
+  );
 
   /** Con el plan actual ilegible no hay resumen: se ofrece releer la página, nunca confirmar. */
   const sinResumen = Boolean(vista?.plan) && lineasDeCambio === null;
