@@ -10,6 +10,9 @@ import type { CambioDelPlanParaCorreo } from "@/lib/planes/mensajes";
 import { PlanesRepository } from "@/lib/repositories/PlanesRepository";
 import { crearEmailSender } from "@/lib/services/EmailProvider";
 import { plantillaCambioPlan } from "@/lib/services/email/plantillas/cambio-plan";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 
 // SL-24 (design §16.3, §16.4; R38, R39, R44) — los trabajos del cambio programado de un plan, con su
 // composition root. Los cablea `app/api/cron/procesar-jobs/route.ts` (`buildHandlers` y
@@ -135,11 +138,20 @@ export function crearPlanCambiosVencidosHandler(
 export interface DepsAvisoCorreo {
   sender: IEmailSender;
   contacto: string | null;
+  /**
+   * SLT-42 (R22, R28): el país de la empresa destino, para pintar las fechas del correo en su zona.
+   * El trabajo corre en `conEmpresa` con esa empresa. Sin zona en el país, el trabajo falla (R28).
+   */
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
 }
 
 /** Composition root del envío: el emisor que elige el entorno (`crearEmailSender`, que ya compone `EnrutadorEmailSender`). */
 export function buildDepsAvisoCorreo(): DepsAvisoCorreo {
-  return { sender: crearEmailSender(), contacto: emailContacto() };
+  return {
+    sender: crearEmailSender(),
+    contacto: emailContacto(),
+    reglasPais: construirReglasPaisEmpresa(getPrismaClient()),
+  };
 }
 
 const recordatorioSchema = z.object({
@@ -205,7 +217,10 @@ export function crearPlanAvisoCorreoHandler(
     const destino = await repo.destinatariosDelAviso(organizacionId, esRecordatorio ? aviso.cambioId : null);
     if (destino === null || destino.maestros.length === 0) return;
 
-    const { sender, contacto } = deps();
+    const { sender, contacto, reglasPais } = deps();
+    // SLT-42 (R22, R28): las fechas del correo, en la zona del país de la empresa que cambia de plan.
+    // Se lee antes de enviar: sin zona, el trabajo falla sin mandar ningún correo.
+    const zona = await zonaDeLaEmpresa(reglasPais, "plan_aviso_correo");
     let fallidos = 0;
     for (const maestro of destino.maestros) {
       try {
@@ -221,6 +236,7 @@ export function crearPlanAvisoCorreoHandler(
             topesPasados: aviso.topesPasados,
             tipo: aviso.tipo,
             contacto,
+            zona,
           }),
         );
       } catch {

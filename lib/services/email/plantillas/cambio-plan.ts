@@ -15,11 +15,7 @@ import {
 } from "@/lib/planes/mensajes";
 import { componerCorreo, type Bloque } from "@/lib/services/email/plantillas/plantilla-marca";
 import { fechaCortaEnZona } from "@/lib/whatsapp-envios/informes/formato";
-import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
-// SLT-42 pendiente T7.1: el dia del ciclo de planes es el de la plataforma (SL-24), no el de una
-// empresa; decidir si entra en la lista de excepciones de la guardia.
-const fechaCortaCR = (instante: Date): string => fechaCortaEnZona(instante, ZONA_CR);
 
 export interface CambioPlanParams {
   /** Email de un maestro activo de la empresa (P7). */
@@ -38,12 +34,17 @@ export interface CambioPlanParams {
   tipo: TipoCorreoCambioPlan;
   /** Dirección de contacto del pie, o `null`. */
   contacto: string | null;
+  /**
+   * SLT-42 (R22; decisión del humano tras T5.5): la zona horaria del país de la empresa que cambia de
+   * plan. Las fechas del correo se pintan en ella.
+   */
+  zona: string;
 }
 
 /**
  * SL-24 (design §16.4; R41, R42, R45) — el correo del cambio de un plan, sobre la plantilla común,
  * igual que `bienvenida-maestro.ts`. Los textos viven en `lib/planes/mensajes.ts`; la fecha se pinta
- * con `fechaCortaCR` (día calendario de la plataforma: `vigente_desde` es las 00:00 a −06:00).
+ * en la zona del país de la empresa que recibe el correo (`p.zona`, SLT-42).
  *
  * `cancelado` lleva solo el texto de R45. Los demás: saludo, qué plan cambia y desde cuándo, la línea
  * del reemplazo si la hay, las líneas de cambio y, si la empresa ya pasa algún tope nuevo, cuál.
@@ -51,11 +52,12 @@ export interface CambioPlanParams {
 export function plantillaCambioPlan(p: CambioPlanParams): EmailMessage {
   const asunto = asuntoCambioPlan(p.tipo, p.planNombre);
   const saludo: Bloque = { tipo: "parrafo", texto: `Hola, ${p.nombre}:` };
+  const fechaCorta = (instante: Date): string => fechaCortaEnZona(instante, p.zona);
 
   if (p.tipo === "cancelado") {
     // El cambio cancelado siempre tenía fecha; sin ella no hay correo que componer.
     if (p.vigenteDesde === null) throw new Error("plantillaCambioPlan: un cambio cancelado necesita su fecha");
-    const texto = mensajeCambioCancelado(p.planNombre, fechaCortaCR(p.vigenteDesde));
+    const texto = mensajeCambioCancelado(p.planNombre, fechaCorta(p.vigenteDesde));
     return componerCorreo({
       to: p.to,
       asunto,
@@ -65,11 +67,11 @@ export function plantillaCambioPlan(p: CambioPlanParams): EmailMessage {
     });
   }
 
-  const fecha = p.vigenteDesde === null ? null : fechaCortaCR(p.vigenteDesde);
+  const fecha = p.vigenteDesde === null ? null : fechaCorta(p.vigenteDesde);
   const intro = introCambioPlan(p.tipo, p.planNombre, p.empresaNombre, fecha);
   const lineas = lineasDeCambioDelPlan(p.cambios);
   const bloques: Bloque[] = [saludo, { tipo: "parrafo", texto: intro }];
-  if (p.reemplazaA !== null) bloques.push({ tipo: "parrafo", texto: lineaReemplazo(fechaCortaCR(p.reemplazaA)) });
+  if (p.reemplazaA !== null) bloques.push({ tipo: "parrafo", texto: lineaReemplazo(fechaCorta(p.reemplazaA)) });
   if (lineas.length === 0) {
     bloques.push({ tipo: "parrafo", texto: SIN_LINEAS_DE_CAMBIO });
   } else {

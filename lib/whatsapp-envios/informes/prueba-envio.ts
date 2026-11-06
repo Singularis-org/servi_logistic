@@ -44,8 +44,8 @@ export const informePruebaEnvio: InformeWhatsapp<ParametrosPruebaEnvio> = {
     },
   ],
   variables: [
-    { clave: "fecha", nombre: "Fecha", descripcion: "Fecha del envío (hora de Costa Rica).", ejemplo: "05/10/2026" },
-    { clave: "hora", nombre: "Hora", descripcion: "Hora del envío (hora de Costa Rica).", ejemplo: "05:00" },
+    { clave: "fecha", nombre: "Fecha", descripcion: "Fecha del envío (hora local).", ejemplo: "05/10/2026" },
+    { clave: "hora", nombre: "Hora", descripcion: "Hora del envío (hora local).", ejemplo: "05:00" },
   ],
   generaDocumento: true,
   // Solo fecha y hora: no lleva datos de ninguna tienda.

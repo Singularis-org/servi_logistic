@@ -20,6 +20,11 @@ import type {
 
 // SL-20 (R19): las pantallas nombran los niveles con los del país de la empresa. Estos casos son de
 // Costa Rica: el hook da sus etiquetas (sin proveedor daría las neutras, «Nivel 1»…).
+// SLT-42 (T5.7): la página lee la zona del país de la empresa de la sesión; aquí, la de Costa Rica.
+vi.mock("@/lib/actions/_shared/zona-del-borde", async () => {
+  const { ZONA_DE_CR } = await import("@/tests/fabricas/reglas-pais");
+  return { zonaDelBorde: async () => ZONA_DE_CR };
+});
 vi.mock("@/hooks/use-etiquetas-geograficas", async () => {
   const { ETIQUETAS_CR } = await import("../fabricas/etiquetas-geograficas");
   return { useEtiquetasGeograficas: () => ETIQUETAS_CR };

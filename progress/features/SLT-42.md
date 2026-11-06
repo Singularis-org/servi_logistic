@@ -92,6 +92,14 @@ Bloqueos de F2.0:
   4. Corte de «hoy» del chat de WhatsApp (`lib/actions/chat-whatsapp.ts`) y tope diario de `AsistenteService`: pasan a la zona de la empresa en T5.7 (humano).
   5. Desvíos de T5.5 aceptados (humano): zona `"UTC"` sin actor en los bordes de analítica (`zonaDelBordeConActor`), `PlanesService` con `zonaDeOrganizacionCon`, «hora local» en los PDF.
 
+- 2026-11-05 (tras T5.6, preguntas de `progress/impl_SLT-42.md > Tanda 4c · T5.6`):
+  1. Rastreo público con país sin prefijo o dígitos de teléfono: responde `no_encontrado` (no delata la guía) y deja un `console.error` con la empresa para soporte (humano). Va en T5.7.
+  2. Rastreo público con país sin zona horaria: se iguala al caso anterior, `no_encontrado` + `console.error` con la empresa, en vez del error de servidor de R28 (humano). Va en T5.7.
+  3. Desvío aceptado: `PaisSinZonaHoraria` lo lanza `zonaHoraria()` de las reglas del país, no el servicio (R33 de la 229).
+
+## Pendiente para el cierre
+- 2026-11-05, pedido del humano: al terminar la feature, resumen de TODOS los errores nuevos que puede lanzar SLT-42 (p. ej. `PaisIncompleto`, `PaisSinZonaHoraria`, `EmpresaNoResuelta`, documento/teléfono inválido por país, tipo de documento inactivo): dónde salen, qué ve el usuario y qué hay que completar o configurar (catálogo de país, zona, prefijo, tipos de documento, `POSTULACION_VALIDADA_POR_PAIS_DESDE`, T1.0) para que no se disparen. Va a `progress/impl_SLT-42.md > Errores nuevos y prevención` y se resume al humano.
+
 ## Preguntas abiertas
 Las del `requirements.md` (normalizar teléfonos guardados, jobs por zona horaria, largos de documento).
 

@@ -4,6 +4,7 @@ import { resolverRangoApiKey } from "@/lib/api/analitica-api-key-rango";
 import { resolverMetricasPedidas } from "@/lib/api/analitica-api-key-metricas";
 import { HORIZONTE_HISTORIAL_CR } from "@/lib/analytics/backfill-rango";
 import { METRICAS_API_KEY, METRICAS_TODAS } from "@/lib/analytics/publicacion-api-key";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // 2026-08-31 — LO QUE SIGNIFICA NO MANDAR UN PARAMETRO en `GET /api/ordenes/api-key/analitica`.
 //
@@ -17,7 +18,7 @@ const AHORA = new Date("2026-08-03T15:00:00.000Z");
 
 describe("resolverRangoApiKey · las fechas que el integrador no manda", () => {
   it("lo que SI llega no se toca, ni siquiera un poco", () => {
-    expect(resolverRangoApiKey({ desde: "2026-08-01", hasta: "2026-08-03" }, AHORA)).toEqual({
+    expect(resolverRangoApiKey({ desde: "2026-08-01", hasta: "2026-08-03" }, AHORA, ZONA_DE_CR)).toEqual({
       desde: "2026-08-01",
       hasta: "2026-08-03",
     });
@@ -27,20 +28,20 @@ describe("resolverRangoApiKey · las fechas que el integrador no manda", () => {
     // El caso que distingue las dos convenciones: 2026-08-04T02:00Z son todavia las 20:00 del
     // dia 3 en Costa Rica. Un `toISOString().slice(0, 10)` habria dicho el 4.
     const casiMedianocheUtc = new Date("2026-08-04T02:00:00.000Z");
-    expect(resolverRangoApiKey({ desde: "2026-08-01" }, casiMedianocheUtc).hasta).toBe(
+    expect(resolverRangoApiKey({ desde: "2026-08-01" }, casiMedianocheUtc, ZONA_DE_CR).hasta).toBe(
       "2026-08-03",
     );
   });
 
   it("sin `desde`: el horizonte del historial, tomado de la constante y no de un literal", () => {
-    expect(resolverRangoApiKey({ hasta: "2026-08-01" }, AHORA)).toEqual({
+    expect(resolverRangoApiKey({ hasta: "2026-08-01" }, AHORA, ZONA_DE_CR)).toEqual({
       desde: HORIZONTE_HISTORIAL_CR,
       hasta: "2026-08-01",
     });
   });
 
   it("sin nada: el historico completo, del horizonte a hoy", () => {
-    expect(resolverRangoApiKey({}, AHORA)).toEqual({
+    expect(resolverRangoApiKey({}, AHORA, ZONA_DE_CR)).toEqual({
       desde: HORIZONTE_HISTORIAL_CR,
       hasta: "2026-08-03",
     });
@@ -50,7 +51,7 @@ describe("resolverRangoApiKey · las fechas que el integrador no manda", () => {
     // Con el horizonte como default fijo, esto saldria `desde: 2026-07-13, hasta: 2026-01-15`, y
     // el filtro de la 135 lo rechazaria con un 422 de «rango invertido» a quien no mando ningun
     // `desde`. El limite inferior cede al superior: no hay nada que contar antes del horizonte.
-    expect(resolverRangoApiKey({ hasta: "2026-01-15" }, AHORA)).toEqual({
+    expect(resolverRangoApiKey({ hasta: "2026-01-15" }, AHORA, ZONA_DE_CR)).toEqual({
       desde: "2026-01-15",
       hasta: "2026-01-15",
     });
@@ -59,7 +60,7 @@ describe("resolverRangoApiKey · las fechas que el integrador no manda", () => {
   it("un rango invertido ESCRITO por el integrador se conserva invertido: no se corrige aqui", () => {
     // Este modulo COMPLETA, no arregla. Darle la vuelta al rango convertiria un error del cliente
     // en una respuesta plausible que no es la que pidio; el 422 es del filtro de la 135.
-    expect(resolverRangoApiKey({ desde: "2026-08-10", hasta: "2026-08-01" }, AHORA)).toEqual({
+    expect(resolverRangoApiKey({ desde: "2026-08-10", hasta: "2026-08-01" }, AHORA, ZONA_DE_CR)).toEqual({
       desde: "2026-08-10",
       hasta: "2026-08-01",
     });
@@ -83,5 +84,14 @@ describe("resolverMetricasPedidas · `metricas` vacio es `all`", () => {
     for (const valor of ["entregas,,devoluciones", ",", "entregas,"]) {
       expect(resolverMetricasPedidas(valor).ok, valor).toBe(false);
     }
+  });
+});
+
+describe("SLT-42 R22 · sin `hasta`, «hoy» es el de la zona del pais de la empresa de la key", () => {
+  it("el mismo instante es el 3 en Costa Rica y el 4 en Bogota", () => {
+    // 2026-08-04T05:30Z: las 23:30 del 3 en Costa Rica (UTC-6) y las 00:30 del 4 en Bogota (UTC-5).
+    const instante = new Date("2026-08-04T05:30:00.000Z");
+    expect(resolverRangoApiKey({ desde: "2026-08-01" }, instante, ZONA_DE_CR).hasta).toBe("2026-08-03");
+    expect(resolverRangoApiKey({ desde: "2026-08-01" }, instante, "America/Bogota").hasta).toBe("2026-08-04");
   });
 });

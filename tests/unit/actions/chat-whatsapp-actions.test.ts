@@ -16,6 +16,8 @@ import type { ChatWhatsappService } from "@/lib/services/ChatWhatsappService";
 import type { DatosPlantilla } from "@/lib/types/plantilla-datos";
 import { datosPlantillaFixture } from "@/tests/fixtures/plantilla-datos";
 import { MAX_CAPTION } from "@/lib/config/chat-media-envio";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { PaisSinZonaHoraria } from "@/lib/db/errores-pais";
 
 // Feature 109 — F1.T/F2.T (R16/R17/R20/R21). Server Actions del chat: scope por
 // OrdenEnvioReader (R17/R16), persistencia del saliente (R20) y manejo de transitorio (R21).
@@ -336,6 +338,7 @@ describe("listarHiloChat (R16/R22)", () => {
         },
       ]),
       now: () => ahora,
+      reglasPais: reglasPaisFijas(),
     });
 
     expect(res).toMatchObject({ status: "ok", ventanaAbierta: true });
@@ -354,6 +357,7 @@ describe("listarHiloChat (R16/R22)", () => {
       conversacionRepo: conv({ id: "hilo-1", ultimoEntranteAt: viejo }),
       mensajeRepo: mensajes([]),
       now: () => ahora,
+      reglasPais: reglasPaisFijas(),
     });
     expect(res).toMatchObject({ status: "ok", ventanaAbierta: false });
   });
@@ -374,6 +378,7 @@ describe("listarHiloChat (R16/R22)", () => {
     lista: { direccion: "entrante" | "saliente"; ocurridoAt: Date }[],
     ultimoEntranteAt: Date | null,
     ahora: Date,
+    reglas = reglasPaisFijas(),
   ) {
     return listarHiloChat("orden-1", {
       getActor: getActor(MENSAJERO),
@@ -390,8 +395,24 @@ describe("listarHiloChat (R16/R22)", () => {
         })),
       ),
       now: () => ahora,
+      reglasPais: reglas,
     });
   }
+
+  it("SLT-42 R22: «hoy» es el de la zona del pais de la empresa (CR: ayer; Bogota: hoy)", async () => {
+    // 2026-07-23T05:30Z: las 23:30 del 22 en Costa Rica (UTC-6) y las 00:30 del 23 en Bogota (UTC-5).
+    const saliente = [{ direccion: "saliente" as const, ocurridoAt: new Date("2026-07-23T05:30:00.000Z") }];
+    const enCR = await hilo(saliente, null, MEDIODIA_CR);
+    const enCO = await hilo(saliente, null, MEDIODIA_CR, reglasPaisFijas({ paisId: "CO", zonaHoraria: "America/Bogota" }));
+    expect(enCR).toMatchObject({ plantillaBloqueada: false });
+    expect(enCO).toMatchObject({ plantillaBloqueada: true });
+  });
+
+  it("SLT-42 R28: sin zona en el pais de la empresa, el hilo falla con PaisSinZonaHoraria", async () => {
+    await expect(
+      hilo([], null, MEDIODIA_CR, reglasPaisFijas({ zonaHoraria: null })),
+    ).rejects.toBeInstanceOf(PaisSinZonaHoraria);
+  });
 
   it("EL BUG: una plantilla enviada AYER no bloquea el chat de hoy", async () => {
     const res = await hilo(
@@ -670,6 +691,7 @@ describe("Feature 311 · listarHiloChat expone los tipos nuevos (R19/R21)", () =
       conversacionRepo: conv311(RECIENTE),
       mensajeRepo: mensajes311(filas),
       now: () => AHORA_311,
+      reglasPais: reglasPaisFijas(),
     });
   }
 

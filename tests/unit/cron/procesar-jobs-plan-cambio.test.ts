@@ -9,6 +9,8 @@ import { MODULO_POR_JOB } from "@/lib/modulos/reparto";
 import { PlanesRepository } from "@/lib/repositories/PlanesRepository";
 import { ConsoleEmailSender } from "@/lib/services/email/ConsoleEmailSender";
 import { EnrutadorEmailSender } from "@/lib/services/email/EnrutadorEmailSender";
+import { PaisSinZonaHoraria } from "@/lib/db/errores-pais";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // El repositorio de los handlers cableados: un doble que registra en qué contexto lo llaman. El resto
 // del módulo es el real (`importOriginal`), incluido el composition root que se prueba abajo.
@@ -284,7 +286,7 @@ describe("SL-24 — plan_aviso_correo (R41, R42, R45)", () => {
   it("un correo por maestro activo, con la plantilla del cambio y el contacto del pie", async () => {
     const destinatarios = vi.fn<IPlanesRepository["destinatariosDelAviso"]>(async () => ({ empresaNombre: "Uno", maestros: MAESTROS }));
     const sender = emisor();
-    await crearPlanAvisoCorreoHandler({ destinatariosDelAviso: destinatarios }, () => ({ sender, contacto: "hola@ejemplo.example" }))(
+    await crearPlanAvisoCorreoHandler({ destinatariosDelAviso: destinatarios }, () => ({ sender, contacto: "hola@ejemplo.example", reglasPais: reglasPaisFijas() }))(
       job(aviso(), conEmpresa),
     );
     // `guardado` no comprueba el pendiente (la edición inmediata ni siquiera lo tiene).
@@ -296,10 +298,35 @@ describe("SL-24 — plan_aviso_correo (R41, R42, R45)", () => {
     expect(sender.enviados[0].text).toContain("hola@ejemplo.example");
   });
 
+  it("SLT-42 R22: la fecha del correo sale en la zona del país de la empresa destino", async () => {
+    const sender = emisor();
+    // `aviso()` rige el 2026-11-20 a las 00:00 de la plataforma (06:00Z): en Madrid ya son las 07:00 del 20,
+    // y en Honolulu (UTC-10) todavía las 20:00 del 19.
+    await crearPlanAvisoCorreoHandler(
+      { destinatariosDelAviso: async () => ({ empresaNombre: "Uno", maestros: MAESTROS }) },
+      () => ({ sender, contacto: null, reglasPais: reglasPaisFijas({ zonaHoraria: "Pacific/Honolulu" }) }),
+    )(job(aviso(), conEmpresa));
+    expect(sender.enviados[0].text).toContain("cambia a partir del 19 nov 2026.");
+  });
+
+  it("SLT-42 R28: sin zona en el país de la empresa, el trabajo falla sin enviar ningún correo", async () => {
+    const sender = emisor();
+    const handler = crearPlanAvisoCorreoHandler(
+      { destinatariosDelAviso: async () => ({ empresaNombre: "Uno", maestros: MAESTROS }) },
+      () => ({ sender, contacto: null, reglasPais: reglasPaisFijas({ zonaHoraria: null }) }),
+    );
+    await expect(handler(job(aviso(), conEmpresa))).rejects.toBeInstanceOf(PaisSinZonaHoraria);
+    expect(sender.enviados).toEqual([]);
+  });
+
+  it("SLT-42: el composition root del correo inyecta las reglas del país de la empresa", () => {
+    expect(jobsCambioPlan.buildDepsAvisoCorreo().reglasPais).toBeDefined();
+  });
+
   it("un recordatorio pide comprobar que su programación sigue pendiente; el cancelado no", async () => {
     const destinatarios = vi.fn<IPlanesRepository["destinatariosDelAviso"]>(async () => null);
     const sender = emisor();
-    const handler = crearPlanAvisoCorreoHandler({ destinatariosDelAviso: destinatarios }, () => ({ sender, contacto: null }));
+    const handler = crearPlanAvisoCorreoHandler({ destinatariosDelAviso: destinatarios }, () => ({ sender, contacto: null, reglasPais: reglasPaisFijas() }));
     await handler(job(aviso({ tipo: "recordatorio_7" }), conEmpresa));
     await handler(job(aviso({ tipo: "cancelado", cambios: {} }), conEmpresa));
     expect(destinatarios.mock.calls).toEqual([
@@ -314,7 +341,7 @@ describe("SL-24 — plan_aviso_correo (R41, R42, R45)", () => {
     const sender = emisor(["a@uno.example"]);
     const handler = crearPlanAvisoCorreoHandler(
       { destinatariosDelAviso: async () => ({ empresaNombre: "Uno", maestros: MAESTROS }) },
-      () => ({ sender, contacto: null }),
+      () => ({ sender, contacto: null, reglasPais: reglasPaisFijas() }),
     );
     const error = await handler(job(aviso(), conEmpresa)).catch((e: unknown) => e);
     expect(String(error)).toMatch(/fallaron 1 de 2 envío/);

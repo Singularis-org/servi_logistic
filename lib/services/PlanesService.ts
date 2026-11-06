@@ -36,7 +36,6 @@ import {
   type PlanDTO,
   type PlanResult,
 } from "@/lib/types/planes";
-import { ZONA_CR } from "@/lib/utils/fecha-cr";
 import { fechaCalendario } from "@/lib/utils/calendario-zona";
 import type { ZonaDeOrganizacion } from "@/lib/services/zona-de-la-empresa";
 
@@ -91,6 +90,16 @@ function fueraDeRango(
 function inicioElegido(fecha: string, ahora: Date): InicioDelCicloElegido {
   return { fecha, ancla: anclaDeLaFechaElegida(fecha, ahora) };
 }
+
+/**
+ * SLT-42 (decisión del humano tras T5.5) — la fecha de un cambio pendiente en el catálogo del
+ * superadmin: día calendario en UTC, con la etiqueta «UTC» para que nadie la lea como hora local.
+ */
+function fechaDelCatalogo(instante: Date): string {
+  return `${fechaCalendario(instante, ZONA_DEL_CATALOGO)} ${ZONA_DEL_CATALOGO}`;
+}
+
+const ZONA_DEL_CATALOGO = "UTC";
 
 /** Un rechazo del repositorio al asignar, como `PlanResult`: el de topes lleva su texto ya redactado. */
 function rechazoDeAsignar(r: Exclude<ResultadoAsignar, { estado: "ok" }>): PlanResult {
@@ -359,10 +368,10 @@ export class PlanesService implements IPlanesService {
           ...f.plan,
           empresaNombre: f.empresaNombre,
           empresas: f.empresas,
-          // SLT-42 pendiente T7.1: un plan del catálogo no es de UNA empresa (sin zona de país que
-          // aplicar); sigue en el día de la plataforma hasta que se decida (pregunta abierta).
+          // SLT-42 (decisión del humano tras T5.5): un plan del catálogo no es de UNA empresa, así
+          // que no hay zona de país que aplicar. La fecha va en UTC y lo dice (`fechaDelCatalogo`).
           vigenteDesdePendiente:
-            f.vigenteDesdePendiente === null ? null : fechaCalendario(f.vigenteDesdePendiente, ZONA_CR),
+            f.vigenteDesdePendiente === null ? null : fechaDelCatalogo(f.vigenteDesdePendiente),
         }),
       ),
     };

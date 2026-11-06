@@ -7,6 +7,7 @@ import type { EmailMessage, IEmailSender } from "@/lib/interfaces/external/IEmai
 import type { JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { crearPlanAvisoCorreoHandler, crearPlanRecordatorioCambioHandler } from "@/lib/planes/jobs-cambio-plan";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 import { PlanesService } from "@/lib/services/PlanesService";
 import type { CrearPlanInput, EditarPlanInput } from "@/lib/types/planes";
 import { crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones";
@@ -75,7 +76,7 @@ function emisor(falla = false): IEmailSender & { enviados: EmailMessage[] } {
  * evita reenviar los de una pasada anterior, como haría la cola al marcarlos `done`).
  */
 async function drenarAvisos(tx: TxDeTest, planId: string, sender: IEmailSender, hechos = new Set<string>()) {
-  const handler = crearPlanAvisoCorreoHandler(planesEnTx(tx), () => ({ sender, contacto: null }));
+  const handler = crearPlanAvisoCorreoHandler(planesEnTx(tx), () => ({ sender, contacto: null, reglasPais: reglasPaisFijas() }));
   for (const job of await trabajos(tx, "plan_aviso_correo", planId)) {
     if (hechos.has(job.id)) continue;
     hechos.add(job.id);
@@ -399,7 +400,7 @@ describeSiHayBase("SL-24 — los correos del cambio de un plan (R41, R42, R45)",
       await p.servicio.cancelarCambio(SUPERADMIN, { planId: p.planId });
       const cancelados = (await trabajos(tx, "plan_aviso_correo", p.planId)).filter((a) => a.payload.tipo === "cancelado");
       let errorCancelacion: unknown = null;
-      await crearPlanAvisoCorreoHandler(planesEnTx(tx), () => ({ sender: emisor(true), contacto: null }))(cancelados[0]).catch(
+      await crearPlanAvisoCorreoHandler(planesEnTx(tx), () => ({ sender: emisor(true), contacto: null, reglasPais: reglasPaisFijas() }))(cancelados[0]).catch(
         (e: unknown) => {
           errorCancelacion = e;
         },

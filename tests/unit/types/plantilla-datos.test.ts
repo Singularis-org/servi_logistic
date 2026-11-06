@@ -268,7 +268,9 @@ describe("SL-15 R3 · las descripciones nombran a la empresa o a la plataforma, 
   it("la guia y la zona son de la empresa; el registro y el acceso, de la plataforma", () => {
     expect(descripcion("guia")).toBe("Número de guía de la empresa. Vacío mientras la orden no la tenga asignada.");
     expect(descripcion("zona")).toBe("Zona de reparto de la empresa a la que pertenece la dirección.");
-    expect(descripcion("fecha_creacion")).toBe("Cuándo se registró la orden en Servi Logistic, en hora de Costa Rica.");
+    // SLT-42 (decisión del humano tras T5.5): la descripción dice «hora local», no la de un país.
+    expect(descripcion("fecha_creacion")).toBe("Cuándo se registró la orden en Servi Logistic, en hora local.");
+    expect(descripcion("fecha_asignacion")).toBe("Cuándo se asignó por última vez el mensajero, en hora local.");
     expect(descripcion("mensajero_email")).toBe(
       "Correo con el que el mensajero entra a Servi Logistic. Es una credencial: no lo envíes.",
     );

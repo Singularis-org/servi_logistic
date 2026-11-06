@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { lineasDeCambioDelPlan } from "@/lib/planes/mensajes";
 import { plantillaCambioPlan, type CambioPlanParams } from "@/lib/services/email/plantillas/cambio-plan";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // SL-24 · T12 (design §16.4; R41, R42, R45) — el correo del cambio de un plan. Los literales del spec
 // (R45 y la línea del reemplazo de §16.2) se escriben aquí a mano; los demás textos son la propuesta
@@ -36,6 +37,7 @@ const BASE: CambioPlanParams = {
   topesPasados: [],
   tipo: "guardado",
   contacto: null,
+  zona: ZONA_DE_CR,
 };
 
 const correo = (extra: Partial<CambioPlanParams> = {}) => plantillaCambioPlan({ ...BASE, ...extra });
@@ -69,6 +71,17 @@ describe("SL-24 — plantillaCambioPlan (R41)", () => {
     // 06:00 UTC = 00:00 en la plataforma; 05:59 UTC sería el día anterior.
     expect(correo({ vigenteDesde: new Date("2026-11-15T06:00:00.000Z") }).text).toContain("15 nov 2026");
     expect(correo({ vigenteDesde: new Date("2026-11-15T05:59:00.000Z") }).text).toContain("14 nov 2026");
+  });
+
+  it("SLT-42 R22: la fecha se pinta en la zona del país de la empresa que cambia de plan", () => {
+    // 2026-11-15T05:30Z: las 23:30 del 14 en Costa Rica (UTC-6) y las 00:30 del 15 en Bogotá (UTC-5).
+    const instante = new Date("2026-11-15T05:30:00.000Z");
+    expect(correo({ vigenteDesde: instante }).text).toContain("14 nov 2026");
+    expect(correo({ vigenteDesde: instante, zona: "America/Bogota" }).text).toContain("15 nov 2026");
+    const cancelado = correo({ tipo: "cancelado", cambios: {}, vigenteDesde: instante, zona: "America/Bogota" });
+    expect(cancelado.text).toContain("15 nov 2026");
+    const reemplazo = correo({ reemplazaA: instante, zona: "America/Bogota" });
+    expect(reemplazo.text).toContain("15 nov 2026");
   });
 
   it("guardado inmediato: sin fecha, dice que ya rige", () => {

@@ -135,7 +135,7 @@ export function crearInformeTransito(deps?: DepsInformeTransito): InformeWhatsap
         descripcion: "Paquetes en alerta del resto de zonas.",
         ejemplo: "10",
       },
-      { clave: "fecha", nombre: "Fecha del informe", descripcion: "Fecha de generación (hora de Costa Rica).", ejemplo: "05/10/2026" },
+      { clave: "fecha", nombre: "Fecha del informe", descripcion: "Fecha de generación (hora local).", ejemplo: "05/10/2026" },
     ],
     generaDocumento: true,
     // Datos de todas las tiendas: no puede llegar a un adminTienda.

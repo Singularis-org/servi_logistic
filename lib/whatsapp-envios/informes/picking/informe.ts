@@ -146,8 +146,8 @@ export function crearInformePicking(deps?: DepsInformePicking): InformeWhatsapp<
       },
       { clave: "remision_desde", nombre: "Primera remisión", descripcion: "La primera remisión del picking.", ejemplo: "NA-1069" },
       { clave: "remision_hasta", nombre: "Última remisión", descripcion: "La última remisión del picking.", ejemplo: "NA-1101" },
-      { clave: "fecha", nombre: "Fecha del picking", descripcion: "Fecha del envío (hora de Costa Rica).", ejemplo: "05/10/2026" },
-      { clave: "hora", nombre: "Hora del picking", descripcion: "Hora del envío (hora de Costa Rica).", ejemplo: "06:30" },
+      { clave: "fecha", nombre: "Fecha del picking", descripcion: "Fecha del envío (hora local).", ejemplo: "05/10/2026" },
+      { clave: "hora", nombre: "Hora del picking", descripcion: "Hora del envío (hora local).", ejemplo: "06:30" },
     ],
     generaDocumento: true,
     // D3: el picking lo hace la bodega de la empresa; no llega a una tienda.

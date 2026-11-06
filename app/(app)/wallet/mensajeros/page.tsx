@@ -6,7 +6,8 @@ import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { esAccesoTotal } from "@/lib/auth/acceso-total";
 import { listarCuentasPorPagarPaginadoAction } from "@/lib/actions/wallet-mensajero";
 import { fechaObjetivo } from "@/lib/ranking/snapshot-dia";
-import { fechaCalendarioCR, ZONA_CR } from "@/lib/utils/fecha-cr";
+import { zonaDelBorde } from "@/lib/actions/_shared/zona-del-borde";
+import { fechaCalendario } from "@/lib/utils/calendario-zona";
 
 import { WalletMensajerosTabs } from "./_components/WalletMensajerosTabs";
 
@@ -43,13 +44,14 @@ export default async function WalletMensajerosPage() {
 
   // Feature 293 (T5.3, design §9) — los dos días que el panel de premios necesita, resueltos en
   // el SERVIDOR: el que muestra al abrirse (el último que el ranking congeló, `fechaObjetivo` =
-  // ayer en CR — la misma función que usa el cron) y la cota superior del selector (hoy en CR,
-  // R8). No se calculan en el cliente porque el reloj del navegador no es el de Costa Rica y
+  // ayer en la empresa — la misma función que usa el cron) y la cota superior del selector (hoy,
+  // R8). No se calculan en el cliente porque el reloj del navegador no es el de la empresa y
   // porque el render del servidor y el de la hidratación tienen que dar el mismo día.
+  // SLT-42 (R22, R28): la zona es la del país de la empresa de la sesión.
   const ahora = new Date();
-  // SLT-42 pendiente T5.7: zona de la empresa
-  const fechaInicialPremios = fechaObjetivo(ahora, ZONA_CR);
-  const fechaMaximaPremios = fechaCalendarioCR(ahora);
+  const zona = await zonaDelBorde();
+  const fechaInicialPremios = fechaObjetivo(ahora, zona);
+  const fechaMaximaPremios = fechaCalendario(ahora, zona);
 
   // SL-23 (design §6.3): los premios del ranking exigen Ranking (Wallet es núcleo desde el
   // 2026-10-28); con Ranking apagado la pestaña de premios no se pinta.

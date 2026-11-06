@@ -1,7 +1,7 @@
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { prepararConsultaAnalitica } from "@/lib/analytics/consulta";
-import { ZONA_CR } from "@/lib/utils/fecha-cr";
 import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import { describirDenegado } from "@/lib/analytics/auditoria";
 import { sondeaIdentidadDeMensajero } from "@/lib/analytics/oraculo-mensajero";
 import type { ActorAnalitica } from "@/lib/analytics/alcance";
@@ -105,6 +105,21 @@ export interface AnaliticaIntegradorDeps {
   readonly logger?: ErrorLogger;
   /** Reloj inyectable: mismo `now` => misma salida, sin `new Date()` escondido. */
   readonly now?: () => Date;
+  /**
+   * SLT-42 (R22, R28) — el pais de la empresa de la key, para la zona horaria del rango. En
+   * produccion no se pasa: se lee del `conEmpresa` que abre el cascaron.
+   */
+  readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
+}
+
+/**
+ * SLT-42 (R22, R28) — la zona horaria del pais de la empresa de la key. La usan el cascaron (para
+ * resolver el rango que falta) y este borde (para preparar cada consulta): las dos lecturas van a la
+ * memoria del marco de `conEmpresa`, asi que dan la misma zona con una sola consulta. Sin zona en el
+ * pais, `PaisSinZonaHoraria` antes de consultar nada.
+ */
+export function zonaDelIntegrador(deps: Pick<AnaliticaIntegradorDeps, "reglasPais"> = {}): Promise<string> {
+  return (deps.reglasPais ?? construirReglasPaisEmpresa(getPrismaClient())).zonaHoraria();
 }
 
 /**
@@ -124,7 +139,10 @@ export interface AnaliticaIntegradorDeps {
  * tablas vivas y NO puede entrar en cache por construccion, no por una politica que alguien
  * pueda olvidar.
  */
-function construirServicio(now: () => Date): IAnaliticaOperativaService {
+function construirServicio(
+  now: () => Date,
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
+): IAnaliticaOperativaService {
   const prisma = getPrismaClient();
   return new AnaliticaOperativaService(
     decorarRollupConCache(
@@ -139,7 +157,7 @@ function construirServicio(now: () => Date): IAnaliticaOperativaService {
       new OrdenTraspasoRepository(prisma),
     ),
     { now },
-    construirReglasPaisEmpresa(prisma), // SLT-42 (R22, R28): la zona horaria del pais de la empresa.
+    reglasPais ?? construirReglasPaisEmpresa(prisma), // SLT-42 (R22, R28): la zona del pais de la empresa.
   );
 }
 
@@ -162,9 +180,11 @@ export async function consultarAnaliticaIntegrador(
 
   // P4-bis/R48 — EL RELOJ SE LEE UNA SOLA VEZ PARA TODO EL LOTE, y no es una micro-optimizacion:
   // el instante decide el rango resuelto y el `corteAt` del punto parcial. Un `now()` por metrica
-  // podria cruzar la medianoche de Costa Rica a mitad del lote y devolver, en la MISMA respuesta,
+  // podria cruzar la medianoche de la empresa a mitad del lote y devolver, en la MISMA respuesta,
   // dos series con rangos distintos y un `corteAt` que se mueve entre ellas.
   const instante = now();
+  // SLT-42 (R22, R28): el rango de cada metrica se resuelve en la zona del pais de la empresa de la key.
+  const zona = await zonaDelIntegrador(deps);
 
   // (2) PREPARAR TODAS ANTES DE CONSULTAR NINGUNA (R45/R46). Una llamada a
   // `prepararConsultaAnalitica` POR METRICA —con el canal EXPLICITO (267/R14, 267/R1)— y ni una
@@ -176,8 +196,7 @@ export async function consultarAnaliticaIntegrador(
       entrada.raw,
       entrada.actor,
       metricaId,
-      // SLT-42 pendiente T5.7: zona de la empresa de la key
-      ZONA_CR,
+      zona,
       instante,
       "api_key",
     );
@@ -217,7 +236,7 @@ export async function consultarAnaliticaIntegrador(
 
   // (4) El servicio se construye AQUI y no antes: en todos los caminos denegados no llega a
   // existir, asi que el repositorio no recibe ni una llamada.
-  const service = deps.service ?? construirServicio(() => instante);
+  const service = deps.service ?? construirServicio(() => instante, deps.reglasPais);
 
   // SECUENCIAL, Y ES UNA DECISION (design §4.4). El lote esta acotado por construccion —tras
   // deduplicar, cualquier id fuera de la lista blanca deniega el lote entero, asi que nunca hay

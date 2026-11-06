@@ -166,6 +166,7 @@ export class RastreoPublicoService implements IRastreoPublicoService {
 
     // SLT-42 (R27, R28) — la zona del pais de la empresa de la orden. Sin zona no se inventa una:
     // el puerto falla con `PaisSinZonaHoraria`, y solo quien ya acerto el segundo factor llega aqui.
+    // El composition root lo traduce a `no_encontrado` y deja el aviso para soporte (decision del humano).
     // Es la misma lectura del pais (memoria del marco de `conEmpresa`), no otra consulta.
     const zona = await this.reglasDelPais().zonaHoraria();
 

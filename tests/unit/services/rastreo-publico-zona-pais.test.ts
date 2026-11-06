@@ -28,6 +28,7 @@ const h = vi.hoisted(() => ({
   findUnique: vi.fn(),
   conEmpresa: vi.fn(),
   deLaEmpresa: vi.fn(),
+  zonaHoraria: vi.fn(),
 }));
 
 vi.mock("@/lib/db/prisma-client", () => ({
@@ -40,7 +41,7 @@ vi.mock("@/lib/db/contexto-empresa", () => ({
 vi.mock("@/lib/services/ReglasPaisEmpresaService", () => ({
   construirReglasPaisEmpresa: () => ({
     deLaEmpresa: h.deLaEmpresa,
-    zonaHoraria: vi.fn(),
+    zonaHoraria: h.zonaHoraria,
     tipoDocumento: vi.fn(),
   }),
 }));
@@ -132,7 +133,7 @@ describe("SLT-42 R27 — la fecha de cada evento, en la zona del pais de la empr
     expect(segunda.envio.linea[0].fecha).toBe("2026-08-14T22:30-05:00");
   });
 
-  it("sin zona en el pais y con el factor correcto, falla con PaisSinZonaHoraria antes de leer el historial (R28)", async () => {
+  it("sin zona en el pais y con el factor correcto, el SERVICIO lanza PaisSinZonaHoraria antes de leer el historial (R28; el composition root lo traduce a no_encontrado)", async () => {
     const dobles = repoDoble(ORDEN, [transicion(INSTANTE, "entregado")]);
     const service = new RastreoPublicoService(dobles.repo, CONFIG, reglasPaisFijas({ zonaHoraria: null }));
 
@@ -212,6 +213,7 @@ describe("SLT-42 R27 — composition root: la empresa sale de la guia, y una gui
     h.findUnique.mockReset();
     h.conEmpresa.mockReset();
     h.deLaEmpresa.mockReset();
+    h.zonaHoraria.mockReset();
   });
 
   it("guia inexistente: no_encontrado, como hoy, sin abrir empresa ni leer pais", async () => {
@@ -252,5 +254,91 @@ describe("SLT-42 R27 — composition root: la empresa sale de la guia, y una gui
     expect(r).toEqual({ estado: "no_encontrado" });
     expect(h.conEmpresa).toHaveBeenCalledWith("org-co", expect.any(Function));
     expect(empresaAlLeerPais).toBe("org-co");
+  });
+});
+
+describe("SLT-42 R27/R28 — pais incompleto en el rastreo: no_encontrado y aviso con la empresa (decision tras T5.6)", () => {
+  const logError = vi.fn();
+  const deps = () => ({
+    getContext: async () => ({ ipAddress: "203.0.113.8" }),
+    limiter: new ResetRateLimiter(),
+    logger: { logError },
+  });
+
+  beforeEach(() => {
+    h.findUnique.mockReset();
+    h.conEmpresa.mockReset();
+    h.deLaEmpresa.mockReset();
+    h.zonaHoraria.mockReset();
+    logError.mockReset();
+  });
+
+  /** La primera lectura (en plataforma) pide solo la empresa; la segunda es la del repositorio. */
+  function guiaDeColombia() {
+    h.findUnique.mockImplementation(async (args: { select: Record<string, boolean> }) =>
+      args.select.organizacionId
+        ? { organizacionId: "org-co" }
+        : { id: "orden-2", numGuia: 4322, telefonoDest: "300 123 7766", deletedAt: null },
+    );
+    h.conEmpresa.mockImplementation(async (_organizacionId: string, fn: () => Promise<unknown>) => fn());
+  }
+
+  it("pais sin prefijo o digitos de telefono: no_encontrado, como una guia inexistente, y console.error con la empresa", async () => {
+    guiaDeColombia();
+    h.deLaEmpresa.mockResolvedValue({ paisId: "CO", zonaHoraria: "America/Bogota", telefono: null });
+
+    const r = await consultarRastreoPublico({ numGuia: 4322, factor: "7766" }, deps());
+
+    expect(r).toEqual({ estado: "no_encontrado" });
+    expect(logError).toHaveBeenCalledTimes(1);
+    const registro = logError.mock.calls[0]![0];
+    expect(registro).toEqual({
+      evento: "rastreo_publico_pais_incompleto",
+      organizacionId: "org-co",
+      paisId: "CO",
+      falta: "telefono",
+    });
+    expect(JSON.stringify(registro)).not.toMatch(/4322|7766|300 123|orden-2/);
+  });
+
+  it("pais sin zona horaria y factor correcto: no_encontrado (no un error de servidor) y console.error con la empresa", async () => {
+    guiaDeColombia();
+    h.deLaEmpresa.mockResolvedValue({ paisId: "CO", zonaHoraria: null, telefono: BOGOTA.telefono });
+    h.zonaHoraria.mockRejectedValue(new PaisSinZonaHoraria("CO"));
+
+    const r = await consultarRastreoPublico({ numGuia: 4322, factor: "7766" }, deps());
+    h.findUnique.mockReset();
+    h.findUnique.mockResolvedValue(null);
+    const inexistente = await consultarRastreoPublico({ numGuia: 999_999, factor: "7766" }, deps());
+
+    expect(r).toEqual({ estado: "no_encontrado" });
+    expect(r).toEqual(inexistente);
+    expect(logError).toHaveBeenCalledTimes(1);
+    const registro = logError.mock.calls[0]![0];
+    expect(registro).toEqual({
+      evento: "rastreo_publico_pais_incompleto",
+      organizacionId: "org-co",
+      paisId: "CO",
+      falta: "zona_horaria",
+    });
+    expect(JSON.stringify(registro)).not.toMatch(/4322|7766|300 123|orden-2/);
+  });
+
+  it("pais completo y factor errado: no_encontrado SIN aviso (no es un pais incompleto)", async () => {
+    guiaDeColombia();
+    h.deLaEmpresa.mockResolvedValue({ paisId: "CO", zonaHoraria: "America/Bogota", telefono: BOGOTA.telefono });
+
+    const r = await consultarRastreoPublico({ numGuia: 4322, factor: "0000" }, deps());
+
+    expect(r).toEqual({ estado: "no_encontrado" });
+    expect(logError).not.toHaveBeenCalled();
+  });
+
+  it("otro error del servicio no se disfraza de no_encontrado", async () => {
+    guiaDeColombia();
+    h.deLaEmpresa.mockRejectedValue(new Error("base caida"));
+
+    await expect(consultarRastreoPublico({ numGuia: 4322, factor: "7766" }, deps())).rejects.toThrow(/base caida/);
+    expect(logError).not.toHaveBeenCalled();
   });
 });
