@@ -296,7 +296,7 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Qué falta:** decirlo en el plan de reversión de EP-8: volver atrás exige revisar `tarifa_valor`.
 - **Dueño:** Carlos Restrepo.
 
-### D57 — Revertir tras promover EP-8 devuelve toda empresa a un tope de 3
+### D60 — Revertir tras promover EP-8 devuelve toda empresa a un tope de 3
 - **Origen:** SLT-77, R39 y `design §8` (2026-11-06). El plan de reversión de EP-8 no existe aún como documento: D49 solo lo cita.
 - **Qué falta:** escribirlo al promover la épica, con esto:
   - **Volver a un despliegue anterior sin `down.sql`:**
@@ -347,3 +347,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** visto en la Tanda F de SLT-77 (2026-11-06, `progress/capturas/SLT-77/seccion-1360-oscuro.png`), en las tablas de tiendas con precio propio y de mensajeros con valor propio. No es de Tarifas ni de SLT-55: `components/shared/DataTable.tsx:648` pone `border-asfalto-2`, y `--color-asfalto-2` es `#e7e5e4` fijo, sin valor oscuro (`app/globals.css:185`); `--border` en oscuro vale `#2D2D2C`. Esa línea viene del punto de partida (`86d70bf0`). Por lectura afecta a toda tabla hecha con `DataTable`; solo se vio en esas dos.
 - **Qué falta:** decidir si el marco usa `border-border`, y mirarlo en las demás pantallas con `DataTable`. Hay `border-asfalto-2` en otros archivos: revisarlos a la vez.
 - **Dueño:** Carlos Restrepo.
+
+### D57 — Crons de Vercel a hora fija en UTC, calculada para Costa Rica
+- **Origen:** F1.4 de SLT-42 (2026-11-03, P6 en `specs/SLT-42-telefono-documento-hora-por-pais/requirements.md`). Los crons de `vercel.json` (corte diario, snapshot de ranking, etc.) corren a una hora UTC pensada para la medianoche de CR. SLT-42 hace que cada corrida calcule la fecha de cada empresa con la zona de su país, pero no mueve la hora del cron.
+- **Qué falta:** cuando entre el primer país con otra zona horaria, que esos crons corran por zona (p. ej. cada hora, procesando solo las empresas cuya medianoche local acaba de pasar). Con solo CR no hay efecto.
+- **Dueño:** Camilo (decidir si va a ficha cuando entre otro país).

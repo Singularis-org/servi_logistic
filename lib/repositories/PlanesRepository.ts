@@ -58,7 +58,7 @@ import {
   type VersionPlan,
   versionPlanSchema,
 } from "@/lib/types/planes";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendarioPlataforma } from "@/lib/planes/ciclo";
 
 // SL-24 (design §2, §4.4, §5, §7, §9, §16.3) — el catálogo de planes y su asignación. Lo escribe solo
 // el superadmin, que no tiene empresa: todo corre en `comoPlataforma` (como dueño, sin el filtro de la
@@ -1013,7 +1013,7 @@ export class PlanesRepository implements IPlanesRepository {
       entidadTipo: "plan",
       entidadId: plan.id,
       entidadEtiqueta: etiquetaDeEntidad("plan", { nombre: plan.nombre }),
-      valorNuevo: valorDelHistorialDeAsignacion(fechaCalendarioCR(desde), tipoCobro),
+      valorNuevo: valorDelHistorialDeAsignacion(fechaCalendarioPlataforma(desde), tipoCobro),
       organizacionId: empresa.id,
       ...actor,
     } as const;
@@ -1066,7 +1066,7 @@ export class PlanesRepository implements IPlanesRepository {
         entidadId: planId,
         entidadEtiqueta: etiquetaDeEntidad("plan", { nombre: plan.nombre }),
         valorAnterior: null,
-        valorNuevo: valorDelHistorialDeAsignacion(fechaCalendarioCR(desde), tipoCobro),
+        valorNuevo: valorDelHistorialDeAsignacion(fechaCalendarioPlataforma(desde), tipoCobro),
         organizacionId: empresa.id,
         ...actor,
       },

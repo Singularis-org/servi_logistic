@@ -3,6 +3,7 @@ import { gestionar } from "@/lib/actions/mis-asignaciones";
 import type { IMisAsignacionesService } from "@/lib/interfaces/services/IMisAsignacionesService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { CAUSA_DEVOLUCION_SEED } from "@/lib/types/causa-devolucion";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // ⚠️ Feature 193 (R10), decision humana del 2026-08-10: la gestion EXIGE la ubicacion del
 // mensajero (o un motivo tecnico). Los FormData validos de abajo se AMPLIAN con las dos
@@ -75,6 +76,7 @@ describe("Feature 73 · la action propaga la causa al service (R6/R9)", () => {
     const service = buildService();
     const r = await gestionar(fdDevuelta({ causaDevolucion: causa }), {
       service,
+      reglasPais: reglasPaisFijas(),
       getActor: actorMensajero,
     });
     expect(r.status).toBe("ok");
@@ -88,7 +90,7 @@ describe("Feature 73 · la action propaga la causa al service (R6/R9)", () => {
 describe("Feature 75 · la action lee la foto del FormData y la propaga al service", () => {
   it("FormData con evidencia -> el input del service lleva la evidencia leida", async () => {
     const service = buildService();
-    const r = await gestionar(fdDevuelta(), { service, getActor: actorMensajero });
+    const r = await gestionar(fdDevuelta(), { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
     expect(r.status).toBe("ok");
     const input = inputRecibido(service);
     expect(input.resultado).toBe("novedad");
@@ -101,7 +103,7 @@ describe("Feature 75 · la action lee la foto del FormData y la propaga al servi
     const service = buildService();
     const fd = fdDevuelta();
     fd.delete("evidencia");
-    const r = await gestionar(fd, { service, getActor: actorMensajero });
+    const r = await gestionar(fd, { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
     expect(r.status).toBe("validation_error");
     if (r.status === "validation_error") {
       // Feature 119 (R6): el error de "sin foto" cuelga del campo LISTA `evidencias`.
@@ -116,7 +118,7 @@ describe("Feature 73 · la action rechaza en el borde, sin efectos (R6/R9)", () 
     const service = buildService();
     const fd = fdDevuelta();
     fd.delete("causaDevolucion");
-    const r = await gestionar(fd, { service, getActor: actorMensajero });
+    const r = await gestionar(fd, { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
     expect(r.status).toBe("validation_error");
     if (r.status === "validation_error") {
       expect(r.fieldErrors.causaDevolucion).toBeDefined();
@@ -129,6 +131,7 @@ describe("Feature 73 · la action rechaza en el borde, sin efectos (R6/R9)", () 
     const service = buildService();
     const r = await gestionar(fdDevuelta({ causaDevolucion: "otro" }), {
       service,
+      reglasPais: reglasPaisFijas(),
       getActor: actorMensajero,
     });
     expect(r.status).toBe("validation_error");
@@ -145,7 +148,7 @@ describe("Feature 73 · la action rechaza en el borde, sin efectos (R6/R9)", () 
     fd.set("ubicacionLat", "9.9281"); // feature 193/R17
     fd.set("ubicacionLng", "-84.0907");
     fd.set("resultado", "novedad");
-    const r = await gestionar(fd, { service, getActor: actorMensajero });
+    const r = await gestionar(fd, { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
     expect(r.status).toBe("validation_error");
     if (r.status === "validation_error") {
       expect(r.fieldErrors.causaDevolucion).toBeDefined();
@@ -156,7 +159,7 @@ describe("Feature 73 · la action rechaza en el borde, sin efectos (R6/R9)", () 
 
   it("R7: con causa pero SIN motivo -> validation_error (la causa no sustituye al motivo)", async () => {
     const service = buildService();
-    const r = await gestionar(fdDevuelta({ motivo: "" }), { service, getActor: actorMensajero });
+    const r = await gestionar(fdDevuelta({ motivo: "" }), { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
     expect(r.status).toBe("validation_error");
     if (r.status === "validation_error") expect(r.fieldErrors.motivo).toBeDefined();
     expect(service.gestionar).not.toHaveBeenCalled();
@@ -166,7 +169,7 @@ describe("Feature 73 · la action rechaza en el borde, sin efectos (R6/R9)", () 
     const service = buildService();
     const fd = fdDevuelta();
     fd.delete("evidencia");
-    const r = await gestionar(fd, { service, getActor: actorMensajero });
+    const r = await gestionar(fd, { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
     expect(r.status).toBe("validation_error");
     if (r.status === "validation_error") {
       // Feature 119 (R6): sin foto -> error en el campo lista `evidencias`.
@@ -187,7 +190,7 @@ describe("Feature 73 · la causa no se cuela en las otras ramas (R10)", () => {
     fd.set("motivo", "cliente rechazo");
     fd.set("causaDevolucion", "wrong_address"); // intento de colarla
     fd.set("evidencia", new File([new Uint8Array([1, 2, 3, 4])], "ev.jpg", { type: "image/jpeg" }));
-    const r = await gestionar(fd, { service, getActor: actorMensajero });
+    const r = await gestionar(fd, { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
     expect(r.status).toBe("ok");
     expect(inputRecibido(service)).not.toHaveProperty("causaDevolucion");
   });

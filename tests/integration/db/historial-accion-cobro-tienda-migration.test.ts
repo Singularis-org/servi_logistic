@@ -450,7 +450,7 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("381/B.7 (b) — el down recrea 50 tipos y 2
       "tarifas_activadas",
       // SLT-86: `plan_cambio_empresa_cancelado`, de `20261106150000_historial_accion_plan_cambio_empresa_cancelado`.
       "plan_cambio_empresa_cancelado",
-      // SLT-77: `tope_intentos_cambiado`, de `20261106160000_historial_tope_intentos`.
+      // SLT-77: `tope_intentos_cambiado`, de `20261107130000_historial_tope_intentos`.
       "tope_intentos_cambiado",
     ];
     expect([...tiposAntes].sort()).toEqual(

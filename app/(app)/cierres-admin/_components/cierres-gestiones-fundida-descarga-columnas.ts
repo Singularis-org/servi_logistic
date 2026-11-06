@@ -144,6 +144,7 @@ import {
 } from "./cierre-labels";
 import { CLAVE_MEDIO_PAGO, MEDIOS_PAGO, montoPorMetodo } from "./desglose-pago";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /**
  * UNA COLUMNA POR MEDIO DE PAGO (2026-08-19), en el orden de `MEDIOS_PAGO` —el de declaración
  * del enum, que es el mismo que el servidor garantiza en `pagos` (R24)—. El encabezado es la
@@ -436,7 +437,8 @@ function ubicacion(gestion: CierreGestionDescargaDTO): string | null {
 function celdasComunes(gestion: CierreGestionDescargaDTO): DescargaFila {
   return {
     mensajero: gestion.mensajeroNombre,
-    fechaCierre: fechaDiaInstanteCR(gestion.cierreSolicitadoAt),
+    // SLT-81: la UI sigue en la zona de CR
+    fechaCierre: fechaDiaInstanteCR(gestion.cierreSolicitadoAt, ZONA_CR),
     // Las dos fechas nuevas llegan YA como día calendario `YYYY-MM-DD` del servidor, así que
     // aquí NO se les aplica `fechaDiaInstanteCR` ni ningún recorte: no hay nada que recortar, y pasar
     // un día por un extractor de días sugeriría que puede ser un instante, que es justo la

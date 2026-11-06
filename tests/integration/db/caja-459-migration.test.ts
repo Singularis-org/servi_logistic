@@ -123,7 +123,7 @@ describeSiHayBase("459/B.5 — las migraciones de la 459 contra Postgres", () =>
     // miden sin ellos, para no correrlos otra vez.
     // SLT-86: UN tipo detras de todo lo anterior (`plan_cambio_empresa_cancelado`, 20261106150000), ninguna
     // entidad. Los cortes de tipos se miden también sin él.
-    // SLT-77: UN tipo y UNA entidad mas detras (20261106160000), medidos igual.
+    // SLT-77: UN tipo y UNA entidad mas detras (20261107130000), medidos igual.
     expect(tipos.at(-1)).toBe("tope_intentos_cambiado");
     expect(tipos.slice(-3)).toEqual(["tarifas_activadas", "plan_cambio_empresa_cancelado", "tope_intentos_cambiado"]);
     expect(entidades.slice(-2)).toEqual(["tarifa_activacion", "organizacion"]);

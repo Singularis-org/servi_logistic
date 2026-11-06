@@ -386,6 +386,10 @@ describe("287/R37/R38 — ni correo, ni aviso, ni nada que dependa de un proveed
     // El numero sigue siendo un literal exacto: relajarlo a `toBeGreaterThan` desarmaria la
     // trampa y dejaria pasar en silencio el sexto parametro, que es lo unico que este caso
     // existe para no dejar pasar.
-    expect(UsuarioService.length).toBe(5);
+    //
+    // SLT-42 (2026-11-04): de CINCO a SEIS, mirado igual. El sexto es `IReglasPaisEmpresa`, tampoco
+    // un emisor: solo LEE el pais de la empresa (zona, telefono, tipos de documento) para validar el
+    // alta y la edicion; `restablecerContrasena` no lo usa.
+    expect(UsuarioService.length).toBe(6);
   });
 });

@@ -11,6 +11,7 @@ import {
 import type { ConsultaProductos } from "@/lib/analytics/productos-consulta";
 import { ROLES_ANALITICA } from "@/lib/analytics/types";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // FICHA 347 / B2.3 — QUIEN VE EL DINERO. Cubre R1, R2, R3, R4, R5, R8, R9, R10, R73, R77.
 //
 // El alcance de DATOS no se vuelve a probar aqui (lo cubre `productos-alcance.test.ts` de la
@@ -24,7 +25,7 @@ function actor(rol: string, usuarioId = "u1") {
 }
 
 function consultaDe(raw: object, rol: string, usuarioId = "u1"): ConsultaProductos {
-  const preparada = prepararConsultaProductos(raw, actor(rol, usuarioId), AHORA);
+  const preparada = prepararConsultaProductos(raw, actor(rol, usuarioId), ZONA_DE_CR, AHORA);
   if (preparada.status !== "ok") throw new Error(`salio ${preparada.status}`);
   return preparada.consulta;
 }
@@ -140,13 +141,13 @@ describe("R6 · un `denegado` de dinero NO deniega la lectura: la APAGA", () => 
 
     // Y el mecanismo: para un rol con las dos concedidas, la preparacion sale `ok` y el campo
     // `dinero` es un valor mas de la consulta, no un estado de la resolucion.
-    const preparada = prepararConsultaProductos({}, actor("maestro"), AHORA);
+    const preparada = prepararConsultaProductos({}, actor("maestro"), ZONA_DE_CR, AHORA);
     expect(preparada.status).toBe("ok");
   });
 
   it("un rol con el VOLUMEN prohibido sigue siendo `forbidden`, no una tabla sin dinero", () => {
     for (const rol of ["adminSatelite", "mensajero"]) {
-      const preparada = prepararConsultaProductos({}, actor(rol), AHORA);
+      const preparada = prepararConsultaProductos({}, actor(rol), ZONA_DE_CR, AHORA);
       expect(preparada.status, rol).toBe("forbidden");
     }
   });
@@ -161,7 +162,7 @@ describe("R8 / R73 · la concesion NUNCA entra por el filtro del cliente", () =>
       { alcance: "global" },
       { productos_dinero: "concedido" },
     ]) {
-      const preparada = prepararConsultaProductos(intento, actor("adminTienda", "t-9"), AHORA);
+      const preparada = prepararConsultaProductos(intento, actor("adminTienda", "t-9"), ZONA_DE_CR, AHORA);
       expect(preparada.status, JSON.stringify(intento)).toBe("validation_error");
     }
   });
@@ -169,14 +170,14 @@ describe("R8 / R73 · la concesion NUNCA entra por el filtro del cliente", () =>
   it("R73 · si no valida, NO se resuelve el alcance ni se toca nada mas", () => {
     // Se comprueba por la FORMA de la respuesta: un `validation_error` no lleva alcance ni
     // consulta, asi que no hubo resolucion que reportar. Un `forbidden` si la habria tenido.
-    const preparada = prepararConsultaProductos({ dinero: "concedido" }, null, AHORA);
+    const preparada = prepararConsultaProductos({ dinero: "concedido" }, null, ZONA_DE_CR, AHORA);
     expect(preparada.status).toBe("validation_error");
     expect(preparada).not.toHaveProperty("consulta");
     expect(preparada).not.toHaveProperty("motivo");
   });
 
   it("un filtro con clave desconocida no se cuela ni siquiera para un maestro", () => {
-    expect(prepararConsultaProductos({ tienda_id_real: ["x"] }, actor("maestro"), AHORA).status).toBe(
+    expect(prepararConsultaProductos({ tienda_id_real: ["x"] }, actor("maestro"), ZONA_DE_CR, AHORA).status).toBe(
       "validation_error",
     );
   });

@@ -15,6 +15,7 @@ import { DobleProveedor, compuerta } from "../unit/asistente/_doble-proveedor";
 import { contextoActual } from "@/lib/db/contexto-empresa";
 import type { ICredencialesIntegracion, LecturaCredencial } from "@/lib/interfaces/services/ICredencialesIntegracion";
 import type { ServicioIntegracion } from "@/lib/types/integraciones";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * ⭑ FICHA 436 · R7, R8, R12, R13, R18, R19 — EL BORDE HTTP, CON EL SERVICIO REAL.
@@ -42,6 +43,7 @@ function servicioReal(proveedor: DobleProveedor, consultasHoy = 1, maxConsultasD
     usoRepo: usoQueDevuelve(consultasHoy),
     leerCatalogo: leerCatalogoAyuda,
     maxConsultasDia,
+    reglasPais: reglasPaisFijas(),
   });
 }
 
@@ -432,6 +434,7 @@ describe("SL-36/R27 — la empresa sin asistente: lo dice, sin red y sin contar 
       empresaDeLaSesion: async () => "org-a",
       fetchImpl: red as unknown as typeof fetch,
       usoRepo,
+      reglasPais: reglasPaisFijas(),
     });
 
     expect(res.status).toBe(500);
@@ -456,6 +459,7 @@ describe("SL-36/R27 — la empresa sin asistente: lo dice, sin red y sin contar 
       empresaDeLaSesion: async () => empresa,
       fetchImpl: red as unknown as typeof fetch,
       usoRepo,
+      reglasPais: reglasPaisFijas(),
     });
 
     expect((await res.json()).message).toBe(TEXTO_R27);
@@ -471,6 +475,7 @@ describe("SL-36/R27 — la empresa sin asistente: lo dice, sin red y sin contar 
       empresaDeLaSesion: async () => "org-a",
       fetchImpl: vi.fn() as unknown as typeof fetch,
       usoRepo: contadorEspia().usoRepo,
+      reglasPais: reglasPaisFijas(),
     });
     expect(res.status).toBe(403);
   });
@@ -487,6 +492,7 @@ describe("SL-36/R23 y R30 — con la clave de la empresa, y su rechazo queda en 
       empresaDeLaSesion: async () => "org-b",
       fetchImpl: red as unknown as typeof fetch,
       usoRepo: contadorEspia().usoRepo,
+      reglasPais: reglasPaisFijas(),
     });
 
     expect(leidasEn).toEqual(["org-b"]);
@@ -505,6 +511,7 @@ describe("SL-36/R23 y R30 — con la clave de la empresa, y su rechazo queda en 
       empresaDeLaSesion: async () => "org-a",
       fetchImpl: red as unknown as typeof fetch,
       usoRepo: contadorEspia().usoRepo,
+      reglasPais: reglasPaisFijas(),
     });
 
     expect(marcas).toEqual([{ organizacionId: "org-a", codigo: "asistente.credencial_rechazada" }]);
@@ -522,6 +529,7 @@ describe("SL-36/R23 y R30 — con la clave de la empresa, y su rechazo queda en 
       empresaDeLaSesion: async () => "org-a",
       fetchImpl: vi.fn(async () => new Response("{}", { status })) as unknown as typeof fetch,
       usoRepo: contadorEspia().usoRepo,
+      reglasPais: reglasPaisFijas(),
     });
     expect(marcas).toEqual([]);
   });

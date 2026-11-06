@@ -13,6 +13,7 @@ import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
 import { acreditar459, conCandado459, limpiar459, sembrarPersonas459, type Personas459 } from "./_fixtures/escrituras-459";
 import { CRONOLOGICO } from "./_fixtures/wallet-458";
 import { busquedaPorGuiaDe } from "./_fixtures/busqueda-469";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FICHA 458-B — revision M2: el estado de cuenta lee la pagina, los totales y el periodo en UNA
@@ -117,8 +118,9 @@ describeSiHayBase("458-B/M2 — un cierre aprobado en medio de la lectura del es
         const servicio = new EstadoCuentaService(
           repoConCierreEnMedio(p, disparos),
           new RechazoTiendaCobroAnulacionRepository(prisma),
-          new OrigenLegibleService(new OrigenLegibleRepository(prisma)),
+          new OrigenLegibleService(new OrigenLegibleRepository(prisma), reglasPaisFijas()),
           busquedaPorGuiaDe(prisma),
+          reglasPaisFijas(),
         );
         const input = { cuenta: { tipo: "tienda" as const, id: p.tiendaId }, page: 1, pageSize: 20, ...CRONOLOGICO };
 

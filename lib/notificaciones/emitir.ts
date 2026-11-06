@@ -17,10 +17,10 @@ import type { OrderStatusValue } from "@/lib/types/order-status";
 // literal: las cadenas de notificacion siguen viviendo solo en este archivo (146 §4.6). Y
 // `fechaLegible` es pura — no importa `Date` ni `Intl`.
 import { fechaLegible } from "@/lib/utils/dia-reparto-textos";
-// FICHA 403: el dia calendario de COSTA RICA. `fechaLegible` solo pone en palabras un
+// FICHA 403: el dia calendario de la zona del pais (SLT-42). `fechaLegible` solo pone en palabras un
 // `YYYY-MM-DD`; quien decide QUE dia es ese a partir de un instante es esta funcion, y por eso no
 // vale `toISOString().slice(0, 10)` (en UTC, un fallo de las 19:00 CR ya cae en el dia siguiente).
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendario } from "@/lib/utils/calendario-zona";
 // Feature 271 (§9.2/§10.1): el aviso de bloqueo al mensajero se COMPONE con el mismo formateador
 // que la pantalla. No es una cadena importada de fuera: es la regla que CUENTA (N, V y cual toca
 // primero) escrita una sola vez, para que campana y pantalla no puedan divergir (R43/R52).
@@ -893,13 +893,14 @@ export interface WebhookSuscripcionPausadaContexto {
  * La fecha va en palabras con `fechaLegible`, el MISMO formateador que usan la asignación y el
  * portal del mensajero: lo que se importa es la conversión de fecha, no otro literal (146 §4.6).
  *
- * Y el día calendario sale de `fechaCalendarioCR`, NO de `toISOString().slice(0, 10)`: quien lee
- * este aviso está en Costa Rica, y en UTC un fallo de las 19:00 CR ya cae en el día siguiente. Un
+ * Y el día calendario sale de `fechaCalendario(instante, zona)` con la zona del país de la empresa
+ * (SLT-42, R22), NO de `toISOString().slice(0, 10)`: en UTC un fallo de la tarde ya cae en el día
+ * siguiente. Un
  * aviso que dice «desde el 10» cuando en pantalla todavía es el 9 se lee como un error del sistema.
  */
-export function textoWebhookSuscripcionPausada(sinExitoDesde: Date): string {
+export function textoWebhookSuscripcionPausada(sinExitoDesde: Date, zona: string): string {
   return (
-    `Un webhook lleva fallando desde el ${fechaLegible(fechaCalendarioCR(sinExitoDesde))} ` +
+    `Un webhook lleva fallando desde el ${fechaLegible(fechaCalendario(sinExitoDesde, zona))} ` +
     "y sus reintentos se espaciaron automáticamente para no saturar la cola de trabajo. " +
     "Se reanudarán solos en cuanto vuelva a responder. Revisa Configuración > API."
   );
@@ -924,6 +925,8 @@ export function textoWebhookSuscripcionPausada(sinExitoDesde: Date): string {
 export async function emitirWebhookSuscripcionPausada(
   repo: INotificacionRepository,
   ctx: WebhookSuscripcionPausadaContexto,
+  /** SLT-42 (R22): la zona del país de la empresa, para el día del texto. */
+  zona: string,
   tx?: NotificacionTxClient,
 ): Promise<number> {
   return emitirFilas(
@@ -932,7 +935,7 @@ export async function emitirWebhookSuscripcionPausada(
       {
         tipo: "warning",
         evento: "webhook_suscripcion_pausada",
-        descripcion: textoWebhookSuscripcionPausada(ctx.sinExitoDesde),
+        descripcion: textoWebhookSuscripcionPausada(ctx.sinExitoDesde, zona),
         anexo: null,
         entidadTipo: "webhook_suscripcion_pausa",
         // ⚠️ LA RACHA, no la suscripción. Ver el bloque de arriba.

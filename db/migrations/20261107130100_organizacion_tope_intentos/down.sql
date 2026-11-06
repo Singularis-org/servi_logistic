@@ -3,7 +3,7 @@
 -- PIERDE LOS VALORES ELEGIDOS (design §8): solo se baja si se abandona la feature. Volver a un despliegue
 -- anterior sin este down conserva los valores.
 --
--- ORDEN: va ANTES del down de 20261106160000 (los downs van en orden inverso).
+-- ORDEN: va ANTES del down de 20261107130000 (los downs van en orden inverso).
 --
 -- El REVOKE nombra las dos columnas aunque el DROP se lleve el privilegio de la suya: el de `updated_at`
 -- sobreviviria y la app podria seguir escribiendo en una tabla que el codigo anterior da por solo lectura.

@@ -1,10 +1,10 @@
 import type { CierreTotales } from "@/lib/interfaces/services/ICierreDiaService";
 import type { CierreGestionDescargaDTO } from "@/lib/interfaces/services/ICierresAdminService";
-import type { FiltrosDescargaGestiones } from "@/lib/types/filtros-cierres";
+import type { FiltrosDescargaGestionesRepo } from "@/lib/types/filtros-cierres";
 import type { CierreBodegaResumenRow } from "@/lib/interfaces/repositories/ICierreBodegaRepository";
 import type { CierreGestionPendienteRow } from "@/lib/interfaces/repositories/ICierreDiaRepository";
 import type { PaginaRepositorio, RangoPagina } from "@/lib/utils/rango-pagina";
-import type { FiltrosCierresBodega } from "@/lib/types/filtros-cierres";
+import type { FiltrosCierresBodegaRepo } from "@/lib/types/filtros-cierres";
 
 // Feature 40 — contrato del repositorio de "Cierres de bodega" del maestro (aprobar /
 // rechazar). Solo queries Prisma; sin logica de negocio (esa vive en
@@ -32,6 +32,8 @@ export interface ResolverCierreBodegaInput {
   nuevoEstado: "aprobado" | "rechazado";
   resueltoPor: string;
   motivoRechazo: string | null;
+  /** SLT-42 (R22): la zona IANA del pais de la empresa, para el dia del cierre en la etiqueta del historial. */
+  zonaHoraria: string;
 }
 
 // Resultado de la transicion guardada: `updated` (aplicada), `conflict` (existe pero
@@ -52,12 +54,16 @@ export interface MarcarConciliadoInput {
   nota: string | null;
   /** Quien marca (`esAccesoTotal`). Va a `conciliado_por` Y al espejo `resuelto_por` (§4.1). */
   actorUsuarioId: string;
+  /** SLT-42 (R22): la zona IANA del pais de la empresa, para el dia del cierre en la etiqueta del historial. */
+  zonaHoraria: string;
 }
 
 /** ⭑ FICHA 431 (R12) — deshacer la marca. No hace falta monto: se BORRA el que hubiera. */
 export interface RevertirConciliacionInput {
   id: string;
   actorUsuarioId: string;
+  /** SLT-42 (R22): la zona IANA del pais de la empresa, para el dia del cierre en la etiqueta del historial. */
+  zonaHoraria: string;
 }
 
 /**
@@ -72,6 +78,8 @@ export interface CorregirConciliacionInput {
   nota: string | null;
   /** Quien corrige (`esAccesoTotal`). Va a `conciliado_por` Y al espejo `resuelto_por`. */
   actorUsuarioId: string;
+  /** SLT-42 (R22): la zona IANA del pais de la empresa, para el dia del cierre en la etiqueta del historial. */
+  zonaHoraria: string;
 }
 
 /**
@@ -112,7 +120,7 @@ export interface ICierresBodegaAdminRepository {
    * de bodega consolida los de varios) y RECORTA dentro del alcance, componiendose con `AND` y
    * nunca en lugar de el. Omitirlo deja el criterio IDENTICO al de antes.
    */
-  findHistoricoCompleto(filtros?: FiltrosCierresBodega): Promise<CierreBodegaResumenRow[]>;
+  findHistoricoCompleto(filtros?: FiltrosCierresBodegaRepo): Promise<CierreBodegaResumenRow[]>;
   /**
    * Feature 184 — Tanda E (T E.1, R1/R14/R15/R16): la COLA ENTERA de cierres de bodega
    * PENDIENTES (`solicitado`), sin recorte. Es el conjunto del que sale el archivo del listado 4.
@@ -120,7 +128,7 @@ export interface ICierresBodegaAdminRepository {
    * COMPLEMENTO EXACTO del de arriba, con la MISMA constante de estados (`in` aqui, `notIn`
    * alli): los dos conjuntos particionan la tabla igual que las dos paginas.
    */
-  findColaCompleta(filtros?: FiltrosCierresBodega): Promise<CierreBodegaResumenRow[]>;
+  findColaCompleta(filtros?: FiltrosCierresBodegaRepo): Promise<CierreBodegaResumenRow[]>;
   /**
    * Feature 170 — FASE 2 (T I.1, R40/R41/R44/R51/R54): UNA PAGINA del historico (los cierres
    * de bodega ya RESUELTOS) + el TOTAL del conjunto.
@@ -132,7 +140,7 @@ export interface ICierresBodegaAdminRepository {
    */
   findHistoricoPaginado(
     rango: RangoPagina,
-    filtros?: FiltrosCierresBodega,
+    filtros?: FiltrosCierresBodegaRepo,
   ): Promise<PaginaRepositorio<CierreBodegaResumenRow>>;
   /**
    * Feature 170 — FASE 2 (T J.1, R40/R41/R44/R51/R54): UNA PAGINA de la COLA de cierres de
@@ -144,7 +152,7 @@ export interface ICierresBodegaAdminRepository {
    */
   findColaPaginada(
     rango: RangoPagina,
-    filtros?: FiltrosCierresBodega,
+    filtros?: FiltrosCierresBodegaRepo,
   ): Promise<PaginaRepositorio<CierreBodegaResumenRow>>;
   /**
    * R11: el cierre de bodega (cabecera + totales snapshot) + por cada cierre_dia
@@ -152,7 +160,14 @@ export interface ICierresBodegaAdminRepository {
    * reuso 37, WHERE cierre_id=cierre_dia.id). `null` si el cierre de bodega no existe
    * (R19).
    */
-  findCierreBodegaConDetalle(id: string): Promise<{
+  findCierreBodegaConDetalle(
+    id: string,
+    /**
+     * SLT-42 (R22): la zona del pais de la empresa (la lee el servicio). Con ella se fecha cada
+     * instante del DTO (`fechaGestion`, ...); el repositorio no la lee ni la guarda.
+     */
+    zona: string,
+  ): Promise<{
     cierre: CierreBodegaResumenRow;
     cierresDia: {
       resumen: CierreBodegaDetalleCierreRow;
@@ -175,7 +190,12 @@ export interface ICierresBodegaAdminRepository {
    * de otra forma que la de «cierres del dia», la misma orden saldria con dos numeros.
    */
   findGestionesDeCierresBodegaCompleto(
-    filtros: FiltrosDescargaGestiones,
+    filtros: FiltrosDescargaGestionesRepo,
+    /**
+     * SLT-42 (R22): la zona del pais de la empresa (la lee el servicio). Con ella se fecha cada
+     * instante del DTO (`fechaGestion`, ...); el repositorio no la lee ni la guarda.
+     */
+    zona: string,
   ): Promise<CierreGestionDescargaDTO[]>;
   /**
    * R16-R22: transicion atomica y guardada de `solicitado` -> nuevoEstado, SOLO si el

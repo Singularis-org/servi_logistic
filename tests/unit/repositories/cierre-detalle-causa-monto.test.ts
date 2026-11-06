@@ -7,6 +7,7 @@ import {
 } from "@/lib/repositories/CierresAdminRepository";
 import { toDetalleDTO } from "@/lib/services/CierreDiaService";
 import type { CierreGestionPendienteRow } from "@/lib/interfaces/repositories/ICierreDiaRepository";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 // Feature 158 (R34/R9/R19) — la CAUSA del incidente y el MONTO de la indemnización recorren la
 // cadena completa hasta el DTO que ve el cliente: proyección del repo → fila de dominio →
@@ -28,6 +29,7 @@ import type { CierreGestionPendienteRow } from "@/lib/interfaces/repositories/IC
 /** Fila tal como la lee `WITH_DETALLE` (vista EN VIVO del mensajero). */
 function filaEnVivo(over: Record<string, unknown> = {}) {
   return {
+    createdAt: new Date("2026-07-15T18:00:00.000Z"),
     id: "g1",
     ordenId: "o1",
     resultado: "incidente" as const,
@@ -61,6 +63,7 @@ function filaEnVivo(over: Record<string, unknown> = {}) {
 /** Fila de gestión tal como la lee `GESTION_ADMIN_SELECT` (detalles de ADMIN, 38/40). */
 function filaAdmin(over: Record<string, unknown> = {}) {
   return {
+    createdAt: new Date("2026-07-15T18:00:00.000Z"),
     id: "g1",
     ordenId: "o1",
     resultado: "incidente" as const,
@@ -115,6 +118,7 @@ const mapAdmin = (g = filaAdmin(), d = filaSnapshot()): CierreGestionPendienteRo
   toPendienteRowDesdeSnapshot(
     g as unknown as Parameters<typeof toPendienteRowDesdeSnapshot>[0],
     d as unknown as Parameters<typeof toPendienteRowDesdeSnapshot>[1],
+    ZONA_CR,
   );
 
 const mapEnVivo = (
@@ -123,7 +127,7 @@ const mapEnVivo = (
   // defecto `false` (la registro el mensajero), que es lo que estos casos de causa/monto ejercen.
   desdeAyudaTienda = false,
 ): CierreGestionPendienteRow =>
-  toPendienteRow(row as unknown as Parameters<typeof toPendienteRow>[0], desdeAyudaTienda);
+  toPendienteRow(row as unknown as Parameters<typeof toPendienteRow>[0], desdeAyudaTienda, ZONA_CR);
 
 // --- Proyecciones ------------------------------------------------------------------------
 

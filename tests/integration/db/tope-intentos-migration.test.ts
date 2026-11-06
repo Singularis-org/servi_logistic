@@ -6,6 +6,7 @@ import type { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { OrganizacionRepository } from "@/lib/repositories/OrganizacionRepository";
+import { PaisRepository } from "@/lib/repositories/PaisRepository";
 import { OrganizacionService } from "@/lib/services/OrganizacionService";
 import {
   HAY_BASE_DE_DATOS,
@@ -43,10 +44,10 @@ import {
  * contrato, y leerlos de la migracion los dejaria siempre verdes.
  */
 
-const HISTORIAL = "20261106160000_historial_tope_intentos";
-const COLUMNA = "20261106160100_organizacion_tope_intentos";
+const HISTORIAL = "20261107130000_historial_tope_intentos";
+const COLUMNA = "20261107130100_organizacion_tope_intentos";
 const DE_SLT77 = [HISTORIAL, COLUMNA] as const;
-const ULTIMA_PREVIA = "20261106150000_historial_accion_plan_cambio_empresa_cancelado";
+const ULTIMA_PREVIA = "20261107120200_slt42_usuario_documento_unico_por_tipo";
 
 const CHECK = "organizacion_tope_intentos_entrega_check";
 const POLITICA = "organizacion_propia_editar_tope";
@@ -348,7 +349,8 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("SLT-77 — una empresa dada de alta (Postgr
     await enTransaccionRevertida(base, async (tx) => {
       await serializarEscriturasReales(tx);
       const sufijo = randomUUID().slice(0, 8);
-      const servicio = new OrganizacionService(new OrganizacionRepository(clienteConTransaccionAnidada(tx)));
+      const cliente = clienteConTransaccionAnidada(tx);
+      const servicio = new OrganizacionService(new OrganizacionRepository(cliente), new PaisRepository(cliente));
       const r = await servicio.altaEmpresa({
         nombre: `Empresa tope ${sufijo}`,
         slug: `tope-${sufijo}`,

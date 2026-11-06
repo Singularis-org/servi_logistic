@@ -26,6 +26,12 @@ export interface ListarHilosQuery {
   cursor: CursorHilo | null;
   /** Numero de hilos pedidos. El repositorio pide `limite + 1` para saber si hay siguiente. */
   limite: number;
+  /**
+   * SLT-42 (R22, R23): la zona horaria del pais de la empresa, con la que `fecha_desde`/`fecha_hasta`
+   * (fechas del calendario de esa zona) pasan a instantes. Opcional: solo hace falta con rango de
+   * fechas, y el repositorio lanza si hay rango y falta la zona.
+   */
+  zona?: string;
 }
 
 /** Pagina del listado. `siguiente` es `null` cuando no queda nada mas que recorrer. */

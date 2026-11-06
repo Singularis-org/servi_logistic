@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 
 import { RastreoPublicoRepository } from "@/lib/repositories/RastreoPublicoRepository";
 import { RastreoPublicoService } from "@/lib/services/RastreoPublicoService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 import { HAY_BASE_DE_DATOS } from "../../_postgres-real";
 import { conEscenario, prepararMundo, type Escenario, type Mundo } from "../_escenario";
 
@@ -49,7 +50,11 @@ describeSiHayBase("454/C27 — rastreo publico e historial legado (Postgres real
 
   function correr() {
     return conEscenario(mundo, async (e) => {
-      const rastreo = new RastreoPublicoService(new RastreoPublicoRepository(e.cliente));
+      const rastreo = new RastreoPublicoService(
+        new RastreoPublicoRepository(e.cliente),
+        undefined,
+        reglasPaisFijas(),
+      );
       const hitos = async (numGuia: number) => {
         const c = await rastreo.consultar(numGuia, TELEFONO);
         return c.estado === "ok" ? { vigente: c.envio.nombreVigente, linea: c.envio.linea.map((l) => l.nombre) } : null;

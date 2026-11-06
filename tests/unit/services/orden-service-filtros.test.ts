@@ -5,6 +5,7 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { listarOrdenesSchema } from "@/lib/types/orden";
 import { ordenesConfig } from "@/lib/config/ordenes";
 import { fakeIntentosEnLote } from "@/tests/fixtures/intentos-entrega";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 144/B1 (R33-R37, R41-R46) — traduccion del `filter` al `where`.
 //
@@ -37,7 +38,7 @@ async function whereDe(
   const { repo, list } = buildRepo();
   // Feature 160: `historial` es dependencia REQUERIDA y precede al `ahora` inyectable de
   // la 144. Aqui no se afirma nada sobre intentos: el doble vacio solo satisface el contrato.
-  const service = new OrdenService(repo, fakeIntentosEnLote(), () => AHORA);
+  const service = new OrdenService(repo, fakeIntentosEnLote(), () => AHORA, reglasPaisFijas());
   await service.listar(input(filter), actor);
   return list.mock.calls[0][0].where;
 }
@@ -184,7 +185,7 @@ describe("bordes temporales calculados server-side (R41/R42/R43)", () => {
     // Mismo filter, otro reloj -> otro borde: la fuente es el servidor.
     const { repo, list } = buildRepo();
     const otroDia = new Date("2026-08-01T20:00:00.000Z");
-    await new OrdenService(repo, fakeIntentosEnLote(), () => otroDia).listar(input({ created_preset: "7d" }), MAESTRO);
+    await new OrdenService(repo, fakeIntentosEnLote(), () => otroDia, reglasPaisFijas()).listar(input({ created_preset: "7d" }), MAESTRO);
     expect(list.mock.calls[0][0].where.createdAt).toEqual({
       gte: new Date("2026-07-26T06:00:00.000Z"),
     });
@@ -192,7 +193,7 @@ describe("bordes temporales calculados server-side (R41/R42/R43)", () => {
 
   it("R43/R44: el service delega UNA sola llamada al repo (count y pagina comparten where)", async () => {
     const { repo, list } = buildRepo();
-    await new OrdenService(repo, fakeIntentosEnLote(), () => AHORA).listar(input({ zona_id: ["z1"] }), MAESTRO);
+    await new OrdenService(repo, fakeIntentosEnLote(), () => AHORA, reglasPaisFijas()).listar(input({ zona_id: ["z1"] }), MAESTRO);
     expect(list).toHaveBeenCalledTimes(1);
   });
 });
@@ -200,7 +201,7 @@ describe("bordes temporales calculados server-side (R41/R42/R43)", () => {
 describe("sin regresion del contrato previo (R45)", () => {
   it("R45: sin `filter`, el params del repo es EXACTAMENTE el previo a esta feature", async () => {
     const { repo, list } = buildRepo();
-    await new OrdenService(repo, fakeIntentosEnLote(), () => AHORA).listar(input(undefined), MAESTRO);
+    await new OrdenService(repo, fakeIntentosEnLote(), () => AHORA, reglasPaisFijas()).listar(input(undefined), MAESTRO);
     expect(list.mock.calls[0][0]).toEqual({
       where: {},
       sortBy: "created_at",
@@ -222,7 +223,7 @@ describe("sin regresion del contrato previo (R45)", () => {
   it("R45: el `estatusId` escalar heredado sigue funcionando igual", async () => {
     const { repo, list } = buildRepo();
     const parsed = listarOrdenesSchema.parse({ estatusId: "os-x" });
-    await new OrdenService(repo, fakeIntentosEnLote(), () => AHORA).listar(parsed, MAESTRO);
+    await new OrdenService(repo, fakeIntentosEnLote(), () => AHORA, reglasPaisFijas()).listar(parsed, MAESTRO);
     expect(list.mock.calls[0][0].where).toEqual({ estatusId: "os-x" });
   });
 
@@ -333,7 +334,7 @@ describe("filtro ELIMINADAS", () => {
     // deja `puedeVerEliminadas` como literal `rol === maestro`: son dos preguntas distintas y
     // tienen que poder divergir. Este caso es el lado servidor de esa divergencia.
     const { repo, list } = buildRepo();
-    const service = new OrdenService(repo, fakeIntentosEnLote(), () => AHORA);
+    const service = new OrdenService(repo, fakeIntentosEnLote(), () => AHORA, reglasPaisFijas());
 
     const r = await service.listar(input({ eliminados: true }), actor);
 

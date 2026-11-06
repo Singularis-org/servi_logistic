@@ -1,5 +1,5 @@
 -- DOWN de SLT-77 T1.1 — quita `tope_intentos_cambiado` de `historial_accion_tipo` y `organizacion` de
--- `historial_accion_entidad`, que añadio 20261106160000.
+-- `historial_accion_entidad`, que añadio 20261107130000.
 --
 -- BORRA LAS FILAS QUE LOS USAN, como los downs de SL-23, SLT-76, SLT-52 y SLT-54: ese rastro solo describe
 -- acciones que, tras la bajada, el codigo ya no conoce (su cliente Prisma no sabria leer el valor). Las
@@ -10,7 +10,7 @@
 -- de `pg_enum` y quita SOLO estos valores. Una lista fija borraria en silencio los valores que otra ficha
 -- añada despues.
 --
--- ORDEN: va DESPUES del down de 20261106160100 (los downs van en orden inverso).
+-- ORDEN: va DESPUES del down de 20261107130100 (los downs van en orden inverso).
 
 BEGIN;
 

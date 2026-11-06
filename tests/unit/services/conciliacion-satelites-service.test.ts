@@ -6,6 +6,7 @@ import type { ISaldosSatelitesRepository } from "@/lib/interfaces/repositories/I
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { SaldoSateliteDTO } from "@/lib/types/conciliacion-satelites";
 import { descargaConfig } from "@/lib/config/descarga";
+import { reglasPaisFijas, ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // Ficha 470 (T1.3, riesgo K6) — el tope real de la descarga es ahora el limite de Excel
 // (1.048.575 filas). Este archivo prueba la MECANICA del tope (N entra, N+1 no), que no depende
@@ -102,7 +103,7 @@ function newService(
   saldos = fakeSaldos(),
   escrituras = fakeEscrituras(),
 ) {
-  return { service: new ConciliacionSatelitesService(saldos, escrituras), saldos, escrituras };
+  return { service: new ConciliacionSatelitesService(saldos, escrituras, reglasPaisFijas()), saldos, escrituras };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -198,6 +199,7 @@ describe("431/T8 — marcar y revertir: la UNICA llamada, y los tres desenlaces"
       nota: "faltaron 15",
       // El actor sale de la SESION, nunca del payload: quien marca no se puede suplantar.
       actorUsuarioId: "u-maestro",
+      zonaHoraria: ZONA_DE_CR, // SLT-42 (R22): el dia del cierre en el historial
     });
     expect(escrituras.revertirConciliacion).not.toHaveBeenCalled();
     // Y no se lee nada de mas: marcar no lista saldos.
@@ -248,6 +250,7 @@ describe("431/T8 — marcar y revertir: la UNICA llamada, y los tres desenlaces"
     expect(escrituras.revertirConciliacion).toHaveBeenCalledWith({
       id: "cb1",
       actorUsuarioId: "u-maestro",
+      zonaHoraria: ZONA_DE_CR, // SLT-42 (R22): el dia del cierre en el historial
     });
     expect(escrituras.marcarConciliado).not.toHaveBeenCalled();
   });
@@ -333,6 +336,7 @@ describe("473/T3 — corregirRecibida", () => {
       montoRecibido: "200800.00",
       nota: "llego el resto",
       actorUsuarioId: actor.usuarioId,
+      zonaHoraria: ZONA_DE_CR, // SLT-42 (R22): el dia del cierre en el historial
     });
     expect(escrituras.marcarConciliado).not.toHaveBeenCalled();
     expect(escrituras.revertirConciliacion).not.toHaveBeenCalled();
@@ -383,7 +387,7 @@ describe("431/T8 — las lecturas: paginacion, recorte y tope de descarga", () =
     const { service, saldos } = newService();
     const r = await service.listarSaldosSatelites({ page: 3, pageSize: 10 }, MAESTRO);
 
-    expect(saldos.findSaldosPaginado).toHaveBeenCalledWith({ skip: 20, take: 10 });
+    expect(saldos.findSaldosPaginado).toHaveBeenCalledWith({ skip: 20, take: 10 }, ZONA_DE_CR);
     if (r.status !== "ok") throw new Error("esperaba ok");
     expect(r.page).toBe(3);
     expect(r.pageSize).toBe(10);

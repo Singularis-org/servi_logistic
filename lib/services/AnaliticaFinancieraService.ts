@@ -40,6 +40,8 @@ import { derivarCaja } from "@/lib/utils/caja-tesoreria";
 import { derivarCuentaPorPagar } from "@/lib/utils/cuenta-por-pagar";
 import { derivarSaldoTienda } from "@/lib/utils/saldo-tienda";
 
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 // Feature 127 (T D.1-D.9) — LA UNICA fachada de la analitica financiera.
 //
 // Que hace: valida el dominio, despacha por `metrica.id`, pide al repositorio que corresponda y
@@ -209,6 +211,8 @@ export class AnaliticaFinancieraService implements IAnaliticaFinancieraService {
     private readonly logger: ErrorLogger = defaultLogger,
     /** ⟨D5⟩/R40 — se inyecta para poder medir los dos lados del umbral sin tocar la config. */
     private readonly umbralDescuadre: string = UMBRAL_AVISO_DESCUADRE_CONCILIACION,
+    /** SLT-42 (R22, R28): la zona del pais de la empresa, con la que se trocea el rango en cubos. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {
     // ⟨D12⟩ humano, 2026-08-04 (`progress/decision_183.md`) — LA FORMA DEL IMPORTE ENTRA COMO
     // SELECTOR EXPLICITO, no como un `if` por id dentro del manejador (mismo precedente que las
@@ -242,6 +246,11 @@ export class AnaliticaFinancieraService implements IAnaliticaFinancieraService {
       cuenta_por_pagar_mensajero: (c) => this.deCuentaDeMensajeros(c),
       conciliacion_cierres: (c) => this.deConciliacion(c),
     };
+  }
+
+  /** SLT-42 (R22, R28, R30): la zona de la empresa en curso, leida en cada consulta. */
+  private zona(): Promise<string> {
+    return zonaDeLaEmpresa(this.reglasPais, "AnaliticaFinancieraService");
   }
 
   /** Los ids que este servicio despacha de verdad. R6 los compara contra el catalogo. */
@@ -331,7 +340,7 @@ export class AnaliticaFinancieraService implements IAnaliticaFinancieraService {
     consulta: ConsultaAnalitica,
     forma: "solo_bruto" | "bruto_y_neto",
   ): Promise<ResultadoFinanciero> {
-    const cubos = trocear(consulta.rango);
+    const cubos = trocear(consulta.rango, await this.zona());
     const [filas, porCuboTemporal] = await this.ingresos.enLecturaConsistente(async (r) => [
       await r.sumarPorCategoria(consulta),
       // R22 — los cubos salen de `trocear(consulta.rango)` y de ningun otro sitio: no son un
@@ -403,7 +412,7 @@ export class AnaliticaFinancieraService implements IAnaliticaFinancieraService {
     consulta: ConsultaAnalitica,
     cifra: (resumen: CajaResumenDTO) => string,
   ): Promise<ResultadoFinanciero> {
-    const cubos = trocear(consulta.rango);
+    const cubos = trocear(consulta.rango, await this.zona());
     const [filas, porCuboTemporal] = await this.ingresos.enLecturaConsistente(async (r) => [
       await r.sumarPorCategoria(consulta),
       await r.sumarPorCuboYCategoria(consulta, cubos),
@@ -565,7 +574,7 @@ export class AnaliticaFinancieraService implements IAnaliticaFinancieraService {
    * (R13) — incluido el `bruto`, que por eso es el acumulado (`devengo + pago`) y no el del cubo.
    */
   private async deCuentaDeMensajeros(consulta: ConsultaAnalitica): Promise<ResultadoFinanciero> {
-    const cubos = trocear(consulta.rango);
+    const cubos = trocear(consulta.rango, await this.zona());
     const [filas, arrastre, porCuboTemporal] = await this.cuentasPorPagar.enLecturaConsistente(
       async (r) => [
         await r.cuentaPorPagarMensajerosAlCorte(consulta),

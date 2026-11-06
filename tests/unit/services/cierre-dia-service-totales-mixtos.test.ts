@@ -18,6 +18,7 @@ import { calcularSplitPago } from "@/lib/utils/cuenta-por-pagar";
 import { derivarPendienteCierre } from "@/lib/utils/pendiente-cierre";
 import { conPagos } from "@/tests/fixtures/cierre-pagos";
 import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * Feature 212 (T12, R29) — la `E` del `min(P, E)` con un cierre MIXTO.
@@ -132,7 +133,7 @@ function newService(repo: ICierreDiaRepository) {
     createSignedUrl: vi.fn(async (p: string) => `https://signed/${p}`),
     createSignedUrls: vi.fn(async () => ({})),
   };
-  return new CierreDiaService(repo, zonaRepo, ordenRepo, signedUrls, tarifaZonaRepo);
+  return new CierreDiaService(repo, zonaRepo, ordenRepo, signedUrls, tarifaZonaRepo, undefined, undefined, reglasPaisFijas());
 }
 
 describe("R29 — `crearCierre` congela como `E` SOLO la parte cobrada en efectivo", () => {

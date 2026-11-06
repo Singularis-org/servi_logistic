@@ -9,6 +9,7 @@ import type { ParadaRutaRow } from "@/lib/interfaces/repositories/IOrdenReposito
 import type { RouteOptimizationConfig } from "@/lib/config/route-optimization";
 import { codificarPolilinea, distanciaHaversineKm } from "@/lib/geo/polilinea";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Feature 92 (R24/R25) — resolucion del ORIGEN de la ruta, en TRES escalones:
 //
 //   1. `gps` con antiguedad < RUTA_ORIGEN_TTL_MIN   -> fuente "gps"
@@ -98,7 +99,7 @@ function build(
     client,
     { ...CONFIG, ...configOver },
     () => T0,
-    logger,
+    logger, undefined, reglasPaisFijas(),
   );
   return { service, rutas, client, paradasRepo };
 }

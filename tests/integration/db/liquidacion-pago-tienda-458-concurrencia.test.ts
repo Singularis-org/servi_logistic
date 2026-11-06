@@ -24,6 +24,7 @@ import {
   sembrarPersonas459,
   type Personas459,
 } from "./_fixtures/escrituras-459";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FICHA 458-B — ARREGLO HEREDADO DE LA 457 (`progress/impl_457.md` §12.4), contra Postgres.
@@ -84,6 +85,10 @@ describeSiHayBase("458-B — el pago de la empresa a una tienda lee el saldo por
             clienteUno.$transaction((tx) => fn(tx as never), { timeout: 10_000 })) as unknown as LiquidacionTxRunner,
           new CajaPagoTiendaFeedService(new WalletMovimientoRepository(clienteUno)),
           new LiquidacionRepartoRepository(clienteUno),
+          undefined,
+          undefined,
+          undefined,
+          reglasPaisFijas(),
         );
         const r = await svc.registrarPagoTienda(
           {
@@ -126,6 +131,10 @@ describeSiHayBase("458-B — el pago de la empresa a una tienda lee el saldo por
             clienteUno.$transaction((tx) => fn(tx as never), { timeout: 10_000 })) as unknown as LiquidacionTxRunner,
           new CajaPagoTiendaFeedService(new WalletMovimientoRepository(clienteUno)),
           new LiquidacionRepartoRepository(clienteUno),
+          undefined,
+          undefined,
+          undefined,
+          reglasPaisFijas(),
         );
         const r = await svc.registrarPagoTienda(
           {

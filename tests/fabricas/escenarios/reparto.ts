@@ -36,6 +36,7 @@ import { crearTarifaSchema } from "../../../lib/types/tarifa";
 import { crearZonaSchema } from "../../../lib/types/zona";
 import { fechaCalendarioCR, mananaCalendarioCR } from "../../../lib/utils/fecha-cr";
 import type { EmpresaCreada, UsuarioCreado } from "../empresa-y-usuarios";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * SL-43 T5 (design D1.2; R11, R15–R17) — EL NÚCLEO DEL ESCENARIO DE REPARTO, sacado de
@@ -234,13 +235,15 @@ export function servicios() {
       new ZonaRepository(prisma),
       new AsignabilidadCoordenadasService(new JobRepository(prisma)),
       historial(prisma, ordenRepo),
+      reglasPaisFijas(),
     ),
     // lib/actions/recepcion-satelite.ts
-    recepcion: new RecepcionSateliteService(ordenRepo, historial(prisma, ordenRepo)),
+    recepcion: new RecepcionSateliteService(ordenRepo, historial(prisma, ordenRepo), undefined, reglasPaisFijas()),
     asignacion: new AsignacionSateliteService(
       ordenRepo,
       new AsignabilidadCoordenadasService(new JobRepository(prisma)),
       historial(prisma, ordenRepo),
+      reglasPaisFijas(),
     ),
     // lib/actions/mis-asignaciones.ts, con la evidencia contra el Storage que diga el entorno
     misAsignaciones: new MisAsignacionesService(
@@ -251,11 +254,14 @@ export function servicios() {
       new RutaOptimizadaRepository(prisma),
       new OrdenMensajeroMetaRepository(prisma),
       historial(prisma, ordenRepo),
+      reglasPaisFijas(),
     ),
     // lib/actions/corregir-fecha-reprogramacion.ts, SIN su liberador (ver `corregirFechaReprogramacion`)
     correccionFecha: new CorreccionFechaReprogramacionService(
       new CorreccionFechaReprogramacionRepository(prisma),
       ordenRepo,
+      undefined,
+      reglasPaisFijas(),
     ),
   };
 }

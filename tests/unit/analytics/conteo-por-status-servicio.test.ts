@@ -12,10 +12,11 @@ import type { IConteoPorStatusRepository } from "@/lib/interfaces/repositories/I
 import { ConteoPorStatusService } from "@/lib/services/ConteoPorStatusService";
 import type { ConteoPorStatusDTO } from "@/lib/types/conteo-por-status";
 
+import { ZONA_DE_CR, reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 const AHORA = new Date("2026-08-17T12:00:00.000Z");
 
 function consultaDe(raw: object = {}): ConsultaConteoEntregas {
-  const preparada = prepararConteoEntregas(raw, { usuarioId: "u1", rol: "maestro" }, AHORA);
+  const preparada = prepararConteoEntregas(raw, { usuarioId: "u1", rol: "maestro" }, ZONA_DE_CR, AHORA);
   if (preparada.status !== "ok") throw new Error("filtro de prueba inválido");
   return preparada.consulta;
 }
@@ -157,7 +158,7 @@ function deps(actor: unknown) {
   const service = { consultar: vi.fn(async (_c: ConsultaConteoEntregas) => DATOS) };
   const logger = { logError: vi.fn() };
   return {
-    deps: { service, logger, getActor: async () => actor as never, now: () => AHORA },
+    deps: { reglasPais: reglasPaisFijas(), service, logger, getActor: async () => actor as never, now: () => AHORA },
     service,
     logger,
   };

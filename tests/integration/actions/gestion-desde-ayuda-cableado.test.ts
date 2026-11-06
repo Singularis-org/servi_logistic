@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { OrdenHistorialService } from "@/lib/services/OrdenHistorialService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FEATURE 276 (T5, caso 3) — EL COMPOSITION ROOT **PASA** LA DEPENDENCIA DEL TOPE.
@@ -59,7 +60,7 @@ describe("276/T5 · el composition root de `gestionarDesdeAyuda` cablea el tope"
     const { gestionarDesdeAyuda } = await import("@/lib/actions/gestion-desde-ayuda");
 
     // SIN `deps.service`: la action tiene que pasar por `buildService()`.
-    const r = await gestionarDesdeAyuda(formData(), { getActor: async () => TIENDA });
+    const r = await gestionarDesdeAyuda(formData(), { reglasPais: reglasPaisFijas(), getActor: async () => TIENDA });
 
     expect(r.status).toBe("ok");
     expect(depsCapturadas).toHaveLength(1);

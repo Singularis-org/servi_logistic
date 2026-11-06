@@ -13,6 +13,7 @@ import {
 } from "@/lib/types/wallet-mensajero";
 import { descargaConfig } from "@/lib/config/descarga";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Ficha 470 (T1.3, riesgo K6) — el tope real de la descarga es ahora el limite de Excel
 // (1.048.575 filas). Este archivo prueba la MECANICA del tope (N entra, N+1 no), que no depende
 // del valor: lo fija en 5000 para no construir un millon de filas por caso. Patron de
@@ -125,7 +126,7 @@ function servicio(repo: IPagoMensajeroMovimientoRepository) {
 }
 
 function input(extra: Record<string, unknown> = {}) {
-  return listarPagosDeMensajeroCompletoSchema.parse({ mensajeroId: "msg-A", ...extra });
+  return listarPagosDeMensajeroCompletoSchema(ZONA_CR).parse({ mensajeroId: "msg-A", ...extra });
 }
 
 function ids(items: PagoMensajeroMovimientoDTO[]): string[] {
@@ -152,7 +153,7 @@ describe("WalletMensajeroService.listarPagosDeMensajeroCompleto — desglose sin
     const svc = servicio(repoEnMemoria(filas).repo);
 
     const paginado = await svc.listarPagosDeMensajero(
-      listarPagosDeMensajeroSchema.parse({ mensajeroId: "msg-A", pageSize: 20 }),
+      listarPagosDeMensajeroSchema(ZONA_CR).parse({ mensajeroId: "msg-A", pageSize: 20 }),
       MAESTRO,
     );
     const completo = await svc.listarPagosDeMensajeroCompleto(input(), MAESTRO);
@@ -244,7 +245,7 @@ describe("WalletMensajeroService.listarPagosDeMensajeroCompleto — desglose sin
     const filtros = { mensajeroId: "msg-A", cierreId: "c0c0c0c0-0000-4000-8000-0000000000c2" };
 
     const paginado = await svc.listarPagosDeMensajero(
-      listarPagosDeMensajeroSchema.parse({ ...filtros, pageSize: 50 }),
+      listarPagosDeMensajeroSchema(ZONA_CR).parse({ ...filtros, pageSize: 50 }),
       MAESTRO,
     );
     const completo = await svc.listarPagosDeMensajeroCompleto(input(filtros), MAESTRO);
@@ -264,7 +265,7 @@ describe("WalletMensajeroService.listarPagosDeMensajeroCompleto — desglose sin
     const svc = servicio(repoEnMemoria(dosMensajeros()).repo);
 
     const paginado = await svc.listarPagosDeMensajero(
-      listarPagosDeMensajeroSchema.parse({ mensajeroId: "msg-A" }),
+      listarPagosDeMensajeroSchema(ZONA_CR).parse({ mensajeroId: "msg-A" }),
       MAESTRO,
     );
     const completo = await svc.listarPagosDeMensajeroCompleto(input(), MAESTRO);

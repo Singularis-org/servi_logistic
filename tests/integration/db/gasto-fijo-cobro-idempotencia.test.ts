@@ -17,6 +17,7 @@ import {
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // FICHA 333 (D8) — LA IDEMPOTENCIA DE LA CORRIDA, MEDIDA CONTRA POSTGRES: **R9** (dos corridas
 // del mismo día CR dejan UN cobro y UN egreso), **R10** (las dos escrituras son una sola
@@ -123,6 +124,8 @@ function servicioReal(tx: TxDeTest, activas: GastoFijoPlantillaDTO[]): Generacio
     new WalletMovimientoRepository(cliente),
     new GastoFijoCobroRepository(cliente),
     runnerConSavepoint(tx),
+    undefined,
+    reglasPaisFijas(),
   );
 }
 
@@ -283,6 +286,8 @@ describeSiHayBase("333/D8 — R10: las dos escrituras van en UNA transacción", 
         new WalletMovimientoRepository(cliente),
         cobroRepoQueRevienta,
         runnerConSavepoint(tx),
+        undefined,
+        reglasPaisFijas(),
       );
 
       let mensaje = "";

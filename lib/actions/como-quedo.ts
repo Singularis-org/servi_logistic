@@ -1,6 +1,7 @@
 "use server";
 
 import { getPrismaClient } from "@/lib/db/prisma-client";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import type { AppErrorShape } from "@/lib/errors";
@@ -35,7 +36,12 @@ function toComoQuedoActionError(
 
 function buildService(): IComoQuedoService {
   const prisma = getPrismaClient();
-  return new ComoQuedoService(new ComoQuedoRepository(prisma), new WalletMovimientoRepository(prisma), new AporteCapitalRepository(prisma));
+  return new ComoQuedoService(
+    new ComoQuedoRepository(prisma),
+    new WalletMovimientoRepository(prisma),
+    new AporteCapitalRepository(prisma),
+    construirReglasPaisEmpresa(prisma), // SLT-42 (R22): la zona horaria del pais de la empresa
+  );
 }
 
 export interface ComoQuedoDeps {

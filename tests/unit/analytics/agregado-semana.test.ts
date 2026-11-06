@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { resolverRango } from "@/lib/analytics/ranges";
 import { consultaDe, cubo, rollupFalso, servicioCon } from "./_fake-operativa";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 176 / T6.1 — R19 y D6.
 //
 // EL REPO NO PUEDE TENER DOS DEFINICIONES DE «LUNES». Ya hay una en
@@ -20,7 +21,7 @@ import { consultaDe, cubo, rollupFalso, servicioCon } from "./_fake-operativa";
 function lunesSegunElPreset(fechaCR: string): string {
   // Mediodia CR (18:00Z) de esa fecha: cualquier instante del dia sirve, y este esta lejos
   // de las dos fronteras.
-  return resolverRango({ preset: "semana" }, new Date(`${fechaCR}T18:00:00.000Z`)).desdeFecha;
+  return resolverRango({ preset: "semana" }, ZONA_CR, new Date(`${fechaCR}T18:00:00.000Z`)).desdeFecha;
 }
 
 /** Un caso: la fecha de un cubo y el lunes que le corresponde. */

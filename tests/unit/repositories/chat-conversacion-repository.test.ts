@@ -1,6 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 import { ChatConversacionRepository } from "@/lib/repositories/ChatConversacionRepository";
+import type { ReglasTelefono } from "@/lib/utils/telefono-pais";
+
+// SLT-42 (R18): el repositorio normaliza con las reglas que le pasa su servicio. Costa Rica para
+// los casos de siempre y un pais con otro prefijo para fijar que no hay `506` escondido.
+const TEL_CR: ReglasTelefono = { prefijo: "506", digitosNacionales: 8 };
+const TEL_OTRO: ReglasTelefono = { prefijo: "507", digitosNacionales: 7 };
 
 // Feature 109 — C2 (R13/R16/R25). Tests unit del repositorio del hilo (mockea Prisma, sin
 // DB real). Verifica la query scopeada (R16), el upsert por orden+numero (R13) y la
@@ -22,8 +28,10 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
       findFirst: vi.fn(),
     },
     // R25/D4: la resolucion del entrante matchea el telefono NORMALIZADO en ambos lados via SQL
-    // crudo (`regexp_replace`), porque Prisma no puede normalizar la columna en el WHERE.
+    // crudo (`regexp_replace`), porque Prisma no puede normalizar la columna en el WHERE. SLT-42:
+    // va por `$queryRawUnsafe` porque la expresion lleva los numeros de sus parametros.
     $queryRaw: vi.fn(),
+    $queryRawUnsafe: vi.fn(),
     // El conteo de no leidos y el sellado de lectura tambien van raw: correlacionan
     // `chat_mensaje.ocurrido_at` con `chat_conversacion.mensajero_leido_at`.
     $executeRaw: vi.fn(),
@@ -58,7 +66,7 @@ describe("ChatConversacionRepository", () => {
       ordenId: "orden-1",
       mensajeroId: "men-1",
       telefonoE164: "573001112233",
-    });
+    }, TEL_CR);
 
     const arg = prisma.chatConversacion.upsert.mock.calls[0][0];
     expect(arg.where.ordenId_telefonoE164).toEqual({
@@ -108,14 +116,14 @@ describe("ChatConversacionRepository", () => {
     const prisma = buildPrisma();
     // Filas crudas snake_case tal como las devuelve `$queryRaw` sobre la tabla `orden`; la
     // primera es la MAS RECIENTE (el ORDER BY asignado_at DESC ... LIMIT 1 vive en el SQL).
-    prisma.$queryRaw.mockResolvedValue([
+    prisma.$queryRawUnsafe.mockResolvedValue([
       { id: "orden-9", mensajero_asignado_id: "men-9", telefono_dest: "573001112233" },
     ]);
     const repo = new ChatConversacionRepository(prisma as unknown as PrismaClient);
 
-    const res = await repo.resolverOrdenActivaPorNumero("573001112233");
+    const res = await repo.resolverOrdenActivaPorNumero("573001112233", TEL_CR);
 
-    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(prisma.$queryRawUnsafe).toHaveBeenCalledTimes(1);
     expect(res).toEqual({
       ordenId: "orden-9",
       mensajeroId: "men-9",
@@ -125,10 +133,31 @@ describe("ChatConversacionRepository", () => {
 
   it("R25: devuelve null cuando el numero no mapea a orden activa asignada", async () => {
     const prisma = buildPrisma();
-    prisma.$queryRaw.mockResolvedValue([]); // ninguna orden viva/asignada matchea el numero
+    prisma.$queryRawUnsafe.mockResolvedValue([]); // ninguna orden viva/asignada matchea el numero
     const repo = new ChatConversacionRepository(prisma as unknown as PrismaClient);
 
-    expect(await repo.resolverOrdenActivaPorNumero("573999")).toBeNull();
+    expect(await repo.resolverOrdenActivaPorNumero("573999", TEL_CR)).toBeNull();
+  });
+
+  it("SLT-42 R18/R19: el prefijo y los digitos del pais viajan como PARAMETROS ($1, $2) y el numero como $3", async () => {
+    const prisma = buildPrisma();
+    prisma.$queryRawUnsafe.mockResolvedValue([
+      { id: "orden-5", mensajero_asignado_id: "men-5", telefono_dest: "612-3456" },
+    ]);
+    const repo = new ChatConversacionRepository(prisma as unknown as PrismaClient);
+
+    // Un local de 7 digitos del pais `507`: el entrante y la clave del hilo llevan SU prefijo.
+    const res = await repo.resolverOrdenActivaPorNumero("6123456", TEL_OTRO);
+
+    const [texto, ...params] = prisma.$queryRawUnsafe.mock.calls[0] as [string, ...unknown[]];
+    expect(params).toEqual(["507", 7, "5076123456"]);
+    expect(texto).toContain("$1::text");
+    expect(texto).toContain("$2::int");
+    expect(texto).toContain("= $3");
+    // Ni el prefijo de este pais ni el de Costa Rica estan escritos en el SQL.
+    expect(texto).not.toContain("507");
+    expect(texto).not.toContain("506");
+    expect(res?.telefonoE164).toBe("5076123456");
   });
 });
 
@@ -223,7 +252,7 @@ describe("Feature 311 · migrarTelefono (R16/R18)", () => {
     prisma.$executeRaw.mockResolvedValue(1);
     const repo = new ChatConversacionRepository(prisma as unknown as PrismaClient);
 
-    const migradas = await repo.migrarTelefono("50688887777", "50699996666");
+    const migradas = await repo.migrarTelefono("50688887777", "50699996666", TEL_CR);
 
     expect(migradas).toBe(1);
     const arg = prisma.$executeRaw.mock.calls[0][0] as {
@@ -245,7 +274,7 @@ describe("Feature 311 · migrarTelefono (R16/R18)", () => {
     prisma.$executeRaw.mockResolvedValue(0);
     const repo = new ChatConversacionRepository(prisma as unknown as PrismaClient);
 
-    await expect(repo.migrarTelefono("50688887777", "50699996666")).resolves.toBe(0);
+    await expect(repo.migrarTelefono("50688887777", "50699996666", TEL_CR)).resolves.toBe(0);
     expect(sqlTexto(prisma.$executeRaw.mock.calls[0][0])).toContain("NOT EXISTS");
   });
 
@@ -253,7 +282,7 @@ describe("Feature 311 · migrarTelefono (R16/R18)", () => {
     const prisma = buildPrisma();
     prisma.$executeRaw.mockResolvedValue(1);
     const repo = new ChatConversacionRepository(prisma as unknown as PrismaClient);
-    await repo.migrarTelefono("50688887777", "50699996666");
+    await repo.migrarTelefono("50688887777", "50699996666", TEL_CR);
 
     const texto = sqlTexto(prisma.$executeRaw.mock.calls[0][0]);
     expect(texto).not.toMatch(/UPDATE\s+orden/i);
@@ -267,20 +296,32 @@ describe("Feature 311 · migrarTelefono (R16/R18)", () => {
     prisma.$executeRaw.mockResolvedValue(1);
     const repo = new ChatConversacionRepository(prisma as unknown as PrismaClient);
 
-    await repo.migrarTelefono("+506 8888-7777", "9999-6666");
+    await repo.migrarTelefono("+506 8888-7777", "9999-6666", TEL_CR);
 
     const arg = prisma.$executeRaw.mock.calls[0][0] as { values: unknown[] };
     expect(arg.values).toContain("50688887777");
     expect(arg.values).toContain("50699996666");
   });
 
+  it("SLT-42 R18: con otro pais, el local se prefija con SU prefijo", async () => {
+    const prisma = buildPrisma();
+    prisma.$executeRaw.mockResolvedValue(1);
+    const repo = new ChatConversacionRepository(prisma as unknown as PrismaClient);
+
+    await repo.migrarTelefono("612-3456", "+507 699 8877", TEL_OTRO);
+
+    const arg = prisma.$executeRaw.mock.calls[0][0] as { values: unknown[] };
+    expect(arg.values).toContain("5076123456");
+    expect(arg.values).toContain("5076998877");
+  });
+
   it("mismo numero a ambos lados o numero vacio: 0 sin tocar la base", async () => {
     const prisma = buildPrisma();
     const repo = new ChatConversacionRepository(prisma as unknown as PrismaClient);
 
-    expect(await repo.migrarTelefono("50688887777", "+506 8888-7777")).toBe(0);
-    expect(await repo.migrarTelefono("", "50699996666")).toBe(0);
-    expect(await repo.migrarTelefono("50688887777", "")).toBe(0);
+    expect(await repo.migrarTelefono("50688887777", "+506 8888-7777", TEL_CR)).toBe(0);
+    expect(await repo.migrarTelefono("", "50699996666", TEL_CR)).toBe(0);
+    expect(await repo.migrarTelefono("50688887777", "", TEL_CR)).toBe(0);
     expect(prisma.$executeRaw).not.toHaveBeenCalled();
   });
 });

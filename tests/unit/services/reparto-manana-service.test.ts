@@ -4,6 +4,7 @@ import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepos
 import type { IRepartoMananaRepository } from "@/lib/interfaces/repositories/IRepartoMananaRepository";
 import type { RepartoMananaContexto } from "@/lib/notificaciones/emitir";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 /**
  * FICHA 413 (T5.1/T5.1b) — EL PROCESO DE LA TARDE.
  *
@@ -68,7 +69,7 @@ describe("413/R6 — un mensajero con reparto recibe UNA emisión dirigida A ÉL
     const cierres = cierresDoble();
     const { fn, recibidos } = notificadorEspia();
 
-    const resumen = await new RepartoMananaAvisoService(repo, cierres, fn, loggerMudo).ejecutar(
+    const resumen = await new RepartoMananaAvisoService(repo, cierres, fn, loggerMudo, reglasPaisFijas()).ejecutar(
       AHORA,
     );
 
@@ -91,7 +92,7 @@ describe("413/R6 — un mensajero con reparto recibe UNA emisión dirigida A ÉL
     const cierres = cierresDoble();
     const { fn } = notificadorEspia();
 
-    const resumen = await new RepartoMananaAvisoService(repo, cierres, fn, loggerMudo).ejecutar(
+    const resumen = await new RepartoMananaAvisoService(repo, cierres, fn, loggerMudo, reglasPaisFijas()).ejecutar(
       AHORA,
     );
 
@@ -106,7 +107,7 @@ describe("413/R6 — un mensajero con reparto recibe UNA emisión dirigida A ÉL
     const repo = repoDoble([]);
     const cierres = cierresDoble();
 
-    await new RepartoMananaAvisoService(repo, cierres, vi.fn(), loggerMudo).ejecutar(AHORA);
+    await new RepartoMananaAvisoService(repo, cierres, vi.fn(), loggerMudo, reglasPaisFijas()).ejecutar(AHORA);
 
     expect(repo.resumenPorMensajero).toHaveBeenCalledTimes(1);
     expect(repo.resumenPorMensajero.mock.calls[0][0].toISOString()).toBe("2026-09-11T00:00:00.000Z");
@@ -123,7 +124,7 @@ describe("413/R6 — un mensajero con reparto recibe UNA emisión dirigida A ÉL
       repo,
       cierresDoble(),
       fn,
-      loggerMudo,
+      loggerMudo, reglasPaisFijas(),
     ).ejecutar(AHORA);
 
     expect(fn).toHaveBeenCalledTimes(2);
@@ -148,7 +149,7 @@ describe("413/R18 — el mensajero con CERO no recibe nada, y los demás sí", (
       repo,
       cierresDoble(),
       fn,
-      loggerMudo,
+      loggerMudo, reglasPaisFijas(),
     ).ejecutar(AHORA);
 
     expect(recibidos.map((c) => c.mensajeroUsuarioId)).toEqual(["u-1", "u-3"]);
@@ -164,7 +165,7 @@ describe("413/R18 — el mensajero con CERO no recibe nada, y los demás sí", (
     const cierres = cierresDoble();
     const { fn } = notificadorEspia();
 
-    const resumen = await new RepartoMananaAvisoService(repo, cierres, fn, loggerMudo).ejecutar(
+    const resumen = await new RepartoMananaAvisoService(repo, cierres, fn, loggerMudo, reglasPaisFijas()).ejecutar(
       AHORA,
     );
 
@@ -192,7 +193,7 @@ describe("413/R42 — el mensajero BLOQUEADO por cierres NO recibe este aviso", 
     const cierres = cierresDoble(["u-bloqueado"]);
     const { fn, recibidos } = notificadorEspia();
 
-    const resumen = await new RepartoMananaAvisoService(repo, cierres, fn, loggerMudo).ejecutar(
+    const resumen = await new RepartoMananaAvisoService(repo, cierres, fn, loggerMudo, reglasPaisFijas()).ejecutar(
       AHORA,
     );
 
@@ -213,7 +214,7 @@ describe("413/R42 — el mensajero BLOQUEADO por cierres NO recibe este aviso", 
     ]);
     const cierres = cierresDoble();
 
-    await new RepartoMananaAvisoService(repo, cierres, vi.fn(), loggerMudo).ejecutar(AHORA);
+    await new RepartoMananaAvisoService(repo, cierres, vi.fn(), loggerMudo, reglasPaisFijas()).ejecutar(AHORA);
 
     expect(cierres.findMensajerosBloqueadosPorCierres).toHaveBeenCalledTimes(1);
     // Y con los ids que el `GROUP BY` ya trajo, no con una consulta propia de mensajeros.
@@ -238,7 +239,7 @@ describe("413/R42 — el mensajero BLOQUEADO por cierres NO recibe este aviso", 
       repo,
       cierresDoble([]),
       fn,
-      loggerMudo,
+      loggerMudo, reglasPaisFijas(),
     ).ejecutar(AHORA);
 
     expect(fn).toHaveBeenCalledTimes(3);
@@ -257,7 +258,7 @@ describe("413/R42 — el mensajero BLOQUEADO por cierres NO recibe este aviso", 
       repo,
       cierresDoble(["u-1", "u-2"]),
       fn,
-      loggerMudo,
+      loggerMudo, reglasPaisFijas(),
     ).ejecutar(AHORA);
 
     expect(fn).not.toHaveBeenCalled();
@@ -281,7 +282,7 @@ describe("413/R34 — una emisión que falla NO se lleva por delante a las demá
       recibidos.push(ctx.mensajeroUsuarioId);
     });
 
-    const resumen = await new RepartoMananaAvisoService(repo, cierresDoble(), fn, logger).ejecutar(
+    const resumen = await new RepartoMananaAvisoService(repo, cierresDoble(), fn, logger, reglasPaisFijas()).ejecutar(
       AHORA,
     );
 
@@ -302,7 +303,7 @@ describe("413/R34 — una emisión que falla NO se lleva por delante a las demá
       throw new Error("la base se cayó");
     });
 
-    await new RepartoMananaAvisoService(repo, cierresDoble(), fn, logger).ejecutar(AHORA);
+    await new RepartoMananaAvisoService(repo, cierresDoble(), fn, logger, reglasPaisFijas()).ejecutar(AHORA);
 
     const registrado = String(logger.logError.mock.calls[0][0]);
     expect(registrado).not.toContain("u-secreto-413");
@@ -320,9 +321,9 @@ describe("413/R12 — dos corridas la misma noche dejan UNA emisión efectiva", 
     const segunda = repoDoble([{ mensajeroId: "u-1", total: 8 }]);
     const { fn, recibidos } = notificadorEspia();
 
-    await new RepartoMananaAvisoService(primera, cierresDoble(), fn, loggerMudo).ejecutar(AHORA);
+    await new RepartoMananaAvisoService(primera, cierresDoble(), fn, loggerMudo, reglasPaisFijas()).ejecutar(AHORA);
     // Dos horas más tarde, la misma noche: 21:00 CR = 03:00Z del 12.
-    await new RepartoMananaAvisoService(segunda, cierresDoble(), fn, loggerMudo).ejecutar(
+    await new RepartoMananaAvisoService(segunda, cierresDoble(), fn, loggerMudo, reglasPaisFijas()).ejecutar(
       new Date("2026-09-12T03:00:00.000Z"),
     );
 
@@ -338,8 +339,8 @@ describe("413/R12 — dos corridas la misma noche dejan UNA emisión efectiva", 
     const repo = repoDoble([{ mensajeroId: "u-1", total: 5 }]);
     const { fn, recibidos } = notificadorEspia();
 
-    await new RepartoMananaAvisoService(repo, cierresDoble(), fn, loggerMudo).ejecutar(AHORA);
-    await new RepartoMananaAvisoService(repo, cierresDoble(), fn, loggerMudo).ejecutar(
+    await new RepartoMananaAvisoService(repo, cierresDoble(), fn, loggerMudo, reglasPaisFijas()).ejecutar(AHORA);
+    await new RepartoMananaAvisoService(repo, cierresDoble(), fn, loggerMudo, reglasPaisFijas()).ejecutar(
       new Date("2026-09-13T01:00:00.000Z"), // 19:00 CR del día 12
     );
 
@@ -361,7 +362,7 @@ describe("413/R37 — la emisión no corre dentro de ninguna transacción", () =
     // lo que impide que una suite que construya este servicio escriba avisos de verdad.
     const repo = repoDoble([{ mensajeroId: "u-1", total: 5 }]);
 
-    const resumen = await new RepartoMananaAvisoService(repo, cierresDoble()).ejecutar(AHORA);
+    const resumen = await new RepartoMananaAvisoService(repo, cierresDoble(), undefined, undefined, reglasPaisFijas()).ejecutar(AHORA);
 
     // Emite (cuenta como emitido) pero el no-op no escribe nada: no hay forma de observarlo desde
     // aquí salvo que no lanza y que el resumen sale coherente. Lo que se afirma es que el servicio

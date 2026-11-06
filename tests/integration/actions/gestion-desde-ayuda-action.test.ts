@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { gestionarDesdeAyuda } from "@/lib/actions/gestion-desde-ayuda";
 import type { IGestionDesdeAyudaService } from "@/lib/interfaces/services/IGestionDesdeAyudaService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 237 (T5.4, R1/R12/R13/R14) — el BORDE: la Server Action.
 //
@@ -73,7 +74,7 @@ function manana(): string {
 describe("gestionarDesdeAyuda — el borde autentica ANTES de tocar nada", () => {
   it("sin sesion ⇒ `unauthenticated`, y el servicio NO recibe ni una llamada", async () => {
     const service = fakeService();
-    const r = await gestionarDesdeAyuda(formData(), { service, getActor: noActor });
+    const r = await gestionarDesdeAyuda(formData(), { service, reglasPais: reglasPaisFijas(), getActor: noActor });
     expect(r).toEqual({ status: "unauthenticated" });
     expect(service.gestionar).not.toHaveBeenCalled();
   });
@@ -83,7 +84,7 @@ describe("gestionarDesdeAyuda — el borde autentica ANTES de tocar nada", () =>
     // uno invalido por el codigo de error, y eso es informacion que no le corresponde.
     const service = fakeService();
     const basura = new FormData();
-    const r = await gestionarDesdeAyuda(basura, { service, getActor: noActor });
+    const r = await gestionarDesdeAyuda(basura, { service, reglasPais: reglasPaisFijas(), getActor: noActor });
     expect(r).toEqual({ status: "unauthenticated" });
     expect(service.gestionar).not.toHaveBeenCalled();
   });
@@ -96,6 +97,7 @@ describe("gestionarDesdeAyuda — el borde REVALIDA (R1/R12/R13/R14)", () => {
       const service = fakeService();
       const r = await gestionarDesdeAyuda(formData({ resultado }), {
         service,
+        reglasPais: reglasPaisFijas(),
         getActor: actorTienda,
       });
       expect(r.status).toBe("validation_error");
@@ -107,6 +109,7 @@ describe("gestionarDesdeAyuda — el borde REVALIDA (R1/R12/R13/R14)", () => {
     const service = fakeService();
     const r = await gestionarDesdeAyuda(formData({ fotos: 0 }), {
       service,
+      reglasPais: reglasPaisFijas(),
       getActor: actorTienda,
     });
     expect(r.status).toBe("validation_error");
@@ -119,7 +122,7 @@ describe("gestionarDesdeAyuda — el borde REVALIDA (R1/R12/R13/R14)", () => {
     const fd = formData();
     fd.delete("motivo");
     const service = fakeService();
-    const r = await gestionarDesdeAyuda(fd, { service, getActor: actorTienda });
+    const r = await gestionarDesdeAyuda(fd, { service, reglasPais: reglasPaisFijas(), getActor: actorTienda });
     expect(r.status).toBe("validation_error");
     if (r.status !== "validation_error") return;
     expect(Object.keys(r.fieldErrors)).toContain("motivo");
@@ -129,7 +132,7 @@ describe("gestionarDesdeAyuda — el borde REVALIDA (R1/R12/R13/R14)", () => {
     const fd = formData({ fotos: 0 });
     fd.append("evidencia", new File([new Uint8Array([1])], "x.pdf", { type: "application/pdf" }));
     const service = fakeService();
-    const r = await gestionarDesdeAyuda(fd, { service, getActor: actorTienda });
+    const r = await gestionarDesdeAyuda(fd, { service, reglasPais: reglasPaisFijas(), getActor: actorTienda });
     expect(r.status).toBe("validation_error");
     expect(service.gestionar).not.toHaveBeenCalled();
   });
@@ -144,7 +147,7 @@ describe("gestionarDesdeAyuda — el borde REVALIDA (R1/R12/R13/R14)", () => {
     const service = fakeService();
     const r = await gestionarDesdeAyuda(
       formData({ resultado: "reprogramado", fechaReprogramacion: hoy }),
-      { service, getActor: actorTienda },
+      { service, reglasPais: reglasPaisFijas(), getActor: actorTienda },
     );
     expect(r.status).toBe("validation_error");
     expect(service.gestionar).not.toHaveBeenCalled();
@@ -154,6 +157,7 @@ describe("gestionarDesdeAyuda — el borde REVALIDA (R1/R12/R13/R14)", () => {
     const service = fakeService();
     const r = await gestionarDesdeAyuda(formData({ resultado: "reprogramado" }), {
       service,
+      reglasPais: reglasPaisFijas(),
       getActor: actorTienda,
     });
     expect(r.status).toBe("validation_error");
@@ -163,7 +167,7 @@ describe("gestionarDesdeAyuda — el borde REVALIDA (R1/R12/R13/R14)", () => {
 describe("gestionarDesdeAyuda — lo que llega al servicio", () => {
   it("N archivos de la clave `evidencia` ⇒ N evidencias, con su binario y EN ORDEN", async () => {
     const service = fakeService();
-    await gestionarDesdeAyuda(formData({ fotos: 3 }), { service, getActor: actorTienda });
+    await gestionarDesdeAyuda(formData({ fotos: 3 }), { service, reglasPais: reglasPaisFijas(), getActor: actorTienda });
 
     expect(service.gestionar).toHaveBeenCalledTimes(1);
     const input = (service.gestionar as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
@@ -178,7 +182,7 @@ describe("gestionarDesdeAyuda — lo que llega al servicio", () => {
 
   it("el actor de la SESION llega al servicio (no un id del `FormData`)", async () => {
     const service = fakeService();
-    await gestionarDesdeAyuda(formData(), { service, getActor: actorTienda });
+    await gestionarDesdeAyuda(formData(), { service, reglasPais: reglasPaisFijas(), getActor: actorTienda });
     const actor = (service.gestionar as ReturnType<typeof vi.fn>).mock.calls[0][1] as Actor;
     expect(actor).toEqual(TIENDA);
   });
@@ -193,7 +197,7 @@ describe("gestionarDesdeAyuda — lo que llega al servicio", () => {
     });
     const r = await gestionarDesdeAyuda(
       formData({ resultado: "reprogramado", fechaReprogramacion: manana() }),
-      { service, getActor: actorTienda },
+      { service, reglasPais: reglasPaisFijas(), getActor: actorTienda },
     );
     expect(r).toEqual({ status: "ok", ordenId: ORDEN_ID, resultado: "reprogramado" });
     const input = (service.gestionar as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
@@ -211,7 +215,7 @@ describe("gestionarDesdeAyuda — lo que llega al servicio", () => {
       { status: "conflict" as const, motivo: "Esta orden ya no está esperando tu respuesta." },
     ]) {
       const service = fakeService({ gestionar: vi.fn(async () => dominio) });
-      const r = await gestionarDesdeAyuda(formData(), { service, getActor: actorTienda });
+      const r = await gestionarDesdeAyuda(formData(), { service, reglasPais: reglasPaisFijas(), getActor: actorTienda });
       expect(r).toEqual(dominio);
     }
   });

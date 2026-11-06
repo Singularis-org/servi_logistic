@@ -11,6 +11,7 @@ import {
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // ⭑ FICHA 431 / T6 (R15) — LOS DOS `CHECK` EXISTEN Y MUERDEN. Contra Postgres de verdad.
@@ -296,7 +297,7 @@ describeSiHayBase("431/T6 — los dos CHECK de la conciliacion (Postgres real)",
 
       const repo = new CierresBodegaAdminRepository(tx as unknown as PrismaClient);
       try {
-        await repo.resolverCierreBodega({
+        await repo.resolverCierreBodega({ zonaHoraria: ZONA_DE_CR,
           id: cb.id,
           nuevoEstado: "aprobado",
           resueltoPor: usuarioId,
@@ -326,7 +327,7 @@ describeSiHayBase("431/T6 — los dos CHECK de la conciliacion (Postgres real)",
         select: { id: true },
       });
       const repo = new CierresBodegaAdminRepository(tx as unknown as PrismaClient);
-      const r = await repo.resolverCierreBodega({
+      const r = await repo.resolverCierreBodega({ zonaHoraria: ZONA_DE_CR,
         id: cb.id,
         nuevoEstado: "rechazado",
         resueltoPor: usuarioId,

@@ -16,8 +16,12 @@ import { fuenteEtiqueta } from "@/lib/pdf/etiquetas-fuente";
 import { cubreCodePoint, registrarFuente } from "@/lib/pdf/etiquetas-fuente-registro";
 import { formatMontoString } from "@/lib/config/moneda";
 import { sumarMontos } from "@/lib/utils/kpis-financieros";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
-import { fechaCRLegible, fechaLargaCR, horaCRLegible } from "@/lib/whatsapp-envios/informes/formato";
+import { fechaCalendario } from "@/lib/utils/calendario-zona";
+import {
+  fechaLargaEnZona,
+  fechaLegibleEnZona,
+  horaLegibleEnZona,
+} from "@/lib/whatsapp-envios/informes/formato";
 import { nombreDeEstado } from "@/lib/types/order-status";
 import { HITO_EN_PALABRAS } from "@/lib/whatsapp-envios/informes/transito/parametros";
 import type {
@@ -43,8 +47,8 @@ const AMBAR: [number, number, number] = [146, 64, 14];
 const LINEA: [number, number, number] = [227, 232, 242];
 
 /** Nombre del archivo (R33): `transito-YYYY-MM-DD.pdf` con la fecha CR. */
-export function nombreArchivoTransito(ahora: Date): string {
-  return `transito-${fechaCalendarioCR(ahora)}.pdf`;
+export function nombreArchivoTransito(ahora: Date, zona: string): string {
+  return `transito-${fechaCalendario(ahora, zona)}.pdf`;
 }
 
 /** Sustituye por «?» lo que la fuente embebida no puede imprimir (nunca desaparece en silencio). */
@@ -212,9 +216,9 @@ function encabezado(l: Lienzo, m: ModeloInformeTransito): void {
   l.estilo(8, GRIS);
   l.texto("Paquetes sin cierre logístico que están por vencer su plazo o ya lo pasaron", MARGEN, 30);
   l.estilo(10);
-  l.texto(fechaLargaCR(m.ahora), ANCHO - MARGEN, 16, { derecha: true });
+  l.texto(fechaLargaEnZona(m.ahora, m.zona), ANCHO - MARGEN, 16, { derecha: true });
   l.estilo(8, GRIS);
-  l.texto(`${horaCRLegible(m.ahora)} · hora de Costa Rica`, ANCHO - MARGEN, 21, { derecha: true });
+  l.texto(`${horaLegibleEnZona(m.ahora, m.zona)} · hora local`, ANCHO - MARGEN, 21, { derecha: true });
   l.texto(`Días contados desde ${HITO_EN_PALABRAS[m.hito]}`, ANCHO - MARGEN, 26, { derecha: true });
   l.y = 35;
 }
@@ -371,7 +375,7 @@ function resumenParametros(l: Lienzo, m: ModeloInformeTransito): void {
 function pies(l: Lienzo, m: ModeloInformeTransito): void {
   const total = l.doc.getNumberOfPages();
   const membrete = EMPRESA.membrete === null ? "" : `${EMPRESA.membrete} · `;
-  const sello = `${membrete}Informe de tránsito · ${fechaCRLegible(m.ahora)} ${horaCRLegible(m.ahora)}`;
+  const sello = `${membrete}Informe de tránsito · ${fechaLegibleEnZona(m.ahora, m.zona)} ${horaLegibleEnZona(m.ahora, m.zona)}`;
   for (let i = 1; i <= total; i++) {
     l.doc.setPage(i);
     l.linea(ALTO - 12);

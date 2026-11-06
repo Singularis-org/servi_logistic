@@ -16,6 +16,7 @@ import { WalletEgresoService } from "@/lib/services/WalletEgresoService";
 import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, crearPrismaDeTest } from "./_postgres-real";
 import { clienteConEmpresa459, limpiar459, sembrarPersonas459, type Personas459 } from "./_fixtures/escrituras-459";
 import { tomarTarifaGlobal, type TarifaGlobalBajoLock } from "./_fixtures/cobro-plataforma-40";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // SL-45 (design §12.2) — CONCURRENCIA DEL TOPE (R10, R11), contra Postgres, con filas COMMITEADAS.
@@ -108,7 +109,7 @@ describeSiHayBase("SL-45 — concurrencia del pago a la plataforma (Postgres rea
           },
         }
       : real;
-    return new WalletEgresoService(new WalletMovimientoRepository(cliente), cliente, undefined, tope);
+    return new WalletEgresoService(new WalletMovimientoRepository(cliente), cliente, undefined, tope, reglasPaisFijas());
   }
 
   const pagoDe = (monto: string, clave: string = randomUUID()) => ({

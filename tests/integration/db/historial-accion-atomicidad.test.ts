@@ -9,6 +9,7 @@ import { UserRepository } from "@/lib/repositories/UserRepository";
 // que dispara el registro), asi que hace falta el servicio real y su repo de zonas.
 import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
 import { UsuarioService } from "@/lib/services/UsuarioService";
+import { CR, reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 import type { Actor } from "@/lib/interfaces/services/IUsuarioService";
 import {
   HAY_BASE_DE_DATOS,
@@ -658,7 +659,15 @@ describeSiHayBase("362/T8.1 — la accion y su registro son atomicos (Postgres r
       /** El servicio real cableado sobre la tx del test (con savepoint para el `$transaction`). */
       function servicioDeTest(tx: TxDeTest): UsuarioService {
         const cliente = clienteConSavepoint(tx);
-        return new UsuarioService(new UserRepository(cliente), new ZonaRepository(cliente));
+        // SLT-42: CR fijo; lo que se mide aqui es el rastro, no las reglas del pais.
+        return new UsuarioService(
+          new UserRepository(cliente),
+          new ZonaRepository(cliente),
+          undefined,
+          undefined,
+          undefined,
+          reglasPaisFijas(CR),
+        );
       }
 
       async function rolPorValor(tx: TxDeTest, value: RolValue): Promise<string> {

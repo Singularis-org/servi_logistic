@@ -233,23 +233,33 @@ describe("UserRepository.setEstado (R20/R21/R22)", () => {
 });
 
 describe("UserRepository.listTiposIdentificacion (R29)", () => {
-  it("listTiposIdentificacion devuelve id/value del catalogo (R29)", async () => {
+  it("listTiposIdentificacion sin pais devuelve el catalogo entero ordenado por value (R29)", async () => {
     const prisma = buildPrisma();
-    prisma.tipoIdentificacion.findMany.mockResolvedValue([
-      { id: "tipo-1", value: "cedula" },
-      { id: "tipo-2", value: "ruc" },
-    ]);
+    const filas = [
+      { id: "tipo-1", value: "cedula", nombre: "Cédula física", clave: "cedula_fisica" },
+      { id: "tipo-2", value: "ruc", nombre: "Cédula jurídica", clave: "cedula_juridica" },
+    ];
+    prisma.tipoIdentificacion.findMany.mockResolvedValue(filas);
     const repo = new UserRepository(prisma as unknown as PrismaClient);
 
     const tipos = await repo.listTiposIdentificacion();
-    expect(tipos).toEqual([
-      { id: "tipo-1", value: "cedula" },
-      { id: "tipo-2", value: "ruc" },
-    ]);
-    expect(prisma.tipoIdentificacion.findMany.mock.calls[0][0].select).toEqual({
-      id: true,
-      value: true,
-    });
+    expect(tipos).toEqual(filas);
+    const args = prisma.tipoIdentificacion.findMany.mock.calls[0][0];
+    expect(args.select).toEqual({ id: true, value: true, nombre: true, clave: true });
+    expect(args.where).toBeUndefined();
+    expect(args.orderBy).toEqual({ value: "asc" });
+  });
+
+  // El SQL de verdad lo prueba `tests/integration/db/tipos-identificacion-por-pais.test.ts`.
+  it("SLT-42 R5: con pais, filtra por ese pais y por activo, en el orden del catalogo", async () => {
+    const prisma = buildPrisma();
+    prisma.tipoIdentificacion.findMany.mockResolvedValue([]);
+    const repo = new UserRepository(prisma as unknown as PrismaClient);
+
+    await repo.listTiposIdentificacion("CR");
+    const args = prisma.tipoIdentificacion.findMany.mock.calls[0][0];
+    expect(args.where).toEqual({ paisId: "CR", activo: true });
+    expect(args.orderBy).toEqual({ orden: "asc" });
   });
 });
 

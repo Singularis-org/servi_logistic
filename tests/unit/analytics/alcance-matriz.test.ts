@@ -5,6 +5,7 @@ import type { RolAnalitica } from "@/lib/analytics/types";
 import { prepararConsultaAnalitica } from "@/lib/analytics/consulta";
 import type { ActorAnalitica, AlcanceDatos } from "@/lib/analytics/alcance";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Feature 122 / T5.4 — R22: MATRIZ EXHAUSTIVA.
 //
 // Sin RLS debajo, esta capa es la unica que separa inquilinos. Por eso R22 no se conforma
@@ -101,7 +102,7 @@ describe("R22 · toda combinacion de rol, metrica y filtro produce un subconjunt
             { rango: "dia", ...dimensiones },
             ACTOR[rol],
             metrica.id,
-            AHORA,
+            ZONA_DE_CR, AHORA,
           );
           casos++;
 
@@ -135,7 +136,7 @@ describe("R22 · toda combinacion de rol, metrica y filtro produce un subconjunt
           { rango: "dia", ...FORMAS_DE_FILTRO.ajeno },
           ACTOR[rol],
           metrica.id,
-          AHORA,
+          ZONA_DE_CR, AHORA,
         );
         expect(r, `${rol}/${metrica.id}`).toEqual({
           status: "forbidden",
@@ -150,7 +151,7 @@ describe("R22 · toda combinacion de rol, metrica y filtro produce un subconjunt
       { rango: "dia", ...FORMAS_DE_FILTRO.mixto },
       ACTOR.adminTienda,
       "entregas",
-      AHORA,
+      ZONA_DE_CR, AHORA,
     );
     expect(r.status).toBe("ok");
     if (r.status !== "ok") return;

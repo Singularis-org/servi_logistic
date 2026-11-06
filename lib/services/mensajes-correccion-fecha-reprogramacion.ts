@@ -22,7 +22,7 @@ export const MSG_ESTADO_NO_REPROGRAMADA = "la orden ya no está esperando una re
 
 /**
  * La corrección se ofrece SÓLO mientras la orden sigue en `reprogramada`, que es exactamente
- * mientras esa fecha decide algo: es la que el cron de las 00:00 CR mira para devolverla a bodega.
+ * mientras esa fecha decide algo: es la que el cron de las 00:00 (hora del pais de la empresa) mira para devolverla a bodega.
  * En cualquier otro estado la orden ya volvió a circular y mover la fecha no cambiaría nada — sería
  * escribir un dato muerto.
  */
@@ -52,7 +52,7 @@ export const MSG_CARRERA = "la orden cambió antes de completar la corrección";
 /** Guardia de seed: falta el `value` `reprogramada` en el catálogo de estados. */
 export const MSG_CATALOGO_INCOMPLETO = "catalogo de estados incompleto (seed pendiente)";
 
-/** Borde: la fecha no es un día válido, o es anterior a hoy en el calendario de Costa Rica. */
+/** Borde: la fecha no es un día válido, o es anterior a hoy en el calendario del pais de la empresa. */
 export const MSG_FECHA_INVALIDA = "la fecha debe ser hoy o posterior";
 
 /** Borde: el motivo es obligatorio, exactamente igual que al reprogramar. */

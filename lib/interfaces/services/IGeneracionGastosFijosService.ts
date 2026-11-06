@@ -12,7 +12,7 @@ import type { WalletTxClient } from "@/lib/interfaces/repositories/IWalletMovimi
 
 // Resumen de una corrida (sin PII, R29): solo conteos + la fecha CR.
 export interface GeneracionGastosFijosResult {
-  fecha: string; // `YYYY-MM-DD`: dia calendario CR de la corrida (hora CR, UTC-6)
+  fecha: string; // `YYYY-MM-DD`: dia calendario de la corrida en la zona del pais de la empresa (SLT-42)
   plantillasActivas: number; // plantillas ACTIVAS evaluadas (R27)
   plantillasQueAplicanHoy: number; // de las activas, las que disparan hoy (feature 84)
   egresosGenerados: number; // egresos efectivamente insertados (0 en una reejecucion, R28)

@@ -13,6 +13,7 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { GestionarInput } from "@/lib/interfaces/services/IMisAsignacionesService";
 import { fakeIntentosEnLote } from "@/tests/fixtures/intentos-entrega";
 import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 119 (R9/R10/R11/R13) — atomicidad Storage <-> DB de la evidencia MULTIPLE. La subida
 // es SECUENCIAL y acumula los paths en `uploaded`; ante cualquier fallo se compensa con
@@ -121,6 +122,7 @@ function newService(
     fakeRutaRepo(),
     fakeMetaRepo(),
     fakeIntentosEnLote(), // feature 160: dep requerida, no ejercitada aqui
+    reglasPaisFijas(),
   );
 }
 

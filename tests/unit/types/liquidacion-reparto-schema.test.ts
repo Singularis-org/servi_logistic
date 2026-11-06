@@ -8,7 +8,7 @@ import {
   registrarRepartoMensajeroSchema,
 } from "@/lib/types/liquidacion-reparto";
 import { LIQUIDACION_MONTO_MAX, LIQUIDACION_REFERENCIA_MAX } from "@/lib/types/liquidacion";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendarioCR, ZONA_CR } from "@/lib/utils/fecha-cr";
 import { LLAMADAS_PROHIBIDAS_EN_DINERO, quitarComentarios } from "../../fixtures/money-safe";
 
 // Feature 205 / T4.1 — los dos schemas del BORDE y la forma de los DTO. Cubre R9 (la peticion no
@@ -61,7 +61,7 @@ function clavesDesconocidas(error: z.ZodError): string[] {
 
 describe("R9 — la peticion NO puede elegir contra que cierre se imputa", () => {
   it("`cierreId` no existe en el schema del REGISTRO, y `.strict()` lo nombra al rechazarlo", () => {
-    const r = registrarRepartoMensajeroSchema.safeParse(registro({ cierreId: CIERRE }));
+    const r = registrarRepartoMensajeroSchema(ZONA_CR).safeParse(registro({ cierreId: CIERRE }));
 
     expect(r.success).toBe(false);
     if (r.success) return;
@@ -90,7 +90,7 @@ describe("R9 — la peticion NO puede elegir contra que cierre se imputa", () =>
 describe("R47 — `.strict()`: la forma se valida entera, no por lista de nombres", () => {
   it("cualquier clave desconocida cae, no solo `cierreId`", () => {
     for (const extra of ["tiendaId", "repartoId", "comprobante", "montoTotal", "tope"]) {
-      const r = registrarRepartoMensajeroSchema.safeParse(registro({ [extra]: "x" }));
+      const r = registrarRepartoMensajeroSchema(ZONA_CR).safeParse(registro({ [extra]: "x" }));
       expect(r.success, extra).toBe(false);
       if (r.success) continue;
       expect(clavesDesconocidas(r.error), extra).toContain(extra);
@@ -98,7 +98,7 @@ describe("R47 — `.strict()`: la forma se valida entera, no por lista de nombre
   });
 
   it("una peticion valida SI pasa (si no, lo de arriba no diria nada)", () => {
-    expect(registrarRepartoMensajeroSchema.safeParse(registro()).success).toBe(true);
+    expect(registrarRepartoMensajeroSchema(ZONA_CR).safeParse(registro()).success).toBe(true);
     expect(previsualizarRepartoSchema.safeParse({ mensajeroId: MENSAJERO }).success).toBe(true);
     expect(
       previsualizarRepartoSchema.safeParse({ mensajeroId: MENSAJERO, monto: "1.00" }).success,
@@ -107,7 +107,7 @@ describe("R47 — `.strict()`: la forma se valida entera, no por lista de nombre
 
   it("el mensajero es obligatorio y tiene que ser un uuid", () => {
     for (const mensajeroId of [undefined, "", "m1", 42]) {
-      expect(registrarRepartoMensajeroSchema.safeParse(registro({ mensajeroId })).success).toBe(
+      expect(registrarRepartoMensajeroSchema(ZONA_CR).safeParse(registro({ mensajeroId })).success).toBe(
         false,
       );
       expect(previsualizarRepartoSchema.safeParse({ mensajeroId }).success).toBe(false);
@@ -117,7 +117,7 @@ describe("R47 — `.strict()`: la forma se valida entera, no por lista de nombre
 
 describe("R46 — el dinero entra como TEXTO, con las MISMAS reglas que el pago de la 172", () => {
   it("un `monto` numerico no se coerciona: se rechaza", () => {
-    expect(registrarRepartoMensajeroSchema.safeParse(registro({ monto: 15000 })).success).toBe(
+    expect(registrarRepartoMensajeroSchema(ZONA_CR).safeParse(registro({ monto: 15000 })).success).toBe(
       false,
     );
     expect(
@@ -127,7 +127,7 @@ describe("R46 — el dinero entra como TEXTO, con las MISMAS reglas que el pago 
 
   it("cero, negativo, con tres decimales o no numerico: fuera", () => {
     for (const monto of ["0", "0.00", "-1.00", "1.005", "abc", "1e3", ""]) {
-      expect(registrarRepartoMensajeroSchema.safeParse(registro({ monto })).success, monto).toBe(
+      expect(registrarRepartoMensajeroSchema(ZONA_CR).safeParse(registro({ monto })).success, monto).toBe(
         false,
       );
     }
@@ -136,24 +136,24 @@ describe("R46 — el dinero entra como TEXTO, con las MISMAS reglas que el pago 
   it("el tope del monto es EL MISMO que el del pago, derivado de la columna", () => {
     // `LIQUIDACION_MONTO_MAX` sale de `DECIMAL(12,2)`. Que el reparto lo herede sin escribirlo es
     // lo que impide que un dia acepte un importe que la columna no puede guardar.
-    expect(registrarRepartoMensajeroSchema.safeParse(registro({ monto: LIQUIDACION_MONTO_MAX })).success).toBe(
+    expect(registrarRepartoMensajeroSchema(ZONA_CR).safeParse(registro({ monto: LIQUIDACION_MONTO_MAX })).success).toBe(
       true,
     );
     const unCentimoMas = "10000000000.00";
-    expect(registrarRepartoMensajeroSchema.safeParse(registro({ monto: unCentimoMas })).success).toBe(
+    expect(registrarRepartoMensajeroSchema(ZONA_CR).safeParse(registro({ monto: unCentimoMas })).success).toBe(
       false,
     );
   });
 
   it("la referencia hereda su tope y su `.trim()`", () => {
     const justo = "1".repeat(LIQUIDACION_REFERENCIA_MAX);
-    expect(registrarRepartoMensajeroSchema.safeParse(registro({ referencia: justo })).success).toBe(
+    expect(registrarRepartoMensajeroSchema(ZONA_CR).safeParse(registro({ referencia: justo })).success).toBe(
       true,
     );
     expect(
-      registrarRepartoMensajeroSchema.safeParse(registro({ referencia: `${justo}1` })).success,
+      registrarRepartoMensajeroSchema(ZONA_CR).safeParse(registro({ referencia: `${justo}1` })).success,
     ).toBe(false);
-    const conEspacios = registrarRepartoMensajeroSchema.safeParse(
+    const conEspacios = registrarRepartoMensajeroSchema(ZONA_CR).safeParse(
       registro({ referencia: "  1234567  " }),
     );
     expect(conEspacios.success).toBe(true);
@@ -163,7 +163,7 @@ describe("R46 — el dinero entra como TEXTO, con las MISMAS reglas que el pago 
 
   it("R58: la referencia es obligatoria en pago electronico y opcional en efectivo", () => {
     for (const metodo of ["SINPE", "transferencia"]) {
-      const r = registrarRepartoMensajeroSchema.safeParse(
+      const r = registrarRepartoMensajeroSchema(ZONA_CR).safeParse(
         registro({ metodo, referencia: undefined }),
       );
       expect(r.success, metodo).toBe(false);
@@ -171,17 +171,17 @@ describe("R46 — el dinero entra como TEXTO, con las MISMAS reglas que el pago 
       expect(r.error.issues.map((i) => i.path.join(".")), metodo).toContain("referencia");
     }
     expect(
-      registrarRepartoMensajeroSchema.safeParse(registro({ metodo: "efectivo", referencia: undefined }))
+      registrarRepartoMensajeroSchema(ZONA_CR).safeParse(registro({ metodo: "efectivo", referencia: undefined }))
         .success,
     ).toBe(true);
   });
 
   it("la fecha no puede ser futura, con la misma regla horaria de Costa Rica", () => {
     const manana = fechaCalendarioCR(new Date(Date.now() + 24 * 60 * 60 * 1000));
-    expect(registrarRepartoMensajeroSchema.safeParse(registro({ fechaPago: manana })).success).toBe(
+    expect(registrarRepartoMensajeroSchema(ZONA_CR).safeParse(registro({ fechaPago: manana })).success).toBe(
       false,
     );
-    expect(registrarRepartoMensajeroSchema.safeParse(registro({ fechaPago: "2026-02-31" })).success).toBe(
+    expect(registrarRepartoMensajeroSchema(ZONA_CR).safeParse(registro({ fechaPago: "2026-02-31" })).success).toBe(
       false,
     );
   });

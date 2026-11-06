@@ -370,7 +370,10 @@ export type PreciosQueRigenResult =
 // Serializables: cruzan de Server Component a cliente. Las fechas de calendario (`AAAA-MM-DD`) van en
 // la hora de la plataforma; los instantes (`creadoAt`), en ISO.
 
-/** R13: una fila del catálogo, también archivada. `vigenteDesdePendiente` es `AAAA-MM-DD`. */
+/**
+ * R13: una fila del catálogo, también archivada. `vigenteDesdePendiente` es `AAAA-MM-DD UTC`: un plan
+ * del catálogo no es de una sola empresa, así que la fecha va en UTC y lo dice (SLT-42).
+ */
 export type PlanDelCatalogo = PlanDTO & {
   /** El nombre de la empresa de un custom; `null` en un público. */
   empresaNombre: string | null;

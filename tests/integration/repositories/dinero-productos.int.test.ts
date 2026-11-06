@@ -16,6 +16,7 @@ import type { FilaDineroCruda } from "@/lib/interfaces/repositories/IDineroProdu
 import { fundirDinero, claveDeGrupoProducto } from "@/lib/services/ConteoProductosService";
 import { DetalleDineroProductoService } from "@/lib/services/DetalleDineroProductoService";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // FICHA 347 / B3.3 — EL RECORTE Y EL CUADRE DONDE VIVEN: CONTRA POSTGRES.
 // Cubre R7, R18, R19, R20, R21, R23, R26, R28, R38, R39, R40, R43, R74, y ⟨Q3⟩.
 //
@@ -149,7 +150,7 @@ describeSiHayBase("347 / B3.3 — DineroProductosRepository contra Postgres real
   function consultaDe(rol: string, usuarioId: string, raw: object = {}): ConsultaProductos {
     // La consulta se PREPARA de verdad —no se forja— para que el alcance que viaja al `WHERE`
     // sea el que el resolutor concede y no uno escrito a mano por el test.
-    const preparada = prepararConsultaProductos(raw, { usuarioId, rol } as never, AHORA);
+    const preparada = prepararConsultaProductos(raw, { usuarioId, rol } as never, ZONA_DE_CR, AHORA);
     if (preparada.status !== "ok") {
       throw new Error(`la consulta de prueba salio ${preparada.status}`);
     }

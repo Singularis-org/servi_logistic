@@ -31,6 +31,18 @@ import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
 import { cargarCatalogo459, enTransaccionRevertida459, montarServicios459, sembrarEscenario459 } from "./_fixtures/caja-459";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+
+// SLT-42 (T5.4): la zona del pais de la empresa es la de CR, como antes. Las reglas reales leen el pais
+// de la empresa en curso con el cliente global, que no ve la empresa de una transaccion revertida ni
+// tiene empresa fuera de `conEmpresa`; la zona por pais la miden `hora-por-pais-wallet` y `demo-qa`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
 
 // SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
 vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
@@ -107,12 +119,14 @@ describeSiHayBase("458-B/TB.11 — registros con «a quien», referencia y compr
           storage,
           urls,
           runTx,
+          undefined,
+          reglasPaisFijas(),
         );
         const cajaRepo = new WalletMovimientoRepository(c);
         const tiendaRepo = new WalletTiendaMovimientoRepository(c);
-        const egresos = new WalletEgresoService(cajaRepo, c, puerto);
+        const egresos = new WalletEgresoService(cajaRepo, c, puerto, undefined, reglasPaisFijas());
         // `registrarMovimientoManual` no lee los documentos del libro: los lectores no intervienen.
-        const wallet = new WalletService(cajaRepo, c, new AporteCapitalRepository(c), {} as never, puerto);
+        const wallet = new WalletService(cajaRepo, c, new AporteCapitalRepository(c), {} as never, puerto, undefined, reglasPaisFijas());
         const montarLiquidacion = (p: IWalletComprobanteService) =>
           new LiquidacionService(
             new LiquidacionPagoRepository(c),
@@ -124,6 +138,7 @@ describeSiHayBase("458-B/TB.11 — registros con «a quien», referencia y compr
             undefined,
             undefined,
             p,
+            reglasPaisFijas(),
           );
         const liquidacion = montarLiquidacion(puerto);
         const cobro = new CobroTiendaService(
@@ -134,6 +149,7 @@ describeSiHayBase("458-B/TB.11 — registros con «a quien», referencia y compr
           runTx,
           undefined,
           puerto,
+          reglasPaisFijas(),
         );
         const actor = esc.maestro;
         const hoy = fechaCalendarioCR(new Date());
@@ -153,19 +169,19 @@ describeSiHayBase("458-B/TB.11 — registros con «a quien», referencia y compr
             comprobante: png(),
           });
         clave("sueldo");
-        r.sueldo = await registrarEgresoAdministrativoAction(envioSueldo(), { getActor: async () => actor, service: egresos });
-        r.sueldoOtraVez = await registrarEgresoAdministrativoAction(envioSueldo(), { getActor: async () => actor, service: egresos });
+        r.sueldo = await registrarEgresoAdministrativoAction(envioSueldo(), { reglasPais: reglasPaisFijas(), getActor: async () => actor, service: egresos });
+        r.sueldoOtraVez = await registrarEgresoAdministrativoAction(envioSueldo(), { reglasPais: reglasPaisFijas(), getActor: async () => actor, service: egresos });
 
         // C. Gasto como objeto, con «a quien» y sin referencia ni comprobante (458-C D5: «a quien» es
         // obligatorio en el gasto; sin el, C2 no escribe nada).
         r.gastoDeHoy = await registrarEgresoAdministrativoAction(
           { tipoEgreso: "gasto_variable", monto: "40.00", descripcion: "Cinta", claveIdempotencia: clave("gasto"), contraparteNombre: "Ferretería" },
-          { getActor: async () => actor, service: egresos },
+          { reglasPais: reglasPaisFijas(), getActor: async () => actor, service: egresos },
         );
         // C2. FICHA 458-C (D5): el mismo gasto SIN «a quien» cae en el borde y no escribe NADA.
         r.gastoSinAQuien = await registrarEgresoAdministrativoAction(
           { tipoEgreso: "gasto_variable", monto: "41.00", descripcion: "Cinta", claveIdempotencia: clave("sinAQuien") },
-          { getActor: async () => actor, service: egresos },
+          { reglasPais: reglasPaisFijas(), getActor: async () => actor, service: egresos },
         );
         // D. Correccion con solo «a quien» (opcional, D5) y un campo de referencia vacio.
         r.correccion = await registrarMovimientoManualAction(
@@ -178,7 +194,7 @@ describeSiHayBase("458-B/TB.11 — registros con «a quien», referencia y compr
             contraparteNombre: "Cajero",
             referencia: "   ",
           }),
-          { getActor: async () => actor, service: wallet },
+          { reglasPais: reglasPaisFijas(), getActor: async () => actor, service: wallet },
         );
         // E. Archivo de un tipo no admitido: nada se registra.
         r.invalido = await registrarEgresoAdministrativoAction(
@@ -190,7 +206,7 @@ describeSiHayBase("458-B/TB.11 — registros con «a quien», referencia y compr
             claveIdempotencia: clave("invalido"),
             comprobante: new File(["hola"], "c.txt", { type: "text/plain" }),
           }),
-          { getActor: async () => actor, service: egresos },
+          { reglasPais: reglasPaisFijas(), getActor: async () => actor, service: egresos },
         );
         // F. Almacenamiento caido: `comprobante_no_guardado` y nada se registra.
         const caido = new WalletComprobanteService(
@@ -199,10 +215,12 @@ describeSiHayBase("458-B/TB.11 — registros con «a quien», referencia y compr
           { upload: async () => { throw new Error("bucket caido"); }, remove: async () => undefined },
           urls,
           runTx,
+          undefined,
+          reglasPaisFijas(),
         );
         r.caido = await registrarEgresoAdministrativoAction(
           fd({ tipoEgreso: "sueldo", monto: "10.00", descripcion: "x", contraparteNombre: "Ana", claveIdempotencia: clave("caido"), comprobante: png() }),
-          { getActor: async () => actor, service: new WalletEgresoService(cajaRepo, c, caido) },
+          { getActor: async () => actor, service: new WalletEgresoService(cajaRepo, c, caido, undefined, reglasPaisFijas()) },
         );
         // G. El registro NO se escribe con el objeto ya subido (la fila del comprobante viola su CHECK
         // de tipo): la transaccion entera revierte y el objeto se RETIRA.
@@ -231,21 +249,21 @@ describeSiHayBase("458-B/TB.11 — registros con «a quien», referencia y compr
         // H. Pago a una tienda con comprobante; K. el mismo camino sin comprobante (objeto).
         r.pagoTienda = await registrarPagoTiendaAction(
           fd({ claveIdempotencia: clave("pagoTienda"), tiendaId: esc.tiendaA, monto: "1.00", metodo: "efectivo", fechaPago: hoy, comprobante: png() }),
-          { getActor: async () => actor, service: liquidacion },
+          { reglasPais: reglasPaisFijas(), getActor: async () => actor, service: liquidacion },
         );
         r.pagoTiendaDeHoy = await registrarPagoTiendaAction(
           { claveIdempotencia: clave("pagoTiendaDeHoy"), tiendaId: esc.tiendaA, monto: "1.00", metodo: "efectivo", fechaPago: hoy },
-          { getActor: async () => actor, service: liquidacion },
+          { reglasPais: reglasPaisFijas(), getActor: async () => actor, service: liquidacion },
         );
         // I. Reparto a un mensajero con comprobante.
         r.reparto = await registrarRepartoMensajeroAction(
           fd({ claveIdempotencia: clave("reparto"), mensajeroId: esc.mensajeroId, monto: "1.00", metodo: "efectivo", fechaPago: hoy, comprobante: png() }),
-          { getActor: async () => actor, service: liquidacion },
+          { reglasPais: reglasPaisFijas(), getActor: async () => actor, service: liquidacion },
         );
         // J. Cobro a una tienda con comprobante.
         r.cobro = await registrarCobroTiendaAction(
           fd({ claveIdempotencia: clave("cobro"), tiendaId: esc.tiendaB, monto: "5.00", descripcion: "Bolsas", comprobante: png() }),
-          { getActor: async () => actor, service: cobro },
+          { reglasPais: reglasPaisFijas(), getActor: async () => actor, service: cobro },
         );
 
         // ── La medida ───────────────────────────────────────────────────────────────────────

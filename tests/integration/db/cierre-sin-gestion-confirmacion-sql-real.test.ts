@@ -13,6 +13,7 @@ import {
   type TxDeTest,
 } from "./_postgres-real";
 import { montarServicios } from "./454/_escenario";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 /**
  * Ficha 451 / SLT-72 (T4.5; R11, R21, R26, R6, R22) — LAS BARRIDAS SE CONFIRMAN PARA APROBAR, contra
@@ -334,7 +335,7 @@ describeSiHayBase("451/T4.5 — aprobar exige y marca las barridas del cierre (P
       try {
         // Savepoint REAL: el `throw` del repositorio tiene que revertir lo que ya escribio,
         // incluida la liberacion de las barridas, que corre ANTES de la marca.
-        await montarServicios(clienteConSavepoint(tx)).adminRepo.resolverCierre({
+        await montarServicios(clienteConSavepoint(tx)).adminRepo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
           cierreId: c.cierreId,
           alcance: ALCANCE_CENTRAL,
           nuevoEstado: "aprobado",

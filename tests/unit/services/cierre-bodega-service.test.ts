@@ -9,6 +9,7 @@ import type {
 } from "@/lib/interfaces/repositories/ICierreBodegaRepository";
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 40 — tests unit del CierreBodegaService (lado adminSatelite; dobles de
 // repo/orden, sin DB/red). Cubre R1 (rol), R3 (acota a su zona), R4 (sin zona), R5
@@ -77,7 +78,7 @@ function newService(opts: { repo?: Repo; zonaSatelite?: string | null } = {}) {
       opts.zonaSatelite === undefined ? ZONA_SAT : opts.zonaSatelite,
     ),
   } as unknown as Pick<IOrdenRepository, "findUsuarioZonaId">;
-  const service = new CierreBodegaService(repo, ordenRepo as IOrdenRepository);
+  const service = new CierreBodegaService(repo, ordenRepo as IOrdenRepository, reglasPaisFijas());
   return { service, repo, ordenRepo };
 }
 

@@ -64,7 +64,7 @@ import {
   leerPermisoUbicacion,
   type AvisoUbicacion,
 } from "@/lib/utils/aviso-ubicacion-denegada";
-import { mananaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { mananaCalendarioCR, ZONA_CR } from "@/lib/utils/fecha-cr";
 import { estatusLabel } from "@/app/(app)/ordenes/_components/estatus-label";
 import { EstadoConInfo } from "@/components/shared/EstadoInfo";
 import type { CausaDevolucion } from "@/lib/types/causa-devolucion";
@@ -770,7 +770,8 @@ export function GestionarOrdenPanel({
 
     // R22/R24/R25/R27/R29: validación de borde en cliente (mismo schema que el
     // servidor revalida). Errores → por campo, sin enviar.
-    const parsed = gestionarSchema.safeParse(buildRaw(captura));
+    // SLT-81: la UI sigue en la zona de CR
+    const parsed = gestionarSchema(ZONA_CR).safeParse(buildRaw(captura));
     if (!parsed.success) {
       setFieldErrors(
         parsed.error.flatten().fieldErrors as Record<string, string[]>,

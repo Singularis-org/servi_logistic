@@ -13,6 +13,8 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { PagoTarifa } from "@/lib/interfaces/repositories/ITarifaZonaMensajeroRepository";
 import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
 import { conPagos } from "@/tests/fixtures/cierre-pagos";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 /**
  * FICHA 477 (T4.5, T4.7; R21, R22, R25, R26) — el SERVICIO de la re-solicitud y del listado de
@@ -77,6 +79,8 @@ function montar(opts: {
     { createSignedUrl: vi.fn(), createSignedUrls: firmar },
     tarifaRepo as never,
     notificar,
+    undefined,
+    reglasPaisFijas(),
   );
   return { service, repo, ordenRepo, tarifaRepo, notificar, firmar };
 }
@@ -221,7 +225,7 @@ describe("477 · T4.7 — listarCierreDia devuelve `correcciones`", () => {
     const r = await service.listarCierreDia(MENSAJERO);
 
     if (r.status !== "ok") throw new Error("esperaba ok");
-    expect(repo.findCierrePropioConGestiones).toHaveBeenCalledWith("c-rech", "m1");
+    expect(repo.findCierrePropioConGestiones).toHaveBeenCalledWith("c-rech", "m1", ZONA_CR);
     expect(firmar).toHaveBeenCalledWith(["ev/g2.jpg"], expect.any(Number));
     expect(r.correcciones).toHaveLength(1);
     const c = r.correcciones?.[0];

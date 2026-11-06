@@ -15,6 +15,7 @@ import {
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 /**
  * FICHA 425 (B5) — QUE RECHAZOS DE TIENDA SE LLEVA UN CIERRE, EJECUTADO CONTRA POSTGRES.
@@ -328,7 +329,7 @@ describeSiHayBase("425/B5 — el cierre incorpora los rechazos de tienda que le 
       // repositorio no llegaria a correr nunca para este mensajero.
       const seleccionados = await new CorteDiarioRepository(
         tx as unknown as PrismaClient,
-      ).findMensajerosConActividadSinCierre(diaQueElCorteCierra(new Date()));
+      ).findMensajerosConActividadSinCierre(diaQueElCorteCierra(new Date(), ZONA_CR));
       const cierreId = await crearCierre(tx, mensajeroId, "vencido");
       const cierre =
         cierreId === null
@@ -478,7 +479,7 @@ describeSiHayBase("425/B5 — el cierre incorpora los rechazos de tienda que le 
         where: { id: { in: [viejo.ordenId, nuevo.ordenId] } },
         data: { destinatario: "CAMBIADO DESPUES", producto: "CAMBIADO DESPUES" },
       });
-      const detalle = await repoDe(tx).findCierrePropioConGestiones(cierreId, mensajeroId);
+      const detalle = await repoDe(tx).findCierrePropioConGestiones(cierreId, mensajeroId, ZONA_CR);
       return {
         viejo,
         nuevo,

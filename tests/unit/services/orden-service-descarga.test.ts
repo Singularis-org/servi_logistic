@@ -10,6 +10,7 @@ import type { OrdenListItemDTO } from "@/lib/types/orden";
 import { listarOrdenesCompletoSchema, listarOrdenesSchema } from "@/lib/types/orden";
 import { descargaConfig } from "@/lib/config/descarga";
 import { fakeIntentosEnLote } from "@/tests/fixtures/intentos-entrega";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Ficha 470 (T1.3, riesgo K6) — el tope real de la descarga es ahora el limite de Excel
 // (1.048.575 filas). Este archivo prueba la MECANICA del tope (N entra, N+1 no), que no depende
@@ -110,7 +111,7 @@ function repoStub(total: number) {
 }
 
 function servicio(repo: IOrdenRepository) {
-  return new OrdenService(repo, fakeIntentosEnLote(), () => AHORA);
+  return new OrdenService(repo, fakeIntentosEnLote(), () => AHORA, reglasPaisFijas());
 }
 
 function input(extra: Record<string, unknown> = {}) {

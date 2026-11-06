@@ -12,6 +12,7 @@ import {
   fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 /**
  * FEATURE 271 (T10.1 / T10.2 / T2.4 / T6.10) — EL CONTEO N/V, «EL MAS VIEJO», LA RE-SOLICITUD Y LA
@@ -254,7 +255,7 @@ describeSiHayBase("271 · la regla N/V contra Postgres real", () => {
       const medio = await sembrarCierre(tx, m.id, "solicitado", new Date("2026-08-21T18:00:00Z"));
 
       const repo = new OrdenRepository(tx as unknown as PrismaClient);
-      const d = await repo.findBloqueoDetalle(m.id);
+      const d = await repo.findBloqueoDetalle(m.id, ZONA_CR);
 
       expect(d.bloqueado).toBe(true);
       expect(d.cierresAbiertos).toBe(3);
@@ -277,8 +278,8 @@ describeSiHayBase("271 · la regla N/V contra Postgres real", () => {
       const b = await sembrarCierre(tx, m.id, "solicitado", mismoInstante);
 
       const repo = new OrdenRepository(tx as unknown as PrismaClient);
-      const primera = await repo.findBloqueoDetalle(m.id);
-      const segunda = await repo.findBloqueoDetalle(m.id);
+      const primera = await repo.findBloqueoDetalle(m.id, ZONA_CR);
+      const segunda = await repo.findBloqueoDetalle(m.id, ZONA_CR);
 
       expect(primera.aResolverPrimero?.cierreId).toBe(segunda.aResolverPrimero?.cierreId);
       // Y es el de `id` menor, que es lo que hace la eleccion reproducible.
@@ -348,7 +349,7 @@ describeSiHayBase("271 · la regla N/V contra Postgres real", () => {
       );
 
       const repo = new OrdenRepository(tx as unknown as PrismaClient);
-      const d = await repo.findBloqueoDetalle(m.id);
+      const d = await repo.findBloqueoDetalle(m.id, ZONA_CR);
 
       expect({ n: d.cierresAbiertos, v: d.cierresPorReenviar }).toEqual({ n: 2, v: 1 });
 
@@ -394,7 +395,7 @@ describeSiHayBase("271 · la regla N/V contra Postgres real", () => {
       );
 
       const repo = new OrdenRepository(tx as unknown as PrismaClient);
-      const d = await repo.findBloqueoDetalle(m.id);
+      const d = await repo.findBloqueoDetalle(m.id, ZONA_CR);
 
       expect(d.aResolverPrimero?.cierreId).toBe(solicitadoElMasViejoDeTodos.id);
       // Invertir el orden (`desc`) daria el `vencido` del 22: por eso se afirman los dos.
@@ -426,7 +427,7 @@ describeSiHayBase("271 · la regla N/V contra Postgres real", () => {
       await sembrarCierre(tx, m.id, "solicitado", new Date("2026-08-21T18:00:00Z"));
 
       const repo = new OrdenRepository(tx as unknown as PrismaClient);
-      const d = await repo.findBloqueoDetalle(m.id);
+      const d = await repo.findBloqueoDetalle(m.id, ZONA_CR);
 
       expect(d.cierresPorReenviar).toBe(0);
       expect(d.aResolverPrimero?.resuelve).toBe("administracion");
@@ -447,7 +448,7 @@ describeSiHayBase("271 · la regla N/V contra Postgres real", () => {
       await sembrarCierre(tx, m.id, "rechazado", new Date("2026-08-21T18:00:00Z"));
 
       const repo = new OrdenRepository(tx as unknown as PrismaClient);
-      const d = await repo.findBloqueoDetalle(m.id);
+      const d = await repo.findBloqueoDetalle(m.id, ZONA_CR);
 
       expect(d.aResolverPrimero?.cierreId).toBe(viejo.id);
       expect(d.aReenviarPrimero?.cierreId).toBe(viejo.id);
@@ -486,7 +487,7 @@ describeSiHayBase("271 · la regla N/V contra Postgres real", () => {
       await sembrarGestionVinculada(tx, vencidoNuevo.id, m.id, CR_21_1710, "N1");
 
       const repo = new OrdenRepository(tx as unknown as PrismaClient);
-      const d = await repo.findBloqueoDetalle(m.id);
+      const d = await repo.findBloqueoDetalle(m.id, ZONA_CR);
 
       expect(d.aResolverPrimero?.jornadaCR).toBe("2026-08-19");
       expect(d.aReenviarPrimero?.jornadaCR).toBe("2026-08-21");
@@ -514,7 +515,7 @@ describeSiHayBase("271 · la regla N/V contra Postgres real", () => {
       await sembrarGestionVinculada(tx, solicitadoViejo.id, m.id, CR_19_1400, "F0");
 
       const repo = new OrdenRepository(tx as unknown as PrismaClient);
-      const d = await repo.findBloqueoDetalle(m.id);
+      const d = await repo.findBloqueoDetalle(m.id, ZONA_CR);
 
       expect(d.aResolverPrimero?.jornadaCR).toBe("2026-08-19");
       expect(d.aReenviarPrimero?.jornadaCR).toBe("2026-08-21");
@@ -687,7 +688,7 @@ describeSiHayBase("271 · la regla N/V contra Postgres real", () => {
       }
 
       const repo = new OrdenRepository(tx as unknown as PrismaClient);
-      const d = await repo.findBloqueoDetalle(m.id);
+      const d = await repo.findBloqueoDetalle(m.id, ZONA_CR);
 
       // ⚠️ EL NUMERO QUE ESTA FICHA VIENE A ARREGLAR. `created_at` del cierre en CR es el 22;
       // la jornada real —la de sus gestiones— es el 21. Si el derivador volviera a `created_at` a
@@ -705,7 +706,7 @@ describeSiHayBase("271 · la regla N/V contra Postgres real", () => {
       await sembrarCierre(tx, m.id, "vencido", CR_22_0003, CR_22_0003);
 
       const repo = new OrdenRepository(tx as unknown as PrismaClient);
-      const d = await repo.findBloqueoDetalle(m.id);
+      const d = await repo.findBloqueoDetalle(m.id, ZONA_CR);
 
       expect(d.aResolverPrimero?.jornadaCR).toBe("2026-08-21");
     });
@@ -745,7 +746,7 @@ describeSiHayBase("271 · la regla N/V contra Postgres real", () => {
       }
 
       const repo = new OrdenRepository(tx as unknown as PrismaClient);
-      const d = await repo.findBloqueoDetalle(m.id);
+      const d = await repo.findBloqueoDetalle(m.id, ZONA_CR);
 
       expect(d.aResolverPrimero?.jornadaCR).toBeNull();
     });
@@ -786,7 +787,7 @@ describeSiHayBase("271 · la regla N/V contra Postgres real", () => {
       });
 
       const repo = new OrdenRepository(tx as unknown as PrismaClient);
-      const d = await repo.findBloqueoDetalle(m.id);
+      const d = await repo.findBloqueoDetalle(m.id, ZONA_CR);
 
       expect(d.aResolverPrimero?.jornadaCR).toBe("2026-08-21");
       expect(d.aResolverPrimero?.jornadaCR).not.toBe("2026-08-20");

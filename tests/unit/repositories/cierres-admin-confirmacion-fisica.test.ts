@@ -13,6 +13,7 @@ import type { IWalletTiendaMovimientoRepository } from "@/lib/interfaces/reposit
 import type { IWalletTiendaFeedService } from "@/lib/interfaces/services/IWalletTiendaFeedService";
 import { APLICACION_GESTIONES } from "@/tests/fixtures/anclaje-devolucion";
 import { idEstado, sembrarCatalogoEstados } from "@/tests/fixtures/catalogo-estados";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // Feature 238 (T3.3/T3.4, R17-R24/R44) — LA MARCA DE CONFIRMACION FISICA dentro de la transaccion
 // de aprobacion.
@@ -273,7 +274,7 @@ function makeRepo(prisma: Record<string, unknown>) {
 }
 
 function aprobar(repo: CierresAdminRepository, ids: string[], cierreId = "c1") {
-  return repo.resolverCierre({
+  return repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
     cierreId,
     alcance: ALCANCE_MAESTRO,
     nuevoEstado: "aprobado",
@@ -408,7 +409,7 @@ describe("238/R24 — un RECHAZO no escribe ninguna marca", () => {
   it("rechazar no ejecuta el bloque (vive dentro de la rama `aprobado`)", async () => {
     const base = buildBase(gestiones());
 
-    const res = await makeRepo(base.prisma).resolverCierre({
+    const res = await makeRepo(base.prisma).resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_MAESTRO,
       nuevoEstado: "rechazado",
@@ -601,7 +602,7 @@ function aprobarConBarridas(
   ordenIds: string[],
   cierreId = "c1",
 ) {
-  return repo.resolverCierre({
+  return repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
     cierreId,
     alcance: ALCANCE_MAESTRO,
     nuevoEstado: "aprobado",
@@ -762,7 +763,7 @@ describe("451/T4.3 — la marca de las barridas, en la MISMA transaccion que apr
   it("R27/R28: rechazar (tambien el que reabre la valvula de escape) no escribe ninguna marca", async () => {
     const base = baseConBarridas();
 
-    const res = await makeRepo(base.prisma).resolverCierre({
+    const res = await makeRepo(base.prisma).resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: "c1",
       alcance: ALCANCE_MAESTRO,
       nuevoEstado: "rechazado",

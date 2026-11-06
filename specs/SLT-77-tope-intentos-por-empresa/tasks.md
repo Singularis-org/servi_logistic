@@ -148,7 +148,7 @@ Reglas de todas las tandas:
   texto a mano; E2E al día en la satélite. **Hecho:** quitar cada entrada pone en rojo su test.
 - [x] **T7.1** `docs/architecture.md`: el tope en `> Tarifas flexibles`, y en `> Multi-empresa` la excepción de la columna a «solo
   lectura». `docs/ayuda/oficina/configuracion-tarifas.md`: sección y `actualizado`. **Hecho:** guardias de ayuda verdes.
-- [x] **T7.2** `progress/deudas.md`: deuda nueva junto a D49, con `design §8` entero (R39). Número libre; D57 si sigue libre.
+- [x] **T7.2** `progress/deudas.md`: deuda nueva junto a D49, con `design §8` entero (R39). Número libre; D60 si sigue libre.
   **Hecho:** el reviewer lo compara con `design §8`.
 - [x] **T7.3** `progress/impl_SLT-77.md`: mapa `R<n> → test` con los 42, salida real y cada mutación. **Hecho:** coincide con la
   tabla de abajo.
@@ -200,10 +200,10 @@ T0 → A → B ─┬→ C → D ─┬→ F → G
 - `docs/ayuda/oficina/configuracion-tarifas.md`
 - `db/schema.prisma`
 - `lib/actions/orden-historial.ts`
-- `db/migrations/20261106160000_historial_tope_intentos/migration.sql`
-- `db/migrations/20261106160000_historial_tope_intentos/down.sql`
-- `db/migrations/20261106160100_organizacion_tope_intentos/migration.sql`
-- `db/migrations/20261106160100_organizacion_tope_intentos/down.sql`
+- `db/migrations/20261107130000_historial_tope_intentos/migration.sql`
+- `db/migrations/20261107130000_historial_tope_intentos/down.sql`
+- `db/migrations/20261107130100_organizacion_tope_intentos/migration.sql`
+- `db/migrations/20261107130100_organizacion_tope_intentos/down.sql`
 - `lib/config/reintentos.ts`
 - `lib/config/devolucion-sla.ts`
 - `lib/config/jobs.ts`

@@ -8,6 +8,17 @@ import type { IIncentivoMensajeroService } from "@/lib/interfaces/services/IInce
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 
+// SLT-42 (T5.4): la zona del pais de la empresa, sin sesion ni base: la de CR, como antes. El borde
+// (`zonaDelBorde`) y los composition roots leen `construirReglasPaisEmpresa`; la zona en si la mide
+// `tests/unit/services/hora-por-pais-wallet.test.ts`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
+
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // SLT-68 (design §6.1, §7) — el BORDE del incentivo: sesion antes que nada (R2) y cada campo
 // invalido es `validation_error` con SU clave, sin llegar al servicio (R3).

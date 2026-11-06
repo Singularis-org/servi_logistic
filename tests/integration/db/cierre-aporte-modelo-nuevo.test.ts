@@ -11,6 +11,7 @@ import { CierreDiaService } from "@/lib/services/CierreDiaService";
 import { WalletFeedService } from "@/lib/services/WalletFeedService";
 import { CRITERIO_COD_RECAUDADO, CRITERIO_DE_APORTE, aporteDeOrden, type FuenteDeAporte } from "@/lib/utils/aporte-por-orden";
 import { comoApp, crearOrganizacion, fijarEmpresa, sembrarActivacion } from "@/tests/fabricas/organizaciones";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import {
   HAY_BASE_DE_DATOS,
@@ -190,6 +191,9 @@ function servicioCierre(cli: PrismaClient, e: Pick<Escenario, "Z">) {
     } as never,
     {} as never,
     new TarifaZonaMensajeroRepository(cli),
+    undefined,
+    undefined,
+    reglasPaisFijas(),
   );
 }
 

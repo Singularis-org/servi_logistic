@@ -11,6 +11,7 @@ import { METODO_LABEL } from "@/lib/constants/metodo-pago-label";
 import { ESTADO_CONCILIACION_LABEL, estadoConciliacionDe } from "./satelites-labels";
 import { fechaDiaMovimientoCR } from "@/lib/utils/fecha-dia-iso";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /**
  * ⭑ FICHA 431 (T23, R29) — columnas de EXPORT del desglose de consolidaciones de UNA bodega.
  *
@@ -53,7 +54,8 @@ export const COLUMNAS_DESCARGA_CONSOLIDACIONES_SATELITE: DescargaColumna[] = [
 
 export function filaDescargaConsolidacionSatelite(c: ConsolidacionSateliteDTO): DescargaFila {
   return {
-    consolidada: fechaDiaMovimientoCR(c.solicitadoAt),
+    // SLT-81: la UI sigue en la zona de CR
+    consolidada: fechaDiaMovimientoCR(c.solicitadoAt, ZONA_CR),
     // SLT-73 (D3/R8): `Para la central − Recibido = Falta por recibir`, las tres del servidor.
     paraLaCentral: c.paraLaCentral,
     // Sin marcar la celda va VACÍA, no en cero: «nadie lo ha mirado» no es «llegaron ₡0».
@@ -61,7 +63,8 @@ export function filaDescargaConsolidacionSatelite(c: ConsolidacionSateliteDTO): 
     faltaPorRecibir: c.faltaPorRecibir,
     estado: ESTADO_CONCILIACION_LABEL[estadoConciliacionDe(c)],
     conciliadoPor: c.conciliadoPorNombre ?? "",
-    conciliadoEl: c.conciliadoAt === null ? "" : fechaDiaMovimientoCR(c.conciliadoAt),
+    // SLT-81: la UI sigue en la zona de CR
+    conciliadoEl: c.conciliadoAt === null ? "" : fechaDiaMovimientoCR(c.conciliadoAt, ZONA_CR),
     totalGeneral: c.totales.general,
     simpe: c.totales.simpe,
     transferencia: c.totales.transferencia,

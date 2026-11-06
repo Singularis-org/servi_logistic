@@ -21,6 +21,7 @@ import {
 import { derivarSaldoTienda } from "@/lib/utils/saldo-tienda";
 import { descargaConfig } from "@/lib/config/descarga";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Ficha 470 (T1.3, riesgo K6) — el tope real de la descarga es ahora el limite de Excel
 // (1.048.575 filas). Este archivo prueba la MECANICA del tope (N entra, N+1 no), que no depende
 // del valor: lo fija en 5000 para no construir un millon de filas por caso. Patron de
@@ -194,11 +195,11 @@ function servicio(repo: IWalletTiendaMovimientoRepository) {
 }
 
 function input(extra: Record<string, unknown> = {}) {
-  return listarMovimientosDeTiendaSchema.parse({ tiendaId: "tienda-A", ...extra });
+  return listarMovimientosDeTiendaSchema(ZONA_CR).parse({ tiendaId: "tienda-A", ...extra });
 }
 
 function inputCompleto(extra: Record<string, unknown> = {}) {
-  return listarMovimientosDeTiendaCompletoSchema.parse({ tiendaId: "tienda-A", ...extra });
+  return listarMovimientosDeTiendaCompletoSchema(ZONA_CR).parse({ tiendaId: "tienda-A", ...extra });
 }
 
 function ids(items: WalletTiendaMovimientoDTO[]): string[] {

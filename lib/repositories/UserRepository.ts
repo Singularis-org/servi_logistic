@@ -643,11 +643,18 @@ export class UserRepository implements IUserRepository {
     });
   }
 
-  /** Feature 25/R29: catalogo `tipo_identificacion` proyectado a id/value. */
-  async listTiposIdentificacion(): Promise<TipoIdentificacionItem[]> {
+  /** Feature 25/R29 y SLT-42 (R5): ver el contrato en `IUserRepository`. */
+  async listTiposIdentificacion(paisId?: string): Promise<TipoIdentificacionItem[]> {
+    const select = { id: true, value: true, nombre: true, clave: true };
+    if (paisId === undefined) {
+      return this.prisma.tipoIdentificacion.findMany({ select, orderBy: { value: "asc" } });
+    }
+    // El pais va en el WHERE aunque la RLS ya lo acote para `servi_app`: la consulta tiene que dar
+    // lo mismo con el rol que no la tiene (plataforma, dueño).
     return this.prisma.tipoIdentificacion.findMany({
-      select: { id: true, value: true },
-      orderBy: { value: "asc" },
+      where: { paisId, activo: true },
+      select,
+      orderBy: { orden: "asc" },
     });
   }
 

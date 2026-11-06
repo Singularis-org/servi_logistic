@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import type { MetodoPagoValue } from "@prisma/client";
 import { METODO_PAGO_SEED } from "@/lib/types/metodo-pago";
 import { montoPositivoSchema } from "@/lib/types/wallet";
-import { esFechaCalendarioValida, fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { esFechaCalendarioValida, fechaCalendario } from "@/lib/utils/calendario-zona";
 
 // Feature 172 (design §3.2) — contratos I/O de la LIQUIDACION en la frontera Server Action ->
 // cliente, y los schemas zod del BORDE. Money-critical: ningun `number` cruza la frontera
@@ -90,9 +90,9 @@ export const montoLiquidacionSchema = montoPositivoSchema.refine((v) => {
 
 /**
  * R10 — la fecha REAL del pago es una fecha CALENDARIO `YYYY-MM-DD` y NO puede ser posterior al
- * dia en curso **de Costa Rica**. El dia de hoy se resuelve con `fechaCalendarioCR` (UTC-6
- * fijo) y NO con los campos UTC de `new Date()`: entre las 18:00 y la medianoche de CR el dia
- * UTC ya es el siguiente y "mañana" pasaria por "hoy" (off-by-one). La comparacion es
+ * dia en curso **de `zona`**, la del pais de la empresa (SLT-42). El dia de hoy se resuelve con
+ * `fechaCalendario` y NO con los campos UTC de `new Date()`: en CR, entre las 18:00 y la medianoche
+ * el dia UTC ya es el siguiente y "mañana" pasaria por "hoy" (off-by-one). La comparacion es
  * lexicografica: `YYYY-MM-DD` ordena igual como texto que como fecha.
  *
  * Un dia INEXISTENTE (`2026-02-31`) tambien se rechaza, y hace falta el ROUND-TRIP para
@@ -100,20 +100,25 @@ export const montoLiquidacionSchema = montoPositivoSchema.refine((v) => {
  * dia desbordado —`new Date("2026-02-31T00:00:00.000Z")` es el 3 de marzo—, solo con el mes
  * (`2026-13-01`). Comprobado en este repo; hay un test que lo fija.
  *
- * El round-trip ya no se reescribe aqui: vive en `esFechaCalendarioValida` (`fecha-cr`), que es
+ * El round-trip ya no se reescribe aqui: vive en `esFechaCalendarioValida` (`calendario-zona`), que es
  * la MISMA pieza que usa la reprogramacion (`esFechaFutura`). Lo unico propio de esta funcion es
  * la direccion de la comparacion —el pago no puede ser FUTURO, la reprogramacion no puede ser
  * PASADA—, que es justo lo que no se debe compartir.
  */
-export function esFechaPagoValida(value: string, now: Date = new Date()): boolean {
+export function esFechaPagoValida(value: string, zona: string, now: Date = new Date()): boolean {
   if (!esFechaCalendarioValida(value)) return false;
-  return value <= fechaCalendarioCR(now);
+  return value <= fechaCalendario(now, zona);
 }
 
-export const fechaPagoSchema = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, "La fecha del pago debe tener el formato YYYY-MM-DD.")
-  .refine((v) => esFechaPagoValida(v), "La fecha del pago no puede ser posterior a hoy.");
+// SLT-42 (R22): `fechaPagoSchema`, `camposComunesDelPago` y los schemas que los usan son FABRICAS
+// `(zona) => schema`: el «hoy» depende de la zona del pais de la empresa, que pone quien parsea.
+
+export function fechaPagoSchema(zona: string) {
+  return z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "La fecha del pago debe tener el formato YYYY-MM-DD.")
+    .refine((v) => esFechaPagoValida(v, zona), "La fecha del pago no puede ser posterior a hoy.");
+}
 
 /**
  * [P6]/R12 — la referencia es OBLIGATORIA en SINPE y transferencia (un pago electronico sin
@@ -140,47 +145,53 @@ export function exigirReferenciaEnPagoElectronico(
 // reescribirlo. Que el reparto y el pago compartan literalmente estos seis campos es lo que
 // impide que uno de los dos se quede sin el tope del monto, sin el `.trim()` de la referencia o
 // sin el rechazo de la fecha futura el dia que uno de ellos cambie (R47).
-export const camposComunesDelPago = {
-  // §4.1: uuid generado por el CLIENTE al ABRIR el formulario. La columna es UNIQUE, asi que
-  // la proteccion contra el doble pago es DE DATOS (R44), no un `if` previo.
-  claveIdempotencia: z.string().uuid(),
-  monto: montoLiquidacionSchema,
-  metodo: z.enum(METODO_PAGO_SEED),
-  // R12: el `.trim()` corre ANTES del `.max()` (los checks de zod se aplican en orden), asi que
-  // el tope se mide sobre lo que de verdad se guarda, no sobre los espacios que rodean.
-  referencia: z
-    .string()
-    .trim()
-    .max(
-      LIQUIDACION_REFERENCIA_MAX,
-      `La referencia no puede superar ${LIQUIDACION_REFERENCIA_MAX} caracteres.`,
-    )
-    .optional(),
-  nota: z
-    .string()
-    .max(LIQUIDACION_NOTA_MAX, `La nota no puede superar ${LIQUIDACION_NOTA_MAX} caracteres.`)
-    .optional(),
-  fechaPago: fechaPagoSchema,
-};
+export function camposComunesDelPago(zona: string) {
+  return {
+    // §4.1: uuid generado por el CLIENTE al ABRIR el formulario. La columna es UNIQUE, asi que
+    // la proteccion contra el doble pago es DE DATOS (R44), no un `if` previo.
+    claveIdempotencia: z.string().uuid(),
+    monto: montoLiquidacionSchema,
+    metodo: z.enum(METODO_PAGO_SEED),
+    // R12: el `.trim()` corre ANTES del `.max()` (los checks de zod se aplican en orden), asi que
+    // el tope se mide sobre lo que de verdad se guarda, no sobre los espacios que rodean.
+    referencia: z
+      .string()
+      .trim()
+      .max(
+        LIQUIDACION_REFERENCIA_MAX,
+        `La referencia no puede superar ${LIQUIDACION_REFERENCIA_MAX} caracteres.`,
+      )
+      .optional(),
+    nota: z
+      .string()
+      .max(LIQUIDACION_NOTA_MAX, `La nota no puede superar ${LIQUIDACION_NOTA_MAX} caracteres.`)
+      .optional(),
+    fechaPago: fechaPagoSchema(zona),
+  };
+}
 
 /**
  * R21 — un pago a un mensajero va SIEMPRE atado a un cierre aprobado concreto. `.strict()`:
  * cualquier clave desconocida —empezando por un campo de archivo adjunto, que R15 [P7] prohibe—
  * muere en el borde con `validation_error`, sin escribir nada.
  */
-export const registrarPagoMensajeroSchema = z
-  .object({ ...camposComunesDelPago, cierreId: z.string().uuid() })
-  .strict()
-  .superRefine(exigirReferenciaEnPagoElectronico);
+export function registrarPagoMensajeroSchema(zona: string) {
+  return z
+    .object({ ...camposComunesDelPago(zona), cierreId: z.string().uuid() })
+    .strict()
+    .superRefine(exigirReferenciaEnPagoElectronico);
+}
 
 /**
  * R29 — el pago a una tienda va contra su SALDO ACUMULADO y no admite cierre: `cierreId` no
  * esta en este schema y `.strict()` lo rechaza si alguien lo cuela.
  */
-export const registrarPagoTiendaSchema = z
-  .object({ ...camposComunesDelPago, tiendaId: z.string().uuid() })
-  .strict()
-  .superRefine(exigirReferenciaEnPagoElectronico);
+export function registrarPagoTiendaSchema(zona: string) {
+  return z
+    .object({ ...camposComunesDelPago(zona), tiendaId: z.string().uuid() })
+    .strict()
+    .superRefine(exigirReferenciaEnPagoElectronico);
+}
 
 /**
  * R70/R72 — la anulacion NO lleva monto: el del contraasiento se lee del pago original, en el
@@ -220,8 +231,8 @@ export const listarPagosDeCierreSchema = z.object({ cierreId: z.string().uuid() 
 /** R50 — idem para una tienda (sin cierre: los pagos van contra el saldo acumulado). */
 export const listarPagosDeTiendaSchema = z.object({ tiendaId: z.string().uuid() }).strict();
 
-export type RegistrarPagoMensajeroInput = z.infer<typeof registrarPagoMensajeroSchema>;
-export type RegistrarPagoTiendaInput = z.infer<typeof registrarPagoTiendaSchema>;
+export type RegistrarPagoMensajeroInput = z.infer<ReturnType<typeof registrarPagoMensajeroSchema>>;
+export type RegistrarPagoTiendaInput = z.infer<ReturnType<typeof registrarPagoTiendaSchema>>;
 export type AnularPagoInput = z.infer<typeof anularPagoSchema>;
 export type AnularRepartoInput = z.infer<typeof anularRepartoSchema>; // feature 206
 export type ListarPagosDeCierreInput = z.infer<typeof listarPagosDeCierreSchema>;

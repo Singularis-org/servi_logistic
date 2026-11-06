@@ -23,6 +23,7 @@ import {
   MSG_ORDEN_NO_EXISTE,
   MSG_ORIGEN_NO_UNICO,
 } from "@/lib/services/mensajes-traspaso";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // FICHA 427 (T16) — LAS REGLAS del traspaso, con dobles y sin base.
 //
@@ -114,7 +115,7 @@ describe("427/R1 — `maestro` y `admin` pueden traspasar", () => {
     ["admin", ADMIN],
   ])("⭑ %s traspasa el lote y recibe las dos cifras y los dos nombres", async (_n, actor) => {
     const { repo, espias } = buildRepo();
-    const service = new TraspasoMensajeroService(repo);
+    const service = new TraspasoMensajeroService(repo, undefined, undefined, reglasPaisFijas());
 
     const r = await service.traspasar(entrada(), actor);
 
@@ -133,7 +134,7 @@ describe("427/R1 — `maestro` y `admin` pueden traspasar", () => {
     const { repo, espias } = buildRepo({
       findByIdsForTransicion: vi.fn(async () => [orden(), orden({ id: ORDEN_B })]),
     });
-    const service = new TraspasoMensajeroService(repo);
+    const service = new TraspasoMensajeroService(repo, undefined, undefined, reglasPaisFijas());
 
     await service.traspasar(entrada({ ordenIds: [ORDEN_A, ORDEN_B] }), MAESTRO);
 
@@ -149,7 +150,7 @@ describe("427/R1 — `maestro` y `admin` pueden traspasar", () => {
 
   it("dos actos seguidos generan `lote_id` DISTINTOS (R27)", async () => {
     const { repo, espias } = buildRepo();
-    const service = new TraspasoMensajeroService(repo);
+    const service = new TraspasoMensajeroService(repo, undefined, undefined, reglasPaisFijas());
     await service.traspasar(entrada(), MAESTRO);
     await service.traspasar(entrada(), MAESTRO);
     const [a, b] = espias.traspasarMensajeroLote.mock.calls.map((c) => c[0].loteId);
@@ -165,7 +166,7 @@ describe("427/R2 y D1 — cualquier otro rol: `forbidden` SIN tocar nada", () =>
     ["apiKey"],
   ])("⭑ %s -> forbidden y ni una lectura", async (rol) => {
     const { repo, espias } = buildRepo();
-    const service = new TraspasoMensajeroService(repo);
+    const service = new TraspasoMensajeroService(repo, undefined, undefined, reglasPaisFijas());
 
     const r = await service.traspasar(entrada(), {
       usuarioId: `u-${rol}`,
@@ -183,7 +184,7 @@ describe("427/R2 y D1 — cualquier otro rol: `forbidden` SIN tocar nada", () =>
     // mensajeros mas su guarda de bodega bloqueada: es otra superficie, no un `||` mas.
     // Queda como seguimiento S1. Si algun dia entra, este aserto se cambia A PROPOSITO.
     const { repo } = buildRepo();
-    const r = await new TraspasoMensajeroService(repo).traspasar(entrada(), {
+    const r = await new TraspasoMensajeroService(repo, undefined, undefined, reglasPaisFijas()).traspasar(entrada(), {
       usuarioId: "u-sat",
       rol: "adminSatelite" as RolValue,
     });
@@ -192,7 +193,7 @@ describe("427/R2 y D1 — cualquier otro rol: `forbidden` SIN tocar nada", () =>
 
   it("CONTROL: con `maestro` el mismo barrido SI consulta (si no, seria verde por vacio)", async () => {
     const { repo, espias } = buildRepo();
-    await new TraspasoMensajeroService(repo).traspasar(entrada(), MAESTRO);
+    await new TraspasoMensajeroService(repo, undefined, undefined, reglasPaisFijas()).traspasar(entrada(), MAESTRO);
     expect(espias.findByIdsForTransicion).toHaveBeenCalled();
   });
 });
@@ -210,7 +211,7 @@ describe("427/R4 y R5 — solo `en_reparto`; el resto rechaza el lote entero", (
     const { repo, espias } = buildRepo({
       findIdsConGestionPendiente: vi.fn(async () => new Set([ORDEN_A])),
     });
-    const r = await new TraspasoMensajeroService(repo).traspasar(entrada(), MAESTRO);
+    const r = await new TraspasoMensajeroService(repo, undefined, undefined, reglasPaisFijas()).traspasar(entrada(), MAESTRO);
     expect(r.status).toBe("conflict");
     expect(espias.traspasarMensajeroLote).not.toHaveBeenCalled();
   });
@@ -227,7 +228,7 @@ describe("427/R4 y R5 — solo `en_reparto`; el resto rechaza el lote entero", (
       findByIdsForTransicion: vi.fn(async () => [orden({ estatusValue })]),
     });
 
-    const r = await new TraspasoMensajeroService(repo).traspasar(entrada(), MAESTRO);
+    const r = await new TraspasoMensajeroService(repo, undefined, undefined, reglasPaisFijas()).traspasar(entrada(), MAESTRO);
 
     expect(r.status).toBe("conflict");
     if (r.status !== "conflict") throw new Error("unreachable");
@@ -245,7 +246,7 @@ describe("427/R4 y R5 — solo `en_reparto`; el resto rechaza el lote entero", (
       ]),
     });
 
-    const r = await new TraspasoMensajeroService(repo).traspasar(
+    const r = await new TraspasoMensajeroService(repo, undefined, undefined, reglasPaisFijas()).traspasar(
       entrada({ ordenIds: [ORDEN_A, ORDEN_B] }),
       MAESTRO,
     );
@@ -258,7 +259,7 @@ describe("427/R4 y R5 — solo `en_reparto`; el resto rechaza el lote entero", (
     const { repo } = buildRepo({
       findByIdsForTransicion: vi.fn(async () => [orden({ id: ORDEN_B, deletedAt: new Date() })]),
     });
-    const r = await new TraspasoMensajeroService(repo).traspasar(
+    const r = await new TraspasoMensajeroService(repo, undefined, undefined, reglasPaisFijas()).traspasar(
       entrada({ ordenIds: [ORDEN_A, ORDEN_B] }),
       MAESTRO,
     );
@@ -280,7 +281,7 @@ describe("427/R6 — el lote tiene que tener UN SOLO mensajero de origen", () =>
       ]),
     });
 
-    const r = await new TraspasoMensajeroService(repo).traspasar(
+    const r = await new TraspasoMensajeroService(repo, undefined, undefined, reglasPaisFijas()).traspasar(
       entrada({ ordenIds: [ORDEN_A, ORDEN_B] }),
       MAESTRO,
     );
@@ -299,7 +300,7 @@ describe("427/R7 — el destino no puede ser el mismo que ya la lleva", () => {
   it("⭑ destino == origen -> rechazo sin efectos", async () => {
     const { repo, espias } = buildRepo();
 
-    const r = await new TraspasoMensajeroService(repo).traspasar(
+    const r = await new TraspasoMensajeroService(repo, undefined, undefined, reglasPaisFijas()).traspasar(
       entrada({ mensajeroDestinoId: ORIGEN }),
       MAESTRO,
     );
@@ -316,7 +317,7 @@ describe("427/R9-R13 — las guardas del mensajero DESTINO, cada una con su moti
     const { repo, espias } = buildRepo({
       findMensajeroIdsValidosByZona: vi.fn(async () => new Set<string>()),
     });
-    const r = await new TraspasoMensajeroService(repo).traspasar(entrada(), MAESTRO);
+    const r = await new TraspasoMensajeroService(repo, undefined, undefined, reglasPaisFijas()).traspasar(entrada(), MAESTRO);
     expect(r.status).toBe("validation_error");
     if (r.status !== "validation_error") throw new Error("unreachable");
     expect(r.fieldErrors.mensajeroDestinoId).toEqual([MSG_DESTINO_NO_VALIDO]);
@@ -334,7 +335,7 @@ describe("427/R9-R13 — las guardas del mensajero DESTINO, cada una con su moti
       findMensajeroIdsValidosByZona: valido,
     });
 
-    const r = await new TraspasoMensajeroService(repo).traspasar(
+    const r = await new TraspasoMensajeroService(repo, undefined, undefined, reglasPaisFijas()).traspasar(
       entrada({ ordenIds: [ORDEN_A, ORDEN_B] }),
       MAESTRO,
     );
@@ -348,7 +349,7 @@ describe("427/R9-R13 — las guardas del mensajero DESTINO, cada una con su moti
     const { repo, espias } = buildRepo({
       findMensajeroIdsConVehiculo: vi.fn(async () => new Set<string>()),
     });
-    const r = await new TraspasoMensajeroService(repo).traspasar(entrada(), MAESTRO);
+    const r = await new TraspasoMensajeroService(repo, undefined, undefined, reglasPaisFijas()).traspasar(entrada(), MAESTRO);
     expect(r.status).toBe("validation_error");
     if (r.status !== "validation_error") throw new Error("unreachable");
     expect(r.fieldErrors.mensajeroDestinoId).toEqual([MSG_MENSAJERO_SIN_VEHICULO]);
@@ -359,7 +360,7 @@ describe("427/R9-R13 — las guardas del mensajero DESTINO, cada una con su moti
     const { repo, espias } = buildRepo({
       findMensajerosNoAsignablesPorEstado: vi.fn(async () => new Set([DESTINO])),
     });
-    const r = await new TraspasoMensajeroService(repo).traspasar(entrada(), MAESTRO);
+    const r = await new TraspasoMensajeroService(repo, undefined, undefined, reglasPaisFijas()).traspasar(entrada(), MAESTRO);
     expect(r.status).toBe("validation_error");
     if (r.status !== "validation_error") throw new Error("unreachable");
     expect(r.fieldErrors.mensajeroDestinoId).toEqual([MSG_MENSAJERO_NO_ASIGNABLE]);
@@ -370,7 +371,7 @@ describe("427/R9-R13 — las guardas del mensajero DESTINO, cada una con su moti
     const { repo, espias } = buildRepo({
       findMensajerosBloqueadosPorCierres: vi.fn(async () => new Set([DESTINO])),
     });
-    const r = await new TraspasoMensajeroService(repo).traspasar(
+    const r = await new TraspasoMensajeroService(repo, undefined, undefined, reglasPaisFijas()).traspasar(
       entrada({ ordenIds: [ORDEN_A] }),
       MAESTRO,
     );
@@ -386,7 +387,7 @@ describe("427/R9-R13 — las guardas del mensajero DESTINO, cada una con su moti
     const { repo, espias } = buildRepo({
       findMensajerosConOrdenesEn: vi.fn(async () => new Set([DESTINO])),
     });
-    const r = await new TraspasoMensajeroService(repo).traspasar(entrada(), MAESTRO);
+    const r = await new TraspasoMensajeroService(repo, undefined, undefined, reglasPaisFijas()).traspasar(entrada(), MAESTRO);
     expect(r.status).toBe("conflict");
     if (r.status !== "conflict") throw new Error("unreachable");
     expect(r.detalle).toEqual([{ ordenId: ORDEN_A, motivo: MSG_MENSAJERO_CON_RECOLECCION }]);
@@ -395,7 +396,7 @@ describe("427/R9-R13 — las guardas del mensajero DESTINO, cada una con su moti
 
   it("R13: la consulta de dedicacion pregunta por `recolectando` y solo por el DESTINO", async () => {
     const { repo, espias } = buildRepo();
-    await new TraspasoMensajeroService(repo).traspasar(entrada(), MAESTRO);
+    await new TraspasoMensajeroService(repo, undefined, undefined, reglasPaisFijas()).traspasar(entrada(), MAESTRO);
     expect(espias.findMensajerosConOrdenesEn).toHaveBeenCalledWith([DESTINO], ["recolectando"]);
   });
 });
@@ -411,7 +412,7 @@ describe("427/R12 — el ORIGEN bloqueado por cierres SI se traspasa", () => {
     );
     const { repo, espias } = buildRepo({ findMensajerosBloqueadosPorCierres: bloqueados });
 
-    const r = await new TraspasoMensajeroService(repo).traspasar(entrada(), MAESTRO);
+    const r = await new TraspasoMensajeroService(repo, undefined, undefined, reglasPaisFijas()).traspasar(entrada(), MAESTRO);
 
     expect(r.status).toBe("ok");
     expect(espias.traspasarMensajeroLote).toHaveBeenCalledTimes(1);
@@ -429,7 +430,7 @@ describe("427/R14 — ni el tope de intentos ni la falta de coordenadas bloquean
     // estructural es que el `Pick` del repo NI SIQUIERA EXPONE `contarIntentosEnLote`: no se puede
     // consultar por descuido. Aqui se ejercita el desenlace.
     const { repo, espias } = buildRepo();
-    const r = await new TraspasoMensajeroService(repo).traspasar(entrada(), MAESTRO);
+    const r = await new TraspasoMensajeroService(repo, undefined, undefined, reglasPaisFijas()).traspasar(entrada(), MAESTRO);
     expect(r.status).toBe("ok");
     expect((espias as unknown as Record<string, unknown>).contarIntentosEnLote).toBeUndefined();
   });
@@ -438,7 +439,7 @@ describe("427/R14 — ni el tope de intentos ni la falta de coordenadas bloquean
     // Idem: `findParaAsignabilidad` no esta en el `Pick`. Sin coordenadas la orden queda como
     // parada sin posicionar, AL FINAL del recorrido — un problema de orden de visita.
     const { repo, espias } = buildRepo();
-    const r = await new TraspasoMensajeroService(repo).traspasar(entrada(), MAESTRO);
+    const r = await new TraspasoMensajeroService(repo, undefined, undefined, reglasPaisFijas()).traspasar(entrada(), MAESTRO);
     expect(r.status).toBe("ok");
     expect((espias as unknown as Record<string, unknown>).findParaAsignabilidad).toBeUndefined();
   });
@@ -464,7 +465,7 @@ describe("427/R24 — la carrera: el lote revierte entero, con un motivo POR ORD
       }),
     });
 
-    const r = await new TraspasoMensajeroService(repo).traspasar(
+    const r = await new TraspasoMensajeroService(repo, undefined, undefined, reglasPaisFijas()).traspasar(
       entrada({ ordenIds: [ORDEN_A, ORDEN_B] }),
       MAESTRO,
     );
@@ -483,7 +484,7 @@ describe("427/R24 — la carrera: el lote revierte entero, con un motivo POR ORD
         throw new TraspasoMensajeroConflictoError([ORDEN_A]);
       }),
     });
-    const r = await new TraspasoMensajeroService(repo).traspasar(entrada(), MAESTRO);
+    const r = await new TraspasoMensajeroService(repo, undefined, undefined, reglasPaisFijas()).traspasar(entrada(), MAESTRO);
     expect(r.status).toBe("conflict");
     if (r.status !== "conflict") throw new Error("unreachable");
     expect(r.detalle).toEqual([{ ordenId: ORDEN_A, motivo: MSG_CARRERA_TRASPASO }]);
@@ -496,7 +497,7 @@ describe("427/R24 — la carrera: el lote revierte entero, con un motivo POR ORD
       }),
     });
     await expect(
-      new TraspasoMensajeroService(repo).traspasar(entrada(), MAESTRO),
+      new TraspasoMensajeroService(repo, undefined, undefined, reglasPaisFijas()).traspasar(entrada(), MAESTRO),
     ).rejects.toThrow("conexion caida");
   });
 });
@@ -514,7 +515,7 @@ describe("427/R38-R41 — los DOS avisos, fuera de la transaccion y sin cambiar 
         orden({ id: "33333333-3333-4333-8333-333333333333" }),
       ]),
     });
-    const service = new TraspasoMensajeroService(repo, recibido, cedido);
+    const service = new TraspasoMensajeroService(repo, recibido, cedido, reglasPaisFijas());
 
     const r = await service.traspasar(
       entrada({ ordenIds: [ORDEN_A, ORDEN_B, "33333333-3333-4333-8333-333333333333"] }),
@@ -565,7 +566,7 @@ describe("427/R38-R41 — los DOS avisos, fuera de la transaccion y sin cambiar 
     const recibido = vi.fn(async (_ctx: TraspasoOrdenesContexto) => {});
     const cedido = vi.fn(async (_ctx: TraspasoOrdenesContexto) => {});
     const { repo } = buildRepo();
-    await new TraspasoMensajeroService(repo, recibido, cedido).traspasar(
+    await new TraspasoMensajeroService(repo, recibido, cedido, reglasPaisFijas()).traspasar(
       entrada({ motivo: "Andy se enfermo, llamar al 8888-8888" }),
       MAESTRO,
     );
@@ -584,7 +585,7 @@ describe("427/R38-R41 — los DOS avisos, fuera de la transaccion y sin cambiar 
     const cedido = vi.fn(async (_ctx: TraspasoOrdenesContexto) => {});
     const { repo } = buildRepo();
 
-    const r = await new TraspasoMensajeroService(repo, recibido, cedido).traspasar(
+    const r = await new TraspasoMensajeroService(repo, recibido, cedido, reglasPaisFijas()).traspasar(
       entrada(),
       MAESTRO,
     );
@@ -603,7 +604,7 @@ describe("427/R38-R41 — los DOS avisos, fuera de la transaccion y sin cambiar 
       throw new Error("canal caido");
     });
     const { repo } = buildRepo();
-    const r = await new TraspasoMensajeroService(repo, recibido, cedido).traspasar(
+    const r = await new TraspasoMensajeroService(repo, recibido, cedido, reglasPaisFijas()).traspasar(
       entrada(),
       MAESTRO,
     );
@@ -627,7 +628,7 @@ describe("427/R38-R41 — los DOS avisos, fuera de la transaccion y sin cambiar 
       orden_.push("aviso-origen");
     });
 
-    await new TraspasoMensajeroService(repo, recibido, cedido).traspasar(entrada(), MAESTRO);
+    await new TraspasoMensajeroService(repo, recibido, cedido, reglasPaisFijas()).traspasar(entrada(), MAESTRO);
 
     expect(orden_).toEqual(["escritura", "aviso-destino", "aviso-origen"]);
   });
@@ -639,7 +640,7 @@ describe("427/R38-R41 — los DOS avisos, fuera de la transaccion y sin cambiar 
       findByIdsForTransicion: vi.fn(async () => [orden({ estatusValue: "entregado" })]),
     });
 
-    await new TraspasoMensajeroService(repo, recibido, cedido).traspasar(entrada(), MAESTRO);
+    await new TraspasoMensajeroService(repo, recibido, cedido, reglasPaisFijas()).traspasar(entrada(), MAESTRO);
 
     expect(recibido).not.toHaveBeenCalled();
     expect(cedido).not.toHaveBeenCalled();
@@ -649,7 +650,7 @@ describe("427/R38-R41 — los DOS avisos, fuera de la transaccion y sin cambiar 
     // Es lo que impide que una suite escriba notificaciones en la base compartida, y lo que hace
     // que el cableado del composition root sea COMPROBABLE (ver `traspasar-mensajero.test.ts`).
     const { repo } = buildRepo();
-    const r = await new TraspasoMensajeroService(repo).traspasar(entrada(), MAESTRO);
+    const r = await new TraspasoMensajeroService(repo, undefined, undefined, reglasPaisFijas()).traspasar(entrada(), MAESTRO);
     expect(r.status).toBe("ok");
   });
 });
@@ -657,7 +658,7 @@ describe("427/R38-R41 — los DOS avisos, fuera de la transaccion y sin cambiar 
 describe("427 — guardas de forma del servicio", () => {
   it("lote vacio -> `validation_error`, sin tocar nada", async () => {
     const { repo, espias } = buildRepo();
-    const r = await new TraspasoMensajeroService(repo).traspasar(
+    const r = await new TraspasoMensajeroService(repo, undefined, undefined, reglasPaisFijas()).traspasar(
       entrada({ ordenIds: [] }),
       MAESTRO,
     );
@@ -667,7 +668,7 @@ describe("427 — guardas de forma del servicio", () => {
 
   it("ids repetidos se deduplican antes de leer", async () => {
     const { repo, espias } = buildRepo();
-    await new TraspasoMensajeroService(repo).traspasar(
+    await new TraspasoMensajeroService(repo, undefined, undefined, reglasPaisFijas()).traspasar(
       entrada({ ordenIds: [ORDEN_A, ORDEN_A] }),
       MAESTRO,
     );
@@ -678,7 +679,7 @@ describe("427 — guardas de forma del servicio", () => {
     const { repo, espias } = buildRepo({
       findEstatusIdByValue: vi.fn(async () => null),
     });
-    const r = await new TraspasoMensajeroService(repo).traspasar(entrada(), MAESTRO);
+    const r = await new TraspasoMensajeroService(repo, undefined, undefined, reglasPaisFijas()).traspasar(entrada(), MAESTRO);
     expect(r.status).toBe("validation_error");
     if (r.status !== "validation_error") throw new Error("unreachable");
     expect(r.fieldErrors.estatus).toEqual(["catalogo de estados incompleto (seed pendiente)"]);
@@ -695,7 +696,7 @@ describe("427 — guardas de forma del servicio", () => {
         orden({ id: ORDEN_B, estatusValue: "en_reparto" }),
       ]),
     });
-    await new TraspasoMensajeroService(repo).traspasar(
+    await new TraspasoMensajeroService(repo, undefined, undefined, reglasPaisFijas()).traspasar(
       entrada({ ordenIds: [ORDEN_A, ORDEN_B] }),
       MAESTRO,
     );

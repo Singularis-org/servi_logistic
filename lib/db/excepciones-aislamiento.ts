@@ -187,6 +187,14 @@ export const EXCEPCIONES_DE_PLATAFORMA: readonly ExcepcionDeAislamiento[] = [
       "gestión de países y geografía por el superadmin, que no tiene empresa; conteo de órdenes de todas las empresas (D15)",
   },
   {
+    // SLT-42 (design §6.1). Lleva la ficha de la tabla `pais` (SL-20) porque `FichaJira` no admite
+    // `SLT` (deuda D29), igual que las lecturas de SLT-58 en `PlanesRepository`.
+    archivo: "lib/repositories/PaisRepository.ts",
+    ficha: "SL-20",
+    motivo:
+      "SLT-42: `zonasConEmpresas`, las zonas horarias de los países con al menos una empresa, para que la cola agende los jobs diarios por zona (R25); la lee la cola, que no tiene empresa",
+  },
+  {
     archivo: "lib/actions/vehiculos-plataforma.ts",
     ficha: "SL-42",
     motivo:

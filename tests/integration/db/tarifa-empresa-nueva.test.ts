@@ -13,6 +13,8 @@ import { CierreDiaRepository } from "@/lib/repositories/CierreDiaRepository";
 import { CierresAdminRepository } from "@/lib/repositories/CierresAdminRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { OrganizacionRepository } from "@/lib/repositories/OrganizacionRepository";
+import { PaisRepository } from "@/lib/repositories/PaisRepository";
+import { reglasPaisFijas, ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 import { TarifaActivacionRepository } from "@/lib/repositories/TarifaActivacionRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
 import { TarifaZonaMensajeroRepository } from "@/lib/repositories/TarifaZonaMensajeroRepository";
@@ -74,7 +76,7 @@ let siguienteGuia = 945_000_000 + Math.floor(Math.random() * 4_000_000);
 async function altaDeEmpresa(tx: TxDeTest): Promise<Empresa> {
   await serializarEscriturasReales(tx);
   const sufijo = randomUUID().slice(0, 8);
-  const r = await new OrganizacionService(new OrganizacionRepository(clienteConTransaccionAnidada(tx))).altaEmpresa({
+  const r = await new OrganizacionService(new OrganizacionRepository(clienteConTransaccionAnidada(tx)), new PaisRepository(clienteConTransaccionAnidada(tx))).altaEmpresa({
     nombre: `Empresa nueva ${sufijo}`,
     slug: `nueva-${sufijo}`,
     paisId: "CR",
@@ -82,7 +84,8 @@ async function altaDeEmpresa(tx: TxDeTest): Promise<Empresa> {
       nombre: "Maestra de prueba",
       email: `nueva-${sufijo}@example.test`,
       telefono: "88887777",
-      documento: `doc-${sufijo}`,
+      // SLT-42 (R11): la cedula fisica de CR son 9 digitos; la empresa es nueva, asi que no choca.
+      documento: String(100_000_000 + Math.floor(Math.random() * 900_000_000)),
       tipoDocumento: "cedula",
     },
   });
@@ -158,6 +161,9 @@ function servicioCierre(cli: PrismaClient, e: Empresa) {
     } as never,
     {} as never,
     new TarifaZonaMensajeroRepository(cli),
+    undefined,
+    undefined,
+    reglasPaisFijas(),
   );
 }
 
@@ -213,6 +219,7 @@ async function cerrar(tx: TxDeTest, e: Empresa) {
     const admin = await new CierresAdminRepository(cli, ...([{}, {}, {}, {}, {}, {}, {}] as [never, never, never, never, never, never, never])).findCierreByIdEnAlcance(
       r.cierreId,
       { destinoTipo: "bodega_central", destinoZonaId: null },
+      ZONA_DE_CR,
     );
     const ingreso = admin?.gestiones[0].ingresoEmpresa ?? null;
     return {

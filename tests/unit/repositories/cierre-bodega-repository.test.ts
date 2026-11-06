@@ -6,6 +6,7 @@ import { CierreBodegaRepository } from "@/lib/repositories/CierreBodegaRepositor
 import { CierresBodegaAdminRepository } from "@/lib/repositories/CierresBodegaAdminRepository";
 // ⭑ FICHA 431 (R7): lo que el todo-o-nada lanza cuando vincularia menos cierres de los pedidos.
 import { ConsolidacionParcialError } from "@/lib/utils/consolidacion-parcial";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 // Feature 40 — tests unit del CierreBodegaRepository (mockea Prisma, sin DB real,
 // patron cierre-dia-repository.test.ts). Cubre R5 (WHERE consolidables), R9
@@ -428,7 +429,7 @@ describe("feature 393 — el mapper deriva «Para la central» para TODAS las le
     }
 
     // Y el detalle, que es la octava puerta a la misma cabecera.
-    const detalle = await maestro.findCierreBodegaConDetalle("cb1");
+    const detalle = await maestro.findCierreBodegaConDetalle("cb1", ZONA_CR);
     expect(detalle?.cierre).toMatchObject(ESPERADO);
   });
 
@@ -514,7 +515,7 @@ describe("feature 393 — el mapper deriva «Para la central» para TODAS las le
       "maestro · findColaCompleta": (await maestro.findColaCompleta())[0],
       "maestro · findHistoricoPaginado": (await maestro.findHistoricoPaginado(rango)).items[0],
       "maestro · findColaPaginada": (await maestro.findColaPaginada(rango)).items[0],
-      "maestro · findCierreBodegaConDetalle": (await maestro.findCierreBodegaConDetalle("cb1"))?.cierre,
+      "maestro · findCierreBodegaConDetalle": (await maestro.findCierreBodegaConDetalle("cb1", ZONA_CR))?.cierre,
     };
     expect(Object.keys(porLectura)).toHaveLength(8);
     for (const [lectura, fila] of Object.entries(porLectura)) {

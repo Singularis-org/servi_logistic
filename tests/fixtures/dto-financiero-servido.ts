@@ -17,6 +17,7 @@ import {
   type VistaFinanciera,
 } from "@/lib/types/analitica-financiera";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // GUARDIA DE ARNES (2026-08-07, sin ficha) — LA FORMA QUE EL SERVICIO SIRVE, PARA LOS DOBLES.
 //
 // POR QUE ESTE ARCHIVO EXISTE, con nombre y fecha del incidente que lo paga:
@@ -162,7 +163,7 @@ export function rangoResuelto(rango: RangoFinanciero = RANGO_TABLERO): RangoResu
     preset: "personalizado",
     desde: rango.desdeFecha,
     hasta: rango.hastaFecha,
-  });
+  }, ZONA_CR);
 }
 
 /**
@@ -174,7 +175,7 @@ export function rangoResuelto(rango: RangoFinanciero = RANGO_TABLERO): RangoResu
  * es exactamente como nace un off-by-one que nadie ve.
  */
 export function cubosDelRango(rango: RangoFinanciero = RANGO_TABLERO): readonly string[] {
-  return trocear(rangoResuelto(rango)).map((cubo) => cubo.clave);
+  return trocear(rangoResuelto(rango), ZONA_CR).map((cubo) => cubo.clave);
 }
 
 /**

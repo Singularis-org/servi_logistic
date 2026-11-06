@@ -20,6 +20,7 @@ import type {
   ResumenRetenidas,
 } from "@/lib/interfaces/services/IReprogramadasRetenidasService";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // FICHA 409 (T4.2) — EL PROCESO DIARIO, con repositorio y notificadores dobles. Cubre R43 (tienda
 // sin novedades no recibe), R48 (la zona lleva SU numero), R49 (la administracion central lleva el
 // total), R52 (zona con cero no recibe), R53 (el umbral entra INYECTADO) y R60 (best-effort por
@@ -134,7 +135,7 @@ function novedadesDe(tiendaId: string, dias: number, causas: Array<string | null
 describe("R43 — la tienda sin novedades NO recibe aviso", () => {
   it("no se llama al notificador cuando el resumen viene vacio", async () => {
     const notificar = vi.fn();
-    const service = new AvisosDiariosService(repoDoble(), historialSinIntentos, sinRetenidas, 3, notificar);
+    const service = new AvisosDiariosService(repoDoble(), historialSinIntentos, sinRetenidas, 3, notificar, undefined, undefined, undefined, reglasPaisFijas());
 
     const r = await service.ejecutar(AHORA);
 
@@ -155,7 +156,7 @@ describe("R43 — la tienda sin novedades NO recibe aviso", () => {
       historialSinIntentos,
       sinRetenidas,
       3,
-      notificar,
+      notificar, undefined, undefined, undefined, reglasPaisFijas(),
     );
 
     await service.ejecutar(AHORA);
@@ -187,7 +188,7 @@ describe("R60 — una emision que falla no se lleva por delante a las demas", ()
       notificar,
       undefined,
       undefined, // FICHA 462: el notificador de retenidas va antes del logger
-      logger,
+      logger, reglasPaisFijas(),
     );
 
     const r = await service.ejecutar(AHORA);
@@ -218,7 +219,7 @@ describe("R48/R49/R52 — cada ambito con SU numero y SU antiguedad", () => {
       sinRetenidas,
       3,
       undefined,
-      notificar,
+      notificar, undefined, undefined, reglasPaisFijas(),
     );
 
     const r = await service.ejecutar(AHORA);
@@ -254,7 +255,7 @@ describe("R48/R49/R52 — cada ambito con SU numero y SU antiguedad", () => {
       sinRetenidas,
       3,
       undefined,
-      notificar,
+      notificar, undefined, undefined, reglasPaisFijas(),
     );
 
     const r = await service.ejecutar(AHORA);
@@ -274,7 +275,7 @@ describe("R48/R49/R52 — cada ambito con SU numero y SU antiguedad", () => {
       sinRetenidas,
       3,
       undefined,
-      notificar,
+      notificar, undefined, undefined, reglasPaisFijas(),
     );
 
     const r = await service.ejecutar(AHORA);
@@ -287,7 +288,7 @@ describe("R48/R49/R52 — cada ambito con SU numero y SU antiguedad", () => {
 describe("R53 — el umbral entra INYECTADO y no vive dentro del servicio", () => {
   it("con umbral 3, la cota que se pide al repositorio son 3 dias antes de ahora", async () => {
     const repo = repoDoble();
-    await new AvisosDiariosService(repo, historialSinIntentos, sinRetenidas, 3).ejecutar(AHORA);
+    await new AvisosDiariosService(repo, historialSinIntentos, sinRetenidas, 3, undefined, undefined, undefined, undefined, reglasPaisFijas()).ejecutar(AHORA);
 
     expect(repo.llamadas.length).toBeGreaterThan(0); // autocomprobacion
     for (const cota of repo.llamadas) {
@@ -297,7 +298,7 @@ describe("R53 — el umbral entra INYECTADO y no vive dentro del servicio", () =
 
   it("con umbral 7 la cota se mueve: el numero NO esta escrito en el servicio", async () => {
     const repo = repoDoble();
-    await new AvisosDiariosService(repo, historialSinIntentos, sinRetenidas, 7).ejecutar(AHORA);
+    await new AvisosDiariosService(repo, historialSinIntentos, sinRetenidas, 7, undefined, undefined, undefined, undefined, reglasPaisFijas()).ejecutar(AHORA);
 
     for (const cota of repo.llamadas) {
       expect(cota.toISOString()).toBe(hace(7).toISOString());
@@ -330,7 +331,7 @@ describe("R39/R40 — la homogeneidad del plazo la decide el servicio", () => {
       historial,
       sinRetenidas,
       3,
-      notificar,
+      notificar, undefined, undefined, undefined, reglasPaisFijas(),
     );
     await service.ejecutar(AHORA);
     return (notificar.mock.calls[0][0] as NovedadesSinGestionarContexto).plazo;
@@ -377,7 +378,7 @@ describe("R39/R40 — la homogeneidad del plazo la decide el servicio", () => {
       }),
       { contarIntentosEnLote, topeIntentos: async () => 3 },
       sinRetenidas,
-      3,
+      3, undefined, undefined, undefined, undefined, reglasPaisFijas(),
     );
 
     await service.ejecutar(AHORA);
@@ -416,7 +417,7 @@ describe("462/R9/R12 — UN aviso por AMBITO con retenidas, con el ambito y el d
       3,
       undefined,
       undefined,
-      notificar,
+      notificar, undefined, reglasPaisFijas(),
     );
 
     const r = await service.ejecutar(AHORA);
@@ -443,7 +444,7 @@ describe("462/R9/R12 — UN aviso por AMBITO con retenidas, con el ambito y el d
       3,
       undefined,
       undefined,
-      notificar,
+      notificar, undefined, reglasPaisFijas(),
     );
 
     const r = await service.ejecutar(AHORA);
@@ -463,7 +464,7 @@ describe("462/R9/R12 — UN aviso por AMBITO con retenidas, con el ambito y el d
       3,
       undefined,
       undefined,
-      notificar,
+      notificar, undefined, reglasPaisFijas(),
     );
 
     const r = await service.ejecutar(AHORA);
@@ -475,7 +476,7 @@ describe("462/R9/R12 — UN aviso por AMBITO con retenidas, con el ambito y el d
 
   it("⭑ el conteo se pide con `startOfDayCR(now)` (convencion @db.Date), UNA sola vez por corrida", async () => {
     const retenidas = retenidasDe({ cierres: [{ ambito: CENTRAL, cuantas: 1 }] });
-    const service = new AvisosDiariosService(repoDoble(), historialSinIntentos, retenidas, 3);
+    const service = new AvisosDiariosService(repoDoble(), historialSinIntentos, retenidas, 3, undefined, undefined, undefined, undefined, reglasPaisFijas());
 
     await service.ejecutar(AHORA); // 07:00 CR del 11 = 13:00Z
 
@@ -508,7 +509,7 @@ describe("462/R18 — best-effort por ambito: una zona que falla no deja sin avi
       undefined,
       notificarRepresadas,
       notificarRetenidas,
-      logger,
+      logger, reglasPaisFijas(),
     );
 
     const r = await service.ejecutar(AHORA);
@@ -540,7 +541,7 @@ describe("462/R18 — best-effort por ambito: una zona que falla no deja sin avi
         },
       },
       3,
-      notificarNovedades,
+      notificarNovedades, undefined, undefined, undefined, reglasPaisFijas(),
     );
 
     await expect(service.ejecutar(AHORA)).rejects.toThrow(/conteo caido/);
@@ -558,7 +559,7 @@ describe("el dia CR sale de la hora de pared de Costa Rica, no de UTC", () => {
       historialSinIntentos,
       sinRetenidas,
       3,
-      notificar,
+      notificar, undefined, undefined, undefined, reglasPaisFijas(),
     );
 
     const r = await service.ejecutar(nocheCR);

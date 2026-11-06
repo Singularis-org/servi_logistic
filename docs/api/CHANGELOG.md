@@ -21,6 +21,29 @@
 
 ---
 
+## 2026-11-05 — Sin ruptura — Las fechas de calendario se miden en la zona horaria del país de tu empresa
+
+> **Sin ruptura para las empresas de Costa Rica.** Solo cambian **textos de descripción** del
+> contrato. Ningún campo, ruta, código de respuesta ni forma de cuerpo cambia, y con una empresa de
+> Costa Rica las fechas dan exactamente lo mismo que hoy.
+
+**Qué cambia, en una frase:** `desde` y `hasta` (listado de órdenes y analítica), el «hoy» que se usa
+cuando no mandás `hasta` y el eco `rango.hasta` de la analítica se miden en la **zona horaria del
+país de la empresa de tu API key**, no en «hora de Costa Rica (UTC-6)». Para una empresa de Costa
+Rica esa zona es la de siempre.
+
+| Dónde | Antes | Ahora |
+|---|---|---|
+| `GET /api/ordenes/api-key` → `desde`, `hasta` | «el día se mide en hora de Costa Rica (UTC-6)» | «el día se mide en la zona horaria del país de la empresa de la key» |
+| `GET /api/ordenes/api-key/analitica` → `desde`, `hasta` | «Fecha calendario de Costa Rica (UTC-6)» | «Fecha calendario en la zona horaria del país de la empresa de la key» |
+| `GET /api/ordenes/api-key/analitica` → `rango.hasta` | «Inclusivo, hora de Costa Rica.» | «Inclusivo, en la zona horaria del país de la empresa de la key.» |
+
+Contrato: `lib/api/openapi-spec.ts` y su espejo `docs/api/api-key-openapi.yaml`. La guía de
+integración (`docs/api/guia-integracion/guia-integracion.html`) todavía dice «hora de Costa Rica
+(UTC-6)»: se actualiza con la release (SLT-42).
+
+---
+
 ## 2026-11-03 — Campo NUEVO `ivaFulfillment`: el IVA del fulfillment, en la carga, la cotización y el costo de la orden
 
 > **Aditivo.** Se añade una clave; ninguna se quita ni cambia de forma. Un cliente que ignora las

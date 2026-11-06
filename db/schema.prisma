@@ -13,12 +13,30 @@ model Session {
   createdAt DateTime @default(now())
 }
 
+// SLT-42 (design §2.2; 20261107120100): catálogo de tipos de documento POR PAÍS. Las filas «cedula»,
+// «ruc» y «pasaporte» de antes son ahora tipos de CR (mismo `id`, el usuario no se tocó). La empresa
+// solo lee los de su país (política restrictiva `tipo_identificacion_del_pais`); escribe la plataforma.
 model TipoIdentificacion {
-  id    String @id @default(uuid())
-  value String @unique // seed: "cedula", "ruc", "pasaporte"
+  id         String  @id @default(uuid())
+  /// Compatibilidad: único global y aún lo envían los formularios. Un tipo de otro país lleva
+  /// `<PAIS>_<clave>`; las búsquedas nuevas van por `(paisId, clave)` o por `id`.
+  value      String  @unique
+  paisId     String  @map("pais_id")
+  /// Única dentro del país: `cedula_fisica`, `cedula_juridica`, `dimex`, `nite`, `pasaporte`…
+  clave      String
+  nombre     String
+  /// `digitos` | `alfanumerico` (CHECK `tipo_identificacion_caracteres`).
+  caracteres String
+  largoMin   Int     @map("largo_min") @db.SmallInt
+  largoMax   Int     @map("largo_max") @db.SmallInt
+  orden      Int     @db.SmallInt
+  activo     Boolean @default(true)
 
+  pais     Pais      @relation(fields: [paisId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   usuarios Usuario[]
 
+  @@unique([paisId, clave], map: "tipo_identificacion_pais_clave_key")
+  @@index([paisId], map: "tipo_identificacion_pais_idx")
   @@map("tipo_identificacion")
 }
 
@@ -214,7 +232,9 @@ model Usuario {
   // lo busca). En la base van con NULLS NOT DISTINCT (dos cuentas sin empresa chocan), que Prisma
   // no expresa: vive en la migracion 20261026090000_usuario_unico_por_empresa.
   @@unique([organizacionId, email], map: "usuario_email_key")
-  @@unique([organizacionId, cedula], map: "usuario_cedula_key")
+  // SLT-42/R13 (P4): el documento es único por empresa Y TIPO, con el mismo nombre de índice
+  // (20261107120200_slt42_usuario_documento_unico_por_tipo; NULLS NOT DISTINCT también vive ahí).
+  @@unique([organizacionId, tipoIdentificacionId, cedula], map: "usuario_cedula_key")
   @@index([email]) // SL-18/R25: el login y la recuperacion buscan por email sin empresa
   @@map("usuario")
 }
@@ -5746,7 +5766,7 @@ model Organizacion {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
   // SLT-77: intentos de entrega de la empresa, de 1 a 10. Lo edita su `maestro`. El rango es un CHECK que
-  // Prisma no sabe expresar: vive en `20261106160100_organizacion_tope_intentos`.
+  // Prisma no sabe expresar: vive en `20261107130100_organizacion_tope_intentos`.
   topeIntentosEntrega Int @default(3) @map("tope_intentos_entrega")
 
   usuarios Usuario[]
@@ -5907,10 +5927,17 @@ model Pais {
   /// SL-20 (enmienda 2026-10-26, decisión 6; 20261026130500): hay cobertura en el país (R44). Con
   /// `false` no se acepta en un alta NUEVA de empresa (R45); las que ya están siguen igual (R46).
   disponible          Boolean  @default(true)
+  /// SLT-42 (R1; 20261107120000): datos de teléfono y hora. NULL = el país aún no los tiene (R6, R28).
+  /// Prefijo internacional en dígitos, sin '+'.
+  prefijoTelefonico         String? @map("prefijo_telefonico")
+  telefonoDigitosNacionales Int?    @map("telefono_digitos_nacionales") @db.SmallInt
+  /// Identificador IANA. Sin CHECK en la base: se valida en el servidor (tzdata de Node ≠ de Postgres).
+  zonaHoraria               String? @map("zona_horaria")
 
   provincias          Provincia[]
   organizaciones      Organizacion[]
   historialPlataforma HistorialPlataforma[]
+  tiposIdentificacion TipoIdentificacion[]
 
   @@map("pais")
 }

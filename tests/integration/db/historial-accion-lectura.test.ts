@@ -22,6 +22,7 @@ import {
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FICHA 362 / T4.2 (R29/R31) — LOS FILTROS Y LA BUSQUEDA, PROBADOS DONDE VIVEN.
@@ -559,6 +560,7 @@ describeSiHayBase("424/T8 — quien borro es consultable filtrando por accion y 
       eliminadas,
       servicio: new HistorialAccionService(
         new HistorialAccionRepository(tx as unknown as PrismaClient),
+        reglasPaisFijas(),
       ),
     };
   }

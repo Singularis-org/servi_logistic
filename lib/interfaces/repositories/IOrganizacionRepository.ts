@@ -1,4 +1,4 @@
-import type { AltaEmpresaDatos, AltaEmpresaResultado } from "@/lib/types/organizacion";
+import type { AltaEmpresaDatos, AltaEmpresaRepeticion, AltaEmpresaResultado } from "@/lib/types/organizacion";
 
 /** SL-17 (design §7.7) — persistencia del alta de empresa. */
 export interface IOrganizacionRepository {
@@ -14,4 +14,12 @@ export interface IOrganizacionRepository {
    * `paisId` sin escribir nada; la repetición de una empresa que ya existe no mira la disponibilidad.
    */
   altaEmpresa(datos: AltaEmpresaDatos): Promise<AltaEmpresaResultado>;
+  /**
+   * SLT-42 (decision del humano tras la tanda 2, punto 7): si el alta REPITE una empresa que ya
+   * existe (mismo slug), su desenlace —`ya_existe`, o `conflicto` `slug`/`paisId`— con la MISMA
+   * regla que `altaEmpresa`; `null` si el slug esta libre. Solo lee. El servicio lo consulta ANTES
+   * de validar el pais y los datos del maestro, como SL-20 §13: repetir un alta siempre da
+   * `ya_existe`, aunque el pais haya quedado incompleto despues.
+   */
+  repeticion(datos: AltaEmpresaRepeticion): Promise<AltaEmpresaResultado | null>;
 }

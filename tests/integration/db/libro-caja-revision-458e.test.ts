@@ -17,6 +17,18 @@ import type { CajaResumenDTO } from "@/lib/types/wallet";
 
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
 import { cargarCatalogo459, enTransaccionRevertida459, montarServicios459, sembrarEscenario459 } from "./_fixtures/caja-459";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+
+// SLT-42 (T5.4): la zona del pais de la empresa es la de CR, como antes. Las reglas reales leen el pais
+// de la empresa en curso con el cliente global, que no ve la empresa de una transaccion revertida ni
+// tiene empresa fuera de `conEmpresa`; la zona por pais la miden `hora-por-pais-wallet` y `demo-qa`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
 
 // SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
 vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
@@ -128,7 +140,7 @@ describeSiHayBase("458-E revisión B1/M2 — instante de registro; «A quién» 
         });
 
         // ── B1: la autoría del sueldo ─────────────────────────────────────────────────────────
-        const autoriaSrv = new LibroCajaAutoriaService(new LibroCajaAutoriaRepository(s.cliente));
+        const autoriaSrv = new LibroCajaAutoriaService(new LibroCajaAutoriaRepository(s.cliente), reglasPaisFijas());
         const autoria = await autoriaSrv.resolver(
           { movimientoIds: [sueldo.id, reversoSueldo.id, reversoCorreccion.id] },
           actor,
@@ -137,17 +149,17 @@ describeSiHayBase("458-E revisión B1/M2 — instante de registro; «A quién» 
         const porId = new Map(autoria.filas.map((f) => [f.movimientoId, f]));
 
         // ── M2: el libro, las tarjetas y el selector filtrados por «Pedro» ────────────────────
-        const origenes = new OrigenLegibleService(new OrigenLegibleRepository(s.cliente));
-        const deps = { getActor: async () => actor, service: s.wallet, origenes };
+        const origenes = new OrigenLegibleService(new OrigenLegibleRepository(s.cliente), reglasPaisFijas());
+        const deps = { reglasPais: reglasPaisFijas(), getActor: async () => actor, service: s.wallet, origenes };
         const aQuien = { nombre: PEDRO.toLowerCase() };
         const libro = await listarMovimientosAction({ aQuien, page: 1, pageSize: 100 }, deps);
         if (libro.status !== "ok") throw new Error(`libro: ${JSON.stringify(libro)}`);
         const res = await verResumenCajaAction({ aQuien }, deps);
         if (res.status !== "ok") throw new Error(`resumen: ${JSON.stringify(res)}`);
-        const filtros = new FiltrosWalletService(new FiltrosWalletRepository(s.cliente));
+        const filtros = new FiltrosWalletService(new FiltrosWalletRepository(s.cliente), undefined, reglasPaisFijas());
         const quienes = await quienesDelLibroCajaAction(
           { busqueda: "revision 458-e m2" },
-          { getActor: async () => actor, service: filtros },
+          { reglasPais: reglasPaisFijas(), getActor: async () => actor, service: filtros },
         );
         if (quienes.status !== "ok") throw new Error(`quienes: ${JSON.stringify(quienes)}`);
         const opcion = quienes.opciones.find((o) => o.clase === "nombre");

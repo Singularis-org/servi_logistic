@@ -16,6 +16,8 @@
 // declaradas alli; aqui no se recorta ni se reinterpreta nada del filtro: se pasa entero y cada
 // capa toma lo suyo, que es lo que mantiene el contrato identico para las cinco.
 import { describirDenegado } from "@/lib/analytics/auditoria";
+import { zonaDelBordeConActor } from "@/lib/actions/_shared/zona-del-borde";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import { prepararConteoEntregas } from "@/lib/analytics/entregas-conteo";
 import type { ActorAnalitica, MotivoDenegacion } from "@/lib/analytics/alcance";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
@@ -43,6 +45,8 @@ export interface ConteoDevolucionesDeps {
   readonly logger?: ErrorLogger;
   /** Reloj inyectable: misma entrada y mismo `now` => mismo resultado, sello incluido. */
   readonly now?: () => Date;
+  /** SLT-42 (R22, R28): la zona del pais de la empresa; en produccion, la real (`zonaDelBorde`). */
+  readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
 }
 
 function construirServicio(now: () => Date): ConteoDevolucionesService {
@@ -79,7 +83,8 @@ export async function consultarConteoDevoluciones(
   const now = deps.now ?? (() => new Date());
   const actor = await (deps.getActor ?? resolveActorFromSession)();
 
-  const preparada = prepararConteoEntregas(raw, actor, now());
+  const zona = await zonaDelBordeConActor(actor, deps.reglasPais); // SLT-42 (R22, R28)
+  const preparada = prepararConteoEntregas(raw, actor, zona, now());
 
   if (preparada.status === "validation_error") {
     // Sin consultar y sin auditar: no hay denegado que registrar, y una entrada malformada

@@ -46,6 +46,7 @@ import {
   serializarEscriturasReales,
   type TxDeTest,
 } from "../_postgres-real";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FEATURE 454 (T0.1) — EL ESCENARIO COMPARTIDO DE LA FASE 0.
@@ -199,6 +200,7 @@ export function montarServicios(cliente: PrismaClient) {
   return {
     notaRepo,
     gestionDesdeAyuda: new GestionDesdeAyudaService({
+      reglasPais: reglasPaisFijas(),
       notaRepo,
       ordenRepo,
       gestionRepo,
@@ -227,8 +229,9 @@ export function montarServicios(cliente: PrismaClient) {
       new RutaOptimizadaRepository(cliente),
       new OrdenMensajeroMetaRepository(cliente),
       historialService,
+      reglasPaisFijas(),
     ),
-    cierreDia: new CierreDiaService(cierreDiaRepo, zonaRepo, ordenRepo, URLS, tarifaZonaRepo),
+    cierreDia: new CierreDiaService(cierreDiaRepo, zonaRepo, ordenRepo, URLS, tarifaZonaRepo, undefined, undefined, reglasPaisFijas()),
     cierresAdmin: new CierresAdminService(
       adminRepo,
       zonaRepo,
@@ -238,6 +241,11 @@ export function montarServicios(cliente: PrismaClient) {
       new PagoMensajeroMovimientoRepository(cliente),
       // FICHA 462: el conteo REAL de retenidas, sobre la misma tx (la marca de S3 con datos reales).
       buildReprogramadasRetenidasService(cliente),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      reglasPaisFijas(),
     ),
     /** El corte REAL, con la seleccion REAL recortada a los mensajeros de ESTE escenario. */
     corteDe: (mensajeros: string[]) =>
@@ -253,6 +261,8 @@ export function montarServicios(cliente: PrismaClient) {
         ordenRepo,
         tarifaZonaRepo,
         { warn: () => {} },
+        undefined,
+        reglasPaisFijas(),
       ),
   };
 }

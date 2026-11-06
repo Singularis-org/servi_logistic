@@ -6,6 +6,7 @@ import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlPro
 // ⏳ 2026-09-10 (feature 415): los dos campos que `ApiOrdenRow` gano. `zona` se publica;
 // `costeo` NO. El defecto no resuelve tarifa, asi que `costoEstimado` sale `null`.
 import { costeoFixture, ZONA_FIXTURE } from "@/tests/fixtures/api-orden-costeo-415";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 257 (T6) — la TRADUCCION de fecha calendario de Costa Rica a INSTANTE UTC, que es la
 // unica decision de negocio que esta feature mete en el service. El repo solo habla de instantes;
@@ -102,7 +103,7 @@ afterAll(() => {
 describe("ApiOrdenLecturaService.listar — filtros de la feature 257 (T6)", () => {
   it("R5/R6/R7: desde=2026-08-01&hasta=2026-08-21 -> [2026-08-01T06:00:00.000Z, 2026-08-22T06:00:00.000Z)", async () => {
     const repo = fakeRepo();
-    const svc = new ApiOrdenLecturaService(repo as never, fakeSignedUrls(), fakeTarifas() as never);
+    const svc = new ApiOrdenLecturaService(repo as never, fakeSignedUrls(), fakeTarifas() as never, reglasPaisFijas());
 
     await svc.listar(ACTOR, { limit: 50, offset: 0, desde: "2026-08-01", hasta: "2026-08-21" });
 
@@ -123,7 +124,7 @@ describe("ApiOrdenLecturaService.listar — filtros de la feature 257 (T6)", () 
     // cotas correctas, `D T06:30:00Z` (00:30 CR del dia D) esta dentro y `D T01:00:00Z` (19:00 CR
     // del dia D-1) esta fuera. Con `startOfDayCR` —medianoche UTC— pasaria exactamente al reves.
     const repo = fakeRepo();
-    const svc = new ApiOrdenLecturaService(repo as never, fakeSignedUrls(), fakeTarifas() as never);
+    const svc = new ApiOrdenLecturaService(repo as never, fakeSignedUrls(), fakeTarifas() as never, reglasPaisFijas());
 
     await svc.listar(ACTOR, { limit: 50, offset: 0, desde: "2026-08-10", hasta: "2026-08-10" });
 
@@ -137,7 +138,7 @@ describe("ApiOrdenLecturaService.listar — filtros de la feature 257 (T6)", () 
 
   it("R8: desde=hasta=2026-08-10 cubre las 24 horas completas de ese dia en Costa Rica", async () => {
     const repo = fakeRepo();
-    const svc = new ApiOrdenLecturaService(repo as never, fakeSignedUrls(), fakeTarifas() as never);
+    const svc = new ApiOrdenLecturaService(repo as never, fakeSignedUrls(), fakeTarifas() as never, reglasPaisFijas());
 
     await svc.listar(ACTOR, { limit: 50, offset: 0, desde: "2026-08-10", hasta: "2026-08-10" });
 
@@ -151,7 +152,7 @@ describe("ApiOrdenLecturaService.listar — filtros de la feature 257 (T6)", () 
 
   it("R9: solo `desde` aplica unicamente la cota inferior (la superior queda sin definir)", async () => {
     const repo = fakeRepo();
-    const svc = new ApiOrdenLecturaService(repo as never, fakeSignedUrls(), fakeTarifas() as never);
+    const svc = new ApiOrdenLecturaService(repo as never, fakeSignedUrls(), fakeTarifas() as never, reglasPaisFijas());
 
     await svc.listar(ACTOR, { limit: 50, offset: 0, desde: "2026-08-01" });
 
@@ -162,7 +163,7 @@ describe("ApiOrdenLecturaService.listar — filtros de la feature 257 (T6)", () 
 
   it("R9: solo `hasta` aplica unicamente la cota superior (la inferior queda sin definir)", async () => {
     const repo = fakeRepo();
-    const svc = new ApiOrdenLecturaService(repo as never, fakeSignedUrls(), fakeTarifas() as never);
+    const svc = new ApiOrdenLecturaService(repo as never, fakeSignedUrls(), fakeTarifas() as never, reglasPaisFijas());
 
     await svc.listar(ACTOR, { limit: 50, offset: 0, hasta: "2026-08-21" });
 
@@ -176,7 +177,7 @@ describe("ApiOrdenLecturaService.listar — filtros de la feature 257 (T6)", () 
     // (p. ej. un default "ultimos N dias"), el integrador que ya paginaba dejaria de ver su
     // historico sin que nada fallara.
     const repo = fakeRepo();
-    const svc = new ApiOrdenLecturaService(repo as never, fakeSignedUrls(), fakeTarifas() as never);
+    const svc = new ApiOrdenLecturaService(repo as never, fakeSignedUrls(), fakeTarifas() as never, reglasPaisFijas());
 
     await svc.listar(ACTOR, { limit: 50, offset: 0 });
 
@@ -194,7 +195,7 @@ describe("ApiOrdenLecturaService.listar — filtros de la feature 257 (T6)", () 
     // borde sea literalmente lo que se compara en SQL. Cualquier `trim`, `toUpperCase` o cast
     // aqui convertiria una busqueda exacta en otra cosa.
     const repo = fakeRepo();
-    const svc = new ApiOrdenLecturaService(repo as never, fakeSignedUrls(), fakeTarifas() as never);
+    const svc = new ApiOrdenLecturaService(repo as never, fakeSignedUrls(), fakeTarifas() as never, reglasPaisFijas());
 
     await svc.listar(ACTOR, {
       limit: 25,
@@ -213,7 +214,7 @@ describe("ApiOrdenLecturaService.listar — filtros de la feature 257 (T6)", () 
     // ampliar ni omitir el owner. Se pasa ademas una clave `tiendaId` ajena por la query (que el
     // contrato no declara: de ahi el cast) para congelar que ni siquiera colandola llega al repo.
     const repo = fakeRepo();
-    const svc = new ApiOrdenLecturaService(repo as never, fakeSignedUrls(), fakeTarifas() as never);
+    const svc = new ApiOrdenLecturaService(repo as never, fakeSignedUrls(), fakeTarifas() as never, reglasPaisFijas());
 
     await svc.listar(ACTOR, {
       limit: 10,

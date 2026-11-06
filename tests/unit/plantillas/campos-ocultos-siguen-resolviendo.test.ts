@@ -38,12 +38,12 @@ describe("los campos ocultos del selector SIGUEN siendo campos de pleno derecho"
     const campo = CAMPOS_PLANTILLA_POR_CLAVE.get(clave);
     expect(campo).toBeDefined();
     // Mismo contrato que el resto del catálogo (R12): el valor resuelto ES su `ejemplo`.
-    expect(valorDeCampo(clave, DATOS_PLANTILLA_EJEMPLO)).toBe(campo?.ejemplo);
+    expect(valorDeCampo(clave, DATOS_PLANTILLA_EJEMPLO, "America/Costa_Rica")).toBe(campo?.ejemplo);
   });
 
   it.each(OCULTAS)("%s: la vista previa la sustituye de verdad", (clave) => {
     const campo = CAMPOS_PLANTILLA_POR_CLAVE.get(clave);
-    const texto = previewConEjemplos(`Valor: {{${clave}}}`);
+    const texto = previewConEjemplos(`Valor: {{${clave}}}`, "America/Costa_Rica");
     expect(texto).toBe(`Valor: ${campo?.ejemplo}`);
     // Y desde luego no deja el placeholder crudo ni el marcador en MAYÚSCULAS.
     expect(texto).not.toContain("{{");

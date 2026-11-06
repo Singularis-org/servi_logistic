@@ -19,6 +19,7 @@
 //      oraculo para quien no puede leer el modulo.
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { getPrismaClient } from "@/lib/db/prisma-client";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IHistorialAccionService } from "@/lib/interfaces/services/IHistorialAccionService";
 import { HistorialAccionRepository } from "@/lib/repositories/HistorialAccionRepository";
@@ -39,7 +40,9 @@ export interface HistorialAccionesActionDeps {
 }
 
 function construirService(): IHistorialAccionService {
-  return new HistorialAccionService(new HistorialAccionRepository(getPrismaClient()));
+  const prisma = getPrismaClient();
+  // SLT-42 (R22): la zona horaria del pais de la empresa, para el rango de fechas del filtro.
+  return new HistorialAccionService(new HistorialAccionRepository(prisma), construirReglasPaisEmpresa(prisma));
 }
 
 /**

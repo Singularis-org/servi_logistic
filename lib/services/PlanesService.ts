@@ -9,7 +9,12 @@ import type {
 } from "@/lib/interfaces/repositories/IPlanesRepository";
 import type { IPlanesService } from "@/lib/interfaces/services/IPlanesService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
-import { inicioDelDiaPlataforma, rangoDeLaFechaDeEfecto, rangoDelInicioDelCiclo } from "@/lib/planes/ciclo";
+import {
+  fechaCalendarioPlataforma,
+  inicioDelDiaPlataforma,
+  rangoDeLaFechaDeEfecto,
+  rangoDelInicioDelCiclo,
+} from "@/lib/planes/ciclo";
 import { tipoCobroDelHistorial } from "@/lib/planes/cobro";
 import { cambioPendienteDelPlan, planConConsumo } from "@/lib/planes/consumo";
 import { tieneCostoConcreto } from "@/lib/planes/costo-concreto";
@@ -50,7 +55,8 @@ import {
   type PreciosQueRigenResult,
   type VersionPlan,
 } from "@/lib/types/planes";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendario } from "@/lib/utils/calendario-zona";
+import type { ZonaDeOrganizacion } from "@/lib/services/zona-de-la-empresa";
 
 // SL-24 (design §5, §16.2; R2, R5, R6, R12, R13, R16, R37, R39) — el orden es fijo y es parte del contrato,
 // copiado de `ModulosEmpresaService` (SL-23): primero quién (R5), luego qué (zod: R2, R3), luego si
@@ -136,9 +142,19 @@ function efectoElegido(planActual: string | null, fechas: FechasDelCambio, ahora
     const fecha = fechas.vigenteDesde as string;
     return { clase: "cambio", fecha, desde: inicioDelDiaPlataforma(fecha), elegida: true };
   }
-  const fecha = fechas.inicioCiclo ?? fechaCalendarioCR(ahora);
+  const fecha = fechas.inicioCiclo ?? fechaCalendarioPlataforma(ahora);
   return { clase: "inicio", fecha, desde: inicioDelDiaPlataforma(fecha), elegida: fechas.inicioCiclo !== undefined };
 }
+
+/**
+ * SLT-42 (decisión del humano tras T5.5) — la fecha de un cambio pendiente en el catálogo del
+ * superadmin: día calendario en UTC, con la etiqueta «UTC» para que nadie la lea como hora local.
+ */
+function fechaDelCatalogo(instante: Date): string {
+  return `${fechaCalendario(instante, ZONA_DEL_CATALOGO)} ${ZONA_DEL_CATALOGO}`;
+}
+
+const ZONA_DEL_CATALOGO = "UTC";
 
 /** Un rechazo del repositorio al asignar, como `PlanResult`: el de topes lleva su texto ya redactado. */
 function rechazoDeAsignar(r: Exclude<ResultadoAsignar, { estado: "ok" }>): PlanResult {
@@ -153,6 +169,14 @@ export class PlanesService implements IPlanesService {
     private readonly repo: IPlanesRepository,
     /** El reloj, inyectable para R37 («posterior al momento de guardar»). */
     private readonly ahora: () => Date = () => new Date(),
+    /**
+     * SLT-42 (R22, R28; decisión del humano tras T5.4) — la zona del país de una empresa, para la
+     * fecha que se MUESTRA de una empresa. Su único uso era `siguienteCiclo` de las vistas previas, que
+     * SLT-86 (R8) retiró: hoy ningún método la lee. Se mantiene cableada en los composition roots hasta
+     * que el humano decida si se borra o la usa SLT-86 al pasar el ciclo a la zona de cada empresa.
+     * El superadmin corre en plataforma, sin empresa en contexto, así que no es `IReglasPaisEmpresa`.
+     */
+    private readonly zonaDeOrganizacion?: ZonaDeOrganizacion,
   ) {}
 
   async crear(actor: Actor | null, input: unknown): Promise<PlanResult> {
@@ -194,7 +218,7 @@ export class PlanesService implements IPlanesService {
     if (!parsed.success) return { estado: "validation_error", fieldErrors: erroresDeCampo(parsed.error) };
     const { planId, vigenteDesde, ...version } = parsed.data;
     const ahora = this.ahora();
-    const hoy = fechaCalendarioCR(ahora);
+    const hoy = fechaCalendarioPlataforma(ahora);
     // SLT-86 (R22): ninguna fecha anterior a hoy, cambie o no el precio; se mira antes de leer nada.
     if (vigenteDesde !== null && vigenteDesde < hoy) return errorEn("vigenteDesde", FECHA_DE_EFECTO_PASADA);
     const plan = await this.repo.plan(planId);
@@ -401,7 +425,7 @@ export class PlanesService implements IPlanesService {
     if (!esSuperadmin(actor)) return FORBIDDEN;
     const parsed = preciosQueRigenSchema.safeParse(input);
     if (!parsed.success) return { estado: "validation_error", fieldErrors: erroresDeCampo(parsed.error) };
-    const hoy = inicioDelDiaPlataforma(fechaCalendarioCR(this.ahora()));
+    const hoy = inicioDelDiaPlataforma(fechaCalendarioPlataforma(this.ahora()));
     const leidos = await this.repo.preciosQueRigenDesde([...new Set(parsed.data.planIds)], hoy);
     // De menor a mayor `desde` (desde siempre primero); en un empate, el programado detrás del historial.
     const orden = (d: Date | null) => (d === null ? Number.NEGATIVE_INFINITY : d.getTime());
@@ -435,7 +459,10 @@ export class PlanesService implements IPlanesService {
           ...f.plan,
           empresaNombre: f.empresaNombre,
           empresas: f.empresas,
-          vigenteDesdePendiente: f.vigenteDesdePendiente === null ? null : fechaCalendarioCR(f.vigenteDesdePendiente),
+          // SLT-42 (decisión del humano tras T5.5): un plan del catálogo no es de UNA empresa, así
+          // que no hay zona de país que aplicar. La fecha va en UTC y lo dice (`fechaDelCatalogo`).
+          vigenteDesdePendiente:
+            f.vigenteDesdePendiente === null ? null : fechaDelCatalogo(f.vigenteDesdePendiente),
         }),
       ),
     };

@@ -10,6 +10,7 @@ import type {
 } from "@/lib/interfaces/services/IAsignabilidadCoordenadasService";
 import type { IOrdenHistorialService } from "@/lib/interfaces/services/IOrdenHistorialService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FEATURE 276 (T8) — LA MISMA PUERTA EN LA BODEGA SATELITE. R18, R19, R20, R7.
@@ -98,6 +99,7 @@ function montar(porOrden: Record<string, number>, repoOver: Record<string, unkno
     repo as unknown as IOrdenRepository,
     gate,
     historial,
+    reglasPaisFijas(),
   );
   return { service, repo, gate, historial };
 }
@@ -180,6 +182,7 @@ describe("276/T8 · R20 — un solo motivo, un solo punto", () => {
       { findCentralZonaId: vi.fn(async () => "z-gam") } as never,
       gateOk(),
       historialCon({ o1: UMBRAL }),
+      reglasPaisFijas(),
     );
     const rc = await central.asignarDesdeBodega({ ordenIds: ["o1"], mensajeroId: "m1" }, {
       usuarioId: "u-maestro",
@@ -206,6 +209,7 @@ describe("SLT-77 R20 — con tope 5 de la empresa la puerta se mueve", () => {
       repo as unknown as IOrdenRepository,
       gateOk(),
       historialCon({ o1: intentos, o2: intentos, o3: intentos }, 5),
+      reglasPaisFijas(),
     );
     return { service, repo };
   }

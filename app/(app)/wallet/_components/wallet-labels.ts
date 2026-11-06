@@ -56,6 +56,7 @@ export { CATEGORIA_LABEL, conceptoDeMovimientoCaja } from "@/lib/constants/walle
 // se importa aqui para componer los rotulos y se re-exporta para los consumidores de siempre. Los
 // rotulos de cada categoria del libro (`CATEGORIA_LABEL`) no son de esta ficha.
 import { IMPUESTO_ROTULO } from "@/lib/constants/impuesto-rotulo";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 export { IMPUESTO_ROTULO };
 
 // ── Feature 173 (T G.1/T G.2, design §8) — las DOS cifras de la caja ──
@@ -707,6 +708,7 @@ export const PROXIMO_COBRO_INACTIVA = "No se cobra";
  */
 export function proximoCobroTexto(plantilla: GastoFijoPlantillaDTO, ahora: Date): string {
   if (!plantilla.activa) return PROXIMO_COBRO_INACTIVA;
-  const fecha = proximoCobro(plantilla, ahora);
+  // SLT-81: la UI sigue en la zona de CR
+  const fecha = proximoCobro(plantilla, ahora, ZONA_CR);
   return `${fechaLegible(fecha)} de ${fecha.slice(0, 4)}`;
 }

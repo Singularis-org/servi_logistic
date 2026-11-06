@@ -5,6 +5,7 @@ import { PagoMensajeroMovimientoRepository } from "@/lib/repositories/PagoMensaj
 import { RankingSnapshotRepository } from "@/lib/repositories/RankingSnapshotRepository";
 import { ventanaDelDia } from "@/lib/ranking/snapshot-dia";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Feature 293 (T2.2, T3.1, T3.2, T3.3) — las CUATRO lecturas nuevas, con Prisma mockeado.
 //
 // ⚠️ QUE PRUEBA ESTE ARCHIVO Y QUE NO. Fija la FORMA del `where`/`orderBy` que cada metodo emite
@@ -307,7 +308,7 @@ describe("293/T3.2 — `resolverCierreDelDia` (design §4)", () => {
   it("§4.2: el vinculo es la GESTION vigente dentro de la ventana, no `solicitado_at`", async () => {
     const { prisma, findFirst } = prismaCierres(null);
     const repo = new CierreDelDiaRepository(prisma as unknown as PrismaClient);
-    const ventana = ventanaDelDia("2026-08-26");
+    const ventana = ventanaDelDia("2026-08-26", ZONA_DE_CR);
 
     await repo.resolverCierreDelDia("m1", ventana);
 
@@ -330,7 +331,7 @@ describe("293/T3.2 — `resolverCierreDelDia` (design §4)", () => {
   it("la ventana es la del CRON: 06:00Z del dia a 06:00Z del siguiente", async () => {
     // Si alguien usara `startOfDayCR` (medianoche UTC) como cota contra un `timestamp`, la
     // ventana seria la 18:00-18:00 hora CR que cerro la ficha 166.
-    const ventana = ventanaDelDia("2026-08-26");
+    const ventana = ventanaDelDia("2026-08-26", ZONA_DE_CR);
     expect(ventana.desde.toISOString()).toBe("2026-08-26T06:00:00.000Z");
     expect(ventana.hasta.toISOString()).toBe("2026-08-27T06:00:00.000Z");
   });
@@ -339,7 +340,7 @@ describe("293/T3.2 — `resolverCierreDelDia` (design §4)", () => {
     const { prisma } = prismaCierres(null);
     const repo = new CierreDelDiaRepository(prisma as unknown as PrismaClient);
 
-    expect(await repo.resolverCierreDelDia("m1", ventanaDelDia("2026-08-26"))).toBeNull();
+    expect(await repo.resolverCierreDelDia("m1", ventanaDelDia("2026-08-26", ZONA_DE_CR))).toBeNull();
   });
 
   it("devuelve id Y estado: quien decide si sirve es el servicio, no el repositorio", async () => {
@@ -350,7 +351,7 @@ describe("293/T3.2 — `resolverCierreDelDia` (design §4)", () => {
     });
     const repo = new CierreDelDiaRepository(prisma as unknown as PrismaClient);
 
-    expect(await repo.resolverCierreDelDia("m1", ventanaDelDia("2026-08-26"))).toEqual({
+    expect(await repo.resolverCierreDelDia("m1", ventanaDelDia("2026-08-26", ZONA_DE_CR))).toEqual({
       cierreId: "c1",
       estado: "solicitado",
       solicitadoAt: new Date("2026-08-27T02:00:00.000Z"),

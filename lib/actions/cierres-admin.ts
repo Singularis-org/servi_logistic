@@ -1,5 +1,6 @@
 "use server";
 
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { CierresAdminRepository } from "@/lib/repositories/CierresAdminRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
@@ -171,6 +172,9 @@ function buildService(): ICierresAdminService {
     // se PASA, no que el simbolo se importe: se midio que con un `toContain` sobre el fichero
     // entero, borrar esta linea deja el test en verde porque el import de arriba la contiene.
     notificarCierreDiaRechazadoReal,
+    undefined, // el parametro opcional previo, con su valor por defecto
+    // SLT-42 (R22): la zona horaria del pais de la empresa.
+    construirReglasPaisEmpresa(prisma),
   );
 }
 

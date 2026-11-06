@@ -11,6 +11,7 @@ import type {
 } from "@/lib/interfaces/services/IAsignabilidadCoordenadasService";
 import type { IOrdenHistorialService } from "@/lib/interfaces/services/IOrdenHistorialService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FEATURE 276 (T7) — LA PUERTA DEL TOPE EN LA ASIGNACION DESDE LA BODEGA CENTRAL.
@@ -107,7 +108,7 @@ function montar(porOrden: Record<string, number>, repoOver: Record<string, unkno
   const repo = fakeRepo(repoOver);
   const gate = gateOk();
   const historial = historialCon(porOrden);
-  const service = new GuiaAsignacionService(repo, fakeZonaRepo(), gate, historial);
+  const service = new GuiaAsignacionService(repo, fakeZonaRepo(), gate, historial, reglasPaisFijas());
   return { service, repo, gate, historial };
 }
 
@@ -229,6 +230,7 @@ describe("SLT-77 R20 — con tope 5 de la empresa la puerta se mueve", () => {
       fakeZonaRepo(),
       gateOk(),
       historialCon({ o1: intentos, o2: intentos, o3: intentos }, 5),
+      reglasPaisFijas(),
     );
     return { service, repo };
   }

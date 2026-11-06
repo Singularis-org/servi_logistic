@@ -6,7 +6,9 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IReprogramadasRetenidasService } from "@/lib/interfaces/services/IReprogramadasRetenidasService";
 import type { IVigenciaAvisoAgregado } from "@/lib/interfaces/services/IVigenciaAvisoAgregado";
 import type { NotificacionEvento } from "@/lib/types/notificacion";
-import { startOfDayCR } from "@/lib/utils/fecha-cr";
+import { inicioDelDiaComoFecha } from "@/lib/utils/calendario-zona";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 
 // FICHA 409 (T5.2, design §5) — el resolutor de la CIFRA VIVA de un aviso agregado.
 //
@@ -109,7 +111,15 @@ export class VigenciaAvisoAgregadoService implements IVigenciaAvisoAgregado {
      * para emitir, la marca de `/cierres-admin` y la franja de `/ordenes` (R7).
      */
     private readonly retenidas?: Pick<IReprogramadasRetenidasService, "contar">,
+    /** SLT-42 (R22, R28): la zona del pais de la empresa, de la que sale «hoy» (convencion `@db.Date`). */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
+
+  /** SLT-42 (R22, R28, R30): medianoche UTC de la fecha de hoy en la zona de la empresa (`@db.Date`). */
+  private async hoyComoFecha(): Promise<Date> {
+    const zona = await zonaDeLaEmpresa(this.reglasPais, "VigenciaAvisoAgregadoService.cifra");
+    return inicioDelDiaComoFecha(this.now(), zona);
+  }
 
   async cifra(evento: NotificacionEvento, actor: Actor): Promise<number> {
     if (evento === "novedades_sin_gestionar") {
@@ -198,7 +208,7 @@ export class VigenciaAvisoAgregadoService implements IVigenciaAvisoAgregado {
           `vigencia: el evento "${evento}" necesita el repositorio de reparto y nadie lo inyecto`,
         );
       }
-      // ⚠️ `startOfDayCR` Y NO `inicioDelDiaCREnUtc`: `orden.fecha_reparto` es `@db.Date`. Ver la
+      // ⚠️ `inicioDelDiaComoFecha` Y NO `inicioDelDiaEnUtc`: `orden.fecha_reparto` es `@db.Date`. Ver la
       // cabecera de `RepartoMananaRepository` — aqui la trampa horaria va al reves de lo que se
       // suele avisar en este repo, y usar el otro helper desplazaria el dia seis horas.
       //
@@ -215,7 +225,7 @@ export class VigenciaAvisoAgregadoService implements IVigenciaAvisoAgregado {
       // bloquee a las 21:00 convivira esa noche con los dos, hasta que este se apague solo a
       // medianoche. Un aviso de mas es la direccion segura, y el de bloqueo es accionable.
       // MUTACION OBLIGATORIA (design §13.11): meter la comprobacion aqui ⇒ R43 y R41 ROJOS.
-      return this.repartoRepo.contarReservadasParaOtroDia(actor.usuarioId, startOfDayCR(this.now()));
+      return this.repartoRepo.contarReservadasParaOtroDia(actor.usuarioId, await this.hoyComoFecha());
     }
     if (evento === "reprogramadas_esperan_cierre") {
       // ⚠️ FICHA 462 (R6/R14) — EL AMBITO ES EL ACTOR, por INCLUSION: maestro y admin cuentan el
@@ -238,9 +248,9 @@ export class VigenciaAvisoAgregadoService implements IVigenciaAvisoAgregado {
           `vigencia: el evento "${evento}" necesita el servicio de retenidas y nadie lo inyecto`,
         );
       }
-      // ⚠️ `startOfDayCR` Y NO `inicioDelDiaCREnUtc`: `fecha_reprogramacion` es `@db.Date` y el
-      // conteo compara en la convencion del reloj de liberacion (design §1.2).
-      const hoyCR = startOfDayCR(this.now());
+      // ⚠️ `inicioDelDiaComoFecha` Y NO `inicioDelDiaEnUtc`: `fecha_reprogramacion` es `@db.Date` y
+      // el conteo compara en la convencion del reloj de liberacion (design §1.2).
+      const hoyCR = await this.hoyComoFecha();
       if (ambito === "central") return this.retenidas.contar(hoyCR, { tipo: "central" });
       if (!idUtil(actor.zonaId)) {
         // `{ rol: "adminSatelite", zonaId: null }` es un valor LEGAL del tipo y ese `null` no

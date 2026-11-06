@@ -23,6 +23,7 @@ import {
   type FksDeOrden,
   type TxDeTest,
 } from "./_postgres-real";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // SLT-52 T5.5 (design §13, R28, R52-R55) — LA BASE DEL % DEL PAGO SALE DEL COBRO CONGELADO, CONTRA
 // POSTGRES REAL. La base del pago al mensajero y a la satelite en porcentaje es el flete sin IVA que
@@ -251,6 +252,9 @@ function servicioCierre(cli: PrismaClient, e: Pick<Escenario, "Z">, pagos: Resol
     } as never,
     {} as never,
     pagos as never,
+    undefined,
+    undefined,
+    reglasPaisFijas(),
   );
 }
 
@@ -619,6 +623,8 @@ describeSiHayBase("SLT-52 T5.5 — la base del % del pago sale del cobro congela
         { findUsuarioVehiculoId: async () => null, findEstatusIdByValue: async () => null } as never,
         pagos as never,
         { warn: () => undefined },
+        undefined,
+        reglasPaisFijas(),
       );
       const salida = await comoEmpresa(tx, e.A, () => corte.ejecutarCorte());
       const cierre = await tx.cierreDia.findFirstOrThrow({ where: { mensajeroId: e.M }, select: { id: true } });

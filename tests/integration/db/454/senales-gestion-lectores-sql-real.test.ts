@@ -9,6 +9,7 @@ import { listarOrdenesBodegaPaginadoSchema } from "@/lib/types/recepcion-satelit
 
 import { HAY_BASE_DE_DATOS } from "../_postgres-real";
 import { conEscenario, crearEscenario, prepararMundo, type Escenario, type Mundo } from "./_escenario";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FICHA 454 (R29, BLOQUEO-1 de la fase 2, 2026-09-24) — LAS SEÑALES DE LA GESTION PENDIENTE Y LA
@@ -132,7 +133,7 @@ describeSiHayBase("454/R29 — señales de gestion pendiente y ayuda en los lect
       // --- L1: /ordenes -------------------------------------------------------------------------
       const adminId = await e.crearUsuario("admin", null);
       const actorAdmin: Actor = { usuarioId: adminId, rol: "admin", zonaId: null };
-      const ordenes = new OrdenService(e.s.ordenRepo, e.s.historialService);
+      const ordenes = new OrdenService(e.s.ordenRepo, e.s.historialService, undefined, reglasPaisFijas());
       const listar = async (actor: Actor) => {
         const res = await ordenes.listar(
           listarOrdenesSchema.parse({
@@ -151,7 +152,7 @@ describeSiHayBase("454/R29 — señales de gestion pendiente y ayuda en los lect
       };
 
       // --- L2: bodega satelite -------------------------------------------------------------------
-      const satelite = new RecepcionSateliteService(e.s.ordenRepo, e.s.historialService);
+      const satelite = new RecepcionSateliteService(e.s.ordenRepo, e.s.historialService, undefined, reglasPaisFijas());
       const pagina = await satelite.listarOrdenesBodegaPaginado(
         listarOrdenesBodegaPaginadoSchema.parse({ page: 1, pageSize: 50 }),
         e.actorAdminSatelite,

@@ -17,6 +17,8 @@ import {
   fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FEATURE 271 (T10.3, R21-R24) — **LA CORRIDA DEL CORTE, SEMBRADA CONTRA POSTGRES**.
@@ -298,6 +300,7 @@ describeSiHayBase("271/T10.3 — el corte diario, sembrado contra Postgres", () 
       async (ctx) => {
         avisos.push(ctx);
       },
+      reglasPaisFijas(),
     );
     return {
       ejecutar: (now) => servicio.ejecutarCorte(now),
@@ -305,7 +308,7 @@ describeSiHayBase("271/T10.3 — el corte diario, sembrado contra Postgres", () 
       // La lista de SELECCION, leida del repositorio REAL con el MISMO ancla que usa la corrida.
       // Es el `WHERE` que esta ficha cambio, visto directamente.
       listaEvaluada: async (now) =>
-        (await corteRepo.findMensajerosConActividadSinCierre(diaQueElCorteCierra(now))).map(
+        (await corteRepo.findMensajerosConActividadSinCierre(diaQueElCorteCierra(now, ZONA_CR))).map(
           (r) => r.mensajeroId,
         ),
     };

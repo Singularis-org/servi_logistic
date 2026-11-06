@@ -14,6 +14,17 @@ import type {
 } from "@/lib/types/wallet";
 import { ORIGENES_FALSOS } from "@/tests/fixtures/origenes-falsos";
 
+// SLT-42 (T5.4): la zona del pais de la empresa, sin sesion ni base: la de CR, como antes. El borde
+// (`zonaDelBorde`) y los composition roots leen `construirReglasPaisEmpresa`; la zona en si la mide
+// `tests/unit/services/hora-por-pais-wallet.test.ts`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
+
 // Feature 42 (T10) — tests unit de las Server Actions de wallet (R19/R21/R25). Sin sesion
 // -> unauthenticated; rol no autorizado -> forbidden (el service lo decide); DTOs STRING.
 //
