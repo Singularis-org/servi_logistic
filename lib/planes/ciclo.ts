@@ -29,29 +29,9 @@ function sumarMeses(fecha: Date, meses: number): Date {
   );
 }
 
-/** El mayor `n ≥ 0` con `ancla + n meses ≤ ahora` (0 si `ahora` es anterior al ancla). */
-function ciclosCumplidos(ancla: Date, ahora: Date): number {
-  let meses =
-    (ahora.getUTCFullYear() - ancla.getUTCFullYear()) * 12 + (ahora.getUTCMonth() - ancla.getUTCMonth());
-  if (meses > 0 && sumarMeses(ancla, meses).getTime() > ahora.getTime()) meses -= 1;
-  return Math.max(meses, 0);
-}
-
-/**
- * SLT-58 (design §6.1, R5) — inicio del ciclo siguiente: `ancla + (n+1) meses`. Se suma desde el ancla
- * y no a partir de `inicioDelCiclo`: encadenar arrastraría el 28 de febrero a los meses siguientes.
- *
- * SLT-58 (design §11.3, R40): con `ahora` anterior al ancla la empresa está en su ciclo corto, que
- * termina en el ancla; por eso el siguiente es el ancla misma y no un mes después.
- *
- * SLT-86 (design §3.2): sustituida por `finDelPeriodoCalendario`. `consumo.ts` ya no la usa (T6); se
- * queda solo mientras la usa la vista previa de `PlanesRepository`, y se borra con ella (T9).
- * `inicioDelCiclo` e `inicioDelCicloEnCurso` ya se borraron en T3: no las usaba nadie.
- */
-export function inicioDelSiguienteCiclo(ancla: Date, ahora: Date): Date {
-  if (ahora.getTime() < ancla.getTime()) return new Date(ancla.getTime());
-  return sumarMeses(ancla, ciclosCumplidos(ancla, ahora) + 1);
-}
+// SLT-86 (design §3.2): `inicioDelCiclo`, `inicioDelCicloEnCurso` (T3) e `inicioDelSiguienteCiclo` (T8)
+// se borraron: el ciclo anclado dejó paso al período de calendario y la vista previa ya no da el
+// siguiente ciclo (solo servía al aviso de órdenes, R8).
 
 /* -------------------------------------------------------------------------- */
 /* SLT-86 (design §3.2; R4–R6, R12, R25) — el período de calendario             */
@@ -191,12 +171,12 @@ export function inicioDelCicloPorDefecto(ahora: Date): string {
 }
 
 /**
- * SLT-58 (design §11.3, R32) — el ancla que sale de la fecha elegida: «hoy» ancla en el instante de la
- * asignación (`"ahora"`, P9; el instante lo pone `now()` de la base); otra fecha, en las 00:00 de ese
- * día en la hora de la plataforma.
+ * SLT-86 (R16; rango del 2026-11-05) — las fechas de efecto de un cambio de empresa: de hoy a hoy + 12
+ * meses en la hora de la plataforma, sin fechas pasadas. Una sola fuente para el servicio y el campo.
  */
-export function anclaDeLaFechaElegida(fecha: string, ahora: Date): Date | "ahora" {
-  return fecha === fechaCalendarioCR(ahora) ? "ahora" : inicioDelDiaPlataforma(fecha);
+export function rangoDeLaFechaDeEfecto(ahora: Date): RangoDelInicioDelCiclo {
+  const hoy = fechaCalendarioCR(ahora);
+  return { hoy, min: hoy, max: fechaMasMeses(hoy, 12) };
 }
 
 // P8 (cerrada el 2026-10-28): la fecha de un cambio programado rige desde las 00:00 de ese día en la

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  anclaDeLaFechaElegida,
   diasDelPeriodo,
   diasDelTramo,
   fechaDeEfectoPorDefecto,
@@ -9,6 +8,7 @@ import {
   finDelPeriodoCalendario,
   inicioDelPeriodoCalendario,
   periodoEnCurso,
+  rangoDeLaFechaDeEfecto,
   rangoDelInicioDelCiclo,
 } from "@/lib/planes/ciclo";
 import { TIPOS_COBRO } from "@/lib/types/planes";
@@ -113,14 +113,14 @@ describe("SLT-86 R2 — el rango de la fecha de inicio de la primera asignación
   });
 });
 
-// SLT-58 R32 tal cual hasta T8, que hace que «hoy» entre a las 00:00 (SLT-86 R2). Movido de
-// `ciclo-plan.test.ts` para no perder su cobertura al retirarlo.
-describe("SLT-58 — anclaDeLaFechaElegida (R32), hasta T8", () => {
-  it("hoy ancla en el instante de la asignación; otra fecha, a las 00:00 de la plataforma", () => {
-    expect(anclaDeLaFechaElegida("2026-10-29", new Date("2026-10-29T15:00:00.000Z"))).toBe("ahora");
-    expect(anclaDeLaFechaElegida("2026-10-29", new Date("2026-10-30T03:00:00.000Z"))).toBe("ahora");
-    expect(anclaDeLaFechaElegida("2026-11-05", new Date("2026-10-29T15:00:00.000Z"))).toEqual(
-      new Date("2026-11-05T06:00:00.000Z"),
-    );
+// SLT-86 (R16): el rango de la fecha de efecto de un cambio de empresa. Sustituye al bloque de
+// `anclaDeLaFechaElegida` (SLT-58 R32), que se retiró con T8: «hoy» ya entra a las 00:00 (R2).
+describe("SLT-86 — rangoDeLaFechaDeEfecto (R16)", () => {
+  it.each([
+    { caso: "a media mañana", ahora: "2026-11-05T15:00:00.000Z", hoy: "2026-11-05", max: "2027-11-05" },
+    { caso: "antes de las 06:00 UTC sigue siendo el día anterior", ahora: "2026-11-06T05:59:59.999Z", hoy: "2026-11-05", max: "2027-11-05" },
+    { caso: "29 de febrero → 28 de febrero del año siguiente", ahora: "2028-02-29T12:00:00.000Z", hoy: "2028-02-29", max: "2029-02-28" },
+  ])("$caso", ({ ahora, hoy, max }) => {
+    expect(rangoDeLaFechaDeEfecto(new Date(ahora))).toEqual({ hoy, min: hoy, max });
   });
 });

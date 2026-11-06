@@ -3714,6 +3714,8 @@ enum JobTipo {
   plan_aviso_correo
   /// SL-24 (design §16.3): RECURRENTE, sin empresa; barrido de seguridad de los cambios vencidos. Núcleo
   plan_cambios_vencidos
+  /// SLT-86 (design §5.2): aplica UN cambio de empresa pendiente a sus 00:00; CON empresa, payload { cambioId }. Núcleo
+  plan_aplicar_cambio_empresa
 
   @@map("job_tipo")
 }

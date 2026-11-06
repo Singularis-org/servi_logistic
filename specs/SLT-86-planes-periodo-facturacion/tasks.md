@@ -80,7 +80,7 @@
 - **Pasos:** `lib/planes/rastro.ts`, `lib/planes/mensajes.ts`.
 - **Hecho:** `tests/unit/planes/rastro-periodo.test.ts` y `tests/unit/planes/mensajes-periodo.test.ts` verdes.
 
-## T8 — Cambios de empresa con fecha de efecto y sus trabajos, y fin del ciclo corto (R2, R14, R16–R21)
+## [x] T8 — Cambios de empresa con fecha de efecto y sus trabajos, y fin del ciclo corto (R2, R14, R16–R21)
 
 - **Depende de:** T3, T4, T5.
 - **Pasos:**

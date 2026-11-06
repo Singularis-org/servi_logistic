@@ -427,11 +427,11 @@ export type CancelarCambioEmpresaResult =
 
 /**
  * Ajuste planes-custom (D13): la vista previa de SLT-58 R37 para el form del custom, con los topes del
- * form. Mismos `avisos` y `siguienteCiclo` que `VistaPreviaAsignacionResult`. `validation_error` en
+ * form. Mismos `avisos` que `VistaPreviaAsignacionResult`. `validation_error` en
  * `inicioCiclo` si la fecha está fuera de rango (R30) o la empresa ya tiene plan (R31).
  */
 export type VistaPreviaCustomResult =
-  | { estado: "ok"; avisos: TopeExcedido[]; siguienteCiclo: string }
+  | { estado: "ok"; avisos: TopeExcedido[] }
   | { estado: "forbidden" }
   | { estado: "validation_error"; fieldErrors: Record<string, string[]> }
   | { estado: "not_found" };
@@ -459,14 +459,13 @@ export type PlanDeEmpresaResult =
   | { estado: "not_found" };
 
 /**
- * SLT-58 (design §11.4; R37, R42) — qué topes del plan pasaría la empresa si se le asigna con esa
- * fecha: órdenes del ciclo que resulta de la fecha, usuarios de cada rol con tope y API keys. La misma
- * definición de uso que la asignación, así que estos avisos son los que devolverá `asignar`. Sin tope
- * pasado, `avisos: []`. `siguienteCiclo` (`AAAA-MM-DD`, hora de la plataforma) es el día en que
- * empieza el siguiente ciclo: el `{fecha}` del aviso de órdenes (P10).
+ * SLT-58 (design §11.4; R37, R42) — qué topes del plan pasaría la empresa si se le asigna: usuarios de
+ * cada rol con tope y API keys. La misma definición de uso que la asignación, así que estos avisos son
+ * los que devolverá `asignar`. Sin tope pasado, `avisos: []`. SLT-86 (R8): sin órdenes, y por eso sin
+ * `siguienteCiclo`, que era el `{fecha}` del aviso de órdenes (P10).
  */
 export type VistaPreviaAsignacionResult =
-  | { estado: "ok"; avisos: TopeExcedido[]; siguienteCiclo: string }
+  | { estado: "ok"; avisos: TopeExcedido[] }
   | { estado: "forbidden" }
   | { estado: "validation_error"; fieldErrors: Record<string, string[]> }
   | { estado: "not_found" }
