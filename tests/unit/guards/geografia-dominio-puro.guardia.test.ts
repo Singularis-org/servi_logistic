@@ -150,3 +150,40 @@ describe("SLT-45 — `geo-ubicacion.ts` no toca la base", () => {
     expect(modulosImportados(codigoSinComentarios(NORMALIZADOR))).toEqual([]);
   });
 });
+
+// SLT-45 (T6.1; design §8) — las columnas de geografia de la plantilla son una funcion pura: la
+// pantalla las calcula con el catalogo ya cargado y el servidor lee las mismas. Solo importa el
+// dominio y el normalizador (nada de `app/`: la usa `BulkOrdenService`).
+const PLANTILLA_GEO = "lib/utils/plantilla-geo.ts";
+const PERMITIDOS_DE_PLANTILLA_GEO = new Set(["@/lib/services/geografia-dominio", "@/lib/utils/normalize"]);
+
+function importsProhibidosDePlantillaGeo(codigo: string): string[] {
+  return modulosImportados(codigo).filter((m) => !PERMITIDOS_DE_PLANTILLA_GEO.has(m));
+}
+
+describe("SLT-45 — `plantilla-geo.ts` no toca la base", () => {
+  it("CONTRAPRUEBA: importar un repositorio, Prisma o la pantalla desde la plantilla se detecta", () => {
+    const mutado = `
+      import { nodosDeProfundidad } from "@/lib/services/geografia-dominio";
+      import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograficoRepository";
+      import type { PrismaClient } from "@prisma/client";
+      import { ORDENES_BULK_FIELDS } from "@/app/(app)/ordenes/_components/carga-masiva-fields";`;
+    expect(importsProhibidosDePlantillaGeo(mutado)).toEqual([
+      "@/lib/repositories/CatalogoGeograficoRepository",
+      "@prisma/client",
+      "@/app/(app)/ordenes/_components/carga-masiva-fields",
+    ]);
+  });
+
+  it("el modulo existe y el barrido ve sus imports (anti-vacuidad)", () => {
+    expect(existsSync(path.join(RAIZ, PLANTILLA_GEO))).toBe(true);
+    expect(modulosImportados(codigoSinComentarios(PLANTILLA_GEO)).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("solo importa el dominio de la geografia y el normalizador", () => {
+    expect(
+      importsProhibidosDePlantillaGeo(codigoSinComentarios(PLANTILLA_GEO)),
+      "las columnas de la plantilla son puras (SLT-45 §8): reciben el catalogo como argumento",
+    ).toEqual([]);
+  });
+});
