@@ -2,12 +2,12 @@
 
 | key | nombre | zone | complexity | rama | assignee | estado |
 |---|---|---|---|---|---|---|
-| SLT-86 | planes-periodo-facturacion | fullstack | high | feature/SLT-86-planes-periodo-facturacion | Camilo | pending |
+| SLT-86 | planes-periodo-facturacion | fullstack | high | feature/SLT-86-planes-periodo-facturacion | Camilo | done |
 
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F1.4 (2026-11-05): spec aprobado («Aprobado, espera a SLT-83»). F2.1 arranca cuando SLT-83 (PR #79) esté en dev; T0 integra dev.
+done (2026-11-06): PR #88 mergeado en dev (553025c4), gate-completo verde.
 
 ## Evaluación
 - zone fullstack: modelo del plan y del ciclo (base y `lib/planes/ciclo.ts`), migración y pantallas de planes.
@@ -44,3 +44,9 @@ Ninguna.
 ## Modelos (overrides)
 
 ## Cierre
+- 2026-11-06 · PR https://github.com/Singularis-org/servi_logistic/pull/88 mergeado por el humano en dev (553025c4). `gate-completo` verde: 245 rojos, todos en el baseline de 245; e2e aislamiento/dinero/reparto en verde.
+- Resumen: período de cobro de calendario por empresa (quincenal 1–15/16–fin, mensual, bimestral, anual; corte 00:00 Costa Rica), primer tramo proporcional, sin tope de órdenes, descuentos por período en el plan (reemplazan al pago anual), cambios de empresa con fecha de efecto y job `plan_aplicar_cambio_empresa`, «Cancelar cambio» con modal y fila en el historial, precio del plan con fecha (`plan_precio_historial`), ciclo corto retirado. 4 migraciones con down.sql.
+- Revisión F2.2: OK con 0 bloqueantes; m1–m4 resueltos, m5 queda por decisión del humano (R27).
+- Deuda que deja: −06:00 fijo en la migración 20261106120000, a revisar con SL-21 (design §13). Vigilar `plan-de-la-empresa-porcentual` R25 (SLT-83): inestable en corridas conjuntas locales, en CI pasó.
+- Baseline: el run de CI no lista entradas del baseline que ya pasen (245 de 245); no hay nada que podar.
+- Worktree: `wt.sh done` quitó el registro de git; la carpeta `.worktrees/SLT-86-planes-periodo-facturacion` quedó con archivos en uso (Windows) y se borra a mano. Bases locales `servi_logistic_slt86` y `servi_logistic_slt86_e2e` pendientes de borrar con autorización.
