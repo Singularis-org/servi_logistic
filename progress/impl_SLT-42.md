@@ -968,3 +968,68 @@ Las 31 R de `requirements.md`. Rutas bajo `tests/`. «(int)» = integración con
 | R31 | `integration/db/tipo-documento-por-pais.test.ts`, `tipos-identificacion-por-pais.test.ts` y `hora-por-pais-dos-empresas.test.ts` (CR y `XA`, con `PaisRepository` y `ReglasPaisEmpresaService` reales) (int) |
 
 Ninguna R sin test. Las de integración están escritas y compilan; las corre CI (`gate-completo`).
+
+## Tanda 6 · ajustes + bloque 7 (2026-11-06)
+
+Alcance: los tres ajustes pendientes de la ficha «tras bloque 6» (puntos 2, 3 y 6) y el bloque 7 (T7.1–T7.3), con el agregado de T7.1 de la ficha «tras T5.3» (punto 1). Fuera: «Pendiente para el cierre». Commits: 34c92716 (ajustes), c851c550 (T7.1), 71ec7844 (T7.2), ac7fb762 (T7.3).
+
+### Archivos
+- Ajustes: `lib/services/jobs/serie-diaria-por-zona.ts` (`AVISO_SIN_ZONAS`, `corridaOriginalDeLaClave`), `lib/interfaces/services/IJobQueueService.ts` (`RecurrenciaSpec.corridaOriginal?`, `siguiente(desde, zonas)`), `lib/services/JobQueueService.ts` (`JobsLogger.error?`), los dos handlers diarios, `scripts/siembra-jobs-recurrentes.ts`, `docs/api/guia-integracion/guia-integracion.html` (§4.5), `tests/unit/services/jobs/recurrencia-por-zona.test.ts`.
+- T7.1: `tests/unit/guards/pais-sin-literales.guardia.test.ts` y `_pais-sin-literales-excepciones.ts` (nuevos); `lib/services/HistoricoConversacionesService.ts`, `lib/repositories/HistoricoConversacionesRepository.ts`, `lib/interfaces/repositories/IHistoricoConversacionesRepository.ts`, `lib/actions/historico-conversaciones.ts`, `lib/actions/ranking-historico.ts`; tests `unit/services/historico-conversaciones-service.test.ts` y `integration/repositories/historico-conversaciones.int.test.ts`.
+- T7.2: `docs/architecture.md` (País por empresa, sub-bullet «Teléfono, documento y hora (SLT-42)»). `.env.example` ya no tenía `RASTREO_PUBLICO_ZONA_HORARIA`.
+- T7.3: mapa completo (sección anterior) y `tasks.md` (T5.7, T6.1–T6.3 y T7.1–T7.3 marcadas).
+
+### Qué cambió
+- **Sin zonas (punto 2).** Las series diarias siguen en `"UTC"`. La cola deja `AVISO_SIN_ZONAS` por `JobsLogger.error` (por defecto `console.error`), una vez por `drenar` y solo si se re-agenda una serie por zona. La siembra del build (`sembrarJobsRecurrentesEnBase`) deja el mismo texto. Sin datos de clientes: ni empresa ni país.
+- **Corrida retrasada (punto 3).** `RecurrenciaSpec` gana `corridaOriginal?(job)`, que solo implementan las dos series diarias. Sale de la clave con zona (`<prefijo>:<zona>:<fecha>`), no de `job.runAfter`, porque un reintento con backoff pisa `run_after`. En el rollup la clave lleva el objetivo D−1, así que la corrida es D a las 00:30. La cola llama a `siguiente(corridaOriginal ?? now, zonas)`. Con una clave vieja o sin clave se usa `job.runAfter`. Las recurrencias que no son por zona siguen contando desde el drenado.
+- **Guía §4.5 (punto 6).** La advertencia y la fila de la lista de comprobación dicen «zona horaria del país de la empresa (hoy Costa Rica, UTC-6)».
+- **T7.1 · R29.** La guardia recorre `lib/**`, `app/api/**` y `page`/`layout` de `app/`, sin comentarios. Busca la zona de CR, `CR_OFFSET*`/`OFFSET_CR*`, `6*60*60*1000` junto a `CR`, `T06:00:00`, el `506` como literal y los imports de los envoltorios `*-cr`. Hay 6 excepciones (tope 6): `fecha-cr`, `hora-cr`, `separador-dia-cr`, `telefono-cr` y `whatsapp-telefono` (SLT-81), y `sinpe-cr` (SL-22). Comprobado: un literal nuevo en `lib/` la pone en rojo (revertido).
+- **T7.1 · composition roots (agregado).** Con el AST de TypeScript, la guardia busca dos cosas en `lib/`:
+  - las clases con `reglasPais` opcional en el constructor (más de 50);
+  - las funciones exportadas con `reglasPais` opcional posicional que no construyen el real (los dos `crear*Handler` diarios y `notificarWebhookSuscripcionPausadaCon`).
+
+  En `lib/`, `app/` y `scripts/`, cada `new`/llamada de producción tiene que pasar el argumento, sin `undefined`, y su archivo tiene que llamar a `construirReglasPaisEmpresa(`. `zonaDelBordeConActor` queda declarada como «delega en el real». Comprobado: un `new HistoricoConversacionesService(repo)` de prueba la pone en rojo (revertido).
+  - `CajaBackfillTesoreriaService` lleva `reglasPais` en `deps`, no en el constructor, y `PlanesService` usa `zonaDeOrganizacionCon`: ninguno entra en el censo, como decidió el humano.
+  - Los `deps.reglasPais?` de actions y handlers (con el real por defecto dentro) no entran.
+- **Huecos que la guardia destapó.** Arreglados porque el design §4.3 ya lo decide:
+  - `HistoricoConversacionesRepository` calculaba el rango de fechas con `inicioDelDiaCREnUtc`. Ahora `ListarHilosQuery.zona?` lleva la zona, que el servicio lee solo si hay rango (`zonaDeLaEmpresa`, R28). El action inyecta el real. Sin zona y con rango, el repositorio lanza.
+  - `ranking-historico.ts` importaba `esFechaCalendarioValida` de `fecha-cr`; ahora la importa de `calendario-zona` (es la misma función).
+
+### Desvíos y decisiones mías (a confirmar)
+1. **`PENDIENTES_DE_DECISION_SLT42` (5 archivos, tope 5).** Son archivos de servidor con CR fijo que el spec no resuelve sin decidir (preguntas 1 y 2). Para no dejar el gate en rojo, la guardia los deja pasar en una lista aparte, que no es de excepciones de R29 y solo puede bajar. Si el humano prefiere la guardia en rojo hasta decidir, basta con vaciar esa lista.
+2. **`corridaOriginal` como método opcional de `RecurrenciaSpec`**, en vez de cambiar la firma de `siguiente` para todas las recurrencias. Así `whatsapp_envio_mantenimiento` y `plan_cambios_vencidos` no cambian de comportamiento.
+3. **Recuperación tras una caída larga.** Como `siguiente` cuenta desde la corrida original, tras días sin drenar la serie recorre una corrida por zona y día hasta ponerse al día. Cada una es idempotente por empresa y día, y el `rollup` agrega la fecha objetivo de `now`, así que repite el mismo día. Con el tope de backoff de hoy, un reintento no retrasa más de horas.
+
+### Tests
+- Nuevos en `recurrencia-por-zona.test.ts` (5): «corrida retrasada por reintentos: cuenta desde su instante original y no salta la zona siguiente», «rollup retrasado: la corrida original sale de la clave…», «clave vieja, sin zona: la corrida original es `runAfter`…», «sin zonas con empresas: … deja UN error en el log por corrida…», «con zonas, la cola no deja error…».
+- Adaptado: «con las zonas reales en la cola…» (el job sin clave lleva `runAfter` = el `now` de antes).
+- Nuevos en `historico-conversaciones-service.test.ts` (4): R22, R22/R23 (CR, Bogotá y Madrid), R28 y «un rango sin zona en el repositorio falla…».
+- Nueva: `pais-sin-literales.guardia.test.ts` (35 casos).
+
+### Salida
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: exit 0, tras los ajustes y tras T7.1. T7.2 y T7.3 solo tocan docs.
+- `eslint` de los `.ts` tocados (2 lotes): sin salida (0 errores, 0 warnings).
+- `pnpm test:guardias` entera: `Test Files 1 failed | 325 passed | 3 skipped (329) · Tests 4 failed | 4586 passed | 24 skipped (4614)`. Los 4 son de `dependencias-declaradas-presentes`, en el baseline.
+- Tests de las R (unitarios): 10 archivos de teléfono y documento, `195 passed`; 9 de hora, rastreo, reglas, histórico y la guardia, `173 passed`.
+- Jobs: `tests/unit/services/jobs` + `job-queue-service*` + `procesar-jobs-registro` + `cron/` + handlers + `analytics/backfill-guards` y `cache-invalidacion-backfill`: `155 passed`.
+- `vitest related --run` sin `tests/components` ni `tests/integration`:
+  - lote 1 (serie, cola, interfaz y los dos handlers): `58 passed (885)`;
+  - lote 2 (siembra y los 4 del histórico): `2 passed (43)`;
+  - lote 3 (`ranking-historico`): `1 passed (17)`.
+- `node scripts/check-perfil.mjs`: «6/6 docs revisados en los ultimos 60 dias».
+- No corridos: `./init.sh` (el leader pidió la lista de arriba) y la integración, que corre CI (`historico-conversaciones.int` cambia: pasa `zona`).
+- Grafo MCP: no se usó; bastaron Grep, Read y dos censos con el AST.
+
+### Preguntas abiertas
+1. **Planes (`lib/planes/ciclo.ts`, `cobro.ts` y `consumo.ts`).** Usan la «hora de la plataforma» fija en CR (P8 de SL-24) para:
+   - el rango y la fecha por defecto del inicio del ciclo;
+   - el ancla de una fecha elegida;
+   - el siguiente cobro;
+   - la fecha del reinicio y del cambio pendiente.
+
+   El design (§0) dice «SL-24 ciclo en UTC: no se toca», pero R29 no los deja en el servidor y su lista de excepciones solo admite SLT-81 y SL-22. ¿Pasan a la zona de la empresa en SLT-42, van a la lista con otra ficha (¿SL-21?) o se cambia R29?
+2. **`ConteoCargadasPorDiaRepository` y `FinanzasDiarioRepository`** (y `CohorteCargaRepository`, que importa `DIA_CR`). Agrupan por día en SQL con un desfase fijo de CR que pasa como parámetro, y la regla de esos archivos prohíbe `AT TIME ZONE`. Un desfase calculado con la zona de la empresa vale para países sin horario de verano, pero en uno con horario de verano un rango que cruce el cambio agrupa mal una hora (R23). ¿Desfase de la zona leído en un instante dado (¿cuál?), `AT TIME ZONE` con la zona como parámetro (se rompe la regla de la 180), o se queda en CR con ficha propia?
+3. **`lib/utils/whatsapp-telefono.ts`** no tiene consumidores de producción, solo sus tests. ¿Se borra (y sale de la lista) o se deja como envoltorio para SLT-81?
+4. ¿Se aceptan los desvíos 1–3?
+
+Veredicto: los ajustes del bloque 6 y el bloque 7 (T7.1–T7.3) están hechos. La guardia R29 y la de los composition roots están en verde y se ponen en rojo con un caso real. Las 31 R tienen test. Quedan sin marcar solo T1.0 (la hace una persona) y 5 archivos pendientes de decisión (preguntas 1 y 2).
