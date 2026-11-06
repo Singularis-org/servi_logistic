@@ -70,6 +70,8 @@ export async function fijarCostoDelPlan(tx: TxDeTest, planId: string, c: CostoDe
 export async function crearPlanConCosto(tx: TxDeTest, c: CostoDelPlan): Promise<string> {
   const plan = await crearPlan(tx);
   await tx.$executeRawUnsafe(`UPDATE "plan" SET "precio_mensual" = 50000.00 WHERE "id" = $1`, plan);
+  // SLT-86 (R15): el precio del período sale del historial; la fila «desde siempre» lleva el mismo precio.
+  await tx.$executeRawUnsafe(`UPDATE "plan_precio_historial" SET "precio_mensual" = 50000.00 WHERE "plan_id" = $1`, plan);
   await fijarCostoDelPlan(tx, plan, c);
   return plan;
 }

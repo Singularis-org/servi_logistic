@@ -200,11 +200,13 @@ esta bien hecha, no solo si "funciona".
     `plan_tope_api_key_alta` y `plan_tope_api_key_cambio` (en `api_key`). Al pasar el tope lanzan
     SQLSTATE `SL024` con el JSON del tope en `MESSAGE`, no en `DETAIL`. `traducirErrorDeTope`
     (`lib/planes/tope-error.ts`) lo traduce a `TopeDelPlanAlcanzado`, con `details.codigo = "tope_plan"`.
-    Las funciones son `SECURITY DEFINER` con `EXECUTE` revocado a `PUBLIC`. La única que `servi_app`
-    llama es `plan_cupo_ordenes`, y solo con su propia empresa (la lee `CupoPlanRepository`).
-  - **Ciclo en UTC (decisión 2026-10-28):** `plan_inicio_ciclo(ancla, ahora)` recibe siempre
-    `now() AT TIME ZONE 'UTC'`, nunca `now()::timestamp`. Las columnas son `TIMESTAMP` sin zona y
-    Prisma escribe en UTC, así que la hora local de la sesión correría el ciclo. Su gemela en TS es
+    Las funciones son `SECURITY DEFINER` con `EXECUTE` revocado a `PUBLIC`. SLT-86 retiró el tope de
+    órdenes (`20261106120000_plan_periodo_facturacion`): ya no existen `plan_tope_ordenes`,
+    `plan_cupo_ordenes` ni `CupoPlanRepository`.
+  - **Ciclo en UTC (decisión 2026-10-28):** `plan_inicio_ciclo_de(entrada, tipo, ahora)` (SLT-86:
+    período de calendario, con tramo desde la entrada) recibe siempre `now() AT TIME ZONE 'UTC'`, nunca
+    `now()::timestamp`. Las columnas son `TIMESTAMP` sin zona y Prisma escribe en UTC, así que la hora
+    local de la sesión correría el ciclo. Su gemela en TS es `periodoEnCurso(entrada, tipo, ahora)` de
     `lib/planes/ciclo.ts`.
   - **Cerrojos** (design §4.4 y §5): un alta toma `organizacion` y `plan` en `FOR SHARE` y después el
     consultivo `(24, hashtext(empresa))`. Asignar toma `organizacion` en `FOR UPDATE` y el plan en
@@ -225,12 +227,13 @@ esta bien hecha, no solo si "funciona".
     Los cuatro jobs están en `lib/planes/jobs-cambio-plan.ts` y son de núcleo (`MODULO_POR_JOB`).
   - **Pantallas de planes (SLT-58, 2026-10-29).** La empresa lee su plan y su consumo con
     `plan_de_la_empresa(organizacion_id)` (migración `20261029120000_plan_de_la_empresa`), que la
-    llama `MiPlanRepository`. Es la segunda y última función que `servi_app` puede llamar; la otra
-    es `plan_cupo_ordenes`. Es `STABLE` y `SECURITY DEFINER`, con `search_path` fijo y `EXECUTE`
+    llama `MiPlanRepository`. Desde SLT-86 es la única función de planes que `servi_app` puede llamar.
+    Es `STABLE` y `SECURITY DEFINER`, con `search_path` fijo y `EXECUTE`
     revocado a `PUBLIC`. Con otra empresa que la del contexto lanza `42501`, y sin plan devuelve
-    `NULL`. Cuenta el uso con las mismas `plan_uso_*` y `plan_inicio_ciclo_en_curso` que los triggers. Del
+    `NULL`. Cuenta el uso con las mismas `plan_uso_*` que los triggers, y el período con `plan_inicio_ciclo_de`
+    (`plan_inicio_ciclo_en_curso` quedó sin uso). Del
     cambio programado devuelve solo la fecha y la versión: nunca los avisos ni el actor.
-    - **Inicio del ciclo elegido:** en la primera asignación el superadmin elige el inicio del ciclo de órdenes (hoy ±1 mes, `rangoDelInicioDelCiclo`); si es futura, el tramo hasta el ancla es un ciclo corto que empieza en `organizacion.plan_ciclo_corto_desde_at`, y si la empresa ya pasa topes se asigna igual y se avisa (`avisos`). La única definición del ciclo en curso es `plan_inicio_ciclo_en_curso` (migración `20261029150000_plan_ciclo_inicio_elegido`), que llaman los triggers, `plan_cupo_ordenes` y `plan_de_la_empresa`; su gemela TS es `inicioDelCicloEnCurso` (`lib/planes/ciclo.ts`), probada con la misma tabla de casos (`tests/integration/db/_fixtures/ciclo-corto.ts`).
+    - **Período de facturación (SLT-86):** la empresa entra a su plan y su tipo de cobro (quincenal, mensual, bimestral o anual) a las 00:00 de una fecha: `organizacion.plan_ciclo_ancla_at` es esa *entrada*, nunca futura. En la primera asignación la fecha de inicio va de hoy −1 mes a hoy +1 mes (`rangoDelInicioDelCiclo`); una fecha futura, y cualquier cambio de plan o de tipo con fecha de efecto futura, queda como pendiente en `organizacion.plan_cambio_*` y lo aplica el job `plan_aplicar_cambio_empresa` (red: el barrido `plan_cambios_vencidos`). El período en curso es el de calendario de su tipo, recortado a la entrada si es posterior (tramo). Su única definición en SQL es `plan_inicio_ciclo_de` con `plan_inicio_periodo_calendario` y `plan_fin_periodo_calendario` (migración `20261106120000_plan_periodo_facturacion`), que llaman `plan_de_la_empresa` y `PlanesRepository`; sus gemelas TS están en `lib/planes/ciclo.ts` (`periodoEnCurso`, `inicioDelPeriodoCalendario`, `finDelPeriodoCalendario`), probadas con la misma tabla de casos (`tests/integration/db/_fixtures/periodo-calendario.ts`).
     - **Rutas:** `/mi-plan` para el `maestro` y el `admin` de una empresa. Para el superadmin,
       `/plataforma/planes`, `/plataforma/planes/[planId]` y el bloque Plan de
       `/plataforma/empresas/[organizacionId]`. Las cuatro son `nucleo` en `lib/modulos/reparto.ts`,

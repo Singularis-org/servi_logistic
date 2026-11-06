@@ -105,9 +105,10 @@ describe("362/T0.1 (R14/R17) — el catalogo es cerrado y sus mapas son exhausti
     // `grupo_distritos` (29).
     // 81 desde el ajuste planes-custom D16: `plan_tipo_cobro_cambiado` (entidad `plan`, sin entidad nueva).
     // 82 desde SLT-54: `tarifas_activadas` (entidad `tarifa_activacion`, 30 entidades).
-    // 83 desde SLT-77: `tope_intentos_cambiado` (entidad `organizacion`, 31 entidades).
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(83);
-    expect(new Set(HISTORIAL_ACCION_TIPOS).size).toBe(83);
+    // 83 desde SLT-86: `plan_cambio_empresa_cancelado` (entidad `plan`, sin entidad nueva).
+    // 84 desde SLT-77: `tope_intentos_cambiado` (entidad `organizacion`, 31 entidades).
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(84);
+    expect(new Set(HISTORIAL_ACCION_TIPOS).size).toBe(84);
     expect(HISTORIAL_ACCION_ENTIDADES).toHaveLength(31); // 31 desde SLT-77 (`organizacion`)
     expect(new Set(HISTORIAL_ACCION_ENTIDADES).size).toBe(31);
     expect(CATEGORIAS_ACCION).toHaveLength(6);
@@ -499,7 +500,12 @@ describe("362/T0.1 (R14/R17) — el catalogo es cerrado y sus mapas son exhausti
     // 2 desde SL-23: la quinta categoria, solo con `modulo_activado` y `modulo_desactivado`.
     expect(accionesDeCategoria("cambia_modulos")).toEqual(["modulo_activado", "modulo_desactivado"]);
     // 1 desde SL-24: la sexta categoria, solo con `plan_asignado`. 2 desde el ajuste planes-custom D16.
-    expect(accionesDeCategoria("cambia_plan")).toEqual(["plan_asignado", "plan_tipo_cobro_cambiado"]);
+    // 3 desde SLT-86 (`plan_cambio_empresa_cancelado`).
+    expect(accionesDeCategoria("cambia_plan")).toEqual([
+      "plan_asignado",
+      "plan_tipo_cobro_cambiado",
+      "plan_cambio_empresa_cancelado",
+    ]);
   });
 
   it("⭑ Ajuste planes-custom D16: el cambio de solo el tipo de cobro tiene tipo PROPIO, en «cambia el plan», con su etiqueta", () => {
@@ -510,6 +516,14 @@ describe("362/T0.1 (R14/R17) — el catalogo es cerrado y sus mapas son exhausti
     expect(CATEGORIA_POR_ACCION.plan_tipo_cobro_cambiado).toBe("cambia_plan");
     expect(ACCION_LABELS.plan_tipo_cobro_cambiado).toBe("Cambió el tipo de cobro del plan de una empresa");
     expect(ACCION_LABELS.plan_tipo_cobro_cambiado).not.toBe(ACCION_LABELS.plan_asignado);
+  });
+
+  it("⭑ SLT-86 (R19; decisión del 2026-11-05): cancelar un cambio pendiente de empresa tiene tipo PROPIO, en «cambia el plan», con su etiqueta", () => {
+    // Justo detras de `plan_tipo_cobro_cambiado`: el orden de la tupla es el del selector de filtros.
+    const i = HISTORIAL_ACCION_TIPOS.indexOf("plan_tipo_cobro_cambiado");
+    expect(HISTORIAL_ACCION_TIPOS[i + 1]).toBe("plan_cambio_empresa_cancelado");
+    expect(CATEGORIA_POR_ACCION.plan_cambio_empresa_cancelado).toBe("cambia_plan");
+    expect(ACCION_LABELS.plan_cambio_empresa_cancelado).toBe("Canceló el cambio de plan pendiente de una empresa");
   });
 
   it("⭑ SL-36 (design §13, R33): los cinco `integracion_*` son CAMBIA INTEGRACIONES, con entidad y textos propios", () => {

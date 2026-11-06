@@ -1,24 +1,24 @@
--- DOWN de SLT-77 T1.1 — quita `tope_intentos_cambiado` de `historial_accion_tipo` y `organizacion` de
--- `historial_accion_entidad`, que añadio 20261106120000.
+-- DOWN de SLT-86 (design §5.3) — quita `plan_cambio_empresa_cancelado`, que añadió `migration.sql`.
 --
--- BORRA LAS FILAS QUE LOS USAN, como los downs de SL-23, SLT-76, SLT-52 y SLT-54: ese rastro solo describe
--- acciones que, tras la bajada, el codigo ya no conoce (su cliente Prisma no sabria leer el valor). Las
--- filas de otra accion no se tocan.
+-- BORRA LAS FILAS QUE LO USAN. No hay a qué convertirlas: el código anterior no deja fila al cancelar un
+-- cambio de empresa (R19 decía «sin historial») y su lectura del historial de asignaciones solo conoce
+-- `plan_asignado` y `plan_tipo_cobro_cambiado`. Pasarlas a una de esas dos pintaría una asignación o un
+-- cambio de tipo que nunca rigió. Lo cancelado no cambió nada en la empresa, así que no queda ningún estado
+-- sin su rastro. Las filas de cualquier otra acción no se tocan.
 --
--- Postgres no tiene `ALTER TYPE ... DROP VALUE`: hay que recrear el tipo. La funcion es la de
--- `20261104140000_historial_tarifa_activacion/down.sql` TAL CUAL, renombrada `_slt77`: lee la lista VIGENTE
--- de `pg_enum` y quita SOLO estos valores. Una lista fija borraria en silencio los valores que otra ficha
--- añada despues.
+-- Postgres no tiene `ALTER TYPE ... DROP VALUE`: hay que recrear el tipo. La función es la de
+-- `20261104130100_historial_accion_plan_tipo_cobro_cambiado/down.sql` TAL CUAL, renombrada `_slt86c`: lee la
+-- lista VIGENTE de `pg_enum` y quita SOLO este valor, así que no borra los que otra rama añada. Su
+-- precondición ruidosa aborta si quedara alguna fila con el valor: por eso el DELETE va antes.
 --
--- ORDEN: va DESPUES del down de 20261106120100 (los downs van en orden inverso).
+-- ORDEN: es el primer down de SLT-86; después van los de 20261106140000, 20261106130000 y 20261106120000.
 
 BEGIN;
 
 DELETE FROM "historial_accion"
- WHERE "accion"::text = 'tope_intentos_cambiado'
-    OR "entidad_tipo"::text = 'organizacion';
+ WHERE "accion"::text = 'plan_cambio_empresa_cancelado';
 
--- ─── LA FUNCION DE REVERSION, DINAMICA (copiada de SLT-54, que la copio de SLT-52) ───────────────
+-- ─── LA FUNCION DE REVERSION, DINAMICA (copiada de SL-36, que la copió de la ficha 458-B) ─────────
 --   1. PRECONDICION RUIDOSA: si alguna fila de cualquier columna de ese tipo usa un valor a quitar,
 --      RAISE y no se toca nada.
 --   2. Guarda y suelta lo que NOMBRA el tipo por texto —los CHECK y los indices con literales
@@ -27,7 +27,7 @@ DELETE FROM "historial_accion"
 --      TODAS las columnas del tipo → `DROP` del viejo.
 --   4. Restaura DEFAULT, indices y CHECK con su definicion exacta.
 -- Si ninguno de los valores esta ya en el tipo, no hace nada (idempotente).
-CREATE OR REPLACE FUNCTION pg_temp.quitar_valores_de_enum_slt77(p_esquema text, p_tipo text, p_quitar text[])
+CREATE OR REPLACE FUNCTION pg_temp.quitar_valores_de_enum_slt86c(p_esquema text, p_tipo text, p_quitar text[])
 RETURNS void
 LANGUAGE plpgsql
 AS $fn$
@@ -51,13 +51,13 @@ BEGIN
     FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
    WHERE t.typname = p_tipo AND n.nspname = p_esquema;
   IF v_tipo_oid IS NULL THEN
-    RAISE EXCEPTION 'rollback SLT-77: no existe el tipo %.%', p_esquema, p_tipo;
+    RAISE EXCEPTION 'rollback SLT-86 (cambio cancelado): no existe el tipo %.%', p_esquema, p_tipo;
   END IF;
 
   SELECT array_agg(e.enumlabel::text ORDER BY e.enumsortorder) INTO v_actuales
     FROM pg_enum e WHERE e.enumtypid = v_tipo_oid;
   IF NOT (v_actuales && p_quitar) THEN
-    RAISE NOTICE 'rollback SLT-77: %.% no tiene ninguno de %; nada que hacer', p_esquema, p_tipo, p_quitar;
+    RAISE NOTICE 'rollback SLT-86 (cambio cancelado): %.% no tiene ninguno de %; nada que hacer', p_esquema, p_tipo, p_quitar;
     RETURN;
   END IF;
   SELECT array_agg(x ORDER BY o) INTO v_quedan
@@ -82,7 +82,7 @@ BEGIN
     EXECUTE format('SELECT count(*) FROM %I.%I WHERE %I::text = ANY ($1)', p_esquema, v_tablas[i], v_columnas[i])
       INTO v_n USING p_quitar;
     IF v_n > 0 THEN
-      RAISE EXCEPTION 'rollback SLT-77: % filas de %.% usan %; se aborta sin borrar nada',
+      RAISE EXCEPTION 'rollback SLT-86 (cambio cancelado): % filas de %.% usan %; se aborta sin borrar nada',
         v_n, v_tablas[i], v_columnas[i], p_quitar;
     END IF;
   END LOOP;
@@ -121,16 +121,16 @@ BEGIN
     END IF;
   END LOOP;
 
-  -- 3) El tipo, recreado con la lista VIGENTE menos los valores de SLT-77.
+  -- 3) El tipo, recreado con la lista VIGENTE menos los valores de SLT-86.
   SELECT string_agg(quote_literal(x), ', ' ORDER BY o) INTO v_lista
     FROM unnest(v_quedan) WITH ORDINALITY AS u(x, o);
-  EXECUTE format('ALTER TYPE %I.%I RENAME TO %I', p_esquema, p_tipo, p_tipo || '_old_slt77');
+  EXECUTE format('ALTER TYPE %I.%I RENAME TO %I', p_esquema, p_tipo, p_tipo || '_old_slt86c');
   EXECUTE format('CREATE TYPE %I.%I AS ENUM (%s)', p_esquema, p_tipo, v_lista);
   FOR i IN 1 .. coalesce(array_length(v_tablas, 1), 0) LOOP
     EXECUTE format('ALTER TABLE %I.%I ALTER COLUMN %I TYPE %I.%I USING (%I::text::%I.%I)',
       p_esquema, v_tablas[i], v_columnas[i], p_esquema, p_tipo, v_columnas[i], p_esquema, p_tipo);
   END LOOP;
-  EXECUTE format('DROP TYPE %I.%I', p_esquema, p_tipo || '_old_slt77');
+  EXECUTE format('DROP TYPE %I.%I', p_esquema, p_tipo || '_old_slt86c');
 
   -- 4) Todo vuelve, con su definicion exacta.
   FOREACH v_sql IN ARRAY v_defaults LOOP EXECUTE v_sql; END LOOP;
@@ -139,7 +139,6 @@ BEGIN
 END
 $fn$;
 
-SELECT pg_temp.quitar_valores_de_enum_slt77('public', 'historial_accion_tipo', ARRAY['tope_intentos_cambiado']);
-SELECT pg_temp.quitar_valores_de_enum_slt77('public', 'historial_accion_entidad', ARRAY['organizacion']);
+SELECT pg_temp.quitar_valores_de_enum_slt86c('public', 'historial_accion_tipo', ARRAY['plan_cambio_empresa_cancelado']);
 
 COMMIT;

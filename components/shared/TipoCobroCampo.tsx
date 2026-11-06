@@ -16,9 +16,9 @@ export interface TipoCobroCampoProps {
 }
 
 /**
- * Ajuste planes-custom (D6) — el tipo de cobro de una asignación: `mensual` o `anual`. Lo comparten el
- * modal de asignación (primera y cambio) y el formulario del plan custom. «Anual» se ofrece siempre
- * (D7): el monto del período lo calcula el servidor.
+ * Ajuste planes-custom (D6) — el tipo de cobro de una asignación. Lo comparten el modal de asignación
+ * (primera y cambio), «Cambiar tipo de cobro» y el formulario del plan custom. SLT-86 (R1, R25): los
+ * cuatro períodos de calendario, siempre todos: el costo de cada uno sale del plan.
  */
 export function TipoCobroCampo({ id, value, onValueChange, error, disabled = false }: TipoCobroCampoProps) {
   return (
@@ -32,7 +32,10 @@ export function TipoCobroCampo({ id, value, onValueChange, error, disabled = fal
             aria-describedby={control["aria-describedby"]}
             value={value}
             disabled={disabled}
-            onValueChange={(v) => onValueChange(v === "anual" ? "anual" : "mensual")}
+            onValueChange={(v) => {
+              const tipo = TIPOS_COBRO.find((t) => t === v);
+              if (tipo !== undefined) onValueChange(tipo);
+            }}
             options={TIPOS_COBRO.map((t) => ({ value: t, label: TEXTOS_TIPO_COBRO.tipo[t] }))}
           />
         </div>

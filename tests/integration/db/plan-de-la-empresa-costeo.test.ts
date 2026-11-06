@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
+import { esSinPlanConPendiente } from "@/lib/interfaces/repositories/IMiPlanRepository";
 import { MiPlanRepository } from "@/lib/repositories/MiPlanRepository";
 import type { CostoVigente } from "@/lib/types/consumo-plan";
 import { comoApp, crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones";
@@ -89,7 +90,7 @@ async function leerYCargar(tx: TxDeTest, costoDelPlan: string | null, excepcion:
     uso: Record<string, unknown>;
   };
   const leido = await new MiPlanRepository(tx).planDeLaEmpresa();
-  if (leido === null) throw new Error("A tiene plan: MiPlanRepository no puede devolver null");
+  if (leido === null || esSinPlanConPendiente(leido)) throw new Error("A tiene plan: MiPlanRepository no puede devolver null");
 
   // De vuelta al dueño (la orden no es lo que se mide), con la misma empresa fijada.
   await tx.$executeRawUnsafe(`SELECT set_config('role', 'none', true)`);

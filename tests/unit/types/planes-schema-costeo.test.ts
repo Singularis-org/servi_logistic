@@ -7,11 +7,13 @@ import { crearPlanSchema, editarPlanSchema, ROLES_CON_TOPE, versionPlanSchema } 
 // SLT-66 (design §4.1; R1, R7, R8) — el borde del plan: sin tope de maestro y con costo por orden.
 
 const PLAN = randomUUID();
-const TOPES = { ordenesPorCiclo: 100, porRol: { admin: 2 }, apiKeys: 2 };
+// SLT-86 (R8): sin `ordenesPorCiclo`.
+const TOPES = { porRol: { admin: 2 }, apiKeys: 2 };
 
+// SLT-86 (R10): el descuento anual de antes va en `descuentos`.
 const BASES = [
   { tipo: "sin_precio" },
-  { tipo: "monto", mensual: "50000.00", anual: { tipo: "descuento", porcentaje: "10" } },
+  { tipo: "monto", mensual: "50000.00", descuentos: { anual: { tipo: "porcentaje", porcentaje: "10" } } },
 ] as const;
 
 function crear(extra: Record<string, unknown> = {}) {

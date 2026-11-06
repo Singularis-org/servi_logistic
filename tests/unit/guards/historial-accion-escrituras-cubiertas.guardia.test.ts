@@ -726,22 +726,41 @@ const CENSO: EntradaCenso[] = [
   // `tests/integration/db/planes-historial.test.ts`. Ajuste planes-custom (D2): el cuerpo vive en
   // `asignarEnTx`, que recibe la `tx` de `asignar` o de `crearYAsignar` (crear y asignar un custom en
   // una sola transacción, `tests/integration/db/planes-crear-custom-asigna.test.ts`).
+  //
+  // SLT-86 (design §5.1, §5.2; R17, R20): asignar, crear un custom con empresa, cambiar el tipo y aplicar un
+  // cambio de empresa pendiente escriben por UN solo punto, `aplicarEnTx`, que recibe la `tx` de quien
+  // abrió la transacción (`asignar`, `crearYAsignar`, `cambiarTipoCobro` o `aplicarCambioDeEmpresa`). El
+  // UPDATE de `organizacion` y la fila del historial van juntos. Lo prueban
+  // `tests/integration/db/planes-cambio-empresa.test.ts` y `planes-historial.test.ts`.
   {
     tipos: ["plan_asignado"],
     archivo: "lib/repositories/PlanesRepository.ts",
-    metodo: "asignarEnTx",
+    metodo: "aplicarEnTx",
     forma: "recibe_tx",
-    mutacion: /tx\.\$executeRaw`UPDATE "organizacion" SET "plan_id"/,
+    mutacion: /tx\.\$executeRaw`\s*UPDATE "organizacion"\s+SET "plan_id"/,
   },
   // Ajuste planes-custom (D10, D16): cambiar solo el tipo de cobro del plan actual deja su fila con
   // acción PROPIA, `plan_tipo_cobro_cambiado` (el tipo de antes y el nuevo), en la misma transacción que el
-  // UPDATE. Lo prueba `tests/integration/db/planes-cambiar-tipo-cobro.test.ts`.
+  // UPDATE. SLT-86: por el mismo `aplicarEnTx`, con la fecha de efecto. Lo prueba
+  // `tests/integration/db/planes-cambiar-tipo-cobro.test.ts`.
   {
     tipos: ["plan_tipo_cobro_cambiado"],
     archivo: "lib/repositories/PlanesRepository.ts",
-    metodo: "cambiarTipoCobro",
-    forma: "abre_tx",
-    mutacion: /tx\.\$executeRaw`UPDATE "organizacion" SET "plan_tipo_cobro"/,
+    metodo: "aplicarEnTx",
+    forma: "recibe_tx",
+    mutacion: /tx\.\$executeRaw`\s*UPDATE "organizacion"\s+SET "plan_id"[^`]*"plan_tipo_cobro"/,
+  },
+  // SLT-86 (design §5.3; R19, R21; decisión del humano del 2026-11-05): cancelar el cambio pendiente de una
+  // empresa deja su fila `plan_cambio_empresa_cancelado`. Un solo punto, `cancelarPendienteDeEmpresaEnTx`, que
+  // recibe la `tx` de «Cancelar cambio» (`cancelarCambioEmpresa`), de la petición igual a lo vigente
+  // (`cambiarEmpresaEnTx`) y del archivado (`archivar`). El UPDATE que limpia el pendiente y la fila van
+  // juntos. Lo prueba `tests/integration/db/planes-cancelar-cambio-historial.test.ts`.
+  {
+    tipos: ["plan_cambio_empresa_cancelado"],
+    archivo: "lib/repositories/PlanesRepository.ts",
+    metodo: "cancelarPendienteDeEmpresaEnTx",
+    forma: "recibe_tx",
+    mutacion: /tx\.\$executeRaw`UPDATE "organizacion" SET \$\{SIN_PENDIENTE\} WHERE "id"/,
   },
 ];
 
@@ -1226,8 +1245,9 @@ describe("362/R16 — cada tipo del catalogo tiene al menos un punto de escritur
     // `_borrado`; sus productores, desde T6.2, en `TarifaValorRepository` y `GrupoDistritosRepository`).
         // 81 desde el ajuste planes-custom D16 (`plan_tipo_cobro_cambiado`, de `PlanesRepository.cambiarTipoCobro`).
     // 82 desde SLT-54 (`tarifas_activadas`, de `TarifaActivacionRepository.activar`).
-    // 83 desde SLT-77 (`tope_intentos_cambiado`, de `TopeIntentosRepository.guardar`).
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(83);
+    // 83 desde SLT-86 (`plan_cambio_empresa_cancelado`, de `PlanesRepository.cancelarPendienteDeEmpresaEnTx`).
+    // 84 desde SLT-77 (`tope_intentos_cambiado`, de `TopeIntentosRepository.guardar`).
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(84);
   });
 });
 

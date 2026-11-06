@@ -50,8 +50,9 @@ import { esFechaCalendarioValida } from "@/lib/utils/fecha-cr";
 // saldo con el que la central lo persigue. El motivo de cada uno esta escrito a su lado.
 
 /**
- * Los 83 tipos de accion. El ORDEN de esta tupla es el del Anexo A (dinero, desaparicion,
- * permisos) mas las integraciones de SL-36, los modulos de SL-23 y el plan de SL-24 (y su tipo de cobro, D16), y es el que consume el selector de filtros: no se
+ * Los 84 tipos de accion. El ORDEN de esta tupla es el del Anexo A (dinero, desaparicion,
+ * permisos) mas las integraciones de SL-36, los modulos de SL-23 y el plan de SL-24 (y su tipo de cobro, D16, y
+ * el cambio cancelado, SLT-86) y el tope de intentos de SLT-77, y es el que consume el selector de filtros: no se
  * reordena por gusto.
  */
 export const HISTORIAL_ACCION_TIPOS = [
@@ -402,6 +403,10 @@ export const HISTORIAL_ACCION_TIPOS = [
   // (`plan`, el de la empresa) y misma categoria que `plan_asignado`. `valor_anterior` = el tipo de
   // antes y `valor_nuevo` = el nuevo (`mensual` o `anual`).
   "plan_tipo_cobro_cambiado", // PlanesRepository.cambiarTipoCobro
+  // SLT-86 (design §5.3; decisión del humano del 2026-11-05): cancelar el cambio pendiente de una empresa
+  // deja fila. Misma entidad (`plan`, el del pendiente) y misma categoria. `valor_nuevo` = «AAAA-MM-DD ·
+  // tipo» del cambio que no llegó a regir.
+  "plan_cambio_empresa_cancelado", // PlanesRepository.cancelarPendienteDeEmpresaEnTx
 ] as const satisfies readonly PrismaHistorialAccionTipo[];
 
 export type HistorialAccionTipo = (typeof HISTORIAL_ACCION_TIPOS)[number];
@@ -605,6 +610,8 @@ export const CATEGORIA_POR_ACCION: Record<HistorialAccionTipo, CategoriaAccion> 
   plan_asignado: "cambia_plan",
   // D16: cambia el tipo de cobro del plan; no mueve dinero (el precio es informativo, R4 de SL-24).
   plan_tipo_cobro_cambiado: "cambia_plan",
+  // SLT-86: cancelar un cambio pendiente; tampoco mueve dinero.
+  plan_cambio_empresa_cancelado: "cambia_plan",
 };
 
 /** Etiqueta legible de cada tipo. Exhaustiva por el mismo mecanismo que la categoria. */
@@ -697,6 +704,7 @@ export const ACCION_LABELS: Record<HistorialAccionTipo, string> = {
   modulo_desactivado: "Desactivó un módulo de una empresa",
   plan_asignado: "Asignó un plan a una empresa",
   plan_tipo_cobro_cambiado: "Cambió el tipo de cobro del plan de una empresa",
+  plan_cambio_empresa_cancelado: "Canceló el cambio de plan pendiente de una empresa",
 };
 
 /** Etiqueta legible de cada categoria, para el selector de filtros y la descarga. */

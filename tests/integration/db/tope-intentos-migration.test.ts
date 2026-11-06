@@ -43,10 +43,10 @@ import {
  * contrato, y leerlos de la migracion los dejaria siempre verdes.
  */
 
-const HISTORIAL = "20261106120000_historial_tope_intentos";
-const COLUMNA = "20261106120100_organizacion_tope_intentos";
+const HISTORIAL = "20261106160000_historial_tope_intentos";
+const COLUMNA = "20261106160100_organizacion_tope_intentos";
 const DE_SLT77 = [HISTORIAL, COLUMNA] as const;
-const ULTIMA_PREVIA = "20261104150200_cobro_plataforma_porcentual_funciones";
+const ULTIMA_PREVIA = "20261106150000_historial_accion_plan_cambio_empresa_cancelado";
 
 const CHECK = "organizacion_tope_intentos_entrega_check";
 const POLITICA = "organizacion_propia_editar_tope";
@@ -65,6 +65,11 @@ const COLUMNAS_DEL_CODIGO_ANTERIOR = [
   "plan_ciclo_ancla_at",
   "plan_ciclo_corto_desde_at",
   "plan_tipo_cobro",
+  "plan_cambio_id",
+  "plan_cambio_plan_id",
+  "plan_cambio_tipo_cobro",
+  "plan_cambio_desde_at",
+  "plan_cambio_actor_id",
 ];
 
 const BASE = `slt77_ti_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
@@ -282,7 +287,7 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("SLT-77 — la columna del tope (Postgres re
     expect(checks).toEqual([]);
     const tipos = await etiquetas("historial_accion_tipo");
     expect(tipos).not.toContain("tope_intentos_cambiado");
-    expect(tipos.at(-1)).toBe("tarifas_activadas");
+    expect(tipos.at(-1)).toBe("plan_cambio_empresa_cancelado");
     const entidades = await etiquetas("historial_accion_entidad");
     expect(entidades).not.toContain("organizacion");
     expect(entidades.at(-1)).toBe("tarifa_activacion");

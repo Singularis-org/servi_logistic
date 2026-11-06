@@ -168,6 +168,13 @@ describeSiHayBase("SLT-66 — la deuda de la wallet con cargos del plan (Postgre
         select: { id: true },
       })
     ).id;
+    // SLT-86 (design §1.2, R15): como `PlanesRepository.crear` (y `_fixtures/planes.ts > crearPlan`), el
+    // precio de alta rige desde siempre. Sin esa fila, `plan_de_la_empresa` no tiene precio del período y
+    // «Mi plan» rechaza la forma.
+    await base.$executeRawUnsafe(
+      `INSERT INTO "plan_precio_historial" ("plan_id", "desde_at", "precio_mensual", "descuentos") VALUES ($1, '-infinity', 50000.00, '{}')`,
+      planId,
+    );
     await base.$executeRawUnsafe(
       `UPDATE "organizacion" SET "plan_id" = $1, "plan_ciclo_ancla_at" = (now() AT TIME ZONE 'UTC') - interval '1 hour' WHERE "id" = $2`,
       planId,

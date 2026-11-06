@@ -4,9 +4,12 @@ import { RolValue } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 
 import { ROLES_MI_PLAN } from "@/lib/auth/menu-visibility";
-import type { IMiPlanRepository, PlanDeLaEmpresaLeido } from "@/lib/interfaces/repositories/IMiPlanRepository";
+import type {
+  IMiPlanRepository,
+  LecturaDeMiPlan,
+  PlanDeLaEmpresaLeido,
+} from "@/lib/interfaces/repositories/IMiPlanRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
-import { lineasDeCambioDelPlan } from "@/lib/planes/mensajes";
 import { MiPlanService } from "@/lib/services/MiPlanService";
 import type { VersionPlan } from "@/lib/types/planes";
 
@@ -14,10 +17,14 @@ import type { VersionPlan } from "@/lib/types/planes";
 // cuenta sus llamadas. Lo que se mide: la autorización va antes que la base (un rechazo llega con el
 // contador en cero), y el cambio pendiente sale de comparar la versión vigente con la pendiente con
 // los mismos textos del correo de SL-24.
+//
+// SLT-86 (R5, R12, R15, R26, R27): el doble lee lo que `plan_de_la_empresa` da desde 20261106130000: la
+// entrada, el precio del período en curso, el pendiente de la empresa (sin actor) y, sin plan, la primera
+// asignación pendiente. Sin fila de órdenes con tope (R8).
 
 class RepoEnMemoria implements IMiPlanRepository {
   llamadas = 0;
-  constructor(private readonly plan: PlanDeLaEmpresaLeido | null) {}
+  constructor(private readonly plan: LecturaDeMiPlan) {}
   async planDeLaEmpresa() {
     this.llamadas += 1;
     return this.plan;
@@ -28,9 +35,9 @@ const AHORA = new Date("2026-10-29T12:00:00.000Z");
 
 const VIGENTE: VersionPlan = {
   nombre: "Básico",
-  topes: { ordenesPorCiclo: 3000, porRol: { mensajero: 10, adminTienda: 5 }, apiKeys: 2 },
+  topes: { porRol: { mensajero: 10, adminTienda: 5 }, apiKeys: 2 },
   modulos: ["monitoreo"],
-  precio: { tipo: "monto", mensual: "49.90", anual: null },
+  precio: { tipo: "monto", mensual: "49.90", descuentos: {} },
   costoPorOrden: null, // SLT-66 R7: el plan lleva costo por orden; aquí, vacío.
   costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
 };
@@ -38,7 +45,11 @@ const VIGENTE: VersionPlan = {
 function leido(cambio: PlanDeLaEmpresaLeido["cambio"] = null): PlanDeLaEmpresaLeido {
   return {
     vigente: VIGENTE,
-    ancla: new Date("2026-10-15T09:30:00.000Z"),
+    // SLT-86 (R5): la entrada, las 00:00 de la plataforma del 15 de octubre.
+    entrada: new Date("2026-10-15T06:00:00.000Z"),
+    // SLT-86 (R15): el precio que regía al empezar el período en curso; aquí, el mismo que el vigente.
+    precioDelPeriodo: VIGENTE.precio,
+    pendiente: null,
     uso: {
       ordenes: 1000,
       apiKeys: 2,
@@ -90,43 +101,67 @@ describe("SLT-58 — MiPlanService.ver: quién ve «Mi plan» (R8)", () => {
 });
 
 describe("SLT-58 — MiPlanService.ver: lo que devuelve (R1, R2, R5, R6, R7)", () => {
-  it("R6 — una empresa sin plan recibe { estado: ok, plan: null }", async () => {
+  it("R6 — una empresa sin plan recibe { estado: ok, plan: null } y sin pendiente", async () => {
     const r = await servicio(new RepoEnMemoria(null)).ver(actor("maestro"));
-    expect(r).toEqual({ estado: "ok", plan: null });
+    expect(r).toEqual({ estado: "ok", plan: null, pendienteSinPlan: null });
+  });
+
+  it("SLT-86 R26 — sin plan y con su primera asignación pendiente: plan null y el pendiente, sin actor", async () => {
+    const pendiente = { planNombre: "Pro", tipo: "quincenal" as const, desde: "2026-11-10" };
+    const r = await servicio(new RepoEnMemoria({ sinPlan: true, pendiente })).ver(actor("admin"));
+    expect(r).toEqual({ estado: "ok", plan: null, pendienteSinPlan: pendiente });
   });
 
   it("R1, R2, R5 — arma nombre, precio sin moneda, módulos con su nombre, filas de consumo y reinicio; sin pendiente no hay sección", async () => {
     const r = await servicio(new RepoEnMemoria(leido())).ver(actor("admin"));
     if (r.estado !== "ok" || r.plan === null) throw new Error("se esperaba un plan");
     expect(r.plan.nombre).toBe("Básico");
-    expect(r.plan.precioTexto).toBe("49.90 al mes");
+    expect(r.plan.precioTexto).toBe("49.90 / mes");
     expect(r.plan.modulos).toEqual([{ clave: "monitoreo", nombre: "Monitoreo" }]);
-    expect(r.plan.filas[0]).toMatchObject({ clave: "ordenes", texto: "1.000 de 3.000 órdenes del ciclo", estado: "normal" });
+    // SLT-86 (R7, R8): las órdenes del período van aparte, sin fila ni tope.
+    expect(r.plan.filas.map((f) => f.clave)).toEqual(["admin", "mensajero", "adminTienda", "adminSatelite", "api_keys"]);
+    expect(r.plan.ordenesDelPeriodo).toBe(1000);
     expect(r.plan.filas.find((f) => f.clave === "adminTienda")?.estado).toBe("lleno");
     // SLT-66 R5: el maestro no tiene fila (antes salía «sin límite»).
     expect(r.plan.filas.map((f) => f.clave)).not.toContain("maestro");
-    // Ancla el 15 a las 09:30 UTC: el siguiente ciclo empieza el 15 de noviembre a las 09:30 UTC.
-    expect(r.plan.reinicio).toEqual({ dias: 17, fecha: "2026-11-15" });
+    // SLT-86 (R27): el mensual se reinicia el 1 de noviembre (00:00 de la plataforma = 06:00 UTC); desde el
+    // 29 a las 12:00 UTC faltan 2,75 días, que se redondean a 3.
+    expect(r.plan.reinicio).toEqual({ dias: 3, fecha: "2026-11-01" });
     expect(r.plan.cambioPendiente).toBeNull();
   });
 
-  it("D9 (ajuste planes-custom) — «Mi plan» trae el tipo de cobro, el monto del período y el siguiente cobro", async () => {
+  it("D9, SLT-86 R12/R27 — «Mi plan» trae el tipo, el período en curso (tramo desde la entrada), su costo y el siguiente cobro", async () => {
     const mensual = await servicio(new RepoEnMemoria(leido())).ver(actor("maestro"));
     if (mensual.estado !== "ok" || mensual.plan === null) throw new Error("se esperaba un plan");
-    // Ancla el 2026-10-15 (03:30 en la plataforma); hoy 2026-10-29: el siguiente aniversario mensual es el 15/11.
-    expect(mensual.plan.cobro).toEqual({ tipo: "mensual", montoPeriodo: "49.90", siguienteCobro: "2026-11-15" });
+    // Entrada el 15 de octubre: tramo del 15 al 31, 17 de 31 días → 4990 × 17 ÷ 31 = 2736,45 céntimos → 27.36.
+    expect(mensual.plan.cobro).toEqual({
+      tipo: "mensual",
+      periodo: { desde: "2026-10-15", hasta: "2026-10-31", esTramo: true },
+      costo: "27.36",
+      siguienteCobro: "2026-11-01",
+      pendiente: null,
+    });
 
     const anual = await servicio(new RepoEnMemoria({ ...leido(), tipoCobro: "anual" })).ver(actor("admin"));
     if (anual.estado !== "ok" || anual.plan === null) throw new Error("se esperaba un plan");
-    expect(anual.plan.cobro).toEqual({ tipo: "anual", montoPeriodo: "598.80", siguienteCobro: "2027-10-15" });
-    // El costo por orden y el total estimado de SLT-66 no cambian con el tipo de cobro.
-    expect(anual.plan.costeo).toEqual(mensual.plan.costeo);
+    // 598.80 al año; tramo del 15 de octubre al 31 de diciembre: 78 de 365 días → 12796,27 céntimos → 127.96.
+    expect(anual.plan.cobro).toEqual({
+      tipo: "anual",
+      periodo: { desde: "2026-10-15", hasta: "2026-12-31", esTramo: true },
+      costo: "127.96",
+      siguienteCobro: "2027-01-01",
+      pendiente: null,
+    });
+    // R13: el tipo de cobro no cambia el costo por orden; R28: la base del total es el costo del período o tramo.
+    if (mensual.plan.costeo.modo !== "fijo" || anual.plan.costeo.modo !== "fijo") throw new Error("se esperaba modo fijo");
+    expect(anual.plan.costeo.costoPorOrden).toBe(mensual.plan.costeo.costoPorOrden);
+    expect([mensual.plan.costeo.total, anual.plan.costeo.total]).toEqual(["500027.36", "500127.96"]);
   });
 
   it("R7 — el pendiente trae la fecha en hora de la plataforma y las líneas de lineasDeCambioDelPlan entre vigente y pendiente", async () => {
     const pendiente: VersionPlan = {
       nombre: "Básico plus",
-      topes: { ordenesPorCiclo: 5000, porRol: { mensajero: 10 }, apiKeys: 2 },
+      topes: { porRol: { mensajero: 10 }, apiKeys: 2 },
       modulos: ["monitoreo", "analitica"],
       precio: { tipo: "sin_precio" },
       costoPorOrden: null, // SLT-66 R7: el plan lleva costo por orden; aquí, vacío.
@@ -137,21 +172,16 @@ describe("SLT-58 — MiPlanService.ver: lo que devuelve (R1, R2, R5, R6, R7)", (
     const r = await servicio(new RepoEnMemoria(leido(cambio))).ver(actor("maestro"));
     if (r.estado !== "ok" || r.plan === null) throw new Error("se esperaba un plan");
 
-    const esperadas = lineasDeCambioDelPlan({
-      nombre: { antes: "Básico", despues: "Básico plus" },
-      topes: { antes: VIGENTE.topes, despues: pendiente.topes },
-      modulos: { antes: ["monitoreo"], despues: ["analitica", "monitoreo"] },
-      precio: { antes: VIGENTE.precio, despues: { tipo: "sin_precio" } },
+    // Cada cosa que cambia tiene su línea, y lo que no cambia no. SLT-86 (R8): sin órdenes por ciclo.
+    expect(r.plan.cambioPendiente).toEqual({
+      vigenteDesde: "2026-12-01",
+      lineas: [
+        "Nombre del plan: Básico → Básico plus",
+        "Usuarios activos con el rol Admin de tienda: 5 → sin límite",
+        "Se incluye el módulo Analítica.",
+        "Costo base: 49.90 / mes → sin precio", // SLT-66 R9; SLT-86 §7.1
+      ],
     });
-    expect(r.plan.cambioPendiente).toEqual({ vigenteDesde: "2026-12-01", lineas: esperadas });
-    // Y no es una igualdad vacía: cada cosa que cambia tiene su línea, y lo que no cambia no.
-    expect(esperadas).toEqual([
-      "Nombre del plan: Básico → Básico plus",
-      "Órdenes por ciclo: 3000 → 5000",
-      "Usuarios activos con el rol Admin de tienda: 5 → sin límite",
-      "Se incluye el módulo Analítica.",
-      "Costo base: 49.90 al mes → sin precio", // SLT-66 R9
-    ]);
   });
 
   it("R7 — un pendiente igual a la vigente deja la sección con la fecha y sin líneas", async () => {

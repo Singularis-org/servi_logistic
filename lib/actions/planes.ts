@@ -8,6 +8,7 @@ import { PlanesRepository } from "@/lib/repositories/PlanesRepository";
 import { PlanesService } from "@/lib/services/PlanesService";
 import type {
   CambiarTipoCobroResult,
+  CancelarCambioEmpresaResult,
   ListarPlanesAsignablesResult,
   PlanResult,
   VistaPreviaAsignacionResult,
@@ -47,6 +48,8 @@ export async function crearPlanAction(input: unknown, deps: PlanesDeps = {}): Pr
 
 /**
  * Edita un plan: de inmediato con `vigenteDesde: null` (R15–R17), o programado con una fecha (R37).
+ * SLT-86 (R22): si cambia el costo base o un descuento, `vigenteDesde` es obligatoria y `≥ hoy`; con la de
+ * hoy se aplica en el acto.
  */
 export async function editarPlanAction(input: unknown, deps: PlanesDeps = {}): Promise<PlanResult> {
   return conServicio(deps, (s, actor) => s.editar(actor, input));
@@ -62,7 +65,8 @@ export async function archivarPlanAction(input: unknown, deps: PlanesDeps = {}):
 /**
  * Asigna o cambia el plan de una empresa (R9–R13). SLT-58: `inicioCiclo` (`AAAA-MM-DD`) opcional, solo
  * en la primera asignación (R29–R31); los topes ya pasados vuelven en `avisos` (R36, R42). Ajuste
- * planes-custom (D6): `tipoCobro` (`mensual` | `anual`) obligatorio.
+ * planes-custom (D6) y SLT-86 (R1): `tipoCobro` obligatorio, uno de los cuatro. SLT-86 (R16–R18): a una
+ * empresa con plan, `vigenteDesde` obligatoria; con fecha futura queda pendiente y vuelve en `vigenteDesde`.
  */
 export async function asignarPlanAction(input: unknown, deps: PlanesDeps = {}): Promise<PlanResult> {
   return conServicio(deps, (s, actor) => s.asignar(actor, input));
@@ -90,11 +94,23 @@ export async function previsualizarCustomAction(input: unknown, deps: PlanesDeps
 }
 
 /**
- * Ajuste planes-custom (D10): cambia solo el tipo de cobro (`mensual` | `anual`) del plan que la empresa
- * ya tiene, con su fila en el historial de asignaciones. No toca el ancla del ciclo ni los módulos.
+ * Ajuste planes-custom (D10): cambia solo el tipo de cobro del plan que la empresa ya tiene, con su fila en
+ * el historial de asignaciones. No toca los módulos. SLT-86 (R16, R17): con `vigenteDesde` obligatoria;
+ * desde sus 00:00 la entrada pasa a esa fecha.
  */
 export async function cambiarTipoCobroAction(input: unknown, deps: PlanesDeps = {}): Promise<CambiarTipoCobroResult> {
   return conServicio(deps, (s, actor) => s.cambiarTipoCobro(actor, input));
+}
+
+/**
+ * SLT-86 (R19, R26): «Cancelar cambio» del detalle de empresa. `{ organizacionId }`: borra el cambio
+ * pendiente de la empresa y deja su fila en el historial; sin pendiente, `sin_cambio_programado`.
+ */
+export async function cancelarCambioEmpresaAction(
+  input: unknown,
+  deps: PlanesDeps = {},
+): Promise<CancelarCambioEmpresaResult> {
+  return conServicio(deps, (s, actor) => s.cancelarCambioEmpresa(actor, input));
 }
 
 /**

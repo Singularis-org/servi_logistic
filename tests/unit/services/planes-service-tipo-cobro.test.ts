@@ -14,6 +14,9 @@ import { cambiarTipoCobroSchema, previsualizarCustomSchema, type TopeExcedido, t
 //   · D13: la vista previa de SLT-58 R37 en el form del custom, con los topes del form (sin plan creado).
 // Lo que se mide aquí es que ningún rechazo llegue al repositorio y que lo que el repositorio decide
 // (mismo tipo, carrera) vuelva tal cual. El SQL se mide en `tests/integration/db/planes-cambiar-tipo-cobro.test.ts`.
+//
+// SLT-86 (R16, R17): cambiar el tipo lleva fecha de efecto (`vigenteDesde`, de hoy a hoy + 12 meses); el
+// repositorio recibe el `EfectoElegido` y el reloj. La vista previa ya no da el siguiente ciclo (R8).
 
 const SUPERADMIN: Actor = { usuarioId: "u-sa", rol: "superadmin", organizacionId: null };
 const EMPRESA = randomUUID();
@@ -23,7 +26,10 @@ const ROLES_DE_EMPRESA: RolValue[] = ["maestro", "admin", "mensajero", "adminTie
 /** 2026-10-29 12:00 en la plataforma (−06:00). Hoy = 2026-10-29; rango 2026-09-29 … 2026-11-29. */
 const AHORA = new Date("2026-10-29T18:00:00.000Z");
 
-const TOPES: TopesPlan = { ordenesPorCiclo: 2, porRol: { adminTienda: 2 }, apiKeys: 1 };
+const TOPES: TopesPlan = { porRol: { adminTienda: 2 }, apiKeys: 1 };
+const EFECTO = { clase: "cambio", fecha: "2026-11-01", desde: new Date("2026-11-01T06:00:00.000Z"), elegida: true } as const;
+/** Lo que manda «Cambiar tipo de cobro»: empresa, tipo y fecha de efecto. */
+const pedido = (tipoCobro: string, extra: Record<string, unknown> = {}) => ({ organizacionId: EMPRESA, tipoCobro, vigenteDesde: "2026-11-01", ...extra });
 const AVISO: TopeExcedido = { organizacionId: EMPRESA, empresa: "Mensajería Uno", tope: "adminTienda", usados: 3, maximo: 2 };
 
 function doble() {
@@ -36,11 +42,11 @@ function doble() {
     archivar: vi.fn<IPlanesRepository["archivar"]>(),
     asignar: vi.fn<IPlanesRepository["asignar"]>(),
     vistaPreviaAsignacion: vi.fn<IPlanesRepository["vistaPreviaAsignacion"]>(),
-    vistaPreviaConTopes: vi.fn<IPlanesRepository["vistaPreviaConTopes"]>(async () => ({
-      avisos: [],
-      siguienteCiclo: new Date("2026-11-29T18:00:00.000Z"),
-    })),
-    cambiarTipoCobro: vi.fn<IPlanesRepository["cambiarTipoCobro"]>(async () => ({ estado: "ok", cambio: true })),
+    vistaPreviaConTopes: vi.fn<IPlanesRepository["vistaPreviaConTopes"]>(async () => ({ avisos: [] })),
+    cambiarTipoCobro: vi.fn<IPlanesRepository["cambiarTipoCobro"]>(async () => ({ estado: "ok", cambio: true, pendiente: true })),
+    cancelarCambioEmpresa: vi.fn<IPlanesRepository["cancelarCambioEmpresa"]>(),
+    aplicarCambioDeEmpresa: vi.fn<IPlanesRepository["aplicarCambioDeEmpresa"]>(),
+    cambiosDeEmpresaVencidos: vi.fn<IPlanesRepository["cambiosDeEmpresaVencidos"]>(),
     cancelarCambio: vi.fn<IPlanesRepository["cancelarCambio"]>(),
     programarCambio: vi.fn<IPlanesRepository["programarCambio"]>(),
     aplicarCambioProgramado: vi.fn<IPlanesRepository["aplicarCambioProgramado"]>(),
@@ -48,6 +54,7 @@ function doble() {
     repartirRecordatorio: vi.fn<IPlanesRepository["repartirRecordatorio"]>(),
     destinatariosDelAviso: vi.fn<IPlanesRepository["destinatariosDelAviso"]>(),
     asignables: vi.fn<IPlanesRepository["asignables"]>(),
+    preciosQueRigenDesde: vi.fn<IPlanesRepository["preciosQueRigenDesde"]>(async () => []),
     publicos: vi.fn<IPlanesRepository["publicos"]>(),
     catalogo: vi.fn<IPlanesRepository["catalogo"]>(),
     detalle: vi.fn<IPlanesRepository["detalle"]>(),
@@ -70,9 +77,9 @@ beforeEach(() => {
 describe("Ajuste planes-custom D10 — cambiar solo el tipo de cobro del plan actual", () => {
   it("ok: guarda el tipo por el repositorio con el actor de la sesión y devuelve su resultado", async () => {
     repo.empresa.mockResolvedValueOnce({ id: EMPRESA, nombre: "Mensajería Uno", planId: PLAN });
-    const r = await servicio.cambiarTipoCobro(SUPERADMIN, { organizacionId: EMPRESA, tipoCobro: "anual" });
+    const r = await servicio.cambiarTipoCobro(SUPERADMIN, pedido("anual"));
     expect(r).toEqual({ estado: "ok", cambio: true });
-    expect(repo.cambiarTipoCobro).toHaveBeenCalledExactlyOnceWith(EMPRESA, "anual", "u-sa");
+    expect(repo.cambiarTipoCobro).toHaveBeenCalledExactlyOnceWith(EMPRESA, "anual", EFECTO, "u-sa", AHORA);
     // Ni asigna, ni crea, ni toca el plan: solo el tipo.
     expect(repo.asignar).not.toHaveBeenCalled();
     expect(repo.crearYAsignar).not.toHaveBeenCalled();
@@ -80,15 +87,15 @@ describe("Ajuste planes-custom D10 — cambiar solo el tipo de cobro del plan ac
 
   it("mismo tipo: el repositorio decide bajo cerrojo y el `cambio: false` vuelve tal cual", async () => {
     repo.empresa.mockResolvedValueOnce({ id: EMPRESA, nombre: "Mensajería Uno", planId: PLAN });
-    repo.cambiarTipoCobro.mockResolvedValueOnce({ estado: "ok", cambio: false });
-    expect(await servicio.cambiarTipoCobro(SUPERADMIN, { organizacionId: EMPRESA, tipoCobro: "mensual" })).toEqual({
+    repo.cambiarTipoCobro.mockResolvedValueOnce({ estado: "ok", cambio: false, pendiente: false });
+    expect(await servicio.cambiarTipoCobro(SUPERADMIN, pedido("mensual"))).toEqual({
       estado: "ok",
       cambio: false,
     });
   });
 
   it("empresa sin plan → sin_plan, sin llegar a escribir", async () => {
-    const r = await servicio.cambiarTipoCobro(SUPERADMIN, { organizacionId: EMPRESA, tipoCobro: "anual" });
+    const r = await servicio.cambiarTipoCobro(SUPERADMIN, pedido("anual"));
     expect(r).toEqual({ estado: "sin_plan" });
     expect(repo.cambiarTipoCobro).not.toHaveBeenCalled();
   });
@@ -96,50 +103,58 @@ describe("Ajuste planes-custom D10 — cambiar solo el tipo de cobro del plan ac
   it("carrera: si el repositorio ve la empresa sin plan bajo el cerrojo, vuelve sin_plan", async () => {
     repo.empresa.mockResolvedValueOnce({ id: EMPRESA, nombre: "Mensajería Uno", planId: PLAN });
     repo.cambiarTipoCobro.mockResolvedValueOnce({ estado: "sin_plan" });
-    expect(await servicio.cambiarTipoCobro(SUPERADMIN, { organizacionId: EMPRESA, tipoCobro: "anual" })).toEqual({
+    expect(await servicio.cambiarTipoCobro(SUPERADMIN, pedido("anual"))).toEqual({
       estado: "sin_plan",
     });
   });
 
   it("empresa inexistente → not_found sin escribir", async () => {
     repo.empresa.mockResolvedValueOnce(null);
-    expect(await servicio.cambiarTipoCobro(SUPERADMIN, { organizacionId: EMPRESA, tipoCobro: "anual" })).toEqual({
+    expect(await servicio.cambiarTipoCobro(SUPERADMIN, pedido("anual"))).toEqual({
       estado: "not_found",
     });
     expect(repo.cambiarTipoCobro).not.toHaveBeenCalled();
   });
 
   it("entrada inválida → validation_error por campo, sin tocar el repositorio", async () => {
-    const r = await servicio.cambiarTipoCobro(SUPERADMIN, { organizacionId: "no-uuid", tipoCobro: "trimestral" });
+    const r = await servicio.cambiarTipoCobro(SUPERADMIN, { organizacionId: "no-uuid", tipoCobro: "trimestral", vigenteDesde: "2026-11-01" });
     expect(r).toMatchObject({ estado: "validation_error", fieldErrors: { organizacionId: expect.any(Array), tipoCobro: expect.any(Array) } });
-    expect(await servicio.cambiarTipoCobro(SUPERADMIN, { organizacionId: EMPRESA, tipoCobro: "anual", planId: PLAN })).toMatchObject({
+    expect(await servicio.cambiarTipoCobro(SUPERADMIN, pedido("anual", { planId: PLAN }))).toMatchObject({
       estado: "validation_error",
     });
     expect(llamadasAlRepositorio()).toBe(0);
   });
 
+  it("SLT-86 R16: sin fecha de efecto, con una pasada o a más de 12 meses → validation_error en vigenteDesde, sin tocar el repositorio", async () => {
+    for (const vigenteDesde of [undefined, "2026-10-28", "2027-10-30", "2026-02-30"]) {
+      const r = await servicio.cambiarTipoCobro(SUPERADMIN, { organizacionId: EMPRESA, tipoCobro: "anual", vigenteDesde });
+      expect(r.estado).toBe("validation_error");
+      if (r.estado === "validation_error") expect(Object.keys(r.fieldErrors)).toEqual(["vigenteDesde"]);
+    }
+    expect(llamadasAlRepositorio()).toBe(0);
+  });
+
+  it("SLT-86 R16: hoy y hoy + 12 meses entran", async () => {
+    repo.empresa.mockResolvedValue({ id: EMPRESA, nombre: "Mensajería Uno", planId: PLAN });
+    for (const vigenteDesde of ["2026-10-29", "2027-10-29"]) {
+      expect((await servicio.cambiarTipoCobro(SUPERADMIN, pedido("anual", { vigenteDesde }))).estado).toBe("ok");
+    }
+    expect(repo.cambiarTipoCobro).toHaveBeenCalledTimes(2);
+  });
+
   it.each([null, ...ROLES_DE_EMPRESA])("rol %s → forbidden sin llamar al repositorio (SL-24 R5)", async (rol) => {
     const actor = rol === null ? null : { usuarioId: "u", rol, organizacionId: EMPRESA };
-    expect(await servicio.cambiarTipoCobro(actor, { organizacionId: EMPRESA, tipoCobro: "anual" })).toEqual({ estado: "forbidden" });
+    expect(await servicio.cambiarTipoCobro(actor, pedido("anual"))).toEqual({ estado: "forbidden" });
     expect(llamadasAlRepositorio()).toBe(0);
   });
 });
 
 describe("Ajuste planes-custom D13 — vista previa de topes en el form del custom (SLT-58 R37)", () => {
-  it("ok: lee con los topes del form y la fecha elegida; siguienteCiclo en AAAA-MM-DD de la plataforma", async () => {
-    repo.vistaPreviaConTopes.mockResolvedValueOnce({ avisos: [AVISO], siguienteCiclo: new Date("2026-11-30T06:00:00.000Z") });
+  it("ok: lee con los topes del form; SLT-86 (R8): sin siguiente ciclo, los topes que quedan no dependen de la fecha", async () => {
+    repo.vistaPreviaConTopes.mockResolvedValueOnce({ avisos: [AVISO] });
     const r = await servicio.previsualizarCustom(SUPERADMIN, { organizacionId: EMPRESA, inicioCiclo: "2026-10-30", topes: TOPES });
-    expect(r).toEqual({ estado: "ok", avisos: [AVISO], siguienteCiclo: "2026-11-30" });
-    // Mañana: ancla a las 00:00 de la plataforma (06:00 UTC), como la primera asignación (SLT-58 R32).
-    expect(repo.vistaPreviaConTopes).toHaveBeenCalledExactlyOnceWith(EMPRESA, TOPES, {
-      fecha: "2026-10-30",
-      ancla: new Date("2026-10-30T06:00:00.000Z"),
-    });
-  });
-
-  it("hoy: el ancla es el instante (SLT-58 P9), igual que en la asignación", async () => {
-    await servicio.previsualizarCustom(SUPERADMIN, { organizacionId: EMPRESA, inicioCiclo: "2026-10-29", topes: TOPES });
-    expect(repo.vistaPreviaConTopes).toHaveBeenCalledWith(EMPRESA, TOPES, { fecha: "2026-10-29", ancla: "ahora" });
+    expect(r).toEqual({ estado: "ok", avisos: [AVISO] });
+    expect(repo.vistaPreviaConTopes).toHaveBeenCalledExactlyOnceWith(EMPRESA, TOPES);
   });
 
   it("la empresa ya tiene plan → validation_error en inicioCiclo (SLT-58 R31), sin leer el uso", async () => {
@@ -172,7 +187,7 @@ describe("Ajuste planes-custom D13 — vista previa de topes en el form del cust
     const r = await servicio.previsualizarCustom(SUPERADMIN, {
       organizacionId: EMPRESA,
       inicioCiclo: "2026-10-30",
-      topes: { ordenesPorCiclo: -1, porRol: { maestro: 1 }, apiKeys: null },
+      topes: { porRol: { maestro: 1 }, apiKeys: -1 },
     });
     expect(r).toMatchObject({ estado: "validation_error" });
     expect(llamadasAlRepositorio()).toBe(0);
@@ -188,12 +203,13 @@ describe("Ajuste planes-custom D13 — vista previa de topes en el form del cust
 });
 
 describe("Ajuste planes-custom D10, D13 — los esquemas del borde", () => {
-  it("cambiarTipoCobroSchema: empresa uuid y tipo cerrado; nada más", () => {
-    expect(cambiarTipoCobroSchema.safeParse({ organizacionId: EMPRESA, tipoCobro: "anual" }).success).toBe(true);
-    expect(cambiarTipoCobroSchema.safeParse({ organizacionId: EMPRESA }).success).toBe(false);
-    expect(cambiarTipoCobroSchema.safeParse({ organizacionId: EMPRESA, tipoCobro: "trimestral" }).success).toBe(false);
-    // Sin plan ni fecha: el ancla y el plan no se tocan por esta vía.
-    expect(cambiarTipoCobroSchema.safeParse({ organizacionId: EMPRESA, tipoCobro: "anual", inicioCiclo: "2026-10-30" }).success).toBe(false);
+  it("cambiarTipoCobroSchema: empresa uuid, tipo cerrado y fecha de efecto (SLT-86 R16); nada más", () => {
+    expect(cambiarTipoCobroSchema.safeParse(pedido("anual")).success).toBe(true);
+    expect(cambiarTipoCobroSchema.safeParse({ organizacionId: EMPRESA, tipoCobro: "anual" }).success).toBe(false);
+    expect(cambiarTipoCobroSchema.safeParse({ organizacionId: EMPRESA, vigenteDesde: "2026-11-01" }).success).toBe(false);
+    expect(cambiarTipoCobroSchema.safeParse(pedido("trimestral")).success).toBe(false);
+    // Sin plan ni fecha de inicio: el plan no se toca por esta vía.
+    expect(cambiarTipoCobroSchema.safeParse(pedido("anual", { inicioCiclo: "2026-10-30" })).success).toBe(false);
   });
 
   it("previsualizarCustomSchema: fecha obligatoria y topes con la forma de crear un plan", () => {

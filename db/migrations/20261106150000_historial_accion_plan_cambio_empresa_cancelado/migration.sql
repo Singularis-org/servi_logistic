@@ -1,0 +1,12 @@
+-- SLT-86 (design §5.3; R19, R21, R26; decisión del humano del 2026-11-05, tras T9) — cancelar un cambio de
+-- empresa pendiente deja historial. Acción propia, `plan_cambio_empresa_cancelado`, en la categoría «cambia
+-- el plan», como `plan_asignado` y `plan_tipo_cobro_cambiado`. Entidad `plan` (ya existe, 20261028130100):
+-- `entidad_id` es el plan del pendiente cancelado. `valor_anterior` = NULL y `valor_nuevo` = «AAAA-MM-DD ·
+-- tipo», la fecha de efecto y el tipo del cambio que no llegó a regir (vocabulario cerrado, cabe en 60).
+--
+-- La escriben «Cancelar cambio», la petición igual a lo vigente y el archivado de un plan con pendientes
+-- hacia él, por `PlanesRepository.cancelarPendienteDeEmpresaEnTx`.
+--
+-- VA SOLA: Postgres prohíbe USAR un valor de enum en la misma transacción que lo añade (55P04). Nada aquí
+-- escribe filas; el primer uso ocurre en runtime.
+ALTER TYPE "historial_accion_tipo" ADD VALUE IF NOT EXISTS 'plan_cambio_empresa_cancelado';

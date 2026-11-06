@@ -6,7 +6,7 @@ import type { PrecioPlan } from "@/lib/types/planes";
 // SLT-83 (design §4.2; R5) — un plan porcentual tiene costo concreto con base «monto» y porcentaje, con o
 // sin mínimo. La forma, no el importe: es la definición de SLT-66 R28 con un modo más.
 
-const MONTO: PrecioPlan = { tipo: "monto", mensual: "50000.00", anual: null };
+const MONTO: PrecioPlan = { tipo: "monto", mensual: "50000.00", descuentos: {} };
 const SIN_PRECIO: PrecioPlan = { tipo: "sin_precio" };
 
 describe("SLT-83 R5 — tieneCostoConcreto con el modo porcentual", () => {
@@ -27,7 +27,7 @@ describe("SLT-83 R5 — tieneCostoConcreto con el modo porcentual", () => {
   it("base mensual 0.00 y porcentaje → concreto (mira la forma, no el importe)", () => {
     expect(
       tieneCostoConcreto({
-        precio: { tipo: "monto", mensual: "0.00", anual: null },
+        precio: { tipo: "monto", mensual: "0.00", descuentos: {} },
         costoPorOrden: null,
         costoPorOrdenPorcentual: { porcentaje: "2.00", minimo: null },
       }),

@@ -43,7 +43,7 @@ A mano: `db:migrate:create` falla con P3006 en este repo. Dos, porque Postgres p
 en la transacción que lo añade (mismo motivo que `20261104140000`). Antes de crearlas, mirar `origin/dev` y
 tomar un timestamp mayor que el último. Ninguna edita una migración aplicada.
 
-**`20261106120000_historial_tope_intentos`**
+**`20261106160000_historial_tope_intentos`**
 
 ```sql
 ALTER TYPE "historial_accion_tipo" ADD VALUE IF NOT EXISTS 'tope_intentos_cambiado';
@@ -53,7 +53,7 @@ ALTER TYPE "historial_accion_entidad" ADD VALUE IF NOT EXISTS 'organizacion';
 `down.sql`: borra las filas con esos valores y recrea los dos tipos con la función dinámica de
 `20261104140000/down.sql`, renombrada `_slt77`.
 
-**`20261106120100_organizacion_tope_intentos`**
+**`20261106160100_organizacion_tope_intentos`**
 
 ```sql
 -- NOT NULL DEFAULT 3 deja en 3 a las existentes y a las futuras (R2), sin tocar el alta y sin reescribir la tabla.

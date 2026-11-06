@@ -23,9 +23,9 @@ const CONCRETO: PlanDTO = {
   nombre: "Básico",
   visibilidad: "publico",
   organizacionId: null,
-  topes: { ordenesPorCiclo: null, porRol: {}, apiKeys: null },
+  topes: { porRol: {}, apiKeys: null },
   modulos: [],
-  precio: { tipo: "monto", mensual: "50000.00", anual: null },
+  precio: { tipo: "monto", mensual: "50000.00", descuentos: {} },
   costoPorOrden: "100.00",
   costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
   archivado: false,
@@ -97,7 +97,7 @@ describe("SLT-66 R33 — «Asignar a una empresa»", () => {
   });
 
   it("R33: con costo 0.00 y base 0.00 (concretos) sí se ofrece", () => {
-    montar({ ...CONCRETO, precio: { tipo: "monto", mensual: "0.00", anual: null }, costoPorOrden: "0.00" }, [NORTE]);
+    montar({ ...CONCRETO, precio: { tipo: "monto", mensual: "0.00", descuentos: {} }, costoPorOrden: "0.00" }, [NORTE]);
     expect(within(seccion()).getByRole("combobox", { name: "Empresa" })).toBeInTheDocument();
     expect(screen.queryByText(SIN_COSTO_TEXTO)).toBeNull();
   });

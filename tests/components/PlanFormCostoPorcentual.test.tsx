@@ -16,9 +16,9 @@ const PLAN_FIJO: PlanDTO = {
   nombre: "Básico",
   visibilidad: "publico",
   organizacionId: null,
-  topes: { ordenesPorCiclo: null, porRol: {}, apiKeys: null },
+  topes: { porRol: {}, apiKeys: null },
   modulos: [],
-  precio: { tipo: "monto", mensual: "50000.00", anual: null },
+  precio: { tipo: "monto", mensual: "50000.00", descuentos: {} },
   costoPorOrden: "100.00",
   costoPorOrdenPorcentual: null,
   archivado: false,
@@ -39,8 +39,9 @@ function montarCrear(enviar = vi.fn().mockResolvedValue(OK)) {
       empresas={[]}
       inicioCicloPorDefecto="2026-10-30"
       rangoInicioCiclo={{ hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" }}
+      rangoFechaDeEfecto={{ hoy: "2026-10-29", min: "2026-10-29", max: "2027-10-29" }}
       enviar={enviar}
-      previsualizar={vi.fn().mockResolvedValue({ estado: "ok", avisos: [], siguienteCiclo: "2026-11-30" })}
+      previsualizar={vi.fn().mockResolvedValue({ estado: "ok", avisos: [] })}
       onGuardado={vi.fn()}
     />,
   );
