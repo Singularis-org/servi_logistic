@@ -153,6 +153,18 @@ esta bien hecha, no solo si "funciona".
     con `comoPlataforma`. La UI pinta los nombres de nivel del país de la empresa con
     `useEtiquetasGeograficas`; ningún texto de nivel va escrito a mano
     (`etiquetas-geograficas-sin-literal.guardia`).
+  - **Teléfono, documento y hora (SLT-42):** `pais` guarda `prefijo_telefonico`,
+    `telefono_digitos_nacionales` y `zona_horaria` (IANA), y `tipo_identificacion` es un catálogo por
+    país (`pais_id`, `clave`, `caracteres`, `largo_min`/`largo_max`, `activo`). Los servicios leen esos
+    datos del país de la empresa del contexto por el puerto `IReglasPaisEmpresa` (`deLaEmpresa`,
+    `zonaHoraria`, `tipoDocumento`). Lo recibe opcional por constructor y el composition root le pasa
+    `construirReglasPaisEmpresa(prisma)`. Un país sin zona falla con `PaisSinZonaHoraria` en la
+    operación que la necesita, y uno sin prefijo o dígitos falla con `PaisIncompleto`. Todo cálculo de
+    días del servidor pasa por `lib/utils/calendario-zona.ts` con la zona como parámetro; los
+    repositorios reciben los límites o la zona ya resueltos. Los jobs diarios agendan una corrida por
+    zona (`lib/services/jobs/serie-diaria-por-zona.ts`). `pais-sin-literales.guardia` impide escribir en
+    el servidor la zona de CR, un desfase fijo o el `506`, y exige el real en cada composition root. Los
+    envoltorios `*-cr.ts` quedan solo para la UI, en su lista de excepciones (SLT-81; SINPE, SL-22).
 - **Módulos por empresa (SL-23, 2026-10-26).** Cada empresa tiene un núcleo que nunca se apaga y 3
   módulos apagables (`lib/modulos/catalogo.ts`, enum `modulo_apagable`). Recolección, Bodegas
   satélite, API e integraciones y WhatsApp fueron apagables hasta el 2026-10-27, y Wallet hasta el
