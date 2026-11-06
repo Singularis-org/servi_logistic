@@ -71,9 +71,9 @@
 
 ## T5 — Rutas v2 y middleware (depende de T4)
 
-- [ ] **T5.1** Parámetro `version` en `handleCargaApi` y `handleCotizacionApi` (§4.1).
+- [x] **T5.1** Parámetro `version` en `handleCargaApi` y `handleCotizacionApi` (§4.1).
   *Hecho:* contrato de T1.3 y tests existentes de v1 en verde sin cambios. (R4)
-- [ ] **T5.2** Las cinco rutas de `app/api/v2/**` (§4.1) y `/api/v2` en `SELF_AUTH_ROUTES`, con la lista
+- [x] **T5.2** Las cinco rutas de `app/api/v2/**` (§4.1) y `/api/v2` en `SELF_AUTH_ROUTES`, con la lista
   firmada de `rastreo-sin-ruta-nueva.guardia.test.ts` y `tests/unit/auth/middleware.test.ts` al día.
   *Hecho:* las guardias de middleware en verde; `GET /api/v2/ordenes/carga` → 405 y
   `/api/v2/ordenes/analitica` no existe.
