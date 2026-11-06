@@ -19,6 +19,8 @@ import type {
   ProvinciaRow,
 } from "@/lib/interfaces/repositories/IOrdenRepository";
 import { normalizeName } from "@/lib/utils/normalize";
+import { CLAVE_UBICACION, msgNivelVacio, type EntradaUbicacion } from "@/lib/services/geo-ubicacion";
+import type { ColumnaGeoDePlantilla } from "@/lib/utils/plantilla-geo";
 
 // La resolucion geografica compara nombres del archivo contra los de la DB con el
 // MISMO normalizador que indexa el arbol de zonas (lib/utils/normalize): minusculas,
@@ -226,5 +228,59 @@ export function geoInputDesdeColumnasSeparadas(raw: RawRow): GeoInput {
     canton: (raw.canton ?? "").trim(),
     distrito: (raw.distrito ?? "").trim(),
     direccion: (raw.direccion ?? "").trim(),
+  };
+}
+
+// ── SLT-45 (design §2.3, §8; R31) — via sesion de un pais que NO es de forma CR ────────────────
+
+/** La salida del extractor de columnas de nivel: una ruta para el motor de N niveles, o un error. */
+export type EntradaDeNiveles =
+  | { ok: true; entrada: EntradaUbicacion; direccion: string }
+  | { ok: false; fieldErrors: Record<string, string[]> };
+
+/** R31 (design §5): hay un valor en `siguiente` y la columna `columna`, anterior, esta vacia. */
+export function msgColumnaObligatoriaSiSeIndica(columna: string, siguiente: string): string {
+  return `${columna} es obligatoria si se indica ${siguiente}`;
+}
+
+/**
+ * Todas las columnas de geografia vacias. NO esta en design §5: sigue el patron de la fila de
+ * R31 de §5 y el `provincia es obligatoria` de la via de forma CR (`geoInputDesdeCantonDistrito`).
+ */
+export function msgColumnaObligatoria(columna: string): string {
+  return `${columna} es obligatoria`;
+}
+
+/**
+ * El extractor de la carga de sesion de un pais que no es de forma CR. Las columnas son las de
+ * `columnasGeoDePlantilla` (un solo origen con la plantilla que se descarga). La ruta va desde la
+ * profundidad 1 hasta la primera columna vacia (R31); un valor DESPUES de una vacia deja la fila en
+ * error bajo la columna vacia, sin llegar al motor. Nombre no encontrado, ambiguo, retirado, regla
+ * de guardado y zona los dice el motor (R13, R15, R16).
+ */
+export function geoInputDesdeColumnasDeNivel(
+  columnas: readonly ColumnaGeoDePlantilla[],
+): (raw: RawRow) => EntradaDeNiveles {
+  return (raw) => {
+    // Un catalogo sin nodos no tiene columnas: la fila no puede resolverse.
+    if (columnas.length === 0) return { ok: false, fieldErrors: { [CLAVE_UBICACION]: [msgNivelVacio(1)] } };
+
+    const valores = columnas.map((c) => (raw[c.key] ?? "").trim());
+    const primeraVacia = valores.indexOf("");
+    const corte = primeraVacia === -1 ? valores.length : primeraVacia;
+
+    const tras = valores.findIndex((v, i) => i > corte && v !== "");
+    if (tras !== -1) {
+      const vacia = columnas[corte].key;
+      return { ok: false, fieldErrors: { [vacia]: [msgColumnaObligatoriaSiSeIndica(vacia, columnas[tras].key)] } };
+    }
+    if (corte === 0) {
+      return { ok: false, fieldErrors: { [columnas[0].key]: [msgColumnaObligatoria(columnas[0].key)] } };
+    }
+    return {
+      ok: true,
+      entrada: { tipo: "ruta", nombres: valores.slice(0, corte) },
+      direccion: (raw.direccion ?? "").trim(),
+    };
   };
 }

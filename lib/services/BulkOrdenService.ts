@@ -49,6 +49,7 @@ import { MSG_CARGA_SIN_TARIFA, MSG_FILA_SIN_TARIFA } from "@/lib/services/mensaj
 import { ConflictError } from "@/lib/errors/app-error";
 import {
   distinct,
+  geoInputDesdeColumnasDeNivel,
   geoInputDesdeColumnasSeparadas,
   indexBy,
   normalize,
@@ -57,6 +58,7 @@ import {
   type ResolvedGeo,
 } from "@/lib/services/geo-resolucion";
 import { parseCantonDistrito } from "@/lib/utils/canton-distrito";
+import { columnasGeoDePlantilla } from "@/lib/utils/plantilla-geo";
 import {
   desgloseCargaApi,
   ivaFulfillmentDeTarifa,
@@ -292,7 +294,17 @@ export class BulkOrdenService implements IBulkOrdenService {
     }
     const destino = resolverDestinoCreacion(fulfillment);
 
-    const ctx = await this.precargar(rows, destino.estatus, tiendaId);
+    // SLT-45 (design §2.3, §8; R29–R32) — EL EXTRACTOR SEGUN LA FORMA DEL PAIS. Las columnas salen
+    // de `columnasGeoDePlantilla`, la misma funcion que arma la plantilla que se descarga. Forma CR
+    // (`null`) o sin catalogo inyectado (dobles de tests anteriores): `provincia` + `canton_distrito`
+    // y `resolveGeo`, como siempre (R32). Otro pais: una columna por profundidad y el motor de N
+    // niveles (R31, que aplica R13, R15 y R16).
+    const geografia = await this.catalogoRepo?.deLaEmpresa();
+    const columnasGeo = geografia === undefined ? null : columnasGeoDePlantilla(geografia.catalogo);
+    const extractor: ExtractorDeFila =
+      columnasGeo === null ? geoInputDesdeCantonDistrito : geoInputDesdeColumnasDeNivel(columnasGeo);
+
+    const ctx = await this.precargar(rows, destino.estatus, tiendaId, geografia);
 
     if (ctx.estatusId === null) {
       // R7/R20: sin el value del catalogo NO se crea ninguna orden y el error NOMBRA el
@@ -321,8 +333,8 @@ export class BulkOrdenService implements IBulkOrdenService {
       const fila = idx + 1;
       // Feature 276: la via sesion deriva la geografia de `provincia` +
       // `canton_distrito` (plantilla v3, corte duro: no hay camino desde la columna
-      // unica de la v2 ni desde las columnas de la v1).
-      const result = this.resolveFila(raw, ctx, seen, geoInputDesdeCantonDistrito);
+      // unica de la v2 ni desde las columnas de la v1). SLT-45: solo en un pais de forma CR.
+      const result = this.resolveFila(raw, ctx, seen, extractor);
       if (result.status === "error") {
         filas.push({ fila, numRemision: result.numRemision, resultado: "error", errores: result.errores });
         return;
