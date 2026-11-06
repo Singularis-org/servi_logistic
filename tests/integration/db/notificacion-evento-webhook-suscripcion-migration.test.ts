@@ -16,6 +16,7 @@ import {
 } from "./_postgres-real";
 import { tomarExclusionDemoQa, type ExclusionDemoQa } from "./_exclusion-demo-qa";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // FICHA 403 (T2, design §1.2/§4) — la migracion que anade el aviso a los DOS enums de
 // `notificacion`, MAS **R12 medido contra Postgres**: una racha, un aviso; una racha nueva, otro.
 //
@@ -510,7 +511,7 @@ describeSiHayBase("403/R12 — una racha produce UN solo aviso, por muchos fallo
           await emitirWebhookSuscripcionPausada(
             repo,
             { ownerUsuarioId: OWNER, sinExitoDesde: racha },
-            tx,
+            ZONA_DE_CR, tx,
           ),
         );
       }
@@ -533,12 +534,12 @@ describeSiHayBase("403/R12 — una racha produce UN solo aviso, por muchos fallo
       const primera = await emitirWebhookSuscripcionPausada(
         repo,
         { ownerUsuarioId: OWNER, sinExitoDesde: racha1 },
-        tx,
+        ZONA_DE_CR, tx,
       );
       const segunda = await emitirWebhookSuscripcionPausada(
         repo,
         { ownerUsuarioId: OWNER, sinExitoDesde: racha2 },
-        tx,
+        ZONA_DE_CR, tx,
       );
       return {
         primera,
@@ -616,7 +617,7 @@ describeSiHayBase("403/R12 — una racha produce UN solo aviso, por muchos fallo
       await emitirWebhookSuscripcionPausada(
         new NotificacionRepository(tx),
         { ownerUsuarioId: OWNER, sinExitoDesde: racha },
-        tx,
+        ZONA_DE_CR, tx,
       );
       const filas = await tx.$queryRawUnsafe<
         {

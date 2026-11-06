@@ -52,15 +52,16 @@ function sinEspacios(fuente: string): string {
 }
 
 describe("lib/analytics · reutiliza fecha-cr, no lo reimplementa (R14)", () => {
-  it("ranges.ts importa los helpers de @/lib/utils/fecha-cr", () => {
+  it("ranges.ts importa los helpers de @/lib/utils/calendario-zona", () => {
+    // SLT-42: las gemelas con zona de `fecha-cr`; la zona es la del pais de la empresa.
     const fuente = fs.readFileSync(RANGES_PATH, "utf8");
     const codigo = soloCodigo(fuente);
 
-    expect(codigo).toMatch(/from\s+["']@\/lib\/utils\/fecha-cr["']/);
+    expect(codigo).toMatch(/from\s+["']@\/lib\/utils\/calendario-zona["']/);
     for (const helper of [
-      "fechaCalendarioCR",
-      "inicioDelDiaCREnUtc",
-      "inicioDelDiaSiguienteCREnUtc",
+      "fechaCalendario",
+      "inicioDelDiaEnUtc",
+      "inicioDelDiaSiguienteEnUtc",
     ]) {
       expect(codigo, `ranges.ts deberia usar ${helper}`).toContain(helper);
     }

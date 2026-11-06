@@ -1,3 +1,4 @@
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 import { describe, it, expect } from "vitest";
 import fs from "fs";
 import path from "path";
@@ -25,7 +26,7 @@ function instanteCR(fecha: string, horaCR: string): Date {
 
 /** Atajo: plan aceptado o explota con el motivo, para que las aserciones no anden con `if`. */
 function planDe(desde: string, hasta: string, ahora: Date) {
-  const r = planificarBackfill({ desde, hasta, ahora });
+  const r = planificarBackfill({ desde, hasta, ahora, zona: ZONA_CR });
   if (!r.ok) throw new Error(`se esperaba un plan aceptado y se rechazo: ${r.motivo}`);
   return r.plan;
 }
@@ -38,7 +39,7 @@ describe("R9 · el plan sale de fecha-cr y recorre el calendario CR", () => {
     // Si el planificador usara `toISOString().slice(0,10)` en vez de `fecha-cr`, rechazaria
     // el 2026-08-01 por «dia en curso» y admitiria el 2026-08-02, exactamente al reves.
     const casiMedianocheCR = instanteCR("2026-08-01", "23:59");
-    expect(planificarBackfill({ desde: "2026-08-01", hasta: "2026-08-01", ahora: casiMedianocheCR }).ok).toBe(
+    expect(planificarBackfill({ desde: "2026-08-01", hasta: "2026-08-01", ahora: casiMedianocheCR, zona: ZONA_CR }).ok).toBe(
       false,
     );
     const plan = planDe("2026-07-31", "2026-07-31", casiMedianocheCR);
@@ -100,17 +101,17 @@ describe("R9 · el plan sale de fecha-cr y recorre el calendario CR", () => {
 describe("R6/R7 · el rango se rechaza entero antes de tocar nada", () => {
   it("rechaza el formato invalido nombrando cual de las dos puntas esta mal", () => {
     for (const mala of ["2026-13-01", "2026-02-30", "20260715", "2026-7-15", "ayer", ""]) {
-      const r = planificarBackfill({ desde: mala, hasta: "2026-07-20", ahora: AHORA });
+      const r = planificarBackfill({ desde: mala, hasta: "2026-07-20", ahora: AHORA, zona: ZONA_CR });
       expect(r.ok, `deberia rechazar --desde "${mala}"`).toBe(false);
       if (!r.ok) expect(r.motivo).toContain("--desde");
     }
-    const r = planificarBackfill({ desde: "2026-07-20", hasta: "2026-02-31", ahora: AHORA });
+    const r = planificarBackfill({ desde: "2026-07-20", hasta: "2026-02-31", ahora: AHORA, zona: ZONA_CR });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.motivo).toContain("--hasta");
   });
 
   it("rechaza desde > hasta y lo dice con las dos fechas", () => {
-    const r = planificarBackfill({ desde: "2026-07-22", hasta: "2026-07-20", ahora: AHORA });
+    const r = planificarBackfill({ desde: "2026-07-22", hasta: "2026-07-20", ahora: AHORA, zona: ZONA_CR });
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.motivo).toContain("2026-07-22");
@@ -121,16 +122,16 @@ describe("R6/R7 · el rango se rechaza entero antes de tocar nada", () => {
 
 describe("R10 · con el reloj inyectado rechaza el rango que incluye hoy CR o manana CR, nombrando la fecha ofensora", () => {
   it("rechaza el rango que TERMINA hoy CR y nombra hoy como ofensora", () => {
-    const r = planificarBackfill({ desde: "2026-07-30", hasta: "2026-08-02", ahora: AHORA });
+    const r = planificarBackfill({ desde: "2026-07-30", hasta: "2026-08-02", ahora: AHORA, zona: ZONA_CR });
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.motivo).toContain("2026-08-02");
-      expect(r.motivo).toContain("dia CR en curso");
+      expect(r.motivo).toContain("dia en curso");
     }
   });
 
   it("rechaza el rango que EMPIEZA manana CR y nombra manana como ofensora", () => {
-    const r = planificarBackfill({ desde: "2026-08-03", hasta: "2026-08-05", ahora: AHORA });
+    const r = planificarBackfill({ desde: "2026-08-03", hasta: "2026-08-05", ahora: AHORA, zona: ZONA_CR });
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.motivo).toContain("2026-08-03");
@@ -139,14 +140,14 @@ describe("R10 · con el reloj inyectado rechaza el rango que incluye hoy CR o ma
   });
 
   it("rechaza el rango ENTERO, no solo la cola: no devuelve las fechas buenas", () => {
-    const r = planificarBackfill({ desde: "2026-07-01", hasta: "2026-08-10", ahora: AHORA });
+    const r = planificarBackfill({ desde: "2026-07-01", hasta: "2026-08-10", ahora: AHORA, zona: ZONA_CR });
     expect(r.ok).toBe(false);
     expect(JSON.stringify(r)).not.toContain("2026-07-01");
   });
 
   it("admite ayer CR como ultimo dia recomputable y lo nombra en el motivo del rechazo", () => {
     expect(planDe("2026-08-01", "2026-08-01", AHORA).fechas).toEqual(["2026-08-01"]);
-    const r = planificarBackfill({ desde: "2026-08-01", hasta: "2026-08-02", ahora: AHORA });
+    const r = planificarBackfill({ desde: "2026-08-01", hasta: "2026-08-02", ahora: AHORA, zona: ZONA_CR });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.motivo).toContain("2026-08-01");
   });

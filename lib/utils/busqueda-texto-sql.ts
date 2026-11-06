@@ -7,8 +7,8 @@
 // (`db/schema.prisma`, migracion `20260808120000_orden_busqueda_producto`). El nombre vive en
 // tres columnas de `usuario` (`nombre`, `primer_apellido`, `segundo_apellido`) y hay que
 // normalizarlo EN LA CONSULTA, porque es una COLUMNA: Prisma no puede normalizarla en el
-// `where`, igual que pasa con `orden.telefono_dest` y por eso existe `sqlNormalizarTelefonoCr`
-// (`lib/utils/telefono-cr-sql.ts`), cuyo patron este archivo copia.
+// `where`, igual que pasa con `orden.telefono_dest` y por eso existe `sqlNormalizarTelefono`
+// (`lib/utils/telefono-pais.ts`), cuyo patron este archivo copia.
 //
 // LA TRAMPA QUE ESTO CIERRA. El termino que teclea el usuario se normaliza en Node; el lado de
 // la columna lo normaliza Postgres. Si las dos normalizaciones no coinciden EXACTAMENTE, la

@@ -3,7 +3,7 @@
 // en un solo sitio y se prueben sin fakes. El motivo no se loguea ni sale en el resumen: existe
 // para que los tests afirmen POR QUE se cayo a la regla actual.
 import type { HiloCitado } from "@/lib/interfaces/repositories/IChatConversacionRepository";
-import { normalizarTelefonoWa } from "@/lib/utils/whatsapp-telefono";
+import { normalizarTelefono, type ReglasTelefono } from "@/lib/utils/telefono-pais";
 
 export type MotivoSinCita =
   | "sin_cita"
@@ -17,12 +17,14 @@ export type DecisionCita =
   | { via: "regla_actual"; motivo: MotivoSinCita };
 
 /**
- * `fromNormalizado` ya viene pasado por `normalizarTelefonoWa`; el numero del hilo se normaliza
- * aqui porque un hilo antiguo puede haberse guardado antes de la normalizacion.
+ * `fromNormalizado` ya viene pasado por `normalizarTelefono` con `reglas`; el numero del hilo se
+ * normaliza aqui, con las MISMAS reglas (las del pais de la empresa, SLT-42 R18), porque un hilo
+ * antiguo puede haberse guardado antes de la normalizacion.
  */
 export function decidirEnrutadoPorCita(
   fromNormalizado: string,
   hilo: HiloCitado | null,
+  reglas: ReglasTelefono,
 ): DecisionCita {
   // R7/R12/R13: el repositorio ya filtro por empresa y por direccion saliente.
   if (hilo === null) return { via: "regla_actual", motivo: "saliente_no_encontrado" };
@@ -34,7 +36,7 @@ export function decidirEnrutadoPorCita(
     return { via: "regla_actual", motivo: "orden_sin_mensajero" };
   }
   // D3: defensa ante un hilo cuyo numero cambio por correccion de datos del cliente.
-  if (normalizarTelefonoWa(hilo.telefonoE164) !== fromNormalizado) {
+  if (normalizarTelefono(hilo.telefonoE164, reglas) !== fromNormalizado) {
     return { via: "regla_actual", motivo: "numero_distinto" };
   }
   return {

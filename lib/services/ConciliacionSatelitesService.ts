@@ -2,6 +2,7 @@ import { esAccesoTotal } from "@/lib/auth/acceso-total";
 import { descargaConfig } from "@/lib/config/descarga";
 import type { ICierresBodegaAdminRepository } from "@/lib/interfaces/repositories/ICierresBodegaAdminRepository";
 import type { ISaldosSatelitesRepository } from "@/lib/interfaces/repositories/ISaldosSatelitesRepository";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type {
   IConciliacionSatelitesService,
@@ -22,6 +23,7 @@ import type {
   RevertirConciliacionInputBorde,
 } from "@/lib/types/conciliacion-satelites";
 import { rangoDePagina } from "@/lib/utils/rango-pagina";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 
 /**
  * ⭑ FICHA 431 — LA CONCILIACION DE LAS CONSOLIDACIONES DE BODEGA.
@@ -51,7 +53,13 @@ export class ConciliacionSatelitesService implements IConciliacionSatelitesServi
       ICierresBodegaAdminRepository,
       "marcarConciliado" | "revertirConciliacion" | "corregirConciliacion"
     >,
+    /**
+     * SLT-42 (R22, R28): la zona del pais de la empresa. Cuenta los dias de la cola, corta el mes del
+     * resumen y fecha el cierre en el historial. La real la pone el composition root.
+     */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
+
 
   async listarSaldosSatelites(
     input: ListarSaldosSatelitesInput,
@@ -59,7 +67,10 @@ export class ConciliacionSatelitesService implements IConciliacionSatelitesServi
   ): Promise<ListarSaldosSatelitesServiceResult> {
     if (!esAccesoTotal(actor.rol)) return { status: "forbidden" }; // R27
 
-    const { items, total } = await this.saldos.findSaldosPaginado(rangoDePagina(input));
+    const { items, total } = await this.saldos.findSaldosPaginado(
+      rangoDePagina(input),
+      await zonaDeLaEmpresa(this.reglasPais, "ConciliacionSatelitesService.listarSaldosSatelites"),
+    );
     return {
       status: "ok",
       items,
@@ -75,7 +86,7 @@ export class ConciliacionSatelitesService implements IConciliacionSatelitesServi
   ): Promise<ListarSaldosSatelitesCompletoServiceResult> {
     if (!esAccesoTotal(actor.rol)) return { status: "forbidden" }; // R27
 
-    const items = await this.saldos.findSaldosCompleto();
+    const items = await this.saldos.findSaldosCompleto(await zonaDeLaEmpresa(this.reglasPais, "ConciliacionSatelitesService.listarSaldosSatelitesCompleto"));
     // El tope lo evalua y lo aplica el SERVICIO, y `limite_excedido` viaja SIN filas.
     if (items.length > descargaConfig.MAX_FILAS) {
       return { status: "limite_excedido", total: items.length, limite: descargaConfig.MAX_FILAS };
@@ -132,6 +143,7 @@ export class ConciliacionSatelitesService implements IConciliacionSatelitesServi
 
     const res = await this.escrituras.marcarConciliado({
       id: input.cierreBodegaId,
+      zonaHoraria: await zonaDeLaEmpresa(this.reglasPais, "ConciliacionSatelitesService.marcarRecibida"), // SLT-42 (R22, R28): antes de escribir
       montoRecibido: input.montoRecibido,
       nota: input.nota ?? null,
       actorUsuarioId: actor.usuarioId,
@@ -153,6 +165,7 @@ export class ConciliacionSatelitesService implements IConciliacionSatelitesServi
 
     const res = await this.escrituras.revertirConciliacion({
       id: input.cierreBodegaId,
+      zonaHoraria: await zonaDeLaEmpresa(this.reglasPais, "ConciliacionSatelitesService.revertirConciliacion"), // SLT-42 (R22, R28): antes de escribir
       actorUsuarioId: actor.usuarioId,
     });
     if (res === "updated") return { status: "ok", cierreBodegaId: input.cierreBodegaId };
@@ -177,6 +190,7 @@ export class ConciliacionSatelitesService implements IConciliacionSatelitesServi
 
     const res = await this.escrituras.corregirConciliacion({
       id: input.cierreBodegaId,
+      zonaHoraria: await zonaDeLaEmpresa(this.reglasPais, "ConciliacionSatelitesService.corregirRecibida"), // SLT-42 (R22, R28): antes de escribir
       montoRecibido: input.montoRecibido,
       nota: input.nota ?? null,
       actorUsuarioId: actor.usuarioId,
@@ -197,6 +211,6 @@ export class ConciliacionSatelitesService implements IConciliacionSatelitesServi
    */
   async obtenerResumenSatelites(actor: Actor): Promise<ResumenSatelitesServiceResult> {
     if (!esAccesoTotal(actor.rol)) return { status: "forbidden" }; // R27
-    return { status: "ok", resumen: await this.saldos.findResumen() };
+    return { status: "ok", resumen: await this.saldos.findResumen(await zonaDeLaEmpresa(this.reglasPais, "ConciliacionSatelitesService.obtenerResumenSatelites")) };
   }
 }

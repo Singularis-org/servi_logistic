@@ -10,6 +10,7 @@ import type { IZonaRepository } from "@/lib/interfaces/repositories/IZonaReposit
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { conRetenidas, sinRetenidas, type RetenidasDoble } from "@/tests/fixtures/retenidas-doble";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // FICHA 462 (T2.9, S3, R26/R27/R28/R30/R51) — LA MARCA «Retiene N reprogramadas de hoy» EN LAS
 // FILAS DE `/cierres-admin`, con dobles.
@@ -99,6 +100,7 @@ function newService(repo: ICierresAdminRepository, retenidas: RetenidasDoble = s
     undefined,
     undefined,
     () => AHORA,
+    reglasPaisFijas(),
   );
   return { service, retenidas, repo };
 }
@@ -117,7 +119,7 @@ describe("462/R26/R51 — UNA lectura del conteo por pagina, con los ids de la p
 
     if (r.status !== "ok") throw new Error("esperaba ok");
     expect(retenidas.contarPorCierre).toHaveBeenCalledTimes(1);
-    expect(retenidas.contarPorCierre.mock.calls[0][1]).toEqual(["c1", "c2", "c3"]);
+    expect(retenidas.contarPorCierre.mock.calls[0][2]).toEqual(["c1", "c2", "c3"]);
     expect(r.items.map((i) => [i.cierreId, i.reprogramadasRetenidasHoy])).toEqual([
       ["c1", 2],
       ["c2", 0], // R27: no retiene -> 0, y la pantalla no pinta nada
@@ -139,7 +141,7 @@ describe("462/R26/R51 — UNA lectura del conteo por pagina, con los ids de la p
 
     if (r.status !== "ok") throw new Error("esperaba ok");
     expect(retenidas.contarPorCierre).toHaveBeenCalledTimes(1);
-    expect(retenidas.contarPorCierre.mock.calls[0][1]).toEqual(["h1", "h2"]);
+    expect(retenidas.contarPorCierre.mock.calls[0][2]).toEqual(["h1", "h2"]);
     expect(r.items.find((i) => i.cierreId === "h1")?.reprogramadasRetenidasHoy).toBe(0);
     expect(r.items.find((i) => i.cierreId === "h2")?.reprogramadasRetenidasHoy).toBe(3);
   });
@@ -178,7 +180,7 @@ describe("462/R26/R51 — UNA lectura del conteo por pagina, con los ids de la p
 
     if (r.status !== "ok") throw new Error(`esperaba ok, vino ${r.status}`);
     expect(retenidas.contarPorCierre).toHaveBeenCalledTimes(1);
-    expect(retenidas.contarPorCierre.mock.calls[0][1]).toEqual(["d1"]);
+    expect(retenidas.contarPorCierre.mock.calls[0][2]).toEqual(["d1"]);
     expect(r.cierre.reprogramadasRetenidasHoy).toBe(2);
   });
 
@@ -187,7 +189,7 @@ describe("462/R26/R51 — UNA lectura del conteo por pagina, con los ids de la p
     const r = await service.listarPendientesCierresAdminPaginado(pagina, MAESTRO);
     expect(r.status).toBe("ok");
     expect(retenidas.contarPorCierre).toHaveBeenCalledTimes(1);
-    expect(retenidas.contarPorCierre.mock.calls[0][1]).toEqual([]);
+    expect(retenidas.contarPorCierre.mock.calls[0][2]).toEqual([]);
   });
 });
 
@@ -214,7 +216,7 @@ describe("462/R30 — el alcance no cambia: el conteo NO entra en el `where` ni 
 
     if (r.status !== "ok") throw new Error("esperaba ok");
     expect(findColaPaginada.mock.calls[0][0]).toEqual({ destinoTipo: "bodega_satelite", destinoZonaId: "z-sat" });
-    expect(retenidas.contarPorCierre.mock.calls[0][1]).toEqual(["s1"]);
+    expect(retenidas.contarPorCierre.mock.calls[0][2]).toEqual(["s1"]);
     expect(r.items[0].reprogramadasRetenidasHoy).toBe(1);
   });
 

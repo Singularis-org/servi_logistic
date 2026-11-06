@@ -9,6 +9,7 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { PlanesService } from "@/lib/services/PlanesService";
 import type { PlanDTO } from "@/lib/types/planes";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // SLT-66 (design §4.2, §5; R1, R8, R11) — el costo por orden por el servicio de planes, con un
 // repositorio doble: solo el superadmin lo escribe, la entrada inválida no llega al repositorio y la
 // válida llega entera (crear, editar de inmediato y programar).
@@ -99,7 +100,7 @@ function llamadasAlRepositorio(): number {
 
 beforeEach(() => {
   repo = doble();
-  servicio = new PlanesService(repo, () => AHORA);
+  servicio = new PlanesService(repo, () => AHORA, async () => ZONA_DE_CR);
 });
 
 const OPERACIONES: [string, (s: PlanesService, a: Actor | null, extra?: Record<string, unknown>) => Promise<unknown>][] = [

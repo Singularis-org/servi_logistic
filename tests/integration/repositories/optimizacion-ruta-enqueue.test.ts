@@ -11,6 +11,7 @@ import type {
 import type { JobTipo } from "@prisma/client";
 import { dedupeKeyDebounce } from "@/lib/services/jobs/optimizacion-ruta-encolado";
 import { idEstado, sembrarCatalogoEstados } from "@/tests/fixtures/catalogo-estados";
+import { inicioDelDiaCR } from "@/tests/fabricas/reglas-pais";
 
 // Feature 92 (R16/R17/R19) -> SLT-59 (R57-R61, R76, R77) — encolado TRANSACTIONAL OUTBOX desde los
 // writers del mensajero. Prisma va mockeado (patron de `orden-geocode-enqueue.test.ts`). El
@@ -185,6 +186,7 @@ const GESTION_INPUT = {
   ordenId: "o1",
   mensajeroId: MENSAJERO,
   gestion: { resultado: "entregado" as const, montoRecibido: 100, metodoPago: "efectivo" as const },
+  inicioDelDia: inicioDelDiaCR(T0),
 };
 
 beforeEach(async () => {
@@ -395,6 +397,7 @@ function traspasar(cola: ColaEnMemoria, rutas: { mensajero_id: string; calculada
   const fake = prismaTraspaso(cola, rutas);
   const repo = new OrdenRepository(fake.prisma as never, cola, () => T0);
   const promesa = repo.traspasarMensajeroLote({
+    inicioDelDia: inicioDelDiaCR(T0),
     loteId: "lote-1",
     mensajeroOrigenId: ORIGEN,
     mensajeroDestinoId: DESTINO,

@@ -13,6 +13,7 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { RangoPagina } from "@/lib/utils/rango-pagina";
 import { ESTADOS_COLA_CIERRE_DIA } from "@/lib/utils/colas-cierre";
 import { listarHistoricoCierresAdminSchema } from "@/lib/types/cierres-admin";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 170 — FASE 2, T I.1 (R40/R41/R44/R51/R54) — «Cierres del dia: historico» paginado.
 //
@@ -191,7 +192,12 @@ function servicio(repo: ICierresAdminRepository, contarZona?: { n: number }) {
     sumarPremiosVivosPorCierre: vi.fn(async (ids: string[]) =>
       Object.fromEntries(ids.map((id) => [id, "0.00"])),
     ),
-  }, sinRetenidas()); // FICHA 462: 7.o argumento requerido; este archivo no mide la marca
+  }, sinRetenidas(),
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  reglasPaisFijas(),); // FICHA 462: 7.o argumento requerido; este archivo no mide la marca
 }
 
 function input(extra: Record<string, unknown> = {}) {

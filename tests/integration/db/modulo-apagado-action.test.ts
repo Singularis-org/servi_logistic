@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { ModuloApagable, PrismaClient } from "@prisma/client";
 
 import { consultarMetricaFinanciera } from "@/lib/actions/analitica-financiera";
@@ -11,6 +11,17 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 import { crearOrganizacion } from "@/tests/fabricas/organizaciones";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, tomarLockDeEscrituraReal } from "./_postgres-real";
+
+// SLT-42 (T5.4): la zona del pais de la empresa es la de CR, como antes. Las reglas reales leen el pais
+// de la empresa en curso con el cliente global, que no ve la empresa de una transaccion revertida ni
+// tiene empresa fuera de `conEmpresa`; la zona por pais la miden `hora-por-pais-wallet` y `demo-qa`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
 
 // SL-23 · T10 (design §5.1, §5.3, §3.7; R17, R33, R34) — las actions de un módulo contra Postgres
 // real, con la puerta REAL: la lectura de `organizacion_modulo` va por el cliente de la app

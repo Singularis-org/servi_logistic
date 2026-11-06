@@ -4,6 +4,7 @@ import type { IReprogramacionTiendaService } from "@/lib/interfaces/services/IRe
 import type { IRecuperacionBodegaService } from "@/lib/interfaces/services/IRecuperacionBodegaService";
 import type { IRechazoTiendaService } from "@/lib/interfaces/services/IRechazoTiendaService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 100 (T1.4/T2.4) — borde (Server Actions) de resolver la novedad. `unauthenticated` (sin
 // sesion, R22) y `validation_error` (ordenId no-uuid / fecha no futura, R4/R23) se resuelven en el
@@ -47,7 +48,7 @@ describe("reprogramarNovedad (Server Action)", () => {
     const service = reprogramarService();
     const r = await reprogramarNovedad(
       { ordenId: ORDEN_UUID, fechaReprogramacion: FECHA_FUTURA },
-      { service, getActor: noActor },
+      { service, reglasPais: reglasPaisFijas(), getActor: noActor },
     );
     expect(r.status).toBe("unauthenticated");
     expect(service.reprogramar).not.toHaveBeenCalled();
@@ -57,7 +58,7 @@ describe("reprogramarNovedad (Server Action)", () => {
     const service = reprogramarService();
     const r = await reprogramarNovedad(
       { ordenId: "no-es-uuid", fechaReprogramacion: FECHA_FUTURA },
-      { service, getActor: actorTienda },
+      { service, reglasPais: reglasPaisFijas(), getActor: actorTienda },
     );
     expect(r.status).toBe("validation_error");
     expect(service.reprogramar).not.toHaveBeenCalled();
@@ -67,7 +68,7 @@ describe("reprogramarNovedad (Server Action)", () => {
     const service = reprogramarService();
     const r = await reprogramarNovedad(
       { ordenId: ORDEN_UUID, fechaReprogramacion: FECHA_PASADA },
-      { service, getActor: actorTienda },
+      { service, reglasPais: reglasPaisFijas(), getActor: actorTienda },
     );
     expect(r.status).toBe("validation_error");
     expect(service.reprogramar).not.toHaveBeenCalled();
@@ -78,7 +79,7 @@ describe("reprogramarNovedad (Server Action)", () => {
     for (const fecha of ["31-12-2099", "2099-13-40", "manana"]) {
       const r = await reprogramarNovedad(
         { ordenId: ORDEN_UUID, fechaReprogramacion: fecha },
-        { service, getActor: actorTienda },
+        { service, reglasPais: reglasPaisFijas(), getActor: actorTienda },
       );
       expect(r.status).toBe("validation_error");
     }
@@ -89,7 +90,7 @@ describe("reprogramarNovedad (Server Action)", () => {
     const service = reprogramarService();
     const r = await reprogramarNovedad(
       { ordenId: ORDEN_UUID, fechaReprogramacion: FECHA_FUTURA },
-      { service, getActor: actorTienda },
+      { service, reglasPais: reglasPaisFijas(), getActor: actorTienda },
     );
     expect(r.status).toBe("ok");
     expect(service.reprogramar).toHaveBeenCalledWith(ORDEN_UUID, FECHA_FUTURA, null, TIENDA);
@@ -99,7 +100,7 @@ describe("reprogramarNovedad (Server Action)", () => {
     const service = reprogramarService();
     await reprogramarNovedad(
       { ordenId: ORDEN_UUID, fechaReprogramacion: FECHA_FUTURA, motivo: "   " },
-      { service, getActor: actorTienda },
+      { service, reglasPais: reglasPaisFijas(), getActor: actorTienda },
     );
     expect(service.reprogramar).toHaveBeenCalledWith(ORDEN_UUID, FECHA_FUTURA, null, TIENDA);
   });
@@ -108,7 +109,7 @@ describe("reprogramarNovedad (Server Action)", () => {
     const service = reprogramarService();
     await reprogramarNovedad(
       { ordenId: ORDEN_UUID, fechaReprogramacion: FECHA_FUTURA, motivo: "  cliente pidio  " },
-      { service, getActor: actorTienda },
+      { service, reglasPais: reglasPaisFijas(), getActor: actorTienda },
     );
     expect(service.reprogramar).toHaveBeenCalledWith(ORDEN_UUID, FECHA_FUTURA, "cliente pidio", TIENDA);
   });
@@ -119,7 +120,7 @@ describe("reprogramarNovedad (Server Action)", () => {
     });
     const rF = await reprogramarNovedad(
       { ordenId: ORDEN_UUID, fechaReprogramacion: FECHA_FUTURA },
-      { service: forbidden, getActor: actorTienda },
+      { service: forbidden, reglasPais: reglasPaisFijas(), getActor: actorTienda },
     );
     expect(rF.status).toBe("forbidden");
 
@@ -128,7 +129,7 @@ describe("reprogramarNovedad (Server Action)", () => {
     });
     const rC = await reprogramarNovedad(
       { ordenId: ORDEN_UUID, fechaReprogramacion: FECHA_FUTURA },
-      { service: conflict, getActor: actorTienda },
+      { service: conflict, reglasPais: reglasPaisFijas(), getActor: actorTienda },
     );
     expect(rC.status).toBe("conflict");
   });
@@ -139,7 +140,7 @@ describe("reprogramarNovedad (Server Action)", () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     await reprogramarNovedad(
       { ordenId: ORDEN_UUID, fechaReprogramacion: FECHA_FUTURA, motivo: "x" },
-      { service: reprogramarService(), getActor: actorTienda },
+      { service: reprogramarService(), reglasPais: reglasPaisFijas(), getActor: actorTienda },
     );
     expect(warn).not.toHaveBeenCalled();
     expect(error).not.toHaveBeenCalled();

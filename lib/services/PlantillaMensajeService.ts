@@ -25,6 +25,9 @@ import type {
 } from "@/lib/types/plantilla-mensaje";
 import { descargaConfig } from "@/lib/config/descarga";
 import { previewConEjemplos, validarCuerpo } from "@/lib/utils/plantilla-mensaje";
+import { necesitaZona } from "@/lib/types/plantilla-datos";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 import type { PlantillaWhatsappPropagator } from "@/lib/services/whatsapp/plantilla-whatsapp-sync";
 import type { IWhatsappEnvioRepository } from "@/lib/interfaces/repositories/IWhatsappEnvioRepository";
 import {
@@ -62,6 +65,11 @@ export interface PlantillaInformeDeps {
   envios?: Pick<IWhatsappEnvioRepository, "nombresEncendidosConPlantilla">;
   /** R9/R48: identifica la app de Meta antes de mandar a aprobacion una plantilla con documento. */
   resolutorAppId?: IResolutorAppIdMeta;
+  /**
+   * SLT-42 (R22, R28): la zona del pais de la empresa, para la vista previa de una plantilla que
+   * pinta una fecha con hora. Solo se lee en ese caso; sin el puerto, la vista previa falla ahi.
+   */
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
 }
 
 /** R6: la combinacion final (informe, documento, tienda) es valida. `null` si lo es. */
@@ -454,6 +462,10 @@ export class PlantillaMensajeService implements IPlantillaMensajeService {
     if (!validado.ok) {
       return { status: "validation_error", fieldErrors: { cuerpo: [CUERPO_MALFORMADO] } };
     }
-    return { status: "ok", texto: previewConEjemplos(cuerpo) }; // R18/R19
+    // SLT-42 (R22, R28): las fechas con hora del ejemplo, en la zona del pais de la empresa.
+    const zona = necesitaZona(validado.variables)
+      ? await zonaDeLaEmpresa(this.informe.reglasPais, "vista previa de plantilla")
+      : undefined;
+    return { status: "ok", texto: previewConEjemplos(cuerpo, zona) }; // R18/R19
   }
 }

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { RolValue } from "@prisma/client";
 import { UsuarioService } from "@/lib/services/UsuarioService";
+import { CR, reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 import {
   CatalogoInvalidoError,
   UsuarioDuplicadoError,
@@ -29,10 +30,10 @@ function usuario(overrides: Partial<UsuarioPublico> = {}): UsuarioPublico {
     id: "usr-1",
     nombre: "Ana Torres",
     email: "ana@example.com",
-    telefono: "099",
+    telefono: "88880000",
     estado: "activo",
-    cedula: "1710034065",
-    tipoIdentificacionId: "tipo-1",
+    cedula: "171003406",
+    tipoIdentificacionId: "tipo-cr-cedula",
     rolId: "rol-1",
     fulfillment: false,
     createdAt: new Date("2026-01-01"),
@@ -58,7 +59,7 @@ function buildRepo(overrides: Partial<IUserRepository> = {}): IUserRepository {
     count: vi.fn().mockResolvedValue(0),
     update: vi.fn().mockResolvedValue(usuario()),
     setEstado: vi.fn().mockResolvedValue(usuario({ estado: "inactivo" })),
-    listTiposIdentificacion: vi.fn().mockResolvedValue([{ id: "tipo-1", value: "cedula" }]),
+    listTiposIdentificacion: vi.fn().mockResolvedValue([{ id: "tipo-cr-cedula", value: "cedula" }]),
     listRoles: vi.fn().mockResolvedValue([{ id: "rol-1", value: "maestro" }]),
     contarAdminSatelitesActivos: vi.fn().mockResolvedValue(0), // ficha 379: exigido por IUserRepository
     restablecerContrasena: vi.fn(), // ficha 362: el reset POR UN ADMIN, con su fila de registro
@@ -69,9 +70,9 @@ function buildRepo(overrides: Partial<IUserRepository> = {}): IUserRepository {
 const baseCrear = {
   nombre: "Ana Torres",
   email: "ana@example.com",
-  telefono: "099",
-  tipoIdentificacionId: "tipo-1",
-  cedula: "1710034065",
+  telefono: "88880000",
+  tipoIdentificacionId: "tipo-cr-cedula",
+  cedula: "171003406",
   rolId: "rol-1",
 };
 const crearManual = { ...baseCrear, passwordMode: "manual" as const, password: "Abcdef1!" };
@@ -83,7 +84,7 @@ let service: UsuarioService;
 beforeEach(() => {
   vi.clearAllMocks();
   repo = buildRepo();
-  service = new UsuarioService(repo);
+  service = new UsuarioService(repo, undefined, undefined, undefined, undefined, reglasPaisFijas(CR));
 });
 
 describe("autorizacion — solo maestro (R3/R4)", () => {
@@ -130,7 +131,7 @@ describe("crear (R7/R8/R9/R10/R11/R12/R32/R33/R34/R35)", () => {
 
   it("crear con email duplicada -> conflict con campo email (R10)", async () => {
     repo = buildRepo({ create: vi.fn().mockRejectedValue(new UsuarioDuplicadoError("email")) });
-    service = new UsuarioService(repo);
+    service = new UsuarioService(repo, undefined, undefined, undefined, undefined, reglasPaisFijas(CR));
     const r = await service.crear(crearManual, MAESTRO);
     expect(r.status).toBe("conflict");
     if (r.status === "conflict") expect(r.campo).toBe("email");
@@ -138,7 +139,7 @@ describe("crear (R7/R8/R9/R10/R11/R12/R32/R33/R34/R35)", () => {
 
   it("crear con cedula duplicada -> conflict con campo cedula (R11)", async () => {
     repo = buildRepo({ create: vi.fn().mockRejectedValue(new UsuarioDuplicadoError("cedula")) });
-    service = new UsuarioService(repo);
+    service = new UsuarioService(repo, undefined, undefined, undefined, undefined, reglasPaisFijas(CR));
     const r = await service.crear(crearManual, MAESTRO);
     expect(r.status).toBe("conflict");
     if (r.status === "conflict") expect(r.campo).toBe("cedula");
@@ -148,7 +149,7 @@ describe("crear (R7/R8/R9/R10/R11/R12/R32/R33/R34/R35)", () => {
     repo = buildRepo({
       create: vi.fn().mockRejectedValue(new CatalogoInvalidoError("rolId", "x")),
     });
-    service = new UsuarioService(repo);
+    service = new UsuarioService(repo, undefined, undefined, undefined, undefined, reglasPaisFijas(CR));
     const r = await service.crear(crearManual, MAESTRO);
     expect(r.status).toBe("validation_error");
     if (r.status === "validation_error") expect(r.fieldErrors).toHaveProperty("rolId");
@@ -192,7 +193,7 @@ describe("actualizar (R16/R17/R18/R19)", () => {
 
   it("actualizar de usuario inexistente -> not_found (R17)", async () => {
     repo = buildRepo({ update: vi.fn().mockResolvedValue(null) });
-    service = new UsuarioService(repo);
+    service = new UsuarioService(repo, undefined, undefined, undefined, undefined, reglasPaisFijas(CR));
     const r = await service.actualizar("x", { nombre: "N" }, MAESTRO);
     expect(r.status).toBe("not_found");
   });
@@ -201,7 +202,7 @@ describe("actualizar (R16/R17/R18/R19)", () => {
     repo = buildRepo({
       update: vi.fn().mockRejectedValue(new CatalogoInvalidoError("tipoIdentificacionId", "x")),
     });
-    service = new UsuarioService(repo);
+    service = new UsuarioService(repo, undefined, undefined, undefined, undefined, reglasPaisFijas(CR));
     const r = await service.actualizar("usr-1", { tipoIdentificacionId: "x" }, MAESTRO);
     expect(r.status).toBe("validation_error");
     if (r.status === "validation_error") {
@@ -221,7 +222,7 @@ describe("fulfillment — invariante por rol (feature 27/R4/R4a/R8/R9/R12)", () 
 
   function withRoles(overrides: Partial<IUserRepository> = {}) {
     repo = buildRepo({ listRoles: vi.fn().mockResolvedValue(ROLES), ...overrides });
-    service = new UsuarioService(repo);
+    service = new UsuarioService(repo, undefined, undefined, undefined, undefined, reglasPaisFijas(CR));
   }
 
   it("crear adminTienda con fulfillment=true persiste true (R8)", async () => {
@@ -312,7 +313,7 @@ describe("cambiarEstado (R20/R21/R22)", () => {
 
   it("cambiarEstado de inexistente -> not_found (R22)", async () => {
     repo = buildRepo({ setEstado: vi.fn().mockResolvedValue(null) });
-    service = new UsuarioService(repo);
+    service = new UsuarioService(repo, undefined, undefined, undefined, undefined, reglasPaisFijas(CR));
     const r = await service.cambiarEstado("x", { estado: "activo" }, MAESTRO);
     expect(r.status).toBe("not_found");
   });
@@ -321,7 +322,7 @@ describe("cambiarEstado (R20/R21/R22)", () => {
 describe("listar / listarTiposIdentificacion", () => {
   it("listar calcula skip y devuelve page/pageSize/total (R13)", async () => {
     repo = buildRepo({ list: vi.fn().mockResolvedValue({ items: [], total: 5 }) });
-    service = new UsuarioService(repo);
+    service = new UsuarioService(repo, undefined, undefined, undefined, undefined, reglasPaisFijas(CR));
     const r = await service.listar(
       { page: 2, pageSize: 10, sortBy: "createdAt", sortDir: "desc" },
       MAESTRO,
@@ -339,7 +340,7 @@ describe("listar / listarTiposIdentificacion", () => {
   it("listarTiposIdentificacion devuelve el catalogo (R29)", async () => {
     const r = await service.listarTiposIdentificacion(MAESTRO);
     expect(r.status).toBe("ok");
-    if (r.status === "ok") expect(r.tipos).toEqual([{ id: "tipo-1", value: "cedula" }]);
+    if (r.status === "ok") expect(r.tipos).toEqual([{ id: "tipo-cr-cedula", value: "cedula" }]);
   });
 
   it("listarRoles devuelve el catalogo de roles", async () => {
@@ -377,7 +378,7 @@ describe("285/T-S1 — el guard va ANTES de consultar, tambien con filtros (R26)
   it("un actor no maestro recibe forbidden y el repositorio NO recibe ninguna llamada", async () => {
     for (const actor of [ADMIN, MENSAJERO, DESCONOCIDO]) {
       const repoLocal = buildRepo();
-      const svc = new UsuarioService(repoLocal);
+      const svc = new UsuarioService(repoLocal, undefined, undefined, undefined, undefined, reglasPaisFijas(CR));
 
       const listado = await svc.listar(LISTAR_CON_FILTRO, actor);
       const descarga = await svc.listarCompleto(
@@ -395,7 +396,7 @@ describe("285/T-S1 — el guard va ANTES de consultar, tambien con filtros (R26)
   it("CONTRAPRUEBA: el maestro SI consulta con los filtros puestos", async () => {
     // Sin este lado, el test de arriba pasaria con un servicio que no consultara NUNCA.
     const repoLocal = buildRepo();
-    const r = await new UsuarioService(repoLocal).listar(LISTAR_CON_FILTRO, MAESTRO);
+    const r = await new UsuarioService(repoLocal, undefined, undefined, undefined, undefined, reglasPaisFijas(CR)).listar(LISTAR_CON_FILTRO, MAESTRO);
 
     expect(r.status).toBe("ok");
     expect(repoLocal.list).toHaveBeenCalledTimes(1);

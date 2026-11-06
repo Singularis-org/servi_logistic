@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 
+import { comoPlataforma } from "@/lib/db/contexto-empresa";
 import type {
   ActorDeAltaDePais,
   CrearPaisRepoResultado,
@@ -8,7 +9,8 @@ import type {
 import { textoConstraintP2002 } from "@/lib/repositories/_shared/prisma-unique";
 import { appendAccionPlataforma } from "@/lib/repositories/registrar-accion-plataforma";
 import { resolverActorCongelado } from "@/lib/repositories/registrar-accion";
-import type { DatosDeAltaDePais, PaisDisponibleDTO, PaisDTO } from "@/lib/types/pais";
+import type { DatosDeAltaDePais, PaisDisponibleDTO, PaisDTO, TipoDocumentoDTO } from "@/lib/types/pais";
+import type { ReglaDocumento } from "@/lib/utils/documento";
 
 /**
  * SL-20 (design §2.1, §5; R23, R33) — la tabla `pais`, de plataforma.
@@ -16,8 +18,10 @@ import type { DatosDeAltaDePais, PaisDisponibleDTO, PaisDTO } from "@/lib/types/
  * No abre `comoPlataforma`: el contexto lo pone quien llama (la action del superadmin para leer y
  * crear; el layout, en el contexto de la empresa, para `deLaEmpresa`). Una empresa lee `pais` y no
  * lo escribe (R3): un `crear` fuera de plataforma lo rechaza la base.
+ *
+ * SLT-42: la única excepción es `zonasConEmpresas`, que abre `comoPlataforma` ella misma (design §6.1).
  */
-export type PaisPrismaClient = Pick<PrismaClient, "pais" | "organizacion" | "$transaction">;
+export type PaisPrismaClient = Pick<PrismaClient, "pais" | "organizacion" | "tipoIdentificacion" | "$transaction">;
 
 /** Lo que sale de la base de cada país: el DTO entero, nada más (`created_at` no lo usa nadie). */
 const SELECT_PAIS = {
@@ -33,6 +37,10 @@ const SELECT_PAIS = {
   digitosCodigoNivel2: true,
   digitosCodigoNivel3: true,
   disponible: true,
+  // SLT-42 (R1): teléfono y hora del país.
+  prefijoTelefonico: true,
+  telefonoDigitosNacionales: true,
+  zonaHoraria: true,
 } as const;
 
 export class PaisRepository implements IPaisRepository {
@@ -127,6 +135,63 @@ export class PaisRepository implements IPaisRepository {
     });
     return fila?.pais ?? null;
   }
+
+  /**
+   * SLT-42 (R11). El país va en el `WHERE`: un `id` o un `value` de otro país no casa. Si el texto
+   * casara con el `id` de un tipo y el `value` de otro, gana el `id`.
+   */
+  async tipoDocumentoDelPais(paisId: string, idOValue: string): Promise<TipoDocumentoDTO | null> {
+    // Sin `select`: la fila es corta y el DTO se arma campo a campo abajo. (Un `select` con el
+    // literal del flag lo confundiría la guardia de 374, que lo reserva a la geografía.)
+    const filas = await this.prisma.tipoIdentificacion.findMany({
+      where: { paisId, OR: [{ id: idOValue }, { value: idOValue }] },
+    });
+    const fila = filas.find((f) => f.id === idOValue) ?? filas[0];
+    if (!fila) return null;
+    return {
+      id: fila.id,
+      value: fila.value,
+      paisId: fila.paisId,
+      clave: fila.clave,
+      nombre: fila.nombre,
+      caracteres: caracteresDeDocumento(fila.caracteres),
+      largoMin: fila.largoMin,
+      largoMax: fila.largoMax,
+      activo: fila.activo,
+    };
+  }
+
+  /** SLT-42 (R6). El inactivo no cuenta: no se puede elegir en ningún alta (R11). */
+  async tieneTipoDocumentoActivo(paisId: string): Promise<boolean> {
+    const fila = await this.prisma.tipoIdentificacion.findFirst({ where: { paisId, activo: true }, select: { id: true } });
+    return fila !== null;
+  }
+
+  /**
+   * SLT-42 (design §6.1, R25): `SELECT DISTINCT p.zona_horaria FROM pais p JOIN organizacion o ON
+   * o.pais_id = p.id WHERE p.zona_horaria IS NOT NULL`, escrito con el cliente. En plataforma porque
+   * la cola de jobs no tiene empresa y la RLS de `organizacion` solo deja ver la propia.
+   */
+  zonasConEmpresas(): Promise<string[]> {
+    return comoPlataforma("SL-20", "SLT-42: zonas horarias de los países con empresas, para agendar los jobs diarios por zona", async () => {
+      const filas = await this.prisma.pais.findMany({
+        where: { zonaHoraria: { not: null }, organizaciones: { some: {} } },
+        distinct: ["zonaHoraria"],
+        orderBy: [{ zonaHoraria: "asc" }],
+        select: { zonaHoraria: true },
+      });
+      return filas.flatMap((f) => (f.zonaHoraria === null ? [] : [f.zonaHoraria]));
+    });
+  }
+}
+
+/**
+ * La columna es `TEXT` con el CHECK `tipo_identificacion_caracteres` (`digitos` | `alfanumerico`).
+ * Otro valor es una base que no cumple su propia regla: se lanza en vez de validar con una regla inventada.
+ */
+function caracteresDeDocumento(valor: string): ReglaDocumento["caracteres"] {
+  if (valor === "digitos" || valor === "alfanumerico") return valor;
+  throw new Error(`tipo_identificacion.caracteres inesperado: ${valor}`);
 }
 
 /**

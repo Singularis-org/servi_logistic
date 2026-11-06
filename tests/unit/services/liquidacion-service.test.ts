@@ -27,6 +27,7 @@ import type {
   RegistrarPagoMensajeroInput,
   RegistrarPagoTiendaInput,
 } from "@/lib/types/liquidacion";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 172 / T B.3 (mitad TIENDA) + T B.5 (mitad MENSAJERO) — `LiquidacionService`.
 // Cubre R1, R2, R5, R6, R20, R21, R23, R24, R25, R29, R30, R31, R32, R35, R36, R38, R39, R40,
@@ -329,7 +330,11 @@ function buildDobles(opciones: {
     mensajeroRepo,
     runTransaction,
     caja,
-    repartoRepo, // feature 205 (T3.2): sin default, igual que el puerto de la caja
+    repartoRepo, // feature 205 (T3.2): sin default, igual que el puerto de la caja,
+    undefined, // el reloj por defecto
+    undefined, // el tope del reparto por defecto
+    undefined, // sin comprobante
+    reglasPaisFijas(),
   );
   return {
     service,

@@ -5,6 +5,17 @@ import type { ICajaKardexService } from "@/lib/interfaces/services/ICajaKardexSe
 import type { ICuentaKardexService } from "@/lib/interfaces/services/ICuentaKardexService";
 import { ORIGENES_FALSOS } from "@/tests/fixtures/origenes-falsos";
 
+// SLT-42 (T5.4): la zona del pais de la empresa, sin sesion ni base: la de CR, como antes. El borde
+// (`zonaDelBorde`) y los composition roots leen `construirReglasPaisEmpresa`; la zona en si la mide
+// `tests/unit/services/hora-por-pais-wallet.test.ts`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
+
 // SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
 vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
 

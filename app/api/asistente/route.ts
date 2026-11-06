@@ -15,6 +15,7 @@ import { leerCatalogoAyuda } from "@/lib/ayuda/catalogo";
 import { AnthropicAsistenteClient } from "@/lib/clients/anthropic-asistente";
 import { AsistenteUsoRepository } from "@/lib/repositories/AsistenteUsoRepository";
 import { AsistenteService } from "@/lib/services/AsistenteService";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import {
   asistenteDeLaEmpresa,
   type AsistenteDeLaEmpresa,
@@ -35,6 +36,7 @@ import type { EventoAsistente } from "@/lib/asistente/protocolo";
 import type { ActorAsistente, IAsistenteService } from "@/lib/interfaces/services/IAsistenteService";
 import type { IAsistenteUsoRepository } from "@/lib/interfaces/repositories/IAsistenteUsoRepository";
 import type { ICredencialesIntegracion } from "@/lib/interfaces/services/ICredencialesIntegracion";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 
 /**
@@ -132,6 +134,8 @@ export interface AsistenteRouteDeps {
   empresaDeLaSesion?: () => Promise<string | null>;
   fetchImpl?: typeof fetch;
   usoRepo?: IAsistenteUsoRepository;
+  /** SLT-42 (R22): el país de la empresa de la sesión, para el día del tope. Sin él, el real. */
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
 }
 
 /**
@@ -160,6 +164,8 @@ async function construirServicio(deps: AsistenteRouteDeps): Promise<IAsistenteSe
     usoRepo: deps.usoRepo ?? new AsistenteUsoRepository(getPrismaClient()),
     leerCatalogo: leerCatalogoAyuda,
     maxConsultasDia: config.ASISTENTE_MAX_CONSULTAS_DIA,
+    // SLT-42 (R22, R28): el tope diario se cuenta por el día de la zona del país de la empresa.
+    reglasPais: deps.reglasPais ?? construirReglasPaisEmpresa(getPrismaClient()),
   });
 }
 

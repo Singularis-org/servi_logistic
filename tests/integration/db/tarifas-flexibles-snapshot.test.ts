@@ -29,6 +29,8 @@ import {
   type FksDeOrden,
   type TxDeTest,
 } from "./_postgres-real";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { reglasPaisFijas, ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // SLT-52 T5.4 (design §2.5, §7, §12.1) — EL CONGELADO DEL CIERRE Y SU LECTURA, CONTRA POSTGRES REAL.
 //
@@ -276,6 +278,9 @@ function servicioCierre(cli: PrismaClient, e: Escenario) {
     } as never,
     {} as never,
     new TarifaZonaMensajeroRepository(cli),
+    undefined,
+    undefined,
+    reglasPaisFijas(),
   );
 }
 
@@ -311,7 +316,7 @@ function repoAdmin(cli: PrismaClient) {
 async function lecturas(tx: TxDeTest, e: Escenario, cierreId: string) {
   return comoEmpresa(tx, e.A, async () => {
     const cli = clienteConSavepoint(tx);
-    const detalle = await repoAdmin(cli).findCierreByIdEnAlcance(cierreId, ALCANCE_CENTRAL);
+    const detalle = await repoAdmin(cli).findCierreByIdEnAlcance(cierreId, ALCANCE_CENTRAL, ZONA_CR);
     if (detalle === null) throw new Error("el detalle del cierre no se encontro en su alcance");
     const ingresoPorGestion = Object.fromEntries(
       detalle.gestiones.map((g) => [g.gestionId, g.ingresoEmpresa]),
@@ -340,7 +345,7 @@ async function lecturas(tx: TxDeTest, e: Escenario, cierreId: string) {
 function consultaDeLaTienda(tiendaId: string) {
   const preparada = prepararConsultaProductos(
     { tienda_id: [tiendaId] },
-    { usuarioId: "maestro-del-test", rol: "maestro" } as never,
+    { usuarioId: "maestro-del-test", rol: "maestro" } as never, ZONA_DE_CR,
   );
   if (preparada.status !== "ok") throw new Error(`la consulta de prueba salio ${preparada.status}`);
   return preparada.consulta;
@@ -719,6 +724,8 @@ describeSiHayBase("SLT-52 T5.4 — el cierre congela el modelo nuevo y lo lee co
         { findUsuarioVehiculoId: async () => null, findEstatusIdByValue: async () => null } as never,
         new TarifaZonaMensajeroRepository(clienteConSavepoint(tx)),
         { warn: () => undefined },
+        undefined,
+        reglasPaisFijas(),
       );
       const salida = await comoEmpresa(tx, e.A, () => corte.ejecutarCorte());
       const cierre = await tx.cierreDia.findFirstOrThrow({
@@ -799,7 +806,7 @@ describeSiHayBase("SLT-52 T5.4 — el cierre congela el modelo nuevo y lo lee co
       const e = { A, Z: fks.zonaId, M } as Escenario;
       const cierreId = await solicitar(tx, e);
       const leer = () =>
-        comoEmpresa(tx, A, () => repoAdmin(clienteConSavepoint(tx)).findCierreByIdEnAlcance(cierreId, ALCANCE_CENTRAL));
+        comoEmpresa(tx, A, () => repoAdmin(clienteConSavepoint(tx)).findCierreByIdEnAlcance(cierreId, ALCANCE_CENTRAL, ZONA_CR));
       const antes = (await leer())?.gestiones.find((g) => g.gestionId === o.gestionId)?.ingresoEmpresa;
       // La tarifa viva cambia despues: el viejo tambien lee lo congelado (69/R18).
       await tx.tarifa.update({ where: { id: tarifa.id }, data: { valorFlete: "5000.00", fulfillment: "900.00" } });
@@ -909,6 +916,9 @@ describeSiHayBase("SLT-52 T5.4 — el cierre congela el modelo nuevo y lo lee co
         } as never,
         {} as never,
         pagosConActivacion,
+        undefined,
+        undefined,
+        reglasPaisFijas(),
       );
       const actor: Actor = { usuarioId: M, rol: "mensajero" };
       await expect(comoEmpresa(tx, A, () => servicio.solicitarCierre(actor))).rejects.toBeInstanceOf(

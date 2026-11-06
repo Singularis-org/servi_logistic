@@ -1,6 +1,8 @@
 "use server";
 
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
+import { PaisRepository } from "@/lib/repositories/PaisRepository";
+import { zonaDeOrganizacionCon } from "@/lib/services/zona-de-la-empresa";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import type { IPlanesService } from "@/lib/interfaces/services/IPlanesService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
@@ -29,7 +31,13 @@ export interface PlanesDeps {
 
 /** El composition root: el servicio con su repositorio real. No exportado: un "use server" solo exporta actions. */
 function construirPlanesService(): IPlanesService {
-  return new PlanesService(new PlanesRepository(getPrismaClient()));
+  const prisma = getPrismaClient();
+  return new PlanesService(
+    new PlanesRepository(prisma),
+    undefined,
+    // SLT-42 (R22, R28): la fecha que se muestra, en la zona del país de la empresa.
+    zonaDeOrganizacionCon(new PaisRepository(prisma)),
+  );
 }
 
 async function conServicio<T>(deps: PlanesDeps, fn: (s: IPlanesService, actor: Actor | null) => Promise<T>): Promise<T> {

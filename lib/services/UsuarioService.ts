@@ -32,8 +32,16 @@ import type {
 } from "@/lib/types/usuario";
 import type { IZonaRepository } from "@/lib/interfaces/repositories/IZonaRepository";
 import type { IVehiculoRepository } from "@/lib/interfaces/repositories/IVehiculoRepository";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import { descargaConfig } from "@/lib/config/descarga";
 import { esPlataforma } from "@/lib/auth/plataforma";
+import { EmpresaNoResuelta } from "@/lib/db/contexto-empresa";
+import {
+  rechazoGenerico,
+  validarPersonaDelPais,
+  validarTelefonoDePersona,
+  validarTipoYDocumento,
+} from "@/lib/services/validacion-documento-telefono";
 import { TopeDelPlanAlcanzado, traducirErrorDeTope } from "@/lib/planes/tope-error";
 import { rechazoDeNombreDeEtiqueta } from "@/lib/utils/nombre-imprimible-etiqueta";
 import { hashPassword } from "@/lib/utils/password";
@@ -89,6 +97,27 @@ function rechazoDeTopeEnRol(tope: TopeDelPlanAlcanzado): {
   return { status: "validation_error", fieldErrors: { rolId: [tope.message] } };
 }
 
+// SLT-42: las claves de `fieldErrors` de `UsuarioForm` para tipo, documento y telefono.
+const CAMPOS_DE_USUARIO = { telefono: "telefono", documento: "cedula", tipo: "tipoIdentificacionId" } as const;
+
+type ValidacionDePersona =
+  | { ok: true; telefono: string; cedula: string; tipoIdentificacionId: string }
+  | { ok: false; fieldErrors: Record<string, string[]> };
+
+// SLT-42 (R17): sin empresa, telefono y documento con la regla generica; el tipo lo sigue comprobando
+// el catalogo en la escritura (`CatalogoInvalidoError`), como antes de esta ficha.
+function validarPersonaSinEmpresa(
+  input: Pick<CrearUsuarioInput, "telefono" | "cedula" | "tipoIdentificacionId">,
+): ValidacionDePersona {
+  const fieldErrors: Record<string, string[]> = {};
+  const motivoTelefono = rechazoGenerico(input.telefono);
+  if (motivoTelefono !== null) fieldErrors.telefono = [motivoTelefono];
+  const motivoCedula = rechazoGenerico(input.cedula);
+  if (motivoCedula !== null) fieldErrors.cedula = [motivoCedula];
+  if (Object.keys(fieldErrors).length > 0) return { ok: false, fieldErrors };
+  return { ok: true, ...input };
+}
+
 export class UsuarioService implements IUsuarioService {
   // Feature 24/R28: `zonaRepo` opcional para validar la existencia de la zona. Se
   // inyecta en produccion; los tests que no ejercitan zona pueden omitirlo.
@@ -123,6 +152,11 @@ export class UsuarioService implements IUsuarioService {
       ICierreBodegaRepository,
       "resumirConsolidablesPendientes"
     >,
+    // SLT-42 (R5, R9-R17): las reglas del pais de la empresa en curso (tipos de documento y region
+    // del telefono). OPCIONAL EN EL CONSTRUCTOR, OBLIGATORIO EN EL USO, con la misma disciplina que
+    // `sessionRepo`: el alta, la edicion del telefono o del tipo y la lista de tipos LANZAN si no
+    // esta, en vez de guardar sin validar. Que se pasa lo prueba `usuarios-composition.test.ts`.
+    private readonly reglasPais?: IReglasPaisEmpresa,
   ) {}
 
   async crear(input: CrearUsuarioInput, actor: Actor): Promise<CrearUsuarioServiceResult> {
@@ -160,6 +194,11 @@ export class UsuarioService implements IUsuarioService {
       return { status: "validation_error", fieldErrors: { rolId: [ROL_NO_ASIGNABLE] } };
     }
 
+    // SLT-42 (R10, R11, R14-R17): tipo, documento y telefono con las reglas del pais de la empresa,
+    // antes del hash y de toda escritura.
+    const persona = await this.validarPersonaNueva(input);
+    if (!persona.ok) return { status: "validation_error", fieldErrors: persona.fieldErrors };
+
     // R30: resuelve la contrasena segun el modo. Nunca se loguea (R25/R34).
     const generated = input.passwordMode === "generate";
     const plain = generated ? generateStrongPassword() : input.password; // R32/R31
@@ -191,9 +230,9 @@ export class UsuarioService implements IUsuarioService {
         {
           nombre: input.nombre,
           email: input.email,
-          telefono: input.telefono,
-          cedula: input.cedula,
-          tipoIdentificacionId: input.tipoIdentificacionId,
+          telefono: persona.telefono, // SLT-42 (R15): el numero nacional en digitos
+          cedula: persona.cedula,
+          tipoIdentificacionId: persona.tipoIdentificacionId,
           rolId: input.rolId,
           passwordHash,
           estado: "activo", // R8: nace activo (a diferencia de la postulacion publica)
@@ -348,6 +387,16 @@ export class UsuarioService implements IUsuarioService {
 
     const data = await this.buildUpdateData(input, actual); // R16: solo campos editables
 
+    // SLT-42 (R9, R11, R12, R14-R17): solo lo que cambia se valida con las reglas del pais.
+    const persona = await this.validarCambioDePersona(input, actual);
+    if (persona !== null) {
+      if (!persona.ok) return { status: "validation_error", fieldErrors: persona.fieldErrors };
+      if (input.telefono !== undefined) data.telefono = persona.telefono;
+      if (input.tipoIdentificacionId !== undefined) {
+        data.tipoIdentificacionId = persona.tipoIdentificacionId;
+      }
+    }
+
     // Feature 24/R27/R28: si se edita la zona, se valida y se aplica la invariante por rol
     // (con el rol resultante).
     //
@@ -437,7 +486,10 @@ export class UsuarioService implements IUsuarioService {
   ): Promise<ListarTiposIdentificacionServiceResult> {
     if (!ALLOWED_ROLES.has(actor.rol)) return { status: "forbidden" }; // R3/R4
 
-    const tipos = await this.repo.listTiposIdentificacion(); // R29
+    // SLT-42 (R5): solo los activos del pais de la empresa. Sin empresa no hay lista: `deLaEmpresa`
+    // lanza `EmpresaNoResuelta` y la operacion falla cerrada.
+    const { paisId } = await this.reglasDelPais("listarTiposIdentificacion").deLaEmpresa();
+    const tipos = await this.repo.listTiposIdentificacion(paisId); // R29
     return { status: "ok", tipos };
   }
 
@@ -655,6 +707,113 @@ export class UsuarioService implements IUsuarioService {
     const tope = traducirErrorDeTope(error);
     if (tope instanceof TopeDelPlanAlcanzado) return rechazoDeTopeEnRol(tope);
     throw error;
+  }
+
+  private reglasDelPais(operacion: string): IReglasPaisEmpresa {
+    if (!this.reglasPais) {
+      throw new Error(
+        `UsuarioService.${operacion} requiere las reglas del pais de la empresa: sin ellas el ` +
+          "telefono y el documento se guardarian sin validar (SLT-42)",
+      );
+    }
+    return this.reglasPais;
+  }
+
+  /**
+   * SLT-42 (R17): el pais de la empresa en curso, o `null` si no hay empresa (usuario de plataforma).
+   * Solo `EmpresaNoResuelta` significa «sin empresa»; cualquier otro fallo se propaga.
+   */
+  private async paisDeLaEmpresa(operacion: string): Promise<string | null> {
+    try {
+      return (await this.reglasDelPais(operacion).deLaEmpresa()).paisId;
+    } catch (error) {
+      if (error instanceof EmpresaNoResuelta) return null;
+      throw error;
+    }
+  }
+
+  /**
+   * SLT-42 (R11, R12): el tipo pedido, si es del pais de la empresa y esta activo, y el documento
+   * normalizado con su regla (R10). Los errores van en `campoDelDocumento`: en el alta es el documento;
+   * en la edicion, el tipo, porque el documento no se edita desde aqui (R12).
+   */
+  private async validarTipoYDocumento(
+    operacion: string,
+    tipoPedido: string,
+    cedula: string,
+    campoDelDocumento: "cedula" | "tipoIdentificacionId",
+  ): Promise<{ ok: true; tipoId: string; cedula: string } | { ok: false; campo: string; mensaje: string }> {
+    const tipo = await this.reglasDelPais(operacion).tipoDocumento(tipoPedido);
+    const r = validarTipoYDocumento(tipo, cedula);
+    if (r.ok) return { ok: true, tipoId: r.tipo.id, cedula: r.documento };
+    if (r.en === "tipo") return { ok: false, campo: "tipoIdentificacionId", mensaje: r.mensaje };
+    const mensaje =
+      campoDelDocumento === "cedula" ? r.mensaje : `El documento guardado no cumple la regla de este tipo. ${r.mensaje}`;
+    return { ok: false, campo: campoDelDocumento, mensaje };
+  }
+
+  /** SLT-42 (R10, R11, R14-R17): el alta valida los tres campos y junta todos los errores. */
+  private async validarPersonaNueva(
+    input: Pick<CrearUsuarioInput, "telefono" | "cedula" | "tipoIdentificacionId">,
+  ): Promise<ValidacionDePersona> {
+    const paisId = await this.paisDeLaEmpresa("crear");
+    if (paisId === null) return validarPersonaSinEmpresa(input);
+
+    const tipo = await this.reglasDelPais("crear").tipoDocumento(input.tipoIdentificacionId);
+    const r = validarPersonaDelPais(paisId, { telefono: input.telefono, documento: input.cedula, tipo }, CAMPOS_DE_USUARIO);
+    if (!r.ok) return r;
+    return { ok: true, telefono: r.telefono, cedula: r.documento, tipoIdentificacionId: r.tipo.id };
+  }
+
+  /**
+   * SLT-42 (R9, R11, R12, R14-R17): en la edicion solo se valida lo que CAMBIA, para que un telefono o
+   * un documento guardados antes de esta ficha no bloqueen editar otro campo (R9, P1). `null` = no
+   * cambia ninguno de los dos y no hay nada que validar.
+   */
+  private async validarCambioDePersona(
+    input: ActualizarUsuarioInput,
+    actual: UsuarioPublico,
+  ): Promise<ValidacionDePersona | null> {
+    const cambiaTelefono = input.telefono !== undefined && input.telefono !== actual.telefono;
+    const cambiaTipo =
+      input.tipoIdentificacionId !== undefined &&
+      input.tipoIdentificacionId !== actual.tipoIdentificacionId;
+    if (!cambiaTelefono && !cambiaTipo) return null;
+
+    const sinCambios = { telefono: actual.telefono, cedula: actual.cedula, tipoIdentificacionId: actual.tipoIdentificacionId };
+    const paisId = await this.paisDeLaEmpresa("actualizar");
+    if (paisId === null) {
+      // R17: el documento no se edita, asi que solo el telefono cae en la regla generica.
+      const motivo = cambiaTelefono ? rechazoGenerico(input.telefono ?? "") : null;
+      if (motivo !== null) return { ok: false, fieldErrors: { telefono: [motivo] } };
+      return {
+        ok: true,
+        cedula: actual.cedula,
+        telefono: input.telefono ?? actual.telefono,
+        tipoIdentificacionId: input.tipoIdentificacionId ?? actual.tipoIdentificacionId,
+      };
+    }
+
+    const fieldErrors: Record<string, string[]> = {};
+    const resultado = { ok: true as const, ...sinCambios };
+    if (cambiaTelefono) {
+      const r = validarTelefonoDePersona(input.telefono ?? "", paisId); // R14, R16
+      if (r.ok) resultado.telefono = r.nacional; // R15
+      else fieldErrors.telefono = [r.mensaje];
+    }
+    if (cambiaTipo) {
+      const doc = await this.validarTipoYDocumento(
+        "actualizar",
+        input.tipoIdentificacionId ?? "",
+        actual.cedula,
+        "tipoIdentificacionId",
+      );
+      // R12: el documento guardado no se reescribe; solo se comprueba contra el tipo nuevo.
+      if (doc.ok) resultado.tipoIdentificacionId = doc.tipoId;
+      else fieldErrors[doc.campo] = [doc.mensaje];
+    }
+    if (Object.keys(fieldErrors).length > 0) return { ok: false, fieldErrors };
+    return resultado;
   }
 
   private async buildUpdateData(

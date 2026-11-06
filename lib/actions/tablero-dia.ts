@@ -15,6 +15,7 @@ import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { TableroDiaRepository } from "@/lib/repositories/TableroDiaRepository";
 import { OrdenHistorialService } from "@/lib/services/OrdenHistorialService";
 import { TableroDiaService } from "@/lib/services/TableroDiaService";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import type { ResultadoDetalleDia, ResultadoTableroDia } from "@/lib/types/tablero-dia";
 import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 import { withErrorHandler } from "@/lib/errors";
@@ -75,6 +76,7 @@ function construirServicio(): ITableroDiaService {
       new OrdenTraspasoRepository(prisma),
     ),
     crearTableroDiaCacheDeNext(),
+    construirReglasPaisEmpresa(prisma), // SLT-42 (R22, R28): la zona horaria del pais de la empresa.
   );
 }
 

@@ -47,15 +47,11 @@ import {
 // el que el sistema cobra, y dos agregaciones «iguales» divergen a la primera correccion.
 import { contarIntentosVigentesEnLoteCon } from "@/lib/repositories/OrdenHistorialRepository";
 import type { CierreGestionDescargaDTO } from "@/lib/interfaces/services/ICierresAdminService";
-import type { FiltrosDescargaGestiones } from "@/lib/types/filtros-cierres";
+import type { FiltrosDescargaGestionesRepo } from "@/lib/types/filtros-cierres";
 import { CierreDetalleFaltanteError } from "@/lib/utils/cierre-detalle";
 import { ESTADOS_COLA_SOLICITADO } from "@/lib/utils/colas-cierre";
 import type { PaginaRepositorio, RangoPagina } from "@/lib/utils/rango-pagina";
-import type { FiltrosCierresBodega } from "@/lib/types/filtros-cierres";
-import {
-  inicioDelDiaCREnUtc,
-  inicioDelDiaSiguienteCREnUtc,
-} from "@/lib/utils/fecha-cr";
+import type { FiltrosCierresBodegaRepo } from "@/lib/types/filtros-cierres";
 import { NOMBRE_USUARIO_SELECT, nombreCompletoUsuario } from "@/lib/utils/nombre-usuario";
 
 // Solo el estado que la 40 puede transicionar (R18): la guardia del updateMany.
@@ -218,17 +214,16 @@ function toDetalleCierreRow(r: DetalleCierreRow): CierreBodegaDetalleCierreRow {
  * escrito aparte porque la tabla y sus columnas son otras.
  */
 function filtrosBodegaWhere(
-  filtros: FiltrosCierresBodega | undefined,
+  filtros: FiltrosCierresBodegaRepo | undefined,
 ): Prisma.CierreBodegaWhereInput[] {
   if (!filtros) return [];
   const condiciones: Prisma.CierreBodegaWhereInput[] = [];
-  if (filtros.desde !== undefined || filtros.hasta !== undefined) {
+  // SLT-42 (R22): los limites llegan ya resueltos en la zona del pais de la empresa.
+  if (filtros.solicitadoDesde !== undefined || filtros.solicitadoHasta !== undefined) {
     condiciones.push({
       solicitadoAt: {
-        ...(filtros.desde !== undefined ? { gte: inicioDelDiaCREnUtc(filtros.desde) } : {}),
-        ...(filtros.hasta !== undefined
-          ? { lt: inicioDelDiaSiguienteCREnUtc(filtros.hasta) }
-          : {}),
+        ...(filtros.solicitadoDesde !== undefined ? { gte: filtros.solicitadoDesde } : {}),
+        ...(filtros.solicitadoHasta !== undefined ? { lt: filtros.solicitadoHasta } : {}),
       },
     });
   }
@@ -252,7 +247,7 @@ const ORDEN_CIERRES_BODEGA_ADMIN = {
  * en vez de caer en el historico.
  */
 function historicoBodegaWhere(
-  filtros?: FiltrosCierresBodega,
+  filtros?: FiltrosCierresBodegaRepo,
 ): Prisma.CierreBodegaWhereInput {
   const recortes = filtrosBodegaWhere(filtros);
   return {
@@ -273,7 +268,7 @@ function historicoBodegaWhere(
  * significa que un cierre de bodega deja de verse para aprobarlo, con el dinero agregado de una
  * zona entera parado hasta que alguien lo note.
  */
-function colaBodegaWhere(filtros?: FiltrosCierresBodega): Prisma.CierreBodegaWhereInput {
+function colaBodegaWhere(filtros?: FiltrosCierresBodegaRepo): Prisma.CierreBodegaWhereInput {
   const recortes = filtrosBodegaWhere(filtros);
   return {
     estado: { in: [...ESTADOS_COLA_SOLICITADO] },
@@ -329,7 +324,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
    * `count` de la pagina no viaja aqui, porque el total de un conjunto sin recorte es su longitud.
    */
   async findHistoricoCompleto(
-    filtros?: FiltrosCierresBodega,
+    filtros?: FiltrosCierresBodegaRepo,
   ): Promise<CierreBodegaResumenRow[]> {
     const rows = await this.prisma.cierreBodega.findMany({
       where: historicoBodegaWhere(filtros),
@@ -353,7 +348,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
    * caerse de las dos.
    */
   async findColaCompleta(
-    filtros?: FiltrosCierresBodega,
+    filtros?: FiltrosCierresBodegaRepo,
   ): Promise<CierreBodegaResumenRow[]> {
     const rows = await this.prisma.cierreBodega.findMany({
       where: colaBodegaWhere(filtros),
@@ -371,7 +366,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
    */
   async findHistoricoPaginado(
     rango: RangoPagina,
-    filtros?: FiltrosCierresBodega,
+    filtros?: FiltrosCierresBodegaRepo,
   ): Promise<PaginaRepositorio<CierreBodegaResumenRow>> {
     // Feature 184/R16: el criterio sale de `historicoBodegaWhere`, la MISMA declaracion que usa
     // el conjunto completo del que sale el archivo. Estaba escrito aqui y habria que haberlo
@@ -402,7 +397,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
    */
   async findColaPaginada(
     rango: RangoPagina,
-    filtros?: FiltrosCierresBodega,
+    filtros?: FiltrosCierresBodegaRepo,
   ): Promise<PaginaRepositorio<CierreBodegaResumenRow>> {
     // Feature 184/R16: mismo criterio compartido que el conjunto completo de esta cola.
     const where = colaBodegaWhere(filtros);
@@ -420,7 +415,14 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
   }
 
   /** R11 (+69/R15): cierre de bodega + cada cierre_dia con sus gestiones desde el SNAPSHOT. */
-  async findCierreBodegaConDetalle(id: string): Promise<{
+  async findCierreBodegaConDetalle(
+    id: string,
+    /**
+     * SLT-42 (R22): la zona del pais de la empresa (la lee el servicio). Con ella se fecha cada
+     * instante del DTO (`fechaGestion`, ...); el repositorio no la lee ni la guarda.
+     */
+    zona: string,
+  ): Promise<{
     cierre: CierreBodegaResumenRow;
     cierresDia: {
       resumen: CierreBodegaDetalleCierreRow;
@@ -468,7 +470,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
           gestiones: gestiones.map((g) => {
             const d = byOrden.get(g.ordenId);
             if (d === undefined) throw new CierreDetalleFaltanteError(cd.id, g.ordenId);
-            return toPendienteRowDesdeSnapshot(g, d);
+            return toPendienteRowDesdeSnapshot(g, d, zona);
           }),
         };
       }),
@@ -499,7 +501,12 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
    * cierre del dia, y aqui el conjunto es un rango de meses.
    */
   async findGestionesDeCierresBodegaCompleto(
-    filtros: FiltrosDescargaGestiones,
+    filtros: FiltrosDescargaGestionesRepo,
+    /**
+     * SLT-42 (R22): la zona del pais de la empresa (la lee el servicio). Con ella se fecha cada
+     * instante del DTO (`fechaGestion`, ...); el repositorio no la lee ni la guarda.
+     */
+    zona: string,
   ): Promise<CierreGestionDescargaDTO[]> {
     const gestiones = await this.prisma.gestionOrden.findMany({
       where: {
@@ -529,7 +536,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
       // misma fila). Una consulta para todo el conjunto, no una por gestion.
       contarIntentosVigentesEnLoteCon(this.prisma.gestionOrden, ordenIds),
     ]);
-    return componerGestionesDescarga(gestiones, detalle, intentosPorOrden);
+    return componerGestionesDescarga(gestiones, detalle, intentosPorOrden, zona);
   }
 
   /**
@@ -578,6 +585,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
           entidadEtiqueta: etiquetaDeEntidad("cierre_bodega", {
             zonaNombre: cierre?.zona.nombre ?? null,
             fecha: cierre?.solicitadoAt ?? new Date(),
+            zonaHoraria: input.zonaHoraria, // SLT-42 (R22)
           }),
           monto: cierre?.totalGeneral ?? null,
           ...actor,
@@ -674,6 +682,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
           entidadEtiqueta: etiquetaDeEntidad("cierre_bodega", {
             zonaNombre: cierre?.zona.nombre ?? null,
             fecha: cierre?.solicitadoAt ?? ahora,
+            zonaHoraria: input.zonaHoraria, // SLT-42 (R22)
           }),
           // El monto RECIBIDO, no el consolidado: es lo que la persona afirma haber contado.
           monto,
@@ -752,6 +761,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
           entidadEtiqueta: etiquetaDeEntidad("cierre_bodega", {
             zonaNombre: previo?.zona.nombre ?? null,
             fecha: previo?.solicitadoAt ?? new Date(),
+            zonaHoraria: input.zonaHoraria, // SLT-42 (R22)
           }),
           // EL MONTO QUE SE BORRA. Leido arriba, dentro de la misma transaccion.
           monto: previo?.montoRecibido ?? null,
@@ -842,6 +852,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
           entidadEtiqueta: etiquetaDeEntidad("cierre_bodega", {
             zonaNombre: previo.zona.nombre,
             fecha: previo.solicitadoAt,
+            zonaHoraria: input.zonaHoraria, // SLT-42 (R22)
           }),
           // El monto NUEVO; el par anterior/nuevo distingue esta fila de una marca (D1).
           monto,

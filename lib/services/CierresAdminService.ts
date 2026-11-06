@@ -56,9 +56,18 @@ import type {
 } from "@/lib/interfaces/services/ICierresAdminService";
 import { descargaConfig } from "@/lib/config/descarga";
 import { esColaCierreDia } from "@/lib/utils/colas-cierre";
-// FICHA 462: `startOfDayCR` y NO `inicioDelDiaCREnUtc` — `fecha_reprogramacion` es `@db.Date` y el
-// conteo de retenidas compara en la convencion del reloj de liberacion (medianoche UTC del dia CR).
-import { startOfDayCR } from "@/lib/utils/fecha-cr";
+// FICHA 462: `inicioDelDiaComoFecha` y NO `inicioDelDiaEnUtc` — `fecha_reprogramacion` es
+// `@db.Date` y el conteo de retenidas compara en la convencion del reloj de liberacion (medianoche
+// UTC del dia local). SLT-42: el dia es el de la zona del pais de la empresa.
+import { inicioDelDiaComoFecha } from "@/lib/utils/calendario-zona";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import {
+  filtrosParaRepo,
+  zonaDeLaEmpresa,
+  zonaPerezosa,
+  type ZonaDeLaOperacion,
+} from "@/lib/services/zona-de-la-empresa";
+import { filtrosConLimites } from "@/lib/types/filtros-cierres";
 import { derivarPendienteCierre } from "@/lib/utils/pendiente-cierre";
 import { excesoIndemnizacion } from "@/lib/utils/tope-indemnizacion";
 import { validarAjustePago } from "@/lib/utils/ajuste-pago-mensajero";
@@ -367,12 +376,22 @@ export class CierresAdminService implements ICierresAdminService {
     private readonly notificarRechazo: CierreRechazadoNotificador = notificadorNoOp,
     /**
      * FICHA 462 (T2.9) — el reloj, inyectable para los tests de la marca. Fija el «hoy CR» con el
-     * que se cuenta cuantas reprogramadas retiene cada cierre (`startOfDayCR(now())`, la misma
+     * que se cuenta cuantas reprogramadas retiene cada cierre (`inicioDelDiaComoFecha(now(), zona)`, la misma
      * convencion `@db.Date` del reloj de liberacion). Va al FINAL, con default, porque ninguno de
      * los otros caminos del servicio lee el reloj (el `resueltoAt` lo escribe la base).
      */
     private readonly now: () => Date = () => new Date(),
+    /**
+     * SLT-42 (R22): la zona del pais de la empresa: el «hoy» de la marca de retenidas y de la
+     * liberacion, los limites de los filtros de fecha y el dia de cada gestion en los DTO.
+     */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
+
+  /** SLT-42 (R22, R28, R30): la zona de UNA operacion, perezosa y leida como mucho una vez. */
+  private zonaDeLaOperacion(operacion: string): ZonaDeLaOperacion {
+    return zonaPerezosa(this.reglasPais, `CierresAdminService.${operacion}`);
+  }
 
   /**
    * FEATURE 271 (T6.6, R42/R43/R47) + FICHA 412 (T5.2, R1/R4/R5/R17) — LOS AVISOS QUE SIGUEN A UN
@@ -426,7 +445,10 @@ export class CierresAdminService implements ICierresAdminService {
     // entidad de dedupe que escribir, y un aviso con entidad inventada es peor que ninguno.
     const leidas: LecturasDelRechazo[] = [];
     await emitirBestEffort("cierre_dia_rechazado", async () => {
-      const detalle = await this.repo.findCierreByIdEnAlcance(cierreId, alcance);
+      // SLT-42 (R22): la zona fecha las gestiones y la jornada que el aviso nombra. Va DENTRO del
+      // best-effort: el rechazo ya esta escrito y un pais sin zona no puede revertirlo.
+      const zona = await zonaDeLaEmpresa(this.reglasPais, "CierresAdminService.rechazarCierre");
+      const detalle = await this.repo.findCierreByIdEnAlcance(cierreId, alcance, zona);
       if (detalle === null) return; // sin cierre resoluble no se inventa un aviso
       const { mensajeroId, destinoZonaId, resueltoAt } = detalle.cierre;
       // FICHA 412 (§5) — FALLO CERRADO, no aviso con entidad inventada. Tras un `updated` esto es
@@ -436,8 +458,8 @@ export class CierresAdminService implements ICierresAdminService {
       if (resueltoAt === null) {
         throw new Error(`cierre ${cierreId} rechazado sin resuelto_at: no se puede fechar el aviso`);
       }
-      const bloqueo = await this.ordenRepo.findBloqueoDetalle(mensajeroId);
-      const jornadaCR = await this.ordenRepo.findJornadaDeCierre(cierreId);
+      const bloqueo = await this.ordenRepo.findBloqueoDetalle(mensajeroId, zona);
+      const jornadaCR = await this.ordenRepo.findJornadaDeCierre(cierreId, zona);
       leidas.push({ mensajeroId, destinoZonaId, resueltoAt, bloqueo, jornadaCR });
     });
     if (leidas.length === 0) return;
@@ -508,7 +530,7 @@ export class CierresAdminService implements ICierresAdminService {
     // resumen, para que el frontend lo etiquete diferenciado dentro de la cola (R20).
     // Feature 172 (T C.2): UNA sola agregacion para las DOS listas, no una por lista y menos
     // una por fila. Los cierres de la cola no aportan ningun id (no estan aprobados, R28).
-    const resumenes = await this.conPendiente(rows);
+    const resumenes = await this.conPendiente(rows, this.zonaDeLaOperacion("listarCierresAdmin"));
 
     const pendientes: CierreAdminResumen[] = [];
     const historico: CierreAdminResumen[] = [];
@@ -553,10 +575,11 @@ export class CierresAdminService implements ICierresAdminService {
     // acaba de resolver — van al repositorio como tercer argumento y se componen con `AND`,
     // nunca en lugar de `scope.alcance`. Un `adminSatelite` que pida la zona del vecino obtiene
     // la interseccion (vacio), no la zona del vecino.
+    const zona = this.zonaDeLaOperacion("listarHistoricoCierresAdminPaginado");
     const { items, total } = await this.repo.findHistoricoPaginado(
       scope.alcance,
       rangoDePagina(input),
-      input.filtros,
+      await filtrosParaRepo(input.filtros, zona),
     );
 
     return {
@@ -564,7 +587,7 @@ export class CierresAdminService implements ICierresAdminService {
       // R8/R9: mismo mapper que el listado sin paginar. Feature 172 (T C.2): + el pendiente,
       // con UNA sola agregacion para toda la pagina (el numero de consultas no crece con
       // `pageSize`, que es la misma propiedad que R54 exige del resto de este listado).
-      items: await this.conPendiente(items),
+      items: await this.conPendiente(items, zona),
       page: input.page,
       pageSize: input.pageSize,
       total, // R41: el total del CONJUNTO, nunca `items.length`
@@ -597,10 +620,12 @@ export class CierresAdminService implements ICierresAdminService {
       return { status: "ok", items: [], page: input.page, pageSize: input.pageSize, total: 0 }; // R3
     }
 
+    const zona = this.zonaDeLaOperacion("listarPendientesCierresAdminPaginado");
     const { items, total } = await this.repo.findColaPaginada(
       scope.alcance,
       rangoDePagina(input),
-      input.filtros, // recorte DENTRO del alcance (ver la nota del historico)
+      // recorte DENTRO del alcance (ver la nota del historico)
+      await filtrosParaRepo(input.filtros, zona),
     );
 
     return {
@@ -608,7 +633,7 @@ export class CierresAdminService implements ICierresAdminService {
       // R8/R9: mismo mapper que el listado sin paginar. Feature 172 (T C.2): el campo viaja
       // tambien aqui —siempre `null`, porque la cola son cierres NO aprobados (R28)— para que
       // las tres listas tengan la MISMA forma y la pantalla no tenga dos contratos.
-      items: await this.conPendiente(items),
+      items: await this.conPendiente(items, zona),
       page: input.page,
       pageSize: input.pageSize,
       total, // R41/R42: el total del CONJUNTO de la cola, nunca `items.length`
@@ -660,7 +685,11 @@ export class CierresAdminService implements ICierresAdminService {
 
     // Los MISMOS filtros que la pagina: el archivo tiene que ser «esto que estoy viendo,
     // entero», no «todo lo del alcance» (ver la nota del schema completo, `lib/types`).
-    const conjunto = await this.repo.findHistoricoCompleto(scope.alcance, filtros);
+    const zona = this.zonaDeLaOperacion("listarHistoricoCierresAdminCompleto");
+    const conjunto = await this.repo.findHistoricoCompleto(
+      scope.alcance,
+      await filtrosParaRepo(filtros, zona),
+    );
 
     const limite = descargaConfig.MAX_FILAS;
     // R6: o van TODAS las filas del conjunto, o van solo los conteos. Nunca un archivo truncado.
@@ -673,7 +702,7 @@ export class CierresAdminService implements ICierresAdminService {
     // asi que su coste no crece con el numero de filas. Se paga aunque el archivo no lleve la
     // columna del pendiente: emitir `null` ahi seria decir «este cierre no esta aprobado»
     // (172/R28) de cierres que SI lo estan, y eso es un dato equivocado en un DTO de dinero.
-    return { status: "ok", items: await this.conPendiente(conjunto), total: conjunto.length };
+    return { status: "ok", items: await this.conPendiente(conjunto, zona), total: conjunto.length };
   }
 
   /**
@@ -702,14 +731,18 @@ export class CierresAdminService implements ICierresAdminService {
     if (scope.status === "forbidden") return { status: "forbidden" }; // R4: antes del repo
     if (scope.status === "sinZona") return { status: "ok", items: [], total: 0 };
 
-    const conjunto = await this.repo.findColaCompleta(scope.alcance, filtros); // idem
+    const zona = this.zonaDeLaOperacion("listarPendientesCierresAdminCompleto");
+    const conjunto = await this.repo.findColaCompleta(
+      scope.alcance,
+      await filtrosParaRepo(filtros, zona), // idem
+    );
 
     const limite = descargaConfig.MAX_FILAS;
     if (conjunto.length > limite) {
       return { status: "limite_excedido", total: conjunto.length, limite }; // R6
     }
 
-    return { status: "ok", items: await this.conPendiente(conjunto), total: conjunto.length };
+    return { status: "ok", items: await this.conPendiente(conjunto, zona), total: conjunto.length };
   }
 
   /**
@@ -755,7 +788,16 @@ export class CierresAdminService implements ICierresAdminService {
     if (scope.status === "forbidden") return { status: "forbidden" }; // R18: antes del repo
     if (scope.status === "sinZona") return { status: "ok", items: [], total: 0 }; // R20
 
-    const conjunto = await this.repo.findGestionesPorAlcanceCompleto(scope.alcance, filtros);
+    // SLT-42 (R22): la zona resuelve los limites del filtro y fecha cada gestion del archivo.
+    const zona = await zonaDeLaEmpresa(
+      this.reglasPais,
+      "CierresAdminService.listarGestionesCierresAdminCompleto",
+    );
+    const conjunto = await this.repo.findGestionesPorAlcanceCompleto(
+      scope.alcance,
+      filtrosConLimites(filtros, zona),
+      zona,
+    );
 
     const limite = descargaConfig.MAX_FILAS;
     // R21: o van TODAS las filas del conjunto, o van solo los conteos. Nunca un archivo truncado.
@@ -801,7 +843,9 @@ export class CierresAdminService implements ICierresAdminService {
 
     // R13: la guardia de alcance va en el WHERE del repo; null si no casa (no se
     // distingue "no existe" de "otra bodega/zona").
-    const found = await this.repo.findCierreByIdEnAlcance(cierreId, scope.alcance);
+    // SLT-42 (R22): la zona fecha las gestiones del detalle y el «hoy» de su marca de retenidas.
+    const zona = await zonaDeLaEmpresa(this.reglasPais, "CierresAdminService.verCierreDetalle");
+    const found = await this.repo.findCierreByIdEnAlcance(cierreId, scope.alcance, zona);
     if (found === null) return { status: "no_encontrada" };
 
     // R7: firma en lote las evidencias (path crudo -> URL firmada de TTL acotado).
@@ -850,7 +894,7 @@ export class CierresAdminService implements ICierresAdminService {
     // del snapshot del cierre (no se recomputa, R4); el ingreso, del desglose por orden.
     // Feature 172 (T C.2/R26): el detalle tambien trae el pendiente —R26 lo pide «en el listado
     // de cierres Y en el detalle de ese cierre»—, por el mismo camino y con una sola agregacion.
-    const [resumen] = await this.conPendiente([found.cierre]);
+    const [resumen] = await this.conPendiente([found.cierre], async () => zona);
     const ganancia = gananciaEmpresa(sinIva, resumen.totalPagoMensajero);
 
     // Pago a la tienda DERIVADO: lo RECIBIDO (total general) menos lo que la empresa le factura
@@ -990,6 +1034,10 @@ export class CierresAdminService implements ICierresAdminService {
     if (scope.status === "forbidden") return { status: "forbidden" }; // R1
     if (scope.status === "sinZona") return { status: "no_encontrada" }; // R13
 
+    // SLT-42 (R22, R28): la zona del pais de la empresa, con la que la liberacion calcula «hoy».
+    // Se lee ANTES de escribir nada: sin zona, la aprobacion falla entera, sin efectos.
+    const zona = await zonaDeLaEmpresa(this.reglasPais, "CierresAdminService.aprobarCierre");
+
     // Feature 238 (T2.2, design §3.2, R7-R16) — COBERTURA EXACTA DE LOS PAQUETES QUE VUELVEN, y
     // va ANTES que la de indemnizaciones POR LA MISMA RAZON por la que la pantalla pone la
     // ventana de escaneo antes que la captura de montos (R37): si falta un paquete, no tiene
@@ -1106,11 +1154,14 @@ export class CierresAdminService implements ICierresAdminService {
       };
     }
 
+    // SLT-42 (R22, R28): el dia del cierre en el historial, con la zona del pais; sin zona, nada se escribe.
+    const zonaHoraria = await zonaDeLaEmpresa(this.reglasPais, "CierresAdminService.aprobarCierre");
     // R10/R12-R15: transicion guardada. Aprobar limpia motivoRechazo (null).
     const res = await this.repo.resolverCierre({
       cierreId,
       alcance: scope.alcance,
       nuevoEstado: "aprobado",
+      zonaHoraria,
       resueltoPor: actor.usuarioId, // R14
       motivoRechazo: null,
       liberacionSinGestionar, // feature 109/R16: libera `sin_gestionar` en la misma tx
@@ -1166,7 +1217,7 @@ export class CierresAdminService implements ICierresAdminService {
       // transaccion ENTERA, asi que meter esto dentro dejaria que una orden atascada revirtiera
       // una aprobacion contable ya emitida. La liberacion absorbe su propio fallo y lo registra
       // (`liberarAlAprobarCierreCon`): nunca silencioso, nunca fatal.
-      await this.liberarReprogramadasDelCierre(cierreId);
+      await this.liberarReprogramadasDelCierre(cierreId, zona);
 
       // Feature 172 (T C.2, §8/R16): el pendiente se deriva DESPUES de que la aprobacion haya
       // confirmado, nunca dentro de su transaccion. Un fallo aqui no puede revertir la
@@ -1199,7 +1250,10 @@ export class CierresAdminService implements ICierresAdminService {
    *     (§5) y reusa a su vez `calcularSplitPago` de la 44. Los snapshots `P` y `E` se LEEN de
    *     la fila (`totalPagoMensajero`, `totales.efectivo`); no se recalculan.
    */
-  private async conPendiente(rows: CierreAdminResumenRow[]): Promise<CierreAdminResumen[]> {
+  private async conPendiente(
+    rows: CierreAdminResumenRow[],
+    zonaDeLaOperacion: ZonaDeLaOperacion,
+  ): Promise<CierreAdminResumen[]> {
     const resumenes = rows.map(toResumen); // R8/R9: snapshots tal cual, sin recomputar
     const idsAprobados = resumenes
       .filter((r) => r.estado === "aprobado")
@@ -1210,10 +1264,12 @@ export class CierresAdminService implements ICierresAdminService {
     // construccion no retienen y salen `0`, y asi el numero de consultas no depende del estado).
     // Los que no retienen no vienen en el `Map` y quedan en `0` (`?? 0`). MUTACION OBLIGATORIA
     // (design §8.2-12): pedirlo por fila => el test de llamadas cuenta N en vez de 1 => ROJO.
-    // El «hoy» es el del reloj del servicio en convencion `@db.Date` (`startOfDayCR`), el mismo
-    // con el que cuentan el cron, la campana y la franja (R7).
+    // El «hoy» es el del reloj del servicio en convencion `@db.Date`, el mismo con el que cuentan
+    // el cron, la campana y la franja (R7). SLT-42 (R22): en la zona del pais de la empresa.
+    const zona = await zonaDeLaOperacion();
     const retenidas = await this.retenidas.contarPorCierre(
-      startOfDayCR(this.now()),
+      inicioDelDiaComoFecha(this.now(), zona),
+      zona,
       resumenes.map((r) => r.cierreId),
     );
 
@@ -1722,11 +1778,14 @@ export class CierresAdminService implements ICierresAdminService {
 
     if (scope.status === "sinZona") return { status: "no_encontrada" }; // R13
 
+    // SLT-42 (R22, R28): el dia del cierre en el historial, con la zona del pais; sin zona, nada se escribe.
+    const zonaHoraria = await zonaDeLaEmpresa(this.reglasPais, "CierresAdminService.rechazarCierre");
     // R11-R15: transicion guardada; persiste el motivo con el cierre.
     const res = await this.repo.resolverCierre({
       cierreId,
       alcance: scope.alcance,
       nuevoEstado: "rechazado",
+      zonaHoraria,
       resueltoPor: actor.usuarioId, // R14
       motivoRechazo: motivoLimpio,
     });

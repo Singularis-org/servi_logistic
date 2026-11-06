@@ -25,8 +25,10 @@ import { fechaRepartoComoTexto } from "@/lib/utils/dia-reparto";
 // reescribe aqui — la tienda tiene que leer la misma frase que el mensajero.
 import { avisoReservaParaOtroDia } from "@/lib/utils/dia-reparto-textos";
 // Feature 261 (B16, R31): el MISMO helper de la convencion `@db.Date` que usa la via del
-// mensajero. Mismo criterio y mismo dia; `inicioDelDiaCREnUtc` desplazaria el dia seis horas.
-import { startOfDayCR } from "@/lib/utils/fecha-cr";
+// mensajero. Mismo criterio y mismo dia; `inicioDelDiaEnUtc` desplazaria el dia. SLT-42: con la
+// zona del pais de la empresa.
+import { inicioDelDiaComoFecha } from "@/lib/utils/calendario-zona";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 
 /**
  * Feature 237 (design §6, T5.3) — LA TIENDA RESUELVE UNA ORDEN DESDE LA PESTAÑA DE AYUDA, y esa
@@ -85,6 +87,11 @@ export interface GestionDesdeAyudaDeps {
    * del mensajero, el cron de SLA y el drawer del historial.
    */
   historial: Pick<IOrdenHistorialService, "contarIntentos">;
+  /**
+   * SLT-42 (R22, R28): la zona del pais de la empresa, con la que se calcula el dia en curso.
+   * OBLIGATORIA, como `historial`: olvidarla en el composition root rompe el typecheck.
+   */
+  reglasPais: Pick<IReglasPaisEmpresa, "zonaHoraria">;
 }
 
 // FICHA 454 (T1.15): aqui vivia `ESTATUS_AYUDA = "ayuda_tienda"`. Se resuelve desde la ayuda
@@ -180,7 +187,8 @@ export class GestionDesdeAyudaService implements IGestionDesdeAyudaService {
     //    ⚠️ NO se reutiliza `MisAsignacionesService.gestionar` para esto (design A11): aquel
     //    metodo existe con cuatro candados que esta via no puede pasar, y abrirle un modo o un
     //    actor suplantado a un metodo money-critical los deja todos a un `if` de abrirse.
-    const diaEnCurso = startOfDayCR(now);
+    // SLT-42 (R22, R28): sin zona en el pais falla aqui, antes de subir nada ni escribir.
+    const diaEnCurso = inicioDelDiaComoFecha(now, await this.deps.reglasPais.zonaHoraria());
     const fechaReparto = acceso.orden.fechaReparto;
     if (fechaReparto !== null && fechaReparto.getTime() > diaEnCurso.getTime()) {
       // R32: el motivo lleva el DIA, con palabras, sin siglas ni nombres de columna, y sale de

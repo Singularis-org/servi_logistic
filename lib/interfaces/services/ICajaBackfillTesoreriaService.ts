@@ -1,3 +1,4 @@
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import type { PrismaClient } from "@prisma/client";
 import type {
   CrearMovimientoInput,
@@ -113,6 +114,11 @@ export interface CajaBackfillDeps {
   readonly cajaRepo: IWalletMovimientoRepository;
   /** Solo para fechar el INFORME. Ninguna fila se fecha con esto (R41). */
   readonly ahora: () => Date;
+  /**
+   * SLT-42 (R22, R28): la zona del pais de la empresa. El pago y la anulacion se fechan al inicio de
+   * su dia EN ESA ZONA, como en el camino vivo. Sin ella, el backfill de pagos falla sin escribir.
+   */
+  readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
 }
 
 export interface ICajaBackfillTesoreriaService {

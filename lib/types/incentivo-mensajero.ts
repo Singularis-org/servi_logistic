@@ -11,17 +11,19 @@ import { claveIdempotenciaSchema, fechaMovimientoSchema, montoPositivoSchema } f
 // del registro manual (por defecto, hoy), y la clave de idempotencia del dialogo. `.strict()`: un
 // `cierreId` o un `tipo` colados en el payload mueren aqui con `validation_error`.
 
-export const registrarIncentivoMensajeroSchema = z
-  .object({
-    mensajeroId: z.string().uuid("Elegí un mensajero."),
-    monto: montoPositivoSchema,
-    motivo: z.string().trim().min(1, "El motivo es obligatorio."),
-    fecha: fechaMovimientoSchema.optional(),
-    claveIdempotencia: claveIdempotenciaSchema,
-  })
-  .strict();
+export function registrarIncentivoMensajeroSchema(zona: string) {
+  return z
+    .object({
+      mensajeroId: z.string().uuid("Elegí un mensajero."),
+      monto: montoPositivoSchema,
+      motivo: z.string().trim().min(1, "El motivo es obligatorio."),
+      fecha: fechaMovimientoSchema(zona).optional(),
+      claveIdempotencia: claveIdempotenciaSchema,
+    })
+    .strict();
+}
 
-export type RegistrarIncentivoMensajeroInput = z.infer<typeof registrarIncentivoMensajeroSchema>;
+export type RegistrarIncentivoMensajeroInput = z.infer<ReturnType<typeof registrarIncentivoMensajeroSchema>>;
 
 /** R13 — anular: el incentivo y un motivo. SIN monto: el del contraasiento se lee del incentivo. */
 export const anularIncentivoMensajeroSchema = z

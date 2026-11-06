@@ -17,6 +17,8 @@ import { liberarAlAprobarCierreNoOp } from "@/lib/services/liberacion-al-aprobar
 import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
 import { bloqueoDe } from "@/tests/fixtures/bloqueo-cierre";
 import { sinRetenidas } from "@/tests/fixtures/retenidas-doble";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 /**
  * FEATURE 271 (T6.6, R42) + **FICHA 412 (T5.2, R1/R3/R4/R5/R17)** — QUÉ AVISA UN RECHAZO.
@@ -178,7 +180,7 @@ function newService(
       traza.push("notificarRechazo");
     }) as CierreRechazadoNotificador);
   const service = opts.sinNotificador
-    ? new CierresAdminService(repo, zonaRepo, ordenRepo, signedUrls, liquidacionRepo, premiosRepo, sinRetenidas())
+    ? new CierresAdminService(repo, zonaRepo, ordenRepo, signedUrls, liquidacionRepo, premiosRepo, sinRetenidas(), undefined, undefined, undefined, undefined, reglasPaisFijas())
     : new CierresAdminService(
         repo,
         zonaRepo,
@@ -190,6 +192,8 @@ function newService(
         notificar,
         liberarAlAprobarCierreNoOp,
         notificarRechazo,
+        undefined,
+        reglasPaisFijas(),
       );
   return {
     service,
@@ -275,7 +279,7 @@ describe("412/R1 — un rechazo confirmado avisa al mensajero, lo deje bloqueado
 
     await service.rechazarCierre("c-rechazado", MOTIVO, MAESTRO);
 
-    expect(findJornadaDeCierre).toHaveBeenCalledWith("c-rechazado");
+    expect(findJornadaDeCierre).toHaveBeenCalledWith("c-rechazado", ZONA_CR);
     expect(mockDe(notificarRechazo).mock.calls[0][0].jornadaCR).toBe("2026-08-21");
   });
 
@@ -448,7 +452,8 @@ describe("412/R4 — los avisos van DESPUÉS de la escritura, FUERA de su transa
 
     const input = (repo.resolverCierre as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(Object.keys(input).sort()).toEqual(
-      ["alcance", "cierreId", "motivoRechazo", "nuevoEstado", "resueltoPor"].sort(),
+      // SLT-42 (R22): + la zona del pais, para el dia del cierre en el historial.
+      ["alcance", "cierreId", "motivoRechazo", "nuevoEstado", "resueltoPor", "zonaHoraria"].sort(),
     );
     expect(input).toMatchObject({ nuevoEstado: "rechazado", motivoRechazo: MOTIVO });
   });
@@ -460,7 +465,7 @@ describe("412/R4 — los avisos van DESPUÉS de la escritura, FUERA de su transa
     await service.rechazarCierre("c-rechazado", MOTIVO, MAESTRO);
 
     expect(traza.indexOf("findBloqueoDetalle")).toBeGreaterThan(traza.indexOf("resolverCierre"));
-    expect(findBloqueoDetalle).toHaveBeenCalledWith("men-1");
+    expect(findBloqueoDetalle).toHaveBeenCalledWith("men-1", ZONA_CR);
   });
 
   it("⭑ R4(a): el aviso del RECHAZO lanza -> el rechazo sigue siendo `ok`, y queda REGISTRADO", async () => {

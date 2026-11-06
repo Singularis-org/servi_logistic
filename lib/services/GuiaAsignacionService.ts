@@ -58,6 +58,8 @@ import { esAsignable, motivoAsignabilidad } from "@/lib/services/AsignabilidadCo
 import { esAccesoTotal } from "@/lib/auth/acceso-total";
 import { resolverFechaReparto } from "@/lib/utils/dia-reparto";
 
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 // Feature 156/R4 + 155/R29: UNICO estado de origen valido para "Generar guia". El estado
 // de fulfillment que la 156 ya habia sacado de esta constante quedo RETIRADO del catalogo
 // por la 155, asi que no hay forma de volver a nombrarlo aqui.
@@ -182,6 +184,8 @@ export class GuiaAsignacionService implements IGuiaAsignacionService {
      * (patron `MisAsignacionesService`).
      */
     private readonly historial: Pick<IOrdenHistorialService, "contarIntentosEnLote">,
+    /** SLT-42 (R22): la zona del pais de la empresa; «hoy/mañana» se resuelven en ella. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
 
   /**
@@ -570,7 +574,9 @@ export class GuiaAsignacionService implements IGuiaAsignacionService {
     // el dia (R6). `?? "hoy"` cubre la llamada directa al servicio sin el campo, que significa
     // exactamente lo mismo que el default del schema (R4). Una asignacion, un dia de reparto (R3):
     // la fecha se calcula una vez y viaja al repositorio como parametro, sin recalcularse abajo.
-    const fechaReparto = resolverFechaReparto(input.dia ?? "hoy", now);
+    // SLT-42 (R22, R28): en la zona del pais de la empresa; sin zona falla aqui, antes de escribir.
+    const zona = await zonaDeLaEmpresa(this.reglasPais, "GuiaAsignacionService.asignarDesdeBodega");
+    const fechaReparto = resolverFechaReparto(input.dia ?? "hoy", zona, now);
 
     // R26/R5: NO reasigna num_guia, ya lo tienen de "Generar guia".
     // Feature 49/#4 (R12): actor = el maestro; destino por_recoger.

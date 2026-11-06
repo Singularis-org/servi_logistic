@@ -11,6 +11,7 @@ import {
 import type { IWhatsappEnvioService } from "@/lib/interfaces/services/IWhatsappEnvioService";
 import { WhatsappEnvioService } from "@/lib/services/WhatsappEnvioService";
 import { enviosRepo, MAESTRO } from "../services/_dobles-envios-474";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Ficha 474 (T9.1) — el BORDE de las server actions: no autenticado antes de todo, zod en el borde,
 // forbidden para no-maestro (R1) sin tocar nada, R43/R44 (PDF firmado o caducado), R49 (eventos).
@@ -20,6 +21,7 @@ const ADMIN = { usuarioId: "a", rol: "admin" as const };
 function servicioReal() {
   const envios = enviosRepo();
   const configuracion: IWhatsappEnvioService = new WhatsappEnvioService({
+    reglasPais: reglasPaisFijas(),
     envios,
     plantillas: { findEnviableDeInformeById: vi.fn() },
     cola: { enqueue: vi.fn() },

@@ -17,6 +17,7 @@ import type {
 import type { JobTipo } from "@prisma/client";
 import { seedJobAnaliticaRollupDiario } from "@/scripts/seed-jobs-analitica-rollup-diario";
 import { recurrenciaAnaliticaRollupDiario } from "@/lib/services/jobs/analitica-rollup-diario-handler";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // Feature 124 / T4.1 + T4.5 — la migracion del `job_tipo` nuevo y la siembra.
 //
@@ -200,12 +201,14 @@ describeDb("T4.1/T4.5 contra Postgres — el valor existe y la siembra es idempo
       const primera = await seedJobAnaliticaRollupDiario(
         repo,
         new Date("2026-08-02T16:00:00.000Z"),
+        [ZONA_DE_CR],
       );
       const trasPrimera = await contarJobs(tx);
       // Segunda siembra el MISMO dia CR -> mismo objetivo -> misma `dedupe_key`.
       const segunda = await seedJobAnaliticaRollupDiario(
         repo,
         new Date("2026-08-03T02:00:00.000Z"),
+        [ZONA_DE_CR],
       );
       const trasSegunda = await contarJobs(tx);
 
@@ -217,6 +220,7 @@ describeDb("T4.1/T4.5 contra Postgres — el valor existe y la siembra es idempo
       // asi que cambiar de una a la otra es un desplazamiento constante e invisible.)
       const { runAfter, dedupeKey } = recurrenciaAnaliticaRollupDiario.siguiente(
         new Date("2026-08-02T16:00:00.000Z"),
+        [ZONA_DE_CR],
       );
       const reencolada = await repo.enqueue("analitica_rollup_diario", {}, { runAfter, dedupeKey });
       const trasReencolado = await contarJobs(tx);
@@ -231,7 +235,8 @@ describeDb("T4.1/T4.5 contra Postgres — el valor existe y la siembra es idempo
     expect(conteos.trasSegunda).toBe(conteos.antes + 1);
     // El reencolado de la recurrencia para la misma corrida tampoco anade fila.
     expect(conteos.trasReencolado).toBe(conteos.antes + 1);
-    expect(conteos.primera?.dedupeKey).toBe("analitica_rollup_diario:2026-08-02");
+    // SLT-42 (design §6.1): la clave lleva tambien la zona de la corrida.
+    expect(conteos.primera?.dedupeKey).toBe("analitica_rollup_diario:America/Costa_Rica:2026-08-02");
     expect(conteos.segunda).toBeNull();
     expect(conteos.reencolada).toBeNull();
   });
@@ -243,7 +248,7 @@ describeDb("T4.1/T4.5 contra Postgres — el valor existe y la siembra es idempo
         enqueue: (tipo: JobTipo, payload: Record<string, unknown>, opts?: EnqueueOpts) =>
           real.enqueue(tipo, payload, opts, tx as unknown as JobTxClient),
       } as unknown as IJobRepository;
-      return seedJobAnaliticaRollupDiario(repo, new Date("2026-08-02T16:00:00.000Z"));
+      return seedJobAnaliticaRollupDiario(repo, new Date("2026-08-02T16:00:00.000Z"), [ZONA_DE_CR]);
     });
 
     expect(fila).not.toBeNull();

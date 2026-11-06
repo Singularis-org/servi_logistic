@@ -13,6 +13,7 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { PlanesService } from "@/lib/services/PlanesService";
 import type { PlanDTO, VersionPlan } from "@/lib/types/planes";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // SLT-58 · T4 (design §3.2; R13, R16, R19, R22) — las lecturas del superadmin con un repositorio doble.
 // Se mide el contrato (quién → zod → existe → repositorio) y la forma de lo que llega a la pantalla:
 // fechas de calendario en la hora de la plataforma, instantes en ISO, las líneas de «qué cambia» y el
@@ -188,7 +189,7 @@ function llamadasAlRepositorio(): number {
 
 beforeEach(() => {
   repo = doble();
-  servicio = new PlanesService(repo, () => AHORA);
+  servicio = new PlanesService(repo, () => AHORA, async () => ZONA_DE_CR);
 });
 
 describe("SLT-58 — lecturas del superadmin: autorización (R22)", () => {
@@ -242,7 +243,8 @@ describe("SLT-58 — catálogo (R13)", () => {
     expect(r.estado).toBe("ok");
     if (r.estado !== "ok") return;
     expect(r.planes).toHaveLength(2);
-    expect(r.planes[0]).toEqual({ ...plan(), empresaNombre: null, empresas: 3, vigenteDesdePendiente: "2026-11-15" });
+    // SLT-42 (decisión del humano tras T5.5): el catálogo no es de una empresa; la fecha va en UTC y lo dice.
+    expect(r.planes[0]).toEqual({ ...plan(), empresaNombre: null, empresas: 3, vigenteDesdePendiente: "2026-11-15 UTC" });
     expect(r.planes[1]).toMatchObject({
       nombre: "Custom",
       visibilidad: "custom",
@@ -252,6 +254,21 @@ describe("SLT-58 — catálogo (R13)", () => {
       vigenteDesdePendiente: null,
     });
     expect(repo.catalogo).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("SLT-42 — catálogo del superadmin: la fecha del pendiente, en UTC y con su etiqueta", () => {
+  it("un instante que en Costa Rica aún es el 14 sale como el 15 UTC, sin leer la zona de ninguna empresa", async () => {
+    const zonaDeOrganizacion = vi.fn(async () => ZONA_DE_CR);
+    const s = new PlanesService(repo, () => AHORA, zonaDeOrganizacion);
+    // 2026-11-15T03:00Z: las 21:00 del 14 en Costa Rica, el 15 en UTC.
+    repo.catalogo.mockResolvedValue([
+      { plan: plan(), empresaNombre: null, empresas: 2, vigenteDesdePendiente: new Date("2026-11-15T03:00:00.000Z") },
+    ]);
+    const r = await s.catalogo(SUPERADMIN);
+    if (r.estado !== "ok") throw new Error("se esperaba ok");
+    expect(r.planes[0].vigenteDesdePendiente).toBe("2026-11-15 UTC");
+    expect(zonaDeOrganizacion).not.toHaveBeenCalled();
   });
 });
 

@@ -5,6 +5,7 @@ import { ChatConversacionRepository } from "@/lib/repositories/ChatConversacionR
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
 import { CorregirDatosClienteService } from "@/lib/services/CorregirDatosClienteService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 
 import {
@@ -12,9 +13,12 @@ import {
   clienteConTransaccionAnidada,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import type { ReglasTelefono } from "@/lib/utils/telefono-pais";
+
+// SLT-42 (R18): la resolucion del entrante normaliza con las reglas del pais (aqui, Costa Rica).
+const TEL_CR: ReglasTelefono = { prefijo: "506", digitosNacionales: 8 };
 
 /**
  * ⭑ FICHA 312 (G1) — QUE LE PASA AL WHATSAPP CUANDO SE CORRIGE EL NUMERO, contra Postgres real.
@@ -70,10 +74,16 @@ describeSiHayBase("⭑ 312/G1 — corregir el telefono y el hilo de WhatsApp", (
     provinciaId: string;
     cantonId: string;
   };
+  // SLT-42: la empresa de la transaccion es la de las FKs; con la empresa nueva que crea
+  // `enTransaccionRevertida`, una base con mas de una empresa cae en «referencia a otra empresa».
+  let EMPRESA: string | undefined;
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const fks = await fksDeOrden(prisma);
+    const fks = await prisma.orden.findFirst({
+      select: { organizacionId: true, estatusId: true, tiendaId: true, zonaId: true, provinciaId: true, cantonId: true },
+    });
+    EMPRESA = fks?.organizacionId;
     if (fks === null) {
       throw new Error(
         "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar. Corre " +
@@ -170,23 +180,23 @@ describeSiHayBase("⭑ 312/G1 — corregir el telefono y el hilo de WhatsApp", (
         // no montar un doble que no aporta nada.
         tarifas: new TarifaVigenteRepository(cliente),
       });
-    });
+    }, { organizacionId: EMPRESA });
   }
 
   it("⭑ R20/R21: el numero NUEVO resuelve a la orden y el ANTERIOR ya no", async () => {
     const r = await conOrdenYHilo(async (ctx) => {
       // ANTI-VACUIDAD: antes de corregir, el numero viejo SI es el de esta orden.
-      const antes = await ctx.chat.resolverOrdenActivaPorNumero(E164_VIEJO);
+      const antes = await ctx.chat.resolverOrdenActivaPorNumero(E164_VIEJO, TEL_CR);
 
-      const service = new CorregirDatosClienteService(ctx.repo, ctx.tarifas);
+      const service = new CorregirDatosClienteService(ctx.repo, ctx.tarifas, reglasPaisFijas());
       const resultado = await service.corregir(
         { ordenId: ctx.ordenId, telefonoDest: TELEFONO_NUEVO },
         MAESTRO,
       );
 
       const [porElNuevo, porElViejo] = await Promise.all([
-        ctx.chat.resolverOrdenActivaPorNumero(E164_NUEVO),
-        ctx.chat.resolverOrdenActivaPorNumero(E164_VIEJO),
+        ctx.chat.resolverOrdenActivaPorNumero(E164_NUEVO, TEL_CR),
+        ctx.chat.resolverOrdenActivaPorNumero(E164_VIEJO, TEL_CR),
       ]);
       return { antes, resultado, porElNuevo, porElViejo, ordenId: ctx.ordenId };
     });
@@ -209,7 +219,7 @@ describeSiHayBase("⭑ 312/G1 — corregir el telefono y el hilo de WhatsApp", (
 
   it("⭑ R19: la fila de `chat_conversacion` del numero viejo sigue INTACTA, con sus 2 mensajes", async () => {
     const r = await conOrdenYHilo(async (ctx) => {
-      const service = new CorregirDatosClienteService(ctx.repo, ctx.tarifas);
+      const service = new CorregirDatosClienteService(ctx.repo, ctx.tarifas, reglasPaisFijas());
       const resultado = await service.corregir(
         { ordenId: ctx.ordenId, telefonoDest: TELEFONO_NUEVO },
         MAESTRO,

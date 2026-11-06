@@ -9,6 +9,18 @@ import type { AutoriaDeFilaDTO, AutoriaLibroCajaResult } from "@/lib/types/libro
 
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
 import { cargarCatalogo459, enTransaccionRevertida459, montarServicios459, sembrarEscenario459 } from "./_fixtures/caja-459";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+
+// SLT-42 (T5.4): la zona del pais de la empresa es la de CR, como antes. Las reglas reales leen el pais
+// de la empresa en curso con el cliente global, que no ve la empresa de una transaccion revertida ni
+// tiene empresa fuera de `conEmpresa`; la zona por pais la miden `hora-por-pais-wallet` y `demo-qa`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
 
 // SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
 vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
@@ -79,7 +91,7 @@ describeSiHayBase("458-B/TB.7 — «A quien» y «Registro» del libro de la caj
         });
 
         const nuevas = (await tx.walletMovimiento.findMany({ select: { id: true, origenTipo: true } })).filter((x) => !previos.has(x.id));
-        const servicio = new LibroCajaAutoriaService(new LibroCajaAutoriaRepository(s.cliente));
+        const servicio = new LibroCajaAutoriaService(new LibroCajaAutoriaRepository(s.cliente), reglasPaisFijas());
         const r = await autoriaDelLibroCajaAction(
           { movimientoIds: nuevas.map((x) => x.id) },
           { getActor: async () => esc.maestro, service: servicio },

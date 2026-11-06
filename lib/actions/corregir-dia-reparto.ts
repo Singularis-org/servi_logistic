@@ -1,5 +1,6 @@
 "use server";
 
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { z } from "zod";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
@@ -69,6 +70,8 @@ function buildService(): ICorreccionDiaRepartoService {
   return new CorreccionDiaRepartoService(
     new OrdenRepository(prisma),
     notificarDiaRepartoCorregidoReal,
+    // SLT-42 (R22): la zona horaria del pais de la empresa.
+    construirReglasPaisEmpresa(prisma),
   );
 }
 

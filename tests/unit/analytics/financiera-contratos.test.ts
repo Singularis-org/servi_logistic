@@ -32,6 +32,7 @@ import type { ICuentasPorPagarAnaliticaRepository } from "@/lib/interfaces/repos
 import type { IConciliacionCierresAnaliticaRepository } from "@/lib/interfaces/repositories/IConciliacionCierresAnaliticaRepository";
 import type { IAnaliticaFinancieraService } from "@/lib/interfaces/services/IAnaliticaFinancieraService";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Feature 127 / TANDA A — LOS CONTRATOS, ANTES DE QUE EXISTA LA LOGICA.
 //
 // Cubre R7 (la puerta obligatoria en las cinco firmas publicas), R27 (ningun importe es
@@ -49,7 +50,7 @@ const MAESTRO: ActorAnalitica = { usuarioId: "u-maestro", rol: "maestro" };
 const AHORA = new Date("2026-08-02T15:00:00.000Z");
 
 function consultaDe(metricaId: string): ConsultaAnalitica {
-  const r = prepararConsultaAnalitica({ rango: "dia" }, MAESTRO, metricaId, AHORA);
+  const r = prepararConsultaAnalitica({ rango: "dia" }, MAESTRO, metricaId, ZONA_DE_CR, AHORA);
   if (r.status !== "ok") throw new Error(`no se pudo preparar la consulta de ${metricaId}: ${r.status}`);
   return r.consulta;
 }

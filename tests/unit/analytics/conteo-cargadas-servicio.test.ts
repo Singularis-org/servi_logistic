@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { Prisma } from "@prisma/client";
 
 import {
   claveDeConteoCargadasPorDia,
@@ -15,10 +16,11 @@ import {
 } from "@/lib/repositories/ConteoCargadasPorDiaRepository";
 import { ConteoCargadasPorDiaService } from "@/lib/services/ConteoCargadasPorDiaService";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 const AHORA = new Date("2026-08-17T12:00:00.000Z");
 
 function consultaDe(raw: object = {}, rol = "maestro", extra: object = {}): ConsultaConteoEntregas {
-  const preparada = prepararConteoEntregas(raw, { usuarioId: "u1", rol, ...extra } as never, AHORA);
+  const preparada = prepararConteoEntregas(raw, { usuarioId: "u1", rol, ...extra } as never, ZONA_DE_CR, AHORA);
   if (preparada.status !== "ok") throw new Error(`filtro de prueba inválido: ${preparada.status}`);
   return preparada.consulta;
 }
@@ -279,7 +281,7 @@ describe("La ventana cae sobre la fecha de CARGA, no sobre la fecha efectiva", (
 describe("El agrupamiento por DÍA: una sola definición del día CR", () => {
   /** Doble del cliente Prisma: captura la plantilla del tagged template y devuelve filas fijas. */
   function prismaFalso(filas: { dia: string; n: number }[]) {
-    const capturado: { sql: string; valores: unknown[] } = { sql: "", valores: [] };
+    const capturado: { sql: string; valores: unknown[]; plantilla: readonly string[] } = { sql: "", valores: [], plantilla: [] };
     const prisma = {
       $queryRaw: (plantilla: TemplateStringsArray, ...valores: { sql?: string }[]) => {
         // El texto que de verdad se envía: los trozos literales más el SQL de cada fragmento
@@ -289,6 +291,7 @@ describe("El agrupamiento por DÍA: una sola definición del día CR", () => {
           .map((trozo, i) => trozo + (valores[i]?.sql ?? ""))
           .join("");
         capturado.valores = valores;
+        capturado.plantilla = [...plantilla];
         return Promise.resolve(filas);
       },
     };
@@ -311,20 +314,34 @@ describe("El agrupamiento por DÍA: una sola definición del día CR", () => {
     ]);
   });
 
-  // ⚠ LA REGLA HEREDADA DE LA 180, Y EL MOTIVO DE QUE ESTE ARCHIVO EXISTA: en este SQL no puede
-  // haber NI UNA zona horaria. Cualquiera de estas sería una SEGUNDA definición del día
-  // operativo fuera del alcance de `lib/utils/fecha-cr.ts` — el off-by-one de seis horas del
-  // que avisa `lib/analytics/ranges.ts`.
-  it("el SQL no nombra ninguna zona horaria ni ningún desfase escrito a mano", async () => {
+  // ⚠ LA REGLA HEREDADA DE LA 180, AJUSTADA POR SLT-42 (decisión del humano del 2026-11-06): en
+  // este SQL no se ESCRIBE ninguna zona ni ningún desfase. El día se calcula con `AT TIME ZONE`
+  // y la zona de la empresa como PARÁMETRO (R22, R23): nunca interpolada.
+  it("el SQL agrupa con `AT TIME ZONE` parametrizado y no escribe ninguna zona ni desfase", async () => {
     const { prisma, capturado } = prismaFalso([]);
+    const consulta = consultaDe({});
 
-    await new ConteoCargadasPorDiaRepository(prisma as never).contarCargadasPorDia(consultaDe({}));
+    await new ConteoCargadasPorDiaRepository(prisma as never).contarCargadasPorDia(consulta);
 
-    expect(capturado.sql).not.toMatch(/AT TIME ZONE/i);
+    const sql = Prisma.sql(capturado.plantilla, ...(capturado.valores as never[]));
+    // La única zona escrita es 'UTC' (el reloj de pared guardado); la de la empresa es `$n`.
+    expect(sql.text).toMatch(/\(o\."created_at" AT TIME ZONE 'UTC'\) AT TIME ZONE \$\d+::text/);
+    expect(sql.values).toContain(consulta.zona);
     expect(capturado.sql).not.toMatch(/America|Costa_Rica/i);
-    expect(capturado.sql).not.toMatch(/interval\s+'6 hours'/i);
-    // La única unidad escrita es el segundo; el número de segundos entra como parámetro.
-    expect(capturado.sql).toContain("interval '1 second'");
+    expect(capturado.sql).not.toMatch(/interval/i);
+  });
+
+  it("con una empresa en otra zona, la zona que viaja es la suya (R22)", async () => {
+    const { prisma, capturado } = prismaFalso([]);
+    const preparada = prepararConteoEntregas({}, { usuarioId: "u1", rol: "maestro" } as never, "America/New_York", AHORA);
+    if (preparada.status !== "ok") throw new Error(preparada.status);
+
+    await new ConteoCargadasPorDiaRepository(prisma as never).contarCargadasPorDia(preparada.consulta);
+
+    const sql = Prisma.sql(capturado.plantilla, ...(capturado.valores as never[]));
+    expect(sql.values).toContain("America/New_York");
+    expect(sql.values).not.toContain(ZONA_DE_CR);
+    expect(sql.text).not.toContain("America/New_York");
   });
 
   it("agrupa por la fecha `::date` del instante y la devuelve como texto `YYYY-MM-DD`", async () => {

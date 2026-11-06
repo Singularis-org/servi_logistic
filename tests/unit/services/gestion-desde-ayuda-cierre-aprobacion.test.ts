@@ -10,6 +10,7 @@ import { RESULTADOS_DESDE_AYUDA } from "@/lib/types/gestion-desde-ayuda";
 import { RESULTADOS_QUE_VUELVEN, vuelveABodega } from "@/lib/types/gestion-retorno";
 import { quitarComentarios } from "@/tests/fixtures/sin-comentarios";
 import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // 💰 Feature 237 (T6.3-T6.8, R32/R33/R34/R35/R37/R44) — LO QUE PASA ALREDEDOR DEL CIERRE.
 //
@@ -75,6 +76,9 @@ function servicioSolicitar(repo: ICierreDiaRepository) {
       emitirCierrePorAprobar: vi.fn(async () => {}),
       resolvePagoTarifa: vi.fn(async () => null),
     } as never,
+    undefined,
+    undefined,
+    reglasPaisFijas(),
   );
   return { service, repo, ordenRepo };
 }

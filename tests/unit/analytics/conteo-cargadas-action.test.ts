@@ -4,6 +4,7 @@ import type { ConsultaConteoEntregas } from "@/lib/analytics/entregas-conteo";
 import { consultarConteoCargadasPorDia } from "@/lib/actions/conteo-cargadas-por-dia";
 import type { ConteoCargadasPorDiaDTO } from "@/lib/types/conteo-cargadas";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // El borde de la TERCERA lectura de la pantalla. Recorre los mismos cuatro pasos que las otras
 // dos y REUSA `prepararConteoEntregas`: no es parecido, es el mismo código. Duplicar aquí el
 // resolutor de alcance sería abrir una tercera puerta a la misma frontera multi-tenant.
@@ -23,7 +24,7 @@ function deps(actor: unknown) {
   const service = { consultar: vi.fn(async (_c: ConsultaConteoEntregas) => DATOS) };
   const logger = { logError: vi.fn() };
   return {
-    deps: { service, logger, getActor: async () => actor as never, now: () => AHORA },
+    deps: { reglasPais: reglasPaisFijas(), service, logger, getActor: async () => actor as never, now: () => AHORA },
     service,
     logger,
   };

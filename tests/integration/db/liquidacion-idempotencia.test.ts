@@ -15,6 +15,7 @@ import type {
   RegistrarPagoTiendaInput,
 } from "@/lib/types/liquidacion";
 import { derivarPendienteCierre } from "@/lib/utils/pendiente-cierre";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 172 / T B.4 — EL CANDADO DE SERIALIZACION [P1] (design §4.2). Cubre R46, R83 y R85.
 // Feature 172 / T B.6 — IDEMPOTENCIA (design §4.1). Cubre R43, R44, R45, R47 y R48, con el
@@ -694,6 +695,9 @@ function buildService(store: ReturnType<typeof makeStore>, ahora?: () => Date) {
     // aqui reparta, hable con el mismo store que todo lo demas.
     new LiquidacionRepartoRepository(cliente),
     ahora,
+    undefined,
+    undefined,
+    reglasPaisFijas(),
   );
 }
 

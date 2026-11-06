@@ -8,6 +8,7 @@ import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlPro
 import type { IZonaRepository } from "@/lib/interfaces/repositories/IZonaRepository";
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 139 (T1.4) — el service resuelve la config del DISPARO de la devolucion de `rechazada`
 // (origen `rechazada` + destinos `por_devolver`/`por_devolver_a_tienda` + zona central) y la pasa
@@ -96,7 +97,12 @@ function newService(estatusIds: Record<string, string | null> = ESTATUS_IDS) {
     sumarPremiosVivosPorCierre: vi.fn(async (ids: string[]) =>
       Object.fromEntries(ids.map((id) => [id, "0.00"])),
     ),
-  }, sinRetenidas()); // FICHA 462: 7.o argumento requerido; este archivo no mide la marca
+  }, sinRetenidas(),
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  reglasPaisFijas(),); // FICHA 462: 7.o argumento requerido; este archivo no mide la marca
   return { service, repo, ordenRepo };
 }
 

@@ -11,6 +11,7 @@ import {
   fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 /**
  * PEDIDO HUMANO DEL 2026-09-05 — LAS DOS FECHAS DE LA DESCARGA DETALLADA DE CIERRES, EJECUTADAS
@@ -220,7 +221,7 @@ describeSiHayBase("descarga detallada — las fechas de gestion y de reparto (20
 
       const filas = await repoDe(tx).findGestionesPorAlcanceCompleto(ALCANCE, {
         mensajeroIds: [mensajeroId],
-      });
+      }, ZONA_CR);
       return { filas, conReparto, sinReparto };
     });
   }

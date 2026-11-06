@@ -11,7 +11,7 @@
 import { z } from "zod";
 import type { RolValue } from "@prisma/client";
 import type { InformeWhatsapp, ResultadoInforme } from "@/lib/whatsapp-envios/informes/tipos";
-import { fechaCRLegible, horaCRLegible } from "@/lib/whatsapp-envios/informes/formato";
+import { fechaLegibleEnZona, horaLegibleEnZona } from "@/lib/whatsapp-envios/informes/formato";
 import { eventosDisponibles, perfilDeEvento } from "@/lib/whatsapp-envios/eventos";
 import { accionDeAviso } from "@/lib/notificaciones/catalogo-avisos";
 import { baseUrlEnlace } from "@/lib/config/whatsapp-envios";
@@ -63,8 +63,8 @@ export function crearInformeAvisoInterno(
         descripcion: "Dirección de la pantalla donde se atiende el aviso.",
         ejemplo: "https://example.com/cierres",
       },
-      { clave: "fecha", nombre: "Fecha del aviso", descripcion: "Fecha del aviso (hora de Costa Rica).", ejemplo: "05/10/2026" },
-      { clave: "hora", nombre: "Hora del aviso", descripcion: "Hora del aviso (hora de Costa Rica).", ejemplo: "05:00" },
+      { clave: "fecha", nombre: "Fecha del aviso", descripcion: "Fecha del aviso (hora local).", ejemplo: "05/10/2026" },
+      { clave: "hora", nombre: "Hora del aviso", descripcion: "Hora del aviso (hora local).", ejemplo: "05:00" },
     ],
     generaDocumento: false,
     aptoParaAdminTienda: false,
@@ -84,8 +84,8 @@ export function crearInformeAvisoInterno(
             titulo: perfil.nombre,
             texto: ctx.evento.datos.texto,
             enlace: enlaceDe(base, rutaDeAviso(ctx.evento.clave, ctx.evento.datos.rolFila)),
-            fecha: fechaCRLegible(creado),
-            hora: horaCRLegible(creado),
+            fecha: fechaLegibleEnZona(creado, ctx.zona),
+            hora: horaLegibleEnZona(creado, ctx.zona),
           },
         };
       }
@@ -101,8 +101,8 @@ export function crearInformeAvisoInterno(
             titulo: p.nombre,
             texto: p.ejemploTexto,
             enlace: enlaceDe(base, rutaDeAviso(ctx.eventoDePrueba, "maestro")),
-            fecha: fechaCRLegible(ctx.ahora),
-            hora: horaCRLegible(ctx.ahora),
+            fecha: fechaLegibleEnZona(ctx.ahora, ctx.zona),
+            hora: horaLegibleEnZona(ctx.ahora, ctx.zona),
           },
         };
       }

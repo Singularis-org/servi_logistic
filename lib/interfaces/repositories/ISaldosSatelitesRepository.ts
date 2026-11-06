@@ -39,12 +39,15 @@ export interface ISaldosSatelitesRepository {
    * El conjunto son las bodegas SATELITE (`zona.esCentral = false`), TODAS, tengan o no
    * consolidaciones: una bodega a cero es informacion («no debe nada»), no una fila que sobra.
    */
-  findSaldosPaginado(rango: RangoPagina): Promise<PaginaRepositorio<SaldoSateliteDTO>>;
+  //
+  // SLT-42 (R22): `zonaHoraria` es la zona IANA del pais de la empresa; con ella se cuentan los dias
+  // de la consolidacion mas antigua y se corta el mes. La calcula el servicio, no el repositorio.
+  findSaldosPaginado(rango: RangoPagina, zonaHoraria: string): Promise<PaginaRepositorio<SaldoSateliteDTO>>;
   /**
    * R29 — el MISMO conjunto sin recorte, para la descarga. Mismo criterio y mismo orden que la
    * pagina por construccion: la pagina N es el segmento N de este conjunto.
    */
-  findSaldosCompleto(): Promise<SaldoSateliteDTO[]>;
+  findSaldosCompleto(zonaHoraria: string): Promise<SaldoSateliteDTO[]>;
   /**
    * R22/R24 — UNA PAGINA de las consolidaciones de UNA bodega + el total.
    *
@@ -69,5 +72,5 @@ export interface ISaldosSatelitesRepository {
    * (`saldoDe`) aplicada a tres poblaciones distintas, no tres reglas nuevas. SLT-73 (R7): el
    * pendiente es Σ de las deudas por zona y «bodegas con pendiente», las zonas con deuda ≠ 0.
    */
-  findResumen(ahora?: Date): Promise<ResumenSatelitesDTO>;
+  findResumen(zonaHoraria: string, ahora?: Date): Promise<ResumenSatelitesDTO>;
 }

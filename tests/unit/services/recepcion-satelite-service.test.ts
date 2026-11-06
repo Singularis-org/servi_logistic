@@ -12,6 +12,7 @@ import {
   llamadasIntentos,
   type IntentosSvcDoble,
 } from "@/tests/fixtures/intentos-entrega";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 const ADMIN: Actor = { usuarioId: "as1", rol: "adminSatelite" };
 const MAESTRO: Actor = { usuarioId: "u-maestro", rol: "maestro" };
@@ -88,7 +89,7 @@ function newService(
   // Feature 160: derivador de intentos EN LOTE, dependencia REQUERIDA del constructor.
   intentos: IntentosSvcDoble = fakeIntentosEnLote(),
 ) {
-  return new RecepcionSateliteService(repo as unknown as IOrdenRepository, intentos);
+  return new RecepcionSateliteService(repo as unknown as IOrdenRepository, intentos, undefined, reglasPaisFijas());
 }
 
 // --- listar (R3/R4/R5/R6/R8/R9) ---

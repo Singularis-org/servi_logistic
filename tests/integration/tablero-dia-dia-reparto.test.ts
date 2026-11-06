@@ -22,6 +22,7 @@ import {
   enTransaccionRevertida,
 } from "./db/_postgres-real";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 259 (T3.2) — R2, R3, R4, R5, R6, R7, R12, R22. **DONDE SE DECIDE SI LA FICHA ESTÁ BIEN.**
 //
 // El cambio de esta ficha es un `WHERE`, y un test de servicio con dobles NO VE EL SQL: en este
@@ -43,8 +44,8 @@ const AYER_CR = "2001-06-14";
 const MANANA_CR = "2001-06-16";
 
 /** Las tres ventanas. Salen del MISMO helper que usa la Server Action: una sola definición del día. */
-const VENTANA_AYER = ventanaDelDiaEnCursoCR(instanteCR(AYER_CR, "19:00"));
-const VENTANA_MANANA = ventanaDelDiaEnCursoCR(instanteCR(MANANA_CR, "19:00"));
+const VENTANA_AYER = ventanaDelDiaEnCursoCR(instanteCR(AYER_CR, "19:00"), ZONA_CR);
+const VENTANA_MANANA = ventanaDelDiaEnCursoCR(instanteCR(MANANA_CR, "19:00"), ZONA_CR);
 
 const PAGINA_GRANDE = { pagina: 1, pageSize: 100 };
 

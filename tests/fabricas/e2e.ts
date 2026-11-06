@@ -86,7 +86,10 @@ export interface CatalogosPresentes {
 /** El tipo de identificación con el que la fábrica da de alta a todos. */
 const TIPO_IDENTIFICACION_E2E = TIPO_IDENTIFICACION;
 
-/** Qué catálogo de `db:seed` (o de la geografía migrada) falta. Vacío = la base sirve. */
+/**
+ * Qué catálogo de `db:seed` (o de las migraciones: geografía y, desde SLT-42, tipos de documento)
+ * falta. Vacío = la base sirve.
+ */
 export function catalogosQueFaltan(p: CatalogosPresentes): string[] {
   const faltan = (nombre: string, esperados: readonly string[], hay: string[]): string[] => {
     const ausentes = esperados.filter((v) => !hay.includes(v));
@@ -134,7 +137,7 @@ function comprobarBaseE2E(): Promise<void> {
     }
     const faltan = catalogosQueFaltan(presentes);
     if (faltan.length > 0) {
-      throw new Error(`SL-44 E2E: faltan catálogos en la base (corre \`pnpm run db:seed\`): ${faltan.join("; ")}`);
+      throw new Error(`SL-44 E2E: faltan catálogos en la base (corre \`pnpm exec prisma migrate deploy\` y \`pnpm run db:seed\`): ${faltan.join("; ")}`);
     }
   })();
   // Un fallo no se queda en caché: el siguiente intento vuelve a mirar.
@@ -175,7 +178,6 @@ export async function crearEmpresaE2E(etiqueta: string): Promise<EmpresaE2E> {
       correoMaestro: correoE2E("maestro"),
       contrasena: contrasenaE2E(),
       nombreMaestro: `Maestro E2E ${s}`,
-      documentoMaestro: `e2e-${s}`,
     },
     { ficha: "SL-44", motivo: "fábrica E2E: alta de empresa" },
   );
@@ -196,7 +198,6 @@ export async function crearUsuarioE2E(
     correo: correoE2E(rol),
     contrasena: contrasenaE2E(),
     nombre: `E2E ${rol} ${s}`,
-    cedula: `e2e-${s}`,
     ...extra,
   });
 }

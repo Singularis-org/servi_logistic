@@ -1,5 +1,7 @@
 "use server";
 
+import { zonaDelBorde } from "@/lib/actions/_shared/zona-del-borde";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { GastoFijoPlantillaRepository } from "@/lib/repositories/GastoFijoPlantillaRepository";
 import { GastoFijoCobroRepository } from "@/lib/repositories/GastoFijoCobroRepository";
@@ -118,6 +120,8 @@ function buildService(): IGastoFijoPlantillaService {
 export interface PlantillaDeps {
   service?: IGastoFijoPlantillaService;
   getActor?: () => Promise<Actor | null>;
+  /** SLT-42 (R22, R28): la zona del pais de la empresa; en produccion, la real (`zonaDelBorde`). */
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
 }
 
 /** R17/R18/R24: crea una plantilla de gasto fijo (solo maestro). */
@@ -128,7 +132,9 @@ export async function crearPlantillaAction(
   const r = await withErrorHandler(async () => {
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
-    const data = crearGastoFijoPlantillaSchema.parse(input); // ZodError -> VALIDATION_ERROR (R24)
+    // SLT-42 (R22, R28): «hoy» en la zona del pais de la empresa; sin zona, falla sin tocar nada.
+    const zona = await zonaDelBorde(deps.reglasPais);
+    const data = crearGastoFijoPlantillaSchema(zona).parse(input); // ZodError -> VALIDATION_ERROR (R24)
     const service = deps.service ?? buildService();
     return service.crearPlantilla(data, actor);
   });

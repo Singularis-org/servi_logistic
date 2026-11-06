@@ -14,6 +14,7 @@ import type { ICajaAbonoTiendaFeedService } from "@/lib/interfaces/services/ICaj
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { AbonoTiendaService } from "@/lib/services/AbonoTiendaService";
 import type { RegistrarAbonoTiendaInput } from "@/lib/types/abono-tienda";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // FICHA 457 — los DOBLES de `AbonoTiendaService`, compartidos por los tres archivos de servicio
 // (registrar, anular, comprobante). No es un archivo de test (no acaba en `.test.ts`).
@@ -180,6 +181,7 @@ export function montar(opts: {
     runTx as unknown as AbonoTiendaTxRunner,
     () => opts.ahora ?? AHORA,
     { MAX_BYTES: 4 * 1024 * 1024, SIGNED_URL_TTL_SECONDS: 300 },
+    reglasPaisFijas(),
   );
   return { svc, orden, abonoRepo, tiendaRepo, candado, usuarioRepo, caja, storage, urls, runTx, tx };
 }

@@ -5,6 +5,7 @@
 // —la creacion de un aviso elegible, desde el decorador del repositorio de notificaciones—, nunca
 // por reloj. Re-agendarlo mandaria un push por minuto a la misma persona.
 import type { JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import type { JobHandler } from "@/lib/interfaces/services/IJobQueueService";
 import type { IPushWebService } from "@/lib/interfaces/services/IPushWebService";
 import { PushWebService } from "@/lib/services/PushWebService";
@@ -62,6 +63,7 @@ export function buildPushWebService(now: () => Date = () => new Date()): IPushWe
       // `reprogramadas_esperan_cierre` y el push saldria SIN numero: nada visible se rompe y por
       // eso el fallo seria MUDO. Mismo ensamblaje que el cron y la campana (R7).
       buildReprogramadasRetenidasService(prisma),
+      construirReglasPaisEmpresa(prisma), // SLT-42 (R22, R28): la zona horaria del pais de la empresa.
     ),
     now,
     piezasAusentes: piezasVapidAusentes,

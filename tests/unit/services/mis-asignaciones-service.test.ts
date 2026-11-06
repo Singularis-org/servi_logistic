@@ -25,6 +25,8 @@ import {
   llamadasIntentos,
   type IntentosSvcDoble,
 } from "@/tests/fixtures/intentos-entrega";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 const MENSAJERO: Actor = { usuarioId: "m1", rol: "mensajero" };
 const OTRO: Actor = { usuarioId: "m2", rol: "mensajero" };
@@ -192,6 +194,7 @@ function newService(
     rutaRepo,
     fakeMetaRepo(),
     intentos,
+    reglasPaisFijas(),
   );
 }
 
@@ -997,6 +1000,7 @@ describe("gestionar — DEVUELTA queda en el PRE-ESTADO, sin seguimiento (featur
         fakeRutaRepo(),
         fakeMetaRepo(),
         fakeIntentosEnLote(),
+        reglasPaisFijas(),
       );
       const r = await service.gestionar(devolucion, MENSAJERO);
       expect(r.status).toBe("ok");
@@ -1035,6 +1039,7 @@ describe("gestionar — DEVUELTA queda en el PRE-ESTADO, sin seguimiento (featur
       fakeRutaRepo(),
       fakeMetaRepo(),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
     await service.gestionar(devolucion, MENSAJERO);
     expect(ordenRepo.findEstatusIdByValue).not.toHaveBeenCalledWith("devolviendo_a_tienda");
@@ -1059,6 +1064,7 @@ describe("gestionar — DEVUELTA queda en el PRE-ESTADO, sin seguimiento (featur
       fakeRutaRepo(),
       fakeMetaRepo(),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
     const r = await service.gestionar(devolucion, MENSAJERO);
     expect(r.status).toBe("ok");
@@ -1201,6 +1207,7 @@ describe("Feature 111 · bloqueo total (R1/R2/R3/R4/R20)", () => {
       fakeRutaRepo(),
       fakeMetaRepo(),
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
     return { service, repo, storage, signed, ordenRepo };
   }
@@ -1222,7 +1229,7 @@ describe("Feature 111 · bloqueo total (R1/R2/R3/R4/R20)", () => {
     expect(r.status).toBe("conflict");
     if (r.status === "conflict") expect(r.motivo).toMatch(/no puedes entregar, cobrar ni recibir trabajo nuevo/i);
     // R2: reusa el MISMO predicado derivado (doble espía).
-    expect(ordenRepo.findBloqueoDetalle).toHaveBeenCalledWith("m1");
+    expect(ordenRepo.findBloqueoDetalle).toHaveBeenCalledWith("m1", ZONA_CR);
     // R3: sin efectos parciales (la guarda está ANTES de la subida y de la tx).
     expect(storage.upload).not.toHaveBeenCalled();
     expect(repo.registrarGestionPendiente).not.toHaveBeenCalled();
@@ -1247,7 +1254,7 @@ describe("Feature 111 · bloqueo total (R1/R2/R3/R4/R20)", () => {
 
     expect(r.status).toBe("conflict");
     if (r.status === "conflict") expect(r.detalle[0].motivo).toMatch(/no puedes entregar, cobrar ni recibir trabajo nuevo/i);
-    expect(ordenRepo.findBloqueoDetalle).toHaveBeenCalledWith("m1");
+    expect(ordenRepo.findBloqueoDetalle).toHaveBeenCalledWith("m1", ZONA_CR);
     expect(repo.recogerLote).not.toHaveBeenCalled();
   });
 
@@ -1258,7 +1265,7 @@ describe("Feature 111 · bloqueo total (R1/R2/R3/R4/R20)", () => {
 
     expect(r.status).toBe("conflict");
     if (r.status === "conflict") expect(r.motivo).toMatch(/no puedes entregar, cobrar ni recibir trabajo nuevo/i);
-    expect(ordenRepo.findBloqueoDetalle).toHaveBeenCalledWith("m1");
+    expect(ordenRepo.findBloqueoDetalle).toHaveBeenCalledWith("m1", ZONA_CR);
     expect(repo.setOrdenEnGestion).not.toHaveBeenCalled();
   });
 

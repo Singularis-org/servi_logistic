@@ -348,8 +348,11 @@ describe("336 · 4 — el módulo de acciones del pago por mensajero no exporta 
     // pagos», pero es del que `listarPagosDeMensajeroSchema` deriva con `.extend(...)`:
     // borrarlo rompe la vista del maestro sin que ningún nombre lo delate.
     const tipos = codigoSinComentarios("lib/types/wallet-mensajero.ts");
-    expect(tipos).toMatch(/export const listarPagosMensajeroSchema\b/);
-    expect(tipos).toMatch(/listarPagosDeMensajeroSchema = listarPagosMensajeroSchema\.extend/);
+    // SLT-42: los dos son fabricas `(zona) => schema`; la derivacion se conserva.
+    expect(tipos).toMatch(/export function listarPagosMensajeroSchema\b/);
+    expect(tipos).toMatch(
+      /function listarPagosDeMensajeroSchema\(zona: string\) \{\s*return listarPagosMensajeroSchema\(zona\)\.extend/,
+    );
   });
 });
 

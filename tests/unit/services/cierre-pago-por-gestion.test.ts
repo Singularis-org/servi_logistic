@@ -17,6 +17,7 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { ContextoPagoGestion, TarifaPago, ValorPago } from "@/lib/types/tarifa-flexible";
 import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
 import { conPagos } from "@/tests/fixtures/cierre-pagos";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * SLT-52 T5.1/T5.2 (design §5 y §7; R19, R20, R24, R33, R40) — el cierre resuelve el pago al
@@ -179,7 +180,7 @@ function montarSolicitud() {
   const zonaRepo = { findCentralZonaId: vi.fn(async () => null) } as unknown as IZonaRepository;
   const signedUrls = { createSignedUrls: vi.fn(async () => ({})) } as unknown as ISignedUrlProvider;
   const tarifaRepo = tarifaRepoNuevo();
-  const service = new CierreDiaService(repo, zonaRepo, ordenRepo, signedUrls, tarifaRepo);
+  const service = new CierreDiaService(repo, zonaRepo, ordenRepo, signedUrls, tarifaRepo, undefined, undefined, reglasPaisFijas());
   return { service, crearCierre, tarifaRepo };
 }
 
@@ -267,7 +268,9 @@ describe("SLT-52 R19/R33 — el corte diario resuelve igual, con la zona del men
     const tarifaRepo = tarifaRepoNuevo();
     const service = new CorteDiarioService(corteRepo, cierreRepo, zonaRepo, ordenRepo, tarifaRepo, {
       warn: vi.fn(),
-    });
+    },
+    undefined,
+    reglasPaisFijas(),);
     return { service, crearCierre, tarifaRepo };
   }
 

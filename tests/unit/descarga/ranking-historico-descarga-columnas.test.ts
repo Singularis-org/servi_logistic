@@ -8,6 +8,7 @@ import { tituloRankingHistorico } from "@/app/(app)/ranking/historico/_component
 import { nombreArchivoDescarga } from "@/lib/utils/descarga-dataset";
 import type { RankingSnapshotFilaDTO } from "@/lib/types/ranking-snapshot";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 196 (T5.4) — ORDEN, CENSO y PROYECCIÓN de las columnas del archivo del histórico.
 // Cubre R34 y R35.
 //
@@ -118,7 +119,7 @@ describe("nombre del archivo del ranking histórico (R35)", () => {
     expect(titulo).toBe("Ranking del día 2026-08-09");
 
     // Mediodia de CR del 2026-08-10, en UTC explicito: el nombre lleva el dia de Costa Rica (457/O3).
-    const nombre = nombreArchivoDescarga(titulo, "xlsx", new Date("2026-08-10T18:00:00.000Z"));
+    const nombre = nombreArchivoDescarga(titulo, "xlsx", new Date("2026-08-10T18:00:00.000Z"), ZONA_CR);
     expect(nombre).toBe("ranking-del-dia-2026-08-09-2026-08-10.xlsx");
   });
 
@@ -126,8 +127,8 @@ describe("nombre del archivo del ranking histórico (R35)", () => {
     // Es el punto de R35: sin la fecha dentro del título, la descarga del martes y la del
     // miércoles se llamarían igual y la segunda pisaría a la primera.
     const hoy = new Date("2026-08-10T18:00:00.000Z");
-    const martes = nombreArchivoDescarga(tituloRankingHistorico("2026-08-04"), "xlsx", hoy);
-    const miercoles = nombreArchivoDescarga(tituloRankingHistorico("2026-08-05"), "xlsx", hoy);
+    const martes = nombreArchivoDescarga(tituloRankingHistorico("2026-08-04"), "xlsx", hoy, ZONA_CR);
+    const miercoles = nombreArchivoDescarga(tituloRankingHistorico("2026-08-05"), "xlsx", hoy, ZONA_CR);
 
     expect(martes).not.toBe(miercoles);
     expect(martes).toContain("2026-08-04");

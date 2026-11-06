@@ -28,6 +28,8 @@ import { resolverRango } from "@/lib/analytics/ranges";
 import { derivarFinanzasDiarias } from "@/lib/utils/finanzas-diarias";
 import type { IFinanzasDiarioRepository } from "@/lib/interfaces/repositories/IFinanzasDiarioRepository";
 import type { FinanzasDiarioDTO } from "@/lib/types/finanzas-diario";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 
 export interface FinanzasDiarioServiceOpts {
   /** Reloj inyectable: ningun `Date.now()` escondido. Aqui decide QUE 30 dias se suman. */
@@ -40,6 +42,8 @@ export class FinanzasDiarioService {
   constructor(
     private readonly repo: IFinanzasDiarioRepository,
     opts: FinanzasDiarioServiceOpts = {},
+    /** SLT-42 (R22, R28): la zona del pais de la empresa, de la que salen los 30 dias. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {
     this.now = opts.now ?? (() => new Date());
   }
@@ -52,8 +56,9 @@ export class FinanzasDiarioService {
    * movio dinero» o «la ventana empezaba el 13».
    */
   async consultar(): Promise<FinanzasDiarioDTO> {
-    const rango = resolverRango({ preset: "mes" }, this.now());
-    const filas = await this.repo.sumarPorDia(rango.desde, rango.hasta);
+    const zona = await zonaDeLaEmpresa(this.reglasPais, "FinanzasDiarioService"); // SLT-42 (R22, R28)
+    const rango = resolverRango({ preset: "mes" }, zona, this.now());
+    const filas = await this.repo.sumarPorDia(rango.desde, rango.hasta, zona);
 
     return {
       porDia: derivarFinanzasDiarias(filas),

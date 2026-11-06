@@ -47,8 +47,10 @@ export async function encolarProximaOcurrencia(
   cola: Pick<IJobRepository, "enqueue">,
   envio: { id: string; diasSemana: readonly number[]; hora: string },
   desde: Date,
+  /** SLT-42 (R22): la zona del pais de la empresa del envio, en la que se lee `hora`. */
+  zona: string,
 ): Promise<Ocurrencia | null> {
-  const oc = proximaOcurrencia(envio.diasSemana, envio.hora, desde);
+  const oc = proximaOcurrencia(envio.diasSemana, envio.hora, desde, zona);
   if (oc === null) return null;
   const payload: PayloadProgramado = { envioId: envio.id, fechaCr: oc.fechaCr, hora: envio.hora };
   await cola.enqueue("whatsapp_envio_programado", { ...payload }, {

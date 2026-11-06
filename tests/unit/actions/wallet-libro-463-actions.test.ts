@@ -18,6 +18,18 @@ import type { IWalletTiendaService } from "@/lib/interfaces/services/IWalletTien
 import { WalletService } from "@/lib/services/WalletService";
 import { descargaConfig } from "@/lib/config/descarga";
 import { ORIGENES_FALSOS } from "@/tests/fixtures/origenes-falsos";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+
+// SLT-42 (T5.4): la zona del pais de la empresa, sin sesion ni base: la de CR, como antes. El borde
+// (`zonaDelBorde`) y los composition roots leen `construirReglasPaisEmpresa`; la zona en si la mide
+// `tests/unit/services/hora-por-pais-wallet.test.ts`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
 
 // FICHA 463 / T4 — los BORDES del libro de las wallets, con dobles de servicio.
 //
@@ -153,14 +165,14 @@ describe("463 — WalletService: el termino y el orden SOLO van al libro", () =>
 
   it("listarMovimientos lleva `termino` y `sortDir` al repositorio", async () => {
     const { repo, listar } = repoEspia(0);
-    const svc = new WalletService(repo, {} as WalletTxClient, SIN_SALDO, SIN_DOCUMENTOS);
+    const svc = new WalletService(repo, {} as WalletTxClient, SIN_SALDO, SIN_DOCUMENTOS, undefined, undefined, reglasPaisFijas());
     await svc.listarMovimientos({ page: 2, pageSize: 10, q: "Pedro", sortBy: "fecha", sortDir: "asc" }, MAESTRO);
     expect(listar).toHaveBeenCalledWith(expect.objectContaining({ page: 2, pageSize: 10, termino: "Pedro", sortDir: "asc" }));
   });
 
   it("sin termino ni orden, el repositorio recibe lo de siempre (sin claves nuevas)", async () => {
     const { repo, listar } = repoEspia(0);
-    const svc = new WalletService(repo, {} as WalletTxClient, SIN_SALDO, SIN_DOCUMENTOS);
+    const svc = new WalletService(repo, {} as WalletTxClient, SIN_SALDO, SIN_DOCUMENTOS, undefined, undefined, reglasPaisFijas());
     await svc.listarMovimientos({ page: 1, pageSize: 20 }, MAESTRO);
     const filtros = listar.mock.calls[0]![0];
     expect(filtros).not.toHaveProperty("termino");
@@ -170,7 +182,7 @@ describe("463 — WalletService: el termino y el orden SOLO van al libro", () =>
   it("R44: la descarga con termino y orden por encima del tope ⇒ limite_excedido sin filas, como hoy", async () => {
     const limite = descargaConfig.MAX_FILAS;
     const { repo, listar } = repoEspia(limite + 1);
-    const svc = new WalletService(repo, {} as WalletTxClient, SIN_SALDO, SIN_DOCUMENTOS);
+    const svc = new WalletService(repo, {} as WalletTxClient, SIN_SALDO, SIN_DOCUMENTOS, undefined, undefined, reglasPaisFijas());
     const r = await svc.listarMovimientosCompleto({ q: "Pedro", sortBy: "fecha", sortDir: "asc" }, MAESTRO);
     expect(r).toEqual({ status: "limite_excedido", total: limite + 1, limite });
     expect(listar).toHaveBeenCalledWith(expect.objectContaining({ page: 1, pageSize: limite + 1, termino: "Pedro", sortDir: "asc" }));
@@ -178,7 +190,7 @@ describe("463 — WalletService: el termino y el orden SOLO van al libro", () =>
 
   it("R12: el resumen lee los agregados con los filtros de la wallet y sin termino ni orden", async () => {
     const { repo, agregarPorCategoriaYTipo } = repoEspia(0);
-    const svc = new WalletService(repo, {} as WalletTxClient, SIN_SALDO, SIN_DOCUMENTOS);
+    const svc = new WalletService(repo, {} as WalletTxClient, SIN_SALDO, SIN_DOCUMENTOS, undefined, undefined, reglasPaisFijas());
     await svc.verResumenCaja({ page: 1, pageSize: 20, tipo: "ingreso" }, MAESTRO);
     const filtros = (agregarPorCategoriaYTipo.mock.calls as unknown as [Record<string, unknown>][])[0]![0];
     expect(filtros).not.toHaveProperty("termino");

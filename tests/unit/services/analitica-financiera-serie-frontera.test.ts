@@ -16,6 +16,8 @@ import {
 } from "@/lib/types/analitica-financiera";
 import { AHORA, armarServicio, consultaDe, type DatosFinancieros } from "./_dobles-analitica-financiera";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Feature 180 (T4.1 / T4.3 / T3.5) — LA FRONTERA DEL DESGLOSE: R16, R17, R22, R24, R25.
 //
 // Lo que se mide aqui no es la cifra sino QUE se toca y QUE no:
@@ -79,7 +81,7 @@ describe("los cubos que el servicio pasa al repositorio son los del troceo de la
         // La consulta entra ENTERA y es LA MISMA instancia: ni reconstruida ni forjada.
         expect(consultaPasada, id).toBe(consulta);
         expect(comparable(cubosPasados), `${id} / ${raw.desde}`).toEqual(
-          comparable(trocear(consulta.rango)),
+          comparable(trocear(consulta.rango, ZONA_CR)),
         );
       }
     }
@@ -93,7 +95,7 @@ describe("los cubos que el servicio pasa al repositorio son los del troceo de la
     const [consultaPorCubo, cubosPasados] =
       cuentasPorPagar.cuentaPorPagarMensajerosPorCubo.mock.calls[0];
     expect(consultaPorCubo).toBe(consulta);
-    expect(comparable(cubosPasados)).toEqual(comparable(trocear(consulta.rango)));
+    expect(comparable(cubosPasados)).toEqual(comparable(trocear(consulta.rango, ZONA_CR)));
     // El arrastre y el corte reciben la consulta entera y NADA MAS: ni un `desde` suelto.
     expect(cuentasPorPagar.cuentaPorPagarMensajerosAntesDe.mock.calls[0]).toEqual([consulta]);
     expect(cuentasPorPagar.cuentaPorPagarMensajerosAlCorte.mock.calls[0]).toEqual([consulta]);
@@ -102,8 +104,8 @@ describe("los cubos que el servicio pasa al repositorio son los del troceo de la
   it("R22 · el detector discrimina: el troceo de OTRO rango no coincide", () => {
     // Sin esto, comparar dos veces lo mismo podria pasar por casualidad si `trocear` devolviera
     // siempre lo mismo. Aqui se demuestra que dos rangos dan cubos distintos.
-    const propios = trocear(consultaDe("egresos", RANGO_CINCO_DIAS).rango);
-    const ajenos = trocear(consultaDe("egresos", { rango: "dia" }).rango);
+    const propios = trocear(consultaDe("egresos", RANGO_CINCO_DIAS).rango, ZONA_CR);
+    const ajenos = trocear(consultaDe("egresos", { rango: "dia" }).rango, ZONA_CR);
     expect(comparable(propios)).not.toEqual(comparable(ajenos));
   });
 });
@@ -125,7 +127,7 @@ describe("un rol prohibido no llega a los metodos del desglose", () => {
       const respuesta = await consultarMetricaFinanciera(
         id,
         { rango: "dia" },
-        { now: AHORA, logger, getActor: async () => TIENDA, service: armado.servicio },
+        { reglasPais: reglasPaisFijas(), now: AHORA, logger, getActor: async () => TIENDA, service: armado.servicio },
       );
 
       expect(respuesta, id).toEqual({ status: "forbidden", code: "FORBIDDEN" });
@@ -143,7 +145,7 @@ describe("un rol prohibido no llega a los metodos del desglose", () => {
     const respuesta = await consultarMetricaFinanciera(
       "egresos",
       { rango: "dia" },
-      { now: AHORA, logger: { logError: vi.fn() }, getActor: async () => MAESTRO, service: armado.servicio },
+      { reglasPais: reglasPaisFijas(), now: AHORA, logger: { logError: vi.fn() }, getActor: async () => MAESTRO, service: armado.servicio },
     );
     expect(respuesta.status).toBe("ok");
     expect(armado.ingresos.sumarPorCuboYCategoria).toHaveBeenCalledTimes(1);

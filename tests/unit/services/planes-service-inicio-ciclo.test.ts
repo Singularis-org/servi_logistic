@@ -9,6 +9,7 @@ import { apiKeysYaPasadas, rolYaPasado } from "@/lib/planes/mensajes";
 import { PlanesService } from "@/lib/services/PlanesService";
 import type { PlanDTO, TopeExcedido } from "@/lib/types/planes";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // SLT-58 (design §11.4; R29, R30, R31, R36, R37, R42) — la fecha de inicio del ciclo en la primera
 // asignación y su vista previa, con un repositorio doble y el reloj fijo. Lo que se mide aquí es el
 // borde: el rango con el reloj del servicio, «solo en la primera asignación» y que ningún rechazo
@@ -84,7 +85,7 @@ function doble() {
 let repo: ReturnType<typeof doble>;
 
 function servicioA(ahora: Date): PlanesService {
-  return new PlanesService(repo, () => ahora);
+  return new PlanesService(repo, () => ahora, async () => ZONA_DE_CR);
 }
 
 function llamadasAlRepositorio(): number {

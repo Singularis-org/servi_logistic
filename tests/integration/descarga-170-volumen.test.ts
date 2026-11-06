@@ -29,6 +29,7 @@ import { descargaConfig } from "@/lib/config/descarga";
 import { construirDescarga } from "@/lib/utils/descarga-dataset";
 import type { OrdenListItemDTO } from "@/lib/types/orden";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Ficha 470 (T1.3, riesgo K6) — el tope real de la descarga es ahora el limite de Excel
 // (1.048.575 filas). Este archivo prueba la MECANICA del tope (N entra, N+1 no), que no depende
 // del valor: lo fija en 5000 para no construir un millon de filas por caso. Patron de
@@ -105,7 +106,7 @@ describe("Descarga · volumen en el tope (feature 170, T G.2)", () => {
 
       const archivo = await construirDescarga(
         { titulo: TITULO, columnas: COLUMNAS_DESCARGA_ORDENES, filas },
-        new Date("2026-07-31T12:00:00Z"),
+        ZONA_CR, new Date("2026-07-31T12:00:00Z"),
       );
 
       expect(archivo.nombreArchivo).toBe("ordenes-2026-07-31.xlsx");
@@ -178,7 +179,7 @@ describe("Descarga · volumen en el tope (feature 170, T G.2)", () => {
     // Y lo que cierra R28: sin filas no hay archivo. El generador común ni se invoca —el
     // control corta antes—, y si alguien lo invocara con cero columnas, protesta.
     await expect(
-      construirDescarga({ titulo: TITULO, columnas: [], filas: [] }),
+      construirDescarga({ titulo: TITULO, columnas: [], filas: [] }, ZONA_CR),
     ).rejects.toThrow(/al menos una columna/);
   });
 });

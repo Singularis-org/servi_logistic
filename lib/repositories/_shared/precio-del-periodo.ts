@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import type { PendienteDeEmpresa } from "@/lib/types/consumo-plan";
 import { descuentoPeriodoSchema, type PrecioPlan, tipoCobroSchema } from "@/lib/types/planes";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendarioPlataforma } from "@/lib/planes/ciclo";
 
 // SLT-86 (design §1.2, §3.3; R15, R26, R32) — lo que comparten «Mi plan» (`MiPlanRepository`, por
 // `plan_de_la_empresa`) y el detalle de empresa del superadmin (`PlanesRepository.planDeEmpresa`): el
@@ -27,5 +27,5 @@ export function precioDelHistorial(precioMensual: string | null, descuentos: unk
  * el día (`AAAA-MM-DD`, hora de la plataforma) desde cuyas 00:00 rige. Nunca el actor.
  */
 export function pendienteDeEmpresa(planNombre: string, tipoCobro: string, desde: Date): PendienteDeEmpresa {
-  return { planNombre, tipo: tipoCobroSchema.parse(tipoCobro), desde: fechaCalendarioCR(desde) };
+  return { planNombre, tipo: tipoCobroSchema.parse(tipoCobro), desde: fechaCalendarioPlataforma(desde) };
 }

@@ -38,7 +38,6 @@
 // F1.4-Q4 de la feature 91.
 import type { IJobRepository, JobTxClient } from "@/lib/interfaces/repositories/IJobRepository";
 import { loadRouteOptimizationConfig } from "@/lib/config/route-optimization";
-import { inicioDelDiaCREnUtc } from "@/lib/utils/fecha-cr";
 
 /**
  * SLT-59 (design §13.1, D28/D29) — que evento encolo el job. No es PII. Lo escriben la gestion y el
@@ -115,9 +114,10 @@ export async function encolarOptimizacionDebounce(
 // sigue existiendo, pero como condicion del boton, medida desde la ultima recogida del dia.
 
 /**
- * Glosario «primera ruta pendiente»: la ruta nunca se calculo o se calculo antes de que empezara
- * el dia `diaCR` en Costa Rica. Puro: no lee nada (R67).
+ * Glosario «primera ruta pendiente»: la ruta nunca se calculo o se calculo antes de `inicioDelDia`,
+ * el INSTANTE en que empezo el dia en curso. Puro: no lee nada (R67). SLT-42 (R22, R23): el instante
+ * lo calcula quien llama con la zona del pais de la empresa (`inicioDelDiaEnUtc`); aqui no hay zona.
  */
-export function primeraRutaPendiente(calculadaAt: Date | null, diaCR: string): boolean {
-  return calculadaAt === null || calculadaAt.getTime() < inicioDelDiaCREnUtc(diaCR).getTime();
+export function primeraRutaPendiente(calculadaAt: Date | null, inicioDelDia: Date): boolean {
+  return calculadaAt === null || calculadaAt.getTime() < inicioDelDia.getTime();
 }

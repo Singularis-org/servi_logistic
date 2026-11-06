@@ -1,3 +1,6 @@
+import { fechaCalendario, inicioDelDiaEnUtc } from "@/lib/utils/calendario-zona";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 import { randomUUID } from "node:crypto";
 
 import {
@@ -140,6 +143,8 @@ export class TraspasoMensajeroService implements ITraspasoMensajeroService {
     private readonly repo: TraspasoMensajeroRepo,
     private readonly notificarRecibido: TraspasoRecibidoNotificador = notificadorNoOp,
     private readonly notificarCedido: TraspasoCedidoNotificador = notificadorNoOp,
+    /** SLT-42 (R22): la zona del pais de la empresa; con ella se calcula el «hoy» del traspaso. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
 
   async traspasar(
@@ -326,6 +331,9 @@ export class TraspasoMensajeroService implements ITraspasoMensajeroService {
       estatusIdEsperado: idPorValue.get(o.estatusValue) as string,
     }));
 
+    // SLT-42 (R22, R28): el dia de hoy en la zona del pais de la empresa, ANTES de escribir nada.
+    const zona = await zonaDeLaEmpresa(this.reglasPais, "TraspasoMensajeroService.traspasar");
+
     // 7. R15-R32 — LA ESCRITURA, todo-o-nada, con el chat, el rastro y los DOS encolados dentro.
     let aplicado;
     try {
@@ -338,6 +346,7 @@ export class TraspasoMensajeroService implements ITraspasoMensajeroService {
         // vivo de esa persona puede cambiar manana y la historia no se re-etiqueta.
         actor: { usuarioId: actor.usuarioId, rol: actor.rol },
         motivo: input.motivo, // R28: uno por lote, ya recortado en el borde
+        inicioDelDia: inicioDelDiaEnUtc(fechaCalendario(new Date(), zona), zona),
       });
     } catch (error) {
       if (error instanceof TraspasoMensajeroConflictoError) {

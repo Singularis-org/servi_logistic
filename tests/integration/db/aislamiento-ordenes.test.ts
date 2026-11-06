@@ -20,6 +20,7 @@ import type { RawRow } from "@/lib/parsers/spreadsheet";
 
 import { crearOrganizacion } from "../../fabricas/organizaciones";
 import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, crearPrismaDeTest } from "./_postgres-real";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // SL-17 / T3.1 (design §9.2) — R28, R7, R8 y R9 con DOS empresas con datos, contra Postgres.
 //
@@ -173,7 +174,7 @@ function historial(repo: OrdenRepository): OrdenHistorialService {
 
 function ordenService(): OrdenService {
   const repo = ordenRepo();
-  return new OrdenService(repo, historial(repo));
+  return new OrdenService(repo, historial(repo), undefined, reglasPaisFijas());
 }
 
 function eliminarService(): EliminarOrdenService {

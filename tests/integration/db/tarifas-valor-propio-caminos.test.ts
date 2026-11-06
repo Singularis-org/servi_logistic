@@ -18,6 +18,7 @@ import { WalletMensajeroFeedService } from "@/lib/services/WalletMensajeroFeedSe
 import { serviciosDeTarifas } from "@/lib/tarifas/servicios";
 import type { ContextoPagoGestion, FijarValorInput, TarifaPago } from "@/lib/types/tarifa-flexible";
 import { comoApp, crearOrganizacion, fijarEmpresa, sembrarActivacion } from "@/tests/fabricas/organizaciones";
+import { reglasPaisFijas, ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import {
   HAY_BASE_DE_DATOS,
@@ -260,6 +261,9 @@ function servicioCierre(cli: PrismaClient, e: Pick<Base, "Z">, pagos: Resolvedor
     new OrdenRepository(cli),
     { createSignedUrls: async () => ({}) } as never,
     pagos as never,
+    undefined,
+    undefined,
+    reglasPaisFijas(),
   );
 }
 
@@ -306,6 +310,8 @@ function corteReal(cli: PrismaClient, e: Pick<Base, "Z">) {
     new OrdenRepository(cli),
     new TarifaZonaMensajeroRepository(cli),
     { warn: () => undefined },
+    undefined,
+    reglasPaisFijas(),
   );
 }
 
@@ -440,7 +446,7 @@ async function fotoDelCierre(tx: TxDeTest, e: Pick<Base, "A">, cierreId: string,
     select: { conceptos: { select: { concepto: true, valor: true, nivel: true }, orderBy: { concepto: "asc" } } },
   });
   const lecturas = await comoEmpresa(tx, e.A, async () => {
-    const detalle = await repoAdmin(clienteConSavepoint(tx)).findCierreByIdEnAlcance(cierreId, ALCANCE_CENTRAL);
+    const detalle = await repoAdmin(clienteConSavepoint(tx)).findCierreByIdEnAlcance(cierreId, ALCANCE_CENTRAL, ZONA_DE_CR);
     if (detalle === null) throw new Error("el detalle del cierre no se encontro en su alcance");
     const ingreso = await new WalletFeedService().construirMovimientosDeIngreso(cierreId, tx);
     const pago = await new WalletMensajeroFeedService().construirMovimientosDePago(cierreId, tx);

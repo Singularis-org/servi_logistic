@@ -20,6 +20,7 @@ import type {
   ChatMensajeDTO,
   IChatMensajeRepository,
 } from "@/lib/interfaces/repositories/IChatMensajeRepository";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 const WAMID = "wamid.OUT-FALLIDO";
 
@@ -94,8 +95,9 @@ function deps(over: Partial<IChatMensajeRepository> = {}) {
   const conversacionRepo = {} as IChatConversacionRepository;
   const encolarReintento = vi.fn(async () => {});
   const lineas: string[] = [];
-  const logger: ChatLogger = { warn: (m) => lineas.push(m) };
+  const logger: ChatLogger = { warn: (m) => lineas.push(m), error: (m) => lineas.push(m) };
   const service = new ChatWhatsappService({
+    reglasPais: reglasPaisFijas(),
     conversacionRepo,
     mensajeRepo,
     encolarReintento,
@@ -197,7 +199,7 @@ describe("ingerirEventos: fallo transitorio", () => {
 describe("volcarStatusesFallidos", () => {
   it("vuelca el status crudo completo con el destinatario redactado", () => {
     const lineas: string[] = [];
-    volcarStatusesFallidos(payloadFailed(131026), { warn: (m) => lineas.push(m) });
+    volcarStatusesFallidos(payloadFailed(131026), { warn: (m) => lineas.push(m), error: (m) => lineas.push(m) });
 
     expect(lineas).toHaveLength(1);
     expect(lineas[0]).toContain('"code":131026');
@@ -210,13 +212,13 @@ describe("volcarStatusesFallidos", () => {
     const payload = {
       entry: [{ changes: [{ value: { statuses: [{ id: WAMID, status: "delivered" }] } }] }],
     };
-    volcarStatusesFallidos(payload, { warn: (m) => lineas.push(m) });
+    volcarStatusesFallidos(payload, { warn: (m) => lineas.push(m), error: (m) => lineas.push(m) });
     expect(lineas).toHaveLength(0);
   });
 
   it("un cuerpo con forma inesperada no lanza (nunca rompe el 200)", () => {
-    expect(() => volcarStatusesFallidos(null, { warn: () => {} })).not.toThrow();
-    expect(() => volcarStatusesFallidos({ entry: "no-array" }, { warn: () => {} })).not.toThrow();
+    expect(() => volcarStatusesFallidos(null, { warn: () => {}, error: () => {} })).not.toThrow();
+    expect(() => volcarStatusesFallidos({ entry: "no-array" }, { warn: () => {}, error: () => {} })).not.toThrow();
   });
 });
 
@@ -243,6 +245,7 @@ describe("reintentarEnvio: un saliente de plantilla se reenvia COMO plantilla", 
     const enviarTexto = vi.fn(async () => ({ status: "ok" as const, mensajeId: "wamid.TXT" }));
     const reconciliarSaliente = vi.fn(async () => {});
     const service = new ChatWhatsappService({
+      reglasPais: reglasPaisFijas(),
       conversacionRepo: { findById: vi.fn(async () => hilo) } as unknown as IChatConversacionRepository,
       mensajeRepo: {
         findById: vi.fn(async () => salienteDTO({ tipo, estado: "queued" })),
@@ -285,6 +288,7 @@ describe("reintentarEnvio: un saliente de plantilla se reenvia COMO plantilla", 
   it("sin las deps de plantilla LANZA en vez de degradar a texto libre", async () => {
     const enviarTexto = vi.fn();
     const service = new ChatWhatsappService({
+      reglasPais: reglasPaisFijas(),
       conversacionRepo: { findById: vi.fn(async () => hilo) } as unknown as IChatConversacionRepository,
       mensajeRepo: {
         findById: vi.fn(async () => salienteDTO({ tipo: "plantilla", estado: "queued" })),
@@ -363,7 +367,7 @@ describe("Feature 316 · el volcado de un enviarMedia fallido no filtra caption 
   /** Cliente real con un 400 de la Graph API y un logger que acumula todo lo volcado. */
   function clienteQueFalla() {
     const lineas: string[] = [];
-    const logger: ChatLogger = { warn: (m: string) => lineas.push(m) };
+    const logger: ChatLogger = { warn: (m: string) => lineas.push(m), error: (m: string) => lineas.push(m) };
     const fetchImpl = vi.fn(
       async () =>
         new Response(JSON.stringify({ error: { code: 131_053, message: "media not found" } }), {
