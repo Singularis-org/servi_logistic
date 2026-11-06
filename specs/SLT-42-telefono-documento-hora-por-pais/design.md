@@ -448,7 +448,7 @@ lleva al cliente.
 - un import de `@/lib/utils/(fecha-cr|hora-cr|separador-dia-cr|telefono-cr|whatsapp-telefono)`.
 
 La lista de excepciones (`tests/unit/guards/_pais-sin-literales-excepciones.ts`) lleva la ruta, la
-ficha (`SLT-81`, `SL-22` o, desde el 2026-11-06, `SLT-86` para los planes) y el motivo. Además de la guardia, el test exige que la lista no crezca
+ficha (`SLT-81`, `SL-22` o, desde el 2026-11-06, `SLT-90` para los planes; al cierre se movieron desde `SLT-86`) y el motivo. Además de la guardia, el test exige que la lista no crezca
 respecto de un tope numérico escrito en el mismo archivo (patrón de `EXCEPCIONES_SQL_A_MANO`). Los
 envoltorios `*-cr.ts` están en la lista: sí contienen el literal, porque la UI aún los usa.
 
@@ -475,7 +475,7 @@ Decididos por el humano tras el bloque 7 (`progress/features/SLT-42.md > Decisio
    rompía R23 en zonas con horario de verano. La zona llega en `ConsultaConteoEntregas.zona` y como tercer
    argumento de `sumarPorDia`. Sigue prohibido escribir una zona o un desfase en el SQL.
 6. **Planes fuera de SLT-42:** `lib/planes/ciclo.ts`, `cobro.ts` y `consumo.ts` pasan a la lista de
-   excepciones de R29 con la ficha `SLT-86` (§8).
+   excepciones de R29 con la ficha `SLT-90` (§8; al cierre se movieron desde `SLT-86`).
 7. **`lib/utils/whatsapp-telefono.ts` se borra** con sus tests: no tenía consumidores de producción.
 
 Registrado tras la revisión (`progress/review_SLT-42.md > m1`, 2026-11-06):
