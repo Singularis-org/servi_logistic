@@ -67,6 +67,7 @@ function filas(e: Empresa, n: number): CreateOrdenData[] {
     provinciaId: e.fks.provinciaId,
     cantonId: e.fks.cantonId,
     distritoId: null,
+    nodoGeograficoId: e.fks.cantonId,
     producto: "Caja",
     peso: null,
     notas: null,

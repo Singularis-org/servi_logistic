@@ -85,6 +85,7 @@ const CREATE_DATA: CreateOrdenData = {
   provinciaId: "prov-1",
   cantonId: "canton-1",
   distritoId: "dist-1",
+  nodoGeograficoId: "dist-1",
   producto: "Caja",
   peso: null,
   notas: null,

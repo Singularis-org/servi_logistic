@@ -106,6 +106,7 @@ async function caso(tx: TxDeTest): Promise<Caso> {
           provinciaId: fks.provinciaId,
           cantonId: fks.cantonId,
           distritoId: null,
+          nodoGeograficoId: fks.cantonId,
           producto: "Caja",
           peso: null,
           notas: null,

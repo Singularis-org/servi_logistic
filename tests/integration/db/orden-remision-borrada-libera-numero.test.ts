@@ -187,6 +187,7 @@ describeSiHayBase("294 — el unico PARCIAL de num_remision, contra Postgres rea
       provinciaId: fks.provinciaId,
       cantonId: fks.cantonId,
       distritoId: null,
+      nodoGeograficoId: fks.cantonId,
       producto: "Caja",
       peso: null,
       notas: null,

@@ -59,6 +59,12 @@ export interface CreateOrdenData {
   provinciaId: string;
   cantonId: string;
   distritoId?: string | null;
+  /**
+   * SLT-45 (design §3.1, R25): la ubicacion resuelta, igual a `distritoId ?? cantonId`. Hoy el
+   * trigger `orden_nodo_geografico` de SLT-43 la pisa con ese mismo valor; la app la manda para
+   * que SLT-46 pueda cambiar el trigger sin tocar este camino.
+   */
+  nodoGeograficoId: string;
   producto: string;
   peso: number | null;
   notas?: string | null;

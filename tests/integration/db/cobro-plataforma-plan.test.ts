@@ -100,6 +100,7 @@ function filaDe(e: Empresa, numRemision: string): CreateOrdenData {
     provinciaId: geo.provinciaId,
     cantonId: geo.cantonId,
     distritoId: geo.distritoId,
+    nodoGeograficoId: geo.distritoId,
     producto: "Caja",
     peso: null,
   };

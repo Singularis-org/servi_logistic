@@ -86,6 +86,7 @@ async function crearOrdenes(e: Empresa, n: number): Promise<void> {
     provinciaId: geo.provinciaId,
     cantonId: geo.cantonId,
     distritoId: geo.distritoId,
+    nodoGeograficoId: geo.distritoId,
     producto: "Caja",
     peso: null,
     notas: null,

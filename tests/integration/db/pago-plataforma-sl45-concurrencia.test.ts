@@ -77,6 +77,7 @@ describeSiHayBase("SL-45 — concurrencia del pago a la plataforma (Postgres rea
             provinciaId: geo.provinciaId,
             cantonId: geo.cantonId,
             distritoId: geo.distritoId,
+            nodoGeograficoId: geo.distritoId,
             producto: "Caja",
             peso: null,
             notas: null,

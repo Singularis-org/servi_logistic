@@ -146,6 +146,7 @@ describeSiHayBase("SL-45 R26/R17 — el pago a la plataforma en la descarga del 
       provinciaId: distrito.canton.provinciaId,
       cantonId: distrito.cantonId,
       distritoId: distrito.id,
+      nodoGeograficoId: distrito.id,
       producto: "Caja",
       peso: null,
       notas: null,

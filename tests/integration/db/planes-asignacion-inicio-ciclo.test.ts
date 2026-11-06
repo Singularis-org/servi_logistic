@@ -132,6 +132,7 @@ async function ordenes(tx: TxDeTest, organizacionId: string, n: number): Promise
     provinciaId: fks.provinciaId,
     cantonId: fks.cantonId,
     distritoId: null,
+    nodoGeograficoId: fks.cantonId,
     producto: "Caja",
     peso: null,
     notas: null,

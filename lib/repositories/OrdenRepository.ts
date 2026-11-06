@@ -3267,6 +3267,7 @@ export class OrdenRepository implements IOrdenRepository {
       provinciaId: data.provinciaId,
       cantonId: data.cantonId,
       distritoId: data.distritoId ?? null,
+      nodoGeograficoId: data.nodoGeograficoId, // SLT-45 (R25)
       producto: data.producto,
       peso: data.peso !== null ? new Prisma.Decimal(data.peso) : null,
       notas: data.notas ?? null,

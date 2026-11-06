@@ -40,7 +40,7 @@
 
 ## T3 — Escritura del nodo (depende de T2)
 
-- [ ] **T3.1** `CreateOrdenData.nodoGeograficoId` y `toCreateManyInput` (§3.2). En `BulkOrdenService`,
+- [x] **T3.1** `CreateOrdenData.nodoGeograficoId` y `toCreateManyInput` (§3.2). En `BulkOrdenService`,
   `nodoGeograficoId = distritoId ?? cantonId` para la vía de `resolveGeo` y `fksDeNodo` para el motor.
   *Hecho:* typecheck verde; tests existentes de `bulk-orden-service*` y `orden-repository.carga-api`
   pasan sin cambiar aserciones.

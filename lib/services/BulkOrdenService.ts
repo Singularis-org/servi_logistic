@@ -1017,6 +1017,8 @@ export class BulkOrdenService implements IBulkOrdenService {
         provinciaId: geo.provinciaId,
         cantonId: geo.cantonId,
         distritoId: geo.distritoId,
+        // SLT-45 (design §3.1, R25): la via de `resolveGeo` deriva el nodo de su terna.
+        nodoGeograficoId: geo.distritoId ?? geo.cantonId,
         producto: reparados.producto ?? data.producto,
         peso: null, // R4: la carga masiva no trae peso
         // Ficha 383/R16: `notas` NO se evalua y se guarda TAL CUAL, emoji incluido: no se
