@@ -59,6 +59,35 @@ const LECTURAS_SLT65: Record<string, string[]> = {
   "lib/repositories/_shared/lugar-orden.ts": ["export function lugarDeLaOrden(", "export function whereLugarEn("],
 };
 
+/**
+ * SLT-45 (design §3.2; decision humana 2026-11-06) — LAS DOS ESCRITURAS EXENTAS, POR NOMBRE.
+ *
+ * Esta guardia mide LECTURAS. SLT-45 escribe el nodo de la orden al crearla (`toCreateManyInput`,
+ * R25) y al corregir su ubicacion (`corregirDatosCliente`, R26): son escrituras de la columna, no
+ * lecturas, y las lecturas siguen saliendo de las FK viejas (`distrito_id`/`canton_id`) hasta SLT-48.
+ * Se recortan solo esos dos metodos de `OrdenRepository`; cualquier OTRA mencion del archivo (o de
+ * `CierreDiaRepository`, `ZonaRepository`, `lugar-orden`) sigue siendo hallazgo.
+ */
+const ESCRITURAS_EXENTAS_SLT45: Record<string, string[]> = {
+  [ORDEN_REPOSITORY]: ["private toCreateManyInput(", "async corregirDatosCliente("],
+};
+
+/**
+ * `codigo` sin el cuerpo de cada metodo de `metodos` (desde su firma hasta la primera linea `  }`).
+ * Lanza si falta una firma: una exencion que no encuentra su metodo no puede quedar en silencio.
+ */
+export function sinMetodos(codigo: string, metodos: readonly string[]): string {
+  let resto = codigo;
+  for (const metodo of metodos) {
+    const inicio = resto.indexOf(metodo);
+    if (inicio < 0) throw new Error(`no se encontro el metodo exento ${metodo}`);
+    const fin = resto.indexOf("\n  }\n", inicio);
+    if (fin < 0) throw new Error(`no se encontro el cierre de ${metodo}`);
+    resto = resto.slice(0, inicio) + resto.slice(fin + 4);
+  }
+  return resto;
+}
+
 /** Cada mencion de la columna nueva en el texto, tal como esta escrita. */
 export function mencionesDelNodoEn(codigo: string): string[] {
   return [...codigo.matchAll(/\bnodo_?geografico_?id\b/gi)].map((m) => m[0]);
@@ -171,6 +200,35 @@ describe("SLT-65 R19 — el barrido ampliado se prueba a si mismo", () => {
   });
 });
 
+describe("SLT-45 — la exencion de las 2 escrituras se prueba a si misma", () => {
+  it("CONTRAPRUEBA: solo se recortan los metodos exentos; una mencion en otro metodo sigue siendo hallazgo", () => {
+    const texto = [
+      "  async corregirDatosCliente(id, data) {",
+      "    return tx.orden.updateMany({ data: { nodoGeograficoId: data.nodoGeograficoId } });",
+      "  }",
+      "  async findParaCorreccion(id) {",
+      "    return tx.orden.findFirst({ select: { nodoGeograficoId: true } });",
+      "  }",
+      "  private toCreateManyInput(data) {",
+      "    return { nodoGeograficoId: data.nodoGeograficoId };",
+      "  }",
+      "",
+    ].join("\n");
+    const resto = sinMetodos(texto, ESCRITURAS_EXENTAS_SLT45[ORDEN_REPOSITORY]);
+    expect(mencionesDelNodoEn(resto)).toEqual(["nodoGeograficoId"]);
+    expect(resto).toContain("async findParaCorreccion(");
+    expect(() => sinMetodos("sin metodos", ["async corregirDatosCliente("])).toThrow(/no se encontro/);
+  });
+
+  it("las 2 escrituras exentas existen en `OrdenRepository` y escriben el nodo (si dejan de hacerlo, la exencion sobra)", () => {
+    const codigo = leer(ORDEN_REPOSITORY);
+    for (const metodo of ESCRITURAS_EXENTAS_SLT45[ORDEN_REPOSITORY]) {
+      const cuerpo = bloqueDeLecturas(codigo, metodo, metodo);
+      expect(mencionesDelNodoEn(cuerpo).length, metodo).toBeGreaterThan(0);
+    }
+  });
+});
+
 describe("SLT-65 R19 — las lecturas de SLT-65 no leen la columna nueva (archivos enteros)", () => {
   it("el barrido lee de verdad (anti-vacuidad)", () => {
     for (const rel of ARCHIVOS_SLT65) {
@@ -180,8 +238,10 @@ describe("SLT-65 R19 — las lecturas de SLT-65 no leen la columna nueva (archiv
     }
   });
 
-  it("ni `OrdenRepository`, ni `CierreDiaRepository`, ni `ZonaRepository`, ni `lugar-orden` nombran la columna", () => {
-    const hallazgos = ARCHIVOS_SLT65.flatMap((rel) => mencionesDelNodoEn(leer(rel)).map((m) => `${rel}: ${m}`));
+  it("ni `OrdenRepository` (fuera de las 2 escrituras de SLT-45), ni `CierreDiaRepository`, ni `ZonaRepository`, ni `lugar-orden` nombran la columna", () => {
+    const hallazgos = ARCHIVOS_SLT65.flatMap((rel) =>
+      mencionesDelNodoEn(sinMetodos(leer(rel), ESCRITURAS_EXENTAS_SLT45[rel] ?? [])).map((m) => `${rel}: ${m}`),
+    );
     expect(
       hallazgos,
       "el lugar de una orden sale de `distrito_id`/`canton_id` y el nodo de una asignacion o de una " +
