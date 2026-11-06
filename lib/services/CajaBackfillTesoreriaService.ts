@@ -16,7 +16,7 @@ import type {
   ResumenPorCategoria,
 } from "@/lib/interfaces/services/ICajaBackfillTesoreriaService";
 import type { ICajaPagoTiendaFeedService } from "@/lib/interfaces/services/ICajaPagoTiendaFeedService";
-import type { AgregadoCajaRow, WalletMovimientoDTO } from "@/lib/types/wallet";
+import type { AgregadoCajaRow, WalletCategoriaRotuloPorModelo, WalletMovimientoDTO } from "@/lib/types/wallet";
 import { descripcionDeAnulacion, descripcionDePago } from "@/lib/utils/descripcion-pago";
 import { fechaCalendarioCR, inicioDelDiaCREnUtc } from "@/lib/utils/fecha-cr";
 
@@ -362,6 +362,11 @@ export class RecolectorDeFilasDeCaja implements IWalletMovimientoRepository {
   /** Ficha 459: septimo metodo que LANZA — este recolector no tiene libro que leer. */
   primerDiaDeLaCaja(): Promise<string | null> {
     throw new ErrorDeRecolector("primerDiaDeLaCaja");
+  }
+
+  /** D39: octavo metodo que LANZA, por el mismo motivo. */
+  categoriasConModeloNuevo(): Promise<WalletCategoriaRotuloPorModelo[]> {
+    throw new ErrorDeRecolector("categoriasConModeloNuevo");
   }
 }
 

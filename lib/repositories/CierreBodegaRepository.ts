@@ -25,6 +25,7 @@ import { saldoDe } from "@/lib/utils/conciliacion-satelite";
 import { efectivoCubreDescuentos, paraLaCentral } from "@/lib/utils/ingreso-empresa";
 import {
   CONTEO_DETALLE_MODELO_NUEVO,
+  consolidacionesConModeloNuevo,
   incluyeModeloNuevoDe,
 } from "@/lib/repositories/_shared/detalle-modelo-nuevo";
 // SLT-76 (R3/R4): el MISMO predicado con el que `revertirConciliacion` rechaza (`con_asientos`).
@@ -123,6 +124,7 @@ type BodegaResumenRow = Prisma.CierreBodegaGetPayload<{ select: typeof BODEGA_RE
 export function toBodegaResumenRow(
   r: BodegaResumenRow,
   conDinero: ReadonlySet<string>,
+  conModeloNuevo: ReadonlySet<string>,
 ): CierreBodegaResumenRow {
   const totales = totalesToString(r);
   const pagoMensajero = r.totalPagoMensajero.toFixed(2);
@@ -161,6 +163,7 @@ export function toBodegaResumenRow(
     conciliadoPorNombre:
       r.conciliadoPorUsuario === null ? null : nombreCompletoUsuario(r.conciliadoPorUsuario),
     conciliadoNota: r.conciliadoNota,
+    incluyeModeloNuevo: conModeloNuevo.has(r.id), // D40
   };
 }
 
@@ -175,7 +178,9 @@ export async function aResumenRows(
 ): Promise<CierreBodegaResumenRow[]> {
   const conciliadas = rows.filter((r) => r.conciliadoAt !== null).map((r) => r.id);
   const conDinero = await consolidacionesConDinero(cliente, conciliadas);
-  return rows.map((r) => toBodegaResumenRow(r, conDinero));
+  // D40: una consulta por lectura, como la de arriba. Las ocho lecturas de esta cabecera pasan por aqui.
+  const conModeloNuevo = await consolidacionesConModeloNuevo(cliente, rows.map((r) => r.id));
+  return rows.map((r) => toBodegaResumenRow(r, conDinero, conModeloNuevo));
 }
 
 /**

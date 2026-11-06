@@ -204,6 +204,7 @@ export const TEXTOS = {
   guardadoBorrador: "Borrador guardado. No cambia ningún cobro ni pago hasta que actives.",
   guardadoEnVigor: "Guardado. El cambio aplica desde el siguiente cierre; los cierres ya hechos no cambian.",
   guardadoParcial: "Lo demás se guardó. Revisa las filas marcadas: conservan lo que digitaste.",
+  guardadoNinguno: "No se pudo guardar. Revisa las filas marcadas: conservan lo que digitaste.",
   errorGuardar: "No se pudo guardar. Lo digitado sigue aquí: vuelve a intentarlo.",
   ivaObligatorio: "Digita el IVA de este cobro. Si no lleva, escribe 0.",
   filaNoExiste: "Este valor ya no existe. Recarga la pantalla.",
@@ -299,4 +300,31 @@ export const TEXTOS = {
   quitarPrecioDetalle: (n: number) =>
     n === 1 ? "Se quita 1 valor. La tienda pasa a usar el valor general." : `Se quitan ${n} valores. La tienda pasa a usar el valor general.`,
   precioQuitado: "Precio de tienda quitado.",
+
+  mensajerosTitulo: "Mensajeros con valor propio",
+  mensajerosNota: "Gana sobre el grupo y la zona, en cualquier zona donde trabaje. Lo que no digites usa el valor de la zona.",
+  mensajerosBase: "En % se calcula sobre el flete sin IVA que se le cobra a la tienda por esa gestión.",
+  mensajerosSinActivar: "Lo que digites aquí no cambia ningún pago hasta que actives las tarifas nuevas.",
+  mensajerosEnVigor: "Un cambio aplica desde el siguiente cierre. Los cierres ya hechos no cambian.",
+  anadirMensajero: "Añadir mensajero",
+  colMensajero: "Mensajero",
+  mensajerosVacioTitulo: "Ningún mensajero tiene valor propio",
+  mensajerosVacioDetalle: "Todos usan el valor de su zona. Añade un mensajero si pactaste otro pago con él.",
+  editarMensajeroDe: (nombre: string) => `Editar valor propio de ${nombre}`,
+  quitarMensajeroDe: (nombre: string) => `Quitar valor propio de ${nombre}`,
+  quitarMensajeroTitulo: (nombre: string) => `Quitar el valor propio de ${nombre}`,
+  quitarMensajeroDetalle: (n: number) =>
+    n === 1
+      ? "Se quita 1 valor. El mensajero pasa a usar el valor de la zona."
+      : `Se quitan ${n} valores. El mensajero pasa a usar el valor de la zona.`,
+  mensajeroQuitado: "Valor propio quitado.",
+  quitadoParcial: "Se quitó parte de los valores. Los que quedan no se pudieron quitar: vuelve a intentarlo.",
+  errorQuitar: "No se pudo quitar el valor propio. Vuelve a intentarlo.",
+  anadirMensajeroTitulo: "Añadir mensajero con valor propio",
+  editarMensajeroTitulo: (nombre: string) => `Valor propio de ${nombre}`,
+  elegirMensajero: "Elige el mensajero",
+  sinMensajeros: "No hay mensajeros para añadir. Todos los activos ya tienen valor propio, o aún no hay ninguno: se crean en Usuarios.",
+  mensajeroInactivoNota: "Este mensajero está inactivo: puedes cambiar o quitar sus valores, pero no añadir otros.",
+  sinIva: "Sin IVA.",
+  cerrar: "Cerrar",
 } as const;

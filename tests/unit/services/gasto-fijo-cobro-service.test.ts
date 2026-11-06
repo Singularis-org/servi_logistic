@@ -94,6 +94,7 @@ function buildMovRepo(
     crearMovimientos: vi.fn().mockResolvedValue(1),
     listar: vi.fn(),
     agregarPorCategoriaYTipo: vi.fn(),
+    categoriasConModeloNuevo: vi.fn(),
     obtenerPorId: vi.fn(),
     agregarPorCategoria: vi.fn(),
     obtenerPorOrigen: vi.fn().mockResolvedValue(movimiento()),

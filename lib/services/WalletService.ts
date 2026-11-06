@@ -437,6 +437,8 @@ export class WalletService implements IWalletService {
     // «desde» del flujo registrado). El numero no cambia con ellos; cambia el rotulo.
     const haySaldoInicialVigente = await this.haySaldoInicialVigente();
     const primerDia = await this.repo.primerDiaDeLaCaja();
+    // D39: no es dinero y por eso no viene de `filas`: dice que rotulo lleva cada fila de la tarjeta.
+    const categoriasConModeloNuevo = await this.repo.categoriasConModeloNuevo(filtros);
     return {
       status: "ok",
       resumen: derivarCaja(filas, {
@@ -444,7 +446,7 @@ export class WalletService implements IWalletService {
         haySaldoInicialVigente,
         primerDia,
       }),
-      composicion: derivarComposicionGanancia(filas),
+      composicion: { ...derivarComposicionGanancia(filas), categoriasConModeloNuevo },
     };
   }
 

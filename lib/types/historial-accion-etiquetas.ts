@@ -166,8 +166,9 @@ export interface FuentesEtiqueta {
   plan: { nombre: string };
   /**
    * SLT-52 (R14) — un valor del modelo nuevo de tarifas: la etiqueta legible de su concepto y del
-   * nivel donde vive (zona, grupo, tienda). Vocabulario del catalogo y nombres de configuracion;
-   * nunca un dato de cliente. El importe va en `monto`/`valor_*`, no aqui.
+   * nivel donde vive (zona, grupo, tienda, y desde SLT-55 el mensajero con su valor propio). Vocabulario
+   * del catalogo y nombres de configuracion o de operadores; nunca un dato de cliente. El importe va en
+   * `monto`/`valor_*`, no aqui.
    */
   tarifa_valor: { concepto: string; nivel: string | null };
   /** SLT-52 (R14) — un grupo de distritos: su nombre y el de su zona, como `zona`. */

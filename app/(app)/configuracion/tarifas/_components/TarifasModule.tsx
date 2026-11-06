@@ -28,6 +28,7 @@ import { TEXTOS } from "./tarifas-textos";
 import { TarifasActivarDialog } from "./TarifasActivarDialog";
 import { TarifasEstado } from "./TarifasEstado";
 import { TarifasGrupos } from "./TarifasGrupos";
+import { filasDeMensajeros, TarifasMensajeros } from "./TarifasMensajeros";
 import { filasDePrecios, TarifasTiendas, type FilaPrecioTienda } from "./TarifasTiendas";
 import { TarifasValores } from "./TarifasValores";
 import { TarifasZonas } from "./TarifasZonas";
@@ -75,7 +76,7 @@ export function TarifasModule({ pantalla, zonaInicialId, zonaInicial, nombresDeG
   const distritoPlural = etiquetas.distrito.plural.toLowerCase();
   const distritoSingular = etiquetas.distrito.singular.toLowerCase();
 
-  const { activacion, zonas, vehiculos, tiendas, preciosTienda, puedeEscribir } = pantalla;
+  const { activacion, zonas, vehiculos, tiendas, preciosTienda, mensajeros, valoresMensajero, puedeEscribir } = pantalla;
   const activada = activacion !== null;
 
   const [zonaId, setZonaId] = useState<string | null>(zonaInicialId);
@@ -213,6 +214,7 @@ export function TarifasModule({ pantalla, zonaInicialId, zonaInicial, nombresDeG
     () => filasDePrecios(preciosTienda, tiendas, zonas, nombresDeGrupo),
     [preciosTienda, tiendas, zonas, nombresDeGrupo],
   );
+  const filasMensajero = useMemo(() => filasDeMensajeros(valoresMensajero, mensajeros), [valoresMensajero, mensajeros]);
 
   const estadoBanda = (
     <TarifasEstado
@@ -433,6 +435,14 @@ export function TarifasModule({ pantalla, zonaInicialId, zonaInicial, nombresDeG
         puedeEscribir={puedeEscribir}
         onAnadir={anadirPrecio}
         onEditar={editarPrecio}
+        onCambio={recargar}
+      />
+
+      <TarifasMensajeros
+        filas={filasMensajero}
+        mensajeros={mensajeros}
+        activada={activada}
+        puedeEscribir={puedeEscribir}
         onCambio={recargar}
       />
 

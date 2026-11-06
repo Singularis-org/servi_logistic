@@ -4,10 +4,12 @@ import type {
   DistritoDeZona,
   GrupoDeEmpresa,
   ITarifasPantallaRepository,
+  MensajeroDePantalla,
   TiendaDePantalla,
   VehiculoDePantalla,
   ZonaDePantalla,
 } from "@/lib/interfaces/repositories/ITarifasPantallaRepository";
+import { ESTADOS_USUARIO_NO_ASIGNABLES } from "@/lib/constants/estado-usuario-asignable";
 import { GrupoDistritosRepository } from "@/lib/repositories/GrupoDistritosRepository";
 import {
   leerModeloViejoCon,
@@ -105,6 +107,30 @@ export class TarifasPantallaRepository implements ITarifasPantallaRepository {
       orderBy: [{ nombre: "asc" }, { primerApellido: "asc" }],
     });
     return filas.map((u) => ({ id: u.id, nombre: etiquetaDePersona(u) }));
+  }
+
+  async listarMensajeros(): Promise<MensajeroDePantalla[]> {
+    const filas = await this.prisma.usuario.findMany({
+      // La segunda rama es el retirado: su valor sigue pagando, y sin ella no se podria ver ni quitar (R32).
+      where: { OR: [{ rol: { value: "mensajero" } }, { tarifaValoresComoMensajero: { some: {} } }] },
+      select: { id: true, nombre: true, primerApellido: true, estado: true, rol: { select: { value: true } } },
+      orderBy: [{ nombre: "asc" }, { primerApellido: "asc" }],
+    });
+    return filas.map((u) => ({
+      id: u.id,
+      nombre: etiquetaDePersona(u),
+      // La misma regla que `TarifaValorRepository.mensajeroEsElegibleONivelOcupado`: lo que se ofrece es lo que se admite.
+      elegible: u.rol.value === "mensajero" && !ESTADOS_USUARIO_NO_ASIGNABLES.includes(u.estado),
+    }));
+  }
+
+  async valoresDeMensajeros(): Promise<TarifaValorDTO[]> {
+    const filas = await this.prisma.tarifaValor.findMany({
+      where: { mensajeroId: { not: null } },
+      select: SELECT_VALOR_DTO,
+      orderBy: [{ concepto: "asc" }, { createdAt: "asc" }],
+    });
+    return filas.map(valorADTO);
   }
 
   async distritosDeZona(zonaId: string, opciones: { conMarca: boolean }): Promise<DistritoDeZona[]> {

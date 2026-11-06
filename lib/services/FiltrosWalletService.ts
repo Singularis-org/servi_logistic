@@ -72,13 +72,21 @@ export class FiltrosWalletService implements IFiltrosWalletService {
     switch (input.libro) {
       case "caja": {
         if (!esAccesoTotal(actor.rol)) return { status: "forbidden" };
-        const conteos = await this.repo.contarConceptosCaja({
+        const filtros = {
           tipo: input.tipo,
           desde: input.desde,
           hasta: input.hasta,
           ...(input.aQuien !== undefined ? { aQuien: input.aQuien } : {}), // ficha 458-E (R59)
-        });
-        return { status: "ok", conceptos: enOrdenDelCatalogo(WALLET_MOVIMIENTO_CATEGORIA_SEED, conteos) };
+        };
+        const conteos = await this.repo.contarConceptosCaja(filtros);
+        // D39: mismos filtros que el conteo, asi que el rotulo responde por las filas que dice la opcion.
+        const conNuevo: readonly string[] = await this.repo.categoriasConModeloNuevoCaja(filtros);
+        return {
+          status: "ok",
+          conceptos: enOrdenDelCatalogo(WALLET_MOVIMIENTO_CATEGORIA_SEED, conteos).map((c) =>
+            conNuevo.includes(c.categoria) ? { ...c, incluyeModeloNuevo: true } : c,
+          ),
+        };
       }
       case "tienda": {
         if (!esAccesoTotal(actor.rol)) return { status: "forbidden" };

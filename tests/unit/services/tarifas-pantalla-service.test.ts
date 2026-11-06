@@ -5,6 +5,7 @@ import { cargarPantallaTarifas, cargarZonaTarifas } from "@/lib/actions/tarifas"
 import type { ITarifasPantallaRepository } from "@/lib/interfaces/repositories/ITarifasPantallaRepository";
 import type { Actor } from "@/lib/interfaces/services/ITarifasPantallaService";
 import { TarifasPantallaService } from "@/lib/services/TarifasPantallaService";
+import { mensajeroPantalla, valorPropio } from "@/tests/fixtures/tarifas-pantalla";
 
 // SLT-54 T2.3 (design §7, R55) — la matriz de roles y lo que el service decide sin base. Lo que dice
 // Postgres (dos empresas, RLS, `WHERE`) esta en `tests/integration/db/tarifas-referencia.test.ts`.
@@ -34,6 +35,8 @@ function repoDoble(overrides: Partial<RepoDoble> = {}): RepoDoble {
     preciosDeTienda: vi.fn().mockResolvedValue([]),
     listarVehiculos: vi.fn().mockResolvedValue([]),
     listarTiendas: vi.fn().mockResolvedValue([]),
+    listarMensajeros: vi.fn().mockResolvedValue([]),
+    valoresDeMensajeros: vi.fn().mockResolvedValue([]),
     distritosDeZona: vi.fn().mockResolvedValue([]),
     leerModeloViejo: vi.fn().mockResolvedValue({ cobros: new Map(), pagos: new Map() }),
     ...overrides,
@@ -79,6 +82,39 @@ describe("SLT-54 R55 — matriz de roles", () => {
     expect(await cargarZonaTarifas({ zonaId: "z1" }, deps)).toEqual({ status: "unauthenticated" });
     expect(doble.cargarPantalla).not.toHaveBeenCalled();
     expect(doble.cargarZona).not.toHaveBeenCalled();
+  });
+});
+
+describe("SLT-55 T3.1 (design §7.1) — los mensajeros y sus valores propios", () => {
+  const ANA = mensajeroPantalla({ id: "m1", nombre: "Ana Torres", elegible: true });
+  const LIA = mensajeroPantalla({ id: "m2", nombre: "Lía Campos", elegible: false });
+  const PROPIO = valorPropio("mensajero_entregado", "m2", { id: "tv-propio", valor: "2900.00" });
+
+  it.each([MAESTRO, ADMIN])("$rol recibe las dos listas tal como las da el repositorio, en su campo", async (actor) => {
+    const repo = repoDoble({
+      listarMensajeros: vi.fn().mockResolvedValue([ANA, LIA]),
+      valoresDeMensajeros: vi.fn().mockResolvedValue([PROPIO]),
+    });
+    const res = await servicio(repo).cargarPantalla(actor);
+    if (res.status !== "ok") throw new Error(res.status);
+    expect(res.mensajeros).toEqual([
+      { id: "m1", nombre: "Ana Torres", elegible: true },
+      { id: "m2", nombre: "Lía Campos", elegible: false },
+    ]);
+    expect(res.valoresMensajero.map((v) => [v.id, v.nivel, v.mensajeroId, v.zonaId, v.ivaPct, v.valor])).toEqual([
+      ["tv-propio", "mensajero", "m2", null, null, "2900.00"],
+    ]);
+    // Una consulta por lista, sin N+1, y los precios de tienda no se mezclan con los valores propios.
+    expect(repo.listarMensajeros).toHaveBeenCalledTimes(1);
+    expect(repo.valoresDeMensajeros).toHaveBeenCalledTimes(1);
+    expect(res.preciosTienda).toEqual([]);
+  });
+
+  it("los faltantes no leen ni mensajeros ni valores propios (R23)", async () => {
+    const repo = repoDoble();
+    await servicio(repo).faltantesPorZona();
+    expect(repo.listarMensajeros).not.toHaveBeenCalled();
+    expect(repo.valoresDeMensajeros).not.toHaveBeenCalled();
   });
 });
 

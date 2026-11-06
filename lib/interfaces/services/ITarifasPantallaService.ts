@@ -1,5 +1,6 @@
 import type {
   DistritoDeZona,
+  MensajeroDePantalla,
   TiendaDePantalla,
   VehiculoDePantalla,
   ZonaDePantalla,
@@ -34,6 +35,10 @@ export type CargarPantallaResult =
       tiendas: TiendaDePantalla[];
       /** R41: todos los valores con tienda, de cualquier zona, para su lista. */
       preciosTienda: TarifaValorDTO[];
+      /** SLT-55 R31, R32: quienes pueden tener valor propio y quienes lo conservan sin poder recibir uno nuevo. */
+      mensajeros: MensajeroDePantalla[];
+      /** SLT-55 R27: todos los valores propios de la empresa. */
+      valoresMensajero: TarifaValorDTO[];
       /** R55: lo decide el servidor; la pantalla no compara roles. */
       puedeEscribir: boolean;
     }

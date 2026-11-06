@@ -248,7 +248,7 @@ Decisión del humano (plan-saas, 2026-10-20/21): una sola base compartida, datos
 
 - **Tablas.** `tarifa_valor` (un valor por concepto del catálogo fijo `lib/tarifas/catalogo.ts`,
   en modo `monto` o `porcentaje`, con su nivel: tienda+grupo, tienda+zona, tienda general, grupo,
-  zona, grupo+vehículo, zona+vehículo), `grupo_distritos` y `grupo_distritos_distrito` (un distrito
+  zona, grupo+vehículo, zona+vehículo y `mensajero`), `grupo_distritos` y `grupo_distritos_distrito` (un distrito
   en un solo grupo por zona). Lo congelado al cerrar: `cierre_detail.tarifa_modelo`,
   `cierre_detail_concepto` (cobro a la tienda por orden) y `gestion_pago_congelado` (pago por
   gestión). Las cinco llevan `organizacion_id` y RLS como el resto.
@@ -270,6 +270,12 @@ Decisión del humano (plan-saas, 2026-10-20/21): una sola base compartida, datos
   valor queda «sin tarifa» (0 en el cierre, 409 en la API); por eso el diálogo lista los faltantes y
   pide confirmarlos. Desde el siguiente cierre: los cierres ya hechos no cambian. Una empresa con
   valores al aplicar la migración queda activada, para que su cálculo no cambie.
+- **Valor propio del mensajero (SLT-55).** El nivel `mensajero` es el pago de UN mensajero por UN
+  resultado, sin zona, grupo, tienda, vehículo ni IVA. Gana sobre grupo y zona en cualquier zona donde
+  trabaje, y lo que no tenga digitado usa la precedencia de siempre. Un 0 escrito paga 0. En porcentaje,
+  la base es el flete sin IVA de la orden, tenga o no valor de pago la zona del mensajero. No cuenta
+  como cobertura: los faltantes de una zona no lo miran. Se conserva si el mensajero se da de baja, y
+  se sigue pagando en las gestiones suyas que se cierren.
 - **Sin migración de datos.** SLT-53 se canceló: nada copia las tarifas actuales al modelo nuevo.
   Las digita la empresa en `/configuracion/tarifas`, con lo que rige hoy al lado como referencia
   («Hoy rige»), calculada con las mismas funciones que el modelo viejo y sin copiarse al campo.

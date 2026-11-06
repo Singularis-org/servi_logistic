@@ -49,6 +49,9 @@ let soportados: string[] = [];
 /** MIME que el grabador dice haber usado DE VERDAD (puede diferir del pedido). */
 let mimeReal: string | null = null;
 
+/** Bytes REALES de la grabacion del test; `null` = la nota corta de siempre. */
+let bytesGrabados: number | null = null;
+
 const stopPista = vi.fn();
 const getUserMediaMock = vi.fn();
 
@@ -76,7 +79,8 @@ const MediaRecorderMock = vi.fn(function (
   };
   this.stop = () => {
     this.state = "inactive";
-    this.ondataavailable?.({ data: new Blob(["audio"], { type: this.mimeType }) });
+    const contenido = bytesGrabados === null ? "audio" : new Uint8Array(bytesGrabados);
+    this.ondataavailable?.({ data: new Blob([contenido], { type: this.mimeType }) });
     this.onstop?.();
   };
 });
@@ -120,6 +124,7 @@ async function detener(): Promise<void> {
 beforeEach(() => {
   soportados = ["audio/ogg;codecs=opus"];
   mimeReal = null;
+  bytesGrabados = null;
   listarHiloChatMock.mockReset();
   enviarMensajeChatMock.mockReset();
   enviarPlantillaChatMock.mockReset();
@@ -274,5 +279,29 @@ describe("Nota de voz del composer (E2)", () => {
       expect(screen.queryByLabelText("Nota de voz grabada")).not.toBeInTheDocument();
     });
     expect(textarea()).toHaveValue("Te dejo una nota");
+  });
+
+  it("SLT-88 R8: una grabacion de 4 MB + 1 byte avisa con su texto y no queda en el composer", async () => {
+    bytesGrabados = 4_194_305;
+    await montar();
+    await grabar();
+    await detener();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /^La nota de voz supera el límite de 4 MB\. Graba una más corta\.$/,
+    );
+    expect(screen.queryByLabelText("Nota de voz grabada")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Descartar nota de voz" })).not.toBeInTheDocument();
+    expect(enviarMediaChatMock).not.toHaveBeenCalled();
+  });
+
+  it("SLT-88 R8: una grabacion de 4 MB exactos SI queda lista para enviar", async () => {
+    bytesGrabados = 4_194_304;
+    await montar();
+    await grabar();
+    await detener();
+
+    expect(await screen.findByLabelText("Nota de voz grabada")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
