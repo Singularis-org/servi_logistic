@@ -657,7 +657,12 @@ tipos de pantallas y E2E (T10–T13).
 
 ## Tanda 7 — decisiones del humano del 2026-11-06 en la UI (frontend_dev)
 
+**Commit:** `983a3bf2` feat(SLT-86): textos de costeo en «período» y confirmación de «Cancelar cambio».
+
 **Archivos modificados**
+- `lib/planes/mensajes.ts` (backend_dev): «Órdenes del período sin estado final: n»; test
+  `tests/unit/planes/mensajes-costo-porcentual.test.ts` (con `mensajes-periodo`: 27/27, eslint limpio).
+- `specs/.../requirements.md` (tres filas 2026-11-06 en «Decisiones cerradas») y `design.md §7.1` (implementer).
 - `components/shared/ConsumoDelPlan.tsx`: «Costo del período», «Órdenes del período: …», «Total estimado del
   período: …» (las claves `costoDelCiclo`/`ordenesDelCiclo` no cambian: diff mínimo).
 - `app/(app)/plataforma/empresas/[organizacionId]/_components/PlanEmpresa.tsx`: «Cancelar cambio» abre un `Modal`
@@ -691,3 +696,75 @@ tipos de pantallas y E2E (T10–T13).
 - Grafo MCP: no lo consulté; trabajé con Grep/Read.
 
 **Veredicto:** decisiones a, b y c del 2026-11-06 hechas en la UI; 225/225 en los 14 archivos y eslint limpio.
+
+## Tanda 8 — T13: E2E de planes a la UI de SLT-86 (2026-11-06, frontend_dev)
+
+**Archivos modificados** (solo `e2e/`; nada de producción)
+- `e2e/_planes-fixture.ts`: `asignarPlanConTope(db, org, n)` → `asignarPlanCustom(db, org)` sin `ordenesPorCiclo` (R8)
+  y con la firma nueva de `crearYAsignar` (efecto `inicio` de hoy, `elegida: false`, y `ahora`, como
+  `PlanesService.efectoElegido`); `crearPlanPublicoConCosto` con `descuentos: {}` en vez de `anual: null` (R10);
+  `ordenesDelCiclo` → `ordenesDesdeLaEntrada` (la entrada es ahora las 00:00 del día: se compara antes/después).
+- `e2e/dos-empresas-humo.spec.ts`: el caso 8 de planes, ver «Retirado/adaptado».
+- `e2e/planes-superadmin.spec.ts`: sin el campo «Órdenes por ciclo» (se afirma que no está), sin
+  `topeOrdenesCiclo` ni `planCicloCortoDesdeAt` en los `select`, «Órdenes en el período: 0» en lugar de «0 de 50
+  órdenes del ciclo», la lista «Lo que tendrá la empresa» afirma el tope de Mensajero y la ausencia del de órdenes,
+  y «El plan empieza a regir el {fecha}.».
+- `e2e/planes-costeo.spec.ts`: «Costo base mensual: 50000.00», «Órdenes del período: 1 × 100.00 = 100.00», «Total
+  estimado del período: 50100.00»; el inicio del custom va al día 1 del mes en curso (`primerDiaDelMes`).
+- `e2e/planes-costo-porcentual.spec.ts`: lista «Costo del período», «Costo base mensual: 1000.00», «Cobrado en el
+  período: …», «Órdenes del período sin estado final: …», «Total del período hasta hoy: …»; el inicio va a
+  `entradaSinTramo()` (≥ 5 días atrás y sin tramo).
+
+**Retirado/adaptado, con motivo**
+- `dos-empresas-humo` «SL-24: la tienda de A, al tope de su plan, no crea…» (SL-24 R33): **se retira** el tramo del
+  tope (mensaje «Tu plan permite 2 órdenes por ciclo…» en la vista previa, «Confirmar» deshabilitado y la carga real
+  por el endpoint con la fila en error `mensajeDelTope({tope:"ordenes"})`): SLT-86 R8 quitó el tope de órdenes y su
+  variante del tipo. **Se adapta** a lo contrario, que es lo que R8 pide: A con plan y 2 órdenes más en el período
+  sube su fila, la vista previa no habla de tope, confirma y la orden se crea en A (+1 en el período); B, sin plan,
+  igual que antes. Se conserva el aislamiento (cada remisión solo en su empresa) y el 0 de 5xx. (propuesta: el
+  caso queda como humo de R8 por carga masiva en pantalla; la prueba fuerte de R8 sigue en
+  `tests/integration/db/plan-sin-tope-ordenes.test.ts`).
+- `planes-costeo` y `planes-costo-porcentual`: la fecha de inicio pasa de «hoy» / «5 días atrás» a una que deja el
+  período mensual en curso completo, porque con períodos de calendario (R5, R12) una entrada a mitad de mes lo
+  vuelve tramo y el costo base dependería del día de la corrida. Las cifras escritas a mano no cambian. (propuesta:
+  el tramo proporcional queda probado en los unitarios `cobro-periodo` y no en el E2E.)
+- `planes-superadmin`: las aserciones de `planCicloCortoDesdeAt` («hoy no abre ciclo corto») se retiran: la columna
+  ya no existe (P4 = a). La del tope de órdenes en la base (`topeOrdenesCiclo = 50`) también (R8).
+
+**R → test (E2E)**
+- R7, R8 (sin tope en pantalla) → `planes-superadmin.spec.ts` «el detalle de A pinta…», «asigna el público…», «el
+  maestro de A ve en «Mi plan»…» («Órdenes en el período: 0», sin «Órdenes por ciclo»).
+- R8 (crear órdenes no se rechaza) → `dos-empresas-humo.spec.ts` «SLT-86: la tienda de A, con plan y órdenes ya
+  creadas, crea por la carga masiva…».
+- R23 (sin campo de tope en el formulario) → `planes-superadmin.spec.ts` (`rellenarPlan`).
+- R25 / §7.1 («El plan empieza a regir el {fecha}.») → `planes-superadmin.spec.ts` «asigna el público…».
+- R28 (textos «período») → `planes-costeo.spec.ts` ««Mi plan» muestra el costo por orden…»,
+  `planes-costo-porcentual.spec.ts` ««Mi plan» muestra lo cobrado en el período…» y el caso de la orden de 100.000.
+- R37 → las cuatro specs en verde, dos corridas.
+
+**Salida de los comandos**
+- Typecheck (`NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`): antes 8 errores (los de `e2e/`), después
+  **0** (5m44s).
+- `pnpm exec eslint` de los 5 archivos: `No issues found`.
+- `pnpm exec vitest run tests/unit/guards/e2e-sin-saltos.guardia.test.ts`: 38/38.
+- `pnpm exec next build` (base `servi_logistic_slt86_e2e`): la 1.ª vez murió por memoria en «Running TypeScript»
+  (heap por defecto); con `NODE_OPTIONS=--max-old-space-size=8192`, ok (9m21s).
+- E2E (`E2E_PUERTO=3044`, base `servi_logistic_slt86_e2e`, las 4 specs + `plataforma-vacia` por dependencia):
+  - corrida 1: **35 passed**, 0 failed, 0 skipped, 0 flaky (5.3m);
+  - corrida 2, misma base: **35 passed**, 0 failed, 0 skipped, 0 flaky (5.5m).
+
+**Notas**
+- `design.md > §9` pone `e2e/planes-costo-porcentual.spec.ts` entre los que «quedan igual»; con las decisiones del
+  2026-11-05 y 2026-11-06 sobre los textos de costeo sí cambió (literales y nombre de la lista). Conviene moverlo a
+  «se adaptan» al cerrar §9.
+- Grafo MCP: no lo consulté; trabajé con Grep/Read.
+
+**Veredicto:** E2E de planes adaptados a SLT-86; typecheck 0, eslint limpio y dos corridas seguidas 35/35.
+
+**Cierre de la tanda (implementer, 2026-11-06)**
+- `design.md > §9` cerrada: `e2e/planes-costo-porcentual.spec.ts` pasa a «se adapta» y se anota el tramo retirado de
+  `dos-empresas-humo` (R8). `tasks.md`: T13 marcada; `./init.sh` y `gate-completo` quedan para el leader y CI.
+- `pnpm run test:guardias`: 331 archivos; 327 ok, 3 saltados, 1 rojo (`dependencias-declaradas-presentes`, 4 casos,
+  en `tests/baseline-rojos.json`); 4593 casos ok. 159 s.
+- Base E2E: `servi_logistic_slt86_e2e` (DROP/CREATE, `prisma migrate deploy`, `db:seed`), no la compartida.
+- No se corrió la suite completa ni `./init.sh` (memoria de la máquina).

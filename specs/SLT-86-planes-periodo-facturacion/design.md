@@ -495,8 +495,12 @@ trajo esa ficha.
 
 No leen el tope ni el ciclo, y quedan igual: `cobro-plataforma-porcentual-aislamiento`,
 `cobro-plataforma-porcentual-importe`, `cobro-porcentual-estados-finales`, `empresas-plataforma-cobro-porcentual`,
-`plan-de-la-empresa-costeo`, `_fixtures/cobro-porcentual.ts`, `EmpresasModuleCobroPorcentual.test.tsx` y
-`e2e/planes-costo-porcentual.spec.ts` (SLT-83).
+`plan-de-la-empresa-costeo`, `_fixtures/cobro-porcentual.ts` y `EmpresasModuleCobroPorcentual.test.tsx`.
+
+**Cerrada en T13 (2026-11-06):** `e2e/planes-costo-porcentual.spec.ts` (SLT-83) sí se adapta: los textos de
+costeo pasan a «período» (decisiones del 2026-11-05 y del 2026-11-06) y su inicio pasa a un período sin tramo
+para que las cifras no dependan del día de la corrida. En `e2e/dos-empresas-humo.spec.ts` se retira el tramo
+del tope de órdenes de la carga y se prueba lo contrario (la carga entra sin tope, R8).
 
 ## 10. Alternativas descartadas
 

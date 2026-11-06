@@ -146,7 +146,10 @@
 - **Hecho:** `tests/components/ConsumoDelPlanPeriodo.test.tsx` y `tests/components/EmpresasModulePeriodo.test.tsx`
   verdes; `ConsumoDelPlan*.test.tsx` y `MiPlanModule.test.tsx` adaptados.
 
-## T13 — No regresión y E2E (R37)
+## [x] T13 — No regresión y E2E (R37)
+
+> 2026-11-06: pasos hechos; typecheck 0 y E2E de planes 35/35 ×2 en local. `./init.sh` y `gate-completo`
+> quedan para el leader y CI (la máquina no aguanta la corrida local completa).
 
 - **Depende de:** T1–T12.
 - **Pasos:**
