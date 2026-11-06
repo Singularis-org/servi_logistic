@@ -7,7 +7,8 @@
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F2.1 2026-11-05: spec aprobado (F1.4, «aprobado», por escrito) y tarjeta en in_progress. Implementer lanzado.
+F2.3 2026-11-06: T1–T8 hechas; review APROBADO tras arreglos (`progress/review_SLT-45.md`). PR a dev abierto.
+Antes de `done`: fecha real en CHANGELOG (m3, con su test), T9 (humano) y T10.
 Spec en `specs/SLT-45-geo-jerarquica-entrada/` (R1–R36, T1–T10). Rama sobre SLT-71 (PR #81).
 T9 (payloads reales desde la copia de producción) la hace una persona, no un agente.
 
