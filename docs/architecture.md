@@ -201,9 +201,10 @@ esta bien hecha, no solo si "funciona".
     Las funciones son `SECURITY DEFINER` con `EXECUTE` revocado a `PUBLIC`. SLT-86 retiró el tope de
     órdenes (`20261106120000_plan_periodo_facturacion`): ya no existen `plan_tope_ordenes`,
     `plan_cupo_ordenes` ni `CupoPlanRepository`.
-  - **Ciclo en UTC (decisión 2026-10-28):** `plan_inicio_ciclo(ancla, ahora)` recibe siempre
-    `now() AT TIME ZONE 'UTC'`, nunca `now()::timestamp`. Las columnas son `TIMESTAMP` sin zona y
-    Prisma escribe en UTC, así que la hora local de la sesión correría el ciclo. Su gemela en TS es
+  - **Ciclo en UTC (decisión 2026-10-28):** `plan_inicio_ciclo_de(entrada, tipo, ahora)` (SLT-86:
+    período de calendario, con tramo desde la entrada) recibe siempre `now() AT TIME ZONE 'UTC'`, nunca
+    `now()::timestamp`. Las columnas son `TIMESTAMP` sin zona y Prisma escribe en UTC, así que la hora
+    local de la sesión correría el ciclo. Su gemela en TS es `periodoEnCurso(entrada, tipo, ahora)` de
     `lib/planes/ciclo.ts`.
   - **Cerrojos** (design §4.4 y §5): un alta toma `organizacion` y `plan` en `FOR SHARE` y después el
     consultivo `(24, hashtext(empresa))`. Asignar toma `organizacion` en `FOR UPDATE` y el plan en

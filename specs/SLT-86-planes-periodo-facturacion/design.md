@@ -559,3 +559,10 @@ Contrastado en T0 contra `dev` con SLT-83 integrada (merge `8eb66b88`), leyendo 
   «antes» a −12 y −15 días. Con `GREATEST(entrada, inicio de calendario)` el inicio queda en `[−10 días, ahora]`
   y el caso sigue dando lo mismo: solo se adapta por el tipo (`anualNoAplicaAlCosto`, §9).
 - Los tests de SLT-83 que leen el tope de órdenes o el precio anual están en §9.
+
+## 13. Deuda conocida
+
+- **−06:00 duplicado en SQL (revisión m1, 2026-11-06):** en `db/migrations/20261106120000_plan_periodo_facturacion/
+  migration.sql` el desfase de la plataforma está escrito como `interval '6 hours'` en cinco sitios (169, 178, 191, 200,
+  208); en TS vive en una sola fuente (`inicioDelDiaCREnUtc`). Lo aceptan §1.5 y SLT-58 P8. Hay que revisarlo cuando
+  SL-21 traiga la zona horaria por empresa. No se toca el código en esta feature.
