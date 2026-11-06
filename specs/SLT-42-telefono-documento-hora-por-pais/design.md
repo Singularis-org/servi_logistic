@@ -448,7 +448,7 @@ lleva al cliente.
 - un import de `@/lib/utils/(fecha-cr|hora-cr|separador-dia-cr|telefono-cr|whatsapp-telefono)`.
 
 La lista de excepciones (`tests/unit/guards/_pais-sin-literales-excepciones.ts`) lleva la ruta, la
-ficha (`SLT-81` o `SL-22`) y el motivo. Además de la guardia, el test exige que la lista no crezca
+ficha (`SLT-81`, `SL-22` o, desde el 2026-11-06, `SLT-86` para los planes) y el motivo. Además de la guardia, el test exige que la lista no crezca
 respecto de un tope numérico escrito en el mismo archivo (patrón de `EXCEPCIONES_SQL_A_MANO`). Los
 envoltorios `*-cr.ts` están en la lista: sí contienen el literal, porque la UI aún los usa.
 
@@ -465,6 +465,18 @@ Decididos por el humano tras la tanda 1 (`progress/features/SLT-42.md > Decision
 3. **`scripts/seed-catalogos.ts` ya no siembra tipos de documento**: solo los crea la migración.
 4. **La guardia `geografia-predicado-unico` se acota a geografía** (provincia, cantón, distrito y nodo
    geográfico). Deja pasar `activo: true` en otras tablas, como `tipo_identificacion` (filtro de R5).
+
+Decididos por el humano tras el bloque 7 (`progress/features/SLT-42.md > Decisiones`, 2026-11-06):
+
+5. **`AT TIME ZONE` parametrizado en los repositorios que agrupan por día en SQL** (§4.3 y alternativa 2
+   de §9). `ConteoCargadasPorDiaRepository`, `CohorteCargaRepository` (fragmento compartido
+   `diaDeCargaEnZona`) y `FinanzasDiarioRepository` agrupan con
+   `(col AT TIME ZONE 'UTC') AT TIME ZONE $zona`, con la zona de la empresa como parámetro: un desfase fijo
+   rompía R23 en zonas con horario de verano. La zona llega en `ConsultaConteoEntregas.zona` y como tercer
+   argumento de `sumarPorDia`. Sigue prohibido escribir una zona o un desfase en el SQL.
+6. **Planes fuera de SLT-42:** `lib/planes/ciclo.ts`, `cobro.ts` y `consumo.ts` pasan a la lista de
+   excepciones de R29 con la ficha `SLT-86` (§8).
+7. **`lib/utils/whatsapp-telefono.ts` se borra** con sus tests: no tenía consumidores de producción.
 
 ## 9. Alternativas descartadas
 

@@ -130,7 +130,8 @@ de analítica).
 - **R29** — Ningún archivo de servidor (`lib/`, `app/api/`, las páginas de servidor de `app/`) DEBE
   contener como literal la zona `America/Costa_Rica`, un desfase horario fijo de Costa Rica ni el
   prefijo `506`, salvo los archivos de una lista de excepciones con su ficha (la UI que pasa a
-  SLT-81 y SINPE, que es de SL-22). La lista solo puede bajar.
+  SLT-81, SINPE, que es de SL-22, y los planes `lib/planes/ciclo.ts`, `cobro.ts` y `consumo.ts`,
+  que pasan a SLT-86 por decisión del humano del 2026-11-06). La lista solo puede bajar.
 - **R30** — El sistema NO DEBE reutilizar los datos del país (zona, prefijo, dígitos, tipos) leídos
   para una empresa al atender a otra empresa.
 - **R31** — El aislamiento por país (R4, R5, R11, R13, R24, R25) DEBE quedar probado con dos

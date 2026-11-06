@@ -13,7 +13,7 @@
 //     nombra `CR`, o `T06:00:00`;
 //   - el prefijo `506` como literal: `"506"`, `'506'`, `+506`, `506${`;
 //   - un import de los envoltorios `@/lib/utils/(fecha-cr|hora-cr|separador-dia-cr|telefono-cr|whatsapp-telefono)`.
-// Las excepciones (la UI que pasa a SLT-81 y SINPE, de SL-22) viven en
+// Las excepciones (la UI que pasa a SLT-81, los planes que pasan a SLT-86 y SINPE, de SL-22) viven en
 // `_pais-sin-literales-excepciones.ts`, con su ficha y su motivo, y la lista solo baja.
 //
 // Segunda guardia del archivo (decision del humano tras T5.3): `reglasPais` es OPCIONAL en los
@@ -30,12 +30,7 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 import { quitarComentarios } from "../../fixtures/sin-comentarios";
-import {
-  EXCEPCIONES_PAIS_SIN_LITERALES,
-  PENDIENTES_DE_DECISION_SLT42,
-  TOPE_EXCEPCIONES,
-  TOPE_PENDIENTES,
-} from "./_pais-sin-literales-excepciones";
+import { EXCEPCIONES_PAIS_SIN_LITERALES, TOPE_EXCEPCIONES } from "./_pais-sin-literales-excepciones";
 
 const RAIZ = path.resolve(__dirname, "../../..");
 
@@ -79,9 +74,7 @@ describe("SLT-42 · R29 — el servidor no escribe el pais a mano", () => {
   const conLiterales = new Map(
     archivos.map((rel) => [rel, literalesDelPais(leer(rel))] as const).filter(([, l]) => l.length > 0),
   );
-  const excepciones = new Set(EXCEPCIONES_PAIS_SIN_LITERALES.map((e) => e.archivo));
-  const pendientes = new Set(PENDIENTES_DE_DECISION_SLT42.map((p) => p.archivo));
-  const enLista = new Set([...excepciones, ...pendientes]);
+  const enLista = new Set(EXCEPCIONES_PAIS_SIN_LITERALES.map((e) => e.archivo));
 
   it("control positivo: el censo mira cientos de archivos, paginas incluidas, y encuentra las excepciones", () => {
     expect(archivos.length).toBeGreaterThan(500);
@@ -105,17 +98,14 @@ describe("SLT-42 · R29 — el servidor no escribe el pais a mano", () => {
     expect(sobran, "Ya no hace falta: quitala de EXCEPCIONES_PAIS_SIN_LITERALES y baja el tope").toEqual([]);
   });
 
-  it("las listas no crecen respecto de su tope, y ningun archivo esta en las dos", () => {
+  it("la lista no crece respecto de su tope", () => {
     expect(EXCEPCIONES_PAIS_SIN_LITERALES.length).toBeLessThanOrEqual(TOPE_EXCEPCIONES);
-    expect(PENDIENTES_DE_DECISION_SLT42.length).toBeLessThanOrEqual(TOPE_PENDIENTES);
-    expect([...excepciones].filter((rel) => pendientes.has(rel))).toEqual([]);
-    expect(pendientes.size).toBe(PENDIENTES_DE_DECISION_SLT42.length);
   });
 
-  it("cada excepcion trae ficha SLT-81 o SL-22, motivo, un archivo que existe y no se repite; la lista esta ordenada", () => {
+  it("cada excepcion trae ficha SLT-81, SLT-86 o SL-22, motivo, un archivo que existe y no se repite; la lista esta ordenada", () => {
     const rutas = EXCEPCIONES_PAIS_SIN_LITERALES.map((e) => e.archivo);
     for (const e of EXCEPCIONES_PAIS_SIN_LITERALES) {
-      expect(["SLT-81", "SL-22"], e.archivo).toContain(e.ficha);
+      expect(["SLT-81", "SLT-86", "SL-22"], e.archivo).toContain(e.ficha);
       expect(e.motivo.trim().length, e.archivo).toBeGreaterThan(10);
       expect(archivos, e.archivo).toContain(e.archivo);
     }
