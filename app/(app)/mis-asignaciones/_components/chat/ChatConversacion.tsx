@@ -124,9 +124,6 @@ const AVISO_TIPO_NO_PERMITIDO = "Ese tipo de archivo no se puede enviar por What
 const AVISO_NO_CONVERTIBLE =
   "No se pudo preparar la foto. Vuelve a tomarla o elige otra imagen.";
 
-/** Aviso previo del tope del vídeo, ANTES de abrir la cámara (D8/R10). */
-const AVISO_LIMITE_VIDEO = "El vídeo no puede pasar de 16 MB.";
-
 const AVISO_ADJUNTO_BLOQUEADO =
   "Tampoco puedes enviar fotos, vídeos, notas de voz ni documentos hasta que el cliente responda.";
 
@@ -141,6 +138,42 @@ interface AdjuntoComposer {
 /** Megabytes enteros del límite, para que el aviso diga CUÁL era (R10). */
 function limiteLegible(bytes: number): string {
   return `${Math.round(bytes / (1024 * 1024))} MB`;
+}
+
+/** Aviso previo del tope del vídeo, ANTES de abrir la cámara (D8/R10). */
+const AVISO_LIMITE_VIDEO = `El vídeo no puede pasar de ${limiteLegible(LIMITE_BYTES.video)}.`;
+
+/** SLT-88 R3: una foto en formato válido que, aun comprimida, no baja del límite. */
+const AVISO_FOTO_NO_REDUCIDA = `No se pudo reducir la foto a ${limiteLegible(LIMITE_BYTES.imagen)}. Vuelve a tomarla o elige otra imagen.`;
+
+/** SLT-88 R8: la nota de voz no se puede recomprimir: la única salida es grabar menos. */
+const AVISO_NOTA_VOZ_GRANDE = `La nota de voz supera el límite de ${limiteLegible(LIMITE_BYTES.audio)}. Graba una más corta.`;
+
+/** SLT-88 R4. */
+const AVISO_PREPARACION_FALLIDA = "No se pudo preparar el archivo. Inténtalo de nuevo.";
+
+/** SLT-88 R12: solo para lo que SÍ se arregla reintentando (design §5). */
+const AVISO_FALLO_ENVIO = "No se pudo enviar. Inténtalo de nuevo";
+
+/** SLT-88 R7/R10: lleva el límite de quien rechazó, navegador o servidor. */
+function avisoArchivoGrande(limiteBytes: number): string {
+  return `Ese archivo supera el límite de ${limiteLegible(limiteBytes)}. Elige uno más pequeño.`;
+}
+
+/**
+ * SLT-88 R12/R15: `null` = la petición no trajo respuesta, por un rechazo o un resultado vacío.
+ * Un cuerpo cortado por la plataforma llega así, no como un `status`; sin capturarlo aquí, el
+ * `void enviar()` lo deja morir en silencio.
+ *
+ * Envuelve SOLO la acción, nunca la revalidación (R18): si el mensaje ya salió, un fallo al
+ * refrescar el hilo no puede decir «No se pudo enviar» e invitar a enviarlo otra vez.
+ */
+async function respuestaDe<T>(llamada: () => Promise<T>): Promise<T | null> {
+  try {
+    return (await llamada()) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function Acuses({ estado }: { estado: ChatMensajeVista["estado"] }) {
@@ -353,7 +386,7 @@ export function ChatConversacion({
   // callback; ese `File` entra por el MISMO camino de validación que un archivo elegido a mano.
   const grabador = useGrabadorVoz({
     onGrabacion: (archivoGrabado) => {
-      void aceptarArchivo(archivoGrabado);
+      void aceptarArchivo(archivoGrabado, "grabacion");
     },
   });
 
@@ -412,13 +445,13 @@ export function ChatConversacion({
   /**
    * Normalizar → clasificar → validar → dejar listo en el composer (design §2.1).
    *
-   * EL ORDEN IMPORTA y es lo contrario de lo intuitivo: el límite de 5 MB de la imagen se
+   * EL ORDEN IMPORTA y es lo contrario de lo intuitivo: el límite de la imagen se
    * comprueba DESPUÉS de convertir (R30/R32), que es por lo que una foto de 8 MB se puede
    * enviar. `comprimirImagen` NUNCA lanza: si no pudo, devuelve el original, y por eso el MIME
    * se vuelve a mirar DESPUÉS — es lo que convierte "no pudo" en el aviso propio de R31 en vez
    * de en un "tipo no permitido" que le mentiría al mensajero.
    */
-  async function aceptarArchivo(elegido: File) {
+  async function aceptarArchivo(elegido: File, origen: "archivo" | "grabacion" = "archivo") {
     setMenuAdjuntar(false);
     setAvisoAdjunto(null);
     quitarAdjunto();
@@ -451,17 +484,25 @@ export function ChatConversacion({
       // R11: la MISMA función pura que corre en el servidor. La de aquí es cortesía de red.
       const validacion = validarAdjunto(preparada.type, preparada.size);
       if (!validacion.ok) {
-        setAvisoAdjunto(
-          validacion.motivo === "tipo_no_permitido"
-            ? AVISO_TIPO_NO_PERMITIDO
-            : `Ese archivo supera el límite de ${limiteLegible(validacion.limiteBytes)} para este tipo.`,
-        );
+        if (validacion.motivo === "tipo_no_permitido") {
+          setAvisoAdjunto(AVISO_TIPO_NO_PERMITIDO);
+        } else if (origen === "grabacion") {
+          setAvisoAdjunto(AVISO_NOTA_VOZ_GRANDE);
+        } else if (tipo === "imagen") {
+          // Una imagen de más del límite ya pasó por `comprimirImagen`: se intentó y no bajó.
+          setAvisoAdjunto(AVISO_FOTO_NO_REDUCIDA);
+        } else {
+          setAvisoAdjunto(avisoArchivoGrande(validacion.limiteBytes));
+        }
         return;
       }
 
       const previewUrl = tipo === "documento" ? null : URL.createObjectURL(preparada);
       previewRef.current = previewUrl;
       setAdjunto({ archivo: preparada, previewUrl, tipo });
+    } catch {
+      // SLT-88 R4: se llama con `void`; sin este `catch` un error aquí no lo vería nadie.
+      setAvisoAdjunto(AVISO_PREPARACION_FALLIDA);
     } finally {
       setPreparando(false);
     }
@@ -487,7 +528,11 @@ export function ChatConversacion({
     // R6: Meta NO admite pie en audio. El texto no se manda... y tampoco se borra.
     if (elegido.tipo !== "audio" && texto !== "") formData.set("caption", texto);
 
-    const res = await enviarMediaChat(formData);
+    const res = await respuestaDe(() => enviarMediaChat(formData));
+    if (res === null) {
+      toast.error(AVISO_FALLO_ENVIO);
+      return;
+    }
     switch (res.status) {
       case "ok":
         quitarAdjunto();
@@ -503,15 +548,13 @@ export function ChatConversacion({
         toast.error(AVISO_TIPO_NO_PERMITIDO);
         break;
       case "demasiado_grande":
-        toast.error(
-          `Ese archivo supera el límite de ${limiteLegible(res.limiteBytes)} para este tipo.`,
-        );
+        toast.error(avisoArchivoGrande(res.limiteBytes));
         break;
       case "caption_largo":
         toast.error(`El pie no puede pasar de ${res.maximo} caracteres.`);
         break;
       case "fallo_subida":
-        toast.error("No se pudo subir el archivo. Inténtalo de nuevo.");
+        toast.error(AVISO_FALLO_ENVIO);
         break;
       case "permanente":
         toast.error(`WhatsApp rechazó el envío: ${res.detalle}`);
@@ -537,7 +580,11 @@ export function ChatConversacion({
 
   /** Envío DENTRO de la ventana: texto libre. El backend revalida la ventana. */
   async function enviarTextoLibre(texto: string) {
-    const res = await enviarMensajeChat(orden!.id, texto);
+    const res = await respuestaDe(() => enviarMensajeChat(orden!.id, texto));
+    if (res === null) {
+      toast.error(AVISO_FALLO_ENVIO);
+      return;
+    }
     switch (res.status) {
       case "ok":
         setBorrador(BORRADOR_VACIO);
@@ -565,7 +612,11 @@ export function ChatConversacion({
 
   /** Envío FUERA de la ventana: solo plantilla aprobada (nunca texto libre). */
   async function enviarComoPlantilla(plantillaId: string) {
-    const res = await enviarPlantillaChat(orden!.id, plantillaId);
+    const res = await respuestaDe(() => enviarPlantillaChat(orden!.id, plantillaId));
+    if (res === null) {
+      toast.error(AVISO_FALLO_ENVIO);
+      return;
+    }
     switch (res.status) {
       case "ok":
         setBorrador(BORRADOR_VACIO);
