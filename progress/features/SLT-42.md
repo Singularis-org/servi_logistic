@@ -120,6 +120,10 @@ Bloqueos de F2.0:
 
 - 2026-11-06 (tras la revisión, `progress/review_SLT-42.md`): B1 (E2E sin correr) se resuelve con el check `e2e` del PR a `dev` (no borrador; 3 grupos con base propia, `gate.yml`), no en local; su resultado se pega en `impl_SLT-42.md`. No se mergea sin `gate-completo` y `e2e` en verde (humano). Los menores m1–m3 se corrigen antes de abrir el PR; m4 (Cierre) lo llena el leader al cerrar.
 
+- 2026-11-06 (tras correcciones e integración de dev):
+  1. m1: `lib/validacion/telefono.ts` queda sin `import "server-only"` (el paquete no está y sería dependencia nueva); desvío 8 del design aceptado (humano).
+  2. `POSTULACION_VALIDADA_POR_PAIS_DESDE` queda en `2026-11-06T12:00Z` (primera migración renombrada); se reemplaza por el instante real del deploy en T1.0 (humano).
+
 ## Pendiente para el cierre
 **Hecho el 2026-11-06** (tanda 7): `progress/impl_SLT-42.md > Errores nuevos y prevención`.
 - 2026-11-05, pedido del humano: al terminar la feature, resumen de TODOS los errores nuevos que puede lanzar SLT-42 (p. ej. `PaisIncompleto`, `PaisSinZonaHoraria`, `EmpresaNoResuelta`, documento/teléfono inválido por país, tipo de documento inactivo): dónde salen, qué ve el usuario y qué hay que completar o configurar (catálogo de país, zona, prefijo, tipos de documento, `POSTULACION_VALIDADA_POR_PAIS_DESDE`, T1.0) para que no se disparen. Va a `progress/impl_SLT-42.md > Errores nuevos y prevención` y se resume al humano.
