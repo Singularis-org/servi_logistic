@@ -15,6 +15,8 @@ import { handleAvisoRepartoManana } from "@/app/api/cron/aviso-reparto-manana/ro
 import { handleAvisosDiarios } from "@/app/api/cron/avisos-diarios/route";
 import { handleSyncPlantillas } from "@/app/api/cron/sync-plantillas-whatsapp/route";
 import { conSuEmpresa, handleProcesarJobs } from "@/app/api/cron/procesar-jobs/route";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // SL-17 / T2.3 + T2.3b (R16, R42) — los crons que tocan negocio y el drenador, con dobles:
 //  - sin empresas, cada cron responde 200 sin llamar a su servicio (no toca datos) y con el
@@ -43,6 +45,8 @@ type Deps = {
   now: () => Date;
   service: unknown;
   empresas: ClienteDeOrganizaciones;
+  /** SLT-42 (R24): los crons que leen la zona en el borde (liberar-reprogramadas); los demas la ignoran. */
+  reglasPais: IReglasPaisEmpresa;
 };
 
 interface CasoCron {
@@ -220,6 +224,7 @@ describe.each(CASOS)("cron $nombre por empresa (R16)", (caso) => {
     now: () => AHORA,
     service,
     empresas: empresasDoble(ids),
+    reglasPais: reglasPaisFijas(),
   });
 
   it("sin empresas: 200, no llama al servicio y el resumen va en cero", async () => {
