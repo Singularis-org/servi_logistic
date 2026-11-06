@@ -137,11 +137,13 @@ describe("D16 — cambiarTipoCobro deja su acción propia en el historial", () =
   });
 });
 
-describe("D14, D16 — planDeEmpresa lee las dos acciones del historial de asignaciones", () => {
+// SLT-86 (R19, R26): con la cancelación de un cambio pendiente, el historial de asignaciones lee tres acciones.
+describe("D14, D16, SLT-86 R26 — planDeEmpresa lee las tres acciones del historial de asignaciones", () => {
   const creadoAt = new Date("2026-11-03T15:00:00.000Z");
 
-  it("filtra por `plan_asignado` y `plan_tipo_cobro_cambiado` de la empresa y devuelve la acción de cada fila", async () => {
+  it("filtra por `plan_asignado`, `plan_tipo_cobro_cambiado` y `plan_cambio_empresa_cancelado` de la empresa y devuelve la acción de cada fila", async () => {
     const { prisma, findMany } = txDeLectura([
+      { createdAt: creadoAt, actorNombre: "Ana", entidadEtiqueta: "Plan «Norte»", accion: "plan_cambio_empresa_cancelado", valorAnterior: null, valorNuevo: "2026-12-01 · anual" },
       { createdAt: creadoAt, actorNombre: "Ana", entidadEtiqueta: "Plan «Norte»", accion: "plan_tipo_cobro_cambiado", valorAnterior: "mensual", valorNuevo: "anual" },
       { createdAt: creadoAt, actorNombre: "Ana", entidadEtiqueta: "Plan «Norte»", accion: "plan_asignado", valorAnterior: null, valorNuevo: "mensual" },
     ]);
@@ -149,7 +151,10 @@ describe("D14, D16 — planDeEmpresa lee las dos acciones del historial de asign
     const r = await new PlanesRepository(prisma).planDeEmpresa(ORG);
 
     const arg = (findMany.mock.calls[0] as unknown as [{ where: unknown; orderBy: unknown; select: Record<string, boolean> }])[0];
-    expect(arg.where).toEqual({ organizacionId: ORG, accion: { in: ["plan_asignado", "plan_tipo_cobro_cambiado"] } });
+    expect(arg.where).toEqual({
+      organizacionId: ORG,
+      accion: { in: ["plan_asignado", "plan_tipo_cobro_cambiado", "plan_cambio_empresa_cancelado"] },
+    });
     // Orden total y estable: `created_at` es TIMESTAMP(3) y puede empatar; `id` (único) desempata siempre igual.
     expect(arg.orderBy).toEqual([{ createdAt: "desc" }, { id: "desc" }]);
     expect(arg.select.accion).toBe(true);
@@ -158,6 +163,7 @@ describe("D14, D16 — planDeEmpresa lee las dos acciones del historial de asign
       plan: null,
       pendienteSinPlan: null,
       asignaciones: [
+        { creadoAt, actorNombre: "Ana", planNombre: "Plan «Norte»", accion: "plan_cambio_empresa_cancelado", valorAnterior: null, valorNuevo: "2026-12-01 · anual" },
         { creadoAt, actorNombre: "Ana", planNombre: "Plan «Norte»", accion: "plan_tipo_cobro_cambiado", valorAnterior: "mensual", valorNuevo: "anual" },
         { creadoAt, actorNombre: "Ana", planNombre: "Plan «Norte»", accion: "plan_asignado", valorAnterior: null, valorNuevo: "mensual" },
       ],

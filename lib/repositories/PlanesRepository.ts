@@ -104,7 +104,7 @@ const ROLES: ReadonlySet<string> = new Set(ROLES_CON_TOPE);
 /* Filas ↔ DTO                                                                 */
 /* -------------------------------------------------------------------------- */
 
-/** D16: la acción de una fila del historial de asignaciones; la consulta ya filtra por estas dos. */
+/** D16: la acción de una fila del historial de asignaciones; la consulta ya filtra por estas tres (SLT-86: la cancelación). */
 function comoAccionDeAsignacion(accion: string): AccionDeAsignacion {
   const encontrada = ACCIONES_DE_ASIGNACION.find((a) => a === accion);
   if (encontrada === undefined) throw new Error(`planDeEmpresa: acción ${accion} fuera del historial de asignaciones`);

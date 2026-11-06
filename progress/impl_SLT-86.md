@@ -807,3 +807,35 @@ R19 (botones del modal) → `PlanEmpresaPeriodo.test.tsx` (sin cambios, ya los u
   porque sus fixtures traen el tope de órdenes y el `anual` que retiró SLT-86 (p. ej. «expected ['topes'] to include
   'organizacionId'»). Están en la lista «se adaptan» de design §9 y no están en `tests/baseline-rojos.json`. Hay que
   adaptarlos antes del PR o el `gate-completo` saldrá en rojo.
+
+## Tanda 11 — tests de SLT-86 que quedaban sin adaptar y barrido anti-rojos (2026-11-06)
+
+**Adaptados (backend_dev; ningún bug de producción, ningún skip, nada al baseline)**
+- `tests/unit/types/planes-schema.test.ts` (12 rojos → 30/30): topes sin `ordenesPorCiclo` (y un caso nuevo: mandarlo
+  se rechaza, R8); la tabla de formas del precio usa `descuentos` en vez de `anual`, más un caso «la clave `anual` sola
+  se rechaza». Se conserva todo SL-24 (R2, D6, R37/P8, módulos, importes límite, D1) y los roles de SLT-66.
+- `planes-schema-costeo.test.ts` (3 → 11/11) y `planes-schema-costo-porcentual.test.ts` (15 → 33/33): fixtures con
+  `descuentos`; el rango del porcentaje compartido pasa por `descuentos.anual` (ruta `precio.descuentos.anual.porcentaje`).
+  SLT-66 R1/R7/R8 y SLT-83 R1/R2 sin cambios.
+- `tests/unit/repositories/planes-repository-tipo-cobro.test.ts` (1 → 5/5): `planDeEmpresa` filtra las TRES acciones de
+  `ACCIONES_DE_ASIGNACION` (incluida `plan_cambio_empresa_cancelado`, T8b); el doble trae esa fila.
+  `lib/repositories/PlanesRepository.ts`: solo el comentario («estas dos» → tres).
+- `tests/integration/db/deuda-plataforma-plan.test.ts` (1 → 4/4): el fixture creaba el plan con `base.plan.create` sin
+  la fila inicial de `plan_precio_historial` (`'-infinity'`), que todo camino real siembra; `plan_de_la_empresa`
+  devolvía `precio_del_periodo` null. Se inserta esa fila, como `_fixtures/planes.ts > crearPlan`.
+
+**Barrido (implementer, vitest por lotes con `--reporter=json`; integración sobre `servi_logistic_slt86`)**
+| Lote | Archivos | Pasados | Fallados | Saltados |
+|---|---|---|---|---|
+| `tests/unit/{types,planes,utils}` (antes del arreglo) | 225 | 3627 | 30 | 0 |
+| Componentes `Plan*`/`MiPlan*`, `tests/integration/**/*plan*`/`*cobro*` fuera de `db/` y los que nombran identificadores retirados (fuera de `db/`) | 71 | 1422 | 1 | 0 |
+| `tests/integration/db/` con plan/cobro o identificadores retirados, mitad 1 | 34 | 362 | 18 | 14 |
+| ídem, mitad 2 | 34 | 255 | 0 | 23 |
+| Otros `*plan*`, `*consumo*`, `*cobro*` de `tests/unit`, `components` e `integration` | 64 | 995 | 0 | 0 |
+| Tras el arreglo: `tests/unit/types` + los dos arreglados fuera | 90 | 1606 | 0 | 0 |
+
+- Rojos que NO son de SLT-86, todos en `tests/baseline-rojos.json`, sin tocar: `costo-y-zona-api-415`,
+  `455/caracterizacion/plantilla-estatus`, `cobro-tienda-461-migration` (2), `gasto-fijo-cobro-aprobacion` (11),
+  `gasto-fijo-cobro-idempotencia` (2), `gasto-fijo-cobro-migration` (2) (piden usuarios en la base, SL-31),
+  `rechazo-tienda-cobro.int`, `wallet-tienda-cobro`.
+- eslint de los 6 archivos tocados: exit 0. typecheck: 0 errores.
