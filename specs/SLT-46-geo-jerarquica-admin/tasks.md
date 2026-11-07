@@ -69,7 +69,7 @@ Montado por SLT-43/44/45/65/71 en esta rama. Se usa tal cual; ninguna task lo vu
 - [x] **T2.2** Migración `20261106120100_slt46_nodo_copia_a_geografia_vieja` con su `down.sql` (§2.2),
   y `SLT46` en `lib/db/sqlstate.ts`.
   *Hecho:* `tests/integration/db/slt46-nodo-copia-vieja.test.ts` verde. (R2–R7, R44)
-- [ ] **T2.3** [P] Extraer `faltasR19` a `tests/unit/db/_migraciones-aditivas.ts` (sin cambiar las
+- [x] **T2.3** [P] Extraer `faltasR19` a `tests/unit/db/_migraciones-aditivas.ts` (sin cambiar las
   aserciones de `slt43-migraciones-aditivas.test.ts`) y escribir
   `tests/unit/db/slt46-migraciones-aditivas.test.ts` con la regla del cuerpo de función, la de
   `CREATE OR REPLACE FUNCTION` solo para `pais_tipos_de_nivel`, y contraprueba. (R8, R10)
