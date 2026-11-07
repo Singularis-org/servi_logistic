@@ -5,11 +5,71 @@ import type {
 } from "@/lib/types/filtros-ordenes";
 import type {
   NivelGeografico,
+  NodoArbolPlataformaDTO,
   ProvinciaArbolDTO,
   ProvinciaPlataformaDTO,
+  TipoNivelDTO,
 } from "@/lib/types/geografia-nodo";
-import type { ArbolExistente, PlanDivision, ResumenCarga } from "@/lib/types/division-csv";
+import type {
+  ArbolExistente,
+  NodoExistenteConProfundidad,
+  PlanDivision,
+  PlanDivisionPorProfundidad,
+  ResumenCarga,
+  ResumenCargaPorProfundidad,
+} from "@/lib/types/division-csv";
 import type { ReglaDeCodigoDePais } from "@/lib/utils/codigo-geografico";
+
+// ── SLT-46 (design §4.4): los contratos por NODO, a cualquier profundidad ────────────────────
+
+/** El arbol de un pais para el superadmin (R21): sus tipos y sus raices, con los hijos dentro. */
+export interface ArbolDePais {
+  tipos: TipoNivelDTO[];
+  raices: NodoArbolPlataformaDTO[];
+}
+
+/** Donde cuelga un alta: la raiz de un pais o el hijo de un nodo. */
+export type DestinoDeAlta = { paisId: string } | { padreId: string };
+
+/**
+ * Lo que el alta necesita saber de donde cuelga el nodo, leido de una vez (§4.3): su pais, la
+ * profundidad que tendra, el tipo de esa profundidad (`null` si el pais no lo tiene, R15), el codigo
+ * del padre (el prefijo de R17) y los hermanos con su nombre CRUDO (R16).
+ */
+export interface ContextoDeAltaDeNodo {
+  paisId: string;
+  profundidad: number;
+  tipo: TipoNivelDTO | null;
+  /** `null` en una raiz o si el padre no tiene codigo. */
+  codigoPadre: string | null;
+  hermanos: { id: string; nombre: string }[];
+}
+
+/** El alta ya decidida por el service: el tipo es el de la profundidad (P1, R14). */
+export interface DatosDeAltaDeNodo {
+  paisId: string;
+  /** `null` en una raiz. */
+  padreId: string | null;
+  profundidad: number;
+  tipoId: string;
+  nombre: string;
+  codigo: string | null;
+}
+
+/** La geografia de un pais tal como la necesita `planificarDivision` a P profundidades (§5). */
+export interface DivisionPorProfundidadDePais {
+  tipos: TipoNivelDTO[];
+  nodos: NodoExistenteConProfundidad[];
+}
+
+/** Los tres desenlaces de un cambio de un nodo: solo el tercero escribe y audita. */
+export type DesenlaceDeRenombre = "no_existe" | "sin_cambio" | "renombrado";
+export type DesenlaceDeActivacion = "no_existe" | "sin_cambio" | "cambiado";
+
+// ── SL-20: los contratos por NIVEL (provincia/canton/distrito) ────────────────────────────────
+//
+// Siguen solo hasta T4, que pasa `GeografiaService` y `CargaDivisionService` a los de arriba. Desde
+// SLT-46 la clase los resuelve sobre `nodo_geografico` (R1): ya no escriben la geografia vieja.
 
 /**
  * SL-20 — lo que el alta necesita saber de DONDE cuelga el nodo, leido de una vez: el pais, su
@@ -35,6 +95,19 @@ export interface OpcionesDeAlta {
   /** El pais del contenedor: el de la provincia en su alta, el del padre en los demas niveles. */
   paisId: string;
   codigo: string | null;
+}
+
+/**
+ * SL-20 — lo que `CargaDivisionService` usa hoy de la carga, por nivel. T4 lo pasa a
+ * `IGeoRepository.leerDivisionDePais`/`importarDivision` por profundidad y lo retira.
+ */
+export interface IGeoRepositoryDivisionPorNivel {
+  leerDivisionDePais(paisId: string): Promise<DivisionDePais | null>;
+  importarDivision(
+    paisId: string,
+    plan: PlanDivision,
+    actorUsuarioId: string | null,
+  ): Promise<ResumenCarga>;
 }
 
 // El catalogo geografico global.
@@ -104,6 +177,61 @@ export interface IGeoRepository {
    */
   listArbol(): Promise<ProvinciaArbolDTO[]>;
 
+  // --- SLT-46 (design §4.4): la administracion sobre `nodo_geografico` ---
+  //
+  // `GeoRepository` es el UNICO escritor del nodo (R43) y ya no escribe `provincia`, `canton` ni
+  // `distrito` (R1): la copia a esas tablas la hace el trigger de T2.2 en la misma sentencia.
+
+  /**
+   * El arbol de N niveles de un pais (R21), activos e inactivos, con sus tipos; `null` si el pais no
+   * existe. Desde el catalogo en memoria, sin CTE recursiva.
+   */
+  arbolDePais(paisId: string): Promise<ArbolDePais | null>;
+
+  /** El contexto del alta (`ContextoDeAltaDeNodo`), o `null` si el pais o el padre no existen. */
+  contextoDeAlta(destino: DestinoDeAlta): Promise<ContextoDeAltaDeNodo | null>;
+
+  /**
+   * Crea el nodo ACTIVO y escribe `nodo_geografico_creado` (entidad `nodo_geografico`, R35) en la
+   * MISMA transaccion. Devuelve el id. Deja escapar la violacion de UNIQUE: el borde la traduce.
+   */
+  crear(datos: DatosDeAltaDeNodo, actorUsuarioId: string | null): Promise<string>;
+
+  /** Los hermanos del nodo `id` —incluido el—, activos e inactivos, o `null` si no existe. */
+  hermanosDeNodo(id: string): Promise<{ id: string; nombre: string }[] | null>;
+
+  /** Cambia SOLO el `nombre` del nodo y lo registra en la misma transaccion (R18, R35). */
+  renombrar(id: string, nombre: string, actorUsuarioId: string | null): Promise<DesenlaceDeRenombre>;
+
+  /** Cambia SOLO el `activo` del nodo, sin tocar descendientes, y lo registra (R19, R35). */
+  cambiarActivacion(
+    id: string,
+    activo: boolean,
+    actorUsuarioId: string | null,
+  ): Promise<DesenlaceDeActivacion>;
+
+  /** La profundidad del nodo, o `null` si no existe (el conteo de R20). */
+  profundidadDeNodo(id: string): Promise<number | null>;
+
+  /** Los tipos y los nodos del pais con su profundidad, ordenados por `id`; `null` sin pais. */
+  leerDivisionDePais(paisId: string): Promise<DivisionPorProfundidadDePais | null>;
+
+  /**
+   * Escribe un plan ya validado en UNA transaccion: un `createMany` de nodos por profundidad, de
+   * arriba abajo, con el tipo de cada una; los codigos vacios; y `division_cargada` (con `creados`
+   * por profundidad) si escribio algo (R33, R36).
+   */
+  importarDivision(
+    paisId: string,
+    plan: PlanDivisionPorProfundidad,
+    actorUsuarioId: string | null,
+  ): Promise<ResumenCargaPorProfundidad>;
+
+  // --- SL-20 por nivel: las formas que `GeografiaService` usa hasta T4 ---
+  //
+  // Mismos desenlaces que antes de SLT-46 (R12), resueltos sobre el nodo: un `id` que no es de la
+  // profundidad del `nivel` pedido es «no existe», como cuando cada nivel era su tabla.
+
   /**
    * SL-20 — el arbol de UN pais para el superadmin (R20, R29, R30): activos e inactivos, con el
    * codigo, SIN zonas. Filtra por `paisId` de forma explicita porque corre como dueño, sin RLS.
@@ -139,26 +267,6 @@ export interface IGeoRepository {
     opciones: OpcionesDeAlta,
     actorUsuarioId: string | null,
   ): Promise<string>;
-
-  /**
-   * SL-20 — la geografia de un pais en listas planas por nivel, con la regla de codigo del pais, o
-   * `null` si el pais no existe. Es la entrada de `planificarDivision`.
-   */
-  leerDivisionDePais(paisId: string): Promise<DivisionDePais | null>;
-
-  /**
-   * SL-20 (R24, R26, R33) — escribe un plan ya validado en UNA transaccion: las altas por nivel, de
-   * arriba abajo, con ids generados aqui; el codigo de los existentes SOLO donde aun no tenian
-   * (`WHERE codigo_dta IS NULL`); y una fila `division_cargada` si escribio algo.
-   *
-   * Solo CREA: no renombra ni reactiva (alternativa 6 del design). Cualquier fallo de la base deja
-   * la transaccion entera sin efecto y se propaga.
-   */
-  importarDivision(
-    paisId: string,
-    plan: PlanDivision,
-    actorUsuarioId: string | null,
-  ): Promise<ResumenCarga>;
 
   /**
    * Cambia el flag `activo` de UNA fila Y registra la accion en la MISMA transaccion. Desde SL-20 la

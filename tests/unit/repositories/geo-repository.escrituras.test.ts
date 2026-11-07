@@ -2,72 +2,154 @@ import { describe, it, expect, vi } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
 import { GeoRepository } from "@/lib/repositories/GeoRepository";
+import type { PlanDivision, PlanDivisionPorProfundidad } from "@/lib/types/division-csv";
 
-// FICHA 374 (R8/R12/R20/R22/R51/R52) — las TRES escrituras del repositorio, con un doble.
-// SL-20 (R29, R33, R35): el registro va al historial de PLATAFORMA (`historialPlataforma`), no a
-// `historial_accion`; el alta tambien registra, y la provincia cuelga de un pais.
+// FICHA 374 / 375 / SL-20 — las escrituras del repositorio, con un doble.
+// SLT-46 (design §4.4, §7; R1, R14, R16, R18, R19, R33, R35, R36) — todas sobre `nodo_geografico`,
+// a cualquier profundidad, con el historial de plataforma de entidad `nodo_geografico` en la MISMA
+// transaccion. El doble NO declara `provincia`, `canton` ni `distrito`: si el repositorio los
+// tocara, reventaria (R1).
 //
 // ⚠️ LO QUE ESTE ARCHIVO PUEDE AFIRMAR Y LO QUE NO. Con dobles se mide el ORDEN de las llamadas y
-// CUANTAS son —que es justo lo que ningun test contra Postgres ve con claridad—: que el corte por
-// «ya estaba asi» ocurre ANTES de cualquier escritura, que el `update` toca UNA tabla y UNA fila,
-// y que ninguno de los tres metodos llama a `delete`/`deleteMany`.
-//
-// Lo que NO se afirma aqui es nada que dependa de un `WHERE` ni de la atomicidad real: eso vive en
-// `tests/integration/db/geografia-cascada-reversible.test.ts` y
-// `tests/integration/db/geografia-registro-accion.test.ts`, contra Postgres. Un doble no revierte
-// nada.
+// CUANTAS son: que el corte por «ya estaba asi» ocurre ANTES de cualquier escritura, que el `update`
+// toca UNA fila y SOLO su campo, y que nada borra. Lo que depende de un `WHERE`, de la copia a la
+// geografia vieja o de la atomicidad real vive contra Postgres (`tests/integration/db/`, T5).
 
 interface Llamada {
   nombre: string;
   arg: unknown;
 }
 
+interface NodoFila {
+  id: string;
+  paisId: string;
+  padreId: string | null;
+  profundidad: number;
+  nombre: string;
+  activo: boolean;
+  codigoOficial: string | null;
+}
+
+interface TipoFila {
+  id: string;
+  clave: string;
+  nombreSingular: string;
+  nombrePlural: string;
+  digitosCodigo: number | null;
+  codigoHeredaPrefijo: boolean;
+}
+
+function tipo(k: number, o: Partial<TipoFila> = {}): TipoFila {
+  return {
+    id: `t${k}`,
+    clave: `nivel_${k}`,
+    nombreSingular: `Nivel ${k}`,
+    nombrePlural: `Niveles ${k}`,
+    digitosCodigo: null,
+    codigoHeredaPrefijo: false,
+    ...o,
+  };
+}
+
+const TIPOS_4 = [tipo(1), tipo(2), tipo(3), tipo(4)];
+
+// Un pais de 4 niveles: Puntarenas > Buenos Aires > Cabagra > Barrio Uno.
+const ARBOL: NodoFila[] = [
+  { id: "n1", paisId: "XA", padreId: null, profundidad: 1, nombre: "Puntarenas", activo: true, codigoOficial: "6" },
+  { id: "n1b", paisId: "XA", padreId: null, profundidad: 1, nombre: "Limón", activo: false, codigoOficial: null },
+  { id: "n2", paisId: "XA", padreId: "n1", profundidad: 2, nombre: "Buenos Aires", activo: true, codigoOficial: "603" },
+  { id: "n3", paisId: "XA", padreId: "n2", profundidad: 3, nombre: "Cabagra", activo: true, codigoOficial: null },
+  { id: "n3b", paisId: "XA", padreId: "n2", profundidad: 3, nombre: "Potrero Grande", activo: false, codigoOficial: null },
+  { id: "n4", paisId: "XA", padreId: "n3", profundidad: 4, nombre: "Barrio Uno", activo: true, codigoOficial: null },
+];
+
+interface Escenario {
+  nodos?: NodoFila[];
+  tipos?: TipoFila[];
+  /** `null`: el pais no existe. */
+  pais?: { id: string; nombre: string } | null;
+}
+
 /**
- * Doble del cliente Prisma que APUNTA cada llamada en un log ordenado. `$transaction` ejecuta el
- * callback con el MISMO objeto, que es lo que permite ver la secuencia completa de la tx.
+ * Doble del cliente Prisma que APUNTA cada llamada en un log ordenado, sobre un arbol en memoria.
+ * Devuelve las filas enteras (con `hijos`, `padre` y `pais` resueltos): el repositorio solo lee lo
+ * que selecciona. `$transaction` ejecuta el callback con el MISMO objeto.
  */
-function prismaDoble(previo: Record<string, unknown> | null) {
+function prismaDoble(e: Escenario = {}) {
+  const nodos = e.nodos ?? ARBOL;
+  const tipos = e.tipos ?? TIPOS_4;
+  const pais = e.pais === undefined ? { id: "XA", nombre: "País XA" } : e.pais;
   const log: Llamada[] = [];
+  const porId = (a: NodoFila, b: NodoFila) => a.id.localeCompare(b.id);
+  const hijosDe = (id: string | null) =>
+    nodos.filter((n) => n.padreId === id && (id !== null || n.paisId === pais?.id)).sort(porId);
+  const enriquecido = (n: NodoFila) => {
+    const padre = nodos.find((p) => p.id === n.padreId) ?? null;
+    return {
+      ...n,
+      hijos: hijosDe(n.id).map(({ id, nombre }) => ({ id, nombre })),
+      padre: padre === null ? null : { hijos: hijosDe(padre.id).map(({ id, nombre }) => ({ id, nombre })) },
+      pais: { tiposDeNivel: tipos },
+    };
+  };
   const apunta =
-    (nombre: string, resultado: unknown = undefined) =>
-    (arg: unknown) => {
+    <A,>(nombre: string, resultado: (arg: A) => unknown) =>
+    (arg: A) => {
       log.push({ nombre, arg });
-      return Promise.resolve(resultado);
+      return Promise.resolve(resultado(arg));
     };
 
+  type ArgId = { where: { id: string } };
+  type ArgMany = { where: { paisId?: string; padreId?: string | null } };
+
   const cliente = {
-    provincia: {
-      findUnique: vi.fn(apunta("provincia.findUnique", previo)),
-      findMany: vi.fn(apunta("provincia.findMany", [])),
-      update: vi.fn(apunta("provincia.update", {})),
-      create: vi.fn(apunta("provincia.create", { id: "p-nueva" })),
+    nodoGeografico: {
+      findUnique: vi.fn(
+        apunta<ArgId>("nodoGeografico.findUnique", (a) => {
+          const n = nodos.find((x) => x.id === a.where.id);
+          return n === undefined ? null : enriquecido(n);
+        }),
+      ),
+      findMany: vi.fn(
+        apunta<ArgMany>("nodoGeografico.findMany", (a) =>
+          nodos
+            .filter((n) => a.where.paisId === undefined || n.paisId === a.where.paisId)
+            .filter((n) => !("padreId" in a.where) || n.padreId === a.where.padreId)
+            .sort(porId),
+        ),
+      ),
+      create: vi.fn(apunta("nodoGeografico.create", () => ({ id: "n-nuevo" }))),
+      createMany: vi.fn(apunta<{ data: unknown[] }>("nodoGeografico.createMany", (a) => ({ count: a.data.length }))),
+      update: vi.fn(apunta("nodoGeografico.update", () => ({}))),
+      updateMany: vi.fn(apunta("nodoGeografico.updateMany", () => ({ count: 1 }))),
     },
-    canton: {
-      findUnique: vi.fn(apunta("canton.findUnique", previo)),
-      findMany: vi.fn(apunta("canton.findMany", [])),
-      update: vi.fn(apunta("canton.update", {})),
-      create: vi.fn(apunta("canton.create", { id: "c-nuevo" })),
-    },
-    distrito: {
-      findUnique: vi.fn(apunta("distrito.findUnique", previo)),
-      findMany: vi.fn(apunta("distrito.findMany", [])),
-      update: vi.fn(apunta("distrito.update", {})),
-      create: vi.fn(apunta("distrito.create", { id: "d-nuevo" })),
+    pais: {
+      findUnique: vi.fn(
+        apunta("pais.findUnique", () =>
+          pais === null
+            ? null
+            : {
+                ...pais,
+                digitosCodigoNivel1: null,
+                digitosCodigoNivel2: null,
+                digitosCodigoNivel3: null,
+                tiposDeNivel: tipos,
+                nodosGeograficos: hijosDe(null).map(({ id, nombre }) => ({ id, nombre })),
+              },
+        ),
+      ),
     },
     usuario: {
       findUnique: vi.fn(
-        apunta("usuario.findUnique", {
-          nombre: "Maestra",
-          primerApellido: "Uno",
-          rol: { value: "maestro" },
-        }),
+        apunta("usuario.findUnique", () => ({
+          nombre: "Super",
+          primerApellido: "Admin",
+          rol: { value: "superadmin" },
+        })),
       ),
     },
-    pais: {
-      findUnique: vi.fn(apunta("pais.findUnique", previo)),
-    },
     historialPlataforma: {
-      createMany: vi.fn(apunta("historialPlataforma.createMany", { count: 1 })),
+      createMany: vi.fn(apunta("historialPlataforma.createMany", () => ({ count: 1 }))),
     },
     $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => {
       log.push({ nombre: "$transaction", arg: undefined });
@@ -77,341 +159,418 @@ function prismaDoble(previo: Record<string, unknown> | null) {
   return { cliente, log };
 }
 
-function repoCon(previo: Record<string, unknown> | null) {
-  const { cliente, log } = prismaDoble(previo);
+function repoCon(e: Escenario = {}) {
+  const { cliente, log } = prismaDoble(e);
   return { repo: new GeoRepository(cliente as unknown as PrismaClient), cliente, log };
 }
 
-/** Un distrito con su cadena de nombres, tal como lo lee `leerNodoParaActivacion`. */
-function distritoPrevio(activo: boolean) {
-  return {
-    activo,
-    nombre: "Cabagra",
-    paisId: "CR",
-    canton: { nombre: "Buenos Aires", provincia: { nombre: "Puntarenas" } },
-  };
+type Doble = ReturnType<typeof prismaDoble>["cliente"];
+
+function filaDeHistorial(cliente: Doble): Record<string, unknown> {
+  const llamadas = cliente.historialPlataforma.createMany.mock.calls as unknown as [{ data: Record<string, unknown>[] }][];
+  expect(llamadas).toHaveLength(1);
+  const { data } = llamadas[0][0];
+  expect(data).toHaveLength(1);
+  return data[0];
 }
 
+const nombres = (log: Llamada[]) => log.map((l) => l.nombre);
+
 // =================================================================================================
-// R22 — el nodo que no existe
+// R19 — retirar y reactivar un nodo de cualquier profundidad
 // =================================================================================================
 
-describe("374/R22 — `no_existe` corta antes de cualquier escritura", () => {
-  it("con la lectura en `null` no hay update, ni actor congelado, ni fila de registro", async () => {
-    const { repo, log } = repoCon(null);
-
-    expect(await repo.cambiarActivacion("distrito", "fantasma", false, "u-1")).toBe("no_existe");
-
-    expect(log.map((l) => l.nombre)).toEqual(["$transaction", "distrito.findUnique"]);
+describe("SLT-46 R19 — `cambiarActivacion` sobre el nodo", () => {
+  it("un nodo que no existe es `no_existe` y no escribe nada", async () => {
+    const { repo, log } = repoCon();
+    expect(await repo.cambiarActivacion("fantasma", false, "u-1")).toBe("no_existe");
+    expect(nombres(log)).toEqual(["$transaction", "nodoGeografico.findUnique"]);
   });
-});
 
-// =================================================================================================
-// R21/R53 — «ya estaba asi»: ni el update ni la fila
-// =================================================================================================
-
-describe("374/R21/R53 — `sin_cambio` NO escribe nada, y el corte va ANTES del update", () => {
-  it("pedir desactivar lo ya inactivo no toca ni la tabla ni el registro", async () => {
-    const { repo, cliente, log } = repoCon(distritoPrevio(false));
-
-    expect(await repo.cambiarActivacion("distrito", "d1", false, "u-1")).toBe("sin_cambio");
-
-    // El ORDEN es la afirmacion: la lectura, y nada mas. «Se pidio» y «se hizo» son cosas
-    // distintas — precedente literal de `VehiculoRepository.delete`.
-    expect(log.map((l) => l.nombre)).toEqual(["$transaction", "distrito.findUnique"]);
-    expect(cliente.distrito.update).not.toHaveBeenCalled();
-    expect(cliente.historialPlataforma.createMany).not.toHaveBeenCalled();
+  it("pedir el estado que ya tiene es `sin_cambio`: ni update, ni actor, ni historial", async () => {
+    const { repo, cliente, log } = repoCon();
+    expect(await repo.cambiarActivacion("n4", true, "u-1")).toBe("sin_cambio");
+    expect(await repo.cambiarActivacion("n3b", false, "u-1")).toBe("sin_cambio");
+    expect(nombres(log)).toEqual([
+      "$transaction",
+      "nodoGeografico.findUnique",
+      "$transaction",
+      "nodoGeografico.findUnique",
+    ]);
+    expect(cliente.nodoGeografico.update).not.toHaveBeenCalled();
     expect(cliente.usuario.findUnique).not.toHaveBeenCalled();
-  });
-
-  it("pedir activar lo ya activo, igual", async () => {
-    const { repo, cliente } = repoCon(distritoPrevio(true));
-    expect(await repo.cambiarActivacion("distrito", "d1", true, "u-1")).toBe("sin_cambio");
-    expect(cliente.distrito.update).not.toHaveBeenCalled();
     expect(cliente.historialPlataforma.createMany).not.toHaveBeenCalled();
   });
-});
 
-// =================================================================================================
-// R8/R51/R52 — el cambio real: una tabla, una fila, y su registro DENTRO de la tx
-// =================================================================================================
-
-describe("374/R8/R51/R52 — el cambio real, en los cinco pasos y en ese orden", () => {
-  it("leer -> update -> congelar actor -> registrar, todo dentro de UNA transaccion", async () => {
-    const { repo, log } = repoCon(distritoPrevio(true));
-
-    expect(await repo.cambiarActivacion("distrito", "d1", false, "u-1")).toBe("cambiado");
-
-    expect(log.map((l) => l.nombre)).toEqual([
+  it("el cambio de un nodo de profundidad 4: leer -> update -> cadena -> actor -> historial, en UNA tx", async () => {
+    const { repo, log } = repoCon();
+    expect(await repo.cambiarActivacion("n4", false, "u-1")).toBe("cambiado");
+    expect(nombres(log)).toEqual([
       "$transaction",
-      "distrito.findUnique",
-      "distrito.update",
+      "nodoGeografico.findUnique",
+      "nodoGeografico.update",
+      // La cadena de la etiqueta: padre, abuelo y bisabuelo (a lo sumo P lecturas).
+      "nodoGeografico.findUnique",
+      "nodoGeografico.findUnique",
+      "nodoGeografico.findUnique",
       "usuario.findUnique",
       "historialPlataforma.createMany",
     ]);
   });
 
-  it("el `update` toca UNA tabla y UNA fila, por su id, y escribe SOLO el flag (R8)", async () => {
-    const { repo, cliente } = repoCon(distritoPrevio(true));
-    await repo.cambiarActivacion("distrito", "d1", false, "u-1");
-
-    expect(cliente.distrito.update).toHaveBeenCalledTimes(1);
-    expect(cliente.distrito.update).toHaveBeenCalledWith({
-      where: { id: "d1" },
-      data: { activo: false },
-    });
-    // NINGUNA escritura sobre los otros dos niveles: la cascada NO se materializa.
-    expect(cliente.provincia.update).not.toHaveBeenCalled();
-    expect(cliente.canton.update).not.toHaveBeenCalled();
+  it("el `update` toca UNA fila del nodo por su id y escribe SOLO `activo` (sin descendientes)", async () => {
+    const { repo, cliente } = repoCon();
+    await repo.cambiarActivacion("n2", false, "u-1");
+    expect(cliente.nodoGeografico.update).toHaveBeenCalledTimes(1);
+    expect(cliente.nodoGeografico.update).toHaveBeenCalledWith({ where: { id: "n2" }, data: { activo: false } });
+    expect(cliente.nodoGeografico.updateMany).not.toHaveBeenCalled();
   });
 
-  it("desactivar escribe `nodo_geografico_desactivado`; reactivar, `nodo_geografico_activado`", async () => {
-    const off = repoCon(distritoPrevio(true));
-    await off.repo.cambiarActivacion("distrito", "d1", false, "u-1");
-    const filaOff = (off.cliente.historialPlataforma.createMany.mock.calls[0]![0] as {
-      data: Record<string, unknown>[];
-    }).data;
+  it("R35: retirar escribe `nodo_geografico_desactivado`, reactivar `_activado`, con entidad `nodo_geografico`", async () => {
+    const off = repoCon();
+    await off.repo.cambiarActivacion("n4", false, "u-1");
+    const on = repoCon();
+    await on.repo.cambiarActivacion("n3b", true, "u-1");
 
-    const on = repoCon(distritoPrevio(false));
-    await on.repo.cambiarActivacion("distrito", "d1", true, "u-1");
-    const filaOn = (on.cliente.historialPlataforma.createMany.mock.calls[0]![0] as {
-      data: Record<string, unknown>[];
-    }).data;
-
-    expect(filaOff).toHaveLength(1);
-    expect(filaOn).toHaveLength(1);
-    expect(filaOff[0].accion).toBe("nodo_geografico_desactivado");
-    expect(filaOn[0].accion).toBe("nodo_geografico_activado");
-    // Son valores DISTINTOS: saber cual paso no depende de ningun campo adicional (R52).
-    expect(filaOff[0].accion).not.toBe(filaOn[0].accion);
-  });
-
-  it("la fila lleva la entidad del NIVEL, la cadena de nombres, y los dos `valor_*` en NULL (R54)", async () => {
-    const { repo, cliente } = repoCon(distritoPrevio(true));
-    await repo.cambiarActivacion("distrito", "d1", false, "u-1");
-    const [fila] = (cliente.historialPlataforma.createMany.mock.calls[0]![0] as {
-      data: Record<string, unknown>[];
-    }).data;
-
-    expect(fila.entidadTipo).toBe("distrito");
-    expect(fila.entidadId).toBe("d1");
-    // Literal, y el literal ES el contrato: es lo que se lee en /historico/acciones.
-    expect(fila.entidadEtiqueta).toBe("Cabagra · Buenos Aires · Puntarenas");
-    expect(fila.valorAnterior).toBeNull();
-    expect(fila.valorNuevo).toBeNull();
-    // SL-20: el pais del nodo, y sin `monto` ni `actorRol`, que el historial de plataforma no tiene.
-    expect(fila.paisId).toBe("CR");
-    expect(fila).not.toHaveProperty("monto");
-    expect(fila).not.toHaveProperty("actorRol");
-    // El actor va CONGELADO, no resuelto al leer.
-    expect(fila.actorUsuarioId).toBe("u-1");
-    expect(fila.actorNombre).toBe("Maestra Uno");
-  });
-
-  it("la etiqueta de un CANTON es su cadena de dos, y la de una PROVINCIA solo su nombre", async () => {
-    const canton = repoCon({
-      activo: true,
-      nombre: "Buenos Aires",
-      paisId: "CR",
-      provincia: { nombre: "Puntarenas" },
-    });
-    await canton.repo.cambiarActivacion("canton", "c1", false, "u-1");
-    const filaCanton = (canton.cliente.historialPlataforma.createMany.mock.calls[0]![0] as {
-      data: Record<string, unknown>[];
-    }).data[0];
-    expect(filaCanton.entidadTipo).toBe("canton");
-    expect(filaCanton.entidadEtiqueta).toBe("Buenos Aires · Puntarenas");
-
-    const provincia = repoCon({ activo: true, nombre: "Puntarenas", paisId: "CR" });
-    await provincia.repo.cambiarActivacion("provincia", "p1", false, "u-1");
-    const filaProv = (provincia.cliente.historialPlataforma.createMany.mock.calls[0]![0] as {
-      data: Record<string, unknown>[];
-    }).data[0];
-    expect(filaProv.entidadTipo).toBe("provincia");
-    expect(filaProv.entidadEtiqueta).toBe("Puntarenas");
-  });
-});
-
-// =================================================================================================
-// R12 + SL-20/R29/R33 — el alta
-// =================================================================================================
-
-const SIN_CODIGO = { paisId: "CR", codigo: null };
-
-describe("374/R12 + SL-20 — `crear` escribe en el nivel pedido, devuelve el id y registra", () => {
-  it("provincia: cuelga del pais que se le pasa, con su codigo", async () => {
-    const { repo, cliente } = repoCon(null);
-    expect(await repo.crear("provincia", "Nueva", null, { paisId: "XA", codigo: "N1" }, "u-1")).toBe(
-      "p-nueva",
-    );
-    expect(cliente.provincia.create).toHaveBeenCalledWith({
-      data: { nombre: "Nueva", codigoDta: "N1", paisId: "XA" },
-      select: { id: true },
-    });
-  });
-
-  it("canton bajo su provincia: el pais lo pone el trigger, no el `create`", async () => {
-    const { repo, cliente } = repoCon({ nombre: "Puntarenas", paisId: "CR" });
-    expect(await repo.crear("canton", "Buenos Aires", "p1", SIN_CODIGO, "u-1")).toBe("c-nuevo");
-    expect(cliente.canton.create).toHaveBeenCalledWith({
-      data: { nombre: "Buenos Aires", codigoDta: null, provinciaId: "p1" },
-      select: { id: true },
-    });
-  });
-
-  it("distrito bajo su canton", async () => {
-    const { repo, cliente } = repoCon({
-      nombre: "Buenos Aires",
-      paisId: "CR",
-      provincia: { nombre: "Puntarenas" },
-    });
-    expect(await repo.crear("distrito", "Cabagra", "c1", SIN_CODIGO, "u-1")).toBe("d-nuevo");
-    expect(cliente.distrito.create).toHaveBeenCalledWith({
-      data: { nombre: "Cabagra", codigoDta: null, cantonId: "c1" },
-      select: { id: true },
-    });
-  });
-
-  it("SL-20/R33: el alta escribe UNA fila `nodo_geografico_creado` en la MISMA transaccion", async () => {
-    const { repo, cliente, log } = repoCon({
-      nombre: "Buenos Aires",
-      paisId: "CR",
-      provincia: { nombre: "Puntarenas" },
-    });
-    await repo.crear("distrito", "Cabagra", "c1", SIN_CODIGO, "u-1");
-
-    expect(log.map((l) => l.nombre)).toEqual([
-      "$transaction",
-      "canton.findUnique",
-      "distrito.create",
-      "usuario.findUnique",
-      "historialPlataforma.createMany",
-    ]);
-    const [fila] = (cliente.historialPlataforma.createMany.mock.calls[0]![0] as {
-      data: Record<string, unknown>[];
-    }).data;
-    expect(fila).toMatchObject({
-      accion: "nodo_geografico_creado",
-      entidadTipo: "distrito",
-      entidadId: "d-nuevo",
-      entidadEtiqueta: "Cabagra · Buenos Aires · Puntarenas",
-      paisId: "CR",
+    expect(filaDeHistorial(off.cliente)).toMatchObject({
+      accion: "nodo_geografico_desactivado",
+      entidadTipo: "nodo_geografico",
+      entidadId: "n4",
+      entidadEtiqueta: "Barrio Uno · Cabagra · Buenos Aires · Puntarenas",
+      paisId: "XA",
+      valorAnterior: null,
+      valorNuevo: null,
       actorUsuarioId: "u-1",
-      actorNombre: "Maestra Uno",
+      actorNombre: "Super Admin",
+    });
+    expect(filaDeHistorial(on.cliente)).toMatchObject({
+      accion: "nodo_geografico_activado",
+      entidadTipo: "nodo_geografico",
+      entidadEtiqueta: "Potrero Grande · Buenos Aires · Puntarenas",
     });
   });
 
-  it("un padre de OTRO pais que el que se registraria LANZA sin crear ni registrar", async () => {
-    const { repo, cliente } = repoCon({ nombre: "Region", paisId: "XA" });
-    await expect(repo.crear("canton", "Comuna", "p1", SIN_CODIGO, "u-1")).rejects.toThrow(
-      /es de XA, no de CR/,
-    );
-    expect(cliente.canton.create).not.toHaveBeenCalled();
+  it("R35: la entidad es `nodo_geografico` tambien en profundidad 1 (P5), con su nombre como etiqueta", async () => {
+    const { repo, cliente } = repoCon();
+    await repo.cambiarActivacion("n1", false, "u-1");
+    const fila = filaDeHistorial(cliente);
+    expect(fila.entidadTipo).toBe("nodo_geografico");
+    expect(fila.entidadEtiqueta).toBe("Puntarenas");
+    expect(fila).not.toHaveProperty("actorRol");
+  });
+});
+
+// =================================================================================================
+// R18 — renombrar un nodo de cualquier profundidad
+// =================================================================================================
+
+describe("SLT-46 R18 — `renombrar` sobre el nodo", () => {
+  it("`no_existe` y `sin_cambio` cortan antes de cualquier escritura", async () => {
+    const { repo, cliente } = repoCon();
+    expect(await repo.renombrar("fantasma", "Otro", "u-1")).toBe("no_existe");
+    expect(await repo.renombrar("n4", "Barrio Uno", "u-1")).toBe("sin_cambio");
+    expect(cliente.nodoGeografico.update).not.toHaveBeenCalled();
     expect(cliente.historialPlataforma.createMany).not.toHaveBeenCalled();
   });
 
-  it("un canton o un distrito sin padre LANZA en vez de crear una fila huerfana", async () => {
-    const { repo, cliente } = repoCon(null);
-    await expect(repo.crear("canton", "Sin Padre", null, SIN_CODIGO, "u-1")).rejects.toThrow(
-      /falta el padre/,
-    );
-    await expect(repo.crear("canton", "Sin Padre", "p-fantasma", SIN_CODIGO, "u-1")).rejects.toThrow(
-      /no existe/,
-    );
-    expect(cliente.canton.create).not.toHaveBeenCalled();
+  it("escribe SOLO `nombre` (nunca el codigo) y registra el anterior y el nuevo con la cadena nueva (R35)", async () => {
+    const { repo, cliente } = repoCon();
+    expect(await repo.renombrar("n4", "Barrio Dos", "u-1")).toBe("renombrado");
+    expect(cliente.nodoGeografico.update).toHaveBeenCalledTimes(1);
+    expect(cliente.nodoGeografico.update).toHaveBeenCalledWith({ where: { id: "n4" }, data: { nombre: "Barrio Dos" } });
+    expect(filaDeHistorial(cliente)).toMatchObject({
+      accion: "nodo_geografico_renombrado",
+      entidadTipo: "nodo_geografico",
+      entidadId: "n4",
+      entidadEtiqueta: "Barrio Dos · Cabagra · Buenos Aires · Puntarenas",
+      paisId: "XA",
+      valorAnterior: "Barrio Uno",
+      valorNuevo: "Barrio Dos",
+    });
   });
 });
 
 // =================================================================================================
-// R14/R17 + SL-20 — `findHermanos`: el contenedor, los hermanos y la regla, de una vez
+// R14, R16 — el alta
 // =================================================================================================
 
-const REGLA_CR = { digitosCodigoNivel1: 1, digitosCodigoNivel2: 3, digitosCodigoNivel3: 5 };
+describe("SLT-46 R14/R16 — `crear` escribe el nodo con el tipo decidido y lo registra", () => {
+  const ALTA_4 = { paisId: "XA", padreId: "n3", profundidad: 4, tipoId: "t4", nombre: "Barrio Tres", codigo: "B3" };
 
-describe("374/R14 + SL-20 — `findHermanos` devuelve `null` cuando el contenedor NO existe", () => {
-  it("canton bajo una provincia inexistente", async () => {
-    const { repo } = repoCon(null); // `provincia.findUnique` devuelve null
-    expect(await repo.findHermanos("canton", "no-existe")).toBeNull();
-  });
-
-  it("distrito bajo un canton inexistente", async () => {
-    const { repo } = repoCon(null);
-    expect(await repo.findHermanos("distrito", "no-existe")).toBeNull();
-  });
-
-  it("SL-20: una provincia en un pais inexistente", async () => {
-    const { repo } = repoCon(null);
-    expect(await repo.findHermanos("provincia", "XZ")).toBeNull();
-  });
-
-  it("SL-20/R15: las hermanas de una provincia son las de SU pais, y trae la regla", async () => {
-    const { repo, cliente } = repoCon({
-      id: "CR",
-      ...REGLA_CR,
-      provincias: [{ id: "p1", nombre: "San José" }],
+  it("un hijo de profundidad 4: lee el padre, crea el nodo y registra, en UNA tx", async () => {
+    const { repo, cliente, log } = repoCon();
+    expect(await repo.crear(ALTA_4, "u-1")).toBe("n-nuevo");
+    expect(cliente.nodoGeografico.create).toHaveBeenCalledWith({
+      data: {
+        paisId: "XA",
+        tipoId: "t4",
+        padreId: "n3",
+        profundidad: 4,
+        nombre: "Barrio Tres",
+        nombreNormalizado: "Barrio Tres",
+        codigoOficial: "B3",
+      },
+      select: { id: true },
     });
-    expect(await repo.findHermanos("provincia", "CR")).toEqual({
-      paisId: "CR",
-      regla: REGLA_CR,
+    expect(nombres(log)).toEqual([
+      "$transaction",
+      "nodoGeografico.findUnique",
+      "nodoGeografico.findUnique",
+      "nodoGeografico.findUnique",
+      "nodoGeografico.create",
+      "usuario.findUnique",
+      "historialPlataforma.createMany",
+    ]);
+    expect(filaDeHistorial(cliente)).toMatchObject({
+      accion: "nodo_geografico_creado",
+      entidadTipo: "nodo_geografico",
+      entidadId: "n-nuevo",
+      entidadEtiqueta: "Barrio Tres · Cabagra · Buenos Aires · Puntarenas",
+      paisId: "XA",
+    });
+  });
+
+  it("una raiz: sin padre, profundidad 1, etiqueta = su nombre", async () => {
+    const { repo, cliente } = repoCon();
+    await repo.crear({ paisId: "XA", padreId: null, profundidad: 1, tipoId: "t1", nombre: "Guanacaste", codigo: null }, "u-1");
+    expect(cliente.nodoGeografico.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ padreId: null, profundidad: 1, codigoOficial: null }) }),
+    );
+    expect(filaDeHistorial(cliente).entidadEtiqueta).toBe("Guanacaste");
+  });
+
+  it.each([
+    ["el padre no existe", { ...ALTA_4, padreId: "fantasma" }, /no existe/],
+    ["el padre es de otro pais", { ...ALTA_4, paisId: "XB" }, /es de XA, no de XB/],
+    ["la profundidad no es la del padre + 1", { ...ALTA_4, profundidad: 3 }, /profundidad 3/],
+    ["una raiz con profundidad distinta de 1", { ...ALTA_4, padreId: null }, /raiz/],
+  ])("%s: LANZA sin crear ni registrar", async (_caso, datos, motivo) => {
+    const { repo, cliente } = repoCon();
+    await expect(repo.crear(datos, "u-1")).rejects.toThrow(motivo);
+    expect(cliente.nodoGeografico.create).not.toHaveBeenCalled();
+    expect(cliente.historialPlataforma.createMany).not.toHaveBeenCalled();
+  });
+});
+
+// =================================================================================================
+// Lecturas del alta y del renombre (R15, R16, R18, R20)
+// =================================================================================================
+
+describe("SLT-46 — `contextoDeAlta`, `hermanosDeNodo` y `profundidadDeNodo`", () => {
+  it("raiz: el pais, profundidad 1, el tipo `nivel_1` y las raices (activas e inactivas) por su nombre crudo", async () => {
+    const { repo } = repoCon();
+    expect(await repo.contextoDeAlta({ paisId: "XA" })).toEqual({
+      paisId: "XA",
+      profundidad: 1,
+      tipo: { ...tipo(1), profundidad: 1 },
       codigoPadre: null,
-      hermanos: [{ id: "p1", nombre: "San José" }],
-    });
-    const arg = cliente.pais.findUnique.mock.calls[0]![0] as { where: unknown };
-    expect(arg.where).toEqual({ id: "CR" });
-  });
-
-  it("un distrito trae el pais y el codigo de su canton, y la regla del pais", async () => {
-    const { repo } = repoCon({
-      paisId: "CR",
-      codigoDta: "101",
-      provincia: { pais: REGLA_CR },
-      distritos: [{ id: "d1", nombre: "Carmen" }],
-    });
-    expect(await repo.findHermanos("distrito", "c1")).toEqual({
-      paisId: "CR",
-      regla: REGLA_CR,
-      codigoPadre: "101",
-      hermanos: [{ id: "d1", nombre: "Carmen" }],
+      hermanos: [
+        { id: "n1", nombre: "Puntarenas" },
+        { id: "n1b", nombre: "Limón" },
+      ],
     });
   });
 
-  it("trae los hermanos por su nombre CRUDO: la normalizacion es del service, no del `WHERE`", async () => {
-    const { repo, cliente } = repoCon({
-      paisId: "CR",
-      codigoDta: null,
-      pais: REGLA_CR,
-      cantones: [{ id: "c1", nombre: "San José" }],
+  it("hijo: el pais del padre, profundidad + 1, su codigo y sus hijos", async () => {
+    const { repo } = repoCon();
+    expect(await repo.contextoDeAlta({ padreId: "n2" })).toEqual({
+      paisId: "XA",
+      profundidad: 3,
+      tipo: { ...tipo(3), profundidad: 3 },
+      codigoPadre: "603",
+      hermanos: [
+        { id: "n3", nombre: "Cabagra" },
+        { id: "n3b", nombre: "Potrero Grande" },
+      ],
     });
-    const contexto = await repo.findHermanos("canton", "p1");
-    expect(contexto?.hermanos).toEqual([{ id: "c1", nombre: "San José" }]);
-    const arg = cliente.provincia.findUnique.mock.calls[0]![0] as {
-      select: { cantones: unknown };
-    };
-    // Sin `where` sobre el nombre: si se filtrara aqui, se compararian LITERALES y «San Jose»
-    // entraria junto a «San José» — que para `resolveGeo` son una sola cosa AMBIGUA.
-    expect(arg.select.cantones).toEqual({ select: { id: true, nombre: true } });
+  });
+
+  it("R15: sin tipo para la profundidad siguiente, `tipo: null`", async () => {
+    const { repo } = repoCon({ tipos: TIPOS_4.slice(0, 3) });
+    expect((await repo.contextoDeAlta({ padreId: "n3" }))?.tipo).toBeNull();
+  });
+
+  it("R16: un pais o un padre que no existen dan `null`", async () => {
+    expect(await repoCon({ pais: null }).repo.contextoDeAlta({ paisId: "XZ" })).toBeNull();
+    expect(await repoCon().repo.contextoDeAlta({ padreId: "fantasma" })).toBeNull();
+  });
+
+  it("R18: los hermanos de un nodo lo incluyen; los de una raiz son las raices de su pais", async () => {
+    const { repo } = repoCon();
+    expect(await repo.hermanosDeNodo("n3")).toEqual([
+      { id: "n3", nombre: "Cabagra" },
+      { id: "n3b", nombre: "Potrero Grande" },
+    ]);
+    expect((await repo.hermanosDeNodo("n1"))?.map((h) => h.id)).toEqual(["n1", "n1b"]);
+    expect(await repo.hermanosDeNodo("fantasma")).toBeNull();
+  });
+
+  it("R20: la profundidad del nodo, o `null`", async () => {
+    const { repo } = repoCon();
+    expect(await repo.profundidadDeNodo("n4")).toBe(4);
+    expect(await repo.profundidadDeNodo("fantasma")).toBeNull();
   });
 });
 
 // =================================================================================================
-// R5 — sin borrado fisico, en la clase
+// R33, R36 — la carga CSV
 // =================================================================================================
 
-describe("374/R5 — ninguna escritura del repositorio borra en fisico", () => {
-  it("ninguno de los tres metodos llama a `delete` ni a `deleteMany` en las tres tablas", async () => {
-    const { repo, cliente } = repoCon({ ...distritoPrevio(true), provincia: { nombre: "P", pais: REGLA_CR } });
-    await repo.crear("distrito", "Cabagra", "c1", SIN_CODIGO, "u-1");
-    await repo.cambiarActivacion("distrito", "d1", false, "u-1");
-    await repo.findHermanos("distrito", "c1");
+describe("SLT-46 R33/R36 — `leerDivisionDePais` e `importarDivision` sobre el nodo", () => {
+  it("lee los tipos en orden de profundidad y los nodos con la suya, ordenados por id", async () => {
+    const { repo, cliente } = repoCon({ tipos: [tipo(2), tipo(1)] });
+    const division = await repo.leerDivisionDePais("XA");
+    expect(division?.tipos.map((t) => [t.clave, t.profundidad])).toEqual([
+      ["nivel_1", 1],
+      ["nivel_2", 2],
+    ]);
+    expect(division?.nodos.find((n) => n.id === "n4")).toEqual({
+      id: "n4",
+      nombre: "Barrio Uno",
+      codigo: null,
+      activo: true,
+      padreId: "n3",
+      profundidad: 4,
+    });
+    expect(cliente.nodoGeografico.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { paisId: "XA" }, orderBy: { id: "asc" } }),
+    );
+    expect(await repoCon({ pais: null }).repo.leerDivisionDePais("XZ")).toBeNull();
+  });
 
-    // El doble NO declara `delete`/`deleteMany`: si el codigo los llamara, esto reventaria. Se
-    // afirma ademas explicitamente que no existen en el doble, para que quede dicho que la
-    // ausencia es la prueba y no un descuido del fixture.
-    for (const tabla of ["provincia", "canton", "distrito"] as const) {
-      const delegado = cliente[tabla] as unknown as Record<string, unknown>;
-      expect(delegado.delete, `el doble no declara ${tabla}.delete`).toBeUndefined();
-      expect(delegado.deleteMany, `el doble no declara ${tabla}.deleteMany`).toBeUndefined();
+  const PLAN: PlanDivisionPorProfundidad = {
+    altas: {
+      1: [],
+      2: [],
+      3: [{ clave: "nivel_3-1", nombre: "Nuevo", codigo: null, padre: { tipo: "existente", id: "n2" } }],
+      4: [{ clave: "nivel_4-2", nombre: "Barrio Nuevo", codigo: "BN", padre: { tipo: "nuevo", clave: "nivel_3-1" } }],
+    },
+    codigosACompletar: [{ profundidad: 3, id: "n3", codigo: "60301" }],
+    resumen: { creados: { 1: 0, 2: 0, 3: 1, 4: 1 }, existentes: 2, codigosCompletados: 1 },
+  };
+
+  it("un `createMany` por profundidad, de arriba abajo, con el tipo de cada una y el padre ya creado", async () => {
+    const { repo, cliente } = repoCon();
+    const resumen = await repo.importarDivision("XA", PLAN, "u-1");
+    expect(resumen).toEqual({ creados: { 1: 0, 2: 0, 3: 1, 4: 1 }, existentes: 2, codigosCompletados: 1 });
+
+    const llamadas = cliente.nodoGeografico.createMany.mock.calls as unknown as [{ data: Record<string, unknown>[] }][];
+    expect(llamadas).toHaveLength(2);
+    const [[{ data: d3 }], [{ data: d4 }]] = llamadas;
+    expect(d3).toEqual([
+      expect.objectContaining({ paisId: "XA", tipoId: "t3", padreId: "n2", profundidad: 3, nombre: "Nuevo", codigoOficial: null }),
+    ]);
+    expect(d4).toEqual([
+      expect.objectContaining({ tipoId: "t4", padreId: d3[0].id, profundidad: 4, nombre: "Barrio Nuevo", codigoOficial: "BN" }),
+    ]);
+    expect(cliente.nodoGeografico.updateMany).toHaveBeenCalledWith({
+      where: { id: "n3", codigoOficial: null },
+      data: { codigoOficial: "60301" },
+    });
+  });
+
+  it("R36: escribe UNA fila `division_cargada` con `creados` por profundidad", async () => {
+    const { repo, cliente } = repoCon();
+    await repo.importarDivision("XA", PLAN, "u-1");
+    expect(filaDeHistorial(cliente)).toMatchObject({
+      accion: "division_cargada",
+      entidadTipo: "pais",
+      entidadId: "XA",
+      entidadEtiqueta: "País XA",
+      detalle: { creados: { 1: 0, 2: 0, 3: 1, 4: 1 }, existentes: 2, codigosCompletados: 1 },
+    });
+  });
+
+  it("R36: una carga que no escribe nada no deja historial", async () => {
+    const { repo, cliente } = repoCon();
+    const vacio: PlanDivisionPorProfundidad = {
+      altas: { 1: [], 2: [], 3: [], 4: [] },
+      codigosACompletar: [],
+      resumen: { creados: { 1: 0, 2: 0, 3: 0, 4: 0 }, existentes: 5, codigosCompletados: 0 },
+    };
+    await repo.importarDivision("XA", vacio, "u-1");
+    expect(cliente.nodoGeografico.createMany).not.toHaveBeenCalled();
+    expect(cliente.historialPlataforma.createMany).not.toHaveBeenCalled();
+  });
+
+  it("una profundidad sin tipo en el pais LANZA sin registrar (la tx se deshace)", async () => {
+    const { repo, cliente } = repoCon({ tipos: TIPOS_4.slice(0, 3) });
+    await expect(repo.importarDivision("XA", PLAN, "u-1")).rejects.toThrow(/no tiene tipo nivel_4/);
+    expect(cliente.historialPlataforma.createMany).not.toHaveBeenCalled();
+  });
+});
+
+// =================================================================================================
+// R1, R12 — las formas por nivel de SL-20 (hasta T4) escriben el nodo, no la geografia vieja
+// =================================================================================================
+
+describe("SLT-46 R1/R12 — la forma por nivel de SL-20 se resuelve sobre el nodo", () => {
+  it("`crear('distrito', …)` crea un nodo de profundidad 3 con el tipo `nivel_3` bajo su canton", async () => {
+    const { repo, cliente } = repoCon();
+    expect(await repo.crear("distrito", "Nuevo", "n2", { paisId: "XA", codigo: null }, "u-1")).toBe("n-nuevo");
+    expect(cliente.nodoGeografico.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ tipoId: "t3", profundidad: 3, padreId: "n2" }) }),
+    );
+  });
+
+  it("un id de otra profundidad que la del nivel es «no existe», sin escribir (como cuando cada nivel era su tabla)", async () => {
+    const { repo, cliente } = repoCon();
+    expect(await repo.cambiarActivacion("canton", "n3", false, "u-1")).toBe("no_existe");
+    expect(await repo.renombrar("provincia", "n2", "Otro", "u-1")).toBe("no_existe");
+    expect(await repo.findHermanosDeNodo("distrito", "n2")).toBeNull();
+    expect(await repo.findHermanos("canton", "n2")).toBeNull();
+    await expect(repo.crear("canton", "Otro", "n2", { paisId: "XA", codigo: null }, "u-1")).rejects.toThrow(/no existe/);
+    expect(cliente.nodoGeografico.update).not.toHaveBeenCalled();
+    expect(cliente.nodoGeografico.create).not.toHaveBeenCalled();
+  });
+
+  it("el plan por nivel se escribe por profundidad y el resumen vuelve por nivel", async () => {
+    const { repo, cliente } = repoCon();
+    const plan: PlanDivision = {
+      altas: {
+        provincia: [{ clave: "provincia-1", nombre: "Nueva", codigo: null, padre: null }],
+        canton: [{ clave: "canton-2", nombre: "Nuevo", codigo: null, padre: { tipo: "nuevo", clave: "provincia-1" } }],
+        distrito: [],
+      },
+      codigosACompletar: [{ nivel: "canton", id: "n2", codigo: "603" }],
+      resumen: { creados: { provincia: 1, canton: 1, distrito: 0 }, existentes: 0, codigosCompletados: 1 },
+    };
+    expect(await repo.importarDivision("XA", plan, "u-1")).toEqual({
+      creados: { provincia: 1, canton: 1, distrito: 0 },
+      existentes: 0,
+      codigosCompletados: 1,
+    });
+    const llamadas = cliente.nodoGeografico.createMany.mock.calls as unknown as [{ data: Record<string, unknown>[] }][];
+    expect(llamadas.map(([a]) => a.data.map((d) => [d.profundidad, d.tipoId]))).toEqual([[[1, "t1"]], [[2, "t2"]]]);
+    // La fila del historial de esta forma no cambia hasta T4 (la de SLT-45 para el mismo CSV).
+    expect(filaDeHistorial(cliente).detalle).toEqual({
+      creados: { provincia: 1, canton: 1, distrito: 0 },
+      existentes: 0,
+      codigosCompletados: 1,
+    });
+  });
+
+  it("el doble no declara provincia, canton ni distrito: ninguna escritura de arriba los toco", () => {
+    const { cliente } = prismaDoble();
+    for (const tabla of ["provincia", "canton", "distrito"]) {
+      expect((cliente as Record<string, unknown>)[tabla], `el doble no declara ${tabla}`).toBeUndefined();
     }
+  });
+});
+
+// =================================================================================================
+// R42 — sin borrado fisico, en la clase
+// =================================================================================================
+
+describe("SLT-46 R42 — ninguna escritura del repositorio borra en fisico", () => {
+  it("el doble del nodo no declara `delete` ni `deleteMany`, y las escrituras de arriba no los necesitaron", async () => {
+    const { repo, cliente } = repoCon();
+    await repo.crear({ paisId: "XA", padreId: "n3", profundidad: 4, tipoId: "t4", nombre: "Otro Barrio", codigo: null }, "u-1");
+    await repo.cambiarActivacion("n4", false, "u-1");
+    await repo.renombrar("n4", "Otro", "u-1");
+    const delegado = cliente.nodoGeografico as unknown as Record<string, unknown>;
+    expect(delegado.delete).toBeUndefined();
+    expect(delegado.deleteMany).toBeUndefined();
   });
 
   it("la clase no expone ningun metodo cuyo nombre hable de borrar", () => {

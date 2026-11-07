@@ -1,5 +1,5 @@
 import { ROLES_PLATAFORMA } from "@/lib/auth/plataforma";
-import type { IGeoRepository } from "@/lib/interfaces/repositories/IGeoRepository";
+import type { IGeoRepositoryDivisionPorNivel } from "@/lib/interfaces/repositories/IGeoRepository";
 import type {
   ArchivoDivision,
   CargarDivisionServiceResult,
@@ -27,8 +27,14 @@ import { planificarDivision } from "@/lib/utils/division-csv";
 // nunca carga geografia (R37).
 const GESTION_ROLES = new Set<string>(ROLES_PLATAFORMA);
 
-/** Lo que el servicio necesita del repositorio de geografia. */
-export type CargaDivisionRepo = Pick<IGeoRepository, "leerDivisionDePais" | "importarDivision">;
+/**
+ * Lo que el servicio necesita del repositorio de geografia. SLT-46: la forma por nivel de SL-20
+ * hasta que T4 pase este servicio a la carga por profundidad.
+ */
+export type CargaDivisionRepo = Pick<
+  IGeoRepositoryDivisionPorNivel,
+  "leerDivisionDePais" | "importarDivision"
+>;
 
 type Rechazo = { status: "archivo_rechazado"; motivo: string };
 

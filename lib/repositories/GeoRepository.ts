@@ -2,9 +2,17 @@ import { randomUUID } from "node:crypto";
 
 import type { PrismaClient } from "@prisma/client";
 import type {
+  ArbolDePais,
   ContextoDeAlta,
+  ContextoDeAltaDeNodo,
+  DatosDeAltaDeNodo,
+  DesenlaceDeActivacion,
+  DesenlaceDeRenombre,
+  DestinoDeAlta,
   DivisionDePais,
+  DivisionPorProfundidadDePais,
   IGeoRepository,
+  IGeoRepositoryDivisionPorNivel,
   OpcionesDeAlta,
 } from "@/lib/interfaces/repositories/IGeoRepository";
 import type {
@@ -15,13 +23,25 @@ import type {
 } from "@/lib/types/filtros-ordenes";
 import {
   GEO_NOMBRE_MAX,
+  NIVELES_GEOGRAFICOS,
   type CantonArbolDTO,
   type DistritoArbolDTO,
   type NivelGeografico,
+  type NodoArbolPlataformaDTO,
   type ProvinciaArbolDTO,
   type ProvinciaPlataformaDTO,
+  type TipoNivelDTO,
 } from "@/lib/types/geografia-nodo";
-import type { PlanDivision, RefNodo, ResumenCarga } from "@/lib/types/division-csv";
+import type {
+  ArbolExistente,
+  NodoExistenteConProfundidad,
+  PlanDivision,
+  PlanDivisionPorProfundidad,
+  RefNodo,
+  ResumenCarga,
+  ResumenCargaPorProfundidad,
+} from "@/lib/types/division-csv";
+import { PAIS_NIVELES_MAX } from "@/lib/types/pais";
 import type { ReglaDeCodigoDePais } from "@/lib/utils/codigo-geografico";
 import { SELECT_FLAG_PROPIO } from "@/lib/repositories/_shared/geografia-activa";
 import type { ClienteDeMarcas } from "@/lib/repositories/_shared/zona-especial";
@@ -35,6 +55,7 @@ import {
   zonaQueCubre,
   type CatalogoGeografico,
   type NodoDelCatalogo,
+  type TipoDeNivel,
 } from "@/lib/services/geografia-dominio";
 import { resolverActorCongelado } from "@/lib/repositories/registrar-accion";
 import {
@@ -50,11 +71,11 @@ import { etiquetaDeEntidad } from "@/lib/types/historial-accion-etiquetas";
 // SLT-44 (design §5): las lecturas de los filtros y de los arboles pasan al catalogo
 // (`CatalogoGeograficoRepository`), que gana los modelos del nodo, de las asignaciones y de la
 // empresa. Las marcas, por el tipo del punto unico.
+// SLT-46 (design §4.4; R1): `provincia`, `canton` y `distrito` salen del `Pick`. La app escribe el
+// nodo y el trigger de T2.2 copia las profundidades 1–3 a esas tablas en la misma sentencia; sin el
+// delegado en el tipo, una escritura directa a la geografia vieja no compila.
 type GeoPrismaClient = Pick<
   PrismaClient,
-  | "provincia"
-  | "canton"
-  | "distrito"
   | "pais"
   | "$transaction"
   | "historialPlataforma"
@@ -66,96 +87,78 @@ type GeoPrismaClient = Pick<
 > &
   ClienteDeMarcas;
 
-/** La regla de codigo, tal como se selecciona de la fila del pais. */
+type GeoTx = Pick<GeoPrismaClient, "nodoGeografico">;
+
+/** La regla de codigo, tal como se selecciona de la fila del pais (solo la forma de SL-20). */
 const SELECT_REGLA = {
   digitosCodigoNivel1: true,
   digitosCodigoNivel2: true,
   digitosCodigoNivel3: true,
 } as const;
 
-// Una carga de 10 000 filas son hasta 30 000 nodos en tres `createMany` mas los codigos a completar:
-// el limite por defecto de 5 s de una transaccion interactiva no da margen.
+const SELECT_TIPO = {
+  id: true,
+  clave: true,
+  nombreSingular: true,
+  nombrePlural: true,
+  digitosCodigo: true,
+  codigoHeredaPrefijo: true,
+} as const;
+
+const SELECT_HERMANO = { id: true, nombre: true } as const;
+
+// Una carga de 10 000 filas son hasta P × 10 000 nodos en P `createMany` mas los codigos a
+// completar: el limite por defecto de 5 s de una transaccion interactiva no da margen.
 const TIMEOUT_IMPORTACION_MS = 120_000;
 
-// SL-20 — ayudantes de las escrituras nuevas. Van ENCIMA de la clase a proposito: la guardia
-// `geografia-renombrado-punto-unico` lee desde `async renombrar(` hasta el final del archivo y
-// exige que ahi no aparezca `codigoDta`; el alta y la carga si lo escriben.
+// --- Tipos de nivel ---
 
-/**
- * SL-20 — inserta la fila del alta y devuelve su id y su etiqueta congelada. La provincia cuelga de
- * `opciones.paisId`; cantón y distrito, de su padre, que se lee aqui para la etiqueta y para
- * comprobar que el pais que el llamador va a registrar es el suyo.
- */
-async function crearFila(
-  tx: GeoTx,
-  nivel: NivelGeografico,
-  nombre: string,
-  padreId: string | null,
-  opciones: OpcionesDeAlta,
-): Promise<{ id: string; etiqueta: string }> {
-  const codigoDta = opciones.codigo;
-
-  if (nivel === "provincia") {
-    const fila = await tx.provincia.create({
-      data: { nombre, codigoDta, paisId: opciones.paisId },
-      select: { id: true },
-    });
-    return { id: fila.id, etiqueta: etiquetaDelNodo(nivel, { nombre, ...SIN_CADENA }) };
-  }
-  if (padreId === null) throw new Error(`falta el padre para crear un ${nivel}`);
-
-  if (nivel === "canton") {
-    const padre = await tx.provincia.findUnique({
-      where: { id: padreId },
-      select: { nombre: true, paisId: true },
-    });
-    exigirPadre(padre, nivel, padreId, opciones.paisId);
-    const fila = await tx.canton.create({
-      data: { nombre, codigoDta, provinciaId: padreId },
-      select: { id: true },
-    });
-    return {
-      id: fila.id,
-      etiqueta: etiquetaDelNodo(nivel, { nombre, cantonNombre: null, provinciaNombre: padre.nombre }),
-    };
-  }
-
-  const padre = await tx.canton.findUnique({
-    where: { id: padreId },
-    select: { nombre: true, paisId: true, provincia: { select: { nombre: true } } },
-  });
-  exigirPadre(padre, nivel, padreId, opciones.paisId);
-  const fila = await tx.distrito.create({
-    data: { nombre, codigoDta, cantonId: padreId },
-    select: { id: true },
-  });
-  return {
-    id: fila.id,
-    etiqueta: etiquetaDelNodo(nivel, {
-      nombre,
-      cantonNombre: padre.nombre,
-      provinciaNombre: padre.provincia.nombre,
-    }),
-  };
+/** `nivel_<k>` → k (P1: el tipo de la profundidad k es el de clave `nivel_<k>`). */
+function profundidadDeClave(clave: string): number {
+  const m = /^nivel_(\d+)$/.exec(clave);
+  if (m === null) throw new Error(`tipo de nivel con clave inesperada: ${clave}`);
+  return Number(m[1]);
 }
 
-const SIN_CADENA = { cantonNombre: null, provinciaNombre: null } as const;
+function claveDeProfundidad(k: number): string {
+  return `nivel_${k}`;
+}
+
+function tipoDTO(t: TipoDeNivel): TipoNivelDTO {
+  return { ...t, profundidad: profundidadDeClave(t.clave) };
+}
+
+function tiposOrdenados(tipos: readonly TipoDeNivel[]): TipoNivelDTO[] {
+  return tipos.map(tipoDTO).sort((a, b) => a.profundidad - b.profundidad);
+}
+
+// --- La etiqueta congelada ---
 
 /**
- * El padre que el alta acaba de leer. `null` no es alcanzable desde el service, que comprueba el
- * padre antes: es una carrera o un defecto del llamador, y se lanza en vez de crear un huerfano. Un
- * pais distinto del que el llamador registraria es un defecto: el hijo quedaria en el del padre.
+ * Los nombres de la cadena de un nodo, de la HOJA A LA RAIZ (el orden de `etiquetaDeEntidad`
+ * `nodo_geografico`, que es el de las etiquetas de provincia/canton/distrito: «Cabagra · Buenos
+ * Aires · Puntarenas»). Sube por `padre_id`: a lo sumo P lecturas; pasar de ahi es un ciclo.
  */
-function exigirPadre<T extends { paisId: string }>(
-  padre: T | null,
-  nivel: NivelGeografico,
-  padreId: string,
-  paisId: string,
-): asserts padre is T {
-  if (padre === null) throw new Error(`crear ${nivel}: el padre ${padreId} no existe`);
-  if (padre.paisId !== paisId) {
-    throw new Error(`crear ${nivel}: el padre es de ${padre.paisId}, no de ${paisId}`);
+async function cadenaDeNombres(tx: GeoTx, nombre: string, padreId: string | null): Promise<string[]> {
+  const nombres = [nombre];
+  let siguiente = padreId;
+  while (siguiente !== null) {
+    if (nombres.length >= PAIS_NIVELES_MAX) {
+      throw new Error(`la cadena de padres del nodo «${nombre}» supera ${PAIS_NIVELES_MAX} niveles`);
+    }
+    const padre = await tx.nodoGeografico.findUnique({
+      where: { id: siguiente },
+      select: { nombre: true, padreId: true },
+    });
+    if (padre === null) throw new Error(`el padre ${siguiente} del nodo «${nombre}» no existe`);
+    nombres.push(padre.nombre);
+    siguiente = padre.padreId;
   }
+  return nombres;
+}
+
+function etiquetaDeNodo(nombres: readonly string[]): string {
+  return etiquetaDeEntidad("nodo_geografico", { nombres });
 }
 
 /** El actor congelado, sin el rol: el historial de plataforma no lo guarda (design §2.6). */
@@ -167,27 +170,12 @@ async function actorDePlataforma(
   return { actorUsuarioId: id, actorNombre };
 }
 
-function reglaDe(pais: ReglaDeCodigoDePais): ReglaDeCodigoDePais {
-  return {
-    digitosCodigoNivel1: pais.digitosCodigoNivel1,
-    digitosCodigoNivel2: pais.digitosCodigoNivel2,
-    digitosCodigoNivel3: pais.digitosCodigoNivel3,
-  };
-}
-
-interface FilaDeNodo {
-  id: string;
-  nombre: string;
-  codigoDta: string | null;
-  activo: boolean;
-}
-
-function nodoPlataforma(n: FilaDeNodo) {
-  return { id: n.id, nombre: n.nombre, codigo: n.codigoDta, activo: n.activo };
-}
-
-function nodoExistente(n: FilaDeNodo, padreId: string | null) {
-  return { id: n.id, nombre: n.nombre, codigo: n.codigoDta, activo: n.activo, padreId };
+/** El nodo que una escritura lee antes de decidir. */
+async function leerNodoPrevio(tx: GeoTx, id: string) {
+  return tx.nodoGeografico.findUnique({
+    where: { id },
+    select: { ...SELECT_FLAG_PROPIO, nombre: true, paisId: true, padreId: true, profundidad: true },
+  });
 }
 
 // --- SLT-44: proyecciones del catalogo a los DTO de tres niveles (design §2.4, §5) ---
@@ -211,6 +199,81 @@ function hijosDe(cat: CatalogoGeografico, padreId: string | null, profundidad: n
   return (cat.hijos.get(padreId) ?? []).filter((n) => n.profundidad === profundidad);
 }
 
+/** SLT-46 (R21): el subarbol de un nodo, a cualquier profundidad, en el orden del catalogo. */
+function nodoDelArbol(cat: CatalogoGeografico, n: NodoDelCatalogo): NodoArbolPlataformaDTO {
+  return {
+    id: n.id,
+    nombre: n.nombre,
+    codigo: n.codigoOficial,
+    activo: n.activo,
+    profundidad: n.profundidad,
+    tipoId: n.tipoId,
+    hijos: (cat.hijos.get(n.id) ?? []).map((h) => nodoDelArbol(cat, h)),
+  };
+}
+
+// --- SL-20 por nivel (hasta T4) ---
+
+function profundidadDeNivel(nivel: NivelGeografico): number {
+  return NIVELES_GEOGRAFICOS.indexOf(nivel) + 1;
+}
+
+function nivelDeProfundidad(k: number): NivelGeografico {
+  return NIVELES_GEOGRAFICOS[k - 1];
+}
+
+function reglaDe(pais: ReglaDeCodigoDePais): ReglaDeCodigoDePais {
+  return {
+    digitosCodigoNivel1: pais.digitosCodigoNivel1,
+    digitosCodigoNivel2: pais.digitosCodigoNivel2,
+    digitosCodigoNivel3: pais.digitosCodigoNivel3,
+  };
+}
+
+/** Los nodos de profundidad 1–3 con la forma por nivel de SL-20. */
+function arbolPorNivel(nodos: readonly NodoExistenteConProfundidad[]): ArbolExistente {
+  const arbol: ArbolExistente = { provincia: [], canton: [], distrito: [] };
+  for (const { profundidad, ...n } of nodos) {
+    if (profundidad <= NIVELES_GEOGRAFICOS.length) arbol[nivelDeProfundidad(profundidad)].push(n);
+  }
+  return arbol;
+}
+
+/** El plan de SL-20 en la forma por profundidad: mismas claves, mismas referencias. */
+function planPorProfundidad(plan: PlanDivision): PlanDivisionPorProfundidad {
+  const altas: PlanDivisionPorProfundidad["altas"] = {};
+  const creados: Record<number, number> = {};
+  NIVELES_GEOGRAFICOS.forEach((nivel, i) => {
+    altas[i + 1] = plan.altas[nivel];
+    creados[i + 1] = plan.resumen.creados[nivel];
+  });
+  return {
+    altas,
+    codigosACompletar: plan.codigosACompletar.map((c) => ({
+      profundidad: profundidadDeNivel(c.nivel),
+      id: c.id,
+      codigo: c.codigo,
+    })),
+    resumen: { ...plan.resumen, creados },
+  };
+}
+
+function creadosPorNivel(creadosPorProfundidad: Record<number, number>): ResumenCarga["creados"] {
+  const creados = {} as ResumenCarga["creados"];
+  NIVELES_GEOGRAFICOS.forEach((nivel, i) => {
+    creados[nivel] = creadosPorProfundidad[i + 1] ?? 0;
+  });
+  return creados;
+}
+
+function resumenPorNivel(r: ResumenCargaPorProfundidad): ResumenCarga {
+  return { ...r, creados: creadosPorNivel(r.creados) };
+}
+
+function esPlanPorNivel(plan: PlanDivision | PlanDivisionPorProfundidad): plan is PlanDivision {
+  return "provincia" in plan.altas;
+}
+
 /** Las claves del plan traducidas a los ids que se generan al escribir. */
 class IdsDelPlan {
   private readonly ids = new Map<string, string>();
@@ -222,7 +285,7 @@ class IdsDelPlan {
   }
 
   de(ref: RefNodo | null): string {
-    if (ref === null) throw new Error("importarDivision: un canton o distrito sin padre");
+    if (ref === null) throw new Error("importarDivision: un nodo de profundidad > 1 sin padre");
     if (ref.tipo === "existente") return ref.id;
     const id = this.ids.get(ref.clave);
     if (id === undefined) throw new Error(`importarDivision: el padre ${ref.clave} no se creo antes`);
@@ -230,32 +293,28 @@ class IdsDelPlan {
   }
 }
 
-
 // El catalogo geografico global. Solo queries Prisma; sin logica de negocio.
 //
-// ⚠️ FICHA 374 — YA NO ES «SOLO LECTURA», y por eso esta cabecera se reescribe en vez de dejarla
-// mintiendo. Desde esta ficha el catalogo se administra desde la app y esta clase gana el arbol
-// completo, el alta y el cambio de activacion. Se EXTIENDE la que habia en vez de crear un
-// `GeoAdminRepository`: dos repositorios sobre las mismas tres tablas serian dos reglas que un dia
-// divergen —el argumento textual de `_shared/zona-colapso.ts`—.
+// SLT-46 (design §4.4; R1, R43) — ES EL UNICO ESCRITOR DE `nodo_geografico`, y ya no escribe
+// `provincia`, `canton` ni `distrito`: el trigger `nodo_geografico_copia_a_geografia_vieja` (T2.2)
+// deja la fila vieja igual al nodo de profundidad 1–3 en la misma sentencia. La guardia
+// `nodo-geografico-escritor-unico` vigila lo primero y `geografia-vieja-sin-escritor`, lo segundo.
 //
-// ⚠️ NO EXPONE `delete` NI `deleteMany` PARA NINGUNA DE LAS TRES TABLAS (R5). Quitar un nodo es
-// DESACTIVARLO. La interfaz no lo declara, esta clase no lo implementa, y
-// `tests/unit/guards/geografia-sin-borrado-fisico.guardia.test.ts` recorre `lib/` para que nadie
-// lo añada por otro camino.
+// ⚠️ NO EXPONE `delete` NI `deleteMany` (R42). Quitar un nodo es DESACTIVARLO: `orden` congela su
+// geografia y un borrado la dejaria apuntando a la nada. `geografia-sin-borrado-fisico` recorre
+// `lib/` para que nadie lo añada por otro camino.
 //
-// ⚠️ FICHA 375 — `renombrar` ES EL UNICO SITIO DE `lib/` QUE ESCRIBE `nombre` SOBRE ESTAS TRES
-// TABLAS, y eso lo vigila `tests/unit/guards/geografia-renombrado-punto-unico.guardia.test.ts`. No
-// es celo: un `update` con `nombre` en cualquier otro sitio se saltaria la comprobacion de
-// unicidad por clave NORMALIZADA del service (la del UNIQUE literal de la base no basta) y ademas
-// no dejaria rastro en el registro de acciones.
+// ⚠️ `renombrar` ES EL UNICO SITIO DE `lib/` QUE CAMBIA `nombre` DE UN NODO EXISTENTE
+// (`geografia-renombrado-punto-unico`): otro `update` con `nombre` se saltaria la unicidad por
+// clave NORMALIZADA del service y no dejaria fila en el historial.
 //
-// ⚠️ NINGUNA ESCRITURA TOCA A LOS DESCENDIENTES (R8). La disponibilidad efectiva se EVALUA al leer
-// (`_shared/geografia-activa.ts`); materializarla romperia la reversibilidad de R9.
+// ⚠️ NINGUNA ESCRITURA TOCA A LOS DESCENDIENTES (R19). La disponibilidad efectiva se EVALUA al leer;
+// materializarla romperia la reversibilidad del retiro.
 //
-// Tenia ademas `listProvincias`/`listCantones`/`listDistritos` (feature 24/R14), la navegacion por
-// niveles; se borro el 2026-08-07 con `GeoService` y `lib/actions/geo.ts`.
-export class GeoRepository implements IGeoRepository {
+// Las formas por NIVEL de SL-20 (`findHermanos`, `findHermanosDeNodo`, `listArbolDePais` y las
+// sobrecargas de `crear`/`renombrar`/`cambiarActivacion`/`importarDivision`) traducen a las de nodo
+// hasta que T4 pase los services; un `id` de otra profundidad que la del nivel es «no existe».
+export class GeoRepository implements IGeoRepository, IGeoRepositoryDivisionPorNivel {
   constructor(private readonly prisma: GeoPrismaClient) {}
 
   // SLT-44 (design §4): uno por instancia, creado al primer uso. Las composiciones crean este
@@ -271,8 +330,7 @@ export class GeoRepository implements IGeoRepository {
   //
   // FICHA 374: las tres PROYECTAN la disponibilidad efectiva y NO recortan (R28/R31). En geografia
   // el desplegable es la UNICA via —nadie teclea un uuid—, asi que ocultar un nodo retirado
-  // dejaria INFILTRABLES las ordenes historicas de ese nodo. Es al reves que en la ficha 351, y
-  // por eso se razona en vez de copiarse.
+  // dejaria INFILTRABLES las ordenes historicas de ese nodo.
   //
   // SLT-44 (R14): salen del catalogo del pais de la empresa, en su orden (nombre, id). Provincia,
   // canton y distrito son las profundidades 1, 2 y 3 (design §2.4); `disponible` es el activo en
@@ -332,8 +390,6 @@ export class GeoRepository implements IGeoRepository {
     };
   }
 
-  // --- FICHA 374: la administracion del catalogo ---
-
   /**
    * El arbol COMPLETO de la empresa (R26 de la 374): la pantalla de tarifas.
    *
@@ -381,115 +437,124 @@ export class GeoRepository implements IGeoRepository {
     );
   }
 
+  // --- SLT-46 (design §4.4): la administracion sobre el nodo ---
+
   /**
-   * SL-20 — el arbol de UN pais para el superadmin. Mismo recorrido que `listArbol`, sin zonas ni
-   * marca de zona especial (son de cada empresa) y con el codigo.
-   *
-   * SLT-44 (R17): sale del catalogo de ese pais (`dePais`), con el `where` por pais explicito: en
-   * plataforma no hay RLS que acote. El codigo es el `codigo_oficial` del nodo, que la sincronia de
-   * SLT-43 copia de `codigo_dta`.
+   * El arbol de N niveles del pais (R21), desde el catalogo en memoria: sin CTE recursiva (guardia
+   * `geografia-sin-cte-recursiva`). El pais se mira aparte porque el catalogo de uno inexistente es
+   * un catalogo vacio, y «no existe» no es «sin nodos».
    */
-  async listArbolDePais(paisId: string): Promise<ProvinciaPlataformaDTO[]> {
+  async arbolDePais(paisId: string): Promise<ArbolDePais | null> {
+    const pais = await this.prisma.pais.findUnique({ where: { id: paisId }, select: { id: true } });
+    if (pais === null) return null;
     const catalogo = await this.catalogo().dePais(paisId);
-    const plano = (n: NodoDelCatalogo) =>
-      nodoPlataforma({ id: n.id, nombre: n.nombre, codigoDta: n.codigoOficial, activo: n.activo });
-    return hijosDe(catalogo, null, 1).map((p) => ({
-      ...plano(p),
-      cantones: hijosDe(catalogo, p.id, 2).map((c) => ({
-        ...plano(c),
-        distritos: hijosDe(catalogo, c.id, 3).map(plano),
-      })),
-    }));
-  }
-
-  /**
-   * El contexto del alta, o `null` si el contenedor no existe. UNA consulta por nivel resuelve las
-   * preguntas del alta: el contenedor (R14), los hermanos (R15) y la regla de codigo (R17).
-   *
-   * Trae hermanos ACTIVOS E INACTIVOS: un nombre ocupado por un hermano retirado sigue ocupado,
-   * porque el UNIQUE de la base no distingue estados y porque reactivarlo despues chocaria con el
-   * nuevo.
-   *
-   * SL-20: el contenedor de una provincia es su PAIS. Antes eran todas las provincias de la tabla;
-   * con dos paises, «Central» en uno no ocupa el nombre en el otro.
-   */
-  async findHermanos(
-    nivel: NivelGeografico,
-    contenedorId: string,
-  ): Promise<ContextoDeAlta | null> {
-    const hermanos = { select: { id: true, nombre: true } } as const;
-
-    if (nivel === "provincia") {
-      const pais = await this.prisma.pais.findUnique({
-        where: { id: contenedorId },
-        select: { id: true, ...SELECT_REGLA, provincias: hermanos },
-      });
-      if (pais === null) return null;
-      return { paisId: pais.id, regla: reglaDe(pais), codigoPadre: null, hermanos: pais.provincias };
-    }
-
-    if (nivel === "canton") {
-      const padre = await this.prisma.provincia.findUnique({
-        where: { id: contenedorId },
-        select: { paisId: true, codigoDta: true, pais: { select: SELECT_REGLA }, cantones: hermanos },
-      });
-      if (padre === null) return null;
-      return {
-        paisId: padre.paisId,
-        regla: reglaDe(padre.pais),
-        codigoPadre: padre.codigoDta,
-        hermanos: padre.cantones,
-      };
-    }
-
-    const padre = await this.prisma.canton.findUnique({
-      where: { id: contenedorId },
-      select: {
-        paisId: true,
-        codigoDta: true,
-        provincia: { select: { pais: { select: SELECT_REGLA } } },
-        distritos: hermanos,
-      },
-    });
-    if (padre === null) return null;
     return {
-      paisId: padre.paisId,
-      regla: reglaDe(padre.provincia.pais),
-      codigoPadre: padre.codigoDta,
-      hermanos: padre.distritos,
+      tipos: tiposOrdenados(catalogo.tipos),
+      raices: (catalogo.hijos.get(null) ?? []).map((n) => nodoDelArbol(catalogo, n)),
     };
   }
 
   /**
-   * Crea el nodo, devuelve su id y registra `nodo_geografico_creado` en el historial de plataforma
-   * en la MISMA transaccion (SL-20, R33). Nace ACTIVO por el default de la columna (R13), tambien si
-   * su padre esta retirado: el flag es suyo y la cascada se evalua aparte (R15).
+   * El contexto del alta, o `null` si el pais (raiz) o el padre (hijo) no existen. UNA consulta: el
+   * padre o el pais, con sus hijos o sus raices y los tipos del pais (como mucho 10), de los que se
+   * toma el de la profundidad siguiente (P1). Sin tipo, `tipo: null`: el service responde R15.
    *
-   * El padre se lee DENTRO de la tx por dos motivos: la etiqueta congelada es la cadena de nombres
-   * hasta la raiz, y el pais del registro tiene que ser el del padre, que es el que el trigger
-   * `geografia_pais_del_padre` le pone al hijo. Si no coincide con `opciones.paisId`, el llamador
-   * se equivoco de pais y se lanza en vez de registrar un pais que no es.
-   *
-   * DEJA ESCAPAR la violacion de UNIQUE: el borde la traduce a `conflict`. La base es la ultima
-   * palabra ante una carrera.
+   * Los hermanos van TODOS, activos e inactivos, con el nombre CRUDO: la comparacion por
+   * `normalizeName` es del service, no del `WHERE`, y un nombre ocupado por un retirado sigue ocupado.
    */
+  async contextoDeAlta(destino: DestinoDeAlta): Promise<ContextoDeAltaDeNodo | null> {
+    if ("paisId" in destino) {
+      const pais = await this.prisma.pais.findUnique({
+        where: { id: destino.paisId },
+        select: {
+          id: true,
+          tiposDeNivel: { select: SELECT_TIPO },
+          nodosGeograficos: { where: { padreId: null }, select: SELECT_HERMANO, orderBy: { id: "asc" } },
+        },
+      });
+      if (pais === null) return null;
+      return {
+        paisId: pais.id,
+        profundidad: 1,
+        tipo: tipoDeProfundidad(pais.tiposDeNivel, 1),
+        codigoPadre: null,
+        hermanos: pais.nodosGeograficos,
+      };
+    }
+
+    const padre = await this.prisma.nodoGeografico.findUnique({
+      where: { id: destino.padreId },
+      select: {
+        paisId: true,
+        profundidad: true,
+        codigoOficial: true,
+        hijos: { select: SELECT_HERMANO, orderBy: { id: "asc" } },
+        pais: { select: { tiposDeNivel: { select: SELECT_TIPO } } },
+      },
+    });
+    if (padre === null) return null;
+    const profundidad = padre.profundidad + 1;
+    return {
+      paisId: padre.paisId,
+      profundidad,
+      tipo: tipoDeProfundidad(padre.pais.tiposDeNivel, profundidad),
+      codigoPadre: padre.codigoOficial,
+      hermanos: padre.hijos,
+    };
+  }
+
+  /**
+   * Crea el nodo, devuelve su id y registra `nodo_geografico_creado` en la MISMA transaccion (R35).
+   * Nace ACTIVO por el default de la columna, tambien bajo un padre retirado (R16).
+   *
+   * El padre se lee DENTRO de la tx: la etiqueta congelada es la cadena de nombres, y un padre de
+   * otro pais o de otra profundidad que la que el llamador decidio es un defecto suyo, que se lanza
+   * en vez de escribir un nodo con un tipo que no es el de su profundidad (P1).
+   *
+   * `nombreNormalizado` lo pisa el trigger de SLT-43; se manda porque la columna es obligatoria.
+   * DEJA ESCAPAR la violacion de UNIQUE (la del nodo o la de la copia vieja, R5): el borde la traduce.
+   */
+  async crear(datos: DatosDeAltaDeNodo, actorUsuarioId: string | null): Promise<string>;
+  /** SL-20 — el alta por nivel (hasta T4). */
   async crear(
     nivel: NivelGeografico,
     nombre: string,
     padreId: string | null,
     opciones: OpcionesDeAlta,
     actorUsuarioId: string | null,
+  ): Promise<string>;
+  async crear(
+    ...args:
+      | [DatosDeAltaDeNodo, string | null]
+      | [NivelGeografico, string, string | null, OpcionesDeAlta, string | null]
   ): Promise<string> {
+    if (args.length === 2) return this.crearNodo(...args);
+    return this.crearPorNivel(...args);
+  }
+
+  private async crearNodo(datos: DatosDeAltaDeNodo, actorUsuarioId: string | null): Promise<string> {
     return this.prisma.$transaction(async (tx) => {
-      const { id, etiqueta } = await crearFila(tx, nivel, nombre, padreId, opciones);
+      const nombres = await this.cadenaDelAlta(tx, datos);
+      const { id } = await tx.nodoGeografico.create({
+        data: {
+          paisId: datos.paisId,
+          tipoId: datos.tipoId,
+          padreId: datos.padreId,
+          profundidad: datos.profundidad,
+          nombre: datos.nombre,
+          nombreNormalizado: datos.nombre,
+          codigoOficial: datos.codigo,
+        },
+        select: { id: true },
+      });
       const actor = await actorDePlataforma(tx, actorUsuarioId);
       await appendAccionPlataforma(tx, [
         {
           accion: "nodo_geografico_creado",
-          entidadTipo: nivel,
+          entidadTipo: "nodo_geografico",
           entidadId: id,
-          entidadEtiqueta: etiqueta,
-          paisId: opciones.paisId,
+          entidadEtiqueta: etiquetaDeNodo(nombres),
+          paisId: datos.paisId,
           ...actor,
         },
       ]);
@@ -497,102 +562,321 @@ export class GeoRepository implements IGeoRepository {
     });
   }
 
-  /** SL-20 — la geografia del pais en listas planas, para `planificarDivision`. */
-  async leerDivisionDePais(paisId: string): Promise<DivisionDePais | null> {
-    const pais = await this.prisma.pais.findUnique({ where: { id: paisId }, select: SELECT_REGLA });
+  /** La cadena del alta, comprobando que el padre es del pais y de la profundidad anterior. */
+  private async cadenaDelAlta(tx: GeoTx, datos: DatosDeAltaDeNodo): Promise<string[]> {
+    if (datos.padreId === null) {
+      if (datos.profundidad !== 1) {
+        throw new Error(`crear: una raiz no puede tener profundidad ${datos.profundidad}`);
+      }
+      return [datos.nombre];
+    }
+    const padre = await tx.nodoGeografico.findUnique({
+      where: { id: datos.padreId },
+      select: { nombre: true, paisId: true, padreId: true, profundidad: true },
+    });
+    if (padre === null) throw new Error(`crear: el padre ${datos.padreId} no existe`);
+    if (padre.paisId !== datos.paisId) {
+      throw new Error(`crear: el padre es de ${padre.paisId}, no de ${datos.paisId}`);
+    }
+    if (padre.profundidad + 1 !== datos.profundidad) {
+      throw new Error(
+        `crear: el padre es de profundidad ${padre.profundidad}, el hijo no puede ser de ${datos.profundidad}`,
+      );
+    }
+    return [datos.nombre, ...(await cadenaDeNombres(tx, padre.nombre, padre.padreId))];
+  }
+
+  /** Los hermanos del nodo `id` —INCLUIDO EL— o `null` si el nodo no existe (R18). */
+  async hermanosDeNodo(id: string): Promise<{ id: string; nombre: string }[] | null> {
+    return this.hermanos(id, null);
+  }
+
+  /**
+   * Una consulta para el nodo y los hijos de su padre; una raiz necesita una segunda para las demas
+   * raices de su pais, que no cuelgan de ninguna fila.
+   */
+  private async hermanos(
+    id: string,
+    profundidadEsperada: number | null,
+  ): Promise<{ id: string; nombre: string }[] | null> {
+    const fila = await this.prisma.nodoGeografico.findUnique({
+      where: { id },
+      select: {
+        paisId: true,
+        profundidad: true,
+        padre: { select: { hijos: { select: SELECT_HERMANO, orderBy: { id: "asc" } } } },
+      },
+    });
+    if (fila === null) return null;
+    if (profundidadEsperada !== null && fila.profundidad !== profundidadEsperada) return null;
+    if (fila.padre !== null) return fila.padre.hijos;
+    return this.prisma.nodoGeografico.findMany({
+      where: { paisId: fila.paisId, padreId: null },
+      select: SELECT_HERMANO,
+      orderBy: { id: "asc" },
+    });
+  }
+
+  /**
+   * Cambia el NOMBRE de UN nodo y lo registra en la MISMA transaccion (R18, R35):
+   *   1. leer el nodo → `null` es «no existe»;
+   *   2. si ya se llamaba EXACTAMENTE asi, `sin_cambio` SIN ESCRIBIR NADA;
+   *   3. el `update` — la UNICA escritura, y SOLO de `nombre` (el codigo es la identidad);
+   *   4. la cadena con el nombre nuevo, el actor y el historial, DENTRO del callback.
+   * Deja escapar la violacion de UNIQUE: el borde la traduce a `conflict`.
+   */
+  async renombrar(id: string, nombre: string, actorUsuarioId: string | null): Promise<DesenlaceDeRenombre>;
+  /** SL-20 — el renombre por nivel (hasta T4). */
+  async renombrar(
+    nivel: NivelGeografico,
+    id: string,
+    nombre: string,
+    actorUsuarioId: string | null,
+  ): Promise<DesenlaceDeRenombre>;
+  async renombrar(
+    ...args: [string, string, string | null] | [NivelGeografico, string, string, string | null]
+  ): Promise<DesenlaceDeRenombre> {
+    if (args.length === 3) return this.renombrarNodo(args[0], args[1], args[2], null);
+    return this.renombrarNodo(args[1], args[2], args[3], profundidadDeNivel(args[0]));
+  }
+
+  private async renombrarNodo(
+    id: string,
+    nombre: string,
+    actorUsuarioId: string | null,
+    profundidadEsperada: number | null,
+  ): Promise<DesenlaceDeRenombre> {
+    return this.prisma.$transaction(async (tx) => {
+      const previo = await leerNodoPrevio(tx, id);
+      if (previo === null) return "no_existe";
+      if (profundidadEsperada !== null && previo.profundidad !== profundidadEsperada) return "no_existe";
+      if (previo.nombre === nombre) return "sin_cambio";
+
+      await tx.nodoGeografico.update({ where: { id }, data: { nombre } });
+
+      const nombres = await cadenaDeNombres(tx, nombre, previo.padreId);
+      const actor = await actorDePlataforma(tx, actorUsuarioId);
+      await appendAccionPlataforma(tx, [
+        {
+          accion: "nodo_geografico_renombrado",
+          entidadTipo: "nodo_geografico",
+          entidadId: id,
+          entidadEtiqueta: etiquetaDeNodo(nombres),
+          paisId: previo.paisId,
+          ...actor,
+          // Las columnas miden GEO_NOMBRE_MAX; el recorte solo alcanza a un nombre heredado de antes
+          // de esa cota, y Postgres no trunca: aborta.
+          valorAnterior: previo.nombre.slice(0, GEO_NOMBRE_MAX),
+          valorNuevo: nombre.slice(0, GEO_NOMBRE_MAX),
+        },
+      ]);
+      return "renombrado";
+    });
+  }
+
+  /**
+   * Cambia el `activo` de UN nodo y lo registra en la MISMA transaccion (R19, R35). Mismos pasos que
+   * `renombrar`: «no existe» ≠ «ya estaba asi» ≠ «cambio», y solo el tercero escribe y audita. No
+   * toca a los descendientes. `valorAnterior`/`valorNuevo` van en NULL: la accion ya dice la
+   * transicion.
+   */
+  async cambiarActivacion(
+    id: string,
+    activo: boolean,
+    actorUsuarioId: string | null,
+  ): Promise<DesenlaceDeActivacion>;
+  /** SL-20 — el cambio de estado por nivel (hasta T4). */
+  async cambiarActivacion(
+    nivel: NivelGeografico,
+    id: string,
+    activo: boolean,
+    actorUsuarioId: string | null,
+  ): Promise<DesenlaceDeActivacion>;
+  async cambiarActivacion(
+    ...args: [string, boolean, string | null] | [NivelGeografico, string, boolean, string | null]
+  ): Promise<DesenlaceDeActivacion> {
+    if (args.length === 3) return this.cambiarActivacionNodo(args[0], args[1], args[2], null);
+    return this.cambiarActivacionNodo(args[1], args[2], args[3], profundidadDeNivel(args[0]));
+  }
+
+  private async cambiarActivacionNodo(
+    id: string,
+    activo: boolean,
+    actorUsuarioId: string | null,
+    profundidadEsperada: number | null,
+  ): Promise<DesenlaceDeActivacion> {
+    return this.prisma.$transaction(async (tx) => {
+      const previo = await leerNodoPrevio(tx, id);
+      if (previo === null) return "no_existe";
+      if (profundidadEsperada !== null && previo.profundidad !== profundidadEsperada) return "no_existe";
+      if (previo.activo === activo) return "sin_cambio";
+
+      await tx.nodoGeografico.update({ where: { id }, data: { activo } });
+
+      // Al historial de PLATAFORMA (SL-20): el superadmin no tiene empresa, y una fila en
+      // `historial_accion` con un actor de otra empresa la rechaza la base (SL017). R38.
+      const nombres = await cadenaDeNombres(tx, previo.nombre, previo.padreId);
+      const actor = await actorDePlataforma(tx, actorUsuarioId);
+      await appendAccionPlataforma(tx, [
+        {
+          accion: activo ? "nodo_geografico_activado" : "nodo_geografico_desactivado",
+          entidadTipo: "nodo_geografico",
+          entidadId: id,
+          entidadEtiqueta: etiquetaDeNodo(nombres),
+          paisId: previo.paisId,
+          ...actor,
+        },
+      ]);
+      return "cambiado";
+    });
+  }
+
+  async profundidadDeNodo(id: string): Promise<number | null> {
+    const fila = await this.prisma.nodoGeografico.findUnique({
+      where: { id },
+      select: { profundidad: true },
+    });
+    return fila?.profundidad ?? null;
+  }
+
+  /**
+   * La geografia del pais para `planificarDivision` (§5): sus tipos y sus nodos con la profundidad,
+   * por `id` (orden estable de SL-20: `planificarDivision` se queda con el primero de dos iguales).
+   *
+   * Devuelve ademas la forma por nivel de SL-20 (`regla`, `arbol`), que `CargaDivisionService` lee
+   * hasta T4: misma consulta, sin un segundo viaje.
+   */
+  async leerDivisionDePais(paisId: string): Promise<(DivisionPorProfundidadDePais & DivisionDePais) | null> {
+    const pais = await this.prisma.pais.findUnique({
+      where: { id: paisId },
+      select: { ...SELECT_REGLA, tiposDeNivel: { select: SELECT_TIPO } },
+    });
     if (pais === null) return null;
 
-    // Orden estable: `planificarDivision` se queda con el PRIMERO de dos homonimos normalizados
-    // bajo el mismo padre (decision 4 de SL-20), y «el primero» tiene que ser siempre el mismo.
-    const nodo = { id: true, nombre: true, codigoDta: true, ...SELECT_FLAG_PROPIO } as const;
-    const [provincias, cantones, distritos] = await Promise.all([
-      this.prisma.provincia.findMany({ where: { paisId }, select: nodo, orderBy: { id: "asc" } }),
-      this.prisma.canton.findMany({
-        where: { paisId },
-        select: { ...nodo, provinciaId: true },
-        orderBy: { id: "asc" },
-      }),
-      this.prisma.distrito.findMany({
-        where: { paisId },
-        select: { ...nodo, cantonId: true },
-        orderBy: { id: "asc" },
-      }),
-    ]);
+    const filas = await this.prisma.nodoGeografico.findMany({
+      where: { paisId },
+      select: {
+        id: true,
+        nombre: true,
+        codigoOficial: true,
+        padreId: true,
+        profundidad: true,
+        ...SELECT_FLAG_PROPIO,
+      },
+      orderBy: { id: "asc" },
+    });
+    const nodos: NodoExistenteConProfundidad[] = filas.map((n) => ({
+      id: n.id,
+      nombre: n.nombre,
+      codigo: n.codigoOficial,
+      activo: n.activo,
+      padreId: n.padreId,
+      profundidad: n.profundidad,
+    }));
 
     return {
+      tipos: tiposOrdenados(pais.tiposDeNivel),
+      nodos,
       regla: reglaDe(pais),
-      arbol: {
-        provincia: provincias.map((p) => nodoExistente(p, null)),
-        canton: cantones.map((c) => nodoExistente(c, c.provinciaId)),
-        distrito: distritos.map((d) => nodoExistente(d, d.cantonId)),
-      },
+      arbol: arbolPorNivel(nodos),
     };
   }
 
   /**
-   * SL-20 (R24, R26, R33) — escribe el plan de una carga CSV en UNA transaccion.
+   * Escribe el plan de una carga CSV en UNA transaccion (R33, R36):
    *
-   *   1. las altas por nivel, de arriba abajo, con un `createMany` por nivel. Los ids se generan
-   *      AQUI porque el plan es puro y nombra a sus altas por una clave: un hijo cuyo padre es un
-   *      alta del mismo archivo necesita el id del padre antes de que el padre exista;
-   *   2. el codigo de los existentes, SOLO `WHERE codigo_dta IS NULL` (R26): si entre el plan y la
-   *      escritura alguien le puso uno a mano, gana el suyo y no se cuenta como completado;
-   *   3. una fila `division_cargada` si se escribio algo; si no, ninguna.
+   *   1. las altas por profundidad, de arriba abajo, con un `createMany` por profundidad y el tipo de
+   *      esa profundidad (P1). Los ids se generan AQUI porque el plan es puro y nombra a sus altas por
+   *      una clave: un hijo cuyo padre es un alta del mismo archivo necesita el id antes;
+   *   2. el codigo de los existentes, SOLO `WHERE codigo_oficial IS NULL`: si entre el plan y la
+   *      escritura alguien le puso uno, gana el suyo y no se cuenta como completado;
+   *   3. una fila `division_cargada` con `creados` por profundidad si se escribio algo; si no, ninguna.
    *
-   * No escribe `nombre` sobre nodos existentes ni toca `activo`: la carga solo crea (alternativa 6
-   * del design). Cualquier error de la base deshace todo y se propaga.
+   * No escribe `nombre` sobre nodos existentes ni toca `activo`: la carga solo crea. Cualquier error
+   * de la base deshace todo y se propaga.
    */
+  async importarDivision(
+    paisId: string,
+    plan: PlanDivisionPorProfundidad,
+    actorUsuarioId: string | null,
+  ): Promise<ResumenCargaPorProfundidad>;
+  /** SL-20 — el plan por nivel (hasta T4): se traduce y el resumen vuelve por nivel. */
   async importarDivision(
     paisId: string,
     plan: PlanDivision,
     actorUsuarioId: string | null,
-  ): Promise<ResumenCarga> {
+  ): Promise<ResumenCarga>;
+  async importarDivision(
+    paisId: string,
+    plan: PlanDivision | PlanDivisionPorProfundidad,
+    actorUsuarioId: string | null,
+  ): Promise<ResumenCargaPorProfundidad | ResumenCarga> {
+    if (esPlanPorNivel(plan)) {
+      // El historial de la forma de SL-20 sigue con `creados` por nivel, como antes de SLT-46,
+      // hasta que T4 retire esta forma: el CSV de CR deja la misma fila que en SLT-45.
+      const r = await this.importarPorProfundidad(
+        paisId,
+        planPorProfundidad(plan),
+        actorUsuarioId,
+        creadosPorNivel,
+      );
+      return resumenPorNivel(r);
+    }
+    return this.importarPorProfundidad(paisId, plan, actorUsuarioId, (c) => c);
+  }
+
+  private async importarPorProfundidad(
+    paisId: string,
+    plan: PlanDivisionPorProfundidad,
+    actorUsuarioId: string | null,
+    creadosDelHistorial: (creados: Record<number, number>) => Record<string, number>,
+  ): Promise<ResumenCargaPorProfundidad> {
     return this.prisma.$transaction(
       async (tx) => {
-        const pais = await tx.pais.findUnique({ where: { id: paisId }, select: { nombre: true } });
+        const pais = await tx.pais.findUnique({
+          where: { id: paisId },
+          select: { nombre: true, tiposDeNivel: { select: { id: true, clave: true } } },
+        });
         if (pais === null) throw new Error(`importarDivision: el pais ${paisId} no existe`);
+        const tipoDe = new Map(pais.tiposDeNivel.map((t) => [profundidadDeClave(t.clave), t.id]));
 
         const ids = new IdsDelPlan();
-        await tx.provincia.createMany({
-          data: plan.altas.provincia.map((a) => ({
-            id: ids.nuevo(a.clave),
-            nombre: a.nombre,
-            codigoDta: a.codigo,
-            paisId,
-          })),
-        });
-        await tx.canton.createMany({
-          data: plan.altas.canton.map((a) => ({
-            id: ids.nuevo(a.clave),
-            nombre: a.nombre,
-            codigoDta: a.codigo,
-            provinciaId: ids.de(a.padre),
-          })),
-        });
-        await tx.distrito.createMany({
-          data: plan.altas.distrito.map((a) => ({
-            id: ids.nuevo(a.clave),
-            nombre: a.nombre,
-            codigoDta: a.codigo,
-            cantonId: ids.de(a.padre),
-          })),
-        });
+        const profundidades = Object.keys(plan.altas)
+          .map(Number)
+          .sort((a, b) => a - b);
+        for (const k of profundidades) {
+          const altas = plan.altas[k];
+          if (altas.length === 0) continue;
+          const tipoId = tipoDe.get(k);
+          if (tipoId === undefined) {
+            throw new Error(`importarDivision: el pais ${paisId} no tiene tipo ${claveDeProfundidad(k)}`);
+          }
+          await tx.nodoGeografico.createMany({
+            data: altas.map((a) => ({
+              id: ids.nuevo(a.clave),
+              paisId,
+              tipoId,
+              padreId: k === 1 ? null : ids.de(a.padre),
+              profundidad: k,
+              nombre: a.nombre,
+              nombreNormalizado: a.nombre,
+              codigoOficial: a.codigo,
+            })),
+          });
+        }
 
         let codigosCompletados = 0;
-        for (const { nivel, id, codigo } of plan.codigosACompletar) {
-          const donde = { where: { id, codigoDta: null }, data: { codigoDta: codigo } };
-          const { count } =
-            nivel === "provincia"
-              ? await tx.provincia.updateMany(donde)
-              : nivel === "canton"
-                ? await tx.canton.updateMany(donde)
-                : await tx.distrito.updateMany(donde);
+        for (const { id, codigo } of plan.codigosACompletar) {
+          const { count } = await tx.nodoGeografico.updateMany({
+            where: { id, codigoOficial: null },
+            data: { codigoOficial: codigo },
+          });
           codigosCompletados += count;
         }
 
-        const resumen: ResumenCarga = { ...plan.resumen, codigosCompletados };
-        const { provincia, canton, distrito } = resumen.creados;
-        if (provincia + canton + distrito + codigosCompletados > 0) {
+        const resumen: ResumenCargaPorProfundidad = { ...plan.resumen, codigosCompletados };
+        const creadosTotal = Object.values(resumen.creados).reduce((s, n) => s + n, 0);
+        if (creadosTotal + codigosCompletados > 0) {
           const actor = await actorDePlataforma(tx, actorUsuarioId);
           await appendAccionPlataforma(tx, [
             {
@@ -603,7 +887,7 @@ export class GeoRepository implements IGeoRepository {
               paisId,
               ...actor,
               detalle: {
-                creados: { provincia, canton, distrito },
+                creados: creadosDelHistorial(resumen.creados),
                 existentes: resumen.existentes,
                 codigosCompletados,
               },
@@ -616,249 +900,100 @@ export class GeoRepository implements IGeoRepository {
     );
   }
 
+  // --- SL-20 por nivel: las lecturas que `GeografiaService` usa hasta T4 ---
+
   /**
-   * FICHA 374 (R8/R21/R22/R51/R52/R53/R55) — cambia el flag `activo` de UNA fila y registra la
-   * accion en la MISMA transaccion.
-   *
-   * LOS CINCO PASOS, EN ESTE ORDEN Y POR ESTE MOTIVO:
-   *   1. leer el nodo -> `null` es «no existe» (R22), y de paso captura el estado previo Y las
-   *      piezas de la etiqueta en una sola consulta;
-   *   2. si el flag YA estaba asi, `sin_cambio` SIN ESCRIBIR NADA (R21/R53). «Se pidio» y «se
-   *      hizo» son cosas distintas: es el precedente literal de `VehiculoRepository.delete`;
-   *   3. el `update` — la UNICA escritura, y solo de ESTA fila (R8);
-   *   4. congelar el actor dentro de la tx;
-   *   5. `appendAccion` DENTRO del callback. Escrito fuera, el test no lo ve fallar (leccion de la
-   *      ficha 373).
-   *
-   * R55 SALE GRATIS Y SIN NINGUN `try` DE RESCATE: dentro de una transaccion de Postgres un error
-   * de sentencia aborta la transaccion entera, asi que no hay orden posible que deje el flag
-   * cambiado y el registro sin escribir.
-   *
-   * `valorAnterior`/`valorNuevo` van en NULL a proposito: el PAR de tipos ya dice la transicion.
+   * SL-20 — el arbol de UN pais para el superadmin, en tres niveles. Sale del catalogo de ese pais
+   * (`dePais`), con el `where` por pais explicito: en plataforma no hay RLS que acote.
    */
-  async cambiarActivacion(
-    nivel: NivelGeografico,
-    id: string,
-    activo: boolean,
-    actorUsuarioId: string | null,
-  ): Promise<"no_existe" | "sin_cambio" | "cambiado"> {
-    return this.prisma.$transaction(async (tx) => {
-      const previo = await leerNodoParaActivacion(tx, nivel, id);
-      if (previo === null) return "no_existe";
-      if (previo.activo === activo) return "sin_cambio";
-
-      if (nivel === "provincia") {
-        await tx.provincia.update({ where: { id }, data: { activo } });
-      } else if (nivel === "canton") {
-        await tx.canton.update({ where: { id }, data: { activo } });
-      } else {
-        await tx.distrito.update({ where: { id }, data: { activo } });
-      }
-
-      // SL-20 (R33, R35): al historial de PLATAFORMA. El superadmin no tiene empresa, y una fila en
-      // `historial_accion` con un actor de otra empresa la rechaza la base (SL017).
-      const actor = await actorDePlataforma(tx, actorUsuarioId);
-      await appendAccionPlataforma(tx, [
-        {
-          accion: activo ? "nodo_geografico_activado" : "nodo_geografico_desactivado",
-          entidadTipo: nivel,
-          entidadId: id,
-          entidadEtiqueta: etiquetaDelNodo(nivel, previo),
-          paisId: previo.paisId,
-          ...actor,
-        },
-      ]);
-      return "cambiado";
+  async listArbolDePais(paisId: string): Promise<ProvinciaPlataformaDTO[]> {
+    const catalogo = await this.catalogo().dePais(paisId);
+    const plano = (n: NodoDelCatalogo) => ({
+      id: n.id,
+      nombre: n.nombre,
+      codigo: n.codigoOficial,
+      activo: n.activo,
     });
+    return hijosDe(catalogo, null, 1).map((p) => ({
+      ...plano(p),
+      cantones: hijosDe(catalogo, p.id, 2).map((c) => ({
+        ...plano(c),
+        distritos: hijosDe(catalogo, c.id, 3).map(plano),
+      })),
+    }));
   }
 
   /**
-   * Los hermanos del nodo `id` —INCLUIDO EL— o `null` si el nodo no existe. UNA consulta resuelve
-   * las dos preguntas del renombrado: si el nodo existe y si el nombre nuevo esta cogido.
-   *
-   * PARTE DEL NODO Y NO DEL PADRE, que es lo que lo distingue de `findHermanos`: un renombrado
-   * recibe `{nivel, id}` y no sabe quien es el padre. Sube al padre por la relacion y baja a sus
-   * hijos en la misma consulta.
+   * SL-20 — el contexto del alta por nivel, desde `contextoDeAlta`. `contenedorId` es el PAIS en la
+   * provincia y el PADRE en canton y distrito; un padre de otra profundidad es «no existe», como
+   * cuando cada nivel era su tabla. La regla es la del pais (`validarCodigo` de SL-20).
    */
+  async findHermanos(nivel: NivelGeografico, contenedorId: string): Promise<ContextoDeAlta | null> {
+    const contexto = await this.contextoDeAltaPorNivel(nivel, contenedorId);
+    if (contexto === null) return null;
+    const pais = await this.prisma.pais.findUnique({
+      where: { id: contexto.paisId },
+      select: SELECT_REGLA,
+    });
+    if (pais === null) return null;
+    return {
+      paisId: contexto.paisId,
+      regla: reglaDe(pais),
+      codigoPadre: contexto.codigoPadre,
+      hermanos: contexto.hermanos,
+    };
+  }
+
+  /** SL-20 — los hermanos de un nodo del nivel pedido, o `null` si no es de ese nivel. */
   async findHermanosDeNodo(
     nivel: NivelGeografico,
     id: string,
   ): Promise<{ id: string; nombre: string }[] | null> {
-    if (nivel === "provincia") {
-      // SL-20 (R15): las hermanas de una provincia son las de SU pais, que hace de padre.
-      const fila = await this.prisma.provincia.findUnique({
-        where: { id },
-        select: { pais: { select: { provincias: { select: { id: true, nombre: true } } } } },
-      });
-      return fila === null ? null : fila.pais.provincias;
-    }
-
-    if (nivel === "canton") {
-      const fila = await this.prisma.canton.findUnique({
-        where: { id },
-        select: { provincia: { select: { cantones: { select: { id: true, nombre: true } } } } },
-      });
-      return fila === null ? null : fila.provincia.cantones;
-    }
-
-    const fila = await this.prisma.distrito.findUnique({
-      where: { id },
-      select: { canton: { select: { distritos: { select: { id: true, nombre: true } } } } },
-    });
-    return fila === null ? null : fila.canton.distritos;
+    return this.hermanos(id, profundidadDeNivel(nivel));
   }
 
-  /**
-   * FICHA 375 — cambia el NOMBRE de UNA fila y registra la accion en la MISMA transaccion.
-   *
-   * Calcado de `cambiarActivacion`, y a proposito: son la misma forma (`abre_tx`) y el censo de
-   * `historial-accion-escrituras-cubiertas` las mide igual.
-   *
-   *   1. leer el nodo -> `null` es «no existe», y de paso captura el nombre previo Y las piezas de
-   *      la etiqueta en una sola consulta;
-   *   2. si ya se llamaba EXACTAMENTE asi, `sin_cambio` SIN ESCRIBIR NADA. Guardar sin cambios
-   *      tiene que funcionar, y «se pidio» no es «se hizo»;
-   *   3. el `update` — la UNICA escritura, y SOLO de `nombre`;
-   *   4. congelar el actor dentro de la tx;
-   *   5. `appendAccion` DENTRO del callback.
-   *
-   * ⚠️ EL `data` DEL `update` LLEVA `nombre` Y NADA MAS. En particular NO lleva `codigoDta`: el
-   * codigo es la identidad y el nombre la etiqueta. Tocarlo aqui reabriria el defecto que esta
-   * ficha cierra —el seed volveria a no reconocer el nodo y lo duplicaria—.
-   *
-   * LA ETIQUETA DE LA FILA ES LA CADENA CON EL NOMBRE NUEVO (asi el registro identifica al nodo tal
-   * y como se llama despues del acto, que es como el maestro lo ve en la pantalla) y el par
-   * anterior/nuevo viaja en `valorAnterior`/`valorNuevo`, recortado a la anchura de esas columnas:
-   * Postgres NO trunca, ABORTA.
-   *
-   * Deja escapar la violacion de UNIQUE: el borde la traduce a `conflict`.
-   */
-  async renombrar(
+  private async contextoDeAltaPorNivel(
     nivel: NivelGeografico,
-    id: string,
+    contenedorId: string,
+  ): Promise<ContextoDeAltaDeNodo | null> {
+    const destino: DestinoDeAlta = nivel === "provincia" ? { paisId: contenedorId } : { padreId: contenedorId };
+    const contexto = await this.contextoDeAlta(destino);
+    if (contexto === null || contexto.profundidad !== profundidadDeNivel(nivel)) return null;
+    return contexto;
+  }
+
+  /** SL-20 — el alta por nivel: el tipo es el de la profundidad del nivel (P1). */
+  private async crearPorNivel(
+    nivel: NivelGeografico,
     nombre: string,
+    padreId: string | null,
+    opciones: OpcionesDeAlta,
     actorUsuarioId: string | null,
-  ): Promise<"no_existe" | "sin_cambio" | "renombrado"> {
-    return this.prisma.$transaction(async (tx) => {
-      const previo = await leerNodoParaActivacion(tx, nivel, id);
-      if (previo === null) return "no_existe";
-      if (previo.nombre === nombre) return "sin_cambio";
-
-      if (nivel === "provincia") {
-        await tx.provincia.update({ where: { id }, data: { nombre } });
-      } else if (nivel === "canton") {
-        await tx.canton.update({ where: { id }, data: { nombre } });
-      } else {
-        await tx.distrito.update({ where: { id }, data: { nombre } });
-      }
-
-      const actor = await actorDePlataforma(tx, actorUsuarioId);
-      await appendAccionPlataforma(tx, [
-        {
-          accion: "nodo_geografico_renombrado",
-          entidadTipo: nivel,
-          entidadId: id,
-          entidadEtiqueta: etiquetaDelNodo(nivel, { ...previo, nombre }),
-          paisId: previo.paisId,
-          ...actor,
-          // Las columnas miden GEO_NOMBRE_MAX; el recorte solo alcanza a un nombre heredado de antes
-          // de esa cota, y Postgres no trunca: aborta.
-          valorAnterior: previo.nombre.slice(0, GEO_NOMBRE_MAX),
-          valorNuevo: nombre.slice(0, GEO_NOMBRE_MAX),
-        },
-      ]);
-      return "renombrado";
-    });
-  }
-}
-
-/** El estado previo del nodo mas las piezas de su etiqueta, leidas de una vez. */
-interface NodoPrevio {
-  activo: boolean;
-  nombre: string;
-  /** SL-20: el pais del nodo, que va en la fila del historial de plataforma. */
-  paisId: string;
-  cantonNombre: string | null;
-  provinciaNombre: string | null;
-}
-
-type GeoTx = Pick<GeoPrismaClient, "provincia" | "canton" | "distrito">;
-
-async function leerNodoParaActivacion(
-  tx: GeoTx,
-  nivel: NivelGeografico,
-  id: string,
-): Promise<NodoPrevio | null> {
-  if (nivel === "provincia") {
-    const fila = await tx.provincia.findUnique({
-      where: { id },
-      select: { ...SELECT_FLAG_PROPIO, nombre: true, paisId: true },
-    });
-    return fila === null
-      ? null
-      : { ...fila, cantonNombre: null, provinciaNombre: null };
-  }
-  if (nivel === "canton") {
-    const fila = await tx.canton.findUnique({
-      where: { id },
-      select: {
-        ...SELECT_FLAG_PROPIO,
-        nombre: true,
-        paisId: true,
-        provincia: { select: { nombre: true } },
+  ): Promise<string> {
+    if (nivel !== "provincia" && padreId === null) throw new Error(`falta el padre para crear un ${nivel}`);
+    const contenedorId = nivel === "provincia" ? opciones.paisId : (padreId as string);
+    const contexto = await this.contextoDeAltaPorNivel(nivel, contenedorId);
+    if (contexto === null) throw new Error(`crear ${nivel}: el contenedor ${contenedorId} no existe`);
+    if (contexto.tipo === null) {
+      throw new Error(`crear ${nivel}: el pais ${contexto.paisId} no tiene tipo ${claveDeProfundidad(contexto.profundidad)}`);
+    }
+    return this.crearNodo(
+      {
+        paisId: opciones.paisId,
+        padreId: nivel === "provincia" ? null : padreId,
+        profundidad: contexto.profundidad,
+        tipoId: contexto.tipo.id,
+        nombre,
+        codigo: opciones.codigo,
       },
-    });
-    return fila === null
-      ? null
-      : {
-          activo: fila.activo,
-          nombre: fila.nombre,
-          paisId: fila.paisId,
-          cantonNombre: null,
-          provinciaNombre: fila.provincia.nombre,
-        };
+      actorUsuarioId,
+    );
   }
-  const fila = await tx.distrito.findUnique({
-    where: { id },
-    select: {
-      ...SELECT_FLAG_PROPIO,
-      nombre: true,
-      paisId: true,
-      canton: { select: { nombre: true, provincia: { select: { nombre: true } } } },
-    },
-  });
-  return fila === null
-    ? null
-    : {
-        activo: fila.activo,
-        nombre: fila.nombre,
-        paisId: fila.paisId,
-        cantonNombre: fila.canton.nombre,
-        provinciaNombre: fila.canton.provincia.nombre,
-      };
 }
 
-/**
- * La etiqueta CONGELADA del nodo: la cadena de nombres hasta la raiz.
- *
- * Se llama a `etiquetaDeEntidad` con el literal del nivel y no con la variable para que el tipo
- * de la fuente sea el de ESE nivel; un `etiquetaDeEntidad(nivel, …)` generico aceptaria una fuente
- * que no le corresponde.
- */
-function etiquetaDelNodo(
-  nivel: NivelGeografico,
-  fila: Pick<NodoPrevio, "nombre" | "cantonNombre" | "provinciaNombre">,
-): string {
-  if (nivel === "provincia") return etiquetaDeEntidad("provincia", { nombre: fila.nombre });
-  if (nivel === "canton") {
-    return etiquetaDeEntidad("canton", {
-      nombre: fila.nombre,
-      provinciaNombre: fila.provinciaNombre,
-    });
-  }
-  return etiquetaDeEntidad("distrito", {
-    nombre: fila.nombre,
-    cantonNombre: fila.cantonNombre,
-    provinciaNombre: fila.provinciaNombre,
-  });
+/** El tipo de la profundidad `k` entre los del pais, o `null` si no lo tiene (R15). */
+function tipoDeProfundidad(tipos: readonly TipoDeNivel[], k: number): TipoNivelDTO | null {
+  const clave = claveDeProfundidad(k);
+  const tipo = tipos.find((t) => t.clave === clave);
+  return tipo === undefined ? null : tipoDTO(tipo);
 }
