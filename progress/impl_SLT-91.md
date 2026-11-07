@@ -110,8 +110,30 @@ en cada archivo nombrado, 0 saltos y árbol limpio al revertir. Ninguna convivi�
 
 ## Gate
 
-<!-- GATE -->
+`NODE_OPTIONS=--max-old-space-size=8192 ./init.sh`, sin servidor ni otra corrida, sobre la desechable, con log completo a
+archivo. Es el commit `3ff2dbb2` con el árbol limpio; después solo se añade esta salida a la bitácora.
+
+```
+✓ DATABASE_URL viene del entorno; no se carga el .env
+✓ typecheck paso
+✓ lint paso                      (0 errors, 244 warnings; ninguno en un archivo de esta feature)
+ Test Files  236 passed (236)    (vitest related)
+      Tests  3354 passed | 17 skipped (3371)
+ Test Files  333 passed (333)    (guardias)
+      Tests  4672 passed | 1 skipped (4673)
+[test:rapido] 245 rojo(s) heredado(s) del baseline no cuentan en esta seleccion; el CI los compara.
+✓ test:rapido paso
+✓ todas las migraciones tienen down.sql
+✓ .env presente
+== init OK ==
+INIT_EXIT=0
+```
+
+Los saltos no son de esta feature: `tests/components/AnaliticaPage.test.tsx` (17) y
+`tests/unit/guards/recursos-origen-fuera.guardia.test.ts` (1). T4.4: `git status` limpio tras revertir toda mutación, y el
+diff contra `origin/dev` no toca `db/migrations/` (R12). El `gate-completo` lo da el PR, que abre el leader tras el OK del
+reviewer.
 
 ## Veredicto
 
-<!-- VEREDICTO -->
+Las cinco tandas hechas y las 14 R con test: `./init.sh` en verde, E2E 18/18 y todas las mutaciones mueren.
