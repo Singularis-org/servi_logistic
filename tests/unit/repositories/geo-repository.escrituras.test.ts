@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
 import { GeoRepository } from "@/lib/repositories/GeoRepository";
-import type { PlanDivision, PlanDivisionPorProfundidad } from "@/lib/types/division-csv";
+import type { PlanDivisionPorProfundidad } from "@/lib/types/division-csv";
 
 // FICHA 374 / 375 / SL-20 — las escrituras del repositorio, con un doble.
 // SLT-46 (design §4.4, §7; R1, R14, R16, R18, R19, R33, R35, R36) — todas sobre `nodo_geografico`,
@@ -68,8 +68,6 @@ interface Escenario {
   tipos?: TipoFila[];
   /** `null`: el pais no existe. */
   pais?: { id: string; nombre: string } | null;
-  /** La regla de codigo de SL-20 en la fila del pais (por defecto, sin digitos). */
-  regla?: { digitosCodigoNivel1: number | null; digitosCodigoNivel2: number | null; digitosCodigoNivel3: number | null };
 }
 
 /**
@@ -132,7 +130,6 @@ function prismaDoble(e: Escenario = {}) {
             ? null
             : {
                 ...pais,
-                ...(e.regla ?? { digitosCodigoNivel1: null, digitosCodigoNivel2: null, digitosCodigoNivel3: null }),
                 tiposDeNivel: tipos,
                 nodosGeograficos: hijosDe(null).map(({ id, nombre }) => ({ id, nombre })),
               },
@@ -503,55 +500,16 @@ describe("SLT-46 R33/R36 — `leerDivisionDePais` e `importarDivision` sobre el 
 });
 
 // =================================================================================================
-// R1, R12 — las formas por nivel de SL-20 (hasta T4) escriben el nodo, no la geografia vieja
+// R1 — ninguna escritura toca la geografia vieja
 // =================================================================================================
+//
+// SLT-46 (T4): las formas por nivel de SL-20 (`crear(nivel, …)`, `cambiarActivacion(nivel, …)`,
+// `renombrar(nivel, …)`, `findHermanos`, `findHermanosDeNodo`, el plan por nivel de
+// `importarDivision`) se retiraron del repositorio. Sus casos se quitaron de aqui; lo que afirmaban
+// lo afirman los bloques de arriba sobre el nodo. «Un id de otra profundidad que la del nivel es
+// «no existe»» no tiene equivalente: el nivel ya no viaja con el id.
 
-describe("SLT-46 R1/R12 — la forma por nivel de SL-20 se resuelve sobre el nodo", () => {
-  it("`crear('distrito', …)` crea un nodo de profundidad 3 con el tipo `nivel_3` bajo su canton", async () => {
-    const { repo, cliente } = repoCon();
-    expect(await repo.crear("distrito", "Nuevo", "n2", { paisId: "XA", codigo: null }, "u-1")).toBe("n-nuevo");
-    expect(cliente.nodoGeografico.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ tipoId: "t3", profundidad: 3, padreId: "n2" }) }),
-    );
-  });
-
-  it("un id de otra profundidad que la del nivel es «no existe», sin escribir (como cuando cada nivel era su tabla)", async () => {
-    const { repo, cliente } = repoCon();
-    expect(await repo.cambiarActivacion("canton", "n3", false, "u-1")).toBe("no_existe");
-    expect(await repo.renombrar("provincia", "n2", "Otro", "u-1")).toBe("no_existe");
-    expect(await repo.findHermanosDeNodo("distrito", "n2")).toBeNull();
-    expect(await repo.findHermanos("canton", "n2")).toBeNull();
-    await expect(repo.crear("canton", "Otro", "n2", { paisId: "XA", codigo: null }, "u-1")).rejects.toThrow(/no existe/);
-    expect(cliente.nodoGeografico.update).not.toHaveBeenCalled();
-    expect(cliente.nodoGeografico.create).not.toHaveBeenCalled();
-  });
-
-  it("el plan por nivel se escribe por profundidad y el resumen vuelve por nivel", async () => {
-    const { repo, cliente } = repoCon();
-    const plan: PlanDivision = {
-      altas: {
-        provincia: [{ clave: "provincia-1", nombre: "Nueva", codigo: null, padre: null }],
-        canton: [{ clave: "canton-2", nombre: "Nuevo", codigo: null, padre: { tipo: "nuevo", clave: "provincia-1" } }],
-        distrito: [],
-      },
-      codigosACompletar: [{ nivel: "canton", id: "n2", codigo: "603" }],
-      resumen: { creados: { provincia: 1, canton: 1, distrito: 0 }, existentes: 0, codigosCompletados: 1 },
-    };
-    expect(await repo.importarDivision("XA", plan, "u-1")).toEqual({
-      creados: { provincia: 1, canton: 1, distrito: 0 },
-      existentes: 0,
-      codigosCompletados: 1,
-    });
-    const llamadas = cliente.nodoGeografico.createMany.mock.calls as unknown as [{ data: Record<string, unknown>[] }][];
-    expect(llamadas.map(([a]) => a.data.map((d) => [d.profundidad, d.tipoId]))).toEqual([[[1, "t1"]], [[2, "t2"]]]);
-    // La fila del historial de esta forma no cambia hasta T4 (la de SLT-45 para el mismo CSV).
-    expect(filaDeHistorial(cliente).detalle).toEqual({
-      creados: { provincia: 1, canton: 1, distrito: 0 },
-      existentes: 0,
-      codigosCompletados: 1,
-    });
-  });
-
+describe("SLT-46 R1 — el doble no declara la geografia vieja", () => {
   it("el doble no declara provincia, canton ni distrito: ninguna escritura de arriba los toco", () => {
     const { cliente } = prismaDoble();
     for (const tabla of ["provincia", "canton", "distrito"]) {
@@ -567,11 +525,9 @@ describe("SLT-46 R1/R12 — la forma por nivel de SL-20 se resuelve sobre el nod
 // =================================================================================================
 
 describe("SLT-46 R12 — lo que SL-20 afirmaba de las formas por nivel, sobre el nodo", () => {
-  const REGLA_CR = { digitosCodigoNivel1: 1, digitosCodigoNivel2: 3, digitosCodigoNivel3: 5 };
-
   it("374/R54: la fila del cambio de estado no lleva `monto` ni `actorRol`", async () => {
     const { repo, cliente } = repoCon();
-    await repo.cambiarActivacion("distrito", "n3", false, "u-1");
+    await repo.cambiarActivacion("n3", false, "u-1");
     const fila = filaDeHistorial(cliente);
     expect(fila).not.toHaveProperty("monto");
     expect(fila).not.toHaveProperty("actorRol");
@@ -579,54 +535,8 @@ describe("SLT-46 R12 — lo que SL-20 afirmaba de las formas por nivel, sobre el
 
   it("374: la etiqueta de un nodo de profundidad 2 es su cadena de dos", async () => {
     const { repo, cliente } = repoCon();
-    await repo.cambiarActivacion("canton", "n2", false, "u-1");
+    await repo.cambiarActivacion("n2", false, "u-1");
     expect(filaDeHistorial(cliente).entidadEtiqueta).toBe("Buenos Aires · Puntarenas");
-  });
-
-  it("374/R12: un canton sin padre o con un padre inexistente LANZA en vez de crear una fila huerfana", async () => {
-    const { repo, cliente } = repoCon();
-    await expect(repo.crear("canton", "Sin Padre", null, { paisId: "XA", codigo: null }, "u-1")).rejects.toThrow(
-      /falta el padre/,
-    );
-    await expect(
-      repo.crear("canton", "Sin Padre", "p-fantasma", { paisId: "XA", codigo: null }, "u-1"),
-    ).rejects.toThrow(/no existe/);
-    expect(cliente.nodoGeografico.create).not.toHaveBeenCalled();
-    expect(cliente.historialPlataforma.createMany).not.toHaveBeenCalled();
-  });
-
-  it("374/R14: `findHermanos` da `null` si el contenedor no existe (padre o pais)", async () => {
-    expect(await repoCon().repo.findHermanos("canton", "no-existe")).toBeNull();
-    expect(await repoCon().repo.findHermanos("distrito", "no-existe")).toBeNull();
-    expect(await repoCon({ pais: null }).repo.findHermanos("provincia", "XZ")).toBeNull();
-  });
-
-  it("SL-20/R15: las hermanas de una provincia son las raices de SU pais, y trae la regla", async () => {
-    const { repo, cliente } = repoCon({ regla: REGLA_CR });
-    expect(await repo.findHermanos("provincia", "XA")).toEqual({
-      paisId: "XA",
-      regla: REGLA_CR,
-      codigoPadre: null,
-      hermanos: [
-        { id: "n1", nombre: "Puntarenas" },
-        { id: "n1b", nombre: "Limón" },
-      ],
-    });
-    const args = cliente.pais.findUnique.mock.calls as unknown as [{ where: unknown }][];
-    expect(args.map(([a]) => a.where)).toEqual([{ id: "XA" }, { id: "XA" }]);
-  });
-
-  it("SL-20: un distrito trae el pais y el codigo de su canton, y la regla del pais", async () => {
-    const { repo } = repoCon({ regla: REGLA_CR });
-    expect(await repo.findHermanos("distrito", "n2")).toEqual({
-      paisId: "XA",
-      regla: REGLA_CR,
-      codigoPadre: "603",
-      hermanos: [
-        { id: "n3", nombre: "Cabagra" },
-        { id: "n3b", nombre: "Potrero Grande" },
-      ],
-    });
   });
 
   it("374/A8: los hermanos se leen sin `where` sobre el nombre (la normalizacion es del service)", async () => {

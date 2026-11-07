@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
 import { GeoRepository } from "@/lib/repositories/GeoRepository";
+import { altaPorNivel } from "./_fixtures/alta-por-nivel-46";
 
 import {
   HAY_BASE_DE_DATOS,
@@ -154,7 +155,7 @@ describeSiHayBase("374 — la cascada es reversible (Postgres real)", () => {
     it("los tres flags son los mismos antes y despues, fila a fila", async () => {
       await conCorpus(async ({ s, geo, flags }) => {
         const antes = await flags();
-        expect(await geo.cambiarActivacion("canton", s.canton, false, actorUsuarioId)).toBe(
+        expect(await geo.cambiarActivacion(s.canton, false, actorUsuarioId)).toBe(
           "cambiado",
         );
         const despues = await flags();
@@ -166,7 +167,7 @@ describeSiHayBase("374 — la cascada es reversible (Postgres real)", () => {
       // Anti-vacuidad del caso anterior: si el `update` no hubiera hecho nada, «los hijos no
       // cambian» estaria verde por vacio.
       await conCorpus(async ({ s, geo, tx }) => {
-        await geo.cambiarActivacion("canton", s.canton, false, actorUsuarioId);
+        await geo.cambiarActivacion(s.canton, false, actorUsuarioId);
         const fila = await tx.canton.findUnique({
           where: { id: s.canton },
           select: { activo: true },
@@ -183,7 +184,7 @@ describeSiHayBase("374 — la cascada es reversible (Postgres real)", () => {
           select: { activo: true },
         });
 
-        await geo.cambiarActivacion("provincia", s.provincia, false, actorUsuarioId);
+        await geo.cambiarActivacion(s.provincia, false, actorUsuarioId);
 
         expect(await flags()).toEqual(antesDistritos);
         expect(
@@ -202,8 +203,8 @@ describeSiHayBase("374 — la cascada es reversible (Postgres real)", () => {
       await conCorpus(async ({ s, geo, flags }) => {
         const antes = await flags();
 
-        await geo.cambiarActivacion("canton", s.canton, false, actorUsuarioId);
-        await geo.cambiarActivacion("canton", s.canton, true, actorUsuarioId);
+        await geo.cambiarActivacion(s.canton, false, actorUsuarioId);
+        await geo.cambiarActivacion(s.canton, true, actorUsuarioId);
 
         const despues = await flags();
         expect(despues).toEqual(antes);
@@ -216,8 +217,8 @@ describeSiHayBase("374 — la cascada es reversible (Postgres real)", () => {
 
     it("el canton vuelve a estar activo", async () => {
       await conCorpus(async ({ s, geo, tx }) => {
-        await geo.cambiarActivacion("canton", s.canton, false, actorUsuarioId);
-        await geo.cambiarActivacion("canton", s.canton, true, actorUsuarioId);
+        await geo.cambiarActivacion(s.canton, false, actorUsuarioId);
+        await geo.cambiarActivacion(s.canton, true, actorUsuarioId);
         const fila = await tx.canton.findUnique({
           where: { id: s.canton },
           select: { activo: true },
@@ -241,9 +242,9 @@ describeSiHayBase("374 — la cascada es reversible (Postgres real)", () => {
         ] as const;
 
         for (const [nivel, id, leer] of niveles) {
-          expect(await geo.cambiarActivacion(nivel, id, false, actorUsuarioId)).toBe("cambiado");
+          expect(await geo.cambiarActivacion(id, false, actorUsuarioId)).toBe("cambiado");
           expect((await leer())?.activo, `${nivel} no se desactivo`).toBe(false);
-          expect(await geo.cambiarActivacion(nivel, id, true, actorUsuarioId)).toBe("cambiado");
+          expect(await geo.cambiarActivacion(id, true, actorUsuarioId)).toBe("cambiado");
           expect((await leer())?.activo, `${nivel} no se reactivo`).toBe(true);
         }
       });
@@ -253,8 +254,10 @@ describeSiHayBase("374 — la cascada es reversible (Postgres real)", () => {
       await conCorpus(async ({ geo, flags }) => {
         const antes = await flags();
         for (const nivel of ["provincia", "canton", "distrito"] as const) {
+          // SLT-46 (T4): el id ya no viaja con su nivel; el bucle conserva los tres intentos de SL-20.
           expect(
-            await geo.cambiarActivacion(nivel, "00000000-0000-0000-0000-000000000000", false, actorUsuarioId),
+            await geo.cambiarActivacion("00000000-0000-0000-0000-000000000000", false, actorUsuarioId),
+            nivel,
           ).toBe("no_existe");
         }
         expect(await flags()).toEqual(antes);
@@ -272,10 +275,10 @@ describeSiHayBase("374 — la cascada es reversible (Postgres real)", () => {
         const antes = await filasPuente();
         expect(antes).toHaveLength(3); // anti-vacuidad: la puente tiene datos
 
-        await geo.crear("distrito", `D4 ${SUFIJO}`, s.canton, ALTA_CR, actorUsuarioId);
-        await geo.cambiarActivacion("canton", s.canton, false, actorUsuarioId);
-        await geo.cambiarActivacion("canton", s.canton, true, actorUsuarioId);
-        await geo.cambiarActivacion("distrito", s.d1, false, actorUsuarioId);
+        await altaPorNivel(geo, "distrito", `D4 ${SUFIJO}`, s.canton, ALTA_CR, actorUsuarioId);
+        await geo.cambiarActivacion(s.canton, false, actorUsuarioId);
+        await geo.cambiarActivacion(s.canton, true, actorUsuarioId);
+        await geo.cambiarActivacion(s.d1, false, actorUsuarioId);
 
         expect(await filasPuente()).toEqual(antes);
       });
@@ -283,7 +286,7 @@ describeSiHayBase("374 — la cascada es reversible (Postgres real)", () => {
 
     it("el alta creo el distrito de verdad: la comprobacion de arriba no esta vacia", async () => {
       await conCorpus(async ({ s, geo, tx }) => {
-        const id = await geo.crear("distrito", `D5 ${SUFIJO}`, s.canton, ALTA_CR, actorUsuarioId);
+        const id = await altaPorNivel(geo, "distrito", `D5 ${SUFIJO}`, s.canton, ALTA_CR, actorUsuarioId);
         const fila = await tx.distrito.findUnique({
           where: { id },
           select: { nombre: true, activo: true },

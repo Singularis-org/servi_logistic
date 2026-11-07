@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
 import { GeoRepository } from "@/lib/repositories/GeoRepository";
+import { altaPorNivel } from "./_fixtures/alta-por-nivel-46";
 import { GeografiaService } from "@/lib/services/GeografiaService";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { disponibleDesdeCadena } from "@/lib/repositories/_shared/geografia-activa";
@@ -183,7 +184,7 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
       await conCorpus(async ({ s, geo, tx }) => {
         // El recorte lo hace el schema del borde; aqui se comprueba que lo que llega a la COLUMNA
         // es exactamente eso, sin que el motor ni el ORM lo toquen.
-        const id = await geo.crear("distrito", `San José ${SUFIJO}`, s.canton, ALTA_CR, null);
+        const id = await altaPorNivel(geo, "distrito", `San José ${SUFIJO}`, s.canton, ALTA_CR, null);
         const fila = await tx.distrito.findUnique({ where: { id }, select: { nombre: true } });
         expect(fila?.nombre).toBe(`San José ${SUFIJO}`);
         // Ni minusculas ni plegado de acentos: es lo que se lee en toda la app.
@@ -199,7 +200,7 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
   describe("374/R17 — el service rechaza el duplicado por forma normalizada", () => {
     it("«san jose» choca con «San José» ya existente, y NO crea fila", async () => {
       await conCorpus(async ({ s, geo, service, tx }) => {
-        await geo.crear("distrito", `San José ${SUFIJO}`, s.canton, ALTA_CR, null);
+        await altaPorNivel(geo, "distrito", `San José ${SUFIJO}`, s.canton, ALTA_CR, null);
         const antes = await tx.distrito.count({ where: { cantonId: s.canton } });
 
         const r = await service.crear(
@@ -214,7 +215,7 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
 
     it("un hermano RETIRADO tambien ocupa el nombre", async () => {
       await conCorpus(async ({ s, geo, service, tx }) => {
-        const id = await geo.crear("distrito", `Cabagra ${SUFIJO}`, s.canton, ALTA_CR, null);
+        const id = await altaPorNivel(geo, "distrito", `Cabagra ${SUFIJO}`, s.canton, ALTA_CR, null);
         await tx.distrito.update({ where: { id }, data: { activo: false } });
 
         const r = await service.crear(
@@ -227,7 +228,7 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
 
     it("CONTRAPRUEBA: el MISMO nombre bajo OTRO padre entra (R19)", async () => {
       await conCorpus(async ({ s, geo, service }) => {
-        await geo.crear("distrito", `Cabagra ${SUFIJO}`, s.canton, ALTA_CR, null);
+        await altaPorNivel(geo, "distrito", `Cabagra ${SUFIJO}`, s.canton, ALTA_CR, null);
         const r = await service.crear(
           { padreId: s.cantonOff, nombre: `Cabagra ${SUFIJO}` },
           SUPERADMIN,
@@ -251,12 +252,12 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
       // moriria con «transaccion abortada» y este caso no podria afirmar nada. Es la misma
       // propiedad que hace que R55 salga gratis.
       await conCorpus(async ({ s, geo, tx }) => {
-        await geo.crear("distrito", `Duplicado ${SUFIJO}`, s.canton, ALTA_CR, null);
+        await altaPorNivel(geo, "distrito", `Duplicado ${SUFIJO}`, s.canton, ALTA_CR, null);
 
         await tx.$executeRawUnsafe("SAVEPOINT sp_dup");
         let capturado: unknown = null;
         try {
-          await geo.crear("distrito", `Duplicado ${SUFIJO}`, s.canton, ALTA_CR, null);
+          await altaPorNivel(geo, "distrito", `Duplicado ${SUFIJO}`, s.canton, ALTA_CR, null);
         } catch (error) {
           capturado = error;
           await tx.$executeRawUnsafe("ROLLBACK TO SAVEPOINT sp_dup");
@@ -277,12 +278,12 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
 
     it("lo mismo con un canton repetido dentro de su provincia", async () => {
       await conCorpus(async ({ s, geo, tx }) => {
-        await geo.crear("canton", `Repetido ${SUFIJO}`, s.provincia, ALTA_CR, null);
+        await altaPorNivel(geo, "canton", `Repetido ${SUFIJO}`, s.provincia, ALTA_CR, null);
 
         await tx.$executeRawUnsafe("SAVEPOINT sp_dup_canton");
         let capturado: unknown = null;
         try {
-          await geo.crear("canton", `Repetido ${SUFIJO}`, s.provincia, ALTA_CR, null);
+          await altaPorNivel(geo, "canton", `Repetido ${SUFIJO}`, s.provincia, ALTA_CR, null);
         } catch (error) {
           capturado = error;
           await tx.$executeRawUnsafe("ROLLBACK TO SAVEPOINT sp_dup_canton");
@@ -435,19 +436,19 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
       await conCorpus(async ({ geo, tx }) => {
         await crearPaisDePrueba(tx, "XA");
         await crearPaisDePrueba(tx, "XB");
-        await geo.crear("provincia", `Uno ${SUFIJO}`, null, { paisId: "XA", codigo: "R-1" }, null);
+        await altaPorNivel(geo, "provincia", `Uno ${SUFIJO}`, null, { paisId: "XA", codigo: "R-1" }, null);
 
         await tx.$executeRawUnsafe("SAVEPOINT sp_codigo");
         let capturado: unknown = null;
         try {
-          await geo.crear("provincia", `Dos ${SUFIJO}`, null, { paisId: "XA", codigo: "R-1" }, null);
+          await altaPorNivel(geo, "provincia", `Dos ${SUFIJO}`, null, { paisId: "XA", codigo: "R-1" }, null);
         } catch (error) {
           capturado = error;
           await tx.$executeRawUnsafe("ROLLBACK TO SAVEPOINT sp_codigo");
         }
         expect(capturado, "la base dejo entrar un codigo repetido en el mismo pais").not.toBeNull();
 
-        const enXB = await geo.crear("provincia", `Tres ${SUFIJO}`, null, { paisId: "XB", codigo: "R-1" }, null);
+        const enXB = await altaPorNivel(geo, "provincia", `Tres ${SUFIJO}`, null, { paisId: "XB", codigo: "R-1" }, null);
         expect(enXB).toBeTruthy();
       });
     });

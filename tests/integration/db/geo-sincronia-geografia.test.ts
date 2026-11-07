@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
 import { GeoRepository } from "@/lib/repositories/GeoRepository";
+import { altaPorNivel } from "./_fixtures/alta-por-nivel-46";
 import { planificarDivision } from "@/lib/utils/division-csv";
 import { crearPaisDePrueba } from "@/tests/fabricas/paises";
 import { crearEscenarioGeo43, tiposDeNivel } from "./_fixtures/geo-43";
@@ -78,9 +79,9 @@ describeSiHayBase("SLT-43 — sincronía de la geografía vieja al nodo (R15–R
     const r = await conGeo(async ({ tx, geo }) => {
       const s = sufijo();
       const t = await tiposDeNivel(tx, "XA");
-      const p = await geo.crear("provincia", `Región Ñuble ${s}`, null, { paisId: "XA", codigo: "7" }, null);
-      const c = await geo.crear("canton", `Comuna ${s}`, p, { paisId: "XA", codigo: "7" }, null);
-      const d = await geo.crear("distrito", `Barrio ${s}`, c, { paisId: "XA", codigo: null }, null);
+      const p = await altaPorNivel(geo, "provincia", `Región Ñuble ${s}`, null, { paisId: "XA", codigo: "7" }, null);
+      const c = await altaPorNivel(geo, "canton", `Comuna ${s}`, p, { paisId: "XA", codigo: "7" }, null);
+      const d = await altaPorNivel(geo, "distrito", `Barrio ${s}`, c, { paisId: "XA", codigo: null }, null);
       return { t, s, p, c, d, np: await nodo(tx, p), nc: await nodo(tx, c), nd: await nodo(tx, d) };
     });
     expect(r.np).toEqual({
@@ -96,14 +97,19 @@ describeSiHayBase("SLT-43 — sincronía de la geografía vieja al nodo (R15–R
     const r = await conGeo(async ({ tx, geo }) => {
       // Un existente sin código, que la carga completa (R26 de SL-20): el UPDATE llega al nodo.
       const existente = await tx.provincia.create({ data: { nombre: "Región Norte", paisId: "XA" }, select: { id: true } });
+      // SLT-46 (T4): la division se lee y se planifica por profundidad; mismas filas que en SLT-43.
       const division = await geo.leerDivisionDePais("XA");
+      const fila = (linea: number, ...celdas: [string, string][]) => ({
+        linea,
+        niveles: celdas.map(([nombre, codigo]) => ({ nombre, codigo })),
+      });
       const plan = planificarDivision(
         [
-          { linea: 2, nivel1: "Región Norte", codigoNivel1: "RN", nivel2: "Comuna Uno", codigoNivel2: "RN-1", nivel3: "Barrio A", codigoNivel3: "RN-1-A" },
-          { linea: 3, nivel1: "Región Sur", codigoNivel1: "RS", nivel2: "Comuna Dos", codigoNivel2: "", nivel3: "", codigoNivel3: "" },
+          fila(2, ["Región Norte", "RN"], ["Comuna Uno", "RN-1"], ["Barrio A", "RN-1-A"]),
+          fila(3, ["Región Sur", "RS"], ["Comuna Dos", ""], ["", ""]),
         ],
-        division!.arbol,
-        division!.regla,
+        division!.nodos,
+        division!.tipos,
       );
       if (!("plan" in plan)) throw new Error("el plan de prueba tenia errores");
       const resumen = await geo.importarDivision("XA", plan.plan, null);
@@ -123,7 +129,8 @@ describeSiHayBase("SLT-43 — sincronía de la geografía vieja al nodo (R15–R
       );
       return { resumen, nodos, faltan: faltan.n, existente: (await nodo(tx, existente.id))?.codigo_oficial };
     });
-    expect(r.resumen).toMatchObject({ creados: { provincia: 1, canton: 2, distrito: 1 }, codigosCompletados: 1 });
+    // SLT-46 (R33): `creados` va por profundidad (1/2/3 = provincia/cantón/distrito); mismas cifras.
+    expect(r.resumen).toMatchObject({ creados: { 1: 1, 2: 2, 3: 1 }, codigosCompletados: 1 });
     expect(r.faltan).toBe(0);
     expect(r.existente).toBe("RN");
     expect(r.nodos).toEqual([
@@ -138,15 +145,15 @@ describeSiHayBase("SLT-43 — sincronía de la geografía vieja al nodo (R15–R
   it("R16: `renombrar` y `cambiarActivacion` de SL-20/374 llegan al nodo (nombre, normalizado, retiro y reactivación)", async () => {
     const r = await conGeo(async ({ tx, geo }) => {
       const s = sufijo();
-      const p = await geo.crear("provincia", `Región ${s}`, null, { paisId: "XA", codigo: null }, null);
-      const c = await geo.crear("canton", `Comuna ${s}`, p, { paisId: "XA", codigo: null }, null);
+      const p = await altaPorNivel(geo, "provincia", `Región ${s}`, null, { paisId: "XA", codigo: null }, null);
+      const c = await altaPorNivel(geo, "canton", `Comuna ${s}`, p, { paisId: "XA", codigo: null }, null);
 
-      const renombrado = await geo.renombrar("canton", c, `Comuna Peñalolén ${s}`, null);
+      const renombrado = await geo.renombrar(c, `Comuna Peñalolén ${s}`, null);
       const trasRenombrar = await nodo(tx, c);
-      const retiro = await geo.cambiarActivacion("provincia", p, false, null);
+      const retiro = await geo.cambiarActivacion(p, false, null);
       const trasRetirar = (await nodo(tx, p))?.activo;
       const hijoTrasRetirar = (await nodo(tx, c))?.activo;
-      const reactivacion = await geo.cambiarActivacion("provincia", p, true, null);
+      const reactivacion = await geo.cambiarActivacion(p, true, null);
       const trasReactivar = (await nodo(tx, p))?.activo;
       return { s, renombrado, trasRenombrar, retiro, trasRetirar, hijoTrasRetirar, reactivacion, trasReactivar };
     });
@@ -256,11 +263,11 @@ describeSiHayBase("SLT-43 — sincronía de la geografía vieja al nodo (R15–R
   it("lo que la sincronía tumba: un homónimo normalizado que el único literal deja pasar falla entero con 23505", async () => {
     const r = await conGeo(async ({ tx, geo }) => {
       const s = sufijo();
-      const p = await geo.crear("provincia", `Región ${s}`, null, { paisId: "XA", codigo: null }, null);
-      await geo.crear("canton", `San Jose ${s}`, p, { paisId: "XA", codigo: null }, null);
+      const p = await altaPorNivel(geo, "provincia", `Región ${s}`, null, { paisId: "XA", codigo: null }, null);
+      await altaPorNivel(geo, "canton", `San Jose ${s}`, p, { paisId: "XA", codigo: null }, null);
       const historialAntes = await contarHistorial(tx);
 
-      const error = await errorEnSavepoint(tx, () => geo.crear("canton", `San José ${s}`, p, { paisId: "XA", codigo: null }, null));
+      const error = await errorEnSavepoint(tx, () => altaPorNivel(geo, "canton", `San José ${s}`, p, { paisId: "XA", codigo: null }, null));
       const sql = await intentar(tx, `INSERT INTO canton (id, nombre, provincia_id) VALUES ($1, $2, $3)`, randomUUID(), `SAN JOSÉ ${s}`, p);
       const cantones = await tx.canton.count({ where: { provinciaId: p } });
       return {

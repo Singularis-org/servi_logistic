@@ -4,21 +4,15 @@ import type {
   OpcionGeograficaConPadre,
 } from "@/lib/types/filtros-ordenes";
 import type {
-  NivelGeografico,
   NodoArbolPlataformaDTO,
   ProvinciaArbolDTO,
-  ProvinciaPlataformaDTO,
   TipoNivelDTO,
 } from "@/lib/types/geografia-nodo";
 import type {
-  ArbolExistente,
   NodoExistenteConProfundidad,
-  PlanDivision,
   PlanDivisionPorProfundidad,
-  ResumenCarga,
   ResumenCargaPorProfundidad,
 } from "@/lib/types/division-csv";
-import type { ReglaDeCodigoDePais } from "@/lib/utils/codigo-geografico";
 
 // ── SLT-46 (design §4.4): los contratos por NODO, a cualquier profundidad ────────────────────
 
@@ -70,50 +64,6 @@ export interface DivisionPorProfundidadDePais {
 /** Los tres desenlaces de un cambio de un nodo: solo el tercero escribe y audita. */
 export type DesenlaceDeRenombre = "no_existe" | "sin_cambio" | "renombrado";
 export type DesenlaceDeActivacion = "no_existe" | "sin_cambio" | "cambiado";
-
-// ── SL-20: los contratos por NIVEL (provincia/canton/distrito) ────────────────────────────────
-//
-// Siguen solo hasta T4, que pasa `GeografiaService` y `CargaDivisionService` a los de arriba. Desde
-// SLT-46 la clase los resuelve sobre `nodo_geografico` (R1): ya no escriben la geografia vieja.
-
-/**
- * SL-20 — lo que el alta necesita saber de DONDE cuelga el nodo, leido de una vez: el pais, su
- * regla de codigo (R17), el codigo del padre (el prefijo que exige esa regla) y los hermanos con su
- * nombre CRUDO (R15).
- */
-export interface ContextoDeAlta {
-  paisId: string;
-  regla: ReglaDeCodigoDePais;
-  /** `null` en la provincia (no tiene padre) o si el padre no tiene codigo. */
-  codigoPadre: string | null;
-  hermanos: { id: string; nombre: string }[];
-}
-
-/** SL-20 — la geografia de un pais tal como la necesita `planificarDivision`, con su regla. */
-export interface DivisionDePais {
-  regla: ReglaDeCodigoDePais;
-  arbol: ArbolExistente;
-}
-
-/** SL-20 — el resto del alta: el pais del nodo (para el historial) y su codigo opcional. */
-export interface OpcionesDeAlta {
-  /** El pais del contenedor: el de la provincia en su alta, el del padre en los demas niveles. */
-  paisId: string;
-  codigo: string | null;
-}
-
-/**
- * SL-20 — lo que `CargaDivisionService` usa hoy de la carga, por nivel. T4 lo pasa a
- * `IGeoRepository.leerDivisionDePais`/`importarDivision` por profundidad y lo retira.
- */
-export interface IGeoRepositoryDivisionPorNivel {
-  leerDivisionDePais(paisId: string): Promise<DivisionDePais | null>;
-  importarDivision(
-    paisId: string,
-    plan: PlanDivision,
-    actorUsuarioId: string | null,
-  ): Promise<ResumenCarga>;
-}
 
 // El catalogo geografico global.
 //
@@ -202,13 +152,30 @@ export interface IGeoRepository {
    */
   crear(datos: DatosDeAltaDeNodo, actorUsuarioId: string | null): Promise<string>;
 
-  /** Los hermanos del nodo `id` —incluido el—, activos e inactivos, o `null` si no existe. */
+  /**
+   * Los hermanos del nodo `id` —TODOS, activos e inactivos, INCLUIDO EL PROPIO NODO—, o `null` si no
+   * existe; los de una raiz son las raices de SU pais.
+   *
+   * ES DISTINTO DE `contextoDeAlta`: aquel parte del PADRE (lo que sabe un alta) y este del PROPIO
+   * NODO (lo que sabe un renombrado). Se devuelve el nodo dentro a proposito: quien compara necesita
+   * poder EXCLUIRLO por su `id` —renombrar un nodo a su propio nombre no es un conflicto—.
+   */
   hermanosDeNodo(id: string): Promise<{ id: string; nombre: string }[] | null>;
 
-  /** Cambia SOLO el `nombre` del nodo y lo registra en la misma transaccion (R18, R35). */
+  /**
+   * Cambia SOLO el `nombre` del nodo y lo registra en la misma transaccion (R18, R35).
+   *
+   * ⚠️ NO TOCA `codigo_oficial`: es la clave estable, y renombrar existe PORQUE el nombre no lo es.
+   * TRES desenlaces: «no existe» != «ya se llamaba asi» != «cambio», y SOLO EL TERCERO escribe y
+   * audita. DEJA ESCAPAR la violacion de UNIQUE: el borde la traduce a `conflict`.
+   */
   renombrar(id: string, nombre: string, actorUsuarioId: string | null): Promise<DesenlaceDeRenombre>;
 
-  /** Cambia SOLO el `activo` del nodo, sin tocar descendientes, y lo registra (R19, R35). */
+  /**
+   * Cambia SOLO el `activo` del nodo, sin tocar descendientes, y lo registra (R19, R35). Los mismos
+   * tres desenlaces que `renombrar`: pedir el estado que ya tiene no escribe ni el `update` ni la fila
+   * de registro. NO TOCA A LOS DESCENDIENTES: es lo que hace que reactivar sea reversible.
+   */
   cambiarActivacion(
     id: string,
     activo: boolean,
@@ -231,105 +198,4 @@ export interface IGeoRepository {
     plan: PlanDivisionPorProfundidad,
     actorUsuarioId: string | null,
   ): Promise<ResumenCargaPorProfundidad>;
-
-  // --- SL-20 por nivel: las formas que `GeografiaService` usa hasta T4 ---
-  //
-  // Mismos desenlaces que antes de SLT-46 (R12), resueltos sobre el nodo: un `id` que no es de la
-  // profundidad del `nivel` pedido es «no existe», como cuando cada nivel era su tabla.
-
-  /**
-   * SL-20 — el arbol de UN pais para el superadmin (R20, R29, R30): activos e inactivos, con el
-   * codigo, SIN zonas. Filtra por `paisId` de forma explicita porque corre como dueño, sin RLS.
-   */
-  listArbolDePais(paisId: string): Promise<ProvinciaPlataformaDTO[]>;
-
-  /**
-   * El contexto del alta (`ContextoDeAlta`), o `null` si el contenedor NO EXISTE. Una sola consulta
-   * resuelve las preguntas del alta: si el contenedor existe (R14), si el nombre ya esta cogido
-   * (R15) y con que regla se valida el codigo (R17).
-   *
-   * `contenedorId` es el PADRE en cantón y distrito, y el PAIS en la provincia (SL-20): las
-   * hermanas de una provincia son las de su pais, no todas las de la tabla.
-   *
-   * Los hermanos van TODOS, activos e inactivos, y con el nombre CRUDO: la comparacion por
-   * `normalizeName` es del service, no del `WHERE`. Un `findFirst({ where: { nombre } })`
-   * compararia LITERALES y dejaria entrar «San Jose» junto a «San José», que para `resolveGeo` son
-   * una sola cosa AMBIGUA (design §9, A8).
-   */
-  findHermanos(nivel: NivelGeografico, contenedorId: string): Promise<ContextoDeAlta | null>;
-
-  /**
-   * Crea el nodo ACTIVO (R13, R29) y escribe `nodo_geografico_creado` en el historial de
-   * plataforma en la MISMA transaccion (R33). Devuelve el id.
-   *
-   * DEJA ESCAPAR la violacion de UNIQUE a proposito: la traduce el borde a `conflict`. La base es
-   * la ultima palabra ante una carrera; la regla de normalizacion y la del codigo son del service.
-   */
-  crear(
-    nivel: NivelGeografico,
-    nombre: string,
-    padreId: string | null,
-    opciones: OpcionesDeAlta,
-    actorUsuarioId: string | null,
-  ): Promise<string>;
-
-  /**
-   * Cambia el flag `activo` de UNA fila Y registra la accion en la MISMA transaccion. Desde SL-20 la
-   * registra en el historial de PLATAFORMA, no en `historial_accion` (R33, R35).
-   *
-   * TRES desenlaces, y son tres a proposito: «no existe» != «ya estaba asi» != «cambio», porque
-   * SOLO EL TERCERO audita. Pedir desactivar lo ya inactivo no escribe ni el `update` ni la fila
-   * de registro (R21/R53): «se pidio» y «se hizo» son cosas distintas, que es el precedente
-   * literal de `VehiculoRepository.delete`.
-   *
-   * NO TOCA NINGUNA FILA DE LOS DESCENDIENTES (R8). Es lo que hace que reactivar sea reversible.
-   */
-  cambiarActivacion(
-    nivel: NivelGeografico,
-    id: string,
-    activo: boolean,
-    actorUsuarioId: string | null,
-  ): Promise<"no_existe" | "sin_cambio" | "cambiado">;
-
-  // --- FICHA 375: el renombrado ---
-
-  /**
-   * Los hermanos del nodo `id` —TODOS, activos e inactivos, INCLUIDO EL PROPIO NODO—, o `null` si
-   * el nodo NO EXISTE. Las hermanas de una provincia son las de SU pais (SL-20, R15).
-   *
-   * ES DISTINTO DE `findHermanos`, y por eso son dos metodos y no uno: aquel parte del PADRE (lo
-   * que sabe un alta) y este del PROPIO NODO (lo que sabe un renombrado, que no recibe el padre).
-   * Con una sola consulta se resuelven las dos preguntas del renombrado: si el nodo existe (R22) y
-   * si el nombre nuevo ya esta cogido por un hermano.
-   *
-   * SE DEVUELVE EL NODO DENTRO de la lista a proposito: quien compara necesita poder EXCLUIRLO por
-   * su `id` —renombrar un nodo a su propio nombre no es un conflicto—, y filtrarlo aqui dejaria al
-   * service sin forma de distinguir «choca consigo mismo» de «choca con otro».
-   */
-  findHermanosDeNodo(
-    nivel: NivelGeografico,
-    id: string,
-  ): Promise<{ id: string; nombre: string }[] | null>;
-
-  /**
-   * Cambia el `nombre` de UNA fila Y registra la accion en la MISMA transaccion, en el historial de
-   * PLATAFORMA desde SL-20 (R33, R35).
-   *
-   * ⚠️ NO TOCA `codigo_dta`: es la clave estable y renombrar es justo la operacion que existe
-   * PORQUE el nombre no lo es. Si esta escritura tocara el codigo, la siguiente corrida del seed
-   * volveria a duplicar el nodo y la ficha entera no serviria para nada.
-   *
-   * TRES desenlaces, por el mismo motivo que `cambiarActivacion`: «no existe» != «ya se llamaba
-   * asi» != «cambio», porque SOLO EL TERCERO audita. Guardar sin cambios devuelve `sin_cambio` y no
-   * escribe ni el `update` ni la fila de registro.
-   *
-   * DEJA ESCAPAR la violacion de UNIQUE: la traduce el borde a `conflict`. La comprobacion por
-   * clave NORMALIZADA es del service; la base es la ultima palabra ante una carrera.
-   */
-  renombrar(
-    nivel: NivelGeografico,
-    id: string,
-    nombre: string,
-    actorUsuarioId: string | null,
-  ): Promise<"no_existe" | "sin_cambio" | "renombrado">;
 }

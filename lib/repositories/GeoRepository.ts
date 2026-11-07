@@ -3,17 +3,13 @@ import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 import type {
   ArbolDePais,
-  ContextoDeAlta,
   ContextoDeAltaDeNodo,
   DatosDeAltaDeNodo,
   DesenlaceDeActivacion,
   DesenlaceDeRenombre,
   DestinoDeAlta,
-  DivisionDePais,
   DivisionPorProfundidadDePais,
   IGeoRepository,
-  IGeoRepositoryDivisionPorNivel,
-  OpcionesDeAlta,
 } from "@/lib/interfaces/repositories/IGeoRepository";
 import type {
   GeografiaFiltrosDTO,
@@ -23,26 +19,19 @@ import type {
 } from "@/lib/types/filtros-ordenes";
 import {
   GEO_NOMBRE_MAX,
-  NIVELES_GEOGRAFICOS,
   type CantonArbolDTO,
   type DistritoArbolDTO,
-  type NivelGeografico,
   type NodoArbolPlataformaDTO,
   type ProvinciaArbolDTO,
-  type ProvinciaPlataformaDTO,
   type TipoNivelDTO,
 } from "@/lib/types/geografia-nodo";
 import type {
-  ArbolExistente,
   NodoExistenteConProfundidad,
-  PlanDivision,
   PlanDivisionPorProfundidad,
   RefNodo,
-  ResumenCarga,
   ResumenCargaPorProfundidad,
 } from "@/lib/types/division-csv";
 import { PAIS_NIVELES_MAX } from "@/lib/types/pais";
-import type { ReglaDeCodigoDePais } from "@/lib/utils/codigo-geografico";
 import { SELECT_FLAG_PROPIO } from "@/lib/repositories/_shared/geografia-activa";
 import type { ClienteDeMarcas } from "@/lib/repositories/_shared/zona-especial";
 import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograficoRepository";
@@ -88,13 +77,6 @@ type GeoPrismaClient = Pick<
   ClienteDeMarcas;
 
 type GeoTx = Pick<GeoPrismaClient, "nodoGeografico">;
-
-/** La regla de codigo, tal como se selecciona de la fila del pais (solo la forma de SL-20). */
-const SELECT_REGLA = {
-  digitosCodigoNivel1: true,
-  digitosCodigoNivel2: true,
-  digitosCodigoNivel3: true,
-} as const;
 
 const SELECT_TIPO = {
   id: true,
@@ -212,68 +194,6 @@ function nodoDelArbol(cat: CatalogoGeografico, n: NodoDelCatalogo): NodoArbolPla
   };
 }
 
-// --- SL-20 por nivel (hasta T4) ---
-
-function profundidadDeNivel(nivel: NivelGeografico): number {
-  return NIVELES_GEOGRAFICOS.indexOf(nivel) + 1;
-}
-
-function nivelDeProfundidad(k: number): NivelGeografico {
-  return NIVELES_GEOGRAFICOS[k - 1];
-}
-
-function reglaDe(pais: ReglaDeCodigoDePais): ReglaDeCodigoDePais {
-  return {
-    digitosCodigoNivel1: pais.digitosCodigoNivel1,
-    digitosCodigoNivel2: pais.digitosCodigoNivel2,
-    digitosCodigoNivel3: pais.digitosCodigoNivel3,
-  };
-}
-
-/** Los nodos de profundidad 1–3 con la forma por nivel de SL-20. */
-function arbolPorNivel(nodos: readonly NodoExistenteConProfundidad[]): ArbolExistente {
-  const arbol: ArbolExistente = { provincia: [], canton: [], distrito: [] };
-  for (const { profundidad, ...n } of nodos) {
-    if (profundidad <= NIVELES_GEOGRAFICOS.length) arbol[nivelDeProfundidad(profundidad)].push(n);
-  }
-  return arbol;
-}
-
-/** El plan de SL-20 en la forma por profundidad: mismas claves, mismas referencias. */
-function planPorProfundidad(plan: PlanDivision): PlanDivisionPorProfundidad {
-  const altas: PlanDivisionPorProfundidad["altas"] = {};
-  const creados: Record<number, number> = {};
-  NIVELES_GEOGRAFICOS.forEach((nivel, i) => {
-    altas[i + 1] = plan.altas[nivel];
-    creados[i + 1] = plan.resumen.creados[nivel];
-  });
-  return {
-    altas,
-    codigosACompletar: plan.codigosACompletar.map((c) => ({
-      profundidad: profundidadDeNivel(c.nivel),
-      id: c.id,
-      codigo: c.codigo,
-    })),
-    resumen: { ...plan.resumen, creados },
-  };
-}
-
-function creadosPorNivel(creadosPorProfundidad: Record<number, number>): ResumenCarga["creados"] {
-  const creados = {} as ResumenCarga["creados"];
-  NIVELES_GEOGRAFICOS.forEach((nivel, i) => {
-    creados[nivel] = creadosPorProfundidad[i + 1] ?? 0;
-  });
-  return creados;
-}
-
-function resumenPorNivel(r: ResumenCargaPorProfundidad): ResumenCarga {
-  return { ...r, creados: creadosPorNivel(r.creados) };
-}
-
-function esPlanPorNivel(plan: PlanDivision | PlanDivisionPorProfundidad): plan is PlanDivision {
-  return "provincia" in plan.altas;
-}
-
 /** Las claves del plan traducidas a los ids que se generan al escribir. */
 class IdsDelPlan {
   private readonly ids = new Map<string, string>();
@@ -311,10 +231,9 @@ class IdsDelPlan {
 // ⚠️ NINGUNA ESCRITURA TOCA A LOS DESCENDIENTES (R19). La disponibilidad efectiva se EVALUA al leer;
 // materializarla romperia la reversibilidad del retiro.
 //
-// Las formas por NIVEL de SL-20 (`findHermanos`, `findHermanosDeNodo`, `listArbolDePais` y las
-// sobrecargas de `crear`/`renombrar`/`cambiarActivacion`/`importarDivision`) traducen a las de nodo
-// hasta que T4 pase los services; un `id` de otra profundidad que la del nivel es «no existe».
-export class GeoRepository implements IGeoRepository, IGeoRepositoryDivisionPorNivel {
+// SLT-46 (T4): las formas por NIVEL de SL-20 se retiraron cuando `GeografiaService` y
+// `CargaDivisionService` pasaron al nodo: todo va por id y profundidad.
+export class GeoRepository implements IGeoRepository {
   constructor(private readonly prisma: GeoPrismaClient) {}
 
   // SLT-44 (design §4): uno por instancia, creado al primer uso. Las composiciones crean este
@@ -516,25 +435,7 @@ export class GeoRepository implements IGeoRepository, IGeoRepositoryDivisionPorN
    * `nombreNormalizado` lo pisa el trigger de SLT-43; se manda porque la columna es obligatoria.
    * DEJA ESCAPAR la violacion de UNIQUE (la del nodo o la de la copia vieja, R5): el borde la traduce.
    */
-  async crear(datos: DatosDeAltaDeNodo, actorUsuarioId: string | null): Promise<string>;
-  /** SL-20 — el alta por nivel (hasta T4). */
-  async crear(
-    nivel: NivelGeografico,
-    nombre: string,
-    padreId: string | null,
-    opciones: OpcionesDeAlta,
-    actorUsuarioId: string | null,
-  ): Promise<string>;
-  async crear(
-    ...args:
-      | [DatosDeAltaDeNodo, string | null]
-      | [NivelGeografico, string, string | null, OpcionesDeAlta, string | null]
-  ): Promise<string> {
-    if (args.length === 2) return this.crearNodo(...args);
-    return this.crearPorNivel(...args);
-  }
-
-  private async crearNodo(datos: DatosDeAltaDeNodo, actorUsuarioId: string | null): Promise<string> {
+  async crear(datos: DatosDeAltaDeNodo, actorUsuarioId: string | null): Promise<string> {
     return this.prisma.$transaction(async (tx) => {
       const nombres = await this.cadenaDelAlta(tx, datos);
       const { id } = await tx.nodoGeografico.create({
@@ -588,29 +489,20 @@ export class GeoRepository implements IGeoRepository, IGeoRepositoryDivisionPorN
     return [datos.nombre, ...(await cadenaDeNombres(tx, padre.nombre, padre.padreId))];
   }
 
-  /** Los hermanos del nodo `id` —INCLUIDO EL— o `null` si el nodo no existe (R18). */
-  async hermanosDeNodo(id: string): Promise<{ id: string; nombre: string }[] | null> {
-    return this.hermanos(id, null);
-  }
-
   /**
-   * Una consulta para el nodo y los hijos de su padre; una raiz necesita una segunda para las demas
-   * raices de su pais, que no cuelgan de ninguna fila.
+   * Los hermanos del nodo `id` —INCLUIDO EL— o `null` si el nodo no existe (R18). Una consulta para
+   * el nodo y los hijos de su padre; una raiz necesita una segunda para las demas raices de su pais,
+   * que no cuelgan de ninguna fila.
    */
-  private async hermanos(
-    id: string,
-    profundidadEsperada: number | null,
-  ): Promise<{ id: string; nombre: string }[] | null> {
+  async hermanosDeNodo(id: string): Promise<{ id: string; nombre: string }[] | null> {
     const fila = await this.prisma.nodoGeografico.findUnique({
       where: { id },
       select: {
         paisId: true,
-        profundidad: true,
         padre: { select: { hijos: { select: SELECT_HERMANO, orderBy: { id: "asc" } } } },
       },
     });
     if (fila === null) return null;
-    if (profundidadEsperada !== null && fila.profundidad !== profundidadEsperada) return null;
     if (fila.padre !== null) return fila.padre.hijos;
     return this.prisma.nodoGeografico.findMany({
       where: { paisId: fila.paisId, padreId: null },
@@ -627,31 +519,10 @@ export class GeoRepository implements IGeoRepository, IGeoRepositoryDivisionPorN
    *   4. la cadena con el nombre nuevo, el actor y el historial, DENTRO del callback.
    * Deja escapar la violacion de UNIQUE: el borde la traduce a `conflict`.
    */
-  async renombrar(id: string, nombre: string, actorUsuarioId: string | null): Promise<DesenlaceDeRenombre>;
-  /** SL-20 — el renombre por nivel (hasta T4). */
-  async renombrar(
-    nivel: NivelGeografico,
-    id: string,
-    nombre: string,
-    actorUsuarioId: string | null,
-  ): Promise<DesenlaceDeRenombre>;
-  async renombrar(
-    ...args: [string, string, string | null] | [NivelGeografico, string, string, string | null]
-  ): Promise<DesenlaceDeRenombre> {
-    if (args.length === 3) return this.renombrarNodo(args[0], args[1], args[2], null);
-    return this.renombrarNodo(args[1], args[2], args[3], profundidadDeNivel(args[0]));
-  }
-
-  private async renombrarNodo(
-    id: string,
-    nombre: string,
-    actorUsuarioId: string | null,
-    profundidadEsperada: number | null,
-  ): Promise<DesenlaceDeRenombre> {
+  async renombrar(id: string, nombre: string, actorUsuarioId: string | null): Promise<DesenlaceDeRenombre> {
     return this.prisma.$transaction(async (tx) => {
       const previo = await leerNodoPrevio(tx, id);
       if (previo === null) return "no_existe";
-      if (profundidadEsperada !== null && previo.profundidad !== profundidadEsperada) return "no_existe";
       if (previo.nombre === nombre) return "sin_cambio";
 
       await tx.nodoGeografico.update({ where: { id }, data: { nombre } });
@@ -686,31 +557,10 @@ export class GeoRepository implements IGeoRepository, IGeoRepositoryDivisionPorN
     id: string,
     activo: boolean,
     actorUsuarioId: string | null,
-  ): Promise<DesenlaceDeActivacion>;
-  /** SL-20 — el cambio de estado por nivel (hasta T4). */
-  async cambiarActivacion(
-    nivel: NivelGeografico,
-    id: string,
-    activo: boolean,
-    actorUsuarioId: string | null,
-  ): Promise<DesenlaceDeActivacion>;
-  async cambiarActivacion(
-    ...args: [string, boolean, string | null] | [NivelGeografico, string, boolean, string | null]
-  ): Promise<DesenlaceDeActivacion> {
-    if (args.length === 3) return this.cambiarActivacionNodo(args[0], args[1], args[2], null);
-    return this.cambiarActivacionNodo(args[1], args[2], args[3], profundidadDeNivel(args[0]));
-  }
-
-  private async cambiarActivacionNodo(
-    id: string,
-    activo: boolean,
-    actorUsuarioId: string | null,
-    profundidadEsperada: number | null,
   ): Promise<DesenlaceDeActivacion> {
     return this.prisma.$transaction(async (tx) => {
       const previo = await leerNodoPrevio(tx, id);
       if (previo === null) return "no_existe";
-      if (profundidadEsperada !== null && previo.profundidad !== profundidadEsperada) return "no_existe";
       if (previo.activo === activo) return "sin_cambio";
 
       await tx.nodoGeografico.update({ where: { id }, data: { activo } });
@@ -744,14 +594,11 @@ export class GeoRepository implements IGeoRepository, IGeoRepositoryDivisionPorN
   /**
    * La geografia del pais para `planificarDivision` (§5): sus tipos y sus nodos con la profundidad,
    * por `id` (orden estable de SL-20: `planificarDivision` se queda con el primero de dos iguales).
-   *
-   * Devuelve ademas la forma por nivel de SL-20 (`regla`, `arbol`), que `CargaDivisionService` lee
-   * hasta T4: misma consulta, sin un segundo viaje.
    */
-  async leerDivisionDePais(paisId: string): Promise<(DivisionPorProfundidadDePais & DivisionDePais) | null> {
+  async leerDivisionDePais(paisId: string): Promise<DivisionPorProfundidadDePais | null> {
     const pais = await this.prisma.pais.findUnique({
       where: { id: paisId },
-      select: { ...SELECT_REGLA, tiposDeNivel: { select: SELECT_TIPO } },
+      select: { tiposDeNivel: { select: SELECT_TIPO } },
     });
     if (pais === null) return null;
 
@@ -776,12 +623,7 @@ export class GeoRepository implements IGeoRepository, IGeoRepositoryDivisionPorN
       profundidad: n.profundidad,
     }));
 
-    return {
-      tipos: tiposOrdenados(pais.tiposDeNivel),
-      nodos,
-      regla: reglaDe(pais),
-      arbol: arbolPorNivel(nodos),
-    };
+    return { tipos: tiposOrdenados(pais.tiposDeNivel), nodos };
   }
 
   /**
@@ -801,37 +643,6 @@ export class GeoRepository implements IGeoRepository, IGeoRepositoryDivisionPorN
     paisId: string,
     plan: PlanDivisionPorProfundidad,
     actorUsuarioId: string | null,
-  ): Promise<ResumenCargaPorProfundidad>;
-  /** SL-20 — el plan por nivel (hasta T4): se traduce y el resumen vuelve por nivel. */
-  async importarDivision(
-    paisId: string,
-    plan: PlanDivision,
-    actorUsuarioId: string | null,
-  ): Promise<ResumenCarga>;
-  async importarDivision(
-    paisId: string,
-    plan: PlanDivision | PlanDivisionPorProfundidad,
-    actorUsuarioId: string | null,
-  ): Promise<ResumenCargaPorProfundidad | ResumenCarga> {
-    if (esPlanPorNivel(plan)) {
-      // El historial de la forma de SL-20 sigue con `creados` por nivel, como antes de SLT-46,
-      // hasta que T4 retire esta forma: el CSV de CR deja la misma fila que en SLT-45.
-      const r = await this.importarPorProfundidad(
-        paisId,
-        planPorProfundidad(plan),
-        actorUsuarioId,
-        creadosPorNivel,
-      );
-      return resumenPorNivel(r);
-    }
-    return this.importarPorProfundidad(paisId, plan, actorUsuarioId, (c) => c);
-  }
-
-  private async importarPorProfundidad(
-    paisId: string,
-    plan: PlanDivisionPorProfundidad,
-    actorUsuarioId: string | null,
-    creadosDelHistorial: (creados: Record<number, number>) => Record<string, number>,
   ): Promise<ResumenCargaPorProfundidad> {
     return this.prisma.$transaction(
       async (tx) => {
@@ -889,7 +700,7 @@ export class GeoRepository implements IGeoRepository, IGeoRepositoryDivisionPorN
               paisId,
               ...actor,
               detalle: {
-                creados: creadosDelHistorial(resumen.creados),
+                creados: resumen.creados,
                 existentes: resumen.existentes,
                 codigosCompletados,
               },
@@ -899,96 +710,6 @@ export class GeoRepository implements IGeoRepository, IGeoRepositoryDivisionPorN
         return resumen;
       },
       { timeout: TIMEOUT_IMPORTACION_MS },
-    );
-  }
-
-  // --- SL-20 por nivel: las lecturas que `GeografiaService` usa hasta T4 ---
-
-  /**
-   * SL-20 — el arbol de UN pais para el superadmin, en tres niveles. Sale del catalogo de ese pais
-   * (`dePais`), con el `where` por pais explicito: en plataforma no hay RLS que acote.
-   */
-  async listArbolDePais(paisId: string): Promise<ProvinciaPlataformaDTO[]> {
-    const catalogo = await this.catalogo().dePais(paisId);
-    const plano = (n: NodoDelCatalogo) => ({
-      id: n.id,
-      nombre: n.nombre,
-      codigo: n.codigoOficial,
-      activo: n.activo,
-    });
-    return hijosDe(catalogo, null, 1).map((p) => ({
-      ...plano(p),
-      cantones: hijosDe(catalogo, p.id, 2).map((c) => ({
-        ...plano(c),
-        distritos: hijosDe(catalogo, c.id, 3).map(plano),
-      })),
-    }));
-  }
-
-  /**
-   * SL-20 — el contexto del alta por nivel, desde `contextoDeAlta`. `contenedorId` es el PAIS en la
-   * provincia y el PADRE en canton y distrito; un padre de otra profundidad es «no existe», como
-   * cuando cada nivel era su tabla. La regla es la del pais (`validarCodigo` de SL-20).
-   */
-  async findHermanos(nivel: NivelGeografico, contenedorId: string): Promise<ContextoDeAlta | null> {
-    const contexto = await this.contextoDeAltaPorNivel(nivel, contenedorId);
-    if (contexto === null) return null;
-    const pais = await this.prisma.pais.findUnique({
-      where: { id: contexto.paisId },
-      select: SELECT_REGLA,
-    });
-    if (pais === null) return null;
-    return {
-      paisId: contexto.paisId,
-      regla: reglaDe(pais),
-      codigoPadre: contexto.codigoPadre,
-      hermanos: contexto.hermanos,
-    };
-  }
-
-  /** SL-20 — los hermanos de un nodo del nivel pedido, o `null` si no es de ese nivel. */
-  async findHermanosDeNodo(
-    nivel: NivelGeografico,
-    id: string,
-  ): Promise<{ id: string; nombre: string }[] | null> {
-    return this.hermanos(id, profundidadDeNivel(nivel));
-  }
-
-  private async contextoDeAltaPorNivel(
-    nivel: NivelGeografico,
-    contenedorId: string,
-  ): Promise<ContextoDeAltaDeNodo | null> {
-    const destino: DestinoDeAlta = nivel === "provincia" ? { paisId: contenedorId } : { padreId: contenedorId };
-    const contexto = await this.contextoDeAlta(destino);
-    if (contexto === null || contexto.profundidad !== profundidadDeNivel(nivel)) return null;
-    return contexto;
-  }
-
-  /** SL-20 — el alta por nivel: el tipo es el de la profundidad del nivel (P1). */
-  private async crearPorNivel(
-    nivel: NivelGeografico,
-    nombre: string,
-    padreId: string | null,
-    opciones: OpcionesDeAlta,
-    actorUsuarioId: string | null,
-  ): Promise<string> {
-    if (nivel !== "provincia" && padreId === null) throw new Error(`falta el padre para crear un ${nivel}`);
-    const contenedorId = nivel === "provincia" ? opciones.paisId : (padreId as string);
-    const contexto = await this.contextoDeAltaPorNivel(nivel, contenedorId);
-    if (contexto === null) throw new Error(`crear ${nivel}: el contenedor ${contenedorId} no existe`);
-    if (contexto.tipo === null) {
-      throw new Error(`crear ${nivel}: el pais ${contexto.paisId} no tiene tipo ${claveDeProfundidad(contexto.profundidad)}`);
-    }
-    return this.crearNodo(
-      {
-        paisId: opciones.paisId,
-        padreId: nivel === "provincia" ? null : padreId,
-        profundidad: contexto.profundidad,
-        tipoId: contexto.tipo.id,
-        nombre,
-        codigo: opciones.codigo,
-      },
-      actorUsuarioId,
     );
   }
 }

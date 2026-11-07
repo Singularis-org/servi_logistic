@@ -6,6 +6,7 @@ import type { PrismaClient } from "@prisma/client";
 import { comoPlataforma, conEmpresa } from "@/lib/db/contexto-empresa";
 import { CoberturaRepository } from "@/lib/repositories/CoberturaRepository";
 import { GeoRepository } from "@/lib/repositories/GeoRepository";
+import { arbolDeTresNiveles } from "@/app/(app)/plataforma/geografia/_components/arbol-de-tres-niveles";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import * as hoy from "@/scripts/geo-equivalencia/lecturas-de-hoy";
 import { comoApp, fijarEmpresa } from "@/tests/fabricas/organizaciones";
@@ -247,8 +248,10 @@ describeSiHayBase("SLT-44 T4.5 — las lecturas del catalogo dan lo mismo que la
       const r = await conEscenario(async (tx, e) => {
         const salida = [];
         for (const paisId of ["CR", "XA"]) {
-          const nuevo = await comoPlataforma("SLT-44", "test de R17", () =>
-            new GeoRepository(clienteConSavepoint(tx)).listArbolDePais(paisId),
+          // SLT-46 (T4): `listArbolDePais` se retiro; el arbol de tres niveles es ahora la proyeccion
+          // que pinta la pantalla del arbol de N niveles (`arbolDePais`).
+          const nuevo = await comoPlataforma("SLT-44", "test de R17", async () =>
+            arbolDeTresNiveles((await new GeoRepository(clienteConSavepoint(tx)).arbolDePais(paisId))?.raices ?? []),
           );
           const deHoy = await hoy.listArbolDePais(tx, paisId);
           salida.push({ paisId, nuevo, deHoy });

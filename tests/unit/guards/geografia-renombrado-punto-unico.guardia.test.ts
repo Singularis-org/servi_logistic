@@ -54,8 +54,11 @@ const ARBOL = path.join(RAIZ, "lib");
 /** El UNICO punto legal. */
 const PUNTO_UNICO = "lib/repositories/GeoRepository.ts";
 
-/** SLT-46: el cuerpo del renombre dentro del punto unico (al que delegan las dos firmas). */
-const CUERPO_DEL_RENOMBRE = "private async renombrarNodo(";
+/**
+ * SLT-46: el cuerpo del renombre dentro del punto unico. Desde T4 es el propio metodo publico: la
+ * firma por nivel que delegaba en un `renombrarNodo` privado se retiro.
+ */
+const CUERPO_DEL_RENOMBRE = "async renombrar(id: string,";
 
 /** El nodo, como delegado de Prisma. */
 const ESCRITURAS = /\b(nodoGeografico)\s*\??\.\s*(update|updateMany|upsert)\s*\(/g;
