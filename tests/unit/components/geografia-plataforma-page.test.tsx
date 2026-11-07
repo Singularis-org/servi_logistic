@@ -423,7 +423,7 @@ describe("R24, R25, R28, R48 — la carga CSV", () => {
   it("con una carga buena muestra el resumen con los nombres del país", async () => {
     await subir({
       status: "ok",
-      creados: { provincia: 1, canton: 2, distrito: 3 },
+      creados: { 1: 1, 2: 2, 3: 3 },
       existentes: 4,
       codigosCompletados: 5,
       avisos: [],

@@ -486,9 +486,10 @@ function ResultadoCarga({
         <div role="status" className="flex flex-col gap-1 rounded-md border border-border p-3 text-sm">
           <p className="font-medium">Carga hecha. Altas:</p>
           <ul className="list-disc pl-5">
-            <li>{`${etiquetas.provincia.plural}: ${resultado.creados.provincia}`}</li>
-            <li>{`${etiquetas.canton.plural}: ${resultado.creados.canton}`}</li>
-            <li>{`${etiquetas.distrito.plural}: ${resultado.creados.distrito}`}</li>
+            {/* SLT-46 (T4.2): `creados` llega por profundidad; hasta T6 se pintan las tres de siempre. */}
+            <li>{`${etiquetas.provincia.plural}: ${resultado.creados[1] ?? 0}`}</li>
+            <li>{`${etiquetas.canton.plural}: ${resultado.creados[2] ?? 0}`}</li>
+            <li>{`${etiquetas.distrito.plural}: ${resultado.creados[3] ?? 0}`}</li>
             <li>{`Ya existían: ${resultado.existentes}`}</li>
             <li>{`Códigos completados: ${resultado.codigosCompletados}`}</li>
           </ul>

@@ -1,5 +1,5 @@
 import { ROLES_PLATAFORMA } from "@/lib/auth/plataforma";
-import type { IGeoRepositoryDivisionPorNivel } from "@/lib/interfaces/repositories/IGeoRepository";
+import type { IGeoRepository } from "@/lib/interfaces/repositories/IGeoRepository";
 import type {
   ArchivoDivision,
   CargarDivisionServiceResult,
@@ -8,13 +8,11 @@ import type {
 import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
 import { parseSpreadsheet, type ParsedSpreadsheet } from "@/lib/parsers/spreadsheet";
 import {
-  COLUMNAS_DIVISION,
   DIVISION_MAX_BYTES,
   DIVISION_MAX_ERRORES,
   DIVISION_TOPE_DE_FILAS_CSV,
-  type FilaDivision,
 } from "@/lib/types/division-csv";
-import { planificarDivision } from "@/lib/utils/division-csv";
+import { filaDeRegistro, planificarDivision, revisarCabeceraDivision } from "@/lib/utils/division-csv";
 
 // SL-20 (design §5, §6; R24–R28) — la carga de la division geografica de un pais por CSV.
 //
@@ -24,17 +22,17 @@ import { planificarDivision } from "@/lib/utils/division-csv";
 // nada (R25).
 //
 // El rol lee `ROLES_PLATAFORMA` por import (guardia `superadmin-fuera-de-empresa`): una empresa
-// nunca carga geografia (R37).
+// nunca carga geografia (R37). SLT-46 (R39): antes de leer el archivo y antes de tocar la base.
+//
+// SLT-46 (design §4.3, §5; R30–R34): el pais tiene P tipos (2–10), y la cabecera exige
+// `nivel_<k>`/`codigo_nivel_<k>` de 1 a P. Como P sale de la base, la cabecera se revisa DESPUES de
+// leer la division del pais, y no antes como en SL-20; el resto del archivo (extension, tamaño,
+// UTF-8, parseo, numero de filas) sigue antes, sin leer nada. Para CR, P = 3: las seis columnas, los
+// mismos mensajes y los mismos avisos.
 const GESTION_ROLES = new Set<string>(ROLES_PLATAFORMA);
 
-/**
- * Lo que el servicio necesita del repositorio de geografia. SLT-46: la forma por nivel de SL-20
- * hasta que T4 pase este servicio a la carga por profundidad.
- */
-export type CargaDivisionRepo = Pick<
-  IGeoRepositoryDivisionPorNivel,
-  "leerDivisionDePais" | "importarDivision"
->;
+/** Lo que el servicio necesita del repositorio de geografia: la carga por profundidad (§4.4). */
+export type CargaDivisionRepo = Pick<IGeoRepository, "leerDivisionDePais" | "importarDivision">;
 
 type Rechazo = { status: "archivo_rechazado"; motivo: string };
 
@@ -48,14 +46,19 @@ export class CargaDivisionService implements ICargaDivisionService {
   ): Promise<CargarDivisionServiceResult> {
     if (!GESTION_ROLES.has(actor.rol)) return { status: "forbidden" };
 
-    const lectura = await leerArchivo(archivo);
-    if ("status" in lectura) return lectura;
-    const { filas, avisos } = lectura;
+    const hoja = await leerArchivo(archivo);
+    if ("status" in hoja) return hoja;
 
     const division = await this.repo.leerDivisionDePais(paisId);
     if (division === null) return { status: "not_found" };
 
-    const resultado = planificarDivision(filas, division.arbol, division.regla);
+    // R30: las columnas obligatorias son las de los P tipos del pais; las demas, aviso (R34).
+    const p = division.tipos.length;
+    const { faltan, avisos } = revisarCabeceraDivision(hoja.headers, p);
+    if (faltan.length > 0) return rechazo(`Faltan columnas obligatorias: ${faltan.join(", ")}.`);
+
+    const filas = hoja.rows.map((r, i) => filaDeRegistro(hoja.numerosDeFila[i], r, p));
+    const resultado = planificarDivision(filas, division.nodos, division.tipos);
     if ("errores" in resultado) {
       return {
         status: "invalido",
@@ -70,10 +73,11 @@ export class CargaDivisionService implements ICargaDivisionService {
   }
 }
 
-/** R28: del archivo a las filas, o el motivo por el que el archivo entero no sirve. */
-async function leerArchivo(
-  archivo: ArchivoDivision,
-): Promise<Rechazo | { filas: FilaDivision[]; avisos: string[] }> {
+/**
+ * R28: del archivo a la hoja leida, o el motivo por el que el archivo entero no sirve. Todo lo que no
+ * depende del pais: la cabecera, que si, la revisa `cargar` con los tipos del pais.
+ */
+async function leerArchivo(archivo: ArchivoDivision): Promise<Rechazo | ParsedSpreadsheet> {
   if (!/\.csv$/i.test(archivo.nombre.trim())) {
     return rechazo("El archivo tiene que ser .csv.");
   }
@@ -87,32 +91,10 @@ async function leerArchivo(
   const hoja = await parsear(texto);
   if ("status" in hoja) return hoja;
 
-  const faltan = COLUMNAS_DIVISION.filter((c) => !hoja.headers.includes(c));
-  if (faltan.length > 0) {
-    return rechazo(`Faltan columnas obligatorias: ${faltan.join(", ")}.`);
-  }
   if (hoja.rows.length > DIVISION_TOPE_DE_FILAS_CSV) {
     return rechazo(`El archivo tiene más de ${DIVISION_TOPE_DE_FILAS_CSV} filas de datos.`);
   }
-
-  // Decision 4 de SL-20: las columnas de mas no son un error; se ignoran y se dice.
-  const conocidas = new Set<string>(COLUMNAS_DIVISION);
-  const avisos = hoja.headers
-    .filter((h) => !conocidas.has(h))
-    .map((h) => `La columna «${h}» no es del formato y se ignoró.`);
-
-  const filas = hoja.rows.map(
-    (r, i): FilaDivision => ({
-      linea: hoja.numerosDeFila[i],
-      nivel1: r.nivel_1,
-      codigoNivel1: r.codigo_nivel_1,
-      nivel2: r.nivel_2,
-      codigoNivel2: r.codigo_nivel_2,
-      nivel3: r.nivel_3,
-      codigoNivel3: r.codigo_nivel_3,
-    }),
-  );
-  return { filas, avisos };
+  return hoja;
 }
 
 /**
