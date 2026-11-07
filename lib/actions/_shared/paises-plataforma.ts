@@ -2,6 +2,7 @@ import { getPrismaClient } from "@/lib/db/prisma-client";
 import type {
   IPaisService,
   ListarPaisesDisponiblesServiceResult,
+  ListarPaisesParaAltaServiceResult,
 } from "@/lib/interfaces/services/IPaisService";
 import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
 import { PaisRepository, type PaisPrismaClient } from "@/lib/repositories/PaisRepository";
@@ -29,4 +30,15 @@ export async function listarPaisesDisponibles(
   servicio: IPaisService = construirPaisService(),
 ): Promise<ListarPaisesDisponiblesServiceResult> {
   return servicio.listarDisponibles(actor);
+}
+
+/**
+ * SLT-81 (R20): lo mismo que `listarPaisesDisponibles`, más el prefijo y los tipos activos de cada
+ * país, para que el alta de empresa los muestre al elegirlo. Misma puerta (R37) y mismo contexto.
+ */
+export async function listarPaisesParaAlta(
+  actor: Actor,
+  servicio: IPaisService = construirPaisService(),
+): Promise<ListarPaisesParaAltaServiceResult> {
+  return servicio.listarDisponiblesParaAlta(actor);
 }

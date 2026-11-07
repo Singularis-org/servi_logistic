@@ -20,10 +20,15 @@ import type {
   RenombrarNodoGeograficoServiceResult,
 } from "@/lib/interfaces/services/IGeografiaService";
 import type {
+  ActualizarDatosPaisServiceResult,
+  CambiarActivoTipoDocumentoServiceResult,
   CambiarDisponibilidadPaisServiceResult,
   CrearPaisServiceResult,
+  CrearTipoDocumentoServiceResult,
+  EditarTipoDocumentoServiceResult,
   IPaisService,
   ListarPaisesServiceResult,
+  ListarTiposDocumentoServiceResult,
 } from "@/lib/interfaces/services/IPaisService";
 import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
 import { esViolacionDeUnico } from "@/lib/repositories/_shared/prisma-unique";
@@ -174,6 +179,95 @@ export async function cambiarDisponibilidadPaisAction(
     return await enPlataforma(() => servicio.cambiarDisponible(parsed.data, p.actor));
   } catch (error) {
     return registrarFallo("disponibilidad de pais", `pais=${parsed.data.id}`, error);
+  }
+}
+
+// ── Datos del país (SLT-81) ──────────────────────────────────────────────────────────────────────
+//
+// design §4.4: la entrada la valida el servicio (sus schemas viven en `lib/types/pais.ts` y el
+// servicio es la segunda puerta, R1), como en `crearPaisAction`. Un único violado ya vuelve del
+// repositorio como `conflict`; cualquier otro fallo de la base es `error` con log.
+
+export type ActualizarDatosPaisActionResult = ActualizarDatosPaisServiceResult | SinPermiso | ErrorInterno;
+
+/** R10–R12, R26. `requiere_confirmacion` vuelve tal cual: la pantalla reenvía con `empresasConfirmadas`. */
+export async function actualizarDatosPaisAction(
+  input: unknown,
+  deps: GeografiaPlataformaDeps = {},
+): Promise<ActualizarDatosPaisActionResult> {
+  const p = await puerta(deps);
+  if ("corte" in p) return p.corte;
+  const servicio = deps.paisService ?? construirPaisService();
+  try {
+    return await enPlataforma(() => servicio.actualizarDatos(input, p.actor));
+  } catch (error) {
+    return registrarFallo("datos de pais", "-", error);
+  }
+}
+
+export type ListarTiposDocumentoActionResult = ListarTiposDocumentoServiceResult | ErrorDeValidacion | SinPermiso;
+
+/** R2: los tipos del país, activos e inactivos. Es la carga de la pantalla: su fallo sube a la página. */
+export async function listarTiposDocumentoAction(
+  input: unknown,
+  deps: GeografiaPlataformaDeps = {},
+): Promise<ListarTiposDocumentoActionResult> {
+  const p = await puerta(deps);
+  if ("corte" in p) return p.corte;
+  const parsed = arbolDePaisSchema.safeParse(input);
+  if (!parsed.success) return errorDeValidacion(parsed.error);
+  const servicio = deps.paisService ?? construirPaisService();
+  return enPlataforma(() => servicio.listarTiposDocumento(parsed.data.paisId, p.actor));
+}
+
+export type CrearTipoDocumentoActionResult = CrearTipoDocumentoServiceResult | SinPermiso | ErrorInterno;
+
+/** R9, R13. */
+export async function crearTipoDocumentoAction(
+  input: unknown,
+  deps: GeografiaPlataformaDeps = {},
+): Promise<CrearTipoDocumentoActionResult> {
+  const p = await puerta(deps);
+  if ("corte" in p) return p.corte;
+  const servicio = deps.paisService ?? construirPaisService();
+  try {
+    return await enPlataforma(() => servicio.crearTipoDocumento(input, p.actor));
+  } catch (error) {
+    return registrarFallo("alta de tipo de documento", "-", error);
+  }
+}
+
+export type EditarTipoDocumentoActionResult = EditarTipoDocumentoServiceResult | SinPermiso | ErrorInterno;
+
+/** R9, R13, R14. */
+export async function editarTipoDocumentoAction(
+  input: unknown,
+  deps: GeografiaPlataformaDeps = {},
+): Promise<EditarTipoDocumentoActionResult> {
+  const p = await puerta(deps);
+  if ("corte" in p) return p.corte;
+  const servicio = deps.paisService ?? construirPaisService();
+  try {
+    return await enPlataforma(() => servicio.editarTipoDocumento(input, p.actor));
+  } catch (error) {
+    return registrarFallo("edicion de tipo de documento", "-", error);
+  }
+}
+
+export type CambiarActivoTipoDocumentoActionResult = CambiarActivoTipoDocumentoServiceResult | SinPermiso | ErrorInterno;
+
+/** R13, R15. */
+export async function cambiarActivoTipoDocumentoAction(
+  input: unknown,
+  deps: GeografiaPlataformaDeps = {},
+): Promise<CambiarActivoTipoDocumentoActionResult> {
+  const p = await puerta(deps);
+  if ("corte" in p) return p.corte;
+  const servicio = deps.paisService ?? construirPaisService();
+  try {
+    return await enPlataforma(() => servicio.cambiarActivoTipoDocumento(input, p.actor));
+  } catch (error) {
+    return registrarFallo("activacion de tipo de documento", "-", error);
   }
 }
 
