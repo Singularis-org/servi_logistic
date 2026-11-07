@@ -36,6 +36,8 @@ import {
   crearNodoGeograficoSchema,
   nodoGeograficoSchema,
   renombrarNodoGeograficoSchema,
+  type AltaDeNodoInput,
+  type CrearNodoGeograficoInput,
 } from "@/lib/types/geografia-nodo";
 import { cambiarDisponibilidadPaisSchema, CODIGO_PAIS } from "@/lib/types/pais";
 
@@ -116,6 +118,17 @@ function registrarFallo(operacion: string, contexto: string, error: unknown): Er
 
 function enPlataforma<T>(fn: () => Promise<T>): Promise<T> {
   return comoPlataforma(FICHA, MOTIVO, fn);
+}
+
+/**
+ * SLT-46 (T4.1): el servicio ya trabaja por nodo (`{paisId}` o `{padreId}`, sin `nivel`), pero el borde
+ * y la pantalla siguen con los esquemas por nivel de SL-20 hasta T4.4/T6. La provincia cuelga del
+ * pais; el canton y el distrito, de su padre. El `nivel` se queda aqui para el log.
+ */
+function altaPorNodo(input: CrearNodoGeograficoInput): AltaDeNodoInput {
+  const { nombre, codigo } = input;
+  if (input.nivel === "provincia") return { paisId: input.paisId, nombre, codigo };
+  return { padreId: input.nivel === "canton" ? input.provinciaId : input.cantonId, nombre, codigo };
 }
 
 // ── Países ───────────────────────────────────────────────────────────────────────────────────────
@@ -219,7 +232,7 @@ export async function crearNodoAction(
   if (!parsed.success) return errorDeValidacion(parsed.error);
   const servicio = deps.geografiaService ?? construirGeografiaService();
   try {
-    return await enPlataforma(() => servicio.crear(parsed.data, p.actor));
+    return await enPlataforma(() => servicio.crear(altaPorNodo(parsed.data), p.actor));
   } catch (error) {
     if (esViolacionDeUnico(error)) return { status: "conflict" };
     return registrarFallo("alta de nodo", `nivel=${parsed.data.nivel}`, error);
@@ -245,7 +258,8 @@ export async function renombrarNodoAction(
   if (!parsed.success) return errorDeValidacion(parsed.error);
   const servicio = deps.geografiaService ?? construirGeografiaService();
   try {
-    return await enPlataforma(() => servicio.renombrar(parsed.data, p.actor));
+    const { id, nombre } = parsed.data;
+    return await enPlataforma(() => servicio.renombrar({ id, nombre }, p.actor));
   } catch (error) {
     if (esViolacionDeUnico(error)) return { status: "conflict" };
     return registrarFallo("renombrado de nodo", `nivel=${parsed.data.nivel}`, error);
@@ -272,7 +286,8 @@ export async function cambiarActivacionNodoAction(
   if (!parsed.success) return errorDeValidacion(parsed.error);
   const servicio = deps.geografiaService ?? construirGeografiaService();
   try {
-    return await enPlataforma(() => servicio.cambiarActivacion(parsed.data, p.actor));
+    const { id, activo } = parsed.data;
+    return await enPlataforma(() => servicio.cambiarActivacion({ id, activo }, p.actor));
   } catch (error) {
     return registrarFallo(parsed.data.activo ? "reactivacion de nodo" : "retiro de nodo", `nivel=${parsed.data.nivel}`, error);
   }
@@ -298,7 +313,8 @@ export async function contarOrdenesSinEntregarAction(
   if (!parsed.success) return errorDeValidacion(parsed.error);
   const servicio = deps.geografiaService ?? construirGeografiaService();
   try {
-    return await enPlataforma(() => servicio.contarOrdenesSinEntregar(parsed.data, p.actor));
+    const { id } = parsed.data;
+    return await enPlataforma(() => servicio.contarOrdenesSinEntregar({ id }, p.actor));
   } catch (error) {
     return registrarFallo("conteo de ordenes", `nivel=${parsed.data.nivel}`, error);
   }

@@ -477,6 +477,7 @@ export class GeoRepository implements IGeoRepository, IGeoRepositoryDivisionPorN
         paisId: pais.id,
         profundidad: 1,
         tipo: tipoDeProfundidad(pais.tiposDeNivel, 1),
+        tipoDelPadre: null,
         codigoPadre: null,
         hermanos: pais.nodosGeograficos,
       };
@@ -498,6 +499,7 @@ export class GeoRepository implements IGeoRepository, IGeoRepositoryDivisionPorN
       paisId: padre.paisId,
       profundidad,
       tipo: tipoDeProfundidad(padre.pais.tiposDeNivel, profundidad),
+      tipoDelPadre: tipoDeProfundidad(padre.pais.tiposDeNivel, padre.profundidad),
       codigoPadre: padre.codigoOficial,
       hermanos: padre.hijos,
     };

@@ -40,6 +40,11 @@ export interface ContextoDeAltaDeNodo {
   paisId: string;
   profundidad: number;
   tipo: TipoNivelDTO | null;
+  /**
+   * El tipo del padre (`null` en una raiz): lo nombra el rechazo de R15, «Este país no tiene un nivel
+   * por debajo de <tipo del padre>». Sale de la misma lectura de los tipos del pais.
+   */
+  tipoDelPadre: TipoNivelDTO | null;
   /** `null` en una raiz o si el padre no tiene codigo. */
   codigoPadre: string | null;
   hermanos: { id: string; nombre: string }[];

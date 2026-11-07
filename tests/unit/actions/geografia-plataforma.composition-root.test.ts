@@ -61,7 +61,11 @@ beforeEach(() => {
 describe("SL-20 — cada action del superadmin, sin servicio inyectado, llega al cliente real", () => {
   it("R31: el conteo usa el repositorio de órdenes (el SEGUNDO argumento del root)", async () => {
     // El canton c-1 (profundidad 2) de CR, con un distrito d-1 debajo.
-    nodoGeograficoFindUnique.mockResolvedValueOnce({ paisId: "CR", profundidad: 2 });
+    // SLT-46 (R20): el servicio lee primero la profundidad del nodo (la misma consulta) para saber
+    // que es un canton; luego el repositorio de ordenes vuelve a leerlo.
+    nodoGeograficoFindUnique
+      .mockResolvedValueOnce({ paisId: "CR", profundidad: 2 })
+      .mockResolvedValueOnce({ paisId: "CR", profundidad: 2 });
     const nodo = { tipoId: "t", nombreNormalizado: "", codigoOficial: null };
     nodoGeograficoFindMany.mockResolvedValueOnce([
       { ...nodo, id: "p-1", padreId: null, profundidad: 1, nombre: "P" },
@@ -83,8 +87,11 @@ describe("SL-20 — cada action del superadmin, sin servicio inyectado, llega al
   });
 
   it("el árbol de un país lee las provincias de ESE país", async () => {
+    // SLT-46 (R21): el árbol de N niveles mira antes que el país exista; un país sin nodos ni tipos
+    // sigue siendo un árbol vacío, ahora con la forma `{tipos, raices}`.
+    paisFindUnique.mockResolvedValueOnce({ id: "XA" } as unknown as { nombre: string });
     const r = await acciones.arbolDePaisAction({ paisId: "XA" }, deps);
-    expect(r).toEqual({ status: "ok", provincias: [] });
+    expect(r).toEqual({ status: "ok", tipos: [], raices: [] });
     expect(nodoGeograficoFindMany.mock.calls[0][0].where).toEqual({ paisId: "XA" });
     expect(tipoNivelFindMany.mock.calls[0][0].where).toEqual({ paisId: "XA" });
   });

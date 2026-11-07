@@ -199,7 +199,8 @@ describe("SL-20/R32 — el servicio corre dentro de `comoPlataforma` y recibe la
     const r = await crearNodoAction({ nivel: "distrito", nombre: "  Cabagra  ", cantonId: "c1", codigo: "60305" }, deps);
 
     expect(r).toEqual({ status: "ok", id: "n1", nivel: "distrito" });
-    expect(crear).toHaveBeenCalledWith({ nivel: "distrito", nombre: "Cabagra", cantonId: "c1", codigo: "60305" }, SUPERADMIN);
+    // SLT-46 (T4.1): el servicio recibe el alta por nodo (`padreId`); el borde sigue con el esquema por nivel.
+    expect(crear).toHaveBeenCalledWith({ padreId: "c1", nombre: "Cabagra", codigo: "60305" }, SUPERADMIN);
     expect(contexto).toMatchObject({ tipo: "plataforma", ficha: "SL-20" });
   });
 

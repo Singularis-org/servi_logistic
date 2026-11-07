@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import type { ProvinciaPlataformaDTO } from "@/lib/types/geografia-nodo";
+import type { NodoArbolPlataformaDTO, ProvinciaPlataformaDTO } from "@/lib/types/geografia-nodo";
 import type { PaisDTO } from "@/lib/types/pais";
 
 vi.mock("@/app/_components/LogoutButton", () => ({
@@ -104,6 +104,26 @@ const ARBOL: ProvinciaPlataformaDTO[] = [
   },
 ];
 
+// SLT-46 (T4.1): la action devuelve el árbol de N niveles (`raices`); la página lo proyecta a los tres
+// niveles de `ARBOL`. Mismo árbol, en la forma nueva del contrato.
+const RAICES: NodoArbolPlataformaDTO[] = ARBOL.map((p) => ({
+  id: p.id,
+  nombre: p.nombre,
+  codigo: p.codigo,
+  activo: p.activo,
+  profundidad: 1,
+  tipoId: "t1",
+  hijos: p.cantones.map((c) => ({
+    id: c.id,
+    nombre: c.nombre,
+    codigo: c.codigo,
+    activo: c.activo,
+    profundidad: 2,
+    tipoId: "t2",
+    hijos: c.distritos.map((d) => ({ ...d, profundidad: 3, tipoId: "t3", hijos: [] })),
+  })),
+}));
+
 function actorDe(rol: string) {
   return { usuarioId: "u-1", rol };
 }
@@ -116,7 +136,7 @@ async function montar(paisPedido?: string) {
 beforeEach(() => {
   vi.mocked(resolveActorFromSession).mockResolvedValue(actorDe("superadmin") as never);
   acciones.listarPaisesAction.mockResolvedValue({ status: "ok", paises: [HONDURAS, GUATEMALA] });
-  acciones.arbolDePaisAction.mockResolvedValue({ status: "ok", provincias: ARBOL });
+  acciones.arbolDePaisAction.mockResolvedValue({ status: "ok", tipos: [], raices: RAICES });
 });
 
 afterEach(() => {
@@ -454,7 +474,7 @@ describe("Decisión 13 — estados vacío y de error, y foco del alta", () => {
   });
 
   it("un país sin división muestra el estado vacío con los nombres del país y sin barra de búsqueda", async () => {
-    acciones.arbolDePaisAction.mockResolvedValue({ status: "ok", provincias: [] });
+    acciones.arbolDePaisAction.mockResolvedValue({ status: "ok", tipos: [], raices: [] });
     await montar("GT");
 
     expect(screen.getByText("Este país aún no tiene división cargada.")).toBeInTheDocument();

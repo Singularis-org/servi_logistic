@@ -154,7 +154,8 @@ describeSiHayBase("SL-20/R32 — el superadmin sin empresa gestiona un país ent
       const carga = await cargarDivisionAction(archivo(CSV), deps);
       const arbol = await arbolDePaisAction({ paisId: PAIS }, deps);
       if (arbol.status !== "ok") throw new Error(`árbol: ${arbol.status}`);
-      const comuna = arbol.provincias[0].cantones[0];
+      // SLT-46 (T4.1): el árbol llega en N niveles; la comuna es el primer hijo de la primera raíz.
+      const comuna = arbol.raices[0].hijos[0];
       const alta = await crearNodoAction({ nivel: "distrito", nombre: "Barrio Tres", cantonId: comuna.id, codigo: "N1A3" }, deps);
       if (alta.status !== "ok") throw new Error(`alta: ${alta.status}`);
       const renombrado = await renombrarNodoAction({ nivel: "distrito", id: alta.id, nombre: "Barrio Tercero" }, deps);
@@ -210,7 +211,7 @@ describeSiHayBase("SL-20/R32 — el superadmin sin empresa gestiona un país ent
     const distrito = await base.nodoGeografico.findFirst({ where: { profundidad: 3 }, select: { id: true } });
     if (distrito === null) throw new Error("la base no tiene ningun distrito para la contraprueba");
     await expect(
-      servicio.contarOrdenesSinEntregar({ nivel: "distrito", id: distrito.id }, { usuarioId: superadminId ?? "", rol: "superadmin" }),
+      servicio.contarOrdenesSinEntregar({ id: distrito.id }, { usuarioId: superadminId ?? "", rol: "superadmin" }),
     ).rejects.toBeInstanceOf(EmpresaNoResuelta);
   });
 });

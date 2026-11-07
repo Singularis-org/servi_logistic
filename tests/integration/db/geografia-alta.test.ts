@@ -100,21 +100,21 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
     it("provincia, canton y distrito: las tres filas existen bajo su padre", async () => {
       await conCorpus(async ({ s, service, tx }) => {
         const p = await service.crear(
-          { nivel: "provincia", nombre: `Nueva prov ${SUFIJO}`, paisId: "CR" },
+          { paisId: "CR", nombre: `Nueva prov ${SUFIJO}` },
           SUPERADMIN,
         );
         expect(p.status).toBe("ok");
         if (p.status !== "ok") throw new Error("el alta de provincia no fue ok");
 
         const c = await service.crear(
-          { nivel: "canton", nombre: `Nuevo canton ${SUFIJO}`, provinciaId: p.id },
+          { padreId: p.id, nombre: `Nuevo canton ${SUFIJO}` },
           SUPERADMIN,
         );
         expect(c.status).toBe("ok");
         if (c.status !== "ok") throw new Error("el alta de canton no fue ok");
 
         const d = await service.crear(
-          { nivel: "distrito", nombre: `Nuevo distrito ${SUFIJO}`, cantonId: c.id },
+          { padreId: c.id, nombre: `Nuevo distrito ${SUFIJO}` },
           SUPERADMIN,
         );
         expect(d.status).toBe("ok");
@@ -151,7 +151,7 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
     it("⭑ el alta es `ok`: no se bloquea por el estado del padre", async () => {
       await conCorpus(async ({ s, service, tx }) => {
         const r = await service.crear(
-          { nivel: "distrito", nombre: `Bajo canton retirado ${SUFIJO}`, cantonId: s.cantonOff },
+          { padreId: s.cantonOff, nombre: `Bajo canton retirado ${SUFIJO}` },
           SUPERADMIN,
         );
         expect(r.status).toBe("ok");
@@ -203,7 +203,7 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
         const antes = await tx.distrito.count({ where: { cantonId: s.canton } });
 
         const r = await service.crear(
-          { nivel: "distrito", nombre: `san jose ${SUFIJO}`, cantonId: s.canton },
+          { padreId: s.canton, nombre: `san jose ${SUFIJO}` },
           SUPERADMIN,
         );
 
@@ -218,7 +218,7 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
         await tx.distrito.update({ where: { id }, data: { activo: false } });
 
         const r = await service.crear(
-          { nivel: "distrito", nombre: `CABAGRA ${SUFIJO}`, cantonId: s.canton },
+          { padreId: s.canton, nombre: `CABAGRA ${SUFIJO}` },
           SUPERADMIN,
         );
         expect(r).toEqual({ status: "conflict" });
@@ -229,7 +229,7 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
       await conCorpus(async ({ s, geo, service }) => {
         await geo.crear("distrito", `Cabagra ${SUFIJO}`, s.canton, ALTA_CR, null);
         const r = await service.crear(
-          { nivel: "distrito", nombre: `Cabagra ${SUFIJO}`, cantonId: s.cantonOff },
+          { padreId: s.cantonOff, nombre: `Cabagra ${SUFIJO}` },
           SUPERADMIN,
         );
         expect(r.status).toBe("ok");
@@ -305,9 +305,8 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
         const antes = await tx.distrito.count();
         const r = await service.crear(
           {
-            nivel: "distrito",
+            padreId: "00000000-0000-0000-0000-000000000000",
             nombre: `Huerfano ${SUFIJO}`,
-            cantonId: "00000000-0000-0000-0000-000000000000",
           },
           SUPERADMIN,
         );
@@ -326,13 +325,13 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
       await conCorpus(async ({ service, tx }) => {
         await crearPaisDePrueba(tx, "XA");
         const enCR = await service.crear(
-          { nivel: "provincia", nombre: `Central ${SUFIJO}`, paisId: "CR" },
+          { paisId: "CR", nombre: `Central ${SUFIJO}` },
           SUPERADMIN,
         );
         expect(enCR.status).toBe("ok");
 
         const enXA = await service.crear(
-          { nivel: "provincia", nombre: `CENTRAL ${SUFIJO}`, paisId: "XA" },
+          { paisId: "XA", nombre: `CENTRAL ${SUFIJO}` },
           SUPERADMIN,
         );
         expect(enXA.status).toBe("ok");
@@ -342,7 +341,7 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
 
         expect(
           await service.crear(
-            { nivel: "provincia", nombre: `central ${SUFIJO}`, paisId: "XA" },
+            { paisId: "XA", nombre: `central ${SUFIJO}` },
             SUPERADMIN,
           ),
         ).toEqual({ status: "conflict" });
@@ -353,7 +352,7 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
       await conCorpus(async ({ service, tx }) => {
         const antes = await tx.provincia.count();
         const r = await service.crear(
-          { nivel: "provincia", nombre: `Huerfana ${SUFIJO}`, paisId: "XZ" },
+          { paisId: "XZ", nombre: `Huerfana ${SUFIJO}` },
           SUPERADMIN,
         );
         expect(r).toEqual({ status: "not_found" });
@@ -369,7 +368,7 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
           select: { id: true },
         });
         const r = await service.crear(
-          { nivel: "canton", nombre: `Comuna ${SUFIJO}`, provinciaId: p.id },
+          { padreId: p.id, nombre: `Comuna ${SUFIJO}` },
           SUPERADMIN,
         );
         if (r.status !== "ok") throw new Error(`el alta no fue ok: ${r.status}`);
@@ -410,7 +409,7 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
         await tx.provincia.update({ where: { id: p.id }, data: { codigoDta: libre } });
 
         const r = await service.crear(
-          { nivel: "canton", nombre: `Canton cod ${SUFIJO}`, provinciaId: p.id, codigo: `${libre}01` },
+          { padreId: p.id, nombre: `Canton cod ${SUFIJO}`, codigo: `${libre}01` },
           SUPERADMIN,
         );
         if (r.status !== "ok") throw new Error(`el alta no fue ok: ${r.status}`);
@@ -422,7 +421,7 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
     it("CR: un codigo que no cumple la regla es `validation_error` y no crea nada", async () => {
       await conCorpus(async ({ s, service, tx }) => {
         const r = await service.crear(
-          { nivel: "distrito", nombre: `Mal codigo ${SUFIJO}`, cantonId: s.canton, codigo: "123" },
+          { padreId: s.canton, nombre: `Mal codigo ${SUFIJO}`, codigo: "123" },
           SUPERADMIN,
         );
         expect(r.status).toBe("validation_error");

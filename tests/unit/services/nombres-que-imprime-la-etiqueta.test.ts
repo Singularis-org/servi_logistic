@@ -252,16 +252,26 @@ function repoGeo(): IGeoRepository {
     listDistritosLite: vi.fn(async () => []),
     listGeografiaLitePorZona: vi.fn(async () => ({ provincias: [], cantones: [], distritos: [] })),
     listArbol: vi.fn(async () => []),
-    // SL-20: el contexto del alta (pais sin regla de codigo, sin hermanos).
-    findHermanos: vi.fn(async () => ({
+    // SLT-46: el contexto del alta por nodo (tipo sin regla de codigo, sin hermanos).
+    contextoDeAlta: vi.fn(async () => ({
       paisId: "XA",
-      regla: { digitosCodigoNivel1: null, digitosCodigoNivel2: null, digitosCodigoNivel3: null },
+      profundidad: 1,
+      tipo: {
+        id: "t1",
+        clave: "nivel_1",
+        profundidad: 1,
+        nombreSingular: "Región",
+        nombrePlural: "Regiones",
+        digitosCodigo: null,
+        codigoHeredaPrefijo: false,
+      },
+      tipoDelPadre: null,
       codigoPadre: null,
       hermanos: [],
     })),
     crear: vi.fn(async () => "id-nuevo"),
     cambiarActivacion: vi.fn(async () => "cambiado" as const),
-    findHermanosDeNodo: vi.fn(async () => [] as { id: string; nombre: string }[] | null),
+    hermanosDeNodo: vi.fn(async () => [] as { id: string; nombre: string }[] | null),
     renombrar: vi.fn(async () => "renombrado" as const),
   } as unknown as IGeoRepository;
 }
@@ -281,17 +291,17 @@ describe("392 — los nombres de la GEOGRAFIA, que la 375 hizo renombrables", ()
   });
 
   it("alta de PROVINCIA con un caracter irreparable: `validation_error`, sin leer ni escribir", async () => {
-    const res = await service.crear({ nivel: "provincia", nombre: NOMBRE_EMOJI, paisId: "XA" }, SUPERADMIN);
+    const res = await service.crear({ paisId: "XA", nombre: NOMBRE_EMOJI }, SUPERADMIN);
 
     expect(res).toEqual({ status: "validation_error", fieldErrors: { nombre: [MSG_EMOJI] } });
     expect(repo.crear).not.toHaveBeenCalled();
     // Ni siquiera se consulta a los hermanos: la puerta va antes de la primera consulta.
-    expect(repo.findHermanos).not.toHaveBeenCalled();
+    expect(repo.contextoDeAlta).not.toHaveBeenCalled();
   });
 
   it("alta de CANTON con un caracter reparable: `validation_error` con la sugerencia", async () => {
     const res = await service.crear(
-      { nivel: "canton", nombre: NOMBRE_DOUBLE_STRUCK, provinciaId: "p1" },
+      { padreId: "p1", nombre: NOMBRE_DOUBLE_STRUCK },
       SUPERADMIN,
     );
 
@@ -304,7 +314,7 @@ describe("392 — los nombres de la GEOGRAFIA, que la 375 hizo renombrables", ()
 
   it("alta de DISTRITO con un caracter irreparable: `validation_error`", async () => {
     const res = await service.crear(
-      { nivel: "distrito", nombre: NOMBRE_EMOJI, cantonId: "c1" },
+      { padreId: "c1", nombre: NOMBRE_EMOJI },
       SUPERADMIN,
     );
 
@@ -314,18 +324,18 @@ describe("392 — los nombres de la GEOGRAFIA, que la 375 hizo renombrables", ()
 
   it("RENOMBRAR un distrito a un nombre no imprimible: `validation_error` y no se renombra", async () => {
     const res = await service.renombrar(
-      { nivel: "distrito", id: "d1", nombre: NOMBRE_EMOJI },
+      { id: "d1", nombre: NOMBRE_EMOJI },
       SUPERADMIN,
     );
 
     expect(res).toEqual({ status: "validation_error", fieldErrors: { nombre: [MSG_EMOJI] } });
     expect(repo.renombrar).not.toHaveBeenCalled();
-    expect(repo.findHermanosDeNodo).not.toHaveBeenCalled();
+    expect(repo.hermanosDeNodo).not.toHaveBeenCalled();
   });
 
   it("RENOMBRAR a un nombre reparable: tampoco se renombra; se devuelve la sugerencia", async () => {
     const res = await service.renombrar(
-      { nivel: "canton", id: "c1", nombre: NOMBRE_DOUBLE_STRUCK },
+      { id: "c1", nombre: NOMBRE_DOUBLE_STRUCK },
       SUPERADMIN,
     );
 
@@ -337,11 +347,11 @@ describe("392 — los nombres de la GEOGRAFIA, que la 375 hizo renombrables", ()
   });
 
   it("un nombre imprimible sigue dando de alta y renombrando igual que antes", async () => {
-    expect((await service.crear({ nivel: "provincia", nombre: "San José", paisId: "XA" }, SUPERADMIN)).status).toBe(
+    expect((await service.crear({ paisId: "XA", nombre: "San José" }, SUPERADMIN)).status).toBe(
       "ok",
     );
     expect(
-      (await service.renombrar({ nivel: "distrito", id: "d1", nombre: "Purral" }, SUPERADMIN)).status,
+      (await service.renombrar({ id: "d1", nombre: "Purral" }, SUPERADMIN)).status,
     ).toBe("ok");
     expect(repo.crear).toHaveBeenCalledTimes(1);
     expect(repo.renombrar).toHaveBeenCalledTimes(1);
@@ -350,7 +360,7 @@ describe("392 — los nombres de la GEOGRAFIA, que la 375 hizo renombrables", ()
   it.each(["adminTienda", "maestro"] as const)(
     "el rol manda ANTES que el nombre: `%s` con nombre malo recibe `forbidden`",
     async (rol) => {
-      const res = await service.crear({ nivel: "provincia", nombre: NOMBRE_EMOJI, paisId: "XA" }, { usuarioId: "x", rol });
+      const res = await service.crear({ paisId: "XA", nombre: NOMBRE_EMOJI }, { usuarioId: "x", rol });
 
       expect(res).toEqual({ status: "forbidden" });
     },
@@ -371,7 +381,7 @@ describe("392/R1 — las cinco escrituras comparten definicion Y redaccion", () 
     );
     const rZona = await new ZonaService(zonas).crear(crearZona(NOMBRE_DOUBLE_STRUCK), MAESTRO);
     const rGeo = await new GeografiaService(geo, repoOrdenes()).renombrar(
-      { nivel: "distrito", id: "d1", nombre: NOMBRE_DOUBLE_STRUCK },
+      { id: "d1", nombre: NOMBRE_DOUBLE_STRUCK },
       SUPERADMIN,
     );
 

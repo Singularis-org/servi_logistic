@@ -35,6 +35,8 @@ import {
   type EstadoGeografico,
 } from "@/app/(app)/configuracion/_shared/geografia-estado-label";
 
+import { arbolDeTresNiveles } from "./arbol-de-tres-niveles";
+
 // FICHA 374/375 → SL-20 (design §8) — EL ÁRBOL EDITABLE DE LA GEOGRAFÍA DE UN PAÍS, del superadmin.
 //
 // Movido desde `/configuracion/geografia` y adaptado:
@@ -138,7 +140,7 @@ export function GeografiaAdminModule({
     try {
       const res = await arbolDePaisAction({ paisId });
       if (res.status === "ok") {
-        setProvincias(res.provincias);
+        setProvincias(arbolDeTresNiveles(res.raices));
         setCargaError(false);
       } else {
         setCargaError(true);
