@@ -43,21 +43,21 @@ Montado por SLT-43/44/45/65/71 en esta rama. Se usa tal cual; ninguna task lo vu
 
 ## T1 — Tipos y utilidades puras (depende de T0.1)
 
-- [ ] **T1.1** [P] `validarCodigoDeTipo` en `lib/utils/codigo-geografico.ts` (§4.5). La tabla de casos
+- [x] **T1.1** [P] `validarCodigoDeTipo` en `lib/utils/codigo-geografico.ts` (§4.5). La tabla de casos
   de CR de `tests/unit/utils/codigo-geografico.test.ts` se corre también contra la función nueva. (R17)
   *Hecho:* mismos resultados para CR; tipo sin dígitos acepta 1–20 sin espacios.
-- [ ] **T1.2** [P] Esquemas y DTO de §4.1 y §4.6 en `lib/types/geografia-nodo.ts` y `lib/types/pais.ts`
+- [x] **T1.2** [P] Esquemas y DTO de §4.1 y §4.6 en `lib/types/geografia-nodo.ts` y `lib/types/pais.ts`
   (`crearPaisSchema` con 2–10 tipos, `renombrarTipoNivelSchema`, `agregarNivelPaisSchema`). (R22, R24,
   R49)
   *Hecho:* `tests/unit/types/geografia-nodo.test.ts` y un test de los esquemas de país cubren `padreId`
   rechazado en renombre/estado, 2 y 10 tipos aceptados, 1 y 11 rechazados, nombres fuera de 2–40 en el
   alta y en agregar nivel.
-- [ ] **T1.3** `lib/types/division-csv.ts` y `planificarDivision` a P profundidades, con cabeceras
+- [x] **T1.3** `lib/types/division-csv.ts` y `planificarDivision` a P profundidades, con cabeceras
   neutras `nivel_<k>`/`codigo_nivel_<k>` (§5). (R30, R32, R34)
   *Hecho:* `tests/unit/utils/division-csv.test.ts`: los casos de SL-20 con P = 3 dan lo mismo
   (traducción 1/2/3 ↔ provincia/canton/distrito); P = 2 y P = 4; hueco → error de línea; columnas de
   más → aviso.
-- [ ] **T1.4** [P] Respaldo del nivel 3 vacío en `etiquetasDePais` (`lib/types/pais.ts`, §2.4), con
+- [x] **T1.4** [P] Respaldo del nivel 3 vacío en `etiquetasDePais` (`lib/types/pais.ts`, §2.4), con
   JSDoc de la convención `''`. Con el nivel 3 vacío devuelve la etiqueta del nivel 2 (**P10**). (R51)
   *Hecho:* `tests/unit/types/pais-etiquetas.test.ts`: nivel 3 vacío → etiqueta del nivel 2; con nombre → el nombre.
 
