@@ -57,6 +57,9 @@ function paisDoble(o: Partial<Record<keyof IPaisService, Espia>> = {}) {
     crear: vi.fn(async () => ({ status: "conflict" as const, campo: "id" as const })),
     cambiarDisponible: vi.fn(async () => ({ status: "ok" as const, id: "CR", disponible: false })),
     etiquetasDeEmpresa: vi.fn(),
+    // SLT-46 (T4.3): métodos nuevos del servicio que el borde aún no llama (sus actions son de T4.4).
+    renombrarTipo: vi.fn(),
+    agregarNivel: vi.fn(),
     ...o,
   } satisfies Record<keyof IPaisService, Espia>;
 }
@@ -432,25 +435,27 @@ describe("SL-20/R23, R41 — alta de país del catálogo por el borde, con el se
       listar: vi.fn(async () => []),
       listarDisponibles: vi.fn(),
       porId: vi.fn(),
-      crear: vi.fn(async (datos: Record<string, unknown>) => ({
-        estado: "creado" as const,
-        pais: { ...datos, digitosCodigoNivel1: null, digitosCodigoNivel2: null, digitosCodigoNivel3: null, disponible: true },
-      })),
+      crear: vi.fn(),
       deLaEmpresa: vi.fn(),
       cambiarDisponible: vi.fn(),
-      crearConTipos: vi.fn(),
+      // SLT-46 (T4.3): el servicio da el alta con `crearConTipos`; el `pais` del doble solo lleva lo que mira el caso.
+      crearConTipos: vi.fn(async (datos: { id: string; nombre: string }) => ({
+        estado: "creado" as const,
+        pais: { id: datos.id, nombre: datos.nombre },
+        tipos: [],
+      })),
       renombrarTipo: vi.fn(),
       agregarNivel: vi.fn(),
     } satisfies Record<keyof IPaisRepository, Espia>;
   }
 
+  // SLT-46 (T4.3): los nombres de nivel viajan como lista ordenada `tipos` (antes, seis campos fijos).
   const NIVELES = {
-    nivel1Singular: "Departamento",
-    nivel1Plural: "Departamentos",
-    nivel2Singular: "Municipio",
-    nivel2Plural: "Municipios",
-    nivel3Singular: "Aldea",
-    nivel3Plural: "Aldeas",
+    tipos: [
+      { singular: "Departamento", plural: "Departamentos" },
+      { singular: "Municipio", plural: "Municipios" },
+      { singular: "Aldea", plural: "Aldeas" },
+    ],
   };
 
   it("R23: el país se crea con el nombre del catálogo", async () => {
@@ -458,7 +463,7 @@ describe("SL-20/R23, R41 — alta de país del catálogo por el borde, con el se
     const deps = { getActor: async () => SUPERADMIN, paisService: new PaisService(repo as unknown as IPaisRepository) };
     const r = await crearPaisAction({ id: "GT", ...NIVELES }, deps);
     expect(r.status === "ok" && r.pais.nombre).toBe("Guatemala");
-    expect(repo.crear).toHaveBeenCalledWith({ id: "GT", nombre: "Guatemala", ...NIVELES }, { usuarioId: SUPERADMIN.usuarioId });
+    expect(repo.crearConTipos).toHaveBeenCalledWith({ id: "GT", nombre: "Guatemala", ...NIVELES }, { usuarioId: SUPERADMIN.usuarioId });
   });
 
   it("R41: un código fuera del catálogo es `validation_error` en `id` y no toca la base", async () => {
@@ -468,5 +473,6 @@ describe("SL-20/R23, R41 — alta de país del catálogo por el borde, con el se
     expect(r.status === "validation_error" && Object.keys(r.fieldErrors)).toEqual(["id"]);
     expect(repo.listar).not.toHaveBeenCalled();
     expect(repo.crear).not.toHaveBeenCalled();
+    expect(repo.crearConTipos).not.toHaveBeenCalled();
   });
 });

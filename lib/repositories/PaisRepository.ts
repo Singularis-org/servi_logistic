@@ -99,6 +99,9 @@ export class PaisRepository implements IPaisRepository {
    * El país y su fila `pais_creado` en la MISMA transacción (R33): si el registro falla, el país no
    * queda. Un único violado (otra alta igual que ganó la carrera) es `duplicado`; cualquier otro
    * error sube tal cual, para que la action lo registre y responda `error` (R36).
+   *
+   * Sin llamador de la app desde SLT-46 (T4.3, `PaisService.crear` usa `crearConTipos`); su retiro
+   * está pendiente de decisión (lo usa `tests/integration/db/pais-repositorio.test.ts`).
    */
   async crear(datos: DatosDeAltaDePais, actor: ActorDeAltaDePais): Promise<CrearPaisRepoResultado> {
     try {

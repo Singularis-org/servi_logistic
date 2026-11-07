@@ -44,8 +44,10 @@ export interface IPaisRepository {
    * transacción (R23, R33). Los datos llegan ya validados y normalizados por el servicio, con el
    * nombre del catálogo ISO 3166-1 (R23).
    *
-   * El alta de SL-20 (seis nombres fijos, tres tipos que pone el trigger). Convive con
-   * `crearConTipos` hasta que T4.3 pase `PaisService` a la lista de tipos y retire esta.
+   * El alta de SL-20 (seis nombres fijos, tres tipos que pone el trigger). Desde SLT-46 (T4.3) no
+   * tiene llamador de la app: `PaisService.crear` usa `crearConTipos`. Se queda porque
+   * `tests/integration/db/pais-repositorio.test.ts` la usa directamente (único `duplicado`) y
+   * retirarla obligaría a cambiar ese test; su retiro está pendiente de decisión.
    */
   crear(datos: DatosDeAltaDePais, actor: ActorDeAltaDePais): Promise<CrearPaisRepoResultado>;
 
