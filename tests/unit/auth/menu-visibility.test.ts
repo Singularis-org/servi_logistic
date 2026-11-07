@@ -180,7 +180,7 @@ describe("itemsVisibles por rol (mapeo real de SIDEBAR_ITEMS)", () => {
       "Cierres del día",
       "Incidentes", // feature 158 (Q-I)
       "Histórico", // feature 321 (R2/R9): para no mover el aterrizaje de nadie
-      "Mi plan", // SLT-58 R10: tras «Histórico»; el aterrizaje sigue en «Inicio»
+      // SLT-91 R1, R6: sale «Mi plan», y nada más cambia en la lista del `admin`.
       "Tarifas", // SLT-54 R56: ítem propio, tras lo suyo; el aterrizaje sigue en «Inicio»
       "Ayuda", // ⭑ ficha 433: LA ÚLTIMA, y por el mismo motivo — la ven los cinco roles
     ]);
