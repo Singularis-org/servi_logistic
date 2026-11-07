@@ -81,7 +81,7 @@ Montado por SLT-43/44/45/65/71 en esta rama. Se usa tal cual; ninguna task lo vu
   *Hecho:* `tests/integration/db/slt46-pais-tipos-de-nivel.test.ts` verde: CR y un país de 3 tipos
   quedan igual que con la función de SLT-43 tras la misma escritura; un `pais` con `''` en el nivel 3
   queda con 2 tipos tras `INSERT` y tras `UPDATE`.
-- [ ] **T2.4** `tests/integration/db/migracion-slt46-ida-y-vuelta.test.ts` (base propia `slt46_`), sobre
+- [x] **T2.4** `tests/integration/db/migracion-slt46-ida-y-vuelta.test.ts` (base propia `slt46_`), sobre
   las tres migraciones (depende de T2.5). (R9)
   *Hecho:* ida, vuelta y reaplicación verdes; tras la vuelta la sincronía vieja → nodo sigue y
   `pg_get_functiondef('pais_tipos_de_nivel')` es el de SLT-43.
