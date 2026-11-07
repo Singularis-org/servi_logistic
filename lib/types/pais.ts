@@ -50,7 +50,8 @@ export const CARACTERES_DOCUMENTO = ["digitos", "alfanumerico"] as const;
 
 const MENSAJE_PREFIJO = "El prefijo son de 1 a 3 dígitos, sin «+» y sin 0 inicial.";
 const MENSAJE_DIGITOS = `Los dígitos nacionales son un número entero de ${DIGITOS_NACIONALES_MIN} a ${DIGITOS_NACIONALES_MAX}.`;
-const MENSAJE_ZONA = "Elige una zona horaria de la lista.";
+/** R8: también lo usa el servicio cuando la zona no está en la lista del runtime o de la base. */
+export const MENSAJE_ZONA = "Elige una zona horaria de la lista.";
 const MENSAJE_CARACTERES = "Elige «Solo dígitos» o «Letras y dígitos».";
 const MENSAJE_LARGO = `El largo es un número entero de 1 a ${DOCUMENTO_LARGO_MAX}.`;
 const MENSAJE_LARGO_ORDEN = "El largo máximo no puede ser menor que el mínimo.";

@@ -56,7 +56,10 @@ const PAIS_XA: PaisDTO = {
   zonaHoraria: null,
 };
 
-/** El alta elige el país del catálogo por su código (R41) y teclea los seis nombres de nivel. */
+/**
+ * El alta elige el país del catálogo por su código (R41) y teclea los seis nombres de nivel. Desde
+ * SLT-81 (R5, R26) trae además el prefijo oficial de Perú, sus dígitos, su zona y un tipo.
+ */
 function entradaValida() {
   return {
     id: "PE",
@@ -66,8 +69,15 @@ function entradaValida() {
     nivel2Plural: "Provincias",
     nivel3Singular: "Distrito",
     nivel3Plural: "Distritos",
+    prefijoTelefonico: "51",
+    telefonoDigitosNacionales: 9,
+    zonaHoraria: "America/Lima",
+    tiposDocumento: [{ nombre: "DNI", caracteres: "digitos" as const, largoMin: 8, largoMax: 8 }],
   };
 }
+
+/** Lo que el repositorio recibe de `entradaValida()`: cada tipo con su clave y su `value` (SLT-81). */
+const TIPOS_AL_REPO = [{ nombre: "DNI", caracteres: "digitos", largoMin: 8, largoMax: 8, clave: "dni", value: "PE_dni" }];
 
 function repoDoble(
   o: {
@@ -82,16 +92,13 @@ function repoDoble(
     listar: vi.fn(async () => paises),
     listarDisponibles: vi.fn(async () => paises.filter((p) => p.disponible).map(({ id, nombre }) => ({ id, nombre }))),
     porId: vi.fn(async (id: string) => paises.find((p) => p.id === id) ?? null),
-    crear: vi.fn<IPaisRepository["crear"]>(async (datos) =>
+    crear: vi.fn<IPaisRepository["crear"]>(async ({ tiposDocumento: _tipos, ...datos }) =>
       o.crear ?? { estado: "creado", pais: {
         ...datos,
         digitosCodigoNivel1: null,
         digitosCodigoNivel2: null,
         digitosCodigoNivel3: null,
         disponible: true,
-        prefijoTelefonico: null,
-        telefonoDigitosNacionales: null,
-        zonaHoraria: null,
       } },
     ),
     deLaEmpresa: vi.fn(async () => (o.deLaEmpresa === undefined ? COSTA_RICA : o.deLaEmpresa)),
@@ -100,6 +107,16 @@ function repoDoble(
     tipoDocumentoDelPais: vi.fn<IPaisRepository["tipoDocumentoDelPais"]>(async () => null),
     tieneTipoDocumentoActivo: vi.fn<IPaisRepository["tieneTipoDocumentoActivo"]>(async () => true),
     zonasConEmpresas: vi.fn<IPaisRepository["zonasConEmpresas"]>(async () => []),
+    // SLT-81: los mide `pais-service-datos.test.ts`; aquí solo la zona, que el alta consulta.
+    actualizarDatos: vi.fn<IPaisRepository["actualizarDatos"]>(async () => ({ estado: "no_existe" })),
+    contarEmpresas: vi.fn<IPaisRepository["contarEmpresas"]>(async () => 0),
+    listarTiposDocumento: vi.fn<IPaisRepository["listarTiposDocumento"]>(async () => []),
+    tipoDocumentoPorId: vi.fn<IPaisRepository["tipoDocumentoPorId"]>(async () => null),
+    crearTipoDocumento: vi.fn<IPaisRepository["crearTipoDocumento"]>(async () => ({ estado: "no_existe" })),
+    editarTipoDocumento: vi.fn<IPaisRepository["editarTipoDocumento"]>(async () => ({ estado: "no_existe" })),
+    cambiarActivoTipoDocumento: vi.fn<IPaisRepository["cambiarActivoTipoDocumento"]>(async () => ({ estado: "no_existe" })),
+    listarDisponiblesParaAlta: vi.fn<IPaisRepository["listarDisponiblesParaAlta"]>(async () => []),
+    zonaConocidaPorLaBase: vi.fn<IPaisRepository["zonaConocidaPorLaBase"]>(async () => true),
   } satisfies IPaisRepository;
   return repo;
 }
@@ -112,7 +129,7 @@ describe("R23 — alta de un país del catálogo", () => {
     expect(r.status).toBe("ok");
     expect(repo.crear).toHaveBeenCalledTimes(1);
     expect(repo.crear.mock.calls[0]).toEqual([
-      { ...entradaValida(), nombre: "Perú", nivel1Singular: "Depar tamento" },
+      { ...entradaValida(), nombre: "Perú", nivel1Singular: "Depar tamento", tiposDocumento: TIPOS_AL_REPO },
       { usuarioId: "u-super" },
     ]);
   });
@@ -127,7 +144,8 @@ describe("R23 — alta de un país del catálogo", () => {
 
   it("un código que ya existe es `conflict` por `id` y no crea nada", async () => {
     const repo = repoDoble();
-    const r = await new PaisService(repo).crear({ ...entradaValida(), id: "CR" }, SUPERADMIN);
+    // Con el prefijo oficial de CR: si no, R26 lo frenaría antes (SLT-81).
+    const r = await new PaisService(repo).crear({ ...entradaValida(), id: "CR", prefijoTelefonico: "506" }, SUPERADMIN);
     expect(r).toEqual({ status: "conflict", campo: "id" });
     expect(repo.crear).not.toHaveBeenCalled();
   });
