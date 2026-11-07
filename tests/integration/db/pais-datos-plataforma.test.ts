@@ -3,11 +3,16 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
+import type { Actor as ActorDeUsuarios } from "@/lib/interfaces/services/IUsuarioService";
 import { PaisRepository } from "@/lib/repositories/PaisRepository";
+import { UserRepository } from "@/lib/repositories/UserRepository";
+import { PaisService } from "@/lib/services/PaisService";
+import { ReglasPaisEmpresaService } from "@/lib/services/ReglasPaisEmpresaService";
+import { UsuarioService } from "@/lib/services/UsuarioService";
 import type { DatosDeAltaDePais } from "@/lib/types/pais";
-import { crearOrganizacion } from "@/tests/fabricas/organizaciones";
-import { crearPaisDePrueba, crearTipoDocumentoDePrueba } from "@/tests/fabricas/paises";
-import { revertida } from "./_fixtures/pais-20";
+import { comoApp, crearOrganizacion } from "@/tests/fabricas/organizaciones";
+import { crearOrganizacionEnPais, crearPaisDePrueba, crearTipoDocumentoDePrueba } from "@/tests/fabricas/paises";
+import { comoDueno, revertida } from "./_fixtures/pais-20";
 import { idDeRol, insertarUsuario } from "./_fixtures/superadmin-32";
 import {
   HAY_BASE_DE_DATOS,
@@ -27,6 +32,9 @@ import {
 //   · R16: desactivar un tipo no cambia el de los usuarios que ya lo tienen.
 //   · R17: una fila de historial por cambio real, con actor y detalle; sin cambio, ninguna; si el
 //     historial falla, el cambio no queda.
+//   · R12, R14 (T1.6): de punta a punta, con `PaisService`, `ReglasPaisEmpresaService` y
+//     `UsuarioService` reales y dos empresas: una en CR y otra en `PA`, que da de alta el test por el
+//     servicio (R26 rechaza los `XA`–`XZ`).
 //
 // Casi todo en una transacción del dueño que se revierte (`revertida`), con el repositorio sobre
 // `clienteConSavepoint`. R15 necesita dos transacciones de verdad: commitea un país propio (`XW`) bajo
@@ -63,6 +71,82 @@ function altaXA(tipos: DatosDeAltaDePais["tiposDocumento"]): DatosDeAltaDePais {
 
 function tipoXA(clave: string, nombre = `Documento ${clave}`) {
   return { nombre, caracteres: "digitos" as const, largoMin: 8, largoMax: 9, clave, value: `XA_${clave}` };
+}
+
+const SUPERADMIN_ROL = "superadmin" as const;
+const MAESTRO_DE_USUARIOS: ActorDeUsuarios = { usuarioId: randomUUID(), rol: "maestro" };
+
+interface Panama {
+  superadminId: string;
+  paisService: PaisService;
+  empresaPA: string;
+  empresaCR: string;
+  cedulaPA: string;
+  rolAdmin: string;
+}
+
+/**
+ * Panamá dado de alta por el servicio, con su prefijo oficial y una «Cédula» de 9 dígitos, y una
+ * empresa en PA y otra en CR. Todo como dueño, en la transacción del caso.
+ */
+async function sembrarPanama(tx: TxDeTest): Promise<Panama> {
+  const superadminId = await actorDePrueba(tx);
+  const paisService = new PaisService(new PaisRepository(clienteConSavepoint(tx)));
+  const alta = await paisService.crear(
+    {
+      id: "PA",
+      nivel1Singular: "Provincia",
+      nivel1Plural: "Provincias",
+      nivel2Singular: "Distrito",
+      nivel2Plural: "Distritos",
+      nivel3Singular: "Corregimiento",
+      nivel3Plural: "Corregimientos",
+      prefijoTelefonico: "507",
+      telefonoDigitosNacionales: 8,
+      zonaHoraria: "America/Panama",
+      tiposDocumento: [{ nombre: "Cédula", caracteres: "digitos", largoMin: 9, largoMax: 9 }],
+    },
+    { usuarioId: superadminId, rol: SUPERADMIN_ROL },
+  );
+  if (alta.status !== "ok") throw new Error(`alta de PA: ${JSON.stringify(alta)}`);
+  const empresaPA = (await crearOrganizacionEnPais(tx, "PA", { nombre: `Empresa PA ${randomUUID().slice(0, 6)}` })).id;
+  const empresaCR = (await crearOrganizacion(tx, { nombre: `Empresa CR ${randomUUID().slice(0, 6)}` })).id;
+  const cedulaPA = (await tx.tipoIdentificacion.findFirstOrThrow({ where: { paisId: "PA" }, select: { id: true } })).id;
+  return { superadminId, paisService, empresaPA, empresaCR, cedulaPA, rolAdmin: await idDeRol(tx, "admin") };
+}
+
+/** Las reglas y el servicio de usuarios reales, con la empresa que daría la sesión. */
+function deLaEmpresa(tx: TxDeTest, organizacionId: string) {
+  const cliente = tx as unknown as PrismaClient;
+  const reglas = new ReglasPaisEmpresaService({ repo: new PaisRepository(cliente), empresaDeLaSesion: async () => organizacionId });
+  return { reglas, usuarios: new UsuarioService(new UserRepository(cliente), undefined, undefined, undefined, undefined, reglas) };
+}
+
+/** Un alta de usuario `admin` en la empresa del contexto (`comoApp`). */
+function altaDeUsuario(p: Panama, cedula: string) {
+  const sufijo = randomUUID().replace(/-/g, "").slice(0, 10);
+  return {
+    nombre: "Persona SLT-81",
+    email: `slt81-${sufijo}@example.com`,
+    telefono: "61234567",
+    tipoIdentificacionId: p.cedulaPA,
+    cedula,
+    rolId: p.rolAdmin,
+    passwordMode: "generate" as const,
+  };
+}
+
+/** La foto de los datos de negocio de una empresa: cada fila entera, como JSON. */
+async function fotoDeNegocio(tx: TxDeTest, organizacionId: string): Promise<Record<string, string[]>> {
+  const foto: Record<string, string[]> = {};
+  for (const tabla of ["usuario", "orden", "chat_conversacion"]) {
+    const filas = await tx.$queryRawUnsafe<{ f: string }[]>(
+      `SELECT to_jsonb(t)::text AS f FROM "${tabla}" t WHERE t."organizacion_id" = $1 ORDER BY t."id"`,
+      organizacionId,
+    );
+    foto[tabla] = filas.map((r) => r.f);
+  }
+  return foto;
 }
 
 const historialDe = (tx: TxDeTest, paisId: string) =>
@@ -312,5 +396,80 @@ describeSiHayBase("SLT-81 — datos del país contra Postgres", () => {
         { id: expect.any(String), value: "XA_segundo", nombre: "Segundo" },
       ],
     });
+  });
+
+  it("R12: tras cambiar la zona y los dígitos de PA, las reglas de una empresa de PA dan los nuevos y nada guardado cambia (ni en PA ni en CR)", async () => {
+    const r = await revertida(base, async (tx) => {
+      const p = await sembrarPanama(tx);
+      const superadmin = { usuarioId: p.superadminId, rol: SUPERADMIN_ROL };
+
+      await comoApp(tx, p.empresaPA);
+      const persona = await deLaEmpresa(tx, p.empresaPA).usuarios.crear(altaDeUsuario(p, "123456789"), MAESTRO_DE_USUARIOS);
+      const antesReglas = await deLaEmpresa(tx, p.empresaPA).reglas.deLaEmpresa();
+      await comoDueno(tx);
+
+      const fotos = { pa: await fotoDeNegocio(tx, p.empresaPA), cr: await fotoDeNegocio(tx, p.empresaCR) };
+      const cambio = { id: "PA", prefijoTelefonico: "507", telefonoDigitosNacionales: 7, zonaHoraria: "America/Bogota" };
+      const sinConfirmar = await p.paisService.actualizarDatos(cambio, superadmin);
+      const confirmado = await p.paisService.actualizarDatos({ ...cambio, empresasConfirmadas: 1 }, superadmin);
+      const despues = { pa: await fotoDeNegocio(tx, p.empresaPA), cr: await fotoDeNegocio(tx, p.empresaCR) };
+
+      await comoApp(tx, p.empresaPA);
+      const despuesReglas = await deLaEmpresa(tx, p.empresaPA).reglas.deLaEmpresa();
+      await comoDueno(tx);
+      await comoApp(tx, p.empresaCR);
+      const deCR = await deLaEmpresa(tx, p.empresaCR).reglas.zonaHoraria();
+      await comoDueno(tx);
+      return { persona: persona.status, antesReglas, sinConfirmar, confirmado: confirmado.status, fotos, despues, despuesReglas, deCR };
+    });
+
+    expect(r.persona).toBe("ok");
+    expect(r.antesReglas).toEqual({ paisId: "PA", zonaHoraria: "America/Panama", telefono: { prefijo: "507", digitosNacionales: 8 } });
+    // R10 sobre la base real: la empresa de PA cuenta.
+    expect(r.sinConfirmar).toEqual({ status: "requiere_confirmacion", empresas: 1 });
+    expect(r.confirmado).toBe("ok");
+    expect(r.despuesReglas).toEqual({ paisId: "PA", zonaHoraria: "America/Bogota", telefono: { prefijo: "507", digitosNacionales: 7 } });
+    expect(r.deCR).toBe("America/Costa_Rica");
+    // CONTROL: la foto de PA no está vacía (la persona dada de alta está en ella).
+    expect(r.fotos.pa.usuario.length).toBeGreaterThan(0);
+    expect(r.despues).toEqual(r.fotos);
+  });
+
+  it("R14: tras cambiar el largo del tipo, el usuario guardado con el formato viejo sigue igual y se edita sin revalidar; un alta nueva exige el nuevo", async () => {
+    const r = await revertida(base, async (tx) => {
+      const p = await sembrarPanama(tx);
+
+      await comoApp(tx, p.empresaPA);
+      const viejo = await deLaEmpresa(tx, p.empresaPA).usuarios.crear(altaDeUsuario(p, "123456789"), MAESTRO_DE_USUARIOS);
+      if (viejo.status !== "ok") throw new Error(`alta con el formato viejo: ${JSON.stringify(viejo)}`);
+      await comoDueno(tx);
+
+      const edicion = await p.paisService.editarTipoDocumento(
+        { id: p.cedulaPA, nombre: "Cédula", caracteres: "digitos", largoMin: 10, largoMax: 10 },
+        { usuarioId: p.superadminId, rol: SUPERADMIN_ROL },
+      );
+
+      await comoApp(tx, p.empresaPA);
+      const { usuarios } = deLaEmpresa(tx, p.empresaPA);
+      const renombre = await usuarios.actualizar(viejo.usuario.id, { nombre: "Persona renombrada" }, MAESTRO_DE_USUARIOS);
+      const mismoTipo = await usuarios.actualizar(viejo.usuario.id, { tipoIdentificacionId: p.cedulaPA }, MAESTRO_DE_USUARIOS);
+      const nuevoConElViejo = await usuarios.crear(altaDeUsuario(p, "987654321"), MAESTRO_DE_USUARIOS);
+      const nuevoConElNuevo = await usuarios.crear(altaDeUsuario(p, "9876543210"), MAESTRO_DE_USUARIOS);
+      await comoDueno(tx);
+
+      const guardado = await tx.usuario.findUniqueOrThrow({
+        where: { id: viejo.usuario.id },
+        select: { cedula: true, tipoIdentificacionId: true, nombre: true },
+      });
+      return { edicion: edicion.status, renombre: renombre.status, mismoTipo: mismoTipo.status, nuevoConElViejo, nuevoConElNuevo: nuevoConElNuevo.status, guardado, cedulaPA: p.cedulaPA };
+    });
+
+    expect(r.edicion).toBe("ok");
+    expect(r.renombre).toBe("ok");
+    expect(r.mismoTipo).toBe("ok");
+    expect(r.guardado).toEqual({ cedula: "123456789", tipoIdentificacionId: r.cedulaPA, nombre: "Persona renombrada" });
+    expect(r.nuevoConElViejo.status).toBe("validation_error");
+    expect(r.nuevoConElViejo.status === "validation_error" && Object.keys(r.nuevoConElViejo.fieldErrors)).toEqual(["cedula"]);
+    expect(r.nuevoConElNuevo).toBe("ok");
   });
 });
