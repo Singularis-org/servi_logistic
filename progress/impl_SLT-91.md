@@ -37,7 +37,7 @@ Sin `db/migrations/` y sin dependencias.
 | R9 | `guardia` «R9: ningún evento de la campana habla del plan» |
 | R10 | `guardia` «R10: fuera del menú, el reparto de módulos…», «R10: el reparto y la página no son enlaces…» y «R10: la ayuda no nombra «Mi plan»» |
 | R11 | `tests/unit/services/aprobacion-postulacion-tope-plan.test.ts` «SLT-91 R11: a un `admin` le devuelve el mismo texto del tope…»; `guardia` «R11: ni la variante de rol ni la de API keys» |
-| R12 | `tests/unit/services/deuda-plataforma-service.test.ts` y `tests/integration/db/mi-plan-repository.test.ts` (existentes, sin tocar); revisión del diff: sin `db/migrations/` |
+| R12 | `tests/unit/services/deuda-plataforma-service.test.ts` y `tests/integration/db/planes-cambio-correos.test.ts:183` y `tests/integration/db/plan-topes-usuarios.test.ts:245` (existentes, sin tocar); revisión del diff: sin `db/migrations/` |
 | R13 | `tests/components/HistorialAccionesPage.test.tsx`, `tests/unit/auth/menu-historial-acciones.test.ts`, `tests/unit/services/planes-service-lecturas.test.ts` (existentes, sin tocar) |
 | R14 | `e2e` «el admin de A recibe 404…» y «el maestro de A ve en «Mi plan»…» |
 
