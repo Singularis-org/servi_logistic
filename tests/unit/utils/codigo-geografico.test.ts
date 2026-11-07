@@ -2,8 +2,11 @@ import { describe, it, expect } from "vitest";
 import {
   CODIGO_LIBRE_MAX,
   tieneReglaDeCodigo,
+  tipoDeNivelDePais,
   validarCodigo,
+  validarCodigoDeTipo,
   type ReglaDeCodigoDePais,
+  type ReglaDeCodigoDeTipo,
 } from "@/lib/utils/codigo-geografico";
 
 // SL-20 R17 — DONDE el pais tiene regla de codigo (hoy solo CR: 1/3/5 digitos y prefijo del padre),
@@ -82,6 +85,104 @@ describe("R17 — pais sin regla de codigo", () => {
     expect(
       validarCodigo(SIN_REGLA, "provincia", "x".repeat(CODIGO_LIBRE_MAX + 1), null),
     ).not.toBeNull();
+  });
+});
+
+// SLT-46 R17 (design §4.5) — la regla pasa a leerse del TIPO de nivel. La tabla de arriba se corre
+// tambien contra `validarCodigoDeTipo` con los tipos que `pais_tipos_de_nivel` deriva de cada pais
+// (nivel 1 sin prefijo; 2 y 3 con prefijo si tienen digitos): para CR tiene que dar EXACTAMENTE lo
+// mismo, mensaje incluido (R12).
+
+type Caso = [regla: ReglaDeCodigoDePais, nivel: "provincia" | "canton" | "distrito", codigo: string, padre: string | null];
+
+const OTRA_2_4_6: ReglaDeCodigoDePais = {
+  digitosCodigoNivel1: 2,
+  digitosCodigoNivel2: 4,
+  digitosCodigoNivel3: 6,
+};
+
+const CASOS_SL20: Caso[] = [
+  [CON_REGLA_1_3_5, "provincia", "1", null],
+  [CON_REGLA_1_3_5, "canton", "101", "1"],
+  [CON_REGLA_1_3_5, "distrito", "10101", "101"],
+  [CON_REGLA_1_3_5, "provincia", "10", null],
+  [CON_REGLA_1_3_5, "canton", "1011", "1"],
+  [CON_REGLA_1_3_5, "distrito", "1010", "101"],
+  [CON_REGLA_1_3_5, "provincia", "A", null],
+  [CON_REGLA_1_3_5, "canton", "1A1", "1"],
+  [CON_REGLA_1_3_5, "canton", "1 1", "1"],
+  [CON_REGLA_1_3_5, "canton", "201", "1"],
+  [CON_REGLA_1_3_5, "distrito", "10201", "101"],
+  [CON_REGLA_1_3_5, "canton", "101", null],
+  [CON_REGLA_1_3_5, "provincia", "7", "9"],
+  [OTRA_2_4_6, "provincia", "05", null],
+  [OTRA_2_4_6, "canton", "0512", "05"],
+  [OTRA_2_4_6, "provincia", "5", null],
+  [SIN_REGLA, "provincia", "A", null],
+  [SIN_REGLA, "canton", "ZZ-01", "otro"],
+  [SIN_REGLA, "distrito", "x".repeat(CODIGO_LIBRE_MAX), null],
+  [SIN_REGLA, "distrito", "01", "999"],
+  [SIN_REGLA, "provincia", "", null],
+  [SIN_REGLA, "provincia", "A B", null],
+  [SIN_REGLA, "provincia", "A\tB", null],
+  [SIN_REGLA, "provincia", "x".repeat(CODIGO_LIBRE_MAX + 1), null],
+];
+
+/** El tipo que el trigger `pais_tipos_de_nivel` de SLT-43 escribe para ese nivel del pais. */
+function tipoComoElTrigger(regla: ReglaDeCodigoDePais, nivel: Caso[1]): ReglaDeCodigoDeTipo {
+  const digitos = {
+    provincia: regla.digitosCodigoNivel1,
+    canton: regla.digitosCodigoNivel2,
+    distrito: regla.digitosCodigoNivel3,
+  }[nivel];
+  return { digitosCodigo: digitos, codigoHeredaPrefijo: nivel !== "provincia" && digitos !== null };
+}
+
+describe("SLT-46 R17 — validarCodigoDeTipo da lo mismo que la regla de SL-20 (tabla de CR)", () => {
+  it.each(CASOS_SL20)("caso %#: mismo resultado y mismo mensaje por el tipo que por el pais", (regla, nivel, codigo, padre) => {
+    expect(validarCodigoDeTipo(tipoComoElTrigger(regla, nivel), codigo, padre)).toBe(
+      validarCodigo(regla, nivel, codigo, padre),
+    );
+  });
+
+  it("la tabla no es trivial: hay aceptados y rechazados", () => {
+    const resultados = CASOS_SL20.map(([r, n, c, p]) => validarCodigoDeTipo(tipoComoElTrigger(r, n), c, p));
+    expect(resultados.filter((x) => x === null).length).toBeGreaterThan(5);
+    expect(resultados.filter((x) => x !== null).length).toBeGreaterThan(5);
+  });
+});
+
+describe("SLT-46 R17 — tipo de cualquier profundidad", () => {
+  const LIBRE: ReglaDeCodigoDeTipo = { digitosCodigo: null, codigoHeredaPrefijo: false };
+
+  it("un tipo sin digitos acepta de 1 a 20 caracteres sin espacios, sin mirar al padre", () => {
+    expect(validarCodigoDeTipo(LIBRE, "B-7", "999")).toBeNull();
+    expect(validarCodigoDeTipo(LIBRE, "x".repeat(CODIGO_LIBRE_MAX), null)).toBeNull();
+    expect(validarCodigoDeTipo(LIBRE, "", null)).toMatch(/1 a 20 caracteres/);
+    expect(validarCodigoDeTipo(LIBRE, "B 7", null)).toMatch(/sin espacios/);
+    expect(validarCodigoDeTipo(LIBRE, "x".repeat(CODIGO_LIBRE_MAX + 1), null)).not.toBeNull();
+  });
+
+  it("un tipo sin digitos ignora la marca de herencia (no hay prefijo que heredar)", () => {
+    expect(validarCodigoDeTipo({ digitosCodigo: null, codigoHeredaPrefijo: true }, "ZZ", "1")).toBeNull();
+  });
+
+  it("un tipo de profundidad 4 con 7 digitos y herencia exige longitud y prefijo del padre", () => {
+    const barrio: ReglaDeCodigoDeTipo = { digitosCodigo: 7, codigoHeredaPrefijo: true };
+    expect(validarCodigoDeTipo(barrio, "1010101", "10101")).toBeNull();
+    expect(validarCodigoDeTipo(barrio, "101010", "10101")).toMatch(/exactamente 7 dígitos/);
+    expect(validarCodigoDeTipo(barrio, "2010101", "10101")).toMatch(/«10101»/);
+    expect(validarCodigoDeTipo(barrio, "1010101", null)).toMatch(/padre no tiene código/);
+  });
+
+  it("con digitos y sin herencia no mira al padre", () => {
+    expect(validarCodigoDeTipo({ digitosCodigo: 2, codigoHeredaPrefijo: false }, "07", "9")).toBeNull();
+  });
+
+  it("tipoDeNivelDePais traduce la regla del pais como el trigger", () => {
+    expect(tipoDeNivelDePais(CON_REGLA_1_3_5, "provincia")).toEqual({ digitosCodigo: 1, codigoHeredaPrefijo: false });
+    expect(tipoDeNivelDePais(CON_REGLA_1_3_5, "distrito")).toEqual({ digitosCodigo: 5, codigoHeredaPrefijo: true });
+    expect(tipoDeNivelDePais(SIN_REGLA, "canton")).toEqual({ digitosCodigo: null, codigoHeredaPrefijo: false });
   });
 });
 
