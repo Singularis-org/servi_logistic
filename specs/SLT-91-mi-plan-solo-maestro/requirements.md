@@ -90,11 +90,7 @@ Rutas de `tasks.md`. El implementer la confirma con el test concreto en `progres
 
 ## Preguntas abiertas
 
-- **P1 (Carlos; no bloquea).** El `admin` aprueba postulaciones y, si el tope la rechaza, lee por ejemplo: «Tu plan
-  permite 5 usuarios activos con el rol Mensajero. Ya tienes 5. Inactiva alguno o pide un cambio de plan.» Es dato del
-  plan, pero no es un aviso: es el motivo de una acción que él mismo intentó. Este spec lo deja igual (R11), porque
-  los límites no cambian para el `admin`. ¿Lo confirmas, o ese texto debe ser otro para él? De paso: «Inactiva alguno»
-  le pide algo que no puede hacer, porque Usuarios es solo del `maestro`; eso ya es así hoy.
+Ninguna.
 
 ## Decisiones cerradas (no reabrir)
 
@@ -104,3 +100,5 @@ Rutas de `tasks.md`. El implementer la confirma con el test concreto en `progres
 | 2026-11-06 | ¿Y los avisos del plan? | Tampoco le llegan al `admin`, si existen. |
 | 2026-11-06 | ¿Qué no cambia? | Lo que hace el plan (límites, cobro, wallet, módulos) no cambia para el `admin`: solo la vista y los avisos. Sin migración si se puede. |
 | 2026-11-06 | Enmienda de SLT-58 | Enmienda SLT-58 R1 y su design §3.1, que decían `maestro` y `admin`. |
+| 2026-11-06 | P1 · ¿El texto del tope al aprobar una postulación cambia para el `admin`? | No: se deja igual (R11), sin ese texto no sabría por qué falla. «Inactiva alguno» le pide algo que no puede hacer: queda como deuda. Carlos, «dale». |
+| 2026-11-06 | ¿La deuda con la plataforma en la wallet? | El `admin` la sigue viendo (R12). Ocultarla sería otra ficha. Carlos, «dale». |

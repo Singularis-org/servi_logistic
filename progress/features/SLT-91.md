@@ -2,12 +2,12 @@
 
 | key | nombre | zone | complexity | rama | assignee | estado |
 |---|---|---|---|---|---|---|
-| SLT-91 | mi-plan-solo-maestro | fullstack | low | feature/SLT-91-mi-plan-solo-maestro | Carlos Restrepo | spec_ready |
+| SLT-91 | mi-plan-solo-maestro | fullstack | low | feature/SLT-91-mi-plan-solo-maestro | Carlos Restrepo | in_progress |
 
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F1.4 desde el 2026-11-06: spec R1-R14, espera aprobación de Carlos y P1. Sale con la promoción de EP-8.
+F2.1 desde el 2026-11-06: spec aprobado por Carlos («dale»), con P1 cerrada. Base de pruebas: servi_gate_slt91. Sale con la promoción de EP-8.
 
 ## Evaluación
 fullstack / low: cambia una constante que leen menú y servicio; sin migración.
@@ -16,7 +16,7 @@ fullstack / low: cambia una constante que leen menú y servicio; sin migración.
 - 2026-11-06 · Carlos: Mi plan solo para el maestro. Ver `specs/SLT-91-mi-plan-solo-maestro/requirements.md`.
 
 ## Preguntas abiertas
-P1 del requirements: le toca a Carlos.
+Ninguna.
 
 ## Tandas
 
