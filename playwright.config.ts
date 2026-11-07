@@ -145,6 +145,8 @@ export default defineConfig({
         "planes-costo-porcentual",
         // SLT-77 T6.1: el tope de intentos de cada empresa, de la sección de Tarifas al cierre aprobado.
         "tope-intentos-por-empresa",
+        // Tarifas activadas + valor propio + plan porcentual, en el mismo cierre aprobado. Usa el superadmin de prueba.
+        "cierre-modelo-nuevo-plan-porcentual",
       ),
     },
   ],
