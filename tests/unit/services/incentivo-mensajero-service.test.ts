@@ -8,6 +8,7 @@ import type {
 import type { MovimientoDeCajaDeIncentivo } from "@/lib/interfaces/services/ICajaIncentivoMensajeroFeedService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { IncentivoMensajeroService, cierreMasReciente } from "@/lib/services/IncentivoMensajeroService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // SLT-68 (design §6.1/§6.2) — IncentivoMensajeroService con dobles: el ORDEN (rol → leer →
@@ -89,6 +90,7 @@ function montaje(opciones: {
     caja,
     runTransaction as never,
     () => ID_INCENTIVO,
+    reglasPaisFijas(),
   );
   return { servicio, cierres, libro, caja, runTransaction, orden, TX };
 }

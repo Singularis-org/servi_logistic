@@ -4,6 +4,7 @@ import type { PrismaClient } from "@prisma/client";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
 import { CorregirDatosClienteService } from "@/lib/services/CorregirDatosClienteService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 import { ESTADOS_SIN_CORRECCION } from "@/lib/types/correccion-datos-cliente";
 
 /**
@@ -378,7 +379,7 @@ describeSiHayBase("⭑ 312/B3 — corregirDatosCliente contra Postgres real", ()
     // formatos segun por donde entro el dato.
     const MAESTRO: Actor = { usuarioId: "u-maestro", rol: "maestro" };
     const r = await conOrden({}, async (ctx) => {
-      const service = new CorregirDatosClienteService(ctx.repo, new TarifaVigenteRepository(ctx.tx));
+      const service = new CorregirDatosClienteService(ctx.repo, new TarifaVigenteRepository(ctx.tx), reglasPaisFijas());
       const resultado = await service.corregir(
         { ordenId: ctx.ordenId, telefonoDest: " 8888-9999 " },
         MAESTRO,
@@ -400,7 +401,7 @@ describeSiHayBase("⭑ 312/B3 — corregirDatosCliente contra Postgres real", ()
     // El camino de produccion entero (servicio + repositorio real) sobre la ventana de D3.
     const MAESTRO: Actor = { usuarioId: "u-maestro", rol: "maestro" };
     const r = await conOrden({ estatusValue: "entregado" }, async (ctx) => {
-      const service = new CorregirDatosClienteService(ctx.repo, new TarifaVigenteRepository(ctx.tx));
+      const service = new CorregirDatosClienteService(ctx.repo, new TarifaVigenteRepository(ctx.tx), reglasPaisFijas());
       const resultado = await service.corregir(
         { ordenId: ctx.ordenId, destinatario: CORREGIDO.destinatario },
         MAESTRO,
@@ -537,6 +538,7 @@ describeSiHayBase("⭑ 312/B3 — corregirDatosCliente contra Postgres real", ()
       const service = new CorregirDatosClienteService(
         ctx.repo,
         new TarifaVigenteRepository(ctx.tx),
+        reglasPaisFijas(),
       );
       const resultado = await service.corregir(
         {

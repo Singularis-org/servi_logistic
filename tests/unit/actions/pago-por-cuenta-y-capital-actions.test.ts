@@ -8,6 +8,17 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IPagoPorCuentaTiendaService } from "@/lib/interfaces/services/IPagoPorCuentaTiendaService";
 import type { IAporteCapitalService } from "@/lib/interfaces/services/IAporteCapitalService";
 
+// SLT-42 (T5.4): la zona del pais de la empresa, sin sesion ni base: la de CR, como antes. El borde
+// (`zonaDelBorde`) y los composition roots leen `construirReglasPaisEmpresa`; la zona en si la mide
+// `tests/unit/services/hora-por-pais-wallet.test.ts`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
+
 /**
  * FICHA 459 / T B.12 — el BORDE de las dos actions nuevas, con el servicio doble: la sesion va
  * ANTES de mirar la entrada (R38/R76), zod `.strict()` rechaza lo no previsto (R37/R69), el

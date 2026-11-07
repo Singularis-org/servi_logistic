@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 
 import { esFechaFutura } from "@/lib/types/gestion-orden";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // R25 — el mínimo de `fechaReprogramacion` es MAÑANA en el calendario de Costa Rica.
 // Regresión (off-by-one por zona horaria): la versión anterior comparaba contra los
 // campos UTC de `new Date()`, así que entre las 18:00 y la medianoche de CR el día UTC
@@ -14,26 +15,26 @@ const MANANA_CR_15 = new Date("2026-07-15T14:00:00.000Z");
 
 describe("esFechaFutura — mínimo mañana en CR", () => {
   it("de noche en CR acepta mañana (el bug la rechazaba)", () => {
-    expect(esFechaFutura("2026-07-16", NOCHE_CR_15)).toBe(true);
+    expect(esFechaFutura("2026-07-16", ZONA_CR, NOCHE_CR_15)).toBe(true);
   });
 
   it("de noche en CR rechaza hoy, aunque en UTC ya sea 'ayer'", () => {
-    expect(esFechaFutura("2026-07-15", NOCHE_CR_15)).toBe(false);
+    expect(esFechaFutura("2026-07-15", ZONA_CR, NOCHE_CR_15)).toBe(false);
   });
 
   it("de día en CR acepta mañana y rechaza hoy", () => {
-    expect(esFechaFutura("2026-07-16", MANANA_CR_15)).toBe(true);
-    expect(esFechaFutura("2026-07-15", MANANA_CR_15)).toBe(false);
+    expect(esFechaFutura("2026-07-16", ZONA_CR, MANANA_CR_15)).toBe(true);
+    expect(esFechaFutura("2026-07-15", ZONA_CR, MANANA_CR_15)).toBe(false);
   });
 
   it("rechaza el pasado", () => {
-    expect(esFechaFutura("2026-07-14", MANANA_CR_15)).toBe(false);
-    expect(esFechaFutura("2025-01-01", MANANA_CR_15)).toBe(false);
+    expect(esFechaFutura("2026-07-14", ZONA_CR, MANANA_CR_15)).toBe(false);
+    expect(esFechaFutura("2025-01-01", ZONA_CR, MANANA_CR_15)).toBe(false);
   });
 
   it("acepta fechas más allá de mañana", () => {
-    expect(esFechaFutura("2026-07-17", MANANA_CR_15)).toBe(true);
-    expect(esFechaFutura("2026-12-31", MANANA_CR_15)).toBe(true);
+    expect(esFechaFutura("2026-07-17", ZONA_CR, MANANA_CR_15)).toBe(true);
+    expect(esFechaFutura("2026-12-31", ZONA_CR, MANANA_CR_15)).toBe(true);
   });
 
   it("rechaza un día que no existe", () => {
@@ -41,7 +42,7 @@ describe("esFechaFutura — mínimo mañana en CR", () => {
     // "2026-02-31" rueda al 3 de marzo, que es ANTERIOR al 16 de julio, así que lo rechazaba
     // la comparación lexicográfica y no la validación de calendario. El `describe` de abajo
     // usa un reloj que deja la fecha rodada en el FUTURO y sí distingue las dos cosas.
-    expect(esFechaFutura("2026-02-31", MANANA_CR_15)).toBe(false);
+    expect(esFechaFutura("2026-02-31", ZONA_CR, MANANA_CR_15)).toBe(false);
   });
 });
 
@@ -70,20 +71,20 @@ describe("esFechaFutura — el día inexistente NO rueda: se rechaza", () => {
     ["30 de febrero (rodaba a 2026-03-02)", "2026-02-30"],
     ["29 de febrero de año NO bisiesto (rodaba a 2027-03-01)", "2027-02-29"],
   ])("rechaza el %s", (_caso, fecha) => {
-    expect(esFechaFutura(fecha, ENERO_CR_15)).toBe(false);
+    expect(esFechaFutura(fecha, ZONA_CR, ENERO_CR_15)).toBe(false);
   });
 
   it("el mes fuera de rango se sigue rechazando (era el único caso que ya funcionaba)", () => {
-    expect(esFechaFutura("2026-13-01", ENERO_CR_15)).toBe(false);
+    expect(esFechaFutura("2026-13-01", ZONA_CR, ENERO_CR_15)).toBe(false);
   });
 
   it("NO se pasa de duro: el 29 de febrero de un año BISIESTO se acepta", () => {
-    expect(esFechaFutura("2028-02-29", ENERO_CR_15)).toBe(true);
+    expect(esFechaFutura("2028-02-29", ZONA_CR, ENERO_CR_15)).toBe(true);
   });
 
   it("el último día real de cada mes se sigue aceptando", () => {
-    expect(esFechaFutura("2026-02-28", ENERO_CR_15)).toBe(true);
-    expect(esFechaFutura("2026-04-30", ENERO_CR_15)).toBe(true);
-    expect(esFechaFutura("2026-12-31", ENERO_CR_15)).toBe(true);
+    expect(esFechaFutura("2026-02-28", ZONA_CR, ENERO_CR_15)).toBe(true);
+    expect(esFechaFutura("2026-04-30", ZONA_CR, ENERO_CR_15)).toBe(true);
+    expect(esFechaFutura("2026-12-31", ZONA_CR, ENERO_CR_15)).toBe(true);
   });
 });

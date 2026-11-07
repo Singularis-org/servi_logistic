@@ -18,6 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { FormField } from "@/components/shared/FormField";
+import { TEXTOS_TIPO_COBRO } from "@/components/shared/tipo-cobro";
 import { EmptyState } from "@/components/shared/EmptyState";
 import type { EmpresaListada } from "@/lib/types/empresas-plataforma";
 import { altaEmpresaInputSchema, type AltaEmpresaInput } from "@/lib/types/organizacion";
@@ -559,7 +560,11 @@ function CeldaPlan({ empresa }: { empresa: EmpresaListada }) {
       {plan === null ? (
         <span className="text-muted-foreground">{TEXTOS.sinPlan}</span>
       ) : (
-        <span>{plan.nombre}</span>
+        // Ajuste planes-custom (D9): en la lista, solo el tipo de cobro junto al plan.
+        <span>
+          {plan.nombre}
+          <span className="text-muted-foreground"> · {TEXTOS_TIPO_COBRO.tipo[plan.tipoCobro]}</span>
+        </span>
       )}
       <Link
         href={`/plataforma/empresas/${empresa.id}#plan`}

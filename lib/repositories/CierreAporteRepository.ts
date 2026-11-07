@@ -1,4 +1,4 @@
-import { Prisma, type PrismaClient } from "@prisma/client";
+import { Prisma, type GestionResultado, type PrismaClient } from "@prisma/client";
 import type {
   AlcanceDeCierre,
   CabeceraDeCierre,
@@ -44,34 +44,45 @@ function buildWhere(
   criterio: CriterioDeAporte,
   tiendaId: string | undefined,
 ): Prisma.CierreDetailWhereInput {
+  // EXISTS de SQL, no un filtro en memoria (R21): la orden entra si ALGUNA de sus gestiones
+  // de ESTE cierre casa con el criterio.
+  const conGestion = (resultados: readonly GestionResultado[]): Prisma.OrdenWhereInput => ({
+    gestiones: {
+      some: {
+        cierreId,
+        resultado: { in: [...resultados] },
+        ...(criterio.exigeMontoRecibido ? { montoRecibido: { gt: 0 } } : {}),
+        // FICHA 468 (design §2.2): la supresion de ceros de los dos snapshots por gestion, DENTRO del
+        // mismo `some` correlacionado con el cierre (la gestion que aporta es la de ESTE cierre).
+        ...(criterio.exigePagoMensajero ? { pagoMensajero: { gt: 0 } } : {}),
+        ...(criterio.exigeIndemnizacion ? { indemnizacion: { gt: 0 } } : {}),
+      },
+    },
+  });
   return {
     cierreId,
-    // «Hay tarifa congelada» = `tarifaDe` no da `null`. SLT-52 (R41/R42): en el nuevo nunca es
-    // `null` y `tarifa_id` va NULL, asi que el `tarifa_id IS NOT NULL` solo vale para el viejo; sin
-    // la rama del nuevo, un cierre nuevo no listaria ninguna orden que aporte flete o comision.
+    // «Hay tarifa congelada» = `tarifaDe` no da `null`. SLT-52 (R41/R42): en el nuevo nunca es `null` y
+    // `tarifa_id` va NULL, asi que el `tarifa_id IS NOT NULL` solo vale para el viejo.
+    // SLT-54 (R64): en el nuevo no basta el modelo. Una orden sin el concepto de su gestion no aporta
+    // nada, y listarla la pintaria con 0,00. El concepto y la gestion van en la MISMA rama: otro flete
+    // congelado en esa fila no cuenta si la gestion del cierre es de otro resultado.
     ...(criterio.exigeTarifa
-      ? { OR: [{ tarifaId: { not: null } }, { tarifaModelo: "nuevo" as const }] }
-      : {}),
+      ? {
+          OR: [
+            { tarifaId: { not: null }, orden: conGestion(criterio.resultados) },
+            ...Object.entries(criterio.conceptoCongeladoPorResultado).map(([resultado, concepto]) => ({
+              tarifaModelo: "nuevo" as const,
+              conceptos: { some: { concepto } },
+              orden: conGestion([resultado as GestionResultado]),
+            })),
+          ],
+        }
+      : { orden: conGestion(criterio.resultados) }),
     ...(criterio.exigeCobraComision ? { cobraComision: true } : {}),
     // Supresion de los aportes en cero (Q2): `monto_cobrar > 0` excluye tambien el NULL, que es
     // lo correcto —sin COD no hay comision que cobrar—. Va en el `WHERE`, no en memoria, para
     // que el `count` cuente EXACTAMENTE las filas que se muestran (R28).
     ...(criterio.exigeMontoCobrar ? { montoCobrar: { gt: 0 } } : {}),
-    // EXISTS de SQL, no un filtro en memoria (R21): la orden entra si ALGUNA de sus gestiones
-    // de ESTE cierre casa con el criterio.
-    orden: {
-      gestiones: {
-        some: {
-          cierreId,
-          resultado: { in: [...criterio.resultados] },
-          ...(criterio.exigeMontoRecibido ? { montoRecibido: { gt: 0 } } : {}),
-          // FICHA 468 (design §2.2): la supresion de ceros de los dos snapshots por gestion, DENTRO del
-          // mismo `some` correlacionado con el cierre (la gestion que aporta es la de ESTE cierre).
-          ...(criterio.exigePagoMensajero ? { pagoMensajero: { gt: 0 } } : {}),
-          ...(criterio.exigeIndemnizacion ? { indemnizacion: { gt: 0 } } : {}),
-        },
-      },
-    },
     ...(tiendaId !== undefined ? { tiendaId } : {}), // AL FINAL: nada lo puede pisar
   };
 }

@@ -63,9 +63,11 @@ const ZONAS = [
 ] as const;
 
 // Feature 21: item de `listarVehiculos` (VehiculoDTO); el form lee id + name.
+// SL-42 (R18): `v3` está inactivo: no se ofrece para una elección nueva.
 const VEHICULOS = [
-  { id: "v1", name: "moto" },
-  { id: "v2", name: "carro" },
+  { id: "v1", name: "moto", activo: true },
+  { id: "v2", name: "carro", activo: true },
+  { id: "v3", name: "bici", activo: false },
 ] as const;
 
 const USUARIO: UsuarioPublico = {
@@ -796,6 +798,80 @@ describe("UsuarioForm — vehiculo (feature 21)", () => {
     const trigger = await screen.findByRole("combobox", { name: "Vehiculo" });
     await waitFor(() => expect(trigger).toHaveTextContent("carro"));
   }, 15000);
+});
+
+// SL-42 (R17, R18): el `maestro` sigue leyendo el catálogo (R17), pero un tipo inactivo no se
+// ofrece para una elección nueva; el que ya tiene el mensajero que se edita sí se conserva (R18).
+describe("UsuarioForm — vehículo inactivo (SL-42, R17/R18)", () => {
+  async function opcionesDeVehiculo(user: ReturnType<typeof userEvent.setup>): Promise<string[]> {
+    await waitFor(() => expect(listarVehiculosMock).toHaveBeenCalled());
+    await user.click(await screen.findByRole("combobox", { name: "Vehiculo" }));
+    const listbox = await screen.findByRole("listbox");
+    return within(listbox)
+      .getAllByRole("option")
+      .map((o) => o.textContent ?? "");
+  }
+
+  it("R17/R18: al crear un mensajero ofrece solo los activos", async () => {
+    const user = userEvent.setup();
+    listarRolesMock.mockResolvedValue({ status: "ok", roles: [...ROLES_ZONA] });
+    renderIsolated(<UsuarioForm mode="crear" />);
+
+    await waitFor(() => expect(listarRolesMock).toHaveBeenCalled());
+    await user.click(screen.getByRole("combobox", { name: "Rol" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", { name: "mensajero" }),
+    );
+
+    const opciones = await opcionesDeVehiculo(user);
+    expect(opciones).toContain("moto");
+    expect(opciones).toContain("carro");
+    expect(opciones.some((o) => o.includes("bici"))).toBe(false);
+  }, 20000);
+
+  it("R18: al editar un mensajero con un vehículo activo, el inactivo no se ofrece", async () => {
+    const user = userEvent.setup();
+    listarRolesMock.mockResolvedValue({ status: "ok", roles: [...ROLES_ZONA] });
+    renderIsolated(<UsuarioForm mode="editar" usuario={USUARIO_VEHICULO} />);
+
+    const opciones = await opcionesDeVehiculo(user);
+    expect(opciones.some((o) => o.includes("bici"))).toBe(false);
+  }, 20000);
+
+  it("R18: el mensajero que ya tiene un inactivo lo conserva, marcado, junto a los activos", async () => {
+    const user = userEvent.setup();
+    listarRolesMock.mockResolvedValue({ status: "ok", roles: [...ROLES_ZONA] });
+    renderIsolated(
+      <UsuarioForm mode="editar" usuario={{ ...USUARIO_VEHICULO, vehiculoId: "v3" }} />,
+    );
+
+    const trigger = await screen.findByRole("combobox", { name: "Vehiculo" });
+    await waitFor(() => expect(trigger).toHaveTextContent("bici (inactivo)"));
+
+    const opciones = await opcionesDeVehiculo(user);
+    expect(opciones).toContain("moto");
+    expect(opciones).toContain("carro");
+    expect(opciones).toContain("bici (inactivo)");
+  }, 20000);
+
+  it("R18: editar sin cambiar el vehículo inactivo lo envía tal cual (sigue siendo válido)", async () => {
+    listarRolesMock.mockResolvedValue({ status: "ok", roles: [...ROLES_ZONA] });
+    actualizarUsuarioMock.mockResolvedValue({ status: "ok", usuario: { ...USUARIO } });
+    const ref = createRef<UsuarioFormHandle>();
+    renderIsolated(
+      <UsuarioForm ref={ref} mode="editar" usuario={{ ...USUARIO_VEHICULO, vehiculoId: "v3" }} />,
+    );
+
+    const trigger = await screen.findByRole("combobox", { name: "Vehiculo" });
+    await waitFor(() => expect(trigger).toHaveTextContent("bici (inactivo)"));
+    await act(async () => {
+      await ref.current!.submit();
+    });
+
+    expect(actualizarUsuarioMock).toHaveBeenCalledTimes(1);
+    const enviado = actualizarUsuarioMock.mock.calls[0][1] as Record<string, unknown>;
+    expect(enviado.vehiculoId).toBe("v3");
+  }, 20000);
 });
 
 // Pedido humano: `apiKey` no es un rol de persona (es la cuenta de máquina de una

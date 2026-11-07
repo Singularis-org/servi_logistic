@@ -32,7 +32,7 @@ import {
   FIJAS_DESCARGA_WALLET_CAJA,
 } from "./wallet-ledger-descarga-columnas";
 import {
-  CATEGORIA_LABEL,
+  conceptoDeMovimientoCaja,
   DUENO_LABEL,
   ORIGEN_LABEL,
   TIPO_LABEL,
@@ -40,6 +40,7 @@ import {
 } from "./wallet-labels";
 import { fechaDiaMovimientoCR } from "@/lib/utils/fecha-dia-iso";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 42 (T12, R18/R21) — libro de movimientos (tabla, más reciente primero: el
 // backend ya lo devuelve ordenado). Datos por props desde el módulo. Money-safe: la
 // columna monto renderiza el STRING tal cual con `money`, sin parseFloat/Number.
@@ -196,7 +197,7 @@ function MovimientoCelda({ movimiento }: { movimiento: WalletMovimientoDTO }) {
   // La fila anulada DICE «Anulado» en la celda de «Ver» (`CeldaVer`, revisión B2 de la 458-C).
   return (
     <span className="flex flex-col gap-0.5">
-      <span className="font-medium">{CATEGORIA_LABEL[movimiento.categoria]}</span>
+      <span className="font-medium">{conceptoDeMovimientoCaja(movimiento)}</span>
       <span className="text-xs text-muted-foreground">
         <OrigenMovimiento fila={movimiento} rotulos={ORIGEN_LABEL} />
       </span>
@@ -335,7 +336,8 @@ export function WalletLedger({
         id: "fecha",
         value: LIBRO_CAJA_COLUMNA.fecha,
         minWidth: "7rem",
-        render: (m) => fechaDiaMovimientoCR(m.fechaMovimiento),
+        // SLT-81: la UI sigue en la zona de CR
+        render: (m) => fechaDiaMovimientoCR(m.fechaMovimiento, ZONA_CR),
       },
       {
         id: "movimiento",
@@ -385,6 +387,7 @@ export function WalletLedger({
     [onCambio, autoria, autoriaProp],
   );
 
+  // SLT-81: la UI sigue en la zona de CR
   return (
     <div className="overflow-x-auto">
       <DataTable
@@ -412,8 +415,8 @@ export function WalletLedger({
           naceDeUnCierre(m) ? (
             <DetalleMovimientoCierre
               movimientoId={m.id}
-              concepto={CATEGORIA_LABEL[m.categoria]}
-              fecha={fechaDiaMovimientoCR(m.fechaMovimiento)}
+              concepto={conceptoDeMovimientoCaja(m)}
+              fecha={fechaDiaMovimientoCR(m.fechaMovimiento, ZONA_CR)}
               resaltar={resaltar}
             />
           ) : null
@@ -423,8 +426,8 @@ export function WalletLedger({
         // visible (sólo el chevron), así que éste es el único nombre que tiene.
         expandAriaLabel={(m) =>
           DETALLE_MOVIMIENTO_NOMBRE.abrir(
-            CATEGORIA_LABEL[m.categoria],
-            fechaDiaMovimientoCR(m.fechaMovimiento),
+            conceptoDeMovimientoCaja(m),
+            fechaDiaMovimientoCR(m.fechaMovimiento, ZONA_CR),
           )
         }
         // Feature 170 (T C.4, R1/R9/R13): el control aparece solo si el módulo bajó el

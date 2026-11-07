@@ -3,8 +3,19 @@ import type { PrismaClient } from "@prisma/client";
 
 import type { Letra } from "./_dos-empresas-fixture";
 import {
+  abrirTarifas,
+  activacionesDe,
+  activarConFaltantes,
+  digitarYGuardar,
+  elegirNivel,
+  panelDe,
+  valoresDe,
+} from "./_tarifas-activacion-fixture";
+import {
   clienteDuenoLocal,
   elegirDistritos,
+  gruposDe,
+  marcarZonaEspecial,
   marcasDe,
   sembrarEmpresa,
   type DistritoElegido,
@@ -12,32 +23,30 @@ import {
 } from "./_zona-especial-fixture";
 
 /**
- * SL-38 T9 (R14) — la marca de zona especial en la pantalla de Tarifas, con dos maestros.
+ * SLT-54 R69 (R44, R45, R46; antes SL-38 T9) — la zona especial en la pantalla nueva, con dos maestros.
  *
- * La marca es de la EMPRESA (`distrito_zona_especial`, con RLS): el maestro de A marca un distrito
- * desde «Editar zona» y lo ve marcado al reabrir; el de B, en el mismo distrito, no lo ve; y lo que
- * marca B no lo ve A. El conteo «Zonas especiales: N» del cantón, que es lo único de tarifa que la
- * pantalla enseña de la marca, se comprueba con la misma regla. La base se lee también por detrás,
- * como dueño, para que el verde no dependa solo de lo que pinta el árbol.
+ * Desde SLT-54 la marca `distrito_zona_especial` no se escribe por pantalla (R28): se siembra por su servicio
+ * y lo que se comprueba es lo que la sustituye. La zona especial se configura como un grupo más, y la marca
+ * solo se ve, de solo lectura, en el selector de distritos mientras la empresa no ha activado. Los dos son de
+ * la EMPRESA: A marca X y B marca Y, sobre zonas que cubren los dos distritos, y ninguna ve lo de la otra. La
+ * base se lee también por detrás, como dueño, para que el verde no dependa solo de lo que se pinta.
  *
- * CÓMO SE CORRE (solo en local; una base no local lo aborta antes de escribir):
- * - `DATABASE_URL` a una base local desechable, migrada y con catálogos (`pnpm run db:seed`).
- * - El dev server en `localhost:3000` contra esa misma base (Playwright lo reutiliza).
- * - No se envía ningún correo: los maestros son `@example.test` por corrida, la contraseña la fija
- *   la fixture con el hasher del login y el dispositivo queda confiado (sin OTP).
- * Sin siembra, el `beforeAll` lanza y los tests FALLAN: no se saltan.
+ * DATOS: las dos zonas cubren X e Y, además de un distrito propio. Sin siembra, el `beforeAll` lanza y los
+ * casos FALLAN.
  */
+
+test.use({ actionTimeout: 30_000 });
 
 test.describe.configure({ mode: "serial" });
 
-const ERROR_DE_LA_MARCA = "No se pudo guardar la marca de zona especial.";
-const GUARDADO_OK = "Zona actualizada";
+const GRUPO = "Zona especial";
+const MARCA = "Zona especial hoy";
 
 let dueno: PrismaClient | null = null;
 let userAgent = "";
 const empresas: Partial<Record<Letra, EmpresaDeTarifas>> = {};
 const cookies: Partial<Record<Letra, Awaited<ReturnType<BrowserContext["cookies"]>>>> = {};
-/** [zona de A, zona de B, X (lo marca A), Y (lo marca B)]. */
+/** [propio de A, propio de B, X (lo marca A), Y (lo marca B)]. */
 let distritos: DistritoElegido[] = [];
 
 function de(letra: Letra): EmpresaDeTarifas {
@@ -63,8 +72,10 @@ test.beforeAll(async ({ browser }) => {
   userAgent = await (await ctx.newPage()).evaluate(() => navigator.userAgent);
   await ctx.close();
 
-  empresas.A = await sembrarEmpresa(dueno, "A", userAgent, distritos[0]);
-  empresas.B = await sembrarEmpresa(dueno, "B", userAgent, distritos[1]);
+  empresas.A = await sembrarEmpresa(dueno, "A", userAgent, [distritos[0], X(), Y()]);
+  empresas.B = await sembrarEmpresa(dueno, "B", userAgent, [distritos[1], X(), Y()]);
+  await marcarZonaEspecial(de("A").empresa, X());
+  await marcarZonaEspecial(de("B").empresa, Y());
 
   for (const letra of ["A", "B"] as const) {
     const c = await browser.newContext({ userAgent });
@@ -80,7 +91,6 @@ test.beforeAll(async ({ browser }) => {
 });
 
 test.afterAll(async () => {
-  // La base es desechable y se borra entera al terminar la comprobación.
   await dueno?.$disconnect();
 });
 
@@ -89,104 +99,125 @@ async function comoMaestro(browser: Browser, letra: Letra): Promise<Page> {
   expect(sesion?.length ?? 0, `no hay sesión de ${letra}: el login del beforeAll no dejó cookies`).toBeGreaterThan(0);
   const ctx = await browser.newContext({ userAgent });
   await ctx.addCookies(sesion ?? []);
-  return ctx.newPage();
+  const page = await ctx.newPage();
+  await abrirTarifas(page);
+  await expect(panelDe(page).getByRole("heading", { name: de(letra).zonaNombre })).toBeVisible();
+  return page;
 }
 
-/** Abre Tarifas de cero (render del servidor) y entra a «Editar» de la zona de la empresa. */
-async function abrirZona(page: Page, letra: Letra): Promise<void> {
-  await page.goto("/configuracion/tarifas", { waitUntil: "load", timeout: 180_000 });
-  const fila = page.getByRole("listitem").filter({ hasText: de(letra).zonaNombre });
-  await fila.getByRole("button", { name: "Editar" }).click({ timeout: 60_000 });
-  await expect(page.getByRole("heading", { name: "Editar zona" })).toBeVisible({ timeout: 30_000 });
+const seccionGrupos = (page: Page): Locator => page.getByRole("region", { name: /Grupos de .* de la zona/ });
+
+/** Abre «Crear grupo». Solo aquí se ve el selector de distritos con la marca. */
+async function abrirSelector(page: Page): Promise<Locator> {
+  await seccionGrupos(page).getByRole("button", { name: "Crear grupo", exact: true }).click();
+  const dialogo = page.getByRole("dialog", { name: "Crear grupo" });
+  await expect(dialogo).toBeVisible();
+  return dialogo;
 }
 
-/** Filtra el árbol por el nombre del distrito y devuelve su botón «Especial» (marcado o no). */
-async function botonEspecial(page: Page, d: DistritoElegido): Promise<Locator> {
-  await page.getByRole("searchbox", { name: "Buscar en el catálogo geográfico" }).fill(d.nombre);
-  const boton = page.getByRole("button", {
-    name: new RegExp(`^(Marcar ${d.nombre} como zona especial|Quitar la marca de zona especial a ${d.nombre})$`),
-  });
-  await expect(boton).toHaveCount(1);
-  return boton;
+const filaDistrito = (dialogo: Locator, d: DistritoElegido): Locator =>
+  dialogo.locator("label").filter({ hasText: d.nombre });
+
+async function crearGrupo(page: Page, d: DistritoElegido): Promise<void> {
+  const dialogo = await abrirSelector(page);
+  await dialogo.getByRole("textbox").fill(GRUPO);
+  await filaDistrito(dialogo, d).getByRole("checkbox").click();
+  await dialogo.getByRole("button", { name: "Guardar", exact: true }).click();
+  await expect(dialogo).toHaveCount(0);
+  await expect(seccionGrupos(page)).toContainText(GRUPO);
 }
 
-async function guardarSinErrorDeMarca(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Guardar" }).click();
-  await expect(page.getByText(GUARDADO_OK, { exact: true })).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText(ERROR_DE_LA_MARCA)).toHaveCount(0);
-  // Tras guardar, el módulo vuelve a la lista: el formulario ya no está.
-  await expect(page.getByRole("heading", { name: "Editar zona" })).toHaveCount(0);
-}
-
-// SLT-51 retiró Editar zona → Especial; SLT-54 lo reescribe contra su pantalla nueva. Hasta
-// entonces los cuatro casos quedan en fixme (el cuerpo se conserva como guía para SLT-54) y la
-// guardia `e2e-sin-saltos` los permite solo por la excepción con fecha que los nombra.
-test.fixme("(1) el maestro de A marca un distrito como zona especial y guarda sin toast de error", async ({ browser }) => {
+test("(1) cada maestro ve solo su marca, de solo lectura, en el selector de distritos", async ({ browser }) => {
   test.setTimeout(240_000);
-  const page = await comoMaestro(browser, "A");
-  await abrirZona(page, "A");
+  const pageA = await comoMaestro(browser, "A");
+  const selectorA = await abrirSelector(pageA);
+  await expect(selectorA).toContainText("es de solo lectura");
+  await expect(filaDistrito(selectorA, X())).toContainText(MARCA);
+  await expect(filaDistrito(selectorA, Y())).not.toContainText(MARCA);
+  await expect(selectorA.getByText(MARCA, { exact: true })).toHaveCount(1);
+  // R28: la fila no trae otro control que la casilla del grupo, y marcarla no toca la marca.
+  await expect(filaDistrito(selectorA, X()).getByRole("button")).toHaveCount(0);
+  await expect(filaDistrito(selectorA, X()).getByRole("checkbox")).toHaveCount(1);
+  await pageA.context().close();
 
-  const boton = await botonEspecial(page, X());
-  await expect(boton).toHaveAttribute("aria-pressed", "false");
-  await expect(page.getByText(/Zonas especiales:/)).toHaveCount(0);
-  await boton.click();
-  await expect(boton).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByText(/Zonas especiales: 1/)).toHaveCount(1);
-
-  await guardarSinErrorDeMarca(page);
-
-  await expect.poll(() => marcasDe(base(), de("A").empresa.organizacionId)).toEqual([X().id]);
-  await expect.poll(() => marcasDe(base(), de("B").empresa.organizacionId)).toEqual([]);
-  await page.context().close();
-});
-
-test.fixme("(2) al reabrir, el maestro de A ve el distrito marcado", async ({ browser }) => {
-  test.setTimeout(240_000);
-  const page = await comoMaestro(browser, "A");
-  await abrirZona(page, "A");
-
-  const boton = await botonEspecial(page, X());
-  await expect(boton).toHaveAttribute("aria-pressed", "true");
-  await expect(boton).toHaveAccessibleName(`Quitar la marca de zona especial a ${X().nombre}`);
-  await expect(page.getByText(/Zonas especiales: 1/)).toHaveCount(1);
-  await page.context().close();
-});
-
-test.fixme("(3) el maestro de B no ve marcado el distrito que marcó A", async ({ browser }) => {
-  test.setTimeout(240_000);
-  const page = await comoMaestro(browser, "B");
-  await abrirZona(page, "B");
-
-  const boton = await botonEspecial(page, X());
-  await expect(boton).toHaveAttribute("aria-pressed", "false");
-  await expect(boton).toHaveAccessibleName(`Marcar ${X().nombre} como zona especial`);
-  await expect(page.getByText(/Zonas especiales:/)).toHaveCount(0);
-  await page.context().close();
-});
-
-test.fixme("(4) B marca otro distrito: B lo ve al reabrir y A no, y A conserva el suyo", async ({ browser }) => {
-  test.setTimeout(300_000);
   const pageB = await comoMaestro(browser, "B");
-  await abrirZona(pageB, "B");
-  const botonB = await botonEspecial(pageB, Y());
-  await expect(botonB).toHaveAttribute("aria-pressed", "false");
-  await botonB.click();
-  await expect(botonB).toHaveAttribute("aria-pressed", "true");
-  await guardarSinErrorDeMarca(pageB);
+  const selectorB = await abrirSelector(pageB);
+  await expect(filaDistrito(selectorB, Y())).toContainText(MARCA);
+  await expect(filaDistrito(selectorB, X())).not.toContainText(MARCA);
+  await expect(selectorB.getByText(MARCA, { exact: true })).toHaveCount(1);
+  await pageB.context().close();
 
-  await abrirZona(pageB, "B");
-  await expect(await botonEspecial(pageB, Y())).toHaveAttribute("aria-pressed", "true");
-  await expect(pageB.getByText(/Zonas especiales: 1/)).toHaveCount(1);
+  expect(await marcasDe(base(), de("A").empresa.organizacionId)).toEqual([X().id]);
+  expect(await marcasDe(base(), de("B").empresa.organizacionId)).toEqual([Y().id]);
+});
+
+test("(2) A configura la zona especial como un grupo más, con su flete, sin tocar la marca", async ({ browser }) => {
+  test.setTimeout(240_000);
+  const page = await comoMaestro(browser, "A");
+  await crearGrupo(page, X());
+
+  await elegirNivel(page, new RegExp(`^Grupo: ${GRUPO} \\(1 `));
+  await digitarYGuardar(page, "Cobro a la tienda", [{ concepto: "Flete por entregado", valor: "5000", iva: "13" }]);
+
+  // Al reabrir, el grupo y su valor siguen; y el distrito está a la vez en el grupo y con su marca (R46).
+  await abrirTarifas(page);
+  await elegirNivel(page, new RegExp(`^Grupo: ${GRUPO} \\(1 `));
+  await expect(panelDe(page).getByRole("textbox", { name: "Valor de Flete por entregado", exact: true })).toHaveValue("5000");
+  await expect(seccionGrupos(page)).toContainText(X().nombre);
+  const selector = await abrirSelector(page);
+  await expect(filaDistrito(selector, X())).toContainText(MARCA);
+  await expect(filaDistrito(selector, X())).toContainText(`En el grupo ${GRUPO}`);
+  await page.context().close();
+
+  expect(await gruposDe(base(), de("A").empresa.organizacionId)).toEqual([{ nombre: GRUPO, distritos: [X().id] }]);
+  expect(await marcasDe(base(), de("A").empresa.organizacionId)).toEqual([X().id]);
+  expect(await marcasDe(base(), de("B").empresa.organizacionId)).toEqual([Y().id]);
+});
+
+test("(3) B no ve el grupo de A y crea el suyo, con el mismo nombre, sin que A lo vea", async ({ browser }) => {
+  test.setTimeout(240_000);
+  const pageB = await comoMaestro(browser, "B");
+  await expect(seccionGrupos(pageB)).toContainText("Esta zona no tiene grupos");
+  await pageB.locator("#tarifas-nivel").click();
+  await expect(pageB.getByRole("option")).toHaveText(["Toda la zona", "Tienda con precio propio…"]);
+  await pageB.keyboard.press("Escape");
+  await expect(panelDe(pageB).getByRole("textbox", { name: "Valor de Flete por entregado", exact: true })).toHaveValue("");
+
+  await crearGrupo(pageB, Y());
   await pageB.context().close();
 
   const pageA = await comoMaestro(browser, "A");
-  await abrirZona(pageA, "A");
-  const botonYenA = await botonEspecial(pageA, Y());
-  await expect(botonYenA).toHaveAttribute("aria-pressed", "false");
-  await expect(pageA.getByText(/Zonas especiales:/)).toHaveCount(0);
-  await expect(await botonEspecial(pageA, X())).toHaveAttribute("aria-pressed", "true");
+  await expect(seccionGrupos(pageA).getByRole("listitem")).toHaveCount(1);
+  await expect(seccionGrupos(pageA)).toContainText(X().nombre);
+  await expect(seccionGrupos(pageA)).not.toContainText(Y().nombre);
   await pageA.context().close();
 
-  await expect.poll(() => marcasDe(base(), de("A").empresa.organizacionId)).toEqual([X().id]);
-  await expect.poll(() => marcasDe(base(), de("B").empresa.organizacionId)).toEqual([Y().id]);
+  expect(await gruposDe(base(), de("B").empresa.organizacionId)).toEqual([{ nombre: GRUPO, distritos: [Y().id] }]);
+  expect(await gruposDe(base(), de("A").empresa.organizacionId)).toEqual([{ nombre: GRUPO, distritos: [X().id] }]);
+  expect(await valoresDe(de("B").empresa.organizacionId)).toEqual([]);
+});
+
+test("(4) A activa: su marca deja de verse, su grupo sigue, y B no cambia", async ({ browser }) => {
+  test.setTimeout(240_000);
+  const pageA = await comoMaestro(browser, "A");
+  await activarConFaltantes(pageA);
+  await abrirTarifas(pageA);
+  await expect(seccionGrupos(pageA)).toContainText(X().nombre);
+  const selectorA = await abrirSelector(pageA);
+  await expect(selectorA.getByText(MARCA, { exact: true })).toHaveCount(0);
+  await expect(selectorA).not.toContainText("es de solo lectura");
+  await pageA.context().close();
+
+  const pageB = await comoMaestro(browser, "B");
+  await expect(pageB.getByRole("region", { name: "Estado de las tarifas" })).toContainText("Borrador");
+  const selectorB = await abrirSelector(pageB);
+  await expect(filaDistrito(selectorB, Y())).toContainText(MARCA);
+  await pageB.context().close();
+
+  expect(await activacionesDe(de("A").empresa.organizacionId)).toBe(1);
+  expect(await activacionesDe(de("B").empresa.organizacionId)).toBe(0);
+  // R9: activar no mueve la marca ni los grupos de nadie; se oculta, no se borra.
+  expect(await marcasDe(base(), de("A").empresa.organizacionId)).toEqual([X().id]);
+  expect(await marcasDe(base(), de("B").empresa.organizacionId)).toEqual([Y().id]);
+  expect(await gruposDe(base(), de("A").empresa.organizacionId)).toEqual([{ nombre: GRUPO, distritos: [X().id] }]);
 });

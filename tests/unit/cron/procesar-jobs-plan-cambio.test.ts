@@ -9,14 +9,25 @@ import { MODULO_POR_JOB } from "@/lib/modulos/reparto";
 import { PlanesRepository } from "@/lib/repositories/PlanesRepository";
 import { ConsoleEmailSender } from "@/lib/services/email/ConsoleEmailSender";
 import { EnrutadorEmailSender } from "@/lib/services/email/EnrutadorEmailSender";
+import { PaisSinZonaHoraria } from "@/lib/db/errores-pais";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // El repositorio de los handlers cableados: un doble que registra en qué contexto lo llaman. El resto
 // del módulo es el real (`importOriginal`), incluido el composition root que se prueba abajo.
 const llamadas: { metodo: string; contexto: ContextoDatos | undefined; args: unknown[] }[] = [];
 const dobleCableado: Pick<
   IPlanesRepository,
-  "aplicarCambioProgramado" | "cambiosVencidos" | "repartirRecordatorio" | "destinatariosDelAviso"
+  | "aplicarCambioProgramado"
+  | "cambiosVencidos"
+  | "repartirRecordatorio"
+  | "destinatariosDelAviso"
+  | "cambiosDeEmpresaVencidos"
+  | "aplicarCambioDeEmpresa"
 > = {
+  // SLT-86 (R20): la segunda pasada del barrido; sin pendientes de empresa aquí (los prueba
+  // `tests/unit/planes/jobs-cambio-empresa.test.ts`).
+  cambiosDeEmpresaVencidos: async () => [],
+  aplicarCambioDeEmpresa: async () => ({ estado: "sin_pendiente" }),
   aplicarCambioProgramado: async (...args) => {
     llamadas.push({ metodo: "aplicar", contexto: contextoActual(), args });
     return { estado: "aplicado" };
@@ -99,12 +110,12 @@ describe("SL-24 — registro de los trabajos del cambio programado (R38, R44)", 
   });
 
   it("el barrido se re-agenda a la siguiente hora en punto, con la hora en la clave", () => {
-    expect(recurrenciaPlanCambiosVencidos.siguiente(new Date("2026-11-15T06:30:00.000Z"))).toEqual({
+    expect(recurrenciaPlanCambiosVencidos.siguiente(new Date("2026-11-15T06:30:00.000Z"), [])).toEqual({
       runAfter: new Date("2026-11-15T07:00:00.000Z"),
       dedupeKey: "plan_cambios_vencidos:2026-11-15T07",
     });
     // En la hora en punto exacta, la siguiente (estrictamente posterior).
-    expect(recurrenciaPlanCambiosVencidos.siguiente(new Date("2026-11-15T07:00:00.000Z")).runAfter).toEqual(
+    expect(recurrenciaPlanCambiosVencidos.siguiente(new Date("2026-11-15T07:00:00.000Z"), []).runAfter).toEqual(
       new Date("2026-11-15T08:00:00.000Z"),
     );
     expect(RECURRENTES_DE_PLATAFORMA.has("plan_cambios_vencidos")).toBe(true);
@@ -181,6 +192,12 @@ describe("SL-24 — registro de los trabajos del cambio programado (R38, R44)", 
   });
 });
 
+/** SLT-86 (R20): el barrido también pasa por los cambios de empresa; aquí no hay ninguno. */
+const sinPendientesDeEmpresa = {
+  cambiosDeEmpresaVencidos: async () => [],
+  aplicarCambioDeEmpresa: vi.fn<IPlanesRepository["aplicarCambioDeEmpresa"]>(),
+};
+
 describe("SL-24 — handlers delgados", () => {
   it("plan_aplicar_cambio pasa ESA programación y el reloj al repositorio", async () => {
     const aplicar = vi.fn<IPlanesRepository["aplicarCambioProgramado"]>(async () => ({ estado: "sin_pendiente" }));
@@ -211,7 +228,7 @@ describe("SL-24 — handlers delgados", () => {
       return { estado: "aplicado" };
     });
     const handler = crearPlanCambiosVencidosHandler(
-      { cambiosVencidos: async () => vencidos, aplicarCambioProgramado: aplicar },
+      { cambiosVencidos: async () => vencidos, aplicarCambioProgramado: aplicar, ...sinPendientesDeEmpresa },
       () => AHORA,
     );
     await expect(handler(job({}))).rejects.toThrow(/1 cambio\(s\): c2/);
@@ -220,7 +237,10 @@ describe("SL-24 — handlers delgados", () => {
 
   it("el barrido sin vencidos no aplica nada ni falla", async () => {
     const aplicar = vi.fn<IPlanesRepository["aplicarCambioProgramado"]>();
-    await crearPlanCambiosVencidosHandler({ cambiosVencidos: async () => [], aplicarCambioProgramado: aplicar }, () => AHORA)(job({}));
+    await crearPlanCambiosVencidosHandler(
+      { cambiosVencidos: async () => [], aplicarCambioProgramado: aplicar, ...sinPendientesDeEmpresa },
+      () => AHORA,
+    )(job({}));
     expect(aplicar).not.toHaveBeenCalled();
   });
 });
@@ -284,7 +304,7 @@ describe("SL-24 — plan_aviso_correo (R41, R42, R45)", () => {
   it("un correo por maestro activo, con la plantilla del cambio y el contacto del pie", async () => {
     const destinatarios = vi.fn<IPlanesRepository["destinatariosDelAviso"]>(async () => ({ empresaNombre: "Uno", maestros: MAESTROS }));
     const sender = emisor();
-    await crearPlanAvisoCorreoHandler({ destinatariosDelAviso: destinatarios }, () => ({ sender, contacto: "hola@ejemplo.example" }))(
+    await crearPlanAvisoCorreoHandler({ destinatariosDelAviso: destinatarios }, () => ({ sender, contacto: "hola@ejemplo.example", reglasPais: reglasPaisFijas() }))(
       job(aviso(), conEmpresa),
     );
     // `guardado` no comprueba el pendiente (la edición inmediata ni siquiera lo tiene).
@@ -296,10 +316,35 @@ describe("SL-24 — plan_aviso_correo (R41, R42, R45)", () => {
     expect(sender.enviados[0].text).toContain("hola@ejemplo.example");
   });
 
+  it("SLT-42 R22: la fecha del correo sale en la zona del país de la empresa destino", async () => {
+    const sender = emisor();
+    // `aviso()` rige el 2026-11-20 a las 00:00 de la plataforma (06:00Z): en Madrid ya son las 07:00 del 20,
+    // y en Honolulu (UTC-10) todavía las 20:00 del 19.
+    await crearPlanAvisoCorreoHandler(
+      { destinatariosDelAviso: async () => ({ empresaNombre: "Uno", maestros: MAESTROS }) },
+      () => ({ sender, contacto: null, reglasPais: reglasPaisFijas({ zonaHoraria: "Pacific/Honolulu" }) }),
+    )(job(aviso(), conEmpresa));
+    expect(sender.enviados[0].text).toContain("cambia a partir del 19 nov 2026.");
+  });
+
+  it("SLT-42 R28: sin zona en el país de la empresa, el trabajo falla sin enviar ningún correo", async () => {
+    const sender = emisor();
+    const handler = crearPlanAvisoCorreoHandler(
+      { destinatariosDelAviso: async () => ({ empresaNombre: "Uno", maestros: MAESTROS }) },
+      () => ({ sender, contacto: null, reglasPais: reglasPaisFijas({ zonaHoraria: null }) }),
+    );
+    await expect(handler(job(aviso(), conEmpresa))).rejects.toBeInstanceOf(PaisSinZonaHoraria);
+    expect(sender.enviados).toEqual([]);
+  });
+
+  it("SLT-42: el composition root del correo inyecta las reglas del país de la empresa", () => {
+    expect(jobsCambioPlan.buildDepsAvisoCorreo().reglasPais).toBeDefined();
+  });
+
   it("un recordatorio pide comprobar que su programación sigue pendiente; el cancelado no", async () => {
     const destinatarios = vi.fn<IPlanesRepository["destinatariosDelAviso"]>(async () => null);
     const sender = emisor();
-    const handler = crearPlanAvisoCorreoHandler({ destinatariosDelAviso: destinatarios }, () => ({ sender, contacto: null }));
+    const handler = crearPlanAvisoCorreoHandler({ destinatariosDelAviso: destinatarios }, () => ({ sender, contacto: null, reglasPais: reglasPaisFijas() }));
     await handler(job(aviso({ tipo: "recordatorio_7" }), conEmpresa));
     await handler(job(aviso({ tipo: "cancelado", cambios: {} }), conEmpresa));
     expect(destinatarios.mock.calls).toEqual([
@@ -314,7 +359,7 @@ describe("SL-24 — plan_aviso_correo (R41, R42, R45)", () => {
     const sender = emisor(["a@uno.example"]);
     const handler = crearPlanAvisoCorreoHandler(
       { destinatariosDelAviso: async () => ({ empresaNombre: "Uno", maestros: MAESTROS }) },
-      () => ({ sender, contacto: null }),
+      () => ({ sender, contacto: null, reglasPais: reglasPaisFijas() }),
     );
     const error = await handler(job(aviso(), conEmpresa)).catch((e: unknown) => e);
     expect(String(error)).toMatch(/fallaron 1 de 2 envío/);

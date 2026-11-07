@@ -49,6 +49,7 @@ import type {
 
 function ingreso(over: Partial<IngresoEmpresaDTO> = {}): IngresoEmpresaDTO {
   return {
+    tarifaModelo: "viejo",
     montoCobrar: "150.00",
     cobraComision: true,
     esCentral: true,

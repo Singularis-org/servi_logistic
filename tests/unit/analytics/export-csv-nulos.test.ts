@@ -7,6 +7,7 @@ import { filasDeSerie } from "@/app/(app)/analitica/_components/operativo/export
 import { PENUMBRA, type SerieOperativa } from "@/lib/types/analitica-operativa";
 import { construirDescarga } from "@/lib/utils/descarga-dataset";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 134 — R11. `valor: null` significa INDEFINIDO (denominador 0), no cero.
 //
 // El contrato de la 126 lo declara sin ambiguedad: «`null` = indefinido. NUNCA `0` para decir
@@ -47,7 +48,7 @@ async function csv(): Promise<string> {
     titulo: "Tasa de entrega",
     columnas: COLUMNAS_DESCARGA_ANALITICA_OPERATIVA,
     filas: filasDeSerie([{ etiqueta: "Tasa de entrega", serie: SERIE }]),
-  });
+  }, ZONA_CR);
   return String(archivo.contenido);
 }
 

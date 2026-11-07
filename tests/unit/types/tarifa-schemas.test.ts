@@ -7,6 +7,12 @@ import {
   listarTarifasSchema,
   type TarifaDTO,
 } from "@/lib/types/tarifa";
+import {
+  escrituraValorSchema,
+  guardarTopeIntentosSchema,
+  TOPE_INTENTOS_MAXIMO,
+  TOPE_INTENTOS_MINIMO,
+} from "@/lib/types/tarifa-flexible";
 import { tarifasConfig } from "@/lib/config/tarifas";
 
 // Quita comentarios de linea y de bloque. Sin esto, un assert de "esta cadena ya no
@@ -236,5 +242,80 @@ describe("listarTarifasSchema — paginacion (R18)", () => {
     const r = listarTarifasSchema.safeParse({ pageSize: 100000 });
     expect(r.success).toBe(true);
     if (r.success) expect(r.data.pageSize).toBe(tarifasConfig.MAX_PAGE_SIZE);
+  });
+});
+
+// SLT-55 (design §3.1). `mensajeroId` declarado en el esquema: si zod no lo conociera, lo descartaria en
+// silencio y un valor con mensajero y zona llegaria al service como un valor de la ZONA.
+describe("escrituraValorSchema — mensajeroId del valor propio (SLT-55 R5, R6)", () => {
+  const SIN_NIVEL = { zonaId: null, grupoId: null, tiendaId: null, vehiculoId: null };
+  const PROPIO = { concepto: "mensajero_entregado", modo: "monto", valor: "2900", ...SIN_NIVEL, mensajeroId: "m-1" };
+
+  it("R6: conserva la clave junto a una zona: la combinacion la rechaza el service, no la borra zod", () => {
+    const r = escrituraValorSchema.safeParse({ ...PROPIO, zonaId: "zona-1" });
+    expect(r.success && r.data.mensajeroId).toBe("m-1");
+  });
+
+  it("con la clave, la conserva", () => {
+    const r = escrituraValorSchema.safeParse(PROPIO);
+    expect(r.success && r.data.mensajeroId).toBe("m-1");
+  });
+
+  it("sin la clave, vale null: la rejilla por zona no la manda", () => {
+    const { mensajeroId, ...sinClave } = PROPIO;
+    void mensajeroId;
+    const r = escrituraValorSchema.safeParse({ ...sinClave, zonaId: "zona-1" });
+    expect(r.success && r.data.mensajeroId).toBeNull();
+  });
+
+  it("también en un cobro a la tienda: el esquema la conserva para que el service la rechace", () => {
+    const r = escrituraValorSchema.safeParse({ ...PROPIO, concepto: "tienda_flete_entregado", ivaPct: "13" });
+    expect(r.success && r.data.mensajeroId).toBe("m-1");
+  });
+
+  it("rechaza un id vacio en mensajeroId", () => {
+    const r = escrituraValorSchema.safeParse({ ...PROPIO, mensajeroId: "" });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.issues[0].path).toEqual(["mensajeroId"]);
+  });
+
+  it.each([
+    ["IVA 0", { ivaPct: "0" }],
+    ["IVA 13", { ivaPct: "13" }],
+    ["IVA null", { ivaPct: null }],
+  ])("R5: un valor propio con %s sigue rechazado en ivaPct", (_caso, cambio) => {
+    const r = escrituraValorSchema.safeParse({ ...PROPIO, ...cambio });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.issues.map((i) => i.path.join("."))).toEqual(["ivaPct"]);
+  });
+});
+
+describe("SLT-77 R5 — guardarTopeIntentosSchema", () => {
+  it("el rango es de 1 a 10", () => {
+    expect([TOPE_INTENTOS_MINIMO, TOPE_INTENTOS_MAXIMO]).toEqual([1, 10]);
+  });
+
+  it.each([1, 2, 10])("admite %i", (tope) => {
+    expect(guardarTopeIntentosSchema.safeParse({ tope })).toEqual({ success: true, data: { tope } });
+  });
+
+  it.each([
+    ["0", { tope: 0 }, "tope"],
+    ["11", { tope: 11 }, "tope"],
+    ["-1", { tope: -1 }, "tope"],
+    ["2,5", { tope: 2.5 }, "tope"],
+    ["texto", { tope: "3" }, "tope"],
+    ["null", { tope: null }, "tope"],
+    ["ausente", {}, "tope"],
+  ])("rechaza %s en el campo tope", (_caso, input, campo) => {
+    const r = guardarTopeIntentosSchema.safeParse(input);
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.issues.map((i) => i.path.join("."))).toEqual([campo]);
+  });
+
+  it("R3: rechaza una clave de mas: la empresa no sale de la entrada", () => {
+    const r = guardarTopeIntentosSchema.safeParse({ tope: 3, organizacionId: "otra" });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.issues[0].code).toBe("unrecognized_keys");
   });
 });

@@ -191,8 +191,8 @@ const A_FAVOR: DeudaPlataformaDTO = { deuda: "-500.00", estado: "a_favor", impor
 const ROTULO_DEUDA = "Lo que la empresa debe a la plataforma";
 const ROTULO_A_FAVOR = "Saldo a favor de la empresa con la plataforma";
 const PISTA_DEBE =
-  "Lo que la plataforma cobra por cada orden creada, menos las anuladas y lo ya pagado. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.";
-const PISTA_AL_DIA = "La empresa está al día con la plataforma. Cada orden nueva suma su cobro aquí.";
+  "Lo que la plataforma cobra por las órdenes de la empresa (al crearlas o, con plan porcentual, al llegar a un estado final), menos las anuladas y lo ya pagado. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.";
+const PISTA_AL_DIA = "La empresa está al día con la plataforma. Cada orden suma su cobro aquí cuando se cobra.";
 const PISTA_A_FAVOR =
   "La empresa pagó más de lo que hoy debe, porque se anularon órdenes ya pagadas. Se descuenta de los próximos cobros.";
 const BOTON = "Registrar pago a la plataforma";

@@ -87,10 +87,12 @@ export function renderPlantilla(cuerpo: string, valores: Record<string, string>)
  * seguridad para llamadores que no resuelvan todas las claves, pero ya no es alcanzable desde
  * aqui: `resolverValoresPlantilla` devuelve una entrada por CADA clave extraida.
  */
-export function previewConEjemplos(cuerpo: string): string {
+export function previewConEjemplos(cuerpo: string, zona?: string): string {
+  // SLT-42 (R22): `zona` es la del pais de la empresa; las fechas con hora del ejemplo se pintan
+  // en ella, como en el envio real. Hace falta solo si el cuerpo pinta alguna (`necesitaZona`).
   return renderPlantilla(
     cuerpo,
-    resolverValoresPlantilla(extraerVariables(cuerpo), DATOS_PLANTILLA_EJEMPLO),
+    resolverValoresPlantilla(extraerVariables(cuerpo), DATOS_PLANTILLA_EJEMPLO, zona),
   );
 }
 

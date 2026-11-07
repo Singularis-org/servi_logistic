@@ -40,31 +40,21 @@ const nombreSchema = z
 export const crearVehiculoSchema = z.object({ name: nombreSchema }).strict();
 export type CrearVehiculoInput = z.infer<typeof crearVehiculoSchema>;
 
-export const actualizarVehiculoSchema = z.object({ name: nombreSchema }).strict();
-export type ActualizarVehiculoInput = z.infer<typeof actualizarVehiculoSchema>;
+// SL-42 (design §4.1; R5, R6, R9, R12) — las entradas del superadmin. El `id` viaja dentro del
+// objeto, y no como argumento suelto, para que `strict` cubra la entrada entera: un campo de mas
+// es `validation_error` aunque venga junto a un id valido.
+export const renombrarVehiculoSchema = z.object({ id: z.string().min(1), name: nombreSchema }).strict();
+export type RenombrarVehiculoInput = z.infer<typeof renombrarVehiculoSchema>;
 
-// DTO expuesto por la capa de lectura: id (uuid PK estable) + name. No expone
-// campos internos (R11).
+export const cambiarActivacionVehiculoSchema = z
+  .object({ id: z.string().min(1), activo: z.boolean() })
+  .strict();
+export type CambiarActivacionVehiculoInput = z.infer<typeof cambiarActivacionVehiculoSchema>;
+
+// DTO expuesto por la capa de lectura: id (uuid PK estable), name y, desde SL-42, `activo`: la
+// pantalla del superadmin lista los inactivos (R2) y las lecturas de empresa los filtran (R18).
 export interface VehiculoDTO {
   id: string;
   name: string;
+  activo: boolean;
 }
-
-/**
- * Resultado discriminado de las Server Actions del catalogo.
- *
- * `conflict` SI existe aqui, al contrario que en tarifas: `vehiculos.name` es UNIQUE,
- * asi que dar de alta un nombre repetido es un desenlace normal del dominio y tiene
- * que poder contarse como tal en vez de escapar como error crudo de Postgres.
- * `in_use` distingue el borrado bloqueado por las FKs (`usuario.vehiculo_id`,
- * `tarifa_zona_mensajero.vehiculo_id`) de un "no se pudo" generico: el usuario
- * necesita saber que el tipo esta EN USO, no que fallo algo.
- */
-export type VehiculoActionError =
-  | { status: "validation_error"; fieldErrors: Record<string, string[]> }
-  | { status: "unauthenticated" }
-  | { status: "forbidden" }
-  | { status: "not_found" }
-  | { status: "conflict" }
-  | { status: "in_use" }
-  | { status: "error" };

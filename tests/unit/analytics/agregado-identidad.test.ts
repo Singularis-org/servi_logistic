@@ -3,6 +3,7 @@ import { consultarAgregadoOperativo } from "@/lib/actions/analitica-operativa";
 import { ETIQUETA_MENSAJERO } from "@/lib/analytics/identidad";
 import { AHORA, MAESTRO, TIENDA, consultaDe, cubo, rollupFalso, servicioCon } from "./_fake-operativa";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Feature 176 / T4.8 (primera mitad) — R15.
 //
 // EL MODO AGREGADO NO ES UNA PUERTA TRASERA. La seudonimizacion y el oraculo de la 126 son
@@ -49,7 +50,7 @@ describe("R15 · bajo politica seudonima no salen ids de mensajero", () => {
     const logError = vi.fn();
     const r = await consultarAgregadoOperativo(
       { metricaId: "tasa_entrega", raw: { rango: "dia", mensajero_id: [UUID_SONDEADO] } },
-      {
+      { reglasPais: reglasPaisFijas(),
         service: servicioCon(rollupFalso(cubos)),
         logger: { logError },
         now: () => AHORA,
@@ -80,7 +81,7 @@ describe("R15 · bajo politica seudonima no salen ids de mensajero", () => {
     const logError = vi.fn();
     const r = await consultarAgregadoOperativo(
       { metricaId: "tasa_entrega", raw: { rango: "dia", mensajero_id: [UUID_SONDEADO] } },
-      {
+      { reglasPais: reglasPaisFijas(),
         service: servicioCon(rollupFalso(cubos)),
         logger: { logError },
         now: () => AHORA,

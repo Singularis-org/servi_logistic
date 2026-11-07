@@ -20,6 +20,17 @@ import { limpiar459, sembrarPersonas459, type Personas459 } from "./_fixtures/es
 import { tomarTarifaGlobal, type TarifaGlobalBajoLock } from "./_fixtures/cobro-plataforma-40";
 import { menos } from "./_fixtures/caja-459";
 
+// SLT-42 (T5.4): la zona del pais de la empresa es la de CR, como antes. Las reglas reales leen el pais
+// de la empresa en curso con el cliente global, que no ve la empresa de una transaccion revertida ni
+// tiene empresa fuera de `conEmpresa`; la zona por pais la miden `hora-por-pais-wallet` y `demo-qa`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
+
 // SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
 vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
 
@@ -168,6 +179,13 @@ describeSiHayBase("SLT-66 — la deuda de la wallet con cargos del plan (Postgre
         select: { id: true },
       })
     ).id;
+    // SLT-86 (design §1.2, R15): como `PlanesRepository.crear` (y `_fixtures/planes.ts > crearPlan`), el
+    // precio de alta rige desde siempre. Sin esa fila, `plan_de_la_empresa` no tiene precio del período y
+    // «Mi plan» rechaza la forma.
+    await base.$executeRawUnsafe(
+      `INSERT INTO "plan_precio_historial" ("plan_id", "desde_at", "precio_mensual", "descuentos") VALUES ($1, '-infinity', 50000.00, '{}')`,
+      planId,
+    );
     await base.$executeRawUnsafe(
       `UPDATE "organizacion" SET "plan_id" = $1, "plan_ciclo_ancla_at" = (now() AT TIME ZONE 'UTC') - interval '1 hour' WHERE "id" = $2`,
       planId,

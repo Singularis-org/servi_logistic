@@ -9,6 +9,7 @@ import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepos
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { RangoPagina } from "@/lib/utils/rango-pagina";
 import { listarConsolidablesSchema } from "@/lib/types/cierre-bodega";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 170 — FASE 2, T J.1 (R40/R41/R44/R49/R51/R54) — «Cierres del dia a consolidar»,
 // la cola paginada del adminSatelite.
@@ -238,7 +239,7 @@ function servicio(repo: ICierreBodegaRepository, contarZona?: { n: number }) {
       return ZONA_POR_USUARIO[usuarioId] ?? null;
     }),
   } as unknown as IOrdenRepository;
-  return new CierreBodegaService(repo, ordenRepo);
+  return new CierreBodegaService(repo, ordenRepo, reglasPaisFijas());
 }
 
 function input(extra: Record<string, unknown> = {}) {

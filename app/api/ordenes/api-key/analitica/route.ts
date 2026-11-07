@@ -51,10 +51,11 @@ import {
   conEmpresaDeLaKey,
   type AutenticadorApiKey,
 } from "@/lib/api/api-key-request";
-import { esFechaCalendarioValida } from "@/lib/utils/fecha-cr";
+import { esFechaCalendarioValida } from "@/lib/utils/calendario-zona";
 import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
 import {
   consultarAnaliticaIntegrador,
+  zonaDelIntegrador,
   type AnaliticaIntegradorDeps,
 } from "@/lib/api/analitica-integrador";
 import { proyectarRespuestaApiKey } from "@/lib/api/analitica-api-key-dto";
@@ -186,13 +187,15 @@ export async function handleAnaliticaApiKey(
       //
       // 2026-08-31 — las fechas que faltan las pone `resolverRangoApiKey`, con EL MISMO reloj que
       // usara el borde para todo el lote. Leer aqui un `new Date()` propio abriria la unica grieta
-      // que R48 cerro: el rango podria cruzar la medianoche de Costa Rica entre este `raw` y el
+      // que R48 cerro: el rango podria cruzar la medianoche de la empresa entre este `raw` y el
       // instante con el que se resuelve la consulta, y la respuesta ecoaria un rango que no es el
       // que se sirvio.
       const ahora = deps.analitica?.now?.() ?? new Date();
+      // SLT-42 (R22, R28): «hoy» es el de la zona del pais de la empresa de la key.
       const rango = resolverRangoApiKey(
         { desde: parsed.data.desde, hasta: parsed.data.hasta },
         ahora,
+        await zonaDelIntegrador(deps.analitica),
       );
       const salida = await consultarAnaliticaIntegrador(
         {

@@ -17,28 +17,35 @@ const AHORA = new Date("2026-03-01T06:00:00.000Z");
 function version(precio: PrecioPlan, costoPorOrden: string | null): VersionPlan {
   return {
     nombre: "Plan Costeo",
-    topes: { ordenesPorCiclo: 3000, porRol: { mensajero: 10 }, apiKeys: 2 },
+    topes: { porRol: { mensajero: 10 }, apiKeys: 2 },
     modulos: [],
     precio,
     costoPorOrden,
+    costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
   };
 }
 
 function leido(
   vigente: VersionPlan,
-  costoVigente: { monto: string; fuente: FuenteDelCosto },
+  costoVigente: { modo: "fijo"; monto: string; fuente: FuenteDelCosto }, // SLT-83: el costo vigente lleva su modo
   ordenes = 3,
 ): PlanConUsoLeido {
   return {
     vigente,
-    ancla: new Date("2026-01-15T06:00:00.000Z"),
+    // SLT-86 (R5, R15): «ahora» es el 1 de marzo a las 00:00: el período de marzo completo, sin tramo.
+    entrada: new Date("2026-01-15T06:00:00.000Z"),
+    precioDelPeriodo: vigente.precio,
+    pendiente: null,
     uso: { ordenes, apiKeys: 0, porRol: { admin: 1, mensajero: 2, adminTienda: 0, adminSatelite: 0 } },
     cambio: null,
     costoVigente,
+    cobroCiclo: { cobrado: "0.00", pendientes: 0 }, // SLT-83: campo nuevo; el modo fijo no lo usa
+    // Ajuste planes-custom (D6): campo nuevo; estos casos no lo comprueban.
+    tipoCobro: "mensual",
   };
 }
 
-const MONTO_50000: PrecioPlan = { tipo: "monto", mensual: "50000.00", anual: null };
+const MONTO_50000: PrecioPlan = { tipo: "monto", mensual: "50000.00", descuentos: {} };
 
 function pintar(l: PlanConUsoLeido, textoExcepcion?: string) {
   return render(
@@ -47,77 +54,76 @@ function pintar(l: PlanConUsoLeido, textoExcepcion?: string) {
 }
 
 function bloque(): HTMLElement {
-  return screen.getByRole("list", { name: "Costo del ciclo" });
+  return screen.getByRole("list", { name: "Costo del período" });
 }
 
 afterEach(() => cleanup());
 
 describe("SLT-66 R18/R19 — base con monto: base + órdenes × costo = total", () => {
   it("pinta las cuatro líneas con los importes del servidor, y el total resaltado", () => {
-    pintar(leido(version(MONTO_50000, "100.00"), { monto: "100.00", fuente: "plan" }));
+    pintar(leido(version(MONTO_50000, "100.00"), { modo: "fijo", monto: "100.00", fuente: "plan" }));
 
-    expect(screen.getByText("Costo del ciclo")).toBeInTheDocument();
+    expect(screen.getByText("Costo del período")).toBeInTheDocument();
     const b = bloque();
-    expect(within(b).getByText("Costo base: 50000.00 al mes")).toBeInTheDocument();
+    // SLT-86 (R28): el costo base del período en curso, con su tipo.
+    expect(within(b).getByText("Costo base mensual: 50000.00")).toBeInTheDocument();
     expect(within(b).getByText("Costo por orden: 100.00")).toBeInTheDocument();
-    expect(within(b).getByText("Órdenes del ciclo: 3 × 100.00 = 300.00")).toBeInTheDocument();
-    const total = within(b).getByText("Total estimado del ciclo: 50300.00");
+    expect(within(b).getByText("Órdenes del período: 3 × 100.00 = 300.00")).toBeInTheDocument();
+    const total = within(b).getByText("Total estimado del período: 50300.00");
     expect(total.tagName).toBe("STRONG");
   });
 
   it("ya no pinta «Precio informativo» (R9)", () => {
-    pintar(leido(version(MONTO_50000, "100.00"), { monto: "100.00", fuente: "plan" }));
+    pintar(leido(version(MONTO_50000, "100.00"), { modo: "fijo", monto: "100.00", fuente: "plan" }));
     expect(screen.queryByText(/Precio informativo/)).toBeNull();
   });
 });
 
 describe("SLT-66 R20 — las situaciones de la base", () => {
-  it("base 0.00 es un monto: «Costo base: 0.00 al mes» y el total es solo el de las órdenes", () => {
-    pintar(leido(version({ tipo: "monto", mensual: "0.00", anual: null }, "100.00"), { monto: "100.00", fuente: "plan" }));
+  it("base 0.00 es un monto: «Costo base mensual: 0.00» y el total es solo el de las órdenes", () => {
+    pintar(leido(version({ tipo: "monto", mensual: "0.00", descuentos: {} }, "100.00"), { modo: "fijo", monto: "100.00", fuente: "plan" }));
     const b = bloque();
-    expect(within(b).getByText("Costo base: 0.00 al mes")).toBeInTheDocument();
-    expect(within(b).getByText("Total estimado del ciclo: 300.00")).toBeInTheDocument();
+    expect(within(b).getByText("Costo base mensual: 0.00")).toBeInTheDocument();
+    expect(within(b).getByText("Total estimado del período: 300.00")).toBeInTheDocument();
   });
 
   it("plan sin costo por orden y empresa sin excepción: el global, sin nota, y hay total", () => {
-    pintar(leido(version(MONTO_50000, null), { monto: "500.00", fuente: "global" }));
+    pintar(leido(version(MONTO_50000, null), { modo: "fijo", monto: "500.00", fuente: "global" }));
     const b = bloque();
     expect(within(b).getByText("Costo por orden: 500.00")).toBeInTheDocument();
-    expect(within(b).getByText("Órdenes del ciclo: 3 × 500.00 = 1500.00")).toBeInTheDocument();
-    expect(within(b).getByText("Total estimado del ciclo: 51500.00")).toBeInTheDocument();
+    expect(within(b).getByText("Órdenes del período: 3 × 500.00 = 1500.00")).toBeInTheDocument();
+    expect(within(b).getByText("Total estimado del período: 51500.00")).toBeInTheDocument();
     expect(screen.queryByText("precio acordado para tu empresa")).toBeNull();
   });
 
-  it.each([
-    ["negociable", { tipo: "negociable" } as PrecioPlan],
-    ["sin precio", { tipo: "sin_precio" } as PrecioPlan],
-  ])("base %s: «Costo base: por definir», costo y subtotal, y ningún total", (_caso, precio) => {
-    pintar(leido(version(precio, "100.00"), { monto: "100.00", fuente: "plan" }));
+  // Ajuste planes-custom (D1): «negociable» ya no es una forma del costo base.
+  it.each([["sin precio", { tipo: "sin_precio" } as PrecioPlan]])("base %s: «Costo base mensual: por definir», costo y subtotal, y ningún total", (_caso, precio) => {
+    pintar(leido(version(precio, "100.00"), { modo: "fijo", monto: "100.00", fuente: "plan" }));
     const b = bloque();
-    expect(within(b).getByText("Costo base: por definir")).toBeInTheDocument();
+    expect(within(b).getByText("Costo base mensual: por definir")).toBeInTheDocument();
     expect(within(b).getByText("Costo por orden: 100.00")).toBeInTheDocument();
-    expect(within(b).getByText("Órdenes del ciclo: 3 × 100.00 = 300.00")).toBeInTheDocument();
-    expect(screen.queryByText(/Total estimado del ciclo/)).toBeNull();
+    expect(within(b).getByText("Órdenes del período: 3 × 100.00 = 300.00")).toBeInTheDocument();
+    expect(screen.queryByText(/Total estimado del período/)).toBeNull();
   });
 });
 
 describe("SLT-66 R18 (P1) — la nota de fuente del costo por orden", () => {
   it("excepción de la empresa: «Mi plan» dice «precio acordado para tu empresa», y el total usa lo que paga", () => {
-    pintar(leido(version(MONTO_50000, "100.00"), { monto: "80.00", fuente: "empresa" }));
+    pintar(leido(version(MONTO_50000, "100.00"), { modo: "fijo", monto: "80.00", fuente: "empresa" }));
     const b = bloque();
     expect(within(b).getByText("Costo por orden: 80.00")).toBeInTheDocument();
     expect(within(b).getByText("precio acordado para tu empresa")).toBeInTheDocument();
-    expect(within(b).getByText("Total estimado del ciclo: 50240.00")).toBeInTheDocument();
+    expect(within(b).getByText("Total estimado del período: 50240.00")).toBeInTheDocument();
   });
 
   it("el detalle del superadmin pasa su propio texto («excepción de la empresa») y no sale el de la empresa", () => {
-    pintar(leido(version(MONTO_50000, "100.00"), { monto: "80.00", fuente: "empresa" }), "excepción de la empresa");
+    pintar(leido(version(MONTO_50000, "100.00"), { modo: "fijo", monto: "80.00", fuente: "empresa" }), "excepción de la empresa");
     expect(within(bloque()).getByText("excepción de la empresa")).toBeInTheDocument();
     expect(screen.queryByText("precio acordado para tu empresa")).toBeNull();
   });
 
   it.each<FuenteDelCosto>(["plan", "global", "sin_configurar"])("fuente %s: el importe sin ninguna nota", (fuente) => {
-    pintar(leido(version(MONTO_50000, "100.00"), { monto: fuente === "sin_configurar" ? "0.00" : "100.00", fuente }));
+    pintar(leido(version(MONTO_50000, "100.00"), { modo: "fijo", monto: fuente === "sin_configurar" ? "0.00" : "100.00", fuente }));
     expect(screen.queryByText("precio acordado para tu empresa")).toBeNull();
     // El costo por orden es una línea sola: ningún texto colgando de ella.
     const linea = within(bloque()).getByText(/^Costo por orden: /);
@@ -125,26 +131,25 @@ describe("SLT-66 R18 (P1) — la nota de fuente del costo por orden", () => {
   });
 });
 
-describe("SLT-66 R10 — el anual no toca el costo por orden", () => {
-  it.each([
-    ["anual fijo", { tipo: "fijo", monto: "500000.00" } as const],
-    ["descuento anual", { tipo: "descuento", porcentaje: "10" } as const],
-  ])("%s: pinta la nota y el total es el mismo que sin anual", (_caso, anual) => {
-    pintar(leido(version({ ...MONTO_50000, anual }, "100.00"), { monto: "100.00", fuente: "plan" }));
-    expect(screen.getByText("El pago anual no cambia el costo por orden.")).toBeInTheDocument();
-    expect(within(bloque()).getByText("Costo por orden: 100.00")).toBeInTheDocument();
-    expect(within(bloque()).getByText("Total estimado del ciclo: 50300.00")).toBeInTheDocument();
-  });
-
-  it("sin anual, la nota no aparece", () => {
-    pintar(leido(version(MONTO_50000, "100.00"), { monto: "100.00", fuente: "plan" }));
+describe("SLT-86 R13, R28 — un descuento de período no toca el costo por orden y el aviso del anual se va", () => {
+  it("con descuento mensual y anual: la base lleva el del período en curso; el costo por orden, ninguno", () => {
+    const precio: PrecioPlan = {
+      tipo: "monto",
+      mensual: "50000.00",
+      descuentos: { mensual: { tipo: "monto", monto: "1000.00" }, anual: { tipo: "porcentaje", porcentaje: "10.00" } },
+    };
+    pintar(leido(version(precio, "100.00"), { modo: "fijo", monto: "100.00", fuente: "plan" }));
+    const b = bloque();
+    expect(within(b).getByText("Costo base mensual: 49000.00")).toBeInTheDocument();
+    expect(within(b).getByText("Costo por orden: 100.00")).toBeInTheDocument();
+    expect(within(b).getByText("Total estimado del período: 49300.00")).toBeInTheDocument();
     expect(screen.queryByText("El pago anual no cambia el costo por orden.")).toBeNull();
   });
 });
 
 describe("SLT-66 R21 — el costeo es solo una estimación", () => {
   it("debajo del bloque, en texto pequeño, la nota «Estimado: …»", () => {
-    pintar(leido(version(MONTO_50000, "100.00"), { monto: "100.00", fuente: "plan" }));
+    pintar(leido(version(MONTO_50000, "100.00"), { modo: "fijo", monto: "100.00", fuente: "plan" }));
     const nota = screen.getByText(
       "Estimado: el costo base no se cobra todavía; cada orden se cobra al crearla y se descuenta si se anula.",
     );
@@ -153,16 +158,16 @@ describe("SLT-66 R21 — el costeo es solo una estimación", () => {
 
   it("sin plan no hay bloque de costo", () => {
     render(<ConsumoDelPlan plan={null} textoSinPlan="sin plan" />);
-    expect(screen.queryByText("Costo del ciclo")).toBeNull();
+    expect(screen.queryByText("Costo del período")).toBeNull();
     expect(screen.queryByText(/^Estimado:/)).toBeNull();
   });
 });
 
 describe("SLT-66 R5 — ninguna fila ni línea del maestro", () => {
   it("el consumo no tiene fila «Maestro» y nada en pantalla lo nombra", () => {
-    const { container } = pintar(leido(version(MONTO_50000, "100.00"), { monto: "100.00", fuente: "plan" }));
+    const { container } = pintar(leido(version(MONTO_50000, "100.00"), { modo: "fijo", monto: "100.00", fuente: "plan" }));
     const consumo = screen.getByRole("list", { name: "Consumo" });
-    // Órdenes, los cuatro roles con tope y API keys.
+    // Las órdenes del período (sin tope, SLT-86 R8), los cuatro roles con tope y API keys.
     expect(within(consumo).getAllByRole("listitem")).toHaveLength(6);
     expect(container.textContent).not.toMatch(/maestro/i);
   });

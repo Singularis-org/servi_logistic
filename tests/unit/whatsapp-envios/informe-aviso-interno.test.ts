@@ -4,6 +4,7 @@ import type { DatosAviso } from "@/lib/whatsapp-envios/informes/tipos";
 import { TEXTO_CIERRE_POR_APROBAR, textoGeocodificacionCaida } from "@/lib/notificaciones/emitir";
 import { accionDeAviso } from "@/lib/notificaciones/catalogo-avisos";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Ficha 474 (T3.3, R51/R52) — «Aviso de la app».
 
 const BASE = "https://example.com";
@@ -16,7 +17,7 @@ function datos(texto: string, creadoAt = "2026-10-05T11:00:00.000Z"): DatosAviso
 
 describe("474/R51 — valores desde el aviso", () => {
   it("titulo = nombre del catalogo; texto = el del aviso; fecha/hora CR del aviso", async () => {
-    const r = await informe.generar({
+    const r = await informe.generar({ zona: ZONA_DE_CR,
       parametros: {},
       ahora: AHORA,
       conDocumento: false,
@@ -32,7 +33,7 @@ describe("474/R51 — valores desde el aviso", () => {
   it("enlace con atajo: base + href del catalogo de avisos para el rol de la fila", async () => {
     const accion = accionDeAviso("cierre_dia_por_aprobar", "maestro");
     if (accion.clase !== "accionable" || accion.atajo === null) throw new Error("se esperaba atajo");
-    const r = await informe.generar({
+    const r = await informe.generar({ zona: ZONA_DE_CR,
       parametros: {},
       ahora: AHORA,
       conDocumento: false,
@@ -43,7 +44,7 @@ describe("474/R51 — valores desde el aviso", () => {
   });
 
   it("enlace sin atajo (geocodificacion_caida): la de inicio", async () => {
-    const r = await informe.generar({
+    const r = await informe.generar({ zona: ZONA_DE_CR,
       parametros: {},
       ahora: AHORA,
       conDocumento: false,
@@ -54,7 +55,7 @@ describe("474/R51 — valores desde el aviso", () => {
 
   it("sin base URL: enlace vacio (el motor lo convierte en error nombrando `enlace`)", async () => {
     const sinBase = crearInformeAvisoInterno({ baseUrl: () => null });
-    const r = await sinBase.generar({
+    const r = await sinBase.generar({ zona: ZONA_DE_CR,
       parametros: {},
       ahora: AHORA,
       conDocumento: false,
@@ -82,7 +83,7 @@ describe("474/R51 — valores desde el aviso", () => {
 
 describe("474/R52 — Probar ahora de un envio por evento", () => {
   it("titulo y texto del EJEMPLO del catalogo; fecha y hora del momento", async () => {
-    const r = await informe.generar({
+    const r = await informe.generar({ zona: ZONA_DE_CR,
       parametros: {},
       ahora: AHORA, // 12:00 CR
       conDocumento: false,
@@ -98,7 +99,7 @@ describe("474/R52 — Probar ahora de un envio por evento", () => {
 
 describe("474 — cinturon: hora fija sin evento", () => {
   it("sin evento ni eventoDePrueba -> vacio", async () => {
-    const r = await informe.generar({ parametros: {}, ahora: AHORA, conDocumento: false });
+    const r = await informe.generar({ zona: ZONA_DE_CR, parametros: {}, ahora: AHORA, conDocumento: false });
     expect(r).toEqual({ tipo: "vacio", motivo: "Este informe solo funciona por evento." });
   });
 });

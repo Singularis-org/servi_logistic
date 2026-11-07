@@ -12,6 +12,7 @@ import type { IWalletTiendaMovimientoRepository } from "@/lib/interfaces/reposit
 import type { IPagoMensajeroMovimientoRepository } from "@/lib/interfaces/repositories/IPagoMensajeroMovimientoRepository";
 import { idEstado, sembrarCatalogoEstados } from "@/tests/fixtures/catalogo-estados";
 import { APLICACION_GESTIONES } from "@/tests/fixtures/anclaje-devolucion";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 /**
  * Feature 264 (B8, R5/R22) — LA APROBACION SIGUE MOVIENDO EXACTAMENTE EL MISMO DINERO.
@@ -111,6 +112,8 @@ function buildTx(
     [0, 1, 2].map((i) => ({ ordenId, cierreId: `c-viejo-${ordenId}-${i}` })),
   );
   const tx = {
+    // SLT-77 (R35): la relectura del tope en la tx. El mismo 3 de `umbralIntentos`; la carrera se mide en `tope-intentos-carreras`.
+    $queryRaw: vi.fn(async () => [{ tope: 3 }]),
     cierreDia: {
       updateMany: vi.fn(async () => ({ count: 1 })),
       findUnique: vi.fn(async () => ({
@@ -258,7 +261,7 @@ async function aprobarCon(
   // La CajaCod la instancia el propio repositorio (no se inyecta), asi que ya es la real.
   void CajaCodFeedService;
 
-  const resultado = await repo.resolverCierre({
+  const resultado = await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
     cierreId: CIERRE_ID,
     alcance: { destinoTipo: "bodega_central", destinoZonaId: null },
     nuevoEstado: "aprobado",

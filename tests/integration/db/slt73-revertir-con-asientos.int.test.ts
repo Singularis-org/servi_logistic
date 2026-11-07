@@ -11,6 +11,7 @@ import {
   type TxDeTest,
 } from "./_postgres-real";
 import { aprobar, consolidar, filasDeLibros, marcarRecibido, sembrarCierreAprobable } from "./_fixtures/slt73-cierre-aprobable";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // SLT-73 · R14 / D11 — REVERTIR UNA MARCA QUE YA ASENTO EL DINERO RESPONDE `con_asientos` Y NO TOCA NADA.
 //
@@ -66,7 +67,7 @@ describeSiHayBase("SLT-73 R14 — revertir una conciliacion con asientos (Postgr
       });
       const antes = await foto();
       const repo = new CierresBodegaAdminRepository(tx as unknown as PrismaClient);
-      const res = await repo.revertirConciliacion({ id, actorUsuarioId: k.maestroId });
+      const res = await repo.revertirConciliacion({ zonaHoraria: ZONA_DE_CR, id, actorUsuarioId: k.maestroId });
       return { marca, res, antes, despues: await foto() };
     });
 

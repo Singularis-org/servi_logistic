@@ -161,7 +161,7 @@ describe("R11 — distrito ajeno a la zona o ya en otro grupo, nombrando el dist
     const res = await new GrupoDistritosService(repo).crearGrupo(CREAR, MAESTRO);
     expect(res).toEqual({
       status: "validation_error",
-      fieldErrors: { distritoIds: ["El distrito «Pavas» no pertenece a la zona."] },
+      fieldErrors: { distritoIds: ["Pavas no pertenece a la zona."] },
     });
     expect(repo.nombresDeDistritos).toHaveBeenCalledWith(["d-pavas"]);
     expect(repo.crear).not.toHaveBeenCalled();
@@ -176,7 +176,7 @@ describe("R11 — distrito ajeno a la zona o ya en otro grupo, nombrando el dist
     const res = await new GrupoDistritosService(repo).crearGrupo(CREAR, MAESTRO);
     expect(res).toEqual({
       status: "validation_error",
-      fieldErrors: { distritoIds: ["El distrito «Hatillo» ya está en el grupo «Sur»."] },
+      fieldErrors: { distritoIds: ["Hatillo ya está en el grupo Sur."] },
     });
     expect(repo.distritosEnOtroGrupo).toHaveBeenCalledWith("zona-1", ["d-pavas", "d-hatillo"], null);
     expect(repo.crear).not.toHaveBeenCalled();
@@ -191,7 +191,7 @@ describe("R11 — distrito ajeno a la zona o ya en otro grupo, nombrando el dist
     const res = await new GrupoDistritosService(repo).fijarDistritos("g-1", ["d-hatillo"], MAESTRO);
     expect(res).toEqual({
       status: "validation_error",
-      fieldErrors: { distritoIds: ["El distrito «Hatillo» ya está en el grupo «Sur»."] },
+      fieldErrors: { distritoIds: ["Hatillo ya está en el grupo Sur."] },
     });
     expect(repo.distritosDeLaZona).toHaveBeenCalledWith("zona-1", ["d-hatillo"]);
     expect(repo.distritosEnOtroGrupo).toHaveBeenCalledWith("zona-1", ["d-hatillo"], "g-1");
@@ -203,7 +203,7 @@ describe("R11 — distrito ajeno a la zona o ya en otro grupo, nombrando el dist
     const res = await new GrupoDistritosService(repo).crearGrupo(CREAR, MAESTRO);
     expect(res).toEqual({
       status: "validation_error",
-      fieldErrors: { distritoIds: ["Algún distrito ya está en otro grupo de la zona o no pertenece a ella."] },
+      fieldErrors: { distritoIds: ["Alguno de los elegidos ya está en otro grupo de la zona o no pertenece a ella."] },
     });
   });
 });
@@ -381,7 +381,7 @@ describe("R11 — lo que la base rechaza se traduce al mismo error (repositorio 
     const res = await servicioReal(raiz).crearGrupo(CREAR, MAESTRO);
     expect(res).toEqual({
       status: "validation_error",
-      fieldErrors: { distritoIds: ["Algún distrito ya está en otro grupo de la zona o no pertenece a ella."] },
+      fieldErrors: { distritoIds: ["Alguno de los elegidos ya está en otro grupo de la zona o no pertenece a ella."] },
     });
   });
 

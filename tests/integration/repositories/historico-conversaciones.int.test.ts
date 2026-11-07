@@ -20,6 +20,7 @@ import type {
 } from "@/lib/types/historico-conversaciones";
 import type { ChatMensajeVista } from "@/lib/types/chat-whatsapp";
 import { MENSAJES_LIMITE_DEFECTO } from "@/lib/types/historico-conversaciones";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // Feature 321 — bloque 3 del repositorio (T3.1 a T3.5) contra Postgres REAL.
 //
@@ -410,6 +411,7 @@ describeSiHayBase("321 / bloque 3 — HistoricoConversacionesRepository contra P
           filtro: { mensajero_id: mensajeros, ...extra },
           cursor: null,
           limite,
+          zona: ZONA_DE_CR, // SLT-42: las fechas del filtro, en la zona de CR
         })
       ).items;
 
@@ -772,6 +774,7 @@ describeSiHayBase("321 / bloque 3 — HistoricoConversacionesRepository contra P
       filtro: { mensajero_id: ["x"], q: "abc", orden: "1001", fecha_desde: "2026-08-01" },
       cursor: { ultimaActividadAt: "2026-08-01T00:00:00.000Z", ordenId: "o", mensajeroId: "m" },
       limite: 26,
+      zona: ZONA_DE_CR,
     }).text;
     expect(sql).not.toMatch(/OFFSET/i);
   });

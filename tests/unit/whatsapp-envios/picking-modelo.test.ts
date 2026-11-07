@@ -9,6 +9,7 @@ import {
 } from "@/lib/whatsapp-envios/informes/picking/modelo";
 import type { FilaPicking } from "@/lib/whatsapp-envios/informes/picking/tipos";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Ficha 476 (T2.2) — el modelo PURO del picking: R10-R15, R18, R23, R25-R28.
 
 const UN_DIA = 24 * 60 * 60 * 1000;
@@ -29,7 +30,7 @@ function fila(producto: string, o: Partial<FilaPicking> = {}): FilaPicking {
 }
 
 function modelo(filas: FilaPicking[], diasAtraso = 2, tienda = "Abarrotes") {
-  return construirModeloPicking(filas, { ahora: AHORA, diasAtraso, tienda });
+  return construirModeloPicking(filas, { zona: ZONA_DE_CR, ahora: AHORA, diasAtraso, tienda });
 }
 
 describe("476/R10 — interpretacion del producto con el parser de la 345", () => {
@@ -91,12 +92,12 @@ describe("476/R13 — orden sin producto interpretable", () => {
 
 describe("476/R14 — dias en preparacion en calendario de Costa Rica", () => {
   it("entrada ayer a las 23:50 CR → 1 dia aunque hayan pasado menos de 24 h", () => {
-    expect(diasEnPreparacion(new Date("2026-10-05T05:50:00.000Z"), AHORA)).toBe(1);
+    expect(diasEnPreparacion(new Date("2026-10-05T05:50:00.000Z"), AHORA, ZONA_DE_CR)).toBe(1);
   });
 
   it("frontera de medianoche CR (06:00 UTC): 00:00 CR de hoy → 0; 23:59:59 CR de ayer → 1", () => {
-    expect(diasEnPreparacion(new Date("2026-10-05T06:00:00.000Z"), AHORA)).toBe(0);
-    expect(diasEnPreparacion(new Date("2026-10-05T05:59:59.000Z"), AHORA)).toBe(1);
+    expect(diasEnPreparacion(new Date("2026-10-05T06:00:00.000Z"), AHORA, ZONA_DE_CR)).toBe(0);
+    expect(diasEnPreparacion(new Date("2026-10-05T05:59:59.000Z"), AHORA, ZONA_DE_CR)).toBe(1);
   });
 
   it("el modelo pone esos dias en cada orden", () => {
@@ -155,19 +156,19 @@ describe("476/R18 — identificador", () => {
 
 describe("476/R23 — nombre del PDF", () => {
   it("«Abarrotes» → picking-abarrotes-2026-10-05.pdf", () => {
-    expect(nombreArchivoPicking("Abarrotes", AHORA)).toBe("picking-abarrotes-2026-10-05.pdf");
+    expect(nombreArchivoPicking("Abarrotes", AHORA, ZONA_DE_CR)).toBe("picking-abarrotes-2026-10-05.pdf");
   });
 
   it("«Ñandú Más» → sin diacriticos, en minusculas y con guiones", () => {
-    expect(nombreArchivoPicking("  Ñandú   Más!! ", AHORA)).toBe("picking-nandu-mas-2026-10-05.pdf");
+    expect(nombreArchivoPicking("  Ñandú   Más!! ", AHORA, ZONA_DE_CR)).toBe("picking-nandu-mas-2026-10-05.pdf");
   });
 
   it("23:30 CR (ya el dia siguiente en UTC) usa la fecha de Costa Rica", () => {
-    expect(nombreArchivoPicking("Abarrotes", new Date("2026-10-06T05:30:00.000Z"))).toBe("picking-abarrotes-2026-10-05.pdf");
+    expect(nombreArchivoPicking("Abarrotes", new Date("2026-10-06T05:30:00.000Z"), ZONA_DE_CR)).toBe("picking-abarrotes-2026-10-05.pdf");
   });
 
   it("una tienda sin ningun caracter util → «tienda»", () => {
-    expect(nombreArchivoPicking("😀", AHORA)).toBe("picking-tienda-2026-10-05.pdf");
+    expect(nombreArchivoPicking("😀", AHORA, ZONA_DE_CR)).toBe("picking-tienda-2026-10-05.pdf");
   });
 });
 
@@ -198,7 +199,7 @@ describe("476/R25-R28 — valores", () => {
   });
 
   it("R28: 2026-10-06T05:30Z es 05/10/2026 23:30 en Costa Rica", () => {
-    const m = construirModeloPicking([fila("1 * X")], { ahora: new Date("2026-10-06T05:30:00.000Z"), diasAtraso: 2, tienda: "G" });
+    const m = construirModeloPicking([fila("1 * X")], { zona: ZONA_DE_CR, ahora: new Date("2026-10-06T05:30:00.000Z"), diasAtraso: 2, tienda: "G" });
     expect(m.valores.fecha).toBe("05/10/2026");
     expect(m.valores.hora).toBe("23:30");
   });
@@ -213,7 +214,7 @@ describe("476/R3 — el conteo del selector usa LA MISMA definicion de atrasada 
       const c = contarPorTienda(
         filas.map((f) => ({ tiendaId: "t1", entrada: f.entrada })),
         AHORA,
-        N,
+        ZONA_DE_CR, N,
       ).get("t1");
       const m = modelo(filas, N);
       expect(c).toEqual({ ordenes: m.totales.ordenes, atrasadas: m.totales.atrasadas });

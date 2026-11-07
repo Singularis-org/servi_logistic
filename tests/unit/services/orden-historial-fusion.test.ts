@@ -479,6 +479,7 @@ interface Dobles {
     | "contarIntentosVigentes"
     | "findEventosByOrden"
     | "findSenalesGestion"
+    | "leerTopeIntentos"
   >;
   correccionRepo: IOrdenDiaRepartoCambioRepository;
   /** FICHA 427 (T21): la tercera fuente. */
@@ -497,6 +498,7 @@ function dobles(overrides: Partial<OrdenDTO> = {}, actuo = false): Dobles {
       contarIntentosVigentes: vi.fn(async () => 0),
       findEventosByOrden: vi.fn(async () => []),
       findSenalesGestion: vi.fn(async () => ({ gestionPendiente: null, ayudaAbierta: false })), // 454/R29
+      leerTopeIntentos: vi.fn(async () => 3),
     },
     correccionRepo: { findCorreccionesByOrden: vi.fn(async () => [C_UNICA]) },
     traspasoRepo: { findTraspasosByOrden: vi.fn(async () => [X_UNICO]) },

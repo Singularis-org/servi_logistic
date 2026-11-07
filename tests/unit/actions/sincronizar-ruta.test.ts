@@ -22,6 +22,7 @@ import type {
 } from "@/lib/interfaces/services/IOptimizacionRutaService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Feature 92 (R22/R31/R32/R33/R34) — la Server Action de sincronizacion manual.
 //
 // La guarda de rol (R33) NO es decoracion aunque la pagina ya haga `notFound()` para roles
@@ -364,7 +365,7 @@ describe("SLT-59 R45 — ruta vigente, mismo conjunto y sin desvio: la ruta actu
       CONFIG,
       () => T0,
       undefined,
-      { trazar } as unknown as IRoutesClient,
+      { trazar } as unknown as IRoutesClient, reglasPaisFijas(),
     );
 
     // Ubicacion recibida sobre la linea de la ruta, entre el origen y s1: no desviado.

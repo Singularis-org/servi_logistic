@@ -52,6 +52,8 @@ vi.mock("next/link", () => ({
 
 // El Sidebar de shadcn requiere el SidebarProvider (contexto useSidebar). Sin
 // prop `items` usa el default (SIDEBAR_ITEMS de menu-visibility).
+const SIN_TARIFAS_DE_ADMIN = SIDEBAR_ITEMS.filter((i) => i.label !== "Tarifas");
+
 function renderSidebar(items?: readonly MenuItem[]) {
   return render(
     <SidebarProvider>
@@ -140,7 +142,8 @@ describe("Sidebar", () => {
 
   it("expande el submenú y muestra los subítems con href correctos", async () => {
     const user = userEvent.setup();
-    renderSidebar();
+    // SLT-54 R56: sin el ítem del `admin`: ningún rol ve los dos «Tarifas» a la vez.
+    renderSidebar(SIN_TARIFAS_DE_ADMIN);
 
     // Cerrado por defecto: los subítems no están en el DOM.
     expect(screen.queryByRole("link", { name: "Tarifas" })).toBeNull();
@@ -168,7 +171,7 @@ describe("Sidebar", () => {
 
   it("abre el submenú por defecto cuando un subítem está activo (R4)", () => {
     currentPathname = "/configuracion/tarifas";
-    renderSidebar();
+    renderSidebar(SIN_TARIFAS_DE_ADMIN);
 
     const config = screen.getByRole("button", { name: /configuración/i });
     expect(config).toHaveAttribute("aria-expanded", "true");
@@ -418,6 +421,8 @@ describe("Feature 129 — ítem de sidebar de Analítica", () => {
     "gaugeCircle",
     // SLT-58 (R23): «Planes», el catálogo de planes del superadmin.
     "layers",
+    // SL-42 (R1): «Vehículos», el catálogo de tipos de vehículo del superadmin.
+    "car",
   ] as const satisfies readonly IconKey[];
   // Comprobación de exhaustividad tipada: si `IconKey` gana una clave que no está en
   // el array de arriba, `Exclude<IconKey, (typeof TODAS_LAS_CLAVES)[number]>` deja de

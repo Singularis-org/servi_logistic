@@ -56,6 +56,8 @@ export const MODELOS_DE_NEGOCIO: readonly ModeloClasificado[] = [
   { modelo: "GrupoDistritos", tabla: "grupo_distritos" },
   { modelo: "GrupoDistritosDistrito", tabla: "grupo_distritos_distrito" },
   { modelo: "TarifaValor", tabla: "tarifa_valor" },
+  // SLT-54: que empresa calcula ya con el modelo nuevo
+  { modelo: "TarifaActivacion", tabla: "tarifa_activacion" },
   { modelo: "PremioRanking", tabla: "premio_ranking" },
   { modelo: "GastoFijoPlantilla", tabla: "gasto_fijo_plantilla" },
   // Ordenes
@@ -110,6 +112,8 @@ export const MODELOS_DE_NEGOCIO: readonly ModeloClasificado[] = [
   { modelo: "GastoFijoCobro", tabla: "gasto_fijo_cobro" },
   // Cobro de la plataforma a la empresa por orden (SL-40): lo escribe solo el trigger de `orden`
   { modelo: "CobroPlataformaMovimiento", tabla: "cobro_plataforma_movimiento" },
+  // Condiciones congeladas del cobro porcentual de una orden (SLT-83): las escribe solo el trigger de alta
+  { modelo: "CobroPlataformaPorcentualOrden", tabla: "cobro_plataforma_porcentual_orden" },
   // Devoluciones
   { modelo: "DevolucionTiendaComprobante", tabla: "devolucion_tienda_comprobante" },
   { modelo: "DevolucionTiendaEvidencia", tabla: "devolucion_tienda_evidencia" },
@@ -145,6 +149,8 @@ export const MODELOS_DE_PLATAFORMA: readonly ModeloClasificado[] = [
   { modelo: "Distrito", tabla: "distrito" },
   // Catalogo de vehiculos (D12): solo lectura (R40)
   { modelo: "Vehiculo", tabla: "vehiculos" },
+  // Rastro del superadmin sobre vehiculos (SL-42, P2): sin acceso para `servi_app` (R22)
+  { modelo: "VehiculoRastro", tabla: "vehiculo_rastro" },
   // Autenticacion: «el dueno es usuario visible» (R22)
   { modelo: "Session", tabla: "Session" },
   { modelo: "TrustedDevice", tabla: "trusted_device" },
@@ -164,6 +170,9 @@ export const MODELOS_DE_PLATAFORMA: readonly ModeloClasificado[] = [
   { modelo: "PlanRastro", tabla: "plan_rastro" },
   // El cambio pendiente de un plan (SL-24, enmienda del 2026-10-28): igual que el catalogo
   { modelo: "PlanCambioProgramado", tabla: "plan_cambio_programado" },
+  // Descuentos por periodo y historial de precio de un plan (SLT-86): igual que el catalogo
+  { modelo: "PlanDescuentoPeriodo", tabla: "plan_descuento_periodo" },
+  { modelo: "PlanPrecioHistorial", tabla: "plan_precio_historial" },
   // Paises (SL-20): solo lectura para `servi_app` (R3); los da de alta el superadmin
   { modelo: "Pais", tabla: "pais" },
   // Historial del superadmin (SL-20, D15): sin acceso para `servi_app` (R34)

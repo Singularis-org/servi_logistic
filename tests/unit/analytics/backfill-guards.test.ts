@@ -348,9 +348,10 @@ describe("R8 · 0 imports de @/lib/analytics/ranges en los archivos de la 125", 
       (m) => m.includes("presets de ranges"),
     );
     expect(infracciones).toEqual([]);
-    // La contracara: el recorrido SI sale de `fecha-cr`.
+    // La contracara: el recorrido SI sale de `calendario-zona` (SLT-42: la gemela con zona de
+    // `fecha-cr`, con la zona del pais de la empresa).
     expect(soloCodigo(leer("lib/analytics/backfill-rango.ts"))).toMatch(
-      /from\s+["']@\/lib\/utils\/fecha-cr["']/,
+      /from\s+["']@\/lib\/utils\/calendario-zona["']/,
     );
   });
 });

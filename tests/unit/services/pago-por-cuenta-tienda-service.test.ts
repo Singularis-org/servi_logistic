@@ -14,6 +14,7 @@ import { PagoPorCuentaTiendaService } from "@/lib/services/PagoPorCuentaTiendaSe
 import type { CuentaTiendaValidacion } from "@/lib/interfaces/repositories/IUserRepository";
 import type { PagoPorCuentaTxRunner } from "@/lib/interfaces/services/IPagoPorCuentaTiendaService";
 import type { RegistrarPagoPorCuentaTiendaInput } from "@/lib/types/pago-por-cuenta-tienda";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FICHA 459 / T B.10 — `PagoPorCuentaTiendaService` con dobles (R29–R43, R46–R52, R56, R57).
@@ -155,6 +156,7 @@ function montar(opts: {
     runTx as unknown as PagoPorCuentaTxRunner,
     () => AHORA,
     { MAX_BYTES: 4 * 1024 * 1024, SIGNED_URL_TTL_SECONDS: 300 },
+    reglasPaisFijas(),
   );
   return { svc, orden, pagoRepo, tiendaRepo, candado, usuarioRepo, caja, storage, urls, runTx, tx };
 }

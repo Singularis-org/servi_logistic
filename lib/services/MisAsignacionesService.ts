@@ -33,9 +33,8 @@ import {
 } from "@/lib/services/evidencias-compensadas";
 // FEATURE 276 (T4/T11, R1/R3/R7): la regla del tope vive en UN modulo puro, importable tambien
 // desde el navegador, para que la guarda del servidor y el filtro de botones de la pantalla no
-// puedan divergir. El umbral NO viaja con el: sale de `reintentosConfig`, aqui, en el servidor.
+// puedan divergir. El tope NO viaja con el: sale de la empresa (SLT-77), aqui, en el servidor.
 import { alcanzaElTope, permitidoEnElTope } from "@/lib/types/tope-intentos";
-import { reintentosConfig } from "@/lib/config/reintentos";
 import { MSG_TOPE_INTENTOS_GESTION } from "@/lib/services/mensajes-bloqueo";
 import type { MetodoPago } from "@/lib/types/metodo-pago";
 import type { LineaPago } from "@/lib/utils/pagos-recaudo";
@@ -61,15 +60,18 @@ import { avisoBloqueo } from "@/lib/constants/bloqueo-mensajero";
 // COMPILAR- y la guardia de la 413, que extrae esta lista del FUENTE y la compara miembro a
 // miembro con aquella tupla. Ver el encabezado de `lib/constants/reparto-mensajero-estados.ts`.
 import type { EstadoRepartoMensajero } from "@/lib/constants/reparto-mensajero-estados";
+// SLT-42 (R22, R23): las gemelas con zona explicita; la zona es la del pais de la empresa.
 import {
-  fechaCalendarioCR,
-  inicioDelDiaCREnUtc,
-  inicioDelDiaSiguienteCREnUtc,
+  fechaCalendario,
+  inicioDelDiaEnUtc,
+  inicioDelDiaSiguienteEnUtc,
   // Feature 246 (T5.1, R26): la convencion `@db.Date` para comparar contra `fecha_reparto`. NO se
   // usan las otras dos de este mismo import —esas son las cotas `timestamp` de los KPIs del dia—:
-  // aqui conviven las DOS convenciones y confundirlas desplaza el dia seis horas (ficha 166).
-  startOfDayCR,
-} from "@/lib/utils/fecha-cr";
+  // aqui conviven las DOS convenciones y confundirlas desplaza el dia (ficha 166).
+  inicioDelDiaComoFecha,
+} from "@/lib/utils/calendario-zona";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 
 // ⚠️ FEATURE 271 — AQUI VIVIA `MSG_BLOQUEADO`, UN TEXTO FIJO. Se va, y no es limpieza: el motivo
 // del rechazo tiene que CONTAR (cuantos cierres arrastra y cual toca resolver primero, R27/R43) y un
@@ -81,7 +83,7 @@ import {
 // cobrando con normalidad. Esa es la mitad de la regla firmada el 2026-08-20 que la 271 conserva.
 
 /**
- * FEATURE 261 (B4, R1/R2/R3) — ¿esta orden esta RESERVADA para un dia posterior al de Costa Rica
+ * FEATURE 261 (B4, R1/R2/R3) — ¿esta orden esta RESERVADA para un dia posterior al del pais de la empresa
  * en curso? Es el MISMO criterio que produce la etiqueta `esParaManana` del listado (246/R26) y
  * el MISMO que aplica la via de la tienda (`GestionDesdeAyudaService`, R31): una sola pregunta,
  * un solo sitio donde puede equivocarse.
@@ -184,9 +186,16 @@ export class MisAsignacionesService implements IMisAsignacionesService {
     // olvidado: es el MISMO servicio que ya estaba, con un metodo mas del mismo criterio unico.
     private readonly historial: Pick<
       IOrdenHistorialService,
-      "contarIntentosEnLote" | "contarIntentos"
+      "contarIntentosEnLote" | "contarIntentos" | "topeIntentos"
     >,
+    /** SLT-42 (R22): la zona del pais de la empresa; el dia en curso se calcula en ella. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
+
+  /** SLT-42 (R22, R28): la zona del pais de la empresa, leida una vez por operacion. */
+  private zona(operacion: string): Promise<string> {
+    return zonaDeLaEmpresa(this.reglasPais, `MisAsignacionesService.${operacion}`);
+  }
 
   /**
    * Feature 92 (R23/R25): persiste la ubicacion del navegador como origen `gps` de la ruta
@@ -227,8 +236,9 @@ export class MisAsignacionesService implements IMisAsignacionesService {
    * Lo que SI sigue pudiendo, y por eso no es un callejon sin salida: SOLICITAR o RE-SOLICITAR su
    * cierre, que es la unica via de escape (111/R9, 109/R28, 271/R16).
    */
-  private async motivoBloqueo(usuarioId: string): Promise<string | null> {
-    const bloqueo = await this.ordenRepo.findBloqueoDetalle(usuarioId);
+  private async motivoBloqueo(usuarioId: string, zona: string): Promise<string | null> {
+    // SLT-42 (R22): la zona fecha la jornada del cierre que el motivo nombra.
+    const bloqueo = await this.ordenRepo.findBloqueoDetalle(usuarioId, zona);
     return bloqueo.bloqueado ? avisoBloqueo(bloqueo, { conCta: true }) : null;
   }
 
@@ -238,8 +248,12 @@ export class MisAsignacionesService implements IMisAsignacionesService {
    * correccion de un cierre `rechazado` suyo (y entonces le esperan todas las demas guardas de hoy,
    * intactas). Cualquier otra orden recibe el motivo de bloqueo de hoy, sin efectos.
    */
-  private async motivoBloqueoParaOrden(usuarioId: string, ordenId: string): Promise<string | null> {
-    const motivo = await this.motivoBloqueo(usuarioId);
+  private async motivoBloqueoParaOrden(
+    usuarioId: string,
+    ordenId: string,
+    zona: string,
+  ): Promise<string | null> {
+    const motivo = await this.motivoBloqueo(usuarioId, zona);
     if (motivo === null) return null;
     const enCorreccion = await this.ordenRepo.findOrdenesEnCorreccion(usuarioId, [ordenId]);
     return enCorreccion.has(ordenId) ? null : motivo;
@@ -259,20 +273,21 @@ export class MisAsignacionesService implements IMisAsignacionesService {
 
     // Los KPIs de entregadas son DEL DIA, no acumulados: el mensajero mira esta fila para
     // saber como va SU jornada, y un acumulado historico solo crece y deja de informar.
-    // La ventana es la del dia de Costa Rica y se calcula AQUI (una sola vez, compartida
+    // La ventana es la del dia del pais de la empresa y se calcula AQUI (una sola vez, compartida
     // por los dos KPIs) para que ambos midan exactamente el mismo dia aunque el reloj
     // cruce la medianoche entre las dos queries del `Promise.all`.
-    const hoy = fechaCalendarioCR(now);
-    const dia = { desde: inicioDelDiaCREnUtc(hoy), hasta: inicioDelDiaSiguienteCREnUtc(hoy) };
+    const zona = await this.zona("listarMisAsignaciones");
+    const hoy = fechaCalendario(now, zona);
+    const dia = { desde: inicioDelDiaEnUtc(hoy, zona), hasta: inicioDelDiaSiguienteEnUtc(hoy, zona) };
     // Feature 246 (T5.1, R22/R25/R26) — EL DIA DE COSTA RICA EN CURSO, en la convencion `@db.Date`
-    // (medianoche UTC de la fecha CR), que es la de la columna `fecha_reparto`. Se calcula UNA vez
+    // (medianoche UTC de la fecha local), que es la de la columna `fecha_reparto`. Se calcula UNA vez
     // para todo el listado, para que dos cards del mismo render no puedan caer a distinto lado de
     // la medianoche.
     //
     // ⚠️ Es OTRA convencion que la de `dia` (justo arriba): aquellas cotas son `...T06:00:00.000Z`
     // porque comparan contra columnas `timestamp` (`gestion_orden.created_at`). Usar aquellas aqui
     // desplazaria el dia seis horas — es la trampa que cerro la ficha 166.
-    const hoyComoFecha = startOfDayCR(now);
+    const hoyComoFecha = inicioDelDiaComoFecha(now, zona);
 
     const [ordenEnGestionId, rows, entregadas, montoGestionadas, ruta, marcadasLuego] =
       await Promise.all([
@@ -305,8 +320,10 @@ export class MisAsignacionesService implements IMisAsignacionesService {
 
     // Feature 160 (R12/R13/R15): UN solo lote con la union de los ids de los DOS grupos, sobre
     // las ordenes YA acotadas al mensajero actor (`findMisAsignaciones(actor.usuarioId, ...)`).
-    // Sin asignaciones -> 0 consultas al historial (R13).
+    // Sin asignaciones -> 0 consultas de conteo al historial (R13); el tope de abajo se lee igual.
     const intentos = await this.historial.contarIntentosEnLote(rows.map((r) => r.id));
+    // SLT-77 (R24, R34): un solo valor para toda la lista, fuera del bucle.
+    const topeIntentos = await this.historial.topeIntentos();
     // FICHA 454 (T1.12; R6, R22): de las ordenes `en_reparto`, cuales tienen una gestion PENDIENTE
     // de confirmar (ya gestionadas: NO se listan, ni en el mapa ni como parada) y cuales tienen una
     // ayuda ABIERTA (grupo «con ayuda», sin posicion de ruta). Una consulta, sobre las ya acotadas al
@@ -317,7 +334,7 @@ export class MisAsignacionesService implements IMisAsignacionesService {
     // FICHA 477 (R27): cuales de las ordenes en reparto estan EN CORRECCION de un rechazado propio.
     // Solo importa si el mensajero esta bloqueado (libre, todas las tarjetas estan habilitadas): sin
     // bloqueo, `false` para todas y ni una consulta mas; con bloqueo, UNA en lote.
-    const bloqueo = await this.ordenRepo.findBloqueoDetalle(actor.usuarioId);
+    const bloqueo = await this.ordenRepo.findBloqueoDetalle(actor.usuarioId, zona);
     const enCorreccion = bloqueo.bloqueado
       ? await this.ordenRepo.findOrdenesEnCorreccion(actor.usuarioId, enRepartoIds)
       : new Set<string>();
@@ -340,12 +357,9 @@ export class MisAsignacionesService implements IMisAsignacionesService {
         // servidor y NO viaja: al navegador solo baja este booleano. Se deriva del MISMO numero
         // que la card ya pinta (`intentosEntrega`), asi que la pantalla no puede ensenar «intento
         // 2 de 3» y a la vez ofrecer un desenlace que el servidor va a rechazar.
-        enElTope: alcanzaElTope(
-          intentos.get(row.id) ?? 0,
-          reintentosConfig.MIN_INTENTOS_ENTREGA,
-        ),
+        enElTope: alcanzaElTope(intentos.get(row.id) ?? 0, topeIntentos),
         // Feature 246 (T5.1, R22/R25/R26): «para mañana» = reservada para un dia ESTRICTAMENTE
-        // posterior al de Costa Rica en curso. `>` y no `>=`: una orden reservada para HOY no es
+        // posterior al del pais de la empresa en curso. `>` y no `>=`: una orden reservada para HOY no es
         // «para mañana», es de hoy. Y por eso la etiqueta caduca sola (R25): al llegar el dia
         // reservado, `fechaReparto > hoyComoFecha` deja de cumplirse sin que nadie escriba nada.
         // `null` (orden anterior a la feature, o «hoy» explicito) -> `false`.
@@ -397,7 +411,7 @@ export class MisAsignacionesService implements IMisAsignacionesService {
     // dejaria fuera lo que quedo en reparto de ayer —trabajo que sigue en su mano— y el
     // KPI dejaria de cuadrar con la lista que lo acompaña. Son indicadores de ESTADO VIVO
     // ("lo que me falta"), no de jornada. Los otros dos son de JORNADA ("lo que llevo
-    // hecho hoy") y por eso se cortan a medianoche CR.
+    // hecho hoy") y por eso se cortan a medianoche local.
     //
     // Y por eso `porCobrar` es un reduce y no una query: `porGestionar` YA son exactamente
     // las ordenes en reparto del mensajero, asi que la base ya respondio esa pregunta.
@@ -425,7 +439,7 @@ export class MisAsignacionesService implements IMisAsignacionesService {
       // puede gestionar desde ahi (R16), esas aristas son de la ficha 237- asi que no entra en el
       // primer sumando por la condicion de gestion, no por la de estatus. Ninguna orden se cuenta
       // dos veces. No se mueve al gestionar -la orden solo cambia de sumando- y se reinicia al
-      // cruzar la medianoche CR.
+      // cruzar la medianoche local.
       totalACobrar: codEnReparto + montoGestionadas,
     };
     return {
@@ -469,7 +483,7 @@ export class MisAsignacionesService implements IMisAsignacionesService {
   }
 
   /**
-   * Feature 261 (B4, R1/R6): `now` inyectable. Se resuelve el dia de Costa Rica UNA vez por
+   * Feature 261 (B4, R1/R6): `now` inyectable. Se resuelve el dia del pais de la empresa UNA vez por
    * llamada, para que dos ordenes del mismo lote no puedan caer a distinto lado de la medianoche.
    */
   async recogerAsignaciones(
@@ -485,7 +499,9 @@ export class MisAsignacionesService implements IMisAsignacionesService {
     // Feature 111/R4 (Q3): bloqueo total — un mensajero con un cierre pendiente
     // (`solicitado`/`vencido`) no puede RECOGER. Guarda al inicio (ANTES de cualquier efecto:
     // la transición vive en `recogerLote`), MISMO predicado que gestionar. Sin PII (R20).
-    const motivoLote = await this.motivoBloqueo(actor.usuarioId);
+    // SLT-42 (R22, R28): la zona del pais de la empresa, leida una vez y antes de cualquier efecto.
+    const zona = await this.zona("recogerAsignaciones");
+    const motivoLote = await this.motivoBloqueo(actor.usuarioId, zona);
     if (motivoLote !== null) {
       return {
         status: "conflict",
@@ -505,9 +521,10 @@ export class MisAsignacionesService implements IMisAsignacionesService {
     }
     // Feature 261 (B4, R6): EL DIA DE COSTA RICA EN CURSO, en la convencion `@db.Date` de
     // `fecha_reparto`. Se resuelve UNA vez, aqui, y viaja resuelto hasta el `WHERE` de la
-    // escritura. `startOfDayCR` y no `inicioDelDiaCREnUtc`: aquella es la cota de las columnas
-    // `timestamp` y desplazaria el dia seis horas (la trampa que cerro la ficha 166).
-    const diaEnCurso = startOfDayCR(now);
+    // escritura. `inicioDelDiaComoFecha` y no `inicioDelDiaEnUtc`: aquella es la cota de las
+    // columnas `timestamp` y desplazaria el dia (la trampa que cerro la ficha 166). SLT-42: en la
+    // zona del pais de la empresa.
+    const diaEnCurso = inicioDelDiaComoFecha(now, zona);
 
     // R17: origen invalido / borrada -> conflict (aborta sin efectos).
     const detalle: DetalleConflicto[] = [];
@@ -556,7 +573,7 @@ export class MisAsignacionesService implements IMisAsignacionesService {
     return { status: "ok", recogidas: ordenIds };
   }
 
-  /** Feature 261 (B4, R3/R6): `now` inyectable, del que sale el dia de Costa Rica en curso. */
+  /** Feature 261 (B4, R3/R6): `now` inyectable, del que sale el dia del pais de la empresa en curso. */
   async escogerParaGestion(
     ordenId: string,
     actor: Actor,
@@ -567,7 +584,9 @@ export class MisAsignacionesService implements IMisAsignacionesService {
     // Feature 111/R4 (Q3): bloqueo total — mensajero con cierre pendiente no puede ESCOGER una
     // orden para gestión. Guarda al inicio, ANTES de fijar el puntero (sin efectos parciales).
     // FICHA 477 (R12/R13): salvo la orden EN CORRECCION de un rechazado propio.
-    const motivo = await this.motivoBloqueoParaOrden(actor.usuarioId, ordenId);
+    // SLT-42 (R22, R28): la zona del pais de la empresa, leida una vez y antes de cualquier efecto.
+    const zona = await this.zona("escogerParaGestion");
+    const motivo = await this.motivoBloqueoParaOrden(actor.usuarioId, ordenId, zona);
     if (motivo !== null) {
       return { status: "conflict", motivo };
     }
@@ -578,7 +597,7 @@ export class MisAsignacionesService implements IMisAsignacionesService {
     // FEATURE 261 (R3/R4) — una orden reservada para un dia posterior NO SE ESCOGE. Va aqui,
     // junto a sus hermanas y ANTES de fijar el puntero 1-a-1: rechazar despues dejaria al
     // mensajero con el puntero puesto sobre una orden que no puede trabajar (efecto parcial).
-    if (estaReservadaParaOtroDia(guardia.orden.fechaReparto, startOfDayCR(now))) {
+    if (estaReservadaParaOtroDia(guardia.orden.fechaReparto, inicioDelDiaComoFecha(now, zona))) {
       return { status: "conflict", motivo: RESERVA_MOTIVO_SERVIDOR };
     }
 
@@ -590,7 +609,7 @@ export class MisAsignacionesService implements IMisAsignacionesService {
     return { status: "ok", ordenId };
   }
 
-  /** Feature 261 (B4, R2/R6): `now` inyectable, del que sale el dia de Costa Rica en curso. */
+  /** Feature 261 (B4, R2/R6): `now` inyectable, del que sale el dia del pais de la empresa en curso. */
   async gestionar(
     input: GestionarInput,
     actor: Actor,
@@ -613,7 +632,10 @@ export class MisAsignacionesService implements IMisAsignacionesService {
     // deshizo. Solo ESAS pasan; el resto sigue rechazado con el motivo de hoy, y la orden exenta
     // sigue sujeta a todas las guardas de abajo (suya, en reparto, sin pendiente ni ayuda, reserva
     // de dia, tope de intentos, una activa a la vez, cuadre del monto).
-    const motivo = await this.motivoBloqueoParaOrden(actor.usuarioId, input.ordenId);
+    // SLT-42 (R22, R28): la zona del pais de la empresa, leida una vez y antes de cualquier efecto
+    // (ni upload ni escritura); la misma sirve para el «hoy» que usa el repositorio al registrar.
+    const zona = await this.zona("gestionar");
+    const motivo = await this.motivoBloqueoParaOrden(actor.usuarioId, input.ordenId, zona);
     if (motivo !== null) {
       return { status: "conflict", motivo };
     }
@@ -635,7 +657,7 @@ export class MisAsignacionesService implements IMisAsignacionesService {
     // entradas a ese estado baja un dia futuro (`recogerLote` lleva el dia en su `WHERE`, el
     // rescate desde ayuda no lo toca, y el deshacer conserva la reserva futura desde esta misma
     // ficha).
-    if (estaReservadaParaOtroDia(orden.fechaReparto, startOfDayCR(now))) {
+    if (estaReservadaParaOtroDia(orden.fechaReparto, inicioDelDiaComoFecha(now, zona))) {
       return { status: "conflict", motivo: RESERVA_MOTIVO_SERVIDOR };
     }
 
@@ -656,7 +678,7 @@ export class MisAsignacionesService implements IMisAsignacionesService {
     // cortesia; esta linea es la seguridad. Una peticion que pida un resultado prohibido se rechaza
     // igual, venga de donde venga.
     //
-    // R7: el umbral sale de `reintentosConfig`, JAMAS de un `3` escrito aqui. La lista de
+    // SLT-77 (R18): el tope sale de la empresa, JAMAS de un `3` escrito aqui. La lista de
     // permitidos sale del modulo puro `lib/types/tope-intentos.ts` —el MISMO que filtra los botones
     // en el navegador— para que la pantalla y la guarda no puedan divergir.
     //
@@ -666,7 +688,7 @@ export class MisAsignacionesService implements IMisAsignacionesService {
     // comportamiento de hoy y no cobra nada de mas.
     if (!permitidoEnElTope(input.resultado)) {
       const intentos = await this.historial.contarIntentos(input.ordenId);
-      if (alcanzaElTope(intentos, reintentosConfig.MIN_INTENTOS_ENTREGA)) {
+      if (alcanzaElTope(intentos, await this.historial.topeIntentos())) {
         // `conflict` y no `validation_error`: no es un campo mal escrito, es el estado del mundo.
         // Mismo molde que `RESERVA_MOTIVO_SERVIDOR`. Motivo SIN PII y sin el valor del umbral.
         return { status: "conflict", motivo: MSG_TOPE_INTENTOS_GESTION };
@@ -763,6 +785,7 @@ export class MisAsignacionesService implements IMisAsignacionesService {
         ordenId: input.ordenId,
         mensajeroId: actor.usuarioId,
         gestion,
+        inicioDelDia: inicioDelDiaEnUtc(fechaCalendario(now, zona), zona),
       });
     } catch (error) {
       // R11: la transaccion fallo DESPUES de subir -> borrar las N evidencias subidas

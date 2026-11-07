@@ -13,6 +13,7 @@ import type { ConsultaProductos } from "@/lib/analytics/productos-consulta";
 import { ConteoProductosRepository } from "@/lib/repositories/ConteoProductosRepository";
 import type { FilaProductoCruda } from "@/lib/interfaces/repositories/IConteoProductosRepository";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // FICHA 345 / T3.3 — EL RECORTE DONDE VIVE: CONTRA POSTGRES (R27, R39, R54, R55, R57).
 //
 // ⚠ POR QUE ESTE ARCHIVO EXISTE, y no basta el test de servicio. En este repo esta MEDIDO —cuatro
@@ -71,7 +72,7 @@ describeSiHayBase("345 / T3.3 — ConteoProductosRepository contra Postgres real
   function consultaDe(rol: string, usuarioId: string): ConsultaProductos {
     // La consulta se PREPARA de verdad —no se forja— para que el alcance que viaja al `WHERE`
     // sea el que el resolutor concede y no uno escrito a mano por el test.
-    const preparada = prepararConsultaProductos({}, { usuarioId, rol } as never, AHORA);
+    const preparada = prepararConsultaProductos({}, { usuarioId, rol } as never, ZONA_DE_CR, AHORA);
     if (preparada.status !== "ok") {
       throw new Error(`la consulta de prueba salio ${preparada.status}`);
     }

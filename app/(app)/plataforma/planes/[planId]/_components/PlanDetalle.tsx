@@ -16,32 +16,43 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { nombreDelModulo } from "@/lib/modulos/catalogo";
 import { tieneCostoConcreto } from "@/lib/planes/costo-concreto";
+import { formatearConteo } from "@/lib/planes/consumo";
 import {
   lineasDeCambioDelPlan,
   mensajeTopesPasados,
+  SIN_LIMITE,
   SIN_LINEAS_DE_CAMBIO,
   textoCambioProgramado,
-  textoDelCostoPorOrden,
   textoDelPrecio,
   TITULO_LINEAS_DE_CAMBIO,
+  type CambioDelPlanParaCorreo,
 } from "@/lib/planes/mensajes";
-import type {
-  ArchivarPlanInput,
-  CancelarCambioPlanInput,
-  DetallePlan,
-  EditarPlanInput,
-  FilaRastro,
-  PlanResult,
-  PrecioPlan,
-  TopeExcedido,
-  TopesPlan,
+import {
+  TIPOS_COBRO,
+  type ArchivarPlanInput,
+  type CancelarCambioPlanInput,
+  type CostoPorOrdenPorcentual,
+  type DescuentoPeriodo,
+  type DetallePlan,
+  type EditarPlanInput,
+  type FilaRastro,
+  type PlanResult,
+  type PrecioPlan,
+  type TipoCobro,
+  type TopeExcedido,
+  type TopesPlan,
 } from "@/lib/types/planes";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 import { horaCostaRica } from "@/lib/utils/hora-cr";
 import { cn } from "@/lib/utils";
 
 import { mensajeDelRechazo, PlanForm, RECHAZO_GENERICO, TEXTOS_PLAN_FORM } from "../../_components/PlanForm";
-import { lineasDeTopes, TEXTOS_PLAN, textoDeVisibilidad } from "../../_components/plan-vista";
+import {
+  lineasDeTopes,
+  TEXTOS_PLAN,
+  textoDeVisibilidad,
+  textoDelCostoPorOrdenDelPlan,
+} from "../../_components/plan-vista";
 
 /** Textos de la pantalla, en un solo sitio para cuando llegue la i18n. */
 const TEXTOS = {
@@ -70,7 +81,7 @@ const TEXTOS = {
   columnaAccion: "Acción",
   columnaCambios: "Qué cambió",
   tituloEditar: "Editar plan",
-  descripcionEditar: "Los topes vacíos no tienen límite. El costo base es informativo; el costo por orden se cobra en cada orden nueva.",
+  descripcionEditar: "Los topes vacíos no tienen límite. El costo base es informativo. El costo por orden fijo se cobra al crear cada orden; el porcentual, cuando la orden llega a un estado final.",
   confirmarArchivo: "¿Archivar este plan?",
   confirmarArchivoTexto:
     "Deja de ofrecerse para asignar y no se podrá editar. Las empresas que ya lo tienen lo conservan con sus topes.",
@@ -95,6 +106,8 @@ const TEXTOS = {
   cancelaPrevisto: (fecha: string) => `Se cancela el previsto para ${fecha}`,
   nombreDelPlan: (nombre: string) => `Nombre del plan: ${nombre}`,
   modulosDelPlan: (modulos: string) => `Módulos: ${modulos}`,
+  /** SLT-86 (R30): el tope de órdenes de un alta anterior a la ficha, con el texto de entonces. */
+  ordenesPorCiclo: (limite: string) => `Órdenes por ciclo: ${limite}`,
   // SLT-66 (design §6.6; R33).
   empresaAsignar: "Empresa",
   empresaPlaceholder: TEXTOS_PLAN_FORM.empresaPlaceholder,
@@ -131,6 +144,8 @@ export interface PlanDetalleProps {
    * pudieron leer.
    */
   empresasCandidatas?: { id: string; nombre: string }[] | null;
+  /** SLT-86 (R23): «Rige desde» por defecto al editar el precio (mañana), del reloj del servidor. */
+  precioDesdePorDefecto?: string;
 }
 
 /** Lo último que pasó en la pantalla: un aviso de éxito (con los topes pasados, R15) o un rechazo (R18). */
@@ -151,6 +166,7 @@ export function PlanDetalle({
   archivarPlan,
   cancelarCambio,
   empresasCandidatas = [],
+  precioDesdePorDefecto,
 }: PlanDetalleProps) {
   const router = useRouter();
   const { plan, pendiente } = detalle;
@@ -258,11 +274,8 @@ export function PlanDetalle({
           <Dato termino={TEXTOS.visibilidad}>{textoDeVisibilidad(plan.visibilidad, detalle.empresaNombre)}</Dato>
           <Dato termino={TEXTOS.precio}>{textoDelPrecio(plan.precio)}</Dato>
           <Dato termino={TEXTOS.costoPorOrden}>
-            {textoDelCostoPorOrden(plan.costoPorOrden)}
-            {/* R10: el anual (fijo o con descuento) no toca el costo por orden. */}
-            {plan.precio.tipo === "monto" && plan.precio.anual !== null ? (
-              <p className="text-xs text-muted-foreground">{TEXTOS_PLAN.anualNoAplica}</p>
-            ) : null}
+            {/* SLT-83 (R21): el porcentual si el plan lo tiene. */}
+            {textoDelCostoPorOrdenDelPlan(plan)}
           </Dato>
           <Dato termino={TEXTOS.topes}>
             <ul className="flex flex-col gap-0.5">
@@ -361,7 +374,13 @@ export function PlanDetalle({
                 <SheetDescription>{TEXTOS.descripcionEditar}</SheetDescription>
               </SheetHeader>
               <div className="px-4 pb-4">
-                <PlanForm modo="editar" plan={plan} enviar={editarPlan} onGuardado={(r) => alEditar(r)} />
+                <PlanForm
+                  modo="editar"
+                  plan={plan}
+                  precioDesdePorDefecto={precioDesdePorDefecto}
+                  enviar={editarPlan}
+                  onGuardado={(r) => alEditar(r)}
+                />
               </div>
             </SheetContent>
           </Sheet>
@@ -544,15 +563,38 @@ function lineasDelRastro(fila: FilaRastro): string[] {
   const precioAlta = deAlta(c.precio);
   const topesAlta = deAlta(c.topes);
   const modulosAlta = deAlta(c.modulos);
-  if (nombreAlta) lineas.push(TEXTOS.nombreDelPlan(String(nombreAlta.despues)));
-  // SLT-66 (R9): la línea de alta dice «Costo base», como el resto de pantallas.
-  if (precioAlta) lineas.push(TEXTOS_PLAN.costoBase(textoDelPrecio(precioAlta.despues as PrecioPlan)));
   // SLT-66 (R11): el costo por orden nace a menudo vacío, así que `antes: null` no distingue un alta de
-  // una edición desde vacío: lo decide la acción de la fila.
-  const costo = c.costoPorOrden;
+  // una edición desde vacío: lo decide la acción de la fila. SLT-86 (R31): igual los descuentos.
   const esAlta = fila.accion === "creado";
-  if (costo && esAlta) lineas.push(TEXTOS_PLAN.costoPorOrden(textoDelCostoPorOrden(costo.despues as string | null)));
-  if (topesAlta) lineas.push(...lineasDeTopes(topesAlta.despues as TopesPlan));
+  if (nombreAlta) lineas.push(TEXTOS.nombreDelPlan(String(nombreAlta.despues)));
+  // SLT-66 (R9): la línea de alta dice «Costo base», como el resto de pantallas. SLT-86 (R24, R31): con los
+  // descuentos del alta, que el rastro guarda cada uno en su clave.
+  if (precioAlta) {
+    const precio = precioAlta.despues as PrecioPlan;
+    const descuentos = esAlta ? descuentosDelAlta(c) : {};
+    lineas.push(TEXTOS_PLAN.costoBase(textoDelPrecio(precio.tipo === "monto" ? { ...precio, descuentos } : precio)));
+  }
+  const costo = c.costoPorOrden;
+  // SLT-83 (R4, R21): el modo porcentual viaja en su propio campo del rastro; un rastro anterior no lo trae.
+  const porcentual = c.costoPorOrdenPorcentual;
+  if (costo && esAlta) {
+    lineas.push(
+      TEXTOS_PLAN.costoPorOrden(
+        textoDelCostoPorOrdenDelPlan({
+          costoPorOrden: costo.despues as string | null,
+          costoPorOrdenPorcentual: (porcentual?.despues ?? null) as CostoPorOrdenPorcentual | null,
+        }),
+      ),
+    );
+  }
+  if (topesAlta) {
+    // SLT-86 (R30): un alta anterior a la ficha trae también el tope de órdenes; se sigue pintando.
+    const topes = topesAlta.despues as TopesPlan & { ordenesPorCiclo?: number | null };
+    if ("ordenesPorCiclo" in topes) {
+      lineas.push(TEXTOS.ordenesPorCiclo(topes.ordenesPorCiclo == null ? SIN_LIMITE : formatearConteo(topes.ordenesPorCiclo)));
+    }
+    lineas.push(...lineasDeTopes(topes));
+  }
   if (modulosAlta) {
     const modulos = modulosAlta.despues as ModuloApagable[];
     lineas.push(TEXTOS.modulosDelPlan(modulos.length === 0 ? TEXTOS.sinModulos : modulos.map(nombreDelModulo).join(", ")));
@@ -574,6 +616,16 @@ function lineasDelRastro(fila: FilaRastro): string[] {
         costo && !esAlta
           ? { antes: costo.antes as string | null, despues: costo.despues as string | null }
           : undefined,
+      costoPorOrdenPorcentual:
+        porcentual && !esAlta
+          ? {
+              antes: porcentual.antes as CostoPorOrdenPorcentual | null,
+              despues: porcentual.despues as CostoPorOrdenPorcentual | null,
+            }
+          : undefined,
+      // SLT-86 (R30, R31): cada descuento en su línea, y la fila de la migración que retiró el tope de órdenes.
+      ...(esAlta ? {} : descuentosDeLaEdicion(c)),
+      tope_ordenes_ciclo: c.tope_ordenes_ciclo as CambioDelPlanParaCorreo["tope_ordenes_ciclo"],
     }),
   );
 
@@ -586,6 +638,30 @@ function lineasDelRastro(fila: FilaRastro): string[] {
     else if (antes !== null) lineas.push(TEXTOS.cancelaPrevisto(antes));
   }
   return lineas;
+}
+
+/** SLT-86 (R31): los descuentos con que nació un plan, leídos de sus claves `descuento_<periodo>`. */
+function descuentosDelAlta(c: Record<string, Par | undefined>): Partial<Record<TipoCobro, DescuentoPeriodo>> {
+  const descuentos: Partial<Record<TipoCobro, DescuentoPeriodo>> = {};
+  for (const tipo of TIPOS_COBRO) {
+    const d = c[`descuento_${tipo}`]?.despues as DescuentoPeriodo | null | undefined;
+    if (d) descuentos[tipo] = d;
+  }
+  return descuentos;
+}
+
+/** SLT-86 (R31): los descuentos que cambió una edición, con su antes y su después. */
+function descuentosDeLaEdicion(c: Record<string, Par | undefined>): Partial<CambioDelPlanParaCorreo> {
+  const cambios: Partial<CambioDelPlanParaCorreo> = {};
+  for (const tipo of TIPOS_COBRO) {
+    const par = c[`descuento_${tipo}`];
+    if (par === undefined) continue;
+    cambios[`descuento_${tipo}`] = {
+      antes: (par.antes ?? null) as DescuentoPeriodo | null,
+      despues: (par.despues ?? null) as DescuentoPeriodo | null,
+    };
+  }
+  return cambios;
 }
 
 function Rastro({ filas }: { filas: FilaRastro[] }) {

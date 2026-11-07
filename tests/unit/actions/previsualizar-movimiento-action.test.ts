@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 import { previsualizarMovimientoAction } from "@/lib/actions/efecto-movimiento";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { PrevisualizarMovimientoService } from "@/lib/services/PrevisualizarMovimientoService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // FICHA 458-B / TB.12 (R44, R82) — el borde de «Así queda» por rol, con el servicio REAL y lectores
 // dobles que registran si se les llamo (el rol va ANTES de leer).
@@ -37,6 +38,7 @@ function montar() {
         return id === MENSAJERO_ID ? "Mensajero" : null;
       }),
     },
+    reglasPaisFijas(),
   );
   return { servicio, lecturas };
 }

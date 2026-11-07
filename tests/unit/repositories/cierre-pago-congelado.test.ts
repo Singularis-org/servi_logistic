@@ -288,7 +288,7 @@ describe("SLT-52 R40 — `crearCierre` congela el modelo nuevo en la MISMA trans
     ).rejects.toBeInstanceOf(ModelosDeTarifaMezclados);
   });
 
-  it("SLT-52 R37 — cobro nuevo y pago viejo (la empresa cambio entre medias): LANZA", async () => {
+  it("SLT-54 R10 — aborta al cambiar de modelo: cobro nuevo y pago viejo (la empresa se activo entre medias) LANZA", async () => {
     const tx = txCrear();
     await expect(
       repoCrear(tx, COBRO_NUEVO).crearCierre(input({ pagos: { modelo: "viejo", congelados: [] } })),

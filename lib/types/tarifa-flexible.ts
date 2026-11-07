@@ -141,11 +141,18 @@ const ivaPctSchema = z
   .string()
   .regex(PORCENTAJE_0_A_100, "El IVA debe ser un porcentaje entre 0 y 100 con hasta 2 decimales.");
 
-/** Los niveles; que la combinacion sea valida para el actor (R7) lo decide el service (T6.2). */
+/**
+ * Los niveles; que la combinacion sea valida para el actor (R7) lo decide el service (T6.2).
+ *
+ * SLT-55 (R6): `mensajeroId` se declara aunque la rejilla por zona no lo mande. Si zod no lo conociera, lo
+ * descartaria en silencio y un valor con mensajero y zona se guardaria como valor de la ZONA, que paga a
+ * todos sus mensajeros. Con `default` y no obligatorio: esos payloads no tienen por que empezar a mandarlo.
+ */
 const nivelSchema = {
   zonaId: idSchema.nullable(),
   grupoId: idSchema.nullable(),
   tiendaId: idSchema.nullable(),
+  mensajeroId: idSchema.nullable().default(null),
   vehiculoId: idSchema.nullable(),
 };
 
@@ -206,7 +213,7 @@ export type EscrituraValorInput = z.infer<typeof escrituraValorSchema>;
  * en cualquier concepto porque es el service quien lo valida con `escrituraValorSchema` y devuelve
  * `validation_error` en `ivaPct` cuando un pago lo trae (R45). Con el tipo estrecho del esquema, un
  * pago con `"0"` no compilaria y el rechazo no se podria ni probar ni explicar al usuario.
- * `mensajeroId` no esta: el valor propio del mensajero lo escribe SLT-55.
+ * `mensajeroId` solo lo trae el valor propio del mensajero (SLT-55); ausente equivale a `null`.
  */
 export interface FijarValorInput {
   concepto: TarifaConcepto;
@@ -216,6 +223,7 @@ export interface FijarValorInput {
   zonaId: string | null;
   grupoId: string | null;
   tiendaId: string | null;
+  mensajeroId?: string | null;
   vehiculoId: string | null;
 }
 
@@ -256,6 +264,50 @@ export const renombrarGrupoSchema = z.object({ nombre: nombreGrupoSchema });
 export const fijarDistritosSchema = z.object({ distritoIds: distritoIdsSchema });
 
 export type CrearGrupoInput = z.input<typeof crearGrupoSchema>;
+
+/**
+ * SLT-54 (design §4, R6): activar lleva la decision expresa del maestro sobre los faltantes. Obligatoria:
+ * una peticion que no la dice no puede confundirse con una que confirma.
+ */
+export const activarTarifasSchema = z.object({ confirmaFaltantes: z.boolean() });
+
+/**
+ * SLT-77 (design §3, §4.1, R5): el rango que la empresa puede elegir. Aqui y no en `lib/types/tope-intentos.ts`:
+ * ese modulo lo importa el panel del mensajero, y el numero no le llega (R32, R33).
+ */
+export const TOPE_INTENTOS_MINIMO = 1;
+export const TOPE_INTENTOS_MAXIMO = 10;
+
+/** `strict`: la empresa sale de la sesion (R3), y una clave de mas se rechaza en vez de ignorarse. */
+export const guardarTopeIntentosSchema = z
+  .object({ tope: z.number().int().min(TOPE_INTENTOS_MINIMO).max(TOPE_INTENTOS_MAXIMO) })
+  .strict();
+
+/** SLT-54 (design §7): `tiendaId` pide ademas la referencia de esa tienda. */
+export const cargarZonaTarifasSchema = z.object({ zonaId: idSchema, tiendaId: idSchema.optional() });
+
+/** SLT-54 (design §7, R35): tope para que un payload inventado no abra 200+ transacciones. */
+export const MAX_CAMBIOS_DE_VALOR = 200;
+
+/**
+ * Una entrada por concepto modificado. `datos` se deja tal cual: lo valida `TarifaValorService`, que es
+ * quien devuelve el error en el campo que la fila tiene que pintar (R38) y rechaza un `ivaPct` en un
+ * pago (R36). Validarlo aqui tambien tiraria todo el guardado por una sola fila.
+ */
+export const guardarValoresTarifaSchema = z.object({
+  cambios: z
+    .array(
+      z.discriminatedUnion("accion", [
+        z.object({ accion: z.literal("fijar"), clave: idSchema, datos: z.record(z.string(), z.unknown()) }),
+        z.object({ accion: z.literal("quitar"), clave: idSchema, id: idSchema }),
+      ]),
+    )
+    .max(MAX_CAMBIOS_DE_VALOR),
+});
+
+export const renombrarGrupoDistritosSchema = z.object({ id: idSchema, nombre: z.string() });
+export const cambiarDistritosDeGrupoSchema = z.object({ id: idSchema, distritoIds: z.array(z.string()) });
+export const borrarGrupoDistritosSchema = z.object({ id: idSchema });
 
 export interface DistritoDelGrupo {
   id: string;

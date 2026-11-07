@@ -3,7 +3,9 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IPlanesService } from "@/lib/interfaces/services/IPlanesService";
 import { PlanesRepository, type PlanesPrismaClient } from "@/lib/repositories/PlanesRepository";
 import { PlanesService } from "@/lib/services/PlanesService";
-import type { CatalogoResult, DetallePlanResult, PlanDeEmpresaResult } from "@/lib/types/planes";
+import { PaisRepository } from "@/lib/repositories/PaisRepository";
+import { zonaDeOrganizacionCon } from "@/lib/services/zona-de-la-empresa";
+import type { CatalogoResult, DetallePlanResult, PlanDeEmpresaResult, PreciosQueRigenResult } from "@/lib/types/planes";
 
 // SLT-58 (design §3.2) — el composition root de las lecturas de planes del superadmin. No es una
 // Server Action (sin "use server"), como `modulos-empresa.ts`: las llaman las páginas de servidor, que
@@ -12,7 +14,12 @@ import type { CatalogoResult, DetallePlanResult, PlanDeEmpresaResult } from "@/l
 
 /** El servicio con su repositorio real. */
 export function construirPlanesPlataformaService(prisma: PlanesPrismaClient = getPrismaClient()): IPlanesService {
-  return new PlanesService(new PlanesRepository(prisma));
+  return new PlanesService(
+    new PlanesRepository(prisma),
+    undefined,
+    // SLT-42 (R22, R28): la fecha que se muestra, en la zona del país de la empresa.
+    zonaDeOrganizacionCon(new PaisRepository(getPrismaClient())),
+  );
 }
 
 /** R13: el catálogo entero, también los archivados. */
@@ -39,4 +46,16 @@ export async function verPlanDeEmpresa(
   servicio: IPlanesService = construirPlanesPlataformaService(),
 ): Promise<PlanDeEmpresaResult> {
   return servicio.planDeEmpresa(actor, input);
+}
+
+/**
+ * SLT-86 (R15, R25; review m4): `{ planIds }` de los asignables y del plan actual de la empresa. Por plan,
+ * los precios que pueden regir de hoy en adelante; el modal elige el de la fecha con `precioQueRigeEn`.
+ */
+export async function verPreciosQueRigen(
+  actor: Actor | null,
+  input: unknown,
+  servicio: IPlanesService = construirPlanesPlataformaService(),
+): Promise<PreciosQueRigenResult> {
+  return servicio.preciosQueRigen(actor, input);
 }

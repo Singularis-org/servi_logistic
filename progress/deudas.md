@@ -64,6 +64,12 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Resuelto en SL-38 (2026-10-23):** la marca de zona especial es de la empresa, en `distrito_zona_especial` con RLS; `actualizarDistritosEspeciales` vuelve al maestro por servicio y repositorio, y la columna `distrito.zona_especial` sale.
 - **Dueño:** Carlos Restrepo (decidir) y quien tome SL-26. **2026-10-26:** la parte de geografía pasa a SL-20 (`specs/SL-20-pais-geografia-configurable/requirements.md`); la de vehículos sigue aquí (SL-42).
 - **Parte de geografía cerrada en SL-20 (2026-10-27):** el alta, el renombre, el retiro y la reactivación de nodos salen de `lib/actions/geografia.ts` (el maestro solo conserva la lectura para Tarifas) y pasan al superadmin en `lib/actions/geografia-plataforma.ts`, con errores tipados (`conflict` solo por único; otra causa es `error`, R36, R51, R52). Queda abierta la parte de vehículos (SL-42).
+- **Parte de vehículos cerrada en SL-42 (2026-11-04):**
+  - Las escrituras salen de `lib/actions/vehiculos.ts`; al `maestro` le queda solo `listarVehiculos`.
+  - El superadmin las hace en `/plataforma/vehiculos` con `lib/actions/vehiculos-plataforma.ts` (`comoPlataforma`). El borrado se retira y desactivar lo sustituye.
+  - Errores tipados: `conflict` solo por el único; cualquier otra causa es `error` con log (R9–R14).
+  - `/configuracion/vehiculos` y su ayuda se retiran (R16, R19).
+- **Estado:** RESUELTA en SL-42 (2026-11-04): con la parte de vehículos, D12 queda cerrada entera.
 
 ### D13 — Coste medido de la envoltura y de los triggers
 - **Origen:** SL-17, T1.1, T2.7 y T4.1. En local, la envoltura suma ~1,1 ms por operación (mediana 0,62 → 1,76 ms) y los triggers de misma empresa ~1,1 ms por `INSERT` de `orden` (mediana 0,42 → 1,51 ms; ~0,27 ms por FK). Por el pooler de Supabase: ver `progress/impl_SL-17.md > T4.1`.
@@ -215,3 +221,139 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** review de SLT-66 (2026-10-31, `progress/review_SLT-66.md`, m1). En el detalle y el catálogo del plan sale «Costo por orden: 100.00 por orden» (repite «por orden»), mientras «Mi plan» dice «Costo por orden: 100.00». Los montos de pantalla del plan muestran «.00» en enteros desde SL-24; SLT-67 solo lo quitó de los campos de entrada.
 - **Qué falta:** quitar el sufijo duplicado y decidir si los montos de pantalla siguen la regla de SLT-67 (entero sin decimales). Toca `PlanVistaCosteo`, `PlanEmpresa:517-523` y `PlanesModule`.
 - **Dueño:** Camilo (decidir si va a ficha).
+
+### D36 — `useToast` da 500 en `next dev` al abrir `/configuracion/tarifas` por URL tras el login
+- **Origen:** review de SLT-54 (2026-11-05, `progress/review_SLT-54.md`, menor 3). La tanda D lo midió en 6 de 7 intentos; la tanda E no lo reprodujo (0 de 20). En `next start`, 3 de 3 en 200 y 0 menciones en el log de la última corrida E2E. `ToastProvider` envuelve `app/(app)/layout.tsx` y `LogoutButton` cuelga de él; la página se recupera en cliente. Sin causa raíz: la idea de dos instancias del módulo no está medida.
+- **Qué falta:** buscar la causa si vuelve a aparecer. Si aparece en `next start`, deja de ser menor.
+- **Dueño:** Carlos Restrepo (decidir si va a ficha).
+
+### D37 — `detalle-movimiento-cierre-postgres` y `detalle-en-lote-464` ciegos, también en CI
+- **Origen:** review de SLT-54 (2026-11-05, `progress/review_SLT-54.md`, menor 4). Fallan por su siembra (14 fallan y 6 se saltan) y `tests/baseline-rojos.json` los tapa también en `gate-completo`. No hay regresión: con copias temporales que crean sus FK en la transacción, 20 de 20 en verde. Pero son un `WHERE` de dinero sin vigilancia en CI.
+- **Qué falta:** portar los dos a `crearFksDeOrden` (SL-31) y sacarlos del baseline.
+- **Dueño:** Carlos Restrepo (decidir si va a ficha).
+
+### D38 — El libro de la tienda sigue diciendo «devolución a origen» en el cobro del modelo nuevo — CERRADA
+- **Origen:** tandas H1 y H2 de SLT-54 (2026-11-05, `progress/impl_SLT-54.md`).
+- **Cierre:** tandas I1 (`FilaEstadoCuentaDTO.incluyeModeloNuevo`) e I2 (rótulo por fila en `/mi-wallet` y `/wallet/tiendas`, tabla, desplegable y descargas). El filtro de `/mi-wallet` que citaba la revisión ya no existe: lo retiró la 458-D, y la barra filtra por tipo de movimiento y cierre. `CONCEPTO_MI_WALLET_TODOS_OPTION` quedó sin lector en pantalla, solo lo lee su test. No hay rótulo por categoría que resolver.
+
+### D39 — `ComposicionGananciaCard` y el filtro del libro rotulan por categoría, sin fila — CERRADA
+- **Cierre:** rama `chore/deudas-2026-11-05` (`progress/impl_deudas-2026-11-05.md`): `ComposicionGananciaDTO.categoriasConModeloNuevo` y `ConceptoConMovimientosDTO.incluyeModeloNuevo`, leídos de `cierre_detail.tarifa_modelo` bajo el mismo `WHERE` que las filas. Un concepto elegido con 0 movimientos cae al rótulo viejo.
+- **Origen:** tandas H1 y H2 de SLT-54 (2026-11-05, `progress/impl_SLT-54.md`). `ComposicionGananciaCard` suma por categoría sobre agregados, y el filtro por concepto de `LibroCajaBarra` elige una categoría: ninguno tiene una fila a la que preguntar el modelo. Los dos siguen diciendo «devolución a origen», aunque el grupo incluya cobros del modelo nuevo. Sigue abierta tras D38: ese cierre no toca el libro de la caja. Los ven `maestro` y `admin`, y la fila se abre con el nombre correcto (revisión F2.2, vuelta 2, menor 1).
+
+### D40 — Notas de la bodega satélite que hablan de devoluciones sin saber el modelo — CERRADA
+- **Cierre:** rama `chore/deudas-2026-11-05`: `incluyeModeloNuevo` en `CierreBodegaResumen` y `ConsolidacionSateliteDTO`; las notas eligen por modelo, y `GANA_LA_TIENDA_NOTA`, `PAGO_TIENDA_HOY_NOTA` y `DESGLOSE_POR_TIENDA_NOTA` tienen variante `_MODELO_NUEVO`. El encabezado de la descarga no se tocó: pasa a D43.
+- **Origen:** review de SLT-54 (2026-11-05, `progress/review_SLT-54.md`, vuelta 2, menor 5) y tanda I2. Tres notas dicen «por las devoluciones a origen» sobre un importe que en el modelo nuevo también incluye entregas: `PARA_LA_CENTRAL_NOTA` en la tarjeta del cierre de bodega (`cierre-factura.tsx:1073`) y, en `ConciliacionSatelite.tsx:167,174`, `GANA_BODEGA_SATELITE_NOTA` y `PARA_LA_CENTRAL_NOTA`. Rótulo e importe son ciertos; la nota no. `ConciliacionSatelite.tsx` solo lo leen `maestro` y `admin`; `cierre-factura.tsx:1073` también lo lee el `adminSatelite` sobre su propio cierre (`CierresBodegaSolicitadosLista`, revisión F2.2, vuelta 3, menor 1). Otros textos del mismo tipo, imprecisos y con el importe correcto: encabezado de la descarga «Flete por devolución a origen + IVA» (`cierres-gestiones-fundida-descarga-columnas.ts:292`; cambiarlo toca el archivo del viejo), `GANA_LA_TIENDA_NOTA`, `PAGO_TIENDA_HOY_NOTA` y `DESGLOSE_POR_TIENDA_NOTA` (vuelta 2, menores 2 y 6). Ni `CierreBodegaResumen` ni `ConsolidacionSateliteDTO` traen el modelo (el campo está en `CierreBodegaResumenLite`, otro tipo).
+
+### D41 — «N distrito(s)» a mano en zonas y en el selector de geografía
+- **Origen:** review de SLT-54 (2026-11-05, `progress/review_SLT-54.md`, vuelta 2, menor 3). `ZonasModule.tsx:250` y `GeografiaSelector.tsx:266` escriben el nombre del nivel en vez de leer la configuración del país. Preexistente, sin dinero; R61 habla de la pantalla de Tarifas. Falso solo en un país con otro nombre de nivel.
+- **Qué falta:** leer la etiqueta del nivel, como `TarifasZonas.tsx` (SLT-54, T7.3).
+- **Dueño:** Carlos Restrepo (decidir si va a ficha).
+
+### D42 — `e2e/wallet-mensajeros.spec.ts:58`, test inestable sin causa medida
+- **Origen:** tanda I2 y revisión de SLT-54, vuelta 3 (2026-11-05). `dinero` dio 44/0/0, 42/1/0 con 1 sin correr y 44/0/0; cayó `:58` por botón desmontado. El spec solo dio 45 de 45. El diff no lo explica, y ya había caído antes en CI. Causa sin medir. El clic de `:81` abre un panel sin `abrirCon` (`e2e/_escenarios/pulsar.ts`).
+- **Medido (2026-11-05, rama `chore/deudas-2026-11-05`):** `:58` y `:81` son el mismo test: `:58` lo declara y `:81` es el paso que cayó. La caída anterior en CI fue en otro paso (`:63`). El clic pasó primero a `abrirCon` y `dinero` dio 49/0/0 en 3 corridas sin el cambio y en 5 con él: el fallo no se reprodujo, así que esto no demuestra causa ni arreglo.
+- **Qué clic quedó:** `desplegar` (`e2e/_escenarios/pulsar.ts`), que lee `aria-expanded` y solo pulsa si sigue cerrado. `abrirCon` prohíbe los controles que alternan. `desplegar` vivía en `e2e/wallet.spec.ts` y pasó a `pulsar.ts`, para los dos specs. Con `desplegar`, `dinero` dio 49/0/0 en 1 corrida.
+- **Qué falta:** si vuelve a caer en CI, buscar la causa. `playwright.config.ts:70` usa `on-first-retry`, así que el intento que cae no guarda traza; solo la guarda el reintento. `e2e/mi-wallet.spec.ts:71` tiene el mismo clic crudo.
+- **Dueño:** Carlos Restrepo.
+
+### D43 — Encabezado de la descarga «Flete por devolución a origen + IVA» con el modelo nuevo
+- **Origen:** D40. `cierres-gestiones-fundida-descarga-columnas.ts:292` lo escribe para los dos modelos; en el nuevo el importe es correcto y el nombre, impreciso. Cambiarlo toca el archivo del modelo viejo.
+- **Qué falta:** decidir si se hace antes de promover EP-8 o cuando el modelo viejo se retire (SLT-57).
+- **Dueño:** Carlos Restrepo.
+
+### D44 — Coste del `EXISTS` de D39 en la caja, sin medir con volumen real
+- **Origen:** revisión de `chore/deudas-2026-11-05` (`progress/review_deudas-2026-11-05.md`, menor 1). Datos sintéticos: 266-376 ms con 500.000 filas de `cierre_detail` y unos 1.430 ms con 2.500.000, frente a 58-155 ms del agregado. El peor caso es la empresa sin gestiones nuevas. Analítica lo paga sin leer el dato (`finanzas/cargar-kpis.ts:142`), y si esa lectura falla cae el resumen entero de la caja.
+- **Qué falta:** medir el volumen de producción antes de promover EP-8. Si duele, índice parcial `(cierre_id) WHERE tarifa_modelo = 'nuevo'`, que en la medida lo bajó a 85-113 ms.
+- **Dueño:** Carlos Restrepo.
+
+### D45 — La guardia `caja-173-alcance` solo lee SQL entre backticks
+- **Origen:** revisión de `chore/deudas-2026-11-05`, vuelta 2, V2-1. La regla de vocabulario cubre cualquier alias, pero dejó de ver una cadena normal con `cd."col"`, `Prisma.sql(['…'])` y `new Prisma.Sql([...], [])`. El módulo real no hace nada de eso.
+- **Qué falta:** que la regla lea también las cadenas normales, con contraprueba.
+- **Dueño:** Carlos Restrepo.
+
+### D46 — `caja-backfill` sale verde sin comprobar nada en una base sin usuarios
+- **Origen:** misma revisión, por lectura, sin ejecutar. `tests/integration/db/caja-backfill.test.ts:176,215,303,334,363` hacen `return` sin usuarios. Con datos de E2E en la base falla con `referencia a otra empresa`, porque `:80-81` toma usuarios y zona de cualquier empresa. Preexistente.
+- **Qué falta:** sembrar una empresa propia en el test y quitar los `return`.
+- **Dueño:** Carlos Restrepo.
+
+### D47 — `TarifasValores` esconde importes a 390 px
+- **Origen:** Tanda F de SLT-55 (2026-11-05, `progress/impl_SLT-55.md`). A 390 el contenedor acaba en x=347, «Valor» va de 381,9 a 491,9 e «IVA» de 510,9 a 580,9: fuera de vista hasta desplazar. Su `min-w-[620px]` lo afirma el test R70 de SLT-54. `TarifasVehiculo` y la pestaña de pago, sin medir.
+- **Qué falta:** decidir el diseño móvil de esa tabla. El diálogo de SLT-55 apila las filas: sirve de precedente.
+- **Dueño:** Carlos Restrepo.
+
+### D58 — La tabla vacía de «Mensajeros con valor propio» corta su texto a 390 px
+- **Origen:** SLT-55, visto en la Tanda F de SLT-77 (2026-11-06, `progress/capturas/SLT-77/seccion-390-claro.png`). «Ningún mensajero tiene valor…» y «Añade un mensaje…» quedan cortados a la derecha, y el botón también llega al borde. Por lectura: el vacío se centra en una celda de todo el ancho de la tabla (`colSpan`, `components/shared/DataTable.tsx:506`), más ancha que la vista, que desplaza en horizontal. Sin medir en la de tiendas.
+- **Qué falta:** decidir el diseño de ese vacío en móvil, junto con D47.
+- **Dueño:** Carlos Restrepo.
+
+### D48 — Textos de guardado de SLT-54 que afirman lo que no pasó
+- **Origen:** revisión de SLT-55, hallazgos 1 y 2, arreglados solo en su sección. `TarifasValores.tsx:205,264` dice `guardadoParcial` sin mirar si algo se guardó. `TarifasTiendas.tsx:127,135` dice «Lo digitado sigue aquí» al quitar, y busca la fila una sola vez, así que un reintento puede pedir quitar lo que ya no existe (por lectura).
+- **Qué falta:** llevar ahí la distinción de `guardadoNinguno`, `quitadoParcial` y `errorQuitar`.
+- **Dueño:** Carlos Restrepo.
+
+### D49 — Revertir tras promover EP-8 reactiva el modelo por existencia de fila
+- **Origen:** revisión de SLT-55, hallazgo 3, por lectura. `usaModeloNuevo` en `origin/prod` decide por existencia de una fila en `tarifa_valor`, y SLT-54 lo cambia por `tarifa_activacion`. Si tras promover se vuelve a ese despliegue, una empresa sin activar con un solo valor propio de 2.900 pasa entera al modelo nuevo, y otro mensajero de su zona sin valores cobra 0 en vez de 1.700.
+- **Qué falta:** decirlo en el plan de reversión de EP-8: volver atrás exige revisar `tarifa_valor`.
+- **Dueño:** Carlos Restrepo.
+
+### D60 — Revertir tras promover EP-8 devuelve toda empresa a un tope de 3
+- **Origen:** SLT-77, R39 y `design §8` (2026-11-06). El plan de reversión de EP-8 no existe aún como documento: D49 solo lo cita.
+- **Qué falta:** escribirlo al promover la épica, con esto:
+  - **Volver a un despliegue anterior sin `down.sql`:**
+    - Toda empresa vuelve a 3 al instante, leyendo la variable (o su defecto). La base no se toca, y los valores se conservan para un redespliegue. Requiere que la T0 siga válida.
+    - **Una empresa que tenía 4 o más:** sus órdenes con 3 o más intentos se escalan en la siguiente corrida de devoluciones, y **generan cobro** sin que nadie lo decida. Quedan agotadas también en asignación. Antes de revertir hay que contar esas órdenes.
+    - **Una empresa que tenía 1 o 2:** sus órdenes vuelven a admitir intentos. Lo ya rechazado y cobrado no se revierte.
+    - Se suma a D49: volver atrás también exige revisar `tarifa_valor`.
+    - **Las filas del historial:** una empresa que haya cambiado el tope deja filas con `tope_intentos_cambiado` y `organizacion`, valores que el cliente Prisma anterior no conoce. `/historico/acciones` podría fallar al leerlas. Es por lectura, sin ejecutar: hay que comprobarlo al escribir el plan.
+  - **Con `down.sql`:** se pierden los valores y el historial de esos cambios. Solo si se abandona la feature.
+- **Dueño:** Carlos Restrepo.
+
+### D50 — Valor propio en % sin probar con flete en otros resultados
+- **Origen:** revisión de SLT-55, hallazgo 4. Ningún test pasa un propio en % con flete mayor que 0 en reprogramado, novedad o incidente, ni en el corte. Por lectura va bien: se congelan todos los conceptos de tienda y el corte usa el mismo `crearCierre` que la solicitud.
+- **Qué falta:** añadir esos casos a `tests/integration/db/tarifas-valor-propio-caminos.test.ts`.
+- **Dueño:** Carlos Restrepo.
+
+### D51 — Reintento de adjunto del chat puede salir duplicado
+- **Origen:** SLT-88 (2026-11-05). Si Meta acepta y `insertarSaliente` lanza, o la función agota su tiempo tras enviar, el aviso invita a reintentar y el adjunto sale otra vez (`lib/services/ChatWhatsappService.ts:568-589`).
+- **Qué falta:** idempotencia en el envío de adjuntos.
+- **Dueño:** Carlos Restrepo.
+
+### D52 — Texto libre y plantilla avisan «Tu sesión expiró» ante un error permanente
+- **Origen:** SLT-88 (2026-11-05). En texto libre y plantilla, `permanente` cae en `default` y el mensajero lee ese aviso (`app/(app)/mis-asignaciones/_components/chat/ChatConversacion.tsx:609,640`).
+- **Qué falta:** darle a `permanente` su propio aviso en esos dos envíos, como ya lo tiene el de adjuntos.
+- **Dueño:** Carlos Restrepo.
+
+### D53 — `respuestaDe` descarta el rechazo sin dejar rastro
+- **Origen:** SLT-88 (2026-11-05). `ChatConversacion.tsx:171` convierte el rechazo en `null`: en producción no se sabrá con qué frecuencia ocurre.
+- **Qué falta:** registrar el rechazo en algún lado que se pueda medir.
+- **Dueño:** Carlos Restrepo.
+
+### D54 — Envío del chat sin tiempo máximo en el cliente
+- **Origen:** SLT-88 (2026-11-05). Con la red colgada el botón se queda en «enviando».
+- **Qué falta:** un tiempo máximo que termine en el aviso de fallo.
+- **Dueño:** Carlos Restrepo.
+
+### D55 — Gestión y postulación sin auditar en el hueco de 4,5 a 5 MB
+- **Origen:** SLT-88 (2026-11-05). Vercel limita el cuerpo a 4,5 MB y el chat ya quedó en 4 MB. Gestión y postulación pueden tener el mismo hueco.
+- **Qué falta:** auditar sus límites y sus avisos de fallo.
+- **Dueño:** Carlos Restrepo.
+
+### D56 — `wamid` en logs lleva el teléfono en base64
+- **Origen:** SLT-88 (2026-11-05).
+- **Qué falta:** quitarlo de los logs o enmascararlo. PR pequeño, a la espera de la decisión de Carlos.
+- **Dueño:** Carlos Restrepo.
+
+### D59 — `DataTable` lleva un borde casi blanco en tema oscuro
+- **Origen:** visto en la Tanda F de SLT-77 (2026-11-06, `progress/capturas/SLT-77/seccion-1360-oscuro.png`), en las tablas de tiendas con precio propio y de mensajeros con valor propio. No es de Tarifas ni de SLT-55: `components/shared/DataTable.tsx:648` pone `border-asfalto-2`, y `--color-asfalto-2` es `#e7e5e4` fijo, sin valor oscuro (`app/globals.css:185`); `--border` en oscuro vale `#2D2D2C`. Esa línea viene del punto de partida (`86d70bf0`). Por lectura afecta a toda tabla hecha con `DataTable`; solo se vio en esas dos.
+- **Qué falta:** decidir si el marco usa `border-border`, y mirarlo en las demás pantallas con `DataTable`. Hay `border-asfalto-2` en otros archivos: revisarlos a la vez.
+- **Dueño:** Carlos Restrepo.
+
+### D57 — Crons de Vercel a hora fija en UTC, calculada para Costa Rica
+- **Origen:** F1.4 de SLT-42 (2026-11-03, P6 en `specs/SLT-42-telefono-documento-hora-por-pais/requirements.md`). Los crons de `vercel.json` (corte diario, snapshot de ranking, etc.) corren a una hora UTC pensada para la medianoche de CR. SLT-42 hace que cada corrida calcule la fecha de cada empresa con la zona de su país, pero no mueve la hora del cron.
+- **Qué falta:** cuando entre el primer país con otra zona horaria, que esos crons corran por zona (p. ej. cada hora, procesando solo las empresas cuya medianoche local acaba de pasar). Con solo CR no hay efecto.
+- **Dueño:** Camilo (decidir si va a ficha cuando entre otro país).
+
+### D61 — Al `admin` el texto del tope le dice «Inactiva alguno», y no puede
+- **Origen:** SLT-91 (2026-11-06, P1 en `specs/SLT-91-mi-plan-solo-maestro/requirements.md`). Al aprobar una postulación con el tope de `mensajero` lleno, `mensajeDelTope` (`lib/planes/mensajes.ts`) le dice al `admin` «Inactiva alguno o pide un cambio de plan.». Usuarios es solo del `maestro` (`UsuarioService.ts:52`), así que el `admin` no puede inactivar a nadie. Carlos decidió dejar el texto igual (R11): sin él no sabría por qué falla la aprobación.
+- **Qué falta:** un texto para quien no puede inactivar usuarios, que le diga a quién acudir. Toca los límites, por eso no entró en SLT-91, y hay que cambiar el literal de R11 en `tests/unit/services/aprobacion-postulacion-tope-plan.test.ts`.
+- **Dueño:** Carlos (decidir si va a ficha).

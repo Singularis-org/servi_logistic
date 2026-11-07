@@ -14,6 +14,7 @@ import {
   listarCierresBodegaPaginadoSchema,
   listarConsolidablesSchema,
 } from "@/lib/types/cierre-bodega";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Ficha 470 (T1.3, riesgo K6) — el tope real de la descarga es ahora el limite de Excel
 // (1.048.575 filas). Este archivo prueba la MECANICA del tope (N entra, N+1 no), que no depende
@@ -241,7 +242,7 @@ function servicio(repo: ICierreBodegaRepository) {
   const ordenRepo = {
     findUsuarioZonaId: vi.fn(async (usuarioId: string) => ZONA_POR_USUARIO[usuarioId] ?? null),
   } as unknown as IOrdenRepository;
-  return new CierreBodegaService(repo, ordenRepo);
+  return new CierreBodegaService(repo, ordenRepo, reglasPaisFijas());
 }
 
 /** Filas planas, sin propiedades vigiladas: para los volúmenes del tope, donde solo importa el número. */

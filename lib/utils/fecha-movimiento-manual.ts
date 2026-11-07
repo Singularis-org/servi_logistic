@@ -1,4 +1,4 @@
-import { fechaCalendarioCR, inicioDelDiaCREnUtc } from "@/lib/utils/fecha-cr";
+import { fechaCalendario, inicioDelDiaEnUtc } from "@/lib/utils/calendario-zona";
 
 /**
  * Ficha 334 (R22/R23, design §8.2) — traduce la FECHA que el usuario eligio (`YYYY-MM-DD`) al
@@ -6,22 +6,24 @@ import { fechaCalendarioCR, inicioDelDiaCREnUtc } from "@/lib/utils/fecha-cr";
  *
  * ── Los dos casos, y por que ──────────────────────────────────────────────────────────────
  *
- * - **Fecha = hoy CR (o sin fecha):** `undefined`. La clave NO viaja al repositorio y manda el
- *   `DEFAULT CURRENT_TIMESTAMP` de la columna, asi que el caso normal es byte a byte el de hoy:
- *   el movimiento sigue llevando la hora real y sigue encabezando el libro. Fijar `06:00Z`
- *   tambien para hoy lo hundiria por debajo de todos los automaticos del dia y el usuario NO lo
- *   veria donde espera verlo — un fallo mudo, que es la familia que este repo tiene medida.
+ * SLT-42: «hoy» y el comienzo del dia son los de `zona`, la del pais de la empresa.
  *
- * - **Fecha anterior:** `${fecha}T06:00:00.000Z`, el instante en que ese dia EMPIEZA en Costa
- *   Rica. Es la misma frontera que usan el rollup diario (`FinanzasDiarioRepository`, que
- *   agrupa por `(fecha_movimiento − 6h)::date`) y los cubos de la analitica financiera para
+ * - **Fecha = hoy en la zona (o sin fecha):** `undefined`. La clave NO viaja al repositorio y manda el
+ *   `DEFAULT CURRENT_TIMESTAMP` de la columna, asi que el caso normal es byte a byte el de hoy:
+ *   el movimiento sigue llevando la hora real y sigue encabezando el libro. Fijar el
+ *   comienzo del dia tambien para hoy lo hundiria por debajo de todos los automaticos del dia y el
+ *   usuario NO lo veria donde espera verlo — un fallo mudo, que es la familia que este repo tiene medida.
+ *
+ * - **Fecha anterior:** `inicioDelDiaEnUtc(fecha, zona)`, el instante en que ese dia EMPIEZA en la
+ *   zona. Es la misma frontera que usan el rollup diario (`FinanzasDiarioRepository`, que
+ *   agrupa por dia local) y los cubos de la analitica financiera para
  *   decidir a que dia pertenece una fila, asi que el movimiento cuenta en el dia elegido y en
  *   ningun otro (R25).
  *
  * ── La convencion `00:00Z` esta descartada CON RAZON MEDIDA ───────────────────────────────
  *
  * La ficha 172 eligio medianoche UTC para los ledgers de tienda y mensajero, y para AQUELLOS
- * consumidores es correcto. Aqui no: `(00:00Z − 6h)::date` cae en el dia ANTERIOR, o sea que el
+ * consumidores es correcto. Aqui no: en una zona al oeste de UTC, `00:00Z` es del dia ANTERIOR, o sea que el
  * gasto de ayer se contaria como de anteayer en el rollup y en los cubos. Un numero mal puesto
  * en un informe es peor que una fila que no entra por un filtro. No se reintroduzca.
  *
@@ -33,9 +35,10 @@ import { fechaCalendarioCR, inicioDelDiaCREnUtc } from "@/lib/utils/fecha-cr";
  * Sigue siendo logica de servicio —pura, sin HTTP ni Prisma—, solo que con un unico ejemplar.
  */
 export function instanteDelMovimientoManual(
-  fecha?: string,
+  fecha: string | undefined,
+  zona: string,
   now: Date = new Date(),
 ): Date | undefined {
-  if (fecha === undefined || fecha === fechaCalendarioCR(now)) return undefined; // R23
-  return inicioDelDiaCREnUtc(fecha); // R22
+  if (fecha === undefined || fecha === fechaCalendario(now, zona)) return undefined; // R23
+  return inicioDelDiaEnUtc(fecha, zona); // R22
 }

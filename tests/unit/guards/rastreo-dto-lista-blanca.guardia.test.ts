@@ -7,6 +7,7 @@ import type {
   TransicionRastreoFila,
 } from "@/lib/interfaces/repositories/IRastreoPublicoRepository";
 import { RastreoPublicoService } from "@/lib/services/RastreoPublicoService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 import type { RastreoPublicoDTO } from "@/lib/types/rastreo-publico";
 
 // Feature 229 — GUARDIA DE NO-FUGA DE PII (T4.1, cubre R22 y R23).
@@ -150,6 +151,7 @@ async function proyectar(): Promise<RastreoPublicoDTO> {
   const service = new RastreoPublicoService(
     new RepositorioPoblado(),
     loadRastreoPublicoConfig(),
+    reglasPaisFijas(),
   );
   const resultado = await service.consultar(NUM_GUIA, FACTOR_CORRECTO);
   expect(resultado.estado, "el escenario base tiene que identificar el envio").toBe("ok");

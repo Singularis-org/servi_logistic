@@ -6,7 +6,7 @@ import {
   obtenerComprobanteAbonoSchema,
   registrarAbonoTiendaSchema,
 } from "@/lib/types/abono-tienda";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendarioCR, ZONA_CR } from "@/lib/utils/fecha-cr";
 
 /**
  * FICHA 457 / T2.5 — el BORDE (zod `.strict()`) del pago de una tienda a la empresa (R4–R9, R12, R13)
@@ -32,7 +32,7 @@ function campos(r: { success: boolean; error?: { issues: { path: PropertyKey[] }
 
 describe("457 — registrarAbonoTiendaSchema", () => {
   it("control positivo: la entrada completa pasa, y recorta el motivo y la referencia", () => {
-    const r = registrarAbonoTiendaSchema.safeParse({ ...BASE, motivo: "  Pago  ", referencia: " 77 " });
+    const r = registrarAbonoTiendaSchema(ZONA_CR).safeParse({ ...BASE, motivo: "  Pago  ", referencia: " 77 " });
     expect(r.success).toBe(true);
     if (!r.success) return;
     expect(r.data.motivo).toBe("Pago");
@@ -41,89 +41,89 @@ describe("457 — registrarAbonoTiendaSchema", () => {
   });
 
   it.each(["0", "-5", "10.123", "abc", "", "10000000000.00"])("R4: monto %j -> monto", (monto) => {
-    expect(campos(registrarAbonoTiendaSchema.safeParse({ ...BASE, monto }))).toEqual(["monto"]);
+    expect(campos(registrarAbonoTiendaSchema(ZONA_CR).safeParse({ ...BASE, monto }))).toEqual(["monto"]);
   });
 
   it("R4/R5: el monto viaja como STRING; el maximo de la columna (9 999 999 999,99) entra y un number no", () => {
-    expect(registrarAbonoTiendaSchema.safeParse({ ...BASE, monto: "9999999999.99" }).success).toBe(true);
-    expect(registrarAbonoTiendaSchema.safeParse({ ...BASE, monto: "6170666.55" }).success).toBe(true);
-    expect(campos(registrarAbonoTiendaSchema.safeParse({ ...BASE, monto: 10000 }))).toEqual(["monto"]);
+    expect(registrarAbonoTiendaSchema(ZONA_CR).safeParse({ ...BASE, monto: "9999999999.99" }).success).toBe(true);
+    expect(registrarAbonoTiendaSchema(ZONA_CR).safeParse({ ...BASE, monto: "6170666.55" }).success).toBe(true);
+    expect(campos(registrarAbonoTiendaSchema(ZONA_CR).safeParse({ ...BASE, monto: 10000 }))).toEqual(["monto"]);
   });
 
   it("R6: motivo vacio tras recortar, o de mas de 200 -> motivo; 200 exactos entran", () => {
-    expect(campos(registrarAbonoTiendaSchema.safeParse({ ...BASE, motivo: "   " }))).toEqual(["motivo"]);
-    expect(campos(registrarAbonoTiendaSchema.safeParse({ ...BASE, motivo: "m".repeat(ABONO_TIENDA_MOTIVO_MAX + 1) }))).toEqual(["motivo"]);
-    expect(registrarAbonoTiendaSchema.safeParse({ ...BASE, motivo: "m".repeat(ABONO_TIENDA_MOTIVO_MAX) }).success).toBe(true);
+    expect(campos(registrarAbonoTiendaSchema(ZONA_CR).safeParse({ ...BASE, motivo: "   " }))).toEqual(["motivo"]);
+    expect(campos(registrarAbonoTiendaSchema(ZONA_CR).safeParse({ ...BASE, motivo: "m".repeat(ABONO_TIENDA_MOTIVO_MAX + 1) }))).toEqual(["motivo"]);
+    expect(registrarAbonoTiendaSchema(ZONA_CR).safeParse({ ...BASE, motivo: "m".repeat(ABONO_TIENDA_MOTIVO_MAX) }).success).toBe(true);
     expect(ABONO_TIENDA_MOTIVO_MAX).toBe(200);
     const { motivo: _m, ...sinMotivo } = BASE;
     void _m;
-    expect(campos(registrarAbonoTiendaSchema.safeParse(sinMotivo))).toEqual(["motivo"]);
+    expect(campos(registrarAbonoTiendaSchema(ZONA_CR).safeParse(sinMotivo))).toEqual(["motivo"]);
   });
 
   it("R7: SINPE o transferencia sin referencia -> referencia; efectivo sin ella entra", () => {
     const { referencia: _r, ...sinRef } = BASE;
     void _r;
-    expect(campos(registrarAbonoTiendaSchema.safeParse(sinRef))).toEqual(["referencia"]);
-    expect(campos(registrarAbonoTiendaSchema.safeParse({ ...sinRef, metodo: "transferencia" }))).toEqual(["referencia"]);
-    expect(campos(registrarAbonoTiendaSchema.safeParse({ ...BASE, referencia: "   " }))).toEqual(["referencia"]);
-    expect(registrarAbonoTiendaSchema.safeParse({ ...sinRef, metodo: "efectivo" }).success).toBe(true);
-    expect(registrarAbonoTiendaSchema.safeParse({ ...BASE, metodo: "efectivo", referencia: "opcional" }).success).toBe(true);
+    expect(campos(registrarAbonoTiendaSchema(ZONA_CR).safeParse(sinRef))).toEqual(["referencia"]);
+    expect(campos(registrarAbonoTiendaSchema(ZONA_CR).safeParse({ ...sinRef, metodo: "transferencia" }))).toEqual(["referencia"]);
+    expect(campos(registrarAbonoTiendaSchema(ZONA_CR).safeParse({ ...BASE, referencia: "   " }))).toEqual(["referencia"]);
+    expect(registrarAbonoTiendaSchema(ZONA_CR).safeParse({ ...sinRef, metodo: "efectivo" }).success).toBe(true);
+    expect(registrarAbonoTiendaSchema(ZONA_CR).safeParse({ ...BASE, metodo: "efectivo", referencia: "opcional" }).success).toBe(true);
   });
 
   it("R8: referencia de mas de 60 tras recortar -> referencia; 60 exactos entran", () => {
-    expect(campos(registrarAbonoTiendaSchema.safeParse({ ...BASE, referencia: "r".repeat(61) }))).toEqual(["referencia"]);
-    expect(registrarAbonoTiendaSchema.safeParse({ ...BASE, referencia: "r".repeat(60) }).success).toBe(true);
-    expect(registrarAbonoTiendaSchema.safeParse({ ...BASE, referencia: ` ${"r".repeat(60)} ` }).success).toBe(true);
+    expect(campos(registrarAbonoTiendaSchema(ZONA_CR).safeParse({ ...BASE, referencia: "r".repeat(61) }))).toEqual(["referencia"]);
+    expect(registrarAbonoTiendaSchema(ZONA_CR).safeParse({ ...BASE, referencia: "r".repeat(60) }).success).toBe(true);
+    expect(registrarAbonoTiendaSchema(ZONA_CR).safeParse({ ...BASE, referencia: ` ${"r".repeat(60)} ` }).success).toBe(true);
   });
 
   it("R9 (D3): fecha inexistente o posterior a hoy en CR -> fechaPago; hoy y un dia de hace meses entran", () => {
-    expect(campos(registrarAbonoTiendaSchema.safeParse({ ...BASE, fechaPago: "2026-02-31" }))).toEqual(["fechaPago"]);
-    expect(campos(registrarAbonoTiendaSchema.safeParse({ ...BASE, fechaPago: "2999-01-01" }))).toEqual(["fechaPago"]);
-    expect(campos(registrarAbonoTiendaSchema.safeParse({ ...BASE, fechaPago: "20-09-2026" }))).toEqual(["fechaPago"]);
-    expect(registrarAbonoTiendaSchema.safeParse({ ...BASE, fechaPago: HOY }).success).toBe(true);
+    expect(campos(registrarAbonoTiendaSchema(ZONA_CR).safeParse({ ...BASE, fechaPago: "2026-02-31" }))).toEqual(["fechaPago"]);
+    expect(campos(registrarAbonoTiendaSchema(ZONA_CR).safeParse({ ...BASE, fechaPago: "2999-01-01" }))).toEqual(["fechaPago"]);
+    expect(campos(registrarAbonoTiendaSchema(ZONA_CR).safeParse({ ...BASE, fechaPago: "20-09-2026" }))).toEqual(["fechaPago"]);
+    expect(registrarAbonoTiendaSchema(ZONA_CR).safeParse({ ...BASE, fechaPago: HOY }).success).toBe(true);
     // SIN ventana hacia atras: una tienda paga hoy una deuda de hace meses (D3 / A9 descartada).
-    expect(registrarAbonoTiendaSchema.safeParse({ ...BASE, fechaPago: "2026-01-15" }).success).toBe(true);
+    expect(registrarAbonoTiendaSchema(ZONA_CR).safeParse({ ...BASE, fechaPago: "2026-01-15" }).success).toBe(true);
     const { fechaPago: _f, ...sinFecha } = BASE;
     void _f;
-    expect(campos(registrarAbonoTiendaSchema.safeParse(sinFecha))).toEqual(["fechaPago"]);
+    expect(campos(registrarAbonoTiendaSchema(ZONA_CR).safeParse(sinFecha))).toEqual(["fechaPago"]);
   });
 
   it("R10 (forma): la tienda tiene que ser un uuid", () => {
-    expect(campos(registrarAbonoTiendaSchema.safeParse({ ...BASE, tiendaId: "mercadito" }))).toEqual(["tiendaId"]);
+    expect(campos(registrarAbonoTiendaSchema(ZONA_CR).safeParse({ ...BASE, tiendaId: "mercadito" }))).toEqual(["tiendaId"]);
     const { tiendaId: _t, ...sinTienda } = BASE;
     void _t;
-    expect(campos(registrarAbonoTiendaSchema.safeParse(sinTienda))).toEqual(["tiendaId"]);
+    expect(campos(registrarAbonoTiendaSchema(ZONA_CR).safeParse(sinTienda))).toEqual(["tiendaId"]);
   });
 
   it("R12: una clave no prevista -> error de validacion (ni el monto de la caja, ni una categoria, ni un saldo)", () => {
-    expect(registrarAbonoTiendaSchema.safeParse({ ...BASE, categoria: "ajuste_credito" }).success).toBe(false);
-    expect(registrarAbonoTiendaSchema.safeParse({ ...BASE, saldo: "0.00" }).success).toBe(false);
-    expect(registrarAbonoTiendaSchema.safeParse({ ...BASE, fecha: "2026-09-20" }).success).toBe(false);
-    expect(registrarAbonoTiendaSchema.safeParse({ ...BASE, beneficiario: "x" }).success).toBe(false);
+    expect(registrarAbonoTiendaSchema(ZONA_CR).safeParse({ ...BASE, categoria: "ajuste_credito" }).success).toBe(false);
+    expect(registrarAbonoTiendaSchema(ZONA_CR).safeParse({ ...BASE, saldo: "0.00" }).success).toBe(false);
+    expect(registrarAbonoTiendaSchema(ZONA_CR).safeParse({ ...BASE, fecha: "2026-09-20" }).success).toBe(false);
+    expect(registrarAbonoTiendaSchema(ZONA_CR).safeParse({ ...BASE, beneficiario: "x" }).success).toBe(false);
   });
 
   it("R13: sin clave de idempotencia, o con una que no es uuid -> claveIdempotencia", () => {
     const { claveIdempotencia: _c, ...sinClave } = BASE;
     void _c;
-    expect(campos(registrarAbonoTiendaSchema.safeParse(sinClave))).toEqual(["claveIdempotencia"]);
-    expect(campos(registrarAbonoTiendaSchema.safeParse({ ...BASE, claveIdempotencia: "doble-clic" }))).toEqual(["claveIdempotencia"]);
+    expect(campos(registrarAbonoTiendaSchema(ZONA_CR).safeParse(sinClave))).toEqual(["claveIdempotencia"]);
+    expect(campos(registrarAbonoTiendaSchema(ZONA_CR).safeParse({ ...BASE, claveIdempotencia: "doble-clic" }))).toEqual(["claveIdempotencia"]);
   });
 
   it("el metodo es uno de los tres del catalogo", () => {
-    expect(campos(registrarAbonoTiendaSchema.safeParse({ ...BASE, metodo: "cheque" }))).toEqual(["metodo"]);
+    expect(campos(registrarAbonoTiendaSchema(ZONA_CR).safeParse({ ...BASE, metodo: "cheque" }))).toEqual(["metodo"]);
     for (const metodo of ["efectivo", "SINPE", "transferencia"]) {
-      expect(registrarAbonoTiendaSchema.safeParse({ ...BASE, metodo }).success, metodo).toBe(true);
+      expect(registrarAbonoTiendaSchema(ZONA_CR).safeParse({ ...BASE, metodo }).success, metodo).toBe(true);
     }
   });
 
   it("R26: un comprobante de tipo no admitido o de mas de 4 MB -> comprobante; uno valido o ninguno entran (R30)", () => {
     const archivo = (type: string, size: number) => ({ type, size, arrayBuffer: async () => new ArrayBuffer(0) });
-    expect(campos(registrarAbonoTiendaSchema.safeParse({ ...BASE, comprobante: archivo("image/gif", 10) }))).toEqual(["comprobante"]);
-    expect(campos(registrarAbonoTiendaSchema.safeParse({ ...BASE, comprobante: archivo("application/pdf", 4 * 1024 * 1024 + 1) }))).toEqual(["comprobante"]);
-    expect(registrarAbonoTiendaSchema.safeParse({ ...BASE, comprobante: archivo("application/pdf", 1000) }).success).toBe(true);
-    expect(registrarAbonoTiendaSchema.safeParse({ ...BASE, comprobante: archivo("image/webp", 1000) }).success).toBe(true);
-    expect(campos(registrarAbonoTiendaSchema.safeParse({ ...BASE, comprobante: "no-es-archivo" }))).toEqual(["comprobante"]);
-    expect(registrarAbonoTiendaSchema.safeParse(BASE).success).toBe(true);
+    expect(campos(registrarAbonoTiendaSchema(ZONA_CR).safeParse({ ...BASE, comprobante: archivo("image/gif", 10) }))).toEqual(["comprobante"]);
+    expect(campos(registrarAbonoTiendaSchema(ZONA_CR).safeParse({ ...BASE, comprobante: archivo("application/pdf", 4 * 1024 * 1024 + 1) }))).toEqual(["comprobante"]);
+    expect(registrarAbonoTiendaSchema(ZONA_CR).safeParse({ ...BASE, comprobante: archivo("application/pdf", 1000) }).success).toBe(true);
+    expect(registrarAbonoTiendaSchema(ZONA_CR).safeParse({ ...BASE, comprobante: archivo("image/webp", 1000) }).success).toBe(true);
+    expect(campos(registrarAbonoTiendaSchema(ZONA_CR).safeParse({ ...BASE, comprobante: "no-es-archivo" }))).toEqual(["comprobante"]);
+    expect(registrarAbonoTiendaSchema(ZONA_CR).safeParse(BASE).success).toBe(true);
   });
 });
 

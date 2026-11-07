@@ -77,17 +77,18 @@ function fakeOrdenRepo(
  */
 function fakeHistorial(
   intentos = 0,
-): Pick<IOrdenHistorialService, "contarIntentosEnLote"> {
+): Pick<IOrdenHistorialService, "contarIntentosEnLote" | "topeIntentos"> {
   return {
     contarIntentosEnLote: vi.fn(
       async (ids: string[]) => new Map(ids.map((id) => [id, intentos])),
     ),
+    topeIntentos: vi.fn(async () => 3),
   };
 }
 
 function newService(
   repo: IDevolucionSlaRepository = fakeRepo(),
-  historial: Pick<IOrdenHistorialService, "contarIntentosEnLote"> = fakeHistorial(),
+  historial: Pick<IOrdenHistorialService, "contarIntentosEnLote" | "topeIntentos"> = fakeHistorial(),
   zonaRepo = fakeZonaRepo(),
   ordenRepo = fakeOrdenRepo(),
 ) {
@@ -240,7 +241,7 @@ describe("ejecutar — el criterio de intentos por CIERRE APROBADO y el escalado
     const { service, prisma } = historialReal(filas);
     const svc = newService(
       repo,
-      service as unknown as Pick<IOrdenHistorialService, "contarIntentosEnLote">,
+      service as unknown as Pick<IOrdenHistorialService, "contarIntentosEnLote" | "topeIntentos">,
     );
     return { repo, svc, prisma, service };
   }

@@ -5,10 +5,8 @@ import { CierresAdminRepository } from "@/lib/repositories/CierresAdminRepositor
 import { ESTADOS_COLA_CIERRE_DIA } from "@/lib/utils/colas-cierre";
 import type { Alcance } from "@/lib/interfaces/repositories/ICierresAdminRepository";
 import type { RangoPagina } from "@/lib/utils/rango-pagina";
-import {
-  inicioDelDiaCREnUtc,
-  inicioDelDiaSiguienteCREnUtc,
-} from "@/lib/utils/fecha-cr";
+import { inicioDelDiaCREnUtc, inicioDelDiaSiguienteCREnUtc, ZONA_CR } from "@/lib/utils/fecha-cr";
+import { filtrosConLimites, type FiltrosCierres } from "@/lib/types/filtros-cierres";
 
 // Pedido humano del 2026-08-16 — el WHERE de los FILTROS de los listados de cierres del dia.
 //
@@ -109,10 +107,10 @@ describe("WHERE de los filtros de cierres del dia", () => {
 
   it("(4) las fechas son el dia de calendario de Costa Rica, con el limite superior exclusivo", async () => {
     const d = delegado();
-    await repo(d).findHistoricoCompleto(ALCANCE_MAESTRO, {
+    await repo(d).findHistoricoCompleto(ALCANCE_MAESTRO, filtrosConLimites<FiltrosCierres>({
       desde: "2026-08-01",
       hasta: "2026-08-16",
-    });
+    }, ZONA_CR));
 
     const where = whereDe(d);
     expect(where.AND).toEqual([
@@ -130,11 +128,11 @@ describe("WHERE de los filtros de cierres del dia", () => {
 
   it("los tres filtros a la vez son TRES condiciones que se exigen todas", async () => {
     const d = delegado();
-    await repo(d).findColaCompleta(ALCANCE_MAESTRO, {
+    await repo(d).findColaCompleta(ALCANCE_MAESTRO, filtrosConLimites<FiltrosCierres>({
       desde: "2026-08-01",
       destinoZonaIds: [ZONA_A, ZONA_B],
       mensajeroIds: [MENSAJERO],
-    });
+    }, ZONA_CR));
 
     const where = whereDe(d);
     expect(where.AND).toEqual([
@@ -148,7 +146,7 @@ describe("WHERE de los filtros de cierres del dia", () => {
 
   it("solo `hasta` recorta por arriba y deja abierto el comienzo", async () => {
     const d = delegado();
-    await repo(d).findColaPaginada(ALCANCE_MAESTRO, RANGO, { hasta: "2026-08-16" });
+    await repo(d).findColaPaginada(ALCANCE_MAESTRO, RANGO, filtrosConLimites<FiltrosCierres>({ hasta: "2026-08-16" }, ZONA_CR));
 
     expect(whereDe(d).AND).toEqual([
       { solicitadoAt: { lt: inicioDelDiaSiguienteCREnUtc("2026-08-16") } },
@@ -206,12 +204,12 @@ describe("WHERE de los filtros de cierres del dia", () => {
 
   it("(386) el estado convive con los otros tres recortes: cuatro condiciones, todas exigidas", async () => {
     const d = delegado();
-    await repo(d).findColaCompleta(ALCANCE_MAESTRO, {
+    await repo(d).findColaCompleta(ALCANCE_MAESTRO, filtrosConLimites<FiltrosCierres>({
       desde: "2026-08-01",
       destinoZonaIds: [ZONA_A, ZONA_B],
       mensajeroIds: [MENSAJERO],
       estados: ["solicitado", "vencido"],
-    });
+    }, ZONA_CR));
 
     expect(whereDe(d).AND).toEqual([
       { solicitadoAt: { gte: inicioDelDiaCREnUtc("2026-08-01") } },

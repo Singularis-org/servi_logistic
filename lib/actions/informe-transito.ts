@@ -8,6 +8,8 @@
 // el informe manda. Con parametros invalidos devuelve los errores por campo y las zonas (para
 // pintar la tabla), sin conteo. Se importa desde el panel (`ParamsTransito`).
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDelBorde } from "@/lib/actions/_shared/zona-del-borde";
 import type { IInformeTransitoRepository } from "@/lib/interfaces/repositories/IInformeTransitoRepository";
 import type { PrevisualizarTransitoResult } from "@/lib/whatsapp-envios/informes/transito/tipos";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
@@ -24,6 +26,8 @@ export interface PrevisualizarTransitoDeps {
   getActor?: () => Promise<Actor | null>;
   repo?: IInformeTransitoRepository;
   now?: () => Date;
+  /** SLT-42 (R22, R28): la zona del pais de la empresa; en produccion, la real (`zonaDelBorde`). */
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
 }
 
 const ROLES_PERMITIDOS = new Set<string>(["maestro"]);
@@ -48,7 +52,8 @@ export async function previsualizarInformeTransito(
   if (!p.success) {
     return { status: "validation_error", fieldErrors: erroresDeParametrosTransito(p.error), zonas: await repo.zonas() };
   }
-  const { zonas, modelo } = await seleccionarTransito(repo, p.data, ahora);
+  const zona = await zonaDelBorde(deps.reglasPais); // SLT-42 (R22, R28)
+  const { zonas, modelo } = await seleccionarTransito(repo, p.data, ahora, zona);
   return {
     status: "ok",
     zonas,

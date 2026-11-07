@@ -6,6 +6,7 @@ import { PARAMETROS_POR_DEFECTO } from "@/lib/whatsapp-envios/informes/transito/
 import type { IInformeTransitoRepository } from "@/lib/interfaces/repositories/IInformeTransitoRepository";
 import type { FilaTransito } from "@/lib/whatsapp-envios/informes/transito/tipos";
 
+import { ZONA_DE_CR, reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Ficha 475 (T5.4) — R38/R39: la vista previa del panel. Solo maestro, solo lectura, y LA MISMA
 // seleccion que `generar`.
 
@@ -50,7 +51,7 @@ const actor = (rol: RolValue) => async () => ({ usuarioId: "u", rol });
 describe("475/R39 — solo maestro", () => {
   it("sin sesion -> unauthenticated sin tocar el repo", async () => {
     const r = repo();
-    expect(await previsualizarInformeTransito(PARAMETROS_POR_DEFECTO, { getActor: async () => null, repo: r })).toEqual({
+    expect(await previsualizarInformeTransito(PARAMETROS_POR_DEFECTO, { reglasPais: reglasPaisFijas(), getActor: async () => null, repo: r })).toEqual({
       status: "unauthenticated",
     });
     expect(r.zonas).not.toHaveBeenCalled();
@@ -59,7 +60,7 @@ describe("475/R39 — solo maestro", () => {
   for (const rol of ["admin", "adminSatelite", "adminTienda", "mensajero", "apiKey"] as const) {
     it(`${rol} -> forbidden sin tocar el repo`, async () => {
       const r = repo();
-      expect(await previsualizarInformeTransito(PARAMETROS_POR_DEFECTO, { getActor: actor(rol), repo: r })).toEqual({
+      expect(await previsualizarInformeTransito(PARAMETROS_POR_DEFECTO, { reglasPais: reglasPaisFijas(), getActor: actor(rol), repo: r })).toEqual({
         status: "forbidden",
       });
       expect(r.zonas).not.toHaveBeenCalled();
@@ -78,7 +79,7 @@ describe("475/R38 — conteo o errores por campo", () => {
     const r = repo();
     const res = await previsualizarInformeTransito(
       { ...PARAMETROS_POR_DEFECTO, zonas: [{ zonaId: "z1", plazoDias: 5, avisoDias: 5 }] },
-      { getActor: actor("maestro"), repo: r, now: () => AHORA },
+      { reglasPais: reglasPaisFijas(), getActor: actor("maestro"), repo: r, now: () => AHORA },
     );
     expect(res).toEqual({
       status: "validation_error",
@@ -90,14 +91,14 @@ describe("475/R38 — conteo o errores por campo", () => {
   });
 
   it("valido -> zonas, paquetes en alerta, parados y sin hito iguales a los de generar con el mismo doble", async () => {
-    const res = await previsualizarInformeTransito(PARAMETROS_POR_DEFECTO, {
+    const res = await previsualizarInformeTransito(PARAMETROS_POR_DEFECTO, { reglasPais: reglasPaisFijas(),
       getActor: actor("maestro"),
       repo: repo(),
       now: () => AHORA,
     });
     expect(res).toEqual({ status: "ok", zonas: ZONAS, totalEnAlerta: 3, parados: 2, sinHito: 4 });
 
-    const g = await crearInformeTransito({ repo: repo() }).generar({
+    const g = await crearInformeTransito({ repo: repo() }).generar({ zona: ZONA_DE_CR,
       parametros: PARAMETROS_POR_DEFECTO,
       ahora: AHORA,
       conDocumento: false,
@@ -111,7 +112,7 @@ describe("475/R38 — conteo o errores por campo", () => {
 
   it("pasa a la seleccion el mismo `ahora` y los estados incluidos", async () => {
     const r = repo();
-    await previsualizarInformeTransito(PARAMETROS_POR_DEFECTO, { getActor: actor("maestro"), repo: r, now: () => AHORA });
+    await previsualizarInformeTransito(PARAMETROS_POR_DEFECTO, { reglasPais: reglasPaisFijas(), getActor: actor("maestro"), repo: r, now: () => AHORA });
     const consulta = (r.filasEnAlerta as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(consulta.hito).toBe("entrada_bodega_central");
     expect(consulta.estados).not.toContain("en_preparacion");

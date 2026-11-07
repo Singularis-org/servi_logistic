@@ -18,6 +18,7 @@ import { conPagos } from "@/tests/fixtures/cierre-pagos";
 import { efectivoCubreDescuentos, paraLaCentral } from "@/lib/utils/ingreso-empresa";
 
 import { marcaPorEstado } from "@/tests/fixtures/marca-conciliacion";
+import { reglasPaisFijas, ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Feature 40 — tests unit del CierresBodegaAdminService (lado maestro; dobles de
 // repo/signedUrls, sin DB/red). Cubre R2 (rol), R11 (detalle por cierre_dia con grupos
 // + totales), R12 (evidencia firmada), R13 (montos string, snapshot no recompute), R14
@@ -192,7 +193,7 @@ function fakeSignedUrls(overrides: Partial<ISignedUrlProvider> = {}): ISignedUrl
 function newService(opts: { repo?: Repo; signedUrls?: ISignedUrlProvider } = {}) {
   const repo = opts.repo ?? fakeRepo();
   const signedUrls = opts.signedUrls ?? fakeSignedUrls();
-  const service = new CierresBodegaAdminService(repo, signedUrls);
+  const service = new CierresBodegaAdminService(repo, signedUrls, reglasPaisFijas());
   return { service, repo, signedUrls };
 }
 
@@ -307,6 +308,7 @@ describe("CierresBodegaAdminService.verCierreBodegaDetalle — ingreso y gananci
   /** Desglose por orden como lo emite el repo (ya derivado del snapshot). */
   function conIngreso(over: Partial<IngresoEmpresaDTO>): IngresoEmpresaDTO {
     return {
+      tarifaModelo: "viejo",
       montoCobrar: null,
       cobraComision: false,
       esCentral: false,
@@ -817,6 +819,7 @@ describe("Feature 238 (R39) — aprobar un CierreBodega NO pide confirmacion fis
       nuevoEstado: "aprobado",
       resueltoPor: "adm-maestro",
       motivoRechazo: null,
+      zonaHoraria: ZONA_DE_CR, // SLT-42 (R22): el dia del cierre en el historial
     });
 
     // (3) El servicio no tiene con que exigirla: ni colaborador, ni metodo de lectura.
@@ -869,6 +872,7 @@ describe("Feature 238 (R39) — aprobar un CierreBodega NO pide confirmacion fis
 describe("CierresBodegaAdminService.verCierreBodegaDetalle — las dos cascadas (feature 393)", () => {
   function conIngreso(over: Partial<IngresoEmpresaDTO>): IngresoEmpresaDTO {
     return {
+      tarifaModelo: "viejo",
       montoCobrar: null,
       cobraComision: false,
       esCentral: false,
@@ -1235,6 +1239,7 @@ describe("396/D1 — `verCierreBodegaDetalle` emite el desglose por tienda en lo
   /** Desglose por orden como lo emite el repositorio (ya derivado del snapshot congelado). */
   function ingreso(over: Partial<IngresoEmpresaDTO>): IngresoEmpresaDTO {
     return {
+      tarifaModelo: "viejo",
       montoCobrar: null,
       cobraComision: false,
       esCentral: false,

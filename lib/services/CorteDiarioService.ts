@@ -15,7 +15,9 @@ import {
   derivarIngresoBodega,
   pagosDelCierre,
 } from "@/lib/utils/cierre-totales";
-import { startOfDayCR } from "@/lib/utils/fecha-cr";
+import { inicioDelDiaComoFecha } from "@/lib/utils/calendario-zona";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 // Feature 271 (T6.4, R38/R39/R47/R61): el aviso del `vencido` y la conversion de su jornada.
 import {
   notificadorNoOp,
@@ -94,24 +96,28 @@ export interface CorteDiarioLogger {
 }
 const defaultLogger: CorteDiarioLogger = { warn: (m) => console.warn(m) };
 
-/** CR es UTC-6 FIJO (sin horario de verano): restar 24 h ES restar un dia calendario. */
+/**
+ * El ancla vive en la convencion `@db.Date` (medianoche UTC de la fecha local), que no tiene cambios
+ * de hora: ahi restar 24 h ES restar un dia calendario, en cualquier zona (SLT-42, R23).
+ */
 const UN_DIA_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Feature 246 (T2.1, design §5.1, R11/R13/R17) — EL ANCLA DEL CORTE, Y ES DONDE ESTA FICHA SE
  * ROMPE SOLA SI NADIE LEE ESTO.
  *
- * `diaCerrado` es la fecha CR de la JORNADA QUE LA CORRIDA CIERRA, es decir el dia ANTERIOR al
- * que la corrida inaugura. NO es «hoy».
+ * `diaCerrado` es la fecha local de la JORNADA QUE LA CORRIDA CIERRA, es decir el dia ANTERIOR al
+ * que la corrida inaugura. NO es «hoy». SLT-42 (R22, R24): local = en la `zona` del pais de la
+ * empresa que se corta (el cron corre una vez por empresa).
  *
- * POR QUE EL ANCLA INGENUA NO SIRVE. El cron corre a las 00:00 CR del dia `D+1`, asi que
- * `startOfDayCR(now)` ya vale `D+1`. Una orden que bodega reservo anoche «para mañana» tiene
- * `fecha_reparto = D+1`. Con el predicado «protegida si `fecha_reparto > startOfDayCR(now)`»,
+ * POR QUE EL ANCLA INGENUA NO SIRVE. El cron corre a las 00:00 locales del dia `D+1`, asi que
+ * `inicioDelDiaComoFecha(now, zona)` ya vale `D+1`. Una orden que bodega reservo anoche «para mañana» tiene
+ * `fecha_reparto = D+1`. Con el predicado «protegida si `fecha_reparto > inicioDelDiaComoFecha(now, zona)`»,
  * `D+1 > D+1` es FALSO y la orden SE BARRE: justo lo que esta ficha viene a impedir. Cambiar el
  * operador a `>=` la salvaria esa noche, pero dejaria el predicado dependiendo del INSTANTE exacto
  * en que Vercel dispara el cron. El error esta en el ANCLA, no en el operador.
  *
- * ROBUSTEZ SI EL CRON SE ADELANTA. Si dispara a las 23:5x CR del dia `D`, `startOfDayCR` da `D` y
+ * ROBUSTEZ SI EL CRON SE ADELANTA. Si dispara a las 23:5x locales del dia `D`, `inicioDelDiaComoFecha` da `D` y
  * `diaCerrado = D-1`: se barre todo lo de `D-1` hacia atras y lo de `D` sobrevive una corrida mas.
  * Se RETRASA un barrido; no se PIERDE ninguno, porque la corrida siguiente lo alcanza. Anclarlo en
  * `now` sin restar el dia tiene el defecto inverso, que si pierde la proteccion.
@@ -120,8 +126,8 @@ const UN_DIA_MS = 24 * 60 * 60 * 1000;
  * avanza un dia cada noche y alcanza a la orden reservada en la corrida SIGUIENTE. Ninguna orden
  * puede quedar protegida dos veces, y nadie tiene que escribir nada para que expire.
  */
-export function diaQueElCorteCierra(now: Date): Date {
-  return new Date(startOfDayCR(now).getTime() - UN_DIA_MS);
+export function diaQueElCorteCierra(now: Date, zona: string): Date {
+  return new Date(inicioDelDiaComoFecha(now, zona).getTime() - UN_DIA_MS);
 }
 
 /**
@@ -153,13 +159,18 @@ export class CorteDiarioService implements ICorteDiarioService {
      * CONSTRUCCION; el composition root (`app/api/cron/corte-diario`) inyecta el real.
      */
     private readonly notificarVencido: CierreVencidoNotificador = notificadorNoOp,
+    /** SLT-42 (R22, R24): la zona del pais de la empresa que se corta; el ancla se calcula en ella. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
 
   async ejecutarCorte(now: Date = new Date()): Promise<CorteDiarioResult> {
     // Feature 246 (T2.1, R16/R17): el ancla se calcula UNA vez por corrida y viaja como PARAMETRO
     // a las DOS capas —la que SELECCIONA y la que ESCRIBE—, para que no puedan decir cosas
     // distintas. Ver `diaQueElCorteCierra`: es el dia que la corrida CIERRA, no el que inaugura.
-    const diaCerrado = diaQueElCorteCierra(now);
+    // SLT-42 (R24, R28): con la zona del pais de ESTA empresa, leida una vez por corrida y antes de
+    // escribir nada; sin zona la corrida de esta empresa falla sola.
+    const zona = await zonaDeLaEmpresa(this.reglasPais, "CorteDiarioService.ejecutarCorte");
+    const diaCerrado = diaQueElCorteCierra(now, zona);
     // R1: la clasificacion a central usa la zona central (o null: fallback satelite).
     const centralZonaId = await this.zonaRepo.findCentralZonaId();
     // Feature 109 (T1.3, R4): resuelve UNA vez los estatus ids de la transicion del corte. Si el
@@ -195,7 +206,7 @@ export class CorteDiarioService implements ICorteDiarioService {
       // 109 (R8): YA NO se hace `continue` si son 0 — el mensajero puede estar en la lista SOLO por
       // ordenes `en_reparto` (money-neutral). `crearCierre` decide via la guarda "algo paso": si no
       // vincula gestiones NI transiciona `sin_gestionar`, devuelve null (idempotencia R9).
-      const gestiones = await this.cierreRepo.findGestionesPendientes(m.mensajeroId);
+      const gestiones = await this.cierreRepo.findGestionesPendientes(m.mensajeroId, zona);
 
       // R1: bodega responsable derivada (misma regla que solicitarCierre).
       const { destinoTipo } = resolverDestinoCierre(m.zonaId, centralZonaId);

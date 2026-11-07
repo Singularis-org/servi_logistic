@@ -3,28 +3,56 @@ import { Ban, Infinity as InfinityIcon, TriangleAlert, type LucideIcon } from "l
 import { EmptyState } from "@/components/shared/EmptyState";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { SIN_LINEAS_DE_CAMBIO, textoCambioProgramado, TITULO_LINEAS_DE_CAMBIO } from "@/lib/planes/mensajes";
+import { TEXTOS_TIPO_COBRO, textoDelPeriodo } from "@/components/shared/tipo-cobro";
+import {
+  lineasDelCosteoPorcentual,
+  SIN_LINEAS_DE_CAMBIO,
+  textoCambioProgramado,
+  TITULO_LINEAS_DE_CAMBIO,
+} from "@/lib/planes/mensajes";
 import type {
+  CobroDelPlan,
   CosteoDelCiclo,
   EstadoFila,
   FilaConsumo,
+  PendienteDeEmpresa,
   PlanConConsumo,
   ReinicioDelCiclo,
 } from "@/lib/types/consumo-plan";
+import { formatearConteo } from "@/lib/planes/consumo";
+import type { TipoCobro } from "@/lib/types/planes";
 import { cn } from "@/lib/utils";
+
+// SLT-83 (design §6.4; R23, R26): `CosteoDelCiclo` es una unión por `modo`. La rama fija es la de
+// SLT-66 sin cambio de texto; la porcentual pinta las líneas de `lineasDelCosteoPorcentual`.
+type CosteoFijo = Extract<CosteoDelCiclo, { modo: "fijo" }>;
+type CosteoPorcentual = Extract<CosteoDelCiclo, { modo: "porcentual" }>;
 
 /** Textos de la pieza, en un solo sitio para cuando llegue la i18n (design §6.5). */
 const TEXTOS = {
-  costoDelCiclo: "Costo del ciclo",
-  costoBase: (base: CosteoDelCiclo["base"]) =>
-    `Costo base: ${base.tipo === "monto" ? `${base.mensual} al mes` : "por definir"}`,
+  // Decisión del 2026-11-06 (R28): «período» en vez de «ciclo» en los textos; las claves no cambian.
+  costoDelCiclo: "Costo del período",
+  // SLT-86 (R12, R28; design §7.1): el costo base del período en curso (o de su tramo), con su tipo.
+  costoBase: (tipo: TipoCobro, base: CosteoDelCiclo["base"]) =>
+    TEXTOS_TIPO_COBRO.costoBase(tipo, base.tipo === "monto" ? base.periodo : null),
   costoPorOrden: (c: string) => `Costo por orden: ${c}`,
-  ordenesDelCiclo: ({ ordenes, costoPorOrden, subtotalOrdenes }: CosteoDelCiclo) =>
-    `Órdenes del ciclo: ${ordenes} × ${costoPorOrden} = ${subtotalOrdenes}`,
-  total: (t: string) => `Total estimado del ciclo: ${t}`,
+  ordenesDelCiclo: ({ ordenes, costoPorOrden, subtotalOrdenes }: CosteoFijo) =>
+    `Órdenes del período: ${ordenes} × ${costoPorOrden} = ${subtotalOrdenes}`,
+  total: (t: string) => `Total estimado del período: ${t}`,
   excepcion: "precio acordado para tu empresa",
-  anualNoAplica: "El pago anual no cambia el costo por orden.",
   estimado: "Estimado: el costo base no se cobra todavía; cada orden se cobra al crearla y se descuenta si se anula.",
+  /** SLT-83 (texto aprobado 2026-11-04): la nota de la rama porcentual, donde la fija pinta `estimado`. */
+  notaPorcentual:
+    "Cada orden se cobra al llegar a un estado final, con el % de su monto a cobrar (o el mínimo si es mayor).",
+  /** Ajuste planes-custom (D9): cómo paga la empresa su plan. Solo informativo (D8). */
+  cobro: "Cobro del plan",
+  tipoCobro: (tipo: CobroDelPlan["tipo"]) => `${TEXTOS_TIPO_COBRO.campo}: ${TEXTOS_TIPO_COBRO.tipo[tipo]}`,
+  siguienteCobro: (fecha: string) => `Siguiente cobro: ${fecha}`,
+  /** SLT-86 (R27; design §7.1): el anual se muestra como un pago al inicio y el siguiente. */
+  pagoAnual: (fecha: string) => `Pago anual: ${fecha}`,
+  siguientePago: (fecha: string) => `Siguiente pago: ${fecha}`,
+  /** SLT-86 (R7, R8): el conteo del período, sin tope ni barra. */
+  ordenesDelPeriodo: (n: string) => `Órdenes en el período: ${n}`,
   modulos: "Módulos incluidos",
   sinModulos: "Ninguno",
   consumo: "Consumo",
@@ -43,6 +71,11 @@ export interface ConsumoDelPlanProps {
    * tiene plan asignado…») que al superadmin («Sin plan…»).
    */
   readonly textoSinPlan: string;
+  /**
+   * SLT-86 (R26; decisión del 2026-11-05): sin plan, la primera asignación pendiente. Entonces, en lugar de
+   * `textoSinPlan`, «Sin límites» y debajo «{Plan} empieza a regir el {fecha}».
+   */
+  readonly pendienteSinPlan?: PendienteDeEmpresa | null;
   /** Nivel del título de cada bloque, para encajar bajo el encabezado de quien lo monta. */
   readonly nivelDeTitulo?: 2 | 3;
   /**
@@ -78,12 +111,21 @@ const BARRA_NORMAL = "bg-muted-foreground";
 export function ConsumoDelPlan({
   plan,
   textoSinPlan,
+  pendienteSinPlan = null,
   nivelDeTitulo = 2,
   textoExcepcion = TEXTOS.excepcion,
 }: ConsumoDelPlanProps) {
   // R6: sin plan no hay precio, módulos, filas ni ciclo que mostrar; solo el aviso, como estado vacío.
   if (plan === null) {
-    return <EmptyState icon={InfinityIcon} title={textoSinPlan} />;
+    return pendienteSinPlan === null ? (
+      <EmptyState icon={InfinityIcon} title={textoSinPlan} />
+    ) : (
+      <EmptyState
+        icon={InfinityIcon}
+        title={TEXTOS_TIPO_COBRO.sinLimites}
+        description={TEXTOS_TIPO_COBRO.empiezaARegir(pendienteSinPlan)}
+      />
+    );
   }
 
   const titulo = { role: "heading", "aria-level": nivelDeTitulo } as const;
@@ -97,7 +139,12 @@ export function ConsumoDelPlan({
           </CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
-          <CostoDelCiclo costeo={plan.costeo} textoExcepcion={textoExcepcion} />
+          {plan.costeo.modo === "fijo" ? (
+            <CostoDelCiclo tipo={plan.cobro.tipo} costeo={plan.costeo} textoExcepcion={textoExcepcion} />
+          ) : (
+            <CostoDelCicloPorcentual tipo={plan.cobro.tipo} costeo={plan.costeo} />
+          )}
+          <CobroDelPlanVista cobro={plan.cobro} />
           <p className="text-sm font-medium">{TEXTOS.modulos}</p>
           {plan.modulos.length === 0 ? (
             <p className="text-sm text-muted-foreground">{TEXTOS.sinModulos}</p>
@@ -119,13 +166,14 @@ export function ConsumoDelPlan({
         </CardHeader>
         <CardContent>
           <ul aria-label={TEXTOS.consumo} className="flex flex-col gap-4">
-            {/* El reinicio va bajo la fila de órdenes: es lo único que se reinicia con el ciclo. */}
+            {/* SLT-86 (R7, R8, R27): las órdenes del período, sin tope ni barra, y bajo ellas el reinicio:
+                es lo único que vuelve a 0 con el período. */}
+            <li className="flex flex-col gap-1.5">
+              <span className="text-sm">{TEXTOS.ordenesDelPeriodo(formatearConteo(plan.ordenesDelPeriodo))}</span>
+              <p className="text-sm text-muted-foreground">{TEXTOS.reinicio(plan.reinicio)}</p>
+            </li>
             {plan.filas.map((f) => (
-              <FilaDelConsumo
-                key={f.clave}
-                fila={f}
-                nota={f.clave === "ordenes" ? TEXTOS.reinicio(plan.reinicio) : undefined}
-              />
+              <FilaDelConsumo key={f.clave} fila={f} />
             ))}
           </ul>
         </CardContent>
@@ -161,20 +209,17 @@ export function ConsumoDelPlan({
  * (`costeoDelCiclo`, en el servidor): aquí no se suma ni se convierte nada, para no perder exactitud.
  * La aritmética no se importa en este componente porque lo monta también una pantalla de cliente.
  */
-function CostoDelCiclo({ costeo, textoExcepcion }: { costeo: CosteoDelCiclo; textoExcepcion: string }) {
+function CostoDelCiclo({ tipo, costeo, textoExcepcion }: { tipo: TipoCobro; costeo: CosteoFijo; textoExcepcion: string }) {
   // P1: solo la excepción lleva nota; el plan y el global se pintan con su importe y nada más.
   const nota = costeo.fuente === "empresa" ? textoExcepcion : null;
   return (
     <div className="flex flex-col gap-2 pb-2">
       <p className="text-sm font-medium">{TEXTOS.costoDelCiclo}</p>
       <ul aria-label={TEXTOS.costoDelCiclo} className="flex flex-col gap-1 text-sm">
-        <li>{TEXTOS.costoBase(costeo.base)}</li>
+        <li>{TEXTOS.costoBase(tipo, costeo.base)}</li>
         <li className="flex flex-col">
           <span>{TEXTOS.costoPorOrden(costeo.costoPorOrden)}</span>
           {nota && <span className="text-xs text-muted-foreground">{nota}</span>}
-          {costeo.anualNoAplicaAlCosto && (
-            <span className="text-xs text-muted-foreground">{TEXTOS.anualNoAplica}</span>
-          )}
         </li>
         <li>{TEXTOS.ordenesDelCiclo(costeo)}</li>
         {/* R20: con la base por definir no hay total; sumar solo las órdenes daría una cifra engañosa. */}
@@ -189,7 +234,65 @@ function CostoDelCiclo({ costeo, textoExcepcion }: { costeo: CosteoDelCiclo; tex
   );
 }
 
-function FilaDelConsumo({ fila, nota }: { fila: FilaConsumo; nota?: string }) {
+/**
+ * SLT-83 (design §4.4, §6.4; R23) — el costo del ciclo con un plan porcentual: costo base, porcentaje y
+ * mínimo con su nota, lo cobrado en el ciclo, las órdenes sin estado final (solo el conteo) y el total
+ * hasta hoy. Todo llega calculado del servidor y los textos salen de `lib/planes/mensajes.ts`: aquí no se
+ * hace aritmética. Con la base por definir no hay total (SLT-66 R20). La nota «Estimado…» del modo fijo
+ * no va: dice que cada orden se cobra al crearla, y la porcentual se cobra al llegar a un estado final; en
+ * su sitio va `notaPorcentual` (texto aprobado el 2026-11-04).
+ */
+function CostoDelCicloPorcentual({ tipo, costeo }: { tipo: TipoCobro; costeo: CosteoPorcentual }) {
+  const lineas = lineasDelCosteoPorcentual(costeo);
+  return (
+    <div className="flex flex-col gap-2 pb-2">
+      <p className="text-sm font-medium">{TEXTOS.costoDelCiclo}</p>
+      <ul aria-label={TEXTOS.costoDelCiclo} className="flex flex-col gap-1 text-sm">
+        <li>{TEXTOS.costoBase(tipo, costeo.base)}</li>
+        <li className="flex flex-col">
+          <span>{lineas.costoPorOrden}</span>
+          <span className="text-xs text-muted-foreground">{lineas.nota}</span>
+        </li>
+        <li>{lineas.cobrado}</li>
+        <li>{lineas.pendientes}</li>
+        {lineas.total !== null && (
+          <li>
+            <strong className="font-semibold">{lineas.total}</strong>
+          </li>
+        )}
+      </ul>
+      <p className="text-xs text-muted-foreground">{TEXTOS.notaPorcentual}</p>
+    </div>
+  );
+}
+
+/**
+ * Ajuste planes-custom (D9) y SLT-86 (R5, R27) — el tipo de cobro, el período en curso (marcado si es
+ * tramo) y el siguiente cobro; con el anual, el pago del inicio del período y el siguiente. Llegan ya
+ * calculados del servidor (`cobroDelPlan`): aquí solo se cuentan los días del tramo para el texto. El
+ * costo del período va arriba, en el costo del ciclo.
+ */
+function CobroDelPlanVista({ cobro }: { cobro: CobroDelPlan }) {
+  return (
+    <div className="flex flex-col gap-2 pb-2">
+      <p className="text-sm font-medium">{TEXTOS.cobro}</p>
+      <ul aria-label={TEXTOS.cobro} className="flex flex-col gap-1 text-sm">
+        <li>{TEXTOS.tipoCobro(cobro.tipo)}</li>
+        <li>{textoDelPeriodo(cobro.tipo, cobro.periodo)}</li>
+        {cobro.tipo === "anual" ? (
+          <>
+            <li>{TEXTOS.pagoAnual(cobro.periodo.desde)}</li>
+            <li>{TEXTOS.siguientePago(cobro.siguienteCobro)}</li>
+          </>
+        ) : (
+          <li>{TEXTOS.siguienteCobro(cobro.siguienteCobro)}</li>
+        )}
+      </ul>
+    </div>
+  );
+}
+
+function FilaDelConsumo({ fila }: { fila: FilaConsumo }) {
   const marca = MARCA[fila.estado];
   const Icono = marca?.icono;
   return (
@@ -204,7 +307,6 @@ function FilaDelConsumo({ fila, nota }: { fila: FilaConsumo; nota?: string }) {
         )}
       </div>
       {fila.maximo !== null && <BarraDelTope fila={fila} maximo={fila.maximo} claseBarra={marca?.barra} />}
-      {nota && <p className="text-sm text-muted-foreground">{nota}</p>}
     </li>
   );
 }

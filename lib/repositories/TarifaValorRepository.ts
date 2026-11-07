@@ -1,6 +1,8 @@
-import { Prisma, type PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient, type TarifaConcepto } from "@prisma/client";
 
+import { ESTADOS_USUARIO_NO_ASIGNABLES } from "@/lib/constants/estado-usuario-asignable";
 import { textoConstraintP2002 } from "@/lib/repositories/_shared/prisma-unique";
+import { WHERE_VEHICULO_ELEGIBLE } from "@/lib/repositories/_shared/vehiculo-activo";
 import { appendAccion, resolverActorCongelado } from "@/lib/repositories/registrar-accion";
 import { nivelDeValor } from "@/lib/tarifas/niveles";
 import {
@@ -14,6 +16,7 @@ import type {
   FijarValorDatos,
   FijarValorResultado,
   ITarifaValorRepository,
+  NivelConVehiculo,
 } from "@/lib/interfaces/repositories/ITarifaValorRepository";
 
 /**
@@ -53,6 +56,7 @@ async function etiquetaDelValor(tx: TxValor, id: string): Promise<string> {
       zona: { select: { nombre: true } },
       grupo: { select: { nombre: true } },
       tienda: { select: { nombre: true, primerApellido: true } },
+      mensajero: { select: { nombre: true, primerApellido: true } },
       vehiculo: { select: { name: true } },
     },
   });
@@ -60,6 +64,7 @@ async function etiquetaDelValor(tx: TxValor, id: string): Promise<string> {
     fila?.zona?.nombre,
     fila?.grupo?.nombre,
     fila?.tienda == null ? null : etiquetaDePersona(fila.tienda),
+    fila?.mensajero == null ? null : etiquetaDePersona(fila.mensajero),
     fila?.vehiculo?.name,
   ].filter((p): p is string => p != null && p !== "");
   return etiquetaDeEntidad("tarifa_valor", {
@@ -68,7 +73,7 @@ async function etiquetaDelValor(tx: TxValor, id: string): Promise<string> {
   });
 }
 
-const SELECT_DTO = {
+export const SELECT_VALOR_DTO = {
   id: true,
   concepto: true,
   modo: true,
@@ -82,9 +87,9 @@ const SELECT_DTO = {
   updatedAt: true,
 } as const satisfies Prisma.TarifaValorSelect;
 
-type FilaDTO = Prisma.TarifaValorGetPayload<{ select: typeof SELECT_DTO }>;
+type FilaDTO = Prisma.TarifaValorGetPayload<{ select: typeof SELECT_VALOR_DTO }>;
 
-function toDTO(f: FilaDTO): TarifaValorDTO {
+export function valorADTO(f: FilaDTO): TarifaValorDTO {
   const nivel = nivelDeValor(f.concepto, f);
   // Los CHECK `tarifa_valor_niveles_*` hacen imposible una fila sin nivel valido; si aparece, la
   // base y `nivelDeValor` dejaron de decir lo mismo y callarlo pintaria un nivel inventado.
@@ -131,9 +136,61 @@ export class TarifaValorRepository implements ITarifaValorRepository {
     return fila !== null;
   }
 
-  async existeVehiculo(vehiculoId: string): Promise<boolean> {
-    const fila = await this.prisma.vehiculo.findFirst({ where: { id: vehiculoId }, select: { id: true } });
-    return fila !== null;
+  /**
+   * SLT-54 R52 — un vehiculo inactivo no admite un valor nuevo, pero reemplazar el suyo sigue siendo
+   * valido: quien ya tiene ese vehiculo lo conserva y se le sigue pagando (R53). Por eso el nivel exacto
+   * cuenta, con el mismo `where` que `fijar`.
+   */
+  async vehiculoEsElegibleONivelOcupado(nivel: NivelConVehiculo): Promise<boolean> {
+    const activo = await this.prisma.vehiculo.findFirst({
+      where: { id: nivel.vehiculoId, ...WHERE_VEHICULO_ELEGIBLE },
+      select: { id: true },
+    });
+    if (activo !== null) return true;
+    const ocupado = await this.prisma.tarifaValor.findFirst({
+      where: {
+        concepto: nivel.concepto,
+        zonaId: nivel.zonaId,
+        grupoId: nivel.grupoId,
+        tiendaId: nivel.tiendaId,
+        mensajeroId: null,
+        vehiculoId: nivel.vehiculoId,
+      },
+      select: { id: true },
+    });
+    return ocupado !== null;
+  }
+
+  /**
+   * SLT-55 R7, R8 — mismo patron que el vehiculo: un dado de baja, o quien ya no es mensajero, no admite
+   * un valor nuevo, pero reemplazar el suyo sigue siendo valido. `pendiente` es elegible: es quien se esta
+   * dando de alta. La empresa la filtra la extension: un mensajero de otra empresa no se encuentra.
+   */
+  async mensajeroEsElegibleONivelOcupado(nivel: {
+    concepto: TarifaConcepto;
+    mensajeroId: string;
+  }): Promise<boolean> {
+    const elegible = await this.prisma.usuario.findFirst({
+      where: {
+        id: nivel.mensajeroId,
+        rol: { value: "mensajero" },
+        estado: { notIn: [...ESTADOS_USUARIO_NO_ASIGNABLES] },
+      },
+      select: { id: true },
+    });
+    if (elegible !== null) return true;
+    const ocupado = await this.prisma.tarifaValor.findFirst({
+      where: {
+        concepto: nivel.concepto,
+        mensajeroId: nivel.mensajeroId,
+        zonaId: null,
+        grupoId: null,
+        tiendaId: null,
+        vehiculoId: null,
+      },
+      select: { id: true },
+    });
+    return ocupado !== null;
   }
 
   /**
@@ -157,7 +214,7 @@ export class TarifaValorRepository implements ITarifaValorRepository {
           zonaId: datos.zonaId,
           grupoId: datos.grupoId,
           tiendaId: datos.tiendaId,
-          mensajeroId: null,
+          mensajeroId: datos.mensajeroId,
           vehiculoId: datos.vehiculoId,
         };
         const anterior = await tx.tarifaValor.findFirst({
@@ -231,9 +288,9 @@ export class TarifaValorRepository implements ITarifaValorRepository {
   async listar(filtro: { zonaId?: string }): Promise<TarifaValorDTO[]> {
     const filas = await this.prisma.tarifaValor.findMany({
       where: filtro.zonaId === undefined ? {} : { zonaId: filtro.zonaId },
-      select: SELECT_DTO,
+      select: SELECT_VALOR_DTO,
       orderBy: [{ concepto: "asc" }, { createdAt: "asc" }],
     });
-    return filas.map(toDTO);
+    return filas.map(valorADTO);
   }
 }

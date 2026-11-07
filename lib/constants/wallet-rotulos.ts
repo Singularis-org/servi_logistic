@@ -1,5 +1,10 @@
 import { EMPRESA } from "@/lib/config/marca";
-import type { WalletMovimientoCategoria, WalletOrigenTipo } from "@/lib/types/wallet";
+import type {
+  WalletCategoriaRotuloPorModelo,
+  WalletMovimientoCategoria,
+  WalletMovimientoDTO,
+  WalletOrigenTipo,
+} from "@/lib/types/wallet";
 
 // Ficha 458-A (revision m2) — los ROTULOS de la wallet que lee el SERVIDOR.
 //
@@ -70,6 +75,27 @@ export const CATEGORIA_LABEL: Record<WalletMovimientoCategoria, string> = {
   ingreso_aporte_capital: "Aporte de dinero a la caja",
   egreso_reverso_aporte_capital: "Aporte de dinero a la caja anulado",
 };
+
+/**
+ * SLT-54 (menor 6 de la revisión F2.2): el cobro de un cierre con el modelo nuevo suma también
+ * reprogramado, novedad e incidente, así que «devolución a origen» diría algo falso. Es el nombre del
+ * total de R65 (`FLETE_NO_ENTREGADAS_LABEL`), que aquí no se importa porque `lib/` no lee de `app/`.
+ */
+const CATEGORIA_LABEL_MODELO_NUEVO: Partial<Record<WalletMovimientoCategoria, string>> = {
+  ingreso_flete_devolucion: "Flete de gestiones no entregadas cobrado a la tienda",
+  ingreso_iva_flete_devolucion: "IVA del flete de gestiones no entregadas cobrado a la tienda",
+} satisfies Record<WalletCategoriaRotuloPorModelo, string>;
+
+/**
+ * El concepto de UNA fila del libro. `CATEGORIA_LABEL` sigue siendo el nombre de la categoría (filtro,
+ * diccionario); esto solo cambia la fila cuyo cierre incluye el modelo nuevo. Ausente se lee como viejo.
+ */
+export function conceptoDeMovimientoCaja(
+  m: Pick<WalletMovimientoDTO, "categoria" | "incluyeModeloNuevo">,
+): string {
+  const delNuevo = m.incluyeModeloNuevo === true ? CATEGORIA_LABEL_MODELO_NUEVO[m.categoria] : undefined;
+  return delNuevo ?? CATEGORIA_LABEL[m.categoria];
+}
 
 /**
  * Etiqueta legible del origen de un movimiento.

@@ -22,6 +22,7 @@ import {
 } from "@/lib/types/usuario";
 import type { Actor, IUsuarioService } from "@/lib/interfaces/services/IUsuarioService";
 import { UsuarioService } from "@/lib/services/UsuarioService";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { UserRepository } from "@/lib/repositories/UserRepository";
 import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
 import { VehiculoRepository } from "@/lib/repositories/VehiculoRepository";
@@ -71,6 +72,9 @@ function buildUsuarioService(): IUsuarioService {
     new VehiculoRepository(prisma),
     new SessionRepository(prisma),
     new CierreBodegaRepository(prisma),
+    // SLT-42: las reglas del pais de la empresa. Sexto parametro opcional, con el mismo riesgo y la
+    // misma prueba que los dos anteriores: sin el, el alta y la edicion del telefono lanzan.
+    construirReglasPaisEmpresa(prisma),
   );
 }
 

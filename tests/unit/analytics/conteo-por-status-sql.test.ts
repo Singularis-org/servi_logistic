@@ -8,6 +8,7 @@ import {
   ConteoPorStatusRepository,
 } from "@/lib/repositories/ConteoPorStatusRepository";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // El `where` del desglose por status va en SQL, así que se comprueba sobre los fragmentos que
 // `condicionesDeConsulta` produce: su texto y sus PARÁMETROS. Sin base de datos.
 //
@@ -22,7 +23,7 @@ import {
 const AHORA = new Date("2026-08-17T12:00:00.000Z");
 
 function consultaDe(raw: object, rol = "maestro", extra: object = {}): ConsultaConteoEntregas {
-  const preparada = prepararConteoEntregas(raw, { usuarioId: "u1", rol, ...extra } as never, AHORA);
+  const preparada = prepararConteoEntregas(raw, { usuarioId: "u1", rol, ...extra } as never, ZONA_DE_CR, AHORA);
   if (preparada.status !== "ok") throw new Error(`filtro de prueba inválido: ${preparada.status}`);
   return preparada.consulta;
 }

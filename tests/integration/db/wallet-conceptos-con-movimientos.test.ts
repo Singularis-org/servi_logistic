@@ -12,6 +12,18 @@ import {
   enTransaccionRevertida,
   type TxDeTest,
 } from "./_postgres-real";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+
+// SLT-42 (T5.4): la zona del pais de la empresa es la de CR, como antes. Las reglas reales leen el pais
+// de la empresa en curso con el cliente global, que no ve la empresa de una transaccion revertida ni
+// tiene empresa fuera de `conEmpresa`; la zona por pais la miden `hora-por-pais-wallet` y `demo-qa`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
 
 // SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
 vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
@@ -63,7 +75,8 @@ async function sembrar(tx: TxDeTest) {
 function deps(tx: TxDeTest, actor: { usuarioId: string; rol: string }) {
   return {
     getActor: async () => actor as never,
-    service: new FiltrosWalletService(new FiltrosWalletRepository(tx as never)),
+    reglasPais: reglasPaisFijas(), // SLT-42 (R22): la zona de CR; el servicio va sobre la transaccion del test
+    service: new FiltrosWalletService(new FiltrosWalletRepository(tx as never), undefined, reglasPaisFijas()),
   };
 }
 

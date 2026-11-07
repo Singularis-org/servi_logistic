@@ -28,6 +28,18 @@ import {
   sembrarPersonas459,
   type Personas459,
 } from "./_fixtures/escrituras-459";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+
+// SLT-42 (T5.4): la zona del pais de la empresa es la de CR, como antes. Las reglas reales leen el pais
+// de la empresa en curso con el cliente global, que no ve la empresa de una transaccion revertida ni
+// tiene empresa fuera de `conEmpresa`; la zona por pais la miden `hora-por-pais-wallet` y `demo-qa`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
 
 // SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
 vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
@@ -462,6 +474,7 @@ describeSiHayBase("457/T5.1 — pago de una tienda a la empresa por la action (P
       //     forma es la de un pago a tienda: monto, metodo, referencia, fecha, tienda—, el pago saldria
       //     como un «pago a tienda» pendiente de su EGRESO en la caja: la mutacion m5 lo pone rojo aqui.
       const backfill = new CajaBackfillTesoreriaService({
+        reglasPais: reglasPaisFijas(), // SLT-42 (R22): la zona de CR
         cliente: prisma as unknown as CajaBackfillClient,
         codFeed: new CajaCodFeedService(),
         crearPuertoDePago: (r2) => new CajaPagoTiendaFeedService(r2),

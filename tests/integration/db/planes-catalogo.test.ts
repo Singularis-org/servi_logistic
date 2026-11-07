@@ -17,6 +17,10 @@ import { CLAVE_LOCK_ESCRITURA_REAL, HAY_BASE_DE_DATOS, crearPrismaDeTest, type T
 //     trae sus custom y nunca los de otra.
 // R2 a nivel de base (custom ⇔ empresa) entra con los CHECK.
 //
+// SLT-86 (R8, R10, R33, R34): sin tope de órdenes, precio anual ni descuento anual en `plan`; el precio
+// es el costo base mensual y los descuentos por período viven en `plan_descuento_periodo`, con sus CHECK
+// (los mide `plan-descuento-periodo.test.ts`). Se retiraron aquí las formas del precio con anual.
+//
 // Cada caso corre en una transacción del dueño que SIEMPRE se revierte: no deja planes ni empresas.
 // Las lecturas filtran por los ids creados en el caso, porque la base es compartida.
 
@@ -73,24 +77,19 @@ async function intentar(tx: TxDeTest, sql: string, ...args: unknown[]): Promise<
   }
 }
 
+// D1 (ajuste planes-custom): la columna `precio_negociable` ya no existe (20261104130000).
+// SLT-86 (R10, R33): solo el costo base mensual; el anual pasó a los descuentos del período.
 type Precio = {
-  negociable?: boolean;
   mensual?: string | null;
-  anual?: string | null;
-  pct?: string | null;
 };
 
 /** `INSERT` a mano de un plan público con el precio dado. Devuelve el SQLSTATE o `null`. */
 function insertarPublicoConPrecio(tx: TxDeTest, p: Precio): Promise<string | null> {
   return intentar(
     tx,
-    `INSERT INTO "plan" ("id", "nombre", "visibilidad", "precio_negociable", "precio_mensual", "precio_anual", "descuento_anual_pct")
-     VALUES ($1, 'Plan de prueba', 'publico', $2, $3::numeric, $4::numeric, $5::numeric)`,
+    `INSERT INTO "plan" ("id", "nombre", "visibilidad", "precio_mensual") VALUES ($1, 'Plan de prueba', 'publico', $2::numeric)`,
     randomUUID(),
-    p.negociable ?? false,
     p.mensual ?? null,
-    p.anual ?? null,
-    p.pct ?? null,
   );
 }
 
@@ -133,13 +132,14 @@ describeSiHayBase("SL-24 — catálogo de planes en la base (R1, R2, R3, R6, R7,
     expect(tablas.map((f) => f.t)).toEqual(["plan", "plan_modulo", "plan_rastro", "plan_tope_rol"]);
     const checks = await base.$queryRawUnsafe<{ c: string }[]>(
       `SELECT c.conname AS c FROM pg_constraint c JOIN pg_namespace n ON n.oid = c.connamespace
-        WHERE n.nspname = 'public' AND c.contype = 'c' AND c.conname IN ('plan_precio_forma', 'plan_custom_con_empresa', 'plan_tope_rol_rol_check', 'organizacion_plan_ciclo_ancla_check')
+        WHERE n.nspname = 'public' AND c.contype = 'c' AND c.conname IN ('plan_precio_forma', 'plan_descuento_periodo_una_forma', 'plan_custom_con_empresa', 'plan_tope_rol_rol_check', 'organizacion_plan_ciclo_ancla_check')
         ORDER BY 1`,
     );
+    // SLT-86 (R33): `plan_precio_forma` se fue con el anual; la forma del descuento la cuida su tabla.
     expect(checks.map((f) => f.c)).toEqual([
       "organizacion_plan_ciclo_ancla_check",
       "plan_custom_con_empresa",
-      "plan_precio_forma",
+      "plan_descuento_periodo_una_forma",
       "plan_tope_rol_rol_check",
     ]);
     const indice = await base.$queryRawUnsafe<{ d: string }[]>(
@@ -155,10 +155,9 @@ describeSiHayBase("SL-24 — catálogo de planes en la base (R1, R2, R3, R6, R7,
         data: {
           nombre: "Plan Crecimiento",
           visibilidad: "publico",
-          topeOrdenesCiclo: 500,
           topeApiKeys: 2,
           precioMensual: "49.90",
-          descuentoAnualPct: "15.00",
+          descuentos: { create: [{ periodo: "anual", porcentaje: "15.00" }] },
           topesPorRol: {
             create: [
               { rol: "adminTienda", maximo: 3 },
@@ -171,19 +170,16 @@ describeSiHayBase("SL-24 — catálogo de planes en la base (R1, R2, R3, R6, R7,
       });
       return tx.plan.findUniqueOrThrow({
         where: { id },
-        include: { topesPorRol: { orderBy: { rol: "asc" } }, modulos: { orderBy: { modulo: "asc" } } },
+        include: { topesPorRol: { orderBy: { rol: "asc" } }, modulos: { orderBy: { modulo: "asc" } }, descuentos: true },
       });
     });
     expect(leido.id).toMatch(/^[0-9a-f-]{36}$/);
     expect(leido.nombre).toBe("Plan Crecimiento");
     expect(leido.visibilidad).toBe("publico");
     expect(leido.organizacionExclusivaId).toBeNull();
-    expect(leido.topeOrdenesCiclo).toBe(500);
     expect(leido.topeApiKeys).toBe(2);
-    expect(leido.precioNegociable).toBe(false);
     expect(leido.precioMensual?.toFixed(2)).toBe("49.90");
-    expect(leido.precioAnual).toBeNull();
-    expect(leido.descuentoAnualPct?.toFixed(2)).toBe("15.00");
+    expect(leido.descuentos.map((d) => [d.periodo, d.porcentaje?.toFixed(2), d.monto])).toEqual([["anual", "15.00", null]]);
     expect(leido.archivadoAt).toBeNull();
     expect(leido.topesPorRol.map((t) => [t.rol, t.maximo])).toEqual([
       ["mensajero", 10],
@@ -197,46 +193,22 @@ describeSiHayBase("SL-24 — catálogo de planes en la base (R1, R2, R3, R6, R7,
       const id = await crearPlan(tx, { nombre: "Plan libre" });
       return tx.plan.findUniqueOrThrow({ where: { id }, include: { topesPorRol: true, modulos: true } });
     });
-    expect([leido.topeOrdenesCiclo, leido.topeApiKeys, leido.precioMensual, leido.archivadoAt]).toEqual([null, null, null, null]);
+    expect([leido.topeApiKeys, leido.precioMensual, leido.archivadoAt]).toEqual([null, null, null]);
     expect(leido.topesPorRol).toEqual([]);
     expect(leido.modulos).toEqual([]);
   });
 
-  it("R3 — las cinco formas del precio entran", async () => {
+  it("R3, SLT-86 — el costo base es «sin precio» o un mensual ≥ 0 (los descuentos van en su tabla)", async () => {
     const resultados = await revertida(async (tx) => ({
       sinPrecio: await insertarPublicoConPrecio(tx, {}),
-      negociable: await insertarPublicoConPrecio(tx, { negociable: true }),
       mensual: await insertarPublicoConPrecio(tx, { mensual: "10.00" }),
-      mensualYAnual: await insertarPublicoConPrecio(tx, { mensual: "10.00", anual: "100.00" }),
-      mensualYPct: await insertarPublicoConPrecio(tx, { mensual: "10.00", pct: "100" }),
-      montosCero: await insertarPublicoConPrecio(tx, { mensual: "0", anual: "0" }),
+      montoCero: await insertarPublicoConPrecio(tx, { mensual: "0" }),
     }));
-    expect(resultados).toEqual({
-      sinPrecio: null,
-      negociable: null,
-      mensual: null,
-      mensualYAnual: null,
-      mensualYPct: null,
-      montosCero: null,
-    });
+    expect(resultados).toEqual({ sinPrecio: null, mensual: null, montoCero: null });
   });
 
-  it("R3 — las combinaciones prohibidas y los rangos fuera de límite dan 23514", async () => {
-    const resultados = await revertida(async (tx) => ({
-      negociableConMensual: await insertarPublicoConPrecio(tx, { negociable: true, mensual: "10.00" }),
-      negociableConAnual: await insertarPublicoConPrecio(tx, { negociable: true, anual: "10.00" }),
-      negociableConPct: await insertarPublicoConPrecio(tx, { negociable: true, pct: "10" }),
-      anualYPct: await insertarPublicoConPrecio(tx, { mensual: "10.00", anual: "100.00", pct: "10" }),
-      anualSinMensual: await insertarPublicoConPrecio(tx, { anual: "100.00" }),
-      pctSinMensual: await insertarPublicoConPrecio(tx, { pct: "10" }),
-      pctCero: await insertarPublicoConPrecio(tx, { mensual: "10.00", pct: "0" }),
-      pctMayorQue100: await insertarPublicoConPrecio(tx, { mensual: "10.00", pct: "100.01" }),
-      mensualNegativo: await insertarPublicoConPrecio(tx, { mensual: "-0.01" }),
-      anualNegativo: await insertarPublicoConPrecio(tx, { mensual: "1.00", anual: "-1.00" }),
-    }));
-    for (const [caso, sqlstate] of Object.entries(resultados)) {
-      expect(sqlstate, caso).toBe("23514");
-    }
+  it("R3 — un mensual negativo da 23514", async () => {
+    expect(await revertida((tx) => insertarPublicoConPrecio(tx, { mensual: "-0.01" }))).toBe("23514");
   });
 
   it("R3 — un monto que no cabe en DECIMAL(12,2) no entra (22003)", async () => {
@@ -251,7 +223,6 @@ describeSiHayBase("SL-24 — catálogo de planes en la base (R1, R2, R3, R6, R7,
         intentar(tx, `INSERT INTO "plan" ("id", ${cols}) VALUES ($1, ${vals})`, randomUUID(), ...args);
       return {
         nombreBlanco: await ins(`"nombre", "visibilidad"`, `'   ', 'publico'`),
-        topeOrdenesNegativo: await ins(`"nombre", "visibilidad", "tope_ordenes_ciclo"`, `'P', 'publico', -1`),
         topeApiKeysNegativo: await ins(`"nombre", "visibilidad", "tope_api_keys"`, `'P', 'publico', -1`),
         customSinEmpresa: await ins(`"nombre", "visibilidad"`, `'P', 'custom'`),
         publicoConEmpresa: await ins(`"nombre", "visibilidad", "organizacion_exclusiva_id"`, `'P', 'publico', $2`, A),
@@ -261,12 +232,11 @@ describeSiHayBase("SL-24 — catálogo de planes en la base (R1, R2, R3, R6, R7,
           randomUUID(),
         ),
         customConEmpresa: await ins(`"nombre", "visibilidad", "organizacion_exclusiva_id"`, `'P', 'custom', $2`, A),
-        topesEnCero: await ins(`"nombre", "visibilidad", "tope_ordenes_ciclo", "tope_api_keys"`, `'P', 'publico', 0, 0`),
+        topesEnCero: await ins(`"nombre", "visibilidad", "tope_api_keys"`, `'P', 'publico', 0`),
       };
     });
     expect(r).toEqual({
       nombreBlanco: "23514",
-      topeOrdenesNegativo: "23514",
       topeApiKeysNegativo: "23514",
       customSinEmpresa: "23514",
       publicoConEmpresa: "23514",
@@ -354,7 +324,7 @@ describeSiHayBase("SL-24 — catálogo de planes en la base (R1, R2, R3, R6, R7,
         data: {
           nombre: "Plan a archivar",
           visibilidad: "publico",
-          topeOrdenesCiclo: 10,
+          topeApiKeys: 10,
           topesPorRol: { create: [{ rol: "admin", maximo: 2 }] },
           modulos: { create: [{ modulo: "monitoreo" }] },
         },
@@ -371,7 +341,7 @@ describeSiHayBase("SL-24 — catálogo de planes en la base (R1, R2, R3, R6, R7,
       const borrar = await intentar(tx, `DELETE FROM "plan" WHERE "id" = $1`, plan);
       return {
         archivado: tras.archivadoAt !== null,
-        tope: tras.topeOrdenesCiclo,
+        tope: tras.topeApiKeys,
         topesRol: tras.topesPorRol.map((t) => [t.rol, t.maximo]),
         modulos: tras.modulos.map((m) => m.modulo),
         empresas: tras.empresas.map((e) => e.id),

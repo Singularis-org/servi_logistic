@@ -7,8 +7,10 @@ import { mensajeDelTope, mensajeTopesPasados } from "@/lib/planes/mensajes";
 
 // SL-24 (design §4.1, §4.5, §6.4) — el JSON del trigger, leído del MESSAGE, a `TopeDelPlanAlcanzado`.
 // Los mensajes de abajo tienen la forma real de `jsonb_build_object(...)::text` (claves ordenadas por
-// longitud, con espacio tras `:`); que lleguen así por Prisma contra la base lo prueba
-// `tests/integration/db/plan-topes-ordenes.test.ts`.
+// longitud, con espacio tras `:`).
+//
+// SLT-86 (R8): el tope de órdenes se retiró. Un `tope_plan` de órdenes ya no se reconoce: sale intacto,
+// como cualquier otro mensaje que no encaja. Los casos que usaban las órdenes pasan a las API keys.
 
 const ORDENES = 'tope_plan {"tope": "ordenes", "maximo": 100, "usados": 99, "pedidas": 2}';
 const ROL = 'tope_plan {"rol": "adminTienda", "tope": "rol", "maximo": 3, "usados": 3, "pedidas": 1}';
@@ -30,24 +32,21 @@ function p2010(mensaje: string) {
 }
 
 describe("SL-24 — traducirErrorDeTope", () => {
-  it("órdenes, desde el DriverAdapterError de una operación de modelo", () => {
-    const original = adaptador(ORDENES);
+  it("API keys, desde el DriverAdapterError de una operación de modelo", () => {
+    const original = adaptador(KEYS);
     const t = traducirErrorDeTope(original);
     expect(t).toBeInstanceOf(TopeDelPlanAlcanzado);
     expect(t).toBeInstanceOf(ConflictError);
     const tope = t as TopeDelPlanAlcanzado;
     expect(tope.code).toBe("CONFLICT");
-    expect(tope.details).toEqual({ codigo: "tope_plan", tope: "ordenes", maximo: 100, usados: 99, pedidas: 2 });
-    expect(tope.message).toBe(
-      "Tu plan permite 100 órdenes por ciclo. Llevas 99 y esta carga trae 2. Anula órdenes que no vayas a enviar o pide un cambio de plan.",
-    );
+    expect(tope.details).toEqual({ codigo: "tope_plan", tope: "api_keys", maximo: 2, usados: 2, pedidas: 1 });
     expect(tope.cause).toBe(original);
   });
 
   it("`detalle` es el mismo objeto que `details` y no es propio de la instancia (sin campo `declare`, apto para Babel)", () => {
-    const t = new TopeDelPlanAlcanzado({ tope: "ordenes", maximo: 5, usados: 5, pedidas: 1 });
+    const t = new TopeDelPlanAlcanzado({ tope: "api_keys", maximo: 5, usados: 5, pedidas: 1 });
     expect(t.detalle).toBe(t.details);
-    expect(t.detalle).toEqual({ codigo: "tope_plan", tope: "ordenes", maximo: 5, usados: 5, pedidas: 1 });
+    expect(t.detalle).toEqual({ codigo: "tope_plan", tope: "api_keys", maximo: 5, usados: 5, pedidas: 1 });
     expect(Object.prototype.hasOwnProperty.call(t, "detalle")).toBe(false);
     expect(t.toShape().details).toEqual(t.detalle);
   });
@@ -71,26 +70,34 @@ describe("SL-24 — traducirErrorDeTope", () => {
   });
 
   it("toShape lleva el CONFLICT con details.codigo = tope_plan (lo que sale por appErrorToResponse)", () => {
-    const t = traducirErrorDeTope(adaptador(ORDENES)) as TopeDelPlanAlcanzado;
+    const t = traducirErrorDeTope(adaptador(KEYS)) as TopeDelPlanAlcanzado;
     expect(t.toShape()).toEqual({
       status: "error",
       code: "CONFLICT",
       message: t.message,
-      details: { codigo: "tope_plan", tope: "ordenes", maximo: 100, usados: 99, pedidas: 2 },
+      details: { codigo: "tope_plan", tope: "api_keys", maximo: 2, usados: 2, pedidas: 1 },
     });
   });
 
   it("ya traducido sale igual", () => {
-    const t = traducirErrorDeTope(adaptador(ORDENES));
+    const t = traducirErrorDeTope(adaptador(KEYS));
     expect(traducirErrorDeTope(t)).toBe(t);
+  });
+
+  it("SLT-86 R8: un tope_plan de órdenes ya no es un tope: sale intacto, sin mensaje de órdenes", () => {
+    for (const e of [adaptador(ORDENES), p2010(ORDENES)]) {
+      const t = traducirErrorDeTope(e);
+      expect(t).toBe(e);
+      expect(t).not.toBeInstanceOf(TopeDelPlanAlcanzado);
+    }
   });
 
   it("otros errores salen intactos: SL017, un CHECK, P2002, un Error suelto", () => {
     const casos = [
       adaptador("tope_plan {}", "SL017"),
-      adaptador(ORDENES, "23514"),
+      adaptador(KEYS, "23514"),
       new Prisma.PrismaClientKnownRequestError("unique", { code: "P2002", clientVersion: "7.8.0" }),
-      new Error(ORDENES),
+      new Error(KEYS),
     ];
     for (const e of casos) expect(traducirErrorDeTope(e)).toBe(e);
   });
@@ -98,26 +105,24 @@ describe("SL-24 — traducirErrorDeTope", () => {
   it("SL024 con un mensaje que no es el JSON esperado sale intacto (no inventa cifras)", () => {
     const casos = [
       adaptador("tope_plan sin json"),
-      adaptador('tope_plan {"tope": "ordenes", "maximo": 100}'),
+      adaptador('tope_plan {"tope": "api_keys", "maximo": 100}'),
       adaptador('tope_plan {"tope": "otro", "maximo": 1, "usados": 1, "pedidas": 1}'),
       adaptador('tope_plan {"rol": "nadie", "tope": "rol", "maximo": 1, "usados": 1, "pedidas": 1}'),
-      adaptador('tope_plan {"tope": "ordenes", "maximo": -1, "usados": 1, "pedidas": 1}'),
+      adaptador('tope_plan {"tope": "api_keys", "maximo": -1, "usados": 1, "pedidas": 1}'),
     ];
     for (const e of casos) expect(traducirErrorDeTope(e)).toBe(e);
   });
 });
 
 describe("SL-24 — mensajes del superadmin (tope_excedido)", () => {
-  it("una línea por tope pasado", () => {
+  it("una línea por tope pasado (SLT-86 R8: sin órdenes)", () => {
     expect(
       mensajeTopesPasados([
-        { empresa: "Empresa A", tope: "ordenes", usados: 120, maximo: 100 },
         { empresa: "Empresa A", tope: "adminTienda", usados: 4, maximo: 3 },
         { empresa: "Empresa B", tope: "api_keys", usados: 3, maximo: 2 },
       ]),
     ).toBe(
       [
-        "Empresa A ya tiene 120 órdenes en el ciclo en curso y el plan permite 100.",
         "Empresa A ya tiene 4 usuarios activos con el rol Admin de tienda y el plan permite 3.",
         "Empresa B ya tiene 3 API keys activas y el plan permite 2.",
       ].join("\n"),
@@ -126,7 +131,6 @@ describe("SL-24 — mensajes del superadmin (tope_excedido)", () => {
 
   it("los textos no nombran ni la marca ni el país", () => {
     const textos = [
-      mensajeDelTope({ tope: "ordenes", maximo: 1, usados: 1, pedidas: 1 }),
       mensajeDelTope({ tope: "rol", rol: "mensajero", maximo: 1, usados: 1, pedidas: 1 }),
       mensajeDelTope({ tope: "api_keys", maximo: 1, usados: 1, pedidas: 1 }),
     ].join(" ");

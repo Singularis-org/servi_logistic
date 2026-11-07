@@ -34,6 +34,7 @@ function fakeService(overrides: Partial<IOrdenHistorialService> = {}): IOrdenHis
       ayudaAbierta: false,
     })),
     contarIntentos: vi.fn(async () => 0),
+    topeIntentos: vi.fn(async () => 3),
     // Pedido humano 2026-08-27: el contrato gano ademas el conjunto de «ya gestionadas»
     // (insumo de «eliminar orden»). Tampoco lo usa este borde.
     idsConGestionPosteriorEnLote: vi.fn(async () => new Set<string>()),
@@ -73,5 +74,16 @@ describe("obtenerHistorialOrden (R28)", () => {
     const service = fakeService({ obtenerHistorial: vi.fn(async () => ({ status: "not_found" as const })) });
     const r = await obtenerHistorialOrden("o1", { service, getActor: async () => MAESTRO });
     expect(r).toEqual({ status: "not_found" });
+  });
+
+  it("SLT-77 R27: si falla leer el tope se propaga el fallo, no responde sesion expirada", async () => {
+    const service = fakeService({
+      obtenerHistorial: vi.fn(async () => {
+        throw new Error("sin empresa");
+      }),
+    });
+    await expect(obtenerHistorialOrden("o1", { service, getActor: async () => MAESTRO })).rejects.toThrow(
+      "orden-historial: AppErrorCode inesperado INTERNAL",
+    );
   });
 });

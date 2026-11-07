@@ -171,11 +171,17 @@ describe("R20 — el aterrizaje post-login no cambia para NADIE", () => {
     // sí movería el aterrizaje— no cambia: los dos siguen sin ser el primero de su barra, y los
     // cinco aterrizajes de este mismo `describe` siguen en su valor.
     for (const rol of ROLES_HISTORICO_CONVERSACIONES) {
-      const visibles = itemsVisibles(SIDEBAR_ITEMS, actor(rol));
+      // SLT-54 R56: el `admin` tiene además «Tarifas» antes de «Ayuda»; no cambia lo que este caso protege.
+      const visibles = itemsVisibles(SIDEBAR_ITEMS, actor(rol)).filter((i) => i.label !== "Tarifas");
       expect(visibles.at(-1)?.label).toBe("Ayuda");
-      // SLT-58 R10: «Mi plan» entra entre «Histórico» y «Ayuda»; «Histórico» sigue al final del bloque.
-      expect(visibles.at(-2)?.label).toBe("Mi plan");
-      expect(visibles.at(-3)?.label).toBe(LABEL_PADRE);
+      // SLT-58 R10, SLT-91 R1: «Mi plan» va entre «Histórico» y «Ayuda» solo para el `maestro`.
+      if (rol === "maestro") {
+        expect(visibles.at(-2)?.label).toBe("Mi plan");
+        expect(visibles.at(-3)?.label).toBe(LABEL_PADRE);
+      } else {
+        expect(rol).toBe("admin");
+        expect(visibles.at(-2)?.label).toBe(LABEL_PADRE);
+      }
       expect(visibles[0]?.label).not.toBe(LABEL_PADRE);
     }
   });

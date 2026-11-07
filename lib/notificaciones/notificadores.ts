@@ -20,6 +20,9 @@
 import type { ErrorLogger } from "@/lib/errors";
 import { emitirBestEffort } from "@/lib/notificaciones/best-effort";
 import { getPrismaClient } from "@/lib/db/prisma-client";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 import type { INotificacionRepository } from "@/lib/interfaces/repositories/INotificacionRepository";
 import { NotificacionRepository } from "@/lib/repositories/NotificacionRepository";
 // FICHA 410: las cuatro piezas del canal de push. Solo las usa `repoReal()`.
@@ -215,6 +218,7 @@ function repoReal(): INotificacionRepository {
       canal: new PushSuscripcionRepository(prisma),
       cola: new JobRepository(prisma),
       hayCanal: pushConfigurado,
+      reglasPais: construirReglasPaisEmpresa(prisma), // SLT-42 (R22, R28): el dia del cupo de push.
     }),
     { envios: new WhatsappEnvioRepository(prisma), cola: new JobRepository(prisma) },
   );
@@ -417,11 +421,18 @@ export function notificarGastoFijoCobroPendienteCon(
 export function notificarWebhookSuscripcionPausadaCon(
   repo: INotificacionRepository,
   logger?: ErrorLogger,
+  /** SLT-42 (R22, R28): la zona del país de la empresa; sin ella el aviso falla (best-effort). */
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
 ): WebhookSuscripcionPausadaNotificador {
   return async (ctx) => {
     await emitirBestEffort(
       "webhook_suscripcion_pausada",
-      () => emitirWebhookSuscripcionPausada(repo, ctx),
+      async () =>
+        emitirWebhookSuscripcionPausada(
+          repo,
+          ctx,
+          await zonaDeLaEmpresa(reglasPais, "notificarWebhookSuscripcionPausada"),
+        ),
       logger,
     );
   };
@@ -563,7 +574,12 @@ export const notificarGastoFijoCobroPendienteReal: GastoFijoCobroPendienteNotifi
 
 export const notificarWebhookSuscripcionPausadaReal: WebhookSuscripcionPausadaNotificador = async (
   ctx,
-) => notificarWebhookSuscripcionPausadaCon(repoReal())(ctx);
+) =>
+  notificarWebhookSuscripcionPausadaCon(
+    repoReal(),
+    undefined,
+    construirReglasPaisEmpresa(getPrismaClient()), // SLT-42 (R22, R28)
+  )(ctx);
 
 export const notificarGeocodificacionCaidaReal: GeocodificacionCaidaNotificador = async (ctx) =>
   notificarGeocodificacionCaidaCon(repoReal())(ctx);

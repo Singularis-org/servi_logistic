@@ -6,7 +6,7 @@ import { prepararConsultaProductos } from "@/lib/analytics/productos-consulta";
 import type { Alcance } from "@/lib/interfaces/repositories/ICierresAdminRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { CierreAporteRepository } from "@/lib/repositories/CierreAporteRepository";
-import { CierreDiaRepository } from "@/lib/repositories/CierreDiaRepository";
+import { CierreDiaRepository, ModelosDeTarifaMezclados } from "@/lib/repositories/CierreDiaRepository";
 import { CierresAdminRepository } from "@/lib/repositories/CierresAdminRepository";
 import { DineroProductosRepository } from "@/lib/repositories/DineroProductosRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
@@ -18,7 +18,7 @@ import { WalletFeedService } from "@/lib/services/WalletFeedService";
 import { WalletTiendaFeedService } from "@/lib/services/WalletTiendaFeedService";
 import { CRITERIO_DE_APORTE } from "@/lib/utils/aporte-por-orden";
 import { costoRealDe } from "@/lib/utils/api-orden-costo";
-import { comoApp, crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones";
+import { comoApp, crearOrganizacion, fijarEmpresa, sembrarActivacion } from "@/tests/fabricas/organizaciones";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import {
   HAY_BASE_DE_DATOS,
@@ -29,6 +29,8 @@ import {
   type FksDeOrden,
   type TxDeTest,
 } from "./_postgres-real";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { reglasPaisFijas, ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // SLT-52 T5.4 (design §2.5, §7, §12.1) — EL CONGELADO DEL CIERRE Y SU LECTURA, CONTRA POSTGRES REAL.
 //
@@ -40,7 +42,7 @@ import {
 // (R41). Un doble no ve el `select` de la relacion `conceptos` ni el `json_agg` de Analitica.
 //
 // TODO DENTRO DE UNA TRANSACCION QUE SIEMPRE SE REVIERTE: ningun `tarifa_valor` sembrado aqui sale
-// del test (un valor commiteado pasaria a esa empresa al modelo nuevo). El codigo de produccion corre
+// del test (un valor commiteado se quedaria en la base de todos). El codigo de produccion corre
 // con el rol `servi_app` y la empresa fijada (`comoApp`): la RLS filtra como en produccion. Las
 // siembras, las mutaciones y las lecturas de control van como dueño.
 //
@@ -154,7 +156,7 @@ type ValorSembrado = {
 };
 
 /**
- * La empresa A en el modelo NUEVO (tiene `tarifa_valor`). Todos los valores son de GRUPO de la zona Z,
+ * La empresa A en el modelo NUEVO (activada, con `tarifa_valor`). Todos los valores son de GRUPO de la zona Z,
  * sin tienda ni vehiculo: asi el pago distinto por grupo (R19/R20) y la orden «sin tarifa» (d3, que
  * no esta en ningun grupo y la zona no tiene valor) salen solos de la precedencia.
  *
@@ -195,6 +197,7 @@ async function sembrarNuevo(tx: TxDeTest): Promise<Escenario> {
   const G1 = await grupo("G1", d1);
   const G2 = await grupo("G2", d2);
 
+  await sembrarActivacion(tx, A);
   const v: Record<string, string> = {};
   const s = async (etiqueta: string, d: ValorSembrado) => {
     const esTienda = d.concepto.startsWith("tienda_");
@@ -275,6 +278,9 @@ function servicioCierre(cli: PrismaClient, e: Escenario) {
     } as never,
     {} as never,
     new TarifaZonaMensajeroRepository(cli),
+    undefined,
+    undefined,
+    reglasPaisFijas(),
   );
 }
 
@@ -310,7 +316,7 @@ function repoAdmin(cli: PrismaClient) {
 async function lecturas(tx: TxDeTest, e: Escenario, cierreId: string) {
   return comoEmpresa(tx, e.A, async () => {
     const cli = clienteConSavepoint(tx);
-    const detalle = await repoAdmin(cli).findCierreByIdEnAlcance(cierreId, ALCANCE_CENTRAL);
+    const detalle = await repoAdmin(cli).findCierreByIdEnAlcance(cierreId, ALCANCE_CENTRAL, ZONA_CR);
     if (detalle === null) throw new Error("el detalle del cierre no se encontro en su alcance");
     const ingresoPorGestion = Object.fromEntries(
       detalle.gestiones.map((g) => [g.gestionId, g.ingresoEmpresa]),
@@ -339,7 +345,7 @@ async function lecturas(tx: TxDeTest, e: Escenario, cierreId: string) {
 function consultaDeLaTienda(tiendaId: string) {
   const preparada = prepararConsultaProductos(
     { tienda_id: [tiendaId] },
-    { usuarioId: "maestro-del-test", rol: "maestro" } as never,
+    { usuarioId: "maestro-del-test", rol: "maestro" } as never, ZONA_DE_CR,
   );
   if (preparada.status !== "ok") throw new Error(`la consulta de prueba salio ${preparada.status}`);
   return preparada.consulta;
@@ -597,10 +603,8 @@ describeSiHayBase("SLT-52 T5.4 — el cierre congela el modelo nuevo y lo lee co
     // La aprobacion escribe en la wallet de la empresa flete 3500.00 e IVA 455.00 (1500+2000;
     // 195+260); el fulfillment no entra (R31).
     expect(r.antes.walletEmpresa).toEqual(["ingreso_flete:3500.00", "ingreso_iva_flete:455.00"]);
-    // Aporte por orden: las tres ordenes del cierre nuevo tienen «tarifa congelada».
-    expect(r.antes.aporte.map((a) => a.ordenId).sort()).toEqual(
-      [e.o1.ordenId, e.o2.ordenId, e.o3.ordenId].sort(),
-    );
+    // Aporte por orden: o1 y o2 tienen su flete congelado; o3 no lo tiene y no aporta (SLT-54 R64).
+    expect(r.antes.aporte.map((a) => a.ordenId).sort()).toEqual([e.o1.ordenId, e.o2.ordenId].sort());
     // Analitica: el fulfillment de o1 sale del concepto congelado (R46).
     expect(r.antes.dinero.find((d) => d.ordenId === e.o1.ordenId)?.fulfillment).toBe("450.00");
     expect(r.antes.dinero.find((d) => d.ordenId === e.o2.ordenId)?.fulfillment).toBe("0.00");
@@ -720,6 +724,8 @@ describeSiHayBase("SLT-52 T5.4 — el cierre congela el modelo nuevo y lo lee co
         { findUsuarioVehiculoId: async () => null, findEstatusIdByValue: async () => null } as never,
         new TarifaZonaMensajeroRepository(clienteConSavepoint(tx)),
         { warn: () => undefined },
+        undefined,
+        reglasPaisFijas(),
       );
       const salida = await comoEmpresa(tx, e.A, () => corte.ejecutarCorte());
       const cierre = await tx.cierreDia.findFirstOrThrow({
@@ -748,7 +754,12 @@ describeSiHayBase("SLT-52 T5.4 — el cierre congela el modelo nuevo y lo lee co
     });
   });
 
-  it("R42/R47 — un cierre del modelo VIEJO se congela y se lee exactamente como antes", async () => {
+  // SLT-54 R1: los dos casos dan los MISMOS literales. La empresa con valores guardados y sin activar es
+  // la que digita su borrador: cierre, wallet de pago, detalle y API no pueden enterarse.
+  it.each([
+    ["R42/R47 — sin valores nuevos, un cierre del modelo VIEJO se congela y se lee exactamente como antes", false],
+    ["SLT-54 R1 — con valores nuevos SIN activar, el cierre da centavo a centavo lo mismo", true],
+  ])("%s", async (_nombre, conValores) => {
     const r = await enTransaccionRevertida(base, async (tx) => {
       await serializarEscriturasReales(tx);
       const A = (await crearOrganizacion(tx)).id;
@@ -757,7 +768,7 @@ describeSiHayBase("SLT-52 T5.4 — el cierre congela el modelo nuevo y lo lee co
       const M = (await crearUsuarioDePrueba(tx, "mensajero")).id;
       const admin = (await crearUsuarioDePrueba(tx, "admin")).id;
       const distrito = await tx.distrito.findFirstOrThrow({ where: { cantonId: fks.cantonId }, select: { id: true } });
-      // Tarifa VIEJA de la tienda en su zona y pago viejo de la zona. Ningun `tarifa_valor`.
+      // Tarifa VIEJA de la tienda en su zona y pago viejo de la zona.
       const tarifa = await tx.tarifa.create({
         data: {
           tiendaId: fks.tiendaId,
@@ -777,13 +788,25 @@ describeSiHayBase("SLT-52 T5.4 — el cierre congela el modelo nuevo y lo lee co
         data: { zonaId: fks.zonaId, vehiculoId: null, cobroEntregado: "1500.00", cobroRechazado: "1000.00" },
       });
       const o = await nuevaOrdenConGestion(tx, fks, M, distrito.id, "10000.00");
-      expect(await tx.tarifaValor.count({ where: { organizacionId: A } })).toBe(0);
+      if (conValores) {
+        await tx.tarifaValor.createMany({
+          data: [
+            { concepto: "tienda_flete_entregado", modo: "monto", valor: "11.11", ivaPct: "1.00", zonaId: fks.zonaId },
+            { concepto: "tienda_flete_entregado", modo: "monto", valor: "22.22", ivaPct: "2.00", tiendaId: fks.tiendaId, zonaId: fks.zonaId },
+            { concepto: "tienda_fulfillment", modo: "monto", valor: "33.33", ivaPct: "3.00", zonaId: fks.zonaId },
+            { concepto: "mensajero_entregado", modo: "monto", valor: "44.44", zonaId: fks.zonaId },
+            { concepto: "satelite_entregado", modo: "monto", valor: "55.55", zonaId: fks.zonaId },
+          ],
+        });
+      }
+      expect(await tx.tarifaValor.count({ where: { organizacionId: A } })).toBe(conValores ? 5 : 0);
+      expect(await tx.tarifaActivacion.count({ where: { organizacionId: A } })).toBe(0);
       expect(await tx.gestionOrden.count({ where: { mensajeroId: M, cierreId: null } })).toBe(1);
 
       const e = { A, Z: fks.zonaId, M } as Escenario;
       const cierreId = await solicitar(tx, e);
       const leer = () =>
-        comoEmpresa(tx, A, () => repoAdmin(clienteConSavepoint(tx)).findCierreByIdEnAlcance(cierreId, ALCANCE_CENTRAL));
+        comoEmpresa(tx, A, () => repoAdmin(clienteConSavepoint(tx)).findCierreByIdEnAlcance(cierreId, ALCANCE_CENTRAL, ZONA_CR));
       const antes = (await leer())?.gestiones.find((g) => g.gestionId === o.gestionId)?.ingresoEmpresa;
       // La tarifa viva cambia despues: el viejo tambien lee lo congelado (69/R18).
       await tx.tarifa.update({ where: { id: tarifa.id }, data: { valorFlete: "5000.00", fulfillment: "900.00" } });
@@ -823,5 +846,112 @@ describeSiHayBase("SLT-52 T5.4 — el cierre congela el modelo nuevo y lo lee co
       fulfillment: "300.00",
       ivaFulfillment: "0.00",
     });
+  });
+
+  it("SLT-54 R10 — activación entre pago y cobro: el cierre aborta sin escribir nada, y al reintentar sale nuevo", async () => {
+    const r = await enTransaccionRevertida(base, async (tx) => {
+      await serializarEscriturasReales(tx);
+      const A = (await crearOrganizacion(tx)).id;
+      await fijarEmpresa(tx, A);
+      const fks = await crearFksDeOrden(tx);
+      const M = (await crearUsuarioDePrueba(tx, "mensajero")).id;
+      const distrito = await tx.distrito.findFirstOrThrow({ where: { cantonId: fks.cantonId }, select: { id: true } });
+      await tx.tarifa.create({
+        data: {
+          tiendaId: fks.tiendaId,
+          zonaId: fks.zonaId,
+          valorFlete: "2000.00",
+          valorFleteDevuelto: "1000.00",
+          valorFleteGam: "2500.00",
+          valorFleteDevueltoGam: "1200.00",
+          comisionCod: "0.00",
+          ivaFlete: "13.00",
+          ivaComisionCod: "13.00",
+        },
+      });
+      await tx.tarifaZonaMensajero.create({
+        data: { zonaId: fks.zonaId, vehiculoId: null, cobroEntregado: "1500.00", cobroRechazado: "1000.00" },
+      });
+      await tx.tarifaValor.create({
+        data: { concepto: "tienda_flete_entregado", modo: "monto", valor: "3000.00", ivaPct: "13.00", zonaId: fks.zonaId },
+      });
+      await tx.tarifaValor.create({ data: { concepto: "mensajero_entregado", modo: "monto", valor: "900.00", zonaId: fks.zonaId } });
+      const o = await nuevaOrdenConGestion(tx, fks, M, distrito.id, "10000.00");
+      const e = { A, Z: fks.zonaId, M } as Escenario;
+      const cli = clienteConSavepoint(tx);
+      expect(await tx.tarifaActivacion.count({ where: { organizacionId: A } })).toBe(0);
+      expect(await tx.gestionOrden.count({ where: { mensajeroId: M, cierreId: null } })).toBe(1);
+
+      // El pago sale con el modelo viejo, y la activacion entra justo antes de la transaccion del cierre.
+      const pagosReales = new TarifaZonaMensajeroRepository(cli);
+      let activaciones = 0;
+      const pagosConActivacion = new Proxy(pagosReales, {
+        get(destino, prop, receptor) {
+          if (prop !== "resolvePagos") return Reflect.get(destino, prop, receptor);
+          return async (...args: Parameters<typeof pagosReales.resolvePagos>) => {
+            const pagos = await destino.resolvePagos(...args);
+            if (activaciones === 0) {
+              activaciones += 1;
+              await tx.tarifaActivacion.create({ data: { organizacionId: A } });
+            }
+            return pagos;
+          };
+        },
+      });
+      const servicio = new CierreDiaService(
+        cierreDiaRepo(cli),
+        { findCentralZonaId: async () => e.Z } as never,
+        {
+          findUsuarioZonaId: async () => e.Z,
+          findUsuarioVehiculoId: async () => null,
+          findEstatusIdByValue: async () => null,
+          findOrdenesEnCorreccion: async () => new Set<string>(),
+          findBloqueoDetalle: async () => ({
+            bloqueado: false,
+            cierresAbiertos: 0,
+            cierresPorReenviar: 0,
+            aResolverPrimero: null,
+            resolicitableMasViejo: null,
+          }),
+        } as never,
+        {} as never,
+        pagosConActivacion,
+        undefined,
+        undefined,
+        reglasPaisFijas(),
+      );
+      const actor: Actor = { usuarioId: M, rol: "mensajero" };
+      await expect(comoEmpresa(tx, A, () => servicio.solicitarCierre(actor))).rejects.toBeInstanceOf(
+        ModelosDeTarifaMezclados,
+      );
+      expect(activaciones).toBe(1);
+      // Sin nada a medias: ni cierre, ni detalle, ni pago, y la gestion sigue suelta.
+      const tras = {
+        cierres: await tx.cierreDia.count({ where: { mensajeroId: M } }),
+        detalles: await tx.cierreDetail.count({ where: { ordenId: o.ordenId } }),
+        congelados: await tx.gestionPagoCongelado.count({ where: { gestionOrdenId: o.gestionId } }),
+        columnas: await pagosDeGestiones(tx, [o.gestionId]),
+      };
+
+      // El reintento ya sale entero con el modelo nuevo.
+      const cierreId = await solicitar(tx, e);
+      return {
+        o,
+        tras,
+        cierreId,
+        conceptos: await conceptosCongelados(tx, cierreId),
+        columnas: await pagosDeGestiones(tx, [o.gestionId]),
+      };
+    });
+    expect(r.tras.cierres).toBe(0);
+    expect(r.tras.detalles).toBe(0);
+    expect(r.tras.congelados).toBe(0);
+    expect(r.tras.columnas[r.o.gestionId]?.cierreId).toBeNull();
+    expect(r.tras.columnas[r.o.gestionId]?.pago).toBeNull();
+    expect(r.conceptos[r.o.ordenId]?.tarifaModelo).toBe("nuevo");
+    expect(r.conceptos[r.o.ordenId]?.conceptos.map((c) => `${c.concepto}:${c.valor}`)).toEqual([
+      "tienda_flete_entregado:3000.00",
+    ]);
+    expect(r.columnas[r.o.gestionId]).toMatchObject({ pago: "900.00", cierreId: r.cierreId });
   });
 });

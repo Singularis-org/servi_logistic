@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 
-import { CorregirDatosClienteService } from "@/lib/services/CorregirDatosClienteService";
+import { CorregirDatosClienteService, MENSAJE_PAIS_SIN_TELEFONO } from "@/lib/services/CorregirDatosClienteService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import type { CorregirDatosClienteInput } from "@/lib/interfaces/services/ICorregirDatosClienteService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type {
@@ -105,6 +107,7 @@ function escenario(
     distritoFila?: DistritoResueltoRow | null;
     escritura?: "ok" | "conflict";
     tarifaFila?: TarifaVigente | null;
+    reglasPais?: IReglasPaisEmpresa;
   } = {},
 ) {
   const findParaCorreccion = vi.fn(async () =>
@@ -129,6 +132,7 @@ function escenario(
   const service = new CorregirDatosClienteService(
     { findParaCorreccion, findDistritoParaCorreccion, corregirDatosCliente },
     { resolveTarifa },
+    opciones.reglasPais ?? reglasPaisFijas(),
   );
   return {
     service,
@@ -459,6 +463,64 @@ describe("312/C2 — R18: el telefono tiene que ser utilizable", () => {
       expect(corregirDatosCliente).not.toHaveBeenCalled();
     },
   );
+});
+
+describe("SLT-42 (punto 4 tras la tanda 2) — el telefono se valida con el pais de la empresa", () => {
+  /** Un pais de prueba con OTRO prefijo y OTRO largo, para que un `506` u `8` escondido se vea. */
+  function paisXA() {
+    const reglas = reglasPaisFijas({ paisId: "XA", telefono: { prefijo: "999", digitosNacionales: 7 } });
+    const deLaEmpresa = vi.fn(() => reglas.deLaEmpresa());
+    return { reglasPais: { ...reglas, deLaEmpresa }, deLaEmpresa };
+  }
+
+  it("con el prefijo de OTRO pais: lee el pais de la empresa, acepta su numero y lo guarda tal cual", async () => {
+    const { reglasPais, deLaEmpresa } = paisXA();
+    const { service, corregirDatosCliente } = escenario({ reglasPais });
+
+    const r = await service.corregir({ ordenId: ORDEN_ID, telefonoDest: " +999 777 0001 " }, MAESTRO);
+
+    expect(r).toEqual({ status: "ok", cambios: ["telefonoDest"] });
+    expect(deLaEmpresa).toHaveBeenCalledTimes(1);
+    expect(corregirDatosCliente).toHaveBeenCalledWith(
+      ORDEN_ID,
+      { telefonoDest: "+999 777 0001" },
+      ESTADOS_SIN_CORRECCION,
+      { actorUsuarioId: expect.any(String), ubicacionCorregida: expect.any(Boolean) },
+    );
+  });
+
+  it("con el pais de otro prefijo, un telefono sin digitos sigue sin ser utilizable", async () => {
+    const { reglasPais } = paisXA();
+    const { service, corregirDatosCliente } = escenario({ reglasPais });
+
+    const r = await service.corregir({ ordenId: ORDEN_ID, telefonoDest: "abc" }, MAESTRO);
+
+    expect(r).toMatchObject({ status: "validation_error" });
+    expect(r).toHaveProperty("fieldErrors.telefonoDest");
+    expect(corregirDatosCliente).not.toHaveBeenCalled();
+  });
+
+  it("si el telefono no cambia, no se lee el pais", async () => {
+    const { reglasPais, deLaEmpresa } = paisXA();
+    const { service } = escenario({ reglasPais });
+
+    await service.corregir(entrada(), MAESTRO);
+
+    expect(deLaEmpresa).not.toHaveBeenCalled();
+  });
+
+  it("un pais sin prefijo o sin digitos devuelve fieldErrors.telefonoDest con texto propio y no escribe", async () => {
+    // Decision tras la tanda 2b: no se lanza `PaisIncompleto` (que llegaba como error generico).
+    const { service, corregirDatosCliente } = escenario({ reglasPais: reglasPaisFijas({ paisId: "XB", telefono: null }) });
+
+    const r = await service.corregir({ ordenId: ORDEN_ID, telefonoDest: "7770001" }, MAESTRO);
+
+    expect(r).toEqual({ status: "validation_error", fieldErrors: { telefonoDest: [MENSAJE_PAIS_SIN_TELEFONO] } });
+    expect(MENSAJE_PAIS_SIN_TELEFONO).toMatch(/soporte/);
+    // Sin PII: el texto no lleva el numero tecleado ni el pais.
+    expect(MENSAJE_PAIS_SIN_TELEFONO).not.toContain("7770001");
+    expect(corregirDatosCliente).not.toHaveBeenCalled();
+  });
 });
 
 describe("327/C2 — R9: el peso, revalidado en el servidor", () => {

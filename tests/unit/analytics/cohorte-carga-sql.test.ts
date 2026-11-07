@@ -6,6 +6,7 @@ import {
 } from "@/lib/analytics/entregas-conteo";
 import { condicionesDeCohorte } from "@/lib/repositories/CohorteCargaRepository";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Ficha 411 / T2.3 — el `where` de la cohorte, sobre los fragmentos que produce
 // `condicionesDeCohorte`: su TEXTO y sus PARAMETROS. Sin base de datos.
 //
@@ -27,7 +28,7 @@ function consultaDe(raw: object = {}, rol = "maestro", extra: object = {}): Cons
   const preparada = prepararConteoEntregas(
     { ...RANGO, ...raw },
     { usuarioId: "u1", rol, ...extra } as never,
-    AHORA,
+    ZONA_DE_CR, AHORA,
   );
   if (preparada.status !== "ok") throw new Error(`filtro de prueba invalido: ${preparada.status}`);
   return preparada.consulta;

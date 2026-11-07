@@ -14,6 +14,7 @@ import type { EstadoCuentaDTO, EstadoCuentaInput, FilaEstadoCuentaDTO } from "@/
 import type { TxDeTest } from "../_postgres-real";
 import { montarServicios459, type Catalogo459, type Servicios459 } from "./caja-459";
 import { busquedaPorGuiaDe } from "./busqueda-469";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FICHA 458-B / TB.1 — EL ESCENARIO DE LA FOTOGRAFIA DE LAS CUENTAS (design §8.1).
@@ -395,7 +396,8 @@ export async function leerBodega(tx: TxDeTest, s: Servicios459, actor: Actor, zo
     corregirConciliacion: async () => {
       throw new Error("la fotografia 458 no corrige conciliaciones");
     },
-  });
+  },
+  reglasPaisFijas(),);
   void tx;
   const r = await servicio.listarSaldosSatelitesCompleto({}, actor);
   if (r.status !== "ok") throw new Error(`la lectura de las bodegas respondio ${r.status}`);
@@ -413,7 +415,7 @@ export function montarEstadoCuenta(s: Servicios459): EstadoCuentaService {
   return new EstadoCuentaService(
     new EstadoCuentaRepository(s.cliente),
     new RechazoTiendaCobroAnulacionRepository(s.cliente),
-    new OrigenLegibleService(new OrigenLegibleRepository(s.cliente)),
+    new OrigenLegibleService(new OrigenLegibleRepository(s.cliente), reglasPaisFijas()),
     busquedaPorGuiaDe(s.cliente), // FICHA 469: como `buildService()`
   );
 }

@@ -8,8 +8,8 @@
 // los 6 dias y el aviso seguiria prometiendo 5 — y la tienda organiza su trabajo con ese numero.
 // El texto no puede mentir (leccion de la 407, en su forma aritmetica).
 //
-// MODULO PURO: dos numeros y nada mas. Sin Prisma, sin React, sin `process.env` —a diferencia de
-// `lib/config/reintentos.ts`, estos NO son configurables por entorno: son la promesa que la app le
+// MODULO PURO: dos numeros y nada mas. Sin Prisma, sin React, sin `process.env` —estos NO son
+// configurables por entorno: son la promesa que la app le
 // hace a la tienda, y una promesa que cambia sola segun donde corra el proceso no es una promesa—.
 //
 // ⚠️ EL PLAZO DEPENDE DE LA CAUSA, y por eso son DOS numeros y no uno:

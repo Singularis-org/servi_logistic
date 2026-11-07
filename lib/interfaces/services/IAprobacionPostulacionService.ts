@@ -25,6 +25,8 @@ export type DecisionServiceResult =
   | { status: "forbidden" }
   | { status: "not_found" }
   | { status: "conflict" }
+  // SLT-42 (R10, R11, R14, R16): aprobar con tipo, documento o telefono fuera de la regla del pais.
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> }
   // SL-24 (R27): aprobar con el tope de `mensajero` lleno. Rechazar no lo devuelve nunca.
   | ResultadoTopePlan;
 

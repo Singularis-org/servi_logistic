@@ -7,6 +7,8 @@ import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteReposit
 import { TarifaZonaMensajeroRepository } from "@/lib/repositories/TarifaZonaMensajeroRepository";
 import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
 import { CierreDiaService } from "@/lib/services/CierreDiaService";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import { SupabaseSignedUrlProvider } from "@/lib/storage/SupabaseSignedUrlProvider";
 import { gestionConfig } from "@/lib/config/gestion";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
@@ -33,6 +35,10 @@ import {
 } from "@/lib/notificaciones/notificadores";
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import type { AppErrorShape } from "@/lib/errors";
+import { defaultLogger } from "@/lib/errors/logger";
+import { TAGS_LECTURAS_ENTREGAS } from "@/lib/analytics/tags-entregas";
+import { crearAnaliticaCacheDeNext } from "@/lib/cache/next-analitica-cache";
+import type { IAnaliticaCache } from "@/lib/interfaces/external/IAnaliticaCache";
 
 // Feature 37 — Server Actions del "Cierre del dia" del mensajero (mutaciones y
 // lecturas internas del mismo proyecto; van como Server Action, no como Route API,
@@ -61,18 +67,24 @@ function buildService(): ICierreDiaService {
     notificarCierreDiaPorAprobarReal,
     // FEATURE 271 (T6.5, R40/R41): COMPOSITION ROOT del aviso «quedaste bloqueado por acumular».
     notificarMensajeroBloqueadoReal,
+    // SLT-42 (R22): la zona del pais de la empresa, con la que se calcula el dia en curso.
+    construirReglasPaisEmpresa(prisma),
   );
 }
 
 export interface CierreDiaDeps {
   service?: ICierreDiaService;
   getActor?: () => Promise<Actor | null>;
+  /** SLT-64: el puerto con el que `deshacerGestion` invalida. Por defecto, el de produccion. */
+  cache?: IAnaliticaCache;
 }
 
 // Feature 41 (R21): deps del bloqueo derivado del mensajero. Inyecta el repo (solo el metodo de
 // bloqueo) y el actor en tests, sin tocar el service backend.
 export interface EstadoBloqueoMensajeroDeps {
   ordenRepo?: Pick<IOrdenRepository, "findBloqueoDetalle">;
+  /** SLT-42: las reglas del pais de la empresa (su zona). Por defecto, la implementacion real. */
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
   getActor?: () => Promise<Actor | null>;
 }
 
@@ -116,7 +128,9 @@ export async function estadoBloqueoMensajero(
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R1: antes de tocar el repo
     const repo = deps.ordenRepo ?? new OrdenRepository(getPrismaClient());
-    const bloqueo = await repo.findBloqueoDetalle(actor.usuarioId);
+    // SLT-42 (R22): la jornada que nombra el aviso se fecha en la zona del pais de la empresa.
+    const zona = await (deps.reglasPais ?? construirReglasPaisEmpresa(getPrismaClient())).zonaHoraria();
+    const bloqueo = await repo.findBloqueoDetalle(actor.usuarioId, zona);
     return { status: "ok" as const, bloqueo };
   });
   return isAppErrorShape(r) ? { status: "unauthenticated" as const } : r;
@@ -246,6 +260,9 @@ function toCierreDiaActionError(
  * (`docs/architecture.md`). `unauthenticated` (R7, sin sesion) y `validation_error` (R10,
  * gestionId no-uuid) se resuelven en el borde; `forbidden` (R8/R9) y `conflict` (R2-R6) los
  * devuelve el service como resultado de dominio.
+ *
+ * SLT-64 (R12, R14): las tres vias del servicio devuelven `ok` por aqui, asi que este es el unico
+ * punto donde invalidar las lecturas de entregas, y solo tras un `ok`.
  */
 export async function deshacerGestion(
   input: unknown,
@@ -258,5 +275,22 @@ export async function deshacerGestion(
     const service = deps.service ?? buildService();
     return service.deshacerGestion(data.gestionId, actor);
   });
-  return isAppErrorShape(r) ? toCierreDiaActionError(r) : r;
+  if (isAppErrorShape(r)) return toCierreDiaActionError(r);
+  if (r.status === "ok") await invalidarLecturasDeEntregas(deps.cache);
+  return r;
+}
+
+/**
+ * SLT-64 (R15, R16): la escritura ya esta confirmada. Si respondiera error, el usuario reintentaria
+ * y recibiria `conflict` por algo que si hizo, asi que el fallo se registra y el TTL acota la cifra
+ * vieja. Del error solo se registra la clase: su mensaje puede traer la etiqueta con la empresa.
+ */
+async function invalidarLecturasDeEntregas(cache: IAnaliticaCache | undefined): Promise<void> {
+  try {
+    const puerto = cache ?? crearAnaliticaCacheDeNext();
+    await puerto.invalidar("correccion_gestion", TAGS_LECTURAS_ENTREGAS);
+  } catch (error) {
+    const clase = error instanceof Error ? error.name : "desconocido";
+    defaultLogger.logError(new Error(`deshacerGestion: fallo la invalidacion de cache (${clase})`));
+  }
 }

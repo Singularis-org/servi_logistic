@@ -1,26 +1,32 @@
 import type { ModuloApagable, RolValue } from "@prisma/client";
 
 import { ROL_LABELS } from "@/lib/auth/rol-label";
+import { money } from "@/lib/config/moneda";
 import { nombreDelModulo } from "@/lib/modulos/catalogo";
-import { ROLES_CON_TOPE, type PrecioPlan, type RolConTope } from "@/lib/types/planes";
+import { importeCanonico } from "@/lib/planes/rastro";
+import type { CosteoDelCiclo, CostoVigente } from "@/lib/types/consumo-plan";
+import {
+  ROLES_CON_TOPE,
+  TIPOS_COBRO,
+  type CostoPorOrdenPorcentual,
+  type DescuentoPeriodo,
+  type PrecioPlan,
+  type RolConTope,
+  type TipoCobro,
+} from "@/lib/types/planes";
 
 // SL-24 (design §6.4, §6.6) — los textos del tope del plan. Un solo sitio para las tres vías (carga
 // de órdenes, usuarios y API keys) y para el superadmin. El rol sale de `ROL_LABELS`, la etiqueta que
 // ya ve la pantalla de usuarios. Ningún texto nombra la marca ni el país.
 
+// SLT-86 (R8): sin la variante `ordenes`: ningún plan topa ya las órdenes.
 export type TopeDelPlan =
-  | { tope: "ordenes"; maximo: number; usados: number; pedidas: number }
   | { tope: "rol"; rol: RolValue; maximo: number; usados: number; pedidas: number }
   | { tope: "api_keys"; maximo: number; usados: number; pedidas: number };
 
 /** El texto que ve quien provocó el alta rechazada. */
 export function mensajeDelTope(t: TopeDelPlan): string {
   switch (t.tope) {
-    case "ordenes":
-      return (
-        `Tu plan permite ${t.maximo} órdenes por ciclo. Llevas ${t.usados} y esta carga trae ${t.pedidas}. ` +
-        "Anula órdenes que no vayas a enviar o pide un cambio de plan."
-      );
     case "rol":
       return (
         `Tu plan permite ${t.maximo} usuarios activos con el rol ${ROL_LABELS[t.rol]}. Ya tienes ${t.usados}. ` +
@@ -37,13 +43,12 @@ export function mensajeDelTope(t: TopeDelPlan): string {
 /** Un tope que una empresa ya pasa, visto por el superadmin al asignar o editar un plan (R12, R16). */
 export interface TopePasado {
   empresa: string;
-  tope: "ordenes" | "api_keys" | RolValue;
+  tope: "api_keys" | RolValue;
   usados: number;
   maximo: number;
 }
 
 function cosaDelTope(tope: TopePasado["tope"]): string {
-  if (tope === "ordenes") return "órdenes en el ciclo en curso";
   if (tope === "api_keys") return "API keys activas";
   return `usuarios activos con el rol ${ROL_LABELS[tope]}`;
 }
@@ -61,10 +66,7 @@ export function mensajeTopesPasados(topes: readonly TopePasado[]): string {
 // Textos aprobados (P13, P15). Los conteos llegan YA pintados (`formatearConteo` de
 // `lib/planes/consumo.ts`, «3.200»): este módulo no formatea números (importar `consumo.ts`, que ya lo importa a él, haría un ciclo).
 
-/** Aviso de R36/R37: `fecha` es el día en que empieza el siguiente ciclo (P10), `AAAA-MM-DD`. */
-export function ordenesYaPasadas(usados: string, maximo: string, fecha: string): string {
-  return `La empresa ya lleva ${usados} de ${maximo} órdenes en este ciclo: no podrá crear más hasta ${fecha}.`;
-}
+// SLT-86 (R8): sin el aviso de órdenes de R36/R37 (`ordenesYaPasadas`): ya no hay tope de órdenes.
 
 /** Aviso de R37/R42 para un rol con tope; `{rol}` es su etiqueta de `ROL_LABELS`. */
 export function rolYaPasado(usados: string, maximo: string, rol: RolConTope): string {
@@ -83,6 +85,15 @@ export function rangoInicioCiclo(min: string, max: string): string {
 
 /** Error del campo `inicioCiclo` cuando la empresa ya tiene plan (R31). */
 export const SOLO_PRIMERA_ASIGNACION = "La fecha de inicio solo se elige en la primera asignación.";
+
+/** SLT-86 (R16): error del campo `vigenteDesde` cuando falta en un cambio a una empresa con plan. */
+export const FECHA_DE_EFECTO_OBLIGATORIA = "Elige desde qué fecha rige el cambio.";
+
+/** SLT-86 (R22): error del campo `vigenteDesde` con una fecha anterior a hoy. */
+export const FECHA_DE_EFECTO_PASADA = "La fecha de efecto no puede ser anterior a hoy.";
+
+/** SLT-86 (R2, R16): error del campo `vigenteDesde` en una empresa sin plan, que lleva fecha de inicio. */
+export const SOLO_CON_PLAN = "La fecha de efecto es de un cambio a una empresa con plan; la primera asignación lleva fecha de inicio.";
 
 /* -------------------------------------------------------------------------- */
 /* Correos del cambio de plan (T12; design §16.4; R41, R42, R45)               */
@@ -140,6 +151,15 @@ export function mensajeCambioCancelado(planNombre: string, fecha: string): strin
 }
 
 /**
+ * SLT-86 (design §5.3, §7.1; R19, R26; decisión del 2026-11-05): la celda del tipo de cobro de una fila
+ * `cambio_cancelado` del historial de asignaciones. `tipo` llega ya con su etiqueta («Quincenal»), que vive
+ * con las del selector; el plan va en su propia columna. Sin fecha (no debería pasar) solo dice el tipo.
+ */
+export function textoDelCambioCancelado(tipo: string, desde: string | null): string {
+  return desde === null ? `Cambio cancelado: ${tipo}` : `Cambio cancelado: ${tipo} desde el ${desde}`;
+}
+
+/**
  * Decisiones cerradas («Texto del cambio programado») y design §6.5: el mismo texto para el cambio
  * pendiente en todas las pantallas (la empresa, el detalle de la empresa y el detalle del plan).
  */
@@ -157,12 +177,28 @@ export interface CambioDelPlanParaCorreo {
   nombre?: { antes: string; despues: string };
   topes?: { antes: TopesDelPlanParaCorreo; despues: TopesDelPlanParaCorreo };
   modulos?: { antes: readonly ModuloApagable[]; despues: readonly ModuloApagable[] };
-  precio?: { antes: PrecioPlan; despues: PrecioPlan };
+  /** SLT-86 (R30): una fila de antes de la ficha trae aquí el anual (`PrecioAnterior`). */
+  precio?: { antes: PrecioDelRastro; despues: PrecioDelRastro };
+  /** SLT-86 (R31): un descuento por período, en su propia clave del rastro (`rastro.ts`). */
+  descuento_quincenal?: CambioDeDescuento;
+  descuento_mensual?: CambioDeDescuento;
+  descuento_bimestral?: CambioDeDescuento;
+  descuento_anual?: CambioDeDescuento;
+  /**
+   * SLT-86 (R30, R34): la fila `editado` que deja la migración al retirar el tope de órdenes, con
+   * `antes` como texto («<n>») y `despues` en `null`. Ningún cambio nuevo la escribe.
+   */
+  tope_ordenes_ciclo?: { antes: string | number | null; despues: string | number | null };
   costoPorOrden?: { antes: string | null; despues: string | null };
+  /** SLT-83 (R4): un rastro anterior a la ficha no la trae y no pinta esa línea. */
+  costoPorOrdenPorcentual?: { antes: CostoPorOrdenPorcentual | null; despues: CostoPorOrdenPorcentual | null };
 }
 
+type CambioDeDescuento = { antes: DescuentoPeriodo | null; despues: DescuentoPeriodo | null };
+
 type TopesDelPlanParaCorreo = {
-  ordenesPorCiclo: number | null;
+  /** SLT-86 (R8, R30): solo en las filas de antes de la ficha; las nuevas no lo traen. */
+  ordenesPorCiclo?: number | null;
   porRol: Partial<Record<RolConTope, number>>;
   apiKeys: number | null;
 };
@@ -173,20 +209,158 @@ function limite(n: number | null | undefined): string {
   return n === null || n === undefined ? SIN_LIMITE : String(n);
 }
 
-/** El precio como texto informativo, sin símbolo de moneda (D26). Lo pintan también las pantallas (SLT-58 R1, R13). */
-export function textoDelPrecio(p: PrecioPlan): string {
-  if (p.tipo === "sin_precio") return "sin precio";
-  if (p.tipo === "negociable") return "negociable";
-  const mensual = `${p.mensual} al mes`;
-  if (p.anual === null) return mensual;
-  return p.anual.tipo === "fijo"
-    ? `${mensual}, ${p.anual.monto} al año`
-    : `${mensual}, con ${p.anual.porcentaje} % de descuento en el pago anual`;
+/** Un tope tal como lo guardó la migración de SLT-86 en el rastro: texto o número; `null` = sin límite. */
+function limiteDelRastro(n: string | number | null): string {
+  return n === null ? SIN_LIMITE : String(n);
+}
+
+function ladoDelDescuento(d: DescuentoPeriodo | null): string {
+  return d === null ? SIN_DESCUENTO : valorDelDescuento(d);
+}
+
+/**
+ * El precio tal como lo guardó `plan_rastro` antes de SLT-86 (y los correos ya encolados): con el anual
+ * fijo o el descuento anual, sin `descuentos`. R30: esas filas se siguen pintando tal cual.
+ */
+type PrecioAnterior = {
+  tipo: "monto";
+  mensual: string;
+  anual?: { tipo: "fijo"; monto: string } | { tipo: "descuento"; porcentaje: string } | null;
+};
+
+/**
+ * Un precio leído del rastro o de una versión: el de hoy, el de antes de SLT-86, o el `precio` del rastro
+ * de SLT-86, que no trae los descuentos porque van en sus propias claves (`rastro.ts`).
+ */
+export type PrecioDelRastro = PrecioPlan | PrecioAnterior | { tipo: "monto"; mensual: string } | { tipo: string };
+
+/** SLT-86 (design §7.1): «Descuento {tipo}: {p} %» o «Descuento {tipo}: {monto}», sin moneda. */
+export function textoDelDescuento(tipo: TipoCobro, d: DescuentoPeriodo): string {
+  return `Descuento ${tipo}: ${valorDelDescuento(d)}`;
+}
+
+function valorDelDescuento(d: DescuentoPeriodo): string {
+  return d.tipo === "porcentaje" ? `${importeCanonico(d.porcentaje)} %` : importeCanonico(d.monto);
+}
+
+/** El lado vacío de la línea de un descuento en «qué cambia». */
+export const SIN_DESCUENTO = "sin descuento";
+
+/**
+ * El precio como texto informativo, sin símbolo de moneda (D26). Lo pintan también las pantallas (SLT-58
+ * R1, R13). SLT-86 (R24, design §7.1): «{mensual} / mes» y un «Descuento {tipo}: …» por cada período con
+ * descuento, en el orden de `TIPOS_COBRO`.
+ */
+export function textoDelPrecio(p: PrecioDelRastro): string {
+  // D1 (ajuste planes-custom): «negociable» ya no existe, pero `plan_rastro` y los correos encolados
+  // antes de 20261104130000 pueden traerlo; se pinta como lo que es ahora, «sin precio».
+  if (p.tipo !== "monto" || !("mensual" in p)) return "sin precio";
+  const partes = [`${p.mensual} / mes`];
+  if ("descuentos" in p) {
+    for (const tipo of TIPOS_COBRO) {
+      const d = p.descuentos[tipo];
+      if (d !== undefined) partes.push(textoDelDescuento(tipo, d));
+    }
+  }
+  // R30: una fila de antes de SLT-86 con el anual fijo o el descuento anual, con su texto de entonces.
+  if ("anual" in p && p.anual) {
+    partes.push(
+      p.anual.tipo === "fijo" ? `${p.anual.monto} al año` : `con ${p.anual.porcentaje} % de descuento en el pago anual`,
+    );
+  }
+  return partes.join(" · ");
 }
 
 /** SLT-66 (design §4.4): el costo por orden del plan, sin símbolo de moneda; vacío = el global (R12). */
 export function textoDelCostoPorOrden(c: string | null): string {
   return c === null ? "se aplica el valor global" : `${c} por orden`;
+}
+
+/**
+ * SLT-83 (R4; aprobado por el humano el 2026-11-04): el lado del costo fijo en la línea «Costo por
+ * orden» cuando ese lado está vacío porque el plan cobra porcentual, en lugar de «se aplica el valor
+ * global».
+ */
+export const COBRA_PORCENTUAL = "cobra porcentual";
+
+/**
+ * SLT-83 (R4): un lado de la línea «Costo por orden». Vacío con el porcentual de ese mismo lado no
+ * nulo es «cobra porcentual»; sin porcentual, o en un rastro anterior a la ficha, sigue SLT-66.
+ */
+function textoDelLadoFijo(c: string | null, porcentual: CostoPorOrdenPorcentual | null | undefined): string {
+  return c === null && porcentual ? COBRA_PORCENTUAL : textoDelCostoPorOrden(c);
+}
+
+/**
+ * SLT-83 (design §4.4; R21): el costo por orden de un plan porcentual, sin símbolo de moneda y con dos
+ * decimales aunque llegue «2» de una versión aún sin guardar.
+ */
+export function textoDelCostoPorOrdenPorcentual(c: CostoPorOrdenPorcentual): string {
+  const porcentaje = `${importeCanonico(c.porcentaje)} % del valor del paquete`;
+  return c.minimo === null ? porcentaje : `${porcentaje}, mínimo ${importeCanonico(c.minimo)}`;
+}
+
+/**
+ * SLT-83 (R4): el lado vacío de la línea «Costo por orden porcentual» (el plan es fijo o vacío).
+ * Texto aprobado por el humano el 2026-11-04 (`progress/impl_SLT-83.md > Textos aprobados`).
+ */
+export const SIN_COSTO_PORCENTUAL = "sin costo porcentual";
+
+function textoDelPorcentualOVacio(c: CostoPorOrdenPorcentual | null): string {
+  return c === null ? SIN_COSTO_PORCENTUAL : textoDelCostoPorOrdenPorcentual(c);
+}
+
+/**
+ * SLT-83 (design §4.4; R22): la columna «Cobro por orden» del listado de «Empresas». El modo fijo es el
+ * importe de hoy, con `money` como lo pinta la celda desde SL-40; el porcentual, `«{p} % (mín. {m})»` o
+ * `«{p} %»`, sin moneda como el resto de importes del plan (SLT-66 §2.5). La fuente va aparte.
+ */
+export function textoDelCobroVigente(c: CostoVigente): string {
+  if (c.modo === "fijo") return money(c.monto);
+  const porcentaje = `${importeCanonico(c.porcentaje)} %`;
+  return c.minimo === null ? porcentaje : `${porcentaje} (mín. ${importeCanonico(c.minimo)})`;
+}
+
+/** SLT-83 (design §4.4; R23): la nota bajo el costo por orden porcentual de «Mi plan». */
+export const NOTA_COBRO_PORCENTUAL = "se cobra cuando la orden llega a un estado final";
+
+/** Las líneas del costo del ciclo de «Mi plan» y del detalle de empresa con un plan porcentual. */
+export interface LineasDelCosteoPorcentual {
+  costoPorOrden: string;
+  nota: string;
+  cobrado: string;
+  pendientes: string;
+  /** `null` con la base por definir: sin total (SLT-66 R20). */
+  total: string | null;
+}
+
+/**
+ * SLT-83 (R23; aprobado por el humano el 2026-11-04): el término del cobrado en la línea del total. Un
+ * cobrado negativo se pinta como resta con su valor absoluto («− 500.00», U+2212), nunca «+ -500.00».
+ * El signo sale del texto decimal: la pantalla no hace aritmética con el dinero.
+ */
+function sumaDelCobrado(cobrado: string): string {
+  return cobrado.startsWith("-") ? `\u2212 ${cobrado.slice(1)}` : `+ ${cobrado}`;
+}
+
+/**
+ * SLT-83 (design §4.4; R23): los textos de un costeo porcentual. Los importes llegan ya calculados del
+ * servidor (`costeoDelCiclo`) y se pintan tal cual, sin moneda, como las líneas del modo fijo. Las
+ * órdenes sin estado final son solo un conteo: no se estima su importe.
+ */
+export function lineasDelCosteoPorcentual(c: Extract<CosteoDelCiclo, { modo: "porcentual" }>): LineasDelCosteoPorcentual {
+  return {
+    costoPorOrden: `Costo por orden: ${textoDelCostoPorOrdenPorcentual(c)}`,
+    nota: NOTA_COBRO_PORCENTUAL,
+    // SLT-86 (R28; decisiones del 2026-11-05 y del 2026-11-06): «período» en lugar de «ciclo»,
+    // también en las órdenes sin estado final.
+    cobrado: `Cobrado en el período: ${c.cobrado}`,
+    pendientes: `Órdenes del período sin estado final: ${c.pendientes}`,
+    total:
+      c.total === null || c.base.tipo !== "monto"
+        ? null
+        : `Total del período hasta hoy: ${c.base.periodo} ${sumaDelCobrado(c.cobrado)} = ${c.total}`,
+  };
 }
 
 /**
@@ -218,9 +392,26 @@ export function lineasDeCambioDelPlan(c: CambioDelPlanParaCorreo): string[] {
   }
   // SLT-66 (R9): el precio mensual de SL-24 se llama ahora «costo base».
   if (c.precio) lineas.push(`Costo base: ${textoDelPrecio(c.precio.antes)} → ${textoDelPrecio(c.precio.despues)}`);
+  // SLT-86 (R31): un descuento por línea, en el orden de los tipos.
+  for (const tipo of TIPOS_COBRO) {
+    const d = c[`descuento_${tipo}`];
+    if (d) lineas.push(`Descuento ${tipo}: ${ladoDelDescuento(d.antes)} → ${ladoDelDescuento(d.despues)}`);
+  }
+  // SLT-86 (R30): la fila de la migración que retiró el tope de órdenes.
+  if (c.tope_ordenes_ciclo) {
+    const { antes, despues } = c.tope_ordenes_ciclo;
+    lineas.push(`Órdenes por ciclo: ${limiteDelRastro(antes)} → ${limiteDelRastro(despues)}`);
+  }
   if (c.costoPorOrden) {
     const { antes, despues } = c.costoPorOrden;
-    lineas.push(`Costo por orden: ${textoDelCostoPorOrden(antes)} → ${textoDelCostoPorOrden(despues)}`);
+    const porcentual = c.costoPorOrdenPorcentual;
+    lineas.push(
+      `Costo por orden: ${textoDelLadoFijo(antes, porcentual?.antes)} → ${textoDelLadoFijo(despues, porcentual?.despues)}`,
+    );
+  }
+  if (c.costoPorOrdenPorcentual) {
+    const { antes, despues } = c.costoPorOrdenPorcentual;
+    lineas.push(`Costo por orden porcentual: ${textoDelPorcentualOVacio(antes)} → ${textoDelPorcentualOVacio(despues)}`);
   }
   return lineas;
 }

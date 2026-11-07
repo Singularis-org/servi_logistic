@@ -12,6 +12,7 @@ import {
 import { esAccesoTotal } from "@/lib/auth/acceso-total";
 import { RANGO_TOPE_DIAS } from "@/lib/analytics/types";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 const AHORA = new Date("2026-08-17T12:00:00.000Z");
 
 function actor(rol: string, extra: Record<string, unknown> = {}) {
@@ -31,7 +32,7 @@ describe("Filtro del conteo — sin rango es SIN VENTANA, no un preset por defec
   });
 
   it("preparar sin rango deja `rango: null`, y no una ventana inventada", () => {
-    const preparada = prepararConteoEntregas({}, actor("maestro"), AHORA);
+    const preparada = prepararConteoEntregas({}, actor("maestro"), ZONA_DE_CR, AHORA);
 
     expect(preparada.status).toBe("ok");
     if (preparada.status !== "ok") return;
@@ -43,7 +44,7 @@ describe("Filtro del conteo — sin rango es SIN VENTANA, no un preset por defec
     const preparada = prepararConteoEntregas(
       { zona_id: ["z1"], distrito_id: ["d1"], mensajero_id: ["m1"] },
       actor("maestro"),
-      AHORA,
+      ZONA_DE_CR, AHORA,
     );
 
     expect(preparada.status).toBe("ok");
@@ -284,13 +285,13 @@ describe("prepararConteoEntregas — el orden de los pasos ES el contrato", () =
   // Si el parseo fallara DESPUÉS del alcance, un filtro malformado serviría para sondear qué
   // puede ver un rol. Por eso un filtro roto es `validation_error` incluso sin sesión.
   it("un filtro malformado es `validation_error` aunque el actor no exista", () => {
-    expect(prepararConteoEntregas({ rango: "trimestre" }, null, AHORA).status).toBe(
+    expect(prepararConteoEntregas({ rango: "trimestre" }, null, ZONA_DE_CR, AHORA).status).toBe(
       "validation_error",
     );
   });
 
   it("sin actor y con filtro válido es `forbidden` por `sin_sesion`", () => {
-    expect(prepararConteoEntregas({ rango: "semana" }, null, AHORA)).toMatchObject({
+    expect(prepararConteoEntregas({ rango: "semana" }, null, ZONA_DE_CR, AHORA)).toMatchObject({
       status: "forbidden",
       motivo: "sin_sesion",
     });
@@ -298,12 +299,12 @@ describe("prepararConteoEntregas — el orden de los pasos ES el contrato", () =
 
   it("pedir datos ajenos es `forbidden` por `filtro_fuera_de_alcance`", () => {
     expect(
-      prepararConteoEntregas({ rango: "semana", tienda_id: ["t9"] }, actor("adminTienda"), AHORA),
+      prepararConteoEntregas({ rango: "semana", tienda_id: ["t9"] }, actor("adminTienda"), ZONA_DE_CR, AHORA),
     ).toMatchObject({ status: "forbidden", motivo: "filtro_fuera_de_alcance" });
   });
 
   it("el camino feliz devuelve filtro recortado, rango resuelto y alcance", () => {
-    const preparada = prepararConteoEntregas({ rango: "dia" }, actor("adminTienda"), AHORA);
+    const preparada = prepararConteoEntregas({ rango: "dia" }, actor("adminTienda"), ZONA_DE_CR, AHORA);
 
     expect(preparada.status).toBe("ok");
     if (preparada.status !== "ok") return;
@@ -317,8 +318,8 @@ describe("prepararConteoEntregas — el orden de los pasos ES el contrato", () =
   // Reloj inyectable: mismo `now`, mismo resultado. Sin esto, un test de esta función
   // dependería del día en que se ejecute.
   it("es determinista con el mismo `now`", () => {
-    const a = prepararConteoEntregas({ rango: "mes" }, actor("maestro"), AHORA);
-    const b = prepararConteoEntregas({ rango: "mes" }, actor("maestro"), AHORA);
+    const a = prepararConteoEntregas({ rango: "mes" }, actor("maestro"), ZONA_DE_CR, AHORA);
+    const b = prepararConteoEntregas({ rango: "mes" }, actor("maestro"), ZONA_DE_CR, AHORA);
     expect(a).toEqual(b);
   });
 });
@@ -332,7 +333,7 @@ function consulta(
   alcance: ConsultaConteoEntregas["alcance"] = { tipo: "global" },
   now: Date = AHORA,
 ): ConsultaConteoEntregas {
-  const preparada = prepararConteoEntregas(filtro, actor("maestro"), now);
+  const preparada = prepararConteoEntregas(filtro, actor("maestro"), ZONA_DE_CR, now);
   if (preparada.status !== "ok") throw new Error("filtro de prueba inválido");
   return { ...preparada.consulta, filtro, alcance };
 }

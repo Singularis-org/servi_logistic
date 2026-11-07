@@ -84,11 +84,15 @@ export type PreparacionAnalitica =
  *
  * `now` es inyectable (patron de `resolverRango`) y no hay ningun `Date.now()` escondido:
  * misma entrada, mismo resultado (R32).
+ *
+ * SLT-42 (R22) — `zona` es la zona IANA del pais de la empresa; el borde la lee con
+ * `zonaDelBorde` y el rango se resuelve con ella.
  */
 export function prepararConsultaAnalitica(
   raw: unknown,
   actor: ActorAnalitica | null,
   metricaId: string,
+  zona: string,
   now?: Date,
   canal: CanalAnalitica = "interno",
 ): PreparacionAnalitica {
@@ -109,7 +113,7 @@ export function prepararConsultaAnalitica(
   }
 
   // (2) RANGO.
-  const rango = resolverRango(entradaDeRango(parseado.filtro), now);
+  const rango = resolverRango(entradaDeRango(parseado.filtro), zona, now);
 
   // (3) ALCANCE. Feature 267 — `canal` se REENVIA tal cual, sin interpretarlo aqui: el
   // unico sitio que decide que puede ver un canal es `resolverAlcance`. Su default

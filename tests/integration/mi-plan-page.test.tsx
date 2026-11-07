@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// SLT-58 (design §3.1; R8) — LA PÁGINA `/mi-plan` RESPONDE «NO ENCONTRADO» A QUIEN NO ES MAESTRO NI ADMIN.
+// SLT-58 (design §3.1; R8), SLT-91 (R2, R3, R4) — LA PÁGINA `/mi-plan` RESPONDE «NO ENCONTRADO» A QUIEN NO ES MAESTRO.
 //
 // Se monta la cadena real página → `verMiPlan` → `MiPlanService`; solo se sustituye el repositorio
 // (y el cliente de base, para no abrir conexión). Así se mide lo que pide R8: la decisión la toma el
@@ -33,7 +33,7 @@ import MiPlanPage from "@/app/(app)/mi-plan/page";
 
 const actorMock = vi.mocked(resolveActorFromSession);
 
-const ROLES_SIN_ACCESO: RolValue[] = ["mensajero", "adminTienda", "adminSatelite", "apiKey", "superadmin"];
+const ROLES_SIN_ACCESO: RolValue[] = ["admin", "mensajero", "adminTienda", "adminSatelite", "apiKey", "superadmin"];
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -42,7 +42,7 @@ beforeEach(() => {
 
 afterEach(() => cleanup());
 
-describe("SLT-58 R8 — `/mi-plan` solo para maestro y admin", () => {
+describe("SLT-91 R2, R3, R4 — `/mi-plan` solo para el maestro", () => {
   it.each(ROLES_SIN_ACCESO)("%s → «no encontrado», sin leer la base", async (rol) => {
     actorMock.mockResolvedValue({ usuarioId: "u-1", rol });
 
@@ -57,13 +57,27 @@ describe("SLT-58 R8 — `/mi-plan` solo para maestro y admin", () => {
     expect(planDeLaEmpresaMock).not.toHaveBeenCalled();
   });
 
-  it.each<RolValue>(["maestro", "admin"])("%s → ve la pantalla «Mi plan»", async (rol) => {
-    actorMock.mockResolvedValue({ usuarioId: "u-1", rol });
+  it("maestro → ve la pantalla «Mi plan»", async () => {
+    actorMock.mockResolvedValue({ usuarioId: "u-1", rol: "maestro" });
 
     render(<ToastProvider>{await MiPlanPage()}</ToastProvider>);
 
     expect(planDeLaEmpresaMock).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("heading", { level: 1, name: "Mi plan" })).toBeInTheDocument();
     expect(screen.getByText("Tu empresa no tiene plan asignado: sin límites")).toBeInTheDocument();
+  });
+
+  it("SLT-86 R26: sin plan y con una primera asignación pendiente, la página baja el pendiente a la pantalla", async () => {
+    actorMock.mockResolvedValue({ usuarioId: "u-1", rol: "maestro" });
+    planDeLaEmpresaMock.mockResolvedValue({
+      sinPlan: true,
+      pendiente: { planNombre: "Pro", tipo: "quincenal", desde: "2026-12-01" },
+    });
+
+    render(<ToastProvider>{await MiPlanPage()}</ToastProvider>);
+
+    expect(screen.getByText("Sin límites")).toBeInTheDocument();
+    expect(screen.getByText("Pro empieza a regir el 2026-12-01")).toBeInTheDocument();
+    expect(screen.queryByText("Tu empresa no tiene plan asignado: sin límites")).toBeNull();
   });
 });

@@ -13,6 +13,7 @@ import {
   serializarEscriturasReales,
 } from "./_postgres-real";
 import { sembrarBase, estatusId, type BaseSembrada, type TxDeTest } from "./_semilla-rollup";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // FICHA 423 — EL ORDEN NATURAL POR NUMERO DE REMISION, CONTRA POSTGRES REAL.
 //
@@ -241,7 +242,7 @@ describeSiHayBase("el orden por numero de remision es NATURAL y por serie (ficha
         const repo = new OrdenRepository(tx as unknown as PrismaClient);
         return fn({
           repo,
-          service: new OrdenService(repo, fakeIntentosEnLote()),
+          service: new OrdenService(repo, fakeIntentosEnLote(), undefined, reglasPaisFijas()),
           tx,
           series,
           empatadas,

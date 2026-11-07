@@ -15,6 +15,7 @@ import {
   SAT_SIN_ZONA,
   type FilaAlmacen,
 } from "@/tests/fixtures/satelite-bodega-almacen";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Ficha 470 (T1.3, riesgo K6) — el tope real de la descarga es ahora el limite de Excel
 // (1.048.575 filas). Este archivo prueba la MECANICA del tope (N entra, N+1 no), que no depende
@@ -57,7 +58,7 @@ function servicio(repo: IOrdenRepository, lotes?: string[][]) {
       return new Map(pares);
     }),
   } as unknown as Pick<IOrdenHistorialService, "contarIntentosEnLote">;
-  return new RecepcionSateliteService(repo, historial);
+  return new RecepcionSateliteService(repo, historial, undefined, reglasPaisFijas());
 }
 
 function ids(items: ReadonlyArray<{ id: string }>): string[] {

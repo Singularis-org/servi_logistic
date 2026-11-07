@@ -20,6 +20,8 @@ import { conPagos } from "@/tests/fixtures/cierre-pagos";
 import { esGestionDeLaTienda } from "@/lib/utils/gestion-de-la-tienda-flag";
 import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
 import { bloqueoConVencido, bloqueoPorAcumular } from "@/tests/fixtures/bloqueo-cierre";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 // Feature 37 — tests unit del CierreDiaService (mocks de repos + dobles de
 // ISignedUrlProvider/findCentralZonaId, sin DB/red). Cubre R1,R2,R3,R4,R5,R6,R7,R8,
@@ -206,6 +208,9 @@ function newService(opts: {
     ordenRepo as IOrdenRepository,
     signedUrls,
     tarifaZonaRepo,
+    undefined,
+    undefined,
+    reglasPaisFijas(),
   );
   return { service, repo, zonaRepo, ordenRepo, tarifaZonaRepo, signedUrls };
 }
@@ -223,7 +228,7 @@ describe("listarCierreDia — autorizacion y alcance (R1/R2)", () => {
   it("R2: resuelve gestiones/conteo/historico SIEMPRE por el usuarioId del actor", async () => {
     const { service, repo } = newService();
     await service.listarCierreDia(MENSAJERO);
-    expect(repo.findGestionesPendientes).toHaveBeenCalledWith("m1");
+    expect(repo.findGestionesPendientes).toHaveBeenCalledWith("m1", ZONA_CR);
     // Feature 235 (T4.1, R23): la lista gana `ayuda_tienda` POR SU NOMBRE.
     // Feature 246: y un TERCER argumento, el dia CR con el que se descarta lo reservado para
     // despues. `expect.any(Date)` basta aqui —este test es sobre el ACOTAMIENTO POR ACTOR—; que el
@@ -345,7 +350,7 @@ describe("verCierrePasado — detalle de un cierre propio (solo lectura)", () =>
     const { service } = newService({ repo });
     const r = await service.verCierrePasado("c-ajeno", MENSAJERO);
     expect(r.status).toBe("no_encontrada");
-    expect(repo.findCierrePropioConGestiones).toHaveBeenCalledWith("c-ajeno", "m1");
+    expect(repo.findCierrePropioConGestiones).toHaveBeenCalledWith("c-ajeno", "m1", ZONA_CR);
   });
 
   it("devuelve la cabecera + las gestiones agrupadas, con el pago SNAPSHOT (no re-derivado)", async () => {
@@ -1749,7 +1754,7 @@ describe("Feature 111 · deshacerGestion — bloqueo total del mensajero (R5/R20
 
     expect(r.status).toBe("conflict");
     // R5 (Q2, belt-and-suspenders): usa el MISMO predicado derivado.
-    expect(ordenRepo.findBloqueoDetalle).toHaveBeenCalledWith("m1");
+    expect(ordenRepo.findBloqueoDetalle).toHaveBeenCalledWith("m1", ZONA_CR);
     // FICHA 477 (D4): con el bloqueo la gestion se LEE para saber si es corregible (la exencion es
     // por objeto). Esta no lo es —sin cierre y fuera de correccion— y no se escribe nada.
     expect(repo.anularGestionYDevolverAGestion).not.toHaveBeenCalled(); // sin devolver a en_reparto
@@ -2383,7 +2388,7 @@ describe("264/B9 — verCierrePasado emite `ordenesSinGestion` y `sinGestionRegi
 
     await service.verCierrePasado("c1", MENSAJERO);
 
-    expect(repo.findCierrePropioConGestiones).toHaveBeenCalledWith("c1", "m1");
+    expect(repo.findCierrePropioConGestiones).toHaveBeenCalledWith("c1", "m1", ZONA_CR);
     expect(repo.findCierrePropioConGestiones).toHaveBeenCalledTimes(1);
   });
 

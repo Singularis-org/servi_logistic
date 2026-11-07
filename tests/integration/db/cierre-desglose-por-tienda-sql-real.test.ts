@@ -12,6 +12,7 @@ import {
   fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 /**
  * 💰 FICHA 396 (B3) — **QUÉ FILAS SE AGRUPAN, EJECUTADO CONTRA POSTGRES.**
@@ -376,7 +377,7 @@ describeSiHayBase("396/B3 — el desglose por tienda agrupa por lo CONGELADO, co
     // Sin esto, todo lo de abajo podría estar midiendo el vacío. Nada de `if (!filas) return;`:
     // un `return` silencioso reporta `passed` sin haber comprobado nada.
     const { cardinalGestiones, tiendasCongeladas, esperadas } = await conCorpus(async (ctx) => {
-      const r = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreId, ALCANCE_TOTAL);
+      const r = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreId, ALCANCE_TOTAL, ZONA_CR);
       if (r === null) throw new Error("el cierre sembrado no se encontro: el corpus no existe");
       return {
         cardinalGestiones: r.gestiones.length,
@@ -395,7 +396,7 @@ describeSiHayBase("396/B3 — el desglose por tienda agrupa por lo CONGELADO, co
     // dice HOY. Si `DETALLE_ADMIN_SELECT` dejara de proyectar `tienda_id`, o si el mapper leyera
     // `orden.tienda_id`, estas dos columnas coincidirían y el caso cae.
     const medido = await conCorpus(async (ctx) => {
-      const r = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreId, ALCANCE_TOTAL);
+      const r = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreId, ALCANCE_TOTAL, ZONA_CR);
       if (r === null) throw new Error("el cierre sembrado no se encontro");
       const porRemision = new Map(r.gestiones.map((g) => [g.numRemision, g.tiendaId]));
       return {
@@ -425,7 +426,7 @@ describeSiHayBase("396/B3 — el desglose por tienda agrupa por lo CONGELADO, co
 
   it("R6/R7: el desglose sale de lo congelado y NO se funde aunque las dos tiendas se llamen igual", async () => {
     const partes = await conCorpus(async (ctx) => {
-      const r = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreId, ALCANCE_TOTAL);
+      const r = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreId, ALCANCE_TOTAL, ZONA_CR);
       if (r === null) throw new Error("el cierre sembrado no se encontro");
       const salida = partesPorTienda(r.gestiones);
       return salida.map((p) => ({
@@ -471,7 +472,7 @@ describeSiHayBase("396/B3 — el desglose por tienda agrupa por lo CONGELADO, co
 
   it("las identidades se sostienen sobre datos que salieron de Postgres, no de un doble", async () => {
     const { sumaPago, sumaGana, sumaRecaudado, difA, difB } = await conCorpus(async (ctx) => {
-      const r = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreId, ALCANCE_TOTAL);
+      const r = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreId, ALCANCE_TOTAL, ZONA_CR);
       if (r === null) throw new Error("el cierre sembrado no se encontro");
       const partes = partesPorTienda(r.gestiones);
       const suma = (montos: string[]) =>

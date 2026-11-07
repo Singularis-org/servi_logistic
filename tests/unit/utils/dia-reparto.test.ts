@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import fs from "fs";
 import path from "path";
 import { resolverFechaReparto } from "@/lib/utils/dia-reparto";
-import { inicioDelDiaCREnUtc, startOfDayCR } from "@/lib/utils/fecha-cr";
+import { inicioDelDiaCREnUtc, startOfDayCR, ZONA_CR } from "@/lib/utils/fecha-cr";
 
 // Feature 246 (T1.3, R5/R17) — «hoy» y «mañana» resueltos EN EL SERVIDOR, con reloj inyectado.
 //
@@ -23,23 +23,23 @@ const d = (iso: string) => new Date(iso);
 describe("resolverFechaReparto — la frontera de las 00:00 CR (= 06:00Z)", () => {
   it("23:59 CR del 20 (05:59Z del 21): «hoy» es el 20", () => {
     const now = d("2026-08-21T05:59:00.000Z");
-    expect(resolverFechaReparto("hoy", now).toISOString()).toBe("2026-08-20T00:00:00.000Z");
+    expect(resolverFechaReparto("hoy", ZONA_CR, now).toISOString()).toBe("2026-08-20T00:00:00.000Z");
   });
 
   it("23:59 CR del 20: «mañana» es el 21 — un dia justo, no seis horas", () => {
     const now = d("2026-08-21T05:59:00.000Z");
-    expect(resolverFechaReparto("manana", now).toISOString()).toBe("2026-08-21T00:00:00.000Z");
+    expect(resolverFechaReparto("manana", ZONA_CR, now).toISOString()).toBe("2026-08-21T00:00:00.000Z");
   });
 
   it("00:01 CR del 21 (06:01Z): «hoy» ya es el 21 y «mañana» el 22", () => {
     const now = d("2026-08-21T06:01:00.000Z");
-    expect(resolverFechaReparto("hoy", now).toISOString()).toBe("2026-08-21T00:00:00.000Z");
-    expect(resolverFechaReparto("manana", now).toISOString()).toBe("2026-08-22T00:00:00.000Z");
+    expect(resolverFechaReparto("hoy", ZONA_CR, now).toISOString()).toBe("2026-08-21T00:00:00.000Z");
+    expect(resolverFechaReparto("manana", ZONA_CR, now).toISOString()).toBe("2026-08-22T00:00:00.000Z");
   });
 
   it("05:59Z y 06:01Z del mismo dia caen en dias CR DISTINTOS (es la frontera real)", () => {
-    const antes = resolverFechaReparto("hoy", d("2026-08-21T05:59:00.000Z"));
-    const despues = resolverFechaReparto("hoy", d("2026-08-21T06:01:00.000Z"));
+    const antes = resolverFechaReparto("hoy", ZONA_CR, d("2026-08-21T05:59:00.000Z"));
+    const despues = resolverFechaReparto("hoy", ZONA_CR, d("2026-08-21T06:01:00.000Z"));
     expect(despues.getTime() - antes.getTime()).toBe(UN_DIA_MS);
   });
 });
@@ -48,13 +48,13 @@ describe("resolverFechaReparto — la frontera de la medianoche UTC (18:00 CR)",
   it("18:00 CR del 20 (00:00Z del 21): sigue siendo el 20, no el 21", () => {
     // Es el off-by-one clasico de `toISOString().slice(0,10)`: en UTC ya es dia 21.
     const now = d("2026-08-21T00:00:00.000Z");
-    expect(resolverFechaReparto("hoy", now).toISOString()).toBe("2026-08-20T00:00:00.000Z");
-    expect(resolverFechaReparto("manana", now).toISOString()).toBe("2026-08-21T00:00:00.000Z");
+    expect(resolverFechaReparto("hoy", ZONA_CR, now).toISOString()).toBe("2026-08-20T00:00:00.000Z");
+    expect(resolverFechaReparto("manana", ZONA_CR, now).toISOString()).toBe("2026-08-21T00:00:00.000Z");
   });
 
   it("17:59 CR y 18:01 CR del mismo dia dan LA MISMA fecha de reparto", () => {
-    const antes = resolverFechaReparto("manana", d("2026-08-20T23:59:00.000Z"));
-    const despues = resolverFechaReparto("manana", d("2026-08-21T00:01:00.000Z"));
+    const antes = resolverFechaReparto("manana", ZONA_CR, d("2026-08-20T23:59:00.000Z"));
+    const despues = resolverFechaReparto("manana", ZONA_CR, d("2026-08-21T00:01:00.000Z"));
     expect(antes.toISOString()).toBe(despues.toISOString());
   });
 });
@@ -62,14 +62,14 @@ describe("resolverFechaReparto — la frontera de la medianoche UTC (18:00 CR)",
 describe("resolverFechaReparto — la convencion, dicha explicitamente (R17, riesgo 3)", () => {
   it("«hoy» es EXACTAMENTE `startOfDayCR(now)`: la convencion `@db.Date` del repo", () => {
     const now = d("2026-08-20T20:00:00.000Z");
-    expect(resolverFechaReparto("hoy", now).getTime()).toBe(startOfDayCR(now).getTime());
+    expect(resolverFechaReparto("hoy", ZONA_CR, now).getTime()).toBe(startOfDayCR(now).getTime());
   });
 
   it("NO usa `inicioDelDiaCREnUtc`: la fecha resuelta NO lleva las 06:00 dentro", () => {
     // El caso que impide el error del riesgo 3. Si alguien cambiara el helper, la fecha saldria
     // seis horas mas tarde y la comparacion contra la columna `DATE` se iria un dia.
     const now = d("2026-08-20T20:00:00.000Z");
-    const resuelta = resolverFechaReparto("hoy", now);
+    const resuelta = resolverFechaReparto("hoy", ZONA_CR, now);
     expect(resuelta.getUTCHours()).toBe(0);
     expect(resuelta.getUTCMinutes()).toBe(0);
     expect(resuelta.getUTCSeconds()).toBe(0);
@@ -90,16 +90,16 @@ describe("resolverFechaReparto — la convencion, dicha explicitamente (R17, rie
     ]) {
       const now = d(iso);
       expect(
-        resolverFechaReparto("manana", now).getTime() - resolverFechaReparto("hoy", now).getTime(),
+        resolverFechaReparto("manana", ZONA_CR, now).getTime() - resolverFechaReparto("hoy", ZONA_CR, now).getTime(),
       ).toBe(UN_DIA_MS);
     }
   });
 
   it("cruza fin de mes y fin de año sin inventar dias", () => {
-    expect(resolverFechaReparto("manana", d("2026-08-31T20:00:00.000Z")).toISOString()).toBe(
+    expect(resolverFechaReparto("manana", ZONA_CR, d("2026-08-31T20:00:00.000Z")).toISOString()).toBe(
       "2026-09-01T00:00:00.000Z",
     );
-    expect(resolverFechaReparto("manana", d("2026-12-31T20:00:00.000Z")).toISOString()).toBe(
+    expect(resolverFechaReparto("manana", ZONA_CR, d("2026-12-31T20:00:00.000Z")).toISOString()).toBe(
       "2027-01-01T00:00:00.000Z",
     );
   });
@@ -112,9 +112,10 @@ describe("R17 — la fuente no introduce una segunda definicion del dia", () => 
   );
   const codigo = fuente.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
-  it("no usa `inicioDelDiaCREnUtc` en el CODIGO (nombrarla en el comentario es obligatorio)", () => {
-    expect(fuente).toContain("inicioDelDiaCREnUtc"); // la trampa se NOMBRA
-    expect(codigo).not.toContain("inicioDelDiaCREnUtc"); // pero no se USA
+  it("no usa `inicioDelDiaEnUtc` en el CODIGO (nombrarla en el comentario es obligatorio)", () => {
+    // SLT-42: la trampa es la gemela con zona de la antigua `inicioDelDiaCREnUtc`.
+    expect(fuente).toContain("inicioDelDiaEnUtc"); // la trampa se NOMBRA
+    expect(codigo).not.toContain("inicioDelDiaEnUtc"); // pero no se USA
   });
 
   it("no hace aritmetica de zona horaria a mano (el offset vive en `fecha-cr.ts`)", () => {

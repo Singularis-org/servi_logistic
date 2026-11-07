@@ -185,4 +185,9 @@ export interface IEstadoCuentaRepository {
   movimientoDeMensajero(movimientoId: string, mensajeroId: string): Promise<MovimientoDeMensajeroRow | null>;
   /** R57 — quien aprobo cada cierre (`cierre_dia.resuelto_por`), por id de cierre. */
   quienAproboLosCierres(cierreIds: readonly string[]): Promise<Map<string, string | null>>;
+  /**
+   * SLT-54 (D38) — de estos cierres, los que incluyen alguna gestion DE ESTA TIENDA con el modelo nuevo.
+   * UNA consulta por lectura y ninguna sin ids.
+   */
+  cierresConModeloNuevoDeTienda(tiendaId: string, cierreIds: readonly string[]): Promise<ReadonlySet<string>>;
 }

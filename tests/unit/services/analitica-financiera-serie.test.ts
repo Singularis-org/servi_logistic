@@ -16,6 +16,7 @@ import {
 import { derivarCuentaPorPagar } from "@/lib/utils/cuenta-por-pagar";
 import { armarServicio, consultaDe, type DatosFinancieros } from "./_dobles-analitica-financiera";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 180 (T3.5 / T4.x) — LA SERIE POR FECHA DE LAS SIETE METRICAS DEL CONJUNTO CON
 // DESGLOSE. Cubre R1, R6-R10, R12-R15, R19, R26, R27 y R28.
 //
@@ -47,7 +48,7 @@ const RANGO_LARGO = { rango: "personalizado", desde: "2026-01-01", hasta: "2026-
 
 /** Los cubos que el troceo produce para esa consulta: la fuente de la verdad de R7 y R10. */
 function cubosDe(metricaId: string, raw: unknown) {
-  return trocear(consultaDe(metricaId, raw).rango);
+  return trocear(consultaDe(metricaId, raw).rango, ZONA_CR);
 }
 
 async function vistasDe(

@@ -8,6 +8,7 @@ import type {
 import { esFalloConfigGeocode, marcarFalloConfigGeocode } from "@/lib/geo/fallo-config-geocode";
 import type { GeocodificacionCaidaContexto } from "@/lib/notificaciones/emitir";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // FICHA 401 (T10) — LA REGLA: cuándo se considera que la geocodificación está caída por
 // configuración NUESTRA, y qué se le pide al repositorio para recuperarla.
 //
@@ -69,7 +70,7 @@ function build(
       avisos.push(ctx);
     },
     { warn: (m) => logs.push(m) },
-    () => AHORA,
+    () => AHORA, reglasPaisFijas(),
   );
   return { service, contar, revivir, avisos, logs };
 }
@@ -381,7 +382,7 @@ describe("401/R26 — ningún log de esta ficha lleva PII ni secretos", () => {
         d.avisos.push(ctx);
       },
       { warn: () => {} },
-      () => new Date("2026-09-09T02:00:00.000Z"),
+      () => new Date("2026-09-09T02:00:00.000Z"), reglasPaisFijas(),
     );
 
     await service.registrarFalloConfig("job-1", EMPRESA, new Date("2026-09-09T02:00:00.000Z"));

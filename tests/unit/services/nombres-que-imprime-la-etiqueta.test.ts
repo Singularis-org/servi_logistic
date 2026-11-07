@@ -9,6 +9,7 @@ import type {
 import type { Actor } from "@/lib/interfaces/services/IUsuarioService";
 import { GeografiaService } from "@/lib/services/GeografiaService";
 import { UsuarioService } from "@/lib/services/UsuarioService";
+import { CR, reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 import { ZonaService } from "@/lib/services/ZonaService";
 import type { ActualizarZonaInput, CrearZonaInput, ZonaDTO } from "@/lib/types/zona";
 
@@ -55,10 +56,10 @@ function usuarioDTO(): UsuarioPublico {
     id: "usr-1",
     nombre: "Tienda Feliz",
     email: "tienda@example.com",
-    telefono: "099",
+    telefono: "88880000",
     estado: "activo",
-    cedula: "1710034065",
-    tipoIdentificacionId: "tipo-1",
+    cedula: "171003406",
+    tipoIdentificacionId: "tipo-cr-cedula",
     rolId: "rol-tienda",
     fulfillment: false,
     createdAt: new Date("2026-01-01"),
@@ -81,7 +82,7 @@ function repoUsuarios(): IUserRepository {
     count: vi.fn().mockResolvedValue(0),
     update: vi.fn().mockResolvedValue(usuarioDTO()),
     setEstado: vi.fn().mockResolvedValue(usuarioDTO()),
-    listTiposIdentificacion: vi.fn().mockResolvedValue([{ id: "tipo-1", value: "cedula" }]),
+    listTiposIdentificacion: vi.fn().mockResolvedValue([{ id: "tipo-cr-cedula", value: "cedula" }]),
     listRoles: vi.fn().mockResolvedValue([{ id: "rol-tienda", value: "adminTienda" }]),
     contarAdminSatelitesActivos: vi.fn().mockResolvedValue(0),
     restablecerContrasena: vi.fn(),
@@ -90,9 +91,9 @@ function repoUsuarios(): IUserRepository {
 
 const altaTienda = {
   email: "tienda@example.com",
-  telefono: "099",
-  tipoIdentificacionId: "tipo-1",
-  cedula: "1710034065",
+  telefono: "88880000",
+  tipoIdentificacionId: "tipo-cr-cedula",
+  cedula: "171003406",
   rolId: "rol-tienda",
   passwordMode: "manual" as const,
   password: "Abcdef1!",
@@ -105,7 +106,7 @@ describe("392 — el nombre de la TIENDA, que la etiqueta imprime como `tiendaNo
   beforeEach(() => {
     vi.clearAllMocks();
     repo = repoUsuarios();
-    service = new UsuarioService(repo);
+    service = new UsuarioService(repo, undefined, undefined, undefined, undefined, reglasPaisFijas(CR));
   });
 
   it("alta con un caracter irreparable: `validation_error` y NO se crea la cuenta", async () => {
@@ -134,7 +135,7 @@ describe("392 — el nombre de la TIENDA, que la etiqueta imprime como `tiendaNo
   });
 
   it("una edicion que NO manda el nombre no lo evalua: se guarda el telefono y ya", async () => {
-    const res = await service.actualizar("usr-1", { telefono: "088" }, MAESTRO);
+    const res = await service.actualizar("usr-1", { telefono: "88887777" }, MAESTRO);
 
     expect(res.status).toBe("ok");
     expect(repo.update).toHaveBeenCalledTimes(1);
@@ -365,7 +366,7 @@ describe("392/R1 — las cinco escrituras comparten definicion Y redaccion", () 
     const zonas = repoZonas();
     const geo = repoGeo();
 
-    const rTienda = await new UsuarioService(usuarios).crear(
+    const rTienda = await new UsuarioService(usuarios, undefined, undefined, undefined, undefined, reglasPaisFijas(CR)).crear(
       { ...altaTienda, nombre: NOMBRE_DOUBLE_STRUCK },
       MAESTRO,
     );

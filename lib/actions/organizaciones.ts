@@ -23,6 +23,7 @@ import type { IOrganizacionService } from "@/lib/interfaces/services/IOrganizaci
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { BienvenidaMaestroRepository } from "@/lib/repositories/BienvenidaMaestroRepository";
 import { OrganizacionRepository } from "@/lib/repositories/OrganizacionRepository";
+import { PaisRepository } from "@/lib/repositories/PaisRepository";
 import { BienvenidaMaestroService } from "@/lib/services/BienvenidaMaestroService";
 import { crearEmailSender } from "@/lib/services/EmailProvider";
 import { OrganizacionService } from "@/lib/services/OrganizacionService";
@@ -65,7 +66,9 @@ const reenviarSchema = z.object({ organizacionId: z.uuid() });
 
 /** El composition root: el servicio con su repositorio real sobre el cliente de la app. */
 function construirServicio(): IOrganizacionService {
-  return new OrganizacionService(new OrganizacionRepository(getPrismaClient()));
+  const prisma = getPrismaClient();
+  // SLT-42 (R6, R10, R14): el país elegido se lee en plataforma, el mismo contexto del alta.
+  return new OrganizacionService(new OrganizacionRepository(prisma), new PaisRepository(prisma));
 }
 
 /**

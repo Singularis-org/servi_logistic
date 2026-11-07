@@ -167,13 +167,12 @@ async function rechazo(fn: () => Promise<unknown>): Promise<TopeDelPlanAlcanzado
 async function controles(tx: TxDeTest): Promise<void> {
   expect(await triggerActivo(tx, "plan_tope_usuario_alta", "usuario")).toBe(true);
   expect(await triggerActivo(tx, "plan_tope_usuario_cambio", "usuario")).toBe(true);
-  expect(await triggerActivo(tx, "plan_tope_ordenes", "orden")).toBe(true);
   expect(await triggerActivo(tx, "plan_tope_api_key_alta", "api_key")).toBe(true);
 }
 
 /**
- * Una empresa con plan y TODO al tope: cada rol con tope tiene un activo y tope 1, una orden con tope
- * de 1 por ciclo y una API key con tope de 1. Más un maestro (el que crea la key), un maestro
+ * Una empresa con plan y TODO al tope: cada rol con tope tiene un activo y tope 1, y una API key con
+ * tope de 1. Más una orden (SLT-86 R8: ya sin tope), un maestro (el que crea la key), un maestro
  * inactivo, un maestro pendiente y un segundo admin que luego pasa a maestro.
  */
 async function empresaAlTope(tx: TxDeTest) {
@@ -187,7 +186,7 @@ async function empresaAlTope(tx: TxDeTest) {
   const inactivo = id(await c.crear("maestro", "inactivo"));
   const pendiente = id(await c.crear("maestro", "pendiente"));
   const porRol = Object.fromEntries(await Promise.all(ROLES_CON_TOPE.map(async (rol) => [rol, await c.activos(rol)] as const)));
-  const plan = await crearPlan(tx, { porRol, ordenes: 1, apiKeys: 1 });
+  const plan = await crearPlan(tx, { porRol, apiKeys: 1 });
   await asignarPlan(tx, c.org, plan);
   await controles(tx);
   await c.orden();
@@ -271,16 +270,16 @@ describeSiHayBase("SLT-66 — el maestro no tiene tope de usuarios (R1, R2, R3, 
     expect(r.despues).toEqual({ ...r.antes, admin: r.antes.admin - 1 });
   });
 
-  it("R6: con el plan lleno, el tope de órdenes y el de API keys siguen rechazando", async () => {
+  // SLT-86 (R8): el tope de órdenes se retiró; la orden de más entra y el de API keys sigue rechazando.
+  it("R6: con el plan lleno, el tope de API keys sigue rechazando; una orden más entra (SLT-86 R8)", async () => {
     const r = await revertida(base, async (tx) => {
       const { c, maestro } = await empresaAlTope(tx);
       const antes = await c.uso();
-      const orden = await rechazo(() => c.orden());
+      await c.orden();
       const key = await rechazo(() => c.apiKey(maestro));
-      return { orden: orden.details, key: key.details, antes, despues: await c.uso() };
+      return { key: key.details, antes, despues: await c.uso() };
     });
-    expect(r.orden).toMatchObject({ codigo: "tope_plan", tope: "ordenes", maximo: 1, usados: 1, pedidas: 1 });
     expect(r.key).toMatchObject({ codigo: "tope_plan", tope: "api_keys", maximo: 1, usados: 1, pedidas: 1 });
-    expect(r.despues).toEqual(r.antes);
+    expect(r.despues).toEqual({ ...r.antes, ordenes: r.antes.ordenes + 1 });
   });
 });

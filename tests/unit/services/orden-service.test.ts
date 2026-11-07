@@ -10,6 +10,7 @@ import {
   llamadasIntentos,
   type IntentosSvcDoble,
 } from "@/tests/fixtures/intentos-entrega";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 const MAESTRO: Actor = { usuarioId: "m1", rol: "maestro" };
 const TIENDA: Actor = { usuarioId: "store1", rol: "adminTienda" };
@@ -202,7 +203,7 @@ let intentos: IntentosSvcDoble;
 beforeEach(() => {
   repo = buildRepo();
   intentos = fakeIntentosEnLote();
-  service = new OrdenService(repo, intentos);
+  service = new OrdenService(repo, intentos, undefined, reglasPaisFijas());
 });
 
 // BORRADO 2026-08-07 (tanda 2 del chore de deuda de superficie): aqui vivian los bloques de
@@ -261,7 +262,7 @@ describe("listar", () => {
         total: 1,
       }),
     });
-    service = new OrdenService(repo, intentos);
+    service = new OrdenService(repo, intentos, undefined, reglasPaisFijas());
 
     const r = await service.listar(
       { page: 1, pageSize: 20, sortBy: "created_at", sortDir: "desc" },
@@ -311,7 +312,7 @@ describe("listar — intentos de entrega en lote (160/R11/R12/R13/R14/R15)", () 
     });
     // `o3` no aparece en el mapa: no tiene intentos.
     intentos = fakeIntentosEnLote({ o1: 2, o2: 0 });
-    service = new OrdenService(repo, intentos);
+    service = new OrdenService(repo, intentos, undefined, reglasPaisFijas());
 
     const r = await service.listar(PAGINA, MAESTRO);
 
@@ -330,7 +331,7 @@ describe("listar — intentos de entrega en lote (160/R11/R12/R13/R14/R15)", () 
       }),
     });
     intentos = fakeIntentosEnLote();
-    service = new OrdenService(repo, intentos);
+    service = new OrdenService(repo, intentos, undefined, reglasPaisFijas());
 
     await service.listar(PAGINA, MAESTRO);
 
@@ -341,7 +342,7 @@ describe("listar — intentos de entrega en lote (160/R11/R12/R13/R14/R15)", () 
   it("R13: pagina vacia -> el derivador recibe un lote vacio (y no consulta)", async () => {
     repo = buildRepo({ list: vi.fn().mockResolvedValue({ items: [], total: 0 }) });
     intentos = fakeIntentosEnLote();
-    service = new OrdenService(repo, intentos);
+    service = new OrdenService(repo, intentos, undefined, reglasPaisFijas());
 
     const r = await service.listar(PAGINA, MAESTRO);
 
@@ -360,7 +361,7 @@ describe("listar — intentos de entrega en lote (160/R11/R12/R13/R14/R15)", () 
       }),
     });
     intentos = fakeIntentosEnLote();
-    service = new OrdenService(repo, intentos);
+    service = new OrdenService(repo, intentos, undefined, reglasPaisFijas());
 
     await service.listar(PAGINA, TIENDA);
 
@@ -377,7 +378,7 @@ describe("listar — intentos de entrega en lote (160/R11/R12/R13/R14/R15)", () 
       }),
     });
     intentos = fakeIntentosEnLote({ o1: 1 });
-    service = new OrdenService(repo, intentos);
+    service = new OrdenService(repo, intentos, undefined, reglasPaisFijas());
 
     const r = await service.listar({ ...PAGINA, page: 3 }, MAESTRO);
 
@@ -496,7 +497,7 @@ describe("listar — visibilidad de la tienda de origen (feature 48, R12/R14)", 
         total: 2,
       }),
     });
-    service = new OrdenService(repo, intentos);
+    service = new OrdenService(repo, intentos, undefined, reglasPaisFijas());
 
     const r = await service.listar(
       { page: 1, pageSize: 20, sortBy: "created_at", sortDir: "desc" },
@@ -558,7 +559,7 @@ describe("listar / eliminable (eliminar orden)", () => {
   function conPagina(items: OrdenListItemDTO[]) {
     const r = buildRepo({ list: vi.fn().mockResolvedValue({ items, total: items.length }) });
     const h = fakeIntentosEnLote();
-    return { service: new OrdenService(r, h), historial: h };
+    return { service: new OrdenService(r, h, undefined, reglasPaisFijas()), historial: h };
   }
 
   it("orden en un estado eliminable -> eliminable true", async () => {
@@ -739,6 +740,9 @@ describe("listar / eliminable (eliminar orden)", () => {
     await service.listar(PAGINA, MAESTRO);
 
     expect(historial.contarIntentosEnLote).toHaveBeenCalledTimes(1);
-    expect(Object.keys(historial)).toEqual(["contarIntentosEnLote", "contarIntentos"]);
+    expect(Object.keys(historial)).toEqual(["contarIntentosEnLote", "contarIntentos", "topeIntentos"]);
+    // SLT-77: el doble compartido ya trae el tope, y el listado no decide con él.
+    expect(historial.topeIntentos).not.toHaveBeenCalled();
+    expect(historial.contarIntentos).not.toHaveBeenCalled();
   });
 });

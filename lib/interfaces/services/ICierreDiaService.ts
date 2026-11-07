@@ -237,6 +237,9 @@ export interface IngresoEmpresaDTO {
   fulfillment: string | null;
   ivaFulfillment: string | null;
   tarifa: TarifaSnapshotDTO | null; // null = sin tarifa vigente al solicitar (R9)
+  // SLT-54 (R63): `tarifa === null` no distingue «sin tarifa» de «modelo nuevo», donde no hay fila de
+  // `tarifas` que enseñar, y la tarjeta diria algo falso. `null` = sin tarifa congelada.
+  tarifaModelo: "viejo" | "nuevo" | null;
 }
 
 /**

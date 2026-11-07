@@ -18,6 +18,8 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
       count: vi.fn(),
       groupBy: vi.fn(),
     },
+    // SLT-54: `listar` lee en lote el modelo del cierre de las filas con origen `cierre_dia`.
+    cierreDetail: { findMany: vi.fn().mockResolvedValue([]) },
     ...overrides,
   };
 }
@@ -270,6 +272,7 @@ describe("listar (R20/R24)", () => {
       // Ficha 459 (design §7.3): el repositorio no conoce los documentos; los resuelve en lote
       // `WalletService.listarMovimientos`. Aqui la proyeccion los deja en `null`.
       documento: null,
+      incluyeModeloNuevo: false, // SLT-54: el doble no tiene filas del nuevo
     });
     expect(typeof r.movimientos[0].monto).toBe("string");
   });
@@ -374,6 +377,8 @@ describe("agregarPorCategoriaYTipo (R8/R47)", () => {
     expect(metodos).toEqual([
       "agregarPorCategoria",
       "agregarPorCategoriaYTipo",
+      // D39: LECTURA de que rotulo lleva cada fila de la tarjeta. Sin importes y no es una mutacion.
+      "categoriasConModeloNuevo",
       "crearMovimientoRegistrado",
       "crearMovimientos",
       "listar",

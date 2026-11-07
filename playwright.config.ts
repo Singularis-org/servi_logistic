@@ -102,6 +102,8 @@ export default defineConfig({
         "planes-superadmin",
         // SLT-66 R26: costo por orden del plan; toca el global del cobro y lo devuelve al terminar.
         "planes-costeo",
+        // SLT-54 R54, R59, R60, R70: toca el catálogo de vehículos, global, y lo devuelve al terminar.
+        "tarifas-maqueta",
       ),
     },
     {
@@ -134,6 +136,17 @@ export default defineConfig({
         "ajuste-pago-mensajero-cierre",
         // SLT-68 · R22: el incentivo manual a un mensajero.
         "incentivo-mensajero-slt68",
+        // SLT-54 R67, R68: digitar no cambia nada; activar cambia el siguiente cierre, y solo en esa empresa.
+        "tarifas-activacion",
+        // SLT-55 R40: el valor propio del mensajero, de la sección al cierre aprobado.
+        "tarifas-valor-propio-mensajero",
+        // SLT-83 R28: costo por orden porcentual; la orden llega a entregado por el cierre real.
+        // Usa el superadmin de prueba y no toca el global del cobro.
+        "planes-costo-porcentual",
+        // SLT-77 T6.1: el tope de intentos de cada empresa, de la sección de Tarifas al cierre aprobado.
+        "tope-intentos-por-empresa",
+        // Tarifas activadas + valor propio + plan porcentual, en el mismo cierre aprobado. Usa el superadmin de prueba.
+        "cierre-modelo-nuevo-plan-porcentual",
       ),
     },
   ],

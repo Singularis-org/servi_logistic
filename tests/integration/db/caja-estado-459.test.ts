@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { Prisma, type PrismaClient } from "@prisma/client";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 import { WalletMovimientoRepository } from "@/lib/repositories/WalletMovimientoRepository";
 
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
@@ -31,7 +32,7 @@ describeSiHayBase("459/A.4 — el primer dia de la caja, contra Postgres", () =>
   it("R15: `MIN(fecha_movimiento)` en dia de Costa Rica, sin filtros", async () => {
     const medido = await enTransaccionRevertida459(prisma, async (tx) => {
       const repo = new WalletMovimientoRepository(tx as unknown as PrismaClient);
-      const antes = await repo.primerDiaDeLaCaja();
+      const antes = await repo.primerDiaDeLaCaja({ zonaHoraria: ZONA_DE_CR });
       await tx.walletMovimiento.createMany({
         data: [
           {
@@ -53,7 +54,7 @@ describeSiHayBase("459/A.4 — el primer dia de la caja, contra Postgres", () =>
           },
         ],
       });
-      return { antes, despues: await repo.primerDiaDeLaCaja() };
+      return { antes, despues: await repo.primerDiaDeLaCaja({ zonaHoraria: ZONA_DE_CR }) };
     });
 
     // Anti-vacuidad: el libro local no empezaba antes de 2020.

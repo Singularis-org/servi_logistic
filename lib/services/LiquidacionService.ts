@@ -47,7 +47,9 @@ import {
   descripcionDePago,
   medianocheUtcDelDia,
 } from "@/lib/utils/descripcion-pago";
-import { fechaCalendarioCR, inicioDelDiaCREnUtc } from "@/lib/utils/fecha-cr";
+import { fechaCalendario, inicioDelDiaEnUtc } from "@/lib/utils/calendario-zona";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 import { derivarPendienteCierre } from "@/lib/utils/pendiente-cierre";
 import {
   ordenarCierresFifo,
@@ -142,7 +144,7 @@ interface PagoDeCierreEscrito {
   fechaPago: Date;
   /**
    * Ficha 461 (R73, auditoria T2) — el instante del ASIENTO en el libro del mensajero: el INICIO del
-   * dia de pago en Costa Rica (`inicioDelDiaCREnUtc`, 06:00Z). Distinto de `fechaPago` a proposito:
+   * dia de pago en la zona del pais de la empresa (SLT-42; `inicioDelDiaEnUtc`). Distinto de `fechaPago` a proposito:
    * a las 00:00Z el rollup diario (`fecha_movimiento − 6 h`) lo contaba el dia ANTERIOR al del
    * documento.
    */
@@ -285,7 +287,14 @@ export class LiquidacionService implements ILiquidacionService {
      * silencio); sin comprobante, el pago es byte a byte el de antes.
      */
     private readonly comprobantes?: IWalletComprobanteService,
+    /**
+     * SLT-42 (R22, R28): la zona del pais de la empresa. Los asientos de un pago se fechan al inicio
+     * del dia de pago en esa zona, y una anulacion al inicio de hoy en ella. La real la pone el
+     * composition root; sin zona, la operacion falla antes de escribir nada.
+     */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
+
 
   /**
    * R21 — pago a un MENSAJERO, contra el pendiente de UN cierre aprobado. Es el mismo esqueleto
@@ -311,6 +320,7 @@ export class LiquidacionService implements ILiquidacionService {
 
     const monto = new Prisma.Decimal(input.monto).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
     const montoStr = monto.toFixed(2);
+    const zona = await zonaDeLaEmpresa(this.reglasPais, "LiquidacionService.registrarPagoMensajero"); // SLT-42 (R28): antes de abrir la transaccion
 
     try {
       return await this.runTransaction(async (tx) => {
@@ -345,7 +355,7 @@ export class LiquidacionService implements ILiquidacionService {
           referencia: input.referencia ?? null,
           nota: input.nota ?? null,
           fechaPago: medianocheUtcDelDia(input.fechaPago),
-          fechaMovimiento: inicioDelDiaCREnUtc(input.fechaPago), // 461/R73: el asiento, al inicio del dia CR
+          fechaMovimiento: inicioDelDiaEnUtc(input.fechaPago, zona), // 461/R73 + SLT-42: al inicio del dia en la zona del pais
           registradoPor: actor.usuarioId,
           // Feature 205 (T2.2/R51): este camino paga contra UN cierre desde /cierres-admin y NO
           // pertenece a ningun reparto. `null` es el dato, no una ausencia — y el comportamiento
@@ -504,6 +514,8 @@ export class LiquidacionService implements ILiquidacionService {
     comprobante: ComprobanteRecibido | null = null,
   ): Promise<RegistrarRepartoServiceResult | FalloDeComprobante> {
     if (!esAccesoTotal(actor.rol)) return { status: "forbidden" }; // R1/R4 — antes de tocar datos
+    // SLT-42 (R22, R28): la zona se lee ANTES de subir el comprobante; sin zona, nada se escribe.
+    const zona = await zonaDeLaEmpresa(this.reglasPais, "LiquidacionService.registrarRepartoMensajero");
     // FICHA 458-B (R74–R76): el comprobante se sube ANTES y se escribe en la transaccion del reparto,
     // una fila por pago del reparto (el mismo objeto: hubo UNA transferencia, R58 de la 205).
     // La escritura, como closure y no como metodo: la superficie del servicio no crece (lista cerrada).
@@ -516,8 +528,9 @@ export class LiquidacionService implements ILiquidacionService {
       const referencia = input.referencia ?? null;
       const nota = input.nota ?? null;
       const fechaPago = medianocheUtcDelDia(input.fechaPago);
-      // Ficha 461 (R73, auditoria T2): el asiento de cada imputacion, al INICIO del dia de pago en CR.
-      const fechaMovimiento = inicioDelDiaCREnUtc(input.fechaPago);
+      // Ficha 461 (R73, auditoria T2): el asiento de cada imputacion, al INICIO del dia de pago en la
+      // zona del pais (SLT-42).
+      const fechaMovimiento = inicioDelDiaEnUtc(input.fechaPago, zona);
 
       try {
         return await this.runTransaction(async (tx) => {
@@ -647,6 +660,8 @@ export class LiquidacionService implements ILiquidacionService {
     comprobante: ComprobanteRecibido | null = null,
   ): Promise<RegistrarPagoServiceResult | FalloDeComprobante> {
     if (!esAccesoTotal(actor.rol)) return { status: "forbidden" }; // R1/R2/R5/R6 — antes de tocar datos
+    // SLT-42 (R22, R28): la zona se lee ANTES de subir el comprobante; sin zona, nada se escribe.
+    const zona = await zonaDeLaEmpresa(this.reglasPais, "LiquidacionService.registrarPagoTienda");
     // FICHA 458-B (R74–R76): el comprobante se sube ANTES y se escribe en la transaccion del pago.
     // La escritura, como closure y no como metodo: la superficie del servicio no crece (lista cerrada).
     const escribirPagoTienda = async (guardado: ComprobanteGuardado | null): Promise<RegistrarPagoServiceResult> => {
@@ -709,9 +724,9 @@ export class LiquidacionService implements ILiquidacionService {
               origenId: creado.pago.id, //      …y hereda la idempotencia del indice unico parcial
               descripcion: descripcionDePago(input.metodo, input.referencia ?? null),
               registradoPor: actor.usuarioId,
-              // R37: la fecha REAL del pago. Ficha 461 (R73, auditoria T2): al INICIO de ese dia en CR
-              // (06:00Z), no a la medianoche UTC: el rollup lo contaba el dia anterior.
-              fechaMovimiento: inicioDelDiaCREnUtc(input.fechaPago),
+              // R37: la fecha REAL del pago. Ficha 461 (R73, auditoria T2): al INICIO de ese dia en la zona
+              // del pais (SLT-42), no a la medianoche UTC: el rollup lo contaba el dia anterior.
+              fechaMovimiento: inicioDelDiaEnUtc(input.fechaPago, zona),
             },
           ]);
 
@@ -726,7 +741,7 @@ export class LiquidacionService implements ILiquidacionService {
             monto: montoStr,
             descripcion: descripcionDePago(input.metodo, input.referencia ?? null),
             registradoPor: actor.usuarioId,
-            fechaMovimiento: inicioDelDiaCREnUtc(input.fechaPago), // R20 + 461/R73: la fecha REAL del pago, al inicio del dia CR
+            fechaMovimiento: inicioDelDiaEnUtc(input.fechaPago, zona), // R20 + 461/R73: la fecha REAL del pago, al inicio de su dia
           });
 
           // FICHA 458-B (R74): el comprobante del pago, en ESTA transaccion (si falla, no queda el pago).
@@ -803,8 +818,10 @@ export class LiquidacionService implements ILiquidacionService {
     // R77: el contraasiento se fecha el dia de la ANULACION, no el del pago. El precedente es
     // `reversarEgreso`, que no reabre fechas pasadas: entre el pago y su anulacion, un informe
     // por rango vera el pago aplicado, que es la semantica contable habitual.
-    // Ficha 461 (R73, auditoria T2): al INICIO del dia CR de la anulacion (06:00Z), no a las 00:00Z.
-    const fechaAnulacion = inicioDelDiaCREnUtc(fechaCalendarioCR(this.ahora()));
+    // Ficha 461 (R73, auditoria T2): al INICIO del dia de la anulacion, no a las 00:00Z. SLT-42 (R22,
+    // R28): el dia y su inicio son los de la zona del pais, leida antes de escribir nada.
+    const zona = await zonaDeLaEmpresa(this.reglasPais, "LiquidacionService.anularPago");
+    const fechaAnulacion = inicioDelDiaEnUtc(fechaCalendario(this.ahora(), zona), zona);
 
     try {
       return await this.runTransaction(async (tx) => {
@@ -886,8 +903,9 @@ export class LiquidacionService implements ILiquidacionService {
     if (vigentes.length === 0) return { status: "sin_vigentes", yaEstaban: yaAnuladas };
 
     // R77: una sola fecha para todo el acto. Anular en grupo es UN acto, no N actos seguidos.
-    // Ficha 461 (R73, auditoria T2): al INICIO del dia CR de la anulacion (06:00Z), no a las 00:00Z.
-    const fechaAnulacion = inicioDelDiaCREnUtc(fechaCalendarioCR(this.ahora()));
+    // Ficha 461 (R73, auditoria T2): al INICIO del dia de la anulacion en la zona del pais (SLT-42).
+    const zona = await zonaDeLaEmpresa(this.reglasPais, "LiquidacionService.anularReparto");
+    const fechaAnulacion = inicioDelDiaEnUtc(fechaCalendario(this.ahora(), zona), zona);
 
     // Los candados, en orden determinista y ANTES de escribir (ver cabecera). `Set` porque dos
     // imputaciones podrian compartir cierre y un candado repetido no aporta nada.
