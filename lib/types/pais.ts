@@ -165,11 +165,23 @@ export type NombresDeNivelesDePais = Pick<
   "nivel1Singular" | "nivel1Plural" | "nivel2Singular" | "nivel2Plural" | "nivel3Singular" | "nivel3Plural"
 >;
 
+/**
+ * Las etiquetas de los tres niveles de las pantallas de empresa, de `pais.nivel_N_*`.
+ *
+ * SLT-46 (design §2.4, P2, P10; R51) — convención `''`: un país de 2 niveles guarda texto vacío en
+ * `nivel_3_singular` y `nivel_3_plural` (las columnas son `NOT NULL` y quitarlo no sería aditivo), y
+ * `pais_tipos_de_nivel` no le crea tipo `nivel_3` mientras `nivel_3_singular` sea `''`. El singular
+ * es la marca, igual que en esa función. Con la marca, `distrito` repite la etiqueta del nivel 2
+ * (singular y plural): una columna titulada en blanco no se entiende, y ocultarla es de SLT-47.
+ * El `''` lo pone solo el repositorio; ningún schema lo acepta como nombre (2–40).
+ */
 export function etiquetasDePais(pais: NombresDeNivelesDePais): EtiquetasGeograficas {
+  const nivel2 = { singular: pais.nivel2Singular, plural: pais.nivel2Plural };
+  const sinNivel3 = pais.nivel3Singular === "";
   return {
     provincia: { singular: pais.nivel1Singular, plural: pais.nivel1Plural },
-    canton: { singular: pais.nivel2Singular, plural: pais.nivel2Plural },
-    distrito: { singular: pais.nivel3Singular, plural: pais.nivel3Plural },
+    canton: nivel2,
+    distrito: sinNivel3 ? { ...nivel2 } : { singular: pais.nivel3Singular, plural: pais.nivel3Plural },
   };
 }
 
