@@ -47,7 +47,7 @@ T9 (payloads reales desde la copia de producción) la hace una persona, no un ag
   ya usado por la misma key responde 500 INTERNAL, no el 409 de la feature 141/R24: con `@prisma/adapter-pg`
   el P2002 llega con `meta.target` «(not available)» y `esNombreDuplicado` (`lib/repositories/carga-lote.ts:32`)
   devuelve false. El paso de nombre repetido se quitó del payload `lote-con-nombre-e-individual` para no
-  congelar el 500. ¿Ficha propia? Decide el humano.
+  congelar el 500. **Cerrada 2026-11-06 (humano: «si»): ficha propia SLT-93**, pending, sin asignar.
 
 ## Tandas
 - 2026-11-05 · T1–T3 (T3.2 parcial) · `4107a48f`, `d5ae4cc8`, `adbb2a26`…`3f3428cb` · tsc 0; contrato v1 22/22;
