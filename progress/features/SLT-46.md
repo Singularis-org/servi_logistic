@@ -31,6 +31,10 @@ con el backend (T0.1, T1–T5; la UI espera la maqueta T0.2). Spec R1–R52, T0�
 ## Preguntas abiertas
 
 ## Tandas
+- 2026-11-06 · T1.1–T1.4, T2.1–T2.5 · `60e6869e`…`48ebaa2a` · tsc 0; eslint 0; guardias 336, único rojo el del
+  baseline; T2: copia al nodo 9/9, migraciones aditivas 26, ida y vuelta 5/5, `prisma migrate diff` vacío.
+  T0.1 sin cerrar: `./init.sh` local con la pila entera (1364 archivos, ~3,5 h, timeouts por carga); 11/12
+  re-corridos en verde, `demo-qa` rojo por base sin siembra. Veredicto en CI. Base `logistic_slt46`.
 
 ## Modelos (overrides)
 
