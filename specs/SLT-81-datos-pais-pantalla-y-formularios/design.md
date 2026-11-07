@@ -254,8 +254,8 @@ dentro de `enPlataforma` → `registrarFallo` ante un error de base (`{ status: 
 «Nuevo país» y el modal de edición cargan el prefijo oficial del país elegido (en edición, aunque
 el guardado sea otro: el aviso «El prefijo guardado (+X) no es el oficial (+Y)» explica el
 cambio). El campo se puede tocar, pero **el servidor rechaza** todo prefijo distinto del oficial
-(R26). Si libphonenumber no conoce el país (mapa en `null`), el formulario lo dice y el servidor
-rechaza (pregunta abierta de `requirements.md`).
+(R26). Si libphonenumber no conoce el país (mapa en `null`), «Nuevo país» no lo ofrece y el
+servidor lo rechaza (decisión del 2026-11-07, `requirements.md > Decisiones cerradas`).
 
 ## 6. Pantalla «Datos del país» (`/plataforma/geografia`)
 

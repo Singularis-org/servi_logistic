@@ -7,7 +7,7 @@
 
 ## Antes de empezar
 
-- [ ] **T0.0 — Pregunta abierta.** Las cuatro preguntas del spec inicial y R15 quedaron cerradas el
+- [x] **T0.0 — Pregunta abierta.** Las cuatro preguntas del spec inicial y R15 quedaron cerradas el
   2026-11-07 (tabla de decisiones). Queda una menor (país ISO que libphonenumber no conoce, R26):
   confirmar con el leader si el humano respondió; si cambia, se corrige R26 y su test antes de T1.4.
   **Hecho:** respuesta escrita en `requirements.md`, o el leader dice que se sigue con la lectura

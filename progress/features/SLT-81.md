@@ -26,8 +26,10 @@ de `dev`, que aún no trae el catálogo ni la validación de SLT-42.
   «Depende de» no se puede quitar con `scripts/trello.mjs` (no tiene opción): queda anotado como sin efecto en la tarjeta.
 - 2026-11-07: el humano cierra las cuatro preguntas del spec y R15 (postulación «Preparar + aviso», zonas de Node + `pg_timezone_names`, excepciones a SLT-92, prefijo oficial obligatorio, R15 se queda): ver filas del 2026-11-07 en `specs/SLT-81-*/requirements.md > Decisiones cerradas`. Requisitos nuevos R26–R28; task nueva T0.1.
 
+- 2026-11-07: país ISO sin prefijo oficial en libphonenumber (p. ej. `AQ`): se acepta que R26 lo rechace y no se ofrezca en el alta (humano). La implementación mueve esa pregunta de `requirements.md > Preguntas abiertas` a «Decisiones cerradas» (T0.0).
+
 ## Preguntas abiertas
-Una menor en `requirements.md`: país ISO que libphonenumber no conoce (R26 lo rechaza; lectura estricta, no bloquea).
+Ninguna.
 
 ## Tandas
 

@@ -157,13 +157,10 @@ destinatarios de WhatsApp.
 | 2026-11-07 · Excepciones de `pais-sin-literales` a nombre de SLT-81 | R28 |
 | 2026-11-07 · ¿Se rechaza un prefijo distinto del oficial? | R26 |
 | 2026-11-07 · ¿Se queda R15 (no desactivar el único tipo activo)? | R15 |
+| 2026-11-07 · País ISO que libphonenumber no conoce | R26 |
 
 ## Preguntas abiertas
-- (Nueva, spec_author, 2026-11-07) País del catálogo ISO que libphonenumber no conoce (p. ej. `AQ`,
-  `BV`, `HM`): con la decisión «solo el prefijo oficial» no tiene prefijo aceptable, así que R26 lo
-  rechaza y ese país no se puede dar de alta ni editar. Es la lectura estricta de la decisión y es
-  la que se especifica; si el humano prefiere aceptar cualquier prefijo con formato válido para
-  esos países, cambia solo R26 y su test. No bloquea el resto.
+Ninguna.
 
 ## Decisiones cerradas (no reabrir)
 | Fecha | Pregunta | Decisión |
@@ -186,3 +183,4 @@ destinatarios de WhatsApp.
 | 2026-11-07 | Excepciones de `pais-sin-literales` a nombre de SLT-81 (`fecha-cr`, `hora-cr`, `separador-dia-cr`, `telefono-cr`) | Pasan a la ficha nueva SLT-92 «Pantallas: fechas y teléfonos en la zona y el prefijo del país de la empresa» (ya creada en Trello). Fuera de SLT-81, que no deja ninguna excepción a su nombre. |
 | 2026-11-07 | ¿Se rechaza un prefijo distinto del oficial? | Sí. El servidor solo acepta el prefijo oficial del país según libphonenumber (`getCountryCallingCode(paisId)`); el formulario lo propone ya cargado. |
 | 2026-11-07 | ¿Se queda R15 (no desactivar el único tipo activo)? | Se queda. Aprobado por el humano. |
+| 2026-11-07 | País del catálogo ISO que libphonenumber no conoce (p. ej. `AQ`, `BV`, `HM`) | Se acepta: R26 lo rechaza y no se ofrece en el alta (humano). |
