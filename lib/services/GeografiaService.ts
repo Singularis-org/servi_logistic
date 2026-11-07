@@ -13,10 +13,10 @@ import type {
 } from "@/lib/interfaces/services/IGeografiaService";
 import {
   NIVELES_GEOGRAFICOS,
-  type AltaDeNodoInput,
-  type CambiarActivacionNodoInput,
-  type NodoPorIdInput,
-  type RenombrarNodoInput,
+  type CambiarActivacionGeograficaInput,
+  type CrearNodoGeograficoInput,
+  type NodoGeograficoInput,
+  type RenombrarNodoGeograficoInput,
 } from "@/lib/types/geografia-nodo";
 import { validarCodigoDeTipo } from "@/lib/utils/codigo-geografico";
 import { rechazoDeNombreDeEtiqueta } from "@/lib/utils/nombre-imprimible-etiqueta";
@@ -100,7 +100,7 @@ export class GeografiaService implements IGeografiaService {
    * Un hermano INACTIVO tambien produce `conflict`: el nombre sigue ocupado para el UNIQUE, y
    * reactivar el viejo despues chocaria con el nuevo.
    */
-  async crear(input: AltaDeNodoInput, actor: Actor): Promise<CrearNodoGeograficoServiceResult> {
+  async crear(input: CrearNodoGeograficoInput, actor: Actor): Promise<CrearNodoGeograficoServiceResult> {
     if (!GESTION_ROLES.has(actor.rol)) return { status: "forbidden" };
 
     // ⭑ FICHA 392 — el nombre de este nodo SE IMPRIME en la etiqueta (`geografiaLegible` lo une
@@ -151,7 +151,7 @@ export class GeografiaService implements IGeografiaService {
    *   `cambiado`   -> `ok`, y esa es la unica rama que audita.
    */
   async cambiarActivacion(
-    input: CambiarActivacionNodoInput,
+    input: CambiarActivacionGeograficaInput,
     actor: Actor,
   ): Promise<CambiarActivacionGeograficaServiceResult> {
     if (!GESTION_ROLES.has(actor.rol)) return { status: "forbidden" };
@@ -181,7 +181,7 @@ export class GeografiaService implements IGeografiaService {
    * declarar una segunda normalizacion: dos claves son dos reglas que un dia divergen.
    */
   async renombrar(
-    input: RenombrarNodoInput,
+    input: RenombrarNodoGeograficoInput,
     actor: Actor,
   ): Promise<RenombrarNodoGeograficoServiceResult> {
     if (!GESTION_ROLES.has(actor.rol)) return { status: "forbidden" };
@@ -216,7 +216,7 @@ export class GeografiaService implements IGeografiaService {
    * decidir si la operacion procede.
    */
   async contarOrdenesSinEntregar(
-    input: NodoPorIdInput,
+    input: NodoGeograficoInput,
     actor: Actor,
   ): Promise<ContarOrdenesSinEntregarServiceResult> {
     if (!GESTION_ROLES.has(actor.rol)) return { status: "forbidden" };

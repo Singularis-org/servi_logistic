@@ -1,11 +1,11 @@
 import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
 import type {
-  AltaDeNodoInput,
-  CambiarActivacionNodoInput,
+  CambiarActivacionGeograficaInput,
+  CrearNodoGeograficoInput,
   NodoArbolPlataformaDTO,
-  NodoPorIdInput,
+  NodoGeograficoInput,
   ProvinciaArbolDTO,
-  RenombrarNodoInput,
+  RenombrarNodoGeograficoInput,
   TipoNivelDTO,
 } from "@/lib/types/geografia-nodo";
 
@@ -104,7 +104,7 @@ export interface IGeografiaService {
    * inconsistencia, es la cascada evaluandose.
    */
   crear(
-    input: AltaDeNodoInput,
+    input: CrearNodoGeograficoInput,
     actor: Actor,
   ): Promise<CrearNodoGeograficoServiceResult>;
 
@@ -115,7 +115,7 @@ export interface IGeografiaService {
    * Pedir el estado en el que el nodo ya esta devuelve `ok` sin escribir nada (R21/R53).
    */
   cambiarActivacion(
-    input: CambiarActivacionNodoInput,
+    input: CambiarActivacionGeograficaInput,
     actor: Actor,
   ): Promise<CambiarActivacionGeograficaServiceResult>;
 
@@ -131,7 +131,7 @@ export interface IGeografiaService {
    * de la base dejaria entrar «San Jose» junto a «San José».
    */
   renombrar(
-    input: RenombrarNodoInput,
+    input: RenombrarNodoGeograficoInput,
     actor: Actor,
   ): Promise<RenombrarNodoGeograficoServiceResult>;
 
@@ -141,7 +141,7 @@ export interface IGeografiaService {
    * SLT-46 (R20): un nodo de profundidad 4 o mas, o uno que no existe, cuenta 0.
    */
   contarOrdenesSinEntregar(
-    input: NodoPorIdInput,
+    input: NodoGeograficoInput,
     actor: Actor,
   ): Promise<ContarOrdenesSinEntregarServiceResult>;
 }

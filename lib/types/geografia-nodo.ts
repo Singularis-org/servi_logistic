@@ -67,97 +67,20 @@ const codigoGeoSchema = z
   .transform((v) => (v === "" ? undefined : v))
   .optional();
 
-/**
- * El alta, como union DISCRIMINADA por el nivel (R25).
- *
- * La discriminada mantiene el borde igual de estricto que seis acciones separadas: un `cantonId`
- * en un alta de provincia es `validation_error`, NO un campo ignorado en silencio. `.strict()` no
- * es decorativo: una clave desconocida se rechaza, no se descarta.
- *
- * SL-20: la provincia cuelga de un país (`paisId`, ISO alfa-2); cantón y distrito heredan el de su
- * padre, así que no lo llevan.
- */
-export const crearNodoGeograficoSchema = z.discriminatedUnion("nivel", [
-  z
-    .object({
-      nivel: z.literal("provincia"),
-      nombre: nombreGeoSchema,
-      paisId: z.string().regex(/^[A-Z]{2}$/, "El país no es válido."),
-      codigo: codigoGeoSchema,
-    })
-    .strict(),
-  z
-    .object({
-      nivel: z.literal("canton"),
-      nombre: nombreGeoSchema,
-      provinciaId: z.string().min(1),
-      codigo: codigoGeoSchema,
-    })
-    .strict(),
-  z
-    .object({
-      nivel: z.literal("distrito"),
-      nombre: nombreGeoSchema,
-      cantonId: z.string().min(1),
-      codigo: codigoGeoSchema,
-    })
-    .strict(),
-]);
-
-export type CrearNodoGeograficoInput = z.infer<typeof crearNodoGeograficoSchema>;
-
-/** El cambio de activacion. `activo` es el estado DESEADO, no un toggle: pedir dos veces lo mismo
- * tiene que ser idempotente (R21) y un toggle no puede serlo. */
-export const cambiarActivacionGeograficaSchema = z
-  .object({
-    nivel: z.enum(NIVELES_GEOGRAFICOS),
-    id: z.string().min(1),
-    activo: z.boolean(),
-  })
-  .strict();
-
-export type CambiarActivacionGeograficaInput = z.infer<typeof cambiarActivacionGeograficaSchema>;
-
-/**
- * FICHA 375 — el RENOMBRADO. Mismo `{nivel, id}` que el resto, mas el nombre nuevo.
- *
- * REUSA `nombreGeoSchema`, el MISMO del alta, a proposito: recorta, colapsa espacios y exige las
- * mismas cotas. Un segundo esquema de nombre seria un segundo contrato capaz de admitir por
- * renombrado lo que el alta rechaza —y al reves—, y la base tiene UN solo `@@unique` para los dos
- * caminos. `.strict()` no es decorativo: una clave desconocida se rechaza, no se descarta.
- */
-export const renombrarNodoGeograficoSchema = z
-  .object({
-    nivel: z.enum(NIVELES_GEOGRAFICOS),
-    id: z.string().min(1),
-    nombre: nombreGeoSchema,
-  })
-  .strict();
-
-export type RenombrarNodoGeograficoInput = z.infer<typeof renombrarNodoGeograficoSchema>;
-
-/** Un nodo, sin mas: lo que necesita el conteo de la confirmacion (R60). */
-export const nodoGeograficoSchema = z
-  .object({ nivel: z.enum(NIVELES_GEOGRAFICOS), id: z.string().min(1) })
-  .strict();
-
-export type NodoGeograficoInput = z.infer<typeof nodoGeograficoSchema>;
-
 // ── SLT-46 (design §4.1): el borde por NODO, a cualquier profundidad ─────────────────────────
 //
-// Conviven con los de arriba (por `nivel`) solo hasta T4, que pasa la action y los services a
-// estos y retira aquellos; cambiarlos en sitio aqui romperia a la vez la action, `GeografiaService`
-// y la pantalla. El nivel ya no viaja: lo dice la profundidad del nodo en la base, y el tipo de un
-// alta es el de su profundidad (P1), asi que tampoco se elige.
+// El nivel ya no viaja: lo dice la profundidad del nodo en la base, y el tipo de un alta es el de su
+// profundidad (P1), asi que tampoco se elige. Un esquema por operacion: los de SL-20, discriminados
+// o con `nivel`, se retiraron en T4.4.
 
 const idDeNodoSchema = z.string().min(1);
 
 /**
  * El alta: raiz de un pais (`paisId`) o hijo de un nodo (`padreId`) de cualquier profundidad.
  * Cada rama es `.strict()`: traer las dos claves, o ninguna, es `validation_error` y no una
- * eleccion silenciosa de una de ellas.
+ * eleccion silenciosa de una de ellas; un `nivel` o un `tipoId` tambien.
  */
-export const altaDeNodoSchema = z.union([
+export const crearNodoGeograficoSchema = z.union([
   z
     .object({
       paisId: z.string().regex(/^[A-Z]{2}$/, "El país no es válido."),
@@ -168,42 +91,32 @@ export const altaDeNodoSchema = z.union([
   z.object({ padreId: idDeNodoSchema, nombre: nombreGeoSchema, codigo: codigoGeoSchema }).strict(),
 ]);
 
-export type AltaDeNodoInput = z.infer<typeof altaDeNodoSchema>;
+export type CrearNodoGeograficoInput = z.infer<typeof crearNodoGeograficoSchema>;
 
 /**
- * El renombre. R22: sin campo de padre; `.strict()` rechaza un `padreId` en vez de descartarlo, que
- * es lo que impide que el renombre se convierta en un «mover» encubierto (mover es SLT-48).
+ * El renombre. REUSA `nombreGeoSchema`, el MISMO del alta: un segundo esquema de nombre seria un
+ * segundo contrato capaz de admitir por renombrado lo que el alta rechaza. R22: sin campo de padre;
+ * `.strict()` rechaza un `padreId` en vez de descartarlo, que es lo que impide que el renombre se
+ * convierta en un «mover» encubierto (mover es SLT-48).
  */
-export const renombrarNodoSchema = z.object({ id: idDeNodoSchema, nombre: nombreGeoSchema }).strict();
+export const renombrarNodoGeograficoSchema = z.object({ id: idDeNodoSchema, nombre: nombreGeoSchema }).strict();
 
-export type RenombrarNodoInput = z.infer<typeof renombrarNodoSchema>;
+export type RenombrarNodoGeograficoInput = z.infer<typeof renombrarNodoGeograficoSchema>;
 
-/** El retiro o la reactivacion: `activo` es el estado deseado. R22: sin padre, igual que el renombre. */
-export const cambiarActivacionNodoSchema = z
+/**
+ * El retiro o la reactivacion. `activo` es el estado DESEADO, no un toggle: pedir dos veces lo mismo
+ * tiene que ser idempotente, y un toggle no puede serlo. R22: sin padre, igual que el renombre.
+ */
+export const cambiarActivacionGeograficaSchema = z
   .object({ id: idDeNodoSchema, activo: z.boolean() })
   .strict();
 
-export type CambiarActivacionNodoInput = z.infer<typeof cambiarActivacionNodoSchema>;
+export type CambiarActivacionGeograficaInput = z.infer<typeof cambiarActivacionGeograficaSchema>;
 
 /** Un nodo por su id, sin mas: el conteo de ordenes de la confirmacion del retiro (R20). */
-export const nodoPorIdSchema = z.object({ id: idDeNodoSchema }).strict();
+export const nodoGeograficoSchema = z.object({ id: idDeNodoSchema }).strict();
 
-export type NodoPorIdInput = z.infer<typeof nodoPorIdSchema>;
-
-/** El padre que exige el alta de cada nivel; `null` cuando el nivel no lleva padre. */
-export function padreDeAlta(input: CrearNodoGeograficoInput): string | null {
-  if (input.nivel === "canton") return input.provinciaId;
-  if (input.nivel === "distrito") return input.cantonId;
-  return null;
-}
-
-/**
- * SL-20 — dónde cuelga el alta: el padre en cantón y distrito, el PAÍS en la provincia. Es la clave
- * con la que `IGeoRepository.findHermanos` lee los hermanos y la regla de código.
- */
-export function contenedorDeAlta(input: CrearNodoGeograficoInput): string {
-  return input.nivel === "provincia" ? input.paisId : (padreDeAlta(input) as string);
-}
+export type NodoGeograficoInput = z.infer<typeof nodoGeograficoSchema>;
 
 // ── Los DTO del arbol ────────────────────────────────────────────────────────────────────────
 //

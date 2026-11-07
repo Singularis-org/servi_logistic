@@ -31,35 +31,6 @@ const nombrePaisSchema = z
 /** R41: el mensaje de un código que no está en el catálogo. */
 export const PAIS_FUERA_DEL_CATALOGO = "Elige un país de la lista (ISO 3166-1).";
 
-/**
- * El alta de un país (R23, R41; enmienda 2026-10-26, decisión 5). El país se ELIGE del catálogo
- * ISO 3166-1: la entrada trae solo su código (`id`) y los seis nombres de nivel, que sí se teclean.
- * El nombre no viaja: lo pone el servicio desde el catálogo (`DatosDeAltaDePais`). Sin regla de
- * código: la pantalla no la ofrece y el país nuevo acepta códigos de texto libre (R17); solo Costa
- * Rica la tiene, puesta por su migración.
- */
-export const crearPaisSchema = z
-  .object({
-    // R41: un código fuera del catálogo (también `XA`–`XZ`, que solo crea la fábrica de tests) es
-    // `validation_error` en `id`. Estar en el catálogo implica cumplir `CODIGO_PAIS`.
-    id: z
-      .string()
-      .trim()
-      .refine((id) => paisDelCatalogo(id) !== null, PAIS_FUERA_DEL_CATALOGO),
-    nivel1Singular: nombrePaisSchema,
-    nivel1Plural: nombrePaisSchema,
-    nivel2Singular: nombrePaisSchema,
-    nivel2Plural: nombrePaisSchema,
-    nivel3Singular: nombrePaisSchema,
-    nivel3Plural: nombrePaisSchema,
-  })
-  .strict();
-
-export type CrearPaisInput = z.infer<typeof crearPaisSchema>;
-
-/** Lo que el repositorio escribe en `pais`: la entrada validada más el nombre del catálogo (R23). */
-export type DatosDeAltaDePais = CrearPaisInput & { nombre: string };
-
 // ── SLT-46 (design §4.1; R23, R24, R25, R48, R49) — el país con su catálogo de tipos ─────────
 
 /** P2: un país tiene de 2 a 10 tipos de nivel. Lo comparten el alta y «agregar nivel» (tope). */
@@ -69,14 +40,19 @@ export const PAIS_NIVELES_MAX = 10;
 const tipoDeAltaSchema = z.object({ singular: nombrePaisSchema, plural: nombrePaisSchema }).strict();
 
 /**
- * El alta de un país con su lista ORDENADA de tipos: el primero es `nivel_1`, el último `nivel_P`
- * (R23). Mismo `id` de catálogo que `crearPaisSchema` (R24: los demás rechazos, como en SL-20).
+ * El alta de un país (R23, R24, R41; enmienda 2026-10-26, decisión 5) con su lista ORDENADA de tipos:
+ * el primero es `nivel_1`, el último `nivel_P`. El país se ELIGE del catálogo ISO 3166-1: la entrada
+ * trae su código (`id`) y los nombres de cada tipo, que sí se teclean. El nombre no viaja: lo pone el
+ * servicio desde el catálogo (`DatosDeAltaDePaisConTipos`). Sin regla de código: la pantalla no la
+ * ofrece y el país nuevo acepta códigos de texto libre (R17); solo Costa Rica la tiene, puesta por su
+ * migración.
  *
- * Convive con `crearPaisSchema` (seis campos fijos) hasta que T4 pase `PaisService` y la pantalla a
- * este y retire aquel: cambiarlo en sitio rompería ya el repositorio y el formulario.
+ * SLT-46 (T4.4): reemplaza al alta de SL-20 de seis campos fijos `nivelNSingular/Plural`.
  */
-export const crearPaisConTiposSchema = z
+export const crearPaisSchema = z
   .object({
+    // R41: un código fuera del catálogo (también `XA`–`XZ`, que solo crea la fábrica de tests) es
+    // `validation_error` en `id`. Estar en el catálogo implica cumplir `CODIGO_PAIS`.
     id: z
       .string()
       .trim()
@@ -88,10 +64,18 @@ export const crearPaisConTiposSchema = z
   })
   .strict();
 
-export type CrearPaisConTiposInput = z.infer<typeof crearPaisConTiposSchema>;
+export type CrearPaisInput = z.infer<typeof crearPaisSchema>;
 
 /** Lo que `PaisRepository.crearConTipos` escribe: la entrada validada más el nombre del catálogo (R23). */
-export type DatosDeAltaDePaisConTipos = CrearPaisConTiposInput & { nombre: string };
+export type DatosDeAltaDePaisConTipos = CrearPaisInput & { nombre: string };
+
+/**
+ * Lo que escribe `PaisRepository.crear`, el alta de SL-20 (seis nombres fijos, tres tipos que pone el
+ * trigger). Ya no tiene esquema ni llamador de la app: solo lo usa
+ * `tests/integration/db/pais-repositorio.test.ts`, y su retiro está pendiente de decisión
+ * (`IPaisRepository.crear`).
+ */
+export type DatosDeAltaDePais = Pick<PaisDTO, "id" | "nombre"> & NombresDeNivelesDePais;
 
 /** R25, R26: los dos nombres de un tipo ya creado, con las cotas del alta (2–40). */
 export const renombrarTipoNivelSchema = z

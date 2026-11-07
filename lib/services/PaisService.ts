@@ -15,7 +15,7 @@ import type {
 import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
 import {
   agregarNivelPaisSchema,
-  crearPaisConTiposSchema,
+  crearPaisSchema,
   etiquetasDePais,
   PAIS_FUERA_DEL_CATALOGO,
   PAIS_NIVELES_MAX,
@@ -76,7 +76,7 @@ export class PaisService implements IPaisService {
   async crear(input: unknown, actor: Actor): Promise<CrearPaisServiceResult> {
     if (!GESTION_ROLES.has(actor.rol)) return { status: "forbidden" };
 
-    const validada = crearPaisConTiposSchema.safeParse(input);
+    const validada = crearPaisSchema.safeParse(input);
     if (!validada.success) return errorDeValidacion(validada.error);
     const delCatalogo = paisDelCatalogo(validada.data.id);
     // El schema ya lo exige (R41); esta rama solo existe para que el tipo no mienta.

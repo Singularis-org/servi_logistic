@@ -20,10 +20,12 @@ import type {
   RenombrarNodoGeograficoServiceResult,
 } from "@/lib/interfaces/services/IGeografiaService";
 import type {
+  AgregarNivelPaisServiceResult,
   CambiarDisponibilidadPaisServiceResult,
   CrearPaisServiceResult,
   IPaisService,
   ListarPaisesServiceResult,
+  RenombrarTipoNivelServiceResult,
 } from "@/lib/interfaces/services/IPaisService";
 import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
 import { esViolacionDeUnico } from "@/lib/repositories/_shared/prisma-unique";
@@ -36,7 +38,6 @@ import {
   crearNodoGeograficoSchema,
   nodoGeograficoSchema,
   renombrarNodoGeograficoSchema,
-  type AltaDeNodoInput,
   type CrearNodoGeograficoInput,
 } from "@/lib/types/geografia-nodo";
 import { cambiarDisponibilidadPaisSchema, CODIGO_PAIS } from "@/lib/types/pais";
@@ -49,13 +50,20 @@ import { cambiarDisponibilidadPaisSchema, CODIGO_PAIS } from "@/lib/types/pais";
 //
 // Los servicios vuelven a mirar `GESTION_ROLES`: la puerta de aquí es la primera, no la única (R37).
 //
-// `crearPaisAction` pasa la entrada tal cual al servicio: `crearPaisSchema` exige que el código esté
-// en el catálogo ISO 3166-1 (R41) y el servicio pone el nombre del catálogo (R23).
+// `crearPaisAction`, `renombrarTipoNivelAction` y `agregarNivelPaisAction` pasan la entrada tal cual
+// al servicio, que la valida (`crearPaisSchema`, `renombrarTipoNivelSchema`, `agregarNivelPaisSchema`):
+// el alta exige que el código esté en el catálogo ISO 3166-1 (R41) y el servicio pone el nombre del
+// catálogo (R23).
+//
+// SLT-46 (design §4.1, §4.2; R22, R50): los nodos viajan por id, sin `nivel`, a cualquier profundidad.
+// No hay action para mover un nodo de padre ni para quitar un tipo o un nivel de un país; la lista de
+// exports la fija `geografia-plataforma-action.test.ts`.
 //
 // Errores (R36; decisión del humano en la tanda 4): las actions que escriben (altas, renombre,
 // retiro, disponibilidad, carga) y el conteo de la confirmación responden `error` y dejan el log
-// cuando la base falla. Solo el único violado de un alta o un renombre es `conflict`. El árbol y el
-// listado de países no lo llevan: son la carga de la pantalla, y su fallo sube a la página.
+// cuando la base falla. Solo el único violado de un alta, un renombre de nodo o un nivel agregado es
+// `conflict` (SLT-46 R5, R49). El árbol y el listado de países no lo llevan: son la carga de la
+// pantalla, y su fallo sube a la página.
 
 const FICHA = "SL-20";
 const MOTIVO =
@@ -120,15 +128,9 @@ function enPlataforma<T>(fn: () => Promise<T>): Promise<T> {
   return comoPlataforma(FICHA, MOTIVO, fn);
 }
 
-/**
- * SLT-46 (T4.1): el servicio ya trabaja por nodo (`{paisId}` o `{padreId}`, sin `nivel`), pero el borde
- * y la pantalla siguen con los esquemas por nivel de SL-20 hasta T4.4/T6. La provincia cuelga del
- * pais; el canton y el distrito, de su padre. El `nivel` se queda aqui para el log.
- */
-function altaPorNodo(input: CrearNodoGeograficoInput): AltaDeNodoInput {
-  const { nombre, codigo } = input;
-  if (input.nivel === "provincia") return { paisId: input.paisId, nombre, codigo };
-  return { padreId: input.nivel === "canton" ? input.provinciaId : input.cantonId, nombre, codigo };
+/** Dónde cuelga el alta, para el log: el país de una raíz o el padre de un hijo. Solo ids, sin nombres. */
+function destinoDeAlta(input: CrearNodoGeograficoInput): string {
+  return "paisId" in input ? `pais=${input.paisId}` : `padre=${input.padreId}`;
 }
 
 // ── Países ───────────────────────────────────────────────────────────────────────────────────────
@@ -148,8 +150,8 @@ export async function listarPaisesAction(deps: GeografiaPlataformaDeps = {}): Pr
 export type CrearPaisActionResult = CrearPaisServiceResult | SinPermiso | ErrorInterno;
 
 /**
- * R23. La validación vive en el servicio (`crearPaisSchema`); un único violado en carrera ya vuelve
- * del repositorio como `conflict`. Cualquier otro fallo es `error` (R36).
+ * R23, R24. La validación vive en el servicio (`crearPaisSchema`: `{ id, tipos }`, 2–10 tipos); un
+ * único violado en carrera ya vuelve del repositorio como `conflict`. Cualquier otro fallo es `error` (R36).
  */
 export async function crearPaisAction(
   input: unknown,
@@ -190,6 +192,53 @@ export async function cambiarDisponibilidadPaisAction(
   }
 }
 
+export type RenombrarTipoNivelActionResult = RenombrarTipoNivelServiceResult | SinPermiso | ErrorInterno;
+
+/**
+ * SLT-46 (R25, R26): los dos nombres de un tipo de nivel. Pedir los que ya tiene es `ok` sin escribir;
+ * un tipo que no existe es `not_found`. El nombre de un tipo no es único: un fallo de la base es
+ * `error` con log (R36).
+ */
+export async function renombrarTipoNivelAction(
+  input: unknown,
+  deps: GeografiaPlataformaDeps = {},
+): Promise<RenombrarTipoNivelActionResult> {
+  const p = await puerta(deps);
+  if ("corte" in p) return p.corte;
+  const servicio = deps.paisService ?? construirPaisService();
+  try {
+    return await enPlataforma(() => servicio.renombrarTipo(input, p.actor));
+  } catch (error) {
+    return registrarFallo("renombrado de tipo de nivel", "-", error);
+  }
+}
+
+export type AgregarNivelPaisActionResult =
+  | AgregarNivelPaisServiceResult
+  | { status: "conflict" }
+  | SinPermiso
+  | ErrorInterno;
+
+/**
+ * SLT-46 (P3; R48, R49): un nivel más, siempre al final. El tope de 10 es `validation_error` en
+ * `paisId` y un país que no existe, `not_found` (los decide el servicio). Dos altas de nivel en
+ * paralelo chocan en el único de `nivel_<P+1>`: el `P2002` sube del servicio y aquí es `conflict`.
+ */
+export async function agregarNivelPaisAction(
+  input: unknown,
+  deps: GeografiaPlataformaDeps = {},
+): Promise<AgregarNivelPaisActionResult> {
+  const p = await puerta(deps);
+  if ("corte" in p) return p.corte;
+  const servicio = deps.paisService ?? construirPaisService();
+  try {
+    return await enPlataforma(() => servicio.agregarNivel(input, p.actor));
+  } catch (error) {
+    if (esViolacionDeUnico(error)) return { status: "conflict" };
+    return registrarFallo("alta de nivel", "-", error);
+  }
+}
+
 // ── Árbol y nodos ────────────────────────────────────────────────────────────────────────────────
 
 const arbolDePaisSchema = z.object({ paisId: z.string().regex(CODIGO_PAIS, "El país no es válido.") }).strict();
@@ -218,9 +267,10 @@ export type CrearNodoActionResult =
   | ErrorInterno;
 
 /**
- * Alta de un nodo en cualquiera de los tres niveles (R29). Un nombre o un código repetido que el
- * servicio no vio (carrera, o el código, que solo frena el único de la base: R16, R52) es `conflict`;
- * cualquier otro fallo es `error` y queda en el log (R36).
+ * Alta de un nodo: raíz de un país (`paisId`) o hijo de cualquier nodo (`padreId`), sin `nivel`
+ * (SLT-46 R14, R15). Un nombre o un código repetido que el servicio no vio (carrera, o el código, que
+ * solo frena el único de la base: R16, R52), o un único de la copia a la geografía vieja (SLT-46 R5),
+ * es `conflict`; cualquier otro fallo es `error` y queda en el log (R36).
  */
 export async function crearNodoAction(
   input: unknown,
@@ -232,10 +282,10 @@ export async function crearNodoAction(
   if (!parsed.success) return errorDeValidacion(parsed.error);
   const servicio = deps.geografiaService ?? construirGeografiaService();
   try {
-    return await enPlataforma(() => servicio.crear(altaPorNodo(parsed.data), p.actor));
+    return await enPlataforma(() => servicio.crear(parsed.data, p.actor));
   } catch (error) {
     if (esViolacionDeUnico(error)) return { status: "conflict" };
-    return registrarFallo("alta de nodo", `nivel=${parsed.data.nivel}`, error);
+    return registrarFallo("alta de nodo", destinoDeAlta(parsed.data), error);
   }
 }
 
@@ -246,7 +296,8 @@ export type RenombrarNodoActionResult =
   | ErrorInterno;
 
 /**
- * R30 (ficha 375): renombrar a su propio nombre es `ok`; al de un hermano, `conflict`. Mismo `catch` que el alta.
+ * R30 (ficha 375): renombrar a su propio nombre es `ok`; al de un hermano, `conflict`. Mismo `catch`
+ * que el alta. R22: `{ id, nombre }` y nada más; un `padreId` es `validation_error`, no un «mover».
  */
 export async function renombrarNodoAction(
   input: unknown,
@@ -258,11 +309,10 @@ export async function renombrarNodoAction(
   if (!parsed.success) return errorDeValidacion(parsed.error);
   const servicio = deps.geografiaService ?? construirGeografiaService();
   try {
-    const { id, nombre } = parsed.data;
-    return await enPlataforma(() => servicio.renombrar({ id, nombre }, p.actor));
+    return await enPlataforma(() => servicio.renombrar(parsed.data, p.actor));
   } catch (error) {
     if (esViolacionDeUnico(error)) return { status: "conflict" };
-    return registrarFallo("renombrado de nodo", `nivel=${parsed.data.nivel}`, error);
+    return registrarFallo("renombrado de nodo", `nodo=${parsed.data.id}`, error);
   }
 }
 
@@ -286,10 +336,9 @@ export async function cambiarActivacionNodoAction(
   if (!parsed.success) return errorDeValidacion(parsed.error);
   const servicio = deps.geografiaService ?? construirGeografiaService();
   try {
-    const { id, activo } = parsed.data;
-    return await enPlataforma(() => servicio.cambiarActivacion({ id, activo }, p.actor));
+    return await enPlataforma(() => servicio.cambiarActivacion(parsed.data, p.actor));
   } catch (error) {
-    return registrarFallo(parsed.data.activo ? "reactivacion de nodo" : "retiro de nodo", `nivel=${parsed.data.nivel}`, error);
+    return registrarFallo(parsed.data.activo ? "reactivacion de nodo" : "retiro de nodo", `nodo=${parsed.data.id}`, error);
   }
 }
 
@@ -313,10 +362,9 @@ export async function contarOrdenesSinEntregarAction(
   if (!parsed.success) return errorDeValidacion(parsed.error);
   const servicio = deps.geografiaService ?? construirGeografiaService();
   try {
-    const { id } = parsed.data;
-    return await enPlataforma(() => servicio.contarOrdenesSinEntregar({ id }, p.actor));
+    return await enPlataforma(() => servicio.contarOrdenesSinEntregar(parsed.data, p.actor));
   } catch (error) {
-    return registrarFallo("conteo de ordenes", `nivel=${parsed.data.nivel}`, error);
+    return registrarFallo("conteo de ordenes", `nodo=${parsed.data.id}`, error);
   }
 }
 

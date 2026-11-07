@@ -7,7 +7,7 @@ import {
   PAIS_NOMBRE_MAX,
   PAIS_NOMBRE_MIN,
   agregarNivelPaisSchema,
-  crearPaisConTiposSchema,
+  crearPaisSchema,
   renombrarTipoNivelSchema,
 } from "@/lib/types/pais";
 
@@ -25,14 +25,14 @@ describe("R24/P2 — el alta de país trae de 2 a 10 tipos", () => {
   it("acepta 2 y 10 tipos, y conserva su orden (el primero será `nivel_1`)", () => {
     expect(PAIS_NIVELES_MIN).toBe(2);
     expect(PAIS_NIVELES_MAX).toBe(10);
-    expect(crearPaisConTiposSchema.safeParse({ id: "GT", tipos: tipos(2) }).success).toBe(true);
-    const diez = crearPaisConTiposSchema.parse({ id: "GT", tipos: tipos(10) });
+    expect(crearPaisSchema.safeParse({ id: "GT", tipos: tipos(2) }).success).toBe(true);
+    const diez = crearPaisSchema.parse({ id: "GT", tipos: tipos(10) });
     expect(diez.tipos.map((t) => t.singular)).toEqual(tipos(10).map((t) => t.singular));
   });
 
   it("rechaza 1 y 11 tipos en `tipos`", () => {
     for (const n of [0, 1, 11]) {
-      const r = crearPaisConTiposSchema.safeParse({ id: "GT", tipos: tipos(n) });
+      const r = crearPaisSchema.safeParse({ id: "GT", tipos: tipos(n) });
       expect(r.success).toBe(false);
       expect(r.error?.issues[0].path).toEqual(["tipos"]);
     }
@@ -43,13 +43,13 @@ describe("R24/P2 — el alta de país trae de 2 a 10 tipos", () => {
     corto[1] = { singular: "M", plural: "Municipios" };
     const largo = [...tipos(3)];
     largo[2] = { singular: "Aldea", plural: "x".repeat(PAIS_NOMBRE_MAX + 1) };
-    expect(crearPaisConTiposSchema.safeParse({ id: "GT", tipos: corto }).success).toBe(false);
-    expect(crearPaisConTiposSchema.safeParse({ id: "GT", tipos: largo }).success).toBe(false);
+    expect(crearPaisSchema.safeParse({ id: "GT", tipos: corto }).success).toBe(false);
+    expect(crearPaisSchema.safeParse({ id: "GT", tipos: largo }).success).toBe(false);
     expect(PAIS_NOMBRE_MIN).toBe(2);
   });
 
   it("recorta y colapsa los nombres, que es lo que se guarda", () => {
-    const r = crearPaisConTiposSchema.parse({
+    const r = crearPaisSchema.parse({
       id: " GT ",
       tipos: [
         { singular: "  Departamento ", plural: "Departamentos" },
@@ -62,12 +62,12 @@ describe("R24/P2 — el alta de país trae de 2 a 10 tipos", () => {
   });
 
   it("los demás rechazos siguen como en SL-20: código fuera del catálogo, claves desconocidas", () => {
-    const fuera = crearPaisConTiposSchema.safeParse({ id: "XA", tipos: tipos(3) });
+    const fuera = crearPaisSchema.safeParse({ id: "XA", tipos: tipos(3) });
     expect(fuera.success).toBe(false);
     expect(fuera.error?.issues[0].message).toBe(PAIS_FUERA_DEL_CATALOGO);
-    expect(crearPaisConTiposSchema.safeParse({ id: "GT", tipos: tipos(3), nombre: "Otro" }).success).toBe(false);
+    expect(crearPaisSchema.safeParse({ id: "GT", tipos: tipos(3), nombre: "Otro" }).success).toBe(false);
     expect(
-      crearPaisConTiposSchema.safeParse({ id: "GT", tipos: [...tipos(2), { singular: "Aldea", plural: "Aldeas", clave: "nivel_9" }] })
+      crearPaisSchema.safeParse({ id: "GT", tipos: [...tipos(2), { singular: "Aldea", plural: "Aldeas", clave: "nivel_9" }] })
         .success,
     ).toBe(false);
   });
