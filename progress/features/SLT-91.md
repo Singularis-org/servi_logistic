@@ -19,6 +19,7 @@ fullstack / low: cambia una constante que leen menú y servicio; sin migración.
 Ninguna.
 
 ## Tandas
+0, A, B, C y D hechas en un solo backend_dev. Detalle: `progress/impl_SLT-91.md`. Deuda nueva: D61.
 
 ## Modelos (overrides)
 Subagentes en Opus.

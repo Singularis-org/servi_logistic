@@ -1,10 +1,15 @@
 # SLT-58 — planes-superadmin-ui · requirements.md
 
+> **Enmendado por SLT-91 (2026-11-06):** «Mi plan» pasa a ser solo del `maestro`. El `admin` no ve el ítem, la ruta le da
+> no encontrado y deja de ver las marcas del consumo. Lo que hace el plan para el `admin` no cambia. Lo de abajo se
+> conserva como historia; cada afirmación de `maestro` y `admin` sobre «Mi plan» lleva la marca «enmendado por SLT-91».
+> Vigente: `specs/SLT-91-mi-plan-solo-maestro/`.
+
 > **Zona:** fullstack · **Complejidad:** high · **depends_on:** SL-24 · **Rama:** feature/SLT-58-planes-superadmin-ui
 >
 > **Alcance:**
 > - Superadmin: pantalla del catálogo de planes (crear, editar, archivar, programar o cancelar un cambio) y, en el detalle de cada empresa, su plan, su consumo y asignar o cambiar el plan, con el historial (`plan_rastro`). Usa las actions de SL-24 (`@sin-superficie`).
-> - Empresa (maestro y admin): vista «Mi plan» con nombre, precio y módulos, consumo frente a cada tope, días hasta el reinicio del ciclo, aviso al 80 % y al 100 %, y el cambio programado con su fecha.
+> - Empresa (maestro y admin; **(enmendado por SLT-91: solo el `maestro`)**): vista «Mi plan» con nombre, precio y módulos, consumo frente a cada tope, días hasta el reinicio del ciclo, aviso al 80 % y al 100 %, y el cambio programado con su fecha.
 > - Backend: solo las lecturas que faltan (plan y consumo de la empresa; catálogo y detalle para el superadmin), sin cambiar reglas de SL-24.
 >
 > **Lo que NO entra:**
@@ -32,16 +37,16 @@
 
 | R | Requisito | Test previsto |
 |---|---|---|
-| R1 | CUANDO un `maestro` o un `admin` de una empresa con plan abre «Mi plan», el sistema DEBE mostrar el nombre del plan, su precio como texto informativo sin símbolo de moneda («negociable», «sin precio», «<monto> al mes», con el anual si lo tiene) y la lista de módulos incluidos en el plan con su nombre comercial. | `tests/components/MiPlanModule.test.tsx`; `tests/unit/planes/consumo.test.ts` (texto del precio) |
+| R1 | **(enmendado por SLT-91: solo el `maestro`)** CUANDO un `maestro` o un `admin` de una empresa con plan abre «Mi plan», el sistema DEBE mostrar el nombre del plan, su precio como texto informativo sin símbolo de moneda («negociable», «sin precio», «<monto> al mes», con el anual si lo tiene) y la lista de módulos incluidos en el plan con su nombre comercial. | `tests/components/MiPlanModule.test.tsx`; `tests/unit/planes/consumo.test.ts` (texto del precio) |
 | R2 | CUANDO se muestra el consumo de una empresa con plan, el sistema DEBE pintar una fila de consumo por cada tope: «<usados> de <máximo> órdenes del ciclo», «<usados> de <máximo> <rol>» para cada rol con tope, con la etiqueta del rol de `ROL_LABELS`, y «<usados> de <máximo> API keys», con los miles agrupados con punto («1.000 de 3.000»). El uso DEBE ser el mismo que cuentan los topes de SL-24: órdenes vivas creadas en el ciclo en curso, usuarios `activo` del rol y keys `activa`. | `tests/unit/planes/consumo.test.ts`; `tests/integration/db/plan-de-la-empresa.test.ts` (el uso devuelto es igual al de `plan_uso_ordenes`, `plan_uso_rol` y `plan_uso_api_keys`) |
 | R3 | SI el plan no tiene un tope, ENTONCES el sistema DEBE pintar esa fila con su uso y el texto «sin límite» en lugar del máximo, y NO DEBE marcarla nunca como «cerca del tope» ni «lleno». | `tests/unit/planes/consumo.test.ts` |
 | R4 | SI el uso de una fila es mayor o igual que el 80 % del tope y menor que el tope, ENTONCES el sistema DEBE marcarla «cerca del tope». SI el uso es mayor o igual que el tope (incluido un tope 0, o una empresa que ya lo pasa por una edición del plan), ENTONCES el sistema DEBE marcarla «lleno». En otro caso, la fila no lleva marca. La comparación es exacta en enteros (sin redondeo: 79 de 99 no está cerca; 80 de 100 sí). | `tests/unit/planes/consumo.test.ts` (79/99, 80/100, 99/100, 100/100, 101/100, 0/0, sin tope) |
 | R5 | CUANDO se muestra el plan de una empresa, el sistema DEBE decir cuántos días faltan para que empiece el siguiente ciclo de órdenes, con la regla de ciclos de SL-24 (R20: mismo día y hora que el ancla, último día del mes si ese día no existe): «Se reinicia en N días», con N = días completos o fracción hasta el inicio del siguiente ciclo, redondeado hacia arriba (mínimo 1), y la fecha de ese día en la hora de la plataforma. | `tests/unit/utils/ciclo-plan.test.ts` (ancla el 15 y el 31 de enero, a mitad de ciclo y a un minuto del cambio); `tests/unit/planes/consumo.test.ts` |
 | R6 | MIENTRAS una empresa no tenga plan, el sistema DEBE mostrar en «Mi plan» el texto «Tu empresa no tiene plan asignado: sin límites» y NO DEBE mostrar precio, módulos, filas de consumo ni ciclo. | `tests/components/MiPlanModule.test.tsx`; `tests/integration/db/plan-de-la-empresa.test.ts` (sin plan, la lectura devuelve nada) |
 | R7 | MIENTRAS el plan de la empresa tenga un cambio programado pendiente, el sistema DEBE mostrar en «Mi plan» la fecha desde la que rige (la fecha que eligió el superadmin, en la hora de la plataforma) y una línea por cada cosa que cambia (nombre, cada tope, módulos que se incluyen o dejan de incluirse, precio), con los mismos textos que el correo de SL-24 (`lineasDeCambioDelPlan`). Sin cambio pendiente, esa sección no se muestra. | `tests/components/MiPlanModule.test.tsx`; `tests/unit/services/mi-plan-service.test.ts` (las líneas salen de comparar la versión vigente con la pendiente) |
-| R8 | SI quien pide «Mi plan» no es un `maestro` ni un `admin` de una empresa (cualquier otro rol, el superadmin o sin sesión), ENTONCES el sistema DEBE responder `forbidden` sin leer la base, y la página DEBE responder «no encontrado». La comprobación vive en el servicio. | `tests/unit/services/mi-plan-service.test.ts` (los siete roles; cero llamadas al repositorio); `tests/integration/mi-plan-page.test.tsx`; `e2e/planes-superadmin.spec.ts` (**enmienda del 2026-10-29:** la respuesta HTTP de `/mi-plan` para el `mensajero` de A tiene status 404, no 200 con el texto «No encontramos esta página») |
+| R8 | **(enmendado por SLT-91: solo el `maestro`)** SI quien pide «Mi plan» no es un `maestro` ni un `admin` de una empresa (cualquier otro rol, el superadmin o sin sesión), ENTONCES el sistema DEBE responder `forbidden` sin leer la base, y la página DEBE responder «no encontrado». La comprobación vive en el servicio. | `tests/unit/services/mi-plan-service.test.ts` (los siete roles; cero llamadas al repositorio); `tests/integration/mi-plan-page.test.tsx`; `e2e/planes-superadmin.spec.ts` (**enmienda del 2026-10-29:** la respuesta HTTP de `/mi-plan` para el `mensajero` de A tiene status 404, no 200 con el texto «No encontramos esta página») |
 | R9 | El sistema DEBE dar a una empresa solo el plan y el consumo propios: la lectura de «Mi plan» toma la empresa de la sesión, nunca de la petición. SI se pide el plan o el consumo de otra empresa, o se lee sin empresa en el contexto, por cualquier vía (incluido el SQL a mano con el rol de la app), ENTONCES el sistema DEBE rechazarlo (`42501`). La lectura NO DEBE incluir datos de otras empresas: ni los avisos guardados con el cambio programado ni quién lo programó. Las tablas de planes siguen sin poder leerse directamente con el rol de la app. | `tests/integration/db/plan-de-la-empresa.test.ts` (propia: bien; de otra: `42501`; sin contexto: `42501`; `SELECT` a `plan` con `servi_app`: `42501`; la respuesta no tiene `avisos_al_programar` ni actor) |
-| R10 | El sistema DEBE ofrecer «Mi plan» en el menú solo al `maestro` y al `admin`, con una única lista de roles que leen el menú, la página y el servicio, y NO DEBE cambiar el aterrizaje después de entrar de ningún rol. | `tests/unit/auth/menu-mi-plan.test.ts` (los siete roles; identidad de la constante; `primerDestino` de cada rol igual que antes) |
+| R10 | **(enmendado por SLT-91: solo el `maestro`)** El sistema DEBE ofrecer «Mi plan» en el menú solo al `maestro` y al `admin`, con una única lista de roles que leen el menú, la página y el servicio, y NO DEBE cambiar el aterrizaje después de entrar de ningún rol. | `tests/unit/auth/menu-mi-plan.test.ts` (los siete roles; identidad de la constante; `primerDestino` de cada rol igual que antes) |
 | R11 | «Mi plan» NO DEBE ofrecer pedir, elegir ni cambiar de plan: es solo información. | `tests/components/MiPlanModule.test.tsx` (sin botones ni formularios); `tests/unit/guards/superficie-de-uso.guardia.test.ts` (existente: «Mi plan» no monta ninguna action de escritura) |
 | R12 | «Mi plan» DEBE ser parte del núcleo: se ve sea cual sea el estado de los módulos de la empresa. | `tests/unit/guards/modulos-reparto.guardia.test.ts` (existente, con la ruta nueva en el reparto); `tests/unit/auth/menu-mi-plan.test.ts` (con todos los módulos apagados sigue en el menú) |
 
@@ -121,7 +126,7 @@
 |---|---|
 | ¿SL-26 sigue? (no; los planes pasan aquí) | R13–R24 |
 | ¿Qué es «enterprise»? (custom, sin tipo nuevo) | R14 |
-| ¿Quién ve «Mi plan»? (maestro y admin; en el service, con test) | R8, R10 |
+| ¿Quién ve «Mi plan»? (maestro y admin; en el service, con test; enmendado por SLT-91: solo el `maestro`) | R8, R10 |
 | ¿Qué muestra «Mi plan»? | R1, R2, R3, R5, R6 |
 | Aviso de tope (80 % y 100 %) | R4 |
 | Cambio programado | R7 (y R16, R19 para el superadmin) |
@@ -160,7 +165,7 @@ Ninguna.
 |---|---|---|
 | 2026-10-29 | ¿SL-26 sigue? | No: cancelada. Empresas y módulos ya tienen pantalla; los planes pasan aquí, sin depender de SL-25. |
 | 2026-10-29 | ¿Qué es «enterprise»? | Un plan custom con nombre comercial. Sin tipo nuevo. |
-| 2026-10-29 | ¿Quién ve «Mi plan»? | Maestro y admin de la empresa. Validado en el service, con test. |
+| 2026-10-29 | ¿Quién ve «Mi plan»? | Maestro y admin de la empresa. Validado en el service, con test. **(enmendado por SLT-91: solo el `maestro`)** |
 | 2026-10-29 | ¿Qué muestra «Mi plan»? | Nombre, precio (informativo), módulos incluidos y consumo por tope: órdenes del ciclo («1.000 de 3.000»), días hasta el reinicio, usuarios por rol («10 de 10 mensajeros») y API keys. Un tope sin límite se muestra como «sin límite»; una empresa sin plan, como «sin límites». |
 | 2026-10-29 | Aviso de tope | Al 80 % se marca «cerca del tope»; al 100 %, «lleno». |
 | 2026-10-29 | Cambio programado | «Mi plan» muestra el cambio pendiente con su fecha y qué cambia. |
