@@ -44,7 +44,9 @@ import {
  *    R5: el maestro no tiene tope).
  * 7. El maestro de B, sin plan, ve «sin límites» y ni el nombre del plan de A ni su id en el HTML.
  * 8. El `mensajero` de A recibe «No encontramos esta página» en `/mi-plan` (R8).
- * 9. Por detrás (`clienteDueno`): el custom es de A y es el plan de A, el público es el de C; B sigue
+ * 9. SLT-91 (R3, R14): el `admin` de A recibe 404 en `/mi-plan`, sin el nombre del plan, y el menú de su
+ *    `/dashboard` no enlaza a esa ruta.
+ * 10. Por detrás (`clienteDueno`): el custom es de A y es el plan de A, el público es el de C; B sigue
  *    sin plan.
  *
  * Los textos esperados se escriben a mano a propósito (son los literales del spec): derivarlos de los
@@ -78,7 +80,7 @@ let planId = "";
 /** El plan público del modal de primera asignación (ajuste planes-custom D2: un custom ya no pasa por él). */
 const nombreDelPublico = `Plan E2E publico ${randomBytes(4).toString("hex")}`;
 let publicoId = "";
-const sesiones: { maestroA?: Cookie[]; maestroB?: Cookie[]; mensajeroA?: Cookie[] } = {};
+const sesiones: { maestroA?: Cookie[]; maestroB?: Cookie[]; mensajeroA?: Cookie[]; adminA?: Cookie[] } = {};
 
 function superadmin(): Page {
   if (!sa) throw new Error("no hay página del superadmin: falló el beforeAll");
@@ -117,6 +119,7 @@ test.beforeAll(async ({ browser }) => {
   try {
     const zona = await crearZonaE2E(base, a());
     const mensajero = await crearUsuarioE2E(a(), "mensajero", { zonaId: zona.id });
+    const admin = await crearUsuarioE2E(a(), "admin");
     const org = await base.organizacion.findUniqueOrThrow({ where: { id: a().organizacionId }, select: { nombre: true } });
     nombreEmpresaA = org.nombre;
     const orgC = await base.organizacion.findUniqueOrThrow({ where: { id: c().organizacionId }, select: { nombre: true } });
@@ -124,6 +127,7 @@ test.beforeAll(async ({ browser }) => {
     sesiones.maestroA = await sesionDe(browser, a().maestro);
     sesiones.maestroB = await sesionDe(browser, b().maestro);
     sesiones.mensajeroA = await sesionDe(browser, mensajero);
+    sesiones.adminA = await sesionDe(browser, admin);
   } finally {
     await base.$disconnect();
   }
@@ -418,5 +422,30 @@ test("el mensajero de A recibe «no encontrado» en «Mi plan» (R28, R8)", asyn
     expect(html.includes(nombreDelPlan), "el mensajero ve el nombre del plan").toBe(false);
   } finally {
     await ctx.close();
+  }
+});
+
+test("el admin de A recibe 404 en «Mi plan», sin el nombre del plan, y su menú no enlaza a esa ruta (SLT-91 R3, R14)", async ({ browser }) => {
+  test.setTimeout(240_000);
+  expect(planId, "A no tiene plan: el «sin el nombre» no probaría nada").not.toBe("");
+  const ruta = await abrirCon(browser, sesiones.adminA, "/mi-plan");
+  try {
+    console.log(`[planes] /mi-plan del admin: estado HTTP ${ruta.estado}`);
+    expect(ruta.estado, "el admin no recibe un 404 HTTP").toBe(404);
+    expect(ruta.texto.includes("No encontramos esta página"), "el admin no ve «no encontrado»").toBe(true);
+    expect(ruta.html.includes(nombreDelPlan), "el admin ve el nombre del plan").toBe(false);
+  } finally {
+    await ruta.ctx.close();
+  }
+
+  const inicio = await abrirCon(browser, sesiones.adminA, "/dashboard");
+  try {
+    expect(inicio.estado).toBeLessThan(400);
+    expect(inicio.texto.includes(PANTALLA_DE_ERROR), "pantalla de error").toBe(false);
+    // El control: el menú del `admin` está pintado. Sin él, los 0 enlaces no probarían nada.
+    expect(await inicio.page.locator('a[href="/configuracion/tarifas"]').count(), "el menú del admin no se pintó").toBeGreaterThan(0);
+    await expect(inicio.page.locator('a[href^="/mi-plan"]')).toHaveCount(0);
+  } finally {
+    await inicio.ctx.close();
   }
 });
