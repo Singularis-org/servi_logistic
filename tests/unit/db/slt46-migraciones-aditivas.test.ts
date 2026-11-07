@@ -21,6 +21,7 @@ const DIR_MIGRACIONES = resolve(__dirname, "../../../db/migrations");
 const CARPETAS_SLT46 = [
   "20261106120000_slt46_historial_tipos_de_nivel",
   "20261106120100_slt46_nodo_copia_a_geografia_vieja",
+  "20261106120200_slt46_pais_tipos_de_nivel_opcional",
 ];
 const OPCIONES: OpcionesAditivas = { dmlEnCuerpoDeFuncion: true, reemplazablesPermitidas: ["pais_tipos_de_nivel"] };
 
@@ -48,13 +49,21 @@ describe("SLT-46 · R8 — migraciones solo aditivas", () => {
     const sql = CARPETAS_SLT46.map((c) => sinComentarios(leer(c).sql)).join("\n");
     expect(sql).toMatch(/DELETE FROM provincia WHERE id = OLD\.id/);
     expect(sql).toMatch(/INSERT INTO distrito AS v/);
+    expect(sql).toMatch(/CREATE OR REPLACE FUNCTION pais_tipos_de_nivel\(\)/);
     // Sin la opción del cuerpo de función, la regla de SLT-43 las reprocha: la opción es la que decide.
     expect(faltasR19(CARPETAS_SLT46.map(leer))).toEqual(
       expect.arrayContaining([
         "20261106120100_slt46_nodo_copia_a_geografia_vieja: DELETE sobre provincia",
         "20261106120100_slt46_nodo_copia_a_geografia_vieja: INSERT en la tabla existente canton",
+        "20261106120200_slt46_pais_tipos_de_nivel_opcional: INSERT en la tabla existente tipo_nivel_geografico",
       ]),
     );
+  });
+
+  it("control: con una lista de reemplazables vacía, el CREATE OR REPLACE de pais_tipos_de_nivel es falta", () => {
+    expect(faltasR19(CARPETAS_SLT46.map(leer), { ...OPCIONES, reemplazablesPermitidas: [] })).toEqual([
+      "20261106120200_slt46_pais_tipos_de_nivel_opcional: CREATE OR REPLACE FUNCTION pais_tipos_de_nivel",
+    ]);
   });
 });
 

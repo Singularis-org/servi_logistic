@@ -75,7 +75,7 @@ Montado por SLT-43/44/45/65/71 en esta rama. Se usa tal cual; ninguna task lo vu
   `CREATE OR REPLACE FUNCTION` solo para `pais_tipos_de_nivel`, y contraprueba. (R8, R10)
   *Hecho:* verde sobre las tres carpetas; rojo con DML suelto sobre tabla existente, con
   `EXECUTE 'DROP'` y con `CREATE OR REPLACE FUNCTION` de otra función.
-- [ ] **T2.5** Migración `20261106120200_slt46_pais_tipos_de_nivel_opcional` con su `down.sql` (§2.4,
+- [x] **T2.5** Migración `20261106120200_slt46_pais_tipos_de_nivel_opcional` con su `down.sql` (§2.4,
   §3): `CREATE OR REPLACE FUNCTION pais_tipos_de_nivel()` sin `nivel_3` cuando `nivel_3_singular = ''`;
   el `down.sql` restaura literal el cuerpo de SLT-43. (R46, R47)
   *Hecho:* `tests/integration/db/slt46-pais-tipos-de-nivel.test.ts` verde: CR y un país de 3 tipos
