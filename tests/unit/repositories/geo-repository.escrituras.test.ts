@@ -68,6 +68,8 @@ interface Escenario {
   tipos?: TipoFila[];
   /** `null`: el pais no existe. */
   pais?: { id: string; nombre: string } | null;
+  /** La regla de codigo de SL-20 en la fila del pais (por defecto, sin digitos). */
+  regla?: { digitosCodigoNivel1: number | null; digitosCodigoNivel2: number | null; digitosCodigoNivel3: number | null };
 }
 
 /**
@@ -130,9 +132,7 @@ function prismaDoble(e: Escenario = {}) {
             ? null
             : {
                 ...pais,
-                digitosCodigoNivel1: null,
-                digitosCodigoNivel2: null,
-                digitosCodigoNivel3: null,
+                ...(e.regla ?? { digitosCodigoNivel1: null, digitosCodigoNivel2: null, digitosCodigoNivel3: null }),
                 tiposDeNivel: tipos,
                 nodosGeograficos: hijosDe(null).map(({ id, nombre }) => ({ id, nombre })),
               },
@@ -555,6 +555,92 @@ describe("SLT-46 R1/R12 — la forma por nivel de SL-20 se resuelve sobre el nod
     for (const tabla of ["provincia", "canton", "distrito"]) {
       expect((cliente as Record<string, unknown>)[tabla], `el doble no declara ${tabla}`).toBeUndefined();
     }
+  });
+});
+
+// =================================================================================================
+// Lo que la version de SL-20 de este archivo afirmaba y la adaptacion de T3.1 dejo sin cubrir:
+// los mismos hechos, sobre el nodo. La entidad del historial pasa a `nodo_geografico` (R35, P5) y la
+// escritura al nodo (R1); lo demas no cambia.
+// =================================================================================================
+
+describe("SLT-46 R12 — lo que SL-20 afirmaba de las formas por nivel, sobre el nodo", () => {
+  const REGLA_CR = { digitosCodigoNivel1: 1, digitosCodigoNivel2: 3, digitosCodigoNivel3: 5 };
+
+  it("374/R54: la fila del cambio de estado no lleva `monto` ni `actorRol`", async () => {
+    const { repo, cliente } = repoCon();
+    await repo.cambiarActivacion("distrito", "n3", false, "u-1");
+    const fila = filaDeHistorial(cliente);
+    expect(fila).not.toHaveProperty("monto");
+    expect(fila).not.toHaveProperty("actorRol");
+  });
+
+  it("374: la etiqueta de un nodo de profundidad 2 es su cadena de dos", async () => {
+    const { repo, cliente } = repoCon();
+    await repo.cambiarActivacion("canton", "n2", false, "u-1");
+    expect(filaDeHistorial(cliente).entidadEtiqueta).toBe("Buenos Aires · Puntarenas");
+  });
+
+  it("374/R12: un canton sin padre o con un padre inexistente LANZA en vez de crear una fila huerfana", async () => {
+    const { repo, cliente } = repoCon();
+    await expect(repo.crear("canton", "Sin Padre", null, { paisId: "XA", codigo: null }, "u-1")).rejects.toThrow(
+      /falta el padre/,
+    );
+    await expect(
+      repo.crear("canton", "Sin Padre", "p-fantasma", { paisId: "XA", codigo: null }, "u-1"),
+    ).rejects.toThrow(/no existe/);
+    expect(cliente.nodoGeografico.create).not.toHaveBeenCalled();
+    expect(cliente.historialPlataforma.createMany).not.toHaveBeenCalled();
+  });
+
+  it("374/R14: `findHermanos` da `null` si el contenedor no existe (padre o pais)", async () => {
+    expect(await repoCon().repo.findHermanos("canton", "no-existe")).toBeNull();
+    expect(await repoCon().repo.findHermanos("distrito", "no-existe")).toBeNull();
+    expect(await repoCon({ pais: null }).repo.findHermanos("provincia", "XZ")).toBeNull();
+  });
+
+  it("SL-20/R15: las hermanas de una provincia son las raices de SU pais, y trae la regla", async () => {
+    const { repo, cliente } = repoCon({ regla: REGLA_CR });
+    expect(await repo.findHermanos("provincia", "XA")).toEqual({
+      paisId: "XA",
+      regla: REGLA_CR,
+      codigoPadre: null,
+      hermanos: [
+        { id: "n1", nombre: "Puntarenas" },
+        { id: "n1b", nombre: "Limón" },
+      ],
+    });
+    const args = cliente.pais.findUnique.mock.calls as unknown as [{ where: unknown }][];
+    expect(args.map(([a]) => a.where)).toEqual([{ id: "XA" }, { id: "XA" }]);
+  });
+
+  it("SL-20: un distrito trae el pais y el codigo de su canton, y la regla del pais", async () => {
+    const { repo } = repoCon({ regla: REGLA_CR });
+    expect(await repo.findHermanos("distrito", "n2")).toEqual({
+      paisId: "XA",
+      regla: REGLA_CR,
+      codigoPadre: "603",
+      hermanos: [
+        { id: "n3", nombre: "Cabagra" },
+        { id: "n3b", nombre: "Potrero Grande" },
+      ],
+    });
+  });
+
+  it("374/A8: los hermanos se leen sin `where` sobre el nombre (la normalizacion es del service)", async () => {
+    const { repo, cliente } = repoCon();
+    await repo.contextoDeAlta({ paisId: "XA" });
+    await repo.contextoDeAlta({ padreId: "n2" });
+    const [[argPais]] = cliente.pais.findUnique.mock.calls as unknown as [
+      { select: { nodosGeograficos: unknown } },
+    ][];
+    expect(argPais.select.nodosGeograficos).toEqual({
+      where: { padreId: null },
+      select: { id: true, nombre: true },
+      orderBy: { id: "asc" },
+    });
+    const [[argPadre]] = cliente.nodoGeografico.findUnique.mock.calls as unknown as [{ select: { hijos: unknown } }][];
+    expect(argPadre.select.hijos).toEqual({ select: { id: true, nombre: true }, orderBy: { id: "asc" } });
   });
 });
 
