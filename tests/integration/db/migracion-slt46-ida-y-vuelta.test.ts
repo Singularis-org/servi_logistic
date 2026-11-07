@@ -232,7 +232,8 @@ describeSiHayBase("SLT-46 — copia nodo → geografía vieja y tipos opcionales
     expect(await tiposDeUnPaisDeDosNiveles()).toBe("nivel_1,nivel_2");
     expect(await definicionDePaisTiposDeNivel()).not.toBe(funcionDeSlt43);
     expect(
-      await uno(`SELECT count(*)::int FROM pg_trigger WHERE tgname = 'nodo_geografico_copia_a_geografia_vieja'`),
+      await uno(`SELECT count(*)::int FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = 'public' AND t.tgname = 'nodo_geografico_copia_a_geografia_vieja'`),
     ).toBe(1);
   }, 300_000);
 
@@ -252,7 +253,7 @@ describeSiHayBase("SLT-46 — copia nodo → geografía vieja y tipos opcionales
     expect(diferencias(await datos(), datosAntes), "tras la vuelta").toEqual([]);
 
     expect(await definicionDePaisTiposDeNivel()).toBe(funcionDeSlt43);
-    expect(await uno(`SELECT count(*)::int FROM pg_proc WHERE proname = 'geo_copiar_nodo_a_geografia_vieja'`)).toBe(0);
+    expect(await uno(`SELECT count(*)::int FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname = 'geo_copiar_nodo_a_geografia_vieja'`)).toBe(0);
   }, 300_000);
 
   it("R9: tras la vuelta la sincronía vieja → nodo sigue y escribir el nodo ya no toca la geografía vieja", async () => {

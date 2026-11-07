@@ -303,7 +303,8 @@ describeSiHayBase("SLT-46 — copia del nodo a la geografía vieja (R2–R7, R44
       );
       const triggers = await tx.$queryRawUnsafe<{ d: string }[]>(
         `SELECT pg_get_triggerdef(t.oid) AS d FROM pg_trigger t
-          WHERE t.tgname IN ('orden_nodo_geografico', 'zona_distrito_nodo_geografico', 'distrito_zona_especial_nodo_geografico')
+           JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = 'public' AND t.tgname IN ('orden_nodo_geografico', 'zona_distrito_nodo_geografico', 'distrito_zona_especial_nodo_geografico')
           ORDER BY t.tgname`,
       );
       const fks = await tx.$queryRawUnsafe<{ l: string }[]>(
