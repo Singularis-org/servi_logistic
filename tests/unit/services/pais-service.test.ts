@@ -81,6 +81,12 @@ function repoDoble(
     ),
     deLaEmpresa: vi.fn(async () => (o.deLaEmpresa === undefined ? COSTA_RICA : o.deLaEmpresa)),
     cambiarDisponible: vi.fn<IPaisRepository["cambiarDisponible"]>(async () => o.cambiarDisponible ?? "cambiado"),
+    // SLT-46 (T3.2): métodos nuevos del repositorio que este servicio aún no llama (los usa T4.3).
+    crearConTipos: vi.fn<IPaisRepository["crearConTipos"]>(async () => {
+      throw new Error("crearConTipos no se espera en estos casos");
+    }),
+    renombrarTipo: vi.fn<IPaisRepository["renombrarTipo"]>(async () => "renombrado"),
+    agregarNivel: vi.fn<IPaisRepository["agregarNivel"]>(async () => "no_existe"),
   } satisfies IPaisRepository;
   return repo;
 }

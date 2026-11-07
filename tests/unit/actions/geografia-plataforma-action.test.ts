@@ -393,6 +393,9 @@ describe("SL-20/R47 — disponibilidad de un país por el borde, con el servicio
       crear: vi.fn(),
       deLaEmpresa: vi.fn(),
       cambiarDisponible: vi.fn(async () => resultado),
+      crearConTipos: vi.fn(),
+      renombrarTipo: vi.fn(),
+      agregarNivel: vi.fn(),
     } satisfies Record<keyof IPaisRepository, Espia>;
   }
 
@@ -434,6 +437,9 @@ describe("SL-20/R23, R41 — alta de país del catálogo por el borde, con el se
       })),
       deLaEmpresa: vi.fn(),
       cambiarDisponible: vi.fn(),
+      crearConTipos: vi.fn(),
+      renombrarTipo: vi.fn(),
+      agregarNivel: vi.fn(),
     } satisfies Record<keyof IPaisRepository, Espia>;
   }
 

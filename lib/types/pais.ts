@@ -90,6 +90,9 @@ export const crearPaisConTiposSchema = z
 
 export type CrearPaisConTiposInput = z.infer<typeof crearPaisConTiposSchema>;
 
+/** Lo que `PaisRepository.crearConTipos` escribe: la entrada validada más el nombre del catálogo (R23). */
+export type DatosDeAltaDePaisConTipos = CrearPaisConTiposInput & { nombre: string };
+
 /** R25, R26: los dos nombres de un tipo ya creado, con las cotas del alta (2–40). */
 export const renombrarTipoNivelSchema = z
   .object({

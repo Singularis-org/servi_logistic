@@ -144,3 +144,45 @@ resto de R5/R31/R50.
   restaurados y pasó en la corrida de `related`. Flake de saturación, no de SLT-46.
 - La guardia `nodo-geografico-sin-escritor` sigue verde (aún no hay escritor del nodo en `lib/`); T3 la
   pondrá roja y T7.1 la retira.
+
+## T3.2 (2026-11-06): PaisRepository con tipos de nivel
+
+Archivos: `lib/repositories/PaisRepository.ts`, `lib/interfaces/repositories/IPaisRepository.ts`,
+`lib/types/pais.ts` (`DatosDeAltaDePaisConTipos`), tests nuevos `tests/integration/db/pais-alta-tipos.test.ts`,
+`pais-tipos-edicion.test.ts`, `pais-agregar-nivel.test.ts`; en `tests/unit/services/pais-service.test.ts` y
+`tests/unit/actions/geografia-plataforma-action.test.ts` solo los tres métodos nuevos en los dobles (sin
+tocar aserciones).
+
+| R | Test (archivo › it) |
+|---|---|
+| R23 | `pais-alta-tipos` › «R23: con 2, 3 y 4 tipos crea exactamente P tipos en orden, y pais.nivel_N_* = …», «R23/R37: si el historial falla no queda ni el país ni sus tipos…», «R23: un código que ya está es `duplicado`…» |
+| R24 (defensa del repo) | `pais-alta-tipos` › «R24 (defensa): 1 u 11 tipos no llegan a la base; 2 y 10 sí» |
+| R25 | `pais-tipos-edicion` › «R25: renombrar el tipo 2 cambia el tipo y pais.nivel_2_*…», «R25: renombrar el tipo 4 cambia solo el tipo…», «R25/R37: si el historial falla…» |
+| R26 | `pais-tipos-edicion` › «R26: los mismos nombres son `sin_cambio`… CONTRAPRUEBA…», «R26: un tipo que no existe es `no_existe`…» |
+| R27 (datos) | `pais-tipos-edicion` › «R27: en el contexto de la empresa, deLaEmpresa devuelve el nombre nuevo del tipo 1…» |
+| R37 | `pais-alta-tipos` › «R37: pais_creado y una tipo_nivel_geografico_creado por tipo…»; `pais-tipos-edicion` › «R37: cambiar los dos nombres deja dos filas…»; `pais-agregar-nivel` › «R48/R37: 2 → 3…» |
+| R46 | `pais-alta-tipos` › «R46: un país de 2 tipos sigue sin nivel_3 tras el alta, tras renombrar el tipo 1 y el 2 y tras un UPDATE pais SET nombre» (con contraprueba) |
+| R48 | `pais-agregar-nivel` › «R48/R37: 2 → 3 crea nivel_3, lo copia a pais.nivel_3_*…», «R48: 4 → 5 crea solo el tipo; … nodos intactos», «R48/R37: si el historial falla…» |
+| R49 | `pais-agregar-nivel` › «R49: con 10 tipos es `tope`… CONTRAPRUEBA…», «R49: sin país es `no_existe`…», «R49: dos altas de nivel en paralelo… P2002», «R49 CONTRAPRUEBA de la carrera…» |
+| R50 | sin método que borre tipos; `geografia-sin-borrado-fisico` y `nodo-geografico-escritor-unico` verdes |
+
+Verificación (base `logistic_slt46`, `--maxWorkers=1`): los 3 nuevos + `pais-repositorio`, `pais-disponible`,
+`pais-service`, `geografia-plataforma-action` y las guardias `nodo-geografico-escritor-unico`,
+`geografia-sin-borrado-fisico`, `historial-accion-escrituras-cubiertas`, `catalogo-postgres-acota-esquema` →
+`Test Files 11 passed (11) · Tests 289 passed` (ninguno saltado). `tsc --noEmit` exit 0; eslint de los 8
+archivos exit 0. Contrapruebas por mutación (restaurado después): sin la copia a `pais` en `renombrarTipo` →
+2 rojos (R25 tipo 2, R27); sin la copia en `agregarNivel` → 1 rojo (2 → 3); con el nivel 2 repetido en vez
+de `''` → 6 rojos (R23, R46, R48, R49).
+
+Decisiones a revisar:
+1. El alta con tipos es un método nuevo, `crearConTipos`, y `crear` (seis nombres) queda igual: cambiarlo
+   rompería `pais-repositorio.test.ts`, que afirma `historial = [pais_creado]` y 1 fila; con R37 el alta deja
+   P + 1 filas. **Aviso para T4.3**: al pasar `PaisService.crear` a tipos, ese test (R23/R33 de SL-20)
+   cambia de resultado por R37; hace falta decidir cómo se adapta antes de retirar `crear`.
+2. `agregarNivel` relee el tipo tras el `pais.update` (P+1 = 3) porque el upsert del trigger aplica la regla
+   de código de `pais` a ese nivel; devuelve lo que quedó escrito.
+3. `crearConTipos` lanza (no escribe) con < 2 o > 10 tipos: defensa, el service ya lo valida.
+4. Etiqueta del historial de un tipo = su singular (nuevo, en el renombre), como §7.
+5. La carrera de R49 commitea el país `XV` (sin usuario: actor sistema), bajo `bajoLockDeEscrituraReal`, y lo
+   borra en `finally` (también al empezar); el `afterAll` exige 0 residuos. Para que las dos lean P = 2
+   antes de escribir, una tercera transacción hace `FOR UPDATE` del país hasta ver las dos esperando.
