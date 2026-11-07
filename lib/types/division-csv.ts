@@ -5,6 +5,7 @@
 // porque cada pais llama distinto a sus niveles; la pantalla muestra la equivalencia.
 
 import type { NivelGeografico } from "@/lib/types/geografia-nodo";
+import type { ReglaDeCodigoDeTipo } from "@/lib/utils/codigo-geografico";
 
 /** Columnas obligatorias de la cabecera (R28), ya normalizadas (minusculas y recortadas). */
 export const COLUMNAS_DIVISION = [
@@ -102,3 +103,76 @@ export interface PlanDivision {
 }
 
 export type ResultadoPlanificacion = { errores: ErrorDeLinea[] } | { plan: PlanDivision };
+
+// ── SLT-46 (design §5; R30–R34): la carga a P profundidades ─────────────────────────────────
+//
+// P es el numero de tipos del pais (2–10). Las columnas siguen siendo neutras, `nivel_<k>` y
+// `codigo_nivel_<k>` (P4); para CR, P = 3 y son las seis de arriba. Todo lo que arriba va por
+// `NivelGeografico` aqui va por profundidad (numero, 1 = raiz).
+//
+// Conviven con las formas de SL-20 hasta que T4 pase `CargaDivisionService` y `GeoRepository` a
+// estas y retire aquellas; `planificarDivision` con la firma vieja traduce a estas y de vuelta.
+
+/** La columna del nombre de la profundidad `k`. */
+export function columnaNivel(k: number): string {
+  return `nivel_${k}`;
+}
+
+/** La columna del codigo de la profundidad `k`. */
+export function columnaCodigoNivel(k: number): string {
+  return `codigo_nivel_${k}`;
+}
+
+/** R30: las columnas obligatorias de un pais de `p` tipos, en el orden de la cabecera. */
+export function columnasDivision(p: number): string[] {
+  return Array.from({ length: p }, (_, i) => [columnaNivel(i + 1), columnaCodigoNivel(i + 1)]).flat();
+}
+
+/** Las profundidades que una fila debe llenar siempre (como `nivel_1` y `nivel_2` en SL-20). */
+export const DIVISION_PROFUNDIDADES_OBLIGATORIAS = 2;
+
+/**
+ * Una fila de datos a P profundidades: `niveles[k - 1]` son las celdas de `nivel_<k>` y
+ * `codigo_nivel_<k>`, tal cual se leyeron (`""` si vacias). Siempre P entradas.
+ */
+export interface FilaDivisionPorNiveles {
+  linea: number;
+  niveles: { nombre: string; codigo: string }[];
+}
+
+/** Un nodo del pais ya en la base, con su profundidad (lo que lee `leerDivisionDePais`). */
+export interface NodoExistenteConProfundidad extends NodoExistente {
+  profundidad: number;
+}
+
+/**
+ * Lo que la planificacion necesita de un tipo: su profundidad y su regla de codigo (R17). Lo cumple
+ * `TipoNivelDTO`. Los tipos de un pais van de 1 a P sin huecos.
+ */
+export interface TipoDeDivision extends ReglaDeCodigoDeTipo {
+  profundidad: number;
+}
+
+export interface CodigoACompletarPorProfundidad {
+  profundidad: number;
+  id: string;
+  codigo: string;
+}
+
+/** R33: lo que devuelve una carga buena, con las altas por profundidad (claves 1..P). */
+export interface ResumenCargaPorProfundidad {
+  creados: Record<number, number>;
+  existentes: number;
+  codigosCompletados: number;
+}
+
+/** Las altas por profundidad (claves 1..P), para crearlas de arriba abajo. */
+export interface PlanDivisionPorProfundidad {
+  altas: Record<number, AltaDePlan[]>;
+  codigosACompletar: CodigoACompletarPorProfundidad[];
+  resumen: ResumenCargaPorProfundidad;
+}
+
+export type ResultadoPlanificacionPorProfundidad =
+  | { errores: ErrorDeLinea[] }
+  | { plan: PlanDivisionPorProfundidad };
