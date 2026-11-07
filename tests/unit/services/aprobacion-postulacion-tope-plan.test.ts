@@ -13,6 +13,7 @@ import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // `tests/integration/db/plan-topes-usuarios.test.ts`.
 
 const MAESTRO: Actor = { usuarioId: "m1", rol: "maestro" };
+const ADMIN: Actor = { usuarioId: "a1", rol: "admin" };
 
 const TOPE = 'tope_plan {"rol": "mensajero", "tope": "rol", "maximo": 5, "usados": 5, "pedidas": 1}';
 const MENSAJE =
@@ -47,6 +48,22 @@ describe("SL-24 R27 — AprobacionPostulacionService.aprobar con el tope de mens
 
     expect(r).toEqual({ status: "tope_plan", mensaje: MENSAJE });
     expect(repo.findMensajeroById).not.toHaveBeenCalled();
+  });
+
+  // SLT-91 (R11): el `admin` deja de ver «Mi plan», pero sigue recibiendo el mismo texto del tope, escrito
+  // a mano. «Inactiva alguno» le pide algo que no puede hacer: es deuda (progress/deudas.md, D61).
+  it("SLT-91 R11: a un `admin` le devuelve el mismo texto del tope, sin nombrar «Mi plan»", async () => {
+    const { service } = servicio(async () => {
+      throw errorDelTrigger();
+    });
+
+    const r = await service.aprobar("usr-1", ADMIN);
+
+    expect(r).toEqual({
+      status: "tope_plan",
+      mensaje:
+        "Tu plan permite 5 usuarios activos con el rol Mensajero. Ya tienes 5. Inactiva alguno o pide un cambio de plan.",
+    });
   });
 
   it("un error que no es del tope sigue saliendo tal cual", async () => {

@@ -126,11 +126,14 @@ describe("SLT-54 — /configuracion/tarifas", () => {
 
   it("SLT-77 R14: otro rol o sin sesión no monta nada que pueda enseñar el tope", async () => {
     for (const status of ["forbidden", "unauthenticated"]) {
-      // Aunque la respuesta trajera el número de más, la página no lo pasa ni lo pinta.
-      cargarPantallaMock.mockResolvedValue({ status, topeIntentos: 7 });
+      // Aunque la respuesta trajera el número de más, la página no lo pasa ni lo pinta. El número no es un tope
+      // real a propósito: uno de 1 a 10 sale también en la fecha de hoy que pinta la cabecera.
+      cargarPantallaMock.mockResolvedValue({ status, topeIntentos: 987654 });
       const { container } = render(await pagina());
       expect(screen.queryByTestId("modulo-stub")).toBeNull();
-      expect(container.textContent).not.toContain("7");
+      expect(container.textContent).toContain("No tienes permiso"); // el barrido leyó algo
+      expect(container.textContent).not.toContain("987654");
+      expect(container.textContent).not.toContain("Intentos de entrega");
       cleanup();
     }
     expect(moduloMock).not.toHaveBeenCalled();
