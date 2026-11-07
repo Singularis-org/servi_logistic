@@ -159,10 +159,14 @@ esta bien hecha, no solo si "funciona".
     el cantón o el distrito de origen; los descendientes se leen con una CTE recursiva sobre
     `padre_id` o con el catálogo del país en memoria; un nodo con hijos no cambia de profundidad, y así
     no hay ciclos), con RLS de lectura por país y `REVOKE`
-    de escritura para `servi_app`. La fuente sigue siendo la geografía vieja: triggers `AFTER` en
-    `pais`, `provincia`, `canton` y `distrito` copian cada alta, cambio y borrado, y triggers `BEFORE`
-    rellenan `nodo_geografico_id` en `orden`, `zona_distrito` y `distrito_zona_especial`. Ningún
-    código de la app escribe las dos tablas (`nodo-geografico-sin-escritor.guardia`, R37). Las filas
+    de escritura para `servi_app`. Desde SLT-46 la app escribe el nodo: solo `GeoRepository` escribe
+    `nodo_geografico` y solo `PaisRepository` escribe `tipo_nivel_geografico`
+    (`nodo-geografico-escritor-unico.guardia`, SLT-46 R43), y un trigger `AFTER` en `nodo_geografico`
+    copia los nodos de profundidad 1–3 a `provincia`, `canton` y `distrito`, que ningún código de la
+    app escribe ya (`geografia-vieja-sin-escritor.guardia`, SLT-46 R1). La sincronía vieja → nodo de
+    SLT-43 (triggers `AFTER` en `pais`, `provincia`, `canton` y `distrito`) sigue para el SQL a mano, y
+    triggers `BEFORE` rellenan `nodo_geografico_id` en `orden`, `zona_distrito` y
+    `distrito_zona_especial`. Las filas
     anteriores y `cierre_detail.ubicacion_snapshot` las llena `pnpm geo:backfill`
     (`scripts/geo-backfill-nodo.ts`: por lotes, reanudable, `--aplicar` y `--validar` exigen
     `--base` y `--destino`, el project-ref de Supabase o el host); en producción lo corre una persona tras el ensayo sobre una copia, nunca un agente
