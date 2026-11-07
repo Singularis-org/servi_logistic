@@ -190,7 +190,10 @@ export async function cambiarDisponibilidadPaisAction(
 
 export type ActualizarDatosPaisActionResult = ActualizarDatosPaisServiceResult | SinPermiso | ErrorInterno;
 
-/** R10–R12, R26. `requiere_confirmacion` vuelve tal cual: la pantalla reenvía con `empresasConfirmadas`. */
+/**
+ * R10–R12, R26. `requiere_confirmacion` vuelve tal cual: la pantalla reenvía con `empresasConfirmadas`.
+ * @sin-superficie SLT-81 tanda 1 (backend): la sección «Datos del país» que la llama llega en el Bloque 2 de SLT-81 (T2.1); al montarla, esta anotación caduca y se quita.
+ */
 export async function actualizarDatosPaisAction(
   input: unknown,
   deps: GeografiaPlataformaDeps = {},
@@ -207,7 +210,10 @@ export async function actualizarDatosPaisAction(
 
 export type ListarTiposDocumentoActionResult = ListarTiposDocumentoServiceResult | ErrorDeValidacion | SinPermiso;
 
-/** R2: los tipos del país, activos e inactivos. Es la carga de la pantalla: su fallo sube a la página. */
+/**
+ * R2: los tipos del país, activos e inactivos. Es la carga de la pantalla: su fallo sube a la página.
+ * @sin-superficie SLT-81 tanda 1 (backend): la sección «Datos del país» que la llama llega en el Bloque 2 de SLT-81 (T2.1); al montarla, esta anotación caduca y se quita.
+ */
 export async function listarTiposDocumentoAction(
   input: unknown,
   deps: GeografiaPlataformaDeps = {},
@@ -222,7 +228,10 @@ export async function listarTiposDocumentoAction(
 
 export type CrearTipoDocumentoActionResult = CrearTipoDocumentoServiceResult | SinPermiso | ErrorInterno;
 
-/** R9, R13. */
+/**
+ * R9, R13.
+ * @sin-superficie SLT-81 tanda 1 (backend): la sección «Datos del país» que la llama llega en el Bloque 2 de SLT-81 (T2.1); al montarla, esta anotación caduca y se quita.
+ */
 export async function crearTipoDocumentoAction(
   input: unknown,
   deps: GeografiaPlataformaDeps = {},
@@ -239,7 +248,10 @@ export async function crearTipoDocumentoAction(
 
 export type EditarTipoDocumentoActionResult = EditarTipoDocumentoServiceResult | SinPermiso | ErrorInterno;
 
-/** R9, R13, R14. */
+/**
+ * R9, R13, R14.
+ * @sin-superficie SLT-81 tanda 1 (backend): la sección «Datos del país» que la llama llega en el Bloque 2 de SLT-81 (T2.1); al montarla, esta anotación caduca y se quita.
+ */
 export async function editarTipoDocumentoAction(
   input: unknown,
   deps: GeografiaPlataformaDeps = {},
@@ -256,7 +268,10 @@ export async function editarTipoDocumentoAction(
 
 export type CambiarActivoTipoDocumentoActionResult = CambiarActivoTipoDocumentoServiceResult | SinPermiso | ErrorInterno;
 
-/** R13, R15. */
+/**
+ * R13, R15.
+ * @sin-superficie SLT-81 tanda 1 (backend): la sección «Datos del país» que la llama llega en el Bloque 2 de SLT-81 (T2.1); al montarla, esta anotación caduca y se quita.
+ */
 export async function cambiarActivoTipoDocumentoAction(
   input: unknown,
   deps: GeografiaPlataformaDeps = {},
