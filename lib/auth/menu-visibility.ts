@@ -330,12 +330,12 @@ export const ROLES_HISTORIAL_ACCIONES = ["maestro"] as const satisfies readonly 
 export const ROLES_MI_BODEGA = ["adminSatelite"] as const satisfies readonly RolValue[];
 
 /**
- * SLT-58 (design §3.1, R8, R10) — quién ve «Mi plan»: el `maestro` y el `admin` de una empresa. La
- * leen el ítem del menú, el `notFound()` de `app/(app)/mi-plan/page.tsx` y `MiPlanService`, para que
- * menú, página y servicio no diverjan (precedente `ROLES_HISTORIAL_ACCIONES`). El superadmin no está:
- * no tiene empresa, y su vista del plan de una empresa es la del detalle de empresa.
+ * SLT-91 (R1, R2, R5; enmienda SLT-58 R8 y R10) — quién ve «Mi plan»: solo el `maestro` de una empresa.
+ * La leen el ítem del menú y `MiPlanService`, y la página convierte el `forbidden` del servicio en
+ * `notFound()`, para que menú, servicio y página no diverjan (precedente `ROLES_HISTORIAL_ACCIONES`).
+ * El superadmin no está: no tiene empresa, y su vista del plan de una empresa es la del detalle de empresa.
  */
-export const ROLES_MI_PLAN = ["maestro", "admin"] as const satisfies readonly RolValue[];
+export const ROLES_MI_PLAN = ["maestro"] as const satisfies readonly RolValue[];
 
 /**
  * Fuente de verdad del menu. Vive en este modulo server-safe (NO en el
@@ -688,10 +688,10 @@ export const SIDEBAR_ITEMS: readonly MenuItem[] = [
     ],
   },
   {
-    // SLT-58 (design §4.1; R10, R12) — «Mi plan»: el consumo del plan de la empresa, para el
-    // `maestro` y el `admin`. Va justo después de «Histórico»: para los dos el primer visible sigue
-    // siendo «Inicio», así que no mueve ningún aterrizaje y no lleva `destinoInicial: false`. Sin
-    // `modulo`: es del núcleo. `roles` es la constante que leen también la página y el servicio.
+    // SLT-58 (design §4.1; R10, R12), SLT-91 (R1) — «Mi plan»: el consumo del plan de la empresa, solo
+    // para el `maestro`. Va justo después de «Histórico»: su primer visible sigue siendo «Inicio», así
+    // que no mueve ningún aterrizaje y no lleva `destinoInicial: false`. Sin `modulo`: es del núcleo.
+    // `roles` es la constante que lee también el servicio.
     label: "Mi plan",
     href: "/mi-plan",
     iconKey: "gaugeCircle",

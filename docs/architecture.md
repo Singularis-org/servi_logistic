@@ -248,7 +248,7 @@ esta bien hecha, no solo si "funciona".
     (`plan_inicio_ciclo_en_curso` quedó sin uso). Del
     cambio programado devuelve solo la fecha y la versión: nunca los avisos ni el actor.
     - **Período de facturación (SLT-86):** la empresa entra a su plan y su tipo de cobro (quincenal, mensual, bimestral o anual) a las 00:00 de una fecha: `organizacion.plan_ciclo_ancla_at` es esa *entrada*, nunca futura. En la primera asignación la fecha de inicio va de hoy −1 mes a hoy +1 mes (`rangoDelInicioDelCiclo`); una fecha futura, y cualquier cambio de plan o de tipo con fecha de efecto futura, queda como pendiente en `organizacion.plan_cambio_*` y lo aplica el job `plan_aplicar_cambio_empresa` (red: el barrido `plan_cambios_vencidos`). El período en curso es el de calendario de su tipo, recortado a la entrada si es posterior (tramo). Su única definición en SQL es `plan_inicio_ciclo_de` con `plan_inicio_periodo_calendario` y `plan_fin_periodo_calendario` (migración `20261106120000_plan_periodo_facturacion`), que llaman `plan_de_la_empresa` y `PlanesRepository`; sus gemelas TS están en `lib/planes/ciclo.ts` (`periodoEnCurso`, `inicioDelPeriodoCalendario`, `finDelPeriodoCalendario`), probadas con la misma tabla de casos (`tests/integration/db/_fixtures/periodo-calendario.ts`).
-    - **Rutas:** `/mi-plan` para el `maestro` y el `admin` de una empresa. Para el superadmin,
+    - **Rutas:** `/mi-plan` para el `maestro` de una empresa (SLT-91). Para el superadmin,
       `/plataforma/planes`, `/plataforma/planes/[planId]` y el bloque Plan de
       `/plataforma/empresas/[organizacionId]`. Las cuatro son `nucleo` en `lib/modulos/reparto.ts`,
       sin puerta de módulo.

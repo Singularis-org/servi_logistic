@@ -352,3 +352,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** F1.4 de SLT-42 (2026-11-03, P6 en `specs/SLT-42-telefono-documento-hora-por-pais/requirements.md`). Los crons de `vercel.json` (corte diario, snapshot de ranking, etc.) corren a una hora UTC pensada para la medianoche de CR. SLT-42 hace que cada corrida calcule la fecha de cada empresa con la zona de su país, pero no mueve la hora del cron.
 - **Qué falta:** cuando entre el primer país con otra zona horaria, que esos crons corran por zona (p. ej. cada hora, procesando solo las empresas cuya medianoche local acaba de pasar). Con solo CR no hay efecto.
 - **Dueño:** Camilo (decidir si va a ficha cuando entre otro país).
+
+### D61 — Al `admin` el texto del tope le dice «Inactiva alguno», y no puede
+- **Origen:** SLT-91 (2026-11-06, P1 en `specs/SLT-91-mi-plan-solo-maestro/requirements.md`). Al aprobar una postulación con el tope de `mensajero` lleno, `mensajeDelTope` (`lib/planes/mensajes.ts`) le dice al `admin` «Inactiva alguno o pide un cambio de plan.». Usuarios es solo del `maestro` (`UsuarioService.ts:52`), así que el `admin` no puede inactivar a nadie. Carlos decidió dejar el texto igual (R11): sin él no sabría por qué falla la aprobación.
+- **Qué falta:** un texto para quien no puede inactivar usuarios, que le diga a quién acudir. Toca los límites, por eso no entró en SLT-91, y hay que cambiar el literal de R11 en `tests/unit/services/aprobacion-postulacion-tope-plan.test.ts`.
+- **Dueño:** Carlos (decidir si va a ficha).

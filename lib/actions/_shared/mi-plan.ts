@@ -14,7 +14,7 @@ export function construirMiPlanService(prisma = getPrismaClient()): IMiPlanServi
   return new MiPlanService(new MiPlanRepository(prisma));
 }
 
-/** El plan de la empresa de la sesión: `forbidden` sin leer nada si no es `maestro` ni `admin` (R8). */
+/** El plan de la empresa de la sesión: `forbidden` sin leer nada si no es `maestro` (SLT-91 R2). */
 export async function verMiPlan(
   actor: Actor | null,
   servicio: IMiPlanService = construirMiPlanService(),
