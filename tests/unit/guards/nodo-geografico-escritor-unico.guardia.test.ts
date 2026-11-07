@@ -179,6 +179,36 @@ describe("SLT-46 R43 — solo GeoRepository escribe el nodo y solo PaisRepositor
     expect(delNodo.length).toBeGreaterThanOrEqual(3);
   });
 
+  it("control positivo: PaisRepository SÍ escribe los tipos (create, createMany y update) y la guardia lo admite", () => {
+    const pais = FUENTES.find((f) => f.ruta === ESCRITOR_UNICO.tipoNivelGeografico) as Fuente;
+    const delTipo = escriturasEn(pais.codigo).filter((e) => e.modelo === "tipoNivelGeografico");
+    // Las tres escrituras reales de SLT-46: el alta de nivel_4..P, el renombre y agregar un nivel.
+    for (const metodo of ["createMany", "update", "create"]) {
+      expect(
+        delTipo.some((e) => new RegExp(`tipoNivelGeografico\\.${metodo}\\(`).test(e.linea)),
+        `la guardia no ve tipoNivelGeografico.${metodo} en PaisRepository`,
+      ).toBe(true);
+    }
+    // Y, por ser su escritor único, ninguna de ellas es un fallo.
+    expect(fallosEn([pais])).toEqual([]);
+  });
+
+  it("CONTRAPRUEBA: la misma escritura del tipo en un archivo inventado fuera de PaisRepository sale roja", () => {
+    const inventado: Fuente = {
+      ruta: "lib/services/TipoInventado.ts",
+      codigo: [
+        "export async function tiposDeMas(tx: Tx, filas: Fila[]) {",
+        "  await tx.tipoNivelGeografico.createMany({ data: filas });",
+        "  await tx.tipoNivelGeografico.update({ where: { id }, data: { nombreSingular } });",
+        "}",
+      ].join("\n"),
+    };
+    expect(fallosEn([...FUENTES, inventado])).toEqual([
+      "lib/services/TipoInventado.ts:2: await tx.tipoNivelGeografico.createMany({ data: filas });",
+      "lib/services/TipoInventado.ts:3: await tx.tipoNivelGeografico.update({ where: { id }, data: { nombreSingular } });",
+    ]);
+  });
+
   it("ningún otro archivo de lib/, app/ ni components/ escribe el nodo ni los tipos", () => {
     expect(
       fallosEn(FUENTES),
