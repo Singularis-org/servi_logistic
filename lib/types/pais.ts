@@ -60,6 +60,62 @@ export type CrearPaisInput = z.infer<typeof crearPaisSchema>;
 /** Lo que el repositorio escribe en `pais`: la entrada validada más el nombre del catálogo (R23). */
 export type DatosDeAltaDePais = CrearPaisInput & { nombre: string };
 
+// ── SLT-46 (design §4.1; R23, R24, R25, R48, R49) — el país con su catálogo de tipos ─────────
+
+/** P2: un país tiene de 2 a 10 tipos de nivel. Lo comparten el alta y «agregar nivel» (tope). */
+export const PAIS_NIVELES_MIN = 2;
+export const PAIS_NIVELES_MAX = 10;
+
+const tipoDeAltaSchema = z.object({ singular: nombrePaisSchema, plural: nombrePaisSchema }).strict();
+
+/**
+ * El alta de un país con su lista ORDENADA de tipos: el primero es `nivel_1`, el último `nivel_P`
+ * (R23). Mismo `id` de catálogo que `crearPaisSchema` (R24: los demás rechazos, como en SL-20).
+ *
+ * Convive con `crearPaisSchema` (seis campos fijos) hasta que T4 pase `PaisService` y la pantalla a
+ * este y retire aquel: cambiarlo en sitio rompería ya el repositorio y el formulario.
+ */
+export const crearPaisConTiposSchema = z
+  .object({
+    id: z
+      .string()
+      .trim()
+      .refine((id) => paisDelCatalogo(id) !== null, PAIS_FUERA_DEL_CATALOGO),
+    tipos: z
+      .array(tipoDeAltaSchema)
+      .min(PAIS_NIVELES_MIN, `Un país tiene al menos ${PAIS_NIVELES_MIN} niveles.`)
+      .max(PAIS_NIVELES_MAX, `Un país tiene como mucho ${PAIS_NIVELES_MAX} niveles.`),
+  })
+  .strict();
+
+export type CrearPaisConTiposInput = z.infer<typeof crearPaisConTiposSchema>;
+
+/** R25, R26: los dos nombres de un tipo ya creado, con las cotas del alta (2–40). */
+export const renombrarTipoNivelSchema = z
+  .object({
+    tipoId: z.string().min(1),
+    nombreSingular: nombrePaisSchema,
+    nombrePlural: nombrePaisSchema,
+  })
+  .strict();
+
+export type RenombrarTipoNivelInput = z.infer<typeof renombrarTipoNivelSchema>;
+
+/**
+ * P3 (R48, R49): agregar un nivel. Sin campo de posición a propósito: siempre va al final, debajo
+ * del más profundo; insertar en medio reescribiría la profundidad de nodos existentes. El tope de
+ * 10 no se puede ver aquí (depende de cuántos tipos tiene el país); lo aplica el repositorio.
+ */
+export const agregarNivelPaisSchema = z
+  .object({
+    paisId: z.string().regex(CODIGO_PAIS, "El código son dos letras mayúsculas (ISO 3166-1 alfa-2)."),
+    nombreSingular: nombrePaisSchema,
+    nombrePlural: nombrePaisSchema,
+  })
+  .strict();
+
+export type AgregarNivelPaisInput = z.infer<typeof agregarNivelPaisSchema>;
+
 /**
  * Enmienda 2026-10-26, decisión 6 (R47): encender o apagar la cobertura de un país. `disponible` es
  * el estado DESEADO, no un interruptor: pedir el que ya tiene es éxito sin escribir.

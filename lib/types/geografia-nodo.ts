@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import type { ReglaDeCodigoDeTipo } from "@/lib/utils/codigo-geografico";
+
 // FICHA 374 (design §5.1) — EL VOCABULARIO, LOS SCHEMAS DEL BORDE Y LOS DTO DEL ARBOL.
 //
 // POR QUE ESTE MODULO EXISTE Y NO VIVE DENTRO DE `lib/actions/geografia.ts`, que es donde el
@@ -141,6 +143,53 @@ export const nodoGeograficoSchema = z
 
 export type NodoGeograficoInput = z.infer<typeof nodoGeograficoSchema>;
 
+// ── SLT-46 (design §4.1): el borde por NODO, a cualquier profundidad ─────────────────────────
+//
+// Conviven con los de arriba (por `nivel`) solo hasta T4, que pasa la action y los services a
+// estos y retira aquellos; cambiarlos en sitio aqui romperia a la vez la action, `GeografiaService`
+// y la pantalla. El nivel ya no viaja: lo dice la profundidad del nodo en la base, y el tipo de un
+// alta es el de su profundidad (P1), asi que tampoco se elige.
+
+const idDeNodoSchema = z.string().min(1);
+
+/**
+ * El alta: raiz de un pais (`paisId`) o hijo de un nodo (`padreId`) de cualquier profundidad.
+ * Cada rama es `.strict()`: traer las dos claves, o ninguna, es `validation_error` y no una
+ * eleccion silenciosa de una de ellas.
+ */
+export const altaDeNodoSchema = z.union([
+  z
+    .object({
+      paisId: z.string().regex(/^[A-Z]{2}$/, "El país no es válido."),
+      nombre: nombreGeoSchema,
+      codigo: codigoGeoSchema,
+    })
+    .strict(),
+  z.object({ padreId: idDeNodoSchema, nombre: nombreGeoSchema, codigo: codigoGeoSchema }).strict(),
+]);
+
+export type AltaDeNodoInput = z.infer<typeof altaDeNodoSchema>;
+
+/**
+ * El renombre. R22: sin campo de padre; `.strict()` rechaza un `padreId` en vez de descartarlo, que
+ * es lo que impide que el renombre se convierta en un «mover» encubierto (mover es SLT-48).
+ */
+export const renombrarNodoSchema = z.object({ id: idDeNodoSchema, nombre: nombreGeoSchema }).strict();
+
+export type RenombrarNodoInput = z.infer<typeof renombrarNodoSchema>;
+
+/** El retiro o la reactivacion: `activo` es el estado deseado. R22: sin padre, igual que el renombre. */
+export const cambiarActivacionNodoSchema = z
+  .object({ id: idDeNodoSchema, activo: z.boolean() })
+  .strict();
+
+export type CambiarActivacionNodoInput = z.infer<typeof cambiarActivacionNodoSchema>;
+
+/** Un nodo por su id, sin mas: el conteo de ordenes de la confirmacion del retiro (R20). */
+export const nodoPorIdSchema = z.object({ id: idDeNodoSchema }).strict();
+
+export type NodoPorIdInput = z.infer<typeof nodoPorIdSchema>;
+
 /** El padre que exige el alta de cada nivel; `null` cuando el nivel no lleva padre. */
 export function padreDeAlta(input: CrearNodoGeograficoInput): string | null {
   if (input.nivel === "canton") return input.provinciaId;
@@ -228,4 +277,34 @@ export interface CantonPlataformaDTO extends NodoPlataformaDTO {
 
 export interface ProvinciaPlataformaDTO extends NodoPlataformaDTO {
   cantones: CantonPlataformaDTO[];
+}
+
+// ── SLT-46 (design §4.6): el tipo de nivel y el arbol de N niveles ───────────────────────────
+
+/**
+ * Un tipo de nivel de un pais (`tipo_nivel_geografico`). `profundidad` es el `k` de su clave
+ * `nivel_<k>`.
+ *
+ * Lleva tambien la regla de codigo (`ReglaDeCodigoDeTipo`), que §4.6 no lista: sin ella el alta
+ * (`contextoDeAlta` → `validarCodigoDeTipo`, §4.3) y la carga CSV (`planificarDivision` con los
+ * tipos de `leerDivisionDePais`, §4.4) tendrian que leer el tipo dos veces.
+ */
+export interface TipoNivelDTO extends ReglaDeCodigoDeTipo {
+  id: string;
+  clave: string;
+  profundidad: number;
+  nombreSingular: string;
+  nombrePlural: string;
+}
+
+/** Un nodo del arbol del superadmin, a cualquier profundidad (R21). Sin zonas: son de cada empresa. */
+export interface NodoArbolPlataformaDTO {
+  id: string;
+  nombre: string;
+  codigo: string | null;
+  /** El flag PROPIO del nodo; la disponibilidad efectiva la deriva quien lee. */
+  activo: boolean;
+  profundidad: number;
+  tipoId: string;
+  hijos: NodoArbolPlataformaDTO[];
 }

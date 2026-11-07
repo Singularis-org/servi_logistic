@@ -4,11 +4,15 @@ import {
   GEO_NOMBRE_MAX,
   GEO_NOMBRE_MIN,
   NIVELES_GEOGRAFICOS,
+  altaDeNodoSchema,
   cambiarActivacionGeograficaSchema,
+  cambiarActivacionNodoSchema,
   crearNodoGeograficoSchema,
   nodoGeograficoSchema,
+  nodoPorIdSchema,
   normalizarNombreGeografico,
   padreDeAlta,
+  renombrarNodoSchema,
 } from "@/lib/types/geografia-nodo";
 import { normalizeName } from "@/lib/utils/normalize";
 
@@ -210,5 +214,58 @@ describe("374 — el vocabulario del nivel", () => {
     expect(padreDeAlta({ nivel: "provincia", nombre: "Puntarenas", paisId: "CR" })).toBeNull();
     expect(padreDeAlta({ nivel: "canton", nombre: "Buenos Aires", provinciaId: "p1" })).toBe("p1");
     expect(padreDeAlta({ nivel: "distrito", nombre: "Cabagra", cantonId: "c1" })).toBe("c1");
+  });
+});
+
+// SLT-46 (design §4.1) — el borde por nodo, a cualquier profundidad. Sin `nivel`: lo dice la base.
+
+describe("SLT-46 R22 — renombre y cambio de estado no aceptan un padre (mover es SLT-48)", () => {
+  it("el renombre acepta `{id, nombre}` y rechaza un `padreId`", () => {
+    expect(renombrarNodoSchema.safeParse({ id: "n1", nombre: "Barrio Amón" }).success).toBe(true);
+    expect(renombrarNodoSchema.safeParse({ id: "n1", nombre: "Barrio Amón", padreId: "n0" }).success).toBe(
+      false,
+    );
+  });
+
+  it("el cambio de estado acepta `{id, activo}` y rechaza un `padreId`", () => {
+    expect(cambiarActivacionNodoSchema.safeParse({ id: "n1", activo: false }).success).toBe(true);
+    expect(cambiarActivacionNodoSchema.safeParse({ id: "n1", activo: false, padreId: "n0" }).success).toBe(
+      false,
+    );
+  });
+
+  it("ninguno de los dos acepta ya `nivel`: la profundidad no viaja en la entrada", () => {
+    expect(renombrarNodoSchema.safeParse({ id: "n1", nombre: "Carmen", nivel: "distrito" }).success).toBe(false);
+    expect(cambiarActivacionNodoSchema.safeParse({ id: "n1", activo: true, nivel: "distrito" }).success).toBe(
+      false,
+    );
+    expect(nodoPorIdSchema.safeParse({ id: "n1", nivel: "distrito" }).success).toBe(false);
+  });
+
+  it("el renombre aplica el mismo contrato de nombre que el alta y un id vacio no entra", () => {
+    expect(renombrarNodoSchema.parse({ id: "n1", nombre: "  San   José " }).nombre).toBe("San José");
+    expect(renombrarNodoSchema.safeParse({ id: "n1", nombre: "a" }).success).toBe(false);
+    expect(renombrarNodoSchema.safeParse({ id: "", nombre: "Carmen" }).success).toBe(false);
+    expect(nodoPorIdSchema.safeParse({ id: "" }).success).toBe(false);
+    expect(nodoPorIdSchema.safeParse({ id: "n1" }).success).toBe(true);
+  });
+});
+
+describe("SLT-46 R14/R16 — el alta es raiz de un pais o hijo de un nodo, sin elegir tipo", () => {
+  it("acepta la raiz por `paisId` y el hijo por `padreId`, con codigo opcional recortado", () => {
+    expect(altaDeNodoSchema.safeParse({ paisId: "CR", nombre: "Puntarenas" }).success).toBe(true);
+    const hijo = altaDeNodoSchema.parse({ padreId: "n9", nombre: "Barrio Uno", codigo: "  B-1 " });
+    expect(hijo).toEqual({ padreId: "n9", nombre: "Barrio Uno", codigo: "B-1" });
+  });
+
+  it("rechaza las dos claves a la vez, ninguna, un `tipoId` o un `nivel`", () => {
+    expect(altaDeNodoSchema.safeParse({ paisId: "CR", padreId: "n9", nombre: "Uno" }).success).toBe(false);
+    expect(altaDeNodoSchema.safeParse({ nombre: "Uno" }).success).toBe(false);
+    expect(altaDeNodoSchema.safeParse({ padreId: "n9", nombre: "Uno", tipoId: "t4" }).success).toBe(false);
+    expect(altaDeNodoSchema.safeParse({ padreId: "n9", nombre: "Uno", nivel: "canton" }).success).toBe(false);
+  });
+
+  it("el pais de una raiz es un codigo ISO alfa-2", () => {
+    expect(altaDeNodoSchema.safeParse({ paisId: "cr", nombre: "Puntarenas" }).success).toBe(false);
   });
 });
