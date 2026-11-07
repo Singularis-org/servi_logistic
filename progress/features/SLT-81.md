@@ -32,6 +32,7 @@ de `dev`, que aún no trae el catálogo ni la validación de SLT-42.
 Ninguna.
 
 ## Tandas
+- 2026-11-06 · Tanda 1 (backend_dev): T0.0, T0.1 y Bloque 1 (T1.1–T1.6) hechos; typecheck, lint, guardias (baseline) y unit verdes; integración a CI. Detalle: `progress/impl_SLT-81.md > Tanda 1`.
 
 ## Modelos (overrides)
 

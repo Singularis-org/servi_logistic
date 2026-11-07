@@ -12,7 +12,7 @@
   confirmar con el leader si el humano respondió; si cambia, se corrige R26 y su test antes de T1.4.
   **Hecho:** respuesta escrita en `requirements.md`, o el leader dice que se sigue con la lectura
   estricta.
-- [ ] **T0.1 — Excepciones de `pais-sin-literales` a SLT-92** (design §10, R28; sin dependencias).
+- [x] **T0.1 — Excepciones de `pais-sin-literales` a SLT-92** (design §10, R28; sin dependencias).
   `tests/unit/guards/_pais-sin-literales-excepciones.ts`: `FichaQueLoRetira` cambia `"SLT-81"` por
   `"SLT-92"` y las cuatro entradas (`fecha-cr`, `hora-cr`, `separador-dia-cr`, `telefono-cr`) pasan
   a `ficha: "SLT-92"`, mismo archivo, motivo y orden. `tests/unit/guards/pais-sin-literales.guardia.test.ts`:
@@ -22,28 +22,28 @@
 
 ## Bloque 1 — Datos y backend
 
-- [ ] **T1.1 — Migración de los enums del historial** (design §2.1, §2.2).
+- [x] **T1.1 — Migración de los enums del historial** (design §2.1, §2.2).
   `db/migrations/20261108120000_slt81_historial_datos_pais/{migration,down}.sql` (renombrar si `dev`
   trae una posterior) y `db/schema.prisma`.
   **Hecho:** `prisma validate` ok; `tests/integration/db/migracion-slt81-ida-y-vuelta.test.ts` sube,
   baja y vuelve a subir; el `down` aborta si una fila usa un valor nuevo.
-- [ ] **T1.2 [P] — Tipos, schemas, zonas y prefijo oficial** (§4.1, §4.2, §5). `lib/types/pais.ts`
+- [x] **T1.2 [P] — Tipos, schemas, zonas y prefijo oficial** (§4.1, §4.2, §5). `lib/types/pais.ts`
   (schemas nuevos, `crearPaisSchema` ampliado, `PaisParaAltaDTO`), `lib/utils/zonas-iana.ts` y
   `lib/utils/prefijo-oficial.ts`.
   **Hecho:** `tests/unit/utils/zonas-iana.test.ts` (R8) y `tests/unit/utils/prefijo-oficial.test.ts`
   (R26) verdes; los tests de SL-20 que construyen `crearPaisSchema` ajustados con los campos nuevos.
-- [ ] **T1.3 — Repositorio** (§4.3; depende de T1.1). `IPaisRepository`, `PaisRepository`.
+- [x] **T1.3 — Repositorio** (§4.3; depende de T1.1). `IPaisRepository`, `PaisRepository`.
   **Hecho:** `tests/integration/db/pais-datos-plataforma.test.ts` con R4, R6, R8 (base), R15
   (concurrencia), R16, R17; `pais-repositorio.test.ts` sigue verde; guardia
   `sql-a-mano-por-empresa` verde o decisión del leader anotada.
-- [ ] **T1.4 — Servicio** (§4.2; depende de T1.2, T1.3). `IPaisService`, `PaisService`.
+- [x] **T1.4 — Servicio** (§4.2; depende de T1.2, T1.3). `IPaisService`, `PaisService`.
   **Hecho:** `tests/unit/services/pais-service-datos.test.ts` con R1, R5, R7–R11, R13, R15, R26
   (códigos reales con su prefijo oficial, design §11); `pais-service.test.ts` verde.
-- [ ] **T1.5 — Actions** (§4.4; depende de T1.4). `lib/actions/geografia-plataforma.ts`,
+- [x] **T1.5 — Actions** (§4.4; depende de T1.4). `lib/actions/geografia-plataforma.ts`,
   `lib/actions/_shared/paises-plataforma.ts`.
   **Hecho:** `geografia-plataforma-action.test.ts` con los casos de R1 (sin sesión, rol de empresa);
   `geografia-plataforma.composition-root.test.ts` verde.
-- [ ] **T1.6 — R12 y R14 de punta a punta** (depende de T1.3, T1.4).
+- [x] **T1.6 — R12 y R14 de punta a punta** (depende de T1.3, T1.4).
   **Hecho:** los casos «R12» y «R14» de `pais-datos-plataforma.test.ts` verdes con
   `ReglasPaisEmpresaService` y `UsuarioService` reales, dos empresas (CR y `PA` sembrado por el test).
 
