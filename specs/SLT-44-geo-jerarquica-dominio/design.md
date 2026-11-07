@@ -518,3 +518,5 @@ de :188) se reescriben para describir el distrito con una sola zona. No son aser
 3. **Retirar el colapso del dominio** (que `zonaQueCubre` tome la única zona sin colapsar). Haría
    dos reglas para lo mismo mientras `_shared/zona-colapso.ts` siga viva, y lo excluyó SLT-75. Le
    toca a la ficha que retire `zona-colapso.ts`.
+
+<!-- @test-desaparecido tests/unit/guards/nodo-geografico-sin-escritor.guardia.test.ts: lo retiró SLT-46 T7.1 (5193ae2c), como anunciaba su cabecera: desde SLT-46 la app escribe el nodo y la regla «nadie escribe nodo_geografico» queda superada por SLT-46 R43 «solo GeoRepository escribe el nodo y solo PaisRepository los tipos», que prueba tests/unit/guards/nodo-geografico-escritor-unico.guardia.test.ts. -->

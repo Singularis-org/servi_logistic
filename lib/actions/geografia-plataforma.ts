@@ -198,6 +198,7 @@ export type RenombrarTipoNivelActionResult = RenombrarTipoNivelServiceResult | S
  * SLT-46 (R25, R26): los dos nombres de un tipo de nivel. Pedir los que ya tiene es `ok` sin escribir;
  * un tipo que no existe es `not_found`. El nombre de un tipo no es único: un fallo de la base es
  * `error` con log (R36).
+ * @sin-superficie SLT-46 T6.3 (`TiposDeNivelPais.tsx`) le da pantalla; espera la maqueta aprobada de T0.2 (R52), que aún no existe.
  */
 export async function renombrarTipoNivelAction(
   input: unknown,
@@ -223,6 +224,7 @@ export type AgregarNivelPaisActionResult =
  * SLT-46 (P3; R48, R49): un nivel más, siempre al final. El tope de 10 es `validation_error` en
  * `paisId` y un país que no existe, `not_found` (los decide el servicio). Dos altas de nivel en
  * paralelo chocan en el único de `nivel_<P+1>`: el `P2002` sube del servicio y aquí es `conflict`.
+ * @sin-superficie SLT-46 T6.3 («Agregar nivel» en `TiposDeNivelPais.tsx`) le da pantalla; espera la maqueta aprobada de T0.2 (R52), que aún no existe.
  */
 export async function agregarNivelPaisAction(
   input: unknown,

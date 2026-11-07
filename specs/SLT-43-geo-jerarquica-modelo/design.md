@@ -528,3 +528,5 @@ prueba `XA` con códigos libres, órdenes con y sin distrito, zonas con distrito
   seguir.
 - **Bloqueo del índice sobre `orden`** (§2.4). Aislado en su migración y medido en el ensayo; si
   tarda demasiado sobre la copia, se decide con el humano antes de la release.
+
+<!-- @test-desaparecido tests/unit/guards/nodo-geografico-sin-escritor.guardia.test.ts: lo retiró SLT-46 T7.1 (5193ae2c), como anunciaba su cabecera: desde SLT-46 la app escribe el nodo y la regla «nadie escribe nodo_geografico» queda superada por SLT-46 R43 «solo GeoRepository escribe el nodo y solo PaisRepository los tipos», que prueba tests/unit/guards/nodo-geografico-escritor-unico.guardia.test.ts. -->
