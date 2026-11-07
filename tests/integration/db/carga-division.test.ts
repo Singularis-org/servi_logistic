@@ -344,12 +344,13 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
         const p = await tx.provincia.create({ data: { nombre: "Existente", paisId: "XA" }, select: { id: true } });
         const division = await geo.leerDivisionDePais("XA");
         const plan = planificarDivision(
+          // SLT-46 T5: la forma por profundidad (`niveles`, `nodos`, `tipos`); las mismas dos filas.
           [
-            { linea: 2, nivel1: "Nueva", codigoNivel1: "", nivel2: "Hija", codigoNivel2: "", nivel3: "", codigoNivel3: "" },
-            { linea: 3, nivel1: "Existente", codigoNivel1: "", nivel2: "Choque", codigoNivel2: "", nivel3: "", codigoNivel3: "" },
+            { linea: 2, niveles: [{ nombre: "Nueva", codigo: "" }, { nombre: "Hija", codigo: "" }, { nombre: "", codigo: "" }] },
+            { linea: 3, niveles: [{ nombre: "Existente", codigo: "" }, { nombre: "Choque", codigo: "" }, { nombre: "", codigo: "" }] },
           ],
-          division!.arbol,
-          division!.regla,
+          division!.nodos,
+          division!.tipos,
         );
         if (!("plan" in plan)) throw new Error("el plan de prueba tenia errores");
         await tx.canton.create({ data: { nombre: "Choque", provinciaId: p.id } });
@@ -368,9 +369,10 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
         await tx.provincia.create({ data: { nombre: "Existente", paisId: "XA" } });
         const division = await geo.leerDivisionDePais("XA");
         const plan = planificarDivision(
-          [{ linea: 2, nivel1: "Nueva", codigoNivel1: "", nivel2: "Hija", codigoNivel2: "", nivel3: "", codigoNivel3: "" }],
-          division!.arbol,
-          division!.regla,
+          // SLT-46 T5: la forma por profundidad; la misma fila.
+          [{ linea: 2, niveles: [{ nombre: "Nueva", codigo: "" }, { nombre: "Hija", codigo: "" }, { nombre: "", codigo: "" }] }],
+          division!.nodos,
+          division!.tipos,
         );
         if (!("plan" in plan)) throw new Error("el plan de prueba tenia errores");
         await geo.importarDivision("XA", plan.plan, actor.usuarioId);
@@ -387,7 +389,13 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
   it("T4.1 `listArbolDePais`: el arbol de XA tras la carga, con codigo, sin CR y sin zonas", async () => {
     await conPais(async ({ geo, service }) => {
       await service.cargar("XA", archivo("Región,R,Comuna,C,Barrio,B", "Región,R,Comuna,C,Aldea,A"), actor);
-      expect(await geo.listArbolDePais("XA")).toEqual([
+      // SLT-46 T5: aserción de resultado pendiente de T5.3 (`listArbolDePais` se retiró en T4; el
+      // árbol por nodo es `arbolDePais` → `{tipos, raices}`, otra forma de resultado). El cast deja
+      // la aserción literalmente igual y en rojo en runtime hasta que T5.3 la decida.
+      const geoRetirado = geo as unknown as {
+        listArbolDePais(paisId: string): Promise<{ nombre: string }[]>;
+      };
+      expect(await geoRetirado.listArbolDePais("XA")).toEqual([
         {
           id: expect.any(String),
           nombre: "Región",
@@ -409,7 +417,7 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
         },
       ]);
       // Y el de CR no trae nada de XA.
-      const deCR = await geo.listArbolDePais("CR");
+      const deCR = await geoRetirado.listArbolDePais("CR");
       expect(deCR.length).toBeGreaterThan(0);
       expect(deCR.some((p) => p.nombre === "Región")).toBe(false);
     });
@@ -449,10 +457,10 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
         const servicio = geografia(tx);
         const antes = await tx.historialAccion.count();
 
-        const alta = await servicio.crear({ nivel: "provincia", nombre: "Región Nueva", paisId: "XA" }, actor);
+        const alta = await servicio.crear({ paisId: "XA", nombre: "Región Nueva" }, actor);
         if (alta.status !== "ok") throw new Error(`alta: ${alta.status}`);
-        const renombre = await servicio.renombrar({ nivel: "provincia", id: alta.id, nombre: "Región Renombrada" }, actor);
-        const retiro = await servicio.cambiarActivacion({ nivel: "provincia", id: alta.id, activo: false }, actor);
+        const renombre = await servicio.renombrar({ id: alta.id, nombre: "Región Renombrada" }, actor);
+        const retiro = await servicio.cambiarActivacion({ id: alta.id, activo: false }, actor);
 
         expect(renombre.status).toBe("ok");
         expect(retiro.status).toBe("ok");
@@ -480,8 +488,8 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
         const ctidActiva = await ctidDe(tx, activa.id);
         const accionAntes = await tx.historialAccion.count();
 
-        const otraVezRetiro = await servicio.cambiarActivacion({ nivel: "provincia", id: retirada.id, activo: false }, actor);
-        const otraVezActiva = await servicio.cambiarActivacion({ nivel: "provincia", id: activa.id, activo: true }, actor);
+        const otraVezRetiro = await servicio.cambiarActivacion({ id: retirada.id, activo: false }, actor);
+        const otraVezActiva = await servicio.cambiarActivacion({ id: activa.id, activo: true }, actor);
 
         expect(otraVezRetiro).toEqual({ status: "ok", nivel: "provincia", id: retirada.id, activo: false });
         expect(otraVezActiva).toEqual({ status: "ok", nivel: "provincia", id: activa.id, activo: true });
@@ -498,7 +506,7 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
         const activa = await tx.provincia.create({ data: { nombre: "Activa", paisId: "XA" }, select: { id: true } });
         const ctid = await ctidDe(tx, activa.id);
 
-        const r = await geografia(tx).cambiarActivacion({ nivel: "provincia", id: activa.id, activo: false }, actor);
+        const r = await geografia(tx).cambiarActivacion({ id: activa.id, activo: false }, actor);
 
         expect(r).toEqual({ status: "ok", nivel: "provincia", id: activa.id, activo: false });
         expect(await ctidDe(tx, activa.id)).not.toBe(ctid);

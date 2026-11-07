@@ -13,6 +13,7 @@ import {
   enTransaccionRevertida,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { altaPorNivel } from "./_fixtures/alta-por-nivel-46";
 import { idDeRol, insertarUsuario } from "./_fixtures/superadmin-32";
 
 /**
@@ -148,7 +149,7 @@ describeSiHayBase("374 — el registro de acciones del catalogo geografico (Post
   describe("374/R51 — desactivar un distrito escribe EXACTAMENTE UNA fila", () => {
     it("una fila, con la accion y la entidad del nivel", async () => {
       await conCorpus(async ({ s, geo, registro }) => {
-        expect(await geo.cambiarActivacion("distrito", s.distrito, false, actorUsuarioId)).toBe(
+        expect(await geo.cambiarActivacion(s.distrito, false, actorUsuarioId)).toBe(
           "cambiado",
         );
         const filas = await registro(s.distrito);
@@ -161,7 +162,7 @@ describeSiHayBase("374 — el registro de acciones del catalogo geografico (Post
 
     it("⭑ R54: la etiqueta es la CADENA de ascendientes", async () => {
       await conCorpus(async ({ s, geo, registro }) => {
-        await geo.cambiarActivacion("distrito", s.distrito, false, actorUsuarioId);
+        await geo.cambiarActivacion(s.distrito, false, actorUsuarioId);
         const [fila] = await registro(s.distrito);
         // Literal (con el sufijo de la corrida): es lo que se lee en `/historico/acciones`.
         expect(fila.entidad_etiqueta).toBe(
@@ -172,7 +173,7 @@ describeSiHayBase("374 — el registro de acciones del catalogo geografico (Post
 
     it("R54 + SL-20/R33: el actor va CONGELADO, con el pais del nodo y sin datos de destinatario", async () => {
       await conCorpus(async ({ s, geo, registro }) => {
-        await geo.cambiarActivacion("distrito", s.distrito, false, actorUsuarioId);
+        await geo.cambiarActivacion(s.distrito, false, actorUsuarioId);
         const [fila] = await registro(s.distrito);
         expect(fila.actor_usuario_id).toBe(actorUsuarioId);
         expect(fila.actor_nombre).toBe(actorNombreEsperado);
@@ -187,20 +188,20 @@ describeSiHayBase("374 — el registro de acciones del catalogo geografico (Post
     it("SL-20/R35: retirar NO escribe en `historial_accion`", async () => {
       await conCorpus(async ({ s, geo, tx }) => {
         const antes = await tx.historialAccion.count({ where: { entidadId: s.distrito } });
-        await geo.cambiarActivacion("distrito", s.distrito, false, actorUsuarioId);
-        await geo.cambiarActivacion("distrito", s.distrito, true, actorUsuarioId);
+        await geo.cambiarActivacion(s.distrito, false, actorUsuarioId);
+        await geo.cambiarActivacion(s.distrito, true, actorUsuarioId);
         expect(await tx.historialAccion.count({ where: { entidadId: s.distrito } })).toBe(antes);
       });
     });
 
     it("un canton y una provincia se registran en SU entidad, con SU cadena", async () => {
       await conCorpus(async ({ s, geo, registro }) => {
-        await geo.cambiarActivacion("canton", s.canton, false, actorUsuarioId);
+        await geo.cambiarActivacion(s.canton, false, actorUsuarioId);
         const [filaCanton] = await registro(s.canton);
         expect(filaCanton.entidad_tipo).toBe("canton");
         expect(filaCanton.entidad_etiqueta).toBe(`${CANTON} ${SUFIJO} · ${PROVINCIA} ${SUFIJO}`);
 
-        await geo.cambiarActivacion("provincia", s.provincia, false, actorUsuarioId);
+        await geo.cambiarActivacion(s.provincia, false, actorUsuarioId);
         const [filaProv] = await registro(s.provincia);
         expect(filaProv.entidad_tipo).toBe("provincia");
         expect(filaProv.entidad_etiqueta).toBe(`${PROVINCIA} ${SUFIJO}`);
@@ -215,8 +216,8 @@ describeSiHayBase("374 — el registro de acciones del catalogo geografico (Post
   describe("374/R52 — reactivar escribe `nodo_geografico_activado`, un valor DISTINTO", () => {
     it("las dos operaciones dejan dos filas, cada una con su tipo", async () => {
       await conCorpus(async ({ s, geo, registro }) => {
-        await geo.cambiarActivacion("distrito", s.distrito, false, actorUsuarioId);
-        await geo.cambiarActivacion("distrito", s.distrito, true, actorUsuarioId);
+        await geo.cambiarActivacion(s.distrito, false, actorUsuarioId);
+        await geo.cambiarActivacion(s.distrito, true, actorUsuarioId);
         const filas = await registro(s.distrito);
         expect(filas).toHaveLength(2);
         expect(filas.map((f) => f.accion)).toEqual([
@@ -237,7 +238,8 @@ describeSiHayBase("374 — el registro de acciones del catalogo geografico (Post
   describe("374/R53 + SL-20/R33 — el alta SI deja rastro; pedir lo ya hecho no", () => {
     it("SL-20/R33: un alta escribe UNA fila `nodo_geografico_creado` con su cadena y su pais", async () => {
       await conCorpus(async ({ s, geo, registro }) => {
-        const id = await geo.crear(
+        const id = await altaPorNivel(
+          geo,
           "distrito",
           `Nuevo ${SUFIJO}`,
           s.canton,
@@ -260,7 +262,7 @@ describeSiHayBase("374 — el registro de acciones del catalogo geografico (Post
     it("SL-20/R33: si el registro falla, el alta tampoco persiste", async () => {
       await conCorpus(async ({ s, geoRoto, tx }) => {
         await expect(
-          geoRoto.crear("distrito", `Roto ${SUFIJO}`, s.canton, { paisId: "CR", codigo: null }, actorUsuarioId),
+          altaPorNivel(geoRoto, "distrito", `Roto ${SUFIJO}`, s.canton, { paisId: "CR", codigo: null }, actorUsuarioId),
         ).rejects.toBeInstanceOf(RegistroCaido);
         expect(await tx.distrito.count({ where: { cantonId: s.canton, nombre: `Roto ${SUFIJO}` } })).toBe(0);
       });
@@ -268,11 +270,11 @@ describeSiHayBase("374 — el registro de acciones del catalogo geografico (Post
 
     it("⭑ pedir desactivar lo YA inactivo no escribe ni el `update` ni la fila", async () => {
       await conCorpus(async ({ s, geo, tx, registro }) => {
-        await geo.cambiarActivacion("distrito", s.distrito, false, actorUsuarioId);
+        await geo.cambiarActivacion(s.distrito, false, actorUsuarioId);
         expect(await registro(s.distrito)).toHaveLength(1);
 
         // Segunda peticion, mismo estado.
-        expect(await geo.cambiarActivacion("distrito", s.distrito, false, actorUsuarioId)).toBe(
+        expect(await geo.cambiarActivacion(s.distrito, false, actorUsuarioId)).toBe(
           "sin_cambio",
         );
 
@@ -288,7 +290,7 @@ describeSiHayBase("374 — el registro de acciones del catalogo geografico (Post
 
     it("pedir activar lo ya activo tampoco escribe nada", async () => {
       await conCorpus(async ({ s, geo, registro }) => {
-        expect(await geo.cambiarActivacion("distrito", s.distrito, true, actorUsuarioId)).toBe(
+        expect(await geo.cambiarActivacion(s.distrito, true, actorUsuarioId)).toBe(
           "sin_cambio",
         );
         expect(await registro(s.distrito)).toEqual([]);
@@ -298,7 +300,7 @@ describeSiHayBase("374 — el registro de acciones del catalogo geografico (Post
     it("un nodo INEXISTENTE no escribe fila ni cambia nada", async () => {
       await conCorpus(async ({ geo, registro }) => {
         const fantasma = "00000000-0000-0000-0000-000000000000";
-        expect(await geo.cambiarActivacion("distrito", fantasma, false, actorUsuarioId)).toBe(
+        expect(await geo.cambiarActivacion(fantasma, false, actorUsuarioId)).toBe(
           "no_existe",
         );
         expect(await registro(fantasma)).toEqual([]);
@@ -320,7 +322,7 @@ describeSiHayBase("374 — el registro de acciones del catalogo geografico (Post
         expect(antes?.activo).toBe(true); // anti-vacuidad
 
         await expect(
-          geoRoto.cambiarActivacion("distrito", s.distrito, false, actorUsuarioId),
+          geoRoto.cambiarActivacion(s.distrito, false, actorUsuarioId),
         ).rejects.toBeInstanceOf(RegistroCaido);
 
         const despues = await tx.distrito.findUnique({
@@ -332,7 +334,7 @@ describeSiHayBase("374 — el registro de acciones del catalogo geografico (Post
 
         // CONTRAPRUEBA: con el registro SANO, el mismo cambio SI persiste. Sin esto, lo de arriba
         // podria estar verde porque el camino nunca escribe.
-        expect(await geo.cambiarActivacion("distrito", s.distrito, false, actorUsuarioId)).toBe(
+        expect(await geo.cambiarActivacion(s.distrito, false, actorUsuarioId)).toBe(
           "cambiado",
         );
         const final = await tx.distrito.findUnique({
@@ -429,16 +431,16 @@ describeSiHayBase("SL-32 (R24) — el `maestro` recibe forbidden sin escribir (P
       const actor = { usuarioId: maestroId, rol: "maestro" as const };
 
       expect(
-        await service.cambiarActivacion({ nivel: "distrito", id: s.distrito, activo: false }, actor),
+        await service.cambiarActivacion({ id: s.distrito, activo: false }, actor),
       ).toEqual({ status: "forbidden" });
       expect(
-        await service.cambiarActivacion({ nivel: "provincia", id: s.provincia, activo: true }, actor),
+        await service.cambiarActivacion({ id: s.provincia, activo: true }, actor),
       ).toEqual({ status: "forbidden" });
       expect(
-        await service.renombrar({ nivel: "canton", id: s.canton, nombre: `Otro m${SUFIJO}` }, actor),
+        await service.renombrar({ id: s.canton, nombre: `Otro m${SUFIJO}` }, actor),
       ).toEqual({ status: "forbidden" });
       expect(
-        await service.crear({ nivel: "distrito", nombre: `Nuevo m${SUFIJO}`, cantonId: s.canton }, actor),
+        await service.crear({ padreId: s.canton, nombre: `Nuevo m${SUFIJO}` }, actor),
       ).toEqual({ status: "forbidden" });
 
       expect(await filas([s.provincia, s.canton, s.distrito])).toBe(0);
@@ -457,7 +459,7 @@ describeSiHayBase("SL-32 (R24) — el `maestro` recibe forbidden sin escribir (P
   it("CONTRAPRUEBA: el mismo usuario, por el repositorio (que no mira el rol), SI deja la fila", async () => {
     // Sin esto, el `0` de arriba podria salir de una consulta que nunca ve filas.
     await conMaestro(async ({ s, maestroId, geo, filas }) => {
-      expect(await geo.cambiarActivacion("distrito", s.distrito, false, maestroId)).toBe("cambiado");
+      expect(await geo.cambiarActivacion(s.distrito, false, maestroId)).toBe("cambiado");
       expect(await filas([s.distrito])).toBe(1);
     });
   });

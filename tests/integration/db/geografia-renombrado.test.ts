@@ -159,7 +159,7 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
           select: { nombre: true, codigoDta: true, activo: true, cantonId: true },
         });
 
-        expect(await geo.renombrar("distrito", s.distrito, `Cabagrita ${SUFIJO}`, actorUsuarioId)).toBe(
+        expect(await geo.renombrar(s.distrito, `Cabagrita ${SUFIJO}`, actorUsuarioId)).toBe(
           "renombrado",
         );
 
@@ -178,7 +178,7 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
 
     it("NO toca a ningun hermano", async () => {
       await conCorpus(async ({ s, geo, tx }) => {
-        await geo.renombrar("distrito", s.distrito, `Cabagrita ${SUFIJO}`, actorUsuarioId);
+        await geo.renombrar(s.distrito, `Cabagrita ${SUFIJO}`, actorUsuarioId);
         const hermano = await tx.distrito.findUniqueOrThrow({
           where: { id: s.hermano },
           select: { nombre: true },
@@ -189,10 +189,10 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
 
     it("funciona igual en canton y en provincia, cada uno con su codigo intacto", async () => {
       await conCorpus(async ({ s, geo, tx }) => {
-        expect(await geo.renombrar("canton", s.canton, `Osa ${SUFIJO}`, actorUsuarioId)).toBe(
+        expect(await geo.renombrar(s.canton, `Osa ${SUFIJO}`, actorUsuarioId)).toBe(
           "renombrado",
         );
-        expect(await geo.renombrar("provincia", s.provincia, `Guanacaste ${SUFIJO}`, actorUsuarioId)).toBe(
+        expect(await geo.renombrar(s.provincia, `Guanacaste ${SUFIJO}`, actorUsuarioId)).toBe(
           "renombrado",
         );
 
@@ -219,7 +219,7 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
   describe("375 — renombrar a SU PROPIO nombre es `sin_cambio` y no escribe nada", () => {
     it("devuelve `sin_cambio`, no toca la fila y no deja fila de registro", async () => {
       await conCorpus(async ({ s, geo, tx, registro }) => {
-        expect(await geo.renombrar("distrito", s.distrito, DISTRITO, actorUsuarioId)).toBe(
+        expect(await geo.renombrar(s.distrito, DISTRITO, actorUsuarioId)).toBe(
           "sin_cambio",
         );
         const fila = await tx.distrito.findUniqueOrThrow({
@@ -235,7 +235,7 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
     it("un nodo INEXISTENTE devuelve `no_existe` y no escribe nada", async () => {
       await conCorpus(async ({ geo, registro }) => {
         const fantasma = "00000000-0000-0000-0000-000000000000";
-        expect(await geo.renombrar("distrito", fantasma, `X ${SUFIJO}`, actorUsuarioId)).toBe(
+        expect(await geo.renombrar(fantasma, `X ${SUFIJO}`, actorUsuarioId)).toBe(
           "no_existe",
         );
         expect(await registro(fantasma)).toEqual([]);
@@ -250,7 +250,7 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
   describe("375 — el renombrado deja EXACTAMENTE UNA fila con el nombre anterior y el nuevo", () => {
     it("una fila `nodo_geografico_renombrado` sobre la entidad del nivel", async () => {
       await conCorpus(async ({ s, geo, registro }) => {
-        await geo.renombrar("distrito", s.distrito, `Cabagrita ${SUFIJO}`, actorUsuarioId);
+        await geo.renombrar(s.distrito, `Cabagrita ${SUFIJO}`, actorUsuarioId);
         const filas = await registro(s.distrito);
         expect(filas).toHaveLength(1);
         expect(filas[0].accion).toBe("nodo_geografico_renombrado");
@@ -261,7 +261,7 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
 
     it("⭑ `valor_anterior` y `valor_nuevo` llevan los DOS nombres", async () => {
       await conCorpus(async ({ s, geo, registro }) => {
-        await geo.renombrar("distrito", s.distrito, `Cabagrita ${SUFIJO}`, actorUsuarioId);
+        await geo.renombrar(s.distrito, `Cabagrita ${SUFIJO}`, actorUsuarioId);
         const [fila] = await registro(s.distrito);
         expect(fila.valor_anterior).toBe(DISTRITO);
         expect(fila.valor_nuevo).toBe(`Cabagrita ${SUFIJO}`);
@@ -272,7 +272,7 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
 
     it("la etiqueta es la CADENA con el nombre NUEVO, y el actor va congelado", async () => {
       await conCorpus(async ({ s, geo, registro }) => {
-        await geo.renombrar("distrito", s.distrito, `Cabagrita ${SUFIJO}`, actorUsuarioId);
+        await geo.renombrar(s.distrito, `Cabagrita ${SUFIJO}`, actorUsuarioId);
         const [fila] = await registro(s.distrito);
         expect(fila.entidad_etiqueta).toBe(`Cabagrita ${SUFIJO} · ${CANTON} · ${PROVINCIA}`);
         expect(fila.actor_usuario_id).toBe(actorUsuarioId);
@@ -285,7 +285,7 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
     it("SL-20/R35: el renombrado NO escribe en `historial_accion`", async () => {
       await conCorpus(async ({ s, geo, tx }) => {
         const antes = await tx.historialAccion.count({ where: { entidadId: s.distrito } });
-        await geo.renombrar("distrito", s.distrito, `Cabagrita ${SUFIJO}`, actorUsuarioId);
+        await geo.renombrar(s.distrito, `Cabagrita ${SUFIJO}`, actorUsuarioId);
         expect(await tx.historialAccion.count({ where: { entidadId: s.distrito } })).toBe(antes);
       });
     });
@@ -293,7 +293,7 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
     it("⭑ si el registro FALLA, el nombre NO queda persistido", async () => {
       await conCorpus(async ({ s, geoRoto, tx }) => {
         await expect(
-          geoRoto.renombrar("distrito", s.distrito, `Cabagrita ${SUFIJO}`, actorUsuarioId),
+          geoRoto.renombrar(s.distrito, `Cabagrita ${SUFIJO}`, actorUsuarioId),
         ).rejects.toBeInstanceOf(RegistroCaido);
 
         const fila = await tx.distrito.findUniqueOrThrow({
@@ -318,7 +318,7 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
       await conCorpus(async ({ s, geo }) => {
         // El repositorio NO comprueba: deja escapar el error y el borde lo traduce a `conflict`.
         await expect(
-          geo.renombrar("distrito", s.distrito, HERMANO, actorUsuarioId),
+          geo.renombrar(s.distrito, HERMANO, actorUsuarioId),
         ).rejects.toThrow();
       });
     });
@@ -338,7 +338,7 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
           })
         ).id;
         // `Cabagra` y `Palmar` viven en cantones distintos: renombrar uno al otro es legal.
-        expect(await geo.renombrar("distrito", ajeno, DISTRITO, actorUsuarioId)).toBe("renombrado");
+        expect(await geo.renombrar(ajeno, DISTRITO, actorUsuarioId)).toBe("renombrado");
       });
     });
   });
@@ -350,7 +350,7 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
   describe("375 — `findHermanosDeNodo` parte del NODO y devuelve el nodo dentro", () => {
     it("devuelve los hermanos del distrito, INCLUIDO el propio", async () => {
       await conCorpus(async ({ s, geo }) => {
-        const hermanos = await geo.findHermanosDeNodo("distrito", s.distrito);
+        const hermanos = await geo.hermanosDeNodo(s.distrito);
         expect(hermanos).not.toBeNull();
         const ids = hermanos!.map((h) => h.id).sort();
         expect(ids).toEqual([s.distrito, s.hermano].sort());
@@ -360,7 +360,7 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
     it("trae tambien los INACTIVOS: un nombre ocupado por un retirado sigue ocupado", async () => {
       await conCorpus(async ({ s, geo, tx }) => {
         await tx.distrito.update({ where: { id: s.hermano }, data: { activo: false } });
-        const hermanos = await geo.findHermanosDeNodo("distrito", s.distrito);
+        const hermanos = await geo.hermanosDeNodo(s.distrito);
         expect(hermanos!.map((h) => h.id)).toContain(s.hermano);
       });
     });
@@ -368,9 +368,9 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
     it("`null` cuando el nodo no existe, en los TRES niveles", async () => {
       await conCorpus(async ({ geo }) => {
         const fantasma = "00000000-0000-0000-0000-000000000000";
-        expect(await geo.findHermanosDeNodo("distrito", fantasma)).toBeNull();
-        expect(await geo.findHermanosDeNodo("canton", fantasma)).toBeNull();
-        expect(await geo.findHermanosDeNodo("provincia", fantasma)).toBeNull();
+        expect(await geo.hermanosDeNodo(fantasma)).toBeNull();
+        expect(await geo.hermanosDeNodo(fantasma)).toBeNull();
+        expect(await geo.hermanosDeNodo(fantasma)).toBeNull();
       });
     });
 
@@ -386,7 +386,7 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
           })
         ).id;
 
-        const hermanos = await geo.findHermanosDeNodo("canton", s.canton);
+        const hermanos = await geo.hermanosDeNodo(s.canton);
         expect(hermanos!.map((h) => h.id)).toContain(s.canton);
         expect(hermanos!.map((h) => h.id)).not.toContain(cantonAjeno);
       });
@@ -402,11 +402,11 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
           })
         ).id;
 
-        const deCR = (await geo.findHermanosDeNodo("provincia", s.provincia))!.map((h) => h.id);
+        const deCR = (await geo.hermanosDeNodo(s.provincia))!.map((h) => h.id);
         expect(deCR).toContain(s.provincia);
         expect(deCR).not.toContain(ajena);
 
-        const deXA = (await geo.findHermanosDeNodo("provincia", ajena))!.map((h) => h.id);
+        const deXA = (await geo.hermanosDeNodo(ajena))!.map((h) => h.id);
         expect(deXA).toEqual([ajena]);
       });
     });
