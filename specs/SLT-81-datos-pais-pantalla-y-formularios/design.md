@@ -13,12 +13,12 @@ Buscado el 2026-11-06 con `prefijo`, `tipos de documento`, `zona horaria`, `dato
 | Qué apareció | Dónde | Qué se hace con ello |
 |---|---|---|
 | SLT-42 «Teléfono, documento y hora por país» (mergeada en `dev`) | `specs/SLT-42-*`, `progress/impl_SLT-42.md` | Es el backend de lectura y validación. Se **reutiliza** entero: columnas `pais.prefijo_telefonico`, `telefono_digitos_nacionales`, `zona_horaria`; catálogo `tipo_identificacion` por país con `clave`, `caracteres`, `largo_min/max`, `orden`, `activo`; `PaisDTO`, `TipoDocumentoDTO`, `IReglasPaisEmpresa` (sin caché entre peticiones), `validarDocumento`, `validarTelefonoDelPais`, `UsuarioService.listarTiposIdentificacion` (ya filtra por país y activos, ya trae `nombre`). SLT-81 no cambia ninguna de sus reglas de validación. |
-| Siembra de Costa Rica | `db/migrations/20261107120000_slt42_pais_telefono_y_zona`, `20261107120100_slt42_tipo_documento_por_pais` | La decisión cerrada cita `20261106120000` y `120100`: son los nombres de antes de que SLT-42 renombrara sus migraciones al integrar `dev` (`impl_SLT-42.md > Integración de dev`). Mismo contenido; no se reabre la decisión, solo se cita el nombre vigente. SLT-81 no siembra nada (R4). |
+| Siembra de Costa Rica | `db/migrations/20261107120000_slt42_pais_telefono_y_zona`, `20261107120100_slt42_tipo_documento_por_pais` | La decisión cerrada ya cita estos nombres (corregidos el 2026-11-07: antes `20261106120000` y `120100`, renombradas por SLT-42 al integrar `dev`, `impl_SLT-42.md > Integración de dev`; mismo contenido). SLT-81 no siembra nada (R4). |
 | SL-20 «Geografía configurable por país» (`done`) | `app/(app)/plataforma/geografia/`, `lib/actions/geografia-plataforma.ts`, `PaisService`, `PaisRepository`, `historial_plataforma` | Se **amplía**: la sección nueva vive en `GeografiaPlataformaModule`, las actions nuevas van en `geografia-plataforma.ts` (ya en `EXCEPCIONES_DE_PLATAFORMA`, misma puerta `exigirSuperadmin` → zod → servicio en `comoPlataforma`), y el rastro va a `historial_plataforma` con `appendAccionPlataforma`. |
 | SLT-46 «Geografía jerárquica: administración de países» (`pending`) | `feature_list.json` | Decisión cerrada: no se espera; SLT-46 se adapta después. SLT-81 no toca la estructura de la pantalla más allá de añadir la sección. |
-| SL-35 «Landing pública por empresa con postulación» (`pending`) | `feature_list.json`, `lib/actions/postulacion-mensajero.ts:115-123` | Es quien dará empresa a la postulación pública. Ver §7.3 y la pregunta abierta 1. |
+| SL-35 «Landing pública por empresa con postulación» (`pending`) | `feature_list.json`, `lib/actions/postulacion-mensajero.ts:115-123` | Es quien dará empresa a la postulación pública. Ver §7.3 (decisión del 2026-11-07, R19, R27). |
 | `EtiquetasGeograficasProvider` y la cuarta lectura del layout | `app/(app)/layout.tsx:91-112`, `providers/EtiquetasGeograficasProvider.tsx` | El layout ya lee el `PaisDTO` de la empresa (`etiquetasDeEmpresa` → `deLaEmpresa`), que trae el prefijo. Se **reutiliza** esa misma lectura para el prefijo (§7.1): cero consultas nuevas. |
-| Guardia `pais-sin-literales` | `tests/unit/guards/_pais-sin-literales-excepciones.ts` | Cuatro excepciones llevan la ficha `SLT-81`. Ninguna es de los cinco formularios. Pregunta abierta 3 y §10. |
+| Guardia `pais-sin-literales` | `tests/unit/guards/_pais-sin-literales-excepciones.ts` | Cuatro excepciones llevan la ficha `SLT-81`. Ninguna es de los cinco formularios. Pasan a SLT-92 (decisión del 2026-11-07, R28, §10). |
 | `Combobox` con filtro | `components/ui/combobox.tsx` (ya lo usa «Nuevo país») | Selector de zona con buscador (R8). No hace falta componente nuevo. |
 | Libreria de zonas | — | No hay ninguna en el repo y no se añade: `Intl` basta (§5, alternativa 3). |
 
@@ -90,7 +90,7 @@ escribe fila (R17), igual que `cambiarDisponible` de SL-20.
 | Prefijo, dígitos nacionales | `pais.prefijo_telefonico`, `pais.telefono_digitos_nacionales` | layout → `PaisDeLaEmpresaProvider` (§7.1); `/plataforma/empresas` (§7.4); postulación (§7.3) |
 | Tipos de documento | `tipo_identificacion` (por `pais_id`, `activo`, `orden`) | `UsuarioService.listarTiposIdentificacion` (ya existe), `PaisRepository.listarDisponiblesParaAlta` y `listarTiposDocumento` (nuevos) |
 | Zona horaria | `pais.zona_horaria` | Solo la pantalla del superadmin la escribe; la leen los servicios de SLT-42 sin cambios |
-| Lista de zonas válidas | `Intl.supportedValuesOf("timeZone")` en el servidor (§5, propuesta) | la página de Geografía (props) y `PaisService` (validación) |
+| Lista de zonas válidas | `Intl.supportedValuesOf("timeZone")` en el servidor + `pg_timezone_names` (§5, decidido el 2026-11-07) | la página de Geografía (props) y `PaisService` (validación) |
 | Moneda, impuestos, métodos de pago | — | Fuera (SL-21, SL-22) |
 
 ## 3. Autorización y módulos
@@ -127,7 +127,7 @@ const tipoDocumentoNuevoSchema = z.object({
 }).strict().refine((t) => t.largoMin <= t.largoMax, { path: ["largoMax"], message: "…" });   // R9
 
 const datosTelefonoYZona = {
-  prefijoTelefonico: z.string().trim().regex(PREFIJO_TELEFONICO, "…"),                       // R7
+  prefijoTelefonico: z.string().trim().regex(PREFIJO_TELEFONICO, "…"),                       // R7 (el oficial lo mira el servicio, R26)
   telefonoDigitosNacionales: z.number().int().min(DIGITOS_NACIONALES_MIN).max(DIGITOS_NACIONALES_MAX), // R7
   zonaHoraria: z.string().trim().min(1),             // la lista válida la mira el servicio (R8, §5)
 };
@@ -164,8 +164,8 @@ compara con `normalizeName` (R9), como el del país.
 
 | Método | Entrada | Resultado |
 |---|---|---|
-| `crear(input, actor)` (se amplía) | `crearPaisSchema` | `ok {pais}` · `validation_error` (también `zonaHoraria` fuera de la lista, R8; dos tipos con el mismo nombre normalizado → `tiposDocumento.<i>.nombre`) · `conflict {campo: "id" \| "nombre"}` · `forbidden` |
-| `actualizarDatos(input, actor)` | `actualizarDatosPaisSchema` | `ok {pais, cambiado: boolean}` · `requiere_confirmacion {empresas: N}` (R10) · `validation_error` · `not_found` · `forbidden` |
+| `crear(input, actor)` (se amplía) | `crearPaisSchema` | `ok {pais}` · `validation_error` (también `zonaHoraria` fuera de la lista, R8; `prefijoTelefonico` distinto del oficial, R26; dos tipos con el mismo nombre normalizado → `tiposDocumento.<i>.nombre`) · `conflict {campo: "id" \| "nombre"}` · `forbidden` |
+| `actualizarDatos(input, actor)` | `actualizarDatosPaisSchema` | `ok {pais, cambiado: boolean}` · `requiere_confirmacion {empresas: N}` (R10) · `validation_error` (R7, R8, R26) · `not_found` · `forbidden` |
 | `listarTiposDocumento(paisId, actor)` | código ISO | `ok {tipos: TipoDocumentoDTO[]}` (todos, activos e inactivos, por `orden`; R2) · `forbidden` |
 | `crearTipoDocumento(input, actor)` | `crearTipoDocumentoSchema` | `ok {tipo}` · `validation_error` · `conflict {campo: "nombre"}` · `not_found` (país) · `forbidden` |
 | `editarTipoDocumento(input, actor)` | `editarTipoDocumentoSchema` | `ok {tipo, cambiado}` · `validation_error` · `conflict {campo: "nombre"}` · `not_found` · `forbidden` |
@@ -173,6 +173,13 @@ compara con `normalizeName` (R9), como el del país.
 | `listarDisponiblesParaAlta(actor)` | — | `ok {paises: PaisParaAltaDTO[]}` · `forbidden` |
 
 Reglas del servicio:
+- **R26 — prefijo oficial.** `crear` y `actualizarDatos`, después de zod y antes de tocar el
+  repositorio, exigen `isSupportedCountry(id)` y `prefijoTelefonico === getCountryCallingCode(id)`
+  (libphonenumber-js, ya aprobada; helper puro `prefijoOficial(paisId): string | null` en
+  `lib/utils/prefijo-oficial.ts`). Si no, `validation_error` en `prefijoTelefonico` con el texto
+  «El prefijo de <país> es +<oficial>» (o «No hay prefijo oficial conocido para este país»). Se
+  comprueba siempre, también si el prefijo no cambia: así un prefijo mal guardado antes de SLT-81
+  se corrige en la primera edición.
 - **R10/R11 — confirmación.** `actualizarDatos` lee el país; si ninguno de los tres valores cambia,
   `ok` sin escribir. Si cambia alguno, cuenta las empresas del país (`repo.contarEmpresas`). Con
   `N > 0` y `empresasConfirmadas !== N`, devuelve `requiere_confirmacion {empresas: N}` sin
@@ -202,7 +209,7 @@ Reglas del servicio:
 | `editarTipoDocumento(id, datos, actor)` | Igual que `actualizarDatos`, con `tipo_documento_editado`. Solo `nombre`, `caracteres`, `largoMin`, `largoMax`. |
 | `cambiarActivoTipoDocumento(id, activo, actor)` | Transacción que **bloquea la fila del país** (`SELECT … FROM pais WHERE id = $1 FOR UPDATE`, con `$queryRaw` parametrizado) antes de contar los activos: así dos desactivaciones a la vez no dejan el país sin tipos (R15). Devuelve `no_existe` \| `sin_cambio` \| `ultimo_activo` \| `cambiado`. |
 | `listarDisponiblesParaAlta()` | `pais.findMany({ where: { disponible: true }, include tipos activos por orden })` → `PaisParaAltaDTO[]`. |
-| `zonaConocidaPorLaBase(zona)` | **Propuesta §5**: `SELECT EXISTS (SELECT 1 FROM pg_timezone_names WHERE name = $1)`. |
+| `zonaConocidaPorLaBase(zona)` | §5 (decidido el 2026-11-07): `SELECT EXISTS (SELECT 1 FROM pg_timezone_names WHERE name = $1)`. |
 
 Las dos sentencias a mano (`FOR UPDATE` y `pg_timezone_names`) no tocan tablas de negocio; el
 implementer corre `sql-a-mano-por-empresa.guardia` y, si las marca, decide con el leader antes de
@@ -223,9 +230,9 @@ dentro de `enPlataforma` → `registrarFallo` ante un error de base (`{ status: 
 `lib/actions/_shared/paises-plataforma.ts` gana `listarPaisesParaAlta(actor)` (misma forma que
 `listarPaisesDisponibles`), que llama a `PaisService.listarDisponiblesParaAlta`.
 
-## 5. Zona horaria y prefijo (propuestas de las preguntas abiertas 2 y 4)
+## 5. Zona horaria y prefijo (decididos el 2026-11-07)
 
-**Propuesta para la pregunta 2 (no cerrada).** Lista del runtime, no fija versionada:
+**Zonas (R8).** Lista del runtime, no fija versionada:
 
 - `lib/utils/zonas-iana.ts` (puro): `zonasIana(): readonly string[]` =
   `Intl.supportedValuesOf("timeZone")` ordenada, memorizada por proceso; `esZonaIana(z)`. Sin
@@ -241,30 +248,33 @@ dentro de `enPlataforma` → `registrarFallo` ante un error de base (`{ status: 
   sirve en los dos sitios. Si falla cualquiera, `validation_error` en `zonaHoraria` (R8).
 - La alternativa (lista fija versionada) está en §9.
 
-**Propuesta para la pregunta 4 (no cerrada).** El servidor de la página de Geografía calcula, para
-los países del catálogo ISO, el prefijo que da libphonenumber (`getCountryCallingCode`, ya
-dependencia aprobada, usado solo en el servidor) y lo pasa por props. «Nuevo país» rellena el
-prefijo con esa sugerencia y deja editarlo. **No hay rechazo** mientras el humano no decida; si lo
-decide, es un requisito nuevo y un `validation_error` más en el servicio.
+**Prefijo (R26).** El servidor de la página de Geografía calcula con `prefijoOficial(paisId)`
+(§4.2; `getCountryCallingCode` de libphonenumber-js, ya aprobada, solo en el servidor) un mapa
+`código ISO → prefijo oficial | null` para los países del catálogo ISO y lo pasa por props.
+«Nuevo país» y el modal de edición cargan el prefijo oficial del país elegido (en edición, aunque
+el guardado sea otro: el aviso «El prefijo guardado (+X) no es el oficial (+Y)» explica el
+cambio). El campo se puede tocar, pero **el servidor rechaza** todo prefijo distinto del oficial
+(R26). Si libphonenumber no conoce el país (mapa en `null`), el formulario lo dice y el servidor
+rechaza (pregunta abierta de `requirements.md`).
 
 ## 6. Pantalla «Datos del país» (`/plataforma/geografia`)
 
 - **`page.tsx`**: además de lo de hoy, lee `listarTiposDocumentoAction({ paisId })` para el país
-  elegido (en el mismo punto que el árbol) y calcula `zonasIana()` y el mapa de prefijos sugeridos.
+  elegido (en el mismo punto que el árbol) y calcula `zonasIana()` y el mapa de prefijos oficiales.
   Un fallo de lectura de tipos baja como bandera (`tiposError`), igual que `divisionError`.
 - **`GeografiaPlataformaModule`**: entre la sección «País» y la carga CSV, una sección nueva
   `DatosDelPais` (componente propio en `_components/DatosDelPais.tsx`):
   - **Lectura (R2, R3):** prefijo (`+506`), dígitos, zona y una tabla de tipos (nombre,
     «Solo dígitos»/«Letras y dígitos», largo «9» o «11 a 12», estado). Si el país no está completo,
     un `Alert` «Datos incompletos: falta …» que enumera lo que falta (R3).
-  - **Editar teléfono y hora:** un `Modal` con prefijo, dígitos y el `Combobox` de zonas. Al
+  - **Editar teléfono y hora:** un `Modal` con prefijo (cargado con el oficial, R26), dígitos y el `Combobox` de zonas. Al
     guardar, si la action responde `requiere_confirmacion`, un segundo paso del mismo modal dice
     «Este cambio afecta a N empresas de <país>. Rige desde ahora; lo ya guardado no cambia.» y
     reenvía con `empresasConfirmadas: N` (R10).
   - **Tipos:** «Nuevo tipo» y «Editar» abren el mismo `Modal` (nombre, caracteres, largo mínimo y
     máximo). La fila tiene un `Switch` «Activo» (R13, R15: si el servidor rechaza, el switch vuelve
     a su estado y se muestra el mensaje). No hay botón de borrar (R13).
-- **«Nuevo país» (`NuevoPaisDialog`, R5):** gana prefijo (prellenado, §5), dígitos, zona
+- **«Nuevo país» (`NuevoPaisDialog`, R5, R26):** gana prefijo (cargado con el oficial al elegir el país, §5), dígitos, zona
   (`Combobox`) y una lista editable de tipos con al menos una fila. Los errores por campo vienen del
   servidor con las claves de zod (`tiposDocumento.0.nombre`).
 - Textos de nivel geográfico: los de siempre (`etiquetasDePais`). Esta sección no pinta niveles.
@@ -298,25 +308,23 @@ superadmin o sin empresa: `ETIQUETAS_NEUTRAS` y `telefono: null`, sin consulta, 
   nombre, `UsuarioPublico` (o el DTO de edición) gana `tipoIdentificacionNombre`; el implementer
   confirma de dónde lo saca el repositorio.
 
-### 7.3 Postulación pública — R19 y la pregunta abierta 1
+### 7.3 Postulación pública — R19, R27 (decisión del 2026-11-07, «Preparar + aviso»)
 
 **Hallazgo.** El código no resuelve la empresa: la página no tiene empresa en el contexto, lista
 `prisma.tipoIdentificacion.findMany()` (los tipos de **todos** los países, con etiquetas fijas
 `cedula`/`ruc`/`pasaporte`), y la action rechaza con `error` toda postulación sin empresa en el
 contexto, a la espera de SL-35.
 
-**Propuesta (no cerrada):**
-1. Con empresa en el contexto (`contextoActual()?.tipo === "empresa"`, como la action): la página
-   lee el país con `PaisRepository.deLaEmpresa` y los tipos con
+**Diseño:**
+1. **Con empresa en el contexto (R19)** (`contextoActual()?.tipo === "empresa"`, como la action):
+   la página lee el país con `PaisRepository.deLaEmpresa` y los tipos con
    `UserRepository.listTiposIdentificacion(paisId)` (activos, por `orden`), y pasa `prefijo` y
-   `tipos` (por `nombre`) a `PostulacionForm` (R19). Es lo que usará SL-35 sin más cambios.
-2. Sin empresa (hoy, siempre): la página deja de listar tipos de todos los países y pinta el
-   mismo estado que hoy ve quien envía («no se pudo enviar»), pero **antes** de rellenar: un aviso
-   «La postulación se abre desde la página de una empresa» sin formulario. Alternativa a decidir
-   por el humano: dejar el formulario como hoy hasta SL-35.
+   `tipos` (por `nombre`) a `PostulacionForm`. Es lo que usará SL-35 sin más cambios.
+2. **Sin empresa (R27, hoy siempre):** la página no consulta tipos ni país y, en lugar de
+   `PostulacionForm`, pinta un aviso con el texto «La postulación se abre desde la página de una
+   empresa». La action no cambia (sigue rechazando sin empresa: segunda red).
 
-Hasta que el humano decida, R19 cubre solo el caso con empresa (probado dentro de `conEmpresa`), y
-R24 obliga a quitar `TIPO_IDENTIFICACION_LABELS`.
+R24 obliga a quitar `TIPO_IDENTIFICACION_LABELS` y el `findMany()` sin filtro.
 
 ### 7.4 Alta de empresa (`/plataforma/empresas`) — R20
 
@@ -382,16 +390,27 @@ si encuentra `506`, `TIPO_IDENTIFICACION_LABELS` o un literal `"cedula"`, `"ruc"
    Plataforma › Geografía»); además la reordenación de países es de SLT-46.
 7. **Clave del tipo tecleada por el superadmin.** Un campo técnico más y una fuente de errores;
    derivarla del nombre basta, y el único `(pais_id, clave)` frena la carrera.
+8. **Sugerir el prefijo oficial sin rechazar otro** (la propuesta inicial de §5). Deja pasar un
+   prefijo mal escrito que solo se nota al fallar la normalización de WhatsApp. Descartada por
+   decisión del 2026-11-07 (R26).
+9. **Dejar el formulario de postulación como hoy hasta SL-35.** El visitante rellena todo y recibe
+   «no se pudo enviar»; además lista tipos de todos los países. Descartada por decisión del
+   2026-11-07 (R27).
 
-## 10. Fuera de SLT-81 (propuesta de la pregunta abierta 3)
+## 10. Fuera de SLT-81: las excepciones pasan a SLT-92 (decisión del 2026-11-07, R28)
 
 Las cuatro excepciones de `pais-sin-literales` con ficha `SLT-81` (`fecha-cr.ts`, `hora-cr.ts`,
 `separador-dia-cr.ts`, `telefono-cr.ts`) no son de los cinco formularios: son fechas en pantalla
-(~50 archivos de UI) y los botones de contacto y el chat. **Propuesta:** no entran en SLT-81; el
-humano abre una ficha para «la UI con la zona y el prefijo de la empresa» y las cuatro entradas
-cambian a esa ficha (`FichaQueLoRetira` gana su key). Si el humano decide que entran, el alcance y
-la complejidad de SLT-81 cambian y este design se rehace en esa parte. Mientras tanto SLT-81 no
-toca la lista ni su tope.
+(~50 archivos de UI) y los botones de contacto y el chat. No entran en SLT-81: las retira SLT-92
+«Pantallas: fechas y teléfonos en la zona y el prefijo del país de la empresa».
+
+SLT-81 solo cambia la ficha (T0.1):
+- `tests/unit/guards/_pais-sin-literales-excepciones.ts`: `FichaQueLoRetira` cambia `"SLT-81"` por
+  `"SLT-92"` (el resto de keys, las que traiga `dev` al rebasar, no se tocan) y las cuatro entradas
+  pasan a `ficha: "SLT-92"`; archivo, motivo y orden iguales. El tope de la lista no cambia.
+- `tests/unit/guards/pais-sin-literales.guardia.test.ts`: la lista de fichas aceptadas del caso «cada
+  excepcion trae ficha …» y su comentario de cabecera cambian `SLT-81` por `SLT-92`. Con eso una
+  excepción nueva a nombre de SLT-81 no compila ni pasa (R28).
 
 ## 11. Mapa R → test
 
@@ -407,7 +426,7 @@ toca la lista ni su tope.
 | R9 | `pais-service-datos.test.ts` (sin nombre, caracteres desconocidos, mínimo > máximo, máximo 31 → validation_error; «Cédula  Física» contra «cedula fisica» → conflict nombre) |
 | R10 | `pais-service-datos.test.ts` («R10: con 3 empresas y sin confirmar → requiere_confirmacion {empresas: 3} y no escribe»; «confirmando 2 cuando son 3 → vuelve a pedir»; «confirmando 3 → guarda»); `GeografiaDatosDelPais.test.tsx` (el segundo paso dice «afecta a 3 empresas» y reenvía con 3) |
 | R11 | `pais-service-datos.test.ts` («R11: país sin empresas guarda sin confirmación») |
-| R12 | `pais-datos-plataforma.test.ts` («R12: tras cambiar la zona de XA, `ReglasPaisEmpresaService` en una empresa de XA devuelve la nueva; la foto de `usuario`, `orden` y `chat_conversacion` de esa empresa es idéntica antes y después») |
+| R12 | `pais-datos-plataforma.test.ts` («R12: tras cambiar la zona de `PA` (sembrado por el test con prefijo `507`, porque R26 rechaza los `XA`–`XZ`), `ReglasPaisEmpresaService` en una empresa de `PA` devuelve la nueva; la foto de `usuario`, `orden` y `chat_conversacion` de esa empresa es idéntica antes y después») |
 | R13 | `pais-service-datos.test.ts` (alta de tipo en país existente con `value` `XA_<clave>`, edición, activar/desactivar); `GeografiaDatosDelPais.test.tsx` («no hay acción de borrar»); `tests/unit/guards/tipos-documento-sin-borrado.guardia.test.ts` (nada en `lib/` llama a `tipoIdentificacion.delete`/`deleteMany`) |
 | R14 | `tests/integration/db/pais-datos-plataforma.test.ts` («R14: tras cambiar el largo del tipo, un usuario guardado con el formato viejo sigue igual y se edita sin revalidar; un alta nueva exige el nuevo», por `UsuarioService` con reglas reales) |
 | R15 | `pais-service-datos.test.ts` («R15: desactivar el único activo → validation_error»); `pais-datos-plataforma.test.ts` («R15: dos desactivaciones a la vez de los dos últimos activos dejan uno activo») |
@@ -421,10 +440,17 @@ toca la lista ni su tope.
 | R23 | `tests/components/PrefijoTelefonico.test.tsx` («R23: sin prefijo, aviso y ningún prefijo»); un caso en `usuario-form.test.tsx` con el proveedor en `null` |
 | R24 | `tests/unit/guards/formularios-pais-sin-literales.guardia.test.ts` |
 | R25 | `e2e/datos-pais-superadmin.spec.ts` (proyecto `aislamiento`) |
+| R26 | `tests/unit/utils/prefijo-oficial.test.ts` (`CR` → `506`, `PA` → `507`, `XA` → `null`); `pais-service-datos.test.ts` («R26: alta de `PA` con `506` → validation_error en prefijoTelefonico y no llama a crear»; «editar `PA` con `5070` o `508` → validation_error»; «`XA` → validation_error, sin prefijo oficial»; «`PA` con `507` → ok»); `GeografiaPlataformaAltaPais.test.tsx` y `GeografiaDatosDelPais.test.tsx` («R26: al elegir el país el prefijo aparece cargado con el oficial») |
+| R27 | `tests/integration/postulacion-page.test.tsx` («R27: sin empresa en el contexto la página dice "La postulación se abre desde la página de una empresa", no pinta el formulario ni lista tipos») |
+| R28 | `tests/unit/guards/pais-sin-literales.guardia.test.ts` (el caso de fichas aceptadas ya no admite `SLT-81`; ninguna entrada de `_pais-sin-literales-excepciones.ts` la lleva y las cuatro de `fecha-cr`, `hora-cr`, `separador-dia-cr`, `telefono-cr` llevan `SLT-92`) |
 
 Fábricas: `tests/fabricas/paises.ts` (países `XA`–`XZ` de SL-20/SLT-42) y
 `tests/fabricas/reglas-pais.ts`. Los países de prueba `XA`–`XZ` no los conoce libphonenumber:
-sirven para todo menos para un teléfono válido (SLT-42 R16).
+sirven para todo menos para un teléfono válido (SLT-42 R16) y, desde R26, para pasar por
+`PaisService.crear` o `actualizarDatos` (no tienen prefijo oficial). Los tests que alta o editan
+datos del país por el servicio (R5, R7–R11, R12, R17) usan códigos reales que no estén sembrados
+(`PA`, `GT`, `HN`…) con su prefijo oficial; las fábricas que insertan `XA`–`XZ` directo en la base
+siguen igual.
 
 ### 11.1 El E2E (R25)
 
