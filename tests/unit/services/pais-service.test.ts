@@ -92,15 +92,17 @@ function repoDoble(
     listar: vi.fn(async () => paises),
     listarDisponibles: vi.fn(async () => paises.filter((p) => p.disponible).map(({ id, nombre }) => ({ id, nombre }))),
     porId: vi.fn(async (id: string) => paises.find((p) => p.id === id) ?? null),
-    crear: vi.fn<IPaisRepository["crear"]>(async ({ tiposDocumento: _tipos, ...datos }) =>
-      o.crear ?? { estado: "creado", pais: {
+    // SLT-81: el país que devolvería la base no lleva la lista de tipos del alta.
+    crear: vi.fn<IPaisRepository["crear"]>(async ({ tiposDocumento, ...datos }) => {
+      void tiposDocumento;
+      return o.crear ?? { estado: "creado", pais: {
         ...datos,
         digitosCodigoNivel1: null,
         digitosCodigoNivel2: null,
         digitosCodigoNivel3: null,
         disponible: true,
-      } },
-    ),
+      } };
+    }),
     deLaEmpresa: vi.fn(async () => (o.deLaEmpresa === undefined ? COSTA_RICA : o.deLaEmpresa)),
     cambiarDisponible: vi.fn<IPaisRepository["cambiarDisponible"]>(async () => o.cambiarDisponible ?? "cambiado"),
     // SLT-42: el servicio de países no los usa; están para cumplir el puerto.

@@ -7,7 +7,7 @@ import { ROLES_PLATAFORMA } from "@/lib/auth/plataforma";
 import type { IPaisRepository } from "@/lib/interfaces/repositories/IPaisRepository";
 import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
 import { claveDeTipo, PaisService } from "@/lib/services/PaisService";
-import type { PaisDTO, TipoDocumentoDTO } from "@/lib/types/pais";
+import type { DatosDeAltaDePais, PaisDTO, TipoDocumentoDTO } from "@/lib/types/pais";
 
 // SLT-81 (T1.4; design §4.2, §11) — `PaisService` con el repositorio doble: los datos del país y su
 // catálogo de documentos. Los códigos son REALES y no sembrados (`PA`, `GT`), con su prefijo oficial:
@@ -72,6 +72,13 @@ const datosPA = (o: Record<string, unknown> = {}) => ({
   ...o,
 });
 
+/** El país que devolvería la base: lo del alta sin la lista de tipos. */
+function sinTipos(datos: DatosDeAltaDePais): Omit<DatosDeAltaDePais, "tiposDocumento"> {
+  const copia: Partial<DatosDeAltaDePais> = { ...datos };
+  delete copia.tiposDocumento;
+  return copia as Omit<DatosDeAltaDePais, "tiposDocumento">;
+}
+
 function repoDoble(o: { empresas?: number; zonaEnBase?: boolean; paises?: PaisDTO[]; tipos?: TipoDocumentoDTO[] } = {}) {
   const paises = o.paises ?? [PANAMA];
   const tipos = o.tipos ?? [CEDULA_PA];
@@ -79,9 +86,9 @@ function repoDoble(o: { empresas?: number; zonaEnBase?: boolean; paises?: PaisDT
     listar: vi.fn<IPaisRepository["listar"]>(async () => paises),
     listarDisponibles: vi.fn<IPaisRepository["listarDisponibles"]>(async () => []),
     porId: vi.fn<IPaisRepository["porId"]>(async (id) => paises.find((p) => p.id === id) ?? null),
-    crear: vi.fn<IPaisRepository["crear"]>(async ({ tiposDocumento: _t, ...d }) => ({
+    crear: vi.fn<IPaisRepository["crear"]>(async (datos) => ({
       estado: "creado",
-      pais: { ...d, digitosCodigoNivel1: null, digitosCodigoNivel2: null, digitosCodigoNivel3: null, disponible: true },
+      pais: { ...sinTipos(datos), digitosCodigoNivel1: null, digitosCodigoNivel2: null, digitosCodigoNivel3: null, disponible: true },
     })),
     cambiarDisponible: vi.fn<IPaisRepository["cambiarDisponible"]>(async () => "cambiado"),
     deLaEmpresa: vi.fn<IPaisRepository["deLaEmpresa"]>(async () => null),
