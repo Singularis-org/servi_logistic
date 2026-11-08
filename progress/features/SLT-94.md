@@ -36,3 +36,4 @@ Carlos, 2026-11-08:
 
 <!-- tamano-pr-aceptado: 2026-11-08 · Carlos: el rename de la marca y las pantallas deben salir juntos esta noche; partir rompería la edición de usuarios -->
 - 2026-11-08 · Carlos: R37 en la composición = dos filas (cobro en Ingresos, devolución en Egresos); el neto va en la ganancia del pie, calculado por el servidor.
+- 2026-11-08 · leader: disparador en gate.disparadores (schema/migraciones -> migration, migracion, demo-qa, sql-real, verificar-rls). CI de #99 sacó 11 rojos que el rápido no corrió: 1766 related pasaban del presupuesto 150 y no había disparadores.
