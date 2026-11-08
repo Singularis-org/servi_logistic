@@ -25,6 +25,7 @@ import {
   HAY_BASE_DE_DATOS,
 } from "../db/_postgres-real";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
 vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
 
@@ -105,7 +106,7 @@ function servicioSobre(tx: Tx) {
     new RecaudoAnaliticaRepository(tx),
     new CuentasPorPagarAnaliticaRepository(tx),
     new ConciliacionCierresAnaliticaRepository(tx),
-    { logError: () => {} },
+    { logError: () => {} }, undefined, reglasPaisFijas(),
   );
 }
 

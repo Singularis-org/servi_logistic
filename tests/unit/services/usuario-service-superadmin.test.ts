@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 import { UsuarioService } from "@/lib/services/UsuarioService";
+import { EmpresaNoResuelta } from "@/lib/db/contexto-empresa";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { CR, reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 import type { Actor } from "@/lib/interfaces/services/IUsuarioService";
 import type {
   IUserRepository,
@@ -36,7 +39,7 @@ function usuario(overrides: Partial<UsuarioPublico> = {}): UsuarioPublico {
     cedula: "1710034065",
     tipoIdentificacionId: "tipo-1",
     rolId: "rol-admin",
-    fulfillment: false,
+    seRecogeEnTienda: true,
     zonaId: null,
     vehiculoId: null,
     createdAt: new Date("2026-01-01"),
@@ -81,7 +84,7 @@ function escriturasDe(repo: IUserRepository): number {
   );
 }
 
-function servicio(repo: IUserRepository) {
+function servicio(repo: IUserRepository, reglas: IReglasPaisEmpresa = reglasPaisFijas(CR)) {
   const sesiones = { deleteAllByUserId: vi.fn().mockResolvedValue(0) };
   const cierres = { resumirConsolidablesPendientes: vi.fn() };
   const zonas = { findById: vi.fn() };
@@ -91,6 +94,7 @@ function servicio(repo: IUserRepository) {
     undefined,
     sesiones,
     cierres as never,
+    reglas,
   );
   return { service, sesiones, cierres };
 }
@@ -99,7 +103,7 @@ const ALTA = {
   nombre: "Nadie",
   email: "nadie@example.com",
   telefono: "88880000",
-  tipoIdentificacionId: "tipo-1",
+  tipoIdentificacionId: "tipo-cr-cedula",
   cedula: "123456789",
   passwordMode: "generate" as const,
 };
@@ -183,11 +187,65 @@ describe("R11 — toda operación sobre el superadmin es not_found, sin escribir
     const repo = repoDoble(usuario());
     const { service } = servicio(repo);
     expect((await service.obtener("usr-1", MAESTRO)).status).toBe("ok");
-    expect((await service.actualizar("usr-1", { telefono: "77770000" }, MAESTRO)).status).toBe("ok");
+    expect((await service.actualizar("usr-1", { telefono: "88887777" }, MAESTRO)).status).toBe("ok");
     expect((await service.cambiarEstado("usr-1", { estado: "inactivo" }, MAESTRO)).status).toBe("ok");
     expect((await service.restablecerContrasena("usr-1", MAESTRO)).status).toBe("ok");
     expect(repo.update).toHaveBeenCalledTimes(1);
     expect(repo.setEstado).toHaveBeenCalledTimes(1);
     expect(repo.restablecerContrasena).toHaveBeenCalledTimes(1);
+  });
+});
+
+// SLT-42 (R17): sin empresa no hay pais del que sacar reglas. El puerto lo dice lanzando
+// `EmpresaNoResuelta` (su contrato), y el servicio vuelve a la regla generica de antes: solo digitos,
+// de `AUTH_ID_MIN_LENGTH` a `AUTH_ID_MAX_LENGTH` (7 a 15 por defecto).
+describe("SLT-42 R17 — sin empresa, telefono y documento con la regla generica", () => {
+  const sinEmpresa: IReglasPaisEmpresa = {
+    deLaEmpresa: () => Promise.reject(new EmpresaNoResuelta("Pais", "deLaEmpresa")),
+    zonaHoraria: () => Promise.reject(new EmpresaNoResuelta("Pais", "zonaHoraria")),
+    tipoDocumento: () => Promise.reject(new EmpresaNoResuelta("Pais", "tipoDocumento")),
+  };
+
+  it("R17: un telefono y un documento de solo digitos y largo generico entran aunque no sean de CR", async () => {
+    const repo = repoDoble();
+    const r = await servicio(repo, sinEmpresa).service.crear(
+      { ...ALTA, rolId: "rol-admin", telefono: "1234567", cedula: "1234567890123", tipoIdentificacionId: "tipo-1" },
+      MAESTRO,
+    );
+    expect(r.status).toBe("ok");
+    expect(repo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ telefono: "1234567", cedula: "1234567890123", tipoIdentificacionId: "tipo-1" }),
+      MAESTRO.usuarioId,
+    );
+  });
+
+  it("R17: fuera de la regla generica (letras, demasiado corto) es validation_error en cada campo, sin escribir", async () => {
+    const repo = repoDoble();
+    const r = await servicio(repo, sinEmpresa).service.crear(
+      { ...ALTA, rolId: "rol-admin", telefono: "+506 8888", cedula: "AB123" },
+      MAESTRO,
+    );
+    expect(r.status).toBe("validation_error");
+    expect(r.status === "validation_error" && Object.keys(r.fieldErrors).sort()).toEqual(["cedula", "telefono"]);
+    expect(hashPassword).not.toHaveBeenCalled();
+    expect(escriturasDe(repo)).toBe(0);
+  });
+
+  it("R17: cambiar el telefono sin empresa usa la regla generica, no la de un pais", async () => {
+    const repo = repoDoble(usuario());
+    const { service } = servicio(repo, sinEmpresa);
+    expect((await service.actualizar("usr-1", { telefono: "1234567" }, MAESTRO)).status).toBe("ok");
+    const r = await service.actualizar("usr-1", { telefono: "12" }, MAESTRO);
+    expect(r.status === "validation_error" && Object.keys(r.fieldErrors)).toEqual(["telefono"]);
+    expect(repo.update).toHaveBeenCalledTimes(1);
+  });
+
+  it("R17: un fallo del puerto que NO es «sin empresa» se propaga, no cae en la regla generica", async () => {
+    const repo = repoDoble();
+    const roto: IReglasPaisEmpresa = { ...sinEmpresa, deLaEmpresa: () => Promise.reject(new Error("base caida")) };
+    await expect(
+      servicio(repo, roto).service.crear({ ...ALTA, rolId: "rol-admin" }, MAESTRO),
+    ).rejects.toThrow("base caida");
+    expect(escriturasDe(repo)).toBe(0);
   });
 });

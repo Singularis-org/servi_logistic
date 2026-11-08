@@ -12,6 +12,7 @@ import {
   type FilaLedgerTienda,
 } from "./_fake-prisma-dinero";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Feature 127 / T C.4 — `ConciliacionCierresAnaliticaRepository`: R22, R23, R25, R39, R14, R28.
 //
 // Los tres "hecho cuando" de la tarea son mutaciones, y los tres se miden aqui:
@@ -40,7 +41,7 @@ const ANTEAYER = new Date("2026-07-31T14:00:00.000Z");
 const MENSAJERO = "9f1c7a5e-0000-4000-8000-000000000abc";
 
 function consultaDe(metricaId: string): ConsultaAnalitica {
-  const r = prepararConsultaAnalitica({ rango: "dia" }, MAESTRO, metricaId, AHORA);
+  const r = prepararConsultaAnalitica({ rango: "dia" }, MAESTRO, metricaId, ZONA_DE_CR, AHORA);
   if (r.status !== "ok") throw new Error(`no se pudo preparar la consulta de ${metricaId}`);
   return r.consulta;
 }

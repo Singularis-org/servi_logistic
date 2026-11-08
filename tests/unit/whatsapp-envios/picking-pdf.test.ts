@@ -16,6 +16,7 @@ import { cubreTexto, registrarFuente, seguroEnFuenteEstandar } from "@/lib/pdf/e
 import { contieneNombreHeredado } from "../../fixtures/nombre-heredado";
 import { fuentesDePagina, textoLegible, textosDePagina } from "../pdf/pdf-inspector";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Ficha 476 (T2.3) — el PDF del picking sobre su MAQUETA (operaciones por pagina): R16, R17, R19-R22.
 // Mas un humo del PDF real con jsPDF: bytes `%PDF` y numero de paginas = el de la maqueta.
 
@@ -32,7 +33,7 @@ function fila(producto: string, o: Partial<FilaPicking> = {}): FilaPicking {
 }
 
 function maqueta(filas: FilaPicking[], diasAtraso = 2, tienda = "Abarrotes") {
-  const modelo = construirModeloPicking(filas, { ahora: AHORA, diasAtraso, tienda });
+  const modelo = construirModeloPicking(filas, { zona: ZONA_DE_CR, ahora: AHORA, diasAtraso, tienda });
   return { modelo, m: maquetarPicking(modelo, medir) };
 }
 
@@ -42,12 +43,12 @@ const deRol = (ops: OpPdf[], rol: Texto["rol"]): string[] => textos(ops).filter(
 const todas = (paginas: OpPdf[][]): OpPdf[] => paginas.flat();
 
 describe("476/R16 — encabezado", () => {
-  it("tienda, fecha larga, hora «· hora de Costa Rica», cifras de ordenes y unidades", () => {
+  it("tienda, fecha larga, hora «· hora local», cifras de ordenes y unidades", () => {
     const { m } = maqueta([fila("2 * Crema X"), fila("1 * Base"), fila("3 * Crema X")]);
     const p1 = m.paginas[0];
     expect(deRol(p1, "tienda")).toEqual(["Abarrotes"]);
     expect(deRol(p1, "fecha")).toEqual(["Lunes 5 de octubre de 2026"]);
-    expect(deRol(p1, "hora")).toEqual(["06:30 · hora de Costa Rica"]);
+    expect(deRol(p1, "hora")).toEqual(["06:30 · hora local"]);
     expect(deRol(p1, "cifra-ordenes")).toEqual(["3"]);
     expect(deRol(p1, "cifra-unidades")).toEqual(["6"]);
     expect(deRol(p1, "cifra-titulo")).toEqual(["ÓRDENES", "UNIDADES"]);
@@ -187,7 +188,7 @@ describe("476/R21 — paginacion", () => {
     const real = medidorDe(doc);
     const tienda = "Tienda ".padEnd(200, "Muy Larga ");
     expect(tienda).toHaveLength(200);
-    const modelo = construirModeloPicking([fila("1 * Crema X")], { ahora: AHORA, diasAtraso: 2, tienda });
+    const modelo = construirModeloPicking([fila("1 * Crema X")], { zona: ZONA_DE_CR, ahora: AHORA, diasAtraso: 2, tienda });
     const m = maquetarPicking(modelo, real);
     const Y = m.paginas.length;
     m.paginas.forEach((ops, i) => {
@@ -255,7 +256,7 @@ describe("476/R16 — humo del PDF real (jsPDF)", () => {
     (Buffer.from(bytes).toString("latin1").match(/\/Type \/Page[^s]/g) ?? []).length;
 
   it("bytes que empiezan por %PDF y tantas paginas como la maqueta (1 pagina)", () => {
-    const modelo = construirModeloPicking([fila("2 * Crema X"), fila("1 * Base")], { ahora: AHORA, diasAtraso: 2, tienda: "Abarrotes" });
+    const modelo = construirModeloPicking([fila("2 * Crema X"), fila("1 * Base")], { zona: ZONA_DE_CR, ahora: AHORA, diasAtraso: 2, tienda: "Abarrotes" });
     const r = renderizarPicking(modelo);
     expect(Buffer.from(r.bytes.slice(0, 4)).toString("latin1")).toBe("%PDF");
     expect(r.paginas).toBe(1);
@@ -264,7 +265,7 @@ describe("476/R16 — humo del PDF real (jsPDF)", () => {
 
   it("varias paginas: el PDF real tiene las de su maqueta", () => {
     const filas = Array.from({ length: 300 }, (_, i) => fila(`1 * Producto ${i % 60} con nombre largo de verdad`, { numRemision: `NA-${i}` }));
-    const r = renderizarPicking(construirModeloPicking(filas, { ahora: AHORA, diasAtraso: 2, tienda: "Mercadito" }));
+    const r = renderizarPicking(construirModeloPicking(filas, { zona: ZONA_DE_CR, ahora: AHORA, diasAtraso: 2, tienda: "Mercadito" }));
     expect(r.paginas).toBeGreaterThan(1);
     expect(paginasDelPdf(r.bytes)).toBe(r.paginas);
   });
@@ -279,7 +280,7 @@ describe("SL-15 R8 · el membrete de la empresa en el picking", () => {
   });
 
   const modeloAbarrotes = () =>
-    construirModeloPicking([fila("2 * Crema X"), fila("1 * Base")], { ahora: AHORA, diasAtraso: 2, tienda: "Abarrotes" });
+    construirModeloPicking([fila("2 * Crema X"), fila("1 * Base")], { zona: ZONA_DE_CR, ahora: AHORA, diasAtraso: 2, tienda: "Abarrotes" });
 
   /** El texto legible del PDF real, pagina 1. */
   function textoDelPdf(bytes: Uint8Array): string[] {

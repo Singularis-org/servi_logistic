@@ -1,11 +1,9 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomBytes } from "node:crypto";
 
 import { test, expect, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import type { ModuloApagable, PrismaClient } from "@prisma/client";
 
 import { ORDEN_MODULOS } from "../lib/modulos/catalogo";
-import { mensajeDelTope } from "../lib/planes/mensajes";
-import type { BulkSummary } from "../lib/types/carga-masiva";
 import { crearUsuarioE2E, sesionDe, type EmpresaE2E } from "../tests/fabricas/e2e";
 
 import {
@@ -19,12 +17,11 @@ import {
   type Letra,
 } from "./_dos-empresas-fixture";
 import {
-  asignarPlanConTope,
+  asignarPlanCustom,
   crearOrdenesDirectas,
   csvDeUnaFila,
   enlazarDistritoDeLaPlantilla,
-  filaDeCarga,
-  ordenesDelCiclo,
+  ordenesDesdeLaEntrada,
   type EmpresaConZona,
 } from "./_planes-fixture";
 import {
@@ -67,16 +64,17 @@ import {
  *    de B. Cada maestro recorre solo las rutas de SU menú (`rutasDelMenuDelMaestro(apagados)`): A
  *    las recorre todas, como antes de SL-23 (R23). Y B no ve «Ranking» en el menú y recibe «No
  *    encontramos esta página» en `/ranking` y `/ranking/historico`, mientras A lo ve y lo abre.
- * 7. Vehículos (R40): carga, y crear un vehículo desde la pantalla falla cerrado: sin pantalla de
- *    error ni 5xx, y la base no cambia. Geografía ya no es del maestro: desde SL-32 (R24, R26) su
+ * 7. Vehículos y geografía ya no son del maestro. SL-42 (R16) retiró `/configuracion/vehiculos`: el
+ *    catálogo es de la plataforma, así que el humo comprueba el 404 y que la base no cambia (antes,
+ *    SL-17 R40, comprobaba que escribir desde esa pantalla fallaba cerrado). Desde SL-32 (R24, R26) su
  *    página le da 404, así que el humo comprueba el 404 y que no queda ninguna provincia nueva. Lo
  *    ajustó SL-32 el 2026-10-23, al mergear después de SL-17.
- * 8. Planes (SL-24, design §11.1; R33): va el último, para no cambiar lo que recorren los casos de
- *    arriba. A recibe un plan custom con tope de 2 órdenes por ciclo (con los 4 módulos: no apaga
- *    ninguno) y 2 órdenes. Su tienda sube por la carga masiva de `/ordenes` un `.csv` de una fila y
- *    ve en la vista previa la fila con «Tu plan permite 2 órdenes por ciclo…»; la carga real por el
- *    mismo endpoint da la fila en error y la base no tiene esa remisión. La tienda de B, sin plan,
- *    sube la suya, confirma y la ve creada.
+ * 8. Planes (SL-24, design §11.1; SLT-86 R8): va el último, para no cambiar lo que recorren los casos
+ *    de arriba. A recibe un plan custom (con los 4 módulos: no apaga ninguno) y 2 órdenes más. Su
+ *    tienda sube por la carga masiva de `/ordenes` un `.csv` de una fila, confirma y la ve creada, igual
+ *    que la tienda de B, sin plan. Hasta SLT-86 el plan de A tenía tope de 2 órdenes por ciclo y la
+ *    fila salía en error con «Tu plan permite 2 órdenes por ciclo…»; SLT-86 (R8) quitó ese tope, así
+ *    que se retiró ese tramo (el mensaje y la carga real rechazada) y el caso prueba lo contrario.
  *
  * CÓMO SE CORRE: `pnpm exec playwright test --project=aislamiento`. Playwright levanta el servidor
  * con `AUTH_OTP_DEBUG_LOG=1`, sin SMTP y con su log en `E2E_LOG_SERVIDOR`; la base es local,
@@ -132,7 +130,8 @@ function altaNueva(letra: Letra): AltaPorPantalla {
     maestroNombre: `Maestro ${letra} humo ${s}`,
     email: `humo-maestro-${letra.toLowerCase()}-${s}@example.test`,
     telefono: "88880000",
-    documento: `humo-${letra.toLowerCase()}-${s}`,
+    // SLT-42 (R10): una cédula física de CR, 9 dígitos; el servidor rechaza cualquier otra forma.
+    documento: String(parseInt(s, 16) % 1_000_000_000).padStart(9, "0"),
   };
 }
 
@@ -386,43 +385,22 @@ test("SL-23: el superadmin dejó A con los 3 módulos y B sin «Ranking»; B no 
   }
 });
 
-/**
- * Pulsa «Guardar» y espera la Server Action (un POST a la página): sin ella, «la base no cambió»
- * pasaría aunque el clic no hubiera enviado nada. Devuelve el texto de la página después y anota
- * las líneas nuevas (el aviso que ve el maestro).
- */
-async function guardarYLeer(page: Page, boton: Locator, que: string): Promise<string> {
-  const antes = new Set((await page.locator("body").innerText()).split("\n"));
-  const [accion] = await Promise.all([
-    page.waitForResponse((r) => r.request().method() === "POST" && new URL(r.url()).pathname.startsWith("/configuracion"), { timeout: 60_000 }),
-    boton.click(),
-  ]);
-  await page.waitForTimeout(1500);
-  const despues = await page.locator("body").innerText();
-  const nuevas = despues.split("\n").filter((l) => l.trim() !== "" && !antes.has(l)).slice(0, 3);
-  console.log(`[humo R40] ${que}: Server Action ${accion.status()}; aviso en pantalla: ${JSON.stringify(nuevas)}`);
-  expect.soft(accion.status(), `${que}: la Server Action respondió 5xx`).toBeLessThan(500);
-  return despues;
-}
-
-test("vehículos carga y escribir desde la pantalla falla cerrado (R40); geografía le da 404 al maestro (SL-32 R26)", async ({ page }) => {
+test("vehículos (SL-42 R16) y geografía (SL-32 R26) le dan 404 al maestro, y sus catálogos no cambian", async ({ page }) => {
   test.setTimeout(10 * 60_000);
   const db = dueno;
   if (!db) throw new Error("sin cliente de base: falló el beforeAll");
   const errores5xx = await abrirComo("A", page);
-  const nombre = `A-${randomUUID()}`;
 
-  const vehiculosAntes = await db.vehiculo.count();
+  // SL-42 R16: la ruta ya no existe; el 404 vale para todo rol. Se compara el catálogo entero
+  // (ids y estado), no solo el recuento: ni una fila nueva ni un cambio de nombre o de estado.
+  const catalogo = () =>
+    db.vehiculo.findMany({ select: { id: true, name: true, activo: true }, orderBy: { id: "asc" } });
+  const vehiculosAntes = await catalogo();
   const v = await visitar(page, "/configuracion/vehiculos");
-  expect(v.texto.includes(PANTALLA_DE_ERROR), "vehículos: pantalla de error al cargar").toBe(false);
-  expect(v.texto, "vehículos: no carga el listado").toContain("Tipos de vehículo");
-  await page.getByRole("button", { name: "Crear vehículo" }).click();
-  await page.getByPlaceholder("Moto, carro, camión…").fill(nombre);
-  const trasVehiculo = await guardarYLeer(page, page.getByRole("button", { name: "Guardar" }), "vehículo");
-  expect.soft(trasVehiculo.includes(PANTALLA_DE_ERROR), "vehículos: pantalla de error al guardar").toBe(false);
-  expect.soft(trasVehiculo.includes("Vehículo creado"), "vehículos: la pantalla dice que creó").toBe(false);
-  expect.soft(await db.vehiculo.count(), "vehículos: cambió el catálogo").toBe(vehiculosAntes);
-  expect.soft(await db.vehiculo.count({ where: { name: nombre } }), "vehículos: quedó la fila").toBe(0);
+  expect.soft(v.estado, "vehículos: el maestro no recibe 404").toBe(404);
+  expect.soft(v.texto.includes(NO_ENCONTRADO), "vehículos: el maestro no ve «no encontrado»").toBe(true);
+  expect.soft(v.texto.includes("Tipos de vehículo"), "vehículos: el maestro ve el catálogo").toBe(false);
+  expect.soft(await catalogo(), "vehículos: cambió el catálogo").toEqual(vehiculosAntes);
 
   const provinciasAntes = await db.provincia.count();
   // SL-32 R26: la página no tiene formulario para el maestro, así que no hay provincia que intentar crear.
@@ -436,8 +414,11 @@ test("vehículos carga y escribir desde la pantalla falla cerrado (R40); geograf
   expect(errores5xx, "vehículos/geografía: respuestas 5xx").toEqual([]);
 });
 
-/** SL-24 (R33): el tope de órdenes del plan de A en el caso de planes. */
-const TOPE_DE_A = 2;
+/**
+ * Las órdenes que A ya tiene en el período antes de la carga. Eran el tope de su plan (SL-24 R33, tope 2);
+ * SLT-86 (R8) quitó el tope de órdenes, así que ahora son las que la carga ya no debe mirar.
+ */
+const ORDENES_PREVIAS_DE_A = 2;
 
 /** La empresa del humo como la pide `tests/fabricas/e2e.ts`: su maestro da de alta a la tienda. */
 function comoEmpresaE2E(e: Empresa): EmpresaE2E {
@@ -471,7 +452,7 @@ async function subirUnaFila(page: Page, numRemision: string): Promise<Locator> {
   return dialogo;
 }
 
-test("SL-24: la tienda de A, al tope de su plan, no crea por la carga masiva y la de B, sin plan, sí (R33)", async ({ browser }) => {
+test("SLT-86: la tienda de A, con plan y órdenes ya creadas, crea por la carga masiva igual que la de B, sin plan (R8; antes SL-24 R33)", async ({ browser }) => {
   test.setTimeout(10 * 60_000);
   const db = dueno;
   if (!db) throw new Error("sin cliente de base: falló el beforeAll");
@@ -480,10 +461,13 @@ test("SL-24: la tienda de A, al tope de su plan, no crea por la carga masiva y l
     B: `SL24-B-${randomBytes(5).toString("hex")}`,
   };
 
-  // 1. A con su plan (tope 2) y dos órdenes en el ciclo; B sigue sin plan.
-  await asignarPlanConTope(db, empresa("A").organizacionId, TOPE_DE_A);
-  await crearOrdenesDirectas(db, conZona("A"), TOPE_DE_A);
-  expect(await ordenesDelCiclo(db, empresa("A").organizacionId), "A: órdenes del ciclo antes de la carga").toBe(TOPE_DE_A);
+  // 1. A con su plan (sin tope de órdenes, R8) y dos órdenes más en el período; B sigue sin plan.
+  await asignarPlanCustom(db, empresa("A").organizacionId);
+  const antes = await ordenesDesdeLaEntrada(db, empresa("A").organizacionId);
+  await crearOrdenesDirectas(db, conZona("A"), ORDENES_PREVIAS_DE_A);
+  expect(await ordenesDesdeLaEntrada(db, empresa("A").organizacionId), "A: órdenes del período antes de la carga").toBe(
+    antes + ORDENES_PREVIAS_DE_A,
+  );
   const sinPlan = await db.organizacion.findUniqueOrThrow({ where: { id: empresa("B").organizacionId }, select: { planId: true } });
   expect(sinPlan.planId, "B no debe tener plan").toBeNull();
 
@@ -500,45 +484,27 @@ test("SL-24: la tienda de A, al tope de su plan, no crea por la carga masiva y l
     });
     const rem = remisiones[letra];
 
-    // 2 y 3. La tienda sube su archivo de una fila y ve la vista previa.
+    // 2 y 3. La tienda sube su archivo de una fila, ve la vista previa y confirma. SLT-86 (R8): con plan
+    // o sin él, la fila queda para cargar; ya no hay mensaje del tope de órdenes.
     const dialogo = await subirUnaFila(page, rem);
     const confirmar = dialogo.getByRole("button", { name: /^Confirmar y cargar/ });
+    await expect(confirmar, `${letra}: la fila no quedó para cargar`).toHaveText("Confirmar y cargar 1 nueva");
+    await expect(dialogo, `${letra}: la vista previa habla de un tope de órdenes`).not.toContainText("órdenes por ciclo");
+    await confirmar.click();
+    await expect(dialogo.getByText(rem).first(), `${letra}: el resumen no muestra la remisión creada`).toBeVisible({
+      timeout: 120_000,
+    });
+    console.log(`[humo planes ${letra}] la carga creó ${rem}`);
 
-    if (letra === "A") {
-      await expect(dialogo.getByText(`Tu plan permite ${TOPE_DE_A} órdenes por ciclo`).first(), "A: el mensaje del tope en la vista previa").toBeVisible({
-        timeout: 30_000,
-      });
-      await expect(confirmar, "A: no queda ninguna fila que cargar").toBeDisabled();
-      console.log(`[humo planes A] vista previa: ${JSON.stringify(await confirmar.innerText())}, mensaje del tope visible`);
-
-      // La carga real por el mismo endpoint que usa el botón: la fila sale en error con el tope.
-      const r = await page.request.post("/api/ordenes/carga-masiva/chunk", { data: { rows: [filaDeCarga(rem)], dryRun: false } });
-      expect(r.status(), "A: la carga real respondió otro estado").toBe(200);
-      const resumen = (await r.json()) as BulkSummary;
-      console.log(`[humo planes A] carga real: ${JSON.stringify({ creadas: resumen.creadas, conError: resumen.conError, filas: resumen.filas })}`);
-      expect(resumen.creadas, "A: la carga real creó órdenes").toBe(0);
-      expect(resumen.filas).toEqual([
-        {
-          fila: 1,
-          numRemision: rem,
-          resultado: "error",
-          errores: { plan: [mensajeDelTope({ tope: "ordenes", maximo: TOPE_DE_A, usados: TOPE_DE_A, pedidas: 1 })] },
-        },
-      ]);
-    } else {
-      await expect(confirmar, "B: la fila no quedó para cargar").toHaveText("Confirmar y cargar 1 nueva");
-      await confirmar.click();
-      await expect(dialogo.getByText(rem).first(), "B: el resumen no muestra la remisión creada").toBeVisible({ timeout: 120_000 });
-      console.log(`[humo planes B] la carga creó ${rem}`);
-    }
-
-    // 4 y 5. Por detrás: A no tiene la remisión; B sí, y en su empresa.
+    // 4 y 5. Por detrás: cada una tiene su remisión, y en su empresa.
     const enLaBase = await db.orden.findMany({ where: { numRemision: rem }, select: { organizacionId: true } });
-    expect(enLaBase.map((o) => o.organizacionId), `${letra}: órdenes con la remisión ${rem}`).toEqual(
-      letra === "A" ? [] : [empresa("B").organizacionId],
-    );
+    expect(enLaBase.map((o) => o.organizacionId), `${letra}: órdenes con la remisión ${rem}`).toEqual([
+      empresa(letra).organizacionId,
+    ]);
     expect(errores5xx, `${letra}: respuestas 5xx en la carga`).toEqual([]);
     await ctx.close();
   }
-  expect(await ordenesDelCiclo(db, empresa("A").organizacionId), "A: el tope dejó entrar una orden").toBe(TOPE_DE_A);
+  expect(await ordenesDesdeLaEntrada(db, empresa("A").organizacionId), "A: la carga no sumó su orden al período").toBe(
+    antes + ORDENES_PREVIAS_DE_A + 1,
+  );
 });

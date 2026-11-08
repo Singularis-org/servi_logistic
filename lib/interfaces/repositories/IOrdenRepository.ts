@@ -649,11 +649,15 @@ export interface OrderStatusLiteRow {
 
 // Feature 17 — decision final por orden ya resuelta por el service (estatusId y
 // mensajeroAsignadoId concretos, no el `value`/`mensajeroId` crudo del input).
-export interface GenerarGuiaDecisionData {
+/**
+ * SLT-42 (R22): si la decision asigna mensajero, lleva tambien su dia de reparto (convencion
+ * `@db.Date`), resuelto por el servicio en la zona del pais de la empresa: el repositorio no
+ * calcula ningun dia (feature 261/B7). Hoy «generar guia» nunca asigna (156/R2).
+ */
+export type GenerarGuiaDecisionData = {
   ordenId: string;
   estatusId: string;
-  mensajeroAsignadoId: string | null;
-}
+} & ({ mensajeroAsignadoId: null } | { mensajeroAsignadoId: string; fechaReparto: Date });
 
 export interface GenerarGuiaResultRow {
   ordenId: string;
@@ -1604,11 +1608,11 @@ export interface IOrdenRepository {
   restore(ids: readonly string[], actorUsuarioId: string | null): Promise<number>;
   findEstatusIdByValue(value: string): Promise<string | null>;
   /**
-   * Feature 27/R15/R16/R17: lee `usuario.fulfillment` de la tienda que realiza la
-   * carga masiva (el `adminTienda` autenticado). `null` si el usuario no resuelve: SL-17
-   * (D15) la usa de lectura previa, y una tienda de otra empresa es «no encontrada».
+   * SLT-94 (R5): lee la marca «se recoge en tienda» de la tienda DUEÑA de la orden (la que carga
+   * por pantalla, o la tienda de la API key). `null` si el usuario no resuelve: SL-17 (D15) la usa
+   * de lectura previa, y una tienda de otra empresa es «no encontrada».
    */
-  findUsuarioFulfillment(usuarioId: string): Promise<boolean | null>;
+  findUsuarioSeRecogeEnTienda(usuarioId: string): Promise<boolean | null>;
   // BORRADO 2026-08-07 (tanda 2): `existsGeo`. Ver la lapida de `GeoExistence` arriba.
 
   // --- Feature 15: carga masiva (metodos batch, R19/R21/R22/R25/R27) ---
@@ -1927,7 +1931,8 @@ export interface IOrdenRepository {
    * parametro opcional que alguien olvida falla ABIERTO; asi cada llamador escribe `null` y lo
    * decide.
    */
-  findEtiquetasByIds(ids: string[], tiendaId: string | null): Promise<EtiquetaRow[]>;
+  /** SLT-42 (R22): `zona` es la del pais de la empresa; con ella se fecha `fechaCreacion`. */
+  findEtiquetasByIds(ids: string[], tiendaId: string | null, zona: string): Promise<EtiquetaRow[]>;
   /**
    * Feature 32/R1/R3 (QR por guia): fila para la etiqueta resuelta por `num_guia`
    * (UNIQUE en `orden`), con los mismos nombres legibles y el mismo filtro
@@ -1938,7 +1943,12 @@ export interface IOrdenRepository {
    * SLT-49/R9/R10: `tiendaId` con la misma semantica que en `findEtiquetasByIds` (string ->
    * frontera de tienda en el `where`; `null` -> sin ella). Obligatorio por el mismo motivo.
    */
-  findEtiquetaByNumGuia(numGuia: number, tiendaId: string | null): Promise<EtiquetaRow | null>;
+  /** SLT-42 (R22): `zona` es la del pais de la empresa; con ella se fecha `fechaCreacion`. */
+  findEtiquetaByNumGuia(
+    numGuia: number,
+    tiendaId: string | null,
+    zona: string,
+  ): Promise<EtiquetaRow | null>;
 
   // --- Feature 148: manifiesto Excel por lote (READ derivado, R4/R6/R7/R12/R29) ---
 
@@ -1965,7 +1975,7 @@ export interface IOrdenRepository {
   ): Promise<ManifiestoOrdenRow[]>;
   /**
    * Feature 148/R9: `usuario.nombre` del actor que ejecuto la operacion, resuelto
-   * server-side por `usuarioId` (espejo de `findUsuarioFulfillment`/`findUsuarioZonaId`).
+   * server-side por `usuarioId` (espejo de `findUsuarioSeRecogeEnTienda`/`findUsuarioZonaId`).
    * Alimenta la columna `responsable` cuando el flujo NO deja mensajero asignado
    * (design.md §9.8). `null` si el usuario no resuelve. `Actor` solo lleva
    * `{ usuarioId, rol }`, por eso el nombre se lee aqui y no viaja desde el borde.
@@ -1976,7 +1986,7 @@ export interface IOrdenRepository {
 
   /**
    * Feature 33/R4/R5: `usuario.zonaId` del adminSatelite autenticado, resuelto
-   * server-side por `usuarioId` (espejo de `findUsuarioFulfillment`). `null` si
+   * server-side por `usuarioId` (espejo de `findUsuarioSeRecogeEnTienda`). `null` si
    * el usuario no resuelve o no tiene zona asignada (R5: modulo vacio + sin_zona
    * en la recepcion). No hay logica de negocio: solo la query.
    */
@@ -2334,6 +2344,12 @@ export interface IOrdenRepository {
     actor: { usuarioId: string; rol: RolValue };
     /** R28: obligatorio, ya recortado en el borde. */
     motivo: string;
+    /**
+     * SLT-42 (R22, R23): el INSTANTE en que empezo el dia en curso en la zona del pais de la empresa,
+     * con el que se mira si la primera ruta del dia de cada mensajero sigue pendiente. Lo calcula el
+     * servicio.
+     */
+    inicioDelDia: Date;
   }): Promise<TraspasoMensajeroAplicado>;
 
   // --- Feature 41 -> 241 -> 271: el bloqueo derivado, que ahora es un CONTEO (R1-R12) ---
@@ -2376,7 +2392,8 @@ export interface IOrdenRepository {
    * solo el primero se deduce «espera a la administracion» cuando `solicitarCierre` si le deja
    * reenviar el segundo.
    */
-  findBloqueoDetalle(mensajeroId: string): Promise<BloqueoDetalle>;
+  /** SLT-42 (R22): `zona` es la del pais de la empresa; con ella se fecha la jornada de cada cierre. */
+  findBloqueoDetalle(mensajeroId: string, zona: string): Promise<BloqueoDetalle>;
   /**
    * FICHA 477 (design D2/§5.1, T1.2) — de `ordenIds`, las que estan EN CORRECCION de un cierre
    * `rechazado` del propio `mensajeroId`: con fila en `cierre_detail` de ese cierre y sin ninguna
@@ -2405,7 +2422,8 @@ export interface IOrdenRepository {
    * Cierre inexistente -> `null`. NO se acota por alcance: el llamador ya releyo el cierre con el
    * alcance que autorizo la escritura antes de pedir esto.
    */
-  findJornadaDeCierre(cierreId: string): Promise<string | null>;
+  /** SLT-42 (R22): `zona` es la del pais de la empresa; con ella se fecha la jornada. */
+  findJornadaDeCierre(cierreId: string, zona: string): Promise<string | null>;
   /**
    * Zonas (central y satelite) con AL MENOS 1 mensajero bloqueado: mismo criterio que
    * `findMensajerosBloqueadosPorCierres`, agregado por zona. Una zona sin mensajeros nunca

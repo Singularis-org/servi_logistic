@@ -5,6 +5,7 @@ import {
   listarMovimientosTiendaSchema,
 } from "@/lib/types/wallet-tienda";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 171 / T1.1 (R22/R25) — schemas de borde del desglose de UNA tienda.
 //
 // `tiendaId` REQUERIDO es lo que hace que «entrada que no identifica una tienda» se resuelva
@@ -13,32 +14,32 @@ import {
 
 describe("listarMovimientosDeTiendaSchema (R22/R25)", () => {
   it("R25: sin `tiendaId` -> error, con el campo senalado", () => {
-    const r = listarMovimientosDeTiendaSchema.safeParse({ page: 1, pageSize: 20 });
+    const r = listarMovimientosDeTiendaSchema(ZONA_CR).safeParse({ page: 1, pageSize: 20 });
     expect(r.success).toBe(false);
     if (r.success) return;
     expect(Object.keys(r.error.flatten().fieldErrors)).toContain("tiendaId");
   });
 
   it("R25: `tiendaId` vacio -> error (una cadena vacia no identifica una tienda)", () => {
-    const r = listarMovimientosDeTiendaSchema.safeParse({ tiendaId: "" });
+    const r = listarMovimientosDeTiendaSchema(ZONA_CR).safeParse({ tiendaId: "" });
     expect(r.success).toBe(false);
   });
 
   it("R25: `tiendaId` que no es cadena -> error", () => {
-    expect(listarMovimientosDeTiendaSchema.safeParse({ tiendaId: 42 }).success).toBe(false);
-    expect(listarMovimientosDeTiendaSchema.safeParse({ tiendaId: null }).success).toBe(false);
+    expect(listarMovimientosDeTiendaSchema(ZONA_CR).safeParse({ tiendaId: 42 }).success).toBe(false);
+    expect(listarMovimientosDeTiendaSchema(ZONA_CR).safeParse({ tiendaId: null }).success).toBe(false);
   });
 
   it("R22: con `tiendaId` valido acepta y aplica los MISMOS defaults de paginacion que el listado propio", () => {
-    const r = listarMovimientosDeTiendaSchema.parse({ tiendaId: "t1" });
-    const base = listarMovimientosTiendaSchema.parse({});
+    const r = listarMovimientosDeTiendaSchema(ZONA_CR).parse({ tiendaId: "t1" });
+    const base = listarMovimientosTiendaSchema(ZONA_CR).parse({});
     expect(r.tiendaId).toBe("t1");
     expect(r.page).toBe(base.page);
     expect(r.pageSize).toBe(base.pageSize);
   });
 
   it("R18/R22: hereda los tres filtros del listado (cierre, concepto, rango de fechas)", () => {
-    const r = listarMovimientosDeTiendaSchema.parse({
+    const r = listarMovimientosDeTiendaSchema(ZONA_CR).parse({
       tiendaId: "t1",
       page: 3,
       pageSize: 50,
@@ -60,33 +61,33 @@ describe("listarMovimientosDeTiendaSchema (R22/R25)", () => {
   });
 
   it("R44: `pago_tienda` es un valor ACEPTADO del filtro por concepto (lo necesita la 172)", () => {
-    const r = listarMovimientosDeTiendaSchema.parse({ tiendaId: "t1", categoria: "pago_tienda" });
+    const r = listarMovimientosDeTiendaSchema(ZONA_CR).parse({ tiendaId: "t1", categoria: "pago_tienda" });
     expect(r.categoria).toBe("pago_tienda");
   });
 
   it("una categoria inventada se rechaza en el borde", () => {
-    const r = listarMovimientosDeTiendaSchema.safeParse({ tiendaId: "t1", categoria: "no_existe" });
+    const r = listarMovimientosDeTiendaSchema(ZONA_CR).safeParse({ tiendaId: "t1", categoria: "no_existe" });
     expect(r.success).toBe(false);
   });
 });
 
 describe("listarMovimientosDeTiendaCompletoSchema (R24/R25/R37)", () => {
   it("R25: sigue exigiendo `tiendaId`", () => {
-    expect(listarMovimientosDeTiendaCompletoSchema.safeParse({}).success).toBe(false);
-    expect(listarMovimientosDeTiendaCompletoSchema.safeParse({ tiendaId: "" }).success).toBe(false);
+    expect(listarMovimientosDeTiendaCompletoSchema(ZONA_CR).safeParse({}).success).toBe(false);
+    expect(listarMovimientosDeTiendaCompletoSchema(ZONA_CR).safeParse({ tiendaId: "" }).success).toBe(false);
   });
 
   it("R37: rechaza `page` y `pageSize` — el modo completo NO pagina", () => {
     expect(
-      listarMovimientosDeTiendaCompletoSchema.safeParse({ tiendaId: "t1", page: 1 }).success,
+      listarMovimientosDeTiendaCompletoSchema(ZONA_CR).safeParse({ tiendaId: "t1", page: 1 }).success,
     ).toBe(false);
     expect(
-      listarMovimientosDeTiendaCompletoSchema.safeParse({ tiendaId: "t1", pageSize: 20 }).success,
+      listarMovimientosDeTiendaCompletoSchema(ZONA_CR).safeParse({ tiendaId: "t1", pageSize: 20 }).success,
     ).toBe(false);
   });
 
   it("R24: `.strict()` rechaza cualquier clave extra (primera barrera contra ampliar el alcance)", () => {
-    const r = listarMovimientosDeTiendaCompletoSchema.safeParse({
+    const r = listarMovimientosDeTiendaCompletoSchema(ZONA_CR).safeParse({
       tiendaId: "t1",
       todasLasTiendas: true,
     });
@@ -94,7 +95,7 @@ describe("listarMovimientosDeTiendaCompletoSchema (R24/R25/R37)", () => {
   });
 
   it("R37: acepta el `tiendaId` + los MISMOS filtros que el listado, sin paginacion", () => {
-    const r = listarMovimientosDeTiendaCompletoSchema.parse({
+    const r = listarMovimientosDeTiendaCompletoSchema(ZONA_CR).parse({
       tiendaId: "t1",
       cierreId: "c0c0c0c0-0000-4000-8000-000000000001",
       categoria: "flete",
@@ -112,8 +113,8 @@ describe("listarMovimientosDeTiendaCompletoSchema (R24/R25/R37)", () => {
       desde: "2026-07-01", // ficha 461 (R72): dias, no instantes
       hasta: "2026-07-31",
     };
-    const paginado = listarMovimientosDeTiendaSchema.parse(entrada);
-    const completo = listarMovimientosDeTiendaCompletoSchema.parse(entrada);
+    const paginado = listarMovimientosDeTiendaSchema(ZONA_CR).parse(entrada);
+    const completo = listarMovimientosDeTiendaCompletoSchema(ZONA_CR).parse(entrada);
 
     const { page: _p, pageSize: _ps, ...filtrosPaginado } = paginado;
     void _p;

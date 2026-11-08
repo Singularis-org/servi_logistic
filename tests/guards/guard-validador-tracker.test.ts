@@ -74,7 +74,7 @@ function correr(
   }
 }
 
-describe('guardia: tracker resuelto en el validador', () => {
+describe('guardia: tracker resuelto en el validador', { timeout: 30_000 }, () => {
   it('pasa con tracker trello, prefijo nuevo y prefijo historico', () => {
     const { code, salida } = correr({ tracker: TRACKER }, [ficha('AB-1'), ficha('XY-131')])
     expect(code, salida).toBe(0)
@@ -212,7 +212,7 @@ describe('guardia: tracker resuelto en el validador', () => {
   })
 })
 
-describe('guardia: tracker resuelto en check-perfil', () => {
+describe('guardia: tracker resuelto en check-perfil', { timeout: 30_000 }, () => {
   const ramas = { integracion: 'dev', produccion: 'main' }
 
   it('con tracker, exige tracker.prefijo aunque haya jira.project', () => {

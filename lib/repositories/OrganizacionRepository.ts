@@ -1,7 +1,7 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 
 import type { IOrganizacionRepository } from "@/lib/interfaces/repositories/IOrganizacionRepository";
-import type { AltaEmpresaDatos, AltaEmpresaResultado } from "@/lib/types/organizacion";
+import type { AltaEmpresaDatos, AltaEmpresaRepeticion, AltaEmpresaResultado } from "@/lib/types/organizacion";
 import { textoConstraintP2002 } from "@/lib/repositories/_shared/prisma-unique";
 
 /**
@@ -24,6 +24,21 @@ export class OrganizacionRepository implements IOrganizacionRepository {
       if (campo) return { estado: "conflicto", campo };
       throw error;
     }
+  }
+
+  /**
+   * SLT-42 (punto 7 tras la tanda 2): la repeticion, leida ANTES de validar el pais. Sin cerrojo:
+   * solo lee, y `altaEmpresa` la vuelve a decidir bajo el cerrojo del slug, asi que dos altas a la
+   * vez siguen dando una sola empresa.
+   */
+  async repeticion(datos: AltaEmpresaRepeticion): Promise<AltaEmpresaResultado | null> {
+    return this.prisma.$transaction(async (tx) => {
+      const existente = await tx.organizacion.findUnique({
+        where: { slug: datos.slug },
+        select: { id: true, paisId: true },
+      });
+      return existente ? decidirSobreExistente(tx, existente, datos) : null;
+    });
   }
 }
 
@@ -100,7 +115,7 @@ async function altaEnTransaccion(
 async function decidirSobreExistente(
   tx: Prisma.TransactionClient,
   existente: { id: string; paisId: string },
-  datos: AltaEmpresaDatos,
+  datos: AltaEmpresaRepeticion,
 ): Promise<AltaEmpresaResultado> {
   const mismoMaestro = await tx.usuario.findFirst({
     where: { organizacionId: existente.id, email: datos.maestro.email, rol: { value: "maestro" } },

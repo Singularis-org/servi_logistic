@@ -164,7 +164,7 @@ const COMPOSICION: ComposicionGananciaDTO = {
     ingreso_flete_devolucion: "0.00",
     ingreso_comision_cod: "700.00",
     ingreso_ajuste: "0.00",
-    ingreso_cobro_tienda: "0.00",
+    ingreso_cobro_tienda: "0.00", ingreso_fulfillment: "0.00", /* SLT-94 */
   },
   totalIngresos: "3200.00",
   egresos: {
@@ -172,7 +172,7 @@ const COMPOSICION: ComposicionGananciaDTO = {
     egreso_ajuste: "0.00",
     egreso_reverso_cobro_tienda: "0.00",
     egreso_reverso_flete_devolucion: "0.00",
-    egreso_pago_plataforma: "0.00", // SL-45: la exige el `Record` total
+    egreso_pago_plataforma: "0.00", egreso_reverso_fulfillment: "0.00", /* SLT-94 */ // SL-45: la exige el `Record` total
   },
   otrosEgresos: "0.00",
   hayOtrosEgresos: false,
@@ -181,7 +181,7 @@ const COMPOSICION: ComposicionGananciaDTO = {
     ingreso_iva_flete: "325.00",
     ingreso_iva_flete_devolucion: "0.00",
     ingreso_iva_comision_cod: "91.00",
-    egreso_reverso_iva_flete_devolucion: "0.00",
+    egreso_reverso_iva_flete_devolucion: "0.00", ingreso_iva_fulfillment: "0.00", egreso_reverso_iva_fulfillment: "0.00", /* SLT-94 */
   },
   totalIva: "416.00",
 };
@@ -204,7 +204,7 @@ const DEUDA_ONCE_DIGITOS: DeudaPlataformaDTO = { deuda: "12345678901.99", estado
 // de SL-40 («Todavía no se cobra…») se retira.
 const ROTULO = "Lo que la empresa debe a la plataforma";
 const PISTA =
-  "Lo que la plataforma cobra por cada orden creada, menos las anuladas y lo ya pagado. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.";
+  "Lo que la plataforma cobra por las órdenes de la empresa (al crearlas o, con plan porcentual, al llegar a un estado final), menos las anuladas y lo ya pagado. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.";
 
 const INSIGNIAS_DE_SIGNO = /^(Positivo|Negativo|En cero)$/;
 

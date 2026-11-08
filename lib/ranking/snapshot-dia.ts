@@ -1,14 +1,15 @@
 import {
-  fechaCalendarioCR,
-  inicioDelDiaCREnUtc,
-  inicioDelDiaSiguienteCREnUtc,
-} from "@/lib/utils/fecha-cr";
+  fechaCalendario,
+  inicioDelDiaEnUtc,
+  inicioDelDiaSiguienteEnUtc,
+  sumarDiasCalendario,
+} from "@/lib/utils/calendario-zona";
 
 // Feature 196 (design §3) — la fecha que congela el cron y sus cotas. Modulo PURO: sin
 // Prisma, sin `next/*` y sin reloj propio; el instante SIEMPRE se inyecta.
 //
 // Es el UNICO sitio del que sale la fecha objetivo del snapshot: toda la aritmetica de dia
-// se apoya en `lib/utils/fecha-cr.ts` y aqui no se reimplementa ni una hora de desplazamiento.
+// se apoya en `lib/utils/calendario-zona.ts` y aqui no se reimplementa ni una hora de desplazamiento.
 //
 // NO importa nada de `lib/analytics/`: aquel modulo resuelve el mismo problema para el
 // rollup, pero acoplar ranking a analitica para ahorrar cuatro lineas es peor negocio que
@@ -38,9 +39,11 @@ import {
 //
 // ⛔ Derivar el dia serializando el instante a ISO en UTC tampoco vale: emite la fecha en
 // UTC, asi que despues de las 18:00 CR ya devuelve el dia siguiente. Por eso el unico camino
-// a la fecha calendario es `fechaCalendarioCR`.
-
-const UN_DIA_MS = 24 * 60 * 60 * 1000;
+// a la fecha calendario es `fechaCalendario`.
+//
+// SLT-42 (R22, R23) — la zona ya no es la de Costa Rica fija: la recibe cada funcion, y es la del
+// pais de la empresa (la lee el servicio con `IReglasPaisEmpresa`). Con horario de verano el dia
+// dura 23 o 25 h, asi que «ayer» es la fecha calendario anterior, no `now - 24 h`.
 
 /** Ventana del dia CR, semiabierta `[desde, hasta)`. `hasta` es cota superior ESTRICTA. */
 export interface VentanaDiaCR {
@@ -56,8 +59,8 @@ export interface VentanaDiaCR {
  * `now` es OBLIGATORIO, sin default: un reloj por defecto deja que un test crea que controla
  * el tiempo cuando no lo hace.
  */
-export function fechaObjetivo(now: Date): string {
-  return fechaCalendarioCR(new Date(now.getTime() - UN_DIA_MS));
+export function fechaObjetivo(now: Date, zona: string): string {
+  return sumarDiasCalendario(fechaCalendario(now, zona), -1);
 }
 
 /**
@@ -69,10 +72,10 @@ export function fechaObjetivo(now: Date): string {
  * que hace comparables las dos cifras. Cambiar `<` por `<=` en el consumidor mueve un dia
  * entero de gestiones.
  */
-export function ventanaDelDia(fecha: string): VentanaDiaCR {
+export function ventanaDelDia(fecha: string, zona: string): VentanaDiaCR {
   return {
-    desde: inicioDelDiaCREnUtc(fecha),
-    hasta: inicioDelDiaSiguienteCREnUtc(fecha),
+    desde: inicioDelDiaEnUtc(fecha, zona),
+    hasta: inicioDelDiaSiguienteEnUtc(fecha, zona),
   };
 }
 

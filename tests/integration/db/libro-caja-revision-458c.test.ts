@@ -19,6 +19,18 @@ import {
   montarServicios459,
   sembrarEscenario459,
 } from "./_fixtures/caja-459";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+
+// SLT-42 (T5.4): la zona del pais de la empresa es la de CR, como antes. Las reglas reales leen el pais
+// de la empresa en curso con el cliente global, que no ve la empresa de una transaccion revertida ni
+// tiene empresa fuera de `conEmpresa`; la zona por pais la miden `hora-por-pais-wallet` y `demo-qa`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
 
 // SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
 vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
@@ -140,7 +152,7 @@ describeSiHayBase("458-C revisión B3/M1 — el pago a una tienda y el premio en
     };
 
     // M1 — la autoría de esas filas (la lectura del panel al abrir), sobre la tx.
-    const servicio = new LibroCajaAutoriaService(new LibroCajaAutoriaRepository(s.cliente));
+    const servicio = new LibroCajaAutoriaService(new LibroCajaAutoriaRepository(s.cliente), reglasPaisFijas());
     const r = await autoriaDelLibroCajaAction(
       { movimientoIds: Object.values(filas).map((f) => f.id) },
       { getActor: async () => actor, service: servicio },

@@ -28,12 +28,12 @@ export function tarifaViejaDeFormula(t: TarifaVigente | null): TarifaTienda | nu
 
 /**
  * Para los dobles de PRISMA que alimentan al `TarifaVigenteRepository` real: el resolver unico
- * pregunta primero si la empresa tiene algun valor del modelo nuevo (`tarifaValor.findFirst`).
- * Este delegado responde «ninguno», asi que el resto de la resolucion es la cascada vieja que esos
- * tests ya describen (R36).
+ * pregunta primero si la empresa esta activada (`tarifaActivacion.findFirst`, SLT-54 R1). Este
+ * delegado responde «no», asi que el resto de la resolucion es la cascada vieja que esos tests ya
+ * describen (R36).
  */
-export function sinValoresDelModeloNuevo() {
-  return { tarifaValor: { findFirst: async () => null } };
+export function empresaSinActivar() {
+  return { tarifaActivacion: { findFirst: async () => null } };
 }
 
 /** El Map del lote de un doble, con cada tarifa envuelta en el modelo viejo. */

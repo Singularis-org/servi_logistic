@@ -4,6 +4,7 @@ import { EMPRESA } from "@/lib/config/marca";
 import {
   ArrowRightLeft,
   HandCoins,
+  Package,
   Percent,
   Scale,
   Store,
@@ -37,9 +38,9 @@ import { DesgloseEgresosLista } from "./DesgloseEgresosLista";
 import { FilaComposicion } from "./FilaComposicion";
 import type { WalletFiltrosValue } from "./wallet-filtros-input";
 import {
-  CATEGORIA_LABEL,
   COMPOSICION_IVA_LABEL,
   IMPUESTO_ROTULO,
+  conceptoDeMovimientoCaja,
   money,
 } from "./wallet-labels";
 
@@ -95,7 +96,7 @@ const TITULO = `Cómo se compone la ganancia de ${EMPRESA.enFrase}`;
 // SL-39 (R10, design §7.2): los «impuestos» salen de la enumeración, porque ya no entran en la
 // ganancia, y la descripción dice dónde están.
 const DESCRIPCION =
-  "Ingresos y gastos propios del conjunto filtrado, concepto por concepto: fletes, comisiones, " +
+  "Ingresos y gastos propios del conjunto filtrado, concepto por concepto: fletes, fulfillment, comisiones, " +
   "gastos, sueldos, indemnizaciones, pagos a mensajeros y ajustes. " +
   `El ${IMPUESTO_ROTULO} cobrado a las tiendas no es ganancia: se muestra aparte. No incluye el ` +
   `dinero de las tiendas: el contra-entrega cobrado no es de ${EMPRESA.enFrase} y por eso no está en la ` +
@@ -122,6 +123,11 @@ const INGRESO_ICONO: Record<WalletIngresoGanancia, LucideIcon> = {
   // entrega ni de una tarifa, sino de algo que la empresa le cobra a esa tienda a mano. Decoracion
   // (`aria-hidden`); el rotulo «la empresa le cobra a una tienda» ya lo dice.
   ingreso_cobro_tienda: Store,
+  // SLT-94 (R20, R37): el cobro de fulfillment por paquete al crear la orden. `Package` —el paquete—
+  // porque se cobra uno por paquete. Su devolución (eliminar o cancelar por API) es un egreso
+  // nombrado de la otra columna, como el reverso del cobro a una tienda: la fila de aquí pinta el
+  // importe del servidor tal cual y la ganancia del pie ya trae el neto (R12, sin restar aquí).
+  ingreso_fulfillment: Package,
 };
 
 /**
@@ -135,6 +141,9 @@ const IVA_TONO: Record<WalletCategoriaIva, "ingreso" | "egreso"> = {
   ingreso_iva_flete_devolucion: "ingreso",
   ingreso_iva_comision_cod: "ingreso",
   egreso_reverso_iva_flete_devolucion: "egreso",
+  // SLT-94 (R20): el IVA del fulfillment y su devolución.
+  ingreso_iva_fulfillment: "ingreso",
+  egreso_reverso_iva_fulfillment: "egreso",
 };
 
 /** Insignia del signo de la ganancia. Las mismas variantes semánticas que la tarjeta de la caja. */
@@ -185,6 +194,9 @@ export function ComposicionGananciaCard({
   filtros,
 }: ComposicionGananciaCardProps) {
   const badge = SIGNO_BADGE[resumen.signoGanancia];
+  // D39: el servidor responde categoría por categoría. Con un IVA al 0 % hay flete del modelo nuevo
+  // sin fila de su IVA, y esa fila conserva el rótulo de siempre.
+  const conModeloNuevo: ReadonlySet<string> = new Set(composicion.categoriasConModeloNuevo);
 
   return (
     <Card>
@@ -216,7 +228,7 @@ export function ComposicionGananciaCard({
                   key={categoria}
                   fila={categoria}
                   // R25: la etiqueta legible que ya existe, nunca el valor del enum.
-                  label={CATEGORIA_LABEL[categoria]}
+                  label={conceptoDeMovimientoCaja({ categoria, incluyeModeloNuevo: conModeloNuevo.has(categoria) })}
                   valor={composicion.ingresos[categoria]}
                   icono={INGRESO_ICONO[categoria]}
                   tono="ingreso"
@@ -264,7 +276,7 @@ export function ComposicionGananciaCard({
               <FilaComposicion
                 key={categoria}
                 fila={categoria}
-                label={CATEGORIA_LABEL[categoria]}
+                label={conceptoDeMovimientoCaja({ categoria, incluyeModeloNuevo: conModeloNuevo.has(categoria) })}
                 valor={composicion.iva[categoria]}
                 icono={IVA_ICONO}
                 tono={IVA_TONO[categoria]}

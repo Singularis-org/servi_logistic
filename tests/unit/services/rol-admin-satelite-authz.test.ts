@@ -88,7 +88,7 @@ function buildOrdenRepo(overrides: Partial<IOrdenRepository> = {}): IOrdenReposi
     // Pedido humano 2026-08-27: el gemelo, `restore`. Mismo motivo que su vecino.
     restore: vi.fn().mockResolvedValue(0),
     findEstatusIdByValue: vi.fn().mockResolvedValue("os-bodega"),
-    findUsuarioFulfillment: vi.fn().mockResolvedValue(false), // feature 27
+    findUsuarioSeRecogeEnTienda: vi.fn().mockResolvedValue(true), // feature 27
     findExistingRemisiones: vi.fn().mockResolvedValue(new Map()),
     findAllProvincias: vi.fn().mockResolvedValue([]),
     findCantonesByProvinciaIds: vi.fn().mockResolvedValue([]),

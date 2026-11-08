@@ -84,6 +84,14 @@ const EXCEPCIONES_DE_LISTA: readonly {
     soloPlataforma: true,
     motivo: "la carga de la división de un país es de la plataforma (SL-20, R37)",
   },
+  // SL-42 (design §3; R4–R7, R14): el catálogo de vehículos es de la plataforma. Su `READ_ROLES` sigue
+  // siendo solo `maestro` (R17) y no nombra la plataforma, así que no entra aquí.
+  {
+    archivo: "lib/services/VehiculoService.ts",
+    constante: "GESTION_ROLES",
+    soloPlataforma: true,
+    motivo: "la gestión del catálogo de vehículos es de la plataforma (SL-42, R14)",
+  },
 ];
 
 /** El ítem «Empresas» del menú (R36), que llega con T16. */
@@ -94,7 +102,13 @@ const HREF_ITEM_PLATAFORMA = "/plataforma/empresas";
  * Los dos leen `ROLES_PLATAFORMA` por identidad y no llevan subítems.
  */
 // SLT-58 R23: «Planes» entra como tercer ítem de plataforma, con la misma regla (identidad, sin subítems).
-const HREFS_ITEMS_PLATAFORMA = new Set<string>([HREF_ITEM_PLATAFORMA, "/plataforma/geografia", "/plataforma/planes"]);
+// SL-42 R1: «Vehículos» entra como ítem de plataforma, con la misma regla (identidad, sin subítems).
+const HREFS_ITEMS_PLATAFORMA = new Set<string>([
+  HREF_ITEM_PLATAFORMA,
+  "/plataforma/geografia",
+  "/plataforma/planes",
+  "/plataforma/vehiculos",
+]);
 
 /**
  * Los archivos de `lib/` y `app/` donde el literal `superadmin` es legítimo: la fuente única y las
@@ -197,6 +211,19 @@ describe("(a) R3, R5 — las listas de roles de empresa no contienen la platafor
     const bien: MenuItem = { ...base, label: "Geografía", href, roles: ROLES_PLATAFORMA, children: undefined };
     expect(faltasDelMenu([literal])).toHaveLength(1);
     expect(faltasDelMenu([conMaestro])).toHaveLength(1);
+    expect(faltasDelMenu([bien])).toEqual([]);
+  });
+
+  it("contraprueba SL-42 (R1): «Vehículos» con literal, con maestro o con subítems sale rojo, y bien hecho no", () => {
+    const base = SIDEBAR_ITEMS[0];
+    const href = "/plataforma/vehiculos";
+    const bien: MenuItem = { ...base, label: "Vehículos", href, roles: ROLES_PLATAFORMA, children: undefined };
+    const literal: MenuItem = { ...bien, roles: ["superadmin"] };
+    const conMaestro: MenuItem = { ...bien, roles: [...ROLES_PLATAFORMA, "maestro"] };
+    const conHijos: MenuItem = { ...bien, children: [{ label: "Tipos", href: "/x", roles: ROLES_PLATAFORMA }] };
+    expect(faltasDelMenu([literal])).toHaveLength(1);
+    expect(faltasDelMenu([conMaestro])).toHaveLength(1);
+    expect(faltasDelMenu([conHijos])).toHaveLength(1);
     expect(faltasDelMenu([bien])).toEqual([]);
   });
 });
@@ -320,6 +347,22 @@ describe("(b) R4 — las constantes de roles nombran la plataforma solo por exce
     expect(faltasDeListas([conLiteral]).length).toBeGreaterThan(0);
     expect(faltasDeListas([sinImport])).toEqual([`${archivo}: GESTION_ROLES no importa ROLES_PLATAFORMA`]);
     expect(faltasDeListas([bien])).toEqual([]);
+  });
+
+  it("contraprueba SL-42 (R14): el VehiculoService real con el maestro en GESTION_ROLES sale rojo", () => {
+    const archivo = "lib/services/VehiculoService.ts";
+    const real = fuentes.find((f) => f.archivo === archivo);
+    expect(real, archivo).toBeDefined();
+    // Control: el real declara la lista que se muta, y está limpio.
+    const declaracion = "const GESTION_ROLES = new Set<string>(ROLES_PLATAFORMA);";
+    expect(real!.codigo).toContain(declaracion);
+    expect(faltasDeListas([real!])).toEqual([]);
+
+    const conMaestro = {
+      archivo,
+      codigo: real!.codigo.replace(declaracion, `const GESTION_ROLES = new Set<string>(["maestro", ...ROLES_PLATAFORMA]);`),
+    };
+    expect(faltasDeListas([conMaestro])).toEqual([`${archivo}: GESTION_ROLES es solo de plataforma y lleva otro rol`]);
   });
 });
 

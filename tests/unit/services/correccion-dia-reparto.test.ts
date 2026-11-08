@@ -21,6 +21,7 @@ import {
   MSG_YA_ES_ESE_DIA,
   msgEstadoSinDiaVivo,
 } from "@/lib/services/mensajes-correccion-dia-reparto";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // FEATURE 262 (B11) — la logica de negocio de «corregir el dia de reparto», con DOBLES.
 //
@@ -150,7 +151,7 @@ describe("262/R11 — corrige exactamente quien puede ELEGIR el dia al asignar",
     ["admin", ADMIN],
   ])("%s (acceso total) corrige sin restriccion de zona", async (_nombre, actor) => {
     const repo = fakeRepo();
-    const service = new CorreccionDiaRepartoService(repo);
+    const service = new CorreccionDiaRepartoService(repo, undefined, reglasPaisFijas());
 
     const r = await service.corregir({ ordenIds: ["o1"], dia: "hoy", motivo: MOTIVO }, actor, NOW_21_CR);
 
@@ -168,7 +169,7 @@ describe("262/R11 — corrige exactamente quien puede ELEGIR el dia al asignar",
 
   it("el `adminSatelite` corrige, acotado a SU zona resuelta en el servidor (R12)", async () => {
     const repo = fakeRepo();
-    const service = new CorreccionDiaRepartoService(repo);
+    const service = new CorreccionDiaRepartoService(repo, undefined, reglasPaisFijas());
 
     const r = await service.corregir({ ordenIds: ["o1"], dia: "hoy", motivo: MOTIVO }, SATELITE, NOW_21_CR);
 
@@ -185,7 +186,7 @@ describe("262/R15 — al mensajero y a la tienda NO se les ofrece, y su rechazo 
     ["adminTienda", TIENDA],
   ])("%s recibe `forbidden` SIN efectos y sin leer una sola orden", async (_nombre, actor) => {
     const repo = fakeRepo();
-    const service = new CorreccionDiaRepartoService(repo);
+    const service = new CorreccionDiaRepartoService(repo, undefined, reglasPaisFijas());
 
     const r = await service.corregir({ ordenIds: ["o1"], dia: "hoy", motivo: MOTIVO }, actor, NOW_21_CR);
 
@@ -200,7 +201,7 @@ describe("262/R15 — al mensajero y a la tienda NO se les ofrece, y su rechazo 
     // La razon, escrita: si el mensajero pudiera corregir su propio dia, la 261 no habria
     // bloqueado nada. No es «los admin pueden mas»: es que el bloqueo dejaria de existir.
     const repo = fakeRepo();
-    const service = new CorreccionDiaRepartoService(repo);
+    const service = new CorreccionDiaRepartoService(repo, undefined, reglasPaisFijas());
     const r = await service.corregir(
       { ordenIds: ["o1"], dia: "manana", motivo: MOTIVO },
       MENSAJERO,
@@ -213,7 +214,7 @@ describe("262/R15 — al mensajero y a la tienda NO se les ofrece, y su rechazo 
 describe("262/R12 — la zona del satelite se resuelve en el servidor y acota de verdad", () => {
   it("sin zona asignada => `sin_zona`, sin leer ni escribir nada", async () => {
     const repo = fakeRepo({ zonaActor: null });
-    const service = new CorreccionDiaRepartoService(repo);
+    const service = new CorreccionDiaRepartoService(repo, undefined, reglasPaisFijas());
 
     const r = await service.corregir({ ordenIds: ["o1"], dia: "hoy", motivo: MOTIVO }, SATELITE, NOW_21_CR);
 
@@ -229,7 +230,7 @@ describe("262/R12 — la zona del satelite se resuelve en el servidor y acota de
     const repo = fakeRepo({
       ordenes: [ordenRow({ id: "o1" }), ordenRow({ id: "o2", zonaId: ZONA_AJENA })],
     });
-    const service = new CorreccionDiaRepartoService(repo);
+    const service = new CorreccionDiaRepartoService(repo, undefined, reglasPaisFijas());
 
     const r = await service.corregir(
       { ordenIds: ["o1", "o2"], dia: "hoy", motivo: MOTIVO },
@@ -245,7 +246,7 @@ describe("262/R12 — la zona del satelite se resuelve en el servidor y acota de
     // El peldaño de arriba de la escalera (limite declarado 5): lo que el satelite no alcanza, lo
     // alcanza maestro/admin desde `/ordenes`, que llega a CUALQUIER zona.
     const repo = fakeRepo({ ordenes: [ordenRow({ id: "o2", zonaId: ZONA_AJENA })] });
-    const service = new CorreccionDiaRepartoService(repo);
+    const service = new CorreccionDiaRepartoService(repo, undefined, reglasPaisFijas());
 
     const r = await service.corregir({ ordenIds: ["o2"], dia: "hoy", motivo: MOTIVO }, MAESTRO, NOW_21_CR);
 
@@ -264,7 +265,7 @@ describe("262/R6 — solo los estados donde el dia TODAVIA decide algo, y el rec
     "`%s` se admite",
     async (estatusValue) => {
       const repo = fakeRepo({ ordenes: [ordenRow({ estatusValue })] });
-      const service = new CorreccionDiaRepartoService(repo);
+      const service = new CorreccionDiaRepartoService(repo, undefined, reglasPaisFijas());
       const r = await service.corregir({ ordenIds: ["o1"], dia: "hoy", motivo: MOTIVO }, MAESTRO, NOW_21_CR);
       expect(r.status).toBe("ok");
     },
@@ -274,7 +275,7 @@ describe("262/R6 — solo los estados donde el dia TODAVIA decide algo, y el rec
     "`%s` se rechaza NOMBRANDO el estado, y sin efectos",
     async (estatusValue) => {
       const repo = fakeRepo({ ordenes: [ordenRow({ estatusValue })] });
-      const service = new CorreccionDiaRepartoService(repo);
+      const service = new CorreccionDiaRepartoService(repo, undefined, reglasPaisFijas());
 
       const r = await service.corregir({ ordenIds: ["o1"], dia: "hoy", motivo: MOTIVO }, MAESTRO, NOW_21_CR);
 
@@ -291,7 +292,7 @@ describe("262/R6 — solo los estados donde el dia TODAVIA decide algo, y el rec
 describe("262/R5 — sin mensajero o sin dia se rechaza, y cada motivo es el SUYO", () => {
   it("sin mensajero asignado", async () => {
     const repo = fakeRepo({ ordenes: [ordenRow({ mensajeroAsignadoId: null })] });
-    const service = new CorreccionDiaRepartoService(repo);
+    const service = new CorreccionDiaRepartoService(repo, undefined, reglasPaisFijas());
 
     const r = await service.corregir({ ordenIds: ["o1"], dia: "hoy", motivo: MOTIVO }, MAESTRO, NOW_21_CR);
 
@@ -301,7 +302,7 @@ describe("262/R5 — sin mensajero o sin dia se rechaza, y cada motivo es el SUY
 
   it("sin dia de reparto (R4: esta operacion NO pone dia donde no lo habia)", async () => {
     const repo = fakeRepo({ ordenes: [ordenRow({ fechaReparto: null })] });
-    const service = new CorreccionDiaRepartoService(repo);
+    const service = new CorreccionDiaRepartoService(repo, undefined, reglasPaisFijas());
 
     const r = await service.corregir({ ordenIds: ["o1"], dia: "hoy", motivo: MOTIVO }, MAESTRO, NOW_21_CR);
 
@@ -315,7 +316,7 @@ describe("262/R5 — sin mensajero o sin dia se rechaza, y cada motivo es el SUY
 
   it("orden inexistente y orden borrada tambien tienen su motivo propio", async () => {
     const repo = fakeRepo({ ordenes: [ordenRow({ id: "o2", deletedAt: new Date() })] });
-    const service = new CorreccionDiaRepartoService(repo);
+    const service = new CorreccionDiaRepartoService(repo, undefined, reglasPaisFijas());
 
     const r = await service.corregir(
       { ordenIds: ["o1", "o2"], dia: "hoy", motivo: MOTIVO },
@@ -336,7 +337,7 @@ describe("262/R5 — sin mensajero o sin dia se rechaza, y cada motivo es el SUY
 describe("262/R7 — una orden que YA esta en el dia elegido se rechaza, no se «corrige»", () => {
   it("marcada para el 22 y se pide «mañana» (que es el 22) => rechazo con su motivo", async () => {
     const repo = fakeRepo({ ordenes: [ordenRow({ fechaReparto: DIA_22 })] });
-    const service = new CorreccionDiaRepartoService(repo);
+    const service = new CorreccionDiaRepartoService(repo, undefined, reglasPaisFijas());
 
     const r = await service.corregir(
       { ordenIds: ["o1"], dia: "manana", motivo: MOTIVO },
@@ -355,7 +356,7 @@ describe("262/R7 — una orden que YA esta en el dia elegido se rechaza, no se �
     const repo = fakeRepo({
       ordenes: [ordenRow({ fechaReparto: new Date("2026-08-21T00:00:00.000Z") })],
     });
-    const service = new CorreccionDiaRepartoService(repo);
+    const service = new CorreccionDiaRepartoService(repo, undefined, reglasPaisFijas());
 
     const r = await service.corregir({ ordenIds: ["o1"], dia: "hoy", motivo: MOTIVO }, MAESTRO, NOW_21_CR);
 
@@ -376,7 +377,7 @@ describe("262/R8 — una sola rechazada aborta el LOTE COMPLETO, sin efectos", (
         ordenRow({ id: "o3", estatusValue: "entregado" }),
       ],
     });
-    const service = new CorreccionDiaRepartoService(repo);
+    const service = new CorreccionDiaRepartoService(repo, undefined, reglasPaisFijas());
 
     const r = await service.corregir(
       { ordenIds: ["o1", "o2", "o3"], dia: "hoy", motivo: MOTIVO },
@@ -400,7 +401,7 @@ describe("262/R8 — una sola rechazada aborta el LOTE COMPLETO, sin efectos", (
       // Al re-leer, «o2» ya se entrego: alguien la movio entre la validacion y la escritura.
       ordenesTrasCarrera: [ordenRow({ id: "o2", estatusValue: "entregado" })],
     });
-    const service = new CorreccionDiaRepartoService(repo);
+    const service = new CorreccionDiaRepartoService(repo, undefined, reglasPaisFijas());
 
     const r = await service.corregir(
       { ordenIds: ["o1", "o2"], dia: "hoy", motivo: MOTIVO },
@@ -422,7 +423,7 @@ describe("262/R8 — una sola rechazada aborta el LOTE COMPLETO, sin efectos", (
         throw new CorreccionDiaConflictoError(["o1"]);
       }),
     });
-    const service = new CorreccionDiaRepartoService(repo);
+    const service = new CorreccionDiaRepartoService(repo, undefined, reglasPaisFijas());
 
     const r = await service.corregir({ ordenIds: ["o1"], dia: "hoy", motivo: MOTIVO }, MAESTRO, NOW_21_CR);
 
@@ -444,13 +445,13 @@ describe("262/R2 — la fecha sale del TOKEN y del RELOJ, en el servidor", () =>
     // antes de escribir esta linea, y por eso queda dicho.
     const lejos = { fechaReparto: new Date("2026-01-05T00:00:00.000Z") };
     const repo1 = fakeRepo({ ordenes: [ordenRow(lejos)] });
-    await new CorreccionDiaRepartoService(repo1).corregir(
+    await new CorreccionDiaRepartoService(repo1, undefined, reglasPaisFijas()).corregir(
       { ordenIds: ["o1"], dia: "hoy", motivo: MOTIVO },
       MAESTRO,
       NOW_21_CR,
     );
     const repo2 = fakeRepo({ ordenes: [ordenRow(lejos)] });
-    await new CorreccionDiaRepartoService(repo2).corregir(
+    await new CorreccionDiaRepartoService(repo2, undefined, reglasPaisFijas()).corregir(
       { ordenIds: ["o1"], dia: "hoy", motivo: MOTIVO },
       MAESTRO,
       NOW_22_CR,
@@ -464,7 +465,7 @@ describe("262/R2 — la fecha sale del TOKEN y del RELOJ, en el servidor", () =>
     // A las 04:30Z del 22 el dia de Costa Rica es el 21 (UTC-6). Si el service usara el dia UTC,
     // «mañana» saldria el 23 y este test se pondria rojo.
     const repo = fakeRepo({ ordenes: [ordenRow({ fechaReparto: DIA_21 })] });
-    await new CorreccionDiaRepartoService(repo).corregir(
+    await new CorreccionDiaRepartoService(repo, undefined, reglasPaisFijas()).corregir(
       { ordenIds: ["o1"], dia: "manana", motivo: MOTIVO },
       MAESTRO,
       NOW_21_CR,
@@ -479,7 +480,7 @@ describe("262/R2 — la fecha sale del TOKEN y del RELOJ, en el servidor", () =>
     const salidas: Date[] = [];
     for (const dia of ["hoy", "manana"] as const) {
       const repo = fakeRepo({ ordenes: [ordenRow({ fechaReparto: new Date("2026-01-01T00:00:00.000Z") })] });
-      await new CorreccionDiaRepartoService(repo).corregir(
+      await new CorreccionDiaRepartoService(repo, undefined, reglasPaisFijas()).corregir(
         { ordenIds: ["o1"], dia, motivo: MOTIVO },
         MAESTRO,
         NOW_21_CR,
@@ -492,7 +493,7 @@ describe("262/R2 — la fecha sale del TOKEN y del RELOJ, en el servidor", () =>
 
   it("con el reloj un dia mas tarde, «mañana» es el 23 (la fecha no esta congelada)", async () => {
     const repo = fakeRepo({ ordenes: [ordenRow({ fechaReparto: DIA_21 })] });
-    await new CorreccionDiaRepartoService(repo).corregir(
+    await new CorreccionDiaRepartoService(repo, undefined, reglasPaisFijas()).corregir(
       { ordenIds: ["o1"], dia: "manana", motivo: MOTIVO },
       MAESTRO,
       NOW_22_CR,
@@ -528,7 +529,7 @@ describe("262/R14 — un cierre de dia sin resolver NO bloquea la correccion", (
   it("y en comportamiento: con un repo que NI SIQUIERA tiene ese metodo, la correccion procede", async () => {
     const repo = fakeRepo();
     expect((repo as unknown as Record<string, unknown>).findMensajerosBloqueadosPorCierres).toBeUndefined();
-    const r = await new CorreccionDiaRepartoService(repo).corregir(
+    const r = await new CorreccionDiaRepartoService(repo, undefined, reglasPaisFijas()).corregir(
       { ordenIds: ["o1"], dia: "hoy", motivo: MOTIVO },
       MAESTRO,
       NOW_21_CR,
@@ -546,7 +547,7 @@ describe("262 — guardias de configuracion y forma del resultado", () => {
     // ⏳ 2026-09-23 (FICHA 454): el valor que falta pasa a ser `en_reparto` (`ayuda_tienda` ya no se
     // resuelve: deja de ser estado).
     const repo = fakeRepo({ catalogo: (v) => (v === "en_reparto" ? null : `os-${v}`) });
-    const service = new CorreccionDiaRepartoService(repo);
+    const service = new CorreccionDiaRepartoService(repo, undefined, reglasPaisFijas());
 
     const r = await service.corregir({ ordenIds: ["o1"], dia: "hoy", motivo: MOTIVO }, MAESTRO, NOW_21_CR);
 
@@ -562,7 +563,7 @@ describe("262 — guardias de configuracion y forma del resultado", () => {
       ordenes: [ordenRow({ id: "o1" }), ordenRow({ id: "o2" })],
       corregir: vi.fn(async () => [aplicada({ ordenId: "o1" }), aplicada({ ordenId: "o2", cambioId: "c-2" })]),
     });
-    const service = new CorreccionDiaRepartoService(repo);
+    const service = new CorreccionDiaRepartoService(repo, undefined, reglasPaisFijas());
 
     const r = await service.corregir(
       { ordenIds: ["o1", "o2"], dia: "hoy", motivo: MOTIVO },
@@ -575,7 +576,7 @@ describe("262 — guardias de configuracion y forma del resultado", () => {
 
   it("los ids repetidos se deduplican antes de escribir", async () => {
     const repo = fakeRepo();
-    await new CorreccionDiaRepartoService(repo).corregir(
+    await new CorreccionDiaRepartoService(repo, undefined, reglasPaisFijas()).corregir(
       { ordenIds: ["o1", "o1"], dia: "hoy", motivo: MOTIVO },
       MAESTRO,
       NOW_21_CR,
@@ -585,7 +586,7 @@ describe("262 — guardias de configuracion y forma del resultado", () => {
 
   it("el motivo del lote llega INTACTO al writer (es lo que queda en el rastro, R21)", async () => {
     const repo = fakeRepo();
-    await new CorreccionDiaRepartoService(repo).corregir(
+    await new CorreccionDiaRepartoService(repo, undefined, reglasPaisFijas()).corregir(
       { ordenIds: ["o1"], dia: "hoy", motivo: MOTIVO },
       MAESTRO,
       NOW_21_CR,
@@ -611,7 +612,8 @@ describe("262/R46 — el aviso se emite FUERA de la transaccion y solo si esta c
     });
     const service = new CorreccionDiaRepartoService(repo, async (ctx) => {
       avisos.push(ctx);
-    });
+    },
+    reglasPaisFijas(),);
 
     await service.corregir({ ordenIds: ["o1"], dia: "hoy", motivo: MOTIVO }, MAESTRO, NOW_21_CR);
 
@@ -632,7 +634,8 @@ describe("262/R46 — el aviso se emite FUERA de la transaccion y solo si esta c
     });
     await new CorreccionDiaRepartoService(repo, async (ctx) => {
       avisos.push(ctx as { anexo: string });
-    }).corregir({ ordenIds: ["o1"], dia: "hoy", motivo: MOTIVO }, MAESTRO, NOW_21_CR);
+    },
+    reglasPaisFijas(),).corregir({ ordenIds: ["o1"], dia: "hoy", motivo: MOTIVO }, MAESTRO, NOW_21_CR);
 
     expect(avisos[0].anexo).toBe("REM-77");
   });
@@ -642,7 +645,8 @@ describe("262/R46 — el aviso se emite FUERA de la transaccion y solo si esta c
     const repo = fakeRepo();
     await new CorreccionDiaRepartoService(repo, async (ctx) => {
       avisos.push(ctx as unknown as Record<string, unknown>);
-    }).corregir({ ordenIds: ["o1"], dia: "hoy", motivo: MOTIVO }, MAESTRO, NOW_21_CR);
+    },
+    reglasPaisFijas(),).corregir({ ordenIds: ["o1"], dia: "hoy", motivo: MOTIVO }, MAESTRO, NOW_21_CR);
 
     expect(Object.keys(avisos[0]).sort()).toEqual([
       "anexo",
@@ -664,7 +668,8 @@ describe("262/R46 — el aviso se emite FUERA de la transaccion y solo si esta c
     });
     await new CorreccionDiaRepartoService(repo, async (ctx) => {
       avisos.push(ctx as { cambioId: string });
-    }).corregir({ ordenIds: ["o1", "o2"], dia: "hoy", motivo: MOTIVO }, MAESTRO, NOW_21_CR);
+    },
+    reglasPaisFijas(),).corregir({ ordenIds: ["o1", "o2"], dia: "hoy", motivo: MOTIVO }, MAESTRO, NOW_21_CR);
 
     expect(avisos.map((a) => a.cambioId)).toEqual(["c-1", "c-2"]);
   });
@@ -685,7 +690,8 @@ describe("262/R46 — el aviso se emite FUERA de la transaccion y solo si esta c
       });
       await new CorreccionDiaRepartoService(repo, async (ctx) => {
         avisos.push(ctx as { fechaNuevaISO: string });
-      }).corregir({ ordenIds: ["o1"], dia, motivo: MOTIVO }, MAESTRO, NOW_21_CR);
+      },
+      reglasPaisFijas(),).corregir({ ordenIds: ["o1"], dia, motivo: MOTIVO }, MAESTRO, NOW_21_CR);
 
       expect(avisos).toHaveLength(1);
       expect(avisos[0].fechaNuevaISO).toBe(esperada);
@@ -699,7 +705,8 @@ describe("262/R46 — el aviso se emite FUERA de la transaccion y solo si esta c
     const repo = fakeRepo();
     const service = new CorreccionDiaRepartoService(repo, async () => {
       throw new Error("la campana esta caida");
-    });
+    },
+    reglasPaisFijas(),);
 
     const r = await service.corregir({ ordenIds: ["o1"], dia: "hoy", motivo: MOTIVO }, MAESTRO, NOW_21_CR);
 
@@ -717,7 +724,8 @@ describe("262/R46 — el aviso se emite FUERA de la transaccion y solo si esta c
     });
     const r = await new CorreccionDiaRepartoService(repo, async (ctx) => {
       avisos.push(ctx);
-    }).corregir({ ordenIds: ["o1"], dia: "hoy", motivo: MOTIVO }, MAESTRO, NOW_21_CR);
+    },
+    reglasPaisFijas(),).corregir({ ordenIds: ["o1"], dia: "hoy", motivo: MOTIVO }, MAESTRO, NOW_21_CR);
 
     expect(r.status).toBe("conflict");
     expect(avisos).toEqual([]);
@@ -728,7 +736,8 @@ describe("262/R46 — el aviso se emite FUERA de la transaccion y solo si esta c
     const repo = fakeRepo({ ordenes: [ordenRow({ estatusValue: "entregado" })] });
     await new CorreccionDiaRepartoService(repo, async (ctx) => {
       avisos.push(ctx);
-    }).corregir({ ordenIds: ["o1"], dia: "hoy", motivo: MOTIVO }, MAESTRO, NOW_21_CR);
+    },
+    reglasPaisFijas(),).corregir({ ordenIds: ["o1"], dia: "hoy", motivo: MOTIVO }, MAESTRO, NOW_21_CR);
 
     expect(avisos).toEqual([]);
   });
@@ -737,7 +746,7 @@ describe("262/R46 — el aviso se emite FUERA de la transaccion y solo si esta c
     // Patron `notificadores.ts:11-19`. Una suite que construya el service sin inyectar obtiene el
     // no-op POR CONSTRUCCION y no puede escribir en la base — que en este repo es compartida.
     const repo = fakeRepo();
-    const r = await new CorreccionDiaRepartoService(repo).corregir(
+    const r = await new CorreccionDiaRepartoService(repo, undefined, reglasPaisFijas()).corregir(
       { ordenIds: ["o1"], dia: "hoy", motivo: MOTIVO },
       MAESTRO,
       NOW_21_CR,

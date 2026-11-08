@@ -1,5 +1,6 @@
 import { EMPRESA } from "@/lib/config/marca";
 import { ORIGEN_TIENDA_LABEL } from "@/lib/constants/wallet-rotulos";
+import type { FilaEstadoCuentaDTO } from "@/lib/types/estado-cuenta";
 import type { WalletOrigenTipo } from "@/lib/types/wallet";
 import type {
   WalletTiendaMovimientoCategoria,
@@ -124,9 +125,35 @@ export const CATEGORIA_MI_WALLET_LABEL: Record<WalletTiendaMovimientoCategoria, 
   // Ficha 458-B (design §2.3, D7): la anulación de un cobro por rechazo, desde la tienda.
   flete_devolucion_anulado: `${EMPRESA.alInicio} anuló el flete por devolución a origen y te lo devolvió`,
   iva_flete_devolucion_anulado: `${EMPRESA.alInicio} anuló el IVA del flete por devolución a origen y te lo devolvió`,
+  // SLT-94 (R36): el cobro de fulfillment por paquete al crear la orden y su devolución al
+  // eliminarla o cancelarla por API, leídos desde la tienda.
+  fulfillment: `${EMPRESA.alInicio} te cobró el fulfillment`,
+  iva_fulfillment: `${EMPRESA.alInicio} te cobró el IVA del fulfillment`,
+  fulfillment_anulado: `${EMPRESA.alInicio} te hizo la devolución de fulfillment`,
+  iva_fulfillment_anulado: `${EMPRESA.alInicio} te hizo la devolución del IVA del fulfillment`,
   ajuste_credito: "Corrección a tu favor",
   ajuste_debito: "Corrección en tu contra",
 };
+
+/**
+ * SLT-54 (R71, D38) — el cobro de un cierre con el modelo nuevo suma también reprogramado, novedad e
+ * incidente: decirle a la tienda que pagó una devolución que no hubo es falso, y ella es quien lo reclama.
+ * Es el nombre de `conceptoDeMovimientoCaja`, dicho desde la tienda.
+ */
+const CATEGORIA_MI_WALLET_LABEL_MODELO_NUEVO: Partial<Record<WalletTiendaMovimientoCategoria, string>> = {
+  flete_devolucion: `${EMPRESA.alInicio} te cobró el flete de gestiones no entregadas`,
+  iva_flete_devolucion: `${EMPRESA.alInicio} te cobró el IVA del flete de gestiones no entregadas`,
+};
+
+/**
+ * El concepto de UNA fila del libro de la tienda. `CATEGORIA_MI_WALLET_LABEL` sigue siendo el nombre de la
+ * categoría; esto solo cambia la fila cuyo cierre incluye el modelo nuevo. Ausente se lee como viejo.
+ */
+export function conceptoDeFilaMiWallet(f: Pick<FilaEstadoCuentaDTO, "categoria" | "incluyeModeloNuevo">): string {
+  const categoria = f.categoria as WalletTiendaMovimientoCategoria;
+  const delNuevo = f.incluyeModeloNuevo === true ? CATEGORIA_MI_WALLET_LABEL_MODELO_NUEVO[categoria] : undefined;
+  return delNuevo ?? CATEGORIA_MI_WALLET_LABEL[categoria] ?? f.categoria;
+}
 
 export { ORIGEN_TIENDA_LABEL };
 

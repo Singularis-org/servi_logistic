@@ -1,4 +1,3 @@
-import { reintentosConfig } from "@/lib/config/reintentos";
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { IOrdenHistorialRepository } from "@/lib/interfaces/repositories/IOrdenHistorialRepository";
 import type { IOrdenDiaRepartoCambioRepository } from "@/lib/interfaces/repositories/IOrdenDiaRepartoCambioRepository";
@@ -196,7 +195,9 @@ export class OrdenHistorialService implements IOrdenHistorialService {
     // sigue exponiendo `intentos` + `umbral`— sino el VALOR: son los cierres APROBADOS
     // distintos en los que la orden tuvo un resultado contable, no las transiciones.
     const intentos = await this.contarIntentos(ordenId); // R1/R3
-    const umbral = reintentosConfig.MIN_INTENTOS_ENTREGA; // R3
+    // SLT-77 (R25, R32): el total sale de la empresa de la orden. Para el `mensajero` ni se lee: el
+    // numero no debe cruzar a su navegador, y esta action responde con su sesion aunque no tenga pantalla.
+    const umbral = actor.rol === "mensajero" ? null : await this.historialRepo.leerTopeIntentos();
     return {
       status: "ok",
       entradas,
@@ -205,6 +206,10 @@ export class OrdenHistorialService implements IOrdenHistorialService {
       gestionPendiente: senales.gestionPendiente,
       ayudaAbierta: senales.ayudaAbierta,
     };
+  }
+
+  async topeIntentos(): Promise<number> {
+    return this.historialRepo.leerTopeIntentos();
   }
 
   /**

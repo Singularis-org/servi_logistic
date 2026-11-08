@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type { ModuloApagable, PrismaClient, RolValue } from "@prisma/client";
 
 import { comoPlataforma, conEmpresa } from "../../lib/db/contexto-empresa";
@@ -5,11 +7,13 @@ import { getPrismaClient } from "../../lib/db/prisma-client";
 import { ORDEN_MODULOS } from "../../lib/modulos/catalogo";
 import { CierreBodegaRepository } from "../../lib/repositories/CierreBodegaRepository";
 import { OrganizacionRepository } from "../../lib/repositories/OrganizacionRepository";
+import { PaisRepository } from "../../lib/repositories/PaisRepository";
 import { SessionRepository } from "../../lib/repositories/SessionRepository";
 import { UserRepository } from "../../lib/repositories/UserRepository";
 import { VehiculoRepository } from "../../lib/repositories/VehiculoRepository";
 import { ZonaRepository } from "../../lib/repositories/ZonaRepository";
 import { OrganizacionService } from "../../lib/services/OrganizacionService";
+import { construirReglasPaisEmpresa } from "../../lib/services/ReglasPaisEmpresaService";
 import { UsuarioService } from "../../lib/services/UsuarioService";
 import { VEHICULOS_SEED } from "../../lib/types/vehiculos";
 import { hashPassword } from "../../lib/utils/password";
@@ -52,7 +56,10 @@ export interface DatosEmpresa {
   contrasena: string;
   /** Por defecto, «Maestro <nombre>». */
   nombreMaestro?: string;
-  /** Único global (`usuario.cedula`). Por defecto, el slug. */
+  /**
+   * SLT-42 (R10): tiene que cumplir la regla del tipo (cédula física de CR: 9 dígitos). Por defecto,
+   * la que sale del correo del maestro.
+   */
   documentoMaestro?: string;
   /** SL-20: el país del alta. Por defecto Costa Rica, como toda empresa de test (R10). */
   paisId?: string;
@@ -82,7 +89,8 @@ export async function crearEmpresa(
   plataforma: ContextoPlataforma = { ficha: "SL-43", motivo: "fábrica: alta de empresa" },
 ): Promise<EmpresaCreada> {
   const nombreMaestro = datos.nombreMaestro ?? `Maestro ${datos.nombre}`;
-  const servicio = new OrganizacionService(new OrganizacionRepository(getPrismaClient()));
+  const prisma = getPrismaClient();
+  const servicio = new OrganizacionService(new OrganizacionRepository(prisma), new PaisRepository(prisma));
   const resultado = await comoPlataforma(plataforma.ficha, plataforma.motivo, () =>
     servicio.altaEmpresa({
       nombre: datos.nombre,
@@ -92,7 +100,7 @@ export async function crearEmpresa(
         nombre: nombreMaestro,
         email: datos.correoMaestro,
         telefono: TELEFONO,
-        documento: datos.documentoMaestro ?? datos.slug,
+        documento: datos.documentoMaestro ?? cedulaDelCorreo(datos.correoMaestro),
         tipoDocumento: TIPO_IDENTIFICACION,
       },
     }),
@@ -131,7 +139,17 @@ function servicioDeUsuarios(): UsuarioService {
     new VehiculoRepository(prisma),
     new SessionRepository(prisma),
     new CierreBodegaRepository(prisma),
+    construirReglasPaisEmpresa(prisma),
   );
+}
+
+/**
+ * SLT-42 (R10): la cédula física de Costa Rica, 9 dígitos, sacada del correo. Determinista para que
+ * la demo de QA dé lo mismo en cada corrida; el correo ya es único, así que choca solo por azar.
+ */
+function cedulaDelCorreo(correo: string): string {
+  const n = createHash("sha256").update(correo).digest().readUInt32BE(0) % 1_000_000_000;
+  return String(n).padStart(9, "0");
 }
 
 export interface DatosUsuario {
@@ -141,11 +159,14 @@ export interface DatosUsuario {
   contrasena: string;
   /** Por defecto, «<rol> <parte local del correo>». */
   nombre?: string;
-  /** Único global (`usuario.cedula`). Por defecto, la parte local del correo. */
+  /**
+   * Único por empresa y tipo (SLT-42, R13) y con la regla de la cédula física de CR (9 dígitos, R10).
+   * Por defecto, una derivada del correo.
+   */
   cedula?: string;
   zonaId?: string;
   vehiculoId?: string;
-  fulfillment?: boolean;
+  seRecogeEnTienda?: boolean;
 }
 
 /**
@@ -153,9 +174,9 @@ export interface DatosUsuario {
  * `zonaId` es obligatoria para `mensajero` y `adminSatelite` (la exige el servicio). No hay
  * `tiendaId`: el `adminTienda` ES la tienda (las órdenes y tarifas apuntan a su `usuario.id`).
  * El servicio exige vehículo al `mensajero`: sin `vehiculoId`, va el primero del catálogo sembrado.
- * `fulfillment` (solo `adminTienda`, lo restringe el servicio): la tienda con bodega propia, cuyas
- * órdenes nacen en `en_preparacion`, sin guía (`resolverDestinoCreacion`). Sin él, nacen en
- * `por_recolectar_en_tienda`, con guía.
+ * `seRecogeEnTienda: false` (solo `adminTienda`, lo restringe el servicio; SLT-94): la tienda con
+ * bodega propia, cuyas órdenes nacen en `en_preparacion`, sin guía (`resolverDestinoCreacion`). Sin
+ * él (o en `true`), nacen en `por_recolectar_en_tienda`, con guía.
  */
 export async function crearUsuario(
   base: PrismaClient,
@@ -183,11 +204,11 @@ export async function crearUsuario(
         email: datos.correo,
         telefono: TELEFONO,
         tipoIdentificacionId: tipo.id,
-        cedula: datos.cedula ?? local,
+        cedula: datos.cedula ?? cedulaDelCorreo(datos.correo),
         rolId: rolFila.id,
         ...(datos.zonaId ? { zonaId: datos.zonaId } : {}),
         ...(vehiculoId ? { vehiculoId } : {}),
-        ...(datos.fulfillment !== undefined ? { fulfillment: datos.fulfillment } : {}),
+        ...(datos.seRecogeEnTienda !== undefined ? { seRecogeEnTienda: datos.seRecogeEnTienda } : {}),
         passwordMode: "manual",
         password: datos.contrasena,
       },

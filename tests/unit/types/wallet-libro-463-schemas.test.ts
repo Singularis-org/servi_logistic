@@ -15,6 +15,7 @@ import {
 } from "@/lib/types/wallet";
 import { listarSaldosTiendasCompletoSchema, listarSaldosTiendasPaginadoSchema } from "@/lib/types/wallet-tienda";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // FICHA 463 / T1 — los contratos de borde del libro de las wallets (design §2).
 //
 // Las cifras de la caja (resumen, desglose, detalle de una fila de la composicion) parsean el esquema
@@ -35,31 +36,31 @@ describe("463/T1 — contratos del libro", () => {
     const deFila = { fila: "egreso_pago_mensajero" };
     for (const extra of [{ q: "abcd" }, { sortDir: "desc" }, { sortDir: "asc" }, { sortBy: "fecha" }]) {
       it(`resumen/desglose (listarMovimientosSchema) con ${JSON.stringify(extra)} ⇒ error`, () => {
-        expect(listarMovimientosSchema.safeParse(extra).success).toBe(false);
+        expect(listarMovimientosSchema(ZONA_CR).safeParse(extra).success).toBe(false);
       });
       it(`detalle de una fila (listarMovimientosDeFilaSchema) con ${JSON.stringify(extra)} ⇒ error`, () => {
-        expect(listarMovimientosDeFilaSchema.safeParse({ ...deFila, ...extra }).success).toBe(false);
+        expect(listarMovimientosDeFilaSchema(ZONA_CR).safeParse({ ...deFila, ...extra }).success).toBe(false);
       });
     }
     it("control: sin termino ni orden, los dos siguen aceptando su entrada de siempre", () => {
-      expect(listarMovimientosSchema.safeParse({ tipo: "ingreso" }).success).toBe(true);
-      expect(listarMovimientosDeFilaSchema.safeParse(deFila).success).toBe(true);
+      expect(listarMovimientosSchema(ZONA_CR).safeParse({ tipo: "ingreso" }).success).toBe(true);
+      expect(listarMovimientosDeFilaSchema(ZONA_CR).safeParse(deFila).success).toBe(true);
     });
   });
 
   describe("el libro de la caja: termino y orden", () => {
     it("R34: por defecto «Mas recientes» por fecha, en la pagina y en la descarga", () => {
-      expect(listarLibroCajaSchema.parse({})).toMatchObject({ sortBy: "fecha", sortDir: "desc", page: 1 });
-      expect(listarLibroCajaCompletoSchema.parse({})).toEqual({ sortBy: "fecha", sortDir: "desc" });
+      expect(listarLibroCajaSchema(ZONA_CR).parse({})).toMatchObject({ sortBy: "fecha", sortDir: "desc", page: 1 });
+      expect(listarLibroCajaCompletoSchema(ZONA_CR).parse({})).toEqual({ sortBy: "fecha", sortDir: "desc" });
     });
 
     it("acepta asc y el termino recortado; conserva los filtros de la wallet", () => {
-      const r = listarLibroCajaSchema.parse({ q: "  Pedro  ", sortDir: "asc", tipo: "egreso", aQuien: { nombre: "Pedro" } });
+      const r = listarLibroCajaSchema(ZONA_CR).parse({ q: "  Pedro  ", sortDir: "asc", tipo: "egreso", aQuien: { nombre: "Pedro" } });
       expect(r).toMatchObject({ q: "Pedro", sortDir: "asc", tipo: "egreso", aQuien: { nombre: "Pedro" } });
     });
 
     it("R40: direccion o campo no admitidos ⇒ error (pagina y descarga)", () => {
-      for (const s of [listarLibroCajaSchema, listarLibroCajaCompletoSchema]) {
+      for (const s of [listarLibroCajaSchema(ZONA_CR), listarLibroCajaCompletoSchema(ZONA_CR)]) {
         expect(s.safeParse({ sortDir: "ASC" }).success).toBe(false);
         expect(s.safeParse({ sortDir: "arriba" }).success).toBe(false);
         expect(s.safeParse({ sortBy: "monto" }).success).toBe(false);
@@ -68,15 +69,15 @@ describe("463/T1 — contratos del libro", () => {
     });
 
     it("R24: termino por debajo del minimo (tras recortar) o por encima del maximo ⇒ error", () => {
-      expect(listarLibroCajaSchema.safeParse({ q: "ab" }).success).toBe(false);
-      expect(listarLibroCajaSchema.safeParse({ q: "   ab   " }).success).toBe(false);
-      expect(listarLibroCajaSchema.safeParse({ q: "x".repeat(101) }).success).toBe(false);
-      expect(listarLibroCajaSchema.safeParse({ q: "abc" }).success).toBe(true);
+      expect(listarLibroCajaSchema(ZONA_CR).safeParse({ q: "ab" }).success).toBe(false);
+      expect(listarLibroCajaSchema(ZONA_CR).safeParse({ q: "   ab   " }).success).toBe(false);
+      expect(listarLibroCajaSchema(ZONA_CR).safeParse({ q: "x".repeat(101) }).success).toBe(false);
+      expect(listarLibroCajaSchema(ZONA_CR).safeParse({ q: "abc" }).success).toBe(true);
     });
 
     it("sigue siendo .strict(): una clave ajena y, en la descarga, page/pageSize ⇒ error", () => {
-      expect(listarLibroCajaSchema.safeParse({ tiendaId: "x" }).success).toBe(false);
-      expect(listarLibroCajaCompletoSchema.safeParse({ page: 1 }).success).toBe(false);
+      expect(listarLibroCajaSchema(ZONA_CR).safeParse({ tiendaId: "x" }).success).toBe(false);
+      expect(listarLibroCajaCompletoSchema(ZONA_CR).safeParse({ page: 1 }).success).toBe(false);
     });
   });
 

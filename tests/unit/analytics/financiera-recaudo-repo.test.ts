@@ -9,6 +9,7 @@ import {
   type FilaLedgerTienda,
 } from "./_fake-prisma-dinero";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Feature 127 / T C.2 — `RecaudoAnaliticaRepository`: R19, R25, R26, R28.
 //
 // Los dos "hecho cuando" de la tarea, otra vez escritos como mutaciones:
@@ -31,7 +32,7 @@ const DENTRO = new Date("2026-08-02T14:00:00.000Z");
 const ANTES = new Date("2026-08-01T14:00:00.000Z");
 
 function consultaCodRecaudado(): ConsultaAnalitica {
-  const r = prepararConsultaAnalitica({ rango: "dia" }, MAESTRO, "cod_recaudado", AHORA);
+  const r = prepararConsultaAnalitica({ rango: "dia" }, MAESTRO, "cod_recaudado", ZONA_DE_CR, AHORA);
   if (r.status !== "ok") throw new Error("no se pudo preparar la consulta de cod_recaudado");
   return r.consulta;
 }

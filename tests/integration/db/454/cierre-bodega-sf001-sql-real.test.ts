@@ -5,6 +5,7 @@ import { CierresBodegaAdminRepository } from "@/lib/repositories/CierresBodegaAd
 import { CierreBodegaService } from "@/lib/services/CierreBodegaService";
 import { HAY_BASE_DE_DATOS } from "../_postgres-real";
 import { conEscenario, prepararMundo, type Mundo } from "./_escenario";
+import { reglasPaisFijas, ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FICHA 454 (T1.22; R61, R64) — SF-001: EL CIERRE DE BODEGA (40/431) SOBRE CIERRES APROBADOS CON
@@ -52,7 +53,7 @@ describeSiHayBase("454/T1.22 — SF-001: cierre de bodega sobre aprobados del mo
       } as const;
       const delMensajero = totalesDe(await e.tx.cierreDia.findUniqueOrThrow({ where: { id: cierreId }, select: SEL }));
 
-      const solicitud = await new CierreBodegaService(new CierreBodegaRepository(e.cliente), e.s.ordenRepo).solicitarCierreBodega(
+      const solicitud = await new CierreBodegaService(new CierreBodegaRepository(e.cliente), e.s.ordenRepo, reglasPaisFijas()).solicitarCierreBodega(
         e.actorAdminSatelite,
       );
       const cb = await e.tx.cierreBodega.findFirstOrThrow({
@@ -68,7 +69,7 @@ describeSiHayBase("454/T1.22 — SF-001: cierre de bodega sobre aprobados del mo
       const antes = await foto();
       // Desde la 431 la bodega se APRUEBA al marcarla recibida (conciliacion, con su monto): el CHECK
       // `cierre_bodega_conciliacion_coherente` impide un `aprobado` sin conciliar. Es la via viva.
-      const aprobBodega = await new CierresBodegaAdminRepository(e.cliente).marcarConciliado({
+      const aprobBodega = await new CierresBodegaAdminRepository(e.cliente).marcarConciliado({ zonaHoraria: ZONA_DE_CR,
         id: cb.id,
         montoRecibido: "6000.00",
         nota: null,

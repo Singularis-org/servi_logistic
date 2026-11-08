@@ -31,7 +31,7 @@ async function preparar(tx: TxDeTest, plan: Partial<CrearPlanInput>, empresas = 
   const orgs: string[] = [];
   for (let i = 0; i < empresas; i++) {
     const { id } = await crearOrganizacion(tx, { nombre: `SL24 edición ${i} ${randomUUID().slice(0, 6)}` });
-    const r = await servicio.asignar(SUPERADMIN, { organizacionId: id, planId: creado.planId });
+    const r = await servicio.asignar(SUPERADMIN, { organizacionId: id, planId: creado.planId, tipoCobro: "mensual" });
     if (r.estado !== "ok") throw new Error(`no se asignó: ${JSON.stringify(r)}`);
     orgs.push(id);
   }
@@ -43,6 +43,7 @@ async function preparar(tx: TxDeTest, plan: Partial<CrearPlanInput>, empresas = 
       modulos: entrada.modulos,
       precio: entrada.precio,
       costoPorOrden: entrada.costoPorOrden, // SLT-66 R8: campo obligatorio nuevo; no cambia lo que se comprueba.
+      costoPorOrdenPorcentual: null, // SLT-83: campo obligatorio nuevo; no cambia lo que se comprueba.
       vigenteDesde: null,
       ...cambio,
     });
@@ -71,9 +72,9 @@ describeSiHayBase("SL-24 — editar un plan en uso (R15, R16, R17)", () => {
 
   it("R15: la siguiente alta de cada empresa del plan se cuenta contra el tope nuevo", async () => {
     const r = await revertida(base, async (tx) => {
-      const p = await preparar(tx, { topes: { ordenesPorCiclo: null, porRol: { adminTienda: 5 }, apiKeys: null } }, 2);
+      const p = await preparar(tx, { topes: { porRol: { adminTienda: 5 }, apiKeys: null } }, 2);
       for (const org of p.orgs) expect(await tiendaNueva(tx, org)).toBeNull();
-      const edicion = await p.editar({ topes: { ordenesPorCiclo: null, porRol: { adminTienda: 1 }, apiKeys: null } });
+      const edicion = await p.editar({ topes: { porRol: { adminTienda: 1 }, apiKeys: null } });
       expect(await triggerActivo(tx, "plan_tope_usuario_alta", "usuario")).toBe(true);
       const rechazos = [];
       for (const org of p.orgs) rechazos.push(traducirErrorDeTope(await tiendaNueva(tx, org)));
@@ -88,13 +89,13 @@ describeSiHayBase("SL-24 — editar un plan en uso (R15, R16, R17)", () => {
 
   it("R16: con 3 tiendas activas y un tope nuevo de 2 se guarda, avisa con 3 y 2, rechaza la cuarta y entra tras inactivar dos", async () => {
     const r = await revertida(base, async (tx) => {
-      const p = await preparar(tx, { topes: { ordenesPorCiclo: null, porRol: { adminTienda: 3 }, apiKeys: null } });
+      const p = await preparar(tx, { topes: { porRol: { adminTienda: 3 }, apiKeys: null } });
       const [org] = p.orgs;
       const nombre = (await tx.organizacion.findUniqueOrThrow({ where: { id: org }, select: { nombre: true } })).nombre;
       const tiendas: string[] = [];
       await fijarEmpresa(tx, org);
       for (let i = 0; i < 3; i++) tiendas.push((await crearUsuarioDePrueba(tx, "adminTienda")).id);
-      const edicion = await p.editar({ topes: { ordenesPorCiclo: null, porRol: { adminTienda: 2 }, apiKeys: null } });
+      const edicion = await p.editar({ topes: { porRol: { adminTienda: 2 }, apiKeys: null } });
       const tope = (await tx.planTopeRol.findMany({ where: { planId: p.planId } })).map((t) => [t.rol, t.maximo]);
       const cuarta = await tiendaNueva(tx, org);
       await tx.usuario.updateMany({ where: { id: { in: tiendas.slice(0, 2) } }, data: { estado: "inactivo" } });
@@ -116,13 +117,13 @@ describeSiHayBase("SL-24 — editar un plan en uso (R15, R16, R17)", () => {
 
   it("R16: el aviso nombra cada empresa y cada tope que pasa, en orden de empresa", async () => {
     const r = await revertida(base, async (tx) => {
-      const p = await preparar(tx, { topes: { ordenesPorCiclo: null, porRol: { adminTienda: 5, admin: 5 }, apiKeys: null } }, 2);
+      const p = await preparar(tx, { topes: { porRol: { adminTienda: 5, admin: 5 }, apiKeys: null } }, 2);
       for (const org of p.orgs) {
         await fijarEmpresa(tx, org);
         for (let i = 0; i < 2; i++) await crearUsuarioDePrueba(tx, "adminTienda");
         await crearUsuarioDePrueba(tx, "admin");
       }
-      const edicion = await p.editar({ topes: { ordenesPorCiclo: null, porRol: { adminTienda: 1, admin: 0 }, apiKeys: null } });
+      const edicion = await p.editar({ topes: { porRol: { adminTienda: 1, admin: 0 }, apiKeys: null } });
       return { orgs: [...p.orgs].sort(), edicion };
     });
     if (r.edicion.estado !== "ok") throw new Error(r.edicion.estado);
@@ -188,9 +189,9 @@ describeSiHayBase("SL-24 — editar un plan en uso (R15, R16, R17)", () => {
   it("una edición sin cambios reales no escribe nada ni toca updated_at", async () => {
     const r = await revertida(base, async (tx) => {
       const p = await preparar(tx, {
-        topes: { ordenesPorCiclo: 10, porRol: { admin: 1 }, apiKeys: 2 },
+        topes: { porRol: { admin: 1 }, apiKeys: 2 },
         modulos: ["ranking", "analitica"],
-        precio: { tipo: "monto", mensual: "100", anual: { tipo: "descuento", porcentaje: "10" } },
+        precio: { tipo: "monto", mensual: "100", descuentos: { anual: { tipo: "porcentaje", porcentaje: "10" } } },
       });
       const foto = async () => ({
         plan: await tx.plan.findUniqueOrThrow({ where: { id: p.planId }, select: { updatedAt: true, nombre: true } }),
@@ -199,7 +200,7 @@ describeSiHayBase("SL-24 — editar un plan en uso (R15, R16, R17)", () => {
       const antes = await foto();
       const edicion = await p.editar({
         modulos: ["analitica", "ranking"],
-        precio: { tipo: "monto", mensual: "100.00", anual: { tipo: "descuento", porcentaje: "10.0" } },
+        precio: { tipo: "monto", mensual: "100.00", descuentos: { anual: { tipo: "porcentaje", porcentaje: "10.0" } } },
       });
       return { antes, edicion, despues: await foto() };
     });
@@ -214,7 +215,7 @@ describeSiHayBase("SL-24 — editar un plan en uso (R15, R16, R17)", () => {
       return {
         porServicio: await p.editar({ nombre: "Otro" }),
         // Bajo cerrojo en el repositorio, aunque el servicio no lo hubiera visto.
-        porRepositorio: await planesEnTx(tx).editar(p.planId, { ...p.entrada, nombre: "Otro" }, SUPERADMIN.usuarioId),
+        porRepositorio: await planesEnTx(tx).editar(p.planId, { ...p.entrada, nombre: "Otro" }, SUPERADMIN.usuarioId, new Date()),
         nombre: (await tx.plan.findUniqueOrThrow({ where: { id: p.planId }, select: { nombre: true } })).nombre,
       };
     });

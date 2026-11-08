@@ -332,6 +332,13 @@ export interface ConsultaConteoEntregas {
    */
   readonly rango: RangoResuelto | null;
   readonly alcance: AlcanceDatos;
+  /**
+   * SLT-42 (R22, R23): la zona IANA del pais de la empresa, la MISMA con la que se resolvio
+   * `rango`. Los repositorios que agrupan por dia en SQL la mandan como parametro de
+   * `AT TIME ZONE` (decision del humano del 2026-11-06). No entra en la clave de cache: la
+   * cache ya es por empresa y la zona sale de la empresa.
+   */
+  readonly zona: string;
 }
 
 export type PreparacionConteoEntregas =
@@ -368,6 +375,8 @@ export function entradaDeRango(filtro: FiltroConteoEntregas): EntradaRango | nul
 export function prepararConteoEntregas(
   raw: unknown,
   actor: ActorAnalitica | null,
+  /** SLT-42 (R22): la zona IANA del pais de la empresa, con la que se resuelve el rango. */
+  zona: string,
   now?: Date,
 ): PreparacionConteoEntregas {
   const parseado = parseFiltroConteoEntregas(raw);
@@ -376,7 +385,7 @@ export function prepararConteoEntregas(
   }
 
   const entrada = entradaDeRango(parseado.filtro);
-  const rango = entrada === null ? null : resolverRango(entrada, now);
+  const rango = entrada === null ? null : resolverRango(entrada, zona, now);
 
   const resolucion = resolverAlcanceConteoEntregas(actor);
   if (resolucion.estado === "denegado") return { status: "forbidden", motivo: resolucion.motivo };
@@ -389,7 +398,7 @@ export function prepararConteoEntregas(
   // `prepararConsultaAnalitica`.
   return {
     status: "ok",
-    consulta: { filtro, rango, alcance: resolucion.alcance } as ConsultaConteoEntregas,
+    consulta: { filtro, rango, alcance: resolucion.alcance, zona } as ConsultaConteoEntregas,
   };
 }
 
@@ -554,7 +563,7 @@ export function claveDeConteoDevoluciones(consulta: ConsultaConteoEntregas): str
 export const TAG_CONTEO_DEVOLUCIONES = "conteo-devoluciones";
 
 /**
- * La clave del CICLO DE VIDA (segundos entre creacion y cierre terminal).
+ * La clave del CICLO DE VIDA (segundos entre la creacion y la gestion final).
  *
  * Sexto prefijo, por el mismo motivo que los anteriores: las seis lecturas comparten
  * `ConsultaConteoEntregas` entera, asi que sin prefijo colisionarian en la MISMA clave con

@@ -433,9 +433,10 @@ describe("R33 — cliente y servidor validan con el MISMO esquema", () => {
 
     // Los dos importan del MISMO módulo de tipos y los dos lo usan para validar.
     expect(panel).toMatch(/import \{ gestionarSchema \} from "@\/lib\/types\/gestion-orden"/);
-    expect(panel).toMatch(/gestionarSchema\.safeParse\(/);
+    // SLT-42: `gestionarSchema` es una fabrica `(zona) => schema`; los dos la invocan y validan.
+    expect(panel).toMatch(/gestionarSchema\([^)]*\)\.safeParse\(/);
     expect(action).toMatch(/from "@\/lib\/types\/gestion-orden"/);
-    expect(action).toMatch(/gestionarSchema\.(parse|safeParse)\(/);
+    expect(action).toMatch(/gestionarSchema\([^)]*\)\.(parse|safeParse)\(/);
 
     // Y el panel NO define un schema paralelo para el incidente: si alguien duplica las
     // reglas en el cliente, cliente y servidor pueden divergir en silencio.

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 
 import { RastreoPublicoRepository } from "@/lib/repositories/RastreoPublicoRepository";
 import { RastreoPublicoService } from "@/lib/services/RastreoPublicoService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 import { C, R, RETIRADO } from "../../../../fixtures/codigos-455";
 import { HAY_BASE_DE_DATOS } from "../../_postgres-real";
 import { conEscenario, prepararMundo, type Escenario, type Mundo } from "../../454/_escenario";
@@ -75,7 +76,11 @@ describeSiHayBase("455/C13 — rastreo publico (Postgres real)", () => {
 
   function correr() {
     return conEscenario(mundo, async (e) => {
-      const rastreo = new RastreoPublicoService(new RastreoPublicoRepository(e.cliente));
+      const rastreo = new RastreoPublicoService(
+        new RastreoPublicoRepository(e.cliente),
+        undefined,
+        reglasPaisFijas(),
+      );
       const o = await e.sembrarOrden({ estatus: C.devueltaATienda as never, mensajeroId: null });
       for (const [i, paso] of HISTORIAL.entries()) {
         const estatusDestinoId = paso.retirado ? await idRetirado(e, paso.codigo) : e.id(paso.codigo);

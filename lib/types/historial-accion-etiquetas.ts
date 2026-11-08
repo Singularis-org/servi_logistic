@@ -1,4 +1,4 @@
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendario } from "@/lib/utils/calendario-zona";
 
 import type { HistorialAccionEntidad } from "@/lib/types/historial-accion";
 
@@ -81,8 +81,12 @@ export interface FuentesEtiqueta {
   zona: { nombre: string };
   vehiculo: { nombre: string };
   plantilla_mensaje: { nombre: string };
-  cierre_dia: { mensajeroNombre: string | null; fecha: Date };
-  cierre_bodega: { zonaNombre: string | null; fecha: Date };
+  /**
+   * SLT-42 (R22): el dia del cierre es el del calendario del pais de la empresa; `zonaHoraria` es su
+   * zona IANA (no la bodega: esa es `zonaNombre`).
+   */
+  cierre_dia: { mensajeroNombre: string | null; fecha: Date; zonaHoraria: string };
+  cierre_bodega: { zonaNombre: string | null; fecha: Date; zonaHoraria: string };
   gestion_orden: FuenteEnvio;
   liquidacion_pago: { beneficiarioNombre: string | null };
   liquidacion_reparto: { beneficiarioNombre: string | null };
@@ -166,12 +170,17 @@ export interface FuentesEtiqueta {
   plan: { nombre: string };
   /**
    * SLT-52 (R14) — un valor del modelo nuevo de tarifas: la etiqueta legible de su concepto y del
-   * nivel donde vive (zona, grupo, tienda). Vocabulario del catalogo y nombres de configuracion;
-   * nunca un dato de cliente. El importe va en `monto`/`valor_*`, no aqui.
+   * nivel donde vive (zona, grupo, tienda, y desde SLT-55 el mensajero con su valor propio). Vocabulario
+   * del catalogo y nombres de configuracion o de operadores; nunca un dato de cliente. El importe va en
+   * `monto`/`valor_*`, no aqui.
    */
   tarifa_valor: { concepto: string; nivel: string | null };
   /** SLT-52 (R14) — un grupo de distritos: su nombre y el de su zona, como `zona`. */
   grupo_distritos: { nombre: string; zonaNombre: string | null };
+  /** SLT-54 (R4) — la activacion es una por empresa: la etiqueta es la del hecho, sin dato variable. */
+  tarifa_activacion: Record<string, never>;
+  /** SLT-77 (R41) — el tope es uno por empresa: la etiqueta es la del ajuste, sin dato variable. */
+  organizacion: Record<string, never>;
 }
 
 /**
@@ -228,8 +237,8 @@ const CONSTRUCTORES: {
   zona: (f) => limpiar(f?.nombre),
   vehiculo: (f) => limpiar(f?.nombre),
   plantilla_mensaje: (f) => limpiar(f?.nombre),
-  cierre_dia: (f) => unir(f?.mensajeroNombre, f?.fecha ? fechaCalendarioCR(f.fecha) : null),
-  cierre_bodega: (f) => unir(f?.zonaNombre, f?.fecha ? fechaCalendarioCR(f.fecha) : null),
+  cierre_dia: (f) => unir(f?.mensajeroNombre, f?.fecha ? fechaCalendario(f.fecha, f.zonaHoraria) : null),
+  cierre_bodega: (f) => unir(f?.zonaNombre, f?.fecha ? fechaCalendario(f.fecha, f.zonaHoraria) : null),
   gestion_orden: etiquetaDeEnvio,
   liquidacion_pago: (f) => unir(f?.beneficiarioNombre),
   liquidacion_reparto: (f) => unir(f?.beneficiarioNombre),
@@ -260,6 +269,8 @@ const CONSTRUCTORES: {
   },
   tarifa_valor: (f) => unir(f?.concepto, f?.nivel),
   grupo_distritos: (f) => unir(f?.nombre, f?.zonaNombre),
+  tarifa_activacion: () => "Tarifas nuevas",
+  organizacion: () => "Intentos de entrega",
 };
 
 /**

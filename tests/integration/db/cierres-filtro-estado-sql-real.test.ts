@@ -13,6 +13,8 @@ import {
   fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { filtrosConLimites, type FiltrosCierres } from "@/lib/types/filtros-cierres";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 /**
  * FICHA 386 (pedido humano del 2026-09-07) — EL FILTRO POR ESTADO DE LOS DOS LISTADOS DE CIERRES
@@ -339,16 +341,16 @@ describeSiHayBase("FICHA 386 — filtrar por estado DENTRO de cada lista de cier
     const { conFechaQueLoDeja, conFechaQueLoQuita, enZonaAjena } = await conLosCuatroEstados(
       async (repo, mensajeroId) => ({
         // El `vencido` se sembro con `solicitadoAt` = 2026-03-02.
-        conFechaQueLoDeja: await repo.findColaCompleta(ALCANCE, {
+        conFechaQueLoDeja: await repo.findColaCompleta(ALCANCE, filtrosConLimites<FiltrosCierres>({
           mensajeroIds: [mensajeroId],
           estados: ["vencido"],
           desde: "2026-03-01",
-        }),
-        conFechaQueLoQuita: await repo.findColaCompleta(ALCANCE, {
+        }, ZONA_CR)),
+        conFechaQueLoQuita: await repo.findColaCompleta(ALCANCE, filtrosConLimites<FiltrosCierres>({
           mensajeroIds: [mensajeroId],
           estados: ["vencido"],
           desde: "2026-03-03",
-        }),
+        }, ZONA_CR)),
         enZonaAjena: await repo.findColaCompleta(
           { destinoTipo: "bodega_satelite", destinoZonaId: fks.zonaId },
           { mensajeroIds: [mensajeroId], estados: ["vencido"] },

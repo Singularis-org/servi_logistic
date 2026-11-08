@@ -1,5 +1,6 @@
 "use server";
 
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { CierresAdminRepository } from "@/lib/repositories/CierresAdminRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
@@ -70,6 +71,10 @@ export type ObtenerCatalogoFiltrosCierresResult =
   | { status: "unauthenticated" }
   | { status: "validation_error"; fieldErrors: Record<string, string[]> };
 import type { AppErrorShape } from "@/lib/errors";
+import { defaultLogger } from "@/lib/errors/logger";
+import { TAGS_LECTURAS_ENTREGAS } from "@/lib/analytics/tags-entregas";
+import { crearAnaliticaCacheDeNext } from "@/lib/cache/next-analitica-cache";
+import type { IAnaliticaCache } from "@/lib/interfaces/external/IAnaliticaCache";
 
 // Feature 38 — Server Actions de "Cierres del dia" del admin (lecturas + mutaciones
 // internas del mismo proyecto; van como Server Action, no como Route API, patron
@@ -167,12 +172,17 @@ function buildService(): ICierresAdminService {
     // se PASA, no que el simbolo se importe: se midio que con un `toContain` sobre el fichero
     // entero, borrar esta linea deja el test en verde porque el import de arriba la contiene.
     notificarCierreDiaRechazadoReal,
+    undefined, // el parametro opcional previo, con su valor por defecto
+    // SLT-42 (R22): la zona horaria del pais de la empresa.
+    construirReglasPaisEmpresa(prisma),
   );
 }
 
 export interface CierresAdminDeps {
   service?: ICierresAdminService;
   getActor?: () => Promise<Actor | null>;
+  /** SLT-64: el puerto con el que `corregirResultadoGestion` invalida. Por defecto, el de produccion. */
+  cache?: IAnaliticaCache;
 }
 
 /** R1-R5/R8/R9: pendientes + historico del alcance del admin; solo maestro/adminSatelite. */
@@ -399,6 +409,9 @@ export async function actualizarPagosGestion(
  * `CierresAdminModule` sobre las filas `entregada` de un cierre abierto. La anotacion
  * `@sin-superficie` que llevaba esta accion se borro en ese mismo commit, que es lo que su propio
  * motivo decia: una excepcion que sobrevive a su motivo la pone roja la guardia sola.
+ *
+ * SLT-64 (R13, R14): corregir mueve la ultima gestion vigente, asi que tras un `ok`, y solo entonces,
+ * invalida las lecturas de entregas.
  */
 export async function corregirResultadoGestion(
   input: unknown,
@@ -411,7 +424,27 @@ export async function corregirResultadoGestion(
     const service = deps.service ?? buildService();
     return service.corregirResultadoGestion(data, actor);
   });
-  return isAppErrorShape(r) ? toCierresAdminActionError(r) : r;
+  if (isAppErrorShape(r)) return toCierresAdminActionError(r);
+  if (r.status === "ok") await invalidarLecturasDeEntregas(deps.cache);
+  return r;
+}
+
+/**
+ * SLT-64 (R15, R16): la escritura ya esta confirmada. Si respondiera error, el administrador
+ * reintentaria y recibiria `conflict` por algo que si hizo, asi que el fallo se registra y el TTL
+ * acota la cifra vieja. Del error solo se registra la clase: su mensaje puede traer la etiqueta con
+ * la empresa.
+ */
+async function invalidarLecturasDeEntregas(cache: IAnaliticaCache | undefined): Promise<void> {
+  try {
+    const puerto = cache ?? crearAnaliticaCacheDeNext();
+    await puerto.invalidar("correccion_gestion", TAGS_LECTURAS_ENTREGAS);
+  } catch (error) {
+    const clase = error instanceof Error ? error.name : "desconocido";
+    defaultLogger.logError(
+      new Error(`corregirResultadoGestion: fallo la invalidacion de cache (${clase})`),
+    );
+  }
 }
 
 /**

@@ -9,6 +9,7 @@ import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlPro
 import type { IZonaRepository } from "@/lib/interfaces/repositories/IZonaRepository";
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // 💰 FICHA 398 (T3.2) — LAS CINCO GUARDIAS de la CORRECCION EN SITIO del resultado de una gestion
 // (`entregada -> rechazada`) desde el detalle de un cierre abierto. Dobles del repositorio, sin
@@ -51,6 +52,7 @@ function editable(overrides: Partial<GestionEditableDelCierre> = {}): GestionEdi
 
 function fakeRepo(overrides: Partial<ICierresAdminRepository> = {}): ICierresAdminRepository {
   return {
+    leerTopeIntentos: vi.fn(async () => 3),
     findCierresByAlcance: vi.fn(async () => []),
     findHistoricoPaginado: vi.fn(async () => ({ items: [], total: 0 })),
     findColaPaginada: vi.fn(async () => ({ items: [], total: 0 })),
@@ -113,6 +115,11 @@ function newService(repo: ICierresAdminRepository, ordenRepo = fakeOrdenRepo()) 
       ),
     },
     sinRetenidas(), // FICHA 462: 7.o argumento requerido; este archivo no mide la marca
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    reglasPaisFijas(),
   );
 }
 

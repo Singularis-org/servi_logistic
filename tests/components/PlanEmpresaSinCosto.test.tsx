@@ -24,16 +24,17 @@ const ORG = "6f1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f60";
 const PLAN_ACTUAL = "11111111-1111-4111-8111-111111111111";
 const TEXTO_R28 = "Ese plan no tiene costo base y costo por orden concretos: crea un custom con sus precios para asignarlo.";
 const AVISO_R20 = "Plan sin costo concreto: complétalo en «Planes» o asígnale otro con costo base y costo por orden.";
-const VISTA_PREVIA_OK: VistaPreviaAsignacionResult = { estado: "ok", avisos: [], siguienteCiclo: "2026-11-29" };
+const VISTA_PREVIA_OK: VistaPreviaAsignacionResult = { estado: "ok", avisos: [] };
 
 function planDTO(extra: Partial<PlanDTO> & Pick<PlanDTO, "id" | "nombre">): PlanDTO {
   return {
     visibilidad: "publico",
     organizacionId: null,
-    topes: { ordenesPorCiclo: null, porRol: {}, apiKeys: null },
+    topes: { porRol: {}, apiKeys: null },
     modulos: [],
-    precio: { tipo: "monto", mensual: "50000.00", anual: null },
+    precio: { tipo: "monto", mensual: "50000.00", descuentos: {} },
     costoPorOrden: "100.00",
+    costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
     archivado: false,
     ...extra,
   };
@@ -49,21 +50,31 @@ function vista(
   actual: { precio: PrecioPlan; costoPorOrden: string | null } | null,
   excepcion?: string,
 ): PlanDeEmpresaVista {
-  if (actual === null) return { organizacionId: ORG, plan: null, asignaciones: [] };
+  if (actual === null) return { organizacionId: ORG, plan: null, pendienteSinPlan: null, asignaciones: [] };
   const consumo = planConConsumo(
     {
-      vigente: { nombre: "Actual", topes: { ordenesPorCiclo: null, porRol: {}, apiKeys: null }, modulos: [], ...actual },
-      ancla: new Date("2026-10-01T06:00:00.000Z"),
+      vigente: { nombre: "Actual", topes: { porRol: {}, apiKeys: null }, modulos: [], costoPorOrdenPorcentual: null, ...actual }, // SLT-83: campo nuevo del tipo
+      // SLT-86 (R5, R15, R26): la entrada, el precio del período y el pendiente.
+      entrada: new Date("2026-10-01T06:00:00.000Z"),
+      precioDelPeriodo: actual.precio,
+      pendiente: null,
       uso: { ordenes: 3, apiKeys: 0, porRol: { admin: 0, mensajero: 0, adminTienda: 0, adminSatelite: 0 } },
       cambio: null,
+      tipoCobro: "mensual", // Ajuste planes-custom (D6): campo nuevo de la lectura.
       costoVigente:
         excepcion === undefined
-          ? { monto: actual.costoPorOrden ?? "500.00", fuente: actual.costoPorOrden ? "plan" : "global" }
-          : { monto: excepcion, fuente: "empresa" },
+          ? { modo: "fijo", monto: actual.costoPorOrden ?? "500.00", fuente: actual.costoPorOrden ? "plan" : "global" }
+          : { modo: "fijo", monto: excepcion, fuente: "empresa" },
+      cobroCiclo: { cobrado: "0.00", pendientes: 0 }, // SLT-83: campo nuevo de la lectura
     },
     new Date("2026-10-10T06:00:00.000Z"),
   );
-  return { organizacionId: ORG, plan: { ...consumo, planId: PLAN_ACTUAL, archivado: false }, asignaciones: [] };
+  return {
+    organizacionId: ORG,
+    plan: { ...consumo, planId: PLAN_ACTUAL, archivado: false },
+    pendienteSinPlan: null,
+    asignaciones: [],
+  };
 }
 
 function montar({
@@ -86,7 +97,12 @@ function montar({
     asignables,
     asignarPlan: asignar,
     rangoInicioCiclo: { hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" },
+    inicioCicloPorDefecto: "2026-10-30", // Ajuste planes-custom (D5): mañana.
+    rangoFechaDeEfecto: { hoy: "2026-10-10", min: "2026-10-10", max: "2027-10-10" },
+    fechaDeEfectoPorDefecto: "2026-11-01",
     previsualizarAsignacion: previsualizar,
+    cambiarTipoCobro: vi.fn(),
+    cancelarCambioEmpresa: vi.fn(),
     ...(planPreseleccionado === undefined ? {} : { planPreseleccionado }),
   };
   render(
@@ -117,7 +133,7 @@ describe("SLT-66 R28 — rechazo plan_sin_costo", () => {
     const user = userEvent.setup();
     const asignar = vi.fn<(i: unknown) => Promise<PlanResult>>().mockResolvedValue({ estado: "plan_sin_costo" });
     montar({
-      v: vista({ precio: { tipo: "monto", mensual: "1.00", anual: null }, costoPorOrden: "1.00" }),
+      v: vista({ precio: { tipo: "monto", mensual: "1.00", descuentos: {} }, costoPorOrden: "1.00" }),
       // El plan actual entre los asignables: contra él se resume «qué cambia».
       asignables: [planDTO({ id: PLAN_ACTUAL, nombre: "Actual" }), CONCRETO],
       asignar,
@@ -173,17 +189,16 @@ describe("SLT-66 R29 — sin planes con costo concreto", () => {
 
 describe("SLT-66 R20 — aviso del plan actual sin costo concreto", () => {
   it.each<[string, { precio: PrecioPlan; costoPorOrden: string | null }]>([
-    ["base por definir (negociable)", { precio: { tipo: "negociable" }, costoPorOrden: "100.00" }],
     ["base sin precio", { precio: { tipo: "sin_precio" }, costoPorOrden: "100.00" }],
-    ["sin costo por orden", { precio: { tipo: "monto", mensual: "50000.00", anual: null }, costoPorOrden: null }],
+    ["sin costo por orden", { precio: { tipo: "monto", mensual: "50000.00", descuentos: {} }, costoPorOrden: null }],
   ])("R20: %s → aviso", (_caso, actual) => {
     montar({ v: vista(actual) });
     expect(screen.getByText(AVISO_R20)).toBeInTheDocument();
   });
 
   it.each<[string, { precio: PrecioPlan; costoPorOrden: string | null }]>([
-    ["base y costo con monto", { precio: { tipo: "monto", mensual: "50000.00", anual: null }, costoPorOrden: "100.00" }],
-    ["base y costo 0.00 (concretos)", { precio: { tipo: "monto", mensual: "0.00", anual: null }, costoPorOrden: "0.00" }],
+    ["base y costo con monto", { precio: { tipo: "monto", mensual: "50000.00", descuentos: {} }, costoPorOrden: "100.00" }],
+    ["base y costo 0.00 (concretos)", { precio: { tipo: "monto", mensual: "0.00", descuentos: {} }, costoPorOrden: "0.00" }],
   ])("R20: %s → sin aviso", (_caso, actual) => {
     montar({ v: vista(actual) });
     expect(screen.queryByText(AVISO_R20)).toBeNull();
@@ -197,18 +212,18 @@ describe("SLT-66 R20 — aviso del plan actual sin costo concreto", () => {
 
 describe("SLT-66 §6.3 (P1) — la nota de la excepción en el detalle del superadmin", () => {
   it("fuente empresa → «excepción de la empresa», nunca «precio acordado para tu empresa»", () => {
-    montar({ v: vista({ precio: { tipo: "monto", mensual: "50000.00", anual: null }, costoPorOrden: "100.00" }, "80.00") });
+    montar({ v: vista({ precio: { tipo: "monto", mensual: "50000.00", descuentos: {} }, costoPorOrden: "100.00" }, "80.00") });
     expect(screen.getByText("excepción de la empresa")).toBeInTheDocument();
     expect(screen.queryByText("precio acordado para tu empresa")).toBeNull();
   });
 
   it("fuente plan → sin nota de excepción", () => {
-    montar({ v: vista({ precio: { tipo: "monto", mensual: "50000.00", anual: null }, costoPorOrden: "100.00" }) });
+    montar({ v: vista({ precio: { tipo: "monto", mensual: "50000.00", descuentos: {} }, costoPorOrden: "100.00" }) });
     expect(screen.queryByText("excepción de la empresa")).toBeNull();
   });
 
   it("R20: el aviso del plan sin costo concreto sale una sola vez (ConsumoDelPlan no lo repite)", () => {
-    montar({ v: vista({ precio: { tipo: "negociable" }, costoPorOrden: "100.00" }, "80.00") });
+    montar({ v: vista({ precio: { tipo: "sin_precio" }, costoPorOrden: "100.00" }, "80.00") });
     expect(screen.getAllByText(AVISO_R20)).toHaveLength(1);
     expect(screen.getAllByText(/sin costo concreto/i)).toHaveLength(1);
   });
@@ -238,7 +253,7 @@ describe("SLT-66 R33 — el plan preseleccionado desde el detalle del plan", () 
     ["el plan que ya tiene la empresa", PLAN_ACTUAL],
   ])("R33: uno %s se ignora", (_caso, id) => {
     montar({
-      v: vista({ precio: { tipo: "monto", mensual: "1.00", anual: null }, costoPorOrden: "1.00" }),
+      v: vista({ precio: { tipo: "monto", mensual: "1.00", descuentos: {} }, costoPorOrden: "1.00" }),
       asignables: [planDTO({ id: PLAN_ACTUAL, nombre: "Actual" }), CONCRETO],
       planPreseleccionado: id,
     });

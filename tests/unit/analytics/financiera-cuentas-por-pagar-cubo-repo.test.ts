@@ -12,6 +12,8 @@ import {
   type FilaLedgerMensajero,
 } from "./_fake-prisma-dinero";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Feature 180 / T2.5 — los DOS metodos nuevos de `CuentasPorPagarAnaliticaRepository`:
 // `cuentaPorPagarMensajerosPorCubo` (el MOVIMIENTO de cada cubo) y
 // `cuentaPorPagarMensajerosAntesDe` (el SALDO DE ARRASTRE anterior al rango).
@@ -47,14 +49,14 @@ const DENTRO = new Date("2026-03-10T14:00:00.000Z");
 const JUSTO_EN_DESDE = DESDE;
 
 function consultaDe(metricaId = "cuenta_por_pagar_mensajero"): ConsultaAnalitica {
-  const r = prepararConsultaAnalitica(RANGO_CRUDO, MAESTRO, metricaId, AHORA);
+  const r = prepararConsultaAnalitica(RANGO_CRUDO, MAESTRO, metricaId, ZONA_DE_CR, AHORA);
   if (r.status !== "ok") throw new Error(`no se pudo preparar la consulta de ${metricaId}`);
   return r.consulta;
 }
 
 /** Los cubos SALEN DE `trocear` (R22): ni uno se escribe a mano aqui. */
 function cubosDe(consulta: ConsultaAnalitica): readonly CuboTemporal[] {
-  return trocear(consulta.rango);
+  return trocear(consulta.rango, ZONA_CR);
 }
 
 /* -------------------------------------------------------------------------- */

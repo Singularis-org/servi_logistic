@@ -22,6 +22,7 @@ import {
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FICHA 425 (B6, R5/R6/R7/R9/R19) — EL TEST DEL DINERO: los totales del cierre NO SE MUEVEN cuando
@@ -202,7 +203,7 @@ describeSiHayBase("425/B6 — los totales del cierre no se mueven cuando entra u
     const tarifaZonaRepo = new TarifaZonaMensajeroRepository(cliente);
     const corteReal = new CorteDiarioRepository(cliente);
     return {
-      mensajero: new CierreDiaService(cierreRepo, zonaRepo, ordenRepo, URLS_NO_USADAS, tarifaZonaRepo),
+      mensajero: new CierreDiaService(cierreRepo, zonaRepo, ordenRepo, URLS_NO_USADAS, tarifaZonaRepo, undefined, undefined, reglasPaisFijas()),
       corteDe: (mensajeroId: string) =>
         new CorteDiarioService(
           {
@@ -218,6 +219,8 @@ describeSiHayBase("425/B6 — los totales del cierre no se mueven cuando entra u
           ordenRepo,
           tarifaZonaRepo,
           { warn: () => {} },
+          undefined,
+          reglasPaisFijas(),
         ),
     };
   }

@@ -227,17 +227,18 @@ están en `arnes.config.json > jira` (`## El board al que pertenece el disco`).
 
 | Campo de cada ficha | De dónde sale |
 |---|---|
-| `key` | el issue key tal cual: `QC-7`. **Es la identidad de la feature.** |
+| `key` | el issue key tal cual: `PROY-7`. **Es la identidad de la feature.** |
 | `title` | summary del issue tal cual. **Se almacena**: el gate corre sin red, y es lo que el humano reconoce (`## Cómo se nombra una ficha`). |
-| `id` | número del key (`QC-7` → `7`). **Solo fallback** para fichas que aún no tienen issue. |
+| `id` | número del key (`PROY-7` → `7`). **Solo fallback** para fichas que aún no tienen issue. |
 | `epic` | key de la épica padre (campo `parent` del issue). Agrupa por módulo; **no** es dependencia. |
-| `epic_name` | summary de esa épica (`QC-17` → «Identidad y acceso»). **Se almacena, no se deriva**: el gate corre sin red y no puede resolver un key contra Jira. |
+| `epic_name` | summary de esa épica (`PROY-17` → «Identidad y acceso»). **Se almacena, no se deriva**: el gate corre sin red y no puede resolver un key contra Jira. |
 | `description` | campo Description del issue. Lo **decide** siempre el humano; lo **escribe** él en el board, o `/afinar-feature` en su nombre tras un sí explícito (`## Cuando el disco descubre que el board está desactualizado`). |
 | `status` | el nombre del estado del issue, traducido con `arnes.config.json > jira.estados` (`## Los estados del board`). Un nombre que no esté en la tabla detiene F0. |
 | `assignee` | campo Assignee del issue: `{ "accountId": "…", "displayName": "…" }`, o `null` si no tiene. Es el candado visible del equipo (`## El assignee: el candado visible del equipo`). |
-| `depends_on` | issue links **"is blocked by"**, escritos como keys (`["QC-9", "QC-12"]`) |
+| `depends_on` | issue links **"is blocked by"**, escritos como keys (`["PROY-9", "PROY-12"]`) |
 | `zone` | label `zone:backend` \| `zone:frontend` \| `zone:fullstack` |
 | `complexity` | label `complexity:low` \| `complexity:medium` \| `complexity:high` |
+| `ruta` | label `ruta:directa` \| `ruta:ligera` \| `ruta:completa`; sin label, `null` (= completa). `docs/specs.md > Tres rutas` |
 | `name` (slug) | label `slug:<kebab-case>` |
 | `sdd` | label `sdd` presente ⇒ `true` |
 | `branch` | **derivado**: `feature/<key>-<slug>`. No se almacena en Jira. |
@@ -263,9 +264,10 @@ Decisiones que conviene entender antes de cambiarlas:
 
 ### Por qué
 
-- **Épica:** en QuimiCloude una épica es un módulo del ERP, con la misma frontera que el módulo
-  hexagonal (`QC-15`). «Plataforma» es la excepción consciente: no es un módulo de dominio sino
-  el armazón donde se montan los demás, y conviene que sea la única.
+- **Épica:** una épica es un módulo funcional del proyecto. Si el proyecto es hexagonal, tiene
+  la misma frontera que el módulo (`perfiles/hexagonal/`). Si hace falta una épica para el
+  armazón (layout, autenticación, tooling), conviene que sea la única que no es un módulo de
+  dominio.
 - **`key` frente a `id`:** una numeración propia y en serie ya se desincronizó del board.
   `QC-13` acabó con `branch: feature/10-…`, y el registro de sesión de entonces (hoy en
   `progress/archivo/`) siguió hablando de "Feature 2, 7, 8, 11" cuando en el JSON ya eran 5,
@@ -288,11 +290,26 @@ primera línea. El `title` sale de F0 y `scripts/validate-features.mjs` falla si
 `key` no lo trae. Una copia en la que ninguna ficha lo trae es anterior a esta regla: avisa y
 no falla, como la copia sin `assignee`, y la siguiente F0 lo arregla.
 
+**Quién lo hace cumplir (regla 9 de `CLAUDE.md`):** el hook `Stop`
+(`.claude/hooks/fin-de-turno.mjs`) revisa el último mensaje de cada turno. Si nombra una key sin
+`«<title>»` detrás, bloquea el cierre y le pasa al agente los títulos de `feature_list.json` para
+que lo reescriba. Bloquea una vez por turno (con `stop_hook_active` no repite, así no hay bucles).
+
+- **Cuenta como key** la que está en la copia del board o lleva un prefijo del tracker
+  (`tracker.prefijo`, `prefijos_historicos` o `jira.project`). `UTF-8` o `SHA-256` no cuentan.
+- **No cuenta** la key dentro de código (bloques y `inline`), ni pegada a una ruta o a una rama
+  (`specs/SL-10-gate/`, `feature/SL-10-gate`): ahí es literal, no una mención.
+- Los informes de los subagentes no pasan por el hook: se lo exige su archivo de agente, y el
+  leader, que los resume, sí pasa por él.
+
 ### Por qué
 
 - **2026-10-21, servi_logistic.** Con 19 fichas recién creadas, el leader hablaba de «SL-10»,
   «SL-13», «SL-15» y el humano no sabía de qué historia se hablaba sin abrir el board. F0 no
   importaba el summary, así que ni el hook ni el leader podían decirlo sin red.
+- **2026-11-07.** Con el `title` ya importado, el leader seguía escribiendo «ya hice la SL-50».
+  La regla existía como texto y nada la hacía cumplir; el humano pidió que fuera obligatoria. Por
+  eso pasó a regla 9 con un hook que bloquea.
 
 ## El assignee: el candado visible del equipo
 
@@ -328,7 +345,7 @@ segunda copia de las credenciales.
 |---|---|
 | **F0** — arranque de sesión | Lee el board y regenera la lista `features` de `feature_list.json` entera (altas, `description`, `status`, `assignee`, `depends_on` desde los links). Después `./init.sh`. **Es el único paso que regenera el archivo entero.** |
 | **F1.0** — tomar | Relee el issue, escribe el **assignee** y las labels `zone:` y `complexity:` de la evaluación. Sin las labels, la siguiente importación borraría la evaluación. |
-| **F1.3** | Mueve al estado de `spec_ready` y comenta la ruta de `specs/<key>-<slug>/`. |
+| **F1.3** | Mueve al estado de `spec_ready` y comenta dónde está el spec (`specs/<key>-<slug>/`). |
 | **F1.4** | La aprobación humana **es** mover la tarjeta del estado de `spec_ready` al de `in_progress`. Si la da por escrito en el chat, el leader publica el comentario-marca con la cita literal y después hace la transición (`Los estados del board`). |
 | **F2.0** | Asegura la tarjeta en el estado de `in_progress`. |
 | **F2.5** | Mueve al estado de `done` y comenta la URL del PR. El assignee no se toca. |
@@ -376,8 +393,8 @@ separación es todo el punto:
 
 ### Por qué
 
-La comprobación evidente sería derivar el proyecto de los `key`: si las 90 fichas son `QC-*`, el
-proyecto es QC. No sirve. F0 regenera `features` entero y ante divergencia manda Jira
+La comprobación evidente sería derivar el proyecto de los `key`: si las 90 fichas son `PROY-*`, el
+proyecto es PROY. No sirve. F0 regenera `features` entero y ante divergencia manda Jira
 (`## Si Jira y el disco divergen`). Un F0 disparado contra otro proyecto del sitio deja las
 fichas nuevas, todas con el mismo prefijo nuevo, coherentes entre sí: una comprobación derivada
 las da por buenas. Validaría el resultado del error contra el error.
@@ -433,7 +450,7 @@ que no diverjan es el **bloque 6** de `scripts/validate-features.mjs`.
 siembra igual, pero con un marcador en la primera línea del archivo —
 
 ```
-<!-- board-pendiente: QC-14 · description, complexity · el MCP no respondio -->
+<!-- board-pendiente: PROY-14 · description, complexity · el MCP no respondio -->
 ```
 
 `scripts/validate-features.mjs` (bloque 5) **falla** mientras haya un marcador puesto, así que

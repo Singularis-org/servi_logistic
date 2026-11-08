@@ -21,6 +21,7 @@ import type { JobHandler } from "@/lib/interfaces/services/IJobQueueService";
 import type { RouteOptimizationConfig } from "@/lib/config/route-optimization";
 import type { JobsConfig } from "@/lib/config/jobs";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // SLT-59 · T4.2 (design §4 pasos 1-2; R29, R30, R35) — un 401/403 de `optimizeTours` no se
 // arregla reintentando: cada reintento es otra llamada FACTURADA que vuelve a fallar igual.
 // Se prueba la cadena entera con el cliente real de Google y un `fetch` doble: servicio ->
@@ -109,7 +110,7 @@ function build(http: number) {
     paradasRepo,
     client,
     CONFIG,
-    () => T0,
+    () => T0, undefined, undefined, reglasPaisFijas(),
   );
   return { service, rutas, fetchImpl };
 }

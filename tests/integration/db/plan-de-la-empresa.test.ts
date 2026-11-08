@@ -25,6 +25,11 @@ import { asignarPlan, capturar, crearPlan, revertida, sqlstateDe } from "./_fixt
 // - R26: el nombre en español sale de `pg_proc`; el `down.sql` real la quita y el ROLLBACK la deja.
 //
 // Todo corre en una transacción del dueño que SIEMPRE se revierte (`revertida`, con el lock de la 227).
+//
+// SLT-86 (design §3.3; R7, R10, R32): el inicio del período en curso es `plan_inicio_ciclo_de` (período de
+// calendario recortado a la entrada), sin ciclo corto; la respuesta trae los descuentos, el precio del
+// período, el fin del período y el pendiente de la empresa (sin actor), y ya no el anual ni el tope de
+// órdenes. Lo nuevo de SLT-86 lo mide `plan-de-la-empresa-periodo.test.ts`.
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
@@ -55,7 +60,6 @@ async function escenario(tx: TxDeTest): Promise<Escenario> {
 
   const planA = await crearPlan(tx, {
     custom: A,
-    ordenes: 1000,
     apiKeys: 4,
     porRol: { admin: 2, adminTienda: 5 }, // SLT-66 R1: el maestro ya no admite tope
   });
@@ -63,7 +67,8 @@ async function escenario(tx: TxDeTest): Promise<Escenario> {
     where: { id: planA },
     data: {
       precioMensual: "49.90",
-      descuentoAnualPct: "16.67",
+      // SLT-86 (R33): el descuento anual de antes es el descuento del período anual.
+      descuentos: { create: [{ periodo: "anual", porcentaje: "16.67" }] },
       modulos: { create: [{ modulo: "analitica" }] },
     },
   });
@@ -113,26 +118,24 @@ async function leerPlan(tx: TxDeTest, organizacionId: string): Promise<Record<st
 
 /**
  * Lo que dicen las funciones de los triggers de A, como dueño y con el mismo `now()` de la
- * transacción. Desde SLT-58 §11.2 (R33, R34, R41) el ciclo en curso es `plan_inicio_ciclo_en_curso`,
- * la envoltura que usan el trigger y el cupo; sin ciclo corto da lo mismo que `plan_inicio_ciclo`.
+ * transacción. SLT-86 (§3.3): el período en curso es `plan_inicio_ciclo_de`, sin ciclo corto.
  */
 async function usoSegunLosTriggers(tx: TxDeTest, A: string) {
   const filas = await tx.$queryRawUnsafe<Record<string, unknown>[]>(
-    `SELECT plan_uso_ordenes(o."id", plan_inicio_ciclo_en_curso(o."plan_ciclo_corto_desde_at", o."plan_ciclo_ancla_at", now() AT TIME ZONE 'UTC')) AS ordenes,
+    `SELECT plan_uso_ordenes(o."id", plan_inicio_ciclo_de(o."plan_ciclo_ancla_at", o."plan_tipo_cobro", now() AT TIME ZONE 'UTC')) AS ordenes,
             plan_uso_api_keys(o."id") AS api_keys,
             -- SLT-66 R5: plan_de_la_empresa ya no cuenta al maestro (no tiene tope).
             plan_uso_rol(o."id", 'admin'::rol_value) AS admin,
             plan_uso_rol(o."id", 'mensajero'::rol_value) AS mensajero,
             plan_uso_rol(o."id", 'Admin Tienda'::rol_value) AS admin_tienda,
             plan_uso_rol(o."id", 'adminSatelite'::rol_value) AS admin_satelite,
-            to_jsonb(plan_inicio_ciclo_en_curso(o."plan_ciclo_corto_desde_at", o."plan_ciclo_ancla_at", now() AT TIME ZONE 'UTC')) #>> '{}' AS ciclo_inicio,
-            to_jsonb(o."plan_ciclo_ancla_at") #>> '{}' AS ciclo_ancla,
-            to_jsonb(o."plan_ciclo_corto_desde_at") #>> '{}' AS ciclo_corto_desde
+            to_jsonb(plan_inicio_ciclo_de(o."plan_ciclo_ancla_at", o."plan_tipo_cobro", now() AT TIME ZONE 'UTC')) #>> '{}' AS ciclo_inicio,
+            to_jsonb(o."plan_ciclo_ancla_at") #>> '{}' AS ciclo_ancla
        FROM "organizacion" o WHERE o."id" = $1`,
     A,
   );
-  const { ciclo_inicio, ciclo_ancla, ciclo_corto_desde, ...uso } = filas[0];
-  return { uso, ciclo_inicio, ciclo_ancla, ciclo_corto_desde };
+  const { ciclo_inicio, ciclo_ancla, ...uso } = filas[0];
+  return { uso, ciclo_inicio, ciclo_ancla };
 }
 
 async function funcionesConElNombre(c: Pick<TxDeTest, "$queryRawUnsafe">): Promise<number> {
@@ -168,9 +171,8 @@ describeSiHayBase("SLT-58 — plan_de_la_empresa: la empresa lee su plan y su co
     expect(plan.uso).toEqual(r.esperado.uso);
     expect(plan.ciclo_inicio).toBe(r.esperado.ciclo_inicio);
     expect(plan.ciclo_ancla).toBe(r.esperado.ciclo_ancla);
-    // R41: una empresa sin ciclo corto lo lee NULL (y su ciclo es el de `plan_inicio_ciclo`).
-    expect(r.esperado.ciclo_corto_desde ?? null).toBeNull();
-    expect(plan.ciclo_corto_desde).toBeNull();
+    // SLT-86 (P4 = a): sin ciclo corto.
+    expect(plan).not.toHaveProperty("ciclo_corto_desde");
     // Y no es una igualdad vacía: lo sembrado se cuenta (la borrada y el admin pendiente no).
     expect(plan.uso).toEqual({
       ordenes: 3,
@@ -182,11 +184,15 @@ describeSiHayBase("SLT-58 — plan_de_la_empresa: la empresa lee su plan y su co
     });
 
     expect(plan.nombre).toEqual(expect.stringMatching(/^sl24 /));
-    expect(plan.precio_negociable).toBe(false);
+    // D1 (ajuste planes-custom): sin `precio_negociable`. D6: el tipo de cobro, `mensual` por defecto.
+    expect(plan).not.toHaveProperty("precio_negociable");
+    expect(plan.tipo_cobro).toBe("mensual");
     expect(plan.precio_mensual).toBe("49.90");
-    expect(plan.precio_anual).toBeNull(); // mensual + porcentaje: el CHECK `plan_precio_forma` no deja los dos
-    expect(plan.descuento_anual_pct).toBe("16.67");
-    expect(plan.tope_ordenes_ciclo).toBe(1000);
+    // SLT-86 (R10, R33, R34): sin anual ni tope de órdenes; el descuento del período anual.
+    expect(plan.descuentos).toEqual({ anual: { tipo: "porcentaje", porcentaje: "16.67" } });
+    expect(plan).not.toHaveProperty("precio_anual");
+    expect(plan).not.toHaveProperty("descuento_anual_pct");
+    expect(plan).not.toHaveProperty("tope_ordenes_ciclo");
     expect(plan.tope_api_keys).toBe(4);
     expect(plan.topes_rol).toEqual(
       expect.arrayContaining([
@@ -212,21 +218,24 @@ describeSiHayBase("SLT-58 — plan_de_la_empresa: la empresa lee su plan y su co
     expect(Object.keys(plan).sort()).toEqual(
       [
         "nombre",
-        "precio_negociable",
+        "tipo_cobro", // ajuste planes-custom D6 (20261104130000)
         "precio_mensual",
-        "precio_anual",
-        "descuento_anual_pct",
-        "tope_ordenes_ciclo",
+        "descuentos", // SLT-86 R10 (20261106120000)
+        "precio_del_periodo", // SLT-86 R15
         "tope_api_keys",
         "topes_rol",
         "modulos",
         "ciclo_inicio",
+        "ciclo_fin", // SLT-86 R27
         "ciclo_ancla",
-        "ciclo_corto_desde", // SLT-58 §11.2 (R40)
         "uso",
         "cambio",
+        "cambio_empresa", // SLT-86 R26, R32: sin el actor
         "costo_por_orden", // SLT-66 R18 (M3)
         "costo_vigente", // SLT-66 R18 (M3)
+        "costo_por_orden_pct", // SLT-83 (20261104150200)
+        "costo_por_orden_minimo", // SLT-83 (20261104150200)
+        "cobro_ciclo", // SLT-83 R24 (20261104150200)
       ].sort(),
     );
     expect(Object.keys(plan.cambio as object).sort()).toEqual(["version", "vigente_desde"]);

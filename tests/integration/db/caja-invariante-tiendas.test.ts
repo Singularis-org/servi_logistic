@@ -19,6 +19,7 @@ import {
 } from "./_fixtures/caja-459";
 import { UP_461_SOBRE_ESQUEMA_ACTUAL } from "./_fixtures/completar-caja-461-sql";
 import { CLAVE_CANDADO_459 } from "./_fixtures/escrituras-459";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // ⭑ FICHA 459 / T B.14 → FICHA 461 / T B.12 — LA INVARIANTE CON TODO, Y SIN EXCEPCION.
@@ -207,7 +208,7 @@ describeSiHayBase("⭑ 459/T B.14 → 461/T B.12 — R7 y R8 al centimo tras cad
     await foto("anulacion del pago por cuenta");
 
     // 3 — saldo inicial (fechado el primer dia de la caja sin capital: R71).
-    const primer = await new WalletMovimientoRepository(s.cliente).primerDiaDeLaCaja({ excluirCapital: true });
+    const primer = await new WalletMovimientoRepository(s.cliente).primerDiaDeLaCaja({ zonaHoraria: ZONA_DE_CR, excluirCapital: true });
     const saldoInicial = await s.aporteCapital.registrar(
       {
         claveIdempotencia: randomUUID(),

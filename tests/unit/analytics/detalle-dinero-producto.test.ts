@@ -13,6 +13,7 @@ import {
 } from "@/lib/types/dinero-productos";
 import { congelada, dineroFalso, filaDinero } from "./_dinero-falso";
 
+import { ZONA_DE_CR, reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // FICHA 347 / B5.4 — EL DETALLE ORDEN POR ORDEN.
 // Cubre R10, R32, R35, R36, R37, R38, R39, R40, R41, R42, R43, R44, R73, R8.
 //
@@ -25,7 +26,7 @@ const T1 = "3f2a1c88-9b40-4d21-8e77-1c0b5a6d2e91";
 const T2 = "8a1c4e77-2b90-4f31-9d55-6e0f3a2b1c04";
 
 function consultaDe(raw: object, rol = "maestro", usuarioId = "u1"): ConsultaProductos {
-  const preparada = prepararConsultaProductos(raw, { usuarioId, rol } as never, AHORA);
+  const preparada = prepararConsultaProductos(raw, { usuarioId, rol } as never, ZONA_DE_CR, AHORA);
   if (preparada.status !== "ok") throw new Error(`filtro invalido: ${preparada.status}`);
   return preparada.consulta;
 }
@@ -295,7 +296,7 @@ describe("R43 / R44 · el alcance del detalle es el MISMO que el de la fila", ()
   it("R44 · una tienda ajena da `forbidden`, NO un resultado vacio", async () => {
     const r = await consultarDetalleDineroProducto(
       { filtro: { tienda_id: [T2] }, producto_clave: "base c" },
-      {
+      { reglasPais: reglasPaisFijas(),
         getActor: async () => ({ usuarioId: T1, rol: "adminTienda" }) as never,
         logger: { logError: vi.fn() },
         now: () => AHORA,
@@ -310,7 +311,7 @@ describe("R43 / R44 · el alcance del detalle es el MISMO que el de la fila", ()
     const espia = vi.spyOn(service, "consultar");
     const r = await consultarDetalleDineroProducto(
       { filtro: { tienda_id: [T1] }, producto_clave: "base c" },
-      {
+      { reglasPais: reglasPaisFijas(),
         service,
         getActor: async () => ({ usuarioId: T1, rol: "adminTienda" }) as never,
         now: () => AHORA,
@@ -352,7 +353,7 @@ describe("R43 / R44 · el alcance del detalle es el MISMO que el de la fila", ()
     for (const rol of ["adminSatelite", "mensajero"]) {
       const r = await consultarDetalleDineroProducto(
         { filtro: { tienda_id: [T1] }, producto_clave: "base c" },
-        {
+        { reglasPais: reglasPaisFijas(),
           service,
           getActor: async () => ({ usuarioId: "u1", rol }) as never,
           logger: { logError: vi.fn() },
@@ -367,7 +368,7 @@ describe("R43 / R44 · el alcance del detalle es el MISMO que el de la fila", ()
   it("sin sesion responde `unauthenticated`, que es otra cosa que `forbidden`", async () => {
     const r = await consultarDetalleDineroProducto(
       { filtro: { tienda_id: [T1] }, producto_clave: "base c" },
-      { getActor: async () => null, logger: { logError: vi.fn() }, now: () => AHORA },
+      { reglasPais: reglasPaisFijas(), getActor: async () => null, logger: { logError: vi.fn() }, now: () => AHORA },
     );
     expect(r.status).toBe("unauthenticated");
   });
@@ -381,7 +382,7 @@ describe("R8 / R73 · la frontera: `.strict()`, y ni base ni alcance si no valid
       { filtro: { tienda_id: [T1] }, producto_clave: "base c", dinero: "concedido" },
       { filtro: { tienda_id: [T1] }, producto_clave: "base c", tiendaId: T2 },
     ]) {
-      const r = await consultarDetalleDineroProducto(raw, { getActor, now: () => AHORA });
+      const r = await consultarDetalleDineroProducto(raw, { reglasPais: reglasPaisFijas(), getActor, now: () => AHORA });
       expect(r.status, JSON.stringify(raw)).toBe("validation_error");
     }
     // ⚠ R73 — no se resolvio el actor ni una vez: la validacion va PRIMERO.
@@ -421,7 +422,7 @@ describe("R10 · la denegacion deja rastro sin revelar el motivo", () => {
     const logError = vi.fn();
     const r = await consultarDetalleDineroProducto(
       { filtro: { tienda_id: [T2] }, producto_clave: "base c" },
-      {
+      { reglasPais: reglasPaisFijas(),
         getActor: async () => ({ usuarioId: T1, rol: "adminTienda" }) as never,
         logger: { logError },
         now: () => AHORA,
@@ -438,7 +439,7 @@ describe("R10 · la denegacion deja rastro sin revelar el motivo", () => {
     const logError = vi.fn();
     await consultarDetalleDineroProducto(
       { filtro: { tienda_id: [T2] }, producto_clave: "base c" },
-      {
+      { reglasPais: reglasPaisFijas(),
         getActor: async () => ({ usuarioId: T1, rol: "adminTienda" }) as never,
         logger: { logError },
         now: () => AHORA,

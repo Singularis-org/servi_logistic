@@ -4,7 +4,6 @@ import type { PrismaClient } from "@prisma/client";
 
 import { SQLSTATE_EMPRESA_CRUZADA, conEmpresa } from "@/lib/db/contexto-empresa";
 import { conAislamientoPorEmpresa } from "@/lib/db/extension-empresa";
-import { actualizarDistritosEspeciales } from "@/lib/actions/geografia";
 import { DistritoZonaEspecialRepository } from "@/lib/repositories/DistritoZonaEspecialRepository";
 import { DistritoZonaEspecialService } from "@/lib/services/DistritoZonaEspecialService";
 import { comoApp, crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones";
@@ -429,15 +428,15 @@ describeSiHayBase("SL-38 T2/T6 — la marca de zona especial es de la empresa (R
       const inexistente = `no-existe-${randomUUID()}`;
 
       const porRepo = await conEmpresa(s.B, () => repo.aplicarCambios({ marcar: [s.D, inexistente], desmarcar: [s.D2] }));
-      const porAccion = await conEmpresa(s.B, () =>
-        actualizarDistritosEspeciales(
+      const porServicio = await conEmpresa(s.B, () =>
+        service.actualizar(
           { marcar: [inexistente, s.D], desmarcar: [s.D2] },
-          { getActor: async () => ({ usuarioId: "u-maestro-b", rol: "maestro" }), distritoZonaEspecialService: service },
+          { usuarioId: "u-maestro-b", rol: "maestro" },
         ),
       );
 
       expect(porRepo).toEqual({ estado: "distrito_inexistente" });
-      expect(porAccion).toEqual({ status: "validation_error" });
+      expect(porServicio).toEqual({ status: "validation_error" });
       expect(await base.distritoZonaEspecial.count(deEstasEmpresas)).toBe(antes);
       expect(await marcasDeBase(s.D2)).toEqual([s.B]);
       expect(await marcasDeBase(s.D)).toEqual([s.A]);

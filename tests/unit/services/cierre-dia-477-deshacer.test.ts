@@ -9,6 +9,7 @@ import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepos
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
 import { bloqueoConRechazado } from "@/tests/fixtures/bloqueo-cierre";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FICHA 477 (T2.5; R4-R10) — LAS GUARDAS DEL DESHACER CON LA EXENCION POR OBJETO (D4), con dobles.
@@ -86,6 +87,9 @@ function montar(opts: {
     ordenRepo,
     { createSignedUrl: vi.fn(), createSignedUrls: vi.fn(async () => ({})) },
     { resolvePagoTarifa: vi.fn(async () => null) } as never,
+    undefined,
+    undefined,
+    reglasPaisFijas(),
   );
   const escrituras = () =>
     repo.anularGestionDeCierreRechazado.mock.calls.length +

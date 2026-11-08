@@ -46,7 +46,8 @@ describe("476/R29 — una sentencia por generacion, sin N+1", () => {
     expect(sql).toContain('COALESCE(h."entrada", o."created_at")');
     expect(sql).toContain('o."deleted_at" IS NULL');
     expect(sql).toContain("s.\"value\" = 'en_preparacion'");
-    expect(sql).toContain('t."fulfillment" = true');
+    expect(sql).toContain('t."se_recoge_en_tienda" = false'); // SLT-94 R7
+    expect(sql).not.toContain('t."fulfillment"');
     expect(sql).toContain('o."tienda_id" = $1');
     expect(sql).toContain('ORDER BY o."clave_remision" ASC, o."id" ASC');
     expect(q.values).toEqual(["t-123"]);
@@ -67,7 +68,8 @@ describe("476/R29 — una sentencia por generacion, sin N+1", () => {
     expect(e[0]).toEqual({ tiendaId: "t1", entrada: new Date("2026-10-04T12:00:00.000Z") });
     expect(d.$queryRaw).toHaveBeenCalledTimes(1);
     const sql = sqlDe(d.$queryRaw.mock.calls[0][0]);
-    expect(sql).toContain('t."fulfillment" = true');
+    expect(sql).toContain('t."se_recoge_en_tienda" = false'); // SLT-94 R7
+    expect(sql).not.toContain('t."fulfillment"');
     expect(sql).not.toContain('o."tienda_id" =');
     expect(d.$queryRaw.mock.calls[0][0].values).toEqual([]);
   });
@@ -76,22 +78,22 @@ describe("476/R29 — una sentencia por generacion, sin N+1", () => {
 describe("476/R7/R3 — lecturas de tienda", () => {
   it("tiendaDelPicking: rol adminTienda → esTienda; otro rol → no; inexistente → null", async () => {
     const d = doble(0);
-    d.findUnique.mockResolvedValueOnce({ id: "t1", nombre: "Abarrotes", fulfillment: true, estado: "activo", rol: { value: "adminTienda" } });
+    d.findUnique.mockResolvedValueOnce({ id: "t1", nombre: "Abarrotes", seRecogeEnTienda: false, estado: "activo", rol: { value: "adminTienda" } });
     expect(await d.repo.tiendaDelPicking("t1")).toEqual({ id: "t1", nombre: "Abarrotes", fulfillment: true, esTienda: true, activo: true });
-    d.findUnique.mockResolvedValueOnce({ id: "m1", nombre: "Ana", fulfillment: false, estado: "activo", rol: { value: "admin" } });
+    d.findUnique.mockResolvedValueOnce({ id: "m1", nombre: "Ana", seRecogeEnTienda: true, estado: "activo", rol: { value: "admin" } });
     expect(await d.repo.tiendaDelPicking("m1")).toMatchObject({ esTienda: false });
-    d.findUnique.mockResolvedValueOnce({ id: "t2", nombre: "Baja", fulfillment: true, estado: "inactivo", rol: { value: "adminTienda" } });
+    d.findUnique.mockResolvedValueOnce({ id: "t2", nombre: "Baja", seRecogeEnTienda: false, estado: "inactivo", rol: { value: "adminTienda" } });
     expect(await d.repo.tiendaDelPicking("t2")).toMatchObject({ esTienda: true, activo: false });
     d.findUnique.mockResolvedValueOnce(null);
     expect(await d.repo.tiendaDelPicking("x")).toBeNull();
     expect(d.findUnique.mock.calls[0][0]).toMatchObject({ where: { id: "t1" } });
   });
 
-  it("tiendasFulfillment: solo adminTienda ACTIVAS con fulfillment", async () => {
+  it("SLT-94 R7: tiendasFulfillment: solo adminTienda ACTIVAS con la marca «se recoge en tienda» en no", async () => {
     const d = doble(0);
     await d.repo.tiendasFulfillment();
     expect(d.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { fulfillment: true, estado: "activo", rol: { value: "adminTienda" } } }),
+      expect.objectContaining({ where: { seRecogeEnTienda: false, estado: "activo", rol: { value: "adminTienda" } } }),
     );
   });
 });

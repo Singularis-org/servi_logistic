@@ -12,6 +12,8 @@ import {
 } from "@/lib/utils/aporte-por-orden";
 import { CRITERIO_RECAUDO_ENTREGA } from "@/lib/utils/dinero-por-producto";
 import { WALLET_INGRESO_CONCEPTO_SEED } from "@/lib/types/wallet";
+import type { ConceptoTienda } from "@/lib/tarifas/catalogo";
+import type { ValoresTienda } from "@/lib/types/tarifa-flexible";
 
 /**
  * Ficha 344 (T1.4, R18) — LA PIEZA CLAVE DE LA FICHA.
@@ -286,6 +288,7 @@ describe("ficha 344 — el criterio de aporte y la formula no pueden divergir (R
       "exigeMontoRecibido", // gestion_orden.monto_recibido
       "exigePagoMensajero", // gestion_orden.pago_mensajero (ficha 468)
       "exigeIndemnizacion", // gestion_orden.indemnizacion (ficha 468)
+      "conceptoCongeladoPorResultado", // cierre_detail_concepto.concepto (SLT-54 R64)
     ];
     for (const concepto of WALLET_INGRESO_CONCEPTO_SEED) {
       expect(Object.keys(CRITERIO_DE_APORTE[concepto]).sort()).toEqual(
@@ -295,6 +298,132 @@ describe("ficha 344 — el criterio de aporte y la formula no pueden divergir (R
     for (const criterio of [CRITERIO_COD_RECAUDADO, CRITERIO_PAGO_MENSAJERO, CRITERIO_INDEMNIZACION]) {
       expect(Object.keys(criterio).sort()).toEqual([...HECHOS_PERMITIDOS].sort());
     }
+  });
+});
+
+/**
+ * SLT-54 (R64) — la misma atadura en el modelo NUEVO: «satisface» tiene que ser «el concepto quedo
+ * definido en la derivacion». Aqui el hecho que decide no es que haya tarifa sino que este congelado el
+ * concepto del resultado de la gestion, y eso es lo que un `{ tarifaModelo: "nuevo" }` a secas no veia.
+ */
+describe("SLT-54 R64 — en el modelo nuevo, el criterio y la formula tampoco divergen", () => {
+  const CONCEPTOS_TIENDA: readonly ConceptoTienda[] = [
+    "tienda_flete_entregado",
+    "tienda_flete_reprogramado",
+    "tienda_flete_novedad",
+    "tienda_flete_rechazo",
+    "tienda_flete_incidente",
+    "tienda_comision_cod",
+    "tienda_fulfillment",
+  ];
+
+  function valoresDe(conceptos: readonly ConceptoTienda[]): ValoresTienda {
+    const valores: ValoresTienda = {};
+    for (const concepto of conceptos) {
+      valores[concepto] = { concepto, modo: "monto", valor: "100.00", ivaPct: "13.00", nivel: "zona", tarifaValorId: "tv" };
+    }
+    return valores;
+  }
+
+  /** Todos los subconjuntos de los siete conceptos: 128. */
+  function* subconjuntos(): Generator<ConceptoTienda[]> {
+    for (let mascara = 0; mascara < 2 ** CONCEPTOS_TIENDA.length; mascara += 1) {
+      yield CONCEPTOS_TIENDA.filter((_, i) => (mascara & (1 << i)) !== 0);
+    }
+  }
+
+  function satisfaceNuevo(
+    concepto: (typeof WALLET_INGRESO_CONCEPTO_SEED)[number],
+    resultado: GestionResultado,
+    cobraComision: boolean,
+    congelados: readonly ConceptoTienda[],
+  ): boolean {
+    return satisfaceCriterio(CRITERIO_DE_APORTE[concepto], {
+      resultado,
+      cobraComision,
+      hayTarifa: true,
+      hayMontoCobrar: true,
+      hayMontoRecibido: false,
+      hayPagoMensajero: false,
+      hayIndemnizacion: false,
+      conceptosCongelados: new Set(congelados),
+    });
+  }
+
+  it("coincide con la derivacion en las 7680 combinaciones: 6 conceptos x 5 resultados x 2 x 128", () => {
+    let celdas = 0;
+    let aportan = 0;
+    let fueraPorElConcepto = 0;
+    for (const concepto of WALLET_INGRESO_CONCEPTO_SEED) {
+      for (const resultado of RESULTADOS) {
+        for (const cobraComision of [true, false]) {
+          for (const congelados of subconjuntos()) {
+            const definido =
+              derivarIngresoOrden(
+                { resultado, esCentral: false, esZonaEspecial: false, montoCobrar: CON_COD, cobraComision },
+                { modelo: "nuevo", valores: valoresDe(congelados) },
+              )[concepto] !== undefined;
+            expect(
+              satisfaceNuevo(concepto, resultado, cobraComision, congelados),
+              `celda ${concepto} / ${resultado} / cobraComision=${cobraComision} / ${congelados.join(",")}`,
+            ).toBe(definido);
+            if (definido) aportan += 1;
+            // Lo que R64 viene a sacar: el mismo concepto con TODO congelado si aportaria.
+            else if (satisfaceNuevo(concepto, resultado, cobraComision, CONCEPTOS_TIENDA)) fueraPorElConcepto += 1;
+            celdas += 1;
+          }
+        }
+      }
+    }
+    expect(celdas, "no se ejecutaron todas las celdas").toBe(7680);
+    expect(aportan, "ninguna celda aporta: el caso no mediria nada").toBeGreaterThan(0);
+    expect(fueraPorElConcepto, "ninguna orden queda fuera por faltarle el concepto").toBeGreaterThan(0);
+  });
+
+  it("casos escritos a mano: el concepto tiene que ser el del resultado de ESA gestion", () => {
+    // Sin el flete de novedad no aporta aunque el cierre tenga otro flete congelado.
+    expect(satisfaceNuevo("ingreso_flete_devolucion", "novedad", false, ["tienda_flete_rechazo"])).toBe(false);
+    expect(satisfaceNuevo("ingreso_flete_devolucion", "novedad", false, ["tienda_flete_novedad"])).toBe(true);
+    expect(satisfaceNuevo("ingreso_flete", "entregado", false, ["tienda_flete_novedad"])).toBe(false);
+    expect(satisfaceNuevo("ingreso_flete", "entregado", false, ["tienda_flete_entregado"])).toBe(true);
+    // La comision no se apoya en el flete, ni al reves.
+    expect(satisfaceNuevo("ingreso_comision_cod", "entregado", true, ["tienda_flete_entregado"])).toBe(false);
+    expect(satisfaceNuevo("ingreso_flete", "entregado", true, ["tienda_comision_cod"])).toBe(false);
+    expect(satisfaceNuevo("ingreso_comision_cod", "entregado", true, ["tienda_comision_cod"])).toBe(true);
+    // El fulfillment no es concepto de ninguna fila del libro (SLT-52 R31).
+    expect(satisfaceNuevo("ingreso_flete", "entregado", true, ["tienda_fulfillment"])).toBe(false);
+  });
+
+  it("los criterios sin tarifa no miran los conceptos congelados: el recaudo existe sin ellos", () => {
+    const hechos = {
+      resultado: "entregado" as const,
+      cobraComision: false,
+      hayTarifa: true,
+      hayMontoCobrar: false,
+      hayMontoRecibido: true,
+      hayPagoMensajero: true,
+      hayIndemnizacion: false,
+      conceptosCongelados: new Set<ConceptoTienda>(),
+    };
+    expect(satisfaceCriterio(CRITERIO_COD_RECAUDADO, hechos)).toBe(true);
+    expect(satisfaceCriterio(CRITERIO_PAGO_MENSAJERO, hechos)).toBe(true);
+    expect(satisfaceCriterio(CRITERIO_RECAUDO_ENTREGA, hechos)).toBe(true);
+  });
+
+  it("en el viejo nada cambia: la fila sin `conceptosCongelados` sigue mirando `resultados` y la tarifa", () => {
+    const viejo = {
+      cobraComision: false,
+      hayTarifa: true,
+      hayMontoCobrar: false,
+      hayMontoRecibido: false,
+      hayPagoMensajero: false,
+      hayIndemnizacion: false,
+    };
+    expect(satisfaceCriterio(CRITERIO_DE_APORTE.ingreso_flete_devolucion, { ...viejo, resultado: "devolucion_a_origen_por_rechazo" })).toBe(true);
+    expect(satisfaceCriterio(CRITERIO_DE_APORTE.ingreso_flete_devolucion, { ...viejo, resultado: "novedad" })).toBe(false);
+    expect(
+      satisfaceCriterio(CRITERIO_DE_APORTE.ingreso_flete, { ...viejo, resultado: "entregado", hayTarifa: false }),
+    ).toBe(false);
   });
 });
 

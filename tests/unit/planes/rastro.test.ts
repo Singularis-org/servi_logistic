@@ -11,24 +11,28 @@ const BASE: PlanDTO = {
   nombre: "Básico",
   visibilidad: "publico",
   organizacionId: null,
-  topes: { ordenesPorCiclo: 100, porRol: { adminTienda: 3, admin: 1 }, apiKeys: 2 },
+  topes: { porRol: { adminTienda: 3, admin: 1 }, apiKeys: 2 },
   modulos: ["ranking", "analitica"],
-  precio: { tipo: "monto", mensual: "25000", anual: { tipo: "descuento", porcentaje: "10" } },
+  precio: { tipo: "monto", mensual: "25000", descuentos: { anual: { tipo: "porcentaje", porcentaje: "10" } } },
   archivado: false,
   costoPorOrden: null, // SLT-66 R7: el plan lleva costo por orden; aquí, vacío.
+  costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
 };
 
 describe("SL-24 — diferenciasDelPlan", () => {
   it("al crear salen todos los campos con antes null, y los importes como texto con dos decimales", () => {
     expect(diferenciasDelPlan(null, BASE)).toEqual({
       nombre: { antes: null, despues: "Básico" },
-      topes: { antes: null, despues: { ordenesPorCiclo: 100, porRol: { admin: 1, adminTienda: 3 }, apiKeys: 2 } },
+      topes: { antes: null, despues: { porRol: { admin: 1, adminTienda: 3 }, apiKeys: 2 } },
       modulos: { antes: null, despues: ["analitica", "ranking"] },
-      precio: {
-        antes: null,
-        despues: { tipo: "monto", mensual: "25000.00", anual: { tipo: "descuento", porcentaje: "10.00" } },
-      },
+      // SLT-86 (R31): el costo base mensual en `precio` y cada descuento en su clave.
+      precio: { antes: null, despues: { tipo: "monto", mensual: "25000.00" } },
+      descuento_quincenal: { antes: null, despues: null },
+      descuento_mensual: { antes: null, despues: null },
+      descuento_bimestral: { antes: null, despues: null },
+      descuento_anual: { antes: null, despues: { tipo: "porcentaje", porcentaje: "10.00" } },
       costoPorOrden: { antes: null, despues: null }, // SLT-66 R8: al crear también sale el costo por orden.
+      costoPorOrdenPorcentual: { antes: null, despues: null }, // SLT-83: campo nuevo del rastro; el alta lo registra como los demás.
       archivado: { antes: null, despues: false },
     });
   });
@@ -36,9 +40,9 @@ describe("SL-24 — diferenciasDelPlan", () => {
   it("sin cambios reales da vacío: orden de módulos, orden de claves y «10» frente a «10.00» no cuentan", () => {
     const igual: PlanDTO = {
       ...BASE,
-      topes: { ordenesPorCiclo: 100, porRol: { admin: 1, adminTienda: 3 }, apiKeys: 2 },
+      topes: { porRol: { admin: 1, adminTienda: 3 }, apiKeys: 2 },
       modulos: ["analitica", "ranking"],
-      precio: { tipo: "monto", mensual: "25000.00", anual: { tipo: "descuento", porcentaje: "10.0" } },
+      precio: { tipo: "monto", mensual: "25000.00", descuentos: { anual: { tipo: "porcentaje", porcentaje: "10.0" } } },
     };
     const d = diferenciasDelPlan(BASE, igual);
     expect(d).toEqual({});
@@ -49,20 +53,17 @@ describe("SL-24 — diferenciasDelPlan", () => {
     ["nombre", { nombre: "Pro" }, { antes: "Básico", despues: "Pro" }],
     [
       "topes",
-      { topes: { ordenesPorCiclo: 50, porRol: { adminTienda: 3, admin: 1 }, apiKeys: 2 } },
+      { topes: { porRol: { adminTienda: 3, admin: 1 }, apiKeys: 5 } },
       {
-        antes: { ordenesPorCiclo: 100, porRol: { admin: 1, adminTienda: 3 }, apiKeys: 2 },
-        despues: { ordenesPorCiclo: 50, porRol: { admin: 1, adminTienda: 3 }, apiKeys: 2 },
+        antes: { porRol: { admin: 1, adminTienda: 3 }, apiKeys: 2 },
+        despues: { porRol: { admin: 1, adminTienda: 3 }, apiKeys: 5 },
       },
     ],
     ["modulos", { modulos: ["monitoreo"] }, { antes: ["analitica", "ranking"], despues: ["monitoreo"] }],
     [
       "precio",
-      { precio: { tipo: "negociable" } },
-      {
-        antes: { tipo: "monto", mensual: "25000.00", anual: { tipo: "descuento", porcentaje: "10.00" } },
-        despues: { tipo: "negociable" },
-      },
+      { precio: { tipo: "monto", mensual: "30000", descuentos: { anual: { tipo: "porcentaje", porcentaje: "10" } } } },
+      { antes: { tipo: "monto", mensual: "25000.00" }, despues: { tipo: "monto", mensual: "30000.00" } },
     ],
     ["archivado", { archivado: true }, { antes: false, despues: true }],
   ] as const)("cambiar solo %s da solo ese campo, con antes y despues", (campo, cambio, esperado) => {

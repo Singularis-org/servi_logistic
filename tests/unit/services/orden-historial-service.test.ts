@@ -80,6 +80,7 @@ type HistorialRepoMethods = Pick<
   | "findEventosByOrden"
   // FICHA 454 (R29, 2026-09-24): las señales del detalle; aqui en reposo.
   | "findSenalesGestion"
+  | "leerTopeIntentos"
 >;
 
 // El catalogo de estados sigue existiendo para la AUTORIZACION y para otros consumidores; el
@@ -105,6 +106,7 @@ function historialRepo(overrides: Partial<HistorialRepoMethods> = {}): Historial
     contarIntentosVigentes: vi.fn(async () => 0),
     contarIntentosVigentesEnLote: vi.fn(async () => new Map<string, number>()),
     findEventosByOrden: vi.fn(async () => []),
+    leerTopeIntentos: vi.fn(async () => 7),
     findSenalesGestion: vi.fn(async () => ({ gestionPendiente: null, ayudaAbierta: false })), // 454/R29
     ...overrides,
   };
@@ -188,9 +190,44 @@ describe("obtenerHistorial — autorizacion por visibilidad (R27)", () => {
     expect(r.status).toBe("ok");
     if (r.status !== "ok") return;
     expect(r.intentos).toBe(2); // consume el punto unico del conteo
-    expect(r.umbral).toBe(3); // default por ley (reintentosConfig, env no seteado en test)
+    expect(r.umbral).toBe(7); // SLT-77 R25: el tope de la empresa, sea cual sea
     // Feature 215/R6: el drawer llama al punto unico con SOLO el id de la orden.
     expect(h.contarIntentosVigentes).toHaveBeenCalledWith("o1");
+  });
+
+  // SLT-77 (R32, R25): el mensajero recibe su conteo, pero ni un tope. Ni se lee: no hay nada que filtrar.
+  it("R32: al mensajero le llega umbral null, y el tope ni se consulta", async () => {
+    const o = ordenRepo({ findById: vi.fn(async () => ordenDTO({ mensajeroAsignadoId: "m1" })) });
+    const h = historialRepo({ contarIntentosVigentes: vi.fn(async () => 2) });
+    const r = await newService(o, h).obtenerHistorial("o1", MENSAJERO);
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(r.intentos).toBe(2);
+    expect(r.umbral).toBeNull();
+    expect(h.leerTopeIntentos).not.toHaveBeenCalled();
+  });
+
+  it("R25: a maestro, admin, adminTienda y adminSatelite les llega el tope de la empresa", async () => {
+    const casos = [
+      { actor: MAESTRO, o: ordenRepo() },
+      { actor: ADMIN, o: ordenRepo() },
+      { actor: TIENDA, o: ordenRepo({ findById: vi.fn(async () => ordenDTO({ tiendaId: "u-tienda" })) }) },
+      {
+        actor: SATELITE,
+        o: ordenRepo({
+          findById: vi.fn(async () => ordenDTO({ zonaId: ZONA })),
+          findUsuarioZonaId: vi.fn(async () => ZONA),
+        }),
+      },
+    ];
+    for (const { actor, o } of casos) {
+      const h = historialRepo();
+      const r = await newService(o, h).obtenerHistorial("o1", actor);
+      expect(r.status, actor.rol).toBe("ok");
+      if (r.status !== "ok") return;
+      expect(r.umbral, actor.rol).toBe(7);
+      expect(h.leerTopeIntentos, actor.rol).toHaveBeenCalledTimes(1);
+    }
   });
 
   it("R15: sin devoluciones -> intentos 0 (no bloquea el ok)", async () => {
@@ -248,7 +285,7 @@ describe("obtenerHistorial — autorizacion por visibilidad (R27)", () => {
     const r = await newService(o, h).obtenerHistorial("o1", MAESTRO);
     if (r.status !== "ok") throw new Error("esperaba ok");
     expect(r.intentos).toBe(3);
-    expect(r.umbral).toBe(3);
+    expect(r.umbral).toBe(7);
     expect(h.contarIntentosVigentes).toHaveBeenCalledWith("o1");
   });
 

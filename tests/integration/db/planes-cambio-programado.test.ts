@@ -28,6 +28,10 @@ import { capturar, COSTO_CONCRETO, entradaAsignable, planesEnTx, revertida, sqls
 // Mutaciones de §16.7 que miden estos casos: la 8 (el aplicador no compara el `cambioId`: el trabajo
 // del cambio reemplazado aplica el nuevo) y la 10 (programar vuelve a rechazar cuando una empresa ya
 // pasa el tope nuevo).
+//
+// SLT-86 (R8, R15): el tope que cambia es el de API keys (ya no hay tope de órdenes); el período de las
+// empresas no se toca al aplicar (`plan_inicio_ciclo_de`), y un cambio de precio programado deja su fila
+// en el historial de precio (lo mide `plan-precio-historial.test.ts`).
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
@@ -48,7 +52,7 @@ async function preparar(tx: TxDeTest, plan: Partial<CrearPlanInput>, empresas = 
   const orgs: string[] = [];
   for (let i = 0; i < empresas; i++) {
     const { id } = await crearOrganizacion(tx, { nombre: `SL24 programado ${i} ${randomUUID().slice(0, 6)}` });
-    const r = await servicio.asignar(SUPERADMIN, { organizacionId: id, planId: creado.planId });
+    const r = await servicio.asignar(SUPERADMIN, { organizacionId: id, planId: creado.planId, tipoCobro: "mensual" });
     if (r.estado !== "ok") throw new Error(`no se asignó: ${JSON.stringify(r)}`);
     orgs.push(id);
   }
@@ -62,6 +66,7 @@ async function preparar(tx: TxDeTest, plan: Partial<CrearPlanInput>, empresas = 
       modulos: entrada.modulos,
       precio: entrada.precio,
       costoPorOrden: entrada.costoPorOrden, // SLT-66 R8: campo obligatorio nuevo; no cambia lo que se comprueba.
+      costoPorOrdenPorcentual: null, // SLT-83: campo obligatorio nuevo; no cambia lo que se comprueba.
       vigenteDesde,
       ...cambio,
     });
@@ -74,8 +79,7 @@ async function fotoDelPlan(tx: TxDeTest, planId: string) {
     where: { id: planId },
     select: {
       nombre: true,
-      topeOrdenesCiclo: true,
-      precioNegociable: true,
+      topeApiKeys: true,
       precioMensual: true,
       topesPorRol: { select: { rol: true, maximo: true }, orderBy: { rol: "asc" } },
       modulos: { select: { modulo: true }, orderBy: { modulo: "asc" } },
@@ -83,8 +87,7 @@ async function fotoDelPlan(tx: TxDeTest, planId: string) {
   });
   return {
     nombre: p.nombre,
-    ordenes: p.topeOrdenesCiclo,
-    negociable: p.precioNegociable,
+    apiKeys: p.topeApiKeys,
     mensual: p.precioMensual?.toFixed(2) ?? null,
     porRol: p.topesPorRol.map((t) => [t.rol, t.maximo]),
     modulos: p.modulos.map((m) => m.modulo),
@@ -140,10 +143,11 @@ describeSiHayBase("SL-24 — el cambio programado de un plan (R37–R40)", () =>
   it("R37: programado a mañana guarda la versión entera, no toca la vigente y encola el trabajo que aplica", async () => {
     const r = await revertida(base, async (tx) => {
       const p = await preparar(tx, {
-        topes: { ordenesPorCiclo: 100, porRol: { adminTienda: 3 }, apiKeys: null },
+        topes: { porRol: { adminTienda: 3 }, apiKeys: null },
         modulos: ["analitica"],
-        precio: { tipo: "monto", mensual: "25000", anual: null },
+        precio: { tipo: "monto", mensual: "25000", descuentos: {} },
         costoPorOrden: "100.00", // SLT-66 R28: costo concreto para poder asignarlo; no cambia lo que se comprueba.
+        costoPorOrdenPorcentual: null, // SLT-83: campo obligatorio nuevo; no cambia lo que se comprueba.
       });
       const [org] = p.orgs;
       await fijarEmpresa(tx, org);
@@ -151,10 +155,11 @@ describeSiHayBase("SL-24 — el cambio programado de un plan (R37–R40)", () =>
       const antes = await fotoDelPlan(tx, p.planId);
       const resultado = await p.programar("2026-10-29", {
         nombre: "Nuevo nombre",
-        topes: { ordenesPorCiclo: 10, porRol: { adminTienda: 1 }, apiKeys: null },
+        topes: { porRol: { adminTienda: 1 }, apiKeys: null },
         modulos: ["ranking"],
-        precio: { tipo: "negociable" },
+        precio: { tipo: "sin_precio" }, // D1 (ajuste planes-custom): sin «negociable».
         costoPorOrden: null, // SLT-66 R8: campo obligatorio nuevo; no cambia lo que se comprueba.
+        costoPorOrdenPorcentual: null, // SLT-83: campo obligatorio nuevo; no cambia lo que se comprueba.
       });
       const pendiente = await tx.planCambioProgramado.findUniqueOrThrow({ where: { planId: p.planId } });
       const trabajos = await trabajosDeAplicar(tx, p.planId);
@@ -179,10 +184,11 @@ describeSiHayBase("SL-24 — el cambio programado de un plan (R37–R40)", () =>
     expect(r.pendiente.vigenteDesde.toISOString()).toBe("2026-10-29T06:00:00.000Z");
     expect(r.pendiente.version).toEqual({
       nombre: "Nuevo nombre",
-      topes: { ordenesPorCiclo: 10, porRol: { adminTienda: 1 }, apiKeys: null },
+      topes: { porRol: { adminTienda: 1 }, apiKeys: null },
       modulos: ["ranking"],
-      precio: { tipo: "negociable" },
+      precio: { tipo: "sin_precio" },
       costoPorOrden: null, // SLT-66 R8: campo obligatorio nuevo; no cambia lo que se comprueba.
+      costoPorOrdenPorcentual: null, // SLT-83: campo obligatorio nuevo; no cambia lo que se comprueba.
     });
     expect(r.trabajos).toHaveLength(1);
     expect(r.trabajos[0]).toMatchObject({
@@ -197,12 +203,12 @@ describeSiHayBase("SL-24 — el cambio programado de un plan (R37–R40)", () =>
 
   it("R16 (mutación 10): programar con una empresa ya por encima del tope nuevo se guarda y avisa", async () => {
     const r = await revertida(base, async (tx) => {
-      const p = await preparar(tx, { topes: { ordenesPorCiclo: null, porRol: { adminTienda: 5 }, apiKeys: null } });
+      const p = await preparar(tx, { topes: { porRol: { adminTienda: 5 }, apiKeys: null } });
       const [org] = p.orgs;
       await fijarEmpresa(tx, org);
       for (let i = 0; i < 3; i++) await crearUsuarioDePrueba(tx, "adminTienda");
       const nombre = (await tx.organizacion.findUniqueOrThrow({ where: { id: org }, select: { nombre: true } })).nombre;
-      const resultado = await p.programar("2026-11-15", { topes: { ordenesPorCiclo: null, porRol: { adminTienda: 2 }, apiKeys: null } });
+      const resultado = await p.programar("2026-11-15", { topes: { porRol: { adminTienda: 2 }, apiKeys: null } });
       const pendiente = await tx.planCambioProgramado.findUnique({ where: { planId: p.planId }, select: { avisosAlProgramar: true } });
       return { org, nombre, resultado, pendiente };
     });
@@ -246,7 +252,7 @@ describeSiHayBase("SL-24 — el cambio programado de un plan (R37–R40)", () =>
       const p = await preparar(
         tx,
         {
-          topes: { ordenesPorCiclo: 100, porRol: { adminTienda: 5 }, apiKeys: null },
+          topes: { porRol: { adminTienda: 5 }, apiKeys: null },
           modulos: ["ranking"],
           precio: COSTO_CONCRETO.precio, // SLT-66 R28: era «sin precio»; sin costo concreto no se asigna.
         },
@@ -259,14 +265,14 @@ describeSiHayBase("SL-24 — el cambio programado de un plan (R37–R40)", () =>
       const ciclo = async () =>
         tx.$queryRaw<{ id: string; ancla: Date; uso: number }[]>`
           SELECT o."id", o."plan_ciclo_ancla_at" AS "ancla",
-                 plan_uso_ordenes(o."id", plan_inicio_ciclo(o."plan_ciclo_ancla_at", (now() AT TIME ZONE 'UTC'))) AS "uso"
+                 plan_uso_ordenes(o."id", plan_inicio_ciclo_de(o."plan_ciclo_ancla_at", o."plan_tipo_cobro", (now() AT TIME ZONE 'UTC'))) AS "uso"
             FROM "organizacion" o WHERE o."plan_id" = ${p.planId} ORDER BY o."id"`;
       const cicloAntes = await ciclo();
       await p.programar("2026-11-15", {
         nombre: "Pro 2027",
-        topes: { ordenesPorCiclo: 50, porRol: { adminTienda: 1 }, apiKeys: null },
+        topes: { porRol: { adminTienda: 1 }, apiKeys: 50 },
         modulos: ["monitoreo"],
-        precio: { tipo: "monto", mensual: "30000", anual: null },
+        precio: { tipo: "monto", mensual: "30000", descuentos: {} },
       });
       const [trabajo] = await trabajosDeAplicar(tx, p.planId);
       const historialAntes = await tx.historialAccion.count({ where: { organizacionId: { in: p.orgs } } });
@@ -309,8 +315,7 @@ describeSiHayBase("SL-24 — el cambio programado de un plan (R37–R40)", () =>
     expect(r.trasAdelantado.nombre).not.toBe("Pro 2027");
     expect(r.aplicado).toEqual({
       nombre: "Pro 2027",
-      ordenes: 50,
-      negociable: false,
+      apiKeys: 50,
       mensual: "30000.00",
       porRol: [["adminTienda", 1]],
       modulos: ["monitoreo"],
@@ -333,10 +338,10 @@ describeSiHayBase("SL-24 — el cambio programado de un plan (R37–R40)", () =>
 
   it("R39 (mutación 8): el trabajo del cambio reemplazado no aplica nada, tampoco el nuevo; el del nuevo sí", async () => {
     const r = await revertida(base, async (tx) => {
-      const p = await preparar(tx, { topes: { ordenesPorCiclo: 100, porRol: {}, apiKeys: null } });
-      await p.programar("2026-11-20", { nombre: "Primero", topes: { ordenesPorCiclo: 70, porRol: {}, apiKeys: null } });
+      const p = await preparar(tx, { topes: { porRol: {}, apiKeys: 100 } });
+      await p.programar("2026-11-20", { nombre: "Primero", topes: { porRol: {}, apiKeys: 70 } });
       // El reemplazo rige ANTES que el reemplazado: cuando corre el trabajo viejo, el nuevo ya rige.
-      const reemplazo = await p.programar("2026-11-10", { nombre: "Segundo", topes: { ordenesPorCiclo: 40, porRol: {}, apiKeys: null } });
+      const reemplazo = await p.programar("2026-11-10", { nombre: "Segundo", topes: { porRol: {}, apiKeys: 40 } });
       const pendientes = await tx.planCambioProgramado.findMany({ where: { planId: p.planId }, select: { id: true, vigenteDesde: true } });
       // Los dos trabajos nacen en la misma transacción (mismo `created_at`): se distinguen por su cambio.
       const trabajos = await trabajosDeAplicar(tx, p.planId);
@@ -366,9 +371,9 @@ describeSiHayBase("SL-24 — el cambio programado de un plan (R37–R40)", () =>
     expect(r.pendientes[0].vigenteDesde.toISOString()).toBe("2026-11-10T06:00:00.000Z");
     expect(r.nuevo.payload.cambioId).toBe(r.pendientes[0].id);
     expect(r.viejo.payload.cambioId).not.toBe(r.pendientes[0].id);
-    expect(r.trasViejo).toMatchObject({ nombre: r.entrada.nombre, ordenes: 100 });
+    expect(r.trasViejo).toMatchObject({ nombre: r.entrada.nombre, apiKeys: 100 });
     expect(r.pendientesTrasViejo).toBe(1);
-    expect(r.trasNuevo).toMatchObject({ nombre: "Segundo", ordenes: 40 });
+    expect(r.trasNuevo).toMatchObject({ nombre: "Segundo", apiKeys: 40 });
   });
 
   it("R39: cancelar borra el pendiente y su trabajo, al correr, no hace nada", async () => {
@@ -433,7 +438,7 @@ describeSiHayBase("SL-24 — el cambio programado de un plan (R37–R40)", () =>
       const antes = await contarJobs(tx);
       const primera = await sembrarPlanCambiosVencidos(repo, new Date("2026-11-01T10:05:00.000Z"));
       const segunda = await sembrarPlanCambiosVencidos(repo, new Date("2026-11-01T10:59:00.000Z"));
-      const { runAfter, dedupeKey } = recurrenciaPlanCambiosVencidos.siguiente(new Date("2026-11-01T10:30:00.000Z"));
+      const { runAfter, dedupeKey } = recurrenciaPlanCambiosVencidos.siguiente(new Date("2026-11-01T10:30:00.000Z"), []);
       const reencolada = await repo.enqueue("plan_cambios_vencidos", {}, { runAfter, dedupeKey });
       return { antes, despues: await contarJobs(tx), primera, segunda, reencolada };
     });

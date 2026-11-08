@@ -7,6 +7,7 @@
 // con el MISMO `CRON_SECRET` que ya comparten esos dos crons: no se inventa otra
 // autenticacion. Auth ANTES de cualquier efecto (401 sin construir el service ni tocar la DB).
 import { NextResponse } from "next/server";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { withErrorHandler, isAppErrorShape, appErrorToResponse } from "@/lib/errors";
 import type { IRankingSnapshotService } from "@/lib/interfaces/services/IRankingSnapshotService";
 import { RankingSnapshotService } from "@/lib/services/RankingSnapshotService";
@@ -57,6 +58,9 @@ function buildService(): IRankingSnapshotService {
     new RankingRepository(prisma),
     new UserRepository(prisma),
     new PremioRankingRepository(prisma),
+    undefined,
+    // SLT-42 (R24, R28): cada empresa de `paraCadaEmpresa` congela su dia con la zona de SU pais.
+    construirReglasPaisEmpresa(prisma),
   );
 }
 

@@ -1,5 +1,6 @@
 "use server";
 
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { GestionOrdenRepository } from "@/lib/repositories/GestionOrdenRepository";
 import { OrdenHistorialRepository } from "@/lib/repositories/OrdenHistorialRepository";
@@ -70,6 +71,9 @@ function buildService(): IRecoleccionTiendaService {
     new GestionOrdenRepository(prisma),
     // Feature 167 (R25): «Recolectadas hoy» sale del historial de la transicion.
     new OrdenHistorialRepository(prisma),
+    undefined, // el parametro opcional previo, con su valor por defecto
+    // SLT-42 (R22): la zona horaria del pais de la empresa.
+    construirReglasPaisEmpresa(prisma),
   );
 }
 

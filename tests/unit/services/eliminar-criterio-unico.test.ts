@@ -10,6 +10,7 @@ import {
   ELIMINABLES_ESPERADOS,
   catalogoCubiertoPorLasDosListas,
 } from "@/tests/fixtures/estados-eliminables";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // FICHA 319 — LA FUENTE DEL HECHO ES UNA.
 //
@@ -69,7 +70,7 @@ function ordenServiceCon(estatusValue: string, intentos = 0): OrdenService {
   // PEDIDO HUMANO 2026-09-04: el MISMO doble de intentos alimenta a los dos servicios, con el
   // mismo numero. Si cada lado sembrara el suyo, este archivo podria dar verde con la UI y el
   // servidor mirando ordenes distintas — que es exactamente lo que viene a descartar.
-  return new OrdenService(repo, fakeIntentosEnLote(intentos === 0 ? {} : { o1: intentos }));
+  return new OrdenService(repo, fakeIntentosEnLote(intentos === 0 ? {} : { o1: intentos }), undefined, reglasPaisFijas());
 }
 
 function ordenRow(estatusValue: string): OrdenTransicionRow {

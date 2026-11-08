@@ -23,8 +23,9 @@ import { estadoCuentaConfig } from "@/lib/config/estado-cuenta";
 import { NOMBRE_USUARIO_SELECT, nombreCompletoUsuario } from "@/lib/utils/nombre-usuario";
 import { escaparComodinesLike } from "@/lib/utils/escapar-like";
 import { APORTE_SATELITE_SQL, cuentaEnLaDeudaSql } from "@/lib/repositories/_shared/aporte-satelite-sql";
+import { cierresConModeloNuevo, type LectorDeModeloDeDetalle } from "@/lib/repositories/_shared/detalle-modelo-nuevo";
 
-type Cliente = Pick<
+type Cliente = LectorDeModeloDeDetalle & Pick<
   PrismaClient,
   | "$queryRaw"
   | "usuario"
@@ -597,6 +598,10 @@ export class EstadoCuentaRepository implements IEstadoCuentaRepository, IMovimie
       select: { id: true, resueltoPorUsuario: { select: NOMBRE_USUARIO_SELECT } },
     });
     return new Map(cierres.map((c) => [c.id, nombreONulo(c.resueltoPorUsuario)]));
+  }
+
+  async cierresConModeloNuevoDeTienda(tiendaId: string, cierreIds: readonly string[]): Promise<ReadonlySet<string>> {
+    return cierresConModeloNuevo(this.prisma, cierreIds, tiendaId);
   }
 }
 

@@ -9,6 +9,7 @@ import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlPro
 import type { IZonaRepository } from "@/lib/interfaces/repositories/IZonaRepository";
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 158 (T1.12, R19/R20/R21/R25/R36) — las GUARDIAS de la captura de indemnizaciones al
 // aprobar un cierre. Dobles del repo (sin DB): lo que se afirma es que un envio con cobertura
@@ -36,6 +37,7 @@ function inc(gestionId: string) {
 
 function fakeRepo(overrides: Partial<ICierresAdminRepository> = {}): ICierresAdminRepository {
   return {
+    leerTopeIntentos: vi.fn(async () => 3),
     findCierresByAlcance: vi.fn(async () => []),
     // Feature 170 (T I.1): el historico paginado. Doble no-op: esta suite no lo ejercita.
     findHistoricoPaginado: vi.fn(async () => ({ items: [], total: 0 })),
@@ -96,7 +98,12 @@ function newService(repo: ICierresAdminRepository, zonaDelSatelite: string | nul
     sumarPremiosVivosPorCierre: vi.fn(async (ids: string[]) =>
       Object.fromEntries(ids.map((id) => [id, "0.00"])),
     ),
-  }, sinRetenidas()); // FICHA 462: 7.o argumento requerido; este archivo no mide la marca
+  }, sinRetenidas(),
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  reglasPaisFijas(),); // FICHA 462: 7.o argumento requerido; este archivo no mide la marca
 }
 
 function resolverCall(repo: ICierresAdminRepository) {

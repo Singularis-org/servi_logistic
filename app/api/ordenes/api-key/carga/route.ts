@@ -5,8 +5,9 @@
 // validación/dedup/geo).
 //
 // FEATURE 155 — el estado inicial deja de ser fijo: lo resuelve la bifurcación por bodega
-// (`resolverDestinoCreacion`) sobre el flag `fulfillment` del dueño de la key. En la práctica
-// eso es siempre la rama (b): `por_recolectar_en_tienda` con guía en el acto. Y como ese lote
+// (`resolverDestinoCreacion`) sobre la marca «se recoge en tienda» del dueño de la key (SLT-94).
+// Para una cuenta dedicada es siempre la rama (b) (D13): `por_recolectar_en_tienda` con guía en
+// el acto. Y como ese lote
 // SÍ produce un movimiento físico (tienda → bodega central), la respuesta gana el bloque
 // `manifiesto` (R24, opción C de la puerta T0.1): el canal de API key no puede invocar la
 // Server Action `obtenerManifiesto` —resuelve al actor por cookie de sesión— así que necesita
@@ -15,6 +16,7 @@
 //
 // SEGURIDAD (R6): la key viaja en cada request. NUNCA se loguea (ni la key ni su hash), ni
 // entra al cuerpo de una respuesta de error (`appErrorToResponse` no incluye headers).
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import {
@@ -56,7 +58,6 @@ import { OrdenDiaRepartoCambioRepository } from "@/lib/repositories/OrdenDiaRepa
 import { OrdenTraspasoRepository } from "@/lib/repositories/OrdenTraspasoRepository";
 import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
-import { CupoPlanRepository } from "@/lib/repositories/CupoPlanRepository";
 import { SupabaseFileStorage } from "@/lib/storage/SupabaseFileStorage";
 import { SupabaseSignedUrlProvider } from "@/lib/storage/SupabaseSignedUrlProvider";
 import { getPrismaClient } from "@/lib/db/prisma-client";
@@ -175,9 +176,7 @@ function buildBulkService(): IBulkOrdenService {
     // Feature 146/R22: COMPOSITION ROOT del aviso "carga masiva terminada". Esta via SI tiene
     // fin de lote real (una peticion = un lote), asi que es la unica que lo cablea server-side.
     notificarCargaMasivaTerminadaReal,
-    // SL-24 (R21, R23): la lectura previa del cupo del plan. Si no cabe, el servicio lanza
-    // `TopeDelPlanAlcanzado` y `withErrorHandler` lo saca como 409.
-    new CupoPlanRepository(prisma),
+    // SLT-86 (R8): ya no se lee el cupo de órdenes del plan antes de cargar; no hay tope de órdenes.
   );
 }
 
@@ -189,7 +188,7 @@ function buildDescargaService(): IEtiquetasDescargaService {
   const prisma = getPrismaClient();
   const bucket = etiquetasConfig.ETIQUETAS_BUCKET;
   const pdfService = new EtiquetasLotePdfService(
-    new EtiquetaGuiaService(new OrdenRepository(prisma)),
+    new EtiquetaGuiaService(new OrdenRepository(prisma), construirReglasPaisEmpresa(prisma)),
     new SupabaseFileStorage(undefined, bucket),
     new SupabaseSignedUrlProvider(undefined, bucket),
     etiquetasConfig.SIGNED_URL_TTL_SECONDS,
@@ -213,6 +212,9 @@ function buildManifiestoService(): IManifiestoService {
       new OrdenDiaRepartoCambioRepository(prisma),
       new OrdenTraspasoRepository(prisma),
     ),
+    undefined, // el parametro opcional previo, con su valor por defecto
+    // SLT-42 (R22): la zona horaria del pais de la empresa.
+    construirReglasPaisEmpresa(prisma),
   );
 }
 

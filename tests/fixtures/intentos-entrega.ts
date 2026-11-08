@@ -17,7 +17,7 @@ import type { IOrdenHistorialService } from "@/lib/interfaces/services/IOrdenHis
  */
 export type IntentosSvcDoble = Pick<
   IOrdenHistorialService,
-  "contarIntentosEnLote" | "contarIntentos"
+  "contarIntentosEnLote" | "contarIntentos" | "topeIntentos"
 >;
 
 /**
@@ -35,10 +35,12 @@ export type IntentosSvcDoble = Pick<
  */
 export function fakeIntentosEnLote(
   porOrden: Record<string, number> = {},
+  tope = 3,
 ): IntentosSvcDoble {
   return {
     contarIntentosEnLote: vi.fn(async () => new Map(Object.entries(porOrden))),
     contarIntentos: vi.fn(async (ordenId: string) => porOrden[ordenId] ?? 0),
+    topeIntentos: vi.fn(async () => tope),
   };
 }
 
@@ -206,6 +208,7 @@ export function prismaGestionSobreFilas(filas: FilaGestionFake[]) {
     },
     // FICHA 454 (R29, 2026-09-24): el detalle lee ademas las señales de la gestion pendiente y la
     // ayuda con una consulta SQL. Sin filas: señales en reposo (aqui se mide el conteo, no esto).
-    $queryRaw: vi.fn(async () => []),
+    // SLT-77: la unica lectura cruda que llega aqui es la del tope de la empresa, 3 en estas suites.
+    $queryRaw: vi.fn(async () => [{ tope: 3 }]),
   };
 }

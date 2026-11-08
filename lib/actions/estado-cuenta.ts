@@ -1,5 +1,6 @@
 "use server";
 
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { buildBusquedaPorGuia } from "@/lib/actions/_shared/busqueda-por-guia";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
@@ -72,8 +73,9 @@ function buildService(): IEstadoCuentaService {
   return new EstadoCuentaService(
     new EstadoCuentaRepository(prisma),
     new RechazoTiendaCobroAnulacionRepository(prisma),
-    new OrigenLegibleService(new OrigenLegibleRepository(prisma)),
+    new OrigenLegibleService(new OrigenLegibleRepository(prisma), construirReglasPaisEmpresa(prisma)),
     buildBusquedaPorGuia(prisma), // FICHA 469 (design §3.3): guia o texto en tienda, mensajero y /mi-wallet
+    construirReglasPaisEmpresa(prisma), // SLT-42 (R22, R28): la zona horaria del pais de la empresa.
   );
 }
 

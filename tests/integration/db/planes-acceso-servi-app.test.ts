@@ -99,7 +99,7 @@ async function foto(c: PrismaClient | TxDeTest) {
     select: {
       id: true,
       nombre: true,
-      topeOrdenesCiclo: true,
+      topeApiKeys: true,
       archivadoAt: true,
       topesPorRol: { select: { rol: true, maximo: true } },
       modulos: { select: { modulo: true } },
@@ -118,7 +118,16 @@ async function foto(c: PrismaClient | TxDeTest) {
   return { planes, rastro, cambios, empresas };
 }
 
-const TABLAS = ["plan", "plan_tope_rol", "plan_modulo", "plan_rastro", "plan_cambio_programado"] as const;
+// SLT-86 (R32): y las dos tablas nuevas del plan, también cerradas a `servi_app`.
+const TABLAS = [
+  "plan",
+  "plan_tope_rol",
+  "plan_modulo",
+  "plan_rastro",
+  "plan_cambio_programado",
+  "plan_descuento_periodo",
+  "plan_precio_historial",
+] as const;
 
 describeSiHayBase("SL-24 — planes sin acceso para servi_app; asignación de solo lectura y por empresa (R8, R30)", () => {
   let antes: Awaited<ReturnType<typeof foto>>;
@@ -135,7 +144,7 @@ describeSiHayBase("SL-24 — planes sin acceso para servi_app; asignación de so
             nombre: `sl24 acceso custom A ${randomUUID().slice(0, 8)}`,
             visibilidad: "custom",
             organizacionExclusivaId: A,
-            topeOrdenesCiclo: 100,
+            topeApiKeys: 100,
             topesPorRol: { create: [{ rol: "adminTienda", maximo: 3 }] },
             modulos: { create: [{ modulo: "analitica" }] },
           },
@@ -144,7 +153,7 @@ describeSiHayBase("SL-24 — planes sin acceso para servi_app; asignación de so
       ).id;
       planB = (
         await base.plan.create({
-          data: { nombre: `sl24 acceso publico B ${randomUUID().slice(0, 8)}`, visibilidad: "publico", topeOrdenesCiclo: 5 },
+          data: { nombre: `sl24 acceso publico B ${randomUUID().slice(0, 8)}`, visibilidad: "publico", topeApiKeys: 5 },
           select: { id: true },
         })
       ).id;
@@ -162,7 +171,7 @@ describeSiHayBase("SL-24 — planes sin acceso para servi_app; asignación de so
         data: {
           planId: planA,
           vigenteDesde: new Date("2099-01-01T06:00:00.000Z"),
-          version: { nombre: "custom A v2", topeOrdenesCiclo: 50 },
+          version: { nombre: "custom A v2", topes: { porRol: {}, apiKeys: 50 } },
           avisosAlProgramar: [],
           actorUsuarioId: randomUUID(),
           actorNombre: "Superadmin de prueba",
@@ -193,7 +202,7 @@ describeSiHayBase("SL-24 — planes sin acceso para servi_app; asignación de so
     await base.$disconnect();
   }, 120_000);
 
-  it("R8 — control: el dueño sí lee las cinco tablas (el 42501 de abajo es de privilegios, no de una tabla ausente)", async () => {
+  it("R8 — control: el dueño sí lee las siete tablas (el 42501 de abajo es de privilegios, no de una tabla ausente)", async () => {
     await revertida(async (tx) => {
       for (const t of TABLAS) {
         expect(await intentar(tx, `SELECT 1 FROM "${t}" LIMIT 1`), t).toBeNull();
@@ -201,7 +210,7 @@ describeSiHayBase("SL-24 — planes sin acceso para servi_app; asignación de so
     });
   });
 
-  it("R8 — SQL a mano con servi_app: SELECT de las cinco tablas da 42501, aun filtrando por el plan propio", async () => {
+  it("R8 — SQL a mano con servi_app: SELECT de las siete tablas da 42501, aun filtrando por el plan propio", async () => {
     const r = await revertida(async (tx) => {
       await comoApp(tx, A);
       const salida: Record<string, string | null> = {};
@@ -217,6 +226,8 @@ describeSiHayBase("SL-24 — planes sin acceso para servi_app; asignación de so
       plan_modulo: "42501",
       plan_rastro: "42501",
       plan_cambio_programado: "42501",
+      plan_descuento_periodo: "42501",
+      plan_precio_historial: "42501",
       planPropio: "42501",
       topesPropios: "42501",
       cambioPropio: "42501",
@@ -232,7 +243,7 @@ describeSiHayBase("SL-24 — planes sin acceso para servi_app; asignación de so
           `INSERT INTO "plan" ("id", "nombre", "visibilidad") VALUES ($1, 'Mi plan', 'publico')`,
           randomUUID(),
         ),
-        updatePlan: await intentar(tx, `UPDATE "plan" SET "tope_ordenes_ciclo" = NULL WHERE "id" = $1`, planA),
+        updatePlan: await intentar(tx, `UPDATE "plan" SET "tope_api_keys" = NULL WHERE "id" = $1`, planA),
         deletePlan: await intentar(tx, `DELETE FROM "plan" WHERE "id" = $1`, planA),
         insertTope: await intentar(
           tx,

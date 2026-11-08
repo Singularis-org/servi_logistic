@@ -63,6 +63,8 @@ esta bien hecha, no solo si "funciona".
   - **RLS** con el rol `servi_app` (NOLOGIN, NOBYPASSRLS; migración `20261022130000_organizacion_y_rol_app`):
     la política compara con `current_setting('app.organizacion_id')`, fijado por transacción. Cubre el
     SQL a mano. Los catálogos, la geografía y `vehiculos` son de solo lectura para la empresa.
+    `organizacion` también, con una excepción: `servi_app` puede actualizar, solo en su propia fila,
+    `tope_intentos_entrega` y `updated_at` (SLT-77, `GRANT` por columna). Sus demás columnas siguen en `42501`.
   - **Triggers de misma empresa** (migración `20261022130300_misma_empresa_en_fk`): una fila de negocio
     no puede apuntar a otra empresa (SQLSTATE `SL017`, traducido a `EmpresaCruzada`) ni cambiar de
     empresa. Una FK nueva entre tablas de negocio necesita su trigger: se genera con
@@ -153,6 +155,29 @@ esta bien hecha, no solo si "funciona".
     con `comoPlataforma`. La UI pinta los nombres de nivel del país de la empresa con
     `useEtiquetasGeograficas`; ningún texto de nivel va escrito a mano
     (`etiquetas-geograficas-sin-literal.guardia`).
+  - **Teléfono, documento y hora (SLT-42):** `pais` guarda `prefijo_telefonico`,
+    `telefono_digitos_nacionales` y `zona_horaria` (IANA), y `tipo_identificacion` es un catálogo por
+    país (`pais_id`, `clave`, `caracteres`, `largo_min`/`largo_max`, `activo`). Los servicios leen esos
+    datos del país de la empresa del contexto por el puerto `IReglasPaisEmpresa` (`deLaEmpresa`,
+    `zonaHoraria`, `tipoDocumento`). Lo recibe opcional por constructor y el composition root le pasa
+    `construirReglasPaisEmpresa(prisma)`. Un país sin zona falla con `PaisSinZonaHoraria` en la
+    operación que la necesita, y uno sin prefijo o dígitos falla con `PaisIncompleto`. Todo cálculo de
+    días del servidor pasa por `lib/utils/calendario-zona.ts` con la zona como parámetro; los
+    repositorios reciben los límites o la zona ya resueltos. Los que agrupan por día en SQL
+    (`ConteoCargadasPorDia`, `CohorteCarga`, `FinanzasDiario`) usan `AT TIME ZONE` con la zona como
+    parámetro (`$n`), nunca escrita ni interpolada (decisión del humano del 2026-11-06). Los jobs diarios agendan una corrida por
+    zona (`lib/services/jobs/serie-diaria-por-zona.ts`). `pais-sin-literales.guardia` impide escribir en
+    el servidor la zona de CR, un desfase fijo o el `506`, y exige el real en cada composition root. Los
+    envoltorios `*-cr.ts` quedan solo para la UI, en su lista de excepciones (SLT-81; SINPE, SL-22).
+- **Catálogo de vehículos (SL-42, 2026-11-04).** `vehiculos` es uno solo para todas las empresas, que
+  solo lo leen: el `maestro` en el formulario de usuarios y la postulación pública, y solo los activos
+  para una elección nueva (`WHERE_VEHICULO_ELEGIBLE`, `lib/repositories/_shared/vehiculo-activo.ts`).
+  - **Edición:** es del superadmin (`GESTION_ROLES = ROLES_PLATAFORMA` en `VehiculoService`). Crea,
+    renombra, activa y desactiva desde `/plataforma/vehiculos`; no hay borrado. El borde
+    `lib/actions/vehiculos-plataforma.ts` corre el servicio dentro de `comoPlataforma` y está en
+    `EXCEPCIONES_DE_PLATAFORMA`. `/configuracion/vehiculos` ya no existe.
+  - **Rastro:** cada escritura deja una fila en `vehiculo_rastro`, en la misma transacción. Esa tabla
+    tiene `REVOKE ALL` para `servi_app`. Nada se escribe en `historial_accion`.
 - **Módulos por empresa (SL-23, 2026-10-26).** Cada empresa tiene un núcleo que nunca se apaga y 3
   módulos apagables (`lib/modulos/catalogo.ts`, enum `modulo_apagable`). Recolección, Bodegas
   satélite, API e integraciones y WhatsApp fueron apagables hasta el 2026-10-27, y Wallet hasta el
@@ -189,11 +214,13 @@ esta bien hecha, no solo si "funciona".
     `plan_tope_api_key_alta` y `plan_tope_api_key_cambio` (en `api_key`). Al pasar el tope lanzan
     SQLSTATE `SL024` con el JSON del tope en `MESSAGE`, no en `DETAIL`. `traducirErrorDeTope`
     (`lib/planes/tope-error.ts`) lo traduce a `TopeDelPlanAlcanzado`, con `details.codigo = "tope_plan"`.
-    Las funciones son `SECURITY DEFINER` con `EXECUTE` revocado a `PUBLIC`. La única que `servi_app`
-    llama es `plan_cupo_ordenes`, y solo con su propia empresa (la lee `CupoPlanRepository`).
-  - **Ciclo en UTC (decisión 2026-10-28):** `plan_inicio_ciclo(ancla, ahora)` recibe siempre
-    `now() AT TIME ZONE 'UTC'`, nunca `now()::timestamp`. Las columnas son `TIMESTAMP` sin zona y
-    Prisma escribe en UTC, así que la hora local de la sesión correría el ciclo. Su gemela en TS es
+    Las funciones son `SECURITY DEFINER` con `EXECUTE` revocado a `PUBLIC`. SLT-86 retiró el tope de
+    órdenes (`20261106120000_plan_periodo_facturacion`): ya no existen `plan_tope_ordenes`,
+    `plan_cupo_ordenes` ni `CupoPlanRepository`.
+  - **Ciclo en UTC (decisión 2026-10-28):** `plan_inicio_ciclo_de(entrada, tipo, ahora)` (SLT-86:
+    período de calendario, con tramo desde la entrada) recibe siempre `now() AT TIME ZONE 'UTC'`, nunca
+    `now()::timestamp`. Las columnas son `TIMESTAMP` sin zona y Prisma escribe en UTC, así que la hora
+    local de la sesión correría el ciclo. Su gemela en TS es `periodoEnCurso(entrada, tipo, ahora)` de
     `lib/planes/ciclo.ts`.
   - **Cerrojos** (design §4.4 y §5): un alta toma `organizacion` y `plan` en `FOR SHARE` y después el
     consultivo `(24, hashtext(empresa))`. Asignar toma `organizacion` en `FOR UPDATE` y el plan en
@@ -214,13 +241,14 @@ esta bien hecha, no solo si "funciona".
     Los cuatro jobs están en `lib/planes/jobs-cambio-plan.ts` y son de núcleo (`MODULO_POR_JOB`).
   - **Pantallas de planes (SLT-58, 2026-10-29).** La empresa lee su plan y su consumo con
     `plan_de_la_empresa(organizacion_id)` (migración `20261029120000_plan_de_la_empresa`), que la
-    llama `MiPlanRepository`. Es la segunda y última función que `servi_app` puede llamar; la otra
-    es `plan_cupo_ordenes`. Es `STABLE` y `SECURITY DEFINER`, con `search_path` fijo y `EXECUTE`
+    llama `MiPlanRepository`. Desde SLT-86 es la única función de planes que `servi_app` puede llamar.
+    Es `STABLE` y `SECURITY DEFINER`, con `search_path` fijo y `EXECUTE`
     revocado a `PUBLIC`. Con otra empresa que la del contexto lanza `42501`, y sin plan devuelve
-    `NULL`. Cuenta el uso con las mismas `plan_uso_*` y `plan_inicio_ciclo_en_curso` que los triggers. Del
+    `NULL`. Cuenta el uso con las mismas `plan_uso_*` que los triggers, y el período con `plan_inicio_ciclo_de`
+    (`plan_inicio_ciclo_en_curso` quedó sin uso). Del
     cambio programado devuelve solo la fecha y la versión: nunca los avisos ni el actor.
-    - **Inicio del ciclo elegido:** en la primera asignación el superadmin elige el inicio del ciclo de órdenes (hoy ±1 mes, `rangoDelInicioDelCiclo`); si es futura, el tramo hasta el ancla es un ciclo corto que empieza en `organizacion.plan_ciclo_corto_desde_at`, y si la empresa ya pasa topes se asigna igual y se avisa (`avisos`). La única definición del ciclo en curso es `plan_inicio_ciclo_en_curso` (migración `20261029150000_plan_ciclo_inicio_elegido`), que llaman los triggers, `plan_cupo_ordenes` y `plan_de_la_empresa`; su gemela TS es `inicioDelCicloEnCurso` (`lib/planes/ciclo.ts`), probada con la misma tabla de casos (`tests/integration/db/_fixtures/ciclo-corto.ts`).
-    - **Rutas:** `/mi-plan` para el `maestro` y el `admin` de una empresa. Para el superadmin,
+    - **Período de facturación (SLT-86):** la empresa entra a su plan y su tipo de cobro (quincenal, mensual, bimestral o anual) a las 00:00 de una fecha: `organizacion.plan_ciclo_ancla_at` es esa *entrada*, nunca futura. En la primera asignación la fecha de inicio va de hoy −1 mes a hoy +1 mes (`rangoDelInicioDelCiclo`); una fecha futura, y cualquier cambio de plan o de tipo con fecha de efecto futura, queda como pendiente en `organizacion.plan_cambio_*` y lo aplica el job `plan_aplicar_cambio_empresa` (red: el barrido `plan_cambios_vencidos`). El período en curso es el de calendario de su tipo, recortado a la entrada si es posterior (tramo). Su única definición en SQL es `plan_inicio_ciclo_de` con `plan_inicio_periodo_calendario` y `plan_fin_periodo_calendario` (migración `20261106120000_plan_periodo_facturacion`), que llaman `plan_de_la_empresa` y `PlanesRepository`; sus gemelas TS están en `lib/planes/ciclo.ts` (`periodoEnCurso`, `inicioDelPeriodoCalendario`, `finDelPeriodoCalendario`), probadas con la misma tabla de casos (`tests/integration/db/_fixtures/periodo-calendario.ts`).
+    - **Rutas:** `/mi-plan` para el `maestro` de una empresa (SLT-91). Para el superadmin,
       `/plataforma/planes`, `/plataforma/planes/[planId]` y el bloque Plan de
       `/plataforma/empresas/[organizacionId]`. Las cuatro son `nucleo` en `lib/modulos/reparto.ts`,
       sin puerta de módulo.
@@ -236,7 +264,7 @@ Decisión del humano (plan-saas, 2026-10-20/21): una sola base compartida, datos
 
 - **Tablas.** `tarifa_valor` (un valor por concepto del catálogo fijo `lib/tarifas/catalogo.ts`,
   en modo `monto` o `porcentaje`, con su nivel: tienda+grupo, tienda+zona, tienda general, grupo,
-  zona, grupo+vehículo, zona+vehículo), `grupo_distritos` y `grupo_distritos_distrito` (un distrito
+  zona, grupo+vehículo, zona+vehículo y `mensajero`), `grupo_distritos` y `grupo_distritos_distrito` (un distrito
   en un solo grupo por zona). Lo congelado al cerrar: `cierre_detail.tarifa_modelo`,
   `cierre_detail_concepto` (cobro a la tienda por orden) y `gestion_pago_congelado` (pago por
   gestión). Las cinco llevan `organizacion_id` y RLS como el resto.
@@ -249,13 +277,37 @@ Decisión del humano (plan-saas, 2026-10-20/21): una sola base compartida, datos
   flete sin IVA que ese cierre le cobra a la tienda por esa gestión (lo congelado, no lo vivo).
   Todo `new CierreDiaRepository(`, `new CierreDiaService(` y `new CorteDiarioService(` recibe el
   repositorio de tarifas: lo vigila `tests/unit/guards/tarifas-resolver-inyectado.guardia.test.ts`.
-- **Interruptor por empresa.** Una empresa está en el modelo nuevo si tiene al menos una fila en
-  `tarifa_valor`; si no, se calcula exactamente como antes (`tarifas` y `tarifa_zona_mensajero`).
-  **Consecuencia:** el primer valor nuevo apaga el modelo viejo de la empresa entera, y lo que no
-  tenga valor queda «sin tarifa» (0 en el cierre, 409 en la API). La migración de datos de una
-  empresa (SLT-53) va antes de abrirle la pantalla de tarifas (SLT-54).
+- **Interruptor por empresa (SLT-54).** Una empresa está en el modelo nuevo si tiene su fila en
+  `tarifa_activacion`; si no, se calcula exactamente como antes (`tarifas` y
+  `tarifa_zona_mensajero`), aunque ya tenga valores en `tarifa_valor`. Decide la activación, no la
+  existencia de un valor: digitar no cambia ningún importe. El acto es único, del `maestro`
+  («Activar tarifas nuevas»), y la app no puede deshacerlo (`REVOKE UPDATE, DELETE` a `servi_app`).
+  **Consecuencia:** al activar, el modelo viejo se apaga para toda la empresa, y lo que no tenga
+  valor queda «sin tarifa» (0 en el cierre, 409 en la API); por eso el diálogo lista los faltantes y
+  pide confirmarlos. Desde el siguiente cierre: los cierres ya hechos no cambian. Una empresa con
+  valores al aplicar la migración queda activada, para que su cálculo no cambie.
+- **Valor propio del mensajero (SLT-55).** El nivel `mensajero` es el pago de UN mensajero por UN
+  resultado, sin zona, grupo, tienda, vehículo ni IVA. Gana sobre grupo y zona en cualquier zona donde
+  trabaje, y lo que no tenga digitado usa la precedencia de siempre. Un 0 escrito paga 0. En porcentaje,
+  la base es el flete sin IVA de la orden, tenga o no valor de pago la zona del mensajero. No cuenta
+  como cobertura: los faltantes de una zona no lo miran. Se conserva si el mensajero se da de baja, y
+  se sigue pagando en las gestiones suyas que se cierren.
+- **Tope de intentos de entrega (SLT-77).** `organizacion.tope_intentos_entrega`, de 1 a 10 con `DEFAULT 3` y
+  `CHECK`, es el único valor del tope: no hay variable de entorno ni respaldo en código. Lo cambia el `maestro`
+  en una sección de la pantalla y el `admin` lo lee; rige al guardar, para las órdenes sin terminar, con o sin
+  activación. Guardar no escribe en órdenes ni cierres y solo deja historial si el valor cambia. El único SQL de
+  lectura es `lib/repositories/_shared/tope-intentos-empresa.ts`, sin caché, y sin empresa en contexto falla con
+  `EmpresaNoResuelta`: nunca cae a un valor por defecto. Los servicios lo piden con `topeIntentos()` de
+  `IOrdenHistorialService`, una vez por ejecución; el rechazo por tope del proceso de devoluciones y de la
+  aprobación de un cierre lo relee en su transacción y gana el mayor, para errar hacia no cobrar. El número no
+  viaja al navegador del `mensajero`: solo el booleano ya decidido.
+- **Sin migración de datos.** SLT-53 se canceló: nada copia las tarifas actuales al modelo nuevo.
+  Las digita la empresa en `/configuracion/tarifas`, con lo que rige hoy al lado como referencia
+  («Hoy rige»), calculada con las mismas funciones que el modelo viejo y sin copiarse al campo.
 - **Quién escribe.** Solo `TarifaValorService` y `GrupoDistritosService` (fábrica
-  `lib/tarifas/servicios.ts`), con historial; escribe el `maestro`, leen `maestro` y `admin`. Lo
+  `lib/tarifas/servicios.ts`), con historial; escribe el `maestro`, leen `maestro` y `admin`. Ninguna
+  Server Action escribe ya en `tarifas`, `tarifa_zona_mensajero` ni `distrito_zona_especial`
+  (`tarifas-sin-escritura-vieja.guardia`): el modelo viejo solo se lee, hasta que lo retire SLT-57. Lo
   congelado lo escribe solo el cierre (`CierreDiaRepository`) y nadie lo recalcula al leer
   (`tarifaDe` en `lib/utils/cierre-detalle.ts`).
 

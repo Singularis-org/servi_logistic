@@ -16,6 +16,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
+import { casaAlguno } from './disparadores.mjs';
 import { campoIdentidad, resolverTracker, TIPOS_TRACKER } from './tracker.mjs';
 
 const WT_DIR = '.worktrees';
@@ -28,6 +29,13 @@ const EN_VUELO = ['spec_ready', 'in_progress'];
 // `feature_list.json` y de `tracker.estados` (o `jira.estados`) en `arnes.config.json`
 // (`docs/jira.md > Los estados del board`, `docs/trello.md > Los estados del board`).
 const ESTADOS = ['pending', 'spec_ready', 'in_progress', 'done', 'cancelled'];
+// Las tres rutas de una feature (`docs/specs.md > Tres rutas`). Sin `ruta`, la ficha va por la
+// completa: el valor por defecto es el conservador.
+const RUTAS = ['directa', 'ligera', 'completa'];
+const rutaDe = (f) => f.ruta ?? 'completa';
+// Lo que obliga a la ruta completa si el diff lo toca, salvo que el perfil declare otra lista en
+// `arnes.config.json > rutas.completa_si_toca`.
+const COMPLETA_SI_TOCA_POR_DEFECTO = ['**/migrations/**', '**/*.prisma', '**/*.sql'];
 
 const errores = [];
 const notas = [];
@@ -279,7 +287,7 @@ for (const f of features) {
       errores.push(`${f.key} no trae title: F0 no importo el summary del issue`);
     }
     if (!/^[A-Z][A-Z0-9]*-[0-9]+$/.test(f.key)) {
-      errores.push(`key con formato invalido: "${f.key}" (se espera PROYECTO-NUMERO, ej. QC-7)`);
+      errores.push(`key con formato invalido: "${f.key}" (se espera PROYECTO-NUMERO, ej. PROY-7)`);
     } else if (f.id != null && Number(f.key.split('-').pop()) !== f.id) {
       errores.push(`${f.key} tiene id ${f.id}: el fallback numerico no coincide con el key`);
     }
@@ -302,6 +310,10 @@ for (const f of features) {
   if (f.name != null) {
     if (vistosName.has(f.name)) errores.push(`name duplicado: "${f.name}" (ids ${vistosName.get(f.name)} y ${f.id})`);
     else vistosName.set(f.name, f.id);
+  }
+
+  if (f.ruta != null && !RUTAS.includes(f.ruta)) {
+    errores.push(`${ref(f)} tiene ruta ${JSON.stringify(f.ruta)}, que no es una ruta del arnes (validas: ${RUTAS.join(', ')}; docs/specs.md > Tres rutas).`);
   }
 }
 // El id compartido entre prefijos no apunta a ninguna ficha: `depends_on` tiene que usar la key.
@@ -446,8 +458,9 @@ function globRequirements(base, f) {
   return false;
 }
 
+// La ruta `directa` no lleva spec (`docs/specs.md > Tres rutas`): no se le exige.
 const sinSpec = features
-  .filter((f) => f.sdd === true && EN_VUELO.includes(f.status))
+  .filter((f) => f.sdd === true && EN_VUELO.includes(f.status) && rutaDe(f) !== 'directa')
   .filter((f) => !tieneSpec(f))
   .map((f) => ref(f));
 
@@ -538,6 +551,40 @@ if (specsHuerfanos.length > 0) {
   errores.push(...specsHuerfanos);
 } else {
   notas.push('cada spec sembrado tiene su ficha, con el mismo slug');
+}
+
+// --- 7. El suelo de la ruta: lo que toca el diff obliga a la ruta completa ---------------
+// Las rutas `directa` y `ligera` ahorran spec y revision (`docs/specs.md > Tres rutas`), y por eso
+// tienen un suelo que no depende de lo que el agente crea: si la rama de la feature toca algo de
+// `arnes.config.json > rutas.completa_si_toca` (por defecto migraciones y esquema), la feature
+// tiene que ir por la completa. Solo se mira la feature de la rama actual: es la unica cuyo diff
+// esta en este disco. Subir de ruta siempre se puede; bajar por debajo de este suelo, no.
+const COMPLETA_SI_TOCA = Array.isArray(config?.rutas?.completa_si_toca) ? config.rutas.completa_si_toca : COMPLETA_SI_TOCA_POR_DEFECTO;
+function ramaActual() {
+  try {
+    return execFileSync('git', ['branch', '--show-current'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch {
+    return '';
+  }
+}
+const fichaActual = features.find((f) => f.branch && f.branch === ramaActual());
+if (fichaActual && rutaDe(fichaActual) !== 'completa' && COMPLETA_SI_TOCA.length > 0) {
+  const integracion = config?.ramas?.integracion ?? 'dev';
+  const tocados = new Set();
+  for (const args of [['diff', '--name-only', `origin/${integracion}...HEAD`], ['diff', '--name-only', 'HEAD']]) {
+    try {
+      for (const l of execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split('\n')) if (l.trim()) tocados.add(l.trim());
+    } catch { /* sin la ref de integracion: solo lo no commiteado */ }
+  }
+  const obligan = [...tocados].filter((t) => casaAlguno(t, COMPLETA_SI_TOCA));
+  if (obligan.length > 0) {
+    errores.push(
+      `${ref(fichaActual)} va por la ruta ${rutaDe(fichaActual)} pero su diff toca ${obligan.slice(0, 3).join(', ')}${obligan.length > 3 ? ', ...' : ''}, ` +
+      `que exige la ruta completa (arnes.config.json > rutas.completa_si_toca). Sube la ruta en el tracker (label ruta:completa) y escribe el spec completo.`,
+    );
+  } else {
+    notas.push(`${ref(fichaActual)} va por la ruta ${rutaDe(fichaActual)} y su diff no toca nada que exija la completa`);
+  }
 }
 
 // --- Resultado ------------------------------------------------------------------------

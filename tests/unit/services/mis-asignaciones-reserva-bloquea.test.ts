@@ -16,6 +16,7 @@ import { MisAsignacionesService } from "@/lib/services/MisAsignacionesService";
 import { RESERVA_MOTIVO_SERVIDOR } from "@/lib/utils/dia-reparto-textos";
 import { fakeIntentosEnLote } from "@/tests/fixtures/intentos-entrega";
 import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FEATURE 261 (B10) — LA RESERVA BLOQUEA TAMBIEN AL MENSAJERO. R1-R10, R15, R27.
@@ -165,6 +166,7 @@ function montar(repo: IGestionOrdenRepository = fakeRepo()) {
     fakeRutaRepo(),
     fakeMetaRepo(),
     fakeIntentosEnLote(),
+    reglasPaisFijas(),
   );
   return { service, repo, storage };
 }

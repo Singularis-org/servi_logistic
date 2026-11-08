@@ -435,7 +435,8 @@ export interface ICierreDiaRepository {
    * (`gestionesDelCierreWhere`): lo que la pantalla lista y lo que el documento se lleva no pueden
    * ser dos conjuntos.
    */
-  findGestionesPendientes(mensajeroId: string): Promise<GestionPendienteDeCierreRow[]>;
+  /** SLT-42 (R22): `zona` es la del pais de la empresa; con ella se fecha cada gestion. */
+  findGestionesPendientes(mensajeroId: string, zona: string): Promise<GestionPendienteDeCierreRow[]>;
   /**
    * R10: cuenta las ordenes asignadas al mensajero (no borradas) cuyo estado esta
    * en `estados` (por_recoger/en_reparto/ayuda_tienda = pendientes de gestion) **y** que no esten
@@ -565,6 +566,8 @@ export interface ICierreDiaRepository {
   findCierrePropioConGestiones(
     cierreId: string,
     mensajeroId: string,
+    /** SLT-42 (R22): la zona del pais de la empresa, con la que se fecha cada gestion. */
+    zona: string,
   ): Promise<{
     cierre: CierrePasadoDTO;
     gestiones: CierreGestionPendienteRow[];

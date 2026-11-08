@@ -1,5 +1,5 @@
 import { ROLES_MI_PLAN } from "@/lib/auth/menu-visibility";
-import type { IMiPlanRepository } from "@/lib/interfaces/repositories/IMiPlanRepository";
+import { esSinPlanConPendiente, type IMiPlanRepository } from "@/lib/interfaces/repositories/IMiPlanRepository";
 import type { IMiPlanService } from "@/lib/interfaces/services/IMiPlanService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { planConConsumo } from "@/lib/planes/consumo";
@@ -23,7 +23,10 @@ export class MiPlanService implements IMiPlanService {
   async ver(actor: Actor | null): Promise<MiPlanResult> {
     if (!puedeVerMiPlan(actor)) return FORBIDDEN;
     const leido = await this.repo.planDeLaEmpresa();
+    if (leido === null) return { estado: "ok", plan: null, pendienteSinPlan: null };
+    // SLT-86 (R26): sin plan, pero con su primera asignación pendiente.
+    if (esSinPlanConPendiente(leido)) return { estado: "ok", plan: null, pendienteSinPlan: leido.pendiente };
     // R1–R7: el mismo armado que el detalle de empresa del superadmin (`lib/planes/consumo.ts`).
-    return { estado: "ok", plan: leido === null ? null : planConConsumo(leido, this.ahora()) };
+    return { estado: "ok", plan: planConConsumo(leido, this.ahora()), pendienteSinPlan: null };
   }
 }

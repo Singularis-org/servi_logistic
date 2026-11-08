@@ -6,6 +6,7 @@ import type {
   RecogerInput,
 } from "@/lib/interfaces/services/IMisAsignacionesService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 92 (R22/R23) — `ubicacion` OPCIONAL en las acciones del mensajero que disparan
 // reoptimizacion.
@@ -54,7 +55,7 @@ describe("R22 — recogerAsignaciones acepta `ubicacion` opcional", () => {
   it("RETRO-COMPATIBILIDAD: sin el campo, la llamada funciona igual que antes", async () => {
     const { service, recoger } = buildService();
 
-    const r = await recogerAsignaciones({ ordenIds: ["o1"] }, { service, getActor: actorMensajero });
+    const r = await recogerAsignaciones({ ordenIds: ["o1"] }, { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
 
     expect(r.status).toBe("ok");
     expect(recoger).toHaveBeenCalledTimes(1);
@@ -69,7 +70,7 @@ describe("R22 — recogerAsignaciones acepta `ubicacion` opcional", () => {
 
     await recogerAsignaciones(
       { ordenIds: ["o1", "o2"], ubicacion: { lat: 9.9281, lng: -84.0907 } },
-      { service, getActor: actorMensajero },
+      { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero },
     );
 
     expect(recoger.mock.calls[0][0]).toEqual({
@@ -87,7 +88,7 @@ describe("R22 — recogerAsignaciones acepta `ubicacion` opcional", () => {
 
     const r = await recogerAsignaciones(
       { ordenIds: ["o1"], ubicacion },
-      { service, getActor: actorMensajero },
+      { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero },
     );
 
     expect(r.status).toBe("validation_error");
@@ -98,7 +99,7 @@ describe("R22 — recogerAsignaciones acepta `ubicacion` opcional", () => {
     const { service, recoger } = buildService();
     const r = await recogerAsignaciones(
       { ordenIds: [], ubicacion: { lat: 9.9, lng: -84.1 } },
-      { service, getActor: actorMensajero },
+      { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero },
     );
     expect(r.status).toBe("validation_error");
     expect(recoger).not.toHaveBeenCalled();
@@ -118,7 +119,7 @@ describe("Feature 193 (R8-R13) — gestionar EXIGE ubicacion o motivo de ausenci
   it("R10: un FormData sin ubicacion NI motivo es validation_error", async () => {
     const { service, gestion } = buildService();
 
-    const r = await gestionar(fdReprogramada(), { service, getActor: actorMensajero });
+    const r = await gestionar(fdReprogramada(), { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
 
     expect(r.status).toBe("validation_error");
     expect(gestion).not.toHaveBeenCalled();
@@ -129,6 +130,7 @@ describe("Feature 193 (R8-R13) — gestionar EXIGE ubicacion o motivo de ausenci
 
     const r = await gestionar(fdReprogramada({ ubicacionAusencia: "no_disponible" }), {
       service,
+      reglasPais: reglasPaisFijas(),
       getActor: actorMensajero,
     });
 
@@ -144,6 +146,7 @@ describe("Feature 193 (R8-R13) — gestionar EXIGE ubicacion o motivo de ausenci
 
     const r = await gestionar(fdReprogramada({ ubicacionAusencia: "denegado" }), {
       service,
+      reglasPais: reglasPaisFijas(),
       getActor: actorMensajero,
     });
 
@@ -160,7 +163,7 @@ describe("Feature 193 (R8-R13) — gestionar EXIGE ubicacion o motivo de ausenci
         ubicacionLng: "-84.0907",
         ubicacionAusencia: "timeout",
       }),
-      { service, getActor: actorMensajero },
+      { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero },
     );
 
     expect(r.status).toBe("validation_error");
@@ -172,6 +175,7 @@ describe("Feature 193 (R8-R13) — gestionar EXIGE ubicacion o motivo de ausenci
 
     await gestionar(fdReprogramada({ ubicacionLat: "9.9281", ubicacionLng: "-84.0907" }), {
       service,
+      reglasPais: reglasPaisFijas(),
       getActor: actorMensajero,
     });
 
@@ -190,6 +194,7 @@ describe("Feature 193 (R8-R13) — gestionar EXIGE ubicacion o motivo de ausenci
 
     const r = await gestionar(fdReprogramada({ ubicacionLat: "9.9281" }), {
       service,
+      reglasPais: reglasPaisFijas(),
       getActor: actorMensajero,
     });
 
@@ -201,6 +206,7 @@ describe("Feature 193 (R8-R13) — gestionar EXIGE ubicacion o motivo de ausenci
     const { service, gestion } = buildService();
     const r = await gestionar(fdReprogramada({ ubicacionLat: "", ubicacionLng: "" }), {
       service,
+      reglasPais: reglasPaisFijas(),
       getActor: actorMensajero,
     });
     expect(r.status).toBe("validation_error");
@@ -212,6 +218,7 @@ describe("Feature 193 (R8-R13) — gestionar EXIGE ubicacion o motivo de ausenci
 
     const r = await gestionar(fdReprogramada({ ubicacionLat: "999", ubicacionLng: "999" }), {
       service,
+      reglasPais: reglasPaisFijas(),
       getActor: actorMensajero,
     });
 
@@ -223,7 +230,7 @@ describe("Feature 193 (R8-R13) — gestionar EXIGE ubicacion o motivo de ausenci
     const { service, gestion } = buildService();
     const r = await gestionar(
       fdReprogramada({ motivo: "", ubicacionLat: "9.9", ubicacionLng: "-84.1" }),
-      { service, getActor: actorMensajero },
+      { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero },
     );
     expect(r.status).toBe("validation_error");
     expect(gestion).not.toHaveBeenCalled();

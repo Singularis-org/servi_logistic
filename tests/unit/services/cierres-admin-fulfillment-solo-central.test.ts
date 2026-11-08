@@ -14,6 +14,7 @@ import type {
   TarifaSnapshotDTO,
 } from "@/lib/interfaces/services/ICierreDiaService";
 import type { CierreGestionDescargaDTO } from "@/lib/interfaces/services/ICierresAdminService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FICHA 481 (2026-10-15, «solo lo debe ver la central») — el fulfillment congelado de la fila
@@ -45,6 +46,7 @@ const TARIFA: TarifaSnapshotDTO = {
 };
 
 const INGRESO: IngresoEmpresaDTO = {
+  tarifaModelo: "viejo",
   montoCobrar: "10000.00",
   cobraComision: false,
   esCentral: false,
@@ -76,6 +78,7 @@ const INGRESO_NUEVO: IngresoEmpresaDTO = {
   fulfillment: "450.00",
   ivaFulfillment: "58.50",
   tarifa: null,
+  tarifaModelo: "nuevo",
 };
 
 /** Que fila entrega el doble del repositorio; la cambia solo el bloque del modelo nuevo. */
@@ -212,6 +215,11 @@ function newService() {
       ),
     },
     sinRetenidas(),
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    reglasPaisFijas(),
   );
 }
 

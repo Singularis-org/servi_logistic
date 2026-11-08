@@ -8,6 +8,18 @@ import { OrigenLegibleService } from "@/lib/services/OrigenLegibleService";
 
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
 import { cargarCatalogo459, enTransaccionRevertida459, montarServicios459 } from "./_fixtures/caja-459";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+
+// SLT-42 (T5.4): la zona del pais de la empresa es la de CR, como antes. Las reglas reales leen el pais
+// de la empresa en curso con el cliente global, que no ve la empresa de una transaccion revertida ni
+// tiene empresa fuera de `conEmpresa`; la zona por pais la miden `hora-por-pais-wallet` y `demo-qa`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
 
 // SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
 vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
@@ -100,7 +112,7 @@ describeSiHayBase("463/T2 — buscador y orden del libro de la caja (Postgres re
                 rolId,
                 zonaId: null,
                 estado: "activo",
-                fulfillment: false,
+                seRecogeEnTienda: true,
               },
               select: { id: true },
             })
@@ -150,8 +162,9 @@ describeSiHayBase("463/T2 — buscador y orden del libro de la caja (Postgres re
         const nombre = new Map<string, Clave>(Object.entries(ids).map(([k, v]) => [v, k as Clave]));
         const deps = {
           getActor: async () => actor,
+          reglasPais: reglasPaisFijas(), // SLT-42 (R22): la zona de CR; el servicio va sobre la transaccion del test
           service: s.wallet,
-          origenes: new OrigenLegibleService(new OrigenLegibleRepository(s.cliente)),
+          origenes: new OrigenLegibleService(new OrigenLegibleRepository(s.cliente), reglasPaisFijas()),
         };
         const claves = (movs: { id: string }[]) =>
           movs.map((x) => nombre.get(x.id) ?? (`AJENA:${x.id}` as Clave));

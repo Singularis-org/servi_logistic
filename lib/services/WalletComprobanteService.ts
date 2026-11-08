@@ -26,7 +26,9 @@ import { compensarEvidencias } from "@/lib/services/evidencias-compensadas";
 import type { CaminoAnulacion, DestinoMovimiento } from "@/lib/types/wallet-anulacion";
 import type { RotuloComprobanteDTO } from "@/lib/types/wallet-comprobante-lateral";
 import { problemaDeComprobante, rutaDeComprobante } from "@/lib/utils/comprobante";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendario } from "@/lib/utils/calendario-zona";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 
 const ROL_TIENDA = "adminTienda";
 
@@ -69,9 +71,12 @@ function lateral(libro: "caja" | "tienda" | "pago", id: string): DestinoLateral 
   return { pago: id };
 }
 
-/** R80 — el rotulo: la fila se fecha en CR; el documento es un `@db.Date` (medianoche UTC). */
-function rotulo(fuente: RotuloComprobanteDTO["fuente"], dueno: DuenoDeDestino): RotuloComprobanteDTO {
-  const fecha = fuente === "documento" ? dueno.fecha.toISOString().slice(0, 10) : fechaCalendarioCR(dueno.fecha);
+/**
+ * R80 — el rotulo: la fila se fecha en la zona del pais de la empresa (SLT-42, R22); el documento es un
+ * `@db.Date` (medianoche UTC) y no necesita zona.
+ */
+function rotulo(fuente: RotuloComprobanteDTO["fuente"], dueno: DuenoDeDestino, zona: string | null): RotuloComprobanteDTO {
+  const fecha = fuente === "documento" ? dueno.fecha.toISOString().slice(0, 10) : fechaCalendario(dueno.fecha, zona as string);
   return { fuente, categoria: dueno.categoria, fecha };
 }
 
@@ -94,6 +99,8 @@ export class WalletComprobanteService implements IWalletComprobanteService {
     private readonly urls: ISignedUrlProvider,
     private readonly runTransaction: WalletComprobanteTxRunner,
     private readonly config: Pick<WalletComprobanteConfig, "MAX_BYTES" | "SIGNED_URL_TTL_SECONDS"> = walletComprobanteConfig,
+    /** SLT-42 (R22, R28): la zona del pais de la empresa, para el dia del rotulo de una fila. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
 
   async subir(carpeta: CarpetaLateral, comprobante: ComprobanteRecibido): Promise<SubidaComprobante> {
@@ -217,6 +224,9 @@ export class WalletComprobanteService implements IWalletComprobanteService {
     if (objeto === null) return { status: "sin_comprobante" };
 
     const url = await this.urls.createSignedUrl(objeto.storagePath, this.config.SIGNED_URL_TTL_SECONDS);
-    return { status: "ok", url, contentType: objeto.contentType, rotulo: rotulo(fuenteRotulo, dueno) };
+    // SLT-42 (R22): solo el rotulo de una FILA necesita la zona; el de un documento no la lee.
+    const zona =
+      fuenteRotulo === "documento" ? null : await zonaDeLaEmpresa(this.reglasPais, "WalletComprobanteService.ver");
+    return { status: "ok", url, contentType: objeto.contentType, rotulo: rotulo(fuenteRotulo, dueno, zona) };
   }
 }

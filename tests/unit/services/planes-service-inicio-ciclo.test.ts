@@ -5,15 +5,20 @@ import type { RolValue } from "@prisma/client";
 
 import type { IPlanesRepository } from "@/lib/interfaces/repositories/IPlanesRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
-import { apiKeysYaPasadas, ordenesYaPasadas, rolYaPasado } from "@/lib/planes/mensajes";
+import { apiKeysYaPasadas, rolYaPasado } from "@/lib/planes/mensajes";
 import { PlanesService } from "@/lib/services/PlanesService";
 import type { PlanDTO, TopeExcedido } from "@/lib/types/planes";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // SLT-58 (design §11.4; R29, R30, R31, R36, R37, R42) — la fecha de inicio del ciclo en la primera
 // asignación y su vista previa, con un repositorio doble y el reloj fijo. Lo que se mide aquí es el
 // borde: el rango con el reloj del servicio, «solo en la primera asignación» y que ningún rechazo
-// llegue al repositorio. El SQL (ancla, ciclo corto, uso, triggers, carrera) se mide contra Postgres
-// en `tests/integration/db/planes-asignacion-inicio-ciclo.test.ts`.
+// llegue al repositorio. El SQL (ancla, uso, triggers, carrera) se mide contra Postgres en
+// `tests/integration/db/planes-asignacion-inicio-ciclo.test.ts`.
+//
+// SLT-86 (R2, R16): «hoy» también entra a las 00:00 (sustituye a SLT-58 R32 y P9); el repositorio recibe
+// el `EfectoElegido` y el reloj. Un cambio de plan lleva fecha de efecto (`vigenteDesde`); sin ella es
+// validation_error. La vista previa ya no da el siguiente ciclo (R8).
 
 const SUPERADMIN: Actor = { usuarioId: "u-sa", rol: "superadmin", organizacionId: null };
 const EMPRESA = randomUUID();
@@ -31,18 +36,18 @@ function plan(extra: Partial<PlanDTO> = {}): PlanDTO {
     nombre: "Básico",
     visibilidad: "publico",
     organizacionId: null,
-    topes: { ordenesPorCiclo: 2, porRol: { adminTienda: 2 }, apiKeys: 1 },
+    topes: { porRol: { adminTienda: 2 }, apiKeys: 1 },
     modulos: ["analitica"],
     // SLT-66 R28: el plan que se asigna tiene costo concreto (design §9.3); lo que se afirma no cambia.
-    precio: { tipo: "monto", mensual: "1000.00", anual: null },
+    precio: { tipo: "monto", mensual: "1000.00", descuentos: {} },
     costoPorOrden: "100.00",
+    costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
     archivado: false,
     ...extra,
   };
 }
 
 const AVISOS: TopeExcedido[] = [
-  { organizacionId: EMPRESA, empresa: "Mensajería Uno", tope: "ordenes", usados: 3, maximo: 2 },
   { organizacionId: EMPRESA, empresa: "Mensajería Uno", tope: "adminTienda", usados: 3, maximo: 2 },
   { organizacionId: EMPRESA, empresa: "Mensajería Uno", tope: "api_keys", usados: 2, maximo: 1 },
 ];
@@ -54,11 +59,14 @@ function doble() {
     crear: vi.fn<IPlanesRepository["crear"]>(async () => PLAN),
     editar: vi.fn<IPlanesRepository["editar"]>(async () => ({ estado: "not_found" })),
     archivar: vi.fn<IPlanesRepository["archivar"]>(async () => ({ estado: "not_found" })),
-    asignar: vi.fn<IPlanesRepository["asignar"]>(async () => ({ estado: "ok", cambio: true, avisos: [] })),
-    vistaPreviaAsignacion: vi.fn<IPlanesRepository["vistaPreviaAsignacion"]>(async () => ({
-      avisos: [],
-      siguienteCiclo: new Date("2026-11-29T18:00:00.000Z"),
-    })),
+    asignar: vi.fn<IPlanesRepository["asignar"]>(async () => ({ estado: "ok", cambio: true, avisos: [], pendiente: false })),
+    crearYAsignar: vi.fn<IPlanesRepository["crearYAsignar"]>(async () => ({ estado: "ok", planId: PLAN, avisos: [], pendiente: false })),
+    vistaPreviaConTopes: vi.fn<IPlanesRepository["vistaPreviaConTopes"]>(async () => null),
+    cambiarTipoCobro: vi.fn<IPlanesRepository["cambiarTipoCobro"]>(async () => ({ estado: "not_found" })),
+    vistaPreviaAsignacion: vi.fn<IPlanesRepository["vistaPreviaAsignacion"]>(async () => ({ avisos: [] })),
+    cancelarCambioEmpresa: vi.fn<IPlanesRepository["cancelarCambioEmpresa"]>(async () => ({ estado: "not_found" })),
+    aplicarCambioDeEmpresa: vi.fn<IPlanesRepository["aplicarCambioDeEmpresa"]>(async () => ({ estado: "sin_pendiente" })),
+    cambiosDeEmpresaVencidos: vi.fn<IPlanesRepository["cambiosDeEmpresaVencidos"]>(async () => []),
     cancelarCambio: vi.fn<IPlanesRepository["cancelarCambio"]>(async () => ({ estado: "not_found" })),
     programarCambio: vi.fn<IPlanesRepository["programarCambio"]>(async () => ({ estado: "not_found" })),
     aplicarCambioProgramado: vi.fn<IPlanesRepository["aplicarCambioProgramado"]>(async () => ({ estado: "sin_pendiente" })),
@@ -66,6 +74,7 @@ function doble() {
     repartirRecordatorio: vi.fn<IPlanesRepository["repartirRecordatorio"]>(async () => ({ estado: "sin_pendiente" })),
     destinatariosDelAviso: vi.fn<IPlanesRepository["destinatariosDelAviso"]>(async () => null),
     asignables: vi.fn<IPlanesRepository["asignables"]>(async () => []),
+    preciosQueRigenDesde: vi.fn<IPlanesRepository["preciosQueRigenDesde"]>(async () => []),
     publicos: vi.fn<IPlanesRepository["publicos"]>(async () => []),
     catalogo: vi.fn<IPlanesRepository["catalogo"]>(async () => []),
     detalle: vi.fn<IPlanesRepository["detalle"]>(async () => null),
@@ -76,18 +85,23 @@ function doble() {
 let repo: ReturnType<typeof doble>;
 
 function servicioA(ahora: Date): PlanesService {
-  return new PlanesService(repo, () => ahora);
+  return new PlanesService(repo, () => ahora, async () => ZONA_DE_CR);
 }
 
 function llamadasAlRepositorio(): number {
   return Object.values(repo).reduce((n, f) => n + f.mock.calls.length, 0);
 }
 
-const asignar = (inicioCiclo?: unknown, ahora = AHORA) =>
+const asignar = (inicioCiclo?: unknown, ahora = AHORA, extra: Record<string, unknown> = {}) =>
   servicioA(ahora).asignar(
     SUPERADMIN,
-    inicioCiclo === undefined ? { organizacionId: EMPRESA, planId: PLAN } : { organizacionId: EMPRESA, planId: PLAN, inicioCiclo },
+    inicioCiclo === undefined
+      ? { organizacionId: EMPRESA, planId: PLAN, tipoCobro: "mensual", ...extra }
+      : { organizacionId: EMPRESA, planId: PLAN, inicioCiclo, tipoCobro: "mensual", ...extra },
   );
+
+/** SLT-86: el `EfectoElegido` que el servicio pasa al repositorio. */
+const inicio = (fecha: string, elegida = true) => ({ clase: "inicio", fecha, desde: new Date(`${fecha}T06:00:00.000Z`), elegida });
 
 const previsualizar = (inicioCiclo: unknown, actor: Actor | null = SUPERADMIN, ahora = AHORA) =>
   servicioA(ahora).previsualizarAsignacion(actor, { organizacionId: EMPRESA, planId: PLAN, inicioCiclo });
@@ -96,33 +110,29 @@ beforeEach(() => {
   repo = doble();
 });
 
-describe("SLT-58 — R29: la fecha de inicio es opcional; sin ella, SL-24 R9", () => {
-  it("sin fecha, el repositorio recibe «sin fecha»: la llamada de SL-24 con tres argumentos", async () => {
+describe("SLT-58 — R29: la fecha de inicio es opcional; SLT-86 R2: siempre entra a las 00:00", () => {
+  it("sin fecha, el repositorio recibe hoy sin elegir (rige desde hoy y conserva el rechazo por topes, P14), el tipo y el reloj", async () => {
     expect(await asignar()).toEqual({ estado: "ok", planId: PLAN, cambio: true, avisos: [], vigenteDesde: null });
     expect(repo.asignar).toHaveBeenCalledTimes(1);
-    expect(repo.asignar.mock.calls[0]).toEqual([EMPRESA, PLAN, "u-sa"]);
-    expect(repo.asignar.mock.calls[0]).toHaveLength(3);
+    expect(repo.asignar.mock.calls[0]).toEqual([EMPRESA, PLAN, "u-sa", inicio("2026-10-29", false), "mensual", AHORA]);
   });
 
-  it("con «hoy», el ancla es el instante de la asignación (P9); con otra fecha, sus 00:00 de la plataforma", async () => {
-    await asignar("2026-10-29");
-    expect(repo.asignar).toHaveBeenLastCalledWith(EMPRESA, PLAN, "u-sa", { fecha: "2026-10-29", ancla: "ahora" });
-    await asignar("2026-10-14");
-    expect(repo.asignar).toHaveBeenLastCalledWith(EMPRESA, PLAN, "u-sa", {
-      fecha: "2026-10-14",
-      ancla: new Date("2026-10-14T06:00:00.000Z"),
-    });
-    await asignar("2026-11-05");
-    expect(repo.asignar).toHaveBeenLastCalledWith(EMPRESA, PLAN, "u-sa", {
-      fecha: "2026-11-05",
-      ancla: new Date("2026-11-05T06:00:00.000Z"),
-    });
+  it("R2: «hoy», una fecha pasada y una futura entran a las 00:00 de la plataforma de esa fecha", async () => {
+    for (const fecha of ["2026-10-29", "2026-10-14", "2026-11-05"]) {
+      await asignar(fecha);
+      expect(repo.asignar).toHaveBeenLastCalledWith(EMPRESA, PLAN, "u-sa", inicio(fecha), "mensual", AHORA);
+    }
   });
 
   it("«hoy» es la fecha de la plataforma, no la UTC: a las 23:00 del 29 en la plataforma ya es 30 en UTC", async () => {
     const tarde = new Date("2026-10-30T05:00:00.000Z");
-    await asignar("2026-10-29", tarde);
-    expect(repo.asignar).toHaveBeenLastCalledWith(EMPRESA, PLAN, "u-sa", { fecha: "2026-10-29", ancla: "ahora" });
+    await asignar(undefined, tarde);
+    expect(repo.asignar).toHaveBeenLastCalledWith(EMPRESA, PLAN, "u-sa", inicio("2026-10-29", false), "mensual", tarde);
+  });
+
+  it("con fecha futura, el repositorio lo deja pendiente y `vigenteDesde` vuelve con la fecha elegida", async () => {
+    repo.asignar.mockResolvedValueOnce({ estado: "ok", cambio: true, avisos: [], pendiente: true });
+    expect(await asignar("2026-11-05")).toEqual({ estado: "ok", planId: PLAN, cambio: true, avisos: [], vigenteDesde: "2026-11-05" });
   });
 });
 
@@ -180,10 +190,23 @@ describe("SLT-58 — R31: la fecha solo en la primera asignación", () => {
     expect(repo.asignar).not.toHaveBeenCalled();
   });
 
-  it("cambiar de plan sin fecha sigue como SL-24 (P2a)", async () => {
+  it("SLT-86 R16: cambiar de plan sin fecha de efecto es validation_error en vigenteDesde, sin llamar a asignar", async () => {
     repo.empresa.mockResolvedValue({ id: EMPRESA, nombre: "Mensajería Uno", planId: randomUUID() });
-    expect((await asignar()).estado).toBe("ok");
-    expect(repo.asignar.mock.calls[0]).toEqual([EMPRESA, PLAN, "u-sa"]);
+    expect(await asignar()).toEqual({ estado: "validation_error", fieldErrors: { vigenteDesde: ["Elige desde qué fecha rige el cambio."] } });
+    expect(repo.asignar).not.toHaveBeenCalled();
+  });
+
+  it("SLT-86 R16: con fecha de efecto, el cambio llega al repositorio como `cambio` a las 00:00 de esa fecha", async () => {
+    repo.empresa.mockResolvedValue({ id: EMPRESA, nombre: "Mensajería Uno", planId: randomUUID() });
+    expect((await asignar(undefined, AHORA, { vigenteDesde: "2026-11-01" })).estado).toBe("ok");
+    expect(repo.asignar.mock.calls[0]).toEqual([
+      EMPRESA,
+      PLAN,
+      "u-sa",
+      { clase: "cambio", fecha: "2026-11-01", desde: new Date("2026-11-01T06:00:00.000Z"), elegida: true },
+      "mensual",
+      AHORA,
+    ]);
   });
 
   it("carrera: si el repositorio, bajo cerrojo, ve que ya tenía plan, su validation_error llega tal cual", async () => {
@@ -193,8 +216,8 @@ describe("SLT-58 — R31: la fecha solo en la primera asignación", () => {
 });
 
 describe("SLT-58 — R36, R42: los topes ya pasados viajan en `avisos` del ok", () => {
-  it("órdenes, un rol y las API keys pasados: ok con los tres avisos", async () => {
-    repo.asignar.mockResolvedValueOnce({ estado: "ok", cambio: true, avisos: AVISOS });
+  it("un rol y las API keys pasados: ok con los dos avisos (SLT-86 R8: sin órdenes)", async () => {
+    repo.asignar.mockResolvedValueOnce({ estado: "ok", cambio: true, avisos: AVISOS, pendiente: false });
     expect(await asignar("2026-10-14")).toEqual({
       estado: "ok",
       planId: PLAN,
@@ -247,20 +270,14 @@ describe("SLT-58 — R37: vista previa de la primera asignación", () => {
     expect(repo.vistaPreviaAsignacion).toHaveBeenCalledTimes(1);
   });
 
-  it("ok: los avisos del repositorio y el siguiente ciclo como fecha de la plataforma (P10)", async () => {
-    repo.vistaPreviaAsignacion.mockResolvedValueOnce({ avisos: AVISOS, siguienteCiclo: new Date("2026-11-14T06:00:00.000Z") });
-    expect(await previsualizar("2026-10-14")).toEqual({ estado: "ok", avisos: AVISOS, siguienteCiclo: "2026-11-14" });
-    expect(repo.vistaPreviaAsignacion).toHaveBeenCalledWith(EMPRESA, PLAN, {
-      fecha: "2026-10-14",
-      ancla: new Date("2026-10-14T06:00:00.000Z"),
-    });
+  it("ok: los avisos del repositorio, sin siguiente ciclo (SLT-86 R8: solo usuarios y API keys)", async () => {
+    repo.vistaPreviaAsignacion.mockResolvedValueOnce({ avisos: AVISOS });
+    expect(await previsualizar("2026-10-14")).toEqual({ estado: "ok", avisos: AVISOS });
+    expect(repo.vistaPreviaAsignacion).toHaveBeenCalledWith(EMPRESA, PLAN);
     expect(repo.asignar).not.toHaveBeenCalled();
   });
 
   it("textos de los avisos (design §6.5, P15)", () => {
-    expect(ordenesYaPasadas("3.200", "3.000", "2026-11-14")).toBe(
-      "La empresa ya lleva 3.200 de 3.000 órdenes en este ciclo: no podrá crear más hasta 2026-11-14.",
-    );
     expect(rolYaPasado("3", "2", "adminTienda")).toBe(
       "La empresa ya tiene 3 de 2 Admin de tienda: no podrá activar ni crear más hasta bajar del tope.",
     );

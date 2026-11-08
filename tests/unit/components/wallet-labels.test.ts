@@ -78,6 +78,11 @@ const CONCEPTOS_ESPERADOS: Record<WalletMovimientoCategoria, string> = {
   // SLT-73 (design §1.2): la diferencia de la satelite al conciliar, en los dos sentidos.
   egreso_diferencia_satelite: "Diferencia de la satélite (entregó menos)",
   ingreso_diferencia_satelite: "Diferencia de la satélite (entregó más)",
+  // SLT-94 (R36): el cobro de fulfillment por paquete y su devolución.
+  ingreso_fulfillment: "Fulfillment cobrado a la tienda",
+  ingreso_iva_fulfillment: "IVA del fulfillment cobrado a la tienda",
+  egreso_reverso_fulfillment: "Devolución de fulfillment a la tienda",
+  egreso_reverso_iva_fulfillment: "Devolución del IVA del fulfillment a la tienda",
 };
 
 /** design §7.3 — los 13 origenes del libro de la caja (+ el de la 457: 14). */
@@ -101,17 +106,19 @@ const ORIGENES_ESPERADOS: Record<WalletOrigenTipo, string> = {
   incentivo_mensajero: "Incentivo a un mensajero",
   // SLT-73 (design §1.2): el evento de conciliacion que movio la diferencia de la satelite.
   conciliacion_bodega_ajuste: "Diferencia de la satélite",
+  // SLT-94 (R36): el cobro y la devolución de fulfillment nombran la orden.
+  orden_fulfillment: "Orden",
 };
 
 describe("461 — CATEGORIA_LABEL: cada concepto de la caja, desde la empresa (R42, design §7.2)", () => {
-  it("dice exactamente los 30 textos aprobados (23 de la 461 + 2 de la 457 + 2 de la 458-B + 1 de SL-45 + 2 de SLT-73), y el seed es exactamente esas 30 claves", () => {
+  it("dice exactamente los 34 textos aprobados (23 de la 461 + 2 de la 457 + 2 de la 458-B + 1 de SL-45 + 2 de SLT-73 + 4 de SLT-94), y el seed es exactamente esas 34 claves", () => {
     expect(CATEGORIA_LABEL).toEqual(CONCEPTOS_ESPERADOS);
     // Anti-vacuidad: la igualdad de arriba compara contra una lista escrita a mano; esta linea
     // afirma que esa lista cubre el catalogo ENTERO y no un subconjunto que casara por casualidad.
     expect([...WALLET_MOVIMIENTO_CATEGORIA_SEED].sort()).toEqual(
       Object.keys(CONCEPTOS_ESPERADOS).sort(),
     );
-    expect(WALLET_MOVIMIENTO_CATEGORIA_SEED).toHaveLength(30);
+    expect(WALLET_MOVIMIENTO_CATEGORIA_SEED).toHaveLength(34);
   });
 
   it("⭑ 457 (R45/R53): el pago de una tienda a la empresa y su anulacion, con los nombres reservados por la 461", () => {
@@ -148,8 +155,8 @@ describe("461 — CATEGORIA_LABEL: cada concepto de la caja, desde la empresa (R
     );
   });
 
-  it("el filtro por concepto ofrece los 30 con SU nombre (R42; 457/R45; 458-B; SL-45; SLT-73), tras la opcion «todas»", () => {
-    // 458-A (TA.3): el filtro ofrece los conceptos CON movimientos; con los 30 presentes, los 30.
+  it("el filtro por concepto ofrece los 34 con SU nombre (R42; 457/R45; 458-B; SL-45; SLT-73; SLT-94), tras la opcion «todas»", () => {
+    // 458-A (TA.3): el filtro ofrece los conceptos CON movimientos; con los 34 presentes, los 34.
     const lista = opcionesDeConceptos(
       WALLET_MOVIMIENTO_CATEGORIA_SEED.map((categoria) => ({ categoria, movimientos: 1 })),
       CATEGORIA_LABEL,
@@ -158,7 +165,7 @@ describe("461 — CATEGORIA_LABEL: cada concepto de la caja, desde la empresa (R
     );
     expect(lista[0]).toEqual({ value: "", label: "Todas las categorías" });
     const opciones = new Map(lista.slice(1).map((o) => [o.value, o.label]));
-    expect(opciones.size).toBe(30);
+    expect(opciones.size).toBe(34);
     for (const [clave, texto] of Object.entries(CONCEPTOS_ESPERADOS)) {
       expect(opciones.get(clave), clave).toBe(`${texto} (1)`);
     }
@@ -169,7 +176,7 @@ describe("461 — ORIGEN_LABEL: cada origen de la caja, desde la empresa (R42, d
   it("dice exactamente los 16 textos aprobados (13 de la 461 + 1 de la 457 + 1 de SLT-68 + 1 de SLT-73), y el seed es exactamente esas 16 claves", () => {
     expect(ORIGEN_LABEL).toEqual(ORIGENES_ESPERADOS);
     expect([...WALLET_ORIGEN_TIPO_SEED].sort()).toEqual(Object.keys(ORIGENES_ESPERADOS).sort());
-    expect(WALLET_ORIGEN_TIPO_SEED).toHaveLength(16);
+    expect(WALLET_ORIGEN_TIPO_SEED).toHaveLength(17);
   });
 
   it("las dos lineas del cobro se distinguen: la completada dice que se completo al corregir (R37)", () => {
@@ -247,6 +254,8 @@ describe("461 — el resto de textos de la caja que esta ficha toca (R42/R50, de
       // SL-39 (design §2.1): el reverso del IVA sale de las filas nombradas; va al bloque del IVA.
       // SL-45 (R24): la fila del pago a la plataforma, con el nombre que le da el requisito.
       egreso_pago_plataforma: "Pago a la plataforma",
+      // SLT-94 (R26/R37): las devoluciones del fulfillment, en plural y desde la empresa.
+      egreso_reverso_fulfillment: "Devoluciones de fulfillment a una tienda",
     });
   });
 });
@@ -266,7 +275,7 @@ describe("SL-39 R10 — la ganancia sin IVA, en palabras", () => {
   it("R6: la region «IVA cobrado» y su pista", () => {
     expect(CAJA_RESUMEN_LABEL.iva).toBe("IVA cobrado");
     expect(CAJA_RESUMEN_LABEL.ivaPista).toBe(
-      "IVA que se les cobró a las tiendas sobre el flete y la comisión. No es ganancia.",
+      "IVA que se les cobró a las tiendas sobre el flete, el fulfillment y la comisión. No es ganancia.",
     );
   });
 
@@ -323,7 +332,7 @@ describe("SL-39 R10 — la ganancia sin IVA, en palabras", () => {
       {
         id: "iva",
         rotulo: "IVA cobrado",
-        pista: "IVA que se les cobró a las tiendas sobre el flete y la comisión. No es ganancia.",
+        pista: "IVA que se les cobró a las tiendas sobre el flete, el fulfillment y la comisión. No es ganancia.",
         valor: "416.00",
         signo: "positivo",
       },
@@ -339,7 +348,7 @@ describe("SL-39 R10 — la ganancia sin IVA, en palabras", () => {
         rotulo: "Lo que la empresa debe a la plataforma",
         // SL-45 (R1): la pista de «debe», escrita a mano.
         pista:
-          "Lo que la plataforma cobra por cada orden creada, menos las anuladas y lo ya pagado. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.",
+          "Lo que la plataforma cobra por las órdenes de la empresa (al crearlas o, con plan porcentual, al llegar a un estado final), menos las anuladas y lo ya pagado. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.",
         valor: "500.00",
         signo: null,
       },
@@ -459,7 +468,7 @@ describe("SL-45 R1–R3 — el rótulo, la pista y el importe de la deuda, por e
     expect(leer({ deuda: "500.00", estado: "debe", importe: "500.00" })).toEqual({
       rotulo: "Lo que la empresa debe a la plataforma",
       pista:
-        "Lo que la plataforma cobra por cada orden creada, menos las anuladas y lo ya pagado. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.",
+        "Lo que la plataforma cobra por las órdenes de la empresa (al crearlas o, con plan porcentual, al llegar a un estado final), menos las anuladas y lo ya pagado. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.",
       valor: "500.00",
       signo: null,
     });
@@ -468,7 +477,7 @@ describe("SL-45 R1–R3 — el rótulo, la pista y el importe de la deuda, por e
   it("R2: «al día» — el importe 0.00 y la pista de estar al día", () => {
     expect(leer({ deuda: "0.00", estado: "al_dia", importe: "0.00" })).toEqual({
       rotulo: "Lo que la empresa debe a la plataforma",
-      pista: "La empresa está al día con la plataforma. Cada orden nueva suma su cobro aquí.",
+      pista: "La empresa está al día con la plataforma. Cada orden suma su cobro aquí cuando se cobra.",
       valor: "0.00",
       signo: null,
     });

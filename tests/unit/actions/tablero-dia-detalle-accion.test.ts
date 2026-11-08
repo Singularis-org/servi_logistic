@@ -8,6 +8,7 @@ import { ordenDeListado } from "@/tests/fixtures/orden-detalle-dia";
 
 import { HistorialDoble, OrdenesDoble, RepositorioDoble } from "../services/_doble-tablero-dia";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Feature 192 (B7.7) — R42, R62, R63.
 //
 // LOS TRES CASOS MALOS SON INDISTINGUIBLES, y ese es todo el punto de este archivo:
@@ -55,7 +56,7 @@ function montar(): { repo: RepositorioDoble; service: TableroDiaService } {
   // asi que el caso "el mensajero de otra zona SI existe" sigue devolviendo una fila de verdad
   // y no un vacio que pareceria confirmar lo contrario.
   const ordenes = new OrdenesDoble(new Map([["o1", ordenDeListado({ id: "o1" })]]));
-  return { repo, service: new TableroDiaService(repo, ordenes, new HistorialDoble()) };
+  return { repo, service: new TableroDiaService(repo, ordenes, new HistorialDoble(), undefined, reglasPaisFijas()) };
 }
 
 /** La respuesta con el id pedido normalizado: lo unico que legitimamente varia es el eco. */
@@ -122,7 +123,7 @@ describe("leerDetalleMensajeroDia — los tres casos malos", () => {
     );
     const ordenes = new OrdenesDoble();
     const historial = new HistorialDoble();
-    const service = new TableroDiaService(repo, ordenes, historial);
+    const service = new TableroDiaService(repo, ordenes, historial, undefined, reglasPaisFijas());
 
     for (const id of [INEXISTENTE, DE_OTRA_ZONA, SIN_ORDENES_HOY]) await pedir(id, service);
 

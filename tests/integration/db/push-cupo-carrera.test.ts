@@ -16,6 +16,7 @@ import {
   crearPrismaDeTestEnEsquema,
   etiquetasDeEnum,
 } from "./_postgres-real";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // FICHA 410 (T1.5, R7) — EL CUPO DEL DIA SOBREVIVE A DOS EMISIONES SIMULTANEAS.
 //
@@ -290,6 +291,8 @@ describeSiHayBase("410/R7 — dos emisiones SIMULTANEAS dejan UN cupo y UN encol
         cola,
         hayCanal: () => true,
         now: () => AHORA,
+        // SLT-42 (R22): el dia del cupo sale de la zona del pais de la empresa (aqui, Costa Rica).
+        reglasPais: reglasPaisFijas(),
       });
 
     // Las dos arrancan SIN esperar a la otra: es la carrera, no una secuencia. Cada una lleva su
@@ -356,6 +359,8 @@ describeSiHayBase("410/R7 — dos emisiones SIMULTANEAS dejan UN cupo y UN encol
         cola,
         hayCanal: () => true,
         now: () => AHORA,
+        // SLT-42 (R22): el dia del cupo sale de la zona del pais de la empresa (aqui, Costa Rica).
+        reglasPais: reglasPaisFijas(),
       });
 
     const [a, b] = await Promise.all([

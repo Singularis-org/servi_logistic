@@ -47,6 +47,11 @@ const RUN = randomUUID().replace(/-/g, "").slice(0, 10);
 const RAIZ = path.resolve(__dirname, "../../..");
 const MIGRACION = path.join(RAIZ, "db", "migrations", "20261026090000_usuario_unico_por_empresa");
 const sqlDe = (archivo: "migration.sql" | "down.sql") => readFileSync(path.join(MIGRACION, archivo), "utf8");
+// SLT-42 (R13): la migracion que vino despues rehace `usuario_cedula_key` por empresa Y TIPO. La ida y
+// vuelta de SL-18 se mide pasando antes por su down, que deja el indice como lo dejo SL-18.
+const MIGRACION_SLT42 = path.join(RAIZ, "db", "migrations", "20261107120200_slt42_usuario_documento_unico_por_tipo");
+const sqlDeSlt42 = (archivo: "migration.sql" | "down.sql") =>
+  readFileSync(path.join(MIGRACION_SLT42, archivo), "utf8");
 
 /* -------------------------------------------------------------------------- */
 /* Tabla real                                                                  */
@@ -363,6 +368,13 @@ const CON_LA_MIGRACION = [
   "CREATE UNIQUE INDEX usuario_email_key ON S.usuario USING btree (organizacion_id, email) NULLS NOT DISTINCT",
 ].sort();
 
+/** Lo que hay hoy en `public`: lo de SL-18, con el documento unico por empresa y tipo (SLT-42, R13). */
+const CON_SLT42 = [
+  "CREATE INDEX usuario_email_idx ON S.usuario USING btree (email)",
+  "CREATE UNIQUE INDEX usuario_cedula_key ON S.usuario USING btree (organizacion_id, tipo_identificacion_id, cedula) NULLS NOT DISTINCT",
+  "CREATE UNIQUE INDEX usuario_email_key ON S.usuario USING btree (organizacion_id, email) NULLS NOT DISTINCT",
+].sort();
+
 describeSiHayBase("SL-18 — los indices de la migracion, sobre un clon de usuario", () => {
   let c: Conexion;
   const esquema = nuevoEsquema("uq");
@@ -392,7 +404,7 @@ describeSiHayBase("SL-18 — los indices de la migracion, sobre un clon de usuar
   }, 120_000);
 
   it("control: en public quedan los compuestos con organizacion_id primero, NULLS NOT DISTINCT, y usuario_email_idx", async () => {
-    expect(await fotoDeIndices(c, esquema)).toEqual(CON_LA_MIGRACION);
+    expect(await fotoDeIndices(c, esquema)).toEqual(CON_SLT42);
   });
 
   it("R3: dos cuentas SIN empresa con el mismo email chocan en usuario_email_key (NULLS NOT DISTINCT)", async () => {
@@ -453,14 +465,21 @@ describeSiHayBase("SL-18 — R4: ida y vuelta de `20261026090000_usuario_unico_p
   }, 120_000);
 
   it("R4: sin repetidos, down.sql deja los dos unicos globales de antes; migration.sql vuelve a dejarlos por empresa", async () => {
-    expect(fotoConLaMigracion).toEqual(CON_LA_MIGRACION);
+    expect(fotoConLaMigracion).toEqual(CON_SLT42);
     await insertarEnClon(c, esquema, { email: `uno-${RUN}@x.test`, cedula: `uno-${RUN}`, organizacionId: "o1" });
     await insertarEnClon(c, esquema, { email: `dos-${RUN}@x.test`, cedula: `dos-${RUN}`, organizacionId: "o2" });
+
+    // SLT-42 hacia atras: el indice vuelve a como lo dejo SL-18.
+    await c.query(sqlDeSlt42("down.sql"));
+    expect(await fotoDeIndices(c, esquema)).toEqual(CON_LA_MIGRACION);
 
     await c.query(sqlDe("down.sql"));
     expect(await fotoDeIndices(c, esquema)).toEqual(GLOBALES_DEL_DOWN);
 
     await c.query(sqlDe("migration.sql"));
+    expect(await fotoDeIndices(c, esquema)).toEqual(CON_LA_MIGRACION);
+
+    await c.query(sqlDeSlt42("migration.sql"));
     expect(await fotoDeIndices(c, esquema)).toEqual(fotoConLaMigracion);
   });
 

@@ -549,6 +549,7 @@ const LISTADOS: Listado[] = [
           totalesAgregados={TOTALES}
           totalPagoMensajeroAgregado="0.00"
           totalIngresoBodegaRechazosAgregado="0.00"
+          incluyeModeloNuevoAgregado={false}
           totalNetoAgregado="0.00"
           totalCentralDebeAgregado="0.00"
           puedesSolicitar={false}

@@ -155,10 +155,11 @@ function entradaDePlan(nombre: string, costoPorOrden: string | null): CrearPlanI
     nombre: `SLT66 ${nombre} ${RUN}`,
     visibilidad: "publico",
     organizacionId: null,
-    topes: { ordenesPorCiclo: null, porRol: {}, apiKeys: null },
+    topes: { porRol: {}, apiKeys: null },
     modulos: [],
-    precio: { tipo: "monto", mensual: "50000.00", anual: null },
+    precio: { tipo: "monto", mensual: "50000.00", descuentos: {} },
     costoPorOrden,
+    costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
   };
 }
 
@@ -166,11 +167,12 @@ function entradaDePlan(nombre: string, costoPorOrden: string | null): CrearPlanI
 async function versionDeP(cambio: Partial<VersionPlan>): Promise<VersionPlan> {
   const actual = await planes().plan(P);
   if (actual === null) throw new Error("P no existe");
-  return { nombre: actual.nombre, topes: actual.topes, modulos: actual.modulos, precio: actual.precio, costoPorOrden: actual.costoPorOrden, ...cambio };
+  return { nombre: actual.nombre, topes: actual.topes, modulos: actual.modulos, precio: actual.precio, costoPorOrden: actual.costoPorOrden, costoPorOrdenPorcentual: actual.costoPorOrdenPorcentual, ...cambio };
 }
 
 async function editarP(cambio: Partial<VersionPlan>): Promise<void> {
-  const r = await planes().editar(P, await versionDeP(cambio), ACTOR);
+  // SLT-86 (R15): un precio nuevo regiría desde las 00:00 de hoy; aquí no cambia el cargo de las órdenes (R13).
+  const r = await planes().editar(P, await versionDeP(cambio), ACTOR, new Date());
   expect(r, JSON.stringify(r)).toMatchObject({ estado: "ok", cambio: true });
 }
 
@@ -325,15 +327,17 @@ describeSiHayBase("SLT-66 — el cargo de cada orden con el costo por orden del 
   });
 
   it("R14: P con descuento anual del 20 %; B quita la excepción y crea p2 → 120.00 «plan», sin descuento", async () => {
-    await editarP({ precio: { tipo: "monto", mensual: "50000.00", anual: { tipo: "descuento", porcentaje: "20" } } });
+    // SLT-86 (R13, R33): el descuento anual de antes es ahora el descuento del período anual.
+    await editarP({ precio: { tipo: "monto", mensual: "50000.00", descuentos: { anual: { tipo: "porcentaje", porcentaje: "20" } } } });
     expect(await tarifas().fijarDeEmpresa(org(B), null)).toBe(true);
     await crear(B, "p2", "conGuia");
     esperado.p2 = [cargo("120.00", "plan")];
     await todasComoSeEspera();
   });
 
-  it("R14: P con base negociable; B crea p3 → 120.00 «plan» (la forma del costo base no cuenta)", async () => {
-    await editarP({ precio: { tipo: "negociable" } });
+  it("R14: P con base sin precio; B crea p3 → 120.00 «plan» (la forma del costo base no cuenta)", async () => {
+    // D1 (ajuste planes-custom): «negociable» ya no existe; «sin precio» es la otra forma sin monto.
+    await editarP({ precio: { tipo: "sin_precio" } });
     await crear(B, "p3", "sinGuia");
     esperado.p3 = [cargo("120.00", "plan")];
     await todasComoSeEspera();

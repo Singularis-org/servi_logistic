@@ -9,6 +9,7 @@ import {
 } from "@/lib/types/wallet";
 import { registrarCobroTiendaSchema } from "@/lib/types/wallet-tienda";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FICHA 461 / R66 y R70 (auditoria de la wallet, D2 y D3) — el BORDE.
 // ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -31,9 +32,9 @@ function campos(r: { success: boolean; error?: { flatten(): { fieldErrors: Recor
 
 describe("461/R66 — la clave de idempotencia es OBLIGATORIA en los tres registros manuales", () => {
   it.each([
-    ["cobro de la empresa a una tienda", registrarCobroTiendaSchema, COBRO],
-    ["correccion de caja", registrarMovimientoManualSchema, CORRECCION],
-    ["sueldo o gasto de la empresa", registrarEgresoAdministrativoSchema, GASTO],
+    ["cobro de la empresa a una tienda", registrarCobroTiendaSchema(ZONA_CR), COBRO],
+    ["correccion de caja", registrarMovimientoManualSchema(ZONA_CR), CORRECCION],
+    ["sueldo o gasto de la empresa", registrarEgresoAdministrativoSchema(ZONA_CR), GASTO],
   ])("%s: sin clave -> validation_error bajo `claveIdempotencia`, y con ella pasa TAL CUAL", (_n, schema, base) => {
     const sin = schema.safeParse(base);
     expect(sin.success).toBe(false);
@@ -45,9 +46,9 @@ describe("461/R66 — la clave de idempotencia es OBLIGATORIA en los tres regist
   });
 
   it.each([
-    ["cobro de la empresa a una tienda", registrarCobroTiendaSchema, COBRO],
-    ["correccion de caja", registrarMovimientoManualSchema, CORRECCION],
-    ["sueldo o gasto de la empresa", registrarEgresoAdministrativoSchema, GASTO],
+    ["cobro de la empresa a una tienda", registrarCobroTiendaSchema(ZONA_CR), COBRO],
+    ["correccion de caja", registrarMovimientoManualSchema(ZONA_CR), CORRECCION],
+    ["sueldo o gasto de la empresa", registrarEgresoAdministrativoSchema(ZONA_CR), GASTO],
   ])("%s: una clave que no es uuid tambien muere en el borde", (_n, schema, base) => {
     for (const mala of ["", "1", "doble-clic", "6b1f0d2e-7c3a-4d5b-9e8f"]) {
       const r = schema.safeParse({ ...base, claveIdempotencia: mala });

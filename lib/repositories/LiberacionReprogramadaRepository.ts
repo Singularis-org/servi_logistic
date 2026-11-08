@@ -19,8 +19,6 @@ import { ORIGEN_TIPOS_VISITA_REAL } from "@/lib/types/orden-historial";
 // El `resultado` de la gestion ya viaja DENTRO de `GESTION_REPROGRAMADA_VIGENTE.where`: importarlo
 // suelto ademas dejaria dos formas de nombrar lo mismo en este archivo.
 import { GESTION_REPROGRAMADA_VIGENTE } from "@/lib/repositories/gestion-reprogramada-vigente";
-import { fechaRepartoComoTexto } from "@/lib/utils/dia-reparto";
-import { inicioDelDiaCREnUtc, inicioDelDiaSiguienteCREnUtc } from "@/lib/utils/fecha-cr";
 
 // Estatus de ORIGEN de la liberacion (una orden reprogramada). Valor de catalogo ya sembrado;
 // esta feature NO agrega estados. (El `resultado` de la gestion vive en la correlacion compartida.)
@@ -248,15 +246,17 @@ export class LiberacionReprogramadaRepository implements ILiberacionReprogramada
   }
 
   /**
-   * R15/R16: ordenes liberadas HOY (CR) de una bodega + estatus destino + su zona. Excluye borradas.
-   * `hoyCR` llega en la convencion `@db.Date` (`startOfDayCR`, medianoche UTC), pero
-   * `liberada_reprogramada_at` es un `timestamp`: la ventana es el dia de pared de CR,
-   * `[T06:00Z, T06:00Z + 1 dia)`. Con `[hoyCR, +24 h)` lo liberado de 18:00 a 24:00 CR no salia (SL-44).
+   * R15/R16: ordenes liberadas HOY de una bodega + estatus destino + su zona. Excluye borradas.
+   * `liberada_reprogramada_at` es un `timestamp`: la ventana es el dia de pared de la zona del pais
+   * de la empresa, `[00:00 locales, 00:00 locales del dia siguiente)`. Con `[medianoche UTC, +24 h)`
+   * lo liberado por la noche no salia (SL-44). SLT-42 (R22, R23): la ventana LLEGA calculada.
    */
-  async findLiberadasHoy(filter: LiberadaHoyFilter, hoyCR: Date): Promise<LiberadaHoyRow[]> {
-    const fecha = fechaRepartoComoTexto(hoyCR);
-    const start = inicioDelDiaCREnUtc(fecha);
-    const end = inicioDelDiaSiguienteCREnUtc(fecha);
+  async findLiberadasHoy(
+    filter: LiberadaHoyFilter,
+    dia: { desde: Date; hasta: Date },
+  ): Promise<LiberadaHoyRow[]> {
+    const start = dia.desde;
+    const end = dia.hasta;
     const rows = await this.prisma.orden.findMany({
       where: {
         zonaId: filter.zonaId,

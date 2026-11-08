@@ -24,6 +24,8 @@ import { EMPRESA } from "@/lib/config/marca";
  * tienda no es el de un mensajero (a ella se le DEBE lo cobrado a sus clientes y se le COBRAN los
  * servicios), así que «Total devengado / Total pagado / Cuenta por pagar» no aplica.
  */
+import { conceptoDeMovimientoCaja } from "@/lib/constants/wallet-rotulos";
+import type { FilaEstadoCuentaDTO } from "@/lib/types/estado-cuenta";
 import type { WalletTiendaMovimientoCategoria } from "@/lib/types/wallet-tienda";
 
 export {
@@ -62,9 +64,36 @@ export const CATEGORIA_TIENDA_LABEL: Record<WalletTiendaMovimientoCategoria, str
   // Ficha 458-B (design §2.3, D7): la anulación de un cobro por rechazo, flete e IVA por separado.
   flete_devolucion_anulado: "Cobro por devolución a origen anulado",
   iva_flete_devolucion_anulado: "IVA del cobro por devolución a origen anulado",
+  // SLT-94 (R36): el cobro de fulfillment por paquete y su devolución, con el MISMO texto que su
+  // contrapartida en el libro de la caja (`CATEGORIA_LABEL`), como los cargos del cierre.
+  fulfillment: "Fulfillment cobrado a la tienda",
+  iva_fulfillment: "IVA del fulfillment cobrado a la tienda",
+  fulfillment_anulado: "Devolución de fulfillment a la tienda",
+  iva_fulfillment_anulado: "Devolución del IVA del fulfillment a la tienda",
   ajuste_credito: "Corrección a favor de la tienda",
   ajuste_debito: "Corrección en contra de la tienda",
 };
+
+/**
+ * SLT-54 (R71, D38) — el cobro de un cierre con el modelo nuevo suma también reprogramado, novedad e
+ * incidente, así que «devolución a origen» sería falso. Sale de `conceptoDeMovimientoCaja`: estos cargos usan
+ * el MISMO texto que sus contrapartidas en el libro de la caja (design §7.2).
+ */
+const CATEGORIA_TIENDA_LABEL_MODELO_NUEVO: Partial<Record<WalletTiendaMovimientoCategoria, string>> = {
+  flete_devolucion: conceptoDeMovimientoCaja({ categoria: "ingreso_flete_devolucion", incluyeModeloNuevo: true }),
+  iva_flete_devolucion: conceptoDeMovimientoCaja({ categoria: "ingreso_iva_flete_devolucion", incluyeModeloNuevo: true }),
+};
+
+/**
+ * El concepto de UNA fila del estado de cuenta. `CATEGORIA_TIENDA_LABEL` sigue siendo el nombre de la categoría
+ * (lo promete «Registrar movimiento», R46); esto solo cambia la fila cuyo cierre incluye el modelo nuevo.
+ * Ausente se lee como viejo.
+ */
+export function conceptoDeFilaTienda(f: Pick<FilaEstadoCuentaDTO, "categoria" | "incluyeModeloNuevo">): string {
+  const categoria = f.categoria as WalletTiendaMovimientoCategoria;
+  const delNuevo = f.incluyeModeloNuevo === true ? CATEGORIA_TIENDA_LABEL_MODELO_NUEVO[categoria] : undefined;
+  return delNuevo ?? CATEGORIA_TIENDA_LABEL[categoria] ?? f.categoria;
+}
 
 
 /**

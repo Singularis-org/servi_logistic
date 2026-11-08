@@ -20,6 +20,7 @@ import {
   llamadasIntentos,
   type IntentosSvcDoble,
 } from "@/tests/fixtures/intentos-entrega";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 148 — unit del SERVICIO UNICO del manifiesto (T15). Dobles a mano, sin
 // Prisma ni HTTP: el service se instancia con repos falsos por constructor.
@@ -113,7 +114,7 @@ function build(
   );
   const zonaRepo = fakeZonaRepo(opts.central === undefined ? { id: "z-c", nombre: CENTRAL_NOMBRE } : opts.central);
   const intentos = opts.intentos ?? fakeIntentosEnLote();
-  const service = new ManifiestoService(repo, zonaRepo, intentos, () => AHORA);
+  const service = new ManifiestoService(repo, zonaRepo, intentos, () => AHORA, reglasPaisFijas());
   return { service, repo, lectura, prohibidas, zonaRepo, intentos };
 }
 

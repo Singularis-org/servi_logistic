@@ -1,6 +1,6 @@
 ---
 description: Interroga una feature del board, detecta las decisiones que omitiste y siembra su requirements.md
-argument-hint: <el key de la feature (QC-14)>
+argument-hint: <el key de la feature (PROY-14)>
 ---
 
 Vas a cerrar el alcance y las decisiones de una feature **antes** de que `spec_author` escriba,
@@ -40,18 +40,17 @@ Lee lo necesario para saber qué está ya decidido. No asumas:
 - `feature_list.json`: **solo esa ficha**, consultada por `key` (`docs/lectura.md`; el archivo
   no se lee entero) — `description` (el único campo que escribe el humano), `zone`,
   `complexity`, `depends_on`, `epic`, `assignee`.
-- `docs/architecture.md`: `> Dominio`, `> Preguntas abiertas del dominio` (las cuatro que son
-  caras de meter después), el patrón de capas y `> Dependencias de terceros`.
-- `docs/conventions.md` y `CHECKPOINTS.md`.
+- `docs/architecture.md`: `> Dominio` (y su `### Preguntas abiertas del dominio`, si el perfil
+  la tiene: son las decisiones caras de meter después), las capas o módulos y
+  `> Dependencias de terceros`.
+- `docs/conventions.md`, `CHECKPOINTS.md` y `docs/checkpoints-proyecto.md`.
 - `progress/features/<key>.md` (`> Evaluación`, `> Decisiones`, `> Preguntas abiertas`) y
   `grep "<key>" progress/deudas.md`. **Si la ficha ya tiene encargos o preguntas abiertas
   anotadas ahí, son la entrada del paso 3: no las reinventes.**
-- **Precedentes.** Las decisiones ya cerradas en los specs escritos (`specs/4-*`, `specs/10-*`,
-  `specs/11-*`). **Búscalas por `grep -i "decisiones cerradas"`, no por un heading exacto: el
-  formato ya diverge.** La 11 usa `## Decisiones cerradas (no reabrir)` con tabla; la 4 usa
-  `## Decisiones cerradas por el humano (<fecha>)` con lista numerada. Si buscas solo uno de los
-  dos te saltas medio repo — y la 4 es justo la que fija el borrado lógico y los identificadores
-  en inglés.
+- **Precedentes.** Las decisiones ya cerradas en los specs escritos. **Búscalas con
+  `grep -ril "decisiones cerradas" specs/`, no por un heading exacto**: el formato puede variar
+  entre specs (tabla en `## Decisiones cerradas (no reabrir)`, o una lista con fecha) y buscar
+  uno solo deja fuera el resto.
   Lo que ya se decidió una vez **no se vuelve a preguntar**: se propone como heredado, citando de
   qué feature viene, y solo se pregunta si esta feature tiene un motivo concreto para apartarse.
 - **Lo que ya existe.** Busca en el board, en `specs/` y en el código, como manda
@@ -61,52 +60,63 @@ Lee lo necesario para saber qué está ya decidido. No asumas:
 ## Paso 2 — Checklist de ejes de ambigüedad
 
 Recorre los ejes. Para cada uno decide: **¿la `description` ya lo resuelve?** Si sí, es un eje
-resuelto y no se pregunta. Si no, es un hueco. Los ejes salen de las preguntas que realmente han
-aparecido en los specs de este repo, no de una lista genérica.
+resuelto y no se pregunta. Si no, es un hueco. Los ejes salen de las preguntas que de verdad
+aparecieron al especificar en el proyecto de origen del arnés, no de una lista genérica. Si el
+perfil del proyecto ya fija una respuesta (`docs/architecture.md`, `docs/conventions.md`), el eje
+está resuelto: propónla como heredada.
 
-### Datos y persistencia (si la `zone` es `backend`)
+### Datos y persistencia (si la `zone` es `backend` o `fullstack`)
 
-1. **Obligatoriedad** de cada campo. Se preguntó en la 4 (teléfono y fecha de nacimiento).
-2. **Unicidad**, y si es sensible a mayúsculas. La 4 la fijó case-insensitive para correo y
-   usuario.
-3. **Tipo y precisión de los números**: ¿entero o decimal? ¿se admite negativo? Es pregunta
-   abierta viva de la 14. Nunca `float` para importes.
-4. **Borrado**: físico o lógico, y `created_at` / `updated_at` / `deleted_at`. La 4 lo fijó
-   lógico: propónlo heredado.
-5. **Conjunto cerrado**: ¿enum de Prisma, tabla propia o texto libre? ¿Tiene que crecer sin
-   migrar los datos ya guardados? Es lo que decidió el tipo de documento en la 4 y la
-   presentación en la 14.
-6. **Idioma de los identificadores** de la DB. La 4 los fijó en inglés: propónlo heredado.
+1. **Obligatoriedad** de cada campo.
+2. **Unicidad**, y si es sensible a mayúsculas (correo, nombre de usuario, códigos).
+3. **Tipo y precisión de los números**: ¿entero o decimal? ¿se admite negativo? Nunca `float`
+   para importes ni cantidades que se suman.
+4. **Borrado**: físico o lógico, y `created_at` / `updated_at` / `deleted_at`.
+5. **Conjunto cerrado**: ¿enum, tabla propia o texto libre? ¿Tiene que crecer sin migrar los
+   datos ya guardados?
+6. **Idioma de los identificadores** de la base de datos.
 
-### Pantalla (si la `zone` es `frontend`)
+### Pantalla (si la `zone` es `frontend` o `fullstack`)
 
 7. **Estados**: vacío, cargando, error. Qué se muestra y qué no.
-8. **Qué entra por props** y qué obtiene el componente por su cuenta. Los componentes privados
-   reciben por props (`docs/architecture.md > Permisos y autenticacion`).
-9. **Qué es placeholder y qué es definitivo.** Los 5 ítems de navegación de la 11 son deuda
-   registrada justo por no haberlo dicho: hoy enlazan a rutas que dan 404.
+8. **Qué entra por props** y qué obtiene el componente por su cuenta (lo que diga el perfil sobre
+   datos sensibles y componentes de servidor).
+9. **Qué es placeholder y qué es definitivo.** Un enlace o un texto provisional que nadie marcó
+   como tal acaba en producción apuntando a una ruta que no existe.
 
 ### Frontera (siempre)
 
 10. **Qué NO entra**, y a qué ficha va. Es la frase que hace que las descripciones buenas del
     board funcionen: «El alta y la consulta van aparte».
-11. **Qué se hereda ya montado** de una feature anterior y no se re-crea. La T0 de
-    `specs/11-*/tasks.md` existe por esto; sin ella, la 11 habría vuelto a montar shadcn y Vitest
-    — que es exactamente el choque que sí ocurrió entre la 4 y la 10.
-12. **Permiso y rol**: ¿quién puede? La autorización se valida **en el service**
-    (`docs/architecture.md > Acceso a datos y autorizacion`) y `docs/checkpoints-proyecto.md > Datos y seguridad` exige su test.
+11. **Qué se hereda ya montado** de una feature anterior y no se re-crea (librería de UI, tooling
+    de tests, layout). Si dos features en paralelo montan lo mismo, chocan al mergear.
+12. **Permiso y rol**: ¿quién puede? Dónde se valida la autorización lo dice
+    `docs/architecture.md > Acceso a datos y autorización`, y su test lo exige
+    `docs/checkpoints-proyecto.md`.
 
 ### Verificación y coste (siempre)
 
-13. **¿Hace falta E2E?** `CHECKPOINTS.md` lo pide para flujos críticos (`docs/checkpoints-proyecto.md > Flujos criticos`: autenticación, permisos,
-    movimientos de inventario, importes, webhooks). Si se difiere, **se difiere aquí y con
-    motivo**, no al final.
-14. **¿Librería o a mano?** Regla 7 de `CLAUDE.md` y la lección más cara del repo: la primera
-    versión de la 5 implementó scrypt a mano, llegó completa hasta el PR y se rehízo con bcrypt.
-    Si ya se sabe que se quiere una librería, decirlo ahora ahorra un spec entero.
-15. **Preguntas abiertas del dominio.** Si la feature toca unidades de medida, lote y
-    vencimiento, FDS/GHS o contabilidad (`docs/architecture.md > Preguntas abiertas del
-    dominio`), es bloqueante de negocio: se pregunta.
+13. **¿Hace falta E2E?** `CHECKPOINTS.md` lo pide para los flujos críticos de
+    `docs/checkpoints-proyecto.md > Flujos críticos (exigen E2E)`. Si se difiere, **se difiere
+    aquí y con motivo**, no al final.
+14. **¿Librería o a mano?** Regla 7 de `CLAUDE.md`. Una utilidad delicada escrita a mano (hash de
+    contraseñas, fechas, decimales) puede llegar completa al PR y tener que rehacerse con una
+    librería. Si ya se sabe que se quiere una librería, decirlo ahora ahorra un spec entero.
+15. **Preguntas abiertas del dominio.** Si la feature toca una de las que lista
+    `docs/architecture.md > Preguntas abiertas del dominio`, es bloqueante de negocio: se
+    pregunta.
+
+### Proceso (siempre)
+
+16. **¿Cabe en un PR?** Estima los archivos que tocará lo acordado frente a
+    `arnes.config.json > gate.tamano_pr` (por defecto 40). Si pasa del 80%, propón el corte en
+    rebanadas verticales (`docs/specs.md > Partir una feature`): con el sí del humano, cada
+    rebanada nueva es una ficha que crea el paso 5, con `depends_on` encadenado, y esta ficha se
+    queda con la primera.
+17. **¿Qué ruta?** Propón `directa`, `ligera` o `completa` con su motivo (`docs/specs.md > Tres
+    rutas`), sin bajar nunca del suelo: dinero, permisos, autenticación, integraciones, webhooks,
+    migraciones o esquema van por la completa. Si la ruta acordada difiere del label de la ficha,
+    es un campo que quedó mintiendo y se escribe en el paso 5, como `complexity`.
 
 ## Paso 3 — Preguntar, en lenguaje llano
 
@@ -119,12 +129,12 @@ propones heredar**, para que se vea que no los ignoraste ni los estás re-pregun
 
 Reglas de redacción de las preguntas:
 
-- **En lenguaje de negocio, no técnico.** No «¿enum de Prisma o tabla propia?», sino «¿va a haber
-  que agregar presentaciones nuevas con el tiempo, sin tocar lo ya cargado?».
+- **En lenguaje de negocio, no técnico.** No «¿enum o tabla propia?», sino «¿va a haber que
+  agregar tipos nuevos con el tiempo, sin tocar lo ya cargado?».
 - **Si la pregunta es de negocio y no es trivial, la opción lleva un ejemplo concreto** en su
-  `description`, con datos del ERP: «un bidón de 20 L de hipoclorito que entra como 1 bidón pero
-  se despacha en litros». Usa `preview` cuando lo que se compara son dos formas distintas del
-  mismo dato.
+  `description`, con datos del dominio del proyecto: «un producto que entra por caja de 12 pero se
+  vende por unidad». Usa `preview` cuando lo que se compara son dos formas distintas del mismo
+  dato.
 - **Lo que quede sin decidir no se rellena con supuestos** (regla 6 de `CLAUDE.md`): va a
   `## Preguntas abiertas` y `spec_author` lo hereda como tal.
 
@@ -141,8 +151,8 @@ Muestra el archivo **tal cual quedaría** y, aparte, la lista de lo que queda ab
 La acotación puede dejar el board desactualizado de tres formas. Recórrelas en orden; si
 ninguna aplica, salta al paso 6.
 
-1. **Campos que quedaron mintiendo.** Compara lo acordado con la ficha y mira estos cuatro:
-   `description`, `complexity`, `zone`, `depends_on`.
+1. **Campos que quedaron mintiendo.** Compara lo acordado con la ficha y mira estos cinco:
+   `description`, `complexity`, `zone`, `ruta`, `depends_on`.
 2. **Trabajo que quedó sin ficha.** Todo lo que el bloque «Lo que NO entra» mande a otra
    feature necesita una ficha que exista. Si no existe, es una ficha nueva.
 3. **Fichas que quedaron huérfanas.** Si lo acordado absorbe una ficha existente o la deja sin
@@ -179,8 +189,7 @@ El porqué, la tabla de los cuatro campos y el incidente que originó esta regla
 
 ## Paso 6 — Sembrar, tras el sí
 
-Crea `specs/<key>-<slug>/requirements.md`, **en el worktree de la feature**, con esta estructura, que es la que ya usa
-`specs/11-layout-privado-con-sidebar/requirements.md`:
+Crea `specs/<key>-<slug>/requirements.md`, **en el worktree de la feature**, con esta estructura:
 
 > `# <key> — <slug> · requirements.md`
 >
@@ -210,8 +219,9 @@ Después, en este orden:
   paso 5 no escribió nada en el board, aquí tampoco se escribe nada.
 - Añade **una línea** en `progress/features/<key>.md > Decisiones` apuntando al archivo. **No
   copies la tabla**: una es la fuente, la otra enlaza.
-- Si alguna respuesta cerró una de las cuatro preguntas abiertas del dominio, actualiza
-  `docs/architecture.md > Preguntas abiertas del dominio`.
+- Si alguna respuesta cerró una pregunta abierta del dominio, actualiza
+  `docs/architecture.md > Preguntas abiertas del dominio` (es perfil: renueva su marcador
+  `revisado=`).
 - **No muevas de estado la ficha que estás acotando.** Sigue `pending` y su `status`
   no cambia: quien lo mueve es el leader en F1.3. Los únicos empujones al tracker de este comando son
   los tres del paso 5: editar los cuatro campos, crear la ficha que falta y cancelar la huérfana.

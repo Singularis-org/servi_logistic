@@ -15,6 +15,7 @@ import type { RangoPagina } from "@/lib/utils/rango-pagina";
 import { ESTADOS_COLA_CIERRE_DIA } from "@/lib/utils/colas-cierre";
 import { descargaConfig } from "@/lib/config/descarga";
 import { listarHistoricoCierresAdminSchema } from "@/lib/types/cierres-admin";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Ficha 470 (T1.3, riesgo K6) — el tope real de la descarga es ahora el limite de Excel
 // (1.048.575 filas). Este archivo prueba la MECANICA del tope (N entra, N+1 no), que no depende
@@ -268,6 +269,11 @@ function servicio(repo: ICierresAdminRepository) {
     // que miden el tope y el orden del listado, no se mueven ni un centimo.
     { sumarPremiosVivosPorCierre },
     sinRetenidas(), // FICHA 462: 7.o argumento requerido; este archivo no mide la marca
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    reglasPaisFijas(),
   );
   return { svc, createSignedUrls, sumarVigentesPorCierre };
 }

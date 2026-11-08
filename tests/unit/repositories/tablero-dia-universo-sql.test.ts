@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { TableroDiaRepository } from "@/lib/repositories/TableroDiaRepository";
 import { ventanaDelDiaEnCursoCR } from "@/lib/utils/ventana-dia-cr";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 259 (T2.1) — R1, R8, R9, R13. EL CRITERIO DEL DÍA, MEDIDO SOBRE EL SQL QUE SE EMITE.
 //
 // Este archivo espía la llamada real a `$queryRaw` y reconstruye el `Prisma.Sql` con sus
@@ -15,7 +16,7 @@ import { ventanaDelDiaEnCursoCR } from "@/lib/utils/ventana-dia-cr";
 // Postgres. Eso lo deciden `tests/integration/tablero-dia-dia-reparto.test.ts` y las mutaciones
 // de T5. En este repo una mutación del `WHERE` ya dejó once tests de servicio en verde.
 
-const VENTANA = ventanaDelDiaEnCursoCR(new Date("2026-08-08T19:00:00.000Z"));
+const VENTANA = ventanaDelDiaEnCursoCR(new Date("2026-08-08T19:00:00.000Z"), ZONA_CR);
 const ZONA = "11111111-1111-4111-8111-111111111111";
 const MENSAJERO = "22222222-2222-4222-8222-222222222222";
 

@@ -19,9 +19,11 @@ import type {
   RegistrarAporteCapitalServiceResult,
 } from "@/lib/interfaces/services/IAporteCapitalService";
 import type { ICajaAporteCapitalFeedService } from "@/lib/interfaces/services/ICajaAporteCapitalFeedService";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import type { ComprobanteRecibido } from "@/lib/interfaces/services/IPagoPorCuentaTiendaService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { compensarEvidencias } from "@/lib/services/evidencias-compensadas";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 import type {
   AnularAporteCapitalInput,
   AporteCapitalDTO,
@@ -30,7 +32,7 @@ import type {
 import { problemaDeComprobante, rutaDeComprobante } from "@/lib/utils/comprobante";
 import { medianocheUtcDelDia } from "@/lib/utils/descripcion-pago";
 import { fechaLegible } from "@/lib/utils/dia-reparto-textos";
-import { esFechaCalendarioValida, fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { esFechaCalendarioValida, fechaCalendario } from "@/lib/utils/calendario-zona";
 import { instanteDelMovimientoManual } from "@/lib/utils/fecha-movimiento-manual";
 
 class ClaveRepetidaError extends Error {
@@ -90,6 +92,8 @@ export class AporteCapitalService implements IAporteCapitalService {
       WalletComprobanteConfig,
       "MAX_BYTES" | "SIGNED_URL_TTL_SECONDS"
     > = walletComprobanteConfig,
+    /** SLT-42 (R22, R28): la zona del pais de la empresa, para «hoy» y el instante del asiento. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
 
   async registrar(
@@ -103,16 +107,18 @@ export class AporteCapitalService implements IAporteCapitalService {
       .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP)
       .toFixed(2);
 
-    // R69 (y P7): dia que existe y no posterior a hoy CR. SIN ventana hacia atras.
+    // R69 (y P7): dia que existe y no posterior a hoy en el pais de la empresa. SIN ventana hacia atras.
     if (!esFechaCalendarioValida(input.fecha)) {
       return errorDeCampo("fecha", "Esa fecha no existe en el calendario.");
     }
-    if (input.fecha > fechaCalendarioCR(this.ahora())) {
+    // SLT-42 (R22, R28): la zona se lee ANTES de subir el comprobante o escribir; sin zona, nada se escribe.
+    const zona = await zonaDeLaEmpresa(this.reglasPais, "AporteCapitalService.registrar");
+    if (input.fecha > fechaCalendario(this.ahora(), zona)) {
       return errorDeCampo("fecha", "La fecha no puede ser posterior a hoy.");
     }
     // R71: el saldo inicial no puede ser POSTERIOR al primer dia de la caja sin capital.
     if (input.clase === "saldo_inicial") {
-      const primerDia = await this.cajaLectura.primerDiaDeLaCaja({ excluirCapital: true });
+      const primerDia = await this.cajaLectura.primerDiaDeLaCaja({ excluirCapital: true, zonaHoraria: zona });
       if (primerDia !== null && input.fecha > primerDia) {
         return errorDeCampo(
           "fecha",
@@ -142,7 +148,7 @@ export class AporteCapitalService implements IAporteCapitalService {
     }
 
     const id = randomUUID();
-    const fechaMovimiento = instanteDelMovimientoManual(input.fecha, this.ahora());
+    const fechaMovimiento = instanteDelMovimientoManual(input.fecha, zona, this.ahora());
 
     let exito = false;
     try {

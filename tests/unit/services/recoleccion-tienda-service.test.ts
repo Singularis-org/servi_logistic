@@ -12,6 +12,7 @@ import type {
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
 import { bloqueoConVencido } from "@/tests/fixtures/bloqueo-cierre";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 157 — RECOLECCION EN TIENDA por el mensajero (`por_recolectar_en_tienda` ->
 // `en_ruta_bodega_central`, arista #43). Espejo de `recepcion-bodega-central-service.test.ts`
@@ -76,7 +77,7 @@ function makeRepo(overrides: Partial<RepoMethods> = {}) {
   const repoHistorial = { findRecoleccionesDeActor: vi.fn().mockResolvedValue([]) };
   return {
     repo,
-    service: new RecoleccionTiendaService(repo, repoGestion, repoHistorial),
+    service: new RecoleccionTiendaService(repo, repoGestion, repoHistorial, undefined, reglasPaisFijas()),
   };
 }
 
@@ -395,6 +396,7 @@ function makeLectura(opts: LecturaOpts = {}) {
     repoGestion,
     repoHistorial,
     () => ahora,
+    reglasPaisFijas(),
   );
   return { repo, repoGestion, repoHistorial, service };
 }
@@ -444,6 +446,8 @@ describe("listarRecoleccion — «Por recolectar» (R21/R38)", () => {
       },
       repoGestion,
       historialFijo(),
+      undefined,
+      reglasPaisFijas(),
     );
 
     const mio = await service.listarRecoleccion(MENSAJERO);
@@ -762,6 +766,8 @@ describe("listarRecoleccion — la ventana de HOY es el dia natural de Costa Ric
         ),
       },
       repoHistorial,
+      undefined,
+      reglasPaisFijas(),
     );
 
     await service.listarRecoleccion(MENSAJERO);

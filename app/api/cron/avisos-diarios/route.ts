@@ -14,6 +14,7 @@ import { NextResponse } from "next/server";
 import { withErrorHandler, isAppErrorShape, appErrorToResponse } from "@/lib/errors";
 import type { IAvisosDiariosService } from "@/lib/interfaces/services/IAvisosDiariosService";
 import { AvisosDiariosService } from "@/lib/services/AvisosDiariosService";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { AvisoAgregadoRepository } from "@/lib/repositories/AvisoAgregadoRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { OrdenHistorialRepository } from "@/lib/repositories/OrdenHistorialRepository";
@@ -87,6 +88,9 @@ function buildService(): IAvisosDiariosService {
     // guardia de `notificacion-notificadores-reales.test.ts` afirma sobre el USO EFECTIVO
     // (mutacion 8 del design => ROJO).
     notificarReprogramadasEsperanCierreReal,
+    undefined,
+    // SLT-42 (R24, R28): cada empresa de `paraCadaEmpresa` calcula su dia con la zona de SU pais.
+    construirReglasPaisEmpresa(prisma),
   );
 }
 

@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Activar tarifas nuevas</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#8a8986}
+button:focus-visible,input:focus-visible{outline:3px solid #111111;outline-offset:1px}
+</style>
+</helmet>
+<div style="font-family: Archivo, system-ui, sans-serif; color: #111111; background: #8a8986; min-height: 980px; box-sizing: border-box; padding: 40px 16px; display: flex; justify-content: center; align-items: flex-start">
+  <section role="dialog" aria-modal="true" aria-labelledby="titulo" style="width: 100%; max-width: 640px; background: #ffffff; border-radius: 14px; padding: 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 18px">
+    <div>
+      <h1 id="titulo" style="margin: 0; font-size: 20px; font-weight: 700">Activar tarifas nuevas</h1>
+      <p style="margin: 6px 0 0; font-size: 14px; line-height: 1.45; color: #44403c">Desde el siguiente cierre, los cobros y pagos usan lo que digitaste. Los cierres ya hechos no cambian. Esta acción no se puede deshacer desde la pantalla; después corriges editando cada valor.</p>
+    </div>
+
+    <div style="background: #fef3c7; border: 1px solid #f59e0b; border-radius: 10px; padding: 14px 16px">
+      <div style="font-size: 14px; font-weight: 700; color: #92400e">Falta por definir en 2 zonas</div>
+      <div style="font-size: 13px; color: #92400e; margin-top: 3px">Lo que falta se cobra y se paga en 0. Sin flete por entregado, la API responde «sin tarifa» para esa zona.</div>
+    </div>
+
+    <div style="border: 1px solid #e7e5e4; border-radius: 10px; overflow: hidden">
+      <div style="padding: 12px 14px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; border-bottom: 1px solid #e7e5e4">
+        <div>
+          <div style="font-size: 14px; font-weight: 600">Limón</div>
+          <div style="font-size: 13px; color: #44403c; margin-top: 2px">Sin flete por devolución a origen</div>
+          <div style="font-size: 13px; color: #44403c; margin-top: 2px">Grupo Zona especial: usa el valor de la zona en flete por entregado</div>
+        </div>
+        <a href="Main.dc.html" style="min-height: 44px; display: inline-flex; align-items: center; font-size: 14px; font-weight: 600; color: #111111">Completar</a>
+      </div>
+      <div style="padding: 12px 14px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between">
+        <div>
+          <div style="font-size: 14px; font-weight: 600">Turrialba</div>
+          <div style="font-size: 13px; color: #44403c; margin-top: 2px">Sin flete por entregado, sin flete por devolución a origen y sin pago al mensajero por entregado</div>
+        </div>
+        <a href="Main.dc.html" style="min-height: 44px; display: inline-flex; align-items: center; font-size: 14px; font-weight: 600; color: #111111">Completar</a>
+      </div>
+    </div>
+
+    <label style="display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 1.4; min-height: 44px">
+      <input type="checkbox" style="width: 20px; height: 20px; margin: 1px 0 0; accent-color: #111111; flex: none">
+      <span>Entiendo que lo que falta quedará en 0 en cobros y pagos.</span>
+    </label>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end">
+      <button type="button" style="min-height: 44px; padding: 0 16px; border: 1px solid #e7e5e4; border-radius: 10px; background: #ffffff; color: #111111; font: 500 14px Archivo, system-ui, sans-serif; cursor: pointer">Seguir digitando</button>
+      <button type="button" style="min-height: 44px; padding: 0 18px; border: 0; border-radius: 10px; background: #111111; color: #ffffff; font: 600 14px Archivo, system-ui, sans-serif; cursor: pointer">Activar con lo que falta</button>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1360,"height":980}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

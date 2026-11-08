@@ -194,17 +194,19 @@ describe("257/R26 — el OpenAPI publica los cuatro filtros nuevos del listado p
 // operacion del contrato (peticion explicita): sin texto que comparar, el test no puede existir.
 // Lo que sigue cubierto es la descripcion de cada PARAMETRO, que no se toco.
 describe("257/R26 — la descripción de los parámetros explica el borde que más confunde al integrador", () => {
-  it("R26: ambos artefactos dejan claro que `hasta` es INCLUSIVO y que el día se mide en hora de Costa Rica (UTC-6)", () => {
+  it("R26 + SLT-42 R22: ambos artefactos dejan claro que `hasta` es INCLUSIVO y que el día se mide en la zona del país de la empresa de la key", () => {
     const descripcionHastaTs = parametroTs("hasta").description;
     expect(descripcionHastaTs).toMatch(/inclusiv/i);
-    expect(descripcionHastaTs).toContain("Costa Rica");
-    expect(descripcionHastaTs).toContain("UTC-6");
+    expect(descripcionHastaTs).toContain("zona horaria del país de la empresa de la key");
+    expect(descripcionHastaTs).not.toContain("Costa Rica");
+    expect(descripcionHastaTs).not.toContain("UTC-6");
 
     const cuerpoYaml = bloqueDeParametro("hasta")
       .map((l) => l.trim())
       .join("\n");
     expect(cuerpoYaml).toMatch(/inclusiv/i);
-    expect(cuerpoYaml).toContain("Costa Rica");
-    expect(cuerpoYaml).toContain("UTC-6");
+    expect(cuerpoYaml).toContain("zona horaria del país de la empresa de la key");
+    expect(cuerpoYaml).not.toContain("Costa Rica");
+    expect(cuerpoYaml).not.toContain("UTC-6");
   });
 });

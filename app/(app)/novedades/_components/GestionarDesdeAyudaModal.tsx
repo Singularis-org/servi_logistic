@@ -24,7 +24,7 @@ import {
 import { NOMBRE_ESTADO } from "@/lib/types/order-status";
 import { permitidoEnElTope } from "@/lib/types/tope-intentos";
 import type { NovedadDTO } from "@/lib/types/novedad";
-import { mananaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { mananaCalendarioCR, ZONA_CR } from "@/lib/utils/fecha-cr";
 
 // =================================================================================================
 // FEATURE 237 (T7.2, design §12.2 — R12/R13/R14/R25 de superficie) — LA VENTANA CON LA QUE LA
@@ -362,7 +362,8 @@ export function GestionarDesdeAyudaModal({
     // R13 en superficie: se valida con el MISMO schema que el borde revalida, así que el cliente no
     // tiene reglas propias que puedan divergir. Aquí es donde se cazan los fallos que el botón no
     // puede ver: el MIME o el tamaño de una foto concreta, y la fecha de hoy o anterior.
-    const parsed = gestionarDesdeAyudaSchema.safeParse(buildRaw());
+    // SLT-81: la UI sigue en la zona de CR
+    const parsed = gestionarDesdeAyudaSchema(ZONA_CR).safeParse(buildRaw());
     if (!parsed.success) {
       setFieldErrors(parsed.error.flatten().fieldErrors as Record<string, string[]>);
       return;

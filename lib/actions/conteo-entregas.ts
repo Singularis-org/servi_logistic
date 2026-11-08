@@ -24,6 +24,8 @@
 
 import { describirDenegado } from "@/lib/analytics/auditoria";
 import { prepararConteoEntregas } from "@/lib/analytics/entregas-conteo";
+import { zonaDelBordeConActor } from "@/lib/actions/_shared/zona-del-borde";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import type { ActorAnalitica, MotivoDenegacion } from "@/lib/analytics/alcance";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { crearConteoEntregasCacheDeNext } from "@/lib/cache/next-analitica-cache";
@@ -52,6 +54,8 @@ export interface ConteoEntregasDeps {
   /** Reloj inyectable (patron de `consultarAnaliticaOperativa`): misma entrada y mismo
    *  `now` => mismo resultado, sello `lastSync` incluido. */
   readonly now?: () => Date;
+  /** SLT-42 (R22, R28): la zona del pais de la empresa; en produccion, la real (`zonaDelBorde`). */
+  readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
 }
 
 function construirServicio(now: () => Date): ConteoEntregasService {
@@ -84,7 +88,8 @@ export async function consultarConteoEntregas(
   const now = deps.now ?? (() => new Date());
   const actor = await (deps.getActor ?? resolveActorFromSession)();
 
-  const preparada = prepararConteoEntregas(raw, actor, now());
+  const zona = await zonaDelBordeConActor(actor, deps.reglasPais); // SLT-42 (R22, R28)
+  const preparada = prepararConteoEntregas(raw, actor, zona, now());
 
   if (preparada.status === "validation_error") {
     // Se devuelve SIN consultar y SIN auditar: no hay denegado que registrar, y una entrada

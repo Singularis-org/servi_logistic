@@ -13,6 +13,18 @@ import type { EstadoCuentaDTO, FilaEstadoCuentaDTO, VerEstadoCuentaResult } from
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
 import { cargarCatalogo459, enTransaccionRevertida459, montarServicios459, type Catalogo459 } from "./_fixtures/caja-459";
 import { T4, leerEstadoCuenta, montarEstadoCuenta, sembrarEscenario458 } from "./_fixtures/wallet-458";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+
+// SLT-42 (T5.4): la zona del pais de la empresa es la de CR, como antes. Las reglas reales leen el pais
+// de la empresa en curso con el cliente global, que no ve la empresa de una transaccion revertida ni
+// tiene empresa fuera de `conEmpresa`; la zona por pais la miden `hora-por-pais-wallet` y `demo-qa`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
 
 // SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
 vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
@@ -162,7 +174,7 @@ describeSiHayBase("458-D B1 — 172 R52: el filtro por cierre del mensajero trae
               tipoIdentificacionId: cat.tipoIdentificacionId,
               rolId: cat.rolId.mensajero,
               estado: "activo",
-              fulfillment: false,
+              seRecogeEnTienda: true,
             },
             select: { id: true },
           })
@@ -224,7 +236,7 @@ describeSiHayBase("458-D B1 — 172 R52: el filtro por cierre del mensajero trae
           ).createdAt,
           selector: await cierresDeLaCuentaAction(
             { cuenta: "mensajero", mensajeroId: M },
-            { getActor: async () => maestro, service: new FiltrosWalletService(new FiltrosWalletRepository(tx as never)) },
+            { getActor: async () => maestro, service: new FiltrosWalletService(new FiltrosWalletRepository(tx as never), undefined, reglasPaisFijas()) },
           ),
           porLaAction: await verEstadoCuentaAction(
             { cuenta: cuentaM, cierreId: cierreA, page: 1, pageSize: 50, sortDir: "asc" },

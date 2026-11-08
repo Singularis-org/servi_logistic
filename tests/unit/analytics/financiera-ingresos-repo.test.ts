@@ -6,6 +6,7 @@ import { getMetrica } from "@/lib/analytics/metrics";
 import { IngresosAnaliticaRepository } from "@/lib/repositories/IngresosAnaliticaRepository";
 import { fakePrismaDinero, type FilaCaja } from "./_fake-prisma-dinero";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Feature 127 / T C.1 — `IngresosAnaliticaRepository`: R16, R17, R26, R28, R37 (material).
 //
 // Los dos "hecho cuando" de la tarea estan escritos como MUTACIONES, y asi se prueban:
@@ -25,7 +26,7 @@ const DESDE = new Date("2026-08-02T06:00:00.000Z");
 const HASTA = new Date("2026-08-03T06:00:00.000Z");
 
 function consultaDe(metricaId: string): ConsultaAnalitica {
-  const r = prepararConsultaAnalitica({ rango: "dia" }, MAESTRO, metricaId, AHORA);
+  const r = prepararConsultaAnalitica({ rango: "dia" }, MAESTRO, metricaId, ZONA_DE_CR, AHORA);
   if (r.status !== "ok") throw new Error(`no se pudo preparar la consulta de ${metricaId}`);
   return r.consulta;
 }
@@ -313,7 +314,9 @@ describe("R57 · las dos metricas de la 173 salen de este repositorio, con sus c
     // ficha 461 (R29): + el cobro a una tienda y su reverso, los dos propios; ficha 458-B: + los dos
     // reversos del cobro por devolución a origen = 18; SL-39 (R11): − las cuatro de IVA = 14; SL-45
     // (R25): + el pago a la plataforma, propio = 15.
-    expect(where.categoria.in).toHaveLength(15);
+    // SLT-94 (R37): + el fulfillment por paquete y su devolucion = 17.
+    expect(where.categoria.in).toHaveLength(17);
+    expect(where.categoria.in).toContain("ingreso_fulfillment");
     expect(where.categoria.in).toContain("egreso_pago_plataforma");
     // SL-39 (R11): el IVA tampoco se le pide a la base: no es ganancia, se publica en `ingreso_iva`.
     for (const iva of [

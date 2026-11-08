@@ -6,6 +6,7 @@ import type { IFileStorage } from "@/lib/interfaces/external/IFileStorage";
 import type { PostularMensajeroCommand } from "@/lib/interfaces/services/IPostulacionMensajeroService";
 import { DOCUMENTO_TIPOS } from "@/lib/types/postulacion-mensajero";
 import { verifyPassword } from "@/lib/utils/password";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 21 / R3, R9, R12, R13, R14, R15, R16, R19, R20, R24.
 
@@ -38,9 +39,10 @@ function buildCommand(overrides: Partial<PostularMensajeroCommand> = {}): Postul
     primerApellido: "Perez",
     segundoApellido: "Gomez",
     email: "ana@example.com",
-    telefono: "0991234567",
-    tipoIdentificacionId: "tipo-1",
-    cedula: "1710034065",
+    // SLT-42: datos válidos de Costa Rica, el país de `reglasPaisFijas()` (R10, R14).
+    telefono: "88887777",
+    tipoIdentificacionId: "tipo-cr-cedula",
+    cedula: "112223333",
     vehiculoId: "veh-1",
     placa: "ABC123",
     password: "Abcdef1!",
@@ -54,7 +56,7 @@ describe("PostulacionMensajeroService", () => {
 
   it("R12/R15: resuelve rol mensajero y crea la cuenta (sin sobrescribir estado)", async () => {
     const repo = buildRepo();
-    const service = new PostulacionMensajeroService(repo, buildStorage());
+    const service = new PostulacionMensajeroService(repo, buildStorage(), undefined, reglasPaisFijas());
 
     const result = await service.postular(buildCommand());
 
@@ -67,7 +69,7 @@ describe("PostulacionMensajeroService", () => {
 
   it("R13: persiste apellidos, vehiculo y placa", async () => {
     const repo = buildRepo();
-    const service = new PostulacionMensajeroService(repo, buildStorage());
+    const service = new PostulacionMensajeroService(repo, buildStorage(), undefined, reglasPaisFijas());
 
     await service.postular(buildCommand());
 
@@ -82,7 +84,7 @@ describe("PostulacionMensajeroService", () => {
 
   it("R14: persiste hash bcrypt, nunca el texto plano", async () => {
     const repo = buildRepo();
-    const service = new PostulacionMensajeroService(repo, buildStorage());
+    const service = new PostulacionMensajeroService(repo, buildStorage(), undefined, reglasPaisFijas());
 
     await service.postular(buildCommand());
 
@@ -93,7 +95,7 @@ describe("PostulacionMensajeroService", () => {
 
   it("R15: rol mensajero inexistente -> error, no crea", async () => {
     const repo = buildRepo({ findRolIdByValue: vi.fn().mockResolvedValue(null) });
-    const service = new PostulacionMensajeroService(repo, buildStorage());
+    const service = new PostulacionMensajeroService(repo, buildStorage(), undefined, reglasPaisFijas());
 
     const result = await service.postular(buildCommand());
 
@@ -103,7 +105,7 @@ describe("PostulacionMensajeroService", () => {
 
   it("R9: vehiculo inexistente -> validation_error en vehiculo_id, no crea", async () => {
     const repo = buildRepo({ vehiculoExiste: vi.fn().mockResolvedValue(false) });
-    const service = new PostulacionMensajeroService(repo, buildStorage());
+    const service = new PostulacionMensajeroService(repo, buildStorage(), undefined, reglasPaisFijas());
 
     const result = await service.postular(buildCommand());
 
@@ -114,11 +116,33 @@ describe("PostulacionMensajeroService", () => {
     expect(repo.crearMensajeroConDocumentos).not.toHaveBeenCalled();
   });
 
-  it("R9: tipo_identificacion inexistente -> validation_error en ese campo", async () => {
-    const repo = buildRepo({ tipoIdentificacionExiste: vi.fn().mockResolvedValue(false) });
-    const service = new PostulacionMensajeroService(repo, buildStorage());
+  it("SL-42/R18: un tipo de vehiculo inactivo -> validation_error en vehiculo_id, sin subir ni crear", async () => {
+    // El repositorio responde `false` para un inactivo (`vehiculoExiste` recorta con
+    // `WHERE_VEHICULO_ELEGIBLE`; el SQL lo prueba `tests/integration/db/vehiculos-plataforma.test.ts`).
+    // Aqui se fija lo que hace el servicio con esa respuesta: la postulacion es siempre una eleccion
+    // nueva, asi que no hay «vehiculo actual» que conservar.
+    const inactivo = "veh-inactivo";
+    const repo = buildRepo({ vehiculoExiste: vi.fn(async (id: string) => id !== inactivo) });
+    const storage = buildStorage();
+    const service = new PostulacionMensajeroService(repo, storage, undefined, reglasPaisFijas());
 
-    const result = await service.postular(buildCommand());
+    const result = await service.postular({ ...buildCommand(), vehiculoId: inactivo });
+
+    expect(repo.vehiculoExiste).toHaveBeenCalledWith(inactivo);
+    expect(result.status).toBe("validation_error");
+    if (result.status === "validation_error") {
+      expect(result.fieldErrors.vehiculo_id).toBeDefined();
+    }
+    expect(storage.upload).not.toHaveBeenCalled();
+    expect(repo.crearMensajeroConDocumentos).not.toHaveBeenCalled();
+  });
+
+  it("R9: tipo_identificacion inexistente -> validation_error en ese campo", async () => {
+    const repo = buildRepo();
+    const service = new PostulacionMensajeroService(repo, buildStorage(), undefined, reglasPaisFijas());
+
+    // SLT-42: el tipo lo resuelven las reglas del país de la empresa (R11), no el catálogo global.
+    const result = await service.postular(buildCommand({ tipoIdentificacionId: "no-existe" }));
 
     expect(result.status).toBe("validation_error");
     if (result.status === "validation_error") {
@@ -129,7 +153,7 @@ describe("PostulacionMensajeroService", () => {
   it("R16: sube 5 documentos y crea 5 filas con storage_path bajo el usuarioId", async () => {
     const repo = buildRepo();
     const storage = buildStorage();
-    const service = new PostulacionMensajeroService(repo, storage);
+    const service = new PostulacionMensajeroService(repo, storage, undefined, reglasPaisFijas());
 
     await service.postular(buildCommand());
 
@@ -150,7 +174,7 @@ describe("PostulacionMensajeroService", () => {
   it("R19: email duplicado -> conflict('email'), no sube ni crea", async () => {
     const repo = buildRepo({ emailExiste: vi.fn().mockResolvedValue(true) });
     const storage = buildStorage();
-    const service = new PostulacionMensajeroService(repo, storage);
+    const service = new PostulacionMensajeroService(repo, storage, undefined, reglasPaisFijas());
 
     const result = await service.postular(buildCommand());
 
@@ -161,7 +185,7 @@ describe("PostulacionMensajeroService", () => {
 
   it("R20: cedula duplicada -> conflict('cedula'), no crea", async () => {
     const repo = buildRepo({ cedulaExiste: vi.fn().mockResolvedValue(true) });
-    const service = new PostulacionMensajeroService(repo, buildStorage());
+    const service = new PostulacionMensajeroService(repo, buildStorage(), undefined, reglasPaisFijas());
 
     const result = await service.postular(buildCommand());
 
@@ -174,7 +198,7 @@ describe("PostulacionMensajeroService", () => {
       crearMensajeroConDocumentos: vi.fn().mockRejectedValue(new UsuarioDuplicadoError("email")),
     });
     const storage = buildStorage();
-    const service = new PostulacionMensajeroService(repo, storage);
+    const service = new PostulacionMensajeroService(repo, storage, undefined, reglasPaisFijas());
 
     const result = await service.postular(buildCommand());
 
@@ -189,7 +213,7 @@ describe("PostulacionMensajeroService", () => {
       crearMensajeroConDocumentos: vi.fn().mockRejectedValue(new Error("db caida")),
     });
     const storage = buildStorage();
-    const service = new PostulacionMensajeroService(repo, storage);
+    const service = new PostulacionMensajeroService(repo, storage, undefined, reglasPaisFijas());
 
     const result = await service.postular(buildCommand());
 
@@ -207,7 +231,7 @@ describe("PostulacionMensajeroService", () => {
         .mockResolvedValueOnce("usr/cedula_anverso.jpg")
         .mockRejectedValueOnce(new Error("storage caido")),
     });
-    const service = new PostulacionMensajeroService(repo, storage);
+    const service = new PostulacionMensajeroService(repo, storage, undefined, reglasPaisFijas());
 
     const result = await service.postular(buildCommand());
 

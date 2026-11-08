@@ -6,6 +6,7 @@ import { HistorialAccionService } from "@/lib/services/HistorialAccionService";
 import { CODIGO_VIGENTE_DE_ANTERIOR } from "@/lib/types/order-status";
 import { HAY_BASE_DE_DATOS } from "../_postgres-real";
 import { conEscenario, prepararMundo, type Mundo } from "../454/_escenario";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FICHA 455 (T1.12, design §3.4; R23) — un SNAPSHOT guardado ANTES de la ficha (la bitacora de la
@@ -51,7 +52,7 @@ describeSiHayBase("455/R23 — el snapshot de un codigo anterior se lee con el v
         ANTERIOR_DE("entregado"),
         ANTERIOR_DE("devolucion_a_origen_por_rechazo"),
       );
-      const servicio = new HistorialAccionService(new HistorialAccionRepository(e.cliente));
+      const servicio = new HistorialAccionService(new HistorialAccionRepository(e.cliente), reglasPaisFijas());
       const listado = await servicio.listar(
         { accion: ["cierre_dia_gestion_corregida"], actorId: [e.maestroId], pageSize: 50 },
         e.actorMaestro,

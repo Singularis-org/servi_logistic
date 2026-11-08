@@ -1,5 +1,6 @@
 "use server";
 
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { z } from "zod";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
@@ -34,6 +35,8 @@ import type {
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import type { AppErrorShape } from "@/lib/errors";
 
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDelBorde } from "@/lib/actions/_shared/zona-del-borde";
 // Feature 100 — Server Actions que RESUELVEN una novedad (mutaciones internas del mismo proyecto ->
 // Server Actions, no Route API, patron devolucion-origen.ts). Cada una resuelve el actor por sesion,
 // valida en el borde con zod y delega en su servicio, TODO bajo `withErrorHandler`: un error
@@ -46,14 +49,16 @@ import type { AppErrorShape } from "@/lib/errors";
 // debe ser mañana o posterior en el calendario de Costa Rica (R4, misma regla `esFechaFutura` que
 // la reprogramacion del mensajero). `motivo` es OPCIONAL (gate F1.4-Q1). Un valor invalido ->
 // ZodError -> validation_error ANTES del service, sin tocar datos.
-const reprogramarSchema = z.object({
-  ordenId: z.string().uuid(),
-  fechaReprogramacion: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, "fecha invalida")
-    .refine((v) => esFechaFutura(v), "la fecha debe ser mañana o posterior"), // R4
-  motivo: z.string().trim().optional(),
-});
+const reprogramarSchema = (zona: string) =>
+  z.object({
+    ordenId: z.string().uuid(),
+    fechaReprogramacion: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "fecha invalida")
+      // SLT-42 (R22): «mañana» en la zona del pais de la empresa.
+      .refine((v) => esFechaFutura(v, zona), "la fecha debe ser mañana o posterior"), // R4
+    motivo: z.string().trim().optional(),
+  });
 
 const recuperarSchema = z.object({
   ordenId: z.string().uuid(), // R23
@@ -80,6 +85,8 @@ export type RecuperarABodegaActionResult = RecuperarABodegaResult | BorderError;
 export type RechazarNovedadActionResult = RechazarNovedadResult | BorderError;
 
 export interface ReprogramarNovedadDeps {
+  /** SLT-42 (R22): las reglas del pais de la empresa (su zona). Por defecto, la implementacion real. */
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
   service?: IReprogramacionTiendaService;
   getActor?: () => Promise<Actor | null>;
 }
@@ -133,6 +140,9 @@ function buildRechazoService(): IRechazoTiendaService {
     // El reloj se deja en su default (`new Date`): en produccion la fecha del cobro ES la de hoy.
     new TarifaVigenteRepository(prisma),
     new RechazoTiendaCobroRepository(prisma),
+    undefined, // el parametro opcional previo, con su valor por defecto
+    // SLT-42 (R22): la zona horaria del pais de la empresa.
+    construirReglasPaisEmpresa(prisma),
   );
 }
 
@@ -175,7 +185,8 @@ export async function reprogramarNovedad(
   const r = await withErrorHandler(async () => {
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R22: antes de tocar el service
-    const data = reprogramarSchema.parse(input); // R4/R23: ZodError -> VALIDATION_ERROR
+    const zona = await zonaDelBorde(deps.reglasPais); // SLT-42 (R22, R28)
+    const data = reprogramarSchema(zona).parse(input); // R4/R23: ZodError -> VALIDATION_ERROR
     const service = deps.service ?? buildReprogramacionService();
     // motivo OPCIONAL (Q1): vacio tras el trim -> null (no forzar texto).
     const motivo = data.motivo && data.motivo.length > 0 ? data.motivo : null;

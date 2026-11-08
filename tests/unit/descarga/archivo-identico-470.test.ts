@@ -27,6 +27,7 @@ import { conceptoDeCaja, detalleDeCaja, fechaDeCaja } from "@/app/(app)/wallet/_
 import { resultadosTexto } from "@/app/(app)/wallet/_components/detalle-movimiento-labels";
 import { COLUMNAS_DESCARGA_ORDENES, filaDescargaOrden } from "@/app/(app)/ordenes/_components/ordenes-descarga-columnas";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /**
  * Ficha 470 (T3.4, R8) — el archivo producido con un conjunto que viajo por el ALMACEN es identico al
  * producido con el mismo conjunto entregado en la respuesta. Extremo a extremo y sin red: el resultado
@@ -216,7 +217,7 @@ async function archivoCaja(r: Awaited<ReturnType<typeof resultadoCajaConDetalle>
         },
       ],
     },
-    FECHA_ARCHIVO,
+    ZONA_CR, FECHA_ARCHIVO,
   );
 }
 
@@ -282,7 +283,7 @@ const RESULTADO_ORDENES = { status: "ok" as const, items: Array.from({ length: 4
 const COLUMNAS_ORDENES_ELEGIDAS = [...COLUMNAS_DESCARGA_ORDENES].reverse().filter((_, i) => i % 4 !== 1);
 
 async function archivoOrdenes(r: typeof RESULTADO_ORDENES, tipo: "xlsx" | "csv"): Promise<DescargaArchivo> {
-  return construirDescarga({ tipo, titulo: "Órdenes", columnas: COLUMNAS_ORDENES_ELEGIDAS, filas: r.items.map(filaDescargaOrden) }, FECHA_ARCHIVO);
+  return construirDescarga({ tipo, titulo: "Órdenes", columnas: COLUMNAS_ORDENES_ELEGIDAS, filas: r.items.map(filaDescargaOrden) }, ZONA_CR, FECHA_ARCHIVO);
 }
 
 describe("470 — R8: listado de ordenes, directo vs almacen", () => {

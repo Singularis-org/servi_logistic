@@ -28,6 +28,7 @@ import { WalletMovimientoRepository } from "@/lib/repositories/WalletMovimientoR
 import { CajaPagoTiendaFeedService } from "@/lib/services/CajaPagoTiendaFeedService";
 import { LiquidacionService } from "@/lib/services/LiquidacionService";
 import { derivarCaja } from "@/lib/utils/caja-tesoreria";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * Feature 173 / T C.4 (R21, R28, R30, R48 — parte pago/anulacion) — LA CADENA COMPLETA, medida
@@ -258,6 +259,9 @@ function makeStore(saldoTienda: string) {
     puerto,
     repartoRepo, // feature 205 (T3.2): va ANTES del reloj y sin default
     () => AHORA,
+    undefined,
+    undefined,
+    reglasPaisFijas(),
   );
 
   /** Las DOS cifras, derivadas del libro de la caja tal y como esta AHORA MISMO. */

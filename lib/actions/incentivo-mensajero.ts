@@ -1,5 +1,8 @@
 "use server";
 
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
+import { zonaDelBorde } from "@/lib/actions/_shared/zona-del-borde";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { isAppErrorShape, UnauthenticatedError, withErrorHandler } from "@/lib/errors";
@@ -39,12 +42,16 @@ function buildService(): IIncentivoMensajeroService {
     new CajaIncentivoMensajeroFeedService(new WalletMovimientoRepository(prisma)),
     // R11: UNA transaccion para las dos escrituras; si cualquiera falla, no queda ninguna.
     (fn) => prisma.$transaction((tx) => fn(tx as unknown as IncentivoTx)),
+    undefined, // el id por defecto
+    construirReglasPaisEmpresa(prisma), // SLT-42 (R22, R28): la zona horaria del pais de la empresa.
   );
 }
 
 export interface IncentivoMensajeroDeps {
   service?: IIncentivoMensajeroService;
   getActor?: () => Promise<Actor | null>;
+  /** SLT-42 (R22, R28): la zona del pais de la empresa; en produccion, la real (`zonaDelBorde`). */
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
 }
 
 function toActionError(shape: AppErrorShape): ErrorDeBordeIncentivo {
@@ -80,7 +87,9 @@ export async function registrarIncentivoMensajeroAction(
   const r = await withErrorHandler(async () => {
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R2: antes del schema
-    const data = registrarIncentivoMensajeroSchema.parse(crudoDelFormData(formData)); // R3
+    // SLT-42 (R22, R28): «hoy» en la zona del pais de la empresa; sin zona, falla sin tocar nada.
+    const zona = await zonaDelBorde(deps.reglasPais);
+    const data = registrarIncentivoMensajeroSchema(zona).parse(crudoDelFormData(formData)); // R3
     const service = deps.service ?? buildService();
     return service.registrar(data, actor);
   });

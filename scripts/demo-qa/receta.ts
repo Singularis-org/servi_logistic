@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -82,7 +83,7 @@ import { ORDER_STATUS_SEED } from "@/lib/types/order-status";
 import { rechazarNovedadSchema } from "@/lib/types/rechazo-tienda";
 import { crearTarifaSchema } from "@/lib/types/tarifa";
 import { registrarEgresoConLateralesSchema } from "@/lib/types/wallet-laterales";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendario } from "@/lib/utils/calendario-zona";
 import { crearEmpresa, crearUsuario, type EmpresaCreada, type UsuarioCreado } from "@/tests/fabricas/empresa-y-usuarios";
 import { escenarioCierres, solicitarCierre } from "@/tests/fabricas/escenarios/cierres";
 import {
@@ -216,6 +217,9 @@ const TELEFONO = "88880000";
 // ─── Tipos públicos ─────────────────────────────────────────────────────────────────────────────
 
 export type ClaveEmpresaDemo = "A" | "B";
+
+/** Cédulas ficticias del maestro de cada empresa demo (9 dígitos, la regla de CR, `PAIS_DEMO`). */
+const DOCUMENTO_MAESTRO_DEMO: Record<ClaveEmpresaDemo, string> = { A: "900000001", B: "900000002" };
 
 export interface ContextoReceta {
   /** Cliente dueño (`DIRECT_URL`), sin la extensión de empresa: lee, y marca `es_demo` (D5.3). */
@@ -388,7 +392,9 @@ export async function crearEmpresaDemo(
             paisId: PAIS_DEMO,
             correoMaestro: correoDemo(slugEmpresa, "maestro"),
             contrasena: opciones.contrasena,
-            documentoMaestro: `demo-qa-${clave.toLowerCase()}-maestro`,
+            // SLT-42 (R10): el documento tiene que cumplir la regla del tipo en el país de la demo
+            // (cédula física de CR: 9 dígitos). Ficticio y fijo por empresa, para que A y B no choquen.
+            documentoMaestro: DOCUMENTO_MAESTRO_DEMO[clave],
             marcarContrasenaDefinida: true,
           },
           { ficha: "SL-43", motivo: "demo de QA: alta de la empresa demo" },
@@ -409,7 +415,7 @@ export async function crearEmpresaDemo(
     empresa: EmpresaCreada,
     perfil: string,
     rol: RolValue,
-    extra: { zonaId?: string; vehiculoId?: string; fulfillment?: boolean } = {},
+    extra: { zonaId?: string; vehiculoId?: string; seRecogeEnTienda?: boolean } = {},
   ): Promise<UsuarioCreado> {
     const correo = correoDemo(slugEmpresa, perfil);
     const u = await crearUsuario(dueno, empresa, rol, {
@@ -458,7 +464,7 @@ export async function crearEmpresaDemo(
       ),
     ),
     enPaso("alta de admin", () => altaUsuario(escenario.empresa, "admin", "admin")),
-    enPaso("alta de tienda", () => altaUsuario(escenario.empresa, "tienda", "adminTienda", { fulfillment: false })),
+    enPaso("alta de tienda", () => altaUsuario(escenario.empresa, "tienda", "adminTienda", { seRecogeEnTienda: true })),
   ]);
   const perfilesDeMensajero: [ZonaTipo, string][] = [
     ["central", "mensajero-central"],
@@ -907,7 +913,7 @@ export async function crearEmpresaDemo(
     // coherente con `cierre_bodega_conciliacion_coherente` y la base lo rechaza.
     const cierreBodega = await llamar("CierreBodegaService.solicitarCierreBodega", () =>
       conEmpresa(org, () =>
-        new CierreBodegaService(new CierreBodegaRepository(app), new OrdenRepository(app)).solicitarCierreBodega(adminSatelite),
+        new CierreBodegaService(new CierreBodegaRepository(app), new OrdenRepository(app), construirReglasPaisEmpresa(app)).solicitarCierreBodega(adminSatelite),
       ),
     );
     if (cierreBodega.status !== "ok") throw new Error("inalcanzable");
@@ -917,7 +923,11 @@ export async function crearEmpresaDemo(
     });
     await llamar("ConciliacionSatelitesService.marcarRecibida", () =>
       conEmpresa(org, () =>
-        new ConciliacionSatelitesService(new SaldosSatelitesRepository(app), new CierresBodegaAdminRepository(app)).marcarRecibida(
+        new ConciliacionSatelitesService(
+          new SaldosSatelitesRepository(app),
+          new CierresBodegaAdminRepository(app),
+          construirReglasPaisEmpresa(app), // SLT-42 (R22): la zona horaria del pais de la empresa.
+        ).marcarRecibida(
           recibida,
           maestro,
         ),
@@ -955,6 +965,9 @@ export async function crearEmpresaDemo(
       new OrdenRepository(app),
       new GestionOrdenRepository(app),
       new OrdenHistorialRepository(app),
+      undefined, // el parametro opcional previo, con su valor por defecto
+      // SLT-42 (R22): la zona horaria del pais de la empresa.
+      construirReglasPaisEmpresa(app),
     );
     for (const o of porPantalla.slice(n)) {
       await llamar("RecoleccionTiendaService.recolectarEnTienda", () =>
@@ -1007,12 +1020,14 @@ export async function crearEmpresaDemo(
 
   async function registrarDinero(): Promise<void> {
     const caja = new WalletMovimientoRepository(app);
-    // El día calendario de la app: el de las fechas de pago y del aporte.
-    const hoy = fechaCalendarioCR(ahora());
+    // SLT-42 (R22): la zona horaria del pais de la empresa de la demo, leida una vez en su contexto.
+    const zona = await conEmpresa(org, () => construirReglasPaisEmpresa(app).zonaHoraria());
+    // El día calendario de la empresa: el de las fechas de pago y del aporte.
+    const hoy = fechaCalendario(ahora(), zona);
     const comprobante = { contentType: "image/jpeg", bytes: bytesEvidencia };
 
     // Aporte de capital con su comprobante en Storage.
-    const aporte = registrarAporteCapitalSchema.parse({
+    const aporte = registrarAporteCapitalSchema(zona).parse({
       claveIdempotencia: randomUUID(),
       clase: "aporte",
       monto: APORTE_CAPITAL,
@@ -1031,6 +1046,9 @@ export async function crearEmpresaDemo(
           new SupabaseFileStorage(undefined, walletComprobanteConfig.BUCKET),
           new SupabaseSignedUrlProvider(undefined, walletComprobanteConfig.BUCKET),
           (fn) => app.$transaction((tx) => fn(tx)),
+          undefined,
+          undefined,
+          construirReglasPaisEmpresa(app), // SLT-42 (R22): la zona horaria del pais de la empresa.
         ).registrar(entradaAporte, comprobante, maestro),
       ),
     );
@@ -1049,8 +1067,9 @@ export async function crearEmpresaDemo(
           undefined,
           undefined,
           buildComprobantes(app),
+          construirReglasPaisEmpresa(app), // SLT-42 (R22): la zona horaria del pais de la empresa.
         ).registrarPagoMensajero(
-          registrarPagoMensajeroSchema.parse({
+          registrarPagoMensajeroSchema(zona).parse({
             cierreId: cierreCentral,
             claveIdempotencia: randomUUID(),
             monto: PAGO_A_MENSAJERO,
@@ -1063,7 +1082,7 @@ export async function crearEmpresaDemo(
     );
 
     // Abono de la tienda con bodega.
-    const abono = registrarAbonoTiendaSchema.parse({
+    const abono = registrarAbonoTiendaSchema(zona).parse({
       claveIdempotencia: randomUUID(),
       tiendaId: escenario.tienda.id,
       monto: ABONO_DE_TIENDA,
@@ -1085,6 +1104,9 @@ export async function crearEmpresaDemo(
           new SupabaseFileStorage(undefined, walletComprobanteConfig.BUCKET),
           new SupabaseSignedUrlProvider(undefined, walletComprobanteConfig.BUCKET),
           (fn) => app.$transaction((tx) => fn(tx)),
+          undefined,
+          undefined,
+          construirReglasPaisEmpresa(app), // SLT-42 (R22): la zona horaria del pais de la empresa.
         ).registrar(entradaAbono, comprobante, maestro),
       ),
     );
@@ -1098,8 +1120,9 @@ export async function crearEmpresaDemo(
           app,
           buildComprobantes(app),
           new TopePagoPlataformaService(new CobroPlataformaMovimientoRepository(app), new PagoPlataformaRepository(app)),
+          construirReglasPaisEmpresa(app), // SLT-42 (R22): la zona horaria del pais de la empresa.
         ).registrarEgreso(
-          registrarEgresoConLateralesSchema.parse({
+          registrarEgresoConLateralesSchema(zona).parse({
             tipoEgreso: "pago_plataforma",
             monto: PAGO_A_LA_PLATAFORMA,
             descripcion: "Pago a la plataforma de la demo",
@@ -1127,6 +1150,8 @@ export async function crearEmpresaDemo(
       new TarifaZonaMensajeroRepository(app),
       { warn: (m: string) => console.warn(m) },
       notificarCierreDiaVencidoReal,
+      // SLT-42 (R22): la zona horaria del pais de la empresa.
+      construirReglasPaisEmpresa(app),
     );
     const manana = new Date(ahora().getTime() + 24 * 60 * 60 * 1000);
     exigirUnVencido(await conEmpresa(org, () => corte.ejecutarCorte(manana)));
@@ -1164,6 +1189,9 @@ export async function crearEmpresaDemo(
       new GestionOrdenRepository(app),
       new TarifaVigenteRepository(app),
       new RechazoTiendaCobroRepository(app),
+      undefined, // el parametro opcional previo, con su valor por defecto
+      // SLT-42 (R22): la zona horaria del pais de la empresa.
+      construirReglasPaisEmpresa(app),
     );
     for (const o of novedades.slice(n)) {
       const r = rechazarNovedadSchema.parse({ ordenId: o.id, motivo: "La tienda no la reintenta" });

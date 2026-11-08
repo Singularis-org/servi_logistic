@@ -24,7 +24,6 @@ import {
 import { BulkOrdenService } from "@/lib/services/BulkOrdenService";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
-import { CupoPlanRepository } from "@/lib/repositories/CupoPlanRepository";
 import { notificadorNoOp } from "@/lib/notificaciones/notificadores";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
@@ -46,8 +45,7 @@ function buildBulkService(): IBulkOrdenService {
     // La carga por UI se cierra con la Server Action `notificarCargaMasivaTerminada` (feature 146),
     // no aqui: el aviso queda en el NO-OP de siempre.
     notificadorNoOp,
-    // SL-24 (R21, R22): la lectura previa del cupo del plan, tambien en la vista previa.
-    new CupoPlanRepository(prisma),
+    // SLT-86 (R8): ya no se lee el cupo de órdenes del plan antes de cargar; no hay tope de órdenes.
   );
 }
 

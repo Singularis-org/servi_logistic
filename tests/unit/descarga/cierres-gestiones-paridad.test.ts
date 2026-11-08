@@ -32,6 +32,7 @@ function fuente(relativa: string): string {
 
 function ingreso(over: Partial<IngresoEmpresaDTO> = {}): IngresoEmpresaDTO {
   return {
+    tarifaModelo: "viejo",
     montoCobrar: "1000.10",
     cobraComision: true,
     esCentral: false,

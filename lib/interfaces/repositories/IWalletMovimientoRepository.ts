@@ -9,6 +9,7 @@ import type {
   WalletMovimientoTipo,
   WalletMovimientoCategoria,
   WalletOrigenTipo,
+  WalletCategoriaRotuloPorModelo,
 } from "@/lib/types/wallet";
 
 // Feature 42 (design §2.1) — contrato del repositorio del LIBRO de movimientos. Solo
@@ -223,6 +224,11 @@ export interface IWalletMovimientoRepository {
    */
   agregarPorCategoriaYTipo(filtros: BalanceFiltros): Promise<readonly AgregadoCajaRow[]>;
   /**
+   * D39 — las categorias del agregado de arriba cuyo rotulo depende del modelo y que, con ESOS filtros,
+   * tienen alguna fila de un cierre con el modelo nuevo. Sale de lo congelado, no del interruptor actual.
+   */
+  categoriasConModeloNuevo(filtros: BalanceFiltros): Promise<WalletCategoriaRotuloPorModelo[]>;
+  /**
    * Feature 45 (R13): lee un movimiento por id para la reversa (monto server-side; evita
    * que el cliente falsee el monto). null si no existe.
    */
@@ -266,12 +272,12 @@ export interface IWalletMovimientoRepository {
     categoria: WalletMovimientoCategoria,
   ): Promise<WalletMovimientoDTO | null>;
   /**
-   * Ficha 459 (design §2.5, R15/R71) — el dia, en Costa Rica, del PRIMER movimiento de la caja
+   * Ficha 459 (design §2.5, R15/R71) — el dia, en la zona `zonaHoraria` del pais de la empresa (SLT-42), del PRIMER movimiento de la caja
    * (`MIN(fecha_movimiento)`), como `YYYY-MM-DD`; `null` con el libro vacio. SIN filtros: es el
    * «desde» del flujo registrado, no una cifra del periodo.
    *
    * `excluirCapital`: sin los conceptos de capital (saldo inicial y aportes). Lo usa el saldo
    * inicial (R71): su fecha no puede ser posterior al primer movimiento que NO es de capital.
    */
-  primerDiaDeLaCaja(opciones?: { excluirCapital?: boolean }): Promise<string | null>;
+  primerDiaDeLaCaja(opciones: { excluirCapital?: boolean; zonaHoraria: string }): Promise<string | null>;
 }

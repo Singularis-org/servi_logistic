@@ -17,6 +17,7 @@ import {
   enTransaccionRevertida,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FICHA 349 — EL LISTADO «Órdenes de la bodega» CONTRA UN POSTGRES DE VERDAD.
@@ -296,6 +297,8 @@ function servicio(tx: Tx): RecepcionSateliteService {
       new OrdenDiaRepartoCambioRepository(prisma),
       new OrdenTraspasoRepository(prisma),
     ),
+    undefined,
+    reglasPaisFijas(),
   );
 }
 

@@ -9,7 +9,7 @@ import {
   registrarPagoTiendaSchema,
 } from "@/lib/types/liquidacion";
 import { METODO_PAGO_SEED } from "@/lib/types/metodo-pago";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendarioCR, ZONA_CR } from "@/lib/utils/fecha-cr";
 
 // Feature 172 / T A.3 — el BORDE de la liquidacion. Cubre R8 (catalogo de metodos), R10 (fecha
 // no futura en hora de Costa Rica), R11 (monto), R12 (referencia obligatoria en pago
@@ -61,7 +61,7 @@ function camposConError(resultado: { success: boolean; error?: { issues: { path:
 describe("R8 — el metodo de pago es el catalogo existente, no uno propio", () => {
   it.each(METODO_PAGO_SEED)("acepta el metodo %s", (metodo) => {
     // En SINPE/transferencia la referencia es obligatoria (R12): se acompana para aislar R8.
-    const r = registrarPagoTiendaSchema.safeParse(
+    const r = registrarPagoTiendaSchema(ZONA_CR).safeParse(
       pagoTiendaValido({ metodo, referencia: "1234567" }),
     );
     expect(r.success).toBe(true);
@@ -72,7 +72,7 @@ describe("R8 — el metodo de pago es el catalogo existente, no uno propio", () 
     ["el mismo valor con otra caja", "sinpe"],
     ["cadena vacia", ""],
   ])("rechaza %s con el error en el campo `metodo`", (_caso, metodo) => {
-    const r = registrarPagoTiendaSchema.safeParse(pagoTiendaValido({ metodo }));
+    const r = registrarPagoTiendaSchema(ZONA_CR).safeParse(pagoTiendaValido({ metodo }));
     expect(r.success).toBe(false);
     expect(camposConError(r)).toContain("metodo");
   });
@@ -80,16 +80,16 @@ describe("R8 — el metodo de pago es el catalogo existente, no uno propio", () 
 
 describe("R10 — la fecha real del pago no puede ser futura en hora de Costa Rica", () => {
   it("acepta hoy y acepta una fecha pasada", () => {
-    expect(esFechaPagoValida(HOY, AHORA)).toBe(true);
-    expect(esFechaPagoValida(AYER, AHORA)).toBe(true);
-    expect(registrarPagoTiendaSchema.safeParse(pagoTiendaValido({ fechaPago: AYER })).success).toBe(
+    expect(esFechaPagoValida(HOY, ZONA_CR, AHORA)).toBe(true);
+    expect(esFechaPagoValida(AYER, ZONA_CR, AHORA)).toBe(true);
+    expect(registrarPagoTiendaSchema(ZONA_CR).safeParse(pagoTiendaValido({ fechaPago: AYER })).success).toBe(
       true,
     );
   });
 
   it("rechaza mañana, con el error en el campo `fechaPago`", () => {
-    expect(esFechaPagoValida(MANANA, AHORA)).toBe(false);
-    const r = registrarPagoTiendaSchema.safeParse(
+    expect(esFechaPagoValida(MANANA, ZONA_CR, AHORA)).toBe(false);
+    const r = registrarPagoTiendaSchema(ZONA_CR).safeParse(
       pagoTiendaValido({ fechaPago: fechaCalendarioCR(new Date(Date.now() + 86_400_000)) }),
     );
     expect(r.success).toBe(false);
@@ -100,8 +100,8 @@ describe("R10 — la fecha real del pago no puede ser futura en hora de Costa Ri
     // 2026-08-03T02:00Z son las 20:00 del 2 de agosto en CR. En UTC ya es dia 3, asi que un
     // borde que comparase contra `new Date().toISOString()` aceptaria el 3 como "hoy".
     const veinteHorasCR = new Date("2026-08-03T02:00:00.000Z");
-    expect(esFechaPagoValida(HOY, veinteHorasCR)).toBe(true);
-    expect(esFechaPagoValida(MANANA, veinteHorasCR)).toBe(false);
+    expect(esFechaPagoValida(HOY, ZONA_CR, veinteHorasCR)).toBe(true);
+    expect(esFechaPagoValida(MANANA, ZONA_CR, veinteHorasCR)).toBe(false);
   });
 
   it.each([
@@ -111,7 +111,7 @@ describe("R10 — la fecha real del pago no puede ser futura en hora de Costa Ri
     ["fecha con hora", "2026-08-01T10:00:00.000Z"],
     ["cadena vacia", ""],
   ])("rechaza %s", (_caso, fechaPago) => {
-    const r = registrarPagoTiendaSchema.safeParse(pagoTiendaValido({ fechaPago }));
+    const r = registrarPagoTiendaSchema(ZONA_CR).safeParse(pagoTiendaValido({ fechaPago }));
     expect(r.success).toBe(false);
     expect(camposConError(r)).toContain("fechaPago");
   });
@@ -120,7 +120,7 @@ describe("R10 — la fecha real del pago no puede ser futura en hora de Costa Ri
     // Deja constancia del motivo por el que `esFechaPagoValida` compara el ISO de vuelta. Si
     // algun dia V8 cambiara y devolviera Invalid Date, este test lo dira.
     expect(new Date("2026-02-31T00:00:00.000Z").toISOString().slice(0, 10)).toBe("2026-03-03");
-    expect(esFechaPagoValida("2026-02-31", AHORA)).toBe(false);
+    expect(esFechaPagoValida("2026-02-31", ZONA_CR, AHORA)).toBe(false);
   });
 });
 
@@ -131,9 +131,9 @@ describe("R11 — el monto: STRING, mayor que cero, 2 decimales y dentro de la c
 
   it("FRONTERA: el maximo EXACTO se acepta y un centimo mas se rechaza", () => {
     expect(
-      registrarPagoTiendaSchema.safeParse(pagoTiendaValido({ monto: LIQUIDACION_MONTO_MAX })).success,
+      registrarPagoTiendaSchema(ZONA_CR).safeParse(pagoTiendaValido({ monto: LIQUIDACION_MONTO_MAX })).success,
     ).toBe(true);
-    const r = registrarPagoTiendaSchema.safeParse(pagoTiendaValido({ monto: "10000000000.00" }));
+    const r = registrarPagoTiendaSchema(ZONA_CR).safeParse(pagoTiendaValido({ monto: "10000000000.00" }));
     expect(r.success).toBe(false);
     expect(camposConError(r)).toContain("monto");
   });
@@ -152,19 +152,19 @@ describe("R11 — el monto: STRING, mayor que cero, 2 decimales y dentro de la c
     ["notacion cientifica", "1e3"],
     ["con simbolo de moneda", "₡100.00"],
   ])("rechaza el monto %s con el error en el campo `monto`", (_caso, monto) => {
-    const r = registrarPagoTiendaSchema.safeParse(pagoTiendaValido({ monto }));
+    const r = registrarPagoTiendaSchema(ZONA_CR).safeParse(pagoTiendaValido({ monto }));
     expect(r.success).toBe(false);
     expect(camposConError(r)).toContain("monto");
   });
 
   it("R14: un monto NUMBER se rechaza; no hay coercion a string en la frontera", () => {
-    const r = registrarPagoTiendaSchema.safeParse(pagoTiendaValido({ monto: 12500.75 }));
+    const r = registrarPagoTiendaSchema(ZONA_CR).safeParse(pagoTiendaValido({ monto: 12500.75 }));
     expect(r.success).toBe(false);
     expect(camposConError(r)).toContain("monto");
   });
 
   it("R14: tras parsear, el monto sigue siendo el MISMO string (sin normalizar ni redondear)", () => {
-    const r = registrarPagoTiendaSchema.safeParse(pagoTiendaValido({ monto: "0.01" }));
+    const r = registrarPagoTiendaSchema(ZONA_CR).safeParse(pagoTiendaValido({ monto: "0.01" }));
     expect(r.success).toBe(true);
     if (r.success) {
       expect(r.data.monto).toBe("0.01");
@@ -175,19 +175,19 @@ describe("R11 — el monto: STRING, mayor que cero, 2 decimales y dentro de la c
 
 describe("R12 [P6] — la referencia es obligatoria en SINPE y transferencia", () => {
   it.each(["SINPE", "transferencia"])("rechaza %s sin referencia, en el campo `referencia`", (metodo) => {
-    const r = registrarPagoTiendaSchema.safeParse(pagoTiendaValido({ metodo }));
+    const r = registrarPagoTiendaSchema(ZONA_CR).safeParse(pagoTiendaValido({ metodo }));
     expect(r.success).toBe(false);
     expect(camposConError(r)).toContain("referencia");
   });
 
   it.each(["SINPE", "transferencia"])("rechaza %s con referencia en blanco", (metodo) => {
-    const r = registrarPagoTiendaSchema.safeParse(pagoTiendaValido({ metodo, referencia: "   " }));
+    const r = registrarPagoTiendaSchema(ZONA_CR).safeParse(pagoTiendaValido({ metodo, referencia: "   " }));
     expect(r.success).toBe(false);
     expect(camposConError(r)).toContain("referencia");
   });
 
   it.each(["SINPE", "transferencia"])("acepta %s con referencia", (metodo) => {
-    const r = registrarPagoTiendaSchema.safeParse(
+    const r = registrarPagoTiendaSchema(ZONA_CR).safeParse(
       pagoTiendaValido({ metodo, referencia: "  1234567  " }),
     );
     expect(r.success).toBe(true);
@@ -195,7 +195,7 @@ describe("R12 [P6] — la referencia es obligatoria en SINPE y transferencia", (
   });
 
   it("en efectivo la referencia es OPCIONAL: sin ella el pago es valido", () => {
-    const r = registrarPagoTiendaSchema.safeParse(pagoTiendaValido({ metodo: "efectivo" }));
+    const r = registrarPagoTiendaSchema(ZONA_CR).safeParse(pagoTiendaValido({ metodo: "efectivo" }));
     expect(r.success).toBe(true);
     if (r.success) expect(r.data.referencia).toBeUndefined();
   });
@@ -203,8 +203,8 @@ describe("R12 [P6] — la referencia es obligatoria en SINPE y transferencia", (
 
 describe("R13 — la nota es libre, opcional y acotada", () => {
   it("acepta la ausencia de nota y una nota normal", () => {
-    expect(registrarPagoTiendaSchema.safeParse(pagoTiendaValido()).success).toBe(true);
-    const r = registrarPagoTiendaSchema.safeParse(
+    expect(registrarPagoTiendaSchema(ZONA_CR).safeParse(pagoTiendaValido()).success).toBe(true);
+    const r = registrarPagoTiendaSchema(ZONA_CR).safeParse(
       pagoTiendaValido({ nota: "Entregado en bodega central." }),
     );
     expect(r.success).toBe(true);
@@ -212,10 +212,10 @@ describe("R13 — la nota es libre, opcional y acotada", () => {
 
   it("FRONTERA: el tope EXACTO se acepta y un caracter mas se rechaza, en el campo `nota`", () => {
     const alTope = "n".repeat(LIQUIDACION_NOTA_MAX);
-    expect(registrarPagoTiendaSchema.safeParse(pagoTiendaValido({ nota: alTope })).success).toBe(
+    expect(registrarPagoTiendaSchema(ZONA_CR).safeParse(pagoTiendaValido({ nota: alTope })).success).toBe(
       true,
     );
-    const r = registrarPagoTiendaSchema.safeParse(pagoTiendaValido({ nota: `${alTope}n` }));
+    const r = registrarPagoTiendaSchema(ZONA_CR).safeParse(pagoTiendaValido({ nota: `${alTope}n` }));
     expect(r.success).toBe(false);
     expect(camposConError(r)).toContain("nota");
   });
@@ -229,11 +229,11 @@ describe("R12 — la referencia tambien esta acotada (desviacion declarada del d
   it("FRONTERA: el tope EXACTO se acepta y un caracter mas se rechaza, en el campo `referencia`", () => {
     const alTope = "9".repeat(LIQUIDACION_REFERENCIA_MAX);
     expect(
-      registrarPagoTiendaSchema.safeParse(pagoTiendaValido({ metodo: "SINPE", referencia: alTope }))
+      registrarPagoTiendaSchema(ZONA_CR).safeParse(pagoTiendaValido({ metodo: "SINPE", referencia: alTope }))
         .success,
     ).toBe(true);
 
-    const r = registrarPagoTiendaSchema.safeParse(
+    const r = registrarPagoTiendaSchema(ZONA_CR).safeParse(
       pagoTiendaValido({ metodo: "SINPE", referencia: `${alTope}9` }),
     );
     expect(r.success).toBe(false);
@@ -243,7 +243,7 @@ describe("R12 — la referencia tambien esta acotada (desviacion declarada del d
   it("el tope se mide DESPUES de recortar los espacios (el `.trim()` corre antes)", () => {
     // Con el orden al reves, una referencia legitima rodeada de espacios se rechazaria.
     const conEspacios = `  ${"9".repeat(LIQUIDACION_REFERENCIA_MAX)}  `;
-    const r = registrarPagoTiendaSchema.safeParse(
+    const r = registrarPagoTiendaSchema(ZONA_CR).safeParse(
       pagoTiendaValido({ metodo: "SINPE", referencia: conEspacios }),
     );
     expect(r.success).toBe(true);
@@ -252,7 +252,7 @@ describe("R12 — la referencia tambien esta acotada (desviacion declarada del d
 
   it("una referencia real (SINPE, transferencia) cabe de sobra", () => {
     for (const referencia of ["1234567", "SINPE-2026-07-30-0001", "TRF 998877665544"]) {
-      const r = registrarPagoTiendaSchema.safeParse(
+      const r = registrarPagoTiendaSchema(ZONA_CR).safeParse(
         pagoTiendaValido({ metodo: "transferencia", referencia }),
       );
       expect(r.success, `rechazo la referencia "${referencia}"`).toBe(true);
@@ -260,7 +260,7 @@ describe("R12 — la referencia tambien esta acotada (desviacion declarada del d
   });
 
   it("el tope aplica igual al pago al MENSAJERO (es el mismo bloque de campos)", () => {
-    const r = registrarPagoMensajeroSchema.safeParse(
+    const r = registrarPagoMensajeroSchema(ZONA_CR).safeParse(
       pagoMensajeroValido({ metodo: "SINPE", referencia: "9".repeat(LIQUIDACION_REFERENCIA_MAX + 1) }),
     );
     expect(r.success).toBe(false);
@@ -274,11 +274,11 @@ describe("R12 — la referencia tambien esta acotada (desviacion declarada del d
     const entreLosDos = "x".repeat(LIQUIDACION_REFERENCIA_MAX + 1);
     // Cabe como nota…
     expect(
-      registrarPagoTiendaSchema.safeParse(pagoTiendaValido({ nota: entreLosDos })).success,
+      registrarPagoTiendaSchema(ZONA_CR).safeParse(pagoTiendaValido({ nota: entreLosDos })).success,
     ).toBe(true);
     // …y no como referencia.
     expect(
-      registrarPagoTiendaSchema.safeParse(
+      registrarPagoTiendaSchema(ZONA_CR).safeParse(
         pagoTiendaValido({ metodo: "SINPE", referencia: entreLosDos }),
       ).success,
     ).toBe(false);
@@ -293,13 +293,13 @@ describe("R15 [P7] — el comprobante es SOLO texto: ningun adjunto entra", () =
     ["evidencias", { evidencias: ["data:image/png;base64,AAAA"] }],
     ["comprobanteUrl", { comprobanteUrl: "https://ejemplo.test/recibo.pdf" }],
   ])("rechaza la clave desconocida `%s`", (_caso, extra) => {
-    const r = registrarPagoTiendaSchema.safeParse(pagoTiendaValido(extra));
+    const r = registrarPagoTiendaSchema(ZONA_CR).safeParse(pagoTiendaValido(extra));
     expect(r.success).toBe(false);
   });
 
   it("`.strict()` tambien protege el pago al mensajero y la anulacion", () => {
     expect(
-      registrarPagoMensajeroSchema.safeParse(pagoMensajeroValido({ comprobante: "x" })).success,
+      registrarPagoMensajeroSchema(ZONA_CR).safeParse(pagoMensajeroValido({ comprobante: "x" })).success,
     ).toBe(false);
     expect(
       anularPagoSchema.safeParse({ pagoId: PAGO, motivo: "Monto equivocado", comprobante: "x" })
@@ -312,21 +312,21 @@ describe("R21/R29 — cada pago va contra lo suyo, y el borde no los deja mezcla
   it("el pago al mensajero exige el cierre; sin el, se rechaza en el campo `cierreId`", () => {
     const { cierreId: _sinCierre, ...sinCierre } = pagoMensajeroValido();
     void _sinCierre;
-    const r = registrarPagoMensajeroSchema.safeParse(sinCierre);
+    const r = registrarPagoMensajeroSchema(ZONA_CR).safeParse(sinCierre);
     expect(r.success).toBe(false);
     expect(camposConError(r)).toContain("cierreId");
   });
 
   it("el pago a la tienda NO admite cierre: colarlo es `validation_error`", () => {
-    const r = registrarPagoTiendaSchema.safeParse(pagoTiendaValido({ cierreId: CIERRE }));
+    const r = registrarPagoTiendaSchema(ZONA_CR).safeParse(pagoTiendaValido({ cierreId: CIERRE }));
     expect(r.success).toBe(false);
   });
 
   it("un cierreId o un tiendaId que no son uuid se rechazan en su campo", () => {
-    expect(camposConError(registrarPagoMensajeroSchema.safeParse(pagoMensajeroValido({ cierreId: "c1" })))).toContain(
+    expect(camposConError(registrarPagoMensajeroSchema(ZONA_CR).safeParse(pagoMensajeroValido({ cierreId: "c1" })))).toContain(
       "cierreId",
     );
-    expect(camposConError(registrarPagoTiendaSchema.safeParse(pagoTiendaValido({ tiendaId: "t1" })))).toContain(
+    expect(camposConError(registrarPagoTiendaSchema(ZONA_CR).safeParse(pagoTiendaValido({ tiendaId: "t1" })))).toContain(
       "tiendaId",
     );
   });
@@ -334,11 +334,11 @@ describe("R21/R29 — cada pago va contra lo suyo, y el borde no los deja mezcla
   it("la clave de idempotencia es un uuid: sin ella o mal formada, se rechaza", () => {
     const { claveIdempotencia: _sinClave, ...sinClave } = pagoTiendaValido();
     void _sinClave;
-    expect(camposConError(registrarPagoTiendaSchema.safeParse(sinClave))).toContain(
+    expect(camposConError(registrarPagoTiendaSchema(ZONA_CR).safeParse(sinClave))).toContain(
       "claveIdempotencia",
     );
     expect(
-      camposConError(registrarPagoTiendaSchema.safeParse(pagoTiendaValido({ claveIdempotencia: "k1" }))),
+      camposConError(registrarPagoTiendaSchema(ZONA_CR).safeParse(pagoTiendaValido({ claveIdempotencia: "k1" }))),
     ).toContain("claveIdempotencia");
   });
 });

@@ -3,9 +3,9 @@
 // ─── ⚠ LA VENTANA CAE SOBRE LA CARGA, NUNCA SOBRE EL CIERRE ─────────────────────────────
 //
 // Es EL error que esta consulta existe para no cometer, y no se ve mirando la pantalla. En este
-// repo ya hay una consulta casi identica —`CicloVidaRepository`, que tambien mide de
-// `orden.created_at` a la ultima transicion terminal— y su ventana esta en el sitio CONTRARIO:
-// alli acota la TRANSICION (`condicionDeVentanaTerminal`, sobre `h."created_at"`) porque
+// repo ya hay una consulta parecida —`CicloVidaRepository`, que tambien mide desde
+// `orden.created_at`, hasta la gestion final— y su ventana esta en el sitio CONTRARIO:
+// alli acota la GESTION FINAL (`condicionDeVentanaDeCierre`, sobre `g."created_at"`) porque
 // contesta «de lo que CERRO esta semana, cuanto tardo», y por eso una orden creada en enero y
 // cerrada en agosto cuenta alli en AGOSTO.
 //
@@ -13,7 +13,7 @@
 // lote. Aqui la ventana cae sobre `o."created_at"` y el CTE `cierre` NO lleva ninguna condicion
 // temporal (R12) — la orden se sigue hasta su desenlace, caiga donde caiga.
 //
-// POR QUE ES PELIGROSO Y NO SOLO INCORRECTO: copiar `condicionDeVentanaTerminal` aqui no rompe
+// POR QUE ES PELIGROSO Y NO SOLO INCORRECTO: acotar aqui el cierre, como hace aquella, no rompe
 // nada. No hay excepcion, no hay fila de mas, no hay tipo que no compile. La tabla sale con
 // dias plausibles, cohortes plausibles y porcentajes plausibles — y equivocados: estaria
 // contestando «que cerro esta semana» con el rotulo «que se cargo esta semana». Su contencion
@@ -21,10 +21,11 @@
 //
 // ─── LA FRONTERA DEL DIA: NI UNA ZONA HORARIA EN ESTE SQL ────────────────────────────────
 //
-// Regla heredada de la 180 y NO negociable: no hay `AT TIME ZONE`, no hay `America/Costa_Rica`,
-// no hay `date_trunc` con zona y no hay `interval '6 hours'`. El dia CR entra como el fragmento
-// `DIA_CR` que ya vive en `ConteoCargadasPorDiaRepository` —se IMPORTA, no se copia—, y ese
-// fragmento manda el desfase como PARAMETRO derivado de `lib/utils/fecha-cr.ts`.
+// Regla heredada de la 180: no se ESCRIBE ninguna zona — ni `America/Costa_Rica`, ni `date_trunc`
+// con zona escrita, ni `interval '6 hours'`. El dia entra como el fragmento `diaDeCargaEnZona`
+// que ya vive en `ConteoCargadasPorDiaRepository` —se IMPORTA, no se copia—, y ese fragmento
+// manda la zona del pais de la empresa (`consulta.zona`) como PARAMETRO de `AT TIME ZONE`
+// (SLT-42, R22/R23; decision del humano del 2026-11-06).
 //
 // Un piso mas abajo, la misma trampa: las COTAS de la ventana son las que trae `resolverRango`
 // (`inicioDelDiaCREnUtc` / `inicioDelDiaSiguienteCREnUtc`, todo borde en `...T06:00:00.000Z`).
@@ -48,7 +49,7 @@ import type { PrismaClient } from "@prisma/client";
 import { ventanaDeCarga } from "@/lib/repositories/ventana-de-carga";
 import {
   condicionesSinFecha,
-  DIA_CR,
+  diaDeCargaEnZona,
 } from "@/lib/repositories/ConteoCargadasPorDiaRepository";
 import { ESTADOS_TERMINALES } from "@/lib/types/order-status-transiciones";
 import type { ConsultaConteoEntregas } from "@/lib/analytics/entregas-conteo";
@@ -67,7 +68,7 @@ type CohorteCargaPrismaClient = Pick<PrismaClient, "$queryRaw">;
  * Los `value` TERMINALES del catalogo, como lista SQL.
  *
  * Se IMPORTAN del dominio y no se reescriben: misma constante y MISMA LINEA que
- * `AnaliticaOperativaVivaRepository` y `CicloVidaRepository`, que rinden esa lista a SQL asi
+ * `AnaliticaOperativaVivaRepository` y `AnaliticaRollupRepository`, que rinden esa lista a SQL asi
  * desde antes. No se importa la de ninguno de los dos porque las dos son privadas de su modulo
  * y cruzar hacia alli meteria este archivo en censos de otra vertical; lo que impide que nazca
  * una TERCERA lista no es el parecido sino el censo de
@@ -162,7 +163,7 @@ export class CohorteCargaRepository implements ICohorteCargaRepository {
       WITH cohorte AS (
         SELECT o."id"         AS orden_id,
                o."created_at" AS cargada_at,
-               ${DIA_CR}      AS dia
+               ${diaDeCargaEnZona(consulta.zona)} AS dia
         FROM "orden" o
         WHERE ${where}
       ),

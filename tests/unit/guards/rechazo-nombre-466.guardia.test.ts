@@ -142,7 +142,6 @@ export const DICCIONARIOS = [
   "app/(app)/wallet/tiendas/_components/desglose-tienda-labels.ts",
   "app/(app)/mi-wallet/_components/mi-wallet-labels.ts",
   "components/shared/wallet/detalle-movimiento-panel-labels.ts",
-  "app/(app)/configuracion/tarifas/_components/tarifas-labels.ts",
   "app/(app)/cierres-admin/_components/cierre-labels.ts",
   "app/(app)/cierres-admin/_components/cierre-detalle-shared.tsx",
   "app/(app)/cierres-admin/_components/CorregirResultadoDialog.tsx",

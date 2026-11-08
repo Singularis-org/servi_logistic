@@ -19,6 +19,7 @@ import {
   sembrarEscenario459,
 } from "./_fixtures/caja-459";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
 vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
 
@@ -105,7 +106,7 @@ describeSiHayBase("⭑ 458-B/B2 — la anulacion del cobro por devolución a ori
       new RecaudoAnaliticaRepository(s.cliente),
       new CuentasPorPagarAnaliticaRepository(s.cliente),
       new ConciliacionCierresAnaliticaRepository(s.cliente),
-      { logError: () => {} },
+      { logError: () => {} }, undefined, reglasPaisFijas(),
     );
     const leerMetrica = async (id: string): Promise<Cifra> => {
       const r = await consultarMetricaFinanciera(id, VENTANA, {

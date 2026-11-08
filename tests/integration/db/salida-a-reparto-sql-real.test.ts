@@ -28,6 +28,7 @@ import {
   enTransaccionRevertida,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FICHA 370 — «YA SALIO A REPARTO» CONTRA POSTGRES DE VERDAD.
@@ -391,8 +392,8 @@ function servicios(tx: Tx): { ordenes: OrdenService; satelite: RecepcionSatelite
     new OrdenTraspasoRepository(prisma),
   );
   return {
-    ordenes: new OrdenService(repo, historial),
-    satelite: new RecepcionSateliteService(repo, historial),
+    ordenes: new OrdenService(repo, historial, undefined, reglasPaisFijas()),
+    satelite: new RecepcionSateliteService(repo, historial, undefined, reglasPaisFijas()),
   };
 }
 

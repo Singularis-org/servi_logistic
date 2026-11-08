@@ -26,7 +26,7 @@ import { registrarEgresoAdministrativoAction } from "@/lib/actions/wallet-egreso
 import { registrarCobroTiendaAction } from "@/lib/actions/wallet-tienda";
 import { primerDiaMovimientoAdmisible, problemaDeFechaMovimiento } from "@/lib/types/wallet";
 import type { UsuarioPorRolDTO } from "@/lib/types/usuario-por-rol";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendarioCR, ZONA_CR } from "@/lib/utils/fecha-cr";
 
 import {
   CLAVE_DE_LA_CUENTA,
@@ -240,7 +240,8 @@ export function RegistrarMovimientoDialog({
     // R27 (459): el monto arranca VACÍO para TODOS los conceptos, y ningún camino lo rellena.
     setMonto("");
     setFecha(hoy);
-    setVentana({ min: primerDiaMovimientoAdmisible(), max: hoy });
+    // SLT-81: la UI sigue en la zona de CR
+    setVentana({ min: primerDiaMovimientoAdmisible(ZONA_CR), max: hoy });
     setDescripcion("");
     // La cuenta elegida también se limpia: un cobro heredado de la vez anterior sería dinero
     // cobrado a quien no tocaba. Con la cuenta fija, vuelve a ser la fija.
@@ -289,7 +290,8 @@ export function RegistrarMovimientoDialog({
       else if (fecha > fechaCalendarioCR()) nuevos.fecha = CAMPO_TEXTO.fechaFutura;
     } else {
       // Los textos de rechazo son los MISMOS que emite el borde (`problemaDeFechaMovimiento`).
-      const problemaFecha = problemaDeFechaMovimiento(fecha);
+      // SLT-81: la UI sigue en la zona de CR
+      const problemaFecha = problemaDeFechaMovimiento(fecha, ZONA_CR);
       if (problemaFecha !== null) nuevos.fecha = problemaFecha;
     }
     if (descripcion.trim().length === 0) {

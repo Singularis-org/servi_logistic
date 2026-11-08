@@ -6,6 +6,7 @@ import { CierreBodegaRepository } from "@/lib/repositories/CierreBodegaRepositor
 import { CierresBodegaAdminRepository } from "@/lib/repositories/CierresBodegaAdminRepository";
 // ⭑ FICHA 431 (R7): lo que el todo-o-nada lanza cuando vincularia menos cierres de los pedidos.
 import { ConsolidacionParcialError } from "@/lib/utils/consolidacion-parcial";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 // Feature 40 — tests unit del CierreBodegaRepository (mockea Prisma, sin DB real,
 // patron cierre-dia-repository.test.ts). Cubre R5 (WHERE consolidables), R9
@@ -25,6 +26,7 @@ function consolidableDbRow(overrides: Record<string, unknown> = {}) {
     totalGeneral: new Prisma.Decimal("15.5"),
     totalPagoMensajero: new Prisma.Decimal("5"), // feature 39/R18: snapshot del pago
     totalIngresoBodegaRechazos: new Prisma.Decimal("3"), // feature 56/R17: snapshot del ingreso
+    _count: { detalle: 0 }, // SLT-54 (R71): sin filas del modelo nuevo
     mensajero: { nombre: "Ana Mensajera" },
     ...overrides,
   };
@@ -73,6 +75,7 @@ describe("CierreBodegaRepository.findCierresDiaConsolidables (R5/R10)", () => {
       totales: { efectivo: "10.00", simpe: "5.50", transferencia: "0.00", general: "15.50" },
       totalPagoMensajero: "5.00", // feature 39/R18: snapshot money-safe STRING
       totalIngresoBodegaRechazos: "3.00", // feature 56/R17: snapshot money-safe STRING
+      incluyeModeloNuevo: false, // SLT-54 (R71)
     });
     expect(typeof rows[0].totales.general).toBe("string");
     expect(typeof rows[0].totalPagoMensajero).toBe("string");
@@ -308,6 +311,7 @@ describe("CierreBodegaRepository.findCierresBodegaByZona (F1.4-h)", () => {
       conciliadoAt: "2026-07-12T12:00:00.000Z",
       conciliadoPorNombre: "Ana Rojas",
       conciliadoNota: null,
+      incluyeModeloNuevo: false, // D40
     });
   });
 });
@@ -425,7 +429,7 @@ describe("feature 393 — el mapper deriva «Para la central» para TODAS las le
     }
 
     // Y el detalle, que es la octava puerta a la misma cabecera.
-    const detalle = await maestro.findCierreBodegaConDetalle("cb1");
+    const detalle = await maestro.findCierreBodegaConDetalle("cb1", ZONA_CR);
     expect(detalle?.cierre).toMatchObject(ESPERADO);
   });
 
@@ -511,7 +515,7 @@ describe("feature 393 — el mapper deriva «Para la central» para TODAS las le
       "maestro · findColaCompleta": (await maestro.findColaCompleta())[0],
       "maestro · findHistoricoPaginado": (await maestro.findHistoricoPaginado(rango)).items[0],
       "maestro · findColaPaginada": (await maestro.findColaPaginada(rango)).items[0],
-      "maestro · findCierreBodegaConDetalle": (await maestro.findCierreBodegaConDetalle("cb1"))?.cierre,
+      "maestro · findCierreBodegaConDetalle": (await maestro.findCierreBodegaConDetalle("cb1", ZONA_CR))?.cierre,
     };
     expect(Object.keys(porLectura)).toHaveLength(8);
     for (const [lectura, fila] of Object.entries(porLectura)) {

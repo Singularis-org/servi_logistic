@@ -3,18 +3,19 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ModuloApagable, PrismaClient } from "@prisma/client";
 
-import type { IJobRepository } from "@/lib/interfaces/repositories/IJobRepository";
+import type { EfectoElegido } from "@/lib/interfaces/repositories/IPlanesRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { inicioDelDiaPlataforma } from "@/lib/planes/ciclo";
 import { ApiKeyRepository } from "@/lib/repositories/ApiKeyRepository";
 import { ModulosEmpresaRepository } from "@/lib/repositories/ModulosEmpresaRepository";
-import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { ModulosEmpresaService } from "@/lib/services/ModulosEmpresaService";
 import { PlanesService } from "@/lib/services/PlanesService";
 import type { CrearPlanInput } from "@/lib/types/planes";
+import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 import { crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones";
 
 import { HAY_BASE_DE_DATOS, clienteConSavepoint, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
-import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
+import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import { entradaAsignable, planesEnTx, revertida } from "./_fixtures/planes";
 
 // SL-24 · T4 (design §5.2, §7.1; R4, R6, R9–R13) — asignar un plan a una empresa contra Postgres, con
@@ -25,18 +26,20 @@ import { entradaAsignable, planesEnTx, revertida } from "./_fixtures/planes";
 // congele bien lo mide `planes-historial`, con un superadmin de verdad.
 //
 // Mutación 4 de design §11 («la asignación no cuenta usuarios»): la matan los casos R12 de roles.
+//
+// SLT-86 (R2, R16–R18): la primera asignación sin fecha entra a las 00:00 de hoy, y un cambio de plan
+// lleva fecha de efecto. Aquí todos los cambios van con la de hoy, que se aplica en el acto y rechaza por
+// topes (R18); los pendientes con fecha futura: `planes-cambio-empresa.test.ts`. Se retiró el caso
+// «R12 (órdenes)»: no hay tope de órdenes (R8).
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
 const SUPERADMIN: Actor = { usuarioId: randomUUID(), rol: "superadmin", organizacionId: null };
 
-const jobsNoOp = {
-  enqueue: async () => null,
-  claimBatch: async () => [],
-  findByDedupeKeys: async () => [],
-  complete: async () => {},
-  fail: async () => {},
-} as unknown as IJobRepository;
+/** Hoy en la plataforma: la fecha de efecto de los cambios de este archivo. */
+const HOY = fechaCalendarioCR(new Date());
+const HOY_SIN_ELEGIR: EfectoElegido = { clase: "inicio", fecha: HOY, desde: inicioDelDiaPlataforma(HOY), elegida: false };
+const CAMBIO_HOY: EfectoElegido = { clase: "cambio", fecha: HOY, desde: inicioDelDiaPlataforma(HOY), elegida: true };
 
 let base: PrismaClient;
 
@@ -55,11 +58,20 @@ async function caso(tx: TxDeTest): Promise<Caso> {
     tx,
     servicio,
     plan: async (p) => {
+      // Ajuste planes-custom (D2): por el servicio un custom nace ya asignado a su empresa. Para medir
+      // `asignar` con un custom (como los que dejó sin asignar la migración de SLT-66), se crea por el
+      // repositorio, que sigue sabiendo crear sin asignar.
+      if (p?.visibilidad === "custom") return planesEnTx(tx).crear(entradaAsignable(p), SUPERADMIN.usuarioId);
       const r = await servicio.crear(SUPERADMIN, entradaAsignable(p));
       if (r.estado !== "ok") throw new Error(`no se creó el plan: ${JSON.stringify(r)}`);
       return r.planId;
     },
-    asignar: (organizacionId, planId) => servicio.asignar(SUPERADMIN, { organizacionId, planId }),
+    // SLT-86 (R16): a una empresa con plan, con la fecha de efecto de hoy.
+    asignar: async (organizacionId, planId) => {
+      const conPlan = (await tx.organizacion.findUnique({ where: { id: organizacionId }, select: { planId: true } }))?.planId;
+      const fecha = conPlan === null || conPlan === undefined ? {} : { vigenteDesde: HOY };
+      return servicio.asignar(SUPERADMIN, { organizacionId, planId, tipoCobro: "mensual", ...fecha });
+    },
     empresa: async () => (await crearOrganizacion(tx)).id,
   };
 }
@@ -109,34 +121,6 @@ async function keysActivas(tx: TxDeTest, organizacionId: string, n: number): Pro
   }
 }
 
-async function ordenes(tx: TxDeTest, organizacionId: string, n: number): Promise<void> {
-  await fijarEmpresa(tx, organizacionId);
-  const fks = await crearFksDeOrden(tx);
-  const repo = new OrdenRepository(clienteConSavepoint(tx), jobsNoOp);
-  const datos = Array.from({ length: n }, () => ({
-    numRemision: `SL24A-${randomUUID().slice(0, 12)}`,
-    estatusId: fks.estatusId,
-    destinatario: "Destinatario SL-24",
-    telefonoDest: "88880000",
-    tiendaId: fks.tiendaId,
-    zonaId: fks.zonaId,
-    provinciaId: fks.provinciaId,
-    cantonId: fks.cantonId,
-    distritoId: null,
-    producto: "Caja",
-    peso: null,
-    notas: null,
-    direccion: null,
-    montoCobrar: null,
-  }));
-  await repo.createManyOrdenes(
-    datos,
-    500,
-    { actorUsuarioId: fks.tiendaId, origenTipo: "carga_masiva" },
-    { cargaId: null, usuarioCargaId: fks.tiendaId, totalFiles: n, name: null },
-  );
-}
-
 describeSiHayBase("SL-24 — asignar un plan a una empresa (R4, R6, R9–R13)", () => {
   beforeAll(() => {
     base = crearPrismaDeTest();
@@ -146,7 +130,7 @@ describeSiHayBase("SL-24 — asignar un plan a una empresa (R4, R6, R9–R13)", 
     await base?.$disconnect();
   });
 
-  it("R9: la primera asignación fija el ancla con el reloj de la base; cambiar de plan la conserva", async () => {
+  it("R9, SLT-86 R2/R17: la primera asignación entra a las 00:00 de hoy; un cambio con fecha de hoy entra a esas mismas 00:00", async () => {
     const r = await revertida(base, async (tx) => {
       const c = await caso(tx);
       const org = await c.empresa();
@@ -154,22 +138,15 @@ describeSiHayBase("SL-24 — asignar un plan a una empresa (R4, R6, R9–R13)", 
       const antes = await asignacion(tx, org);
       const primera = await c.asignar(org, uno);
       const tras1 = await asignacion(tx, org);
-      // `now()` es el instante de la transacción del caso: el ancla es exactamente ese, en la escala
-      // de los triggers (y no el reloj de Node).
-      const [{ igual }] = await tx.$queryRawUnsafe<{ igual: boolean }[]>(
-        `SELECT "plan_ciclo_ancla_at" = (now() AT TIME ZONE 'UTC')::timestamp(3) AS igual FROM "organizacion" WHERE "id" = $1`,
-        org,
-      );
       const segunda = await c.asignar(org, dos);
       const tras2 = await asignacion(tx, org);
-      return { antes, igual, primera, tras1, segunda, tras2, uno, dos };
+      return { antes, primera, tras1, segunda, tras2, uno, dos };
     });
     expect(r.antes).toEqual({ planId: null, planCicloAnclaAt: null });
     expect(r.primera).toMatchObject({ estado: "ok", planId: r.uno, cambio: true });
-    expect(r.tras1.planId).toBe(r.uno);
-    expect(r.igual).toBe(true);
-    expect(r.segunda).toMatchObject({ estado: "ok", planId: r.dos, cambio: true });
-    expect(r.tras2).toEqual({ planId: r.dos, planCicloAnclaAt: r.tras1.planCicloAnclaAt });
+    expect(r.tras1).toEqual({ planId: r.uno, planCicloAnclaAt: inicioDelDiaPlataforma(HOY) });
+    expect(r.segunda).toMatchObject({ estado: "ok", planId: r.dos, cambio: true, vigenteDesde: null });
+    expect(r.tras2).toEqual({ planId: r.dos, planCicloAnclaAt: inicioDelDiaPlataforma(HOY) });
   });
 
   it("R10: deja encendidos exactamente los módulos incluidos, en la misma operación", async () => {
@@ -189,7 +166,7 @@ describeSiHayBase("SL-24 — asignar un plan a una empresa (R4, R6, R9–R13)", 
     const r = await revertida(base, async (tx) => {
       const c = await caso(tx);
       const org = await c.empresa();
-      const plan = await c.plan({ modulos: ["analitica"], topes: { ordenesPorCiclo: 10, porRol: {}, apiKeys: null } });
+      const plan = await c.plan({ modulos: ["analitica"], topes: { porRol: {}, apiKeys: 10 } });
       const otro = await c.plan({ modulos: ["analitica"] });
       await c.asignar(org, plan);
       const interruptor = new ModulosEmpresaService(new ModulosEmpresaRepository(clienteConSavepoint(tx)));
@@ -197,11 +174,13 @@ describeSiHayBase("SL-24 — asignar un plan a una empresa (R4, R6, R9–R13)", 
       const conExcepcion = await modulos(tx, org);
       const edicion = await c.servicio.editar(SUPERADMIN, {
         planId: plan,
-        nombre: "Con más órdenes",
-        topes: { ordenesPorCiclo: 20, porRol: {}, apiKeys: null },
+        nombre: "Con más API keys",
+        topes: { porRol: {}, apiKeys: 20 },
         modulos: ["analitica"],
-        precio: { tipo: "sin_precio" },
-        costoPorOrden: null, // SLT-66 R8: campo obligatorio nuevo; no cambia lo que se comprueba.
+        // SLT-86 (R22): el mismo precio, para que la edición siga siendo inmediata sin fecha de efecto.
+        precio: { tipo: "monto", mensual: "1000.00", descuentos: {} },
+        costoPorOrden: "100.00",
+        costoPorOrdenPorcentual: null, // SLT-83: campo obligatorio nuevo; no cambia lo que se comprueba.
         vigenteDesde: null,
       });
       const trasEditar = await modulos(tx, org);
@@ -224,8 +203,8 @@ describeSiHayBase("SL-24 — asignar un plan a una empresa (R4, R6, R9–R13)", 
       const org = await c.empresa();
       const topes = (maximo: number) =>
         tope === "adminTienda"
-          ? { ordenesPorCiclo: null, porRol: { adminTienda: maximo }, apiKeys: null }
-          : { ordenesPorCiclo: null, porRol: {}, apiKeys: maximo };
+          ? { porRol: { adminTienda: maximo }, apiKeys: null }
+          : { porRol: {}, apiKeys: maximo };
       const grande = await c.plan({ topes: topes(10), modulos: ["ranking"] });
       const chico = await c.plan({ topes: topes(2), modulos: ["analitica"] });
       const justo = await c.plan({ topes: topes(3), modulos: ["analitica"] });
@@ -251,30 +230,12 @@ describeSiHayBase("SL-24 — asignar un plan a una empresa (R4, R6, R9–R13)", 
     expect(r.despues.planId).toBe(r.justo);
   });
 
-  it("R12 (órdenes): se comparan las del ciclo en curso; igual al tope no impide", async () => {
-    const r = await revertida(base, async (tx) => {
-      const c = await caso(tx);
-      const org = await c.empresa();
-      const grande = await c.plan({ topes: { ordenesPorCiclo: 10, porRol: {}, apiKeys: null } });
-      const chico = await c.plan({ topes: { ordenesPorCiclo: 2, porRol: {}, apiKeys: null } });
-      const justo = await c.plan({ topes: { ordenesPorCiclo: 3, porRol: {}, apiKeys: null } });
-      await c.asignar(org, grande);
-      await ordenes(tx, org, 3);
-      return { org, rechazo: await c.asignar(org, chico), bien: await c.asignar(org, justo) };
-    });
-    expect(r.rechazo).toMatchObject({
-      estado: "tope_excedido",
-      excedidos: [{ organizacionId: r.org, tope: "ordenes", usados: 3, maximo: 2 }],
-    });
-    expect(r.bien).toMatchObject({ estado: "ok", cambio: true });
-  });
-
   it("R12: un rol sin tope en el plan nuevo no limita, aunque el viejo lo topara", async () => {
     const r = await revertida(base, async (tx) => {
       const c = await caso(tx);
       const org = await c.empresa();
       await tiendasActivas(tx, org, 3);
-      const sinTopeDeTiendas = await c.plan({ topes: { ordenesPorCiclo: null, porRol: { admin: 1 }, apiKeys: null } });
+      const sinTopeDeTiendas = await c.plan({ topes: { porRol: { admin: 1 }, apiKeys: null } });
       return c.asignar(org, sinTopeDeTiendas);
     });
     expect(r).toMatchObject({ estado: "ok", cambio: true });
@@ -313,14 +274,15 @@ describeSiHayBase("SL-24 — asignar un plan a una empresa (R4, R6, R9–R13)", 
       const repo = planesEnTx(tx);
       await c.asignar(org, plan);
       return {
-        deOtra: await repo.asignar(org, deOtra, SUPERADMIN.usuarioId),
-        mismo: await repo.asignar(org, plan, SUPERADMIN.usuarioId),
-        noExiste: await repo.asignar(randomUUID(), plan, SUPERADMIN.usuarioId),
+        deOtra: await repo.asignar(org, deOtra, SUPERADMIN.usuarioId, CAMBIO_HOY, "mensual", new Date()),
+        mismo: await repo.asignar(org, plan, SUPERADMIN.usuarioId, CAMBIO_HOY, "mensual", new Date()),
+        noExiste: await repo.asignar(randomUUID(), plan, SUPERADMIN.usuarioId, HOY_SIN_ELEGIR, "mensual", new Date()),
         historial: await historial(tx, org),
       };
     });
     expect(r.deOtra).toEqual({ estado: "custom_de_otra_empresa" });
-    expect(r.mismo).toEqual({ estado: "ok", cambio: false });
+    // SLT-86 (R19): mismo plan y mismo tipo, sin pendiente: ok sin cambio.
+    expect(r.mismo).toEqual({ estado: "ok", cambio: false, avisos: [], pendiente: false });
     expect(r.noExiste).toEqual({ estado: "not_found" });
     // Solo la primera asignación dejó su fila.
     expect(r.historial).toBe(1);
@@ -361,7 +323,7 @@ describeSiHayBase("SL-24 — asignar un plan a una empresa (R4, R6, R9–R13)", 
       const c = await caso(tx);
       const org = await c.empresa();
       const plan = await c.plan({
-        precio: { tipo: "monto", mensual: "25000", anual: { tipo: "fijo", monto: "250000" } },
+        precio: { tipo: "monto", mensual: "25000", descuentos: { anual: { tipo: "monto", monto: "50000" } } },
       });
       const contar = async () => ({
         wallet: await tx.walletMovimiento.count(),

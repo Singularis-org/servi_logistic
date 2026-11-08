@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 // SLT-66 (design §6.2; R24, R10) — el costo del plan en el catálogo, el detalle y el modal de asignación
 // (primera asignación y cambio de plan): costo base, costo por orden («se aplica el valor global» si el
-// plan no lo tiene) y, con anual fijo o descuento, que el anual no cambia el costo por orden.
+// plan no lo tiene). SLT-86 (R24, R28): el costo base lleva sus descuentos por período y ya no hay nota
+// del anual, porque ningún descuento toca el costo por orden.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -28,16 +29,17 @@ import type {
 
 const ORG = "6f1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f60";
 const OK: PlanResult = { estado: "ok", planId: "p", cambio: true, avisos: [], vigenteDesde: null };
-const VISTA_PREVIA_OK: VistaPreviaAsignacionResult = { estado: "ok", avisos: [], siguienteCiclo: "2026-11-29" };
+const VISTA_PREVIA_OK: VistaPreviaAsignacionResult = { estado: "ok", avisos: [] };
 
 function plan(extra: Partial<PlanDTO> & Pick<PlanDTO, "id" | "nombre">): PlanDTO {
   return {
     visibilidad: "publico",
     organizacionId: null,
-    topes: { ordenesPorCiclo: null, porRol: {}, apiKeys: null },
+    topes: { porRol: {}, apiKeys: null },
     modulos: [],
-    precio: { tipo: "monto", mensual: "50000.00", anual: null },
+    precio: { tipo: "monto", mensual: "50000.00", descuentos: {} },
     costoPorOrden: "100.00",
+    costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
     archivado: false,
     ...extra,
   };
@@ -48,7 +50,7 @@ const SIN_COSTO = plan({ id: "22222222-2222-4222-8222-222222222222", nombre: "Si
 const CON_ANUAL = plan({
   id: "33333333-3333-4333-8333-333333333333",
   nombre: "Con anual",
-  precio: { tipo: "monto", mensual: "50000.00", anual: { tipo: "descuento", porcentaje: "10" } },
+  precio: { tipo: "monto", mensual: "50000.00", descuentos: { anual: { tipo: "porcentaje", porcentaje: "10" } } },
 });
 
 const catalogo = (p: PlanDTO): PlanDelCatalogo => ({
@@ -63,34 +65,42 @@ afterEach(() => cleanup());
 
 describe("SLT-66 R24, R10 — lineasDeCosto", () => {
   it("R24: costo base y costo por orden del plan", () => {
-    expect(lineasDeCosto(CONCRETO)).toEqual(["Costo base: 50000.00 al mes", "Costo por orden: 100.00 por orden"]);
+    expect(lineasDeCosto(CONCRETO)).toEqual(["Costo base: 50000.00 / mes", "Costo por orden: 100.00 por orden"]);
   });
 
   it("R24: sin costo por orden, «se aplica el valor global»; vale con cualquier forma de la base", () => {
-    expect(lineasDeCosto({ precio: { tipo: "negociable" }, costoPorOrden: null })).toEqual([
-      "Costo base: negociable",
+    expect(lineasDeCosto({ precio: { tipo: "sin_precio" }, costoPorOrden: null, costoPorOrdenPorcentual: null })).toEqual([
+      "Costo base: sin precio",
       "Costo por orden: se aplica el valor global",
     ]);
   });
 
-  it("R10: con descuento o anual fijo, el anual no cambia el costo por orden", () => {
-    expect(lineasDeCosto(CON_ANUAL).at(-1)).toBe("El pago anual no cambia el costo por orden.");
-    expect(
-      lineasDeCosto({ precio: { tipo: "monto", mensual: "1.00", anual: { tipo: "fijo", monto: "10.00" } }, costoPorOrden: "0.00" }),
-    ).toContain("El pago anual no cambia el costo por orden.");
-    // Sin anual, no hay nota.
-    expect(lineasDeCosto(CONCRETO)).toHaveLength(2);
+  it("SLT-86 R24, R28: con descuento de período, el costo base lo dice y no hay nota del anual", () => {
+    expect(lineasDeCosto(CON_ANUAL)).toEqual([
+      "Costo base: 50000.00 / mes · Descuento anual: 10.00 %",
+      "Costo por orden: 100.00 por orden",
+    ]);
   });
 });
 
 describe("SLT-66 R24 — catálogo", () => {
   it("R24: la columna «Costo» pinta el costo base y el costo por orden", () => {
-    render(<PlanesModule planes={[catalogo(CONCRETO), catalogo(SIN_COSTO)]} empresas={[]} crearPlan={vi.fn()} />);
+    render(
+      <PlanesModule
+        planes={[catalogo(CONCRETO), catalogo(SIN_COSTO)]}
+        empresas={[]}
+        inicioCicloPorDefecto="2026-10-30"
+        rangoInicioCiclo={{ hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" }}
+        rangoFechaDeEfecto={{ hoy: "2026-10-29", min: "2026-10-29", max: "2027-10-29" }}
+        crearPlan={vi.fn()}
+        previsualizarCustom={vi.fn().mockResolvedValue({ estado: "ok", avisos: [] })}
+      />,
+    );
 
     expect(screen.getByRole("columnheader", { name: "Costo" })).toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "Precio" })).toBeNull();
     const fila = (n: string) => screen.getByRole("link", { name: `Ver el plan ${n}` }).closest("tr")!;
-    expect(within(fila("Concreto")).getByText("Costo base: 50000.00 al mes")).toBeInTheDocument();
+    expect(within(fila("Concreto")).getByText("Costo base: 50000.00 / mes")).toBeInTheDocument();
     expect(within(fila("Concreto")).getByText("Costo por orden: 100.00 por orden")).toBeInTheDocument();
     expect(within(fila("Sin costo")).getByText("Costo por orden: se aplica el valor global")).toBeInTheDocument();
   });
@@ -111,7 +121,7 @@ describe("SLT-66 R24, R10 — detalle del plan", () => {
   it("R24: «Costo base» y «Costo por orden» como datos de la versión vigente", () => {
     montar(detalle(CONCRETO));
     expect(screen.queryByText("Precio informativo")).toBeNull();
-    expect(dato("Costo base")).toHaveTextContent("50000.00 al mes");
+    expect(dato("Costo base")).toHaveTextContent("50000.00 / mes");
     expect(dato("Costo por orden")).toHaveTextContent(/^100\.00 por orden$/);
   });
 
@@ -120,9 +130,10 @@ describe("SLT-66 R24, R10 — detalle del plan", () => {
     expect(dato("Costo por orden")).toHaveTextContent("se aplica el valor global");
   });
 
-  it("R10: con anual, la nota va junto al costo por orden", () => {
+  it("SLT-86 R24: con descuento de período, el costo base lo dice y el costo por orden no lleva nota", () => {
     montar(detalle(CON_ANUAL));
-    expect(dato("Costo por orden")).toHaveTextContent("El pago anual no cambia el costo por orden.");
+    expect(dato("Costo base")).toHaveTextContent("50000.00 / mes · Descuento anual: 10.00 %");
+    expect(dato("Costo por orden")).toHaveTextContent(/^100\.00 por orden$/);
   });
 
   it("R24: el rastro suma el costo por orden al alta y a la edición (también desde vacío)", () => {
@@ -139,7 +150,7 @@ describe("SLT-66 R24, R10 — detalle del plan", () => {
           id: "r-1",
           accion: "creado",
           cambios: {
-            precio: { antes: null, despues: { tipo: "monto", mensual: "50000.00", anual: null } },
+            precio: { antes: null, despues: { tipo: "monto", mensual: "50000.00" } },
             costoPorOrden: { antes: null, despues: null },
           },
           actorNombre: "Sofía Admin",
@@ -151,7 +162,7 @@ describe("SLT-66 R24, R10 — detalle del plan", () => {
     const cambios = filas.map((f) => within(f).getAllByRole("cell")[3].textContent);
     expect(cambios).toEqual([
       "Costo por orden: se aplica el valor global → 100.00 por orden",
-      "Costo base: 50000.00 al mesCosto por orden: se aplica el valor global",
+      "Costo base: 50000.00 / mesCosto por orden: se aplica el valor global",
     ]);
   });
 });
@@ -167,7 +178,12 @@ describe("SLT-66 R24 — modal de asignación", () => {
           asignables={asignables}
           asignarPlan={vi.fn().mockResolvedValue(OK)}
           rangoInicioCiclo={{ hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" }}
+          inicioCicloPorDefecto="2026-10-30"
+          rangoFechaDeEfecto={{ hoy: "2026-10-10", min: "2026-10-10", max: "2027-10-10" }}
+          fechaDeEfectoPorDefecto="2026-11-01"
           previsualizarAsignacion={vi.fn().mockResolvedValue(VISTA_PREVIA_OK)}
+          cambiarTipoCobro={vi.fn()}
+          cancelarCambioEmpresa={vi.fn()}
         />
       </ToastProvider>,
     );
@@ -180,7 +196,7 @@ describe("SLT-66 R24 — modal de asignación", () => {
 
   it("R24: la primera asignación lista el costo base y el costo por orden antes de los módulos", async () => {
     const user = userEvent.setup();
-    montar({ organizacionId: ORG, plan: null, asignaciones: [] }, [CON_ANUAL]);
+    montar({ organizacionId: ORG, plan: null, pendienteSinPlan: null, asignaciones: [] }, [CON_ANUAL]);
 
     await elegir(user, "Con anual (Público)");
     await user.click(screen.getByRole("button", { name: "Asignar plan" }));
@@ -188,10 +204,9 @@ describe("SLT-66 R24 — modal de asignación", () => {
     const lineas = within(within(modal).getByRole("list", { name: "Lo que tendrá la empresa" }))
       .getAllByRole("listitem")
       .map((li) => li.textContent);
-    expect(lineas.slice(-4)).toEqual([
-      "Costo base: 50000.00 al mes, con 10 % de descuento en el pago anual",
+    expect(lineas.slice(-3)).toEqual([
+      "Costo base: 50000.00 / mes · Descuento anual: 10.00 %",
       "Costo por orden: 100.00 por orden",
-      "El pago anual no cambia el costo por orden.",
       "Módulos incluidos: Ninguno",
     ]);
   });
@@ -204,17 +219,22 @@ describe("SLT-66 R24 — modal de asignación", () => {
       plan: {
         ...planConConsumo(
           {
-            vigente: { nombre: actual.nombre, topes: actual.topes, modulos: [], precio: actual.precio, costoPorOrden: "100.00" },
-            ancla: new Date("2026-10-01T06:00:00.000Z"),
+            vigente: { nombre: actual.nombre, topes: actual.topes, modulos: [], precio: actual.precio, costoPorOrden: "100.00", costoPorOrdenPorcentual: null },
+            entrada: new Date("2026-10-01T06:00:00.000Z"),
+            precioDelPeriodo: actual.precio,
+            pendiente: null,
             uso: { ordenes: 0, apiKeys: 0, porRol: { admin: 0, mensajero: 0, adminTienda: 0, adminSatelite: 0 } },
             cambio: null,
-            costoVigente: { monto: "100.00", fuente: "plan" },
+            costoVigente: { modo: "fijo", monto: "100.00", fuente: "plan" },
+            cobroCiclo: { cobrado: "0.00", pendientes: 0 }, // SLT-83: campo nuevo de la lectura
+            tipoCobro: "mensual", // Ajuste planes-custom (D6).
           },
           new Date("2026-10-10T06:00:00.000Z"),
         ),
         planId: actual.id,
         archivado: false,
       },
+      pendienteSinPlan: null,
       asignaciones: [],
     };
     montar(vista, [actual, CONCRETO]);
@@ -222,7 +242,7 @@ describe("SLT-66 R24 — modal de asignación", () => {
     await elegir(user, "Concreto (Público)");
     await user.click(screen.getByRole("button", { name: "Cambiar plan" }));
     const modal = await screen.findByRole("dialog", { name: "¿Cambiar el plan de esta empresa?" });
-    await waitFor(() => expect(within(modal).getByText("Costo base: 50000.00 al mes")).toBeInTheDocument());
+    await waitFor(() => expect(within(modal).getByText("Costo base: 50000.00 / mes")).toBeInTheDocument());
     expect(within(modal).getByText("Costo por orden: 100.00 por orden")).toBeInTheDocument();
   });
 });

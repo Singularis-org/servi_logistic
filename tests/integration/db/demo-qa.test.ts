@@ -146,12 +146,16 @@ const ORDENES_POR_ESTADO: Record<string, number> = {
   incidente: 2,
 };
 
-/** R12: perfil → rol, y si es tienda, si tiene bodega propia (`fulfillment`). */
-const PERFILES: Record<string, { rol: string; fulfillment?: boolean; zona?: "central" | "satelite" }> = {
+/**
+ * R12: perfil → rol, y si es tienda, si sus pedidos se recogen en la tienda (`se_recoge_en_tienda`).
+ * SLT-94: la tienda CON bodega propia es la que NO se recoge en tienda (la marca vieja `fulfillment`
+ * se migro negada y su columna ya no se lee).
+ */
+const PERFILES: Record<string, { rol: string; seRecogeEnTienda?: boolean; zona?: "central" | "satelite" }> = {
   maestro: { rol: "maestro" },
   admin: { rol: "admin" },
-  "tienda-bodega": { rol: "Admin Tienda", fulfillment: true },
-  tienda: { rol: "Admin Tienda", fulfillment: false },
+  "tienda-bodega": { rol: "Admin Tienda", seRecogeEnTienda: false },
+  tienda: { rol: "Admin Tienda", seRecogeEnTienda: true },
   satelite: { rol: "adminSatelite", zona: "satelite" },
   "mensajero-central": { rol: "mensajero", zona: "central" },
   "mensajero-novedades": { rol: "mensajero", zona: "central" },
@@ -723,9 +727,9 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
       // R12, D29: un usuario por perfil, correos fijos `servi-<slug>-<perfil>@yopmail.com`; el de la API key
       // es la excepción (D28).
       const usuarios = await base.$queryRawUnsafe<
-        { id: string; email: string; rol: string; fulfillment: boolean; zona: boolean | null; estado: string }[]
+        { id: string; email: string; rol: string; seRecoge: boolean; zona: boolean | null; estado: string }[]
       >(
-        `SELECT u.id, u.email, r.value::text AS rol, u.fulfillment, z.es_central AS zona, u.estado::text AS estado
+        `SELECT u.id, u.email, r.value::text AS rol, u.se_recoge_en_tienda AS "seRecoge", z.es_central AS zona, u.estado::text AS estado
            FROM usuario u JOIN rol r ON r.id = u.rol_id LEFT JOIN zona z ON z.id = u.zona_id
           WHERE u.organizacion_id = $1`,
         org,
@@ -736,7 +740,7 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
         const u = porCorreo.get(`servi-demo-qa-${x}-${perfil}@yopmail.com`);
         expect(u, `${slug} sin ${perfil}`).toBeDefined();
         expect(u!.rol, `${slug} ${perfil}`).toBe(esperado.rol);
-        if (esperado.fulfillment !== undefined) expect(u!.fulfillment, `${slug} ${perfil}`).toBe(esperado.fulfillment);
+        if (esperado.seRecogeEnTienda !== undefined) expect(u!.seRecoge, `${slug} ${perfil}`).toBe(esperado.seRecogeEnTienda);
         if (esperado.zona) expect(u!.zona, `${slug} ${perfil}`).toBe(esperado.zona === "central");
       }
       const api = usuarios.filter((u) => u.rol === "apiKey");
@@ -799,18 +803,19 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
 
       // R14: las tres vías. Pantalla = carga de la tienda SIN bodega; masiva = la de la tienda CON
       // bodega; API = `carga_api`. Las dos primeras dejan el mismo origen (`progress/impl_SL-43.md > T8`).
-      const vias = await base.$queryRawUnsafe<{ origen: string; fulfillment: boolean; n: number }[]>(
-        `SELECT h.origen_tipo::text AS origen, t.fulfillment, count(*)::int AS n
+      const vias = await base.$queryRawUnsafe<{ origen: string; seRecoge: boolean; n: number }[]>(
+        `SELECT h.origen_tipo::text AS origen, t.se_recoge_en_tienda AS "seRecoge", count(*)::int AS n
            FROM orden_historial_estado h JOIN orden o ON o.id = h.orden_id JOIN usuario t ON t.id = o.tienda_id
           WHERE h.organizacion_id = $1 AND h.estatus_origen_id IS NULL
           GROUP BY 1, 2 ORDER BY 1, 2`,
         org,
       );
-      const via = (origen: string, fulfillment: boolean) =>
-        vias.find((v) => v.origen === origen && v.fulfillment === fulfillment)?.n ?? 0;
-      expect(via("carga_masiva", false), "pantalla").toBeGreaterThanOrEqual(1);
-      expect(via("carga_masiva", true), "carga masiva").toBeGreaterThanOrEqual(1);
-      expect(via("carga_api", false), "API").toBeGreaterThanOrEqual(1);
+      // SLT-94: «sin bodega» = se recoge en tienda (`true`); «con bodega» = no (`false`).
+      const via = (origen: string, seRecoge: boolean) =>
+        vias.find((v) => v.origen === origen && v.seRecoge === seRecoge)?.n ?? 0;
+      expect(via("carga_masiva", true), "pantalla").toBeGreaterThanOrEqual(1);
+      expect(via("carga_masiva", false), "carga masiva").toBeGreaterThanOrEqual(1);
+      expect(via("carga_api", true), "API").toBeGreaterThanOrEqual(1);
 
       // R16: una gestión de cada resultado, pago mixto, devuelta a tienda e incidente indemnizado.
       const resultados = await base.$queryRawUnsafe<{ r: string }[]>(
@@ -887,9 +892,13 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
       );
       expect(Number(fila[0].c)).toBe(100);
       // R11 también: cada orden nació por un camino con trigger, que deja su cargo.
+      // SLT-83 (design §13, T5): solo las órdenes SIN condiciones porcentuales congeladas. Una orden
+      // porcentual no lleva cargo hasta su estado final, así que «toda orden tiene su cargo» ya no es cierto
+      // para ellas. La demo tiene excepción propia (no congela nada): el acotado no le quita ninguna orden.
       const sinCargoUnico = await contar(
         `SELECT count(*)::int AS n FROM orden o
           WHERE o.organizacion_id = $1
+            AND NOT EXISTS (SELECT 1 FROM cobro_plataforma_porcentual_orden c WHERE c.orden_id = o.id)
             AND (SELECT count(*) FROM cobro_plataforma_movimiento m WHERE m.orden_id = o.id AND m.tipo = 'cargo') <> 1`,
         org,
       );

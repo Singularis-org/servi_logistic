@@ -4,10 +4,14 @@ import { headers } from "next/headers";
 
 import { loadRastreoPublicoConfig } from "@/lib/config/rastreo-publico";
 import { comoPlataforma, conEmpresa } from "@/lib/db/contexto-empresa";
+import { PaisSinZonaHoraria } from "@/lib/db/errores-pais";
 import { getPrismaClient } from "@/lib/db/prisma-client";
+import { defaultLogger, type ErrorLogger } from "@/lib/errors/logger";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import type { IRastreoPublicoService } from "@/lib/interfaces/services/IRastreoPublicoService";
 import { RastreoPublicoRepository } from "@/lib/repositories/RastreoPublicoRepository";
 import { RastreoPublicoService } from "@/lib/services/RastreoPublicoService";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import {
   consultaRastreoSchema,
   type ResultadoRastreoPublico,
@@ -61,6 +65,24 @@ async function requestContextFromHeaders(): Promise<RequestContext> {
 }
 
 /**
+ * SLT-42 (decision del humano tras T5.6) — lo que se deja para soporte cuando el pais de la empresa
+ * duena de la orden no tiene con que atender el rastreo: solo la empresa, el pais y que le falta.
+ * Ni la guia, ni el segundo factor, ni nada del destinatario (R12 de la 229).
+ */
+function avisoPaisIncompleto(
+  organizacionId: string,
+  paisId: string,
+  falta: "telefono" | "zona_horaria",
+): Record<string, string> {
+  return {
+    evento: "rastreo_publico_pais_incompleto",
+    organizacionId,
+    paisId,
+    falta,
+  };
+}
+
+/**
  * SL-17 (design §7) — quien rastrea no tiene sesion, asi que la empresa sale de la propia guia.
  *
  * En plataforma se lee SOLO `organizacion_id`, por `num_guia`, que es unico global hasta SL-18:
@@ -70,10 +92,15 @@ async function requestContextFromHeaders(): Promise<RequestContext> {
  * Una guia inexistente responde `no_encontrado` sin pasar por el service: es el mismo resultado de
  * hoy y no hay empresa en la que leer. Cuesta una consulta menos que una guia existente con el
  * factor errado; el limite por IP sigue siendo la defensa contra el barrido (G4).
+ *
+ * SLT-42 (R27): el pais —prefijo del telefono y zona horaria— es el de esa misma empresa. El puerto
+ * lo lee del contexto `conEmpresa`, asi que una guia inexistente sigue sin tocarlo.
  */
-function buildService(): IRastreoPublicoService {
+function buildService(logger: ErrorLogger): IRastreoPublicoService {
   const prisma = getPrismaClient();
-  const real = new RastreoPublicoService(new RastreoPublicoRepository(prisma));
+  const repo = new RastreoPublicoRepository(prisma);
+  const config = loadRastreoPublicoConfig();
+  const reglas = construirReglasPaisEmpresa(prisma);
   return {
     async consultar(numGuia, factor) {
       const orden = await comoPlataforma(
@@ -82,13 +109,42 @@ function buildService(): IRastreoPublicoService {
         () => prisma.orden.findUnique({ where: { numGuia }, select: { organizacionId: true } }),
       );
       if (orden === null) return { estado: "no_encontrado" };
-      return conEmpresa(orden.organizacionId, () => real.consultar(numGuia, factor));
+      const { organizacionId } = orden;
+
+      // SLT-42 (decision del humano tras T5.6) — un pais incompleto responde `no_encontrado`, como una
+      // guia inexistente, y deja para soporte la empresa afectada. Sin prefijo o digitos el servicio
+      // ya responde `no_encontrado` (la orden no es consultable); aqui solo se anota cual fue el pais.
+      // Sin zona, el puerto lanza `PaisSinZonaHoraria` cuando el factor ya coincidio; aqui se traduce.
+      const visto: { paisSinTelefono: string | null } = { paisSinTelefono: null };
+      const vigiladas: Pick<IReglasPaisEmpresa, "deLaEmpresa" | "zonaHoraria"> = {
+        async deLaEmpresa() {
+          const pais = await reglas.deLaEmpresa();
+          if (pais.telefono === null) visto.paisSinTelefono = pais.paisId;
+          return pais;
+        },
+        zonaHoraria: () => reglas.zonaHoraria(),
+      };
+      const real = new RastreoPublicoService(repo, config, vigiladas);
+
+      try {
+        const resultado = await conEmpresa(organizacionId, () => real.consultar(numGuia, factor));
+        if (visto.paisSinTelefono !== null) {
+          logger.logError(avisoPaisIncompleto(organizacionId, visto.paisSinTelefono, "telefono"));
+        }
+        return resultado;
+      } catch (error) {
+        if (!(error instanceof PaisSinZonaHoraria)) throw error;
+        logger.logError(avisoPaisIncompleto(organizacionId, error.paisId, "zona_horaria"));
+        return { estado: "no_encontrado" };
+      }
     },
   };
 }
 
 export interface RastreoPublicoDeps {
   service?: IRastreoPublicoService;
+  /** SLT-42: donde queda el aviso de un pais incompleto. Sin el, `console.error` (`defaultLogger`). */
+  logger?: ErrorLogger;
   getContext?: () => Promise<RequestContext>;
   limiter?: ResetRateLimiter;
 }
@@ -137,6 +193,6 @@ export async function consultarRastreoPublico(
   limiter.registrar(rateKey);
 
   // 5. Proyeccion. El service no corta antes de comparar el segundo factor (R8).
-  const service = deps.service ?? buildService();
+  const service = deps.service ?? buildService(deps.logger ?? defaultLogger);
   return service.consultar(parsed.data.numGuia, parsed.data.factor);
 }

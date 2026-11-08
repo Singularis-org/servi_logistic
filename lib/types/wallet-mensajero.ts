@@ -8,7 +8,7 @@ import type {
 import type { ListarCompletoResult } from "@/lib/types/descarga-listado";
 import type { ListarPaginadoResult } from "@/lib/types/listado-paginado";
 import { paginaInputSchema } from "@/lib/types/pagina-input";
-import { desdeDiaCRSchema, hastaDiaCRSchema } from "@/lib/types/filtro-dias-cr";
+import { desdeDiaSchema, hastaDiaSchema } from "@/lib/types/filtro-dias-cr";
 import { walletMensajeroConfig } from "@/lib/config/wallet-mensajero";
 
 // Feature 44 (design §1.1/§3) — fuente unica de verdad de tipos/categorias del LIBRO del pago
@@ -159,27 +159,31 @@ export type ListarPagosDeMensajeroResult = {
 // (la vista del maestro, R22) deriva con `.extend(...)`. La ficha 336 retiro la vista PROPIA del
 // mensajero (`/mis-pagos`) y con ella su `ListarPagosMensajeroInput`, que se quedo sin ningun
 // consumidor; el schema en si sigue sosteniendo el desglose del maestro.
-export const listarPagosMensajeroSchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(100).default(20),
-  // Ficha 458-A (TA.4, R12): el cierre se elige en un selector y viaja su id; el borde rechaza todo
-  // valor que no tenga forma de identificador (antes `min(1)`: «Pegá el identificador»).
-  cierreId: z.string().uuid().optional(),
-  mensajeroId: z.string().min(1).optional(),
-  // Ficha 461 (R72, auditoria T1): dias de Costa Rica; `hasta` exclusivo en el repositorio.
-  desde: desdeDiaCRSchema.optional(),
-  hasta: hastaDiaCRSchema.optional(),
-});
+export function listarPagosMensajeroSchema(zona: string) {
+  return z.object({
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(100).default(20),
+    // Ficha 458-A (TA.4, R12): el cierre se elige en un selector y viaja su id; el borde rechaza todo
+    // valor que no tenga forma de identificador (antes `min(1)`: «Pegá el identificador»).
+    cierreId: z.string().uuid().optional(),
+    mensajeroId: z.string().min(1).optional(),
+    // Ficha 461 (R72, auditoria T1): dias de Costa Rica; `hasta` exclusivo en el repositorio.
+    desde: desdeDiaSchema(zona).optional(),
+    hasta: hastaDiaSchema(zona).optional(),
+  });
+}
 
 // Vista del MAESTRO (R18/R22): el maestro DEBE elegir un mensajero, asi que `mensajeroId` pasa a
 // ser REQUERIDO (a diferencia de la vista propia, donde lo pone el actor y aqui era opcional). Un
 // `mensajeroId` faltante o vacio -> ZodError -> validation_error en el borde. Deriva del schema
 // base para heredar page/pageSize/cierreId/desde/hasta.
-export const listarPagosDeMensajeroSchema = listarPagosMensajeroSchema.extend({
-  mensajeroId: z.string().min(1),
-});
+export function listarPagosDeMensajeroSchema(zona: string) {
+  return listarPagosMensajeroSchema(zona).extend({
+    mensajeroId: z.string().min(1),
+  });
+}
 
-export type ListarPagosDeMensajeroInput = z.infer<typeof listarPagosDeMensajeroSchema>;
+export type ListarPagosDeMensajeroInput = z.infer<ReturnType<typeof listarPagosDeMensajeroSchema>>;
 
 // ── Feature 170 (T C.1) — modo SIN paginacion (descarga del dataset completo) ──
 
@@ -192,12 +196,14 @@ export type ListarPagosDeMensajeroInput = z.infer<typeof listarPagosDeMensajeroS
  * REQUERIDO (igual que en el listado): sin el no hay desglose que pedir, y un `mensajeroId`
  * ausente es `validation_error` antes de tocar la base.
  */
-export const listarPagosDeMensajeroCompletoSchema = listarPagosDeMensajeroSchema
-  .omit({ page: true, pageSize: true })
-  .strict();
+export function listarPagosDeMensajeroCompletoSchema(zona: string) {
+  return listarPagosDeMensajeroSchema(zona)
+    .omit({ page: true, pageSize: true })
+    .strict();
+}
 
 export type ListarPagosDeMensajeroCompletoInput = z.infer<
-  typeof listarPagosDeMensajeroCompletoSchema
+  ReturnType<typeof listarPagosDeMensajeroCompletoSchema>
 >;
 
 // ── Feature 170 — FASE 2 (T L.1) — «Cuentas por pagar a mensajeros» paginado ──

@@ -38,13 +38,7 @@ vi.mock("@/lib/actions/zonas", () => ({
   impactoZonaCentral: (...a: unknown[]) => impactoZonaCentralMock(...a),
 }));
 
-vi.mock("@/lib/actions/tarifas", () => ({
-  crearTarifa: vi.fn(),
-  actualizarTarifa: vi.fn(),
-}));
-
 vi.mock("@/lib/actions/geografia", () => ({
-  actualizarDistritosEspeciales: vi.fn().mockResolvedValue({ status: "ok" }),
   listarArbolGeografico: vi.fn(),
 }));
 

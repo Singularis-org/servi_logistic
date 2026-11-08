@@ -1,58 +1,106 @@
+import { aCentimos, aCentimosConSigno, aTexto } from "@/lib/planes/centimos";
 import { tieneCostoConcreto, type PlanParaCosto } from "@/lib/planes/costo-concreto";
-import type { CosteoDelCiclo, FuenteDelCosto } from "@/lib/types/consumo-plan";
+import type { CobroDelCiclo, CosteoDelCiclo, CostoVigente, FuenteDelCosto } from "@/lib/types/consumo-plan";
 
-// SLT-66 (design §4.3; R19, R20, R10, R28) — el total estimado del ciclo que muestran «Mi plan» y el
-// detalle de empresa del superadmin.
+// SLT-66 (design §4.3; R19, R20, R28) — el total estimado del ciclo que muestran «Mi plan» y el
+// detalle de empresa del superadmin. SLT-86 (R28): el ciclo es el período en curso de calendario y la
+// base, su costo (o el de su tramo) con el descuento del período. SLT-83 (design §4.3; R23): con un
+// plan porcentual el total suma lo que ya se cobró, no una estimación, porque el importe de cada orden
+// depende de su estado final.
 //
-// Sin `@prisma/client`: este módulo llega a componentes cliente por `consumo.ts`, y `Prisma.Decimal`
-// arrastraría el runtime de Prisma al bundle (decisión del humano, 2026-10-31). La aritmética va en
-// céntimos enteros, como `lib/utils/pagos-recaudo.ts`, pero en `bigint`: un `DECIMAL(12,2)` por
-// cien mil órdenes pasa de 2^53 y un `number` perdería céntimos. Ni `Number(` ni `parseFloat`.
+// La aritmética, en céntimos exactos (`lib/planes/centimos.ts`): ni `Number(` ni `parseFloat`.
 
-const IMPORTE = /^(\d+)(?:\.(\d{1,2}))?$/;
-const CIEN = BigInt(100);
+type CostoFijo = Extract<CostoVigente, { modo: "fijo" }>;
 
-/** Un importe en texto (`"7"`, `"0.1"`, `"9999999999.99"`) a céntimos exactos. */
-function aCentimos(importe: string): bigint {
-  const partes = IMPORTE.exec(importe);
-  // Los importes vienen de columnas `DECIMAL(12,2)` no negativas: otra forma es un error del llamador.
-  if (partes === null) throw new Error(`costeoDelCiclo: importe no válido: ${importe}`);
-  return BigInt(partes[1]) * CIEN + BigInt((partes[2] ?? "").padEnd(2, "0"));
-}
-
-/** Céntimos a texto con dos decimales (`"0.30"`, `"50300.00"`). */
-function aTexto(centimos: bigint): string {
-  const digitos = centimos.toString().padStart(3, "0");
-  return `${digitos.slice(0, -2)}.${digitos.slice(-2)}`;
-}
+/** Una fila de `cobro_plataforma_tarifa_de` con los importes como texto (SLT-83 M3). */
+export type TarifaLeida = { monto: string | null; fuente: FuenteDelCosto; porcentaje: string | null; minimo: string | null };
 
 /**
- * `costoVigente` es el de `cobro_plataforma_tarifa_de`, el mismo que usará el próximo cargo (§3.2):
- * nunca queda «por definir» porque cae al global o a `0.00` (R20). El total usa lo que la empresa paga.
+ * SLT-83 (R22, R23): la regla vigente con su modo. «Porcentual» es `porcentaje` no nulo, como en la
+ * función. Un porcentaje solo sale del plan (la excepción y el global son fijos, R7) y el modo fijo
+ * siempre trae importe: otra forma es una función rota, y se dice en vez de pintar una cifra falsa.
+ */
+export function costoVigenteDeLaTarifa(t: TarifaLeida): CostoVigente {
+  if (t.porcentaje !== null) {
+    if (t.fuente !== "plan") {
+      throw new Error(`cobro_plataforma_tarifa_de: porcentaje con fuente ${t.fuente}; solo el plan es porcentual`);
+    }
+    return { modo: "porcentual", porcentaje: t.porcentaje, minimo: t.minimo, fuente: "plan" };
+  }
+  if (t.monto === null) throw new Error(`cobro_plataforma_tarifa_de: modo fijo sin importe (fuente ${t.fuente})`);
+  return { modo: "fijo", monto: t.monto, fuente: t.fuente };
+}
+
+type CosteoFijo = Extract<CosteoDelCiclo, { modo: "fijo" }>;
+
+/**
+ * `costoDelPeriodo` es el costo base del período en curso o de su tramo, con el descuento del período
+ * (SLT-86 R28; `cobroDelPlan(...).costo`): `null` = el plan no tiene costo base y queda «por definir»
+ * (R20). Llega calculado porque sale del precio vigente al EMPEZAR el período (R15), que no tiene por qué
+ * ser el de `plan.precio`.
  *
- * `sinCostoConcreto` mira el PLAN, no lo que se cobra (R28): con una excepción en la empresa y un plan
- * sin costo por orden, el aviso sale igual.
+ * `costoVigente` es el de `cobro_plataforma_tarifa_de`, el mismo que usará el próximo cargo (§3.2):
+ * en modo fijo nunca queda «por definir» porque cae al global o a `0.00` (R20). El total usa lo que la
+ * empresa paga.
+ *
+ * `sinCostoConcreto` mira el PLAN vigente, no lo que se cobra (R28 de SLT-66): con una excepción en la
+ * empresa y un plan sin costo por orden, el aviso sale igual.
+ *
+ * SLT-83: `cobroCiclo` es el de `plan_cobro_del_ciclo` (R24) y solo lo usa el modo porcentual: en el
+ * fijo es opcional y no cambia nada. SLT-86 (R28): lo cuenta desde el inicio del período en curso.
  */
 export function costeoDelCiclo(
   plan: PlanParaCosto,
-  costoVigente: { monto: string; fuente: FuenteDelCosto },
+  costoDelPeriodo: string | null,
+  costoVigente: CostoFijo,
   ordenes: number,
+  cobroCiclo?: CobroDelCiclo,
+): CosteoFijo;
+export function costeoDelCiclo(
+  plan: PlanParaCosto,
+  costoDelPeriodo: string | null,
+  costoVigente: CostoVigente,
+  ordenes: number,
+  cobroCiclo: CobroDelCiclo,
+): CosteoDelCiclo;
+export function costeoDelCiclo(
+  plan: PlanParaCosto,
+  costoDelPeriodo: string | null,
+  costoVigente: CostoVigente,
+  ordenes: number,
+  cobroCiclo?: CobroDelCiclo,
 ): CosteoDelCiclo {
-  const { precio } = plan;
+  const base = costoDelPeriodo === null ? null : aCentimos(costoDelPeriodo);
+  const comun = {
+    base: base === null ? { tipo: "por_definir" as const } : { tipo: "monto" as const, periodo: aTexto(base) },
+    sinCostoConcreto: !tieneCostoConcreto(plan),
+  };
+
+  if (costoVigente.modo === "porcentual") {
+    // R23: base + lo cobrado en el período; las órdenes aún sin estado final solo se cuentan.
+    // Las sobrecargas lo exigen en este modo; sin él, el total sería una cifra inventada.
+    if (cobroCiclo === undefined) throw new Error("costeoDelCiclo: el modo porcentual necesita lo cobrado en el ciclo");
+    const cobrado = aCentimosConSigno(cobroCiclo.cobrado);
+    return {
+      modo: "porcentual",
+      ...comun,
+      porcentaje: costoVigente.porcentaje,
+      minimo: costoVigente.minimo,
+      cobrado: aTexto(cobrado),
+      pendientes: cobroCiclo.pendientes,
+      total: base === null ? null : aTexto(base + cobrado),
+    };
+  }
+
   const costo = aCentimos(costoVigente.monto);
   const subtotal = costo * BigInt(ordenes);
-  // El anual (fijo o con descuento) no entra: el total es siempre mensual (R10, R19).
-  const mensual = precio.tipo === "monto" ? aCentimos(precio.mensual) : null;
-  const base: CosteoDelCiclo["base"] =
-    mensual === null ? { tipo: "por_definir" } : { tipo: "monto", mensual: aTexto(mensual) };
   return {
-    base,
+    modo: "fijo",
+    ...comun,
     costoPorOrden: aTexto(costo),
     fuente: costoVigente.fuente,
     ordenes,
     subtotalOrdenes: aTexto(subtotal),
-    total: mensual === null ? null : aTexto(mensual + subtotal),
-    sinCostoConcreto: !tieneCostoConcreto(plan),
-    anualNoAplicaAlCosto: precio.tipo === "monto" && precio.anual !== null,
+    total: base === null ? null : aTexto(base + subtotal),
   };
 }

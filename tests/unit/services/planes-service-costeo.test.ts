@@ -9,6 +9,7 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { PlanesService } from "@/lib/services/PlanesService";
 import type { PlanDTO } from "@/lib/types/planes";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // SLT-66 (design §4.2, §5; R1, R8, R11) — el costo por orden por el servicio de planes, con un
 // repositorio doble: solo el superadmin lo escribe, la entrada inválida no llega al repositorio y la
 // válida llega entera (crear, editar de inmediato y programar).
@@ -27,10 +28,11 @@ const PLAN_DTO: PlanDTO = {
   nombre: "Básico",
   visibilidad: "publico",
   organizacionId: null,
-  topes: { ordenesPorCiclo: 100, porRol: { admin: 2 }, apiKeys: null },
+  topes: { porRol: { admin: 2 }, apiKeys: null },
   modulos: [],
   precio: { tipo: "sin_precio" },
   costoPorOrden: null,
+  costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
   archivado: false,
 };
 
@@ -38,18 +40,20 @@ const CREAR = {
   nombre: "Básico",
   visibilidad: "publico",
   organizacionId: null,
-  topes: { ordenesPorCiclo: 100, porRol: {}, apiKeys: null },
+  topes: { porRol: {}, apiKeys: null },
   modulos: [],
-  precio: { tipo: "monto", mensual: "50000", anual: null },
+  precio: { tipo: "monto", mensual: "50000", descuentos: {} },
   costoPorOrden: "100",
+  costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del esquema
 };
 
 const VERSION = {
   nombre: "Básico",
-  topes: { ordenesPorCiclo: 100, porRol: { admin: 2 }, apiKeys: null },
+  topes: { porRol: { admin: 2 }, apiKeys: null },
   modulos: [],
-  precio: { tipo: "negociable" },
+  precio: { tipo: "sin_precio" }, // D1 (ajuste planes-custom): «negociable» ya no existe.
   costoPorOrden: "150.50",
+  costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del esquema
 };
 
 function doble() {
@@ -60,6 +64,7 @@ function doble() {
     editar: vi.fn<IPlanesRepository["editar"]>(async () => ({ estado: "ok", cambio: true, avisos: [] })),
     archivar: vi.fn<IPlanesRepository["archivar"]>(),
     asignar: vi.fn<IPlanesRepository["asignar"]>(),
+    crearYAsignar: vi.fn<IPlanesRepository["crearYAsignar"]>(),
     cancelarCambio: vi.fn<IPlanesRepository["cancelarCambio"]>(),
     programarCambio: vi.fn<IPlanesRepository["programarCambio"]>(async () => ({
       estado: "ok",
@@ -72,10 +77,16 @@ function doble() {
     repartirRecordatorio: vi.fn<IPlanesRepository["repartirRecordatorio"]>(),
     destinatariosDelAviso: vi.fn<IPlanesRepository["destinatariosDelAviso"]>(),
     asignables: vi.fn<IPlanesRepository["asignables"]>(),
+    preciosQueRigenDesde: vi.fn<IPlanesRepository["preciosQueRigenDesde"]>(async () => []),
     publicos: vi.fn<IPlanesRepository["publicos"]>(),
     catalogo: vi.fn<IPlanesRepository["catalogo"]>(),
     detalle: vi.fn<IPlanesRepository["detalle"]>(),
     planDeEmpresa: vi.fn<IPlanesRepository["planDeEmpresa"]>(),
+    vistaPreviaConTopes: vi.fn<IPlanesRepository["vistaPreviaConTopes"]>(async () => null),
+    cambiarTipoCobro: vi.fn<IPlanesRepository["cambiarTipoCobro"]>(async () => ({ estado: "not_found" })),
+    cancelarCambioEmpresa: vi.fn<IPlanesRepository["cancelarCambioEmpresa"]>(),
+    aplicarCambioDeEmpresa: vi.fn<IPlanesRepository["aplicarCambioDeEmpresa"]>(),
+    cambiosDeEmpresaVencidos: vi.fn<IPlanesRepository["cambiosDeEmpresaVencidos"]>(),
     vistaPreviaAsignacion: vi.fn<IPlanesRepository["vistaPreviaAsignacion"]>(),
   };
 }
@@ -89,7 +100,7 @@ function llamadasAlRepositorio(): number {
 
 beforeEach(() => {
   repo = doble();
-  servicio = new PlanesService(repo, () => AHORA);
+  servicio = new PlanesService(repo, () => AHORA, async () => ZONA_DE_CR);
 });
 
 const OPERACIONES: [string, (s: PlanesService, a: Actor | null, extra?: Record<string, unknown>) => Promise<unknown>][] = [
@@ -119,7 +130,7 @@ describe("SLT-66 R11 — solo el superadmin escribe el costo por orden", () => {
 describe("SLT-66 R1, R8 — la entrada inválida es validation_error sin llamar al repositorio", () => {
   for (const [nombre, op] of OPERACIONES) {
     it(`${nombre}: un tope de maestro (R1)`, async () => {
-      const r = await op(servicio, SUPERADMIN, { topes: { ordenesPorCiclo: 10, porRol: { maestro: 3 }, apiKeys: null } });
+      const r = await op(servicio, SUPERADMIN, { topes: { porRol: { maestro: 3 }, apiKeys: null } });
       expect(r).toMatchObject({ estado: "validation_error" });
       expect(Object.keys((r as { fieldErrors: Record<string, string[]> }).fieldErrors).join(" ")).toMatch(/topes/);
       expect(llamadasAlRepositorio()).toBe(0);

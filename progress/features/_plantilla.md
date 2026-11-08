@@ -10,7 +10,8 @@
 Fase actual (F1.0…F2.6), dónde está el spec, qué bloquea.
 
 ## Evaluación
-zone / complexity con su motivo, cupo y cruce de archivos (`archivos-en-vuelo.mjs`).
+zone / complexity / ruta (`docs/specs.md > Tres rutas`) con su motivo, cupo y cruce de archivos
+(`archivos-en-vuelo.mjs`).
 
 ## Decisiones
 Lo que decidió el humano (con fecha) y no está ya en `specs/`.
@@ -26,3 +27,4 @@ Override de modelo en una llamada concreta, con su motivo.
 
 ## Cierre
 PR, merge, tarjeta, poda del baseline, worktree y base borrados.
+Métricas: la salida de `node scripts/metricas.mjs informe --key <key>` (`docs/gate.md > Medir el ciclo`).

@@ -3,7 +3,14 @@ import { esNoComparable } from "@/lib/analytics/backfill-rango";
 import { seudonimizarMensajeros } from "@/lib/analytics/identidad";
 import { MENSAJERO_SIN_ASIGNAR } from "@/lib/analytics/types";
 import type { DimensionAnalitica, RangoResuelto } from "@/lib/analytics/types";
-import { fechaCalendarioCR, inicioDelDiaCREnUtc, inicioDelDiaSiguienteCREnUtc } from "@/lib/utils/fecha-cr";
+import {
+  diaDeLaSemana,
+  fechaCalendario,
+  inicioDelDiaEnUtc,
+  sumarDiasCalendario,
+} from "@/lib/utils/calendario-zona";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 import type { VentanaDia } from "@/lib/analytics/rollup-dia";
 import { DIMENSION_AGREGADA } from "@/lib/interfaces/repositories/IAnaliticaOperativaRollupRepository";
 import type {
@@ -172,7 +179,14 @@ export class AnaliticaOperativaService implements IAnaliticaOperativaService {
     private readonly viva: IAnaliticaOperativaVivaRepository,
     private readonly intentos: ContadorIntentos,
     private readonly deps: AnaliticaOperativaDeps,
+    /** SLT-42 (R22, R28): la zona del pais de la empresa, para «hoy» y la fecha del corte. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
+
+  /** SLT-42 (R22, R28, R30): la zona de la empresa en curso, leida en cada operacion. */
+  private zona(): Promise<string> {
+    return zonaDeLaEmpresa(this.reglasPais, "AnaliticaOperativaService");
+  }
 
   /**
    * La UNICA entrada. `desagregacion` es opcional: sin ella se usa la del catalogo
@@ -308,6 +322,7 @@ export class AnaliticaOperativaService implements IAnaliticaOperativaService {
     desagregacion: DimensionAnalitica | undefined,
   ): Promise<readonly CuboAgregado[]> {
     const corteAt = this.deps.now();
+    const zona = await this.zona();
     const filas = await this.enEtapa(consulta, "aging", () =>
       this.viva.agingPorEstado(consulta, corteAt),
     );
@@ -331,7 +346,7 @@ export class AnaliticaOperativaService implements IAnaliticaOperativaService {
 
     // Su unica fecha es la del corte, y el cubo es SIEMPRE parcial: una foto del ahora
     // nunca es un dia cerrado.
-    const fecha = fechaCalendarioCR(corteAt);
+    const fecha = fechaCalendario(corteAt, zona);
     return [...porClave.entries()]
       .map(([clave, { acum, n }]) => ({
         fecha,
@@ -367,6 +382,7 @@ export class AnaliticaOperativaService implements IAnaliticaOperativaService {
    */
   private async serieViva(consulta: ConsultaAnalitica): Promise<readonly PuntoSerie[]> {
     const corteAt = this.deps.now();
+    const zona = await this.zona();
     const filas = await this.enEtapa(consulta, "aging", () =>
       this.viva.agingPorEstado(consulta, corteAt),
     );
@@ -382,7 +398,7 @@ export class AnaliticaOperativaService implements IAnaliticaOperativaService {
       this.rollup.etiquetasDeEstatus([...porEstatus.keys()]),
     );
     // El aging es una foto AL CORTE, no una serie historica: su unica fecha es la del corte.
-    const fecha = fechaCalendarioCR(corteAt);
+    const fecha = fechaCalendario(corteAt, zona);
     return [...porEstatus.entries()]
       .map(([estatusId, { acum, n }]) => ({
         fecha,
@@ -425,21 +441,23 @@ export class AnaliticaOperativaService implements IAnaliticaOperativaService {
 
   /**
    * D6/R18 — el dia en curso NO tiene filas en el rollup POR CONSTRUCCION: el job de la 124
-   * corre a las 00:30 CR sobre el dia que CERRO. Si el rango lo incluye, se calcula en vivo
-   * con la ventana `[medianoche CR de hoy, ahora)` y el punto viaja marcado.
+   * corre a las 00:30 locales sobre el dia que CERRO. Si el rango lo incluye, se calcula en vivo
+   * con la ventana `[medianoche local de hoy, ahora)` y el punto viaja marcado.
    *
-   * D7 — las cotas salen de `lib/utils/fecha-cr`; aqui no hay ni una hora escrita a mano.
+   * D7 — las cotas salen de `lib/utils/calendario-zona` con la zona del pais de la empresa
+   * (SLT-42, R22); aqui no hay ni una hora escrita a mano.
    */
   private async cubosIntradia(
     consulta: ConsultaAnalitica,
     granos: readonly DimensionAnalitica[],
   ): Promise<{ cubos: readonly CuboRollup[]; corteAt: Date | undefined }> {
     const ahora = this.deps.now();
-    const hoy = fechaCalendarioCR(ahora);
+    const zona = await this.zona();
+    const hoy = fechaCalendario(ahora, zona);
     const { desdeFecha, hastaFecha } = consulta.rango;
     if (hoy < desdeFecha || hoy > hastaFecha) return { cubos: [], corteAt: undefined };
 
-    const ventana: VentanaDia = { desde: inicioDelDiaCREnUtc(hoy), hasta: ahora };
+    const ventana: VentanaDia = { desde: inicioDelDiaEnUtc(hoy, zona), hasta: ahora };
     const crudos = await this.enEtapa(consulta, "cubos_intradia", () =>
       this.viva.cubosDelDiaEnCurso(consulta, ventana),
     );
@@ -678,8 +696,8 @@ function ventanaDelCubo(
   if (grano === "periodo") {
     return { fecha: rango.desdeFecha, desdeFecha: rango.desdeFecha, hastaFecha: rango.hastaFecha };
   }
-  const lunes = lunesDeLaSemanaCR(fecha);
-  const domingo = sumarDiasCalendarioCR(lunes, 6);
+  const lunes = lunesDeLaSemana(fecha);
+  const domingo = sumarDiasCalendario(lunes, 6);
   return {
     fecha: lunes,
     desdeFecha: lunes < rango.desdeFecha ? rango.desdeFecha : lunes,
@@ -688,33 +706,20 @@ function ventanaDelCubo(
 }
 
 /**
- * Duracion de un dia DERIVADA de los propios helpers, como en `lib/analytics/ranges.ts`:
- * este archivo no declara ninguna constante temporal propia y CR no tiene horario de verano.
- */
-const FECHA_ANCLA = "2000-01-01";
-const UN_DIA_MS =
-  inicioDelDiaSiguienteCREnUtc(FECHA_ANCLA).getTime() - inicioDelDiaCREnUtc(FECHA_ANCLA).getTime();
-
-function sumarDiasCalendarioCR(fecha: string, dias: number): string {
-  return fechaCalendarioCR(new Date(inicioDelDiaCREnUtc(fecha).getTime() + dias * UN_DIA_MS));
-}
-
-/**
- * R19 — el LUNES de la semana CR de `fecha`, con la MISMA convencion que el preset `semana`
+ * R19 — el LUNES de la semana de `fecha`, con la MISMA convencion que el preset `semana`
  * de `lib/analytics/ranges.ts` (que no la exporta).
  *
- * `inicioDelDiaCREnUtc` da `...T06:00:00.000Z`, que cae en la misma fecha en UTC, asi que
- * `getUTCDay()` (0 = domingo) es el dia de la semana de la fecha CR sin depender del huso
- * del proceso; `(dow + 6) % 7` son los dias a retroceder hasta el lunes.
+ * SLT-42 — aritmetica de CALENDARIO, sin zona (`calendario-zona.ts`): la semana de una fecha
+ * calendario no depende del pais, y un dia de 23 o 25 h cuenta como uno (R23).
+ * `diaDeLaSemana` da 0 = domingo; `(dow + 6) % 7` son los dias a retroceder hasta el lunes.
  *
  * DEUDA DECLARADA (`design.md §6.1`): esta es la SEGUNDA definicion de «lunes» del repo —la
  * otra es `lunesDeLaSemana` en `app/(app)/analitica/_components/operativo/agregacion.ts`, de
  * la 131, que `lib/` no puede importar—. La contiene `agregado-semana.test.ts`, que compara
  * contra el preset, y la salda la ficha frontend de D5 borrando aquella copia.
  */
-function lunesDeLaSemanaCR(fecha: string): string {
-  const diaDeLaSemana = inicioDelDiaCREnUtc(fecha).getUTCDay();
-  return sumarDiasCalendarioCR(fecha, -((diaDeLaSemana + 6) % 7));
+function lunesDeLaSemana(fecha: string): string {
+  return sumarDiasCalendario(fecha, -((diaDeLaSemana(fecha) + 6) % 7));
 }
 
 /**
@@ -867,9 +872,9 @@ function agregarAlGrano(
 }
 
 /**
- * Las fechas calendario CR del rango, ascendentes e inclusivas en ambos extremos. Se apoya
- * SOLO en `lib/utils/fecha-cr` (D7): ni un desplazamiento horario escrito a mano, ni
- * `startOfDayCR` (la trampa 18:00-18:00 documentada de `RankingService`).
+ * Las fechas calendario del rango, ascendentes e inclusivas en ambos extremos. Se apoya
+ * SOLO en `lib/utils/calendario-zona` (D7; SLT-42): aritmetica de calendario, sin zona y sin
+ * un desplazamiento horario escrito a mano.
  *
  * ⚠ 2026-08-31 — LA COTA DURA YA NO ES EL LITERAL `400`, y el cambio importa. Aquel numero se
  * escribio dando por supuesto que TODO rango cabia en `RANGO_TOPE_DIAS` (366): desde que el
@@ -883,7 +888,7 @@ function fechasDelRango(consulta: ConsultaAnalitica): readonly string[] {
   const { desdeFecha, hastaFecha } = consulta.rango;
   const tope = diasDelRango(desdeFecha, hastaFecha);
   const fechas: string[] = [];
-  for (let f = desdeFecha; f <= hastaFecha; f = fechaCalendarioCR(inicioDelDiaSiguienteCREnUtc(f))) {
+  for (let f = desdeFecha; f <= hastaFecha; f = sumarDiasCalendario(f, 1)) {
     fechas.push(f);
     if (fechas.length >= tope) break;
   }

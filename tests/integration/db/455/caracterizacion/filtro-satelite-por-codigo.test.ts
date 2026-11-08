@@ -13,6 +13,7 @@ import {
 import { C, type ClaveEstado } from "../../../../fixtures/codigos-455";
 import { HAY_BASE_DE_DATOS } from "../../_postgres-real";
 import { conEscenario, prepararMundo, type Mundo } from "../../454/_escenario";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FEATURE 455 — FASE 0 · C02 (R22, R45). EL LISTADO DE LA BODEGA SATELITE FILTRA POR CODIGO.
@@ -54,7 +55,7 @@ describeSiHayBase("455/C02 — filtro por codigo del listado satelite (Postgres 
           nombre.set(o.ordenId, `${clave}#${n}`);
         }
       }
-      const servicio = new RecepcionSateliteService(new OrdenRepository(e.cliente), e.s.historialService);
+      const servicio = new RecepcionSateliteService(new OrdenRepository(e.cliente), e.s.historialService, undefined, reglasPaisFijas());
       const pedir = async (seleccion: Record<string, string[]>) => {
         const filtro = seleccionAFiltroSatelite(seleccion);
         const input = listarOrdenesBodegaPaginadoSchema.parse({ ...filtro, page: 1, pageSize: 100 });

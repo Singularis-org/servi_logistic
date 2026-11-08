@@ -10,6 +10,7 @@ import {
 } from "@/lib/services/GestionDesdeAyudaService";
 import { avisoReservaParaOtroDia } from "@/lib/utils/dia-reparto-textos";
 import { fakeIntentosEnLote } from "@/tests/fixtures/intentos-entrega";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FEATURE 261 (B18, seccion G) — LA TIENDA TAMPOCO RESUELVE EL DIA QUE NO ES. R28-R32.
@@ -75,6 +76,7 @@ function montar(opts: { orden?: OrdenParaHilo; crearDevuelve?: string | null } =
     ),
   };
   const service = new GestionDesdeAyudaService({
+    reglasPais: reglasPaisFijas(),
     notaRepo,
     ordenRepo,
     gestionRepo,
