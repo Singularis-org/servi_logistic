@@ -2,13 +2,14 @@
 # (singularis-co/harness_config) y los sobrescribe. Todo lo que NO esta aqui es del proyecto
 # (perfil, codigo, specs, progress) y el sync no lo toca nunca. Una ruta por linea; `dir/` = la
 # carpeta entera. Cambiar un archivo de esta lista en un proyecto es editar el arnes en caliente
-# (CLAUDE.md regla 8): el siguiente sync lo pisa. `.github/workflows/gate.yml` NO esta: la plantilla
-# trae un ejemplo y cada proyecto lo adapta a su stack (servicios, variables), asi que es del proyecto.
+# (CLAUDE.md regla 8): el siguiente sync lo pisa. `.github/workflows/gate.yml` NO esta: es del
+# proyecto, pero GENERADO desde arnes.config.json por scripts/ci.mjs (docs/gate.md > El CI se genera).
 CLAUDE.md
 AGENTS.md
 CHECKPOINTS.md
 arnes.manifest
 init.sh
+.github/workflows/arnes-gate.yml
 .claude/agents/
 .claude/commands/
 .claude/hooks/
@@ -24,6 +25,10 @@ docs/equipo.md
 docs/grafo-de-codigo.md
 scripts/validate-features.mjs
 scripts/tracker.mjs
+scripts/nombres-de-fichas.mjs
+scripts/disparadores.mjs
+scripts/metricas.mjs
+scripts/tamano-pr.mjs
 scripts/trello.mjs
 scripts/wt.sh
 scripts/test-rapido.mjs
@@ -31,12 +36,15 @@ scripts/tests-de-arbol.mjs
 scripts/comparar-baseline-rojos.mjs
 scripts/unir-informes-vitest.mjs
 scripts/check-perfil.mjs
+scripts/ci.mjs
 scripts/archivos-en-vuelo.mjs
 scripts/arnes-sync.sh
 scripts/arnes-sync.mjs
 progress/README.md
 progress/features/_plantilla.md
 progress/sesion.local.example.md
+tests/guards/guard-wt-done.test.ts
+tests/guards/guard-ci.test.ts
 tests/guards/guard-modelos-de-agentes.test.ts
 tests/guards/guard-dependencias-aprobadas.test.ts
 tests/guards/guard-validador-ve-worktrees-hermanos.test.ts
@@ -53,3 +61,8 @@ tests/guards/guard-init-node-modules-enlazado.test.ts
 tests/guards/guard-validador-tracker.test.ts
 tests/guards/guard-trello-cliente.test.ts
 tests/guards/guard-trello-red.test.ts
+tests/guards/guard-nombres-de-fichas.test.ts
+tests/guards/guard-gate-rapido.test.ts
+tests/guards/guard-metricas.test.ts
+tests/guards/guard-validador-rutas.test.ts
+tests/guards/guard-tamano-pr.test.ts

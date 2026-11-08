@@ -28,8 +28,7 @@ No preguntes lo que el repo ya responde. Lee e inventaria, sin pegar nada en el 
 - El esquema de datos (`prisma/schema.prisma`, `db/schema.prisma`, migraciones) y `.env.example`
   (solo los nombres de variables).
 - Las ramas remotas (`git branch -r`).
-- En modo revisión: los docs actuales del perfil, y además `_trabajo/perfil-desactualizado.md` o
-  los avisos del gate si existen.
+- En modo revisión: los docs actuales del perfil y los avisos de `./init.sh` sobre el perfil.
 
 ## 2. Cuestionario
 
@@ -49,6 +48,17 @@ máximo 4 preguntas por tanda, y pon siempre como primera opción lo que el repo
    - comandos de typecheck, lint y tests;
    - qué tests recorren el árbol de archivos en vez de importar lo que vigilan (contratos, alcance):
      sus patrones van a `gate.siempre` para que el gate rápido los corra (mide el tiempo que suman);
+   - qué tests dependen de archivos que no importan (esquema, migraciones, SQL, el código de un
+     módulo): van a `gate.disparadores` («si cambia esto, corre esto»; `docs/gate.md >
+     Disparadores`). Pregunta qué rojos de CI salieron verdes en local: cada uno es un disparador;
+   - el presupuesto del rápido (`gate.presupuesto_rapido`, por defecto 150 archivos) y el tamaño
+     máximo del PR (`gate.tamano_pr`: `max_archivos`, por defecto 40; `max_lineas`, por defecto 1000;
+     `excluir`, lo generado que no debe contar). Mira el tamaño de los últimos PRs
+     (`gh pr list --state merged --limit 20 --json changedFiles,additions,deletions`) y fija el
+     límite por debajo de la mediana actual: la meta es que los PRs se hagan más pequeños, no
+     bendecir el tamaño de hoy;
+   - qué cambios obligan a la ruta completa (`rutas.completa_si_toca`; `docs/specs.md > Tres
+     rutas`): migraciones y esquema como mínimo;
    - cómo se aíslan los tests de integración (base propia, contenedores, dobles);
    - qué flujos son críticos y exigen E2E;
    - qué servicios externos se doblan en tests.
@@ -67,7 +77,10 @@ máximo 4 preguntas por tanda, y pon siempre como primera opción lo que el repo
      `git branch -r` como opciones. Nunca supongas `main`, `master` ni `dev`;
    - cupo por persona y zona (por defecto 2/3/3).
 7. **CI:** ¿GitHub Actions disponible? ¿Plan gratuito (minutos limitados, sin protección de
-   ramas en repos privados)? ¿Qué variables necesita la suite en una máquina limpia?
+   ramas en repos privados)? ¿Qué variables necesita la suite en una máquina limpia? ¿Hay una
+   máquina para un runner propio? Con ella, propón `GATE_RUNNER` y `GATE_EN_BORRADOR=true`
+   (`docs/gate.md > CI en cada tanda > Activarlo, paso a paso`); sin ella y en el plan gratuito, deja el CI solo al sacar el
+   PR de borrador.
 
 En modo revisión, por cada doc del perfil:
 - muestra en 3–6 líneas lo que hoy afirma lo esencial;
@@ -79,10 +92,17 @@ En modo revisión, por cada doc del perfil:
 
 - **`arnes.config.json`:** `arnes_version` (la de `arnes.config.example.json` si existe),
   `tracker` (`tipo`; `site` con Jira o `board` con Trello; `prefijo`, `prefijos_historicos` si
-  aplica, `estados`), `ramas`, `cupos_por_persona`, `gate` (`siempre`, con `"guard"` como mínimo) y `perfil` (`max_dias_sin_revisar`, `docs`).
-- **`.github/workflows/gate.yml`:** pon las dos `ramas` en `on.pull_request.branches` y la de
-  producción en el `github.base_ref == '<rama>'` del job E2E. GitHub no lee el JSON;
-  `scripts/check-perfil.mjs` hace fallar `./init.sh` si difieren.
+  aplica, `estados`), `ramas`, `cupos_por_persona`, `gate` (`siempre`, con `"guard"` como mínimo, y `proyectos_vitest`: los proyectos de vitest que el
+  gate completo exige ver corridos, de `ui`, `node` e `integration`; `disparadores`;
+  `presupuesto_rapido`; `tamano_pr`), `rutas` (`completa_si_toca`) y `perfil` (`max_dias_sin_revisar`, `docs`).
+- **El CI:** escribe el bloque `ci` de `arnes.config.json` (`shards`, `postgres_image`,
+  `node_version`, `navegadores`, `e2e`; todo con valores por defecto) y corre
+  `node scripts/ci.mjs generar`. El `gate.yml` sale de ahí y de `ramas`; no se escribe a mano
+  (`docs/gate.md > El CI se genera`). Lo propio del proyecto que no es un dato va en
+  `scripts/ci-entorno.sh` (credenciales efímeras del seed) y `scripts/ci-e2e-preparar.sh` (la base
+  del E2E): parte de los ejemplos de `plantillas/github/` y adáptalos. No escribas secretos.
+  Si el proyecto ya tenía un `gate.yml` escrito a mano, enséñale al humano qué hace que no cubran
+  los dos scripts, y pásalo al generado solo con su sí.
 - **Los docs del perfil:** en montaje, desde las plantillas `docs/*.md` que traen
   `<!-- PLANTILLA -->`. En revisión, edita solo lo que cambió.
   - La primera línea de cada doc es `<!-- perfil: revisado=<hoy AAAA-MM-DD> por=<nombre de
@@ -93,8 +113,6 @@ En modo revisión, por cada doc del perfil:
     `> ABIERTO: <pregunta>`.
 - **`docs/dependencias.md`:** una fila por cada dependencia de `package.json`. Las que no tengan
   aprobación conocida van con estado `pendiente-de-aprobar`, y se avisa al humano.
-- **CI:** si el proyecto no tiene `.github/workflows/gate.yml`, copia el ejemplo `plantillas/github/gate.yml` de la plantilla (o el de este repo) y propón cómo adaptarlo
-  (servicios, variables, versión de Node). No escribas secretos.
 
 ## 4. Verifica y entrega
 

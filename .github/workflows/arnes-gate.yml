@@ -1,0 +1,369 @@
+# Gate de CI del arnes (docs/gate.md > El CI se genera). Workflow REUTILIZABLE: lo trae
+# `scripts/arnes-sync.sh` como cualquier archivo del arnes y no se edita en el proyecto.
+#
+# Lo llama `.github/workflows/gate.yml`, que GENERA `node scripts/ci.mjs generar` desde
+# `arnes.config.json` (ramas y bloque `ci`). Lo propio del proyecto entra por dos sitios:
+#   - los `inputs` de abajo (ramas, shards, imagen de Postgres, Node, navegadores, E2E);
+#   - dos scripts OPCIONALES del perfil, que el sync no toca:
+#       scripts/ci-entorno.sh       escribe en $GITHUB_ENV lo que la suite necesita (credenciales
+#                                   efimeras del seed, secretos de sesion...). Ejemplo en
+#                                   plantillas/github/ci-entorno.sh.
+#       scripts/ci-e2e-preparar.sh  prepara la base y lo demas que necesita el E2E antes de
+#                                   Playwright. Ejemplo en plantillas/github/ci-e2e-preparar.sh.
+#
+# Que corre cuando (decidido en el `on:` del gate.yml generado y en los `if:` de aqui):
+#   PR a la rama de integracion   -> estatico + vitest (N shards) + gate-completo
+#   PR a la rama de produccion    -> lo anterior + e2e
+#   PR en borrador                -> nada, salvo la variable GATE_EN_BORRADOR=true
+#   workflow_dispatch             -> todo, a mano
+# El runner sale de la variable GATE_RUNNER (p. ej. self-hosted); sin ella, ubuntu-latest.
+#
+# NINGUN secreto real vive aqui. Postgres es un contenedor de servicio, efimero.
+name: arnes-gate
+
+on:
+  workflow_call:
+    inputs:
+      rama_integracion:
+        type: string
+        required: true
+      rama_produccion:
+        type: string
+        required: true
+      shards:
+        description: N de la suite partida (tiene que coincidir con shards_lista)
+        type: number
+        default: 3
+      shards_lista:
+        description: '[1, ..., N] en JSON; lo escribe scripts/ci.mjs'
+        type: string
+        default: '[1,2,3]'
+      postgres_image:
+        type: string
+        default: postgres:17
+      node_version:
+        type: string
+        default: '24'
+      navegadores:
+        description: los de playwright.config.ts, separados por espacios
+        type: string
+        default: chromium
+      e2e:
+        type: boolean
+        default: true
+
+env:
+  # Base de "desarrollo" del job. Los tests de integracion crean su base efimera desde una
+  # plantilla; scripts/ci-entorno.sh puede cambiarla.
+  DATABASE_URL: postgresql://postgres:postgres@localhost:5432/app
+  DIRECT_URL: postgresql://postgres:postgres@localhost:5432/app
+  NO_COLOR: '1'
+  # En un repo mediano `tsc --noEmit` pasa de 2 GB y el heap por defecto de Node se queda corto en
+  # el runner de 2 vCPU. 4 GB cabe en los 7 GB del runner y es solo un techo.
+  NODE_OPTIONS: --max-old-space-size=4096
+
+jobs:
+  # LA SUITE VA EN SHARDS (docs/gate.md > En CI la suite va en shards): `estatico` (typecheck, lint,
+  # validadores), `vitest` (N shards SIN veredicto) y `gate-completo`, que une los informes y da el
+  # veredicto UNA vez. `shards` y `shards_lista` los escribe scripts/ci.mjs desde el mismo numero:
+  # si no coincidieran, `--unir` daria rojo (exige exactamente N informes).
+  estatico:
+    name: estatico
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false || vars.GATE_EN_BORRADOR == 'true'
+    runs-on: ${{ vars.GATE_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 10
+    steps:
+      - name: Checkout (historia completa)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Rama de integracion local y remota
+        shell: bash
+        env:
+          INTEGRACION: ${{ inputs.rama_integracion }}
+        run: |
+          git fetch --no-tags origin "+refs/heads/$INTEGRACION:refs/remotes/origin/$INTEGRACION"
+          git branch --force "$INTEGRACION" "origin/$INTEGRACION"
+
+      - name: pnpm
+        uses: pnpm/action-setup@v4
+        # Sin `version`: la toma de `packageManager` en package.json.
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+          cache: pnpm
+
+      - name: Dependencias
+        shell: bash
+        run: pnpm install --frozen-lockfile
+
+      - name: GATE_PARTE=estatico ./init.sh --completo
+        shell: bash
+        run: |
+          # `bash` explicito: no depende del bit de ejecucion (los clones de Windows lo pierden).
+          # `pipefail` para que el `tee` no se trague el codigo de salida del gate.
+          set -o pipefail
+          GATE_PARTE=estatico bash ./init.sh --completo 2>&1 | tee init-estatico.log
+
+  vitest:
+    name: vitest (shard ${{ matrix.shard }}/${{ inputs.shards }})
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false || vars.GATE_EN_BORRADOR == 'true'
+    runs-on: ${{ vars.GATE_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 20
+    strategy:
+      # Sin fail-fast: `gate-completo` necesita TODOS los informes para dar veredicto.
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(inputs.shards_lista) }}
+
+    services:
+      postgres:
+        image: ${{ inputs.postgres_image }}
+        env:
+          # Superusuario a proposito: la integracion hace CREATE/DROP DATABASE.
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: app
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - name: Checkout (historia completa)
+        uses: actions/checkout@v4
+        with:
+          # Varias guardias calculan el merge-base con la rama de integracion.
+          fetch-depth: 0
+
+      - name: Rama de integracion local y remota
+        shell: bash
+        env:
+          INTEGRACION: ${{ inputs.rama_integracion }}
+        run: |
+          git fetch --no-tags origin "+refs/heads/$INTEGRACION:refs/remotes/origin/$INTEGRACION"
+          git branch --force "$INTEGRACION" "origin/$INTEGRACION"
+
+      - name: pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+          cache: pnpm
+
+      - name: Dependencias
+        shell: bash
+        run: pnpm install --frozen-lockfile
+
+      - name: Entorno del proyecto (scripts/ci-entorno.sh)
+        shell: bash
+        run: |
+          if [ -f scripts/ci-entorno.sh ]; then bash scripts/ci-entorno.sh
+          else echo "sin scripts/ci-entorno.sh: la suite corre con el entorno por defecto"; fi
+
+      - name: GATE_SHARD=${{ matrix.shard }}/${{ inputs.shards }} ./init.sh --completo
+        shell: bash
+        env:
+          GATE_SHARD: ${{ matrix.shard }}/${{ inputs.shards }}
+        run: |
+          # Sale en verde aunque haya rojos: un shard NO da veredicto. Lo da `gate-completo`.
+          set -o pipefail
+          bash ./init.sh --completo 2>&1 | tee init-shard.log
+
+      - name: Informe del shard
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: informe-shard-${{ matrix.shard }}
+          # `include-hidden-files`: sin esto `.vitest-rojos.json` y `.vitest-codigo` no se suben y
+          # `gate-completo` daria rojo siempre.
+          include-hidden-files: true
+          path: |
+            .vitest-rojos.json
+            .vitest-codigo
+            init-shard.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  gate-completo:
+    name: gate-completo
+    needs: [estatico, vitest]
+    # `always()`: tiene que correr AUNQUE un shard haya fallado, para decir por que.
+    if: always() && (github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false || vars.GATE_EN_BORRADOR == 'true')
+    runs-on: ${{ vars.GATE_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Solo Node: `./init.sh --unir` es Node puro sobre JSON.
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+
+      - name: El job estatico y los shards corrieron
+        shell: bash
+        env:
+          ESTATICO: ${{ needs.estatico.result }}
+          VITEST: ${{ needs.vitest.result }}
+        run: |
+          [ "$ESTATICO" = "success" ] || { echo "el job estatico (typecheck, lint, validadores) salio '$ESTATICO'"; exit 1; }
+          case "$VITEST" in
+            cancelled|skipped) echo "los shards de vitest salieron '$VITEST': no hay suite que juzgar"; exit 1 ;;
+          esac
+
+      - name: Informes de los shards
+        uses: actions/download-artifact@v4
+        with:
+          pattern: informe-shard-*
+          path: informes/
+
+      - name: ./init.sh --unir informes ${{ inputs.shards }}
+        shell: bash
+        env:
+          SHARDS: ${{ inputs.shards }}
+        run: |
+          set -o pipefail
+          bash ./init.sh --unir informes "$SHARDS" 2>&1 | tee init-completo.log
+
+      - name: Resumen (poda del baseline de rojos)
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## gate-completo"
+            echo
+            echo '```'
+            grep -E "baseline|rojos|init OK|✗" init-completo.log || echo "(sin lineas de baseline en el log)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Informe de vitest (unido)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-completo-informe
+          include-hidden-files: true
+          path: |
+            init-completo.log
+            .vitest-rojos.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+  e2e:
+    name: e2e
+    # Solo en el PR de despliegue (base = rama de produccion), fuera de borrador, y a mano.
+    if: >-
+      inputs.e2e && (
+        github.event_name == 'workflow_dispatch' ||
+        (github.base_ref == inputs.rama_produccion && github.event.pull_request.draft == false)
+      )
+    runs-on: ${{ vars.GATE_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 60
+
+    services:
+      postgres:
+        image: ${{ inputs.postgres_image }}
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: app
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+          cache: pnpm
+
+      - name: Dependencias
+        shell: bash
+        run: pnpm install --frozen-lockfile
+
+      # El script `codegen` de package.json genera lo que no esta en git (cliente del ORM, tipos de
+      # ruta...). Sin script, el paso no hace nada.
+      - name: Codigo generado
+        shell: bash
+        run: pnpm run --if-present codegen
+
+      - name: Entorno del proyecto (scripts/ci-entorno.sh)
+        shell: bash
+        run: |
+          if [ -f scripts/ci-entorno.sh ]; then bash scripts/ci-entorno.sh
+          else echo "sin scripts/ci-entorno.sh: el E2E corre con el entorno por defecto"; fi
+
+      - name: Preparar el E2E (scripts/ci-e2e-preparar.sh)
+        shell: bash
+        run: |
+          if [ -f scripts/ci-e2e-preparar.sh ]; then bash scripts/ci-e2e-preparar.sh
+          else echo "sin scripts/ci-e2e-preparar.sh: el E2E usa la base de servicio tal cual"; fi
+
+      - name: Version de Playwright
+        id: pw
+        shell: bash
+        env:
+          NAVEGADORES: ${{ inputs.navegadores }}
+        run: |
+          echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+          echo "clave=$(echo "$NAVEGADORES" | tr ' ' '-')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache de navegadores
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}-${{ steps.pw.outputs.clave }}
+
+      - name: Navegadores de Playwright
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        shell: bash
+        env:
+          NAVEGADORES: ${{ inputs.navegadores }}
+        # Uno o varios separados por espacio (ci.navegadores): se parten en una lista a proposito.
+        run: |
+          read -ra lista <<< "$NAVEGADORES"
+          pnpm exec playwright install --with-deps "${lista[@]}"
+
+      - name: Dependencias de sistema de los navegadores
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        shell: bash
+        env:
+          NAVEGADORES: ${{ inputs.navegadores }}
+        run: |
+          read -ra lista <<< "$NAVEGADORES"
+          pnpm exec playwright install-deps "${lista[@]}"
+
+      - name: Playwright
+        shell: bash
+        run: pnpm run e2e
+
+      - name: Trazas de Playwright
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-results
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14

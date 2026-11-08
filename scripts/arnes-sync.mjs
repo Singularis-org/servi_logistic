@@ -222,4 +222,14 @@ for (const f of [...archivosDe(P)].sort()) {
 if (subidosPendientes.length) nuevo.subidos = subidosPendientes;
 writeFileSync(LOCK, `${JSON.stringify(nuevo, null, 2)}\n`);
 if (VERSION !== '?') { config.arnes_version = VERSION; writeFileSync(CONFIG, `${JSON.stringify(config, null, 2)}\n`); }
+// El gate.yml del proyecto se GENERA desde arnes.config.json (`docs/gate.md > El CI se genera`):
+// tras bajar el arnes se regenera, salvo que este escrito a mano (`--si-procede` no lo pisa). Se
+// invoca como proceso aparte y no con import: este script no depende de ningun otro del arnes.
+if (existsSync('scripts/ci.mjs')) {
+  try {
+    console.log(execFileSync(process.execPath, ['scripts/ci.mjs', 'generar', '--si-procede'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim());
+  } catch (e) {
+    console.log(`${C.y}! no se pudo regenerar .github/workflows/gate.yml: ${String(e.stderr ?? e.message).trim()}${C.n}`);
+  }
+}
 console.log(`Aplicado. ${LOCK} al dia. Siguiente: ./init.sh y commit "chore(arnes): sync a ${VERSION}".`);

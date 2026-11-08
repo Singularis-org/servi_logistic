@@ -17,6 +17,7 @@ de "leerlo todo por si acaso".
 | `feature_list.json` | **nunca entero** (cientos de KB) | consulta con `node -e` o `jq` por `key`/`status`/`assignee` |
 | `progress/deudas.md` | al buscar una deuda concreta | por grep |
 | `progress/archivo/*`, `progress/logs/*` | casi nunca | por grep; jamás enteros |
+| `progress/logs/metricas.jsonl` | al cerrar una feature y al revisar el perfil | solo con `node scripts/metricas.mjs informe` |
 
 ## Escribir para que se lea barato
 

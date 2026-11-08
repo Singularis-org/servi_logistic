@@ -3,7 +3,7 @@
 Cada feature trabaja en su propio worktree. Se monta al tomar la feature (F1.0) y se desmonta
 cuando el humano mergea el PR (F2.5). Las dos puntas las hace `scripts/wt.sh`: nadie crea ni
 borra worktrees a mano, salvo el caso de huérfano descrito en
-`## wt.sh done desregistra ANTES de borrar`.
+`## wt.sh done: apartar, desregistrar, borrar > Huérfanos`.
 
 ### Por qué
 
@@ -37,8 +37,8 @@ Dentro del repo, bajo `.worktrees/` (ignorado en `.gitignore`):
 ```
 <repo>/                                <- worktree principal, siempre en la rama de integración
   feature_list.json, .arnes.local.json <- copia del board e identidad: una vez por máquina, aquí
-  .worktrees/QC-8-paginacion/          <- feature/QC-8-paginacion
-  .worktrees/QC-9-manejador-errores/   <- feature/QC-9-manejador-errores
+  .worktrees/PROY-8-paginacion/          <- feature/PROY-8-paginacion
+  .worktrees/PROY-9-manejador-errores/   <- feature/PROY-9-manejador-errores
 ```
 
 - **Nadie hace `git checkout` en el worktree principal**: se queda en la rama de integración
@@ -62,9 +62,9 @@ las 57 carpetas hermanas del inventario de arriba.
 ## Los comandos
 
 ```bash
-./scripts/wt.sh new QC-8 paginacion            # F1.0 — publica la rama (candado) y crea el worktree
-./scripts/wt.sh --retomar new QC-8 paginacion  # tu rama, ya publicada desde otra máquina
-./scripts/wt.sh done QC-8-paginacion           # F2.5 — lo desmonta si es seguro
+./scripts/wt.sh new PROY-8 paginacion            # F1.0 — publica la rama (candado) y crea el worktree
+./scripts/wt.sh --retomar new PROY-8 paginacion  # tu rama, ya publicada desde otra máquina
+./scripts/wt.sh done PROY-8-paginacion           # F2.5 — lo desmonta si es seguro
 ./scripts/wt.sh list                           # inventario con veredicto por worktree
 ./scripts/wt.sh clean                          # dry-run: qué se podría desmontar
 ./scripts/wt.sh clean --force                  # lo ejecuta
@@ -142,7 +142,7 @@ Luego, según la razón:
 - **no mergeada** → o el PR no se mergeó todavía, o se mergeó con **squash**. GitHub
   reescribe los commits al hacer squash, así que la rama nunca figura como ancestro de
   la rama de integración aunque su contenido sí esté. Para ese caso:
-  `./scripts/wt.sh done QC-8-paginacion --assume-merged`, que salta **solo** la guarda 4 y
+  `./scripts/wt.sh done PROY-8-paginacion --assume-merged`, que salta **solo** la guarda 4 y
   mantiene las otras tres.
 - **bloqueado** → `git worktree unlock <path>` si ya no hace falta la protección.
 
@@ -150,10 +150,10 @@ Luego, según la razón:
 
 - **Se corre dentro del worktree de la feature**: `./init.sh` (rápido por defecto) al cerrar
   cada tanda y antes del PR. La suite completa corre en CI (`docs/gate.md`).
-- **Deja el entorno al día antes de mirar nada**: regenera el cliente de Prisma y los tipos de
-  ruta de Next, y reinstala si cambió el lock. Un worktree recién montado no trae ninguna de las
-  tres cosas, y sus errores no nombran su causa. Detalle y síntomas:
-  `docs/verification.md > El gate regenera los artefactos antes de mirar nada`.
+- **Deja el entorno al día antes de mirar nada**: reinstala si cambió el lock, y
+  `scripts/gate-proyecto.sh` (perfil) regenera antes del typecheck los artefactos que el stack no
+  versiona (cliente del ORM, tipos de ruta…). Un worktree recién montado no los trae, y sus
+  errores no nombran su causa.
 - **Un `node_modules` enlazado no se reinstala nunca.** Si el worktree comparte el
   `node_modules` del checkout principal (un enlace o junction), `./init.sh` no corre
   `pnpm install`: solo avisa si el lock es más nuevo. Las dependencias se instalan en el
@@ -198,32 +198,33 @@ Pasó tres veces antes de arreglarse (2026-09-08): dos en QC-74 —anotadas en e
 sesión de entonces como «sigue sin resolverse»— y la tercera en QC-76, con QC-45 y QC-75 en
 vuelo.
 
-## wt.sh done desregistra ANTES de borrar
+## wt.sh done: apartar, desregistrar, borrar
 
-`wt.sh done` **quita el registro** del worktree en git y después **borra el directorio**. Si el
-borrado falla (en Windows basta con que un proceso tenga abierto algo bajo `node_modules`), queda
-un **huérfano**:
+`wt.sh done` desmonta en tres pasos, en este orden:
 
-- git ya **no** conoce el worktree: no sale en `git worktree list` y `git worktree prune` no lo ve;
-- el directorio **sigue en disco**, a medias, con `node_modules` y parte del árbol;
-- ninguna corrida futura de `wt.sh` lo va a reintentar.
+1. **Aparta** el directorio: lo renombra a `.worktrees/<key>-<slug>.borrando-<ts>`. Si algo lo tiene
+   abierto (en Windows, un editor, un servidor o un `node_modules` en uso), el renombrado falla
+   entero: **no se toca nada**, el worktree sigue entero y registrado, y `wt.sh` lo dice. Cierra lo
+   que lo use y repite.
+2. **Desregistra** el worktree en git (`git worktree prune`, que ya no encuentra el directorio).
+3. **Borra** la papelera. Si el borrado falla a medias, la papelera se queda, pero ya no es un
+   worktree y se reconoce por el nombre: `./scripts/wt.sh clean --force` la reintenta.
 
-**Cómo se reconoce:** el directorio existe bajo `.worktrees/`, **no** aparece en
-`git worktree list`, y dentro **no hay `.git`**.
+### Huérfanos
 
-**Qué hacer mientras no se arregle.** Es la única excepción a «nadie borra worktrees a mano»:
-1. Comprueba que no hay nada que perder: la rama figura en `git branch --merged dev`, el PR está
-   mergeado y el árbol estaba limpio.
+Un directorio bajo `.worktrees/` que git no tiene registrado y que no es una papelera
+(`*.borrando-*`) es un **huérfano** de otra causa: un borrado a mano a medias, o una versión
+anterior del arnés. `wt.sh list` y `wt.sh clean` lo señalan como HOLD y **no lo borran nunca**. Es
+la única excepción a «nadie borra worktrees a mano»:
+1. Comprueba que no hay nada que perder: la rama figura en `git branch --merged <integracion>`, el
+   PR está mergeado y el árbol estaba limpio.
 2. Solo entonces borra a mano el directorio y la rama. **Ante la duda, no borres.**
 3. Anótalo en `progress/deudas.md` con lo comprobado.
 
-**La salida limpia** es invertir el orden —borrar primero y desregistrar solo si el borrado tuvo
-éxito—, de modo que un fallo deje el worktree **entero y registrado**, que es un estado del que
-`wt.sh` sí sabe salir. Tiene ficha propia en el board y deuda abierta en `progress/deudas.md`.
-
 ### Por qué
 
-A 2026-09-18 iban **ocho** worktrees «a medio borrar», y los ocho se anotaron como «¿archivo en
-uso en Windows?», que es el aviso que imprime el script. Ese aviso describe el síntoma y esconde
-la causa. No es mala suerte repetida ocho veces: es que el orden de las dos operaciones convierte
-un fallo transitorio en basura definitiva, el peor de los dos estados posibles.
+A 2026-09-18 iban **ocho** worktrees «a medio borrar» en el proyecto de origen, y los ocho se
+anotaron como «¿archivo en uso en Windows?», que es el aviso que imprimía el script. El orden de
+entonces era desregistrar y después borrar, y convertía un fallo transitorio en basura definitiva:
+ni registrado ni entero, y nada lo reintentaba. Apartar primero hace que el fallo deje un estado
+del que `wt.sh` sí sabe salir (2026-11-07; lo prueba `tests/guards/guard-wt-done.test.ts`).
