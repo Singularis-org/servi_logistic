@@ -41,9 +41,9 @@ const baseCrearFields = {
   tipoIdentificacionId: z.string().min(1),
   cedula: documentoForma,
   rolId: z.string().min(1),
-  // Feature 27/R10: flag de fulfillment de tienda, booleano opcional en el borde.
-  // El default (false) y la invariante por rol (R4a) los aplica el service.
-  fulfillment: z.boolean().optional(),
+  // SLT-94 (R1/R3/R4): marca «se recoge en tienda», booleano opcional en el borde.
+  // El default («si») y la invariante por rol (solo adminTienda puede «no») los aplica el service.
+  seRecogeEnTienda: z.boolean().optional(),
   // Feature 24/R27/R28: zona del usuario. Solo mensajero/adminSatelite la
   // conservan; el service valida existencia y aplica la invariante por rol.
   zonaId: z.string().min(1).nullable().optional(),
@@ -84,9 +84,9 @@ export const actualizarUsuarioSchema = z
     telefono: telefonoForma,
     rolId: z.string().min(1),
     tipoIdentificacionId: z.string().min(1),
-    // Feature 27/R13: fulfillment editable; el service recalcula la invariante
-    // R4a segun el rol resultante. `.strict()` sigue rechazando email/cedula/password.
-    fulfillment: z.boolean(),
+    // SLT-94 (R4): marca «se recoge en tienda» editable; el service recalcula la invariante
+    // segun el rol resultante. `.strict()` sigue rechazando email/cedula/password.
+    seRecogeEnTienda: z.boolean(),
     // Feature 24/R27/R28: zona editable (null la libera). El service valida
     // existencia y aplica la invariante por rol (solo mensajero/adminSatelite).
     zonaId: z.string().min(1).nullable(),

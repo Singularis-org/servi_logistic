@@ -223,6 +223,70 @@ describe("R7 — nivel incompatible con el actor, sin escribir", () => {
   });
 });
 
+describe("SLT-94 R10/R11 — el fulfillment solo como precio propio de la tienda y en monto", () => {
+  const ful = (o: Partial<FijarValorInput> = {}) =>
+    cobro({ concepto: "tienda_fulfillment", valor: "1000", ivaPct: "13", zonaId: null, tiendaId: "t-1", ...o });
+
+  it("SLT-94 R10/R11: precio propio de la tienda, en monto, con su IVA → se guarda en tienda_general", async () => {
+    const repo = repoDoble();
+    const res = await new TarifaValorService(repo).fijarValor(ful(), MAESTRO);
+    expect(res).toEqual({ status: "ok", id: "tv-1" });
+    expect(repo.fijar.mock.calls[0][0]).toMatchObject({
+      concepto: "tienda_fulfillment",
+      modo: "monto",
+      valor: "1000",
+      ivaPct: "13",
+      nivel: "tienda_general",
+      tiendaId: "t-1",
+      zonaId: null,
+      grupoId: null,
+    });
+  });
+
+  it.each([
+    ["zona", ful({ tiendaId: null, zonaId: "zona-1" }), "zonaId"],
+    ["grupo", ful({ tiendaId: null, zonaId: "zona-1", grupoId: "g-1" }), "grupoId"],
+    ["tienda en una zona", ful({ zonaId: "zona-1" }), "zonaId"],
+    ["tienda en un grupo", ful({ zonaId: "zona-1", grupoId: "g-1" }), "grupoId"],
+  ] as const)("SLT-94 R10: fulfillment en %s → validation_error en %s y no se escribe", async (_c, input, campo) => {
+    const repo = repoDoble();
+    const res = await new TarifaValorService(repo).fijarValor(input, MAESTRO);
+    expect(res).toEqual({
+      status: "validation_error",
+      fieldErrors: { [campo]: ["El fulfillment solo se configura como precio propio de la tienda."] },
+    });
+    expect(repo.fijar).not.toHaveBeenCalled();
+  });
+
+  it("SLT-94 R11: fulfillment en porcentaje → validation_error en modo y no se escribe", async () => {
+    const repo = repoDoble();
+    const res = await new TarifaValorService(repo).fijarValor(ful({ modo: "porcentaje", valor: "5" }), MAESTRO);
+    expect(res).toEqual({
+      status: "validation_error",
+      fieldErrors: { modo: ["El fulfillment solo se configura como monto fijo."] },
+    });
+    expect(repo.fijar).not.toHaveBeenCalled();
+  });
+
+  it("SLT-94 R11: el IVA sigue siendo obligatorio en el fulfillment (SLT-52 R4)", async () => {
+    const repo = repoDoble();
+    const res = await new TarifaValorService(repo).fijarValor(ful({ ivaPct: undefined }), MAESTRO);
+    expect(res.status).toBe("validation_error");
+    if (res.status !== "validation_error") throw new Error("inalcanzable");
+    expect(Object.keys(res.fieldErrors)).toEqual(["ivaPct"]);
+    expect(repo.fijar).not.toHaveBeenCalled();
+  });
+
+  it("control: otro cobro a la tienda en porcentaje y en zona se sigue aceptando", async () => {
+    const repo = repoDoble();
+    const res = await new TarifaValorService(repo).fijarValor(
+      cobro({ concepto: "tienda_comision_cod", modo: "porcentaje", valor: "5" }),
+      MAESTRO,
+    );
+    expect(res).toEqual({ status: "ok", id: "tv-1" });
+  });
+});
+
 describe("SLT-54 R52 — vehículo inactivo", () => {
   it("un valor nuevo se rechaza en vehiculoId, sin escribir, y la pregunta lleva el nivel exacto", async () => {
     const repo = repoDoble({ vehiculoEsElegibleONivelOcupado: vi.fn().mockResolvedValue(false) });

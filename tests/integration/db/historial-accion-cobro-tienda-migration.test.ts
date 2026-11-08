@@ -452,6 +452,8 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("381/B.7 (b) — el down recrea 50 tipos y 2
       "plan_cambio_empresa_cancelado",
       // SLT-77: `tope_intentos_cambiado`, de `20261107130000_historial_tope_intentos`.
       "tope_intentos_cambiado",
+      // SLT-94: `usuario_se_recoge_en_tienda_cambiado`, de `20261108120000_slt94_fulfillment_enums`.
+      "usuario_se_recoge_en_tienda_cambiado",
     ];
     expect([...tiposAntes].sort()).toEqual(
       [...HISTORIAL_ACCION_TIPOS]

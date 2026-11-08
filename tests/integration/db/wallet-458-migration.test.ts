@@ -388,8 +388,9 @@ describeSiHayBase("458-B/TB.2–TB.3 — las migraciones de la wallet contra Pos
     expect(rama("debito")).toEqual(esperado("debito"));
     expect(rama("credito")).toContain("flete_devolucion_anulado");
     expect(rama("credito")).toContain("iva_flete_devolucion_anulado");
-    expect(rama("credito")).toHaveLength(7);
-    expect(rama("debito")).toHaveLength(11);
+    // SLT-94: + los dos creditos de la devolucion del fulfillment y sus dos debitos.
+    expect(rama("credito")).toHaveLength(9);
+    expect(rama("debito")).toHaveLength(13);
   });
 
   it("(g) R89: ninguna de las dos migraciones toca filas", () => {

@@ -9,9 +9,10 @@
 //   - `ordenesConfig.FULFILLMENT_ESTATUS_VALUE`  (mapeo del flag, retirada por esta feature)
 //   - `BulkOrdenService.ESTATUS_INICIAL_API`     (estado fijo del canal API, retirada)
 //
-// El UNICO predicado es el flag `fulfillment` del usuario DUEÑO de la orden (el que queda en
-// `orden.tienda_id`). Ni el payload de la peticion, ni la via de carga, ni el rol del actor que
-// ejecuta influyen en la decision (R1/R5).
+// El UNICO predicado es la marca «se recoge en tienda» del usuario DUEÑO de la orden (el que queda
+// en `orden.tienda_id`), negada: `naceEnBodega = !seRecogeEnTienda` (SLT-94 R5/R6). Ni el payload
+// de la peticion, ni la via de carga, ni el rol del actor, ni ningun valor de fulfillment de las
+// tarifas influyen en la decision (R1/R5 de la 155; R6 de SLT-94).
 import type { OrderStatusValue } from "@/lib/types/order-status";
 
 /**
@@ -31,16 +32,16 @@ export interface DestinoCreacion {
 /**
  * R1/R2/R3/R6 — resuelve el destino de creacion a partir del UNICO predicado admitido.
  *
- * @param fulfillmentDeLaTienda flag `Usuario.fulfillment` de la tienda DUEÑA de la orden
- *   (feature 27). `true` = el paquete YA esta en nuestra bodega.
+ * @param naceEnBodega `!Usuario.seRecogeEnTienda` de la tienda DUEÑA de la orden (SLT-94 R5).
+ *   `true` = el paquete YA esta en nuestra bodega.
  *
  * - `true`  → `en_preparacion`, SIN guia (la genera despues la feature 156) y sin manifiesto: el
  *   paquete ya esta en la bodega, no hay ningun movimiento fisico que documentar (R2/R26).
  * - `false` → `por_recolectar_en_tienda`, CON guia en el acto y con manifiesto: el paquete espera
  *   en la tienda y el manifiesto es el papel que se firma al entregar los bultos (R3/R24).
  */
-export function resolverDestinoCreacion(fulfillmentDeLaTienda: boolean): DestinoCreacion {
-  return fulfillmentDeLaTienda
+export function resolverDestinoCreacion(naceEnBodega: boolean): DestinoCreacion {
+  return naceEnBodega
     ? { estatus: "en_preparacion", conGuia: false, emiteManifiesto: false }
     : { estatus: "por_recolectar_en_tienda", conGuia: true, emiteManifiesto: true };
 }

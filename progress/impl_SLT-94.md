@@ -127,3 +127,64 @@ TimeZone de la sesión (5 h de desfase en local). Corregido a `now() AT TIME ZON
 ### Veredicto
 
 T1 hecha: 4 migraciones con down, modelo Prisma, 32 casos de integración verdes y matados por mutación; typecheck rojo esperado hasta T2/T4.
+
+## Tanda T2+T3+T4 — marca, valor de fulfillment y libros (backend_dev, 2026-11-08)
+
+Tasks: T2.1–T2.5, T3.1–T3.2, T4.1–T4.2. Base desechable `slt94_t1` (DATABASE_URL exportada antes de
+todo vitest). Sin cambios de schema (no hubo `prisma generate`).
+
+### Decisiones del leader aplicadas
+- R21 vs FK SET NULL: se queda. Monto, % IVA, IVA y tienda congelados intactos = R21 cumplido; solo la traza `tarifa_valor_id` pasa a NULL.
+- R29: el re-cobro va a la tienda congelada del cobro original (confirmado).
+- Hueco 4: añadidos `ApiKeyRepository` (cuenta dedicada con `seRecogeEnTienda: true`, D13), los 14 tests/fixtures y los repos/servicios de registros.
+- Hueco 5: el test de R14 en `tarifas-flexibles-resolver` suelta el CHECK de R12 dentro de su tx revertida, siembra zona/grupo/tienda-zona/tienda-grupo/% y lo repone `NOT VALID`.
+- Hueco 6: R15 por servicio en `slt94-marca-y-vias.test.ts` (pantalla por route handler, carga masiva y API key).
+
+### Archivos
+lib/app (backend): `BulkOrdenService` (las dos vías: `resolverDestinoCreacion(!seRecogeEnTienda)`, un destino por lote; API: dueño que no resuelve → «tienda no encontrada»; sin órdenes no llama al repo), `destino-creacion`, `OrdenRepository.findUsuarioSeRecogeEnTienda` (+ `IOrdenRepository`), `UsuarioService.resolverSeRecogeEnTienda`, `UserRepository` (+ historial `usuario_se_recoge_en_tienda_cambiado`), `IUserRepository`, `lib/types/usuario.ts`, `ApiKeyRepository`, `PickingRepository` (+ interfaz), `lib/types/historial-accion.ts`, `ingreso-empresa.ts` (retirado `tieneFulfillment`), `lib/tarifas/niveles.ts` (R10), `lib/types/tarifa-flexible.ts` (R11), `lib/tarifas/precedencia.ts` (`rangoFulfillment`, R14), `resolver-tarifas.ts` (comentario), `lib/types/wallet.ts`, `wallet-tienda.ts`, `invariante-tiendas.ts`, `caja-tesoreria.ts`, `aporte-por-orden.ts`, `desglose-tienda.ts`, `estado-cuenta-chips.ts`, `estado-cuenta.ts` (nota: sin pares), `wallet-rotulos.ts`, `metrics.ts`, `OrigenLegibleService` + `OrigenLegibleRepository` + interfaz (`movimientosFulfillment`), `libro-caja-a-quien-sql.ts` (rama FULFILLMENT con la tienda congelada), comentarios en `IBulkOrdenService`, `cotizacion.ts`, `app/api/ordenes/api-key/carga/route.ts`; `scripts/demo-qa/receta.ts`; fábricas (`empresa-y-usuarios`, `e2e`, `escenarios/reparto`) y `e2e/cierre-modelo-nuevo-plan-porcentual.spec.ts`.
+
+Tests nuevos: `tests/unit/tarifas/niveles.test.ts`, `tests/unit/utils/slt94-fulfillment-caja.test.ts`, `tests/integration/db/slt94-marca-y-vias.test.ts`. Actualizados: unitarios de bulk/usuario/user-repo/orden-repo/picking/usuario-schema/api-key/precedencia/tarifa-valor/origen-legible/wallet-labels/convergencia y de caja (composición, IVA, kardex, 457, desglose, wallet-service, financiera); guardias de caja (459, composición, métricas), historial (censo 85, `usuario_fulfillment_cambiado` a SIN_ESCRITOR desde SLT-94), catálogo de Postgres (dos consultas de T1 sin esquema); integración: tarifas-flexibles-{resolver,respaldo,snapshot}, caja-tesoreria-migration, historial-accion-atomicidad, listas «posteriores» de migraciones (cobro-tienda, conciliación, wallet-tienda-cobro) y (f) de 457/458; fixtures `fulfillment:` → `seRecogeEnTienda:`; ~16 tests de componentes solo en sus fixtures de DTO.
+
+### Mapa R → test (esta tanda)
+| R | Test |
+|---|---|
+| R1 | `user-repository.crud` «SLT-94 R1…»; `usuario-schema` «SLT-94 R1…» |
+| R3 | `user-repository.crud` «SLT-94 R3…»; `usuario-service` «SLT-94 R3…» |
+| R4 | `usuario-service` «SLT-94 R4…» (5 casos, incl. D13 apiKey) |
+| R5 | `bulk-orden-service` «SLT-94 R5…»; `bulk-orden-service.carga-api` «SLT-94 R5…»; `orden-repository` «SLT-94 R5…»; `slt94-marca-y-vias` (pantalla, masiva, API) |
+| R6 | `bulk-orden-service.carga-api` «SLT-94 R6/R18…» y «lote con fulfillment en una zona y no en otra» |
+| R7 | `slt94-marca-y-vias` «SLT-94 R7…»; `picking-repository` «SLT-94 R7…» |
+| R8 | `slt94-marca-y-vias` «SLT-94 R8…»; `historial-accion-atomicidad` «SLT-94 R8…» (requiere base sembrada) |
+| R10 | `niveles.test` «SLT-94 R10…»; `tarifa-valor-service` «SLT-94 R10…» |
+| R11 | `tarifa-valor-service` «SLT-94 R11…» |
+| R14 | `precedencia` «SLT-94 R14…»; `tarifas-flexibles-resolver` «SLT-94 R14…» (2); `convergencia-tarifa-listado-cierre` «SLT-94 R14…» |
+| R15 (vías) | `slt94-marca-y-vias` (pantalla, masiva, API) |
+| R18 | `slt94-marca-y-vias` pantalla/masiva; `carga-api` R6/R18 |
+| R19, R20, R26 (caja) | `slt94-fulfillment-caja` «SLT-94 R19…», «SLT-94 R20…» (3), «SLT-94 R26…» |
+| R23 (servicio) | `slt94-marca-y-vias` API (reintento) |
+| R32 | `tarifas-flexibles-snapshot` (el cierre congela el fulfillment de la tienda y no lo liquida: wallet solo flete+IVA) |
+| R33 | `slt94-marca-y-vias` API (publica 1000.00/130.00 = lo cobrado); `carga-api` R6/R18 |
+| R36 | `wallet-origen-legible` «SLT-94 R36…» (3) + caso del catálogo; `wallet-labels` |
+| R37 | `slt94-fulfillment-caja` «SLT-94 R37…» (2); guardia `metrics-caja-naturaleza` |
+
+Fuera de esta tanda: R9, R13 (T5), R40 (T6.1).
+
+### Mutaciones (19, todas ROJAS; restauradas con comparación de bytes)
+R5 API sin negar la marca (10 rojos) · R5 masiva sin negar (12) · R7 SQL al revés (1) · R7 selector al revés (1) · R8 sin registrar (1) · R8 registra sin cambio (1) · R3 default repo false (1) · R3 default service false (1) · R4 sin invariante (4) · R10 sin restricción de nivel (8) · R11 sin restricción de modo (1) · R14 nivel ignorado (8) · R14 % no ignorado (3) · R20 fulfillment como efectivo (2) · R20 IVA como ganancia (3) · R19 cobro en «a favor» (1) · R37 ganancia sin fulfillment (1) · R36 origen sin leer la orden (4) · R36 sin guía (2).
+
+### Verificación (salida real)
+- `pnpm run typecheck` (8 GB) → 11 errores, TODOS en UI de T5 (no tocada por regla): `UsuarioForm.tsx`, `mi-wallet-labels.ts`, `desglose-tienda-labels.ts`, `ComposicionGananciaCard.tsx` (2), `composicion-detalle-labels.ts`, `DesgloseEgresosLista.tsx` y sus tests `usuario-form.test.tsx` (2), `mi-wallet-labels.test.ts`, `desglose-tienda-labels.test.ts`. lib/, tests de backend y scripts: 0.
+- `eslint` de los archivos tocados → 0 errores, 2 warnings preexistentes.
+- `vitest run` de 29 archivos (unit + integración SLT-94 + tarifas + caja) → «Test Files 29 passed · Tests 777 passed».
+- `test:guardias` → 335/341 al principio; las 5 rojas de esta tanda arregladas y re-corridas verdes (175/175); queda `dependencias-declaradas-presentes` (PREEXISTENTE, ya en T1).
+- `vitest related` de los 35 archivos de lib/app → rojos clasificados: (a) base `slt94_t1` sin datos sembrados (454/455/477/484, picking-476, historial-accion-atomicidad/lectura, caja-invariante, analítica, etc.: «la base no tiene zona», «hacen falta 2 usuarios»); (b) PREEXISTENTES por listas posicionales/conteos de enum que no actualizaron SL-45/SLT-73 (`abono-457 (a)`, `wallet-458 (a)`, `caja-459 (a)`, `cobro-461 (a)`, `wallet-461 (a)`); (c) UI de T5: tests de componentes de la wallet que renderizan `ComposicionGananciaCard`/labels de app y `usuarios-nombre-no-imprimible` (el form aún manda `fulfillment`).
+
+### Huecos del spec
+1. Typecheck verde exige T5: además de lo que lista T5.3 faltan `app/(app)/wallet/_components/composicion-detalle-labels.ts` y `DesgloseEgresosLista.tsx` (Records totales sobre egresos nombrados). Hasta T5, `UsuarioForm` manda `fulfillment` y el borde zod (strict) lo rechaza: el alta/edición de usuarios por pantalla queda rota hasta T5.1. T5 NO puede salir separada de esta tanda.
+2. R37 «fulfillment neto»: en lib la composición da dos filas (`ingreso_fulfillment` y `egreso_reverso_fulfillment`, este como egreso nombrado); la fila neta la arma la tarjeta (T5.3).
+3. Estado de cuenta: cobro y devolución de fulfillment no forman par anulable (`claveDeParTienda` → null): cada evento tiene su `origen_id`. Ambas filas se ven; la suma cuadra.
+4. `efecto-movimiento.ts` (listado en design §4) no cambia: su Record es sobre conceptos manuales, y el fulfillment no se registra a mano.
+5. `tarifas-flexibles-snapshot`: el fulfillment pasó de grupo a precio propio, así que ahora se congela en las 3 órdenes del escenario (literales actualizados; el caso json_agg quita el de A para seguir midiendo la fila ajena).
+
+### Veredicto
+T2–T4 hechas, 19 mutaciones muertas; el backend compila. El typecheck sigue rojo solo por la UI de T5 (11 errores).

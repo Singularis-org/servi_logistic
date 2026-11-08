@@ -52,7 +52,7 @@ import { generateStrongPassword } from "@/lib/utils/password-generator";
 const ALLOWED_ROLES = new Set<string>(["maestro"]);
 
 // Feature 24/R27: roles que pueden (y DEBEN) llevar una zona asignada. Para el
-// resto el `zonaId` se fuerza a null (misma politica que el `fulfillment` de adminTienda).
+// resto el `zonaId` se fuerza a null (misma politica que «se recoge en tienda» de adminTienda).
 const ZONA_ROLES = new Set<string>(["mensajero", "adminSatelite"]);
 
 // SL-32 (R9): el texto del rechazo cuando un alta o una edicion piden un rol de plataforma. Es
@@ -204,9 +204,12 @@ export class UsuarioService implements IUsuarioService {
     const plain = generated ? generateStrongPassword() : input.password; // R32/R31
     const passwordHash = await hashPassword(plain); // R7/R34: solo se persiste el hash
 
-    // Feature 27/R4a (Decision P1): la invariante de rol se calcula aqui, NO se
-    // confia en la UI. Solo `adminTienda` puede quedar con `fulfillment = true`.
-    const fulfillment = await this.resolverFulfillment(input.rolId, input.fulfillment ?? false);
+    // SLT-94 (R3/R4): la invariante de rol se calcula aqui, NO se confia en la UI. Sin marca ->
+    // «si»; solo `adminTienda` puede quedar con «no».
+    const seRecogeEnTienda = await this.resolverSeRecogeEnTienda(
+      input.rolId,
+      input.seRecogeEnTienda ?? true,
+    );
 
     // Feature 24/R27/R28: resuelve la zona segun el rol (obligatoria para
     // mensajero/adminSatelite) y valida su existencia.
@@ -236,7 +239,7 @@ export class UsuarioService implements IUsuarioService {
           rolId: input.rolId,
           passwordHash,
           estado: "activo", // R8: nace activo (a diferencia de la postulacion publica)
-          fulfillment, // R8/R9: valor efectivo ya restringido por rol
+          seRecogeEnTienda, // SLT-94 R3/R4: valor efectivo ya restringido por rol
           zonaId: zona.zonaId, // R27: null salvo mensajero/adminSatelite
           vehiculoId: vehiculo.vehiculoId, // feature 21: null salvo mensajero
         },
@@ -378,7 +381,7 @@ export class UsuarioService implements IUsuarioService {
       return { status: "validation_error", fieldErrors: { rolId: [ROL_NO_ASIGNABLE] } };
     }
 
-    // Feature 27/R12/R4a: se recalcula `fulfillment` con el rol resultante, por lo
+    // SLT-94 (R4): se recalcula `seRecogeEnTienda` con el rol resultante, por lo
     // que se necesita el usuario actual (rol e/o valor previo). `null` -> not_found.
     const actual = await this.repo.findById(id);
     if (!actual) return { status: "not_found" }; // R17
@@ -828,15 +831,14 @@ export class UsuarioService implements IUsuarioService {
       data.tipoIdentificacionId = input.tipoIdentificacionId;
     }
 
-    // Feature 27/R12/R4a: se recalcula solo si cambia `fulfillment` o el rol. Con
-    // el rol resultante (el nuevo si se edita, o el actual) se aplica la invariante:
-    // solo `adminTienda` puede quedar en `true`; un cambio a otro rol fuerza `false`.
-    // Si el rol se mantiene `adminTienda` y no se envia `fulfillment`, se conserva
-    // el valor actual (no se pisa por defecto).
-    if (input.fulfillment !== undefined || input.rolId !== undefined) {
+    // SLT-94 (R4): se recalcula solo si cambia la marca o el rol. Con el rol resultante (el
+    // nuevo si se edita, o el actual) se aplica la invariante: solo `adminTienda` puede quedar
+    // en «no»; un cambio a otro rol fuerza «si». Si el rol se mantiene `adminTienda` y no se
+    // envia la marca, se conserva el valor actual (no se pisa por defecto).
+    if (input.seRecogeEnTienda !== undefined || input.rolId !== undefined) {
       const rolIdResultante = input.rolId ?? actual.rolId;
-      const deseado = input.fulfillment ?? actual.fulfillment;
-      data.fulfillment = await this.resolverFulfillment(rolIdResultante, deseado);
+      const deseado = input.seRecogeEnTienda ?? actual.seRecogeEnTienda;
+      data.seRecogeEnTienda = await this.resolverSeRecogeEnTienda(rolIdResultante, deseado);
     }
     return data;
   }
@@ -849,14 +851,14 @@ export class UsuarioService implements IUsuarioService {
     return rolValue !== undefined && esPlataforma(rolValue);
   }
 
-  // Feature 27/R4a (Decision P1): resuelve el flag efectivo. Solo `adminTienda`
-  // puede quedar en `true`; para cualquier otro rol se fuerza `false`, ignorando
-  // un `true` recibido. El `value` del rol se resuelve desde su `id` via el repo.
-  private async resolverFulfillment(rolId: string, deseado: boolean): Promise<boolean> {
-    if (!deseado) return false;
+  // SLT-94 (R4, D13): resuelve la marca efectiva. Solo `adminTienda` puede quedar en «no» (sus
+  // paquetes nacen en bodega); para cualquier otro rol —incluida la cuenta dedicada de una API
+  // key— se fuerza «si», ignorando un «no» recibido. El `value` del rol se resuelve desde su `id`.
+  private async resolverSeRecogeEnTienda(rolId: string, deseado: boolean): Promise<boolean> {
+    if (deseado) return true;
     const roles = await this.repo.listRoles();
     const rolValue = roles.find((r) => r.id === rolId)?.value;
-    return rolValue === "adminTienda";
+    return rolValue !== "adminTienda";
   }
 
   /**

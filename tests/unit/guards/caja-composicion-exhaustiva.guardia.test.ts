@@ -223,9 +223,12 @@ describe("R23/R26 — la particion de la ganancia cubre TODAS las categorias pro
       (c) => NATURALEZA_POR_CATEGORIA[c] === "propio" && tipoDe(c) === "ingreso",
     );
     expect([...WALLET_INGRESO_PROPIO_SEED].sort()).toEqual([...derivados].sort());
-    // D5: los seis del feed MAS el ajuste; ficha 461 (R27): MAS el cobro de la empresa a una tienda.
-    expect(derivados.length).toBe(8);
+    // D5: los seis del feed MAS el ajuste; ficha 461 (R27): MAS el cobro de la empresa a una tienda;
+    // SLT-94 (R20): MAS el fulfillment por paquete y su IVA.
+    expect(derivados.length).toBe(10);
     expect(derivados).toContain("ingreso_cobro_tienda");
+    expect(derivados).toContain("ingreso_fulfillment");
+    expect(derivados).toContain("ingreso_iva_fulfillment");
   });
 
   it("⭑ 461 (R27) + 458-B + SL-39: el reverso del cobro es el TERCER egreso nombrado y el del flete por devolución a origen el cuarto; el reverso del IVA sale de los nombrados (5→4); «otros» sigue siendo solo `egreso_gasto`", () => {
@@ -236,8 +239,12 @@ describe("R23/R26 — la particion de la ganancia cubre TODAS las categorias pro
       "egreso_reverso_flete_devolucion", // ficha 458-B
       // SL-39 (R7/R8): `egreso_reverso_iva_flete_devolucion` va al bloque del IVA, no a «Egresos».
       "egreso_pago_plataforma", // SL-45 (R24): fila propia, no «Otros gastos»
+      "egreso_reverso_fulfillment", // SLT-94 (R37): la devolucion del fulfillment, con su nombre
     ]);
-    expect([...WALLET_EGRESO_IVA_SEED]).toEqual(["egreso_reverso_iva_flete_devolucion"]);
+    expect([...WALLET_EGRESO_IVA_SEED]).toEqual([
+      "egreso_reverso_iva_flete_devolucion",
+      "egreso_reverso_iva_fulfillment", // SLT-94
+    ]);
     expect(NATURALEZA_POR_CATEGORIA.egreso_reverso_cobro_tienda).toBe("propio");
     expect(OTROS_EGRESOS_DE_EMPRESA).toEqual(["egreso_gasto"]);
   });
@@ -384,9 +391,10 @@ function ivaSinSeed(categorias: readonly string[]): string[] {
 describe("SL-39/R18 — toda categoria `_iva_` del catalogo esta en el seed del IVA", () => {
   it("R18: ninguna categoria de IVA del catalogo se queda fuera de `WALLET_IVA_SEED`", () => {
     expect(ivaSinSeed(WALLET_MOVIMIENTO_CATEGORIA_SEED)).toEqual([]);
-    // Control de no vacuidad: el catalogo SI tiene categorias `_iva_`, y son las cuatro del seed.
+    // Control de no vacuidad: el catalogo SI tiene categorias `_iva_`, y son las seis del seed (SLT-94:
+    // + las dos del fulfillment).
     const conIva = WALLET_MOVIMIENTO_CATEGORIA_SEED.filter((c) => c.includes("_iva_"));
-    expect(conIva).toHaveLength(4);
+    expect(conIva).toHaveLength(6);
     expect([...conIva].sort()).toEqual([...WALLET_IVA_SEED].sort());
   });
 

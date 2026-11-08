@@ -151,7 +151,7 @@ const COMPOSICION: ComposicionGananciaDTO = {
     ingreso_flete_devolucion: "0.00",
     ingreso_comision_cod: "700.00",
     ingreso_ajuste: "0.00",
-    ingreso_cobro_tienda: "0.00",
+    ingreso_cobro_tienda: "0.00", ingreso_fulfillment: "0.00", /* SLT-94 */
   },
   totalIngresos: "3200.00",
   egresos: {
@@ -159,7 +159,7 @@ const COMPOSICION: ComposicionGananciaDTO = {
     egreso_ajuste: "0.00",
     egreso_reverso_cobro_tienda: "0.00",
     egreso_reverso_flete_devolucion: "0.00",
-    egreso_pago_plataforma: "0.00",
+    egreso_pago_plataforma: "0.00", egreso_reverso_fulfillment: "0.00", /* SLT-94 */
   },
   otrosEgresos: "0.00",
   hayOtrosEgresos: false,
@@ -168,7 +168,7 @@ const COMPOSICION: ComposicionGananciaDTO = {
     ingreso_iva_flete: "325.00",
     ingreso_iva_flete_devolucion: "0.00",
     ingreso_iva_comision_cod: "91.00",
-    egreso_reverso_iva_flete_devolucion: "0.00",
+    egreso_reverso_iva_flete_devolucion: "0.00", ingreso_iva_fulfillment: "0.00", egreso_reverso_iva_fulfillment: "0.00", /* SLT-94 */
   },
   totalIva: "416.00",
 };

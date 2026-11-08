@@ -415,7 +415,7 @@ export async function crearEmpresaDemo(
     empresa: EmpresaCreada,
     perfil: string,
     rol: RolValue,
-    extra: { zonaId?: string; vehiculoId?: string; fulfillment?: boolean } = {},
+    extra: { zonaId?: string; vehiculoId?: string; seRecogeEnTienda?: boolean } = {},
   ): Promise<UsuarioCreado> {
     const correo = correoDemo(slugEmpresa, perfil);
     const u = await crearUsuario(dueno, empresa, rol, {
@@ -464,7 +464,7 @@ export async function crearEmpresaDemo(
       ),
     ),
     enPaso("alta de admin", () => altaUsuario(escenario.empresa, "admin", "admin")),
-    enPaso("alta de tienda", () => altaUsuario(escenario.empresa, "tienda", "adminTienda", { fulfillment: false })),
+    enPaso("alta de tienda", () => altaUsuario(escenario.empresa, "tienda", "adminTienda", { seRecogeEnTienda: true })),
   ]);
   const perfilesDeMensajero: [ZonaTipo, string][] = [
     ["central", "mensajero-central"],

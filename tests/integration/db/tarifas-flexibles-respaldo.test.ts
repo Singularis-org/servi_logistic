@@ -161,7 +161,8 @@ async function sembrar(tx: TxDeTest): Promise<Escenario> {
       { concepto: "tienda_flete_entregado", modo: "monto", valor: "11.11", ivaPct: "1.00", zonaId: fc.zonaId },
       { concepto: "tienda_flete_entregado", modo: "monto", valor: "22.22", ivaPct: "2.00", tiendaId: fc.tiendaId, zonaId: fc.zonaId },
       { concepto: "tienda_flete_rechazo", modo: "monto", valor: "33.33", ivaPct: "3.00", zonaId: fc.zonaId },
-      { concepto: "tienda_fulfillment", modo: "monto", valor: "44.44", ivaPct: "4.00", zonaId: fc.zonaId },
+      // SLT-94 (R12): el fulfillment solo se puede guardar como precio propio de la tienda.
+      { concepto: "tienda_fulfillment", modo: "monto", valor: "44.44", ivaPct: "4.00", tiendaId: fc.tiendaId },
       { concepto: "tienda_comision_cod", modo: "porcentaje", valor: "55.55", ivaPct: "5.00", zonaId: fc.zonaId },
       { concepto: "mensajero_entregado", modo: "monto", valor: "66.66", zonaId: fc.zonaId },
       { concepto: "mensajero_entregado", modo: "monto", valor: "77.77", zonaId: fc.zonaId, vehiculoId: V1 },

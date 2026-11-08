@@ -126,7 +126,8 @@ describeSiHayBase("SLT-94 — cobro de fulfillment por paquete (Postgres)", () =
 
   it("control: los tres triggers están instalados", async () => {
     const filas = await base.$queryRawUnsafe<{ tgname: string }[]>(
-      `SELECT tgname FROM pg_trigger WHERE NOT tgisinternal AND tgname LIKE 'fulfillment_al_%' ORDER BY tgname`,
+      `SELECT tg.tgname FROM pg_trigger tg JOIN pg_class c ON c.oid = tg.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public' AND NOT tg.tgisinternal AND tg.tgname LIKE 'fulfillment_al_%' ORDER BY tg.tgname`,
     );
     expect(filas.map((f) => f.tgname)).toEqual([
       "fulfillment_al_cambiar_borrado",

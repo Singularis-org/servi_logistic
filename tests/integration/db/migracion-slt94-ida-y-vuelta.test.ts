@@ -289,7 +289,12 @@ describeSiHayBase("SLT-94 T1.5 — cobro de fulfillment de ida y vuelta", () => 
     expect(
       await existe(`SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public' AND p.proname LIKE 'fulfillment_%'`),
     ).toBe(false);
-    expect(await existe(`SELECT 1 FROM pg_enum WHERE enumlabel IN ('orden_fulfillment', 'ingreso_fulfillment', 'fulfillment_anulado', 'usuario_se_recoge_en_tienda_cambiado')`)).toBe(false);
+    expect(
+      await existe(
+        `SELECT 1 FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid JOIN pg_namespace n ON n.oid = t.typnamespace
+          WHERE n.nspname = 'public' AND e.enumlabel IN ('orden_fulfillment', 'ingreso_fulfillment', 'fulfillment_anulado', 'usuario_se_recoge_en_tienda_cambiado')`,
+      ),
+    ).toBe(false);
     expect(await existe(`SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relname LIKE 'orden_fulfillment%'`)).toBe(false);
 
     // Sin las migraciones, crear y eliminar sigue funcionando.

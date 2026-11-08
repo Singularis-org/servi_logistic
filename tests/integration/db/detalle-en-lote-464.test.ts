@@ -203,7 +203,7 @@ async function sembrar(tx: TxDeTest, cat: Catalogo459): Promise<Escenario> {
         tipoIdentificacionId: cat.tipoIdentificacionId,
         rolId,
         estado: "activo",
-        fulfillment: false,
+        seRecogeEnTienda: true,
       },
       select: { id: true },
     });

@@ -111,7 +111,7 @@ async function sembrarEmpresa(letra: "A" | "B", geo: Geo): Promise<Empresa> {
           tipoIdentificacionId: tipo.id,
           rolId: rolDe(rol),
           estado: "activo",
-          fulfillment,
+          seRecogeEnTienda: !fulfillment, // SLT-94: «con fulfillment» = nace en bodega
           organizacionId,
         },
         select: { id: true },

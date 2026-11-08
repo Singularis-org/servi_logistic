@@ -725,24 +725,25 @@ describe("OrdenRepository.findEstatusIdByValue", () => {
   });
 });
 
-describe("OrdenRepository.findUsuarioFulfillment (feature 27/R15/R16/R17)", () => {
-  it("devuelve el flag fulfillment de la tienda que carga", async () => {
+describe("OrdenRepository.findUsuarioSeRecogeEnTienda (SLT-94 R5)", () => {
+  it("SLT-94 R5: devuelve la marca «se recoge en tienda» de la tienda dueña (y lee SOLO esa columna)", async () => {
     const prisma = buildPrisma();
-    prisma.usuario.findUnique.mockResolvedValue({ fulfillment: true });
+    prisma.usuario.findUnique.mockResolvedValue({ seRecogeEnTienda: true });
     const repo = new OrdenRepository(prisma as unknown as PrismaClient);
 
-    expect(await repo.findUsuarioFulfillment("store-1")).toBe(true);
+    expect(await repo.findUsuarioSeRecogeEnTienda("store-1")).toBe(true);
     const arg = prisma.usuario.findUnique.mock.calls[0][0];
     expect(arg.where).toEqual({ id: "store-1" });
-    expect(arg.select).toEqual({ fulfillment: true }); // R14: nunca passwordHash
+    // R6: ni la columna vieja ni ningun valor de fulfillment; nunca passwordHash.
+    expect(arg.select).toEqual({ seRecogeEnTienda: true });
   });
 
-  it("devuelve false cuando el flag es false (R17)", async () => {
+  it("SLT-94 R5: devuelve false cuando la marca es «no»", async () => {
     const prisma = buildPrisma();
-    prisma.usuario.findUnique.mockResolvedValue({ fulfillment: false });
+    prisma.usuario.findUnique.mockResolvedValue({ seRecogeEnTienda: false });
     const repo = new OrdenRepository(prisma as unknown as PrismaClient);
 
-    expect(await repo.findUsuarioFulfillment("store-1")).toBe(false);
+    expect(await repo.findUsuarioSeRecogeEnTienda("store-1")).toBe(false);
   });
 
   it("null cuando el usuario no resuelve (SL-17 D15: lectura previa de la tienda)", async () => {
@@ -750,7 +751,7 @@ describe("OrdenRepository.findUsuarioFulfillment (feature 27/R15/R16/R17)", () =
     prisma.usuario.findUnique.mockResolvedValue(null);
     const repo = new OrdenRepository(prisma as unknown as PrismaClient);
 
-    expect(await repo.findUsuarioFulfillment("desconocido")).toBeNull();
+    expect(await repo.findUsuarioSeRecogeEnTienda("desconocido")).toBeNull();
   });
 });
 

@@ -75,6 +75,8 @@ type Entidades = {
   cierres: Map<string, CierreDeOrigen>;
   gestiones: Map<string, OrdenDeOrigen>;
   incidentes: Map<string, OrdenDeOrigen>;
+  /** SLT-94 (R36): la orden de cada movimiento de fulfillment, por id del movimiento. */
+  fulfillment: Map<string, OrdenDeOrigen>;
   pagos: Map<string, PagoDeOrigen>;
   podios: Map<string, PodioDeOrigen>;
   pagosPorCuenta: Map<string, PagoPorCuentaDeOrigen>;
@@ -102,6 +104,8 @@ const LECTURA_POR_ORIGEN: Record<WalletOrigenTipo, keyof Entidades | null> = {
   incentivo_mensajero: null,
   // SLT-73: la diferencia de la satélite se nombra por su rótulo; el detalle va en la descripción.
   conciliacion_bodega_ajuste: null,
+  // SLT-94 (R36): el cobro y la devolucion de fulfillment nombran la orden (guia o remision).
+  orden_fulfillment: "fulfillment",
 };
 
 function unir(...partes: (string | null | undefined)[]): string {
@@ -213,6 +217,11 @@ export function componerOrigen(
       const i = id === null ? undefined : e.incidentes.get(id);
       return solo(unir(rotulo, textoDeOrden(i)), enlaceAOrden(i, acceso));
     }
+    case "orden_fulfillment": {
+      // SLT-94 (R36): «Orden · Guía N» (o la remision si no tiene guia) y el enlace a `/ordenes`.
+      const o = id === null ? undefined : e.fulfillment.get(id);
+      return solo(unir(rotulo, textoDeOrden(o)), enlaceAOrden(o, acceso));
+    }
     case "pago_tienda":
     case "pago_mensajero": {
       const p = id === null ? undefined : e.pagos.get(id);
@@ -281,6 +290,7 @@ export class OrigenLegibleService implements IOrigenLegibleService {
       cierres: new Set(),
       gestiones: new Set(),
       incidentes: new Set(),
+      fulfillment: new Set(),
       pagos: new Set(),
       podios: new Set(),
       pagosPorCuenta: new Set(),
@@ -302,21 +312,32 @@ export class OrigenLegibleService implements IOrigenLegibleService {
       return new Map(filasLeidas.map((x) => [x.id, x]));
     };
 
-    const [cierres, gestiones, incidentes, pagos, podios, pagosPorCuenta, abonos, movimientosTienda] =
-      await Promise.all([
-        leer("cierres", (x) => this.repo.cierres(x)),
-        leer("gestiones", (x) => this.repo.gestiones(x)),
-        leer("incidentes", (x) => this.repo.incidentes(x)),
-        leer("pagos", (x) => this.repo.pagos(x)),
-        leer("podios", (x) => this.repo.podios(x)),
-        leer("pagosPorCuenta", (x) => this.repo.pagosPorCuenta(x)),
-        leer("abonos", (x) => this.repo.abonos(x)),
-        leer("movimientosTienda", (x) => this.repo.movimientosTienda(x)),
-      ]);
+    const [
+      cierres,
+      gestiones,
+      incidentes,
+      fulfillment,
+      pagos,
+      podios,
+      pagosPorCuenta,
+      abonos,
+      movimientosTienda,
+    ] = await Promise.all([
+      leer("cierres", (x) => this.repo.cierres(x)),
+      leer("gestiones", (x) => this.repo.gestiones(x)),
+      leer("incidentes", (x) => this.repo.incidentes(x)),
+      leer("fulfillment", (x) => this.repo.movimientosFulfillment(x)),
+      leer("pagos", (x) => this.repo.pagos(x)),
+      leer("podios", (x) => this.repo.podios(x)),
+      leer("pagosPorCuenta", (x) => this.repo.pagosPorCuenta(x)),
+      leer("abonos", (x) => this.repo.abonos(x)),
+      leer("movimientosTienda", (x) => this.repo.movimientosTienda(x)),
+    ]);
     const entidades: Entidades = {
       cierres,
       gestiones,
       incidentes,
+      fulfillment,
       pagos,
       podios,
       pagosPorCuenta,

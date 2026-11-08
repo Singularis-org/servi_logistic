@@ -82,7 +82,7 @@ describeSiHayBase("373/C1 — dependenciasDeCuentasDedicadas contra Postgres", (
         tipoIdentificacionId: TIPO_CEDULA,
         rolId: ROL_API_KEY,
         estado: "activo",
-        fulfillment: false,
+        seRecogeEnTienda: true,
         zonaId: null,
       },
       select: { id: true },

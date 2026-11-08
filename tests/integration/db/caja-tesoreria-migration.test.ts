@@ -111,6 +111,12 @@ const TIPO_LEGITIMO_POR_CATEGORIA: Record<WalletMovimientoCategoria, WalletMovim
   // `20261031140100_slt73_ajuste_conciliacion`.
   egreso_diferencia_satelite: "egreso",
   ingreso_diferencia_satelite: "ingreso",
+  // SLT-94: el cobro de fulfillment por paquete, su IVA y sus devoluciones. El CHECK que las admite
+  // es el de la migracion `20261108120200_slt94_fulfillment_movimiento`.
+  ingreso_fulfillment: "ingreso",
+  ingreso_iva_fulfillment: "ingreso",
+  egreso_reverso_fulfillment: "egreso",
+  egreso_reverso_iva_fulfillment: "egreso",
 };
 
 const COMBINACIONES_LEGITIMAS = (
@@ -147,6 +153,11 @@ const AGREGADAS_459: readonly string[] = [
   // SLT-73 (2026-10-31): la diferencia de la satelite, tambien POSTERIOR a la foto de la 173.
   "egreso_diferencia_satelite",
   "ingreso_diferencia_satelite",
+  // SLT-94 (2026-11-08): el cobro de fulfillment por paquete y sus devoluciones, tambien POSTERIORES.
+  "ingreso_fulfillment",
+  "ingreso_iva_fulfillment",
+  "egreso_reverso_fulfillment",
+  "egreso_reverso_iva_fulfillment",
 ];
 const COMBINACIONES_DE_LA_173 = COMBINACIONES_LEGITIMAS.filter((c) => !AGREGADAS_459.includes(c.categoria));
 const SEED_DE_LA_173 = WALLET_MOVIMIENTO_CATEGORIA_SEED.filter((c) => !AGREGADAS_459.includes(c));
@@ -583,9 +594,10 @@ describeSiHayBase("T A.2 — el CHECK categoria↔tipo, contra Postgres (R45/R46
       });
     });
 
-    // 17 de la 173 + 4 de la 459 + 2 de la 461 + 2 de la 457 + 2 de la 458-B + 1 de SL-45 + 2 de SLT-73:
-    // el CHECK de HOY (migracion 20261031140100), menos el pago a la plataforma, que va aparte (arriba).
-    expect(resultado).toHaveLength(29);
+    // 17 de la 173 + 4 de la 459 + 2 de la 461 + 2 de la 457 + 2 de la 458-B + 1 de SL-45 + 2 de SLT-73
+    // + 4 de SLT-94: el CHECK de HOY (migracion 20261108120200), menos el pago a la plataforma, que va
+    // aparte (arriba).
+    expect(resultado).toHaveLength(33);
     expect(
       resultado.map((f) => `${f.tipo}/${f.categoria}`).sort(),
     ).toEqual(LEGITIMAS_SIN_TOPE.map((c) => `${c.tipo}/${c.categoria}`).sort());

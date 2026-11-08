@@ -162,7 +162,7 @@ export async function crearOrdenes(
   const repo = ordenRepo(app);
   const historial = { actorUsuarioId: tiendaId, origenTipo: o.conGuia ? ("carga_api" as const) : ("carga_masiva" as const) };
   const lote = { cargaId: null, usuarioCargaId: tiendaId, totalFiles: data.length, name: null };
-  const r = await conEmpresa(e.id, () =>
+  const r: { omitidas: string[] } = await conEmpresa(e.id, async (): Promise<{ omitidas: string[] }> =>
     o.conGuia
       ? repo.createManyOrdenesConGuia(data, 50, historial, lote)
       : repo.createManyOrdenes(data, 50, historial, lote),

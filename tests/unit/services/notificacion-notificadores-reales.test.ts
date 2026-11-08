@@ -359,7 +359,7 @@ describe("el notificador real, cableado en un service, emite de punta a punta", 
       findDistritosByCantonIds: vi.fn().mockResolvedValue([]),
       // Feature 155: `cargarViaApi` resuelve el estado inicial con el flag de la tienda
       // dueña de la key, asi que el doble del repositorio debe exponerlo.
-      findUsuarioFulfillment: vi.fn().mockResolvedValue(false),
+      findUsuarioSeRecogeEnTienda: vi.fn().mockResolvedValue(true),
       createManyOrdenesConGuia: vi.fn().mockResolvedValue([]),
     };
     const service = new BulkOrdenService(

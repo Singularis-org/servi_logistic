@@ -516,9 +516,10 @@ const CENSO: EntradaCenso[] = [
     mutacion: /tx\.rechazoTiendaCobroAnulacion\.createMany\(/,
   },
   {
-    // ⭑ Q2 (`usuario_fulfillment_cambiado`) comparte punto de escritura con el rol y la zona: es
-    // el MISMO formulario, y las N filas salen con el MISMO `lote_id`.
-    tipos: ["usuario_rol_cambiado", "usuario_zona_cambiada", "usuario_fulfillment_cambiado"],
+    // ⭑ Q2 comparte punto de escritura con el rol y la zona: es el MISMO formulario, y las N filas
+    // salen con el MISMO `lote_id`. SLT-94 (R8): la marca «se recoge en tienda» sustituye al
+    // `fulfillment` (que pasa a `SIN_ESCRITOR_DESDE`).
+    tipos: ["usuario_rol_cambiado", "usuario_zona_cambiada", "usuario_se_recoge_en_tienda_cambiado"],
     archivo: "lib/repositories/UserRepository.ts",
     metodo: "update",
     forma: "abre_tx",
@@ -792,6 +793,13 @@ const SIN_ESCRITOR_DESDE: TiposSinEscritor[] = [
     motivo:
       "el borrado de vehiculos se retiro (P1: desactivar lo sustituye) y el catalogo es del " +
       "superadmin, cuyas acciones van a `vehiculo_rastro` (R20, R21); el valor queda por las filas viejas",
+  },
+  {
+    tipos: ["usuario_fulfillment_cambiado"],
+    desde: "SLT-94",
+    motivo:
+      "la marca `fulfillment` se migro negada a «se recoge en tienda» (D4) y la columna vieja ya no se " +
+      "escribe; su cambio lo registra `usuario_se_recoge_en_tienda_cambiado` (R8). El valor queda por las filas viejas",
   },
 ];
 
@@ -1247,7 +1255,8 @@ describe("362/R16 — cada tipo del catalogo tiene al menos un punto de escritur
     // 82 desde SLT-54 (`tarifas_activadas`, de `TarifaActivacionRepository.activar`).
     // 83 desde SLT-86 (`plan_cambio_empresa_cancelado`, de `PlanesRepository.cancelarPendienteDeEmpresaEnTx`).
     // 84 desde SLT-77 (`tope_intentos_cambiado`, de `TopeIntentosRepository.guardar`).
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(84);
+    // 85 desde SLT-94 (`usuario_se_recoge_en_tienda_cambiado`, de `UserRepository.update`).
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(85);
   });
 });
 

@@ -78,6 +78,11 @@ const CONCEPTOS_ESPERADOS: Record<WalletMovimientoCategoria, string> = {
   // SLT-73 (design §1.2): la diferencia de la satelite al conciliar, en los dos sentidos.
   egreso_diferencia_satelite: "Diferencia de la satélite (entregó menos)",
   ingreso_diferencia_satelite: "Diferencia de la satélite (entregó más)",
+  // SLT-94 (R36): el cobro de fulfillment por paquete y su devolución.
+  ingreso_fulfillment: "Fulfillment cobrado a la tienda",
+  ingreso_iva_fulfillment: "IVA del fulfillment cobrado a la tienda",
+  egreso_reverso_fulfillment: "Devolución de fulfillment a la tienda",
+  egreso_reverso_iva_fulfillment: "Devolución del IVA del fulfillment a la tienda",
 };
 
 /** design §7.3 — los 13 origenes del libro de la caja (+ el de la 457: 14). */
@@ -101,17 +106,19 @@ const ORIGENES_ESPERADOS: Record<WalletOrigenTipo, string> = {
   incentivo_mensajero: "Incentivo a un mensajero",
   // SLT-73 (design §1.2): el evento de conciliacion que movio la diferencia de la satelite.
   conciliacion_bodega_ajuste: "Diferencia de la satélite",
+  // SLT-94 (R36): el cobro y la devolución de fulfillment nombran la orden.
+  orden_fulfillment: "Orden",
 };
 
 describe("461 — CATEGORIA_LABEL: cada concepto de la caja, desde la empresa (R42, design §7.2)", () => {
-  it("dice exactamente los 30 textos aprobados (23 de la 461 + 2 de la 457 + 2 de la 458-B + 1 de SL-45 + 2 de SLT-73), y el seed es exactamente esas 30 claves", () => {
+  it("dice exactamente los 34 textos aprobados (23 de la 461 + 2 de la 457 + 2 de la 458-B + 1 de SL-45 + 2 de SLT-73 + 4 de SLT-94), y el seed es exactamente esas 34 claves", () => {
     expect(CATEGORIA_LABEL).toEqual(CONCEPTOS_ESPERADOS);
     // Anti-vacuidad: la igualdad de arriba compara contra una lista escrita a mano; esta linea
     // afirma que esa lista cubre el catalogo ENTERO y no un subconjunto que casara por casualidad.
     expect([...WALLET_MOVIMIENTO_CATEGORIA_SEED].sort()).toEqual(
       Object.keys(CONCEPTOS_ESPERADOS).sort(),
     );
-    expect(WALLET_MOVIMIENTO_CATEGORIA_SEED).toHaveLength(30);
+    expect(WALLET_MOVIMIENTO_CATEGORIA_SEED).toHaveLength(34);
   });
 
   it("⭑ 457 (R45/R53): el pago de una tienda a la empresa y su anulacion, con los nombres reservados por la 461", () => {
@@ -148,8 +155,8 @@ describe("461 — CATEGORIA_LABEL: cada concepto de la caja, desde la empresa (R
     );
   });
 
-  it("el filtro por concepto ofrece los 30 con SU nombre (R42; 457/R45; 458-B; SL-45; SLT-73), tras la opcion «todas»", () => {
-    // 458-A (TA.3): el filtro ofrece los conceptos CON movimientos; con los 30 presentes, los 30.
+  it("el filtro por concepto ofrece los 34 con SU nombre (R42; 457/R45; 458-B; SL-45; SLT-73; SLT-94), tras la opcion «todas»", () => {
+    // 458-A (TA.3): el filtro ofrece los conceptos CON movimientos; con los 34 presentes, los 34.
     const lista = opcionesDeConceptos(
       WALLET_MOVIMIENTO_CATEGORIA_SEED.map((categoria) => ({ categoria, movimientos: 1 })),
       CATEGORIA_LABEL,
@@ -158,7 +165,7 @@ describe("461 — CATEGORIA_LABEL: cada concepto de la caja, desde la empresa (R
     );
     expect(lista[0]).toEqual({ value: "", label: "Todas las categorías" });
     const opciones = new Map(lista.slice(1).map((o) => [o.value, o.label]));
-    expect(opciones.size).toBe(30);
+    expect(opciones.size).toBe(34);
     for (const [clave, texto] of Object.entries(CONCEPTOS_ESPERADOS)) {
       expect(opciones.get(clave), clave).toBe(`${texto} (1)`);
     }
@@ -169,7 +176,7 @@ describe("461 — ORIGEN_LABEL: cada origen de la caja, desde la empresa (R42, d
   it("dice exactamente los 16 textos aprobados (13 de la 461 + 1 de la 457 + 1 de SLT-68 + 1 de SLT-73), y el seed es exactamente esas 16 claves", () => {
     expect(ORIGEN_LABEL).toEqual(ORIGENES_ESPERADOS);
     expect([...WALLET_ORIGEN_TIPO_SEED].sort()).toEqual(Object.keys(ORIGENES_ESPERADOS).sort());
-    expect(WALLET_ORIGEN_TIPO_SEED).toHaveLength(16);
+    expect(WALLET_ORIGEN_TIPO_SEED).toHaveLength(17);
   });
 
   it("las dos lineas del cobro se distinguen: la completada dice que se completo al corregir (R37)", () => {

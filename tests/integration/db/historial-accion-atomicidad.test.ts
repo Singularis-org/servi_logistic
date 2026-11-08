@@ -572,25 +572,25 @@ describeSiHayBase("362/T8.1 — la accion y su registro son atomicos (Postgres r
       expect(r[0].valorNuevo).toMatch(/^(mensajero|adminSatelite)$/);
     });
 
-    it("⭑ Q2: cambiar el `fulfillment` de una tienda SI registra, y va como DINERO", async () => {
+    it("⭑ SLT-94 R8 (hereda Q2): cambiar «se recoge en tienda» de una tienda SI registra, y va como DINERO", async () => {
       // ⚠️ ESTE CASO EXISTE PORQUE LA GUARDIA DE CENSO NO BASTA, Y ESTA MEDIDO: con un
-      // `if (false && …)` delante de la rama del `fulfillment`, la guardia de T7.1 SIGUE VERDE —
+      // `if (false && …)` delante de la rama de la marca, la guardia de T7.1 SIGUE VERDE —
       // el literal del tipo sigue en el cuerpo del metodo—. Lo unico que caza esa mutacion es
       // ejercer el camino contra Postgres y contar la fila.
       //
-      // Q2 la cerro el humano el 2026-09-02: cambiar `fulfillment` a una tienda activa un cobro
-      // periodico de bodega, o sea MUEVE DINERO.
+      // Q2 la cerro el humano el 2026-09-02 sobre el `fulfillment`; SLT-94 lo sustituye por la marca
+      // «se recoge en tienda» (decide donde nace la orden), que hereda la categoria «mueve dinero».
       const r = await enTransaccionRevertida(prisma, async (tx) => {
         await serializarEscriturasReales(tx);
         const usuarioId = await sembrarUsuario(tx, "fulf-u");
         const repo = new UserRepository(clienteConSavepoint(tx));
-        await repo.update(usuarioId, { fulfillment: true }, FKS!.tiendaId);
+        await repo.update(usuarioId, { seRecogeEnTienda: false }, FKS!.tiendaId);
         const fila = await tx.usuario.findUniqueOrThrow({
           where: { id: usuarioId },
-          select: { fulfillment: true },
+          select: { seRecogeEnTienda: true },
         });
         return {
-          fulfillment: fila.fulfillment,
+          seRecogeEnTienda: fila.seRecogeEnTienda,
           registro: await tx.historialAccion.findMany({
             where: { entidadId: usuarioId },
             select: { accion: true, valorAnterior: true, valorNuevo: true },
@@ -599,20 +599,20 @@ describeSiHayBase("362/T8.1 — la accion y su registro son atomicos (Postgres r
       });
 
       // Control positivo: la mutacion ocurrio de verdad …
-      expect(r.fulfillment).toBe(true);
-      // … y dejo EXACTAMENTE una fila, con su vocabulario cerrado.
+      expect(r.seRecogeEnTienda).toBe(false);
+      // … y dejo EXACTAMENTE una fila, con su vocabulario cerrado y los dos valores (R8).
       expect(r.registro).toHaveLength(1);
-      expect(r.registro[0].accion).toBe("usuario_fulfillment_cambiado");
-      expect(r.registro[0].valorAnterior).toBe("false");
-      expect(r.registro[0].valorNuevo).toBe("true");
+      expect(r.registro[0].accion).toBe("usuario_se_recoge_en_tienda_cambiado");
+      expect(r.registro[0].valorAnterior).toBe("true");
+      expect(r.registro[0].valorNuevo).toBe("false");
     });
 
-    it("Q2: re-enviar el MISMO `fulfillment` no deja fila", async () => {
+    it("SLT-94 R8: re-enviar la MISMA marca no deja fila", async () => {
       const r = await enTransaccionRevertida(prisma, async (tx) => {
         await serializarEscriturasReales(tx);
         const usuarioId = await sembrarUsuario(tx, "fulf-noop");
         const repo = new UserRepository(clienteConSavepoint(tx));
-        await repo.update(usuarioId, { fulfillment: false }, FKS!.tiendaId);
+        await repo.update(usuarioId, { seRecogeEnTienda: true }, FKS!.tiendaId);
         return registroDe(tx, [usuarioId]);
       });
       expect(r).toEqual([]);

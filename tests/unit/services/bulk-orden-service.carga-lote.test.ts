@@ -84,7 +84,7 @@ const tarifaRepoStub: ITarifaVigenteRepository = {
  */
 function buildRepo(overrides: Partial<IOrdenRepository> = {}): IOrdenRepository {
   return {
-    findUsuarioFulfillment: vi.fn().mockResolvedValue(false),
+    findUsuarioSeRecogeEnTienda: vi.fn().mockResolvedValue(true),
     findEstatusIdByValue: vi.fn().mockResolvedValue("os-1"),
     findExistingRemisiones: vi.fn().mockResolvedValue(new Map()),
     findAllProvincias: vi.fn().mockResolvedValue([{ id: "p1", nombre: "Pichincha", disponible: true }]),
@@ -195,7 +195,7 @@ function expectSinLote(repo: IOrdenRepository) {
  */
 function repoRama(fulfillment: boolean, overrides: Partial<IOrdenRepository> = {}) {
   return buildRepo({
-    findUsuarioFulfillment: vi.fn().mockResolvedValue(fulfillment),
+    findUsuarioSeRecogeEnTienda: vi.fn().mockResolvedValue(!fulfillment), // SLT-94: «fulfillment» = nace en bodega
     ...overrides,
   });
 }

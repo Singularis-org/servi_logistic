@@ -100,6 +100,11 @@ export const FUENTE_CAJA: Record<WalletMovimientoCategoria, FuenteDeAporte> = {
   // SLT-73: la diferencia de la satélite nace de la conciliación de una consolidación, no de un cierre.
   egreso_diferencia_satelite: { tipo: "sin_reparto", motivo: "no_nace_de_un_cierre" },
   ingreso_diferencia_satelite: { tipo: "sin_reparto", motivo: "no_nace_de_un_cierre" },
+  // SLT-94 (R32): el fulfillment se cobra al CREAR la orden, nunca en el cierre.
+  ingreso_fulfillment: { tipo: "sin_reparto", motivo: "no_nace_de_un_cierre" },
+  ingreso_iva_fulfillment: { tipo: "sin_reparto", motivo: "no_nace_de_un_cierre" },
+  egreso_reverso_fulfillment: { tipo: "sin_reparto", motivo: "no_nace_de_un_cierre" },
+  egreso_reverso_iva_fulfillment: { tipo: "sin_reparto", motivo: "no_nace_de_un_cierre" },
 };
 
 /**
@@ -143,6 +148,11 @@ export const FUENTE_TIENDA: Record<WalletTiendaMovimientoCategoria, FuenteDeApor
   // FICHA 458-B (design §2.3): los creditos espejo de la anulacion de un cobro por rechazo.
   flete_devolucion_anulado: { tipo: "sin_reparto", motivo: "no_nace_de_un_cierre" },
   iva_flete_devolucion_anulado: { tipo: "sin_reparto", motivo: "no_nace_de_un_cierre" },
+  // SLT-94 (R32): el cobro de fulfillment y su devolucion nacen de crear/eliminar la orden.
+  fulfillment: { tipo: "sin_reparto", motivo: "no_nace_de_un_cierre" },
+  iva_fulfillment: { tipo: "sin_reparto", motivo: "no_nace_de_un_cierre" },
+  fulfillment_anulado: { tipo: "sin_reparto", motivo: "no_nace_de_un_cierre" },
+  iva_fulfillment_anulado: { tipo: "sin_reparto", motivo: "no_nace_de_un_cierre" },
 };
 
 /**
