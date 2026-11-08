@@ -314,3 +314,55 @@ CI). La base de desarrollo no se tocó.
 
 ### Veredicto
 T6 hecha: guardia verde y matada por 4 mutaciones reales y sus sintéticas; E2E y dos-empresas-humo verdes en local, y el E2E rojo con el trigger apagado.
+
+## Mapa R→test (T7, consolidado por el reviewer, 2026-11-08)
+
+Cada test citado existe en el árbol de `feature/SLT-94-fulfillment-cobro-por-paquete` (comprobado por
+nombre). Los de `tests/integration/db/slt94-*`, `migracion-slt94-ida-y-vuelta`, la guardia y los
+unitarios/componentes principales los re-corrió el reviewer contra la base desechable `slt94_t1`:
+«Test Files 13 passed · Tests 338 passed», sin `skipped`.
+
+| R | Test(s) |
+|---|---|
+| R1 | `user-repository.crud` «SLT-94 R1: create con la marca en «no»…»; `usuario-service` «SLT-94 R1/R4…» y «SLT-94 R1…»; `usuario-schema` «SLT-94 R1…» |
+| R2 | `migracion-slt94-ida-y-vuelta` «R2: M2 deja la marca = NOT fulfillment…» |
+| R3 | `user-repository.crud` «SLT-94 R3…»; `usuario-service` «SLT-94 R3…»; `usuario-form` «SLT-94 R3/R9: el switch inicia en «sí»…» |
+| R4 | `usuario-service` «SLT-94 R4…» (crear, editar, cambio de rol, `apiKey`/D13); `user-repository.crud` «SLT-94 R4…»; guardia `fulfillment-solo-al-crear` (b) |
+| R5 | `slt94-marca-y-vias` (pantalla, masiva, API key); `bulk-orden-service` y `bulk-orden-service.carga-api` «SLT-94 R5…»; `orden-repository` «SLT-94 R5…»; guardia (c) |
+| R6 | `bulk-orden-service.carga-api` «SLT-94 R6/R18…» y «SLT-94 R6: las dos nacen donde dice la marca…» |
+| R7 | `slt94-marca-y-vias` «SLT-94 R7…»; `picking-repository` «SLT-94 R7…»; `picking-ordenes-en-preparacion` / `picking-resumen-tiendas` (fixture `_picking-476` → `seRecogeEnTienda = !fulfillment`) |
+| R8 | `slt94-marca-y-vias` «SLT-94 R8…»; `historial-accion-atomicidad` «SLT-94 R8…» |
+| R9 | `usuario-form` bloque «SLT-94 R9» (6 casos); `user-repository.crud` «SLT-94 R9: PUBLIC_SELECT…» |
+| R10 | `niveles.test` «SLT-94 R10…»; `tarifa-valor-service` «SLT-94 R10/R11…» |
+| R11 | `tarifa-valor-service` «SLT-94 R11: fulfillment en porcentaje…» y «SLT-94 R11: el IVA sigue siendo obligatorio…»; `TarifasFulfillmentSoloTienda` «SLT-94 R11/R14…» |
+| R12 | `slt94-fulfillment-cobro` «R12: la base rechaza (23514)…» |
+| R13 | `TarifasFulfillmentSoloTienda` «SLT-94 R13…» (2) y los 4 niveles sin fulfillment; E2E `fulfillment-cobro-por-paquete` paso 1 |
+| R14 | `precedencia` «SLT-94 R14…» (2); `tarifas-flexibles-resolver` «SLT-94 R14…» (2); `convergencia-tarifa-listado-cierre` «SLT-94 R14…»; `TarifasFulfillmentSoloTienda` «SLT-94 R11/R14…» |
+| R15 | `slt94-fulfillment-cobro` «R15/R19…» y «R15: la ruta sin guía…»; `slt94-iva-equivalencia`; `slt94-marca-y-vias` (3 vías); E2E paso 2 |
+| R16 | `slt94-fulfillment-cobro` «R16: B sin activar no cobra…» |
+| R17 | `slt94-fulfillment-cobro` «R17: valor 0 (A2) o sin valor (A3)…» |
+| R18 | `slt94-fulfillment-cobro` «R18: el cobro no depende de la marca…»; `slt94-marca-y-vias` pantalla/masiva |
+| R19 | `slt94-fulfillment-cobro` «R15/R19…»; `slt94-fulfillment-caja` «SLT-94 R19…»; E2E paso 2 |
+| R20 | `slt94-fulfillment-caja` «SLT-94 R20…» (3: ganancia/IVA, «Entró/Salió», «De las tiendas» = suma de saldos) |
+| R21 | `slt94-fulfillment-cobro` «R21/R22…» |
+| R22 | `slt94-fulfillment-cobro` «R21/R22…» |
+| R23 | `slt94-fulfillment-cobro` «R23: carga parcial con skipDuplicates…» y «R23: la base rechaza un segundo cobro inicial…»; `slt94-marca-y-vias` API (reintento) |
+| R24 | `slt94-fulfillment-cobro` «R24: si la transacción…se deshace…» |
+| R25 | `slt94-fulfillment-cobro` «R25: servi_app no puede…(42501)»; guardia `fulfillment-solo-al-crear` (a) |
+| R26 | `slt94-fulfillment-cobro` «R26/R31…» y «R26: la devolución lleva la fecha de la eliminación…»; `slt94-fulfillment-caja` «SLT-94 R26…»; E2E paso 3 |
+| R27 | `slt94-fulfillment-cobro` «R27: repetir la eliminación…» y «R27: dos eliminaciones a la vez…» |
+| R28 | `slt94-fulfillment-cobro` «R28…»; `migracion-slt94-ida-y-vuelta` «R34/R28…» |
+| R29 | `slt94-fulfillment-cobro` «R29: restaurar o1 re-cobra el MISMO…» |
+| R30 | `slt94-fulfillment-cancelacion-api` «R30: cancelar por API devuelve…», «R30: …MISMA transacción…», «R30/D12: …ajuste_estado… NO devuelve» |
+| R31 | `slt94-fulfillment-cobro` «R26/R31…» |
+| R32 | `tarifas-flexibles-snapshot` (el cierre congela el fulfillment y no lo liquida); guardia `fulfillment-fuera-de-la-formula` sin cambios |
+| R33 | `slt94-marca-y-vias` «SLT-94 R5/R15/R33 (API key)…» (publica 1000.00/130.00 = lo cobrado); `bulk-orden-service.carga-api` «SLT-94 R6/R18…» |
+| R34 | `slt94-fulfillment-cobro` «R34…»; `migracion-slt94-ida-y-vuelta` «R34/R28…» |
+| R35 | `migracion-slt94-ida-y-vuelta` «R35: los cuatro down.sql…», «reaplicadas las cuatro…» y «cada una trae su down.sql…» |
+| R36 | `wallet-origen-legible` «SLT-94 R36…» (3); `desglose-tienda-labels` «SLT-94 R36…»; `mi-wallet-labels`; `wallet-labels`; E2E pasos 2 y 3 |
+| R37 | `slt94-fulfillment-caja` «SLT-94 R37…» (2); `ComposicionGananciaCard` «SLT-94 R37…» (2, dos filas: decisión de Carlos); guardia `metrics-caja-naturaleza` |
+| R38 | `slt94-fulfillment-cobro` «R38: activada B…» y «R38: como servi_app, A no ve…» |
+| R39 | `slt94-fulfillment-cancelacion-api` «R39: cancelar → eliminar…», «R39: eliminar → restaurar → cancelar…» |
+| R40 | guardia `fulfillment-solo-al-crear` «(R40) devolviendo_a_tienda solo sale…» y «(R40) rojo si otra vía escribe cancelacion_api…» |
+
+Sin huecos: R1–R40 tienen al menos un test que los verifica.
