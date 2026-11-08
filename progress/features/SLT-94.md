@@ -33,3 +33,6 @@ Carlos, 2026-11-08:
 ## Modelos (overrides)
 
 ## Cierre
+
+<!-- tamano-pr-aceptado: 2026-11-08 · Carlos: el rename de la marca y las pantallas deben salir juntos esta noche; partir rompería la edición de usuarios -->
+- 2026-11-08 · Carlos: R37 en la composición = dos filas (cobro en Ingresos, devolución en Egresos); el neto va en la ganancia del pie, calculado por el servidor.
