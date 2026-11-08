@@ -1,4 +1,4 @@
-<!-- perfil: revisado=2026-11-08 por=Carlos -->
+<!-- perfil: revisado=2026-11-08 por=Carlos Restrepo -->
 # docs/perfil-agentes.md — Reglas del proyecto para cada agente
 
 > Perfil del proyecto. Los agentes de `.claude/agents/` son genéricos (vienen de la plantilla y los
@@ -81,4 +81,3 @@ Reparte por capa: `backend_dev` para `lib/`, `db/` y `app/api/`; `frontend_dev` 
 Un módulo aquí es el corte vertical de una entidad: `lib/actions/<m>*`, `lib/services/<m>*`,
 `lib/repositories/<m>*`, `lib/interfaces/**/<m>*`, `lib/types/<m>*`, `components/**/<m>*` y las
 páginas de `app/(app)/<m>/`.
-
