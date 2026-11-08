@@ -137,7 +137,7 @@ export interface NuevaOrden {
 export interface ExtraUsuario {
   zonaId?: string;
   vehiculoId?: string;
-  fulfillment?: boolean;
+  seRecogeEnTienda?: boolean;
 }
 
 export interface AltasEscenario {
@@ -355,7 +355,7 @@ export function escenarioReparto(deps: DepsEscenarioReparto) {
     const [zonaCentral, zonaSatelite, tienda] = await Promise.all([
       crearZona(empresa, maestro, geoCentral, true, tarifaMensajero, opts.nombresZona?.central, opts.distritosExtra?.central),
       crearZona(empresa, maestro, geoSatelite, false, tarifaMensajero, opts.nombresZona?.satelite, opts.distritosExtra?.satelite),
-      deps.altas.usuario(empresa, "tienda", "adminTienda", { fulfillment: true }),
+      deps.altas.usuario(empresa, "tienda", "adminTienda", { seRecogeEnTienda: false }),
     ]);
     const adminSatelite = await deps.altas.usuario(empresa, "admin-satelite", "adminSatelite", { zonaId: zonaSatelite.id });
 

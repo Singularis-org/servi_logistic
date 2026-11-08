@@ -147,6 +147,7 @@ export default defineConfig({
         "tope-intentos-por-empresa",
         // Tarifas activadas + valor propio + plan porcentual, en el mismo cierre aprobado. Usa el superadmin de prueba.
         "cierre-modelo-nuevo-plan-porcentual",
+        "fulfillment-cobro-por-paquete",
       ),
     },
   ],

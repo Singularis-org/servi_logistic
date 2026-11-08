@@ -73,7 +73,7 @@ function buildRepo(overrides: Partial<IOrdenRepository> = {}): IOrdenRepository 
     // Pedido humano 2026-08-27: el gemelo, `restore`. Mismo motivo que su vecino.
     restore: vi.fn().mockResolvedValue(0),
     findEstatusIdByValue: vi.fn().mockResolvedValue("os-bodega"),
-    findUsuarioFulfillment: vi.fn().mockResolvedValue(false), // feature 27
+    findUsuarioSeRecogeEnTienda: vi.fn().mockResolvedValue(true), // feature 27
     // Feature 15: metodos batch de carga masiva, no ejercitados por el CRUD
     // (feature 6) pero exigidos por la interfaz IOrdenRepository.
     findExistingRemisiones: vi.fn().mockResolvedValue(new Map()),

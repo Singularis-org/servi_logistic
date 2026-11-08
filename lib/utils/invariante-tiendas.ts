@@ -50,6 +50,10 @@ export const TIPO_POR_CATEGORIA_TIENDA: Record<
   abono_tienda_anulado: "debito", // ficha 457: la anulacion del pago: vuelve a deber
   flete_devolucion_anulado: "credito", // ficha 458-B: la anulacion del cobro por rechazo devuelve el flete
   iva_flete_devolucion_anulado: "credito", // ficha 458-B: ... y su IVA
+  fulfillment: "debito", // SLT-94 R19: el cobro de fulfillment al crear la orden
+  iva_fulfillment: "debito", // SLT-94 R19: ... y su IVA
+  fulfillment_anulado: "credito", // SLT-94 R26/R30: la devolucion del cobro
+  iva_fulfillment_anulado: "credito", // SLT-94 R26/R30: ... y de su IVA
 };
 
 /** Marca de los conceptos de la tienda que NO tienen asiento en la caja. */
@@ -98,4 +102,11 @@ export const CONTRAPARTIDA_EN_CAJA: Record<
   // tiendas» y el saldo hacia arriba (la misma pareja que `cobro_tienda_anulado`).
   flete_devolucion_anulado: "egreso_reverso_flete_devolucion",
   iva_flete_devolucion_anulado: "egreso_reverso_iva_flete_devolucion",
+  // SLT-94 (design §1 M4, R19/R20/R26): el trigger escribe el debito de la tienda y su CARGO en la
+  // caja en la MISMA sentencia (y la devolucion, su credito y el REVERSO del cargo). Misma pareja que
+  // los fletes y que la 458-B: R8 de la 459 sin excepcion nueva.
+  fulfillment: "ingreso_fulfillment",
+  iva_fulfillment: "ingreso_iva_fulfillment",
+  fulfillment_anulado: "egreso_reverso_fulfillment",
+  iva_fulfillment_anulado: "egreso_reverso_iva_fulfillment",
 };

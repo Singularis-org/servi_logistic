@@ -421,7 +421,7 @@ test.describe.serial("Cierre del modelo nuevo con plan porcentual, de punta a pu
     organizacionId = r.empresa.organizacionId;
 
     // La segunda tienda, con su tarifa vieja propia, como el maestro la daría de alta.
-    const usuarioT2 = await crearUsuarioE2E(r.empresa, "adminTienda", { fulfillment: true });
+    const usuarioT2 = await crearUsuarioE2E(r.empresa, "adminTienda", { seRecogeEnTienda: false });
     const tarifaT2 = crearTarifaSchema.parse({ tiendaId: usuarioT2.id, ...TARIFA_T2 });
     exigirOk("TarifaService.crear", await conEmpresa(organizacionId, () => servicios().tarifa.crear(tarifaT2, r.actores.maestro)));
     t1 = { usuario: r.tienda, r };

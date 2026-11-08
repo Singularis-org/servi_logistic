@@ -463,7 +463,7 @@ export async function sembrarEscenario459(
         rolId,
         zonaId,
         estado: "activo",
-        fulfillment: false,
+        seRecogeEnTienda: true,
       },
       select: { id: true },
     });

@@ -46,6 +46,21 @@
     "proyectos_vitest": [],
     "siempre": [
       "guard"
+    ],
+    "disparadores": [
+      {
+        "si_cambia": [
+          "db/schema.prisma",
+          "db/migrations/**"
+        ],
+        "corre": [
+          "migration",
+          "migracion",
+          "demo-qa",
+          "sql-real",
+          "tests/unit/scripts/verificar-rls"
+        ]
+      }
     ]
   }
 }

@@ -112,7 +112,7 @@ describeSiHayBase("463/T2 — buscador y orden del libro de la caja (Postgres re
                 rolId,
                 zonaId: null,
                 estado: "activo",
-                fulfillment: false,
+                seRecogeEnTienda: true,
               },
               select: { id: true },
             })

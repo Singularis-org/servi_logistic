@@ -108,8 +108,9 @@ describe("362/T0.1 (R14/R17) — el catalogo es cerrado y sus mapas son exhausti
     // 82 desde SLT-54: `tarifas_activadas` (entidad `tarifa_activacion`, 30 entidades).
     // 83 desde SLT-86: `plan_cambio_empresa_cancelado` (entidad `plan`, sin entidad nueva).
     // 84 desde SLT-77: `tope_intentos_cambiado` (entidad `organizacion`, 31 entidades).
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(84);
-    expect(new Set(HISTORIAL_ACCION_TIPOS).size).toBe(84);
+    // 85 desde SLT-94: `usuario_se_recoge_en_tienda_cambiado` (entidad `usuario`, R8).
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(85);
+    expect(new Set(HISTORIAL_ACCION_TIPOS).size).toBe(85);
     expect(HISTORIAL_ACCION_ENTIDADES).toHaveLength(31); // 31 desde SLT-77 (`organizacion`)
     expect(new Set(HISTORIAL_ACCION_ENTIDADES).size).toBe(31);
     expect(CATEGORIAS_ACCION).toHaveLength(6);
@@ -491,7 +492,8 @@ describe("362/T0.1 (R14/R17) — el catalogo es cerrado y sus mapas son exhausti
     // 49 desde SLT-52: fijar o quitar un valor de tarifa, y crear o cambiar un grupo de distritos.
     // 50 desde SLT-54: activar cambia el modelo con el que se cobra y se paga.
     // 51 desde SLT-77: bajar el tope de intentos adelanta rechazos, y un rechazo genera cobro.
-    expect(accionesDeCategoria("mueve_dinero")).toHaveLength(51);
+    // 52 desde SLT-94: la marca «se recoge en tienda» decide donde nace la orden (hereda Q2).
+    expect(accionesDeCategoria("mueve_dinero")).toHaveLength(52);
     expect(CATEGORIA_POR_ACCION.cierre_dia_pago_mensajero_ajustado).toBe("mueve_dinero");
     // 11 desde SLT-52: borrar un grupo de distritos se lleva sus valores por cascada.
     expect(accionesDeCategoria("hace_desaparecer")).toHaveLength(11);

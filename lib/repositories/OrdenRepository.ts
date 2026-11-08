@@ -2600,16 +2600,17 @@ export class OrdenRepository implements IOrdenRepository {
   }
 
   /**
-   * Feature 27/R15/R16/R17: `usuario.fulfillment` de la tienda. `null` si no resuelve (SL-17 D15:
-   * con el filtro por empresa, una tienda de otra empresa no resuelve, y convertirla en `false`
-   * dejaba seguir la carga hasta el trigger de la base).
+   * SLT-94 (R5): la marca «se recoge en tienda» de la tienda DUEÑA de la orden, el unico dato que
+   * decide en que estado nace. `null` si no resuelve (SL-17 D15: con el filtro por empresa, una
+   * tienda de otra empresa no resuelve, y convertirla en un booleano dejaba seguir la carga hasta
+   * el trigger de la base).
    */
-  async findUsuarioFulfillment(usuarioId: string): Promise<boolean | null> {
+  async findUsuarioSeRecogeEnTienda(usuarioId: string): Promise<boolean | null> {
     const row = await this.prisma.usuario.findUnique({
       where: { id: usuarioId },
-      select: { fulfillment: true },
+      select: { seRecogeEnTienda: true },
     });
-    return row?.fulfillment ?? null;
+    return row?.seRecogeEnTienda ?? null;
   }
 
   // BORRADO 2026-08-07 (tanda 2): aqui vivia `existsGeo`, la comprobacion fila-a-fila de que

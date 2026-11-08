@@ -169,6 +169,19 @@ function porcentajeHasta100(dato: ConModoYValor, ctx: z.RefinementCtx): void {
   }
 }
 
+/** SLT-94 (R11): el rechazo de un fulfillment en porcentaje. */
+export const MSG_FULFILLMENT_SOLO_MONTO = "El fulfillment solo se configura como monto fijo.";
+
+/**
+ * SLT-94 (R11, D6): el fulfillment SOLO en monto fijo (+ su % de IVA, obligatorio como en todo cobro a
+ * la tienda). Mismo respaldo en la base que el nivel: el CHECK `tarifa_valor_fulfillment_solo_tienda_monto` (R12).
+ */
+function fulfillmentSoloMonto(dato: ConModoYValor & { concepto: string }, ctx: z.RefinementCtx): void {
+  if (dato.concepto === "tienda_fulfillment" && dato.modo !== "monto") {
+    ctx.addIssue({ code: "custom", path: ["modo"], message: MSG_FULFILLMENT_SOLO_MONTO });
+  }
+}
+
 /** Cobro a la tienda: `ivaPct` OBLIGATORIO (R3, R4). */
 export const escrituraCobroSchema = z
   .object({
@@ -178,7 +191,8 @@ export const escrituraCobroSchema = z
     ivaPct: ivaPctSchema,
     ...nivelSchema,
   })
-  .superRefine(porcentajeHasta100);
+  .superRefine(porcentajeHasta100)
+  .superRefine(fulfillmentSoloMonto);
 
 /**
  * Pago al mensajero o a la satelite: `ivaPct` PROHIBIDO, tambien `"0"` y `null` (R45, P4). Se

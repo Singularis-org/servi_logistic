@@ -39,7 +39,7 @@ function usuario(overrides: Partial<UsuarioPublico> = {}): UsuarioPublico {
     cedula: "1710034065",
     tipoIdentificacionId: "tipo-1",
     rolId: "rol-admin",
-    fulfillment: false,
+    seRecogeEnTienda: true,
     zonaId: null,
     vehiculoId: null,
     createdAt: new Date("2026-01-01"),

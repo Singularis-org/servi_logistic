@@ -73,7 +73,7 @@ describeSiHayBase("463/T4 — busqueda del listado de saldos de tiendas (Postgre
               rolId: cat.rolId.adminTienda,
               zonaId: null,
               estado: "activo",
-              fulfillment: false,
+              seRecogeEnTienda: true,
             },
             select: { id: true },
           });

@@ -230,6 +230,8 @@ describe("UP — CHECK tipo <-> categoria de los dos libros (condicion heredada 
     //     `20260927120100_abono_tienda_457_tablas_y_checks`.
     //   - `flete_devolucion_anulado` e `iva_flete_devolucion_anulado` (458-B): los anade
     //     `20260928120100_wallet_458_tablas`.
+    //   - `fulfillment`, `iva_fulfillment`, `fulfillment_anulado` e `iva_fulfillment_anulado` (SLT-94):
+    //     los anade `20261108120200_slt94_fulfillment_movimiento`.
     const AGREGADAS_DESPUES_TIENDA = [
       "cobro_manual",
       "pago_por_cuenta",
@@ -239,6 +241,10 @@ describe("UP — CHECK tipo <-> categoria de los dos libros (condicion heredada 
       "abono_tienda_anulado",
       "flete_devolucion_anulado",
       "iva_flete_devolucion_anulado",
+      "fulfillment",
+      "iva_fulfillment",
+      "fulfillment_anulado",
+      "iva_fulfillment_anulado",
     ];
     const clasificadas = [...ramasTienda.values()].flat();
     expect([...clasificadas].sort()).toEqual(

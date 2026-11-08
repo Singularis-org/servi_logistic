@@ -174,7 +174,7 @@ describeSiHayBase("458-D B1 — 172 R52: el filtro por cierre del mensajero trae
               tipoIdentificacionId: cat.tipoIdentificacionId,
               rolId: cat.rolId.mensajero,
               estado: "activo",
-              fulfillment: false,
+              seRecogeEnTienda: true,
             },
             select: { id: true },
           })

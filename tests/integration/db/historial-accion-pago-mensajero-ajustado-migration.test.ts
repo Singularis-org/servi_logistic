@@ -165,6 +165,8 @@ describeSiHayBase("SLT-56 — tabla de ajustes y tipo de historial, de ida y vue
       "plan_cambio_empresa_cancelado",
       // SLT-77: `tope_intentos_cambiado`, de `20261107130000_historial_tope_intentos`.
       "tope_intentos_cambiado",
+      // SLT-94: `usuario_se_recoge_en_tienda_cambiado`, de `20261108120000_slt94_fulfillment_enums`.
+      "usuario_se_recoge_en_tienda_cambiado",
     ];
     expect([...enLaBase].sort()).toEqual(
       HISTORIAL_ACCION_TIPOS.filter((t) => !POSTERIORES.includes(t)).sort(),

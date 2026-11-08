@@ -90,7 +90,12 @@ export const HISTORIAL_ACCION_TIPOS = [
   // ⭑ Q2, CERRADA POR EL HUMANO EL 2026-09-02 — el `fulfillment` de una tienda.
   // Entra en DINERO porque activa un cobro periodico de bodega. NO entra en «permisos» aunque se
   // edite desde el mismo formulario que el rol: no cambia lo que la persona PUEDE HACER.
-  "usuario_fulfillment_cambiado", // usuarios.actualizarUsuario (solo si cambia `fulfillment`)
+  "usuario_fulfillment_cambiado", // HISTORICO desde SLT-94: ya no se escribe; queda por las filas viejas
+  // ⭑ SLT-94 (R8) — la marca «se recoge en tienda» de una tienda cambio. Sustituye a
+  // `usuario_fulfillment_cambiado` (la marca vieja se migro negada). Entra en DINERO por el mismo
+  // motivo que su antecesora: decide donde nace la orden (bodega o tienda) y con ella si se emite
+  // guia y manifiesto en el acto. `valor_anterior`/`valor_nuevo` = `"true"`/`"false"`.
+  "usuario_se_recoge_en_tienda_cambiado", // usuarios.actualizarUsuario (solo si cambia la marca)
   // ⭑ FICHA 366 — la zona estampada en una orden, re-derivada al guardar la configuracion de una
   // zona. Entra en DINERO por el MISMO motivo textual que `orden_ubicacion_corregida`: el distrito
   // re-deriva la zona y la zona decide la tarifa que se factura. La fila registra SOLO EL HECHO
@@ -524,6 +529,7 @@ export const CATEGORIA_POR_ACCION: Record<HistorialAccionTipo, CategoriaAccion> 
   premio_ranking_anulado: "mueve_dinero",
   orden_ubicacion_corregida: "mueve_dinero",
   usuario_fulfillment_cambiado: "mueve_dinero",
+  usuario_se_recoge_en_tienda_cambiado: "mueve_dinero", // SLT-94 R8
   orden_zona_reconciliada: "mueve_dinero",
   // FICHA 376: la marca de zona central decide la columna de flete que se factura.
   zona_central_cambiada: "mueve_dinero",
@@ -641,6 +647,7 @@ export const ACCION_LABELS: Record<HistorialAccionTipo, string> = {
   premio_ranking_anulado: "Anuló un premio del ranking",
   orden_ubicacion_corregida: "Corrigió la ubicación de una orden",
   usuario_fulfillment_cambiado: "Cambió el fulfillment de una tienda",
+  usuario_se_recoge_en_tienda_cambiado: "Cambió si se recoge en tienda",
   orden_zona_reconciliada: "Actualizó la zona de una orden",
   zona_central_cambiada: "Cambió la marca de zona central",
   zona_pago_mensajero_cambiado: "Cambió el pago al mensajero de una zona",

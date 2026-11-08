@@ -168,6 +168,8 @@ describe("366/T1 — el `migration.sql` y el `down.sql`, como texto", () => {
       "plan_cambio_empresa_cancelado",
       // SLT-77: `tope_intentos_cambiado`, de `20261107130000_historial_tope_intentos`.
       "tope_intentos_cambiado",
+      // SLT-94: `usuario_se_recoge_en_tienda_cambiado`, de `20261108120000_slt94_fulfillment_enums`.
+      "usuario_se_recoge_en_tienda_cambiado",
     ];
     expect([...HISTORIAL_ACCION_TIPOS].sort()).toEqual(
       [...previos, VALOR_NUEVO, ...POSTERIORES].sort(),

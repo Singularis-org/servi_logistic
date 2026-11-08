@@ -227,6 +227,8 @@ describe("DOWN — deja la base como estaba (R40)", () => {
       "incentivo_mensajero",
       // SLT-73: el evento de conciliacion que movio la diferencia de la satelite
       "conciliacion_bodega_ajuste",
+      // SLT-94: el movimiento de fulfillment de una orden (`20261108120000_slt94_fulfillment_enums`)
+      "orden_fulfillment",
     ];
     expect(valores).toEqual(
       WALLET_ORIGEN_TIPO_SEED.filter(

@@ -33,6 +33,11 @@ function repoFalso(): IOrigenLegibleRepository & Record<string, ReturnType<typeo
     ),
     gestiones: vi.fn(async (ids: readonly string[]) => ids.map((id) => ({ id, guia: "4321", remision: "R-9" }))),
     incidentes: vi.fn(async (ids: readonly string[]) => ids.map((id) => ({ id, guia: null, remision: "REM-7" }))),
+    // SLT-94 (R36): la orden de cada movimiento de fulfillment. `sin-guia` = una orden aun sin guia
+    // (nacio en bodega): se nombra por su remision.
+    movimientosFulfillment: vi.fn(async (ids: readonly string[]) =>
+      ids.map((id) => (id === "sin-guia" ? { id, guia: null, remision: "REM-55" } : { id, guia: "5555", remision: "R-55" })),
+    ),
     pagos: vi.fn(async (ids: readonly string[]) =>
       ids.map((id) => ({ id, fechaPago: "2026-09-12", metodo: "SINPE" as const, beneficiario: "Tania Tienda" })),
     ),
@@ -89,6 +94,11 @@ const CASOS_CAJA: Record<WalletOrigenTipo, { fila: FilaConOrigenTecnico; texto: 
   incentivo_mensajero: { fila: fila("incentivo_mensajero"), texto: "Incentivo a un mensajero" },
   // SLT-73: la diferencia de la satelite se nombra por su rotulo; no hay entidad que leer.
   conciliacion_bodega_ajuste: { fila: fila("conciliacion_bodega_ajuste"), texto: "Diferencia de la satélite" },
+  // SLT-94 (R36): el cobro y la devolucion de fulfillment nombran SU orden por la guia.
+  orden_fulfillment: {
+    fila: fila("orden_fulfillment", { categoria: "ingreso_fulfillment" }),
+    texto: "Orden · guía 5555",
+  },
 };
 
 describe("458-A R5/R6 — el origen de cada movimiento dice su entidad concreta", () => {
@@ -215,7 +225,15 @@ describe("458-A — la lectura va EN LOTE: una consulta por tipo presente, ningu
     expect(repo.cierres).toHaveBeenCalledTimes(1);
     expect(repo.pagos).toHaveBeenCalledTimes(1);
     expect((vi.mocked(repo.cierres).mock.calls[0][0] as string[]).length).toBe(10);
-    for (const k of ["gestiones", "incidentes", "podios", "pagosPorCuenta", "abonos", "movimientosTienda"]) {
+    for (const k of [
+      "gestiones",
+      "incidentes",
+      "movimientosFulfillment",
+      "podios",
+      "pagosPorCuenta",
+      "abonos",
+      "movimientosTienda",
+    ]) {
       expect(repo[k]).not.toHaveBeenCalled();
     }
   });
@@ -303,5 +321,53 @@ describe("458-A R7/R8 — el enlace a la entidad, solo si el rol accede a su pan
     );
     expect(RUTA_RANKING_HISTORICO).toBe("/ranking/historico");
     expect(pagina).toContain(`const PARAM_FECHA = "${PARAM_FECHA_RANKING}";`);
+  });
+});
+
+describe("SLT-94 R36 — el cobro y la devolución de fulfillment nombran su orden (T4.2)", () => {
+  it("SLT-94 R36: en los tres libros, «Orden · guía N»; sin guía, la remisión", async () => {
+    const svc = new OrigenLegibleService(repoFalso(), reglasPaisFijas());
+    const filas = [
+      fila("orden_fulfillment", { categoria: "fulfillment" }),
+      fila("orden_fulfillment", { categoria: "iva_fulfillment_anulado" }),
+      fila("orden_fulfillment", { origenId: "sin-guia", categoria: "fulfillment_anulado" }),
+    ];
+    const tienda = await svc.resolver("tienda", filas, TIENDA);
+    expect(tienda.map((o) => o.texto)).toEqual([
+      "Orden · guía 5555",
+      "Orden · guía 5555",
+      "Orden · remisión REM-55",
+    ]);
+    const caja = await svc.resolver(
+      "caja",
+      [fila("orden_fulfillment", { categoria: "egreso_reverso_iva_fulfillment" })],
+      MAESTRO,
+    );
+    expect(caja.map((o) => o.texto)).toEqual(["Orden · guía 5555"]);
+  });
+
+  it("SLT-94 R36: la tienda y el maestro reciben el enlace a la orden; el mensajero, no", async () => {
+    const svc = new OrigenLegibleService(repoFalso(), reglasPaisFijas());
+    const [t] = await svc.resolver("tienda", [fila("orden_fulfillment", { categoria: "fulfillment" })], TIENDA);
+    expect(t.enlace).toEqual({ etiqueta: "Ver en órdenes la guía 5555", href: "/ordenes?q=5555" });
+    const [m] = await svc.resolver("caja", [fila("orden_fulfillment", { categoria: "ingreso_fulfillment" })], MAESTRO);
+    expect(m.enlace?.href).toBe("/ordenes?q=5555");
+    const [x] = await svc.resolver("caja", [fila("orden_fulfillment")], MENSAJERO);
+    expect(x.enlace).toBeNull();
+  });
+
+  it("SLT-94 R36: en lote — 6 filas de fulfillment → UNA consulta, con los ids sin repetir", async () => {
+    const repo = repoFalso();
+    const svc = new OrigenLegibleService(repo, reglasPaisFijas());
+    const filas = Array.from({ length: 6 }, (_, i) => fila("orden_fulfillment", { origenId: `m${i % 3}` }));
+    await svc.resolver("tienda", filas, TIENDA);
+    expect(repo.movimientosFulfillment).toHaveBeenCalledTimes(1);
+    expect([...(vi.mocked(repo.movimientosFulfillment).mock.calls[0][0] as string[])].sort()).toEqual([
+      "m0",
+      "m1",
+      "m2",
+    ]);
+    expect(repo.incidentes).not.toHaveBeenCalled();
+    expect(repo.gestiones).not.toHaveBeenCalled();
   });
 });

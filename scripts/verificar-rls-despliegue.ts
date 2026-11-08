@@ -33,7 +33,9 @@ const ROL_APP = "servi_app";
 // `rechazo_tienda_cobro.tarifa_valor_id` a `tarifa_valor`.
 // SLT-54 (20261104140100_tarifa_activacion) suma una: la de `tarifa_activacion.activada_por` a `usuario`.
 // SLT-83 (20261104150100) suma una: la de `cobro_plataforma_porcentual_orden` a `orden`.
-const TRIGGERS_MISMA_EMPRESA = 169;
+// SLT-94 (20261108120200) suma tres: las de `orden_fulfillment_movimiento` a `orden`, `usuario` (tienda) y
+// `tarifa_valor`.
+const TRIGGERS_MISMA_EMPRESA = 172;
 
 /** Lo que el punto 6 espera encontrar en el catalogo de la base. */
 export interface ContratoRls {

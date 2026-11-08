@@ -50,7 +50,7 @@ function buildRepo(overrides: Partial<IOrdenRepository> = {}): IOrdenRepository 
     restore: vi.fn().mockResolvedValue(0),
     findEstatusIdByValue: vi.fn().mockResolvedValue("os-preparacion"),
     // Feature 27: por defecto la tienda NO tiene fulfillment -> en_preparacion (R17/R22).
-    findUsuarioFulfillment: vi.fn().mockResolvedValue(false),
+    findUsuarioSeRecogeEnTienda: vi.fn().mockResolvedValue(true),
     findExistingRemisiones: vi.fn().mockResolvedValue(new Map()),
     findAllProvincias: vi.fn().mockResolvedValue([
       { id: "p1", nombre: "Pichincha", disponible: true },
@@ -911,9 +911,9 @@ describe("BulkOrdenService.cargarMasiva — estatus por defecto (R7)", () => {
 // sobre todo, que la rama (b) numera. Lo que NO cambia es que el predicado se lee UNA vez por
 // lote sobre la tienda del actor.
 describe("BulkOrdenService.cargarMasiva — bifurcacion por bodega (feature 27 + 155/R16/R17/R18)", () => {
-  it("R16: tienda con fulfillment=true -> nace en en_preparacion, SIN guia", async () => {
+  it("SLT-94 R5 (155/R16): tienda con la marca «se recoge en tienda» = no -> nace en en_preparacion, SIN guia", async () => {
     const repo = buildRepo({
-      findUsuarioFulfillment: vi.fn().mockResolvedValue(true),
+      findUsuarioSeRecogeEnTienda: vi.fn().mockResolvedValue(false),
       findEstatusIdByValue: vi.fn().mockResolvedValue("os-preparacion"),
     });
     const service = new BulkOrdenService(repo, tarifaRepoStub);
@@ -931,8 +931,8 @@ describe("BulkOrdenService.cargarMasiva — bifurcacion por bodega (feature 27 +
     expect(repo.createManyOrdenesConGuia).not.toHaveBeenCalled();
   });
 
-  it("R16: tienda con fulfillment=false -> nace en por_recolectar_en_tienda, CON guia", async () => {
-    const repo = buildRepo({ findUsuarioFulfillment: vi.fn().mockResolvedValue(false) });
+  it("SLT-94 R5 (155/R16): tienda con la marca = sí -> nace en por_recolectar_en_tienda, CON guia", async () => {
+    const repo = buildRepo({ findUsuarioSeRecogeEnTienda: vi.fn().mockResolvedValue(true) });
     const service = new BulkOrdenService(repo, tarifaRepoStub);
 
     const r = await service.cargarMasiva([row()], TIENDA);
@@ -946,8 +946,8 @@ describe("BulkOrdenService.cargarMasiva — bifurcacion por bodega (feature 27 +
     expect(repo.createManyOrdenes).not.toHaveBeenCalled();
   });
 
-  it("R4/R15/R18: lee fulfillment de la tienda del actor UNA vez por LOTE, no por fila", async () => {
-    const repo = buildRepo({ findUsuarioFulfillment: vi.fn().mockResolvedValue(true) });
+  it("R4/R15/R18: lee la marca de la tienda del actor UNA vez por LOTE, no por fila", async () => {
+    const repo = buildRepo({ findUsuarioSeRecogeEnTienda: vi.fn().mockResolvedValue(false) });
     const service = new BulkOrdenService(repo, tarifaRepoStub);
 
     await service.cargarMasiva(
@@ -955,12 +955,12 @@ describe("BulkOrdenService.cargarMasiva — bifurcacion por bodega (feature 27 +
       TIENDA,
     );
 
-    expect(repo.findUsuarioFulfillment).toHaveBeenCalledTimes(1); // R4/R18
-    expect(repo.findUsuarioFulfillment).toHaveBeenCalledWith("store1"); // R15: actor.usuarioId
+    expect(repo.findUsuarioSeRecogeEnTienda).toHaveBeenCalledTimes(1); // R4/R18
+    expect(repo.findUsuarioSeRecogeEnTienda).toHaveBeenCalledWith("store1"); // R15: actor.usuarioId
   });
 
   it("R1: solo el flag decide; una columna `estatus` en el archivo no altera nada", async () => {
-    const repo = buildRepo({ findUsuarioFulfillment: vi.fn().mockResolvedValue(true) });
+    const repo = buildRepo({ findUsuarioSeRecogeEnTienda: vi.fn().mockResolvedValue(false) });
     const service = new BulkOrdenService(repo, tarifaRepoStub);
 
     const r = await service.cargarMasiva([row({ estatus: "entregado" })], TIENDA);
@@ -971,7 +971,7 @@ describe("BulkOrdenService.cargarMasiva — bifurcacion por bodega (feature 27 +
   });
 
   it("R18: el estatus resuelto se reporta tambien en duplicadas intra-archivo, sin numerar", async () => {
-    const repo = buildRepo({ findUsuarioFulfillment: vi.fn().mockResolvedValue(false) });
+    const repo = buildRepo({ findUsuarioSeRecogeEnTienda: vi.fn().mockResolvedValue(true) });
     const service = new BulkOrdenService(repo, tarifaRepoStub);
 
     const r = await service.cargarMasiva([row(), row()], TIENDA);
@@ -989,7 +989,7 @@ describe("BulkOrdenService.cargarMasiva — bifurcacion por bodega (feature 27 +
 
   it("R7/R20: el value de la rama resuelta no esta en el catalogo -> 0 creadas y error que lo NOMBRA", async () => {
     const repo = buildRepo({
-      findUsuarioFulfillment: vi.fn().mockResolvedValue(false),
+      findUsuarioSeRecogeEnTienda: vi.fn().mockResolvedValue(true),
       findEstatusIdByValue: vi.fn().mockResolvedValue(null),
     });
     const service = new BulkOrdenService(repo, tarifaRepoStub);
@@ -1005,7 +1005,7 @@ describe("BulkOrdenService.cargarMasiva — bifurcacion por bodega (feature 27 +
   });
 
   it("SL-17 D15/R7: la tienda no existe para la empresa en curso -> «tienda no encontrada» en cada fila y nada se persiste", async () => {
-    const repo = buildRepo({ findUsuarioFulfillment: vi.fn().mockResolvedValue(null) });
+    const repo = buildRepo({ findUsuarioSeRecogeEnTienda: vi.fn().mockResolvedValue(null) });
     const service = new BulkOrdenService(repo, tarifaRepoStub);
 
     const r = await service.cargarMasiva([row({ num_remision: "A" }), row({ num_remision: "B" })], TIENDA);
@@ -1023,7 +1023,7 @@ describe("BulkOrdenService.cargarMasiva — bifurcacion por bodega (feature 27 +
   });
 
   it("R17: el dryRun de la rama (b) NO consume ninguna guia (no toca el repositorio)", async () => {
-    const repo = buildRepo({ findUsuarioFulfillment: vi.fn().mockResolvedValue(false) });
+    const repo = buildRepo({ findUsuarioSeRecogeEnTienda: vi.fn().mockResolvedValue(true) });
     const service = new BulkOrdenService(repo, tarifaRepoStub);
 
     const r = await service.cargarMasiva([row()], TIENDA, { dryRun: true });
@@ -1131,12 +1131,12 @@ describe("BulkOrdenService.cargarMasiva — dry-run (validación previa)", () =>
 // para las dos vías: el canal por el que entra un dato no dice nada sobre dónde está el paquete.
 describe("BulkOrdenService.cargarMasiva — la ruta la decide la rama, no el canal (88/R14 + 155/R6)", () => {
   it("la ruta de persistencia la elige el flag, no la vía: cada rama usa la suya", async () => {
-    const repoA = buildRepo({ findUsuarioFulfillment: vi.fn().mockResolvedValue(true) });
+    const repoA = buildRepo({ findUsuarioSeRecogeEnTienda: vi.fn().mockResolvedValue(false) });
     await new BulkOrdenService(repoA, tarifaRepoStub).cargarMasiva([row()], TIENDA);
     expect(repoA.createManyOrdenes).toHaveBeenCalledTimes(1);
     expect(repoA.createManyOrdenesConGuia).not.toHaveBeenCalled();
 
-    const repoB = buildRepo({ findUsuarioFulfillment: vi.fn().mockResolvedValue(false) });
+    const repoB = buildRepo({ findUsuarioSeRecogeEnTienda: vi.fn().mockResolvedValue(true) });
     await new BulkOrdenService(repoB, tarifaRepoStub).cargarMasiva([row()], TIENDA);
     expect(repoB.createManyOrdenesConGuia).toHaveBeenCalledTimes(1);
     expect(repoB.createManyOrdenes).not.toHaveBeenCalled();
@@ -1144,7 +1144,8 @@ describe("BulkOrdenService.cargarMasiva — la ruta la decide la rama, no el can
 
   it("155/R22: la vía sesión NUNCA crea en en_ruta_bodega_central (el viejo estado fijo de la API)", async () => {
     for (const fulfillment of [true, false]) {
-      const repo = buildRepo({ findUsuarioFulfillment: vi.fn().mockResolvedValue(fulfillment) });
+      // SLT-94: «fulfillment» = nace en bodega = marca «se recoge en tienda» en no.
+      const repo = buildRepo({ findUsuarioSeRecogeEnTienda: vi.fn().mockResolvedValue(!fulfillment) });
       await new BulkOrdenService(repo, tarifaRepoStub).cargarMasiva([row()], TIENDA);
       expect(repo.findEstatusIdByValue).not.toHaveBeenCalledWith("en_ruta_bodega_central");
     }

@@ -97,7 +97,7 @@ export async function sembrarEscenario458(tx: TxDeTest, cat: Catalogo459): Promi
         rolId,
         zonaId,
         estado: "activo",
-        fulfillment: false,
+        seRecogeEnTienda: true,
       },
       select: { id: true },
     });

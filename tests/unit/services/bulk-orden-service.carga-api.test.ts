@@ -54,9 +54,8 @@ const TARIFA_Z2: TarifaVigenteResuelta = {
 };
 
 /**
- * FULFILLMENT (2026-08-25) — la MISMA tarifa de z1 pero con monto de fulfillment. Es el unico
- * dato que cambia donde nace la orden por esta via: `fulfillment > 0` -> la tienda hace
- * fulfillment -> `en_preparacion` sin guia. El monto (2.00) tambien se suma a `costoEnvio`.
+ * FULFILLMENT (2026-08-25) — la MISMA tarifa de z1 pero con monto de fulfillment. El monto (2.00) se
+ * suma a `costoEnvio`. SLT-94 (R6): ya NO cambia donde nace la orden (lo decide solo la marca).
  */
 const TARIFA_FULFILLMENT: TarifaVigenteResuelta = { ...TARIFA, fulfillment: "2.00" };
 
@@ -108,11 +107,10 @@ function buildService(
 // carga masiva pero autoriza SOLO al rol apiKey y persiste con num_guia inmediato.
 //
 // FEATURE 155 (R19-R23): el estado inicial DEJA DE SER FIJO. Se resuelve con el mismo punto de
-// decision que la via sesion (`resolverDestinoCreacion`) sobre el flag `fulfillment` del dueño
-// de la key. Las aserciones de "no consulta fulfillment" no se borran: se INVIERTEN, porque son
-// justamente el contrato que esta feature cambia. En la practica el dueño de una key tiene rol
-// `apiKey` y el flag solo se acepta para `adminTienda`, asi que el caso vivo es siempre la
-// rama (b): `por_recolectar_en_tienda` con guia en el acto.
+// decision que la via sesion (`resolverDestinoCreacion`). SLT-94 (R5/R6, D13): el predicado es la
+// marca «se recoge en tienda» del dueño de la key (una vez por lote), nunca la tarifa. Una cuenta
+// dedicada (rol `apiKey`) siempre tiene la marca en «sí»; una key que apunta a una tienda real
+// (302) hereda la marca de esa tienda.
 
 const APIKEY: Actor = { usuarioId: "key-user-1", rol: "apiKey" as RolValue };
 const TIENDA: Actor = { usuarioId: "store1", rol: "adminTienda" };
@@ -162,7 +160,7 @@ function buildRepo(overrides: Partial<IOrdenRepository> = {}): IOrdenRepository 
     // Pedido humano 2026-08-27: el gemelo, `restore`. Mismo motivo que su vecino.
     restore: vi.fn().mockResolvedValue(0),
     findEstatusIdByValue: vi.fn().mockResolvedValue("os-erbp"),
-    findUsuarioFulfillment: vi.fn().mockResolvedValue(false),
+    findUsuarioSeRecogeEnTienda: vi.fn().mockResolvedValue(true),
     findExistingRemisiones: vi.fn().mockResolvedValue(new Map()),
     findAllProvincias: vi.fn().mockResolvedValue([{ id: "p1", nombre: "Pichincha", disponible: true }]),
     findCantonesByProvinciaIds: vi.fn().mockResolvedValue([{ id: "c1", nombre: "Quito", provinciaId: "p1", disponible: true }]),
@@ -355,46 +353,83 @@ describe("cargarViaApi — dueño y estado inicial (R8, D4)", () => {
     expect(conGuiaArg(repo)[0].estatusId).toBe("os-erbp");
   });
 
-  // FULFILLMENT (2026-08-25) — EL PREDICADO DE ESTA VIA ES LA TARIFA, NO EL FLAG DEL USUARIO.
-  // `Usuario.fulfillment` solo puede quedar en `true` para `adminTienda` y el dueño de una key
-  // es de rol `apiKey`: preguntarselo devolvia siempre `false`, que es lo que mantenia la rama
-  // (a) inalcanzable desde la 155. Ya no se le pregunta.
-  it("no consulta el flag `fulfillment` del usuario: por esta via el predicado es la tarifa", async () => {
+  it("SLT-94 R5: lee la marca del dueño de la key UNA vez por lote", async () => {
     const repo = buildRepo();
     await buildService(repo).cargarViaApi(
       [row({ num_remision: "A" }), row({ num_remision: "B" }), row({ num_remision: "C" })],
       APIKEY,
     );
-    expect(repo.findUsuarioFulfillment).not.toHaveBeenCalled();
+    expect(repo.findUsuarioSeRecogeEnTienda).toHaveBeenCalledTimes(1);
+    expect(repo.findUsuarioSeRecogeEnTienda).toHaveBeenCalledWith("key-user-1");
   });
 
-  it("tarifa con fulfillment > 0 -> en_preparacion y numGuia null, sin fabricar numero", async () => {
+  it("SLT-94 R5: dueño con la marca en «no» (key a una tienda real) -> en_preparacion, numGuia null, sin manifiesto", async () => {
+    const repo = buildRepo({ findUsuarioSeRecogeEnTienda: vi.fn().mockResolvedValue(false) });
+    const r = await buildService(repo).cargarViaApi([row({ num_remision: "REM-1" })], APIKEY);
+
+    expect(repo.findEstatusIdByValue).toHaveBeenCalledWith("en_preparacion");
+    expect(repo.findEstatusIdByValue).not.toHaveBeenCalledWith("por_recolectar_en_tienda");
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(r.summary.creadas).toBe(1);
+    expect(r.summary.filas[0].numGuia).toBeNull();
+    expect(r.summary.ordenes[0]).toMatchObject({
+      numRemision: "REM-1",
+      numGuia: null,
+      estado: "en_preparacion",
+      estadoNombre: "En preparación",
+      // Sin valor de fulfillment en la tarifa: nace en bodega igual (R6: la tarifa no decide).
+      fulfillment: "0.00",
+    });
+    // R26 de la 155: la rama (a) no emite manifiesto.
+    expect(r.manifiestoOrdenIds).toEqual([]);
+    // Se persiste por la MISMA ruta, con la numeracion desactivada: nadie consume la secuencia.
+    // Feature 141: `opciones` es el 5.o argumento — el 4.o es el contexto del LOTE.
+    const opciones = (repo.createManyOrdenesConGuia as ReturnType<typeof vi.fn>).mock.calls[0][4];
+    expect(opciones).toEqual({ conGuia: false });
+  });
+
+  it("SLT-94 R6/R18: tarifa con fulfillment > 0 y marca «sí» -> nace en por_recolectar_en_tienda CON guia, y el fulfillment se publica", async () => {
     const repo = buildRepo();
     const r = await buildService(repo, buildTarifaRepo(TARIFA_FULFILLMENT)).cargarViaApi(
       [row({ num_remision: "REM-1" })],
       APIKEY,
     );
 
-    expect(repo.findEstatusIdByValue).toHaveBeenCalledWith("en_preparacion");
-    if (r.status === "ok") {
-      expect(r.summary.creadas).toBe(1);
-      expect(r.summary.filas[0].numGuia).toBeNull();
-      expect(r.summary.ordenes[0]).toMatchObject({
-        numRemision: "REM-1",
-        numGuia: null,
-        estado: "en_preparacion", estadoNombre: "En preparación",
-      });
+    expect(repo.findEstatusIdByValue).toHaveBeenCalledWith("por_recolectar_en_tienda");
+    expect(repo.findEstatusIdByValue).not.toHaveBeenCalledWith("en_preparacion");
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(r.summary.ordenes[0]).toMatchObject({
+      numRemision: "REM-1",
+      numGuia: 1000,
+      estado: "por_recolectar_en_tienda",
       // El monto de bodega se SUMA al costo del envio (3.50 + 12% = 3.92, + 2.00) y viaja
-      // desglosado al lado, para que ese total no haya que adivinarlo.
-      expect(r.summary.ordenes[0].costoEnvio).toBe("5.92");
-      expect(r.summary.ordenes[0].fulfillment).toBe("2.00");
-      // R26: la rama (a) no emite manifiesto — no hubo movimiento fisico que documentar.
-      expect(r.manifiestoOrdenIds).toEqual([]);
-    }
-    // Se persiste por la MISMA ruta, con la numeracion desactivada: nadie consume la secuencia.
-    // Feature 141: `opciones` es el 5.o argumento — el 4.o es el contexto del LOTE.
+      // desglosado al lado (R33: la cotizacion y el costo por API siguen publicandolo).
+      costoEnvio: "5.92",
+      fulfillment: "2.00",
+    });
+    expect(r.manifiestoOrdenIds).toEqual(["ord-REM-1"]);
     const opciones = (repo.createManyOrdenesConGuia as ReturnType<typeof vi.fn>).mock.calls[0][4];
-    expect(opciones).toEqual({ conGuia: false });
+    expect(opciones).toEqual({ conGuia: true });
+  });
+
+  it("SL-17 D15: el dueño no resuelve para la empresa -> «tienda no encontrada» en cada fila, sin persistir", async () => {
+    const repo = buildRepo({ findUsuarioSeRecogeEnTienda: vi.fn().mockResolvedValue(null) });
+    const r = await buildService(repo).cargarViaApi(
+      [row({ num_remision: "A" }), row({ num_remision: "B" })],
+      APIKEY,
+    );
+    expect(r.status).toBe("ok");
+    if (r.status !== "ok") return;
+    expect(r.summary.creadas).toBe(0);
+    expect(r.summary.conError).toBe(2);
+    expect(r.summary.errores.map((e) => e.errores)).toEqual([
+      { tienda: ["tienda no encontrada"] },
+      { tienda: ["tienda no encontrada"] },
+    ]);
+    expect(r.manifiestoOrdenIds).toEqual([]);
+    expect(repo.createManyOrdenesConGuia).not.toHaveBeenCalled();
   });
 
   it("sin fulfillment el desglose es un cero explicito y `costoEnvio` no se mueve", async () => {
@@ -894,17 +929,16 @@ describe("cargarViaApi — cascada por par (tienda, zona) (274/R25/R26)", () => 
   });
 });
 
-// FULFILLMENT (2026-08-25) — la bifurcacion es POR ORDEN, y esto es lo que lo obliga: la
-// tarifa se resuelve por par (tienda, zona) desde la 274, asi que dos filas del mismo lote
-// pueden caer en zonas con distinto monto de fulfillment. Decidir por lote dejaria una orden a
-// la que se le COBRA fulfillment naciendo a la espera de que alguien la recoja en la tienda.
-describe("cargarViaApi — lote MIXTO por fulfillment (una zona con monto, otra sin)", () => {
+// SLT-94 (R5/R6) — del 2026-08-25 a SLT-94 la bifurcacion era POR ORDEN segun el monto de
+// fulfillment de SU tarifa. Ya no: el destino es UNO por lote (la marca de la tienda dueña), y una
+// zona con fulfillment y otra sin el nacen en el mismo estado, por UNA sola llamada.
+describe("cargarViaApi — lote con fulfillment en una zona y no en otra (SLT-94 R6)", () => {
   const mixtoFulfillment = () => ({
     repo: buildRepo(DOS_ZONAS),
     tarifaRepo: buildTarifaRepoPorZona({ z1: TARIFA, z2: { ...TARIFA_Z2, fulfillment: "2.00" } }),
   });
 
-  it("cada orden nace donde dice SU tarifa, y solo la de la tienda va al manifiesto", async () => {
+  it("SLT-94 R6: las dos nacen donde dice la marca (sí -> por_recolectar_en_tienda), cada una con SU costo", async () => {
     const { repo, tarifaRepo } = mixtoFulfillment();
     const r = await buildService(repo, tarifaRepo).cargarViaApi(
       [filaZ1("REM-Z1"), filaZ2("REM-Z2")],
@@ -915,22 +949,19 @@ describe("cargarViaApi — lote MIXTO por fulfillment (una zona con monto, otra 
     if (r.status !== "ok") return;
     const porRemision = new Map(r.summary.ordenes.map((o) => [o.numRemision, o]));
     expect(porRemision.get("REM-Z1")).toMatchObject({
-      estado: "por_recolectar_en_tienda", estadoNombre: "Por recolectar en tienda",
-      numGuia: 1000,
+      estado: "por_recolectar_en_tienda",
       fulfillment: "0.00",
     });
     expect(porRemision.get("REM-Z2")).toMatchObject({
-      estado: "en_preparacion", estadoNombre: "En preparación",
-      numGuia: null,
-      // 10.00 + 12% = 11.20, mas el monto de bodega.
+      estado: "por_recolectar_en_tienda",
+      // 10.00 + 12% = 11.20, mas el monto de bodega (R33: se sigue publicando).
       costoEnvio: "13.20",
       fulfillment: "2.00",
     });
-    // Solo la que espera EN LA TIENDA documenta un movimiento fisico.
-    expect(r.manifiestoOrdenIds).toEqual(["ord-REM-Z1"]);
+    expect([...r.manifiestoOrdenIds].sort()).toEqual(["ord-REM-Z1", "ord-REM-Z2"]);
   });
 
-  it("dos llamadas de persistencia (una por rama) pero UN solo lote: el cargaId se reutiliza", async () => {
+  it("UNA sola llamada de persistencia y UN solo lote", async () => {
     const { repo, tarifaRepo } = mixtoFulfillment();
     const r = await buildService(repo, tarifaRepo).cargarViaApi(
       [filaZ1("REM-Z1"), filaZ2("REM-Z2")],
@@ -938,24 +969,11 @@ describe("cargarViaApi — lote MIXTO por fulfillment (una zona con monto, otra 
     );
 
     const llamadas = (repo.createManyOrdenesConGuia as ReturnType<typeof vi.fn>).mock.calls;
-    expect(llamadas).toHaveLength(2);
-    // Primero la rama (b) —numera en el acto—, luego la (a) —no numera nada—.
+    expect(llamadas).toHaveLength(1);
     expect(llamadas[0][4]).toEqual({ conGuia: true });
-    expect(llamadas[1][4]).toEqual({ conGuia: false });
-    // Feature 141/R30: UNA fila de `carga` por peticion. El segundo grupo recibe el id que
-    // resolvio el primero, en vez de abrir un lote nuevo.
+    // Feature 141/R30: UNA fila de `carga` por peticion.
     expect(llamadas[0][3]).toMatchObject({ cargaId: null, totalFiles: 2 });
-    expect(llamadas[1][3]).toMatchObject({ cargaId: "carga-api-1", totalFiles: 2 });
     if (r.status === "ok") expect(r.summary.cargaId).toBe("carga-api-1");
-  });
-
-  it("un lote homogeneo sigue haciendo UNA sola llamada de persistencia", async () => {
-    const repo = buildRepo(DOS_ZONAS);
-    await buildService(repo, buildTarifaRepoPorZona({ z1: TARIFA, z2: TARIFA_Z2 })).cargarViaApi(
-      [filaZ1("REM-1"), filaZ2("REM-2")],
-      APIKEY,
-    );
-    expect(repo.createManyOrdenesConGuia).toHaveBeenCalledTimes(1);
   });
 });
 

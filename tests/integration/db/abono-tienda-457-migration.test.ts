@@ -332,7 +332,7 @@ describeSiHayBase("457/T1.5 — las migraciones del pago de una tienda a la empr
     expect(rama("debito")).toEqual(esperado("debito"));
     expect(rama("credito")).toContain("abono_tienda");
     expect(rama("debito")).toContain("abono_tienda_anulado");
-    expect(rama("credito")).toHaveLength(7); // 5 con la 457; + los dos creditos espejo de la 458-B
-    expect(rama("debito")).toHaveLength(11);
+    expect(rama("credito")).toHaveLength(9); // 5 con la 457; + los dos creditos espejo de la 458-B; + 2 de SLT-94
+    expect(rama("debito")).toHaveLength(13); // SLT-94: + el fulfillment y su IVA
   });
 });

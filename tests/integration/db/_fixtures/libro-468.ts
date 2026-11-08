@@ -179,7 +179,7 @@ export async function sembrar468(tx: TxDeTest, cat: Catalogo459): Promise<Escena
         tipoIdentificacionId: cat.tipoIdentificacionId,
         rolId,
         estado: "activo",
-        fulfillment: false,
+        seRecogeEnTienda: true,
       },
       select: { id: true },
     });

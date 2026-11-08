@@ -114,7 +114,7 @@ export const CAJA_RESUMEN_LABEL = {
   capitalPista: `Dinero de ${EMPRESA.enFrase} que no es ganancia.`,
   /** SL-39 (R6, design §7.1) — el IVA cobrado, region propia del bolsillo de la empresa. */
   iva: `${IMPUESTO_ROTULO} cobrado`,
-  ivaPista: `${IMPUESTO_ROTULO} que se les cobró a las tiendas sobre el flete y la comisión. No es ganancia.`,
+  ivaPista: `${IMPUESTO_ROTULO} que se les cobró a las tiendas sobre el flete, el fulfillment y la comisión. No es ganancia.`,
   /**
    * SL-40 (R21, design §9.2) — la deuda con la plataforma. «la plataforma» va en minúscula: nombra
    * al sistema, no a una marca, y la empresa sale del módulo de marca como en el resto.
