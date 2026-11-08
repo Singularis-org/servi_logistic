@@ -144,6 +144,8 @@ const NOMBRADO_ICONO: Record<WalletEgresoNombrado, LucideIcon> = {
   // SL-45 (design §7.3): el pago a la plataforma. `Receipt`, el mismo dibujo que la fila «Gastos de la
   // empresa», porque es otro gasto de ella. Es decoración (`aria-hidden`).
   egreso_pago_plataforma: Receipt,
+  // SLT-94 (R26): la devolución del fulfillment, el mismo gesto que los otros reversos.
+  egreso_reverso_fulfillment: Undo2,
 };
 
 export interface DesgloseEgresosListaProps {

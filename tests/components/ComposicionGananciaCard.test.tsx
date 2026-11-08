@@ -65,7 +65,8 @@ const DESGLOSE: DesgloseEgresosDTO = {
  * el caso de R28 pasaba en verde con el código roto. Se descubrió matándolo con una mutación.
  *
  * SL-39 (R8): las tres de IVA SALEN de «Ingresos» y van a `iva`. Los cinco ingresos que quedan suman
- * `totalIngresos` (150 + 4 000 + 900 + 90 + 0 = 5 140,00) exactamente; el IVA, 19,50 + 520,00 +
+ * `totalIngresos` (150 + 4 000 + 900 + 60 + 0 + 30 = 5 140,00) exactamente (SLT-94: 30 de los 90 de la
+ * corrección pasan al fulfillment, para que ningún importe de la columna se repita); el IVA, 19,50 + 520,00 +
  * 30,25 − 0,00 = 569,75; los egresos, 1 250,75 + 940 = 2 190,75.
  */
 const COMPOSICION: ComposicionGananciaDTO = {
@@ -73,8 +74,9 @@ const COMPOSICION: ComposicionGananciaDTO = {
     ingreso_flete: "150.00",
     ingreso_flete_devolucion: "4000.00",
     ingreso_comision_cod: "900.00",
-    ingreso_ajuste: "90.00",
-    ingreso_cobro_tienda: "0.00", ingreso_fulfillment: "0.00", /* SLT-94 */ // ficha 461: la exige el `Record` total
+    ingreso_ajuste: "60.00",
+    ingreso_cobro_tienda: "0.00", // ficha 461: la exige el `Record` total
+    ingreso_fulfillment: "30.00", // SLT-94 (R37): el cobro de fulfillment por paquete
   },
   totalIngresos: "5140.00",
   /**
@@ -337,9 +339,9 @@ describe("ComposicionGananciaCard — las dos columnas y el pie (R22/R23)", () =
     pintar();
 
     const filas = rotulos(listaIngresos());
-    // Control de no-vacuidad: SL-39 (R8) — los ocho ingresos propios menos los tres de IVA.
-    expect(WALLET_INGRESO_GANANCIA_SEED.length).toBe(5);
-    // Las cinco filas más la del total: ninguna categoría de la ganancia se queda sin enseñar.
+    // Control de no-vacuidad: SL-39 (R8) — los ingresos propios menos los de IVA (SLT-94: + fulfillment).
+    expect(WALLET_INGRESO_GANANCIA_SEED.length).toBe(6);
+    // Las seis filas más la del total: ninguna categoría de la ganancia se queda sin enseñar.
     expect(filas).toHaveLength(WALLET_INGRESO_GANANCIA_SEED.length + 1);
     for (const categoria of WALLET_INGRESO_GANANCIA_SEED) {
       expect(filas, `falta ${categoria}`).toContain(CATEGORIA_LABEL[categoria]);
@@ -364,9 +366,11 @@ describe("ComposicionGananciaCard — las dos columnas y el pie (R22/R23)", () =
       { rotulo: "Flete por devolución a origen cobrado a la tienda", importe: "₡4.000" },
       { rotulo: "Comisión de contra-entrega cobrada a la tienda", importe: "₡900" },
       // SL-39 (R7/R8): las tres de IVA ya no están aquí; van al bloque del IVA.
-      { rotulo: "Corrección de caja (suma)", importe: "₡90" },
+      { rotulo: "Corrección de caja (suma)", importe: "₡60" },
       // Ficha 461 (R27): la fila del cobro de la empresa a una tienda; en este fixture vale 0,00.
       { rotulo: "La empresa le cobra a una tienda", importe: "₡0" },
+      // SLT-94 (R37): el fulfillment, ingreso de la empresa, con el importe del servidor tal cual.
+      { rotulo: "Fulfillment cobrado a la tienda", importe: "₡30" },
       { rotulo: "Total de ingresos", importe: "₡5.140" },
     ]);
 
@@ -396,6 +400,8 @@ describe("ComposicionGananciaCard — las dos columnas y el pie (R22/R23)", () =
       { rotulo: "Fletes por devolución a origen cobrados a una tienda anulados", importe: "₡0" },
       // SL-45 (R24): la fila del pago a la plataforma, antes de «Otros»; en este fixture vale 0,00.
       { rotulo: "Pago a la plataforma", importe: "₡0" },
+      // SLT-94 (R26/R37): la devolución del fulfillment, egreso con nombre; en este fixture vale 0,00.
+      { rotulo: "Devoluciones de fulfillment a una tienda", importe: "₡0" },
       // SL-39: el reverso del IVA sale de «Egresos» y va al bloque del IVA.
       { rotulo: "Otros gastos de la empresa", importe: "₡194,25" },
       { rotulo: "Total de egresos", importe: "₡2.190,75" },
@@ -498,6 +504,7 @@ describe("ComposicionGananciaCard — las dos columnas y el pie (R22/R23)", () =
       "Cobros a una tienda anulados", // ficha 461: tercer nombrado, antes de «Otros»
       "Fletes por devolución a origen cobrados a una tienda anulados", // ficha 458-B
       "Pago a la plataforma", // SL-45 (R24)
+      "Devoluciones de fulfillment a una tienda", // SLT-94 (R26/R37)
       "Otros gastos de la empresa",
       "Total de egresos",
     ]);
@@ -693,6 +700,7 @@ describe("Ficha 339 — «Otros» sólo cuando de verdad queda algo (R7/R8/R9/R1
       "Cobros a una tienda anulados", // ficha 461
       "Fletes por devolución a origen cobrados a una tienda anulados", // ficha 458-B
       "Pago a la plataforma", // SL-45 (R24)
+      "Devoluciones de fulfillment a una tienda", // SLT-94 (R26/R37)
       "Total de egresos",
     ]);
   });
@@ -830,5 +838,59 @@ describe("458/O5 — las dos columnas son un grupo con nombre que ENVUELVE una <
       const padre = item.parentElement;
       expect(padre === dl || padre?.parentElement === dl).toBe(true);
     }
+  });
+});
+
+// =================================================================================================
+// SLT-94 (R37) — EL FULFILLMENT EN LA COMPOSICIÓN DE LA GANANCIA
+// =================================================================================================
+//
+// El fulfillment es ingreso de la empresa: su cobro es una fila de «Ingresos» y su devolución (al
+// eliminar o cancelar por API la orden) una fila con nombre de «Egresos», como el reverso del cobro a
+// una tienda. El neto lo da el pie, que manda el servidor: la tarjeta no resta dinero (R12 de la 231).
+// Importes escritos a mano y distintos entre sí, para que una fila cableada a la otra caiga.
+describe("SLT-94 R37 — el fulfillment en la composición", () => {
+  const CON_FULFILLMENT: ComposicionGananciaDTO = {
+    ...COMPOSICION,
+    ingresos: { ...COMPOSICION.ingresos, ingreso_fulfillment: "1000.00" },
+    egresos: { ...COMPOSICION.egresos, egreso_reverso_fulfillment: "250.50" },
+    totalIngresos: "6110.00",
+    totalEgresos: "2441.25",
+  };
+
+  it("SLT-94 R37: «Fulfillment» es fila de ingresos con su importe y su devolución, fila de egresos", () => {
+    pintar({
+      composicion: CON_FULFILLMENT,
+      resumen: { ...RESUMEN, ingresosPropios: "6110.00", egresosPropios: "2441.25", ganancia: "3668.75" },
+    });
+
+    const ingresos = pares(listaIngresos());
+    expect(ingresos).toContainEqual({ rotulo: "Fulfillment cobrado a la tienda", importe: "₡1.000" });
+    expect(ingresos.at(-1)).toEqual({ rotulo: "Total de ingresos", importe: "₡6.110" });
+
+    const egresos = pares(listaEgresos());
+    expect(egresos).toContainEqual({ rotulo: "Devoluciones de fulfillment a una tienda", importe: "₡250,50" });
+    expect(egresos.at(-1)).toEqual({ rotulo: "Total de egresos", importe: "₡2.441,25" });
+    // La devolución no se cuela en «Ingresos» ni el cobro en «Egresos».
+    expect(rotulos(listaIngresos())).not.toContain("Devoluciones de fulfillment a una tienda");
+    expect(rotulos(listaEgresos())).not.toContain("Fulfillment cobrado a la tienda");
+
+    // El pie es la ganancia del servidor, que ya trae el fulfillment neto de devoluciones.
+    const pie = document.querySelector<HTMLElement>('[data-slot="card-footer"]') as HTMLElement;
+    expect(within(pie).getByText("₡3.668,75")).toBeInTheDocument();
+  });
+
+  it("SLT-94 R37: la fila del fulfillment se abre y pide SU fila al servidor", () => {
+    pintar({ composicion: CON_FULFILLMENT });
+    expect(
+      within(listaIngresos()).getByRole("button", {
+        name: "Ver los movimientos de Fulfillment cobrado a la tienda",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(listaEgresos()).getByRole("button", {
+        name: "Ver los movimientos de Devoluciones de fulfillment a una tienda",
+      }),
+    ).toBeInTheDocument();
   });
 });

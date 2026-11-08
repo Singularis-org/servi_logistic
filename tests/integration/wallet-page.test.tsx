@@ -508,13 +508,13 @@ describe("WalletPage — pre-fetch del maestro (R18/R21)", () => {
     //
     // SL-39 (R20): `iva` es otro mapa de importes y recibe el mismo bucle, con su no-vacuidad.
     const { ingresos, egresos, iva, hayOtrosEgresos, ...totales } = props.composicion;
-    // Control de no-vacuidad: SL-39 (R8) — los cinco ingresos que son ganancia, sin los de IVA.
-    expect(Object.keys(ingresos)).toHaveLength(5);
+    // Control de no-vacuidad: SL-39 (R8) — los ingresos que son ganancia, sin los de IVA (SLT-94: + fulfillment, 6).
+    expect(Object.keys(ingresos)).toHaveLength(6);
     for (const [categoria, valor] of Object.entries(ingresos)) {
       expect(typeof valor, `composicion.ingresos.${categoria}`).toBe("string");
     }
-    // SL-39 (R7): las cuatro categorías de IVA, cada una STRING.
-    expect(Object.keys(iva)).toHaveLength(4);
+    // SL-39 (R7): las categorías de IVA, cada una STRING (SLT-94: + IVA del fulfillment y su devolución, 6).
+    expect(Object.keys(iva)).toHaveLength(6);
     for (const [categoria, valor] of Object.entries(iva)) {
       expect(typeof valor, `composicion.iva.${categoria}`).toBe("string");
     }

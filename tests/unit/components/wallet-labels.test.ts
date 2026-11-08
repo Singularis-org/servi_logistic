@@ -254,6 +254,8 @@ describe("461 — el resto de textos de la caja que esta ficha toca (R42/R50, de
       // SL-39 (design §2.1): el reverso del IVA sale de las filas nombradas; va al bloque del IVA.
       // SL-45 (R24): la fila del pago a la plataforma, con el nombre que le da el requisito.
       egreso_pago_plataforma: "Pago a la plataforma",
+      // SLT-94 (R26/R37): las devoluciones del fulfillment, en plural y desde la empresa.
+      egreso_reverso_fulfillment: "Devoluciones de fulfillment a una tienda",
     });
   });
 });
@@ -273,7 +275,7 @@ describe("SL-39 R10 — la ganancia sin IVA, en palabras", () => {
   it("R6: la region «IVA cobrado» y su pista", () => {
     expect(CAJA_RESUMEN_LABEL.iva).toBe("IVA cobrado");
     expect(CAJA_RESUMEN_LABEL.ivaPista).toBe(
-      "IVA que se les cobró a las tiendas sobre el flete y la comisión. No es ganancia.",
+      "IVA que se les cobró a las tiendas sobre el flete, el fulfillment y la comisión. No es ganancia.",
     );
   });
 
@@ -330,7 +332,7 @@ describe("SL-39 R10 — la ganancia sin IVA, en palabras", () => {
       {
         id: "iva",
         rotulo: "IVA cobrado",
-        pista: "IVA que se les cobró a las tiendas sobre el flete y la comisión. No es ganancia.",
+        pista: "IVA que se les cobró a las tiendas sobre el flete, el fulfillment y la comisión. No es ganancia.",
         valor: "416.00",
         signo: "positivo",
       },

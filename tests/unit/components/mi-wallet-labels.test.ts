@@ -52,6 +52,11 @@ const LECTURA_DESDE_LA_TIENDA: Record<WalletTiendaMovimientoCategoria, string> =
   // Ficha 458-B (design 458 §2.3): la anulacion de un cobro por devolución a origen, desde la tienda.
   flete_devolucion_anulado: "La empresa anuló el flete por devolución a origen y te lo devolvió",
   iva_flete_devolucion_anulado: "La empresa anuló el IVA del flete por devolución a origen y te lo devolvió",
+  // SLT-94 (R36): el cobro de fulfillment por paquete y su devolución, desde la tienda.
+  fulfillment: "La empresa te cobró el fulfillment",
+  iva_fulfillment: "La empresa te cobró el IVA del fulfillment",
+  fulfillment_anulado: "La empresa te hizo la devolución de fulfillment",
+  iva_fulfillment_anulado: "La empresa te hizo la devolución del IVA del fulfillment",
   ajuste_credito: "Corrección a tu favor",
   ajuste_debito: "Corrección en tu contra",
 };
@@ -79,17 +84,22 @@ const UNA_PARTE_ACTUA_SOBRE_LA_OTRA: readonly WalletTiendaMovimientoCategoria[] 
   // Ficha 458-B: La empresa anula y la tienda recibe.
   "flete_devolucion_anulado",
   "iva_flete_devolucion_anulado",
+  // SLT-94: la empresa cobra el fulfillment y lo devuelve; la tienda paga y recibe.
+  "fulfillment",
+  "iva_fulfillment",
+  "fulfillment_anulado",
+  "iva_fulfillment_anulado",
   "ajuste_credito",
   "ajuste_debito",
 ];
 
 describe("461 — CATEGORIA_MI_WALLET_LABEL: la lectura desde la tienda (R44, design §7.5)", () => {
-  it("dice exactamente los 18 textos aprobados (14 de la 461 + 2 de la 457 + 2 de la 458-B), y el seed es exactamente esas 18 claves", () => {
+  it("dice exactamente los 22 textos aprobados (14 de la 461 + 2 de la 457 + 2 de la 458-B + 4 de SLT-94), y el seed es exactamente esas 22 claves", () => {
     expect(CATEGORIA_MI_WALLET_LABEL).toEqual(LECTURA_DESDE_LA_TIENDA);
     expect([...WALLET_TIENDA_MOVIMIENTO_CATEGORIA_SEED].sort()).toEqual(
       Object.keys(LECTURA_DESDE_LA_TIENDA).sort(),
     );
-    expect(WALLET_TIENDA_MOVIMIENTO_CATEGORIA_SEED).toHaveLength(18);
+    expect(WALLET_TIENDA_MOVIMIENTO_CATEGORIA_SEED).toHaveLength(22);
   });
 
   it("⭑ 457 (R46/R47): el pago de la tienda a la empresa y su anulacion se leen distinto desde cada lado", () => {
@@ -114,8 +124,9 @@ describe("461 — CATEGORIA_MI_WALLET_LABEL: la lectura desde la tienda (R44, de
         CATEGORIA_TIENDA_LABEL[categoria],
       );
     }
-    // Anti-vacuidad: la lista de conceptos con actor cubre 17 de los 18 (ficha 457: + 2; 458-B: + 2).
-    expect(UNA_PARTE_ACTUA_SOBRE_LA_OTRA).toHaveLength(17);
+    // Anti-vacuidad: la lista de conceptos con actor cubre 21 de los 22 (ficha 457: + 2; 458-B: + 2;
+    // SLT-94: + 4).
+    expect(UNA_PARTE_ACTUA_SOBRE_LA_OTRA).toHaveLength(21);
   });
 
   it("el cobro y lo que la empresa paga se leen en segunda persona, con la empresa como sujeto", () => {
@@ -231,6 +242,8 @@ const ESCRIBEN_EN_LA_TIENDA: readonly WalletOrigenTipo[] = [
   "cobro_tienda",
   // Ficha 457: el credito del pago de la tienda a la empresa y el debito de su anulacion.
   "abono_tienda",
+  // SLT-94 (R19/R26): el cobro de fulfillment al crear la orden y su devolución (trigger de la base).
+  "orden_fulfillment",
 ];
 const NO_ESCRIBEN_EN_LA_TIENDA: readonly WalletOrigenTipo[] = [
   "pago_mensajero",
@@ -283,6 +296,7 @@ describe("ORIGEN_TIENDA_LABEL cubre cada origen que escribe en el libro de la ti
       cobro_tienda_completado: "Cobro de la empresa a una tienda (línea de caja completada al corregir)",
       incentivo_mensajero: "Incentivo a un mensajero", // SLT-68
       conciliacion_bodega_ajuste: "Diferencia de la satélite", // SLT-73
+      orden_fulfillment: "Orden", // SLT-94 (R36): con la guía o remisión al lado
     });
   });
 

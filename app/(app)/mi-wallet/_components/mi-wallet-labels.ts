@@ -125,6 +125,12 @@ export const CATEGORIA_MI_WALLET_LABEL: Record<WalletTiendaMovimientoCategoria, 
   // Ficha 458-B (design §2.3, D7): la anulación de un cobro por rechazo, desde la tienda.
   flete_devolucion_anulado: `${EMPRESA.alInicio} anuló el flete por devolución a origen y te lo devolvió`,
   iva_flete_devolucion_anulado: `${EMPRESA.alInicio} anuló el IVA del flete por devolución a origen y te lo devolvió`,
+  // SLT-94 (R36): el cobro de fulfillment por paquete al crear la orden y su devolución al
+  // eliminarla o cancelarla por API, leídos desde la tienda.
+  fulfillment: `${EMPRESA.alInicio} te cobró el fulfillment`,
+  iva_fulfillment: `${EMPRESA.alInicio} te cobró el IVA del fulfillment`,
+  fulfillment_anulado: `${EMPRESA.alInicio} te hizo la devolución de fulfillment`,
+  iva_fulfillment_anulado: `${EMPRESA.alInicio} te hizo la devolución del IVA del fulfillment`,
   ajuste_credito: "Corrección a tu favor",
   ajuste_debito: "Corrección en tu contra",
 };

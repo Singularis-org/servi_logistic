@@ -368,10 +368,13 @@ describe("Ficha 339 — el nombre de cada control y sus estados (R24/R25/R26)", 
     // (Ficha 458-B: + las dos filas de la anulacion de un cobro por devolución a origen: 18.)
     // (SL-39: las cuatro de IVA pasan a su bloque —5 de ingreso + 9 de egreso + 4 de IVA—: 18.)
     // (SL-45, R24: + la fila del pago a la plataforma, que abre su detalle: 19.)
-    expect(controles).toHaveLength(19);
+    // (SLT-94, R37: + «Fulfillment cobrado a la tienda», + «Devoluciones de fulfillment a una tienda» y + las dos
+    // de su IVA: 23.)
+    expect(controles).toHaveLength(23);
 
     const nombres = controles.map((b) => b.getAttribute("aria-label") ?? "");
-    expect(new Set(nombres).size).toBe(19);
+    expect(new Set(nombres).size).toBe(23);
+    expect(nombres).toContain("Ver los movimientos de Fulfillment cobrado a la tienda"); // SLT-94 (R37)
     expect(nombres).toContain("Ver los movimientos de Pago a la plataforma"); // SL-45 (R24)
     // Y cada nombre CONTIENE el rótulo visible de su fila («Label in Name»).
     expect(nombres).toContain(ABRIR_MENSAJEROS);

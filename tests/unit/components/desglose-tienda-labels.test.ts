@@ -53,6 +53,11 @@ const DESDE_EMPRESA: Record<WalletTiendaMovimientoCategoria, string> = {
   // Ficha 458-B (design 458 §2.3): la anulacion de un cobro por devolución a origen, desde la empresa.
   flete_devolucion_anulado: "Cobro por devolución a origen anulado",
   iva_flete_devolucion_anulado: "IVA del cobro por devolución a origen anulado",
+  // SLT-94 (R36): el cobro de fulfillment por paquete y su devolución, desde la empresa.
+  fulfillment: "Fulfillment cobrado a la tienda",
+  iva_fulfillment: "IVA del fulfillment cobrado a la tienda",
+  fulfillment_anulado: "Devolución de fulfillment a la tienda",
+  iva_fulfillment_anulado: "Devolución del IVA del fulfillment a la tienda",
   ajuste_credito: "Corrección a favor de la tienda",
   ajuste_debito: "Corrección en contra de la tienda",
 };
@@ -103,6 +108,18 @@ describe("⭑ FICHA 461 — CATEGORIA_TIENDA_LABEL: el libro de la tienda, desde
     expect(CATEGORIA_TIENDA_LABEL.cod_recaudado).toBe(CATEGORIA_LABEL.ingreso_cod_recaudado);
     // Literal de control, para que la igualdad no sea vacía.
     expect(CATEGORIA_TIENDA_LABEL.flete).toBe("Flete cobrado a la tienda");
+  });
+
+  it("SLT-94 R36: el fulfillment y su devolución dicen lo mismo en el libro de la tienda y en la caja", () => {
+    expect(CATEGORIA_TIENDA_LABEL.fulfillment).toBe(CATEGORIA_LABEL.ingreso_fulfillment);
+    expect(CATEGORIA_TIENDA_LABEL.iva_fulfillment).toBe(CATEGORIA_LABEL.ingreso_iva_fulfillment);
+    expect(CATEGORIA_TIENDA_LABEL.fulfillment_anulado).toBe(CATEGORIA_LABEL.egreso_reverso_fulfillment);
+    expect(CATEGORIA_TIENDA_LABEL.iva_fulfillment_anulado).toBe(
+      CATEGORIA_LABEL.egreso_reverso_iva_fulfillment,
+    );
+    // Literales de control: la igualdad contra la caja sola estaría verde aunque las dos cambien.
+    expect(CATEGORIA_TIENDA_LABEL.fulfillment).toBe("Fulfillment cobrado a la tienda");
+    expect(CATEGORIA_TIENDA_LABEL.fulfillment_anulado).toBe("Devolución de fulfillment a la tienda");
   });
 
   it("⭑ 381 (R33/R34): el cobro es DISTINTO de una corrección y del pago que la tienda recibe", () => {

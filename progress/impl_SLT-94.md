@@ -188,3 +188,69 @@ R5 API sin negar la marca (10 rojos) · R5 masiva sin negar (12) · R7 SQL al re
 
 ### Veredicto
 T2–T4 hechas, 19 mutaciones muertas; el backend compila. El typecheck sigue rojo solo por la UI de T5 (11 errores).
+
+## Tanda T5 — pantallas (frontend_dev, 2026-11-08)
+
+Tasks: T5.1, T5.2, T5.3. Solo `app/` y `tests/`; `lib/` sin tocar. Sin dev server. Vitest con
+DATABASE_URL hacia la desechable `slt94_t1` (construida desde .env sin imprimirla).
+
+### Archivos
+- `app/(app)/configuracion/_components/UsuarioForm.tsx` — switch «Se recoge en tienda» (solo `adminTienda`),
+  manda `seRecogeEnTienda` (ya no `fulfillment`, que el zod estricto rechazaba); default «sí» (R3).
+- `app/(app)/configuracion/tarifas/_components/tarifas-textos.ts` — `conceptoEnNivel` (fulfillment solo en
+  tienda/todas sus zonas), `modoFijo` (fulfillment siempre monto), texto `fulfillmentSoloTienda`.
+- `app/(app)/configuracion/tarifas/_components/TarifasValores.tsx` — filtra el fulfillment fuera de zona,
+  grupo, tienda-zona y tienda-grupo (con nota); sin selector de modo; el envío fuerza `modo: monto` aunque
+  lo guardado fuera un % viejo (R14).
+- `app/(app)/mi-wallet/_components/mi-wallet-labels.ts`, `app/(app)/wallet/tiendas/_components/desglose-tienda-labels.ts` —
+  4 rótulos de fulfillment (desde la tienda / desde la empresa = mismo texto que la caja).
+- `app/(app)/wallet/_components/ComposicionGananciaCard.tsx` — icono `Package` de `ingreso_fulfillment`, tono
+  del IVA del fulfillment y su devolución, descripción nombra «fulfillment».
+- `app/(app)/wallet/_components/composicion-detalle-labels.ts`, `DesgloseEgresosLista.tsx` — fila
+  «Devoluciones de fulfillment a una tienda» (+ icono `Undo2`).
+- `app/(app)/wallet/_components/wallet-labels.ts` — pista del IVA: «sobre el flete, el fulfillment y la comisión».
+- Tests: nuevo `tests/components/TarifasFulfillmentSoloTienda.test.tsx`; actualizados `usuario-form`,
+  `mi-wallet-labels`, `desglose-tienda-labels`, `wallet-labels`, `ComposicionGananciaCard` (+ bloque SLT-94 R37),
+  `WalletCajaIvaSL39`, `TarifasValores`, `DetalleFilaComposicion`, `tests/integration/wallet-page`.
+
+### Mapa R → test (esta tanda)
+| R | Test |
+|---|---|
+| R3 (pantalla) | `usuario-form` «SLT-94 R3/R9: el switch inicia en «sí»…» |
+| R9 | `usuario-form` bloque «se recoge en tienda (SLT-94 R9)» (6 casos: visible solo adminTienda, alta manda `seRecogeEnTienda` y no `fulfillment`, oculto y sin enviar en otro rol, prefill, edición) |
+| R13 | `TarifasFulfillmentSoloTienda` (4 niveles sin fulfillment + nota; tienda/todas sin selector, monto + IVA; payload 1000 + 13 % monto con tiendaId y sin zona/grupo) |
+| R11/R14 (pantalla) | `TarifasFulfillmentSoloTienda` «un % viejo guardado no se arrastra…» |
+| R36 | `desglose-tienda-labels` «SLT-94 R36…» + literales; `mi-wallet-labels` (22 textos, origen `orden_fulfillment`) |
+| R37 | `ComposicionGananciaCard` «SLT-94 R37…» (2) + pares fila a fila; `WalletCajaIvaSL39` (IVA del fulfillment); `DetalleFilaComposicion` (23 controles) |
+
+### Mutaciones (10, todas ROJAS; restauradas con comparación de bytes)
+M1 form manda `fulfillment` (1) · M2 switch para todos los roles (2) · M3 default «no» (2) · M4 fulfillment en
+todo nivel (4) · M5 con selector de modo (2) · M6 editar no fuerza monto (1) · M7 fila de devolución con otro
+nombre (2) · M8 fila de ingreso con importe del vecino (1) · M9 rótulo empresa distinto de la caja (3) ·
+M10 mi-wallet lee desde la empresa (3).
+
+### Verificación (salida real)
+- `pnpm run typecheck` (8 GB) → exit 0, 0 errores (antes 11).
+- `eslint` de los 17 archivos tocados → exit 0, sin salida.
+- 8 archivos de componentes tocados → «Tests 172 passed» (tras arreglos).
+- `vitest related --run` de los 9 archivos de `app/` → «Test Files 135 passed · 2 failed», los 2 de esta tanda
+  (`DetalleFilaComposicion` 19→23 controles, `wallet-page` 5→6 ingresos / 4→6 IVA); arreglados y re-corridos:
+  «Tests 44 passed».
+- Guardias (`tests/unit/guards/`) → 238/239 archivos; solo `dependencias-declaradas-presentes` (PREEXISTENTE, ya en T1).
+
+### Huecos
+1. **R37 «neto»: decidido NO restar en la tarjeta.** La composición pinta «Fulfillment cobrado a la tienda» en
+   Ingresos y «Devoluciones de fulfillment a una tienda» en Egresos (como el reverso del cobro a una tienda);
+   el pie (ganancia del servidor) ya trae el neto. Una fila neta única exigiría (a) restar dinero en el
+   navegador, prohibido por R12 de la 231 (la tarjeta no suma ni resta), y (b) que «Total de ingresos» y
+   «Total de egresos» dejen de cuadrar con sus filas y con `ingresosPropios`/`egresosPropios` de la tarjeta
+   de la caja. Si se quiere la fila neta, que la dé el servidor (lib, `fulfillmentNeto` + totales netos):
+   requiere decisión del leader/Carlos.
+2. Pistas de la cabecera del desglose (`cargosHint` de Mi wallet y de /wallet/tiendas) siguen sin nombrar el
+   fulfillment («Fletes, comisión, IVA, …»); están fijadas con literales aprobados (HD3) y no las toqué.
+3. En solo lectura, un % viejo de fulfillment guardado (R14, inerte) se sigue pintando con su modo «%».
+   En producción hay 0 filas (T0).
+
+### Veredicto
+T5 hecha: typecheck verde, usuarios por pantalla reparados, 10 mutaciones muertas; R37 queda con dos filas
+(ingreso y devolución) y el neto en el pie, pendiente de confirmar.

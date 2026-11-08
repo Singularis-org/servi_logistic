@@ -58,7 +58,8 @@ describe("SLT-54 — referencia «Hoy rige»", () => {
   it("R20: la referencia no entra en el campo, y un campo vacío no se guarda", () => {
     render(<TarifasValores {...props()} />);
 
-    expect(screen.getAllByText("₡2.800 + 13 % IVA")).toHaveLength(7);
+    // SLT-94 (R13): 6 filas en la zona (el fulfillment solo vive en el precio propio de la tienda).
+    expect(screen.getAllByText("₡2.800 + 13 % IVA")).toHaveLength(6);
     const campo = screen.getByRole("textbox", { name: "Valor de Flete por entregado" });
     expect(campo).toHaveValue("");
     expect(screen.getByRole("textbox", { name: "IVA de Flete por entregado" })).toHaveValue("");
@@ -89,7 +90,9 @@ describe("SLT-54 — referencia «Hoy rige»", () => {
 
 describe("SLT-54 — filas y columnas", () => {
   it("R33: las filas salen del catálogo, 7, 5 y 5, en el orden de la maqueta", () => {
-    render(<TarifasValores {...props()} />);
+    // SLT-94 (R13): en la zona no se ofrece el fulfillment; las 7 filas del cobro se ven en el precio propio
+    // de la tienda en todas sus zonas.
+    render(<TarifasValores {...props({ nivel: { tipo: "tienda", tiendaId: "t1", alcance: { tipo: "todas" } } })} />);
     const nombres = screen.getAllByRole("row").slice(1).map((f) => within(f).getAllByRole("cell")[0].textContent);
     expect(nombres).toEqual([
       "Flete por entregado",
@@ -118,7 +121,8 @@ describe("SLT-54 — filas y columnas", () => {
   it("R34: cobro con IVA; las pestañas de pago sin campo de IVA", () => {
     const { rerender } = render(<TarifasValores {...props()} />);
     expect(screen.getByRole("columnheader", { name: "IVA" })).toBeInTheDocument();
-    expect(screen.getAllByRole("textbox", { name: /^IVA de/ })).toHaveLength(7);
+    // SLT-94 (R13): 6 en la zona (sin el fulfillment, que solo vive en el precio propio de la tienda).
+    expect(screen.getAllByRole("textbox", { name: /^IVA de/ })).toHaveLength(6);
 
     for (const actor of ["mensajero", "satelite"] as const) {
       rerender(<TarifasValores {...props({ actor })} />);
@@ -145,7 +149,7 @@ describe("SLT-54 — filas y columnas", () => {
   it("La comisión COD nace en %: un 3,5 en monto cobraría 3,5 de moneda por orden", () => {
     render(<TarifasValores {...props()} />);
     expect(screen.getByRole("combobox", { name: "Modo de Comisión COD" })).toHaveTextContent("%");
-    expect(screen.getByRole("combobox", { name: "Modo de Fulfillment" })).toHaveTextContent("Monto");
+    // SLT-94 (R13): el fulfillment ya no tiene selector de modo (ver TarifasFulfillmentSoloTienda.test.tsx).
   });
 });
 
