@@ -52,7 +52,9 @@ const COLUMNAS_INTOCABLES = {
   cedula: true,
   tipoIdentificacionId: true,
   rolId: true,
-  fulfillment: true,
+  // SLT-94: la marca viva es `seRecogeEnTienda`; la columna vieja (`fulfillmentRetirado`) tampoco se toca.
+  seRecogeEnTienda: true,
+  fulfillmentRetirado: true,
   zonaId: true,
   vehiculoId: true,
   createdAt: true,

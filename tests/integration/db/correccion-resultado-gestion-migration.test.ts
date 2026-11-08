@@ -487,6 +487,8 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("398/T1.5 (b) — el down recrea las listas 
       "plan_cambio_empresa_cancelado",
       // SLT-77: `tope_intentos_cambiado`, de `20261107130000_historial_tope_intentos`.
       "tope_intentos_cambiado",
+      // SLT-94: `usuario_se_recoge_en_tienda_cambiado`, de `20261108120000_slt94_fulfillment_enums`.
+      "usuario_se_recoge_en_tienda_cambiado",
     ];
     expect([...origenAntes].sort()).toEqual(
       ORDEN_HISTORIAL_ORIGEN_TIPO_SEED.filter(
