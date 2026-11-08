@@ -28,7 +28,12 @@
 - [ ] **T1.4** M4 `20261108120300_slt94_fulfillment_triggers` + `down.sql` (design §1 M4). Dep: T1.3.
   *Hecho:* `tests/integration/db/slt94-fulfillment-cobro.test.ts` verde, con un caso por R15, R16,
   R17, R18, R19, R21, R22, R23 (carga parcial con `skipDuplicates`), R24 (rollback), R26, R27, R28,
-  R29, R31, R34 y R38 (dos empresas); y `slt94-iva-equivalencia.test.ts` (SQL vs `ivaDe` en bordes
+  R29, R31, R34 y R38 (dos empresas); y `tests/integration/db/slt94-fulfillment-cancelacion-api.test.ts`
+  verde llamando a `OrdenRepository.cancelarViaApi` real: R30 (cancelar devuelve una vez, en la misma
+  tx: si la tx revierte no queda reverso), R39 (cancelar → eliminar: una sola devolución; cancelar →
+  eliminar → restaurar: sin re-cobro; eliminar → restaurar → cancelar: cargo, reverso, cargo, reverso),
+  y que una devolución real a `devolviendo_a_tienda` por `ajuste_estado` (#42) NO devuelve; y
+  `slt94-iva-equivalencia.test.ts` (SQL vs `ivaDe` en bordes
   …,005) verde. Cada test se mata con una mutación del trigger antes de darlo por bueno (memoria «test
   verde sin datos»).
 - [ ] **T1.5** Prueba de ida y vuelta de las cuatro migraciones
@@ -88,7 +93,9 @@
 ## T6 — Guardias y E2E. Dep: T1–T5
 
 - [ ] **T6.1** `tests/unit/guards/fulfillment-solo-al-crear.guardia.test.ts` (design §5, con
-  autocomprobación). *Hecho:* verde, y rojo con cada material sintético que infringe.
+  autocomprobación), más R40: `TRANSICIONES.devolviendo_a_tienda` es exactamente
+  `[devuelta_a_tienda]` y `"cancelacion_api"` como `origenTipo` solo aparece en
+  `OrdenRepository.cancelarViaApi`. *Hecho:* verde, y rojo con cada material sintético que infringe.
 - [ ] **T6.2** `e2e/fulfillment-cobro-por-paquete.spec.ts`: empresa activada, tienda con fulfillment
   1 000 + 13 % (escritos a mano), carga una orden → Mi wallet y estado de cuenta muestran «Fulfillment»
   1 000,00 e «IVA del fulfillment» 130,00 y el disponible baja 1 130,00; elimina la orden → aparecen las
@@ -97,7 +104,7 @@
 
 ## T7 — Cierre
 
-- [ ] **T7.1** `./init.sh` verde en el worktree, mapa `R<n> → test` en `progress/impl_SLT-94.md` (R1–R38,
+- [ ] **T7.1** `./init.sh` verde en el worktree, mapa `R<n> → test` en `progress/impl_SLT-94.md` (R1–R40,
   sin huecos). *Hecho:* reviewer OK.
 
 ## Archivos esperados
@@ -150,6 +157,7 @@
 - `scripts/demo-qa/receta.ts`
 - `tests/fabricas/empresa-y-usuarios.ts`
 - `tests/integration/db/slt94-fulfillment-cobro.test.ts`
+- `tests/integration/db/slt94-fulfillment-cancelacion-api.test.ts`
 - `tests/integration/db/slt94-iva-equivalencia.test.ts`
 - `tests/integration/db/migracion-slt94-ida-y-vuelta.test.ts`
 - `tests/integration/db/picking-ordenes-en-preparacion.test.ts`

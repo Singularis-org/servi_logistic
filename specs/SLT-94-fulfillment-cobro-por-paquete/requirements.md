@@ -35,6 +35,9 @@
 | D8 | Solo modelo NUEVO: mientras la empresa siga en el modelo viejo, NO se cobra. Empieza cuando active sus tarifas nuevas. | R16 |
 | D9 | Un cambio de valor en Tarifas cuenta para órdenes nuevas; cierres congelados y movimientos ya escritos no se tocan. | R21, R22, R32 |
 | D10 | Rediseño del modal de cierre (SLT-95) fuera de alcance. | R32 (el cierre no cambia) |
+| D11 | (Carlos, 2026-11-08, era P1) Restaurar una orden eliminada SÍ vuelve a cobrar, con el mismo monto e IVA congelados del cobro original. | R29 |
+| D12 | (Carlos, 2026-11-08, era P2) La cancelación por API SÍ devuelve el cobro, igual que eliminar: movimiento compensatorio, una sola vez. | R30, R39, R40 |
+| D13 | (Carlos, 2026-11-08, era P3) Las cuentas dedicadas de API key (rol `apiKey`) no pueden marcarse «no se recoge»: sus órdenes nacen siempre en `por_recolectar_en_tienda`. Para bodega, la key apunta a la tienda real (ficha 302). | R4, R5 |
 
 ## Requisitos (EARS)
 
@@ -132,11 +135,13 @@ compensatorio que le devuelve a la tienda un cobro. *Marca*: «se recoge en tien
 - **R28.** SI una orden no tiene ningún cobro de fulfillment (creada antes del despliegue, con la
   empresa sin activar o sin valor), ENTONCES su eliminación y su restauración NO DEBEN escribir ningún
   movimiento de fulfillment.
-- **R29.** CUANDO se restaura una orden cuyo último movimiento de fulfillment es una devolución, el
-  sistema DEBE volver a cobrar el mismo monto y el mismo IVA congelados del cobro original (no el valor
-  vigente), con la fecha de la restauración. *(Pendiente de confirmar: Pregunta P1.)*
-- **R30.** CUANDO se cancela una orden por API sin eliminarla, el sistema NO DEBE devolver el cobro de
-  fulfillment. *(Pendiente de confirmar: Pregunta P2.)*
+- **R29.** CUANDO se restaura una orden cuyo último movimiento de fulfillment es una devolución POR
+  ELIMINACIÓN, el sistema DEBE volver a cobrar el mismo monto y el mismo IVA congelados del cobro
+  original (no el valor vigente), con la fecha de la restauración (D11).
+- **R30.** CUANDO se cancela una orden por API y su último movimiento de fulfillment es un cobro, el
+  sistema DEBE devolverle a la tienda cobrada el mismo monto y el mismo IVA de ese cobro, con créditos
+  compensatorios en el libro de la tienda y sus reversos en la caja, con la fecha de la cancelación y
+  en la misma transacción que la cancelación, sin modificar el cobro (D12).
 - **R31.** SI la orden cambia de tienda después de cobrada, ENTONCES la devolución DEBE ir a la tienda
   congelada en el cobro.
 
@@ -169,6 +174,18 @@ compensatorio que le devuelve a la tienda un cobro. *Marca*: «se recoge en tien
   activación y el valor de esa empresa; una empresa NO DEBE ver ni alterar movimientos de fulfillment de
   otra.
 
+### Cancelación por API (D12)
+
+- **R39.** CUANDO se elimina, o se vuelve a cancelar, una orden cuyo cobro ya fue devuelto por la
+  cancelación, el sistema NO DEBE escribir una segunda devolución; y CUANDO se restaura esa orden
+  cancelada y eliminada, el sistema NO DEBE volver a cobrarle (sigue cancelada): por cada cobro hay a
+  lo sumo una devolución, sea cual sea su causa.
+- **R40.** El sistema NO DEBE ofrecer ninguna vía para des-cancelar una orden cancelada por API (el
+  único destino de `devolviendo_a_tienda` es el terminal `devuelta_a_tienda`), y por tanto no hay
+  re-cobro por des-cancelación; SI en el futuro se declara una transición que saque una orden de
+  `devolviendo_a_tienda` hacia otro estado, ENTONCES la guardia de transiciones DEBE ponerse roja hasta
+  que se decida su cobro.
+
 ## T0 — medido en producción por Carlos (2026-11-08, solo lectura)
 
 - `_prisma_migrations` sin terminar: 0.
@@ -184,14 +201,5 @@ para re-medir justo antes del merge están en `design.md > §9`.
 
 ## Preguntas abiertas
 
-- **P1. Restaurar una orden eliminada: ¿se vuelve a cobrar?** Recomendación: sí, con el mismo monto e
-  IVA congelados del cobro original (R29), igual que el cobro de plataforma (SL-40 R16): restaurar
-  deshace un error, no es una orden nueva. Sin esto, una orden restaurada viviría sin cobro.
-- **P2. La cancelación por API (que no es eliminación) ¿devuelve el cobro?** Recomendación: no (R30). La
-  decisión D3 habla de eliminar, y SL-40 (P3) ya trata la cancelación como un cambio de estado, no como
-  anulación.
-- **P3. Cuentas dedicadas de API key (rol `apiKey`).** Con R4 no pueden marcarse «no se recoge», así
-  que sus órdenes nacerán siempre en `por_recolectar_en_tienda`. Hoy, por API, una orden con valor de
-  fulfillment > 0 nace en `en_preparacion` (predicado por tarifa). En producción no hay ningún caso
-  (T0: 0 valores). Recomendación: aceptarlo; una tienda con paquetes en bodega que use API debe tener
-  su key apuntando a la tienda real (ficha 302), que sí lleva la marca.
+Ninguna. P1, P2 y P3 las respondió Carlos el 2026-11-08 y pasaron a «Decisiones cerradas» como D11,
+D12 y D13 (P2, en contra de la recomendación del spec: la cancelación por API SÍ devuelve).

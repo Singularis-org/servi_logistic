@@ -26,10 +26,11 @@ Feature 69/R13 (orden re-apuntada a otra tienda) y RechazoTiendaCobro (337) dan 
    renombra a `fulfillmentRetirado` para que todo lector olvidado rompa el typecheck).
 2. **Nacimiento:** las dos vías de `BulkOrdenService` llaman a `resolverDestinoCreacion(!seRecogeEnTienda)`
    con la marca de la tienda dueña. Por API se retira el predicado por tarifa.
-3. **Cobro:** dos triggers sobre `orden` (molde SL-40) escriben un registro inmutable por evento
-   (`orden_fulfillment_movimiento`: cargo / reverso, con secuencia) y, en la misma sentencia, sus filas
-   en el libro de la tienda y en la caja. Cubre por construcción las tres vías de creación y los tres
-   escritores de `deleted_at`.
+3. **Cobro:** dos triggers sobre `orden` (molde SL-40) y uno sobre `orden_historial_estado` (la
+   cancelación por API, D12) escriben un registro inmutable por evento (`orden_fulfillment_movimiento`:
+   cargo / reverso, con secuencia y causa) y, en la misma sentencia, sus filas en el libro de la tienda
+   y en la caja. Cubre por construcción las tres vías de creación, los tres escritores de `deleted_at`
+   y la cancelación por API.
 4. **Configuración:** `tienda_fulfillment` solo en nivel `tienda_general` y modo `monto`: service,
    CHECK `NOT VALID` en la base, pantalla de Tarifas y resolución (lo inválido ya guardado se ignora).
 
@@ -71,7 +72,9 @@ empresa: la columna no necesita nada propio.
 
 ### M3 `20261108120200_slt94_fulfillment_movimiento`
 
-Enum `orden_fulfillment_movimiento_tipo` (`cargo`, `reverso`) y la tabla de NEGOCIO:
+Enums `orden_fulfillment_movimiento_tipo` (`cargo`, `reverso`) y `orden_fulfillment_movimiento_causa`
+(`creacion`, `restauracion` para los cargos; `eliminacion`, `cancelacion_api` para los reversos; CHECK
+que casa causa con tipo) y la tabla de NEGOCIO:
 
 ```sql
 CREATE TABLE "orden_fulfillment_movimiento" (
@@ -81,11 +84,12 @@ CREATE TABLE "orden_fulfillment_movimiento" (
   "tienda_id"       TEXT NOT NULL,          -- FK usuario RESTRICT, CONGELADA (R21/R31)
   "secuencia"       INTEGER NOT NULL,       -- 1 = cobro inicial; alterna cargo/reverso
   "tipo"            "orden_fulfillment_movimiento_tipo" NOT NULL,
+  "causa"           "orden_fulfillment_movimiento_causa" NOT NULL, -- D11/D12: qué evento lo produjo
   "monto"           DECIMAL(12,2) NOT NULL, -- CHECK > 0
   "iva_pct"         DECIMAL(5,2)  NOT NULL, -- CHECK >= 0
   "iva"             DECIMAL(12,2) NOT NULL, -- CHECK >= 0
   "tarifa_valor_id" TEXT,                   -- FK tarifa_valor SET NULL (traza, nunca bloqueo)
-  "ocurrido_at"     TIMESTAMP(3) NOT NULL,  -- cargo inicial: orden.created_at; reverso: deleted_at; re-cargo: now()
+  "ocurrido_at"     TIMESTAMP(3) NOT NULL,  -- cargo inicial: orden.created_at; reverso: deleted_at o instante de la cancelación; re-cargo: now()
   "created_at"      TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "orden_fulfillment_movimiento_pkey" PRIMARY KEY ("id")
 );
@@ -151,20 +155,43 @@ sobre la misma orden se serializan:
 
 ```
 ultimo := el de mayor secuencia de (NEW.organizacion_id, NEW.id); si no hay → RETURN   -- R28
-eliminada y ultimo = cargo   → reverso (secuencia+1, mismo monto/iva/iva_pct/tienda/tarifa_valor_id,
-                                ocurrido_at = NEW.deleted_at) + créditos 'fulfillment_anulado'
+eliminada y ultimo = cargo   → reverso causa 'eliminacion' (secuencia+1, mismo monto/iva/iva_pct/tienda/
+                                tarifa_valor_id, ocurrido_at = NEW.deleted_at) + créditos 'fulfillment_anulado'
                                 (+ 'iva_fulfillment_anulado' si iva > 0) a ultimo.tienda_id
                                 + egresos 'egreso_reverso_fulfillment' (+ '_iva_'), fecha = NEW.deleted_at   -- R26, R31
-viva y ultimo = reverso      → cargo (secuencia+1, MISMO monto/iva congelados, ocurrido_at = now())
-                                + débitos e ingresos como al crear                                        -- R29
-cualquier otro caso          → nada
+viva y ultimo = reverso con causa 'eliminacion'
+                             → cargo causa 'restauracion' (secuencia+1, MISMO monto/iva congelados,
+                                ocurrido_at = now()) + débitos e ingresos como al crear                  -- R29
+cualquier otro caso          → nada (incluye: eliminar una cancelada, cuyo último ya es reverso; y
+                                restaurar una cancelada y eliminada, cuyo reverso es 'cancelacion_api')    -- R39
 ```
+
+**`fulfillment_al_cancelar_por_api()`** — `AFTER INSERT ON "orden_historial_estado" FOR EACH ROW WHEN
+(NEW."origen_tipo" = 'cancelacion_api')`. Detecta la cancelación por la fila de la bitácora y no por el
+estado: la cancelación lleva la orden a `devolviendo_a_tienda`, un estado que también alcanza la
+devolución real (#42), así que el estado no la distingue; la fila con `origen_tipo = 'cancelacion_api'`
+sí, y su único productor es `OrdenRepository.cancelarViaApi` (verificado con Grep), que la escribe en
+la MISMA transacción que el cambio de estado (`appendCambioEstado`). Bloquea la fila de la orden
+(`SELECT … FOR UPDATE` sobre `orden` de `NEW.orden_id`) para serializarse con una eliminación
+concurrente, y luego:
+
+```
+ultimo := el de mayor secuencia de (NEW.organizacion_id, NEW.orden_id); si no hay → RETURN   -- R28
+ultimo = cargo → reverso causa 'cancelacion_api', ocurrido_at = NEW.created_at, mismas filas y categorías
+                 que el reverso por eliminación, a ultimo.tienda_id                                  -- R30
+otro caso      → nada (una segunda cancelación no es posible —`conflict`—, y si lo fuera no duplica) -- R39
+```
+
+**Des-cancelar (R40):** no existe. En `lib/types/order-status-transiciones.ts`, `devolviendo_a_tienda`
+solo sale a `devuelta_a_tienda`, que es terminal. No se escribe ningún re-cobro por esa vía; la guardia
+de T6.1 afirma que `TRANSICIONES.devolviendo_a_tienda` sigue siendo exactamente `[devuelta_a_tienda]`,
+para que una arista nueva obligue a decidir su cobro.
 
 Las filas de los libros llevan `origen_id` = id del movimiento: cada evento tiene su propia clave, así
 que los únicos parciales existentes `(origen_tipo, origen_id, [tienda_id,] categoria)` de los dos libros
 son la segunda barrera de idempotencia, y el único `(organizacion_id, orden_id, secuencia)` la primera.
 
-`down.sql`: `DROP TRIGGER` × 2 y `DROP FUNCTION` × 2. No borra cobros (eso es M3).
+`down.sql`: `DROP TRIGGER` × 3 y `DROP FUNCTION` × 3. No borra cobros (eso es M3).
 
 ### Por qué el trigger cumple cada requisito sin código de aplicación
 
@@ -175,7 +202,10 @@ son la segunda barrera de idempotencia, y el único `(organizacion_id, orden_id,
   corre por las filas insertadas. Duplicadas y omitidas no se cobran.
 - R24: el trigger corre dentro de la sentencia; si la transacción se deshace, el cobro también.
 - R26/R27/R29: los tres escritores de `deleted_at` (`softDelete`, `softDeleteViaApi`, `restore` en
-  `OrdenRepository`) son `UPDATE … SET deleted_at`; la cancelación por API no toca `deleted_at` (R30).
+  `OrdenRepository`) son `UPDATE … SET deleted_at`.
+- R30/R39: la cancelación por API no toca `deleted_at`; la detecta el tercer trigger por su fila de
+  bitácora, en la misma transacción. Cada reverso guarda su causa, y la restauración solo re-cobra tras
+  un reverso por eliminación.
 - R34: sin backfill; una orden anterior no tiene movimientos.
 
 ## 2. La marca «se recoge en tienda» (R1–R9)
@@ -262,7 +292,8 @@ no cambian.
   SECURITY DEFINER: la RLS no lo frena) (R38). Test de integración con dos empresas.
 - El cobro no tiene actor ni módulo propio: lo hereda de quien crea o elimina la orden, que ya pasa
   por su autorización (carga: `adminTienda`/API key; eliminar: `EliminarOrdenService` /
-  `ApiOrdenEliminacionService`; restaurar: `RecuperarOrdenService`, solo `maestro`).
+  `ApiOrdenEliminacionService`; restaurar: `RecuperarOrdenService`, solo `maestro`; cancelar:
+  `ApiOrdenCancelacionService`, dueño de la key).
 - País: el monto está en la moneda de la empresa y el IVA sale de `tarifa_valor.iva_pct`, que fija la
   empresa. Ningún literal de impuesto ni moneda.
 
@@ -290,7 +321,10 @@ valores de borde (…,005).
    segunda devolución tras otra eliminación, y no deja dónde congelar `iva_pct` y `tarifa_valor_id`.
 4. **Cobrar al aprobar el cierre** (meterlo en `derivarIngresoOrden`). Rechazado por D2 (al crear, sin
    depender de la gestión) y rompería la frontera que vigila la guardia de la ficha 449.
-5. **Borrar en la migración los valores de fulfillment inválidos de dev** (zona, grupo o %) para que el
+5. **Detectar la cancelación por el cambio de estado** (`AFTER UPDATE OF estatus_id` hacia
+   `devolviendo_a_tienda`). Ese destino también lo alcanza la devolución real (#42), que no devuelve el
+   cobro; el estado no distingue la causa y la bitácora sí (`origen_tipo = 'cancelacion_api'`).
+6. **Borrar en la migración los valores de fulfillment inválidos de dev** (zona, grupo o %) para que el
    CHECK sea `VALID`. Prohibido por el brief (no borrar filas); se dejan inertes (R14) y el CHECK
    `NOT VALID` protege todo lo nuevo.
 
