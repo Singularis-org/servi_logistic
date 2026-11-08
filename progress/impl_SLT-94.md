@@ -254,3 +254,63 @@ M10 mi-wallet lee desde la empresa (3).
 ### Veredicto
 T5 hecha: typecheck verde, usuarios por pantalla reparados, 10 mutaciones muertas; R37 queda con dos filas
 (ingreso y devolución) y el neto en el pie, pendiente de confirmar.
+
+## Tanda T6 — guardia y E2E (backend_dev, 2026-11-08)
+Tasks: T6.1, T6.2. Vitest con `DATABASE_URL` = `slt94_t1`; E2E con una base desechable NUEVA `slt94_e2e`
+(mismo servidor local, DROP/CREATE + `prisma migrate deploy` + `db:seed`, solo catálogos, como un grupo de
+CI). La base de desarrollo no se tocó.
+
+### Archivos
+- `tests/unit/guards/fulfillment-solo-al-crear.guardia.test.ts` (nuevo, 36 casos): (a) ningún `categoria:` con
+  las 8 categorías nuevas, ni `origenTipo: "orden_fulfillment"`, ni su literal SQL, ni escritura Prisma/SQL en
+  `orden_fulfillment_movimiento` en `lib/` y `app/`; (b) ni `fulfillmentRetirado` ni `"fulfillment" =`/`IS`/`<>`;
+  (c) toda llamada a `resolverDestinoCreacion(` recibe `!…seRecogeEnTienda` (control: las 2 de
+  `BulkOrdenService`); R40: `TRANSICIONES.devolviendo_a_tienda` → exactamente `[devuelta_a_tienda]`, y el
+  literal `"cancelacion_api"` solo en el catálogo (`orden-historial.ts`), en los `via:` de
+  `order-status-transiciones.ts` y UNA vez, como `origenTipo`, dentro de `OrdenRepository.cancelarViaApi`
+  (perderlo también es rojo). Comentarios quitados con `quitarComentarios` (el quitador único del repo).
+- `e2e/fulfillment-cobro-por-paquete.spec.ts` (nuevo, 3 pasos en serie): el maestro digita por la pantalla de
+  Tarifas el fulfillment de la tienda (precio propio, todas sus zonas: 1000 + 13 %) y activa; la tienda carga
+  una orden (`cargarMasiva`); `/mi-wallet` muestra «La empresa te cobró el fulfillment» 1.000 y «… el IVA del
+  fulfillment» 130, «Cargos de la empresa» 1.130 y el saldo pasa de «En cero» 0 a «En contra» 1.130; el
+  maestro ve «Fulfillment cobrado a la tienda» 1.000 e «IVA del fulfillment cobrado a la tienda» 130 en
+  `/wallet/tiendas/[id]`; la tienda elimina la orden (`EliminarOrdenService` montado como su Server Action):
+  aparecen «La empresa te hizo la devolución de fulfillment» 1.000 y «… del IVA del fulfillment» 130, «A tu
+  favor» 1.130 y el saldo vuelve a «En cero»; la oficina ve las dos devoluciones. Por detrás, la bitácora de
+  la orden: `1:cargo:creacion:1000.00:13.00:130.00` → `+ 2:reverso:eliminacion:…`. Rótulos y cifras escritos
+  a mano (los de T5: `mi-wallet-labels.ts`, `desglose-tienda-labels.ts`).
+- `playwright.config.ts`: el spec, en el grupo `dinero`.
+
+### Mapa R → test (esta tanda)
+| R | Test |
+|---|---|
+| R25 | guardia (a) «ningún archivo de lib/ ni app/ escribe el cobro…» |
+| R4/D4 (marca vieja) | guardia (b) |
+| R5/R18 (destino por la marca) | guardia (c) |
+| R40 | guardia «(R40) devolviendo_a_tienda solo sale…» y «(R40) "cancelacion_api" como origen…» |
+| R15, R19, R26, R36 (E2E) | `fulfillment-cobro-por-paquete.spec.ts` pasos 2 y 3 |
+| R13 (E2E) | idem paso 1 (fulfillment en precio propio, solo monto) |
+
+### Autocomprobación / mutaciones (todas ROJAS, árbol restaurado y comprobado con `git status`)
+- Sintéticas dentro de la guardia: 16 escrituras de (a), 4 de (b), 3 argumentos inválidos de (c), 4 casos de R40.
+- Sobre el árbol real: archivo plantado en `lib/` con categoría nueva + origen + `fulfillmentRetirado` +
+  `cancelacion_api` → rojos (a), (b), R40 · `BulkOrdenService` con `resolverDestinoCreacion(tieneFulfillment)`
+  → rojo (c) · arista nueva `devolviendo_a_tienda → en_bodega_central` → rojo R40 · `cancelarViaApi` con
+  `origenTipo: "ajuste_estado"` → rojo R40.
+- E2E: `DISABLE TRIGGER fulfillment_al_crear_orden` en `slt94_e2e` → paso 2 ROJO en la bitácora de la base;
+  quitando esa aserción, ROJO en la pantalla («La empresa te cobró el fulfillment», esperado 1). Trigger
+  reactivado y spec restaurado (`cmp`).
+
+### Verificación (salida real)
+- `vitest run tests/unit/guards/fulfillment-solo-al-crear.guardia.test.ts` → «Tests 36 passed (36)».
+- `pnpm run test:guardias` → «Test Files 1 failed | 341 passed (342)»; el rojo es `dependencias-declaradas-presentes` (PREEXISTENTE, ya en T1).
+- `pnpm run typecheck` (8 GB) → `TC_EXIT=0`.
+- `eslint` de los 3 archivos → `ESLINT_EXIT=0`, sin salida.
+- E2E local (`E2E_SERVIDOR=dev`, puertos 3194/54394, base `slt94_e2e`):
+  `playwright test e2e/dos-empresas-humo.spec.ts e2e/fulfillment-cobro-por-paquete.spec.ts --project=aislamiento --project=dinero`
+  → «21 passed (4.5m)» (incluye `plataforma-vacia` por dependencia), `E2E_EXIT=0`. En el log del servidor hay
+  2 avisos «Hydration failed» del navegador (modo dev, no hacen caer ningún test; no atribuidos a una pantalla).
+  Servidores apagados y `.next/dev` borrado.
+
+### Veredicto
+T6 hecha: guardia verde y matada por 4 mutaciones reales y sus sintéticas; E2E y dos-empresas-humo verdes en local, y el E2E rojo con el trigger apagado.
