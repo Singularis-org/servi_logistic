@@ -1,6 +1,6 @@
 {
   "$comment": "Perfil del arnes de servi_logistic. Montado con /arnes-init el 2026-10-21. docs/equipo.md explica cada campo.",
-  "arnes_version": "2.9.0",
+  "arnes_version": "2.14.0",
   "plantilla": {
     "url": "https://github.com/singularis-co/harness_config.git",
     "ref": "main"
@@ -10,7 +10,9 @@
     "tipo": "trello",
     "board": "6ad9304b02ebee0690758089",
     "prefijo": "SLT",
-    "prefijos_historicos": ["SL"],
+    "prefijos_historicos": [
+      "SL"
+    ],
     "estados": {
       "Por hacer": "pending",
       "En revisión": "spec_ready",

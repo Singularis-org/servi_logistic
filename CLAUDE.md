@@ -42,8 +42,10 @@ Cuando abres Claude Code en la raíz de este repo, actúas como **leader**. El l
    rechaza si falta alguno.
 5. **Verificación ejecutable, en dos niveles** (`docs/gate.md`). "Compila" no es "funciona".
    - **Local:** `./init.sh`, rápido por defecto (~1 min): typecheck, lint, los tests que `vitest related`
-     relaciona con tu diff, **todas** las guardias, el validador de features y el perfil.
-     Cierra cada tanda y cada feature.
+     relaciona con tu diff (hasta `gate.presupuesto_rapido`), los que disparan
+     `gate.disparadores`, **todas** las guardias, el validador de features y el perfil.
+     Cierra cada tanda y cada feature. Un rojo de CI que no salió en local pide un disparador
+     nuevo (`docs/gate.md > Disparadores`).
    - **CI:** la suite completa corre en `.github/workflows/gate.yml` en cada PR a la rama de
      integración; en el PR a producción, también el E2E.
    - **Nadie mergea con el check `gate-completo` en rojo o sin terminar.**
@@ -62,6 +64,13 @@ Cuando abres Claude Code en la raíz de este repo, actúas como **leader**. El l
      `./scripts/arnes-sync.sh --aplicar`. El sync nunca pisa una mejora local sin subir: la
      reconoce por `arnes.lock.json` y el gate avisa de ella hasta que se sube.
    - Nadie edita la plantilla a mano ni copia archivos entre repos a mano.
+9. **Una key de ficha nunca va sola.** En todo lo que lee el humano —tus mensajes, los informes
+   de los subagentes, el título del PR— cada key va con su título: `SL-50 «Zonas separadas de
+   Tarifas»`, nunca `SL-50` a secas. El título sale de `feature_list.json` (`title`).
+   - Lo hace cumplir el hook `Stop`: si tu mensaje nombra una key sin título, bloquea el cierre del
+     turno y te pide reescribirlo (`scripts/nombres-de-fichas.mjs`).
+   - No cuentan las keys en código, rutas o ramas (`specs/SL-50-zonas/`). Detalle:
+     `docs/jira.md > Cómo se nombra una ficha`.
 
 ## Arranque de sesión
 
@@ -72,8 +81,9 @@ Después:
 2. Importa el board a `feature_list.json` (paso F0 de `AGENTS.md`).
 3. Corre `./init.sh`. Debe terminar en verde. Lee los avisos en amarillo: un perfil vencido se
    revisa con `/arnes-init`.
-4. Comprueba que el MCP `codebase-memory-mcp` responde (`list_projects`). Si no responde, avisa y
-   sigue con Grep/Read; detalle en `docs/grafo-de-codigo.md`.
+4. Comprueba que el MCP `codebase-memory-mcp` responde con `index_status` sobre el proyecto del
+   repo (no con `list_projects`, que tarda 5-15 s y parece colgado). Si no responde, avisa y sigue
+   con Grep/Read; detalle en `docs/grafo-de-codigo.md`.
 5. Retoma tus features en vuelo (`progress/features/<key>.md`) o toma la siguiente `pending`
    según `AGENTS.md > F1.0`.
 6. Al cerrar la sesión, actualiza `progress/sesion.local.md` (≤ 40 líneas).
@@ -85,7 +95,8 @@ Después:
 - Qué leer, cuándo y cuánto → `docs/lectura.md`
 - Trabajar en equipo: candado, cupo personal, conflictos → `docs/equipo.md`
 - El gate: dos niveles, CI, baseline de rojos → `docs/gate.md`
-- Proceso SDD (EARS, 3 archivos, aprobación) → `docs/specs.md`
+- Proceso SDD (EARS, 3 archivos, aprobación), las tres rutas y partir una feature → `docs/specs.md`
+- Disparadores, presupuesto del rápido, tamaño del PR, CI por tanda y métricas → `docs/gate.md`
 - El board manda, el disco trabaja: contrato con Jira → `docs/jira.md`; con Trello → `docs/trello.md`
 - Un worktree por feature → `docs/worktrees.md`
 - Explorar código con el grafo → `docs/grafo-de-codigo.md`
