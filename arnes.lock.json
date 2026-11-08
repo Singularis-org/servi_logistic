@@ -45,7 +45,7 @@
     "scripts/check-perfil.mjs": "333e4763809898155cbef2645008f4e894ee4a238289b96e61175ca64a5f3ca1",
     "scripts/ci.mjs": "155a415472985d3f63727dbb96d9f4c4b2d40864e99de137221f3e82c5d1336b",
     "scripts/comparar-baseline-rojos.mjs": "c311000f1830d32f5b5f7c24013bcaa0cdb4258393c76e7e4c88dfa566bce139",
-    "scripts/disparadores.mjs": "47d0325f09c9c21d6df5f25774598d4c13e9ad401b7c826a5e42a65a989fa508",
+    "scripts/disparadores.mjs": "30d9000650567901681474429593597197751be8af0da545ce45b39cca12c717",
     "scripts/metricas.mjs": "d9acf380d8f216330f7de20ce24c6de63cd5c596be0544045046987251ae263b",
     "scripts/nombres-de-fichas.mjs": "ec87b6ddb8038bdb589195e29fe0b8850b49868b0cda53fb72af49d29bcad9cf",
     "scripts/tamano-pr.mjs": "a9aef16c1a33b017e93599fee92bc4fbd96423c4efa935c568191ef7dfca2f13",
@@ -62,7 +62,7 @@
     "tests/guards/guard-gate-rapido.test.ts": "91d7c10d5260372e66e62d6049af9bf63655bce339676e531f31a878843a498a",
     "tests/guards/guard-hooks-anclados.test.ts": "abb24db12674ee9b500cb3ca0bec58ca6dfdda9574efeb0d3dcfac83a9e0e4fc",
     "tests/guards/guard-init-node-modules-enlazado.test.ts": "f087dcf5e8504b326d3965989b27027af9b25f4bd9a852e0835d03268a194bb5",
-    "tests/guards/guard-metricas.test.ts": "a3147fa53ea7abdbf33b3a7182bc40af314de98c89e7e11b1ee070e082f1bab2",
+    "tests/guards/guard-metricas.test.ts": "5a1e5ee98bed748c67bf843acee5e91f5d6920d58029641916dc5a896dc8c463",
     "tests/guards/guard-modelos-de-agentes.test.ts": "f992813344b14abf8a7c4b7905a20f370f07c95a3cf85e1cb37fe250c9e21bb9",
     "tests/guards/guard-nombres-de-fichas.test.ts": "b4fd339125ba744eb54c1d79378c7e6760a85d0fe8bb6c105fa6d4e5240bd58e",
     "tests/guards/guard-tamano-pr.test.ts": "98add132e7891b30b2becca3f6b37ddf4ee3f32d3dd81bc6866ac88544da34cb",
@@ -110,6 +110,14 @@
         "tests/guards/guard-trello-red.test.ts"
       ],
       "fecha": "2026-10-30"
+    },
+    {
+      "pr": "https://github.com/singularis-co/harness_config/pull/28",
+      "archivos": [
+        "scripts/disparadores.mjs",
+        "tests/guards/guard-metricas.test.ts"
+      ],
+      "fecha": "2026-11-08"
     }
   ]
 }
