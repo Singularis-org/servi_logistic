@@ -1,8 +1,5 @@
 {
-  "$comment": "Hooks del arnes v2. SessionStart inyecta la sesion personal y mis features en vuelo (docs/lectura.md); Stop corre el validador de features y solo avisa si falla; PostToolUse recuerda el gate tras editar. Los scripts viven en .claude/hooks/. Todo command que llame a .claude/hooks/ va anclado con \"$CLAUDE_PROJECT_DIR\" y cada script resuelve sus rutas contra la raiz, no contra el cwd (guardia: tests/guards/guard-hooks-anclados.test.ts).",
-  "env": {
-    "IMPECCABLE_NO_UPDATE_CHECK": "1"
-  },
+  "$comment": "Hooks del arnes v2. SessionStart inyecta la sesion personal y mis features en vuelo (docs/lectura.md); Stop bloquea el cierre del turno si el ultimo mensaje nombra una key de ficha sin su titulo (CLAUDE.md regla 9) y corre el validador de features, que solo avisa si falla; PostToolUse recuerda el gate tras editar. Los scripts viven en .claude/hooks/. Todo command que llame a .claude/hooks/ va anclado con \"$CLAUDE_PROJECT_DIR\" y cada script resuelve sus rutas contra la raiz, no contra el cwd (guardia: tests/guards/guard-hooks-anclados.test.ts).",
   "hooks": {
     "SessionStart": [
       {

@@ -20,7 +20,16 @@ existe`): `feature_list.json`, `specs/` y el grafo. Si aparece algo que no esté
 de `requirements.md` y devuelve `BLOQUEADO: ya existe <ref>`. Si sigues, `design.md` abre con
 `## Lo que ya existe`.
 
-Produce exactamente tres archivos en `specs/<feature>/`:
+**Mira la ruta de la feature** (`ruta` en `feature_list.json`; sin ruta, la completa;
+`docs/specs.md > Tres rutas`):
+- **Ruta ligera:** produce SOLO `requirements.md`, con el alcance, los requisitos EARS, una seccion
+  `## Tasks` (checklist con criterio de hecho) y `## Archivos esperados` (rutas entre backticks).
+  Sin `design.md` ni `tasks.md`. Si al escribir ves que la feature toca dinero, permisos,
+  autenticacion, integraciones externas, migraciones o el esquema, para y devuelve
+  `BLOQUEADO: necesita la ruta completa (<motivo>)`.
+- **Ruta completa:** lo de abajo.
+
+En la ruta completa, produce exactamente tres archivos en `specs/<feature>/`:
 
 1. `requirements.md` — requisitos numerados `R1`, `R2`… en notación EARS estricta.
    Sin detalles de implementación. Cada requisito debe ser testeable.
@@ -49,6 +58,12 @@ Produce exactamente tres archivos en `specs/<feature>/`:
    la lee para detectar conflictos con las features de otras personas. Una ruta que no esté ahí es
    invisible para el equipo.
 
+**Tamaño (cualquier ruta).** La feature tiene que caber en un PR: `arnes.config.json >
+gate.tamano_pr` (por defecto 40 archivos). Si `## Archivos esperados` pasa del 80% de
+`max_archivos`, **no escribas el resto del spec**: devuelve `BLOQUEADO: no cabe en un PR` con una
+propuesta de corte en rebanadas verticales que se mergean solas (`docs/specs.md > Partir una
+feature`), escrita en `## Preguntas abiertas` del `requirements.md`.
+
 Si la descripción de la feature es ambigua, escribe tus preguntas al final de
 `requirements.md` bajo "Preguntas abiertas" en vez de inventar supuestos.
 
@@ -60,8 +75,10 @@ un resumen de una línea. No pegues el contenido completo en el chat.
   cambio, la estructura de un modulo) usa primero el grafo: `search_graph`, `trace_path`,
   `get_code_snippet`, `search_code`. Grep/Read para lo que no es codigo (docs, specs, JSON,
   configs, textos de UI) y para leer un archivo antes de editarlo.
-- Tu proyecto es el de tu worktree: `list_projects` y el que tenga `root_path` en
-  `.worktrees/<key>-<slug>`. No consultes el de otro worktree.
+- Tu proyecto es el de tu worktree. Su nombre es la ruta absoluta del worktree con `:/` y `/`
+  cambiados por `-` (`R:/repo/.worktrees/PROY-8-x` -> `R-repo-.worktrees-PROY-8-x`). Confirma con
+  `index_status` (rapido); **no uses `list_projects` para buscarlo**: abre todos los indices y
+  tarda 5-15 s. No consultes el de otro worktree.
 - No indexas: el indice lo mantiene el leader. Lo que tocaste en esta tanda puede no estar
   todavia; ahi usa Grep/Read.
 - Si el MCP no responde, sigue con Grep/Read y anotalo en tu informe. No pares.

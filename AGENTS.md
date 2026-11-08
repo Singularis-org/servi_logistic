@@ -56,10 +56,12 @@ Cada feature vive en su propio worktree, dentro del repo, en `.worktrees/<key>-<
 `wt.sh done` **se niega a borrar** si el árbol está sucio, si la rama no está integrada o si el
 worktree está bloqueado. Eso es la guarda, no un error. Detalle en `docs/worktrees.md`.
 
-## Evaluación de `zone` y `complexity`
+## Evaluación de `zone`, `complexity` y `ruta`
 
-El leader evalúa cada feature `pending` con `zone`/`complexity` en `null` y documenta la
-evaluación en `progress/features/<key>.md > Evaluación`.
+El leader evalúa cada feature `pending` con `zone`/`complexity`/`ruta` en `null` y documenta la
+evaluación en `progress/features/<key>.md > Evaluación`. La **ruta** (`directa`, `ligera` o
+`completa`) decide cuánto proceso lleva la feature: `docs/specs.md > Tres rutas`. Ante la duda,
+la completa; y nunca por debajo del suelo que fija esa sección.
 
 | Zone | Señales en la description |
 | --- | --- |
@@ -126,7 +128,7 @@ Al arrancar sesión, con el cliente del tracker (`arnes.config.json > tracker.ti
   - **`assignee: {accountId, displayName}`** (o `null`).
 - `branch` y `spec_path` se derivan del `key` (`feature/<key>-<slug>`, `specs/<key>-<slug>`); no
   se guardan en el tracker.
-- **No degrades** una feature `in_progress`, ni una `zone`/`complexity` ya evaluada cuyo issue
+- **No degrades** una feature `in_progress`, ni una `zone`/`complexity`/`ruta` ya evaluada cuyo issue
   perdió las labels. Conserva el valor, reescríbelo en el tracker y anótalo en `progress/deudas.md`.
 - Si el tracker no responde, **no inventes el estado**: trabaja con la copia en disco y avisa.
 
@@ -141,17 +143,27 @@ Contrato completo: `docs/jira.md` o `docs/trello.md`.
      - no tiene `depends_on` pendiente;
      - tu cupo en su zona no está lleno;
      - no choca en archivos con otra persona, o el humano aceptó el choque (si ya tiene
-       `tasks.md` sembrado; con tus propias fichas solo avisa).
+       `tasks.md` o `requirements.md` sembrado; en la ruta directa, con `--archivos`; con tus
+       propias fichas solo avisa).
    - **Tómala** siguiendo `docs/equipo.md > Tomar una feature`: releer la tarjeta en vivo →
      asignártela → releer → `./scripts/wt.sh new <key> <slug>` (en Trello, los tres primeros los
      hace `node scripts/trello.mjs tomar <key>`). Si `wt.sh` sale con **4 (TOMADA)**, suelta el
      assignee y vuelve a elegir.
-   - Escribe `zone:<z>` y `complexity:<c>` como labels de la tarjeta (en Trello,
-     `node scripts/trello.mjs editar <key> --labels-mas "zone:<z>|complexity:<c>"`). Sin eso, el
-     F0 siguiente borraría la evaluación.
+   - **¿Cabe en un PR?** Si la description ya promete más de lo que cabe en `gate.tamano_pr`,
+     propón el corte con `/afinar-feature` antes de tomarla (`docs/specs.md > Partir una
+     feature`).
+   - Escribe `zone:<z>`, `complexity:<c>` y `ruta:<r>` como labels de la tarjeta (en Trello,
+     `node scripts/trello.mjs editar <key> --labels-mas "zone:<z>|complexity:<c>|ruta:<r>"`). Sin
+     eso, el F0 siguiente borraría la evaluación.
    - Crea `progress/features/<key>.md` desde `progress/features/_plantilla.md`.
    - Indexa el worktree en el grafo (`docs/grafo-de-codigo.md`).
+   - Registra la fase: `node scripts/metricas.mjs fase <key> F1.0` (`docs/gate.md > Medir el
+     ciclo`). Lo mismo en F1.3, F1.4, F2.1, F2.4 y F2.5, con su código.
+   - **Ruta directa:** salta a F2.0. No hay spec ni aprobación del spec (`docs/specs.md > Tres
+     rutas`).
 2. **(F1.2) Spec.**
+   - **Ruta ligera:** `spec_author` escribe un solo `requirements.md` (alcance, EARS, `## Tasks` y
+     `## Archivos esperados`). **Ruta completa:** los tres archivos de abajo.
    - Si la feature tiene preguntas abiertas y no existe su `requirements.md`, **ofrece
      `/afinar-feature` primero**. No es bloqueante. Si esa acotación cambia el alcance, el
      comando actualiza el board antes de sembrar.
@@ -163,11 +175,14 @@ Contrato completo: `docs/jira.md` o `docs/trello.md`.
      `git -C .worktrees/<key>-<slug> add specs/<key>-<slug>` + commit
      `docs(<key>): spec <slug>` y comprueba con `git log -1 --stat` que el commit trae los tres.
      Un spec sin commitear no existe para F1.3 ni para el validador de la rama remota.
+   - Si `spec_author` devuelve `BLOQUEADO: no cabe en un PR`, propón al humano el corte que trae
+     y créalo con `/afinar-feature` (`docs/specs.md > Partir una feature`). Si devuelve
+     `BLOQUEADO: necesita la ruta completa`, sube la ruta y relánzalo.
    - Si `spec_author` devuelve `BLOQUEADO: ya existe <ref>`, **PARA y pregunta** al humano
      (`docs/specs.md > Antes de especificar: lo que ya existe`). Relanza `spec_author` con su
      decisión: él la escribe como fila en `Decisiones cerradas`.
 3. **(F1.3)** Cambia a `spec_ready`, mueve la tarjeta al estado de `spec_ready` (según
-   `tracker.estados` o `jira.estados`), comenta en la tarjeta la ruta del spec y haz `git push`.
+   `tracker.estados` o `jira.estados`), comenta en la tarjeta dónde está el spec y haz `git push`.
 4. **(F1.4) PARA. Pide aprobación humana.**
    - La forma canónica de aprobar es mover la tarjeta del estado de `spec_ready` al de
      `in_progress` (según `tracker.estados` o `jira.estados`). Un "aprobado" escrito también vale.
@@ -185,14 +200,28 @@ Contrato completo: `docs/jira.md` o `docs/trello.md`.
 5. **(F2.0)** Cambia a `in_progress` y asegura la tarjeta en el estado de `in_progress`. Repite
    `archivos-en-vuelo.mjs --candidata <key>`: si ahora choca, espera o pide la aceptación del humano.
 6. **(F2.1)** Lanza `implementer` en el worktree.
-   - Sigue `tasks.md` una por una, marcando `[x]`, y escribe `progress/impl_<key>.md` (archivos
-     tocados, mapa `R<n> -> test`, salida de los tests que corrió).
+   - Sigue las tasks una por una (`tasks.md`, o `## Tasks` del `requirements.md` en la ruta
+     ligera), marcando `[x]`, y escribe `progress/impl_<key>.md` (archivos tocados, mapa
+     `R<n> -> test`, salida de los tests que corrió). **Ruta directa:** primero el test que
+     reproduce el fallo (rojo), después el arreglo (verde).
+   - **Tras el primer push, abre el PR en borrador:**
+     `gh pr create --draft --base <integracion> --title "<key> «<title>»"`. El equipo ve qué tocas
+     y, si el repo tiene `GATE_EN_BORRADOR=true`, el CI completo corre en cada push
+     (`docs/gate.md > CI en cada tanda`).
    - **Al cerrar cada tanda:**
      - el leader corre `./init.sh` (rápido) en el worktree y reindexa el grafo;
      - `git push`, sin excepción: así tus archivos son visibles para el resto del equipo;
+     - con CI en borrador, al empezar la tanda siguiente mira el resultado de la anterior
+       (`gh pr checks <n>`): un rojo ahí se arregla antes de seguir, no al final. Si el rojo no
+       salió en el `./init.sh` local, aplica `docs/gate.md > Cuando el CI sale rojo y el local
+       salió verde`;
+     - si `./init.sh` avisa del tamaño del PR (80%) o da rojo por tamaño, **para**: cierra la
+       rebanada y propón al humano partir lo que falta (`docs/specs.md > Partir una feature`). El
+       rojo solo se salta con su aceptación escrita (`docs/gate.md > Tamaño del PR`);
      - se actualiza `progress/features/<key>.md > Tandas`.
 7. **(F2.2)** Lanza `reviewer`, que escribe `progress/review_<key>.md`. Los hallazgos mayores
-   bloquean: se vuelve al implementer.
+   bloquean: se vuelve al implementer. **Ruta directa:** sin reviewer; revisa el humano en el PR.
+   **Ruta ligera:** el reviewer va acotado al diff.
    - **La vuelta 2 y siguientes se acotan a los arreglos.** El leader pasa el rango
      `<HEAD de la review anterior>..HEAD` y la lista de hallazgos. El reviewer no rehace la
      trazabilidad completa.
@@ -211,10 +240,15 @@ Contrato completo: `docs/jira.md` o `docs/trello.md`.
    - Si la feature toca un flujo crítico (`CHECKPOINTS.md`), confirma que el implementer corrió
      en local los E2E que escribió o tocó (`pnpm exec playwright test <spec>`), con la salida en
      `impl_<key>.md`.
-   - `gh pr create --base <integracion> --title "feat(<key>): <descripción>"`.
+   - Saca el PR de borrador: `gh pr ready <n>` (si no lo abriste en F2.1,
+     `gh pr create --base <integracion> --title "<key> «<title>»"`). En la ruta directa, el cuerpo
+     del PR dice qué cambió y con qué test se prueba.
    - `gh pr checks <n> --watch`: espera a `gate-completo` en CI.
-     - Si sale **rojo**, vuelve al implementer con el detalle; `./init.sh --completo` lo
-       reproduce en local.
+     - Si sale **rojo**, primero mira si el rápido lo habría visto:
+       `node scripts/test-rapido.mjs --comprobar <tests en rojo>`. Si dice «NO entra», escribe el
+       disparador que falta (`docs/gate.md > Cuando el CI sale rojo y el local salió verde`).
+       Después vuelve al implementer con el detalle; `./init.sh` ya lo reproduce en local (o
+       `./init.sh --completo`, si no es cosa de disparadores).
      - Solo con verde reporta la URL del PR al humano para el merge.
 10. **(F2.5) Cerrar.** Cuando el humano mergea:
     - cambia a `done`, mueve la tarjeta al estado de `done` y comenta la URL del PR en el issue;
@@ -223,8 +257,9 @@ Contrato completo: `docs/jira.md` o `docs/trello.md`.
 
     Si `wt.sh` dice **HOLD**, no fuerces: anótalo en `progress/deudas.md` y sigue.
 11. **(F2.6) Registrar.**
-    - Completa `progress/features/<key>.md > Cierre`: resumen, PR, deudas que deja. Ese archivo
-      queda como historial de la feature.
+    - Completa `progress/features/<key>.md > Cierre`: resumen, PR, deudas que deja, y la salida
+      de `node scripts/metricas.mjs informe --key <key>`. Ese archivo queda como historial de la
+      feature (`docs/gate.md > Medir el ciclo`).
     - **Poda el baseline de rojos:** el resumen del run de CI (`gh run view`) lista las entradas
       de `tests/baseline-rojos.json` que ya pasan. Se borran, o se escribe por qué se quedan
       (`docs/gate.md > Rojos heredados`).
@@ -255,13 +290,3 @@ Contrato completo: `docs/jira.md` o `docs/trello.md`.
 
 Los subagentes **no** devuelven su trabajo por el chat: escriben en disco y devuelven qué archivo
 escribieron y un veredicto de una línea. Si necesitas el detalle, lee el archivo, por sección.
-
-<!-- BEGIN:nextjs-agent-rules -->
-
-# This is NOT the Next.js you know
-
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
-
-This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
-
-<!-- END:nextjs-agent-rules -->
