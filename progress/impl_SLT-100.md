@@ -334,3 +334,76 @@ leader antes de seguir. Lo que T5 tendrá que hacer, ya visto:
 **Veredicto T2–T4:** detalle único montado en `/cierres-admin`, 22 tests nuevos + 10 mutaciones muertas,
 afectados y guardias verdes salvo los 4 heredados; T5 parada por tamaño y 20 rojos de T1 en tests de
 repositorio para backend_dev.
+
+## T5 · frontend_dev · 2026-11-09 (E2E)
+
+Carlos aceptó ~52 archivos; la rama queda en **53** contra `origin/dev`. Base E2E nueva `slt100_fe_e2e` (mismo
+servidor local que la del `.env`, `DROP`/`CREATE`, `migrate deploy`, `db:seed`; URL nunca impresa), `next build`
+con `NEXT_PUBLIC_APP_URL=http://localhost:3044`, `E2E_PUERTO=3044`. Sin dev server.
+
+### Archivos
+- `e2e/cierres-rediseno.spec.ts` (nuevo) y `playwright.config.ts` (lo suma al grupo `dinero`).
+- Adaptados: `cierres-admin`, `ajuste-pago-mensajero-cierre`, `wallet-iva-aparte-sl39`, `reglas-bloqueos-cierre`,
+  `cierres-admin-rechazos-sla`, `tope-intentos-por-empresa`, `cierre-modelo-nuevo-plan-porcentual`,
+  `tarifas-activacion`, `tarifas-valor-propio-mensajero`.
+
+### Escenario B validado (antes de escribirlo)
+Se tomó la tarifa que `tarifas-activacion.spec.ts` ya prueba por la pantalla (flete por entregado 3.100 + 13 %,
+devolución 1.400 + 13 %, mensajero 2.200), digitada en la zona **central** para que la vea la central, con una
+entrega de 10.000 en efectivo. La propuesta de T0.3 (comisión 2 %, 3.500/2.500) se descartó: la comisión no
+estaba probada por ningún E2E de la fixture. Derivación a mano: sale de lo recaudado 3.100 + 403 = **3.503** (el
+«Total cobrado» que `tarifas-activacion` ya afirma); se le paga hoy 10.000 − 3.503 = **6.497**; pago **2.200**;
+le queda 3.503 − 403 − 2.200 − 0 = **900**; sin nota R81. Salió verde a la primera con esos literales.
+
+### Casos de `cierres-rediseno.spec.ts`
+- Central A (solicitado): 4 cifras al céntimo, métodos sin Transferencia, sin «Debe»/«Ganancia»; las 10 líneas
+  de las dos cuentas; nota «Automático (por plazo vencido) ₡0 · Manual (mensajero) ₡500»; pie tras desplazar
+  («Rechazar», «Revisar paquetes y aprobar»); «Rechazados por la tienda (0)» con el texto D27; «Descargar» → xlsx
+  leído con `exceljs`: las 7 cabeceras de R82 y 3 filas; sin `.hoja-imprimible`; aprobar con la guía → `aprobado`
+  en la base; reabierto: pie «Cerrar», «Aprobado <fecha> por <maestro>» (R80), pestaña «Pago al mensajero».
+- Satélite A: mismas cifras y cuentas; sin pestaña de pago; sin «Fulfillment» en la fila; rechaza con motivo →
+  `rechazado` con el motivo en la base.
+- Central B: las 4 cifras del modelo nuevo; sin nota R81.
+- Vencido (corte diario real): pie «Cerrar», «Destrabar cierre vencido» → diálogo de hoy → `solicitado` en la base
+  y el mismo detalle releído con «Rechazar», «Aprobar» (R83).
+
+### T5.2 — antes leía X, ahora lee Y
+| Spec | Antes | Ahora |
+|---|---|---|
+| `cierres-admin` | región «Totales del cierre» (Efectivo, Total general); «Órdenes del cierre» directo; «Aprobar» | métodos de «Recaudado» y `[data-cifra=recaudado]`, mismos importes; clic en «Gestiones (n)»; «Revisar paquetes y aprobar» (hay un rechazo) |
+| `reglas-bloqueos-cierre` | «Totales del cierre» visible | `group` «Cifras del cierre» visible |
+| `cierres-admin-rechazos-sla` | tarjeta «Ingreso de bodega … del cierre» 2.700 con sublíneas 900/1.800 | línea «− Ingreso de bodega por devoluciones a origen» 2.700 con la nota «… ₡900 · Manual (mensajero) ₡1.800»; clic en «Gestiones» |
+| `tope-intentos-por-empresa` | la misma tarjeta; «Aprobar» | la misma línea; «Revisar paquetes y aprobar» |
+| `ajuste-pago-mensajero-cierre` | cascada «Lo que le queda a la empresa · cierre de X» («Pago al mensajero», «Neto de la empresa»); «Aprobar» | cuenta «De lo facturado, le queda…» («− Pago al mensajero», «Le queda a la empresa»), mismos 1.500 → 2.200 y −700 del neto; alterna «Dinero»/«Gestiones» (al volver, re-elige la sección «Devolución a origen…»); «Revisar paquetes y aprobar» |
+| `wallet-iva-aparte-sl39` | cascada: «Lo que la empresa facturó» 3.616, «IVA facturado» −416, neto 1.700; «Debe» −100 con nota | cuenta: «Total facturado» 3.616, «− IVA (no es de la empresa)» 416, «Le queda a la empresa» 1.700; B: «Le queda» −100 y **sin «Debe»** (D3, aserción invertida) |
+| `cierre-modelo-nuevo-plan-porcentual`, `tarifas-activacion`, `tarifas-valor-propio-mensajero` | KPI «Pago al mensajero» y «Total de la empresa» del comprobante; filas directas; «Aprobar»; textos «Ingreso de bodega…» sueltos | `[data-cifra=pago]` y «Total facturado» de «Lo que se le factura a la tienda» (mismos importes); clic en «Gestiones»; «Revisar paquetes y aprobar»; en `tarifas-activacion` la línea «− Ingreso de bodega…» por modelo (300 / 570) y la nota con «Manual (mensajero)» solo en el viejo |
+
+### Mutaciones del E2E (cada una con `next build`; restaurado y reconstruido limpio al final)
+| Mutación | Resultado |
+|---|---|
+| M-E1 «Le queda a la empresa» deja de leer `netoEmpresa` (la vista no lleva `ganancia`: cae a otra cifra del servidor) | MUERTA: 2 failed (central A y satélite A, `toHaveText`) |
+| M-E2 nota de R81 retirada | MUERTA: 1 failed (`toContainText` de la nota) |
+
+### Salida real
+- Primera corrida de `--project=dinero`: `1 failed | 87 passed` — `ajuste-pago-mensajero-cierre` central: al volver
+  a «Gestiones» la lista se monta de nuevo en su primera sección; corregido (re-elige la sección) y verde
+  (`2 passed`).
+- Base recreada, y dos corridas seguidas de `--project=dinero` (incluye `cierres-rediseno`, `cierre-vencido-modelo`
+  y `cierre-bodega-satelite`): `88 passed (6.5m)` y `88 passed (6.7m)`, 0 failed / 0 flaky / 0 skipped.
+- `wallet-iva-aparte-sl39` (`--project=aislamiento`): `14 passed`.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck` → `TSC_EXIT=0`; eslint de lo tocado sin avisos.
+- `TEST_RAPIDO_SIN_PRESUPUESTO=1 pnpm run test:rapido` (53 cambiados, 423 relacionados, todo): siete tandas verdes
+  (`100/100/100/100/100/100/32 passed`), `RAPIDO_EXIT=0`.
+
+### Mapa R → test (completa la tabla de T2–T4)
+| R | Test |
+|---|---|
+| R77 | `e2e/cierres-rediseno.spec.ts`: central A, satélite A y central B, literales de T0.3 y de esta sección |
+| R80 | + E2E central A reabierto («Aprobado … por <maestro>») |
+| R81 | + E2E central A (presente) y B (ausente); `cierres-admin-rechazos-sla` (900/1.800) |
+| R82 | + E2E (cabeceras y filas del xlsx) |
+| R83 | + E2E vencido |
+| R17, R18, R21, R38, R39 | + E2E central y satélite A |
+
+**Veredicto T5:** E2E nuevo y 9 adaptados en verde dos veces seguidas en base nueva, dos mutaciones muertas y
+`test:rapido` completo verde.

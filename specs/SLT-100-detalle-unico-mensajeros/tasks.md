@@ -162,7 +162,7 @@
 
 ## T5 — E2E · `frontend_dev` (depende de T3, T4)
 
-- [ ] **T5.1** — Nuevo `e2e/cierres-rediseno.spec.ts` (grupo `dinero`), con los casos de
+- [x] **T5.1** — Nuevo `e2e/cierres-rediseno.spec.ts` (grupo `dinero`), con los casos de
   `design.md > Verificación de lo que ve el usuario` y los literales de T0.3 escritos a mano:
   - central A (solicitado → aprobar → reabrir), central B y satélite A;
   - vencido con destrabe;
@@ -172,13 +172,13 @@
   - verde dos veces seguidas en base desechable nueva, con `NEXT_PUBLIC_APP_URL` como en
     `gate.yml`;
   - mutaciones muertas: `netoEmpresa` → `ganancia` en `cifrasDe`; nota de R81 retirada.
-- [ ] **T5.2** — Adaptar a las regiones nuevas, mismos literales:
+- [x] **T5.2** — Adaptar a las regiones nuevas, mismos literales:
   - `cierres-admin`, `wallet-iva-aparte-sl39`, `ajuste-pago-mensajero-cierre`;
   - `reglas-bloqueos-cierre`, `cierres-admin-rechazos-sla`, `cierre-modelo-nuevo-plan-porcentual`;
   - `tarifas-activacion`, `tarifas-valor-propio-mensajero`, `tope-intentos-por-empresa`.
 
   **Hecho:** verdes, y una línea por archivo en `impl_SLT-100.md` («antes leía X, ahora lee Y»).
-- [ ] **T5.3** — `pnpm exec playwright test --project=dinero` completo, más `cierre-vencido-modelo`
+- [x] **T5.3** — `pnpm exec playwright test --project=dinero` completo, más `cierre-vencido-modelo`
   y `cierre-bodega-satelite` (que no cambian). **Hecho:** dos corridas seguidas sin rojos ni
   inestables, salida en `impl_SLT-100.md`.
 

@@ -97,6 +97,8 @@ async function ajustesDeLaTarjeta(comprobante: Locator, m: MensajeroE2E): Promis
 
 /** Despliega la única gestión de esa pestaña y devuelve su sección de cobros. */
 async function cobrosDeLaGestion(detalle: Locator, pestana: RegExp): Promise<Locator> {
+  // SLT-100: las órdenes viven en la pestaña «Gestiones» del detalle único.
+  await detalle.getByRole("tab", { name: /^Gestiones \(/ }).click();
   const ordenes = detalle.getByRole("region", { name: "Órdenes del cierre" });
   await ordenes.getByRole("tab", { name: pestana }).click();
   await ordenes.getByRole("button", { expanded: false }).first().click();
@@ -105,19 +107,31 @@ async function cobrosDeLaGestion(detalle: Locator, pestana: RegExp): Promise<Loc
   return cobros;
 }
 
+/**
+ * SLT-100: la línea «− pago a la bodega» de la cuenta «De lo facturado, le queda a la empresa» del detalle único
+ * (pestaña «Dinero»), por su rótulo exacto: «− Ingreso de bodega por devoluciones a origen» en el modelo viejo y
+ * «− Ingreso de bodega» en el nuevo (R71 de SLT-54). La nota del origen (R81) va dentro de la línea.
+ */
+const lineaBodega = (detalle: Locator, rotulo: string): Locator =>
+  detalle
+    .getByRole("region", { name: "De lo facturado, le queda a la empresa" })
+    .locator("[data-signo]")
+    .filter({ has: detalle.page().locator("[data-rotulo]", { hasText: new RegExp(`^${rotulo}$`) }) });
+
 const renglon = (seccion: Locator, rotulo: string): Locator =>
   seccion.getByText(rotulo, { exact: true }).locator("xpath=ancestor::div[1]");
 
 /**
- * Un KPI de la cabecera del comprobante, ya asentado: cuenta desde 0 al montar. El rótulo sale también en los
- * renglones de más abajo, sin animar: el KPI es el primero del comprobante.
+ * SLT-100 «Detalle de cierre único en /cierres-admin (mensajeros)»: el KPI «Pago al mensajero» es la cifra del
+ * mismo nombre del detalle único, y el KPI «Total de la empresa» es el «Total facturado» de la cuenta «Lo que se
+ * le factura a la tienda» (mismo importe). Se espera a que el texto se asiente, como antes.
  */
-async function kpi(detalle: Locator, rotulo: string): Promise<string> {
-  const cifra = detalle
-    .getByRole("region", { name: /^Comprobante detallado del cierre/ })
-    .locator(`xpath=.//span[normalize-space()='${rotulo}']/following-sibling::span[1]`)
-    .first();
-  return cifraAsentada(cifra);
+async function kpi(detalle: Locator, rotulo: "Pago al mensajero" | "Total de la empresa"): Promise<string> {
+  const valor =
+    rotulo === "Pago al mensajero"
+      ? detalle.locator('[data-cifra="pago"]')
+      : detalle.getByRole("region", { name: "Lo que se le factura a la tienda" }).locator('[data-tipo="total"] [data-monto]');
+  return cifraAsentada(valor);
 }
 
 test.use({ actionTimeout: 30_000 });
@@ -212,7 +226,7 @@ test.describe.serial("Tarifas — digitar, activar y cierre (R67)", () => {
     const detalle = await abrirResuelto(satelite, cierreViejo.m);
     expect(await kpi(detalle, "Pago al mensajero")).toMatch(importe(1700, { solo: true }));
     expect(await kpi(detalle, "Total de la empresa")).toMatch(/^\D*4\.237,50$/);
-    await expect(detalle.getByText("Ingreso de bodega por devoluciones a origen", { exact: true }).last().locator("..")).toContainText(importe(300));
+    await expect(lineaBodega(detalle, "− Ingreso de bodega por devoluciones a origen")).toContainText(importe(300));
     const entrega = await cobrosDeLaGestion(detalle, /Entregado/);
     await expect(renglon(entrega, "Total cobrado")).toContainText(importe(2825));
     await satelite.context().close();
@@ -272,14 +286,14 @@ test.describe.serial("Tarifas — digitar, activar y cierre (R67)", () => {
     const detalleNuevo = await abrirResuelto(satelite, cierreNuevo.m);
     expect(await kpi(detalleNuevo, "Pago al mensajero")).toMatch(importe(2200, { solo: true }));
     expect(await kpi(detalleNuevo, "Total de la empresa")).toMatch(importe(5085, { solo: true }));
+    // R71: el total nombra lo que suma, sin partirlo por origen, y las filas llegan a él: 120 + 450 = 570.
+    await expect(lineaBodega(detalleNuevo, "− Ingreso de bodega")).toContainText(importe(570));
+    await expect(lineaBodega(detalleNuevo, "− Ingreso de bodega por devoluciones a origen")).toHaveCount(0);
+    await expect(detalleNuevo.getByText(/Automático \(por plazo vencido\)/)).toHaveCount(0);
+    await expect(detalleNuevo.getByText(/Manual \(mensajero\)/)).toHaveCount(0);
     const entregaNueva = await cobrosDeLaGestion(detalleNuevo, /Entregado/);
     await expect(renglon(entregaNueva, "Total cobrado")).toContainText(importe(3503));
     await expect(entregaNueva).not.toContainText("no tenía tarifa");
-    // R71: el total nombra lo que suma, sin partirlo por origen, y las filas llegan a él: 120 + 450 = 570.
-    await expect(detalleNuevo.getByText("Ingreso de bodega", { exact: true }).last().locator("..")).toContainText(importe(570));
-    await expect(detalleNuevo.getByText("Ingreso de bodega por devoluciones a origen", { exact: true })).toHaveCount(0);
-    await expect(detalleNuevo.getByText("Automático (por plazo vencido)", { exact: true })).toHaveCount(0);
-    await expect(detalleNuevo.getByText("Manual (mensajero)", { exact: true })).toHaveCount(0);
     const ingresoDeFila = detalleNuevo.getByRole("region", { name: "Órdenes del cierre" }).getByText("Ingreso de bodega:", { exact: true }).locator("..");
     await expect(ingresoDeFila).toContainText(importe(120));
     await cobrosDeLaGestion(detalleNuevo, /Devoluci/);
@@ -290,12 +304,12 @@ test.describe.serial("Tarifas — digitar, activar y cierre (R67)", () => {
     const detalleViejo = await abrirResuelto(satelite, cierreViejo.m);
     expect(await kpi(detalleViejo, "Pago al mensajero")).toMatch(importe(1700, { solo: true }));
     expect(await kpi(detalleViejo, "Total de la empresa")).toMatch(/^\D*4\.237,50$/);
+    // R71: el cierre de antes de activar se sigue leyendo con su rótulo y sus sublíneas (la nota de R81).
+    await expect(lineaBodega(detalleViejo, "− Ingreso de bodega por devoluciones a origen")).toContainText(importe(300));
+    await expect(lineaBodega(detalleViejo, "− Ingreso de bodega")).toHaveCount(0);
+    await expect(lineaBodega(detalleViejo, "− Ingreso de bodega por devoluciones a origen")).toContainText(/Manual \(mensajero\)/);
     const entregaVieja = await cobrosDeLaGestion(detalleViejo, /Entregado/);
     await expect(renglon(entregaVieja, "Total cobrado")).toContainText(importe(2825));
-    // R71: el cierre de antes de activar se sigue leyendo con su rótulo y sus sublíneas.
-    await expect(detalleViejo.getByText("Ingreso de bodega por devoluciones a origen", { exact: true }).last().locator("..")).toContainText(importe(300));
-    await expect(detalleViejo.getByText("Ingreso de bodega", { exact: true })).toHaveCount(0);
-    await expect(detalleViejo.getByText("Manual (mensajero)", { exact: true })).toBeVisible();
     await expect(detalleViejo.getByRole("region", { name: "Órdenes del cierre" }).getByText("Ingreso de bodega:", { exact: true })).toHaveCount(0);
     await detalleViejo.getByRole("button", { name: "Cerrar", exact: true }).last().click();
     await expect(detalleViejo).toHaveCount(0);

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { cierresDe, importe, solicitarCierre } from "./_escenarios/cierres";
 import {
@@ -62,6 +62,18 @@ async function abrirDetalle(page: Page, m: MensajeroE2E) {
   return detalle;
 }
 
+/**
+ * SLT-100 «Detalle de cierre único en /cierres-admin (mensajeros)»: el detalle es el único de SLT-95. «Totales
+ * del cierre» pasó a las cifras de arriba (`Recaudado` con sus métodos) y las órdenes, a la pestaña «Gestiones».
+ */
+const recaudado = (detalle: Locator) => detalle.locator('[data-cifra="recaudado"]');
+const metodo = (detalle: Locator, nombre: string) =>
+  detalle.getByLabel("Métodos de pago de lo recaudado").getByText(nombre, { exact: true }).locator("..");
+async function ordenesDe(detalle: Locator): Promise<Locator> {
+  await detalle.getByRole("tab", { name: /^Gestiones \(/ }).click();
+  return detalle.getByRole("region", { name: "Órdenes del cierre" });
+}
+
 async function verResueltos(page: Page, m: MensajeroE2E) {
   await page.getByRole("group", { name: "Cierres del día por estado" }).getByRole("button", { name: /^Resueltos/ }).click();
   return page.getByRole("region", { name: "Histórico" }).getByRole("region", { name: `Comprobante del cierre de ${m.nombre}` });
@@ -78,13 +90,12 @@ test.describe("Cierres del día — el admin aprueba o rechaza", () => {
     const page = await paginaDe(browser, r.empresa.maestro);
     const detalle = await abrirDetalle(page, m);
 
-    const totales = detalle.getByRole("region", { name: "Totales del cierre" });
-    await expect(totales.getByText("Efectivo", { exact: true }).locator("xpath=ancestor::div[1]")).toContainText(importe(6000));
-    await expect(totales.getByText("Total general", { exact: true }).locator("xpath=ancestor::div[1]")).toContainText(importe(6000));
+    await expect(metodo(detalle, "Efectivo")).toContainText(importe(6000));
+    await expect(recaudado(detalle)).toHaveText(importe(6000, { solo: true }));
 
     // R7 de la 38: la evidencia de la rechazada abre por URL firmada y la imagen CARGA (bytes del doble).
     // Las gestiones van en pestañas por resultado, con la fila desplegable (fichas 456 y 478).
-    const ordenes = detalle.getByRole("region", { name: "Órdenes del cierre" });
+    const ordenes = await ordenesDe(detalle);
     await ordenes.getByRole("tab", { name: /Devolución a origen por rechazo/ }).click();
     await ordenes.getByRole("button", { name: new RegExp(rechazada.numRemision), expanded: false }).click();
     await detalle.getByRole("button", { name: `Ver evidencia de la orden ${rechazada.numRemision} · ${rechazada.destinatario}` }).click();
@@ -94,7 +105,8 @@ test.describe("Cierres del día — el admin aprueba o rechaza", () => {
     await expect.poll(() => foto.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBeGreaterThan(0);
     await visor.getByRole("button", { name: "Cerrar" }).click();
 
-    await detalle.getByRole("button", { name: "Aprobar", exact: true }).click();
+    // SLT-100: con un paquete que vuelve, el pie del detalle único lo dice en el rótulo (R12 de SLT-95).
+    await detalle.getByRole("button", { name: "Revisar paquetes y aprobar", exact: true }).click();
     // Feature 238: el paquete que vuelve se confirma con su guía antes de aprobar.
     const confirmar = page.getByRole("dialog", { name: "Confirmar los paquetes que vuelven" });
     const aprobar = confirmar.getByRole("button", { name: "Confirmar y aprobar" });
@@ -119,7 +131,7 @@ test.describe("Cierres del día — el admin aprueba o rechaza", () => {
     const { m, cierreId } = await conCierreSolicitado([2500], 0);
     const page = await paginaDe(browser, r.empresa.maestro);
     const detalle = await abrirDetalle(page, m);
-    await expect(detalle.getByRole("region", { name: "Totales del cierre" })).toContainText(importe(2500));
+    await expect(recaudado(detalle)).toHaveText(importe(2500, { solo: true }));
 
     await detalle.getByRole("button", { name: "Rechazar", exact: true }).click();
     const rechazo = page.getByRole("dialog", { name: "Rechazar cierre" });
@@ -172,9 +184,8 @@ test.describe("Cierres del día — corregir el resultado mueve Analítica en la
     await verCifras(page, "2", "2");
 
     const detalle = await abrirDetalle(page, m);
-    const totales = detalle.getByRole("region", { name: "Totales del cierre" });
-    await expect(totales.getByText("Total general", { exact: true }).locator("xpath=ancestor::div[1]")).toContainText(importe(8500));
-    const ordenes = detalle.getByRole("region", { name: "Órdenes del cierre" });
+    await expect(recaudado(detalle)).toHaveText(importe(8500, { solo: true }));
+    const ordenes = await ordenesDe(detalle);
     await ordenes.getByRole("tab", { name: /Entregado/ }).click();
     await ordenes.getByRole("button", { name: new RegExp(corregida.numRemision), expanded: false }).click();
     await detalle.getByRole("button", { name: `Corregir el resultado de la orden ${corregida.numRemision} · ${corregida.destinatario}` }).click();
@@ -192,7 +203,7 @@ test.describe("Cierres del día — corregir el resultado mueve Analítica en la
 
     // Y el detalle de detrás sigue abierto, releído del servidor.
     await expect(detalle).toBeVisible();
-    await expect(totales.getByText("Total general", { exact: true }).locator("xpath=ancestor::div[1]")).toContainText(importe(6000));
+    await expect(recaudado(detalle)).toHaveText(importe(6000, { solo: true }));
     await ordenes.getByRole("tab", { name: /Devolución a origen por rechazo/ }).click();
     await expect(ordenes.getByRole("button", { name: new RegExp(corregida.numRemision) })).toBeVisible();
 
