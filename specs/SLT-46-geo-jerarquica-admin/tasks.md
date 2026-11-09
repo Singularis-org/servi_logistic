@@ -8,7 +8,9 @@
 > P1–P10 están cerradas (2026-11-06, `requirements.md > Decisiones cerradas`). El 2026-11-09 el humano
 > aprobó la maqueta T0.2 y cerró «reordenar niveles arrastrando», «confirmación antes de escribir» y
 > el título del alta: de ahí R53–R62 y las tasks T3.3, T3.4, T4.5, T4.6, T6.4 y T6.5 (y el ajuste de
-> T6.1–T6.3). P11–P13 siguen abiertas sin bloquear el backend.
+> T6.1–T6.3). P11–P13 las cerró el humano el mismo día (`requirements.md > Decisiones cerradas`):
+> «Disponible» y CSV confirman (R58), estado ya presente es éxito (R19) y arrastre táctil con
+> `@dnd-kit/*` como excepción aprobada (R53).
 >
 > Regla de oro: **T2 (la base) va antes que cualquier escritura de la app.** El código nuevo escribe el
 > nodo y confía en el trigger de copia; sin él, la geografía vieja se queda atrás.
@@ -187,12 +189,14 @@ https://claude.ai/artifact/QFq31uvvXmLXF4AGt9PFfH, versión 7); si algo de la ma
 `design.md §6`, se para y se pregunta. T6.4 y T6.5 van antes que T6.1–T6.3, que los usan.
 
 - [x] **T6.4** [P] *(2026-11-09)* `_components/ListaReordenable.tsx`: manija ⠿ como `button`,
-  arrastre nativo solo desde la manija, `ArrowUp`/`ArrowDown` con la manija enfocada, foco que se queda
-  en la manija, región `aria-live`; sin flechas visibles; controlado, sin actions (§6). (R53)
+  arrastre con `@dnd-kit/core` + `sortable` + `utilities` (excepción aprobada, P13) con sensores de
+  puntero y táctil, solo desde la manija; teclado con un manejador propio en la manija enfocada
+  (`ArrowUp`/`ArrowDown`, no el sensor de teclado de la librería), foco que se queda en la manija,
+  región `aria-live`; sin flechas visibles; controlado, sin actions (§6). (R53)
   *Hecho:* `tests/components/lista-reordenable.test.tsx` verde.
 - [x] **T6.5** [P] *(2026-11-09)* `_components/ConfirmarCambio.tsx` sobre `components/shared/Modal`:
-  filas antes → después, `closeOnConfirm={false}`, aviso y `router.refresh()` ante
-  `motivo: "cambio_concurrente"` (§4.7, §6). (R58, R59, R61)
+  filas antes → después, `closeOnConfirm={false}`; ante `motivo: "cambio_concurrente"` cierra el modal,
+  aviso en la pantalla (región `aria-live`) y `router.refresh()` (§4.7, §6; D2 del 2026-11-09). (R58, R59, R61)
   *Hecho:* `tests/components/confirmar-cambio.test.tsx` verde (pinta antes → después; cancelar no llama
   a la acción; confirmar la llama una vez; el motivo concurrente avisa y refresca).
 - [x] **T6.1** `GeografiaAdminModule.tsx`: árbol recursivo, tipo por nodo, «Agregar <tipo>» solo con tipo

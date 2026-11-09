@@ -167,7 +167,7 @@
 
 | R | Requisito | Decisión |
 |---|---|---|
-| R58 | CUANDO el superadmin pide guardar un alta de país, un alta de nodo, un renombre de nodo, una edición de nombres de tipo, un reordenamiento de niveles, un agregar nivel, o el retiro o la reactivación de un nodo, la pantalla DEBE validar los datos con los mismos esquemas de entrada que aplica el servidor y, si son válidos, DEBE mostrar un modal de confirmación con el antes → después del cambio; NO DEBE llamar a ninguna action de escritura hasta que el superadmin confirme en ese modal. | Confirmación antes de escribir |
+| R58 | CUANDO el superadmin pide guardar un alta de país, un alta de nodo, un renombre de nodo, una edición de nombres de tipo, un reordenamiento de niveles, un agregar nivel, el retiro o la reactivación de un nodo, el cambio del interruptor «Disponible» de un país o la carga CSV de la división (P11), la pantalla DEBE validar los datos con los mismos esquemas de entrada que aplica el servidor y, si son válidos, DEBE mostrar un modal de confirmación con el antes → después del cambio; NO DEBE llamar a ninguna action de escritura hasta que el superadmin confirme en ese modal. Para «Disponible» y la carga CSV la confirmación vive solo en la pantalla: sus actions no cambian de entrada. | Confirmación antes de escribir |
 | R59 | SI los datos no pasan la validación de la pantalla, ENTONCES la pantalla NO DEBE abrir el modal de confirmación y DEBE mostrar el error en el campo; SI el superadmin cancela el modal, ENTONCES NO DEBE llamarse ninguna action de escritura. | Confirmación antes de escribir |
 | R60 | CUANDO llega a una action de escritura de esta pantalla una entrada que la pantalla habría rechazado, el sistema DEBE responder `validation_error` sin escribir nada (el servidor valida aunque la pantalla ya haya validado). | Confirmación antes de escribir |
 | R61 | SI al guardar un renombre de nodo, una edición de nombres de tipo o un agregar nivel el dato que el modal mostró como «antes» ya no es el de la base (otro superadmin lo cambió), ENTONCES el sistema DEBE responder `conflict` con motivo de cambio concurrente sin escribir nada, y la pantalla DEBE avisar que el dato cambió mientras tanto; SI el valor de la base ya es el pedido, ENTONCES rige R18 (éxito sin escribir). | Confirmación antes de escribir |
@@ -199,6 +199,9 @@
 | Confirmación antes de escribir (2026-11-09) | R58, R59, R60, R61 |
 | Título del alta de país (2026-11-09) | R62 |
 | Disponible en el alta de país (2026-11-09) | R63 |
+| P11 «Disponible» y CSV confirman (2026-11-09) | R58 |
+| P12 Estado pedido ya presente es éxito (2026-11-09) | R19 |
+| P13 Arrastre táctil con `@dnd-kit` (2026-11-09) | R53 |
 
 ## Preguntas abiertas
 Sembradas por `/afinar-feature`: ninguna. P1–P9 (spec_author, F1.2) respondidas por el humano el
@@ -206,20 +209,8 @@ Sembradas por `/afinar-feature`: ninguna. P1–P9 (spec_author, F1.2) respondida
 
 P10 (spec_author, revisión F1.2) respondida por el humano el 2026-11-06: pasa a `## Decisiones cerradas`.
 
-Revisión F1.2 del 2026-11-09 (`spec_author`). Mientras no se respondan, P12 y P13 siguen lo que ya
-hay y P11 queda fuera de R58; ninguna bloquea el backend.
-
-- **P11. ¿El interruptor «Disponible» y la carga CSV también piden confirmación?** La decisión nombra
-  guardar, editar, crear, agregar nivel y retirar/reactivar; esas dos acciones también escriben y no
-  se nombran. *Propuesta:* sí, con el mismo modal (disponible: «No disponible → Disponible»; CSV:
-  nombre del archivo y país, sin el resumen, que solo se sabe al cargar). Hoy R58 no las incluye.
-- **P12. Si otro superadmin ya retiró (o reactivó) el lugar mientras el modal estaba abierto, ¿se
-  avisa?** Hoy R19 (cerrado) responde éxito sin escribir. *Propuesta:* se queda así; la pantalla
-  recarga y muestra el estado. Si el humano quiere un aviso, haría falta un `conflict` y cambiaría R19.
-- **P13. ¿El arrastre tiene que funcionar en pantallas táctiles?** El arrastre nativo del navegador
-  no funciona con el dedo; hacerlo táctil pide una librería (`design.md §12`), que necesita su
-  aprobación. *Propuesta:* no; la pantalla del superadmin es de escritorio y el teclado es la
-  alternativa (R53).
+P11–P13 (`spec_author`, revisión F1.2 del 2026-11-09) respondidas por el humano el 2026-11-09: pasan a
+`## Decisiones cerradas`. No queda ninguna abierta.
 
 ## Decisiones cerradas (no reabrir)
 | Fecha | Pregunta | Decisión |
@@ -247,3 +238,6 @@ hay y P11 queda fuera de R58; ninguna bloquea el backend.
 | 2026-11-09 | Confirmación antes de escribir | Toda acción de la pantalla que guarda, edita, crea, agrega nivel o retira/reactiva pide confirmación en un modal con el antes → después; la pantalla valida antes de mostrar el modal y el servidor vuelve a validar al guardar; si el dato cambió mientras tanto, avisa y no guarda (`conflict`). |
 | 2026-11-09 | Título del alta de país | «Niveles N (máximo 10)»; el mínimo de 2 se impone sin decirlo en el título (con 2 filas no se puede quitar otra). |
 | 2026-11-09 | Disponible en el alta de país | El alta acepta `disponible` y lo guarda en la misma transacción que el país (sin segundo paso ni migración: la columna ya es `NOT NULL DEFAULT true`). La casilla de la pantalla viene desmarcada: un país nuevo nace no disponible si no se marca. Quien no manda el campo conserva el `true` de antes. Costa Rica y los países existentes no cambian. Historial: el de R37, sin fila de disponibilidad. |
+| 2026-11-09 | P11. ¿El interruptor «Disponible» y la carga CSV también piden confirmación? | Sí, con el mismo modal (disponible: estado actual → el otro; CSV: archivo y país, sin el resumen, que solo se sabe al cargar). La confirmación es solo de pantalla: las actions no cambian (R58). |
+| 2026-11-09 | P12. ¿Se avisa si otro ya dejó el lugar en el estado pedido mientras el modal estaba abierto? | No: es éxito (R19 sin cambios) y la pantalla se refresca para mostrar el estado. |
+| 2026-11-09 | P13. ¿El arrastre funciona con el dedo? | Sí, con `@dnd-kit/core` + `@dnd-kit/sortable` + `@dnd-kit/utilities` (clásica), aprobada como excepción al check 2 (sin release desde 2024-12); filas `aprobada` en `docs/dependencias.md`. Sensores de puntero y táctil; el teclado sigue siendo un manejador propio de la manija, sin flechas visibles (R53). |

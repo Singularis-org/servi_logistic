@@ -9,8 +9,10 @@
 > https://claude.ai/artifact/QFq31uvvXmLXF4AGt9PFfH, versión 7) y dos decisiones nuevas del humano:
 > reordenar niveles arrastrando (§2.4 «Reordenar niveles», R53–R57) y confirmar antes de escribir con
 > control de cambio concurrente (§4.7, §6, R58–R61); título del alta (R62). Sin migraciones nuevas.
-> Abiertas P11–P13 (`requirements.md`): P12 y P13 siguen lo que ya hay (R19; arrastre nativo, sin
-> táctil); P11 (confirmar «Disponible» y la carga CSV) queda fuera de R58 hasta que el humano responda.
+> P11–P13 cerradas por el humano el mismo día (`requirements.md > Decisiones cerradas`): «Disponible» y
+> la carga CSV también confirman (P11, R58); el estado pedido que ya está es éxito y refresca (P12,
+> R19); el arrastre funciona con el dedo, con `@dnd-kit/core` + `sortable` + `utilities` como excepción
+> aprobada al check 2 (P13, §6, §14).
 >
 > El MCP del grafo responde, pero no tiene indexado este worktree (`list_projects` no lo lista): la
 > exploración se hizo con Grep/Read.
@@ -42,7 +44,7 @@ términos `tipo_nivel_geografico`, `nodo_geografico` (escritor), `pais_tipos_de_
 | Base propia para bajar migraciones | `tests/integration/db/_fixtures/base-propia-43.ts` | Molde de la ida y vuelta de SLT-46 |
 | *(2026-11-09)* `PaisRepository.renombrarTipo` / `agregarNivel`, `PaisService.renombrarTipo` / `agregarNivel` y sus actions | T3.2, T4.3, T4.4 (hechas) | Se **extienden**: la entrada gana el «antes» del modal y el resultado, `conflict` por cambio concurrente (§4.7). `reordenarTipos` es nuevo y reutiliza sus piezas (`nombresDeNivelEnPais`, `appendAccionPlataforma`) |
 | *(2026-11-09)* `Modal` (`@base-ui/react/dialog`, `confirmLabel`, `closeOnConfirm`, `confirmDisabled`) | `components/shared/Modal.tsx`; ya lo usan el retiro de nodo y el alta de país | Base del modal de confirmación (§6). Nada nuevo de shadcn |
-| *(2026-11-09)* Librería de arrastrar y soltar | Ninguna en `package.json` (Grep `dnd\|sortable\|drag`) | No se añade: arrastre nativo del navegador + teclado (§6; alternativa en §12) |
+| *(2026-11-09)* Librería de arrastrar y soltar | Ninguna en `package.json` (Grep `dnd\|sortable\|drag`) | Se añade `@dnd-kit/core` + `@dnd-kit/sortable` + `@dnd-kit/utilities` (P13, excepción aprobada al check 2, filas en `docs/dependencias.md`); el teclado es propio, en la manija (§6, §14) |
 | *(2026-11-09)* Candado de fila con `tx.$queryRaw\`… FOR UPDATE\`` | `CierreDiaRepository`, `CorreccionFechaReprogramacionRepository` | Mismo patrón para serializar las escrituras de tipos de un país (§2.4) |
 
 Nada de lo encontrado escribe el nodo desde la app ni edita tipos, ni reordena niveles o confirma
@@ -322,6 +324,13 @@ en el servidor y llega como `validation_error`/`conflict` tras confirmar.
 
 Ninguno acepta `padreId` en el renombre ni en el cambio de estado (R22): `.strict()` lo rechaza.
 
+Errores de forma (decisión del humano, 2026-11-09): en `crearNodoGeograficoSchema`, la falta de
+`nombre` da el error en `fieldErrors.nombre` (cada campo en su clave, como en SL-20) y una forma que no
+es la nueva (claves de más como `nivel`, `provinciaId` o `tipoId`; `paisId` y `padreId` a la vez, o
+ninguno) da un mensaje de formato no válido en `fieldErrors.formato` (`CAMPO_DE_FORMATO`); no hay clave
+`entrada`. Por eso el esquema es un solo objeto con refinamiento y no una `z.union` de dos `.strict()`
+(la unión mandaba todo fallo a `formErrors`). Una forma vieja sin nombre da los dos errores.
+
 ### 4.2 Actions (`lib/actions/geografia-plataforma.ts`)
 
 Se quedan `listarPaisesAction`, `crearPaisAction`, `cambiarDisponibilidadPaisAction`,
@@ -355,6 +364,15 @@ action de mover nodos ni de cambiar la clave o la profundidad de un tipo (R22, R
 
 Todos los métodos comprueban `GESTION_ROLES` (`ROLES_PLATAFORMA`) **antes** de tocar el repositorio
 (R39); el test de cada uno usa un doble de repositorio que falla si se le llama.
+
+**Forma del `ok` (2026-11-09).** En `renombrar` y `cambiarActivacion` (renombrar, retirar, reactivar) el
+`ok` es `{ status: "ok", id, … }` **sin** el campo `nivel` que llevaba en SL-20: `nivel` era
+`provincia`/`canton`/`distrito` y no se puede representar a N niveles (la entrada ya no lo lleva,
+§4.1; la profundidad es dato del nodo, §4.6, R14). Ningún consumidor de `app/` lo leía.
+
+**Orden de comprobaciones de la carga CSV.** `CargaDivisionService.cargar` lee la división del país
+(`leerDivisionDePais`) antes de mirar la cabecera, porque las columnas obligatorias dependen de P. Por
+eso, con un país inexistente y una cabecera mala, responde `not_found` (no `validation_error`).
 
 ### 4.4 Repositorios
 
@@ -399,10 +417,15 @@ se corre contra la función nueva con los tipos de CR y debe dar lo mismo (R17, 
 ### 4.6 DTO (`lib/types/geografia-nodo.ts`)
 
 ```ts
-interface TipoNivelDTO { id: string; clave: string; profundidad: number; nombreSingular: string; nombrePlural: string }
+interface TipoNivelDTO { id: string; clave: string; profundidad: number; nombreSingular: string; nombrePlural: string;
+  digitosCodigo: number | null; codigoHeredaPrefijo: boolean }  // los dos últimos: `ReglaDeCodigoDeTipo` (§4.5)
 interface NodoArbolPlataformaDTO { id: string; nombre: string; codigo: string | null; activo: boolean;
   profundidad: number; tipoId: string; hijos: NodoArbolPlataformaDTO[] }
 ```
+
+**Desvío registrado (implementación, 2026-11-09).** `TipoNivelDTO` lleva la regla de código del tipo
+(`digitosCodigo`, `codigoHeredaPrefijo`, vía `extends ReglaDeCodigoDeTipo`): sin ellos `validarCodigoDeTipo`
+(§4.5) no se puede usar con lo que devuelven `contextoDeAlta` y `leerDivisionDePais`.
 
 `ProvinciaPlataformaDTO`/`CantonPlataformaDTO` se retiran si no queda consumidor (el árbol de la
 empresa, `ProvinciaArbolDTO`, no cambia).
@@ -423,9 +446,11 @@ repositorio lo compara con la base dentro de la transacción, **después** de mi
 
 Resultado común en services y actions: `{ status: "conflict"; motivo: "cambio_concurrente" }`, una
 variante **nueva** de la unión; los `conflict` que ya existían (nombre de hermano, país repetido, la
-carrera del único) no cambian de forma (R12). La pantalla, ante ese motivo, avisa «Este dato cambió
-mientras tanto; revisa el valor actual» (texto final en la maqueta), cierra el modal y hace
-`router.refresh()` para mostrar lo que hay en la base. Nada se escribe (R61).
+carrera del único) no cambian de forma (R12). La pantalla, ante ese motivo, cierra el modal, muestra en
+la pantalla (fuera del modal, en una región visible con `aria-live`) el aviso «Este dato cambió
+mientras tanto; revisa el valor actual» y hace `router.refresh()` para mostrar lo que hay en la base.
+Nada se escribe (R61). **D2 (humano, 2026-11-09, review vuelta 1):** confirmado así; el modal no se
+queda abierto con el aviso.
 
 ## 5. CSV de división (R30–R34) — decisiones P4 y P6
 
@@ -472,8 +497,10 @@ la maqueta. Si algo de la maqueta choca con este contrato, T6 para y pregunta.
   reordenar con `ListaReordenable` (el nuevo orden se ve en pantalla sin guardarse hasta confirmar,
   R55) y «Agregar nivel» al final (oculto con 10 tipos); sin quitar (R50).
 - Nuevo `_components/ListaReordenable.tsx` (R53): cada fila con una manija ⠿ que es un `button`
-  (`aria-label` «Mover <nombre>, posición k de N»). Arrastre con los eventos nativos del navegador
-  (`draggable`, `dragstart`/`dragover`/`drop`) solo desde la manija; con la manija enfocada,
+  (`aria-label` «Mover <nombre>, posición k de N»). Arrastre con `@dnd-kit/core` + `@dnd-kit/sortable`
+  (`DndContext`, `SortableContext`, `useSortable`; `@dnd-kit/utilities` para el `transform`) con
+  sensores de puntero y táctil (`PointerSensor`, `TouchSensor`, P13), solo desde la manija. El teclado
+  no usa el sensor de la librería: un manejador propio en la manija, con ella enfocada,
   `ArrowUp`/`ArrowDown` mueven la fila una posición, el foco sigue en la manija y una región
   `aria-live` anuncia la posición nueva. Sin flechas ni botones de subir/bajar visibles. Componente
   controlado: recibe la lista y emite el nuevo orden; no llama a actions.
@@ -488,14 +515,14 @@ la maqueta. Si algo de la maqueta choca con este contrato, T6 para y pregunta.
   nombre se muestra atenuado). Quedan dentro de R12, que se refiere al desenlace del servidor (status,
   campos de error, mensajes y filas viejas), y el servidor responde igual.
 - Componentes de `components/ui/` y `components/shared/` existentes; nada nuevo de shadcn; ninguna
-  librería nueva (arrastre nativo, §12).
+  librería nueva salvo `@dnd-kit/*` para el arrastre (P13, §14).
 
 **Confirmación antes de escribir (R58–R61).** Flujo común: el superadmin pide guardar → la pantalla
 corre el esquema zod de §4.1 sobre lo escrito → si falla, error en el campo y no se abre el modal
 (R59) → si pasa, modal con antes → después → «Cancelar» no llama a nada (R59) → «Confirmar» llama a
 la action con el «antes» de §4.7 → `ok`: cierra y refresca; `validation_error`/`conflict` por nombre:
-error en el campo, como hoy; `conflict` con `motivo: "cambio_concurrente"`: aviso y refresco, sin
-escribir (R61). Esto reemplaza el criterio de SL-20 (comentarios de la ficha 375 en
+error en el campo, como hoy; `conflict` con `motivo: "cambio_concurrente"`: cierra el modal, aviso en
+la pantalla y refresco, sin escribir (R61, §4.7, D2). Esto reemplaza el criterio de SL-20 (comentarios de la ficha 375 en
 `GeografiaAdminModule.tsx`) de que renombrar y reactivar no piden confirmación.
 
 | Acción | Antes | Después |
@@ -508,8 +535,13 @@ escribir (R61). Esto reemplaza el criterio de SL-20 (comentarios de la ficha 375
 | Agregar nivel | Niveles actuales (1..P) | Los mismos y el nuevo como nivel P+1 |
 | Retiro / reactivación | Activo / Retirado (en el retiro, con el conteo de R20) | Retirado / Activo |
 
-P11 (abierta): el interruptor «Disponible» y la carga CSV no están en la tabla mientras el humano no
-responda.
+| Disponibilidad del país (P11) | Estado actual (Disponible / No disponible) | El otro estado |
+| Carga CSV de división (P11) | — | Archivo elegido y país (el resumen solo se sabe al cargar) |
+
+P11 (cerrada, humano, 2026-11-09): el interruptor «Disponible» y la carga CSV también confirman en el
+modal. La confirmación vive solo en la pantalla: las actions `cambiarDisponibilidadPaisAction` y
+`cargarDivisionAction` no cambian de entrada ni ganan «antes» (estado pedido = actual es éxito, P12; la
+carga ya es idempotente por el cruce de SL-20).
 
 ## 7. Historial de plataforma (R35–R38) — decisiones P3, P5, P7
 
@@ -523,6 +555,11 @@ responda.
 | Agregar nivel | `tipo_nivel_geografico_creado` | `tipo_nivel_geografico` | Singular del tipo nuevo | `detalle = {origen: "nivel_agregado", profundidad}` |
 | Edición de tipo | `tipo_nivel_geografico_renombrado` × nombres cambiados | `tipo_nivel_geografico` | Singular nuevo | `valor_anterior`, `valor_nuevo`, `detalle.campo` |
 | Reordenar niveles (2026-11-09) | `tipo_nivel_geografico_renombrado` × nombres cambiados | `tipo_nivel_geografico` (el tipo de cada profundidad) | Singular nuevo | `valor_anterior`, `valor_nuevo`, `detalle = {campo, origen: "reordenado"}` |
+
+**Desvío registrado (implementación, 2026-11-09): orden de la cadena.** La etiqueta congelada de un nodo
+va de la hoja a la raíz («Cabagra · Buenos Aires · Puntarenas»), no raíz → nodo como dice la tabla: es
+el orden de las etiquetas de provincia/cantón/distrito de SL-20 (`etiquetaDeEntidad`), y así el texto de
+CR no cambia (R12). Lo arma `GeoRepository.cadenaDeNombres`.
 
 Todo con `appendAccionPlataforma(tx, …)` dentro de la transacción del cambio. Nada en
 `historial_accion` (R38); el filtro de `/historico/acciones` sigue excluyendo `nodo_geografico` porque
@@ -670,10 +707,11 @@ migraciones usa base propia (prefijo `slt46_`, molde `base-propia-43.ts`).
     de profundidad 1 quedaría con el tipo `nivel_2`, contra P1, y la sincronía vieja → nodo se lo
     pisaría en el siguiente eco (§2.2). Además, el único `(pais_id, clave)` haría chocar el intercambio a
     mitad de camino. El humano fijó «solo reasigna los nombres».
-13. **Librería de arrastrar y soltar** (p. ej. `@dnd-kit/core` + `@dnd-kit/sortable`). Daría arrastre
-    táctil y accesibilidad hecha, pero es una dependencia nueva que pide los cuatro checks y aprobación
-    (`docs/architecture.md > Dependencias de terceros`) para una lista de 2–10 filas. Se usa el arrastre
-    nativo con teclado; si el humano pide táctil (P13), se reabre con los cuatro checks.
+13. **Arrastre nativo del navegador** (`draggable`, `dragstart`/`dragover`/`drop`), la elección
+    inicial. Descartado el 2026-11-09 con P13: los eventos nativos no funcionan con el dedo. Se usa
+    `@dnd-kit/core` + `sortable` + `utilities` (clásica), aprobada por el humano como excepción al check
+    2 (sin release desde 2024-12). Su sensor de teclado tampoco se usa: el manejador propio de la
+    manija (`ArrowUp`/`ArrowDown`) da el foco y el anuncio que pide R53 sin flechas visibles.
 14. **Columna de versión (`actualizado_en` o `version`) para el cambio concurrente.** Sería un `ADD
     COLUMN` en `nodo_geografico` y `tipo_nivel_geografico` (aditivo, pero migración nueva, y el humano
     pidió evitarlas) y la copia de SLT-43 no la mantiene en las escrituras por SQL. Comparar con el
@@ -710,4 +748,6 @@ migraciones usa base propia (prefijo `slt46_`, molde `base-propia-43.ts`).
 
 ## 14. Dependencias de terceros
 
-Ninguna nueva.
+`@dnd-kit/core@6.3.1`, `@dnd-kit/sortable@10.0.0` y `@dnd-kit/utilities@3.2.2` (versión exacta; trae
+la transitiva `@dnd-kit/accessibility`). Aprobadas por el humano el 2026-11-09 (P13) como excepción al
+check 2; filas `aprobada` en `docs/dependencias.md`. Solo las usa `ListaReordenable` (§6).
