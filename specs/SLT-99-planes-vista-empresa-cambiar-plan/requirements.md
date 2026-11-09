@@ -236,9 +236,7 @@
 | P9: un solo PR | R22 |
 
 ## Preguntas abiertas
-- **[P10]** Descuento anual en monto fijo tan chico que su porcentaje equivalente redondea a 0 % (menos de
-  0,5 %): ¿insignia «0 %» o sin insignia? Propuesta del spec: sin insignia (R6 la exige «solo si el plan
-  tiene descuento anual»; un «0 %» no lo comunica). No bloquea T1–T4.
+Ninguna.
 
 ## Decisiones cerradas (no reabrir)
 | Fecha | Pregunta | Decisión |
@@ -265,3 +263,4 @@
 | 2026-11-09 | P7 · «Contáctanos» antes de SLT-117 | Visible y deshabilitado, con «Próximamente» debajo, hasta SLT-117 «Planes: solicitud de plan a la medida desde Contáctanos». |
 | 2026-11-09 | P8 · Costeo del período | `ConsumoDelPlan` (total estimado, órdenes del período, cobrado) se mantiene debajo del plan activo, sin cambios. |
 | 2026-11-09 | P9 · Tamaño del PR | Se acepta: un solo PR (~31 archivos, ~1 800 líneas); pantalla y cambio de plan van juntos y se prueban juntos en el E2E. Línea `tamano-pr-aceptado` en la ficha. |
+| 2026-11-09 | P10 | Sin insignia cuando el % equivalente de un descuento anual en monto fijo redondea a 0 % (humano). |

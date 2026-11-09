@@ -2,7 +2,7 @@
 
 > Escrito por `spec_author` el 2026-11-09. El índice del grafo (`codebase-memory-mcp`) no tenía este
 > worktree: la exploración se hizo con Grep/Read. Ajustado el mismo día con las respuestas del humano a
-> P1–P9 (`requirements.md > Decisiones cerradas`). La única abierta es P10 (§8).
+> P1–P9 (`requirements.md > Decisiones cerradas`). P10 se cerró el mismo día (§8): no queda ninguna abierta.
 
 ## Lo que ya existe
 
@@ -226,7 +226,7 @@ diseño.
   redondeado al entero más cercano, mitad hacia arriba (la misma regla que los céntimos de
   `lib/planes/cobro.ts`). Ejemplo: mensual 100.00, descuento anual de 100.00 → 1 100.00 ÷ 1 200.00 →
   8,33 % → «8 %»; descuento de 90.00 → 7,5 % → «8 %».
-- **Abierta (P10):** si el equivalente redondea a 0 % (descuento < 0,5 %). Propuesta: sin insignia.
+- **P10, cerrada (humano, 2026-11-09):** si el equivalente redondea a 0 % (descuento < 0,5 %), sin insignia.
 
 ### P2 — El corte frente a los períodos de calendario de SLT-86 · cerrada: opción (b)
 

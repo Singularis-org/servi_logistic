@@ -11,6 +11,8 @@
   R6, R7, R10, R13–R20 ajustados. *Hecho:* solo queda P10 (insignia de un monto fijo que redondea a 0 %),
   que no bloquea T1–T4.
 - [x] **T0.2** P9: se acepta un solo PR; línea `tamano-pr-aceptado` en `progress/features/SLT-99.md`.
+- [x] **T0.3** P10 cerrada por el humano (2026-11-09): sin insignia cuando el % equivalente de un descuento anual
+  en monto fijo redondea a 0 %. Movida a `requirements.md > Decisiones cerradas`; «Preguntas abiertas: Ninguna.».
 
 ## T1 — El corte (R10) · backend
 

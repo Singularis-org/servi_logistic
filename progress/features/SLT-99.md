@@ -21,8 +21,10 @@ F1.2 (2026-11-09): spec escrito; ajustado el mismo día con las respuestas del h
 - 2026-11-09 (humano): respuestas a P1–P9 en las filas P1–P9 de `specs/SLT-99-planes-vista-empresa-cambiar-plan/requirements.md > Decisiones cerradas`; P2 reemplaza la fila «¿Desde cuándo rige?» (corte = inicio del próximo período de cobro de la empresa, no 1/16).
 <!-- tamano-pr-aceptado: 2026-11-09 · ~31 archivos y ~1 800 líneas; pantalla y cambio de plan van juntos y se prueban juntos en el E2E (humano) -->
 
+- 2026-11-09 (humano): P10 → sin insignia cuando el % equivalente de un descuento anual en monto fijo redondea a 0 %. La implementación mueve P10 a «Decisiones cerradas» del requirements (T0).
+
 ## Preguntas abiertas
-- P10 (`requirements.md`): insignia de un descuento anual en monto fijo cuyo % equivalente redondea a 0 %. Propuesta: sin insignia. No bloquea T1–T4.
+Ninguna.
 
 ## Tandas
 
