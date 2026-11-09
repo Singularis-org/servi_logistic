@@ -72,9 +72,9 @@
 
 ## T4 — Borde (R1) · backend · depende de T3
 
-- [ ] **T4.1** `lib/actions/mi-plan.ts` (`cambiarMiPlanAction`, `cancelarCambioMiPlanAction`), sin
+- [x] **T4.1** `lib/actions/mi-plan.ts` (`cambiarMiPlanAction`, `cancelarCambioMiPlanAction`), sin
   `revalidatePath` ni el texto de la ruta (guardia de SLT-91 R10).
-- [ ] **T4.2** `construirMiPlanCambioService` y `verPlanesDeMiPlan` en `lib/actions/_shared/mi-plan.ts`;
+- [x] **T4.2** `construirMiPlanCambioService` y `verPlanesDeMiPlan` en `lib/actions/_shared/mi-plan.ts`;
   `"mi-plan": "nucleo"` en `lib/modulos/reparto.ts`.
   *Hecho:* guardias en verde (`pnpm run test:guardias`), incluidas reparto de módulos, `mi-plan-solo-maestro`
   y `plataforma-solo-en-lista`.
