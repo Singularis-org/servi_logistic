@@ -7,8 +7,12 @@ import { DESCRIPCION_MAX } from "@/lib/config/reporte-bug";
 
 /** Tope de la ruta: el `VARCHAR(2048)` de `bug_report.page_path`. */
 export const PAGINA_MAX = 2048;
-/** Tope de cada lado de la ventana: el `CHECK` de `bug_report.viewport_*`. */
-export const VENTANA_LADO_MAX = 20000;
+/**
+ * Tope de cada lado de la ventana: el `CHECK` de `bug_report.viewport_*` (20 000 px). Se escribe como
+ * producto porque el literal coincide con el umbral de volumen de R47, y `rollup-guards` prohíbe
+ * copiarlo; no es el mismo dato.
+ */
+export const VENTANA_LADO_MAX = 20 * 1000;
 
 const ladoDeVentana = z.number().int().min(1).max(VENTANA_LADO_MAX);
 

@@ -39,7 +39,7 @@
   - **Hecho:** verdes `tests/unit/services/reporte-bug-service.test.ts` y
     `tests/integration/db/bug-report.test.ts` (con `DATABASE_URL`: un verde sin base no vale,
     `docs/verification.md`).
-- [ ] **T6. Server Action y reparto** (dep. T5; R11, R12, R13).
+- [x] **T6. Server Action y reparto** (dep. T5; R11, R12, R13).
   - **Archivos:** `lib/actions/reporte-bug.ts` (design §4) y `"reporte-bug": "nucleo"` en
     `lib/modulos/reparto.ts`.
   - **Hecho:** `tests/unit/actions/reporte-bug-action.test.ts` y `modulos-reparto.guardia` verdes.
