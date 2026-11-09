@@ -30,6 +30,13 @@ Tarjeta: zone frontend, complexity high. La descripción incluye piezas que pued
 - 2026-11-09, Carlos: las tarjetas con mucha información (fila desplegada, cálculo, conciliación) llevan el formato de las cascadas de la pestaña Dinero: partidas en líneas simples, «−»/«+» delante, raya y total en negrita. Barra de filtros y descarga = componentes existentes (BuscadorFiltros + DescargarDatasetButton).
 - 2026-11-09, Carlos sobre el Excel: los cierres del modelo viejo SÍ se siguen descargando con el formato actual; el documento nuevo es para el modelo nuevo. No sabe si la empresa ya activó las tarifas nuevas (medir en prod con script de solo lectura).
 
+- 2026-11-09, Carlos APROBÓ el canvas completo (versión 33 del artifact, commit en la rama): «ya revise el diseno y lo veo super bien, ahora si podemos arrancar». Incluye las notas de la página Central (cifras nuevas = rebanada D; cambios de comportamiento propuestos).
+
+- 2026-11-09, medido en prod (script de solo lectura, corrido por Carlos): `tarifa_valor` = 0 filas; `cierre_detail` = 918 gestiones, TODAS `tarifa_modelo = viejo`. La empresa NO ha activado el modelo nuevo: hoy todo cierre en prod es del modelo viejo.
+
+- 2026-11-09, Carlos sobre el spec v2: PA1 según recomendación (tarjetas de «Solicitados» fuera del filtro de fecha, la lista sí lo respeta); PA2 sí (la página muestra primero el cierre que pide acción); PA3 aprueba el Excel del modelo nuevo tal como está en design.md. La aprobación del spec queda pendiente de su respuesta sobre la versión del arnés.
+- 2026-11-09, Carlos APROBÓ el spec v2 (F1.4), por escrito: «entonces spec aprobada, comienza». SLT-95 se queda con S1; S2–S17 van como fichas nuevas con sus dependencias.
+
 ## Preguntas abiertas
 
 ## Tandas
