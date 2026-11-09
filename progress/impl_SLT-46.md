@@ -1076,3 +1076,16 @@ Veredicto: T6.5 hecha, verde en test, lint y typecheck.
   `lib/actions/geografia-plataforma.ts` (`renombrarTipoNivelAction`, `agregarNivelPaisAction`,
   `reordenarTiposAction`) dicen que T6.3 les da pantalla y ya sobran. Hay que borrar esas tres líneas de JSDoc (cambio
   solo de comentarios). El implementer lo intentó y el permiso del entorno lo denegó en `lib/`; queda sin hacer.
+
+### Verificación de cierre de la tanda 4 (implementer, 2026-11-09)
+- Commits: `8a424edb` (T6.4), `b4b44ade` (T6.5), `4fcc2c94` (T6.1), `99aba88d` (T6.2), `7c522482` (T6.3).
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec tsc --noEmit` → exit 0.
+- `eslint` de los 14 `.ts`/`.tsx` tocados desde `4a046a29` → exit 0.
+- Tests tocados (7 archivos, `--maxWorkers=1`) → `Test Files 7 passed (7)` · `Tests 120 passed (120)`.
+  Consumidor de `filtrar-arbol-geografico` fuera de la pantalla (`GeografiaSelector`): `geografia-selector-*` 2/2,
+  15/15.
+- Guardias (337 archivos, 7 lotes de ≤ 50, `--maxWorkers=1`, sin `HAY_BASE_DE_DATOS`): `528 | 24 skipped (552)`, `663`,
+  `4 failed | 767 (771)`, `812`, `710`, `1 failed | 749 | 1 skipped (751)`, `475`. Rojos:
+  `dependencias-declaradas-presentes` (4, el aceptado del baseline) y `superficie-de-uso` (1, las tres
+  `@sin-superficie` vencidas de `lib/actions/geografia-plataforma.ts`; ver el bloqueo de T6.3).
+- Sin push. E2E: ninguno escrito ni tocado (R45).
