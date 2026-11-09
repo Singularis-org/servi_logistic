@@ -13,6 +13,7 @@ import { construirPaisService } from "@/lib/actions/_shared/paises-plataforma";
 import { ETIQUETAS_NEUTRAS, type EtiquetasGeograficas } from "@/lib/types/pais";
 import { AsistenteProvider } from "@/providers/AsistenteProvider";
 import { AsistentePanel } from "@/components/shared/AsistentePanel";
+import { ReporteBugBoton } from "@/components/shared/ReporteBugBoton";
 import { leerResumenesAyuda } from "@/lib/ayuda/catalogo";
 import { mapaRutaDocumento } from "@/lib/ayuda/documento";
 import { COOKIE_TEMA, normalizarTema } from "@/lib/tema/tema";
@@ -210,6 +211,12 @@ export default async function AppLayout({
               `asistente-panel-hermano.guardia.test.ts` lo vigila sobre la forma del árbol.
               No pinta nada mientras está cerrado, y quien lo abre es el «?» del encabezado. */}
           <AsistentePanel />
+          {/* SLT-87 (design §8.1; R1, R2) — el botón «Reportar un problema». HERMANO de `{children}`
+              por la razón de los de arriba: este layout no se pinta sin sesión, persiste entre
+              navegaciones (el borrador abierto no se pierde al cambiar de pantalla) y un hermano no
+              puede dejar de pintar la página. Solo para usuarios de empresa: el superadmin no lo ve
+              (P2). No cuesta ninguna consulta: el actor ya está resuelto. */}
+          {actor && !deLaPlataforma && actor.organizacionId && <ReporteBugBoton usuarioId={actor.usuarioId} />}
         </AsistenteProvider>
       </ToastProvider>
     </TemaProvider>

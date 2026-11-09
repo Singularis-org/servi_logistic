@@ -49,7 +49,7 @@
 - [x] **T7 [P]. Borrador** (dep. T3; R6, R7, R8).
   - **Archivo:** `hooks/useBorradorReporteBug.ts` (design §8.3).
   - **Hecho:** sus casos de `tests/components/ReporteBugBoton.test.tsx` verdes.
-- [ ] **T8. Botón, panel y montaje** (dep. T6, T7; R1–R5, R9, R10).
+- [x] **T8. Botón, panel y montaje** (dep. T6, T7; R1–R5, R9, R10).
   - **Archivos:** `components/shared/ReporteBugBoton.tsx` (design §8.2) y su montaje como hermano en
     `app/(app)/layout.tsx` (design §8.1).
   - **Hecho:** `tests/components/ReporteBugBoton.test.tsx` y las guardias del layout verdes.
