@@ -162,7 +162,7 @@ Montado por SLT-43/44/45/65/71 en esta rama. Se usa tal cual; ninguna task lo vu
 
 ## T5 — Integración y equivalencia (depende de T4)
 
-- [ ] **T5.1** `tests/integration/db/geografia-admin-n-niveles.test.ts` (país de 4 niveles por el
+- [x] **T5.1** `tests/integration/db/geografia-admin-n-niveles.test.ts` (país de 4 niveles por el
   service). (R14–R19)
 - [ ] **T5.2** [P] `tests/integration/db/slt46-equivalencia-geografia.test.ts` (secuencia completa por el
   service en CR de prueba y en el de 4 niveles; comparación fila a fila). (R11, R12)

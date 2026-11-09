@@ -632,3 +632,23 @@ entrada al service, que valida `anterior`/`profundidad`. Comentarios del módulo
   - 1 de `tests/guards/guard-dependencias-aprobadas.test.ts` › «el registro no lista paquetes que ya no
     están instalados»: `@dnd-kit/{core,sortable,utilities}` están aprobadas en `docs/dependencias.md`
     (`f12f6529`) y aún no instaladas (lo hace T6). Preexistente; no se tocó.
+
+### T5.1 — `geografia-admin-n-niveles.test.ts` (2026-11-09)
+
+**Archivo nuevo.** `tests/integration/db/geografia-admin-n-niveles.test.ts` (16 casos). País `XP` de 4
+niveles (`sembrarPaisDePruebaGeo(PAIS_CUATRO_NIVELES)`) y un actor real creado en la misma transacción
+revertida; `GeografiaService` sobre `clienteConSavepoint`. El `afterAll` exige
+`residuosDePaisesDePrueba = 0`.
+
+| R | Casos |
+|---|---|
+| R14 | alta bajo una comuna → profundidad 4, activo, `tipo_id` = `nivel_4`, padre; raíz → nivel_1 … nivel_4, cada alta con el tipo de su profundidad |
+| R15 | alta bajo un nodo 4 → `validation_error` `padreId: «Este país no tiene un nivel por debajo de Sector»`, sin escribir nodo ni historial |
+| R16 | bajo padre retirado nace activo; hermano 4 con nombre normalizado → `conflict`; código de otro nodo `nivel_4` → el service deja escapar el único `(pais_id, tipo_id, codigo_oficial)` y `crearNodoAction` responde `conflict`, sin escribir; contraprueba: mismo código en un nodo 3 entra; padre / país inexistente → `not_found` |
+| R18 | renombre de un nodo 4 cambia solo su nombre + 1 fila de historial; renombre de un nodo 3 deja sus descendientes 4 intactos; mismo nombre → `ok` sin escribir ni historial; hermano 4 normalizado → `conflict`; id inexistente → `not_found` |
+| R19 / P12 | retiro y reactivación de un nodo 4: solo `activo`, reactivar deja el país igual que antes, una fila `desactivado` + una `activado`; retirar un nodo 3 no toca el `activo` del 4; pedir el estado que ya tiene (activo→activo, retirado→retirado) → `ok` sin escribir ni historial; id inexistente → `not_found` |
+
+**Cambios de aserción en tests existentes.** Ninguno.
+
+**Salida real** (`logistic_slt46` local, `--maxWorkers=1`): `Test Files 1 passed (1) · Tests 16 passed (16)`;
+`eslint` → «No issues found»; `pnpm run typecheck` (`NODE_OPTIONS=--max-old-space-size=8192`) → exit 0.
