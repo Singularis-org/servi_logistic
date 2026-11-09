@@ -10,7 +10,7 @@ import type {
   ListarConsolidacionesSateliteServiceResult,
   ListarSaldosSatelitesCompletoServiceResult,
   ListarSaldosSatelitesServiceResult,
-  MarcaConciliacionServiceResult,
+  MarcaConMontoServiceResult,
   ResumenSatelitesServiceResult,
   RevertirConciliacionServiceResult,
 } from "@/lib/interfaces/services/IConciliacionSatelitesService";
@@ -22,8 +22,20 @@ import type {
   MarcarConsolidacionRecibidaInput,
   RevertirConciliacionInputBorde,
 } from "@/lib/types/conciliacion-satelites";
+import { MENSAJE_MONTO_CERO_CON_DECLARADO } from "@/lib/types/conciliacion-satelites";
 import { rangoDePagina } from "@/lib/utils/rango-pagina";
 import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
+
+/**
+ * SLT-96 (R2/R4) — el 0 con lo declarado distinto de 0. Va al campo del monto, no como `conflict`:
+ * la consolidacion esta bien, lo que hay que cambiar es lo tecleado.
+ */
+function montoCeroNoPermitido(): MarcaConMontoServiceResult {
+  return {
+    status: "validation_error",
+    fieldErrors: { montoRecibido: [MENSAJE_MONTO_CERO_CON_DECLARADO] },
+  };
+}
 
 /**
  * ⭑ FICHA 431 — LA CONCILIACION DE LAS CONSOLIDACIONES DE BODEGA.
@@ -127,9 +139,10 @@ export class ConciliacionSatelitesService implements IConciliacionSatelitesServi
   /**
    * R9/R11/R13 — MARCAR RECIBIDA.
    *
-   * El monto llega YA validado por zod (`montoPositivoSchema`: STRING, > 0, ≤ 2 decimales). Aqui
-   * NO se revalida y es deliberado: una segunda definicion de «cuanto dinero es valido» es la que
-   * un dia diverge de la primera (leccion de la ficha 381).
+   * El monto llega YA validado por zod (STRING, >= 0, ≤ 2 decimales). Aqui NO se revalida la forma
+   * y es deliberado: una segunda definicion de «cuanto dinero es valido» es la que un dia diverge de
+   * la primera (leccion de la ficha 381). SLT-96: si el 0 vale lo decide el repositorio contra lo
+   * declarado de la base; aqui solo se traduce su desenlace.
    *
    * La `nota` opcional se normaliza a `null` en este punto —no en el repositorio— porque el
    * `CHECK` de la base distingue NULL de cadena vacia y el contrato del repositorio ya declara
@@ -138,7 +151,7 @@ export class ConciliacionSatelitesService implements IConciliacionSatelitesServi
   async marcarRecibida(
     input: MarcarConsolidacionRecibidaInput,
     actor: Actor,
-  ): Promise<MarcaConciliacionServiceResult> {
+  ): Promise<MarcaConMontoServiceResult> {
     if (!esAccesoTotal(actor.rol)) return { status: "forbidden" }; // R27
 
     const res = await this.escrituras.marcarConciliado({
@@ -150,6 +163,7 @@ export class ConciliacionSatelitesService implements IConciliacionSatelitesServi
     });
     if (res === "updated") return { status: "ok", cierreBodegaId: input.cierreBodegaId };
     if (res === "conflict") return { status: "conflict" }; // R11: ya estaba marcada
+    if (res === "monto_cero_no_permitido") return montoCeroNoPermitido(); // SLT-96 R2
     return { status: "no_encontrada" };
   }
 
@@ -185,7 +199,7 @@ export class ConciliacionSatelitesService implements IConciliacionSatelitesServi
   async corregirRecibida(
     input: MarcarConsolidacionRecibidaInput,
     actor: Actor,
-  ): Promise<MarcaConciliacionServiceResult> {
+  ): Promise<MarcaConMontoServiceResult> {
     if (!esAccesoTotal(actor.rol)) return { status: "forbidden" }; // R9
 
     const res = await this.escrituras.corregirConciliacion({
@@ -197,6 +211,7 @@ export class ConciliacionSatelitesService implements IConciliacionSatelitesServi
     });
     if (res === "updated") return { status: "ok", cierreBodegaId: input.cierreBodegaId };
     if (res === "conflict") return { status: "conflict" }; // R6/R8: ya no conciliada o monto movido
+    if (res === "monto_cero_no_permitido") return montoCeroNoPermitido(); // SLT-96 R4
     return { status: "no_encontrada" }; // R7
   }
 
