@@ -23,6 +23,8 @@ F1.4 (2026-11-09): spec aprobado por el humano («Aprobado, implementa»). Tarje
 
 - 2026-11-09 · (humano, tras implementar) Un reverso histórico sin su cargo hace fallar la migración (R19 tal cual). ANTES del deploy a producción se cuenta en prod cuántos reversos no tienen cargo; con 0 se despliega, con más se decide con el dato. Leader acepta las propuestas técnicas 1–3 del implementer: `trazas[]` en Prisma (1 a 1 por el único SQL), el CHECK de `reverso_de` que también hace fallar el movimiento, y que la inmutabilidad deje pasar el cambio de empresa para que salga SL017 (R26).
 
+- 2026-11-09 · F2.2 vuelta 1 (9c65e6d0): RECHAZADO. B1 guardia `catalogo-postgres-acota-esquema` (consultas del test de ida y vuelta sin acotar esquema); B2 falta cierre (E2E locales). Leader: se corrigen B1, m1 (LOCK en down.sql) y m3 (design `trazas[]`); los E2E del grupo dinero se corren en local; `./init.sh` lo sustituye el gate-completo en CI (preferencia del humano). m2 (con BEGIN explícito, un fallo de `migrate deploy` muestra 25P02 en vez del error real): es aviso de operación para el deploy a producción, no se cambia.
+
 ## Preguntas abiertas
 Ninguna.
 
