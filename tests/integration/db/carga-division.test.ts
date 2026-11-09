@@ -459,7 +459,7 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
 
         const alta = await servicio.crear({ paisId: "XA", nombre: "Región Nueva" }, actor);
         if (alta.status !== "ok") throw new Error(`alta: ${alta.status}`);
-        const renombre = await servicio.renombrar({ id: alta.id, nombre: "Región Renombrada" }, actor);
+        const renombre = await servicio.renombrar({ id: alta.id, nombre: "Región Renombrada", nombreAnterior: "Región Nueva" }, actor);
         const retiro = await servicio.cambiarActivacion({ id: alta.id, activo: false }, actor);
 
         expect(renombre.status).toBe("ok");

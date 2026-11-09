@@ -98,8 +98,15 @@ export type CrearNodoGeograficoInput = z.infer<typeof crearNodoGeograficoSchema>
  * segundo contrato capaz de admitir por renombrado lo que el alta rechaza. R22: sin campo de padre;
  * `.strict()` rechaza un `padreId` en vez de descartarlo, que es lo que impide que el renombre se
  * convierta en un «mover» encubierto (mover es SLT-48).
+ *
+ * SLT-46 (2026-11-09, design §4.7; R61): `nombreAnterior` es el nombre que el modal de confirmación
+ * mostró como «antes», obligatorio. El repositorio solo escribe si la base sigue teniendo ese nombre
+ * (si otra persona lo cambió mientras tanto, cambio concurrente). Sin cotas de longitud: es un dato
+ * de la base, no algo que se teclea, y uno heredado de antes de las cotas tiene que poder compararse.
  */
-export const renombrarNodoGeograficoSchema = z.object({ id: idDeNodoSchema, nombre: nombreGeoSchema }).strict();
+export const renombrarNodoGeograficoSchema = z
+  .object({ id: idDeNodoSchema, nombre: nombreGeoSchema, nombreAnterior: z.string().min(1) })
+  .strict();
 
 export type RenombrarNodoGeograficoInput = z.infer<typeof renombrarNodoGeograficoSchema>;
 

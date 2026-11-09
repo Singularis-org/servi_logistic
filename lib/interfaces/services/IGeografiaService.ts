@@ -1,3 +1,4 @@
+import type { CambioConcurrenteResult } from "@/lib/interfaces/services/IPaisService";
 import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
 import type {
   CambiarActivacionGeograficaInput,
@@ -76,6 +77,11 @@ export type RenombrarNodoGeograficoServiceResult =
   | { status: "validation_error"; fieldErrors: Record<string, string[]> }
   /** Otro HERMANO ya se llama asi, comparado por su forma NORMALIZADA. Nunca el nodo consigo mismo. */
   | { status: "conflict" }
+  /**
+   * SLT-46 (R61): el nombre de la base ya no era el `nombreAnterior` que mostro la pantalla. Variante
+   * NUEVA: el `conflict` de arriba (hermano) sigue sin `motivo` (R12).
+   */
+  | CambioConcurrenteResult
   /** El nodo indicado no existe. No se modifica ninguna fila. */
   | { status: "not_found" }
   | { status: "forbidden" };

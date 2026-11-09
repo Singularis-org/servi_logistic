@@ -4,9 +4,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
 import { ROLES_PLATAFORMA } from "@/lib/auth/plataforma";
+import { GeoRepository } from "@/lib/repositories/GeoRepository";
 import { PaisRepository } from "@/lib/repositories/PaisRepository";
 import { PaisService } from "@/lib/services/PaisService";
 import { crearOrganizacion } from "@/tests/fabricas/organizaciones";
+import { PAIS_CUATRO_NIVELES, claveDeRuta, sembrarPaisDePruebaGeo } from "@/tests/fixtures/paises-de-prueba-geo";
 import { revertida } from "./_fixtures/pais-20";
 import { idDeRol, insertarUsuario } from "./_fixtures/superadmin-32";
 import {
@@ -21,6 +23,7 @@ import {
 // pantalla manda el «antes» que mostró su modal de confirmación y el repositorio lo compara con la
 // base. Si otra persona lo cambió mientras tanto, nada se escribe (`cambio_concurrente`); si la base
 // ya tiene lo pedido, rige el éxito sin escribir (R18, R26).
+//   · Nodos: renombre con un `nombreAnterior` viejo (a profundidad 4, la que no tiene copia vieja).
 //   · Tipos: edición de nombres con un «antes» viejo; agregar nivel con una `profundidad` vieja; dos
 //     agregar nivel en paralelo con la misma profundidad → uno `ok` y otro `conflict`.
 //
@@ -228,4 +231,70 @@ describeSiHayBase("SLT-46 R61 — cambio concurrente en los tipos de nivel, cont
 
     expect(r).toEqual({ resultados: ["conflict:cambio_concurrente", "ok"], claves: ["nivel_1", "nivel_2", "nivel_3"] });
   }, 60_000);
+});
+
+describeSiHayBase("SLT-46 R61 — cambio concurrente en el renombre de un nodo, contra Postgres", () => {
+  beforeAll(() => {
+    base = crearPrismaDeTest();
+  });
+  afterAll(async () => {
+    await base?.$disconnect();
+  });
+
+  const RUTA = ["Valparaíso", "Marga Marga", "Quilpué", "El Belloto"];
+
+  async function fotoDeNodo(tx: TxDeTest, id: string, paisId: string) {
+    return {
+      nodo: await tx.nodoGeografico.findUnique({ where: { id } }),
+      historial: await tx.historialPlataforma.count({ where: { paisId, accion: "nodo_geografico_renombrado" } }),
+    };
+  }
+
+  it("renombre con un «antes» viejo (otra persona ya lo renombró) → `cambio_concurrente`, sin escribir ni historial", async () => {
+    const r = await revertida(base, async (tx) => {
+      const actorId = await actorDePrueba(tx);
+      const { paisId, nodoPorRuta } = await sembrarPaisDePruebaGeo(tx, PAIS_CUATRO_NIVELES);
+      const id = nodoPorRuta.get(claveDeRuta(RUTA)) ?? "";
+      const geo = new GeoRepository(clienteConSavepoint(tx));
+      const ajeno = await geo.renombrar(id, "El Belloto Alto", "El Belloto", actorId);
+      const antes = await fotoDeNodo(tx, id, paisId);
+      // Esta persona guarda con lo que su modal mostró: «El Belloto», que ya no está.
+      const resultado = await geo.renombrar(id, "Belloto Norte", "El Belloto", actorId);
+      return { ajeno, resultado, antes, despues: await fotoDeNodo(tx, id, paisId) };
+    });
+
+    expect(r.ajeno).toBe("renombrado");
+    expect(r.resultado).toBe("cambio_concurrente");
+    expect(r.despues).toEqual(r.antes);
+    expect(r.despues.nodo?.nombre).toBe("El Belloto Alto");
+  });
+
+  it("renombre con un «antes» viejo pero la base ya tiene el nombre pedido → `sin_cambio` (R18), sin escribir", async () => {
+    const r = await revertida(base, async (tx) => {
+      const actorId = await actorDePrueba(tx);
+      const { paisId, nodoPorRuta } = await sembrarPaisDePruebaGeo(tx, PAIS_CUATRO_NIVELES);
+      const id = nodoPorRuta.get(claveDeRuta(RUTA)) ?? "";
+      const geo = new GeoRepository(clienteConSavepoint(tx));
+      await geo.renombrar(id, "El Belloto Alto", "El Belloto", actorId);
+      const antes = await fotoDeNodo(tx, id, paisId);
+      const resultado = await geo.renombrar(id, "El Belloto Alto", "El Belloto", actorId);
+      return { resultado, igual: JSON.stringify(await fotoDeNodo(tx, id, paisId)) === JSON.stringify(antes) };
+    });
+
+    expect(r).toEqual({ resultado: "sin_cambio", igual: true });
+  });
+
+  it("CONTRAPRUEBA: con el «antes» vigente el renombre escribe y deja su fila", async () => {
+    const r = await revertida(base, async (tx) => {
+      const actorId = await actorDePrueba(tx);
+      const { paisId, nodoPorRuta } = await sembrarPaisDePruebaGeo(tx, PAIS_CUATRO_NIVELES);
+      const id = nodoPorRuta.get(claveDeRuta(RUTA)) ?? "";
+      const resultado = await new GeoRepository(clienteConSavepoint(tx)).renombrar(id, "Belloto Norte", "El Belloto", actorId);
+      return { resultado, despues: await fotoDeNodo(tx, id, paisId) };
+    });
+
+    expect(r.resultado).toBe("renombrado");
+    expect(r.despues.nodo?.nombre).toBe("Belloto Norte");
+    expect(r.despues.historial).toBe(1);
+  });
 });

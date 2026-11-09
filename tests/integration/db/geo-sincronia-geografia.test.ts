@@ -148,7 +148,7 @@ describeSiHayBase("SLT-43 — sincronía de la geografía vieja al nodo (R15–R
       const p = await altaPorNivel(geo, "provincia", `Región ${s}`, null, { paisId: "XA", codigo: null }, null);
       const c = await altaPorNivel(geo, "canton", `Comuna ${s}`, p, { paisId: "XA", codigo: null }, null);
 
-      const renombrado = await geo.renombrar(c, `Comuna Peñalolén ${s}`, null);
+      const renombrado = await geo.renombrar(c, `Comuna Peñalolén ${s}`, `Comuna ${s}`, null);
       const trasRenombrar = await nodo(tx, c);
       const retiro = await geo.cambiarActivacion(p, false, null);
       const trasRetirar = (await nodo(tx, p))?.activo;

@@ -205,7 +205,9 @@ describe("375 / SLT-46 — renombrar un nodo se escribe por un solo sitio", () =
     const cuerpo = cuerpoDe(codigo, CUERPO_DEL_RENOMBRE);
     expect(cuerpo, `no se encontro \`${CUERPO_DEL_RENOMBRE}\` en ${PUNTO_UNICO}`).not.toBeNull();
     const { desde, hasta } = cuerpo as { desde: number; hasta: number };
-    expect(renombradosEn(codigo.slice(desde, hasta))).toEqual(["nodoGeografico.update escribe `nombre`"]);
+    // SLT-46 T3.4 (design §4.4, §4.7; R61): el renombre escribe con `updateMany` y el «antes» en el
+    // `where` (comparar y escribir en una sentencia), ya no con `update`.
+    expect(renombradosEn(codigo.slice(desde, hasta))).toEqual(["nodoGeografico.updateMany escribe `nombre`"]);
     // El resto del archivo, sin ese cuerpo, no cambia el nombre de ningun nodo existente.
     expect(renombradosEn(codigo.slice(0, desde) + codigo.slice(hasta))).toEqual([]);
   });

@@ -22,6 +22,10 @@ import type { ProvinciaArbolDTO, TipoNivelDTO } from "@/lib/types/geografia-nodo
 // SL-32 (R24, R25): la gestion es de la plataforma. Las reglas del modulo (unicidad, padre,
 // idempotencia, conteo) se miden con el `superadmin`, que es quien las ejecuta; el `maestro` solo
 // conserva `listarArbol`, la lectura de Tarifas.
+// SLT-46 (2026-11-09, §4.1): el renombre lleva el «antes» que mostró la pantalla. Aquí siempre el
+// mismo: el doble del repositorio no lo compara, y cada caso mide lo que medía.
+const NOMBRE_ANTERIOR = "Nombre de antes";
+
 const SUPERADMIN: Actor = { usuarioId: "u-superadmin", rol: "superadmin" };
 const MAESTRO: Actor = { usuarioId: "u-maestro", rol: "maestro" };
 const OTROS_ROLES: Actor[] = [
@@ -200,7 +204,7 @@ describe("374/R24 + SL-32 — sin rol de plataforma -> forbidden SIN llamar al r
   // repetida serian cuatro sitios donde olvidarla; este caso es lo que lo impide.
   it.each(SIN_GESTION)("renombrar con rol $rol", async (actor) => {
     const { service, repo } = build();
-    const r = await service.renombrar({ id: "d1", nombre: "Otro" }, actor);
+    const r = await service.renombrar({ id: "d1", nombre: "Otro", nombreAnterior: NOMBRE_ANTERIOR }, actor);
     expect(r).toEqual({ status: "forbidden" });
     expect(repo.hermanosDeNodo).not.toHaveBeenCalled();
     expect(repo.renombrar).not.toHaveBeenCalled();
@@ -238,7 +242,7 @@ describe("374/R24 + SL-32 — sin rol de plataforma -> forbidden SIN llamar al r
       status: "ok",
       id: "id-nuevo",
     });
-    expect(await service.renombrar({ id: "d1", nombre: "Otro" }, SUPERADMIN)).toEqual({
+    expect(await service.renombrar({ id: "d1", nombre: "Otro", nombreAnterior: NOMBRE_ANTERIOR }, SUPERADMIN)).toEqual({
       status: "ok",
       id: "d1",
       nombre: "Otro",
@@ -262,7 +266,7 @@ describe("374/R24 + SL-32 — sin rol de plataforma -> forbidden SIN llamar al r
     expect(repo.arbolDePais).toHaveBeenCalledWith("XA");
     expect(repo.contextoDeAlta).toHaveBeenCalledTimes(1);
     expect(repo.crear).toHaveBeenCalledTimes(1);
-    expect(repo.renombrar).toHaveBeenCalledWith("d1", "Otro", "u-superadmin");
+    expect(repo.renombrar).toHaveBeenCalledWith("d1", "Otro", NOMBRE_ANTERIOR, "u-superadmin");
     expect(repo.cambiarActivacion).toHaveBeenCalledTimes(2);
     expect(ordenes.contarSinEntregarPorNodoGeografico).toHaveBeenCalledTimes(1);
   });
@@ -276,7 +280,7 @@ describe("SLT-46 R39 — `maestro` es `forbidden` en cada metodo de gestion ANTE
     ["crear (raiz)", (s) => s.crear({ paisId: "CR", nombre: "Nueva" }, MAESTRO)],
     ["crear (hijo)", (s) => s.crear({ padreId: "n3", nombre: "Barrio" }, MAESTRO)],
     ["crear con un nombre que la etiqueta no imprime", (s) => s.crear({ paisId: "CR", nombre: "🙂🙂" }, MAESTRO)],
-    ["renombrar", (s) => s.renombrar({ id: "n4", nombre: "Otro" }, MAESTRO)],
+    ["renombrar", (s) => s.renombrar({ id: "n4", nombre: "Otro", nombreAnterior: NOMBRE_ANTERIOR }, MAESTRO)],
     ["cambiarActivacion (retiro)", (s) => s.cambiarActivacion({ id: "n4", activo: false }, MAESTRO)],
     ["cambiarActivacion (reactivacion)", (s) => s.cambiarActivacion({ id: "n4", activo: true }, MAESTRO)],
     ["contarOrdenesSinEntregar", (s) => s.contarOrdenesSinEntregar({ id: "n4" }, MAESTRO)],
@@ -493,7 +497,7 @@ describe("375 — renombrar: el conflicto se decide por la clave NORMALIZADA", (
     const { service, repo } = build({
       hermanosDeNodo: vi.fn(async () => HERMANOS),
     });
-    expect(await service.renombrar({ id: "d1", nombre }, SUPERADMIN)).toEqual({
+    expect(await service.renombrar({ id: "d1", nombre, nombreAnterior: NOMBRE_ANTERIOR }, SUPERADMIN)).toEqual({
       status: "conflict",
     });
     // Y NO se intenta escribir: el UNIQUE de la base es la ultima palabra, no la primera. Ademas
@@ -503,22 +507,22 @@ describe("375 — renombrar: el conflicto se decide por la clave NORMALIZADA", (
 
   it("⭑ renombrarlo a SU PROPIO nombre NO es conflicto: guardar sin cambios funciona", async () => {
     const { service, repo } = build({ hermanosDeNodo: vi.fn(async () => HERMANOS) });
-    const r = await service.renombrar({ id: "d1", nombre: "Cabagra" }, SUPERADMIN);
+    const r = await service.renombrar({ id: "d1", nombre: "Cabagra", nombreAnterior: NOMBRE_ANTERIOR }, SUPERADMIN);
     expect(r).toEqual({ status: "ok", id: "d1", nombre: "Cabagra" });
-    expect(repo.renombrar).toHaveBeenCalledWith("d1", "Cabagra", "u-superadmin");
+    expect(repo.renombrar).toHaveBeenCalledWith("d1", "Cabagra", NOMBRE_ANTERIOR, "u-superadmin");
   });
 
   it("⭑ ni una variante que se normaliza IGUAL que el suyo: «cabagra» -> `ok`", async () => {
     // Es un cambio REAL de la etiqueta (cambian las mayusculas) y no choca con nadie mas.
     const { service, repo } = build({ hermanosDeNodo: vi.fn(async () => HERMANOS) });
-    const r = await service.renombrar({ id: "d1", nombre: "cabagra" }, SUPERADMIN);
+    const r = await service.renombrar({ id: "d1", nombre: "cabagra", nombreAnterior: NOMBRE_ANTERIOR }, SUPERADMIN);
     expect(r).toEqual({ status: "ok", id: "d1", nombre: "cabagra" });
-    expect(repo.renombrar).toHaveBeenCalledWith("d1", "cabagra", "u-superadmin");
+    expect(repo.renombrar).toHaveBeenCalledWith("d1", "cabagra", NOMBRE_ANTERIOR, "u-superadmin");
   });
 
   it("un nombre libre entre los hermanos pasa", async () => {
     const { service, repo } = build({ hermanosDeNodo: vi.fn(async () => HERMANOS) });
-    expect(await service.renombrar({ id: "d1", nombre: "Cabagrita" }, SUPERADMIN)).toEqual({
+    expect(await service.renombrar({ id: "d1", nombre: "Cabagrita", nombreAnterior: NOMBRE_ANTERIOR }, SUPERADMIN)).toEqual({
       status: "ok",
       id: "d1",
       nombre: "Cabagrita",
@@ -535,7 +539,7 @@ describe("375 — renombrar: el conflicto se decide por la clave NORMALIZADA", (
         { id: "d9", nombre: "Boruca" }, // retirado, pero sigue en la lista
       ]),
     });
-    expect(await service.renombrar({ id: "d1", nombre: "boruca" }, SUPERADMIN)).toEqual({
+    expect(await service.renombrar({ id: "d1", nombre: "boruca", nombreAnterior: NOMBRE_ANTERIOR }, SUPERADMIN)).toEqual({
       status: "conflict",
     });
   });
@@ -544,7 +548,7 @@ describe("375 — renombrar: el conflicto se decide por la clave NORMALIZADA", (
 describe("375 — renombrar: el nodo que no existe", () => {
   it("`null` del repositorio -> not_found, y NO se escribe nada", async () => {
     const { service, repo } = build({ hermanosDeNodo: vi.fn(async () => null) });
-    expect(await service.renombrar({ id: "fantasma", nombre: "Otro" }, SUPERADMIN)).toEqual({
+    expect(await service.renombrar({ id: "fantasma", nombre: "Otro", nombreAnterior: NOMBRE_ANTERIOR }, SUPERADMIN)).toEqual({
       status: "not_found",
     });
     expect(repo.renombrar).not.toHaveBeenCalled();
@@ -555,7 +559,7 @@ describe("375 — renombrar: el nodo que no existe", () => {
       hermanosDeNodo: vi.fn(async () => [{ id: "d1", nombre: "Cabagra" }]),
       renombrar: vi.fn(async () => "no_existe" as const),
     });
-    expect(await service.renombrar({ id: "d1", nombre: "Cabagrita" }, SUPERADMIN)).toEqual({
+    expect(await service.renombrar({ id: "d1", nombre: "Cabagrita", nombreAnterior: NOMBRE_ANTERIOR }, SUPERADMIN)).toEqual({
       status: "not_found",
     });
   });
@@ -565,7 +569,7 @@ describe("375 — renombrar: el nodo que no existe", () => {
       hermanosDeNodo: vi.fn(async () => [{ id: "d1", nombre: "Cabagra" }]),
       renombrar: vi.fn(async () => "sin_cambio" as const),
     });
-    expect(await service.renombrar({ id: "d1", nombre: "Cabagra" }, SUPERADMIN)).toEqual({
+    expect(await service.renombrar({ id: "d1", nombre: "Cabagra", nombreAnterior: NOMBRE_ANTERIOR }, SUPERADMIN)).toEqual({
       status: "ok",
       id: "d1",
       nombre: "Cabagra",
@@ -779,15 +783,15 @@ describe("SLT-46 R18, R19 — renombre y estado a cualquier profundidad, por id"
         { id: "n5", nombre: "Barrio Dos" },
       ]),
     });
-    expect(await service.renombrar({ id: "n4", nombre: "barrio dos" }, SUPERADMIN)).toEqual({ status: "conflict" });
-    expect(await service.renombrar({ id: "n4", nombre: "Barrio Primero" }, SUPERADMIN)).toEqual({
+    expect(await service.renombrar({ id: "n4", nombre: "barrio dos", nombreAnterior: NOMBRE_ANTERIOR }, SUPERADMIN)).toEqual({ status: "conflict" });
+    expect(await service.renombrar({ id: "n4", nombre: "Barrio Primero", nombreAnterior: NOMBRE_ANTERIOR }, SUPERADMIN)).toEqual({
       status: "ok",
       id: "n4",
       nombre: "Barrio Primero",
     });
     expect(repo.hermanosDeNodo).toHaveBeenCalledWith("n4");
     expect(repo.renombrar).toHaveBeenCalledTimes(1);
-    expect(repo.renombrar).toHaveBeenCalledWith("n4", "Barrio Primero", "u-superadmin");
+    expect(repo.renombrar).toHaveBeenCalledWith("n4", "Barrio Primero", NOMBRE_ANTERIOR, "u-superadmin");
   });
 
   it("retirar un nodo de profundidad 4 va por su id y no lee nada mas", async () => {

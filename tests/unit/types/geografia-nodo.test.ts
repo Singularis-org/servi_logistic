@@ -159,9 +159,10 @@ describe("374 — el vocabulario del nivel", () => {
 // SLT-46 (design §4.1) — el borde por nodo, a cualquier profundidad. Sin `nivel`: lo dice la base.
 
 describe("SLT-46 R22 — renombre y cambio de estado no aceptan un padre (mover es SLT-48)", () => {
+  // SLT-46 (2026-11-09, §4.1): el renombre lleva `nombreAnterior` (obligatorio); aquí siempre válido.
   it("el renombre acepta `{id, nombre}` y rechaza un `padreId`", () => {
-    expect(renombrarNodoGeograficoSchema.safeParse({ id: "n1", nombre: "Barrio Amón" }).success).toBe(true);
-    expect(renombrarNodoGeograficoSchema.safeParse({ id: "n1", nombre: "Barrio Amón", padreId: "n0" }).success).toBe(
+    expect(renombrarNodoGeograficoSchema.safeParse({ id: "n1", nombreAnterior: "Antes", nombre: "Barrio Amón" }).success).toBe(true);
+    expect(renombrarNodoGeograficoSchema.safeParse({ id: "n1", nombreAnterior: "Antes", nombre: "Barrio Amón", padreId: "n0" }).success).toBe(
       false,
     );
   });
@@ -174,7 +175,7 @@ describe("SLT-46 R22 — renombre y cambio de estado no aceptan un padre (mover 
   });
 
   it("ninguno de los dos acepta ya `nivel`: la profundidad no viaja en la entrada", () => {
-    expect(renombrarNodoGeograficoSchema.safeParse({ id: "n1", nombre: "Carmen", nivel: "distrito" }).success).toBe(false);
+    expect(renombrarNodoGeograficoSchema.safeParse({ id: "n1", nombreAnterior: "Antes", nombre: "Carmen", nivel: "distrito" }).success).toBe(false);
     expect(cambiarActivacionGeograficaSchema.safeParse({ id: "n1", activo: true, nivel: "distrito" }).success).toBe(
       false,
     );
@@ -182,9 +183,9 @@ describe("SLT-46 R22 — renombre y cambio de estado no aceptan un padre (mover 
   });
 
   it("el renombre aplica el mismo contrato de nombre que el alta y un id vacio no entra", () => {
-    expect(renombrarNodoGeograficoSchema.parse({ id: "n1", nombre: "  San   José " }).nombre).toBe("San José");
-    expect(renombrarNodoGeograficoSchema.safeParse({ id: "n1", nombre: "a" }).success).toBe(false);
-    expect(renombrarNodoGeograficoSchema.safeParse({ id: "", nombre: "Carmen" }).success).toBe(false);
+    expect(renombrarNodoGeograficoSchema.parse({ id: "n1", nombreAnterior: "Antes", nombre: "  San   José " }).nombre).toBe("San José");
+    expect(renombrarNodoGeograficoSchema.safeParse({ id: "n1", nombreAnterior: "Antes", nombre: "a" }).success).toBe(false);
+    expect(renombrarNodoGeograficoSchema.safeParse({ id: "", nombreAnterior: "Antes", nombre: "Carmen" }).success).toBe(false);
     expect(nodoGeograficoSchema.safeParse({ id: "" }).success).toBe(false);
     expect(nodoGeograficoSchema.safeParse({ id: "n1" }).success).toBe(true);
   });

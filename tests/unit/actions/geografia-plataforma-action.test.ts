@@ -225,7 +225,7 @@ describe("SL-20/R32 — el servicio corre dentro de `comoPlataforma` y recibe la
     ["arbolDePaisAction", (d: GeografiaPlataformaDeps) => arbolDePaisAction({ paisId: "XA" }, d), "geografiaService", "listarArbolDePais"],
     ["cambiarActivacionNodoAction", (d: GeografiaPlataformaDeps) => cambiarActivacionNodoAction({ id: "c1", activo: true }, d), "geografiaService", "cambiarActivacion"],
     ["contarOrdenesSinEntregarAction", (d: GeografiaPlataformaDeps) => contarOrdenesSinEntregarAction({ id: "d1" }, d), "geografiaService", "contarOrdenesSinEntregar"],
-    ["renombrarNodoAction", (d: GeografiaPlataformaDeps) => renombrarNodoAction({ id: "d1", nombre: "Otro" }, d), "geografiaService", "renombrar"],
+    ["renombrarNodoAction", (d: GeografiaPlataformaDeps) => renombrarNodoAction({ id: "d1", nombre: "Otro", nombreAnterior: "Cabagra" }, d), "geografiaService", "renombrar"],
     ["renombrarTipoNivelAction", (d: GeografiaPlataformaDeps) => renombrarTipoNivelAction({ tipoId: "t1" }, d), "paisService", "renombrarTipo"],
     ["agregarNivelPaisAction", (d: GeografiaPlataformaDeps) => agregarNivelPaisAction({ paisId: "XA" }, d), "paisService", "agregarNivel"],
     ["crearPaisAction", (d: GeografiaPlataformaDeps) => crearPaisAction({ id: "XA" }, d), "paisService", "crear"],
@@ -295,7 +295,7 @@ describe("SL-20/R36, R52 — solo el único violado es `conflict`; cualquier otr
 
   it("R36: renombrado — único → conflict; otra causa → error", async () => {
     silenciarLog();
-    const entrada = { id: "d1", nombre: "Boruca" };
+    const entrada = { id: "d1", nombre: "Boruca", nombreAnterior: "Cabagra" };
     const conUnico = { getActor: async () => SUPERADMIN, geografiaService: geografiaDoble({ renombrar: vi.fn(async () => { throw p2002(); }) }) as unknown as IGeografiaService };
     const conOtro = { getActor: async () => SUPERADMIN, geografiaService: geografiaDoble({ renombrar: vi.fn(async () => { throw otro(); }) }) as unknown as IGeografiaService };
     expect(await renombrarNodoAction(entrada, conUnico)).toEqual({ status: "conflict" });
@@ -652,7 +652,7 @@ describe("SLT-46 R5 — un único violado en la copia a la geografía vieja es `
     });
     const deps = { getActor: async () => SUPERADMIN, geografiaService: geografiaService as unknown as IGeografiaService };
     expect(await crearNodoAction({ padreId: "n9", nombre: "Barrio Uno" }, deps)).toEqual({ status: "conflict" });
-    expect(await renombrarNodoAction({ id: "n9", nombre: "Barrio Dos" }, deps)).toEqual({ status: "conflict" });
+    expect(await renombrarNodoAction({ id: "n9", nombre: "Barrio Dos", nombreAnterior: "Barrio Uno" }, deps)).toEqual({ status: "conflict" });
     expect(log).not.toHaveBeenCalled();
   });
 });
@@ -679,7 +679,7 @@ describe("SLT-46 R22, R50 — la lista de exports del borde", () => {
 
   it("R22: renombre y cambio de estado con un `padreId` son `validation_error`, sin llamar al servicio", async () => {
     const { deps, geografiaService } = todosLosDobles(SUPERADMIN);
-    expect((await renombrarNodoAction({ id: "n1", nombre: "Otro", padreId: "n0" }, deps)).status).toBe("validation_error");
+    expect((await renombrarNodoAction({ id: "n1", nombre: "Otro", nombreAnterior: "Uno", padreId: "n0" }, deps)).status).toBe("validation_error");
     expect((await cambiarActivacionNodoAction({ id: "n1", activo: false, padreId: "n0" }, deps)).status).toBe(
       "validation_error",
     );

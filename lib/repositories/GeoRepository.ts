@@ -512,20 +512,26 @@ export class GeoRepository implements IGeoRepository {
   }
 
   /**
-   * Cambia el NOMBRE de UN nodo y lo registra en la MISMA transaccion (R18, R35):
+   * Cambia el NOMBRE de UN nodo y lo registra en la MISMA transaccion (R18, R35, R61):
    *   1. leer el nodo → `null` es «no existe»;
-   *   2. si ya se llamaba EXACTAMENTE asi, `sin_cambio` SIN ESCRIBIR NADA;
-   *   3. el `update` — la UNICA escritura, y SOLO de `nombre` (el codigo es la identidad);
+   *   2. si ya se llamaba EXACTAMENTE asi, `sin_cambio` SIN ESCRIBIR NADA (aunque el «antes» que
+   *      trae la pantalla sea viejo: pedir lo que ya hay es exito, R18);
+   *   3. el `updateMany` con `nombre = nombreAnterior` en el `where` — la UNICA escritura, y SOLO de
+   *      `nombre` (el codigo es la identidad). Comparar y escribir en UNA sentencia (design §4.7): si
+   *      otra persona lo renombro entre la lectura y aqui, toca 0 filas → `cambio_concurrente`, sin
+   *      escribir ni historial. Leer y luego `update` dejaria esa ventana abierta;
    *   4. la cadena con el nombre nuevo, el actor y el historial, DENTRO del callback.
    * Deja escapar la violacion de UNIQUE: el borde la traduce a `conflict`.
    */
-  async renombrar(id: string, nombre: string, actorUsuarioId: string | null): Promise<DesenlaceDeRenombre> {
+  // Firma en una línea: `geografia-renombrado-punto-unico` localiza el cuerpo por su comienzo literal.
+  async renombrar(id: string, nombre: string, nombreAnterior: string, actorUsuarioId: string | null): Promise<DesenlaceDeRenombre> {
     return this.prisma.$transaction(async (tx) => {
       const previo = await leerNodoPrevio(tx, id);
       if (previo === null) return "no_existe";
       if (previo.nombre === nombre) return "sin_cambio";
 
-      await tx.nodoGeografico.update({ where: { id }, data: { nombre } });
+      const { count } = await tx.nodoGeografico.updateMany({ where: { id, nombre: nombreAnterior }, data: { nombre } });
+      if (count === 0) return "cambio_concurrente";
 
       const nombres = await cadenaDeNombres(tx, nombre, previo.padreId);
       const actor = await actorDePlataforma(tx, actorUsuarioId);
@@ -538,8 +544,9 @@ export class GeoRepository implements IGeoRepository {
           paisId: previo.paisId,
           ...actor,
           // Las columnas miden GEO_NOMBRE_MAX; el recorte solo alcanza a un nombre heredado de antes
-          // de esa cota, y Postgres no trunca: aborta.
-          valorAnterior: previo.nombre.slice(0, GEO_NOMBRE_MAX),
+          // de esa cota, y Postgres no trunca: aborta. El `updateMany` solo entro si el nombre era
+          // `nombreAnterior`, que es por tanto el reemplazado (igual al `previo.nombre` leido).
+          valorAnterior: nombreAnterior.slice(0, GEO_NOMBRE_MAX),
           valorNuevo: nombre.slice(0, GEO_NOMBRE_MAX),
         },
       ]);

@@ -26,6 +26,10 @@ import type { ActualizarZonaInput, CrearZonaInput, ZonaDTO } from "@/lib/types/z
 // test de servicio con dobles no ve lo que se escribe en la columna, asi que lo unico que puede
 // afirmar de verdad es que NADIE le pidio escribir.
 
+// SLT-46 (2026-11-09, §4.1): el renombre lleva el «antes» que mostró la pantalla. Aquí siempre el
+// mismo: el doble del repositorio no lo compara, y cada caso mide lo que medía.
+const NOMBRE_ANTERIOR = "Nombre de antes";
+
 const MAESTRO: Actor = { usuarioId: "m1", rol: "maestro" };
 // SL-32 (R24): la geografia la gestiona la plataforma; sus escrituras se piden como superadmin.
 const SUPERADMIN: Actor = { usuarioId: "s1", rol: "superadmin" };
@@ -324,7 +328,7 @@ describe("392 — los nombres de la GEOGRAFIA, que la 375 hizo renombrables", ()
 
   it("RENOMBRAR un distrito a un nombre no imprimible: `validation_error` y no se renombra", async () => {
     const res = await service.renombrar(
-      { id: "d1", nombre: NOMBRE_EMOJI },
+      { id: "d1", nombre: NOMBRE_EMOJI, nombreAnterior: NOMBRE_ANTERIOR },
       SUPERADMIN,
     );
 
@@ -335,7 +339,7 @@ describe("392 — los nombres de la GEOGRAFIA, que la 375 hizo renombrables", ()
 
   it("RENOMBRAR a un nombre reparable: tampoco se renombra; se devuelve la sugerencia", async () => {
     const res = await service.renombrar(
-      { id: "c1", nombre: NOMBRE_DOUBLE_STRUCK },
+      { id: "c1", nombre: NOMBRE_DOUBLE_STRUCK, nombreAnterior: NOMBRE_ANTERIOR },
       SUPERADMIN,
     );
 
@@ -351,7 +355,7 @@ describe("392 — los nombres de la GEOGRAFIA, que la 375 hizo renombrables", ()
       "ok",
     );
     expect(
-      (await service.renombrar({ id: "d1", nombre: "Purral" }, SUPERADMIN)).status,
+      (await service.renombrar({ id: "d1", nombre: "Purral", nombreAnterior: NOMBRE_ANTERIOR }, SUPERADMIN)).status,
     ).toBe("ok");
     expect(repo.crear).toHaveBeenCalledTimes(1);
     expect(repo.renombrar).toHaveBeenCalledTimes(1);
@@ -381,7 +385,7 @@ describe("392/R1 — las cinco escrituras comparten definicion Y redaccion", () 
     );
     const rZona = await new ZonaService(zonas).crear(crearZona(NOMBRE_DOUBLE_STRUCK), MAESTRO);
     const rGeo = await new GeografiaService(geo, repoOrdenes()).renombrar(
-      { id: "d1", nombre: NOMBRE_DOUBLE_STRUCK },
+      { id: "d1", nombre: NOMBRE_DOUBLE_STRUCK, nombreAnterior: NOMBRE_ANTERIOR },
       SUPERADMIN,
     );
 

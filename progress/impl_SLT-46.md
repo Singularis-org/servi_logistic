@@ -457,3 +457,57 @@ completa el resto (reordenar en el service, nodo, tests de los desenlaces nuevos
   `geografia-lecturas-sin-nodo-fk`, `geografia-sin-borrado-fisico`, `geografia-sin-cte-recursiva`,
   `nodo-geografico-escritor-unico`, `sql-a-mano-por-empresa`, `geografia-renombrado-punto-unico`,
   `geografia-vieja-sin-escritor`): `Test Files 9 passed (9) · Tests 142 passed (142)`.
+
+### T3.4 — `GeoRepository.renombrar` con `nombreAnterior` (2026-11-09)
+
+**Archivos.** `lib/interfaces/repositories/IGeoRepository.ts`, `lib/repositories/GeoRepository.ts`,
+`lib/interfaces/services/IGeografiaService.ts`, `lib/services/GeografiaService.ts`,
+`lib/types/geografia-nodo.ts`; tests: parte de nodos de `geografia-cambio-concurrente.test.ts` (3 casos
+nuevos); adaptados `geo-repository.escrituras` (+1 caso R61), `geografia-service`,
+`nombres-que-imprime-la-etiqueta`, `geografia-nodo` (unit), `geografia-plataforma-action`, la guardia
+`geografia-renombrado-punto-unico`, y en integración `geografia-renombrado`, `geo-sincronia-geografia`,
+`carga-division`, `geografia-registro-accion` (una llamada cada uno).
+
+**Qué hace.** `renombrar(id, nombre, nombreAnterior, actorId)`: `no_existe` → `sin_cambio` si el nombre
+actual ya es el pedido (antes que el «antes», R18) → `updateMany({ where: { id, nombre: nombreAnterior } })`
+y, con 0 filas, `cambio_concurrente` sin historial (R61). `valorAnterior` del historial = `nombreAnterior`
+(es el valor que el `updateMany` reemplazó). El service lo traduce a `{ status: "conflict", motivo:
+"cambio_concurrente" }`.
+
+**Desviación (adelanto de T4.5, mismo motivo que en T3.3).** `nombreAnterior` (string no vacío, sin cotas
+de longitud: es un dato de la base, no tecleado, y uno heredado de antes de las cotas tiene que poder
+compararse) entra ya en `renombrarNodoGeograficoSchema`, y la variante con `motivo` en
+`RenombrarNodoGeograficoServiceResult` (reusa `CambioConcurrenteResult` de `IPaisService`). La firma de
+`renombrar` va en una sola línea porque la guardia `geografia-renombrado-punto-unico` localiza el cuerpo
+por el literal `async renombrar(id: string,`.
+
+**Cambios de aserción en tests existentes.**
+
+| Archivo › caso | Cambio | Respaldo |
+|---|---|---|
+| `geo-repository.escrituras` › «escribe SOLO `nombre`…» | `update` llamado 1 vez con `{where:{id}, data:{nombre}}` → `updateMany` 1 vez con `{where:{id, nombre:"Barrio Uno"}, data:{nombre}}` (sigue: solo `nombre`) | §4.4 («`updateMany({ where: { id, nombre: nombreAnterior } })`»), T3.4 |
+| `geo-repository.escrituras` › «`no_existe` y `sin_cambio` cortan…» | Añadido `updateMany` no llamado (además de `update`) | Ídem (aserción añadida, no cambiada) |
+| guardia `geografia-renombrado-punto-unico` › «dentro de GeoRepository, `nombre` solo se escribe en el cuerpo del renombre» | Hallazgo esperado `nodoGeografico.update escribe nombre` → `nodoGeografico.updateMany escribe nombre` | §4.4/§4.7 |
+| `geografia-renombrado` (fixture, no aserción) | El actor se crea en la transacción revertida de cada caso (`crearOrganizacion` + `insertarUsuario`), en vez de `usuario.findFirst()` en el `beforeAll` | Leader: «si una suite necesita filas de `usuario`, créalas dentro del propio test» |
+| Resto | Solo la entrada: `nombreAnterior` = el nombre vigente del nodo (o una constante en los dobles que no lo comparan); mismos resultados | §4.1 |
+
+**Salida real** (base `logistic_slt46` local, `--maxWorkers=1`):
+- `pnpm run typecheck` (con `NODE_OPTIONS=--max-old-space-size=8192`; sin él, `tsc` murió una vez por
+  memoria, exit 134) → exit 0. `eslint` de los archivos tocados → 0 problemas.
+- Unit (`geo-repository.escrituras`, `geografia-service`, `nombres-que-imprime-la-etiqueta`,
+  `geografia-plataforma-action`, `geografia-plataforma.composition-root`, `geografia-nodo`):
+  `Test Files 6 passed (6) · Tests 282 passed (282)`.
+- Guardias geo (`geografia-renombrado-punto-unico`, `nodo-geografico-escritor-unico`,
+  `geografia-vieja-sin-escritor`, `geografia-sin-borrado-fisico`): `Tests 87 passed` (tras ajustar la de
+  punto único; antes 3 rojos por la firma multilínea y el `update` → `updateMany`).
+- Integración: `geografia-cambio-concurrente` + `geo-sincronia-geografia` verdes; `geografia-renombrado`
+  **16/17**: `Test Files 1 failed | 2 passed (3) · Tests 1 failed | 33 passed (34)`.
+- `carga-division`: `9 failed | 7 passed (16)`, idéntico a antes de esta tanda (rojos de T5.3);
+  `geografia-registro-accion` sigue parando en su `beforeAll` («`usuario` está vacía», T5.4).
+
+**Bloqueo (T3.4 NO se marca `[x]`).** El rojo de `geografia-renombrado` es «una fila
+`nodo_geografico_renombrado` sobre la entidad del nivel»: espera `entidad_tipo = "distrito"` y la base
+escribe `"nodo_geografico"` desde T3.1 (R35, design §7, P5). No lo causa T3.4: la suite estaba parada en
+el `beforeAll` y nunca había corrido contra el código de T3.1; al crear el actor en el test, aparece.
+Cambiar `"distrito"` → `"nodo_geografico"` es un cambio de resultado que ni tasks ni el leader autorizaron
+para este archivo: **pendiente de autorización** (es una línea, respaldada por R35/§7).

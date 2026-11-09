@@ -437,7 +437,7 @@ describeSiHayBase("SL-32 (R24) — el `maestro` recibe forbidden sin escribir (P
         await service.cambiarActivacion({ id: s.provincia, activo: true }, actor),
       ).toEqual({ status: "forbidden" });
       expect(
-        await service.renombrar({ id: s.canton, nombre: `Otro m${SUFIJO}` }, actor),
+        await service.renombrar({ id: s.canton, nombre: `Otro m${SUFIJO}`, nombreAnterior: CANTON }, actor),
       ).toEqual({ status: "forbidden" });
       expect(
         await service.crear({ padreId: s.canton, nombre: `Nuevo m${SUFIJO}` }, actor),

@@ -4,6 +4,9 @@ import type { PrismaClient } from "@prisma/client";
 import { GeoRepository } from "@/lib/repositories/GeoRepository";
 
 import { crearPaisDePrueba } from "../../fabricas/paises";
+import { crearOrganizacion } from "../../fabricas/organizaciones";
+
+import { idDeRol, insertarUsuario } from "./_fixtures/superadmin-32";
 
 import {
   HAY_BASE_DE_DATOS,
@@ -71,23 +74,28 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
   let actorUsuarioId: string;
   let actorNombreEsperado: string;
 
-  beforeAll(async () => {
+  beforeAll(() => {
     prisma = crearPrismaDeTest();
-    const usuario = await prisma.usuario.findFirst({
-      select: { id: true, nombre: true, primerApellido: true },
+  });
+
+  /**
+   * SLT-46 (T3.4): el actor se crea DENTRO de la transaccion revertida de cada caso (fixture de
+   * `superadmin-32`), en vez de tomar el primer `usuario` de la base: una base sin sembrar dejaba la
+   * suite parada en el `beforeAll` (SL-31). Solo cambia de donde sale el actor; lo afirmado, igual.
+   */
+  async function sembrarActor(tx: Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0]): Promise<void> {
+    const org = await crearOrganizacion(tx);
+    const u = await insertarUsuario(tx, await idDeRol(tx, "maestro"), org.id);
+    if (!u.desenlace.ok) throw new Error(`no se sembro el actor: ${JSON.stringify(u.desenlace)}`);
+    const usuario = await tx.usuario.findUniqueOrThrow({
+      where: { id: u.id },
+      select: { nombre: true, primerApellido: true },
     });
-    if (!usuario) {
-      throw new Error(
-        "hay DATABASE_URL pero `usuario` esta vacia: sin actor no se puede comprobar el congelado " +
-          "de nombre y rol de la fila del registro. Esta suite necesita crear su usuario en el " +
-          "test (SL-31).",
-      );
-    }
-    actorUsuarioId = usuario.id;
+    actorUsuarioId = u.id;
     actorNombreEsperado = [usuario.nombre, usuario.primerApellido]
       .filter((p) => p != null && p !== "")
       .join(" ");
-  });
+  }
 
   async function conCorpus<T>(
     fn: (ctx: {
@@ -100,6 +108,7 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
   ): Promise<T> {
     return enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarActor(tx);
 
       const provincia = (
         await tx.provincia.create({
@@ -151,6 +160,9 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
   // El renombrado escribe el nombre y NADA MAS
   // ===============================================================================================
 
+  // SLT-46 (2026-11-09, §4.4/§4.7): `renombrar` recibe el «antes» (`nombreAnterior`). Aquí siempre el
+  // nombre vigente del nodo, así que cada caso da lo mismo; el «antes» viejo lo mide
+  // `geografia-cambio-concurrente.test.ts`.
   describe("375 — el `update` cambia `nombre` y NO toca la clave estable", () => {
     it("el nombre cambia; `codigo_dta`, `activo` y `canton_id` quedan intactos", async () => {
       await conCorpus(async ({ s, geo, tx }) => {
@@ -159,7 +171,7 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
           select: { nombre: true, codigoDta: true, activo: true, cantonId: true },
         });
 
-        expect(await geo.renombrar(s.distrito, `Cabagrita ${SUFIJO}`, actorUsuarioId)).toBe(
+        expect(await geo.renombrar(s.distrito, `Cabagrita ${SUFIJO}`, DISTRITO, actorUsuarioId)).toBe(
           "renombrado",
         );
 
@@ -178,7 +190,7 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
 
     it("NO toca a ningun hermano", async () => {
       await conCorpus(async ({ s, geo, tx }) => {
-        await geo.renombrar(s.distrito, `Cabagrita ${SUFIJO}`, actorUsuarioId);
+        await geo.renombrar(s.distrito, `Cabagrita ${SUFIJO}`, DISTRITO, actorUsuarioId);
         const hermano = await tx.distrito.findUniqueOrThrow({
           where: { id: s.hermano },
           select: { nombre: true },
@@ -189,10 +201,10 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
 
     it("funciona igual en canton y en provincia, cada uno con su codigo intacto", async () => {
       await conCorpus(async ({ s, geo, tx }) => {
-        expect(await geo.renombrar(s.canton, `Osa ${SUFIJO}`, actorUsuarioId)).toBe(
+        expect(await geo.renombrar(s.canton, `Osa ${SUFIJO}`, CANTON, actorUsuarioId)).toBe(
           "renombrado",
         );
-        expect(await geo.renombrar(s.provincia, `Guanacaste ${SUFIJO}`, actorUsuarioId)).toBe(
+        expect(await geo.renombrar(s.provincia, `Guanacaste ${SUFIJO}`, PROVINCIA, actorUsuarioId)).toBe(
           "renombrado",
         );
 
@@ -219,7 +231,7 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
   describe("375 — renombrar a SU PROPIO nombre es `sin_cambio` y no escribe nada", () => {
     it("devuelve `sin_cambio`, no toca la fila y no deja fila de registro", async () => {
       await conCorpus(async ({ s, geo, tx, registro }) => {
-        expect(await geo.renombrar(s.distrito, DISTRITO, actorUsuarioId)).toBe(
+        expect(await geo.renombrar(s.distrito, DISTRITO, DISTRITO, actorUsuarioId)).toBe(
           "sin_cambio",
         );
         const fila = await tx.distrito.findUniqueOrThrow({
@@ -235,7 +247,7 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
     it("un nodo INEXISTENTE devuelve `no_existe` y no escribe nada", async () => {
       await conCorpus(async ({ geo, registro }) => {
         const fantasma = "00000000-0000-0000-0000-000000000000";
-        expect(await geo.renombrar(fantasma, `X ${SUFIJO}`, actorUsuarioId)).toBe(
+        expect(await geo.renombrar(fantasma, `X ${SUFIJO}`, "Fantasma", actorUsuarioId)).toBe(
           "no_existe",
         );
         expect(await registro(fantasma)).toEqual([]);
@@ -250,7 +262,7 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
   describe("375 — el renombrado deja EXACTAMENTE UNA fila con el nombre anterior y el nuevo", () => {
     it("una fila `nodo_geografico_renombrado` sobre la entidad del nivel", async () => {
       await conCorpus(async ({ s, geo, registro }) => {
-        await geo.renombrar(s.distrito, `Cabagrita ${SUFIJO}`, actorUsuarioId);
+        await geo.renombrar(s.distrito, `Cabagrita ${SUFIJO}`, DISTRITO, actorUsuarioId);
         const filas = await registro(s.distrito);
         expect(filas).toHaveLength(1);
         expect(filas[0].accion).toBe("nodo_geografico_renombrado");
@@ -261,7 +273,7 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
 
     it("⭑ `valor_anterior` y `valor_nuevo` llevan los DOS nombres", async () => {
       await conCorpus(async ({ s, geo, registro }) => {
-        await geo.renombrar(s.distrito, `Cabagrita ${SUFIJO}`, actorUsuarioId);
+        await geo.renombrar(s.distrito, `Cabagrita ${SUFIJO}`, DISTRITO, actorUsuarioId);
         const [fila] = await registro(s.distrito);
         expect(fila.valor_anterior).toBe(DISTRITO);
         expect(fila.valor_nuevo).toBe(`Cabagrita ${SUFIJO}`);
@@ -272,7 +284,7 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
 
     it("la etiqueta es la CADENA con el nombre NUEVO, y el actor va congelado", async () => {
       await conCorpus(async ({ s, geo, registro }) => {
-        await geo.renombrar(s.distrito, `Cabagrita ${SUFIJO}`, actorUsuarioId);
+        await geo.renombrar(s.distrito, `Cabagrita ${SUFIJO}`, DISTRITO, actorUsuarioId);
         const [fila] = await registro(s.distrito);
         expect(fila.entidad_etiqueta).toBe(`Cabagrita ${SUFIJO} · ${CANTON} · ${PROVINCIA}`);
         expect(fila.actor_usuario_id).toBe(actorUsuarioId);
@@ -285,7 +297,7 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
     it("SL-20/R35: el renombrado NO escribe en `historial_accion`", async () => {
       await conCorpus(async ({ s, geo, tx }) => {
         const antes = await tx.historialAccion.count({ where: { entidadId: s.distrito } });
-        await geo.renombrar(s.distrito, `Cabagrita ${SUFIJO}`, actorUsuarioId);
+        await geo.renombrar(s.distrito, `Cabagrita ${SUFIJO}`, DISTRITO, actorUsuarioId);
         expect(await tx.historialAccion.count({ where: { entidadId: s.distrito } })).toBe(antes);
       });
     });
@@ -293,7 +305,7 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
     it("⭑ si el registro FALLA, el nombre NO queda persistido", async () => {
       await conCorpus(async ({ s, geoRoto, tx }) => {
         await expect(
-          geoRoto.renombrar(s.distrito, `Cabagrita ${SUFIJO}`, actorUsuarioId),
+          geoRoto.renombrar(s.distrito, `Cabagrita ${SUFIJO}`, DISTRITO, actorUsuarioId),
         ).rejects.toBeInstanceOf(RegistroCaido);
 
         const fila = await tx.distrito.findUniqueOrThrow({
@@ -318,7 +330,7 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
       await conCorpus(async ({ s, geo }) => {
         // El repositorio NO comprueba: deja escapar el error y el borde lo traduce a `conflict`.
         await expect(
-          geo.renombrar(s.distrito, HERMANO, actorUsuarioId),
+          geo.renombrar(s.distrito, HERMANO, DISTRITO, actorUsuarioId),
         ).rejects.toThrow();
       });
     });
@@ -338,7 +350,7 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
           })
         ).id;
         // `Cabagra` y `Palmar` viven en cantones distintos: renombrar uno al otro es legal.
-        expect(await geo.renombrar(ajeno, DISTRITO, actorUsuarioId)).toBe("renombrado");
+        expect(await geo.renombrar(ajeno, DISTRITO, `Palmar ${SUFIJO}`, actorUsuarioId)).toBe("renombrado");
       });
     });
   });

@@ -201,10 +201,12 @@ export class GeografiaService implements IGeografiaService {
     );
     if (chocaConOtro) return { status: "conflict" };
 
-    const desenlace = await this.repo.renombrar(input.id, input.nombre, actor.usuarioId);
+    const desenlace = await this.repo.renombrar(input.id, input.nombre, input.nombreAnterior, actor.usuarioId);
     // `no_existe` solo puede llegar aqui por una carrera: el nodo estaba al leer los hermanos y ya
     // no esta al escribir. Se traduce igual que arriba en vez de inventar un desenlace nuevo.
     if (desenlace === "no_existe") return { status: "not_found" };
+    // SLT-46 (R61): otra persona lo renombro desde que la pantalla lo mostro; nada se escribio.
+    if (desenlace === "cambio_concurrente") return { status: "conflict", motivo: "cambio_concurrente" };
     return { status: "ok", id: input.id, nombre: input.nombre };
   }
 

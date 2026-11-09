@@ -264,17 +264,24 @@ describe("SLT-46 R19 — `cambiarActivacion` sobre el nodo", () => {
 describe("SLT-46 R18 — `renombrar` sobre el nodo", () => {
   it("`no_existe` y `sin_cambio` cortan antes de cualquier escritura", async () => {
     const { repo, cliente } = repoCon();
-    expect(await repo.renombrar("fantasma", "Otro", "u-1")).toBe("no_existe");
-    expect(await repo.renombrar("n4", "Barrio Uno", "u-1")).toBe("sin_cambio");
+    expect(await repo.renombrar("fantasma", "Otro", "Fantasma", "u-1")).toBe("no_existe");
+    // R18/R61: el nombre pedido ya es el actual → éxito sin escribir, aunque el «antes» sea viejo.
+    expect(await repo.renombrar("n4", "Barrio Uno", "Un nombre viejo", "u-1")).toBe("sin_cambio");
     expect(cliente.nodoGeografico.update).not.toHaveBeenCalled();
+    expect(cliente.nodoGeografico.updateMany).not.toHaveBeenCalled();
     expect(cliente.historialPlataforma.createMany).not.toHaveBeenCalled();
   });
 
   it("escribe SOLO `nombre` (nunca el codigo) y registra el anterior y el nuevo con la cadena nueva (R35)", async () => {
     const { repo, cliente } = repoCon();
-    expect(await repo.renombrar("n4", "Barrio Dos", "u-1")).toBe("renombrado");
-    expect(cliente.nodoGeografico.update).toHaveBeenCalledTimes(1);
-    expect(cliente.nodoGeografico.update).toHaveBeenCalledWith({ where: { id: "n4" }, data: { nombre: "Barrio Dos" } });
+    expect(await repo.renombrar("n4", "Barrio Dos", "Barrio Uno", "u-1")).toBe("renombrado");
+    // SLT-46 (2026-11-09, §4.4/§4.7): `update` → `updateMany` con el «antes» en el `where` (comparar
+    // y escribir en una sentencia). Sigue escribiendo SOLO `nombre`.
+    expect(cliente.nodoGeografico.updateMany).toHaveBeenCalledTimes(1);
+    expect(cliente.nodoGeografico.updateMany).toHaveBeenCalledWith({
+      where: { id: "n4", nombre: "Barrio Uno" },
+      data: { nombre: "Barrio Dos" },
+    });
     expect(filaDeHistorial(cliente)).toMatchObject({
       accion: "nodo_geografico_renombrado",
       entidadTipo: "nodo_geografico",
@@ -284,6 +291,16 @@ describe("SLT-46 R18 — `renombrar` sobre el nodo", () => {
       valorAnterior: "Barrio Uno",
       valorNuevo: "Barrio Dos",
     });
+  });
+  it("R61: si el `updateMany` con el «antes» no toca filas (otra persona lo renombró), `cambio_concurrente` sin historial", async () => {
+    const { repo, cliente } = repoCon();
+    cliente.nodoGeografico.updateMany.mockResolvedValueOnce({ count: 0 });
+    expect(await repo.renombrar("n4", "Barrio Dos", "Un nombre viejo", "u-1")).toBe("cambio_concurrente");
+    expect(cliente.nodoGeografico.updateMany).toHaveBeenCalledWith({
+      where: { id: "n4", nombre: "Un nombre viejo" },
+      data: { nombre: "Barrio Dos" },
+    });
+    expect(cliente.historialPlataforma.createMany).not.toHaveBeenCalled();
   });
 });
 
@@ -565,7 +582,7 @@ describe("SLT-46 R42 — ninguna escritura del repositorio borra en fisico", () 
     const { repo, cliente } = repoCon();
     await repo.crear({ paisId: "XA", padreId: "n3", profundidad: 4, tipoId: "t4", nombre: "Otro Barrio", codigo: null }, "u-1");
     await repo.cambiarActivacion("n4", false, "u-1");
-    await repo.renombrar("n4", "Otro", "u-1");
+    await repo.renombrar("n4", "Otro", "Barrio Uno", "u-1");
     const delegado = cliente.nodoGeografico as unknown as Record<string, unknown>;
     expect(delegado.delete).toBeUndefined();
     expect(delegado.deleteMany).toBeUndefined();

@@ -61,8 +61,12 @@ export interface DivisionPorProfundidadDePais {
   nodos: NodoExistenteConProfundidad[];
 }
 
-/** Los tres desenlaces de un cambio de un nodo: solo el tercero escribe y audita. */
-export type DesenlaceDeRenombre = "no_existe" | "sin_cambio" | "renombrado";
+/**
+ * Los desenlaces de un cambio de un nodo: solo el último escribe y audita. SLT-46 (2026-11-09, design
+ * §4.7; R61): en el renombre, `cambio_concurrente` es que el nombre de la base ya no era el
+ * `nombreAnterior` que mostró la pantalla (otra persona lo cambió); no se escribió nada.
+ */
+export type DesenlaceDeRenombre = "no_existe" | "sin_cambio" | "cambio_concurrente" | "renombrado";
 export type DesenlaceDeActivacion = "no_existe" | "sin_cambio" | "cambiado";
 
 // El catalogo geografico global.
@@ -166,10 +170,17 @@ export interface IGeoRepository {
    * Cambia SOLO el `nombre` del nodo y lo registra en la misma transaccion (R18, R35).
    *
    * ⚠️ NO TOCA `codigo_oficial`: es la clave estable, y renombrar existe PORQUE el nombre no lo es.
-   * TRES desenlaces: «no existe» != «ya se llamaba asi» != «cambio», y SOLO EL TERCERO escribe y
-   * audita. DEJA ESCAPAR la violacion de UNIQUE: el borde la traduce a `conflict`.
+   * CUATRO desenlaces: «no existe» != «ya se llamaba asi» != «otro lo cambio» != «cambio», y SOLO EL
+   * ULTIMO escribe y audita. «Ya se llamaba asi» se mira ANTES que `nombreAnterior` (R18); despues,
+   * el nombre se escribe solo si sigue siendo `nombreAnterior`, en la misma sentencia (R61).
+   * DEJA ESCAPAR la violacion de UNIQUE: el borde la traduce a `conflict`.
    */
-  renombrar(id: string, nombre: string, actorUsuarioId: string | null): Promise<DesenlaceDeRenombre>;
+  renombrar(
+    id: string,
+    nombre: string,
+    nombreAnterior: string,
+    actorUsuarioId: string | null,
+  ): Promise<DesenlaceDeRenombre>;
 
   /**
    * Cambia SOLO el `activo` del nodo, sin tocar descendientes, y lo registra (R19, R35). Los mismos
