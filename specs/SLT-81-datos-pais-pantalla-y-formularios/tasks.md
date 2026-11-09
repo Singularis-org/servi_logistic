@@ -49,12 +49,12 @@
 
 ## Bloque 2 — Pantalla del superadmin (depende del Bloque 1)
 
-- [ ] **T2.1 — Sección «Datos del país»** (§6). `page.tsx` de Geografía, `GeografiaPlataformaModule`,
+- [x] **T2.1 — Sección «Datos del país»** (§6). `page.tsx` de Geografía, `GeografiaPlataformaModule`,
   `_components/DatosDelPais.tsx`.
   **Hecho:** `tests/components/GeografiaDatosDelPais.test.tsx` (R2, R3, R8 selector, R10 segundo
   paso, R13 sin borrar, R15 el switch vuelve, R26 prefijo oficial cargado);
   `geografia-plataforma-page.test.tsx` verde.
-- [ ] **T2.2 — «Nuevo país» con sus datos** (§5, §6). `NuevoPaisDialog`.
+- [x] **T2.2 — «Nuevo país» con sus datos** (§5, §6). `NuevoPaisDialog`.
   **Hecho:** `GeografiaPlataformaAltaPais.test.tsx` cubre los campos nuevos, el prefijo oficial
   cargado al elegir el país (R26) y los errores por campo (R5, R26).
 

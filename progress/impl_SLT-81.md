@@ -101,3 +101,64 @@ Pendientes de bloques siguientes: R2, R3, R18, R19, R21–R25, R27 (UI, guardias
 ### Preguntas abiertas
 - Ninguna que bloquee. A revisar por el leader: los desvíos 1, 7 y 8 (contrato del repositorio y la
   forma de la clave) y que la migración va en `20261108120000`, detrás de `20261107130100` que trae `dev`.
+
+## Tanda 2 · bloque 2
+
+Fecha: 2026-11-09. Rol: frontend_dev. Sin dependencias nuevas. El MCP del grafo no se usó (el
+worktree no está indexado, como en la tanda 1): Grep/Read.
+
+### Commits
+| Commit | Task |
+|---|---|
+| `2c850b81` | T2.1: sección «Datos del país» + retirada de las 5 `@sin-superficie` (+ la línea de Decisiones del leader en `progress/features/SLT-81.md`) |
+| `db9979c2` | T2.2: «Nuevo país» con prefijo, dígitos, zona y tipos |
+
+### Archivos
+- Nuevo: `app/(app)/plataforma/geografia/_components/DatosDelPais.tsx` (sección, modal de teléfono y hora con su segundo paso, modal de tipo, interruptor «Activo», `ZonaHorariaCombobox` y `CamposDeTipo`, que reutiliza el alta de país).
+- `app/(app)/plataforma/geografia/page.tsx`: lee `listarTiposDocumentoAction` junto al árbol (`Promise.all`), calcula `zonasIana()` y el mapa ISO → `prefijoOficial`; bandera `tiposError`.
+- `app/(app)/plataforma/geografia/_components/GeografiaPlataformaModule.tsx`: props `tiposDocumento`, `tiposError`, `zonas`, `prefijosOficiales`; monta `DatosDelPais` entre «País» y el CSV; `NuevoPaisDialog` con los campos nuevos.
+- `lib/actions/geografia-plataforma.ts`: solo se quitan las 5 anotaciones `@sin-superficie`.
+- Tests: nuevo `tests/components/GeografiaDatosDelPais.test.tsx` (19); ampliado `tests/components/GeografiaPlataformaAltaPais.test.tsx` (+5); ajustado `tests/unit/components/geografia-plataforma-page.test.tsx` (mocks de las actions nuevas; el alta llena los datos nuevos y espera el envío completo).
+
+### Mapa R → test (los de esta tanda)
+| R | Test |
+|---|---|
+| R2 | `GeografiaDatosDelPais.test.tsx` «R2 — … prefijo, dígitos, zona y cada tipo con sus caracteres, su largo y su estado» (incl. el inactivo) |
+| R3 | `GeografiaDatosDelPais.test.tsx` «R3 — sin zona y sin tipos activos → …», «… nombra los cuatro…», «si la lista de tipos falla…» |
+| R5 | `GeografiaPlataformaAltaPais.test.tsx` «muestra los campos nuevos…», «R5: sin dígitos, sin zona y con el tipo vacío no envía…», «R5, R26: los errores del servidor…»; `geografia-plataforma-page.test.tsx` «el envío lleva el id elegido, los seis nombres y los datos del país…» |
+| R8 (selector) | `GeografiaDatosDelPais.test.tsx` «R8 — filtra por texto sin `_` ni mayúsculas y no ofrece una zona fuera de la lista», «sin zona elegida no envía» |
+| R10 | `GeografiaDatosDelPais.test.tsx` «R10: … «afecta a 3 empresas» y reenvía con 3», «R10: si al confirmar ya son más, vuelve a preguntar» |
+| R11 | `GeografiaDatosDelPais.test.tsx` «R11: sin empresas guarda a la primera, sin segundo paso» |
+| R13 | `GeografiaDatosDelPais.test.tsx` «no ofrece ninguna acción de borrar», «Nuevo tipo…», «Editar…», «nombre repetido…», «activar un tipo inactivo…» |
+| R15 | `GeografiaDatosDelPais.test.tsx` «R15 — … el interruptor vuelve a activo y se muestra el mensaje» |
+| R26 | `GeografiaDatosDelPais.test.tsx` «R26 — … carga el oficial y explica el cambio», «… sin prefijo todavía…»; `GeografiaPlataformaAltaPais.test.tsx` «R26: al elegir el país, el prefijo aparece cargado…», «R26: no ofrece un país sin prefijo oficial conocido (AQ, BV)» |
+
+R16 queda para T3.2 (la parte de UI es el formulario de usuario).
+
+### Desvíos del design
+1. **El aviso «Datos incompletos» lleva `role="note"`, no `alert`.** Es el estado de lo cargado, no
+   algo que interrumpe; con `alert` chocaba además con el `role="alert"` del resultado del CSV en la
+   misma pantalla.
+2. **Si la lista de tipos falla, R3 no dice «falta tipo de documento activo»**: lo que se pinta es el
+   error («No se pudieron cargar los tipos de documento del país.»), igual que la decisión 13 de SL-20.
+3. **El campo del nombre del tipo se rotula «Documento»** (no «Nombre»): el test de SL-20 exige que
+   «Nuevo país» no tenga un textbox «Nombre…» (el nombre del país sale del catálogo).
+4. **El rechazo de R15 se muestra en la sección** (`Alert` destructivo bajo la tabla), no en un toast.
+5. **«Nuevo país» deja quitar filas de tipo mientras haya más de una** («Quitar el tipo N») y agregar
+   hasta `TIPOS_EN_ALTA_MAX`. Es un borrador del alta, no un borrado del catálogo (R13).
+
+### Verificación (salida real)
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck`: exit 0, 0 `error TS` (tras T2.1 y tras T2.2).
+- `pnpm exec eslint` de los 7 archivos tocados: exit 0, sin avisos.
+- `pnpm test:guardias`: 332 archivos (328 pasan, 3 saltados, 1 falla) → 4 tests rojos, todos de
+  `dependencias-declaradas-presentes` (baseline). `superficie-de-uso` verde sin las anotaciones.
+- Componentes: `GeografiaDatosDelPais` 19/19; `GeografiaPlataformaAltaPais` 9/9; `geografia-plataforma-page` 26/26.
+- `vitest related --run --exclude "tests/integration/**"` (lote: `page.tsx`, `DatosDelPais.tsx`,
+  `GeografiaPlataformaModule.tsx`, `geografia-plataforma.ts`): 5 archivos, 147 tests, 0 fallos.
+- Nota: la primera corrida de vitest falló al arrancar el worker (`Timeout waiting for worker to
+  respond`, carga de la máquina); con `--pool=threads` corrió bien. No es un fallo de los tests.
+
+**Veredicto:** T2.1 y T2.2 hechas; typecheck, lint, guardias (salvo el baseline) y tests de componente en verde.
+
+### Preguntas abiertas
+- Ninguna que bloquee. A revisar: los desvíos 1 y 3 (rol del aviso y rótulo «Documento»).
