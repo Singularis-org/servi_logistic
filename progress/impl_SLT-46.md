@@ -942,3 +942,19 @@ no el de producción). Anotar cada resultado en esta bitácora, sección «Ensay
   `552`, `663`, `4 failed | 767 passed (771)`, `812`, `710`, `750 | 1 skipped`, `475`. Único rojo:
   `dependencias-declaradas-presentes` (4, el preexistente aceptado). `guard-dependencias-aprobadas`, verde.
   (El proceso se cortó por memoria del sistema DESPUÉS del séptimo lote; los 337 archivos habían corrido.)
+
+## Tanda 4 (2026-11-09): T6 — pantalla (sobre la maqueta aprobada T0.2, versión 7)
+
+### T6.4 — `ListaReordenable` (R53)
+- Archivos: `app/(app)/plataforma/geografia/_components/ListaReordenable.tsx`,
+  `tests/components/lista-reordenable.test.tsx`.
+- Arrastre con `@dnd-kit/core` + `sortable` (P13, desvío aprobado respecto a «arrastre nativo» de design §6):
+  `PointerSensor` (4 px) y `TouchSensor` (150 ms, tolerancia 5); solo desde la manija (`setActivatorNodeRef`).
+- Teclado: sin `KeyboardSensor` (su modelo espacio-flechas-espacio choca con «la flecha mueve al instante»);
+  manejador propio `ArrowUp`/`ArrowDown` en la manija, foco devuelto a la misma manija, región
+  `aria-live="polite"` «<nombre>: posición k de N». Anuncios de dnd-kit vacíos (venían en inglés).
+- Eje vertical con un `Modifier` propio (no está `@dnd-kit/modifiers`; no se instala nada).
+- `deshabilitado` → `aria-disabled` (la manija no pierde el foco mientras se guarda).
+- Manija 44 px, `touch-none`, `focus-visible:ring-3`.
+- R53 → `tests/components/lista-reordenable.test.tsx` (9 casos). El arrastre real no se prueba en jsdom.
+- Salida: `Test Files 1 passed (1)` · `Tests 9 passed (9)`; eslint de los dos archivos 0; tsc sin errores.

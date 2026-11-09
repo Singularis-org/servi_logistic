@@ -186,7 +186,7 @@ Maqueta aprobada el 2026-11-09 (T0.2). Ninguna de estas tareas empieza sin esa a
 https://claude.ai/artifact/QFq31uvvXmLXF4AGt9PFfH, versión 7); si algo de la maqueta choca con
 `design.md §6`, se para y se pregunta. T6.4 y T6.5 van antes que T6.1–T6.3, que los usan.
 
-- [ ] **T6.4** [P] *(2026-11-09)* `_components/ListaReordenable.tsx`: manija ⠿ como `button`,
+- [x] **T6.4** [P] *(2026-11-09)* `_components/ListaReordenable.tsx`: manija ⠿ como `button`,
   arrastre nativo solo desde la manija, `ArrowUp`/`ArrowDown` con la manija enfocada, foco que se queda
   en la manija, región `aria-live`; sin flechas visibles; controlado, sin actions (§6). (R53)
   *Hecho:* `tests/components/lista-reordenable.test.tsx` verde.
