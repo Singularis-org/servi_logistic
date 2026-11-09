@@ -27,6 +27,7 @@ F1.2 (2026-11-09): spec escrito; ajustado el mismo día con las respuestas del h
 Ninguna.
 
 ## Tandas
+- 2026-11-09 · Tanda 1 (backend_dev) · T0–T4 · typecheck, lint, guardias (solo la baseline) y `related` en verde; la integración de `mi-plan-cambiar-plan` la corre CI. Desvíos: `IPlanesDelMaestroRepository` y `@sin-superficie` en las actions hasta T7. Detalle en `progress/impl_SLT-99.md`.
 
 ## Modelos (overrides)
 
