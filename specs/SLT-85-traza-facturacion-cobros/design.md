@@ -133,9 +133,12 @@ cambia ni la duplica. Sin moneda (decisión «IVA y moneda», abierta hasta SL-2
 
 Modelo `CobroPlataformaTraza` (`@@map("cobro_plataforma_traza")`), con `id String @id` sin default (lo
 pone el trigger, como `CobroPlataformaMovimiento`), `organizacionId @default(dbgenerated())`, las
-relaciones `orden`, `movimiento` (1 a 1: `CobroPlataformaMovimiento.traza CobroPlataformaTraza?`),
-`reversoDe`/`reverso` (relación a sí misma con nombre) y las relaciones inversas en `Orden`,
-`Organizacion` y `CobroPlataformaMovimiento`. `tipoCobro` y `periodoTipo` son `String` (los `CHECK` viven
+relaciones `orden`, `movimiento` (inversa `CobroPlataformaMovimiento.trazas CobroPlataformaTraza[]`),
+`reversoDe`/`reversos` (relación a sí misma con nombre, inversa también lista) y las relaciones inversas
+en `Orden`, `Organizacion` y `CobroPlataformaMovimiento`. **Listas y no `traza?`** (cambio aceptado en la
+implementación, 2026-11-09): Prisma solo admite un 1 a 1 sobre un único de una sola columna, y aquí el
+único es compuesto, `(organizacion_id, movimiento_id)` (§1.1). El 1 a 1 lo garantiza ese único del SQL;
+añadir un `UNIQUE (movimiento_id)` solo para Prisma duplicaría el índice. `tipoCobro` y `periodoTipo` son `String` (los `CHECK` viven
 en el SQL, como `planTipoCobro`). El comentario del modelo nombra lo que vive solo en el SQL: los `CHECK`,
 la política, el `REVOKE`, el trigger de inmutabilidad y los de misma empresa.
 
