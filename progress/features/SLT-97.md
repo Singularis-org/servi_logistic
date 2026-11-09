@@ -2,12 +2,12 @@
 
 | key | nombre | zone | complexity | rama | assignee | estado |
 |---|---|---|---|---|---|---|
-| SLT-97 | reporte-bugs-modulo-superadmin | fullstack | medium | feature/SLT-97-reporte-bugs-modulo-superadmin | Camilo | pending |
+| SLT-97 | reporte-bugs-modulo-superadmin | fullstack | medium | feature/SLT-97-reporte-bugs-modulo-superadmin | Camilo | in_progress |
 
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F1.0 (2026-11-09): tomada, worktree montado y afinada. Sigue F1.2 (spec_author).
+F1.4 (2026-11-09): spec aprobado por el humano («Aprobado, implementa»). Tarjeta en curso. F2.1 implementer.
 
 ## Evaluación
 - zone fullstack: estado e historial sobre `bug_report` (migración) y pantallas en /plataforma.
