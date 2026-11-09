@@ -1,7 +1,9 @@
 # SLT-89 — geo-jerarquica-zonas · design.md
 
 > Cómo se cumple `requirements.md` (R1–R48; R43–R48 añadidos el 2026-11-09 con las respuestas del
-> humano a P1–P3: §5.2, §5.4, §6, §8.3, §8.4, §10, §11). Escrito por `spec_author` el 2026-11-09 sobre la rama
+> humano a P1–P3: §5.2, §5.4, §6, §8.3, §8.4, §10, §11). Revisión del 2026-11-09 por la decisión
+> «"Antes" obligatorio»: el «antes» deja de ser opcional en guardar zona existente, renombrar grupo,
+> cambiar miembros y borrar grupo (§5.1, §5.2, §5.4, §5.5, §6, §10, §12). Escrito por `spec_author` el 2026-11-09 sobre la rama
 > `feature/SLT-89-geo-jerarquica-zonas` (apilada sobre SLT-46, que trae 43, 44, 45, 65 y 71).
 > El MCP del grafo no tenía indexado este worktree: todo lo de abajo sale de Grep/Read del código.
 > Sin dependencias nuevas.
@@ -226,13 +228,15 @@ ganan los delegados de la carga (`grupoDistritosNodo`, `zonaNodo`, `nodoGeografi
 
 ### 5.1 `ZonaRepository.update` (orden de pasos dentro de la transacción de hoy)
 
-Entrada (`UpdateZonaData`): `distritoIds` (profundidad 3), `nodoIds` (el resto), y opcional
-`antes: { distritoIds, nodoIds }`.
+Entrada (`UpdateZonaData`): `distritoIds` (profundidad 3), `nodoIds` (el resto) y, **obligatorio**
+(decisión del 2026-11-09), `antes: { distritoIds, nodoIds }`. La falta de `antes` la rechazan el
+esquema y el service (§5.5) antes de llegar aquí; en el repositorio el campo es requerido en el tipo.
 
 0. `SELECT … FROM zona WHERE id = $1 FOR UPDATE` (nuevo): serializa dos guardados de la misma zona.
 1. `exists` / `sin_zona_central` (sin cambios).
-2. **Cambio concurrente (R16):** si viene `antes` y el conjunto actual (`zona_distrito` + `zona_nodo`
-   de la zona) no es igual → `{ estado: "cambio_concurrente" }` sin escribir.
+2. **Cambio concurrente (R16):** si el conjunto actual (`zona_distrito` + `zona_nodo` de la zona) no
+   es igual a `antes` (sin orden ni repetidos, `mismoConjunto`) → `{ estado: "cambio_concurrente" }`
+   sin escribir.
 3. **Otra zona (R2):** `leerDistritosEnOtraZona` (sin cambios) + `leerNodosEnOtraZona` (misma forma,
    sobre `zona_nodo`) → `distrito_en_otra_zona` con los conflictos de los dos; el service los cuelga de
    `distritoIds` y `nodoIds` respectivamente, con el mismo mensaje.
@@ -272,7 +276,7 @@ no tiene grupos) y sin historial de nodos (R30, SLT-76).
 ### 5.2 Grupos (`GrupoDistritosRepository.crear` / `fijarDistritos`)
 
 - Entrada: `distritoIds` y `nodoIds` (los dos `[]` por defecto en el esquema); en `fijar`, `antes:
-  { distritoIds, nodoIds }` opcional. `SELECT … FROM grupo_distritos WHERE id = $1 FOR UPDATE`, luego
+  { distritoIds, nodoIds }` **obligatorio** (decisión del 2026-11-09; sin él, `validation_error`, §5.5). `SELECT … FROM grupo_distritos WHERE id = $1 FOR UPDATE`, luego
   comparación con el «antes» → `cambio_concurrente` (R43). Detalle de las cuatro escrituras en §5.4.
 - El service valida con `nodosCubiertos` (R17, R18) y `distritosEnOtroGrupo` sobre las dos tablas.
 - El repositorio reparte: distrito con `zona_distrito` en la zona → `grupo_distritos_distrito`;
@@ -319,32 +323,63 @@ un valor ni un miembro a ese grupo, así que lo comparado sigue valiendo al escr
 | Cambiar miembros | `antes: { distritoIds: string[]; nodoIds: string[] }` (los miembros que el modal pintó) | Conjunto actual de `grupo_distritos_distrito` ∪ `grupo_distritos_nodo` del grupo = `distritoIds ∪ nodoIds` (sin orden ni repetidos) | `cambio_concurrente` (R43) |
 | Borrar | `antes: { nombre: string; distritoIds: string[]; nodoIds: string[]; valores: number }` | Nombre actual = `nombre`; miembros como en «cambiar miembros»; número de `tarifa_valor` del grupo = `valores` (el mismo conteo que hoy pinta SLT-54 R43, `_count.valores` de `grupoConZona`, los de tienda incluidos) | `cambio_concurrente` (R45) |
 
-- La comparación de «cambiar miembros» y «borrar» usa una función pura nueva `mismoConjunto(a, b)`
-  en el repositorio (orden y repetidos no cuentan), con casos en el test de integración.
+- La comparación de «cambiar miembros», «borrar» y del guardado de zona (§5.1 paso 2) usa una función
+  pura nueva `mismoConjunto(a, b)` en `lib/services/geografia-dominio.ts` (orden y repetidos no
+  cuentan), con casos en `geografia-dominio.test.ts` y en los tests de integración.
 - `cambio_concurrente` no escribe nada: ni filas de negocio ni historial (`grupo_distritos_cambiado` /
   `grupo_distritos_borrado`). Con el «antes» igual a la base, cada escritura deja exactamente lo de
   hoy (mismo historial, mismos conteos, R31).
-- Repositorio: `renombrar(id, nombre, actor, nombreAnterior?) → "ok" | "not_found" | "nombre_repetido"
-  | "cambio_concurrente"`; `fijarDistritos(…, antes?)` gana `"cambio_concurrente"`; `borrar(id, actor,
-  antes?) → "ok" | "not_found" | "cambio_concurrente"`. El parámetro nuevo va al final y opcional
-  para no romper a los llamadores de hoy (tests de SLT-52/54, fábricas); la pantalla lo manda siempre
-  y `TarifasGrupos.test.tsx` lo fija (como `antes` de la zona, §6).
-- Service: `renombrarGrupo(id, nombre, actor, nombreAnterior?)`, `borrarGrupo(id, actor, antes?)`;
-  el rol se mira primero (R37) y `cambio_concurrente` → `{ status: "conflict"; motivo:
-  "cambio_concurrente" }`.
+- Repositorio: `renombrar(id, nombre, nombreAnterior, actor) → "ok" | "not_found" | "nombre_repetido"
+  | "cambio_concurrente"`; `fijarDistritos(id, pedidos, antes, actor)` gana `"cambio_concurrente"`;
+  `borrar(id, antes, actor) → "ok" | "not_found" | "cambio_concurrente"`. **El «antes» es un
+  parámetro obligatorio** (decisión del 2026-11-09, como `PaisRepository.renombrar(id, nombre,
+  nombreAnterior, actorId)` de SLT-46): va delante del actor, como en SLT-46, y los llamadores de hoy
+  (tests de SLT-52/54) se adaptan (§5.5, T5.6).
+- Service: `renombrarGrupo(id, nombre, nombreAnterior, actor)`, `fijarDistritos(id, pedidos, antes,
+  actor)`, `borrarGrupo(id, antes, actor)`; orden: rol (R37) → esquema (falta de «antes» →
+  `validation_error`, §5.5) → `not_found` → comparación; `cambio_concurrente` → `{ status:
+  "conflict"; motivo: "cambio_concurrente" }`.
+
+### 5.5 «Antes» obligatorio (R16, R43–R46) — decisión del 2026-11-09
+
+Igual que el renombrado de SLT-46 (`renombrarNodoGeograficoSchema` con `nombreAnterior` obligatorio):
+
+| Escritura | Campo obligatorio | Sin él |
+|---|---|---|
+| Guardar zona existente (`actualizarZona`) | `antes: { distritoIds, nodoIds }` (las dos listas presentes; vacías valen y las juzga la comparación del paso 2 de §5.1) | `validation_error`, `fieldErrors.antes` |
+| Renombrar grupo | `nombreAnterior` (mismas reglas de nombre que `nombre`) | `validation_error`, `fieldErrors.nombreAnterior` |
+| Cambiar miembros | `antes: { distritoIds, nodoIds }` | `validation_error`, `fieldErrors.antes` |
+| Borrar grupo | `antes: { nombre, distritoIds, nodoIds, valores }` | `validation_error`, `fieldErrors.antes` |
+| Crear zona, crear grupo | — (R46) | — |
+
+- **Dónde se rechaza:** en el esquema zod que parsea la action (primera red, la que ve la pantalla y
+  la API de server actions) y otra vez en el service, que parsea su entrada con el mismo esquema
+  (los services de grupos ya lo hacen; `ZonaService.actualizar` gana el `safeParse` del «antes»
+  después del rol). Así un llamador que salta la action con un cast tampoco escribe. El repositorio
+  lo recibe tipado como requerido. Nada se lee de la base antes de este rechazo salvo lo que ya leía
+  hoy el rol (sesión).
+- **Orden:** rol → `validation_error` (incluida la falta de «antes») → `not_found` → `conflict`. Un
+  grupo inexistente pedido sin «antes» da `validation_error`, no `not_found` (R45).
+- **Renombrar al mismo nombre:** el «antes» sigue siendo obligatorio aunque el nombre pedido ya sea
+  el actual (R44); con «antes», ese caso sigue siendo `ok` como hoy.
+- **Tests existentes:** pasan a mandar el «antes» que corresponde al estado sembrado (el conjunto de
+  distritos de la zona o del grupo, el nombre actual, el número de valores). Es un cambio de entrada
+  autorizado por el humano el 2026-11-09; lo que afirman del resultado no cambia, salvo
+  `TarifasGrupos.test.tsx`, cuyas aserciones `toHaveBeenCalledWith` de renombrar y borrar ganan el
+  «antes» (cambio de aserción autorizado). La lista va en T5.6 y T3.7.
 
 ## 6. Contratos
 
 | Pieza | Cambio |
 |---|---|
-| `crearZonaSchema` / `actualizarZonaSchema` | `distritoIds: z.array(id)` (ya no `.min(1)`), `nodoIds: z.array(id).default([])`, `superRefine`: al menos uno entre los dos, si no, error en `distritoIds` (R5, mismo campo que hoy). `actualizarZonaSchema` gana `antes: { distritoIds, nodoIds }` opcional. Siguen `.strict()` |
+| `crearZonaSchema` / `actualizarZonaSchema` | `distritoIds: z.array(id)` (ya no `.min(1)`), `nodoIds: z.array(id).default([])`, `superRefine`: al menos uno entre los dos, si no, error en `distritoIds` (R5, mismo campo que hoy). `actualizarZonaSchema` gana `antes: z.object({ distritoIds: z.array(idSchema), nodoIds: z.array(idSchema) }).strict()` **obligatorio** (R16, §5.5); `crearZonaSchema` no lo admite (R46). Siguen `.strict()` |
 | `ActualizarZonaResult` | + `{ status: "conflict"; motivo: "cambio_concurrente" }` |
 | `ZonaDTO` | + `nodosCount` |
 | `impactoAsignacionZona` | nuevo, entrada `{ zonaId?: string; distritoIds: string[]; nodoIds: string[] }`, salida `{ status: "ok"; impacto: ImpactoAsignacionDTO } \| ZonaActionError` |
 | `listarArbolDeZonas` | nuevo, salida `{ status: "ok"; arbol: ArbolDeZonasDTO } \| forbidden \| unauthenticated` |
-| `crearGrupoSchema`, `fijarDistritosSchema`, `cambiarDistritosDeGrupoSchema` | + `nodoIds` (default `[]`); `cambiarDistritosDeGrupoSchema` + `antes: { distritoIds, nodoIds }` opcional (R43) |
-| `renombrarGrupoDistritosSchema` | `{ id, nombre, nombreAnterior? }` (R44) |
-| `borrarGrupoDistritosSchema` | `{ id, antes?: { nombre, distritoIds, nodoIds, valores: z.number().int().min(0) } }` (R45); listas de `idSchema`, como `distritoIdsSchema` |
+| `crearGrupoSchema`, `fijarDistritosSchema`, `cambiarDistritosDeGrupoSchema` | + `nodoIds` (default `[]`); `cambiarDistritosDeGrupoSchema` (y `fijarDistritosSchema`, que usa el service) + `antes: { distritoIds, nodoIds }` **obligatorio** (R43, §5.5); `crearGrupoSchema` sin «antes» (R46) |
+| `renombrarGrupoDistritosSchema` (y `renombrarGrupoSchema`, que usa el service) | `{ id, nombre, nombreAnterior }`, `nombreAnterior` **obligatorio** con las reglas de nombre de `nombre` (R44, §5.5) |
+| `borrarGrupoDistritosSchema` | `{ id, antes: { nombre, distritoIds, nodoIds, valores: z.number().int().min(0) } }`, `antes` **obligatorio** (R45, §5.5); listas de `idSchema`, como `distritoIdsSchema` |
 | `CambiarGrupoResult` (renombrar y cambiar miembros) | + `{ status: "conflict"; motivo: "cambio_concurrente" }` |
 | `BorrarGrupoResult` | + `{ status: "conflict"; motivo: "cambio_concurrente" }` |
 | `CrearGrupoResult` | sin cambio (R46: un alta no tiene «antes») |
@@ -352,8 +387,10 @@ un valor ni un miembro a ese grupo, así que lo comparado sigue valiendo al escr
 | `DistritoDeSelector` (Tarifas) | sin cambio; `CargarZonaResult` gana `nodos` (sub-árbol de §4.4) |
 | API v1 / v2 | sin cambios de contrato (R40) |
 
-`antes` es opcional para no romper a quien llama sin pantalla (tests, fábricas); la pantalla lo manda
-siempre y un test de componente lo fija.
+El «antes» es **obligatorio** en las cuatro escrituras de arriba que lo llevan (decisión del
+2026-11-09, §5.5): sin él, `validation_error` sin escribir. Ya no hay llamador «sin pantalla» que lo
+pueda omitir; los tests que hoy llaman sin él se adaptan (T3.7, T5.6). La pantalla lo manda siempre y
+los tests de componente lo fijan.
 
 ## 7. Autorización
 
@@ -435,12 +472,13 @@ este diseño o de `requirements.md`, se para y se pregunta: no se ajusta el spec
 | R6, R7, R9 | `tests/integration/db/zona-nodo-herencia.test.ts` (v1, v2, carga, cobertura, árbol, filtros por zona) |
 | R8 | La guardia existente `tarifas-sin-escritura-vieja` (ya prohíbe escribir `distrito_zona_especial` desde las actions) y un caso en `zona-nodo-herencia.test.ts` (marca de un distrito heredada por un nodo de profundidad 4; un cantón asignado no gana marca) |
 | R10, R11 | `tests/integration/db/zona-nodo-reconciliacion.test.ts` |
-| R12, R13, R16 | `tests/components/ZonaGuardadoConfirmacion.test.tsx` |
+| R12, R13, R16 | `tests/components/ZonaGuardadoConfirmacion.test.tsx`; R16 (servidor): `zona-nodo-asignacion.test.ts` (cambio concurrente), `tests/unit/types/zona-schema.test.ts` (`actualizarZonaSchema` sin `antes` → error en `antes`; `crearZonaSchema` sin él → válido), `tests/unit/services/zona-service.test.ts` (sin `antes` → `validation_error` y el doble de repositorio no se llama), `tests/integration/actions/zonas-action.test.ts` (sin `antes` → `validation_error`, sin escrituras) |
 | R14, R15 | `tests/integration/db/zona-nodo-impacto.test.ts` (aviso = guardado; sin escrituras; tarifa con y sin activación) |
 | R17, R18, R19, R21 | `tests/integration/db/grupo-nodo.test.ts`; `tests/unit/services/grupo-distritos-service.test.ts` |
 | R20 | `grupo-nodo.test.ts` (orden sin distrito bajo un cantón con grupo → sin grupo) |
 | R22, R23 | `tests/components/TarifasGrupos.test.tsx` (por cada una de las cuatro escrituras: inválido → sin modal ni llamada; válido → antes → después, action no llamada hasta confirmar, cancelar no llama, «antes» enviado; borrar conserva el texto de SLT-54 R43) |
-| R43, R44, R45, R46 | `tests/integration/db/grupo-cambio-concurrente.test.ts` (por escritura: «antes» igual → escribe lo de hoy; distinto → `cambio_concurrente` sin filas de negocio ni historial; borrar con un valor o un miembro añadido entre medias → no borra; renombrar al nombre que ya tiene → como hoy; grupo inexistente → `not_found`; crear con nombre recién tomado o miembro recién metido en otro grupo → `validation_error`); `tests/unit/services/grupo-distritos-service.test.ts` (traducción a `conflict`); `tests/integration/actions/tarifas-action.test.ts` (las actions pasan el «antes» y devuelven el `conflict`) |
+| R43, R44, R45, R46 | `tests/integration/db/grupo-cambio-concurrente.test.ts` (por escritura: «antes» igual → escribe lo de hoy; distinto → `cambio_concurrente` sin filas de negocio ni historial; borrar con un valor o un miembro añadido entre medias → no borra; renombrar al nombre que ya tiene → como hoy; grupo inexistente → `not_found`; crear con nombre recién tomado o miembro recién metido en otro grupo → `validation_error`); `tests/unit/services/grupo-distritos-service.test.ts` (traducción a `conflict`; sin «antes» en renombrar, cambiar miembros y borrar → `validation_error` en su campo y el doble de repositorio no se llama, también con un grupo inexistente y con el nombre pedido igual al actual; crear sin «antes» → sigue `ok`); `tests/integration/actions/tarifas-action.test.ts` (las actions pasan el «antes» y devuelven el `conflict`; sin «antes» → `validation_error` y la base sin cambios) |
+| R38 («antes» en tests existentes) | Revisión: los archivos de T3.7 y T5.6 solo cambian la entrada (y en `TarifasGrupos.test.tsx` el `toHaveBeenCalledWith` de renombrar/borrar), nunca lo que afirman del resultado |
 | R47 | `tests/components/TarifasGrupos.test.tsx` (cierra, aviso `aria-live`, recarga la zona) |
 | R24–R27 | `tests/unit/components/geografia-selector-n-niveles.test.tsx` |
 | R48 | Revisión: en `progress/impl_SLT-89.md` la referencia al lienzo y la fecha de aprobación son anteriores al primer commit de T7 (`git log`) |
@@ -487,14 +525,18 @@ este diseño o de `requirements.md`, se para y se pregunta: no se ajusta el spec
    «antes» sin versión, y el candado de §5.4 cubre las altas de valores y miembros por la FK.
 9. **Comparar en «borrar» los ids de los valores en vez de su número.** Descartada: el modal muestra
    el número (SLT-54 R43), no los valores; el «antes» compara lo que la persona vio (SLT-46 §4.7).
+10. **«Antes» opcional para no tocar los tests de hoy** (la versión anterior de este diseño).
+   Descartada por el humano el 2026-11-09: un llamador sin «antes» se saltaría el control de cambio
+   concurrente sin que nada lo notara; se alinea con el renombrado de SLT-46, donde es obligatorio.
 
 ## 12. Riesgos
 
 - **Normalización de miembros (§5.1 paso 7)** es la pieza nueva con más casos; se prueba con una
   tabla de casos (asignado → heredado, heredado → asignado, sale de la zona, excepción en otra zona)
   contra Postgres real.
-- **Tamaño del PR:** ~78 archivos y ~7 600 líneas (sin `specs/` ni `progress/`; +3 archivos y ~600
-  líneas por P3), por encima del máximo de 40 archivos / 1 000 líneas. El humano decidió una sola tarjeta («¿Partir la tarjeta?»); se
+- **Tamaño del PR:** ~93 archivos y ~8 100 líneas (sin `specs/` ni `progress/`; +3 archivos y ~600
+  líneas por P3; +15 archivos y ~500 líneas por el «antes» obligatorio, casi todo tests existentes
+  que ganan el «antes» en su entrada), por encima del máximo de 40 archivos / 1 000 líneas. El humano decidió una sola tarjeta («¿Partir la tarjeta?»); se
   dice aquí para que la revisión lo sepa.
 - **Rama apilada:** depende de SLT-46 (PR #107) sin mergear.
 - **Maqueta (R48):** T7 queda parada hasta la aprobación; el backend (T1–T6) no depende de ella. Si la

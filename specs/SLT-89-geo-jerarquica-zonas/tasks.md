@@ -12,9 +12,11 @@
 > P1–P3 cerradas por el humano el 2026-11-09 (`requirements.md > Decisiones cerradas`). Tercera
 > regla: **ninguna task de T7 empieza sin la maqueta aprobada (T0.2, R48)**; T1–T6 no la esperan.
 >
-> **Tamaño estimado del PR:** ~78 archivos (42 de código, base y docs; 35 de tests, de ellos 10 de
-> componentes que solo se adaptan a la nueva entrada del formulario; 1 E2E) y ~7 600 líneas
-> (≈2 950 de código y SQL, ≈4 650 de tests), sin `specs/` ni `progress/`. Pasa el máximo por defecto (40 archivos / 1 000
+> **Tamaño estimado del PR:** ~93 archivos (42 de código, base y docs; 50 de tests, de ellos 10 de
+> componentes que solo se adaptan a la nueva entrada del formulario y 15 existentes que solo ganan el
+> «antes» obligatorio, T3.7 y T5.6; 1 E2E) y ~8 100 líneas (≈3 000 de código y SQL, ≈5 100 de
+> tests), sin `specs/` ni `progress/`. Revisado el 2026-11-09 por la decisión «"Antes" obligatorio»
+> (+15 archivos, ~500 líneas). Pasa el máximo por defecto (40 archivos / 1 000
 > líneas); el humano decidió una sola tarjeta («¿Partir la tarjeta? No»).
 
 ## T0 — Lo heredado (no se re-crea)
@@ -77,8 +79,8 @@ Montado por SLT-43/44/45/46/52/54/65/71/75/76 en esta rama. Se usa tal cual:
 
 ## T2 — Dominio y lecturas (depende de T1)
 
-- [ ] **T2.1** `geografia-dominio.ts`: `conAsignacionesDeZona` (asignaciones propuestas) y
-  `grupoDelLugar` (miembro más cercano), puros, con casos en
+- [ ] **T2.1** `geografia-dominio.ts`: `conAsignacionesDeZona` (asignaciones propuestas),
+  `grupoDelLugar` (miembro más cercano) y `mismoConjunto` (comparación del «antes», design §5.4), puros, con casos en
   `tests/unit/services/geografia-dominio.test.ts`. (R14, R19)
 - [ ] **T2.2** `CatalogoGeograficoRepository`: la consulta a `zona_nodo` en la misma foto (§4.1);
   `Pick` de los repositorios que construyen el cargador (`GeoRepository`, `OrdenRepository`,
@@ -98,15 +100,48 @@ Montado por SLT-43/44/45/46/52/54/65/71/75/76 en esta rama. Se usa tal cual:
 
 ## T3 — Guardado de zona (depende de T2)
 
-- [ ] **T3.1** Esquemas `crearZonaSchema`/`actualizarZonaSchema` (`nodoIds`, `antes`, «al menos uno»
-  en `distritoIds`), `ActualizarZonaResult` con `cambio_concurrente`, `ZonaDTO.nodosCount`; casos en
-  `tests/unit/types/zona-schemas.test.ts`. (R5, R16)
+- [ ] **T3.1** Esquemas `crearZonaSchema`/`actualizarZonaSchema` (`nodoIds`, `antes` **obligatorio**
+  solo en `actualizarZonaSchema` —design §5.5—, «al menos uno» en `distritoIds`),
+  `ActualizarZonaResult` con `cambio_concurrente`, `ZonaDTO.nodosCount`; casos en
+  `tests/unit/types/zona-schemas.test.ts` (R5) y en `tests/unit/types/zona-schema.test.ts` (sin
+  `antes` → error en `antes`; crear sin él → válido). (R5, R16, R46)
 - [ ] **T3.2** `ZonaRepository.create`/`update` con los pasos de §5.1 (candado, «antes», otra zona,
   existencia, escrituras por diferencia en las dos tablas, normalización de miembros, plan con todos
   los afectados, quinto lote de historial, `esViolacionNodoUnico`); `IZonaRepository`. (R1–R4, R10,
   R11, R16, R21, R30)
 - [ ] **T3.3** `ZonaService`: traducción de los desenlaces nuevos (`nodoIds`, `cambio_concurrente`),
-  rol; `IZonaService`; casos en `tests/unit/services/zona-service.test.ts`. (R2, R36)
+  rol, y el rechazo de la falta de `antes` (`safeParse` después del rol, antes de llamar al
+  repositorio; design §5.5); `IZonaService`; casos en `tests/unit/services/zona-service.test.ts`
+  (sin `antes` → `validation_error` en `antes` y el doble de repositorio no se llama) y en
+  `tests/integration/actions/zonas-action.test.ts` (sin `antes` → `validation_error`, base sin
+  cambios). (R2, R16, R36)
+- [ ] **T3.7** Adaptar al «antes» obligatorio los tests existentes que guardan una zona sin él
+  (cambio de entrada AUTORIZADO por el humano el 2026-11-09; design §5.5). Va en el mismo commit que
+  T3.1–T3.3: con el campo requerido, el typecheck no cierra sin esto. Cada llamada gana el «antes»
+  que corresponde a lo sembrado (los distritos que la zona tiene en ese momento; `nodoIds: []`), sin
+  tocar lo que afirma. Encontrados con grep de `actualizarZona(`, `.actualizar(` de `ZonaService` y
+  `.update(` de `ZonaRepository`:
+  - `tests/unit/types/zona-schema.test.ts` (parsea `actualizarZonaSchema`)
+  - `tests/unit/services/zona-service.test.ts` (helper `crearInput` usado en `actualizar`; las
+    aserciones sobre el doble `repo.update`, donde las haya, ganan `antes` en los datos: cambio de aserción autorizado)
+  - `tests/unit/services/nombres-que-imprime-la-etiqueta.test.ts` (helper `actualizarZona`)
+  - `tests/unit/repositories/zona-repository.test.ts` (`DATOS_ZONA_A`, `DATOS_BASE` y llamadas sueltas)
+  - `tests/integration/actions/zonas-action.test.ts`
+  - `tests/integration/db/zona-update-conserva-grupos.test.ts`
+  - `tests/integration/db/zona-reconciliacion-ordenes.test.ts` (helper `datosDeZona`)
+  - `tests/integration/db/zona-pago-mensajero-rastro.test.ts` (helper `datos`, incluido `repoRoto`)
+  - `tests/integration/db/zona-guardado-conserva-inactivos.test.ts`
+  - `tests/integration/db/zona-guardado-conserva-costos.test.ts` (repo, service y action)
+  - `tests/integration/db/zona-especial-dos-empresas.test.ts` (solo las dos llamadas a `zonaRepo.update`)
+  - `tests/integration/db/zona-distrito-unica.test.ts`
+  - `tests/integration/db/zona-distrito-rastro.test.ts` (helper `e.datos`)
+  - `tests/integration/db/zona-central-guarda-y-rastro.test.ts` (incluido `repoRoto`)
+  - Los tests de componente del formulario de zona (T7.2) ya se adaptan allí.
+  Ninguna fábrica (`tests/fabricas/`), fixture (`tests/integration/db/_fixtures/`), E2E ni script
+  (`scripts/demo-qa/`) guarda una zona por estas vías: las coincidencias del grep en ellos son de
+  otros `update`/`actualizar` (usuario, `DistritoZonaEspecialService`, `tx.zona.update`).
+  *Hecho:* typecheck verde y esos archivos verdes con un diff que solo añade el «antes» a la entrada
+  y a las aserciones de llamada sobre dobles (el reviewer lo comprueba contra R38).
 - [ ] **T3.4** [P] `tests/integration/db/zona-nodo-asignacion.test.ts`: crear/guardar con cantón,
   provincia y profundidad 4; conflicto con otra zona y carrera por el índice; excepción en los dos
   órdenes; nodo inexistente o de otro país; retirados; vacío; cambio concurrente. (R1–R5, R16)
@@ -127,23 +162,28 @@ Montado por SLT-43/44/45/46/52/54/65/71/75/76 en esta rama. Se usa tal cual:
 
 ## T5 — Grupos sobre el nodo (depende de T2.5 y T3.2)
 
-- [ ] **T5.1** Esquemas de grupo en `lib/types/tarifa-flexible.ts` (§6): `nodoIds`; `antes` en
-  cambiar miembros; `nombreAnterior` en renombrar; `antes: { nombre, distritoIds, nodoIds, valores }`
-  en borrar; `GrupoDistritosDTO.nodos`. `CambiarGrupoResult` y `BorrarGrupoResult` con
-  `conflict`/`cambio_concurrente` en `IGrupoDistritosService.ts`. (R17, R43–R45)
-  *Hecho:* typecheck verde sin tocar los llamadores de hoy (los campos nuevos son opcionales).
+- [ ] **T5.1** Esquemas de grupo en `lib/types/tarifa-flexible.ts` (§6): `nodoIds`; `antes`
+  **obligatorio** en cambiar miembros; `nombreAnterior` **obligatorio** en renombrar; `antes: {
+  nombre, distritoIds, nodoIds, valores }` **obligatorio** en borrar (design §5.5); crear sin «antes»;
+  `GrupoDistritosDTO.nodos`. `CambiarGrupoResult` y `BorrarGrupoResult` con
+  `conflict`/`cambio_concurrente` en `IGrupoDistritosService.ts`. (R17, R43–R46)
+  *Hecho:* typecheck verde con los esquemas; los llamadores de hoy se adaptan en T5.6, que cierra en
+  el mismo commit que T5.2b (cuando cambian las firmas de service y repositorio).
 - [ ] **T5.2** `GrupoDistritosRepository` (`nodosCubiertos`, `distritosEnOtroGrupo` sobre las dos
   tablas, reparto por tabla, historial con el recuento de las dos) y `GrupoDistritosService`
   (cobertura, rol); interfaces; `lib/actions/tarifas.ts`. (R17, R18, R31, R37)
 - [ ] **T5.2b** Cambio concurrente en las cuatro escrituras de grupos (§5.4): candado `FOR UPDATE`
   del grupo, `mismoConjunto`, comparación del «antes» en `renombrar`, `fijarDistritos` y `borrar`
   (después de `not_found`, antes de escribir), desenlace `cambio_concurrente` en repositorio y
-  `conflict` en service; las actions `renombrarGrupoDistritos`, `cambiarDistritosDeGrupo` y
+  `conflict` en service; el «antes» pasa a ser parámetro **obligatorio** de repositorio y service
+  (firmas de design §5.4) y el service rechaza su falta con `validation_error` antes de leer el grupo
+  (orden de design §5.5); las actions `renombrarGrupoDistritos`, `cambiarDistritosDeGrupo` y
   `borrarGrupoDistritos` pasan el «antes» al service. Escribe `tests/integration/db/grupo-cambio-concurrente.test.ts`
   (los casos de design §10, fila R43–R46) y los casos nuevos de
-  `tests/integration/actions/tarifas-action.test.ts`. Depende de T5.1 y T5.2. (R43–R46)
+  `tests/integration/actions/tarifas-action.test.ts` (incluido «sin antes → `validation_error`, base
+  sin cambios»). Depende de T5.1 y T5.2. (R43–R46)
   *Hecho:* esos dos archivos y los casos nuevos de `grupo-distritos-service.test.ts` (T5.5) en verde,
-  y los tests existentes de SLT-52/54 sobre grupos sin cambiar aserciones.
+  y los tests existentes de SLT-52/54 sobre grupos verdes con solo la adaptación de T5.6.
 - [ ] **T5.3** `TarifasPantallaRepository.distritosDeZona` desde el catálogo y `nodosDeZona` nuevo;
   `TarifasPantallaService.cargarZona` con `nodos`; interfaces. (R23, R38)
 - [ ] **T5.4** `tests/integration/db/grupo-nodo.test.ts`: miembro cantón y distrito heredado;
@@ -153,7 +193,32 @@ Montado por SLT-43/44/45/46/52/54/65/71/75/76 en esta rama. Se usa tal cual:
 - [ ] **T5.5** [P] `tests/unit/services/grupo-distritos-service.test.ts` y
   `tests/unit/services/tarifas-pantalla-service.test.ts`: roles en las cuatro escrituras y en la
   lectura (`admin` lee, no escribe; otros `forbidden` con doble que falla); `cambio_concurrente` →
-  `conflict` con motivo. (R37, R43–R45)
+  `conflict` con motivo; sin «antes» en renombrar, cambiar miembros y borrar → `validation_error` en
+  su campo con doble que falla (también con grupo inexistente y con renombrar al nombre actual);
+  crear sin «antes» → `ok`. (R37, R43–R46)
+- [ ] **T5.6** Adaptar al «antes» obligatorio los tests existentes que renombran, cambian miembros
+  o borran un grupo sin él (cambio de entrada y, donde se dice, de aserción, AUTORIZADO por el humano
+  el 2026-11-09; design §5.5). Va en el mismo commit que T5.2b. Cada llamada gana el «antes» de lo
+  sembrado (nombre actual, miembros actuales con `nodoIds: []`, número de valores del grupo).
+  Encontrados con grep de `renombrarGrupoDistritos(`, `cambiarDistritosDeGrupo(`,
+  `borrarGrupoDistritos(`, `.renombrarGrupo(`, `.fijarDistritos(`, `.borrarGrupo(` y de
+  `GrupoDistritosRepository` `.renombrar(`/`.borrar(`:
+  - `tests/unit/services/grupo-distritos-service.test.ts` (llamadas al service y `toHaveBeenCalledWith`
+    sobre el doble de repositorio, que ganan el «antes»: cambio de aserción autorizado)
+  - `tests/integration/actions/tarifas-action.test.ts` (llamadas a las actions y las aserciones
+    `repo.renombrar/fijarDistritos/borrar).toHaveBeenCalledWith(…)` de las líneas ~273-277, que ganan
+    el «antes» en su posición nueva: cambio de aserción autorizado)
+  - `tests/integration/db/tarifa-activacion.test.ts` (`grupos().renombrar`, `grupos().borrar` del
+    repositorio y la action `borrarGrupoDistritos({ id })`)
+  - `tests/integration/db/tarifas-flexibles-escritura.test.ts` (`fijarDistritos`, `borrarGrupo`,
+    `renombrarGrupo` del service, incluidos los de `roto` y los de `not_found`)
+  - `tests/components/TarifasGrupos.test.tsx`: las aserciones
+    `toHaveBeenCalledWith({ id: "g1", nombre: "Playa" })` y `toHaveBeenCalledWith({ id: "g1" })`
+    ganan `nombreAnterior` y `antes` (cambio de aserción autorizado; se hace dentro de T7.3).
+  `TarifasModulo.test.tsx` y `TarifasDisposicion.test.tsx` solo declaran `vi.fn()` de esas actions:
+  no cambian. Ninguna fábrica, fixture, E2E ni script llama a esas escrituras.
+  *Hecho:* typecheck verde y esos archivos verdes; el diff solo añade el «antes» a la entrada y a las
+  aserciones de llamada nombradas arriba, nunca a lo que se afirma del resultado (R38).
 
 ## T6 — Aislamiento y equivalencia (depende de T3, T4, T5)
 
@@ -201,7 +266,8 @@ se para y se pregunta (design §8.4). (R48)
   `tests/unit/historial-accion/catalogo-y-choke-point.test.ts` con el tipo nuevo.
 - [ ] **T9.2** `./init.sh` verde; mapa `R<n> → test` (R1–R48) en `progress/impl_SLT-89.md`; revisión
   del diff contra R42 (sin cambios en filtros/exportes, FK viejas, regla de guardado, modelo viejo,
-  grupo de la orden sin distrito) y de R48 (aprobación de la maqueta anterior al primer commit de T7).
+  grupo de la orden sin distrito) y de R48 (aprobación de la maqueta anterior al primer commit de T7);
+  revisión de que los archivos de T3.7 y T5.6 solo ganan el «antes» (R38).
 
 ## Archivos esperados
 
@@ -288,6 +354,25 @@ Tests:
 - `tests/integration/actions/tarifas-action.test.ts`
 - `tests/integration/db/slt89-equivalencia-cr.test.ts`
 - `e2e/zonas-nodo-canton.spec.ts`
+
+Tests existentes que solo ganan el «antes» obligatorio (T3.7, T5.6; decisión del 2026-11-09):
+- `tests/unit/types/zona-schema.test.ts`
+- `tests/unit/repositories/zona-repository.test.ts`
+- `tests/unit/services/nombres-que-imprime-la-etiqueta.test.ts`
+- `tests/integration/actions/zonas-action.test.ts`
+- `tests/integration/db/zona-update-conserva-grupos.test.ts`
+- `tests/integration/db/zona-reconciliacion-ordenes.test.ts`
+- `tests/integration/db/zona-pago-mensajero-rastro.test.ts`
+- `tests/integration/db/zona-guardado-conserva-inactivos.test.ts`
+- `tests/integration/db/zona-guardado-conserva-costos.test.ts`
+- `tests/integration/db/zona-especial-dos-empresas.test.ts`
+- `tests/integration/db/zona-distrito-unica.test.ts`
+- `tests/integration/db/zona-distrito-rastro.test.ts`
+- `tests/integration/db/zona-central-guarda-y-rastro.test.ts`
+- `tests/integration/db/tarifa-activacion.test.ts`
+- `tests/integration/db/tarifas-flexibles-escritura.test.ts`
+(Los tests de servicio de zonas y de grupos, el de actions de tarifas y el de componente de
+TarifasGrupos también se adaptan y ya están en la lista de arriba.)
 
 Estado:
 - `progress/impl_SLT-89.md`
