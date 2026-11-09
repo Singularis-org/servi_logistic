@@ -38,9 +38,9 @@ con el backend (T0.1, T1–T5; la UI espera la maqueta T0.2). Spec R1–R52, T0�
 - 2026-11-09 (humano, P13): el reordenar funciona también con el dedo, con `@dnd-kit/core` + `sortable` + `utilities` (clásica) como **excepción** al check 2 (sin release desde 2024-12). Filas en `docs/dependencias.md` como `aprobada` (humano, «aprobado», 2026-11-09); se instalan en la tanda de UI con versión exacta. No hay otra librería de arrastre en el repo (`BulkUpload.tsx` solo usa el soltar archivos nativo).
 
 ## Preguntas abiertas
-- 2026-11-09 (implementer, tanda 2): aserciones sin respaldo: `carga-division.test.ts` (it de `listArbolDePais` por cast, rojo a propósito hasta T5.3) y `geo-lecturas-catalogo.test.ts` (compara una proyección de UI, no el repositorio). Las revisa T5.3/reviewer.
 
 ## Tandas
+- 2026-11-09 · T3.3, T3.4, T4.5, T4.6, T5.1–T5.5, T8.1, T8.2 + @dnd-kit instalada · `d74b64ea`…`7906350f` · tsc 0; eslint 0; T5.5 249/249; T5.1–T5.4 y T8.1 89/89; equivalencia 585 = 585; guardias 337, único rojo el del baseline. `ok` sin `nivel` en renombrar/retirar/reactivar: respaldo derivado de §4.1, no escrito en §4.3 (lo mira el reviewer). Prueba ida y vuelta de SLT-43 arreglada en su lista de migraciones (`456c8046`).
 - 2026-11-09 · T3.1–T3.2, T4.1–T4.4, T7.1–T7.3 · `22f314b2`…`7abfe949` · tsc 0; unit tocados 449/449; guardias 337, único rojo el del baseline. La pantalla vieja no escribe (forma nueva de las actions) hasta T6. Rojos que son de T5: `carga-division` (9), `geografia-superadmin-sin-empresa` (2); `pais-repositorio` (1) espera decisión.
 - 2026-11-06 · T1.1–T1.4, T2.1–T2.5 · `60e6869e`…`48ebaa2a` · tsc 0; eslint 0; guardias 336, único rojo el del
   baseline; T2: copia al nodo 9/9, migraciones aditivas 26, ida y vuelta 5/5, `prisma migrate diff` vacío.
