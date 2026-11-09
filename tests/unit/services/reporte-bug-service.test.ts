@@ -53,6 +53,10 @@ function doble(o: {
       };
       return creado;
     },
+    // SLT-97: las lecturas y el cambio de estado son del superadmin; el envío nunca los toca.
+    listar: () => Promise.reject(new Error("el envío no lista reportes")),
+    detalle: () => Promise.reject(new Error("el envío no lee el detalle")),
+    cambiarEstado: () => Promise.reject(new Error("el envío no cambia el estado")),
   };
   const sender: IEmailSender = {
     enviar: async (m) => {
