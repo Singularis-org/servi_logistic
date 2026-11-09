@@ -43,7 +43,9 @@
 - **R3.** MIENTRAS la página sea `/mis-asignaciones` o una de sus subrutas, el sistema DEBE mostrar
   el botón encima del botón del chat, sin solaparse con él.
 - **R4.** CUANDO el usuario pulsa el botón, el sistema DEBE abrir un panel con:
-  - un campo de descripción de texto;
+  - un campo de descripción de texto que no admite más de 500 caracteres;
+  - un contador de los caracteres usados contra el máximo, con el texto exacto «{n}/500», donde
+    {n} es el número de caracteres escritos (por ejemplo, «120/500»);
   - las acciones «Enviar» y «Descartar»;
   - ningún campo para adjuntar archivos.
 - **R5.** MIENTRAS la descripción esté vacía o tenga solo espacios, el sistema DEBE mantener
@@ -72,13 +74,14 @@
 - **R11.** SI una petición de envío llega sin sesión, de un usuario sin empresa o de un rol de la
   plataforma, ENTONCES el sistema DEBE rechazarla sin guardar nada y sin enviar ningún correo.
 - **R12.** SI la descripción recibida en el servidor queda vacía tras recortar espacios, supera
-  5000 caracteres o la entrada trae campos fuera del contrato, ENTONCES el sistema DEBE rechazarla
-  como error de validación, sin guardar nada y sin enviar ningún correo.
+  500 caracteres, la página trae query o fragmento, o la entrada trae campos fuera del contrato,
+  ENTONCES el sistema DEBE rechazarla como error de validación, sin guardar nada y sin enviar
+  ningún correo.
 - **R13.** CUANDO se guarda un reporte, el sistema DEBE registrar con él:
   - el usuario, la empresa y el rol, tomados de la sesión en el servidor y nunca de la entrada del
     cliente;
   - el nombre del usuario en ese momento;
-  - la página (ruta) desde la que se envió;
+  - la página desde la que se envió: solo la ruta, sin query ni fragmento;
   - el navegador (agente de usuario de la petición);
   - el dispositivo: ancho y alto de la ventana, y si corre como app instalada;
   - la fecha y hora del servidor.
@@ -132,32 +135,16 @@
 | ¿Librería nueva? No | Sin requisito: lo hace cumplir `guard-dependencias-aprobadas` |
 | P1 (partir en 3) | El alcance de este archivo |
 | P4, P6 y Módulo del superadmin, Imágenes guardadas | No son de esta entrega: SLT-97 y SLT-98 |
+| Q1 (exceso de líneas aceptado) | Sin requisito: proceso; la línea `tamano-pr-aceptado` va en `progress/features/SLT-87.md` |
+| Q2 (solo la ruta) | R12, R13 |
+| Q3 (máximo de 500) | R4, R12 |
+| Contador «{n}/500» | R4 |
+| Q4 (sin tope de envíos) | Sin requisito: no se construye nada |
+| Q5 (`organization_id` en inglés) | R19 |
 
 ## Preguntas abiertas
 
-P1–P6 de la primera vuelta quedaron resueltas por el humano el 2026-11-09 (ver «Decisiones
-cerradas»). Quedan estas, para hacerlas de una en una:
-
-- **Q1 — Tamaño en líneas.** La entrega queda en ~27 archivos (bajo el 80% de 40), pero se estima
-  en **~1250-1400 líneas** frente a `max_lineas = 1000`. Las líneas son sobre todo los tests y el
-  E2E (~550). *Recomendación:* pedir la aceptación escrita
-  `<!-- tamano-pr-aceptado: … -->` en `progress/features/SLT-87.md` antes de implementar, en vez de
-  partir otra vez. Separar el correo dejaría reportes guardados que nadie ve hasta SLT-97 «Reporte
-  de bugs: módulo del superadmin».
-- **Q2 — ¿La página guarda la ruta sola o también la query?** La query de algunas pantallas lleva
-  búsquedas con datos de clientes (teléfonos, nombres), y el reporte viaja por correo.
-  *Recomendación:* solo la ruta, sin query ni fragmento. Es lo que asume `design.md` (§4).
-- **Q3 — Largo máximo de la descripción.** No estaba decidido. *Recomendación:* 5000 caracteres,
-  que es lo que asumen R12 y `design.md`.
-- **Q4 — ¿Un tope de envíos por usuario?** Sin tope, alguien podría llenar de correos
-  `BUG_REPORT_EMAILS`. *Recomendación:* ninguno en esta entrega; se añade si aparece el abuso.
-- **Q5 — `organization_id` en una tabla de plataforma.** La decisión de identificadores en inglés
-  da `bug_report.organization_id`. Esa tabla es de plataforma y la guardia
-  `organizacion-en-modelos` (R4) prohíbe `organizacion_id` en las tablas de plataforma.
-  `organization_id` no la dispara, pero no por eso deja de ser una referencia a la empresa.
-  *Recomendación:* mantenerlo en inglés y anotar en `docs/architecture.md` que una tabla de
-  plataforma puede citar la empresa como atributo (aquí, quién reportó) sin repartirse por ella
-  (`design.md` §2).
+Ninguna.
 
 ## Decisiones cerradas (no reabrir)
 
@@ -183,3 +170,9 @@ cerradas»). Quedan estas, para hacerlas de una en una:
 | 2026-11-09 | P4 — ¿Dónde van las imágenes? (SLT-98) | A un bucket privado nuevo, propio de estos reportes, no a la carpeta de la empresa. |
 | 2026-11-09 | P5 — ¿Dónde va el botón en `/mis-asignaciones`? | Apilado encima del botón del chat. |
 | 2026-11-09 | P6 — ¿Las imágenes viajan en el correo? (SLT-98) | No como adjuntos: el correo lleva un enlace temporal a cada imagen. |
+| 2026-11-09 | Q1 — La entrega pasa de 1000 líneas (~1250-1400) | Se acepta el exceso en un solo PR; el leader deja la línea `tamano-pr-aceptado` en `progress/features/SLT-87.md`. |
+| 2026-11-09 | Q2 — ¿La página guarda la query? | No: solo la ruta, sin query ni fragmento. |
+| 2026-11-09 | Q3 — Largo máximo de la descripción | 500 caracteres. |
+| 2026-11-09 | Q4 — ¿Tope de envíos por usuario? | Sin tope por ahora. |
+| 2026-11-09 | Q5 — ¿`organization_id` en una tabla de plataforma? | Sí, en inglés, y se anota en `docs/architecture.md`. |
+| 2026-11-09 | ¿Cómo se ve el contador del panel? | Caracteres usados contra el máximo, con el texto exacto «{n}/500» (p. ej. «120/500»). |

@@ -63,8 +63,8 @@ Los identificadores van en inglés por la decisión «Borrado e identificadores�
 | `reporter_user_id` | `TEXT NOT NULL` FK → `usuario(id)` `ON DELETE CASCADE` | Mismo motivo. |
 | `reporter_name` | `VARCHAR(120) NOT NULL` | Nombre en el momento del reporte (R13). 120, igual que `actor_nombre` en los rastros. |
 | `reporter_role` | `rol_value NOT NULL` | Rol en el momento del reporte. `CHECK (reporter_role <> 'superadmin')`: segunda red de R11. |
-| `description` | `TEXT NOT NULL` | `CHECK (char_length(btrim(description)) BETWEEN 1 AND 5000)`: segunda red de R12. |
-| `page_path` | `VARCHAR(2048) NOT NULL` | Solo la ruta (Q2). `CHECK (left(page_path, 1) = '/')`. |
+| `description` | `TEXT NOT NULL` | `CHECK (char_length(btrim(description)) BETWEEN 1 AND 500)`: segunda red de R12 (Q3, decisión del 2026-11-09). |
+| `page_path` | `VARCHAR(2048) NOT NULL` | Solo la ruta (Q2, decisión del 2026-11-09). `CHECK (left(page_path, 1) = '/' AND strpos(page_path, '?') = 0 AND strpos(page_path, '#') = 0)`. |
 | `user_agent` | `VARCHAR(512) NOT NULL` | De la cabecera; se recorta a 512 en el servicio. |
 | `viewport_width`, `viewport_height` | `INTEGER NULL` | `CHECK` 1–20000. Nulos si el cliente no los manda. |
 | `is_standalone` | `BOOLEAN NULL` | La app corre instalada (PWA). |
@@ -85,7 +85,7 @@ Cada una llega con su migración.
 `organization Organizacion` y `reporter Usuario`. Lleva los campos inversos `bugReports
 BugReport[]` en `Organizacion` y en `Usuario`.
 
-**Y la Q5.** La guardia `organizacion-en-modelos` (R4) busca `organizacionId`/`organizacion_id` en
+**Y la Q5 (decidida el 2026-11-09: en inglés, anotado en `docs/architecture.md`).** La guardia `organizacion-en-modelos` (R4) busca `organizacionId`/`organizacion_id` en
 los modelos de plataforma. Este campo se llama `organizationId` con `@map("organization_id")` por la
 decisión de inglés, no para esquivarla. Una línea en `docs/architecture.md > Multi-empresa`
 (§10) lo deja escrito.
@@ -154,7 +154,7 @@ fallo. No hay página nueva ni ítem de menú.
 
 ```ts
 {
-  descripcion: string,          // .trim(), min 1, max DESCRIPCION_MAX (5000) — R12 (Q3)
+  descripcion: string,          // .trim(), min 1, max DESCRIPCION_MAX (500) — R12 (Q3)
   pagina: string,               // empieza por "/" y no por "//", max 2048, sin "?" ni "#" — Q2
   ventana?: { ancho: int 1..20000, alto: int 1..20000 },
   appInstalada?: boolean,
@@ -281,7 +281,10 @@ Va en `components/shared/` y no junto a una página porque se monta en el layout
 **Panel (R4):**
 - Una `Card` fija encima del botón, `role="dialog"`, con un título y un `aria-labelledby`.
 - Ancho `min(22rem, 100vw - 2.5rem)`, para que quepa en un móvil.
-- Contenido: `Textarea` (`maxLength` 5000, el mismo límite que el servidor) y los botones
+- Contador bajo el campo, con el texto de §8.4 y `aria-live="polite"` (R4). Se cuenta como el servidor:
+  longitud del texto en unidades de JavaScript (`.length`), la misma que mide zod. Con el texto
+  recortado, el `CHECK` mide en caracteres de Postgres, que nunca dan más que `.length`.
+- Contenido: `Textarea` (`maxLength` 500, el mismo `DESCRIPCION_MAX` que el servidor) y los botones
   «Descartar» y «Enviar».
 - No hay campo de archivos.
 - Escape o el botón de cerrar lo cierran sin tocar el borrador.
@@ -313,10 +316,24 @@ Va en `components/shared/` y no junto a una página porque se monta en el layout
   - No escribe en el log: sería ruido en el navegador de cada usuario.
 - **Lo que guarda:** solo el texto, nada de imágenes ni de contexto.
 
+### 8.4 Textos
+
+Los textos del panel viven como constantes en `components/shared/ReporteBugBoton.tsx`, y el test
+los compara literalmente.
+
+| Dónde | Texto exacto |
+|---|---|
+| `aria-label` del botón y título del panel | «Reportar un problema» |
+| Contador (R4; decisión del 2026-11-09) | «{n}/500». `{n}` es `descripcion.length` y `500` sale de `DESCRIPCION_MAX`, sin espacios: «0/500» con el campo vacío, «120/500», «500/500» en el máximo. |
+| Acciones | «Enviar» y «Descartar» |
+| Éxito (R9) | «Gracias, recibimos tu reporte» |
+| Fallo (R10) | «No pudimos enviar tu reporte. Inténtalo de nuevo.» |
+
 ## 9. Configuración
 
 `lib/config/reporte-bug.ts`:
-- `DESCRIPCION_MAX = 5000` (Q3). Lo comparten el zod, el `Textarea` y el `CHECK`, este último
+- `DESCRIPCION_MAX = 500` (Q3, decisión del 2026-11-09). Lo comparten el zod, el `Textarea`, el
+  contador y el `CHECK`, este último
   escrito en la migración con el mismo número y un comentario que cita el archivo.
 - `destinatariosReporteBug(valor = process.env.BUG_REPORT_EMAILS): string[]`:
   - parte por «,», recorta, descarta lo vacío y lo que no pasa `z.email()`, y quita duplicados sin
@@ -384,8 +401,9 @@ shadcn ya están.
 
 ## 13. Riesgos
 
-- **Tamaño en líneas** (Q1): ~1250-1400 frente a 1000.
+- **Tamaño en líneas:** ~1250-1400 frente a 1000. Aceptado por el humano el 2026-11-09 (Q1); la
+  línea `tamano-pr-aceptado` la deja el leader en `progress/features/SLT-87.md`.
 - **Tiempo de respuesta:** con un SMTP lento, el usuario espera hasta `SMTP_TIMEOUT_MS` antes del
   «Gracias». Es aceptable para un envío ocasional. Si molesta, se revisa C en SLT-98, cuando las
   imágenes hagan más largo el correo.
-- **Spam a los destinatarios** (Q4): sin tope de envíos por usuario en esta entrega.
+- **Spam a los destinatarios:** sin tope de envíos por usuario, por decisión del 2026-11-09 (Q4).
