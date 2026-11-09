@@ -7,7 +7,7 @@
 
 ## Bloque A — Datos
 
-- [ ] **T1. Modelo y migración** (R14, R19).
+- [x] **T1. Modelo y migración** (R14, R19).
   - **Archivos:**
     - `BugReport` en `db/schema.prisma`, con los inversos en `Organizacion` y `Usuario`;
     - `db/migrations/20261110120000_bug_report/{migration,down}.sql`, con un timestamp posterior a
