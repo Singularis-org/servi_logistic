@@ -356,3 +356,25 @@ Las alturas se miden desde abajo, 4 px por unidad de Tailwind:
 
 **Veredicto:** M2–M4 resueltos con tests. Typecheck, lint y vitest en verde. El E2E de SLT-87 da 17/17. `reparto`
 da un rojo y un flaky por carga, y los 4 tests pasan corridos solos.
+
+## Rojo de CI: censo de updated_at (PR #106)
+
+**Rojo.** `tests/integration/db/schema-drift-saneamiento.test.ts`, en el caso «el censo encuentra las DIECISIETE tablas…», esperaba 17 tablas y encontró 18. La que sobraba era `bug_report`, porque `20261110120000_bug_report` crea `updated_at ... DEFAULT CURRENT_TIMESTAMP`.
+
+**Opción elegida: (a).** `bug_report` entra en el censo y el caso pasa a DIECIOCHO. Por qué:
+- el comentario del test dice que una tabla nueva hecha con este patrón «cae sola en el censo» y que la lista literal se toca «a mano y a sabiendas»;
+- es el molde de las tablas recientes, `grupo_distritos` y `tarifa_valor` (`20261103120100`, SLT-52);
+- el modelo `BugReport` ya declaraba `@default(now()) @updatedAt`, así que no hay drift.
+
+La migración **no cambia**: no hace falta ida y vuelta ni repetir el E2E. `schema.prisma` tampoco cambia.
+
+**Archivo tocado:** `tests/integration/db/schema-drift-saneamiento.test.ts`. Cambia el título del caso y se añade `"bug_report"` a la lista con su comentario.
+
+**Salida** (contra `servi_logistic_slt87`):
+- `schema-drift-saneamiento.test.ts`: 16/16 en verde, 0 skipped.
+- bug_report (`bug-report`, `reporte-bug-service`, `reporte-bug-action`, `reporte-bug-config`), junto con el anterior: 5 archivos, 47/47 en verde.
+- `prisma migrate diff --from-config-datasource --to-schema db/schema.prisma`: «No difference detected».
+- `pnpm run typecheck`: exit 0.
+- `eslint` sobre el test: sin problemas.
+
+**Veredicto:** el censo vuelve a verde sin tocar la migración.
