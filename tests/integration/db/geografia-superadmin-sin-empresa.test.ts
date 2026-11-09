@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
 import {
+  agregarNivelPaisAction,
   arbolDePaisAction,
   cambiarActivacionNodoAction,
   cambiarDisponibilidadPaisAction,
@@ -12,6 +13,8 @@ import {
   crearNodoAction,
   crearPaisAction,
   renombrarNodoAction,
+  renombrarTipoNivelAction,
+  reordenarTiposAction,
   type GeografiaPlataformaDeps,
 } from "@/lib/actions/geografia-plataforma";
 import { EmpresaNoResuelta } from "@/lib/db/contexto-empresa";
@@ -56,6 +59,9 @@ const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 // `XA`–`XZ`: usa `BV` (Isla Bouvet, deshabitada, sin cobertura posible), que ningún entorno va a dar
 // de alta de verdad. `limpiarPais` lo borra antes y después.
 const PAIS = "BV";
+// SLT-46 (T5.4; R40): un segundo país, de 4 niveles, para tipos y profundidad 4. `HM` (Islas Heard y
+// McDonald, deshabitadas) por el mismo motivo que `BV`.
+const PAIS_4 = "HM";
 const CSV = [
   "nivel_1,codigo_nivel_1,nivel_2,codigo_nivel_2,nivel_3,codigo_nivel_3",
   "Región Norte,N1,Comuna Alta,N1A,Barrio Uno,N1A1",
@@ -71,13 +77,27 @@ let superadminId: string | null = null;
 // desde antes de crearlo hasta después de borrarlo; el de la 227 va por dentro.
 let soltarSuperadmin: () => Promise<void> = async () => {};
 
-/** Borra todo lo del país de esta suite, en el orden de las FK. El historial primero: apunta al país. */
+/**
+ * Borra todo lo de los países de esta suite, en el orden de las FK. El historial primero: apunta al
+ * país. SLT-46: los nodos, de la hoja a la raíz (la copia borra su fila vieja, R7); las tablas viejas
+ * después, por si quedara algo; los tipos se van con el país (cascada).
+ */
 async function limpiarPais(): Promise<void> {
   await bajoLockDeEscrituraReal(async () => {
-    for (const tabla of ["historial_plataforma", "distrito", "canton", "provincia"]) {
-      await base.$executeRawUnsafe(`DELETE FROM "${tabla}" WHERE "pais_id" = $1`, PAIS);
+    for (const pais of [PAIS, PAIS_4]) {
+      await base.$executeRawUnsafe(`DELETE FROM "historial_plataforma" WHERE "pais_id" = $1`, pais);
+      for (let profundidad = 10; profundidad >= 1; profundidad--) {
+        await base.$executeRawUnsafe(
+          `DELETE FROM "nodo_geografico" WHERE "pais_id" = $1 AND "profundidad" = $2`,
+          pais,
+          profundidad,
+        );
+      }
+      for (const tabla of ["distrito", "canton", "provincia"]) {
+        await base.$executeRawUnsafe(`DELETE FROM "${tabla}" WHERE "pais_id" = $1`, pais);
+      }
+      await base.$executeRawUnsafe(`DELETE FROM "pais" WHERE "id" = $1`, pais);
     }
-    await base.$executeRawUnsafe(`DELETE FROM "pais" WHERE "id" = $1`, PAIS);
   });
 }
 
@@ -92,9 +112,9 @@ function depsDelSuperadmin(): GeografiaPlataformaDeps {
   };
 }
 
-function archivo(texto: string): FormData {
+function archivo(texto: string, paisId: string = PAIS): FormData {
   const fd = new FormData();
-  fd.set("paisId", PAIS);
+  fd.set("paisId", paisId);
   fd.set("archivo", new File([texto], "division.csv", { type: "text/csv" }));
   return fd;
 }
@@ -139,15 +159,15 @@ describeSiHayBase("SL-20/R32 — el superadmin sin empresa gestiona un país ent
   it("crea el país, carga un CSV, da de alta, renombra, cuenta, retira, reactiva y apaga, sin EmpresaNoResuelta", async () => {
     const deps = depsDelSuperadmin();
     const r = await bajoLockDeEscrituraReal(async () => {
+      // SLT-46 (§4.1): el alta lleva los tipos en lista (antes, seis campos `nivelN*`); los mismos nombres.
       const pais = await crearPaisAction(
         {
           id: PAIS,
-          nivel1Singular: "Región",
-          nivel1Plural: "Regiones",
-          nivel2Singular: "Comuna",
-          nivel2Plural: "Comunas",
-          nivel3Singular: "Barrio",
-          nivel3Plural: "Barrios",
+          tipos: [
+            { singular: "Región", plural: "Regiones" },
+            { singular: "Comuna", plural: "Comunas" },
+            { singular: "Barrio", plural: "Barrios" },
+          ],
         },
         deps,
       );
@@ -156,12 +176,13 @@ describeSiHayBase("SL-20/R32 — el superadmin sin empresa gestiona un país ent
       if (arbol.status !== "ok") throw new Error(`árbol: ${arbol.status}`);
       // SLT-46 (T4.1): el árbol llega en N niveles; la comuna es el primer hijo de la primera raíz.
       const comuna = arbol.raices[0].hijos[0];
-      const alta = await crearNodoAction({ nivel: "distrito", nombre: "Barrio Tres", cantonId: comuna.id, codigo: "N1A3" }, deps);
+      // SLT-46 (§4.1): entradas por nodo (`{padreId}`, `{id}`) y el «antes» del renombre (R61).
+      const alta = await crearNodoAction({ nombre: "Barrio Tres", padreId: comuna.id, codigo: "N1A3" }, deps);
       if (alta.status !== "ok") throw new Error(`alta: ${alta.status}`);
-      const renombrado = await renombrarNodoAction({ nivel: "distrito", id: alta.id, nombre: "Barrio Tercero" }, deps);
-      const conteo = await contarOrdenesSinEntregarAction({ nivel: "canton", id: comuna.id }, deps);
-      const retiro = await cambiarActivacionNodoAction({ nivel: "distrito", id: alta.id, activo: false }, deps);
-      const reactivacion = await cambiarActivacionNodoAction({ nivel: "distrito", id: alta.id, activo: true }, deps);
+      const renombrado = await renombrarNodoAction({ id: alta.id, nombre: "Barrio Tercero", nombreAnterior: "Barrio Tres" }, deps);
+      const conteo = await contarOrdenesSinEntregarAction({ id: comuna.id }, deps);
+      const retiro = await cambiarActivacionNodoAction({ id: alta.id, activo: false }, deps);
+      const reactivacion = await cambiarActivacionNodoAction({ id: alta.id, activo: true }, deps);
       const apagado = await cambiarDisponibilidadPaisAction({ id: PAIS, disponible: false }, deps);
       return { pais: { status: pais.status, nombre: pais.status === "ok" ? pais.pais.nombre : null }, carga, comuna: comuna.nombre, alta, renombrado, conteo, retiro, reactivacion, apagado, distritoId: alta.id };
     });
@@ -170,16 +191,18 @@ describeSiHayBase("SL-20/R32 — el superadmin sin empresa gestiona un país ent
     expect(r.pais).toEqual({ status: "ok", nombre: "Isla Bouvet" });
     expect(r.carga).toEqual({
       status: "ok",
-      creados: { provincia: 1, canton: 1, distrito: 2 },
+      // SLT-46 (R33): por profundidad; mismas cifras.
+      creados: { 1: 1, 2: 1, 3: 2 },
       existentes: 0,
       codigosCompletados: 0,
       avisos: [],
     });
     expect(r.comuna).toBe("Comuna Alta");
-    expect(r.renombrado).toEqual({ status: "ok", nivel: "distrito", id: r.distritoId, nombre: "Barrio Tercero" });
+    // SLT-46 (§4.1): el `ok` ya no repite el `nivel`, que dejó de viajar en la entrada.
+    expect(r.renombrado).toEqual({ status: "ok", id: r.distritoId, nombre: "Barrio Tercero" });
     expect(r.conteo).toEqual({ status: "ok", ordenes: 0 });
-    expect(r.retiro).toEqual({ status: "ok", nivel: "distrito", id: r.distritoId, activo: false });
-    expect(r.reactivacion).toEqual({ status: "ok", nivel: "distrito", id: r.distritoId, activo: true });
+    expect(r.retiro).toEqual({ status: "ok", id: r.distritoId, activo: false });
+    expect(r.reactivacion).toEqual({ status: "ok", id: r.distritoId, activo: true });
     expect(r.apagado).toEqual({ status: "ok", id: PAIS, disponible: false });
 
     // R33/R47: cada cambio dejó su fila en el historial de plataforma, con el superadmin como actor.
@@ -195,12 +218,148 @@ describeSiHayBase("SL-20/R32 — el superadmin sin empresa gestiona un país ent
         "nodo_geografico_desactivado",
         "nodo_geografico_renombrado",
         "pais_creado",
+        // SLT-46 (R37; §7): el alta del país registra también uno por tipo creado.
+        "tipo_nivel_geografico_creado",
+        "tipo_nivel_geografico_creado",
+        "tipo_nivel_geografico_creado",
         "pais_disponibilidad_desactivada",
       ].sort(),
     );
     expect(new Set(historial.map((h) => h.actorUsuarioId))).toEqual(new Set([superadminId]));
     const distrito = await base.distrito.findUnique({ where: { id: r.distritoId }, select: { nombre: true, activo: true, paisId: true } });
     expect(distrito).toEqual({ nombre: "Barrio Tercero", activo: true, paisId: PAIS });
+  }, 60_000);
+
+  it("SLT-46 R40: tipos (editar, reordenar, agregar el 4.º) y nodos de profundidad 4 por las actions, sin EmpresaNoResuelta", async () => {
+    const deps = depsDelSuperadmin();
+    const r = await bajoLockDeEscrituraReal(async () => {
+      const pais = await crearPaisAction(
+        {
+          id: PAIS_4,
+          tipos: [
+            { singular: "Región", plural: "Regiones" },
+            { singular: "Comuna", plural: "Comunas" },
+            { singular: "Barrio", plural: "Barrios" },
+          ],
+        },
+        deps,
+      );
+      const arbol0 = await arbolDePaisAction({ paisId: PAIS_4 }, deps);
+      if (arbol0.status !== "ok") throw new Error(`árbol: ${arbol0.status}`);
+      const tipoId = (k: number): string => {
+        const t = arbol0.tipos.find((x) => x.profundidad === k);
+        if (t === undefined) throw new Error(`${PAIS_4} sin tipo ${k}`);
+        return t.id;
+      };
+      const edicion = await renombrarTipoNivelAction(
+        {
+          tipoId: tipoId(2),
+          nombreSingular: "Provincia",
+          nombrePlural: "Provincias",
+          anterior: { nombreSingular: "Comuna", nombrePlural: "Comunas" },
+        },
+        deps,
+      );
+      // Reordenar: «Barrio» sube a la profundidad 2 y «Provincia» baja a la 3 (R55).
+      const reorden = await reordenarTiposAction(
+        {
+          paisId: PAIS_4,
+          niveles: [
+            { tipoId: tipoId(1), nombreSingular: "Región", nombrePlural: "Regiones" },
+            { tipoId: tipoId(3), nombreSingular: "Barrio", nombrePlural: "Barrios" },
+            { tipoId: tipoId(2), nombreSingular: "Provincia", nombrePlural: "Provincias" },
+          ],
+        },
+        deps,
+      );
+      const nivel4 = await agregarNivelPaisAction(
+        { paisId: PAIS_4, nombreSingular: "Sector", nombrePlural: "Sectores", profundidad: 4 },
+        deps,
+      );
+      const csv4 = [
+        "nivel_1,codigo_nivel_1,nivel_2,codigo_nivel_2,nivel_3,codigo_nivel_3,nivel_4,codigo_nivel_4",
+        "Región Sur,S1,Barrio Bajo,S1B,Provincia Este,S1BE,Sector Uno,S1BE1",
+        "",
+      ].join("\n");
+      const carga = await cargarDivisionAction(archivo(csv4, PAIS_4), deps);
+      const arbol = await arbolDePaisAction({ paisId: PAIS_4 }, deps);
+      if (arbol.status !== "ok") throw new Error(`árbol: ${arbol.status}`);
+      const provinciaEste = arbol.raices[0].hijos[0].hijos[0];
+      const alta = await crearNodoAction({ padreId: provinciaEste.id, nombre: "Sector Dos", codigo: "S1BE2" }, deps);
+      if (alta.status !== "ok") throw new Error(`alta: ${JSON.stringify(alta)}`);
+      const renombrado = await renombrarNodoAction({ id: alta.id, nombre: "Sector Segundo", nombreAnterior: "Sector Dos" }, deps);
+      const conteo = await contarOrdenesSinEntregarAction({ id: alta.id }, deps);
+      const retiro = await cambiarActivacionNodoAction({ id: alta.id, activo: false }, deps);
+      const reactivacion = await cambiarActivacionNodoAction({ id: alta.id, activo: true }, deps);
+      return {
+        pais: pais.status,
+        edicion,
+        reorden,
+        nivel4: nivel4.status === "ok" ? { status: "ok", clave: nivel4.tipo.clave, profundidad: nivel4.tipo.profundidad } : nivel4,
+        carga,
+        renombrado,
+        conteo,
+        retiro,
+        reactivacion,
+        nodoId: alta.id,
+        tipos: arbol.tipos.map((t) => [t.profundidad, t.nombreSingular]),
+      };
+    });
+
+    expect(r).toMatchObject({
+      pais: "ok",
+      edicion: { status: "ok" },
+      reorden: { status: "ok" },
+      nivel4: { status: "ok", clave: "nivel_4", profundidad: 4 },
+      renombrado: { status: "ok", id: r.nodoId, nombre: "Sector Segundo" },
+      // R20: un nodo de profundidad 4 cuenta 0, sin llegar a `orden`.
+      conteo: { status: "ok", ordenes: 0 },
+      retiro: { status: "ok", id: r.nodoId, activo: false },
+      reactivacion: { status: "ok", id: r.nodoId, activo: true },
+    });
+    expect(r.carga).toEqual({ status: "ok", creados: { 1: 1, 2: 1, 3: 1, 4: 1 }, existentes: 0, codigosCompletados: 0, avisos: [] });
+    expect(r.tipos).toEqual([
+      [1, "Región"],
+      [2, "Barrio"],
+      [3, "Provincia"],
+      [4, "Sector"],
+    ]);
+
+    // Cada escritura dejó su fila en el historial de plataforma, con el superadmin como actor.
+    const historial = await base.historialPlataforma.findMany({
+      where: { paisId: PAIS_4 },
+      select: { accion: true, actorUsuarioId: true, entidadTipo: true },
+    });
+    const cuenta = (accion: string) => historial.filter((h) => h.accion === accion).length;
+    expect({
+      pais_creado: cuenta("pais_creado"),
+      tipo_nivel_geografico_creado: cuenta("tipo_nivel_geografico_creado"),
+      tipo_nivel_geografico_renombrado: cuenta("tipo_nivel_geografico_renombrado"),
+      division_cargada: cuenta("division_cargada"),
+      nodo_geografico_creado: cuenta("nodo_geografico_creado"),
+      nodo_geografico_renombrado: cuenta("nodo_geografico_renombrado"),
+      nodo_geografico_desactivado: cuenta("nodo_geografico_desactivado"),
+      nodo_geografico_activado: cuenta("nodo_geografico_activado"),
+    }).toEqual({
+      pais_creado: 1,
+      // 3 del alta + 1 del nivel agregado.
+      tipo_nivel_geografico_creado: 4,
+      // 2 de la edición (singular y plural) + 4 del reordenar (dos tipos, dos nombres cada uno).
+      tipo_nivel_geografico_renombrado: 6,
+      division_cargada: 1,
+      nodo_geografico_creado: 1,
+      nodo_geografico_renombrado: 1,
+      nodo_geografico_desactivado: 1,
+      nodo_geografico_activado: 1,
+    });
+    expect(new Set(historial.map((h) => h.actorUsuarioId))).toEqual(new Set([superadminId]));
+    const deNodo = historial.filter((h) => h.accion.startsWith("nodo_geografico_"));
+    expect(deNodo.every((h) => h.entidadTipo === "nodo_geografico")).toBe(true);
+    const nodo = await base.nodoGeografico.findUnique({
+      where: { id: r.nodoId },
+      select: { nombre: true, activo: true, profundidad: true, paisId: true },
+    });
+    expect(nodo).toEqual({ nombre: "Sector Segundo", activo: true, profundidad: 4, paisId: PAIS_4 });
   }, 60_000);
 
   it("CONTRAPRUEBA: el mismo conteo FUERA de `comoPlataforma` cae en EmpresaNoResuelta (el contexto es lo que lo salva)", async () => {
@@ -266,8 +425,9 @@ describeSiHayBase("SL-20/R31 — el conteo de la confirmación suma las órdenes
         getActor: async () => ({ usuarioId: randomUUID(), rol: "superadmin" }),
         geografiaService: new GeografiaService(new GeoRepository(cliente), new OrdenRepository(cliente)),
       };
-      const distrito = await contarOrdenesSinEntregarAction({ nivel: "distrito", id: geo.distritoId }, deps);
-      const provincia = await contarOrdenesSinEntregarAction({ nivel: "provincia", id: geo.provinciaId }, deps);
+      // SLT-46 (§4.1): el conteo nombra el nodo por su id, sin `nivel`.
+      const distrito = await contarOrdenesSinEntregarAction({ id: geo.distritoId }, deps);
+      const provincia = await contarOrdenesSinEntregarAction({ id: geo.provinciaId }, deps);
 
       // Contraprueba: el mismo repositorio, con la RLS de la empresa A, solo ve sus dos.
       await comoApp(tx, a.id);

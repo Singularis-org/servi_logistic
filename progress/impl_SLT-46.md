@@ -717,3 +717,45 @@ basta revertir esas tres líneas (quedarían rojas: el service ya no devuelve `n
 **Salida real** (`logistic_slt46` local, `--maxWorkers=1`): `carga-division` + `carga-division-n-niveles` +
 `geo-lecturas-catalogo`: `Test Files 3 passed (3) · Tests 34 passed (34)` (antes: `carga-division` 9 rojos de
 16). `eslint` de los tres → «No issues found»; `pnpm run typecheck` → exit 0.
+
+### T5.4 — historial, superadmin sin empresa y disponible a N niveles (2026-11-09)
+
+**Archivos.** `tests/integration/db/geografia-registro-accion.test.ts`,
+`tests/integration/db/geografia-superadmin-sin-empresa.test.ts`, `tests/integration/db/pais-disponible.test.ts`.
+
+**Tests nuevos.**
+- `geografia-registro-accion` › bloque «SLT-46 R35/R36/R38» (4 casos, `XP` de 4 niveles, service real):
+  R35 alta/renombre/retiro/reactivación de un nodo 4 → 4 filas `nodo_geografico` con la cadena
+  («Los Pinos · Quilpué · Marga Marga · Valparaíso»; el renombre con el nombre nuevo, `valor_anterior` y
+  `valor_nuevo`), país `XP`, actor y nombre congelado; R35 misma transacción: con el historial roto ni el
+  alta, ni el renombre, ni el retiro de un nodo 4 quedan, y la contraprueba con el historial sano sí;
+  R38: las cinco escrituras (con CSV) → 0 filas nuevas en `historial_accion` y 5 en `historial_plataforma`;
+  R36: la carga que escribe deja una `division_cargada` (entidad `pais`, `creados {1:0,2:0,3:0,4:1}`) y la
+  recarga del mismo archivo ninguna.
+- `geografia-superadmin-sin-empresa` › «SLT-46 R40: tipos … y nodos de profundidad 4 por las actions»: país
+  `HM` (catálogo ISO, deshabitado, como `BV`) creado, tipo 2 editado con su «antes», tipos reordenados,
+  4.º nivel agregado con `profundidad: 4`, CSV de 4 niveles (`creados {1:1,2:1,3:1,4:1}`), alta/renombre/
+  conteo (0, R20)/retiro/reactivación de un nodo 4, todo por las actions reales con la extensión de
+  aislamiento y sin empresa; historial con el superadmin en todas las filas y entidad `nodo_geografico`.
+  `limpiarPais` limpia `BV` y `HM` y ahora borra `nodo_geografico` de la hoja a la raíz (la copia borra la
+  fila vieja, R7) antes de las tablas viejas y del país.
+- `pais-disponible` › «SLT-46 R28»: `XP` de 4 niveles (con nodos 4) se apaga y se enciende por
+  `PaisService.cambiarDisponible` → `ok` y la columna cambia; historial `_desactivada` + `_activada` con el actor.
+
+**Cambios de aserción en tests existentes.**
+
+| Archivo › caso | Cambio | Respaldo |
+|---|---|---|
+| `geografia-registro-accion` › «una fila, con la accion y la entidad del nivel» (renombrado a «… `nodo_geografico` (SLT-46 P5)») | `entidad_tipo` `"distrito"` → `"nodo_geografico"` | R35, §7, P5; leader |
+| `geografia-registro-accion` › «un canton y una provincia se registran en SU entidad…» | `"canton"`/`"provincia"` → `"nodo_geografico"` (las cadenas, iguales) | Ídem |
+| `geografia-registro-accion` › «SL-20/R33: un alta escribe UNA fila…» | `entidad_tipo` `"distrito"` → `"nodo_geografico"` (etiqueta, país y actor iguales) | Ídem |
+| `geografia-registro-accion` (fixture) | El actor se crea en la transacción revertida de cada caso (`crearOrganizacion` + `insertarUsuario`) en vez de `usuario.findFirst()` en el `beforeAll` (la base no tiene usuarios: la suite no corría) | Leader: filas de `usuario` dentro del propio test (mismo cambio que `geografia-renombrado` en T3.4) |
+| `geografia-superadmin-sin-empresa` › «crea el país, carga un CSV…» | Entradas a la forma nueva: `crearPaisAction` `{id, tipos}` (los mismos seis nombres), `crearNodoAction` `{padreId}`, `renombrarNodoAction` `{id, nombre, nombreAnterior}`, conteo y estado `{id}`. `creados` → `{1:1, 2:1, 3:2}`; los `ok` de renombre/retiro/reactivación sin `nivel`; la lista de acciones del historial gana tres `tipo_nivel_geografico_creado` (el alta del país registra uno por tipo) | Leader: «pasar el bloque a la forma nueva … con el "antes"» y «ampliarlo a tipos»; §4.1; R33; R37 y decisión humana 2026-11-09 (historial P+1, la misma que en `pais-repositorio`) |
+| `geografia-superadmin-sin-empresa` › «dos empresas en XA…» | Conteo `{nivel, id}` → `{id}`; mismos 3 / 3 / 2 | §4.1 (forma) |
+| `pais-disponible` | Ninguna (solo el caso nuevo) | — |
+
+**Salida real** (`logistic_slt46` local, `--maxWorkers=1`): `pais-disponible` + `geografia-registro-accion` +
+`geografia-superadmin-sin-empresa`: `Test Files 3 passed (3) · Tests 28 passed (28)` (antes: `registro-accion`
+parado en el `beforeAll`, `superadmin-sin-empresa` 2 rojos). Tras la corrida, `BV`/`HM`/`XP`/`XN`/`XT`/`XA` y
+sus nodos: 0 en la base; `usuario`: 0. `eslint` de los tres → «No issues found»; `pnpm run typecheck` → exit 0
+(un rojo intermedio de tipo, `rol: string` en el actor de `pais-disponible`, corregido con `as const`).

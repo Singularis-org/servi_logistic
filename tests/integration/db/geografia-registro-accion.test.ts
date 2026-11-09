@@ -3,7 +3,9 @@ import type { PrismaClient } from "@prisma/client";
 
 import { GeoRepository } from "@/lib/repositories/GeoRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
+import { CargaDivisionService } from "@/lib/services/CargaDivisionService";
 import { GeografiaService } from "@/lib/services/GeografiaService";
+import { PAIS_CUATRO_NIVELES, claveDeRuta, sembrarPaisDePruebaGeo } from "@/tests/fixtures/paises-de-prueba-geo";
 
 import {
   HAY_BASE_DE_DATOS,
@@ -15,6 +17,7 @@ import {
 } from "./_postgres-real";
 import { altaPorNivel } from "./_fixtures/alta-por-nivel-46";
 import { idDeRol, insertarUsuario } from "./_fixtures/superadmin-32";
+import { crearOrganizacion } from "@/tests/fabricas/organizaciones";
 
 /**
  * FICHA 374 (R51–R55) — **EL RASTRO DE RETIRAR Y DEVOLVER UN NODO DEL CATALOGO GEOGRAFICO.**
@@ -72,23 +75,28 @@ describeSiHayBase("374 — el registro de acciones del catalogo geografico (Post
   let actorUsuarioId: string;
   let actorNombreEsperado: string;
 
-  beforeAll(async () => {
+  beforeAll(() => {
     prisma = crearPrismaDeTest();
-    const usuario = await prisma.usuario.findFirst({
-      select: { id: true, nombre: true, primerApellido: true },
+  });
+
+  /**
+   * SLT-46 (T5.4): el actor se crea DENTRO de la transaccion revertida de cada caso (fixture de
+   * `superadmin-32`), en vez de tomar el primer `usuario` de la base: una base sin sembrar dejaba la
+   * suite parada en el `beforeAll` (SL-31). Solo cambia de donde sale el actor; lo afirmado, igual.
+   */
+  async function sembrarActor(tx: Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0]): Promise<void> {
+    const org = await crearOrganizacion(tx);
+    const u = await insertarUsuario(tx, await idDeRol(tx, "maestro"), org.id);
+    if (!u.desenlace.ok) throw new Error(`no se sembro el actor: ${JSON.stringify(u.desenlace)}`);
+    const usuario = await tx.usuario.findUniqueOrThrow({
+      where: { id: u.id },
+      select: { nombre: true, primerApellido: true },
     });
-    if (!usuario) {
-      throw new Error(
-        "hay DATABASE_URL pero `usuario` esta vacia: sin actor no se puede comprobar el congelado " +
-          "de nombre y rol, que es la mitad de R54. Esta suite necesita crear su usuario en el " +
-          "test (SL-31).",
-      );
-    }
-    actorUsuarioId = usuario.id;
+    actorUsuarioId = u.id;
     actorNombreEsperado = [usuario.nombre, usuario.primerApellido]
       .filter((p) => p != null && p !== "")
       .join(" ");
-  });
+  }
 
   async function conCorpus<T>(
     fn: (ctx: {
@@ -101,6 +109,7 @@ describeSiHayBase("374 — el registro de acciones del catalogo geografico (Post
   ): Promise<T> {
     return enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarActor(tx);
 
       const provincia = (
         await tx.provincia.create({
@@ -147,7 +156,7 @@ describeSiHayBase("374 — el registro de acciones del catalogo geografico (Post
   // ===============================================================================================
 
   describe("374/R51 — desactivar un distrito escribe EXACTAMENTE UNA fila", () => {
-    it("una fila, con la accion y la entidad del nivel", async () => {
+    it("una fila, con la accion y la entidad `nodo_geografico` (SLT-46 P5)", async () => {
       await conCorpus(async ({ s, geo, registro }) => {
         expect(await geo.cambiarActivacion(s.distrito, false, actorUsuarioId)).toBe(
           "cambiado",
@@ -155,7 +164,8 @@ describeSiHayBase("374 — el registro de acciones del catalogo geografico (Post
         const filas = await registro(s.distrito);
         expect(filas).toHaveLength(1);
         expect(filas[0].accion).toBe("nodo_geografico_desactivado");
-        expect(filas[0].entidad_tipo).toBe("distrito");
+        // SLT-46 (R35, P5): la entidad es `nodo_geografico` a cualquier profundidad, tambien en 1–3.
+        expect(filas[0].entidad_tipo).toBe("nodo_geografico");
         expect(filas[0].entidad_id).toBe(s.distrito);
       });
     });
@@ -194,16 +204,16 @@ describeSiHayBase("374 — el registro de acciones del catalogo geografico (Post
       });
     });
 
-    it("un canton y una provincia se registran en SU entidad, con SU cadena", async () => {
+    it("un canton y una provincia se registran en la entidad `nodo_geografico` (SLT-46 P5), con SU cadena", async () => {
       await conCorpus(async ({ s, geo, registro }) => {
         await geo.cambiarActivacion(s.canton, false, actorUsuarioId);
         const [filaCanton] = await registro(s.canton);
-        expect(filaCanton.entidad_tipo).toBe("canton");
+        expect(filaCanton.entidad_tipo).toBe("nodo_geografico");
         expect(filaCanton.entidad_etiqueta).toBe(`${CANTON} ${SUFIJO} · ${PROVINCIA} ${SUFIJO}`);
 
         await geo.cambiarActivacion(s.provincia, false, actorUsuarioId);
         const [filaProv] = await registro(s.provincia);
-        expect(filaProv.entidad_tipo).toBe("provincia");
+        expect(filaProv.entidad_tipo).toBe("nodo_geografico");
         expect(filaProv.entidad_etiqueta).toBe(`${PROVINCIA} ${SUFIJO}`);
       });
     });
@@ -250,7 +260,7 @@ describeSiHayBase("374 — el registro de acciones del catalogo geografico (Post
         expect(filas).toHaveLength(1);
         expect(filas[0]).toMatchObject({
           accion: "nodo_geografico_creado",
-          entidad_tipo: "distrito",
+          entidad_tipo: "nodo_geografico",
           entidad_etiqueta: `Nuevo ${SUFIJO} · ${CANTON} ${SUFIJO} · ${PROVINCIA} ${SUFIJO}`,
           pais_id: "CR",
           actor_usuario_id: actorUsuarioId,
@@ -462,5 +472,187 @@ describeSiHayBase("SL-32 (R24) — el `maestro` recibe forbidden sin escribir (P
       expect(await geo.cambiarActivacion(s.distrito, false, maestroId)).toBe("cambiado");
       expect(await filas([s.distrito])).toBe(1);
     });
+  });
+});
+
+// =================================================================================================
+// SLT-46 (T5.4; design §7; R35, R36, R38) — el historial de un nodo a cualquier profundidad
+// =================================================================================================
+//
+// País de prueba `XP` de 4 niveles (sembrado en la transacción revertida) y el service REAL sobre
+// `clienteConSavepoint`: alta, renombre, retiro y reactivación dejan su fila con la entidad
+// `nodo_geografico` (P5) y la cadena nodo → raíz también a profundidad 4; si el historial falla no
+// queda nada (misma transacción); `historial_accion` no recibe ninguna fila (R38); la carga CSV deja
+// `division_cargada` solo si escribe (R36).
+
+const CABECERA_4 = "nivel_1,codigo_nivel_1,nivel_2,codigo_nivel_2,nivel_3,codigo_nivel_3,nivel_4,codigo_nivel_4";
+
+function csv4(...lineas: string[]) {
+  return { nombre: "division.csv", bytes: new TextEncoder().encode([CABECERA_4, ...lineas, ""].join("\n")) };
+}
+
+describeSiHayBase("SLT-46 R35/R36/R38 — historial de nodos a 4 niveles (Postgres real)", () => {
+  let prisma: PrismaClient;
+
+  beforeAll(() => {
+    prisma = crearPrismaDeTest();
+  });
+
+  async function conCuatro<T>(
+    fn: (ctx: {
+      tx: Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0];
+      actor: { usuarioId: string; rol: "superadmin" };
+      actorNombre: string;
+      service: GeografiaService;
+      servicioRoto: GeografiaService;
+      carga: CargaDivisionService;
+      nodo: (ruta: string[]) => string;
+      registro: (entidadId: string) => Promise<FilaRegistro[]>;
+    }) => Promise<T>,
+  ): Promise<T> {
+    return enTransaccionRevertida(prisma, async (tx) => {
+      await serializarEscriturasReales(tx);
+      const org = await crearOrganizacion(tx);
+      const u = await insertarUsuario(tx, await idDeRol(tx, "maestro"), org.id);
+      if (!u.desenlace.ok) throw new Error(`no se sembro el actor: ${JSON.stringify(u.desenlace)}`);
+      const usuario = await tx.usuario.findUniqueOrThrow({ where: { id: u.id }, select: { nombre: true, primerApellido: true } });
+      const { nodoPorRuta } = await sembrarPaisDePruebaGeo(tx, PAIS_CUATRO_NIVELES);
+      const cliente = clienteConSavepoint(tx);
+      const roto = clienteConSavepoint(tx, "plataforma");
+      return fn({
+        tx,
+        actor: { usuarioId: u.id, rol: "superadmin" },
+        actorNombre: [usuario.nombre, usuario.primerApellido].filter((p) => p != null && p !== "").join(" "),
+        service: new GeografiaService(new GeoRepository(cliente), new OrdenRepository(cliente)),
+        servicioRoto: new GeografiaService(new GeoRepository(roto), new OrdenRepository(roto)),
+        carga: new CargaDivisionService(new GeoRepository(cliente)),
+        nodo: (ruta) => nodoPorRuta.get(claveDeRuta(ruta)) ?? "",
+        registro: (entidadId) =>
+          tx.$queryRawUnsafe<FilaRegistro[]>(
+            `SELECT "accion"::text AS accion, "entidad_tipo"::text AS entidad_tipo, "entidad_id",
+                    "entidad_etiqueta", "pais_id", "actor_usuario_id", "actor_nombre",
+                    "valor_anterior", "valor_nuevo"
+               FROM "historial_plataforma" WHERE "entidad_id" = $1 ORDER BY "created_at", "id"`,
+            entidadId,
+          ),
+      });
+    });
+  }
+
+  const QUILPUE = ["Valparaíso", "Marga Marga", "Quilpué"];
+  const CADENA_QUILPUE = "Quilpué · Marga Marga · Valparaíso";
+
+  it("R35: alta, renombre, retiro y reactivación de un nodo 4 → cuatro filas `nodo_geografico` con la cadena, el país y el actor", async () => {
+    const r = await conCuatro(async ({ actor, actorNombre, service, nodo, registro }) => {
+      const alta = await service.crear({ padreId: nodo(QUILPUE), nombre: "Los Pinos" }, actor);
+      if (alta.status !== "ok") throw new Error(`alta: ${JSON.stringify(alta)}`);
+      await service.renombrar({ id: alta.id, nombre: "Los Pinos Altos", nombreAnterior: "Los Pinos" }, actor);
+      await service.cambiarActivacion({ id: alta.id, activo: false }, actor);
+      await service.cambiarActivacion({ id: alta.id, activo: true }, actor);
+      return { id: alta.id, filas: await registro(alta.id), actorId: actor.usuarioId, actorNombre };
+    });
+
+    expect(r.filas.map((f) => f.accion).sort()).toEqual(
+      ["nodo_geografico_activado", "nodo_geografico_creado", "nodo_geografico_desactivado", "nodo_geografico_renombrado"].sort(),
+    );
+    for (const f of r.filas) {
+      expect(f).toMatchObject({
+        entidad_tipo: "nodo_geografico",
+        entidad_id: r.id,
+        pais_id: "XP",
+        actor_usuario_id: r.actorId,
+        actor_nombre: r.actorNombre,
+      });
+    }
+    expect(r.filas.find((f) => f.accion === "nodo_geografico_creado")?.entidad_etiqueta).toBe(`Los Pinos · ${CADENA_QUILPUE}`);
+    // El renombre: la cadena con el nombre NUEVO, y los dos nombres.
+    expect(r.filas.find((f) => f.accion === "nodo_geografico_renombrado")).toMatchObject({
+      entidad_etiqueta: `Los Pinos Altos · ${CADENA_QUILPUE}`,
+      valor_anterior: "Los Pinos",
+      valor_nuevo: "Los Pinos Altos",
+    });
+  });
+
+  it("R35 misma transacción: si el historial falla, ni el alta, ni el renombre, ni el retiro de un nodo 4 quedan", async () => {
+    const r = await conCuatro(async ({ tx, actor, servicioRoto, service, nodo, registro }) => {
+      const belloto = nodo([...QUILPUE, "El Belloto"]);
+      const errores = [
+        await servicioRoto.crear({ padreId: nodo(QUILPUE), nombre: "Roto" }, actor).catch((e: unknown) => e),
+        await servicioRoto
+          .renombrar({ id: belloto, nombre: "Belloto Roto", nombreAnterior: "El Belloto" }, actor)
+          .catch((e: unknown) => e),
+        await servicioRoto.cambiarActivacion({ id: belloto, activo: false }, actor).catch((e: unknown) => e),
+      ];
+      const fila = await tx.nodoGeografico.findUniqueOrThrow({ where: { id: belloto }, select: { nombre: true, activo: true } });
+      const altas = await tx.nodoGeografico.count({ where: { paisId: "XP", nombre: "Roto" } });
+      const filas = (await registro(belloto)).length;
+      // CONTRAPRUEBA: con el historial sano, el mismo retiro sí persiste y deja su fila.
+      const sano = await service.cambiarActivacion({ id: belloto, activo: false }, actor);
+      return {
+        errores: errores.map((e) => e instanceof RegistroCaido),
+        fila,
+        altas,
+        filas,
+        sano: sano.status,
+        despues: (await registro(belloto)).length,
+      };
+    });
+
+    expect(r).toEqual({
+      errores: [true, true, true],
+      fila: { nombre: "El Belloto", activo: true },
+      altas: 0,
+      filas: 0,
+      sano: "ok",
+      despues: 1,
+    });
+  });
+
+  it("R38: alta, renombre, retiro, reactivación y carga CSV no escriben NINGUNA fila en `historial_accion`", async () => {
+    const r = await conCuatro(async ({ tx, actor, service, carga, nodo }) => {
+      const antes = await tx.historialAccion.count();
+      const alta = await service.crear({ padreId: nodo(QUILPUE), nombre: "Los Pinos" }, actor);
+      if (alta.status !== "ok") throw new Error(`alta: ${JSON.stringify(alta)}`);
+      await service.renombrar({ id: alta.id, nombre: "Los Pinos Altos", nombreAnterior: "Los Pinos" }, actor);
+      await service.cambiarActivacion({ id: alta.id, activo: false }, actor);
+      await service.cambiarActivacion({ id: alta.id, activo: true }, actor);
+      const csv = await carga.cargar("XP", csv4("Los Lagos,10,Osorno,103,Purranque,10303,Hueyusca,"), actor);
+      return {
+        csv: csv.status,
+        accion: (await tx.historialAccion.count()) - antes,
+        plataforma: await tx.historialPlataforma.count({ where: { paisId: "XP" } }),
+      };
+    });
+
+    expect(r.csv).toBe("ok");
+    expect(r.accion).toBe(0);
+    // CONTRAPRUEBA: las cinco escrituras sí se registraron, en el historial de plataforma.
+    expect(r.plataforma).toBe(5);
+  });
+
+  it("R36: la carga que escribe deja UNA `division_cargada` con `creados` por profundidad; la que no escribe, ninguna", async () => {
+    const r = await conCuatro(async ({ tx, actor, carga }) => {
+      const archivo = csv4("Valparaíso,05,Marga Marga,058,Quilpué,05801,Los Pinos,");
+      await carga.cargar("XP", archivo, actor);
+      const filas = () =>
+        tx.historialPlataforma.findMany({
+          where: { paisId: "XP", accion: "division_cargada" },
+          select: { entidadTipo: true, entidadId: true, detalle: true },
+        });
+      const tras1 = await filas();
+      const segunda = await carga.cargar("XP", archivo, actor);
+      return { tras1, segunda, tras2: await filas() };
+    });
+
+    expect(r.tras1).toEqual([
+      {
+        entidadTipo: "pais",
+        entidadId: "XP",
+        detalle: { creados: { 1: 0, 2: 0, 3: 0, 4: 1 }, existentes: 3, codigosCompletados: 0 },
+      },
+    ]);
+    // Recargar lo mismo no escribe nada: ninguna fila más.
+    expect(r.segunda).toMatchObject({ status: "ok", creados: { 1: 0, 2: 0, 3: 0, 4: 0 }, codigosCompletados: 0 });
+    expect(r.tras2).toEqual(r.tras1);
   });
 });

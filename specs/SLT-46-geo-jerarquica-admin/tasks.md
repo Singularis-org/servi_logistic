@@ -170,7 +170,7 @@ Montado por SLT-43/44/45/65/71 en esta rama. Se usa tal cual; ninguna task lo vu
   resultados, retirando solo el caso «decision 4: dos homónimos normalizados» (P6: SL-20 R49 superado
   por SLT-46), con un comentario en su lugar que cita P6; y `carga-division-n-niveles.test.ts` (país
   de 4 niveles y uno de 2). (R31, R33)
-- [ ] **T5.4** [P] Ampliar `geografia-registro-accion.test.ts`, `geografia-superadmin-sin-empresa.test.ts`
+- [x] **T5.4** [P] Ampliar `geografia-registro-accion.test.ts`, `geografia-superadmin-sin-empresa.test.ts`
   y `pais-disponible.test.ts`. (R28, R35, R36, R38, R40)
 - [ ] **T5.5** Pasar las suites existentes `tests/integration/db/geografia-*.test.ts`,
   `geo-sincronia-geografia.test.ts`, `geo-nodo-rls.test.ts`, `orden-nodo-escritura.test.ts` y
