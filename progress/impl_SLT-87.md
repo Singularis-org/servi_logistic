@@ -112,3 +112,172 @@ R47). Las dos se arreglaron en el commit de T6.
 
 **Veredicto:** T1–T6 hechas y verdes en lo suyo. Queda un rojo fuera del baseline, `superficie-de-uso`,
 que cierra T8.
+
+## Tanda frontend y E2E (T7–T9)
+
+Hecha por `frontend_dev` el 2026-11-09 en `.worktrees/SLT-87-reporte-de-bugs`. Un commit por tarea, sin push.
+
+### Archivos
+
+**Creados**
+- `hooks/useBorradorReporteBug.ts` (T7)
+- `components/shared/ReporteBugBoton.tsx` y `tests/components/ReporteBugBoton.test.tsx` (T8)
+- `e2e/reporte-de-bugs.spec.ts` (T9)
+
+**Modificados**
+- `app/(app)/layout.tsx`: `ReporteBugBoton` como hermano de `{children}`, junto a `AsistentePanel`, con la
+  condición de design §8.1 (T8)
+- `playwright.config.ts`: `reporte-de-bugs` en el proyecto `aislamiento` y
+  `BUG_REPORT_EMAILS: "reportes-e2e@example.test"` en `webServer.env` (T9)
+- `specs/SLT-87-reporte-de-bugs/tasks.md`: T7, T8 y T9 en `[x]`
+- `progress/impl_SLT-87.md`: esta sección
+
+### Mapa R → test (lo de interfaz y E2E)
+
+| R | Test |
+|---|---|
+| R1 | `e2e/reporte-de-bugs.spec.ts` «el maestro ve el botón en dos pantallas del portal y el mensajero en un móvil en `/mis-asignaciones`» (`/dashboard` y `/ordenes`; el mensajero en un contexto `Pixel 7`) |
+| R2 | `e2e/reporte-de-bugs.spec.ts` «el superadmin no ve el botón» (con `e2e/_superadmin-fixture.ts`; el título «Empresas» hace de anti-vacío) |
+| R3 | `tests/components/ReporteBugBoton.test.tsx` «en `/mis-asignaciones` y sus subrutas se apila encima del chat; en el resto va en la esquina». El E2E de R1 comprueba además `data-posicion="sobre-chat"` en el móvil. |
+| R4 | `tests/components/ReporteBugBoton.test.tsx` «abre un panel con descripción, Enviar y Descartar, sin campo de archivos» y «el contador muestra exactamente "0/500" vacío, "120/500" con 120 caracteres y "500/500" en el máximo, y el campo no admite el carácter 501» |
+| R5 | `tests/components/ReporteBugBoton.test.tsx` «Enviar está deshabilitado con la descripción vacía o solo con espacios» |
+| R6 | `tests/components/ReporteBugBoton.test.tsx` «el texto sobrevive a cerrar el panel y a montar de nuevo el componente» y «Escape y el botón de cerrar lo cierran sin tocar el borrador»; `e2e/reporte-de-bugs.spec.ts` «el borrador sobrevive a recargar la página» |
+| R7 | `tests/components/ReporteBugBoton.test.tsx` «el borrador de un usuario no aparece con otro usuarioId» |
+| R8 | `tests/components/ReporteBugBoton.test.tsx` «Descartar borra el borrador y no llama a la action»; `e2e/reporte-de-bugs.spec.ts` «Descartar borra el borrador, deja el panel vacío y no guarda ningún reporte» |
+| R9 | `tests/components/ReporteBugBoton.test.tsx` «tras enviar muestra Gracias, vacía el panel y borra el borrador»; `e2e/reporte-de-bugs.spec.ts` «enviar muestra Gracias y tras recargar el panel está vacío» |
+| R10 | `tests/components/ReporteBugBoton.test.tsx` «si la action responde error, avisa y conserva el texto» (con `error`, `forbidden`, `unauthenticated` y `validation_error`) y «si la llamada se cae (red), avisa igual y conserva el texto» |
+| R13 (E2E) | `e2e/reporte-de-bugs.spec.ts` «la fila guardada lleva la empresa, el rol y la página sin query, aunque la URL del navegador tenga query». Lee como dueño la empresa, el usuario, el rol, `/ordenes` sin `?…#…`, el agente, la ventana y `is_standalone=false`. |
+| R15 (E2E) | `e2e/reporte-de-bugs.spec.ts` «el log del servidor tiene el correo a reportes-e2e@example.test con la descripción». Hay una sola línea `[email][debug]` con la descripción, va `to=reportes-e2e@example.test` y ninguna va al maestro. |
+
+Además: «sin localStorage el panel sigue funcionando en memoria» (design §8.3).
+
+### Salida real
+
+**Typecheck** (`NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`): `tsc --noEmit`, exit 0, tras T8 y
+al final con T9.
+
+**ESLint** (`pnpm exec eslint` sobre los 6 archivos tocados: el hook, el componente, el layout, el test, el
+spec y `playwright.config.ts`): «No issues found», exit 0.
+
+**Vitest** (`pnpm exec vitest run <archivos>`):
+
+```
+tests/components/ReporteBugBoton.test.tsx                   12 passed
+tests/components/AppLayout.test.tsx                         23 passed
+tests/unit/guards/superficie-de-uso.guardia.test.ts         18 passed   (en rojo antes de T8; verde al montar el botón)
+tests/unit/guards/asistente-panel-hermano.guardia.test.ts   12 passed
+tests/unit/guards/revision-sinpe-no-bloquea.guardia.test.ts  7 passed
+tests/unit/guards/push-alta-punto-unico.guardia.test.ts     24 passed
+tests/unit/guards/e2e-sin-saltos.guardia.test.ts            38 passed
+Test Files  7 passed (7) · Tests  134 passed (134)
+```
+
+**Guardias** (`pnpm run test:guardias`, al final): `Test Files 1 failed | 341 passed (342)`,
+`Tests 4 failed | 4807 passed | 1 skipped (4812)`. El único archivo en rojo es
+`tests/unit/guards/dependencias-declaradas-presentes.guardia.test.ts`, que está en `tests/baseline-rojos.json`.
+`superficie-de-uso` ya está verde.
+
+### E2E
+
+**Preparación.**
+- Base propia `servi_logistic_slt87_e2e`: DROP/CREATE con el script del leader, `prisma migrate deploy` y
+  `pnpm run db:seed`.
+- `next build` con `NODE_OPTIONS=--max-old-space-size=8192` y `NEXT_PUBLIC_APP_URL=http://localhost:3044`:
+  2 min 48 s, exit 0.
+- Los puertos 3044 y 54329 estaban libres antes de empezar.
+
+**Entorno de las corridas,** además del `.env`:
+- `DATABASE_URL` a la base e2e;
+- `DIRECT_URL=""` y `PRISMA_LOG_QUERIES=""`;
+- `SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` y `SUPABASE_SERVICE_ROLE_KEY` al
+  doble local (ver «Avisos»).
+
+**Comando:** `CI=1 E2E_PUERTO=3044 pnpm exec playwright test e2e/reporte-de-bugs.spec.ts --project=aislamiento --reporter=list`.
+Arrastra `plataforma-vacia` por `dependencies`.
+
+**Corrida 1,** sobre la base recién recreada:
+```
+  ✓   1 [plataforma-vacia] › e2e\superadmin-arranque.spec.ts:54:5 › el comando de arranque deja un superadmin sin empresa y no imprime sus datos (R18)
+  ✓   2 [plataforma-vacia] › e2e\superadmin-arranque.spec.ts:72:5 › entra con OTP y aterriza en «Empresas», … (R18, R6; SL-20 R21; …)
+  ✓   3 [plataforma-vacia] › e2e\superadmin-arranque.spec.ts:90:5 › /configuracion no le deja entrar (R6, R5)
+  ✓   4 [plataforma-vacia] › e2e\superadmin-empresas.spec.ts:207:5 › 1. «Empresas» abre con el formulario de alta y sin aviso (R29)
+  ✓   5 [plataforma-vacia] › e2e\superadmin-empresas.spec.ts:215:5 › 2. crea A y B desde el formulario y las dos salen en el listado con su maestro (R30, R37, R29)
+  ✓   6 [plataforma-vacia] › e2e\superadmin-empresas.spec.ts:255:5 › 3. repetir el slug de A marca su campo y no crea nada (R31)
+  ✓   7 [plataforma-vacia] › e2e\superadmin-empresas.spec.ts:273:5 › 4. un slug inválido marca el campo sin crear nada (R34)
+  ✓   8 [plataforma-vacia] › e2e\superadmin-empresas.spec.ts:323:7 › 5-6. el maestro de A crea su contraseña con el enlace de bienvenida, …
+  ✓   9 [plataforma-vacia] › e2e\superadmin-empresas.spec.ts:323:7 › 5-6. el maestro de B crea su contraseña con «¿Olvidaste tu contraseña?», …
+  ✓  10 [plataforma-vacia] › e2e\superadmin-empresas.spec.ts:349:5 › 7. con las dos contraseñas creadas, ni la fila de A ni la de B ofrecen «Reenviar bienvenida» (R38)
+  ✓  11 [aislamiento] › e2e\reporte-de-bugs.spec.ts:139:7 › SLT-87 — quién ve el botón › el maestro ve el botón en dos pantallas del portal y el mensajero en un móvil en `/mis-asignaciones` (3.7s)
+  ✓  12 [aislamiento] › e2e\reporte-de-bugs.spec.ts:166:7 › SLT-87 — quién ve el botón › el superadmin no ve el botón (6.9s)
+  ✓  13 [aislamiento] › e2e\reporte-de-bugs.spec.ts:190:7 › SLT-87 — el borrador › el borrador sobrevive a recargar la página (1.3s)
+  ✓  14 [aislamiento] › e2e\reporte-de-bugs.spec.ts:202:7 › SLT-87 — el borrador › Descartar borra el borrador, deja el panel vacío y no guarda ningún reporte (1.5s)
+  ✓  15 [aislamiento] › e2e\reporte-de-bugs.spec.ts:228:7 › SLT-87 — el envío › enviar muestra Gracias y tras recargar el panel está vacío (1.6s)
+  ✓  16 [aislamiento] › e2e\reporte-de-bugs.spec.ts:240:7 › SLT-87 — el envío › la fila guardada lleva la empresa, el rol y la página sin query, aunque la URL del navegador tenga query (1.7s)
+  ✓  17 [aislamiento] › e2e\reporte-de-bugs.spec.ts:268:7 › SLT-87 — el envío › el log del servidor tiene el correo a reportes-e2e@example.test con la descripción (1.5s)
+  17 passed (45.4s)
+```
+
+**Corrida 2,** justo después, sobre la misma base y sin recrearla. Sale la misma lista, con los 17 en `✓`
+(se copian los de SLT-87):
+```
+  ✓  11 … el maestro ve el botón en dos pantallas del portal y el mensajero en un móvil en `/mis-asignaciones` (2.5s)
+  ✓  12 … el superadmin no ve el botón (3.0s)
+  ✓  13 … el borrador sobrevive a recargar la página (867ms)
+  ✓  14 … Descartar borra el borrador, deja el panel vacío y no guarda ningún reporte (940ms)
+  ✓  15 … enviar muestra Gracias y tras recargar el panel está vacío (928ms)
+  ✓  16 … la fila guardada lleva la empresa, el rol y la página sin query, aunque la URL del navegador tenga query (1.1s)
+  ✓  17 … el log del servidor tiene el correo a reportes-e2e@example.test con la descripción (1.2s)
+  17 passed (47.0s)
+```
+Las dos corridas dan 0 failed, 0 skipped y 0 flaky: el log no tiene ninguna línea con `retry`, `flaky`,
+`skipped` ni `failed`.
+
+**Corrida previa, descartada.** Salió con `1 flaky` en `superadmin-arranque.spec.ts:54` (R18, «no imprime sus
+datos»). La causa: el `.env` del worktree trae `PRISMA_LOG_QUERIES=params`, y con eso
+`pnpm arranque:superadmin` imprime el email del superadmin en sus consultas. No viene del diff. Se puso
+`PRISMA_LOG_QUERIES=""`, se recreó la base y se corrieron las dos de arriba.
+
+**Grupo `aislamiento` entero** (`CI=1 E2E_PUERTO=3044 pnpm exec playwright test --project=aislamiento
+--reporter=list`, sobre la misma base): `3 failed · 91 passed (8.0m)`.
+- Los tres rojos son de la landing pública `/`, que está fuera del layout privado: el botón no se monta ahí.
+- Los tres fallan igual: `page.goto("/")` no llega al evento `load` en 30 s. Son:
+  - `e2e/marca.spec.ts:294` «landing a 1280 px: barra y héroe, y pie (claro)»;
+  - `e2e/rastreo-publico.spec.ts:86` y `:115`.
+- Corridos solos, sobre la misma base y el mismo build, pasan: `e2e/rastreo-publico.spec.ts` da
+  `12 passed (27.9s)` y `e2e/marca.spec.ts`, `17 passed (33.1s)`.
+- Conclusión: es carga de la máquina en la corrida larga, no el diff.
+- `dos-empresas-humo` pasó dentro del grupo.
+
+### Avisos
+
+- **El `.env` del worktree apunta `SUPABASE_URL` y las `NEXT_PUBLIC_SUPABASE_*` a un proyecto prohibido.** Es
+  uno de los que reconoce `BASES_PROHIBIDAS` de `e2e/_dos-empresas-fixture.ts`.
+  - No se usó: en el build y en las corridas, las cuatro variables iban al doble local
+    (`http://127.0.0.1:54329` y `clave-falsa-e2e`).
+  - Un `grep` de la referencia de ese proyecto en `.next/static` y `.next/server` no encuentra nada.
+  - Qué hacer con ese `.env` lo decide el leader.
+- `./init.sh` y `node scripts/tamano-pr.mjs`, del «Hecho» de T9, los cierra el leader. Aquí no se corrieron.
+
+### Propuestas (decisiones que el spec no cubría)
+
+- **Lectura del borrador.** Se lee con `useSyncExternalStore` y no con `useState` + `useEffect`.
+  - Design §8.3 pide no leer en el primer render, y un `setState` dentro de un efecto es error de lint en este
+    repo (`react-hooks/set-state-in-effect`).
+  - La instantánea del servidor es `""`. Es el mismo precedente que `hooks/usePreferenciaSonido.ts`.
+  **(propuesta)**
+- **Copia en memoria.** Solo guarda lo que no se pudo escribir en `localStorage`, y se lee antes que él. **(propuesta)**
+- **Ventana.** Si `innerWidth` o `innerHeight` caen fuera de 1–20 000, la ventana no se manda. Así el reporte
+  no se pierde por un `validation_error`. **(propuesta)**
+- **Fallos.** Una caída de la llamada (red o servidor) cuenta como el estado `error` de R10, y `unauthenticated`
+  da el mismo aviso que `forbidden` y `validation_error`. **(propuesta)**
+- **Avisos del panel.** El de fallo se queda hasta el siguiente envío. El de «Gracias» se va al volver a escribir,
+  como pide design §8.2. **(propuesta)**
+- **Textos accesibles.** El campo lleva la etiqueta «Describe el problema» (`sr-only`), y el botón de cerrar, «Cerrar».
+  §8.4 no da esos dos textos. **(propuesta)**
+- **Posición del panel.** Va en `bottom-20` en la esquina y en `bottom-40` sobre el chat, para quedar encima del
+  botón. **(propuesta)**
+- **Datos del E2E.** Usa dos empresas. La del maestro no tiene zonas, para que «Confirmá el SINPE» no tape los
+  clics; la del mensajero tiene la zona que exige su rol. **(propuesta)**
+
+**Veredicto:** T7–T9 hechas. El E2E sale verde dos veces seguidas (0 failed, 0 skipped, 0 flaky) y las guardias
+están verdes salvo el rojo del baseline. `./init.sh` y `tamano-pr` quedan para el leader.

@@ -56,7 +56,7 @@
 
 ## Bloque D — De punta a punta y cierre
 
-- [ ] **T9. E2E y documentación** (dep. T8; R1, R2, R6, R8, R9, R13, R15).
+- [x] **T9. E2E y documentación** (dep. T8; R1, R2, R6, R8, R9, R13, R15).
   - **Archivos:**
     - `e2e/reporte-de-bugs.spec.ts`, en el proyecto `aislamiento`;
     - `BUG_REPORT_EMAILS: "reportes-e2e@example.test"` en `webServer.env` de `playwright.config.ts`;
