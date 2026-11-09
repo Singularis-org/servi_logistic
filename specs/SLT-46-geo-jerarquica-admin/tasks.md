@@ -208,7 +208,7 @@ https://claude.ai/artifact/QFq31uvvXmLXF4AGt9PFfH, versión 7); si algo de la ma
   *Hecho:* `tests/components/GeografiaPlataformaAltaPais.test.tsx` adaptado (2 y 10 filas; título con
   N; sin añadir una 11.ª ni quitar por debajo de 2; orden de pantalla = orden enviado; dato inválido
   sin modal; confirmar llama a la action).
-- [ ] **T6.3** [P] `_components/TiposDeNivelPais.tsx` (editar nombres, reordenar con
+- [x] **T6.3** [P] `_components/TiposDeNivelPais.tsx` (editar nombres, reordenar con
   `ListaReordenable` y guardar el orden con `reordenarTiposAction`, «Agregar nivel» al final con su
   `profundidad`, oculto con 10 tipos, sin quitar; cada escritura con `ConfirmarCambio` y su «antes») y
   su uso en la página. (R25–R27, R48, R50, R52, R53, R55, R58, R59, R61)

@@ -44,6 +44,10 @@ const acciones = {
   cambiarActivacionNodoAction: vi.fn(),
   contarOrdenesSinEntregarAction: vi.fn(),
   cargarDivisionAction: vi.fn(),
+  // SLT-46 T6.3: las del panel «Niveles del país», que la página ahora monta.
+  renombrarTipoNivelAction: vi.fn(),
+  agregarNivelPaisAction: vi.fn(),
+  reordenarTiposAction: vi.fn(),
 };
 vi.mock("@/lib/actions/geografia-plataforma", () => ({
   listarPaisesAction: (...a: unknown[]) => acciones.listarPaisesAction(...a),
@@ -55,6 +59,9 @@ vi.mock("@/lib/actions/geografia-plataforma", () => ({
   cambiarActivacionNodoAction: (...a: unknown[]) => acciones.cambiarActivacionNodoAction(...a),
   contarOrdenesSinEntregarAction: (...a: unknown[]) => acciones.contarOrdenesSinEntregarAction(...a),
   cargarDivisionAction: (...a: unknown[]) => acciones.cargarDivisionAction(...a),
+  renombrarTipoNivelAction: (...a: unknown[]) => acciones.renombrarTipoNivelAction(...a),
+  agregarNivelPaisAction: (...a: unknown[]) => acciones.agregarNivelPaisAction(...a),
+  reordenarTiposAction: (...a: unknown[]) => acciones.reordenarTiposAction(...a),
 }));
 
 const toastMock = { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn(), show: vi.fn(), dismiss: vi.fn() };
@@ -181,6 +188,22 @@ describe("R21 — la puerta, antes de leer", () => {
     await montar();
     expect(acciones.arbolDePaisAction).toHaveBeenCalledWith({ paisId: "GT" });
     // SLT-46 T6.1: el panel del árbol se titula «Lugares» (maqueta T0.2, versión 7).
+    expect(screen.getByRole("heading", { name: "Lugares" })).toBeInTheDocument();
+  });
+});
+
+describe("SLT-46 T6.3 — el panel «Niveles del país» junto a «Lugares»", () => {
+  it("la página monta «Niveles del país» con los tipos del país elegido, por profundidad", async () => {
+    await montar("GT");
+
+    expect(screen.getByRole("heading", { name: "Niveles del país" })).toBeInTheDocument();
+    const filas = within(screen.getByRole("list", { name: "Niveles del país" })).getAllByRole("listitem");
+    expect(filas.map((li) => within(li).getByRole("button", { name: /^Editar nivel/ }).getAttribute("aria-label"))).toEqual([
+      "Editar nivel 1, Departamento",
+      "Editar nivel 2, Municipio",
+      "Editar nivel 3, Aldea",
+    ]);
+    expect(filas[1]).toHaveTextContent("Plural: Municipios · CSV: nivel_2");
     expect(screen.getByRole("heading", { name: "Lugares" })).toBeInTheDocument();
   });
 });
@@ -472,7 +495,9 @@ describe("R24, R25, R28, R48 — la carga CSV", () => {
       codigosCompletados: 5,
       avisos: [],
     });
-    const resumen = await screen.findByRole("status");
+    // SLT-46 T6.3: la página tiene ahora más de un `role="status"` (la región aria-live de la lista de
+    // «Niveles del país»); el resumen se busca por su encabezado, como en «R30, R33».
+    const resumen = (await screen.findByText("Carga hecha. Altas:")).parentElement as HTMLElement;
     expect(within(resumen).getByText("Departamentos: 1")).toBeInTheDocument();
     expect(within(resumen).getByText("Municipios: 2")).toBeInTheDocument();
     expect(within(resumen).getByText("Aldeas: 3")).toBeInTheDocument();

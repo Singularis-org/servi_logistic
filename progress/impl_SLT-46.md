@@ -1045,3 +1045,34 @@ Veredicto: T6.5 hecha, verde en test, lint y typecheck.
   (b) dos llamadas no atómicas (`crearPaisAction` + `cambiarDisponibilidadPaisAction`); (c) quitar la casilla del alta.
 - Desvíos de texto a cotejar con la maqueta v7: títulos de los modales, «Sí, cambiar»/«Sí, cargar», prefijo
   «Columnas del CSV:»; «Quitar» oculto (no deshabilitado) donde no aplica.
+
+### T6.3 — `TiposDeNivelPais`, panel «Niveles del país» (R12, R25–R27, R48–R50, R52, R53, R55, R58, R59, R61)
+- Creado `_components/TiposDeNivelPais.tsx` y `tests/components/tipos-de-nivel-pais.test.tsx`. En
+  `GeografiaPlataformaModule.tsx`, rejilla de dos columnas (`lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]`, apilada
+  en móvil): «Niveles del país» a la izquierda y «Lugares» a la derecha.
+- Lista por profundidad: número, singular, «Plural: … · CSV: nivel_k», «Editar», manija ⠿. Reordenar deja el orden
+  en pantalla con «Orden sin guardar» («Descartar» / «Guardar orden…»); con orden sin guardar se deshabilitan
+  Editar y Agregar, y con un formulario o modal abierto no se reordena (para que el «antes» no quede viejo).
+  «+ Agregar nivel al final» oculto con 10. Sin quitar (R50). Modales: «Guardar el orden de los niveles»/«Sí, guardar»,
+  «Editar el nivel k»/«Sí, guardar», «Agregar el nivel P+1»/«Sí, agregar».
+- Mapa R → test (`tipos-de-nivel-pais.test.tsx`): R25/R48/R54 «pinta cada nivel por profundidad con su número,
+  singular, plural y columna CSV nivel_k» (+ página: «la página monta «Niveles del país» con los tipos del país
+  elegido, por profundidad»); R50 «no hay ningún control para quitar un nivel»; R53/R55 «ArrowDown en la manija
+  cambia el orden en pantalla sin llamar a la action y avisa «Orden sin guardar»», ««Descartar» vuelve al orden de
+  hoy»; R58/R59 «Guardar orden… abre el modal con el antes → después por profundidad; cancelar no llama»; R55
+  «confirmar llama una vez con el orden nuevo y los nombres de cada tipo («antes»)»; R61 «con motivo
+  «cambio_concurrente» el modal avisa y la página se refresca»; editar: R59 inválido sin modal ni action, R58/R61
+  válido envía `anterior`, cancelar no llama, R26 `validation_error`/`not_found`; agregar: con 10 no se ofrece, R59
+  inválido, R58 válido con `profundidad` P+1, R49 el tope del servidor; R12 Provincia/Cantón/Distrito. R27 sin test de
+  UI (lo cubre el backend).
+- Aserción cambiada en `geografia-plataforma-page.test.tsx` («con una carga buena muestra el resumen…»):
+  `findByRole("status")` → `findByText("Carga hecha. Altas:").parentElement`, porque `ListaReordenable` añade otra
+  región `role="status"`. Lo comprobado no cambia.
+- Salida: vitest 4 archivos (`tipos-de-nivel-pais`, `geografia-plataforma-page`, `GeografiaPlataformaAltaPais`,
+  `geografia-arbol-n-niveles`) `84 passed (84)`; guardia `etiquetas-geograficas-sin-literal` 6/6; eslint 4 archivos
+  sin hallazgos; tsc sin errores.
+- **BLOQUEO (backend, para el leader):** `tests/unit/guards/superficie-de-uso.guardia.test.ts` 17/18, rojo en
+  «ninguna anotación `@sin-superficie` de acción sobrevive a su motivo». Las tres anotaciones de
+  `lib/actions/geografia-plataforma.ts` (`renombrarTipoNivelAction`, `agregarNivelPaisAction`,
+  `reordenarTiposAction`) dicen que T6.3 les da pantalla y ya sobran. Hay que borrar esas tres líneas de JSDoc (cambio
+  solo de comentarios). El implementer lo intentó y el permiso del entorno lo denegó en `lib/`; queda sin hacer.

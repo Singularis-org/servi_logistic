@@ -48,13 +48,14 @@ import { normalizeName } from "@/lib/utils/normalize";
 import { ConfirmarCambio, type ErrorGenericoDeCambio } from "./ConfirmarCambio";
 import { GeografiaAdminModule } from "./GeografiaAdminModule";
 import { ListaReordenable } from "./ListaReordenable";
+import { TiposDeNivelPais } from "./TiposDeNivelPais";
 
 // SL-20 (design §8; R20, R23–R28, R42, R46, R47) — la geografía del superadmin, en cliente:
 //   - el selector de país (todos los dados de alta, disponibles o no);
 //   - «Nuevo país», con el país ELEGIDO del catálogo ISO 3166-1 y su lista ordenada de niveles;
 //   - el interruptor «Disponible» del país elegido;
 //   - la carga CSV de su división, con la equivalencia de columnas y los errores por línea;
-//   - el árbol editable (`GeografiaAdminModule`).
+//   - los niveles del país elegido (`TiposDeNivelPais`) y el árbol editable (`GeografiaAdminModule`).
 //
 // R20: los niveles se nombran con los nombres DEL PAÍS ELEGIDO, no con los del provider: la sesión
 // del superadmin no tiene empresa y ahí solo hay etiquetas neutras.
@@ -152,14 +153,19 @@ export function GeografiaPlataformaModule({
             paisNombre={paisElegido.nombre}
             niveles={nivelesDelPais(paisElegido, tipos)}
           />
-          <GeografiaAdminModule
-            key={`arbol-${paisElegido.id}`}
-            paisId={paisElegido.id}
-            paisNombre={paisElegido.nombre}
-            tipos={tipos}
-            raices={raices}
-            cargaErrorInicial={divisionError}
-          />
+          {/* Maqueta T0.2 (versión 7): «Niveles del país» a la izquierda y «Lugares» a la derecha; en
+              móvil, apilados en ese orden. */}
+          <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+            <TiposDeNivelPais key={`tipos-${paisElegido.id}`} paisId={paisElegido.id} tipos={tipos} />
+            <GeografiaAdminModule
+              key={`arbol-${paisElegido.id}`}
+              paisId={paisElegido.id}
+              paisNombre={paisElegido.nombre}
+              tipos={tipos}
+              raices={raices}
+              cargaErrorInicial={divisionError}
+            />
+          </div>
         </>
       ) : null}
     </div>
