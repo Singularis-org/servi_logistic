@@ -44,6 +44,12 @@ const acciones = {
   cambiarActivacionNodoAction: vi.fn(),
   contarOrdenesSinEntregarAction: vi.fn(),
   cargarDivisionAction: vi.fn(),
+  // SLT-81: la sección «Datos del país».
+  listarTiposDocumentoAction: vi.fn(),
+  actualizarDatosPaisAction: vi.fn(),
+  crearTipoDocumentoAction: vi.fn(),
+  editarTipoDocumentoAction: vi.fn(),
+  cambiarActivoTipoDocumentoAction: vi.fn(),
 };
 vi.mock("@/lib/actions/geografia-plataforma", () => ({
   listarPaisesAction: (...a: unknown[]) => acciones.listarPaisesAction(...a),
@@ -55,6 +61,11 @@ vi.mock("@/lib/actions/geografia-plataforma", () => ({
   cambiarActivacionNodoAction: (...a: unknown[]) => acciones.cambiarActivacionNodoAction(...a),
   contarOrdenesSinEntregarAction: (...a: unknown[]) => acciones.contarOrdenesSinEntregarAction(...a),
   cargarDivisionAction: (...a: unknown[]) => acciones.cargarDivisionAction(...a),
+  listarTiposDocumentoAction: (...a: unknown[]) => acciones.listarTiposDocumentoAction(...a),
+  actualizarDatosPaisAction: (...a: unknown[]) => acciones.actualizarDatosPaisAction(...a),
+  crearTipoDocumentoAction: (...a: unknown[]) => acciones.crearTipoDocumentoAction(...a),
+  editarTipoDocumentoAction: (...a: unknown[]) => acciones.editarTipoDocumentoAction(...a),
+  cambiarActivoTipoDocumentoAction: (...a: unknown[]) => acciones.cambiarActivoTipoDocumentoAction(...a),
 }));
 
 const toastMock = { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn(), show: vi.fn(), dismiss: vi.fn() };
@@ -120,6 +131,8 @@ beforeEach(() => {
   vi.mocked(resolveActorFromSession).mockResolvedValue(actorDe("superadmin") as never);
   acciones.listarPaisesAction.mockResolvedValue({ status: "ok", paises: [HONDURAS, GUATEMALA] });
   acciones.arbolDePaisAction.mockResolvedValue({ status: "ok", provincias: ARBOL });
+  // SLT-81: sin tipos, la sección no pinta su tabla y la del CSV sigue siendo la única.
+  acciones.listarTiposDocumentoAction.mockResolvedValue({ status: "ok", tipos: [] });
 });
 
 afterEach(() => {

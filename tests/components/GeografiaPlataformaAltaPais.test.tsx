@@ -6,6 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { GeografiaPlataformaModule } from "@/app/(app)/plataforma/geografia/_components/GeografiaPlataformaModule";
 import { PAISES_ISO_3166_1, paisDelCatalogo } from "@/lib/constants/paises-iso-3166-1";
 import type { PaisDTO } from "@/lib/types/pais";
+import { prefijoOficial } from "@/lib/utils/prefijo-oficial";
 
 // SL-20 (design §8; R42; decisión 11 tras la review 1) — el autocompletado del alta de país NO
 // ofrece los países que ya están dados de alta (los que la pantalla recibe en `paises`): elegirlos
@@ -33,6 +34,9 @@ vi.mock("@/lib/actions/geografia-plataforma", () => ({
   crearPaisAction: vi.fn(),
 }));
 
+// Lo mismo que calcula la página en el servidor (design §5).
+const PREFIJOS_OFICIALES = Object.fromEntries(PAISES_ISO_3166_1.map((p) => [p.id, prefijoOficial(p.id)]));
+
 function paisDadoDeAlta(id: string): PaisDTO {
   const delCatalogo = paisDelCatalogo(id);
   if (delCatalogo === null) throw new Error(`El catálogo no tiene ${id}`);
@@ -58,7 +62,16 @@ function paisDadoDeAlta(id: string): PaisDTO {
 
 async function abrirAltaYEscribir(paises: PaisDTO[], consulta: string) {
   const user = userEvent.setup();
-  render(<GeografiaPlataformaModule paises={paises} paisElegido={null} provincias={[]} />);
+  render(
+    <GeografiaPlataformaModule
+      paises={paises}
+      paisElegido={null}
+      provincias={[]}
+      tiposDocumento={[]}
+      zonas={[]}
+      prefijosOficiales={PREFIJOS_OFICIALES}
+    />,
+  );
   await user.click(screen.getByRole("button", { name: "Nuevo país" }));
   const input = await screen.findByRole("combobox", { name: /País/ });
   await user.type(input, consulta);

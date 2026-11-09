@@ -28,6 +28,8 @@ de `dev`, que aún no trae el catálogo ni la validación de SLT-42.
 
 - 2026-11-07: país ISO sin prefijo oficial en libphonenumber (p. ej. `AQ`): se acepta que R26 lo rechace y no se ofrezca en el alta (humano). La implementación mueve esa pregunta de `requirements.md > Preguntas abiertas` a «Decisiones cerradas» (T0.0).
 
+- 2026-11-07 (tras tanda 1, `progress/impl_SLT-81.md > Tanda 1`): los 11 desvíos del design quedan aceptados (humano), incluidos la clave del tipo (`[^a-z0-9]` → `_`, «N.I.T.» → `n_i_t`), el rechazo de un nombre sin letras ni dígitos, Tuvalu en vez de Bouvet en el test, `tipoDocumentoPorId` y `actualizarDatos` con número de empresas en el repositorio, y la migración en `20261108120000`.
+
 ## Preguntas abiertas
 Ninguna.
 

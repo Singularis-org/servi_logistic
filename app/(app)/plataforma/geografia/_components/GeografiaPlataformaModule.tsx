@@ -37,15 +37,18 @@ import {
   type EtiquetasGeograficas,
   type NombresDeNivelesDePais,
   type PaisDTO,
+  type TipoDocumentoDTO,
 } from "@/lib/types/pais";
 import { normalizeName } from "@/lib/utils/normalize";
 
+import { DatosDelPais } from "./DatosDelPais";
 import { GeografiaAdminModule } from "./GeografiaAdminModule";
 
 // SL-20 (design §8; R20, R23–R28, R42, R46, R47) — la geografía del superadmin, en cliente:
 //   - el selector de país (todos los dados de alta, disponibles o no);
 //   - «Nuevo país», con el país ELEGIDO del catálogo ISO 3166-1 y los seis nombres de nivel a mano;
 //   - el interruptor «Disponible» del país elegido;
+//   - SLT-81: sus datos (prefijo, dígitos, zona y tipos de documento, `DatosDelPais`);
 //   - la carga CSV de su división, con la equivalencia de columnas y los errores por línea;
 //   - el árbol editable (`GeografiaAdminModule`).
 //
@@ -65,6 +68,14 @@ export interface GeografiaPlataformaModuleProps {
   paisesError?: boolean;
   /** No se pudo leer la división del país elegido: `provincias` llega vacío por el fallo. */
   divisionError?: boolean;
+  /** SLT-81 (R2): los tipos de documento del país elegido, activos e inactivos. */
+  tiposDocumento: TipoDocumentoDTO[];
+  /** No se pudieron leer los tipos: `tiposDocumento` llega vacío por el fallo. */
+  tiposError?: boolean;
+  /** SLT-81 (R8): las zonas IANA que acepta el servidor. */
+  zonas: readonly string[];
+  /** SLT-81 (R26): código ISO → prefijo oficial según libphonenumber, o `null` si no lo conoce. */
+  prefijosOficiales: Readonly<Record<string, string | null>>;
 }
 
 export function GeografiaPlataformaModule({
@@ -73,6 +84,10 @@ export function GeografiaPlataformaModule({
   provincias,
   paisesError = false,
   divisionError = false,
+  tiposDocumento,
+  tiposError = false,
+  zonas,
+  prefijosOficiales,
 }: Readonly<GeografiaPlataformaModuleProps>) {
   const router = useRouter();
   const [altaAbierta, setAltaAbierta] = useState(false);
@@ -136,6 +151,15 @@ export function GeografiaPlataformaModule({
 
       {paisElegido !== null && etiquetas !== null ? (
         <>
+          <DatosDelPais
+            key={`datos-${paisElegido.id}`}
+            pais={paisElegido}
+            tipos={tiposDocumento}
+            tiposError={tiposError}
+            zonas={zonas}
+            prefijoOficial={prefijosOficiales[paisElegido.id] ?? null}
+            onCambio={() => router.refresh()}
+          />
           <CargaDivisionCsv
             key={`csv-${paisElegido.id}`}
             paisId={paisElegido.id}
