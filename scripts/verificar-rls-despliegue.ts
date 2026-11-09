@@ -35,7 +35,9 @@ const ROL_APP = "servi_app";
 // SLT-83 (20261104150100) suma una: la de `cobro_plataforma_porcentual_orden` a `orden`.
 // SLT-94 (20261108120200) suma tres: las de `orden_fulfillment_movimiento` a `orden`, `usuario` (tienda) y
 // `tarifa_valor`.
-const TRIGGERS_MISMA_EMPRESA = 172;
+// SLT-85 (20261109120000) suma tres: las de `cobro_plataforma_traza` a `orden`, a `cobro_plataforma_movimiento`
+// y a sí misma (`reverso_de`).
+const TRIGGERS_MISMA_EMPRESA = 175;
 
 /** Lo que el punto 6 espera encontrar en el catalogo de la base. */
 export interface ContratoRls {

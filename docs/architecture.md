@@ -255,6 +255,11 @@ esta bien hecha, no solo si "funciona".
     - **Quién escribe:** las pantallas solo llaman a las actions de SL-24 (`lib/actions/planes`).
       Las lecturas nuevas del superadmin están en `PlanesRepository`, en `comoPlataforma`, y no
       escriben. Llevan la ficha `"SL-24"` porque `FichaJira` no admite `SLT` (deuda D29).
+- **Traza de facturación (SLT-85, 2026-11-09).** `cobro_plataforma_traza` (negocio, RLS por empresa)
+  guarda una copia del momento por cada movimiento de `cobro_plataforma_movimiento`. Solo la escribe
+  el trigger `AFTER INSERT` `cobro_plataforma_traza_al_registrar` sobre esa tabla, en la misma
+  transacción; `servi_app` no la escribe (`REVOKE`) y nadie la cambia (`SL085`, también el dueño). Las
+  filas que rellenó la migración `20261109120000` salen con `reconstruido = true`.
 
 ### Por qué
 Decisión del humano (plan-saas, 2026-10-20/21): una sola base compartida, datos separados por
