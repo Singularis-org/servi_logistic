@@ -261,8 +261,8 @@ describeSiHayBase("SLT-46 T5.2 — R11/R12: nodos 1–3 = geografía vieja tras 
     expect(r.d.distintas[0].vieja).not.toContain("Marga Marga Norte");
     // La transacción se revirtió: el trigger sigue encendido.
     const [trigger] = await base.$queryRawUnsafe<{ tgenabled: string }[]>(
-      `SELECT t."tgenabled"::text AS "tgenabled" FROM "pg_trigger" t JOIN "pg_class" c ON c."oid" = t."tgrelid"
-        WHERE t."tgname" = $1 AND c."relname" = 'nodo_geografico'`,
+      `SELECT t."tgenabled"::text AS "tgenabled" FROM "pg_trigger" t JOIN "pg_class" c ON c."oid" = t."tgrelid" JOIN "pg_namespace" n ON n."oid" = c."relnamespace"
+        WHERE t."tgname" = $1 AND c."relname" = 'nodo_geografico' AND n."nspname" = 'public'`,
       TRIGGER_DE_COPIA,
     );
     expect(trigger?.tgenabled).toBe("O");

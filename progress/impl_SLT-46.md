@@ -796,6 +796,15 @@ Las demás suites de la lista ya estaban verdes con la forma de entrada que les 
 **Salida real** (`logistic_slt46` local, `--maxWorkers=1`): las 22 suites → `Test Files 22 passed (22) ·
 Tests 249 passed (249)`. `eslint` de los tres archivos → exit 0; `pnpm run typecheck` → exit 0.
 
+**Guardias** (332 archivos con `guard` en la ruta, 7 lotes de ≤ 50, `--maxWorkers=1`): `1 failed | 527 passed |
+24 skipped (552)`, `666`, `5 failed | 762 passed (767)`, `836`, `726`, `720 | 1 skipped`, `423`. Rojos:
+- 4 de `dependencias-declaradas-presentes` y 1 de `guard-dependencias-aprobadas` (`@dnd-kit` aprobada y aún sin
+  instalar): los mismos 5 preexistentes que anotó T4.6.
+- 1 **mío**: `catalogo-postgres-acota-esquema` marcó la consulta a `pg_trigger` de la contraprueba de
+  `slt46-equivalencia-geografia.test.ts` (T5.2) por no acotar el esquema. Corregido aquí (`JOIN pg_namespace …
+  nspname = 'public'`, como `carga-division`): la guardia → `Tests 7 passed (7)` y la suite →
+  `Tests 4 passed (4)`.
+
 **Cierre de T5.5 (implementer, 2026-11-09).** Revisados los tres diffs: solo cambia de dónde salen el
 actor y las FK (fixture dentro de la transacción revertida); ningún `expect` cambia. Ajuste de estilo: el
 tipo de `tx` usa `TxDeTest` de `_postgres-real` en vez de repetir su definición. Recorrida propia
