@@ -40,6 +40,8 @@ con el backend (T0.1, T1–T5; la UI espera la maqueta T0.2). Spec R1–R52, T0�
 - 2026-11-09 (humano, review D1): se aceptan los textos nuevos que ve el superadmin de Costa Rica (Retirar/Reactivar/Retirados, «Sí, …», sin chip «Inactivo por su <nivel>»); dentro de R12 porque el servidor responde igual.
 - 2026-11-09 (humano, review D2): ante un cambio concurrente el modal se CIERRA, aparece un aviso en la pantalla y se recarga el dato (como dice §4.7); se corrige el código.
 - 2026-11-09 (leader, review D3): textos alineados con la maqueta v7: títulos de modal en pregunta («¿Guardar el cambio del nivel 3?», «¿Crear <país> con estos niveles?», «¿Guardar el nuevo orden de niveles?»), botón secundario «Volver», «Columnas del CSV de carga»; «Sí, cambiar» y «Sí, cargar» (no dibujados en la maqueta) siguen el mismo patrón «Sí, <verbo>»; «Quitar» oculto donde no aplica coincide con la maqueta.
+- 2026-11-09 (humano: «Un PR, aceptando el tamaño»): SLT-46 sale en un solo PR de 89 archivos / 16.629 líneas propias (sin specs, progress, lockfile), por encima del límite 40/1000; ya estaba implementado y revisado junto, y cerca de la mitad son tests.
+<!-- tamano-pr-aceptado: 2026-11-09 · humano: «Un PR, aceptando el tamaño»; feature ya implementada y revisada junta, ~mitad tests -->
 
 ## Preguntas abiertas
 - 2026-11-09 (implementer, tanda 4): borrar las 3 anotaciones `@sin-superficie SLT-46 T6.3` vencidas en `lib/actions/geografia-plataforma.ts` (208, 236, 261), que ponen en rojo `superficie-de-uso`. El permiso del entorno denegó la edición al implementer: decide el humano.
