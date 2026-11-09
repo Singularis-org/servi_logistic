@@ -145,7 +145,7 @@ describeSiHayBase("458-D servidor — el estado de cuenta ampliado contra Postgr
               tipoIdentificacionId: cat.tipoIdentificacionId,
               rolId: cat.rolId.adminTienda,
               estado: "activo",
-              fulfillment: false,
+              seRecogeEnTienda: true,
             },
             select: { id: true },
           })

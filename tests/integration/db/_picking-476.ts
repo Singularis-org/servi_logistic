@@ -57,7 +57,10 @@ export function estatusId(base: Base476, value: string): string {
   return id;
 }
 
-/** Un usuario (por defecto una TIENDA `adminTienda` ACTIVA) con el fulfillment pedido. */
+/**
+ * Un usuario (por defecto una TIENDA `adminTienda` ACTIVA) con el fulfillment pedido. SLT-94 (R7):
+ * `fulfillment` aqui = «con paquetes en bodega», que se guarda como `seRecogeEnTienda = !fulfillment`.
+ */
 export async function crearTienda(
   tx: TxDeTest,
   base: Base476,
@@ -77,7 +80,7 @@ export async function crearTienda(
       tipoIdentificacionId: base.tipoIdentificacionId,
       rolId,
       estado: o.estado ?? "activo",
-      fulfillment: o.fulfillment,
+      seRecogeEnTienda: !o.fulfillment,
     },
     select: { id: true },
   });

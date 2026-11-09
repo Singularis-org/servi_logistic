@@ -56,7 +56,73 @@ Una ficha duplicada reparte el mismo trabajo entre dos personas que no se ven; c
 deja dos versiones que divergen. **No hay un caso verificado** en este repo: la regla es
 preventiva.
 
-## Los tres archivos
+## Tres rutas: directa, ligera y completa
+
+El proceso se ajusta al riesgo de la feature. El leader propone la ruta en F1.0, la escribe como
+label `ruta:<directa|ligera|completa>` en la tarjeta y la anota en `progress/features/<key>.md >
+Evaluación`. Sin label, la ficha va por la **completa**.
+
+| Ruta | Para qué | Spec | Aprobación del spec (F1.4) | Reviewer |
+| --- | --- | --- | --- | --- |
+| **directa** | texto, estilo, bug localizado con causa clara | ninguno: un test que reproduce el fallo antes del arreglo, y el PR dice qué cambió y cómo se probó | no: el humano revisa el PR | no |
+| **ligera** | feature acotada, sin decisiones de diseño caras | un solo `requirements.md`: alcance, requisitos EARS, `## Tasks` y `## Archivos esperados` | sí | sí, acotado al diff |
+| **completa** | todo lo demás | los tres archivos de abajo | sí | sí |
+
+**Va siempre por la completa** (lo comprueba el gate, no el criterio del agente):
+- si el diff toca algo de `arnes.config.json > rutas.completa_si_toca` (por defecto migraciones,
+  esquemas `.prisma` y `.sql`): `scripts/validate-features.mjs` falla mientras la ruta sea otra;
+- si toca dinero, permisos, autenticación, integraciones externas o webhooks, o su `complexity` es
+  `high`. Esto lo comprueba el reviewer, porque no se ve en las rutas de los archivos.
+
+**Subir de ruta siempre se puede** (lo decide el humano, o el leader al descubrir más alcance).
+**Bajar por debajo del suelo, nunca.** La ruta directa solo vale con `complexity: low`, sin
+comportamiento nuevo y sin tocar un flujo crítico.
+
+Lo que no cambia en ninguna ruta: el candado, la trazabilidad (todo cambio de comportamiento con
+su test), el gate y el PR con `gate-completo` en verde antes del merge.
+
+### Por qué
+
+El SDD completo es caro: tres documentos, una espera de aprobación y un reviewer por feature. En el
+proyecto de origen, el ciclo mediano de una feature era de 38 h (2026-11-07), y los cambios
+pequeños pagaban lo mismo que los grandes. Las críticas públicas a Kiro y spec-kit dicen lo mismo:
+un bug menor no debería producir cuatro historias de usuario. Organic Driven Development (Gentle-AI)
+propone la misma proporcionalidad. Aquí se adopta la idea, no la herramienta, y con un suelo que
+comprueba el gate.
+
+## Partir una feature
+
+Una feature tiene que caber en **un PR por debajo de `gate.tamano_pr`** (por defecto 40 archivos y
+1000 líneas; `docs/gate.md > Tamaño del PR`). Si no cabe, se parte en el board **antes** de
+implementar, no a mitad.
+
+**Cuándo se mira:**
+- **en F1.0,** al evaluar: si la description ya promete más de lo que cabe, el leader propone el
+  corte con `/afinar-feature`;
+- **en F1.2,** al escribir el spec: si `## Archivos esperados` pasa del 80% de `max_archivos`,
+  `spec_author` devuelve `BLOQUEADO: no cabe en un PR` con la propuesta de corte;
+- **en cada tanda:** si `./init.sh` avisa del 80% o da rojo por tamaño, el implementer para y el
+  leader propone el corte de lo que falta.
+
+**Cómo se parte, en rebanadas verticales:**
+- **Cada rebanada se mergea sola y deja el producto funcionando.** Ninguna rompe la rama de
+  integración ni deja una pantalla a medias visible. Si algo no puede verse aún, va detrás de una
+  bandera o sin enlace en la navegación.
+- **Por comportamiento, no por capa:** «alta de clientes» y luego «edición de clientes», no
+  «backend de clientes» y luego «frontend de clientes». Una rebanada por capa deja la primera
+  sin probar de punta a punta.
+- **Primero lo que desbloquea:** el modelo de datos y su migración van en la primera rebanada si
+  las demás dependen de él. Es la única excepción razonable al corte por comportamiento.
+- **En el board:** se crean las fichas nuevas con `/afinar-feature` (paso 5: crear la ficha que
+  falta), con `depends_on` encadenado. La ficha original se queda con la primera rebanada y su
+  `description` se acota a ella.
+- Cada rebanada pasa el ciclo entero: su ruta, su spec si lo lleva, su gate y su PR.
+
+### Por qué
+
+Ver `docs/gate.md > Tamaño del PR > Por qué`.
+
+## Los tres archivos (ruta completa)
 
 ### 1. requirements.md — el QUÉ, en EARS
 Requisitos numerados (`R1`, `R2`…), sin detalles de implementación. Usa notación
@@ -95,7 +161,8 @@ Checklist de pasos discretos y verificables. Cada task pequeña, con criterio de
 "hecho". Marca dependencias y las que pueden ir en paralelo `[P]`.
 
 Incluye una sección **`## Archivos esperados`** con las rutas que la feature va a tocar, cada una
-entre backticks. `scripts/archivos-en-vuelo.mjs` lee **solo** las rutas de esa sección, desde la
+entre backticks (en la ruta ligera, la misma sección va en el `requirements.md` único).
+`scripts/archivos-en-vuelo.mjs` lee **solo** las rutas de esa sección, desde la
 rama publicada, para detectar choques con las features en vuelo de todo el equipo: una ruta citada
 en otra parte del `tasks.md` no cuenta, y un comando (`./init.sh`) tampoco (`docs/equipo.md >
 Conflicto de archivos entre personas`).
@@ -103,7 +170,7 @@ Conflicto de archivos entre personas`).
 ## La puerta de aprobación humana (`spec_ready`)
 
 Cuando los tres archivos están listos, el leader pasa la feature a `spec_ready`, mueve la
-tarjeta al estado de `spec_ready` (según `tracker.estados` o `jira.estados`), comenta la ruta del spec en la tarjeta y hace `git push`
+tarjeta al estado de `spec_ready` (según `tracker.estados` o `jira.estados`), comenta en la tarjeta dónde está el spec y hace `git push`
 (`AGENTS.md > F1.3`). El proceso **se detiene**. El humano lee los tres archivos y responde:
 
 - **aprobado** → la forma canónica es mover la tarjeta del estado de `spec_ready` al de `in_progress`
@@ -121,6 +188,6 @@ verifica. Un requisito sin test es un fallo de la feature.
 
 ### Por qué
 
-**Sembrar antes del spec.** Los primeros specs escritos en QuimiCloude necesitaron una o dos
+**Sembrar antes del spec.** Los primeros specs escritos en el proyecto de origen del arnés necesitaron una o dos
 revisiones completas —con renumeración de requisitos incluida— para incorporar respuestas que el
 humano ya tenía desde el principio. `/afinar-feature` existe para hacer esa conversación antes.

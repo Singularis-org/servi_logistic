@@ -67,6 +67,46 @@ describe("rangoCobro · tabla de casos (R16, R17, R18)", () => {
   });
 });
 
+describe("SLT-94 R14 — rangoCobro: el fulfillment de otro nivel o en % no aplica", () => {
+  const FUL = "tienda_fulfillment" as const;
+  const casos: Array<[string, FilaValor, number | null]> = [
+    ["precio propio de la tienda en monto → 3", fila({ concepto: FUL, tiendaId: T, modo: "monto" }), 3],
+    ["precio propio sin modo informado → 3 (solo el % se descarta)", fila({ concepto: FUL, tiendaId: T }), 3],
+    ["precio propio en porcentaje → null", fila({ concepto: FUL, tiendaId: T, modo: "porcentaje" }), null],
+    ["tienda en el grupo → null", fila({ concepto: FUL, tiendaId: T, zonaId: Z, grupoId: G, modo: "monto" }), null],
+    ["tienda en la zona → null", fila({ concepto: FUL, tiendaId: T, zonaId: Z, modo: "monto" }), null],
+    ["grupo → null", fila({ concepto: FUL, zonaId: Z, grupoId: G, modo: "monto" }), null],
+    ["valor base de la zona → null", fila({ concepto: FUL, zonaId: Z, modo: "monto" }), null],
+    ["otra tienda en todas sus zonas → null", fila({ concepto: FUL, tiendaId: "tienda-2", modo: "monto" }), null],
+  ];
+
+  it.each(casos)("SLT-94 R14: %s", (_nombre, f, esperado) => {
+    expect(rangoCobro(f, COBRO)).toBe(esperado);
+  });
+
+  it("SLT-94 R14: con una fila de zona, una de grupo y una en % la elección deja el fulfillment AUSENTE", () => {
+    const filas = [
+      fila({ concepto: FUL, zonaId: Z, modo: "monto" }),
+      fila({ concepto: FUL, zonaId: Z, grupoId: G, modo: "monto" }),
+      fila({ concepto: FUL, tiendaId: T, modo: "porcentaje" }),
+    ];
+    const eleccion = elegirCobros(filas, new Map([["c", COBRO]]), [FUL]);
+    expect(eleccion.get("c")?.get(FUL) ?? null).toBeNull();
+  });
+
+  it("SLT-94 R14: la fila válida gana aunque convivan con ella filas inertes de zona y de grupo", () => {
+    const valida = fila({ concepto: FUL, tiendaId: T, modo: "monto" });
+    const filas = [fila({ concepto: FUL, zonaId: Z, grupoId: G, modo: "monto" }), valida, fila({ concepto: FUL, zonaId: Z })];
+    const elegido = elegirCobros(filas, new Map([["c", COBRO]]), [FUL]).get("c")?.get(FUL);
+    expect(elegido?.fila.id).toBe(valida.id);
+    expect(elegido?.nivel).toBe("tienda_general");
+  });
+
+  it("control: el flete de zona en % sigue aplicando (la regla es solo del fulfillment)", () => {
+    expect(rangoCobro(fila({ concepto: FE, zonaId: Z, modo: "porcentaje" }), COBRO)).toBe(5);
+  });
+});
+
 describe("rangoPago · tabla de casos del mensajero (R19, R21, R22) y la satelite (R20)", () => {
   const casosMensajero: Array<[string, FilaValor, ContextoPago, number | null]> = [
     ["valor propio del mensajero → 1", fila({ concepto: ME, mensajeroId: M }), PAGO, 1],

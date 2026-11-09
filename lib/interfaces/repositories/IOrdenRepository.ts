@@ -1608,11 +1608,11 @@ export interface IOrdenRepository {
   restore(ids: readonly string[], actorUsuarioId: string | null): Promise<number>;
   findEstatusIdByValue(value: string): Promise<string | null>;
   /**
-   * Feature 27/R15/R16/R17: lee `usuario.fulfillment` de la tienda que realiza la
-   * carga masiva (el `adminTienda` autenticado). `null` si el usuario no resuelve: SL-17
-   * (D15) la usa de lectura previa, y una tienda de otra empresa es «no encontrada».
+   * SLT-94 (R5): lee la marca «se recoge en tienda» de la tienda DUEÑA de la orden (la que carga
+   * por pantalla, o la tienda de la API key). `null` si el usuario no resuelve: SL-17 (D15) la usa
+   * de lectura previa, y una tienda de otra empresa es «no encontrada».
    */
-  findUsuarioFulfillment(usuarioId: string): Promise<boolean | null>;
+  findUsuarioSeRecogeEnTienda(usuarioId: string): Promise<boolean | null>;
   // BORRADO 2026-08-07 (tanda 2): `existsGeo`. Ver la lapida de `GeoExistence` arriba.
 
   // --- Feature 15: carga masiva (metodos batch, R19/R21/R22/R25/R27) ---
@@ -1975,7 +1975,7 @@ export interface IOrdenRepository {
   ): Promise<ManifiestoOrdenRow[]>;
   /**
    * Feature 148/R9: `usuario.nombre` del actor que ejecuto la operacion, resuelto
-   * server-side por `usuarioId` (espejo de `findUsuarioFulfillment`/`findUsuarioZonaId`).
+   * server-side por `usuarioId` (espejo de `findUsuarioSeRecogeEnTienda`/`findUsuarioZonaId`).
    * Alimenta la columna `responsable` cuando el flujo NO deja mensajero asignado
    * (design.md §9.8). `null` si el usuario no resuelve. `Actor` solo lleva
    * `{ usuarioId, rol }`, por eso el nombre se lee aqui y no viaja desde el borde.
@@ -1986,7 +1986,7 @@ export interface IOrdenRepository {
 
   /**
    * Feature 33/R4/R5: `usuario.zonaId` del adminSatelite autenticado, resuelto
-   * server-side por `usuarioId` (espejo de `findUsuarioFulfillment`). `null` si
+   * server-side por `usuarioId` (espejo de `findUsuarioSeRecogeEnTienda`). `null` si
    * el usuario no resuelve o no tiene zona asignada (R5: modulo vacio + sin_zona
    * en la recepcion). No hay logica de negocio: solo la query.
    */

@@ -314,7 +314,9 @@ describe("R57 · las dos metricas de la 173 salen de este repositorio, con sus c
     // ficha 461 (R29): + el cobro a una tienda y su reverso, los dos propios; ficha 458-B: + los dos
     // reversos del cobro por devolución a origen = 18; SL-39 (R11): − las cuatro de IVA = 14; SL-45
     // (R25): + el pago a la plataforma, propio = 15.
-    expect(where.categoria.in).toHaveLength(15);
+    // SLT-94 (R37): + el fulfillment por paquete y su devolucion = 17.
+    expect(where.categoria.in).toHaveLength(17);
+    expect(where.categoria.in).toContain("ingreso_fulfillment");
     expect(where.categoria.in).toContain("egreso_pago_plataforma");
     // SL-39 (R11): el IVA tampoco se le pide a la base: no es ganancia, se publica en `ingreso_iva`.
     for (const iva of [

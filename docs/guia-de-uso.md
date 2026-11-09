@@ -25,18 +25,18 @@ Si no, el gate se pone en rojo con «features en vuelo sin assignee».
 | Qué | Con el agente | A mano |
 | --- | --- | --- |
 | Ver dónde lo dejé | se muestra solo al abrir Claude Code (hook `SessionStart`) | lee `progress/sesion.local.md` |
-| Ver mis features en vuelo | idem | `node -e "const f=require('./feature_list.json').features;const yo=require('./.arnes.local.json').jira_account_id;console.table(f.filter(x=>['spec_ready','in_progress'].includes(x.status)&&x.assignee?.accountId===yo).map(x=>({key:x.key,name:x.name,status:x.status})))"` |
+| Ver mis features en vuelo | idem | `node -e "const f=require('./feature_list.json').features;const l=require('./.arnes.local.json');const yo=l.jira_account_id??l.trello_member_id;console.table(f.filter(x=>['spec_ready','in_progress'].includes(x.status)&&x.assignee?.accountId===yo).map(x=>({key:x.key,name:x.name,status:x.status})))"` |
 | Refrescar el board | «importa el board» | — (ver arriba) |
 
 ## 3. Tomar una feature
 
 | Paso | Con el agente | A mano |
 | --- | --- | --- |
-| Elegir | «toma la siguiente feature» o «toma QC-123» | elige en el board una tarea **sin responsable** cuya dependencia esté hecha |
-| Comprobar choques con el equipo | lo hace solo | `node scripts/archivos-en-vuelo.mjs --candidata QC-123` → `exit 1` = choca, espera; con otra persona, `--acepto <key>` si el humano lo acepta |
+| Elegir | «toma la siguiente feature» o «toma PROY-123» | elige en el board una tarea **sin responsable** cuya dependencia esté hecha |
+| Comprobar choques con el equipo | lo hace solo | `node scripts/archivos-en-vuelo.mjs --candidata PROY-123` → `exit 1` = choca, espera; con otra persona, `--acepto <key>` si el humano lo acepta |
 | Asignártela | lo hace solo (relee, asigna, relee) | en Jira: *Responsable* = tú. Recarga y confirma que sigue siendo tuya |
-| Candado y worktree | lo hace solo | `./scripts/wt.sh new QC-123 <slug>`. Si sale **`TOMADA`** (código 4), otro ganó: quítate de responsable y elige otra |
-| Etiquetas | lo hace solo | en el issue, labels `zone:<frontend\|backend\|fullstack>` y `complexity:<low\|medium\|high>` |
+| Candado y worktree | lo hace solo | `./scripts/wt.sh new PROY-123 <slug>`. Si sale **`TOMADA`** (código 4), otro ganó: quítate de responsable y elige otra |
+| Etiquetas | lo hace solo | en el issue, labels `zone:<frontend\|backend\|fullstack>`, `complexity:<low\|medium\|high>` y `ruta:<directa\|ligera\|completa>` (`docs/specs.md > Tres rutas`) |
 
 Tu cupo es **personal**: `arnes.config.json > cupos_por_persona` (2 frontend, 3 backend y 3 fullstack
 en curso a la vez).
@@ -45,24 +45,25 @@ en curso a la vez).
 
 | Paso | Con el agente | A mano |
 | --- | --- | --- |
-| Acotar antes del spec (opcional) | `/afinar-feature QC-123` | escribe `specs/QC-123-<slug>/requirements.md` con alcance, decisiones y preguntas abiertas |
-| Spec | «escribe el spec» (lanza `spec_author`) | crea `requirements.md` (EARS `R1…`), `design.md` (+ una alternativa descartada) y `tasks.md` (con `## Archivos esperados`) — `docs/specs.md` |
+| Acotar antes del spec (opcional) | `/afinar-feature PROY-123` | escribe `specs/PROY-123-<slug>/requirements.md` con alcance, decisiones y preguntas abiertas |
+| Spec | «escribe el spec» (lanza `spec_author`) | según la ruta (`docs/specs.md > Tres rutas`): directa, ninguno; ligera, un `requirements.md` con alcance, EARS, `## Tasks` y `## Archivos esperados`; completa, `requirements.md` (EARS `R1…`), `design.md` (+ una alternativa descartada) y `tasks.md` (con `## Archivos esperados`) |
+| ¿Cabe en un PR? | lo mira solo en F1.0 y en el spec | si promete más de `gate.tamano_pr` (40 archivos por defecto), pártela en el board en rebanadas que se mergean solas (`docs/specs.md > Partir una feature`) |
 | **Aprobar el spec** | — (lo decides tú) | mueve la tarjeta del estado de `spec_ready` al de `in_progress` (según `arnes.config.json > tracker.estados` o `jira.estados`), o escribe «aprobado» al agente |
-| Implementar | «implementa» (lanza `implementer`) | trabaja dentro de `.worktrees/QC-123-<slug>/`, marca `[x]` en `tasks.md` |
+| Implementar | «implementa» (lanza `implementer`) | trabaja dentro de `.worktrees/PROY-123-<slug>/`, marca `[x]` en las tasks. Tras el primer push: `gh pr create --draft --base dev --title "PROY-123 «<title>»"` |
 | Cerrar una tanda | lo hace solo | `./init.sh` en el worktree + `git push` (**siempre**: así el equipo ve lo que tocas) |
 | Revisión | «revisa» (lanza `reviewer`) | recorre `CHECKPOINTS.md` y `docs/checkpoints-proyecto.md`; cada `R<n>` con su test |
 | Sincronizar | lo hace solo | `git fetch origin dev && git merge origin/dev && git push` |
-| Abrir el PR | lo hace solo | `./init.sh` · `gh pr create --base dev --title "feat(QC-123): …"` |
-| Esperar el CI | lo hace solo (`gh pr checks --watch`) | mira el check **`gate-completo`** en el PR (~25 min). Rojo → `./init.sh --completo` lo reproduce en local |
+| Sacar el PR de borrador | lo hace solo | `./init.sh` · `gh pr ready <n>` |
+| Esperar el CI | lo hace solo (`gh pr checks --watch`) | mira el check **`gate-completo`** en el PR. Rojo → `node scripts/test-rapido.mjs --comprobar <tests en rojo>`: si «NO entra», falta un disparador (`docs/gate.md > Cuando el CI sale rojo y el local salió verde`); si entra, `./init.sh` lo reproduce en local |
 | **Mergear** | — | solo con `gate-completo` en **verde** (en el plan gratuito GitHub no lo impide: es regla nuestra) |
 
 ## 5. Cerrar la feature (tras el merge)
 
 | Paso | Con el agente | A mano |
 | --- | --- | --- |
-| Estado y tarjeta | «cierra QC-123» | tarjeta al estado de `done` (según `tracker.estados` o `jira.estados`) + comentario con la URL del PR |
-| Desmontar el worktree | lo hace solo | `./scripts/wt.sh done QC-123-<slug>` (añade `--assume-merged` si fue *squash*). Si dice `HOLD`, anótalo en `progress/deudas.md` |
-| Registro | lo hace solo | completa `progress/features/QC-123.md > Cierre` |
+| Estado y tarjeta | «cierra PROY-123» | tarjeta al estado de `done` (según `tracker.estados` o `jira.estados`) + comentario con la URL del PR |
+| Desmontar el worktree | lo hace solo | `./scripts/wt.sh done PROY-123-<slug>` (añade `--assume-merged` si fue *squash*). Si dice `HOLD`, anótalo en `progress/deudas.md` |
+| Registro | lo hace solo | completa `progress/features/PROY-123.md > Cierre`, con `node scripts/metricas.mjs informe --key PROY-123` |
 | Poda del baseline | lo hace solo | en el resumen del run de CI, las entradas de `tests/baseline-rojos.json` que ya pasan: bórralas |
 
 ## 6. Al terminar el día
@@ -75,15 +76,21 @@ en curso a la vez).
 
 | Situación | Con el agente | A mano |
 | --- | --- | --- |
-| Retomar en otra máquina una feature tuya | «retoma QC-123» | `./scripts/wt.sh --retomar new QC-123 <slug>` |
-| Soltar una feature | «suelta QC-123» | quítate de responsable, anota en `progress/features/QC-123.md` hasta dónde llegaste y haz push |
+| Retomar en otra máquina una feature tuya | «retoma PROY-123» | `./scripts/wt.sh --retomar new PROY-123 <slug>` |
+| Soltar una feature | «suelta PROY-123» | quítate de responsable, anota en `progress/features/PROY-123.md` hasta dónde llegaste y haz push |
 | Anotar una deuda sin feature en curso | «anota la deuda …» | rama `chore/deudas-<fecha>` desde `dev`, bloque `### D<n>` en `progress/deudas.md`, PR |
 | El gate avisa que el perfil está vencido | `/arnes-init revisar` | relee el doc, corrígelo y actualiza `revisado=` en su primera línea |
 | Mejorar el arnés | `/afinar-regla <la mejora>` (aplica, prueba, la sube y abre los dos PRs) | aplica el cambio · `./init.sh` · commit · `./scripts/arnes-sync.sh --subir -m "<qué mejora>"` (abre el PR en la plantilla y actualiza `arnes.lock.json`) · commit del lock · PR al proyecto |
 | Ver si tengo mejoras sin subir | lo dice `./init.sh` (aviso amarillo) | `./scripts/arnes-sync.sh --estado` |
+| Ver dónde se va el tiempo | «dame las métricas» | `node scripts/metricas.mjs informe` (gate local, ciclo por fase y CI) |
+| El rápido dice que los relacionados pasan del presupuesto | nada: los cubre el CI del PR | si quieres correrlos aquí: `TEST_RAPIDO_SIN_PRESUPUESTO=1 ./init.sh` |
+| El gate da rojo por tamaño del PR | «parte lo que falta» | cierra la rebanada y crea en el board las fichas del resto (`docs/specs.md > Partir una feature`). Si el humano acepta el tamaño: `<!-- tamano-pr-aceptado: AAAA-MM-DD · <motivo> -->` en `progress/features/PROY-123.md` |
+| ¿Qué correría el gate rápido? | «enséñame la selección» | `node scripts/test-rapido.mjs --seleccion` |
+| Activar el CI en cada tanda o un runner propio | «activa el CI por tanda» (necesita admin del repo) | `docs/gate.md > CI en cada tanda > Activarlo, paso a paso` |
+| Un cambio pequeño (texto, bug localizado) | «va por la ruta directa» | label `ruta:directa`: sin spec, test que reproduce, PR (`docs/specs.md > Tres rutas`) |
 | Traer la última versión del arnés | «sincroniza el arnés» | `./scripts/arnes-sync.sh` (ver) · `./scripts/arnes-sync.sh --aplicar` · `./init.sh` · commit |
 | El sync dice «conflicto» | «resuelve el conflicto del arnés» | integra a mano los dos cambios en el archivo · `./scripts/arnes-sync.sh --aplicar --resuelto <archivo>` · `--subir` |
-| Proyecto nuevo con el arnés | `/arnes-init` | copia `harness_config` · `cp arnes.config.example.json arnes.config.json` · rellena los docs del perfil · copia `plantillas/github/gate.yml` a `.github/workflows/` |
+| Proyecto nuevo con el arnés | `/arnes-init` | copia `harness_config` · `cp arnes.config.example.json arnes.config.json` · rellena los docs del perfil · genera el CI: `node scripts/ci.mjs generar` (`docs/gate.md > El CI se genera`) |
 
 ## 8. Cómo viajan las mejoras del arnés
 

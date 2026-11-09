@@ -6,6 +6,8 @@ import { TarifaValorService } from "@/lib/services/TarifaValorService";
 import { GrupoDistritosService } from "@/lib/services/GrupoDistritosService";
 import { TarifaActivacionService } from "@/lib/services/TarifaActivacionService";
 import { TarifasPantallaService } from "@/lib/services/TarifasPantallaService";
+import { TopeIntentosService } from "@/lib/services/TopeIntentosService";
+import { TopeIntentosRepository } from "@/lib/repositories/TopeIntentosRepository";
 import { TarifaActivacionRepository } from "@/lib/repositories/TarifaActivacionRepository";
 import { TarifasPantallaRepository } from "@/lib/repositories/TarifasPantallaRepository";
 import { TarifaValorRepository } from "@/lib/repositories/TarifaValorRepository";
@@ -31,6 +33,8 @@ function clienteDoble() {
       findMany: vi.fn().mockResolvedValue([]),
     },
     historialAccion: { createMany: vi.fn().mockResolvedValue({ count: 1 }) },
+    $queryRaw: vi.fn().mockResolvedValue([{ id: "org-1", tope: 3 }]),
+    $executeRaw: vi.fn().mockResolvedValue(1),
     $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>): Promise<unknown> => fn(cliente)),
   };
   return cliente;
@@ -139,6 +143,43 @@ describe("T6.3 — serviciosDeTarifas compone con instancias reales", () => {
     expect(lecturasDeUsuarios).toContainEqual({
       OR: [{ rol: { value: "mensajero" } }, { tarifaValoresComoMensajero: { some: {} } }],
     });
+  });
+
+  it("SLT-77 T2.3 — TopeIntentosService recibe su repositorio real con el cliente dado", () => {
+    const prisma = clienteDoble();
+    const { topeIntentos } = serviciosDeTarifas(prisma as unknown as PrismaClient);
+
+    expect(topeIntentos).toBeInstanceOf(TopeIntentosService);
+    const repo = dependencia(topeIntentos, "repo");
+    expect(repo).toBeInstanceOf(TopeIntentosRepository);
+    expect(dependencia(repo as object, "prisma")).toBe(prisma);
+  });
+
+  // No basta con que la fabrica lo importe: guardar llega al cliente y deja su rastro con el actor (R10).
+  it("SLT-77 T2.3 — guardar por la fabrica escribe en el cliente dado y deja el historial", async () => {
+    const prisma = clienteDoble();
+    const res = await serviciosDeTarifas(prisma as unknown as PrismaClient).topeIntentos.guardar({ tope: 5 }, MAESTRO);
+
+    expect(res).toEqual({ status: "ok", tope: 5 });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(prisma.historialAccion.createMany.mock.calls[0][0].data[0]).toMatchObject({
+      accion: "tope_intentos_cambiado",
+      entidadTipo: "organizacion",
+      entidadId: "org-1",
+      actorUsuarioId: "u-maestro",
+      valorAnterior: "3",
+      valorNuevo: "5",
+    });
+  });
+
+  it("SLT-77 T2.3 — la pantalla por la fabrica lee el tope del cliente dado", async () => {
+    const prisma = clienteDoble();
+    prisma.$queryRaw.mockResolvedValue([{ tope: 7 }]);
+    const res = await serviciosDeTarifas(prisma as unknown as PrismaClient).tarifasPantalla.cargarPantalla(ADMIN);
+
+    expect(res).toMatchObject({ status: "ok", topeIntentos: 7 });
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
   });
 
   it("listar valores llega al cliente a traves del repositorio inyectado", async () => {

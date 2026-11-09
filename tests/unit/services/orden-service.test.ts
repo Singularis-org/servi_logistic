@@ -73,7 +73,7 @@ function buildRepo(overrides: Partial<IOrdenRepository> = {}): IOrdenRepository 
     // Pedido humano 2026-08-27: el gemelo, `restore`. Mismo motivo que su vecino.
     restore: vi.fn().mockResolvedValue(0),
     findEstatusIdByValue: vi.fn().mockResolvedValue("os-bodega"),
-    findUsuarioFulfillment: vi.fn().mockResolvedValue(false), // feature 27
+    findUsuarioSeRecogeEnTienda: vi.fn().mockResolvedValue(true), // feature 27
     // Feature 15: metodos batch de carga masiva, no ejercitados por el CRUD
     // (feature 6) pero exigidos por la interfaz IOrdenRepository.
     findExistingRemisiones: vi.fn().mockResolvedValue(new Map()),
@@ -740,6 +740,9 @@ describe("listar / eliminable (eliminar orden)", () => {
     await service.listar(PAGINA, MAESTRO);
 
     expect(historial.contarIntentosEnLote).toHaveBeenCalledTimes(1);
-    expect(Object.keys(historial)).toEqual(["contarIntentosEnLote", "contarIntentos"]);
+    expect(Object.keys(historial)).toEqual(["contarIntentosEnLote", "contarIntentos", "topeIntentos"]);
+    // SLT-77: el doble compartido ya trae el tope, y el listado no decide con él.
+    expect(historial.topeIntentos).not.toHaveBeenCalled();
+    expect(historial.contarIntentos).not.toHaveBeenCalled();
   });
 });

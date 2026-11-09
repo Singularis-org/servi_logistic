@@ -6,7 +6,7 @@
  * suite va en shards`).
  *
  * Por que no basta con que cada shard de su veredicto: un shard puede no traer NI UN archivo de
- * `tests/integration/`, y la garantia «los tres proyectos corrieron» daria rojo en falso; o al
+ * `tests/integration/`, y la garantia «los proyectos declarados corrieron» daria rojo en falso; o al
  * reves, un shard que no llego a escribir su informe no puede contar como «un shard menos que
  * revisar». Por eso aqui:
  *

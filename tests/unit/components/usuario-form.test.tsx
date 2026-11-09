@@ -82,7 +82,7 @@ const USUARIO: UsuarioPublico = {
   cedula: "1712345678",
   tipoIdentificacionId: "t1",
   rolId: "rol-mensajero",
-  fulfillment: false,
+  seRecogeEnTienda: true,
   createdAt: new Date("2026-01-01T00:00:00Z"),
   updatedAt: new Date("2026-01-01T00:00:00Z"),
 };
@@ -283,22 +283,40 @@ describe("UsuarioForm — modo de contraseña (R36)", () => {
   });
 });
 
-// Feature 27: el switch "esta tienda tiene fulfillment" aparece solo para el rol
-// `adminTienda` (decisión P3). Catálogo de roles que incluye ese rol.
+// SLT-94 (R9): el switch «Se recoge en tienda» aparece solo para el rol
+// `adminTienda`. Catálogo de roles que incluye ese rol.
 const ROLES_FF = [
   { id: "rol-maestro", value: "maestro" },
   { id: "rol-mensajero", value: "mensajero" },
   { id: "rol-admin-tienda", value: "adminTienda" },
 ] as const;
 
+// Tienda con la marca guardada en «no» (sus paquetes están en bodega).
 const USUARIO_FF: UsuarioPublico = {
   ...USUARIO,
   rolId: "rol-admin-tienda",
-  fulfillment: true,
+  seRecogeEnTienda: false,
 };
 
-describe("UsuarioForm — fulfillment (feature 27)", () => {
-  it("muestra el switch de fulfillment al seleccionar rol adminTienda en crear (R5)", async () => {
+const SWITCH_RECOGE = { name: "Se recoge en tienda" } as const;
+
+/** Rellena los campos comunes del alta (sin rol). */
+async function rellenarAltaBase(user: ReturnType<typeof userEvent.setup>) {
+  await user.type(screen.getByLabelText("Nombre"), "Nuevo Usuario");
+  await user.type(screen.getByLabelText("Email"), "nuevo@example.com");
+  await user.type(screen.getByLabelText("Teléfono"), "0988888888");
+  await user.type(screen.getByLabelText("Número de documento"), "1712345678");
+  await user.type(screen.getByLabelText("Contraseña"), "Abcd1234$xy");
+  await user.click(screen.getByRole("combobox", { name: "Tipo de documento" }));
+  await user.click(
+    within(await screen.findByRole("listbox")).getByRole("option", {
+      name: "cedula",
+    }),
+  );
+}
+
+describe("UsuarioForm — se recoge en tienda (SLT-94 R9)", () => {
+  it("SLT-94 R9: muestra el switch «Se recoge en tienda» al seleccionar rol adminTienda en crear", async () => {
     const user = userEvent.setup();
     listarRolesMock.mockResolvedValue({ status: "ok", roles: [...ROLES_FF] });
     renderIsolated(<UsuarioForm mode="crear" />);
@@ -314,12 +332,11 @@ describe("UsuarioForm — fulfillment (feature 27)", () => {
       }),
     );
 
-    expect(
-      screen.getByRole("switch", { name: "Esta tienda tiene fulfillment" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("switch", SWITCH_RECOGE)).toBeInTheDocument();
+    expect(screen.getByText("Se recoge en tienda")).toBeInTheDocument();
   }, 15000);
 
-  it("el switch inicia en false al elegir adminTienda en crear (R7)", async () => {
+  it("SLT-94 R3/R9: el switch inicia en «sí» al elegir adminTienda en crear", async () => {
     const user = userEvent.setup();
     listarRolesMock.mockResolvedValue({ status: "ok", roles: [...ROLES_FF] });
     renderIsolated(<UsuarioForm mode="crear" />);
@@ -332,31 +349,49 @@ describe("UsuarioForm — fulfillment (feature 27)", () => {
       }),
     );
 
-    expect(
-      screen.getByRole("switch", { name: "Esta tienda tiene fulfillment" }),
-    ).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByRole("switch", SWITCH_RECOGE)).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
   }, 15000);
 
-  it("oculta el switch y no envía fulfillment con rol != adminTienda (R6)", async () => {
+  it("SLT-94 R9: el alta de adminTienda envía `seRecogeEnTienda` (nunca `fulfillment`) y pasa el borde zod", async () => {
+    const user = userEvent.setup();
+    listarRolesMock.mockResolvedValue({ status: "ok", roles: [...ROLES_FF] });
+    crearUsuarioMock.mockResolvedValue({ status: "ok", usuario: { ...USUARIO_FF } });
+
+    const ref = createRef<UsuarioFormHandle>();
+    renderIsolated(<UsuarioForm ref={ref} mode="crear" />);
+    await rellenarAltaBase(user);
+
+    await user.click(screen.getByRole("combobox", { name: "Rol" }));
+    await user.click(
+      within(await screen.findByRole("listbox")).getByRole("option", {
+        name: "adminTienda",
+      }),
+    );
+    // Marca «no»: la tienda tiene sus paquetes en bodega.
+    await user.click(screen.getByRole("switch", SWITCH_RECOGE));
+
+    await act(async () => {
+      await ref.current!.submit();
+    });
+
+    // Si el form mandara un campo que el zod estricto no conoce, no llegaría a la acción.
+    expect(crearUsuarioMock).toHaveBeenCalledTimes(1);
+    const enviado = crearUsuarioMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(enviado.seRecogeEnTienda).toBe(false);
+    expect(enviado).not.toHaveProperty("fulfillment");
+  }, 15000);
+
+  it("SLT-94 R9: oculta el switch y no envía la marca con rol != adminTienda", async () => {
     const user = userEvent.setup();
     listarRolesMock.mockResolvedValue({ status: "ok", roles: [...ROLES_FF] });
     crearUsuarioMock.mockResolvedValue({ status: "ok", usuario: { ...USUARIO } });
 
     const ref = createRef<UsuarioFormHandle>();
     renderIsolated(<UsuarioForm ref={ref} mode="crear" />);
-
-    await user.type(screen.getByLabelText("Nombre"), "Nuevo Usuario");
-    await user.type(screen.getByLabelText("Email"), "nuevo@example.com");
-    await user.type(screen.getByLabelText("Teléfono"), "0988888888");
-    await user.type(screen.getByLabelText("Número de documento"), "1712345678");
-    await user.type(screen.getByLabelText("Contraseña"), "Abcd1234$xy");
-
-    await user.click(screen.getByRole("combobox", { name: "Tipo de documento" }));
-    await user.click(
-      within(await screen.findByRole("listbox")).getByRole("option", {
-        name: "cedula",
-      }),
-    );
+    await rellenarAltaBase(user);
 
     await user.click(screen.getByRole("combobox", { name: "Rol" }));
     await user.click(
@@ -365,7 +400,7 @@ describe("UsuarioForm — fulfillment (feature 27)", () => {
       }),
     );
 
-    // Rol no-adminTienda: el switch permanece oculto (R6).
+    // Rol no-adminTienda: el switch permanece oculto.
     expect(screen.queryByRole("switch")).not.toBeInTheDocument();
 
     // Feature 24/R27: mensajero requiere zona; se selecciona antes de enviar.
@@ -386,53 +421,49 @@ describe("UsuarioForm — fulfillment (feature 27)", () => {
 
     expect(crearUsuarioMock).toHaveBeenCalledTimes(1);
     const enviado = crearUsuarioMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(enviado).not.toHaveProperty("seRecogeEnTienda");
     expect(enviado).not.toHaveProperty("fulfillment");
   }, 15000);
 
-  it("prefilla el switch con el valor actual al editar adminTienda (R11)", async () => {
+  it("SLT-94 R9: prefilla el switch con el valor guardado al editar adminTienda", async () => {
     listarRolesMock.mockResolvedValue({ status: "ok", roles: [...ROLES_FF] });
     renderIsolated(<UsuarioForm mode="editar" usuario={USUARIO_FF} />);
 
-    const sw = await screen.findByRole("switch", {
-      name: "Esta tienda tiene fulfillment",
-    });
-    expect(sw).toHaveAttribute("aria-checked", "true");
+    const sw = await screen.findByRole("switch", SWITCH_RECOGE);
+    expect(sw).toHaveAttribute("aria-checked", "false");
   }, 15000);
 
-  it("propaga el nuevo valor del switch al submit en editar (R12)", async () => {
+  it("SLT-94 R9: propaga el nuevo valor del switch al submit en editar", async () => {
     const user = userEvent.setup();
     listarRolesMock.mockResolvedValue({ status: "ok", roles: [...ROLES_FF] });
     actualizarUsuarioMock.mockResolvedValue({
       status: "ok",
-      usuario: { ...USUARIO_FF },
+      usuario: { ...USUARIO_FF, seRecogeEnTienda: true },
     });
 
     const ref = createRef<UsuarioFormHandle>();
     renderIsolated(<UsuarioForm ref={ref} mode="editar" usuario={USUARIO_FF} />);
 
-    const sw = await screen.findByRole("switch", {
-      name: "Esta tienda tiene fulfillment",
-    });
-    expect(sw).toHaveAttribute("aria-checked", "true");
-
-    // Alterna el switch a "no".
-    await user.click(sw);
+    const sw = await screen.findByRole("switch", SWITCH_RECOGE);
     expect(sw).toHaveAttribute("aria-checked", "false");
+
+    // Alterna el switch a «sí».
+    await user.click(sw);
+    expect(sw).toHaveAttribute("aria-checked", "true");
 
     await act(async () => {
       await ref.current!.submit();
     });
 
     expect(actualizarUsuarioMock).toHaveBeenCalledTimes(1);
-    const enviado = actualizarUsuarioMock.mock.calls[0][1] as {
-      fulfillment?: boolean;
-    };
-    expect(enviado.fulfillment).toBe(false);
+    const enviado = actualizarUsuarioMock.mock.calls[0][1] as Record<string, unknown>;
+    expect(enviado.seRecogeEnTienda).toBe(true);
+    expect(enviado).not.toHaveProperty("fulfillment");
   }, 15000);
 });
 
 // Feature 24/R27: el select "Zona" aparece solo para `mensajero`/`adminSatelite`
-// (mismo patrón que el switch de fulfillment para `adminTienda`). Sin zona el
+// (mismo patrón que el switch «Se recoge en tienda» para `adminTienda`). Sin zona el
 // mensajero queda inasignable, por eso el campo se ofrece en creación/edición.
 const ROLES_ZONA = [
   { id: "rol-maestro", value: "maestro" },
@@ -489,7 +520,7 @@ describe("UsuarioForm — zona (feature 24/R27)", () => {
     );
     expect(screen.getByRole("combobox", { name: "Zona" })).toBeInTheDocument();
 
-    // adminTienda: rol sin zona -> oculto (aunque muestre el switch fulfillment).
+    // adminTienda: rol sin zona -> oculto (aunque muestre el switch «Se recoge en tienda»).
     await user.click(screen.getByRole("combobox", { name: "Rol" }));
     await user.click(
       within(await screen.findByRole("listbox")).getByRole("option", {

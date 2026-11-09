@@ -152,17 +152,21 @@ type ValorSembrado = {
   concepto: TarifaConcepto;
   modo?: "monto" | "porcentaje";
   valor: string;
-  grupoId: string;
+  /** Valor de GRUPO de la zona Z, o (solo el fulfillment, SLT-94 R10/R12) precio propio de la tienda. */
+  grupoId?: string;
+  tiendaId?: string;
 };
 
 /**
  * La empresa A en el modelo NUEVO (activada, con `tarifa_valor`). Todos los valores son de GRUPO de la zona Z,
- * sin tienda ni vehiculo: asi el pago distinto por grupo (R19/R20) y la orden «sin tarifa» (d3, que
- * no esta en ningun grupo y la zona no tiene valor) salen solos de la precedencia.
+ * sin tienda ni vehiculo —salvo el fulfillment—: asi el pago distinto por grupo (R19/R20) y la orden
+ * «sin tarifa» (d3, que no esta en ningun grupo y la zona no tiene valor) salen solos de la precedencia.
  *
- *   G1 (d1): flete entregado 1500.00 (IVA 13 %), fulfillment 450.00 (IVA 13 %), mensajero 800.00
- *   G2 (d2): flete entregado 2000.00 (IVA 13 %), mensajero 10 % del flete sin IVA, satelite 50.00
- *   d3     : nada -> cada concepto cuenta 0 y el cierre se crea igual (R24)
+ *   T (todas)  : fulfillment 450.00 (IVA 13 %) — SLT-94 (R10/R12): solo existe como precio propio de la
+ *                tienda, asi que vale para las tres ordenes; el cierre lo congela solo para mostrarlo (R32)
+ *   G1 (d1)    : flete entregado 1500.00 (IVA 13 %), mensajero 800.00
+ *   G2 (d2)    : flete entregado 2000.00 (IVA 13 %), mensajero 10 % del flete sin IVA, satelite 50.00
+ *   d3         : ningun flete ni pago -> cada uno cuenta 0 y el cierre se crea igual (R24)
  */
 const VALORES_SEMBRADOS = 6;
 
@@ -207,15 +211,16 @@ async function sembrarNuevo(tx: TxDeTest): Promise<Escenario> {
         modo: d.modo ?? "monto",
         valor: d.valor,
         ivaPct: esTienda ? "13.00" : null,
-        zonaId: Z,
-        grupoId: d.grupoId,
+        zonaId: d.tiendaId === undefined ? Z : null,
+        grupoId: d.grupoId ?? null,
+        tiendaId: d.tiendaId ?? null,
       },
       select: { id: true },
     });
     v[etiqueta] = fila.id;
   };
   await s("FE_G1", { concepto: "tienda_flete_entregado", valor: "1500.00", grupoId: G1 });
-  await s("FF_G1", { concepto: "tienda_fulfillment", valor: "450.00", grupoId: G1 });
+  await s("FF_T", { concepto: "tienda_fulfillment", valor: "450.00", tiendaId: fks.tiendaId });
   await s("ME_G1", { concepto: "mensajero_entregado", valor: "800.00", grupoId: G1 });
   await s("FE_G2", { concepto: "tienda_flete_entregado", valor: "2000.00", grupoId: G2 });
   await s("ME_G2", { concepto: "mensajero_entregado", modo: "porcentaje", valor: "10.00", grupoId: G2 });
@@ -443,7 +448,7 @@ function conceptosEsperados(e: Escenario, ids: { fe1?: string | null; ff1?: stri
       tarifaId: null,
       conceptos: [
         { concepto: "tienda_flete_entregado", modo: "monto", valor: "1500.00", ivaPct: "13.00", nivel: "grupo", tarifaValorId: tv("fe1", e.v.FE_G1) },
-        { concepto: "tienda_fulfillment", modo: "monto", valor: "450.00", ivaPct: "13.00", nivel: "grupo", tarifaValorId: tv("ff1", e.v.FF_G1) },
+        { concepto: "tienda_fulfillment", modo: "monto", valor: "450.00", ivaPct: "13.00", nivel: "tienda_general", tarifaValorId: tv("ff1", e.v.FF_T) },
       ],
     },
     [e.o2.ordenId]: {
@@ -451,10 +456,18 @@ function conceptosEsperados(e: Escenario, ids: { fe1?: string | null; ff1?: stri
       tarifaId: null,
       conceptos: [
         { concepto: "tienda_flete_entregado", modo: "monto", valor: "2000.00", ivaPct: "13.00", nivel: "grupo", tarifaValorId: tv("fe2", e.v.FE_G2) },
+        { concepto: "tienda_fulfillment", modo: "monto", valor: "450.00", ivaPct: "13.00", nivel: "tienda_general", tarifaValorId: tv("ff1", e.v.FF_T) },
       ],
     },
-    // R24: d3 no tiene ningun valor -> sin filas, y el detalle existe igual.
-    [e.o3.ordenId]: { tarifaModelo: "nuevo", tarifaId: null, conceptos: [] },
+    // R24: d3 no tiene flete -> sin esa fila, y el detalle existe igual. SLT-94: el fulfillment es de
+    // la tienda (no del distrito), asi que tambien se congela aqui.
+    [e.o3.ordenId]: {
+      tarifaModelo: "nuevo",
+      tarifaId: null,
+      conceptos: [
+        { concepto: "tienda_fulfillment", modo: "monto", valor: "450.00", ivaPct: "13.00", nivel: "tienda_general", tarifaValorId: tv("ff1", e.v.FF_T) },
+      ],
+    },
   };
 }
 
@@ -556,7 +569,7 @@ describeSiHayBase("SLT-52 T5.4 — el cierre congela el modelo nuevo y lo lee co
 
       // Se cambia todo lo que el cierre uso...
       await tx.tarifaValor.update({ where: { id: e.v.FE_G1 }, data: { valor: "9999.00", ivaPct: "0.00" } });
-      await tx.tarifaValor.update({ where: { id: e.v.FF_G1 }, data: { valor: "7777.00" } });
+      await tx.tarifaValor.update({ where: { id: e.v.FF_T }, data: { valor: "7777.00" } });
       await tx.tarifaValor.update({ where: { id: e.v.ME_G1 }, data: { valor: "5555.00" } });
       const intermedio = await lecturas(tx, e, cierreId);
       // ...y se borra: dos valores sueltos y el grupo G1 entero (su CASCADE se lleva sus valores).
@@ -588,17 +601,18 @@ describeSiHayBase("SLT-52 T5.4 — el cierre congela el modelo nuevo y lo lee co
       ivaFulfillment: "58.50",
       tarifa: null,
     });
+    // SLT-94: el fulfillment de la tienda (450.00 + 58.50) vale para las tres, siempre FUERA del total.
     expect(r.antes.ingresoPorGestion[e.o2.gestionId]).toMatchObject({
       flete: "2000.00",
       ivaFlete: "260.00",
       total: "2260.00",
-      fulfillment: "0.00",
-      ivaFulfillment: "0.00",
+      fulfillment: "450.00",
+      ivaFulfillment: "58.50",
     });
     expect(r.antes.ingresoPorGestion[e.o3.gestionId]).toMatchObject({
       total: "0.00",
-      fulfillment: "0.00",
-      ivaFulfillment: "0.00",
+      fulfillment: "450.00",
+      ivaFulfillment: "58.50",
     });
     // La aprobacion escribe en la wallet de la empresa flete 3500.00 e IVA 455.00 (1500+2000;
     // 195+260); el fulfillment no entra (R31).
@@ -607,16 +621,17 @@ describeSiHayBase("SLT-52 T5.4 — el cierre congela el modelo nuevo y lo lee co
     expect(r.antes.aporte.map((a) => a.ordenId).sort()).toEqual([e.o1.ordenId, e.o2.ordenId].sort());
     // Analitica: el fulfillment de o1 sale del concepto congelado (R46).
     expect(r.antes.dinero.find((d) => d.ordenId === e.o1.ordenId)?.fulfillment).toBe("450.00");
-    expect(r.antes.dinero.find((d) => d.ordenId === e.o2.ordenId)?.fulfillment).toBe("0.00");
+    expect(r.antes.dinero.find((d) => d.ordenId === e.o2.ordenId)?.fulfillment).toBe("450.00");
 
     // R41: ni el cambio ni el borrado mueven un centimo de ninguna lectura.
-    expect(r.quedan).toBe(1); // solo SE_G2 sigue vivo: la mutacion ocurrio de verdad
+    expect(r.quedan).toBe(2); // solo SE_G2 y FF_T (de la tienda, no del grupo) siguen vivos: la mutacion ocurrio de verdad
     expect(r.intermedio).toEqual(r.antes);
     // Tras BORRAR, lo unico que cambia es la traza (`tarifaValorId` -> null, FK SET NULL): ni un importe.
     expect(sinTraza(r.despues)).toEqual(sinTraza(r.antes));
     expect(JSON.stringify(r.despues)).not.toContain(e.v.FE_G1); // la traza si se fue: el borrado ocurrio
     // Lo congelado conserva los importes; la traza de los valores borrados queda en NULL (SET NULL).
-    expect(r.conceptos).toEqual(conceptosEsperados(e, { fe1: null, ff1: null, fe2: null }));
+    // FF_T no se borro (es de la tienda, no del grupo G1): su traza sigue; su importe congelado es el de antes del cambio.
+    expect(r.conceptos).toEqual(conceptosEsperados(e, { fe1: null, fe2: null }));
     expect(r.pagos).toEqual(pagosEsperados(e.o1.gestionId, e.o2.gestionId, e, { me1: null, me2: null }));
 
     // R46 en la API: el `costoReal` de o1 trae el fulfillment y su IVA del congelado.
@@ -633,8 +648,8 @@ describeSiHayBase("SLT-52 T5.4 — el cierre congela el modelo nuevo y lo lee co
       iva: "260.00",
       comision: "0.00",
       ivaComision: "0.00",
-      fulfillment: "0.00",
-      ivaFulfillment: "0.00",
+      fulfillment: "450.00",
+      ivaFulfillment: "58.50",
     });
   });
 
@@ -651,6 +666,12 @@ describeSiHayBase("SLT-52 T5.4 — el cierre congela el modelo nuevo y lo lee co
       // La fila que el trigger de misma empresa y la RLS impiden en produccion, forzada como dueño
       // con los triggers apagados DENTRO de la transaccion revertida: mide el `WHERE` solo.
       await tx.$executeRawUnsafe(`ALTER TABLE "cierre_detail_concepto" DISABLE TRIGGER USER`);
+      // SLT-94: el fulfillment de la tienda ahora tambien se congela en o2 (precio propio). Se quita
+      // el de A para que el unico fulfillment colgado de ese detalle sea el ajeno (el unico por
+      // detalle y concepto no deja dos), y el caso siga midiendo lo mismo que antes.
+      await tx.cierreDetailConcepto.deleteMany({
+        where: { cierreDetailId: detalleO2.id, concepto: "tienda_fulfillment", organizacionId: e.A },
+      });
       await tx.$executeRawUnsafe(
         `INSERT INTO "cierre_detail_concepto" ("id", "organizacion_id", "cierre_detail_id", "concepto", "modo", "valor", "iva_pct", "nivel")
          VALUES ($1, $2, $3, 'tienda_fulfillment', 'monto', 999, 13, 'zona')`,
@@ -793,7 +814,8 @@ describeSiHayBase("SLT-52 T5.4 — el cierre congela el modelo nuevo y lo lee co
           data: [
             { concepto: "tienda_flete_entregado", modo: "monto", valor: "11.11", ivaPct: "1.00", zonaId: fks.zonaId },
             { concepto: "tienda_flete_entregado", modo: "monto", valor: "22.22", ivaPct: "2.00", tiendaId: fks.tiendaId, zonaId: fks.zonaId },
-            { concepto: "tienda_fulfillment", modo: "monto", valor: "33.33", ivaPct: "3.00", zonaId: fks.zonaId },
+            // SLT-94 (R12): el fulfillment solo se puede guardar como precio propio de la tienda.
+            { concepto: "tienda_fulfillment", modo: "monto", valor: "33.33", ivaPct: "3.00", tiendaId: fks.tiendaId },
             { concepto: "mensajero_entregado", modo: "monto", valor: "44.44", zonaId: fks.zonaId },
             { concepto: "satelite_entregado", modo: "monto", valor: "55.55", zonaId: fks.zonaId },
           ],

@@ -63,6 +63,8 @@ esta bien hecha, no solo si "funciona".
   - **RLS** con el rol `servi_app` (NOLOGIN, NOBYPASSRLS; migración `20261022130000_organizacion_y_rol_app`):
     la política compara con `current_setting('app.organizacion_id')`, fijado por transacción. Cubre el
     SQL a mano. Los catálogos, la geografía y `vehiculos` son de solo lectura para la empresa.
+    `organizacion` también, con una excepción: `servi_app` puede actualizar, solo en su propia fila,
+    `tope_intentos_entrega` y `updated_at` (SLT-77, `GRANT` por columna). Sus demás columnas siguen en `42501`.
   - **Triggers de misma empresa** (migración `20261022130300_misma_empresa_en_fk`): una fila de negocio
     no puede apuntar a otra empresa (SQLSTATE `SL017`, traducido a `EmpresaCruzada`) ni cambiar de
     empresa. Una FK nueva entre tablas de negocio necesita su trigger: se genera con
@@ -263,13 +265,18 @@ esta bien hecha, no solo si "funciona".
     (`plan_inicio_ciclo_en_curso` quedó sin uso). Del
     cambio programado devuelve solo la fecha y la versión: nunca los avisos ni el actor.
     - **Período de facturación (SLT-86):** la empresa entra a su plan y su tipo de cobro (quincenal, mensual, bimestral o anual) a las 00:00 de una fecha: `organizacion.plan_ciclo_ancla_at` es esa *entrada*, nunca futura. En la primera asignación la fecha de inicio va de hoy −1 mes a hoy +1 mes (`rangoDelInicioDelCiclo`); una fecha futura, y cualquier cambio de plan o de tipo con fecha de efecto futura, queda como pendiente en `organizacion.plan_cambio_*` y lo aplica el job `plan_aplicar_cambio_empresa` (red: el barrido `plan_cambios_vencidos`). El período en curso es el de calendario de su tipo, recortado a la entrada si es posterior (tramo). Su única definición en SQL es `plan_inicio_ciclo_de` con `plan_inicio_periodo_calendario` y `plan_fin_periodo_calendario` (migración `20261106120000_plan_periodo_facturacion`), que llaman `plan_de_la_empresa` y `PlanesRepository`; sus gemelas TS están en `lib/planes/ciclo.ts` (`periodoEnCurso`, `inicioDelPeriodoCalendario`, `finDelPeriodoCalendario`), probadas con la misma tabla de casos (`tests/integration/db/_fixtures/periodo-calendario.ts`).
-    - **Rutas:** `/mi-plan` para el `maestro` y el `admin` de una empresa. Para el superadmin,
+    - **Rutas:** `/mi-plan` para el `maestro` de una empresa (SLT-91). Para el superadmin,
       `/plataforma/planes`, `/plataforma/planes/[planId]` y el bloque Plan de
       `/plataforma/empresas/[organizacionId]`. Las cuatro son `nucleo` en `lib/modulos/reparto.ts`,
       sin puerta de módulo.
     - **Quién escribe:** las pantallas solo llaman a las actions de SL-24 (`lib/actions/planes`).
       Las lecturas nuevas del superadmin están en `PlanesRepository`, en `comoPlataforma`, y no
       escriben. Llevan la ficha `"SL-24"` porque `FichaJira` no admite `SLT` (deuda D29).
+- **Traza de facturación (SLT-85, 2026-11-09).** `cobro_plataforma_traza` (negocio, RLS por empresa)
+  guarda una copia del momento por cada movimiento de `cobro_plataforma_movimiento`. Solo la escribe
+  el trigger `AFTER INSERT` `cobro_plataforma_traza_al_registrar` sobre esa tabla, en la misma
+  transacción; `servi_app` no la escribe (`REVOKE`) y nadie la cambia (`SL085`, también el dueño). Las
+  filas que rellenó la migración `20261109120000` salen con `reconstruido = true`.
 
 ### Por qué
 Decisión del humano (plan-saas, 2026-10-20/21): una sola base compartida, datos separados por
@@ -307,6 +314,15 @@ Decisión del humano (plan-saas, 2026-10-20/21): una sola base compartida, datos
   la base es el flete sin IVA de la orden, tenga o no valor de pago la zona del mensajero. No cuenta
   como cobertura: los faltantes de una zona no lo miran. Se conserva si el mensajero se da de baja, y
   se sigue pagando en las gestiones suyas que se cierren.
+- **Tope de intentos de entrega (SLT-77).** `organizacion.tope_intentos_entrega`, de 1 a 10 con `DEFAULT 3` y
+  `CHECK`, es el único valor del tope: no hay variable de entorno ni respaldo en código. Lo cambia el `maestro`
+  en una sección de la pantalla y el `admin` lo lee; rige al guardar, para las órdenes sin terminar, con o sin
+  activación. Guardar no escribe en órdenes ni cierres y solo deja historial si el valor cambia. El único SQL de
+  lectura es `lib/repositories/_shared/tope-intentos-empresa.ts`, sin caché, y sin empresa en contexto falla con
+  `EmpresaNoResuelta`: nunca cae a un valor por defecto. Los servicios lo piden con `topeIntentos()` de
+  `IOrdenHistorialService`, una vez por ejecución; el rechazo por tope del proceso de devoluciones y de la
+  aprobación de un cierre lo relee en su transacción y gana el mayor, para errar hacia no cobrar. El número no
+  viaja al navegador del `mensajero`: solo el booleano ya decidido.
 - **Sin migración de datos.** SLT-53 se canceló: nada copia las tarifas actuales al modelo nuevo.
   Las digita la empresa en `/configuracion/tarifas`, con lo que rige hoy al lado como referencia
   («Hoy rige»), calculada con las mismas funciones que el modelo viejo y sin copiarse al campo.

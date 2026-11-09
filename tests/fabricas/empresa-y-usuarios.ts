@@ -166,7 +166,7 @@ export interface DatosUsuario {
   cedula?: string;
   zonaId?: string;
   vehiculoId?: string;
-  fulfillment?: boolean;
+  seRecogeEnTienda?: boolean;
 }
 
 /**
@@ -174,9 +174,9 @@ export interface DatosUsuario {
  * `zonaId` es obligatoria para `mensajero` y `adminSatelite` (la exige el servicio). No hay
  * `tiendaId`: el `adminTienda` ES la tienda (las órdenes y tarifas apuntan a su `usuario.id`).
  * El servicio exige vehículo al `mensajero`: sin `vehiculoId`, va el primero del catálogo sembrado.
- * `fulfillment` (solo `adminTienda`, lo restringe el servicio): la tienda con bodega propia, cuyas
- * órdenes nacen en `en_preparacion`, sin guía (`resolverDestinoCreacion`). Sin él, nacen en
- * `por_recolectar_en_tienda`, con guía.
+ * `seRecogeEnTienda: false` (solo `adminTienda`, lo restringe el servicio; SLT-94): la tienda con
+ * bodega propia, cuyas órdenes nacen en `en_preparacion`, sin guía (`resolverDestinoCreacion`). Sin
+ * él (o en `true`), nacen en `por_recolectar_en_tienda`, con guía.
  */
 export async function crearUsuario(
   base: PrismaClient,
@@ -208,7 +208,7 @@ export async function crearUsuario(
         rolId: rolFila.id,
         ...(datos.zonaId ? { zonaId: datos.zonaId } : {}),
         ...(vehiculoId ? { vehiculoId } : {}),
-        ...(datos.fulfillment !== undefined ? { fulfillment: datos.fulfillment } : {}),
+        ...(datos.seRecogeEnTienda !== undefined ? { seRecogeEnTienda: datos.seRecogeEnTienda } : {}),
         passwordMode: "manual",
         password: datos.contrasena,
       },

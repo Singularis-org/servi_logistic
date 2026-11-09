@@ -56,7 +56,6 @@ import {
   type VersionPlan,
 } from "@/lib/types/planes";
 import { fechaCalendario } from "@/lib/utils/calendario-zona";
-import type { ZonaDeOrganizacion } from "@/lib/services/zona-de-la-empresa";
 
 // SL-24 (design §5, §16.2; R2, R5, R6, R12, R13, R16, R37, R39) — el orden es fijo y es parte del contrato,
 // copiado de `ModulosEmpresaService` (SL-23): primero quién (R5), luego qué (zod: R2, R3), luego si
@@ -169,14 +168,6 @@ export class PlanesService implements IPlanesService {
     private readonly repo: IPlanesRepository,
     /** El reloj, inyectable para R37 («posterior al momento de guardar»). */
     private readonly ahora: () => Date = () => new Date(),
-    /**
-     * SLT-42 (R22, R28; decisión del humano tras T5.4) — la zona del país de una empresa, para la
-     * fecha que se MUESTRA de una empresa. Su único uso era `siguienteCiclo` de las vistas previas, que
-     * SLT-86 (R8) retiró: hoy ningún método la lee. Se mantiene cableada en los composition roots hasta
-     * que el humano decida si se borra o la usa SLT-86 al pasar el ciclo a la zona de cada empresa.
-     * El superadmin corre en plataforma, sin empresa en contexto, así que no es `IReglasPaisEmpresa`.
-     */
-    private readonly zonaDeOrganizacion?: ZonaDeOrganizacion,
   ) {}
 
   async crear(actor: Actor | null, input: unknown): Promise<PlanResult> {

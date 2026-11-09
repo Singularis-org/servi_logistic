@@ -903,13 +903,12 @@ export function agregarIngresosPorConcepto(
  * decision se toma en `derivarIngresoOrden` y con su propia migracion de `cierre_detail`; no
  * se cuela por aqui.
  *
- * EL PREDICADO ES EL MONTO. "Esta tienda hace fulfillment" se responde con
- * `fulfillment > 0` de la tarifa que resuelve para el par (tienda, zona), y no con el flag
- * `Usuario.fulfillment`: ese flag solo puede quedar en `true` para el rol `adminTienda`
- * (`UsuarioService.resolverFulfillment`) y el dueño de una API key es un usuario de rol
- * `apiKey`, asi que por esa via la respuesta seria SIEMPRE `false`. La contrapartida hay que
- * decirla: poner el monto en `0.00` no es solo dejar de cobrar el servicio, es tambien mover
- * donde NACEN las ordenes de esa tienda (`BulkOrdenService.cargarViaApi`).
+ * SLT-94: EL MONTO YA NO DECIDE DONDE NACE LA ORDEN. Del 2026-08-25 a SLT-94, por API, una
+ * tarifa con fulfillment > 0 hacia nacer la orden en bodega (`tieneFulfillment`, retirado). Desde
+ * SLT-94 el nacimiento lo decide solo la marca «se recoge en tienda» de la tienda dueña (R5/R6) y
+ * el fulfillment es un COBRO a la tienda que escribe el trigger de la base al crear la orden
+ * (`20261108120300_slt94_fulfillment_triggers`), con el mismo importe que publican estas
+ * funciones para una empresa activada (R33).
  */
 export interface TarifaConFulfillment {
   fulfillment: string; // MONTO -> STRING 2 dec
@@ -957,20 +956,6 @@ export function ivaFulfillmentDeTarifa(
   const valor = t.valores.tienda_fulfillment;
   if (valor === undefined) return new Prisma.Decimal(0);
   return ivaDe(valor, importeDe(valor, new Prisma.Decimal(montoCobrar ?? "0")));
-}
-
-/**
- * `true` = la tienda de esta tarifa hace fulfillment (su monto es mayor que cero).
- *
- * SLT-52: en el nuevo, un `tienda_fulfillment` con valor mayor que cero, sea monto o %. No depende
- * del pedido: decide DONDE nace la orden, no cuanto cuesta, y una orden prepagada (pedido 0) de una
- * tienda con fulfillment en % sigue saliendo de nuestra bodega.
- */
-export function tieneFulfillment(t: ConModelo<TarifaConFulfillment> | null): boolean {
-  if (t === null) return false;
-  if (t.modelo === "viejo") return new Prisma.Decimal(t.tarifa.fulfillment).gt(0);
-  const valor = t.valores.tienda_fulfillment;
-  return valor !== undefined && new Prisma.Decimal(valor.valor).gt(0);
 }
 
 /**

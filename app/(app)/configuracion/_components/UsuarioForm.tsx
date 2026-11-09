@@ -112,7 +112,8 @@ interface FormState {
   cedula: string;
   rolId: string;
   password: string;
-  fulfillment: boolean;
+  // SLT-94 (R9): marca «se recoge en tienda». Solo aplica a `adminTienda`.
+  seRecogeEnTienda: boolean;
   // Feature 24/R27: zona del usuario. "" = sin zona (permitido para
   // mensajero/adminSatelite; el maestro puede asignarla luego).
   zonaId: string;
@@ -130,7 +131,8 @@ function initialState(usuario?: UsuarioPublico | null): FormState {
     cedula: usuario?.cedula ?? "",
     rolId: usuario?.rolId ?? "",
     password: "",
-    fulfillment: usuario?.fulfillment ?? false,
+    // SLT-94 (R3): sin marca guardada, «sí» (mismo default que el service).
+    seRecogeEnTienda: usuario?.seRecogeEnTienda ?? true,
     zonaId: usuario?.zonaId ?? "",
     vehiculoId: usuario?.vehiculoId ?? "",
   };
@@ -252,7 +254,7 @@ export const UsuarioForm = forwardRef<UsuarioFormHandle, UsuarioFormProps>(
 
     const isEditar = mode === "editar";
 
-    // El switch de fulfillment aplica solo al rol `adminTienda` (R5/R6, decisión P3).
+    // SLT-94 (R9): el switch «Se recoge en tienda» aplica solo al rol `adminTienda`.
     // `roles` mapea cada `RolItem` como `{ id, value }`; `form.rolId` guarda el UUID.
     const esAdminTienda =
       (roles ?? []).find((r) => r.id === form.rolId)?.value === "adminTienda";
@@ -319,9 +321,9 @@ export const UsuarioForm = forwardRef<UsuarioFormHandle, UsuarioFormProps>(
           telefono: form.telefono,
           rolId: form.rolId,
           tipoIdentificacionId: form.tipoIdentificacionId,
-          // Solo se envía cuando el rol es `adminTienda` (R6/R12); el backend
-          // fuerza `false` para otros roles (R4a).
-          ...(esAdminTienda ? { fulfillment: form.fulfillment } : {}),
+          // SLT-94 (R4/R9): solo se envía cuando el rol es `adminTienda`; el backend
+          // fuerza «sí» para otros roles.
+          ...(esAdminTienda ? { seRecogeEnTienda: form.seRecogeEnTienda } : {}),
           // Feature 24/R27: zona solo para mensajero/adminSatelite. "" -> null
           // libera la zona; no enviarla la deja intacta. Se omite para el resto
           // de roles (el service la fuerza a null igualmente).
@@ -344,8 +346,8 @@ export const UsuarioForm = forwardRef<UsuarioFormHandle, UsuarioFormProps>(
         tipoIdentificacionId: form.tipoIdentificacionId,
         cedula: form.cedula,
         rolId: form.rolId,
-        // Solo se envía para rol `adminTienda` (R6); si no, se omite (R6).
-        ...(esAdminTienda ? { fulfillment: form.fulfillment } : {}),
+        // SLT-94 (R4/R9): solo se envía para rol `adminTienda`; si no, se omite.
+        ...(esAdminTienda ? { seRecogeEnTienda: form.seRecogeEnTienda } : {}),
         // Feature 24/R27: zona solo para mensajero/adminSatelite. "" -> null
         // (permitido; el maestro puede asignarla luego). Se omite para el resto.
         ...(esRolConZona ? { zonaId: form.zonaId || null } : {}),
@@ -560,12 +562,12 @@ export const UsuarioForm = forwardRef<UsuarioFormHandle, UsuarioFormProps>(
 
         {esAdminTienda ? (
           <div className="flex items-center justify-between gap-2">
-            <Label htmlFor="fulfillment">Esta tienda tiene fulfillment</Label>
+            <Label htmlFor="seRecogeEnTienda">Se recoge en tienda</Label>
             <Switch
-              id="fulfillment"
-              aria-label="Esta tienda tiene fulfillment"
-              checked={form.fulfillment}
-              onCheckedChange={(next) => setField("fulfillment", next)}
+              id="seRecogeEnTienda"
+              aria-label="Se recoge en tienda"
+              checked={form.seRecogeEnTienda}
+              onCheckedChange={(next) => setField("seRecogeEnTienda", next)}
             />
           </div>
         ) : null}

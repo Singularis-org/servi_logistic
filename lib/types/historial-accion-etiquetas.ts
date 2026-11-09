@@ -179,6 +179,8 @@ export interface FuentesEtiqueta {
   grupo_distritos: { nombre: string; zonaNombre: string | null };
   /** SLT-54 (R4) — la activacion es una por empresa: la etiqueta es la del hecho, sin dato variable. */
   tarifa_activacion: Record<string, never>;
+  /** SLT-77 (R41) — el tope es uno por empresa: la etiqueta es la del ajuste, sin dato variable. */
+  organizacion: Record<string, never>;
 }
 
 /**
@@ -268,6 +270,7 @@ const CONSTRUCTORES: {
   tarifa_valor: (f) => unir(f?.concepto, f?.nivel),
   grupo_distritos: (f) => unir(f?.nombre, f?.zonaNombre),
   tarifa_activacion: () => "Tarifas nuevas",
+  organizacion: () => "Intentos de entrega",
 };
 
 /**

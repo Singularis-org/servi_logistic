@@ -77,7 +77,7 @@ function fakeRepo(overrides: Partial<IOrdenRepository> = {}): IOrdenRepository {
     softDelete: vi.fn(),
     existsEstatus: vi.fn(),
     findEstatusIdByValue: vi.fn(async (value: string) => ESTATUS_ID_BY_VALUE[value] ?? null),
-    findUsuarioFulfillment: vi.fn(),
+    findUsuarioSeRecogeEnTienda: vi.fn(),
     existsGeo: vi.fn(),
     findExistingRemisiones: vi.fn(),
     findAllProvincias: vi.fn(),

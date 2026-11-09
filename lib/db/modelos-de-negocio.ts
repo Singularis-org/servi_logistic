@@ -114,6 +114,10 @@ export const MODELOS_DE_NEGOCIO: readonly ModeloClasificado[] = [
   { modelo: "CobroPlataformaMovimiento", tabla: "cobro_plataforma_movimiento" },
   // Condiciones congeladas del cobro porcentual de una orden (SLT-83): las escribe solo el trigger de alta
   { modelo: "CobroPlataformaPorcentualOrden", tabla: "cobro_plataforma_porcentual_orden" },
+  // Traza de facturación de cada movimiento del cobro de la plataforma (SLT-85): la escribe solo el trigger de `cobro_plataforma_movimiento`
+  { modelo: "CobroPlataformaTraza", tabla: "cobro_plataforma_traza" },
+  // Cobro de fulfillment por paquete a la tienda (SLT-94): lo escriben solo los triggers de `orden` y de su bitácora
+  { modelo: "OrdenFulfillmentMovimiento", tabla: "orden_fulfillment_movimiento" },
   // Devoluciones
   { modelo: "DevolucionTiendaComprobante", tabla: "devolucion_tienda_comprobante" },
   { modelo: "DevolucionTiendaEvidencia", tabla: "devolucion_tienda_evidencia" },

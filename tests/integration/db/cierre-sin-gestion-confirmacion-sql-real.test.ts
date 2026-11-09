@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 
-import { reintentosConfig } from "@/lib/config/reintentos";
 import { ConfirmacionFisicaNoAplicableError } from "@/lib/repositories/CierresAdminRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import {
@@ -46,7 +45,7 @@ import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
  */
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
-const UMBRAL = reintentosConfig.MIN_INTENTOS_ENTREGA;
+const UMBRAL = 3; // el de toda empresa nueva (SLT-77 R2)
 const ALCANCE_CENTRAL = { destinoTipo: "bodega_central" as const, destinoZonaId: null };
 
 type Tx = TxDeTest;

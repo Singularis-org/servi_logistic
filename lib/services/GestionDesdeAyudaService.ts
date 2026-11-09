@@ -16,7 +16,6 @@ import {
 // FEATURE 276 (T5, R1/R3/R4/R7): la MISMA regla y el MISMO motivo que el panel del mensajero. El
 // modulo del tope es puro y el motivo vive en `mensajes-bloqueo`: dos superficies, un solo texto.
 import { alcanzaElTope, permitidoEnElTope } from "@/lib/types/tope-intentos";
-import { reintentosConfig } from "@/lib/config/reintentos";
 import { MSG_TOPE_INTENTOS_GESTION } from "@/lib/services/mensajes-bloqueo";
 import type { GestionarDesdeAyudaResult } from "@/lib/types/gestion-desde-ayuda";
 import { estaEnVentanaDeEscritura } from "@/lib/types/ventana-hilo-notas";
@@ -86,7 +85,7 @@ export interface GestionDesdeAyudaDeps {
    * Es el MISMO servicio —y por tanto el MISMO criterio unico de la 215— que consultan el panel
    * del mensajero, el cron de SLA y el drawer del historial.
    */
-  historial: Pick<IOrdenHistorialService, "contarIntentos">;
+  historial: Pick<IOrdenHistorialService, "contarIntentos" | "topeIntentos">;
   /**
    * SLT-42 (R22, R28): la zona del pais de la empresa, con la que se calcula el dia en curso.
    * OBLIGATORIA, como `historial`: olvidarla en el composition root rompe el typecheck.
@@ -217,7 +216,7 @@ export class GestionDesdeAyudaService implements IGestionDesdeAyudaService {
     //    pida el resultado prohibido se rechaza igual.
     if (!permitidoEnElTope(input.resultado)) {
       const intentos = await this.deps.historial.contarIntentos(input.ordenId);
-      if (alcanzaElTope(intentos, reintentosConfig.MIN_INTENTOS_ENTREGA)) {
+      if (alcanzaElTope(intentos, await this.deps.historial.topeIntentos())) {
         // `conflict` y no `forbidden`: la orden SI es suya; lo que falla es el estado del mundo.
         return { status: "conflict", motivo: MSG_TOPE_INTENTOS_GESTION };
       }

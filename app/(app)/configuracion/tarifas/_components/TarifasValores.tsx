@@ -44,6 +44,8 @@ import {
   conceptosDeActor,
   etiquetaConcepto,
   etiquetaModo,
+  conceptoEnNivel,
+  modoFijo,
   modoPorDefecto,
   PESTANAS,
   porcentajeParaVer,
@@ -125,6 +127,9 @@ export function TarifasValores({
   };
 
   function modoDeFila(concepto: TarifaConcepto): ModoTarifa {
+    // SLT-94 (R11/R13): un concepto con modo fijo no lo hereda de lo guardado (un % viejo queda inerte, R14).
+    const fijo = modoFijo(concepto);
+    if (fijo !== null) return fijo;
     const elegido = modoElegido[concepto];
     if (elegido !== undefined) return elegido;
     const todos = guardados.get(claveDeCelda(concepto, null));
@@ -155,7 +160,10 @@ export function TarifasValores({
     const clave = claveDeCelda(concepto, vehiculoId);
     setBorrador((b) => {
       const actual = b[clave] ?? celdaDeGuardado(guardados.get(clave), modoDeFila(concepto));
-      return { ...b, [clave]: { ...actual, ...cambio } };
+      const siguiente = { ...actual, ...cambio };
+      // SLT-94 (R11/R13): el fulfillment se envía siempre en monto, aunque lo guardado fuera un % viejo.
+      const fijo = modoFijo(concepto);
+      return { ...b, [clave]: fijo === null ? siguiente : { ...siguiente, modo: fijo } };
     });
   }
 
@@ -211,7 +219,10 @@ export function TarifasValores({
     }
   }
 
-  const conceptos = conceptosDeActor(actor);
+  // SLT-94 (R13): el fulfillment solo se ofrece en el precio propio de la tienda en todas sus zonas.
+  const conceptosDelActor = conceptosDeActor(actor);
+  const conceptos = conceptosDelActor.filter((c) => conceptoEnNivel(c, nivel));
+  const fulfillmentEnOtroNivel = conceptos.length < conceptosDelActor.length;
   const guardadosPorVehiculo = valoresPorVehiculo([...valores], actor);
   const conValorEnEstaPestana = new Set(guardadosPorVehiculo.map((v) => v.vehiculoId));
   // R47, R51: los activos, mas el inactivo que ya tiene un valor en este nivel y esta pestaña.
@@ -367,6 +378,7 @@ export function TarifasValores({
                         const hoy = conHoy ? referenciaDe(referencia, nivel, concepto, null) : null;
                         const fallos = errores[clave];
                         const idError = `error-${clave}`;
+                        const fijo = modoFijo(concepto);
                         return (
                           <TableRow key={concepto} className="hover:bg-transparent">
                             <TableCell className="font-medium whitespace-normal">
@@ -376,18 +388,23 @@ export function TarifasValores({
                             {puedeEscribir ? (
                               <>
                                 <TableCell>
-                                  <Select
-                                    aria-label={TEXTOS.modoDe(nombre)}
-                                    value={actual.modo}
-                                    onValueChange={(m) =>
-                                      editar(concepto, null, { modo: m === "porcentaje" ? "porcentaje" : "monto" })
-                                    }
-                                    options={[
-                                      { value: "monto", label: etiquetaModo("monto") },
-                                      { value: "porcentaje", label: etiquetaModo("porcentaje") },
-                                    ]}
-                                    className={cn("h-auto min-h-10 max-lg:min-h-11 w-[110px]", FOCO)}
-                                  />
+                                  {/* SLT-94 (R13): un concepto con modo fijo no tiene selector; el texto dice cuál rige. */}
+                                  {fijo !== null ? (
+                                    <span className="text-sm">{etiquetaModo(fijo)}</span>
+                                  ) : (
+                                    <Select
+                                      aria-label={TEXTOS.modoDe(nombre)}
+                                      value={actual.modo}
+                                      onValueChange={(m) =>
+                                        editar(concepto, null, { modo: m === "porcentaje" ? "porcentaje" : "monto" })
+                                      }
+                                      options={[
+                                        { value: "monto", label: etiquetaModo("monto") },
+                                        { value: "porcentaje", label: etiquetaModo("porcentaje") },
+                                      ]}
+                                      className={cn("h-auto min-h-10 max-lg:min-h-11 w-[110px]", FOCO)}
+                                    />
+                                  )}
                                 </TableCell>
                                 <TableCell>
                                   <MontoInput
@@ -433,6 +450,9 @@ export function TarifasValores({
                       })}
                     </TableBody>
                   </Table>
+                  {fulfillmentEnOtroNivel ? (
+                    <p className="pt-2 text-[13px] text-muted-foreground">{TEXTOS.fulfillmentSoloTienda}</p>
+                  ) : null}
                 </div>
               )}
 

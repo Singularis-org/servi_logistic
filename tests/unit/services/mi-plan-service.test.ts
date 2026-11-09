@@ -72,12 +72,13 @@ function actor(rol: RolValue): Actor {
 const servicio = (repo: IMiPlanRepository) => new MiPlanService(repo, () => AHORA);
 
 describe("SLT-58 — MiPlanService.ver: quién ve «Mi plan» (R8)", () => {
-  const CON_ACCESO: readonly RolValue[] = ["maestro", "admin"];
-  const SIN_ACCESO: readonly RolValue[] = ["mensajero", "adminTienda", "adminSatelite", "apiKey", "superadmin"];
+  // SLT-91 (R2): el `admin` pasa a los que no entran.
+  const CON_ACCESO: readonly RolValue[] = ["maestro"];
+  const SIN_ACCESO: readonly RolValue[] = ["admin", "mensajero", "adminTienda", "adminSatelite", "apiKey", "superadmin"];
 
   it("R8 — los siete roles están repartidos entre los que entran y los que no (ninguno queda sin caso)", () => {
     expect([...CON_ACCESO, ...SIN_ACCESO].sort()).toEqual(Object.values(RolValue).sort());
-    expect([...ROLES_MI_PLAN]).toEqual(CON_ACCESO);
+    expect([...ROLES_MI_PLAN]).toEqual(["maestro"]);
   });
 
   it.each(CON_ACCESO)("R8 — %s lee el plan de su empresa (una sola llamada al repositorio)", async (rol) => {
@@ -108,12 +109,12 @@ describe("SLT-58 — MiPlanService.ver: lo que devuelve (R1, R2, R5, R6, R7)", (
 
   it("SLT-86 R26 — sin plan y con su primera asignación pendiente: plan null y el pendiente, sin actor", async () => {
     const pendiente = { planNombre: "Pro", tipo: "quincenal" as const, desde: "2026-11-10" };
-    const r = await servicio(new RepoEnMemoria({ sinPlan: true, pendiente })).ver(actor("admin"));
+    const r = await servicio(new RepoEnMemoria({ sinPlan: true, pendiente })).ver(actor("maestro"));
     expect(r).toEqual({ estado: "ok", plan: null, pendienteSinPlan: pendiente });
   });
 
   it("R1, R2, R5 — arma nombre, precio sin moneda, módulos con su nombre, filas de consumo y reinicio; sin pendiente no hay sección", async () => {
-    const r = await servicio(new RepoEnMemoria(leido())).ver(actor("admin"));
+    const r = await servicio(new RepoEnMemoria(leido())).ver(actor("maestro"));
     if (r.estado !== "ok" || r.plan === null) throw new Error("se esperaba un plan");
     expect(r.plan.nombre).toBe("Básico");
     expect(r.plan.precioTexto).toBe("49.90 / mes");
@@ -142,7 +143,7 @@ describe("SLT-58 — MiPlanService.ver: lo que devuelve (R1, R2, R5, R6, R7)", (
       pendiente: null,
     });
 
-    const anual = await servicio(new RepoEnMemoria({ ...leido(), tipoCobro: "anual" })).ver(actor("admin"));
+    const anual = await servicio(new RepoEnMemoria({ ...leido(), tipoCobro: "anual" })).ver(actor("maestro"));
     if (anual.estado !== "ok" || anual.plan === null) throw new Error("se esperaba un plan");
     // 598.80 al año; tramo del 15 de octubre al 31 de diciembre: 78 de 365 días → 12796,27 céntimos → 127.96.
     expect(anual.plan.cobro).toEqual({

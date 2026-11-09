@@ -52,8 +52,6 @@ import {
 } from "@/lib/services/mensajes-bloqueo";
 import type { IAsignabilidadCoordenadasService } from "@/lib/interfaces/services/IAsignabilidadCoordenadasService";
 import type { IOrdenHistorialService } from "@/lib/interfaces/services/IOrdenHistorialService";
-// FEATURE 276 (T7, R7): el umbral sale de la configuracion, nunca de un `3` escrito a mano.
-import { reintentosConfig } from "@/lib/config/reintentos";
 import { esAsignable, motivoAsignabilidad } from "@/lib/services/AsignabilidadCoordenadasService";
 import { esAccesoTotal } from "@/lib/auth/acceso-total";
 import { resolverFechaReparto } from "@/lib/utils/dia-reparto";
@@ -183,7 +181,7 @@ export class GuiaAsignacionService implements IGuiaAsignacionService {
      * para impedir. Va por `import type` + `Pick`: sin ciclo de modulos y testeable con dobles
      * (patron `MisAsignacionesService`).
      */
-    private readonly historial: Pick<IOrdenHistorialService, "contarIntentosEnLote">,
+    private readonly historial: Pick<IOrdenHistorialService, "contarIntentosEnLote" | "topeIntentos">,
     /** SLT-42 (R22): la zona del pais de la empresa; «hoy/mañana» se resuelven en ella. */
     private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
@@ -500,13 +498,13 @@ export class GuiaAsignacionService implements IGuiaAsignacionService {
     // (`LiberacionReprogramadaService`), que es la raiz.
     //
     // UNA SOLA CONSULTA para todo el lote (`contarIntentosEnLote`, el metodo que la 215 creo
-    // exactamente para esto): nada de N+1. R7: el umbral sale de `reintentosConfig`.
+    // exactamente para esto): nada de N+1. SLT-77 (R20, R34): el tope sale de la empresa, y uno solo para el lote.
     //
     // TODO-O-NADA (R19): una sola orden en el umbral aborta el lote ENTERO, y el `detalle` lleva
     // UNA entrada POR ORDEN —tambien por las que si podian asignarse—, igual que las guardas
     // vecinas. Ninguna orden cambia de estado.
     const intentosPorOrden = await this.historial.contarIntentosEnLote(ordenIds);
-    const umbralIntentos = reintentosConfig.MIN_INTENTOS_ENTREGA;
+    const umbralIntentos = await this.historial.topeIntentos();
     if (ordenIds.some((id) => (intentosPorOrden.get(id) ?? 0) >= umbralIntentos)) {
       return {
         status: "conflict",

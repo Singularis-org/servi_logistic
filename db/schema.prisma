@@ -113,7 +113,11 @@ model Usuario {
   rolId                String        @map("rol_id")
   vehiculoId           String?       @map("vehiculo_id") // feature 21: solo mensajeros; FK -> vehiculos
   placa                String? // feature 21: placa del vehiculo del mensajero, normalizada uppercase/trim
-  fulfillment          Boolean       @default(false) // feature 27: tienda con fulfillment (rol adminTienda); default false
+  /// SLT-94 (D4): la columna vieja `fulfillment` (feature 27) no se lee ni se escribe. No se borra; el
+  /// campo se renombra para que todo lector olvidado rompa el typecheck. La marca vigente es `seRecogeEnTienda`.
+  fulfillmentRetirado  Boolean       @default(false) @map("fulfillment")
+  seRecogeEnTienda     Boolean       @default(true) @map("se_recoge_en_tienda") // SLT-94 (R1-R5): «se recoge en tienda»; solo decide el estado en que nace la orden. Solo `adminTienda` puede tenerla en false
+
   zonaId               String?       @map("zona_id") // feature 24/R6: nullable; solo mensajero/adminSatelite lo llevan
   ordenEnGestionId     String?       @map("orden_en_gestion_id") // feature 36/R19-R21: orden activa 1-a-1 en gestion; NULL = ninguna
   contrasenaDefinidaAt DateTime?     @map("contrasena_definida_at") // SL-41/R38: la pone updatePasswordHash cuando el usuario fija SU contrasena; NULL = nunca (o fila anterior a SL-41)
@@ -200,6 +204,7 @@ model Usuario {
   habilitacionesApiPedidas            OrdenHabilitacionApi[]             @relation("OrdenHabilitacionApiActor") // feature 266/R21: habilitaciones pedidas por el canal integrador a nombre de ESTE usuario (302: el dueno resuelto de la key -- su cuenta dedicada, o la tienda real a la que apunta); la FK es RESTRICT (la autoria es evidencia y no se pierde al dar de baja al usuario)
   cobrosGastoFijo                     GastoFijoCobro[]                   @relation("GastoFijoCobroDecisor") // ficha 333/R15/R21: cobros de gasto fijo que ESTE usuario aprobo o rechazo; la FK es RESTRICT (quien autorizo dinero es evidencia y no se pierde al dar de baja al usuario), mismo criterio que `orden_dia_reparto_cambio.actor_usuario_id`
   cobrosRechazoTiendaDecididos        RechazoTiendaCobro[]               @relation("RechazoTiendaCobroDecisor") // ficha 337: cobros por rechazo de tienda que ESTE usuario aprobo o rechazo. FK RESTRICT por el mismo motivo que la linea de arriba: quien autorizo un cobro es evidencia y no se pierde al dar de baja al usuario.
+  fulfillmentMovimientosComoTienda    OrdenFulfillmentMovimiento[]       @relation("OrdenFulfillmentMovimientoTienda") // SLT-94 (R21/R31): cobros y devoluciones de fulfillment de ESTA tienda, con la tienda CONGELADA en la fila. FK RESTRICT: el dinero es evidencia
   cobrosRechazoTiendaComoTienda       RechazoTiendaCobro[]               @relation("RechazoTiendaCobroTienda") // ficha 337: cobros por rechazo emitidos CONTRA esta tienda. `tienda_id` va CONGELADO en la fila (leccion 69/R13), asi que esta relacion es historia y no una consulta viva sobre `orden.tienda_id`.
   historialAcciones                   HistorialAccion[]                  @relation("HistorialAccionActor") // ficha 362/R3: acciones (dinero / desaparicion / permisos) que ESTE usuario ejecuto. La FK es RESTRICT: quien borro 79 ordenes o aprobo un cierre es evidencia y no se pierde al dar de baja al usuario. `actor_nombre` y `actor_rol` van CONGELADOS en la fila, asi que esta relacion NO es la que pinta el listado.
   historialPlataforma                 HistorialPlataforma[]              @relation("HistorialPlataformaActor") // SL-20: acciones del superadmin sobre paises y geografia (D15)
@@ -991,6 +996,12 @@ model Orden {
   // SLT-83 (design §2.2): las condiciones congeladas del cobro porcentual de ESTA orden. A lo sumo UNA
   // (PK = orden_id); la escribe solo el trigger de alta. La FK es CASCADE, como la de SL-40.
   cobroPorcentual            CobroPlataformaPorcentualOrden?
+  // SLT-85: la traza de facturación de cada movimiento de ESTA orden. La escribe solo el trigger sobre
+  // `cobro_plataforma_movimiento`; la FK es CASCADE, como la de SL-40.
+  cobrosPlataformaTraza      CobroPlataformaTraza[]
+  // SLT-94: el cobro de fulfillment de ESTA orden a su tienda (cargo, reverso, cargo…). Lo escriben solo
+  // los triggers de la base; la FK es RESTRICT (el dinero es evidencia).
+  fulfillmentMovimientos     OrdenFulfillmentMovimiento[]
   // Ficha 419 (design §D3): enlace al comprobante del lote central que la paso a `devuelta_a_tienda`. A lo sumo UNO (PK = orden_id)
   devolucionTiendaEnlace     DevolucionTiendaOrden?             @relation("DevolucionTiendaOrdenOrden")
 
@@ -2035,6 +2046,7 @@ model TarifaValor {
   cierreDetailConceptos  CierreDetailConcepto[]
   gestionPagosCongelados GestionPagoCongelado[]
   rechazoTiendaCobros    RechazoTiendaCobro[]
+  fulfillmentMovimientos OrdenFulfillmentMovimiento[] // SLT-94 (R21): traza del valor que produjo cada cobro; FK SET NULL
 
   organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
@@ -2261,6 +2273,12 @@ enum WalletMovimientoCategoria {
   // `conciliacion_bodega_ajuste`. Migracion `20261031140000_slt73_diferencia_satelite_enums`.
   egreso_diferencia_satelite
   ingreso_diferencia_satelite
+  // SLT-94 (design §1 M1, R19/R26): espejo en la caja del cobro de fulfillment a la tienda (ingresos) y de
+  // su devolución (egresos). Origen `orden_fulfillment`. Los escriben solo los triggers de 20261108120300.
+  ingreso_fulfillment
+  ingreso_iva_fulfillment
+  egreso_reverso_fulfillment
+  egreso_reverso_iva_fulfillment
 
   @@map("wallet_movimiento_categoria")
 }
@@ -2308,6 +2326,9 @@ enum WalletOrigenTipo {
   // correccion). `origen_id` = id de la fila de `conciliacion_bodega_ajuste`; hace falta porque el
   // unico de la caja `(origen_tipo, origen_id, categoria)` no admite dos diferencias con el mismo origen.
   conciliacion_bodega_ajuste
+  // SLT-94 (design §1): el cobro o la devolución de fulfillment de una orden. `origen_id` = id de la fila
+  // de `orden_fulfillment_movimiento` (cada evento tiene su propia clave).
+  orden_fulfillment
 
   @@map("wallet_origen_tipo")
 }
@@ -2429,6 +2450,13 @@ enum WalletTiendaMovimientoCategoria {
   /// Contrapartida en la caja: `egreso_reverso_flete_devolucion` / `egreso_reverso_iva_flete_devolucion`.
   flete_devolucion_anulado
   iva_flete_devolucion_anulado
+  /// SLT-94 (design §1 M1, R19/R26): el COBRO DE FULFILLMENT por paquete (débitos) y su DEVOLUCIÓN al
+  /// eliminar o cancelar por API (créditos). Contrapartida en la caja: `ingreso_fulfillment` /
+  /// `ingreso_iva_fulfillment` y `egreso_reverso_fulfillment` / `egreso_reverso_iva_fulfillment`.
+  fulfillment
+  iva_fulfillment
+  fulfillment_anulado
+  iva_fulfillment_anulado
 
   @@map("wallet_tienda_movimiento_categoria")
 }
@@ -5045,6 +5073,14 @@ enum HistorialAccionTipo {
   /// del plan). Entidad: `plan` (el del pendiente); `valor_anterior` NULL y `valor_nuevo` = «AAAA-MM-DD ·
   /// tipo», la fecha de efecto y el tipo del cambio cancelado.
   plan_cambio_empresa_cancelado
+  /// SLT-77 (R10, design §2.3): el maestro cambio el tope de intentos de entrega. Mueve dinero: bajarlo
+  /// adelanta rechazos, y un rechazo genera cobro. Entidad: `organizacion`; `valor_anterior` y `valor_nuevo`
+  /// son los dos numeros.
+  tope_intentos_cambiado
+  /// SLT-94 (R8): cambió la marca «se recoge en tienda» de una tienda. Mueve dinero: decide dónde nace la
+  /// orden. `valor_anterior` y `valor_nuevo` son la marca. `usuario_fulfillment_cambiado` queda para las
+  /// filas históricas.
+  usuario_se_recoge_en_tienda_cambiado
 
   @@map("historial_accion_tipo")
 }
@@ -5100,6 +5136,8 @@ enum HistorialAccionEntidad {
   grupo_distritos
   /// SLT-54: la activacion del modelo nuevo de tarifas, 1:1 con su tabla. `entidad_id` sin FK.
   tarifa_activacion
+  /// SLT-77: la empresa misma, 1:1 con su tabla, por el tope de intentos. `entidad_id` sin FK.
+  organizacion
 
   @@map("historial_accion_entidad")
 }
@@ -5759,6 +5797,9 @@ model Organizacion {
   slug      String   @unique
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  // SLT-77: intentos de entrega de la empresa, de 1 a 10. Lo edita su `maestro`. El rango es un CHECK que
+  // Prisma no sabe expresar: vive en `20261107130100_organizacion_tope_intentos`.
+  topeIntentosEntrega Int @default(3) @map("tope_intentos_entrega")
 
   usuarios Usuario[]
   mensajeroDocumentos MensajeroDocumento[]
@@ -5843,6 +5884,8 @@ model Organizacion {
   rankingSnapshotFilas RankingSnapshotFila[]
   cobrosPlataforma CobroPlataformaMovimiento[] // SL-40
   cobrosPorcentuales CobroPlataformaPorcentualOrden[] // SLT-83
+  cobrosPlataformaTraza CobroPlataformaTraza[] // SLT-85
+  ordenFulfillmentMovimientos OrdenFulfillmentMovimiento[] // SLT-94
   conciliacionBodegaAjustes ConciliacionBodegaAjuste[] // SLT-73
   integraciones Integracion[] // SL-36
   integracionPruebasMinuto IntegracionPruebaMinuto[] // SL-36
@@ -5995,6 +6038,25 @@ model HistorialPlataforma {
   @@index([createdAt(sort: Desc), id])
   @@index([paisId, createdAt(sort: Desc)])
   @@map("historial_plataforma")
+}
+
+// SLT-94 (design §1 M3): un movimiento del cobro de fulfillment. Alterna cargo/reverso empezando por cargo.
+enum OrdenFulfillmentMovimientoTipo {
+  cargo
+  reverso
+
+  @@map("orden_fulfillment_movimiento_tipo")
+}
+
+// SLT-94 (D11/D12): qué evento produjo el movimiento. Cargos: `creacion`, `restauracion`. Reversos:
+// `eliminacion`, `cancelacion_api`. Solo un reverso por eliminación se re-cobra al restaurar (R29/R39).
+enum OrdenFulfillmentMovimientoCausa {
+  creacion
+  restauracion
+  eliminacion
+  cancelacion_api
+
+  @@map("orden_fulfillment_movimiento_causa")
 }
 
 // SL-40 (design §3.3): un movimiento del cobro de la plataforma.
@@ -6218,7 +6280,8 @@ model CobroPlataformaMovimiento {
   ocurridoAt DateTime              @map("ocurrido_at")
   createdAt  DateTime              @default(now()) @map("created_at")
 
-  orden Orden @relation(fields: [ordenId], references: [id], onDelete: Cascade)
+  orden  Orden                  @relation(fields: [ordenId], references: [id], onDelete: Cascade)
+  trazas CobroPlataformaTraza[] // SLT-85: exactamente una, por el UNIQUE (organizacion_id, movimiento_id)
 
   organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
@@ -6228,6 +6291,48 @@ model CobroPlataformaMovimiento {
   @@index([ordenId])
   @@index([organizacionId, ocurridoAt]) // SLT-83 (R24): lo cobrado en el ciclo, por la fecha del cargo
   @@map("cobro_plataforma_movimiento")
+}
+
+// SLT-94 (design §1 M3) — el cobro de FULFILLMENT por paquete a la tienda, append-only. De NEGOCIO.
+// Un registro inmutable por evento: cargo al crear (secuencia 1, causa `creacion`), reverso al eliminar
+// (`eliminacion`) o al cancelar por API (`cancelacion_api`), re-cargo al restaurar (`restauracion`).
+// Congela monto, % de IVA, IVA, la tienda cobrada y el valor que lo produjo (R21, R31). Los escriben SOLO
+// los triggers de 20261108120300 (SECURITY DEFINER), que en la misma sentencia asientan sus filas en el
+// libro de la tienda y en la caja (origen `orden_fulfillment`, `origen_id` = id de esta fila).
+// Viven solo en el SQL de 20261108120200, porque Prisma no los expresa:
+//   · los CHECK: `monto > 0`, `iva_pct >= 0`, `iva >= 0`, `secuencia >= 1`, secuencia impar <=> cargo,
+//     causa casada con tipo, y `causa = creacion` <=> `secuencia = 1`;
+//   · la política `orden_fulfillment_movimiento_por_empresa`;
+//   · el `REVOKE INSERT, UPDATE, DELETE … FROM servi_app` (R25): la empresa lee y no toca;
+//   · los triggers de misma empresa de SL-17.
+// El `id` no tiene default en Prisma porque ningún código de la app crea filas: lo pone el trigger.
+model OrdenFulfillmentMovimiento {
+  id            String                          @id
+  ordenId       String                          @map("orden_id")
+  tiendaId      String                          @map("tienda_id") // CONGELADA en el cargo (R21/R31)
+  secuencia     Int
+  tipo          OrdenFulfillmentMovimientoTipo
+  causa         OrdenFulfillmentMovimientoCausa
+  monto         Decimal                         @db.Decimal(12, 2)
+  ivaPct        Decimal                         @map("iva_pct") @db.Decimal(5, 2)
+  iva           Decimal                         @db.Decimal(12, 2)
+  tarifaValorId String?                         @map("tarifa_valor_id") // traza, nunca bloqueo
+  ocurridoAt    DateTime                        @map("ocurrido_at")
+  createdAt     DateTime                        @default(now()) @map("created_at")
+
+  orden       Orden        @relation(fields: [ordenId], references: [id], onDelete: Restrict)
+  tienda      Usuario      @relation("OrdenFulfillmentMovimientoTienda", fields: [tiendaId], references: [id], onDelete: Restrict)
+  tarifaValor TarifaValor? @relation(fields: [tarifaValorId], references: [id], onDelete: SetNull)
+
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
+  @@unique([organizacionId, ordenId, secuencia], map: "orden_fulfillment_movimiento_orden_secuencia_key") // R23/R27
+  @@index([organizacionId])
+  @@index([ordenId])
+  @@index([tiendaId])
+  @@index([tarifaValorId])
+  @@map("orden_fulfillment_movimiento")
 }
 
 // SLT-83 (design §2.2) — las condiciones congeladas de una orden porcentual: el porcentaje y el mínimo del
@@ -6251,6 +6356,62 @@ model CobroPlataformaPorcentualOrden {
   @@unique([organizacionId, ordenId])
   @@index([organizacionId])
   @@map("cobro_plataforma_porcentual_orden")
+}
+
+// SLT-85 (design §1) — la traza de facturación de cada movimiento del cobro de la plataforma: la copia
+// del momento (orden, regla, plan y período) que el movimiento no guarda. Una fila por movimiento. De
+// NEGOCIO. La escribe SOLO el trigger `AFTER INSERT` sobre `cobro_plataforma_movimiento` de
+// 20261109120000 (SECURITY DEFINER); las filas de antes de esa migración salen del relleno con
+// `reconstruido = true` y sin los datos que no se guardaron. Viven solo en el SQL de 20261109120000,
+// porque Prisma no los expresa:
+//   · los CHECK: `tipo_cobro` y `periodo_tipo` en su lista, la regla (fijo con valor fijo y sin % ni
+//     mínimo; porcentual con % y sin valor fijo), el signo (cargo >= 0, reverso <= 0), `reverso_de` solo
+//     en los reversos y el período entero o vacío;
+//   · la política `cobro_plataforma_traza_por_empresa`;
+//   · el `REVOKE INSERT, UPDATE, DELETE … FROM servi_app`: la empresa lee su traza y no la toca (R23);
+//   · el trigger `cobro_plataforma_traza_inmutable`: nadie cambia una fila, tampoco el dueño (SL085, R24);
+//   · los triggers de misma empresa de SL-17.
+// El 1 a 1 con el movimiento lo da el UNIQUE (organizacion_id, movimiento_id): por eso `trazas` es una
+// lista en Prisma, que solo admite un 1 a 1 sobre un único de una columna. Ídem `reversos`.
+// `planId` es una copia sin FK, como `PlanRastro.planId`. El `id` no tiene default: lo pone el trigger.
+model CobroPlataformaTraza {
+  id              String                @id
+  ordenId         String                @map("orden_id")
+  movimientoId    String                @map("movimiento_id")
+  tipoMovimiento  CobroPlataformaTipo   @map("tipo_movimiento")
+  reversoDeId     String?               @map("reverso_de")
+  numGuia         Int?                  @map("num_guia")
+  montoCobrar     Decimal?              @map("monto_cobrar") @db.Decimal(12, 2)
+  estadoOrden     String?               @map("estado_orden")
+  tipoCobro       String                @map("tipo_cobro") // CHECK: fijo | porcentual
+  fuente          CobroPlataformaFuente
+  planId          String?               @map("plan_id")
+  planNombre      String?               @map("plan_nombre") @db.VarChar(80)
+  porcentaje      Decimal?              @db.Decimal(5, 2)
+  minimo          Decimal?              @db.Decimal(12, 2)
+  valorFijo       Decimal?              @map("valor_fijo") @db.Decimal(12, 2)
+  valorCobrado    Decimal               @map("valor_cobrado") @db.Decimal(12, 2)
+  cobradoAt       DateTime              @map("cobrado_at")
+  periodoTipo     String?               @map("periodo_tipo") // CHECK: quincenal | mensual | bimestral | anual
+  periodoInicioAt DateTime?             @map("periodo_inicio_at")
+  periodoFinAt    DateTime?             @map("periodo_fin_at")
+  reconstruido    Boolean               @default(false)
+  createdAt       DateTime              @default(now()) @map("created_at")
+
+  orden      Orden                     @relation(fields: [ordenId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  movimiento CobroPlataformaMovimiento @relation(fields: [movimientoId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  reversoDe  CobroPlataformaTraza?     @relation("CobroPlataformaTrazaReverso", fields: [reversoDeId], references: [id], onDelete: NoAction, onUpdate: Restrict)
+  reversos   CobroPlataformaTraza[]    @relation("CobroPlataformaTrazaReverso")
+
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
+  @@unique([organizacionId, movimientoId]) // R1: una traza por movimiento
+  @@unique([organizacionId, reversoDeId]) // un cargo lo anula como mucho un reverso
+  @@index([organizacionId])
+  @@index([ordenId])
+  @@index([organizacionId, cobradoAt])
+  @@map("cobro_plataforma_traza")
 }
 
 // SL-36 (design §2.1) — los cuatro servicios que una empresa conecta con sus propias cuentas.

@@ -26,6 +26,7 @@ type RepoDoble = { [K in keyof ITarifasPantallaRepository]: Mock };
 function repoDoble(overrides: Partial<RepoDoble> = {}): RepoDoble {
   return {
     leerActivacion: vi.fn().mockResolvedValue(null),
+    leerTopeIntentos: vi.fn().mockResolvedValue(3),
     listarZonas: vi.fn().mockResolvedValue([]),
     buscarZona: vi.fn().mockResolvedValue({ id: "z1", nombre: "Norte", esCentral: false }),
     listarGruposDeEmpresa: vi.fn().mockResolvedValue([]),
@@ -115,6 +116,46 @@ describe("SLT-55 T3.1 (design §7.1) — los mensajeros y sus valores propios", 
     await servicio(repo).faltantesPorZona();
     expect(repo.listarMensajeros).not.toHaveBeenCalled();
     expect(repo.valoresDeMensajeros).not.toHaveBeenCalled();
+  });
+});
+
+describe("SLT-77 R12-R14, R27 — el tope en la pantalla", () => {
+  it.each([MAESTRO, ADMIN])("$rol recibe el tope de su empresa, leido una vez", async (actor) => {
+    const repo = repoDoble({ leerTopeIntentos: vi.fn().mockResolvedValue(7) });
+    const res = await servicio(repo).cargarPantalla(actor);
+    if (res.status !== "ok") throw new Error(res.status);
+    expect(res.topeIntentos).toBe(7);
+    expect(repo.leerTopeIntentos).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(NO_LEEN)("R14: $rol no lo recibe ni se lee", async (actor) => {
+    const repo = repoDoble({ leerTopeIntentos: vi.fn().mockResolvedValue(7) });
+    const res = await servicio(repo).cargarPantalla(actor);
+    expect(res).toEqual({ status: "forbidden" });
+    expect(JSON.stringify(res)).not.toContain("7");
+    expect(repo.leerTopeIntentos).not.toHaveBeenCalled();
+  });
+
+  it("R14: sin sesión la action responde unauthenticated, sin el número", async () => {
+    const repo = repoDoble({ leerTopeIntentos: vi.fn().mockResolvedValue(7) });
+    const res = await cargarPantallaTarifas({ getActor: async () => null, servicio: servicio(repo) });
+    expect(res).toEqual({ status: "unauthenticated" });
+    expect(repo.leerTopeIntentos).not.toHaveBeenCalled();
+  });
+
+  it("R27: si el tope no se puede leer, la carga falla y no inventa un valor", async () => {
+    const repo = repoDoble({ leerTopeIntentos: vi.fn().mockRejectedValue(new Error("sin empresa")) });
+    await expect(servicio(repo).cargarPantalla(MAESTRO)).rejects.toThrow("sin empresa");
+    expect(await cargarPantallaTarifas({ getActor: async () => MAESTRO, servicio: servicio(repo) })).toEqual({
+      status: "error",
+    });
+  });
+
+  it("los faltantes y una zona no leen el tope: solo la carga de la pantalla", async () => {
+    const repo = repoDoble();
+    await servicio(repo).faltantesPorZona();
+    await servicio(repo).cargarZona({ zonaId: "z1" }, MAESTRO);
+    expect(repo.leerTopeIntentos).not.toHaveBeenCalled();
   });
 });
 

@@ -33,7 +33,7 @@ import { drenarGeocodificacion } from "./crons";
  *     (`ZonaService.crear`, un distrito propio cada una, tarifa de pago al mensajero por defecto
  *     `opts.tarifaMensajero`, por defecto 1500 entregada / 164 rechazada); SINPE de las dos
  *     confirmado (`SinpeBodegaService.confirmar`: sin él la pantalla abre «Confirmá el SINPE»);
- *     una tienda CON bodega propia (`fulfillment`: sus órdenes nacen en `en_preparacion`); su
+ *     una tienda CON bodega propia (`seRecogeEnTienda: false`: sus órdenes nacen en `en_preparacion`); su
  *     tarifa (`TarifaService.crear`, `opts.tarifa`); y el `adminSatelite` de la satélite.
  *
  *   crearMensajero(r, "central" | "satelite") → MensajeroE2E

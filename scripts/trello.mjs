@@ -16,13 +16,13 @@
  *                                                    y la cita si la aprobacion fue escrita
  *   node scripts/trello.mjs editar <key> [--labels-mas "a|b"] [--labels-menos "a|b"]
  *                                 [--nombre <titulo>] [--desc <texto>]   (el nombre lleva `<KEY> · `)
- *   node scripts/trello.mjs crear --nombre <titulo> --labels "a|b" [--key QC-n] [--depende QC-1,QC-2]
+ *   node scripts/trello.mjs crear --nombre <titulo> --labels "a|b" [--key PROY-n] [--depende PROY-1,PROY-2]
  *                                 [--estado pending] [--desc <texto>]
  *   node scripts/trello.mjs buscar <termino>         tarjetas abiertas y archivadas por nombre/desc
  *   node scripts/trello.mjs yo                       GET /members/me (para /tracker-connect)
  *
  * Los labels se separan con `|`, no con coma: un nombre de epica puede llevar comas
- * (`epic:QC-17 Identidad, acceso`). Las keys de `--depende` no, y van con coma.
+ * (`epic:PROY-17 Identidad, acceso`). Las keys de `--depende` no, y van con coma.
  *
  * REST directo con el `fetch` nativo de Node: cero dependencias (CLAUDE.md regla 7). Las
  * credenciales salen de `TRELLO_KEY` y `TRELLO_TOKEN` del entorno y viajan en la cabecera
@@ -66,7 +66,7 @@ const ESPERA_MAXIMA_MS = 60_000;
 const KEY = /^[A-Z][A-Z0-9]*-\d+$/;
 const ESTADOS = ['pending', 'spec_ready', 'in_progress', 'done', 'cancelled'];
 // Labels de un solo valor: anadir `zone:frontend` quita el `zone:` que hubiera.
-const LABELS_UNICOS = ['key', 'slug', 'zone', 'complexity', 'epic'];
+const LABELS_UNICOS = ['key', 'slug', 'zone', 'complexity', 'ruta', 'epic'];
 
 /** Error con codigo de salida. `main` lo imprime y sale con `codigo`; los tests lo capturan. */
 export class SalidaError extends Error {
@@ -193,6 +193,8 @@ export function tarjetaAFicha(card, { prefijo, estados, listas }) {
     sdd: labels.includes('sdd'),
     complexity: valorDeLabel(labels, 'complexity'),
     zone: valorDeLabel(labels, 'zone'),
+    // La ruta de la feature (`docs/specs.md > Tres rutas`); sin label, la completa.
+    ruta: valorDeLabel(labels, 'ruta'),
     branch: slug ? `feature/${key}-${slug}` : null,
     depends_on: dependenciasDe(card),
     spec_path: slug ? `specs/${key}-${slug}` : null,
@@ -202,7 +204,7 @@ export function tarjetaAFicha(card, { prefijo, estados, listas }) {
 
 /**
  * Las dos excepciones de F0 a "manda el board" (`docs/jira.md > Si Jira y el disco divergen`):
- * una `in_progress` no se degrada, y `zone`/`complexity` evaluadas no se borran. Una ficha
+ * una `in_progress` no se degrada, y `zone`/`complexity`/`ruta` evaluadas no se borran. Una ficha
  * `in_progress` del disco cuya tarjeta ya no esta abierta (archivada o borrada) se conserva con
  * aviso: borrarla en silencio perderia una feature en vuelo. Las demas ausentes se descartan.
  * Devuelve las fichas fusionadas y los avisos para el leader.
@@ -218,7 +220,7 @@ export function fusionarConCopia(nuevas, anteriores) {
       r.status = 'in_progress';
       avisos.push(`${f.key} sigue in_progress en disco aunque la tarjeta esta en ${f.status}: cierrala o cancelala a mano`);
     }
-    for (const campo of ['zone', 'complexity']) {
+    for (const campo of ['zone', 'complexity', 'ruta']) {
       if (f[campo] == null && antes[campo] != null) {
         r[campo] = antes[campo];
         avisos.push(`${f.key} perdio el label ${campo}:${antes[campo]}: reescribelo con "editar" y anotalo en progress/deudas.md`);

@@ -224,6 +224,15 @@ const CENSO: EntradaCenso[] = [
     forma: "abre_tx",
     mutacion: /tx\.tarifaActivacion\.create\(/,
   },
+  // SLT-77 (R10, T2.2): el cambio del tope, con su rastro en la misma transaccion. Mueve dinero: bajarlo adelanta
+  // rechazos, y un rechazo genera cobro.
+  {
+    tipos: ["tope_intentos_cambiado"],
+    archivo: "lib/repositories/TopeIntentosRepository.ts",
+    metodo: "guardar",
+    forma: "abre_tx",
+    mutacion: /tx\.\$executeRaw`\s*UPDATE "organizacion"/,
+  },
   {
     tipos: ["tarifa_valor_fijado"],
     archivo: "lib/repositories/TarifaValorRepository.ts",
@@ -507,9 +516,10 @@ const CENSO: EntradaCenso[] = [
     mutacion: /tx\.rechazoTiendaCobroAnulacion\.createMany\(/,
   },
   {
-    // ⭑ Q2 (`usuario_fulfillment_cambiado`) comparte punto de escritura con el rol y la zona: es
-    // el MISMO formulario, y las N filas salen con el MISMO `lote_id`.
-    tipos: ["usuario_rol_cambiado", "usuario_zona_cambiada", "usuario_fulfillment_cambiado"],
+    // ⭑ Q2 comparte punto de escritura con el rol y la zona: es el MISMO formulario, y las N filas
+    // salen con el MISMO `lote_id`. SLT-94 (R8): la marca «se recoge en tienda» sustituye al
+    // `fulfillment` (que pasa a `SIN_ESCRITOR_DESDE`).
+    tipos: ["usuario_rol_cambiado", "usuario_zona_cambiada", "usuario_se_recoge_en_tienda_cambiado"],
     archivo: "lib/repositories/UserRepository.ts",
     metodo: "update",
     forma: "abre_tx",
@@ -784,6 +794,13 @@ const SIN_ESCRITOR_DESDE: TiposSinEscritor[] = [
       "el borrado de vehiculos se retiro (P1: desactivar lo sustituye) y el catalogo es del " +
       "superadmin, cuyas acciones van a `vehiculo_rastro` (R20, R21); el valor queda por las filas viejas",
   },
+  {
+    tipos: ["usuario_fulfillment_cambiado"],
+    desde: "SLT-94",
+    motivo:
+      "la marca `fulfillment` se migro negada a «se recoge en tienda» (D4) y la columna vieja ya no se " +
+      "escribe; su cambio lo registra `usuario_se_recoge_en_tienda_cambiado` (R8). El valor queda por las filas viejas",
+  },
 ];
 
 /**
@@ -800,7 +817,7 @@ interface TiposConEscritorPendiente {
   tarea: string;
 }
 
-// SLT-52 T6.2 ya escribe sus cinco tipos (ver el censo): la lista queda vacia.
+// SLT-52 T6.2 y SLT-77 T2.2 ya escriben sus tipos (ver el censo).
 const ESCRITOR_PENDIENTE_EN_CURSO: TiposConEscritorPendiente[] = [];
 
 /** Los archivos `.ts` de `lib/`, relativos a la raiz. */
@@ -1237,7 +1254,9 @@ describe("362/R16 — cada tipo del catalogo tiene al menos un punto de escritur
         // 81 desde el ajuste planes-custom D16 (`plan_tipo_cobro_cambiado`, de `PlanesRepository.cambiarTipoCobro`).
     // 82 desde SLT-54 (`tarifas_activadas`, de `TarifaActivacionRepository.activar`).
     // 83 desde SLT-86 (`plan_cambio_empresa_cancelado`, de `PlanesRepository.cancelarPendienteDeEmpresaEnTx`).
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(83);
+    // 84 desde SLT-77 (`tope_intentos_cambiado`, de `TopeIntentosRepository.guardar`).
+    // 85 desde SLT-94 (`usuario_se_recoge_en_tienda_cambiado`, de `UserRepository.update`).
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(85);
   });
 });
 

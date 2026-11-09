@@ -90,6 +90,14 @@ export const WALLET_MOVIMIENTO_CATEGORIA_SEED = [
   // contra-entrega: es dinero que la satelite recaudo y no entrego, no ganancia ni gasto.
   "egreso_diferencia_satelite",
   "ingreso_diferencia_satelite",
+  // SLT-94 (design §1 M1/M4, R19/R20/R26): el COBRO DE FULFILLMENT por paquete al crear la orden y su
+  // devolucion. Los escribe SOLO el trigger de la base (`fulfillment_registrar_movimiento`), nunca la
+  // app. Mismo patron que el cobro de la 461 y el reverso de la 458-B: CARGOS propios (liquidez
+  // «cargo»: suben la ganancia o el IVA y bajan «De las tiendas», sin tocar «Entro»), y sus reversos.
+  "ingreso_fulfillment",
+  "ingreso_iva_fulfillment",
+  "egreso_reverso_fulfillment",
+  "egreso_reverso_iva_fulfillment",
 ] as const satisfies readonly PrismaWalletMovimientoCategoria[];
 
 export type WalletMovimientoCategoria = (typeof WALLET_MOVIMIENTO_CATEGORIA_SEED)[number];
@@ -142,6 +150,10 @@ export const WALLET_ORIGEN_TIPO_SEED = [
   // SLT-73 (design §1.2): el EVENTO de conciliacion (marca o correccion) que movio la diferencia de la
   // satelite; `origen_id` = id de la fila de `conciliacion_bodega_ajuste`.
   "conciliacion_bodega_ajuste",
+  // SLT-94 (design §1 M3): el movimiento de fulfillment de una orden (cargo o reverso); `origen_id` =
+  // id de la fila de `orden_fulfillment_movimiento`. Un id por evento: el cargo, su devolucion y el
+  // re-cobro de una restauracion no chocan en los unicos `(origen_tipo, origen_id, categoria)`.
+  "orden_fulfillment",
 ] as const satisfies readonly PrismaWalletOrigenTipo[];
 
 export type WalletOrigenTipo = (typeof WALLET_ORIGEN_TIPO_SEED)[number];
@@ -179,10 +191,15 @@ export type WalletIngresoConcepto = (typeof WALLET_INGRESO_CONCEPTO_SEED)[number
 // composicion exige que este seed sea EXACTAMENTE los ingresos propios, y el cobro lo es (HD1).
 // `WALLET_INGRESO_CONCEPTO_SEED` NO cambia: son los seis del feed del cierre y
 // `MAPEO_CONCEPTO_TIENDA` depende de el.
+//
+// SLT-94 (R20): + `ingreso_fulfillment` e `ingreso_iva_fulfillment`, ingresos propios (cargos a la
+// tienda) que tampoco salen del cierre.
 export const WALLET_INGRESO_PROPIO_SEED = [
   ...WALLET_INGRESO_CONCEPTO_SEED,
   "ingreso_ajuste",
   "ingreso_cobro_tienda",
+  "ingreso_fulfillment",
+  "ingreso_iva_fulfillment",
 ] as const satisfies readonly WalletMovimientoCategoria[];
 
 export type WalletIngresoPropio = (typeof WALLET_INGRESO_PROPIO_SEED)[number];
@@ -196,13 +213,16 @@ export const WALLET_INGRESO_IVA_SEED = [
   "ingreso_iva_flete",
   "ingreso_iva_flete_devolucion",
   "ingreso_iva_comision_cod",
+  "ingreso_iva_fulfillment", // SLT-94 R20: el IVA del fulfillment sube el IVA cobrado, no la ganancia
 ] as const satisfies readonly WalletIngresoPropio[];
 
 export type WalletIngresoIva = (typeof WALLET_INGRESO_IVA_SEED)[number];
 
-// La anulacion de un cobro por devolucion a origen devuelve su IVA (ficha 458-B).
+// La anulacion de un cobro por devolucion a origen devuelve su IVA (ficha 458-B); la devolucion del
+// fulfillment, el suyo (SLT-94 R26).
 export const WALLET_EGRESO_IVA_SEED = [
   "egreso_reverso_iva_flete_devolucion",
+  "egreso_reverso_iva_fulfillment",
 ] as const satisfies readonly WalletMovimientoCategoria[];
 
 export type WalletEgresoIva = (typeof WALLET_EGRESO_IVA_SEED)[number];
@@ -236,6 +256,7 @@ export const WALLET_INGRESO_GANANCIA_SEED = [
   "ingreso_comision_cod",
   "ingreso_ajuste",
   "ingreso_cobro_tienda",
+  "ingreso_fulfillment", // SLT-94 R20: el monto del fulfillment es ganancia de la empresa
 ] as const satisfies readonly WalletIngresoPropio[];
 
 export type WalletIngresoGanancia = (typeof WALLET_INGRESO_GANANCIA_SEED)[number];
@@ -292,6 +313,9 @@ export const WALLET_EGRESO_NOMBRADO_SEED = [
   // SL-45 (design §2, R24): el pago a la plataforma tiene nombre propio en la tarjeta. Dentro de
   // «Otros gastos» no se veria cuanto de la ganancia se fue en pagarle a la plataforma.
   "egreso_pago_plataforma",
+  // SLT-94 (R26, R37): la devolucion del fulfillment baja la ganancia y se ve con su nombre, como el
+  // reverso del cobro de la 461; la composicion lo resta del fulfillment (neto de devoluciones).
+  "egreso_reverso_fulfillment",
 ] as const satisfies readonly WalletMovimientoCategoria[];
 
 export type WalletEgresoNombrado = (typeof WALLET_EGRESO_NOMBRADO_SEED)[number];

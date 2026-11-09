@@ -72,6 +72,14 @@ export const WALLET_TIENDA_MOVIMIENTO_CATEGORIA_SEED = [
   // `egreso_reverso_flete_devolucion` / `egreso_reverso_iva_flete_devolucion`.
   "flete_devolucion_anulado",
   "iva_flete_devolucion_anulado",
+  // SLT-94 (design §1 M1/M4, R19/R26): el COBRO DE FULFILLMENT por paquete al crear la orden (dos
+  // DEBITOS: monto e IVA) y su DEVOLUCION al eliminar o cancelar por API (dos CREDITOS). Los escribe
+  // SOLO el trigger de la base. Contrapartida en la caja: `ingreso_fulfillment` /
+  // `ingreso_iva_fulfillment` y `egreso_reverso_fulfillment` / `egreso_reverso_iva_fulfillment`.
+  "fulfillment",
+  "iva_fulfillment",
+  "fulfillment_anulado",
+  "iva_fulfillment_anulado",
 ] as const satisfies readonly PrismaWalletTiendaMovimientoCategoria[];
 
 export type WalletTiendaMovimientoCategoria =

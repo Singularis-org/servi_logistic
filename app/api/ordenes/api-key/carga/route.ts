@@ -5,8 +5,9 @@
 // validación/dedup/geo).
 //
 // FEATURE 155 — el estado inicial deja de ser fijo: lo resuelve la bifurcación por bodega
-// (`resolverDestinoCreacion`) sobre el flag `fulfillment` del dueño de la key. En la práctica
-// eso es siempre la rama (b): `por_recolectar_en_tienda` con guía en el acto. Y como ese lote
+// (`resolverDestinoCreacion`) sobre la marca «se recoge en tienda» del dueño de la key (SLT-94).
+// Para una cuenta dedicada es siempre la rama (b) (D13): `por_recolectar_en_tienda` con guía en
+// el acto. Y como ese lote
 // SÍ produce un movimiento físico (tienda → bodega central), la respuesta gana el bloque
 // `manifiesto` (R24, opción C de la puerta T0.1): el canal de API key no puede invocar la
 // Server Action `obtenerManifiesto` —resuelve al actor por cookie de sesión— así que necesita

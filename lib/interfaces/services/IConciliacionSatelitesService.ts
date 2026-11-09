@@ -48,8 +48,9 @@ export type ListarConsolidacionesSateliteCompletoServiceResult =
  * `conflict` = la consolidacion existe pero ya no esta en el estado que la accion exige (R11: ya
  * estaba marcada; o al revertir, ya estaba pendiente). `no_encontrada` = no existe.
  *
- * NO hay `validation_error` aqui: el monto lo mata zod en el borde (R10). Si el servicio lo
- * redeclarara, serian dos definiciones de «cuanto dinero es valido».
+ * La FORMA del monto la mata zod en el borde (R10). Lo unico que el servicio devuelve como
+ * `validation_error` es la regla de SLT-96 (el 0 con lo declarado distinto de 0), que decide el
+ * repositorio leyendo la base: ver `MarcaConMontoServiceResult`.
  */
 /**
  * ⭑ R20/R23 — las TRES cifras de cabecera de `/wallet/satelites`.
@@ -72,6 +73,14 @@ export type MarcaConciliacionServiceResult =
  * marca ya escribio el dinero en los libros y la reversion se rechaza sin cambiar nada. Tipo aparte
  * para que marcar y corregir no lo arrastren (nunca lo devuelven).
  */
+/**
+ * SLT-96 — marcar y corregir tienen un desenlace mas: `validation_error` cuando se registra 0 en una
+ * consolidacion cuyo declarado no es 0. Tipo aparte para que revertir (sin monto) no lo arrastre.
+ */
+export type MarcaConMontoServiceResult =
+  | MarcaConciliacionServiceResult
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> };
+
 export type RevertirConciliacionServiceResult =
   | MarcaConciliacionServiceResult
   | { status: "con_asientos" };
@@ -100,7 +109,7 @@ export interface IConciliacionSatelitesService {
   marcarRecibida(
     input: MarcarConsolidacionRecibidaInput,
     actor: Actor,
-  ): Promise<MarcaConciliacionServiceResult>;
+  ): Promise<MarcaConMontoServiceResult>;
   /** R12/R13 — deshace la marca. El monto que se borra queda en el historial. */
   revertirConciliacion(
     input: RevertirConciliacionInputBorde,
@@ -115,7 +124,7 @@ export interface IConciliacionSatelitesService {
   corregirRecibida(
     input: MarcarConsolidacionRecibidaInput,
     actor: Actor,
-  ): Promise<MarcaConciliacionServiceResult>;
+  ): Promise<MarcaConMontoServiceResult>;
   /**
    * R20/R23 — las tres cifras de cabecera, YA CUADRADAS. No recibe input: el conjunto es «todas
    * las bodegas satelite», que es el mismo de la tabla que encabeza.

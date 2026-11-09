@@ -11,7 +11,6 @@ import type { GestionarInput } from "@/lib/interfaces/services/IMisAsignacionesS
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { MisAsignacionesService } from "@/lib/services/MisAsignacionesService";
 import { MSG_TOPE_INTENTOS_GESTION } from "@/lib/services/mensajes-bloqueo";
-import { reintentosConfig } from "@/lib/config/reintentos";
 import { RESERVA_MOTIVO_SERVIDOR } from "@/lib/utils/dia-reparto-textos";
 import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
 import { bloqueoConRechazado } from "@/tests/fixtures/bloqueo-cierre";
@@ -136,7 +135,7 @@ describe("477 · R12 — bloqueado: la orden EN CORRECCION se escoge y se gestio
     const { service, repo, storage } = montar({
       bloqueado: true,
       enCorreccion: ["o1"],
-      intentos: reintentosConfig.MIN_INTENTOS_ENTREGA - 1,
+      intentos: 2, // tope 3 - 1
     });
 
     const r = await service.gestionar(REPROGRAMA, MENSAJERO, HOY);

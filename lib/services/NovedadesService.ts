@@ -15,7 +15,6 @@ import type {
 import { descargaConfig } from "@/lib/config/descarga";
 // FEATURE 276 (T12, R8/R10): la decision del tope se deriva AQUI, en el servidor. El umbral no
 // viaja al cliente; el booleano si.
-import { reintentosConfig } from "@/lib/config/reintentos";
 import { alcanzaElTope } from "@/lib/types/tope-intentos";
 import type { GrupoNovedad } from "@/lib/types/novedad-grupo";
 import type { NovedadDTO } from "@/lib/types/novedad";
@@ -46,7 +45,7 @@ export class NovedadesService implements INovedadesService {
   constructor(
     private readonly repo: NovedadesRepo,
     // Feature 160 (R11/R12/R26): derivador de intentos EN LOTE, dependencia REQUERIDA.
-    private readonly historial: Pick<IOrdenHistorialService, "contarIntentosEnLote">,
+    private readonly historial: Pick<IOrdenHistorialService, "contarIntentosEnLote" | "topeIntentos">,
   ) {}
 
   async listar(
@@ -143,6 +142,8 @@ export class NovedadesService implements INovedadesService {
     // Feature 160 (R12/R15): UNA sola consulta al historial para toda la pagina, sobre las
     // ordenes YA acotadas a la tienda del actor (`findNovedadesByTienda(actor.usuarioId, ...)`).
     const intentos = await this.historial.contarIntentosEnLote(ids);
+    // SLT-77 (R24, R34): un solo valor para toda la pagina, fuera del `map`.
+    const topeIntentos = await this.historial.topeIntentos();
 
     // El ORDEN, que es lo unico que las dos superficies hacen distinto, y por una razon de negocio:
     //
@@ -225,7 +226,7 @@ export class NovedadesService implements INovedadesService {
       // `permitidoEnElTope`, el MISMO modulo puro que usa la guarda del paso 5-ter de
       // `GestionDesdeAyudaService`. Se deriva del MISMO `intentosEntrega` que ya viaja, asi que la
       // pantalla no puede ensenar un numero y ofrecer un boton que lo contradiga.
-      enElTope: alcanzaElTope(intentos.get(row.id) ?? 0, reintentosConfig.MIN_INTENTOS_ENTREGA),
+      enElTope: alcanzaElTope(intentos.get(row.id) ?? 0, topeIntentos),
     }));
   }
 }

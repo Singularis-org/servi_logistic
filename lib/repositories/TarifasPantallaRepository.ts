@@ -24,6 +24,7 @@ import {
   esZonaEspecialDeLaEmpresa,
   SELECT_MARCA_ZONA_ESPECIAL,
 } from "@/lib/repositories/_shared/zona-especial";
+import { leerTopeIntentosDeLaEmpresa } from "@/lib/repositories/_shared/tope-intentos-empresa";
 import type { ValorDeNivel } from "@/lib/tarifas/faltantes";
 import { ROLES_TARIFABLES } from "@/lib/types/tarifa";
 import type { GrupoDistritosDTO, TarifaValorDTO } from "@/lib/types/tarifa-flexible";
@@ -37,7 +38,7 @@ import { etiquetaDePersona } from "@/lib/types/historial-accion-etiquetas";
 type TarifasPantallaPrismaClient = ConstructorParameters<typeof GrupoDistritosRepository>[0] &
   Pick<
     PrismaClient,
-    "tarifaActivacion" | "zona" | "zonaDistrito" | "grupoDistritos" | "tarifaValor" | "vehiculo" | "usuario" | "tarifa" | "tarifaZonaMensajero"
+    "tarifaActivacion" | "zona" | "zonaDistrito" | "grupoDistritos" | "tarifaValor" | "vehiculo" | "usuario" | "tarifa" | "tarifaZonaMensajero" | "$queryRaw"
   >;
 
 const SELECT_ZONA = { id: true, nombre: true, esCentral: true } as const;
@@ -47,6 +48,10 @@ export class TarifasPantallaRepository implements ITarifasPantallaRepository {
 
   async leerActivacion(): Promise<{ activadaAt: Date } | null> {
     return this.prisma.tarifaActivacion.findFirst({ select: { activadaAt: true } });
+  }
+
+  async leerTopeIntentos(): Promise<number> {
+    return leerTopeIntentosDeLaEmpresa(this.prisma);
   }
 
   async listarZonas(): Promise<ZonaDePantalla[]> {

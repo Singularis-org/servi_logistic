@@ -1322,6 +1322,8 @@ describe("CierresAdminRepository.resolverCierre — liberación de `novedad_inte
         create: vi.fn().mockResolvedValue({ id: "g-sintetica" }),
       },
       cierreDetail: { findMany: vi.fn().mockResolvedValue([]) },
+      // SLT-77 (R35): la relectura del tope en la tx. El mismo 3 de `LIBERACION`; la carrera se mide en `tope-intentos-carreras`.
+      $queryRaw: vi.fn().mockResolvedValue([{ tope: 3 }]),
       orden: { findMany: vi.fn(), updateMany: vi.fn() },
       ordenHistorialEstado: { createMany: vi.fn() },
       // FICHA 362: el registro de la decision, en la MISMA tx.

@@ -6,6 +6,8 @@ import type { ConceptoEsencial } from "@/lib/tarifas/faltantes";
 import type { Referencia } from "@/lib/tarifas/referencia-vigente";
 import type { ModoTarifa, TarifaValorDTO } from "@/lib/types/tarifa-flexible";
 
+import type { Nivel } from "./tarifas-borrador";
+
 /**
  * SLT-54 — los textos y formatos de la pantalla de Tarifas, en un solo sitio para un i18n futuro. Los nombres
  * de nivel geografico no estan aqui: salen de `useEtiquetasGeograficas` (R61).
@@ -77,6 +79,24 @@ export function etiquetaModo(modo: ModoTarifa): string {
 /** La maqueta: la comision se pacta en %. Un `3,5` en monto cobraria 3,5 de moneda por orden sin que nadie lo note. */
 export function modoPorDefecto(concepto: TarifaConcepto): ModoTarifa {
   return concepto === "tienda_comision_cod" ? "porcentaje" : "monto";
+}
+
+/**
+ * SLT-94 (R10, R13) — el fulfillment (empacado y almacenaje) se cobra una vez por paquete y SOLO se configura
+ * como precio propio de la tienda en todas sus zonas: ni en la zona, ni en el grupo, ni en la tienda dentro de
+ * una zona o un grupo. El servidor rechaza los demás niveles; la pantalla no los ofrece.
+ */
+export function conceptoEnNivel(concepto: TarifaConcepto, nivel: Nivel): boolean {
+  if (concepto !== "tienda_fulfillment") return true;
+  return nivel.tipo === "tienda" && nivel.alcance.tipo === "todas";
+}
+
+/**
+ * SLT-94 (R11, R13) — el modo que un concepto NO deja elegir: el fulfillment va siempre en monto (con su %
+ * de IVA). `null` = el concepto deja elegir entre monto y porcentaje.
+ */
+export function modoFijo(concepto: TarifaConcepto): ModoTarifa | null {
+  return concepto === "tienda_fulfillment" ? "monto" : null;
 }
 
 const OTRO_FALTANTE: Record<ConceptoEsencial, string> = {
@@ -212,6 +232,8 @@ export const TEXTOS = {
   filaError: "No se pudo guardar este concepto. Vuelve a intentarlo.",
 
   tiendaSoloCobro: "Una tienda solo tiene cobro: el pago al mensajero y a la satélite se define por zona o por grupo.",
+  fulfillmentSoloTienda:
+    "El fulfillment se cobra una vez por paquete y se configura solo en el precio propio de cada tienda, en todas sus zonas.",
   tiendaSinElegir: "Elige la tienda para digitar su precio.",
   tiendaSinCuentas: "No hay cuentas de tienda. Crea una en Usuarios y vuelve aquí para ponerle su precio.",
 
@@ -320,6 +342,15 @@ export const TEXTOS = {
   mensajeroQuitado: "Valor propio quitado.",
   quitadoParcial: "Se quitó parte de los valores. Los que quedan no se pudieron quitar: vuelve a intentarlo.",
   errorQuitar: "No se pudo quitar el valor propio. Vuelve a intentarlo.",
+
+  topeTitulo: "Intentos de entrega",
+  topeAyuda: "Cuántos intentos se hacen antes de pasar una orden a rechazo. Rige al guardar, para todas las órdenes sin terminar.",
+  topeAvisoAlBajar:
+    "Guardar no rechaza ni cobra nada. Pero las novedades que ya alcancen este número se rechazan solas, sin más clics, unas en la siguiente corrida automática y otras al vencer su plazo, y ese rechazo genera cobro. Las órdenes en bodega que ya lo alcancen no se podrán asignar.",
+  topeSoloLectura: "Lo cambia el maestro.",
+  topeGuardar: "Guardar",
+  topeGuardado: "Intentos de entrega guardados.",
+
   anadirMensajeroTitulo: "Añadir mensajero con valor propio",
   editarMensajeroTitulo: (nombre: string) => `Valor propio de ${nombre}`,
   elegirMensajero: "Elige el mensajero",

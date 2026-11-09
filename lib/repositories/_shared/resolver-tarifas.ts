@@ -148,7 +148,11 @@ function grupoDe(
   return grupos.get(claveZonaDistrito(zonaId, distritoId)) ?? null;
 }
 
-/** Proyeccion de `tarifa_valor`: lo que elige `precedencia.ts` y lo que se congela. */
+/**
+ * Proyeccion de `tarifa_valor`: lo que elige `precedencia.ts` y lo que se congela. SLT-94 (R14): el
+ * `modo` viaja a la eleccion, que descarta un `tienda_fulfillment` en porcentaje (y uno fuera del
+ * precio propio de la tienda) como si no existiera (`rangoCobro` → `rangoFulfillment`).
+ */
 const SELECT_VALOR = {
   id: true,
   concepto: true,

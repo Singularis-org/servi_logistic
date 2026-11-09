@@ -13,7 +13,6 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { PlanesService } from "@/lib/services/PlanesService";
 import type { PlanDTO, VersionPlan } from "@/lib/types/planes";
 
-import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // SLT-58 · T4 (design §3.2; R13, R16, R19, R22) — las lecturas del superadmin con un repositorio doble.
 // Se mide el contrato (quién → zod → existe → repositorio) y la forma de lo que llega a la pantalla:
 // fechas de calendario en la hora de la plataforma, instantes en ISO, las líneas de «qué cambia» y el
@@ -189,7 +188,7 @@ function llamadasAlRepositorio(): number {
 
 beforeEach(() => {
   repo = doble();
-  servicio = new PlanesService(repo, () => AHORA, async () => ZONA_DE_CR);
+  servicio = new PlanesService(repo, () => AHORA);
 });
 
 describe("SLT-58 — lecturas del superadmin: autorización (R22)", () => {
@@ -258,9 +257,8 @@ describe("SLT-58 — catálogo (R13)", () => {
 });
 
 describe("SLT-42 — catálogo del superadmin: la fecha del pendiente, en UTC y con su etiqueta", () => {
-  it("un instante que en Costa Rica aún es el 14 sale como el 15 UTC, sin leer la zona de ninguna empresa", async () => {
-    const zonaDeOrganizacion = vi.fn(async () => ZONA_DE_CR);
-    const s = new PlanesService(repo, () => AHORA, zonaDeOrganizacion);
+  it("un instante que en Costa Rica aún es el 14 sale como el 15 UTC", async () => {
+    const s = new PlanesService(repo, () => AHORA);
     // 2026-11-15T03:00Z: las 21:00 del 14 en Costa Rica, el 15 en UTC.
     repo.catalogo.mockResolvedValue([
       { plan: plan(), empresaNombre: null, empresas: 2, vigenteDesdePendiente: new Date("2026-11-15T03:00:00.000Z") },
@@ -268,7 +266,6 @@ describe("SLT-42 — catálogo del superadmin: la fecha del pendiente, en UTC y 
     const r = await s.catalogo(SUPERADMIN);
     if (r.estado !== "ok") throw new Error("se esperaba ok");
     expect(r.planes[0].vigenteDesdePendiente).toBe("2026-11-15 UTC");
-    expect(zonaDeOrganizacion).not.toHaveBeenCalled();
   });
 });
 

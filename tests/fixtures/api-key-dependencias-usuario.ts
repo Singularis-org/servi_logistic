@@ -112,6 +112,11 @@ export const CLASIFICACION_FK_USUARIO: Record<string, ClasificacionFk> = {
     categoria: "bloquea",
     motivo: `Deriva de ordenes suyas rechazadas. ${VIA_ORDEN}`,
   },
+  // SLT-94: FK RESTRICT; la tienda va congelada en el cobro de fulfillment (R21/R31).
+  "OrdenFulfillmentMovimiento.tienda": {
+    categoria: "bloquea",
+    motivo: `Deriva de ordenes suyas: el cobro de fulfillment lo escribe el trigger al crearlas. ${VIA_ORDEN}`,
+  },
   "Notificacion.tienda": {
     categoria: "bloquea",
     motivo:

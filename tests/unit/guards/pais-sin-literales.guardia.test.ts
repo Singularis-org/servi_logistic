@@ -13,7 +13,7 @@
 //     nombra `CR`, o `T06:00:00`;
 //   - el prefijo `506` como literal: `"506"`, `'506'`, `+506`, `506${`;
 //   - un import de los envoltorios `@/lib/utils/(fecha-cr|hora-cr|separador-dia-cr|telefono-cr|whatsapp-telefono)`.
-// Las excepciones (la UI que pasa a SLT-92, los planes que pasan a SLT-86 y SINPE, de SL-22) viven en
+// Las excepciones (la UI que pasa a SLT-92, los planes que pasan a SLT-90 y SINPE, de SL-22) viven en
 // `_pais-sin-literales-excepciones.ts`, con su ficha y su motivo, y la lista solo baja.
 //
 // Segunda guardia del archivo (decision del humano tras T5.3): `reglasPais` es OPCIONAL en los
@@ -102,10 +102,10 @@ describe("SLT-42 · R29 — el servidor no escribe el pais a mano", () => {
     expect(EXCEPCIONES_PAIS_SIN_LITERALES.length).toBeLessThanOrEqual(TOPE_EXCEPCIONES);
   });
 
-  it("cada excepcion trae ficha SLT-92, SLT-86 o SL-22, motivo, un archivo que existe y no se repite; la lista esta ordenada", () => {
+  it("cada excepcion trae ficha SLT-92, SLT-90 o SL-22, motivo, un archivo que existe y no se repite; la lista esta ordenada", () => {
     const rutas = EXCEPCIONES_PAIS_SIN_LITERALES.map((e) => e.archivo);
     for (const e of EXCEPCIONES_PAIS_SIN_LITERALES) {
-      expect(["SLT-92", "SLT-86", "SL-22"], e.archivo).toContain(e.ficha);
+      expect(["SLT-92", "SLT-90", "SL-22"], e.archivo).toContain(e.ficha);
       expect(e.motivo.trim().length, e.archivo).toBeGreaterThan(10);
       expect(archivos, e.archivo).toContain(e.archivo);
     }

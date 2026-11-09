@@ -49,7 +49,7 @@ export type ResolverCierreBodegaResult = "updated" | "conflict" | "fuera_de_alca
  */
 export interface MarcarConciliadoInput {
   id: string;
-  /** STRING de escala 2, ya validado en el borde (`montoPositivoSchema`, > 0). */
+  /** STRING de escala 2, ya validado en el borde (>= 0). El 0 lo filtra el repositorio contra lo declarado (SLT-96). */
   montoRecibido: string;
   nota: string | null;
   /** Quien marca (`esAccesoTotal`). Va a `conciliado_por` Y al espejo `resuelto_por` (§4.1). */
@@ -73,7 +73,7 @@ export interface RevertirConciliacionInput {
  */
 export interface CorregirConciliacionInput {
   id: string;
-  /** STRING de escala 2, ya validado en el borde (`montoPositivoSchema`, > 0). */
+  /** STRING de escala 2, ya validado en el borde (>= 0). El 0 lo filtra el repositorio contra lo declarado (SLT-96). */
   montoRecibido: string;
   nota: string | null;
   /** Quien corrige (`esAccesoTotal`). Va a `conciliado_por` Y al espejo `resuelto_por`. */
@@ -97,6 +97,13 @@ export type MarcaConciliacionResult = "updated" | "conflict" | "fuera_de_alcance
  * porque marcar y corregir nunca lo devuelven.
  */
 export type RevertirConciliacionResult = MarcaConciliacionResult | "con_asientos";
+
+/**
+ * SLT-96 — marcar y corregir tienen un desenlace mas: `monto_cero_no_permitido`. El 0 solo vale
+ * cuando lo declarado de la consolidacion (su snapshot) es 0, y eso solo lo sabe el repositorio.
+ * Revertir no lo devuelve nunca: no lleva monto.
+ */
+export type MarcaConMontoResult = MarcaConciliacionResult | "monto_cero_no_permitido";
 
 export interface ICierresBodegaAdminRepository {
   /**
@@ -222,7 +229,7 @@ export interface ICierresBodegaAdminRepository {
    * difiere de `paraLaCentral`, UNA fila de diferencia de la satelite en la caja, enlazada a una
    * fila de `conciliacion_bodega_ajuste` (R11/R15). Todo fechado en el instante de la marca (R22).
    */
-  marcarConciliado(input: MarcarConciliadoInput): Promise<MarcaConciliacionResult>;
+  marcarConciliado(input: MarcarConciliadoInput): Promise<MarcaConMontoResult>;
   /**
    * ⭑ FICHA 431 (R12/R13) — DESHACE la marca: vuelve a `solicitado` y VACIA las cuatro columnas de
    * la conciliacion mas las dos del espejo (`resuelto_at`/`resuelto_por`).
@@ -252,5 +259,5 @@ export interface ICierresBodegaAdminRepository {
    * `valor_anterior`/`valor_nuevo`. La nota NO entra al historial. SLT-73 (R13): si la diferencia
    * cambia, escribe UN movimiento de diferencia nuevo por la variacion; nunca toca los anteriores.
    */
-  corregirConciliacion(input: CorregirConciliacionInput): Promise<MarcaConciliacionResult>;
+  corregirConciliacion(input: CorregirConciliacionInput): Promise<MarcaConMontoResult>;
 }

@@ -8,6 +8,10 @@
 // borrado viven en UN sitio. Los cuatro predicados del `WHERE` (los tres + `tienda_id`) los mata uno
 // a uno `tests/integration/db/picking-ordenes-en-preparacion.test.ts`.
 //
+// SLT-94 (R7): «tienda con fulfillment» del picking = tienda con la marca «se recoge en tienda» en
+// «no» (sus paquetes estan en nuestra bodega). El DTO conserva su campo `fulfillment` (= con
+// paquetes en bodega) y los textos del informe no cambian (fuera de alcance).
+//
 // EL DIA NO SE CALCULA AQUI (misma convencion que la 475): se devuelve el INSTANTE de entrada y los
 // dias en preparacion los cuenta `diasEnPreparacion` en TS, asi el PDF y el selector no pueden
 // divergir en que es «atrasada».
@@ -56,7 +60,7 @@ function seleccionEnPreparacion(filtroTienda: Prisma.Sql): Prisma.Sql {
       ) h ON true
      WHERE o."deleted_at" IS NULL
        AND s."value" = 'en_preparacion'
-       AND t."fulfillment" = true
+       AND t."se_recoge_en_tienda" = false
        ${filtroTienda}
      ORDER BY o."clave_remision" ASC, o."id" ASC`;
 }
@@ -67,13 +71,19 @@ export class PickingRepository implements IPickingRepository {
   async tiendaDelPicking(tiendaId: string): Promise<TiendaPicking | null> {
     const u = await this.prisma.usuario.findUnique({
       where: { id: tiendaId },
-      select: { id: true, nombre: true, fulfillment: true, estado: true, rol: { select: { value: true } } },
+      select: {
+        id: true,
+        nombre: true,
+        seRecogeEnTienda: true,
+        estado: true,
+        rol: { select: { value: true } },
+      },
     });
     if (u === null) return null;
     return {
       id: u.id,
       nombre: u.nombre,
-      fulfillment: u.fulfillment,
+      fulfillment: !u.seRecogeEnTienda, // SLT-94 R7: con paquetes en bodega
       esTienda: u.rol.value === "adminTienda",
       activo: u.estado === "activo",
     };
@@ -95,7 +105,8 @@ export class PickingRepository implements IPickingRepository {
   async tiendasFulfillment(): Promise<TiendaFulfillment[]> {
     return this.prisma.usuario.findMany({
       // Decision del leader (2026-10-05): una tienda con `estado` distinto de `activo` no se ofrece.
-      where: { fulfillment: true, estado: "activo", rol: { value: "adminTienda" } },
+      // SLT-94 (R7): las de la marca en «no».
+      where: { seRecogeEnTienda: false, estado: "activo", rol: { value: "adminTienda" } },
       select: { id: true, nombre: true },
     });
   }

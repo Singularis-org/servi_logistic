@@ -469,7 +469,8 @@ describe("WalletService.verResumenCaja (R8/R64/R65)", () => {
     ];
     // 5 conceptos de la ganancia (SL-39: los 8 propios menos los 3 de IVA) + 3 totales + las 4 filas
     // del IVA y su total (SL-39, R20) = 13: ninguno se pierde.
-    expect(importes.length).toBe(13);
+    // SLT-94: + el fulfillment (ingreso), su devolucion (egreso nombrado) y las dos de su IVA = 16.
+    expect(importes.length).toBe(16);
     for (const v of importes) {
       expect(typeof v).toBe("string");
       expect(v).toMatch(/^-?\d+\.\d{2}$/); // escala 2 SIEMPRE, tambien en el cero

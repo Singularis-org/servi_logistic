@@ -46,7 +46,7 @@ function fakeRepo(rows: EtiquetaRow[] = [etiquetaRow()]): IOrdenRepository {
     softDelete: vi.fn(),
     existsEstatus: vi.fn(),
     findEstatusIdByValue: vi.fn(),
-    findUsuarioFulfillment: vi.fn(),
+    findUsuarioSeRecogeEnTienda: vi.fn(),
     existsGeo: vi.fn(),
     findExistingRemisiones: vi.fn(),
     findAllProvincias: vi.fn(),
