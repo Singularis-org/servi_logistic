@@ -27,11 +27,11 @@
 
 ## Bloque B — Servidor
 
-- [ ] **T3. Contratos** (dep. T1; R5, R7, R9, R11, R17, R20).
+- [x] **T3. Contratos** (dep. T1; R5, R7, R9, R11, R17, R20).
   - **Archivo:** `lib/types/reporte-bug.ts`, con `NOTA_MAX`, `REPORTES_POR_PAGINA`, `RESUMEN_MAX`,
     `TRANSICIONES_REPORTE`, `ESTADOS_PENDIENTES`, los tres zod y los DTO (design §4, §6).
   - **Hecho:** sus casos en `tests/unit/actions/reportes-bug-plataforma-action.test.ts` verdes.
-- [ ] **T4. Repositorio y servicio** (dep. T2, T3; R3, R4, R5, R7–R11, R13, R15–R18, R20, R21, R23).
+- [x] **T4. Repositorio y servicio** (dep. T2, T3; R3, R4, R5, R7–R11, R13, R15–R18, R20, R21, R23).
   - **Archivos:**
     - `IBugReportRepository` y `BugReportRepository`, con `listar`, `detalle` y `cambiarEstado` (design
       §5);
@@ -39,7 +39,7 @@
   - **Hecho:** verdes `tests/unit/services/reportes-bug-plataforma-service.test.ts` y
     `tests/integration/db/bug-report.test.ts`, este con `DATABASE_URL` (un verde sin base no vale,
     `docs/verification.md`).
-- [ ] **T5. Server Actions y reparto** (dep. T4; R2, R9, R15, R18, R20).
+- [x] **T5. Server Actions y reparto** (dep. T4; R2, R9, R15, R18, R20).
   - **Archivos:**
     - `lib/actions/reportes-bug-plataforma.ts`, con `listarReportesBugAction`, `verReporteBugAction` y
       `cambiarEstadoReporteBugAction` (design §3, §6);
@@ -57,13 +57,13 @@
       `tests/unit/guards/superadmin-fuera-de-empresa.guardia.test.ts` y
       `tests/unit/guards/pwa-manifiesto-atajos.guardia.test.ts` (design §8.1).
   - **Hecho:** esos cuatro tests verdes.
-- [ ] **T7. Listado** (dep. T5; R2, R5–R12).
+- [x] **T7. Listado** (dep. T5; R2, R5–R12).
   - **Archivos:**
     - `app/(app)/plataforma/reportes/page.tsx`;
     - `app/(app)/plataforma/reportes/_components/ReportesModule.tsx`;
     - `app/(app)/plataforma/reportes/_components/reportes-textos.ts` (design §8.2, §9).
   - **Hecho:** `tests/unit/components/reportes-plataforma-page.test.tsx` verde.
-- [ ] **T8. Detalle** (dep. T5, T7 por los textos; R2, R14, R15, R17–R20, R22, R23).
+- [x] **T8. Detalle** (dep. T5, T7 por los textos; R2, R14, R15, R17–R20, R22, R23).
   - **Archivos:**
     - `app/(app)/plataforma/reportes/[reporteId]/page.tsx`;
     - `app/(app)/plataforma/reportes/[reporteId]/_components/ReporteDetalle.tsx` (design §8.3).
