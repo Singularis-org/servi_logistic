@@ -833,3 +833,11 @@ cubierta por `migracion-slt46-ida-y-vuelta`.
 **Salida real** (`logistic_slt46` local, bases desechables `slt43_`/`slt46_`, `--maxWorkers=1`):
 `migracion-slt43-ida-y-vuelta` + `migracion-slt46-ida-y-vuelta` → `Test Files 2 passed (2) · Tests 13 passed (13)`.
 `eslint` → «No issues found».
+
+### Dependencias `@dnd-kit/*` instaladas (2026-11-09)
+
+Aprobadas por el humano el 2026-11-09 en `docs/dependencias.md` (filas de `@dnd-kit/core`, `/sortable`,
+`/utilities`, con la excepción al check 2). `pnpm add --save-exact @dnd-kit/core@6.3.1 @dnd-kit/sortable@10.0.0
+@dnd-kit/utilities@3.2.2`: `package.json` +3 líneas (versión exacta); `pnpm-lock.yaml` +56 / −0 (las tres y la
+transitiva `@dnd-kit/accessibility@3.1.1`; ninguna otra entrada cambia). Aún sin uso en código (T6).
+`tests/guards/guard-dependencias-aprobadas.test.ts` → `Test Files 1 passed (1) · Tests 2 passed (2)`.
