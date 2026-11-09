@@ -33,6 +33,9 @@ con el backend (T0.1, T1–T5; la UI espera la maqueta T0.2). Spec R1–R52, T0�
 - 2026-11-09 (humano, «aprobado»): maqueta T0.2 aprobada (lienzo https://claude.ai/artifact/QFq31uvvXmLXF4AGt9PFfH, versión 7): reordenar solo arrastrando por ⠿ (sin flechas visibles; teclado con la manija enfocada), título «Niveles N (máximo 10)», modal de confirmación antes → después en guardar, editar, crear, agregar nivel y retirar, validando antes de escribir.
 - 2026-11-09 (humano): se retira `PaisRepository.crear` (forma vieja de seis nombres) y `pais-repositorio.test.ts` pasa a la forma nueva (historial P+1 filas, R37).
 - 2026-11-09 (humano): con la forma de entrada nueva, falta de `nombre` da el error en `fieldErrors.nombre` (como antes) y una forma vieja da un error claro de formato no válido; no `fieldErrors.entrada`.
+- 2026-11-09 (humano, P11): el interruptor «Disponible» y la carga del CSV también piden confirmación en modal.
+- 2026-11-09 (humano, P12): si otro ya dejó el lugar en el estado pedido, es éxito y la pantalla se refresca.
+- 2026-11-09 (humano, P13): el reordenar funciona también con el dedo, con `@dnd-kit/core` + `sortable` + `utilities` (clásica) como **excepción** al check 2 (sin release desde 2024-12). Filas en `docs/dependencias.md` como `pendiente-de-aprobar` hasta que Carlos confirme. No hay otra librería de arrastre en el repo (`BulkUpload.tsx` solo usa el soltar archivos nativo).
 
 ## Preguntas abiertas
 - 2026-11-09 (implementer, tanda 2): aserciones sin respaldo: `carga-division.test.ts` (it de `listArbolDePais` por cast, rojo a propósito hasta T5.3) y `geo-lecturas-catalogo.test.ts` (compara una proyección de UI, no el repositorio). Las revisa T5.3/reviewer.
