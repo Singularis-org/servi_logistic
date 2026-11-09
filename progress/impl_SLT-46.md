@@ -232,3 +232,67 @@ existentes, corre la verificación y escribe esto. T5, T6 y T8 siguen pendientes
   `geografia-sin-borrado-fisico` ampliadas; todas con contraprueba (archivo inventado en rojo).
 
 (La verificación de esta sección se completa en «Salida real» abajo.)
+
+### Cierre de T4.4 (2026-11-09)
+
+`15a8f761` test(SLT-46): T4.4 el log de fallo de la action nombra el id, no el nivel (§4.1). Cuatro
+aserciones de `geografia-plataforma-action.test.ts` seguían afirmando `nivel=distrito`/`nivel=canton` en
+la línea de log de un fallo; desde `53c1d455` la entrada no trae nivel (§4.1) y la action escribe
+`padre=c1` / `nodo=d1` / `nodo=c1`. Se cambió solo ese `toContain` (siguen `toContain(operación)` y
+`not.toContain("Juan")`, que es lo que exige §4.2: «log sin datos»). Antes: 4 rojos; después 99/99.
+
+### Cambios de aserción en tests existentes (auditoría `b0b7ff43..HEAD`)
+
+«Forma» = solo cambia la entrada (`{id}`, `{paisId}|{padreId}`) o el doble por nodo, con los mismos
+valores esperados (T5.5, design §4.1). Los tests nuevos de la tanda no van aquí.
+
+| Archivo | Qué aserciones cambiaron | Respaldo |
+|---|---|---|
+| `integration/db/geografia-alta` | Forma (`altaPorNivel`, `{paisId}`/`{padreId}`); todos los `expect` iguales | §4.1, T5.5 |
+| `integration/db/geografia-cascada-reversible` | Forma (`cambiarActivacion(id,…)`). «id inexistente en los tres niveles» queda como 3 pasadas idénticas (valor esperado igual; cobertura por nivel perdida) | §4.1, T3.1 (débil) |
+| `integration/db/geografia-registro-accion` | Forma; sin aserción nueva de entidad `nodo_geografico` (es T5.4) | §4.1, T5.5 |
+| `integration/db/geografia-renombrado` | Forma (`hermanosDeNodo(id)`). El `it` «`null` en los TRES niveles» queda con 3 `expect` idénticos | T3.1, §4.4 (débil) |
+| `integration/db/geo-sincronia-geografia` | `creados: {provincia:1, canton:2, distrito:1}` → `{1:1, 2:2, 3:1}` (mismas cifras); filas del CSV y `division.{nodos,tipos}` (forma) | R33, §4.4, §5 |
+| `integration/db/geografia-superadmin-sin-empresa` | `arbol.provincias[0].cantones[0]` → `arbol.raices[0].hijos[0]` (lo afirmado, igual); conteo a `{id}`. **El resto del bloque sigue con la forma vieja** (`crearPaisAction` de seis campos, `{nivel, cantonId}`, `{nivel, id}`) y los `expect` de `creados`/`renombrado` siguen con `provincia`/`nivel`: queda rojo hasta T5.4 | §4.3 (lo cambiado); lo no cambiado es T5.4 |
+| `integration/db/carga-division` | Forma (filas `niveles`, `nodos/tipos`). **El `it` de `listArbolDePais` llama al método retirado con un cast y queda rojo a propósito** («hasta que T5.3 la decida»). El caso P6 «dos homónimos normalizados» sigue sin retirar | **SIN RESPALDO** el cast (ninguna tarea admite dejar un test en rojo); P6 es T5.3, pendiente |
+| `integration/db/geo-lecturas-catalogo` | Mismo valor esperado, pero ya no compara `GeoRepository.listArbolDePais` con «hoy»: compara `arbolDeTresNiveles(arbolDePais(p).raices)`, una proyección de `app/(app)/plataforma/geografia/_components/` | **SIN RESPALDO** (ni design ni tasks nombran ese sustituto para la equivalencia de SLT-44 R17) |
+| `unit/repositories/geo-repository.escrituras` | Reescrito (22 → 28 `it`). `entidadTipo` provincia/canton/distrito → `nodo_geografico`; casos por nivel retirados con equivalente por nodo; orden del log con 1–3 `findUnique` de la cadena; `throw` interno `/falta el padre/` → `/raiz/`; `creados` por profundidad; «no borra» → «el delegado no declara `delete`»; retirado sin equivalente «un id de otra profundidad que la del nivel es `no_existe`» (no hay nivel en la entrada) | P5/R35, §4.4, §7, R33/R36, R42, §4.1; T3.1 «adaptado» |
+| `unit/services/geografia-service` | Los `ok` de `crear`/`renombrar`/`cambiarActivacion` pierden `nivel`; `listarArbolDePais` → `{ok, tipos, raices}`; argumentos al repo por nodo. Ningún mensaje ni status de CR cambia | §4.3, §4.4; el `ok` sin `nivel`, **respaldo débil** (§4.1 solo quita `nivel` de la entrada; la UI no lee `res.nivel`) |
+| `unit/services/carga-division-service` | Rechazo por cabecera: antes «`leerDivisionDePais` no se llama», ahora `toHaveBeenCalledTimes(1)` (status y motivo iguales); `altas`/`creados` por profundidad | §4.3 (columnas según P tras leer la división), R30, R33, §5 |
+| `unit/services/nombres-que-imprime-la-etiqueta` | Forma | §4.1 |
+| `unit/services/pais-service` | `fieldErrors` `nivel1Plural`… → `tipos`; `repo.crear` → `repo.crearConTipos`; ningún `it` retirado | R23, R24, §4.1, T4.3 |
+| `unit/actions/geografia-plataforma-action` | Entradas por nodo («cantón sin padre» → «hijo con `provinciaId`», sigue `validation_error`); `crearConTipos`; `{tipos}`; log de fallo `nivel=…` → id (`15a8f761`) | §4.1, §4.2, R22, R23, T4.3, T4.4 |
+| `unit/actions/geografia-plataforma.composition-root` | Árbol vacío `{ok, provincias: []}` → `{ok, tipos: [], raices: []}` | §4.3, R21 |
+| `unit/components/geografia-plataforma-page` | Ninguna; solo dobles (`raices`, `creados` por profundidad) | §4.3, §5 |
+| `unit/types/geografia-nodo` | Retirados «un nivel desconocido no entra» (cubierto por «rechaza … un `nivel`») y «`padreDeAlta` …» (helper retirado con la unión por nivel); «canton exige provinciaId / distrito exige cantonId» → «el hijo exige su padreId»; esquemas paralelos renombrados a §4.1 | §4.1, R22, T4.4 |
+| `unit/types/pais-schemas` | Ninguna; `crearPaisConTiposSchema` → `crearPaisSchema` | §4.1 |
+| guardia `geografia-renombrado-punto-unico` | Detector de las tres tablas viejas → `nodoGeografico` (`update`/`updateMany`/`upsert`); retirados el caso de los tres niveles y el negativo `zonaDistrito` (lo cubre `geografia-vieja-sin-escritor`); `codigoDta` → `(codigoDta\|codigoOficial)` | R43, §9, T7.2 |
+| guardia `geografia-sin-borrado-fisico` | Ninguna retirada; detector ampliado a `nodoGeografico`, `tipoNivelGeografico`, `?.` y `DELETE FROM` | R42, R50, T7.3 |
+| guardia `nodo-geografico-sin-escritor` | Retirada entera (SLT-43 R37) | T7.1 |
+
+### Costa Rica igual (R11, R12): `44d5d02e`/`b0b7ff43` → HEAD
+
+Mensajes, status y desenlaces **iguales para CR** en alta (nombre, `paisId`, código por
+`validarCodigoDeTipo` con los mismos literales, homónimo → `conflict`, padre inexistente → `not_found`),
+renombre, retiro, reactivación, conteo y CSV (`.csv`, 5 MB, UTF-8, tope de filas, «Faltan columnas
+obligatorias: …», mensajes por fila con `nivel_k`/`codigo_nivel_k`, aviso de columna ignorada). Nuevos con
+respaldo: R15 («Este país no tiene un nivel por debajo de X» / «Este país no tiene ningún nivel.»), R32
+(hueco), R49 («Este país ya tiene 10 niveles»). Diferencias, todas con entradas que la pantalla de hoy no
+manda o en casos extremos:
+
+1. Clave del padre en `fieldErrors`: `provinciaId`/`cantonId` → `padreId` (consecuencia de la entrada de
+   §4.1; design no lo dice explícitamente).
+2. Con `z.union` (antes `discriminatedUnion("nivel")`), una entrada sin `nombre` o con la forma vieja da
+   `fieldErrors.entrada` en vez de `nombre`. **No previsto en design**: necesita decisión.
+3. CSV: «Faltan columnas obligatorias» se comprueba ahora después del tope de filas y de leer la
+   división; un archivo sin columnas y con más filas que el tope cambia de motivo. Caso extremo que R31 no
+   exceptúa.
+4. Los `ok` de alta/renombre/estado ya no llevan `nivel` (forma, no desenlace).
+
+### Hallazgo: la pantalla de hoy no puede escribir
+
+`GeografiaAdminModule.tsx` (alta, renombre, retiro, reactivación, conteo) y `GeografiaPlataformaModule.tsx`
+(alta de país) siguen mandando la forma de SL-20 (`{nivel, provinciaId|cantonId, …}`, seis campos
+`nivelN*`). Con los esquemas `.strict()` de T4.4, **las 8 llamadas responden `validation_error`**. `tsc` no
+lo ve (las actions reciben `unknown`). La lectura sí tiene puente (`arbol-de-tres-niveles.ts`, T4.1); las
+escrituras no. Pasarlas a la entrada nueva es UI (T6, bloqueada por la maqueta T0.2): no se tocó.
