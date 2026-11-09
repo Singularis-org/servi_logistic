@@ -2,12 +2,12 @@
 
 | key | nombre | zone | complexity | rama | assignee | estado |
 |---|---|---|---|---|---|---|
-| SLT-85 | traza-facturacion-cobros | backend | medium | feature/SLT-85-traza-facturacion-cobros | Camilo | pending |
+| SLT-85 | traza-facturacion-cobros | backend | medium | feature/SLT-85-traza-facturacion-cobros | Camilo | in_progress |
 
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F1.0 (2026-11-09): tomada y worktree montado. Afinada con /afinar-feature; sigue F1.2 (spec_author).
+F1.4 (2026-11-09): spec aprobado por el humano («Aprobado, implementa»). Tarjeta en curso. F2.1 implementer.
 
 ## Evaluación
 - zone backend: tabla nueva, migración con relleno de históricos, escritura junto al movimiento de cobro. Sin pantalla.
