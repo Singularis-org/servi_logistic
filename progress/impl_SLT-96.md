@@ -203,3 +203,7 @@ rojo. El INT corrió contra Postgres real, con 7 tests ejecutados.
 ### H2: tasks.md
 Las casillas de T1, T2 y T3 de `specs/SLT-96-consolidacion-cero-recibida/tasks.md` están en `[x]` (12 casillas).
 T3 la corrió el leader: gate local verde, `INIT_EXIT=0`, contra `slt96_t1`. T4 a T6 siguen abiertas.
+
+## T5 (leader, 2026-11-09)
+
+`git diff origin/prod origin/dev` sobre los archivos de código del PR: vacío. `dev` no cambió ninguno; la sincronización a `dev` no tendrá conflicto en ellos.
